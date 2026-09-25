@@ -2,7 +2,8 @@
 
 *Aufnahme 20260922 · Prüfbasis-Aktualität (Fall 7). Gilt für den KI-Prüfnachweis `aiCheck` am
 Wissensobjekt. Umsetzung: `services/knowledge-object/src/pruefbasis.ts`. Fortgeschrieben in Runde 2
-nach Bens Befunden (Vergleichsquellen, Altbestand, serverseitige Bewertung, Suchkandidatenweg).*
+nach Bens Befunden (Vergleichsquellen, Altbestand, serverseitige Bewertung, Suchkandidatenweg) und
+in Runde 3 (Startbasis der synchronen Import-Annahme, direkte Rückgaben der Mutationspfade).*
 
 ## Die Frage
 
@@ -63,7 +64,10 @@ konservativ: sie kostet im schlechtesten Fall Läufe zu viel, nie ein falsches �
 - **Gespeichert** wird die Basis als drei Fingerabdrücke (`aiCheck.basis = { quelle, kontext,
   bestand }`), kein Inhalt. `markAiCheckPending` bindet die angeforderte Basis; der Worker liest die
   Basis beim **Laufstart** und schreibt das Ergebnis an sie gebunden (`resolveAiCheck(…, basis)`).
-  Die Import-Annahme (synchroner Lauf) bindet ebenfalls die Basis beim Laufstart.
+  Die Import-Annahme (synchroner Lauf) erfasst die **vollständige** Basis — Objekt und Bestand —
+  ebenfalls **vor** dem Lauf und übergibt sie unverändert an den Abschluss
+  (`recordAiCheckOutcome(…, basis)`); eine Vergleichsquelle, die während des Urteils neu gefasst
+  wird, lässt den Nachweis dort genauso überholt stehen wie im Hintergrund-Worker.
 - **Schreibstand wiederverwendet:** der Bestandsfingerabdruck braucht den ganzen aktiven Bestand.
   `KoService.pruefbestandStempel()` merkt ihn am Schreibstand der Ablage (`ko_schreibstand`,
   JOB 2706 D1): solange der Stand gleich ist, hat niemand am Bestand geschrieben, und der gemerkte
@@ -76,8 +80,13 @@ konservativ: sie kostet im schlechtesten Fall Läufe zu viel, nie ein falsches �
 - **Gelesen** wird `aiCheck.ueberholt` bei jedem Lesen neu aus der gespeicherten Basis gegen das
   jetzige Objekt und den jetzigen Bestand abgeleitet — nie gespeichert, nie geglaubt. Lesepfade:
   `KoService.get`, `list`, `listForSearch`, `findCandidates` (Suchkandidaten, Ask/Klara),
-  `findByImportCandidateId` und die Rückgabewerte der Mutationspfade (`mutateKo`, `mutateKoTx`,
-  `mutateKoMetadata`). Prüfliste, Detailabruf, Erfassen-Karte, Antwort-Einstufung (Web und Server),
+  `findByImportCandidateId` und **jeder** Rückgabewert, der ein Wissensobjekt trägt: die
+  Mutationspfade (`mutateKo`, `mutateKoTx`, `mutateKoMetadata`), die direkten Rückgaben (`addSource`,
+  `removeSource`, `addAttachment`, `removeAttachment`, `addComment`, `restore`,
+  `setValidationState`, `setValidationDecisionRef`), Wiederholungen der Anlage (`create`,
+  `createWithDocuments`, `lookupDocumentCreate`) und Ergebnisse der Form `{ ko, … }`
+  (`decideProposal`, `appendDocumentExtract`, `lookupDocumentAppend`). Eine Mutationsantwort und
+  der anschließende Reload zeigen damit denselben Prüfstand. Prüfliste, Detailabruf, Erfassen-Karte, Antwort-Einstufung (Web und Server),
   Deckungslage am eigenen Objekt und Abdeckungs-Zusammenfassung lesen damit dieselbe gespeicherte
   Bindung; ein Neuladen ändert nichts daran.
 - **Änderung zwischen Start und Ergebnis:** der Worker vergleicht vor dem Schreiben die Basis

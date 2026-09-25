@@ -864,7 +864,13 @@ export function libraryRoutes(
             // ohne Statusabschluss. Nach Fristablauf gewinnt `failed/timeout`; ein spät doch noch
             // eintreffender Ausgang wird verworfen (runWithTimeout settlet genau EINMAL), sodass
             // der Statusschreib unten eindeutig und einmalig bleibt.
+            // AUFNAHME 20260922 (bens Befund Runde 2): die VOLLSTÄNDIGE Basis — Objekt UND Bestand —
+            // wird VOR dem Lauf erfasst und unverändert an den Abschluss übergeben. Eine Änderung an
+            // einer Vergleichsquelle während des Urteils lässt den Nachweis damit überholt stehen.
             const startStand = await detection.ko.get(result.koId);
+            const startBasis = startStand
+              ? await detection.ko.aktuellePruefbasis(startStand)
+              : undefined;
             const outcome = await runWithTimeout(
               createAiCheckRunner({
                 ko: detection.ko,
@@ -876,12 +882,7 @@ export function libraryRoutes(
               })(result.koId),
               AI_CHECK_JOB_TIMEOUT_MS,
             );
-            await recordImportAcceptAiCheck(
-              detection.ko,
-              result.koId,
-              outcome,
-              startStand ? await detection.ko.aktuellePruefbasis(startStand) : undefined,
-            );
+            await recordImportAcceptAiCheck(detection.ko, result.koId, outcome, startBasis);
           }
           // WP-SHIP8-CLOSE-8 (bens GELB-2): dieselbe DTO-Grenze wie am Queue-Load — die Antwort
           // der Review-Aktion trägt keine Claim-/Beleg-Interna (auditPending nur als Boolean).

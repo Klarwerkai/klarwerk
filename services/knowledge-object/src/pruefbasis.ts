@@ -87,6 +87,17 @@ export function gleichePruefbasis(a: AiCheckBasis, b: AiCheckBasis): boolean {
   return a.quelle === b.quelle && a.kontext === b.kontext && a.bestand === b.bestand;
 }
 
+/** Trägt dieser Rückgabewert ein Wissensobjekt (Kennung, Fassung, Prüfnachweis-Feld)? */
+export function istWissensobjekt(value: unknown): value is KnowledgeObject {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    "id" in value &&
+    "version" in value &&
+    "aiCheck" in value
+  );
+}
+
 /** Braucht die Lesefassung dieses Objekts den Bestandsstempel? (nur abgeschlossene Nachweise) */
 export function brauchtPruefstand(ko: { aiCheck?: AiCheck | undefined }): boolean {
   return ko.aiCheck !== undefined && ko.aiCheck.status !== "pending";

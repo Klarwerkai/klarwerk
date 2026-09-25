@@ -53,7 +53,13 @@ import type { KoMetadataProjectionResult } from "./metadata-projection-repo";
 // ownership.ts — hier wird nur angewendet, nichts nachgebaut.
 import { normalizeOwnership, ownershipOf, sameOwnership, withRole } from "./ownership";
 // AUFNAHME 20260922: die Basisbindung des Prüfnachweises (Regel und Begründung dort).
-import { bestandsStempelVon, brauchtPruefstand, mitPruefstand, pruefbasisVon } from "./pruefbasis";
+import {
+  bestandsStempelVon,
+  brauchtPruefstand,
+  istWissensobjekt,
+  mitPruefstand,
+  pruefbasisVon,
+} from "./pruefbasis";
 import type {
   EvidenceRepo,
   KoCandidateQuery,
@@ -2138,11 +2144,14 @@ export class KoService {
           "Vorgang ohne Eigentümer — die Erstanlage braucht den authentifizierten Anfragenden.",
         );
       }
-      return this.withKoLock(`create-op:${createOperationId}`, () =>
-        this.createLocked(input, createOperationId, {
-          actor,
-          fingerprint: operation.fingerprint,
-        }),
+      // Eine Wiederholung liefert das BESTEHENDE Objekt — samt Lesefassung seines Nachweises.
+      return this.lesefassung(
+        await this.withKoLock(`create-op:${createOperationId}`, () =>
+          this.createLocked(input, createOperationId, {
+            actor,
+            fingerprint: operation.fingerprint,
+          }),
+        ),
       );
     }
     return this.createPlain(input);
@@ -2358,8 +2367,10 @@ export class KoService {
     // Prozess nicht beide „noch nicht da" lesen und beide inserten. Prozessübergreifend fängt das
     // der Unique-Index — der zweite Insert kollidiert und wird unten ADOPTIERT statt dupliziert;
     // die prozessübergreifende SERIALISIERUNG selbst bleibt Nach-VIP-2 und ist hier nicht nötig.
-    return this.withKoLock(`create-op:${createOperationId}`, () =>
-      this.createWithDocumentsLocked(input, documents, anchorIds, createOperationId, requester),
+    return this.lesefassung(
+      await this.withKoLock(`create-op:${createOperationId}`, () =>
+        this.createWithDocumentsLocked(input, documents, anchorIds, createOperationId, requester),
+      ),
     );
   }
 
@@ -2763,10 +2774,11 @@ export class KoService {
     requester: CreateOperationRequester,
   ): Promise<KnowledgeObject | null> {
     const createOperationId = normalizeCreateOperationId(operationId);
-    return this.withKoLock(
+    const ko = await this.withKoLock(
       `create-op:${createOperationId}`,
       async () => (await this.adoptCreatedKo(createOperationId, requester)) ?? null,
     );
+    return ko ? this.lesefassung(ko) : null;
   }
 
   /**
@@ -3162,7 +3174,7 @@ export class KoService {
     if (ergebnis.geschrieben) {
       await this.audit?.record({ actor: author, action: "ko.commented", target: id });
     }
-    return ergebnis.ko;
+    return this.lesefassung(ergebnis.ko);
   }
 
   // ==============================================================================================
@@ -3254,7 +3266,8 @@ export class KoService {
       });
     }
     await this.audit?.record({ actor: author, action: "ko.attached", target: id });
-    return updated;
+    // AUFNAHME 20260922 (bens Befund Runde 2): die Antwort trägt dieselbe Lesefassung wie ein Reload.
+    return this.lesefassung(updated);
   }
 
   async removeAttachment(
@@ -3269,7 +3282,7 @@ export class KoService {
     };
     await this.repo.update(updated);
     await this.audit?.record({ actor, action: "ko.detached", target: id });
-    return updated;
+    return this.lesefassung(updated);
   }
 
   // SCRUM-129 / FR-KO-07: externe Quelle anfügen. Externe Quellen sind NIE peer-validiert.
@@ -3342,7 +3355,8 @@ export class KoService {
       createdAt: source.at,
     });
     await this.audit?.record({ actor: author, action: "ko.source-added", target: id });
-    return updated;
+    // AUFNAHME 20260922 (bens Befund Runde 2): die Antwort trägt dieselbe Lesefassung wie ein Reload.
+    return this.lesefassung(updated);
   }
 
   async removeSource(id: string, sourceId: string, actor: string): Promise<KnowledgeObject> {
@@ -3353,7 +3367,7 @@ export class KoService {
     };
     await this.repo.update(updated);
     await this.audit?.record({ actor, action: "ko.source-removed", target: id });
-    return updated;
+    return this.lesefassung(updated);
   }
 
   // SCRUM-422: getrashte KOs wirken überall gelöscht — get/list/findCandidates blenden sie aus.
@@ -3401,15 +3415,17 @@ export class KoService {
 
   // Rückgabewerte der Mutationspfade: ist der Wert ein Wissensobjekt mit Prüfnachweis, bekommt er
   // dieselbe Lesefassung wie `get` — sonst bliebe er genau hier scheinbar aktuell.
+  // AUFNAHME 20260922 (bens Befund Runde 2): auch Ergebnisse der Form `{ ko, … }`
+  // (Vorschlagsentscheid, Dokumentübernahme) — dort stand das Objekt sonst ungeprüft in der Antwort.
   private async lesefassungWert<T>(value: T): Promise<T> {
-    if (
-      value !== null &&
-      typeof value === "object" &&
-      "aiCheck" in value &&
-      "version" in value &&
-      "id" in value
-    ) {
-      return (await this.lesefassung(value as unknown as KnowledgeObject)) as unknown as T;
+    if (istWissensobjekt(value)) {
+      return (await this.lesefassung(value)) as unknown as T;
+    }
+    if (value !== null && typeof value === "object" && "ko" in value) {
+      const ko = (value as { ko: unknown }).ko;
+      if (istWissensobjekt(ko)) {
+        return { ...value, ko: await this.lesefassung(ko) };
+      }
     }
     return value;
   }
@@ -4065,7 +4081,7 @@ export class KoService {
     const { deletedAt: _at, deletedBy: _by, ...restored } = ko;
     await this.repo.update(restored as KnowledgeObject);
     await this.audit?.record({ actor, action: "ko.restored", target: id });
-    return restored as KnowledgeObject;
+    return this.lesefassung(restored as KnowledgeObject);
   }
 
   // Sofortige Endlöschung EINES Papierkorb-Eintrags (Admin-Entscheidung).
@@ -4891,6 +4907,13 @@ export class KoService {
     // Formprüfung der Kennung ZUERST und mit demselben Vertrag wie der Vollzug: eine ungültige
     // Kennung ist ein ehrlicher Formfehler, kein „nicht gefunden".
     const key = normalizeAppendOperationId(operationId);
+    return this.lesefassungWert(await this.lookupDocumentAppendRoh(id, key));
+  }
+
+  private async lookupDocumentAppendRoh(
+    id: string,
+    key: string,
+  ): Promise<DocumentAppendCommit | null> {
     return this.withKoLock(id, async () => {
       const current = await this.require(id);
       const known = (current.appendOps ?? []).find((op) => op.id === key);
@@ -4950,7 +4973,8 @@ export class KoService {
       throw new KoError("INVALID_SOURCE", "Quellen-Label fehlt.");
     }
 
-    return this.withKoLock(id, async () => {
+    // AUFNAHME 20260922: das Commit-Ergebnis trägt die Lesefassung seines Objekts.
+    const commit = await this.withKoLock(id, async () => {
       const before = await this.require(id);
 
       // ---- IDEMPOTENZ ----------------------------------------------------------------------
@@ -5167,6 +5191,7 @@ export class KoService {
         throw err;
       }
     });
+    return this.lesefassungWert(commit);
   }
 
   // ==============================================================================================
@@ -5415,7 +5440,7 @@ export class KoService {
     state: { trust: number; status: KoStatus },
     opts: { expectedVersion?: number } = {},
   ): Promise<KnowledgeObject> {
-    return this.withKoLock(id, async () => {
+    const ergebnis = await this.withKoLock(id, async () => {
       const ko = await this.require(id);
       if (opts.expectedVersion !== undefined && ko.version !== opts.expectedVersion) {
         return ko; // Version hat sich geändert (Revise) → Bewertung galt der Vorversion, nicht schreiben.
@@ -5424,6 +5449,7 @@ export class KoService {
       await this.repo.update(updated);
       return updated;
     });
+    return this.lesefassung(ergebnis);
   }
 
   // ==============================================================================================
@@ -5447,6 +5473,14 @@ export class KoService {
     id: string,
     ref: { auditSeq: number; auditHash: string },
     opts: { expectedVersion?: number } = {},
+  ): Promise<KnowledgeObject> {
+    return this.lesefassung(await this.setValidationDecisionRefRoh(id, ref, opts));
+  }
+
+  private async setValidationDecisionRefRoh(
+    id: string,
+    ref: { auditSeq: number; auditHash: string },
+    opts: { expectedVersion?: number },
   ): Promise<KnowledgeObject> {
     return this.withKoLock(id, async () => {
       const ko = await this.require(id);
