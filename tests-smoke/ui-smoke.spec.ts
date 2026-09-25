@@ -948,6 +948,34 @@ function pruefeWiedereingelesen(
  * auf das Objekt zeigen, aus dem der Eintrag exportiert wurde. Ein Kandidat ohne Befund würde beim
  * Annehmen eine zweite Karteikarte anlegen.
  */
+/**
+ * HERKUNFT, GETRENNT VON DER DUBLETTE (Bens Befund R-0150/R-1731, Runde 1): der Dublettentreffer
+ * sagt nur, WORAUF ein Kandidat zeigt — nicht, dass seine Urheberschaft angekommen ist. Diese
+ * Prüfung liest sie selbst: jeder Kandidat trägt die `originalAuthor` seines Exporteintrags. Dass die
+ * Urheberin danach beim Annehmen Wissensträgerin des Zielobjekts bleibt, belegt
+ * `tests/json-herkunft-rundlauf/urheberschaft-im-rundlauf.test.ts` an beiden Anlagewegen.
+ */
+function pruefeUrheberschaft(
+  neu: readonly KandidatAufDemDraht[],
+  liste: readonly ExportEintrag[],
+): void {
+  const urheber = new Map<string, unknown>();
+  for (const e of liste) {
+    urheber.set(inhaltsschluessel(e.title, e.statement), e.originalAuthor);
+  }
+  for (const k of neu) {
+    const soll = urheber.get(inhaltsschluessel(k.item.title, k.item.statement));
+    expect(
+      typeof soll === "string" && soll.trim().length > 0,
+      `Exporteintrag „${String(k.item.title)}" trägt keine Urheberschaft — dann misst diese Prüfung nichts`,
+    ).toBe(true);
+    expect(
+      k.item.originalAuthor,
+      `Kandidat „${String(k.item.title)}": die Urheberschaft ging beim Einlesen verloren`,
+    ).toBe(soll);
+  }
+}
+
 function pruefeDublettenbefund(
   neu: readonly KandidatAufDemDraht[],
   liste: readonly ExportEintrag[],
@@ -1038,6 +1066,7 @@ test("UX-20b L3: der Bibliotheks-Export kommt über echtes HTTP und wird vom Imp
   const neu = (await leseKandidaten(page)).filter((k) => !vorher.has(k.id));
   pruefeWiedereingelesen(neu, liste, liste.length);
   pruefeDublettenbefund(neu, liste);
+  pruefeUrheberschaft(neu, liste);
 
   // Auch der ERFÜLLTE Zweig sagt laut, was er gemessen hat. Ohne diese Zeile stünde im Bericht eines
   // geseedeten Laufs nur „passed", und ob der Inhaltszweig wirklich gefahren ist, wäre nur an der
@@ -1045,7 +1074,7 @@ test("UX-20b L3: der Bibliotheks-Export kommt über echtes HTTP und wird vom Imp
   // Datei sich abgewöhnt hat (mega59 H3).
   test.info().annotations.push({
     type: "Datenlage",
-    description: `geseedeter Lauf: ${liste.length} Einträge über GET /api/library/export geholt (Seed-Sollmenge ${SEED_TITEL.length} Titel enthalten), per Mausklick als export.json eingereicht, Zähler exakt ${liste.length}, nach Neuladen ${neu.length} neue Kandidaten gelesen, alle als Dublette ihres Quellobjekts erkannt.`,
+    description: `geseedeter Lauf: ${liste.length} Einträge über GET /api/library/export geholt (Seed-Sollmenge ${SEED_TITEL.length} Titel enthalten), per Mausklick als export.json eingereicht, Zähler exakt ${liste.length}, nach Neuladen ${neu.length} neue Kandidaten gelesen, alle als Dublette ihres Quellobjekts erkannt, jeder mit der Urheberschaft seines Exporteintrags.`,
   });
 });
 
@@ -1121,6 +1150,7 @@ test("UX-20b L3-T: dieselbe Datei geht per Tastatur durch die Dateiauswahl — Z
   pruefeWiedereingelesen(neu, eingereicht, eingereicht.length);
   if (geseedet) {
     pruefeDublettenbefund(neu, eingereicht);
+    pruefeUrheberschaft(neu, eingereicht);
   }
   test.info().annotations.push({
     type: "Tastaturweg",

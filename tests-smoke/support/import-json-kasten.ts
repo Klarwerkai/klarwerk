@@ -308,7 +308,7 @@ export function exportFormFehler(a: HttpAntwort): { fehler: string[]; daten: unk
 /** Die Felder eines Warteschlangen-Kandidaten, die L3 liest (`ImportCandidate` im Produkt). */
 export interface KandidatAufDemDraht {
   id: string;
-  item: { title?: unknown; statement?: unknown };
+  item: { title?: unknown; statement?: unknown; originalAuthor?: unknown };
   status: string;
   duplicate: boolean;
   dublettenbefund?: {
