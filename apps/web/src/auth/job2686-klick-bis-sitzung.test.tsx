@@ -41,7 +41,10 @@
 //   K3  Im Anbieter herabgestuft → BETRACHTER-Sitzung sichtbar, Admin-Nutzung verweigert.
 
 import { spawn } from "node:child_process";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 // ================================================================================================
@@ -66,9 +69,39 @@ const KANN_HORCHEN = await new Promise<boolean>((fertig) => {
   probe.listen(0, "127.0.0.1", () => probe.close(() => fertig(true)));
 });
 
-const KLON = "/Users/peterkohnert/klarwerk_arbeit/kw-pro-job2686-d3";
-const SPUR = "/Users/peterkohnert/klarwerk_arbeit/kw-pro-job2686-d3-arbeit";
-const BUENDEL = `${SPUR}/sso-server.bundle.cjs`;
+// ================================================================================================
+// REPARATUR 25.09.2026 (Pedi-Entscheidung „a"): KEIN PFAD AUSSERHALB DES CHECKOUTS.
+// ================================================================================================
+//
+// DER BEFUND (Tor-Selbstprüfung auf dem Linux-Testserver g4): `KLON` und `SPUR` zeigten fest auf
+// einen alten Mac-Arbeitsordner (`/Users/peterkohnert/klarwerk_arbeit/kw-pro-job2686-d3…`). Der
+// Starter wurde von dort gestartet — auf jedem anderen Rechner `spawn … ENOENT`, K1–K3 rot ohne
+// fachlichen Grund; auf dem Mac nur grün, weil der alte Ordner zufällig noch existierte.
+//
+// JETZT: Starter und Server liegen im Checkout selbst (`tests/helpers/job2686-sso-start.mjs`,
+// `job2686-sso-server.ts`); die Wurzel wird aus der Lage dieser Datei berechnet
+// (apps/web/src/auth → vier Ebenen hoch; `__dirname` stellt vite-node bereit — `import.meta.url`
+// ist unter jsdom KEINE file:-Adresse). Der Starter bündelt den Server bei jedem Start neu
+// (esbuild, siehe dort) in einen Wegwerfordner unter dem System-Tmp — das ist kein Eingang von
+// aussen, sondern Ausgabe dieses Laufs. Der Ordner entsteht ERST beim ersten tatsächlichen
+// Serverstart (nicht beim Laden der Datei: ruhen alle Fälle, läuft kein afterAll, und es darf
+// nichts zurückbleiben — Ben B1) und wird in `afterAll` entfernt.
+//
+// Fehlt der Starter (fremder Checkout ohne tests/helpers), RUHT der Fall sichtbar mit Grund, so wie
+// ohne Horchrecht — kein stilles Grün, keine abgeschwächte Fachaussage.
+const KLON = resolve(__dirname, "..", "..", "..", "..");
+const STARTER = join(KLON, "tests", "helpers", "job2686-sso-start.mjs");
+const STARTER_DA = existsSync(STARTER);
+const KANN_LAUFEN = KANN_HORCHEN && STARTER_DA;
+const RUHEGRUND =
+  "ruht ohne Horchrecht oder ohne Starter tests/helpers/job2686-sso-start.mjs: der Fall startet einen echten Server aus dem Checkout";
+let SPUR: string | undefined;
+
+/** Wegwerfordner für das Serverbündel — angelegt beim ersten Serverstart, entfernt in `afterAll`. */
+function buendelPfad(): string {
+  SPUR ??= mkdtempSync(join(tmpdir(), "klarwerk-job2686-sso-"));
+  return join(SPUR, "sso-server.bundle.cjs");
+}
 
 // --- (3) die ersetzten Fachdaten -----------------------------------------------------------------
 vi.mock("../api/endpoints", () => ({
@@ -110,43 +143,138 @@ const { default: i18n } = await import("../i18n");
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 // ================================================================================== der Server
-let serverProzess: ReturnType<typeof spawn> | undefined;
+//
+// FASSUNG 4 (Ben, Prüfung vor dem Push): Die Serververwaltung ist ein kleiner Zustandsautomat, damit die
+// Fehlerwege der Bereinigung geschlossen sind — kein Zustand geht verloren, kein Verweis wird überschrieben:
+//   kein          → starteServer  → laeuft
+//   laeuft        → haltServer    → bereinigung → kein (Ende bestätigt) | gescheitert (Ende blieb aus, PID)
+//   bereinigung   → jeder weitere Start/Halt wirft (nebenläufige Bereinigung)
+//   gescheitert   → jeder weitere Start/Halt wirft mit der PID (kein stilles Weiterlaufen, kein Überschreiben)
+// Zeitbudgets: TERM 5 s, dann KILL 10 s (= 15 s); jeder Hook dieser Datei bekommt 30 s, also mehr als die Summe
+// der internen Fristen, damit der PID-Fehler die Hook-Zeitgrenze nie verdeckt.
+type ServerLage =
+  | { art: "kein" }
+  | { art: "laeuft"; prozess: ReturnType<typeof spawn> }
+  | { art: "bereinigung"; prozess: ReturnType<typeof spawn> }
+  | { art: "gescheitert"; pid: number | undefined };
+let server: ServerLage = { art: "kein" };
 let port = 0;
+const TERM_FRIST_MS = 5000;
+const KILL_FRIST_MS = 10000;
+const HOOK_BUDGET_MS = 30000; // > TERM_FRIST_MS + KILL_FRIST_MS
+
+function lageText(): string {
+  switch (server.art) {
+    case "kein":
+      return "kein Prozess";
+    case "laeuft":
+      return `läuft (PID ${server.prozess.pid})`;
+    case "bereinigung":
+      return `Bereinigung läuft (PID ${server.prozess.pid})`;
+    case "gescheitert":
+      return `Bereinigung gescheitert (PID ${server.pid})`;
+  }
+}
 
 // Das Uebersetzen liegt im STARTER, nicht hier: esbuild prueft beim Laden
 // `new TextEncoder().encode("") instanceof Uint8Array`, und jsdoms Encoder liefert ein
 // `Uint8Array` aus einem anderen Realm — esbuild bricht dann mit „your JavaScript environment is
 // broken" ab. Im Kindprozess (reines Node) gilt die Pruefung.
 async function starteServer(szenario: string): Promise<void> {
-  serverProzess = spawn(
-    process.execPath,
-    [`${KLON}/tests/helpers/job2686-sso-start.mjs`, szenario, BUENDEL],
-    { cwd: KLON, env: { ...process.env, KLARWERK_SKIP_KEYCHAIN: "1" } },
-  );
+  if (server.art !== "kein") {
+    // V3-1: nie einen unbestätigt beendeten oder in Bereinigung befindlichen Prozess überschreiben.
+    throw new Error(`Kein Serverstart: vorheriger SSO-Server ist nicht bereinigt — ${lageText()}`);
+  }
+  const prozess = spawn(process.execPath, [STARTER, szenario, buendelPfad()], {
+    cwd: KLON,
+    env: { ...process.env, KLARWERK_SKIP_KEYCHAIN: "1" },
+  });
+  server = { art: "laeuft", prozess };
   let fehler = "";
-  serverProzess.stderr?.on("data", (d: Buffer) => {
+  prozess.stderr?.on("data", (d: Buffer) => {
     fehler += String(d);
   });
-  port = await new Promise<number>((fertig, scheitern) => {
-    let puffer = "";
-    const grenze = setTimeout(
-      () => scheitern(new Error(`Server startete nicht. stderr: ${fehler.slice(0, 600)}`)),
-      25000,
-    );
-    serverProzess?.stdout?.on("data", (d: Buffer) => {
-      puffer += String(d);
-      const treffer = /PORT=(\d+)/.exec(puffer);
-      if (treffer) {
+  try {
+    port = await new Promise<number>((fertig, scheitern) => {
+      let puffer = "";
+      const grenze = setTimeout(
+        () => scheitern(new Error(`Server startete nicht. stderr: ${fehler.slice(0, 600)}`)),
+        25000,
+      );
+      // Ein Start, der sofort scheitert (kein node, Bündeln bricht ab, Prozess endet), meldet sich
+      // hier unmittelbar — nicht erst nach 25 Sekunden.
+      prozess.once("error", (e) => {
         clearTimeout(grenze);
-        fertig(Number(treffer[1]));
-      }
+        scheitern(
+          new Error(`Server startete nicht: ${e.message}. stderr: ${fehler.slice(0, 600)}`),
+        );
+      });
+      prozess.once("exit", (code, signal) => {
+        clearTimeout(grenze);
+        scheitern(
+          new Error(
+            `Server endete vor PORT= (Exit ${code}, Signal ${signal}). stderr: ${fehler.slice(0, 600)}`,
+          ),
+        );
+      });
+      prozess.stdout?.on("data", (d: Buffer) => {
+        puffer += String(d);
+        const treffer = /PORT=(\d+)/.exec(puffer);
+        if (treffer) {
+          clearTimeout(grenze);
+          fertig(Number(treffer[1]));
+        }
+      });
     });
+  } catch (e) {
+    await haltServer();
+    throw e;
+  }
+}
+
+function warte(ms: number): Promise<false> {
+  return new Promise((fertig) => {
+    const t = setTimeout(() => fertig(false), ms);
+    t.unref?.();
   });
 }
 
-function haltServer(): void {
-  serverProzess?.kill();
-  serverProzess = undefined;
+/**
+ * Beendet den Serverprozess und WARTET auf sein tatsächliches Ende: ein Kill-Signal ohne Warten
+ * belegt keine Bereinigung, und ein Ablauf der Wartezeit ist KEIN Erfolg. Erst TERM, dann KILL;
+ * kommt das `exit`-Ereignis auch danach nicht, geht die Lage nach „gescheitert" (mit PID) und die
+ * Bereinigung wirft sichtbar — jeder spätere Start oder Halt wirft dann ebenfalls.
+ */
+async function haltServer(): Promise<void> {
+  if (server.art === "kein") {
+    return;
+  }
+  if (server.art === "bereinigung") {
+    throw new Error(`Bereinigung läuft bereits — ${lageText()}`);
+  }
+  if (server.art === "gescheitert") {
+    throw new Error(`SSO-Server nicht bereinigt — ${lageText()}`);
+  }
+  const prozess = server.prozess;
+  if (prozess.exitCode !== null || prozess.signalCode !== null) {
+    server = { art: "kein" };
+    return;
+  }
+  server = { art: "bereinigung", prozess };
+  const ende = new Promise<true>((fertig) => prozess.once("exit", () => fertig(true)));
+  prozess.kill("SIGTERM");
+  let beendet = await Promise.race([ende, warte(TERM_FRIST_MS)]);
+  if (!beendet) {
+    prozess.kill("SIGKILL");
+    beendet = await Promise.race([ende, warte(KILL_FRIST_MS)]);
+  }
+  if (!beendet) {
+    server = { art: "gescheitert", pid: prozess.pid };
+    throw new Error(
+      `SSO-Serverprozess ${prozess.pid} endete nicht innerhalb von ${(TERM_FRIST_MS + KILL_FRIST_MS) / 1000} s nach TERM und KILL — Bereinigung nicht belegt`,
+    );
+  }
+  server = { art: "kein" };
 }
 
 // ============================================ (2) die Browserschale um fetch: Basis + Cookies
@@ -317,16 +445,29 @@ describe("JOB 2686 · vom Klick bis zur Sitzung", () => {
     await i18n.changeLanguage("de");
   }, 120000);
 
-  afterEach(() => {
-    abbauen();
-    haltServer();
-    kekse.clear();
-    zugewiesen = [];
-  });
+  afterEach(async () => {
+    try {
+      abbauen();
+    } finally {
+      // Der Server endet auch dann, wenn der Abbau der Oberfläche wirft; scheitert die Bereinigung,
+      // wirft dieser Hook mit der PID (V2-1) — und der nächste Start ist gesperrt (V3-1).
+      await haltServer();
+      kekse.clear();
+      zugewiesen = [];
+    }
+  }, HOOK_BUDGET_MS);
 
-  afterAll(() => {
+  afterAll(async () => {
     globalThis.fetch = echtesFetch;
-  });
+    try {
+      await haltServer();
+    } finally {
+      if (SPUR) {
+        rmSync(SPUR, { recursive: true, force: true });
+        SPUR = undefined;
+      }
+    }
+  }, HOOK_BUDGET_MS);
 
   /**
    * DIE KETTE, einmal ausgeschrieben. Sie gibt zurueck, was der Mensch nach dem Klick sieht.
@@ -365,8 +506,8 @@ describe("JOB 2686 · vom Klick bis zur Sitzung", () => {
     return { statusCallback: 0 };
   }
 
-  it.skipIf(!KANN_HORCHEN)(
-    "K1 · ein Bestandskonto kommt herein — und sieht seine Rolle (ruht ohne Horchrecht: der Fall startet einen echten Server)",
+  it.skipIf(!KANN_LAUFEN)(
+    `K1 · ein Bestandskonto kommt herein — und sieht seine Rolle (${RUHEGRUND})`,
     async () => {
       await starteServer("bestandskonto");
       await klickeUndFolge();
@@ -398,8 +539,8 @@ describe("JOB 2686 · vom Klick bis zur Sitzung", () => {
     60000,
   );
 
-  it.skipIf(!KANN_HORCHEN)(
-    "K2 · ein Angreifer bleibt draussen — und das Admin-Konto bleibt unberuehrt (ruht ohne Horchrecht: der Fall startet einen echten Server)",
+  it.skipIf(!KANN_LAUFEN)(
+    `K2 · ein Angreifer bleibt draussen — und das Admin-Konto bleibt unberuehrt (${RUHEGRUND})`,
     async () => {
       await starteServer("angreifer");
       await klickeUndFolge();
@@ -415,8 +556,8 @@ describe("JOB 2686 · vom Klick bis zur Sitzung", () => {
     60000,
   );
 
-  it.skipIf(!KANN_HORCHEN)(
-    "K3 · wer herabgestuft wurde, sieht eine Betrachter-Sitzung und keine Admin-Nutzung (ruht ohne Horchrecht: der Fall startet einen echten Server)",
+  it.skipIf(!KANN_LAUFEN)(
+    `K3 · wer herabgestuft wurde, sieht eine Betrachter-Sitzung und keine Admin-Nutzung (${RUHEGRUND})`,
     async () => {
       await starteServer("herabgestuft");
       await klickeUndFolge();

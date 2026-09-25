@@ -24,6 +24,12 @@ import { readFileSync } from "node:fs";
 //   Sie starten einen echten Fastify-Prozess auf einem eigenen Port und standen im Tor rot mit
 //   „listen EPERM 127.0.0.1" (PRO4 in 2701 D1) — derselbe Grund wie bei den elf, aber bis dahin
 //   ohne Schalter. Damit sind es VIERZEHN Horch-Faelle, nicht mehr elf.
+//   NACHGEFUEHRT AM 25.09.2026 (Portabilitaetsreparatur der 2686er Datei fuer das Linux-Tor): die
+//   drei Faelle ruhen seither unter `it.skipIf(!KANN_LAUFEN)` — KANN_LAUFEN = KANN_HORCHEN (dieselbe
+//   echte Horchprobe) UND STARTER_DA (der Server-Starter liegt im Checkout, nicht mehr in einem
+//   Mac-Arbeitsordner). Der Grund steht weiter IM TITEL: als Konstante `RUHEGRUND`, die jeder der
+//   drei Titel per `(${RUHEGRUND})` traegt — vitest druckt den aufgeloesten Text in der Ausgabe.
+//   Zahl (3) und benannter Grund sind unveraendert; nur der Schaltername ist ein anderer.
 //
 //   DIE ZWEI, die UEBERALL ruhen — sie haengen am Produktflag `KLARA_EXTERNAL_EXECUTION_MIGRATED`
 //   (heute false), nicht an der Umgebung:
@@ -55,6 +61,11 @@ function horchFaelle(pfad: string): number {
   return lies(pfad).split("it.skipIf(!KANN_HORCHEN)(").length - 1;
 }
 
+// Die drei SSO-Faelle (seit 25.09.2026): Horchrecht UND Starter im Checkout — ein Schalter, derselbe Grund.
+function ssoFaelle(pfad: string): number {
+  return lies(pfad).split("it.skipIf(!KANN_LAUFEN)(").length - 1;
+}
+
 describe("JOB 2622 · die Skip-Landschaft der Vollsuite ist benannt und gepinnt", () => {
   it("S1 — die vierzehn Horch-Faelle: 2 + 3 + (2 Vorlagen x 3 Klassen) + 3 = 14, an den Dateien gezaehlt", () => {
     const addin = horchFaelle("services/app/src/routes/addin-static-routes.test.ts");
@@ -63,8 +74,12 @@ describe("JOB 2622 · die Skip-Landschaft der Vollsuite ist benannt und gepinnt"
     const mega71Vorlagen = horchFaelle("tests/app/mega71-onsend-synchron.test.ts");
     const mega71Klassen =
       lies("tests/app/mega71-onsend-synchron.test.ts").split('{ name: "').length - 1;
-    // JOB 2707 D1: die drei aus der 2686er Kette, mit demselben Schalter aus demselben Grund.
-    const sso = horchFaelle("apps/web/src/auth/job2686-klick-bis-sitzung.test.tsx");
+    // JOB 2707 D1: die drei aus der 2686er Kette, aus demselben Grund; seit 25.09.2026 unter
+    // `KANN_LAUFEN` (= Horchprobe UND Starter im Checkout) — die Horchprobe bleibt Teil des Schalters.
+    const ssoDatei = "apps/web/src/auth/job2686-klick-bis-sitzung.test.tsx";
+    const sso = ssoFaelle(ssoDatei);
+    expect(lies(ssoDatei)).toContain("const KANN_LAUFEN = KANN_HORCHEN && STARTER_DA");
+    expect(horchFaelle(ssoDatei), "kein zweiter, namensgleicher Schalter daneben").toBe(0);
     expect(addin).toBe(2);
     expect(slides).toBe(3);
     expect(mega71Vorlagen).toBe(2);
@@ -77,8 +92,13 @@ describe("JOB 2622 · die Skip-Landschaft der Vollsuite ist benannt und gepinnt"
     // Der Auftrag verlangt das ausdruecklich: wer die Ausgabe liest, muss sehen, WARUM
     // uebersprungen wurde. Ein Kommentar im Quelltext steht nicht in der Testausgabe.
     const quelle = lies("apps/web/src/auth/job2686-klick-bis-sitzung.test.tsx");
-    const mitGrund = quelle.split("(ruht ohne Horchrecht:").length - 1;
+    // Seit 25.09.2026 steht der Grund als Konstante RUHEGRUND im Titel jedes Falls (`(${RUHEGRUND})`);
+    // vitest gibt den Titel aufgeloest aus — der Leser der Ausgabe sieht den Grund wie zuvor.
+    const mitGrund = quelle.split("(${RUHEGRUND})").length - 1;
     expect(mitGrund, "jeder der drei uebersprungenen Faelle traegt seinen Grund im Titel").toBe(3);
+    expect(quelle, "RUHEGRUND benennt das fehlende Horchrecht").toMatch(
+      /const RUHEGRUND =\s*\n?\s*"ruht ohne Horchrecht/,
+    );
     // Und die Probe ist dieselbe wie hier — ein echter listen-Versuch, kein Umgebungsraten.
     expect(quelle).toContain('probe.listen(0, "127.0.0.1"');
   });
