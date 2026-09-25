@@ -167,3 +167,17 @@ export function verwechslungen(sprache: Sprache, texte: Record<Aussage, string>)
   }
   return befund;
 }
+
+/**
+ * RUNDE 2 (Ben, K3) — DER NEUTRAL-ZÄHLER DER PRÜFKARTE. Die Prüfkarte führt „kein Beleganlass" nicht
+ * als Zeile, sondern als Zähler „<Zustand>: <Zahl>" (`evFresh.summary.neutral`). Er muss dieselbe
+ * Bedeutung tragen wie der Zustand selbst: der Teil vor der Zahl wird der Regel `keinAnlass`
+ * vorgelegt. Das alte „neutral: 3" / „neutraal: 3" scheitert daran.
+ */
+export function zaehlerVerstoesse(sprache: Sprache, text: string): string[] {
+  const treffer = /^(.*\S)\s*:\s*\d+$/.exec(text.trim());
+  if (!treffer) {
+    return [`${sprache}/zaehler „${text}“: keine Form „<Zustand>: <Zahl>“`];
+  }
+  return verstoesse(sprache, "keinAnlass", treffer[1] as string);
+}

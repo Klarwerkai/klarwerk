@@ -7,10 +7,11 @@
 // `EvidenceFreshnessCard` → `useKos()`/`useEvidenceIndex(500)` → `fetch`. Die Attrappe sitzt ganz
 // unten am `fetch` und liefert AUSSCHLIESSLICH JSON (Bauform `tests/ki-lauf-verbrauch/flaeche.test.tsx`).
 //
-// WAS DIE PRÜFKARTE ZEIGT, gemessen und nicht umgebaut (`Stufe2.tsx` ist nicht Teil des Auftrags):
-// sie listet die AUFFÄLLIGEN Einträge (veraltet/fehlend) mit ihrem Zustand aus
-// `evidenceFreshnessLabelKey`; „kein Beleganlass" erscheint dort bestimmungsgemäss nur als Zähler.
-// Beides wird hier festgehalten — der neue Wortlaut an der Zeile, die Zählung unverändert.
+// WAS DIE PRÜFKARTE ZEIGT (`Stufe2.tsx` ist nicht Teil des Auftrags und bleibt unverändert): sie
+// listet die AUFFÄLLIGEN Einträge (veraltet/fehlend) mit ihrem Zustand aus
+// `evidenceFreshnessLabelKey`; „kein Beleganlass" erscheint dort nur als Zähler. Seit Runde 2 nennt
+// dieser Zähler den Zustand mit demselben Wort (`ux26.ts`, `$t(ko.evFresh.neutral)`) — geprüft
+// wird die Bedeutung (`zaehlerVerstoesse`), nicht bloss die Anwesenheit.
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../apps/web/src/app/RoleContext", () => ({
@@ -27,8 +28,9 @@ import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
 import type { EvidenceRecord, KnowledgeObject } from "../../apps/web/src/api/types";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
+import { evidenceFreshnessLabelKey } from "../../apps/web/src/lib/evidenceFreshnessView";
 import { Capital } from "../../apps/web/src/pages/Stufe2";
-import { SCHLUESSEL, SPRACHEN, verstoesse } from "./bedeutung";
+import { SCHLUESSEL, SPRACHEN, verstoesse, zaehlerVerstoesse } from "./bedeutung";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -192,14 +194,28 @@ for (const sprache of SPRACHEN) {
       expect(marken, "der Zustand steht nicht an der Zeile").toContain(label);
       expect(verstoesse(sprache, "belegFehlt", label)).toEqual([]);
 
-      // Bestimmungsgemäss unverändert: „kein Beleganlass" und „aktuell" stehen nicht als Zeile da,
-      // sondern nur in den Zählern — dieselbe Berechnung wie vorher.
+      // Dieselbe Berechnung wie vorher: „kein Beleganlass" und „aktuell" stehen nicht als Zeile da,
+      // sondern nur in den Zählern.
       expect(zeile(karte, "ko-ohne")).toBeNull();
       expect(zeile(karte, "ko-aktuell")).toBeNull();
-      const text = (karte.textContent ?? "").replace(/\s+/g, " ");
-      expect(text).toContain(t("evFresh.summary.missing", { n: 1 }));
-      expect(text).toContain(t("evFresh.summary.neutral", { n: 1 }));
-      expect(text).toContain(t("evFresh.summary.current", { n: 1 }));
+      const zaehler = Array.from(karte.querySelectorAll("span")).map((s) =>
+        (s.textContent ?? "").trim(),
+      );
+      expect(zaehler).toContain(t("evFresh.summary.missing", { n: 1 }));
+      expect(zaehler).toContain(t("evFresh.summary.current", { n: 1 }));
+
+      // RUNDE 2 (Ben, K3): der Neutral-Zähler spricht den ZUSTAND aus — mit genau dem Wort, das
+      // `evidenceFreshnessLabelKey("neutral")` liefert, und nicht mehr „neutral"/„neutraal".
+      const neutral = zaehler.find((z) =>
+        z.startsWith(`${t(evidenceFreshnessLabelKey("neutral"))}:`),
+      );
+      expect(neutral, `der Neutral-Zähler nennt „${t(SCHLUESSEL.keinAnlass)}“ nicht`).toBe(
+        `${t(evidenceFreshnessLabelKey("neutral"))}: 1`,
+      );
+      expect(zaehlerVerstoesse(sprache, neutral as string)).toEqual([]);
+      expect(zaehler, "der alte Zähler steht noch da").not.toContain(
+        sprache === "nl" ? "neutraal: 1" : "neutral: 1",
+      );
     });
   });
 }

@@ -18,8 +18,9 @@
 //       vorhandene Knopf „Original anzeigen" führt per Tastatur zum RICHTIGEN Anhang, und dessen
 //       Öffnen liefert genau die hochgeladenen Bytes.
 //   K2  der Beleg des abgelösten dritten Originals bleibt als Karte, sein Satz sagt beides, ohne Knopf.
-//   K3  „Beleg fehlt" in Abschnitt 9 UND in der Prüfkarte `/kapital`; „kein Beleganlass" in
-//       Abschnitt 9 — gelesen VON DER FLÄCHE und der Bedeutung aus `bedeutung.ts` vorgelegt.
+//   K3  „Beleg fehlt" und „kein Beleganlass" in Abschnitt 9 UND in der Prüfkarte `/kapital`
+//       (dort als Zeilenzustand bzw. als Neutral-Zähler) — gelesen VON DER FLÄCHE und der
+//       Bedeutung aus `bedeutung.ts` vorgelegt.
 //   K4  Leerstand mit Altoriginal: der Bearbeiter folgt „Quelle anlegen" per Tastatur, legt die
 //       Quelle an, lädt neu — und der gespeicherte Beleg steht wieder da. Ein Leser sieht keinen Weg.
 //   K5  jede dieser Aussagen ist ZEICHENGENAU sichtbar (nichts abgeschnitten, nichts seitlich aus
@@ -41,7 +42,7 @@ import {
   profil,
 } from "../gast-nutzerweg/browserweg";
 import { type Sitzung, type Strecke, mussGelingen } from "../gast-nutzerweg/strecke";
-import { type Aussage, SCHLUESSEL, type Sprache, verstoesse } from "./bedeutung";
+import { type Aussage, SCHLUESSEL, type Sprache, verstoesse, zaehlerVerstoesse } from "./bedeutung";
 
 const WER = "UX-26 Beleg/Original";
 
@@ -315,6 +316,19 @@ const LIES = `(ziel) => {
     const link = kartenEl ? kartenEl.querySelector('li a[href="/wissen/' + ziel.koId + '"]') : null;
     const zeile = link ? link.closest("li") : null;
     el = zeile ? [...zeile.querySelectorAll("span")].find((s) => norm(s.textContent) === ziel.text) || null : null;
+  } else if (ziel.art === "neutralZaehler") {
+    // Die Zählerzeile der Prüfkarte: der Behälter mit genau vier Zählern „<Wort>: <Zahl>"
+    // (Stufe2.tsx: veraltet, fehlend, aktuell, neutral). Gewählt wird nach STELLE, nicht nach
+    // Wortlaut — so liest die Messung auch einen falschen oder alten Zählertext, statt ihn zu übersehen.
+    const kopf = [...document.querySelectorAll("*")].find(
+      (e) => e.children.length === 0 && norm(e.textContent) === ziel.titel);
+    const kartenEl = kopf ? kopf.parentElement : null;
+    const zaehler = (b) => [...b.children].filter((k) => k.tagName === "SPAN");
+    const behaelter = kartenEl ? [...kartenEl.querySelectorAll("div")].find((d) => {
+      const z = zaehler(d);
+      return z.length === 4 && z.every((k) => /:\\s*\\d+$/.test(norm(k.textContent)));
+    }) : null;
+    el = behaelter ? zaehler(behaelter)[3] : null;
   }
   if (!el) return null;
   el.scrollIntoView({ block: "center" });
@@ -355,7 +369,8 @@ type Ziel =
   | { art: "frische"; titel: string }
   | { art: "satz"; text: string }
   | { art: "selektor"; selektor: string }
-  | { art: "pruefkarte"; titel: string; koId: string; text: string };
+  | { art: "pruefkarte"; titel: string; koId: string; text: string }
+  | { art: "neutralZaehler"; titel: string };
 
 async function lies(seite: Seite, ziel: Ziel, was: string): Promise<Lesung> {
   const lesung = await seite.evaluate<Lesung | null>(fn(LIES), ziel);
@@ -600,6 +615,20 @@ export async function fahreDurchgang(a: {
     );
     mussBedeuten(sprache, "belegFehlt", pille.voll, `${name}: Prüfkarte, Beleg fehlt`);
     mussLesbarSein(pille, `${name}: Prüfkarte, Beleg fehlt`);
+
+    // ══ K3 · „kein Beleganlass" in der Prüfkarte (Runde 2) ═══════════════════════════════════
+    // Die Prüfkarte führt diesen Zustand nur als Zähler; er muss den Zustand beim Namen nennen.
+    const neutral = await lies(
+      seite,
+      { art: "neutralZaehler", titel: t("evFresh.title") },
+      "der Neutral-Zähler der Prüfkarte",
+    );
+    expect(
+      zaehlerVerstoesse(sprache, neutral.voll),
+      `${WER} ${name}: Prüfkarte, Neutral-Zähler „${neutral.voll}“`,
+    ).toEqual([]);
+    expect(neutral.voll.startsWith(`${t(SCHLUESSEL.keinAnlass)}:`)).toBe(true);
+    mussLesbarSein(neutral, `${name}: Prüfkarte, Neutral-Zähler`);
 
     // ══ K4 · der Leerstand mit Altoriginal: „Quelle anlegen" — und nach Neuladen wieder da ═══
     const leer = bestand.leer.get(name);

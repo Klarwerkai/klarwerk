@@ -22,6 +22,14 @@
 //     zu Quelle oder Anhang kein Belegdatensatz verzeichnet ist (`evidenceFreshness.ts`).
 //     Englisch behält sein normales Wort „evidence" und damit seine Werte.
 //
+// RUNDE 2 (Ben, K3): DIE PRÜFKARTE ZEIGT „KEIN BELEGANLASS" NICHT ALS ZEILE, sondern nur im Zähler
+// `evFresh.summary.neutral` (`Stufe2.tsx:2207`) — und der sagte bloss „neutral: n". `Stufe2.tsx`
+// ist nicht Teil des Auftrags. Der Zähler zieht deshalb hierher um und VERSCHACHTELT den Wortlaut
+// des Zustands: `$t(ko.evFresh.neutral)` ist genau der Schlüssel, den `evidenceFreshnessLabelKey
+// ("neutral")` liefert. Bibliothek Abschnitt 9 und Prüfkarte sprechen damit aus EINER Quelle, und
+// der Zähler kann nicht mehr still vom Zustandswort abweichen. Der Schlüssel bleibt derselbe; die
+// Schlüsselmenge des Katalogs ändert sich nicht.
+//
 // `ko.evCons.allOk` BLEIBT UNVERÄNDERT: JOB 3384 hat das ausdrücklich festgehalten, keine Fläche
 // zeichnet den Schlüssel heute, und diese Teillieferung hat ihn nicht bestellt.
 import type { Textmodul } from "./intern/pruefung";
@@ -33,6 +41,7 @@ export default {
     "ko.evFresh.missing",
     "ko.evFresh.neutral",
     "ko.evidenceOriginalDetached",
+    "evFresh.summary.neutral",
   ],
   de: {
     // JOB 3272 · UX-25: der ehrliche Satz, wenn das Original nicht mehr an diesem Objekt hängt
@@ -42,6 +51,7 @@ export default {
     "ko.evCons.allOk": "Quellen, Anhänge und Evidence sind deckungsgleich.",
     "ko.evFresh.missing": "Beleg fehlt",
     "ko.evFresh.neutral": "kein Beleganlass",
+    "evFresh.summary.neutral": "$t(ko.evFresh.neutral): {{n}}",
   },
   en: {
     "ko.evidenceOriginalDetached":
@@ -49,6 +59,7 @@ export default {
     "ko.evCons.allOk": "Sources, attachments and evidence are aligned.",
     "ko.evFresh.missing": "evidence missing",
     "ko.evFresh.neutral": "no evidence expected",
+    "evFresh.summary.neutral": "$t(ko.evFresh.neutral): {{n}}",
   },
   nl: {
     "ko.evidenceOriginalDetached":
@@ -56,5 +67,6 @@ export default {
     "ko.evCons.allOk": "Bronnen, bijlagen en evidence komen volledig overeen.",
     "ko.evFresh.missing": "Bewijs ontbreekt",
     "ko.evFresh.neutral": "geen aanleiding voor bewijs",
+    "evFresh.summary.neutral": "$t(ko.evFresh.neutral): {{n}}",
   },
 } satisfies Textmodul;

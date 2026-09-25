@@ -13,12 +13,14 @@
 //   B3  Die Frischeberechnung und ihre Schlüsselzuordnung sind unverändert: dieselben Eingaben
 //       ergeben dieselben Zustände, `evidenceFreshnessLabelKey` bleibt `ko.evFresh.<status>`. Die
 //       Schlüsselmenge des Moduls ist dieselbe wie vorher.
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { EvidenceRecord, KnowledgeObject } from "../../apps/web/src/api/types";
 import i18n from "../../apps/web/src/i18n";
 import { analyzeEvidenceFreshness } from "../../apps/web/src/lib/evidenceFreshness";
 import { evidenceFreshnessLabelKey } from "../../apps/web/src/lib/evidenceFreshnessView";
 import ux26 from "../../apps/web/src/texte/ux26";
+import { repoPfad } from "../support/repoPfad";
 import {
   type Aussage,
   SCHLUESSEL,
@@ -26,6 +28,7 @@ import {
   type Sprache,
   verstoesse,
   verwechslungen,
+  zaehlerVerstoesse,
 } from "./bedeutung";
 
 const katalog = (sprache: Sprache, aussage: Aussage): string =>
@@ -69,6 +72,10 @@ describe("UX-26 · B1 — der Katalog sagt, was er sagen muss", () => {
         expect(verstoesse(sprache, aussage, text)).toEqual([]);
       }
       expect(verwechslungen(sprache, texte)).toEqual([]);
+      // Der Neutral-Zähler der Prüfkarte trägt dieselbe Bedeutung — aus demselben Label-Schlüssel.
+      const zaehler = i18n.getFixedT(sprache)("evFresh.summary.neutral", { n: 3 });
+      expect(zaehler).toBe(`${i18n.getFixedT(sprache)(evidenceFreshnessLabelKey("neutral"))}: 3`);
+      expect(zaehlerVerstoesse(sprache, zaehler)).toEqual([]);
     });
   }
 });
@@ -84,6 +91,11 @@ describe("UX-26 · B2 — die Gegenproben scheitern an derselben Regel", () => {
           `der alte Text „${text}“ ginge als ${aussage} durch`,
         ).not.toEqual([]);
       }
+    });
+
+    it(`${sprache}: der alte Neutral-Zähler „neutral“/„neutraal“ wird erkannt`, () => {
+      const alt = sprache === "nl" ? "neutraal: 3" : "neutral: 3";
+      expect(zaehlerVerstoesse(sprache, alt), `„${alt}“ ginge als Zähler durch`).not.toEqual([]);
     });
 
     it(`${sprache}: vertauschte Rollen von Beleg und Original werden erkannt`, () => {
@@ -178,17 +190,22 @@ describe("UX-26 · B3 — Berechnung und Schlüsselmenge unverändert", () => {
     }
   });
 
-  it("das Modul führt dieselben vier Schlüssel in allen drei Sprachen — kein neuer, keiner weg", () => {
-    const vier = [
+  it("das Modul führt seine vier Texte und den umgezogenen Neutral-Zähler — die Schlüsselmenge des Katalogs bleibt", () => {
+    const fuenf = [
+      "evFresh.summary.neutral",
       "ko.evCons.allOk",
       "ko.evFresh.missing",
       "ko.evFresh.neutral",
       "ko.evidenceOriginalDetached",
     ];
-    expect([...ux26.legacySchluessel].sort()).toEqual(vier);
+    expect([...ux26.legacySchluessel].sort()).toEqual(fuenf);
     for (const sprache of SPRACHEN) {
-      expect(Object.keys(ux26[sprache]).sort(), sprache).toEqual(vier);
+      expect(Object.keys(ux26[sprache]).sort(), sprache).toEqual(fuenf);
     }
+    // Umgezogen, nicht neu: der Zähler stand im Basisstand in allen drei Sprachen in `i18n.ts`
+    // (s. `werte-vorher.json`), jetzt steht er AUSSCHLIESSLICH hier.
+    const quelle = readFileSync(repoPfad("apps/web/src/i18n.ts"), "utf8");
+    expect(quelle.includes('"evFresh.summary.neutral":')).toBe(false);
     // Nicht bestellt, also nicht angefasst (JOB 3384 hat ihn ausdrücklich stehen lassen).
     expect(ux26.de["ko.evCons.allOk"]).toBe("Quellen, Anhänge und Evidence sind deckungsgleich.");
     // Englisch behält seine normalen Frischewörter (K3).
