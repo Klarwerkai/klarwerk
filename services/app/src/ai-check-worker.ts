@@ -37,7 +37,6 @@ import {
   type KnowledgeObject,
   type KoService,
   gleichePruefbasis,
-  pruefbasisVon,
 } from "../../knowledge-object";
 import type { Reasoner } from "../../reasoner";
 import { detectConflictsForKo } from "./conflict-detection";
@@ -279,9 +278,14 @@ export function createAiCheckWorker(deps: AiCheckWorkerDeps): AiCheckWorker {
   // AUFNAHME 20260922: das Ziel ist die ganze Prüfbasis (Fassung + Basis-Fingerabdruck) — auch ein
   // Wechsel von Einordnung/Quellen ohne Versionssprung ist ein neues Ziel.
   const autoRetries = new Map<string, { ziel: string; count: number }>();
-  const zielSchluessel = (ko: KnowledgeObject): string => {
-    const basis = pruefbasisVon(ko);
-    return `${ko.version}:${basis.quelle}:${basis.kontext}`;
+  // Ist die Basis nicht lesbar, bleibt das Ziel die Fassung allein (die bisherige Deckelung).
+  const zielSchluessel = async (ko: KnowledgeObject): Promise<string> => {
+    try {
+      const basis = await deps.ko.aktuellePruefbasis(ko);
+      return `${ko.version}:${basis.quelle}:${basis.kontext}:${basis.bestand}`;
+    } catch {
+      return `${ko.version}`;
+    }
   };
   let active = 0;
   let idleResolvers: (() => void)[] = [];
@@ -361,15 +365,22 @@ export function createAiCheckWorker(deps: AiCheckWorkerDeps): AiCheckWorker {
     // WP-SHIP8-FINAL: Versions-Bindung — der Job gilt für GENAU die Version des pending-Vermerks
     // (dort beim Einreihen gespeichert). Altbestand ohne Feld läuft versionsungebunden weiter.
     // AUFNAHME 20260922 · Prüfbasis-Aktualität: zusätzlich die BASIS beim Laufstart (Fassung,
-    // Quellen, Anhänge, Einordnung, Vertraulichkeit — pruefbasis.ts). An sie wird das Ergebnis gebunden.
+    // Quellen, Anhänge, Einordnung, Vertraulichkeit UND der Vergleichsbestand samt Auswahlkontext —
+    // pruefbasis.ts). An sie wird das Ergebnis gebunden; eine Änderung an einer Vergleichsquelle
+    // während des Laufs ändert den Bestandsteil und verhindert das Eintragen.
     let expectedVersion: number | undefined;
     let startBasis: AiCheckBasis | undefined;
+    let start: KnowledgeObject | undefined;
     try {
-      const start = await deps.ko.get(koId);
+      start = await deps.ko.get(koId);
       expectedVersion = start?.aiCheck?.koVersion;
-      startBasis = start ? pruefbasisVon(start) : undefined;
     } catch {
       expectedVersion = undefined;
+    }
+    // Eigener Versuch: ist die Basis nicht lesbar, bleibt die Versionsbindung trotzdem bestehen.
+    try {
+      startBasis = start ? await deps.ko.aktuellePruefbasis(start) : undefined;
+    } catch {
       startBasis = undefined;
     }
     const outcome = await runWithTimeout(deps.run(koId), jobTimeoutMs);
@@ -382,7 +393,9 @@ export function createAiCheckWorker(deps: AiCheckWorkerDeps): AiCheckWorker {
     if (startBasis) {
       try {
         const vorher = await deps.ko.get(koId);
-        basisMoved = vorher !== undefined && !gleichePruefbasis(pruefbasisVon(vorher), startBasis);
+        basisMoved =
+          vorher !== undefined &&
+          !gleichePruefbasis(await deps.ko.aktuellePruefbasis(vorher), startBasis);
       } catch {
         basisMoved = false;
       }
@@ -423,7 +436,7 @@ export function createAiCheckWorker(deps: AiCheckWorkerDeps): AiCheckWorker {
       const versionMoved =
         current?.aiCheck?.status === "pending" &&
         (basisMoved || current.version !== expectedVersion);
-      if (versionMoved && consumeAutoRetry(koId, zielSchluessel(current))) {
+      if (versionMoved && consumeAutoRetry(koId, await zielSchluessel(current))) {
         const marked = await deps.ko.markAiCheckPending(koId);
         if (marked) {
           log(

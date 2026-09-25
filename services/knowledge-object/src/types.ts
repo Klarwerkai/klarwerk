@@ -91,10 +91,11 @@ export interface AiCheck {
 }
 
 // Fingerabdrücke der Prüfbasis (s. pruefbasis.ts): quelle = Fassung + Quellen + Anhänge;
-// kontext = Einordnung + Vertraulichkeit.
+// kontext = Einordnung + Vertraulichkeit; bestand = Vergleichsquellen samt Auswahlkontext.
 export interface AiCheckBasis {
   quelle: string;
   kontext: string;
+  bestand: string;
 }
 
 export type Confidentiality = "intern" | "vertraulich" | "streng_vertraulich";

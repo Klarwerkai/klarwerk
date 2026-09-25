@@ -6,13 +6,7 @@ import {
   coreText,
   trigramSimilarity,
 } from "../../../conflicts";
-import {
-  type AiCheckBasis,
-  type KnowledgeObject,
-  type KoFilter,
-  type KoService,
-  pruefbasisVon,
-} from "../../../knowledge-object";
+import type { AiCheckBasis, KnowledgeObject, KoFilter, KoService } from "../../../knowledge-object";
 import type {
   DublettenBefund,
   DublettenPruefung,
@@ -886,7 +880,7 @@ export function libraryRoutes(
               detection.ko,
               result.koId,
               outcome,
-              startStand ? pruefbasisVon(startStand) : undefined,
+              startStand ? await detection.ko.aktuellePruefbasis(startStand) : undefined,
             );
           }
           // WP-SHIP8-CLOSE-8 (bens GELB-2): dieselbe DTO-Grenze wie am Queue-Load — die Antwort

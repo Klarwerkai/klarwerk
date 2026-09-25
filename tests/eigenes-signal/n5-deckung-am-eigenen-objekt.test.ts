@@ -365,30 +365,38 @@ describe("N5 · Driftwaechter: die Lage und die Bestandsauswertung sprechen dies
     // oder Schritt 2 streichen) → F8 rot, weil die Zaehler auseinanderlaufen.
     const services = buildServices();
 
+    // AUFNAHME 20260922 · Prüfbasis-Aktualität: ERST der ganze Bestand, DANN die Vermerke. Seit der
+    // globalen Basisbindung macht jedes später angelegte Objekt die früher vermerkten Nachweise
+    // überholt (der Vergleichsbestand hat sich geändert) — sie zählten dann als unvollständig, und
+    // die Kalibrierung unten mäße den Bestandsaufbau statt der vier Lagen. Überholt hat unten einen
+    // eigenen Fall (F8b).
     // kein_lauf ↔ unchecked (2)
     await ko3032(services, "Nie geprueft A");
     await ko3032(services, "Nie geprueft B");
-    // unvollstaendig ↔ incomplete (4): pending, failed, gedeckelt, mit Urteilsausfall
     const laeuft = await ko3032(services, "Laeuft noch");
-    await services.ko.markAiCheckPending(laeuft.id);
     const gescheitert = await ko3032(services, "Gescheitert");
+    const gedeckelt = await ko3032(services, "Gedeckelt");
+    const ausfall = await ko3032(services, "Mit Urteilsausfall");
+    const altbestand = await ko3032(services, "Altbestand ohne Protokoll");
+    const belegt = [
+      await ko3032(services, "Belegt vollstaendig A"),
+      await ko3032(services, "Belegt vollstaendig B"),
+    ];
+    // unvollstaendig ↔ incomplete (4): pending, failed, gedeckelt, mit Urteilsausfall
+    await services.ko.markAiCheckPending(laeuft.id);
     await services.ko.recordAiCheckOutcome(gescheitert.id, {
       ok: false,
       fallbackReason: "model-error",
     });
-    const gedeckelt = await ko3032(services, "Gedeckelt");
     await services.ko.recordAiCheckOutcome(gedeckelt.id, { ok: true, coverage: protokoll() });
-    const ausfall = await ko3032(services, "Mit Urteilsausfall");
     await services.ko.recordAiCheckOutcome(ausfall.id, {
       ok: true,
       coverage: vollstaendigesProtokoll({ completed: 6, skipped: 1 }),
     });
     // ohne_protokoll ↔ noCoverage (1): abgeschlossen gemeldet, Altbestand ohne Protokoll
-    const altbestand = await ko3032(services, "Altbestand ohne Protokoll");
     await services.ko.recordAiCheckOutcome(altbestand.id, { ok: true });
     // vollstaendig ↔ Rest (2)
-    for (const titel of ["Belegt vollstaendig A", "Belegt vollstaendig B"]) {
-      const objekt = await ko3032(services, titel);
+    for (const objekt of belegt) {
       await services.ko.recordAiCheckOutcome(objekt.id, {
         ok: true,
         coverage: vollstaendigesProtokoll(),
@@ -418,6 +426,25 @@ describe("N5 · Driftwaechter: die Lage und die Bestandsauswertung sprechen dies
     expect(zaehle("vollstaendig")).toBe(
       summary.total - summary.unchecked - summary.incomplete - summary.noCoverage,
     );
+  });
+
+  it("F8b · ein ÜBERHOLTER Nachweis ist in beiden Auswertungen unvollständig — nie vollständig", async () => {
+    const services = buildServices();
+    const objekt = await ko3032(services, "Belegt, dann geaendert");
+    await services.ko.recordAiCheckOutcome(objekt.id, {
+      ok: true,
+      coverage: vollstaendigesProtokoll(),
+    });
+    const vorher = (await services.ko.get(objekt.id)) as NonNullable<
+      Awaited<ReturnType<AppServices["ko"]["get"]>>
+    >;
+    expect(deckungAus(vorher).lage, "Kalibrierung: belegt").toBe("vollstaendig");
+    await services.ko.updateTags(objekt.id, ["neu"], AUTORIN.id);
+    const nachher = (await services.ko.get(objekt.id)) as typeof vorher;
+    expect(nachher.aiCheck?.ueberholt).toBe(true);
+    expect(deckungAus(nachher).lage).toBe("unvollstaendig");
+    const summary = await services.ko.aiCheckCoverageSummary({ sichtbar: () => true });
+    expect(summary.incomplete).toBe(1);
   });
 });
 
