@@ -211,6 +211,26 @@ wahrscheinlich ist. Die Postgres-Variante mit echtem `pg_dump` **gegen eine echt
 zusätzlich in `tests/insel-update/update-postgres.integration.test.ts`
 (`npm run test:integration`, sichtbarer Skip ohne Datenbank oder ohne `postgresql-client`).
 
+**Am echten Paket gefahren (Journalbetrieb).** `tests/insel-auslieferung/` baut mit
+`scripts/insel/build-current-release.mjs` echte ZIPs (Vorgänger `1.0.0-beta.1.580`, aktuelle
+Korrekturausgabe, eine beim Start scheiternde und eine als nicht umkehrbar markierte Variante),
+überträgt sie in eine leere Zielumgebung ohne Repo und fährt dort genau die Befehle dieses
+Abschnitts: `install.command`, `…/current/scripts/insel/update-einspielen.sh <zip>`, den
+automatischen Rückfall und `rueckfall.sh` — mit eigenem Start und mit einem echten launchd-Agenten
+(`kickstart -k`, nur macOS). Ein echtes Chromium meldet sich an, importiert eine DOCX und liest
+Inhalt, Quellenvermerk und Originaldatei nach Update und Rückfall wieder. Geprüft werden dabei
+Prozess und Port von außen (`lsof`), die Health-Version, die Sicherung dieses Laufs samt Prüfsumme
+und der unveränderte Journalbestand. **Dieser Lauf behauptet nichts über PostgreSQL** und keinen
+Mac-Studio- oder Kundenbetrieb; er läuft in einer Wegwerf-Zielumgebung auf dem Prüfrechner. Er ist
+nicht Teil von `tools/check` (Aufruf und Werkzeuge: `scripts/insel/README.md`).
+
+Dabei gefunden und behoben: über `current` gerufen (der dokumentierte Weg), tat
+`schema-vertrag.mjs` bis zu dieser Korrektur **nichts** und endete mit Exit 0 — keine wirksame
+Vertragsprüfung, kein `SCHEMA-STAND`, und der Rückfall nach einem Startfehler endete mit Exit 9
+(„Version nicht belegbar"), obwohl die Vorversion wieder lief. Ein Update, das noch von einer
+älteren Fassung aus eingespielt wird, läuft mit deren Skript und damit dieses eine Mal noch ohne
+wirksame Vertragsprüfung.
+
 ### 6.2 Cloud / Coolify — Verfahren, nicht Zustand
 
 **Backup (vor Update):**
