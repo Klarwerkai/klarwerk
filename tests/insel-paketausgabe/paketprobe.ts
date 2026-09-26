@@ -105,3 +105,24 @@ export function starte(paket: string, einstieg: string): { status: number | null
   const lauf = spawnSync("node", [join(paket, einstieg)], { encoding: "utf8", timeout: 60_000 });
   return { status: lauf.status, aus: `${lauf.stdout ?? ""}${lauf.stderr ?? ""}` };
 }
+
+/**
+ * Der Lader, mit dem das ausgelieferte `start.command` den Server fährt (`release-texte.mjs`,
+ * `exec "$NODE_BIN" "$ROOT/node_modules/tsx/dist/cli.mjs" …`). Er kommt über `npm ci`, nicht über
+ * den Quellbaum — deshalb darf er hier aus dem Repo stammen, ohne dem Paket eine Quelldatei zu leihen.
+ */
+export const TSX_CLI = join(WURZEL, "node_modules/tsx/dist/cli.mjs");
+
+/**
+ * Wie `starte`, aber mit dem Ordner selbst als Arbeitsverzeichnis und wahlweise über `tsx` — so
+ * greift kein `tsconfig.json` und kein Pfad des Repos in den Start ein (Aufnahme 20260922).
+ */
+export function starteIsoliert(
+  ordner: string,
+  einstieg: string,
+  lader: "node" | "tsx",
+): { status: number | null; aus: string } {
+  const argumente = lader === "tsx" ? [TSX_CLI, join(ordner, einstieg)] : [join(ordner, einstieg)];
+  const lauf = spawnSync("node", argumente, { cwd: ordner, encoding: "utf8", timeout: 60_000 });
+  return { status: lauf.status, aus: `${lauf.stdout ?? ""}${lauf.stderr ?? ""}` };
+}
