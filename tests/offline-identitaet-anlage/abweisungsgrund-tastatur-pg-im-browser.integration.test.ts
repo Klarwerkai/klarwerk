@@ -55,6 +55,7 @@ import {
   pruefstandAbbauen,
   pruefstandAufbauen,
 } from "./pruefstand";
+import { tabImTakt } from "./tab-im-takt";
 
 const JOB = "[KLARWERK] JOB 4354";
 
@@ -183,8 +184,14 @@ async function tastaturweg(seite: Seite): Promise<{ bisKopfzeile: number; weiter
     "der Sendeknopf in der Kopfzeile der Warteschlange ist bedienbar (sonst ist er keine Fokusstation)",
     KOPFZEILE,
   );
-  const bisKopfzeile = await tabBisZu(seite, KOPFZEILE, 150, true);
-  const weiter = await tabBisZu(seite, GRUND, 25, false);
+  // Aufnahme 20260922 (mobile-abweisung-rest): IM TAKT, nicht mit `tabBisZu`. Ein Umlauf über den
+  // Dokumentrand gibt dem Fenster `focus` und startet einen Nachsendelauf, der den Knopf sperrt;
+  // `tabBisZu` traf ihn so nach der Rücknahme in T2b 150-mal gesperrt (pa-1790434825-2407df39).
+  // Ursache und Messung: `tab-im-takt.ts`. Die Kalibrierungen in T2 bleiben bei `tabBisZu`: dort
+  // wird das SCHEITERN zugesichert, und dass die Verstellung es trägt, belegen sie selbst (T2a:
+  // `tabIndex === -1`; T2b: die Taste bewegt den Fokus gar nicht, also gibt es keinen Umlauf).
+  const bisKopfzeile = (await tabImTakt(seite, KOPFZEILE, 150, true)).schritte;
+  const weiter = (await tabImTakt(seite, GRUND, 25, false)).schritte;
   return { bisKopfzeile, weiter };
 }
 
