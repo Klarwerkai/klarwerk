@@ -430,6 +430,65 @@ const KATALOG: readonly Fall[] = [
     }),
     erwartung: { art: "abgewiesen", wo: `${MTS}:2`, grund: "keine einzelne Zeichenkette" },
   },
+  // BENs Gegenfall aus dem Urteil zu Runde 1 dieses Laufs, für JEDES Deklarationswort, das in
+  // CommonJS ein gewöhnlicher Bezeichner sein kann: auf der Zeile davor ist es eine eigene Anweisung
+  // (Semikoloneinfügung), und der echte Aufruf dahinter verschwand bis dahin still.
+  ...(
+    [
+      ["a", "async"],
+      ["g", "get"],
+      ["s", "set"],
+      ["t", "static"],
+      ["p", "private"],
+      ["u", "public"],
+      ["o", "protected"],
+      ["b", "abstract"],
+      ["v", "override"],
+      ["d", "declare"],
+      ["y", "readonly"],
+    ] as const
+  ).map(
+    ([kurz, wort]): Fall => ({
+      id: `Q-DK6${kurz}`,
+      grenze: "Deklaration",
+      was: `\`${wort}\` auf der Zeile davor ist ein Bezeichner — der \`require\` dahinter lädt wirklich (BEN)`,
+      lader: "node",
+      einstieg: CJS,
+      fremd: "cjs",
+      quelle: () => ({
+        // Das Wort steht UNMITTELBAR vor `require` — nur so trifft der Baum die Regel. Das Ergebnis
+        // wird danach aus `require.cache` gelesen, damit keine zweite Kante zur selben Datei führt.
+        [CJS]: zeilen(
+          `const ${wort} = 1;`,
+          wort,
+          'require("../../aussen/geladen.cjs")',
+          "{ const x = 1; void x; }",
+          'const geladen = Object.values(require.cache).find((m) => m.filename.endsWith("geladen.cjs")).exports;',
+          AUSGABE_CJS,
+        ),
+      }),
+      erwartung: { art: "unterstuetzt" },
+    }),
+  ),
+  {
+    id: "Q-DK7",
+    grenze: "Deklaration",
+    was: "`static` + Zeilenumbruch + `require(id) {` in einer Klasse — gilt jetzt als Aufruf und bricht ab",
+    lader: "node",
+    einstieg: CJS,
+    fremd: "cjs",
+    quelle: () => ({
+      [CJS]: zeilen(
+        "class Werk {",
+        "  static",
+        "  require(id) { return id; }",
+        "}",
+        'const geladen = require("../../aussen/geladen.cjs");',
+        'console.log(`Ergebnis: ${geladen.wert}`, Werk.require("y"));',
+      ),
+    }),
+    erwartung: { art: "abgewiesen", wo: `${CJS}:3`, grund: "require(id)" },
+  },
 
   // ==============================================================================================
   // VARIABLE IMPORTPFADE
@@ -827,7 +886,8 @@ describe("Aufnahme 20260922 · jede Quellgrenze des Paketbauers als laufender Qu
     const imKopf = new Set(
       [...kopf.matchAll(/Q-[A-Z]{2}\d+[a-z]?/g)].map((treffer) => treffer[0] as string),
     );
-    const basen = new Set(kennungen.map((id) => id.replace(/[ri]$/, "")));
+    // Ein Kleinbuchstabe am Ende trennt nur Spielarten desselben Falls (`Q-ES1r`, `Q-DK6a`).
+    const basen = new Set(kennungen.map((id) => id.replace(/[a-z]$/, "")));
     for (const id of basen) {
       expect(imKopf.has(id), `${id} fehlt im Dateikopf von paketinhalt.mjs`).toBe(true);
     }

@@ -709,12 +709,36 @@ const GLIEDANFANG = new Set(["{", "}", ","]);
  *      Klammer, und dieses `{` auf DERSELBEN ZEILE wie die Signatur. Der Zeilenumbruch ist genau
  *      das, was den ASI-Fall oben erzeugt; ein Methodenrumpf steht hinter seiner Signatur.
  *
+ * AUCH DAS DEKLARATIONSWORT MUSS AUF DERSELBEN ZEILE STEHEN (BEN, Urteil Runde 1 der Aufnahme
+ * 20260922 „Insel-Quellgrenzen"). `async`, `get`, `set`, `static` sind ausserhalb eines Klassen-
+ * oder Objektrumpfs gewöhnliche Bezeichner:
+ *
+ *   const async = 1;
+ *   async                                   ← eine eigene Anweisung (Semikoloneinfügung)
+ *   require("../../aussen/geladen.cjs")     ← ein echter Ladevorgang
+ *   { const x = 1; }
+ *
+ * Bis dahin galt das Wort davor über den Zeilenumbruch hinweg als Nachweis; der Quellbaum lief, der
+ * Bau meldete `[]`, das Paket starb mit `MODULE_NOT_FOUND` (Q-DK6). Ein Deklarationswort, das
+ * ohne Zeilenumbruch direkt vor `require(` steht, ist dagegen nie ein Ausdruck — `async require(…)`
+ * auf einer Zeile ist als Anweisung ein Syntaxfehler. Steht das Wort auf der Zeile davor, gilt
+ * `require` als Aufruf. Kostet das eine echte Deklaration (`static` + Zeilenumbruch +
+ * `require(id) {` in einer Klasse), bricht der Bau laut ab (Q-DK7) — im Bestand steht das Wort
+ * immer auf derselben Zeile.
+ *
  * Im Zweifel ist es ein Aufruf — das ist die fail-closed-Richtung: laut und behebbar, statt still
  * ein Paket mit fehlender Datei.
  */
 function istRequireDeklaration(quelltext, merkmale, i, klammerZu) {
   const davor = merkmale[i - 1];
-  if (davor !== undefined && davor.art === "wort" && DEKLARATION_DAVOR.has(davor.wert)) return true;
+  if (
+    davor !== undefined &&
+    davor.art === "wort" &&
+    DEKLARATION_DAVOR.has(davor.wert) &&
+    !quelltext.slice(davor.von, merkmale[i].von).includes("\n")
+  ) {
+    return true;
+  }
   if (klammerZu === -1) return false;
   const dahinter = merkmale[klammerZu + 1];
   if (dahinter === undefined || dahinter.art !== "zeichen" || dahinter.wert !== "{") return false;
@@ -1024,7 +1048,11 @@ function repoRelativ(repo, pfad) {
  *      dieser Formen kommt im Bestand vor. Unterstützt: beide erkannten Formen neben einem echten
  *      Aufruf (Q-DK1), die Bestandsform mit `tsx` gestartet (Q-DK2). Seit Runde 3 gibt es die
  *      umgekehrte Lücke NICHT mehr: ein echter Aufruf vor einem Block auf der nächsten Zeile galt
- *      als Deklaration und verschwand (BEN, Urteil Runde 2; heute Q-DK3).
+ *      als Deklaration und verschwand (BEN, Urteil Runde 2; heute Q-DK3). Ebenso nicht mehr: ein
+ *      Deklarationswort (`async`, `get`, `set`, `static`, …) auf der ZEILE DAVOR — dort ist es ein
+ *      Bezeichner, und der echte Aufruf dahinter verschwand still (BEN, Urteil Runde 1 der Aufnahme
+ *      20260922; heute Q-DK6). Die Kehrseite: eine Klassenmethode mit `static` auf der Zeile davor
+ *      gilt als Aufruf und BRICHT AB (Q-DK7).
  *   b2) BEIDE STUFEN DER WEISSLISTE SIND SYNTAKTISCH, NICHT SEMANTISCH. Stufe eins fragt „ist das
  *      genau ein Literal?", nicht „was kommt dabei heraus?". Eine Form, die zur Laufzeit denselben
  *      festen Pfad ergibt — `("./x")` in Klammern, `("a", "./x")`, `(true ? "./x" : "./x")` —,

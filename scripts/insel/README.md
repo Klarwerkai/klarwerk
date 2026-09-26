@@ -72,7 +72,10 @@ Quellstart, Inhaltsliste, Paket, Entfernen des Entwicklerbaums, isolierter Paket
   `"…" + x`, `` `${…}` ``), Escape-Schreibweisen im Pfad, absolute Pfade, erreichte
   `.tsx`/`.jsx`-Dateien, ein `/` hinter `}` oder `of`/`yield`/`await`, ein `/` am Zeilenanfang,
   das als Division gelesen würde, und eine Datei, bei der Anführungszeichen, Kommentare oder
-  Klammern nicht aufgehen.
+  Klammern nicht aufgehen. Eine Methode namens `require` gilt nur dann als Deklaration, wenn ihr
+  Deklarationswort (`async`, `static`, …) auf **derselben Zeile** steht oder ihr Rumpf auf
+  derselben Zeile beginnt; sonst gilt sie als Aufruf (ein Wort auf der Zeile davor ist ein
+  Bezeichner, Q-DK6), und bei einem nicht festen Argument bricht der Bau ab (Q-DK4, Q-DK7).
 - **Still, also weder Kante noch Abbruch — verbleibende Grenzen:**
   1. Dateien, die anders geladen werden (`readFileSync`, `new URL(…, import.meta.url)`,
      `import.meta.resolve`, Arbeiterprozesse).
