@@ -954,6 +954,17 @@ const GRUNDWERTE: readonly Startwert[] = [
     wofuer: "Das Zeitfenster der Fehlversuchsdrossel.",
     ohneIhn: "Es gilt das eingebaute Fenster.",
   },
+  {
+    name: "KLARWERK_M365_MANDANTEN",
+    bereich: "Add-in (Klara)",
+    pflicht: { art: "nie" },
+    geheim: false,
+    vorgabe: "leer = keine SharePoint-Herkunft",
+    wofuer:
+      "Die Microsoft-365-Mandanten (kommagetrennt, z. B. klarwerktest4711), aus deren SharePoint Word im Browser das Klara-Taskpane einbetten darf: je Name genau https://<name>.sharepoint.com und https://<name>-my.sharepoint.com in frame-ancestors. Ungültige Namen werden beim Start mit Grund verworfen.",
+    ohneIhn:
+      "Keine SharePoint-Herkunft darf Klara einbetten. Wer ein Dokument aus OneDrive/SharePoint in Word im Browser öffnet, sieht statt des Seitenbereichs eine Browser-Fehlerseite (refused to connect).",
+  },
   // ------------------------------------------------------------------------------------- Sonstiges
   {
     name: "KLARWERK_CONFLUENCE_BUDGET_MS",
