@@ -38,9 +38,11 @@ echter Persistenz und Wiederöffnen“.
   N3. Gegenprobe: ohne die Produktänderung sind G3, N1, N2, N3 rot, G1/G2 grün.
 * `verwerfen-wiederoeffnen-pg-im-browser.integration.test.ts` (Chromium, echter Socket, echte
   PostgreSQL): C1 Vollausfall am Netz + „Hier bleiben“ + Verwerfen ohne neue Zeile; C2 über den
-  Verlassen-Weg gesichert und in neuer Sitzung samt Quellenzeile und Originaldatei (Byte für Byte)
-  wieder geöffnet; C3 N-0061 am echten Kopfband-Punkt „Erfassen“; C4 R-0075 geleerter Text bleibt
-  nach dem Neuladen leer.
+  Verlassen-Weg gesichert und in neuer Sitzung samt Quellenzeile und Originaldatei wieder geöffnet —
+  der Abruf von `/api/objects/<id>/raw` wird vollständig mit der hochgeladenen `sample.docx`
+  verglichen (`Buffer.equals`, SHA-256 im Beleg), und als Gegenprobe liefert dieselbe Adresse per
+  Weiche gleich lange Nullbytes, die derselbe Vergleich zurückweisen muss; C3 N-0061 am echten
+  Kopfband-Punkt „Erfassen“; C4 R-0075 geleerter Text bleibt nach dem Neuladen leer.
 * `seite.tsx` — die Vorrichtung (Begründung im Kopf der Datei).
 
 ## Belege dieses Laufs (26.09.2026)
@@ -52,6 +54,16 @@ echter Persistenz und Wiederöffnen“.
   und die jsdom-Datei (6/6) grün.
 * Prüfauftrag `pa-1790427027-44543cd7` (Stand `0baaf410`, samt Wiederfinden in C3): C1–C4 4/4,
   jsdom 6/6 grün.
+* **Berichtigung Runde 2 (BENs Befund):** Die beiden Läufe oben haben in C2 die Originaldatei nur
+  über Status und LÄNGE geprüft (936 Bytes) — ein Vergleich „Byte für Byte“ war das nicht; BEN hat
+  gezeigt, dass 936 Nullbytes dieselbe Prüfung bestanden. Für die Originalquelle gilt allein der
+  Beleg der Runde 2:
+* **Runde 2**, Prüfauftrag `pa-1790429012-7707155e` (Testserver `b6-55e2ed4505-g1`, HEAD
+  `1fbb90a5`, Chromium 149.0.7827.55, PostgreSQL 16.15): C1–C4 4/4, jsdom 6/6 grün. C2 meldet:
+  Original `/api/objects/<id>/raw`, 936 Bytes, SHA-256
+  `e4664416077af7a27fba458492d8e99fa1e16483739e9a7205ce1108c8f31edc` = hochgeladene
+  `tests/fixtures/sample.docx` (lokal mit `shasum -a 256` gegengeprüft); Gegenprobe mit 936
+  Nullbytes zurückgewiesen („erste Abweichung bei Byte 0, SHA-256 4db2fd52… statt e4664416…“).
 * Lokal (macOS, jsdom): Nachbarbestände `tests/entwurf-verlassen`, `tests/datei-verlassen-quittung`,
   `tests/capture`, `tests/app/navguard*`, `tests/entwuerfe*`, `tests/entwurf*` u. a. — 233 Dateien,
   1902 Tests grün.

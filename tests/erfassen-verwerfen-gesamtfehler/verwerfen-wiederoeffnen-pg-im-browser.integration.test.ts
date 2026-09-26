@@ -13,7 +13,8 @@
 //       Speichernachweis, weder auf der Fläche noch in `drafts`.
 //   C2  der Entwurf, den der VERLASSEN-Weg gesichert hat (K2 aus P2 der Nachbarstrecke wurde nie
 //       wieder geöffnet), in einer NEUEN Sitzung wieder geöffnet — samt Quellenzeile und der
-//       Originaldatei, die aus dem Objektspeicher Byte für Byte wiederkommt.
+//       Originaldatei, die aus dem Objektspeicher Byte für Byte wiederkommt (Vergleich mit der
+//       hochgeladenen Datei; eine gleich lange Nullbyte-Antwort wird als Gegenprobe zurückgewiesen).
 //   C3  N-0061 am echten Kopfband-Punkt „Erfassen": nach „Verwerfen und wechseln" steht der Editor
 //       leer auf `/erfassen`, auch nach dem Neuladen; die Zeile ist unverändert.
 //   C4  R-0075: ein ausdrücklich geleerter Text, gesichert, bleibt nach dem Neuladen geleert.
@@ -29,6 +30,7 @@
 // PRÜFGRENZE, LAUT GEMELDET: ohne gesicherte KLARWERK_PG_TEST_URL wird der Grund auf stderr
 // geschrieben und übersprungen (Lehre 12.09., JOB 3668). Ausschliesslich eine Wegwerf-Datenbank mit
 // `test` im Namen, entfernt erst NACH `warteAufVerbindungsende` (JOB 4265).
+import { createHash } from "node:crypto";
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import i18n from "../../apps/web/src/i18n";
@@ -171,9 +173,35 @@ const ORIGINAL_VERWEISE = `() => {
   return aus;
 }`;
 
-/** Holt eine Adresse MIT der Sitzung dieser Seite und gibt Status und Bytezahl zurück. */
+/**
+ * Holt eine Adresse MIT der Sitzung dieser Seite und gibt Status und den GANZEN Inhalt zurück — als
+ * Zahlenfeld, damit er unverfälscht aus dem Browser kommt. Runde 2 (BENs Befund): bis hierher kamen
+ * nur Status und Bytezahl zurück, und 936 Nullbytes bestanden dieselbe Prüfung.
+ */
 const HOLE_BYTES = `(href) => fetch(href, { credentials: 'include' }).then((r) =>
-  r.arrayBuffer().then((b) => ({ status: r.status, laenge: b.byteLength })))`;
+  r.arrayBuffer().then((b) => ({ status: r.status, bytes: Array.from(new Uint8Array(b)) })))`;
+
+type Abruf = { status: number; bytes: number[] };
+
+const sha256 = (daten: Buffer): string => createHash("sha256").update(daten).digest("hex");
+
+/**
+ * DER VERGLEICH MIT DEM HOCHGELADENEN ORIGINAL — Byte für Byte, nicht über die Länge. Gibt `null`
+ * zurück, wenn der Abruf genau die hochgeladene Datei ist, sonst den Befund. Dieselbe Funktion
+ * prüft den echten Abruf UND die Gegenprobe; eine zweite, mildere Fassung gibt es nicht.
+ */
+function abweichungVomOriginal(abruf: Abruf): string | null {
+  const erwartet = quellAnlage().buffer;
+  const bekommen = Buffer.from(abruf.bytes);
+  if (abruf.status !== 200) {
+    return `Status ${abruf.status} statt 200`;
+  }
+  if (bekommen.equals(erwartet)) {
+    return null;
+  }
+  const erste = [...erwartet].findIndex((b, i) => bekommen[i] !== b);
+  return `Inhalt weicht ab: ${bekommen.length} statt ${erwartet.length} Bytes, erste Abweichung bei Byte ${erste}, SHA-256 ${sha256(bekommen)} statt ${sha256(erwartet)}`;
+}
 
 let adminPool: Pool | undefined;
 let verbindung: Verbindung | undefined;
@@ -504,17 +532,41 @@ describe("Aufnahme erfassen-verwerfen C · Vollausfall, Verwerfen, Wiederöffnen
         original,
         `kein sichtbarer Verweis auf die Originaldatei — gefunden: ${JSON.stringify(verweise)}`,
       ).toBeDefined();
-      const bytes = await s.evaluate<{ status: number; laenge: number }>(
-        fn(HOLE_BYTES),
-        (original as { href: string }).href,
-      );
-      expect(bytes.status, "die Originaldatei ist nicht abrufbar").toBe(200);
-      expect(bytes.laenge, "die Originaldatei kommt nicht Byte für Byte zurück").toBe(
-        quellAnlage().buffer.length,
-      );
+      const href = (original as { href: string }).href;
+      const abruf = await s.evaluate<Abruf>(fn(HOLE_BYTES), href);
+      expect(
+        abweichungVomOriginal(abruf),
+        "die Originaldatei kommt nicht Byte für Byte als die hochgeladene sample.docx zurück",
+      ).toBeNull();
+
+      // GEGENPROBE (Runde 2, BENs Befund): DIESELBE Adresse liefert per Weiche eine gleich lange,
+      // falsche Antwort (lauter Nullbytes). Der unveränderte Vergleich MUSS sie zurückweisen —
+      // sonst misst er die Länge und nicht den Inhalt. Die Weiche wird in `finally` abgeräumt.
+      const basis = brauche(strecke, "die Messstrecke").basis;
+      const falsch = Buffer.alloc(quellAnlage().buffer.length);
+      await s.route(`${basis}${href}`, async (route) => {
+        await (route as unknown as Weiche).fulfill({
+          status: 200,
+          body: falsch as unknown as string,
+          headers: { "content-type": "application/octet-stream" },
+        });
+      });
+      let gegenprobe: Abruf;
+      try {
+        gegenprobe = await s.evaluate<Abruf>(fn(HOLE_BYTES), href);
+      } finally {
+        await s.unroute(`${basis}${href}`);
+      }
+      expect(gegenprobe.bytes.length, "die Gegenprobe war nicht gleich lang").toBe(falsch.length);
+      const befundGegenprobe = abweichungVomOriginal(gegenprobe);
+      expect(
+        befundGegenprobe,
+        "der Vergleich hat 936 Nullbytes als Original angenommen — er misst den Inhalt nicht",
+      ).not.toBeNull();
+
       k2 = kennung;
       process.stderr.write(
-        `${KENNUNG} C2 GRÜN · K2 ${kennung} · Original ${(original as { href: string }).href} ${bytes.laenge} Bytes\n`,
+        `${KENNUNG} C2 GRÜN · K2 ${kennung} · Original ${href} ${abruf.bytes.length} Bytes, SHA-256 ${sha256(Buffer.from(abruf.bytes))} = hochgeladen · Gegenprobe Nullbytes zurückgewiesen: ${befundGegenprobe}\n`,
       );
     },
     FALL_RAHMEN_MS * 4,
