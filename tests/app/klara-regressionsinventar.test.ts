@@ -472,6 +472,10 @@ const INVENTAR: readonly string[] = [
   // nicht still auf.
   "tests/office-web-anmeldung/einbettung-am-draht.test.ts",
   "tests/office-web-anmeldung/manifest-passt-zur-anleitung.test.ts",
+  // arbeit:word-web-sharepoint-einbettung-20260926: die SharePoint-Herkuenfte der in
+  // KLARWERK_M365_MANDANTEN eingetragenen Mandanten in `frame-ancestors` des Taskpanes, am echten
+  // Server gemessen. Von der Achse `taskpane` gefunden; K2 hat sie gemeldet.
+  "tests/office-web-anmeldung/sharepoint-mandanten.test.ts",
   // JOB 4076 (Office-Web, Teil 2 — die Sitzungsuebergabe aus dem Anmeldedialog ins Seitenfenster):
   // sieben weitere Dateien, alle von der Achse `taskpane` gefunden und keine von der Namensachse
   // (keine traegt „klara" im Pfad — K5 bleibt deshalb bei 62). Drei messen die beiden neuen Routen
