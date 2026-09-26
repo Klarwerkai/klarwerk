@@ -46,6 +46,7 @@ import { eigeneKollisionStart } from "../lib/eigeneKollision";
 // an den zwei Flächen von JOB 3084 (`components/start/StartPanel.tsx:88`).
 import { useNetzOnline } from "../lib/netzzustand";
 import { notificationTarget } from "../lib/notificationTarget";
+import { safeLocalStorage } from "../lib/persistentToggle";
 import { isStartOrientationFirstRun, markStartOrientationSeen } from "../lib/startOrientation";
 import { buildWorkOverview, learningOpenSteps, workSignalsFrom } from "../lib/workCenter";
 
@@ -232,7 +233,7 @@ export function Start(): JSX.Element {
   // Rendern steht sie noch auf dem Vorgabewert, und der Effekt oben hat den Vermerk da schon
   // gesetzt. Der Ref hält deshalb die Antwort des ERSTEN Rendervorgangs fest — sonst wäre die
   // Zeile für genau die Person unsichtbar, für die sie gedacht ist.
-  const erstbesuch = useRef(isStartOrientationFirstRun(window.localStorage));
+  const erstbesuch = useRef(isStartOrientationFirstRun(safeLocalStorage()));
   const zeilen = forYouZeilen({
     ...(erstbesuch.current && role === "admin"
       ? { ersteinrichtung: { textKey: startPanelLabelKey("erst"), to: "/admin" } }
@@ -360,7 +361,7 @@ export function Start(): JSX.Element {
     label: t(startPanelLabelKey(id)),
   }));
   useEffect(() => {
-    markStartOrientationSeen(window.localStorage);
+    markStartOrientationSeen(safeLocalStorage());
   }, []);
 
   return (
