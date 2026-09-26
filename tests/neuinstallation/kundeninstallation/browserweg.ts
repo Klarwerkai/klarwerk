@@ -12,9 +12,26 @@
 // (ein unerlaubter Schreibversuch, eine direkte Objektanfrage), geschieht das im Seitenkontext mit
 // der Sitzung des angemeldeten Nutzers — nie mit einem zweiten, im Test gebauten Zugang.
 import { createHash } from "node:crypto";
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { type BrowserContext, type Page, type Response, chromium } from "playwright";
+import { mussGelingen } from "./pruefplatz";
+
+/**
+ * Der Browser der Strecke: das Chromium, das zur installierten Playwright-Fassung gehoert. Fehlt
+ * es, wird es nachgezogen; die Systembibliotheken bringt der Pruefplatz mit
+ * (`playwright install-deps chromium`). Liefert den Einrichtungsschritt fuer den Beleg oder `null`.
+ */
+export async function chromiumBereitstellen(): Promise<string | null> {
+  if (existsSync(chromium.executablePath())) {
+    return null;
+  }
+  await mussGelingen(["npx", "--no-install", "playwright", "install", "chromium"], "Chromium", {
+    zeitMs: 900_000,
+    spiegel: "[kundeninstallation · einrichtung]",
+  });
+  return "npx playwright install chromium";
+}
 
 export interface Profil {
   name: string;

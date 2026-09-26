@@ -257,6 +257,10 @@ describe.skipIf(!PFLICHT)("Kundeninstallation · Compose + HTTPS + Neustart, ech
   beforeAll(async () => {
     const zugang = await dockerBereitstellen();
     await werkzeugeBereitstellen(zugang);
+    const browser = await B.chromiumBereitstellen();
+    if (browser) {
+      zugang.eingerichtet.push(browser);
+    }
     platz = await platzbefund(zugang.docker);
     commit = (await mussGelingen(["git", "-C", WURZEL, "rev-parse", "HEAD"], "Commit")).trim();
     const baum = (
@@ -381,7 +385,7 @@ describe.skipIf(!PFLICHT)("Kundeninstallation · Compose + HTTPS + Neustart, ech
       SMTP_FROM: `klarwerk@${INSTANZNAME}`,
     });
     const beginn = Date.now();
-    const auf = await compose(i, ["up", "-d", "--build"], 2_700_000);
+    const auf = await compose(i, ["up", "-d", "--build"], 2_700_000, "[kundeninstallation · bau]");
     expect(auf.code, `docker compose up scheiterte:\n${auf.stderr.slice(-4000)}`).toBe(0);
     const bauSekunden = Math.round((Date.now() - beginn) / 1000);
     await warteAufGesund(i);
@@ -709,7 +713,13 @@ describe.skipIf(!PFLICHT)("Kundeninstallation · Compose + HTTPS + Neustart, ech
         seiteGesperrt: await B.objektseiteGesperrt(b.seite, BASIS, kontrollId),
       };
       const verwaltung = (await B.imSeitenkontext(b.seite, "GET", "/api/users")).status;
+      // EXAKT das Erlaubte: die Liste des Betrachters traegt genau das synthetische Dokument.
+      const sichtbar =
+        liste.status === 200
+          ? (JSON.parse(liste.text) as { id: string }[]).map((k) => k.id).sort()
+          : [`HTTP ${liste.status}`];
       belege(schritt, {
+        sichtbareEintraege: sichtbar,
         vorher: bewerteInhalt(SOLL(), vorher),
         aenderungsversuch: {
           ziel: `PUT ${ziel} add-source`,
@@ -739,6 +749,9 @@ describe.skipIf(!PFLICHT)("Kundeninstallation · Compose + HTTPS + Neustart, ech
         seiteGesperrt: true,
       });
       expect(verwaltung).toBe(403);
+      expect(sichtbar, "Der Betrachter sieht mehr oder anderes als das erlaubte Dokument").toEqual([
+        dokumentId,
+      ]);
     } finally {
       await b.schliessen();
     }

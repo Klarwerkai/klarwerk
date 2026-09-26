@@ -8,10 +8,9 @@
 // Beleg sagt, auf welchem Platz die Strecke lief.
 import { spawn } from "node:child_process";
 import { X509Certificate } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { request } from "node:https";
 import { cpus, freemem, hostname, release, totalmem } from "node:os";
-import { chromium } from "playwright";
 
 export interface Ergebnis {
   code: number;
@@ -182,15 +181,6 @@ export async function werkzeugeBereitstellen(zugang: Dockerzugang): Promise<void
       },
     );
     zugang.eingerichtet.push(`${apt.join(" ")} install -y libnss3-tools openssl`);
-  }
-  // Der Browser der Strecke: das Chromium, das zur installierten Playwright-Fassung gehoert. Die
-  // Systembibliotheken dafuer bringt der Pruefplatz mit (`playwright install-deps chromium`).
-  if (!existsSync(chromium.executablePath())) {
-    await mussGelingen(["npx", "--no-install", "playwright", "install", "chromium"], "Chromium", {
-      zeitMs: 900_000,
-      spiegel: "[kundeninstallation · einrichtung]",
-    });
-    zugang.eingerichtet.push("npx playwright install chromium");
   }
 }
 
