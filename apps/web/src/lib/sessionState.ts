@@ -87,12 +87,16 @@ export const OFFLINE_WARTESCHLANGE_SCHLUESSEL = "kw.offlineQueue.v1";
  * `useOfflineQueue.enqueue` nichts an und `syncNow` sendet nichts (JOB 4249).
  *
  * Jeder Fehler endet in `0`: ein unlesbarer Speicher ist kein Beleg für liegende Arbeit.
+ *
+ * Auftrag gesamt-ansicht-merken (Befund BEN R1/R2): schon das ERMITTELN des Speichers kann werfen
+ * (gesperrter Browserspeicher, `SecurityError`). Auch `typeof localStorage` liest den Getter —
+ * deshalb steht die Ermittlung im `try`; sonst riss der Anmeldezugang bei unbeantworteter Sitzung ab.
  */
 export function offeneVorgaengeAmGeraet(): number {
-  if (typeof localStorage === "undefined") {
-    return 0;
-  }
   try {
+    if (typeof localStorage === "undefined") {
+      return 0;
+    }
     const roh = localStorage.getItem(OFFLINE_WARTESCHLANGE_SCHLUESSEL);
     if (roh === null) {
       return 0;
