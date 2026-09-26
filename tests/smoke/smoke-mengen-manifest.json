@@ -1,10 +1,10 @@
 {
-  "version": 7,
-  "erhoben_am": "2026-09-16",
-  "nachgefuehrt_von": "JOB 4155 (WG-LUECKEN): zwei Faelle je Engine mehr — die Browser-Abnahme G1/G7 der gesetzten Wissensbeziehungen (tests-smoke/wg-luecken-beziehungen-browser.spec.ts). Sonst nichts geaendert.",
+  "version": 8,
+  "erhoben_am": "2026-09-25",
+  "nachgefuehrt_von": "UX-20b-R (lauf:b3:aufnahme:20260922:json-http-bedienung:1): sechs Faelle je Engine mehr in ui-smoke.spec.ts — L3-T (Dateiuebergabe per Tastatur) und die Gegenproben G1, G2a, G2b, G3, G4 zum JSON-Kasten. Sonst nichts geaendert.",
   "erhoben_mit": "npx playwright test --config playwright.smoke.config.ts --list --reporter=json (KLARWERK_SMOKE_MODE=gate)",
   "zweck": "Sollmanifest der Smoke-Mengen je Projekt. Drift (Hinzufuegen, Entfernen, Umbenennen) macht die Mengenpruefung rot.",
-  "gesamt_fallinstanzen": 146,
+  "gesamt_fallinstanzen": 164,
   "projekte": {
     "setup-zustand": {
       "soll": 1,
@@ -19,7 +19,7 @@
       ]
     },
     "chromium": {
-      "soll": 45,
+      "soll": 51,
       "titel": [
         "a18-live-region-browser.spec.ts › KALIBRIERUNG A · die generische CDP-Sitzung gibt Rolle, Ignoriert und die drei Live-Felder wirklich aus",
         "a18-live-region-browser.spec.ts › KALIBRIERUNG B · Playwrights ARIA-Repraesentation nennt dieselbe Rolle, fuehrt aber KEINE Live-Eigenschaft",
@@ -52,8 +52,14 @@
         "ui-smoke.spec.ts › Fragen antwortet ehrlich (Antwort oder Wissenslücke, nie erfunden) @modell",
         "ui-smoke.spec.ts › Fragen ohne Modell: der Weg ist gesperrt und sagt warum",
         "ui-smoke.spec.ts › Kernfluss: Erzählen → Wissensseite → Einreichen @modell",
+        "ui-smoke.spec.ts › UX-20b G1: Gegenprobe zu L1 — ein zu breites Vorlagenfeld macht die Layoutmessung bei 320 px rot",
+        "ui-smoke.spec.ts › UX-20b G2a: Gegenprobe Maus — ohne Vollmarkierung wird die Mauszusage rot",
+        "ui-smoke.spec.ts › UX-20b G2b: Gegenprobe Tastatur — aus der Tab-Reihenfolge genommen wird die Tastaturzusage rot, die Mauszusage bleibt grün",
+        "ui-smoke.spec.ts › UX-20b G3: Gegenprobe zu L2 — eine Vorlage mit ungültigem type wird abgelehnt, nichts eingereiht",
+        "ui-smoke.spec.ts › UX-20b G4: Gegenprobe zu L3 — eine Exportantwort ohne Liste wird von der Formprüfung und vom Import abgelehnt",
         "ui-smoke.spec.ts › UX-20b L1: der JSON-Kasten passt in DE und EN bei 320/390/1280 ins Sichtfenster",
         "ui-smoke.spec.ts › UX-20b L2: die Vorlage ist mit Maus UND Tastatur erreichbar, vollmarkiert, kopierbar — und sie taugt als Datei",
+        "ui-smoke.spec.ts › UX-20b L3-T: dieselbe Datei geht per Tastatur durch die Dateiauswahl — Zähler und erneutes Lesen stimmen",
         "ui-smoke.spec.ts › UX-20b L3: der Bibliotheks-Export kommt über echtes HTTP und wird vom Import angenommen",
         "ui-smoke.spec.ts › mega47: Filterblatt auf schmalem Gerät ist wirklich bedienbar",
         "ui-smoke.spec.ts › mega48: bei offenem Filterblatt ist KEINE Shell-Fläche mehr erreichbar",
@@ -69,7 +75,7 @@
       ]
     },
     "firefox": {
-      "soll": 45,
+      "soll": 51,
       "titel": [
         "a18-live-region-browser.spec.ts › KALIBRIERUNG A · die generische CDP-Sitzung gibt Rolle, Ignoriert und die drei Live-Felder wirklich aus",
         "a18-live-region-browser.spec.ts › KALIBRIERUNG B · Playwrights ARIA-Repraesentation nennt dieselbe Rolle, fuehrt aber KEINE Live-Eigenschaft",
@@ -102,8 +108,14 @@
         "ui-smoke.spec.ts › Fragen antwortet ehrlich (Antwort oder Wissenslücke, nie erfunden) @modell",
         "ui-smoke.spec.ts › Fragen ohne Modell: der Weg ist gesperrt und sagt warum",
         "ui-smoke.spec.ts › Kernfluss: Erzählen → Wissensseite → Einreichen @modell",
+        "ui-smoke.spec.ts › UX-20b G1: Gegenprobe zu L1 — ein zu breites Vorlagenfeld macht die Layoutmessung bei 320 px rot",
+        "ui-smoke.spec.ts › UX-20b G2a: Gegenprobe Maus — ohne Vollmarkierung wird die Mauszusage rot",
+        "ui-smoke.spec.ts › UX-20b G2b: Gegenprobe Tastatur — aus der Tab-Reihenfolge genommen wird die Tastaturzusage rot, die Mauszusage bleibt grün",
+        "ui-smoke.spec.ts › UX-20b G3: Gegenprobe zu L2 — eine Vorlage mit ungültigem type wird abgelehnt, nichts eingereiht",
+        "ui-smoke.spec.ts › UX-20b G4: Gegenprobe zu L3 — eine Exportantwort ohne Liste wird von der Formprüfung und vom Import abgelehnt",
         "ui-smoke.spec.ts › UX-20b L1: der JSON-Kasten passt in DE und EN bei 320/390/1280 ins Sichtfenster",
         "ui-smoke.spec.ts › UX-20b L2: die Vorlage ist mit Maus UND Tastatur erreichbar, vollmarkiert, kopierbar — und sie taugt als Datei",
+        "ui-smoke.spec.ts › UX-20b L3-T: dieselbe Datei geht per Tastatur durch die Dateiauswahl — Zähler und erneutes Lesen stimmen",
         "ui-smoke.spec.ts › UX-20b L3: der Bibliotheks-Export kommt über echtes HTTP und wird vom Import angenommen",
         "ui-smoke.spec.ts › mega47: Filterblatt auf schmalem Gerät ist wirklich bedienbar",
         "ui-smoke.spec.ts › mega48: bei offenem Filterblatt ist KEINE Shell-Fläche mehr erreichbar",
@@ -119,7 +131,7 @@
       ]
     },
     "webkit": {
-      "soll": 45,
+      "soll": 51,
       "titel": [
         "a18-live-region-browser.spec.ts › KALIBRIERUNG A · die generische CDP-Sitzung gibt Rolle, Ignoriert und die drei Live-Felder wirklich aus",
         "a18-live-region-browser.spec.ts › KALIBRIERUNG B · Playwrights ARIA-Repraesentation nennt dieselbe Rolle, fuehrt aber KEINE Live-Eigenschaft",
@@ -152,8 +164,14 @@
         "ui-smoke.spec.ts › Fragen antwortet ehrlich (Antwort oder Wissenslücke, nie erfunden) @modell",
         "ui-smoke.spec.ts › Fragen ohne Modell: der Weg ist gesperrt und sagt warum",
         "ui-smoke.spec.ts › Kernfluss: Erzählen → Wissensseite → Einreichen @modell",
+        "ui-smoke.spec.ts › UX-20b G1: Gegenprobe zu L1 — ein zu breites Vorlagenfeld macht die Layoutmessung bei 320 px rot",
+        "ui-smoke.spec.ts › UX-20b G2a: Gegenprobe Maus — ohne Vollmarkierung wird die Mauszusage rot",
+        "ui-smoke.spec.ts › UX-20b G2b: Gegenprobe Tastatur — aus der Tab-Reihenfolge genommen wird die Tastaturzusage rot, die Mauszusage bleibt grün",
+        "ui-smoke.spec.ts › UX-20b G3: Gegenprobe zu L2 — eine Vorlage mit ungültigem type wird abgelehnt, nichts eingereiht",
+        "ui-smoke.spec.ts › UX-20b G4: Gegenprobe zu L3 — eine Exportantwort ohne Liste wird von der Formprüfung und vom Import abgelehnt",
         "ui-smoke.spec.ts › UX-20b L1: der JSON-Kasten passt in DE und EN bei 320/390/1280 ins Sichtfenster",
         "ui-smoke.spec.ts › UX-20b L2: die Vorlage ist mit Maus UND Tastatur erreichbar, vollmarkiert, kopierbar — und sie taugt als Datei",
+        "ui-smoke.spec.ts › UX-20b L3-T: dieselbe Datei geht per Tastatur durch die Dateiauswahl — Zähler und erneutes Lesen stimmen",
         "ui-smoke.spec.ts › UX-20b L3: der Bibliotheks-Export kommt über echtes HTTP und wird vom Import angenommen",
         "ui-smoke.spec.ts › mega47: Filterblatt auf schmalem Gerät ist wirklich bedienbar",
         "ui-smoke.spec.ts › mega48: bei offenem Filterblatt ist KEINE Shell-Fläche mehr erreichbar",

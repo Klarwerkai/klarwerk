@@ -125,8 +125,11 @@ describe("UX-20: Ablehnungsgrund", () => {
     await koService.setValidationState(ko.id, { trust: 80, status: "validiert" });
     const exported = await new LibraryService({ koService }).exportJson();
     expect(exported).toHaveLength(1);
+    // UX-20b-R (Bens Befund R-0150/R-1731): der Export trägt die Urheberschaft als `originalAuthor`,
+    // und der Parser reicht sie seitdem durch — sonst wurde beim Wiedereinlesen der frühere `author`
+    // zum Wissensträger. Hier sind beide „Anna", weil das Objekt ohne abweichende Urheberin entstand.
     expect(parseImportItems(JSON.stringify(exported))).toEqual([
-      { ...valid, author: "Anna", tags: ["a"] },
+      { ...valid, author: "Anna", originalAuthor: "Anna", tags: ["a"] },
     ]);
   });
 });
