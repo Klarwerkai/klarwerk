@@ -208,13 +208,33 @@ const EINGRIFF_ZURUECK = `() => {
 
 let stand: H4Stand | null = null;
 let fehler: string | null = null;
-/** Das Inventar direkt nach dem ersten schmalen Laden — Vergleichsstand für Z4. */
+/** Das ruhige Inventar nach dem ersten schmalen Laden — Vergleichsstand für Z4. */
 let inventarVorher: Inventar | null = null;
 
 const seite = () => (stand as H4Stand).seite;
 const ziel = async (): Promise<Ziel> => (await seite().evaluate<Ziel>(fn(ZIEL))) as Ziel;
 const inventar = async (): Promise<Inventar> =>
   (await seite().evaluate<Inventar>(fn(INVENTAR))) as Inventar;
+
+/**
+ * Das Inventar, sobald die Lesefläche fertig nachgeladen hat. Gemessen am Testserver (b8a785b6):
+ * direkt nach dem Erscheinen der Gliederung fehlt noch `wb-setzen-knopf` — der Bereich
+ * Wissensbeziehungen kommt mit einem eigenen Abruf nach. Ein Vergleich gegen diesen Zwischenstand
+ * hielte das Nachladen für eine Folge des Sprungs. Gewartet wird deshalb auf einen ZUSTAND: drei
+ * gleiche Lesungen im Abstand von 500 ms, höchstens 20 s.
+ */
+async function ruhigesInventar(): Promise<Inventar> {
+  let letztes = JSON.stringify(await inventar());
+  let gleich = 0;
+  for (let i = 0; i < 40 && gleich < 2; i++) {
+    await seite().waitForTimeout(500);
+    const jetzt = JSON.stringify(await inventar());
+    gleich = jetzt === letztes ? gleich + 1 : 0;
+    letztes = jetzt;
+  }
+  expect(gleich, `die Lesefläche kam in 20 s nicht zur Ruhe: ${letztes}`).toBe(2);
+  return JSON.parse(letztes) as Inventar;
+}
 
 /** Die Seite schmal und von vorn laden — ohne Fokus, ohne gerollten Text. */
 async function frischSchmal(): Promise<void> {
@@ -271,7 +291,7 @@ describe("DOKUMENT-POINTER · die Gliederung mit echtem Zeiger, schmal und über
         await z.services.ko.revise(z.freiId, { bodyHtml: VERSCHACHTELT_LANG }, z.autorId);
       });
       await frischSchmal();
-      inventarVorher = await inventar();
+      inventarVorher = await ruhigesInventar();
     } catch (e) {
       fehler = String(e).split("\n").slice(0, 5).join(" | ");
     }
@@ -442,7 +462,7 @@ describe("DOKUMENT-POINTER · die Gliederung mit echtem Zeiger, schmal und über
   it("Z4 · Gliederung und Handlungen der Lesefläche sind nach allen Sprüngen unverändert", async () => {
     expect(fehler).toBeNull();
     // Nach dem letzten Sprung (Z3) — derselbe geladene Stand, kein Neuladen dazwischen.
-    const nachher = await inventar();
+    const nachher = await ruhigesInventar();
     console.info(`DOKUMENT-POINTER · Z4 · ${JSON.stringify({ vorher: inventarVorher, nachher })}`);
     expect(nachher.eintraege).toEqual(["EinsZwei", "Zwei", "Drei"]);
     expect(nachher.ueberschriften).toEqual(["H2:EinsZwei", "H2:Zwei", "H2:Drei"]);
