@@ -417,13 +417,21 @@ ungeeignet — rot.
 | K1 | `.env` wie §2.0 (plus Test-Mailempfänger, §2.3) → `docker compose -p <projekt> -f docker-compose.prod.yml up -d --build` | Abbild-ID des gebauten `<projekt>-app`, Bauzeit, `healthy`, `/health`, „Datenhaltung: Postgres", Datenbank `klarwerk_prod`, Volume `<projekt>_pgdata`, `COOKIE_SECURE=true`, kein KI-Schlüssel |
 | TLS | Test-CA und Serverzertifikat je Lauf; Caddy aus §5.2 mit **genau dem** `Caddyfile` dieser Anleitung | Fingerabdrücke (SHA-256) von CA und Serverzertifikat; Vertrauensweg: CA im NSS-Speicher des Browserprofils |
 | K6b | das gebaute Abbild ohne Pflichtwerte gestartet | Abbruch mit „KLARWERK-Start abgebrochen" und den fehlenden Namen |
-| K2 | frisches Chromium-Profil über HTTPS: Ersteinrichtung, Anmeldung; zweites Profil versucht die Ersteinrichtung erneut; Betrachter über „Nutzer hinzufügen" | Profil ohne Test-CA bekommt einen Zertifikatsfehler; Sitzungsplätzchen `Secure` und `HttpOnly`; zweiter Versuch 409, genau ein Administrator |
+| K2 | frisches Chromium-Profil über HTTPS: Ersteinrichtung, Anmeldung; zweites Profil versucht die Ersteinrichtung erneut; Betrachter über „Nutzer hinzufügen" | Profil ohne Test-CA bekommt genau „ERR_CERT_AUTHORITY_INVALID“; Sitzungsplätzchen `Secure` und `HttpOnly`; zweiter Versuch 409, genau ein Administrator |
 | K3 | Dokument mit festem Unicode-Text über das Blatt, Bild-Anhang (SHA-256 vorab festgehalten), Quelle am Anhang | nach Neuladen über die Oberfläche: Kennung, Fassung (Historie), Titel/Text, Quelle mit Anhang, heruntergeladene Bytes |
 | K5 | Betrachter liest; versucht eine Quelle anzuhängen; fragt einen vertraulichen Kontrolleintrag und dessen Datei direkt ab | Lesen gleich, Liste zeigt genau das erlaubte Dokument, Änderung 403, danach unverändert; Kontrolleintrag und Datei 404, Seite gesperrt |
 | K6c | „Passwort vergessen?" für den Betrachter | Link der echten Mail zeigt auf `APP_BASE_URL` + `/reset`; die eigene Adresse wird nicht umgeleitet |
 | K4 | `stop`/`start` wie §6, dann neues Profil, neue Anmeldung | Startzeit und Prozess beider Container und `pg_postmaster_start_time()` neu, Container und Volume gleich; alles aus K3 unverändert; K5 erneut |
 | K7 | Gegenproben im eigenen Aufbau: nur `restart app`; Dateizeile vor einem Neustart beiseitegelegt | genau „DB-Neustart" bzw. genau „Datei" rot, alles andere grün; Rücknahme, danach grün |
 | Bereinigung | eigene Container (`<projekt>-tls`, `<projekt>-mailfalle`), `down -v --rmi local` für das Projekt, Arbeitsordner | danach kein Container/Volume/Netz/Abbild dieses Projekts; fremde Abbilder bleiben |
+
+**Ein vorübergehender Browserabbruch ist kein Zertifikatsurteil.** Direkt nach dem Start eines
+frischen Profils lädt Chromium den NSS-Speicher mit der Test-CA und verwirft dabei manchmal die
+gerade laufende Navigation mit „net::ERR_CERT_VERIFIER_CHANGED“ (gemessen im Prüfauftrag
+`pa-1790443204-e1e59d28`, §9.1). Die Strecke wiederholt genau diesen einen Abbruch höchstens zweimal
+und meldet jede Wiederholung auf stderr; jeder andere Fehler, auch jedes echte Zertifikatsurteil,
+geht unverändert durch. Die Gegenprobe ohne Test-CA verlangt deshalb genau
+„ERR_CERT_AUTHORITY_INVALID“ und nicht irgendeinen „ERR_CERT_…“-Text.
 
 **Wo die Belege liegen.** Am Ende druckt der Lauf seinen Beleg zwischen
 `[KLARWERK · Kundeninstallation] BELEG` und `… BELEG ENDE` in seine Ausgabe (der Prüfweg des
@@ -459,6 +467,16 @@ Nur ein Lauf mit Ausgang „bestanden" für einen bestimmten Commit — mit `erg
 Belege: `ergebnis.json` und `ausgabe.txt` (mit dem vollständigen Streckenbeleg) im Belegordner des
 Testservers zu diesem Prüfauftrag, gesichert mit `MANIFEST.json` (SHA-256 von `ausgabe.txt`:
 `59472d6d…95bcd8`).
+
+**Weitere Läufe derselben Strecke (26.09.2026):**
+
+| Prüfauftrag | Commit | Ausgang |
+|---|---|---|
+| `pa-1790406049-de6a6569` | 998ea604 | bestanden, 11/11 |
+| `pa-1790416478-716651c4` | 0febb8e0 | bestanden, 11/11 |
+| `pa-1790423570-5bfae984` | fed375ba | bestanden, 11/11 |
+| `pa-1790430697-048f1938` | 1da9820e | bestanden, 11/11 |
+| `pa-1790443204-e1e59d28` | f707dc30 | **nicht bestanden**, 6/11: die erste Navigation des Profils in K3 endete mit „net::ERR_CERT_VERIFIER_CHANGED“ (Chromium lud den Zertifikatsprüfer neu), K4, K5 und K7b schlugen als Folge fehl. Der Produktstand war an dieser Stelle unverändert. Daraufhin wiederholt die Strecke genau diesen Abbruch, und die Gegenprobe verlangt genau „ERR_CERT_AUTHORITY_INVALID“ (oben in §9). |
 
 **Frühere Versuche (25.09.2026) ohne Lauf der Strecke:** `pa-1790327971-78504ec0` (7481c3d7),
 `pa-1790334899-64290c4d` (e349c532), `pa-1790335469-1acf28a2` (4b083cf1),

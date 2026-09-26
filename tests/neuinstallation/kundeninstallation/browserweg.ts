@@ -15,6 +15,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { type BrowserContext, type Page, type Response, chromium } from "playwright";
+import { vorlaeufigerZertifikatsabbruch, zertifikatsbefund } from "./nachweise";
 import { mussGelingen } from "./pruefplatz";
 
 /**
@@ -69,15 +70,42 @@ export async function oeffneProfil(name: string, aufbau: Profilaufbau): Promise<
   return { name, kontext, seite, schliessen: () => kontext.close() };
 }
 
+/**
+ * Wiederholt einen Seitenaufruf, den Chromium mit `ERR_CERT_VERIFIER_CHANGED` verworfen hat — und
+ * NUR diesen (siehe `vorlaeufigerZertifikatsabbruch`). Jeder andere Fehler, auch jedes echte
+ * Zertifikatsurteil, geht unveraendert durch. Jede Wiederholung steht sichtbar auf stderr.
+ */
+async function mitWiederholung<T>(was: string, schritt: () => Promise<T>): Promise<T> {
+  for (let versuch = 1; ; versuch++) {
+    try {
+      return await schritt();
+    } catch (fehler) {
+      if (versuch >= 3 || !vorlaeufigerZertifikatsabbruch(String(fehler))) {
+        throw fehler;
+      }
+      process.stderr.write(
+        `[kundeninstallation · browser] ${was}: ERR_CERT_VERIFIER_CHANGED (Pruefer neu geladen), Versuch ${versuch + 1}\n`,
+      );
+      await new Promise((weiter) => setTimeout(weiter, 1_000));
+    }
+  }
+}
+
+type Ladeoptionen = { waitUntil?: "domcontentloaded" | "load"; timeout?: number };
+
+async function gehe(seite: Page, url: string, opt: Ladeoptionen = {}): Promise<void> {
+  await mitWiederholung(`goto ${new URL(url).pathname}`, () => seite.goto(url, opt));
+}
+
 /** Ein Profil OHNE die Test-CA muss an der Zertifikatspruefung scheitern — sonst prueft niemand. */
 export async function tlsGegenprobe(aufbau: Profilaufbau, basis: string): Promise<string> {
   const p = await oeffneProfil("ohne-vertrauen", { ...aufbau, vertrauen: null });
   try {
-    await p.seite.goto(`${basis}/`, { timeout: 30_000 });
+    await gehe(p.seite, `${basis}/`, { timeout: 30_000 });
     return "GELADEN";
   } catch (fehler) {
     const text = String(fehler);
-    return /ERR_CERT_[A-Z_]+/.exec(text)?.[0] ?? text.slice(0, 200);
+    return zertifikatsbefund(text) ?? text.slice(0, 200);
   } finally {
     await p.schliessen();
   }
@@ -99,7 +127,7 @@ export interface Konto {
 
 /** Oeffnet die Instanz und liefert die Ueberschrift der ersten Maske („Ersteinrichtung" / „Anmelden"). */
 export async function ersteMaske(seite: Page, basis: string): Promise<string> {
-  await seite.goto(`${basis}/`, { waitUntil: "domcontentloaded", timeout: 60_000 });
+  await gehe(seite, `${basis}/`, { waitUntil: "domcontentloaded", timeout: 60_000 });
   return ueberschrift(seite);
 }
 
@@ -167,7 +195,7 @@ export async function imSeitenkontext(
 // --------------------------------------------------------------------------------------------------
 
 export async function betrachterAnlegen(seite: Page, basis: string, konto: Konto): Promise<void> {
-  await seite.goto(`${basis}/admin`, { waitUntil: "domcontentloaded" });
+  await gehe(seite, `${basis}/admin`, { waitUntil: "domcontentloaded" });
   await seite.getByTestId("knopf-nutzer-hinzufuegen").click();
   const karte = seite.getByTestId("detail-nutzer-neu");
   await karte.waitFor({ state: "visible", timeout: 30_000 });
@@ -206,7 +234,7 @@ export async function dokumentErfassen(
   basis: string,
   d: Dokumententwurf,
 ): Promise<string> {
-  await seite.goto(`${basis}/erfassen`, { waitUntil: "domcontentloaded" });
+  await gehe(seite, `${basis}/erfassen`, { waitUntil: "domcontentloaded" });
   const einreichen = seite.getByRole("button", { name: "Einreichen", exact: true });
   await einreichen.waitFor({ state: "visible", timeout: 60_000 });
   await seite.getByRole("textbox", { name: "Titel", exact: true }).fill(d.titel);
@@ -250,7 +278,7 @@ async function ersterEintrag(seite: Page, selektor: string): Promise<void> {
 }
 
 async function oeffneObjekt(seite: Page, basis: string, kennung: string): Promise<void> {
-  await seite.goto(`${basis}/wissen/${encodeURIComponent(kennung)}`, {
+  await gehe(seite, `${basis}/wissen/${encodeURIComponent(kennung)}`, {
     waitUntil: "domcontentloaded",
   });
   await seite.getByTestId("bib-titel").waitFor({ state: "visible", timeout: 60_000 });
@@ -337,7 +365,7 @@ function normalisiere(text: string): string {
 /** Laedt die Seite NEU und liest alles ueber die Oberflaeche; die Datei ueber die Anhangskachel. */
 export async function lese(seite: Page, basis: string, kennung: string): Promise<Gelesen> {
   await oeffneObjekt(seite, basis, kennung);
-  await seite.reload({ waitUntil: "domcontentloaded" });
+  await mitWiederholung("reload", () => seite.reload({ waitUntil: "domcontentloaded" }));
   await seite.getByTestId("bib-titel").waitFor({ state: "visible", timeout: 60_000 });
   const titel = normalisiere(await seite.getByTestId("bib-titel").innerText());
   const text = normalisiere(await seite.getByTestId("bib-text").innerText());
@@ -398,7 +426,7 @@ export async function objektseiteGesperrt(
   basis: string,
   kennung: string,
 ): Promise<boolean> {
-  await seite.goto(`${basis}/wissen/${encodeURIComponent(kennung)}`, {
+  await gehe(seite, `${basis}/wissen/${encodeURIComponent(kennung)}`, {
     waitUntil: "domcontentloaded",
   });
   try {

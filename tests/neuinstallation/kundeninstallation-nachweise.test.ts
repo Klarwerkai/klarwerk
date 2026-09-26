@@ -16,6 +16,8 @@ import {
   resetZiele,
   roteNachweise,
   schwaerze,
+  vorlaeufigerZertifikatsabbruch,
+  zertifikatsbefund,
 } from "./kundeninstallation/nachweise";
 import { STRECKE, streckeBenannt } from "./kundeninstallation/pflicht";
 import { httpsGet, tlsErzeugen } from "./kundeninstallation/pruefplatz";
@@ -140,6 +142,27 @@ describe("Kundeninstallation · Kennwort-Link und Belege", () => {
     const text = schwaerze('{"url":"postgres://k:GEHEIM-123456@db"}', ["GEHEIM-123456"]);
     expect(text).not.toContain("GEHEIM-123456");
     expect(text).toContain("‹geschwaerzt›");
+  });
+});
+
+describe("Kundeninstallation · Chromium-Abbruch ist kein Zertifikatsurteil", () => {
+  // Gemessen am 26.09.2026 (pa-1790443204-e1e59d28): die erste Navigation eines frischen Profils
+  // endete mit diesem Text. Er darf weder als Zertifikatsurteil zaehlen (die TLS-Gegenprobe haette
+  // sonst ohne Pruefung „bestanden") noch einen echten Befund verdecken.
+  const VERWORFEN =
+    'page.goto: net::ERR_CERT_VERIFIER_CHANGED at https://kundeninstanz.pruefplatz.test/\nCall log:\n  - navigating to "https://kundeninstanz.pruefplatz.test/"';
+  const ABGELEHNT =
+    "page.goto: net::ERR_CERT_AUTHORITY_INVALID at https://kundeninstanz.pruefplatz.test/";
+
+  it("C · der Pruefer-Wechsel ist vorlaeufig und kein Zertifikatsbefund", () => {
+    expect(vorlaeufigerZertifikatsabbruch(VERWORFEN)).toBe(true);
+    expect(zertifikatsbefund(VERWORFEN)).toBeNull();
+  });
+
+  it("C · ein echtes Zertifikatsurteil wird nicht wiederholt und genau benannt", () => {
+    expect(vorlaeufigerZertifikatsabbruch(ABGELEHNT)).toBe(false);
+    expect(zertifikatsbefund(ABGELEHNT)).toBe("ERR_CERT_AUTHORITY_INVALID");
+    expect(zertifikatsbefund("page.goto: net::ERR_CONNECTION_REFUSED")).toBeNull();
   });
 });
 

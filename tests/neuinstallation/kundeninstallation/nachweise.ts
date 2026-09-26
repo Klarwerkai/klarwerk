@@ -147,3 +147,31 @@ export function schwaerze(text: string, geheimnisse: readonly string[]): string 
   }
   return ergebnis;
 }
+
+// --------------------------------------------------------------------------------------------------
+// Chromium: ein vorübergehender Abbruch ist kein Zertifikatsbefund
+// --------------------------------------------------------------------------------------------------
+
+/**
+ * `net::ERR_CERT_VERIFIER_CHANGED`: Chromium hat waehrend der Navigation seinen Zertifikatspruefer
+ * neu aufgebaut und die laufende Anfrage verworfen. Das passiert kurz nach dem Start eines Profils,
+ * wenn der NSS-Speicher (mit der Test-CA) geladen wird — gemessen am 26.09.2026 im Pruefauftrag
+ * `pa-1790443204-e1e59d28`. Es ist KEIN Urteil ueber das Zertifikat; die Navigation wird wiederholt,
+ * die Pruefung selbst bleibt voll an.
+ */
+export function vorlaeufigerZertifikatsabbruch(fehlertext: string): boolean {
+  return fehlertext.includes("net::ERR_CERT_VERIFIER_CHANGED");
+}
+
+/**
+ * Das Zertifikatsurteil eines gescheiterten Seitenaufrufs (`ERR_CERT_…`) — ohne den vorlaeufigen
+ * Abbruch oben. `null`, wenn der Fehler kein Zertifikatsurteil ist.
+ */
+export function zertifikatsbefund(fehlertext: string): string | null {
+  for (const treffer of fehlertext.matchAll(/ERR_CERT_[A-Z_]+/g)) {
+    if (treffer[0] !== "ERR_CERT_VERIFIER_CHANGED") {
+      return treffer[0];
+    }
+  }
+  return null;
+}

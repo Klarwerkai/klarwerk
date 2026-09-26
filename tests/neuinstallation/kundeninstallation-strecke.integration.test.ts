@@ -588,7 +588,7 @@ describe.skipIf(!PFLICHT)("Kundeninstallation · Compose + HTTPS + Neustart, ech
     expect(
       ohneVertrauen,
       "Ein Profil OHNE die Test-CA hat die Seite geladen — dann prueft niemand das Zertifikat.",
-    ).toMatch(/^ERR_CERT_/);
+    ).toBe("ERR_CERT_AUTHORITY_INVALID");
 
     const admin = await B.oeffneProfil("verwaltung-1", aufbau);
     try {
