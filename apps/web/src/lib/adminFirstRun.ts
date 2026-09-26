@@ -9,12 +9,29 @@ export interface StorageLike {
 }
 
 // Erststart = der Merker fehlt noch. Nach bewusstem Ausblenden dauerhaft still.
-export function isAdminFirstRun(storage: StorageLike): boolean {
-  return storage.getItem(KEY) === null;
+// Auftrag gesamt-ansicht-merken: der Merker ist nicht betriebsnotwendig. Fehlt der Speicher oder
+// wirft er (gesperrter Browserspeicher), gilt „schon gesehen" — dieselbe stille Regel wie
+// `startOrientation.ts`; die Karte bricht die Startseite dann nicht mehr ab.
+export function isAdminFirstRun(storage: StorageLike | undefined): boolean {
+  if (!storage) {
+    return false;
+  }
+  try {
+    return storage.getItem(KEY) === null;
+  } catch {
+    return false;
+  }
 }
 
-export function markAdminFirstRunSeen(storage: StorageLike, nowIso: string): void {
-  storage.setItem(KEY, nowIso);
+export function markAdminFirstRunSeen(storage: StorageLike | undefined, nowIso: string): void {
+  if (!storage) {
+    return;
+  }
+  try {
+    storage.setItem(KEY, nowIso);
+  } catch {
+    // Speicher voll/verweigert → still: das Ausblenden gilt dann nur für diese Sitzung.
+  }
 }
 
 // Ehrlicher KI-Verbindungszustand für die Begrüßung — nie geraten, aus der echten Config.
