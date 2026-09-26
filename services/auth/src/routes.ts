@@ -144,6 +144,14 @@ const OIDC_STATE_COOKIE = "kw_oidc_state";
 const OIDC_NONCE_COOKIE = "kw_oidc_nonce";
 const OIDC_VERIFIER_COOKIE = "kw_oidc_verifier";
 const OIDC_FLOW_MAX_AGE = 600; // 10 Minuten
+// Aufnahme m365-anmeldung (R-0355, SSO-Restfall): startet der Anmeldedialog des Word-Add-ins das
+// SSO, muss der Rücksprung wieder auf der Dialogseite landen — nur dort gibt es `messageParent`,
+// und nur dann übergibt sie die Anmeldung von selbst. Kein freies Rücksprungziel: der Start kennt
+// genau EINE Kennung, der Rückruf nennt genau EINE feste Adresse. Alles andere endet wie bisher in
+// der Anwendung.
+const OIDC_ZIEL_COOKIE = "kw_oidc_ziel";
+const OIDC_ZIEL_WORD_ADDIN = "word-addin";
+const OIDC_WEITER_WORD_ADDIN = "/word-addin/anmeldung.html";
 
 function flowCookie(name: string, value: string): string {
   const base = `${name}=${value}; HttpOnly; Path=/; Max-Age=${OIDC_FLOW_MAX_AGE}; SameSite=Lax`;
@@ -677,7 +685,7 @@ export function authRoutes(
     // FR-AUTH-07: SSO-Start — Authorization-Code-Flow mit PKCE (S256). Erzeugt
     // state/nonce/code_verifier, legt sie kurzlebig als HttpOnly-Cookies ab und
     // leitet zum IdP weiter. Kein Implicit, kein id_token im Browser-Fragment.
-    app.get("/api/auth/oidc/start", async (request, reply) => {
+    app.get<{ Querystring: { ziel?: unknown } }>("/api/auth/oidc/start", async (request, reply) => {
       if (!options.oidc) {
         reply
           .code(501)
@@ -687,10 +695,16 @@ export function authRoutes(
       const state = randomToken(16);
       const nonce = randomToken(16);
       const { verifier, challenge } = createPkcePair();
+      // Das Ziel wird bei JEDEM Start neu gesetzt oder gelöscht — ein alter Dialog-Start darf einen
+      // späteren Start aus der Anwendung nicht in die Dialogseite lenken.
+      const ausDemDialog = request.query?.ziel === OIDC_ZIEL_WORD_ADDIN;
       reply.header("set-cookie", [
         flowCookie(OIDC_STATE_COOKIE, state),
         flowCookie(OIDC_NONCE_COOKIE, nonce),
         flowCookie(OIDC_VERIFIER_COOKIE, verifier),
+        ausDemDialog
+          ? flowCookie(OIDC_ZIEL_COOKIE, OIDC_ZIEL_WORD_ADDIN)
+          : clearFlowCookie(OIDC_ZIEL_COOKIE),
       ]);
       reply.redirect(options.oidc.authorizeUrl({ state, nonce, codeChallenge: challenge }));
     });
@@ -710,10 +724,12 @@ export function authRoutes(
         const stateCookie = readCookie(request, OIDC_STATE_COOKIE);
         const nonceCookie = readCookie(request, OIDC_NONCE_COOKIE);
         const verifierCookie = readCookie(request, OIDC_VERIFIER_COOKIE);
+        const ausDemDialog = readCookie(request, OIDC_ZIEL_COOKIE) === OIDC_ZIEL_WORD_ADDIN;
         const clearFlow = [
           clearFlowCookie(OIDC_STATE_COOKIE),
           clearFlowCookie(OIDC_NONCE_COOKIE),
           clearFlowCookie(OIDC_VERIFIER_COOKIE),
+          clearFlowCookie(OIDC_ZIEL_COOKIE),
         ];
         if (
           !stateCookie ||
@@ -739,7 +755,9 @@ export function authRoutes(
             mappedRole,
           );
           reply.header("set-cookie", [...clearFlow, sessionCookie(token)]);
-          reply.code(200).send({ user, token });
+          reply
+            .code(200)
+            .send(ausDemDialog ? { user, token, weiter: OIDC_WEITER_WORD_ADDIN } : { user, token });
         } catch (error) {
           reply.header("set-cookie", clearFlow);
           if (error instanceof AuthError) {

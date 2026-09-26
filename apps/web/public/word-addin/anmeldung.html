@@ -105,7 +105,7 @@
         kennwort: "Kennwort",
         anmelden: "Anmelden",
         sso: "Mit SSO anmelden",
-        ssoHinweis: "Nach der SSO-Anmeldung dieses Fenster schliessen und in Klara erneut auf »Anmelden« druecken — die Uebergabe laeuft dann ohne Formular.",
+        ssoHinweis: "Nach der SSO-Anmeldung kehrt dieses Fenster von selbst hierher zurueck und uebergibt die Anmeldung an Klara — nichts schliessen, nicht erneut druecken.",
         laeuft: "Anmeldung laeuft …",
         wartetAufWord: "Verbindung zu Word wird hergestellt …",
         pruefe: "Bestehende Anmeldung wird geprueft …",
@@ -123,7 +123,7 @@
         kennwort: "Password",
         anmelden: "Sign in",
         sso: "Sign in with SSO",
-        ssoHinweis: "After the SSO sign-in, close this window and press »Sign in« in Klara again — the handover then runs without a form.",
+        ssoHinweis: "After the SSO sign-in, this window returns here by itself and hands the sign-in over to Klara — close nothing, press nothing again.",
         laeuft: "Signing in …",
         wartetAufWord: "Connecting to Word …",
         pruefe: "Checking for an existing sign-in …",
@@ -141,7 +141,7 @@
         kennwort: "Wachtwoord",
         anmelden: "Aanmelden",
         sso: "Aanmelden met SSO",
-        ssoHinweis: "Sluit dit venster na de SSO-aanmelding en druk in Klara opnieuw op »Aanmelden« — de overdracht loopt dan zonder formulier.",
+        ssoHinweis: "Na de SSO-aanmelding keert dit venster vanzelf hierheen terug en draagt de aanmelding over aan Klara — niets sluiten, niet opnieuw drukken.",
         laeuft: "Aanmelden …",
         wartetAufWord: "Verbinding met Word wordt gemaakt …",
         pruefe: "Bestaande aanmelding wordt gecontroleerd …",
@@ -432,12 +432,11 @@
       if (ev.key === "Enter") { anmelden(); }
     });
     el("sso").addEventListener("click", function () {
-      // Der BESTEHENDE SSO-Start. Der Ruecksprung des Anbieters landet dort, wo die Serverseite
-      // ihn hinlenkt (`redirect_uri` der OIDC-Einrichtung) — also in der Anwendung, nicht auf
-      // dieser Seite. Danach traegt das Cookie im Dialog, und ein zweiter Druck auf »Anmelden«
-      // in Klara uebergibt OHNE Formular (der Zweig darunter). Ein Ruecksprung direkt hierher
-      // braeuchte die OIDC-Einrichtung; die ist nicht Zielpfad und bleibt offener Punkt.
-      window.location.href = "/api/auth/oidc/start";
+      // Der BESTEHENDE SSO-Start, mit der EINEN Zielkennung dieses Dialogs. Der Anbieter springt
+      // wie immer in die Anwendung (`redirect_uri` unveraendert); deren Rueckruf schickt dieses
+      // Fenster danach HIERHER zurueck (Aufnahme m365-anmeldung, R-0355). Dann traegt das Cookie,
+      // `startePruefung` findet die Sitzung und uebergibt von selbst — kein zweiter Druck.
+      window.location.href = "/api/auth/oidc/start?ziel=word-addin";
     });
     el("lang-de").addEventListener("click", function () { setLang("de"); });
     el("lang-en").addEventListener("click", function () { setLang("en"); });
