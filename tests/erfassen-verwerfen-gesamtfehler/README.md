@@ -74,6 +74,14 @@ echter Persistenz und Wiederöffnen“.
   `tests/capture`, `tests/app/navguard*`, `tests/entwuerfe*`, `tests/entwurf*` u. a. — 233 Dateien,
   1902 Tests grün.
 
+* **Runde 4 — Torreparatur ausserhalb des Auftragsinhalts:** Der Volllauf `lt-1790433786-e163cf0e`
+  (Commit `93abad15`) war rot in `tests/insel-update/sicherung-eindeutig.test.ts` (S1/S2, Exit 2,
+  „pg_restore kann den erzeugten Dump nicht lesen“). Ursache: der Test ersetzte `pg_dump`, aber nicht
+  `pg_restore`; auf einem Prüfplatz mit `postgresql-client` las das echte `pg_restore --list` den
+  Attrappen-Dump (JOB 4057-Zweig in `scripts/backup/backup.sh`). Unabhängig von diesem Auftrag, am
+  Zielbranch gleich. Behoben mit `PG_RESTORE_ATTRAPPE` in `tests/insel-update/insel-probe.ts`;
+  Beleg `pa-1790442758-e6772760` (HEAD `290c3b44`): 2/2 grün, lokal `tests/insel-update` 80/80.
+
 ## Abgrenzung
 
 * „Meine Entwürfe“-Link (Pedis Befund 10.09.) gehört JOB 3503 — hier weder geprüft noch angefasst.

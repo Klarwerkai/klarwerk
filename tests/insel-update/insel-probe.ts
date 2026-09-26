@@ -288,6 +288,34 @@ fi
 printf '%s' "\${KLARWERK_PROBE_DUMPINHALT:-PROBE-DUMP}" > "$ZIEL"
 `;
 
+/**
+ * Die `pg_restore`-Attrappe zur `pg_dump`-Attrappe oben — sie gehören zusammen.
+ *
+ * WARUM ES SIE GEBEN MUSS (gemessen, Prüfauftrag `lt-1790433786-e163cf0e`, 26.09.2026):
+ * `backup.sh` wählt seine Leseprüfung danach, ob `pg_restore` auf dem PATH liegt (JOB 4057). Ersetzt
+ * ein Test nur `pg_dump`, entscheidet der RECHNER, welcher Zweig läuft: ohne `postgresql-client`
+ * die Ersatzprüfung (grün), mit ihm das echte `pg_restore --list` — und das lehnt den Attrappen-Dump
+ * zu Recht ab („input file does not appear to be a valid archive"), Exit 4. Derselbe Test war damit
+ * je nach Prüfplatz grün oder rot. Mit dieser Attrappe läuft der `pg_restore`-Zweig von
+ * `backup.sh` IMMER und hermetisch.
+ *
+ * Sie ahmt genau die eine Aufrufform nach, die `backup.sh` verwendet (`pg_restore --list <datei>`)
+ * und liest die Datei wirklich: fehlt sie oder ist sie leer, scheitert sie wie das echte Werkzeug.
+ */
+export const PG_RESTORE_ATTRAPPE = `#!/usr/bin/env bash
+if [ "\${1:-}" != "--list" ] || [ -z "\${2:-}" ]; then
+  echo "pg_restore-Attrappe: nur --list <datei> nachgebildet" >&2
+  exit 1
+fi
+if [ ! -s "\$2" ]; then
+  echo "pg_restore-Attrappe: \$2 fehlt oder ist leer" >&2
+  exit 1
+fi
+cat "\$2" > /dev/null
+echo ";"
+echo "; Archiv-Attrappe: \$2"
+`;
+
 export interface Insel {
   readonly wurzel: string;
   readonly releases: string;

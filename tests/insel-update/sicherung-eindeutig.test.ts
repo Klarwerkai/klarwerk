@@ -13,9 +13,10 @@
 //
 // WARUM DIESER TEST NICHT IM INTEGRATIONSLAUF STEHT: `update-postgres.integration.test.ts` braucht
 // eine echte Datenbank und überspringt sich ohne sie — im Tor also immer. Ein Loch, das nur ein Lauf
-// findet, der nie läuft, ist ungeprüft. Hier sind ausschliesslich zwei FREMDBINARIES Attrappe:
-// `date` (damit „dieselbe Sekunde" erzwungen und nicht erhofft ist) und `pg_dump` (damit keine
-// Datenbank nötig ist). `update-einspielen.sh` UND `scripts/backup/backup.sh` laufen unverändert —
+// findet, der nie läuft, ist ungeprüft. Hier sind ausschliesslich drei FREMDBINARIES Attrappe:
+// `date` (damit „dieselbe Sekunde" erzwungen und nicht erhofft ist), `pg_dump` (damit keine
+// Datenbank nötig ist) und `pg_restore` (damit der Lesezweig von `backup.sh` nicht vom Prüfplatz
+// abhängt, s. `insel-probe.ts`). `update-einspielen.sh` UND `scripts/backup/backup.sh` laufen unverändert —
 // samt Arbeitsname, echter sha256-Prüfsumme und der Veröffentlichung Sidecar-dann-Dump.
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
@@ -25,6 +26,7 @@ import {
   type Insel,
   type Lauf,
   PG_DUMP_ATTRAPPE,
+  PG_RESTORE_ATTRAPPE,
   UPDATE_SH,
   aktivesRelease,
   fahreSkript,
@@ -70,6 +72,8 @@ function fahreUpdateMitDump(insel: Insel, quelle: string, inhalt: string): Lauf 
   const pfad = fremdbinaerAttrappe(insel, {
     date: festerZeitstempel(SEKUNDE),
     pg_dump: PG_DUMP_ATTRAPPE,
+    // Ohne sie hinge der Lesezweig von `backup.sh` am Prüfplatz (Begründung in `insel-probe.ts`).
+    pg_restore: PG_RESTORE_ATTRAPPE,
   });
   return fahreSkript(insel, UPDATE_SH, [quelle], {
     PATH: `${pfad}:${process.env.PATH ?? ""}`,
