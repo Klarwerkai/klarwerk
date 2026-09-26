@@ -1916,7 +1916,9 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
           return;
         }
         const status = subject.aiCheck?.status;
-        if (status !== "failed" && status !== "pending") {
+        // AUFNAHME 20260922: ein ÜBERHOLTER abgeschlossener Nachweis ist wiederholbar — er gilt für
+        // eine frühere Basis. Läuft für das Objekt schon ein Job, reiht der Worker nicht doppelt ein.
+        if (status !== "failed" && status !== "pending" && !subject.aiCheck?.ueberholt) {
           reply.code(409).send({
             error: "AI_CHECK_NOT_RETRYABLE",
             message: "Fuer dieses Wissensobjekt steht kein wiederholbarer Pruef-Job an.",

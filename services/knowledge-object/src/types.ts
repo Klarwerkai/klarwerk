@@ -82,6 +82,20 @@ export interface AiCheck {
   // pending-Vermerk trägt die KO-Version zum Einreih-Zeitpunkt; der Abschluss schreibt nur, wenn
   // sie noch stimmt (bedingter Write). Additiv: Altbestand ohne Feld = versionsungebundener Job.
   koVersion?: number;
+  // AUFNAHME 20260922 · Prüfbasis-Aktualität: die Basis, unter der der Lauf gestartet ist (pending:
+  // beim Vermerk; done/failed: beim Laufstart). Regel und Begründung in pruefbasis.ts. Additiv.
+  basis?: AiCheckBasis;
+  // NUR LESEFASSUNG, nie gespeichert: bei jedem Lesen aus `basis` gegen das jetzige Objekt
+  // abgeleitet (mitPruefstand). true = der abgeschlossene Nachweis gilt für eine frühere Basis.
+  ueberholt?: boolean;
+}
+
+// Fingerabdrücke der Prüfbasis (s. pruefbasis.ts): quelle = Fassung + Quellen + Anhänge;
+// kontext = Einordnung + Vertraulichkeit; bestand = Vergleichsquellen samt Auswahlkontext.
+export interface AiCheckBasis {
+  quelle: string;
+  kontext: string;
+  bestand: string;
 }
 
 export type Confidentiality = "intern" | "vertraulich" | "streng_vertraulich";

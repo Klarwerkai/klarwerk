@@ -32,9 +32,12 @@ export function validationRoutes(
       // (validation/src/service.ts:185-215) — Titel, Kernaussage, alles. Das Prüf-Board war damit
       // ein vollwertiger Lesepfad ohne Tor. Gefiltert wird VOR dem Re-Enqueue unten, damit die
       // Route über ein unsichtbares Objekt auch keine Arbeit auslöst.
-      const board = sichtbareFuer(user, await validation.board(request.query));
+      let board = sichtbareFuer(user, await validation.board(request.query));
       if (aiCheck) {
         const nowMs = Date.now();
+        // AUFNAHME 20260922: der frische Vermerk eines neu eingereihten Laufs ersetzt in der Antwort
+        // den gelesenen (überholten) Stand — der alte Nachweis erscheint nicht als aktuell.
+        const frisch = new Map<string, AiCheck>();
         for (const item of board as { id: string; aiCheck?: AiCheck }[]) {
           if (shouldReEnqueueAiCheck(item.aiCheck, nowMs) && !aiCheck.worker.has(item.id)) {
             await aiCheck.ko.markAiCheckPending(item.id);
@@ -42,7 +45,16 @@ export function validationRoutes(
             // veraltete Stand vor dem Re-Enqueue; der Job trägt die Zielversion synchron.
             const marked = await aiCheck.ko.get(item.id);
             aiCheck.worker.enqueue(item.id, marked?.aiCheck?.koVersion);
+            if (marked?.aiCheck) {
+              frisch.set(item.id, marked.aiCheck);
+            }
           }
+        }
+        if (frisch.size > 0) {
+          board = board.map((ko) => {
+            const neu = frisch.get(ko.id);
+            return neu ? { ...ko, aiCheck: neu } : ko;
+          });
         }
       }
       // ==========================================================================================

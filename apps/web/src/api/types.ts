@@ -503,6 +503,11 @@ export interface KnowledgeObject {
     // der Lauf nicht deckt, und ein leeres Ergebnis läse sich als „konfliktfrei". Additiv:
     // Altbestand ohne Feld sagt nichts über die Abdeckung, und die Anzeige behauptet dann nichts.
     coverage?: AiCheckCoverage;
+    // AUFNAHME 20260922 · Prüfbasis-Aktualität: vom Server aus der GESPEICHERTEN Basisbindung
+    // abgeleitet (services/knowledge-object/src/pruefbasis.ts). true = der abgeschlossene Nachweis
+    // gilt für einen früheren Stand von Inhalt, Quellen, Einordnung oder Vertraulichkeit — er ist
+    // nicht aktuell, gleich was Status und Abdeckung sagen.
+    ueberholt?: boolean;
   };
 }
 
