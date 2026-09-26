@@ -102,6 +102,12 @@ export function parseImportItems(text: string): ImportItemInput[] {
     if (typeof o.author === "string") {
       item.author = o.author;
     }
+    // UX-20b-R (Bens Befund R-0150/R-1731): die Urheberin reist mit. Ein eigener Export trägt sie
+    // als `originalAuthor`; fiel das Feld hier weg, machte der Server den früheren `author` (den
+    // Reviewer der Quellinstanz) zum Wissensträger. Nur nicht-leerer Text — wie beim Volltext unten.
+    if (typeof o.originalAuthor === "string" && o.originalAuthor.trim().length > 0) {
+      item.originalAuthor = o.originalAuthor;
+    }
     // ==========================================================================================
     // JOB 4293 — DER VOLLTEXT REIST MIT, ODER ER FEHLT EHRLICH.
     // ==========================================================================================

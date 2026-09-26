@@ -1344,6 +1344,10 @@ export interface ImportItemInput {
   type: KnowledgeType;
   category: string;
   author?: string;
+  // UX-20b-R: die ursprüngliche Urheberschaft eines schon einmal exportierten Wissensobjekts. Der
+  // Server liest sie in `quellautorVon` (services/library-analytics/src/service.ts) und gibt ihm
+  // beim Anlegen Vorrang vor `author`; ohne dieses Feld wurde der Reviewer der Quelle zum Wissensträger.
+  originalAuthor?: string;
   tags?: string[];
   // JOB 4293: DER DOKUMENTTEXT, den der Server seit jeher kann und dieser Typ nicht kannte.
   //

@@ -419,6 +419,35 @@ export function sanitizeImportConfidentiality(raw: unknown): Confidentiality | u
   return isValidConfidentiality(raw) ? raw : "vertraulich";
 }
 
+// UX-20b-R (Bens Befund R-0150/R-1731): WER IST DER WISSENSTRÄGER EINES IMPORTIERTEN EINTRAGS?
+//
+// Die eine Antwort für BEIDE Anlagewege (Kandidaten-Accept und `POST /api/library/import`). Bis
+// hierher lasen beide nur `item.author`. Ein eigener JSON-Export trägt aber `author` (in der
+// Quellinstanz: der annehmende Reviewer) UND `originalAuthor` (die eigentliche Urheberin) — beim
+// Wiedereinlesen wurde der Reviewer der Quelle zum Wissensträger, die Urheberin verschwand.
+//
+// DIE REGEL: ein nicht-leeres `originalAuthor` gewinnt; sonst `author` wie bisher (Confluence/Jira
+// liefern nur diesen); fehlen beide, fehlt das Feld — dann bleibt ehrlich der Handelnde. Das Feld ist
+// Metadatum (Anzeige, busFactor), nie Rechteposition: `author` am Wissensobjekt bleibt der Handelnde.
+//
+// WARUM DAS FELD HIER STEHT UND NICHT AN `ImportItem`: `src/types.ts` ist eine der sechs Dateien unter
+// Freeze-144 (`tests/library-analytics-freeze144.test.ts`), und eine Freigabe dafür zeichnet nicht der
+// Bau. Zur Laufzeit trägt der Eintrag das Feld ohnehin: der Parser des Clients reicht es durch
+// (`apps/web/src/lib/importReview.ts`), `POST /api/library/import` nimmt den Rumpf unverändert, und
+// die Kandidatenablagen speichern `item` als Ganzes. Gelesen wird es deshalb als fremdes, ungeprüftes
+// Feld — nur ein nicht-leerer Text zählt.
+type ImportItemMitUrheberschaft = ImportItem & { readonly originalAuthor?: unknown };
+
+function quellautorVon(item: ImportItemMitUrheberschaft): { originalAuthor?: string } {
+  const quelle =
+    typeof item.originalAuthor === "string" && item.originalAuthor.trim()
+      ? item.originalAuthor
+      : typeof item.author === "string" && item.author.trim()
+        ? item.author
+        : undefined;
+  return quelle === undefined ? {} : { originalAuthor: quelle };
+}
+
 export class LibraryService {
   private readonly koService: KoService;
   private readonly audit: AuditService | undefined;
@@ -1631,7 +1660,7 @@ export class LibraryService {
         // Validierungs-/Detail-Anzeige zeigt „von <Quell-Autor>" mit Vorrang, busFactor/expertise
         // zählen ihn als Träger. KEIN Fake-User. Fehlt der Quell-Autor, bleibt ehrlich der Reviewer.
         author: actor,
-        ...(item.author?.trim() ? { originalAuthor: item.author } : {}),
+        ...quellautorVon(item),
         tags: item.tags ?? [],
         // SCRUM-509 R3: Import ist ein Bulk-/Programmatik-Pfad → konservativ. Fehlt das Governance-Signal,
         // gilt „vertraulich" (NICHT still intern) — importierter Fremdinhalt bleibt bis zur bewussten
@@ -2109,7 +2138,7 @@ export class LibraryService {
         // Der Handelnde ist der Einreichende; der Quellautor reist als `originalAuthor` weiter
         // (Wissensträger — Anzeige und busFactor, keine Autorisierung).
         author: actor,
-        ...(item.author?.trim() ? { originalAuthor: item.author } : {}),
+        ...quellautorVon(item),
         tags: item.tags ?? [],
         // SCRUM-509 R3: JSON-Import ist ein Bulk-Pfad → konservativ „vertraulich" bei fehlendem Signal.
         confidentiality: item.confidentiality ?? "vertraulich",
