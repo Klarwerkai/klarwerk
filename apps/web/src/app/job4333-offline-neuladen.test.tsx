@@ -898,4 +898,26 @@ describe("JOB 4333: Neuladen ohne Netz — die eigene Arbeit bleibt sichtbar", (
       "die Warteschlange wurde beim Wechsel angefasst",
     ).toEqual([VORGANG.id]);
   });
+
+  // ==============================================================================================
+  // AUFTRAG gesamt-ansicht-merken (Befund BEN R1) — GESPERRTER SPEICHER AM ANMELDEZUGANG.
+  // ==============================================================================================
+  //
+  // Schon das Ermitteln des Speichers wirft (Browser-/Origin-Policy). Bei unbeantworteter Sitzung
+  // fragt das Tor `offeneVorgaengeAmGeraet()` — dort riss der Aufbau mit „SecurityError" ab. Ein
+  // unlesbarer Speicher ist kein Beleg für liegende Arbeit: es gilt die Anmeldemaske wie in F4.
+  it("F10 · gesperrter Speicher bei unbeantworteter Sitzung → Anmeldemaske statt Abbruch", async () => {
+    const sperre = vi.spyOn(window, "localStorage", "get").mockImplementation(() => {
+      throw new DOMException("Zugriff gesperrt", "SecurityError");
+    });
+    try {
+      await mount("/mobile");
+
+      expect(anmeldemaskeDa(), "ohne lesbaren Speicher fehlt die Anmeldemaske").toBe(true);
+      expect(erfassungFlaeche(), "die Erfassung steht ohne belegte Arbeit da").toBeNull();
+    } finally {
+      abbauen();
+      sperre.mockRestore();
+    }
+  });
 });
