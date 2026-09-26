@@ -15,7 +15,13 @@
 //   S6  Gegenprobe (K7): die Prüfung aus S5 erkennt einen weggefallenen CAS-Schutz.
 import { beforeEach, describe, expect, it } from "vitest";
 import { InMemoryBearbeitungsRepo } from "../../services/app/src/bearbeitungshinweis";
-import { buildApp, buildServices } from "../../services/app/src/build-app";
+import {
+  assembleServices,
+  buildApp,
+  buildServices,
+  inMemoryRepos,
+} from "../../services/app/src/build-app";
+import type { KnowledgeObject } from "../../services/knowledge-object";
 
 type App = ReturnType<typeof buildApp>;
 
@@ -321,5 +327,70 @@ describe("S6 · Gegenprobe: ohne expectedVersion schlägt die Prüfung aus S5 an
     const { versuche, amServer } = await zweiSpeichern(id, anna.token, bernd.token, false);
     expect(versuche.every((v) => v.status === 200)).toBe(true);
     expect(() => pruefeGenauEinGewinner(versuche, amServer)).toThrow();
+  });
+});
+
+// ================================================================================================
+// S7 · RUNDE 3, BENS BEFUND: DER KONFLIKT, DEN ERST DIE ABLAGE ERKENNT (MEHRERE APP-PROZESSE).
+// ================================================================================================
+//
+// Zwei App-Prozesse lesen dieselbe Fassung; beide bestehen die Fassungsprüfung des Dienstes, und
+// erst der bedingte UPDATE der Ablage weist den zweiten ab (`STALE_WRITE`). Nachgestellt wird das
+// hier mit einer Ablage, in deren `update` GENAU EINMAL ein „anderer Prozess" dazwischenschreibt —
+// über dieselbe Ablage, also mit echtem rowVersion-Schritt. Erwartet wird der Konflikt des
+// direkten Speicherwegs (409 `KO_STALE` mit der jetzt gültigen Fassung), nicht ein 400; der fremde
+// Text bleibt stehen, und es wird nichts wiederholt.
+describe("S7 · STALE_WRITE der Ablage erreicht den Konfliktweg (409), CAS bleibt", () => {
+  it("der dazwischengekommene Text bleibt, die Antwort ist 409 KO_STALE mit currentVersion", async () => {
+    const repos = inMemoryRepos();
+    const echt = repos.koRepo;
+    let dazwischen = false;
+    let schreibversuche = 0;
+    repos.koRepo = Object.assign(Object.create(Object.getPrototypeOf(echt)), echt, {
+      update: async (ko: KnowledgeObject, tx?: unknown): Promise<void> => {
+        schreibversuche++;
+        if (dazwischen) {
+          dazwischen = false;
+          const fremd = await echt.findById(ko.id);
+          if (fremd) {
+            await echt.update({ ...fremd, statement: "Fremder Prozess war schneller." });
+          }
+        }
+        return echt.update(ko, tx as never);
+      },
+    }) as typeof echt;
+    app = buildApp(assembleServices(repos));
+    await app.inject({
+      method: "POST",
+      url: "/api/auth/register",
+      payload: { name: "Pedi", email: "pedi@klarwerk.test", password: "secret123" },
+    });
+    adminToken = await token("pedi@klarwerk.test");
+    const id = await eintrag();
+    const fassung = ((await auf(adminToken, "GET", `/api/kos/${id}`)).json() as { version: number })
+      .version;
+
+    dazwischen = true;
+    const vorher = schreibversuche;
+    const antwort = await app.inject({
+      method: "PUT",
+      url: `/api/kos/${id}`,
+      headers: { authorization: `Bearer ${adminToken}` },
+      payload: {
+        action: "revise",
+        changes: { statement: "Meine Fassung.", type: "best_practice" },
+        expectedVersion: fassung,
+      },
+    });
+    expect(antwort.statusCode, antwort.body).toBe(409);
+    const koerper = antwort.json() as { error: string; currentVersion?: number };
+    expect(koerper.error).toBe("KO_STALE");
+    expect(typeof koerper.currentVersion).toBe("number");
+    // Genau EIN eigener Schreibversuch (plus der fremde darin) — nichts wird still wiederholt.
+    expect(schreibversuche - vorher).toBe(1);
+    const amServer = (
+      (await auf(adminToken, "GET", `/api/kos/${id}`)).json() as { statement: string }
+    ).statement;
+    expect(amServer).toBe("Fremder Prozess war schneller.");
   });
 });
