@@ -1,0 +1,4 @@
+Prüfauftrag pa-1790411945-6b1ecadf abgelegt (Commit 47f60daaf19d997c2a87884af70457dd12adcff7, gezielt: tests-smoke/nutzungshinweis-buehne.spec.ts tests/ux08-quellenhinweis/quellenhinweis-weg-chromium.test.ts tests/ux08-quellenhinweis/texte-nennen-den-weg.test.ts tests/app/external-attach-gate-hint.test.ts tests/i18n-textmodule/bestand-unveraendert.test.ts).
+Stand: läuft auf b6-944da22b29-g2
+Stand: läuft auf b6-944da22b29-g2: Prüfweg 1/2 (tests-smoke/*.spec.ts) ['tests-smoke/nutzungshinweis-buehne.spec.ts']
+Stand: läuft auf b6-944da22b29-g2: Prüfweg 2/2 (*) ['tests/ux08-quellenhinweis/quellenhinweis-weg-chromium.test.ts', 'tests/ux08-quellenhinweis/texte-nennen-den-weg.test.ts', 'tests/app/external-attach-gate-hint.test.ts', 'tests/i18n-textmodule/bestand-unveraendert.test.ts']
