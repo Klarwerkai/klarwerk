@@ -214,6 +214,22 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "PRAEDIKAT",
     grund: "JOB 4151 — Widerruf, kein Löschen; dieselbe Prüfung beider Endpunkte vor der Antwort.",
   },
+  // --- WIKI-BEARBEITUNGSRESERVIERUNG: der Bearbeitungshinweis --------------------------------
+  // Er trägt keinen Inhalt des Eintrags hinaus (nur Name, Beginn, Ablauf) — aber schon „dort
+  // bearbeitet jemand" wäre über ein unsichtbares Objekt eine Existenzauskunft. Alle drei Türen
+  // halten deshalb den Eintrag VOR jeder Antwort gegen dasselbe Prädikat wie der Detailabruf.
+  "GET /api/kos/:id/bearbeitungen": {
+    urteil: "PRAEDIKAT",
+    grund: "Bearbeitungshinweis — darfSehen vor der Ausgabe, sonst 404 wie GET /api/kos/:id.",
+  },
+  "PUT /api/kos/:id/bearbeitungen/:sitzung": {
+    urteil: "PRAEDIKAT",
+    grund: "Bearbeitungshinweis — darfSehen vor dem Schreiben, sonst 404.",
+  },
+  "DELETE /api/kos/:id/bearbeitungen/:sitzung": {
+    urteil: "PRAEDIKAT",
+    grund: "Bearbeitungshinweis — darfSehen vor dem Beenden, sonst 404.",
+  },
   // --- W2-A/148: die Laufdomäne des Imports -------------------------------------------------
   // Der Lauf selbst trägt AUSSCHLIESSLICH Kennungen, Status, Zeitstempel und Zähler — keine Zeile
   // Fachinhalt. `knowledgeObjectId` ist eine Id, kein Inhalt (import-run-routes.ts:88-99).

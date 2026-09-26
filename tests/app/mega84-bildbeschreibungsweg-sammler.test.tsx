@@ -2005,8 +2005,21 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // expected { komponenten: 403, anbieter: 1, …(1) } to deeply equal { komponenten: 402, … }"
     // (Arbeitsprüfung 624ddc26383645d89df830597f0f6c55). Dass `anbieter` und `traeger` dabei
     // UNVERÄNDERT blieben, steht in derselben Meldung — beide Seiten nennen 1 und 2.
+    //
+    // WIKI-BEARBEITUNGSRESERVIERUNG: 403 → 405, und es sind GENAU ZWEI Bauteile in EINER Datei
+    // (`components/bibliothek/Bearbeitungshinweis.tsx`):
+    //     + `Bearbeitungshinweis` — der Hinweis auf eine laufende fremde Bearbeitung und ihr Ende,
+    //       exportiert, genau ein Aufrufer: `BibliothekLesen`.
+    //     + `LesestandSatz` — der Satz „neu gelesen / Lesen gescheitert", nicht exportiert, genau
+    //       ein Aufrufer in derselben Datei.
+    // `anbieter` 1 und `traeger` 2 bleiben unverändert, an der Datei NACHGELESEN: sie enthält weder
+    // `CAPTION_AI_TEXT` noch ein `documentTitle`-Prop noch ein `<img` — nur Text und Knöpfe.
+    //
+    // DIE +2 IST GEMESSEN: das Linux-Tor meldete wörtlich „gemessen: 405 Komponenten · 1 Anbieter
+    // · 2 Traeger … expected { komponenten: 405, … } to deeply equal { komponenten: 403, … }"
+    // (Prüfauftrag lt-1790424665-865dc221).
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 403,
+      komponenten: 405,
       anbieter: 1,
       traeger: 2,
     });

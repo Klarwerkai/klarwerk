@@ -2627,7 +2627,6 @@ export function BibliothekLesen({
             )}
             <Field label={t("capture.fStatement")}>
               <textarea
-                data-testid="bib-aussage"
                 value={edit.statement}
                 onChange={(e) => setEdit({ ...edit, statement: e.target.value })}
                 rows={3}

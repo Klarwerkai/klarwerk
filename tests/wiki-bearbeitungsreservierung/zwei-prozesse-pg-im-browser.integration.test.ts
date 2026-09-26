@@ -208,7 +208,7 @@ const SPEICHERLAGE = `() => {
     lage: t('[data-testid="bib-speichern-lage"]'),
     lageArt: q('[data-testid="bib-speichern-lage"]')?.getAttribute("data-lage") ?? null,
     fehler: t('[data-testid="bib-speichern-fehler"]'),
-    aussage: q('[data-testid="bib-aussage"]')?.value ?? null,
+    aussage: q('[data-testid="bib-lesen"] textarea')?.value ?? null,
   });
 }`;
 const text = (seite: Seite, sel: string): Promise<string | null> =>
@@ -219,7 +219,10 @@ const wert = (seite: Seite, sel: string): Promise<string | null> =>
 const FREMD = '[data-testid="bib-bearbeitung-fremd"]';
 const BEENDET = '[data-testid="bib-bearbeitung-beendet"]';
 const EIGEN = '[data-testid="bib-bearbeitung-eigen"]';
-const AUSSAGE = '[data-testid="bib-aussage"]';
+// Das Aussagefeld ist die ERSTE `textarea` der Lesefläche im Bearbeiten (vor ihr steht nur das
+// Titelfeld, ein `input`). Keine eigene Kennung am Produkt: das Feld ist ein im Register
+// `tests/structure/kd-capture-doppelungen.test.ts` geführter Doppelblock mit dem Erfassen.
+const AUSSAGE = '[data-testid="bib-lesen"] textarea';
 const SPEICHERN = '[data-testid="bib-speichern"]';
 const ABBRECHEN = '[data-testid="bib-bearbeiten-abbrechen"]';
 const KONFLIKT = '[data-testid="bib-speichern-lage"][data-lage="stale"]';
