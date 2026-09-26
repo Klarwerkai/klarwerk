@@ -64,6 +64,12 @@ echter Persistenz und Wiederöffnen“.
   `e4664416077af7a27fba458492d8e99fa1e16483739e9a7205ce1108c8f31edc` = hochgeladene
   `tests/fixtures/sample.docx` (lokal mit `shasum -a 256` gegengeprüft); Gegenprobe mit 936
   Nullbytes zurückgewiesen („erste Abweichung bei Byte 0, SHA-256 4db2fd52… statt e4664416…“).
+* **Runde 3 (nach Zusammenführung mit `c04ec239`, `1.0.0-beta.1.612`, Word-Web/SharePoint-Einbettung
+  inkl. `services/app/src/security-headers.ts`; keine Überschneidung mit diesem Auftrag):**
+  Prüfauftrag `pa-1790430417-477dc94d` (HEAD `781a989a`): C1–C4 4/4 (C2 wieder SHA-256
+  `e4664416…` = hochgeladen, Nullbyte-Gegenprobe zurückgewiesen), `import-wiederoeffnen-pg-im-browser`
+  P1–P6 grün, jsdom 6/6. Lokal `tools/test tests/erfassen-verwerfen-gesamtfehler
+  tests/datei-verlassen-quittung tests/entwurf-verlassen`: 13 Dateien, 89 Tests grün.
 * Lokal (macOS, jsdom): Nachbarbestände `tests/entwurf-verlassen`, `tests/datei-verlassen-quittung`,
   `tests/capture`, `tests/app/navguard*`, `tests/entwuerfe*`, `tests/entwurf*` u. a. — 233 Dateien,
   1902 Tests grün.
