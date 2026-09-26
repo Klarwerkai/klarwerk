@@ -132,6 +132,11 @@ describe("E3 · ungültige Namen werden verworfen, mit Grund protokolliert, nie 
     LANG,
     "",
     "kündé",
+    // Bens Befund E4 (Runde 1): diese drei kamen durch, ihre Herkünfte standen in der Direktive,
+    // die Hostregel lehnte sie aber ab — Regel und Header liefen auseinander.
+    "-",
+    "-kunde",
+    "kunde-",
   ];
 
   it("jede Form hat einen benannten Grund; gültige Namen daneben wirken weiter", () => {
@@ -152,6 +157,10 @@ describe("E3 · ungültige Namen werden verworfen, mit Grund protokolliert, nie 
     expect(gruende[LANG]).toContain("63");
     expect(gruende[""]).toContain("leer");
     expect(gruende.kündé).toContain("Zeichen");
+    for (const bindestrich of ["-", "-kunde", "kunde-"]) {
+      expect(gruende[bindestrich], bindestrich).toContain("Bindestrich");
+      expect(sharepointHerkuenfte([bindestrich]), bindestrich).toEqual([]);
+    }
   });
 
   it("am Draht: nur der gültige Name erscheint; das Startprotokoll nennt jeden Verworfenen", async () => {
@@ -236,15 +245,25 @@ describe("E4 · Regel = Header, auch mit Mandanten", () => {
   });
 
   it("D3 mit Mandanten: jede Herkunft der AUSGELIEFERTEN Direktive beantwortet die Regel gleich", async () => {
-    const { basis } = await starte({ KLARWERK_M365_MANDANTEN: "klarwerktest4711,zweiter" });
-    const mandanten = ["klarwerktest4711", "zweiter"];
+    // Neben dem belegten Mandanten die ANGENOMMENEN Randfälle (ein Zeichen, Ziffer, Bindestrich
+    // innen, doppelter Bindestrich, 63 Zeichen) und die VERWORFENEN Bindestrich-Randfälle aus
+    // Bens Befund E4 — die Direktive darf nur die angenommenen tragen, und für jede ihrer
+    // Herkünfte muss die Regel WAHR sagen.
+    const angenommen = ["klarwerktest4711", "zweiter", "a", "0", "a-b", "a--b", "a".repeat(63)];
+    const env = [...angenommen, "-", "-kunde", "kunde-"].join(",");
+    const { basis } = await starte({ KLARWERK_M365_MANDANTEN: env });
+    const mandanten = leseM365Mandanten(env).mandanten;
+    expect(mandanten).toEqual(angenommen);
     const direktive = frameAncestors((await kopf(basis, TASKPANE)).get("content-security-policy"));
     const teile = (direktive ?? "").split(" ").filter((t) => t.startsWith("https://"));
     const platzhalter = teile.filter((t) => t.startsWith("https://*."));
     const exakt = teile.filter((t) => !t.includes("*"));
     // Kalibrierung: beide Arten sind wirklich da, und keine Herkunft bleibt ungemessen.
     expect(platzhalter.length).toBe(ERLAUBTE_EINBETTUNGS_HOSTS.length);
-    expect(exakt.length).toBe(4);
+    expect(exakt).toEqual(sharepointHerkuenfte(angenommen));
+    expect(exakt.length).toBe(2 * angenommen.length);
+    expect(direktive).not.toContain("https://-");
+    expect(direktive).not.toContain("--my.");
     expect(platzhalter.length + exakt.length).toBe(teile.length);
     for (const quelle of platzhalter) {
       const basisName = quelle.slice("https://*.".length);
@@ -261,10 +280,70 @@ describe("E4 · Regel = Header, auch mit Mandanten", () => {
       expect(istErlaubterEinbettungsHost(`https://pruef.${host}`, mandanten), host).toBe(false);
       expect(istErlaubterEinbettungsHost(`${herkunft}.angreifer.tld`, mandanten), host).toBe(false);
     }
+    // Jede exakte Herkunft gilt NUR mit ihrem eigenen Mandanten, nicht ohne Eintrag.
+    for (const herkunft of exakt) {
+      expect(istErlaubterEinbettungsHost(herkunft), herkunft).toBe(false);
+    }
     // Und keine ausgeschlossene Familie steht als Platzhalter im Header.
     for (const familie of NICHT_FREIGEGEBENE_PLATTFORMFAMILIEN) {
       expect(direktive, familie.familie).not.toContain(`*.${familie.familie}`);
     }
+  });
+});
+
+describe("E4 · Regel = Header für JEDEN Namen — angenommen heißt: jede Herkunft WAHR", () => {
+  it("für jeden Kandidaten gilt: verworfen ⇒ keine Herkunft; angenommen ⇒ beide Herkünfte WAHR", () => {
+    // Die Matrix, die Bens Befund E4 gefunden hätte: sie läuft über Randformen aller Art und
+    // verlangt für JEDEN Namen dieselbe Antwort von Mandantenprüfung, Direktive und Hostregel.
+    const kandidaten = [
+      "a",
+      "0",
+      "ab",
+      "a-b",
+      "a--b",
+      "xn--abc",
+      "a".repeat(63),
+      "a".repeat(64),
+      "-",
+      "--",
+      "-a",
+      "a-",
+      "-a-",
+      "a.b",
+      "a_b",
+      "A-B",
+      " a ",
+      "",
+    ];
+    for (const kandidat of kandidaten) {
+      const { mandanten, verworfen } = leseM365Mandanten(kandidat);
+      const herkuenfte = sharepointHerkuenfte([kandidat]);
+      const direktive = wordAddinFrameAncestors([kandidat]);
+      if (mandanten.length === 0) {
+        expect(herkuenfte, kandidat).toEqual([]);
+        expect(direktive, kandidat).toBe(HEUTE);
+        // Leer heißt „kein Eintrag" und wird nicht als verworfen gemeldet; alles andere schon.
+        expect(verworfen.length > 0 || kandidat === "", kandidat).toBe(true);
+      } else {
+        expect(herkuenfte, kandidat).toHaveLength(2);
+        expect(direktive, kandidat).toBe(`${HEUTE} ${herkuenfte.join(" ")}`);
+        for (const herkunft of herkuenfte) {
+          expect(istErlaubterEinbettungsHost(herkunft, [kandidat]), herkunft).toBe(true);
+        }
+      }
+    }
+    // Kalibrierung: beide Zweige kommen wirklich vor — angenommen sind genau diese neun.
+    expect(kandidaten.filter((k) => sharepointHerkuenfte([k]).length > 0)).toEqual([
+      "a",
+      "0",
+      "ab",
+      "a-b",
+      "a--b",
+      "xn--abc",
+      "a".repeat(63),
+      "A-B",
+      " a ",
+    ]);
   });
 });
 

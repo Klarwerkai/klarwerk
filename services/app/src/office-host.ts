@@ -153,7 +153,10 @@ export interface M365Mandanten {
   readonly verworfen: readonly VerworfenerMandant[];
 }
 
-/** Ein Mandantenname nach Kleinschreibung: nur a–z, 0–9, Bindestrich, 1 bis 63 Zeichen. */
+/**
+ * Ein Mandantenname nach Kleinschreibung: nur a–z, 0–9, Bindestrich, 1 bis 63 Zeichen — und (siehe
+ * `grundGegenMandant`) weder am Anfang noch am Ende ein Bindestrich.
+ */
 const MANDANTENNAME = /^[a-z0-9-]{1,63}$/;
 
 /**
@@ -192,7 +195,23 @@ function grundGegenMandant(name: string): string | undefined {
   if (!MANDANTENNAME.test(name)) {
     return "enthält Zeichen außer a–z, 0–9 und Bindestrich";
   }
+  // Bens Befund E4 (Runde 1): `-`, `-kunde` und `kunde-` kamen hier durch, ihre Herkünfte standen
+  // in der Direktive — die Hostregel (`HOSTNAME`) lehnte sie aber ab. Ein DNS-Bezeichner beginnt und
+  // endet nicht mit einem Bindestrich; ein solcher Name ist also kein Mandant.
+  if (name.startsWith("-") || name.endsWith("-")) {
+    return "beginnt oder endet mit einem Bindestrich";
+  }
+  // Der Riegel dahinter: eine Herkunft kommt NUR in die Direktive, wenn die Hostregel sie auch als
+  // Hostnamen annimmt. So können Direktive und `istErlaubterEinbettungsHost` nicht auseinanderlaufen,
+  // auch wenn eine der beiden Regeln künftig geändert wird.
+  if (!herkuenfteAus(name).every((herkunft) => HOSTNAME.test(herkunft.slice(HTTPS.length)))) {
+    return "ergibt keinen gültigen Hostnamen";
+  }
   return undefined;
+}
+
+function herkuenfteAus(name: string): [string, string] {
+  return [`${HTTPS}${name}.sharepoint.com`, `${HTTPS}${name}-my.sharepoint.com`];
 }
 
 /**
@@ -229,10 +248,7 @@ function pruefeMandanten(eintraege: readonly string[]): M365Mandanten {
  * mit ungeprüften Werten ruft, bekommt für sie nichts — Direktive und Prüfung bleiben fail-closed.
  */
 export function sharepointHerkuenfte(mandanten: readonly string[]): string[] {
-  return pruefeMandanten(mandanten).mandanten.flatMap((name) => [
-    `${HTTPS}${name}.sharepoint.com`,
-    `${HTTPS}${name}-my.sharepoint.com`,
-  ]);
+  return pruefeMandanten(mandanten).mandanten.flatMap(herkuenfteAus);
 }
 
 const HTTPS = "https://";

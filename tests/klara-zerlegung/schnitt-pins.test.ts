@@ -407,6 +407,11 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   // still auf.
   "tests/office-web-anmeldung/einbettung-am-draht.test.ts": "pfad",
   "tests/office-web-anmeldung/manifest-passt-zur-anleitung.test.ts": "pfad",
+  // arbeit:word-web-sharepoint-einbettung-20260926: `sharepoint-mandanten.test.ts` fordert
+  // `/word-addin/taskpane.html` am echten Server an (listen + fetch) und misst die SharePoint-
+  // Herkünfte der eingetragenen Mandanten in `frame-ancestors` — derselbe sachliche Grund wie bei
+  // `einbettung-am-draht.test.ts`. A2 hat sie gemeldet, das Verzeichnis nimmt sie nicht still auf.
+  "tests/office-web-anmeldung/sharepoint-mandanten.test.ts": "pfad",
   // JOB 4076 (15.09.2026, Office-Web Teil 2 — die Sitzungsübergabe aus dem Anmeldedialog): acht
   // weitere Dateien, alle über den Griff `pfad`. Sie zerfallen in drei Sorten, und der Griff greift
   // bei jeder aus einem eigenen Grund:
