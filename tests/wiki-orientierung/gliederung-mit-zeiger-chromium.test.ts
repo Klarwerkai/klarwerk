@@ -328,10 +328,31 @@ describe("DOKUMENT-POINTER · die Gliederung mit echtem Zeiger, schmal und über
     expect(fehler).toBeNull();
     await frischSchmal();
     const s = seite();
+    // ZUERST DAS HINWEISBANNER („Kurz zur Kenntnis“, `legal/NoticeBanner.tsx`) — mit einem echten
+    // Klick bestätigt, wie ein Mensch es tut. Gemessen am Testserver (00911a94): solange es
+    // steht, belegt es den unteren Fensterrand, die Lesefläche endet darüber, und der Hilfe-Knopf
+    // liegt über dem BANNER, nicht über „Drei“. Der Treffertest meldete „Drei“ dort zu Recht als
+    // überdeckt — eine echte Überdeckung, aber nicht die, die Z1 misst.
+    const bannerKnopf = (await s.evaluate(
+      fn(
+        `() => { const b = document.querySelector('[data-testid="notice-ack"]'); if (!b) return null; const r = b.getBoundingClientRect(); const x = r.left + r.width / 2; const y = r.top + r.height / 2; const g = document.elementFromPoint(x, y); return { x: x, y: y, obenauf: !!(g && b.contains(g)) }; }`,
+      ),
+    )) as { x: number; y: number; obenauf: boolean } | null;
+    if (bannerKnopf) {
+      expect(bannerKnopf.obenauf, "der Bestätigungsknopf des Banners ist selbst verdeckt").toBe(
+        true,
+      );
+      await s.mouse.click(bannerKnopf.x, bannerKnopf.y);
+      await s.waitForFunction(
+        fn(`() => !document.querySelector('[data-testid="notice-banner"]')`),
+        undefined,
+        { timeout: 20_000 },
+      );
+    }
     // LAGE HERSTELLEN: „Drei“ auf die Höhe des Hilfe-Knopfs bringen. Zuerst durch Rollen; schlägt
     // das am Dokumentanfang an (die Leiste steht weit oben), wird das Fenster so niedrig gemacht,
     // dass seine Unterkante — und mit ihr der Hilfe-Knopf — auf „Drei“ zu liegen kommt. Die Breite
-    // bleibt 390 px, der Satz bleibt also derselbe.
+    // bleibt 390 px, der Satz bleibt also derselbe; danach wird noch einmal auf die neue Höhe gerollt.
     const soll = SCHMAL.height - HILFE_MITTE_UEBER_UNTERKANTE;
     const erreicht = (await s.evaluate<number>(fn(ROLLEN_AUF), soll)) as number;
     if (Math.abs(erreicht - soll) > 2) {
@@ -340,7 +361,12 @@ describe("DOKUMENT-POINTER · die Gliederung mit echtem Zeiger, schmal und über
         240,
       );
       await s.setViewportSize({ width: SCHMAL.width, height: hoehe });
+      await s.evaluate(fn(ROLLEN_AUF), hoehe - HILFE_MITTE_UEBER_UNTERKANTE);
     }
+    // Die freie Mitte ist VOR dem ersten Klick bedienbar — sonst misst der Rest eine andere Lage.
+    const mitteVorher = await griffMessen(s, "Drei");
+    console.info(`DOKUMENT-POINTER · Z1 · Mitte vorher · ${JSON.stringify(mitteVorher)}`);
+    expect(mitteVorher.bedienbar, `Mitte von „Drei“: ${JSON.stringify(mitteVorher)}`).toBe(true);
     const u = (await s.evaluate<Ueberlagerung>(fn(UEBERLAGERUNG))) as Ueberlagerung;
     console.info(`DOKUMENT-POINTER · Z1 · Überlagerung · ${JSON.stringify(u)}`);
     // Kalibrierung: die Überlagerung ist ECHT — der Hilfe-Knopf schneidet das Knopfrechteck, und an
@@ -375,6 +401,11 @@ describe("DOKUMENT-POINTER · die Gliederung mit echtem Zeiger, schmal und über
     expect(nichts.top as number).toBeGreaterThan(nichts.fenster);
     // Derselbe echte Klick schliesst die Hilfe wieder — die Lage ist danach dieselbe wie vorher.
     await s.mouse.click(punkt.x, punkt.y);
+    await s.waitForFunction(
+      fn(`() => !document.querySelector('section[data-klara="1"]')`),
+      undefined,
+      { timeout: 20_000 },
+    );
 
     // DANN DIE FREIE MITTE: der Treffertest findet „Drei“ obenauf, und der echte Zeiger springt.
     const { griff, ereignisse } = await zeigerKlick(s, "Drei");
