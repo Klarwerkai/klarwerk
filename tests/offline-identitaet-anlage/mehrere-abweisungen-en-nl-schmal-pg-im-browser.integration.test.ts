@@ -38,7 +38,6 @@ import {
   type Seite,
   fn,
   profil,
-  tabBisZu,
   tippeMitTastatur,
   warte,
 } from "../gast-nutzerweg/browserweg";
@@ -202,6 +201,60 @@ async function neuGesendet(draht: Draht, vorher: Draht, was: string): Promise<vo
   );
 }
 
+// ------------------------------------------------------------------------------------------------
+// DER TAB-WEG IM TAKT EINES MENSCHEN — und warum `tabBisZu` allein hier nicht trägt.
+// ------------------------------------------------------------------------------------------------
+//
+// GEMESSEN in Prüflauf pa-1790440661-dc6de05c (und derselbe Befund an JOB 4354 T2 in
+// pa-1790434825-2407df39): Läuft die Tabulatorfolge über das Dokumentende hinaus, verlässt der Fokus
+// die Seite und kehrt beim nächsten Anschlag zurück — das Fenster bekommt `focus`, und
+// `useOfflineQueue` startet dafür einen Nachsendelauf (`onFocus → syncNow`). Solange er läuft, ist
+// der Sendeknopf gesperrt (`disabled={queue.syncing …}`) und damit keine Fokusstation; die
+// abgewiesenen Einträge stehen kurz auf `pending`, ihre Meldungen sind ausgehängt. `tabBisZu` drückt
+// schneller, als ein Lauf dauert: jeder Umlauf löst den nächsten Lauf aus und trifft den Knopf
+// wieder gesperrt — 150 Anschläge ohne Treffer.
+//
+// Hier wird deshalb nach JEDEM Anschlag gewartet, bis kein Lauf mehr unterwegs ist — so, wie ein
+// Mensch nach einem Anschlag hinsieht. Wie oft das Fenster dabei `focus` bekam und wie viele Läufe
+// das auslöste, wird gezählt und gemeldet, nicht verschwiegen.
+async function tabImTakt(
+  seite: Seite,
+  draht: Draht,
+  selektor: string,
+  hoechstens: number,
+  vonVorn: boolean,
+): Promise<{ schritte: number; fensterFokus: number; laeufe: number }> {
+  const zaehler = "() => window.__kwFensterFokus || 0";
+  const vorher = { f: await seite.evaluate<number>(fn(zaehler)), l: draht.anlagen };
+  if (vonVorn) {
+    await seite.evaluate<boolean>(
+      fn("() => { const a = document.activeElement; if (a && a.blur) { a.blur(); } return true; }"),
+    );
+  }
+  const treffer = "(sel) => { const a = document.activeElement; return !!a && a.matches(sel); }";
+  for (let schritte = 1; schritte <= hoechstens; schritte += 1) {
+    await seite.keyboard.press("Tab");
+    await warte(
+      seite,
+      `([s, k]) => {
+        let q = [];
+        try { q = JSON.parse(localStorage.getItem(s) || "[]"); } catch (e) { return false; }
+        const knopf = document.querySelector(k);
+        return q.every((o) => o.status !== "pending") && !!knopf && !knopf.disabled;
+      }`,
+      "nach dem Tab-Anschlag ist kein Nachsendelauf mehr unterwegs",
+      [SCHLUESSEL, KOPFZEILE],
+    );
+    if (await seite.evaluate<boolean>(fn(treffer), selektor)) {
+      const fensterFokus = (await seite.evaluate<number>(fn(zaehler))) - vorher.f;
+      return { schritte, fensterFokus, laeufe: draht.anlagen - vorher.l };
+    }
+  }
+  throw new Error(
+    `${JOB}: „${selektor}" war in ${hoechstens} Tab-Anschlägen (im Takt, ohne laufenden Nachsendelauf) nicht erreichbar.`,
+  );
+}
+
 async function vollstaendig(seite: Seite, selektor: string, was: string): Promise<void> {
   const lage = await seite.evaluate<Lage>(fn(LAGE), selektor);
   expect(lage.da, `${was}: nicht vorhanden (${selektor})`).toBe(true);
@@ -221,7 +274,7 @@ interface Erwartung {
   pEntwurf: string;
 }
 
-async function abnahme(seite: Seite, e: Erwartung, station: string): Promise<void> {
+async function abnahme(seite: Seite, draht: Draht, e: Erwartung, station: string): Promise<void> {
   const tL = i18n.getFixedT(e.sprache);
   const satzR = MELDUNGEN.DRAFT_OWNER_MISMATCH[e.sprache];
   const satzP = MELDUNGEN.DRAFT_NOT_FOUND[e.sprache];
@@ -299,9 +352,12 @@ async function abnahme(seite: Seite, e: Erwartung, station: string): Promise<voi
   ).not.toContain(TITEL_Q);
 
   // (d) PER TASTATUR — echte Tab-Anschläge: bis zum Knopf, dann Meldung für Meldung, jede im Blick.
-  await tabBisZu(seite, KOPFZEILE, 150, true);
+  const weg = await tabImTakt(seite, draht, KOPFZEILE, 150, true);
+  process.stderr.write(
+    `${JOB} ${station} · ${weg.schritte} Tab-Anschläge bis zum Knopf · dabei ${weg.fensterFokus}× Fenster-focus, ${weg.laeufe} Nachsendeläufe ausgelöst\n`,
+  );
   for (const z of zeilen) {
-    const schritte = await tabBisZu(seite, GRUND, 5, false);
+    const { schritte } = await tabImTakt(seite, draht, GRUND, 5, false);
     const aktiv = await seite.evaluate<{ op: string | null; oben: number; unten: number }>(
       fn(AKTIV_OP),
     );
@@ -364,6 +420,11 @@ async function mehrsprachigerWeg(welt: Welt, sprache: Sprache): Promise<void> {
   const kontext = roh as KontextMitWeiche;
   const basis = welt.strecke.basis;
   const draht: Draht = { anlagen: 0, aktualisierungen: 0 };
+  // Zählt, wie oft das FENSTER selbst `focus` bekommt (nicht ein Element darin) — der Anlass, zu dem
+  // `useOfflineQueue` einen Nachsendelauf startet.
+  await kontext.addInitScript(
+    `window.__kwFensterFokus = 0; window.addEventListener("focus", (e) => { if (e.target === window) { window.__kwFensterFokus += 1; } }, true);`,
+  );
 
   try {
     // Genau EIN Feld wird verstellt, und nur an Vorgang R: seine Voraussetzung nennt B.
@@ -467,7 +528,7 @@ async function mehrsprachigerWeg(welt: Welt, sprache: Sprache): Promise<void> {
     await kontext.setOffline(false);
     await beideAbgewiesen(seite, "R und P sind abgewiesen und beide Gründe stehen am Eintrag");
     const erwartung: Erwartung = { sprache, rId, pId, pEntwurf };
-    await abnahme(seite, erwartung, `${sprache} · nach der Abweisung`);
+    await abnahme(seite, draht, erwartung, `${sprache} · nach der Abweisung`);
     await erfolgBleibtZugeordnet(welt, `${sprache} · nach der Abweisung`);
 
     // 5. NEULADEN — der Aufbau-Anlauf sendet beide erneut; nichts darf vertauscht ankommen.
@@ -477,16 +538,18 @@ async function mehrsprachigerWeg(welt: Welt, sprache: Sprache): Promise<void> {
     await seite.reload({ waitUntil: "domcontentloaded" });
     await neuGesendet(draht, vorNeuladen, "nach dem Neuladen");
     await beideAbgewiesen(seite, "nach dem Neuladen sind R und P erneut abgewiesen");
-    await abnahme(seite, erwartung, `${sprache} · nach dem Neuladen`);
+    await abnahme(seite, draht, erwartung, `${sprache} · nach dem Neuladen`);
     await erfolgBleibtZugeordnet(welt, `${sprache} · nach dem Neuladen`);
 
-    // 6. ERNEUTER VERSUCH — per Tastatur am Knopf der Warteschlange.
+    // 6. ERNEUTER VERSUCH — per Tastatur am Knopf der Warteschlange. Der Zählerstand wird erst
+    // NACH dem Weg zum Knopf genommen: ein Lauf, den der Weg selbst auslöst (Fenster-`focus`), ist
+    // kein Beleg für den Knopf.
+    await tabImTakt(seite, draht, KOPFZEILE, 150, true);
     const vorVersuch = { ...draht };
-    await tabBisZu(seite, KOPFZEILE, 150, true);
     await seite.keyboard.press("Enter");
     await neuGesendet(draht, vorVersuch, "nach Enter am Knopf");
     await beideAbgewiesen(seite, "nach dem erneuten Versuch sind R und P erneut abgewiesen");
-    await abnahme(seite, erwartung, `${sprache} · nach dem erneuten Versuch`);
+    await abnahme(seite, draht, erwartung, `${sprache} · nach dem erneuten Versuch`);
     await erfolgBleibtZugeordnet(welt, `${sprache} · nach dem erneuten Versuch`);
 
     process.stderr.write(
