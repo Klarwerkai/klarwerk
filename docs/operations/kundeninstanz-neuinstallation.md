@@ -1,7 +1,12 @@
 # Eine neue Kundeninstanz aufsetzen (Linux + Docker Compose)
 
 **Zweck:** Von einer leeren Linux-Maschine zu einer benutzbaren, isolierten KLARWERK-Instanz —
-eigene Datenbank, eigene Domain, eigener erster Administrator. Stand: 16.09.2026 (JOB 4201).
+eigene Datenbank, eigene Domain, eigener erster Administrator. Stand: 16.09.2026 (JOB 4201),
+fortgeschrieben am 25.09.2026: der ganze Weg — leere Compose-Installation, HTTPS im echten Browser,
+Neustart von Anwendung **und** Datenbank — ist als ausführbare Prüfstrecke hinterlegt (§9).
+**Ein erfolgreicher Lauf dieser Strecke liegt noch nicht vor** (Laufstand in §9.1). Bis dahin ist
+alles, was hier über Compose-Aufbau, Abbild, Browser/TLS und den Neustart beider Dienste steht, eine
+Beschreibung des vorgesehenen Wegs, **keine Messung**.
 
 **Was Sie am Ende haben:** eine laufende Instanz, in der Sie sich anmelden, ein Wissensobjekt mit
 Quelle und Anhang erfassen und nach einem Neustart von Anwendung **und** Datenbank alles unverändert
@@ -38,13 +43,21 @@ nicht hier improvisieren):
 Nur das, was wirklich gebraucht wird:
 
 1. Eine Linux-Maschine mit **Docker** und **Docker Compose** (`docker compose version` antwortet).
+   Die Prüfstrecke (§9) richtet auf Ubuntu 24.04 die Pakete der Distribution ein: `docker.io`,
+   `docker-compose-v2` und `docker-buildx` (`sudo apt-get install docker.io docker-compose-v2
+   docker-buildx`). Ein erfolgreicher Lauf damit steht noch aus (§9.1).
 2. Eine **Domain**, die auf diese Maschine zeigt, und ein **TLS-Proxy davor** (siehe §5 —
-   das ist keine Empfehlung, sondern Bedingung).
-3. Dieses Repository auf der Maschine (die Compose-Datei baut das Abbild selbst).
+   das ist keine Empfehlung, sondern Bedingung; §5.2 beschreibt den Proxy der Prüfstrecke).
+3. Dieses Repository auf der Maschine (die Compose-Datei baut das Abbild selbst) — sauber, in genau
+   der Fassung, die Sie installieren wollen (z. B. `git clone` bzw. `git archive <commit>`).
 
-**Keine Angabe zu CPU, RAM oder Plattenplatz.** Eine solche Zahl ist im Repo nirgends gemessen;
-sie hier zu erfinden, wäre eine Zusage ohne Grundlage. Der Container bringt LibreOffice Impress und
-poppler mit (für die Folienausgabe) — das ist der größte Einzelposten des Abbilds.
+**Keine Mindestangabe zu CPU, RAM oder Plattenplatz.** Die Prüfstrecke (§9) schreibt in ihren
+Beleg, auf welchem Platz sie lief (Kerne, Arbeitsspeicher, freier Platz unter dem
+Docker-Verzeichnis, Dauer des Abbildbaus). Ein **erfolgreicher** Lauf — und damit ein Platz, auf dem
+es nachweislich ging — liegt noch nicht vor (§9.1). Auch ein künftiger erfolgreicher Lauf belegt nur
+**einen** Platz, keine Mindestanforderung.
+Der Container bringt LibreOffice Impress und poppler mit (für die Folienausgabe) — das ist der
+größte Einzelposten des Abbilds.
 
 ---
 
@@ -97,9 +110,12 @@ APP_BASE_URL=
 > dann — und die neue Kundeninstanz zeigte still auf eine fremde Adresse. Der Vorgabewert ist
 > entfernt; `APP_BASE_URL` ist jetzt eine echte Pflichtangabe des Ein-Befehl-Weges.
 >
-> **Ein Rest bleibt, und er steht hier offen:** `.env.example` enthält die Vorführ-Adresse als
-> Beispielwert. Wer `.env` daraus ableitet und die Zeile **nicht ersetzt**, hat einen gesetzten
-> Wert — und kommt an der Pflichtprüfung vorbei. Prüfen Sie diese Zeile.
+> **Der Rest ist seit dem 25.09.2026 geschlossen:** `.env.example` enthielt die Vorführ-Adresse als
+> Beispielwert; wer `.env` daraus ableitete und die Zeile nicht ersetzte, kam an der Pflichtprüfung
+> vorbei. Die Zeile steht dort jetzt **leer**. Eine unverändert übernommene `.env.example` bricht
+> `docker compose` damit genauso ab wie ein fehlender Wert. Die Prüfstrecke misst das am echten `up`
+(§9, K6a); ein erfolgreicher Lauf steht noch aus (§9.1). Dass die Compose-Datei bei leerem Wert
+abbricht, belegt schon heute N2 (`docker compose config`).
 
 ### 2.2 `CANONICAL_HOST` — im Zweifel: **nicht anfassen**
 
@@ -139,9 +155,17 @@ Praktisch:
 ### 2.3 `SMTP_HOST` und `SMTP_FROM`
 
 Ohne Postausgangsserver gibt es **keinen Mailversand**: Kennwort-Zurücksetzen und Benachrichtigungen
-erreichen niemanden; die Mail landet nur im Protokoll. Die Instanz läuft trotzdem, Kennwörter setzt
-dann ein Administrator. Die Vorgabe-Absenderadresse `noreply@klarwerk.ai` ist für eine eigene Domain
-meist falsch — `SMTP_FROM` mitsetzen.
+erreichen niemanden. **Die Mail steht dann auch nicht im Protokoll** — sie wird nur im Arbeitsspeicher
+der Anwendung abgelegt und ist nirgends lesbar (`ConsoleMailer` in
+`services/notifications/src/mailer.ts`; bis zum 25.09.2026 stand hier fälschlich, sie lande im
+Protokoll). Die Instanz läuft trotzdem, Kennwörter setzt dann ein Administrator. Die
+Vorgabe-Absenderadresse `noreply@klarwerk.ai` ist für eine eigene Domain meist falsch — `SMTP_FROM`
+mitsetzen.
+
+Wohin der Kennwort-Link einer Mail zeigt, misst die Prüfstrecke (§9, K6c): ein eigener
+Test-Empfänger (`SMTP_HOST=mailfalle`, `SMTP_PORT=2525`) nimmt die echte Mail der Instanz an, und
+der Link muss auf `<APP_BASE_URL>/reset` und auf keine andere Adresse zeigen. Echte Mails verlassen
+dabei den Prüfplatz nicht. Ein erfolgreicher Lauf steht noch aus (§9.1).
 
 ### 2.4 Was Sie auf diesem Weg **nicht** über `.env` steuern
 
@@ -170,6 +194,12 @@ in die `.env` auf der Maschine, **niemals ins Repository**.
 ```bash
 docker compose -f docker-compose.prod.yml up -d --build
 ```
+
+Mit `-p <projektname>` (z. B. `docker compose -p klarwerk -f docker-compose.prod.yml up -d --build`)
+geben Sie der Instanz einen festen Projektnamen; ohne ihn nimmt Compose den Ordnernamen. Der Name
+bestimmt, wie Container, Netz (`<projektname>_default`), Datenvolume (`<projektname>_pgdata`) und
+das gebaute Abbild (`<projektname>-app`) heißen. Verwenden Sie danach bei **jedem** Befehl denselben
+Namen. Der Prüfplatz (§9) fährt genau diesen Befehl, mit einem je Lauf eindeutigen Namen.
 
 Der erste Lauf baut das Abbild und lädt Pakete; das dauert einige Minuten. Danach:
 
@@ -219,6 +249,8 @@ für Gäste bitte **befristet**.
 
 ## 5. TLS ist keine Option
 
+### 5.1 Warum
+
 Die Compose-Datei setzt `COOKIE_SECURE` auf `true`, und der `Dockerfile` setzt `NODE_ENV` auf
 `production`. In Produktion wird das Secure-Flag am Sitzungsplätzchen **erzwungen**; abschalten
 lässt es sich nicht — ein ausdrückliches `COOKIE_SECURE=false` **bricht den Start ab**
@@ -230,16 +262,71 @@ das Plätzchen aber stillschweigend, und Sie landen sofort wieder auf der Anmeld
 **kein** Kennwortfehler. Setzen Sie einen TLS-Proxy davor und rufen Sie die Instanz über `https://`
 auf.
 
+### 5.2 Der TLS-Proxy der Prüfstrecke: Caddy im Netz der Instanz
+
+Das ist der Proxy, mit dem die Prüfstrecke (§9) die Instanz im echten Browser bedient — bis zu
+einem erfolgreichen Lauf (§9.1) beschrieben, nicht gemessen. Er läuft als
+eigener Container **im Compose-Netz der Instanz** und reicht an den Dienst `app` auf Port 3001
+weiter; die Anwendung selbst bleibt unverändert.
+
+1. Zertifikat und Schlüssel für Ihren Namen in einen Ordner legen, als `instanz.pem` und
+   `instanz-key.pem`. Der Prüfplatz erzeugt dafür je Lauf eine eigene Test-CA und stellt damit ein
+   Zertifikat für `kundeninstanz.pruefplatz.test` aus; im Betrieb ist es das Zertifikat Ihrer Domain.
+2. Daneben eine Datei `Caddyfile` mit genau diesem Inhalt (den Namen durch Ihren ersetzen):
+
+<!-- caddyfile-eigenes-zertifikat -->
+```caddyfile
+{
+	auto_https disable_redirects
+	admin off
+}
+https://kundeninstanz.pruefplatz.test {
+	tls /certs/instanz.pem /certs/instanz-key.pem
+	reverse_proxy app:3001
+}
+```
+
+3. Den Proxy starten — `<projekt>` ist der Projektname aus §3:
+
+```bash
+docker run -d --name <projekt>-tls --restart unless-stopped \
+  --network <projekt>_default -p 127.0.0.1:443:443 \
+  -v /pfad/zum/zertifikatsordner:/certs:ro -v /pfad/zur/Caddyfile:/etc/caddy/Caddyfile:ro \
+  caddy:2-alpine
+```
+
+`127.0.0.1:443` hält den Proxy zunächst **nur lokal** erreichbar — das ist die Reihenfolge aus §4
+(Ersteinrichtung, bevor die Adresse öffentlich wird). Danach die Portabbildung auf `443:443`
+umstellen und den Container neu anlegen.
+
+**Nicht gefahren und deshalb nicht zugesagt:** Caddy mit automatisch bezogenem Zertifikat für eine
+öffentliche Domain (ein `Caddyfile` ohne `tls`-Zeile). Das ist der übliche Weg, braucht aber eine
+echte, öffentlich erreichbare Domain — die hat der Prüfplatz nicht.
+
+**Woran Sie sehen, dass es stimmt:** Der Browser öffnet `https://<ihr-name>/` ohne Warnung und zeigt
+die Ersteinrichtung bzw. die Anmeldung. Die Prüfstrecke misst zusätzlich die Gegenrichtung: ein
+Browserprofil, das der Test-CA **nicht** vertraut, bekommt die Seite nicht (Zertifikatsfehler) —
+die Prüfung des Zertifikats ist also wirklich an.
+
 ---
 
 ## 6. Neustart
 
+Der Weg der Prüfstrecke beendet **beide** Dienste und startet sie wieder:
+
 ```bash
-docker compose -f docker-compose.prod.yml restart
+docker compose -f docker-compose.prod.yml stop
+docker compose -f docker-compose.prod.yml start
 ```
 
-Erwartet: Konten, Wissensobjekte, Quellen, Anhänge und Rechte sind unverändert da; bestehende
-Anmeldungen gelten weiter (die Sitzungen liegen in der Datenbank, nicht im Prozess).
+`stop`/`start` behalten Container und das Volume `pgdata`; nichts wird neu aufgebaut. Danach meldet
+der Anwendungscontainer nach kurzer Zeit wieder `healthy` (`docker compose -f
+docker-compose.prod.yml ps`), und die Instanz ist über den TLS-Proxy wieder erreichbar — der
+Proxy selbst läuft dabei weiter und antwortet in der Zwischenzeit mit einem Fehler (502).
+
+Erwartet: Konten, Wissensobjekte, Quellen, Anhänge und Rechte sind unverändert da; die
+Ersteinrichtung wird **nicht** erneut verlangt. Bestehende Anmeldungen gelten weiter (die Sitzungen
+liegen in der Datenbank, nicht im Prozess — gemessen in N1).
 
 **Was davon belegt ist — und womit.** „Neustart" ist dreierlei, und die Belege sind unterschiedlich
 stark. `tests/neuinstallation/erstinstallation.integration.test.ts` trennt das ausdrücklich:
@@ -249,10 +336,11 @@ stark. `tests/neuinstallation/erstinstallation.integration.test.ts` trennt das a
 | Anwendung neu **aufgebaut** (gleicher Prozess) | N1 | Bestand, Quelle, Anhangszuordnung, Rechte und Sitzungen kommen aus der Datenhaltung, nicht aus dem Arbeitsspeicher. |
 | Anwendungs**prozess** neu gestartet | N3 | Der Produktionseinstieg (`server.ts`, `NODE_ENV=production`) fährt über einen echten Socket gegen den vorhandenen Bestand wieder hoch; die Datei kommt über `/api/objects/:id/raw` **Byte für Byte** zurück. |
 | **Datenbankdienst** neu gestartet | N1, aber nur wo der Testlauf die Datenbank selbst betreibt | Läuft der Test gegen eine vorgegebene PostgreSQL, wird deren Dienst **nicht** angefasst; der Lauf meldet das sichtbar. |
+| **Der ganze Weg dieser Anleitung**: `up -d --build` aus einem leeren Stand, gebautes Abbild, TLS-Proxy, Chromium über HTTPS, `stop`/`start` beider Dienste | Kundeninstallations-Strecke (§9), K1–K7 — **noch kein erfolgreicher Lauf** (§9.1) | Container-Lebenszyklus (Startzeit, Prozess) **beider** Container und die Startzeit des PostgreSQL-Servers ändern sich, Container und Volume bleiben dieselben; ein neues Browserprofil meldet sich neu an und findet Dokument, Fassung, Text, Quelle und die Datei (SHA-256) unverändert; der Betrachter hat dieselben Rechte. |
 
-Was **nicht** gemessen ist und deshalb hier nicht zugesagt wird: der Aufbau über `docker compose`
-selbst, das gebaute Abbild, Browser und TLS. Der Befehl oben ist der richtige Weg — sein Ergebnis
-auf Ihrer Maschine ist Ihre Messung, nicht unsere.
+Aufbau über `docker compose`, gebautes Abbild, Browser und TLS sind damit als Prüfstrecke
+**vorgesehen**, aber **noch nicht gemessen**: ein erfolgreicher Lauf liegt nicht vor (§9.1). Ihr Lauf
+auf Ihrer Maschine bleibt Ihre Messung.
 
 Die Daten liegen im Docker-Volume `pgdata`. **Löschen Sie es nie** ohne Sicherung —
 `docker compose down -v` entfernt es mit.
@@ -272,17 +360,82 @@ Die Daten liegen im Docker-Volume `pgdata`. **Löschen Sie es nie** ohne Sicheru
 | Der Start bricht mit `KLARWERK-Start abgebrochen: … Pflichtwert(e)` ab | Der Startvertrag der Anwendung — er nennt **alle** fehlenden Namen auf einmal. | Alle genannten Werte nachtragen. |
 | Nach dem Start ist der Port nicht erreichbar | Die Instanz horcht auf 3001; ein Proxy oder eine Firewall trifft einen anderen Port. | Proxy auf 3001 richten; siehe `docs/operations/server-hardening-readiness.md`. |
 | Die Ersteinrichtung ist schon weg (409) | Jemand war schneller — oder Sie haben sie bereits durchgeführt. | Wenn Sie es nicht waren: Instanz sofort vom Netz nehmen, Datenbank verwerfen, neu aufsetzen und §4 einhalten. |
+| Der Browser meldet einen Zertifikatsfehler | Das Zertifikat am Proxy passt nicht zum Namen, ist abgelaufen oder stammt von einer Stelle, der der Browser nicht vertraut. | Zertifikat für genau den Namen aus `APP_BASE_URL` ausstellen; bei einer eigenen CA deren Stammzertifikat im Browser bzw. System hinterlegen (§5.2). Nicht „trotzdem fortfahren" — dann prüft niemand. |
+| Über HTTPS kommt 502 | Der Proxy läuft, die Anwendung (noch) nicht — etwa kurz nach `start` (§6). | `docker compose -f docker-compose.prod.yml ps` abwarten, bis `app` `healthy` meldet. |
 
 ---
 
 ## 8. Ehrliche Grenzen dieses Textes
 
-- **Nicht gemessen und deshalb nicht zugesagt:** wie lange der erste Build auf Ihrer Maschine
-  dauert, welche Hardware reicht, und ob Ihr Proxy TLS korrekt terminiert. Das ist
-  Laufzeitkonfiguration außerhalb dieses Repositorys.
+- **Nicht gemessen und deshalb nicht zugesagt:** wie lange der erste Build auf **Ihrer** Maschine
+  dauert, welche Hardware **mindestens** reicht, und ob **Ihr** Proxy TLS korrekt terminiert. Ein
+  erfolgreicher Lauf der Prüfstrecke (§9) würde Platz und Dauer eines Prüfplatzes belegen; er liegt
+  noch nicht vor (§9.1).
 - Der Abbruch des Ein-Befehl-Weges bei fehlender Pflichtangabe ist als Fall **N2** in
   `tests/neuinstallation/erstinstallation.integration.test.ts` hinterlegt. Auf einer Maschine
   **ohne** `docker compose` meldet dieser Lauf den Grund sichtbar und überspringt — ein
   übersprungener Lauf ist kein bestandener.
+  Auf dem Prüfplatz misst die Strecke aus §9 denselben Abbruch am echten `up` (K6a) — dort ohne
+  Übersprung.
 - SSO/OIDC, eine echte Microsoft-365-Anbindung, SMTP im Echtbetrieb, Skalierung und Monitoring sind
   eigene Themen und hier bewusst nicht beschrieben.
+
+---
+
+## 9. Der Prüfweg: die ganze Strecke als ausführbare Prüfung
+
+`tests/neuinstallation/kundeninstallation-strecke.integration.test.ts` fährt diese Anleitung auf
+einem Prüfplatz von vorn bis hinten. **Als gemessen gilt der Weg erst mit einem erfolgreichen,
+revisionsgebundenen Lauf (§9.1)** — die Strecke allein ist kein Nachweis. Gestartet wird sie von `tools/kundeninstallation.sh`, der
+letzten Stufe von `tools/check`.
+
+**Wo sie Pflicht ist.** Auf Linux mit gesetztem `CI` (der Cloud-Prüfweg, CI-Läufer) — dort ist ein
+Platz, der die Strecke nicht trägt, **rot**, nicht übersprungen. Auf einem Mac-Arbeitsplatz läuft
+sie nicht; `tools/check` druckt das aus, und ein solcher Lauf ist für diese Strecke **kein**
+Nachweis. Von Hand erzwingen: `KLARWERK_KUNDENINSTALLATION=pflicht tools/kundeninstallation.sh`.
+
+**Was der Platz braucht — und was der Lauf dafür tut.** Docker mit Compose, `openssl`, `certutil`
+(Paket `libnss3-tools`) und Chromium (`npx playwright install chromium`). Fehlt Docker und ist
+`sudo` ohne Passwort möglich, richtet der Lauf es aus der Paketverwaltung ein (die Pakete aus §1);
+jeder Einrichtungsschritt steht im Beleg. Ohne Docker und ohne diese Möglichkeit ist der Platz
+ungeeignet — rot.
+
+**Der Weg, so wie die Strecke ihn fährt:**
+
+| Schritt | Was geschieht | Was belegt wird |
+|---|---|---|
+| Leerer Platz | eindeutiger Projektname `kn-kundeninst-<zeit>-<zufall>`; Installationsordner per `git archive` aus genau dem geprüften Commit | Commit und Tree, Platzbefund (Host, Kernel, Kerne, RAM, freier Platz, Docker-/Compose-/Buildx-Fassung, Gesamtbestand), **kein** Container/Volume/Netz/Abbild dieses Projekts |
+| K6a | `.env` ohne `APP_BASE_URL`, ohne `POSTGRES_PASSWORD` und unverändert aus `.env.example` → `up -d --build` | Abbruch mit dem Namen des Wertes, danach weiterhin nichts angelegt |
+| K1 | `.env` wie §2.0 (plus Test-Mailempfänger, §2.3) → `docker compose -p <projekt> -f docker-compose.prod.yml up -d --build` | Abbild-ID des gebauten `<projekt>-app`, Bauzeit, `healthy`, `/health`, „Datenhaltung: Postgres", Datenbank `klarwerk_prod`, Volume `<projekt>_pgdata`, `COOKIE_SECURE=true`, kein KI-Schlüssel |
+| TLS | Test-CA und Serverzertifikat je Lauf; Caddy aus §5.2 mit **genau dem** `Caddyfile` dieser Anleitung | Fingerabdrücke (SHA-256) von CA und Serverzertifikat; Vertrauensweg: CA im NSS-Speicher des Browserprofils |
+| K6b | das gebaute Abbild ohne Pflichtwerte gestartet | Abbruch mit „KLARWERK-Start abgebrochen" und den fehlenden Namen |
+| K2 | frisches Chromium-Profil über HTTPS: Ersteinrichtung, Anmeldung; zweites Profil versucht die Ersteinrichtung erneut; Betrachter über „Nutzer hinzufügen" | Profil ohne Test-CA bekommt einen Zertifikatsfehler; Sitzungsplätzchen `Secure` und `HttpOnly`; zweiter Versuch 409, genau ein Administrator |
+| K3 | Dokument mit festem Unicode-Text über das Blatt, Bild-Anhang (SHA-256 vorab festgehalten), Quelle am Anhang | nach Neuladen über die Oberfläche: Kennung, Fassung (Historie), Titel/Text, Quelle mit Anhang, heruntergeladene Bytes |
+| K5 | Betrachter liest; versucht eine Quelle anzuhängen; fragt einen vertraulichen Kontrolleintrag und dessen Datei direkt ab | Lesen gleich, Änderung 403, danach unverändert; Kontrolleintrag und Datei 404, Seite gesperrt |
+| K6c | „Passwort vergessen?" für den Betrachter | Link der echten Mail zeigt auf `APP_BASE_URL` + `/reset`; die eigene Adresse wird nicht umgeleitet |
+| K4 | `stop`/`start` wie §6, dann neues Profil, neue Anmeldung | Startzeit und Prozess beider Container und `pg_postmaster_start_time()` neu, Container und Volume gleich; alles aus K3 unverändert; K5 erneut |
+| K7 | Gegenproben im eigenen Aufbau: nur `restart app`; Dateizeile vor einem Neustart beiseitegelegt | genau „DB-Neustart" bzw. genau „Datei" rot, alles andere grün; Rücknahme, danach grün |
+| Bereinigung | eigene Container (`<projekt>-tls`, `<projekt>-mailfalle`), `down -v --rmi local` für das Projekt, Arbeitsordner | danach kein Container/Volume/Netz/Abbild dieses Projekts; fremde Abbilder bleiben |
+
+**Wo die Belege liegen.** Am Ende druckt der Lauf seinen Beleg zwischen
+`[KLARWERK · Kundeninstallation] BELEG` und `… BELEG ENDE` in die Ausgabe von `tools/check`
+(der Cloud-Prüfweg sichert diese Ausgabe samt Prüfsummen außerhalb des Servers) und legt ihn
+zusätzlich unter `.local/logs/kundeninstallation/<kennung>.json` (nicht versioniert) ab. Passwörter werden je Lauf
+erzeugt und im Beleg geschwärzt; der Kennwort-Link erscheint nur als Adresse ohne Token.
+
+### 9.1 Laufstand
+
+Nur ein Lauf mit Ausgang „bestanden" für einen bestimmten Commit — mit `ergebnis.json`,
+`ausgabe.txt`, geprüftem HEAD und dem Beleg der Strecke (§9) — macht die Aussagen dieser Anleitung
+über Compose, Abbild, Browser/TLS und Neustart zu einer Messung. Stand 25.09.2026:
+
+| Prüfauftrag | Commit | Ausgang |
+|---|---|---|
+| `pa-1790327971-78504ec0` | 7481c3d7 | **kein Lauf der Strecke.** Die Tor-Selbstprüfung des Testservers am Ausgangsstand 61a09266 war rot (auftragsfremde Tests, u. a. `apps/web/src/auth/job2686-klick-bis-sitzung.test.tsx`); die Steuerung hat die Prüfumgebung als defekt gemeldet und den Commit nicht geprüft; der Auftrag wurde später als „ersetzt" geschlossen. |
+| `pa-1790334899-64290c4d` | e349c532 (festgehaltene Fassung Runde 1) | **kein Lauf der Strecke** — dieselbe Meldung „Prüfumgebung defekt". Die Strecke hätte außerdem am TLS-Schritt abgebrochen (fehlender Zertifikatsordner, seitdem behoben und in `tests/neuinstallation/kundeninstallation-nachweise.test.ts` gemessen). |
+| `pa-1790335469-1acf28a2` | 4b083cf1 | **kein Lauf der Strecke** — „Prüfumgebung defekt"; später „ersetzt". |
+| `pa-1790336130-047a9462` | 43c3e565 (festgehaltene Fassung Runde 2) | **kein Lauf der Strecke** — „Prüfumgebung defekt"; beim Aufrufer Wartezeit abgelaufen (Exit 3), kein `ergebnis.json`. |
+
+Solange hier kein bestandener Lauf steht, ist die Kundeninstallation über Compose/HTTPS/Neustart
+**nicht nachgewiesen**.
+

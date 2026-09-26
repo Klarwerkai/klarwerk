@@ -1,4 +1,12 @@
 import { defineConfig } from "vitest/config";
+import { streckeBenannt } from "./tests/neuinstallation/kundeninstallation/pflicht";
+
+// Die Kundeninstallations-Strecke ist Pflicht, sobald sie ausdruecklich benannt aufgerufen wird
+// (Begruendung in tests/neuinstallation/kundeninstallation/pflicht.ts). Nur der Hauptprozess kennt
+// die Kommandozeile; die Testarbeiter erben diese Umgebung.
+if (streckeBenannt(process.argv.slice(2))) {
+  process.env.KLARWERK_KUNDENINSTALLATION ??= "pflicht";
+}
 
 // Eigener Lauf für Integrationstests gegen echte Infrastruktur (Postgres via Testcontainers).
 // Braucht einen laufenden Docker-Daemon. Aufruf: `npm run test:integration`.

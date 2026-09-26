@@ -12,7 +12,12 @@ Secrets). Paul liefert Repo-Bausteine (Dockerfile, dieses Runbook) und hilft bei
 > Wer eine **eigenständige Kundeninstanz** auf einer leeren Linux-Maschine aufsetzt (Docker
 > Compose, eigene Datenbank, eigene Domain), folgt stattdessen
 > `docs/operations/kundeninstanz-neuinstallation.md`. Dort steht auch, was der Ein-Befehl-Weg
-> zwingend verlangt und woran ein Fehlstart zu erkennen ist.
+> zwingend verlangt und woran ein Fehlstart zu erkennen ist. Seit dem 25.09.2026 ist jener Weg
+> als ausführbare Prüfstrecke hinterlegt — leere Compose-Installation, TLS-Proxy, Ersteinrichtung
+> und Erfassung im echten Browser, Neustart von Anwendung und Datenbank (dort §9). **Ein
+> erfolgreicher Lauf liegt noch nicht vor** (dort §9.1); gemessen ist der Weg erst damit. Für
+> **dieses** Runbook gilt die Strecke ohnehin nicht: der Coolify-Betrieb baut über das `Dockerfile`,
+> und sein TLS/Proxy ist hier nicht gemessen.
 > Der Mac-Studio-Weg („Insel", nativ, ohne Docker) ist ein drittes Thema und steht in
 > `scripts/insel/README.md`.
 
