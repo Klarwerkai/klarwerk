@@ -72,6 +72,10 @@ import i18n from "../../apps/web/src/i18n";
 import { isAdminFirstRun, markAdminFirstRunSeen } from "../../apps/web/src/lib/adminFirstRun";
 import { safeLocalStorage } from "../../apps/web/src/lib/persistentToggle";
 import {
+  OFFLINE_WARTESCHLANGE_SCHLUESSEL,
+  offeneVorgaengeAmGeraet,
+} from "../../apps/web/src/lib/sessionState";
+import {
   isStartOrientationFirstRun,
   markStartOrientationSeen,
 } from "../../apps/web/src/lib/startOrientation";
@@ -165,6 +169,19 @@ describe("„schon gesehen“-Merker ohne Browserspeicher", () => {
   it("M2 · die Sperre trifft auch die Grenze, über die die Startseite jetzt liest", () => {
     speicherGesperrt();
     expect(safeLocalStorage()).toBeUndefined();
+  });
+
+  // Befund BEN R1: das Tor fragt bei unbeantworteter Sitzung diese Zählung — der gemountete
+  // Torweg steht als F10 in `apps/web/src/app/job4333-offline-neuladen.test.tsx`.
+  it("M7 · Zählung liegender Arbeit: gesperrter Getter ergibt 0 statt SecurityError", () => {
+    window.localStorage.setItem(
+      OFFLINE_WARTESCHLANGE_SCHLUESSEL,
+      JSON.stringify([{ id: "op-1", kind: "draft.create", status: "queued" }]),
+    );
+    expect(offeneVorgaengeAmGeraet(), "Kalibrierung: lesbarer Speicher zählt").toBe(1);
+    speicherGesperrt();
+    expect(() => offeneVorgaengeAmGeraet()).not.toThrow();
+    expect(offeneVorgaengeAmGeraet()).toBe(0);
   });
 
   it("M3 · Startseite rendert mit gesperrtem Speicher vollständig (Admin, wiederkehrend)", async () => {
