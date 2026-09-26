@@ -115,15 +115,21 @@ describe("mega16 Block A: der Grund ist in DE/EN/NL da und nennt den Weg zur Än
     }
   });
 
-  it("der Weg zur Änderung steht wirklich drin — Verwaltung → Externes Wissen", () => {
-    const WEG: Record<(typeof LANGS)[number], string> = {
-      de: "Verwaltung",
-      en: "Administration",
-      nl: "Beheer",
+  // UX-08 (Quellenhinweis-Hälfte): der Weg heisst so, wie ihn ein Administrator anklickt —
+  // Seitentitel › Reiter › Zeile. Die Namen werden aus dem Katalog GELESEN, nicht abgeschrieben.
+  // Das frühere Zwischenziel „Verwaltung → Externes Wissen“ gab es als Menüweg nicht.
+  it("der Weg zur Änderung steht wirklich drin — Einstellungen → KI → Externe Wissensabfrage", () => {
+    const ALT: Record<(typeof LANGS)[number], string> = {
+      de: "Verwaltung → Externes Wissen",
+      en: "Administration → External knowledge",
+      nl: "Beheer → Externe kennis",
     };
     for (const lang of LANGS) {
+      const t = i18n.getFixedT(lang);
+      const weg = [t("einst.titel"), t("adm.sec.ki"), t("adm.ext.title")].join(" → ");
       const bundle = i18n.getResourceBundle(lang, "translation") as Record<string, string>;
-      expect(String(bundle["ext.gate.how"]), lang).toContain(WEG[lang]);
+      expect(String(bundle["ext.gate.how"]), lang).toContain(weg);
+      expect(String(bundle["ext.gate.how"]), lang).not.toContain(ALT[lang]);
     }
   });
 });
