@@ -380,7 +380,11 @@ const SICHTBAR_FN = `
     };
   };`;
 
-const FEHL_SATZ = "Original nicht mehr an diesem Objekt";
+// UX-26 (arbeit:ux26-beleg-original-20260921): der Satz nennt jetzt BEIDE Tatsachen — der Beleg
+// bleibt verzeichnet, die Originaldatei hängt nicht mehr am Objekt. Angepasst ist NUR dieser
+// Literalwert; die Sichtbarkeits- und Breitenzusicherungen unten sind unverändert.
+const FEHL_SATZ =
+  "Der Beleg bleibt verzeichnet, aber die Originaldatei hängt nicht mehr an diesem Objekt.";
 
 const TITEL = [BELEG_MIT_ORIGINAL, BELEG_OHNE_ORIGINAL];
 
@@ -533,7 +537,7 @@ for (const breite of [320, 360, 390]) {
 
     it("S3 · der ehrliche Satz steht ebenfalls ganz da, wo kein Original mehr hängt", async () => {
       const m = await messen(breite);
-      expect(m.fehlSatz, "der Satz „Original nicht mehr an diesem Objekt“ fehlt").not.toBeNull();
+      expect(m.fehlSatz, `der Satz „${FEHL_SATZ}“ fehlt`).not.toBeNull();
       const satz = m.fehlSatz as Beschriftung;
       expect(satz.breite).toBeGreaterThan(0);
       expect(satz.hoehe).toBeGreaterThan(0);

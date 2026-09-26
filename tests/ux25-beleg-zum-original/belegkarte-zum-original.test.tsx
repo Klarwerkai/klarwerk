@@ -431,7 +431,10 @@ describe("JOB 3272 · UX-25 — die Belegkarte führt zum Original", () => {
       "die Karte bietet einen Weg an, der ins Leere führt",
     ).toBe(0);
     const satz = i18n.t("ko.evidenceOriginalDetached");
-    expect(satz).toBe("Original nicht mehr an diesem Objekt");
+    // UX-26 (arbeit:ux26-beleg-original-20260921): der Satz nennt Beleg UND Originaldatei.
+    expect(satz).toBe(
+      "Der Beleg bleibt verzeichnet, aber die Originaldatei hängt nicht mehr an diesem Objekt.",
+    );
     expect(text(karte), "der fehlende Bezug wird verschwiegen").toContain(satz);
     const knoten = satzKnoten(karte, satz);
     expect(knoten, "der Satz steht in keinem eigenen Knoten").not.toBeNull();
@@ -671,7 +674,9 @@ describe("JOB 3272 · UX-25 — die Belegkarte führt zum Original", () => {
     await belegeOeffnen();
     const satz = i18n.t("ko.evidenceOriginalDetached");
     expect(satz).not.toContain("ko.");
-    expect(satz).not.toBe("Original nicht mehr an diesem Objekt");
+    expect(satz).not.toBe(
+      "Der Beleg bleibt verzeichnet, aber die Originaldatei hängt nicht mehr an diesem Objekt.",
+    );
     expect(text(belegKarte(BELEG_TITEL))).toContain(satz);
     await i18n.changeLanguage("de");
   });

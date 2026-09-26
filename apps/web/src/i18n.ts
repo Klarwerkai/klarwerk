@@ -6155,7 +6155,7 @@ const de = {
   "evFresh.summary.outdated": "veraltet: {{n}}",
   "evFresh.summary.missing": "fehlend: {{n}}",
   "evFresh.summary.current": "aktuell: {{n}}",
-  "evFresh.summary.neutral": "neutral: {{n}}",
+  // UX-26 (arbeit:ux26-beleg-original-20260921): `evFresh.summary.neutral` wohnt jetzt in `texte/ux26.ts`.
   "evFresh.version": "v{{n}}",
   "evFresh.counts": "aktuell {{current}} · älter {{older}}",
   "evFresh.openKo": "KO öffnen",
@@ -12181,7 +12181,7 @@ const en: typeof de = {
   "evFresh.summary.outdated": "outdated: {{n}}",
   "evFresh.summary.missing": "missing: {{n}}",
   "evFresh.summary.current": "current: {{n}}",
-  "evFresh.summary.neutral": "neutral: {{n}}",
+  // UX-26 (arbeit:ux26-beleg-original-20260921): `evFresh.summary.neutral` lives in `texte/ux26.ts` now.
   "evFresh.version": "v{{n}}",
   "evFresh.counts": "current {{current}} · older {{older}}",
   "evFresh.openKo": "Open KO",
@@ -17821,7 +17821,7 @@ const nl: typeof de = {
   "evFresh.summary.outdated": "verouderd: {{n}}",
   "evFresh.summary.missing": "ontbrekend: {{n}}",
   "evFresh.summary.current": "actueel: {{n}}",
-  "evFresh.summary.neutral": "neutraal: {{n}}",
+  // UX-26 (arbeit:ux26-beleg-original-20260921): `evFresh.summary.neutral` staat nu in `texte/ux26.ts`.
   "evFresh.version": "v{{n}}",
   "evFresh.counts": "actueel {{current}} · ouder {{older}}",
   "evFresh.openKo": "KO openen",
