@@ -1,6 +1,6 @@
 import fastifyHelmet from "@fastify/helmet";
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import { WORD_ADDIN_FRAME_ANCESTORS } from "./office-host";
+import { leseM365Mandanten, wordAddinFrameAncestors } from "./office-host";
 
 // WP-KLARA-1b (bens Sicherheits-Befunde K1/K2): Security-Header als EXPORTIERTE Produktionsfunktion —
 // server.ts verdrahtet exakt diese Registrierung, und der Header-Matrix-Test (tests/app/
@@ -31,21 +31,28 @@ export const WORD_ADDIN_CSP_PATHS: readonly string[] = [
 // eine Kenntnis über Microsofts Office-Runtime und keine Eigenschaft dieser CSP-Konstante; ihr Ort
 // ist `office-host.ts` — dort stehen die belegten Hosts, ihre Herkunft, die bewusst NICHT
 // freigegebenen Plattformfamilien und die exakte Prüfung samt Gegenprobe. Diese Datei setzt nur
-// noch ein, was von dort kommt (`WORD_ADDIN_FRAME_ANCESTORS`).
+// noch ein, was von dort kommt (`wordAddinFrameAncestors`) — samt den SharePoint-Herkünften der
+// Mandanten, die die Installation in KLARWERK_M365_MANDANTEN einträgt (gelesen EINMAL beim
+// Registrieren, siehe `registerSecurityHeaders`).
 // Cookie-Hinweis (bens explizite Warnung): das Session-Cookie bleibt SameSite=Lax — NICHT auf None
 // ändern, um Word-Online-iframe-Sessions zu „reparieren"; das wäre eine eigene, bewusste
 // CSRF-Risiko-Entscheidung und ist NICHT Teil dieser Ausnahme.
-export const WORD_ADDIN_CSP = [
-  "default-src 'self'",
-  "script-src 'self' 'unsafe-inline' https://appsforoffice.microsoft.com",
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data:",
-  "connect-src 'self'",
-  "object-src 'none'",
-  "base-uri 'self'",
-  "form-action 'self'",
-  WORD_ADDIN_FRAME_ANCESTORS,
-].join("; ");
+function wordAddinCsp(mandanten: readonly string[] = []): string {
+  return [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline' https://appsforoffice.microsoft.com",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data:",
+    "connect-src 'self'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    wordAddinFrameAncestors(mandanten),
+  ].join("; ");
+}
+
+/** Die Ersatz-CSP OHNE eingetragene Mandanten — so, wie sie vor KLARWERK_M365_MANDANTEN hiess. */
+export const WORD_ADDIN_CSP = wordAddinCsp();
 
 // AUFTRAG-mega15 Block C (bens SB-3) — `upgrade-insecure-requests` NUR auf echten HTTPS-Antworten.
 //
@@ -92,14 +99,45 @@ export function withUpgradeInsecureRequests(csp: string): string {
 // /word-addinX/…, //word-addin/…, %2e-Encoding-Varianten, Groß-/Kleinschreibung, Trailing-Slash —
 // matcht schlicht NICHT und behält fail-closed die strikte globale CSP (frame-ancestors 'none').
 export function isWordAddinCspPath(rawUrl: string | undefined): boolean {
-  const path = (rawUrl ?? "").split("?")[0]?.split("#")[0] ?? "";
-  return WORD_ADDIN_CSP_PATHS.includes(path);
+  return WORD_ADDIN_CSP_PATHS.includes(pfadOhneQuery(rawUrl));
 }
+
+function pfadOhneQuery(rawUrl: string | undefined): string {
+  return (rawUrl ?? "").split("?")[0]?.split("#")[0] ?? "";
+}
+
+// Die Mandanten-Herkünfte gelten NUR für das Taskpane — die Seite, die Word im Browser wirklich
+// einbettet. Die Dialogseite ist top-level und behält die Ersatz-CSP ohne Mandanten.
+const TASKPANE_PATH = "/word-addin/taskpane.html";
 
 // Globale Security-Header (helmet) + die exakt gebundene Word-Add-in-CSP-Ausnahme. Alle Routen außer
 // dem kanonischen Taskpane-Pfad behalten die strikte globale CSP inkl. frame-ancestors 'none'
 // und X-Frame-Options.
-export async function registerSecurityHeaders(app: FastifyInstance): Promise<void> {
+//
+// KLARWERK_M365_MANDANTEN wird HIER, einmal beim Start, gelesen und ausgewertet (`office-host.ts`).
+// Jeder verworfene Eintrag steht mit Grund im Startprotokoll; er gelangt nie in die Direktive,
+// gültige Einträge daneben wirken weiter (fail-closed). Der Umgebungssatz ist ein Parameter, damit
+// der Test denselben Weg mit eigenem Wert am echten Server messen kann.
+export async function registerSecurityHeaders(
+  app: FastifyInstance,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<void> {
+  const NICHT_IN_DER_DIREKTIVE = "Er erscheint NICHT in frame-ancestors des Word-Taskpanes.";
+  const { mandanten, verworfen } = leseM365Mandanten(env.KLARWERK_M365_MANDANTEN);
+  for (const { eintrag, grund } of verworfen) {
+    app.log.warn(
+      `KLARWERK_M365_MANDANTEN: Eintrag ${JSON.stringify(eintrag)} verworfen — ${grund}. ${NICHT_IN_DER_DIREKTIVE}`,
+    );
+  }
+  if (mandanten.length > 0) {
+    app.log.info(
+      `KLARWERK_M365_MANDANTEN: Word im Browser darf Klara aus den SharePoint-Herkünften von ${mandanten.join(", ")} einbetten.`,
+    );
+  }
+  const taskpaneCsp = wordAddinCsp(mandanten);
+  const ersatzCsp = (rawUrl: string): string =>
+    pfadOhneQuery(rawUrl) === TASKPANE_PATH ? taskpaneCsp : WORD_ADDIN_CSP;
+
   await app.register(fastifyHelmet, {
     contentSecurityPolicy: {
       directives: {
@@ -131,7 +169,7 @@ export async function registerSecurityHeaders(app: FastifyInstance): Promise<voi
   app.addHook("onSend", (request, reply, payload, done) => {
     const wordAddin = isWordAddinCspPath(request.url);
     if (wordAddin) {
-      reply.header("Content-Security-Policy", WORD_ADDIN_CSP);
+      reply.header("Content-Security-Policy", ersatzCsp(request.url));
       // X-Frame-Options kennt keine Domain-Liste — für diese exakten Pfade entfernen; die
       // CSP-frame-ancestors oben ist die präzisere, von modernen Engines bevorzugte Grenze.
       // WICHTIG (Befund der Header-Matrix, WP-KLARA-1b): helmet schreibt seine Header auf die
@@ -146,7 +184,7 @@ export async function registerSecurityHeaders(app: FastifyInstance): Promise<voi
     // X-Frame-Options oben); geschrieben wird über `reply.header`, das beim Senden gewinnt.
     if (isHttpsRequest(request)) {
       const current = wordAddin
-        ? WORD_ADDIN_CSP
+        ? ersatzCsp(request.url)
         : String(
             reply.getHeader("Content-Security-Policy") ??
               reply.raw.getHeader("content-security-policy") ??

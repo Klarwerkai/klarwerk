@@ -212,10 +212,12 @@ describe("JOB 4016 · E · istErlaubterEinbettungsHost — exakt und fail-closed
       expect(istErlaubterEinbettungsHost(eintrag.gegenbeispiel), eintrag.gegenbeispiel).toBe(false);
       expect(eintrag.warum.length, eintrag.hostQuelle).toBeGreaterThan(40);
     }
-    // Und die ausgeschlossenen Familien stehen als DATEN da, nicht nur im Fliesstext.
+    // Und die ausgeschlossenen Familien stehen als DATEN da, nicht nur im Fliesstext. sharepoint.com
+    // kam mit KLARWERK_M365_MANDANTEN dazu (`sharepoint-mandanten.test.ts`).
     expect(NICHT_FREIGEGEBENE_PLATTFORMFAMILIEN.map((f) => f.familie).sort()).toEqual([
       "live.com",
       "microsoft.com",
+      "sharepoint.com",
     ]);
     for (const familie of NICHT_FREIGEGEBENE_PLATTFORMFAMILIEN) {
       expect(familie.warum.length, familie.familie).toBeGreaterThan(40);
