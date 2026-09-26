@@ -18,6 +18,8 @@ import type {
   AssistResult,
   AuditEntry,
   AuditVerifyReport,
+  BearbeitungsLage,
+  BearbeitungsMeldung,
   BeziehungSetzenBody,
   BeziehungWiderrufBody,
   BusFactorEntry,
@@ -581,6 +583,14 @@ export const endpoints = {
     // eines Eintrags — deshalb der eigene Pfad `/beziehungen/:kanteId/widerruf`.
     beziehungWiderrufen: (kanteId: string, body: BeziehungWiderrufBody) =>
       api.post<KuratierteKanteAnsicht>(`/beziehungen/${kanteId}/widerruf`, body),
+    // WIKI-BEARBEITUNGSRESERVIERUNG: der Bearbeitungshinweis. Lesen darf, wer den Eintrag lesen
+    // darf; beginnen, erneuern und beenden kann ein Konto ausschliesslich SEINE eigene Bearbeitung
+    // (`sitzung` ist die Kennung des geöffneten Formulars). Der Speicherweg (`act`) kennt ihn nicht.
+    bearbeitungen: (id: string) => api.get<BearbeitungsLage>(`/kos/${id}/bearbeitungen`),
+    bearbeitungMelden: (id: string, sitzung: string) =>
+      api.put<BearbeitungsMeldung>(`/kos/${id}/bearbeitungen/${sitzung}`),
+    bearbeitungBeenden: (id: string, sitzung: string) =>
+      api.del<{ beendet: boolean }>(`/kos/${id}/bearbeitungen/${sitzung}`),
     // SCRUM-395: optionaler Prüfer-Vorschlag direkt beim Einreichen (reviewerIds).
     create: (body: DraftPayload & { reviewerIds?: string[] }) =>
       api.post<KnowledgeObject>("/kos", body),

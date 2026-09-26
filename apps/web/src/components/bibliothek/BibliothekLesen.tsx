@@ -90,6 +90,7 @@ import { ListEditor, TagEditor } from "../editors";
 import { KNOWLEDGE_TYPES } from "../trust";
 import { Button, Field, TextInput, cx } from "../ui";
 import { AuffrischungHinweis } from "./AuffrischungHinweis";
+import { Bearbeitungshinweis, useEigeneBearbeitung } from "./Bearbeitungshinweis";
 import { MehrAbschnitte, type Sprungziel } from "./MehrAbschnitte";
 import { Menue, MenuePunkt, MenueTrenner } from "./Menue";
 import { fragenHref } from "./fragen";
@@ -2047,6 +2048,23 @@ export function BibliothekLesen({
     });
   };
 
+  // ================================================================================================
+  // WIKI-BEARBEITUNGSRESERVIERUNG · SOLANGE DAS FORMULAR OFFEN IST, WEISS DER SERVER ES.
+  // ================================================================================================
+  //
+  // Die Anmeldung hängt an GENAU der Grösse, die „das Formular ist offen" heisst: `edit`. Speichern
+  // und Abbrechen laufen beide durch `bearbeitenBeenden` und nehmen damit auch den Hinweis zurück;
+  // ein Konflikt (409), ein Teilabbruch oder ein entzogenes Recht lassen `edit` stehen — und damit
+  // auch den Hinweis, denn die Arbeit ist ja noch da. Umgekehrt fasst der Hinweis `edit` nie an:
+  // Ablauf, Wiederholung oder ein Verbindungsabbruch können keinen Text löschen.
+  //
+  // Kommt die Verbindung nach einer Unterbrechung zurück, wird der tatsächliche Serverstand neu
+  // gelesen. Hat inzwischen jemand anderes gespeichert, sieht der Mensch das im Lesebild — und beim
+  // Speichern greift wie immer `expectedVersion` (die Fassung beim Öffnen steht in `edit.version`).
+  const eigeneBearbeitung = useEigeneBearbeitung(koId, edit !== null && canEdit, () => {
+    void qc.invalidateQueries({ queryKey: ["ko", koId] });
+  });
+
   // KEIN Aufräum-Effekt beim Wechsel des Eintrags: die Fläche montiert diese Komponente mit
   // `key={koId}` neu (s. `BibliothekFlaeche`). Ein offenes Formular des vorigen Objekts kann
   // deshalb gar nicht über dem neuen stehenbleiben — der Zustand entsteht mit dem Eintrag.
@@ -2549,6 +2567,18 @@ export function BibliothekLesen({
           </p>
         ) : null}
 
+        {/* WIKI-BEARBEITUNGSRESERVIERUNG: wer gerade (sonst noch) bearbeitet — im Lesen wie im
+            Bearbeiten an derselben Stelle, direkt über dem Inhalt. Endet eine fremde Bearbeitung,
+            wird der Eintrag neu gelesen; ein offenes Formular bleibt davon unberührt. */}
+        <Bearbeitungshinweis
+          koId={koId}
+          eigeneSitzung={eigeneBearbeitung.sitzung}
+          eigeneLage={eigeneBearbeitung.lage}
+          ablaufSekunden={eigeneBearbeitung.ablaufSekunden}
+          onFremdesEnde={() => {
+            void qc.invalidateQueries({ queryKey: ["ko", koId] });
+          }}
+        />
         {edit ? (
           // ---- Bearbeiten: dasselbe Formular wie bisher, an derselben Stelle -------------------
           <div className="space-y-3">
@@ -2592,6 +2622,7 @@ export function BibliothekLesen({
             )}
             <Field label={t("capture.fStatement")}>
               <textarea
+                data-testid="bib-aussage"
                 value={edit.statement}
                 onChange={(e) => setEdit({ ...edit, statement: e.target.value })}
                 rows={3}
@@ -3017,6 +3048,7 @@ export function BibliothekLesen({
               ) : (
                 <Button
                   variant="primary"
+                  data-testid="bib-speichern"
                   disabled={
                     save.isPending ||
                     appendDocument.isPending ||
@@ -3033,7 +3065,11 @@ export function BibliothekLesen({
                   {t("ko.saveEdit")}
                 </Button>
               )}
-              <Button variant="ghost" onClick={bearbeitenBeenden}>
+              <Button
+                variant="ghost"
+                data-testid="bib-bearbeiten-abbrechen"
+                onClick={bearbeitenBeenden}
+              >
                 {t("ko.cancelEdit")}
               </Button>
             </div>
