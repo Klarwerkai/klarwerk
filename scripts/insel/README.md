@@ -59,6 +59,31 @@ Geprüft wird das in `tests/insel-paketausgabe/`: dort wird ein Paket nachgestel
 relative Einfuhr ab `server.ts` im Zielordner aufgelöst. Der volle Baulauf (`npm ci`, `zip`) ist
 dort nicht fahrbar; ein echtes Auspacken und Starten auf dem Mac Studio bleibt eine Handprobe.
 
+**Lesegrenzen.** `paketinhalt.mjs` ist **kein Parser**, sondern ein Zerleger mit Regeln. Zugesagt
+ist nur, was `tests/insel-paketausgabe/quellgrenzen-katalog.test.ts` mit einem kleinen, wirklich
+startenden Quellbaum belegt (Kennungen `Q-…`, dieselben wie im Dateikopf von `erreichteQuellen`:
+Quellstart, Inhaltsliste, Paket, Entfernen des Entwicklerbaums, isolierter Paketstart).
+
+- **Belegt unterstützt:** `import`/`export … from "…"`, `import "…"`, `import("…")`,
+  `require("…")` und `require.resolve("…")`, jeweils mit **genau einem** Zeichenkettenliteral ohne
+  Rückstrich — auch hinter den im Katalog gemessenen Regex/Division-Formen (`if (…) /x/`,
+  `i++ / 2`, `x! / 2`, `break`/`continue`/`debugger` mit Zeilenumbruch vor `/x/`, …).
+- **Belegt abgewiesen** (Bauabbruch mit Datei:Zeile und Grund): berechnete Pfade (`require(p)`,
+  `"…" + x`, `` `${…}` ``), Escape-Schreibweisen im Pfad, absolute Pfade, erreichte
+  `.tsx`/`.jsx`-Dateien, ein `/` hinter `}` oder `of`/`yield`/`await`, ein `/` am Zeilenanfang,
+  das als Division gelesen würde, und eine Datei, bei der Anführungszeichen, Kommentare oder
+  Klammern nicht aufgehen.
+- **Still, also weder Kante noch Abbruch — verbleibende Grenzen:**
+  1. Dateien, die anders geladen werden (`readFileSync`, `new URL(…, import.meta.url)`,
+     `import.meta.resolve`, Arbeiterprozesse).
+  2. Eine Fehllesung von Division gegen regulären Ausdruck **mitten in einer Zeile** in einer Form,
+     die der Katalog nicht kennt, nach der Anführungszeichen und Klammern zufällig wieder aufgehen.
+     Genau so war BENs Gegenfall zu Runde 1 (`break` + Zeilenumbruch + ``/`/``) — er ist heute
+     erkannt (Q-RD9), aber die Klasse ist ohne Parser nicht abschliessend zu schliessen.
+
+Ein Bau, der durchläuft, beweist deshalb **nicht**, dass jede geladene Datei im Paket ist; er
+beweist es für die belegten Formen.
+
 ## Update und Rückfall
 
 ```bash
