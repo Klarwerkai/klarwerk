@@ -330,6 +330,56 @@ function rollenhinweise(): HTMLElement[] {
   );
 }
 
+/** Was ein einzelner Schritt der Einstiegsführung zeigt: sein Link und sein Sperrhinweis. */
+interface SchrittLage {
+  id: string;
+  link: string | null;
+  hinweis: string | null;
+}
+
+function sperrtext(rolle: Role): string {
+  return i18n.t("pilot.access.locked", { rolle: i18n.t(`role.name.${rolle}`) });
+}
+
+/**
+ * JE SCHRITT gelesen, nicht nur gezählt (Ben, Runde 1): Ein Hinweis mit der falschen Rolle oder am
+ * falschen Schritt muss auffallen. Jeder Listeneintrag wird über seinen Text dem Schritt zugeordnet;
+ * gelesen wird der Sperrtext JEDER bekannten Rolle, damit auch ein falscher sichtbar wird.
+ */
+function schrittLagen(): SchrittLage[] {
+  const eintraege = [...einstiegsListe().querySelectorAll(":scope > li")];
+  expect(eintraege, "die Einstiegsführung hat nicht einen Eintrag je Schritt").toHaveLength(
+    PILOT_CHECKLIST.length,
+  );
+  return PILOT_CHECKLIST.map((item, i) => {
+    const li = eintraege[i] as HTMLElement;
+    const text = li.textContent ?? "";
+    expect(text, `Eintrag ${i + 1} gehört nicht zum Schritt „${item.id}"`).toContain(
+      i18n.t(item.labelKey),
+    );
+    const hinweise = ROLES.map(sperrtext).filter((satz) => text.includes(satz));
+    expect(hinweise.length, `Schritt „${item.id}": mehr als ein Sperrhinweis`).toBeLessThanOrEqual(
+      1,
+    );
+    const links = [...li.querySelectorAll("a")].map((a) => a.getAttribute("href") ?? "");
+    expect(links.length, `Schritt „${item.id}": mehr als ein Link`).toBeLessThanOrEqual(1);
+    return { id: item.id, link: links[0] ?? null, hinweis: hinweise[0] ?? null };
+  });
+}
+
+/** Aus der Navigation gerechnet: offen → Link auf den Weg; gesperrt → Hinweis mit der Mindestrolle. */
+function erwarteteSchrittLagen(rolle: Role): SchrittLage[] {
+  return PILOT_CHECKLIST.map((item) => {
+    const minRole = mindestrolle(item);
+    const offen = ROLE_RANK[rolle] >= ROLE_RANK[minRole];
+    return {
+      id: item.id,
+      link: offen ? item.to : null,
+      hinweis: offen ? null : sperrtext(minRole),
+    };
+  });
+}
+
 function wegeFuer(rolle: Role): string[] {
   return PILOT_CHECKLIST.filter((item) => ROLE_RANK[rolle] >= ROLE_RANK[mindestrolle(item)]).map(
     (item) => item.to,
@@ -361,6 +411,10 @@ function fuehrtNach(rolle: Role, lage: string): void {
     rollenhinweise(),
     `${lage}: die Rollenhinweise folgen nicht der Rolle ${rolle}`,
   ).toHaveLength(PILOT_CHECKLIST.length - wegeFuer(rolle).length);
+  expect(
+    schrittLagen(),
+    `${lage}: Link oder Sperrhinweis eines Schritts folgt nicht der Rolle ${rolle}`,
+  ).toEqual(erwarteteSchrittLagen(rolle));
   expect(seitentext(), `${lage}: der Rollensatz fehlt`).toContain(zusammenfassung(rolle));
   expect(seitentext(), `${lage}: der Wartesatz steht noch`).not.toContain(
     i18n.t("pilot.access.roleUnknown"),
@@ -423,6 +477,10 @@ async function bestaetigtAlsViewer(): Promise<ReturnType<typeof createRoot> | nu
   fuehrtNach("viewer", "bestätigt");
   expect(offeneLinks().length, "die Messstelle für Links ist blind").toBeGreaterThan(0);
   expect(rollenhinweise().length, "die Messstelle für Hinweise ist blind").toBeGreaterThan(0);
+  expect(
+    schrittLagen().filter((lage) => lage.hinweis !== null).length,
+    "die Messstelle für Hinweise je Schritt ist blind",
+  ).toBeGreaterThan(0);
   return root;
 }
 
@@ -435,6 +493,8 @@ describe("Hilfe · Auffrischung einer bestätigten viewer-Sitzung scheitert", ()
   for (const lage of [401, 500, "netz"] as const) {
     it(`${lage}: lesbar ohne veraltete Rollenöffnung, danach Erholung`, async () => {
       const wurzel = await bestaetigtAlsViewer();
+      const lagenVorher = schrittLagen();
+      const hinweiseVorher = rollenhinweise().map((li) => (li.textContent ?? "").trim());
 
       // 2. AUSSTEHEND — die Anfrage läuft, die Antwort fehlt noch: das ist KEIN Fehler.
       meLage = lage;
@@ -460,6 +520,14 @@ describe("Hilfe · Auffrischung einer bestätigten viewer-Sitzung scheitert", ()
       expect(root, "die Fläche wurde neu montiert").toBe(wurzel);
       vollstaendigLesbar("erholt");
       fuehrtNach("viewer", "erholt");
+      // Die VOLLSTÄNDIGEN Hinweise (Schrittname + Sperrtext) sind wieder genau die der Ausgangslage.
+      expect(schrittLagen(), "erholt: die Schritte zeigen nicht wieder die Ausgangslage").toEqual(
+        lagenVorher,
+      );
+      expect(
+        rollenhinweise().map((li) => (li.textContent ?? "").trim()),
+        "erholt: die Rollenhinweise sind nicht wieder die der Ausgangslage",
+      ).toEqual(hinweiseVorher);
     });
   }
 
