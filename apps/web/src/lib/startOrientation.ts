@@ -5,7 +5,12 @@
 
 const KEY = "klarwerk.start.orientationSeen";
 
-export function isStartOrientationFirstRun(storage: Pick<Storage, "getItem">): boolean {
+// Auftrag gesamt-ansicht-merken: `undefined` = kein Speicher erreichbar (`safeLocalStorage()`),
+// schon das Ermitteln von `window.localStorage` kann werfen.
+export function isStartOrientationFirstRun(storage: Pick<Storage, "getItem"> | undefined): boolean {
+  if (!storage) {
+    return false;
+  }
   try {
     return storage.getItem(KEY) === null;
   } catch {
@@ -13,7 +18,10 @@ export function isStartOrientationFirstRun(storage: Pick<Storage, "getItem">): b
   }
 }
 
-export function markStartOrientationSeen(storage: Pick<Storage, "setItem">): void {
+export function markStartOrientationSeen(storage: Pick<Storage, "setItem"> | undefined): void {
+  if (!storage) {
+    return;
+  }
   try {
     storage.setItem(KEY, new Date().toISOString());
   } catch {

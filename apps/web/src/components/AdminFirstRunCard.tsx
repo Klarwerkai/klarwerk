@@ -12,6 +12,7 @@ import {
   kiStateTone,
   markAdminFirstRunSeen,
 } from "../lib/adminFirstRun";
+import { safeLocalStorage } from "../lib/persistentToggle";
 import { RoleLink } from "./RoleLink";
 import { Button, Card } from "./ui";
 
@@ -60,7 +61,7 @@ export function AdminFirstRunCard(): JSX.Element | null {
   const { t } = useTranslation();
   const cfg = useReasonerConfig();
   const analytics = useAnalytics();
-  const [visible, setVisible] = useState(() => isAdminFirstRun(window.localStorage));
+  const [visible, setVisible] = useState(() => isAdminFirstRun(safeLocalStorage()));
 
   if (!visible) {
     return null;
@@ -77,7 +78,7 @@ export function AdminFirstRunCard(): JSX.Element | null {
     kiBoth: kiState === "both",
   };
   const dismiss = (): void => {
-    markAdminFirstRunSeen(window.localStorage, new Date().toISOString());
+    markAdminFirstRunSeen(safeLocalStorage(), new Date().toISOString());
     setVisible(false);
   };
 
