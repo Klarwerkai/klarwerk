@@ -5069,6 +5069,14 @@ export function CaptureArbeitsraum({
                   </p>
                 );
               }
+              // AUFNAHME 20260922: ein überholter Nachweis steht nie als „geprüft" da.
+              if (check.kind === "outdated") {
+                return (
+                  <p className="mt-1 rounded-btn bg-trust-warn-bg px-2 py-1 text-[12px] text-trust-warn-text">
+                    {t("pruefbasis.ueberholtHinweis")}
+                  </p>
+                );
+              }
               // AUFTRAG-mega28 A2 (Pedi 26.07.): Seit dem Deckel darf „geprüft" nicht mehr für sich
               // allein stehen. Wurde gegen 20 von 12.479 möglichen Nachbarn geprüft, steht das
               // DIREKT unter dem Satz, den es einschränkt — sonst liest der Einreicher ein leeres

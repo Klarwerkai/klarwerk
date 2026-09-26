@@ -148,21 +148,21 @@ const DIENST_VERMERKE = [
     // von `:3715` ein (Begründung dort bei `pruefeHerkunft`), deshalb bleiben die drei „erstellt"-
     // Fundstellen und ihre Nachbarn stehen, wo sie standen. Gemessen mit
     // `grep -n '"erstellt"' services/knowledge-object/src/service.ts`, nicht fortgeschrieben.
-    fundstellen: [2077, 2203],
+    fundstellen: [2100, 2229],
   },
   {
     wort: "erstellt (Dokumentinhalt übernommen)",
     schluessel: "ko.historyNote.createdFromDocument",
     en: "created (document content adopted)",
     nl: "aangemaakt (documentinhoud overgenomen)",
-    fundstellen: [2448],
+    fundstellen: [2476],
   },
   {
     wort: "erstellt (nachgezogen)",
     schluessel: "ko.historyNote.createdBackfilled",
     en: "created (backfilled)",
     nl: "aangemaakt (nagetrokken)",
-    fundstellen: [2857],
+    fundstellen: [2890],
   },
   {
     wort: "überarbeitet",
@@ -190,14 +190,19 @@ const DIENST_VERMERKE = [
     // (`ko.snapshotRestoredFrom`). Ein sechster Vermerk hätte einen Eintrag in `koHistoryNote.ts`
     // gebraucht — nicht Zielpfad dieses Auftrags —, und ohne ihn stünde das deutsche Wort im
     // englischen Text. Dieselbe Entscheidung wie in JOB 3667 R7, aus demselben Grund.
-    fundstellen: [4335, 4452, 4548, 4737],
+    // AUFNAHME 20260922 · Prüfbasis-Aktualität: NEU GEMESSEN (`grep -n`), alle Fundstellen dieser
+    // Tabelle um 23 bis 120 Zeilen verschoben — Importe der Basisbindung am Kopf, die Lesefassung der
+    // Mutationspfade, Bestandsstempel/Lesefassung vor `get`, die gebundene Basis in
+    // `recordAiCheckOutcome`/`markAiCheckPending`/`resolveAiCheck` und die Lesefassung der Suchwege.
+    // Wortlaute und Zahl der Vermerke UNVERÄNDERT.
+    fundstellen: [4447, 4564, 4660, 4849],
   },
   {
     wort: "überarbeitet (Dokumentinhalt übernommen)",
     schluessel: "ko.historyNote.revisedFromDocument",
     en: "revised (document content adopted)",
     nl: "herzien (documentinhoud overgenomen)",
-    fundstellen: [4960, 4978],
+    fundstellen: [5080, 5098],
   },
 ] as const;
 

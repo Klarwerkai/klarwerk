@@ -52,6 +52,14 @@ import type { KoMetadataProjectionResult } from "./metadata-projection-repo";
 // JOB 557: das kanonische Eigentümer-Aggregat. Regeln, Rückfallentscheidung und Grenzen stehen in
 // ownership.ts — hier wird nur angewendet, nichts nachgebaut.
 import { normalizeOwnership, ownershipOf, sameOwnership, withRole } from "./ownership";
+// AUFNAHME 20260922: die Basisbindung des Prüfnachweises (Regel und Begründung dort).
+import {
+  bestandsStempelVon,
+  brauchtPruefstand,
+  istWissensobjekt,
+  mitPruefstand,
+  pruefbasisVon,
+} from "./pruefbasis";
 import type {
   EvidenceRepo,
   KoCandidateQuery,
@@ -88,6 +96,7 @@ import { confirmedSourceAnchor } from "./source-anchor";
 // SCRUM-527 (WP2): Quell-URL-Allowlist an der Persistenzgrenze (nur absolute http/https).
 import { safeSourceUrl, sanitizeSources } from "./source-url";
 import {
+  type AiCheckBasis,
   type AiCheckCoverage,
   type AiCheckCoverageSummary,
   type Confidentiality,
@@ -771,13 +780,14 @@ export class KoService {
       audit?: () => Promise<void>;
     },
   ): Promise<T> {
-    return this.withKoLock(id, async () => {
+    const value = await this.withKoLock(id, async () => {
       const ko = await this.require(id);
       const { updated, value, audit } = apply(ko);
       await audit?.();
       await this.repo.update(updated);
       return value;
     });
+    return this.lesefassungWert(value);
   }
 
   // SCRUM-507 R3: transaktionaler MEHRSCHRITT-Mutationspfad (persist + Snapshot + Audit + Status als EINE
@@ -826,6 +836,19 @@ export class KoService {
       snapshot?: { author: string; note: string };
       // JOB 2704 D1: der Audit-Schritt bekommt den Transaktionskontext, damit `audit.record(…, tx)`
       // auf demselben Client läuft wie die drei Schreiber davor. Ohne withTx ist er undefined.
+      audit?: (tx?: TxContext) => Promise<void>;
+    },
+  ): Promise<T> {
+    // AUFNAHME 20260922: das zurückgegebene Objekt trägt die Lesefassung des Prüfnachweises.
+    return this.lesefassungWert(await this.mutateKoTxRoh(id, build));
+  }
+
+  private async mutateKoTxRoh<T>(
+    id: string,
+    build: (ko: KnowledgeObject) => {
+      updated: KnowledgeObject;
+      value: T;
+      snapshot?: { author: string; note: string };
       audit?: (tx?: TxContext) => Promise<void>;
     },
   ): Promise<T> {
@@ -2121,11 +2144,14 @@ export class KoService {
           "Vorgang ohne Eigentümer — die Erstanlage braucht den authentifizierten Anfragenden.",
         );
       }
-      return this.withKoLock(`create-op:${createOperationId}`, () =>
-        this.createLocked(input, createOperationId, {
-          actor,
-          fingerprint: operation.fingerprint,
-        }),
+      // Eine Wiederholung liefert das BESTEHENDE Objekt — samt Lesefassung seines Nachweises.
+      return this.lesefassung(
+        await this.withKoLock(`create-op:${createOperationId}`, () =>
+          this.createLocked(input, createOperationId, {
+            actor,
+            fingerprint: operation.fingerprint,
+          }),
+        ),
       );
     }
     return this.createPlain(input);
@@ -2341,8 +2367,10 @@ export class KoService {
     // Prozess nicht beide „noch nicht da" lesen und beide inserten. Prozessübergreifend fängt das
     // der Unique-Index — der zweite Insert kollidiert und wird unten ADOPTIERT statt dupliziert;
     // die prozessübergreifende SERIALISIERUNG selbst bleibt Nach-VIP-2 und ist hier nicht nötig.
-    return this.withKoLock(`create-op:${createOperationId}`, () =>
-      this.createWithDocumentsLocked(input, documents, anchorIds, createOperationId, requester),
+    return this.lesefassung(
+      await this.withKoLock(`create-op:${createOperationId}`, () =>
+        this.createWithDocumentsLocked(input, documents, anchorIds, createOperationId, requester),
+      ),
     );
   }
 
@@ -2746,10 +2774,11 @@ export class KoService {
     requester: CreateOperationRequester,
   ): Promise<KnowledgeObject | null> {
     const createOperationId = normalizeCreateOperationId(operationId);
-    return this.withKoLock(
+    const ko = await this.withKoLock(
       `create-op:${createOperationId}`,
       async () => (await this.adoptCreatedKo(createOperationId, requester)) ?? null,
     );
+    return ko ? this.lesefassung(ko) : null;
   }
 
   /**
@@ -2812,9 +2841,12 @@ export class KoService {
    * dort ist unverändert (failed + Ursache, Version gebunden, damit der bestehende Wiederhol-Weg
    * greift).
    */
+  // AUFNAHME 20260922: `basis` ist die Basis, unter der der (synchrone) Lauf gestartet ist. Fehlt sie,
+  // wird der jetzige Stand gebunden — derselbe Zeitpunkt, an dem auch `koVersion` gelesen wird.
   async recordAiCheckOutcome(
     id: string,
     outcome: { ok: boolean; fallbackReason?: string; coverage?: AiCheckCoverage },
+    basis?: AiCheckBasis,
   ): Promise<boolean> {
     const ko = await this.repo.findById(id);
     if (!ko || ko.deletedAt) {
@@ -2828,6 +2860,7 @@ export class KoService {
       ...(outcome.fallbackReason ? { fallbackReason: outcome.fallbackReason } : {}),
       ...(outcome.coverage ? { coverage: outcome.coverage } : {}),
       koVersion: ko.version,
+      basis: basis ?? (await this.aktuellePruefbasis(ko)),
     });
   }
 
@@ -3141,7 +3174,7 @@ export class KoService {
     if (ergebnis.geschrieben) {
       await this.audit?.record({ actor: author, action: "ko.commented", target: id });
     }
-    return ergebnis.ko;
+    return this.lesefassung(ergebnis.ko);
   }
 
   // ==============================================================================================
@@ -3233,7 +3266,8 @@ export class KoService {
       });
     }
     await this.audit?.record({ actor: author, action: "ko.attached", target: id });
-    return updated;
+    // AUFNAHME 20260922 (bens Befund Runde 2): die Antwort trägt dieselbe Lesefassung wie ein Reload.
+    return this.lesefassung(updated);
   }
 
   async removeAttachment(
@@ -3248,7 +3282,7 @@ export class KoService {
     };
     await this.repo.update(updated);
     await this.audit?.record({ actor, action: "ko.detached", target: id });
-    return updated;
+    return this.lesefassung(updated);
   }
 
   // SCRUM-129 / FR-KO-07: externe Quelle anfügen. Externe Quellen sind NIE peer-validiert.
@@ -3321,7 +3355,8 @@ export class KoService {
       createdAt: source.at,
     });
     await this.audit?.record({ actor: author, action: "ko.source-added", target: id });
-    return updated;
+    // AUFNAHME 20260922 (bens Befund Runde 2): die Antwort trägt dieselbe Lesefassung wie ein Reload.
+    return this.lesefassung(updated);
   }
 
   async removeSource(id: string, sourceId: string, actor: string): Promise<KnowledgeObject> {
@@ -3332,13 +3367,75 @@ export class KoService {
     };
     await this.repo.update(updated);
     await this.audit?.record({ actor, action: "ko.source-removed", target: id });
-    return updated;
+    return this.lesefassung(updated);
   }
 
   // SCRUM-422: getrashte KOs wirken überall gelöscht — get/list/findCandidates blenden sie aus.
+  // ==============================================================================================
+  // AUFNAHME 20260922 · PRÜFBASIS-AKTUALITÄT — Bestandsstempel und Lesefassung (pruefbasis.ts).
+  // ==============================================================================================
+  //
+  // Der Bestandsstempel (Vergleichsquellen samt Auswahlkontext) braucht den ganzen aktiven Bestand.
+  // Er wird deshalb am SCHREIBSTAND der Ablage gemerkt (JOB 2706 D1, `anhangSchreibstand`): solange
+  // der Stand gleich ist, hat niemand etwas am Bestand geschrieben, und der gemerkte Stempel gilt.
+  // Der Stand wird VOR dem Lesen des Bestands gelesen — ein Schreiben dazwischen erhöht ihn, und der
+  // nächste Leser rechnet neu. Die Prüf-Vermerke selbst (`setAiCheck`/`resolveAiCheck`) erhöhen
+  // den Stand nicht und gehen nicht in den Stempel ein. Ohne Schreibstand (fremde Ablage) wird
+  // jedes Mal gerechnet.
+  private bestandsMerker: { stand: string; stempel: string } | undefined;
+
+  async pruefbestandStempel(): Promise<string> {
+    const stand = await this.repo.anhangSchreibstand?.();
+    if (stand !== undefined && this.bestandsMerker?.stand === stand) {
+      return this.bestandsMerker.stempel;
+    }
+    const stempel = bestandsStempelVon(await this.repo.list({}));
+    if (stand !== undefined) {
+      this.bestandsMerker = { stand, stempel };
+    }
+    return stempel;
+  }
+
+  /** Die Prüfbasis dieses Objekts gegen den jetzigen Bestand — die Bindung eines neuen Laufs. */
+  async aktuellePruefbasis(ko: KnowledgeObject): Promise<AiCheckBasis> {
+    return pruefbasisVon(ko, await this.pruefbestandStempel());
+  }
+
+  private async lesefassung(ko: KnowledgeObject): Promise<KnowledgeObject> {
+    return brauchtPruefstand(ko) ? mitPruefstand(ko, await this.pruefbestandStempel()) : ko;
+  }
+
+  private async lesefassungen(kos: KnowledgeObject[]): Promise<KnowledgeObject[]> {
+    if (!kos.some(brauchtPruefstand)) {
+      return kos;
+    }
+    const stempel = await this.pruefbestandStempel();
+    return kos.map((ko) => mitPruefstand(ko, stempel));
+  }
+
+  // Rückgabewerte der Mutationspfade: ist der Wert ein Wissensobjekt mit Prüfnachweis, bekommt er
+  // dieselbe Lesefassung wie `get` — sonst bliebe er genau hier scheinbar aktuell.
+  // AUFNAHME 20260922 (bens Befund Runde 2): auch Ergebnisse der Form `{ ko, … }`
+  // (Vorschlagsentscheid, Dokumentübernahme) — dort stand das Objekt sonst ungeprüft in der Antwort.
+  private async lesefassungWert<T>(value: T): Promise<T> {
+    if (istWissensobjekt(value)) {
+      return (await this.lesefassung(value)) as unknown as T;
+    }
+    if (value !== null && typeof value === "object" && "ko" in value) {
+      const ko = (value as { ko: unknown }).ko;
+      if (istWissensobjekt(ko)) {
+        return { ...value, ko: await this.lesefassung(ko) };
+      }
+    }
+    return value;
+  }
+
+  // AUFNAHME 20260922 · Prüfbasis-Aktualität: get/list liefern die LESEFASSUNG des Prüfnachweises —
+  // `aiCheck.ueberholt` ist aus der gespeicherten Basisbindung abgeleitet (pruefbasis.ts). Anzeige,
+  // Neuladen, Abruf und Worker lesen damit dieselbe gespeicherte Bindung.
   async get(id: string): Promise<KnowledgeObject | undefined> {
     const ko = await this.repo.findById(id);
-    return ko && !ko.deletedAt ? ko : undefined;
+    return ko && !ko.deletedAt ? this.lesefassung(ko) : undefined;
   }
 
   // ==============================================================================================
@@ -3383,7 +3480,7 @@ export class KoService {
   // KEIN DEFAULT — siehe KoRepo.list: vier Aufrufer dieses Repos brauchen die getrashten Zeilen
   // zwingend. Nur die normale Listenroute übergibt den Trim.
   async list(filter: KoFilter = {}, trim?: KoSichtbarkeitstrim): Promise<KnowledgeObject[]> {
-    return (await this.repo.list(filter, trim)).filter((k) => !k.deletedAt);
+    return this.lesefassungen((await this.repo.list(filter, trim)).filter((k) => !k.deletedAt));
   }
 
   /**
@@ -3425,7 +3522,9 @@ export class KoService {
       //    `failed` ist immer unvollständig, ohne Ausnahme und unabhängig davon, welche Merker die
       //    Abdeckung trägt (bens ROT-2: ein gescheiterter Lauf mit makellosem Protokoll galt als
       //    vollständig). `pending` ist nicht abgeschlossen und damit erst recht nicht vollständig.
-      if (aiCheck.status !== "done") {
+      // AUFNAHME 20260922: ein ÜBERHOLTER Nachweis gilt für eine frühere Basis — für die jetzige ist
+      // er nicht belegt, gleich wie vollständig sein Protokoll damals war.
+      if (aiCheck.status !== "done" || aiCheck.ueberholt) {
         incomplete += 1;
         continue;
       }
@@ -3462,7 +3561,8 @@ export class KoService {
   // lief ohne WHERE, die neue Abfrage filtert nur auf die Kennung — Papierkorb inklusive, wie es
   // der Recovery-Vertrag verlangt.
   async findByImportCandidateId(candidateId: string): Promise<KnowledgeObject | undefined> {
-    return this.repo.findByImportCandidateId(candidateId);
+    const ko = await this.repo.findByImportCandidateId(candidateId);
+    return ko ? this.lesefassung(ko) : undefined;
   }
 
   // WP-BILD-1g (bens sammel14-ROT): Suchpfad-Sicht OHNE bodyHtml — die Bibliotheks-Suche arbeitet
@@ -3479,7 +3579,9 @@ export class KoService {
     filter: KoFilter = {},
     trim?: KoSichtbarkeitstrim,
   ): Promise<KnowledgeObject[]> {
-    return (await this.repo.listForSearch(filter, trim)).filter((k) => !k.deletedAt);
+    return this.lesefassungen(
+      (await this.repo.listForSearch(filter, trim)).filter((k) => !k.deletedAt),
+    );
   }
 
   // WP-BILD-1g/1h: EINMALIGER Legacy-Backfill des abgeleiteten captionTexts-Suchfelds. Lädt das
@@ -3606,15 +3708,21 @@ export class KoService {
       status: "pending",
       requestedAt: requestedAt ?? new Date(this.now()).toISOString(),
       koVersion: ko.version,
+      // AUFNAHME 20260922: die Basis, für die dieser Lauf angefordert ist (pruefbasis.ts).
+      basis: await this.aktuellePruefbasis(ko),
     });
   }
 
   // AUFTRAG-mega28 A2: die Abdeckung des Laufs (gedeckelt/übersprungen/abgebrochen) reist mit dem
   // Abschluss mit — additiv, der bedingte Feld-Patch bleibt unverändert schmal.
+  // AUFNAHME 20260922: `basis` ist die Basis, unter der der Lauf GESTARTET ist (der Worker liest sie
+  // beim Start). Der Nachweis wird an sie gebunden — hat sich das Objekt seitdem geändert, liest
+  // jeder Leser ihn als überholt (mitPruefstand), nie als aktuell.
   async resolveAiCheck(
     id: string,
     outcome: { ok: boolean; fallbackReason?: string; coverage?: AiCheckCoverage },
     expectedKoVersion?: number,
+    basis?: AiCheckBasis,
   ): Promise<boolean> {
     return this.repo.resolveAiCheck(
       id,
@@ -3623,6 +3731,7 @@ export class KoService {
         finishedAt: new Date(this.now()).toISOString(),
         ...(outcome.fallbackReason ? { fallbackReason: outcome.fallbackReason } : {}),
         ...(outcome.coverage ? { coverage: outcome.coverage } : {}),
+        ...(basis ? { basis } : {}),
       },
       expectedKoVersion,
     );
@@ -3709,9 +3818,12 @@ export class KoService {
     }
     const rang = new Map(hits.map((hit, index) => [hit.koId, index]));
     const kos = await this.repo.listByIds(hits.map((hit) => hit.koId));
-    return kos
-      .filter((ko) => !ko.deletedAt)
-      .sort((a, b) => (rang.get(a.id) ?? 0) - (rang.get(b.id) ?? 0));
+    // AUFNAHME 20260922: auch der Suchkandidat trägt die Lesefassung des Prüfnachweises.
+    return this.lesefassungen(
+      kos
+        .filter((ko) => !ko.deletedAt)
+        .sort((a, b) => (rang.get(a.id) ?? 0) - (rang.get(b.id) ?? 0)),
+    );
   }
 
   // ---- SCRUM-422: Papierkorb -----------------------------------------------------------
@@ -3969,7 +4081,7 @@ export class KoService {
     const { deletedAt: _at, deletedBy: _by, ...restored } = ko;
     await this.repo.update(restored as KnowledgeObject);
     await this.audit?.record({ actor, action: "ko.restored", target: id });
-    return restored as KnowledgeObject;
+    return this.lesefassung(restored as KnowledgeObject);
   }
 
   // Sofortige Endlöschung EINES Papierkorb-Eintrags (Admin-Entscheidung).
@@ -4795,6 +4907,13 @@ export class KoService {
     // Formprüfung der Kennung ZUERST und mit demselben Vertrag wie der Vollzug: eine ungültige
     // Kennung ist ein ehrlicher Formfehler, kein „nicht gefunden".
     const key = normalizeAppendOperationId(operationId);
+    return this.lesefassungWert(await this.lookupDocumentAppendRoh(id, key));
+  }
+
+  private async lookupDocumentAppendRoh(
+    id: string,
+    key: string,
+  ): Promise<DocumentAppendCommit | null> {
     return this.withKoLock(id, async () => {
       const current = await this.require(id);
       const known = (current.appendOps ?? []).find((op) => op.id === key);
@@ -4854,7 +4973,8 @@ export class KoService {
       throw new KoError("INVALID_SOURCE", "Quellen-Label fehlt.");
     }
 
-    return this.withKoLock(id, async () => {
+    // AUFNAHME 20260922: das Commit-Ergebnis trägt die Lesefassung seines Objekts.
+    const commit = await this.withKoLock(id, async () => {
       const before = await this.require(id);
 
       // ---- IDEMPOTENZ ----------------------------------------------------------------------
@@ -5071,6 +5191,7 @@ export class KoService {
         throw err;
       }
     });
+    return this.lesefassungWert(commit);
   }
 
   // ==============================================================================================
@@ -5121,6 +5242,17 @@ export class KoService {
     beleg: { action: string; grund: string },
     apply: (ko: KnowledgeObject) => KnowledgeObject,
     opts: EinordnungsBedingung = {},
+  ): Promise<KnowledgeObject> {
+    // AUFNAHME 20260922: das zurückgegebene Objekt trägt die Lesefassung des Prüfnachweises.
+    return this.lesefassung(await this.mutateKoMetadataRoh(id, actor, beleg, apply, opts));
+  }
+
+  private async mutateKoMetadataRoh(
+    id: string,
+    actor: string,
+    beleg: { action: string; grund: string },
+    apply: (ko: KnowledgeObject) => KnowledgeObject,
+    opts: EinordnungsBedingung,
   ): Promise<KnowledgeObject> {
     return this.withKoLock(id, async () => {
       const before = await this.require(id);
@@ -5308,7 +5440,7 @@ export class KoService {
     state: { trust: number; status: KoStatus },
     opts: { expectedVersion?: number } = {},
   ): Promise<KnowledgeObject> {
-    return this.withKoLock(id, async () => {
+    const ergebnis = await this.withKoLock(id, async () => {
       const ko = await this.require(id);
       if (opts.expectedVersion !== undefined && ko.version !== opts.expectedVersion) {
         return ko; // Version hat sich geändert (Revise) → Bewertung galt der Vorversion, nicht schreiben.
@@ -5317,6 +5449,7 @@ export class KoService {
       await this.repo.update(updated);
       return updated;
     });
+    return this.lesefassung(ergebnis);
   }
 
   // ==============================================================================================
@@ -5340,6 +5473,14 @@ export class KoService {
     id: string,
     ref: { auditSeq: number; auditHash: string },
     opts: { expectedVersion?: number } = {},
+  ): Promise<KnowledgeObject> {
+    return this.lesefassung(await this.setValidationDecisionRefRoh(id, ref, opts));
+  }
+
+  private async setValidationDecisionRefRoh(
+    id: string,
+    ref: { auditSeq: number; auditHash: string },
+    opts: { expectedVersion?: number },
   ): Promise<KnowledgeObject> {
     return this.withKoLock(id, async () => {
       const ko = await this.require(id);
