@@ -530,3 +530,79 @@ test("DEMO-UX-V1 · Fall 8: natives Einfügen verpufft während der Entwurf läd
     await page.unrouteAll({ behavior: "wait" });
   }
 });
+
+// ------------------------------------------------------------------------------------------------
+// FALL 9 — DER NATIVE RUNDLAUF, DEUTSCH UND ENGLISCH (Auftrag gesamt-entwurf-datenerhalt).
+// ------------------------------------------------------------------------------------------------
+//
+// Bens Befund (Runde 1): Fälle 6 und 7 enden, sobald der eingefügte Text im Feld steht — vor dem
+// Sichern und vor dem Wiederöffnen; Englisch war nur gemountet (jsdom) belegt. CAP-P1 verlangt aber
+// „Speichern/Wiederöffnen vollständig" und den echten Clipboardweg DE/EN. Dieser Fall fährt beides
+// in einem Zug: natives Tastatur-Einfügen in Titel UND Rumpf → „Entwurf sichern" über die sichtbare
+// Beschriftung der jeweiligen Sprache → Serverstand über `GET /api/drafts/:id` → frische Seite über
+// die Adresse → Titel und Rumpf stehen wieder da.
+//
+// SPRACHE ÜBER `?lang=` (`lib/htmlLang.ts`, `sprachAusEintritt`): sie gilt für diesen Seitenaufbau
+// und wird NICHT gespeichert — die übrigen Fälle dieser Datei, die deutsch lesen, bleiben unberührt.
+// Die Proben tragen eine Laufkennung; sie sind nicht die ENTWURFSPROBE der Fälle 3 und 8.
+//
+// GRENZEN wie oben: nur Tastatur (Kontextmenü nicht maschinell bedienbar), nur Chromium, und der
+// Server ist der In-Memory-Smoke-Server — kein PostgreSQL-Beleg (K13 bleibt davon getrennt offen).
+for (const fall of [
+  { sprache: "de", sichern: "Entwurf sichern", gesichert: "Entwurf gespeichert." },
+  { sprache: "en", sichern: "Save draft", gesichert: "Draft saved." },
+] as const) {
+  test(`DEMO-UX-V1 · Fall 9 (${fall.sprache}): natives Einfügen übersteht Sichern und Wiederöffnen`, async ({
+    page,
+  }) => {
+    await ensureLoggedIn(page);
+    await page.goto(`${VORDERTUER}?lang=${fall.sprache}`);
+    await expect
+      .poll(() => page.evaluate(() => document.documentElement.lang), {
+        message: "Kalibrierung: die Seite steht in der verlangten Sprache",
+      })
+      .toBe(fall.sprache);
+    const editor = page.locator(EDITOR).first();
+    await expect(editor).toBeVisible({ timeout: 15_000 });
+    const titel = page.getByTestId("blatt-titel");
+    await expect(titel).toBeEnabled();
+
+    const lauf = `${fall.sprache.toUpperCase()}-${Date.now()}`;
+    const titelProbe = `CAP-P1 Rundlauf ${lauf}`;
+    const rumpfProbe = `CAP-P1 Rundlauf ${lauf}: Vor dem Anfahren den Ventildruck prüfen.`;
+
+    await fuelleZwischenablage(page, titelProbe);
+    await titel.click();
+    await expect(titel).toBeFocused();
+    await fuegeNativEin(page);
+    await expect(titel).toHaveValue(titelProbe);
+
+    await fuelleZwischenablage(page, rumpfProbe);
+    await editor.click();
+    await expect(editor).toBeFocused();
+    await fuegeNativEin(page);
+    await expect(editor).toHaveText(rumpfProbe);
+
+    const sichern = page.getByRole("button", { name: fall.sichern, exact: true });
+    await expect(sichern).toBeEnabled();
+    await sichern.click();
+    await expect(page.getByText(fall.gesichert).first()).toBeVisible({ timeout: 15_000 });
+    await expect(page).toHaveURL(new RegExp(`${VORDERTUER}\\?draft=[^&]+$`), { timeout: 15_000 });
+    const id = new URL(page.url()).searchParams.get("draft") ?? "";
+    expect(id).not.toBe("");
+
+    // Der SERVER trägt, was eingefügt wurde — nicht nur die Fläche.
+    const antwort = await page.request.get(`/api/drafts/${encodeURIComponent(id)}`);
+    expect(antwort.ok(), "der gesicherte Entwurf ist über die Route nicht lesbar").toBe(true);
+    const entwurf: { payload: { title?: string | null; bodyHtml?: string | null } } =
+      await antwort.json();
+    expect(entwurf.payload.title).toBe(titelProbe);
+    expect(entwurf.payload.bodyHtml ?? "").toContain(rumpfProbe);
+
+    // Normales Wiederöffnen: frischer Seitenaufbau über die Adresse, dieselbe Sprache.
+    await page.goto(`${VORDERTUER}?draft=${encodeURIComponent(id)}&lang=${fall.sprache}`);
+    await expect(page.locator(EDITOR).first()).toHaveText(rumpfProbe, { timeout: 15_000 });
+    await expect(page.getByTestId("blatt-titel")).toHaveValue(titelProbe);
+    expect(await page.evaluate(() => document.documentElement.lang)).toBe(fall.sprache);
+  });
+}

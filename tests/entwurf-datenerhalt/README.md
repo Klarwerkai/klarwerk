@@ -6,6 +6,13 @@ lag diesem Lauf nicht vor; abgeglichen wurde gegen die Kriterien im Auftrag und 
 und Commit-Verlauf dieses Repositories. „Beleg“ nennt die Testdatei, die das Verhalten heute
 pinnt, und den Commit (mit Fassung, wo es einen Ship-Commit gibt), mit dem es geliefert wurde.
 
+**Runde 2 — Korrektur zu Runde 1:** Die in Runde 1 hier beschriebene Produktänderung (N-0062,
+N-0064) fehlte im festgehaltenen Commit `6c1bdc0d`: Eine Gegenprobe gegen den Basisstand hatte
+`Blatt.tsx` und `captureFrontDoor.ts` vorübergehend zurückgesetzt, und die Sitzung endete, bevor sie
+wieder eingespielt waren. Ben hat das zu Recht gemessen (T1/T1b/T3–T5 rot, lokal und am Server).
+Diese Fehlschläge sind zugleich der Rot-Beleg der Tests am Basisstand. Seit Runde 2 ist die
+Änderung wieder im Stand; die Tabelle unten beschreibt diesen Stand.
+
 ## Neu in diesem Lauf
 
 | Kriterium | Befund am Basisstand | Änderung | Beleg |
@@ -14,6 +21,8 @@ pinnt, und den Commit (mit Fassung, wo es einen Ship-Commit gibt), mit dem es ge
 | N-0064 Titel direkt am Feld vollständig | Einzeiliges `<input>`, langer Titel lief aus dem Blick. | Gewählt: „vollständige Titelanzeige direkt am Feld“ (zweite Option des Kriteriums). Läuft der Titel im Feld wirklich über (`scrollWidth > clientWidth`), steht er darunter vollständig und umbrochen (`blatt-titel-voll`, `aria-hidden`, das Feld selbst trägt den Wert für Hilfstechnik). | T3, T5; Gegenfall T4 |
 | R-1541 frühe **und** geladene Gegenfälle DE/EN | Gemountet nur Deutsch belegt (`tests/cap-p1-fruehe-eingabe`, F1–F5); Englisch nur als Textschlüssel (F6). | Keine Produktänderung; englische Gegenfälle ergänzt. | E1 (Ladefenster EN), E2 (geladen EN, Sichern in denselben Entwurf) |
 | FR-STR-05 Vorschau/Bearbeiten ohne Verlust inkl. Bilder | Kein eigener Test; der Moduswechsel kam nur als Nebenweg in `tests/editor-fremdfassung` F4 vor. | Keine Produktänderung; Abnahmetest ergänzt. | `vorschau-bearbeiten-ohne-verlust.test.tsx` V1, V2 |
+| CAP-P1 nativer Rundlauf DE/EN mit Sichern und Wiederöffnen (Runde 2) | Fälle 6/7 enden vor dem Sichern; EN nur gemountet (jsdom). | Keine Produktänderung; Smoke-Fall 9 (de) und 9 (en): natives Tastatur-Einfügen in Titel und Rumpf → „Entwurf sichern“/„Save draft“ → `GET /api/drafts/:id` → Wiederöffnen über die Adresse. Sollmanifest `tests/smoke/smoke-mengen-manifest.json` nachgeführt (chromium-zustand 9→11, gesamt 164→166). | `tests-smoke/demo-ux-v1-capture-frontdoor.spec.ts` Fall 9 |
+| P-KI-UEBERNAHME-SPEICHERN Server-/Persistenzbeleg (Runde 2) | Der Test von JOB 3408 lief gegen eine eigene Map-Attrappe. | Keine Produktänderung; Beleg gegen die echte Fastify-App (Anmeldung, Entwurfsrouten, `CaptureService`), nur das Sprachmodell ist an der Brücke ersetzt. Gegenprobe: ohne die Zeile `saveRequestedRef.current = false` in `save.onSuccess` werden S1–S3 rot, G1 bleibt grün. | `tests/ki-uebernahme-speichern/adopt-then-save-echter-dienst.test.tsx` S1 (DE), S2 (EN), S3 (Struktur/Titel), G1 (Doppelklick) |
 
 Warum nicht das mehrzeilige Titelfeld (erste Option von N-0064): Ein `<textarea>` ändert den
 Elementtyp von `blatt-titel`; mindestens neun bestehende Testdateien setzen den Titel über
@@ -40,15 +49,18 @@ Anzeige am Feld ausdrücklich zu.
 
 - **R-1541 / CAP-P1 — akustische Screenreader-Ausgabe:** weiterhin offen (so auch im Kriterium).
   Belegt ist nur die DOM-Seite (`aria-describedby` auf den Ladehinweis, F1/E1).
-- **CAP-P1 / CAP-P1-R2 — Abnahme „echter Clipboardweg DE/EN, Maus/Tastatur“:** die nativen
-  Browserfälle 6–8 laufen nur in der deutschen Oberfläche und nur per Tastatur. Das
-  Kontextmenü-Einfügen ist als nicht maschinell bedienbare Grenze benannt (Kopf der Spec-Datei),
-  nicht nachgestellt. Englisch ist in diesem Lauf nur gemountet (jsdom) belegt, nicht nativ.
+- **CAP-P1 / CAP-P1-R2 — Abnahme „echter Clipboardweg DE/EN, Maus/Tastatur“:** nativ belegt ist
+  seit Runde 2 der Tastaturweg DE und EN bis Sichern, Serverstand und Wiederöffnen (Fall 9); das
+  Ladefenster (Fall 8) nur deutsch. Das Kontextmenü-Einfügen (Maus) ist als nicht maschinell
+  bedienbare Grenze benannt, nicht nachgestellt. „Positive Paarung und verwaiste Caption“ ist nur
+  gemountet belegt (`blatt-fruehe-eingabe.test.tsx` F4), nicht im nativen Browser.
 - **K13 — echter Browser→Persistenz→Wiederöffnen-Weg:** teilweise belegt. Der Smoke-Fall 3/8
   sichert im echten Chromium, liest den Entwurf über `GET /api/drafts` zurück und öffnet ihn über
-  die Adresse wieder — aber gegen den In-Memory-Smoke-Server, nicht gegen PostgreSQL. Der
+  die Adresse wieder, ebenso Fall 9 — aber gegen den In-Memory-Smoke-Server, nicht gegen PostgreSQL.
+  Auch der neue P-KI-Beleg läuft gegen die In-Memory-Ablage der echten App. Der
   PG-Browser-Beleg `tests/entwurf-verlassen/speicherknopf-ganzdokument-pg-im-browser.integration.test.ts`
-  gilt dem Dateiweg (JOB 4352), nicht dem Blatt. Nicht mit T009 kombiniert; kein Prüflauf bestellt.
+  gilt dem Dateiweg (JOB 4352), nicht dem Blatt. K13 bleibt damit **offen**: diese Teilbelege
+  werden nicht zu einem vollständigen Rundlauf zusammengesetzt und nicht mit T009 kombiniert.
 - **P-KI-UEBERNAHME-SPEICHERN — „jeder abgewiesene Speicherversuch muss sichtbar sein“:** bei
   `!canSave` ist „Entwurf sichern“ sichtbar gesperrt (`disabled`); die Gründe (`fd.unsavable.*`)
   nennt der Weggeh-Dialog, nicht der Knopf. Ein zweiter Klick während desselben laufenden Vorgangs
