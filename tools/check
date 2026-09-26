@@ -100,6 +100,23 @@ npm run --silent smoke:ui:gate || {
   echo "  Alle drei Engines lokal: npm run smoke:ui (braucht KLARWERK_SHIP_SMOKE_API_KEY)"
   exit 1
 }
+# UX-20b-R — DER GESEEDETE INHALTSZWEIG DES JSON-RUNDLAUFS, IM TOR UND NICHT NUR AUF ZURUF.
+#
+# Der Lauf oben ist ungeseedet: dort kehrt `UX-20b L3` nach der Formprüfung mit einer Anmerkung zurück
+# (`ui-smoke.spec.ts`, „Lauf ohne KLARWERK_SMOKE_SEED"), und L3-T reicht nur die Mindestvorlage ein.
+# Der Inhalt — Export gegen die Seed-Sollmenge, exakter Zähler, neu gelesene Kandidaten, Dublettenbefund
+# und Urheberschaft — lief bisher nur mit `npm run smoke:ui:gate:daten` von Hand (Bens Befund,
+# Runde 2). Deshalb hier ein ZWEITER Server mit Demo-Bestand, beschränkt auf die UX-20b-Fälle: den vollen
+# geseedeten Lauf ins Tor zu nehmen hiesse, jede fremde Sonde auf eine Datenlage zu verpflichten, für
+# die sie nicht gebaut ist. Das Setup-Projekt (Ersteinrichtung + „Demodaten laden") läuft als
+# Abhängigkeit mit. Hermetisch wie oben: kein Modell, kein Zugangsdatum, kein Egress.
+echo "▶ ui-smoke geseedet (Chromium, nur UX-20b: L1–L3, L3-T, G1–G4)"
+KLARWERK_SMOKE_MODE=gate KLARWERK_SMOKE_SEED=1 ANTHROPIC_API_KEY= ./tools/browserdeckel.sh smoke \
+  npx playwright test --config playwright.smoke.config.ts --project=chromium --grep "UX-20b" || {
+  echo "✖ Geseedeter UX-20b-Smoke rot (JSON-Rundlauf mit Inhalt)."
+  echo "  Einzeln: npm run smoke:ui:gate:daten -- --grep \"UX-20b\""
+  exit 1
+}
 echo "  ⓘ NICHT im Tor gelaufen: ui-smoke.spec.ts „Kernfluss … @modell\" und „Fragen antwortet"
 echo "    ehrlich … @modell\" — beide brauchen ein aktives"
 echo "    Modell (Zugangsdatum + Egress), das dieses hermetische Tor bewusst nicht hat."

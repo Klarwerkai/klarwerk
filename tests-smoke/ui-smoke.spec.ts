@@ -717,6 +717,19 @@ test("UX-20b L1: der JSON-Kasten passt in DE und EN bei 320/390/1280 ins Sichtfe
   }
 });
 
+/**
+ * UX-20b-R: eine Belegzeile — als Anmerkung im Bericht UND auf der Standardausgabe. Der Tor-Lauf
+ * (`tools/check`, Listenreporter) zeigt Anmerkungen nicht; ohne die Ausgabezeile stünde dort nur
+ * „passed", und ob L3 den Inhaltszweig gefahren hat oder eine Gegenprobe wirklich rot sah, wäre am
+ * festgehaltenen Protokoll nicht ablesbar (Bens Befund Runde 2: Serverbeleg fehlt).
+ */
+function belege(anmerkung: { type: string; description: string }): void {
+  test.info().annotations.push(anmerkung);
+  process.stdout.write(
+    `[UX-20b] ${test.info().title.split(":")[0]} · ${anmerkung.type}: ${anmerkung.description}\n`,
+  );
+}
+
 // Die Befehlstaste auf macOS, Strg sonst — dieselbe Wahl wie in `word-taskpane-kopieren.spec.ts:36`.
 const MOD = process.platform === "darwin" ? "Meta" : "Control";
 
@@ -771,7 +784,7 @@ test("UX-20b L2: die Vorlage ist mit Maus UND Tastatur erreichbar, vollmarkiert,
     erreicht,
     `Tastaturweg: das Vorlagenfeld ist vom Seitenanfang aus in ${MAX_TABS} Tab-Schritten nicht erreichbar — für Tastaturnutzer ist die Vorlage damit nicht zu holen`,
   ).toBe(true);
-  test.info().annotations.push({
+  belege({
     type: "Tastaturweg",
     description: `Tab-Schritte vom Seitenanfang bis #${VORLAGE_ID}: ${schritte} (Obergrenze ${MAX_TABS})`,
   });
@@ -1039,7 +1052,7 @@ test("UX-20b L3: der Bibliotheks-Export kommt über echtes HTTP und wird vom Imp
   // DIE DATENLAGE, nach dem Muster des mega49-Falls oben und ohne Wette auf die Reihenfolge: nur ein
   // Lauf, der sich selbst als geseedet ausweist, darf „mindestens ein Eintrag" behaupten.
   if (process.env.KLARWERK_SMOKE_SEED !== "1") {
-    test.info().annotations.push({
+    belege({
       type: "Datenlage",
       description: `Lauf ohne KLARWERK_SMOKE_SEED: der Export war formal in Ordnung (200, JSON, Array, ${liste.length} Einträge), die INHALTSPRÜFUNG und das Einreichen der Exportdatei haben in DIESEM Lauf NICHT stattgefunden. Belegt wird der Inhaltszweig von npm run smoke:ui:gate:daten.`,
     });
@@ -1072,7 +1085,7 @@ test("UX-20b L3: der Bibliotheks-Export kommt über echtes HTTP und wird vom Imp
   // geseedeten Laufs nur „passed", und ob der Inhaltszweig wirklich gefahren ist, wäre nur an der
   // ABWESENHEIT der Anmerkung oben ablesbar — eine Abwesenheit als Beleg ist genau das, was diese
   // Datei sich abgewöhnt hat (mega59 H3).
-  test.info().annotations.push({
+  belege({
     type: "Datenlage",
     description: `geseedeter Lauf: ${liste.length} Einträge über GET /api/library/export geholt (Seed-Sollmenge ${SEED_TITEL.length} Titel enthalten), per Mausklick als export.json eingereicht, Zähler exakt ${liste.length}, nach Neuladen ${neu.length} neue Kandidaten gelesen, alle als Dublette ihres Quellobjekts erkannt, jeder mit der Urheberschaft seines Exporteintrags.`,
   });
@@ -1152,7 +1165,7 @@ test("UX-20b L3-T: dieselbe Datei geht per Tastatur durch die Dateiauswahl — Z
     pruefeDublettenbefund(neu, eingereicht);
     pruefeUrheberschaft(neu, eingereicht);
   }
-  test.info().annotations.push({
+  belege({
     type: "Tastaturweg",
     description: `${geseedet ? "Exportdatei" : "Mindestvorlage (ungeseedet)"}: ${schritte} Tab-Schritte vom Seitenanfang bis zur JSON-Kachel, Enter öffnete den Dateidialog, Zähler exakt ${eingereicht.length}, nach Neuladen ${neu.length} neue Kandidaten gelesen.`,
   });
@@ -1183,7 +1196,7 @@ test("UX-20b G1: Gegenprobe zu L1 — ein zu breites Vorlagenfeld macht die Layo
   // RÜCKNAHME auf derselben Breite: ohne Verstellung wieder grün — die Verstellung war die Ursache.
   await regel.evaluate((el) => (el as Element).remove());
   expect(layoutVerstoesse(await messeLayout(page), "G1 @ 320px, zurückgenommen")).toEqual([]);
-  test.info().annotations.push({ type: "G1 rot", description: rot.join(" | ") });
+  belege({ type: "G1 rot", description: rot.join(" | ") });
 });
 
 /**
@@ -1236,7 +1249,7 @@ test("UX-20b G2a: Gegenprobe Maus — ohne Vollmarkierung wird die Mauszusage ro
   const weg = await tabBisVorlage(page);
   expect(weg.erreicht, "G2a: die Verstellung hat auch die Erreichbarkeit genommen").toBe(true);
   const tastatur = await leseMarkierung(page);
-  test.info().annotations.push({
+  belege({
     type: "G2a rot",
     description: `Mausweg rot: Markierung ${JSON.stringify(maus)}. Tastaturzweig in derselben Probe: erreicht nach ${weg.schritte} Tab-Schritten, Markierung ${JSON.stringify(tastatur)} → ${istVollmarkiert(tastatur) ? "grün (vollmarkiert)" : "ebenfalls rot"}.`,
   });
@@ -1273,7 +1286,7 @@ test("UX-20b G2b: Gegenprobe Tastatur — aus der Tab-Reihenfolge genommen wird 
   expect(istVollmarkiert(maus), `G2b: der Mausweg ist mitgekippt: ${JSON.stringify(maus)}`).toBe(
     true,
   );
-  test.info().annotations.push({
+  belege({
     type: "G2b rot",
     description: `Tastaturweg rot: Vorlagenfeld in ${weg.schritte} Tab-Schritten nicht erreicht (Obergrenze ${MAX_TABS}). Mausweg in derselben Probe grün: ${JSON.stringify(maus)}.`,
   });
@@ -1312,7 +1325,7 @@ test("UX-20b G3: Gegenprobe zu L2 — eine Vorlage mit ungültigem type wird abg
   const meldungen = await spur.lesen();
   expect(meldetGenauZaehler(meldungen, 1), "G3: trotz Ablehnung ein Erfolgszähler").toBe(false);
   expect((await leseKandidaten(page)).length, "G3: trotz Ablehnung wurde eingereiht").toBe(vorher);
-  test.info().annotations.push({ type: "G3 rot", description: meldungen });
+  belege({ type: "G3 rot", description: meldungen });
 });
 
 test("UX-20b G4: Gegenprobe zu L3 — eine Exportantwort ohne Liste wird von der Formprüfung und vom Import abgelehnt", async ({
@@ -1362,7 +1375,7 @@ test("UX-20b G4: Gegenprobe zu L3 — eine Exportantwort ohne Liste wird von der
   // RÜCKNAHME: derselbe Weg ohne Verstellung ist formal wieder in Ordnung.
   await page.unroute(`**${EXPORT_PFAD}`);
   expect(exportFormFehler(await holeUeberBrowser(page, EXPORT_PFAD)).fehler).toEqual([]);
-  test.info().annotations.push({
+  belege({
     type: "G4 rot",
     description: `${fehler[0]} | Import: ${await spur.lesen()}`,
   });
