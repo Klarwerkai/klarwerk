@@ -265,9 +265,23 @@ describe("JOB 3655 B · der Startbericht", () => {
     // Die Zusicherung aus B13 hängt an einer Eigenschaft der NAMEN: `senkeUeberWert` lässt nur
     // reine GROSSBUCHSTABEN_MIT_UNTERSTRICH unangetastet. Ein künftiger Eintrag mit einer Ziffer
     // oder einem Kleinbuchstaben würde still redigiert — dieser Test fängt ihn vorher ab.
+    // KLARWERK_M365_MANDANTEN trägt eine Ziffer (Produktname „Microsoft 365", Name vom Auftrag
+    // vorgegeben). Für ihn zählt deshalb die Zusage selbst: die Senke lässt ihn unverändert.
     for (const wert of STARTVERTRAG) {
-      expect(wert.name, `${wert.name} überlebt die Logsenke nicht`).toMatch(/^[A-Z_]+$/);
+      if (/^[A-Z_]+$/.test(wert.name)) {
+        continue;
+      }
+      expect(wert.name, `${wert.name} hat keine Umgebungsnamen-Form`).toMatch(/^[A-Z][A-Z0-9_]+$/);
+      expect(senkeUeberWert(wert.name, {}), `${wert.name} überlebt die Logsenke nicht`).toBe(
+        wert.name,
+      );
     }
+    // Kalibrierung: die Ausnahme ist nicht vakuos, und ein Name mit Ziffern, den die Senke
+    // zerstört (Token-Regel ab 24 Zeichen), fiele hier auf.
+    expect(STARTVERTRAG.some((w) => w.name === "KLARWERK_M365_MANDANTEN")).toBe(true);
+    expect(senkeUeberWert("KLARWERK_M365_MANDANTEN_ZU_LANG", {})).not.toBe(
+      "KLARWERK_M365_MANDANTEN_ZU_LANG",
+    );
   });
 
   it("B16 · die „an“-Regel des Berichts läuft mit addonApiEnabled() gleich", () => {
