@@ -1,23 +1,38 @@
 // SCRUM-381: UI-Smoke — der Kernkreislauf einmal durch echte Browser-Klicks.
 // Fängt: weiße Seite, kaputtes Bundle, tote Buttons im Hauptweg, kaputtes Routing.
 // Bewusst robuste Selektoren (Feldtypen + sichtbare deutsche Texte aus i18n.ts).
-import { expect, test } from "@playwright/test";
+import { type Page, expect, test } from "@playwright/test";
+import { demoTexts } from "../services/app/src/demo-content";
 // AUFTRAG-mega59 BLOCK H4: die geteilte Verkehrsmessung — bis hierher zählte im Browser-Smoke kein
 // einziger Fall Anfragen, und genau das war die Lücke hinter S1.
 import { RUHEFRIST_MS, zaehleAnfragen } from "./support/anfragezaehler";
 import { ensureLoggedIn } from "./support/auth";
 // JOB 3177 (UX-20b): der JSON-Kasten auf /import wird im echten Browser gemessen — die Helfer dazu
-// stehen bei den drei Fällen am ENDE dieser Datei, nicht hier.
+// stehen bei den Fällen am ENDE dieser Datei, nicht hier (seit UX-20b-R: L1–L3, L3-T und G1–G4).
 import {
+  EXPORT_PFAD,
   JSON_EINGANG,
   JSON_KASTEN,
+  type KandidatAufDemDraht,
+  MAX_TABS,
   VORLAGE,
   VORLAGE_ID,
+  exportFormFehler,
+  holeUeberBrowser,
+  istVollmarkiert,
+  layoutVerstoesse,
+  leseKandidaten,
+  leseMarkierung,
+  mausMarkierung,
   meldetGenauZaehler,
   meldungsSpur,
+  messeLayout,
   oeffneJsonKasten,
+  reicheDateiPerMaus,
+  reicheDateiPerTastatur,
   schalteStufe2Ein,
   stelleSpracheEin,
+  tabBisVorlage,
 } from "./support/import-json-kasten";
 
 test.describe.configure({ mode: "serial" });
@@ -660,8 +675,6 @@ test("mega49: die Datenlage dieses Laufs ist die zugesagte", async ({ page }) =>
 // Prüfliste, die diese Fälle nicht bedienen. Deshalb stehen sie im geteilten Kontext und brauchen
 // keinen eigenen Server (anders als der Erfassungs-Kernweg, s. `playwright.smoke.config.ts:22-59`).
 
-/** Ein Pixel Toleranz für Teilpixel-Rundung bei fraktionalen Layoutbreiten — wie in `:335-342`. */
-const TOLERANZ_PX = 1;
 /**
  * Die drei Breiten: ein Schreibtisch, ein heutiges Telefon, das schmalste ernstzunehmende Telefon.
  *
@@ -695,66 +708,30 @@ test("UX-20b L1: der JSON-Kasten passt in DE und EN bei 320/390/1280 ins Sichtfe
         `die Seite steht nicht in der eingestellten Sprache (${wo})`,
       ).toBe(sprache);
 
-      const sicht = await page.evaluate((feldId) => {
-        const feld = document.getElementById(feldId);
-        return {
-          dokScroll: document.documentElement.scrollWidth,
-          dokClient: document.documentElement.clientWidth,
-          feldScroll: feld?.scrollWidth ?? -1,
-          feldClient: feld?.clientWidth ?? -1,
-        };
-      }, VORLAGE_ID);
-
-      // (1) Kein waagerechtes Schieben des ganzen Dokuments.
-      expect(
-        sicht.dokScroll,
-        `waagerechter Überlauf (${wo}): scrollWidth ${sicht.dokScroll} > clientWidth ${sicht.dokClient}`,
-      ).toBeLessThanOrEqual(sicht.dokClient + TOLERANZ_PX);
-
-      // (2) Der Kasten liegt vollständig im Sichtfenster — gemessen am Kastenrechteck, nicht an
-      //     einer CSS-Klasse. Eine Klasse sagt, was gemeint war; das Rechteck sagt, was steht.
-      const kasten = await page.locator(JSON_KASTEN).boundingBox();
-      expect(kasten, `der JSON-Kasten hat kein Kastenrechteck (${wo})`).not.toBeNull();
-      const kastenX = kasten?.x ?? Number.NaN;
-      const kastenBreite = kasten?.width ?? Number.NaN;
-      expect(
-        kastenX,
-        `der JSON-Kasten ragt links hinaus (${wo}): x=${kastenX}`,
-      ).toBeGreaterThanOrEqual(-TOLERANZ_PX);
-      expect(
-        kastenX + kastenBreite,
-        `der JSON-Kasten ragt rechts hinaus (${wo}): x=${kastenX} + Breite=${kastenBreite} > ${sicht.dokClient}`,
-      ).toBeLessThanOrEqual(sicht.dokClient + TOLERANZ_PX);
-
-      // (3) Und das Vorlagenfeld ebenso. Es ist achtzeilig und `font-mono` — genau hier bricht so
-      //     etwas zuerst, und zwar auf zwei Arten: das Feld selbst zu breit …
-      const feld = await page.locator(VORLAGE).boundingBox();
-      expect(feld, `das Vorlagenfeld hat kein Kastenrechteck (${wo})`).not.toBeNull();
-      const feldX = feld?.x ?? Number.NaN;
-      const feldBreite = feld?.width ?? Number.NaN;
-      expect(
-        feldX,
-        `das Vorlagenfeld ragt links hinaus (${wo}): x=${feldX}`,
-      ).toBeGreaterThanOrEqual(-TOLERANZ_PX);
-      expect(
-        feldX + feldBreite,
-        `das Vorlagenfeld ragt rechts hinaus (${wo}): x=${feldX} + Breite=${feldBreite} > ${sicht.dokClient}`,
-      ).toBeLessThanOrEqual(sicht.dokClient + TOLERANZ_PX);
-
-      // … oder sein INHALT breiter als das Feld, sodass der Mensch die Vorlage nur zur Hälfte sieht
-      // und waagerecht in einem Textfeld schieben müsste.
-      expect(
-        sicht.feldScroll,
-        `die Vorlage schiebt im Feld waagerecht (${wo}): scrollWidth ${sicht.feldScroll} > clientWidth ${sicht.feldClient}`,
-      ).toBeLessThanOrEqual(sicht.feldClient + TOLERANZ_PX);
+      // DIESELBE Messung fährt G1 mit verstelltem Feld (`support/import-json-kasten.ts`,
+      // `layoutVerstoesse`): kein Überlauf des Dokuments, Kasten und Vorlagenfeld links wie rechts
+      // im Sichtfenster — gemessen am Rechteck, nicht an einer CSS-Klasse —, und die achtzeilige
+      // `font-mono`-Vorlage schiebt im Feld nicht waagerecht.
+      expect(layoutVerstoesse(await messeLayout(page), wo)).toEqual([]);
     }
   }
 });
 
+/**
+ * UX-20b-R: eine Belegzeile — als Anmerkung im Bericht UND auf der Standardausgabe. Der Tor-Lauf
+ * (`tools/check`, Listenreporter) zeigt Anmerkungen nicht; ohne die Ausgabezeile stünde dort nur
+ * „passed", und ob L3 den Inhaltszweig gefahren hat oder eine Gegenprobe wirklich rot sah, wäre am
+ * festgehaltenen Protokoll nicht ablesbar (Bens Befund Runde 2: Serverbeleg fehlt).
+ */
+function belege(anmerkung: { type: string; description: string }): void {
+  test.info().annotations.push(anmerkung);
+  process.stdout.write(
+    `[UX-20b] ${test.info().title.split(":")[0]} · ${anmerkung.type}: ${anmerkung.description}\n`,
+  );
+}
+
 // Die Befehlstaste auf macOS, Strg sonst — dieselbe Wahl wie in `word-taskpane-kopieren.spec.ts:36`.
 const MOD = process.platform === "darwin" ? "Meta" : "Control";
-/** Obergrenze der Tab-Schritte: keine geratene Zahl, sondern eine Abbruchbedingung mit Meldung. */
-const MAX_TABS = 200;
 
 test("UX-20b L2: die Vorlage ist mit Maus UND Tastatur erreichbar, vollmarkiert, kopierbar — und sie taugt als Datei", async ({
   page,
@@ -785,11 +762,8 @@ test("UX-20b L2: die Vorlage ist mit Maus UND Tastatur erreichbar, vollmarkiert,
   // ── MAUSWEG ──────────────────────────────────────────────────────────────────────────────────
   // Das ist die Zusage von `ImportJsonUpload.tsx:88` (`onFocus … select()`): ein Klick genügt, der
   // Mensch muss nicht selbst über acht Zeilen ziehen.
-  await vorlage.click();
-  const nachKlick = await vorlage.evaluate((el) => {
-    const feld = el as HTMLTextAreaElement;
-    return { start: feld.selectionStart, ende: feld.selectionEnd, laenge: feld.value.length };
-  });
+  // G2a fährt DIESELBE Messung mit abgeschalteter Vollmarkierung und muss hier rot werden.
+  const nachKlick = await mausMarkierung(page);
   expect(nachKlick.start, "Mausweg: die Markierung beginnt nicht bei 0").toBe(0);
   expect(nachKlick.ende, "Mausweg: die Markierung reicht nicht bis zum Ende").toBe(
     nachKlick.laenge,
@@ -804,27 +778,19 @@ test("UX-20b L2: die Vorlage ist mit Maus UND Tastatur erreichbar, vollmarkiert,
   await page.reload();
   await expect(vorlage).toBeVisible({ timeout: 15_000 });
 
-  let schritte = 0;
-  let erreicht = false;
-  while (schritte < MAX_TABS && !erreicht) {
-    await page.keyboard.press("Tab");
-    schritte++;
-    erreicht = await page.evaluate((id) => document.activeElement?.id === id, VORLAGE_ID);
-  }
+  // G2b fährt DIESELBE Messung mit aus der Tab-Reihenfolge genommenem Feld und muss hier rot werden.
+  const { erreicht, schritte } = await tabBisVorlage(page);
   expect(
     erreicht,
     `Tastaturweg: das Vorlagenfeld ist vom Seitenanfang aus in ${MAX_TABS} Tab-Schritten nicht erreichbar — für Tastaturnutzer ist die Vorlage damit nicht zu holen`,
   ).toBe(true);
-  test.info().annotations.push({
+  belege({
     type: "Tastaturweg",
     description: `Tab-Schritte vom Seitenanfang bis #${VORLAGE_ID}: ${schritte} (Obergrenze ${MAX_TABS})`,
   });
 
   // Der Fokus trägt die Vollmarkierung auch auf diesem Weg — sonst hinge die Zusage am Mausklick.
-  const nachTab = await vorlage.evaluate((el) => {
-    const feld = el as HTMLTextAreaElement;
-    return { start: feld.selectionStart, ende: feld.selectionEnd, laenge: feld.value.length };
-  });
+  const nachTab = await leseMarkierung(page);
   expect(nachTab.start, "Tastaturweg: die Markierung beginnt nicht bei 0").toBe(0);
   expect(nachTab.ende, "Tastaturweg: die Markierung reicht nicht bis zum Ende").toBe(
     nachTab.laenge,
@@ -842,10 +808,7 @@ test("UX-20b L2: die Vorlage ist mit Maus UND Tastatur erreichbar, vollmarkiert,
     await page.evaluate((id) => document.activeElement?.id === id, VORLAGE_ID),
     "Tastaturweg: Shift+Tab führt nicht zurück ins Vorlagenfeld",
   ).toBe(true);
-  const nachShiftTab = await vorlage.evaluate((el) => {
-    const feld = el as HTMLTextAreaElement;
-    return { start: feld.selectionStart, ende: feld.selectionEnd, laenge: feld.value.length };
-  });
+  const nachShiftTab = await leseMarkierung(page);
   expect(nachShiftTab.start, "Shift+Tab: die Markierung beginnt nicht bei 0").toBe(0);
   expect(nachShiftTab.ende, "Shift+Tab: die Markierung reicht nicht bis zum Ende").toBe(
     nachShiftTab.laenge,
@@ -908,83 +871,512 @@ const ERLAUBTE_TYPEN = [
 /** Die vier Pflichtfelder des Importvertrags — `lib/importReview.ts:15-20` (`FIELD_CHECKS`). */
 const PFLICHTFELDER = ["title", "statement", "category", "type"] as const;
 
+/**
+ * DER UNABHÄNGIGE SOLLWERT FÜR L3 — aus der Seed-Quelle, nicht aus der Antwort, die geprüft wird.
+ *
+ * Bis UX-20b-R verglich L3 den Importzähler mit `liste.length`, also mit einer Zahl aus DERSELBEN
+ * Exportantwort, die er prüfen sollte: ein Export, der Einträge verliert, hätte mit einem Import,
+ * der genau diese kleinere Liste einreiht, grün gestanden. Jetzt steht daneben, was der Seed
+ * zusagt: „Demodaten laden" (`ersteinrichtung.setup.ts`) validiert genau diese fünf Objekte
+ * (`services/app/src/seed-demo.ts`, Abschnitt „Validierung": je zwei grüne Bewertungen für koValid,
+ * koFilter, koPflege, koLieferantFrei, koWartung), und der Export des Admins trägt alle
+ * validierten Objekte (`LibraryService.exportJson`, Admin darf `ko.validate` → auch vertrauliche).
+ * Die Titel kommen aus DEM Textbestand des Seeds (`demo-content.ts`, Sprache „de" — der Seed-Klick
+ * läuft im frischen Kontext mit der Vorgabesprache), nicht aus einer Abschrift.
+ *
+ * TEILMENGE, NICHT GLEICHHEIT: andere Sonden desselben Servers dürfen weitere Objekte validieren.
+ * Fehlt einer der fünf, ist der Export unvollständig — das ist die Aussage.
+ */
+const SEED_VALIDIERT = ["koValid", "koFilter", "koPflege", "koLieferantFrei", "koWartung"] as const;
+const SEED_TITEL = SEED_VALIDIERT.map((schluessel) => demoTexts("de")[schluessel].title);
+
+/** Ein Eintrag der Exportliste, so wie der Draht ihn trägt. */
+type ExportEintrag = Record<string, unknown>;
+
+const JSON_DATEI = (name: string, rumpf: string) => ({
+  name,
+  mimeType: "application/json",
+  buffer: Buffer.from(rumpf, "utf8"),
+});
+
+/** Die Exportliste inhaltlich prüfen — Pflichtfelder, Typmenge, Status, und die Seed-Teilmenge. */
+function pruefeExportInhalt(liste: readonly ExportEintrag[]): void {
+  expect(
+    liste.length,
+    "geseedeter Lauf, aber der Export ist leer — dann ist die zweite Datenlage keine",
+  ).toBeGreaterThan(0);
+  liste.forEach((eintrag, i) => {
+    for (const feld of PFLICHTFELDER) {
+      expect(
+        typeof eintrag[feld],
+        `Exporteintrag ${i + 1}: Pflichtfeld „${feld}" ist kein Text`,
+      ).toBe("string");
+    }
+    expect(
+      ERLAUBTE_TYPEN,
+      `Exporteintrag ${i + 1}: type „${String(eintrag.type)}" steht nicht in der erlaubten Menge`,
+    ).toContain(eintrag.type);
+    // Der Export gibt nur Validiertes heraus (SCRUM-506) — sonst wäre er ein zweiter Egress-Weg.
+    expect(eintrag.status, `Exporteintrag ${i + 1} ist nicht validiert`).toBe("validiert");
+  });
+  const titel = liste.map((e) => e.title);
+  for (const soll of SEED_TITEL) {
+    expect(titel, `das vom Seed validierte Objekt „${soll}" fehlt im Export`).toContain(soll);
+  }
+}
+
+/** Schlüssel für „derselbe Inhalt": Titel und Kernaussage, zeichengenau. */
+const inhaltsschluessel = (titel: unknown, aussage: unknown): string =>
+  `${String(titel)}\u0000${String(aussage)}`;
+
+/**
+ * ERNEUT GELESEN: die neuen Kandidaten der Warteschlange gegen das, was eingereicht wurde. Menge
+ * (Zähler), Inhalt (Titel + Kernaussage als Mehrfachmenge) und Zustand („neu": niemand hat
+ * entschieden). Gelesen wird über HTTP nach einem NEULADEN der Seite — nicht aus der Antwort, die
+ * der Upload selbst bekam.
+ */
+function pruefeWiedereingelesen(
+  neu: readonly KandidatAufDemDraht[],
+  eingereicht: readonly ExportEintrag[],
+  toastZahl: number,
+): void {
+  expect(neu.length, "die Warteschlange hält nicht so viele neue Kandidaten, wie gemeldet").toBe(
+    toastZahl,
+  );
+  expect(neu.length, "die Warteschlange hält nicht so viele neue Kandidaten, wie eingereicht").toBe(
+    eingereicht.length,
+  );
+  const ist = neu.map((k) => inhaltsschluessel(k.item.title, k.item.statement)).sort();
+  const soll = eingereicht.map((e) => inhaltsschluessel(e.title, e.statement)).sort();
+  expect(ist, "Titel/Kernaussage in der Warteschlange weichen vom Eingereichten ab").toEqual(soll);
+  for (const k of neu) {
+    expect(k.status, `Kandidat „${String(k.item.title)}" ist nicht mehr „neu"`).toBe("neu");
+  }
+}
+
+/**
+ * KEINE STILLE DUBLETTE (R-1598/R-1731): wird der eigene Export in DERSELBEN Instanz wieder
+ * eingereicht, liegt jeder Inhalt schon im Bestand. Die Dublettenprüfung des Imports
+ * (`createImportCandidates` → `kandidatDublettenbefund`) muss das an JEDEM Kandidaten sagen — und
+ * auf das Objekt zeigen, aus dem der Eintrag exportiert wurde. Ein Kandidat ohne Befund würde beim
+ * Annehmen eine zweite Karteikarte anlegen.
+ */
+/**
+ * HERKUNFT, GETRENNT VON DER DUBLETTE (Bens Befund R-0150/R-1731, Runde 1): der Dublettentreffer
+ * sagt nur, WORAUF ein Kandidat zeigt — nicht, dass seine Urheberschaft angekommen ist. Diese
+ * Prüfung liest sie selbst: jeder Kandidat trägt die `originalAuthor` seines Exporteintrags. Dass die
+ * Urheberin danach beim Annehmen Wissensträgerin des Zielobjekts bleibt, belegt
+ * `tests/json-herkunft-rundlauf/urheberschaft-im-rundlauf.test.ts` an beiden Anlagewegen.
+ */
+function pruefeUrheberschaft(
+  neu: readonly KandidatAufDemDraht[],
+  liste: readonly ExportEintrag[],
+): void {
+  const urheber = new Map<string, unknown>();
+  for (const e of liste) {
+    urheber.set(inhaltsschluessel(e.title, e.statement), e.originalAuthor);
+  }
+  for (const k of neu) {
+    const soll = urheber.get(inhaltsschluessel(k.item.title, k.item.statement));
+    expect(
+      typeof soll === "string" && soll.trim().length > 0,
+      `Exporteintrag „${String(k.item.title)}" trägt keine Urheberschaft — dann misst diese Prüfung nichts`,
+    ).toBe(true);
+    expect(
+      k.item.originalAuthor,
+      `Kandidat „${String(k.item.title)}": die Urheberschaft ging beim Einlesen verloren`,
+    ).toBe(soll);
+  }
+}
+
+function pruefeDublettenbefund(
+  neu: readonly KandidatAufDemDraht[],
+  liste: readonly ExportEintrag[],
+): void {
+  const herkunft = new Map<string, Set<string>>();
+  for (const e of liste) {
+    const schluessel = inhaltsschluessel(e.title, e.statement);
+    const ids = herkunft.get(schluessel) ?? new Set<string>();
+    ids.add(String(e.id));
+    herkunft.set(schluessel, ids);
+  }
+  for (const k of neu) {
+    const wo = `Kandidat „${String(k.item.title)}"`;
+    expect(k.duplicate, `${wo}: der Wiederimport ist nicht als Dublette erkannt`).toBe(true);
+    expect(
+      ["identisch", "aehnlich"],
+      `${wo}: Dublettenbefund „${String(k.dublettenbefund?.ergebnis)}"`,
+    ).toContain(k.dublettenbefund?.ergebnis);
+    expect(k.dublettenbefund?.treffer?.art, `${wo}: der Treffer ist kein Wissensobjekt`).toBe(
+      "wissensobjekt",
+    );
+    expect(
+      [...(herkunft.get(inhaltsschluessel(k.item.title, k.item.statement)) ?? [])],
+      `${wo}: der Treffer zeigt nicht auf das exportierte Objekt`,
+    ).toContain(k.dublettenbefund?.treffer?.koId);
+  }
+}
+
+/** Auf die exakte Zählermeldung warten — mit der ganzen Spur im Fehlerbild. */
+async function warteAufZaehler(
+  spur: { lesen: () => Promise<string> },
+  anzahl: number,
+  nachricht: string,
+): Promise<void> {
+  await expect
+    .poll(
+      async () => {
+        const meldungen = await spur.lesen();
+        return meldetGenauZaehler(meldungen, anzahl) ? true : meldungen;
+      },
+      { timeout: 20_000, message: nachricht },
+    )
+    .toBe(true);
+}
+
 test("UX-20b L3: der Bibliotheks-Export kommt über echtes HTTP und wird vom Import angenommen", async ({
   page,
 }) => {
   await ensureLoggedIn(page);
+  // Stufe 2 zuerst: der Export wird aus der Seite heraus geholt (`holeUeberBrowser`), und die Seite
+  // steht danach schon dort, wo die Datei eingereicht wird.
+  await schalteStufe2Ein(page);
 
-  // ÜBER DIE ECHTE HTTP-SCHICHT DER ANGEMELDETEN SITZUNG: `page.request` teilt sich den Keksbeutel
-  // des Browserkontexts, die Anfrage trägt also dieselbe Sitzung wie ein Klick auf der Seite. Kein
-  // neuer Egress — derselbe Server, den dieser Smoke ohnehin fährt.
-  const antwort = await page.request.get("/api/library/export");
-  const typ = antwort.headers()["content-type"] ?? "";
-  expect(antwort.status(), `Export antwortet nicht mit 200 (content-type: ${typ})`).toBe(200);
-  expect(typ, `Export antwortet nicht als JSON (Status ${antwort.status()})`).toContain(
-    "application/json",
-  );
-  const rumpf = await antwort.text();
-  const daten: unknown = JSON.parse(rumpf);
-  expect(
-    Array.isArray(daten),
-    `der Export ist keine Liste — der Import erwartet ein Array (Status ${antwort.status()}, content-type: ${typ})`,
-  ).toBe(true);
-  const liste = daten as Record<string, unknown>[];
+  // ÜBER DIE ECHTE HTTP-SCHICHT DER ANGEMELDETEN SITZUNG — `fetch` im Dokument, derselbe Server,
+  // den dieser Smoke ohnehin fährt. Dieselbe Formprüfung fährt G4 mit verstellter Serverantwort.
+  const antwort = await holeUeberBrowser(page, EXPORT_PFAD);
+  const { fehler, daten } = exportFormFehler(antwort);
+  expect(fehler, "die Exportantwort hat nicht die Form, die der Import verlangt").toEqual([]);
+  const liste = daten as ExportEintrag[];
 
   // DIE DATENLAGE, nach dem Muster des mega49-Falls oben und ohne Wette auf die Reihenfolge: nur ein
   // Lauf, der sich selbst als geseedet ausweist, darf „mindestens ein Eintrag" behaupten.
   if (process.env.KLARWERK_SMOKE_SEED !== "1") {
-    test.info().annotations.push({
+    belege({
       type: "Datenlage",
       description: `Lauf ohne KLARWERK_SMOKE_SEED: der Export war formal in Ordnung (200, JSON, Array, ${liste.length} Einträge), die INHALTSPRÜFUNG und das Einreichen der Exportdatei haben in DIESEM Lauf NICHT stattgefunden. Belegt wird der Inhaltszweig von npm run smoke:ui:gate:daten.`,
     });
     return;
   }
 
-  expect(
-    liste.length,
-    "geseedeter Lauf, aber der Export ist leer — dann ist die zweite Datenlage keine",
-  ).toBeGreaterThan(0);
-  const erster = liste[0] ?? {};
-  for (const feld of PFLICHTFELDER) {
-    expect(typeof erster[feld], `Exporteintrag 1: Pflichtfeld „${feld}" ist kein Text`).toBe(
-      "string",
-    );
-  }
-  expect(
-    ERLAUBTE_TYPEN,
-    `Exporteintrag 1: type „${String(erster.type)}" steht nicht in der erlaubten Menge`,
-  ).toContain(erster.type);
+  pruefeExportInhalt(liste);
 
-  // UND JETZT DER NUTZERWEG: genau dieser Rumpf, als Datei, durch den echten Dateieingang. Damit ist
-  // der Satz aus `imp.json.exportPath` („Passende Datei aus dem Bestand …", `i18n.ts:3759-3760`)
-  // eingelöst und nicht nur behauptet.
-  await schalteStufe2Ein(page);
+  // UND JETZT DER NUTZERWEG: genau dieser Rumpf, als Datei, durch den Dateidialog, den ein
+  // Mausklick auf „JSON-Datei wählen" öffnet. Damit ist der Satz aus `imp.json.exportPath`
+  // („Passende Datei aus dem Bestand …") eingelöst und nicht nur behauptet.
+  const vorher = new Set((await leseKandidaten(page)).map((k) => k.id));
   const spur = meldungsSpur(page);
-  await page.locator(JSON_EINGANG).setInputFiles({
-    name: "export.json",
-    mimeType: "application/json",
-    buffer: Buffer.from(rumpf, "utf8"),
-  });
-  await expect
-    .poll(
-      async () => {
-        const meldungen = await spur.lesen();
-        return meldetGenauZaehler(meldungen, liste.length) ? true : meldungen;
-      },
-      {
-        timeout: 20_000,
-        message:
-          "der eigene Bibliotheks-Export wurde vom Import NICHT angenommen — gemeldet wurde stattdessen",
-      },
-    )
-    .toBe(true);
+  await reicheDateiPerMaus(page, JSON_DATEI("export.json", antwort.rumpf));
+  await warteAufZaehler(
+    spur,
+    liste.length,
+    "der eigene Bibliotheks-Export wurde vom Import NICHT angenommen — gemeldet wurde stattdessen",
+  );
+
+  // ERNEUT LESEN, nach einem Neuladen: was die Warteschlange jetzt hält, ist das Eingereichte.
+  await page.reload();
+  await expect(page.locator(JSON_KASTEN)).toBeVisible({ timeout: 15_000 });
+  const neu = (await leseKandidaten(page)).filter((k) => !vorher.has(k.id));
+  pruefeWiedereingelesen(neu, liste, liste.length);
+  pruefeDublettenbefund(neu, liste);
+  pruefeUrheberschaft(neu, liste);
 
   // Auch der ERFÜLLTE Zweig sagt laut, was er gemessen hat. Ohne diese Zeile stünde im Bericht eines
   // geseedeten Laufs nur „passed", und ob der Inhaltszweig wirklich gefahren ist, wäre nur an der
   // ABWESENHEIT der Anmerkung oben ablesbar — eine Abwesenheit als Beleg ist genau das, was diese
   // Datei sich abgewöhnt hat (mega59 H3).
-  test.info().annotations.push({
+  belege({
     type: "Datenlage",
-    description: `geseedeter Lauf: ${liste.length} Einträge über GET /api/library/export geholt, als export.json eingereicht und vom Import angenommen.`,
+    description: `geseedeter Lauf: ${liste.length} Einträge über GET /api/library/export geholt (Seed-Sollmenge ${SEED_TITEL.length} Titel enthalten), per Mausklick als export.json eingereicht, Zähler exakt ${liste.length}, nach Neuladen ${neu.length} neue Kandidaten gelesen, alle als Dublette ihres Quellobjekts erkannt, jeder mit der Urheberschaft seines Exporteintrags.`,
+  });
+});
+
+// ==================================================================================================
+// UX-20b-R — DER TASTATURWEG DER DATEIÜBERGABE UND DIE GEGENPROBEN G1–G4.
+// ==================================================================================================
+//
+// WAS JOB 3218 OFFEN GELASSEN HAT (`archiv/3218/runde-1/RUECKGABE.md`, REST; CODEX-ANTWORT-93 §6):
+// der geseedete L3-Inhaltszweig als echter Lauf und G1–G4, darunter G2 GETRENNT als Maus- UND als
+// Tastaturprobe. 3218 verlangte die Gegenproben als einmalige Verstellung des Produktquelltexts mit
+// Rücknahme. Hier stehen sie als FÄLLE: jede Verstellung passiert im Browser dieses Falls (DOM,
+// `page.route`), nie im Quelltext, und läuft damit in JEDEM Tor mit — eine Gegenprobe, die nur
+// einmal in einer Rückgabe stand, sagt über den nächsten Umbau nichts mehr.
+//
+// JEDE PROBE FÄHRT DIESELBE MESSUNG wie ihre Zusage (`support/import-json-kasten.ts`, Abschnitt
+// UX-20b-R), zeigt vorher oder nachher den unverstellten Zustand grün (Kalibrierung), und schreibt
+// die rote Zeile, die sie gesehen hat, als Anmerkung in den Bericht.
+//
+// GRENZE, ehrlich benannt: eine DOM-Verstellung ist nicht dieselbe Sache wie eine Quelltextänderung.
+// G2a nimmt der Vorlage die Vollmarkierung, indem es das Fokusereignis vor React abfängt — nicht,
+// indem es `onFocus` aus `ImportJsonUpload.tsx` löscht. Was beide gemeinsam haben und worauf es
+// ankommt: die Messung sieht den Unterschied.
+//
+// Chromium-only mit benanntem Überspringen sind die Fälle, deren Tastaturmessung auf der
+// Tab-Reihenfolge beruht (L3-T, G2a, G2b): WebKit und Firefox unter macOS lassen Knöpfe beim
+// Tabben je nach Systemeinstellung aus — dieselbe Grenze, die L2 oben begründet.
+
+const NUR_CHROMIUM_TAB =
+  "Tab-Reihenfolge nur in Chromium plattformunabhängig — WebKit/Firefox überspringen unter macOS Knöpfe je nach Systemeinstellung; der Tastaturnachweis dieses Falls bleibt dort ungeprüft (benannte Grenze, kein stilles Ueberspringen)";
+
+test("UX-20b L3-T: dieselbe Datei geht per Tastatur durch die Dateiauswahl — Zähler und erneutes Lesen stimmen", async ({
+  page,
+  browserName,
+}) => {
+  test.skip(browserName !== "chromium", NUR_CHROMIUM_TAB);
+  await ensureLoggedIn(page);
+  await schalteStufe2Ein(page);
+
+  // Geseedet: die Exportdatei wie in L3. Ungeseedet ist der Export leer, und eine leere Liste
+  // bewiese über den Tastaturweg nichts — dann geht die Mindestvorlage des Kastens (ein Eintrag).
+  // Der WEG ist in beiden Lagen derselbe; die Anmerkung sagt, welche Datei es war.
+  const geseedet = process.env.KLARWERK_SMOKE_SEED === "1";
+  let eingereicht: ExportEintrag[];
+  let rumpf: string;
+  if (geseedet) {
+    const antwort = await holeUeberBrowser(page, EXPORT_PFAD);
+    const { fehler, daten } = exportFormFehler(antwort);
+    expect(fehler, "die Exportantwort hat nicht die Form, die der Import verlangt").toEqual([]);
+    eingereicht = daten as ExportEintrag[];
+    pruefeExportInhalt(eingereicht);
+    rumpf = antwort.rumpf;
+  } else {
+    rumpf = await page.locator(VORLAGE).inputValue();
+    eingereicht = JSON.parse(rumpf) as ExportEintrag[];
+    expect(eingereicht.length, "die Mindestvorlage trägt nicht genau einen Eintrag").toBe(1);
+  }
+
+  const vorher = new Set((await leseKandidaten(page)).map((k) => k.id));
+  // Startpunkt Seitenanfang, ohne Klick — derselbe Grund wie im Tastaturweg von L2.
+  await page.reload();
+  await expect(page.locator(JSON_KASTEN)).toBeVisible({ timeout: 15_000 });
+  const spur = meldungsSpur(page);
+  const { schritte } = await reicheDateiPerTastatur(page, JSON_DATEI("export.json", rumpf));
+  await warteAufZaehler(
+    spur,
+    eingereicht.length,
+    "die per Tastatur übergebene Datei wurde NICHT angenommen — gemeldet wurde stattdessen",
+  );
+
+  await page.reload();
+  await expect(page.locator(JSON_KASTEN)).toBeVisible({ timeout: 15_000 });
+  const neu = (await leseKandidaten(page)).filter((k) => !vorher.has(k.id));
+  pruefeWiedereingelesen(neu, eingereicht, eingereicht.length);
+  if (geseedet) {
+    pruefeDublettenbefund(neu, eingereicht);
+    pruefeUrheberschaft(neu, eingereicht);
+  }
+  belege({
+    type: "Tastaturweg",
+    description: `${geseedet ? "Exportdatei" : "Mindestvorlage (ungeseedet)"}: ${schritte} Tab-Schritte vom Seitenanfang bis zur JSON-Kachel, Enter öffnete den Dateidialog, Zähler exakt ${eingereicht.length}, nach Neuladen ${neu.length} neue Kandidaten gelesen.`,
+  });
+});
+
+test("UX-20b G1: Gegenprobe zu L1 — ein zu breites Vorlagenfeld macht die Layoutmessung bei 320 px rot", async ({
+  page,
+}) => {
+  await ensureLoggedIn(page);
+  await schalteStufe2Ein(page);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await oeffneJsonKasten(page);
+
+  // VERSTELLUNG: dieselbe, die 3218 im Quelltext vorsah (`min-w-[520px]` am Vorlagenfeld) — hier als
+  // Stilregel dieses Browsers. Eine Regel und kein Inline-Stil, weil der Breitenwechsel die Fläche
+  // neu aufbauen kann; eine Regel am Dokument gilt auch für das neu gebaute Feld. Bei 1280 px hat
+  // der Kasten dafür Platz: die Messung muss GRÜN bleiben, sonst schlüge sie auf alles an.
+  const regel = await page.addStyleTag({ content: `${VORLAGE} { min-width: 520px; }` });
+  expect(layoutVerstoesse(await messeLayout(page), "G1 @ 1280px, verstellt")).toEqual([]);
+
+  await page.setViewportSize({ width: 320, height: 900 });
+  const rot = layoutVerstoesse(await messeLayout(page), "G1 @ 320px, verstellt");
+  expect(
+    rot.some((satz) => satz.startsWith("das Vorlagenfeld ragt rechts hinaus")),
+    `G1: die Layoutmessung sieht das 520 px breite Vorlagenfeld bei 320 px nicht — gemeldet: ${JSON.stringify(rot)}`,
+  ).toBe(true);
+
+  // RÜCKNAHME auf derselben Breite: ohne Verstellung wieder grün — die Verstellung war die Ursache.
+  await regel.evaluate((el) => (el as Element).remove());
+  expect(layoutVerstoesse(await messeLayout(page), "G1 @ 320px, zurückgenommen")).toEqual([]);
+  belege({ type: "G1 rot", description: rot.join(" | ") });
+});
+
+/**
+ * G2a-VERSTELLUNG: das Fokusereignis des Vorlagenfeldes wird vor React abgefangen (Einfangphase am
+ * `window`), `onFocus … select()` (`ImportJsonUpload.tsx`) läuft damit nicht. Fokus und
+ * Tab-Reihenfolge bleiben unberührt — verstellt ist allein die Vollmarkierung.
+ */
+async function schalteVollmarkierungAb(page: Page): Promise<void> {
+  await page.evaluate((id) => {
+    window.addEventListener(
+      "focusin",
+      (ereignis) => {
+        if ((ereignis.target as Element | null)?.id === id) {
+          ereignis.stopImmediatePropagation();
+        }
+      },
+      true,
+    );
+  }, VORLAGE_ID);
+}
+
+test("UX-20b G2a: Gegenprobe Maus — ohne Vollmarkierung wird die Mauszusage rot", async ({
+  page,
+  browserName,
+}) => {
+  test.skip(browserName !== "chromium", NUR_CHROMIUM_TAB);
+  await ensureLoggedIn(page);
+  await schalteStufe2Ein(page);
+
+  // KALIBRIERUNG: unverstellt ist der Mausweg grün — dieselbe Messung wie L2.
+  expect(istVollmarkiert(await mausMarkierung(page)), "G2a-Kalibrierung: unverstellt rot").toBe(
+    true,
+  );
+
+  await page.reload();
+  await expect(page.locator(VORLAGE)).toBeVisible({ timeout: 15_000 });
+  await schalteVollmarkierungAb(page);
+  const maus = await mausMarkierung(page);
+  expect(
+    istVollmarkiert(maus),
+    `G2a: die Mausmessung hält eine Markierung ${JSON.stringify(maus)} für vollständig, obwohl die Vollmarkierung abgeschaltet ist`,
+  ).toBe(false);
+
+  // DERSELBE ZUSTAND, TASTATURZWEIG (3218 § 3: „ob der Tastaturzweig in DIESER Probe ebenfalls rot
+  // wurde"): Erreichbarkeit muss stehen bleiben — sie ist nicht verstellt —, und die Markierung
+  // wird abgelesen und genannt. Die Trennung, auf die es ankommt, belegt G2b.
+  await page.reload();
+  await expect(page.locator(VORLAGE)).toBeVisible({ timeout: 15_000 });
+  await schalteVollmarkierungAb(page);
+  const weg = await tabBisVorlage(page);
+  expect(weg.erreicht, "G2a: die Verstellung hat auch die Erreichbarkeit genommen").toBe(true);
+  const tastatur = await leseMarkierung(page);
+  belege({
+    type: "G2a rot",
+    description: `Mausweg rot: Markierung ${JSON.stringify(maus)}. Tastaturzweig in derselben Probe: erreicht nach ${weg.schritte} Tab-Schritten, Markierung ${JSON.stringify(tastatur)} → ${istVollmarkiert(tastatur) ? "grün (vollmarkiert)" : "ebenfalls rot"}.`,
+  });
+});
+
+test("UX-20b G2b: Gegenprobe Tastatur — aus der Tab-Reihenfolge genommen wird die Tastaturzusage rot, die Mauszusage bleibt grün", async ({
+  page,
+  browserName,
+}) => {
+  test.skip(browserName !== "chromium", NUR_CHROMIUM_TAB);
+  await ensureLoggedIn(page);
+  await schalteStufe2Ein(page);
+
+  // KALIBRIERUNG: unverstellt erreicht der Tastaturweg das Feld — dieselbe Messung wie L2.
+  await page.reload();
+  await expect(page.locator(VORLAGE)).toBeVisible({ timeout: 15_000 });
+  expect((await tabBisVorlage(page)).erreicht, "G2b-Kalibrierung: unverstellt rot").toBe(true);
+
+  // VERSTELLUNG: `tabIndex = -1` am Vorlagenfeld (3218 § 3, G2b) — die Vollmarkierung bleibt.
+  await page.reload();
+  await expect(page.locator(VORLAGE)).toBeVisible({ timeout: 15_000 });
+  await page.locator(VORLAGE).evaluate((el) => {
+    (el as HTMLElement).tabIndex = -1;
+  });
+  const weg = await tabBisVorlage(page);
+  expect(
+    weg.erreicht,
+    `G2b: die Tastaturmessung erreicht ein Feld mit tabIndex -1 (${weg.schritte} Schritte)`,
+  ).toBe(false);
+
+  // DIE TRENNUNG: im selben verstellten Zustand ist der Mausweg GRÜN. Eine Probe, die beide Zweige
+  // gleichzeitig kippt, bewiese nicht, dass jeder für sich misst (CODEX-ANTWORT-91).
+  const maus = await mausMarkierung(page);
+  expect(istVollmarkiert(maus), `G2b: der Mausweg ist mitgekippt: ${JSON.stringify(maus)}`).toBe(
+    true,
+  );
+  belege({
+    type: "G2b rot",
+    description: `Tastaturweg rot: Vorlagenfeld in ${weg.schritte} Tab-Schritten nicht erreicht (Obergrenze ${MAX_TABS}). Mausweg in derselben Probe grün: ${JSON.stringify(maus)}.`,
+  });
+});
+
+test("UX-20b G3: Gegenprobe zu L2 — eine Vorlage mit ungültigem type wird abgelehnt, nichts eingereiht", async ({
+  page,
+}) => {
+  await ensureLoggedIn(page);
+  await schalteStufe2Ein(page);
+
+  // VERSTELLUNG am Feld dieses Browsers: der type-Wert der Mindestvorlage wird ungültig. Eingereicht
+  // wird genau der Feldinhalt, über denselben Dateiweg wie in L2/L3.
+  const verstellt = await page.locator(VORLAGE).evaluate((el) => {
+    const feld = el as HTMLTextAreaElement;
+    feld.value = feld.value.replace(/"type": "[^"]*"/, '"type": "gibt-es-nicht"');
+    return feld.value;
+  });
+  expect(verstellt, "G3: die Verstellung hat nicht gegriffen").toContain('"gibt-es-nicht"');
+
+  const vorher = (await leseKandidaten(page)).length;
+  const spur = meldungsSpur(page);
+  await reicheDateiPerMaus(page, JSON_DATEI("vorlage.json", verstellt));
+  // Der Satz ist `imp.json.fields` (DE) — die fachliche Ablehnung, nicht der Syntaxfehler.
+  await expect
+    .poll(
+      async () => {
+        const meldungen = await spur.lesen();
+        return meldungen.split(" | ").some((m) => m.startsWith("Eintrag 1: type fehlen"))
+          ? true
+          : meldungen;
+      },
+      { timeout: 15_000, message: "G3: keine Feldablehnung gemeldet — stattdessen" },
+    )
+    .toBe(true);
+  const meldungen = await spur.lesen();
+  expect(meldetGenauZaehler(meldungen, 1), "G3: trotz Ablehnung ein Erfolgszähler").toBe(false);
+  expect((await leseKandidaten(page)).length, "G3: trotz Ablehnung wurde eingereiht").toBe(vorher);
+  belege({ type: "G3 rot", description: meldungen });
+});
+
+test("UX-20b G4: Gegenprobe zu L3 — eine Exportantwort ohne Liste wird von der Formprüfung und vom Import abgelehnt", async ({
+  page,
+}) => {
+  await ensureLoggedIn(page);
+  await schalteStufe2Ein(page);
+
+  // VERSTELLUNG an der Leitung: die ECHTE Serverantwort wird geholt und in ein Objekt gepackt.
+  // Status und Kopfzeilen kommen vom Server; nur die Form des Rumpfs ist verstellt.
+  await page.route(`**${EXPORT_PFAD}`, async (route) => {
+    const echt = await route.fetch();
+    await route.fulfill({ response: echt, json: { eintraege: await echt.json() } });
+  });
+  const antwort = await holeUeberBrowser(page, EXPORT_PFAD);
+  const { fehler } = exportFormFehler(antwort);
+  expect(
+    fehler.length,
+    `G4: erwartet genau ein Formfehler, gemeldet: ${JSON.stringify(fehler)}`,
+  ).toBe(1);
+  expect(fehler[0]).toContain("keine Liste");
+  expect(fehler[0], "G4: die Meldung nennt den Status nicht").toContain(`Status ${antwort.status}`);
+  expect(fehler[0], "G4: die Meldung nennt den content-type nicht").toContain(
+    `content-type: ${antwort.typ}`,
+  );
+
+  // UND DER MENSCH, der genau diese Antwort als Datei einreicht: das Produkt unterscheidet die
+  // falsche Struktur vom Syntaxfehler (`imp.json.notArray`, N-0040) und reiht nichts ein.
+  const vorher = (await leseKandidaten(page)).length;
+  const spur = meldungsSpur(page);
+  await reicheDateiPerMaus(page, JSON_DATEI("export.json", antwort.rumpf));
+  await expect
+    .poll(
+      async () => {
+        const meldungen = await spur.lesen();
+        return meldungen
+          .split(" | ")
+          .some((m) => m.startsWith("Das JSON ist gültig, aber keine Liste."))
+          ? true
+          : meldungen;
+      },
+      { timeout: 15_000, message: "G4: keine Strukturablehnung gemeldet — stattdessen" },
+    )
+    .toBe(true);
+  expect((await leseKandidaten(page)).length, "G4: trotz Ablehnung wurde eingereiht").toBe(vorher);
+
+  // RÜCKNAHME: derselbe Weg ohne Verstellung ist formal wieder in Ordnung.
+  await page.unroute(`**${EXPORT_PFAD}`);
+  expect(exportFormFehler(await holeUeberBrowser(page, EXPORT_PFAD)).fehler).toEqual([]);
+  belege({
+    type: "G4 rot",
+    description: `${fehler[0]} | Import: ${await spur.lesen()}`,
   });
 });
