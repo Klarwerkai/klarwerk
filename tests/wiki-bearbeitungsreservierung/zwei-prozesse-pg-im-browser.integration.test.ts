@@ -195,6 +195,22 @@ const SEITENTEXT = "() => document.body.innerText";
 const AUFRUF = `(a) => fetch(a.url, { method: a.methode, credentials: "include" })
   .then((r) => r.status).catch(() => -1)`;
 
+/** Was die Speicherfläche gerade sagt — die Diagnose, wenn ein Ausgang ausbleibt. */
+const SPEICHERLAGE = `() => {
+  const q = (sel) => document.querySelector(sel);
+  const t = (sel) => { const e = q(sel); return e ? (e.textContent || "").replace(/\\s+/g, " ").trim().slice(0, 300) : null; };
+  const knopf = q('[data-testid="bib-speichern"]');
+  const aktiv = document.activeElement;
+  return JSON.stringify({
+    speichernKnopf: knopf ? { disabled: knopf.disabled, text: knopf.textContent } : null,
+    einreichenKnopf: !!q('[data-testid="bib-einreichen"]'),
+    fokus: aktiv ? aktiv.tagName + " " + (aktiv.getAttribute("data-testid") || "") : null,
+    lage: t('[data-testid="bib-speichern-lage"]'),
+    lageArt: q('[data-testid="bib-speichern-lage"]')?.getAttribute("data-lage") ?? null,
+    fehler: t('[data-testid="bib-speichern-fehler"]'),
+    aussage: q('[data-testid="bib-aussage"]')?.value ?? null,
+  });
+}`;
 const text = (seite: Seite, sel: string): Promise<string | null> =>
   seite.evaluate<string | null>(fn(TEXT_VON), sel);
 const wert = (seite: Seite, sel: string): Promise<string | null> =>
@@ -505,13 +521,18 @@ describe("K6 · Bearbeitungshinweis mit zwei echten Browsern, zwei App-Prozessen
       tastatur.bernd_speichern = await zuElement(b.seite, SPEICHERN, "Save (Bernd)");
       await Promise.all([a.seite.keyboard.press("Enter"), b.seite.keyboard.press("Enter")]);
       const ausgang = async (s: Seite): Promise<"gespeichert" | "konflikt"> => {
-        await warte(
-          s,
-          "(a) => !document.querySelector(a[0]) || !!document.querySelector(a[1])",
-          "Speichern hat einen Ausgang",
-          [AUSSAGE, KONFLIKT],
-          30_000,
-        );
+        try {
+          await warte(
+            s,
+            "(a) => !document.querySelector(a[0]) || !!document.querySelector(a[1])",
+            "Speichern hat einen Ausgang",
+            [AUSSAGE, KONFLIKT],
+            30_000,
+          );
+        } catch (fehler) {
+          const lage = await s.evaluate<string>(fn(SPEICHERLAGE));
+          throw new Error(`${String(fehler).slice(0, 400)}\nSpeicherlage: ${lage}`);
+        }
         return (await s.evaluate<boolean>(fn(GIBT_ES), KONFLIKT)) ? "konflikt" : "gespeichert";
       };
       const ausgaenge = { anna: await ausgang(a.seite), bernd: await ausgang(b.seite) };

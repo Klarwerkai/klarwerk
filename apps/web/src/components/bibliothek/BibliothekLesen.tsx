@@ -2061,9 +2061,14 @@ export function BibliothekLesen({
   // Kommt die Verbindung nach einer Unterbrechung zurück, wird der tatsächliche Serverstand neu
   // gelesen. Hat inzwischen jemand anderes gespeichert, sieht der Mensch das im Lesebild — und beim
   // Speichern greift wie immer `expectedVersion` (die Fassung beim Öffnen steht in `edit.version`).
-  const eigeneBearbeitung = useEigeneBearbeitung(koId, edit !== null && canEdit, () => {
-    void qc.invalidateQueries({ queryKey: ["ko", koId] });
-  });
+  //
+  // „Neu gelesen" sagt die Fläche erst, wenn das Nachlesen WIRKLICH gelungen ist — deshalb liefert
+  // `nachlesen` den Ausgang des Abrufs, statt ihn nur anzustossen.
+  const nachlesen = async (): Promise<boolean> => {
+    const ergebnis = await query.refetch();
+    return ergebnis.status === "success" && !ergebnis.isError;
+  };
+  const eigeneBearbeitung = useEigeneBearbeitung(koId, edit !== null && canEdit, nachlesen);
 
   // KEIN Aufräum-Effekt beim Wechsel des Eintrags: die Fläche montiert diese Komponente mit
   // `key={koId}` neu (s. `BibliothekFlaeche`). Ein offenes Formular des vorigen Objekts kann
@@ -2574,10 +2579,10 @@ export function BibliothekLesen({
           koId={koId}
           eigeneSitzung={eigeneBearbeitung.sitzung}
           eigeneLage={eigeneBearbeitung.lage}
+          eigenerLesestand={eigeneBearbeitung.lesestand}
+          onEigenesNachlesen={eigeneBearbeitung.nochmalLesen}
           ablaufSekunden={eigeneBearbeitung.ablaufSekunden}
-          onFremdesEnde={() => {
-            void qc.invalidateQueries({ queryKey: ["ko", koId] });
-          }}
+          onFremdesEnde={nachlesen}
         />
         {edit ? (
           // ---- Bearbeiten: dasselbe Formular wie bisher, an derselben Stelle -------------------

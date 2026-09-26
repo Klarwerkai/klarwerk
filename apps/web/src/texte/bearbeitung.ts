@@ -18,18 +18,21 @@ export default {
       "Das ist ein Hinweis, keine Sperre. Er verschwindet, sobald die Bearbeitung gespeichert oder beendet wird — bricht die Verbindung ab, spätestens nach {{minuten}} Minuten. Speichern bleibt geschützt: Wer auf einem inzwischen überholten Stand speichert, bekommt einen Konflikt angezeigt und entscheidet selbst — nichts wird still überschrieben.",
     "bearbeitung.eigenesFenster":
       "Du bearbeitest diesen Eintrag zusätzlich in einem anderen Fenster oder Tab.",
-    "bearbeitung.beendet":
-      "Die Bearbeitung durch {{name}} ist beendet. Der Eintrag wurde neu vom Server gelesen.",
+    "bearbeitung.beendet": "Die Bearbeitung durch {{name}} ist beendet.",
     "bearbeitung.beendetSchliessen": "Hinweis schliessen",
     "bearbeitung.unbekannt":
       "Ob gerade jemand anderes diesen Eintrag bearbeitet, lässt sich im Moment nicht prüfen.",
     "bearbeitung.eigenUnterbrochen":
       "Die Verbindung ist unterbrochen. Dein Bearbeitungshinweis erlischt nach {{minuten}} Minuten, wenn sie nicht zurückkommt — dein Text bleibt hier erhalten.",
-    "bearbeitung.eigenZurueck":
-      "Die Verbindung ist wieder da. Der Stand wurde neu vom Server gelesen; dein Text steht unverändert hier.",
+    "bearbeitung.eigenZurueck": "Die Verbindung ist wieder da; dein Text steht unverändert hier.",
     "bearbeitung.eigenOhneRecht":
       "Du darfst diesen Eintrag nicht mehr bearbeiten. Dein Text bleibt hier erhalten, gespeichert werden kann er nicht mehr.",
     "bearbeitung.namenlos": "Ein anderes Konto",
+    "bearbeitung.neuLesen": "Der aktuelle Stand wird vom Server gelesen …",
+    "bearbeitung.neuGelesen": "Der Eintrag wurde neu vom Server gelesen.",
+    "bearbeitung.neuLesenFehlgeschlagen":
+      "Der aktuelle Stand konnte nicht vom Server gelesen werden — was hier steht, kann veraltet sein.",
+    "bearbeitung.erneutLesen": "Erneut lesen",
   },
   en: {
     "bearbeitung.titel": "Currently being edited",
@@ -37,18 +40,21 @@ export default {
     "bearbeitung.erklaerung":
       "This is a notice, not a lock. It disappears as soon as the edit is saved or ended — if the connection drops, after {{minuten}} minutes at the latest. Saving stays protected: whoever saves on an outdated state is shown a conflict and decides themselves — nothing is silently overwritten.",
     "bearbeitung.eigenesFenster": "You are also editing this entry in another window or tab.",
-    "bearbeitung.beendet":
-      "{{name}} has finished editing. The entry was read again from the server.",
+    "bearbeitung.beendet": "{{name}} has finished editing.",
     "bearbeitung.beendetSchliessen": "Close notice",
     "bearbeitung.unbekannt":
       "Whether somebody else is editing this entry cannot be checked right now.",
     "bearbeitung.eigenUnterbrochen":
       "The connection is interrupted. Your editing notice expires after {{minuten}} minutes if it does not come back — your text stays here.",
-    "bearbeitung.eigenZurueck":
-      "The connection is back. The state was read again from the server; your text is unchanged here.",
+    "bearbeitung.eigenZurueck": "The connection is back; your text is unchanged here.",
     "bearbeitung.eigenOhneRecht":
       "You may no longer edit this entry. Your text stays here, but it can no longer be saved.",
     "bearbeitung.namenlos": "Another account",
+    "bearbeitung.neuLesen": "Reading the current state from the server …",
+    "bearbeitung.neuGelesen": "The entry was read again from the server.",
+    "bearbeitung.neuLesenFehlgeschlagen":
+      "The current state could not be read from the server — what is shown here may be outdated.",
+    "bearbeitung.erneutLesen": "Read again",
   },
   nl: {
     "bearbeitung.titel": "Wordt nu bewerkt",
@@ -56,17 +62,20 @@ export default {
     "bearbeitung.erklaerung":
       "Dit is een melding, geen vergrendeling. Ze verdwijnt zodra de bewerking wordt opgeslagen of beëindigd — valt de verbinding weg, dan uiterlijk na {{minuten}} minuten. Opslaan blijft beschermd: wie op een inmiddels verouderde stand opslaat, krijgt een conflict te zien en beslist zelf — er wordt niets stilzwijgend overschreven.",
     "bearbeitung.eigenesFenster": "Je bewerkt dit item ook in een ander venster of tabblad.",
-    "bearbeitung.beendet":
-      "De bewerking door {{name}} is beëindigd. Het item is opnieuw van de server gelezen.",
+    "bearbeitung.beendet": "De bewerking door {{name}} is beëindigd.",
     "bearbeitung.beendetSchliessen": "Melding sluiten",
     "bearbeitung.unbekannt":
       "Of iemand anders dit item op dit moment bewerkt, kan nu niet worden gecontroleerd.",
     "bearbeitung.eigenUnterbrochen":
       "De verbinding is onderbroken. Je bewerkingsmelding verloopt na {{minuten}} minuten als ze niet terugkomt — je tekst blijft hier bewaard.",
-    "bearbeitung.eigenZurueck":
-      "De verbinding is terug. De stand is opnieuw van de server gelezen; je tekst staat hier onveranderd.",
+    "bearbeitung.eigenZurueck": "De verbinding is terug; je tekst staat hier onveranderd.",
     "bearbeitung.eigenOhneRecht":
       "Je mag dit item niet meer bewerken. Je tekst blijft hier bewaard, maar kan niet meer worden opgeslagen.",
     "bearbeitung.namenlos": "Een ander account",
+    "bearbeitung.neuLesen": "De actuele stand wordt van de server gelezen …",
+    "bearbeitung.neuGelesen": "Het item is opnieuw van de server gelezen.",
+    "bearbeitung.neuLesenFehlgeschlagen":
+      "De actuele stand kon niet van de server worden gelezen — wat hier staat, kan verouderd zijn.",
+    "bearbeitung.erneutLesen": "Opnieuw lezen",
   },
 } satisfies Textmodul;

@@ -57,6 +57,8 @@ let offline = false;
 /** Wie oft die Fläche den Eintrag selbst gelesen hat — der Beleg für „neu gelesen". */
 let eintragAbrufe = 0;
 let eintragPfad = "";
+/** Nachlesen des Eintrags scheitert echt (503), solange dies gilt — für „neu gelesen" (Befund 3). */
+let lesesperre = false;
 
 function transportEinhaengen(): void {
   globalThis.fetch = (async (eingabe: unknown, init?: RequestInit) => {
@@ -67,6 +69,13 @@ function transportEinhaengen(): void {
     }
     if (methode === "GET" && url === eintragPfad) {
       eintragAbrufe++;
+      if (lesesperre) {
+        const koerper = JSON.stringify({
+          error: "UNAVAILABLE",
+          message: "Ablage nicht erreichbar.",
+        });
+        return { status: 503, ok: false, statusText: "503", text: async () => koerper };
+      }
     }
     const kopf: Record<string, string> = {};
     if (init?.headers) {
@@ -306,6 +315,7 @@ const MEIN_TEXT = "Bei Überdruck Ventil X ZUERST entlasten, dann schließen.";
 beforeEach(async () => {
   app = buildApp(buildServices());
   offline = false;
+  lesesperre = false;
   eintragAbrufe = 0;
   transportEinhaengen();
   await app.inject({
@@ -359,6 +369,11 @@ describe("F1 · Anna bearbeitet — Bernd sieht es, und er sieht das Ende", () =
       i18n.t("bearbeitung.beendet", { name: "Anna Beispiel" }),
     );
     await bis(() => eintragAbrufe > abrufeVorher, "der Eintrag wird neu gelesen");
+    await bis(
+      () => suche("bib-bearbeitung-lesestand")?.getAttribute("data-stand") === "gelesen",
+      "„neu gelesen“ erst nach gelungenem Abruf",
+    );
+    expect(text(suche("bib-bearbeitung-beendet"))).toContain(i18n.t("bearbeitung.neuGelesen"));
 
     // Der Schliessen-Griff ist ein echter Knopf (Tastaturweg) und räumt den Satz weg.
     const schliessen = suche("bib-bearbeitung-beendet-schliessen");
@@ -447,6 +462,10 @@ describe("F3 · Verbindungsabbruch: die Arbeit bleibt, nach Rückkehr wird neu g
       "Rückkehr gemeldet",
     );
     await bis(() => eintragAbrufe > abrufeVorher, "Serverstand neu gelesen");
+    await bis(
+      () => suche("bib-bearbeitung-lesestand")?.getAttribute("data-stand") === "gelesen",
+      "Rückkehr mit bestätigtem Nachlesen",
+    );
     expect(aussagefeld().value).toBe(MEIN_TEXT);
     expect((await lageVon(anna.token, id)).bearbeitungen).toHaveLength(1);
   }, 30_000);
@@ -535,5 +554,126 @@ describe("F7 · Gegenprobe: eine Ablage ohne Meldungen macht F1 rot", () => {
       await flush();
     });
     expect(() => pruefeFremdanzeige("Anna Beispiel", "anna@klarwerk.test")).toThrow();
+  }, 30_000);
+});
+
+// ================================================================================================
+// RUNDE 2 · BENS BEFUNDE 1–3
+// ================================================================================================
+
+describe("F8 · entzogenes Leserecht verwirft auch einen gespeicherten Endehinweis (Befund 1)", () => {
+  for (const sprache of ["de", "en", "nl"] as const) {
+    it(`${sprache}: nach „beendet" und anschliessendem 404 steht kein fremder Name mehr da`, async () => {
+      await i18n.changeLanguage(sprache);
+      const id = await eintrag();
+      await api(anna.token, "PUT", `/api/kos/${id}/bearbeitungen/annas-sitzung-1`);
+      await mount(id, false);
+      await bis(() => suche("bib-bearbeitung-fremd") !== null, "Hinweis");
+      await api(anna.token, "DELETE", `/api/kos/${id}/bearbeitungen/annas-sitzung-1`);
+      await bis(() => suche("bib-bearbeitung-beendet") !== null, "Endehinweis");
+      // Der Eintrag wird vertraulich — Bernd (Experte) darf ihn nicht mehr lesen: 404.
+      const stufe = await api(adminToken, "PUT", `/api/kos/${id}`, {
+        action: "confidentiality",
+        level: "vertraulich",
+      });
+      expect(stufe.statusCode).toBe(200);
+      expect((await api(bernd.token, "GET", `/api/kos/${id}/bearbeitungen`)).statusCode).toBe(404);
+      await bis(() => suche("bib-bearbeitung-beendet") === null, "Endehinweis verworfen");
+      expect(suche("bib-bearbeitung-fremd")).toBeNull();
+      expect(document.body.textContent ?? "").not.toContain("Anna Beispiel");
+    }, 30_000);
+  }
+});
+
+describe("F9 · eine noch laufende Anmeldung stellt nach dem Beenden keinen Hinweis wieder her (Befund 2)", () => {
+  it("PUT verzögert → Abbrechen → PUT kommt an → danach DELETE: am Server bleibt nichts", async () => {
+    const services = buildServices();
+    const echt = services.bearbeitungen;
+    let freigeben: () => void = () => undefined;
+    const tor = new Promise<void>((ok) => {
+      freigeben = ok;
+    });
+    let angekommen = 0;
+    services.bearbeitungen = {
+      melde: async (koId, nutzer, sitzung) => {
+        await tor;
+        angekommen++;
+        return echt.melde(koId, nutzer, sitzung);
+      },
+      beende: (koId, nutzerId, sitzung) => echt.beende(koId, nutzerId, sitzung),
+      laufende: (koId) => echt.laufende(koId),
+    };
+    app = buildApp(services);
+    await app.inject({
+      method: "POST",
+      url: "/api/auth/register",
+      payload: { name: "Pedi", email: "pedi@klarwerk.test", password: "secret123" },
+    });
+    adminToken = await token("pedi@klarwerk.test");
+    anna = await konto("experte", "anna@klarwerk.test", "Anna Beispiel");
+    bernd = await konto("experte", "bernd@klarwerk.test", "Bernd Beispiel");
+    flaechenToken = bernd.token;
+    const id = await eintrag();
+    await mount(id, true);
+    await tippen(aussagefeld(), MEIN_TEXT);
+    expect(angekommen).toBe(0);
+    await klick(knopfMitText(i18n.t("ko.cancelEdit")));
+    // Das Formular ist zu, die Anmeldung hängt noch. Jetzt kommt sie an.
+    freigeben();
+    await amServerBis(async () => angekommen === 1, "die verspätete Anmeldung ist angekommen");
+    await amServerBis(
+      async () => (await lageVon(anna.token, id)).bearbeitungen.length === 0,
+      "danach ist kein Hinweis übrig",
+    );
+    // Und es bleibt dabei.
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 300));
+      await flush();
+    });
+    expect((await lageVon(anna.token, id)).bearbeitungen).toEqual([]);
+  }, 30_000);
+});
+
+describe("F10 · „neu gelesen“ nur nach gelungenem Nachlesen (Befund 3)", () => {
+  for (const sprache of ["de", "en", "nl"] as const) {
+    it(`${sprache}: scheitert das Nachlesen nach dem Ende, sagt die Fläche das — und liest auf Wunsch erneut`, async () => {
+      await i18n.changeLanguage(sprache);
+      const id = await eintrag();
+      await api(anna.token, "PUT", `/api/kos/${id}/bearbeitungen/annas-sitzung-1`);
+      await mount(id, false);
+      await bis(() => suche("bib-bearbeitung-fremd") !== null, "Hinweis");
+      lesesperre = true;
+      await api(anna.token, "DELETE", `/api/kos/${id}/bearbeitungen/annas-sitzung-1`);
+      await bis(
+        () => suche("bib-bearbeitung-lesestand")?.getAttribute("data-stand") === "fehlgeschlagen",
+        "Nachlesen scheitert sichtbar",
+      );
+      const satz = text(suche("bib-bearbeitung-beendet"));
+      expect(satz).toContain(i18n.t("bearbeitung.neuLesenFehlgeschlagen"));
+      expect(satz).not.toContain(i18n.t("bearbeitung.neuGelesen"));
+      lesesperre = false;
+      await klick(suche("bib-bearbeitung-erneut-lesen") as HTMLElement);
+      await bis(
+        () => suche("bib-bearbeitung-lesestand")?.getAttribute("data-stand") === "gelesen",
+        "erneutes Lesen gelingt",
+      );
+    }, 30_000);
+  }
+
+  it("Rückkehr nach Unterbrechung: scheitert das Nachlesen, heisst es nicht „neu gelesen“", async () => {
+    const id = await eintrag();
+    await mount(id, true);
+    await tippen(aussagefeld(), MEIN_TEXT);
+    offline = true;
+    await netzereignis();
+    lesesperre = true;
+    offline = false;
+    await netzereignis();
+    await bis(
+      () => suche("bib-bearbeitung-lesestand")?.getAttribute("data-stand") === "fehlgeschlagen",
+      "Nachlesen nach Rückkehr scheitert sichtbar",
+    );
+    expect(text(suche("bib-bearbeitung-eigen"))).not.toContain(i18n.t("bearbeitung.neuGelesen"));
+    expect(aussagefeld().value).toBe(MEIN_TEXT);
   }, 30_000);
 });

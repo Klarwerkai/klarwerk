@@ -44,24 +44,42 @@ function neueSitzung(): string {
 }
 
 /**
+ * Wie weit das Nachlesen des Eintrags gekommen ist. „Neu gelesen" wird erst gesagt, wenn der
+ * Abruf WIRKLICH gelungen ist; scheitert er, sagt die Fläche das und bietet den Griff noch einmal an.
+ */
+type Lesestand = "liest" | "gelesen" | "fehlgeschlagen";
+
+/**
  * Meldet die eigene Bearbeitung an, solange `offen` gilt.
  *
  * `onRueckkehr` läuft, wenn nach einer Unterbrechung die erste Erneuerung wieder durchkommt: dann
  * wird der tatsächliche Serverstand neu gelesen (der Eintrag kann sich inzwischen bewegt haben).
- * Der Text im Formular bleibt dabei, wo er ist; kommt ein fremder Stand dazu, entscheidet beim
- * Speichern wie immer `expectedVersion`.
+ * Das Versprechen sagt, ob das Nachlesen gelungen ist. Der Text im Formular bleibt dabei, wo er
+ * ist; kommt ein fremder Stand dazu, entscheidet beim Speichern wie immer `expectedVersion`.
+ *
+ * ES LÄUFT HÖCHSTENS EINE ANMELDUNG ZUR ZEIT, UND DAS BEENDEN WARTET AUF SIE. Sonst überholte das
+ * Beenden eine noch laufende Anmeldung: der Server bekäme erst das DELETE (nichts zu beenden) und
+ * danach das PUT — und der Hinweis stünde wieder da, obwohl das Formular längst zu ist.
  */
 export function useEigeneBearbeitung(
   koId: string,
   offen: boolean,
-  onRueckkehr: () => void,
-): { sitzung: string | null; lage: EigeneLage; ablaufSekunden: number } {
+  onRueckkehr: () => Promise<boolean>,
+): {
+  sitzung: string | null;
+  lage: EigeneLage;
+  lesestand: Lesestand | null;
+  ablaufSekunden: number;
+  nochmalLesen: () => void;
+} {
   const qc = useQueryClient();
   const [sitzung, setSitzung] = useState<string | null>(null);
   const [lage, setLage] = useState<EigeneLage>("aus");
+  const [lesestand, setLesestand] = useState<Lesestand | null>(null);
   const [ablaufSekunden, setAblaufSekunden] = useState(VORGABE_ABLAUF_S);
   const rueckkehrRef = useRef(onRueckkehr);
   rueckkehrRef.current = onRueckkehr;
+  const lesenRef = useRef<() => void>(() => undefined);
 
   useEffect(() => {
     if (!offen) {
@@ -70,18 +88,36 @@ export function useEigeneBearbeitung(
     const meine = neueSitzung();
     setSitzung(meine);
     setLage("aktiv");
+    setLesestand(null);
     let vorbei = false;
     let unterbrochen = false;
     let zurueckGemeldet = false;
     let taktMs = VORGABE_ERNEUERN_S * 1000;
     let wecker: ReturnType<typeof setTimeout> | undefined;
+    let laufend: Promise<void> | null = null;
+    const lesen = (): void => {
+      setLesestand("liest");
+      void rueckkehrRef.current().then(
+        (gelungen) => {
+          if (!vorbei) {
+            setLesestand(gelungen ? "gelesen" : "fehlgeschlagen");
+          }
+        },
+        () => {
+          if (!vorbei) {
+            setLesestand("fehlgeschlagen");
+          }
+        },
+      );
+    };
+    lesenRef.current = lesen;
     const plane = (ms: number): void => {
       if (wecker !== undefined) {
         clearTimeout(wecker);
       }
       wecker = setTimeout(() => void melden(), ms);
     };
-    const melden = async (): Promise<void> => {
+    const einmalMelden = async (): Promise<void> => {
       try {
         const antwort = await endpoints.ko.bearbeitungMelden(koId, meine);
         if (vorbei) {
@@ -93,10 +129,11 @@ export function useEigeneBearbeitung(
           unterbrochen = false;
           zurueckGemeldet = true;
           setLage("zurueck");
-          rueckkehrRef.current();
+          lesen();
         } else if (zurueckGemeldet) {
           zurueckGemeldet = false;
           setLage("aktiv");
+          setLesestand(null);
         }
         void qc.invalidateQueries({ queryKey: lageSchluessel(koId) });
         plane(taktMs);
@@ -108,6 +145,7 @@ export function useEigeneBearbeitung(
         // Versuch. Die Anmeldung endet — der Text im Formular bleibt, wo er ist.
         if (e instanceof ApiError && [401, 403, 404].includes(e.status)) {
           setLage("ohneRecht");
+          setLesestand(null);
           return;
         }
         // Alles andere ist eine unterbrochene Verbindung (oder ein vorübergehender Serverfehler):
@@ -115,8 +153,17 @@ export function useEigeneBearbeitung(
         // Erneuerung setzt ihn wieder.
         unterbrochen = true;
         setLage("unterbrochen");
+        setLesestand(null);
         plane(Math.min(taktMs, WIEDERHOLUNG_MS));
       }
+    };
+    const melden = (): Promise<void> => {
+      if (laufend === null) {
+        laufend = einmalMelden().finally(() => {
+          laufend = null;
+        });
+      }
+      return laufend;
     };
     const wiederDa = (): void => {
       plane(0);
@@ -129,12 +176,16 @@ export function useEigeneBearbeitung(
         clearTimeout(wecker);
       }
       window.removeEventListener("online", wiederDa);
+      lesenRef.current = () => undefined;
       setSitzung(null);
       setLage("aus");
-      // Bewusstes Beenden (Speichern, Abbrechen, Wechsel des Eintrags): der Hinweis geht sofort.
-      // Scheitert das, läuft er am Server ab — es gibt nichts, das hier festhängen könnte.
-      void endpoints.ko
-        .bearbeitungBeenden(koId, meine)
+      setLesestand(null);
+      // Bewusstes Beenden (Speichern, Abbrechen, Wechsel des Eintrags): der Hinweis geht sofort —
+      // aber ERST, wenn eine noch laufende Anmeldung beim Server angekommen ist (s. oben). Scheitert
+      // das Beenden, läuft der Hinweis am Server ab; ein Aufräumen darf nie selbst werfen.
+      const offeneAnmeldung: Promise<void> = laufend ?? Promise.resolve();
+      void offeneAnmeldung
+        .then(() => endpoints.ko.bearbeitungBeenden(koId, meine))
         .catch(() => undefined)
         .finally(() => {
           void qc.invalidateQueries({ queryKey: lageSchluessel(koId) });
@@ -142,11 +193,47 @@ export function useEigeneBearbeitung(
     };
   }, [koId, offen, qc]);
 
-  return { sitzung, lage, ablaufSekunden };
+  return {
+    sitzung,
+    lage,
+    lesestand,
+    ablaufSekunden,
+    nochmalLesen: () => lesenRef.current(),
+  };
 }
 
 /** Wiedererkennung einer fremden Bearbeitung über zwei Abfragen hinweg (ohne fremde Kennung). */
 const kennung = (b: LaufendeBearbeitung): string => `${b.name}\u0000${b.seit}`;
+
+/** Der Satz über das Nachlesen — nur, was wirklich geschehen ist, samt Griff, wenn es scheiterte. */
+function LesestandSatz({
+  stand,
+  onNochmal,
+}: {
+  stand: Lesestand;
+  onNochmal: () => void;
+}): JSX.Element {
+  const { t } = useTranslation();
+  return (
+    <span data-testid="bib-bearbeitung-lesestand" data-stand={stand} className="mt-1 block">
+      {stand === "liest"
+        ? t("bearbeitung.neuLesen")
+        : stand === "gelesen"
+          ? t("bearbeitung.neuGelesen")
+          : t("bearbeitung.neuLesenFehlgeschlagen")}
+      {stand === "fehlgeschlagen" ? (
+        <button
+          type="button"
+          data-testid="bib-bearbeitung-erneut-lesen"
+          onClick={onNochmal}
+          className="ml-2 rounded-btn border border-hairline px-2.5 py-1 text-[12px] font-semibold text-text hover:bg-hairline-soft"
+        >
+          {t("bearbeitung.erneutLesen")}
+        </button>
+      ) : null}
+    </span>
+  );
+}
 
 /**
  * Der sichtbare Hinweis. Er steht im Lesen UND im Bearbeiten an derselben Stelle über dem Inhalt.
@@ -158,15 +245,19 @@ export function Bearbeitungshinweis({
   koId,
   eigeneSitzung,
   eigeneLage,
+  eigenerLesestand,
+  onEigenesNachlesen,
   ablaufSekunden,
   onFremdesEnde,
 }: {
   koId: string;
   eigeneSitzung: string | null;
   eigeneLage: EigeneLage;
+  eigenerLesestand: Lesestand | null;
+  onEigenesNachlesen: () => void;
   ablaufSekunden: number;
-  /** Eine fremde Bearbeitung ist verschwunden — der Aufrufer liest den Eintrag neu. */
-  onFremdesEnde: () => void;
+  /** Eine fremde Bearbeitung ist verschwunden — der Aufrufer liest den Eintrag neu und sagt, ob es gelang. */
+  onFremdesEnde: () => Promise<boolean>;
 }): JSX.Element | null {
   const { t, i18n } = useTranslation();
   const lage = useQuery({
@@ -177,18 +268,45 @@ export function Bearbeitungshinweis({
     retry: false,
   });
   const [beendet, setBeendet] = useState<string[]>([]);
+  const [endeLesestand, setEndeLesestand] = useState<Lesestand>("liest");
   const gesehen = useRef<Map<string, string> | null>(null);
   const endeRef = useRef(onFremdesEnde);
   endeRef.current = onFremdesEnde;
+  const endeLesung = useRef(0);
 
   // Antwortet der Server mit „nicht angemeldet", „kein Recht" oder „nicht sichtbar", ist auch ein
   // älterer Bestand nicht mehr zu zeigen: wer den Eintrag nicht (mehr) lesen darf, erfährt auch
-  // nicht, wer ihn bearbeitet.
+  // nicht, wer ihn bearbeitet — weder die laufende Bearbeitung NOCH einen früheren Endehinweis.
+  // Beides wird verworfen, nicht bloss verdeckt: kehrt das Recht zurück, beginnt die Erkennung neu.
   const gesperrt = lage.error instanceof ApiError && [401, 403, 404].includes(lage.error.status);
+  useEffect(() => {
+    if (gesperrt) {
+      setBeendet([]);
+      gesehen.current = null;
+    }
+  }, [gesperrt]);
   const alle = gesperrt ? [] : (lage.data?.bearbeitungen ?? []);
   const fremde = alle.filter((b) => !b.eigen);
   const eigeneAndere = alle.filter((b) => b.eigen && b.sitzung !== eigeneSitzung);
+  const beendetSichtbar = gesperrt ? [] : beendet;
   const minuten = Math.max(1, Math.round((lage.data?.ablaufSekunden ?? ablaufSekunden) / 60));
+
+  const nachlesen = (): void => {
+    const nr = ++endeLesung.current;
+    setEndeLesestand("liest");
+    void endeRef.current().then(
+      (gelungen) => {
+        if (nr === endeLesung.current) {
+          setEndeLesestand(gelungen ? "gelesen" : "fehlgeschlagen");
+        }
+      },
+      () => {
+        if (nr === endeLesung.current) {
+          setEndeLesestand("fehlgeschlagen");
+        }
+      },
+    );
+  };
 
   // DAS ENDE WIRD NUR AUS EINER FRISCHEN, GELUNGENEN ANTWORT ABGELEITET. Eine gescheiterte Abfrage
   // sagt nichts darüber, ob jemand aufgehört hat — sie liesse sonst jede Bearbeitung „enden",
@@ -208,7 +326,7 @@ export function Bearbeitungshinweis({
     const neu = [...jetzt.values()];
     if (weg.length > 0) {
       setBeendet((alt) => [...alt.filter((n) => !neu.includes(n)), ...weg]);
-      endeRef.current();
+      nachlesen();
     } else if (neu.length > 0) {
       // Wer wieder bearbeitet, hat nicht mehr „beendet".
       setBeendet((alt) => alt.filter((n) => !neu.includes(n)));
@@ -234,7 +352,7 @@ export function Bearbeitungshinweis({
   if (
     fremde.length === 0 &&
     eigeneAndere.length === 0 &&
-    beendet.length === 0 &&
+    beendetSichtbar.length === 0 &&
     eigenerSatz === null &&
     !unbekannt
   ) {
@@ -270,18 +388,19 @@ export function Bearbeitungshinweis({
           {t("bearbeitung.eigenesFenster")}
         </p>
       ) : null}
-      {beendet.length > 0 ? (
+      {beendetSichtbar.length > 0 ? (
         <div
           data-testid="bib-bearbeitung-beendet"
           aria-live="polite"
           className="flex flex-wrap items-start gap-2 rounded-btn bg-hairline-soft px-3 py-2 text-[12.5px] text-text"
         >
           <span className="min-w-0 flex-1">
-            {beendet.map((n) => (
+            {beendetSichtbar.map((n) => (
               <span key={n} className="block">
                 {t("bearbeitung.beendet", { name: n.trim() || t("bearbeitung.namenlos") })}
               </span>
             ))}
+            <LesestandSatz stand={endeLesestand} onNochmal={nachlesen} />
           </span>
           <button
             type="button"
@@ -301,6 +420,9 @@ export function Bearbeitungshinweis({
           className="rounded-btn bg-trust-warn-bg px-3 py-2 text-[12.5px] leading-relaxed text-trust-warn-text"
         >
           {eigenerSatz}
+          {eigeneLage === "zurueck" && eigenerLesestand !== null ? (
+            <LesestandSatz stand={eigenerLesestand} onNochmal={onEigenesNachlesen} />
+          ) : null}
         </p>
       ) : null}
       {unbekannt ? (
