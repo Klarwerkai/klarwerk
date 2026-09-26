@@ -97,32 +97,189 @@ export function laufzeitEinstiege(startbefehl = startBefehlText()) {
 // Quelltext ab hier in Merkmale zerlegt (Wort, Zeichen, Text) und die Stellung geprüft. Der Inhalt
 // eines Textmerkmals wird NIE wieder durchsucht — damit ist „zu viel" strukturell ausgeschlossen.
 //
-// GRENZE, ausdrücklich und unverändert: Das ist kein Parser. Ob ein `/` eine Division oder einen
-// regulären Ausdruck beginnt, entscheidet eine Heuristik über das letzte Merkmal — dieselbe, die
-// jeder Zeilenhervorheber benutzt. Ein echter Parser bräuchte `typescript` im Baupfad, den es
+// GRENZE, ausdrücklich: Das ist kein Parser. Ob ein `/` eine Division oder einen regulären Ausdruck
+// beginnt, entscheidet eine REGEL über das vorangehende Merkmal (`regexOderDivision`, unten). Wo
+// diese Regel die Frage nicht sicher beantwortet, bricht der Paketbau ab, statt zu raten (Aufnahme
+// 20260922 „Insel-Quellgrenzen"). Ein echter Parser bräuchte `typescript` im Baupfad, den es
 // bewusst nicht gibt (vgl. `schema-vertrag.mjs:45-47`).
 
 /** Nach diesen Zeichen beginnt ein `/` einen regulären Ausdruck, nicht eine Division. */
-const VOR_REGEX = new Set(["(", ",", "=", ":", "[", "!", "&", "|", "?", "{", "}", ";", "+", "-", "*", "%", "~", "^", "<", ">"]);
-/** Dasselbe für Schlüsselwörter: `return /x/.test(s)` ist ein regulärer Ausdruck. */
-const VOR_REGEX_WORT = new Set(["return", "typeof", "case", "in", "of", "delete", "void", "instanceof", "new", "do", "else", "yield", "await"]);
+const VOR_REGEX = new Set(["(", ",", "=", ":", "[", "!", "&", "|", "?", "{", ";", "+", "-", "*", "%", "~", "^", "<", ">"]);
+/**
+ * Dasselbe für RESERVIERTE Schlüsselwörter: `return /x/.test(s)` ist ein regulärer Ausdruck. Diese
+ * Wörter können nie selbst ein Wert sein — ausser als Eigenschaftsname hinter einem `.`
+ * (`o.return / 2`), und genau das prüft `regexOderDivision` vorher.
+ */
+const VOR_REGEX_WORT = new Set([
+  "return",
+  "typeof",
+  "case",
+  "in",
+  "delete",
+  "void",
+  "instanceof",
+  "new",
+  "do",
+  "else",
+  "throw",
+  // Nachgetragen in Runde 2 (BEN, Urteil Runde 1): hinter diesen Wörtern endet eine Anweisung oder
+  // beginnt ein Ausdruck — ein `/` danach ist NIE eine Division. `break\n/`/` war ein stiller
+  // Verlust: die automatische Semikoloneinfügung beendet `break`, der Zerleger las „Division", und
+  // die Schablone aus den zwei Backticks verschluckte die `require`-Kante dazwischen (Q-RD9).
+  "break",
+  "continue",
+  "debugger",
+  "extends",
+  "default",
+]);
+/** Hinter diesen Wörtern ist ein Wort auf DERSELBEN Zeile ein Sprungziel, kein Wert: `continue aussen`. */
+const SPRUNG_WORT = new Set(["break", "continue"]);
+/**
+ * KONTEXTWÖRTER: `of`, `yield` und `await` sind je nach Umgebung Schlüsselwort ODER gewöhnlicher
+ * Bezeichner (`const of = 4; of / 2`). Welches von beiden gemeint ist, weiss der Zerleger nicht —
+ * ein `/` direkt dahinter ist deshalb nicht entscheidbar und bricht ab.
+ */
+const KONTEXT_WORT = new Set(["of", "yield", "await"]);
+/** Nach der Klammer DIESER Köpfe beginnt eine Anweisung: `if (ok) /x/.test(s)` ist ein regulärer Ausdruck. */
+const KOPF_WORT = new Set(["if", "while", "for", "with"]);
 
-/** Liest eine Zeichenkette ab `start` (dort steht das Anführungszeichen). */
+/**
+ * DIE ZEILENTRENNER DER SPRACHE — LF, CR, U+2028 und U+2029 (ECMAScript, „LineTerminator").
+ *
+ * Bis Runde 2 der Aufnahme 20260922 „Insel-Quellgrenzen" kannte der Zerleger nur LF. BEN hat mit
+ * echten Paketstarts belegt, dass das wirkt: `async<CR>require("…")` — und ebenso ein trennender
+ * Blockkommentar mit CR, U+2028 oder U+2029 — beendet für Node die Zeile, die Semikoloneinfügung
+ * macht aus `async` eine eigene Anweisung und `require` lädt wirklich. Der Zerleger sah keinen
+ * Zeilenumbruch, hielt es für eine Deklaration, und die Datei fiel still aus dem Paket (Q-DK8).
+ * Dasselbe gilt für das Ende eines `//`-Kommentars: endete er nur an LF, verschluckte er eine echte
+ * Kante hinter einem CR (Q-DK9). JEDE Zeilenfrage in dieser Datei geht deshalb durch diese Funktion.
+ */
+function istZeilenende(zeichen) {
+  return zeichen === "\n" || zeichen === "\r" || zeichen === " " || zeichen === " ";
+}
+
+/** Steht in diesem Quelltextstück — Kommentare eingeschlossen — irgendein Zeilentrenner? */
+function hatZeilenende(stueck) {
+  return [...stueck].some(istZeilenende);
+}
+
+/** Steht vor `stelle` auf ihrer Zeile nur Leerraum? (Zeile im Sinn der Sprache, `istZeilenende`.) */
+function amZeilenanfang(quelltext, stelle) {
+  for (let i = stelle - 1; i >= 0; i -= 1) {
+    if (istZeilenende(quelltext[i])) return true;
+    if (!/\s/.test(quelltext[i])) return false;
+  }
+  return true;
+}
+
+/**
+ * Liest eine Zeichenkette ab `start` (dort steht das Anführungszeichen). `offen` heisst: sie endete
+ * am Zeilenende oder Dateiende ohne schliessendes Zeichen — in gültigem Quelltext unmöglich, also
+ * ein Zeichen dafür, dass der Zerleger aus dem Takt ist (`zerlegeMitBefund`).
+ */
 function lesAnfuehrung(quelltext, start) {
   const zeichen = quelltext[start];
   let i = start + 1;
   let wert = "";
-  while (i < quelltext.length && quelltext[i] !== zeichen) {
+  let offen = true;
+  while (i < quelltext.length) {
+    if (quelltext[i] === zeichen) {
+      offen = false;
+      break;
+    }
     if (quelltext[i] === "\\") {
       wert += quelltext.slice(i, i + 2);
       i += 2;
       continue;
     }
-    if (quelltext[i] === "\n") break; // unabgeschlossen — nicht über die Zeile hinaus raten
+    // Unabgeschlossen — nicht über die Zeile hinaus raten. U+2028/U+2029 dürfen seit ES2019 in einer
+    // Zeichenkette stehen, LF und CR nicht.
+    if (quelltext[i] === "\n" || quelltext[i] === "\r") break;
     wert += quelltext[i];
     i += 1;
   }
-  return [{ art: "text", wert, schablone: false, konstant: true, von: start, bis: i + 1 }, i + 1];
+  return [{ art: "text", wert, schablone: false, konstant: true, von: start, bis: i + 1 }, i + 1, offen];
+}
+
+/** Ein Merkmal, hinter dem ein Wert endet — ein `/` danach teilt (`a[0] / 2`, `f(x) / 2`, `"a" / 2`). */
+function istWertende(merkmal, davor) {
+  if (merkmal === undefined) return false;
+  if (merkmal.art === "text") return true;
+  if (merkmal.art === "wort") {
+    if (davor !== undefined && davor.art === "zeichen" && davor.wert === ".") return true;
+    return !VOR_REGEX_WORT.has(merkmal.wert) && !KONTEXT_WORT.has(merkmal.wert);
+  }
+  if (merkmal.wert === ")") return merkmal.kopf !== true;
+  return merkmal.wert === "]" || /[0-9]/.test(merkmal.wert);
+}
+
+/**
+ * DIVISION ODER REGULÄRER AUSDRUCK — die Regel über das vorangehende Merkmal.
+ *
+ * ================================================================================================
+ * DER BEFUND, GEGEN DEN DIESE FUNKTION STEHT (Aufnahme 20260922, gemessen an echten Quellbäumen)
+ * ================================================================================================
+ * Bis dahin entschied eine Tabelle über das LETZTE Merkmal allein. Fünf gültige Formen lagen damit
+ * falsch, und jedes Mal verschwand eine echte, konstante Kante auf derselben Zeile still aus dem
+ * Paket (Quellbaum läuft, Bau meldet `[]`, Paket stirbt mit `MODULE_NOT_FOUND`):
+ *
+ *   `if (ok) /'/.test(s); require("./x")`   `)` hiess „Division" — nach dem Kopf von `if`, `while`,
+ *   `while (ok) /"/.test(s); …`             `for`, `with` beginnt aber eine Anweisung. Das `'` im
+ *                                           Ausdruck öffnete eine Zeichenkette bis zum Zeilenende.
+ *   `i++ / 2; require("./x")`               `+` hiess „regulärer Ausdruck" — hinter `a++` endet
+ *                                           aber ein Wert. Der Ausdruck lief bis zum `/` im Pfad.
+ *   `o.return / 2; require("./x")`          `return` hiess „regulärer Ausdruck" — hinter einem `.`
+ *                                           ist es ein Eigenschaftsname.
+ *   `karte.get("a")! / 2; import("./x")`    `!` hiess „regulärer Ausdruck" — hinter einem Wert ist es
+ *                                           TypeScripts Nicht-null-Zusicherung.
+ *
+ * Jetzt gilt: Die Klammer eines Kopfes trägt `kopf: true` (gesetzt beim Öffnen, `zerlegeMitBefund`),
+ * `++`/`--`/`!` HINTER einem Wert sind Nachsilben (`i++`, TypeScripts `x!`), und ein Wort hinter
+ * einem `.` ist ein Eigenschaftsname. Zwei Stellen entscheidet die Regel NICHT, und dort heisst die
+ * Antwort `unklar` — der Paketbau bricht ab:
+ *
+ *   `}` davor     Blockende (`}\n/x/.test(s)`, regulärer Ausdruck) oder Ende eines Wertes
+ *                 (`function () {} / 2`, Division)? Das wüsste nur ein Parser.
+ *   `of`, `yield`, `await` davor — Schlüsselwort oder Bezeichner (`KONTEXT_WORT`).
+ *
+ * Zurück kommt `"regex"`, `"division"` oder der Grund, warum es nicht entscheidbar ist.
+ */
+function regexOderDivision(quelltext, merkmale, rahmen) {
+  // Am Anfang eines Ausdrucks (Dateianfang oder unmittelbar nach `${`) kann nur ein regulärer
+  // Ausdruck stehen, keine Division. Hier lag der Befund aus Runde 5 von JOB 4241.
+  if (merkmale.length <= rahmen.start) return "regex";
+  const letztes = merkmale[merkmale.length - 1];
+  const davor = merkmale[merkmale.length - 2];
+  if (letztes.art === "text") return "division";
+  if (letztes.art === "wort") {
+    if (davor !== undefined && davor.art === "zeichen" && davor.wert === ".") return "division";
+    if (KONTEXT_WORT.has(letztes.wert)) {
+      return `„${letztes.wert}" ist Schluesselwort oder Bezeichner — ob das folgende / teilt oder einen regulaeren Ausdruck beginnt, ist ohne Parser nicht entscheidbar`;
+    }
+    // `continue aussen\n/x/` — das Sprungziel beendet die Anweisung; steht es auf derselben Zeile
+    // wie `break`/`continue`, ist es kein Wert. (Auf der nächsten Zeile wäre es ein neuer Ausdruck.)
+    if (
+      davor !== undefined &&
+      davor.art === "wort" &&
+      SPRUNG_WORT.has(davor.wert) &&
+      !hatZeilenende(quelltext.slice(davor.von, letztes.von))
+    ) {
+      return "regex";
+    }
+    return VOR_REGEX_WORT.has(letztes.wert) ? "regex" : "division";
+  }
+  if (letztes.wert === ")") return letztes.kopf === true ? "regex" : "division";
+  if (letztes.wert === "}") {
+    return "vor dem / steht ein }: Blockende (dann regulaerer Ausdruck) oder Wertende (dann Division) ist ohne Parser nicht entscheidbar";
+  }
+  // `i++ / 2`, `i-- / 2`: das doppelte Zeichen hinter einem Wert ist eine Nachsilbe.
+  if ((letztes.wert === "+" || letztes.wert === "-") && davor !== undefined && davor.wert === letztes.wert && davor.von + 1 === letztes.von) {
+    return istWertende(merkmale[merkmale.length - 3], merkmale[merkmale.length - 4]) ? "division" : "regex";
+  }
+  // `x! / 2` — TypeScripts Nicht-null-Zusicherung hinter einem Wert; `!/x/` nach einem Operator ist
+  // Verneinung. Hinter einem Wert kann kein verneinendes `!` stehen, ein Operator fehlte dazwischen.
+  if (letztes.wert === "!" && istWertende(davor, merkmale[merkmale.length - 3])) return "division";
+  return VOR_REGEX.has(letztes.wert) ? "regex" : "division";
 }
 
 
@@ -172,28 +329,42 @@ function lesAnfuehrung(quelltext, start) {
  * auffindbar UND ein `import(…)` innerhalb einer Einsetzung eine Kante wie jede andere.
  *
  * GRENZE, ausdrücklich: Das ist kein Parser. Ob ein `/` eine Division oder einen regulären Ausdruck
- * beginnt, entscheidet eine Heuristik über das letzte Merkmal des laufenden Ausdrucks — dieselbe,
- * die jeder Zeilenhervorheber benutzt. Ein echter Parser bräuchte `typescript` im Baupfad, den es
- * bewusst nicht gibt (vgl. `schema-vertrag.mjs:45-47`).
+ * beginnt, entscheidet eine Regel über das vorangehende Merkmal (`regexOderDivision`); wo sie es
+ * nicht entscheidet, steht eine Störung im Befund. Ein echter Parser bräuchte `typescript` im
+ * Baupfad, den es bewusst nicht gibt (vgl. `schema-vertrag.mjs:45-47`).
  */
 export function zerlege(quelltext) {
+  return zerlegeMitBefund(quelltext).merkmale;
+}
+
+/**
+ * DIE ZERLEGUNG SAMT TAKTPRÜFUNG (Aufnahme 20260922 „Insel-Quellgrenzen").
+ *
+ * Zurück kommen `merkmale` (wie bei `zerlege`) und `stoerungen` — Stellen, an denen der Zerleger
+ * nachweislich NICHT im Takt mit der Sprache ist oder eine Frage nicht entscheiden kann:
+ *
+ *   - ein `/`, bei dem `regexOderDivision` „nicht entscheidbar" sagt;
+ *   - eine Zeichenkette oder ein regulärer Ausdruck, die am Zeilenende offen bleiben;
+ *   - ein Kommentar, eine Schablone oder eine Einsetzung, die am Dateiende offen bleiben;
+ *   - eine `(`/`)` oder `{`/`}`, die kein Gegenstück hat.
+ *
+ * Nichts davon kommt in lauffähigem Quelltext vor, wenn der Zerleger richtig liegt. Kommt es vor,
+ * hat er vorher etwas falsch gelesen — und was er danach liest, ist wertlos: eine echte Kante kann
+ * im falsch gelesenen Stück stecken. `erreichteQuellen` bricht deshalb auf JEDE Störung ab.
+ *
+ * GRENZE, ausdrücklich: Die Taktprüfung ist ein NETZ, kein Beweis. Ein Fehlgriff, nach dem die
+ * Anführungszeichen und Klammern zufällig wieder aufgehen, fällt ihr nicht auf. Deshalb steht sie
+ * HINTER der Regel in `regexOderDivision` und nicht an ihrer Stelle.
+ */
+function zerlegeMitBefund(quelltext) {
   const merkmale = [];
+  const stoerungen = [];
   // Der Stapel trennt Code von Literaltext. `{ art: "code", start }` — `start` ist die Zahl der
   // Merkmale beim Öffnen und beantwortet „stehen wir am Anfang eines Ausdrucks?"; das entscheidet
-  // über Division gegen regulären Ausdruck direkt hinter einem `${`.
-  const stapel = [{ art: "code", start: 0, tiefe: 0 }];
+  // über Division gegen regulären Ausdruck direkt hinter einem `${`. `klammern` merkt sich je
+  // offener `(`, ob sie den Kopf von `if`/`while`/`for`/`with` öffnet.
+  const stapel = [{ art: "code", start: 0, tiefe: 0, klammern: [] }];
   let i = 0;
-
-  const regexMoeglich = () => {
-    const rahmen = stapel[stapel.length - 1];
-    // Am Anfang eines Ausdrucks (Dateianfang oder unmittelbar nach `${`) kann nur ein regulärer
-    // Ausdruck stehen, keine Division. Genau hier lag der Befund aus Runde 5.
-    if (merkmale.length <= rahmen.start) return true;
-    const letztes = merkmale[merkmale.length - 1];
-    if (letztes.art === "wort") return VOR_REGEX_WORT.has(letztes.wert);
-    if (letztes.art === "text") return false;
-    return VOR_REGEX.has(letztes.wert);
-  };
 
   while (i < quelltext.length) {
     const rahmen = stapel[stapel.length - 1];
@@ -218,7 +389,7 @@ export function zerlege(quelltext) {
       if (c === "$" && d === "{") {
         // Ab der ersten Einsetzung steht der Pfad nicht mehr fest; `wert` bleibt der feste Anfang.
         rahmen.merkmal.konstant = false;
-        stapel.push({ art: "code", start: merkmale.length, tiefe: 0 });
+        stapel.push({ art: "code", start: merkmale.length, tiefe: 0, klammern: [] });
         i += 2;
         continue;
       }
@@ -227,22 +398,25 @@ export function zerlege(quelltext) {
       continue;
     }
 
-    if (c === " " || c === "\t" || c === "\n" || c === "\r") {
+    if (/\s/.test(c)) {
       i += 1;
       continue;
     }
     if (c === "/" && d === "/") {
-      while (i < quelltext.length && quelltext[i] !== "\n") i += 1;
+      while (i < quelltext.length && !istZeilenende(quelltext[i])) i += 1;
       continue;
     }
     if (c === "/" && d === "*") {
+      const anfang = i;
       i += 2;
       while (i < quelltext.length && !(quelltext[i] === "*" && quelltext[i + 1] === "/")) i += 1;
+      if (i >= quelltext.length) stoerungen.push({ von: anfang, grund: "ein /* … */-Kommentar endet nie" });
       i += 2;
       continue;
     }
     if (c === '"' || c === "'") {
-      const [merkmal, weiter] = lesAnfuehrung(quelltext, i);
+      const [merkmal, weiter, offen] = lesAnfuehrung(quelltext, i);
+      if (offen) stoerungen.push({ von: i, grund: `eine Zeichenkette mit ${c} endet nicht auf ihrer Zeile` });
       merkmale.push(merkmal);
       i = weiter;
       continue;
@@ -259,24 +433,39 @@ export function zerlege(quelltext) {
       i += 1;
       continue;
     }
-    if (c === "/" && regexMoeglich()) {
+    const entscheidung = c === "/" ? regexOderDivision(quelltext, merkmale, rahmen) : "division";
+    // DAS NETZ FÜR DIE AUTOMATISCHE SEMIKOLONEINFÜGUNG (Runde 2, BEN-Befund 1): ein `/`, das eine
+    // Zeile BEGINNT und als Division gelesen würde. Genau dort liegt jede Fehllesung, die aus einer
+    // übersehenen Semikoloneinfügung kommt (`break\n/`/…`). Formatiert schreibt niemand eine
+    // Division so — Biome setzt den Operator ans Zeilenende —, also kostet der Abbruch nichts.
+    if (c === "/" && entscheidung === "division" && amZeilenanfang(quelltext, i)) {
+      stoerungen.push({
+        von: i,
+        grund: "ein / am Zeilenanfang, das als Division gelesen wuerde — nach einer automatischen Semikoloneinfuegung waere es ein regulaerer Ausdruck, das entscheidet ohne Parser niemand sicher",
+      });
+    }
+    if (entscheidung !== "division") {
+      if (entscheidung !== "regex") stoerungen.push({ von: i, grund: entscheidung });
       let j = i + 1;
       let inKlasse = false;
+      let offen = true;
       while (j < quelltext.length) {
         const z = quelltext[j];
         if (z === "\\") {
           j += 2;
           continue;
         }
-        if (z === "\n") break;
+        if (istZeilenende(z)) break;
         if (z === "[") inKlasse = true;
         else if (z === "]") inKlasse = false;
         else if (z === "/" && !inKlasse) {
           j += 1;
+          offen = false;
           break;
         }
         j += 1;
       }
+      if (offen) stoerungen.push({ von: i, grund: "ein regulaerer Ausdruck endet nicht auf seiner Zeile" });
       // Ein regulärer Ausdruck ist ein Wert wie ein Text — nach ihm beginnt kein neuer.
       merkmale.push({ art: "text", wert: "", schablone: false, konstant: false, regex: true, von: i, bis: j });
       i = j;
@@ -289,11 +478,34 @@ export function zerlege(quelltext) {
       // Ein `}` in einem regulären Ausdruck, einer Zeichenkette oder einem Kommentar kommt hier
       // gar nicht an: die Zweige darüber haben es längst gelesen.
       if (rahmen.tiefe === 0 && stapel.length > 1) {
+        if (rahmen.klammern.length > 0) stoerungen.push({ von: i, grund: "eine Einsetzung ${…} endet mit offener (" });
         stapel.pop();
         i += 1;
         continue;
       }
+      if (rahmen.tiefe === 0) stoerungen.push({ von: i, grund: "eine } ohne oeffnende {" });
       rahmen.tiefe -= 1;
+    } else if (c === "(") {
+      // Öffnet diese Klammer den Kopf von `if`/`while`/`for`/`with` (auch `for await (`)? Dann
+      // beginnt hinter ihrem `)` eine Anweisung, und ein `/` dort ist ein regulärer Ausdruck.
+      const vor = merkmale[merkmale.length - 1];
+      const vorvor = merkmale[merkmale.length - 2];
+      const alsEigenschaft = vorvor !== undefined && vorvor.art === "zeichen" && vorvor.wert === ".";
+      const kopf =
+        vor !== undefined &&
+        vor.art === "wort" &&
+        !alsEigenschaft &&
+        (KOPF_WORT.has(vor.wert) || (vor.wert === "await" && vorvor !== undefined && vorvor.wert === "for"));
+      rahmen.klammern.push(kopf);
+    } else if (c === ")") {
+      if (rahmen.klammern.length === 0) {
+        stoerungen.push({ von: i, grund: "eine ) ohne oeffnende (" });
+        merkmale.push({ art: "zeichen", wert: c, von: i });
+      } else {
+        merkmale.push({ art: "zeichen", wert: c, von: i, kopf: rahmen.klammern.pop() });
+      }
+      i += 1;
+      continue;
     }
     if (/[A-Za-z_$]/.test(c)) {
       let j = i;
@@ -305,7 +517,15 @@ export function zerlege(quelltext) {
     merkmale.push({ art: "zeichen", wert: c, von: i });
     i += 1;
   }
-  return merkmale;
+  const ende = stapel[stapel.length - 1];
+  if (ende.art === "schablone") {
+    stoerungen.push({ von: ende.merkmal.von, grund: "ein Schablonenliteral endet nie" });
+  } else if (stapel.length > 1) {
+    stoerungen.push({ von: quelltext.length, grund: "eine Einsetzung ${…} endet nie" });
+  } else if (ende.tiefe > 0 || ende.klammern.length > 0) {
+    stoerungen.push({ von: quelltext.length, grund: "am Dateiende ist eine { oder ( noch offen" });
+  }
+  return { merkmale, stoerungen };
 }
 
 /** Ein Textmerkmal, das die Sprache als Modulangabe zulässt (`from`/`import` verlangen ein StringLiteral). */
@@ -520,24 +740,49 @@ const GLIEDANFANG = new Set(["{", "}", ","]);
  *      Klammer, und dieses `{` auf DERSELBEN ZEILE wie die Signatur. Der Zeilenumbruch ist genau
  *      das, was den ASI-Fall oben erzeugt; ein Methodenrumpf steht hinter seiner Signatur.
  *
+ * AUCH DAS DEKLARATIONSWORT MUSS AUF DERSELBEN ZEILE STEHEN (BEN, Urteil Runde 1 der Aufnahme
+ * 20260922 „Insel-Quellgrenzen"). `async`, `get`, `set`, `static` sind ausserhalb eines Klassen-
+ * oder Objektrumpfs gewöhnliche Bezeichner:
+ *
+ *   const async = 1;
+ *   async                                   ← eine eigene Anweisung (Semikoloneinfügung)
+ *   require("../../aussen/geladen.cjs")     ← ein echter Ladevorgang
+ *   { const x = 1; }
+ *
+ * Bis dahin galt das Wort davor über den Zeilenumbruch hinweg als Nachweis; der Quellbaum lief, der
+ * Bau meldete `[]`, das Paket starb mit `MODULE_NOT_FOUND` (Q-DK6). Ein Deklarationswort, das
+ * ohne Zeilenumbruch direkt vor `require(` steht, ist dagegen nie ein Ausdruck — `async require(…)`
+ * auf einer Zeile ist als Anweisung ein Syntaxfehler. Steht das Wort auf der Zeile davor, gilt
+ * `require` als Aufruf. Kostet das eine echte Deklaration (`static` + Zeilenumbruch +
+ * `require(id) {` in einer Klasse), bricht der Bau laut ab (Q-DK7) — im Bestand steht das Wort
+ * immer auf derselben Zeile.
+ *
  * Im Zweifel ist es ein Aufruf — das ist die fail-closed-Richtung: laut und behebbar, statt still
  * ein Paket mit fehlender Datei.
  */
 function istRequireDeklaration(quelltext, merkmale, i, klammerZu) {
   const davor = merkmale[i - 1];
-  if (davor !== undefined && davor.art === "wort" && DEKLARATION_DAVOR.has(davor.wert)) return true;
+  if (
+    davor !== undefined &&
+    davor.art === "wort" &&
+    DEKLARATION_DAVOR.has(davor.wert) &&
+    !hatZeilenende(quelltext.slice(davor.von, merkmale[i].von))
+  ) {
+    return true;
+  }
   if (klammerZu === -1) return false;
   const dahinter = merkmale[klammerZu + 1];
   if (dahinter === undefined || dahinter.art !== "zeichen" || dahinter.wert !== "{") return false;
   if (davor === undefined || davor.art !== "zeichen" || !GLIEDANFANG.has(davor.wert)) return false;
-  return !quelltext.slice(merkmale[klammerZu].von, dahinter.von).includes("\n");
+  return !hatZeilenende(quelltext.slice(merkmale[klammerZu].von, dahinter.von));
 }
 
 /** Die Zeilennummer einer Quelltextstelle, 1-basiert — für „Datei:Zeile" in der Abbruchmeldung. */
 function zeileVon(quelltext, stelle) {
   let zeile = 1;
   for (let i = 0; i < stelle && i < quelltext.length; i += 1) {
-    if (quelltext[i] === "\n") zeile += 1;
+    // CRLF ist EIN Zeilenende; das CR davor zählt deshalb nicht mit.
+    if (istZeilenende(quelltext[i]) && !(quelltext[i] === "\r" && quelltext[i + 1] === "\n")) zeile += 1;
   }
   return zeile;
 }
@@ -562,7 +807,7 @@ function zeileVon(quelltext, stelle) {
  * derselben Sprache gehen genau so oft auseinander, wie es Sprachdetails gibt.
  */
 function angabenMitArt(quelltext) {
-  const merkmale = zerlege(quelltext);
+  const { merkmale, stoerungen } = zerlegeMitBefund(quelltext);
   const gefunden = [];
   for (let i = 0; i < merkmale.length; i += 1) {
     const m = merkmale[i];
@@ -634,11 +879,31 @@ function angabenMitArt(quelltext) {
     //                     lädt wirklich eine Datei, und niemand kann sagen, welche — ABBRUCH.
     //
     // NICHT `{ require: "./x" }`: dort folgt ein `:` statt einer Klammer.
+    //
+    // `require.resolve("./x")` IST EINE KANTE (Aufnahme 20260922): es lädt nichts, wirft aber
+    // `MODULE_NOT_FOUND`, wenn die Datei fehlt — das Paket braucht sie also genauso. Bis dahin stand
+    // es als Grenze c) im Dateikopf: der Quellbaum lief, der Bau meldete `[]`, das Paket starb. Sein
+    // Argument läuft durch dieselbe Weissliste wie jeder andere Lader.
     if (m.wert === "require") {
       const davor = merkmale[i - 1];
       if (davor !== undefined && davor.art === "zeichen" && davor.wert === ".") continue;
       const naechstes = merkmale[i + 1];
-      if (naechstes === undefined || naechstes.art !== "zeichen" || naechstes.wert !== "(") continue;
+      if (naechstes === undefined || naechstes.art !== "zeichen") continue;
+      if (naechstes.wert === ".") {
+        const name = merkmale[i + 2];
+        const klammer = merkmale[i + 3];
+        if (name === undefined || name.art !== "wort" || name.wert !== "resolve") continue;
+        if (klammer === undefined || klammer.art !== "zeichen" || klammer.wert !== "(") continue;
+        const argument = ladeArgument(quelltext, merkmale, i + 3);
+        gefunden.push({
+          wert: argument.wert,
+          literal: argument.literal,
+          stelle: `require.resolve(${argument.text})`,
+          zeile: zeileVon(quelltext, m.von),
+        });
+        continue;
+      }
+      if (naechstes.wert !== "(") continue;
       const argument = ladeArgument(quelltext, merkmale, i + 1);
       if (istRequireDeklaration(quelltext, merkmale, i, argument.klammerZu)) continue;
       gefunden.push({
@@ -659,7 +924,10 @@ function angabenMitArt(quelltext) {
     angabe.grund = angabe.literal ? wertGrund(angabe.wert) : undefined;
     angabe.wertLesbar = angabe.literal && angabe.grund === undefined;
   }
-  return gefunden;
+  return {
+    angaben: gefunden,
+    stoerungen: stoerungen.map((s) => ({ grund: s.grund, zeile: zeileVon(quelltext, s.von) })),
+  };
 }
 
 /**
@@ -669,11 +937,13 @@ function angabenMitArt(quelltext) {
  * (`literal`) UND ein Rohtext, der sein eigener Wert ist (`wertLesbar`). Jede andere Ausdrucksform
  * (``import(`./teil/${name}`)``, `require(p)`, `require("fs" && p)`) und jedes nicht sicher lesbare
  * Literal (`require("\x2e./x.cjs")`) steht hier bewusst NICHT: welche Datei sie lädt, ist nicht
- * bestimmbar. Sie verschwinden aber nicht still — `erreichteQuellen` bricht darauf ab.
+ * bestimmbar. Sie verschwinden aber nicht still — `erreichteQuellen` bricht darauf ab. Dasselbe
+ * gilt für eine Datei, die der Zerleger nicht im Takt liest (`zerlegeMitBefund`): hier stehen dann
+ * nur die Angaben, die er trotzdem gefunden hat, und `erreichteQuellen` bricht ab.
  */
 export function modulangaben(quelltext) {
   return angabenMitArt(quelltext)
-    .filter((angabe) => angabe.literal && angabe.wertLesbar)
+    .angaben.filter((angabe) => angabe.literal && angabe.wertLesbar)
     .map((angabe) => angabe.wert);
 }
 
@@ -741,12 +1011,17 @@ function repoRelativ(repo, pfad) {
  *      dasselbe SIND, und bricht sonst ab.
  *   6. EINE ANGABE, DIE WEDER RELATIV NOCH PAKETNAME IST — ein Literal, das mit `/` beginnt. Es
  *      liegt nicht im Quellbaum und kommt auch nicht über `npm ci`; was davon im Paket landen
- *      müsste, ist nicht bestimmbar.
+ *      müsste, ist nicht bestimmbar. Im Paket liefe es trotzdem, SOLANGE der Entwicklerbaum
+ *      daneben liegt — der verdeckte Rückweg, gemessen in Q-EB1.
  *   7. Eine erreichte `.tsx`/`.jsx`-Datei. Der Zerleger liest JSX nicht sicher: `<` steht in
- *      `VOR_REGEX` (`:95`), ein schliessendes `</div>` beginnt für ihn deshalb einen regulären
+ *      `VOR_REGEX`, ein schliessendes `</div>` beginnt für ihn deshalb einen regulären
  *      Ausdruck und verschluckt, was auf derselben Zeile dahinter steht — auch eine echte Kante.
  *      Ein Parser bräuchte „typescript" im Baupfad, den es bewusst nicht gibt
  *      (vgl. `schema-vertrag.mjs:45-47`); also wird die Datei benannt statt geraten.
+ *   8. EINE DATEI, DIE DER ZERLEGER NICHT IM TAKT LIEST (`zerlegeMitBefund`, Aufnahme 20260922):
+ *      ein `/`, bei dem `regexOderDivision` nicht entscheiden kann (hinter `}` oder hinter `of`,
+ *      `yield`, `await`), oder eine Zeichenkette, ein regulärer Ausdruck, ein Kommentar, eine
+ *      Schablone, eine Klammer, die nicht aufgeht. Dann ist KEINE Angabe dieser Datei verlässlich.
  *
  * BEWUSST ÜBERSPRUNGEN, kein Abbruch: NUR ein Literal, das BEIDE Stufen erfüllt und weder mit `.`
  * noch mit `/` beginnt — `"fastify"`, `"node:fs"`, `"@scope/paket/hilfe.js"`. Das sind Paketnamen
@@ -759,20 +1034,58 @@ function repoRelativ(repo, pfad) {
  * ================================================================================================
  * WAS AUCH DANACH GRENZE BLEIBT — hier aufgezählt, damit niemand sie für geschlossen hält
  * ================================================================================================
- *   a) DIVISION GEGEN REGULÄREN AUSDRUCK. Ob ein `/` das eine oder das andere beginnt, entscheidet
- *      eine Heuristik über das letzte Merkmal (`:167-176`) — dieselbe, die jeder Zeilenhervorheber
- *      benutzt. Liegt sie falsch, kann eine Kante dahinter verschwinden.
+ * Jede Grenze hier hat einen LAUFENDEN kleinen Quellbaum mit einer wirklich geladenen Fremdquelle
+ * in `tests/insel-paketausgabe/quellgrenzen-katalog.test.ts` (Kennung `Q-…`): Quellstart,
+ * Inhaltsberechnung, Paket, Entfernen des Entwicklerbaums, isolierter Paketstart. „Unterstützt"
+ * heisst dort: das Paket bringt die Datei mit und startet. „Abgewiesen" heisst: der Bau bricht ab,
+ * und das Paket, das ohne den Abbruch entstanden wäre, stirbt beim Start. Einen dritten Ausgang
+ * — still fehlend — hat der Katalog nicht; ein Fall, der ihn zeigte, wäre ein Fehler im Prüfling
+ * (so war es mit BENs Gegenfall zu Runde 1, heute Q-RD9). Das heisst NICHT, dass es keinen
+ * weiteren solchen Fall gibt — nur, dass keiner bekannt ist (siehe a), letzter Absatz).
+ * Der Katalog prüft auch, dass diese Liste und seine Fälle dieselben Kennungen tragen.
+ *
+ *   a) DIVISION GEGEN REGULÄREN AUSDRUCK — eine REGEL, kein Parser (`regexOderDivision`).
+ *      Unterstützt: nach dem Kopf von `if`/`while`/`for`/`with` (Q-RD1, Q-RD2), hinter `i++`
+ *      (Q-RD3), hinter `o.return` (Q-RD5), hinter TypeScripts `x!` (Q-RD6) — bis zur Aufnahme
+ *      20260922 fiel in jedem dieser fünf Fälle eine konstante Kante auf derselben Zeile STILL aus
+ *      dem Paket (gemessen: derselbe Katalog gegen den Vorstand). Hinter einem Index (Q-RD4) lag
+ *      die Tabelle schon vorher richtig; der Fall steht als Schutz daneben. Abgewiesen, weil ohne
+ *      Parser nicht entscheidbar: ein `/` hinter `}` (Q-RD7) und hinter `of`/`yield`/`await` (Q-RD8).
+ *
+ *      RUNDE 2 (BEN, Urteil Runde 1) hat an einem laufenden Baum belegt, dass die Aufzählung oben
+ *      NICHT vollständig war: `break` + Zeilenumbruch + ``/`/; require(…); /`/`` — die automatische
+ *      Semikoloneinfügung beendet `break`, der Leser las „Division", die zwei Backticks bildeten für
+ *      ihn eine Schablone, und die `require`-Kante dazwischen fiel STILL aus dem Paket; die
+ *      Taktprüfung fing es nicht, weil die Backticks wieder aufgingen. Seitdem: `break`, `continue`
+ *      samt Sprungziel auf derselben Zeile, `debugger`, `extends`, `default` gehen einem regulären
+ *      Ausdruck voraus (Q-RD9 wörtlich BENs Fall, Q-RD10, Q-RD11). UND ein Netz genau für diese
+ *      Fehlerklasse: ein `/` AM ZEILENANFANG, das als Division gelesen würde, bricht ab (Q-RD12) —
+ *      jede übersehene Semikoloneinfügung vor einem `/` steht dort. Das kostet eine harmlose
+ *      Division am Zeilenanfang (im Bestand 0 von 2373 Dateien, gemessen).
+ *
+ *      WAS DAMIT AUSDRÜCKLICH NICHT ZUGESAGT IST: dass jede Fehllesung abbricht. Eine Fehllesung
+ *      MITTEN in einer Zeile, nach der Anführungszeichen, Backticks und Klammern zufällig wieder
+ *      aufgehen, bleibt STILL — das ist die verbleibende Grenze. Zugesagt ist nur, was der Katalog
+ *      mit einem laufenden Baum belegt. Die Taktprüfung (Punkt 8) ist dafür ein Netz, KEIN Beweis.
+ *      Weitere TypeScript-Formen (etwa ein Instanziierungsausdruck `f<T> / 2`) sind nicht gemessen
+ *      und nicht zugesagt.
  *   b) AUFRUF GEGEN DEKLARATION BEI `require` ENTSCHEIDET EINE HEURISTIK (`istRequireDeklaration`).
  *      `require` ist kein Schlüsselwort, sondern im erreichten Baum ein METHODENNAME (vier Dateien,
  *      alle als `private async require(id: string)`, gemessen 17.09.2026). Erkannt werden zwei
  *      Deklarationsformen: ein Deklarationswort davor, und die Kurzform `{ require(id) { … } }` mit
  *      Gliedanfang davor und Rumpf auf derselben Zeile. NICHT erkannt wird eine modifikatorlose
  *      Methode mit Rückgabetyp (`require(id): X {`) und ebensowenig eine Kurzform, deren Rumpf auf
- *      der nächsten Zeile beginnt — beide gelten als Aufruf und BRECHEN AB. Das ist die
- *      fail-closed-Richtung: laut und behebbar, statt still ein Paket mit fehlender Datei. Keine
- *      dieser Formen kommt im Bestand vor. Seit Runde 3 gibt es die umgekehrte Lücke NICHT mehr:
- *      ein echter Aufruf vor einem Block auf der nächsten Zeile galt als Deklaration und
- *      verschwand (BEN, Urteil Runde 2, mit echten Paketstarts belegt).
+ *      der nächsten Zeile beginnt — beide gelten als Aufruf und BRECHEN AB (Q-DK5, Q-DK4). Das ist
+ *      die fail-closed-Richtung: laut und behebbar, statt still ein Paket mit fehlender Datei. Keine
+ *      dieser Formen kommt im Bestand vor. Unterstützt: beide erkannten Formen neben einem echten
+ *      Aufruf (Q-DK1), die Bestandsform mit `tsx` gestartet (Q-DK2). Seit Runde 3 gibt es die
+ *      umgekehrte Lücke NICHT mehr: ein echter Aufruf vor einem Block auf der nächsten Zeile galt
+ *      als Deklaration und verschwand (BEN, Urteil Runde 2; heute Q-DK3). Ebenso nicht mehr: ein
+ *      Deklarationswort (`async`, `get`, `set`, `static`, …) auf der ZEILE DAVOR — dort ist es ein
+ *      Bezeichner, und der echte Aufruf dahinter verschwand still (BEN, Urteil Runde 1 der Aufnahme
+ *      20260922; heute Q-DK6). Die Kehrseite: eine Klassenmethode mit `static` auf der Zeile davor
+ *      gilt als Aufruf und BRICHT AB (Q-DK7). „Zeile" heisst dabei jeder Zeilentrenner der Sprache
+ *      (LF, CR, U+2028, U+2029), auch in einem Kommentar dazwischen (`istZeilenende`; Q-DK8, Q-DK9).
  *   b2) BEIDE STUFEN DER WEISSLISTE SIND SYNTAKTISCH, NICHT SEMANTISCH. Stufe eins fragt „ist das
  *      genau ein Literal?", nicht „was kommt dabei heraus?". Eine Form, die zur Laufzeit denselben
  *      festen Pfad ergibt — `("./x")` in Klammern, `("a", "./x")`, `(true ? "./x" : "./x")` —,
@@ -786,15 +1099,27 @@ function repoRelativ(repo, pfad) {
  *      Zeichenliste ausser dem `:` der Node-Builtins (gemessen 17.09.2026). Umgekehrt gilt: über
  *      eine nicht eingeordnete Form und über einen nicht sicher lesbaren Rohtext wird hier KEINE
  *      Teilaussage mehr getroffen — es gibt nichts mehr, woraus ein späterer Leser falsch
- *      schliessen könnte. Genau das war der Befund der Runden 1 bis 4.
- *   c) `require.resolve("./x")` ist keine Kante — es lädt nichts, verlangt aber eine Datei.
+ *      schliessen könnte. Genau das war der Befund der Runden 1 bis 4. Laufende Bäume: variable
+ *      Pfade Q-VP1, Q-VP2, Q-VP3 (alle abgewiesen); Schablonen Q-TP1 (unterstützt, ohne
+ *      Einsetzung), Q-TP2 (abgewiesen, mit Einsetzung), Q-TP3 (unterstützt, `require` IN einer
+ *      Einsetzung). Escape-Schreibweisen — BENs zusätzliche Varianten aus JOB 4285 Runde 5, je mit
+ *      `require` und `import`: escaped Schrägstrich Q-ES1, `\u{2e}` Q-ES2, Zeilenfortsetzung Q-ES3;
+ *      dazu die Identitätsform Q-ES4 und die Oktalform Q-ES5 (nur CommonJS). Alle abgewiesen.
+ *   c) `require.resolve("./x")` IST SEIT DER AUFNAHME 20260922 EINE KANTE (Q-RQ2) — es lädt nichts,
+ *      wirft aber ohne die Datei `MODULE_NOT_FOUND`. Sein Argument läuft durch dieselbe
+ *      Weissliste (Q-RQ3). `import.meta.resolve(…)` ist KEINE Kante; es prüft nicht, ob die Datei
+ *      existiert, und fällt unter e). `require("./x")` selbst: Q-RQ1.
  *   d) `from` WIRD ALS WORT GELESEN. Eine Deklarationsform, in der dieses Wort unmittelbar vor
  *      einem Zeichenkettenliteral steht, ohne eine Einfuhr zu sein, würde als Kante gezählt; im
- *      Bestand kommt keine solche Form vor, und die Sprache kennt dafür kaum eine Stelle.
+ *      Bestand kommt keine solche Form vor, und die Sprache kennt dafür kaum eine Stelle. Die
+ *      Richtung wäre „eine Datei zu viel" oder ein Abbruch, nie eine fehlende Datei.
  *   e) NUR IMPORT-, EXPORT- UND `require`-KANTEN. Eine Datei, die zur Laufzeit anders geladen wird
- *      (`readFileSync`, `new URL(…, import.meta.url)`, ein Arbeiterprozess), sieht diese Erhebung
- *      nicht. Verfolgt werden ausserdem nur RELATIVE Angaben — eine absolute Angabe in den
- *      Entwicklerbaum fällt hier nicht auf.
+ *      (`readFileSync`, `new URL(…, import.meta.url)`, `import.meta.resolve`, ein Arbeiterprozess),
+ *      sieht diese Erhebung NICHT — weder als Kante noch als Abbruch. Das ist KEINE Zusage und im
+ *      Katalog bewusst nicht als „unterstützt" geführt. Eine ABSOLUTE Ladeangabe bricht dagegen ab
+ *      (Punkt 6, Q-EB1); eine absolute Angabe in `readFileSync` & Co. fällt ebenfalls unter e).
+ *   f) JSX/TSX: gefunden, benannt, nicht gelesen (Punkt 7) — Q-JX1 (`.tsx` erreicht), Q-JX2
+ *      (`.jsx`, endungslos eingeführt), Q-JX3 (der Einstieg selbst). Alle drei abgewiesen.
  */
 export function erreichteQuellen(repo, einstiege = laufzeitEinstiege()) {
   const wurzel = resolve(repo);
@@ -816,7 +1141,17 @@ export function erreichteQuellen(repo, einstiege = laufzeitEinstiege()) {
     const datei = offen.pop();
     if (gesehen.has(datei)) continue;
     gesehen.add(datei);
-    for (const eintrag of angabenMitArt(readFileSync(datei, "utf8"))) {
+    const { angaben, stoerungen } = angabenMitArt(readFileSync(datei, "utf8"));
+    // DIE TAKTPRÜFUNG ZUERST (Aufnahme 20260922): Hat der Zerleger diese Datei nicht sicher
+    // gelesen, ist auch keine ihrer Angaben verlässlich — eine echte Kante kann genau im falsch
+    // gelesenen Stück stecken. Die erste Störung nennt Datei:Zeile und den Grund.
+    if (stoerungen.length > 0) {
+      const erste = stoerungen[0];
+      throw new Error(
+        `Paketinhalt: ${repoRelativ(wurzel, datei)}:${erste.zeile} ist nicht sicher zerlegbar — ${erste.grund}. Welche Dateien sie laedt, ist damit nicht bestimmbar.`,
+      );
+    }
+    for (const eintrag of angaben) {
       const angabe = eintrag.wert;
       const wo = `${repoRelativ(wurzel, datei)}:${eintrag.zeile}`;
       // DIE WEISSLISTE ZUERST (JOB 4285 Runde 4): Ist das Ladeargument nicht genau ein
