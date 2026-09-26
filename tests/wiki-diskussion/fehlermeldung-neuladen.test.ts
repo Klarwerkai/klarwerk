@@ -17,6 +17,10 @@
 // bedingten UPDATE aus `repo-pg.ts:412-437`. Der Dienst liest daraufhin frisch und hängt EINMAL
 // erneut an; auch das wird abgelehnt, und erst dann kommt die Ablehnung an der Route heraus. Kein
 // echter PostgreSQL-Lauf, und dieser Fall behauptet über die Datenbank nichts.
+//
+// N3 BAUT DIE VERKETTUNG NACH, statt sie zu sehen. Was die MONTIERTE Fläche aus einer echten
+// 409-Antwort tatsächlich zeichnet, und dass „Erneut senden" danach genau einen Beitrag ablegt,
+// misst `konflikt-wiederholen-montiert.test.tsx`.
 import { describe, expect, it } from "vitest";
 import i18n from "../../apps/web/src/i18n";
 import { assembleServices, buildApp, inMemoryRepos } from "../../services/app/src/build-app";
