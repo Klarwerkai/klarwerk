@@ -49,18 +49,23 @@ Anzeige am Feld ausdrücklich zu.
 
 - **R-1541 / CAP-P1 — akustische Screenreader-Ausgabe:** weiterhin offen (so auch im Kriterium).
   Belegt ist nur die DOM-Seite (`aria-describedby` auf den Ladehinweis, F1/E1).
-- **CAP-P1 / CAP-P1-R2 — Abnahme „echter Clipboardweg DE/EN, Maus/Tastatur“:** nativ belegt ist
-  seit Runde 2 der Tastaturweg DE und EN bis Sichern, Serverstand und Wiederöffnen (Fall 9); das
-  Ladefenster (Fall 8) nur deutsch. Das Kontextmenü-Einfügen (Maus) ist als nicht maschinell
-  bedienbare Grenze benannt, nicht nachgestellt. „Positive Paarung und verwaiste Caption“ ist nur
-  gemountet belegt (`blatt-fruehe-eingabe.test.tsx` F4), nicht im nativen Browser.
-- **K13 — echter Browser→Persistenz→Wiederöffnen-Weg:** teilweise belegt. Der Smoke-Fall 3/8
-  sichert im echten Chromium, liest den Entwurf über `GET /api/drafts` zurück und öffnet ihn über
-  die Adresse wieder, ebenso Fall 9 — aber gegen den In-Memory-Smoke-Server, nicht gegen PostgreSQL.
-  Auch der neue P-KI-Beleg läuft gegen die In-Memory-Ablage der echten App. Der
-  PG-Browser-Beleg `tests/entwurf-verlassen/speicherknopf-ganzdokument-pg-im-browser.integration.test.ts`
-  gilt dem Dateiweg (JOB 4352), nicht dem Blatt. K13 bleibt damit **offen**: diese Teilbelege
-  werden nicht zu einem vollständigen Rundlauf zusammengesetzt und nicht mit T009 kombiniert.
+- **CAP-P1 / CAP-P1-R2 — Abnahme „echter Clipboardweg DE/EN, Maus/Tastatur, positive Paarung und
+  verwaiste Caption“:** seit Runde 3 nativ in Chromium belegt (`tests-smoke/demo-ux-v1-capture-frontdoor.spec.ts`):
+  Tastatur-Einfügen DE/EN bis Sichern, Serverstand und Wiederöffnen (Fall 9), Ladefenster DE (Fall 8)
+  und EN (Fall 10), Bild + Beschreibung über natives Einfügen, Sichern und Wiederöffnen DE/EN mit
+  Prüfung „genau eine Paarung, gleiche Kennung, keine Beschreibung ohne Bild“ am Editor und
+  „genau eine `figcaption`“ am Server (Fall 11). **Weiterhin nicht belegt:** Einfügen über das
+  Kontextmenü (Maus) — nicht maschinell bedienbar, ausdrücklich als Grenze benannt; eingefügt wird
+  Klartext, nicht ein Bild aus der Zwischenablage (das Bild stammt aus dem geladenen Entwurf).
+  Alle Smoke-Fälle laufen gegen den In-Memory-Smoke-Server.
+- **K13 — echter Browser→Persistenz→Wiederöffnen-Weg am Blatt:** seit Runde 3 als EIN durchgehender
+  Fall ergänzt: `tests/entwurf-datenerhalt/blatt-rundlauf-pg-im-browser.integration.test.ts`
+  (K1 de, K2 en) — Chromium tippt Titel und Rumpf, drückt „Entwurf sichern“/„Save draft“, echter
+  Socket → Fastify → `PgDraftRepo`, unabhängige SQL-Probe der `drafts`-Zeile, zweites Sichern
+  aktualisiert dieselbe Zeile, frische Seite über `?draft=<id>` und Neuladen zeigen Titel und Rumpf.
+  Nicht mit T009 kombiniert, nicht aus Teilbelegen zusammengesetzt. Er läuft nur mit gesicherter
+  `KLARWERK_PG_TEST_URL` (Testserver, `--gezielt`); ohne sie meldet er den Überspringen-Grund laut.
+  Ergebnis des Laufs: siehe Rückgabe von Runde 3.
 - **P-KI-UEBERNAHME-SPEICHERN — „jeder abgewiesene Speicherversuch muss sichtbar sein“:** bei
   `!canSave` ist „Entwurf sichern“ sichtbar gesperrt (`disabled`); die Gründe (`fd.unsavable.*`)
   nennt der Weggeh-Dialog, nicht der Knopf. Ein zweiter Klick während desselben laufenden Vorgangs
