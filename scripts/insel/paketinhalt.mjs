@@ -144,6 +144,35 @@ const KONTEXT_WORT = new Set(["of", "yield", "await"]);
 const KOPF_WORT = new Set(["if", "while", "for", "with"]);
 
 /**
+ * DIE ZEILENTRENNER DER SPRACHE — LF, CR, U+2028 und U+2029 (ECMAScript, „LineTerminator").
+ *
+ * Bis Runde 2 der Aufnahme 20260922 „Insel-Quellgrenzen" kannte der Zerleger nur LF. BEN hat mit
+ * echten Paketstarts belegt, dass das wirkt: `async<CR>require("…")` — und ebenso ein trennender
+ * Blockkommentar mit CR, U+2028 oder U+2029 — beendet für Node die Zeile, die Semikoloneinfügung
+ * macht aus `async` eine eigene Anweisung und `require` lädt wirklich. Der Zerleger sah keinen
+ * Zeilenumbruch, hielt es für eine Deklaration, und die Datei fiel still aus dem Paket (Q-DK8).
+ * Dasselbe gilt für das Ende eines `//`-Kommentars: endete er nur an LF, verschluckte er eine echte
+ * Kante hinter einem CR (Q-DK9). JEDE Zeilenfrage in dieser Datei geht deshalb durch diese Funktion.
+ */
+function istZeilenende(zeichen) {
+  return zeichen === "\n" || zeichen === "\r" || zeichen === " " || zeichen === " ";
+}
+
+/** Steht in diesem Quelltextstück — Kommentare eingeschlossen — irgendein Zeilentrenner? */
+function hatZeilenende(stueck) {
+  return [...stueck].some(istZeilenende);
+}
+
+/** Steht vor `stelle` auf ihrer Zeile nur Leerraum? (Zeile im Sinn der Sprache, `istZeilenende`.) */
+function amZeilenanfang(quelltext, stelle) {
+  for (let i = stelle - 1; i >= 0; i -= 1) {
+    if (istZeilenende(quelltext[i])) return true;
+    if (!/\s/.test(quelltext[i])) return false;
+  }
+  return true;
+}
+
+/**
  * Liest eine Zeichenkette ab `start` (dort steht das Anführungszeichen). `offen` heisst: sie endete
  * am Zeilenende oder Dateiende ohne schliessendes Zeichen — in gültigem Quelltext unmöglich, also
  * ein Zeichen dafür, dass der Zerleger aus dem Takt ist (`zerlegeMitBefund`).
@@ -163,7 +192,9 @@ function lesAnfuehrung(quelltext, start) {
       i += 2;
       continue;
     }
-    if (quelltext[i] === "\n") break; // unabgeschlossen — nicht über die Zeile hinaus raten
+    // Unabgeschlossen — nicht über die Zeile hinaus raten. U+2028/U+2029 dürfen seit ES2019 in einer
+    // Zeichenkette stehen, LF und CR nicht.
+    if (quelltext[i] === "\n" || quelltext[i] === "\r") break;
     wert += quelltext[i];
     i += 1;
   }
@@ -231,7 +262,7 @@ function regexOderDivision(quelltext, merkmale, rahmen) {
       davor !== undefined &&
       davor.art === "wort" &&
       SPRUNG_WORT.has(davor.wert) &&
-      !quelltext.slice(davor.von, letztes.von).includes("\n")
+      !hatZeilenende(quelltext.slice(davor.von, letztes.von))
     ) {
       return "regex";
     }
@@ -367,12 +398,12 @@ function zerlegeMitBefund(quelltext) {
       continue;
     }
 
-    if (c === " " || c === "\t" || c === "\n" || c === "\r") {
+    if (/\s/.test(c)) {
       i += 1;
       continue;
     }
     if (c === "/" && d === "/") {
-      while (i < quelltext.length && quelltext[i] !== "\n") i += 1;
+      while (i < quelltext.length && !istZeilenende(quelltext[i])) i += 1;
       continue;
     }
     if (c === "/" && d === "*") {
@@ -407,7 +438,7 @@ function zerlegeMitBefund(quelltext) {
     // Zeile BEGINNT und als Division gelesen würde. Genau dort liegt jede Fehllesung, die aus einer
     // übersehenen Semikoloneinfügung kommt (`break\n/`/…`). Formatiert schreibt niemand eine
     // Division so — Biome setzt den Operator ans Zeilenende —, also kostet der Abbruch nichts.
-    if (c === "/" && entscheidung === "division" && quelltext.slice(quelltext.lastIndexOf("\n", i - 1) + 1, i).trim() === "") {
+    if (c === "/" && entscheidung === "division" && amZeilenanfang(quelltext, i)) {
       stoerungen.push({
         von: i,
         grund: "ein / am Zeilenanfang, das als Division gelesen wuerde — nach einer automatischen Semikoloneinfuegung waere es ein regulaerer Ausdruck, das entscheidet ohne Parser niemand sicher",
@@ -424,7 +455,7 @@ function zerlegeMitBefund(quelltext) {
           j += 2;
           continue;
         }
-        if (z === "\n") break;
+        if (istZeilenende(z)) break;
         if (z === "[") inKlasse = true;
         else if (z === "]") inKlasse = false;
         else if (z === "/" && !inKlasse) {
@@ -735,7 +766,7 @@ function istRequireDeklaration(quelltext, merkmale, i, klammerZu) {
     davor !== undefined &&
     davor.art === "wort" &&
     DEKLARATION_DAVOR.has(davor.wert) &&
-    !quelltext.slice(davor.von, merkmale[i].von).includes("\n")
+    !hatZeilenende(quelltext.slice(davor.von, merkmale[i].von))
   ) {
     return true;
   }
@@ -743,14 +774,15 @@ function istRequireDeklaration(quelltext, merkmale, i, klammerZu) {
   const dahinter = merkmale[klammerZu + 1];
   if (dahinter === undefined || dahinter.art !== "zeichen" || dahinter.wert !== "{") return false;
   if (davor === undefined || davor.art !== "zeichen" || !GLIEDANFANG.has(davor.wert)) return false;
-  return !quelltext.slice(merkmale[klammerZu].von, dahinter.von).includes("\n");
+  return !hatZeilenende(quelltext.slice(merkmale[klammerZu].von, dahinter.von));
 }
 
 /** Die Zeilennummer einer Quelltextstelle, 1-basiert — für „Datei:Zeile" in der Abbruchmeldung. */
 function zeileVon(quelltext, stelle) {
   let zeile = 1;
   for (let i = 0; i < stelle && i < quelltext.length; i += 1) {
-    if (quelltext[i] === "\n") zeile += 1;
+    // CRLF ist EIN Zeilenende; das CR davor zählt deshalb nicht mit.
+    if (istZeilenende(quelltext[i]) && !(quelltext[i] === "\r" && quelltext[i + 1] === "\n")) zeile += 1;
   }
   return zeile;
 }
@@ -1052,7 +1084,8 @@ function repoRelativ(repo, pfad) {
  *      Deklarationswort (`async`, `get`, `set`, `static`, …) auf der ZEILE DAVOR — dort ist es ein
  *      Bezeichner, und der echte Aufruf dahinter verschwand still (BEN, Urteil Runde 1 der Aufnahme
  *      20260922; heute Q-DK6). Die Kehrseite: eine Klassenmethode mit `static` auf der Zeile davor
- *      gilt als Aufruf und BRICHT AB (Q-DK7).
+ *      gilt als Aufruf und BRICHT AB (Q-DK7). „Zeile" heisst dabei jeder Zeilentrenner der Sprache
+ *      (LF, CR, U+2028, U+2029), auch in einem Kommentar dazwischen (`istZeilenende`; Q-DK8, Q-DK9).
  *   b2) BEIDE STUFEN DER WEISSLISTE SIND SYNTAKTISCH, NICHT SEMANTISCH. Stufe eins fragt „ist das
  *      genau ein Literal?", nicht „was kommt dabei heraus?". Eine Form, die zur Laufzeit denselben
  *      festen Pfad ergibt — `("./x")` in Klammern, `("a", "./x")`, `(true ? "./x" : "./x")` —,

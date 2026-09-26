@@ -76,6 +76,8 @@ Quellstart, Inhaltsliste, Paket, Entfernen des Entwicklerbaums, isolierter Paket
   Deklarationswort (`async`, `static`, …) auf **derselben Zeile** steht oder ihr Rumpf auf
   derselben Zeile beginnt; sonst gilt sie als Aufruf (ein Wort auf der Zeile davor ist ein
   Bezeichner, Q-DK6), und bei einem nicht festen Argument bricht der Bau ab (Q-DK4, Q-DK7).
+  „Zeile" meint jeden Zeilentrenner der Sprache — LF, CR, U+2028, U+2029, auch in einem Kommentar
+  dazwischen (Q-DK8); ein `//`-Kommentar endet an jedem davon (Q-DK9).
 - **Still, also weder Kante noch Abbruch — verbleibende Grenzen:**
   1. Dateien, die anders geladen werden (`readFileSync`, `new URL(…, import.meta.url)`,
      `import.meta.resolve`, Arbeiterprozesse).

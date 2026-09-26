@@ -60,6 +60,10 @@ afterAll(raeumeAuf);
 
 /** Die Escapes werden zusammengesetzt, nicht als TypeScript-Escape geschrieben (vgl. `lesegrenzen-brechen-ab.test.ts`, R4). */
 const R = String.fromCharCode(0x5c);
+/** Die Zeilentrenner ausser LF — ebenso zusammengesetzt, damit sie nachweislich im Quellbaum stehen. */
+const CR = String.fromCharCode(0x0d);
+const LS = String.fromCharCode(0x2028);
+const PS = String.fromCharCode(0x2029);
 
 /** Die Fremdquelle, die jeder Baum WIRKLICH lädt — und der Fehler, mit dem ihr Fehlen endet. */
 const FREMD = {
@@ -464,6 +468,63 @@ const KATALOG: readonly Fall[] = [
           'require("../../aussen/geladen.cjs")',
           "{ const x = 1; void x; }",
           'const geladen = Object.values(require.cache).find((m) => m.filename.endsWith("geladen.cjs")).exports;',
+          AUSGABE_CJS,
+        ),
+      }),
+      erwartung: { art: "unterstuetzt" },
+    }),
+  ),
+  // BENs Gegenfall aus dem Urteil zu Runde 2: JavaScript kennt VIER Zeilentrenner (LF, CR, U+2028,
+  // U+2029), und jeder davon — auch in einem trennenden Blockkommentar — macht aus `async` eine eigene
+  // Anweisung. Bis dahin prüfte der Zerleger nur LF, und die Datei fiel still aus dem Paket.
+  ...(
+    [
+      ["c", "CR", CR],
+      ["l", "U+2028", LS],
+      ["p", "U+2029", PS],
+      ["k", "Blockkommentar mit CR", `/*${CR}*/`],
+      ["m", "Blockkommentar mit U+2028", `/*${LS}*/`],
+      ["n", "Blockkommentar mit U+2029", `/*${PS}*/`],
+    ] as const
+  ).map(
+    ([kurz, name, trenner]): Fall => ({
+      id: `Q-DK8${kurz}`,
+      grenze: "Deklaration",
+      was: `\`async\` + ${name} + \`require(…)\` — auch dieser Zeilentrenner beendet die Anweisung (BEN)`,
+      lader: "node",
+      einstieg: CJS,
+      fremd: "cjs",
+      quelle: () => ({
+        [CJS]: zeilen(
+          "const async = 1;",
+          `async${trenner}require("../../aussen/geladen.cjs")`,
+          "{ const x = 1; void x; }",
+          'const geladen = Object.values(require.cache).find((m) => m.filename.endsWith("geladen.cjs")).exports;',
+          AUSGABE_CJS,
+        ),
+      }),
+      erwartung: { art: "unterstuetzt" },
+    }),
+  ),
+  // Die Schwesterlücke am selben Ort: ein `//`-Kommentar endet an JEDEM Zeilentrenner, nicht nur an
+  // LF. Endete er für den Zerleger erst am nächsten LF, verschluckte er die echte Kante dahinter.
+  ...(
+    [
+      ["c", "CR", CR],
+      ["l", "U+2028", LS],
+      ["p", "U+2029", PS],
+    ] as const
+  ).map(
+    ([kurz, name, trenner]): Fall => ({
+      id: `Q-DK9${kurz}`,
+      grenze: "Deklaration",
+      was: `\`// …\` + ${name} + \`require(…)\` — der Kommentar endet am Zeilentrenner, die Kante dahinter lädt`,
+      lader: "node",
+      einstieg: CJS,
+      fremd: "cjs",
+      quelle: () => ({
+        [CJS]: zeilen(
+          `let geladen; // Hinweis${trenner}geladen = require("../../aussen/geladen.cjs");`,
           AUSGABE_CJS,
         ),
       }),
