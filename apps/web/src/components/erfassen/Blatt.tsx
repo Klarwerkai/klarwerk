@@ -746,7 +746,11 @@ export function Blatt({
     clearAssistState();
   };
 
-  const resetForNewEntry = (): void => {
+  // AUFNAHME erfassen-verwerfen (N-0061): der Zustandsteil von `resetForNewEntry` OHNE die Adresse.
+  // Die Wache ruft ihn nach der Entscheidung im Dialog (`DirtyGuard.abschliessen`); dort gehört die
+  // Adresse dem Wechsel, der unmittelbar folgt. Ein zweites Leeren daneben gibt es nicht: der
+  // Menüweg „Eingabe verwerfen" und jeder andere Aufrufer gehen weiter durch `resetForNewEntry`.
+  const blattLeeren = (): void => {
     setTitle("");
     setBodyHtml("");
     setQuellBildzahl(null);
@@ -770,10 +774,14 @@ export function Blatt({
     setSubmitValidation(false);
     saveRequestedRef.current = false;
     submitRequestedRef.current = false;
-    setSearchParams({}, { replace: true });
     clearStructureState();
     clearAssistState();
     setErr(null);
+  };
+
+  const resetForNewEntry = (): void => {
+    blattLeeren();
+    setSearchParams({}, { replace: true });
   };
 
   // ================================================================================================
@@ -1522,8 +1530,23 @@ export function Blatt({
 
   useUnloadGuard(istSchmutzig);
 
+  // AUFNAHME erfassen-verwerfen (N-0061): was nach der Entscheidung im Dialog der Wache geschieht —
+  // die Bearbeitung des bisherigen Entwurfs endet, gleich ob verworfen oder gesichert wurde. Dieselbe
+  // Folge wie „Eingabe verwerfen" (erst trennen, dann leeren), dazu zurück aufs Blatt: ein offener
+  // Arbeitsraum trüge sonst seine Datei oder sein Formular in die neue, leere Erfassung hinüber.
+  // Über einen Ref, damit die Anmeldung unten nicht bei jedem Render neu läuft, nur weil diese
+  // Funktion neu entsteht; sie ruft ausschliesslich Setter und stabile Rückrufe.
+  const abschlussRef = useRef<() => void>(() => undefined);
+  abschlussRef.current = () => {
+    diktatVomBlattTrennen();
+    blattLeeren();
+    setOffenesMenue(null);
+    setAnsicht("blatt");
+  };
+
   useEffect(() => {
     setGuard({
+      abschliessen: () => abschlussRef.current(),
       // JOB 4335 R4: DAS BLATT IST DIE ÄUSSERE WACHE DIESER FLÄCHE und speichert deshalb ZUERST —
       // der speziellere Stand des Arbeitsraums schreibt danach und gewinnt, falls beide denselben
       // Entwurf anfassen. Die Angabe steht hier im Quelltext und nicht im Renderverlauf; genau das
