@@ -961,7 +961,7 @@ const GRUNDWERTE: readonly Startwert[] = [
     geheim: false,
     vorgabe: "leer = keine SharePoint-Herkunft",
     wofuer:
-      "Die Microsoft-365-Mandanten (kommagetrennt, z. B. klarwerktest4711), aus deren SharePoint Word im Browser das Klara-Taskpane einbetten darf: je Name genau https://<name>.sharepoint.com und https://<name>-my.sharepoint.com in frame-ancestors. Ungültige Namen werden beim Start mit Grund verworfen.",
+      "Die SharePoint-Domänenstämme der Microsoft-365-Mandanten (kommagetrennt; der Teil vor .sharepoint.com, z. B. klarwerktest4711 — kein Anzeigename, keine Entra-GUID), aus deren SharePoint Word im Browser das Klara-Taskpane einbetten darf: je Stamm genau https://<stamm>.sharepoint.com und https://<stamm>-my.sharepoint.com in frame-ancestors. Ungültige Einträge werden beim Start mit Grund verworfen. Wirkt erst mit einem neuen App-Prozess.",
     ohneIhn:
       "Keine SharePoint-Herkunft darf Klara einbetten. Wer ein Dokument aus OneDrive/SharePoint in Word im Browser öffnet, sieht statt des Seitenbereichs eine Browser-Fehlerseite (refused to connect).",
   },

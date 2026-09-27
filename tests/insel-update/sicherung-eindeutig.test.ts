@@ -87,6 +87,7 @@ function fahreUpdateMitDump(
   const pfad = fremdbinaerAttrappe(insel, {
     date: festerZeitstempel(SEKUNDE),
     pg_dump: PG_DUMP_ATTRAPPE,
+    // Ohne sie hinge der Lesezweig von `backup.sh` am Prüfplatz (Begründung in `insel-probe.ts`).
     pg_restore: PG_RESTORE_ATTRAPPE,
   });
   const aussen = [fremderPfad, process.env.PATH ?? ""].filter((teil) => teil !== undefined);

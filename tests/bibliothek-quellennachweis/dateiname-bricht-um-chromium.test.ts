@@ -163,6 +163,53 @@ const ABSCHNITT_OFFEN = `() => {
   return !!(d && d.open);
 }`;
 
+/**
+ * JOB 4095 · STABIL — DIE TELEFONLAGE STEHT, NICHT NUR „EIN SPRUNGKNOPF IST DA".
+ *
+ * DER BEFUND: drei Lieferungstor-Läufe am 26.09. (d5 `lt-1790418134-92146f42`, import-bilder
+ * `pa-1790424751-c2bba68b`, wiki `lt-1790432272-7c26ea52`) liefen an `ABSCHNITT_OFFEN` in die
+ * 30 s. Der Ablauf dahinter ist nachgestellt: `setViewportSize` kehrt zurück, BEVOR Chromium die
+ * Media-Queries im nächsten Bild neu auswertet. Bis dahin steht noch der BREITE Baum — und in ihm
+ * steht der Sprungknopf schon. Der alte Wartepunkt („`bib-sprung-quellen` existiert") war also
+ * sofort erfüllt, der Klick traf den breiten Baum, und im nächsten Bild tauschte `AppShell`
+ * (`if (narrow) return …`) den ganzen Seitenbaum aus. Der neue Baum beginnt mit „Mehr" zu — der
+ * Klick war verloren, der Abschnitt öffnete nie. Gemessen am Basisstand, ohne Last: der alte
+ * Wartepunkt kam in 1 von 10 Wechseln 1620 → 360 im breiten Baum an; von 40 Klicks direkt nach dem
+ * Wechsel trafen 2 den breiten Baum, und in BEIDEN blieb der Abschnitt zu. Unter Last (Volllauf,
+ * `--single-process`) wird das Fenster breiter — daher „manchmal rot, Testdatei unverändert".
+ *
+ * KEIN PRODUKTFEHLER: im stehenden schmalen Baum öffnet derselbe Klick den Abschnitt jedes Mal.
+ * Dass ein Breitenwechsel über 899 px den Aufklappzustand zurücksetzt, ist das bekannte Verhalten,
+ * das der Kopf von `messen` schon beschreibt — es ist nicht Gegenstand dieses Auftrags.
+ *
+ * DESHALB wird auf die Lage gewartet, die zur Breite gehört: beide Leser der Breite haben
+ * umgebaut — die Hülle (`kopfband-menue` gibt es nur schmal, `AppShell.tsx`) UND die Fläche
+ * (`bib-zurueck` gibt es nur einspaltig, `BibliothekFlaeche.tsx`) —, und im selben Baum steht der
+ * Sprungknopf. Erst dann ist der Knopf der, den ein Mensch auf dem Telefon sieht. Beide Messbreiten
+ * (360, 320) liegen unter 760 px; eine breitere Messung bräuchte eine eigene Lagebedingung.
+ */
+const TELEFONLAGE_STEHT = `(breite) => {
+  return window.innerWidth === breite
+    && !!document.querySelector('[data-testid="kopfband-menue"]')
+    && !!document.querySelector('[data-testid="bib-zurueck"]')
+    && !!document.querySelector('[data-testid="bib-sprung-quellen"]');
+}`;
+
+/** Der sichtbare Zustand um Breitenwechsel und Klick — reist bei jedem Abbruch mit. */
+const LAGE = `() => {
+  const d = document.querySelector('[data-bib-abschnitt="quellen"]');
+  const mehr = document.querySelector('[data-testid="bib-mehr"]');
+  return {
+    fenster: window.innerWidth,
+    kopfbandSchmal: !!document.querySelector('[data-testid="kopfband-menue"]'),
+    zurueck: !!document.querySelector('[data-testid="bib-zurueck"]'),
+    sprungDa: !!document.querySelector('[data-testid="bib-sprung-quellen"]'),
+    mehrOffen: mehr ? mehr.getAttribute('aria-expanded') : null,
+    abschnittDa: !!d,
+    abschnittOffen: !!(d && d.open),
+  };
+}`;
+
 let stand: H4Stand | null = null;
 let fehler: string | null = null;
 
@@ -176,21 +223,32 @@ let fehler: string | null = null;
  */
 async function messen(breite: number): Promise<Messung> {
   const s = stand as H4Stand;
+  const lage = async (): Promise<unknown> => s.seite.evaluate(fn(LAGE));
+  const vorWechsel = await lage();
   await s.seite.setViewportSize({ width: breite, height: 800 });
-  // Auf den ZUSTAND warten, nicht auf eine Frist (Lehre JOB 3152 T1b): nach dem Breitenwechsel
-  // baut die Fläche neu auf, und der Sprungknopf ist erst danach da. Eine feste Wartezeit wäre auf
+  // Auf den ZUSTAND warten, nicht auf eine Frist (Lehre JOB 3152 T1b) — und zwar auf die Lage, die
+  // zu DIESER Breite gehört (`TELEFONLAGE_STEHT`, Begründung dort). Eine feste Wartezeit wäre auf
   // einem leeren Rechner zu lang und auf einem vollen zu kurz.
-  await s.seite.waitForFunction(
-    fn(`() => !!document.querySelector('[data-testid="bib-sprung-quellen"]')`),
-    undefined,
-    { timeout: 30_000 },
-  );
+  try {
+    await s.seite.waitForFunction(fn(TELEFONLAGE_STEHT), breite, { timeout: 30_000 });
+  } catch (e) {
+    throw new Error(
+      `bei ${breite}px steht die Telefonlage nicht — vor dem Wechsel ${JSON.stringify(vorWechsel)}, danach ${JSON.stringify(await lage())}, Seitenfehler ${JSON.stringify(s.seitenfehler)} | ${String(e).split("\n")[0]}`,
+    );
+  }
+  const vorKlick = await lage();
   if (!(await s.seite.evaluate<boolean>(fn(QUELLEN_OEFFNEN)))) {
     throw new Error(
       `bei ${breite}px fehlt der Sprungknopf „Quellen“ — der Abschnitt ist nicht erreichbar`,
     );
   }
-  await s.seite.waitForFunction(fn(ABSCHNITT_OFFEN), undefined, { timeout: 30_000 });
+  try {
+    await s.seite.waitForFunction(fn(ABSCHNITT_OFFEN), undefined, { timeout: 30_000 });
+  } catch (e) {
+    throw new Error(
+      `bei ${breite}px öffnet der Abschnitt „Quellen“ nicht — vor dem Wechsel ${JSON.stringify(vorWechsel)}, vor dem Klick ${JSON.stringify(vorKlick)}, nach dem Klick ${JSON.stringify(await lage())}, Seitenfehler ${JSON.stringify(s.seitenfehler)} | ${String(e).split("\n")[0]}`,
+    );
+  }
   await s.seite.waitForTimeout(200);
   const m = await s.seite.evaluate<Messung>(fn(MESSEN));
   console.info(`JOB 4095 R2 · ${breite}px: ${JSON.stringify(m)}`);

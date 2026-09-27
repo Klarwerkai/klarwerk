@@ -9,6 +9,8 @@
 // Diese Datei misst die Antwort darauf — KLARWERK_M365_MANDANTEN — am ECHTEN Server: eine
 // Fastify-Instanz mit der Produktionsregistrierung `registerSecurityHeaders`, gestartet auf einem
 // freien Port und über HTTP (fetch) abgefragt. Gemessen wird die Kopfzeile, die wirklich rausgeht.
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -26,6 +28,22 @@ const ANMELDUNG = "/word-addin/anmeldung.html";
 
 /** Die Direktive, wie sie OHNE Eintrag heute ausgeliefert wird — wörtlich, nicht abgeleitet. */
 const HEUTE = "frame-ancestors 'self' https://*.office.com https://*.officeapps.live.com";
+
+/**
+ * Die vollständige Ausnahme-CSP der Add-in-Seiten am Stand VOR beiden SharePoint-Aufträgen
+ * (`security-headers.ts` an 28c9671a^) — wörtlich abgeschrieben, nicht aus dem Code abgeleitet.
+ * Die Dialogseite muss sie auch MIT eingetragenem Mandanten zeichengleich tragen.
+ */
+const AUSNAHME_CSP_VORHER =
+  "default-src 'self'; " +
+  "script-src 'self' 'unsafe-inline' https://appsforoffice.microsoft.com; " +
+  "style-src 'self' 'unsafe-inline'; " +
+  "img-src 'self' data:; " +
+  "connect-src 'self'; " +
+  "object-src 'none'; " +
+  "base-uri 'self'; " +
+  "form-action 'self'; " +
+  "frame-ancestors 'self' https://*.office.com https://*.officeapps.live.com";
 
 interface LaufenderServer {
   readonly basis: string;
@@ -112,14 +130,57 @@ describe("E2 · ohne Eintrag zeichengleich; mehrere, doppelte und großgeschrieb
       ].join(" "),
     );
     expect(leseM365Mandanten("Kunde-B,kunde-a,KUNDE-B")).toEqual({
-      mandanten: ["kunde-b", "kunde-a"],
+      mandanten: ["kunde-a", "kunde-b"],
       verworfen: [],
     });
+  });
+
+  it('„ B,a , a" → a vor b, je Stamm erst normal dann -my, Doppelte einmal, klein', async () => {
+    const { basis, protokoll } = await starte({ KLARWERK_M365_MANDANTEN: " B,a , a" });
+    expect(frameAncestors((await kopf(basis, TASKPANE)).get("content-security-policy"))).toBe(
+      [
+        HEUTE,
+        "https://a.sharepoint.com https://a-my.sharepoint.com",
+        "https://b.sharepoint.com https://b-my.sharepoint.com",
+      ].join(" "),
+    );
+    expect(leseM365Mandanten(" B,a , a")).toEqual({ mandanten: ["a", "b"], verworfen: [] });
+    // Sortiert wird unabhängig von der Eingabereihenfolge — dasselbe Ergebnis für jede Permutation.
+    expect(leseM365Mandanten("zulu,alpha,mike").mandanten).toEqual(["alpha", "mike", "zulu"]);
+    expect(leseM365Mandanten("mike,zulu,alpha").mandanten).toEqual(["alpha", "mike", "zulu"]);
+    // Gültige Eingabe erzeugt keine Warnung.
+    const warnungen = protokoll.filter(
+      (zeile) => (JSON.parse(zeile) as { level: number }).level >= 40,
+    );
+    expect(warnungen).toEqual([]);
+  });
+
+  it("nach neuem App-Start mit anderem oder entferntem Mandanten bleibt kein alter Host", async () => {
+    const erster = await starte({ KLARWERK_M365_MANDANTEN: "altmandant" });
+    expect(
+      frameAncestors((await kopf(erster.basis, TASKPANE)).get("content-security-policy")),
+    ).toBe(`${HEUTE} https://altmandant.sharepoint.com https://altmandant-my.sharepoint.com`);
+    await erster.app.close();
+
+    const zweiter = await starte({ KLARWERK_M365_MANDANTEN: "neumandant" });
+    const nachWechsel = frameAncestors(
+      (await kopf(zweiter.basis, TASKPANE)).get("content-security-policy"),
+    );
+    expect(nachWechsel).toBe(
+      `${HEUTE} https://neumandant.sharepoint.com https://neumandant-my.sharepoint.com`,
+    );
+    expect(nachWechsel).not.toContain("altmandant");
+    await zweiter.app.close();
+
+    const dritter = await starte({});
+    expect(
+      frameAncestors((await kopf(dritter.basis, TASKPANE)).get("content-security-policy")),
+    ).toBe(HEUTE);
   });
 });
 
 describe("E3 · ungültige Namen werden verworfen, mit Grund protokolliert, nie ausgeliefert", () => {
-  const LANG = "a".repeat(64);
+  const LANG = "a".repeat(61);
   const UNGUELTIG = [
     "kunde.sharepoint.com",
     "*",
@@ -137,13 +198,18 @@ describe("E3 · ungültige Namen werden verworfen, mit Grund protokolliert, nie 
     "-",
     "-kunde",
     "kunde-",
+    "-a",
+    "a-",
+    // Nur ASCII wird kleingeschrieben: das Kelvin-Zeichen (U+212A) würde mit `toLowerCase` zu `k`.
+    "\u212Aunde",
   ];
 
   it("jede Form hat einen benannten Grund; gültige Namen daneben wirken weiter", () => {
     const { mandanten, verworfen } = leseM365Mandanten(
-      ["gut", ...UNGUELTIG, "auch-gut", "a".repeat(63)].join(","),
+      ["gut", ...UNGUELTIG, "auch-gut", "a".repeat(60)].join(","),
     );
-    expect(mandanten).toEqual(["gut", "auch-gut", "a".repeat(63)]);
+    // Der Stamm mit 60 Zeichen ist gültig: `<stamm>-my` hat dann genau 63 (RFC 1035 §2.3.4).
+    expect(mandanten).toEqual(["a".repeat(60), "auch-gut", "gut"]);
     expect(verworfen.map((v) => v.eintrag)).toEqual(UNGUELTIG);
     const gruende = Object.fromEntries(verworfen.map((v) => [v.eintrag, v.grund]));
     expect(gruende["kunde.sharepoint.com"]).toContain("Punkt");
@@ -154,10 +220,11 @@ describe("E3 · ungültige Namen werden verworfen, mit Grund protokolliert, nie 
     expect(gruende["kunde:8443"]).toContain("Port");
     expect(gruende["nutzer@kunde"]).toContain("@");
     expect(gruende["https://kunde"]).toContain("Schema");
-    expect(gruende[LANG]).toContain("63");
+    expect(gruende[LANG]).toContain("60");
     expect(gruende[""]).toContain("leer");
     expect(gruende.kündé).toContain("Zeichen");
-    for (const bindestrich of ["-", "-kunde", "kunde-"]) {
+    expect(gruende["\u212Aunde"]).toContain("Zeichen");
+    for (const bindestrich of ["-", "-kunde", "kunde-", "-a", "a-"]) {
       expect(gruende[bindestrich], bindestrich).toContain("Bindestrich");
       expect(sharepointHerkuenfte([bindestrich]), bindestrich).toEqual([]);
     }
@@ -211,6 +278,12 @@ describe("E4 · Regel = Header, auch mit Mandanten", () => {
       "https://klarwerktest4711-my.sharepoint.com/",
       "https://klarwerktest4711-my.sharepoint.com:443",
       "https://www.klarwerktest4711.sharepoint.com",
+      "https://sub.klarwerktest4711.sharepoint.com",
+      "https://sub.klarwerktest4711-my.sharepoint.com",
+      "https://klarwerktest4711-my.sharepoint.com:8443",
+      "https://klarwerktest4711-my.sharepoint.com/sites/x",
+      "https://nutzer@klarwerktest4711-my.sharepoint.com",
+      "https://nutzer:kennwort@klarwerktest4711.sharepoint.com",
     ]) {
       expect(istErlaubterEinbettungsHost(boese, MANDANTEN), boese).toBe(false);
     }
@@ -246,20 +319,24 @@ describe("E4 · Regel = Header, auch mit Mandanten", () => {
 
   it("D3 mit Mandanten: jede Herkunft der AUSGELIEFERTEN Direktive beantwortet die Regel gleich", async () => {
     // Neben dem belegten Mandanten die ANGENOMMENEN Randfälle (ein Zeichen, Ziffer, Bindestrich
-    // innen, doppelter Bindestrich, 63 Zeichen) und die VERWORFENEN Bindestrich-Randfälle aus
+    // innen, doppelter Bindestrich, 60 Zeichen) und die VERWORFENEN Bindestrich-Randfälle aus
     // Bens Befund E4 — die Direktive darf nur die angenommenen tragen, und für jede ihrer
-    // Herkünfte muss die Regel WAHR sagen.
-    const angenommen = ["klarwerktest4711", "zweiter", "a", "0", "a-b", "a--b", "a".repeat(63)];
+    // Herkünfte muss die Regel WAHR sagen. Ausgeliefert wird lexikografisch sortiert.
+    const angenommen = ["klarwerktest4711", "zweiter", "a", "0", "a-b", "a--b", "a".repeat(60)];
+    const sortiert = ["0", "a", "a--b", "a-b", "a".repeat(60), "klarwerktest4711", "zweiter"];
     const env = [...angenommen, "-", "-kunde", "kunde-"].join(",");
     const { basis } = await starte({ KLARWERK_M365_MANDANTEN: env });
     const mandanten = leseM365Mandanten(env).mandanten;
-    expect(mandanten).toEqual(angenommen);
+    expect(mandanten).toEqual(sortiert);
     const direktive = frameAncestors((await kopf(basis, TASKPANE)).get("content-security-policy"));
     const teile = (direktive ?? "").split(" ").filter((t) => t.startsWith("https://"));
     const platzhalter = teile.filter((t) => t.startsWith("https://*."));
     const exakt = teile.filter((t) => !t.includes("*"));
     // Kalibrierung: beide Arten sind wirklich da, und keine Herkunft bleibt ungemessen.
     expect(platzhalter.length).toBe(ERLAUBTE_EINBETTUNGS_HOSTS.length);
+    expect(exakt).toEqual(
+      sortiert.flatMap((m) => [`https://${m}.sharepoint.com`, `https://${m}-my.sharepoint.com`]),
+    );
     expect(exakt).toEqual(sharepointHerkuenfte(angenommen));
     expect(exakt.length).toBe(2 * angenommen.length);
     expect(direktive).not.toContain("https://-");
@@ -302,8 +379,9 @@ describe("E4 · Regel = Header für JEDEN Namen — angenommen heißt: jede Herk
       "a-b",
       "a--b",
       "xn--abc",
+      "a".repeat(60),
+      "a".repeat(61),
       "a".repeat(63),
-      "a".repeat(64),
       "-",
       "--",
       "-a",
@@ -340,7 +418,7 @@ describe("E4 · Regel = Header für JEDEN Namen — angenommen heißt: jede Herk
       "a-b",
       "a--b",
       "xn--abc",
-      "a".repeat(63),
+      "a".repeat(60),
       "A-B",
       " a ",
     ]);
@@ -357,8 +435,54 @@ describe("E5 · nur der Taskpane-Pfad ändert sich — gemessen", () => {
       expect(csp, pfad).not.toContain("sharepoint");
       expect(kopfzeilen.get("x-frame-options"), pfad).toBe("SAMEORIGIN");
     }
-    // Die Dialogseite ist top-level: sie behält ihre Ersatz-CSP OHNE Mandanten, zeichengleich.
+    // Die Dialogseite ist top-level: sie behält ihre Ersatz-CSP OHNE Mandanten — die GANZE CSP
+    // zeichengleich mit dem Stand vor beiden SharePoint-Aufträgen, nicht nur frame-ancestors.
     const dialog = await kopf(basis, ANMELDUNG);
-    expect(frameAncestors(dialog.get("content-security-policy"))).toBe(HEUTE);
+    expect(dialog.get("content-security-policy")).toBe(AUSNAHME_CSP_VORHER);
+    expect(dialog.get("x-frame-options")).toBeNull();
+    // Kalibrierung: das Taskpane trägt dieselbe CSP plus genau die zwei Herkünfte.
+    expect((await kopf(basis, TASKPANE)).get("content-security-policy")).toBe(
+      `${AUSNAHME_CSP_VORHER} https://klarwerktest4711.sharepoint.com https://klarwerktest4711-my.sharepoint.com`,
+    );
+  });
+});
+
+describe("E6 · die Live-Abnahme ist an die gelieferte Fassung gebunden (Doku)", () => {
+  const doku = readFileSync(
+    join(__dirname, "..", "..", "docs", "operations", "word-web-hostabnahme.md"),
+    "utf8",
+  );
+  const live = doku.slice(doku.indexOf("## Live-Folgeschritt"));
+
+  it("die falsche Anweisung „Version = ship-Commit“ ist weg; version UND commit werden erfasst", () => {
+    expect(live.length).toBeGreaterThan(500);
+    expect(doku).not.toContain("ship-Commit");
+    expect(live).toContain("`version`");
+    expect(live).toContain("`commit`");
+    expect(live).toContain("vollständigen Liefercommit");
+    expect(live).toContain("Herkunftsnachweis\noffen (K4)");
+    expect(live).toContain("keine belegte Abnahme dieser Fassung");
+  });
+
+  it("Vorgang, Zuständige, Startbedingung, Bindung an dieselbe Bereitstellung, Mac getrennt", () => {
+    for (const angabe of [
+      "aufnahme:20260922:m365-anmeldung",
+      "entscheidung:ca86022d",
+      "Realabnahme",
+      "**Koordinator:**",
+      "**Pedi:**",
+      "**MS365-Prüfer:**",
+      "**veröffentlicht**",
+      "Die Konfiguration ist **aktiv**",
+      "**derselben Bereitstellung**",
+      "Taskpane-Header",
+      "Dialog-Header",
+      "Testzeit",
+      "Hostversion",
+      "Ergebnis",
+      "**Word für Mac** ist ein getrennter Nachweis",
+    ]) {
+      expect(live, angabe).toContain(angabe);
+    }
   });
 });

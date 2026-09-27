@@ -67,7 +67,6 @@ import i18n from "../../apps/web/src/i18n";
 import {
   type Browser,
   DIST,
-  LIES_TEXT,
   type Seite,
   warte as browserWarte,
   fn,
@@ -925,12 +924,21 @@ export async function liesImFrischenProfil(
     await frisch.seite.goto(`${basis}/wissen/${koId}`, { waitUntil: "domcontentloaded" });
     await warte(
       frisch.seite,
-      "(t) => document.body.innerText.includes(t)",
+      `(a) => {
+        const lesen = document.querySelector('[data-testid="bib-lesen"]');
+        const titel = lesen?.querySelector('[data-bib-text="titel"]');
+        return location.pathname === "/wissen/" + a.id && !!titel &&
+          (titel.textContent || "").includes(a.titel);
+      }`,
       `die Leseansicht im frischen Profil zeigt „${titel}"`,
-      titel,
+      { id: koId, titel },
       60_000,
     );
-    return await frisch.seite.evaluate<string>(fn(LIES_TEXT));
+    // Der Titel steht auch in der Liste, bevor der einzelne Inhalt geladen ist.
+    // Erst die fertige Leseansicht zählt; ihre Inhaltsprüfung bleibt beim Aufrufer.
+    return await frisch.seite.evaluate<string>(
+      fn(`() => document.querySelector('[data-testid="bib-lesen"]').innerText`),
+    );
   } finally {
     await frisch.kontext.close();
   }

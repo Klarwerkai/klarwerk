@@ -94,6 +94,7 @@ APP_BASE_URL=
 # OIDC_AUDIENCE=
 # OIDC_JWKS_URI=
 # OIDC_AUTOPROVISION=
+# KLARWERK_M365_MANDANTEN=
 ```
 
 ### 2.1 Pflicht — ohne diese Werte startet nichts
@@ -185,6 +186,45 @@ deterministische Ersatzmodus — die Instanz ist vollständig benutzbar, die KI-
 regelbasiert und werden auf der Oberfläche ehrlich als solche ausgewiesen. Wer `OPENAI_API_KEY`
 setzt, setzt **immer auch** `REASONER_MODEL` (sonst bleibt der OpenAI-Weg stumm). Schlüssel gehören
 in die `.env` auf der Maschine, **niemals ins Repository**.
+
+### 2.6 Optional: Word im Browser aus SharePoint/OneDrive — `KLARWERK_M365_MANDANTEN`
+
+Wer ein Word-Dokument aus dem SharePoint oder OneDrive seines Microsoft-365-Mandanten im Browser
+öffnet, lädt den Klara-Seitenbereich unter der SharePoint-Adresse des Mandanten. Der Browser zeigt
+ihn nur, wenn die Instanz diese Herkunft ausdrücklich erlaubt.
+
+| | |
+|---|---|
+| Wert | Die **SharePoint-Domänenstämme** Ihrer Mandanten, kommagetrennt — der Teil vor `.sharepoint.com` in der Adresse Ihres SharePoint (`https://kunde.sharepoint.com` → `kunde`). **Nicht** der Anzeigename des Mandanten und **nicht** die Entra-Mandanten-ID (GUID). |
+| Bedeutung | Je Stamm dürfen genau `https://<stamm>.sharepoint.com` und `https://<stamm>-my.sharepoint.com` den Seitenbereich einbetten — keine anderen SharePoint-Adressen, kein Platzhalter. Die Liste ersetzt keine Anmeldung, keine Berechtigung und keine Datentrennung. |
+| Leer / nicht gesetzt | Wie bisher: keine SharePoint-Herkunft darf einbetten; Word im Browser aus SharePoint zeigt dann eine Fehlerseite statt Klara. Keine Warnung. |
+| Prüfung | Gültig ist ein Stamm aus `a–z`, `0–9` und `-`, 1 bis 60 Zeichen, ohne Bindestrich am Anfang oder Ende. Jeder andere Eintrag wird beim Start **mit Grund protokolliert und verworfen**; gültige Einträge daneben wirken weiter. |
+| Aktivierung | Erst mit einem **neuen App-Prozess**. Die Anwendung liest den Wert einmal beim Start; ein geänderter Wert wirkt nicht in einem laufenden Container. |
+
+Beispiel (der Wert, den `tests/neuinstallation/pflichtkonfiguration.test.ts` M2 durch die
+Compose-Datei bis in die Anwendung verfolgt):
+
+<!-- m365-beispiel -->
+```dotenv
+KLARWERK_M365_MANDANTEN=klarwerktest4711
+```
+
+**Zwei Wege, getrennt:**
+
+- **Ein-Befehl-Weg (diese Anleitung, `docker-compose.prod.yml`):** Die Compose-Datei reicht Werte
+  nur über ihren `environment:`-Block durch, nicht per `env_file`. `KLARWERK_M365_MANDANTEN` steht
+  dort als `${KLARWERK_M365_MANDANTEN:-}`. Tragen Sie die Zeile in die `.env` neben der
+  Compose-Datei ein und erzeugen Sie den App-Container neu:
+  `docker compose -f docker-compose.prod.yml up -d` (Compose erkennt die geänderte Umgebung und
+  ersetzt den Container). Ein bloßes `restart` übernimmt eine geänderte `.env` **nicht**.
+- **Coolify-Betrieb (`docs/operations/deploy-hetzner.md`):** Coolify liest diese Compose-Datei und
+  diese `.env` nicht. Den Wert setzt der Betreiber als **Laufzeitvariable** der Anwendung in Coolify
+  und stellt danach neu bereit; erst der neue Container trägt den Wert.
+
+Nach dem Start steht im Protokoll entweder
+`KLARWERK_M365_MANDANTEN: Word im Browser darf Klara aus den SharePoint-Herkünften von … einbetten.`
+oder je verworfenem Eintrag eine Warnung mit Grund. Einzelheiten und die Live-Abnahme:
+`docs/operations/word-web-hostabnahme.md`.
 
 ---
 
