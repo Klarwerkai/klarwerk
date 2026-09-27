@@ -54,13 +54,15 @@
 // KEINE PRODUKTIVDATEN: ausschliesslich Wegwerf-Datenbanken mit `test` im Namen, hinter dem
 // unangetasteten Wächter `guardedLocalPgTestUrl`, am Ende entfernt.
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import type { AddressInfo } from "node:net";
+import { tmpdir, userInfo } from "node:os";
 import { join, resolve } from "node:path";
 import type { FastifyInstance } from "fastify";
 import { Pool } from "pg";
-import { buildApp, buildPgServices } from "../../services/app/src/build-app";
+import { type AppServices, buildApp, buildPgServices } from "../../services/app/src/build-app";
 import { createPool, migrate } from "../../services/app/src/db";
 import { guardedLocalPgTestUrl } from "../../services/db-tx";
 import {
@@ -87,46 +89,32 @@ export const JOB = "[KLARWERK] JOB 4281";
 export const MELDUNG_KEINE_DATENBANK = `${JOB} ÜBERSPRUNGEN — KEINE DATENBANK ERREICHBAR:`;
 export const MELDUNG_MIGRATION_ROT = `${JOB} PRÜFPLATZ ROT — DIE DATENBANK IST ERREICHBAR, ABER DAS SCHEMA LIESS SICH NICHT ANLEGEN (migrate). Das ist ausdrücklich KEINE fehlende Laufzeit und wird niemals übersprungen:`;
 
-/** Zusammengesetzt statt ausgeschrieben — s. `tests/neuinstallation/…` (Fall N3 dort). */
-const PG_SCHEMA = "postgresql:";
-
-interface Verbindung {
-  host: string;
-  port: string;
-  user: string;
-  passwort: string;
-}
-
-function zerlege(url: string): Verbindung | undefined {
-  try {
-    const u = new URL(url.replace(/^postgres(ql)?:/, "http:"));
-    if (!u.hostname) {
-      return undefined;
-    }
-    return {
-      host: u.hostname,
-      port: u.port || "5432",
-      user: decodeURIComponent(u.username) || "postgres",
-      passwort: decodeURIComponent(u.password),
-    };
-  } catch {
-    return undefined;
-  }
-}
+// D5 KI AUS, RUNDE 2 — WARUM HIER KEIN `new URL()` MEHR STEHT. Die erste Fassung zerlegte die
+// angebotene Adresse in Rechner, Port, Nutzer und Passwort und setzte sie neu zusammen. Ein
+// Socket-Verbindungsstring — leerer Rechnername, Socketpfad im Abfrageteil, genau die Form der
+// Docker-losen Prüfläufe (`services/db-tx/src/pg-test-guard.ts:15-18`) — hat keinen Rechnernamen;
+// der Prüfplatz meldete dann „keine Datenbank" und übersprang ALLE Fachfälle (Bens Lauf in Runde 1:
+// bestanden=0). Jetzt wird wie in `tests/office-pg-abnahme/rueckweg-pg.integration.test.ts`
+// (`mitDatenbank`) nur das Pfadsegment ersetzt; Anmeldung, Rechner oder Socket und Abfrageteil
+// bleiben Zeichen für Zeichen, wie angeboten.
+const ADRESSE = /^([^:]+:\/\/[^/?#]*\/)([^/?#]*)(.*)$/;
 
 /**
  * Die Adresse einer Wegwerf-Datenbank. Der Namenstest ist die zweite Linie hinter
  * `guardedLocalPgTestUrl` und bleibt hier stehen, weil DIESE Datei die Namen selbst BILDET — der
  * Wächter sieht nur die angebotene URL, nicht das, was danach angelegt wird.
  */
-function pgUrl(v: Verbindung, datenbank: string): string {
+function pgUrl(angeboten: string, datenbank: string): string {
   if (!datenbank.toLowerCase().includes("test")) {
     throw new Error(
       `${JOB}: „${datenbank}" trägt kein „test" im Namen — dieser Lauf fasst ausschliesslich Wegwerf-Datenbanken an.`,
     );
   }
-  const anmeldung = `${encodeURIComponent(v.user)}:${encodeURIComponent(v.passwort)}`;
-  return `${PG_SCHEMA}//${anmeldung}@${v.host}:${v.port}/${datenbank}`;
+  const teile = ADRESSE.exec(angeboten);
+  if (!teile) {
+    throw new Error(`${JOB}: die angebotene Adresse trägt keinen lesbaren Datenbanknamen.`);
+  }
+  return `${teile[1]}${datenbank}${teile[3]}`;
 }
 
 // ================================================================================================
@@ -149,8 +137,14 @@ export interface Pruefplatz {
    * WIRFT bei jedem Fehler. Ein Skip ist hier ausdrücklich nicht mehr möglich: wer bis hierher
    * kommt, hat eine erreichbare Datenbank (`SELECT 1` ist durch), und alles, was danach schiefgeht,
    * ist ein Befund und keine fehlende Voraussetzung.
+   *
+   * `poolGroesse` (D5 KI aus, Lauf 2): ohne Angabe derselbe Pool wie im Betrieb (`createPool`). Der
+   * SQL-Mitschnitt der KI-aus-Suite ordnet Anweisungen nur dann sicher der Frage-Anfrage zu, wenn
+   * keine Anfrage auf eine Verbindung wartet (`zaehler.ts`, `beenden()` scheitert sonst laut). Die
+   * Vorauswahl stellt je Begriff eine Suchabfrage gleichzeitig (bis zu 8) — neben den Lesewegen
+   * der Fläche reichte der Standardpool von 10 Verbindungen gemessen nicht in jedem Lauf.
    */
-  wegwerfdatenbank(marke: string): Promise<Wegwerfdatenbank>;
+  wegwerfdatenbank(marke: string, poolGroesse?: number): Promise<Wegwerfdatenbank>;
   abraeumen(): Promise<void>;
 }
 
@@ -164,16 +158,30 @@ export interface Pruefplatz {
 export async function pruefplatzOeffnen(): Promise<
   { platz: Pruefplatz; skipGrund?: undefined } | { platz?: undefined; skipGrund: string }
 > {
-  const url = guardedLocalPgTestUrl();
+  let url = guardedLocalPgTestUrl();
+  let eigener: EigenerCluster | undefined;
   if (!url) {
-    return {
-      skipGrund:
-        "keine gesicherte KLARWERK_PG_TEST_URL — ohne sie ist der D5-Gesamtweg auf echtem PostgreSQL nicht messbar.",
-    };
+    // D5 KI AUS, RUNDE 3: angebotene Adresse fehlt — dann eine EIGENE Wegwerf-Instanz aus den
+    // vorhandenen PostgreSQL-Programmen, statt alle Fachfälle zu überspringen (s. `eigenenClusterStarten`).
+    if (process.env.KLARWERK_PG_TEST_URL) {
+      // Gesetzt, aber vom Wächter abgelehnt (Grund steht auf stderr): der Aufrufer wollte
+      // ausdrücklich SEINE Datenbank — kein stiller Ersatz.
+      return { skipGrund: "KLARWERK_PG_TEST_URL wurde vom Wächter abgelehnt (s. stderr)." };
+    }
+    const gestartet = eigenenClusterStarten();
+    if ("skipGrund" in gestartet) {
+      return {
+        skipGrund: `keine gesicherte KLARWERK_PG_TEST_URL, und keine eigene Wegwerf-Instanz möglich — ${gestartet.skipGrund}`,
+      };
+    }
+    eigener = gestartet;
+    url = gestartet.url;
+    process.stderr.write(
+      `${JOB} PRÜFPLATZ: eigene Wegwerf-Instanz aus ${gestartet.programme} (Socket ${gestartet.socket})\n`,
+    );
   }
-  const verbindung = zerlege(url);
-  if (!verbindung) {
-    return { skipGrund: "KLARWERK_PG_TEST_URL nennt keinen Rechnernamen." };
+  if (!ADRESSE.test(url)) {
+    return { skipGrund: "KLARWERK_PG_TEST_URL trägt keinen lesbaren Datenbanknamen." };
   }
   const adminPool = new Pool({ connectionString: url });
   let pgFassung: string;
@@ -182,6 +190,7 @@ export async function pruefplatzOeffnen(): Promise<
     pgFassung = probe.rows[0]?.version ?? "(Version nicht lesbar)";
   } catch (fehler) {
     await adminPool.end().catch(() => undefined);
+    eigener?.stoppen();
     return {
       skipGrund: `die angebotene Datenbank antwortet nicht — ${fehler instanceof Error ? fehler.message : String(fehler)}`,
     };
@@ -194,12 +203,15 @@ export async function pruefplatzOeffnen(): Promise<
   const schliesser: (() => Promise<void>)[] = [];
   const platz: Pruefplatz = {
     pgFassung,
-    async wegwerfdatenbank(marke: string): Promise<Wegwerfdatenbank> {
+    async wegwerfdatenbank(marke: string, poolGroesse?: number): Promise<Wegwerfdatenbank> {
       // `test` im Namen ist Pflicht (s. `pgUrl`), `4281` die Kennung dieses Auftrags.
       const name = `klarwerk_d5_4281_test_${marke}_${`${Date.now()}`.slice(-7)}`;
       await adminPool.query(`CREATE DATABASE ${name}`);
       angelegt.push(name);
-      const pool = createPool(pgUrl(verbindung, name));
+      const pool =
+        poolGroesse === undefined
+          ? createPool(pgUrl(url, name))
+          : new Pool({ connectionString: pgUrl(url, name), max: poolGroesse });
       let zu = false;
       const schliessen = async (): Promise<void> => {
         if (zu) {
@@ -229,9 +241,122 @@ export async function pruefplatzOeffnen(): Promise<
           .catch(() => undefined);
       }
       await adminPool.end().catch(() => undefined);
+      eigener?.stoppen();
     },
   };
   return { platz };
+}
+
+// ================================================================================================
+// D5 KI AUS, RUNDE 3 — DIE EIGENE WEGWERF-INSTANZ, WENN KEINE ANGEBOTEN WIRD.
+// ================================================================================================
+//
+// Bens Lauf in Runde 2 übersprang alle sechs Fachfälle: seine Umgebung bot keine
+// `KLARWERK_PG_TEST_URL` an. Ein übersprungener Fall ist kein bestandener — und die Programme einer
+// PostgreSQL-Installation (`initdb`, `pg_ctl`) liegen auf vielen Prüfplätzen vor, auch ohne laufenden
+// Server. Dann startet dieser Prüfplatz SELBST einen Cluster: in einem frischen Temp-Verzeichnis,
+// nur über einen Unix-Socket erreichbar (`listen_addresses=''`), mit `trust` nur für diesen Socket,
+// und am Ende gestoppt und gelöscht. Keine Container-Laufzeit (s. Kopf dieser Datei), kein Netz,
+// keine fremde Datenbank.
+//
+// Gesucht wird in dieser Reihenfolge: `KLARWERK_PG_BIN` (ausdrücklich angegebenes Programmverzeichnis),
+// der Suchpfad, `/usr/lib/postgresql/<Fassung>/bin` (Debian/Ubuntu, höchste Fassung zuerst),
+// `/usr/local/pgsql/bin`, `/opt/homebrew/bin`. Als root weigert sich `initdb` — das wird als Grund
+// gemeldet, nicht umgangen.
+
+interface EigenerCluster {
+  url: string;
+  socket: string;
+  programme: string;
+  stoppen(): void;
+}
+
+function programmverzeichnis(): string | undefined {
+  const kandidaten: string[] = [];
+  if (process.env.KLARWERK_PG_BIN) {
+    kandidaten.push(process.env.KLARWERK_PG_BIN);
+  }
+  for (const teil of (process.env.PATH ?? "").split(":")) {
+    if (teil) {
+      kandidaten.push(teil);
+    }
+  }
+  try {
+    const fassungen = readdirSync("/usr/lib/postgresql")
+      .filter((f) => /^\d+$/.test(f))
+      .sort((a, b) => Number(b) - Number(a));
+    for (const f of fassungen) {
+      kandidaten.push(`/usr/lib/postgresql/${f}/bin`);
+    }
+  } catch {
+    // kein Debian-Layout
+  }
+  kandidaten.push("/usr/local/pgsql/bin", "/opt/homebrew/bin");
+  return kandidaten.find(
+    (dir) => existsSync(join(dir, "initdb")) && existsSync(join(dir, "pg_ctl")),
+  );
+}
+
+function eigenenClusterStarten(): EigenerCluster | { skipGrund: string } {
+  const bin = programmverzeichnis();
+  if (!bin) {
+    return {
+      skipGrund:
+        "keine PostgreSQL-Programme gefunden (initdb/pg_ctl; gesucht: KLARWERK_PG_BIN, PATH, /usr/lib/postgresql/*/bin, /usr/local/pgsql/bin, /opt/homebrew/bin).",
+    };
+  }
+  if (typeof process.getuid === "function" && process.getuid() === 0) {
+    return {
+      skipGrund: `PostgreSQL-Programme in ${bin}, aber der Lauf ist root — initdb verweigert das.`,
+    };
+  }
+  const wurzel = mkdtempSync(join(tmpdir(), "kw-d5-pg-"));
+  const daten = join(wurzel, "daten");
+  const socket = join(wurzel, "sock");
+  execFileSync("mkdir", ["-p", socket]);
+  const port = String(20_000 + Math.floor(Math.random() * 20_000));
+  const aufraeumen = (): void => {
+    try {
+      execFileSync(join(bin, "pg_ctl"), ["-D", daten, "-m", "fast", "stop"], { stdio: "pipe" });
+    } catch {
+      // lief nicht (mehr)
+    }
+    rmSync(wurzel, { recursive: true, force: true });
+  };
+  try {
+    execFileSync(
+      join(bin, "initdb"),
+      ["-D", daten, "-U", "postgres", "--auth=trust", "-E", "UTF8", "--locale=C"],
+      { stdio: "pipe", timeout: 120_000 },
+    );
+    execFileSync(
+      join(bin, "pg_ctl"),
+      [
+        "-D",
+        daten,
+        "-l",
+        join(wurzel, "server.log"),
+        "-o",
+        `-k ${socket} -c listen_addresses='' -p ${port} -c max_connections=200`,
+        "-w",
+        "start",
+      ],
+      { stdio: "pipe", timeout: 120_000 },
+    );
+  } catch (fehler) {
+    aufraeumen();
+    return {
+      skipGrund: `eigene Instanz aus ${bin} ließ sich nicht starten (${userInfo().username}) — ${fehler instanceof Error ? fehler.message.slice(0, 300) : String(fehler)}`,
+    };
+  }
+  return {
+    // Die Verwaltungsverbindung geht an `postgres`; angelegt werden nur Datenbanken mit `test` im
+    // Namen (`pgUrl`), in einem Cluster, der nach dem Lauf nicht mehr existiert.
+    url: `postgres://postgres@/postgres?host=${encodeURIComponent(socket)}&port=${port}`,
+    socket,
+    programme: bin,
+    stoppen: aufraeumen,
+  };
 }
 
 // ================================================================================================
@@ -239,6 +364,47 @@ export async function pruefplatzOeffnen(): Promise<
 // ================================================================================================
 
 /** Die gebaute Fläche herstellen, wenn sie fehlt — einmal, mit dem echten Bündler. */
+/**
+ * D5 KI aus, Lauf 2 Runde 3 (Bens Befund: „bindet … das bereits vorhandene Browserbündel nicht
+ * eindeutig an den geprüften Commit"): die Fläche IMMER aus dem vorliegenden Baum neu bauen — nie ein
+ * liegendes `dist` übernehmen — und ihren Inhalt als SHA-256 über alle Dateien (sortiert, mit Pfad)
+ * zurückgeben. Zusammen mit dem Baum-Hash der Messung (`git write-tree`) ist das Bündel damit an die
+ * Revision gebunden, aus der es entstand. `vite build` leert `dist` vorher (emptyOutDir).
+ */
+export function flaecheNeuBauen(): { dauerMs: number; sha256: string; dateien: number } {
+  const begonnen = Date.now();
+  execFileSync("npx", ["vite", "build"], {
+    cwd: join(resolve(process.cwd()), "apps/web"),
+    stdio: "pipe",
+    timeout: 600_000,
+  });
+  if (!existsSync(join(DIST, "index.html"))) {
+    throw new Error(`${JOB}: der Bau lief durch, aber ${DIST}/index.html fehlt weiterhin.`);
+  }
+  const pfade = (readdirSync(DIST, { recursive: true }) as string[])
+    .map((p) => String(p))
+    .filter((p) => statSync(join(DIST, p)).isFile())
+    .sort();
+  const summe = createHash("sha256");
+  for (const p of pfade) {
+    summe.update(`${p}\0`);
+    const inhalt = readFileSync(join(DIST, p));
+    // Die EINE gewollt nicht reproduzierbare Stelle: `klaraStand()` (apps/web/vite.config.ts)
+    // stempelt Bauzeit und Git-Kürzel in `word-addin/taskpane.html`. Der Stempel wird für den Hash
+    // auf einen festen Wert gesetzt — der Rest der Datei zählt mit. Gemessen: ohne diese Zeile
+    // ergaben zwei Bauten aus demselben Baum verschiedene Hashes.
+    summe.update(
+      p.replaceAll("\\", "/") === "word-addin/taskpane.html"
+        ? inhalt
+            .toString("utf8")
+            .replace(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}Z( · [0-9a-f]+)?/g, "<STAND>")
+        : inhalt,
+    );
+    summe.update("\0");
+  }
+  return { dauerMs: Date.now() - begonnen, sha256: summe.digest("hex"), dateien: pfade.length };
+}
+
 export function flaecheBereitstellen(): string {
   if (existsSync(join(DIST, "index.html"))) {
     return "war schon da";
@@ -261,7 +427,21 @@ export interface Instanz {
   readonly app: FastifyInstance;
   readonly basis: string;
   readonly port: number;
+  /** D5 KI aus: die Dienste dieser Instanz — dort setzen die unabhängigen Zähler an. */
+  readonly dienste: AppServices;
   schliessen(): Promise<void>;
+}
+
+/**
+ * D5 KI aus: `policyLaden` fährt beim Start, was `server.ts` beim Start fährt — die gespeicherte
+ * KI-Policy aus PostgreSQL laden. Ohne diese Zeile begänne eine neu gestartete Instanz mit der
+ * Vorgabe und „der Abschaltzustand überlebt den Neustart" wäre gar nicht gemessen. Ohne Angabe
+ * bleibt der Start zeichengleich der bisherige (G1–G7).
+ */
+export interface InstanzOptionen {
+  readonly policyLaden?: boolean;
+  /** Vor dem Horchen an der App anzubringen (Hooks lassen sich danach nicht mehr setzen). */
+  readonly vorbereiten?: (app: FastifyInstance) => void;
 }
 
 /**
@@ -274,8 +454,17 @@ export interface Instanz {
  * Der kurze Wiederholungslauf fängt das Zeitfenster ab, in dem das Betriebssystem den eben
  * freigegebenen Port noch hält.
  */
-export async function instanzStarten(pool: Pool, port = 0): Promise<Instanz> {
-  const app = buildApp(buildPgServices(pool));
+export async function instanzStarten(
+  pool: Pool,
+  port = 0,
+  optionen: InstanzOptionen = {},
+): Promise<Instanz> {
+  const dienste = buildPgServices(pool);
+  if (optionen.policyLaden) {
+    await dienste.reasoner.loadPersistedPolicy({ envGlobal: undefined });
+  }
+  const app = buildApp(dienste);
+  optionen.vorbereiten?.(app);
   await mitFlaeche().vorListen(app);
   let letzterFehler: unknown;
   for (let versuch = 1; versuch <= 20; versuch += 1) {
@@ -303,6 +492,7 @@ export async function instanzStarten(pool: Pool, port = 0): Promise<Instanz> {
     app,
     basis: `http://127.0.0.1:${adresse.port}`,
     port: adresse.port,
+    dienste,
     schliessen: () => app.close(),
   };
 }

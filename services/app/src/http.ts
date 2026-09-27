@@ -42,6 +42,9 @@ export function tokenFromRequest(request: FastifyRequest): string | undefined {
 // Domänenfehler (KoError, ValidationError, …) tragen einen string `code`.
 const STATUS_BY_CODE: Record<string, number> = {
   NOT_FOUND: 404,
+  // D5: der Administrator hat den KI-Frageweg abgeschaltet — ein Betriebszustand, kein Fehler des
+  // Aufrufers (400) und kein Rechteentzug (403). Die Leserechte sind davon unberührt.
+  KI_ABGESCHALTET: 503,
   FORBIDDEN: 403,
   NOT_APPROVED: 403,
   // SCRUM-509 R2: Herabstufung der Vertraulichkeit ohne Prüfer-/Admin-Rolle → 403.

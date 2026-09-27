@@ -9,6 +9,7 @@ import {
   sanitizeModelRunContext,
 } from "../../model-runs";
 import {
+  KiAbgeschaltetFehler,
   ModelCapacityError,
   type ModellAufrufSpur,
   type ModellVerbrauch,
@@ -57,6 +58,7 @@ import type {
   ReasonerCloudAnbieter,
   ReasonerCloudAnbieterStatus,
   ReasonerConfigStatus,
+  ReasonerKiAbschaltung,
   ReasonerKiFreigabe,
   ReasonerLegacyChoice,
   ReasonerLocale,
@@ -941,6 +943,40 @@ export class Reasoner {
   // abgelöste Werte (`cloud`/`model`) trug; sonst undefined. Steht in `configStatus().migration`.
   private migration: ReasonerPolicyMigration | undefined;
 
+  // D5: die administrative KI-Abschaltung des Fragewegs — Begründung und Abgrenzung am Typ
+  // `ReasonerKiAbschaltung`. Gelesen bei JEDEM Aufruf, nie zwischengespeichert: eine laufende Frage
+  // prüft sie vor jedem inhaltlesenden oder übertragenden Schritt erneut.
+  kiAbschaltung(): ReasonerKiAbschaltung {
+    const wahl = this.choiceFor("answer");
+    return {
+      abgeschaltet: this.policySource === "db" && wahl === "deterministic",
+      wahl,
+      quelle: this.policySource,
+    };
+  }
+
+  // D5 · DIE ABSCHALT-EPOCHE. Der aktuelle Zustand allein genügt nicht (Bens Befund, Runde 2): eine
+  // Frage, die angehalten war, während der Administrator ab- UND wieder einschaltete, sähe danach
+  // „an" und läse weiter — ein stiller Nachholzugriff. Deshalb zählt diese Zahl JEDE gespeicherte
+  // Abschaltung (`setTaskConfig`). Eine laufende Ausführung hält sie zu Beginn fest; weicht sie
+  // später ab, hat es während ihres Laufs eine Abschaltung gegeben, und die Ausführung ist
+  // dauerhaft entwertet. Wiedereinschalten lässt nur NEUE Ausführungen zu. Nur im Speicher: eine
+  // Ausführung überlebt keinen Neustart, und der Abschaltzustand selbst steht in der Policyablage.
+  private kiAbschaltEpoche = 0;
+
+  kiAbschaltStand(): number {
+    return this.kiAbschaltEpoche;
+  }
+
+  // D5: die Prüfung am Chokepoint (s. `ModellAufrufSpur.vorUebertragung`). Eine eigene Methode, damit
+  // die Gegenprobe genau diese eine Sperre herausnehmen kann, ohne den Zustand zu verfälschen.
+  // `beginn` ist die Epoche beim Start des Laufs (`runTask`).
+  private kiSperreVorUebertragung(beginn: number): void {
+    if (this.kiAbschaltung().abgeschaltet || this.kiAbschaltEpoche !== beginn) {
+      throw new KiAbgeschaltetFehler();
+    }
+  }
+
   getTaskConfig(): ReasonerTaskConfig {
     return clone(this.taskConfig);
   }
@@ -1033,6 +1069,10 @@ export class Reasoner {
     this.taskConfig = normalized.config; // … Laufzeit erst nach erfolgreichem Write
     this.migration = normalized.migration;
     this.policySource = "db"; // die Laufzeit-Policy ist jetzt die gerade persistierte Admin-Wahl.
+    // D5: eine gespeicherte Abschaltung entwertet jede in diesem Augenblick laufende Ausführung.
+    if (this.kiAbschaltung().abgeschaltet) {
+      this.kiAbschaltEpoche += 1;
+    }
     return this.getTaskConfig();
   }
 
@@ -1150,6 +1190,8 @@ export class Reasoner {
     context?: ModelRunContext,
   ): Promise<T> {
     const startedAt = new Date().toISOString();
+    // D5: die Abschalt-Epoche beim Start dieses Laufs — vor jedem Warten (s. `kiAbschaltStand`).
+    const kiBeginn = this.kiAbschaltEpoche;
     const chain = this.providerChain(task, confidential);
     let lastError: unknown;
     // JOB 3036: das zuletzt WIRKLICH GERUFENE Modell. Nur der Fehler-Datensatz unten liest es — ein
@@ -1186,7 +1228,16 @@ export class Reasoner {
       }
       // JOB 3036 R2: die Spur GENAU DIESES Versuchs. Neu je Versuch, damit ein Lauf, der erst die
       // Cloud befragt und dann lokal antwortet, im Datensatz das Modell trägt, das geantwortet hat.
-      const spur: ModellAufrufSpur = { gerufen: false };
+      //
+      // D5 (KI aus): für die Aufgabe `answer` trägt die Spur die Abschaltprüfung an den Chokepoint.
+      // Die Kette wurde oben VOR jedem Warten gebildet; ob die KI noch an ist, entscheidet sich erst
+      // dort, unmittelbar vor der Übertragung (`kiSperreVorUebertragung`).
+      const spur: ModellAufrufSpur = {
+        gerufen: false,
+        ...(task === "answer"
+          ? { vorUebertragung: () => this.kiSperreVorUebertragung(kiBeginn) }
+          : {}),
+      };
       // JOB 3074 R2 (bens Befund): DIE SPUR EINES VERSUCHS WIRD GENAU EINMAL ÜBERNOMMEN. Runde 1
       // addierte sie an zwei Stellen — nach dem Erfolg und noch einmal im Catch-Block. Der
       // Catch-Block umfasst aber mehr als den Modellaufruf: auch das Protokollschreiben (`recordRun`
@@ -1241,7 +1292,8 @@ export class Reasoner {
         // SCRUM-498 B2: Backpressure ist KEIN Provider-Fehler — nicht auf den deterministischen
         // Fallback ausweichen, sondern durchreichen (die HTTP-Schicht macht daraus 503 + Retry-After).
         // Es wird auch nichts protokolliert, also bleibt `lastModel` hier bewusst unberührt.
-        if (err instanceof ModelCapacityError) {
+        // D5: die Abschaltung ebenso — kein Ausweichen auf das nächste Glied, sie gilt für den Lauf.
+        if (err instanceof ModelCapacityError || err instanceof KiAbgeschaltetFehler) {
           throw err;
         }
         lastError = err;
@@ -1525,6 +1577,7 @@ export class Reasoner {
     reachable: ReasonerReachability;
     tasks: ReasonerTaskMap;
     billable: ReasonerTaskMap;
+    kiAbgeschaltet: boolean;
   } {
     const active = this.usingAnyModel();
     return {
@@ -1534,6 +1587,9 @@ export class Reasoner {
       tasks: aufgabenKarte((task) => this.taskModelUsable(task)),
       // AUFTRAG-mega67 BLOCK G: kostet ein Klick auf DIESE Aufgabe wirklich Geld? (s. taskBillable)
       billable: aufgabenKarte((task) => this.taskBillable(task)),
+      // D5: nur ein Boolean — die Fragefläche unterscheidet damit „vom Administrator abgeschaltet"
+      // von „kein Modell nutzbar" (Störung), ohne einen Anbieter- oder Modellnamen zu erfahren.
+      kiAbgeschaltet: this.kiAbschaltung().abgeschaltet,
     };
   }
 
@@ -1601,6 +1657,8 @@ export class Reasoner {
       // SCRUM-525 P.5 (WP-C): additive Eigenschaft — zeigt der Admin-UI, ob die Zuordnung per Deploy-ENV
       // gesperrt ist ("env", PUT liefert 409), aus der DB stammt ("db") oder (noch) Default ist.
       policySource: this.policySource,
+      // D5: der benannte Abschaltzustand des Fragewegs (s. `ReasonerKiAbschaltung`).
+      kiAbschaltung: this.kiAbschaltung(),
     };
   }
 

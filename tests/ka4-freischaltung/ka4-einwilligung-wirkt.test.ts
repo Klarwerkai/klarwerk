@@ -140,6 +140,9 @@ async function aufbauen(opt: AufbauOptionen = {}): Promise<Aufbau> {
   const akteur = opt.addon ? ADDON_ACTOR_ID : "nutzer-1";
 
   const ask = {
+    // D5 (KI aus): die Route prüft nach der Antwort erneut; bei eingeschalteter KI tut das nichts.
+    kiStand: () => undefined,
+    kiSperreVorAuslieferung: () => undefined,
     ask: async (_q: string, _actor: string, _locale: string, opts?: Record<string, unknown>) => {
       gesehen.push(opts ?? null);
       return {

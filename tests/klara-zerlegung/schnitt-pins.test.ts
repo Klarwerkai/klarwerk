@@ -112,6 +112,10 @@ const GRIFFE: Array<{
 // Nachführpflicht, kein Defekt: wer einen neuen Griff an `taskpane.html` anlegt, gehört hierher.
 // ------------------------------------------------------------------------------------------------
 const MITFAHRER: Readonly<Record<string, string>> = {
+  // D5 (KI aus): der Prüfplatz baut die Fläche neu und hasht das Bündel; er nimmt den Bau-Stempel
+  // in `word-addin/taskpane.html` aus dem Hash heraus und nennt dafür den Pfad — liest die Datei
+  // aber nicht als Fenster. Griff `pfad`, der bewusst textbreite (s. dessen `zweck`).
+  "tests/d5-gesamtweg/platz.ts": "pfad",
   // JOB 3438 (BILDVERKLEINERUNG-SICHTBAR): die Bildbilanz des Dokument-Wegs. Der gemountete Fall
   // hängt an `createKlaraPanel` und nennt den ausgelieferten Pfad im Kopf; die Wörterbuchprobe
   // liest die Datei direkt. A2 hat beide gemeldet, das Verzeichnis nimmt sie nicht still auf.

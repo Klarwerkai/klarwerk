@@ -61,7 +61,15 @@ export class PgGapRepo implements GapRepo {
    *
    * Ohne `compareKey` wird gar nicht verglichen: dann ist es eine gewöhnliche Neuanlage.
    */
-  async insertOrIncrement(gap: Gap): Promise<{ gap: Gap; created: boolean }> {
+  //
+  // D5 (KI aus): `vorInhaltsabruf` vor JEDER der beiden Anweisungen (s. `GapRepo`). Zwischen dem
+  // Einfügeversuch und dem Hochzählen liegt ein Warten — die bestehende Lücke wird nach einer
+  // Abschaltung weder gelesen noch geändert.
+  async insertOrIncrement(
+    gap: Gap,
+    vorInhaltsabruf?: () => void,
+  ): Promise<{ gap: Gap; created: boolean }> {
+    vorInhaltsabruf?.();
     if (!gap.compareKey) {
       await this.insert(gap);
       return { gap, created: true };
@@ -75,6 +83,7 @@ export class PgGapRepo implements GapRepo {
     if ((angelegt.rowCount ?? 0) > 0) {
       return { gap: angelegt.rows[0]?.data ?? gap, created: true };
     }
+    vorInhaltsabruf?.();
     const erhoeht = await this.pool.query<GapRow>(
       `UPDATE gaps
           SET data = jsonb_set(
@@ -205,11 +214,18 @@ export class PgAnswerSnapshotRepo implements AnswerSnapshotRepo {
     return res.rows[0]?.data;
   }
 
-  async appendSnapshot(snapshot: AnswerEvidenceSnapshot): Promise<boolean> {
+  // D5 (KI aus): `vorInhaltsabruf` vor JEDER der vier Anweisungen (s. `AnswerSnapshotRepo`) —
+  // Bens Befund Lauf 3 Runde 1: nach `findRecord` angehalten, lief der Rest nach der Abschaltung.
+  async appendSnapshot(
+    snapshot: AnswerEvidenceSnapshot,
+    vorInhaltsabruf?: () => void,
+  ): Promise<boolean> {
+    vorInhaltsabruf?.();
     if (!(await this.findRecord(snapshot.answerId))) {
       throw new AskError("NOT_FOUND", "Zu diesem Snapshot gibt es keine Antwort.");
     }
     const schluessel = `${snapshot.answerId}@${snapshot.snapshotRevision}`;
+    vorInhaltsabruf?.();
     const vorhanden = await this.pool.query<{ n: string }>(
       "SELECT count(*)::text AS n FROM answer_snapshots WHERE snapshot_key = $1",
       [schluessel],
@@ -219,7 +235,10 @@ export class PgAnswerSnapshotRepo implements AnswerSnapshotRepo {
     if (vorhanden.rows[0]?.n !== "0") {
       return false;
     }
-    pruefeSnapshotKette(snapshot, await this.listSnapshots(snapshot.answerId));
+    vorInhaltsabruf?.();
+    const kette = await this.listSnapshots(snapshot.answerId);
+    pruefeSnapshotKette(snapshot, kette);
+    vorInhaltsabruf?.();
     const res = await this.pool.query(
       `INSERT INTO answer_snapshots(snapshot_key, data) VALUES ($1, $2::jsonb)
        ON CONFLICT (answer_id, snapshot_revision_key) DO NOTHING RETURNING snapshot_key`,
