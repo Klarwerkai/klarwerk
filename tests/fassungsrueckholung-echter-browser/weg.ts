@@ -67,7 +67,6 @@ import i18n from "../../apps/web/src/i18n";
 import {
   type Browser,
   DIST,
-  LIES_TEXT,
   type Seite,
   warte as browserWarte,
   fn,
