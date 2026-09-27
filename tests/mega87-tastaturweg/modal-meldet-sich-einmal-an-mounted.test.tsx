@@ -38,29 +38,31 @@ function Buehne(): JSX.Element {
   return createElement(
     "div",
     null,
-    createElement(
-      ModalBoundaryProvider,
-      { hostRef },
-      createElement(
-        ModalRegion,
-        null,
-        createElement(
-          "button",
-          { type: "button", "data-testid": "ausloeser", onClick: () => setOffen(true) },
-          "Öffnen",
-        ),
-      ),
-      createElement(
-        Modal,
-        { open: offen, onClose: () => setOffen(false), title: "Bildbeschreibung" },
-        createElement("div", {
-          id: "feld",
-          contentEditable: true,
-          suppressContentEditableWarning: true,
-          tabIndex: 0,
+    createElement(ModalBoundaryProvider, {
+      hostRef,
+      children: [
+        createElement(ModalRegion, {
+          key: "region",
+          children: createElement(
+            "button",
+            { type: "button", "data-testid": "ausloeser", onClick: () => setOffen(true) },
+            "Öffnen",
+          ),
         }),
-      ),
-    ),
+        createElement(Modal, {
+          key: "modal",
+          open: offen,
+          onClose: () => setOffen(false),
+          title: "Bildbeschreibung",
+          children: createElement("div", {
+            id: "feld",
+            contentEditable: true,
+            suppressContentEditableWarning: true,
+            tabIndex: 0,
+          }),
+        }),
+      ],
+    }),
     createElement("div", { ref: hostRef }),
   );
 }
