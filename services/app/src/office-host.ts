@@ -136,10 +136,12 @@ export const NICHT_FREIGEGEBENE_PLATTFORMFAMILIEN: readonly AusgeschlosseneFamil
 // auch den SharePoint-Top-Rahmen — ohne ihn blockiert Chrome das Taskpane („refused to connect").
 //
 // Die Antwort ist NICHT `https://*.sharepoint.com` (siehe NICHT_FREIGEGEBENE_PLATTFORMFAMILIEN),
-// sondern die Mandanten, die DIESE Installation einträgt: je Name genau `https://<name>.sharepoint.com`
-// und `https://<name>-my.sharepoint.com`, ohne Platzhalter. Ohne Eintrag bleibt alles wie zuvor.
-// Die Namen kommen aus der Umgebung (KLARWERK_M365_MANDANTEN), nicht aus dem Code — kein Kunde
-// steht fest im Quelltext.
+// sondern die Mandanten, die DIESE Installation einträgt: je SharePoint-Domänenstamm (der Teil vor
+// `.sharepoint.com` — kein Anzeigename, keine Entra-GUID) genau `https://<stamm>.sharepoint.com`
+// und danach `https://<stamm>-my.sharepoint.com`, ohne Platzhalter. Ohne Eintrag bleibt alles wie
+// zuvor. Die Stämme kommen aus der Umgebung (KLARWERK_M365_MANDANTEN), die allein der Betreiber
+// setzt — nicht aus dem Code und nie aus Anfragedaten (Origin, Referer, Host). Die Liste erlaubt nur
+// das Einbetten; sie ersetzt keine Anmeldung, keine Berechtigung und keine Datentrennung.
 
 /** Ein Eintrag aus KLARWERK_M365_MANDANTEN, der NICHT übernommen wurde — mit Grund. */
 export interface VerworfenerMandant {
@@ -147,17 +149,23 @@ export interface VerworfenerMandant {
   readonly grund: string;
 }
 
-/** Das Ergebnis der Auswertung: die übernommenen Namen (klein, eindeutig, in Eingabereihenfolge). */
+/** Das Ergebnis der Auswertung: die übernommenen Stämme (klein, eindeutig, lexikografisch sortiert). */
 export interface M365Mandanten {
   readonly mandanten: readonly string[];
   readonly verworfen: readonly VerworfenerMandant[];
 }
 
 /**
- * Ein Mandantenname nach Kleinschreibung: nur a–z, 0–9, Bindestrich, 1 bis 63 Zeichen — und (siehe
+ * Die Höchstlänge eines Stamms: aus ihm wird auch der Bezeichner `<stamm>-my`, und ein
+ * DNS-Bezeichner hat höchstens 63 Zeichen (RFC 1035 §2.3.4) — also 63 − 3 = 60.
+ */
+const STAMM_HOECHSTLAENGE = 60;
+
+/**
+ * Ein Stamm nach Kleinschreibung: nur a–z, 0–9, Bindestrich, 1 bis 60 Zeichen — und (siehe
  * `grundGegenMandant`) weder am Anfang noch am Ende ein Bindestrich.
  */
-const MANDANTENNAME = /^[a-z0-9-]{1,63}$/;
+const MANDANTENNAME = /^[a-z0-9-]{1,60}$/;
 
 /**
  * Warum ist dieser (bereits kleingeschriebene) Name KEIN Mandantenname? `undefined` heißt: er ist
@@ -189,8 +197,8 @@ function grundGegenMandant(name: string): string | undefined {
   if (/\s/.test(name)) {
     return "enthält Leerraum";
   }
-  if (name.length > 63) {
-    return `länger als 63 Zeichen (${name.length})`;
+  if (name.length > STAMM_HOECHSTLAENGE) {
+    return `länger als ${STAMM_HOECHSTLAENGE} Zeichen (${name.length}) — <stamm>-my wäre kein DNS-Bezeichner mehr`;
   }
   if (!MANDANTENNAME.test(name)) {
     return "enthält Zeichen außer a–z, 0–9 und Bindestrich";
@@ -215,10 +223,12 @@ function herkuenfteAus(name: string): [string, string] {
 }
 
 /**
- * Liest KLARWERK_M365_MANDANTEN — fail-closed: jeder Eintrag, der kein Mandantenname ist, wird
- * verworfen und mit Grund zurückgegeben; gültige Einträge daneben wirken weiter. Nur der Leerraum
- * UM einen Eintrag (`a, b`) wird entfernt, und die Schreibung wird klein; doppelte Namen zählen
- * einmal. Fehlt der Wert oder ist er leer, gibt es weder Mandanten noch Verworfenes.
+ * Liest KLARWERK_M365_MANDANTEN — fail-closed: jeder Eintrag, der kein Stamm ist, wird verworfen
+ * und mit Grund zurückgegeben; gültige Einträge daneben wirken weiter. Die Normalisierung ist
+ * deterministisch: am Komma teilen, den Leerraum UM einen Eintrag (`a, b`) entfernen, ASCII
+ * kleinschreiben, prüfen, Doppelte entfernen, lexikografisch sortieren. Fehlt der Wert oder ist er
+ * insgesamt leer bzw. nur Leerraum, gibt es weder Mandanten noch Verworfenes (keine Warnung); ein
+ * leerer Eintrag in einer befüllten Liste (`a,,b`) wird dagegen verworfen und gemeldet.
  */
 export function leseM365Mandanten(roh: string | undefined): M365Mandanten {
   if (roh === undefined || roh.trim() === "") {
@@ -231,7 +241,7 @@ function pruefeMandanten(eintraege: readonly string[]): M365Mandanten {
   const mandanten: string[] = [];
   const verworfen: VerworfenerMandant[] = [];
   for (const eintrag of eintraege) {
-    const name = eintrag.trim().toLowerCase();
+    const name = asciiKlein(eintrag.trim());
     const grund = grundGegenMandant(name);
     if (grund !== undefined) {
       verworfen.push({ eintrag, grund });
@@ -239,11 +249,22 @@ function pruefeMandanten(eintraege: readonly string[]): M365Mandanten {
       mandanten.push(name);
     }
   }
+  // Codepunkt-Reihenfolge, keine Gebietsschema-Sortierung: dasselbe Ergebnis auf jeder Maschine.
+  mandanten.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
   return { mandanten, verworfen };
 }
 
 /**
- * Die SharePoint-Herkünfte der eingetragenen Mandanten, je Name genau zwei in fester Reihenfolge.
+ * Nur A–Z werden klein. `toLowerCase` bildete auch Nicht-ASCII-Zeichen ab (das Kelvin-Zeichen
+ * U+212A wird zu `k`) und machte so aus einem ungültigen Eintrag einen gültigen.
+ */
+function asciiKlein(text: string): string {
+  return text.replace(/[A-Z]/g, (zeichen) => zeichen.toLowerCase());
+}
+
+/**
+ * Die SharePoint-Herkünfte der eingetragenen Mandanten, je Stamm genau zwei: erst die normale, dann
+ * die `-my`-Herkunft; die Stämme lexikografisch sortiert.
  * Die Namen werden HIER noch einmal einzeln durch dieselbe Prüfung geschickt: wer diese Funktion
  * mit ungeprüften Werten ruft, bekommt für sie nichts — Direktive und Prüfung bleiben fail-closed.
  */
@@ -283,7 +304,7 @@ function basisAus(hostQuelle: string): string {
  *     https://office.com.angreifer.tld               FALSCH — dasselbe, kürzer
  *     https://xofficeapps.live.com                   FALSCH — kein Punkt vor dem Namensteil
  *
- * EINZIGE Normalisierung ist die Schreibung: Hostnamen sind laut DNS nicht schreibungsabhängig,
+ * EINZIGE Normalisierung ist die ASCII-Schreibung: Hostnamen sind laut DNS nicht schreibungsabhängig,
  * und Browser senden `Origin` ohnehin klein. Alles andere — führender oder folgender Leerraum,
  * Pfad, Query, Fragment, Port, Nutzerinfo, ein anderes Schema als HTTPS — macht die Antwort FALSCH,
  * statt vorher „repariert" zu werden.
@@ -300,14 +321,17 @@ export function istErlaubterEinbettungsHost(
   if (!roh.startsWith(HTTPS)) {
     return false;
   }
-  const host = roh.slice(HTTPS.length).toLowerCase();
+  const host = asciiKlein(roh.slice(HTTPS.length));
   if (!HOSTNAME.test(host)) {
     return false;
   }
-  return (
-    ERLAUBTE_EINBETTUNGS_HOSTS.some((eintrag) =>
-      host.endsWith(`.${basisAus(eintrag.hostQuelle)}`),
-    ) || sharepointHerkuenfte(mandanten).includes(`${HTTPS}${host}`)
+  // Die exakten Herkünfte zuerst und für sich: ihr Vergleich ist die Gleichheit der ganzen
+  // Herkunft, sie laufen NIE durch den Platzhalter-/Suffixvergleich darunter.
+  if (sharepointHerkuenfte(mandanten).includes(`${HTTPS}${host}`)) {
+    return true;
+  }
+  return ERLAUBTE_EINBETTUNGS_HOSTS.some((eintrag) =>
+    host.endsWith(`.${basisAus(eintrag.hostQuelle)}`),
   );
 }
 

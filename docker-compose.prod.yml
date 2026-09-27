@@ -138,6 +138,14 @@ services:
       OIDC_AUDIENCE: ${OIDC_AUDIENCE:-}
       OIDC_JWKS_URI: ${OIDC_JWKS_URI:-}
       OIDC_AUTOPROVISION: ${OIDC_AUTOPROVISION:-false}
+      # Word im Browser aus SharePoint/OneDrive: die SharePoint-Domaenenstaemme der eigenen
+      # Microsoft-365-Mandanten (kommagetrennt, der Teil vor `.sharepoint.com`). OPTIONAL — leer
+      # oder nicht gesetzt heisst: wie bisher, keine SharePoint-Herkunft darf das Taskpane
+      # einbetten. Diese Datei reicht Werte NUR ueber diesen Block durch (kein env_file); ohne die
+      # Zeile bliebe ein Eintrag in der `.env` wirkungslos. Wirksam erst mit einem neuen
+      # App-Container. Erklaert in docs/operations/kundeninstanz-neuinstallation.md §2.6,
+      # gehuetet von tests/neuinstallation/pflichtkonfiguration.test.ts (M1 bis M3).
+      KLARWERK_M365_MANDANTEN: ${KLARWERK_M365_MANDANTEN:-}
     ports:
       # JOB 4201: containerseitig derselbe Port wie oben — sonst zeigt die Veroeffentlichung auf
       # einen Port, auf dem nichts horcht. Wirtsseitig bleibt es dieselbe Zahl; wer die Instanz
