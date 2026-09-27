@@ -25,6 +25,7 @@ import { wholeDocumentDraftPayload } from "../../apps/web/src/lib/captureFromFil
 import { buildApp, buildPgServices } from "../../services/app/src/build-app";
 import { createPool, migrate } from "../../services/app/src/db";
 import { guardedLocalPgTestUrl } from "../../services/db-tx";
+import { stelleTrigrammErweiterungSicher } from "../office-pg-abnahme/rueckweg-erwartung";
 import {
   ZWILLINGSDECK,
   ZWILLING_DATEINAME,
@@ -110,7 +111,13 @@ describe("Altbeleg und Bildbilanz — Persistenz gegen echtes PostgreSQL", () =>
       }
       if (erreichbar) {
         // Ab hier wird nichts mehr gefangen: ein Fehler im Aufbau ist ein Befund, kein Skip.
-        await verwaltung.query("CREATE EXTENSION IF NOT EXISTS pg_trgm");
+        //
+        // Die Trigramm-Erweiterung über den EINEN konkurrenzfesten Weg aus JOB 4321, wie in der
+        // Hausform-Datei selbst: ein blankes `CREATE EXTENSION IF NOT EXISTS pg_trgm` scheitert auf
+        // einer frischen Instanz, wenn eine andere Datei des Integrationslaufs die Erweiterung
+        // gleichzeitig anlegt (`pg_extension_name_index`; gemessen in
+        // `tests/pg-erstaufbau-konkurrenz/erstaufbau-konkurrenz.integration.test.ts`, E1-K).
+        await stelleTrigrammErweiterungSicher(verwaltung);
         await verwaltung.query(`DROP SCHEMA IF EXISTS ${EIGENES_SCHEMA} CASCADE`);
         await verwaltung.query(`CREATE SCHEMA ${EIGENES_SCHEMA}`);
         pool = new Pool({
