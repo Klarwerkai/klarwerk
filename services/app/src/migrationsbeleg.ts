@@ -235,6 +235,10 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
   // `TRUNCATE`, `DROP COLUMN`, `DELETE FROM`, `DROP INDEX` und ohne `UPDATE … SET`. Kein Seed;
   // die beiden Fremdschlüssel zeigen auf den eigenen Kopf. Ein zweiter Lauf ist folgenlos.
   { stufe: "GESAMTANWEISUNG_SCHEMA", risiko: "ADDITIV" },
+  // WIKI-BEARBEITUNGSRESERVIERUNG: die Tabelle der laufenden Bearbeitungshinweise. ADDITIV,
+  // nachgezählt: ein `CREATE TABLE IF NOT EXISTS` und ein `CREATE INDEX IF NOT EXISTS`, kein
+  // RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine Extension. Ein zweiter Lauf ist folgenlos.
+  { stufe: "KO_BEARBEITUNG_SCHEMA", risiko: "ADDITIV" },
 ];
 
 /**

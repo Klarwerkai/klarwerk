@@ -196,6 +196,11 @@ import {
 } from "./addon-auth-throttle";
 import { matchAddonRoute, principalHasCapability, resolveAddonAuth } from "./addon-principal";
 import { type AiCheckWorker, createAiCheckRunner, createAiCheckWorker } from "./ai-check-worker";
+import {
+  type BearbeitungsRepo,
+  InMemoryBearbeitungsRepo,
+  PgBearbeitungsRepo,
+} from "./bearbeitungshinweis";
 // JOB 3510/3578: die EINE instanzweite Markenwahl (Demo-Firmen-CI) — im Postgres-Betrieb haltbar
 // (`PgBrandingSettingsRepo`, s. `buildPgServices`), im Speicher nur ohne Datenbank.
 import {
@@ -230,6 +235,7 @@ import { adminRoutes } from "./routes/admin-routes";
 import { aiCheckCoverageRoutes } from "./routes/ai-check-coverage-routes";
 import { askRoutes } from "./routes/ask-routes";
 import { auditRoutes } from "./routes/audit-routes";
+import { bearbeitungRoutes } from "./routes/bearbeitung-routes";
 import { brandingRoutes } from "./routes/branding-routes";
 import { canSeeDraft, captureRoutes } from "./routes/capture-routes";
 import { categoryRoutes } from "./routes/category-routes";
@@ -378,6 +384,15 @@ export interface AppServices {
    * In-Memory-Ablage, genau wie bei `lesevarianten` und `klaraSessions`.
    */
   brandingSettings: BrandingSettingsRepo;
+  /**
+   * WIKI-BEARBEITUNGSRESERVIERUNG: die laufenden Bearbeitungshinweise („hier bearbeitet gerade
+   * jemand"). Neben `kanten` und ausdrücklich NICHT in `AppRepos`, aus demselben Grund wie dort
+   * (`MUTATING_METHODS` in `dev-persist.ts` ist ein vollständiger Record über `keyof AppRepos`) —
+   * und hier ohne Preis: der Hinweis ist flüchtig, ein Verlust beim Neustart des Dev-Betriebs ist
+   * erlaubt. Im Postgres-Betrieb hängt `PgBearbeitungsRepo` daran, damit mehrere App-Prozesse
+   * denselben Hinweis an derselben Datenbankuhr sehen.
+   */
+  bearbeitungen: BearbeitungsRepo;
   /**
    * JOB 3363: die Ablage der Import-Kandidaten — DIESELBE Instanz, die `LibraryService` bekommt.
    * Sie steht hier, weil die Lesevarianten-Routen einen einzelnen Kandidaten nachschlagen müssen
@@ -826,6 +841,9 @@ export function assembleServices(
     // `buildPgServices` (echter Pool); ohne Injektion die In-Memory-Ablage — derselbe Vertrag,
     // andere Haltbarkeit, beide werden getrennt geprüft.
     brandingSettings?: BrandingSettingsRepo;
+    // WIKI-BEARBEITUNGSRESERVIERUNG: gesetzt von `buildPgServices` (echter Pool); ohne Injektion
+    // die Speicherfassung — dieselbe Regel, die Uhr des Prozesses statt der Datenbank.
+    bearbeitungen?: BearbeitungsRepo;
     // W1 Weg A (Auftrag 143): `answerSnapshots` stand hier als Option, mit dem benannten Preis,
     // dass der Beleg nicht durch das Dev-Journal lief. Die Restgrenze ist geschlossen — das Repo
     // liegt jetzt in `AppRepos` und kommt wie jedes andere aus `repos.`.
@@ -1055,6 +1073,9 @@ export function assembleServices(
       opts.anweisungen ?? new FluechtigeAnweisungsablage(process.env.KLARWERK_DEV_PERSIST === "1"),
     // JOB 3510/3578: die Markenwahl — Postgres, wenn injiziert, sonst im Speicher.
     brandingSettings: opts.brandingSettings ?? new InMemoryBrandingSettingsRepo(),
+    // WIKI-BEARBEITUNGSRESERVIERUNG: die Bearbeitungshinweise — Postgres, wenn injiziert, sonst im
+    // Speicher.
+    bearbeitungen: opts.bearbeitungen ?? new InMemoryBearbeitungsRepo(),
     // JOB 3110 (M2b): DIE VORHANDENEN gecappten Cloud-Clients, weitergereicht — kein zweiter Aufruf
     // der Fabrik. JOB 3134: hinter der Hülle (oben), die je Aufruf den GEWÄHLTEN Anbieter nimmt.
     zurufModell,
@@ -1420,6 +1441,10 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // überlebt die vom Administrator gesetzte Firmen-CI Neustart und Deploy; ohne sie fiele
       // `assembleServices` auch im Postgres-Betrieb auf die flüchtige In-Memory-Ablage zurück.
       brandingSettings: new PgBrandingSettingsRepo(pool),
+      // WIKI-BEARBEITUNGSRESERVIERUNG: die Bearbeitungshinweise liegen in DERSELBEN Datenbank. Nur
+      // so sehen mehrere App-Prozesse derselben Instanz denselben Hinweis — und die Uhr, die über
+      // Ablauf und Erneuerung entscheidet, ist die der Datenbank, nicht die eines Prozesses.
+      bearbeitungen: new PgBearbeitungsRepo(pool),
     },
   );
 }
@@ -2794,6 +2819,19 @@ export function buildApp(
   // Sichtbarkeitsentscheidung holt sie sich aus derselben EINEN Stelle wie jede andere
   // (`sichtbarkeit.ts`), nicht aus einem eigenen Prädikat.
   app.register(kantenRoutes({ kanten: services.kanten, kos: services.ko }, guards));
+  // WIKI-BEARBEITUNGSRESERVIERUNG: der Bearbeitungshinweis eines Wissenseintrags. Der Name kommt aus
+  // der vorhandenen Kontenliste — die sichtbare Bezeichnung, nie die E-Mail.
+  app.register(
+    bearbeitungRoutes(
+      {
+        bearbeitungen: services.bearbeitungen,
+        kos: services.ko,
+        nutzerName: async (nutzerId) =>
+          (await services.auth.listUsers()).find((u) => u.id === nutzerId)?.name,
+      },
+      guards,
+    ),
+  );
   // ==============================================================================================
   // JOB 4156 (WIKI-GESAMTANWEISUNG-ANSCHLUSS) — HIER BEKOMMT DIE GESAMTANWEISUNG IHRE TÜR.
   // ==============================================================================================
