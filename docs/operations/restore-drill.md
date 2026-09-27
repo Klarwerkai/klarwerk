@@ -86,6 +86,7 @@ jede Abweichung erklärt ist).
 | `tests/backup-drill/start-identitaet.test.ts` | Echtes `npx tsx`: Launcher-PID und TypeScript-Prozess-PID sind verschieden | nein |
 | `tests/backup-drill/prozesszuordnung.test.ts` | Echter Prozessbaum (echtes `npx`, `tsx`, `node`, `curl`, `ps`): der Drill trifft den Prozess, der wirklich horchte, räumt die ganze Gruppe ab und gibt den Port frei; eine fremde PID in der PID-Datei endet mit 80, und der fremde Prozess lebt danach noch | nein |
 | `tests/backup-drill/echter-wiederanlauf.integration.test.ts` | Echter Custom-Dump aus `backup.sh` → echte, leere PostgreSQL → laufende Anwendung → dieselbe hochgeladene Datei Byte für Byte zurück; dazu die drei Gegenproben am echten Bestand: Anhang unbrauchbar (73), gar kein Beleg (nicht gemessen), Belegzeile ohne ihren Anhang (73) | **ja** (oder eine lokale PostgreSQL, s. u.) |
+| `tests/backup-drill/waechter-echte-pg.integration.test.ts` | Die Wächter an derselben echten Strecke (unveränderte Skripte, echte Anwendung): URL-Regel der Suite (nur Namen mit `test`); `backup.sh` gegen eine nicht vorhandene Datenbank und mit einer nicht vorhandenen Rolle — nichts veröffentlicht, Spur „fehler", kein Kennwort in der Ausgabe; Drill mit nicht vorhandener Rolle → 20 vor `pg_restore`; **vorzeitig sterbende Anwendung** nach echtem Restore → 30, Gruppe leer, Port frei; **SIGTERM-taube Anwendung** → der Drill besteht, die zweite Stufe (SIGKILL) räumt die Gruppe restlos ab | **ja** (wie oben) |
 
 Die drei zuvor genannten Dateien unter `tests/operations/` existieren im aktuellen Arbeitsbaum
 nicht; auch die Suche im Testbestand findet keinen umgezogenen Drill-Träger.
@@ -243,7 +244,16 @@ beenden.
 
 Gemessen wird das in `tests/backup-drill/prozesszuordnung.test.ts` — am echten `npx`/`tsx`-Baum,
 ohne Datenbank und ohne Docker, mit beiden Ausgängen: der richtige Prozess wird beendet, und ein
-fremder Prozess in der PID-Datei lebt nach dem Abbruch nachweislich noch.
+fremder Prozess in der PID-Datei lebt nach dem Abbruch nachweislich noch. Die beiden Fälle, die
+dort nicht vorkommen, misst `tests/backup-drill/waechter-echte-pg.integration.test.ts` an der
+**echten Anwendung nach einem echten Restore**: eine Anwendung, die vor dem Horchen stirbt (Exit 30,
+das Abräumen erkennt die tote Gruppe und sendet kein Signal), und eine Anwendung, die SIGTERM
+ignoriert (die zweite Stufe SIGKILL greift, danach ist die Gruppe leer und der Port frei).
+
+**Voraussetzung für das Abräumen:** Abgeräumte Prozesse, deren Elternprozess schon fort ist, sammelt
+der Init-Prozess ein. Läuft der Drill in einem Container, dessen PID 1 das nicht tut (etwa
+`npx vitest` als PID 1), bleiben sie als Zombies in der Gruppe stehen, und der Drill endet
+richtigerweise mit 80. Container deshalb mit `docker run --init` starten — `compose-drill.sh` tut das.
 
 ## Die Grenze nachträglich erzeugter Sidecars
 
@@ -270,3 +280,357 @@ bevor man sich darauf verlässt.
 Der Drill legt eine Datenbank an und fährt einen Server hoch. Als Torbedingung in jedem CI-Lauf
 wäre er zu schwer, als Vierteljahresübung zu selten. **Empfehlung: monatlich im Betrieb.** Ein
 Restore-Drill, den niemand fährt, ist eine Datei.
+
+## Compose-Kundeninstanz — sichern, zurückholen, aktualisieren, zurückfallen
+
+Eine Kundeninstanz nach `docs/operations/kundeninstanz-neuinstallation.md` läuft mit
+`docker-compose.prod.yml` (Dienste `db` und `app`, Volume `pgdata`). Auf ihrem Wirt liegt Docker,
+aber **kein** PostgreSQL-Client — und ein Client aus dem Paketarchiv des Wirts passt selten zur
+Serverversion. Für diesen Weg gibt es deshalb **keine neuen Sicherungs- oder Restore-Skripte**,
+sondern einen Rahmen um die vorhandenen:
+
+| Baustein | Rolle auf der Compose-Instanz |
+|---|---|
+| `scripts/backup/backup.sh` | **unverändert**; `pg_dump` und die Lesepruefung `pg_restore --list` laufen über die Adapter in `scripts/backup/compose/` **im Datenbankcontainer** (`docker compose exec`) |
+| `scripts/backup/restore-drill.sh` | **unverändert**; läuft im *Prüfwerkzeug* — dem Abbild der laufenden App plus `postgresql-client-16`, `curl`, `ps` — gegen eine **frische** Datenbank derselben PostgreSQL |
+| `scripts/backup/compose-drill.sh` | der Rahmen: `sicherung`, `auslagern`, `taeglich`, `wiederherstellen`, `zurueckspielen`, `aktualisieren`, `neustart`, `bestand`, `sichern`, `pruefen`, `gegenprobe`, `rueckweg`, `ablauf`; jeder Schritt schreibt Protokoll und JSON-Beleg |
+| `scripts/backup/compose/nutzlast.mjs` | legt über die **echte Anwendung** einen Kundenbestand an (Konto, Wissensobjekt, Anhang mit Beleg) und vergleicht ihn später Feld für Feld und Byte für Byte |
+
+### Voraussetzungen
+
+* Docker Engine mit Compose v2 (`docker compose version`), `bash`, `sha256sum` oder `shasum`,
+  `od`, `date`, `tar`, `openssl` (für die Zweitkopie); `rsync` empfohlen (ohne `rsync` spiegelt `tar`).
+* Die Instanz läuft (`docker compose ls` zeigt ihren **Projektnamen** — beim Ein-Befehl-Weg ist das
+  der Ordnername, z. B. `klarwerk`), ihr Ordner enthält `docker-compose.prod.yml` und `.env`.
+* `COMPOSE_DATEIEN` nennt **genau** die Compose-Dateien, mit denen die Instanz gestartet wurde
+  (Vorgabe `docker-compose.prod.yml`). Das Skript hält sie gegen das Kennzeichen
+  `com.docker.compose.project.config_files` des laufenden `app`-Containers und bricht bei Abweichung
+  ab (Exit 1), bevor es etwas baut, anhält oder startet.
+* Arbeitsordner je Instanz: Vorgabe `<Elternordner der Instanz>/b3-arbeit-<projekt>` (`ARBEIT=`).
+  Darin liegen Sicherungen, `instanz.id` und unter `geheim/` das Anmeldekennwort des Drill-Kontos und
+  der Schlüssel der Zweitkopie. Belege nach `<Instanz>/belege` (`BELEGE=`).
+* Instanzkennung, Drill-Kennwort und Schlüssel entstehen beim ersten Lauf **genau einmal**:
+  vollständig geschrieben, dann per Hardlink (`ln`, atomar, scheitert bei vorhandenem Namen)
+  veröffentlicht — zwei gleichzeitige Erstläufe verwenden denselben Wert, keiner ersetzt ihn.
+* **`<ARBEIT>/instanz.id` und `<ARBEIT>/geheim/auslagerung.schluessel` gehören zur
+  Instanzkonfiguration** — sie werden wie die `.env` getrennt verwahrt (Passwort-Manager). Ohne die
+  Kennung verweigert eine neu aufgesetzte Instanz die eigenen Sicherungen (Instanzbindung), ohne den
+  Schlüssel ist jede Zweitkopie wertlos.
+* Für `wiederherstellen`, `pruefen` und `gegenprobe`: Netz beim **ersten** Bau des Prüfwerkzeugs
+  (`apt.postgresql.org`, npm-Registry). Es wird aus `scripts/backup/compose/pruefwerkzeug.Dockerfile`
+  aus einem **leeren** Baukontext gebaut und je App-Abbild wiederverwendet. Tests, Skripte und Doku
+  werden schreibgeschützt unter `/b3quelle` eingehängt und beim Start in das beschreibbare `/app`
+  kopiert (die Testvorrichtungen legen Arbeitsordner unter `tests/` an).
+
+### A · Täglich sichern — mit Herkunft und verschlüsselter Zweitkopie
+
+```bash
+PROJEKT=klarwerk STACK=/opt/klarwerk ZWEITER_ORT=/mnt/zweitort/klarwerk \
+  bash /opt/klarwerk/scripts/backup/compose-drill.sh taeglich
+```
+
+Als Zeitplan (Beispiel `/etc/cron.d/klarwerk-sicherung`, Nutzer mit Docker-Recht):
+
+```
+15 3 * * * betrieb PROJEKT=klarwerk STACK=/opt/klarwerk ZWEITER_ORT=/mnt/zweitort/klarwerk bash /opt/klarwerk/scripts/backup/compose-drill.sh taeglich >> /var/log/klarwerk-sicherung.log 2>&1
+```
+
+`taeglich` = `sicherung` + `auslagern`:
+
+1. **`sicherung`**: das unveränderte `backup.sh` über die Compose-Adapter nach
+   `SICHERUNGSZIEL` (Vorgabe `<ARBEIT>/sicherungen/taeglich`), Aufbewahrung `BACKUP_KEEP`
+   (Vorgabe 14). Die Adresse `DATABASE_URL=postgresql://klarwerk@db/klarwerk_prod` nennt Dienst,
+   Konto und Datenbank — **kein Kennwort**; der Adapter verbindet über den lokalen Socket im
+   Container und weist eine Adresse mit Kennwort oder ein unbekanntes Argument mit Exit 64 ab.
+   Danach schreibt der Rahmen den **Herkunftsnachweis** `<dump>.herkunft.json`: Instanzkennung,
+   Projekt, Datenbank, PostgreSQL-Systemkennung, Stand der Instanz, `/health` (Version, Commit),
+   SHA-256 des Dumps, Zeitpunkt.
+2. **`auslagern`**: Dump + Prüfsumme + Herkunftsnachweis als `tar`, verschlüsselt mit
+   `openssl enc -aes-256-cbc -pbkdf2 -iter 200000`, nach `ZWEITER_ORT` (absoluter Pfad, nicht in
+   Instanz oder Arbeitsordner — ein eingehängter zweiter Speicher). Gestaffelt: `tage/` jede
+   Sicherung (`AUSLAGERUNG_TAGE`, Vorgabe 14), `wochen/` die erste der ISO-Woche
+   (`AUSLAGERUNG_WOCHEN`, 8), `monate/` die erste des Monats (`AUSLAGERUNG_MONATE`, 12). Danach wird
+   die Zweitkopie **entschlüsselt** und ihr Dump gegen die Prüfsumme gehalten; jede in diesem Lauf
+   angelegte Kopie (Tag, ggf. Woche und Monat) wird gegen ihren Sidecar geprüft, der **ihren eigenen**
+   Dateinamen trägt (`sha256sum -c` gelingt in jeder Stufe). Ein gescheitertes Kopieren oder ein nicht
+   belegbarer Zeitraum ist Exit 170. Als erledigt gilt ein Zeitraum nur, wenn in `wochen/` bzw.
+   `monate/` eine **gültige Kopie samt passendem Sidecar** liegt — die Reservierung
+   `.<zeitraum>.belegt` allein genügt nicht. Scheitert die Kopie, gibt der Lauf seine Reservierung
+   wieder frei; der nächste Lauf desselben Zeitraums legt die Kopie nach. Steht eine Reservierung
+   ohne gültige Kopie da (ein gleichzeitiger Lauf kopiert gerade), wartet der Lauf bis
+   `AUSLAGERUNG_WARTEN` Sekunden (Vorgabe 60) und endet sonst mit 170 und dem Pfad der Reservierung
+   — dann prüfen, dass kein Lauf mehr aktiv ist (z. B. nach einem Abbruch per `kill`), und die
+   leere Reservierung von Hand entfernen. `taeglich` lagert genau **seine eigene** Sicherung aus. Der
+   Schlüssel liegt nie am zweiten Ort; fehlt er, wird er einmal erzeugt und muss sofort getrennt
+   verwahrt werden.
+
+Direkt mit `backup.sh` (ohne Rahmen) zu sichern bleibt möglich — dann fehlt aber der
+Herkunftsnachweis, und `wiederherstellen`/`zurueckspielen` verweigern die Sicherung (161).
+
+### B · Wiederherstellung üben — in eine frische Datenbank derselben Instanz
+
+```bash
+PROJEKT=klarwerk STACK=/opt/klarwerk DRILL_LOGIN_EMAIL=admin@kunde.de \
+  bash /opt/klarwerk/scripts/backup/compose-drill.sh wiederherstellen \
+  /opt/b3-arbeit-klarwerk/sicherungen/taeglich/klarwerk-20260925T031500Z.dump
+```
+
+Das Kennwort des Anmeldekontos (ein Konto **aus dem Dump** mit `ko.validate`) steht in
+`<ARBEIT>/geheim/drill-login` (Rechte `600`, nur der Wert); ohne Datei erzeugt der Schritt ein
+Zufallskennwort — das passt dann nur zu einem Bestand, den `bestand` selbst angelegt hat.
+
+Reihenfolge im Schritt:
+
+1. **Instanzbindung**: Herkunftsnachweis vorhanden, seine SHA-256 gleich der des Dumps, seine
+   Instanzkennung gleich `<ARBEIT>/instanz.id` — sonst Exit 161, und es entsteht keine Datenbank.
+2. Prüfwerkzeug sicherstellen (aus dem **laufenden** App-Abbild).
+3. `restore-drill.sh` **unverändert** im Prüfwerkzeug, Ziel `klarwerk_drill_<lauf>` (eigene, leere
+   Datenbank derselben PostgreSQL) — alle Glieder und Exitcodes wie oben; `klarwerk_prod` wird
+   nicht angefasst.
+4. Nur bei Exit 0: das **Produktabbild** der Instanz (`docker compose run app`, derselbe Startbefehl)
+   gegen die wiederhergestellte Datenbank starten, auf „healthy" warten und — wenn ein Bestand
+   angelegt wurde — Wissensobjekt, Beleg, Anhang (SHA-256) und Auditkette vergleichen.
+5. Container und Drill-Datenbank wieder entfernen (`B3_BEHALTEN=1` behält die Datenbank).
+
+Beleg: `belege/b3-<lauf>-wiederherstellen.json` (Dumpname, SHA-256, Bytes, Sidecar, Zieldatenbank,
+Drill-Exit, Sekunden) und `…-wiederherstellen-drill.log` (jede Pflichttabelle `Dump=… Datenbank=…`).
+
+### C · Ernstfall — eine Sicherung in den Bestand der Instanz zurückspielen
+
+```bash
+PROJEKT=klarwerk STACK=/opt/klarwerk ZURUECKSPIELEN_BESTAETIGT=klarwerk_prod \
+  bash /opt/klarwerk/scripts/backup/compose-drill.sh zurueckspielen \
+  /opt/b3-arbeit-klarwerk/sicherungen/taeglich/klarwerk-20260925T031500Z.dump
+```
+
+Ohne `ZURUECKSPIELEN_BESTAETIGT=klarwerk_prod` geschieht nichts (Exit 1). Reihenfolge — **jeder
+Schritt wird auf Erfolg geprüft**, beim ersten Fehlschlag geht es in den Rückweg:
+
+1. Prüfsumme des Dumps (Exit 160 — nichts angefasst), Instanzbindung (Exit 161 — nichts angefasst),
+   der Name `klarwerk_prod_vor_<lauf>` ist frei.
+2. `docker compose stop app`.
+3. Offene Verbindungen beenden, `ALTER DATABASE klarwerk_prod RENAME TO klarwerk_prod_vor_<lauf>` —
+   der alte Bestand wird **umbenannt, nie gelöscht**.
+4. `CREATE DATABASE klarwerk_prod`, danach die Leere **festgestellt** (0 Tabellen in `public`).
+5. `pg_restore --no-owner --no-privileges --exit-on-error` im Datenbankcontainer.
+6. `docker compose up -d --no-deps app`, warten auf „healthy".
+7. Inhaltsprüfsumme und — wenn angelegt — Bestandsvergleich.
+
+**Rückweg**: Scheitert 2–6, wird das neue `klarwerk_prod` verworfen, `klarwerk_prod_vor_<lauf>`
+zurückbenannt und die App wieder gestartet **und auf „healthy" geprüft** (Exit 162). Scheitert das
+Zurückbenennen, das erneute `up` oder die Gesundheit des zurückgeholten Stands, ist es Exit 163 —
+der Beleg nennt den Grund („WIEDERANLAUF GESCHEITERT: …") und, wo nötig, unter welchem Namen der
+alte Bestand liegt. Gemessen werden die **Ausfallzeit** (Anhalten bis
+„healthy", RTO) und das **Alter des eingespielten Stands** (aus dem Herkunftsnachweis, RPO); mit
+`RTO_ZIEL_SEKUNDEN`/`RPO_ZIEL_SEKUNDEN` endet eine Überschreitung mit Exit 164.
+Beleg: `belege/b3-<lauf>-zurueckspielen.json`.
+
+Eine **neu aufgesetzte** Instanz (Serverausfall) bekommt zuerst ihre gesicherte `instanz.id` zurück;
+ein bewusster Umzug einer fremden Sicherung geht nur mit
+`FREMDE_SICHERUNG_BESTAETIGT=<Instanzkennung der Sicherung>`.
+
+### D · Aktualisieren — mit Rückweg
+
+Die neue Ausgabe liegt als eigener Baum neben der Instanz (z. B. ausgepacktes Release oder
+`git archive` des neuen Commits nach `/opt/klarwerk-neu`). Das Werkzeug **der neuen Ausgabe**
+hebt die Instanz:
+
+```bash
+PROJEKT=klarwerk STACK=/opt/klarwerk \
+  bash /opt/klarwerk-neu/scripts/backup/compose-drill.sh aktualisieren /opt/klarwerk-neu
+```
+
+Reihenfolge im Schritt:
+
+1. Compose-Dateien gegen die laufende Instanz prüfen (Exit 1). Vorher-Stand festhalten:
+   Abbild-ID, Startzeit, `/health` (Version, Commit), **Inhaltsprüfsumme** (`objects`,
+   `ko_evidence`, Zahl der Konten und Wissensobjekte). Scheitert diese Messung, wird **nicht**
+   aktualisiert (Exit 111). Das laufende Abbild wird als `<projekt>-app:rueckfall` markiert.
+2. **Vorab-Sicherung** mit Herkunftsnachweis nach `<ARBEIT>/sicherungen/vor-aktualisierung`
+   (`VOR_UPDATE_KEEP`, Vorgabe 5). Scheitert sie, wird **nicht** aktualisiert (Exit 100).
+3. Quellbaum der Instanz durch die neue Ausgabe ersetzen. **Erhalten** bleiben `.env`, `belege`,
+   jede Compose-Datei aus `COMPOSE_DATEIEN` außer `docker-compose.prod.yml` (in der Fassung der
+   Instanz, auch wenn das Release eine gleichnamige mitbringt) und was `B3_ERHALTEN` zusätzlich nennt.
+   Fehlt danach eine Compose-Datei: Exit 121.
+4. `docker compose config` — fehlt eine Pflichtvariable, bricht Compose mit ihrem **Namen** ab; der
+   laufende Stand wird nicht angefasst (Exit 121).
+5. `docker compose build --build-arg SOURCE_COMMIT=<neuer Commit> app` (Exit 120 bei Baufehler; der
+   laufende Stand bleibt).
+6. `docker compose up -d --no-deps --force-recreate app` — **nur** `app` wird neu erzeugt; `db` und
+   das Volume `pgdata` bleiben, wie sie sind. Warten auf „healthy" (`WARTEN_GESUND`, Vorgabe 240 s).
+7. `/health` muss den **neuen** Commit melden (Exit 124 sonst).
+8. **Rückweg**, falls 6 oder 7 scheitern: `<projekt>-app:rueckfall` wird wieder zum App-Abbild und
+   erneut ausgerollt; bestanden ist er erst, wenn genau das vorherige Abbild wieder gesund läuft
+   (Exit 122 — die Meldung nennt den Grund, z. B. „der Container startet nicht (Status restarting,
+   Exitcode 3)"). Scheitert auch das: Exit 123.
+9. Nachher: Inhaltsprüfsumme erneut und Bestandsvergleich über die Anwendung — gescheitert 111,
+   abweichend 110, **auch nach einem Rückweg** (dann ersetzt 110/111 die 120/121/122/124: ein
+   Rückweg mit verändertem Bestand ist kein bestandener Rückweg; nur 123 bleibt stehen). Der
+   Schritt `rueckweg` verlangt deshalb genau 122 und 121; weicht einer der beiden Vergleiche ab,
+   ist er 150 — auch wenn der Vergleich danach wieder gleich ist.
+
+**Die Datenhälfte des Rückwegs.** Das alte Abbild bringt den alten **Code** zurück, nicht den alten
+**Datenstand**. Hat die neue Ausgabe beim Start schon migriert und läuft die alte darauf nicht, wird
+die Vorab-Sicherung aus Schritt 2 mit C (`zurueckspielen`) eingespielt. Die heutigen Migrationen
+sind additiv (`CREATE … IF NOT EXISTS`); dass eine ältere Ausgabe auf einem neueren Schema läuft,
+ist **nicht gemessen**.
+
+### E · Der Prüfplatz-Lauf (B3) — alles in Reihenfolge
+
+Der vollständige Nachweis läuft auf dem zweiten Prüfplatz-Stack (upcloud25, Compose-Projekt
+`pruefplatz-b3`, eigenes Netz und eigene Volumes, **kein** Host-Port). Gefahren wird er von der
+**Betriebsseite** über `PRUEFPLATZ-B.sh` (Ausführungsweg
+`gespraech/steuerung-entwuerfe/pruefplatz-b-20260920/AUSFUEHRUNGSWEG.md`), nie von der Bahn.
+
+**Welche Override-Datei.** `PRUEFPLATZ-B.sh vorbereiten` kopiert die mit `OVERRIDE` benannte Datei
+(`docker-compose.pruefplatz-b3.override.yml`) zusätzlich unter dem Namen
+`docker-compose.pruefplatz.override.yml` in den Zielbaum, und `hochfahren` startet den Stack mit
+`-f docker-compose.prod.yml -f docker-compose.pruefplatz.override.yml`. Genau diese beiden Dateien
+laufen — deshalb nennt `COMPOSE_DATEIEN` sie, und `compose-drill.sh` prüft das gegen das
+Kennzeichen des laufenden Containers. `OVERRIDE` bestimmt nur, **welcher Inhalt** unter diesem
+Namen liegt.
+
+Einmalig auf dem Knoten (Betriebsseite; `einrichten` legt nur `/home/runner/pruefplatz/…` an):
+`mkdir -p /home/runner/pruefplatz-b3/produkt/belege /home/runner/pruefplatz-b3/werkzeug
+/home/runner/pruefplatz-b3/zweiter-ort` und eine eigene `/home/runner/pruefplatz-b3/produkt/.env`
+(eigenes `POSTGRES_PASSWORD`, `APP_BASE_URL=https://pruefplatz.klarwerk.test`).
+
+```bash
+export PROJEKT=pruefplatz-b3 OVERRIDE=docker-compose.pruefplatz-b3.override.yml
+H=87.58.155.37
+# 1. Werkzeugbaum = PRÜFSTAND-Commit (liefert compose-drill.sh und die neue Ausgabe)
+ZIEL=/home/runner/pruefplatz-b3/werkzeug PRUEFPLATZ-B.sh $H vorbereiten <PRÜFSTAND>
+# 2. Instanz leer auf dem VORGÄNGER-Commit hochfahren (die „ältere Ausgabe" für K3)
+ZIEL=/home/runner/pruefplatz-b3/produkt  PRUEFPLATZ-B.sh $H leeren
+ZIEL=/home/runner/pruefplatz-b3/produkt  PRUEFPLATZ-B.sh $H belege-leeren
+ZIEL=/home/runner/pruefplatz-b3/produkt  PRUEFPLATZ-B.sh $H vorbereiten <VORGÄNGER>
+ZIEL=/home/runner/pruefplatz-b3/produkt  PRUEFPLATZ-B.sh $H hochfahren
+# 3. Der Ablauf (auf dem Knoten, als runner)
+ssh runner@$H 'cd /home/runner/pruefplatz-b3/werkzeug && PROJEKT=pruefplatz-b3 \
+  STACK=/home/runner/pruefplatz-b3/produkt \
+  COMPOSE_DATEIEN="docker-compose.prod.yml docker-compose.pruefplatz.override.yml" \
+  ZURUECKSPIELEN_BESTAETIGT=klarwerk_prod ZWEITER_ORT=/home/runner/pruefplatz-b3/zweiter-ort \
+  bash scripts/backup/compose-drill.sh ablauf /home/runner/pruefplatz-b3/werkzeug'
+# 4. Stand- und Laufbelege holen
+ZIEL=/home/runner/pruefplatz-b3/produkt  PRUEFPLATZ-B.sh $H belege
+ZIEL=/home/runner/pruefplatz-b3/produkt  PRUEFPLATZ_BELEGE_ZIEL=<laufeigener Ordner> PRUEFPLATZ-B.sh $H holen
+```
+
+`ablauf` fährt: `bestand` → `aktualisieren` (Vorgänger → Prüfstand, K3) → `neustart` (echter
+Neustart von `db` und `app`) → `sichern` (K1: drei Läufe, `BACKUP_KEEP=2`) → `wiederherstellen`
+(K2) → `pruefen` (W1–W4 und die übrigen PG-/Backupfälle gegen diese PostgreSQL; ein Skip ist rot)
+→ `gegenprobe` (K5 und Instanzbindung) → `zurueckspielen` (Ernstfall in `klarwerk_prod`) →
+`taeglich` (Sicherung mit Herkunft, verschlüsselte Zweitkopie) → `rueckweg` (K4). Ohne Bestand hält
+er an, ohne Sicherung überspringt er Wiederherstellung, Prüfen, Gegenprobe und Zurückspielen; fehlt
+die Bestätigung oder `ZWEITER_ORT`, ist der betreffende Schritt **rot**, nicht ausgelassen. Die
+Zusammenfassung steht in `belege/b3-<lauf>-ablauf.json`; jeder Beleg trägt `pruefstand` (Commit des
+Werkzeugbaums) und `instanz_stand`.
+
+**Grenze am Prüfplatz:** `zweiter-ort` liegt auf demselben Knoten — er belegt Verschlüsselung,
+Staffelung und Zurücklesen, **nicht** die räumliche Trennung. Die gehört zum Betrieb der Kundeninstanz.
+
+**Stand 26.09.2026: Dieser Lauf ist auf upcloud25 (`pruefplatz-b3`) NICHT gefahren.** Die Bahn
+hat keinen Zugang zum Prüfplatz; die Belege kommen per `HINWEIS.md` von der Betriebsseite. Bis dahin
+ist K7 **offen**. Gefahren ist derselbe `ablauf` auf einem isolierten Compose-Stack unter Docker
+Desktop (E2) — das belegt K1–K5 gegen echte PostgreSQL und das echte App-Abbild, nicht den Prüfplatz.
+
+### E2 · Derselbe Ablauf lokal unter Docker (am 26.09.2026 gefahren)
+
+Genau so gefahren (Docker 29.5.3, Compose v5.1.4, arm64; Projekt `b3lokal`, eigene Volumes, **kein**
+Host-Port). Instanz = ältere Ausgabe `c38f2d71` (`git archive`), Werkzeugbaum = neue Ausgabe mit
+`PRUEFPLATZ-STAND` (`commit=1a51d968…`, dazu der Arbeitsstand der Runde, siehe Grenze unten):
+
+```bash
+B=/tmp/b3lokal
+git archive <VORGÄNGER> | tar -x -C $B/produkt          # + PRUEFPLATZ-STAND commit=<VORGÄNGER>
+git archive <PRÜFSTAND> | tar -x -C $B/werkzeug         # + PRUEFPLATZ-STAND commit=<PRÜFSTAND>
+# Override ohne Host-Port, in beiden Bäumen:  services: { app: { ports: !reset [] } }
+printf 'POSTGRES_PASSWORD=%s\nAPP_BASE_URL=https://b3lokal.klarwerk.test\n' "$(openssl rand -hex 16)" \
+  > $B/produkt/.env && chmod 600 $B/produkt/.env
+cd $B/produkt && docker compose -p b3lokal -f docker-compose.prod.yml \
+  -f docker-compose.b3lokal.override.yml build --build-arg SOURCE_COMMIT=<VORGÄNGER> app
+docker compose -p b3lokal -f docker-compose.prod.yml -f docker-compose.b3lokal.override.yml up -d
+cd $B/werkzeug && PROJEKT=b3lokal STACK=$B/produkt \
+  COMPOSE_DATEIEN="docker-compose.prod.yml docker-compose.b3lokal.override.yml" \
+  ZURUECKSPIELEN_BESTAETIGT=klarwerk_prod ZWEITER_ORT=$B/zweiter-ort \
+  bash scripts/backup/compose-drill.sh ablauf $B/werkzeug
+```
+
+Ergebnis (`b3-20260926T110706Z-ablauf.json`): **exit 0**, jeder Schritt 0 — `aktualisieren` 13 s,
+`neustart` 8 s, `sichern` 3 s, `wiederherstellen` 14 s, `pruefen` 154 s, `gegenprobe` 6 s,
+`zurueckspielen` 9 s, `taeglich` 1 s, `rueckweg` 14 s. Die Belege liegen als Archiv mit Prüfsummen unter
+`docs/operations/b3-belege/lokal-docker-20260926/` (Lesehilfe dort).
+
+**Befund dieses Laufs, behoben:** Der erste Lauf (`b3-20260926T105944Z`) endete mit 140. Jeder Drill im
+Schritt `pruefen` bestand bis Glied 7b, endete aber mit **80** („Prozessgruppe hat SIGKILL
+überlebt"): im Werkzeugcontainer war `npx vitest` PID 1 und sammelte die abgeräumte Anwendung nicht
+ein — sie blieb als Zombie in ihrer Gruppe stehen. Seitdem startet `compose-drill.sh` jeden
+Werkzeugcontainer mit `docker run --init`; die Abräumprüfung des Drills ist unverändert.
+
+**Grenzen:** kein Caddy/TLS davor (der Lauf spricht die App im Compose-Netz über HTTP an), der zweite
+Ort liegt auf demselben Rechner, und der Werkzeugbaum war `1a51d968` **plus** der Arbeitsstand dieser
+Runde (derselbe Inhalt, den der Starter danach festhält) — der Commit in `/health` ist deshalb
+`1a51d968`, nicht der Commit dieser Runde.
+
+### F · Gegenprobe (K5) — jede Manipulation macht genau ihren Nachweis rot
+
+Reversibel: gearbeitet wird an Kopien und an eigenen Datenbanken; die echte Sicherung wird vorher
+und nachher gehasht (`gegenprobe.json`: `sha256_vorher` = `sha256_nachher`).
+
+| Fall | Erwartet | Was er zeigt |
+|---|---|---|
+| ein Byte der **Kopie** eines Dumps gekippt, Sidecar unverändert | Drill **11**, Zieldatenbank **nicht** angelegt | die Prüfsumme hält `pg_restore` auf (R-0808) |
+| Dump in eine eigene Quelle eingespielt, `ko_evidence` entfernt, mit `backup.sh` neu gesichert | Drill **22**, Meldung nennt `ko_evidence` | eine fehlende Tabelle wird benannt, nicht als 0 gezählt |
+| Schritt `neustart` mit `NEUSTART_AUSLASSEN=1` | **130** | ein Neustart-Nachweis ohne echten Neustart ist rot (Postmaster-Startzeit unverändert) |
+| Kopie der Sicherung mit dem Herkunftsnachweis einer **fremden** Instanz | **161**, keine Zieldatenbank | die Instanzbindung trifft (R-0811) |
+| Kopie der Sicherung **ohne** Herkunftsnachweis | **161** | eine ungebundene Sicherung wird nicht eingespielt |
+
+Der unveränderte Dump ist die Gegenseite: `wiederherstellen` endet mit 0.
+
+### Exitcodes von compose-drill.sh
+
+Eigener Bereich ab 100, damit sie nie mit denen von `restore-drill.sh` (oben) verwechselt werden;
+`wiederherstellen` und `gegenprobe` reichen den Code des Drills unverändert durch.
+
+| Code | Bedeutung |
+|---|---|
+| 0 | Schritt bestanden |
+| 1 | Aufruf/Umgebung (fehlendes Werkzeug, fehlende `.env`, unbekannter Schritt, abweichende `COMPOSE_DATEIEN`, fehlende Bestätigung) |
+| 2 | Aufbaufehler (Prüfwerkzeug nicht baubar, Instanz nicht erreichbar) — **kein** Befund |
+| 100 | K1: `backup.sh` ist gescheitert |
+| 101 | K1: Aufbewahrung nicht eingehalten |
+| 102 | K1: Prüfsumme passt nicht, oder das Datenbank-Kennwort steht im Protokoll |
+| 110 | Vergleich: **Befund** — der Bestand ist nicht unverändert lesbar |
+| 111 | Inhaltsmessung gescheitert — ohne Messung vorher/nachher ist nichts bewiesen |
+| 120 | Aktualisierung: Bau gescheitert — vorheriger Stand läuft unverändert |
+| 121 | Aktualisierung: Konfiguration unvollständig (Pflichtvariable, fehlende Compose-Datei) — vorheriger Stand läuft unverändert |
+| 122 | Aktualisierung: neue Ausgabe nicht gesund — **Rückweg ausgeführt**, vorheriger Stand gesund |
+| 123 | Aktualisierung: **Rückweg gescheitert** — Handeln nötig |
+| 124 | Aktualisierung: `/health` meldet nicht die neue Ausgabe — Rückweg ausgeführt |
+| 125 | Aktualisierung: keine neuere Ausgabe (Stand vorher = nachher) — nichts belegt |
+| 130 | Neustart: kein echter Datenbank-Neustart belegt |
+| 131 | Neustart: Datenbank oder Anwendung danach nicht wieder bereit |
+| 140 | Prüfen: Tests rot |
+| 141 | Prüfen: Tests übersprungen — ein Skip ist hier kein Grün |
+| 150 | Gegenprobe/Rückweg: das erwartete Rot bzw. der erwartete Rückweg blieb aus |
+| 160 | Zurückspielen: Prüfsumme fehlt oder passt nicht — nichts angefasst |
+| 161 | Instanzbindung: Sicherung ohne passenden Herkunftsnachweis oder aus einer anderen Instanz |
+| 162 | Zurückspielen: ein Schritt gescheitert — der vorherige Bestand ist wieder eingesetzt |
+| 163 | Zurückspielen: gescheitert **und** der vorherige Bestand ließ sich nicht wieder einsetzen oder nicht wieder gesund starten |
+| 164 | Zurückspielen: gelungen, aber über `RTO_ZIEL_SEKUNDEN`/`RPO_ZIEL_SEKUNDEN` |
+| 170 | Auslagern: Verschlüsselung, Ablage oder Nachprüfung der Zweitkopie gescheitert |
+
+### Was dockerfrei gemessen ist — und was nur der Prüfplatz belegt
+
+`tests/kundenbetrieb-compose/compose-drill.test.ts` und `ernstfall-bindung-auslagerung.test.ts`
+fahren das echte `compose-drill.sh`, die echten Adapter und das **unveränderte** `backup.sh` gegen
+eine zustandsbehaftete `docker`-Attrappe: Sicherung ohne Kennwort mit Aufbewahrung und
+Herkunftsnachweis; Aktualisierung mit neuem Commit, erhaltener Override-Datei und Abbruch bei
+gescheiterter Inhaltsmessung; Rückweg bei krankem Abbild (122), falschem Commit (124) und fehlender
+Pflichtvariable (121); Zurückspielen mit Fehlschlag an jedem Schritt (162/163) und
+Prüfsummen-/Bindungsabbruch (160/161); Neustart-Gegenprobe (130); der Prüfschritt mit
+schreibbarem Testbaum und Skip = rot (141). `parallel-und-rueckweg.test.ts` fährt zwei **echte, gleichzeitige** Erstläufe (Instanzkennung, Schlüssel der Zweitkopie), gescheiterte Stufenkopien, die Sidecars aller drei Stufen und den gescheiterten Wiederanlauf nach dem Rückweg (163). Die Verschlüsselung der Zweitkopie läuft dort mit dem
+**echten** `openssl` und wird unabhängig entschlüsselt. `tests/kundenbetrieb-compose/nutzlast.test.ts`
+fährt `nutzlast.mjs` über HTTP gegen die echte Anwendung (In-Memory) samt Gegenprobe. **Dass
+Docker, Compose, PostgreSQL und das gebaute Abbild sich so verhalten, belegt allein der
+Prüfplatz-Lauf (E).**

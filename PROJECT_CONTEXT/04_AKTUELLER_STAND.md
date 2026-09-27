@@ -7,6 +7,29 @@
 > `PROJECT_CONTEXT/13_ASSISTENT_ZWISCHENBERICHT.md` (Rohstand: `docs/boss-assistant/`).
 > Live-Version dort bestätigt: **v1.0.0-beta.1.4**.
 
+## Nachtrag 25.09.2026 — B3 Sicherung/Wiederherstellung auf der Compose-Kundeninstanz
+
+- Neu: `scripts/backup/compose-drill.sh` + Adapter `scripts/backup/compose/` — Sichern über
+  `docker compose exec` (ohne Kennwort), Wiederherstellung in eine frische DB derselben Instanz,
+  Aktualisierung mit Rückweg (vorheriges Abbild), Neustart- und Gegenproben. `backup.sh` und
+  `restore-drill.sh` unverändert. Anleitung: `docs/operations/restore-drill.md` („Compose-
+  Kundeninstanz"), `backup-disaster-recovery.md` §13; Zuordnung: `docs/operations/b3-sicherung-zuordnung.md`.
+- Runde 2: Ernstfall `zurueckspielen` (jeder Schritt geprüft, alter Bestand umbenannt und bei
+  Fehlschlag wieder eingesetzt), Instanzbindung + Herkunftsnachweis je Sicherung, verschlüsselte
+  gestaffelte Zweitkopie (`taeglich`), RPO/RTO-Messung; Festlegung je Kundenklasse bleibt bei Pedi.
+- Dockerfrei gemessen (`tests/kundenbetrieb-compose/`); der echte Lauf auf `pruefplatz-b3`
+  (upcloud25) fährt die Betriebsseite — **Stand 25.09. noch nicht gefahren**.
+- 26.09. (Lauf 2): Befund R3-1 behoben — eine gescheiterte Wochen-/Monatskopie gibt ihre
+  Reservierung frei; ein Zeitraum gilt nur mit gültiger Kopie + Sidecar als erledigt, sonst Exit 170.
+  Prüfplatzlauf und RPO/RTO-Festlegung je Kundenklasse weiter offen.
+- 26.09. (Lauf 2 R2): `compose-drill.sh` lief auf Linux (bash ≥ 4) im Rückweg in `set -u`-Abbrüche
+  (ungesetzte `local`-Variablen; macOS-bash 3.2 verdeckt das) — alle Variablen initialisiert, Wächter L1.
+  Ein abweichender Anwendungsvergleich nach dem Rückfall ist jetzt rot (110/111 statt 122/121).
+- 26.09. (Lauf 2 R3): vollständiger `compose-drill.sh ablauf` lokal unter Docker gefahren (isoliertes
+  Projekt `b3lokal`, echte PG 16 + echtes App-Abbild): exit 0, K1–K5 belegt
+  (`docs/operations/b3-belege/lokal-docker-20260926/`). Befund dabei behoben: Werkzeugcontainer
+  brauchen `--init`. Prüfplatz upcloud25 (K7) und RPO/RTO-Festlegung weiter offen.
+
 ## Rollen
 
 - Boss-Session: die laufende Claude-Konversation von Pedi (Koordination + Umsetzung). **Abwesend bis Di.**

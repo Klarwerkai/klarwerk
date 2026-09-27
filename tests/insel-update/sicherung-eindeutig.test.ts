@@ -25,6 +25,7 @@ import {
   type Insel,
   type Lauf,
   PG_DUMP_ATTRAPPE,
+  PG_RESTORE_ATTRAPPE,
   UPDATE_SH,
   aktivesRelease,
   fahreSkript,
@@ -70,6 +71,7 @@ function fahreUpdateMitDump(insel: Insel, quelle: string, inhalt: string): Lauf 
   const pfad = fremdbinaerAttrappe(insel, {
     date: festerZeitstempel(SEKUNDE),
     pg_dump: PG_DUMP_ATTRAPPE,
+    pg_restore: PG_RESTORE_ATTRAPPE,
   });
   return fahreSkript(insel, UPDATE_SH, [quelle], {
     PATH: `${pfad}:${process.env.PATH ?? ""}`,

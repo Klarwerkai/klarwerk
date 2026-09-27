@@ -136,6 +136,8 @@ Anhänge liegen in der Postgres-Tabelle `objects` → **durch den Postgres-Resto
 | Abweichungen / Findings | _offen_ |
 
 > **Pflicht:** mindestens **quartalsweise** einen Restore-Drill gegen eine **isolierte** Test-DB/-Instanz fahren (nie gegen Produktion), Ergebnis hier protokollieren. Erst ein bestandener Drill belegt RTO/RPO.
+>
+> **Compose-Kundeninstanz:** der Drill samt Aktualisierung und Rückweg ist dort ein Befehl (§13); sein JSON-Beleg füllt diese Tabelle. Der Prüfplatz-Lauf (B3, `pruefplatz-b3`) ist am 26.09.2026 **noch nicht gefahren**; derselbe Ablauf ist lokal unter Docker gefahren (`restore-drill.md` E2).
 
 ---
 
@@ -183,4 +185,162 @@ Anhänge liegen in der Postgres-Tabelle `objects` → **durch den Postgres-Resto
 
 ---
 
-*Read-only Ops-Runbook. Kein Produktcode geändert; keine produktiven Backups erzeugt; keine Infrastruktur angefasst. Sandbox-Evidence ausschließlich logischer Export (§11).*
+## 13. Compose-Kundeninstanz (Ein-Befehl-Weg) — Sicherung, Wiederherstellung, Aktualisierung, Rückweg
+
+Gilt für eine Instanz nach `kundeninstanz-neuinstallation.md` (`docker-compose.prod.yml`, Dienste
+`db` + `app`, Volume `pgdata`). §1–§12 oben beschreiben den Coolify-Betrieb; die Befehle hier sind
+die des Compose-Wegs. Einzelheiten, Exitcodes und die Gegenproben stehen in
+`docs/operations/restore-drill.md`, Abschnitt „Compose-Kundeninstanz".
+
+**Werkzeuge:** `scripts/backup/backup.sh` (unverändert) mit den Adaptern `scripts/backup/compose/`
+— `pg_dump` läuft **im Datenbankcontainer** per `docker compose exec`, ohne Kennwort — und
+`scripts/backup/compose-drill.sh` als Rahmen für Sicherung mit Herkunft, Zweitkopie, Übung,
+Ernstfall, Aktualisierung und Rückweg.
+
+### 13.1 Voraussetzungen
+
+- Docker Engine + Compose v2, `bash`, `sha256sum` (oder `shasum`), `tar`, `openssl`; `rsync` empfohlen.
+- Projektname der Instanz (`docker compose ls`; beim Ein-Befehl-Weg der Ordnername, hier `klarwerk`),
+  Instanzordner mit `.env` (hier `/opt/klarwerk`). `COMPOSE_DATEIEN` = genau die Dateien, mit denen
+  die Instanz läuft (Vorgabe `docker-compose.prod.yml`; das Skript prüft es).
+- Arbeitsordner `/opt/b3-arbeit-klarwerk` (Vorgabe `<Elternordner>/b3-arbeit-<projekt>`) mit
+  Sicherungen, **Instanzkennung** `instanz.id` und dem **Schlüssel** der Zweitkopie
+  `geheim/auslagerung.schluessel` — beide wie die `.env` getrennt verwahren (Passwort-Manager).
+- Ein **zweiter Ort**: ein eingehängter, vom Server getrennter Speicher (anderes Volume/Provider),
+  hier `/mnt/zweitort/klarwerk`.
+
+### 13.2 Täglich sichern — Herkunft, Aufbewahrung, verschlüsselte Zweitkopie (R-0839, R-0850)
+
+```bash
+PROJEKT=klarwerk STACK=/opt/klarwerk ZWEITER_ORT=/mnt/zweitort/klarwerk \
+  bash /opt/klarwerk/scripts/backup/compose-drill.sh taeglich
+```
+
+Zeitplan (Beispiel `/etc/cron.d/klarwerk-sicherung`):
+
+```
+15 3 * * * betrieb PROJEKT=klarwerk STACK=/opt/klarwerk ZWEITER_ORT=/mnt/zweitort/klarwerk bash /opt/klarwerk/scripts/backup/compose-drill.sh taeglich >> /var/log/klarwerk-sicherung.log 2>&1
+```
+
+- **Sicherung:** `backup.sh` mit `DATABASE_URL=postgresql://klarwerk@db/klarwerk_prod` (kein
+  Kennwort) über die Adapter, `BACKUP_KEEP=14` Generationen in
+  `/opt/b3-arbeit-klarwerk/sicherungen/taeglich`. Ein Dump deckt Wissensobjekte, Anhänge (`objects`)
+  und Prüfspur (`audit`) gemeinsam ab (§1).
+- **Herkunftsnachweis** je Sicherung (`<dump>.herkunft.json`): Instanzkennung, Datenbank,
+  PostgreSQL-Systemkennung, Stand der Instanz, `/health` (Version, Commit), SHA-256, Zeitpunkt.
+  Dasselbe gilt für die Vorab-Sicherung jeder Aktualisierung (§13.5).
+- **Zweitkopie:** Dump + Prüfsumme + Herkunft, verschlüsselt (AES-256, `openssl enc -pbkdf2`),
+  gestaffelt: `tage/` 14, `wochen/` 8, `monate/` 12 (`AUSLAGERUNG_TAGE/WOCHEN/MONATE`); nach dem
+  Schreiben entschlüsselt und gegen die Prüfsumme gehalten, jede neue Stufenkopie gegen ihren
+  eigenen Sidecar (Exit 170 sonst). Der Schlüssel liegt nie am zweiten Ort; er und die
+  Instanzkennung werden beim ersten Lauf genau einmal atomar angelegt.
+- Jede Sicherung hat ihre Prüfsumme (`.sha256`); stimmt sie nicht, startet weder der Drill (10/11)
+  noch das Zurückspielen (160) `pg_restore`.
+
+### 13.3 Wiederherstellung üben (monatlich)
+
+```bash
+PROJEKT=klarwerk STACK=/opt/klarwerk DRILL_LOGIN_EMAIL=admin@kunde.de \
+  bash /opt/klarwerk/scripts/backup/compose-drill.sh wiederherstellen \
+  /opt/b3-arbeit-klarwerk/sicherungen/taeglich/klarwerk-<UTC>.dump
+```
+
+Prüft zuerst die **Instanzbindung** (Exit 161 bei fremder oder ungebundener Sicherung), spielt den
+Dump dann mit dem **unveränderten** `restore-drill.sh` in eine frische Datenbank
+`klarwerk_drill_<lauf>` derselben PostgreSQL, startet das Produktabbild dagegen und räumt beides
+wieder weg. `klarwerk_prod` bleibt unberührt. Das Kennwort des Anmeldekontos liegt in
+`<ARBEIT>/geheim/drill-login`. Beleg: `belege/b3-<lauf>-wiederherstellen.json` samt Sekunden.
+
+### 13.4 Ernstfall: den eigenen Bestand zurückspielen
+
+```bash
+PROJEKT=klarwerk STACK=/opt/klarwerk ZURUECKSPIELEN_BESTAETIGT=klarwerk_prod \
+  bash /opt/klarwerk/scripts/backup/compose-drill.sh zurueckspielen \
+  /opt/b3-arbeit-klarwerk/sicherungen/taeglich/klarwerk-<UTC>.dump
+```
+
+Kein Befehlsblock zum Abtippen mehr: bis zur Prüfung Runde 1 stand hier eine Folge, die nach einem
+gescheiterten Umbenennen und einem gescheiterten `createdb` trotzdem `pg_restore` und `up` ausführte
+und mit 0 endete. Der Schritt `zurueckspielen` prüft **jeden** Schritt:
+
+1. Bestätigung (Exit 1), Prüfsumme (160), Instanzbindung (161) — bis hier ist nichts angefasst.
+2. App anhalten → `klarwerk_prod` in `klarwerk_prod_vor_<lauf>` **umbenennen** (nie löschen) →
+   leeres `klarwerk_prod` anlegen → **Leere feststellen** → `pg_restore --exit-on-error` → App
+   starten und auf „healthy" warten → Inhalt und Bestand vergleichen.
+3. Scheitert einer dieser Schritte: neues Ziel verwerfen, alten Bestand zurückbenennen, App wieder
+   starten und auf „healthy" prüfen (Exit 162). Scheitert das Zurückbenennen, das `up` oder die
+   Gesundheit: Exit 163, der Beleg nennt den Grund und den Namen des alten Bestands.
+
+Der alte Bestand bleibt als `klarwerk_prod_vor_<lauf>` liegen, bis der Betreiber ihn nach Prüfung
+selbst entfernt. Nach einem **Serverausfall** bekommt die neu aufgesetzte Instanz zuerst ihre
+gesicherte `instanz.id` (und die `.env`) zurück; die Sicherung holt man vom zweiten Ort
+(`openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -pass file:<schluessel> -in <kopie> | tar -xf -`).
+
+Gemessen: dockerfrei mit Fehlschlag an jedem Schritt
+(`tests/kundenbetrieb-compose/ernstfall-bindung-auslagerung.test.ts`, E1–E8); gegen die echte
+PostgreSQL im Schritt `zurueckspielen` des `ablauf`: auf dem Prüfplatz **Stand 26.09.2026 noch nicht
+gefahren**; lokal unter Docker gefahren (26.09.2026, `restore-drill.md` E2): Exit 0, Ausfallzeit 8 s,
+eingespielter Stand 184 s alt, Inhaltsprüfsumme vorher = nachher, alter Bestand als
+`klarwerk_prod_vor_20260926t110706z` erhalten.
+
+### 13.5 Aktualisieren und Rückweg
+
+```bash
+PROJEKT=klarwerk STACK=/opt/klarwerk \
+  bash /opt/klarwerk-neu/scripts/backup/compose-drill.sh aktualisieren /opt/klarwerk-neu
+```
+
+Reihenfolge: Compose-Dateien prüfen → Vorher-Stand festhalten (Abbild, Startzeit, `/health`,
+**Inhaltsprüfsumme** — scheitert sie, keine Aktualisierung, Exit 111) → Abbild als
+`klarwerk-app:rueckfall` markieren → **Vorab-Sicherung** mit Herkunft → Quellbaum ersetzen
+(`.env`, `belege` und instanzeigene Compose-Dateien bleiben) → `docker compose config` → `build` mit
+`SOURCE_COMMIT` → `up -d --no-deps --force-recreate app` (Volumes bleiben) → „healthy" + neuer
+Commit in `/health` → Inhaltsprüfsumme und Bestand vergleichen (auch nach einem Rückweg).
+
+- Fehlt eine Pflichtvariable: Compose nennt sie, **nichts** wird gebaut oder ausgerollt (Exit 121).
+- Startet die neue Ausgabe nicht gesund oder meldet `/health` den falschen Stand: das vorherige
+  Abbild wird **erneut ausgerollt** (Exit 122/124, die Meldung nennt den Grund); scheitert auch das,
+  Exit 123.
+- **Datenhälfte:** das alte Abbild bringt nicht den alten Datenstand zurück. Hat die neue Ausgabe
+  schon migriert, wird die Vorab-Sicherung mit §13.4 eingespielt.
+
+### 13.6 RPO/RTO — was gemessen wird und was festgelegt werden muss (R-0863, R-2070, NFR-OPS-02)
+
+Gemessen wird bei jedem Lauf:
+
+| Kennzahl | Messung | Beleg |
+| --- | --- | --- |
+| RTO (Ausfallzeit im Ernstfall) | `zurueckspielen`: App anhalten bis App wieder „healthy" | `b3-<lauf>-zurueckspielen.json` → `ausfall_sekunden` |
+| RPO (Datenverlust) | Alter des eingespielten Stands zum Zeitpunkt des Zurückspielens (aus dem Herkunftsnachweis); beim Zeitplan „täglich" höchstens der Abstand zweier Läufe | `…-zurueckspielen.json` → `stand_alter_sekunden`; Zeitplan §13.2 |
+| Übungsdauer | `wiederherstellen`: Drill-Sekunden | `…-wiederherstellen.json` → `drill_sekunden` |
+
+Ein festgelegtes Ziel wird mit `RTO_ZIEL_SEKUNDEN` / `RPO_ZIEL_SEKUNDEN` geprüft; eine
+Überschreitung ist Exit 164. **Die Zielwerte je Kundenklasse legt Pedi fest** — sie sind eine
+Zusage an Kunden, keine technische Größe. Bis dahin gelten die **Vorschläge** aus §4 (RPO ≤ 24 h,
+RTO ≤ 4 h) für alle Klassen; eine Festlegung je Kundenklasse liegt **nicht** vor.
+
+**Erste echte Messung (26.09.2026, lokaler Compose-Lauf, `restore-drill.md` E2)** — ein Messpunkt an
+einer kleinen Probeinstanz (Dump 71 556 Bytes), **keine** Zusage und keine Aussage über Kundengrößen:
+Ausfallzeit beim Zurückspielen 8 s (`ausfall_sekunden`), Alter des eingespielten Stands 184 s
+(`stand_alter_sekunden`), Übungs-Drill 7 s (`drill_sekunden`). Ohne `RTO_ZIEL_SEKUNDEN`/`RPO_ZIEL_SEKUNDEN`
+lief keine Zielprüfung — es gibt keinen festgelegten Wert, gegen den sie prüfen könnte.
+
+### 13.7 Stand der Nachweise (26.09.2026)
+
+| Aussage | Beleg | Stand |
+| --- | --- | --- |
+| Sicherung über `docker compose exec`, ohne Kennwort, Aufbewahrung, Herkunft | `tests/kundenbetrieb-compose/*` (Docker-Attrappe); lokaler Compose-Lauf `sichern` (3 Läufe, `BACKUP_KEEP=2`, 2 bleiben, `kennwort_im_log=nein`) | dockerfrei gemessen; **echt gemessen** (Docker, 26.09.); Prüfplatz **offen** |
+| verschlüsselte, gestaffelte Zweitkopie, zurückgelesen; gescheiterte Periodenkopie wird nachgeholt statt übergangen | `ernstfall-bindung-auslagerung.test.ts` Z1–Z4, `parallel-und-rueckweg.test.ts` R3-1 (echtes `openssl`); lokaler Lauf `taeglich` (nachgeprüft: ja) | gemessen; ein echter zweiter Ort beim Kunden ist **nicht eingerichtet** |
+| Instanzbindung inkl. Gegenprobe gegen das falsche Ziel | I1–I4; `gegenprobe` G4/G5 (161, kein Ziel angelegt) | dockerfrei und **echt gemessen**; Prüfplatz **offen** |
+| Ernstfall-Zurückspielen mit Rückweg an jedem Schritt | E1–E8; lokaler Lauf `zurueckspielen` (Exit 0, 8 s, Inhalt gleich) | Erfolgsweg **echt gemessen**; Fehlschlagszweige nur dockerfrei; Prüfplatz **offen** |
+| Wiederherstellung in frische DB, Anwendung dagegen, Anhang byte-identisch | W1–W4 (Testserver-PG und lokaler Lauf `pruefen`: 10/10 Integrationsfälle, 272/272 Vertragsfälle, kein Skip); `wiederherstellen` (Drill exit 0, 45 Pflichttabellen, 512 Bytes Anhang zurückgelesen) | **echt gemessen**; Prüfplatz **offen** |
+| Aktualisierung + Rückweg (kaputtes Abbild, fehlende Pflichtvariable) | U1/U2, R1–R4, B2/B3/B5; lokaler Lauf `aktualisieren` (`c38f2d71` → `1a51d968`, `/health` 1.0.0-beta.1.608 → .609, Inhalt gleich) und `rueckweg` (122/121, Bestand gleich) | **echt gemessen**; Prüfplatz **offen** |
+| Aussagekraft (K5): veränderte Prüfsumme, fehlende Tabelle, ausgelassener Neustart | lokaler Lauf `gegenprobe`: 11 / 22 (nennt `ko_evidence`) / 130; echte Sicherung vorher = nachher | **echt gemessen**; Prüfplatz **offen** |
+| RPO/RTO je Kundenklasse | Messfelder und Zielprüfung (164) | Festlegung **offen** (Entscheidung Pedi) |
+
+Die Zuordnung aller Anforderungen dieses Auftrags steht in
+`docs/operations/b3-sicherung-zuordnung.md`.
+
+---
+
+*Ops-Runbook. §1–§12 unverändert Coolify-Betrieb; §13 beschreibt den Compose-Weg und seine Werkzeuge. Keine produktiven Backups erzeugt; keine Infrastruktur angefasst.*

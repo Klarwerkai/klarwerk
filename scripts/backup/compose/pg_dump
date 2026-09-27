@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+# ================================================================================================
+# B3 — COMPOSE-ADAPTER fuer `pg_dump`. Das UNVERAENDERTE scripts/backup/backup.sh sichert damit die
+# PostgreSQL einer Compose-Kundeninstanz, ohne dass auf dem Wirt ein PostgreSQL-Client liegt.
+# ================================================================================================
+#
+# WARUM ES DIESEN ADAPTER GIBT: Eine Kundeninstanz nach docs/operations/kundeninstanz-neuinstallation.md
+# hat auf dem Wirt Docker, aber keinen `pg_dump`. Und selbst wo einer liegt, passt er selten zur
+# Serverversion (Ubuntu 24.04 bringt 16, Debian 12 bringt 15 — ein 15er-`pg_dump` verweigert einen
+# 16er-Server). Der `pg_dump` IM Datenbankcontainer passt immer: er ist derselbe Build wie der Server.
+#
+# WIE ER BENUTZT WIRD: `scripts/backup/compose` VORNE in den PATH legen und `backup.sh` mit einer
+# Compose-Adresse starten:
+#
+#   PATH="<wurzel>/scripts/backup/compose:$PATH" \
+#   KLARWERK_COMPOSE_PROJEKT=<projekt> KLARWERK_COMPOSE_VERZEICHNIS=<ordner mit .env> \
+#   DATABASE_URL=postgresql://klarwerk@db/klarwerk_prod  bash scripts/backup/backup.sh <ziel>
+#
+# Die Adresse nennt Dienst (`db`), Konto (`klarwerk`) und Datenbank (`klarwerk_prod`) — und KEIN
+# Kennwort. Der Dump laeuft ueber `docker compose exec` am lokalen Socket des Containers; dort gilt
+# die Vertrauensregel des offiziellen Postgres-Abbilds fuer lokale Verbindungen. Ein Kennwort
+# kommt damit in keinem Argument, keinem Log und keiner Ergebnisspur vor.
+#
+# FAIL-CLOSED: Traegt die Adresse ein Kennwort, oder kommt ein Argument, das dieser Adapter nicht
+# kennt, bricht er mit Exit 64 ab, BEVOR `docker` gerufen wird. Er raet nicht, was gemeint war.
+# `backup.sh` hinterlegt den Abbruch dann in seiner Ergebnisspur (`letzter-lauf.json`).
+set -euo pipefail
+
+: "${KLARWERK_COMPOSE_PROJEKT:?KLARWERK_COMPOSE_PROJEKT setzen (Compose-Projektname der Instanz)}"
+: "${KLARWERK_COMPOSE_VERZEICHNIS:?KLARWERK_COMPOSE_VERZEICHNIS setzen (Ordner mit docker-compose.prod.yml und .env)}"
+
+DATEI=""
+ADRESSE=""
+WEITER=()
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --file)
+      DATEI="${2:-}"
+      shift 2
+      ;;
+    --file=*)
+      DATEI="${1#--file=}"
+      shift
+      ;;
+    --format=custom | --no-owner | --no-privileges)
+      WEITER+=("$1")
+      shift
+      ;;
+    postgres://* | postgresql://*)
+      ADRESSE="$1"
+      shift
+      ;;
+    *)
+      echo "[compose-adapter] pg_dump: unbekanntes Argument '$1' — Abbruch statt Raten." >&2
+      exit 64
+      ;;
+  esac
+done
+
+if [ -z "$DATEI" ]; then
+  echo "[compose-adapter] pg_dump: --file fehlt — der Adapter schreibt nur in eine benannte Datei." >&2
+  exit 64
+fi
+# Nur <konto>@<dienst>[:port]/<datenbank>. Ein Doppelpunkt vor dem @ waere ein Kennwort.
+MUSTER='^postgres(ql)?://([A-Za-z0-9_]+)@([A-Za-z0-9_.-]+)(:[0-9]+)?/([A-Za-z0-9_]+)$'
+if ! [[ "$ADRESSE" =~ $MUSTER ]]; then
+  echo "[compose-adapter] pg_dump: die Adresse muss die Form postgresql://<konto>@<dienst>/<datenbank>" >&2
+  echo "[compose-adapter] haben — OHNE Kennwort. Abbruch, docker wird nicht gerufen." >&2
+  exit 64
+fi
+KONTO="${BASH_REMATCH[2]}"
+DIENST="${BASH_REMATCH[3]}"
+DATENBANK="${BASH_REMATCH[5]}"
+
+COMPOSE=(docker compose --project-directory "$KLARWERK_COMPOSE_VERZEICHNIS" -p "$KLARWERK_COMPOSE_PROJEKT")
+for f in ${KLARWERK_COMPOSE_DATEIEN:-docker-compose.prod.yml}; do
+  COMPOSE+=(-f "$KLARWERK_COMPOSE_VERZEICHNIS/$f")
+done
+
+# Der Dump geht als Strom aus dem Container in die Datei, die `backup.sh` benannt hat (seinen
+# Arbeitsstand in der eigenen Reservierung). Scheitert `pg_dump` im Container, endet dieser Adapter
+# mit demselben Exitcode — `backup.sh` verwirft den Arbeitsstand dann wie bei einem lokalen Dump.
+exec "${COMPOSE[@]}" exec -T "$DIENST" pg_dump -U "$KONTO" -d "$DATENBANK" ${WEITER[@]+"${WEITER[@]}"} >"$DATEI"

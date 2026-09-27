@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# ================================================================================================
+# B3 — COMPOSE-ADAPTER fuer `pg_restore --list`, die Lesepruefung von scripts/backup/backup.sh.
+# ================================================================================================
+#
+# Gegenstueck zu `scripts/backup/compose/pg_dump` (dort steht, warum es die Adapter gibt). Dieser
+# Adapter kann GENAU EINES: das Inhaltsverzeichnis eines Archivs mit dem `pg_restore` des
+# Datenbankcontainers lesen. Das Archiv geht als Strom hinein; der Container sieht die Datei nie.
+#
+# Jeder andere Aufruf endet mit Exit 64. Ein Adapter, der einen Restore still irgendwohin
+# ausfuehrte, waere gefaehrlicher als keiner — Wiederherstellen ist Sache von restore-drill.sh.
+set -euo pipefail
+
+: "${KLARWERK_COMPOSE_PROJEKT:?KLARWERK_COMPOSE_PROJEKT setzen (Compose-Projektname der Instanz)}"
+: "${KLARWERK_COMPOSE_VERZEICHNIS:?KLARWERK_COMPOSE_VERZEICHNIS setzen (Ordner mit docker-compose.prod.yml und .env)}"
+
+if [ "$#" -ne 2 ] || [ "$1" != "--list" ]; then
+  echo "[compose-adapter] pg_restore: nur 'pg_restore --list <datei>' wird unterstuetzt — Abbruch." >&2
+  exit 64
+fi
+if [ ! -f "$2" ]; then
+  echo "[compose-adapter] pg_restore: Archiv nicht gefunden: $2" >&2
+  exit 64
+fi
+
+COMPOSE=(docker compose --project-directory "$KLARWERK_COMPOSE_VERZEICHNIS" -p "$KLARWERK_COMPOSE_PROJEKT")
+for f in ${KLARWERK_COMPOSE_DATEIEN:-docker-compose.prod.yml}; do
+  COMPOSE+=(-f "$KLARWERK_COMPOSE_VERZEICHNIS/$f")
+done
+
+exec "${COMPOSE[@]}" exec -T "${KLARWERK_COMPOSE_DB_DIENST:-db}" pg_restore --list <"$2"

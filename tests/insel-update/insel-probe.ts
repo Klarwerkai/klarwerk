@@ -14,8 +14,10 @@
 //   FREMD  Einzelne FREMDBINARIES über einen PATH-Vorsatz (`fremdbinaerAttrappe`): `launchctl` (gibt
 //          es auf dem Linux-Prüfstand nicht, und die echten Dienste eines Macs darf ein Testlauf nie
 //          anfassen), `date` (nur so lässt sich „zwei Läufe in DERSELBEN Sekunde" erzwingen statt
-//          erhoffen) und `pg_dump` (sonst bräuchte jede Sicherungsprobe eine echte Datenbank und
-//          liefe im Tor nie mit). Keines davon gehört zu Klarwerk; der geprüfte Weg bleibt echt.
+//          erhoffen), `pg_dump` (sonst bräuchte jede Sicherungsprobe eine echte Datenbank und
+//          liefe im Tor nie mit) und das dazu passende `pg_restore --list` (sonst hinge das Ergebnis
+//          daran, ob der Rechner PostgreSQL-Werkzeuge hat). Keines davon gehört zu Klarwerk; der
+//          geprüfte Weg bleibt echt.
 //
 // DER VERTRAGSTEXT WIRD HIER AUSGESCHRIEBEN und nicht aus `schema-vertrag.mjs` geholt. Eine Probe,
 // die ihre Erwartung aus dem Prüfling bezieht, bestätigt jede Änderung — auch die falsche. Weicht
@@ -286,6 +288,31 @@ if [ -z "$ZIEL" ]; then
   exit 1
 fi
 printf '%s' "\${KLARWERK_PROBE_DUMPINHALT:-PROBE-DUMP}" > "$ZIEL"
+`;
+
+/**
+ * Die zur `pg_dump`-Attrappe passende `pg_restore`-Attrappe — nur die Leseprüfung `--list <datei>`.
+ *
+ * WARUM ES SIE GIBT (Lauf b3-sicherung-wiederherstellung:2, Torbefund R2): `backup.sh` liest jeden
+ * Dump vor der Veröffentlichung mit `pg_restore --list`, WENN `pg_restore` auf dem PATH liegt, sonst
+ * mit der Ersatzprüfung. Die `pg_dump`-Attrappe schreibt Text, kein Archiv. Auf einem Rechner ohne
+ * PostgreSQL-Werkzeuge lief deshalb die Ersatzprüfung und S1/S2 waren grün; auf dem Linux-Tor mit
+ * echtem `pg_restore` lehnte dieses den Text zu Recht ab („input file does not appear to be a valid
+ * archive"), und S1/S2 waren rot — die Vorrichtung hing an der Werkzeugausstattung des Rechners.
+ * Mit dieser Attrappe misst die Vorrichtung überall denselben Weg (`pg_restore`-Zweig). Die
+ * Leseprüfung von `backup.sh` bleibt unverändert: eine LEERE Datei ist auch hier unlesbar.
+ */
+export const PG_RESTORE_ATTRAPPE = `#!/usr/bin/env bash
+if [ "\${1:-}" = "--list" ] && [ -n "\${2:-}" ]; then
+  if [ -s "$2" ] && cat "$2" >/dev/null; then
+    echo "; Archiv-Inhaltsverzeichnis (pg_restore-Attrappe)"
+    exit 0
+  fi
+  echo "pg_restore: error: input file is too short (Attrappe)" >&2
+  exit 1
+fi
+echo "pg_restore-Attrappe: nur --list <datei> ist nachgebildet, nicht: $*" >&2
+exit 1
 `;
 
 export interface Insel {
