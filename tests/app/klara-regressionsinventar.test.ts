@@ -1137,6 +1137,17 @@ const INVENTAR: readonly string[] = [
   // Inventar — Inventar nachfuehren: expected [ Array(1) ] to deeply equal []`; erst danach wurde
   // diese Zeile angefasst.
   "tests/rueckweg-bilder-nutzerweg/rueckweg-bilder-pg-im-browser.integration.test.ts",
+  // AUFNAHME 20260922 · DOKUMENT-POINTER-BEDIENUNG (27.09.2026): die Gliederung der Lesefläche mit
+  // echtem Zeiger, schmal. Ihr Fall Z1 benutzt den Hilfe-Knopf von `KlaraAssistant`
+  // (`fixed bottom-5 right-5`) als ECHTE Überlagerung des Gliederungsknopfs — ändern sich Lage oder
+  // Grösse des Klara-Knopfs, misst Z1 etwas anderes. Sachlich also Klara-Regression.
+  // GEFUNDEN VON DER ACHSE `komponente` (`KlaraAssistant` im Kopfkommentar). „klara" steht NICHT
+  // in ihrem Pfad, sie faellt also in `verfehlt` und NICHT in `nurName` — K5 bleibt unveraendert.
+  // GEMESSEN, NICHT GESETZT: mit der neuen Datei und noch unveraendertem Inventar meldete das Tor
+  // (Pruefauftrag lt-1790471373-3eb933c2, Commit 562b3dd8f719) K2 `neu im Baum, aber nicht im
+  // gepinnten Inventar — Inventar nachfuehren: expected [ Array(1) ] to deeply equal []`; erst
+  // danach wurde diese Zeile angefasst.
+  "tests/wiki-orientierung/gliederung-mit-zeiger-chromium.test.ts",
 ];
 
 // ------------------------------------------------------------------------------------------------
