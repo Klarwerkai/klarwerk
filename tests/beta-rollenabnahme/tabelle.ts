@@ -707,6 +707,37 @@ export const TABELLE: Zeile[] = [
     // Der Umbau selbst liegt ausserhalb der Zielpfade (`services/auth/src/routes.ts`, JOB 4011).
     codes: { "401": "INVALID_CREDENTIALS" },
   },
+  // WIKI-BEARBEITUNGSRESERVIERUNG · der Bearbeitungshinweis. Lesen hängt an `ko.read`, Beginnen,
+  // Erneuern und Beenden an `ko.create` — dieselben Rechte wie Lesen und Bearbeiten des Eintrags;
+  // kein neues Recht. Die URLs sind zustandsfrei (erfundene Kennung): hinter dem Tor endet jede
+  // Tür im 404 „nicht gefunden" — das ist „durchgelassen" und legt nichts an.
+  {
+    gruppe: "bearbeitungRoutes",
+    methode: "GET",
+    pfad: "/api/kos/gibt-es-nicht/bearbeitungen",
+    route: "/api/kos/:id/bearbeitungen",
+    belegstelle: "services/app/src/routes/bearbeitung-routes.ts:99",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "bearbeitungRoutes",
+    methode: "PUT",
+    pfad: "/api/kos/gibt-es-nicht/bearbeitungen/abnahme-sitzung-1",
+    route: "/api/kos/:id/bearbeitungen/:sitzung",
+    belegstelle: "services/app/src/routes/bearbeitung-routes.ts:116",
+    tor: "ko.create",
+    erwartet: AB_EXPERTE,
+  },
+  {
+    gruppe: "bearbeitungRoutes",
+    methode: "DELETE",
+    pfad: "/api/kos/gibt-es-nicht/bearbeitungen/abnahme-sitzung-1",
+    route: "/api/kos/:id/bearbeitungen/:sitzung",
+    belegstelle: "services/app/src/routes/bearbeitung-routes.ts:139",
+    tor: "ko.create",
+    erwartet: AB_EXPERTE,
+  },
   {
     gruppe: "brandingRoutes",
     methode: "GET",

@@ -2643,3 +2643,37 @@ export interface AnweisungKopfEingabe {
 export interface AnweisungStaende {
   staende: number[];
 }
+
+// ================================================================================================
+// WIKI-BEARBEITUNGSRESERVIERUNG · DER BEARBEITUNGSHINWEIS (`/api/kos/:id/bearbeitungen`).
+// ================================================================================================
+//
+// Ein HINWEIS, keine Sperre: er sagt, dass jemand den Eintrag gerade bearbeitet, und bis wann der
+// Hinweis ohne Erneuerung gilt. Über das Speichern entscheidet er nichts — das bleibt beim
+// bedingten Schreibzugriff (`expectedVersion`). Alle Zeitpunkte sind SERVERZEIT; `jetzt` ist die
+// Uhr, an der der Server die Antwort entschieden hat.
+
+/** Eine laufende Bearbeitung. `sitzung` steht nur bei der eigenen da. */
+export interface LaufendeBearbeitung {
+  /** Die vorhandene sichtbare Nutzerbezeichnung — keine E-Mail, kein Kontakt. */
+  name: string;
+  eigen: boolean;
+  sitzung?: string;
+  seit: string;
+  bis: string;
+}
+
+/** Der Takt, den der Server vorgibt — die Oberfläche richtet ihre Erneuerung danach. */
+interface BearbeitungsTakt {
+  jetzt: string;
+  ablaufSekunden: number;
+  erneuernSekunden: number;
+}
+
+export interface BearbeitungsLage extends BearbeitungsTakt {
+  bearbeitungen: LaufendeBearbeitung[];
+}
+
+export interface BearbeitungsMeldung extends BearbeitungsTakt {
+  bearbeitung: LaufendeBearbeitung;
+}
