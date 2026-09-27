@@ -9,3 +9,8 @@ Jede wiederkehrende Abweichung wird hier als behobene Harness-Lücke dokumentier
 | 2026-06-22 | „Done" überstrapaziert: FR-RBAC-02 hat offene Akzeptanzteile (Löschen, Audit). | DoD-Regel: Story erst „Done", wenn **alle** Akzeptanzkriterien als Tests grün sind; sonst „In Progress". | angewandt |
 | 2026-06-22 | `no-orphans`-Warnung für rein per `import type` genutzte Dateien; Modulgrenzen prüften Typ-Importe nicht. | `tsPreCompilationDeps: true` in `.dependency-cruiser.cjs` — Architekturregeln decken jetzt auch Typ-Importe ab. | behoben |
 | 2026-07-19 | ≥2 app-globale ASYNC-onSend-Hooks verzögern writeHead über die Handler-Resolution hinaus → Fastifys wrap-thenable sendet nach „`reply.send()` + resolve undefined" ERNEUT → ERR_HTTP_HEADERS_SENT als unhandled rejection → Prozess-Crash (traf JEDEN Handler mit diesem Muster, sichtbar am Prod-Import-502: je Aufruf ein Neustart). | WP-E: (1) App-globale onSend-Hooks IMMER synchron (Callback-Stil `done(null, payload)`, nie `async`). (2) Handler, die selbst senden, enden mit `return reply` (Thenable-Adoption). (3) Fehlerpfade loggen die (redigierte) Ursache statt `catch {}`. | behoben |
+
+
+## 2026-09-27 · Bereitschaft der Leseansicht im PostgreSQL-Selbsttest
+
+Der Titel erscheint bereits in der Bibliotheksliste, bevor die Detailantwort vorliegt. Ein Titel im gesamten Seitentext beweist daher keine geladene Leseansicht. Der gemeinsame Rückhol-Prüfweg wartet jetzt auf den Titel in der Leseansicht am gebundenen Objektpfad und liest ausschließlich diese Fläche. K5 verzögert die echte Detailantwort; K2–K4 prüfen weiterhin ausgebliebene Rückholung, falsche Fassung und verlorenen Bericht. Keine Inhaltsanforderung wurde entfernt.
