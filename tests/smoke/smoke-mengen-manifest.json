@@ -1,10 +1,10 @@
 {
-  "version": 8,
-  "erhoben_am": "2026-09-25",
-  "nachgefuehrt_von": "UX-20b-R (lauf:b3:aufnahme:20260922:json-http-bedienung:1): sechs Faelle je Engine mehr in ui-smoke.spec.ts — L3-T (Dateiuebergabe per Tastatur) und die Gegenproben G1, G2a, G2b, G3, G4 zum JSON-Kasten. Sonst nichts geaendert.",
+  "version": 9,
+  "erhoben_am": "2026-09-27",
+  "nachgefuehrt_von": "FE-003 (lauf:b3:arbeit:fe-003-tutorial-fragen-20260926:2): sieben Faelle je Engine mehr aus tests-smoke/fe003-tutorial-fragen.spec.ts (Tutorial „Fragen“ bei 1280/1024/390 px, andere Seiten ohne Tutorial, laufende Vorfuehrung im Blatt bei 1280/390 px, reduzierte Bewegung). Sonst nichts geaendert.",
   "erhoben_mit": "npx playwright test --config playwright.smoke.config.ts --list --reporter=json (KLARWERK_SMOKE_MODE=gate)",
   "zweck": "Sollmanifest der Smoke-Mengen je Projekt. Drift (Hinzufuegen, Entfernen, Umbenennen) macht die Mengenpruefung rot.",
-  "gesamt_fallinstanzen": 164,
+  "gesamt_fallinstanzen": 185,
   "projekte": {
     "setup-zustand": {
       "soll": 1,
@@ -19,7 +19,7 @@
       ]
     },
     "chromium": {
-      "soll": 51,
+      "soll": 58,
       "titel": [
         "a18-live-region-browser.spec.ts › KALIBRIERUNG A · die generische CDP-Sitzung gibt Rolle, Ignoriert und die drei Live-Felder wirklich aus",
         "a18-live-region-browser.spec.ts › KALIBRIERUNG B · Playwrights ARIA-Repraesentation nennt dieselbe Rolle, fuehrt aber KEINE Live-Eigenschaft",
@@ -27,6 +27,13 @@
         "a18-live-region-browser.spec.ts › P1 · <output> ohne ARIA-Attribute ist eine Statusflaeche mit live=polite, atomic und relevant",
         "a18-live-region-browser.spec.ts › PRODUKT · der ausgeloeste Toast wird vom Browser als Statusflaeche mit live=polite gefuehrt",
         "a18-live-region-browser.spec.ts › R1 · <p> ist KEINE Statusflaeche: der Browser fuehrt paragraph und keine Live-Eigenschaft",
+        "fe003-tutorial-fragen.spec.ts › FE-003 · Tutorial „Fragen“ — Desktop 1280",
+        "fe003-tutorial-fragen.spec.ts › FE-003 · Tutorial „Fragen“ — Laptop 1024",
+        "fe003-tutorial-fragen.spec.ts › FE-003 · Tutorial „Fragen“ — schmal 390",
+        "fe003-tutorial-fragen.spec.ts › FE-003 · andere Seiten tragen kein Tutorial",
+        "fe003-tutorial-fragen.spec.ts › FE-003 · laufende Vorführung im Blatt „Mehr“: Pause bleibt bedienbar — Desktop 1280",
+        "fe003-tutorial-fragen.spec.ts › FE-003 · laufende Vorführung im Blatt „Mehr“: Pause bleibt bedienbar — schmal 390",
+        "fe003-tutorial-fragen.spec.ts › FE-003 · reduzierte Bewegung: die Beispielfrage steht sofort vollständig da",
         "huelle-tabelle-browser.spec.ts › huelle: eine attributlose Tabelle mit Bild überlebt Laden, Beschreiben, Speichern und Wiederöffnen",
         "huelle2-reihenfolge-browser.spec.ts › huelle2: steht die Struktur VOR dem direkten Bild, bleibt die Beschreibung beim richtigen Bild",
         "mega87-caption-formatierung-browser.spec.ts › mega87: im echten Browser trägt auch der reine TASTATURweg (markieren, Fokus, Leertaste)",
@@ -75,7 +82,7 @@
       ]
     },
     "firefox": {
-      "soll": 51,
+      "soll": 58,
       "titel": [
         "a18-live-region-browser.spec.ts › KALIBRIERUNG A · die generische CDP-Sitzung gibt Rolle, Ignoriert und die drei Live-Felder wirklich aus",
         "a18-live-region-browser.spec.ts › KALIBRIERUNG B · Playwrights ARIA-Repraesentation nennt dieselbe Rolle, fuehrt aber KEINE Live-Eigenschaft",
@@ -83,6 +90,13 @@
         "a18-live-region-browser.spec.ts › P1 · <output> ohne ARIA-Attribute ist eine Statusflaeche mit live=polite, atomic und relevant",
         "a18-live-region-browser.spec.ts › PRODUKT · der ausgeloeste Toast wird vom Browser als Statusflaeche mit live=polite gefuehrt",
         "a18-live-region-browser.spec.ts › R1 · <p> ist KEINE Statusflaeche: der Browser fuehrt paragraph und keine Live-Eigenschaft",
+        "fe003-tutorial-fragen.spec.ts › FE-003 · Tutorial „Fragen“ — Desktop 1280",
+        "fe003-tutorial-fragen.spec.ts › FE-003 · Tutorial „Fragen“ — Laptop 1024",
+        "fe003-tutorial-fragen.spec.ts › FE-003 · Tutorial „Fragen“ — schmal 390",
+        "fe003-tutorial-fragen.spec.ts › FE-003 · andere Seiten tragen kein Tutorial",
+        "fe003-tutorial-fragen.spec.ts › FE-003 · laufende Vorführung im Blatt „Mehr“: Pause bleibt bedienbar — Desktop 1280",
+        "fe003-tutorial-fragen.spec.ts › FE-003 · laufende Vorführung im Blatt „Mehr“: Pause bleibt bedienbar — schmal 390",
+        "fe003-tutorial-fragen.spec.ts › FE-003 · reduzierte Bewegung: die Beispielfrage steht sofort vollständig da",
         "huelle-tabelle-browser.spec.ts › huelle: eine attributlose Tabelle mit Bild überlebt Laden, Beschreiben, Speichern und Wiederöffnen",
         "huelle2-reihenfolge-browser.spec.ts › huelle2: steht die Struktur VOR dem direkten Bild, bleibt die Beschreibung beim richtigen Bild",
         "mega87-caption-formatierung-browser.spec.ts › mega87: im echten Browser trägt auch der reine TASTATURweg (markieren, Fokus, Leertaste)",
@@ -131,7 +145,7 @@
       ]
     },
     "webkit": {
-      "soll": 51,
+      "soll": 58,
       "titel": [
         "a18-live-region-browser.spec.ts › KALIBRIERUNG A · die generische CDP-Sitzung gibt Rolle, Ignoriert und die drei Live-Felder wirklich aus",
         "a18-live-region-browser.spec.ts › KALIBRIERUNG B · Playwrights ARIA-Repraesentation nennt dieselbe Rolle, fuehrt aber KEINE Live-Eigenschaft",
@@ -139,6 +153,13 @@
         "a18-live-region-browser.spec.ts › P1 · <output> ohne ARIA-Attribute ist eine Statusflaeche mit live=polite, atomic und relevant",
         "a18-live-region-browser.spec.ts › PRODUKT · der ausgeloeste Toast wird vom Browser als Statusflaeche mit live=polite gefuehrt",
         "a18-live-region-browser.spec.ts › R1 · <p> ist KEINE Statusflaeche: der Browser fuehrt paragraph und keine Live-Eigenschaft",
+        "fe003-tutorial-fragen.spec.ts › FE-003 · Tutorial „Fragen“ — Desktop 1280",
+        "fe003-tutorial-fragen.spec.ts › FE-003 · Tutorial „Fragen“ — Laptop 1024",
+        "fe003-tutorial-fragen.spec.ts › FE-003 · Tutorial „Fragen“ — schmal 390",
+        "fe003-tutorial-fragen.spec.ts › FE-003 · andere Seiten tragen kein Tutorial",
+        "fe003-tutorial-fragen.spec.ts › FE-003 · laufende Vorführung im Blatt „Mehr“: Pause bleibt bedienbar — Desktop 1280",
+        "fe003-tutorial-fragen.spec.ts › FE-003 · laufende Vorführung im Blatt „Mehr“: Pause bleibt bedienbar — schmal 390",
+        "fe003-tutorial-fragen.spec.ts › FE-003 · reduzierte Bewegung: die Beispielfrage steht sofort vollständig da",
         "huelle-tabelle-browser.spec.ts › huelle: eine attributlose Tabelle mit Bild überlebt Laden, Beschreiben, Speichern und Wiederöffnen",
         "huelle2-reihenfolge-browser.spec.ts › huelle2: steht die Struktur VOR dem direkten Bild, bleibt die Beschreibung beim richtigen Bild",
         "mega87-caption-formatierung-browser.spec.ts › mega87: im echten Browser trägt auch der reine TASTATURweg (markieren, Fokus, Leertaste)",

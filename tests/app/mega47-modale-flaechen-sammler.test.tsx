@@ -4176,9 +4176,23 @@ describe("JOB 1181 · A17-Form 4a: modulübergreifende Auflösung der tragenden 
     //
     // Statt der bisherigen Untergrenze steht jetzt die EXAKTE Menge da: eine Untergrenze hätte
     // diesen Rückgang gar nicht erst gemeldet, und genau das Melden ist der Zweck dieses Blocks.
+    //
+    // FE-003 (Seitentutorial „Fragen“): von neun auf zehn, am eigenen Lauf gemessen. Neu ist
+    // `QUELLEN_CHIP_KLASSE` aus `components/fragen/Quellenplaketten.tsx` — die Gestalt des
+    // Quellen-Chips, die die Fragenseite (`<Link>`) und die Tutorial-Demo (`<button>`) teilen. Sie
+    // ist eine KONSTANTE mit literalem Wert (keine Funktion) und wird vom Sammler vollständig
+    // aufgelöst; bis FE-003 stand dieselbe Kette als Literal in `pages/Ask.tsx`.
+    //
+    // FE-003 Runde 2: von zehn auf elf, gemessen. `EVIDENCE_TONE` ist mit der Quellenliste nach
+    // `components/fragen/QuellenListe.tsx` umgezogen (die Liste im Blatt „Mehr“ ist seither der
+    // gemeinsame Baustein von Seite und Tutorial) und wird von `pages/Ask.tsx` für die
+    // Einstufungs-Etiketten von dort gelesen. Dieselbe Tabelle, kein neuer Wert; die Zahl der
+    // unaufgelösten Bindungen bleibt unverändert.
     expect(quellen, `Modulfremde Klassenquellen: ${quellen.join(" · ")}`).toEqual([
       "AUFFRISCHUNG_HINWEIS_KLASSE ← apps/web/src/lib/confidentiality.ts",
       "CONF_TONE_CLASS ← apps/web/src/lib/confidentiality.ts",
+      "EVIDENCE_TONE ← apps/web/src/components/fragen/QuellenListe.tsx",
+      "QUELLEN_CHIP_KLASSE ← apps/web/src/components/fragen/Quellenplaketten.tsx",
       "evidenceFreshnessTone ← apps/web/src/lib/evidenceFreshnessView.ts",
       "evidenceKindTone ← apps/web/src/lib/evidenceIndex.ts",
       "importCandidateStatusTone ← apps/web/src/lib/importCandidateStatus.ts",

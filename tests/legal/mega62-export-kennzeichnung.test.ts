@@ -189,9 +189,18 @@ describe("mega62 E2 · der Export unterscheidet tragende von konsultierten Quell
     // Der Vertrag kann das Feld nur tragen; FÜLLEN muss es die Fragenfläche. Bis mega61 tat sie
     // das nicht, und genau daran ist es gescheitert.
     const ask = readFileSync(join(WURZEL, "apps/web/src/pages/Ask.tsx"), "utf8");
-    expect(ask).toContain("attributionLabel:");
-    expect(ask).toContain("ask.attribution.carrying.badge");
-    expect(ask).toContain("ask.attribution.consulted.badge");
+    expect(ask).toContain("attributionLabel: t(VERWENDUNG_BADGE[");
+    // FE-003: die Wortliste `VERWENDUNG_BADGE` steht seit dem Tutorial „Fragen“ bei den gemeinsamen
+    // Plaketten — die Fläche importiert sie von dort und füllt damit den Export.
+    expect(ask).toMatch(
+      /import \{[^}]*\bVERWENDUNG_BADGE\b[^}]*\} from "\.\.\/components\/fragen\/Quellenplaketten"/,
+    );
+    const plaketten = readFileSync(
+      join(WURZEL, "apps/web/src/components/fragen/Quellenplaketten.tsx"),
+      "utf8",
+    );
+    expect(plaketten).toContain("ask.attribution.carrying.badge");
+    expect(plaketten).toContain("ask.attribution.consulted.badge");
   });
 });
 

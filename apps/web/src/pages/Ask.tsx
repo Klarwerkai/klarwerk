@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowRight, ArrowUp, Copy, FileText, Loader2, Mic, ThumbsUp } from "lucide-react";
+import { ArrowRight, Copy, ThumbsUp } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useSearchParams } from "react-router-dom";
@@ -12,7 +12,6 @@ import { useToast } from "../app/ToastContext";
 // `billable` der Aufgabe „answer", nicht mehr als unbedingter eigener Wortlaut.
 import { AiCostHint } from "../components/AiCostHint";
 import { AiGeneratedNotice } from "../components/AiGeneratedNotice";
-import { AnswerSourceDetails } from "../components/AnswerSourceDetails";
 import { DemoBanner } from "../components/DemoBanner";
 import { HelpTip } from "../components/HelpTip";
 // AUFTRAG-mega71 BLOCK E (Befund aus mega70 Block E, jetzt frei): diese Fläche trug dieselbe
@@ -23,6 +22,19 @@ import { HelpTip } from "../components/HelpTip";
 // Weg — dasselbe EINE Tor wie auf Start/Library/Capture (mega51/mega70), keine zweite
 // Rollenlogik; erhoben wird das vom mega70-Rohlink-Sammler, der seit mega71 auch hier hinsieht.
 import { RoleLink } from "../components/RoleLink";
+// FE-003: die Bausteine, die das Tutorial „Fragen“ mit dieser Seite TEILT — Fragefeld, Quellenchip
+// und Plaketten, Warte- und KI-aus-Zustand. Sie standen bis dahin inline hier.
+import { AntwortPlatzhalter, KiNichtVerfuegbar } from "../components/fragen/Antwortbausteine";
+import { FrageFeld } from "../components/fragen/FrageFeld";
+import { EVIDENCE_TONE, QuellenListe } from "../components/fragen/QuellenListe";
+import {
+  QUELLEN_CHIP_KLASSE,
+  QuellenChipInhalt,
+  VERWENDUNG_BADGE,
+  type Verwendung,
+  chipPunkt,
+} from "../components/fragen/Quellenplaketten";
+import { FRAGEN_ZIEL } from "../components/fragen/ziele";
 // WP-UX-WOW-1 U1 / JOB 3064 §5: sichere Markdown-Darstellung der Antwort (React-Elemente, kein
 // HTML-Sink) — mit den Fussnotenmarken des H5-Zielbilds. Derselbe Parser wie `AnswerMarkdown`.
 import { AntwortText } from "../components/start/AntwortText";
@@ -38,7 +50,7 @@ import {
   answerSourceSummary,
 } from "../lib/askAnswerContract";
 // AUFTRAG-mega39 BLOCK D2: die zweite Liste erscheint nur noch, wenn sie etwas Eigenes trägt.
-import { attributeSources, canThank, citationState } from "../lib/askCitedSources";
+import { attributeSources, citationState } from "../lib/askCitedSources";
 // WP-UX-WOW-1 U2/U3: ehrliche Beispiel-Chips aus dem ECHTEN validierten Bestand (+ Lücken-Frage).
 import { buildAskExampleChips } from "../lib/askExampleChips";
 import { type AskExpectationTone, askExpectation } from "../lib/askExamples";
@@ -60,7 +72,6 @@ import { anzeigestatusAus } from "../lib/displayStatus";
 // AUFTRAG-mega33 A: die EINE effektive Antwort-Einstufung — Quelle jeder Einstufungs-Anzeige.
 import { conflictKnowledge, effectiveAnswer } from "../lib/effectiveAnswer";
 import { helpfulDisabled, helpfulLabel } from "../lib/helpfulSignal";
-import type { EvidenceTone } from "../lib/knowledgeClass";
 import { type KnowledgeGuidanceTone, knowledgeGuidance } from "../lib/knowledgeGuidance";
 import { type ReasonerBadgeTone, reasonerBadge } from "../lib/reasonerBadge";
 import { toReasonerLocale } from "../lib/reasonerLocale";
@@ -69,13 +80,8 @@ import { useAiBillable } from "../lib/useAiBillable";
 import { useAuthorName } from "../lib/useAuthorName";
 import { useReadiness } from "../lib/useReadiness";
 
-// Tone → Badge-Stil (Tailwind-Tokens), bewusst in der Komponente gehalten.
-const EVIDENCE_TONE: Record<EvidenceTone, string> = {
-  pos: "bg-trust-pos-bg text-trust-pos-text",
-  warn: "bg-trust-warn-bg text-trust-warn-text",
-  crit: "bg-trust-crit-bg text-trust-crit-text",
-  neutral: "bg-page text-muted",
-};
+// Tone → Badge-Stil: seit FE-003 (Runde 2) `EVIDENCE_TONE` aus `components/fragen/QuellenListe.tsx`,
+// derselben Tabelle, die die Quellenzeilen tönt.
 
 // SCRUM-233: Modus-Badge-Tönung (eigene Skala, neutral inklusive Lade-/Unbekannt-Zustand).
 const REASONER_TONE: Record<ReasonerBadgeTone, string> = {
@@ -127,7 +133,9 @@ const EXPECT_TONE: Record<AskExpectationTone, string> = {
 // KEINE ZIFFERN- ODER TEXTHEURISTIK: die Zuordnung läuft über den GERENDERTEN Anker
 // (`sup[data-fussnote]`, gemessen am DOM) und die Stelle der Quell-ID in `result.sources` — dieselbe
 // Nummer, die der Chip trägt. Der Rohtext wird nicht durchsucht.
-type Verwendung = "verwendet" | "nichtVerwendet" | "unbekannt";
+//
+// Der Typ `Verwendung` steht seit FE-003 bei den gemeinsamen Plaketten
+// (`components/fragen/Quellenplaketten.tsx`).
 
 // NICHTLEER IST NICHT TRAGFÄHIG (Ben, Runde 2 · Korrekturpflicht 1). `citationState` prüft nur, ob
 // `citedSources` überhaupt etwas enthält. Nennt der Server ausschliesslich Kennungen, die zu KEINER
@@ -178,134 +186,12 @@ function verwendungsZustand(lage: {
   return lage.marken.has(lage.nummer) ? "unbekannt" : "nichtVerwendet";
 }
 
-/** Das Wort am Chip und in der Quellenliste — je Zustand genau eines, DE/EN/NL. */
-const VERWENDUNG_BADGE: Record<Verwendung, string> = {
-  verwendet: "ask.attribution.carrying.badge",
-  nichtVerwendet: "ask.attribution.consulted.badge",
-  unbekannt: "ask.attribution.unclear.badge",
-};
+// Die Anker der Quellenliste (`VERWENDUNG_ANKER`) stehen seit FE-003 (Runde 2) am Baustein
+// `components/fragen/QuellenListe.tsx`.
 
-/** Die ganze Aussage — Tooltip und zugänglicher Name. */
-const VERWENDUNG_HINWEIS: Record<Verwendung, string> = {
-  verwendet: "ask.attribution.carrying.hint",
-  nichtVerwendet: "ask.attribution.consulted.hint",
-  unbekannt: "ask.attribution.unclear.hint",
-};
-
-/**
- * Die Anker der Quellenliste. `ask-source-carrying`/`ask-source-consulted` bleiben WÖRTLICH
- * erhalten (`tests/app/job2703-ask-trefferliste-und-panel.test.tsx:227` misst daran); neu ist
- * allein der dritte Zustand.
- */
-const VERWENDUNG_ANKER: Record<Verwendung, string> = {
-  verwendet: "ask-source-carrying",
-  nichtVerwendet: "ask-source-consulted",
-  unbekannt: "ask-source-unclear",
-};
-
-// ================================================================================================
-// DIE PLAKETTEN — JE ZUSTAND EIN AUSGESCHRIEBENER ZWEIG MIT FESTEN KLASSENKETTEN.
-// ================================================================================================
-//
-// WARUM AUSGESCHRIEBEN UND KEIN `TON[zustand]` (Steuerung, Nachführung 08.09. 01:10). Der
-// Klassenbindungs-Wächter (`tests/app/mega47-modale-flaechen-sammler.test.tsx`, JOB 1181) löst eine
-// `className` genau dann auf, wenn ihre Bestandteile im Baum als Zeichenketten oder als Bezeichner
-// mit literalem Wert dastehen. `${TON[s.verwendung]}` ist ein BERECHNETER Klassenname: der Wächter
-// sieht die Bindung, kann sie nicht auflösen und muss sie melden — Runde 1 hat den Pin damit von 218
-// auf 220 getrieben. Hier entscheidet stattdessen ein `if` über den ZWEIG, und in jedem Zweig steht
-// die Klassenkette aus zwei Konstanten, die beide wörtlich in dieser Datei stehen.
-//
-// KEIN VORBEISCHREIBEN AM WÄCHTER, und der Unterschied ist messbar: die `className` bleibt ein
-// Ausdruck am Element (`className={...}`), der Sammler erfasst sie weiter als Bindung und trägt sie
-// jetzt AUFGELÖST mit ihren echten Klassen. Ein Attributobjekt oder ein blosses `className="…"`
-// verschwände dagegen ganz aus seiner Erhebung — das wäre die Umgehung, die der Wächterkommentar
-// benennt. Gegengemessen in der Rückgabe: die Bindungen stehen in `ALLE_BINDUNGEN` mit `offen: []`.
-const PLAKETTE = "shrink-0 rounded-pill px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase";
-const TON_TRAGEND = "bg-trust-pos-bg text-trust-pos-text";
-const TON_ANGESEHEN = "bg-hairline-soft text-muted-2";
-const TON_UNKLAR = "bg-page text-muted-2";
-
-function VerwendungsPlakette({
-  zustand,
-  anker,
-  titel,
-  wort,
-}: {
-  zustand: Verwendung;
-  /** `data-testid` — am Chip fest, in der Quellenliste der Anker aus `VERWENDUNG_ANKER`. */
-  anker: string;
-  titel: string;
-  wort: string;
-}): JSX.Element {
-  if (zustand === "verwendet") {
-    return (
-      <span
-        data-testid={anker}
-        data-verwendung="verwendet"
-        title={titel}
-        className={`${PLAKETTE} ${TON_TRAGEND}`}
-      >
-        {wort}
-      </span>
-    );
-  }
-  if (zustand === "nichtVerwendet") {
-    return (
-      <span
-        data-testid={anker}
-        data-verwendung="nichtVerwendet"
-        title={titel}
-        className={`${PLAKETTE} ${TON_ANGESEHEN}`}
-      >
-        {wort}
-      </span>
-    );
-  }
-  return (
-    <span
-      data-testid={anker}
-      data-verwendung="unbekannt"
-      title={titel}
-      className={`${PLAKETTE} ${TON_UNKLAR}`}
-    >
-      {wort}
-    </span>
-  );
-}
-
-/** Dieselbe Bauart für die ZWEITE Aussage: der Prüfstand, mit eigener Farbe und eigenem Wort. */
-function PruefstandPlakette({
-  stand,
-  titel,
-  wort,
-}: {
-  stand: string | null;
-  titel: string;
-  wort: string;
-}): JSX.Element {
-  if (stand === "validiert") {
-    return (
-      <span
-        data-testid="ask-source-pruefstand"
-        data-pruefstand="validiert"
-        title={titel}
-        className={`${PLAKETTE} ${TON_TRAGEND}`}
-      >
-        {wort}
-      </span>
-    );
-  }
-  return (
-    <span
-      data-testid="ask-source-pruefstand"
-      data-pruefstand={stand ?? "unbekannt"}
-      title={titel}
-      className={`${PLAKETTE} ${TON_UNKLAR}`}
-    >
-      {wort}
-    </span>
-  );
-}
+// DIE PLAKETTEN (JOB 3267 Q1) und der Chip-Inhalt sind seit FE-003 gemeinsame Bausteine in
+// `components/fragen/Quellenplaketten.tsx` — das Tutorial „Fragen“ führt den Quellenweg mit
+// denselben Bauteilen vor. Die Begründung der ausgeschriebenen Zweige steht dort.
 
 // SCRUM-289: Ask-Führung — quellengebunden antworten, offene Quellen prüfen lassen.
 const GUIDE_TONE: Record<KnowledgeGuidanceTone, string> = {
@@ -1162,10 +1048,15 @@ export function Ask(): JSX.Element {
           einer Fragenfläche die richtige Folge ist. Beides gleichzeitig geht über `order` im
           Flex-Container; die SICHTBARE Lage ist Geometrie und wird als solche gemessen
           (`tests/design/zielbild-h5-fragen.test.ts`: das Feld liegt unter der Antwortkarte). */}
-      <form
-        className="order-3 mt-auto flex items-center gap-3 rounded-[14px] border border-hairline bg-surface px-[18px] py-3.5 shadow-tile"
-        onSubmit={(e) => {
-          e.preventDefault();
+      {/* FE-003: das Formular ist der gemeinsame Baustein `FrageFeld` — dasselbe Bauteil führt das
+          Tutorial „Fragen“ vor. Hier bleibt, was nur DIESE Seite entscheidet: was ein Absenden
+          auslöst, wann ein leerer Versuch vermerkt wird und ob ein Modell nutzbar ist.
+          Zielbild Z.48 (runder Sendeknopf, Spinner als Wartezustand), JOB 3038 (Mikrofon im Feld)
+          und §5 (Beispiele im leeren Feld) stehen am Baustein. */}
+      <FrageFeld
+        wert={q}
+        onWert={setQ}
+        onAbsenden={() => {
           // PAKET 3.1 (D-AISTATE, bens V4): Enter/Formular läuft über DENSELBEN zentralen Submit wie
           // Chips und Auto-Ask — die harte KI-Sperre (Availability + Pending) sitzt in submitAsk;
           // kein Weg umgeht die ausgegraute Schaltfläche (bens Bypass-Befund 6.2).
@@ -1174,82 +1065,17 @@ export function Ask(): JSX.Element {
           setEmptyAttempted(q.trim().length === 0);
           submitAsk(q);
         }}
-      >
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder={t("ask.placeholder")}
-          // E2E-018: leere/Whitespace-Frage ist ungültig — für Screenreader auszeichnen.
-          // AUFTRAG-mega39 BLOCK G: erst NACH dem Fehlversuch. mega38 J2 hat den sichtbaren Tadel
-          // zeitlich richtiggestellt (die Meldung erscheint erst, wenn jemand tatsächlich abzuschicken
-          // versucht hat) — das Signal daneben stand weiter ab dem ersten Bildaufbau auf „ungültig".
-          // Für eine Screenreader-Nutzerin hiess das: das leere Feld, das sie gerade erst gefunden
-          // hat, meldet sich als fehlerhaft, bevor sie etwas getan hat. Dieselbe Zurechtweisung wie
-          // J2, nur für jemanden, der den Bildschirm nicht sieht. Jetzt laufen beide im Takt.
-          aria-invalid={emptyAttempted && q.trim().length === 0}
-          aria-describedby="ask-empty-hint"
-          className="min-w-0 flex-1 bg-transparent text-[16px] text-text outline-none placeholder:text-muted-2"
-        />
-        {/* §5: die Beispielfragen liegen im LEEREN Feld hinter einem Knopf — ein Beispiel ist eine
-            Hilfe beim Anfangen, kein Dauerinhalt. Sobald etwas im Feld steht, verschwindet er. */}
-        {q.trim().length === 0 ? (
-          <button
-            type="button"
-            data-testid="ask-beispiele-knopf"
-            aria-expanded={beispiele}
-            onClick={() => setBeispiele((v) => !v)}
-            className={`shrink-0 rounded-btn px-2 py-0.5 text-[12px] font-semibold transition-colors ${
-              beispiele ? "text-brand-text" : "text-muted-2 hover:text-text"
-            }`}
-          >
-            {t("ask.examplesLabel")}
-          </button>
-        ) : null}
-        {/* JOB 3038: das Mikrofon steht DORT, wo gefragt wird — direkt neben dem Feld, vor dem
-            Absendeknopf. `type="button"` ist hier keine Formalie: ein Knopf ohne diesen Typ würde
-            im Formular absenden, und genau das darf das Diktat nicht. Kann der Browser keine
-            Spracherkennung, steht hier NICHTS und stattdessen im Info-Blatt der Satz, der es
-            sagt — kein klickbarer Knopf, der nichts tut, und kein Satz im Sichtfeld (§6).
-            JOB 3064: das Zielbild trägt hier ein SYMBOL (Z.47), keine Wortschaltfläche. Der
-            Wortlaut bleibt der zugängliche Name (`aria-label`) und zusätzlich der Maus-Tooltip
-            (`title`) — derselbe Schlüssel, keine zweite Beschriftung. Der ZUSTAND steht dreifach:
-            `aria-pressed` für die Hilfe, der Wortwechsel „sprechen"/„stoppen" im Namen und der
-            Farbton für das Auge. Bewusst KEIN zusätzlicher `sr-only`-Text: neben `aria-label`
-            wäre er für die Vorlesehilfe unsichtbar und damit eine zweite, driftfähige Wahrheit. */}
-        {speechSupported ? (
-          <button
-            type="button"
-            className={`shrink-0 rounded-btn p-0.5 transition-colors ${
-              diktat.laeuft ? "text-brand-text" : "text-muted-2 hover:text-text"
-            }`}
-            onClick={diktat.umschalten}
-            aria-pressed={diktat.laeuft}
-            aria-label={diktat.laeuft ? t("ask.diktatStop") : t("ask.diktatStart")}
-            title={diktat.laeuft ? t("ask.diktatStop") : t("ask.diktatStart")}
-          >
-            <Mic size={18} strokeWidth={1.8} aria-hidden="true" />
-          </button>
-        ) : null}
-        {/* Zielbild Z.48: ein runder Sendeknopf mit Pfeil. Seine Beschriftung bleibt im Text
-            (`sr-only`) — der Knopf muss einen zugänglichen Namen haben, und die bestehenden
-            Wächter finden ihn über genau diesen Wortlaut. Läuft eine Anfrage, dreht sich hier der
-            Spinner: der Wartezustand steht am Auslöser, nicht als Kasten in der Fläche (§9). */}
-        <button
-          type="submit"
-          // PAKET 1 (D-AISTATE): hart ausgrauen, wenn kein Modell für „answer" nutzbar ist.
-          // E2E-018: zusätzlich sperren, solange die Frage leer/Whitespace-only ist.
-          disabled={ask.isPending || !answerAi.available || q.trim().length === 0}
-          title={!answerAi.available ? t(aiHintKey) : undefined}
-          className="grid h-[34px] w-[34px] shrink-0 place-items-center rounded-[50%] bg-ink text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          <span className="sr-only">{t("ask.submit")}</span>
-          {ask.isPending ? (
-            <Loader2 size={16} strokeWidth={2.2} aria-hidden="true" className="animate-spin" />
-          ) : (
-            <ArrowUp size={16} strokeWidth={2.2} aria-hidden="true" />
-          )}
-        </button>
-      </form>
+        // E2E-018 / AUFTRAG-mega39 BLOCK G: „ungültig" erst NACH dem Fehlversuch — im Takt mit der
+        // sichtbaren Meldung (mega38 J2), nicht ab dem ersten Bildaufbau.
+        ungueltig={emptyAttempted && q.trim().length === 0}
+        beschreibungId="ask-empty-hint"
+        beispieleOffen={beispiele}
+        onBeispiele={() => setBeispiele((v) => !v)}
+        diktat={speechSupported ? diktat : null}
+        wartet={ask.isPending}
+        gesperrt={!answerAi.available}
+        sperrHinweis={!answerAi.available ? t(aiHintKey) : undefined}
+      />
       {/* E2E-018: zugängliche Inline-Meldung — nur wenn ein Modell da ist (sonst greift der
           Unavailable-Hinweis), damit klar ist, warum der Knopf gesperrt ist. */}
       <output
@@ -1260,9 +1086,6 @@ export function Ask(): JSX.Element {
         {answerAi.available && emptyAttempted && q.trim().length === 0 ? t("ask.emptyHint") : ""}
       </output>
       <span className="order-3 -mt-2 block">
-        {!answerAi.available ? (
-          <p className="mt-1.5 text-[12px] text-muted-2">{t(aiHintKey)}</p>
-        ) : null}
         {/* ====================================================================================
             JOB 4224 · D5, LIEFERUNG 5 — DIE LAGE ZU NENNEN IST NICHT DASSELBE WIE EINEN WEG ZU
             ZEIGEN.
@@ -1280,18 +1103,9 @@ export function Ask(): JSX.Element {
             ÜBER `RoleLink`, nicht über `Link`: /erfassen verlangt „experte". Ein Ziel, das die
             Rolle nicht erreicht, wird als Lage gezeigt, nicht als Weg — dasselbe EINE Tor wie
             überall auf dieser Fläche (AUFTRAG-mega71 Block E). */}
-        {!answerAi.available ? (
-          <p data-testid="ask-ai-alternative" className="mt-1.5 text-[12px] text-muted-2">
-            {t("ask.aiUnavailable.path")}{" "}
-            <RoleLink to="/bibliothek" className="font-semibold text-brand-text">
-              {() => t("ask.aiUnavailable.toLibrary")}
-            </RoleLink>
-            {" · "}
-            <RoleLink to="/erfassen" className="font-semibold text-brand-text">
-              {() => t("ask.aiUnavailable.toCapture")}
-            </RoleLink>
-          </p>
-        ) : null}
+        {/* FE-003: Satz und Alternativen sind der gemeinsame Baustein `KiNichtVerfuegbar` — das
+            Tutorial „Fragen“ erklärt genau diesen Zustand (Schritt 6) mit demselben Bauteil. */}
+        {!answerAi.available ? <KiNichtVerfuegbar hinweisKey={aiHintKey} /> : null}
       </span>
 
       {/* WP-UX-WOW-1 U2/U3 (statt SCRUM-265-Statik): ehrliche Beispiel-Chips. Antwort-Beispiele
@@ -1404,14 +1218,8 @@ export function Ask(): JSX.Element {
             <span className="sr-only">
               {t("ask.contract.label")} {t("ask.pending.title")} {t("ask.pending.body")}
             </span>
-            {auffrischungLaeuft ? null : (
-              <div data-testid="ask-pending-platzhalter" aria-hidden="true" className="space-y-2">
-                <div className="h-3 w-11/12 animate-pulse rounded-pill bg-page" />
-                <div className="h-3 w-9/12 animate-pulse rounded-pill bg-page" />
-                <div className="h-3 w-10/12 animate-pulse rounded-pill bg-page" />
-                <div className="h-3 w-6/12 animate-pulse rounded-pill bg-page" />
-              </div>
-            )}
+            {/* FE-003: die Zeilen sind der gemeinsame Baustein `AntwortPlatzhalter`. */}
+            {auffrischungLaeuft ? null : <AntwortPlatzhalter />}
           </div>
         ) : null}
         {/* A3: bis mega37 hinterließ eine abgewiesene Anfrage eine völlig unveränderte Seite —
@@ -1531,64 +1339,28 @@ export function Ask(): JSX.Element {
                       className="flex flex-wrap gap-2 border-t border-hairline pt-3.5"
                     >
                       {quellenAuskunft.map((s) => {
-                        const punkt = s.conflictLimited
-                          ? "bg-trust-crit-fill"
-                          : s.validated === false
-                            ? "bg-trust-warn-fill"
-                            : null;
+                        const punkt = chipPunkt(s);
                         return (
                           <Link
                             key={s.id}
                             to={demoHref(`/wissen/${s.id}`, params)}
                             data-testid="ask-quellen-chip"
-                            className="inline-flex items-center gap-1.5 rounded-[8px] border border-hairline bg-page px-2.5 py-[5px] hover:border-ink/30"
+                            data-tutorial-ziel={FRAGEN_ZIEL.quellenchip}
+                            className={QUELLEN_CHIP_KLASSE}
                           >
-                            {/* JOB 3267 Q1 — DER PUNKT SAGT, WAS ER ZEIGT.
-                              Bis hierher trug er beim gelben Fall bedingungslos
-                              `ask.attribution.consulted.hint` und behauptete damit eine
-                              NICHTVERWENDUNG, obwohl er einen PRÜFSTAND zeigt — der Befund der
-                              Vorführung (die tragende Quelle war offen, also gelb). Er nennt
-                              jetzt den Prüfstand mit seinem eigenen Wort; die Verwendung steht
-                              daneben in der Plakette. `role="img"` + `aria-label`, damit die
-                              Auskunft nicht allein am `title` hängt. */}
-                            {punkt ? (
-                              <span
-                                data-testid="ask-quellen-chip-punkt"
-                                data-pruefstand={s.pruefstand ?? undefined}
-                                role="img"
-                                aria-label={
-                                  s.conflictLimited
-                                    ? t("conflict.impact.hint")
-                                    : s.pruefstandHinweis
-                                }
-                                title={
-                                  s.conflictLimited
-                                    ? t("conflict.impact.hint")
-                                    : s.pruefstandHinweis
-                                }
-                                className={`h-2 w-2 shrink-0 rounded-full ${punkt}`}
-                              />
-                            ) : (
-                              <FileText
-                                size={13}
-                                strokeWidth={1.8}
-                                aria-hidden="true"
-                                className="shrink-0 text-muted-2"
-                              />
-                            )}
-                            <span className="text-[12px] font-semibold text-text">
-                              {s.nummer > 0 ? `${s.nummer} · ${s.label}` : s.label}
-                            </span>
-                            {/* Die Verwendungsauskunft AM CHIP, wo der Mensch die Quelle sieht —
-                              nicht erst hinter „Mehr". Sie steht NACH dem Titel: die Chipform
-                              „n · Titel" ist gepinnt (`zielbild-h5-fragen.test.ts` V9/V18), und
-                              ein Wort davor würde sie brechen. Das kurze Wort ist sichtbar, die
-                              ganze Aussage steht im Tooltip. */}
-                            <VerwendungsPlakette
-                              zustand={s.verwendung}
-                              anker="ask-quellen-chip-verwendung"
-                              titel={t(VERWENDUNG_HINWEIS[s.verwendung])}
-                              wort={t(VERWENDUNG_BADGE[s.verwendung])}
+                            {/* JOB 3267 Q1 — DER PUNKT SAGT, WAS ER ZEIGT: er nennt den Prüfstand
+                              mit seinem eigenen Wort; die Verwendung steht daneben in der
+                              Plakette. Seit FE-003 der gemeinsame Baustein `QuellenChipInhalt`
+                              (Begründung dort) — das Tutorial zeigt denselben Chip. */}
+                            <QuellenChipInhalt
+                              punkt={punkt}
+                              punktHinweis={
+                                s.conflictLimited ? t("conflict.impact.hint") : s.pruefstandHinweis
+                              }
+                              pruefstand={s.pruefstand}
+                              nummer={s.nummer}
+                              label={s.label}
+                              verwendung={s.verwendung}
                             />
                           </Link>
                         );
@@ -1597,7 +1369,10 @@ export function Ask(): JSX.Element {
                   ) : null}
                   {/* §5: das „…" rechts oben IN der Antwortkarte. Absolut gesetzt, damit es die
                     Reihenfolge der Inhaltselemente nicht verschiebt (D-047). */}
-                  <div className="print-hide absolute right-3 top-3">
+                  <div
+                    className="print-hide absolute right-3 top-3"
+                    data-tutorial-ziel={FRAGEN_ZIEL.menue}
+                  >
                     <OverflowMenu
                       label={t("ask.menu.label")}
                       testId="ask-menu"
@@ -1910,164 +1685,29 @@ export function Ask(): JSX.Element {
                             </p>
                           </div>
                         ) : null}
+                        {/* FE-003 (Runde 2): die Quellenliste ist der gemeinsame Baustein
+                            `QuellenListe` — das Tutorial führt genau diesen Weg („…“ → „Mehr …“ →
+                            Quellenliste) mit demselben Bauteil vor. Die Seite entscheidet weiter,
+                            was je Quelle gilt (`quellenAuskunft`), wohin der Titel führt und ob
+                            „Danke“ angeboten wird. */}
                         {result.sources.length > 0 ? (
-                          <div className="mt-4">
-                            <SectionLabel>{t("ask.sources")}</SectionLabel>
-                            {/* SCRUM-300: ehrliche Kernaussage — die Antwort ist quellengebunden und nur so
-                    belastbar wie die genutzte Quelle (Status/Trust/Nutzbarkeit). */}
-                            <p className="mt-0.5 text-[12px] text-muted-2">
-                              {t("ask.sourcesHint")}
-                            </p>
-                            {/* AUFTRAG-mega52 A5 — DIE REISSLEINE, SICHTBAR.
-                      Liefert das Modell keine oder unbrauchbare Fußnotenmarken, wird NICHT geraten
-                      und NICHT stillschweigend auf alle Quellen zurückgefallen. Stattdessen steht
-                      hier, dass die Zuordnung nicht möglich war — und keine Zeile unten trägt ein
-                      Kennzeichen. „Unbekannt" ist eine andere Aussage als „keine".
-                      JOB 3267 R3 (Ben, Korrekturpflicht 1): die Reissleine zieht auch, wenn die
-                      Zuordnung zwar DA ist, aber ausschliesslich fremde Kennungen nennt — auch dann
-                      war sie nicht möglich, und die Zeilen unten sagen „Zuordnung unbekannt". */}
-                            {!zuordnungTragfaehig ? (
-                              <p
-                                data-testid="ask-attribution-unknown"
-                                className="mt-1.5 rounded-card border border-hairline bg-page px-2.5 py-1.5 text-[12px] leading-relaxed text-muted"
-                              >
-                                {t("ask.attribution.unknown")}
-                              </p>
-                            ) : (
-                              <p className="mt-1.5 text-[12px] leading-relaxed text-muted">
-                                {t("ask.attribution.known")}
-                              </p>
-                            )}
-                            {/* SCRUM-250: Quellen handlungsnah — KO-Titel statt roher ID, Link zum Detail.
-                    SCRUM-300: je Quelle die kanonische Nutzbarkeit (gleiche Sprache wie KO-Detail/
-                    Library) + Demo-Kontext am Link weitertragen (kein Auto-Use). */}
-                            <ul className="mt-1.5 space-y-1.5">
-                              {quellenAuskunft.map((s) => (
-                                <li
-                                  key={s.id}
-                                  className="flex flex-wrap items-center gap-x-2 gap-y-1"
-                                >
-                                  <Link
-                                    to={demoHref(`/wissen/${s.id}`, params)}
-                                    className="inline-flex items-center gap-1.5 text-[13px] text-brand-text hover:underline"
-                                  >
-                                    <ArrowRight size={12} className="shrink-0 text-muted-2" />
-                                    <span className="text-text">{s.label}</span>
-                                  </Link>
-                                  {/* AUFTRAG-mega52 A3: das Kennzeichen, das die Liste erst zu einer Aussage
-                            macht. JOB 3267 Q1: es trägt jetzt DREI Zustände statt zwei und steht
-                            deshalb an JEDER Zeile — auch bei unbekannter Zuordnung, wo bis hierher
-                            gar nichts stand und der Leser die leere Stelle mit dem Satz oben
-                            zusammenreimen musste. Dieselbe Auskunft wie am Chip, aus derselben
-                            Rechnung (`quellenAuskunft`). */}
-                                  <VerwendungsPlakette
-                                    zustand={s.verwendung}
-                                    anker={VERWENDUNG_ANKER[s.verwendung]}
-                                    titel={t(VERWENDUNG_HINWEIS[s.verwendung])}
-                                    wort={t(VERWENDUNG_BADGE[s.verwendung])}
-                                  />
-                                  {/* JOB 3267 Q1 (Lieferung 3): DER PRÜFSTAND, MIT EIGENEM WORT.
-                            Er stand bisher nur als Farbpunkt am Chip und indirekt in der
-                            Nutzbarkeit — „Offen"/„Validiert" selbst sagte die Fragenfläche nie.
-                            Genau diese Trennung ist der Kern des Auftrags: „verwendet" beantwortet
-                            nicht „geprüft", und keine Regel gilt als freigegeben, weil ein Text
-                            das Wort trägt. Das Wort kommt aus `status.*`, also demselben
-                            Vokabular wie Bibliothek und KO-Detail. */}
-                                  <PruefstandPlakette
-                                    stand={s.pruefstand}
-                                    titel={s.pruefstandHinweis}
-                                    wort={s.pruefstandWort}
-                                  />
-                                  {s.usability ? (
-                                    <span
-                                      title={t(useReadiness(s.usability).hintKey)}
-                                      className={`shrink-0 rounded-pill px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase ${EVIDENCE_TONE[useReadiness(s.usability).tone]}`}
-                                    >
-                                      {t(useReadiness(s.usability).labelKey)}
-                                    </span>
-                                  ) : null}
-                                  {/* AUFTRAG-mega32 E: die Quelle, deren Prüf-Lauf die Vollständigkeit nicht
-                            belegt. Der Vorbehalt oben nennt die Zahl — hier steht, WELCHE es sind. */}
-                                  {s.checkState !== "proven" ? (
-                                    <span
-                                      data-testid="ask-source-unproven"
-                                      title={t(`ask.checkCaveat.${s.checkState}`, {
-                                        unproven: 1,
-                                        total: 1,
-                                      })}
-                                      className="shrink-0 rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-trust-warn-text"
-                                    >
-                                      {t("ask.checkCaveat.badge")}
-                                    </span>
-                                  ) : null}
-                                  {/* SCRUM-357 / AG-14: konfliktbetroffene Quelle ehrlich kennzeichnen. */}
-                                  {s.conflictLimited ? (
-                                    <span
-                                      title={t("conflict.impact.hint")}
-                                      className="shrink-0 rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-trust-warn-text"
-                                    >
-                                      {t("conflict.impact.badge")}
-                                    </span>
-                                  ) : null}
-                                  {/* WP-RETEST7 R5: Treffer kam über die Bild-Fußnote — gleiche Fundstellen-
-                            Kennzeichnung wie in der Bibliothek. */}
-                                  {result.captionSources?.includes(s.id) ? (
-                                    <span className="shrink-0 rounded-pill bg-page px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-muted-2">
-                                      {t("lib.match.caption")}
-                                    </span>
-                                  ) : null}
-                                  {/* SCRUM-308: Herkunfts-Kennzeichnung Demo-/Seed-Wissen (neutral, kein Statussignal). */}
-                                  {s.demo ? (
-                                    <span
-                                      title={t("demo.badge.hint")}
-                                      className="shrink-0 rounded-pill bg-hairline-soft px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-muted-2"
-                                    >
-                                      {t("demo.badge.label")}
-                                    </span>
-                                  ) : null}
-                                  {/* FUNKE F2 (nacht24): Danke je Quelle — Ein-Klick, idempotent je
-                            Nutzer+Ziel; fließt in die Wirkung des Autors + dezente Glocke. */}
-                                  {/* AUFTRAG-mega52 A4: gedankt wird nur, was die Antwort GETRAGEN hat.
-                            Der Answer-Receipt bindet serverseitig genau diese Quellen — ein Danke
-                            auf eine bloß angesehene Quelle endete dort mit 403. Statt den Nutzer
-                            hineinlaufen zu lassen, gibt es den Knopf hier gar nicht. Das ist keine
-                            Kosmetik: bis mega52 bekam JEDES angesehene Objekt ein Vertrauensplus. */}
-                                  {canThank(s) ? (
-                                    <button
-                                      type="button"
-                                      disabled={thankedSources.has(s.id) || thankSource.isPending}
-                                      onClick={() => thankSource.mutate(s.id)}
-                                      className="inline-flex shrink-0 items-center gap-1 rounded-pill border border-hairline px-2 py-0.5 text-[10.5px] font-semibold text-muted hover:text-text disabled:opacity-60"
-                                    >
-                                      <ThumbsUp size={11} />
-                                      {thankedSources.has(s.id)
-                                        ? t("ask.thanked")
-                                        : t("ask.helpful")}
-                                    </button>
-                                  ) : null}
-                                  {/* Paket 4 (nacht24, C1/C2/E1): je Quelle Status/Trust-Badge, Pulldown-
-                            Summary (E2-Baustein) und Auszug im DOKUMENT-Format (SanitizedHtml-
-                            Kette) — nur aus bereits geladenen, berechtigten KO-Daten. */}
-                                  {(() => {
-                                    const sourceKo = (kos.data ?? []).find((k) => k.id === s.id);
-                                    return sourceKo ? (
-                                      <AnswerSourceDetails
-                                        ko={sourceKo}
-                                        authorName={authorNameOf(sourceKo.author)}
-                                        // JOB 4224 R3 (Ben-Korrekturpflicht 1): ist die
-                                        // Auffrischung gescheitert, ist der Quellenstand UNBEKANNT
-                                        // (§9). Die Antwort bleibt stehen, das ANGEBOT „öffne das
-                                        // Original" nicht — es wäre eine Aussage über ein Jetzt,
-                                        // das niemand bestätigt hat. Begründung ausgeschrieben am
-                                        // Vertrag der Komponente.
-                                        standBestaetigt={!auffrischungGescheitert}
-                                      />
-                                    ) : null;
-                                  })()}
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
+                          <QuellenListe
+                            quellen={quellenAuskunft}
+                            zuordnungTragfaehig={zuordnungTragfaehig}
+                            wissenHref={(id) => demoHref(`/wissen/${id}`, params)}
+                            bildfundstelle={(id) => result.captionSources?.includes(id) ?? false}
+                            koVon={(id) => (kos.data ?? []).find((k) => k.id === id)}
+                            autorVon={authorNameOf}
+                            // JOB 4224 R3 (Ben-Korrekturpflicht 1): ist die Auffrischung
+                            // gescheitert, ist der Quellenstand UNBEKANNT (§9) — das Angebot „öffne
+                            // das Original" entfällt. Begründung am Vertrag von AnswerSourceDetails.
+                            standBestaetigt={!auffrischungGescheitert}
+                            dank={{
+                              bedankt: (id) => thankedSources.has(id),
+                              laeuft: thankSource.isPending,
+                              danken: (id) => thankSource.mutate(id),
+                            }}
+                          />
                         ) : null}
                       </div>
                     </Seitenblatt>
