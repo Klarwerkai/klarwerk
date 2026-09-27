@@ -15,7 +15,9 @@
 //          es auf dem Linux-Prüfstand nicht, und die echten Dienste eines Macs darf ein Testlauf nie
 //          anfassen), `date` (nur so lässt sich „zwei Läufe in DERSELBEN Sekunde" erzwingen statt
 //          erhoffen) und `pg_dump` (sonst bräuchte jede Sicherungsprobe eine echte Datenbank und
-//          liefe im Tor nie mit). Keines davon gehört zu Klarwerk; der geprüfte Weg bleibt echt.
+//          liefe im Tor nie mit) samt dem passenden `pg_restore` (sonst entschiede die Umgebung,
+//          ob der Probe-Dump als Archiv gelesen wird). Keines davon gehört zu Klarwerk; der
+//          geprüfte Weg bleibt echt.
 //
 // DER VERTRAGSTEXT WIRD HIER AUSGESCHRIEBEN und nicht aus `schema-vertrag.mjs` geholt. Eine Probe,
 // die ihre Erwartung aus dem Prüfling bezieht, bestätigt jede Änderung — auch die falsche. Weicht
@@ -285,7 +287,59 @@ if [ -z "$ZIEL" ]; then
   echo "pg_dump-Attrappe: kein --file uebergeben" >&2
   exit 1
 fi
-printf '%s' "\${KLARWERK_PROBE_DUMPINHALT:-PROBE-DUMP}" > "$ZIEL"
+printf '%s' "\${KLARWERK_PROBE_DUMPINHALT-PROBE-DUMP}" > "$ZIEL"
+`;
+
+/**
+ * Die `pg_restore`-Attrappe, die zur `pg_dump`-Attrappe GEHÖRT — beide oder keine.
+ *
+ * DER BEFUND (Tor-Selbstprüfung 26.09., g4/g8): Mit nur `pg_dump` als Attrappe entschied die
+ * Umgebung, welche Leseprüfung `backup.sh` fuhr. Ohne `pg_restore` auf dem Rechner lief die
+ * Ersatzprüfung und der Test war grün; lag das echte `pg_restore` in `/usr/bin`, las es den
+ * Klartext-Dump als Archiv („input file does not appear to be a valid archive") und der Test war
+ * rot. Derselbe Commit, zwei Ergebnisse. Mit dieser Attrappe vor dem PATH fährt `backup.sh` ÜBERALL
+ * seinen `pg_restore`-Zweig — unverändert — und liest mit einem Leser, der das Probenformat kennt.
+ *
+ * KEIN PAUSCHALES EXIT 0. Sie prüft, was das echte `pg_restore --list` an dieser Stelle prüft:
+ *   - der AUFRUF ist genau `--list <datei>` (jede andere Form ist ein Fehler, Exit 2);
+ *   - die DATEI existiert, ist regulär und lesbar;
+ *   - der INHALT wird vollständig gelesen und ist genau der Probe-Dump (`KLARWERK_PROBE_DUMPINHALT`,
+ *     sonst `PROBE-DUMP` — dieselbe Regel wie beim Schreiben). Leer heisst „too short", jeder
+ *     andere Inhalt „not a valid archive" — Exit 1, wie beim echten Werkzeug.
+ * Jeder Aufruf wird in `KLARWERK_PROBE_LESEPROTOKOLL` festgehalten, damit ein Test belegen kann,
+ * DASS gelesen wurde und WELCHE Datei.
+ */
+export const PG_RESTORE_ATTRAPPE = `#!/usr/bin/env bash
+if [ "\${1:-}" = "--version" ]; then
+  echo "pg_restore (PostgreSQL) 16.0 (Attrappe)"
+  exit 0
+fi
+if [ -n "\${KLARWERK_PROBE_LESEPROTOKOLL:-}" ]; then
+  printf '%s\\n' "$*" >> "$KLARWERK_PROBE_LESEPROTOKOLL"
+fi
+if [ $# -ne 2 ] || [ "$1" != "--list" ]; then
+  echo "pg_restore-Attrappe: unerwarteter Aufruf: $*" >&2
+  exit 2
+fi
+DATEI="$2"
+if [ ! -f "$DATEI" ] || [ ! -r "$DATEI" ]; then
+  echo "pg_restore: error: could not open input file \\"$DATEI\\"" >&2
+  exit 1
+fi
+if ! GELESEN="$(cat "$DATEI"; printf x)"; then
+  echo "pg_restore: error: could not read input file \\"$DATEI\\"" >&2
+  exit 1
+fi
+GELESEN="\${GELESEN%x}"
+if [ -z "$GELESEN" ]; then
+  echo "pg_restore: error: input file is too short (read 0, expected 5)" >&2
+  exit 1
+fi
+if [ "$GELESEN" != "\${KLARWERK_PROBE_DUMPINHALT-PROBE-DUMP}" ]; then
+  echo "pg_restore: error: input file does not appear to be a valid archive" >&2
+  exit 1
+fi
+printf ';\\n; Archive created by pg_dump-Attrappe\\n;\\n'
 `;
 
 export interface Insel {
