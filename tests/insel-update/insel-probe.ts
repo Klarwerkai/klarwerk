@@ -303,7 +303,12 @@ printf '%s' "\${KLARWERK_PROBE_DUMPINHALT-PROBE-DUMP}" > "$ZIEL"
  * KEIN PAUSCHALES EXIT 0. Sie prüft, was das echte `pg_restore --list` an dieser Stelle prüft:
  *   - der AUFRUF ist genau `--list <datei>` (jede andere Form ist ein Fehler, Exit 2);
  *   - die DATEI existiert, ist regulär und lesbar;
- *   - der INHALT wird vollständig gelesen und ist genau der Probe-Dump (`KLARWERK_PROBE_DUMPINHALT`,
+ *   - der INHALT wird VOLLSTÄNDIG gelesen: Der Exit-Status von `cat` wird ausgewertet, bevor ein
+ *     anderer Befehl ihn überschreiben kann (`cat && printf x`, nicht `cat; printf x` — dort verdeckte
+ *     `printf` einen Abbruch, Ben an e7a1d080/ab851092), und die Zahl der gelesenen Bytes muss genau
+ *     der Dateigrösse (`wc -c`) entsprechen. Ein abgebrochenes Lesen ist ein Fehler, auch wenn das
+ *     gelesene Anfangsstück für sich gültig wäre (`pg-restore-leser.test.ts`);
+ *   - der INHALT ist genau der Probe-Dump (`KLARWERK_PROBE_DUMPINHALT`,
  *     sonst `PROBE-DUMP` — dieselbe Regel wie beim Schreiben). Leer heisst „too short", jeder
  *     andere Inhalt „not a valid archive" — Exit 1, wie beim echten Werkzeug.
  * Jeder Aufruf wird in `KLARWERK_PROBE_LESEPROTOKOLL` festgehalten, damit ein Test belegen kann,
@@ -326,11 +331,21 @@ if [ ! -f "$DATEI" ] || [ ! -r "$DATEI" ]; then
   echo "pg_restore: error: could not open input file \\"$DATEI\\"" >&2
   exit 1
 fi
-if ! GELESEN="$(cat "$DATEI"; printf x)"; then
-  echo "pg_restore: error: could not read input file \\"$DATEI\\"" >&2
+export LC_ALL=C
+if ! GELESEN=$(cat -- "$DATEI" && printf x); then
+  echo "pg_restore: error: could not read input file \\"$DATEI\\" (Lesefehler)" >&2
   exit 1
 fi
 GELESEN="\${GELESEN%x}"
+if ! GROESSE=$(wc -c < "$DATEI"); then
+  echo "pg_restore: error: could not stat input file \\"$DATEI\\" (Lesefehler)" >&2
+  exit 1
+fi
+GROESSE=$((GROESSE))
+if [ "\${#GELESEN}" -ne "$GROESSE" ]; then
+  echo "pg_restore: error: could not read input file \\"$DATEI\\": read \${#GELESEN} of $GROESSE bytes (Lesefehler)" >&2
+  exit 1
+fi
 if [ -z "$GELESEN" ]; then
   echo "pg_restore: error: input file is too short (read 0, expected 5)" >&2
   exit 1
