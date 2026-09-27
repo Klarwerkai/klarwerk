@@ -25,7 +25,9 @@ import {
 //      JOB 4321 hat den Wettlauf um `CREATE EXTENSION pg_trgm` für zwei Dateien geschlossen
 //      (`stelleTrigrammErweiterungSicher`, `tests/office-pg-abnahme/rueckweg-erwartung.ts`);
 //      spätere Lieferungen haben denselben Weg übernommen (`tests/security/suchdeckel-trim-
-//      paritaet…`, `tests/wiki-diskussion-nutzerweg/…`). Die Persistenzsuite der App lief bis zu
+//      paritaet…`, `tests/wiki-diskussion-nutzerweg/…`, und nach dieser Aufnahme
+//      `tests/wiki-bearbeitungsreservierung/zwei-prozesse-pg-im-browser…` vor ihrem `migrate`).
+//      Die Persistenzsuite der App lief bis zu
 //      dieser Aufnahme als EINZIGE Integrationsdatei mit eigener ungesicherter Anlage. Sie benutzt
 //      jetzt denselben Schutzpfad — E1 lässt die ECHTE Datei in der erzwungenen
 //      Überlappung laufen und misst an ihrer Sitzung, dass sie den Pfad durchläuft; E1-K belegt, dass
