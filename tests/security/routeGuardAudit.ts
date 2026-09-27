@@ -283,6 +283,18 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // fährt deshalb GENAU DIESELBE Entscheidung wie `GET /api/kos/:id` bzw. `GET /api/kos`.
   "GET /api/kos/:id/lesevariante/:lang": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
   "GET /api/lesevarianten": { protection: "ko.read", zeilenrecht: ["sichtbareFuer"] },
+  // WIKI-BEARBEITUNGSRESERVIERUNG: der Bearbeitungshinweis. Lesen mit `ko.read`, Beginnen/Erneuern/
+  // Beenden mit `ko.create` (dasselbe Recht wie Bearbeiten) — und alle drei nur für einen Eintrag,
+  // den der Aufrufer sehen darf (`darfSehen`, sonst 404 wie am Detailabruf).
+  "GET /api/kos/:id/bearbeitungen": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
+  "PUT /api/kos/:id/bearbeitungen/:sitzung": {
+    protection: "ko.create",
+    zeilenrecht: ["darfSehen"],
+  },
+  "DELETE /api/kos/:id/bearbeitungen/:sitzung": {
+    protection: "ko.create",
+    zeilenrecht: ["darfSehen"],
+  },
   "POST /api/kos": { protection: "ko.create" },
   // AUFTRAG-mega19 Block B: die Erstanlage AUS Dokumenten (Inhalt + Anker + Belegstellen in EINEM
   // Vorgang). Dasselbe Basisrecht wie das gewöhnliche Einreichen — die Route ist eine ENGERE Tür

@@ -2119,7 +2119,23 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             ? String((error as { code: unknown }).code)
             : "";
         const message = error instanceof Error ? error.message : code;
-        if (code === "KO_STALE") {
+        // ========================================================================================
+        // WIKI-BEARBEITUNGSRESERVIERUNG · DER KONFLIKT, DEN DIE ABLAGE FESTSTELLT, IST DERSELBE.
+        // ========================================================================================
+        //
+        // Im selben App-Prozess serialisiert der Dienst die Schreibvorgänge je Eintrag, und der
+        // Verlierer bekommt `KO_STALE`. Laufen MEHRERE App-Prozesse gegen dieselbe Datenbank, sehen
+        // beide dieselbe Fassung, beide bestehen die Fassungsprüfung — und erst der bedingte UPDATE
+        // der Ablage (`repo-pg.ts`, rowVersion) weist den zweiten ab: `STALE_WRITE`. Das ist dieselbe
+        // Tatsache („jemand war schneller"), nur eine Ebene tiefer entdeckt. Bis hierher ging sie als
+        // 400 hinaus, und die Fläche bot weder Konfliktsatz noch Vergleichs-/Übernahmeweg an.
+        //
+        // NUR FÜR DEN DIREKTEN SPEICHERWEG (`revise`, `tags`, `category`) und NUR DIE ANTWORT ändert
+        // sich: der Schreibvorgang ist abgewiesen und zurückgerollt, nichts wird wiederholt, der
+        // CAS bleibt, wie er ist. Die übrigen Aktionen behalten ihre bisherige Antwort.
+        const direkterSpeicherweg =
+          body.action === "revise" || body.action === "tags" || body.action === "category";
+        if (code === "KO_STALE" || (code === "STALE_WRITE" && direkterSpeicherweg)) {
           // Die JETZT gespeicherte Version reist mit — ohne sie kann die Oberfläche den Menschen
           // nicht entscheiden lassen, sondern nur „hat nicht geklappt" sagen.
           const stand = await ko.get(id);
