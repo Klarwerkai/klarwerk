@@ -2205,6 +2205,19 @@ export function buildApp(
   });
   const guards = makeGuards(services.auth);
 
+  // D5 (KI aus, Lauf 5 Runde 3 — Bens B2): die Abschalt-Epoche einer Klara-Frage wird beim EINGANG
+  // festgehalten, als ERSTER onRequest-Hook dieser App — vor dem asynchronen Anmelde-Hook der Add-on-API
+  // darunter, der bei `KLARWERK_ADDON_API=1` auch Sitzungsanfragen an `/api/ask` authentifiziert. Wer
+  // dort (oder später vor dem Dienst) während einer Aus-/Wiedereinschaltung wartet, trägt die ALTE
+  // Epoche und bleibt entwertet. Nur die beiden D5-Eingänge; synchron, ohne Warten, ohne Inhalt.
+  app.decorateRequest("askKiBeginn", null);
+  app.addHook("onRequest", async (request) => {
+    const pfad = request.routeOptions.url;
+    if (request.method === "POST" && (pfad === "/api/ask" || pfad === "/api/reasoner")) {
+      request.askKiBeginn = services.ask.kiStand() ?? null;
+    }
+  });
+
   // Add-on-API (Klara-Panel), hinter KLARWERK_ADDON_API: CORS NUR bei aktivem Flag, NUR für die eine
   // validierte Add-in-Origin und NUR für POST /api/ask UND POST /api/check-text (SCRUM-491 Slice 5).
   // Flag AUS → gar nicht registriert → keine CORS-Header (exakt heutiges Verhalten). Kein

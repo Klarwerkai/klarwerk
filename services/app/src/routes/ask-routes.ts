@@ -64,8 +64,8 @@ const ASK_BODY_LIMIT = 128 * 1024; // 128 KiB
 declare module "fastify" {
   interface FastifyRequest {
     askSessionUser?: SessionUser | null;
-    // D5 (Lauf 5 Runde 2, Bens B1): die Abschalt-Epoche beim EINGANG der Frage, festgehalten im
-    // onRequest der Route — vor Anmeldung und vor dem Warten auf die Klara-Einwilligung.
+    // D5 (Lauf 5 Runde 2/3, Bens B1/B2): die Abschalt-Epoche beim EINGANG der Frage, festgehalten im
+    // ersten globalen onRequest-Hook (`buildApp`) — vor jedem Anmelde-Hook und vor der Einwilligung.
     askKiBeginn?: number | null;
   }
 }
@@ -330,7 +330,10 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
   const ask = deps.ask;
   return async (app) => {
     app.decorateRequest("askSessionUser", null);
-    app.decorateRequest("askKiBeginn", null);
+    // D5: in der App dekoriert `buildApp` (erster onRequest-Hook); hier nur für eigenständige Aufbauten.
+    if (!app.hasRequestDecorator("askKiBeginn")) {
+      app.decorateRequest("askKiBeginn", null);
+    }
     app.post<{
       Body: { question?: string; locale?: string; mode?: string; selection?: string };
     }>(
@@ -343,11 +346,16 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
         config: { rateLimit: addonRateLimit() },
         bodyLimit: ASK_BODY_LIMIT,
         schema: { body: askBodySchema },
-        // D5 (Lauf 5 Runde 2, Bens B1): die Epoche wird HIER festgehalten, nicht erst beim Einstieg in
-        // den Dienst. Dazwischen liegen Wartepunkte (Anmeldung, `ka4Freigabe`); wer dort während
-        // einer Aus-/Wiedereinschaltung stand, übernahm vorher die NEUE Epoche und las weiter.
+        // D5 (Lauf 5 Runde 2, Bens B1): die Epoche gilt vom EINGANG, nicht erst vom Einstieg in den
+        // Dienst. Dazwischen liegen Wartepunkte (Anmeldung, `ka4Freigabe`); wer dort während einer
+        // Aus-/Wiedereinschaltung stand, übernahm vorher die NEUE Epoche und las weiter.
+        // Runde 3 (Bens B2): festgehalten wird sie im ERSTEN globalen onRequest-Hook (`buildApp`),
+        // also auch vor dem Anmelde-Hook der Add-on-API. Dieser Routen-Hook füllt sie nur, wo jener
+        // fehlt (eigenständige Aufbauten ohne `buildApp`) — er überschreibt sie nie.
         onRequest: async (request) => {
-          request.askKiBeginn = ask.kiStand() ?? null;
+          if (request.askKiBeginn == null) {
+            request.askKiBeginn = ask.kiStand() ?? null;
+          }
         },
         // SCRUM-498 B1: Auth VOR der Body-Validierung (wie check-text). Der Add-on-Pfad ist bereits im
         // onRequest-Hook autorisiert (401/403 vor der validation-Phase); den Session-Pfad prüfen wir

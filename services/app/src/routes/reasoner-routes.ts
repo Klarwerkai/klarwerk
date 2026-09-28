@@ -445,8 +445,10 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
       };
     }>("/api/reasoner", async (request, reply) => {
       // D5 (Lauf 5 Runde 2, Bens B1): die Abschalt-Epoche beim EINGANG — vor Anmeldung und vor dem
-      // Warten auf die Klara-Einwilligung. Nur die Aufgabe `ask` liest sie (unten); ohne Warten davor.
-      const kiEingang = ask.kiStand();
+      // Warten auf die Klara-Einwilligung. Nur die Aufgabe `ask` liest sie (unten).
+      // Runde 3 (Bens B2): festgehalten im ERSTEN globalen onRequest-Hook (`buildApp`), vor jedem
+      // asynchronen Hook; nur ohne `buildApp` (eigenständige Aufbauten) hier nachgelesen.
+      const kiEingang = request.askKiBeginn ?? ask.kiStand();
       const user = await guards.requirePermission("ko.read", request, reply);
       if (!user) {
         return;
