@@ -7,6 +7,24 @@
 > `PROJECT_CONTEXT/13_ASSISTENT_ZWISCHENBERICHT.md` (Rohstand: `docs/boss-assistant/`).
 > Live-Version dort bestätigt: **v1.0.0-beta.1.4**.
 
+## 26.09.2026 — FE-003 Seitentutorial „Fragen“ (Pilot)
+
+- Knopf „Tutorial“ unter dem Kopfband (nur `/fragen`), aufklappender Unterricht in 7 Schritten mit
+  Demo aus den echten Bausteinen der Fragen-Seite; Rahmen/Register für spätere Seiten in
+  `apps/web/src/tutorial/`. Gemeinsame Bausteine aus `pages/Ask.tsx` nach `components/fragen/`.
+- 27.09. (Lauf 2): Blatt „Mehr“ im Kapitel „Quelle“ folgt der Teilwahl unabhängig vom
+  Öffnungsweg; Tutorial-Kopf bei 390 px nicht mehr zusammengedrückt.
+- 28.09. (Lauf 3): Stand aus Lauf 2 auf den aktuellen Hauptstand übernommen; auch in „Antwort“,
+  „Sonderfälle“ und „Üben“ schliesst eine Teilwahl das Blatt „Mehr“, Öffnen hält die Vorführung an.
+- 28.09. (Lauf 3, Runde 2): Prüfplan des Kandidaten als Integrationstests —
+  `npx vitest run --config tests/fe003-tutorial-fragen/vorschau.vitest.config.ts` (Bau, Start ohne
+  Modell, /health-Zuordnung, Chromium bei 1280/1024/390 px); Ausführung auf dem Prüfserver steht aus.
+- 28.09. (Lauf 3, Runde 3): Zusammenführung mit D5 (KI-Abschaltung durch den Administrator) —
+  `KiNichtVerfuegbar` nennt auf der Seite und im Tutorial-Übergang die Abschaltung
+  (`d5kiaus.hinweis`) statt „nicht verfügbar“; Alternativen unverändert.
+- Prüfpaket und offene Punkte: `docs/qm/FE-003-TUTORIAL-FRAGEN-PRUEFPAKET.md`.
+  **FE-003: menschliche Tutorial-Abnahme durch Pedi noch offen.**
+
 ## Rollen
 
 - Boss-Session: die laufende Claude-Konversation von Pedi (Koordination + Umsetzung). **Abwesend bis Di.**

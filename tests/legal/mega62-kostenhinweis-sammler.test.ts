@@ -49,6 +49,13 @@ const AUSNAHMEN: Record<string, string> = {
     "Die Vorrichtung SELBST — sie definiert den Haken, an dem dieser Sammler hängt, und ist keine " +
     "Fläche. Sie rendert nichts und hat keinen Auslöser; ein Hinweis stünde hier an einer Stelle, " +
     "die niemand sieht.",
+  [join(WEB, "tutorial", "fragen", "FragenDemo.tsx")]:
+    "FE-003: die VORFÜHRUNG der Fragenfläche. Sie zeigt die KI-Kennzeichnung an einer erfundenen " +
+    "Beispielantwort und fragt den Modellstand nur ab, um ehrlich zu sagen, ob die ECHTE Frage " +
+    "gerade möglich ist — ausgelöst wird hier nichts, und sie importiert keinen API-Client " +
+    "(`tests/fe003-tutorial-fragen/aenderungsprobe-mounted.test.tsx`). Ein Kostenhinweis stünde " +
+    "an einem Knopf, der nichts kostet, und wäre selbst irreführend. Der echte Auslöser — das " +
+    "Feld auf `pages/Ask.tsx`, zu dem „Eigene Frage stellen“ führt — trägt den Hinweis.",
   // KEINE Ausnahme für components/AiGeneratedNotice.tsx: Die Datei DEFINIERT den Träger, rendert
   // ihn aber nicht — der Sammler sieht sie deshalb gar nicht erst als Fläche. Ein Eintrag hier
   // wäre eine Ausnahme ohne Fall, und der Fall unten („wird noch gebraucht") würde ihn rot melden.

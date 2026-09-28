@@ -26,38 +26,14 @@ import { knowledgeClassMeta } from "../lib/knowledgeClass";
 // die hier bis heute in `askAi()` stand, ist abgelöst (s. dort).
 import { type ReasonerLocale, toReasonerLocale } from "../lib/reasonerLocale";
 import { useAiAvailable } from "../lib/useAiAvailable";
+import { cleanForSpeech, pickVoice } from "../lib/vorlesen";
 import { AiModelInfo } from "./AiModelInfo";
 import { AiUnavailableHint } from "./AiUnavailableHint";
 // WP-UX-WOW-1 U1: Antwort-Markdown sicher rendern (React-Subset, kein HTML-Sink).
 import { AnswerMarkdown } from "./AnswerMarkdown";
 
-// Pedi 05.07. („die Voice ist furchtbar"): Die Browser-Standardstimme ist oft die schlechteste.
-// Wir wählen die beste installierte Stimme je Sprache: Premium/Enhanced/Neural-Stimmen zuerst,
-// dann Google-/Netzwerkstimmen, dann der Rest. Gibt es nur die Standardstimme, bleibt sie ehrlich
-// die Grenze des Browsers — natürliche Stimmen kommen mit einem lokalen TTS-Server (Folge-Slice).
-function pickVoice(langPrefix: string): SpeechSynthesisVoice | null {
-  const voices = window.speechSynthesis.getVoices();
-  const matching = voices.filter((v) => v.lang.toLowerCase().startsWith(langPrefix));
-  if (matching.length === 0) {
-    return null;
-  }
-  const score = (v: SpeechSynthesisVoice): number =>
-    (/premium|enhanced|natural|neural/i.test(v.name) ? 4 : 0) +
-    (/google/i.test(v.name) ? 2 : 0) +
-    (v.localService ? 0 : 1);
-  return [...matching].sort((a, b) => score(b) - score(a))[0] ?? null;
-}
-
-// Text fürs Vorlesen bereinigen: Satzzeichen-Symbole und Pfeile werden gesprochen scheußlich.
-function cleanForSpeech(text: string): string {
-  return text
-    .replace(/[„“”«»]/g, "")
-    .replace(/\s*·\s*/g, ", ")
-    .replace(/\s*—\s*/g, ", ")
-    .replace(/\s*→\s*/g, ", ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
+// Stimmwahl und Textbereinigung fürs Vorlesen stehen seit FE-003 in `lib/vorlesen.ts` — das
+// Seitentutorial liest mit denselben Hilfen vor.
 
 // Ein Hilfe-Ergebnis im Panel — Titel, Text, Absprung zur Route des Themas.
 function KlaraResult({

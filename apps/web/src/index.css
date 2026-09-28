@@ -335,3 +335,39 @@ body.klara-inspect * {
   outline-offset: 2px;
   border-radius: 4px;
 }
+
+/* FE-003 · Seitentutorial: das gerade erklärte Bedienelement IN DER DEMO. Gefunden wird es über
+   seinen Zielnamen (`data-tutorial-ziel`), nie über Koordinaten; der Rahmen setzt
+   `data-tutorial-aktiv`. Die Markierung ist ruhig und statisch — Bewegung (ein kurzes, zweimaliges
+   Aufleuchten) gibt es nur ohne `prefers-reduced-motion: reduce`. Welches Element gemeint ist, sagt
+   zusätzlich der Text „Gerade gezeigt: …“ — die Farbe ist nicht der einzige Träger. */
+.tutorial-demo [data-tutorial-aktiv="true"] {
+  outline: 3px solid rgb(var(--kw-brand));
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .tutorial-demo [data-tutorial-aktiv="true"] {
+    animation: kw-tutorial-aufleuchten 1.2s ease-in-out 2;
+  }
+}
+/* FE-003 · Fortschrittsbalken des Tutorials: reine Grafik ohne Text (die Zahl steht daneben als
+   Text „Schritt n von 7“). Die Pseudoelemente lassen sich nicht als Grundklasse schreiben. */
+.tutorial-fortschritt::-webkit-progress-bar {
+  background-color: rgb(var(--kw-hairline));
+}
+.tutorial-fortschritt::-webkit-progress-value {
+  background-color: rgb(var(--kw-brand));
+}
+.tutorial-fortschritt::-moz-progress-bar {
+  background-color: rgb(var(--kw-brand));
+}
+@keyframes kw-tutorial-aufleuchten {
+  0%,
+  100% {
+    outline-color: rgb(var(--kw-brand));
+  }
+  50% {
+    outline-color: rgb(var(--kw-brand-300));
+  }
+}

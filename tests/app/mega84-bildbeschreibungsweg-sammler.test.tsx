@@ -2018,8 +2018,23 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // DIE +2 IST GEMESSEN: das Linux-Tor meldete wörtlich „gemessen: 405 Komponenten · 1 Anbieter
     // · 2 Traeger … expected { komponenten: 405, … } to deeply equal { komponenten: 403, … }"
     // (Prüfauftrag lt-1790424665-865dc221).
+    //
+    // FE-003 (SEITENTUTORIAL „FRAGEN“): 405 → 423. Dazu kommen die Bauteile des neuen Rahmens
+    // (`tutorial/TutorialRahmen.tsx`: Provider, Einstieg, Fläche; `tutorial/TutorialBereich.tsx`),
+    // die der Demo (`tutorial/fragen/FragenDemo.tsx`: Demo, Übergang, Übung und ihre kleinen
+    // Teilflächen) und die aus `pages/Ask.tsx` herausgelösten gemeinsamen Bausteine
+    // (`components/fragen/FrageFeld.tsx`, `Quellenplaketten.tsx` mit `QuellenChipInhalt`,
+    // `Antwortbausteine.tsx`). `VerwendungsPlakette` und `PruefstandPlakette` sind UMGEZOGEN, nicht
+    // neu. Dieselbe Begründung wie darüber: der Quellbaum wächst, die Umstellung verschiebt nichts —
+    // `anbieter` 1 und `traeger` 2 bleiben unverändert. Keine der Dateien enthält
+    // `CAPTION_AI_TEXT`, ein `documentTitle`-Prop oder ein `<img`; das Tutorial zeigt ausdrücklich
+    // keine Bilder (`tests/fe003-tutorial-fragen/aenderungsprobe-mounted.test.tsx`).
+    //
+    // DIE +18 IST GEMESSEN, nicht gerechnet: der Sammler meldete an diesem Arbeitsbaum wörtlich
+    // „gemessen: 423 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 511 Quelldateien …
+    // expected { komponenten: 423, … } to deeply equal { komponenten: 405, … }".
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 405,
+      komponenten: 423,
       anbieter: 1,
       traeger: 2,
     });
