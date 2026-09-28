@@ -277,6 +277,11 @@ export const BESTAND: readonly AltSaat[] = [
  * — das ist die Reproduktion. Behoben wird hier nichts (Änderung am abgeschlossenen
  * Trim-/Suchvertrag, nicht Teil dieser Aufnahme).
  *
+ * NACHTRAG Lauf 2-v9: Bens Codeprüfung hat A1 (Befund B1) sowie A2/A3 (Befund B2) am Code
+ * bestätigt. Die SQL-Seite folgt seitdem der Referenz (`sqlSichtbarkeitFuer`, `sqlDeletedAtLeer`,
+ * Such-JOIN in search-projection-repo-pg.ts). Die Erwartungen hier sind unverändert, und die
+ * Hypothesen bleiben ungemessen, bis ein Lauf gegen echtes PostgreSQL vorliegt.
+ *
  *   `pgZeigt` — PostgreSQL liefert das Objekt vermutlich, die Referenz nicht (fail-OPEN, ein Leck).
  *   `pgVerbirgt` — PostgreSQL verbirgt vermutlich, die Referenz zeigt (fail-closed, falscher Zählwert).
  */

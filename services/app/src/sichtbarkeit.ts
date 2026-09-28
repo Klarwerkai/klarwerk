@@ -41,7 +41,7 @@
 // Auslegung derselben Stufe wäre genau die zweite Wahrheit, gegen die diese Datei gebaut ist.
 // Getragen wird das davon, dass die Schreibwege nur geprüfte Werte durchlassen
 // (`isValidConfidentiality` an der Upload-Grenze, SCRUM-509 am Änderungsweg).
-import { type Confidentiality, isConfidential } from "../../knowledge-object";
+import { type Confidentiality, isConfidential, sqlDeletedAtLeer } from "../../knowledge-object";
 import { can } from "../../rbac";
 import type { SessionUser } from "./http";
 
@@ -153,13 +153,12 @@ export function sichtbarkeitsfilterFuer(user: SessionUser): Sichtbarkeitsfilter 
 //     zwar nicht hier, sondern in der generierten Spalte (KO_SICHTBARKEIT_SCHEMA). Damit gibt es
 //     den CASE genau einmal, in der Datenbank, statt abschreibbar in jeder Abfrage.
 //
-// (3) DER PAPIERKORB WIRD ÜBER `deleted_at_key IS NULL` GEPRÜFT. Der Schreibweg setzt `deletedAt`
-//     ausschließlich auf einen ISO-Zeitpunkt und ENTFERNT das Feld beim Wiederherstellen
-//     (knowledge-object/src/service.ts) — für jeden erreichbaren Wert ist das deckungsgleich mit
-//     dem bisherigen `!ko.deletedAt`. Die eine denkbare Abweichung ist eine handgeschriebene
-//     Altzeile mit `deletedAt: ""`: die versteckt SQL, während Node sie zeigte. Das ist die
-//     fail-closed Richtung und erweitert Sichtbarkeit nie (G-SHADOW) — sie wird hier benannt und
-//     nicht stillschweigend in Kauf genommen.
+// (3) DER PAPIERKORB WIRD ÜBER `deleted_at_key IS NULL` GEPRÜFT, ergänzt um `sqlDeletedAtLeer`.
+//     Der Schreibweg setzt `deletedAt` ausschließlich auf einen ISO-Zeitpunkt und ENTFERNT das Feld
+//     beim Wiederherstellen (knowledge-object/src/service.ts). Eine handgeschriebene Altzeile mit
+//     `deletedAt: ""` versteckte SQL früher, während Node sie zeigte — ein still falscher Zählwert
+//     (AUFNAHME 20260922, BEN 4359 Befund B2). Seitdem wertet SQL die in JavaScript falschen
+//     JSON-Werte (null, "", false, 0) wie `!ko.deletedAt` als lebend.
 //
 // (4) HIER WIRD NICHTS VERSCHÄRFT UND NICHTS GELOCKERT. Die drei Stufen bleiben drei, zwei werden
 //     weiter identisch geschützt (Pedis Variante A, s. Kopf), eine unbekannte Stufe gilt weiter als
@@ -188,12 +187,15 @@ export function sqlSichtbarkeitFuer(user: SessionUser): SqlSichtbarkeitstrim {
       //   · nicht getrasht,
       //   · 'intern'                                  ⇒ jeder mit `ko.read` (die Route prüft es),
       //   · `ko.validate`                             ⇒ auch vertraulich/streng_vertraulich,
-      //   · oder der Autor selbst — und ein LEERER Autor ist keine Autorschaft.
+      //   · oder der Autor selbst — und ein LEERER Autor ist keine Autorschaft, ebenso wenig einer,
+      //     der im JSON keine Zeichenfolge ist (`typeof ko.author === "string"`; `->>` macht aus
+      //     der Zahl 4359 den Text '4359' — BEN 4359 Befund B1).
       return (
-        `(${spaltenTraeger}.deleted_at_key IS NULL` +
+        `((${spaltenTraeger}.deleted_at_key IS NULL OR ${sqlDeletedAtLeer(spaltenTraeger)})` +
         ` AND (${spaltenTraeger}.confidentiality_key = 'intern'` +
         ` OR ${rolle}::boolean` +
         ` OR (COALESCE(${spaltenTraeger}.author_key, '') <> ''` +
+        ` AND jsonb_typeof(${spaltenTraeger}.data->'author') = 'string'` +
         ` AND ${spaltenTraeger}.author_key = ${autor})))`
       );
     },

@@ -83,6 +83,8 @@ export {
   // an einem eigens benannten Pin (T-M-3, services/app/src/db.migrate.test.ts).
   KO_SICHTBARKEIT_SCHEMA,
   KO_VERSIONS_SCHEMA,
+  // AUFNAHME 20260922 (B2): der Papierkorb-Ausdruck für den SQL-Trim in services/app.
+  sqlDeletedAtLeer,
 } from "./src/repo-pg";
 // ================================================================================================
 // G27 — DER GEMEINSAME SUCHVERTRAG (revisionsgebundene Search Projection)
