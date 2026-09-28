@@ -11,7 +11,7 @@ Auftrag: `arbeit:fe-003-tutorial-fragen-20260926`, Revision 1 (Fachpriorität 1)
 ## Stand, der geprüft wird
 
 - **Kandidatencommit:** der Commit, den die Steuerung nach diesem Bauauftrag festhält (Branch
-  `lauf/lauf_b3_arbeit_fe-003-tutorial-fragen-20260926_2`). Diese Datei nennt ihn nicht selbst — sie
+  `lauf/lauf_b3_arbeit_fe-003-tutorial-fragen-20260926_3`). Diese Datei nennt ihn nicht selbst — sie
   wird mit ihm eingefroren. Welcher Commit tatsächlich läuft, meldet der Server unter `/health`
   (`commit`, `version`); die Version steht zusätzlich im Zahnrad-Menü.
 - **Öffentliche Bereitstellung:** `https://klarwerk.ai/fragen` zählt erst, wenn `/health` dort den
@@ -44,6 +44,44 @@ Cloud-Zugangsdaten in der Aufrufer-Umgebung).
 
 Im Browserlauf auf dem Testserver (Smoke-Sonde, Chromium) wird derselbe In-Memory-Start ohne Modell
 genutzt; dort gilt dieselbe Zuordnung über den HEAD-Nachweis des Prüfauftrags.
+
+## Prüfplan des Kandidaten (Prüfserver)
+
+Ein Aufruf, am festen Kandidatencommit, sauberer Arbeitsbaum:
+
+```
+npx vitest run --config tests/fe003-tutorial-fragen/vorschau.vitest.config.ts
+```
+
+`vorschau-global.ts` baut den Kandidaten mit `tools/build` und startet den echten Anwendungsserver
+ohne Modell auf einem freien Port (In-Memory, leere Umgebung wie `tools/fe003-vorschau`,
+`KLARWERK_BUILD_COMMIT` = `git rev-parse HEAD`). Beide Dateien laufen gegen DIESEN Server; am Ende
+wird er beendet. Kein Fall überspringt sich: ist der Server nicht erreichbar oder meldet er einen
+anderen Stand, ist der Lauf rot.
+
+| Datei | prüft hart |
+| --- | --- |
+| `tests/fe003-tutorial-fragen/vorschau-weg.integration.test.ts` | E8: `/health` meldet den erwarteten Commit und die Version aus `package.json`; E5: `/api/reasoner/status` `active=false`, `reachable=none`; `/fragen` 200, HTML mit `#root`, byte-gleich mit dem eben gebauten `apps/web/dist/index.html`, Bündel abrufbar; der selbst gestartete Server ist danach beendet |
+| `tests/fe003-tutorial-fragen/browser-breiten.integration.test.ts` | Chromium bei 1280×800, 1024×768, 390×844 (Rolle gemessen, erstes Konto = Admin). E1: Knopf direkt unter dem Kopfband, links unter dem Schriftzug, andere Hintergrundfarbe. E6: Titel „Tutorial: Fragen“, Lernziel und ihre Spalte ≥ min(256 px, 70 % der Inhaltsbreite des Bereichs), nie unter 150 px (Befund war 62,7 px; Herleitung im Kopf der Datei); kein Überlaufen; Steuerung im Bild. Tastatur: Shift+Tab vom echten Feld bis „Tutorial“, Enter öffnet (Fokus auf der Überschrift), Tab bis „Weiter“, Shift+Tab zurück, Enter schaltet weiter, Escape schliesst, Fokus zurück auf „Tutorial“ — jede Station ausserhalb der Demo mit sichtbarem Fokus. Quellenblatt: über „…“ → „Mehr …“ und über die Teilliste, je Rückwahl „Chip“ und „…“ — Blatt zu, Ziel hervorgehoben, nicht unter `inert`, nimmt einen echten Klick an. E5: echte Frage bleibt über Öffnen, alle 7 Schritte, Übung, „Eigene Frage stellen“ und Escape stehen; ehrlicher KI-aus-Übergang; keine verändernde `/api/`-Anfrage ab dem Öffnen. Einmalig: reduzierte Bewegung (Frage sofort da, keine Animation), vorhandene Antwort bleibt stehen (die EINE Frage beantwortet vorab der Browser selbst per `route.fulfill` — der Kandidat hat bewusst kein Modell; ab dem Öffnen geht nichts mehr hinaus), E7 keine Knöpfe auf `/start` und `/bibliothek` |
+
+Belege je Breite: `.local/run/fe003-belege/<commit12>/beleg-<breite>.json` (Browserversion, Rolle,
+URL, Commit, Version, Breite, Messwerte, Tastaturstationen, Quellenwege, verändernde Anfragen) und
+`pruefbild-<breite>-geoeffnet.png`. Das Bild ist ein technischer Prüfbeleg der gerenderten
+Oberfläche — KEIN Tutorial-Inhalt. `FE003_BELEGORDNER` legt einen anderen Ordner fest.
+
+Weitere Aufrufarten: `FE003_KANDIDAT_URL=<url>` prüft einen schon laufenden Kandidaten (z. B. aus
+`tools/fe003-vorschau`) statt selbst zu bauen — mit denselben harten Zuordnungsprüfungen. Unter
+`npm run test:integration` laufen beide Dateien ebenfalls mit; dann baut und startet jede ihren
+eigenen Server. `FE003_ERWARTETER_COMMIT` gibt nur für die Gegenprobe einen anderen Soll-Commit vor.
+
+Gegenprobe im Tor (ohne Server): `tests/fe003-tutorial-fragen/kandidat-pruefung.test.ts` — die
+Zuordnungsprüfung lehnt einen Stellvertreter mit falschem/unbekanntem Commit, falscher Version,
+Nicht-JSON, aktivem Modell, `/fragen` ohne 200 oder ohne Oberfläche und einen nicht erreichbaren
+Server ab.
+
+**Bis zur tatsächlichen Ausführung auf dem Prüfserver** gelten die Browserausführung bei
+1280/1024/390 px und die erreichbare commitgebundene Vorschau für E2/E6/E8 weiter als fehlende
+Prüfmittel. Grüne Dateien belegen erst dann etwas, wenn sie am festen Kandidatencommit gelaufen sind.
 
 ## Was gebaut ist
 

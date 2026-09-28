@@ -16,6 +16,9 @@
   Öffnungsweg; Tutorial-Kopf bei 390 px nicht mehr zusammengedrückt.
 - 28.09. (Lauf 3): Stand aus Lauf 2 auf den aktuellen Hauptstand übernommen; auch in „Antwort“,
   „Sonderfälle“ und „Üben“ schliesst eine Teilwahl das Blatt „Mehr“, Öffnen hält die Vorführung an.
+- 28.09. (Lauf 3, Runde 2): Prüfplan des Kandidaten als Integrationstests —
+  `npx vitest run --config tests/fe003-tutorial-fragen/vorschau.vitest.config.ts` (Bau, Start ohne
+  Modell, /health-Zuordnung, Chromium bei 1280/1024/390 px); Ausführung auf dem Prüfserver steht aus.
 - Prüfpaket und offene Punkte: `docs/qm/FE-003-TUTORIAL-FRAGEN-PRUEFPAKET.md`.
   **FE-003: menschliche Tutorial-Abnahme durch Pedi noch offen.**
 
