@@ -414,6 +414,7 @@ describe("SCRUM-498 B2: /api/ask bei Modell-Cap-Überlauf → 503 + Retry-After 
     (services as unknown as { ask: unknown }).ask = {
       // D5 (KI aus): die Route liest die Abschalt-Epoche vor der Frage; bei eingeschalteter KI neutral.
       kiStand: () => undefined,
+      kiSperreVorFrage: () => undefined,
       kiSperreVorAuslieferung: () => undefined,
       ask: async () => {
         throw new ModelCapacityError("Modell ausgelastet.");
@@ -642,6 +643,7 @@ describe("KW-KA4 · Nur eine gebundene, serverbestätigte Einwilligung lockert",
     const ask = {
       // D5 (KI aus): die Route prüft nach der Antwort erneut; bei eingeschalteter KI tut das nichts.
       kiStand: () => undefined,
+      kiSperreVorFrage: () => undefined,
       kiSperreVorAuslieferung: () => undefined,
       ask: async (_q: string, _actor: string, _locale: string, opts?: unknown) => {
         gesehen.push(opts ?? null);

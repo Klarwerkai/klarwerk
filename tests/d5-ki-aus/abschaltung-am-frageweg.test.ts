@@ -974,7 +974,11 @@ describe("D5 · KI aus — K6 · Gegenprobe an der frischen Frage", () => {
   it("G1 · Sperre VOR dem Retrieval entfernt → die Ablagen zählen, der Antwortweg bleibt zu", async () => {
     const l = await vorrichtung();
     await kiAus(l);
-    const rueckbau = sperreEntfernen(l.dienste, new Set(["vorauswahl", "suchprojektion"]));
+    // Lauf 5 Runde 2: `diensteinstieg` (die Route vor dem Dienst) liegt ebenfalls VOR dem Retrieval.
+    const rueckbau = sperreEntfernen(
+      l.dienste,
+      new Set(["diensteinstieg", "vorauswahl", "suchprojektion"]),
+    );
     try {
       const vorher = l.grenzen.stand();
       const antwort = await fragen(l.aufbau.app, l.leser);

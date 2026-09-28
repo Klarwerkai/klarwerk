@@ -220,6 +220,7 @@ async function messplatz(freigebend = false): Promise<Messplatz> {
   const ask = {
     // D5 (KI aus): die Route prüft nach der Antwort erneut; bei eingeschalteter KI tut das nichts.
     kiStand: () => undefined,
+    kiSperreVorFrage: () => undefined,
     kiSperreVorAuslieferung: () => undefined,
     ask: async (_q: string, _actor: string, _locale: string, opts?: Record<string, unknown>) => {
       gesehen.push(opts ?? null);

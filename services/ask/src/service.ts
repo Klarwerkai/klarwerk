@@ -377,7 +377,13 @@ export interface AskKiSperre {
  * D5: die benannten Schritte, vor denen die Sperre erneut gelesen wird. Sie stehen im Fehlertext
  * (nicht im Antwortkörper), damit ein Protokoll zeigt, WO eine laufende Frage angehalten wurde.
  */
-type AskKiSchritt = "vorauswahl" | "suchprojektion" | "antwortweg" | "ergebnis" | "auslieferung";
+type AskKiSchritt =
+  | "diensteinstieg"
+  | "vorauswahl"
+  | "suchprojektion"
+  | "antwortweg"
+  | "ergebnis"
+  | "auslieferung";
 
 export interface AskResult {
   // WP-RETEST7 R5: + captionSources — Quellen, deren Treffer NUR über die Bild-Fußnoten zustande
@@ -629,6 +635,15 @@ export class AskService {
    */
   kiStand(): number | undefined {
     return this.kiSperre?.stand();
+  }
+
+  /**
+   * D5 (Lauf 5 Runde 2, Bens B1): für die Route — nach ihrem letzten Warten VOR dem Dienst (Anmeldung,
+   * Klara-Einwilligung) gegen die beim EINGANG der Anfrage festgehaltene Epoche. Unmittelbar danach,
+   * ohne `await` dazwischen, ruft die Route `ask`; dessen eigene Epoche ist damit dieselbe.
+   */
+  kiSperreVorFrage(beginn: number | undefined): void {
+    this.pruefeKiSperre("diensteinstieg", beginn);
   }
 
   /**

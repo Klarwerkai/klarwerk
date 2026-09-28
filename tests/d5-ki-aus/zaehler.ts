@@ -312,6 +312,8 @@ export async function ruhe(ms = 150): Promise<void> {
 
 /** Die benannten Prüfpunkte — die des Fragedienstes und die am Modell-Chokepoint. */
 export type Pruefpunkt =
+  /** Die Route vor dem Dienst, nach Anmeldung und Klara-Einwilligung (Lauf 5 Runde 2, Bens B1). */
+  | "diensteinstieg"
   | "vorauswahl"
   | "suchprojektion"
   | "antwortweg"

@@ -768,9 +768,10 @@ describe("D5 · KI aus — am echten Weg (PostgreSQL · Socket · gebaute Fläch
     try {
       await ausgangsfrage(lage);
       await kiAusBestaetigt(lage);
+      // Lauf 5 Runde 2: `diensteinstieg` (die Route vor dem Dienst) liegt ebenfalls VOR dem Retrieval.
       const rueckbau = sperreEntfernen(
         lage.instanz.dienste,
-        new Set(["vorauswahl", "suchprojektion"]),
+        new Set(["diensteinstieg", "vorauswahl", "suchprojektion"]),
       );
       let gegen: Awaited<ReturnType<typeof gemessen<{ status: number; text: string }>>>;
       try {

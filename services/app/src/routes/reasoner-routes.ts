@@ -444,6 +444,9 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
         draftId?: string;
       };
     }>("/api/reasoner", async (request, reply) => {
+      // D5 (Lauf 5 Runde 2, Bens B1): die Abschalt-Epoche beim EINGANG — vor Anmeldung und vor dem
+      // Warten auf die Klara-Einwilligung. Nur die Aufgabe `ask` liest sie (unten); ohne Warten davor.
+      const kiEingang = ask.kiStand();
       const user = await guards.requirePermission("ko.read", request, reply);
       if (!user) {
         return;
@@ -492,12 +495,16 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
             request.log,
             "reasoner.ka4.dokument-consent",
           ));
-        // D5: derselbe Dienst wie `/api/ask` und damit dieselbe Abschaltauskunft. Wie dort wird die
-        // Abschalt-Epoche beim Beginn festgehalten und NACH dem letzten Warten noch einmal geprüft,
+        // D5: derselbe Dienst wie `/api/ask` und damit dieselbe Abschaltauskunft. Wie dort gilt die
+        // Abschalt-Epoche vom EINGANG der Anfrage und wird NACH dem letzten Warten noch einmal geprüft,
         // bevor die Antwort hinausgeht (Bens Befund Lauf 2 Runde 1: eine hier angehaltene Frage
         // lieferte nach bestätigtem KI-aus — auch nach Aus-/Wiedereinschalten — ihre Quelle aus).
-        const kiBeginn = ask.kiStand();
+        // Lauf 5 Runde 2 (Bens B1): früher erst HIER gelesen, also NACH `ka4Freigabe` — eine dort
+        // wartende alte Frage übernahm so die neue Epoche. Jetzt die Eingangsepoche, und vor dem Dienst
+        // geprüft; zwischen `kiSperreVorFrage` und dem Einstieg in `ask.ask` liegt kein `await`.
+        const kiBeginn = kiEingang;
         try {
+          ask.kiSperreVorFrage(kiBeginn);
           const antwort = gebundenOhneFreigabe
             ? await ask.ask(text ?? "", user.id, locale, {
                 validatedOnly: true,

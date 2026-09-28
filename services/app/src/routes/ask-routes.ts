@@ -64,6 +64,9 @@ const ASK_BODY_LIMIT = 128 * 1024; // 128 KiB
 declare module "fastify" {
   interface FastifyRequest {
     askSessionUser?: SessionUser | null;
+    // D5 (Lauf 5 Runde 2, Bens B1): die Abschalt-Epoche beim EINGANG der Frage, festgehalten im
+    // onRequest der Route — vor Anmeldung und vor dem Warten auf die Klara-Einwilligung.
+    askKiBeginn?: number | null;
   }
 }
 
@@ -327,6 +330,7 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
   const ask = deps.ask;
   return async (app) => {
     app.decorateRequest("askSessionUser", null);
+    app.decorateRequest("askKiBeginn", null);
     app.post<{
       Body: { question?: string; locale?: string; mode?: string; selection?: string };
     }>(
@@ -339,6 +343,12 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
         config: { rateLimit: addonRateLimit() },
         bodyLimit: ASK_BODY_LIMIT,
         schema: { body: askBodySchema },
+        // D5 (Lauf 5 Runde 2, Bens B1): die Epoche wird HIER festgehalten, nicht erst beim Einstieg in
+        // den Dienst. Dazwischen liegen Wartepunkte (Anmeldung, `ka4Freigabe`); wer dort während
+        // einer Aus-/Wiedereinschaltung stand, übernahm vorher die NEUE Epoche und las weiter.
+        onRequest: async (request) => {
+          request.askKiBeginn = ask.kiStand() ?? null;
+        },
         // SCRUM-498 B1: Auth VOR der Body-Validierung (wie check-text). Der Add-on-Pfad ist bereits im
         // onRequest-Hook autorisiert (401/403 vor der validation-Phase); den Session-Pfad prüfen wir
         // hier in preValidation, damit ein anonymer Request 401 bekommt, BEVOR die Schema-400 greift
@@ -405,13 +415,18 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
           opts?: Parameters<AskService["ask"]>[3],
         ): Promise<void> => {
           const mitMarkierung = markierung ? { ...opts, ...markierung } : opts;
-          // D5: die Abschalt-Epoche beim Beginn dieser Frage. Jede Prüfung bis zur Auslieferung
-          // vergleicht mit ihr — auch eine Aus-/Wiedereinschaltung dazwischen entwertet die Frage.
-          const kiBeginn = ask.kiStand();
+          // D5: die Abschalt-Epoche beim EINGANG dieser Frage (onRequest oben). Jede Prüfung bis zur
+          // Auslieferung vergleicht mit ihr — auch eine Aus-/Wiedereinschaltung dazwischen entwertet
+          // die Frage, und zwar auch dann, wenn sie VOR dem Dienst (Einwilligungsprüfung) stand.
+          const kiBeginn = request.askKiBeginn ?? undefined;
           const pruefen = (): void => ask.kiSperreVorAuslieferung(kiBeginn);
           let out: Awaited<ReturnType<AskService["ask"]>>;
           let evidence: ReturnType<typeof answerEvidence>;
           try {
+            // D5 (Bens B1): nach dem letzten Warten VOR dem Dienst gegen die Eingangsepoche prüfen.
+            // Zwischen dieser Prüfung und dem Einstieg in `ask.ask` (der dort seine eigene Epoche
+            // liest, bevor er zum ersten Mal wartet) liegt kein `await` — also kein Fenster.
+            ask.kiSperreVorFrage(kiBeginn);
             out = await ask.ask(question, actorId, locale, mitMarkierung);
             // D5: `evidenceFor` liest die Quellobjekte und die offenen Konflikte nach — vor JEDEM
             // dieser Lesevorgänge wird erneut geprüft (s. dort), und nach dem letzten Warten noch
