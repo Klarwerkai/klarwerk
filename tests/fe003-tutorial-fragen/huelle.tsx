@@ -34,6 +34,8 @@ export interface Anfrage {
 export interface Lage {
   /** Ist für die Aufgabe „answer“ ein Modell aktiv? */
   kiAktiv: boolean;
+  /** D5: hat der Administrator die KI abgeschaltet? (`kiAbgeschaltet` im öffentlichen Status) */
+  kiAbgeschaltet?: boolean;
   rolle: "viewer" | "experte" | "controller" | "admin";
 }
 
@@ -85,7 +87,12 @@ function lesen(pfad: string): unknown {
     case "/api/reasoner/status":
       return netz.lage.kiAktiv
         ? { active: true, mode: "cloud", reachable: "active", tasks: { answer: true } }
-        : { active: false, mode: "deterministic", tasks: { answer: false } };
+        : {
+            active: false,
+            mode: "deterministic",
+            tasks: { answer: false },
+            ...(netz.lage.kiAbgeschaltet ? { kiAbgeschaltet: true } : {}),
+          };
     case "/api/kos":
       return [ECHTE_QUELLE];
     case "/api/features":

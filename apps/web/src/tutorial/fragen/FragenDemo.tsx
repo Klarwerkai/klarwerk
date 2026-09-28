@@ -38,6 +38,7 @@
 // in `components/fragen/Antwortbausteine.tsx`).
 import { type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useReasonerStatus } from "../../api/hooks";
 import type { KnowledgeObject } from "../../api/types";
 import { AiGeneratedNotice } from "../../components/AiGeneratedNotice";
 import { AntwortPlatzhalter, KiNichtVerfuegbar } from "../../components/fragen/Antwortbausteine";
@@ -667,6 +668,9 @@ export function FragenUebergang({
 }: TutorialUebergangProps): JSX.Element {
   const { t } = useTranslation();
   const answerAi = useAiAvailable("answer");
+  // D5: dieselbe Unterscheidung wie auf der Seite — eine Abschaltung durch den Administrator ist
+  // keine Störung und wird nicht „nicht verfügbar“ genannt.
+  const kiAbgeschaltet = useReasonerStatus().data?.kiAbgeschaltet === true;
   return (
     <div
       data-testid="tutorial-uebergang"
@@ -692,7 +696,13 @@ export function FragenUebergang({
         <div data-testid="tutorial-uebergang-ki-aus">
           <p className="text-[12px] text-text">{t("tutorial.fragen.uebergang.kiAus")}</p>
           <KiNichtVerfuegbar
-            hinweisKey={answerAi.statusUnknown ? "ai.statusUnknown.hint" : "ai.unavailable.hint"}
+            hinweisKey={
+              kiAbgeschaltet
+                ? "d5kiaus.hinweis"
+                : answerAi.statusUnknown
+                  ? "ai.statusUnknown.hint"
+                  : "ai.unavailable.hint"
+            }
           />
         </div>
       )}

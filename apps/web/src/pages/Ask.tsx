@@ -3,6 +3,7 @@ import { ArrowRight, Copy, ThumbsUp } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useSearchParams } from "react-router-dom";
+import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import { useConflicts, useKos, useReasonerStatus } from "../api/hooks";
 import type { AnswerResult, VerschlossenHinweis } from "../api/types";
@@ -516,6 +517,10 @@ export function Ask(): JSX.Element {
   // HART ausgrauen — kein stiller deterministischer Fallback, der „KI antwortet" vortäuscht.
   const answerAi = useAiAvailable("answer");
   const aiHintKey = answerAi.statusUnknown ? "ai.statusUnknown.hint" : "ai.unavailable.hint";
+  // D5: hat der ADMINISTRATOR die KI abgeschaltet, sagt die Fläche das so — und nicht „nicht
+  // verfügbar", was eine Störung meint. Die Absendesperre selbst bleibt `answerAi.available`: eine
+  // abgeschaltete Aufgabe `answer` hat keinen nutzbaren Modellweg, der Server meldet sie `false`.
+  const kiAbgeschaltet = reasonerStatus.data?.kiAbgeschaltet === true;
   // AUFTRAG-mega69 B1: kann ein Klick auf DIESE Aufgabe („answer") wirklich etwas kosten? Dieselbe
   // zentrale Ableitung (deriveAiBillable) wie an allen anderen Auslösestellen; ohne Auskunft
   // schweigt der Hinweis (AiCostHint rendert nur bei `true`).
@@ -614,6 +619,14 @@ export function Ask(): JSX.Element {
   const antwortFrage = useRef("");
   const ask = useMutation({
     mutationFn: (question: string) => endpoints.ask.ask(question, toReasonerLocale(i18n.language)),
+    // D5: eine schon offene Fläche kennt die Abschaltung noch nicht — der Server hat sie eben
+    // gemeldet. Der Status wird neu gelesen, damit der Absendeknopf danach gesperrt ist und der
+    // Hinweis dasteht, statt dass der Mensch dieselbe Absage ein zweites Mal abholt.
+    onError: (fehler: unknown) => {
+      if (fehler instanceof ApiError && fehler.code === "KI_ABGESCHALTET") {
+        void qc.invalidateQueries({ queryKey: ["reasoner", "status"] });
+      }
+    },
     // ============================================================================================
     // AUFTRAG-mega39 BLOCK C (ben, sammel37-mega38) — DAS ERGEBNIS GEHÖRT ZU GENAU EINER FRAGE.
     // ============================================================================================
@@ -717,6 +730,10 @@ export function Ask(): JSX.Element {
   // Ist eine Auffrischung GESCHEITERT, während die alte Antwort steht? §9: „ein Satz unter der
   // Karte" — nicht der Fehlerkasten, der „es gibt kein Ergebnis" bedeutet.
   const auffrischungGescheitert = ask.isError && Boolean(result);
+  // D5: die Absage kam, weil der Administrator die KI abgeschaltet hat — nicht, weil etwas hakte.
+  // Sie bekommt ihren eigenen Wortlaut und keinen „Erneut versuchen"-Knopf.
+  const abgeschaltetAbgewiesen =
+    ask.error instanceof ApiError && ask.error.code === "KI_ABGESCHALTET";
 
   const resultRef = useRef<HTMLDivElement | null>(null);
   // ==============================================================================================
@@ -1104,8 +1121,19 @@ export function Ask(): JSX.Element {
             Rolle nicht erreicht, wird als Lage gezeigt, nicht als Weg — dasselbe EINE Tor wie
             überall auf dieser Fläche (AUFTRAG-mega71 Block E). */}
         {/* FE-003: Satz und Alternativen sind der gemeinsame Baustein `KiNichtVerfuegbar` — das
-            Tutorial „Fragen“ erklärt genau diesen Zustand (Schritt 6) mit demselben Bauteil. */}
-        {!answerAi.available ? <KiNichtVerfuegbar hinweisKey={aiHintKey} /> : null}
+            Tutorial „Fragen“ erklärt genau diesen Zustand (Schritt 6) mit demselben Bauteil.
+            D5: hat der Administrator die KI abgeschaltet, nennt der Satz DIESE Lage
+            (`d5kiaus.hinweis`) statt „nicht verfügbar"; die Alternativen bleiben dieselben. */}
+        {!answerAi.available ? (
+          kiAbgeschaltet ? (
+            <KiNichtVerfuegbar
+              hinweisKey="d5kiaus.hinweis"
+              hinweisTestId="ask-ki-abgeschaltet-hinweis"
+            />
+          ) : (
+            <KiNichtVerfuegbar hinweisKey={aiHintKey} />
+          )
+        ) : null}
       </span>
 
       {/* WP-UX-WOW-1 U2/U3 (statt SCRUM-265-Statik): ehrliche Beispiel-Chips. Antwort-Beispiele
@@ -1234,14 +1262,29 @@ export function Ask(): JSX.Element {
             role="alert"
             className="mt-5 rounded-card border border-trust-crit-fill bg-trust-crit-bg p-5"
           >
-            <p className="text-[13px] font-semibold text-trust-crit-text">{t("ask.error.title")}</p>
-            <p className="mt-0.5 text-[12.5px] leading-relaxed text-trust-crit-text">
-              {t("ask.error.body")}
-            </p>
-            <Button className="mt-3" variant="ghost" onClick={() => submitAsk(asked || q)}>
-              {t("ask.error.retry")}
-              <ArrowRight size={14} />
-            </Button>
+            {abgeschaltetAbgewiesen ? (
+              <div data-testid="ask-ki-abgeschaltet">
+                <p className="text-[13px] font-semibold text-trust-crit-text">
+                  {t("d5kiaus.titel")}
+                </p>
+                <p className="mt-0.5 text-[12.5px] leading-relaxed text-trust-crit-text">
+                  {t("d5kiaus.text")}
+                </p>
+              </div>
+            ) : (
+              <>
+                <p className="text-[13px] font-semibold text-trust-crit-text">
+                  {t("ask.error.title")}
+                </p>
+                <p className="mt-0.5 text-[12.5px] leading-relaxed text-trust-crit-text">
+                  {t("ask.error.body")}
+                </p>
+                <Button className="mt-3" variant="ghost" onClick={() => submitAsk(asked || q)}>
+                  {t("ask.error.retry")}
+                  <ArrowRight size={14} />
+                </Button>
+              </>
+            )}
           </div>
         ) : null}
         {/* Eine ANDERE Frage räumt die alte Antwort ab (`onMutate`) — sie gehört zu einer anderen
@@ -1899,7 +1942,11 @@ export function Ask(): JSX.Element {
                 data-testid="ask-auffrischung-fehlgeschlagen"
                 className="mt-2 block text-[12.5px] text-trust-warn-text"
               >
-                {t("ask.refreshFailed")}
+                {abgeschaltetAbgewiesen ? (
+                  <span data-testid="ask-ki-abgeschaltet">{t("d5kiaus.text")}</span>
+                ) : (
+                  t("ask.refreshFailed")
+                )}
               </output>
             ) : null}
           </>

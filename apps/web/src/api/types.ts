@@ -2145,6 +2145,10 @@ export interface ReasonerStatus {
   // Oberfläche nichts.
   // JOB 615 D7: dieselbe geschlossene, partielle Form wie `tasks` — aus demselben Grund.
   billable?: Partial<Record<ReasonerTask, boolean>>;
+  // D5: der Administrator hat den KI-Frageweg abgeschaltet (gespeicherte Adminwahl). Getrennt von
+  // `tasks`/`reachable`, die auch bei einer Störung `false` werden — die Fläche sagt die beiden
+  // Lagen verschieden. Fehlt es (alter Server), behauptet die Oberfläche keine Abschaltung.
+  kiAbgeschaltet?: boolean;
 }
 
 // SCRUM-166: read-only Provider-/Model-Konfiguration (nur Metadaten, keine Secrets).

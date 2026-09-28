@@ -3384,11 +3384,17 @@ export class KoService {
   // jedes Mal gerechnet.
   private bestandsMerker: { stand: string; stempel: string } | undefined;
 
-  async pruefbestandStempel(): Promise<string> {
+  //
+  // D5 (KI aus): `vorInhaltsabruf` ist die Sperre des Klara-Fragewegs (s. `findCandidates`, `get`).
+  // Der Stempel liest nach dem Objekt noch den Schreibstand und womöglich den GANZEN Bestand — beides
+  // nach einem Warten. Die Sperre steht deshalb vor beiden Lesevorgängen; ohne sie wie bisher.
+  async pruefbestandStempel(vorInhaltsabruf?: () => void): Promise<string> {
+    vorInhaltsabruf?.();
     const stand = await this.repo.anhangSchreibstand?.();
     if (stand !== undefined && this.bestandsMerker?.stand === stand) {
       return this.bestandsMerker.stempel;
     }
+    vorInhaltsabruf?.();
     const stempel = bestandsStempelVon(await this.repo.list({}));
     if (stand !== undefined) {
       this.bestandsMerker = { stand, stempel };
@@ -3401,15 +3407,23 @@ export class KoService {
     return pruefbasisVon(ko, await this.pruefbestandStempel());
   }
 
-  private async lesefassung(ko: KnowledgeObject): Promise<KnowledgeObject> {
-    return brauchtPruefstand(ko) ? mitPruefstand(ko, await this.pruefbestandStempel()) : ko;
+  private async lesefassung(
+    ko: KnowledgeObject,
+    vorInhaltsabruf?: () => void,
+  ): Promise<KnowledgeObject> {
+    return brauchtPruefstand(ko)
+      ? mitPruefstand(ko, await this.pruefbestandStempel(vorInhaltsabruf))
+      : ko;
   }
 
-  private async lesefassungen(kos: KnowledgeObject[]): Promise<KnowledgeObject[]> {
+  private async lesefassungen(
+    kos: KnowledgeObject[],
+    vorInhaltsabruf?: () => void,
+  ): Promise<KnowledgeObject[]> {
     if (!kos.some(brauchtPruefstand)) {
       return kos;
     }
-    const stempel = await this.pruefbestandStempel();
+    const stempel = await this.pruefbestandStempel(vorInhaltsabruf);
     return kos.map((ko) => mitPruefstand(ko, stempel));
   }
 
@@ -3433,9 +3447,22 @@ export class KoService {
   // AUFNAHME 20260922 · Prüfbasis-Aktualität: get/list liefern die LESEFASSUNG des Prüfnachweises —
   // `aiCheck.ueberholt` ist aus der gespeicherten Basisbindung abgeleitet (pruefbasis.ts). Anzeige,
   // Neuladen, Abruf und Worker lesen damit dieselbe gespeicherte Bindung.
-  async get(id: string): Promise<KnowledgeObject | undefined> {
+  // D5 (KI aus): `vorInhaltsabruf` nur vom Klara-Frageweg (ask-routes.ts `evidenceFor`) — vor dem
+  // Objekt und vor den Lesevorgängen der Lesefassung. Ohne ihn unverändert.
+  async get(id: string, vorInhaltsabruf?: () => void): Promise<KnowledgeObject | undefined> {
+    vorInhaltsabruf?.();
     const ko = await this.repo.findById(id);
-    return ko && !ko.deletedAt ? this.lesefassung(ko) : undefined;
+    return ko && !ko.deletedAt ? this.lesefassung(ko, vorInhaltsabruf) : undefined;
+  }
+
+  // D5 (KI aus): die aktuelle Fassung eines (nicht getrashten) Objekts — die Versions-Autorität der
+  // Befund-Dienste (build-app.ts `koVersion`). Dieselbe Antwort wie `get(id)?.version`, aber ohne
+  // Lesefassung: die ändert nur den Prüfnachweis, nie die Fassung, und läse dafür den Schreibstand
+  // und womöglich den ganzen Bestand — ein Lesen, das der Frageweg nach seiner Sperre nicht haben
+  // darf (`ConflictService.unresolved(vorObjektabruf)` sperrt nur vor diesem einen Objektabruf).
+  async aktuelleFassungVon(id: string): Promise<number | undefined> {
+    const ko = await this.repo.findById(id);
+    return ko && !ko.deletedAt ? ko.version : undefined;
   }
 
   // ==============================================================================================
@@ -3809,20 +3836,22 @@ export class KoService {
     // freigegebene Instanz ist vollständig projiziert. Ist sie es nicht, wirft die Suche — sie
     // liefert keine von der Reihenfolge abhängige Teilmenge.
     const hits = await this.findSearchHits({
-      terms: query.terms,
-      limit: query.limit,
+      ...query,
       deckelauswahl: "trefferguete",
     });
     if (hits.length === 0) {
       return [];
     }
     const rang = new Map(hits.map((hit, index) => [hit.koId, index]));
+    query.vorInhaltsabruf?.();
     const kos = await this.repo.listByIds(hits.map((hit) => hit.koId));
     // AUFNAHME 20260922: auch der Suchkandidat trägt die Lesefassung des Prüfnachweises.
+    // D5: deren Stempel liest nach `listByIds` weiter — die Sperre reist mit (s. `pruefbestandStempel`).
     return this.lesefassungen(
       kos
         .filter((ko) => !ko.deletedAt)
         .sort((a, b) => (rang.get(a.id) ?? 0) - (rang.get(b.id) ?? 0)),
+      query.vorInhaltsabruf,
     );
   }
 
@@ -5568,6 +5597,37 @@ export class KoService {
     const at = new Date(this.now()).toISOString();
     await this.repo.update({ ...ko, deletedAt: at, deletedBy: actor });
     await this.audit?.record({ actor, action: "ko.deleted", target: id, payload: { trash: true } });
+  }
+
+  // ==============================================================================================
+  // D5 (KI AUS) — DER FRAGEWEG PRÜFT DIE ABSCHALTUNG VOR JEDEM LESEN, NICHT NUR VOR JEDEM DIENST.
+  // ==============================================================================================
+  //
+  // Der Befund, an dem das gemessen wurde (ben, Runde 1): eine Frage, deren Suche gerade lief, als
+  // der Administrator die KI abschaltete, las danach noch die Kandidaten — `findCandidates` holt
+  // nach `await findSearchHits` die Objekte mit `repo.listByIds`, und dazwischen fragte niemand.
+  // Die Sperre (`vorInhaltsabruf`, vom Frageweg gesetzt) steht deshalb nach JEDEM Warten und vor
+  // JEDEM Lesen:
+  //   · `findCandidates` reicht sie über `...query` an die Suche weiter (die Speicher rufen sie vor
+  //     ihrer Inhaltsabfrage) und ruft sie selbst vor `listByIds`. Das Ausbreiten ersetzt die zwei
+  //     Zeilen `terms`/`limit` — es trägt dieselben zwei Felder und die Sperre, und es verschiebt
+  //     keine der Zeilen, auf die von aussen gezeigt wird (s. `ReviseMitHerkunft` am Dateiende).
+  //   · `searchProjectionUnterKiSperre` hier unten: dasselbe Lesen wie `searchProjectionOf(id)`
+  //     (Objekt, dann seine aktive Projektion), mit der Sperre vor BEIDEN Schritten. Ein eigener
+  //     Name statt eines Parameters an `searchProjectionOf`, weil deren Signatur umbrechen und damit
+  //     `findSearchHits` (`:1809`) verschieben würde.
+  // Ohne Sperre (Bibliothek, Prüfwege) verhält sich alles Zeichen für Zeichen wie vorher.
+  async searchProjectionUnterKiSperre(
+    id: string,
+    vorInhaltsabruf: () => void,
+  ): Promise<KoSearchProjection | undefined> {
+    vorInhaltsabruf();
+    const ko = await this.repo.findById(id);
+    if (!ko) {
+      return undefined;
+    }
+    vorInhaltsabruf();
+    return this.searchProjections.find(ko.id, ko.version);
   }
 
   private async require(id: string): Promise<KnowledgeObject> {

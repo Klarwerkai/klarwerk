@@ -41,11 +41,22 @@ export function AntwortPlatzhalter(): JSX.Element {
  * Bestand durchsuchen und Wissen erfassen. Über `RoleLink`: ein Ziel, das die Rolle nicht
  * erreicht, wird als Lage gezeigt, nicht als Weg (AUFTRAG-mega71 Block E).
  */
-export function KiNichtVerfuegbar({ hinweisKey }: { hinweisKey: string }): JSX.Element {
+export function KiNichtVerfuegbar({
+  hinweisKey,
+  hinweisTestId,
+}: {
+  hinweisKey: string;
+  /** Kennung des Satzes, wo die Seite eine eigene Lage benennt (D5: `ask-ki-abgeschaltet-hinweis`). */
+  hinweisTestId?: string;
+}): JSX.Element {
   const { t } = useTranslation();
   return (
     <>
-      <p data-tutorial-ziel={FRAGEN_ZIEL.kiAus} className="mt-1.5 text-[12px] text-muted-2">
+      <p
+        data-tutorial-ziel={FRAGEN_ZIEL.kiAus}
+        data-testid={hinweisTestId}
+        className="mt-1.5 text-[12px] text-muted-2"
+      >
         {t(hinweisKey)}
       </p>
       <p data-testid="ask-ai-alternative" className="mt-1.5 text-[12px] text-muted-2">

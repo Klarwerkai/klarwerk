@@ -19,6 +19,9 @@
 - 28.09. (Lauf 3, Runde 2): Prüfplan des Kandidaten als Integrationstests —
   `npx vitest run --config tests/fe003-tutorial-fragen/vorschau.vitest.config.ts` (Bau, Start ohne
   Modell, /health-Zuordnung, Chromium bei 1280/1024/390 px); Ausführung auf dem Prüfserver steht aus.
+- 28.09. (Lauf 3, Runde 3): Zusammenführung mit D5 (KI-Abschaltung durch den Administrator) —
+  `KiNichtVerfuegbar` nennt auf der Seite und im Tutorial-Übergang die Abschaltung
+  (`d5kiaus.hinweis`) statt „nicht verfügbar“; Alternativen unverändert.
 - Prüfpaket und offene Punkte: `docs/qm/FE-003-TUTORIAL-FRAGEN-PRUEFPAKET.md`.
   **FE-003: menschliche Tutorial-Abnahme durch Pedi noch offen.**
 

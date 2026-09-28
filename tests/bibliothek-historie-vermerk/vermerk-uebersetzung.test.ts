@@ -195,14 +195,16 @@ const DIENST_VERMERKE = [
     // Mutationspfade, Bestandsstempel/Lesefassung vor `get`, die gebundene Basis in
     // `recordAiCheckOutcome`/`markAiCheckPending`/`resolveAiCheck` und die Lesefassung der Suchwege.
     // Wortlaute und Zahl der Vermerke UNVERÄNDERT.
-    fundstellen: [4447, 4564, 4660, 4849],
+    // D5 (KI aus, Lauf 3): NEU GEMESSEN, alle Fundstellen um 29 Zeilen verschoben — die Sperre des
+    // Fragewegs in Bestandsstempel/Lesefassung/`get`, `aktuelleFassungVon` und `findCandidates`.
+    fundstellen: [4476, 4593, 4689, 4878],
   },
   {
     wort: "überarbeitet (Dokumentinhalt übernommen)",
     schluessel: "ko.historyNote.revisedFromDocument",
     en: "revised (document content adopted)",
     nl: "herzien (documentinhoud overgenomen)",
-    fundstellen: [5080, 5098],
+    fundstellen: [5109, 5127],
   },
 ] as const;
 

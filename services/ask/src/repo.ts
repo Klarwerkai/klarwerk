@@ -35,7 +35,15 @@ export interface GapRepo {
    * und `PgGapRepo` —, und beide führen den Weg. Dass die Methode PFLICHT wird, ist als kleiner
    * Folgeschritt in der Rückgabe benannt.
    */
-  insertOrIncrement?(gap: Gap): Promise<{ gap: Gap; created: boolean }>;
+  //
+  // D5 (KI aus): `vorInhaltsabruf` ist die Sperre des Klara-Fragewegs (`AskService.pruefeKiSperre`).
+  // Die Ablage ruft sie vor JEDEM ihrer eigenen Zugriffe — in PostgreSQL liegen zwischen Einfügen
+  // und Hochzählen Wartepunkte, an denen der Administrator abschalten kann. Wirft sie, findet der
+  // Zugriff nicht statt. Ohne sie unverändert.
+  insertOrIncrement?(
+    gap: Gap,
+    vorInhaltsabruf?: () => void,
+  ): Promise<{ gap: Gap; created: boolean }>;
 }
 
 /** Der Zähler einer Lücke; Altbestände ohne Feld gelten als einmal gefragt. */
@@ -51,8 +59,17 @@ export class InMemoryGapRepo implements GapRepo {
     return Promise.resolve();
   }
 
-  insertOrIncrement(gap: Gap): Promise<{ gap: Gap; created: boolean }> {
+  insertOrIncrement(
+    gap: Gap,
+    vorInhaltsabruf?: () => void,
+  ): Promise<{ gap: Gap; created: boolean }> {
     // KEIN `await` in diesem Block — das ist die Unteilbarkeit, die den Parallelfall trägt.
+    // D5: die Sperre einmal davor genügt hier; ohne Warten gibt es keinen zweiten Wartepunkt.
+    try {
+      vorInhaltsabruf?.();
+    } catch (fehler) {
+      return Promise.reject(fehler);
+    }
     if (gap.compareKey) {
       for (const vorhanden of this.gaps.values()) {
         if (vorhanden.status === "offen" && vorhanden.compareKey === gap.compareKey) {
@@ -117,7 +134,10 @@ export interface AnswerSnapshotRepo {
    * unangetastet. Wirft `AskError`, wenn die Revisionskette bricht oder ein `null` ohne Grund
    * kaeme — ein Beleg mit gebrochener Kette ist kein Beleg.
    */
-  appendSnapshot(snapshot: AnswerEvidenceSnapshot): Promise<boolean>;
+  //
+  // D5 (KI aus): `vorInhaltsabruf` wie bei `GapRepo.insertOrIncrement` — vor JEDEM inneren Zugriff
+  // (Antwortsatz, Idempotenzprüfung, Revisionskette, Einfügen).
+  appendSnapshot(snapshot: AnswerEvidenceSnapshot, vorInhaltsabruf?: () => void): Promise<boolean>;
   findSnapshot(answerId: string, revision: number): Promise<AnswerEvidenceSnapshot | undefined>;
   /** Alle Revisionen EINER Antwort, aufsteigend. */
   listSnapshots(answerId: string): Promise<AnswerEvidenceSnapshot[]>;
@@ -190,7 +210,11 @@ export class InMemoryAnswerSnapshotRepo implements AnswerSnapshotRepo {
     return Promise.resolve(treffer === undefined ? undefined : schnappschuss(treffer));
   }
 
-  async appendSnapshot(snapshot: AnswerEvidenceSnapshot): Promise<boolean> {
+  async appendSnapshot(
+    snapshot: AnswerEvidenceSnapshot,
+    vorInhaltsabruf?: () => void,
+  ): Promise<boolean> {
+    vorInhaltsabruf?.();
     if (!this.records.has(snapshot.answerId)) {
       throw new AskError("NOT_FOUND", "Zu diesem Snapshot gibt es keine Antwort.");
     }
@@ -202,6 +226,7 @@ export class InMemoryAnswerSnapshotRepo implements AnswerSnapshotRepo {
       return false;
     }
     pruefeSnapshotKette(snapshot, await this.listSnapshots(snapshot.answerId));
+    vorInhaltsabruf?.();
     this.snapshots.set(schluessel, schnappschuss(snapshot));
     return true;
   }

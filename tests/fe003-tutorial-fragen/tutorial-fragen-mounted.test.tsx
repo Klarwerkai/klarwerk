@@ -335,6 +335,31 @@ describe("E5 · ohne KI-Verbindung: Tutorial und Übung funktionieren, ehrlicher
     expect(kiAus.querySelector('a[href="/bibliothek"]')).not.toBeNull();
   });
 
+  // Integration mit D5: hat der Administrator die KI abgeschaltet, sagt die Seite das mit eigenem
+  // Satz — und der gemeinsame Baustein im Tutorial-Übergang sagt dasselbe, nicht „nicht verfügbar“.
+  it("D5 · KI vom Administrator abgeschaltet: Seite und Übergang nennen die Abschaltung, die Wege bleiben", async () => {
+    netz.lage = { kiAktiv: false, kiAbgeschaltet: true, rolle: "experte" };
+    medienStub({ reduziert: true });
+    m = await montiere("/fragen");
+    const seite = q(m.container, "page-fragen") as HTMLElement;
+    await bis(() => q(seite, "ask-ki-abgeschaltet-hinweis") !== null);
+    expect(q(seite, "ask-ki-abgeschaltet-hinweis")?.textContent).toBe(t("d5kiaus.hinweis"));
+    expect(
+      q(seite, "ask-ki-abgeschaltet-hinweis")?.getAttribute("data-tutorial-ziel"),
+      "derselbe Baustein wie im Tutorial",
+    ).toBe(FRAGEN_ZIEL.kiAus);
+    expect(seite.textContent).not.toContain(t("ai.unavailable.hint"));
+    expect(q(seite, "ask-ai-alternative")).not.toBeNull();
+
+    await oeffneTutorial(m.container);
+    await zuKapitel(m.container, "ueben");
+    const kiAus = q(m.container, "tutorial-uebergang-ki-aus") as HTMLElement;
+    expect(kiAus.textContent).toContain(t("d5kiaus.hinweis"));
+    expect(kiAus.textContent).not.toContain(t("ai.unavailable.hint"));
+    expect(kiAus.querySelector('a[href="/bibliothek"]')).not.toBeNull();
+    expect(mutationen()).toEqual([]);
+  });
+
   it("Verweise INNERHALB der Demo führen nirgends hin — die Demo erklärt, wohin sie auf der echten Seite führen", async () => {
     m = await montiere("/fragen");
     await oeffneTutorial(m.container);

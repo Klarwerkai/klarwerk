@@ -22,7 +22,12 @@ import {
 import { runConflictSelfTest } from "../conflict-self-test";
 import { runDuplicateSelfTest } from "../duplicate-self-test";
 import type { Guards } from "../http";
-import { type Ka4Freigabepruefer, ka4Freigabe, klaraBindungVorhanden } from "./ask-routes";
+import {
+  type Ka4Freigabepruefer,
+  ka4Freigabe,
+  kiAbgeschaltetSenden,
+  klaraBindungVorhanden,
+} from "./ask-routes";
 
 // FR-I18N-01: nur DE/EN; alles andere/ungültige normalisiert sauber auf "de" (keine 400).
 function normalizeLocale(value: unknown): ReasonerLocale {
@@ -439,6 +444,11 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
         draftId?: string;
       };
     }>("/api/reasoner", async (request, reply) => {
+      // D5 (Lauf 5 Runde 2, Bens B1): die Abschalt-Epoche beim EINGANG — vor Anmeldung und vor dem
+      // Warten auf die Klara-Einwilligung. Nur die Aufgabe `ask` liest sie (unten).
+      // Runde 3 (Bens B2): festgehalten im ERSTEN globalen onRequest-Hook (`buildApp`), vor jedem
+      // asynchronen Hook; nur ohne `buildApp` (eigenständige Aufbauten) hier nachgelesen.
+      const kiEingang = request.askKiBeginn ?? ask.kiStand();
       const user = await guards.requirePermission("ko.read", request, reply);
       if (!user) {
         return;
@@ -487,14 +497,31 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
             request.log,
             "reasoner.ka4.dokument-consent",
           ));
-        reply.code(200).send(
-          gebundenOhneFreigabe
+        // D5: derselbe Dienst wie `/api/ask` und damit dieselbe Abschaltauskunft. Wie dort gilt die
+        // Abschalt-Epoche vom EINGANG der Anfrage und wird NACH dem letzten Warten noch einmal geprüft,
+        // bevor die Antwort hinausgeht (Bens Befund Lauf 2 Runde 1: eine hier angehaltene Frage
+        // lieferte nach bestätigtem KI-aus — auch nach Aus-/Wiedereinschalten — ihre Quelle aus).
+        // Lauf 5 Runde 2 (Bens B1): früher erst HIER gelesen, also NACH `ka4Freigabe` — eine dort
+        // wartende alte Frage übernahm so die neue Epoche. Jetzt die Eingangsepoche, und vor dem Dienst
+        // geprüft; zwischen `kiSperreVorFrage` und dem Einstieg in `ask.ask` liegt kein `await`.
+        const kiBeginn = kiEingang;
+        try {
+          ask.kiSperreVorFrage(kiBeginn);
+          const antwort = gebundenOhneFreigabe
             ? await ask.ask(text ?? "", user.id, locale, {
                 validatedOnly: true,
                 retrievalOnly: true,
               })
-            : await ask.ask(text ?? "", user.id, locale),
-        );
+            : await ask.ask(text ?? "", user.id, locale);
+          ask.kiSperreVorAuslieferung(kiBeginn);
+          reply.code(200).send(antwort);
+        } catch (fehler) {
+          // Die Auskunft in der angefragten Sprache — auch NL, das `normalizeLocale` für die
+          // Antwort selbst (bestehend: nur DE/EN) auf DE zurückführt.
+          if (!kiAbgeschaltetSenden(reply, fehler, String(request.body.locale ?? locale))) {
+            throw fehler;
+          }
+        }
         return;
       }
       if (task === "assist") {
