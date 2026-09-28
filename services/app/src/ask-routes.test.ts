@@ -412,6 +412,10 @@ describe("SCRUM-498 B2: /api/ask bei Modell-Cap-Überlauf → 503 + Retry-After 
     // Nur ask.ask ist relevant (POST /api/ask ruft ausschließlich diese Methode); Backpressure wird
     // stellvertretend geworfen. Property auf unknown gecastet, um die volle AskService-Form zu umgehen.
     (services as unknown as { ask: unknown }).ask = {
+      // D5 (KI aus): die Route liest die Abschalt-Epoche vor der Frage; bei eingeschalteter KI neutral.
+      kiStand: () => undefined,
+      kiSperreVorFrage: () => undefined,
+      kiSperreVorAuslieferung: () => undefined,
       ask: async () => {
         throw new ModelCapacityError("Modell ausgelastet.");
       },
@@ -637,6 +641,10 @@ describe("KW-KA4 · Nur eine gebundene, serverbestätigte Einwilligung lockert",
   async function routeMit(pruefer: unknown) {
     const gesehen: unknown[] = [];
     const ask = {
+      // D5 (KI aus): die Route prüft nach der Antwort erneut; bei eingeschalteter KI tut das nichts.
+      kiStand: () => undefined,
+      kiSperreVorFrage: () => undefined,
+      kiSperreVorAuslieferung: () => undefined,
       ask: async (_q: string, _actor: string, _locale: string, opts?: unknown) => {
         gesehen.push(opts ?? null);
         return {

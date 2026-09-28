@@ -960,6 +960,12 @@ export interface KoSearchQuery {
    */
   deckelauswahl?: Deckelauswahl;
   limit?: number;
+  /**
+   * D5 (KI aus): vom Frageweg mitgegeben. Der Speicher ruft sie unmittelbar VOR jedem Inhaltslesen,
+   * nach allem, worauf er davor gewartet hat; wirft sie, findet das Lesen nicht statt. Die Bibliothek
+   * gibt sie nicht mit — der menschliche Leseweg ist nicht Teil der Abschaltung.
+   */
+  vorInhaltsabruf?: () => void;
 }
 
 // Reine Termbereinigung — an EINER Stelle für alle Adapter (In-Memory wie Postgres), damit die

@@ -1,5 +1,11 @@
 import type { FastifyPluginAsync } from "fastify";
-import { type AskService, answerEvidence, isGapPriority, redactGapForViewer } from "../../../ask";
+import {
+  AskError,
+  type AskService,
+  answerEvidence,
+  isGapPriority,
+  redactGapForViewer,
+} from "../../../ask";
 import type { ConflictService } from "../../../conflicts";
 import type { KnowledgeObject, KoService } from "../../../knowledge-object";
 import { can } from "../../../rbac";
@@ -58,6 +64,9 @@ const ASK_BODY_LIMIT = 128 * 1024; // 128 KiB
 declare module "fastify" {
   interface FastifyRequest {
     askSessionUser?: SessionUser | null;
+    // D5 (Lauf 5 Runde 2/3, Bens B1/B2): die Abschalt-Epoche beim EINGANG der Frage, festgehalten im
+    // ersten globalen onRequest-Hook (`buildApp`) — vor jedem Anmelde-Hook und vor der Einwilligung.
+    askKiBeginn?: number | null;
   }
 }
 
@@ -220,6 +229,38 @@ export function klaraBindungVorhanden(headers: Record<string, unknown>): boolean
 }
 // KW-KA4-DOKUMENT-CONSENT-END
 
+// ================================================================================================
+// D5 · DIE ABSCHALTAUSKUNFT — VERSTÄNDLICH, OHNE KUNDENINHALT, GLEICH AN JEDER TÜR.
+// ================================================================================================
+//
+// Hat der Administrator die KI abgeschaltet (`Reasoner.kiAbschaltung()`), bricht der Frageweg vor
+// dem ersten inhaltlesenden Schritt ab (`AskService`, `AskError("KI_ABGESCHALTET")`). Hier wird
+// daraus die Antwort an den Menschen: 503 mit dem Code `KI_ABGESCHALTET` und einem Satz in seiner
+// Sprache. Der Satz nennt WAS gilt und WAS weiter geht — und nichts aus dem Bestand: keine Frage,
+// keinen Titel, keine Quelle. Er ist bewusst unabhängig von der Frage, damit zwei Anfragen mit
+// verschiedenem Inhalt bytegleich abgewiesen werden.
+//
+// Exportiert, weil `POST /api/reasoner` (Aufgabe `ask`) denselben Dienst ruft und dieselbe
+// Auskunft geben muss — ein zweiter Wortlaut dort wäre ein zweiter Vertrag.
+const KI_ABGESCHALTET_MELDUNG: Record<"de" | "en" | "nl", string> = {
+  de: "Der Administrator hat die KI abgeschaltet. Fragen an Klara werden derzeit nicht beantwortet, und es werden dafür keine Inhalte gelesen. Die Bibliothek und die Originale bleiben nach Ihren Leserechten nutzbar.",
+  en: "The administrator has switched AI off. Questions to Klara are currently not answered, and no content is read for them. The library and the originals remain available according to your read permissions.",
+  nl: "De beheerder heeft AI uitgeschakeld. Vragen aan Klara worden momenteel niet beantwoord, en er wordt daarvoor geen inhoud gelezen. De bibliotheek en de originelen blijven beschikbaar volgens uw leesrechten.",
+};
+
+export function kiAbgeschaltetSenden(
+  reply: { code(status: number): { send(body: unknown): unknown } },
+  fehler: unknown,
+  locale: string,
+): boolean {
+  if (!(fehler instanceof AskError) || fehler.code !== "KI_ABGESCHALTET") {
+    return false;
+  }
+  const sprache = locale === "en" || locale === "nl" ? locale : "de";
+  reply.code(503).send({ error: "KI_ABGESCHALTET", message: KI_ABGESCHALTET_MELDUNG[sprache] });
+  return true;
+}
+
 // AUFTRAG-mega53 B4 — DIE ZWEITE DER VIER STELLEN.
 //
 // Diese Route beschafft nur die Eingaben; entschieden wird in `answerEvidence`. Neu ist, dass sie
@@ -239,27 +280,42 @@ async function evidenceFor(
     citedSources: string[];
   },
   log: { warn: (obj: unknown, msg: string) => void },
+  // D5 (KI aus): vor jedem Lesevorgang gerufen, AUSSERHALB der Fangzweige unten — eine Abschaltung
+  // ist kein „nicht auflösbar" und kein „Konfliktabruf gescheitert", sie wird durchgereicht.
+  pruefen: () => void,
 ): Promise<ReturnType<typeof answerEvidence>> {
   const sourceKos = new Map<string, KnowledgeObject>();
   // Höchstens DEFAULT_TOP_K Quellen (8) — dieselbe N+1-Runde, die das Add-in heute schon für
   // Titel und Datum fährt, nur einmal statt clientseitig.
   await Promise.all(
     result.sources.map(async (id) => {
+      pruefen();
       try {
-        const ko = await deps.ko.get(id);
+        // D5: die Sperre auch IN `get` — nach dem Objekt liest dessen Lesefassung noch weiter.
+        const ko = await deps.ko.get(id, pruefen);
         if (ko) {
           sourceKos.set(id, ko);
         }
       } catch (err) {
+        if (err instanceof AskError && err.code === "KI_ABGESCHALTET") {
+          throw err;
+        }
         // Nicht auflösbar ⇒ die Regel führt sie als `unknown`. Genau das ist gewollt.
         log.warn({ err, koId: id }, "ask.evidence: Quell-KO nicht auflösbar");
       }
     }),
   );
   let openConflicts: Awaited<ReturnType<ConflictService["unresolved"]>> | null = null;
+  pruefen();
   try {
-    openConflicts = await deps.conflicts.unresolved();
+    // D5: `pruefen` auch INNERHALB der Konfliktabfrage — vor jeder Versionsabfrage, die ein
+    // Wissensobjekt liest (ConflictService.unresolved → isBoundToCurrentVersions → ko.get).
+    openConflicts = await deps.conflicts.unresolved(pruefen);
   } catch (err) {
+    // Eine Abschaltung ist kein gescheiterter Konfliktabruf: sie geht an die Route durch.
+    if (err instanceof AskError && err.code === "KI_ABGESCHALTET") {
+      throw err;
+    }
     log.warn({ err }, "ask.evidence: Konfliktabruf gescheitert — Einstufung bleibt unbelegt");
   }
   return answerEvidence({
@@ -274,6 +330,10 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
   const ask = deps.ask;
   return async (app) => {
     app.decorateRequest("askSessionUser", null);
+    // D5: in der App dekoriert `buildApp` (erster onRequest-Hook); hier nur für eigenständige Aufbauten.
+    if (!app.hasRequestDecorator("askKiBeginn")) {
+      app.decorateRequest("askKiBeginn", null);
+    }
     app.post<{
       Body: { question?: string; locale?: string; mode?: string; selection?: string };
     }>(
@@ -286,6 +346,17 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
         config: { rateLimit: addonRateLimit() },
         bodyLimit: ASK_BODY_LIMIT,
         schema: { body: askBodySchema },
+        // D5 (Lauf 5 Runde 2, Bens B1): die Epoche gilt vom EINGANG, nicht erst vom Einstieg in den
+        // Dienst. Dazwischen liegen Wartepunkte (Anmeldung, `ka4Freigabe`); wer dort während einer
+        // Aus-/Wiedereinschaltung stand, übernahm vorher die NEUE Epoche und las weiter.
+        // Runde 3 (Bens B2): festgehalten wird sie im ERSTEN globalen onRequest-Hook (`buildApp`),
+        // also auch vor dem Anmelde-Hook der Add-on-API. Dieser Routen-Hook füllt sie nur, wo jener
+        // fehlt (eigenständige Aufbauten ohne `buildApp`) — er überschreibt sie nie.
+        onRequest: async (request) => {
+          if (request.askKiBeginn == null) {
+            request.askKiBeginn = ask.kiStand() ?? null;
+          }
+        },
         // SCRUM-498 B1: Auth VOR der Body-Validierung (wie check-text). Der Add-on-Pfad ist bereits im
         // onRequest-Hook autorisiert (401/403 vor der validation-Phase); den Session-Pfad prüfen wir
         // hier in preValidation, damit ein anonymer Request 401 bekommt, BEVOR die Schema-400 greift
@@ -352,8 +423,33 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
           opts?: Parameters<AskService["ask"]>[3],
         ): Promise<void> => {
           const mitMarkierung = markierung ? { ...opts, ...markierung } : opts;
-          const out = await ask.ask(question, actorId, locale, mitMarkierung);
-          const evidence = await evidenceFor(deps, out.result, request.log);
+          // D5: die Abschalt-Epoche beim EINGANG dieser Frage (onRequest oben). Jede Prüfung bis zur
+          // Auslieferung vergleicht mit ihr — auch eine Aus-/Wiedereinschaltung dazwischen entwertet
+          // die Frage, und zwar auch dann, wenn sie VOR dem Dienst (Einwilligungsprüfung) stand.
+          const kiBeginn = request.askKiBeginn ?? undefined;
+          const pruefen = (): void => ask.kiSperreVorAuslieferung(kiBeginn);
+          let out: Awaited<ReturnType<AskService["ask"]>>;
+          let evidence: ReturnType<typeof answerEvidence>;
+          try {
+            // D5 (Bens B1): nach dem letzten Warten VOR dem Dienst gegen die Eingangsepoche prüfen.
+            // Zwischen dieser Prüfung und dem Einstieg in `ask.ask` (der dort seine eigene Epoche
+            // liest, bevor er zum ersten Mal wartet) liegt kein `await` — also kein Fenster.
+            ask.kiSperreVorFrage(kiBeginn);
+            out = await ask.ask(question, actorId, locale, mitMarkierung);
+            // D5: `evidenceFor` liest die Quellobjekte und die offenen Konflikte nach — vor JEDEM
+            // dieser Lesevorgänge wird erneut geprüft (s. dort), und nach dem letzten Warten noch
+            // einmal, bevor irgendetwas davon hinausgeht.
+            pruefen();
+            evidence = await evidenceFor(deps, out.result, request.log, pruefen);
+            pruefen();
+          } catch (fehler) {
+            // D5: ALLE Zweige dieser Route laufen hier durch — Konsole, Word-Panel mit und ohne
+            // Klara-Bindung, Add-on-Schlüssel. Die Abschaltauskunft ist deshalb überall dieselbe.
+            if (kiAbgeschaltetSenden(reply, fehler, locale)) {
+              return;
+            }
+            throw fehler;
+          }
           reply.code(200).send({ ...out, result: { ...out.result, evidence } });
         };
         const auth = request.authContext;

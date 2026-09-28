@@ -595,6 +595,9 @@ export class PgKoSearchProjectionRepo implements KoSearchProjectionRepo {
     const { fassung: aktiveFassung, generation } = freigegebeneProjektion(
       await this.controlState(),
     );
+    // D5 (KI aus): nach dem Warten auf den Control-State und VOR der Inhaltsabfrage — dazwischen
+    // liegt kein weiteres `await` (`KoSearchQuery.vorInhaltsabruf`).
+    query.vorInhaltsabruf?.();
     // JOB 1531 D2 (S2): derselbe Aufruf wie im In-Memory-Adapter (search-projection-repo.ts:698).
     // Beide Speicher muessen dieselbe Kandidatenmenge sehen — sonst faende „klep" das „Ventil" je
     // nach Betriebsart einmal und einmal nicht.

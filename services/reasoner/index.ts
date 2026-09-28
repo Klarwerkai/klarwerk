@@ -105,6 +105,7 @@ export {
 } from "./src/model-errors";
 // SCRUM-498 B2: prozess-globaler In-Flight-Cap für Modellaufrufe.
 export {
+  KiAbgeschaltetFehler,
   ModelCapacityError,
   ModelSemaphore,
   type ModelCapConfig,

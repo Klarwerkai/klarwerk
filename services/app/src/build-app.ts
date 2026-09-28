@@ -956,13 +956,22 @@ export function assembleServices(
     // FUNKE-FIX2 P0 (bens ROT-1, Blocker 1): dieselbe echte DB-Transaktion wie KoService — Audit-CAS
     // und Trust-Inkrement des „Danke" committen/rollbacken gemeinsam. Nur mit echtem Pg-Pool gesetzt.
     ...(opts.withTx ? { withTx: opts.withTx } : {}),
+    // D5: die administrative KI-Abschaltung — bei jedem Schritt frisch aus dem Reasoner gelesen,
+    // also genau die gespeicherte Adminwahl, die auch `GET /api/reasoner/config` meldet.
+    kiSperre: {
+      abgeschaltet: () => reasoner.kiAbschaltung().abgeschaltet,
+      // D5 Runde 3: die Abschalt-Epoche — eine während der Frage erfolgte Abschaltung entwertet sie
+      // auch dann, wenn inzwischen wieder eingeschaltet wurde.
+      stand: () => reasoner.kiAbschaltStand(),
+    },
   });
   // D-AISTATE PAKET 4 (bens V5, aistate-fix5): Versions-Autorität für die fail-closed Lesepfade
   // beider Befund-Dienste (unresolved() UND get()/Detail-Routen, gemeinsamer version-guard) — die
   // aktuelle KO-Version kommt IMMER frisch aus dem KO-Store; ein offener Befund mit abweichender
   // (oder nicht ermittelbarer) gebundener Version wird nie ausgeliefert.
-  const koVersion = async (koId: string): Promise<number | undefined> =>
-    (await ko.get(koId))?.version;
+  // D5 (KI aus): `aktuelleFassungVon` statt `get(koId)?.version` — dieselbe Fassung ohne das Lesen
+  // der Lesefassung (Schreibstand/Bestand), das der gesperrte Frageweg nicht mehr haben darf.
+  const koVersion = (koId: string): Promise<number | undefined> => ko.aktuelleFassungVon(koId);
   const conflicts = new ConflictService({
     repo: repos.conflictsRepo,
     audit,
@@ -1810,6 +1819,9 @@ export const ERLAUBTE_FEHLERCODES: ReadonlySet<string> = new Set([
   "INVALID_STATUS",
   "INVALID_TYPE",
   "INVALID_UPLOAD_LIMITS",
+  // D5 (KI aus): der Frageweg ist vom Administrator abgeschaltet (`AskError`, services/ask). Darf ins
+  // Protokoll: ein Betriebszustand ohne Nutzertext und ohne Kennung; geht als 503 ohnehin an den Client.
+  "KI_ABGESCHALTET",
   // JOB 3667 (WORD-RÜCKWEG): der Code des BEDINGTEN Schreibzugriffs auf ein Wissensobjekt
   // (`KoService.pruefeErwarteteVersion`, services/knowledge-object/src/service.ts:3616). Er darf ins
   // Protokoll: er trägt keine Nutzertexte und keine Kennung, nur zwei Versionszahlen, und er geht
@@ -2192,6 +2204,19 @@ export function buildApp(
     app.log.info({ startvertrag: startbericht(process.env, bestand) }, "KLARWERK Startbericht");
   });
   const guards = makeGuards(services.auth);
+
+  // D5 (KI aus, Lauf 5 Runde 3 — Bens B2): die Abschalt-Epoche einer Klara-Frage wird beim EINGANG
+  // festgehalten, als ERSTER onRequest-Hook dieser App — vor dem asynchronen Anmelde-Hook der Add-on-API
+  // darunter, der bei `KLARWERK_ADDON_API=1` auch Sitzungsanfragen an `/api/ask` authentifiziert. Wer
+  // dort (oder später vor dem Dienst) während einer Aus-/Wiedereinschaltung wartet, trägt die ALTE
+  // Epoche und bleibt entwertet. Nur die beiden D5-Eingänge; synchron, ohne Warten, ohne Inhalt.
+  app.decorateRequest("askKiBeginn", null);
+  app.addHook("onRequest", async (request) => {
+    const pfad = request.routeOptions.url;
+    if (request.method === "POST" && (pfad === "/api/ask" || pfad === "/api/reasoner")) {
+      request.askKiBeginn = services.ask.kiStand() ?? null;
+    }
+  });
 
   // Add-on-API (Klara-Panel), hinter KLARWERK_ADDON_API: CORS NUR bei aktivem Flag, NUR für die eine
   // validierte Add-in-Origin und NUR für POST /api/ask UND POST /api/check-text (SCRUM-491 Slice 5).

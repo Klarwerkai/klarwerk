@@ -546,16 +546,38 @@ export class ConflictService {
   // wird zusätzlich best-effort per Lese-GC geschlossen (s. gcStaleOpen); der Revisions-Sweep
   // (onKoRevised) bleibt das aktive Schließen, dieser Filter die Rückfall-Sicherung. Altbestand
   // ohne Versionsfelder bleibt konservativ sichtbar (keine Regression).
-  async unresolved(): Promise<Conflict[]> {
+  //
+  // D5 (KI aus): `vorObjektabruf` ist ein optionaler Prüfhaken des Aufrufers. Er läuft unmittelbar
+  // vor JEDER Versionsabfrage — das sind Lesezugriffe auf die Wissensobjekte selbst. Wirft er, findet
+  // die Abfrage nicht statt, und der Aufruf endet mit genau diesem Fehler, statt ihn im fail-closed-
+  // Fang von `cachedCurrentVersions` zu „Version nicht ermittelbar" zu verschlucken. Nur der Klara-
+  // Frageweg setzt ihn (ask-routes.ts); Board, Badge und Detail-Routen rufen ohne und bleiben gleich.
+  async unresolved(vorObjektabruf?: () => void): Promise<Conflict[]> {
     const open = (await this.repo.all()).filter((c) => c.status !== "geloest");
     const lookup = this.currentVersion;
     if (!lookup) {
       return open; // keine Versions-Autorität verdrahtet → Bestandsverhalten
     }
-    const current = cachedCurrentVersions(lookup);
+    let abbruch: { fehler: unknown } | undefined;
+    const current = cachedCurrentVersions(
+      vorObjektabruf
+        ? (koId) => {
+            try {
+              vorObjektabruf();
+            } catch (fehler) {
+              abbruch ??= { fehler };
+              throw fehler;
+            }
+            return lookup(koId);
+          }
+        : lookup,
+    );
     const result: Conflict[] = [];
     for (const c of open) {
       const verdict = await isBoundToCurrentVersions(c, current);
+      if (abbruch) {
+        throw abbruch.fehler;
+      }
       if (verdict.visible) {
         result.push(c);
       } else if (verdict.stale) {

@@ -126,6 +126,10 @@ async function aufbauen(
   // Der Ask-Dienst ist hier MESSPUNKT, nicht Gegenstand: er schreibt den Optionssatz mit und
   // antwortet leer. Alles VOR ihm — Sitzung, Consent, Policy, Bindungspruefung, Route — ist echt.
   const ask = {
+    // D5 (KI aus): die Route prüft nach der Antwort erneut; bei eingeschalteter KI tut das nichts.
+    kiStand: () => undefined,
+    kiSperreVorFrage: () => undefined,
+    kiSperreVorAuslieferung: () => undefined,
     ask: async (_q: string, _actor: string, _locale: string, opts?: Record<string, unknown>) => {
       gesehen.push(opts ?? null);
       return {
