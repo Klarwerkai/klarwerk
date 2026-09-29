@@ -85,8 +85,11 @@ esac
 # Topbar (Wächter: tests/app/health-version-commit.test.ts). Geprüft wird VOR jedem Schreiben:
 # Trägt package.json nicht genau einmal die bisherige Nummer, bricht der Lauf ab, ohne eine Datei
 # anzufassen. Vorhandene Arbeitsänderungen in beiden Dateien bleiben unberührt.
-# Punkte der Nummer wörtlich nehmen (in Mustern stünde „." sonst für jedes Zeichen).
-CUR_RE="${CUR//./\\.}"; NEXT_RE="${NEXT//./\\.}"
+# Punkte der Nummer wörtlich nehmen (in Mustern stünde „." sonst für jedes Zeichen): jeder Punkt
+# wird zur Zeichenklasse [.]. Bewusst per sed statt `${CUR//…}` — die Parametererweiterung enthielte
+# die Zeichenfolge Punkt-Schrägstrich, die der cwd-Wächter (tools/check-cwd-contract.mjs) zu Recht
+# als relative Pfadangabe liest.
+CUR_RE="$(printf '%s' "$CUR" | sed 's/[.]/[.]/g')"; NEXT_RE="$(printf '%s' "$NEXT" | sed 's/[.]/[.]/g')"
 PKG_TREFFER="$(grep -c "^  \"version\": \"${CUR_RE}\",\{0,1\}$" "$PKG_FILE" || true)"
 if [ "${PKG_TREFFER}" != "1" ]; then
   echo "✗ ${PKG_FILE} trägt nicht genau einmal die Version ${CUR} (wie ${VERSION_FILE}) —"
