@@ -1934,10 +1934,7 @@ export class KoService {
 
   // SCRUM-160: Evidence-Records append-only schreiben. No-op ohne Evidence-Repo;
   // bestehende KO-Flows bleiben dadurch rückwärtskompatibel.
-  private async appendEvidence(
-    record: Omit<EvidenceRecord, "id">,
-    tx?: TxContext,
-  ): Promise<void> {
+  private async appendEvidence(record: Omit<EvidenceRecord, "id">, tx?: TxContext): Promise<void> {
     if (!this.evidence) {
       return;
     }
@@ -3133,12 +3130,15 @@ export class KoService {
         updated,
         value: updated,
         audit: async (tx) => {
-          await this.audit?.record({
-            actor,
-            action: "ko.confidentiality",
-            target: id,
-            payload: { level, previous, downgrade },
-          }, tx);
+          await this.audit?.record(
+            {
+              actor,
+              action: "ko.confidentiality",
+              target: id,
+              payload: { level, previous, downgrade },
+            },
+            tx,
+          );
         },
       };
     });
@@ -3177,19 +3177,22 @@ export class KoService {
         updated,
         value: updated,
         audit: async (tx) => {
-          await this.audit?.record({
-            actor,
-            action: "ko.ownership",
-            target: id,
-            // Der Beleg nennt beide Stände. Ohne den vorherigen wäre nicht erkennbar, ob hier
-            // Verantwortung ERSTMALS benannt oder einer Person WEGGENOMMEN wurde.
-            payload: {
-              owner: next.owner ?? null,
-              reviewers: next.reviewers,
-              validators: next.validators,
-              previousOwner: previous?.owner ?? null,
+          await this.audit?.record(
+            {
+              actor,
+              action: "ko.ownership",
+              target: id,
+              // Der Beleg nennt beide Stände. Ohne den vorherigen wäre nicht erkennbar, ob hier
+              // Verantwortung ERSTMALS benannt oder einer Person WEGGENOMMEN wurde.
+              payload: {
+                owner: next.owner ?? null,
+                reviewers: next.reviewers,
+                validators: next.validators,
+                previousOwner: previous?.owner ?? null,
+              },
             },
-          }, tx);
+            tx,
+          );
         },
       };
     });
@@ -3379,12 +3382,15 @@ export class KoService {
         updated,
         value: updated,
         audit: async (tx) => {
-          await this.audit?.record({
-            actor,
-            action: state === "erledigt" ? "ko.comment-resolved" : "ko.comment-reopened",
-            target: id,
-            payload: { commentId: wurzel.id },
-          }, tx);
+          await this.audit?.record(
+            {
+              actor,
+              action: state === "erledigt" ? "ko.comment-resolved" : "ko.comment-reopened",
+              target: id,
+              payload: { commentId: wurzel.id },
+            },
+            tx,
+          );
         },
       };
     });
@@ -4996,12 +5002,15 @@ export class KoService {
         updated,
         value: { ko: updated, proposal },
         audit: async (tx) => {
-          await this.audit?.record({
-            actor: author,
-            action: "ko.proposed",
-            target: id,
-            payload: { proposalId: proposal.id, baseVersion: proposal.baseVersion },
-          }, tx);
+          await this.audit?.record(
+            {
+              actor: author,
+              action: "ko.proposed",
+              target: id,
+              payload: { proposalId: proposal.id, baseVersion: proposal.baseVersion },
+            },
+            tx,
+          );
         },
       };
     });
@@ -5740,7 +5749,12 @@ export class KoService {
             actor,
             action: "ko.conflict-review",
             target: id,
-            payload: { previousStatus: "validiert", previousTrust, trust, reason: "truth-conflict" },
+            payload: {
+              previousStatus: "validiert",
+              previousTrust,
+              trust,
+              reason: "truth-conflict",
+            },
           },
           tx,
         );
@@ -5770,6 +5784,77 @@ export class KoService {
       return updated;
     });
     return this.lesefassung(ergebnis);
+  }
+
+  // ==============================================================================================
+  // Aufnahme gesamt-auditprotokoll (Lauf 3, Runde 2, BEN-B1) — VALIDIERUNG UND ENTSCHEIDUNGSBELEG
+  // GEMEINSAM ODER GAR NICHT.
+  // ==============================================================================================
+  //
+  // DER BEFUND: `ValidationService.rate`/`adminValidate` schrieben Status und Vertrauen über
+  // `setValidationState` und hängten den Entscheidungsbeleg (`ko.rated`, `ko.admin-validated`,
+  // `ko.returned-to-*`) erst DANACH an. Fiel der Beleg aus, blieb das Objekt „validiert, Vertrauen
+  // 99" — ohne Beleg und ohne `validationDecisionRef`.
+  //
+  // JETZT, in dieser einen Klammer unter dem KO-Lock:
+  //   1. Compare-and-Set gegen `expectedVersion` (wie `setValidationState`). Verfehlt → je nach
+  //      `beiVersionswechsel` nichts, oder NUR `beleg` (ohne Zustandsänderung, ohne Verweis) — der
+  //      Bewertungsweg hält eine Stimme auf die überholte Fassung ehrlich fest, wie bisher.
+  //   2. Zustand schreiben → `beleg(tx)` (Bewertung, Zuweisungen, Auditeinträge des Aufrufers; liefert
+  //      die tragende Referenz) → Verweis `validationDecisionRef` schreiben.
+  // MIT `withTx`: alles auf EINEM Transaktionsclient — scheitert ein Schritt, bleibt nichts.
+  // OHNE `withTx`: scheitert `beleg` oder der Verweis, wird der Vorzustand zurückgeschrieben und
+  // `ruecknahme` des Aufrufers läuft (Bewertung/Zuweisungen zurück); ihre Fehler werden geschluckt,
+  // der Ursachenfehler geworfen.
+  async setValidationStateMitBeleg(
+    id: string,
+    state: { trust: number; status: KoStatus },
+    opts: { expectedVersion: number; beiVersionswechsel: "nichts" | "nurBeleg" },
+    beleg: (tx?: TxContext) => Promise<{ auditSeq: number; auditHash: string } | null>,
+    ruecknahme: () => Promise<void> = async () => undefined,
+  ): Promise<{
+    ko: KnowledgeObject;
+    geschrieben: boolean;
+    ref: { auditSeq: number; auditHash: string } | null;
+  }> {
+    const ergebnis = await this.withKoLock(id, async () => {
+      const ko = await this.require(id);
+      if (ko.version !== opts.expectedVersion) {
+        // `ref` nennt dann den festgehaltenen Beleg, wird aber NICHT am Objekt vermerkt.
+        let ref: { auditSeq: number; auditHash: string } | null = null;
+        if (opts.beiVersionswechsel === "nurBeleg") {
+          ref = this.withTx ? await this.withTx((tx) => beleg(tx)) : await beleg();
+        }
+        return { ko, geschrieben: false, ref };
+      }
+      const updated: KnowledgeObject = { ...ko, trust: state.trust, status: state.status };
+      const schritte = async (tx?: TxContext) => {
+        await this.repo.update(updated, tx);
+        const ref = await beleg(tx);
+        if (!ref) {
+          return { ko: updated, geschrieben: true, ref };
+        }
+        // Zweiter Write DERSELBEN Klammer: `update` hat die rowVersion um 1 erhöht.
+        const mitVerweis: KnowledgeObject = {
+          ...updated,
+          rowVersion: (updated.rowVersion ?? 0) + 1,
+          validationDecisionRef: { auditSeq: ref.auditSeq, auditHash: ref.auditHash },
+        };
+        await this.repo.update(mitVerweis, tx);
+        return { ko: mitVerweis, geschrieben: true, ref };
+      };
+      if (this.withTx) {
+        return this.withTx((tx) => schritte(tx));
+      }
+      try {
+        return await schritte();
+      } catch (err) {
+        await this.rollbackKo(ko).catch(() => undefined);
+        await ruecknahme().catch(() => undefined);
+        throw err;
+      }
+    });
+    return { ...ergebnis, ko: await this.lesefassung(ergebnis.ko) };
   }
 
   // ==============================================================================================
@@ -5840,12 +5925,15 @@ export class KoService {
         updated,
         value: updated,
         audit: async (tx) => {
-          await this.audit?.record({
-            actor,
-            action: "ko.author-transferred",
-            target: id,
-            payload: { author },
-          }, tx);
+          await this.audit?.record(
+            {
+              actor,
+              action: "ko.author-transferred",
+              target: id,
+              payload: { author },
+            },
+            tx,
+          );
         },
       };
     });

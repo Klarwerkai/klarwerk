@@ -87,10 +87,7 @@ export class AuditService {
   // seq unbenutzt — der nächste record() liest last() frisch, die Kette bleibt lückenlos.
   async recordOnce(eventId: string, input: AuditInput, tx?: TxContext): Promise<boolean> {
     if (this.repo.appendNext) {
-      const { written } = await this.repo.appendNext(
-        (last) => this.baue(last, input, eventId),
-        tx,
-      );
+      const { written } = await this.repo.appendNext((last) => this.baue(last, input, eventId), tx);
       return written;
     }
     return this.repo.appendOnce(this.baue(await this.repo.last(tx), input, eventId), tx);

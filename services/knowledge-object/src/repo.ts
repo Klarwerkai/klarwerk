@@ -244,7 +244,7 @@ export interface KoRepo {
   // die Projektion der AKTIVEN KO-Version. Was hier steht, ist ein Test-/Bibliotheksweg.
   //
   // WER AN DER KANDIDATENWAHL ETWAS ÄNDERN WILL, ÄNDERT ES DORT — und muss nicht suchen:
-  // `services/knowledge-object/src/service.ts:3827-3856` ist der Rumpf, `service.ts:3838` der
+  // `services/knowledge-object/src/service.ts:4037-4066` ist der Rumpf, `service.ts:4048` der
   // Aufruf von `findSearchHits`. Das ist der EINE Wegweiser mit Datei und Zeile; die Marken in
   // `repo-pg.ts` verweisen hierher, statt eine zweite Wahrheit zu führen.
   //

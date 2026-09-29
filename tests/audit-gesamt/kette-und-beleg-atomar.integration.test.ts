@@ -8,6 +8,10 @@
 //    verweist auf die Prüfsumme seines tatsächlichen Vorgängers. Der choreografierte Fall zeigt, WO
 //    der zweite Schreiber wartet: an der Kettensperre (`advisory`), nicht an `audit_pkey`.
 //
+// BEN-B1 (Lauf 3, Runde 1): dasselbe für die Validierung — Peer-Bewertung und Admin-Validierung.
+//    Weist die Datenbank den Entscheidungsbeleg ab, bleiben Status, Vertrauen, Bewertung,
+//    Zuweisungen und `validationDecisionRef` bitgleich.
+//
 // B2 (beleg:1ea197ac, Commit d3c1bc09): Wissensobjekt und Auditeintrag werden gemeinsam
 //    festgeschrieben oder gemeinsam verworfen. Der Ausfall ist ECHT: ein Trigger der Datenbank weist
 //    den Eintrag (bzw. das Speichern am Objekt) ab — kein Test-Double im Dienst. Dazu der gemeldete
@@ -85,6 +89,7 @@ describe("Aufnahme gesamt-auditprotokoll · Lauf 3 · Kette und Beleg gemeinsam 
   let appA: FastifyInstance | undefined;
   let appB: FastifyInstance | undefined;
   let headers: Record<string, string> = {};
+  let servicesA: ReturnType<typeof buildPgServices> | undefined;
 
   beforeAll(async () => {
     let basisUrl = "";
@@ -129,7 +134,8 @@ describe("Aufnahme gesamt-auditprotokoll · Lauf 3 · Kette und Beleg gemeinsam 
     await poolA.query(PROBE_DDL);
     // ZWEI Instanzen gegen DIESELBE Datenbank — die Lage, die eine prozessinterne Schreibfolge
     // nicht ordnen kann.
-    appA = buildApp(buildPgServices(poolA));
+    servicesA = buildPgServices(poolA);
+    appA = buildApp(servicesA);
     appB = buildApp(buildPgServices(poolB));
     await appA.ready();
     await appB.ready();
@@ -355,8 +361,11 @@ describe("Aufnahme gesamt-auditprotokoll · Lauf 3 · Kette und Beleg gemeinsam 
       await a.inject({ method: "POST", url: "/api/kos", headers, payload: KO("Ändern") })
     ).json().id as string;
     const stand = async () =>
-      (await pa.query<{ data: Record<string, unknown> }>("SELECT data FROM kos WHERE id = $1", [id]))
-        .rows[0]?.data;
+      (
+        await pa.query<{ data: Record<string, unknown> }>("SELECT data FROM kos WHERE id = $1", [
+          id,
+        ])
+      ).rows[0]?.data;
     const vorher = await stand();
     const auditVorher = (await zeilen(pa)).length;
     await probe(pa, ["audit:ko.commented", "audit:ko.confidentiality"]);
@@ -411,4 +420,93 @@ describe("Aufnahme gesamt-auditprotokoll · Lauf 3 · Kette und Beleg gemeinsam 
     );
     expect(gespeichert.rows[0]?.stufe).toBe("intern");
   });
+
+  // --------------------------------------------------------------------------------------------
+  // BEN-B1 · Validierung und Entscheidungsbeleg gemeinsam oder gar nicht.
+  // --------------------------------------------------------------------------------------------
+  async function validierungsStand(p: Pool, id: string) {
+    const ko = await p.query<{ data: Record<string, unknown> }>(
+      "SELECT data FROM kos WHERE id=$1",
+      [id],
+    );
+    const bewertungen = await p.query("SELECT 1 FROM ratings WHERE ko_id=$1", [id]);
+    const zuweisungen = await p.query<{ data: unknown }>(
+      "SELECT data FROM assignments WHERE ko_id=$1 ORDER BY user_id",
+      [id],
+    );
+    return {
+      ko: ko.rows[0]?.data,
+      bewertungen: bewertungen.rowCount,
+      zuweisungen: zuweisungen.rows.map((z) => z.data),
+      audit: (await zeilen(p)).length,
+    };
+  }
+
+  async function offenesObjekt(a: FastifyInstance, titel: string): Promise<string> {
+    // Eine Stimme genügt — so validiert schon die erste grüne Bewertung (Bens Gegenprobe).
+    await (servicesA as ReturnType<typeof buildPgServices>).validation.setDefaultNeededValidations(
+      1,
+      "l3",
+    );
+    const res = await a.inject({ method: "POST", url: "/api/kos", headers, payload: KO(titel) });
+    expect(res.statusCode, res.body).toBe(201);
+    return res.json().id as string;
+  }
+
+  for (const fall of [
+    {
+      name: "Peer-Bewertung Grün (ko.rated)",
+      ziele: ["audit:ko.rated"],
+      payload: { action: "rate", verdict: "up" },
+    },
+    {
+      name: "Peer-Bewertung Rot (ko.returned-to-*)",
+      ziele: ["audit:ko.returned-to-author", "audit:ko.returned-to-owner"],
+      payload: { action: "rate", verdict: "down" },
+    },
+    {
+      name: "Admin-Validierung (ko.admin-validated)",
+      ziele: ["audit:ko.admin-validated"],
+      payload: { action: "admin-validate" },
+    },
+  ]) {
+    it(`BEN-B1 · ${fall.name}: weist die Datenbank den Entscheidungsbeleg ab, bleibt alles, wie es war`, async (ctx) => {
+      const { a, pa } = bereit(ctx);
+      const id = await offenesObjekt(a, `Validierung ${fall.name}`);
+      const vorher = await validierungsStand(pa, id);
+      expect(vorher.ko?.status).toBe("offen");
+      await probe(pa, fall.ziele);
+      try {
+        const res = await a.inject({
+          method: "PUT",
+          url: `/api/kos/${id}`,
+          headers,
+          payload: fall.payload,
+        });
+        expect(res.statusCode, res.body).toBeGreaterThanOrEqual(500);
+      } finally {
+        await probe(pa, []);
+      }
+      // Bitgleich: Status, Vertrauen, rowVersion, kein validationDecisionRef, keine Bewertung,
+      // keine geänderte Zuweisung, kein Auditeintrag.
+      expect(await validierungsStand(pa, id)).toEqual(vorher);
+      await pruefeKette(pa);
+
+      // Gegenprobe ohne Ausfall: dieselbe Handlung wirkt — mit Beleg und Verweis darauf.
+      const ok = await a.inject({
+        method: "PUT",
+        url: `/api/kos/${id}`,
+        headers,
+        payload: fall.payload,
+      });
+      expect(ok.statusCode, ok.body).toBe(200);
+      const nachher = await validierungsStand(pa, id);
+      const ref = nachher.ko?.validationDecisionRef as { auditSeq: number; auditHash: string };
+      const eintrag = await pa.query<{ hash: string }>("SELECT hash FROM audit WHERE seq=$1", [
+        ref.auditSeq,
+      ]);
+      expect(eintrag.rows[0]?.hash).toBe(ref.auditHash);
+      await pruefeKette(pa);
+    });
+  }
 });

@@ -7,6 +7,10 @@
 //    tatsächlichen Vorgängers, die Kettenprüfung meldet keinen Bruch. Eine Kalibrierung zeigt, dass
 //    derselbe Ablauf über den alten Weg (Vorgänger lesen, dann anhängen) scheitert.
 //
+// BEN-B1 (Lauf 3, Runde 1): dasselbe für die Validierung — Peer-Bewertung (`ko.rated`, bei
+//    Gelb/Rot `ko.returned-to-*`) und Admin-Validierung (`ko.admin-validated`). Fällt der
+//    Entscheidungsbeleg aus, bleibt das Objekt offen, ohne Bewertung und ohne Verweis.
+//
 // B2 (beleg:1ea197ac, Commit d3c1bc09): `POST /api/kos` antwortete 500, das Objekt stand trotzdem
 //    im Bestand, ohne `ko.created`. Hier: fällt der Auditeintrag beim Erfassen oder Ändern aus, wird
 //    auch die Änderung nicht wirksam; fällt das Speichern der Änderung aus, entsteht kein Beleg.
@@ -14,6 +18,7 @@
 // Der PostgreSQL-Weg derselben Fälle steht in `kette-und-beleg-atomar.integration.test.ts`.
 import type { FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
+import { assembleServices, buildApp, inMemoryRepos } from "../../services/app/src/build-app";
 import {
   type AuditEntry,
   type AuditRepo,
@@ -21,7 +26,6 @@ import {
   InMemoryAuditRepo,
   inspectChain,
 } from "../../services/audit";
-import { assembleServices, buildApp, inMemoryRepos } from "../../services/app/src/build-app";
 import type { KoRepo } from "../../services/knowledge-object";
 
 const offen: FastifyInstance[] = [];
@@ -100,7 +104,7 @@ async function buehne() {
     payload: { email: "l3@x.de", password: "secret123" },
   });
   const headers = { authorization: `Bearer ${login.json().token}` };
-  return { app, services, headers, probe, auditInner, koInner };
+  return { app, services, repos, headers, probe, auditInner, koInner };
 }
 
 const KO = {
@@ -190,7 +194,12 @@ describe("B2 · Wissensobjekt und Auditeintrag gemeinsam oder gar nicht (Speiche
     const kosVorher = (await b.koInner.list({})).length;
     const auditVorher = (await b.auditInner.all()).length;
     b.probe.auditAus.add("ko.created");
-    const res = await b.app.inject({ method: "POST", url: "/api/kos", headers: b.headers, payload: KO });
+    const res = await b.app.inject({
+      method: "POST",
+      url: "/api/kos",
+      headers: b.headers,
+      payload: KO,
+    });
     expect(res.statusCode, res.body).toBe(500);
     expect(await b.koInner.list({})).toHaveLength(kosVorher);
     const nachher = await b.auditInner.all();
@@ -199,7 +208,12 @@ describe("B2 · Wissensobjekt und Auditeintrag gemeinsam oder gar nicht (Speiche
 
     // Gegenprobe: ohne Ausfall entsteht das Objekt mit genau einem ko.created.
     b.probe.auditAus.clear();
-    const ok = await b.app.inject({ method: "POST", url: "/api/kos", headers: b.headers, payload: KO });
+    const ok = await b.app.inject({
+      method: "POST",
+      url: "/api/kos",
+      headers: b.headers,
+      payload: KO,
+    });
     expect(ok.statusCode, ok.body).toBe(201);
     const id = ok.json().id as string;
     expect(
@@ -256,5 +270,96 @@ describe("B2 · Wissensobjekt und Auditeintrag gemeinsam oder gar nicht (Speiche
     expect(nachher.filter((e) => e.action === "ko.confidentiality")).toHaveLength(0);
     expect(nachher).toEqual(vorher);
     expect((await b.koInner.findById(id))?.confidentiality).toBe("intern");
+  });
+});
+
+describe("BEN-B1 · Validierung und Entscheidungsbeleg gemeinsam oder gar nicht (Speicher)", () => {
+  async function offenesObjekt(b: Awaited<ReturnType<typeof buehne>>) {
+    // Eine Stimme genügt — so validiert schon die erste grüne Bewertung (Bens Gegenprobe).
+    await b.services.validation.setDefaultNeededValidations(1, "l3");
+    const id = (
+      await b.app.inject({ method: "POST", url: "/api/kos", headers: b.headers, payload: KO })
+    ).json().id as string;
+    const vorher = await b.koInner.findById(id);
+    expect(vorher?.status).toBe("offen");
+    return { id, vorher };
+  }
+
+  async function unveraendert(b: Awaited<ReturnType<typeof buehne>>, id: string, vorher: unknown) {
+    const nachher = await b.koInner.findById(id);
+    const v = vorher as { status: string; trust: number };
+    expect(nachher?.status).toBe(v.status);
+    expect(nachher?.trust).toBe(v.trust);
+    expect(nachher?.validationDecisionRef).toBeUndefined();
+    expect(await b.repos.ratings.listByKo(id)).toEqual([]);
+    pruefeKette(await b.auditInner.all());
+  }
+
+  it("Peer-Bewertung (Grün): fällt ko.rated aus, bleibt das Objekt offen — ohne Bewertung, ohne Verweis", async () => {
+    const b = await buehne();
+    const { id, vorher } = await offenesObjekt(b);
+    b.probe.auditAus.add("ko.rated");
+    const res = await b.app.inject({
+      method: "PUT",
+      url: `/api/kos/${id}`,
+      headers: b.headers,
+      payload: { action: "rate", verdict: "up" },
+    });
+    expect(res.statusCode).toBeGreaterThanOrEqual(500);
+    await unveraendert(b, id, vorher);
+    expect((await b.auditInner.all()).filter((e) => e.action === "ko.rated")).toHaveLength(0);
+
+    // Gegenprobe: ohne Ausfall validiert dieselbe Stimme — mit Beleg und Verweis darauf.
+    b.probe.auditAus.clear();
+    const ok = await b.app.inject({
+      method: "PUT",
+      url: `/api/kos/${id}`,
+      headers: b.headers,
+      payload: { action: "rate", verdict: "up" },
+    });
+    expect(ok.statusCode, ok.body).toBe(200);
+    const validiert = await b.koInner.findById(id);
+    expect(validiert?.status).toBe("validiert");
+    const beleg = (await b.auditInner.all()).find((e) => e.action === "ko.rated");
+    expect(validiert?.validationDecisionRef).toEqual({
+      auditSeq: beleg?.seq,
+      auditHash: beleg?.hash,
+    });
+  });
+
+  it("Peer-Bewertung (Rot): fällt die Rückgabe an die Verantwortliche aus, bleibt nichts — keine Bewertung, keine offene Zuweisung", async () => {
+    const b = await buehne();
+    const { id, vorher } = await offenesObjekt(b);
+    b.probe.auditAus.add("ko.returned-to-author");
+    b.probe.auditAus.add("ko.returned-to-owner");
+    const res = await b.app.inject({
+      method: "PUT",
+      url: `/api/kos/${id}`,
+      headers: b.headers,
+      payload: { action: "rate", verdict: "down" },
+    });
+    expect(res.statusCode).toBeGreaterThanOrEqual(500);
+    await unveraendert(b, id, vorher);
+    const offen = (await b.repos.assignments.all()).filter(
+      (a) => a.koId === id && a.status === "open",
+    );
+    expect(offen).toHaveLength(0);
+  });
+
+  it("Admin-Validierung: fällt ko.admin-validated aus, bleibt das Objekt offen — Vertrauen unverändert, kein Verweis", async () => {
+    const b = await buehne();
+    const { id, vorher } = await offenesObjekt(b);
+    b.probe.auditAus.add("ko.admin-validated");
+    const res = await b.app.inject({
+      method: "PUT",
+      url: `/api/kos/${id}`,
+      headers: b.headers,
+      payload: { action: "admin-validate" },
+    });
+    expect(res.statusCode).toBeGreaterThanOrEqual(500);
+    await unveraendert(b, id, vorher);
+    expect(
+      (await b.auditInner.all()).filter((e) => e.action === "ko.admin-validated"),
+    ).toHaveLength(0);
   });
 });

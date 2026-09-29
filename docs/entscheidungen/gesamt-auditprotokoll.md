@@ -1,16 +1,48 @@
 # Wissensrelevante Aktionen vollständig und manipulationsnachweisbar protokollieren
 
-*Aufnahme 20260922 · gesamt-auditprotokoll (NFR-TAI-01, FR-AUD-01/02). Abgleich am Stand
-`1.0.0-beta.1.612` (Basis `c04ec239`) und Lieferung dieses Laufs
-(`lauf:b3:aufnahme:20260922:gesamt-auditprotokoll:1`, Runde 1; fortgeschrieben in Runde 2 nach
-Bens Befunden zu R-0766, zur Re-Validierung bei Audit-Ausfall und zu R-0733; Runde 3 nach Bens
-Befunden zu Überschneidungen in der Objektkette, zum Merker-Beleg und zur Rücknahme ohne
-Transaktion). Lauf 1 endete ohne Abnahme (Nacharbeitsgrenze, Bens Runde 3 an `f066329c`) und wurde
-nicht übernommen; **Lauf 2** (`lauf:b3:aufnahme:20260922:gesamt-auditprotokoll:2`, Basis `1eb17b73`,
-`1.0.0-beta.1.621`) übernimmt die drei Lieferstände aus Lauf 1 unverändert und behebt Bens zwei offene
-Befunde aus dessen Runde 3 (Abschnitt „Lauf 2" unten).*
+*Aufnahme 20260922 · gesamt-auditprotokoll (NFR-TAI-01, FR-AUD-01/02).*
 
-## Was dieser Lauf geliefert hat
+*Lauf 3 (`lauf:b3:aufnahme:20260922:gesamt-auditprotokoll:3`, Basis `41fad46c`, `1.0.0-beta.1.627`).
+Lauf 1 und Lauf 2 wurden nicht in den Hauptstand übernommen (Lauf 2 am 27.09. ausdrücklich
+zurückgesetzt). Lauf 3 legt den Lieferstand aus Lauf 2, Runde 1 (Commit `222abf95`: Lauf-1-Lieferung
+plus Lauf-2-Befunde zu R-0766 und Re-Validierung) unverändert auf den Hauptstand — geprüft, konfliktfrei
+— und behebt Bens zwei Befunde aus Lauf 2 (`beleg:6818bd52`, `beleg:1ea197ac`) sowie Bens Befund
+BEN-B1 aus Lauf 3, Runde 1, **neu** (Abschnitt „Lauf 3" unten). Die Lösungen aus Lauf 2, Runden 2
+und 3 (prozessinterne Schreibfolge, Kompensation statt Transaktion) wurden bewusst nicht übernommen.
+Die Tabellen darunter sind die übernommene Beschreibung aus Lauf 1/2; ihre Belege liegen in diesem
+Lauf erneut im Baum und wurden hier gefahren (s. „Prüfstand").*
+
+## Lauf 3 — gemeinsam festgeschrieben oder gemeinsam verworfen
+
+| Befund | Lieferung | Beleg |
+| --- | --- | --- |
+| `beleg:6818bd52` (Lauf 2, Commit `758e76c1`): gleichzeitige `GET /api/audit/export` lasen denselben Vorgänger, zwei Einträge mit derselben `seq`, Kette gebrochen (`linkageBreaks=1`) | Vorgänger lesen und anhängen sind EIN Schritt der Ablage: `AuditRepo.appendNext`. Speicher: synchron ohne `await` dazwischen, dazu Spiegel des Primärschlüssels (`AUDIT_SEQ_BELEGT`). PostgreSQL: `pg_advisory_xact_lock(613000001)` → letzter Eintrag → INSERT auf **einem** Client; mit `tx` in der Transaktion des Aufrufers (Sperre bis zu dessen Commit), ohne `tx` in eigener kurzer Transaktion mit `lock_timeout` 15 s. Wirkt datenbankweit, also auch zwischen zwei Instanzen | `tests/audit-gesamt/gemeinsam-oder-gar-nicht.test.ts` (B1: acht parallele Exporte über HTTP; 20 parallele `record`/`recordOnce`; Kalibrierung alter Weg); `tests/audit-gesamt/kette-und-beleg-atomar.integration.test.ts` (PostgreSQL: zwölf Exporte über **zwei App-Instanzen** gegen dieselbe Datenbank; choreografiert: B wartet an `advisory`, danach `seq+1`); `tests/pg-erstaufbau-konkurrenz/erstaufbau-konkurrenz.integration.test.ts` E3 auf das neue Soll umgestellt (vorher 23505 `audit_pkey`) |
+| `beleg:1ea197ac` (Lauf 2 Runde 2, Commit `d3c1bc09`): `POST /api/kos` → 500, Objekt trotzdem im Bestand, ohne `ko.created` | Erfassen: `KoService.schreibeErstanlage` — mit `withTx` Insert, Fassung, Suchprojektion, Belegkette und `ko.created` in EINER Transaktion (`KoRepo.insert(ko, tx)`, `EvidenceRepo.append(r, tx)` neu); ohne `withTx` Rücknahmeklammer `rollbackCreatedKo`. Gilt für `create` (mit/ohne Vorgang) und `createWithDocuments`; **löst WP-SHIP8-CLOSE-5 ab**. Ändern: `schreibeMitBeleg` (Write und Beleg in einer Transaktion; ohne sie erst Write, dann Beleg, bei Ausfall Vorzustand zurück) für `mutateKo` (Vertraulichkeit, Eigentum, Kommentar-Erledigung, Vorschlag, Autor-Übergabe), Kommentar, Anhang an/ab, Quelle an/ab, Papierkorb, Wiederherstellen, Wahrheitskonflikt-Rückstufung, Eigentumsrolle; Kategorie/Tags und Dokumentübernahme mit `withTx` ebenfalls in einer Transaktion. `mutateKo` schrieb den Beleg bis dahin VOR dem Speichern — ein gescheiterter Write hinterließ einen Beleg für nichts | Speicher: `gemeinsam-oder-gar-nicht.test.ts` (B2: `ko.created`-Ausfall → 500, kein Objekt; Kommentar/Vertraulichkeit-Ausfall → Objekt unverändert; Speicher-Ausfall → kein Beleg). PostgreSQL: `kette-und-beleg-atomar.integration.test.ts` mit **echtem Ausfall per Datenbank-Trigger** (Erfassen: kein Objekt, keine Fassung, keine Projektion, keine Belegzeile, kein Eintrag; Ändern: Objektzeile bitgleich; umgekehrt: kein Beleg) und dem gemeldeten Auslöser „Anlage gegen offenen Fremdschreiber" → 201, genau ein `ko.created`, jedes Objekt im Bestand mit genau einem |
+| BEN-B1 (Lauf 3 Runde 1): Peer- und Admin-Validierung speicherten Status/Vertrauen VOR dem Entscheidungsbeleg; bei dessen Ausfall blieb das Objekt „validiert, Vertrauen 99" ohne Beleg und ohne `validationDecisionRef` | `KoService.setValidationStateMitBeleg`: unter dem KO-Lock Compare-and-Set gegen die bewertete Fassung → Zustand → Beleg des Aufrufers → `validationDecisionRef`; mit `withTx` in EINER Transaktion, ohne sie Vorzustand zurück plus Rücknahme des Aufrufers. `ValidationService.rate`: Bewertung (`RatingRepo.upsert(r, tx)`), Zuweisung erledigt, `ko.rated`, bei Gelb/Rot Rückgabe (`AssignmentRepo.create/update(a, tx)`, `ko.returned-to-*`) — alles im Belegschritt. `adminValidate`: `ko.admin-validated` im Belegschritt; verfehlter Compare-and-Set schreibt weiterhin nichts (JOB 3789). `validators` wird nur nach tatsächlich geschriebener Validierung fortgeschrieben | Speicher: `gemeinsam-oder-gar-nicht.test.ts` (BEN-B1: Grün/`ko.rated`, Rot/`ko.returned-to-*`, Admin/`ko.admin-validated` — je Objekt offen, Vertrauen gleich, keine Bewertung, kein Verweis, keine offene Zuweisung; Gegenprobe ohne Ausfall mit Verweis auf den Beleg). PostgreSQL: dieselben drei Fälle in `kette-und-beleg-atomar.integration.test.ts` (Trigger; Objektzeile, `ratings`, `assignments`, `audit` bitgleich) |
+
+**Kalibrierung (lokal, Speicherweg):** Die neun Fälle in `gemeinsam-oder-gar-nicht.test.ts` wurden gegen die
+alte Fassung gefahren (Audit-Dienst, Audit-Ablage und KO-Dienst aus `41fad46c` bzw. der Lauf-2-Fassung
+von `service.ts` für den Exportweg; für BEN-B1 der Validierungsdienst aus Runde 1): alle rot
+(`seq` `[1,2,2,2,…]`, Objekt ohne `ko.created` vorhanden, Beleg ohne gespeicherte Änderung, „validiert"
+nach Beleg-Ausfall); an dieser Fassung grün. **Die PostgreSQL-Integrationsfälle konnten hier nicht
+laufen** (keine Datenbank- oder Containerstarts auf dem Produktions-Mac); fehlendes Prüfmittel:
+`integration-postgres`. Die Kalibrierung dort (rot an `41fad46c`) ist damit ebenfalls offen.
+
+**Grenzen (Lauf 3):**
+- Ohne `withTx` (Speicher, Dev-Journal) ist „gemeinsam verworfen" eine Kompensation, keine Transaktion:
+  ein Prozessabbruch zwischen Write und Beleg bleibt dort möglich. Append-only-Belegzeilen
+  (`ko_evidence`) bleiben im Speicherweg bei einem späteren Beleg-Ausfall stehen (harmloser Spiegel wie
+  bisher bei `appendDocumentExtract`).
+- Die Kettensperre serialisiert alle Auditschreiber bis zum Commit ihrer Transaktion. Transaktionen,
+  die zuerst den Beleg und dann eine Objektzeile schreiben (`answer.helpful` → Vertrauensschritt), und
+  solche in umgekehrter Reihenfolge (Revision → Beleg) können sich am **selben** Objekt gegenseitig
+  sperren; PostgreSQL erkennt das als Verklemmung und bricht eine der beiden vollständig ab (keine
+  Teilwirkung). Vorher scheiterte in derselben Lage eine der beiden an `audit_pkey`.
+- Nicht auf die Klammer umgestellt: die Rücknahme-Belege der Speicherweg-Kompensation selbst
+  (`ko.create-rollback-failed`, `ko.change-rolled-back`) und Wege außerhalb des Wissensobjekts
+  (Nutzerverwaltung, Anmeldung, Konfliktbefunde), die ihre bisherige Reihenfolge behalten.
+
+## Übernommen aus Lauf 1/2 (Lieferstand `222abf95`)
 
 | Lücke (am Basisstand gemessen) | Lieferung | Beleg |
 | --- | --- | --- |
@@ -24,7 +56,7 @@ Befunde aus dessen Runde 3 (Abschnitt „Lauf 2" unten).*
 | R-2206 Restmatrix ohne Eskalation, Kategorie, Re-Validierung, Konfliktauflösung, Export | Eine HTTP-Matrix über **alle** §12.3-Aktionen mit der jeweils handelnden Rolle, Kette danach nachgerechnet | `tests/audit-gesamt/aktionsmatrix-12-3.test.ts` |
 | package:audit „Hilfetext erklärt Qualitätsbezug, keine Zertifizierungszusage" | Hilfe `adm.sich.qualityNote` (DE/EN/NL) am Prüfprotokoll: ISO 9001 / ISO/IEC 27001 als Rahmen, keine Zertifizierungszusage, keine Leistungsbewertung von Personen (R-0669) | `tests/audit-gesamt/pruefprotokoll-export.test.tsx` |
 
-### Lauf 2 — Bens zwei offene Befunde aus Lauf 1, Runde 3
+### Lauf 2, Runde 1 — Bens zwei offene Befunde aus Lauf 1, Runde 3 (übernommen)
 
 | Befund | Lieferung | Beleg |
 | --- | --- | --- |

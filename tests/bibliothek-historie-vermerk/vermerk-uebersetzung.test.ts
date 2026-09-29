@@ -148,21 +148,23 @@ const DIENST_VERMERKE = [
     // von `:3715` ein (Begründung dort bei `pruefeHerkunft`), deshalb bleiben die drei „erstellt"-
     // Fundstellen und ihre Nachbarn stehen, wo sie standen. Gemessen mit
     // `grep -n '"erstellt"' services/knowledge-object/src/service.ts`, nicht fortgeschrieben.
-    fundstellen: [2100, 2229],
+    // AUFNAHME 20260922 · gesamt-auditprotokoll (Lauf 3): NEU GEMESSEN (`grep -n`) — Erstanlage in
+    // `schreibeErstanlage`, Belegklammern an den Schreibwegen. Wortlaute und Zahl unverändert.
+    fundstellen: [2199, 2388],
   },
   {
     wort: "erstellt (Dokumentinhalt übernommen)",
     schluessel: "ko.historyNote.createdFromDocument",
     en: "created (document content adopted)",
     nl: "aangemaakt (documentinhoud overgenomen)",
-    fundstellen: [2476],
+    fundstellen: [2622],
   },
   {
     wort: "erstellt (nachgezogen)",
     schluessel: "ko.historyNote.createdBackfilled",
     en: "created (backfilled)",
     nl: "aangemaakt (nagetrokken)",
-    fundstellen: [2890],
+    fundstellen: [3039],
   },
   {
     wort: "überarbeitet",
@@ -197,14 +199,14 @@ const DIENST_VERMERKE = [
     // Wortlaute und Zahl der Vermerke UNVERÄNDERT.
     // D5 (KI aus, Lauf 3): NEU GEMESSEN, alle Fundstellen um 29 Zeilen verschoben — die Sperre des
     // Fragewegs in Bestandsstempel/Lesefassung/`get`, `aktuelleFassungVon` und `findCandidates`.
-    fundstellen: [4476, 4593, 4689, 4878],
+    fundstellen: [4705, 4834, 4930, 5122],
   },
   {
     wort: "überarbeitet (Dokumentinhalt übernommen)",
     schluessel: "ko.historyNote.revisedFromDocument",
     en: "revised (document content adopted)",
     nl: "herzien (documentinhoud overgenomen)",
-    fundstellen: [5109, 5127],
+    fundstellen: [5353, 5367],
   },
 ] as const;
 
