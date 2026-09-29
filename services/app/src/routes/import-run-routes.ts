@@ -93,6 +93,7 @@ function laufNachAussen(run: ImportRun, abgleich: ImportRunSourceSync | undefine
           attachmentsUpdated: [...abgleich.attachmentsUpdated],
           restrictionsUpdated: [...abgleich.restrictionsUpdated],
           syncFailed: [...abgleich.syncFailed],
+          attachmentsIncomplete: [...abgleich.attachmentsIncomplete],
           counts: { ...abgleich.counts },
           listsTruncated: abgleich.listsTruncated,
         }

@@ -134,6 +134,7 @@ describe("R-0163 · Laufkarte: angeglichene Anhänge", () => {
         attachmentsUpdated: zweihundert,
         restrictionsUpdated: ["P-1"],
         syncFailed: ["P-2", "P-3"],
+        attachmentsIncomplete: ["P-4"],
         counts: {
           removed: 0,
           restored: 201,
@@ -142,6 +143,7 @@ describe("R-0163 · Laufkarte: angeglichene Anhänge", () => {
           attachmentsUpdated: 201,
           restrictionsUpdated: 1,
           syncFailed: 2,
+          attachmentsIncomplete: 1,
         },
         listsTruncated: true,
       });
@@ -154,11 +156,15 @@ describe("R-0163 · Laufkarte: angeglichene Anhänge", () => {
       expect(text("f0140-restriktion")).toBe(i18n.t("w2.run.restrictionsSynced", { anzahl: 1 }));
       expect(text("f0140-nachzug-gescheitert")).toBe(i18n.t("w2.run.syncFailed", { anzahl: 2 }));
       expect(text("f0140-listen-gekuerzt")).toBe(i18n.t("w2.run.syncListsTruncated"));
+      expect(text("f0140-anhaenge-unvollstaendig")).toBe(
+        i18n.t("w2.run.attachmentsIncomplete", { anzahl: 1 }),
+      );
       for (const id of [
         "f0140-abgleich",
         "f0140-restriktion",
         "f0140-nachzug-gescheitert",
         "f0140-listen-gekuerzt",
+        "f0140-anhaenge-unvollstaendig",
       ]) {
         expect(text(id)).not.toContain("w2.run");
       }

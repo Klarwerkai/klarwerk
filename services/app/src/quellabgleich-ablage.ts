@@ -27,6 +27,7 @@ export const SOURCE_SYNC_LISTEN = [
   "attachmentsUpdated",
   "restrictionsUpdated",
   "syncFailed",
+  "attachmentsIncomplete",
 ] as const;
 
 export type SourceSyncListe = (typeof SOURCE_SYNC_LISTEN)[number];
@@ -51,6 +52,8 @@ export interface ImportRunSourceSync {
   readonly restrictionsUpdated: readonly string[];
   /** R-0163 (Lauf 3 R2): Seiten, deren Nachzug (Anhänge/Restriktion) beim Schreiben scheiterte. */
   readonly syncFailed: readonly string[];
+  /** Lauf 3 R3 (Bens B9): gelesene Seiten, deren Anhangsliste nicht vollständig übernommen wurde. */
+  readonly attachmentsIncomplete: readonly string[];
   /**
    * Lauf 3 R2 (Bens B6): die GESAMTZAHL je Liste. Die Listen sind gedeckelt, die Zahlen nicht — die
    * Anzeige zählt hiernach, nie nach der Listenlänge. `listsTruncated`: mindestens eine Liste ist

@@ -11,6 +11,11 @@
 //   B6  Die Ablage kürzt Listen, nie Zahlen; die Kürzung ist ausgewiesen.
 //   B8  Ein gescheiterter Anhangsnachzug macht den Lauf PARTIAL mit SOURCE_SYNC_INCOMPLETE.
 //
+//   B9  (Runde 3) Ein Erstimport mit mehr als 200 Anhängen übernimmt alle; eine unvollständig
+//       übernommene Liste steht am Lauf.
+//   B10 (Runde 3) Der Restriktionsnachzug trifft auch Altanker ohne Provider; ein nicht
+//       geschriebener Nachzug wird nicht als Erfolg gemeldet.
+//
 // B1 (Durchsetzung der Quellrechte) und B7 (abgeleitete Einheiten, Lücken) sind NICHT gebaut —
 // Begründung in docs/bestandsaufnahme-confluence-import.md, Abschnitt „Lauf 3 · Runde 2“.
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -30,6 +35,7 @@ import { adapterFromConfig } from "../../services/confluence/src/adapter";
 import type { ConfluencePage } from "../../services/confluence/src/rest-client";
 import { InMemoryKoRepo, KoService } from "../../services/knowledge-object";
 import { LibraryService } from "../../services/library-analytics";
+import { saeubereQuellangaben } from "../../services/library-analytics/src/quellangaben";
 
 const BASIS = "https://acme.atlassian.net/wiki";
 
@@ -121,7 +127,7 @@ async function objekt(d: ReturnType<typeof dienste>, externalId: string) {
 
 const viele = (n: number) => Array.from({ length: n }, (_, i) => anhang(`a${i + 1}`));
 
-describe("B2 · der lokale Deckel entfernt keinen vorhandenen Anhang", () => {
+describe("B2/B9 · der lokale Deckel entfernt keinen vorhandenen Anhang", () => {
   it("Fassung 2 mit a1…a201: a201 bleibt am Objekt, die Liste ist als unvollständig markiert", async () => {
     const q = quelle();
     const d = dienste();
@@ -136,10 +142,27 @@ describe("B2 · der lokale Deckel entfernt keinen vorhandenen Anhang", () => {
     const nachher = await objekt(d, "P-1");
     expect(nachher.anhangsIds).toContain("a201");
     expect(nachher.anhangsIds).toHaveLength(201);
+    // Lauf 3 R3 (Bens B9): 201 liegen jetzt unter dem Deckel — die Liste ist vollständig.
     const gespeichert = (await d.library.listImportCandidates()).find((k) => k.id === kandidat?.id);
     expect(
       (gespeichert?.item as { sourceAttachmentsIncomplete?: boolean }).sourceAttachmentsIncomplete,
-    ).toBe(true);
+    ).toBeUndefined();
+  });
+
+  it("über dem Deckel (10.001 Einträge): 10.000 übernommen, die Liste ist als unvollständig markiert", () => {
+    const eintraege = Array.from({ length: 10_001 }, (_, i) => ({
+      externalId: `a${i + 1}`,
+      name: `a${i + 1}.png`,
+    }));
+    const sauber = saeubereQuellangaben({
+      title: "T",
+      statement: "S",
+      type: "best_practice",
+      category: "K",
+      sourceAttachments: eintraege,
+    } as Parameters<typeof saeubereQuellangaben>[0]);
+    expect(sauber.sourceAttachments).toHaveLength(10_000);
+    expect(sauber.sourceAttachmentsIncomplete).toBe(true);
   });
 });
 
@@ -360,5 +383,91 @@ describe("B8 · ein gescheiterter Anhangsnachzug ist am Lauf sichtbar", () => {
     expect(
       ko?.sources.filter((s) => s.attachmentOf === "P-9").map((s) => s.attachment?.externalId),
     ).toEqual(["a1"]);
+  });
+});
+
+// ================================================================================================
+// LAUF 3 · RUNDE 3 — BENS BEFUNDE B9 UND B10.
+// ================================================================================================
+
+describe("B9 · ein Erstimport oberhalb von 200 Anhängen übernimmt alle", () => {
+  it("vollständige Liste a1…a201: nach Erstimport stehen 201 Anhangsquellen, Wiederholung ändert nichts", async () => {
+    const q = quelle();
+    const d = dienste();
+    q.bereich.set("P-1", seite("P-1", 1, { results: viele(201) }));
+    const erster = await laufUndAnnehmen(q, d);
+    const nachher = await objekt(d, "P-1");
+    expect(nachher.anhangsIds).toHaveLength(201);
+    expect(nachher.anhangsIds).toContain("a201");
+    expect(erster.sourceSync?.attachmentsIncomplete).toEqual([]);
+    const zweiter = await laufUndAnnehmen(q, d);
+    expect(zweiter.sourceSync?.attachmentsUpdated).toEqual([]);
+    expect((await objekt(d, "P-1")).anhangsIds).toHaveLength(201);
+  });
+
+  it("eine nicht vollständig lesbare Anhangsliste steht am Lauf in attachmentsIncomplete", async () => {
+    const q = quelle();
+    const d = dienste();
+    // Der Expand kündigt eine Folgeseite an; das Nachblättern liefert keine brauchbare Liste mehr
+    // (die Attrappe antwortet dort mit einer leeren Liste ohne `next` — also vollständig). Deshalb
+    // hier ein Eintrag ohne Titel: die Liste ist unvollständig übernommen.
+    q.bereich.set("P-1", seite("P-1", 1, { results: [anhang("a1"), { id: "a2" }] }));
+    const lauf = await laufUndAnnehmen(q, d);
+    expect(lauf.sourceSync?.attachmentsIncomplete).toEqual(["P-1"]);
+    expect((await objekt(d, "P-1")).anhangsIds).toEqual(["a1"]);
+  });
+});
+
+describe("B10 · Restriktionsnachzug an einem Altanker ohne Provider", () => {
+  it("die Angabe steht danach wirklich am Anker; ein zweiter Lauf meldet nichts mehr", async () => {
+    const repo = new InMemoryKoRepo();
+    const koService = new KoService({ repo });
+    const library = new LibraryService({ koService, externalUpsert: true });
+    const d = { koService, library };
+    const q = quelle();
+    q.bereich.set("P-1", seite("P-1", 1));
+    await laufUndAnnehmen(q, d);
+    // Altbestand: der Anker trägt keinen Provider (vor Einführung des Provider-Schlüssels).
+    const ko = (await objekt(d, "P-1")).ko;
+    if (!ko) {
+      throw new Error("Objekt fehlt");
+    }
+    await repo.update({
+      ...ko,
+      sources: ko.sources.map((s) => {
+        if (s.externalId !== "P-1") {
+          return s;
+        }
+        const { provider: _weg, ...rest } = s;
+        return rest;
+      }),
+    });
+    expect((await objekt(d, "P-1")).anker?.provider).toBeUndefined();
+
+    q.bereich.set("P-1", seite("P-1", 1, undefined, ["hr"]));
+    const erster = await laufUndAnnehmen(q, d);
+    expect(erster.sourceSync?.restrictionsUpdated).toMatchObject([
+      { externalId: "P-1", restrictionChanged: true, raisedTo: "vertraulich", synced: true },
+    ]);
+    expect(erster.sourceSync?.syncFailed).toEqual([]);
+    const nachher = await objekt(d, "P-1");
+    expect(nachher.anker?.readRestriction).toEqual({ groups: ["hr"], users: [] });
+    expect(nachher.ko?.confidentiality).toBe("vertraulich");
+    const zweiter = await laufUndAnnehmen(q, d);
+    expect(zweiter.sourceSync?.restrictionsUpdated).toEqual([]);
+  });
+
+  it("schreibt die Methode nichts, obwohl sich die Restriktion geändert hat: syncFailed statt Erfolg", async () => {
+    const q = quelle();
+    const d = dienste();
+    q.bereich.set("P-1", seite("P-1", 1));
+    await laufUndAnnehmen(q, d);
+    q.bereich.set("P-1", seite("P-1", 1, undefined, ["hr"]));
+    d.koService.replaceSourceReadRestriction = async () => false;
+    const lauf = await laufUndAnnehmen(q, d);
+    expect(lauf.sourceSync?.restrictionsUpdated).toEqual([]);
+    expect(lauf.sourceSync?.syncFailed).toEqual(["P-1"]);
+    // Nichts halb: die Vertraulichkeit wurde nicht ohne die Restriktion heraufgesetzt.
+    expect((await objekt(d, "P-1")).ko?.confidentiality).toBe("intern");
   });
 });

@@ -72,6 +72,7 @@ describe("R-0162 · Quellabgleich je Lauf unter echtem Postgres", () => {
         unchecked: ["P-5"],
         attachmentsUpdated: [],
         syncFailed: ["P-6"],
+        attachmentsIncomplete: [],
         counts: { unchecked: 250 },
       }),
     );
@@ -87,6 +88,7 @@ describe("R-0162 · Quellabgleich je Lauf unter echtem Postgres", () => {
         attachmentsUpdated: [],
         restrictionsUpdated: [],
         syncFailed: ["P-6"],
+        attachmentsIncomplete: [],
         counts: {
           removed: 0,
           restored: 1,
@@ -95,6 +97,7 @@ describe("R-0162 · Quellabgleich je Lauf unter echtem Postgres", () => {
           attachmentsUpdated: 0,
           restrictionsUpdated: 0,
           syncFailed: 1,
+          attachmentsIncomplete: 0,
         },
         listsTruncated: true,
       });
@@ -130,6 +133,7 @@ describe("R-0162 · Quellabgleich je Lauf unter echtem Postgres", () => {
       attachmentsUpdated: [],
       restrictionsUpdated: [],
       syncFailed: [],
+      attachmentsIncomplete: [],
       counts: {
         removed: MAX_SOURCE_SYNC_IDS + 5,
         restored: 0,
@@ -138,6 +142,7 @@ describe("R-0162 · Quellabgleich je Lauf unter echtem Postgres", () => {
         attachmentsUpdated: 0,
         restrictionsUpdated: 0,
         syncFailed: 0,
+        attachmentsIncomplete: 0,
       },
       listsTruncated: true,
     });

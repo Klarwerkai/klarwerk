@@ -232,8 +232,15 @@ export interface ConfluenceAttachment {
 const EXPAND =
   "body.storage,version,metadata.labels,ancestors,restrictions.read.restrictions.user,restrictions.read.restrictions.group,children.attachment";
 
-/** R-0163: Obergrenze der nachgeblätterten Anhangsseiten je Quellseite (Sicherheitsnetz). */
-const MAX_ATTACHMENT_HOPS = 20;
+/**
+ * R-0163: Obergrenze der nachgeblätterten Anhangsseiten je Quellseite (Sicherheitsnetz gegen eine
+ * endlose `next`-Kette). Lauf 3 R3 (Bens B9): 200 Seiten zu je 50 = bis zu 10.000 Anhänge je
+ * Quellseite — abgestimmt auf den Deckel der Eingangssäuberung
+ * (`MAX_QUELL_ANHAENGE`, `services/library-analytics/src/quellangaben.ts`), damit kein lokaler Deckel
+ * UNTER dem liegt, was dieser Adapter liefert. Wird die Grenze erreicht, gilt die Liste als
+ * unvollständig (`complete: false`) und der Lauf weist die Seite aus.
+ */
+const MAX_ATTACHMENT_HOPS = 200;
 
 // R2a: erlaubt genau dann, wenn die URL https ist UND ihre Origin exakt der gepinnten Confluence-Origin
 // entspricht. Sonst Abbruch (kein Request). Rein & testbar.

@@ -556,6 +556,18 @@ export function ImportRunPanel(): JSX.Element {
                 })}
               </p>
             ) : null}
+            {/* Lauf 3 R3 (Bens B9): Seiten mit unvollständig übernommener Anhangsliste. */}
+            {lauf.data?.sourceSync &&
+            abgleichZahl(lauf.data.sourceSync, "attachmentsIncomplete") > 0 ? (
+              <p
+                data-testid="f0140-anhaenge-unvollstaendig"
+                className="mt-1 text-[12.5px] text-muted"
+              >
+                {t("w2.run.attachmentsIncomplete", {
+                  anzahl: abgleichZahl(lauf.data.sourceSync, "attachmentsIncomplete"),
+                })}
+              </p>
+            ) : null}
             {lauf.data?.sourceSync?.listsTruncated ? (
               <p data-testid="f0140-listen-gekuerzt" className="mt-1 text-[12.5px] text-muted">
                 {t("w2.run.syncListsTruncated")}
@@ -2661,7 +2673,8 @@ type AbgleichFeld =
   | "unchecked"
   | "attachmentsUpdated"
   | "restrictionsUpdated"
-  | "syncFailed";
+  | "syncFailed"
+  | "attachmentsIncomplete";
 
 function abgleichZahl(
   sync: NonNullable<ImportRunRecord["sourceSync"]>,

@@ -1829,6 +1829,8 @@ export interface ImportRunRecord {
     restrictionsUpdated?: string[];
     /** Lauf 3 R2: Seiten, deren Nachzug beim Schreiben scheiterte. */
     syncFailed?: string[];
+    /** Lauf 3 R3: gelesene Seiten, deren Anhangsliste nicht vollständig übernommen wurde. */
+    attachmentsIncomplete?: string[];
     /**
      * Lauf 3 R2 (Bens B6): die Gesamtzahl je Liste — die Listen sind gedeckelt, diese Zahlen nicht.
      * Die Anzeige zählt hiernach; fehlt das Feld (Altlauf), gilt die Listenlänge.
@@ -1841,6 +1843,7 @@ export interface ImportRunRecord {
       attachmentsUpdated: number;
       restrictionsUpdated: number;
       syncFailed: number;
+      attachmentsIncomplete?: number;
     };
     listsTruncated?: boolean;
   } | null;

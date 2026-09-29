@@ -1857,14 +1857,27 @@ export class LibraryService {
       return undefined;
     }
     if (!opts.dryRun) {
-      const anchorRef = { provider: sauber.provider ?? null, externalId };
+      // Lauf 3 R3 (Bens B10): geschrieben wird am GEFUNDENEN Anker mit SEINEM gespeicherten
+      // Provider — nicht mit dem des Items. Ein Altanker ohne Provider zählt bei der Suche als
+      // Confluence (`ankerSchluessel`); die Schreibmethode vergleicht den Provider wörtlich und fand
+      // ihn mit „Confluence" nie.
+      const anchorRef = {
+        provider: quelle?.provider ?? null,
+        externalId: quelle?.externalId ?? externalId,
+      };
       if (restrictionChanged) {
-        await this.koService.replaceSourceReadRestriction(
+        const geschrieben = await this.koService.replaceSourceReadRestriction(
           ko.id,
           anchorRef,
           sauber.sourceReadRestriction,
           actor,
         );
+        // Ein gemeldeter Nachzug muss ein gespeicherter sein: schreibt die Methode nichts, obwohl
+        // der Vergleich eine Änderung ergab, ist das ein Fehler — der Lauf führt die Seite dann in
+        // `syncFailed`, statt „nachgezogen" zu melden.
+        if (!geschrieben) {
+          throw new Error("Quellrestriktion am Anker nicht geschrieben.");
+        }
       }
       if (raisedTo !== null) {
         // Heraufsetzen braucht kein Herabstufungsrecht (`setConfidentiality`, SCRUM-509).

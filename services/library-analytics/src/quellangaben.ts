@@ -37,7 +37,12 @@ interface ImportQuellangaben {
 export type ImportItemMitQuellangaben = ImportItem & ImportQuellangaben;
 
 const MAX_QUELL_PRINZIPALE = 200;
-const MAX_QUELL_ANHAENGE = 200;
+// Lauf 3 R3 (Bens B9): der Deckel lag bei 200 — ein Erstimport übernahm von 201 Anhängen nur 200,
+// und jede Wiederholung wählte wieder dieselben 200. Er steht jetzt auf der Höchstzahl, die der
+// Confluence-Adapter überhaupt liefert (`MAX_ATTACHMENT_HOPS` × 50 in
+// `services/confluence/src/rest-client.ts`); darüber ist die Liste als unvollständig markiert und der
+// Lauf weist die Seite aus. Clients am JSON-Eingang begrenzt zusätzlich die Körpergrenze der Route.
+const MAX_QUELL_ANHAENGE = 10_000;
 const MAX_QUELL_TEXT = 512;
 
 function kurzerText(wert: unknown): string | undefined {

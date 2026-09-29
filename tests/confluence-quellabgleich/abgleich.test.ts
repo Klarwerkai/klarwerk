@@ -227,6 +227,9 @@ describe("R-0162 · Löschungen in der Quelle werden beim nächsten Abgleich nac
       attachmentsUpdated: [],
       restrictionsUpdated: [],
       syncFailed: [],
+      // Lauf 3 R3: diese Attrappe beantwortet die Anhangsliste nicht als Liste — P-1 ist gelesen,
+      // seine Anhangslage aber unbekannt, und der Lauf sagt das.
+      attachmentsIncomplete: ["P-1"],
       restored: [],
     });
     expect(
@@ -296,6 +299,7 @@ describe("R-0162 · Löschungen in der Quelle werden beim nächsten Abgleich nac
       attachmentsUpdated: [],
       restrictionsUpdated: [],
       syncFailed: [],
+      attachmentsIncomplete: [],
       restored: [],
     });
     expect(

@@ -7013,6 +7013,8 @@ const de = {
     "Nachzug von Anhängen oder Leserestriktion an {{anzahl}} Seite(n) gescheitert — dort gilt der alte Stand.",
   "w2.run.syncListsTruncated":
     "Die Zahlen oben sind vollständig; die Liste der betroffenen Seiten ist gekürzt gespeichert.",
+  "w2.run.attachmentsIncomplete":
+    "An {{anzahl}} Seite(n) konnte die Anhangsliste nicht vollständig gelesen werden — dort wurde kein Anhang entfernt, es können aber Anhänge fehlen.",
   "w2.run.idle":
     "In diesem Fenster wurde kein Gesamtlauf gestartet. Der Startknopf legt einen an; sein Zustand steht dann hier. Ein Import über „Auswahl übernehmen“ wird ebenfalls festgehalten, erscheint aber nicht hier, sondern oben in der Zeile „Zuletzt erfolgreich abgeschlossener Import“.",
   // JOB 2970 D2: Fortschritt als Zahl — die Zähler kommen fertig vom Server.
@@ -12858,6 +12860,8 @@ const en: typeof de = {
     "Updating attachments or read restriction failed on {{anzahl}} page(s) — the previous state still applies there.",
   "w2.run.syncListsTruncated":
     "The numbers above are complete; the stored list of affected pages is shortened.",
+  "w2.run.attachmentsIncomplete":
+    "On {{anzahl}} page(s) the attachment list could not be read completely — no attachment was removed there, but attachments may be missing.",
   "w2.run.idle":
     "No full run was started in this window. The start button creates one; its state then appears here. An import via “Import selection” is recorded too, but appears in the “Last successfully completed import” line above rather than here.",
   "w2.run.progress": "{{verarbeitet}} of {{gesamt}} items processed",
@@ -18521,6 +18525,8 @@ const nl: typeof de = {
     "Bijwerken van bijlagen of leesbeperking mislukt op {{anzahl}} pagina('s) — daar geldt de vorige stand.",
   "w2.run.syncListsTruncated":
     "De aantallen hierboven zijn volledig; de opgeslagen lijst van betrokken pagina's is ingekort.",
+  "w2.run.attachmentsIncomplete":
+    "Op {{anzahl}} pagina('s) kon de bijlagenlijst niet volledig worden gelezen — daar is geen bijlage verwijderd, maar er kunnen bijlagen ontbreken.",
   "w2.run.idle":
     "In dit venster is geen volledige uitvoering gestart. De startknop maakt er een aan; de status verschijnt dan hier. Een import via „Selectie overnemen” wordt ook vastgelegd, maar verschijnt niet hier: hij staat hierboven in de regel „Laatste succesvol afgeronde import”.",
   "w2.run.progress": "{{verarbeitet}} van {{gesamt}} elementen verwerkt",

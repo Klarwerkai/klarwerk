@@ -311,6 +311,7 @@ function abgleichFuerDenLauf(summary: ImportRunSummary): ImportRunSourceSync | u
     attachmentsUpdated: sync.attachmentsUpdated.map((a) => a.externalId),
     restrictionsUpdated: sync.restrictionsUpdated.map((r) => r.externalId),
     syncFailed: [...sync.syncFailed],
+    attachmentsIncomplete: [...sync.attachmentsIncomplete],
     // Lauf 3 R2 (Bens B6): die Zahlen stehen VOR dem Deckel der Ablage fest — hier sind die Listen
     // noch vollständig. `sourceSyncSnapshot` kürzt die Listen, nie die Zahlen.
     counts: {
@@ -321,6 +322,7 @@ function abgleichFuerDenLauf(summary: ImportRunSummary): ImportRunSourceSync | u
       attachmentsUpdated: sync.attachmentsUpdated.length,
       restrictionsUpdated: sync.restrictionsUpdated.length,
       syncFailed: sync.syncFailed.length,
+      attachmentsIncomplete: sync.attachmentsIncomplete.length,
     },
     listsTruncated: false,
   };

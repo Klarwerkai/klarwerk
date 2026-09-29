@@ -127,10 +127,19 @@ export interface SourceSyncSummary {
    * Nicht still: ein nicht leerer Wert macht den Lauf `PARTIAL` (`SOURCE_SYNC_INCOMPLETE`).
    */
   syncFailed: string[];
+  /**
+   * Lauf 3 R3 (Bens B9): gelesene Seiten, deren Anhangsliste NICHT vollständig übernommen werden
+   * konnte (unbrauchbare Antwort, verworfene Einträge, Grenze der nachgeblätterten Seiten). Dort
+   * entfernt die Annahme nichts — es können aber Anhänge fehlen. Eine Auskunft, kein Fehler des Laufs.
+   */
+  attachmentsIncomplete: string[];
 }
 
 /** Was der Nachzug unveränderter Seiten ergibt — ein Teil von `SourceSyncSummary`. */
-type Nachzug = Pick<SourceSyncSummary, "attachmentsUpdated" | "restrictionsUpdated" | "syncFailed">;
+type Nachzug = Pick<
+  SourceSyncSummary,
+  "attachmentsUpdated" | "restrictionsUpdated" | "syncFailed" | "attachmentsIncomplete"
+>;
 
 function istConfluenceAnbieter(provider: string | null | undefined): boolean {
   // Anker ohne Provider (Altbestand) zählen wie überall als Confluence (importSourceKey).
@@ -190,7 +199,12 @@ async function nachzug(
   deps: ConfluenceImportDeps,
   unveraendert: readonly ConfluenceImportItem[],
 ): Promise<Nachzug> {
-  const out: Nachzug = { attachmentsUpdated: [], restrictionsUpdated: [], syncFailed: [] };
+  const out: Nachzug = {
+    attachmentsUpdated: [],
+    restrictionsUpdated: [],
+    syncFailed: [],
+    attachmentsIncomplete: [],
+  };
   if (unveraendert.length === 0) {
     return out;
   }
@@ -628,7 +642,13 @@ export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<I
     deps,
     new Set(items.map((i) => i.externalId).filter((id): id is string => !!id)),
     !truncated && collectFailed.length === 0,
-    await nachzug(deps, unveraendert),
+    {
+      ...(await nachzug(deps, unveraendert)),
+      attachmentsIncomplete: items
+        .filter((i) => (i as ConfluenceImportItem).sourceAttachmentsIncomplete === true)
+        .map((i) => i.externalId)
+        .filter((id): id is string => !!id),
+    },
   );
 
   return {

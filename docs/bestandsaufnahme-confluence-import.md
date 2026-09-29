@@ -153,6 +153,19 @@ package:confluence sind um die Fehler B2–B4/B6/B8 bereinigt; offen bleiben dor
 Löschung, Wiederauftauchen, Anhänge und Restriktion belegt, mit den benannten vorläufigen Regeln.
 R-0549 und R-0142 bleiben **nicht erfüllt** (B1/B7, s. o.).
 
+## Lauf 3 · Runde 3 — Bens Befunde B1, B7, B9, B10 einzeln
+
+Ben (Runde 2): B2–B6/B8 bestätigt behoben; B1 und B7 bestehen fort; B9 und B10 neu. Tests für
+B9/B10 in `tests/confluence-quellabgleich/lauf3-nacharbeit.test.ts`, Anzeige in
+`anhaenge-am-lauf-montiert.test.tsx` (DE/EN/NL).
+
+| Befund | Behandlung | Stelle |
+|---|---|---|
+| **B1** R-0549 Quellrechte bestimmen den Lesezugriff nicht | **unverändert nicht gebaut — Sperre „Variante B“** (`services/app/src/sichtbarkeit.ts:34-37`), Begründung wie Runde 2. Keine Umgehung. | — |
+| **B7** R-0142 Einheiten, Lücken, Ergebnisreferenzen | **unverändert nicht gebaut** — braucht die drei in Runde 2 benannten Entscheidungen bzw. die FREEZE-144-Freigabe. Bens Hinweis zur Testaussagekraft (`w2a-import-run-routes-148.test.ts`, bedingte Prüfungen über leere Listen) bleibt richtig und unbearbeitet: die Datei gehört dem Laufvertrag W2-A. | — |
+| **B9** R-0163 Erstimport > 200 Anhänge verlor den Rest dauerhaft | behoben: der Deckel der Eingangssäuberung (`MAX_QUELL_ANHAENGE`) lag mit 200 **unter** dem, was der Adapter liefert, und schnitt bei jedem Lauf dieselben 200 heraus. Er steht jetzt auf 10.000, abgestimmt auf die Nachblätter-Grenze des Adapters (`MAX_ATTACHMENT_HOPS` 20 → 200, je 50 Einträge). Oberhalb davon ist die Liste unvollständig markiert (entfernt nichts), und der Lauf weist jede Seite mit unvollständig übernommener Anhangsliste neu aus (`sourceSync.attachmentsIncomplete`, Zahl in `counts`, Zeile auf der Laufkarte). **Grenze, benannt:** eine Seite mit mehr als 10.000 Anhängen verliert den Rest weiterhin — dann aber sichtbar. | `library-analytics/src/quellangaben.ts`, `confluence/src/rest-client.ts`, `app/src/confluence-import.ts` |
+| **B10** R-0162/R-0549 Restriktionsnachzug an Altanker ohne Provider wirkungslos, trotzdem „synced“ | behoben: geschrieben wird am gefundenen Anker mit **seinem** gespeicherten Provider (die Suche wertet „ohne Provider“ als Confluence, die Schreibmethode vergleicht wörtlich). Liefert das Schreiben trotz festgestellter Änderung `false`, wirft der Nachzug; der Lauf führt die Seite in `syncFailed` (PARTIAL), und die Vertraulichkeit wird dann nicht allein heraufgesetzt. | `library-analytics/src/service.ts` (`syncImportRestriction`) |
+
 ## Abgrenzung
 
 - SharePoint/OneDrive-Import (JOB 4086) ist ein eigener Adapter und eigener Auftrag.
