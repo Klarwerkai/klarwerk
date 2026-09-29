@@ -7,6 +7,16 @@
 > `PROJECT_CONTEXT/13_ASSISTENT_ZWISCHENBERICHT.md` (Rohstand: `docs/boss-assistant/`).
 > Live-Version dort bestätigt: **v1.0.0-beta.1.4**.
 
+## 29.09.2026 — Auditprotokoll: Änderung und Beleg gemeinsam oder gar nicht (Lauf 3)
+
+- Audit-Kette: Vorgänger lesen und anhängen als ein Schritt (`AuditRepo.appendNext`; PostgreSQL unter
+  `pg_advisory_xact_lock`, auch zwischen Instanzen). Erfassen, Ändern und Validieren eines
+  Wissensobjekts schreiben Objekt und Auditeintrag mit `withTx` in einer Transaktion; ohne sie mit
+  Rücknahme und `ko.change-rolled-back`. Löst WP-SHIP8-CLOSE-5 ab.
+- Export der Kette (`GET /api/audit/export`), `library.export`, `ko.revalidated`, Objektkette.
+- Details, Belege, Grenzen: `docs/entscheidungen/gesamt-auditprotokoll.md`. PostgreSQL-Integration
+  (`tests/audit-gesamt/*.integration.test.ts`) auf dem Prüfserver noch zu fahren.
+
 ## 26.09.2026 — FE-003 Seitentutorial „Fragen“ (Pilot)
 
 - Knopf „Tutorial“ unter dem Kopfband (nur `/fragen`), aufklappender Unterricht in 7 Schritten mit

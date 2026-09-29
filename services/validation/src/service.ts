@@ -238,22 +238,41 @@ export class ValidationService {
       createdAt: new Date(this.now()).toISOString(),
       koVersion: ratedVersion,
     };
-    // Aufnahme gesamt-auditprotokoll (Lauf 3, Runde 2, BEN-B1): die Stimmenlage wird VOR dem
-    // Schreiben aus dem Bestand plus der neuen Bewertung gebildet — die Bewertung selbst wird erst in
-    // der gemeinsamen Klammer unten gespeichert (Upsert-Semantik: eine Bewertung je Nutzer).
-    const bisher = await this.ratings.listByKo(koId);
-    const vorherige = bisher.find((r) => r.userId === userId);
-    const all = vorherige
-      ? bisher.map((r) => (r.userId === userId ? bewertung : r))
-      : [...bisher, bewertung];
-    // Nur Bewertungen der aktuell bewerteten Version zählen (stale Vorversions-Bewertungen ausgeschlossen).
-    const currentVotes = all.filter((r) => ratingVersion(r) === ratedVersion).map((r) => r.verdict);
-    const outcome = computeOutcome(currentVotes, ko.neededValidations);
-    const zuweisung = await this.assignments.find(koId, userId);
+    // Aufnahme gesamt-auditprotokoll (Lauf 3, Runde 3, BEN-R2-B1): die Stimmenlage wird NICHT mehr
+    // vor der Klammer gebildet, sondern in ihr (`lese`, aufgerufen aus `zustand` unter dem KO-Lock
+    // und — bei einer zweiten Instanz — nach dem neuen Lesen). Zwei gleichzeitige Bewertungen sahen
+    // sonst die Stimme des jeweils anderen nicht. Die Bewertung selbst wird in der Klammer gespeichert
+    // (Upsert-Semantik: eine Bewertung je Nutzer); hier kommt sie rechnerisch zum Bestand dazu.
+    interface Stimmenlage {
+      vorherige: Rating | undefined;
+      all: Rating[];
+      outcome: ValidationOutcome;
+      zuweisung: Assignment | undefined;
+    }
+    let stand: Stimmenlage | undefined;
+    const lese = async (): Promise<Stimmenlage> => {
+      const bisher = await this.ratings.listByKo(koId);
+      const vorherige = bisher.find((r) => r.userId === userId);
+      const all = vorherige
+        ? bisher.map((r) => (r.userId === userId ? bewertung : r))
+        : [...bisher, bewertung];
+      // Nur Bewertungen der aktuell bewerteten Version zählen (stale Vorversions-Bewertungen ausgeschlossen).
+      const currentVotes = all
+        .filter((r) => ratingVersion(r) === ratedVersion)
+        .map((r) => r.verdict);
+      stand = {
+        vorherige,
+        all,
+        outcome: computeOutcome(currentVotes, ko.neededValidations),
+        zuweisung: await this.assignments.find(koId, userId),
+      };
+      return stand;
+    };
 
     // Rücknahme für den Weg OHNE Transaktion: was `beleg` unten geschrieben hat, rückwärts zurück.
     const rueckwaerts: Array<() => Promise<void>> = [];
     const beleg = async (tx?: TxContext): Promise<ValidationDecisionRefWert> => {
+      const { vorherige, zuweisung } = stand ?? (await lese());
       await this.ratings.upsert(bewertung, tx);
       rueckwaerts.push(async () => {
         if (vorherige) {
@@ -321,7 +340,11 @@ export class ValidationService {
     // Compare-and-Set; ein zwischenzeitliches `revise` erbt den Verweis nicht.
     const { geschrieben, ref } = await this.koService.setValidationStateMitBeleg(
       koId,
-      { trust: outcome.trust, status: outcome.status },
+      async () => {
+        rueckwaerts.length = 0;
+        const { outcome } = await lese();
+        return { trust: outcome.trust, status: outcome.status };
+      },
       { expectedVersion: ratedVersion, beiVersionswechsel: "nurBeleg" },
       beleg,
       async () => {
@@ -334,6 +357,7 @@ export class ValidationService {
     // Bewertung allein — erst der Übergang nach „validiert" ist die Entscheidung. Getragen haben
     // ihn die grünen Stimmen DIESER Fassung; wer `warn`/`down` gestimmt hat, hat nicht validiert.
     // Ein eigener Schritt mit eigenem Beleg (`ko.ownership-role`, gemeinsam über `schreibeMitBeleg`).
+    const { all, outcome } = stand ?? (await lese());
     if (geschrieben && outcome.status === "validiert") {
       const tragende = all
         .filter((r) => ratingVersion(r) === ratedVersion && r.verdict === "up")
@@ -373,7 +397,7 @@ export class ValidationService {
       ref,
     } = await this.koService.setValidationStateMitBeleg(
       koId,
-      { trust: TRUST_MAX, status: "validiert" },
+      async () => ({ trust: TRUST_MAX, status: "validiert" }),
       { expectedVersion: geleseneFassung, beiVersionswechsel: "nichts" },
       async (tx) =>
         refAus(
@@ -494,11 +518,16 @@ export class ValidationService {
       }
     } else {
       await this.assignments.create({ koId, userId: verantwortlich, status: "open" }, tx);
-      // Ohne Löschweg im Vertrag: eine im Ausfall neu angelegte Zuweisung wird als erledigt
-      // zurückgestellt — sie taucht dann auf keinem offenen Brett auf.
-      rueckwaerts.push(() =>
-        this.assignments.update({ koId, userId: verantwortlich, status: "done" }),
-      );
+      // Runde 3 (BEN-R2-B2): eine im Ausfall neu angelegte Zuweisung wird wieder ENTFERNT, nicht nur
+      // als erledigt zurückgestellt — vorher gab es sie nicht. Nur ein Test-Double ohne Löschweg
+      // fällt auf „erledigt" zurück (dann taucht sie auf keinem offenen Brett auf).
+      rueckwaerts.push(async () => {
+        if (this.assignments.remove) {
+          await this.assignments.remove(koId, verantwortlich);
+        } else {
+          await this.assignments.update({ koId, userId: verantwortlich, status: "done" });
+        }
+      });
     }
     // Auch die Rueckgabe IST eine Entscheidung (KW-W3-19) — sie traegt deshalb dieselbe Bindung.
     // Die Methode ist privat; ihre Referenz reist ueber den Rueckgabewert zum Aufrufer, statt hier

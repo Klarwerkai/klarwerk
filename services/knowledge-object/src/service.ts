@@ -801,6 +801,7 @@ export class KoService {
           await audit?.(tx);
         },
         () => this.rollbackKo(ko),
+        id,
       );
       return value;
     });
@@ -820,6 +821,7 @@ export class KoService {
     schreib: (tx?: TxContext) => Promise<T>,
     beleg: (tx?: TxContext) => Promise<void>,
     ruecknahme: () => Promise<void>,
+    belegZiel?: string,
   ): Promise<T> {
     if (this.withTx) {
       return this.withTx(async (tx) => {
@@ -829,10 +831,16 @@ export class KoService {
       });
     }
     const wert = await schreib();
+    const kopf = await this.kopfVorBeleg();
     try {
       await beleg();
     } catch (err) {
       await ruecknahme().catch(() => undefined);
+      // Runde 3 (BEN-R2-B2): schreibt `beleg` mehr als einen Eintrag und fällt nach dem ersten aus,
+      // benennt `ko.change-rolled-back` die stehengebliebenen als zurückgenommen (append-only).
+      if (belegZiel) {
+        await this.belegeRuecknahme(belegZiel, kopf, { grund: "change" }).catch(() => undefined);
+      }
       throw err;
     }
     return wert;
@@ -941,10 +949,7 @@ export class KoService {
         }
         // Nur ein Hilfswert für die Rücknahme — er darf den Schreibweg nie selbst kosten (auch nicht
         // bei einem Test-Double ohne `kopfSeq`).
-        kopfVorAudit =
-          typeof this.audit?.kopfSeq === "function"
-            ? await this.audit.kopfSeq().catch(() => undefined)
-            : undefined;
+        kopfVorAudit = await this.kopfVorBeleg();
         await audit?.();
         return value;
       } catch (err) {
@@ -966,7 +971,10 @@ export class KoService {
           () => false,
         );
         if (zurueckgesetzt && kopfVorAudit !== undefined) {
-          await this.belegeRuecknahme(id, before, updated, kopfVorAudit).catch(() => undefined);
+          await this.belegeRuecknahme(id, kopfVorAudit, {
+            version: updated.version,
+            restoredVersion: before.version,
+          }).catch(() => undefined);
         }
         throw err;
       }
@@ -983,11 +991,10 @@ export class KoService {
   // wenn der Audit-Schritt schon etwas zu diesem Objekt angehängt hatte.
   private async belegeRuecknahme(
     id: string,
-    before: KnowledgeObject,
-    updated: KnowledgeObject,
-    kopfVorAudit: number,
+    kopfVorAudit: number | undefined,
+    payload: Record<string, unknown>,
   ): Promise<void> {
-    if (!this.audit) {
+    if (!this.audit || kopfVorAudit === undefined) {
       return;
     }
     const betroffen = (await this.audit.list({ target: id }))
@@ -1000,12 +1007,17 @@ export class KoService {
       actor: "system",
       action: "ko.change-rolled-back",
       target: id,
-      payload: {
-        version: updated.version,
-        restoredVersion: before.version,
-        rolledBackSeqs: betroffen,
-      },
+      payload: { ...payload, rolledBackSeqs: betroffen },
     });
+  }
+
+  // Der Kettenkopf vor einem Belegschritt im Weg OHNE Transaktion — nur ein Hilfswert für
+  // `belegeRuecknahme`; er darf den Schreibweg nie selbst kosten (auch nicht bei einem Test-Double
+  // ohne `kopfSeq`).
+  private async kopfVorBeleg(): Promise<number | undefined> {
+    return typeof this.audit?.kopfSeq === "function"
+      ? await this.audit.kopfSeq().catch(() => undefined)
+      : undefined;
   }
 
   // SCRUM-507 R3: setzt den KO-Inhalt auf `before` zurück. Der vorangegangene Persist hat rowVersion um
@@ -2347,6 +2359,7 @@ export class KoService {
     }
     await this.repo.insert(ko);
     const written = { snapshotWritten: false, projectionWritten: false };
+    const kopf = await this.kopfVorBeleg();
     try {
       await belege(undefined, {
         snapshot: () => {
@@ -2358,6 +2371,12 @@ export class KoService {
       });
     } catch (err) {
       await this.rollbackCreatedKo(ko, written, author, err);
+      // Runde 3 (BEN-R2-B2): die Rücknahme ist gelungen (sonst hätte `rollbackCreatedKo` geworfen).
+      // Schon angehängte Belege dieser Anlage (etwa `ko.created` vor einem gescheiterten
+      // `ko.document-appended`) bleiben append-only stehen und werden hier als zurückgenommen benannt.
+      await this.belegeRuecknahme(ko.id, kopf, { grund: "create", koRemoved: true }).catch(
+        () => undefined,
+      );
       throw err;
     }
   }
@@ -5800,15 +5819,25 @@ export class KoService {
   //   1. Compare-and-Set gegen `expectedVersion` (wie `setValidationState`). Verfehlt → je nach
   //      `beiVersionswechsel` nichts, oder NUR `beleg` (ohne Zustandsänderung, ohne Verweis) — der
   //      Bewertungsweg hält eine Stimme auf die überholte Fassung ehrlich fest, wie bisher.
-  //   2. Zustand schreiben → `beleg(tx)` (Bewertung, Zuweisungen, Auditeinträge des Aufrufers; liefert
+  //   2. `zustand(ko)` — Runde 3 (BEN-R2-B1): der Zustand wird HIER bestimmt, unter derselben
+  //      Serialisierung, die auch schreibt. Vorher rechnete der Aufrufer die Stimmenlage VOR der
+  //      Klammer; zwei gleichzeitige Bewertungen sahen die Stimme des anderen nicht, und die
+  //      spätere Serialisierung schrieb beide veralteten Ergebnisse (up+up blieb offen, down+up
+  //      wurde validiert).
+  //   3. Zustand schreiben → `beleg(tx)` (Bewertung, Zuweisungen, Auditeinträge des Aufrufers; liefert
   //      die tragende Referenz) → Verweis `validationDecisionRef` schreiben.
-  // MIT `withTx`: alles auf EINEM Transaktionsclient — scheitert ein Schritt, bleibt nichts.
-  // OHNE `withTx`: scheitert `beleg` oder der Verweis, wird der Vorzustand zurückgeschrieben und
-  // `ruecknahme` des Aufrufers läuft (Bewertung/Zuweisungen zurück); ihre Fehler werden geschluckt,
-  // der Ursachenfehler geworfen.
+  // MIT `withTx`: alles auf EINEM Transaktionsclient — scheitert ein Schritt, bleibt nichts. Verliert
+  // die Transaktion den Compare-and-Set an eine ZWEITE INSTANZ (`STALE_WRITE`: deren Transaktion hat
+  // dieselbe Objektzeile zuerst festgeschrieben), rollt sie vollständig zurück; die Klammer liest
+  // dann EINMAL frisch und bestimmt den Zustand neu — jetzt mit der festgeschriebenen fremden Stimme.
+  // OHNE `withTx`: scheitert ein Schritt, wird der Vorzustand zurückgeschrieben und `ruecknahme` des
+  // Aufrufers läuft (Bewertung/Zuweisungen zurück); ihre Fehler werden geschluckt, der Ursachenfehler
+  // geworfen. Runde 3 (BEN-R2-B2): hatte der Schritt schon Auditeinträge angehängt (etwa `ko.rated`
+  // vor einem gescheiterten `ko.returned-to-*`), bleiben sie stehen — die Kette ist append-only —,
+  // und `ko.change-rolled-back` nennt sie danach ausdrücklich als zurückgenommen.
   async setValidationStateMitBeleg(
     id: string,
-    state: { trust: number; status: KoStatus },
+    zustand: (ko: KnowledgeObject) => Promise<{ trust: number; status: KoStatus }>,
     opts: { expectedVersion: number; beiVersionswechsel: "nichts" | "nurBeleg" },
     beleg: (tx?: TxContext) => Promise<{ auditSeq: number; auditHash: string } | null>,
     ruecknahme: () => Promise<void> = async () => undefined,
@@ -5817,43 +5846,80 @@ export class KoService {
     geschrieben: boolean;
     ref: { auditSeq: number; auditHash: string } | null;
   }> {
-    const ergebnis = await this.withKoLock(id, async () => {
-      const ko = await this.require(id);
-      if (ko.version !== opts.expectedVersion) {
-        // `ref` nennt dann den festgehaltenen Beleg, wird aber NICHT am Objekt vermerkt.
-        let ref: { auditSeq: number; auditHash: string } | null = null;
-        if (opts.beiVersionswechsel === "nurBeleg") {
-          ref = this.withTx ? await this.withTx((tx) => beleg(tx)) : await beleg();
+    const versuch = () =>
+      this.withKoLock(id, async () => {
+        const ko = await this.require(id);
+        if (ko.version !== opts.expectedVersion) {
+          // `ref` nennt dann den festgehaltenen Beleg, wird aber NICHT am Objekt vermerkt.
+          let ref: { auditSeq: number; auditHash: string } | null = null;
+          if (opts.beiVersionswechsel === "nurBeleg") {
+            if (this.withTx) {
+              ref = await this.withTx((tx) => beleg(tx));
+            } else {
+              const kopf = await this.kopfVorBeleg();
+              try {
+                ref = await beleg();
+              } catch (err) {
+                await ruecknahme().catch(() => undefined);
+                await this.belegeRuecknahme(id, kopf, {
+                  grund: "validation",
+                  restoredVersion: ko.version,
+                }).catch(() => undefined);
+                throw err;
+              }
+            }
+          }
+          return { ko, geschrieben: false, ref };
         }
-        return { ko, geschrieben: false, ref };
-      }
-      const updated: KnowledgeObject = { ...ko, trust: state.trust, status: state.status };
-      const schritte = async (tx?: TxContext) => {
-        await this.repo.update(updated, tx);
-        const ref = await beleg(tx);
-        if (!ref) {
-          return { ko: updated, geschrieben: true, ref };
-        }
-        // Zweiter Write DERSELBEN Klammer: `update` hat die rowVersion um 1 erhöht.
-        const mitVerweis: KnowledgeObject = {
-          ...updated,
-          rowVersion: (updated.rowVersion ?? 0) + 1,
-          validationDecisionRef: { auditSeq: ref.auditSeq, auditHash: ref.auditHash },
+        const state = await zustand(ko);
+        const updated: KnowledgeObject = { ...ko, trust: state.trust, status: state.status };
+        const schritte = async (tx?: TxContext) => {
+          await this.repo.update(updated, tx);
+          const ref = await beleg(tx);
+          if (!ref) {
+            return { ko: updated, geschrieben: true, ref };
+          }
+          // Zweiter Write DERSELBEN Klammer: `update` hat die rowVersion um 1 erhöht.
+          const mitVerweis: KnowledgeObject = {
+            ...updated,
+            rowVersion: (updated.rowVersion ?? 0) + 1,
+            validationDecisionRef: { auditSeq: ref.auditSeq, auditHash: ref.auditHash },
+          };
+          await this.repo.update(mitVerweis, tx);
+          return { ko: mitVerweis, geschrieben: true, ref };
         };
-        await this.repo.update(mitVerweis, tx);
-        return { ko: mitVerweis, geschrieben: true, ref };
-      };
-      if (this.withTx) {
-        return this.withTx((tx) => schritte(tx));
-      }
-      try {
-        return await schritte();
-      } catch (err) {
-        await this.rollbackKo(ko).catch(() => undefined);
-        await ruecknahme().catch(() => undefined);
+        if (this.withTx) {
+          return this.withTx((tx) => schritte(tx));
+        }
+        const kopf = await this.kopfVorBeleg();
+        try {
+          return await schritte();
+        } catch (err) {
+          const zurueck = await this.rollbackKo(ko).then(
+            () => true,
+            () => false,
+          );
+          await ruecknahme().catch(() => undefined);
+          if (zurueck) {
+            await this.belegeRuecknahme(id, kopf, {
+              grund: "validation",
+              restoredVersion: ko.version,
+              restoredStatus: ko.status,
+              restoredTrust: ko.trust,
+            }).catch(() => undefined);
+          }
+          throw err;
+        }
+      });
+    let ergebnis: Awaited<ReturnType<typeof versuch>>;
+    try {
+      ergebnis = await versuch();
+    } catch (err) {
+      if (!(this.withTx && err instanceof KoError && err.code === "STALE_WRITE")) {
         throw err;
       }
-    });
+      ergebnis = await versuch();
+    }
     return { ...ergebnis, ko: await this.lesefassung(ergebnis.ko) };
   }
 

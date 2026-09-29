@@ -104,7 +104,10 @@ async function buehne() {
     payload: { email: "l3@x.de", password: "secret123" },
   });
   const headers = { authorization: `Bearer ${login.json().token}` };
-  return { app, services, repos, headers, probe, auditInner, koInner };
+  const adminId =
+    (reg.json() as { id?: string; user?: { id: string } }).user?.id ??
+    (reg.json() as { id: string }).id;
+  return { app, services, repos, headers, adminId, probe, auditInner, koInner };
 }
 
 const KO = {
@@ -330,6 +333,8 @@ describe("BEN-B1 · Validierung und Entscheidungsbeleg gemeinsam oder gar nicht 
   it("Peer-Bewertung (Rot): fällt die Rückgabe an die Verantwortliche aus, bleibt nichts — keine Bewertung, keine offene Zuweisung", async () => {
     const b = await buehne();
     const { id, vorher } = await offenesObjekt(b);
+    const zuweisungenVorher = await b.repos.assignments.all();
+    const auditVorher = (await b.auditInner.all()).length;
     b.probe.auditAus.add("ko.returned-to-author");
     b.probe.auditAus.add("ko.returned-to-owner");
     const res = await b.app.inject({
@@ -340,10 +345,18 @@ describe("BEN-B1 · Validierung und Entscheidungsbeleg gemeinsam oder gar nicht 
     });
     expect(res.statusCode).toBeGreaterThanOrEqual(500);
     await unveraendert(b, id, vorher);
-    const offen = (await b.repos.assignments.all()).filter(
-      (a) => a.koId === id && a.status === "open",
-    );
-    expect(offen).toHaveLength(0);
+    // Runde 3 (BEN-R2-B2): Zuweisungen VOLLSTÄNDIG wie vorher — auch keine neue „erledigte".
+    expect(await b.repos.assignments.all()).toEqual(zuweisungenVorher);
+    // Der schon angehängte `ko.rated` bleibt stehen (append-only) — aber nicht unkommentiert:
+    // direkt danach nennt `ko.change-rolled-back` ihn als zurückgenommen.
+    const neu = (await b.auditInner.all()).slice(auditVorher);
+    expect(neu.map((e) => e.action)).toEqual(["ko.rated", "ko.change-rolled-back"]);
+    expect(neu[1]?.target).toBe(id);
+    expect(neu[1]?.payload).toMatchObject({
+      grund: "validation",
+      rolledBackSeqs: [neu[0]?.seq],
+      restoredStatus: "offen",
+    });
   });
 
   it("Admin-Validierung: fällt ko.admin-validated aus, bleibt das Objekt offen — Vertrauen unverändert, kein Verweis", async () => {
@@ -361,5 +374,93 @@ describe("BEN-B1 · Validierung und Entscheidungsbeleg gemeinsam oder gar nicht 
     expect(
       (await b.auditInner.all()).filter((e) => e.action === "ko.admin-validated"),
     ).toHaveLength(0);
+  });
+});
+
+describe("BEN-R2-B1 · gleichzeitige Peer-Bewertungen erhalten die Validierungsregeln (Speicher)", () => {
+  async function zweiPruefer(needed: number) {
+    const b = await buehne();
+    await b.services.validation.setDefaultNeededValidations(needed, "l3");
+    const zweite = await b.services.auth.register({
+      name: "Prüferin",
+      email: "l3-zwei@x.de",
+      password: "secret123",
+    });
+    await b.services.auth.approveUser(zweite.id, b.adminId);
+    await b.services.auth.changeRole(zweite.id, "controller", b.adminId);
+    const login = await b.app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { email: "l3-zwei@x.de", password: "secret123" },
+    });
+    const zweiteKopf = { authorization: `Bearer ${login.json().token}` };
+    const id = (
+      await b.app.inject({ method: "POST", url: "/api/kos", headers: b.headers, payload: KO })
+    ).json().id as string;
+    return { b, id, zweiteKopf, zweiteId: zweite.id };
+  }
+
+  const bewerte = (
+    b: Awaited<ReturnType<typeof buehne>>,
+    id: string,
+    kopf: Record<string, string>,
+    verdict: string,
+  ) =>
+    b.app.inject({
+      method: "PUT",
+      url: `/api/kos/${id}`,
+      headers: kopf,
+      payload: { action: "rate", verdict },
+    });
+
+  it("up + up gleichzeitig, Quorum 2: validiert mit Vertrauen 99, beide Stimmen, beide Belege", async () => {
+    const { b, id, zweiteKopf } = await zweiPruefer(2);
+    const antworten = await Promise.all([
+      bewerte(b, id, b.headers, "up"),
+      bewerte(b, id, zweiteKopf, "up"),
+    ]);
+    expect(antworten.map((r) => r.statusCode)).toEqual([200, 200]);
+    const ko = await b.koInner.findById(id);
+    expect(ko?.status).toBe("validiert");
+    expect(ko?.trust).toBe(99);
+    expect(await b.repos.ratings.listByKo(id)).toHaveLength(2);
+    expect((await b.auditInner.all()).filter((e) => e.action === "ko.rated")).toHaveLength(2);
+    pruefeKette(await b.auditInner.all());
+  });
+
+  it("down + up gleichzeitig, Quorum 1: eine rote Stimme verhindert die Freigabe — offen, Vertrauen 0", async () => {
+    const { b, id, zweiteKopf } = await zweiPruefer(1);
+    const antworten = await Promise.all([
+      bewerte(b, id, b.headers, "down"),
+      bewerte(b, id, zweiteKopf, "up"),
+    ]);
+    expect(antworten.map((r) => r.statusCode)).toEqual([200, 200]);
+    const ko = await b.koInner.findById(id);
+    expect(ko?.status).toBe("offen");
+    expect(ko?.trust).toBe(0);
+    expect(await b.repos.ratings.listByKo(id)).toHaveLength(2);
+    pruefeKette(await b.auditInner.all());
+  });
+
+  // Dieselben beiden Fälle direkt am Dienst — ohne die Wartezeiten des HTTP-Wegs verschränken sich
+  // beide Aufrufe sicher (so lief Bens Gegenbeleg). Die HTTP-Fälle oben sind der Nutzerweg.
+  it("am Dienst: up + up (Quorum 2) → validiert/99; down + up (Quorum 1) → offen/0", async () => {
+    for (const fall of [
+      { needed: 2, stimmen: ["up", "up"] as const, status: "validiert", trust: 99 },
+      { needed: 1, stimmen: ["down", "up"] as const, status: "offen", trust: 0 },
+    ]) {
+      const { b, id, zweiteId } = await zweiPruefer(fall.needed);
+      const ids = [b.adminId, zweiteId];
+      await Promise.all(
+        fall.stimmen.map((v, i) => b.services.validation.rate(id, ids[i] as string, v)),
+      );
+      const ko = await b.koInner.findById(id);
+      expect({ status: ko?.status, trust: ko?.trust }).toEqual({
+        status: fall.status,
+        trust: fall.trust,
+      });
+      expect(await b.repos.ratings.listByKo(id)).toHaveLength(2);
+      pruefeKette(await b.auditInner.all());
+    }
   });
 });

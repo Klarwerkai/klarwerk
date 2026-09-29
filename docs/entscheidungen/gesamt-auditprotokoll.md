@@ -7,7 +7,7 @@ Lauf 1 und Lauf 2 wurden nicht in den Hauptstand übernommen (Lauf 2 am 27.09. a
 zurückgesetzt). Lauf 3 legt den Lieferstand aus Lauf 2, Runde 1 (Commit `222abf95`: Lauf-1-Lieferung
 plus Lauf-2-Befunde zu R-0766 und Re-Validierung) unverändert auf den Hauptstand — geprüft, konfliktfrei
 — und behebt Bens zwei Befunde aus Lauf 2 (`beleg:6818bd52`, `beleg:1ea197ac`) sowie Bens Befund
-BEN-B1 aus Lauf 3, Runde 1, **neu** (Abschnitt „Lauf 3" unten). Die Lösungen aus Lauf 2, Runden 2
+BEN-B1 aus Lauf 3, Runde 1, sowie BEN-R2-B1/-B2 aus Runde 2 **neu** (Abschnitt „Lauf 3" unten). Die Lösungen aus Lauf 2, Runden 2
 und 3 (prozessinterne Schreibfolge, Kompensation statt Transaktion) wurden bewusst nicht übernommen.
 Die Tabellen darunter sind die übernommene Beschreibung aus Lauf 1/2; ihre Belege liegen in diesem
 Lauf erneut im Baum und wurden hier gefahren (s. „Prüfstand").*
@@ -20,6 +20,18 @@ Lauf erneut im Baum und wurden hier gefahren (s. „Prüfstand").*
 | `beleg:1ea197ac` (Lauf 2 Runde 2, Commit `d3c1bc09`): `POST /api/kos` → 500, Objekt trotzdem im Bestand, ohne `ko.created` | Erfassen: `KoService.schreibeErstanlage` — mit `withTx` Insert, Fassung, Suchprojektion, Belegkette und `ko.created` in EINER Transaktion (`KoRepo.insert(ko, tx)`, `EvidenceRepo.append(r, tx)` neu); ohne `withTx` Rücknahmeklammer `rollbackCreatedKo`. Gilt für `create` (mit/ohne Vorgang) und `createWithDocuments`; **löst WP-SHIP8-CLOSE-5 ab**. Ändern: `schreibeMitBeleg` (Write und Beleg in einer Transaktion; ohne sie erst Write, dann Beleg, bei Ausfall Vorzustand zurück) für `mutateKo` (Vertraulichkeit, Eigentum, Kommentar-Erledigung, Vorschlag, Autor-Übergabe), Kommentar, Anhang an/ab, Quelle an/ab, Papierkorb, Wiederherstellen, Wahrheitskonflikt-Rückstufung, Eigentumsrolle; Kategorie/Tags und Dokumentübernahme mit `withTx` ebenfalls in einer Transaktion. `mutateKo` schrieb den Beleg bis dahin VOR dem Speichern — ein gescheiterter Write hinterließ einen Beleg für nichts | Speicher: `gemeinsam-oder-gar-nicht.test.ts` (B2: `ko.created`-Ausfall → 500, kein Objekt; Kommentar/Vertraulichkeit-Ausfall → Objekt unverändert; Speicher-Ausfall → kein Beleg). PostgreSQL: `kette-und-beleg-atomar.integration.test.ts` mit **echtem Ausfall per Datenbank-Trigger** (Erfassen: kein Objekt, keine Fassung, keine Projektion, keine Belegzeile, kein Eintrag; Ändern: Objektzeile bitgleich; umgekehrt: kein Beleg) und dem gemeldeten Auslöser „Anlage gegen offenen Fremdschreiber" → 201, genau ein `ko.created`, jedes Objekt im Bestand mit genau einem |
 | BEN-B1 (Lauf 3 Runde 1): Peer- und Admin-Validierung speicherten Status/Vertrauen VOR dem Entscheidungsbeleg; bei dessen Ausfall blieb das Objekt „validiert, Vertrauen 99" ohne Beleg und ohne `validationDecisionRef` | `KoService.setValidationStateMitBeleg`: unter dem KO-Lock Compare-and-Set gegen die bewertete Fassung → Zustand → Beleg des Aufrufers → `validationDecisionRef`; mit `withTx` in EINER Transaktion, ohne sie Vorzustand zurück plus Rücknahme des Aufrufers. `ValidationService.rate`: Bewertung (`RatingRepo.upsert(r, tx)`), Zuweisung erledigt, `ko.rated`, bei Gelb/Rot Rückgabe (`AssignmentRepo.create/update(a, tx)`, `ko.returned-to-*`) — alles im Belegschritt. `adminValidate`: `ko.admin-validated` im Belegschritt; verfehlter Compare-and-Set schreibt weiterhin nichts (JOB 3789). `validators` wird nur nach tatsächlich geschriebener Validierung fortgeschrieben | Speicher: `gemeinsam-oder-gar-nicht.test.ts` (BEN-B1: Grün/`ko.rated`, Rot/`ko.returned-to-*`, Admin/`ko.admin-validated` — je Objekt offen, Vertrauen gleich, keine Bewertung, kein Verweis, keine offene Zuweisung; Gegenprobe ohne Ausfall mit Verweis auf den Beleg). PostgreSQL: dieselben drei Fälle in `kette-und-beleg-atomar.integration.test.ts` (Trigger; Objektzeile, `ratings`, `assignments`, `audit` bitgleich) |
 
+| BEN-R2-B1 (Lauf 3 Runde 2): `rate` bildete die Stimmenlage VOR der Schreibklammer — zwei gleichzeitige Bewertungen sahen die Stimme des anderen nicht (up+up bei Quorum 2 blieb offen/50, down+up bei Quorum 1 wurde validiert/99) | `setValidationStateMitBeleg` nimmt statt eines fertigen Zustands `zustand(ko)` und ruft es UNTER dem KO-Lock; `rate` liest dort Bewertungen und Zuweisung (`lese`). Zwei Instanzen: verliert eine Transaktion den Compare-and-Set an die andere (`STALE_WRITE`), rollt sie ganz zurück und die Klammer rechnet einmal frisch — mit der festgeschriebenen fremden Stimme | Speicher: `gemeinsam-oder-gar-nicht.test.ts` („am Dienst: up + up … / down + up …", an Runde 2 rot: `offen/50` statt `validiert/99`; die zwei HTTP-Varianten sind Nutzerweg, verschränken sich aber nicht genug und waren auch an Runde 2 grün). PostgreSQL: `kette-und-beleg-atomar.integration.test.ts` („BEN-R2-B1 · … gleichzeitig über zwei Instanzen") |
+| BEN-R2-B2 (Lauf 3 Runde 2): im Speicherweg blieb nach einem späten Ausfall (`ko.returned-to-*`) der schon angehängte `ko.rated` unkommentiert stehen, und eine neu angelegte Zuweisung blieb als „erledigt" zurück | Zuweisungen: optionaler Löschweg `AssignmentRepo.remove` (Speicher, PostgreSQL); eine im Ausfall neu angelegte Zuweisung wird entfernt. Belege: die drei Speicherweg-Klammern (`setValidationStateMitBeleg`, `schreibeMitBeleg`, `schreibeErstanlage`) merken den Kettenkopf und hängen nach gelungener Rücknahme `ko.change-rolled-back` an (`rolledBackSeqs`, `grund`, bei der Validierung `restoredStatus`/`restoredTrust`) — die Kette bleibt append-only, der tatsächliche Ausgang steht darin. Mit Transaktion gibt es nichts zu berichtigen | `gemeinsam-oder-gar-nicht.test.ts` Rot-Fall: Zuweisungen vollständig wie vorher; neue Einträge genau `ko.rated`, `ko.change-rolled-back` mit dessen `seq` (an Runde 2 rot) |
+
+**Mitgezogene Tests (sie schrieben den ausgeschlossenen Halbzustand als Soll fest):** `tests/app/review-claim-recovery.test.ts`
+(CLOSE-5/CLOSE-6), `tests/ko/g27-welle1-atomaritaet-und-ruecknahme.test.ts` („benannte Grenze"),
+`tests/demo-erster-nutzerweg/promote-traegt-die-herkunft.test.ts` (H12 → Altbestand über `verschlucken`,
+neu H12b) — diese drei in der Fassung aus Lauf 2, Runde 3 (`6b374f64`), geprüft und übernommen;
+`tests/app/import-cleanup.test.ts` (Papierkorb ohne `ko.deleted` → jetzt ehrlich „skipped");
+`tests/ko/job2704-vier-schritte-eine-transaktion.test.ts` (Zähler beginnen nach der jetzt selbst
+transaktionalen Anlage); Pool-Doppel in `tests/app/job2698-*` kennen `connect` und die Sperranweisungen;
+Zeilenwegweiser neu gemessen (`vermerk-uebersetzung.test.ts`, `knowledge-check.ts`, `repo.ts`).
+
 **Kalibrierung (lokal, Speicherweg):** Die neun Fälle in `gemeinsam-oder-gar-nicht.test.ts` wurden gegen die
 alte Fassung gefahren (Audit-Dienst, Audit-Ablage und KO-Dienst aus `41fad46c` bzw. der Lauf-2-Fassung
 von `service.ts` für den Exportweg; für BEN-B1 der Validierungsdienst aus Runde 1): alle rot
@@ -27,6 +39,14 @@ von `service.ts` für den Exportweg; für BEN-B1 der Validierungsdienst aus Rund
 nach Beleg-Ausfall); an dieser Fassung grün. **Die PostgreSQL-Integrationsfälle konnten hier nicht
 laufen** (keine Datenbank- oder Containerstarts auf dem Produktions-Mac); fehlendes Prüfmittel:
 `integration-postgres`. Die Kalibrierung dort (rot an `41fad46c`) ist damit ebenfalls offen.
+
+**Prüfstand (lokal, macOS, an dieser Fassung):** `npx tsc --noEmit` (Wurzel, Web) grün;
+`depcruise` ohne Verstoß; Biome-Lint der 45 geänderten Dateien grün; `vitest` (mit
+`KLARWERK_SKIP_KEYCHAIN=1`) über `tests/app`, `services/app`, `tests/security`, `tests/beta-rollenabnahme`,
+`tests/ko`, `tests/audit*`, `tests/validation`, `tests/auth`, `services/{audit,knowledge-object,validation,
+lifecycle,conflicts,ask,auth,library-analytics,db-tx}` u. a.: 785 Dateien, 7503 Fälle grün. Nicht gefahren:
+alle `*.integration.test.ts` (PostgreSQL) und Browser-Dateien — fehlendes Prüfmittel
+`integration-postgres` bzw. Serverweg.
 
 **Grenzen (Lauf 3):**
 - Ohne `withTx` (Speicher, Dev-Journal) ist „gemeinsam verworfen" eine Kompensation, keine Transaktion:

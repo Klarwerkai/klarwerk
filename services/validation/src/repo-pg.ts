@@ -95,6 +95,10 @@ export class PgAssignmentRepo implements AssignmentRepo {
     );
   }
 
+  async remove(koId: string, userId: string): Promise<void> {
+    await this.pool.query("DELETE FROM assignments WHERE ko_id=$1 AND user_id=$2", [koId, userId]);
+  }
+
   async all(): Promise<Assignment[]> {
     const res = await this.pool.query<AssignmentRow>("SELECT data FROM assignments");
     return res.rows.map((row) => row.data);

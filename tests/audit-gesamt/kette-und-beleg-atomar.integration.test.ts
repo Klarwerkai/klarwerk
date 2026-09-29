@@ -90,6 +90,7 @@ describe("Aufnahme gesamt-auditprotokoll · Lauf 3 · Kette und Beleg gemeinsam 
   let appB: FastifyInstance | undefined;
   let headers: Record<string, string> = {};
   let servicesA: ReturnType<typeof buildPgServices> | undefined;
+  let adminId = "";
 
   beforeAll(async () => {
     let basisUrl = "";
@@ -145,6 +146,8 @@ describe("Aufnahme gesamt-auditprotokoll · Lauf 3 · Kette und Beleg gemeinsam 
       payload: { name: "Admin", email: "l3@x.de", password: "secret123" },
     });
     expect(reg.statusCode, reg.body).toBe(201);
+    const angelegt = reg.json() as { id?: string; user?: { id: string } };
+    adminId = angelegt.user?.id ?? angelegt.id ?? "";
     const login = await appA.inject({
       method: "POST",
       url: "/api/auth/login",
@@ -506,6 +509,85 @@ describe("Aufnahme gesamt-auditprotokoll · Lauf 3 · Kette und Beleg gemeinsam 
         ref.auditSeq,
       ]);
       expect(eintrag.rows[0]?.hash).toBe(ref.auditHash);
+      await pruefeKette(pa);
+    });
+  }
+
+  // --------------------------------------------------------------------------------------------
+  // BEN-R2-B1 · gleichzeitige Peer-Bewertungen über ZWEI Instanzen — die Validierungsregeln halten.
+  // Die Stimmenlage wird in der Schreibklammer bestimmt; verliert eine Transaktion den
+  // Compare-and-Set an die andere Instanz, rollt sie zurück und rechnet mit der festgeschriebenen
+  // fremden Stimme neu.
+  // --------------------------------------------------------------------------------------------
+  let zweiteKopf: Record<string, string> | undefined;
+  async function zweitePrueferin(a: FastifyInstance): Promise<Record<string, string>> {
+    if (zweiteKopf) {
+      return zweiteKopf;
+    }
+    const s = servicesA as ReturnType<typeof buildPgServices>;
+    const zweite = await s.auth.register({
+      name: "Prüferin",
+      email: "l3-zwei@x.de",
+      password: "secret123",
+    });
+    await s.auth.approveUser(zweite.id, adminId);
+    await s.auth.changeRole(zweite.id, "controller", adminId);
+    const login = await a.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { email: "l3-zwei@x.de", password: "secret123" },
+    });
+    zweiteKopf = { authorization: `Bearer ${login.json().token}` };
+    return zweiteKopf;
+  }
+
+  for (const fall of [
+    { name: "up + up, Quorum 2", needed: 2, stimmen: ["up", "up"], status: "validiert", trust: 99 },
+    { name: "down + up, Quorum 1", needed: 1, stimmen: ["down", "up"], status: "offen", trust: 0 },
+  ]) {
+    it(`BEN-R2-B1 · ${fall.name} gleichzeitig über zwei Instanzen → ${fall.status}/${fall.trust}`, async (ctx) => {
+      const { a, b, pa } = bereit(ctx);
+      const zweite = await zweitePrueferin(a);
+      await (
+        servicesA as ReturnType<typeof buildPgServices>
+      ).validation.setDefaultNeededValidations(fall.needed, "l3");
+      const id = (
+        await a.inject({
+          method: "POST",
+          url: "/api/kos",
+          headers,
+          payload: KO(`Parallel ${fall.name}`),
+        })
+      ).json().id as string;
+      const antworten = await Promise.all([
+        a.inject({
+          method: "PUT",
+          url: `/api/kos/${id}`,
+          headers,
+          payload: { action: "rate", verdict: fall.stimmen[0] },
+        }),
+        b.inject({
+          method: "PUT",
+          url: `/api/kos/${id}`,
+          headers: zweite,
+          payload: { action: "rate", verdict: fall.stimmen[1] },
+        }),
+      ]);
+      expect(
+        antworten.map((r) => r.statusCode),
+        antworten.map((r) => r.body.slice(0, 200)).join("\n"),
+      ).toEqual([200, 200]);
+      const stand = await validierungsStand(pa, id);
+      expect({ status: stand.ko?.status, trust: stand.ko?.trust }).toEqual({
+        status: fall.status,
+        trust: fall.trust,
+      });
+      expect(stand.bewertungen).toBe(2);
+      const belege = await pa.query(
+        "SELECT 1 FROM audit WHERE action = 'ko.rated' AND target = $1",
+        [id],
+      );
+      expect(belege.rowCount).toBe(2);
       await pruefeKette(pa);
     });
   }

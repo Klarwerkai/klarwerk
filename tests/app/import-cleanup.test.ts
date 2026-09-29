@@ -269,11 +269,16 @@ describe("WP-D-CLEAN: POST /api/admin/import/cleanup", () => {
     expect((await services.ko.trashed()).length).toBe(1);
   });
 
-  it("WP-SHIP8-FIX (bens F1, bens Fenster): KO IST im Papierkorb, aber der Audit-Schreiber warf → zählt als trashed, NIE als skipped", async () => {
+  it('WP-SHIP8-FIX (bens F1, bens Fenster) · seit Aufnahme gesamt-auditprotokoll (Lauf 3): wirft der Audit-Schreiber des Soft-Deletes, bleibt das KO AKTIV — ehrlich skipped, nie „im Papierkorb ohne Beleg"', async () => {
     const { app, services, headers, ownKoId } = await cleanupApp();
     const digest = await previewDigest(app, headers);
-    // Der Audit-Schreiber des Soft-Deletes wirft NACH dem Trash-Write (genau bens Fenster);
-    // der Abschluss-Audit (import.cleanup) bleibt intakt.
+    // Der Audit-Schreiber des Soft-Deletes wirft (bens Fenster); der Abschluss-Audit bleibt intakt.
+    //
+    // BIS LAUF 3 stand hier „KO IST im Papierkorb, zählt als trashed": der Trash-Write war schon
+    // wirksam, sein `ko.deleted` fehlte — genau der Zustand, den die Aufnahme ausschliesst.
+    // Papierkorb-Write und `ko.deleted` laufen jetzt gemeinsam (`KoService.schreibeMitBeleg`):
+    // fällt der Beleg aus, wird der Write zurückgenommen. Die Nachlese findet beide KOs deshalb
+    // AKTIV, meldet sie als skipped, und die Queue bleibt für einen Wiederholversuch stehen.
     const realRecord = services.audit.record.bind(services.audit);
     services.audit.record = async (entry, tx) => {
       if (entry.action === "ko.deleted") {
@@ -288,21 +293,18 @@ describe("WP-D-CLEAN: POST /api/admin/import/cleanup", () => {
       payload: { confirm: true, digest },
     });
     expect(res.statusCode).toBe(200);
-    // Die Nachlese erkennt: beide KOs sind in Wahrheit im Papierkorb → trashed, skipped LEER —
-    // und weil die KO-Phase damit vollständig gut ging, wird auch die Queue geleert.
-    expect(res.json()).toEqual({
-      preview: false,
-      removedCandidates: 2,
-      trashedKos: 2,
-      skipped: [],
-      auditFailed: false,
-      newCandidates: 0,
-      claimedKos: 0,
-      auditPendingCandidates: 0,
-    });
-    expect(await services.library.listImportCandidates()).toEqual([]);
-    expect((await services.ko.trashed()).length).toBe(2);
-    expect((await services.ko.list()).map((k) => k.id)).toEqual([ownKoId]);
+    const body = res.json() as {
+      trashedKos: number;
+      removedCandidates: number;
+      skipped: unknown[];
+    };
+    expect(body.trashedKos).toBe(0);
+    expect(body.removedCandidates).toBe(0);
+    expect(body.skipped).toHaveLength(2);
+    expect((await services.ko.trashed()).length).toBe(0);
+    expect((await services.ko.list()).map((k) => k.id)).toContain(ownKoId);
+    expect(await services.audit.list({ action: "ko.deleted" })).toEqual([]);
+    expect((await services.library.listImportCandidates()).length).toBe(2);
   });
 
   it("WP-SHIP8-FIX (bens F1): der ABSCHLUSS-Audit wirft → Antwort bleibt ERFOLG mit auditFailed:true (kein Retry-Provokateur)", async () => {

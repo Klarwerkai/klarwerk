@@ -31,6 +31,8 @@ export interface AssignmentRepo {
   create(assignment: Assignment, tx?: TxContext): Promise<void>;
   find(koId: string, userId: string): Promise<Assignment | undefined>;
   update(assignment: Assignment, tx?: TxContext): Promise<void>;
+  /** Runde 3: nur für die Rücknahme ohne Transaktion (s. `RatingRepo.remove`). OPTIONAL. */
+  remove?(koId: string, userId: string): Promise<void>;
   all(): Promise<Assignment[]>;
 }
 
@@ -74,6 +76,11 @@ export class InMemoryAssignmentRepo implements AssignmentRepo {
 
   update(assignment: Assignment, _tx?: TxContext): Promise<void> {
     this.assignments.set(`${assignment.koId}:${assignment.userId}`, assignment);
+    return Promise.resolve();
+  }
+
+  remove(koId: string, userId: string): Promise<void> {
+    this.assignments.delete(`${koId}:${userId}`);
     return Promise.resolve();
   }
 
