@@ -50,6 +50,7 @@ import { type FormEvent, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import type { AnweisungListeneintrag } from "../../api/endpoints";
+import { useSession } from "../../app/AuthContext";
 import { useRole } from "../../app/RoleContext";
 import { ROLE_RANK } from "../../app/navigation";
 import { useOnline } from "../../shell/Meldungen";
@@ -292,6 +293,86 @@ function Bestandsliste({ offline }: { offline: boolean }): JSX.Element {
   );
 }
 
+// ==================================================================================================
+// RESTPRÜFUNG (A7) · DER UNBESTÄTIGTE TITEL ÜBERSTEHT DAS NEULADEN
+// ==================================================================================================
+//
+// Lehnt der Server die Anlage ab (Journalbetrieb: `ANWEISUNG_ABLAGE_FLUECHTIG`), bleibt der Titel
+// stehen — aber bis hierher nur im Arbeitsspeicher der Seite. Ein Neuladen nahm ihn still mit, und
+// genau das ist der Verlust, den A7 ausschliesst: die Arbeit ist UNBESTÄTIGT, nicht verzichtbar.
+//
+// DER MERKER IST TAB-GEBUNDEN UND JE KONTO GETRENNT (`sessionStorage`, Schlüssel mit der
+// Nutzerkennung): die Abmeldung leert `sessionStorage` nicht, und ein zweites Konto im selben Tab
+// sähe sonst den Titel des ersten. Ohne angemeldetes Konto wird nichts gemerkt. Er ist KEIN zweiter
+// Bestand: er nennt keine Kennung, erscheint nie in der Liste und wird nach der BESTÄTIGTEN Anlage
+// gelöscht — erst die Antwort des Servers macht aus dem Titel eine Anweisung.
+//
+// Gesperrter Speicher (privater Modus, Richtlinie) ist kein Fehler der Fläche: dann gilt der
+// bisherige Stand, der Titel lebt bis zum Neuladen.
+const TITEL_MERKER = "kw.ga.anlegen.titel.";
+
+function merkerLesen(schluessel: string | null): string {
+  if (!schluessel) {
+    return "";
+  }
+  try {
+    return window.sessionStorage.getItem(schluessel) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function merkerSchreiben(schluessel: string | null, wert: string): void {
+  if (!schluessel) {
+    return;
+  }
+  try {
+    if (wert.length > 0) {
+      window.sessionStorage.setItem(schluessel, wert);
+    } else {
+      window.sessionStorage.removeItem(schluessel);
+    }
+  } catch {
+    // Siehe oben: ohne Speicher bleibt der Titel bis zum Neuladen stehen.
+  }
+}
+
+/**
+ * Der Titel des Anlegeformulars — gemerkt bis zur bestätigten Anlage.
+ *
+ * GESCHRIEBEN WIRD IM SETTER und nicht in einem Effekt: ein Effekt über `titel` liefe auch mit dem
+ * leeren Anfangswert, bevor die Sitzung bekannt ist, und löschte den gemerkten Titel, ehe er
+ * gelesen wurde. ANGEZEIGT UND GESCHRIEBEN wird immer unter dem Schlüssel der gerade bestätigten
+ * Sitzung — auch wenn sie bei montierter Fläche wechselt.
+ */
+function useUnbestaetigterTitel(): [string, (wert: string) => void, () => void] {
+  const { user } = useSession();
+  const schluessel = user ? `${TITEL_MERKER}${user.id}` : null;
+  // DER TITEL GEHÖRT EINEM KONTO: der Zustand trägt den Schlüssel, unter dem er entstand.
+  const [lage, setLage] = useState(() => ({ schluessel, titel: merkerLesen(schluessel) }));
+
+  // BEN R1 (BEN-1): wechselt die bestätigte Sitzung bei montierter Fläche von A zu B, darf As Titel
+  // weder stehen bleiben noch mit der nächsten Eingabe unter Bs Schlüssel landen. Deshalb wird der
+  // Zustand bei jedem Schlüsselwechsel NOCH IM SELBEN ZEICHNEN verworfen und aus dem Merker des
+  // neuen Kontos gelesen — kein Effekt, der erst nach einem Zeichnen mit dem fremden Titel liefe.
+  // Was ohne bestätigte Sitzung getippt wurde, geht dabei verloren: es gehört keinem Konto.
+  let aktuell = lage;
+  if (lage.schluessel !== schluessel) {
+    aktuell = { schluessel, titel: merkerLesen(schluessel) };
+    setLage(aktuell);
+  }
+
+  return [
+    aktuell.titel,
+    (wert: string) => {
+      // Geschrieben wird unter dem Schlüssel DIESES Zeichnens, und der Zustand merkt ihn sich mit.
+      setLage({ schluessel, titel: wert });
+      merkerSchreiben(schluessel, wert);
+    },
+    () => merkerSchreiben(schluessel, ""),
+  ];
+}
+
 /**
  * Der Einstieg: der gespeicherte Bestand, darunter das Anlegen.
  *
@@ -313,7 +394,7 @@ function Einstieg({ offline }: { offline: boolean }): JSX.Element {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const anlegen = useAnweisungAnlegen();
-  const [titel, setTitel] = useState("");
+  const [titel, setTitel, titelVergessen] = useUnbestaetigterTitel();
 
   async function absenden(event: FormEvent): Promise<void> {
     event.preventDefault();
@@ -323,6 +404,8 @@ function Einstieg({ offline }: { offline: boolean }): JSX.Element {
     }
     try {
       const angelegt = await anlegen.mutateAsync({ titel: bereinigt });
+      // Bestätigt — ab hier ist der Titel Teil einer Anweisung und nicht mehr unbestätigte Arbeit.
+      titelVergessen();
       // Erst NACH der bestätigten Anlage weitergehen — mit der Kennung, die der Server vergeben
       // hat. Eine selbst erzeugte wäre eine Behauptung über einen Bestand, den diese Fläche nicht
       // kennt.
