@@ -17,12 +17,79 @@ Lauf `:2` unverändert (Diff `a7d699eb..8ee44528`, ohne Konflikt anwendbar) und 
 * `docs/hilfe/HILFE-REGISTER.md` trug noch „lokal in deinem Browser“ → nachgeführt.
 * Prüfsummen in `tests/i18n-textmodule/bestand-vorher.json` aus `werte-vorher.json` neu berechnet
   (nur `chelp.saveDraftHelp.body` in drei Sprachen verschieden).
-* **Quellenwiderspruch, nicht aufgelöst:** Die Entscheidung sagt „nur für den Autor sichtbar“. Am
-  Server sehen Administratoren jeden lebenden Entwurf (`canSeeDraft`/`visibleDraftsFor`, gepinnt in
-  `tests/security/job2531-fremder-entwurf-in-eigener-liste.test.ts` „die Verwaltung sieht beide“).
-  Die Rechte sind unverändert, und der Satz nennt die Admin-Sicht weiter ehrlich. Ob Admins fremde
-  Entwürfe künftig nicht mehr sehen sollen, ist eine Rechteänderung und braucht eine ausdrückliche
-  Entscheidung.
+* ~~Quellenwiderspruch Admin-Sicht~~ → in Runde 2 aufgelöst (B1 unten).
+
+**Lauf `:3` Runde 2 — Nacharbeit nach Bens Urteil zu Runde 1 (keine Codefreigabe):**
+
+* **B1 — Administratoren lasen fremde private Entwürfe.** Umgesetzt ist jetzt die Entscheidung
+  `debbb8e8` selbst: `canSeeDraft` (`services/app/src/routes/capture-routes.ts`) kennt keine
+  Rollenausnahme für fremde Entwürfe mehr. Die Regel gilt für jeden Entwurfsweg, der sie nutzt:
+  Liste, Einzelabruf, Ändern, Löschen, Einreichen, Papierkorb, Wiederherstellen, Dokumentübernahme
+  und die Auskunft zum nächsten Schritt. **Einzige Ausnahme:** Altbestand ohne `originalAuthor`
+  gehört niemandem und bleibt für die Verwaltung erreichbar. Sonst käme an ihn niemand mehr heran
+  (`tests/app/ko-author-paths.test.ts`).
+  * Texte: `chelp.saveDraftHelp.body` sagt jetzt „Nur du siehst ihn“ / „only you can see it“ /
+    „alleen jij ziet het“. `seitenhilfe.entwuerfe.body` sagt „Sie sind privat … auch kein
+    Administrator“ statt „Als Administrator siehst du hier die Entwürfe aller Ersteller“.
+  * Oberfläche: Arbeitsraum (`pages/Capture.tsx`) und Übersicht (`pages/MeineEntwuerfe.tsx`)
+    zeigen keinen Ersteller-Filter, keine Plakette „Admin-Ansicht: alle Entwürfe“ und keinen Satz
+    `capture.draftScope.noteAdmin` mehr. Der Schlüssel bleibt im Katalog (JOB 3062 §5a). Die
+    Mehr-Ersteller-Sicht bleibt in `CaptureDraftList` für den Pool-Auftrag (R-2099).
+  * Neue Rechteprobe: `entwurf-ist-privat.test.ts` mit fünf Fällen und drei echten Konten.
+    Gegenprobe mit `canSeeDraft` aus Runde 1: 4 von 4 Admin-Fällen rot.
+  * Nachgeführt, weil sie die alte Admin-Sicht festschrieben (je mit Vermerk im Test):
+    * `services/app/src/build-app.test.ts`
+    * `tests/security/job2531-…`
+    * `tests/app/ka8-naechster-schritt-{entwurf,bestandsroute}.test.ts`
+    * `tests/capture/job2696-…`, `mega21-vorgangsdatensatz` (der Fall „Admin reicht fremden
+      Entwurf ein“ ist umgedreht; die Eigentümerbindung bleibt über `setAuthor` belegt),
+      `capture-submit-flow`, `basic-u2-suchraum`, `capture-d030-i18n` (Inventar 14 → 13)
+    * `tests/entwurfs-papierkorb/routen-und-rechte.test.ts` R4
+    * `tests/seitenhilfe-luecken/…` E1/E3/E4
+    * `tests/erstnutzer-u1/knopf-unterschied.test.tsx` (Kernaussage „Nur du siehst ihn“)
+    * `tests/i18n-textmodule/werte-vorher.json`/`bestand-vorher.json`
+* **B2 — eine teilweise gescheiterte Zuweisung verlor eine Benachrichtigung.** Jede Zuweisung des
+  Einreichwegs trägt jetzt ihren Benachrichtigungsstand:
+  * `Assignment.benachrichtigung`: „ausstehend“ → „erledigt“.
+  * Neue Methoden: `ValidationService.zuweisenBeimEinreichen`, `nochZuBenachrichtigen` und
+    `benachrichtigungErledigt`.
+  * Ablauf: Jede Prüferin wird einzeln benachrichtigt und abgehakt. Die Wiederholung
+    benachrichtigt jede Prüferin, deren Benachrichtigung noch aussteht. Die übrigen Zuweisungswege
+    (`assign`) bleiben unverändert, der Altbestand ohne Feld gilt als erledigt.
+  * Neue Fälle in `kein-geister-entwurf.test.ts`:
+    * Fall 8, Bens Messung: Das Anlegen der zweiten Zuweisung in der Ablage scheitert.
+    * Fall 9: Der Mailversand an eine Prüferin scheitert.
+
+    Soll in beiden Fällen: Nach der Wiederholung hat jede Prüferin genau eine zugestellte Mail,
+    auch nach einer weiteren Wiederholung.
+  * Gegenprobe mit der Zuweisungslogik aus Runde 1: Fall 8 zeigt „`{ carla: 1 }` statt
+    `{ bert: 1, carla: 1 }`“ (genau Bens Messung), Fall 9 bleibt ohne Mail.
+  * Grenze: Gelingt der Versand, scheitert aber das Abhaken, schickt die Wiederholung diese eine
+    Mail ein zweites Mal (lieber doppelt als nie).
+* **B3 — die Abnahmefolge der Entwurfsverwaltung fehlte am Stück.** Neu ist
+  `tests/entwuerfe-verwalten/abnahmefolge-gesamt.test.tsx`. Sie läuft viermal, für {de, en} ×
+  {maus, tastatur}, und geht jedes Mal den ganzen Weg:
+  1. Eigene Fixture, der Zielentwurf ist der jüngste und hat einen langen Titel.
+  2. Von `/start` über den Kopfband-Punkt „Meine Entwürfe“ zur Übersicht.
+  3. Neuester zuerst, der Titel steht vollständig da.
+  4. Finden über ein Wort, das nur im Inhalt steht, und über den Titel.
+  5. „Fortsetzen“ öffnet genau diesen Entwurf.
+  6. Ungesicherte Änderung am Titel.
+  7. Listenwechsel über denselben Kopfband-Punkt: Die gemeinsame Wache fragt einmal, Antwort
+     „Verwerfen und wechseln“.
+  8. Am Bestand: kein Speichern, kein Löschen, der alte Titel steht. Erneutes Öffnen zeigt die
+     alte Fassung. Der Rückweg mit sauberem Blatt läuft ohne Rückfrage.
+  9. Löschknopf, Rückfrage in der Zeile des Entwurfs, „Löschen“: Der Eintrag ist auf der Fläche
+     und am Bestand weg, die anderen beiden bleiben.
+
+  Mit Tastatur heißt: Jedes Element wird über den Tabulatorlauf des ganzen Dokuments erreicht
+  (hinter `inert` zählt nichts). Ausgelöst wird mit Enter ohne Zeigerereignisse.
+
+  Gegenproben:
+  * Löschknopf mit `tabIndex={-1}`: die beiden Tastaturfälle sind rot („liegt nicht im
+    Tabulatorlauf“), die Mausfälle grün.
+  * „Verwerfen und wechseln“ speichert stattdessen: alle vier Fälle sind rot („Verwerfen hat
+    gespeichert“).
 
 **Herkunft.** Lauf `:1` lieferte `2ea90959` (geprüft am Ship-Commit `2525f3d5`, `1.0.0-beta.1.616`).
 Er ist **nicht** in den Basisstand übernommen. Lauf `:2` trägt seine Änderungen wieder ein und
@@ -70,8 +137,8 @@ selbst zitiert.
    Hintergrund-Worker, Ablage für den Dublettenvorfilter.
    *Jetzt (Runde 2):* Erster Lauf und Wiederholung nutzen dieselbe Funktion `nacharbeiten`. Jeder
    Schritt liest zuerst seine eigene Wirkung:
-   * Zuweisung: `ValidationService.nichtZugewiesen` (neu, `services/validation/src/service.ts`)
-     nennt die genannten Prüfer ohne Zuweisung. Nur sie werden zugewiesen und benachrichtigt.
+   * Zuweisung: ~~`ValidationService.nichtZugewiesen`~~ — in Lauf `:3` Runde 2 ersetzt durch
+     `zuweisenBeimEinreichen` + `nochZuBenachrichtigen` (Benachrichtigungsstand je Zuweisung, B2).
    * Prüf-Vermerk: Fehlt `aiCheck`, wird er gesetzt und der Job eingereiht. Steht er auf
      `pending`, liegt aber nicht in der Warteschlange (`aiCheckWorker.has`), wird nur eingereiht.
    * Verbrauch: Er greift bei einem schon entfernten Entwurf ins Leere. Die Ablage für den
@@ -204,7 +271,7 @@ PostgreSQL-Integrationstests (`altbeleg-und-bildbilanz-pg.integration`,
 | P-ENTWUERFE-VERWALTEN, priority:ENTWUERFE-VERWALTEN | geliefert | JOB 3426 LIVE `1.0.0-beta.1.256`; laut Quelle „REST: nichts“. Doppelte Quellenfassung. |
 | P-ENTWUERFE-MENUEPUNKT, priority:ENTWUERFE-MENUEPUNKT | geliefert | JOB 3503 LIVE `1.0.0-beta.1.270`. Editor-Aufklapper und Zahnradzugang ausdrücklich nicht geliefert (auftragsgemäß). |
 | priority:D1 (Zugang von Start und Erfassen, benanntes Mehr-Menü, Lade-/Leer-/Fehlerzustand) | geliefert | JOB 3266 LIVE `1.0.0-beta.1.183`, `tests/d1-meine-entwuerfe/`. |
-| R-2099, FR-CAP-06 (gemeinsamer Pool, Autoranzeige) | **nicht so gebaut**, abgegrenzt, siehe A3 | `visibleDraftsFor` (`capture-routes.ts`): Nicht-Admins sehen nur eigene Entwürfe, Admins alle, mit Ersteller-Anzeige und -Filter. Gepinnt in `tests/d1-meine-entwuerfe/entwuerfe-nur-eigene.test.ts`. |
+| R-2099, FR-CAP-06 (gemeinsamer Pool, Autoranzeige) | **nicht gebaut**, eigener Auftrag (Entscheidung `debbb8e8`), siehe A3 | Seit Lauf `:3` Runde 2: `canSeeDraft` — jede Rolle sieht nur eigene Entwürfe (Ausnahme: herrenloser Altbestand für die Verwaltung). `entwurf-ist-privat.test.ts`, `tests/d1-meine-entwuerfe/entwuerfe-nur-eigene.test.ts`. |
 | R-2149 (Einreichen, MUSS) | geliefert | Siehe R-0036, R-0058. |
 
 ## Verbindliche Abgrenzung der offenen Kriterien (Ben F4)
@@ -241,9 +308,9 @@ Entscheidung Pedis und kein offener Rest dieses Auftrags.
   * *Quellen:* JOB 3266 (08.09., `7027813d`) hat „Meine Entwürfe zeigt nur die eigenen“ entschieden
     und am echten Server gepinnt (`tests/d1-meine-entwuerfe/entwuerfe-nur-eigene.test.ts`). JOB
     3503 (10.09.) hat darauf aufgebaut. Beides ist jünger als FR-CAP-06.
-  * *Heutige Rechte:* Autorin und Administratoren sehen den Entwurf, andere Schreibende nicht
-    (Drei-Nutzer-Probe in `hilfetext-entwurf-am-server.test.ts`). Die Erklärung sagt jetzt genau
-    das (F3).
+  * *Heutige Rechte (seit Lauf `:3` Runde 2, Entscheidung `debbb8e8`):* Nur die Autorin sieht
+    ihren Entwurf, auf allen ihren Geräten. Administratoren sehen ihn nicht. Das belegt
+    `entwurf-ist-privat.test.ts`, und die Erklärung sagt es („Nur du siehst ihn“).
   * *Abgrenzung:* Ein Pool für alle Schreibberechtigten wäre eine Rechteausweitung und bräuchte
     eine neue Entscheidung Pedis. Er ist hier nicht gebaut und gilt nicht als offener Rest dieses
     Auftrags.
@@ -267,11 +334,9 @@ Entscheidung Pedis und kein offener Rest dieses Auftrags.
   (`tests/capture/promote-operation-callers.test.ts`). Anlage und Verbrauch bleiben zwei Schritte in
   zwei Modulen. Eine echte Atomarität bräuchte eine modulübergreifende Transaktion und ist nicht
   gebaut.
-* **E-Mail-Benachrichtigung nach gelungener Zuweisung verloren:** Steht die Zuweisung, scheitert
-  aber der Mailversand, antwortet die Route 500. Die Wiederholung sieht die Zuweisung als erledigt
-  an und schickt keine zweite Mail. Der Prüfer sieht die Zuweisung trotzdem in der App
-  (`openAssignmentsFor`). Ein Versandnachweis je Zuweisung existiert nicht; ihn zu bauen wäre eine
-  neue Ablage im Benachrichtigungsmodul und ist nicht gemacht.
+* ~~E-Mail-Benachrichtigung nach gelungener Zuweisung verloren~~ → in Runde 2 geschlossen (B2):
+  Der Benachrichtigungsstand steht an der Zuweisung selbst, in der Ablage des Validierungsmoduls.
+  Er braucht keine neue Ablage und keine neue Tabelle, denn `assignments.data` ist JSON.
 * **Kein eigener Nachweis in diesem Lauf:** Chromium-/Pixelmessung der neuen Abzeichen- und
   Auszugszeile bei 320–390 px, PostgreSQL-Lauf des Promote-Nachschlags. Die geänderten Wege laufen
   über die In-Memory-Ablage; `purge(id, true)` hat in PostgreSQL dieselbe Bedeutung

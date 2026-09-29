@@ -42,8 +42,23 @@ import type { AssignmentNotifier } from "../notify";
 // AUFTRAG-mega19 Block B: EXPORTIERT, damit die Composition-Root den Entwurfs-Zugang der
 // Dokumentübernahme (ko-routes, `DraftPromotionSource`) aus DERSELBEN Regel bildet. Zwei
 // Auffassungen davon, wer einen Entwurf sehen darf, wären eine zu viel.
+//
+// AUFNAHME gesamt-entwurf-einreichen · Entscheidung Pedi `debbb8e8` („Beides", Standardfall): ein
+// Entwurf ist PRIVAT — er liegt am Server und ist NUR für seine Autorin sichtbar, auf allen ihren
+// Geräten. Bis Lauf :3 sahen Administratoren jeden lebenden Entwurf samt Inhalt (Ben Runde 1, B1).
+// Die Rolle öffnet deshalb keinen fremden Entwurf mehr. Das bewusste Freigeben in einen gemeinsamen
+// Pool (R-2099, FR-CAP-06) ist ein eigener Auftrag und würde HIER eine zweite, ausdrückliche
+// Bedingung ergänzen — keine Rollenausnahme. (tests/entwurf-einreichen/entwurf-ist-privat.test.ts)
+//
+// DIE EINZIGE AUSNAHME IST KEIN FREMDER ENTWURF: Altbestand OHNE `originalAuthor` (vor WP-RETEST7
+// angelegt, `tests/app/ko-author-paths.test.ts`) gehört niemandem. Er ist niemandes privater
+// Entwurf, und ohne diese Zeile käme ihn keiner mehr fortsetzen, einreichen oder löschen. Nur die
+// Verwaltung erreicht ihn — wie bisher.
 export function canSeeDraft(user: SessionUser, draft: Draft): boolean {
-  return user.role === "admin" || draft.originalAuthor === user.id;
+  if (!draft.originalAuthor) {
+    return user.role === "admin";
+  }
+  return draft.originalAuthor === user.id;
 }
 
 // ================================================================================================
@@ -104,10 +119,7 @@ function imPapierkorb(draft: Draft): boolean {
  * EINZEL-Zugriff läuft über `findById`, und das gibt einen getrashten Entwurf gar nicht heraus.
  */
 function visibleDraftsFor(user: SessionUser, drafts: Draft[]): Draft[] {
-  const lebende = drafts.filter((draft) => !imPapierkorb(draft));
-  return user.role === "admin"
-    ? lebende
-    : lebende.filter((draft) => draft.originalAuthor === user.id);
+  return drafts.filter((draft) => !imPapierkorb(draft) && canSeeDraft(user, draft));
 }
 
 /**
@@ -901,7 +913,9 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
       // läuft deshalb durch DIESELBE Ankerprüfung wie die Einzelroute — sonst stünde „kein
       // Body-Resume ohne Anker" im Code und griffe in der Anwendung nie.
       // JOB 2696 (R2-33): Die Eingrenzung geschieht jetzt IN DER ABLAGE, nicht erst hier. Ein
-      // Nicht-Admin bekommt nur noch seine eigenen Entwuerfe geladen; ein Admin unveraendert alle.
+      // Nicht-Admin bekommt nur noch seine eigenen Entwuerfe geladen. Ein Admin lädt weiter alle,
+      // weil nur er herrenlosen Altbestand erreicht (`canSeeDraft`); fremde private Entwürfe nimmt
+      // seit Entscheidung `debbb8e8` auch für ihn `visibleDraftsFor` heraus.
       //
       // `visibleDraftsFor` BLEIBT STEHEN, und das ist Absicht: Es ist und bleibt die Stelle, die
       // entscheidet, wer welchen Entwurf sieht. Die Vorfilterung ist eine Ersparnis, keine zweite
@@ -1381,7 +1395,8 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
       }
       try {
         // Die Eingrenzung geschieht IN DER ABLAGE (JOB 2696s Lehre) — ein Nicht-Admin bekommt
-        // fremde Entwürfe gar nicht erst geladen. `canSeeDraft` bleibt trotzdem die Stelle, die
+        // fremde Entwürfe gar nicht erst geladen; beim Admin nimmt `canSeeDraft` sie heraus
+        // (Entscheidung `debbb8e8`, nur herrenloser Altbestand bleibt ihm). `canSeeDraft` bleibt trotzdem die Stelle, die
         // entscheidet: liefe beides je auseinander, fängt der Filter hier es ab. Eine
         // Sichtbarkeitsregel durch eine Ersparnis zu ersetzen wäre der falsche Handel.
         const geloescht = await capture.listTrashedDrafts(
@@ -1557,8 +1572,8 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
         // AUFNAHME gesamt-entwurf-einreichen (Ben Runde 2, F1): JEDER SCHRITT LIEST ZUERST SEINE
         // EIGENE WIRKUNG. Bricht ein Lauf an irgendeiner Stelle ab — beim Verbrauch, bei der
         // Zuweisung, beim Prüf-Vermerk —, antwortet er 500, und die Wiederholung holt genau das
-        // nach, was im Bestand fehlt: keine Zuweisung für einen genannten Prüfer → zuweisen und
-        // benachrichtigen; kein Prüf-Vermerk → vermerken und einreihen; Vermerk `pending`, aber
+        // nach, was im Bestand fehlt: keine Zuweisung für einen genannten Prüfer → zuweisen; eine
+        // Zuweisung, deren Benachrichtigung noch aussteht → benachrichtigen; kein Prüf-Vermerk → vermerken und einreihen; Vermerk `pending`, aber
         // nicht in der Warteschlange → einreihen. Was schon wirkt, läuft kein zweites Mal. Damit
         // gilt ein Vorgang erst dann als erfolgreich (200/201), wenn alle Folgen im Bestand stehen.
         const nacharbeiten = async (koId: string, reviewerIds: string[] | undefined) => {
@@ -1568,11 +1583,19 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
             return undefined;
           }
           const reviewers = [...new Set(reviewerIds ?? [])].filter((id) => id !== user.id);
-          const fehlend =
-            reviewers.length > 0 ? await validation.nichtZugewiesen(koId, reviewers) : [];
-          if (fehlend.length > 0) {
-            await validation.assign(koId, fehlend, user.id);
-            await notifyAssignment?.(koId, fehlend);
+          // Ben Lauf :3 Runde 1 (B2): „Zuweisung vorhanden" beweist nicht, dass die Prüferin
+          // benachrichtigt ist. Jede Zuweisung dieses Wegs trägt deshalb ihren eigenen
+          // Benachrichtigungsstand und wird EINZELN benachrichtigt und abgehakt. Scheitert die
+          // zweite Zuweisung, holt die Wiederholung die Benachrichtigung der ersten nach; scheitert
+          // ein Versand, bleibt genau diese Zuweisung „ausstehend". Bleibt nur: Versand gelungen,
+          // Abhaken gescheitert → die Wiederholung schickt diese eine Mail ein zweites Mal (lieber
+          // doppelt als nie).
+          if (reviewers.length > 0) {
+            await validation.zuweisenBeimEinreichen(koId, reviewers, user.id);
+            for (const prueferin of await validation.nochZuBenachrichtigen(koId, reviewers)) {
+              await notifyAssignment?.(koId, [prueferin]);
+              await validation.benachrichtigungErledigt(koId, prueferin);
+            }
           }
           // WP-SUBMIT-ASYNC (Pedis R3, 21.07.): wie beim direkten Einreichen — kein synchroner
           // detect*-Lauf mehr vor der Antwort; nur der Prüf-Job wird vermerkt und der Worker
@@ -1588,7 +1611,7 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
             if (stand.aiCheck.status === "pending" && !aiCheckWorker.has(koId)) {
               aiCheckWorker.enqueue(koId, stand.aiCheck.koVersion);
             }
-            return fehlend.length > 0 ? ((await ko.get(koId)) ?? stand) : stand;
+            return reviewers.length > 0 ? ((await ko.get(koId)) ?? stand) : stand;
           }
           await ko.markAiCheckPending(koId);
           const vermerkt = await ko.get(koId);

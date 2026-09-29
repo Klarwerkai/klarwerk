@@ -17,6 +17,12 @@ export interface Assignment {
   koId: string;
   userId: string;
   status: "open" | "done";
+  // AUFNAHME gesamt-entwurf-einreichen (Ben Lauf :3 Runde 1, B2): ob die Prüferin über DIESE
+  // Zuweisung schon benachrichtigt ist. Nur der wiederholbare Einreichweg setzt das Feld
+  // (`zuweisenBeimEinreichen` → „ausstehend", `benachrichtigungErledigt` → „erledigt"); ohne Feld gilt
+  // eine Zuweisung als abgeschlossen (Altbestand und alle übrigen Zuweisungswege). Eine vorhandene
+  // Zuweisung allein beweist nicht, dass die Benachrichtigung lief.
+  benachrichtigung?: "ausstehend" | "erledigt";
 }
 
 // SCRUM-395: INVALID_DEFAULT = ungültige Standard-Prüferanzahl (Admin-Einstellung).

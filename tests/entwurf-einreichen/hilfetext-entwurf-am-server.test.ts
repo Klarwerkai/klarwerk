@@ -24,9 +24,14 @@
 // `geraete`); ein Pool-Satz („für alle sichtbar", R-2099) gehört einem eigenen Auftrag und ist hier
 // verboten. Gegenprobe: mit dem Satz aus Lauf :2 („an einem anderen Gerät", ohne „privat") sind
 // die drei Sprachfälle rot.
+//
+// Lauf :3 Runde 2 — Ben B1: der Satz aus Runde 1 nannte „Außer dir sehen ihn nur Administratoren"
+// und schrieb damit genau die Ausnahme fest, die `debbb8e8` ausschliesst. Der Server gibt fremde
+// Entwürfe jetzt auch Administratoren nicht mehr heraus (`canSeeDraft`), der Satz sagt „Nur du
+// siehst ihn". Die Rechteprobe dazu steht in `entwurf-ist-privat.test.ts`. Gegenprobe: mit dem
+// Satz aus Runde 1 sind die drei Sprachfälle rot („administrator"/„beheerder").
 import { describe, expect, it } from "vitest";
 import i18n from "../../apps/web/src/i18n";
-import { buildApp, buildServices } from "../../services/app/src/build-app";
 
 const FALL = {
   de: {
@@ -36,9 +41,10 @@ const FALL = {
       /oben auf der seite/i,
       /niemand/i,
       /alle[nm]? (kolleg|schreib)/i,
+      /administrator/i,
     ],
     server: /server/i,
-    admin: /nur Administratoren/,
+    nurDu: /Nur du siehst ihn/,
     privat: /privat auf dem Server/,
     geraete: /auf jedem deiner Geräte/,
   },
@@ -49,16 +55,24 @@ const FALL = {
       /top of (this|the) page/i,
       /nobody/i,
       /everyone|all colleagues/i,
+      /administrator/i,
     ],
     server: /server/i,
-    admin: /only administrators/,
+    nurDu: /only you can see it/,
     privat: /privately on the server/,
     geraete: /on any of your devices/,
   },
   nl: {
-    falsch: [/browser/i, /lokaal/i, /boven aan de pagina/i, /niemand/i, /iedereen|alle collega/i],
+    falsch: [
+      /browser/i,
+      /lokaal/i,
+      /boven aan de pagina/i,
+      /niemand/i,
+      /iedereen|alle collega/i,
+      /beheerder/i,
+    ],
     server: /server/i,
-    admin: /alleen beheerders/,
+    nurDu: /alleen jij ziet het/,
     privat: /privé op de server/,
     geraete: /op elk van je apparaten/,
   },
@@ -66,7 +80,7 @@ const FALL = {
 
 describe("chelp.saveDraftHelp.body — Entwürfe liegen am Server und unter „Meine Entwürfe“", () => {
   for (const [sprache, fall] of Object.entries(FALL)) {
-    it(`${sprache}: kein „im Browser“, kein „niemand“ — dafür Server, Admin-Sicht und der Menüname`, () => {
+    it(`${sprache}: kein „im Browser“, kein „niemand“, keine Admin-Ausnahme — dafür privat, Server, alle Geräte, „nur du“ und der Menüname`, () => {
       const t = i18n.getFixedT(sprache);
       const text = t("chelp.saveDraftHelp.body");
       expect(text).not.toBe("chelp.saveDraftHelp.body");
@@ -74,69 +88,11 @@ describe("chelp.saveDraftHelp.body — Entwürfe liegen am Server und unter „M
         expect(text, `${sprache}: ${muster}`).not.toMatch(muster);
       }
       expect(text).toMatch(fall.server);
-      expect(text).toMatch(fall.admin);
+      expect(text).toMatch(fall.nurDu);
       expect(text).toMatch(fall.privat);
       expect(text).toMatch(fall.geraete);
       // Der Ort heisst genau wie der Menüpunkt — aus DEM Schlüssel, nicht abgeschrieben.
       expect(text).toContain(t("mob.drafts"));
     });
   }
-});
-
-describe("die Rechte, die der Satz beschreibt: Autorin und Admin sehen den Entwurf, andere Schreibende nicht", () => {
-  it("Drei-Nutzer-Probe am Server (GET /api/drafts)", async () => {
-    const app = buildApp(buildServices());
-    const anmelden = async (email: string) => {
-      const res = await app.inject({
-        method: "POST",
-        url: "/api/auth/login",
-        payload: { email, password: "secret123" },
-      });
-      expect(res.statusCode).toBe(200);
-      return { authorization: `Bearer ${res.json().token}` };
-    };
-    // Die erste Registrierung ist der Admin.
-    await app.inject({
-      method: "POST",
-      url: "/api/auth/register",
-      payload: { name: "Ada", email: "ada@x.de", password: "secret123" },
-    });
-    const admin = await anmelden("ada@x.de");
-    for (const [name, email] of [
-      ["Anna", "anna@x.de"],
-      ["Otto", "otto@x.de"],
-    ] as const) {
-      const res = await app.inject({
-        method: "POST",
-        url: "/api/users",
-        headers: admin,
-        payload: { name, email, password: "secret123", role: "experte" },
-      });
-      expect(res.statusCode).toBeLessThan(300);
-    }
-    const anna = await anmelden("anna@x.de");
-    const otto = await anmelden("otto@x.de");
-    const angelegt = await app.inject({
-      method: "POST",
-      url: "/api/drafts",
-      headers: anna,
-      payload: { title: "Annas Entwurf", statement: "Nur ein Zwischenstand." },
-    });
-    expect(angelegt.statusCode).toBeLessThan(300);
-    const id = angelegt.json().id as string;
-    const sieht = async (headers: Record<string, string>) => {
-      const res = await app.inject({ method: "GET", url: "/api/drafts", headers });
-      expect(res.statusCode).toBe(200);
-      return (res.json() as { id: string }[]).some((d) => d.id === id);
-    };
-    expect({
-      autorin: await sieht(anna),
-      admin: await sieht(admin),
-      andere: await sieht(otto),
-    }).toEqual({
-      autorin: true,
-      admin: true,
-      andere: false,
-    });
-  });
 });

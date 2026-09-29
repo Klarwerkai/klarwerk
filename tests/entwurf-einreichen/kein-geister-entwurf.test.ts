@@ -30,9 +30,22 @@
 // eigene Wirkung und holt nur nach, was fehlt. Die Fälle 5–7 brechen den ersten Lauf an genau
 // diesen Stellen und prüfen nach der Wiederholung den BESTAND: Zuweisung, Benachrichtigung,
 // Prüf-Vermerk und Einreihung je genau einmal — auch nach einer zweiten Wiederholung.
-import { describe, expect, it, vi } from "vitest";
+//
+// BEN LAUF :3 RUNDE 1 (B2): „Zuweisung vorhanden" heisst nicht „Prüferin benachrichtigt". Fall 5
+// ersetzte die ganze Zuweisung durch einen Fehler VOR jeder Teilwirkung und sah das deshalb nicht.
+// Fall 8 lässt bei zwei Prüfern nur das ANLEGEN DER ZWEITEN Zuweisung in der Ablage scheitern (die
+// erste steht, niemand ist benachrichtigt), Fall 9 den Mailversand an EINE Prüferin. Soll: nach der
+// Wiederholung hat JEDE Prüferin genau eine zugestellte Benachrichtigung, auch nach einer weiteren
+// Wiederholung. Gegenprobe: mit der Zuweisung aus Lauf :3 Runde 1 (`nichtZugewiesen` + `assign`,
+// Benachrichtigung nur für neu Zugewiesene) sind Fall 8 und 9 rot — Bert bleibt ohne Mail.
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AiCheckWorker } from "../../services/app/src/ai-check-worker";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
+import { InMemoryAssignmentRepo } from "../../services/validation";
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 type App = ReturnType<typeof buildApp>;
 
@@ -84,7 +97,24 @@ async function buehne() {
   });
   expect(bert.statusCode).toBeLessThan(300);
   const pruefer = await anmelden(app, "bert@x.de");
-  return { app, services, headers: anna.headers, bert: pruefer, enqueue: pruefjob.enqueue, post };
+  // Carla ist die zweite Prüferin (Fälle 8 und 9).
+  const carla = await app.inject({
+    method: "POST",
+    url: "/api/users",
+    headers: anna.headers,
+    payload: { name: "Carla", email: "carla@x.de", password: "secret123", role: "experte" },
+  });
+  expect(carla.statusCode).toBeLessThan(300);
+  const prueferin = await anmelden(app, "carla@x.de");
+  return {
+    app,
+    services,
+    headers: anna.headers,
+    bert: pruefer,
+    carla: prueferin,
+    enqueue: pruefjob.enqueue,
+    post,
+  };
 }
 
 async function entwurfAnlegen(app: App, headers: Record<string, string>, titel: string) {
@@ -294,7 +324,10 @@ describe("R-0036 · Einreichen eines gespeicherten Entwurfs lässt keinen Geiste
 
     it("Fall 5 · Prüferzuweisung scheitert einmal: 500, dann 200 mit Zuweisung, Benachrichtigung und Prüf-Job", async () => {
       const v = await vorgang(
-        (s) => void vi.spyOn(s.validation, "assign").mockRejectedValueOnce(new Error("kurz weg")),
+        (s) =>
+          void vi
+            .spyOn(s.validation, "zuweisenBeimEinreichen")
+            .mockRejectedValueOnce(new Error("kurz weg")),
         "einreichen-zuweisung-0001",
       );
 
@@ -383,6 +416,93 @@ describe("R-0036 · Einreichen eines gespeicherten Entwurfs lässt keinen Geiste
 
       expect((await v.senden()).statusCode).toBe(200);
       expect(await v.lesen()).toEqual(vollstaendig);
+    });
+  });
+
+  describe("B2 · eine teilweise gescheiterte Zuweisung verliert keine Benachrichtigung", () => {
+    // Zugestellt heisst: das Versprechen aus `mailer.send` wurde ERFÜLLT (`settledResults`, nicht
+    // `results` — ein abgelehntes Versprechen ist dort ein gewöhnliches „return"). Gezählt wird je
+    // Empfängerin.
+    function zustellungen(post: {
+      mock: { calls: unknown[][]; settledResults: { type: string }[] };
+    }) {
+      const je: Record<string, number> = {};
+      post.mock.calls.forEach(([nachricht], i) => {
+        if (post.mock.settledResults[i]?.type === "fulfilled") {
+          const an = (nachricht as { to: string }).to;
+          je[an] = (je[an] ?? 0) + 1;
+        }
+      });
+      return je;
+    }
+
+    async function zweiPruefer(schluessel: string) {
+      const b = await buehne();
+      const id = await entwurfAnlegen(b.app, b.headers, "Dichtungswechsel L4");
+      const senden = () =>
+        b.app.inject({
+          method: "POST",
+          url: `/api/drafts/${id}/promote`,
+          headers: b.headers,
+          payload: { operationId: schluessel, reviewerIds: [b.bert.id, b.carla.id] },
+        });
+      const zugewiesen = async () => ({
+        bert: (await b.services.validation.openAssignmentsFor(b.bert.id)).length,
+        carla: (await b.services.validation.openAssignmentsFor(b.carla.id)).length,
+      });
+      return { ...b, senden, zugewiesen };
+    }
+
+    it("Fall 8 · das Anlegen der ZWEITEN Zuweisung scheitert: 500, dann 200 — Bert UND Carla sind je genau einmal benachrichtigt", async () => {
+      const v = await zweiPruefer("einreichen-zweite-zuweisung-0001");
+      const echt = InMemoryAssignmentRepo.prototype.create;
+      let aufrufe = 0;
+      vi.spyOn(InMemoryAssignmentRepo.prototype, "create").mockImplementation(function (
+        this: InMemoryAssignmentRepo,
+        zuweisung,
+      ) {
+        aufrufe += 1;
+        if (aufrufe === 2) {
+          return Promise.reject(new Error("Ablage kurz nicht erreichbar"));
+        }
+        return echt.call(this, zuweisung);
+      });
+
+      const erster = await v.senden();
+      // Der Ausgangszustand des Befunds: Berts Zuweisung steht, Carlas nicht, niemand hat Post.
+      expect(erster.statusCode).toBe(500);
+      expect(await v.zugewiesen()).toEqual({ bert: 1, carla: 0 });
+      expect(zustellungen(v.post)).toEqual({});
+
+      const wiederholung = await v.senden();
+      expect(wiederholung.statusCode).toBe(200);
+      expect(await v.zugewiesen()).toEqual({ bert: 1, carla: 1 });
+      // Vor der Änderung stand hier `{ "carla@x.de": 1 }` — Berts Benachrichtigung war verloren.
+      expect(zustellungen(v.post)).toEqual({ "bert@x.de": 1, "carla@x.de": 1 });
+
+      // Weitere Wiederholungen: Erfolg, und keine zweite Mail an irgendwen.
+      expect((await v.senden()).statusCode).toBe(200);
+      expect(zustellungen(v.post)).toEqual({ "bert@x.de": 1, "carla@x.de": 1 });
+      expect(await v.zugewiesen()).toEqual({ bert: 1, carla: 1 });
+    });
+
+    it("Fall 9 · der Mailversand an Bert scheitert: 500, dann 200 — Bert wird nachbenachrichtigt, Carla nicht doppelt", async () => {
+      const v = await zweiPruefer("einreichen-mail-0001");
+      v.post.mockRejectedValueOnce(new Error("SMTP kurz weg"));
+
+      const erster = await v.senden();
+      expect(erster.statusCode).toBe(500);
+      // Beide Zuweisungen stehen, zugestellt ist nichts (Berts Mail scheiterte, Carla kam nicht dran).
+      expect(await v.zugewiesen()).toEqual({ bert: 1, carla: 1 });
+      expect(zustellungen(v.post)).toEqual({});
+
+      const wiederholung = await v.senden();
+      expect(wiederholung.statusCode).toBe(200);
+      expect(wiederholung.json().aiCheck?.status).toBe("pending");
+      expect(zustellungen(v.post)).toEqual({ "bert@x.de": 1, "carla@x.de": 1 });
+
+      expect((await v.senden()).statusCode).toBe(200);
+      expect(zustellungen(v.post)).toEqual({ "bert@x.de": 1, "carla@x.de": 1 });
     });
   });
 });

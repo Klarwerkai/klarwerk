@@ -326,10 +326,10 @@ const de = {
   // JOB 3669 bei JOB 3668 (Entwurfs-Papierkorb) lag; der Grund ist mit dessen Auslieferung entfallen.
   //
   // JEDER SATZ IST AN DER FLÄCHE GEMESSEN (`pages/MeineEntwuerfe.tsx`, `components/CaptureDraftList.tsx`):
-  //   · Der Ersteller-Filter ist eine ADMIN-Auskunft (`CaptureDraftList.tsx:245` — `isAdmin`); wer
-  //     die Rolle nicht hat, findet ihn nicht. Deshalb steht der Vorbehalt im Satz und nicht daneben
-  //     (Korrekturpflicht 1 aus JOB 3669 R1: keine Bedienung versprechen, die es für den Betrachter
-  //     nicht gibt).
+  //   · Entwürfe sind PRIVAT (Entscheidung Pedi `debbb8e8`): jede Rolle, auch der Administrator,
+  //     sieht hier nur die eigenen (`canSeeDraft`). Der frühere Satz über „Entwürfe aller Ersteller"
+  //     und die Auswahl „Alle Ersteller" ist deshalb fort — die Seite zeigt diese Auswahl nicht mehr
+  //     (`MeineEntwuerfe.tsx`, `isAdmin={false}`).
   //   · „Wiederherstellen"/„Endgültig löschen" sind die Wörter, die der Papierkorb wirklich trägt
   //     (`adm.trash.restore`/`adm.trash.purge`) — kein zweites Wort für dieselbe Handlung.
   //   · KEINE Aufbewahrungsfrist: es gibt keine (JOB 3668, Rückgabe R1). „Von selbst leert er sich
@@ -338,7 +338,7 @@ const de = {
   //     da sind — nur, was mit ihnen geschieht und wo man nachsieht.
   "seitenhilfe.entwuerfe.title": "Meine Entwürfe: begonnene Erfassungen fortsetzen",
   "seitenhilfe.entwuerfe.body":
-    "Hier stehen die Erfassungen, die als Entwurf gespeichert und noch nicht zu einem Wissensobjekt geworden sind — dieselben Entwürfe, die auch der Editor und der Arbeitsraum zeigen, nur an einem eigenen Ort; einen zweiten Entwurfsspeicher gibt es nicht. Als Administrator siehst du hier die Entwürfe aller Ersteller, und die Auswahl „Alle Ersteller“ über der Liste grenzt sie auf eine Person ein; ohne diese Rolle stehen hier nur deine eigenen, und diese Auswahl gibt es dann nicht. Das Suchfeld über der Liste durchsucht ausschließlich diese Entwürfe und kein Wissen aus der Bibliothek, „Sortieren“ ordnet sie nach Stand oder Titel. Gelöschte Entwürfe gehen in den „Papierkorb“ unter der Liste: „Wiederherstellen“ holt einen zurück, „Endgültig löschen“ entfernt ihn wirklich, und von selbst leert sich der Papierkorb nicht. Nächster Schritt: Klick „Fortsetzen“ an einer Zeile — der Entwurf öffnet sich im Editor, und noch nicht gespeicherte Eingaben werden vorher abgefragt; steht die Liste leer da, führt „Erfassen“ dorthin, wo ein neuer Entwurf entsteht.",
+    "Hier stehen die Erfassungen, die als Entwurf gespeichert und noch nicht zu einem Wissensobjekt geworden sind — dieselben Entwürfe, die auch der Editor und der Arbeitsraum zeigen, nur an einem eigenen Ort; einen zweiten Entwurfsspeicher gibt es nicht. Hier stehen nur deine eigenen Entwürfe: Sie sind privat, niemand sonst sieht sie, auch kein Administrator. Das Suchfeld über der Liste durchsucht ausschließlich diese Entwürfe und kein Wissen aus der Bibliothek, „Sortieren“ ordnet sie nach Stand oder Titel. Gelöschte Entwürfe gehen in den „Papierkorb“ unter der Liste: „Wiederherstellen“ holt einen zurück, „Endgültig löschen“ entfernt ihn wirklich, und von selbst leert sich der Papierkorb nicht. Nächster Schritt: Klick „Fortsetzen“ an einer Zeile — der Entwurf öffnet sich im Editor, und noch nicht gespeicherte Eingaben werden vorher abgefragt; steht die Liste leer da, führt „Erfassen“ dorthin, wo ein neuer Entwurf entsteht.",
   // JOB 3337: der Zugang heißt jetzt, was er ist. „Weitere Bereiche" war eine Restekiste,
   // „Schnellnavigation" ein Fachwort — Pedi: „Die Direktfunktion ist … schwer zu erkennen."
   // Die SCHLÜSSEL bleiben, damit kein Aufrufer und kein Pin ins Leere greift.
@@ -2250,8 +2250,10 @@ const de = {
   // AUFTRAG-BASIC-u2: die Gegenseite derselben Frage. Diese Suche durchsucht AUSSCHLIESSLICH die
   // gespeicherten Entwürfe; „Keine Entwürfe passen zum Filter." war eine Auskunft über einen
   // Filter, nicht über einen Suchraum, und liess offen, wo das Gesuchte sonst stehen könnte.
-  // Die Admin-Ansicht sieht ALLE Entwürfe — sie bekommt deshalb einen eigenen, wahren Satz statt
-  // einer Behauptung über „deine" Entwürfe.
+  // Seit Entscheidung Pedi `debbb8e8` (Entwürfe sind privat) sieht auch die Admin-Ansicht nur die
+  // eigenen Entwürfe. Ihr eigener Satz „(Admin-Ansicht: alle)" (`capture.draftScope.noteAdmin`)
+  // wird deshalb nirgends mehr gezeigt — dieser Satz ist für jede Rolle wahr. Der Schlüssel bleibt
+  // im Katalog (JOB 3062 §5a: ungenutzt ist nicht entfernt).
   "capture.draftScope.note":
     "Diese Suche durchsucht nur deine gespeicherten Entwürfe — kein Wissen aus der Bibliothek.",
   "capture.draftScope.noteAdmin":
@@ -6345,14 +6347,12 @@ const de = {
   // AUFNAHME gesamt-entwurf-einreichen (Ben Runde 1): hier stand „lokal in deinem Browser" und
   // „oben auf der Seite". Entwürfe liegen am Server (`POST /api/drafts`, R-0026: an einem anderen
   // Gerät fortsetzbar), und ihr Ort ist der Menüpunkt „Meine Entwürfe" (`mob.drafts`, JOB 3503).
-  // Ben Runde 2 (F3): hier stand „Niemand sieht ihn". Administratoren sehen jeden lebenden Entwurf
-  // (`visibleDraftsFor` in services/app/src/routes/capture-routes.ts), andere Schreibende nur ihre
-  // eigenen. Der Satz beschreibt diese Rechte, er erweitert sie nicht.
-  // Entscheidung Pedi (debbb8e8, „Beides"): Standardfall ist der PRIVATE Entwurf am Server, auf allen
-  // eigenen Geräten fortsetzbar. Das bewusste Freigeben in einen gemeinsamen Pool (R-2099) ist ein
-  // eigener Auftrag und steht deshalb hier nicht.
+  // Entscheidung Pedi (debbb8e8, „Beides"): Standardfall ist der PRIVATE Entwurf am Server, NUR für
+  // die Autorin sichtbar (auch kein Administrator, `canSeeDraft`), auf allen eigenen Geräten
+  // fortsetzbar. Das bewusste Freigeben in einen gemeinsamen Pool (R-2099) ist ein eigener Auftrag
+  // und steht deshalb hier nicht.
   "chelp.saveDraftHelp.body":
-    "Sichert deinen Zwischenstand privat auf dem Server — du kannst jederzeit weitermachen, auf jedem deiner Geräte und auch nach einem Neustart. Ein Entwurf ist NICHT eingereicht: Außer dir sehen ihn nur Administratoren, er taucht in keiner Prüfung und keiner Antwort auf. Deine gespeicherten Entwürfe findest du zum Fortsetzen im Menü unter „Meine Entwürfe“.",
+    "Sichert deinen Zwischenstand privat auf dem Server — du kannst jederzeit weitermachen, auf jedem deiner Geräte und auch nach einem Neustart. Ein Entwurf ist NICHT eingereicht: Nur du siehst ihn, er taucht in keiner Prüfung und keiner Antwort auf. Deine gespeicherten Entwürfe findest du zum Fortsetzen im Menü unter „Meine Entwürfe“.",
   "chelp.discardHelp.title": "Verwerfen",
   "chelp.discardHelp.body":
     "Verwirft den aktuellen Entwurf endgültig — Text, Struktur und Anhänge dieser Erfassung. Es betrifft NUR deinen Entwurf: Bereits eingereichte oder gespeicherte Wissensobjekte bleiben unberührt. Vorher fragt die App bewusst nach; wer nur einen Schritt zurück will, nutzt die Schritt-Leiste statt Verwerfen.",
@@ -7579,7 +7579,7 @@ const en: typeof de = {
   // JOB 3768 — the fifth page of the same path; see the German entry for what each sentence rests on.
   "seitenhilfe.entwuerfe.title": "My drafts: pick up what you started",
   "seitenhilfe.entwuerfe.body":
-    "These are the captures saved as a draft that have not become a knowledge object yet — the same drafts the editor and the workspace show, only in a place of their own; this is not a second draft store. As an administrator you see the drafts of all creators here, and the “All creators” selector above the list narrows them down to one person; without that role only your own drafts stand here, and that selector is not there. The search field above the list covers only these drafts and no knowledge from the library, “Sort” orders them by when they were saved or by title. Deleted drafts go to the “Recycle bin” below the list: “Restore” brings one back, “Delete permanently” really removes it, and the recycle bin does not empty itself. Next step: click “Resume” on a line — the draft opens in the editor, and unsaved input is asked about beforehand; if the list stands empty, “Capture” leads to where a new draft is created.",
+    "These are the captures saved as a draft that have not become a knowledge object yet — the same drafts the editor and the workspace show, only in a place of their own; this is not a second draft store. Only your own drafts stand here: they are private, nobody else sees them, not even an administrator. The search field above the list covers only these drafts and no knowledge from the library, “Sort” orders them by when they were saved or by title. Deleted drafts go to the “Recycle bin” below the list: “Restore” brings one back, “Delete permanently” really removes it, and the recycle bin does not empty itself. Next step: click “Resume” on a line — the draft opens in the editor, and unsaved input is asked about beforehand; if the list stands empty, “Capture” leads to where a new draft is created.",
   "menue.weitereBereiche": "Areas",
   "menue.schnellnavigation": "Go to …",
   "menue.darstellung": "Appearance",
@@ -12373,7 +12373,7 @@ const en: typeof de = {
     "The title is the first thing colleagues see in the library and in answers — it decides whether your knowledge is found. Good: concrete and actionable („checking weld seams on aluminium under 5 mm“). You can change it anytime; the AI suggestion is only a starting point.",
   "chelp.saveDraftHelp.title": "Save draft",
   "chelp.saveDraftHelp.body":
-    "Saves your interim state privately on the server — continue anytime, on any of your devices and even after a restart. A draft is NOT submitted: apart from you, only administrators can see it, and it appears in no review and no answer. You will find your saved drafts to resume in the menu under “My drafts”.",
+    "Saves your interim state privately on the server — continue anytime, on any of your devices and even after a restart. A draft is NOT submitted: only you can see it, and it appears in no review and no answer. You will find your saved drafts to resume in the menu under “My drafts”.",
   "chelp.discardHelp.title": "Discard",
   "chelp.discardHelp.body":
     "Discards the current draft for good — text, structure and attachments of this capture. It affects ONLY your draft: already submitted or saved knowledge objects stay untouched. The app deliberately asks first; if you only want one step back, use the step bar instead of discarding.",
@@ -13223,7 +13223,7 @@ const nl: typeof de = {
   // JOB 3768 — de vijfde pagina van dezelfde weg; zie de Duitse regel voor de grondslag per zin.
   "seitenhilfe.entwuerfe.title": "Mijn concepten: verder met wat je begon",
   "seitenhilfe.entwuerfe.body":
-    "Hier staan de vastleggingen die als concept zijn opgeslagen en nog geen kennisobject zijn geworden — dezelfde concepten die ook de editor en de werkruimte tonen, alleen op een eigen plek; een tweede conceptopslag is dit niet. Als beheerder zie je hier de concepten van alle makers, en de keuze “Alle makers” boven de lijst beperkt ze tot één persoon; zonder die rol staan hier alleen je eigen concepten en bestaat die keuze niet. Het zoekveld boven de lijst doorzoekt uitsluitend deze concepten en geen kennis uit de bibliotheek, “Sorteren” ordent ze op moment van opslaan of op titel. Verwijderde concepten gaan naar de “Prullenbak” onder de lijst: “Herstellen” haalt er een terug, “Definitief verwijderen” haalt hem er echt af, en de prullenbak leegt zichzelf niet. Volgende stap: klik “Hervatten” bij een regel — het concept opent in de editor, en nog niet opgeslagen invoer wordt eerst gevraagd; staat de lijst leeg, dan leidt “Vastleggen” naar de plek waar een nieuw concept ontstaat.",
+    "Hier staan de vastleggingen die als concept zijn opgeslagen en nog geen kennisobject zijn geworden — dezelfde concepten die ook de editor en de werkruimte tonen, alleen op een eigen plek; een tweede conceptopslag is dit niet. Hier staan alleen je eigen concepten: ze zijn privé, niemand anders ziet ze, ook geen beheerder. Het zoekveld boven de lijst doorzoekt uitsluitend deze concepten en geen kennis uit de bibliotheek, “Sorteren” ordent ze op moment van opslaan of op titel. Verwijderde concepten gaan naar de “Prullenbak” onder de lijst: “Herstellen” haalt er een terug, “Definitief verwijderen” haalt hem er echt af, en de prullenbak leegt zichzelf niet. Volgende stap: klik “Hervatten” bij een regel — het concept opent in de editor, en nog niet opgeslagen invoer wordt eerst gevraagd; staat de lijst leeg, dan leidt “Vastleggen” naar de plek waar een nieuw concept ontstaat.",
   "menue.weitereBereiche": "Gebieden",
   "menue.schnellnavigation": "Ga naar …",
   "menue.darstellung": "Weergave",
@@ -18010,7 +18010,7 @@ const nl: typeof de = {
     "De titel is het eerste wat collega's in bibliotheek en antwoorden zien — hij bepaalt of je kennis wordt gevonden. Goed: concreet en actiegericht („Lasnaad bij aluminium onder 5 mm controleren\"). Je kunt hem altijd wijzigen, ook het KI-voorstel is maar een startpunt.",
   "chelp.saveDraftHelp.title": "Concept opslaan",
   "chelp.saveDraftHelp.body":
-    "Bewaart je tussenstand privé op de server — je kunt altijd verdergaan, op elk van je apparaten en ook na een herstart. Een concept is NIET ingediend: behalve jij zien alleen beheerders het, en het duikt in geen enkele beoordeling en geen enkel antwoord op. Je opgeslagen concepten vind je om verder te gaan in het menu onder „Mijn concepten”.",
+    "Bewaart je tussenstand privé op de server — je kunt altijd verdergaan, op elk van je apparaten en ook na een herstart. Een concept is NIET ingediend: alleen jij ziet het, en het duikt in geen enkele beoordeling en geen enkel antwoord op. Je opgeslagen concepten vind je om verder te gaan in het menu onder „Mijn concepten”.",
   "chelp.discardHelp.title": "Verwerpen",
   "chelp.discardHelp.body":
     "Verwerpt het huidige concept definitief — tekst, structuur en bijlagen van deze vastlegging. Het betreft ALLEEN je concept: reeds ingediende of opgeslagen kennisobjecten blijven onaangetast. Vooraf vraagt de app bewust na; wie maar één stap terug wil, gebruikt de stappenbalk in plaats van verwerpen.",

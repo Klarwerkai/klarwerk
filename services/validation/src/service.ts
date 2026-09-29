@@ -585,18 +585,75 @@ export class ValidationService {
     return staende;
   }
 
-  // AUFNAHME gesamt-entwurf-einreichen (Ben Runde 2, F1): wer von diesen Personen hat für das KO
-  // NOCH KEINE Zuweisung (gleich welchen Status)? Der Einreichweg fragt das vor dem Zuweisen, damit
-  // eine Wiederholung desselben Vorgangs fehlende Zuweisungen nachholt, vorhandene aber nicht
-  // verdoppelt. Reine Lesefrage an die eigene Ablage.
-  async nichtZugewiesen(koId: string, userIds: readonly string[]): Promise<string[]> {
-    const offen: string[] = [];
+  // ==============================================================================================
+  // AUFNAHME gesamt-entwurf-einreichen — ZUWEISEN BEIM EINREICHEN, WIEDERHOLBAR.
+  // ==============================================================================================
+  //
+  // Der Einreichweg (`POST /api/drafts/:id/promote`) wird nach einem Abbruch mit demselben
+  // Vorgangsschlüssel wiederholt und muss dann GENAU das nachholen, was fehlt (Ben Lauf :2 F1).
+  // Ben Lauf :3 Runde 1 (B2) hat gezeigt, dass „Zuweisung vorhanden" dafür nicht reicht: scheitert
+  // bei zwei Prüfern die ZWEITE Zuweisung, steht die erste schon, aber niemand ist benachrichtigt —
+  // die Wiederholung hielt die erste für erledigt, und ihre Benachrichtigung ging für immer verloren.
+  //
+  // Deshalb trägt jede hier angelegte Zuweisung ihren Benachrichtigungsstand
+  // (`Assignment.benachrichtigung`): angelegt als „ausstehend", erst nach dem Versand „erledigt".
+  // Die übrigen Zuweisungswege (`assign`) sind unverändert.
+  //
+  // Legt nur die FEHLENDEN Zuweisungen an (eine vorhandene wird nie überschrieben — ihr Status und
+  // ihr Benachrichtigungsstand bleiben). Die Prüferrolle im Aggregat wird für ALLE genannten
+  // Personen fortgeschrieben; das ist idempotent und holt sie nach, falls der frühere Lauf vor ihr
+  // abbrach.
+  async zuweisenBeimEinreichen(
+    koId: string,
+    userIds: readonly string[],
+    actor: string,
+  ): Promise<void> {
+    const ko = await this.koService.get(koId);
+    if (!ko) {
+      throw new ValidationError("NOT_FOUND", "Wissensobjekt nicht gefunden.");
+    }
+    const neu: string[] = [];
     for (const userId of userIds) {
       if (!(await this.assignments.find(koId, userId))) {
+        await this.assignments.create({
+          koId,
+          userId,
+          status: "open",
+          benachrichtigung: "ausstehend",
+        });
+        neu.push(userId);
+      }
+    }
+    if (neu.length > 0) {
+      await this.audit?.record({
+        actor,
+        action: "ko.assigned",
+        target: koId,
+        payload: { userIds: neu },
+      });
+    }
+    await this.koService.recordOwnershipRole(koId, "reviewers", [...userIds], actor);
+  }
+
+  // Wer von diesen Personen hat für das KO eine Zuweisung, deren Benachrichtigung noch AUSSTEHT?
+  // Reine Lesefrage an die eigene Ablage.
+  async nochZuBenachrichtigen(koId: string, userIds: readonly string[]): Promise<string[]> {
+    const offen: string[] = [];
+    for (const userId of userIds) {
+      const zuweisung = await this.assignments.find(koId, userId);
+      if (zuweisung?.benachrichtigung === "ausstehend") {
         offen.push(userId);
       }
     }
     return offen;
+  }
+
+  // Die Benachrichtigung über diese Zuweisung ist verschickt.
+  async benachrichtigungErledigt(koId: string, userId: string): Promise<void> {
+    const zuweisung = await this.assignments.find(koId, userId);
+    if (zuweisung && zuweisung.benachrichtigung !== "erledigt") {
+      await this.assignments.update({ ...zuweisung, benachrichtigung: "erledigt" });
+    }
   }
 
   // FR-VAL-05: KO an ≥1 Person zuweisen.

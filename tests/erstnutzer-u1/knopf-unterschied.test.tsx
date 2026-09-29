@@ -386,17 +386,18 @@ describe("JOB 3029 · U1(1) — der Block bildet die zwei Knöpfe auf ihre Erkl�
 // gegen jede Textänderung blind: verfälscht man `chelp.submitReview.body`, wandern beide Seiten
 // mit und der Fall bleibt grün. Genau daran ist JOB 3007 gescheitert. Deshalb stehen die drei
 // TRAGENDEN Aussagen hier wörtlich — es sind die Sätze, deren Verlust Nataschas Befund
-// (`OFFEN.md:124`) wiederherstellen würde: dass einen Entwurf außer dir nur Administratoren sehen,
+// (`OFFEN.md:124`) wiederherstellen würde: dass einen Entwurf nur du siehst,
 // dass Einreichen das Objekt für andere sichtbar macht, und dass es dabei NICHT als gesichert gilt.
 //
 // Das ist ein bewusster PIN auf den von Pedi abgenommenen deutschen Wortlaut (SCRUM-407). Wer
 // diese Sätze ändert, muss hier vorbeikommen — das ist der Zweck, nicht der Preis.
 //
-// AUFNAHME gesamt-entwurf-einreichen (Ben Runde 2, F3): der erste Satz hiess „Niemand sieht ihn".
-// Das war falsch — Administratoren sehen jeden lebenden Entwurf (`visibleDraftsFor`). Die
-// Bedeutung für Erstnutzer (andere Kollegen sehen ihn nicht, keine Prüfung, keine Antwort) bleibt.
+// AUFNAHME gesamt-entwurf-einreichen: der erste Satz hiess „Niemand sieht ihn" — falsch, die
+// Autorin sieht ihn ja selbst, und bis Lauf :3 sahen ihn auch Administratoren. Seit Entscheidung
+// Pedi `debbb8e8` ist ein Entwurf privat (`canSeeDraft`: nur die Autorin), der Satz sagt es genau so.
+// Die Bedeutung für Erstnutzer (andere sehen ihn nicht, keine Prüfung, keine Antwort) bleibt.
 const KERNAUSSAGEN: readonly string[] = [
-  "Ein Entwurf ist NICHT eingereicht: Außer dir sehen ihn nur Administratoren",
+  "Ein Entwurf ist NICHT eingereicht: Nur du siehst ihn",
   "Ab jetzt ist es für andere sichtbar",
   "NICHT als gesichert",
 ];
