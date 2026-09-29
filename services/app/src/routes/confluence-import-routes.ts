@@ -39,6 +39,7 @@ import {
 } from "../confluence-import";
 import type { Guards } from "../http";
 import { sanitizeLogText } from "../log-sanitize";
+import type { ImportRunSourceSync, QuellabgleichRepo } from "../quellabgleich-ablage";
 
 // SCRUM-510 WP2: Admin-Trigger für den Confluence-Space-Import. NUR bei aktivem KLARWERK_CONFLUENCE_IMPORT
 // registriert (Flag OFF → Route existiert nicht). Echte Admin-Auth (users.manage, wie die übrigen
@@ -58,6 +59,10 @@ export interface ConfluenceImportRouteDeps {
   // nur den Import-Pfad prüfen — ohne sie bleibt es beim Verhalten vor 148. Die Kompositionswurzel
   // reicht sie IMMER durch; im Produkt ist der Zweig damit nie der alte.
   importRuns?: ImportRunRepo;
+  // R-0162 (Runde 3): die Ablage der Quellabgleiche (`quellabgleich-ablage.ts`). OPTIONAL aus
+  // demselben Grund wie `importRuns`; die Kompositionswurzel reicht sie IMMER durch — dieselbe
+  // Instanz, aus der `GET /api/admin/import/runs/:id` liest.
+  quellabgleich?: QuellabgleichRepo;
 }
 
 // ================================================================================================
@@ -272,7 +277,53 @@ function laufScope(): string {
  * eine, die spaeter niemand mehr nachprueft.
  */
 function abschlussStatus(summary: ImportRunSummary): ImportRunStatus {
-  return summary.failed > 0 || summary.truncated ? "PARTIAL" : "COMPLETED";
+  return summary.failed > 0 || summary.truncated || abgleichUnvollstaendig(summary)
+    ? "PARTIAL"
+    : "COMPLETED";
+}
+
+/**
+ * R-0162 (Runde 3): ein Lauf, dessen Löschabgleich nicht stattfand oder Seiten mit unbekanntem
+ * Zustand zurückliess, hat seinen Auftrag nicht ganz erfüllt — er heisst `PARTIAL`, nicht
+ * `COMPLETED`. Vorher endete genau dieser Fall mit `COMPLETED` und ohne jede Spur.
+ */
+function abgleichUnvollstaendig(summary: ImportRunSummary): boolean {
+  const sync = summary.sourceSync;
+  return sync !== undefined && (!sync.checked || sync.unchecked.length > 0);
+}
+
+/** R-0162: das dauerhafte Abgleichsergebnis — nur Quell-Kennungen (s. `ImportRunSourceSync`). */
+function abgleichFuerDenLauf(summary: ImportRunSummary): ImportRunSourceSync | undefined {
+  const sync = summary.sourceSync;
+  if (!sync) {
+    return undefined;
+  }
+  return {
+    checked: sync.checked,
+    reason: sync.reason ?? null,
+    removed: sync.removed.map((r) => r.externalId),
+    restored: sync.restored.map((r) => r.externalId),
+    outsideScope: [...sync.outsideScope],
+    unchecked: [...sync.unchecked],
+    attachmentsUpdated: sync.attachmentsUpdated.map((a) => a.externalId),
+  };
+}
+
+/**
+ * Der Fehlercode des Laufs, wenn allein der Abgleich unvollständig war — damit ein `PARTIAL`
+ * ohne gescheiterte Seite einen benannten Grund hat. Sonst unverändert `null` (wie bisher).
+ */
+function abgleichGrund(summary: ImportRunSummary): { code: string; reason: string } | null {
+  const sync = summary.sourceSync;
+  if (!sync || summary.failed > 0 || summary.truncated || !abgleichUnvollstaendig(summary)) {
+    return null;
+  }
+  return {
+    code: "SOURCE_SYNC_INCOMPLETE",
+    reason: sync.checked
+      ? `Löschabgleich unvollständig: ${sync.unchecked.length} Seite(n) mit unbekanntem Zustand, kein Vermerk gesetzt.`
+      : "Löschabgleich nicht durchgeführt — über Löschungen in der Quelle sagt dieser Lauf nichts.",
+  };
 }
 
 // ================================================================================================
@@ -417,9 +468,24 @@ async function fuehreLaufAus(
       dryRun: false,
       actor,
     });
+    const sync = abgleichFuerDenLauf(summary);
+    const grund = abgleichGrund(summary);
+    // R-0162: das Abgleichsergebnis VOR dem Endzustand festhalten — wer den Lauf abgeschlossen
+    // liest, liest seinen Abgleich mit. Scheitert das Schreiben, bleibt der Lauf gültig; der
+    // Abgleich fehlt dann ehrlich (`sourceSync: null`), statt behauptet zu werden.
+    if (sync && deps.quellabgleich) {
+      try {
+        await deps.quellabgleich.speichere(importId, sync);
+      } catch (err) {
+        warne(log, `Quellabgleich schreiben (${importId})`, err);
+      }
+    }
     await beende({
       status: abschlussStatus(summary),
       completedAt: new Date().toISOString(),
+      ...(grund
+        ? { failureCode: grund.code, failureReason: sanitizeImportFailureReason(grund.reason) }
+        : {}),
       counters: {
         itemsTotal: summary.found,
         itemsCreated: summary.imported,

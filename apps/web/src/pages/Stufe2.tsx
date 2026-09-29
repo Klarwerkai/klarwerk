@@ -510,6 +510,29 @@ export function ImportRunPanel(): JSX.Element {
                 })}
               </p>
             ) : null}
+            {/* R-0162 (Runde 3): der Löschabgleich, wie der Server ihn am Lauf festhält. Gezählt
+                wird hier nichts — es sind die Längen der gelieferten Listen. Ohne Abgleich am Lauf
+                steht hier NICHTS; ein nicht durchgeführter Abgleich wird ausdrücklich benannt. */}
+            {lauf.data?.sourceSync ? (
+              <p data-testid="f0140-abgleich" className="mt-1 text-[12.5px] text-muted">
+                {lauf.data.sourceSync.checked
+                  ? t("w2.run.sourceSync", {
+                      geloescht: lauf.data.sourceSync.removed.length,
+                      wieder: lauf.data.sourceSync.restored.length,
+                      ausserhalb: lauf.data.sourceSync.outsideScope.length,
+                      unbekannt: lauf.data.sourceSync.unchecked.length,
+                    })
+                  : t("w2.run.sourceSyncSkipped")}
+              </p>
+            ) : null}
+            {/* R-0163 (Lauf 2): Anhänge unveränderter Seiten — nur, wenn der Server welche meldet. */}
+            {lauf.data?.sourceSync?.attachmentsUpdated?.length ? (
+              <p data-testid="f0140-anhaenge" className="mt-1 text-[12.5px] text-muted">
+                {t("w2.run.attachmentsSynced", {
+                  anzahl: lauf.data.sourceSync.attachmentsUpdated.length,
+                })}
+              </p>
+            ) : null}
           </>
         )}
       </div>

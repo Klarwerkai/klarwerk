@@ -46,6 +46,9 @@ export const MUTATING_METHODS: Readonly<Record<keyof AppRepos, readonly string[]
   // gestarteter Lauf danach spurlos, und genau das sollte 148 beenden.
   importRuns: ["insertIfAbsent", "advance", "appendItemRefs"],
   externalSources: ["insertIfAbsent"],
+  // R-0162: das Quellabgleichsergebnis eines Laufs muss einen Dev-Neustart ebenso überleben wie
+  // der Lauf selbst. `speichere` ersetzt je Lauf — das Replay ist damit deterministisch.
+  quellabgleich: ["speichere"],
   // SCRUM-504: der atomare Bootstrap-Claim ist eine Mutation (fügt den Admin ein) → muss journaliert
   // werden, sonst überlebt der erste Admin den Dev-Neustart nicht. In Dev (sequenziell) genau einmal mit
   // Erfolg gerufen; Replay auf die leere Instanz beansprucht den Slot identisch.

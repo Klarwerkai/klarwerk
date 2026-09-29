@@ -96,7 +96,7 @@ import {
 } from "../lib/facets";
 import { koAuthorParts } from "../lib/koAuthor";
 import { formatKoTimestamp } from "../lib/koDates";
-import { quellennachweis, sourceBadgeKey } from "../lib/koSource";
+import { quellHinweise, quellennachweis, sourceBadgeKey } from "../lib/koSource";
 import {
   REVIEW_DECISIONS,
   type ReviewVerdict,
@@ -1588,6 +1588,8 @@ export function Validation(): JSX.Element {
               <PruefenMehrBlock beschriftung={t("ko.sourcesTitle")}>
                 {quellen.map((q) => {
                   const nachweis = quellennachweis(q, anhaenge, i18n.language);
+                  // R-0131/R-0162: eine in der Quelle gelöschte Seite wird nicht mehr verlinkt.
+                  const geloeschtAm = quellHinweise(q, i18n.language).geloeschtAm;
                   return (
                     <div
                       key={q.id}
@@ -1617,8 +1619,16 @@ export function Validation(): JSX.Element {
                           {nachweis.datei}
                         </span>
                       ) : null}
+                      {geloeschtAm ? (
+                        <span
+                          data-testid="pruefen-quelle-geloescht"
+                          className="mt-0.5 block text-trust-warn-text"
+                        >
+                          {t("ko.source.removedInOrigin", { zeit: geloeschtAm })}
+                        </span>
+                      ) : null}
                       {nachweis.adresse ? (
-                        nachweis.adresse.verlinkbar ? (
+                        nachweis.adresse.verlinkbar && !geloeschtAm ? (
                           <a
                             data-testid="pruefen-quelle-adresse"
                             href={nachweis.adresse.voll}

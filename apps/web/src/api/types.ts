@@ -118,6 +118,13 @@ export interface KoSource {
   // hier ausdrücklich „keine Datei" — nicht „unbekannt". Aufgelöst wird er beim ANZEIGEN
   // (`lib/koSource.ts`, `quellennachweis`); der Dateiname steht NICHT an der Quelle.
   objectId?: string;
+  // R-0549 / R-0163 / R-0162 (Confluence-Gesamtimport): Spiegel der drei Herkunftsangaben aus
+  // `services/knowledge-object/src/types.ts` (KoSource). Alle optional, alle vom Import
+  // geschrieben; keine davon ist ein Recht. Angezeigt über `quellHinweise` (`lib/koSource.ts`).
+  readRestriction?: { groups: string[]; users: string[] };
+  attachmentOf?: string;
+  attachment?: { externalId: string; mime?: string; size?: number };
+  sourceRemovedAt?: string;
   author: string;
   at: string;
 }
@@ -1805,6 +1812,20 @@ export interface ImportRunRecord {
   failureCode: string | null;
   failureReason: string | null;
   counters: ImportRunCounters;
+  /**
+   * R-0162 (Runde 3): der Löschabgleich dieses Laufs, vom Server geliefert — nur Quell-Kennungen.
+   * `null`/fehlend heisst: dieser Lauf trägt keinen (anderer Importweg oder Altlauf).
+   */
+  sourceSync?: {
+    checked: boolean;
+    reason: string | null;
+    removed: string[];
+    restored: string[];
+    outsideScope: string[];
+    unchecked: string[];
+    /** R-0163 (Lauf 2): unveränderte Seiten mit angeglichenen Anhängen (fehlt bei Altläufen). */
+    attachmentsUpdated?: string[];
+  } | null;
 }
 
 export interface ImportApplyResponse {
@@ -2444,7 +2465,8 @@ export interface ImportAccessStatus {
   credentials: { name: string; present: boolean }[];
   /** Kämen damit Zugangsdaten zustande? (Nicht: sind sie gültig — das wüsste nur ein Aufruf.) */
   credentialsUsable: boolean;
-  blocker: "missing" | "insecure-base-url" | null;
+  // R-0166: `invalid-auth-mode` = KLARWERK_CONFLUENCE_AUTH trägt einen unbekannten Anmeldeweg.
+  blocker: "missing" | "insecure-base-url" | "invalid-auth-mode" | null;
   lastConnectedAt: string | null;
 }
 

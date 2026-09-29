@@ -230,6 +230,11 @@ import { sanitizeLogText } from "./log-sanitize";
 import { makeAssignmentNotifier } from "./notify";
 // AUFTRAG-mega20 Block C: die modulübergreifende Referenzprüfung lebt in services/app (s. Datei).
 import type { ObjectReferenceSources } from "./object-references";
+import {
+  InMemoryQuellabgleichRepo,
+  PgQuellabgleichRepo,
+  type QuellabgleichRepo,
+} from "./quellabgleich-ablage";
 import { addinStaticRoutes } from "./routes/addin-static-routes";
 import { adminRoutes } from "./routes/admin-routes";
 import { aiCheckCoverageRoutes } from "./routes/ai-check-coverage-routes";
@@ -451,6 +456,9 @@ export interface AppServices {
   // Route fernhalten. `ImportAccessService` bekommt diese Ablage; die Route bekommt nur ihn.
   importRuns: ImportRunRepo;
   externalSources: ExternalSourceRepo;
+  // R-0162 (Runde 3): das dauerhafte Quellabgleichsergebnis je Lauf (`quellabgleich-ablage.ts`).
+  // Eine eigene Ablage neben der eingefrorenen Laufablage (FREEZE-144).
+  quellabgleich: QuellabgleichRepo;
   mailer: Mailer;
   // Audit-P3 (SCRUM-397): Gelesen-Status der Glocke (öffentliche Modul-Schnittstelle).
   notificationSeen: NotificationSeenRepo;
@@ -505,6 +513,7 @@ export interface AppRepos {
   // Lauf angelegt werden — die Tabelle wurde migriert und blieb leer.
   importRuns: ImportRunRepo;
   externalSources: ExternalSourceRepo;
+  quellabgleich: QuellabgleichRepo;
   modelRuns: ModelRunRepo;
   // Audit-P3 (SCRUM-397): pro Nutzer bewusst als gesehen markierte Benachrichtigungs-IDs.
   notificationSeen: NotificationSeenRepo;
@@ -1090,6 +1099,7 @@ export function assembleServices(
     zurufModell,
     importRuns: repos.importRuns,
     externalSources: repos.externalSources,
+    quellabgleich: repos.quellabgleich,
     ko,
     auth: new AuthService({
       users: repos.users,
@@ -1320,6 +1330,7 @@ export function inMemoryRepos(): AppRepos {
     candidates: new InMemoryCandidateRepo(),
     importRuns: new InMemoryImportRunRepo(),
     externalSources: new InMemoryExternalSourceRepo(),
+    quellabgleich: new InMemoryQuellabgleichRepo(),
     modelRuns: new InMemoryModelRunRepo(),
     notificationSeen: new InMemoryNotificationSeenRepo(),
     assistPresets: new InMemoryAssistPresetRepo(),
@@ -1397,6 +1408,7 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // „haengend in QUEUED" nach jedem Neustart ununterscheidbar von „nie gestartet".
       importRuns: new PgImportRunRepo(pool),
       externalSources: new PgExternalSourceRepo(pool),
+      quellabgleich: new PgQuellabgleichRepo(pool),
       // SCRUM-164: ModelRun-Protokoll persistent (KI-Aufrufe nachvollziehbar).
       modelRuns: new PgModelRunRepo(pool),
       // Audit-P3 (SCRUM-397): Gelesen-Status der Glocke persistent.
@@ -1689,6 +1701,9 @@ export const ERLAUBTE_FEHLERTYPEN: ReadonlySet<string> = new Set([
   // JOB 2702 D1: aus JOB 2683 (Confluence-Zeitgrenzen, services/confluence/src/rest-client.ts:75) —
   // eingebaut nach 2661, vom Waechter unten als fehlend gemeldet, Entscheidung des Kopfs: Eintrag.
   "ConfluenceRequestError",
+  // R-0162 (Confluence-Gesamtimport, Runde 3): 2xx-Antwort ohne brauchbare Seiten-Id — Zustand
+  // unbekannt. Fester Satz ohne Host und ohne Quellinhalt.
+  "ConfluenceUnusableResponseError",
   "DevPersistJournalReplayError",
   // JOB 2684 D7: der Standkonflikt aus 2684 (capture/src/service.ts). Der Name sagt nur „veralteter
   // Stand" — kein Nutzertext, keine Kennung; der Meldungstext bleibt wie bei allen unterdrückt.
@@ -1778,6 +1793,8 @@ export const ERLAUBTE_FEHLERCODES: ReadonlySet<string> = new Set([
   // rest-client.ts:87–88), die der Waechter unten nicht erhebt (ternaer zugewiesen) — gemeldet in
   // der Rueckgabe 2702, nicht eingetragen: Entscheidung beim Eigentuemer von 2661.
   "CONFLUENCE_TIMEOUT",
+  // R-0162 (Runde 3): der Code von ConfluenceUnusableResponseError (rest-client.ts).
+  "CONFLUENCE_UNUSABLE_RESPONSE",
   "CONSENT_MISSING",
   "CREATE_ANCHOR_TAKEN",
   "CREATE_REPAIR_REQUIRED",
@@ -1868,6 +1885,11 @@ export const ERLAUBTE_FEHLERCODES: ReadonlySet<string> = new Set([
   // trägt keine Nutzerdaten — er sagt, welcher Zweig lief, und genau dafür ist die Liste da.
   "REASONER_POLICY_ENV_LOCKED",
   "SEARCH_PROJECTION_NOT_READY",
+  // R-0162 (Confluence-Gesamtimport, Runde 3): der Code eines Importlaufs, der nur deshalb
+  // `PARTIAL` ist, weil sein Löschabgleich unvollständig blieb (confluence-import-routes.ts,
+  // `abgleichGrund`). ENTSCHEIDUNG: darf ins Protokoll — fester Name ohne Kennung und ohne
+  // Quellinhalt; er sagt, welcher Zweig lief.
+  "SOURCE_SYNC_INCOMPLETE",
   "STALE_WRITE",
   "UNKNOWN_ART",
   "UNKNOWN_KIND",
@@ -3112,6 +3134,8 @@ export function buildApp(
         reasoner: services.reasoner,
         // W2-A/148: der echte Lauf bekommt seine Identität VOR dem ersten Effekt.
         importRuns: services.importRuns,
+        // R-0162: dieselbe Ablage, aus der der Leseweg unten den Abgleich liest.
+        quellabgleich: services.quellabgleich,
       }),
     );
     // W2-A/148: der Leseweg der Laufdomäne. Hinter demselben Schalter wie der Start — ein Lesepfad
@@ -3120,6 +3144,7 @@ export function buildApp(
       importRunRoutes({
         importRuns: services.importRuns,
         externalSources: services.externalSources,
+        quellabgleich: services.quellabgleich,
         guards,
       }),
     );

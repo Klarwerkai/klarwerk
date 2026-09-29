@@ -56,6 +56,7 @@ import {
   EMPTY_SOURCE_FORM,
   type SourceFormInput,
   isSourceFormValid,
+  quellHinweise,
   quellennachweis,
   sourceBadgeKey,
   toAddSourceRequest,
@@ -1161,6 +1162,8 @@ export function MehrAbschnitte({
               // zweite Abfrage, und offline bleibt die Aussage tragfähig (dieselbe Hausregel wie am
               // Belegabschnitt weiter unten).
               const nachweis = quellennachweis(s, ko.attachments ?? [], i18n.language);
+              // R-0162/R-0163/R-0549: was der Import über die Quelle festgehalten hat.
+              const hinweise = quellHinweise(s, i18n.language);
               return (
                 <li key={s.id} className="rounded-input bg-page p-2.5">
                   <div className="flex items-start gap-2">
@@ -1225,10 +1228,60 @@ export function MehrAbschnitte({
                           {nachweis.datei}
                         </span>
                       ) : null}
-                      <ExternalUrlText
-                        url={s.url}
-                        className="block truncate font-mono text-[11px] text-ai hover:underline"
-                      />
+                      {hinweise.anhang ? (
+                        <span
+                          data-testid="bib-quelle-anhang"
+                          className="mt-0.5 block text-[11px] text-muted"
+                        >
+                          {[t("ko.source.attachment"), hinweise.anhang.typ, hinweise.anhang.groesse]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </span>
+                      ) : null}
+                      {hinweise.leserecht && hinweise.leserecht.gruppen.length > 0 ? (
+                        <span
+                          data-testid="bib-quelle-leserecht"
+                          className="mt-0.5 block text-[11px] text-muted"
+                        >
+                          {t("ko.source.readGroups", {
+                            gruppen: hinweise.leserecht.gruppen.join(", "),
+                          })}
+                        </span>
+                      ) : null}
+                      {hinweise.leserecht && hinweise.leserecht.personen > 0 ? (
+                        <span
+                          data-testid="bib-quelle-leserecht-personen"
+                          className="mt-0.5 block text-[11px] text-muted"
+                        >
+                          {t("ko.source.readPersons", { anzahl: hinweise.leserecht.personen })}
+                        </span>
+                      ) : null}
+                      {/* R-0131/R-0162: ist die Quellseite gelöscht, VERSPRICHT DER LINK NICHTS MEHR —
+                          die Adresse bleibt als Herkunft lesbar, aber nicht klickbar. */}
+                      {hinweise.geloeschtAm ? (
+                        <>
+                          <span
+                            data-testid="bib-quelle-geloescht"
+                            className="mt-0.5 block text-[11px] text-trust-warn-text"
+                          >
+                            {t("ko.source.removedInOrigin", { zeit: hinweise.geloeschtAm })}
+                          </span>
+                          {s.url ? (
+                            <span
+                              data-testid="bib-quelle-adresse-ohne-link"
+                              className="block truncate font-mono text-[11px] text-muted-2"
+                              title={s.url}
+                            >
+                              {s.url}
+                            </span>
+                          ) : null}
+                        </>
+                      ) : (
+                        <ExternalUrlText
+                          url={s.url}
+                          className="block truncate font-mono text-[11px] text-ai hover:underline"
+                        />
+                      )}
                       {s.excerpt ? (
                         <p className="mt-1 text-[12px] text-muted">{s.excerpt}</p>
                       ) : null}

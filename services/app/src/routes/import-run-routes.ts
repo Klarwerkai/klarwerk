@@ -43,15 +43,32 @@ import type {
   ImportRunRepo,
 } from "../../../library-analytics";
 import type { Guards } from "../http";
+import {
+  type ImportRunSourceSync,
+  InMemoryQuellabgleichRepo,
+  type QuellabgleichRepo,
+} from "../quellabgleich-ablage";
 
 export interface ImportRunRoutesDeps {
   readonly importRuns: ImportRunRepo;
   readonly externalSources: ExternalSourceRepo;
+  /**
+   * R-0162: die Ablage der Quellabgleiche. Die Kompositionswurzel reicht DIESELBE Ablage an die
+   * Import-Routen, die sie beschreiben. Fehlt sie (Einzeltests ohne Abgleich), liest dieser Weg
+   * eine eigene, leere Ablage — jeder Lauf trägt dann ehrlich `sourceSync: null`.
+   */
+  readonly quellabgleich?: QuellabgleichRepo;
   readonly guards: Guards;
 }
 
-/** Der Lauf auf der Leitung — Feld fuer Feld, damit nichts Internes mitreist. */
-function laufNachAussen(run: ImportRun) {
+/**
+ * Der Lauf auf der Leitung — Feld fuer Feld, damit nichts Internes mitreist.
+ *
+ * R-0162 (Runde 3): `sourceSync` ist der Quellabgleich des Laufs aus seiner eigenen Ablage
+ * (`quellabgleich-ablage.ts`) — nur Quell-Kennungen. `null` heisst: dieser Lauf trägt keinen
+ * (anderer Importweg oder Altlauf), nicht „nichts gelöscht".
+ */
+function laufNachAussen(run: ImportRun, abgleich: ImportRunSourceSync | undefined) {
   return {
     importId: run.importId,
     sourceSystem: run.sourceSystem,
@@ -65,6 +82,17 @@ function laufNachAussen(run: ImportRun) {
     failureCode: run.failureCode,
     failureReason: run.failureReason,
     counters: { ...run.counters },
+    sourceSync: abgleich
+      ? {
+          checked: abgleich.checked,
+          reason: abgleich.reason,
+          removed: [...abgleich.removed],
+          restored: [...abgleich.restored],
+          outsideScope: [...abgleich.outsideScope],
+          unchecked: [...abgleich.unchecked],
+          attachmentsUpdated: [...abgleich.attachmentsUpdated],
+        }
+      : null,
   };
 }
 
@@ -109,6 +137,7 @@ function elementNachAussen(ref: ImportRunItemRef) {
 
 export function importRunRoutes(deps: ImportRunRoutesDeps): FastifyPluginAsync {
   const { importRuns, externalSources, guards } = deps;
+  const quellabgleich = deps.quellabgleich ?? new InMemoryQuellabgleichRepo();
 
   /** Der eine Nicht-gefunden-Koerper. Ohne Kennung, ohne Fachinhalt — bewusst nichtssagend. */
   const nichtGefunden = { error: "NOT_FOUND", message: "Nicht gefunden." };
@@ -127,7 +156,7 @@ export function importRunRoutes(deps: ImportRunRoutesDeps): FastifyPluginAsync {
           reply.code(404).send(nichtGefunden);
           return reply;
         }
-        reply.code(200).send(laufNachAussen(run));
+        reply.code(200).send(laufNachAussen(run, await quellabgleich.lies(run.importId)));
         return reply;
       },
     );
@@ -153,7 +182,7 @@ export function importRunRoutes(deps: ImportRunRoutesDeps): FastifyPluginAsync {
         // Die Reihenfolge ist Vertrag; sie wird hier nicht noch einmal umsortiert, sondern gehalten.
         const elemente = await importRuns.listItemRefs(run.importId);
         reply.code(200).send({
-          run: laufNachAussen(run),
+          run: laufNachAussen(run, await quellabgleich.lies(run.importId)),
           source: quelle ? quelleNachAussen(quelle) : null,
           items: elemente.map(elementNachAussen),
         });

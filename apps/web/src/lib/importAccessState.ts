@@ -86,4 +86,6 @@ export const IMPORT_ACCESS_TEXT: Record<
 export const IMPORT_ACCESS_BLOCKER_TEXT: Record<string, string> = {
   missing: "imp.access.blocker.missing",
   "insecure-base-url": "imp.access.blocker.insecureBaseUrl",
+  // R-0166: der gewählte Anmeldeweg ist keiner der bekannten (Cloud oder Personal Access Token).
+  "invalid-auth-mode": "imp.access.blocker.invalidAuthMode",
 };

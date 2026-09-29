@@ -4547,6 +4547,8 @@ const de = {
   "imp.access.blocker.missing": "Es fehlt mindestens eine der nötigen Angaben.",
   "imp.access.blocker.insecureBaseUrl":
     "Alle Angaben stehen, aber die Adresse ist keine https-Adresse. Zugangsdaten werden nur über verschlüsselte Verbindungen gesendet — deshalb kommt kein Zugang zustande.",
+  "imp.access.blocker.invalidAuthMode":
+    "Die gewählte Anmeldeart ist unbekannt. Möglich sind die Cloud-Anmeldung (E-Mail und API-Token) oder ein persönliches Zugriffstoken für selbst betriebenes Confluence (Server/Data Center) — bis das stimmt, kommt kein Zugang zustande.",
   // Block C: die Variablen BENANNT, mit Ja/Nein — nie ein Wert und nie eine Maske mit Länge (eine
   // Maske verriete die Länge). Es gibt hier bewusst KEIN Eingabefeld.
   "imp.access.varsTitle": "Was dieses System braucht",
@@ -6996,6 +6998,13 @@ const de = {
   "w2.run.start": "Import starten",
   // JOB 3288: Diese Kachel kennt NUR den Gesamtlauf, den dieses Fenster gestartet hat. Der alte
   // Satz („Kein Lauf gestartet.") las sich als Aussage über den Bestand und war es nie.
+  // R-0162 (Runde 3): der Löschabgleich am Lauf.
+  "w2.run.sourceSync":
+    "Abgleich mit der Quelle: {{geloescht}} gelöscht vermerkt, {{wieder}} wieder vorhanden, {{ausserhalb}} nicht mehr im Bereich, {{unbekannt}} mit unbekanntem Zustand.",
+  "w2.run.attachmentsSynced":
+    "Anhänge an {{anzahl}} unveränderten Seite(n) an die Quelle angeglichen.",
+  "w2.run.sourceSyncSkipped":
+    "Kein Löschabgleich: die Quelle wurde nicht vollständig gelesen, über Löschungen sagt dieser Lauf nichts.",
   "w2.run.idle":
     "In diesem Fenster wurde kein Gesamtlauf gestartet. Der Startknopf legt einen an; sein Zustand steht dann hier. Ein Import über „Auswahl übernehmen“ wird ebenfalls festgehalten, erscheint aber nicht hier, sondern oben in der Zeile „Zuletzt erfolgreich abgeschlossener Import“.",
   // JOB 2970 D2: Fortschritt als Zahl — die Zähler kommen fertig vom Server.
@@ -7034,6 +7043,12 @@ const de = {
   "w2.source.title": "Titel",
   "w2.source.system": "System",
   "w2.source.version": "Version",
+  // R-0162 / R-0163 / R-0549: Herkunftsangaben importierter Quellen.
+  "ko.source.removedInOrigin":
+    "In der Quelle gelöscht (festgestellt {{zeit}}). Der Link führt nicht mehr zur Seite; das Wissen hier bleibt unverändert.",
+  "ko.source.attachment": "Anhang der Quellseite",
+  "ko.source.readGroups": "In der Quelle nur lesbar für: {{gruppen}}",
+  "ko.source.readPersons": "In der Quelle nur lesbar für {{anzahl}} einzeln benannte Person(en)",
   "w2.source.url": "Adresse",
   "w2.source.importedAt": "Importiert am",
   "w2.source.externalId": "Kennung im Quellsystem",
@@ -10851,6 +10866,8 @@ const en: typeof de = {
   "imp.access.blocker.missing": "At least one of the required entries is missing.",
   "imp.access.blocker.insecureBaseUrl":
     "All entries are set, but the address is not an https address. Credentials are only sent over encrypted connections — so no access is established.",
+  "imp.access.blocker.invalidAuthMode":
+    "The selected sign-in method is unknown. Possible are the cloud sign-in (email and API token) or a personal access token for self-hosted Confluence — until this is correct, no access is established.",
   "imp.access.varsTitle": "What this system needs",
   "imp.access.varPresent": "set",
   "imp.access.varMissing": "not set",
@@ -12819,6 +12836,12 @@ const en: typeof de = {
   "w2.result.heading": "Import result",
   "w2.run.heading": "Run",
   "w2.run.start": "Start import",
+  "w2.run.sourceSync":
+    "Sync with the source: {{geloescht}} marked as deleted, {{wieder}} available again, {{ausserhalb}} no longer in the space, {{unbekannt}} with unknown state.",
+  "w2.run.attachmentsSynced":
+    "Attachments aligned with the source on {{anzahl}} unchanged page(s).",
+  "w2.run.sourceSyncSkipped":
+    "No deletion sync: the source was not read completely, so this run says nothing about deletions.",
   "w2.run.idle":
     "No full run was started in this window. The start button creates one; its state then appears here. An import via “Import selection” is recorded too, but appears in the “Last successfully completed import” line above rather than here.",
   "w2.run.progress": "{{verarbeitet}} of {{gesamt}} items processed",
@@ -12853,6 +12876,12 @@ const en: typeof de = {
   "w2.source.title": "Title",
   "w2.source.system": "System",
   "w2.source.version": "Version",
+  "ko.source.removedInOrigin":
+    "Deleted in the source (detected {{zeit}}). The link no longer leads to the page; the knowledge here stays unchanged.",
+  "ko.source.attachment": "Attachment of the source page",
+  "ko.source.readGroups": "In the source, readable only by: {{gruppen}}",
+  "ko.source.readPersons":
+    "In the source, readable only by {{anzahl}} individually named person(s)",
   "w2.source.url": "Address",
   "w2.source.importedAt": "Imported on",
   "w2.source.externalId": "Identifier in the source system",
@@ -16479,6 +16508,8 @@ const nl: typeof de = {
   "imp.access.blocker.missing": "Ten minste één van de benodigde gegevens ontbreekt.",
   "imp.access.blocker.insecureBaseUrl":
     "Alle gegevens staan er, maar het adres is geen https-adres. Toegangsgegevens worden alleen over versleutelde verbindingen verstuurd — daarom komt er geen toegang tot stand.",
+  "imp.access.blocker.invalidAuthMode":
+    "De gekozen aanmeldmethode is onbekend. Mogelijk zijn de cloud-aanmelding (e-mail en API-token) of een persoonlijk toegangstoken voor zelf beheerde Confluence — zolang dat niet klopt, komt er geen toegang tot stand.",
   "imp.access.varsTitle": "Wat dit systeem nodig heeft",
   "imp.access.varPresent": "aanwezig",
   "imp.access.varMissing": "niet aanwezig",
@@ -18460,6 +18491,12 @@ const nl: typeof de = {
   "w2.result.heading": "Importresultaat",
   "w2.run.heading": "Uitvoering",
   "w2.run.start": "Import starten",
+  "w2.run.sourceSync":
+    "Afstemming met de bron: {{geloescht}} als verwijderd gemarkeerd, {{wieder}} weer beschikbaar, {{ausserhalb}} niet meer in de ruimte, {{unbekannt}} met onbekende status.",
+  "w2.run.attachmentsSynced":
+    "Bijlagen op {{anzahl}} ongewijzigde pagina('s) gelijkgetrokken met de bron.",
+  "w2.run.sourceSyncSkipped":
+    "Geen verwijderafstemming: de bron is niet volledig gelezen, dus deze run zegt niets over verwijderingen.",
   "w2.run.idle":
     "In dit venster is geen volledige uitvoering gestart. De startknop maakt er een aan; de status verschijnt dan hier. Een import via „Selectie overnemen” wordt ook vastgelegd, maar verschijnt niet hier: hij staat hierboven in de regel „Laatste succesvol afgeronde import”.",
   "w2.run.progress": "{{verarbeitet}} van {{gesamt}} elementen verwerkt",
@@ -18495,6 +18532,12 @@ const nl: typeof de = {
   "w2.source.title": "Titel",
   "w2.source.system": "Systeem",
   "w2.source.version": "Versie",
+  "ko.source.removedInOrigin":
+    "Verwijderd in de bron (vastgesteld {{zeit}}). De link leidt niet meer naar de pagina; de kennis hier blijft ongewijzigd.",
+  "ko.source.attachment": "Bijlage van de bronpagina",
+  "ko.source.readGroups": "In de bron alleen leesbaar voor: {{gruppen}}",
+  "ko.source.readPersons":
+    "In de bron alleen leesbaar voor {{anzahl}} afzonderlijk genoemde perso(o)n(en)",
   "w2.source.url": "Adres",
   "w2.source.importedAt": "Geïmporteerd op",
   "w2.source.externalId": "Kenmerk in het bronsysteem",

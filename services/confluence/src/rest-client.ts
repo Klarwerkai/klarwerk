@@ -14,8 +14,12 @@
 // noch in der privaten Client-Closure.
 export interface ConfluenceRestConfig {
   baseUrl: string; // https-Origin des Confluence (z. B. https://acme.atlassian.net/wiki)
-  email: string; // Service-Account (read-only)
+  // R-0166: bei `authMode: "pat"` (Confluence im eigenen Haus) bleibt die Kennung ungenutzt.
+  email?: string; // Service-Account (read-only)
   apiToken: string; // read-only API-Token — NIE ein Modell-Credential, nie loggen/exportieren/in URL
+  // R-0166: Anmeldeart. "cloud" (Vorgabe) = Basic aus E-Mail + API-Token (Atlassian Cloud);
+  // "pat" = Bearer mit Personal Access Token (Confluence Server/Data Center im eigenen Haus).
+  authMode?: ConfluenceAuthMode;
   spaceKey: string; // gescoped auf EINEN Space (Space K)
   fetchFn?: typeof fetch;
   pageLimit?: number;
@@ -24,6 +28,34 @@ export interface ConfluenceRestConfig {
   timeoutMs?: number;
   totalBudgetMs?: number;
   maxResponseBytes?: number;
+}
+
+// ================================================================================================
+// R-0166 — DER ANMELDEWEG FÜR CONFLUENCE IM EIGENEN HAUS
+// ================================================================================================
+//
+// Atlassian Cloud meldet sich mit E-Mail + API-Token per Basic an. Confluence Server/Data Center
+// (ab 7.9) kennt dafür den Personal Access Token, der als `Authorization: Bearer <PAT>` gesendet
+// wird — ohne Kennung. Welcher Weg gilt, entscheidet der Betreiber ausdrücklich über
+// `KLARWERK_CONFLUENCE_AUTH`; geraten wird nichts. Ein unbekannter Wert ergibt KEINEN Client
+// (fail-closed) statt stillschweigend auf Cloud zurückzufallen. Alle übrigen Riegel (HTTPS,
+// Origin-Pinning, redirect:error, Redaction) gelten für beide Wege unverändert.
+export type ConfluenceAuthMode = "cloud" | "pat";
+
+export const CONFLUENCE_AUTH_MODES: readonly ConfluenceAuthMode[] = ["cloud", "pat"];
+
+/**
+ * Liest die Anmeldeart aus dem Wert von `KLARWERK_CONFLUENCE_AUTH`. Leer/ungesetzt = "cloud"
+ * (heutiges Verhalten). `undefined` = ein Wert, den es nicht gibt — der Aufrufer baut dann nichts.
+ */
+export function confluenceAuthModeFrom(raw: string | undefined): ConfluenceAuthMode | undefined {
+  const wert = (raw ?? "").trim().toLowerCase();
+  if (wert === "") {
+    return "cloud";
+  }
+  return (CONFLUENCE_AUTH_MODES as readonly string[]).includes(wert)
+    ? (wert as ConfluenceAuthMode)
+    : undefined;
 }
 
 // ================================================================================================
@@ -89,6 +121,46 @@ export class ConfluenceRequestError extends Error {
   }
 }
 
+/**
+ * R-0162 (Runde 3): Confluence hat mit Erfolg geantwortet, aber ohne brauchbare Seite. Das ist ein
+ * unbekannter Zustand — weder „vorhanden" noch „gelöscht".
+ */
+export class ConfluenceUnusableResponseError extends Error {
+  readonly code = "CONFLUENCE_UNUSABLE_RESPONSE";
+
+  constructor(was: "Seite" | "Anhangsliste" = "Seite") {
+    super(
+      was === "Seite"
+        ? "Confluence-Antwort ohne Seiten-Id — Zustand der Seite unbekannt."
+        : "Confluence-Antwort ist keine Anhangsliste — Anhänge der Seite unbekannt.",
+    );
+    this.name = "ConfluenceUnusableResponseError";
+  }
+}
+
+/**
+ * R-0163 (Lauf 2): ist `data` eine brauchbare Anhangsliste? `results` muss eine Liste sein und jeder
+ * Eintrag eine nicht leere Kennung tragen — sonst lässt sich nicht sagen, welche Anhänge es gibt.
+ */
+export function istAnhangsliste(
+  data: unknown,
+): data is { results: ConfluenceAttachment[]; _links?: { next?: unknown } } {
+  if (typeof data !== "object" || data === null) {
+    return false;
+  }
+  const results = (data as { results?: unknown }).results;
+  return (
+    Array.isArray(results) &&
+    results.every(
+      (a) =>
+        typeof a === "object" &&
+        a !== null &&
+        typeof (a as { id?: unknown }).id === "string" &&
+        (a as { id: string }).id.trim() !== "",
+    )
+  );
+}
+
 /** Warum ein Space-Lauf vor dem letzten Cursor endete — reist mit `truncated: true`. */
 export interface ConfluenceAbbruch {
   readonly grund: ConfluenceAbbruchGrund;
@@ -126,19 +198,42 @@ export interface ConfluencePage {
   restrictions?: {
     read?: {
       restrictions?: {
-        user?: { results?: unknown[] };
-        group?: { results?: unknown[] };
+        // R-0549: Cloud liefert je Benutzer `accountId`, Server/Data Center `username`/`userKey`;
+        // je Gruppe `name`. Weitere Felder werden nicht gelesen.
+        user?: {
+          results?: { accountId?: string; username?: string; userKey?: string }[] | unknown[];
+        };
+        group?: { results?: { name?: string }[] | unknown[] };
       };
     };
   };
+  // R-0163: die Anhänge der Seite (Expand `children.attachment`). `_links.next` heisst: es gibt
+  // mehr, als diese Antwort trägt.
+  children?: {
+    attachment?: { results?: ConfluenceAttachment[]; _links?: { next?: string } };
+  };
+}
+
+/** R-0163: ein Anhang, wie `/rest/api/content/{id}/child/attachment` ihn liefert. */
+export interface ConfluenceAttachment {
+  id?: string;
+  title?: string;
+  metadata?: { mediaType?: string };
+  extensions?: { mediaType?: string; fileSize?: number };
+  _links?: { download?: string };
 }
 
 // AUFTRAG-mega27 A1: `ancestors` kommt MINIMAL dazu — ohne jeden Unter-Expand. Die Elternkette ist
 // die einzige Quelle einer echten Ordnerstruktur; sie verließ Confluence bisher nie, deshalb konnte
 // die Auswahl nur abgeleitete Merkmale (Sprache/Thema) bündeln. Paginierung und der Abbruch mit
 // `truncated` (listAllPages) bleiben davon unberührt — der Expand ändert nur den Inhalt je Seite.
+// R-0163: `children.attachment` liefert die Anhangsliste der Seite ohne zusätzlichen Aufruf je Seite
+// (nur Metadaten: Name, Typ, Größe, Abrufpfad — keine Dateiinhalte).
 const EXPAND =
-  "body.storage,version,metadata.labels,ancestors,restrictions.read.restrictions.user,restrictions.read.restrictions.group";
+  "body.storage,version,metadata.labels,ancestors,restrictions.read.restrictions.user,restrictions.read.restrictions.group,children.attachment";
+
+/** R-0163: Obergrenze der nachgeblätterten Anhangsseiten je Quellseite (Sicherheitsnetz). */
+const MAX_ATTACHMENT_HOPS = 20;
 
 // R2a: erlaubt genau dann, wenn die URL https ist UND ihre Origin exakt der gepinnten Confluence-Origin
 // entspricht. Sonst Abbruch (kein Request). Rein & testbar.
@@ -160,10 +255,14 @@ export function assertAllowedConfluenceUrl(url: string, allowedOrigin: string): 
 export class ConfluenceRestClient {
   constructor(private readonly config: ConfluenceRestConfig) {}
 
-  // Basic-Auth aus Service-Account + read-only Token (Confluence-Cloud-Konvention). Bleibt lokal in
-  // dieser Methode; der Token wird nie geloggt/zurückgegeben.
+  // Basic-Auth aus Service-Account + read-only Token (Confluence-Cloud-Konvention) oder — R-0166 —
+  // Bearer mit Personal Access Token (Server/Data Center). Bleibt lokal in dieser Methode; der Token
+  // wird nie geloggt/zurückgegeben.
   private authHeader(): string {
-    const raw = `${this.config.email}:${this.config.apiToken}`;
+    if (this.config.authMode === "pat") {
+      return `Bearer ${this.config.apiToken}`;
+    }
+    const raw = `${this.config.email ?? ""}:${this.config.apiToken}`;
     return `Basic ${Buffer.from(raw, "utf8").toString("base64")}`;
   }
 
@@ -179,10 +278,11 @@ export class ConfluenceRestClient {
     if (token) {
       out = out.split(token).join("[redacted-token]");
     }
-    const auth = this.authHeader(); // "Basic <base64(email:token)>"
-    const b64 = auth.slice("Basic ".length);
-    if (b64) {
-      out = out.split(auth).join("[redacted]").split(b64).join("[redacted]");
+    // "Basic <base64(email:token)>" bzw. "Bearer <PAT>" — beides samt Nutzlast entfernen.
+    const auth = this.authHeader();
+    const nutzlast = auth.slice(auth.indexOf(" ") + 1);
+    if (nutzlast) {
+      out = out.split(auth).join("[redacted]").split(nutzlast).join("[redacted]");
     }
     // Credential-tragende URLs (userinfo@host) generisch entschärfen — auch für fremde/unerwartete Werte.
     out = out.replace(/(https?:\/\/)[^/\s@]*@/gi, "$1[redacted]@");
@@ -319,10 +419,48 @@ export class ConfluenceRestClient {
   async getPageById(pageId: string): Promise<ConfluencePage | undefined> {
     const url = `${this.baseUrl}/rest/api/content/${encodeURIComponent(pageId)}?expand=${encodeURIComponent(EXPAND)}`;
     const data = await this.getJson(url, this.allowedOrigin(), { nichtGefundenIstLeer: true });
-    if (!data || typeof data !== "object" || typeof (data as { id?: unknown }).id !== "string") {
+    // NUR eine 404 heisst „gibt es nicht" (`undefined`). R-0162 (Runde 3): eine 2xx-Antwort ohne
+    // brauchbare Seiten-Id ist KEIN Beleg für eine Löschung, sondern eine unbrauchbare Antwort —
+    // sie wirft, damit weder der Löschabgleich noch das Anwenden daraus „gelöscht" macht.
+    if (data === undefined) {
       return undefined;
     }
+    const id = typeof data === "object" && data ? (data as { id?: unknown }).id : undefined;
+    if (typeof id !== "string" || id.trim() === "") {
+      throw new ConfluenceUnusableResponseError();
+    }
     return data as ConfluencePage;
+  }
+
+  /**
+   * R-0163: ALLE Anhänge einer Seite, über `_links.next` nachgeblättert — derselbe Netzweg wie jeder
+   * andere Abruf (Origin-Pin, Frist, Größengrenze, Redaction). `complete: false`, wenn die
+   * Obergrenze griff.
+   *
+   * Lauf 2 (Befund Ben, Runde 3 von Lauf 1): eine Antwort zählt nur, wenn sie wirklich eine
+   * Anhangsliste ist — ein Objekt mit `results` als Liste, jeder Eintrag mit Kennung. Alles andere
+   * (auch eine Erfolgsantwort `{}` oder eine 404 für eine Seite, die gerade noch gelesen wurde) ist
+   * ein UNBEKANNTER Zustand und wirft `ConfluenceUnusableResponseError`; der Adapter behält dann die
+   * Teilliste mit Unvollständig-Marke, und die Annahme entfernt keine bestehende Anhangsquelle.
+   */
+  async listAttachments(
+    pageId: string,
+  ): Promise<{ attachments: ConfluenceAttachment[]; complete: boolean }> {
+    const allowedOrigin = this.allowedOrigin();
+    const out: ConfluenceAttachment[] = [];
+    let url: string | null =
+      `${this.baseUrl}/rest/api/content/${encodeURIComponent(pageId)}/child/attachment?limit=50`;
+    let hops = 0;
+    for (; url && hops < MAX_ATTACHMENT_HOPS; hops++) {
+      const data = await this.getJson(url, allowedOrigin);
+      if (!istAnhangsliste(data)) {
+        throw new ConfluenceUnusableResponseError("Anhangsliste");
+      }
+      out.push(...data.results);
+      const next = data._links?.next;
+      url = typeof next === "string" && next !== "" ? this.nextUrl(next, allowedOrigin) : null;
+    }
+    return { attachments: out, complete: url === null };
   }
 
   private firstUrl(): string {
@@ -418,7 +556,9 @@ export function confluenceClientFromEnv(
   const email = env.KLARWERK_CONFLUENCE_USER;
   const apiToken = env.KLARWERK_CONFLUENCE_TOKEN;
   const spaceKey = env.KLARWERK_CONFLUENCE_SPACE;
-  if (!baseUrl || !email || !apiToken || !spaceKey) {
+  // R-0166: unbekannte Anmeldeart ⇒ kein Client. Die Kennung ist nur für "cloud" Pflicht.
+  const authMode = confluenceAuthModeFrom(env.KLARWERK_CONFLUENCE_AUTH);
+  if (!authMode || !baseUrl || !apiToken || !spaceKey || (authMode === "cloud" && !email)) {
     return undefined;
   }
   // R2a: nur HTTPS-Origin — ein plain-http/ungültiger Host ⇒ kein Client (kein Token-Egress an einen
@@ -437,9 +577,10 @@ export function confluenceClientFromEnv(
   const budgetMs = Number(env.KLARWERK_CONFLUENCE_BUDGET_MS);
   return new ConfluenceRestClient({
     baseUrl,
-    email,
+    ...(authMode === "cloud" && email ? { email } : {}),
     apiToken,
     spaceKey,
+    authMode,
     ...(Number.isInteger(limit) && limit > 0 ? { pageLimit: limit } : {}),
     ...(Number.isInteger(timeoutMs) && timeoutMs > 0 ? { timeoutMs } : {}),
     ...(Number.isInteger(budgetMs) && budgetMs > 0 ? { totalBudgetMs: budgetMs } : {}),

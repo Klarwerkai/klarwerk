@@ -23,6 +23,7 @@ import {
 // JOB 3075 · P12: DIE EINE THEMENACHSE DES HAUSES. Begruendung am Kopf von `graph()` und in
 // `services/wissensnetz/index.ts`; es ist eine reine Namensableitung, kein Zugang zum Lesemodell.
 import { themenVon } from "../../wissensnetz";
+import { type ImportItemMitQuellangaben, saeubereQuellangaben } from "./quellangaben";
 import {
   type CandidateRepo,
   type ClaimResolution,
@@ -478,6 +479,14 @@ export class LibraryService {
     return confidentiality === undefined ? item : { ...item, confidentiality };
   }
 
+  // R-0549/R-0163: dieselbe Ingest-Grenze für die Quellangaben. Der JSON-Eingang nimmt `ImportItem`s
+  // von Clients an; Leserestriktion und Anhänge sind dort Behauptungen und werden deshalb auf Form
+  // und Menge begrenzt (nur Zeichenketten, gedeckelte Länge und Anzahl, URLs erst in buildSources
+  // über `safeSourceUrl`). Nichts davon verleiht ein Recht.
+  private withSanitizedIngest(item: ImportItem): ImportItemMitQuellangaben {
+    return saeubereQuellangaben(this.withSanitizedConfidentiality(item));
+  }
+
   // SCRUM-116: JSON-Re-Import erzeugt Review-Kandidaten (keine stille Bulk-Anlage).
   //
   // ==============================================================================================
@@ -541,7 +550,7 @@ export class LibraryService {
     // Text — hier wird nichts nachträglich dekodiert, nur markiert. Damit gilt wieder verlässlich:
     // Marker fehlt = echter Altbestand (gespeichert VOR dieser Regel).
     const items = rawItems.map<ImportItem>((item) => ({
-      ...this.withSanitizedConfidentiality(item),
+      ...this.withSanitizedIngest(item),
       textCodec: "decoded",
     }));
     const pruefung = erzwingeDublettenpruefung(pruefeDublette);
@@ -1182,7 +1191,7 @@ export class LibraryService {
         // VOR acceptToKo erneut sanitisieren — sonst würde ein ungültiger Altwert im Re-Sync-Ranking auf
         // „intern" normalisiert (fail-open) bzw. bei der Erstanlage hart abgelehnt. Das bereinigte Item wird
         // MIT persistiert (nicht nur transient), damit die Queue keinen ungültigen Wert behält.
-        const item = this.withSanitizedConfidentiality(candidate.item);
+        const item = this.withSanitizedIngest(candidate.item);
         createdKoId = await this.acceptToKo(item, actor, id);
         resolution = { status: "angenommen", koId: createdKoId, item, ...reviewedStamp };
       }
@@ -1506,7 +1515,11 @@ export class LibraryService {
   // nur für den Kandidaten-Stempel — die Anker-Suche läuft über `sucheAnkerKo` (aktiv, dann
   // Papierkorb; Begründung und Reihenfolge dort). Ein getrashtes Objekt wird ADOPTIERT und dabei
   // nicht angefasst; die Trash-Entscheidung bleibt beim Menschen, der gelöscht hat.
-  private async acceptToKo(item: ImportItem, actor: string, candidateId?: string): Promise<string> {
+  private async acceptToKo(
+    item: ImportItemMitQuellangaben,
+    actor: string,
+    candidateId?: string,
+  ): Promise<string> {
     if (candidateId) {
       const stamped = await this.koService.findByImportCandidateId(candidateId);
       if (stamped) {
@@ -1533,6 +1546,11 @@ export class LibraryService {
     // gleich), einschliesslich des Falls „beide ohne externalId".
     const matchesAnchor = (s: { externalId?: string; provider?: string | null }): boolean =>
       ankerSchluessel(s.provider, s.externalId) === ankerSchluessel(item.provider, externalId);
+    // R-0163: eine Anhangsquelle gehört zu diesem Anker, wenn sie denselben Provider und als
+    // `attachmentOf` dieselbe Quell-Id trägt (derselbe injektive Schlüssel wie der Anker selbst).
+    const gehoertZuAnker = (s: { attachmentOf?: string; provider?: string | null }): boolean =>
+      s.attachmentOf !== undefined &&
+      ankerSchluessel(s.provider, s.attachmentOf) === ankerSchluessel(item.provider, externalId);
     const anker = externalId ? await this.sucheAnkerKo(matchesAnchor) : undefined;
     if (anker?.art === "getrasht") {
       // ==========================================================================================
@@ -1598,9 +1616,25 @@ export class LibraryService {
       if (incoming > current) {
         // bens F3: nur der Anker DESSELBEN Providers wird fortgeschrieben — ein gleichnamiger
         // Anker eines anderen Providers am selben KO bliebe unangetastet.
+        // R-0163: die Anhangsquellen DERSELBEN Seite werden mit dem Anker ersetzt, nicht gehäuft —
+        // ein in der Quelle entfernter Anhang verschwindet so auch am Objekt.
+        const neu = this.buildSources(item, actor, incoming);
+        // R-0163 (Runde 3): trägt das Item nur eine TEILLISTE der Anhänge
+        // (`sourceAttachmentsIncomplete`), wird keine bestehende Anhangsquelle entfernt — nur die
+        // gelieferten ersetzen ihre Vorgänger (gleiche Anhangs-Id). Eine Teilantwort ist kein
+        // Beleg dafür, dass ein Anhang in der Quelle verschwunden ist.
+        const gelieferteAnhaenge = new Set(
+          neu.map((s) => s.attachment?.externalId).filter((a): a is string => !!a),
+        );
+        const behalten = (s: KoSource): boolean =>
+          item.sourceAttachmentsIncomplete === true &&
+          gehoertZuAnker(s) &&
+          !gelieferteAnhaenge.has(s.attachment?.externalId ?? "");
         const nextSources = [
-          ...existing.sources.filter((s) => !matchesAnchor(s)),
-          this.buildSource(item, actor, incoming),
+          ...existing.sources.filter(
+            (s) => !matchesAnchor(s) && (!gehoertZuAnker(s) || behalten(s)),
+          ),
+          ...neu,
         ];
         // ==========================================================================================
         // AUFTRAG-mega82 BLOCK A — WER IMPORTIERT, HANDELT. WER IM IMPORT GENANNT WIRD, HANDELT NICHT.
@@ -1667,7 +1701,7 @@ export class LibraryService {
         // Freigabe aus Cloud/Export heraus.
         confidentiality: item.confidentiality ?? "vertraulich",
         ...(item.bodyHtml ? { bodyHtml: item.bodyHtml } : {}),
-        ...(externalId ? { sources: [this.buildSource(item, actor, firstVersion)] } : {}),
+        ...(externalId ? { sources: this.buildSources(item, actor, firstVersion) } : {}),
         // WP-SHIP8-CLOSE-3/4 (bens ROT-1): Kandidaten-Anker VOR dem Endstatus des Kandidaten —
         // Recovery und Insert-or-Adopt erkennen daran eine bereits gelungene Erstanlage.
         ...(candidateId ? { importCandidateId: candidateId } : {}),
@@ -1695,6 +1729,76 @@ export class LibraryService {
       }
       throw err;
     }
+  }
+
+  /**
+   * R-0163 (Lauf 2): ANHÄNGE NACHZIEHEN OHNE NEUE SEITENFASSUNG. Confluence erhöht die Fassung
+   * einer Seite nicht zwingend, wenn nur ein Anhang dazukommt, ersetzt wird oder verschwindet. Der
+   * Bereichsimport reiht eine unveränderte Fassung zu Recht nicht erneut als Kandidat ein — die
+   * Anhangsquellen am Objekt blieben dann aber stehen, wie sie waren.
+   *
+   * Die Regel: trägt ein AKTIVES Objekt den Anker dieses Items in GENAU der gelieferten Fassung,
+   * werden seine Anhangsquellen an die gelieferte Liste angeglichen — wie beim Re-Sync
+   * (`acceptToKo`): vollständige Liste ersetzt, Teilliste (`sourceAttachmentsIncomplete`) ersetzt
+   * nur die gelieferten und entfernt nichts. Unveränderte Anhangsquellen behalten Kennung und
+   * Zeitpunkt. Inhalt, Stufe und Fassung bleiben unberührt; ein Objekt im Papierkorb wird nicht
+   * angefasst (JOB 3081). `undefined`, wenn es nichts anzugleichen gibt.
+   */
+  async syncImportAttachments(
+    item: ImportItem,
+    actor: string,
+    opts: { dryRun?: boolean } = {},
+  ): Promise<{ koId: string; added: string[]; removed: string[] } | undefined> {
+    const externalId = this.externalUpsert ? item.externalId : undefined;
+    if (!externalId) {
+      return undefined;
+    }
+    const sauber = this.withSanitizedIngest(item);
+    const matchesAnchor = (s: { externalId?: string; provider?: string | null }): boolean =>
+      ankerSchluessel(s.provider, s.externalId) === ankerSchluessel(sauber.provider, externalId);
+    const gehoertZuAnker = (s: { attachmentOf?: string; provider?: string | null }): boolean =>
+      s.attachmentOf !== undefined &&
+      ankerSchluessel(s.provider, s.attachmentOf) === ankerSchluessel(sauber.provider, externalId);
+    const anker = await this.sucheAnkerKo(matchesAnchor);
+    if (anker?.art !== "aktiv") {
+      return undefined;
+    }
+    const ko = anker.ko;
+    const current = ko.sources.find(matchesAnchor)?.sourceVersion ?? 0;
+    if ((sauber.sourceVersion ?? current) !== current) {
+      return undefined; // höhere Fassung → Kandidatenweg; niedrigere → nichts
+    }
+    const bisher = ko.sources.filter(gehoertZuAnker);
+    const geliefert = this.buildSources(sauber, actor, current)
+      .slice(1)
+      .map(
+        (neu) =>
+          bisher.find(
+            (alt) =>
+              alt.attachment?.externalId === neu.attachment?.externalId &&
+              alt.label === neu.label &&
+              (alt.url ?? null) === (neu.url ?? null) &&
+              alt.attachment?.mime === neu.attachment?.mime &&
+              alt.attachment?.size === neu.attachment?.size,
+          ) ?? neu,
+      );
+    const gelieferteKennungen = new Set(geliefert.map((s) => s.attachment?.externalId));
+    const naechste =
+      sauber.sourceAttachmentsIncomplete === true
+        ? [
+            ...bisher.filter((s) => !gelieferteKennungen.has(s.attachment?.externalId)),
+            ...geliefert,
+          ]
+        : geliefert;
+    // Anhangsquellen tragen den Provider des Items (`buildSources`) — derselbe Wert grenzt hier ab.
+    const ergebnis = await this.koService.replaceSourceAttachments(
+      ko.id,
+      { provider: sauber.provider ?? null, externalId },
+      naechste,
+      actor,
+      opts,
+    );
+    return ergebnis ? { koId: ko.id, ...ergebnis } : undefined;
   }
 
   // ==============================================================================================
@@ -1748,7 +1852,42 @@ export class LibraryService {
   // (die Confluence-Route setzt "Confluence"); externe Importquellen sind nie peer-validiert.
   // `effectiveVersion` (ben-Review #3): die tatsächlich geschriebene Version — IMMER gesetzt, damit der
   // Monotonie-Vergleich beim Re-Sync verlässlich ist (nie ein „versionsloser" Anker im Bestand).
-  private buildSource(item: ImportItem, actor: string, effectiveVersion: number): KoSource {
+  // R-0163: der Herkunftsanker UND je Anhang eine eigene Quelle. Anhänge tragen keine eigene
+  // `externalId` (sonst hielte der Re-Sync-Anker sie für Seiten), sondern `attachmentOf`.
+  private buildSources(
+    item: ImportItemMitQuellangaben,
+    actor: string,
+    effectiveVersion: number,
+  ): KoSource[] {
+    const anker = this.buildSource(item, actor, effectiveVersion);
+    const at = anker.at;
+    const anhaenge: KoSource[] = item.externalId
+      ? (item.sourceAttachments ?? []).map((a) => ({
+          id: this.genId(),
+          label: a.name,
+          url: safeSourceUrl(a.url),
+          excerpt: null,
+          kind: "external" as const,
+          peerValidated: false,
+          provider: item.provider ?? null,
+          attachmentOf: item.externalId as string,
+          attachment: {
+            externalId: a.externalId,
+            ...(a.mime ? { mime: a.mime } : {}),
+            ...(typeof a.size === "number" ? { size: a.size } : {}),
+          },
+          author: anker.author,
+          at,
+        }))
+      : [];
+    return [anker, ...anhaenge];
+  }
+
+  private buildSource(
+    item: ImportItemMitQuellangaben,
+    actor: string,
+    effectiveVersion: number,
+  ): KoSource {
     return {
       id: this.genId(),
       label: item.title,
@@ -1763,6 +1902,15 @@ export class LibraryService {
       // (KO-seitig weiterhin so genanntes) spaceKey-Container-Label — der Match läuft NUR über externalId.
       ...(item.externalId ? { externalId: item.externalId } : {}),
       ...(item.sourceScope ? { spaceKey: item.sourceScope } : {}),
+      // R-0549: die Leserestriktion der Quelle als Herkunftsangabe (keine Berechtigung).
+      ...(item.sourceReadRestriction
+        ? {
+            readRestriction: {
+              groups: [...item.sourceReadRestriction.groups],
+              users: [...item.sourceReadRestriction.users],
+            },
+          }
+        : {}),
       sourceVersion: effectiveVersion,
       // WP-RETEST7 R6: leerer Autor-String → ehrlicher Fallback auf den annehmenden Nutzer.
       author: item.author?.trim() ? item.author : actor,

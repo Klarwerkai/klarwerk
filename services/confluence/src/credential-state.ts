@@ -35,6 +35,21 @@
 // zustande kommt, sind Wissen DIESES Moduls. Läge die Liste in der App, gäbe es zwei Wahrheiten
 // darüber, was Confluence braucht — und die zweite würde beim nächsten Umbau still falsch.
 
+import { type ConfluenceAuthMode, confluenceAuthModeFrom } from "./rest-client";
+
+// ================================================================================================
+// R-0166 — ZWEI ANMELDEWEGE, EINE AUSKUNFT
+// ================================================================================================
+//
+// `KLARWERK_CONFLUENCE_AUTH` wählt zwischen Cloud (E-Mail + API-Token) und `pat` (Personal Access
+// Token, Confluence im eigenen Haus). Die Auskunft meldet je Weg genau die Variablen, die DIESER
+// Weg braucht: bei `pat` fehlt die Kennung nicht, sie wird schlicht nicht gebraucht. Ein Wert, den
+// es nicht gibt, ist ein eigener Riegel (`invalid-auth-mode`) — sonst stünden alle Variablen
+// „da", und der Import ginge trotzdem nicht.
+
+/** Die Variable, die den Anmeldeweg wählt. Kein Geheimnis. */
+export const CONFLUENCE_AUTH_VAR = "KLARWERK_CONFLUENCE_AUTH";
+
 /** Die Variablen, die ein Confluence-Zugang braucht. Reihenfolge = Anzeigereihenfolge. */
 export const CONFLUENCE_CREDENTIAL_VARS = [
   "KLARWERK_CONFLUENCE_BASE_URL",
@@ -49,30 +64,43 @@ export interface ConfluenceCredentialState {
   /** Käme mit diesen Variablen ein Client zustande? (Nicht: sind sie gültig — das weiß nur ein Aufruf.) */
   usable: boolean;
   /** Warum nicht, falls nicht. `null`, wenn usable. */
-  blocker: "missing" | "insecure-base-url" | null;
+  blocker: "missing" | "insecure-base-url" | "invalid-auth-mode" | null;
+  /** R-0166: der gewählte Anmeldeweg, oder `null`, wenn der gesetzte Wert keiner ist. */
+  authMode: ConfluenceAuthMode | null;
+}
+
+/** Welche der Variablen ein Anmeldeweg braucht — `pat` kommt ohne Kennung aus. */
+function benoetigt(authMode: ConfluenceAuthMode | undefined): readonly string[] {
+  return authMode === "pat"
+    ? CONFLUENCE_CREDENTIAL_VARS.filter((name) => name !== "KLARWERK_CONFLUENCE_USER")
+    : CONFLUENCE_CREDENTIAL_VARS;
 }
 
 export function confluenceCredentialState(
   env: Record<string, string | undefined> = process.env,
 ): ConfluenceCredentialState {
-  const vars = CONFLUENCE_CREDENTIAL_VARS.map((name) => ({
+  const authMode = confluenceAuthModeFrom(env[CONFLUENCE_AUTH_VAR]);
+  const vars = benoetigt(authMode).map((name) => ({
     name,
     // Eine gesetzte, aber leere Variable ist nicht gesetzt — sonst meldete die Fläche „steht",
     // und der Import scheiterte trotzdem (confluenceClientFromEnv prüft ebenfalls auf truthy).
     present: (env[name] ?? "") !== "",
   }));
+  if (authMode === undefined) {
+    return { vars, usable: false, blocker: "invalid-auth-mode", authMode: null };
+  }
   if (vars.some((v) => !v.present)) {
-    return { vars, usable: false, blocker: "missing" };
+    return { vars, usable: false, blocker: "missing", authMode };
   }
   // Dieselbe Bedingung wie confluenceClientFromEnv — bewusst hier wiederholt und nicht durch einen
   // Aufruf dort ersetzt: der Resolver BAUT einen Client (und bindet den Token in eine Closure);
   // diese Funktion darf nichts bauen, was ein Geheimnis trägt.
   try {
     if (new URL(env.KLARWERK_CONFLUENCE_BASE_URL ?? "").protocol !== "https:") {
-      return { vars, usable: false, blocker: "insecure-base-url" };
+      return { vars, usable: false, blocker: "insecure-base-url", authMode };
     }
   } catch {
-    return { vars, usable: false, blocker: "insecure-base-url" };
+    return { vars, usable: false, blocker: "insecure-base-url", authMode };
   }
-  return { vars, usable: true, blocker: null };
+  return { vars, usable: true, blocker: null, authMode };
 }

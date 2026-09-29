@@ -319,6 +319,28 @@ export interface KoSource {
   // (`apps/web/src/lib/koSource.ts`, `quellennachweis`). Ein an die Quelle kopierter Name würde
   // durch eine Umbenennung des Anhangs zur Lüge, ohne dass irgendjemand es merkt.
   objectId?: string;
+  // ============================================================================================
+  // R-0549 / R-0163 / R-0162 (Confluence-Gesamtimport) — WAS DIE QUELLE ÜBER SICH SELBST SAGT.
+  // ============================================================================================
+  //
+  // Drei additive, JSON-persistierte Angaben (keine Migration, Altquellen bleiben gültig). Sie
+  // sind HERKUNFTSANGABEN, keine Rechte und keine Anweisungen: nichts in Klara verzweigt die
+  // Autorisierung über sie (s. `services/app/src/sichtbarkeit.ts`, Variante B ist nicht
+  // entschieden).
+  //
+  // `readRestriction`: die Leserestriktion der Quellseite beim Import — Gruppennamen und
+  // Benutzerkennungen, wie die Quelle sie liefert. Fehlt das Feld, war die Seite offen oder der
+  // Anker stammt von vor dieser Regel.
+  readRestriction?: { groups: string[]; users: string[] };
+  // `attachmentOf` + `attachment`: diese Quelle ist ein ANHANG der Quellseite mit der genannten
+  // `externalId` (derselbe Provider). Ein Anhang trägt bewusst KEINE eigene `externalId` — sonst
+  // hielte ihn der Re-Sync-Anker für eine eigene Seite.
+  attachmentOf?: string;
+  attachment?: { externalId: string; mime?: string; size?: number };
+  // `sourceRemovedAt`: ein Abgleich hat festgestellt, dass die Quellseite gelöscht ist (ISO-Zeit).
+  // Das Wissensobjekt bleibt unverändert; der Rücklink führt nicht mehr zur Seite, und die
+  // Anzeige sagt das, statt ihn weiter anzubieten.
+  sourceRemovedAt?: string;
   author: string;
   at: string;
 }
