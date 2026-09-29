@@ -88,12 +88,14 @@ export function useMenue(): MenueZustand {
   }, [offen]);
 
   // Beim Öffnen: Fokus auf die erste Zeile, damit die Tastatur sofort im Menü ist.
+  // FE-002: hat die Fläche KEINE Zeile (Meldungen: leere Liste), bekommt die Fläche selbst den
+  // Fokus — sonst bliebe er auf dem Auslöser, und Escape erreichte die Fläche nie.
   useEffect(() => {
     if (!offen) {
       return;
     }
     const erste = zeilenIn(flaecheRef.current)[0];
-    erste?.focus();
+    (erste ?? flaecheRef.current)?.focus();
   }, [offen]);
 
   const onKeyDown = useCallback(
@@ -151,6 +153,7 @@ export function MenueFlaeche({
       role="menu"
       aria-label={label}
       data-testid={testid}
+      tabIndex={-1}
       onKeyDown={menue.onKeyDown}
       className={`kw-menue absolute right-0 top-[calc(100%+8px)] z-30 flex w-[260px] flex-col rounded-[10px] border border-hairline bg-surface p-1.5 text-text shadow-popover ${className}`}
     >

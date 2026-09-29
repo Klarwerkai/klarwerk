@@ -807,19 +807,13 @@ export async function fahreStrecke(umgebung: Umgebung, lauf: Lauf): Promise<Prot
       return Number(ergebnis.rows[0]?.n ?? "-1");
     };
     const inDenBereich = async (id: string, ziel: string): Promise<void> => {
-      await seite.click('[data-testid="kopfband-zahnrad"]');
-      await warte(
-        seite,
-        `() => !!document.querySelector('[data-testid="zahnrad-weitere-bereiche"]')`,
-        "das Zahnradmenue steht offen",
-        undefined,
-        30_000,
-      );
-      await seite.click('[data-testid="zahnrad-weitere-bereiche"]');
+      // FE-002 (26.09.2026): die weiteren Bereiche stehen offen unter „Arbeitsbereiche“ im Kopfband
+      // (bis dahin Zahnrad → „Weitere Bereiche“ aufklappen).
+      await seite.click('[data-testid="kopfband-arbeitsbereiche"]');
       await warte(
         seite,
         `(arg) => !!document.querySelector('[data-testid="bereich-' + arg + '"]')`,
-        `der Menuepunkt ${id} steht unter Weitere Bereiche`,
+        `der Menuepunkt ${id} steht unter Arbeitsbereiche`,
         id,
         30_000,
       );

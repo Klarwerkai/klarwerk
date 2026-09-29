@@ -563,9 +563,8 @@ export async function meldeAnMitTastatur(
 }
 
 export interface Menuebefund {
-  /** Tab-Anschläge bis zum Zahnrad, bis „Bereiche" und bis zum Menüpunkt. */
-  zahnrad: number;
-  bereiche: number;
+  /** Tab-Anschläge bis „Arbeitsbereiche“ (FE-002; bis dahin bis zum Zahnrad) und bis zum Menüpunkt. */
+  arbeitsbereiche: number;
   eintrag: number;
   /** Der SICHTBARE Text des offenen Menüs, gelesen unmittelbar vor dem Enter auf dem Menüpunkt. */
   menuetext: string;
@@ -574,7 +573,11 @@ export interface Menuebefund {
 }
 
 /**
- * DER MENÜWEG, OHNE MAUS: Zahnrad → Bereiche → Gesamtanweisungen.
+ * DER MENÜWEG, OHNE MAUS: Arbeitsbereiche → Gesamtanweisungen.
+ *
+ * FE-002 (26.09.2026): bis hierher Zahnrad → „Bereiche“ (Untermenü aufklappen) → Gesamtanweisungen.
+ * Seither stehen die weiteren Bereiche offen unter dem beschrifteten Einstieg „Arbeitsbereiche“ im
+ * Kopfband; die Zusage des Aufklappens (`aria-expanded=true`) trägt jetzt dieser Einstieg selbst.
  *
  * Die Sollwerte kommen als Parameter aus dem Sprachkatalog (`tests/support/i18nBestand.ts`) und
  * werden nicht abgeschrieben. Die Fläche muss bereits eine angemeldete Seite mit Kopfband zeigen;
@@ -587,61 +590,55 @@ export async function menuewegOhneMaus(
   sollEintrag: string,
   sprache: string,
 ): Promise<Menuebefund> {
+  const ausloeser = '[data-testid="kopfband-arbeitsbereiche"]';
+  const flaeche = '[data-testid="arbeitsbereiche-menue"]';
   await warte(
     seite,
-    `() => !!document.querySelector('[data-testid="kopfband-zahnrad"]')`,
-    `das Kopfband mit dem Zahnrad (${sprache})`,
+    `() => !!document.querySelector('${ausloeser}')`,
+    `das Kopfband mit „Arbeitsbereiche“ (${sprache})`,
     undefined,
     45_000,
   );
 
-  // ── 1. Das Zahnrad: kein Text, nur ein `aria-label` — deshalb über den Selektor. ──────────────
-  const zahnrad = await tabUndEnter(
+  // ── 1. „Arbeitsbereiche“: Beschriftung prüfen, dann per Tab und Enter öffnen. ─────────────────
+  await mussSichtbarTragen(
     seite,
-    '[data-testid="kopfband-zahnrad"]',
-    `Zahnrad (${sprache})`,
+    ausloeser,
+    sollBereiche,
+    `der Einstieg heisst in „${sprache}" nicht „${sollBereiche}"`,
+  );
+  const arbeitsbereiche = await tabUndEnter(
+    seite,
+    ausloeser,
+    `„${sollBereiche}" (${sprache})`,
     250,
     true,
   );
   await warte(
     seite,
-    `() => !!document.querySelector('[data-testid="zahnrad-menue"]')`,
-    `das geöffnete Zahnrad-Menü (${sprache})`,
+    `() => !!document.querySelector('${flaeche}')`,
+    `das geöffnete Menü „${sollBereiche}" (${sprache})`,
   );
-  // Der Fokus muss WIRKLICH im Menü stehen — sonst führte der Tab-Weg unten an ihm vorbei, und die
-  // Zahlen darunter sagten etwas über die Seite statt über das Menü.
+  // Der Fokus muss WIRKLICH im Menü stehen — sonst führte der Tab-Weg unten an ihm vorbei.
   await warte(
     seite,
-    `() => { const f = document.querySelector('[data-testid="zahnrad-menue"]');
+    `() => { const f = document.querySelector('${flaeche}');
       return !!f && !!document.activeElement && f.contains(document.activeElement); }`,
-    `der Fokus steht nach dem Öffnen IM Zahnrad-Menü (${sprache})`,
+    `der Fokus steht nach dem Öffnen IM Menü „${sollBereiche}" (${sprache})`,
   );
 
-  // ── 2. „Bereiche" aufklappen. Beschriftung zuerst prüfen, dann bedienen. ──────────────────────
-  await mussSichtbarTragen(
-    seite,
-    '[data-testid="zahnrad-weitere-bereiche"]',
-    sollBereiche,
-    `das Untermenü heisst in „${sprache}" nicht „${sollBereiche}"`,
-  );
-  const bereiche = await tabUndEnter(
-    seite,
-    '[data-testid="zahnrad-weitere-bereiche"]',
-    `Untermenü „${sollBereiche}" (${sprache})`,
-    80,
-    false,
-  );
+  // ── 2. Der Einstieg SAGT sein Öffnen an. ──────────────────────────────────────────────────────
   await warte(
     seite,
-    `() => document.querySelector('[data-testid="zahnrad-weitere-bereiche"]')?.getAttribute("aria-expanded") === "true"`,
-    `das aufgeklappte Untermenü „${sollBereiche}" (${sprache})`,
+    `() => document.querySelector('${ausloeser}')?.getAttribute("aria-expanded") === "true"`,
+    `der geöffnete Einstieg „${sollBereiche}" sagt es an (${sprache})`,
   );
 
   // ── 3. Der Menüpunkt: erst DA und SICHTBAR und richtig beschriftet, dann bedient. ─────────────
   await warte(
     seite,
     `() => !!document.querySelector('[data-testid="bereich-gesamtanweisungen"]')`,
-    `der Menüpunkt „${sollEintrag}" im aufgeklappten Untermenü (${sprache})`,
+    `der Menüpunkt „${sollEintrag}" im geöffneten Menü (${sprache})`,
   );
   const eintragstext = await mussSichtbarTragen(
     seite,
@@ -657,7 +654,7 @@ export async function menuewegOhneMaus(
   expect(href, `${MARKE}: der Menüpunkt zeigt nicht auf /gesamtanweisungen (${sprache})`).toBe(
     "/gesamtanweisungen",
   );
-  const menuetext = (await sichtbefund(seite, '[data-testid="zahnrad-menue"]')).text;
+  const menuetext = (await sichtbefund(seite, flaeche)).text;
   const eintrag = await tabBisBeschriftungUndEnter(
     seite,
     sollEintrag,
@@ -674,7 +671,7 @@ export async function menuewegOhneMaus(
     undefined,
     45_000,
   );
-  return { zahnrad, bereiche, eintrag, menuetext, eintragstext };
+  return { arbeitsbereiche, eintrag, menuetext, eintragstext };
 }
 
 /** Eine Anweisung anlegen — Titel getippt, Knopf per Tab und Enter. Gibt die Kennung zurück. */

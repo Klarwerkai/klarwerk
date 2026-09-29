@@ -2033,8 +2033,18 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // DIE +18 IST GEMESSEN, nicht gerechnet: der Sammler meldete an diesem Arbeitsbaum wörtlich
     // „gemessen: 423 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 511 Quelldateien …
     // expected { komponenten: 423, … } to deeply equal { komponenten: 405, … }".
+    //
+    // FE-002 (HEADER TEIL 1 · FUNKTIONEN FINDEN): 423 → 428 (zusammengeführt nach FE-003). Es sind GENAU FÜNF Bauteile der
+    // Kopfbandhülle:
+    //     + `ArbeitsbereicheEintraege`, `ArbeitsbereicheMenue` (`shell/ArbeitsbereicheMenue.tsx`)
+    //     + `MeldungenMenue`, `MeldungenUndKonto` (`shell/MeldungenMenue.tsx`)
+    //     + `MeldungenListe` (`shell/Meldungen.tsx`, aus `Meldungen` herausgelöst)
+    // Keines enthält `CAPTION_AI_TEXT`, ein `documentTitle`-Prop oder ein `<img` — Menüs,
+    // Glocke und Meldungsliste, kein Bildweg. `anbieter` 1 und `traeger` 2 bleiben unverändert;
+    // gemessen an diesem Arbeitsbaum („gemessen: 428 Komponenten · 1 Anbieter · 2 Traeger ·
+    // Grundmenge 519 Quelldateien" nach der Zusammenführung, macOS).
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 423,
+      komponenten: 428,
       anbieter: 1,
       traeger: 2,
     });

@@ -1148,6 +1148,13 @@ const INVENTAR: readonly string[] = [
   // gepinnten Inventar — Inventar nachfuehren: expected [ Array(1) ] to deeply equal []`; erst
   // danach wurde diese Zeile angefasst.
   "tests/wiki-orientierung/gliederung-mit-zeiger-chromium.test.ts",
+  // FE-002 (HEADER TEIL 1, 26.09.2026): von der Achse `palette` gefunden (Muster `palette`) — die
+  // Datei montiert `CommandPalette` und misst den Schnellzugriff „Seite finden" (vormals „Gehe zu …")
+  // samt Namenssuche und ohne technische Pfade. Dieselbe Klasse wie die `admin-navigation`-Dateien
+  // oben. GEMESSEN, NICHT GESETZT: K2 meldete `neu im Baum, aber nicht im gepinnten Inventar`
+  // (tests/fe002-kopfband/kopfband-fe002.test.tsx); erst danach wurde diese Zeile angefasst. Der
+  // Chromium-Zwilling derselben Mappe nennt das Muster nicht und steht deshalb nicht hier.
+  "tests/fe002-kopfband/kopfband-fe002.test.tsx",
 ];
 
 // ------------------------------------------------------------------------------------------------

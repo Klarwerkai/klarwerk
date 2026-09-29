@@ -371,3 +371,47 @@ body.klara-inspect * {
     outline-color: rgb(var(--kw-brand-300));
   }
 }
+
+/* ================================================================================================
+   FE-002 · DIE STUFEN DER RECHTEN GRUPPE DES KOPFBANDS (shell/Kopfband.tsx, shell/kopfbandStufe.ts).
+   ================================================================================================
+   Welche Stufe gilt, misst der Browser (`data-stufe` an `kw-kopfband-rechts`); hier steht nur, was
+   eine Stufe ausblendet. Keine Stufe nimmt einen Weg oder eine Benennung weg:
+     1  das Wort „Meldungen" (Glocke, Zahl, Name und Zeigehinweis bleiben)
+     2  der breite Knopf „Seite finden ⌘K" — nur in der breiten Bauform; der Weg bleibt unter
+        „Arbeitsbereiche" und auf ⌘K/Strg+K
+     3  die Suche kompakt: statt des Feldes die Lupe mit dem SICHTBAREN Wort „Wissen suchen"
+   Gemessen in tests/fe002-kopfband/kopfband-fe002-chromium.test.ts. */
+.kw-kopfband-suche-kurz {
+  display: none;
+}
+.kw-kopfband-rechts:is([data-stufe="1"], [data-stufe="2"], [data-stufe="3"])
+  .kw-kopfband-meldungen-wort {
+  display: none;
+}
+.kw-kopfband-rechts[data-bauform="breit"]:is([data-stufe="2"], [data-stufe="3"])
+  .kw-kopfband-gehezu {
+  display: none;
+}
+.kw-kopfband-rechts[data-stufe="3"] .kw-kopfband-suche {
+  width: auto;
+  min-width: 0;
+  /* Lauf 3 R2 (Bens Befund B1, 900 px/nl): die kompakte Suche gibt keinen Platz unter ihren Inhalt
+     ab — sonst läge das Wort „Kennis zoeken" über dem Zahnrad. Reicht der Platz nicht, hält die
+     Gruppe ihren Inhalt als Mindestbreite und links wird umgebrochen (kopfbandStufe.ts). */
+  flex-shrink: 0;
+  padding: 4px 8px;
+}
+.kw-kopfband-rechts[data-stufe="3"] .kw-kopfband-suche input {
+  display: none;
+}
+.kw-kopfband-rechts[data-stufe="3"] .kw-kopfband-suche-kurz {
+  display: block;
+}
+
+/* FE-002: „Arbeitsbereiche" steht links in der Zeile — seine Übersicht öffnet nach rechts, nicht
+   wie Zahnrad und Konto nach links, sonst ragte sie aus dem Fenster. */
+.kw-menue.kw-menue-links {
+  left: 0;
+  right: auto;
+}

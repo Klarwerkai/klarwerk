@@ -350,24 +350,20 @@ describe("JOB 4309 A8 · die Gesamtanweisung auf einer frisch migrierten Datenba
 
         // ══ (a) ÜBER DAS MENÜ — keine getippte Adresse. ════════════════════════════════════════
         await seite.goto(`${strecke.basis}/start`, { waitUntil: "domcontentloaded" });
+        // FE-002 (26.09.2026): die weiteren Bereiche stehen offen unter „Arbeitsbereiche“ im
+        // Kopfband (bis dahin Zahnrad → „Weitere Bereiche“ aufklappen).
         await warte(
           seite,
-          `() => !!document.querySelector('[data-testid="kopfband-zahnrad"]')`,
-          "das Kopfband mit dem Zahnrad",
+          `() => !!document.querySelector('[data-testid="kopfband-arbeitsbereiche"]')`,
+          "das Kopfband mit „Arbeitsbereiche“",
           undefined,
           45_000,
         );
-        await seite.click('[data-testid="kopfband-zahnrad"]');
+        await seite.click('[data-testid="kopfband-arbeitsbereiche"]');
         await warte(
           seite,
-          `() => !!document.querySelector('[data-testid="zahnrad-menue"]')`,
-          "das geöffnete Zahnrad-Menü",
-        );
-        await seite.click('[data-testid="zahnrad-weitere-bereiche"]');
-        await warte(
-          seite,
-          `() => document.querySelector('[data-testid="zahnrad-weitere-bereiche"]')?.getAttribute("aria-expanded") === "true"`,
-          "das aufgeklappte Untermenü „Weitere Bereiche“",
+          `() => document.querySelector('[data-testid="kopfband-arbeitsbereiche"]')?.getAttribute("aria-expanded") === "true" && !!document.querySelector('[data-testid="arbeitsbereiche-menue"]')`,
+          "das geöffnete Menü „Arbeitsbereiche“",
         );
         // ERST DER EINTRAG, DANN DER KLICK: wäre der Punkt nicht da, sagte die Meldung „kein
         // Menüpunkt" statt „Klick ging ins Leere".
@@ -379,7 +375,7 @@ describe("JOB 4309 A8 · die Gesamtanweisung auf einer frisch migrierten Datenba
         );
         expect(
           menuezeile,
-          "im Zahnrad-Menü steht kein Punkt „Gesamtanweisungen“ — die Seite wäre nur über eine getippte Adresse erreichbar",
+          "unter „Arbeitsbereiche“ steht kein Punkt „Gesamtanweisungen“ — die Seite wäre nur über eine getippte Adresse erreichbar",
         ).not.toBeNull();
         expect((menuezeile as { href: string }).href).toBe("/gesamtanweisungen");
         expect(

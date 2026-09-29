@@ -134,9 +134,11 @@ afterEach(() => {
 });
 
 describe("Block D1: globale Suche — Enter navigiert wie der Klick", () => {
-  it("das Suchfeld trägt den Platzhalter „Suchen“ (Mockup Z.29) — und keinen sichtbaren ⌘K-Chip", async () => {
+  // FE-002 (Pedi, 26.09.2026): der Platzhalter sagt, WAS gesucht wird — „Wissen suchen" statt
+  // „Suchen" (Mockup Z.29), damit das Feld von „Seite finden ⌘K" unterscheidbar ist.
+  it("das Suchfeld trägt den Platzhalter „Wissen suchen“ — und keinen sichtbaren ⌘K-Chip", async () => {
     await mount();
-    expect(searchInput().getAttribute("placeholder")).toBe(i18n.t("kopfband.suchen"));
+    expect(searchInput().getAttribute("placeholder")).toBe(i18n.t("fe002.wissenSuchen"));
     expect(searchInput().closest("form")?.textContent).not.toContain("⌘K");
   });
 
