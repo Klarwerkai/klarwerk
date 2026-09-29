@@ -1,6 +1,6 @@
 # Abgleich: Deployment-Commit ↔ `/health.commit` (Auftrag deploy-health-commit)
 
-Stand 29.09.2026, Lauf `deploy-health-commit:3` (Runde 1). Übernimmt den Kandidaten
+Stand 29.09.2026, Lauf `deploy-health-commit:3` (Runde 2, B9 nachgearbeitet). Übernimmt den Kandidaten
 `9a8986c2` aus Lauf 2 (B1–B7, R-0786, R-1028) unverändert auf `1530dfeb` und schließt Bens
 Befund B8 (R-0794, siehe unten). Server und Coolify wurden in diesem Lauf nicht verändert.
 
@@ -179,6 +179,20 @@ Geändert:
   bewusst (`services/app/src/health-ki-laeufe.ts`).
 - Robustheit: Fällt das Laufprotokoll aus oder antwortet es nicht binnen 1,5 s, bleibt `/health`
   HTTP 200 mit `status: "ok"`, nur `aiRuns` wird `{ available: false, recent: [] }`.
+- Poolbegrenzung (Ben B9, Runde 2): Die Frist begrenzt nur das Warten, nicht die Datenbankarbeit.
+  Deshalb hält `/health` je App-Instanz höchstens **eine** Laufprotokoll-Abfrage im Flug
+  (`kiLaeufeAuskunft`): gleichzeitige und folgende Aufrufe hängen sich an die laufende an; eine
+  neue startet erst, wenn die vorige zurück ist. Ein hängendes Laufprotokoll belegt damit höchstens
+  einen Platz des gemeinsamen Pools (Standard 10), Nachbarabfragen laufen weiter.
+  Beleg: `tests/deploy-health-commit/health-pool-begrenzung.test.ts` — echter `pg`-Pool, echtes
+  `PgModelRunRepo`, nur der Drahtclient ohne Socket hält `model_runs`-Abfragen zurück. Kalibrierung:
+  eine neue Abfrage je Aufruf (Stand Runde 1) füllt den Pool (10/10) und blockiert `SELECT 1`; mit
+  der Korrektur: 11 wiederholte Zeitüberschreitungen → 1 Abfrage, 1 Poolplatz, `SELECT 1`
+  beantwortet; ebenso über die echte `/health`-Route mit der echten 1,5-s-Frist.
+- Grenze B9: Die eine hängende Abfrage wird nicht abgebrochen; ihr Poolplatz bleibt belegt, bis
+  die Datenbank antwortet oder die Verbindung fällt. Eine Abfragefrist auf Datenbankseite
+  (`statement_timeout`/`query_timeout`) gibt es im Pool weiterhin nicht; sie würde alle Module
+  betreffen und ist nicht Teil dieses Auftrags.
 - Beleg: `tests/deploy-health-commit/health-gesamtauskunft.test.ts` (9 Fälle, u. a. echter
   `POST /api/reasoner`-Lauf erscheint danach in `/health`; Gleichheit mit `/api/ai-status`;
   Feldbeschränkung; Ausfall/Hängen des Protokolls).

@@ -212,7 +212,7 @@ import { type SemanticPrefilter, removeKoFromDuplicatePrefilter } from "./duplic
 import { cappedEmbeddingProvider } from "./embed-concurrency";
 import type { FactoryReset } from "./factory-reset";
 import { schalterAn } from "./feature-flags";
-import { letzteKiLaeufe } from "./health-ki-laeufe";
+import { kiLaeufeAuskunft } from "./health-ki-laeufe";
 import {
   type SessionUser,
   isInternalOnlyError,
@@ -2357,12 +2357,16 @@ export function buildApp(
   // letzten KI-Läufe (`aiRuns`, abstrahiert, s. `health-ki-laeufe.ts`). Anders als die Statusroute
   // stößt /health KEINEN Erreichbarkeits-Probe an: der Container-Healthcheck fragt alle 30 s, und
   // das soll kein Modell-Ping werden — `ai.reachable` ist hier der zuletzt gemessene Stand.
+  //
+  // Ben B9: EINE Auskunft je App-Instanz — sie hält höchstens eine Laufprotokoll-Abfrage im Flug,
+  // damit wiederholte Healthchecks bei hängender Datenbank nicht den gemeinsamen Pool belegen.
+  const kiLaeufe = kiLaeufeAuskunft(services.modelRuns);
   app.get("/health", async () => ({
     status: "ok",
     version: buildVersion(),
     commit: buildCommit(),
     ai: services.reasoner.publicStatus(),
-    aiRuns: await letzteKiLaeufe(services.modelRuns),
+    aiRuns: await kiLaeufe(),
   }));
   // FR-RSN-05 + WP-VIP2-GATE (bens P1): die beiden OEFFENTLICHEN Status-Routen sind ABSTRAHIERT —
   // KEIN Provider-/Modellname (der stand hier frueher anonym lesbar). Provider-Details liefert

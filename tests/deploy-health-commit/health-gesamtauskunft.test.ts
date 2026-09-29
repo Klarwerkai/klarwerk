@@ -7,7 +7,7 @@
 // stehen — sonst schreibt der Reasoner in ein anderes Protokoll, als /health liest.
 import { afterEach, describe, expect, it } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
-import { HEALTH_KI_LAEUFE_ANZAHL, letzteKiLaeufe } from "../../services/app/src/health-ki-laeufe";
+import { HEALTH_KI_LAEUFE_ANZAHL, kiLaeufeAuskunft } from "../../services/app/src/health-ki-laeufe";
 import type { ModelRunRecord } from "../../services/model-runs";
 
 type App = ReturnType<typeof buildApp>;
@@ -151,12 +151,12 @@ function lauf(i: number, teil: Partial<ModelRunRecord> = {}): ModelRunRecord {
 describe("R-0794 · Teilauskunft ist begrenzt und macht /health nie krank", () => {
   it("fragt genau die festgelegte Anzahl jüngster Läufe ab und bildet Modus/Ausgang ab", async () => {
     let gefragt = -1;
-    const ergebnis = await letzteKiLaeufe({
+    const ergebnis = await kiLaeufeAuskunft({
       recent: async (limit?: number) => {
         gefragt = limit ?? -1;
         return [lauf(2, { demo: true, fallback: true, status: "error", error: "x" }), lauf(1)];
       },
-    });
+    })();
     expect(gefragt).toBe(HEALTH_KI_LAEUFE_ANZAHL);
     expect(ergebnis).toEqual({
       available: true,
@@ -181,15 +181,15 @@ describe("R-0794 · Teilauskunft ist begrenzt und macht /health nie krank", () =
   });
 
   it("fehlerndes Laufprotokoll → available:false, keine Ausnahme", async () => {
-    const ergebnis = await letzteKiLaeufe({
+    const ergebnis = await kiLaeufeAuskunft({
       recent: () => Promise.reject(new Error("Datenbank weg")),
-    });
+    })();
     expect(ergebnis).toEqual({ available: false, recent: [] });
   });
 
   it("hängendes Laufprotokoll → available:false nach der Frist, nicht erst beim Healthcheck-Timeout", async () => {
     const start = Date.now();
-    const ergebnis = await letzteKiLaeufe({ recent: () => new Promise(() => {}) }, 50);
+    const ergebnis = await kiLaeufeAuskunft({ recent: () => new Promise(() => {}) }, 50)();
     expect(ergebnis).toEqual({ available: false, recent: [] });
     expect(Date.now() - start).toBeLessThan(1000);
   });
