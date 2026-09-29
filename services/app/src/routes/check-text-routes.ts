@@ -30,8 +30,10 @@ import {
 import { type Ka4Freigabepruefer, ka4Freigabe, klaraBindungVorhanden } from "./ask-routes";
 import { classifyProvenanceConfidential } from "./reasoner-routes";
 
-// SCRUM-491 Slice 5/6: POST /api/check-text gegen den VALIDIERTEN Bestand, KEINE Persistenz
-// (kein KO/Gap/Board/Inhalts-Audit — Dry-Run-Kern-Garantie). Nur registriert bei Flag AN (build-app.ts)
+// SCRUM-491 Slice 5/6: POST /api/check-text, KEINE Persistenz (kein KO/Gap/Board/Inhalts-Audit —
+// Dry-Run-Kern-Garantie). Reichweite seit JOB 3020 je Weg: der Add-in-Pfad prüft nur gegen den
+// VALIDIERTEN Bestand, der Session-Pfad auch gegen Ungeprüftes (siehe Handler, `includeUnvalidated`).
+// Nur registriert bei Flag AN (build-app.ts)
 // → Flag AUS = Endpunkt existiert nicht = bit-identisch.
 //   Stufe 1 (want fehlend / != "deep"): rein deterministisch — KEIN Modell, KEIN embed, kein
 //     Textabfluss (Slice-4-Garantie ohne Judge). Byte-identisch zu Slice 5.
