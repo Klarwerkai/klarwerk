@@ -365,6 +365,41 @@ interface Titelmass {
   kuerzung: string;
 }
 
+// ================================================================================================
+// AUFNAHME gesamt-entwurf-einreichen (Ben Lauf :3 Runde 2, B3-R) — DIESELBE MESSUNG AN DER
+// NORMALEN ÜBERSICHT `/entwuerfe`.
+// ================================================================================================
+//
+// Ben: „Die vorhandene Chromium-Titelmessung untersucht die andere Blatt-Menüliste." Die Übersicht
+// trug am Zeilenträger `truncate`; der Titel-`<span>` darin war inline und hätte für sich gemessen
+// `clientWidth = 0` gezeigt. Gemessen wird deshalb der Titelträger UND sein Zeilenträger, und
+// gemeldet wird der schlechtere der beiden — eine Kürzung am Behälter ist dieselbe Kürzung.
+const TITELMASSE_SEITE = `() => {
+  const zeilen = [...document.querySelectorAll('[data-testid="page-entwuerfe"] [data-testid="entwurfsliste-eintrag"]')];
+  return zeilen.map((z) => {
+    const el = z.querySelector('[data-testid="entwurfsliste-eintrag-titel"]');
+    const kandidaten = [el, el.parentElement];
+    const masse = kandidaten.map((k) => {
+      const stil = getComputedStyle(k);
+      return {
+        text: (el.textContent || '').replace(/\s+/g, ' ').trim(),
+        sichtbreite: k.clientWidth,
+        textbreite: k.scrollWidth,
+        sichthoehe: k.clientHeight,
+        texthoehe: k.scrollHeight,
+        umbruch: stil.whiteSpace,
+        kuerzung: stil.textOverflow,
+      };
+    });
+    const ueberhang = (m) => Math.max(m.textbreite - m.sichtbreite, m.texthoehe - m.sichthoehe);
+    const ellipse = masse.find((m) => m.kuerzung === 'ellipsis');
+    if (ellipse) {
+      return ellipse;
+    }
+    return masse.reduce((a, b) => (ueberhang(b) > ueberhang(a) ? b : a));
+  });
+}`;
+
 /** Jeder Titel steht GANZ da — nichts ist abgeschnitten, und die Enden unterscheiden sich. */
 function ganzLesbar(titel: Titelmass[], lage: string): void {
   expect(titel.length, `${lage}: nicht alle Titelzeilen gemessen`).toBe(ALLE_TITEL.length);
@@ -427,7 +462,13 @@ function imFenster(m: Masse, lage: string): void {
  * Speicher gehört einer Herkunft, ist vor der ersten Fahrt (`about:blank`) also gar nicht
  * erreichbar. Deshalb: fahren, prüfen, bei Bedarf setzen und noch einmal fahren.
  */
-async function stelle(breite: number, sprache: string, pfad: string): Promise<void> {
+async function stelle(
+  breite: number,
+  sprache: string,
+  pfad: string,
+  // Aufnahme gesamt-entwurf-einreichen (L2): die Übersicht `/entwuerfe` trägt kein Blatt.
+  anker = '[data-testid="blatt"]',
+): Promise<void> {
   const s = seite as Seite;
   await s.setViewportSize({ width: breite, height: 844 });
   await s.goto(`${ORIGIN}${pfad}`, { waitUntil: "load", timeout: 60_000 });
@@ -436,13 +477,9 @@ async function stelle(breite: number, sprache: string, pfad: string): Promise<vo
     await s.evaluate(fn(`(l) => { localStorage.setItem('kw.sprache', l); }`), sprache);
     await s.goto(`${ORIGIN}${pfad}`, { waitUntil: "load", timeout: 60_000 });
   }
-  await s.waitForFunction(
-    fn("(sel) => document.querySelector(sel) !== null"),
-    '[data-testid="blatt"]',
-    {
-      timeout: 30_000,
-    },
-  );
+  await s.waitForFunction(fn("(sel) => document.querySelector(sel) !== null"), anker, {
+    timeout: 30_000,
+  });
   // Die Sprache gilt wirklich — sonst behauptete „DE/EN gemessen" nur den Dateinamen.
   const gesetzt = await s.evaluate<string>(
     fn(`() => document.documentElement.getAttribute('lang') || ''`),
@@ -655,6 +692,23 @@ describe("JOB 3266 R2 · der Zugang zu den eigenen Entwürfen im echten Chromium
         );
         expect(daten, `${breite}/${sprache}: nicht jede Zeile nennt ihr Datum`).toBe(
           ALLE_TITEL.length,
+        );
+      }, 120_000);
+
+      it(`L2 · ${breite} px / ${sprache}: auch die ÜBERSICHT „Meine Entwürfe“ zeigt die Titel GANZ`, async () => {
+        expect(fehler, "Prüfstand nicht aufgebaut").toBeNull();
+        const s = seite as Seite;
+        await stelle(breite, sprache, "/entwuerfe", '[data-testid="page-entwuerfe"]');
+        await s.waitForFunction(
+          fn(
+            `() => document.querySelectorAll('[data-testid="page-entwuerfe"] [data-testid="entwurfsliste-eintrag-titel"]').length === 3`,
+          ),
+          undefined,
+          { timeout: 20_000 },
+        );
+        ganzLesbar(
+          await s.evaluate<Titelmass[]>(fn(TITELMASSE_SEITE)),
+          `${breite}/${sprache} · Übersicht`,
         );
       }, 120_000);
 

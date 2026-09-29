@@ -91,6 +91,56 @@ Lauf `:2` unverändert (Diff `a7d699eb..8ee44528`, ohne Konflikt anwendbar) und 
   * „Verwerfen und wechseln“ speichert stattdessen: alle vier Fälle sind rot („Verwerfen hat
     gespeichert“).
 
+**Lauf `:3` Runde 3 — Nacharbeit nach Bens Urteil zu Runde 2 (keine Codefreigabe):**
+
+* **B1-R — frühere Bearbeiter lasen private Entwurfsanhänge.** Die Rechteregel steht jetzt an EINER
+  Stelle: `entwurfSichtbarFuer` in `services/app/src/sichtbarkeit.ts`. Sie gilt für zwei Wege:
+  * `canSeeDraft` (Entwurfsrouten) ruft sie auf.
+  * Der Anhang-Leseweg (`anhangUrteil` → `GET /api/objects/:id/raw`) nutzt sie für `sichtbar`.
+
+  `lastEditor` öffnet nichts mehr. Er zählt nur noch für den Nachweis, dass ein Hochladender ein
+  Objekt einem Entwurf zuordnen durfte (`nachgewiesen`).
+  * Neuer Fall in `entwurf-ist-privat.test.ts`: Die Autorin lädt ein Bild hoch, der Entwurf nennt
+    die Administratorin als `lastEditor`. Das ergibt: Autorin 200, Administratorin 404, Kollege 404,
+    Entwurfsroute für die Administratorin 403.
+  * Gegenprobe mit `sichtbar: entwurfGehoert(entwurf, user.id)` (Stand Runde 2): Die
+    Administratorin bekommt 200, der Fall ist rot.
+* **B2-R — alte Zuweisungen ohne Benachrichtigungsfeld.** Für eine feldlose Zuweisung
+  entscheidet jetzt der Nachweis aus dem alten Ablauf.
+  * Der alte Ablauf war fest: zuweisen → benachrichtigen → Prüf-Vermerk.
+  * Steht der Prüf-Vermerk (`aiCheck`, gelesen vor dem Lauf), gilt sie als benachrichtigt.
+  * Fehlt er, brach der alte Lauf davor ab, und sie gilt als ausstehend.
+  * Umsetzung: `nochZuBenachrichtigen(…, { altbestandBenachrichtigt })` in
+    `services/validation/src/service.ts`; die Route übergibt `stand.aiCheck !== undefined`.
+
+  Neue Fälle in `kein-geister-entwurf.test.ts`:
+  * Fall 10, Bens Messung: alte Datenform, die zweite Zuweisung scheitert. Danach hat jede
+    Prüferin genau eine Mail, auch nach weiteren Wiederholungen.
+  * Fall 11, Gegenrichtung: alte Datenform, der frühere Lauf war vollständig. Die Wiederholung
+    schickt keine zweite Mail.
+
+  Gegenproben:
+  * „Feldlos = erledigt“ (Stand Runde 2): Fall 10 rot mit `{ carla: 1 }` statt
+    `{ bert: 1, carla: 1 }`.
+  * „Feldlos = ausstehend“: Fall 11 rot, je zwei Mails.
+
+  Grenze: Ohne konfigurierten Prüf-Worker gibt es keinen Vermerk. Eine feldlose Zuweisung eines
+  vollständigen alten Laufs bekäme bei einer Wiederholung dann eine zweite Mail (lieber doppelt als
+  nie).
+* **B3-R — Titel der Übersicht sichtbar gekürzt.** `CaptureDraftList.tsx`: Der Zeilenträger der
+  Übersicht trägt kein `truncate` mehr. Der Titel steht als Block mit `break-words`, wie im
+  Blatt-Zweig seit JOB 3266 R3.
+  * Gemountet: Schritt 2 der Abnahmefolge prüft zusätzlich den Klassenvertrag
+    (`titelSichtbarUngekuerzt`). Weder der Titelträger noch ein Behälter bis zur Zeile trägt eine
+    kürzende Klasse. Das ist ausdrücklich kein Pixelmaß, denn jsdom hat kein Layout. Gegenprobe mit
+    `truncate` am Zeilenträger: alle vier Läufe rot.
+  * Pixelmaß im echten Browser: neuer Fall **L2** in
+    `tests/d1-meine-entwuerfe/zugang-schmal-chromium.test.ts`. `/entwuerfe` wird bei 320/360/390/
+    1280 px in DE und EN gemessen, mit Titel- und Zeilenträger, `scrollWidth`/`scrollHeight`
+    gegen die sichtbare Fläche und ohne `ellipsis`. **Lokal nicht ausgeführt:** Es gibt kein
+    `apps/web/dist`, und schwere Browsertests sind auf dem Produktions-Mac nicht erlaubt. Den Fall
+    klärt das Linux-Tor.
+
 **Herkunft.** Lauf `:1` lieferte `2ea90959` (geprüft am Ship-Commit `2525f3d5`, `1.0.0-beta.1.616`).
 Er ist **nicht** in den Basisstand übernommen. Lauf `:2` trägt seine Änderungen wieder ein und
 behebt die drei fachlichen Ben-Befunde aus Runde 1 (Beleg `96239dc4-…`):

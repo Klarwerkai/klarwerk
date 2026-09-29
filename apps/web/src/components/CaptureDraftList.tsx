@@ -466,12 +466,21 @@ export function CaptureDraftList(props: CaptureDraftListProps): JSX.Element | nu
               }`}
             >
               <div className="min-w-0 flex-1">
-                <div className="truncate text-[13px] font-semibold text-text">
+                <div className="text-[13px] font-semibold text-text">
                   {/* JOB 3503: der Titel trägt einen eigenen Träger — die Marken „in Bearbeitung"
                       und „gerade gespeichert" stehen DANEBEN und nicht darin, sonst läse ein
                       Titelvergleich sie mit. Dieselbe Trennung wie im Blatt-Zweig
-                      (`blatt-entwurf-eintrag-titel`, JOB 3266 R3). */}
-                  <span data-testid="entwurfsliste-eintrag-titel">
+                      (`blatt-entwurf-eintrag-titel`, JOB 3266 R3).
+
+                      AUFNAHME gesamt-entwurf-einreichen (Ben Lauf :3 Runde 2, B3-R): hier stand
+                      `truncate` am Zeilenträger — der Titel brach in der normalen Übersicht mit
+                      Auslassungspunkten AM ENDE ab, obwohl der DOM-Text vollständig war. Dieselbe
+                      Behebung wie im Blatt-Zweig (JOB 3266 R3): der Titel bricht um
+                      (`break-words`), ein überlanges Wort bricht innerhalb; die Zeile darf höher
+                      werden. Gemessen im echten Browser in `tests/d1-meine-entwuerfe/
+                      zugang-schmal-chromium.test.ts` (Fall L2), gemountet als Klassenvertrag in
+                      `tests/entwuerfe-verwalten/abnahmefolge-gesamt.test.tsx`. */}
+                  <span data-testid="entwurfsliste-eintrag-titel" className="block break-words">
                     {draftTitle(d, fallbackTitle)}
                   </span>
                   {editingId === d.id ? (

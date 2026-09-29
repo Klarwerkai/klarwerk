@@ -335,6 +335,46 @@ function kopfbandEntwuerfe(): HTMLAnchorElement {
   return el;
 }
 
+// ------------------------------------------------------------------------------------------------
+// LESBARKEIT DES TITELS — was jsdom davon messen kann, und was nicht (Ben Lauf :3 Runde 2, B3-R).
+// ------------------------------------------------------------------------------------------------
+//
+// Bens Befund: ein vollständiger `textContent` beweist keine sichtbare Lesbarkeit — der Titelträger
+// der Übersicht stand in einem `truncate`-Behälter, und die Folge blieb trotzdem grün. jsdom hat
+// kein Layout und lädt kein Tailwind; ein Pixelmaß ist HIER nicht zu haben (das misst
+// `tests/d1-meine-entwuerfe/zugang-schmal-chromium.test.ts`, Fall L2, im echten Browser). Was hier
+// geprüft wird, ist der VERTRAG DER KLASSEN, mit denen eine Kürzung gemacht würde: weder der
+// Titelträger noch ein Behälter bis zur Zeile trägt `truncate`, `whitespace-nowrap`,
+// `text-ellipsis`, `overflow-hidden`/`-clip` oder `line-clamp-*`, und der Träger selbst bricht um
+// (`break-words`, als Block). Gegenprobe: mit `truncate` am Zeilenträger (Stand Runde 2) ist dieser
+// Schritt in allen vier Läufen rot.
+const KUERZENDE_KLASSEN =
+  /^(truncate|whitespace-nowrap|text-ellipsis|overflow-(x-)?(hidden|clip)|line-clamp-\d+)$/;
+
+function titelSichtbarUngekuerzt(): void {
+  const traeger = [
+    ...container.querySelectorAll<HTMLElement>(
+      `${testid("page-entwuerfe")} ${testid("entwurfsliste-eintrag-titel")}`,
+    ),
+  ];
+  expect(traeger.length).toBeGreaterThan(0);
+  for (const el of traeger) {
+    const titel = (el.textContent ?? "").trim();
+    expect(el.classList.contains("break-words"), `„${titel}“ bricht nicht um`).toBe(true);
+    expect(el.classList.contains("block"), `„${titel}“ steht nicht als Block`).toBe(true);
+    for (
+      let knoten: HTMLElement | null = el;
+      knoten && knoten.getAttribute("data-testid") !== "entwurfsliste-eintrag";
+      knoten = knoten.parentElement
+    ) {
+      const kuerzend = [...knoten.classList].filter((k) => KUERZENDE_KLASSEN.test(k));
+      expect(kuerzend, `„${titel}“ steht in einem kürzenden Träger (${knoten.tagName})`).toEqual(
+        [],
+      );
+    }
+  }
+}
+
 function seitenTitel(): string[] {
   return [
     ...container.querySelectorAll(
@@ -426,8 +466,9 @@ describe("P-ENTWUERFE-VERWALTEN · die Abnahmefolge am Stück", () => {
         await warteAuf(testid("page-entwuerfe"));
         await flush();
 
-        // 2 · NEUESTER ZUERST, VOLLSTÄNDIGER TITEL.
+        // 2 · NEUESTER ZUERST, VOLLSTÄNDIGER TITEL — als Text UND ohne kürzenden Träger.
         expect(seitenTitel()).toEqual([ZIEL.title, "Anlage Süd", "Ventil V2 Nord"]);
+        titelSichtbarUngekuerzt();
 
         // 3 · FINDEN — per INHALT (ein Wort, das in keinem Titel steht) …
         const suche = await warteAuf<HTMLInputElement>(testid("entwurfsliste-suche"));

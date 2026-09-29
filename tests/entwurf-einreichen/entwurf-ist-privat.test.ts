@@ -19,6 +19,9 @@ import { buildApp, buildServices } from "../../services/app/src/build-app";
 
 type Services = ReturnType<typeof buildServices>;
 
+const PNG_DATA_URL =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+
 type App = ReturnType<typeof buildApp>;
 
 async function anmelden(app: App, email: string) {
@@ -178,5 +181,75 @@ describe("debbb8e8 · ein Entwurf ist privat — nur seine Autorin sieht ihn, au
       admin: await inListe(b.app, b.ada, "/api/drafts", alt.id),
       expertin: await inListe(b.app, b.annaTelefon, "/api/drafts", alt.id),
     }).toEqual({ admin: true, expertin: false });
+  });
+
+  // ================================================================================================
+  // Lauf :3 Runde 3 · Ben B1-R — DIE INHALTE EINES PRIVATEN ENTWURFS: DER ANHANG-LESEWEG.
+  // ================================================================================================
+  //
+  // Bens Gegenprobe: ein Bild, das die Autorin hochlädt und nur in ihrem Entwurf trägt; der Entwurf
+  // nennt die Administratorin als frühere Bearbeiterin (`lastEditor`, historische Weitergabe). Die
+  // Entwurfsroute gab ihr 403 — `GET /api/objects/:id/raw` gab ihr 200 mit den Bytes, weil die
+  // Anhangregel `lastEditor` als Leserecht zählte. Jetzt entscheidet an beiden Wegen dieselbe
+  // Funktion (`entwurfSichtbarFuer`, services/app/src/sichtbarkeit.ts).
+  // Gegenprobe: mit `sichtbar: entwurfGehoert(entwurf, user.id)` (Stand Runde 2) ist der Fall rot
+  // („expected 200 to be 404").
+  it("Anhang eines privaten Entwurfs: die Autorin bekommt die Bytes, eine frühere Bearbeiterin (Admin) nicht", async () => {
+    const b = await buehne();
+    const adaId = await (async () => {
+      const res = await b.app.inject({
+        method: "POST",
+        url: "/api/auth/login",
+        payload: { email: "ada@x.de", password: "secret123" },
+      });
+      return res.json().user.id as string;
+    })();
+    const hochgeladen = await b.app.inject({
+      method: "POST",
+      url: "/api/objects",
+      headers: b.annaTelefon,
+      payload: {
+        name: "typenschild.png",
+        mime: "image/png",
+        data: PNG_DATA_URL,
+        kind: "image",
+        purpose: "attachment",
+      },
+    });
+    expect(hochgeladen.statusCode, hochgeladen.body).toBe(201);
+    const objectId = hochgeladen.json().id as string;
+    const entwurf = await b.app.inject({
+      method: "POST",
+      url: "/api/drafts",
+      headers: b.annaTelefon,
+      payload: {
+        title: "Annas Entwurf mit Bild",
+        bodyHtml: `<p><img src="/api/objects/${objectId}/raw"></p>`,
+      },
+    });
+    expect(entwurf.statusCode).toBeLessThan(300);
+    const draftId = entwurf.json().id as string;
+    // Die historische Weitergabe: die Administratorin steht als letzte Bearbeiterin am Entwurf.
+    await b.services.capture.continueDraft(draftId, {}, adaId);
+    expect((await b.services.capture.getDraft(draftId))?.lastEditor).toBe(adaId);
+
+    const roh = (headers: Record<string, string>) =>
+      b.app.inject({ method: "GET", url: `/api/objects/${objectId}/raw`, headers });
+    const alsAutorin = await roh(b.annaRechner);
+    const alsAdmin = await roh(b.ada);
+    const alsKollege = await roh(b.otto);
+    const entwurfAlsAdmin = await b.app.inject({
+      method: "GET",
+      url: `/api/drafts/${draftId}`,
+      headers: b.ada,
+    });
+
+    expect({
+      autorin: alsAutorin.statusCode,
+      admin: alsAdmin.statusCode,
+      kollege: alsKollege.statusCode,
+      entwurfAlsAdmin: entwurfAlsAdmin.statusCode,
+    }).toEqual({ autorin: 200, admin: 404, kollege: 404, entwurfAlsAdmin: 403 });
+    expect(alsAdmin.rawPayload.length).toBeLessThan(alsAutorin.rawPayload.length);
   });
 });

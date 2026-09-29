@@ -504,5 +504,73 @@ describe("R-0036 · Einreichen eines gespeicherten Entwurfs lässt keinen Geiste
       expect((await v.senden()).statusCode).toBe(200);
       expect(zustellungen(v.post)).toEqual({ "bert@x.de": 1, "carla@x.de": 1 });
     });
+
+    // ==========================================================================================
+    // Lauf :3 Runde 3 · Ben B2-R — ALTBESTAND: Zuweisungen OHNE Benachrichtigungsstand.
+    // ==========================================================================================
+    // Ein Vorgang, der VOR diesem Stand abbrach, hat Zuweisungen in der alten Datenform (ohne
+    // `benachrichtigung`). Die Ablage wird hier so gestellt, wie der alte Code sie hinterliess:
+    // jede angelegte Zuweisung verliert das neue Feld. Der alte Ablauf war fest
+    // zuweisen → benachrichtigen → Prüf-Vermerk; der Vermerk ist deshalb der Nachweis, ob der
+    // frühere Lauf über die Benachrichtigung hinauskam.
+    // Gegenprobe: mit `nochZuBenachrichtigen` aus Runde 2 (feldlos = erledigt) ist Fall 10 rot —
+    // „{ carla: 1 }" statt „{ bert: 1, carla: 1 }", genau Bens Messung.
+    function alteDatenform(scheitertBeim?: number) {
+      const echt = InMemoryAssignmentRepo.prototype.create;
+      const ablagen = new Set<InMemoryAssignmentRepo>();
+      let aufrufe = 0;
+      vi.spyOn(InMemoryAssignmentRepo.prototype, "create").mockImplementation(function (
+        this: InMemoryAssignmentRepo,
+        zuweisung,
+      ) {
+        aufrufe += 1;
+        ablagen.add(this);
+        if (aufrufe === scheitertBeim) {
+          return Promise.reject(new Error("Ablage kurz nicht erreichbar"));
+        }
+        const { benachrichtigung: _neuesFeld, ...alt } = zuweisung;
+        return echt.call(this, alt);
+      });
+      return ablagen;
+    }
+
+    it("Fall 10 · ALTBESTAND, zweite Zuweisung scheiterte: die feldlose erste gilt NICHT als benachrichtigt — beide genau einmal", async () => {
+      const v = await zweiPruefer("einreichen-altbestand-teil-0001");
+      alteDatenform(2);
+
+      const erster = await v.senden();
+      expect(erster.statusCode).toBe(500);
+      expect(await v.zugewiesen()).toEqual({ bert: 1, carla: 0 });
+      expect(zustellungen(v.post)).toEqual({});
+      vi.mocked(InMemoryAssignmentRepo.prototype.create).mockRestore();
+
+      expect((await v.senden()).statusCode).toBe(200);
+      expect(await v.zugewiesen()).toEqual({ bert: 1, carla: 1 });
+      expect(zustellungen(v.post)).toEqual({ "bert@x.de": 1, "carla@x.de": 1 });
+
+      expect((await v.senden()).statusCode).toBe(200);
+      expect(zustellungen(v.post)).toEqual({ "bert@x.de": 1, "carla@x.de": 1 });
+    });
+
+    it("Fall 11 · ALTBESTAND, früherer Lauf VOLLSTÄNDIG (Vermerk steht): die Wiederholung schickt KEINE zweite Mail", async () => {
+      const v = await zweiPruefer("einreichen-altbestand-voll-0001");
+      const ablagen = alteDatenform();
+
+      const erster = await v.senden();
+      expect(erster.statusCode).toBe(201);
+      expect(erster.json().aiCheck?.status).toBe("pending");
+      expect(zustellungen(v.post)).toEqual({ "bert@x.de": 1, "carla@x.de": 1 });
+      // So stand es nach dem alten Code in der Ablage: Zuweisungen ohne Feld.
+      vi.mocked(InMemoryAssignmentRepo.prototype.create).mockRestore();
+      for (const ablage of ablagen) {
+        for (const z of await ablage.all()) {
+          const { benachrichtigung: _neuesFeld, ...alt } = z;
+          await ablage.update(alt);
+        }
+      }
+
+      expect((await v.senden()).statusCode).toBe(200);
+      expect(zustellungen(v.post)).toEqual({ "bert@x.de": 1, "carla@x.de": 1 });
+    });
   });
 });

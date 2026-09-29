@@ -38,6 +38,7 @@ import { type Guards, type SessionUser, sendError } from "../http";
 // ausdrücklich DOM- UND paketfrei gehalten, damit der Browser denselben Kern nutzen kann.
 import { bildVerkleinerung, bildausfaelleVermerken } from "../import/bildverkleinerung";
 import type { AssignmentNotifier } from "../notify";
+import { entwurfSichtbarFuer } from "../sichtbarkeit";
 
 // AUFTRAG-mega19 Block B: EXPORTIERT, damit die Composition-Root den Entwurfs-Zugang der
 // Dokumentübernahme (ko-routes, `DraftPromotionSource`) aus DERSELBEN Regel bildet. Zwei
@@ -54,11 +55,12 @@ import type { AssignmentNotifier } from "../notify";
 // angelegt, `tests/app/ko-author-paths.test.ts`) gehört niemandem. Er ist niemandes privater
 // Entwurf, und ohne diese Zeile käme ihn keiner mehr fortsetzen, einreichen oder löschen. Nur die
 // Verwaltung erreicht ihn — wie bisher.
+//
+// Lauf :3 Runde 3 (Ben B1-R): die Regel selbst steht in `sichtbarkeit.ts` (`entwurfSichtbarFuer`),
+// weil der Anhang-Leseweg (`GET /api/objects/:id/raw`) dieselbe braucht. Diese Funktion bleibt der
+// Name, unter dem die Entwurfsrouten und die Composition-Root sie rufen.
 export function canSeeDraft(user: SessionUser, draft: Draft): boolean {
-  if (!draft.originalAuthor) {
-    return user.role === "admin";
-  }
-  return draft.originalAuthor === user.id;
+  return entwurfSichtbarFuer(user, draft);
 }
 
 // ================================================================================================
@@ -1590,9 +1592,17 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
           // ein Versand, bleibt genau diese Zuweisung „ausstehend". Bleibt nur: Versand gelungen,
           // Abhaken gescheitert → die Wiederholung schickt diese eine Mail ein zweites Mal (lieber
           // doppelt als nie).
+          //
+          // ALTBESTAND (Ben Lauf :3 Runde 2, B2-R): eine Zuweisung ohne Benachrichtigungsstand
+          // stammt aus dem früheren Ablauf. Dort galt fest: zuweisen → benachrichtigen → Prüf-
+          // Vermerk. Steht der Vermerk (`stand.aiCheck`, gelesen VOR diesem Lauf), ist der frühere
+          // Lauf über die Benachrichtigung hinausgekommen; fehlt er, brach er davor ab, und die
+          // feldlose Zuweisung gilt als noch zu benachrichtigen.
           if (reviewers.length > 0) {
             await validation.zuweisenBeimEinreichen(koId, reviewers, user.id);
-            for (const prueferin of await validation.nochZuBenachrichtigen(koId, reviewers)) {
+            for (const prueferin of await validation.nochZuBenachrichtigen(koId, reviewers, {
+              altbestandBenachrichtigt: stand.aiCheck !== undefined,
+            })) {
               await notifyAssignment?.(koId, [prueferin]);
               await validation.benachrichtigungErledigt(koId, prueferin);
             }

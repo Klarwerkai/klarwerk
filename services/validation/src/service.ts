@@ -637,11 +637,26 @@ export class ValidationService {
 
   // Wer von diesen Personen hat für das KO eine Zuweisung, deren Benachrichtigung noch AUSSTEHT?
   // Reine Lesefrage an die eigene Ablage.
-  async nochZuBenachrichtigen(koId: string, userIds: readonly string[]): Promise<string[]> {
+  //
+  // ALTBESTAND (Ben Lauf :3 Runde 2, B2-R): Zuweisungen aus der Zeit vor dem Feld tragen KEINEN
+  // Benachrichtigungsstand. Ob ihre Mail lief, weiss diese Ablage nicht — der Aufrufer weiss es:
+  // `altbestandBenachrichtigt` sagt, ob der frühere Lauf nachweislich über die Benachrichtigung
+  // hinausgekommen ist. Ohne diesen Nachweis gilt eine feldlose Zuweisung als AUSSTEHEND — ein
+  // abgebrochener alter Vorgang darf nicht allein wegen des fehlenden Feldes als fertig gelten.
+  async nochZuBenachrichtigen(
+    koId: string,
+    userIds: readonly string[],
+    opts: { altbestandBenachrichtigt: boolean },
+  ): Promise<string[]> {
     const offen: string[] = [];
     for (const userId of userIds) {
       const zuweisung = await this.assignments.find(koId, userId);
-      if (zuweisung?.benachrichtigung === "ausstehend") {
+      if (!zuweisung) {
+        continue;
+      }
+      const stand =
+        zuweisung.benachrichtigung ?? (opts.altbestandBenachrichtigt ? "erledigt" : "ausstehend");
+      if (stand === "ausstehend") {
         offen.push(userId);
       }
     }
