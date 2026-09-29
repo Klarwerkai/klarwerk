@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { ReactNode } from "react";
+import type { ReactNode, RefObject } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useSearchParams } from "react-router-dom";
@@ -49,6 +49,7 @@ import {
 } from "../../lib/createOperation";
 import { isDemoContext } from "../../lib/demoPilotPath";
 import { CLEARED_DRAFT_BODY_HTML } from "../../lib/draftBody";
+import { erfassenFehlersatz } from "../../lib/erfassenFehlersatz";
 import { dominantCategory, pickExampleKo } from "../../lib/intakeExample";
 import { INTAKE_STARTERS, type IntakeStarter } from "../../lib/intakeStarters";
 import { deriveIntakeSuggestion } from "../../lib/intakeSuggestion";
@@ -164,13 +165,6 @@ type AssistRequest = AssistAction | { instruction: string };
 type LetzteAktion =
   | { art: "laden" | "speichern" | "einreichen" | "struktur" }
   | { art: "assist"; aktion: AssistRequest };
-
-function fehlerMeldung(err: unknown, rueckfall: string): string {
-  if (err instanceof ApiError) {
-    return err.message;
-  }
-  return err instanceof Error ? err.message : rueckfall;
-}
 
 // ================================================================================================
 // JOB 3353 · B — DIE GESPERRTE CLOUD IST KEIN „irgendwas ist schiefgegangen".
@@ -457,6 +451,15 @@ export function Blatt({
   const [submittedKo, setSubmittedKo] = useState<Pick<KnowledgeObject, "id" | "title"> | null>(
     null,
   );
+  // Aufnahme `gesamt-erfassung-einstieg` (R-0084): Nach dem Einreichen springt der Blick auf die
+  // Erfolgszeile, statt auf dem gerade leer geräumten Blatt stehen zu bleiben. Fokus statt nur
+  // Bildlauf: Tastatur und Screenreader landen damit auf „Eingereicht: …" und ihren drei Wegen.
+  const erfolgRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (submittedKo) {
+      erfolgRef.current?.focus();
+    }
+  }, [submittedKo]);
   const [submitValidation, setSubmitValidation] = useState(false);
   const [restartOffer, setRestartOffer] = useState<string | null>(null);
   // JOB 3062 R6 (Auftrag §9): welche Handlung zuletzt versucht wurde — sie und keine andere
@@ -1209,7 +1212,7 @@ export function Blatt({
       setRestartOffer(
         e instanceof ApiError && createConflictOffersRestart(e.status, e.code) ? e.message : null,
       );
-      setErr(fehlerMeldung(e, t("fd.errSaveFailed")));
+      setErr(erfassenFehlersatz(e, t, t("fd.errSaveFailed")));
     },
   });
 
@@ -1290,7 +1293,7 @@ export function Blatt({
         setErr(null);
         return;
       }
-      setErr(fehlerMeldung(e, t("fd.errSaveFailed")));
+      setErr(erfassenFehlersatz(e, t, t("fd.errSaveFailed")));
     },
   });
 
@@ -1783,7 +1786,7 @@ export function Blatt({
       // §4b.5: Der Eintrag bleibt stehen — gelöscht ist nur, was der Server bestätigt hat. Die
       // Rückfrage geht zu, damit die Zeile wieder bedienbar ist; die Störung steht im Hinweis.
       setLoeschFrageId(null);
-      push("error", fehlerMeldung(e, t("state.error")));
+      push("error", erfassenFehlersatz(e, t, t("state.error")));
     },
   });
 
@@ -3055,12 +3058,25 @@ export function Blatt({
               lang vergessen — die Links der Erfolgszeile („Objekt ansehen", „Validierung öffnen")
               nahmen keinen Klick mehr an, und `demo-ux-v1-capture-frontdoor.spec.ts` (Fall 4) lief
               genau deshalb in den Zeitablauf. Gemessen, nicht überlegt. */}
+          {/* Aufnahme `gesamt-erfassung-einstieg` (R-0084): Was jeder der beiden Knöpfe FOLGT,
+              steht an ihm selbst — als Beschreibung für Screenreader (`aria-describedby`) und als
+              Hinweis beim Überfahren (`title`). Kein Absatz auf der Fläche: das Zielbild H3 hat
+              den Erklärtext bewusst entfernt (`zielbild-h3-kein-erklaertext.test.ts`). Die Form
+              unterscheidet die beiden weiterhin ohne Lesen: umrandet gegen gefüllt. */}
+          <span id="blatt-folge-entwurf" hidden>
+            {t("einstieg.knopf.entwurf")}
+          </span>
+          <span id="blatt-folge-einreichen" hidden>
+            {t("einstieg.knopf.einreichen")}
+          </span>
           <div className="pointer-events-auto flex gap-2">
             <button
               type="button"
               data-testid="blatt-entwurf-sichern"
               disabled={!canSave}
               onClick={requestSave}
+              aria-describedby="blatt-folge-entwurf"
+              title={t("einstieg.knopf.entwurf")}
               className="rounded-[10px] border border-hairline bg-surface px-5 py-2.5 text-[14px] text-text disabled:opacity-50"
             >
               {t("erfassen.entwurfSichern")}
@@ -3070,6 +3086,8 @@ export function Blatt({
               data-testid="blatt-einreichen"
               disabled={busy}
               onClick={requestSubmit}
+              aria-describedby="blatt-folge-einreichen"
+              title={t("einstieg.knopf.einreichen")}
               className="rounded-[10px] bg-[#C2500A] px-5 py-2.5 text-[14px] font-semibold text-white disabled:opacity-50"
             >
               {t("erfassen.einreichen")}
@@ -3147,6 +3165,7 @@ export function Blatt({
                 : null
             }
             aufNeuerEintrag={submittedKo ? resetForNewEntry : null}
+            erfolgRef={erfolgRef}
             // JOB 3062 R7: Der Knopf UNTER den Knöpfen wiederholt nur BLATTWEGE. Wäre er auch für
             // die KI zuständig, könnte er nach einem KI-Lauf und einem späteren Speicherfehler die
             // falsche Handlung auslösen — genau der Fehler, den ben an R6 beschrieben hat. Der
@@ -3196,6 +3215,7 @@ function BlattLage({
   aufNeuerVorgang,
   aufNeuerEintrag,
   aufWiederholen,
+  erfolgRef,
 }: {
   fehler: string | null;
   erfolg: Pick<KnowledgeObject, "id" | "title"> | null;
@@ -3213,6 +3233,8 @@ function BlattLage({
   aufNeuerEintrag: (() => void) | null;
   /** §9: der Wiederholweg jedes Fehlers — auch dessen, für den es keinen eigenen Rückweg gibt. */
   aufWiederholen: (() => void) | null;
+  /** R-0084: Nach dem Einreichen springt der Blick auf diese Zeile (Fokus, s. `Blatt`). */
+  erfolgRef: RefObject<HTMLDivElement>;
 }): JSX.Element | null {
   const { t } = useTranslation();
   if (erfolg) {
@@ -3232,7 +3254,12 @@ function BlattLage({
     // an der Stelle auf; die „eine Zeile" wäre dann genau bei der Rolle, die den Weg NICHT gehen
     // darf, zwei Zeilen gewesen. `inline-flex` an beiden Fassungen hält sie in der Zeile.
     return (
-      <div data-testid="blatt-lage" className="pointer-events-auto text-[13px] text-trust-pos-text">
+      <div
+        ref={erfolgRef}
+        data-testid="blatt-lage"
+        tabIndex={-1}
+        className="pointer-events-auto text-[13px] text-trust-pos-text"
+      >
         {t("erfassen.eingereicht")}{" "}
         <Link className="font-semibold underline" to={`/wissen/${erfolg.id}`}>
           {erfolg.title}

@@ -7,6 +7,20 @@
 > `PROJECT_CONTEXT/13_ASSISTENT_ZWISCHENBERICHT.md` (Rohstand: `docs/boss-assistant/`).
 > Live-Version dort bestätigt: **v1.0.0-beta.1.4**.
 
+## 29.09.2026 — Aufnahme „Erfassungsfläche und ihre Einstiege“ (gesamt-erfassung-einstieg)
+
+- Alle 42 Aufnahmepunkte am Code abgeglichen; Ergebnis bzw. offene Entscheidung je Punkt in
+  `tests/erfassung-einstieg/README.md`. Tragend: das Blatt (JOB 3062/H3) ersetzt Schrittleiste,
+  „Weitere Wege“ und Modus-Leiste — ältere Punkte dazu sind als Widerspruch zur Entscheidung Pedi
+  vorgelegt, nicht zurückgebaut.
+- Geliefert: übersetzter Satz im roten Kasten für Formfehler, zu große Inhalte und abgelaufene Frist
+  (`lib/erfassenFehlersatz.ts`); Folge von „Entwurf sichern“/„Einreichen“ als Beschreibung am Knopf;
+  Fokus auf der Erfolgszeile nach dem Einreichen; Beispiel-Rückfrage dreisprachig; vier Hilfetexte,
+  die nicht vorhandene Knöpfe bzw. „lokal im Browser“ nannten, berichtigt.
+- Offen zur Entscheidung u. a.: N-0068 (Blatt-Inhalt beim Wechsel ins Expertenformular),
+  Wortlaut „Vordertür-Entwurf geöffnet“ u. a. technische Beschriftungen, Leertextfarbe `#9AA2B1`
+  (K2b, gesperrt „nicht vor der Vorführung“).
+
 ## 26.09.2026 — FE-003 Seitentutorial „Fragen“ (Pilot)
 
 - Knopf „Tutorial“ unter dem Kopfband (nur `/fragen`), aufklappender Unterricht in 7 Schritten mit
