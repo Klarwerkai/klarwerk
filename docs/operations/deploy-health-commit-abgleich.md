@@ -1,7 +1,8 @@
 # Abgleich: Deployment-Commit ↔ `/health.commit` (Auftrag deploy-health-commit)
 
 Stand 29.09.2026, Lauf `deploy-health-commit:4` (setzt Lauf 3 ab `cd688810` fort; Code unverändert,
-nur Messung 7 ergänzt). Lauf 3 übernahm den Kandidaten
+nur Messung 7 ergänzt; Runde 2 führt `main` = `8f0ec01c` zusammen, `APP_VERSION` = `package.json` =
+`1.0.0-beta.1.632`). Lauf 3 übernahm den Kandidaten
 `9a8986c2` aus Lauf 2 (B1–B7, R-0786, R-1028) unverändert auf `1530dfeb` und schloss Bens
 Befund B8 (R-0794, siehe unten). Server und Coolify wurden in keinem dieser Läufe verändert.
 
