@@ -25,7 +25,7 @@ const DATEIEN = [
 // ganzer Zweck und bleibt so. Dieses `afterAll` ruft `schliesseChromium("<echter Pfad>", …)` mit dem
 // Pfad als LITERAL, und die Messstelle setzt ihn unverändert in ihre drei Ausgabelagen
 // (`chromium-abbau.ts:66` kein Browser, `:90` geworfener Fehler, `:95-97` Protokollzeile). Weil
-// `lauf()` die ganze Unterlaufausgabe weiterreicht (`console.log(ausgabe)`, unten), stand
+// `lauf()` die ganze Unterlaufausgabe weiterreicht (`alsProbeWeiterreichen`, unten), stand
 //
 //     Chromium-Abbau · tests/start-karten-schmal/…-chromium.test.tsx · 45028.67ms · Grenze …
 //
@@ -83,6 +83,25 @@ function abbauzeilen(ausgabe: string): string[] {
     .split("\n")
     .filter((z) => !/^\s*\d+\s*\|/.test(z))
     .flatMap((z) => z.match(/Chromium-Abbau · [^\n]*/g) ?? []);
+}
+
+/**
+ * Die Unterlaufausgabe, so wie sie ins Torprotokoll weitergereicht wird.
+ *
+ * Aufnahme 20260922 (gesamt-bestandsblick, Nacharbeit nach Pedi-Entscheidung 4080cacc): der
+ * Negativfall ist absichtlich rot, und Vitest meldet das mit „ FAIL  abbau-0.test.ts [ abbau-0.test.ts ]"
+ * je Wegwerfdatei. Weitergereicht stand diese Zeile zwischen den echten Läufen, und die Auswertung
+ * des Cloud-Vollchecks (pa-1790499744-198b9217, auch im bestandenen lt-1790659683-fb33fd0f) zählte
+ * `abbau-0`/`abbau-1` als rote Tests — dieselbe Fehllesung wie die Etiketten von JOB 3573, nur am
+ * Statuswort statt am Pfad. Weitergereicht wird deshalb entfärbt und mit einem Statuswort, das die
+ * Probe als Probe ausweist; die Summenzeilen des Unterlaufs („Test Files  2 failed (2)") tragen
+ * dasselbe Etikett, damit keine Auswertung sie für die Summe des echten Laufs hält. Die Vergleiche
+ * der Fälle unten lesen weiter die unveränderte Ausgabe.
+ */
+function alsProbeWeiterreichen(ausgabe: string): string {
+  return klartext(ausgabe)
+    .replace(/^(\s*)FAIL(?=\s)/gm, "$1ROT (absichtlich, Probe t1b)")
+    .replace(/^(\s*)(Test Files|Tests)(?=\s)/gm, "$1Probe t1b · $2");
 }
 
 /** Jede Abbauzeile eines Probenlaufs, die sich NICHT als Probe ausweist — muss immer leer sein. */
@@ -270,7 +289,7 @@ async function lauf(modus: Modus): Promise<{ code: number; ausgabe: string }> {
       code = r.code;
       ausgabe = r.stdout + r.stderr;
     }
-    console.log(ausgabe);
+    console.log(alsProbeWeiterreichen(ausgabe));
     return { code, ausgabe };
   });
 }

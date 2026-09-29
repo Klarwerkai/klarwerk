@@ -2553,7 +2553,21 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     //                Mac-Word und im Browsertab (kein Schluessel) ist die Reihenfolge damit exakt
     //                die von vor JOB 4076.
     // GEMESSEN: s. RUECKGABE dieser Runde.
-    const PIN = "6d61b8505a6ede48ada440bd5fdea9747b7d0da706f65e0874e3cf416c3d34ca";
+    // ============================================================================================
+    // AUFNAHME 20260922 · GESAMT-BESTANDSBLICK (Runde 2, Bens Befunde 1+2) — der Pin wandert.
+    // Geaendert: `readWholeDocument` nimmt einen optionalen zweiten Rueckruf `fehlschlag` (ohne ihn
+    // byteweise das alte Verhalten); `ka1Aktualisieren` liefert ein Versprechen und fuehrt eine
+    // Lesegeneration (`ka1Stand`, `ka1Aktuell`); `ka3Ausfuehren` wartet vor dem Vertrag auf das
+    // Begriffsbild des aktuellen Dokuments. Auslieferungsfolgen: KEIN Manifestwrite, KEINE neue
+    // Office-API (derselbe `Word.run`-Weg), KEIN neues Abrufziel, KEINE geaenderte CSP, KEINE neue
+    // Nutzlast. Neu ist allein, dass nach der Schreibruhe das Dokument erneut gelesen wird.
+    // Wirkungsnachweis: tests/app/ka3-bestandsblick-aktueller-stand.test.tsx.
+    // Nacharbeit (Pedi-Entscheidung 4080cacc, Option A) — der Pin wandert noch einmal, am Code
+    // aendert sich nichts: der reine Kommentarkopf von KW-WORDVERGLEICH (91 Zeilen) steht jetzt
+    // wortgleich in docs/word-addin/word-vergleich-kopf.md, damit das Inline-Skript unter der
+    // Schranke von tests/klara-zerlegung/schnittflaechen.test.ts B3 bleibt. Auslieferungsfolgen:
+    // keine — nur Kommentarzeilen fallen weg.
+    const PIN = "c6908a0f265cf708674ea149ae3a1265c8c40e811b5781bd9a10bfc5e3934b1e";
     const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
     expect(
       ist,

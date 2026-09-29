@@ -1,0 +1,63 @@
+# Bestandsblick — „Haben wir das schon?" und die zwei Prüfverträge
+
+Stand: 27.09.2026, Lauf 2 (Aufgabenrevision 4) auf Basis `1eb17b73` (`1.0.0-beta.1.621`). Lauf 1 (Runden 1–3, Commits `142567cc`, `e7a1b469`, `20ffb221`, zuletzt auf `1.0.0-beta.1.615`) war nie in diese Basis eingemischt; Lauf 2 übernimmt seine Lieferung unverändert (Doku, Vergleichstest, KA3-Korrektur samt Tests) und prüft sie hier erneut. Seit `1.0.0-beta.1.615` hat sich an `check-text-detection.ts`, `knowledge-check.ts`, `taskpane.html`, `i18n.ts` und `extensions/` nichts geändert.
+Auftrag: Aufnahme 20260922 · gesamt-bestandsblick („Beim Schreiben ähnliche vorhandene Wissensartikel anbieten").
+
+Diese Datei hält zweierlei fest: **(1)** die Unterschiede der beiden Prüfverträge (R-0332, R-1466), abgesichert durch einen Vergleichstest; **(2)** den Abgleich aller zugeordneten Anliegen mit dem heute gelieferten Stand, samt Beleg und offenen Resten.
+
+---
+
+## 1. Die zwei Prüfverträge
+
+| | `checkText` — Dublettenprüfung | `checkKnowledge` — Live-Check |
+|---|---|---|
+| Route | `POST /api/check-text` | `POST /api/knowledge/check` |
+| Kern | `services/app/src/check-text-detection.ts` | `services/app/src/knowledge-check.ts` |
+| Verbraucher | Word-Panel: „Haben wir das schon?", Dublettenprüfung vor dem Einreichen (S6), Konfliktkarte (KA7) | Web-App „Wissen erfassen" (Live-Reaktion im Editor) |
+| Frage | Add-in-Schlüssel: „Steht es als **geprüftes** Wissen da?" · angemeldeter Mensch: „Gibt es es schon, auch ungeprüft?" | „Ähnelt es irgendetwas im Bestand?" |
+| Zustand `validiert` | ja | ja |
+| Zustand `offen` (eingereicht, ungeprüft) | Add-in-Schlüssel **nein**, angemeldeter Mensch ja (`includeUnvalidated`, JOB 3020) | ja (zustandsneutral) |
+| Demobestand (`demoSeed`) | **nein** (kein Wissen des Hauses) | **ja** (Demo-/Testbetrieb soll etwas finden) |
+| vertraulich / streng vertraulich | nein | nein (`dropConfidential`) |
+| Papierkorb | nein (`findCandidates`) | nein (`findCandidates`) |
+| Kandidatendeckel | 20 (`DETECTION_CANDIDATE_CAP`) | 40 (`CANDIDATE_LIMIT`) |
+| Ähnlichkeitsmaß | deterministische Überdeckung des Overlap-Dienstes; Modell nur mit `want:"deep"` und nicht vertraulich | Trigramm ≥ 0,18, rein lexikalisch; Konflikt-Judge nur, wenn die Route ihn übergibt |
+| Ergebnisform | `duplicates[]` (`koId`, `relation`, …), `conflicts[]`, `sourceHits[]` | `status`, `similar[]` (`id`, `score`, …), `conflicts[]` |
+| Fundort je Treffer | `koStatus`, `koCategory` (+ `koVersion`) | `koStatus`, `koCategory` — dasselbe Vokabular |
+
+**Beide Wege bleiben bestehen.** Sie dienen verschiedenen Flächen, und die Abweichungen sind gewollt: Der Add-in-Schlüssel darf nie aus Ungeprüftem antworten (Capability `checktext.validated`), der Live-Check soll im Demobetrieb Bestand finden.
+
+**Reichweite (ausdrücklich):** Beide Verträge prüfen ausschließlich **Wissensobjekte** (`findCandidates`). **Erfassungsentwürfe** prüft keiner von beiden, und eine Kollision mit für den Fragenden Unsichtbarem wird an keinen berechtigten Prüfer weitergeleitet. Die Frage „ähnelt es irgendetwas im Bestand, **auch Entwürfen**?" aus R-0332 beantwortet heute also keiner der beiden Wege vollständig — siehe Abschnitt 3 (Quellenkonflikt R-1788/R-1592).
+
+**Vergleichstest:** `tests/pruefwege-vergleich/zwei-pruefwege-antworten-verschieden.test.ts` fährt einen Bestand aus fünf Objekten (validiert · offen · demo · vertraulich · Papierkorb) mit demselben Prüftext durch `checkText` (Add-in und Mensch) und `checkKnowledge` am echten `KoService`. Die Tabelle `ERWARTET` im Test entspricht den Zeilen „Zustand" bis „Papierkorb" oben. V2 hält fest, dass die Unterschiedsliste genau **zwei** Zeilen hat (`offen`, `demo`). Wer einen Unterschied ändert, ändert Test und diese Tabelle im selben Schritt. Der Test legt **keinen** Erfassungsentwurf an — er sichert die Unterschiede, die es heute gibt, nicht die fehlende Entwurfsreichweite.
+
+Ein **dritter Weg** beantwortet eine ähnliche Frage, ist aber kein Prüfvertrag: der automatische Bestandsblick der Angebotskarten (KA2) fragt über `POST /api/ask` mit `mode: "retrieval-only"` — und damit ausschließlich **validiertes** Wissen, ohne Modell. Die Angebotskarten zeigen deshalb nie Ungeprüftes; der Knopf „Haben wir das schon?" schon (bei angemeldetem Menschen). Das ist bewusst so: Der Hintergrundblick läuft ungefragt.
+
+---
+
+## 2. Abgleich der Anliegen (Stand und Beleg)
+
+Die Belegtests liefen am 26.09.2026 auf `1.0.0-beta.1.615` grün (Runde 1: 19 Dateien, 362 Tests) und in Lauf 2 am 27.09.2026 auf `1.0.0-beta.1.621` erneut grün (24 Dateien, 341 Tests, Befehl in der Rückgabe). **Grün heißt nicht erfüllt:** Bens Gegenproben in Runde 1 fanden zwei Wirkungsfehler der Angebotskarten, die alle damaligen Tests bestanden (Zeile KA3).
+
+| Anliegen | Stand | Geliefert (Commit, Datum) | Beleg |
+|---|---|---|---|
+| R-0049 · R-0372 · R-0440 · R-1774 (KA1 Begriffsbild) | **erfüllt** | `90eddf2b` 18.08. (KA1 D2); Panelblock `KW-KA1-TERMS-*` in `apps/web/public/word-addin/taskpane.html` | `tests/app/word-addin.test.ts` (Gruppe „JOB 1149 · KA1": Suchregel-Äquivalenz, Deckel, kein Egress), `tests/knowledge/ka1-begriffsbild-uebergabe.test.ts` |
+| R-1166 (Prüfungen liegen fertig, aber nicht eingebaut) | **überholt** — der Erzeuger `window.klaraBestandsblick` steht seit `d7d7efc5` (22.08., JOB 1571 D14) unbedingt im Produkt | — | `tests/app/ka2-vertrag-bestandsblick.test.ts` (führt das ganze ausgelieferte Fenster aus) |
+| R-0008 · R-0354 · R-0374 · R-1776 (KA3 Angebotskarten) | **Teilstand bis Runde 1, in Runde 2 korrigiert — Abnahme durch Ben ausstehend.** Bis zur Basis `c04ec239` zwei Fehler (Bens Gegenproben): (1) nach Schreibruhe wurde mit den Begriffen der Startlesung gefragt, das Dokument nie neu gelesen; (2) der Öffnungsabruf wartete nicht auf die asynchrone Startlesung — bei verzögertem `context.sync` kein Abruf, keine Karte. Korrektur: KA3 wartet vor jedem Bestandsblick auf das Begriffsbild des aktuellen Dokuments (Öffnen: laufende Startlesung; Schreibruhe: Neulesung; Lesefehler: leeres Bild, keine Frage mit alten Begriffen). Kein Nachweis am echten Word-Host. | `0198b529` 19.08. (Karten), Korrektur Lauf 1 (`e7a1b469`), übernommen in Lauf 2; Texte `klara.offer.*` DE/EN/NL in `apps/web/src/i18n.ts` | `tests/app/ka3-bestandsblick-aktueller-stand.test.tsx` (ganzer Ablauf mit 25 ms verzögertem Lesen und geändertem Text; A1/A2/A4 rot an der Basisfassung), `tests/app/ka3-fokusverhalten.test.tsx` (Fokus, unverändert) |
+| R-0373 (Treffer mit Status zu Markierung/Thema) | **erfüllt** | `5904c20e` 06.09. (JOB 3093, „Haben wir das schon?"), `a8021470` 07.09. (Quellenfund) | `tests/n1-bestand-im-panel/*`, `tests/m3-dokumentweg-panel/*` |
+| R-0334 · R-1869 (W6: Dublettenprüfung wirklich rufen) | **erfüllt** für Knopf und Einreichen; nicht automatisch beim Schreiben (siehe oben, dritter Weg) | `2580a985` 21.08. (W6-Weg), `dd88e712` 06.09. (S6, vor dem Einreichen) | `tests/app/w6-dublettenweg-checktext.test.ts`, `tests/s6-belegte-antwort/check-text-vor-einreichen.test.ts`, `tests/m3-dokumentweg-panel/w6-anschluss-echte-route.test.ts` |
+| R-1788 · R-1865 (S5/W8 Prüfung gegen alles, Fundort) | **teilweise** — offen + validiert + Fundort gebaut; Entwürfe (Erfassungsentwürfe) sind **nicht** im Pool | `ac005c86` 03.09. (JOB 3020), `bd958311` 03.09. (JOB 3031) | `tests/pruefung-gegen-alles/*`, `tests/app/w6-prefilter-zustandsmatrix.test.ts` |
+| R-1868 (W5 „wir haben es, aber ungeprüft") | **erfüllt** am Knopf/Einreichen (Prüfstand „noch nicht geprüft"); der Frageweg `/api/ask` retrieval-only bleibt absichtlich validiert-only | `dd88e712`, `5904c20e` | `tests/n1-bestand-im-panel/bestand-im-panel-mounted.test.ts` (F1) |
+| R-1592 (JOB 3216 / M3c) | **Teilstand, Teile einzeln:** (1) **3216 BEN/Veröffentlichung — belegt:** Lieferung `a8021470` (07.09.2026, Commit-Text „Code-Urteil GRUEN · BEN GRUEN"), veröffentlicht als `70912e35` „ship: 1.0.0-beta.1.172 (JOB 3216) … nach Code- und Sachurteil GRUEN". (2) **M3c-UI coverage full/partial, quellenfund-Grund, Suchgrenzen — belegt** im Panel (DE/EN/NL: „Quellenfund im Volltext", „Teilübereinstimmung ({n} von {m} Zeichen)", „Quellenfund nicht durchsucht", „Nicht vollständig durchsucht"). (3) **Bedingungen/Maßnahmen und generische Kurzaussagen erklären — nur entwicklerseitig belegt:** die Begründung (der Dublettenvertrag K0-2 vergleicht nur Titel, Aussage, Bedingungen und Maßnahmen; ein importiertes Dokument hat eine kurze, generische Aussage, die Passage steht im Volltext) steht in `services/app/src/check-text-detection.ts:94-131` und wird in `quellenfund-im-volltext.test.ts` A1/A2 gemessen. Das Panel zeigt dem Anwender **keinen** Erklärsatz dazu, nur „Diese Passage steht im Volltext von …". Ob der Rest einen Anwendertext verlangt, sagt der Quellwortlaut nicht; **offen**. (4) Echter BAADER-/Word-/PostgreSQL-Gesamtweg **offen**. (5) „privater Draft kein Suchbestand" — **belegt** für den Quellenfund (`quellenfund-pool-und-rechte.test.ts` B2), zum Verhältnis zu R-1788 siehe Abschnitt 3 | `a8021470`, `70912e35` | `tests/m3-dokumentweg/quellenfund-im-volltext.test.ts` (A1–A5), `tests/m3-dokumentweg/quellenfund-pool-und-rechte.test.ts` (B1–B6), `tests/m3-dokumentweg-panel/quellenfund-im-panel.test.tsx` |
+| R-1466 (ein Test hält die heutigen Unterschiede fest) | **erfüllt** (Lauf 1, übernommen in Lauf 2) | Lauf 1 (`142567cc`), übernommen in Lauf 2 | Abschnitt 1, `tests/pruefwege-vergleich/zwei-pruefwege-antworten-verschieden.test.ts` |
+| R-0332 (zwei Wege, dokumentiert und verglichen, „auch Entwürfen") | **Teilstand** — Unterschiede dokumentiert und durch den Vergleichstest gesichert; die Entwurfsreichweite fehlt beiden Wegen (Reichweitenentscheidung R-1788/R-1592 offen) | Lauf 1 (`142567cc`), übernommen in Lauf 2 | wie R-1466 |
+| R-0427 (Mitlesen beim Absatzwechsel nach bewusstem Ja) | **unerledigt, an Einwilligung gebunden** — vorhanden ist nur der Markierungsereignis-/Ruhefristweg der Angebotskarten, kein Absatzwechsel-Bestandsblick; ausdrücklich zuletzt vorgesehen, Ort und Speicherung des „Ja" in keiner Quelle festgelegt. Keine automatische Aktivierung | — | — |
+| package:vergleich (Browser + Word) | **Teilstand.** Word: „Haben wir das schon?" mit Status, Quelle und Konfliktkarte vorhanden (s. o.). Browser-Erweiterung: **nicht gebaut** — `extensions/klara-browser/worker.js` ruft nur Anmeldung, Entwürfe (`/api/drafts`) und `/api/branding`, keinen Vergleich der Webseite mit dem Bestand. Geltungsgrenze laut Quelle: Planvorschlag ohne zugeordnete Nutzerquelle, Priorität offen — daher hier abgegrenzt, nicht gebaut | — | Quelltextabgleich `worker.js` (Abrufziele) |
+
+## 3. Widersprüche und offene Punkte
+
+- **Entwürfe im Vergleichsbestand.** R-1788 (Pedi, 30./31.07.) verlangt „Entwürfe aller im Haus" als dritte Herkunft. R-1592 (M3c, später) hält fest: „privater Draft kein Suchbestand". Heute prüft keiner der beiden Verträge Erfassungsentwürfe. Das ist eine **offene Reichweitenentscheidung** (Pedi): welche Entwürfe zählen (alle im Haus oder keine privaten) und wie eine Kollision mit Unsichtbarem den berechtigten Prüfer erreicht. Bis dahin wird hier nichts gebaut und keine Sichtbarkeitsregel aufgehoben. **Mögliche, nicht entschiedene Lesart:** Beide Aussagen widersprechen sich nicht zwingend. R-1592 und der Test B2 betreffen den **Quellenfund**, also das Benennen einer Passage gegenüber dem Fragenden. R-1788 (a) verlangt ebenfalls, nur Sichtbares zu benennen, und schickt Kollisionen mit Unsichtbarem an einen Prüfer mit voller Sicht. Private Entwürfe könnten also mitgeprüft, aber nie dem Fragenden genannt werden. Dafür fehlen ein festgelegter Empfänger („Prüfer mit voller Sicht") und ein Meldeweg; beides ist in keiner Quelle bestimmt. Auch R-1788 (a) „Kollision mit Unsichtbarem geht an den Prüfer" ist nicht gebaut; R-1865 (W8) bleibt damit in diesem Teil offen.
+- **Status in `OFFEN.md`.** KA1, KA3, W6 und W8 stehen dort noch als `OFFEN`, obwohl Code und Tests sie belegen (Tabelle oben). Die Zeilen wurden auch in Lauf 2 nicht umgeschrieben (auftragsfremde Statuspflege).
+- **Veralteter Kommentar (in Lauf 2 berichtigt).** `services/app/src/build-app.ts` nannte die Route `/api/check-text` „validated-only"; seit JOB 3020 gilt das nur am Add-in-Schlüssel. Der Kommentar sagt das jetzt.
+- **Schalter.** `/api/check-text` ist weiterhin nur mit `KLARWERK_ADDON_API=1` registriert — derselbe Schalter, der das Add-in überhaupt freigibt; ohne ihn gibt es kein Panel, das die Route bräuchte.
+- **Fehlende Belege:** echter Word-Host (Angebotskarten, Markierungsereignis, Lesezeiten), PostgreSQL-Gesamtweg, Browser-Erweiterung; für R-1592 ein Anwender-Erklärtext zu Kerntext und Quellenfund (falls der Rest ihn verlangt).

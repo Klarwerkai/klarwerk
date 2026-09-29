@@ -150,6 +150,7 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   // den Pfad aber aus Segmenten — der Griff `pfad` sah sie deshalb nicht.
   "tests/app/k1-word-addin-origin-panel.test.ts": "zusammengesetzt",
   "tests/app/ka2-vertrag-bestandsblick.test.ts": "pfad",
+  "tests/app/ka3-bestandsblick-aktueller-stand.test.tsx": "pfad,rueckweg",
   "tests/app/ka3-fokusverhalten.test.tsx": "pfad,rueckweg,marken",
   "tests/app/klara-ai-header.test.ts": "pfad,marken",
   "tests/app/klara-ai-session-consent.test.ts": "pfad,marken",

@@ -248,6 +248,10 @@ describe("JOB 3014 · B — die Grobstruktur der ausgelieferten Seite", () => {
     // ANBAUT, hat wieder rund 120 Zeilen Luft und danach dieselbe Wahl wie dieser Job: schneiden
     // oder melden. P11 (JOB 3227) ist damit NICHT erledigt — die Seite trägt weiterhin 12380 Zeilen
     // in EINEM Block; erledigt ist nur, dass ein Anbau sie nicht weiter hat wachsen lassen.
+    // Aufnahme 20260922 (gesamt-bestandsblick, Pedi-Entscheidung 4080cacc, Option A): der
+    // Bestandsblick-Anbau hob das Skript auf 12551 („expected 12551 to be less than 12500"). Die
+    // Schranke bleibt; der reine Kommentarkopf von KW-WORDVERGLEICH (91 Zeilen) steht jetzt
+    // wortgleich in `docs/word-addin/word-vergleich-kopf.md`, am Code ist nichts geändert.
     expect(zeilenzahl).toBeLessThan(12500);
     expect(SOLL_ZEILEN_JE_SKRIPT).toBe(500);
   });
