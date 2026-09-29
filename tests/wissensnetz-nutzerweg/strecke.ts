@@ -1170,6 +1170,10 @@ export async function fahreStrecke(umgebung: Umgebung, lauf: Lauf): Promise<Prot
       // Kuerzungsauskunft zu, nicht die Gleichzeitigkeit von Massenschreiben und offener Ansicht.
       // Ein Mensch haelt den Graphen auch nicht offen, waehrend 101 Eintraege entstehen. Der Befund
       // steht in der Rueckgabe als benannte Pruefluecke — er wird hier weder behoben noch versteckt.
+      //
+      // NACHFOLGE (GRAPH-BROWSER-RECHTE): diesen Ablauf faehrt jetzt mit interner Treiberdiagnose
+      // `tests/wissensbeziehungen-browser-rechte/tastatur-schmal-rechte-pg.integration.test.ts`
+      // (ALT-500-AUSLÖSER); die dort diagnostizierte Ursache reproduziert der Fall ALT-500 minimal.
       await seite.goto("about:blank", { waitUntil: "domcontentloaded" });
 
       // 101 Eintraege ueber den ECHTEN Weg (POST /api/kos) — mit je EIGENEM Schlagwort, damit
