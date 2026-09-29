@@ -1,8 +1,9 @@
 # Abgleich: Deployment-Commit ↔ `/health.commit` (Auftrag deploy-health-commit)
 
-Stand 29.09.2026, Lauf `deploy-health-commit:3` (Runde 3: PostgreSQL-/HTTP-Prüffall ergänzt). Übernimmt den Kandidaten
-`9a8986c2` aus Lauf 2 (B1–B7, R-0786, R-1028) unverändert auf `1530dfeb` und schließt Bens
-Befund B8 (R-0794, siehe unten). Server und Coolify wurden in diesem Lauf nicht verändert.
+Stand 29.09.2026, Lauf `deploy-health-commit:4` (setzt Lauf 3 ab `cd688810` fort; Code unverändert,
+nur Messung 7 ergänzt). Lauf 3 übernahm den Kandidaten
+`9a8986c2` aus Lauf 2 (B1–B7, R-0786, R-1028) unverändert auf `1530dfeb` und schloss Bens
+Befund B8 (R-0794, siehe unten). Server und Coolify wurden in keinem dieser Läufe verändert.
 
 ## Ergebnis
 
@@ -41,6 +42,20 @@ Früher belegt: `.623` / `8bc3b5bad1591446795ea9010e8562975ff9c8f6` (Deploy
 
 Messung 6 stimmt mit Messung 5 überein. Die Live-Antwort trägt noch keine `ai`/`aiRuns`-Felder;
 die liefert erst diese Fassung (R-0794) nach ihrer Auslieferung.
+
+## Messung 7 (Lauf 4, öffentlich, ohne Geheimnis)
+
+| Glied | Wert | Herkunft |
+|---|---|---|
+| Abfragezeit | 2026-09-29T20:12:44Z | `date -u` vor/nach, Server-Header `date: Tue, 29 Sep 2026 20:12:44 GMT` |
+| HTTP-Antwort | `HTTP/2 200`, `{"status":"ok","version":"1.0.0-beta.1.632","commit":"8f0ec01ce491a951689bed0ff82b09fdd92d1a1e"}` | `curl -sS -i https://app.klarwerk.ai/health` |
+| Gepushter Stand | `refs/heads/main` = `8f0ec01ce491a951689bed0ff82b09fdd92d1a1e` (`ship: 1.0.0-beta.1.632`, Autor `KLARWERK-Steuerung`) | `git ls-remote github refs/heads/main`; lokales Reflog: Push 2026-09-29 21:26:29 +02:00 |
+| Deployment-Datensatz | nicht gelesen | Coolify-API (Betreiber-Token) — in diesem Lauf nicht verfügbar |
+
+Dritter verschiedener regulärer Stand mit vollem `/health.commit` = `github/main` (nach `.627`,
+`.628`). Ohne Deployment-Datensatz schließt Messung 7 die Kette nur HTTP ↔ Push, nicht
+Deployment ↔ HTTP. Der Kandidat dieses Auftrags (`4321f460`…`cd688810`) ist **nicht** Vorfahr
+von `8f0ec01c`; daher trägt `/health` live weiterhin keine `ai`/`aiRuns`-Felder.
 
 ## Vorige Fassung (Lauf 2): Ausgangslage vor dem Betreibernachweis
 
@@ -224,8 +239,8 @@ Geändert:
 | R-1028 eine Versionsquelle | **für die Anzeige umgesetzt** | Web und Word zeigen `APP_VERSION`; `/health` liest die gekoppelte Kopie in `package.json`; Add-in-Fassung als eigene Größe benannt (siehe oben). |
 | R-1501 Coolify-Argumentname, Deploy-Konfiguration, echtes Image, Live-Antwort | **laut Betreibernachweis belegt** | Argument `SOURCE_COMMIT`, „Include Source Commit in Build“ aktiv, real gebaute und gestartete Images `.627`/`.628` mit passender Live-Antwort (Messungen 4–6). Coolify-Angaben in diesem Lauf nicht selbst gelesen. |
 | R-1610 Weg über Laufzeitumgebung prüfen | **nicht mehr nötig** | Der Build-Weg (A) kommt an (Messungen 4/5); kein Laufzeit-Override gesetzt. Nicht beide Wege gleichzeitig. |
-| R-2189 ausgelieferten Code eindeutig identifizieren | **belegt** | Deployment ↔ `/health.commit` ↔ `github/main` gleich für `.627` und `.628` (Messungen 4–6). |
-| R-2215 Live, Hauptstand, Abnahme können auseinanderliegen | **belegbar** | Am 29.09.T06:55Z waren Live und `github/main` gleich (`1530dfeb`). Diese Fassung liegt darüber und ist nicht live. `/health.commit` und der Liefernachweis machen den Abstand prüfbar. |
+| R-2189 ausgelieferten Code eindeutig identifizieren | **belegt** | Deployment ↔ `/health.commit` ↔ `github/main` gleich für `.627` und `.628` (Messungen 4–6); für `.632` `/health.commit` ↔ `github/main` gleich, Deployment-Datensatz nicht gelesen (Messung 7). |
+| R-2215 Live, Hauptstand, Abnahme können auseinanderliegen | **belegbar** | Am 29.09.T06:55Z waren Live und `github/main` gleich (`1530dfeb`), am 29.09.T20:12Z ebenso (`8f0ec01c`, Messung 7). Diese Fassung ist nicht Vorfahr davon und nicht live. `/health.commit` und der Liefernachweis machen den Abstand prüfbar. |
 
 Fehlende Prüfmittel (dieser Lauf): eigene Coolify-Einsicht (Messungen 4/5 sind übernommen),
 ein Live-Nachweis der neuen `ai`/`aiRuns`-Felder nach Auslieferung, ein Word-/Browser-Sichtnachweis.
