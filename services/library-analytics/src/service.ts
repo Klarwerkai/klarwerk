@@ -60,6 +60,14 @@ import {
 export const EXPORT_NO_CHECK_NOTE =
   "Hinweis: Diese Ausgabe trifft keine Aussage darüber, ob das enthaltene Wissen auf Konflikte oder Duplikate geprüft wurde.";
 
+// §12.3 „Export": die Auswahl eines Exports plus — für Ausgaben nach außen — der Beleg, der ihn
+// im Audit festhält (s. `exportJson`).
+interface ExportOptionen {
+  ids?: readonly string[];
+  includeConfidential?: boolean;
+  beleg?: { actor: string; format: "json" | "markdown" | "mediawiki" | "html" };
+}
+
 export const SEARCH_BACKFILL_LIMIT_PER_QUERY = 20;
 
 // AUFTRAG-mega68: Deckel der Nachbarschafts-Auskunft. 12 Nachbarn füllen die Detailseiten-Fläche,
@@ -1922,20 +1930,34 @@ export class LibraryService {
   // die Output Factory (services/output): NUR validierte KOs (nicht-validierte nie im regulären
   // Export) und KEINE vertraulichen KOs — außer der Aufrufer ist berechtigt (includeConfidential,
   // in der Route an ko.validate gebunden: Controller/Admin). Fail-closed by default.
-  async exportJson(
-    opts: { ids?: readonly string[]; includeConfidential?: boolean } = {},
-  ): Promise<KnowledgeObject[]> {
+  //
+  // FR-AUD-01 / §12.3 „Export": trägt der Aufruf einen `beleg`, wird der Export VOR der Auslieferung
+  // als `library.export` angehängt — wer, welches Format, welche Objekte. Ohne `beleg` (interne
+  // Aufrufer, die nichts nach außen geben) bleibt der Weg schreibfrei wie bisher. Die drei
+  // Textformate reichen `opts` unverändert hierher durch; der Beleg entsteht damit an EINER Stelle.
+  async exportJson(opts: ExportOptionen = {}): Promise<KnowledgeObject[]> {
     const list = await this.koService.list({ status: "validiert" });
     const scoped = opts.ids ? list.filter((ko) => opts.ids?.includes(ko.id)) : list;
-    return opts.includeConfidential
+    const items = opts.includeConfidential
       ? scoped
       : scoped.filter((ko) => !isConfidential(ko.confidentiality));
+    if (opts.beleg) {
+      await this.audit?.record({
+        actor: opts.beleg.actor,
+        action: "library.export",
+        target: "library",
+        payload: {
+          format: opts.beleg.format,
+          count: items.length,
+          includeConfidential: opts.includeConfidential === true,
+          koIds: items.map((ko) => ko.id),
+        },
+      });
+    }
+    return items;
   }
 
-  async exportMediaWiki(opts?: {
-    ids?: readonly string[];
-    includeConfidential?: boolean;
-  }): Promise<string> {
+  async exportMediaWiki(opts?: ExportOptionen): Promise<string> {
     const items = await this.exportJson(opts);
     // AUFTRAG-mega31 BLOCK B (bens ROT-3): der Warnsatz steht VOR dem ersten Inhalt. Er stand in
     // allen vier Ausgabewegen hinter dem gesamten Dokument — bei einem langen Export liest ihn
@@ -1949,10 +1971,7 @@ export class LibraryService {
   }
 
   // FR-LIB-02: echtes Text-Markdown (Überschrift, Listen, Herkunfts-Fußzeile).
-  async exportMarkdown(opts?: {
-    ids?: readonly string[];
-    includeConfidential?: boolean;
-  }): Promise<string> {
+  async exportMarkdown(opts?: ExportOptionen): Promise<string> {
     const items = await this.exportJson(opts);
     // mega31 B: Exportkopf mit dem Warnsatz, VOR dem ersten Wissensobjekt (s. exportMediaWiki).
     const body = items
@@ -1979,10 +1998,7 @@ export class LibraryService {
   }
 
   // FR-LIB-02: druckfertiges HTML — der Browser erzeugt daraus per „Als PDF sichern" das PDF.
-  async exportHtml(opts?: {
-    ids?: readonly string[];
-    includeConfidential?: boolean;
-  }): Promise<string> {
+  async exportHtml(opts?: ExportOptionen): Promise<string> {
     const items = await this.exportJson(opts);
     const esc = (s: string): string =>
       s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");

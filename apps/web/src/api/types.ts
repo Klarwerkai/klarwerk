@@ -615,6 +615,18 @@ export interface AuditVerifyReport {
   firstDeviation?: { seq: number; at: string; action: string; kind: ChainDeviationKind };
 }
 
+// Aufnahme gesamt-auditprotokoll (R-0613): Export der Kette (GET /api/audit/export). Spiegelt
+// `AuditChainExport` aus services/audit/src/service.ts. `head` ist der Wert zum Ablegen außerhalb.
+export interface AuditChainExport {
+  format: "klarwerk-audit-export";
+  formatVersion: 1;
+  exportedAt: string;
+  count: number;
+  head: { seq: number; hash: string } | null;
+  inspection: AuditVerifyReport;
+  entries: AuditEntry[];
+}
+
 // SCRUM-422: Papierkorb-Zeile (Admin) — nur Metadaten.
 export interface TrashedKo {
   id: string;

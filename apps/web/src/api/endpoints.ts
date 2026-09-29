@@ -16,6 +16,7 @@ import type {
   AssignmentSummary,
   AssistPreset,
   AssistResult,
+  AuditChainExport,
   AuditEntry,
   AuditVerifyReport,
   BearbeitungsLage,
@@ -944,6 +945,12 @@ export const endpoints = {
     // SCRUM-439: aktive Integritätsprüfung der Audit-Kette (Admin-Knopf „Integrität geprüft").
     // AUFTRAG-mega14 Block A: der Bericht nennt jetzt auch die URSACHE einer Abweichung.
     verify: () => api.get<AuditVerifyReport>("/audit/verify"),
+    // R-0613: die ganze Kette samt Kopf als Datei; der Abruf wird selbst protokolliert.
+    exportChain: () => api.get<AuditChainExport>("/audit/export"),
+    // R-0766 (Lauf 2): Kennungen aller Konflikte und Überschneidungen eines Objekts, auch
+    // abgeschlossener — damit die Kette am Objekt Altbelege ohne Objektbezug zuordnen kann.
+    koFindings: (koId: string) =>
+      api.get<{ ids: string[] }>(`/audit/ko/${encodeURIComponent(koId)}/findings`),
   },
   // SCRUM-121: Objekt-/Attachment-Speicher — Original via Referenz statt Inline im KO.
   objects: {

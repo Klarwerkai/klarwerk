@@ -28,6 +28,24 @@ export interface AuditRepo {
   // Set-Guard (kein await zwischen Prüfen und Anhängen). Rückgabe true = DIESER Aufruf hat
   // geschrieben; false = der Beleg existierte bereits (idempotenter No-op, kein Fehler).
   appendOnce(entry: AuditEntry, tx?: TxContext): Promise<boolean>;
+  /**
+   * Aufnahme gesamt-auditprotokoll (Lauf 3) — VORGÄNGER LESEN UND ANHÄNGEN ALS EIN SCHRITT.
+   *
+   * `record`/`recordOnce` lasen bisher `last()` und schrieben danach `append()`. Zwei gleichzeitige
+   * Schreiber sahen denselben Vorgänger und vergaben dieselbe `seq`: im Speicher zerbrach die Kette,
+   * auf PostgreSQL scheiterte der zweite an `audit_pkey` (500, und bei der Erstanlage ein Objekt ohne
+   * `ko.created`). Hier bekommt `build` den Vorgänger erst, wenn niemand anderes mehr dazwischen
+   * anhängen kann — im Speicher synchron, auf PostgreSQL unter einer transaktionsgebundenen Sperre,
+   * die bis zum Ende der Transaktion gehalten wird (auch über Instanzen hinweg).
+   *
+   * Trägt der gebaute Eintrag eine `eventId`, gilt der Vertrag von `appendOnce` (`written: false`
+   * statt eines zweiten Eintrags). OPTIONAL aus demselben Grund wie `findBy`: handgeschriebene
+   * Test-Doubles implementieren nur `append`/`last`; fehlt die Methode, bleibt es beim alten Weg.
+   */
+  appendNext?(
+    build: (last: AuditEntry | undefined) => AuditEntry,
+    tx?: TxContext,
+  ): Promise<{ entry: AuditEntry; written: boolean }>;
   all(): Promise<AuditEntry[]>;
   last(tx?: TxContext): Promise<AuditEntry | undefined>;
   /**
@@ -203,13 +221,27 @@ export class InMemoryAuditRepo implements AuditRepo {
   // Punktzugriff — dieselbe Zusage in beiden Ablagen, nicht nur dasselbe Ergebnis.
   private readonly bySeq = new Map<number, AuditEntry>();
 
-  append(entry: AuditEntry, _tx?: TxContext): Promise<void> {
+  // Aufnahme gesamt-auditprotokoll (Lauf 3): der Spiegel des Primärschlüssels gilt auch beim
+  // SCHREIBEN. PostgreSQL weist eine zweite Zeile mit derselben `seq` ab; hier wurde sie bisher
+  // angehängt, und die Kette zerbrach (zwei Einträge mit derselben `seq`, `linkageBreaks=1`).
+  private anhaengen(entry: AuditEntry): void {
+    if (this.bySeq.has(entry.seq)) {
+      throw new Error(`AUDIT_SEQ_BELEGT: seq ${entry.seq} ist bereits vergeben.`);
+    }
     if (entry.eventId) {
       this.eventIds.add(entry.eventId);
     }
     this.entries.push(Object.freeze(entry));
     this.bySeq.set(entry.seq, entry);
-    return Promise.resolve();
+  }
+
+  append(entry: AuditEntry, _tx?: TxContext): Promise<void> {
+    try {
+      this.anhaengen(entry);
+      return Promise.resolve();
+    } catch (err) {
+      return Promise.reject(err);
+    }
   }
 
   // Synchron geprüft UND vermerkt — zwei parallele Nachzüge, die beide einen leeren Read sahen,
@@ -218,12 +250,30 @@ export class InMemoryAuditRepo implements AuditRepo {
     if (entry.eventId && this.eventIds.has(entry.eventId)) {
       return Promise.resolve(false);
     }
-    if (entry.eventId) {
-      this.eventIds.add(entry.eventId);
+    try {
+      this.anhaengen(entry);
+      return Promise.resolve(true);
+    } catch (err) {
+      return Promise.reject(err);
     }
-    this.entries.push(Object.freeze(entry));
-    this.bySeq.set(entry.seq, entry);
-    return Promise.resolve(true);
+  }
+
+  // Lauf 3: Vorgänger lesen, Eintrag bauen und anhängen ohne ein `await` dazwischen — kein zweiter
+  // Schreiber kann denselben Vorgänger sehen.
+  appendNext(
+    build: (last: AuditEntry | undefined) => AuditEntry,
+    _tx?: TxContext,
+  ): Promise<{ entry: AuditEntry; written: boolean }> {
+    try {
+      const entry = build(this.entries[this.entries.length - 1]);
+      if (entry.eventId && this.eventIds.has(entry.eventId)) {
+        return Promise.resolve({ entry, written: false });
+      }
+      this.anhaengen(entry);
+      return Promise.resolve({ entry, written: true });
+    } catch (err) {
+      return Promise.reject(err);
+    }
   }
 
   all(): Promise<AuditEntry[]> {

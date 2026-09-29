@@ -1,11 +1,11 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 // JOB 3065 H6 — DIE DETAILKARTEN DES REITERS „SICHERHEIT".
 //
 // Prüfprotokoll (hash-verkettet, mit aktiver Integritätsprüfung), Datenschutz-Nachweis und die
 // Bereitschafts-Checkliste. Letztere war bis hierher ein eigener fünfter Reiter; sie ist eine
 // Auskunft über den Zustand des Hauses und lebt deshalb als Zeile „Bereitschaft" unter Sicherheit
 // weiter — mit derselben Checkliste, denselben Quellen und demselben Druckknopf.
-import { Printer, ShieldCheck } from "lucide-react";
+import { Download, Printer, ShieldCheck } from "lucide-react";
 import { Fragment, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { ApiError } from "../api/client";
@@ -157,6 +157,26 @@ export function PruefprotokollDetail({ onZurueck }: { onZurueck: () => void }): 
     mutationFn: () => endpoints.audit.verify(),
     onError: (e) => push("error", e instanceof ApiError ? e.message : t("state.error")),
   });
+  // R-0613: die Kette als Datei — der Kopf (Nummer + Hash) steht danach sichtbar da, damit er
+  // außerhalb der Anlage abgelegt werden kann.
+  const queryClient = useQueryClient();
+  const exportAudit = useMutation({
+    mutationFn: () => endpoints.audit.exportChain(),
+    onSuccess: (datei) => {
+      // Der Export hat selbst einen Eintrag angehängt — Zähler und Liste frisch holen.
+      void queryClient.invalidateQueries({ queryKey: ["audit"] });
+      const blob = new Blob([JSON.stringify(datei, null, 2)], {
+        type: "application/json;charset=utf-8",
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `klarwerk-audit-${datei.exportedAt.replace(/[:.]/g, "-")}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    },
+    onError: (e) => push("error", e instanceof ApiError ? e.message : t("state.error")),
+  });
 
   return (
     <div className="print-area">
@@ -168,6 +188,7 @@ export function PruefprotokollDetail({ onZurueck }: { onZurueck: () => void }): 
         hilfe={[
           { titel: t("adm.sich.auditTitle"), text: t("adm.sich.auditHelp") },
           { titel: t("adm.sich.auditTitle"), text: t("adm.sich.auditIntro") },
+          { titel: t("adm.sich.auditTitle"), text: t("adm.sich.qualityNote") },
         ]}
       >
         {/* JOB 3670: AUSSERHALB der Hülle — der Erklärtext gilt auch, während die Kette noch lädt
@@ -238,7 +259,27 @@ export function PruefprotokollDetail({ onZurueck }: { onZurueck: () => void }): 
                         );
                       })()
                     : null}
+                  <Button
+                    variant="outline"
+                    className="print-hide"
+                    disabled={exportAudit.isPending}
+                    onClick={() => exportAudit.mutate()}
+                  >
+                    <Download size={14} /> {t("adm.sich.export.button")}
+                  </Button>
                 </div>
+                {exportAudit.data?.head ? (
+                  <p
+                    data-testid="audit-export-kopf"
+                    className="break-all text-[11.5px] leading-relaxed text-muted"
+                  >
+                    {t("adm.sich.export.done", {
+                      count: exportAudit.data.count,
+                      seq: exportAudit.data.head.seq,
+                      hash: exportAudit.data.head.hash,
+                    })}
+                  </p>
+                ) : null}
                 {recent.length === 0 ? (
                   <p className="text-[13px] text-muted">{t("adm.auditEmpty")}</p>
                 ) : (

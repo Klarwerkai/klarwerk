@@ -113,7 +113,10 @@ export interface KoRepo {
    * Kandidaten-Speicher der Abrufstelle fragt so fuer alle Bilder einer Seite auf einmal.
    */
   listAnhangTraegerFuer?(objectIds: readonly string[]): Promise<KnowledgeObject[]>;
-  insert(ko: KnowledgeObject): Promise<void>;
+  // Aufnahme gesamt-auditprotokoll (Lauf 3): optionaler TxContext wie bei `update`/`delete` — die
+  // Erstanlage schreibt Objekt, Fassung, Suchprojektion, Belegkette und `ko.created` in EINER
+  // Transaktion (`KoService.schreibeErstanlage`). Ohne tx wie bisher.
+  insert(ko: KnowledgeObject, tx?: TxContext): Promise<void>;
   findById(id: string): Promise<KnowledgeObject | undefined>;
   // AUFTRAG-mega20 Block A: GEZIELTER Nachschlag der Erzeugungs-Operationskennung. Bewusst eine
   // eigene Repo-Methode und kein `list({}).find(...)` wie beim Kandidaten-Anker: dieser Nachschlag
@@ -353,7 +356,7 @@ export class InMemoryKoRepo implements KoRepo {
     return Promise.resolve(this.schreibstand.stand());
   }
 
-  insert(ko: KnowledgeObject): Promise<void> {
+  insert(ko: KnowledgeObject, _tx?: TxContext): Promise<void> {
     // WP-SHIP8-CLOSE-4 (bens ROT-1B): Spiegel des partiellen Pg-Unique-Index
     // kos_import_candidate_uq — höchstens EIN KO je Import-Kandidat, INKLUSIVE Papierkorb
     // (getrashte KOs halten ihren Anker; der ROT-1C-Vertrag adoptiert sie statt neu anzulegen).
@@ -683,7 +686,8 @@ export class InMemoryKoVersionRepo implements KoVersionRepo {
 // SCRUM-160: Evidence-Records separat vom KO-JSON. Append-only; vorhandene Evidence-ID wird
 // nicht überschrieben. Damit bleiben Quellen-/Anhang-Nachweise stabil referenzierbar.
 export interface EvidenceRepo {
-  append(record: EvidenceRecord): Promise<void>;
+  // Aufnahme gesamt-auditprotokoll (Lauf 3): optionaler TxContext — s. `KoRepo.insert`.
+  append(record: EvidenceRecord, tx?: TxContext): Promise<void>;
   listByKo(koId: string): Promise<EvidenceRecord[]>;
   // SCRUM-169: KO-übergreifende, read-only Sicht (jüngste zuerst) für den QM-Evidence-Index.
   recent(limit: number): Promise<EvidenceRecord[]>;
@@ -695,7 +699,7 @@ export class InMemoryEvidenceRepo implements EvidenceRepo {
   // JOB 2706 D1: derselbe Schreibstand wie die KO-Ablage desselben Bestands (s. `Schreibstand`).
   constructor(private readonly schreibstand: Schreibstand = new Schreibstand()) {}
 
-  append(record: EvidenceRecord): Promise<void> {
+  append(record: EvidenceRecord, _tx?: TxContext): Promise<void> {
     if (!this.items.has(record.id)) {
       this.items.set(record.id, record);
       this.schreibstand.geaendert();

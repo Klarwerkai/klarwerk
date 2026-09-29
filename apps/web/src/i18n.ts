@@ -561,6 +561,9 @@ const de = {
   // `library.import` → "library", `demoPackage.*`/`examples.load`/`lesevarianten.load` → Paket-Id)
   // erscheinen hier nie und bekommen deshalb bewusst KEINEN Schlüssel: ein Name für ein Ereignis,
   // das diese Fläche nicht zeigt, wäre eine Behauptung ohne Beleg.
+  // NACHTRAG (Aufnahme gesamt-auditprotokoll, R-0766): seit Runde 2 zeigt `koAuditEvents` auch die
+  // Belege der Konflikte, an denen das Objekt beteiligt ist, und jeden Beleg, der es in der
+  // Nutzlast nennt (`library.export`). Diese Codes haben deshalb jetzt ihre Schlüssel (weiter unten).
   //
   // Der Rückfall in `auditAction.ts:18` bleibt und wird NICHT entfernt: er ist die ehrliche Antwort
   // auf einen Code, den niemand vorhergesehen hat.
@@ -578,6 +581,30 @@ const de = {
   // `services/auth/src/service.ts` nachweislich schreibt; für nicht belegte Aktionen bleibt die
   // neutrale Humanisierung aus `lib/auditAction.ts` zuständig.
   "audit.action.user_role_change": "Rolle geändert",
+  // Aufnahme gesamt-auditprotokoll (§12.3): Re-Validierung, Bibliotheks- und Kettenexport.
+  "audit.action.ko_revalidated": "Neu validiert (stimmt noch)",
+  "audit.action.library_export": "Bibliothek exportiert",
+  "audit.action.audit_exported": "Prüfprotokoll exportiert",
+  // R-0766 (Runde 2): Konfliktbelege erscheinen jetzt in der Herkunftskette am Objekt.
+  "audit.action.conflict_created": "Konflikt gemeldet",
+  "audit.action.conflict_auto_created": "Konflikt automatisch erkannt",
+  "audit.action.conflict_escalated": "Konflikt eskaliert",
+  "audit.action.conflict_resolved": "Konflikt entschieden",
+  "audit.action.conflict_dismissed": "Konflikt als Fehlalarm geschlossen",
+  "audit.action.conflict_second_opinion": "Zweitmeinung zum Konflikt",
+  "audit.action.conflict_participant_removed": "Konfliktbeteiligtes Objekt entfernt",
+  "audit.action.conflict_auto_resolved": "Konflikt automatisch geschlossen",
+  "audit.action.conflict_superseded": "Konflikt durch neue Fassung überholt",
+  // R-0766 (Runde 3): Überschneidungsbelege und die Rücknahme einer Änderung in der Objektkette.
+  "audit.action.overlap_auto_created": "Überschneidung erkannt",
+  "audit.action.overlap_in_progress": "Überschneidung in Bearbeitung",
+  "audit.action.overlap_dismissed": "Überschneidung als Fehlalarm geschlossen",
+  "audit.action.overlap_kept_separate": "Überschneidung: bewusst getrennt gelassen",
+  "audit.action.overlap_linked_related": "Überschneidung: als verwandt verknüpft",
+  "audit.action.overlap_superseded": "Überschneidung durch neue Fassung überholt",
+  "audit.action.overlap_participant_removed": "Beteiligtes Objekt der Überschneidung entfernt",
+  "audit.action.overlap_withdrawn_own": "Überschneidung durch Rücknahme geschlossen",
+  "audit.action.ko_change_rolled_back": "Änderung zurückgenommen",
   "audit.action.user_approve": "Konto freigegeben",
   "audit.action.auth_login": "Angemeldet",
   "audit.action.auth_logout": "Abgemeldet",
@@ -1350,6 +1377,11 @@ const de = {
     "Append-only, hash-verkettet: eine prüfbare Spur aller sicherheitsrelevanten Aktionen. Eine nachträgliche Abweichung an einem Eintrag lässt sich rechnerisch feststellen.",
   "adm.sich.auditCount": "{{count}} Einträge in der Kette",
   "adm.sich.verify.button": "Integrität prüfen",
+  "adm.sich.export.button": "Kette exportieren",
+  "adm.sich.export.done":
+    "Export mit {{count}} Einträgen gespeichert. Kopf der Kette: Nr. {{seq}} · {{hash}}. Wer diesen Kopf außerhalb der Anlage ablegt, erkennt dort später, ob die Kette bis zu diesem Punkt neu gebildet wurde.",
+  "adm.sich.qualityNote":
+    "Das Protokoll hält fest, wer was wann erfasst, geändert, geprüft und freigegeben hat. Solche Nachweise erwarten Managementsysteme wie ISO 9001 (Qualität) oder ISO/IEC 27001 (Informationssicherheit) von dokumentierten Abläufen. Eine Zertifizierung ersetzt das Protokoll nicht, und KLARWERK sagt keine zu. Es dient der Nachvollziehbarkeit des Wissens, nicht der Leistungsbewertung von Personen.",
   "adm.sich.verify.ok": "Integrität geprüft ✓ — {{count}} Einträge, Kette lückenlos",
   // AUFTRAG-mega14 Block A-2 (bens SB-1): drei Zustände statt zwei. Das Wort „Manipulation" ist hier
   // bewusst getilgt — in BEIDE Richtungen: die Anzeige behauptet weder, Manipulation sei erkannt,
@@ -7751,6 +7783,30 @@ const en: typeof de = {
   "audit.action.ko_create_rollback_failed": "Rollback after creation failed",
   // JOB 3140 (UX-11) — see the German block for the reasoning.
   "audit.action.user_role_change": "Role changed",
+  // Aufnahme gesamt-auditprotokoll (§12.3): Re-Validierung, Bibliotheks- und Kettenexport.
+  "audit.action.ko_revalidated": "Revalidated (still valid)",
+  "audit.action.library_export": "Library exported",
+  "audit.action.audit_exported": "Audit log exported",
+  // R-0766 (Runde 2): Konfliktbelege erscheinen jetzt in der Herkunftskette am Objekt.
+  "audit.action.conflict_created": "Conflict reported",
+  "audit.action.conflict_auto_created": "Conflict detected automatically",
+  "audit.action.conflict_escalated": "Conflict escalated",
+  "audit.action.conflict_resolved": "Conflict decided",
+  "audit.action.conflict_dismissed": "Conflict closed as false alarm",
+  "audit.action.conflict_second_opinion": "Second opinion on conflict",
+  "audit.action.conflict_participant_removed": "Object involved in conflict removed",
+  "audit.action.conflict_auto_resolved": "Conflict closed automatically",
+  "audit.action.conflict_superseded": "Conflict superseded by a new version",
+  // R-0766 (Runde 3): Überschneidungsbelege und die Rücknahme einer Änderung in der Objektkette.
+  "audit.action.overlap_auto_created": "Overlap detected",
+  "audit.action.overlap_in_progress": "Overlap in progress",
+  "audit.action.overlap_dismissed": "Overlap closed as false alarm",
+  "audit.action.overlap_kept_separate": "Overlap: deliberately kept separate",
+  "audit.action.overlap_linked_related": "Overlap: linked as related",
+  "audit.action.overlap_superseded": "Overlap superseded by a new version",
+  "audit.action.overlap_participant_removed": "Object involved in overlap removed",
+  "audit.action.overlap_withdrawn_own": "Overlap closed by withdrawal",
+  "audit.action.ko_change_rolled_back": "Change rolled back",
   "audit.action.user_approve": "Account approved",
   "audit.action.auth_login": "Signed in",
   "audit.action.auth_logout": "Signed out",
@@ -8372,6 +8428,11 @@ const en: typeof de = {
     "Append-only, hash-chained: a verifiable trail of all security-relevant actions. A later deviation on an entry can be detected by recomputation.",
   "adm.sich.auditCount": "{{count}} entries in the chain",
   "adm.sich.verify.button": "Verify integrity",
+  "adm.sich.export.button": "Export chain",
+  "adm.sich.export.done":
+    "Export with {{count}} entries saved. Head of the chain: no. {{seq}} · {{hash}}. Whoever stores this head outside the installation can later tell there whether the chain up to this point was rebuilt.",
+  "adm.sich.qualityNote":
+    "The log records who captured, changed, reviewed and approved what, and when. Management systems such as ISO 9001 (quality) or ISO/IEC 27001 (information security) expect this kind of evidence from documented processes. The log does not replace a certification, and KLARWERK does not promise one. It serves the traceability of knowledge, not the performance assessment of people.",
   "adm.sich.verify.ok": "Integrity verified ✓ — {{count}} entries, chain intact",
   "adm.sich.verify.serialisation":
     "Chain complete — {{count}} entries, no break. For {{n}} entries the payload checksum cannot be recomputed because the database normalises the order of the payload fields. The values as they stand match the stored hash; no deviation remains unresolved.",
@@ -13392,6 +13453,30 @@ const nl: typeof de = {
   "audit.action.ko_create_rollback_failed": "Terugdraaien van het aanmaken mislukt",
   // JOB 3140 (UX-11) — zie het Duitse blok voor de toelichting.
   "audit.action.user_role_change": "Rol gewijzigd",
+  // Aufnahme gesamt-auditprotokoll (§12.3): Re-Validierung, Bibliotheks- und Kettenexport.
+  "audit.action.ko_revalidated": "Opnieuw gevalideerd (klopt nog)",
+  "audit.action.library_export": "Bibliotheek geëxporteerd",
+  "audit.action.audit_exported": "Auditlog geëxporteerd",
+  // R-0766 (Runde 2): Konfliktbelege erscheinen jetzt in der Herkunftskette am Objekt.
+  "audit.action.conflict_created": "Conflict gemeld",
+  "audit.action.conflict_auto_created": "Conflict automatisch herkend",
+  "audit.action.conflict_escalated": "Conflict geëscaleerd",
+  "audit.action.conflict_resolved": "Conflict beslist",
+  "audit.action.conflict_dismissed": "Conflict als vals alarm gesloten",
+  "audit.action.conflict_second_opinion": "Tweede mening over conflict",
+  "audit.action.conflict_participant_removed": "Bij conflict betrokken object verwijderd",
+  "audit.action.conflict_auto_resolved": "Conflict automatisch gesloten",
+  "audit.action.conflict_superseded": "Conflict achterhaald door nieuwe versie",
+  // R-0766 (Runde 3): Überschneidungsbelege und die Rücknahme einer Änderung in der Objektkette.
+  "audit.action.overlap_auto_created": "Overlap herkend",
+  "audit.action.overlap_in_progress": "Overlap in behandeling",
+  "audit.action.overlap_dismissed": "Overlap als vals alarm gesloten",
+  "audit.action.overlap_kept_separate": "Overlap: bewust gescheiden gehouden",
+  "audit.action.overlap_linked_related": "Overlap: als verwant gekoppeld",
+  "audit.action.overlap_superseded": "Overlap achterhaald door nieuwe versie",
+  "audit.action.overlap_participant_removed": "Bij overlap betrokken object verwijderd",
+  "audit.action.overlap_withdrawn_own": "Overlap gesloten door intrekking",
+  "audit.action.ko_change_rolled_back": "Wijziging teruggedraaid",
   "audit.action.user_approve": "Account vrijgegeven",
   "audit.action.auth_login": "Aangemeld",
   "audit.action.auth_logout": "Afgemeld",
@@ -14000,6 +14085,11 @@ const nl: typeof de = {
     "Append-only, hash-geschakeld: een verifieerbaar spoor van alle beveiligingsrelevante acties. Een latere afwijking op een vermelding is rekenkundig vast te stellen.",
   "adm.sich.auditCount": "{{count}} vermeldingen in de keten",
   "adm.sich.verify.button": "Integriteit controleren",
+  "adm.sich.export.button": "Keten exporteren",
+  "adm.sich.export.done":
+    "Export met {{count}} items opgeslagen. Kop van de keten: nr. {{seq}} · {{hash}}. Wie deze kop buiten de installatie bewaart, kan daar later zien of de keten tot dit punt opnieuw is opgebouwd.",
+  "adm.sich.qualityNote":
+    "Het logboek legt vast wie wat wanneer heeft vastgelegd, gewijzigd, gecontroleerd en vrijgegeven. Managementsystemen zoals ISO 9001 (kwaliteit) of ISO/IEC 27001 (informatiebeveiliging) verwachten zulk bewijs van gedocumenteerde processen. Het logboek vervangt geen certificering, en KLARWERK belooft er geen. Het dient de herleidbaarheid van kennis, niet de beoordeling van personen.",
   "adm.sich.verify.ok": "Integriteit gecontroleerd ✓ — {{count}} vermeldingen, keten sluitend",
   "adm.sich.verify.serialisation":
     "Keten sluitend — {{count}} vermeldingen, geen breuk. Bij {{n}} vermeldingen is de controlesom van de gegevensvelden niet na te rekenen, omdat de database de volgorde van die velden normaliseert. De aanwezige waarden passen bij de opgeslagen hash; geen enkele afwijking blijft onopgelost.",

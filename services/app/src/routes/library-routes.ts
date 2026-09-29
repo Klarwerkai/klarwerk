@@ -709,19 +709,24 @@ export function libraryRoutes(
       // Pfade. Vertrauliche KOs nur für Berechtigte — hier an ko.validate gebunden (Controller/
       // Admin, die den Bestand ohnehin kuratieren). Alle anderen Rollen (viewer/experte) bekommen
       // nur die validierten, nicht-vertraulichen KOs.
-      const opts = { includeConfidential: can(user.role, "ko.validate") };
+      const includeConfidential = can(user.role, "ko.validate");
+      // §12.3 „Export": jeder ausgelieferte Export hinterlässt `library.export` (wer, Format, Objekte).
+      const opts = (format: "json" | "markdown" | "mediawiki" | "html") => ({
+        includeConfidential,
+        beleg: { actor: user.id, format },
+      });
       if (request.query.format === "markdown") {
         reply
           .header("content-type", "text/markdown; charset=utf-8")
           .code(200)
-          .send(await library.exportMarkdown(opts));
+          .send(await library.exportMarkdown(opts("markdown")));
         return;
       }
       if (request.query.format === "mediawiki") {
         reply
           .header("content-type", "text/plain; charset=utf-8")
           .code(200)
-          .send(await library.exportMediaWiki(opts));
+          .send(await library.exportMediaWiki(opts("mediawiki")));
         return;
       }
       if (request.query.format === "html") {
@@ -729,10 +734,10 @@ export function libraryRoutes(
         reply
           .header("content-type", "text/html; charset=utf-8")
           .code(200)
-          .send(await library.exportHtml(opts));
+          .send(await library.exportHtml(opts("html")));
         return;
       }
-      reply.code(200).send(await library.exportJson(opts));
+      reply.code(200).send(await library.exportJson(opts("json")));
     });
 
     app.post<{ Body: { items: ImportItem[] } }>("/api/library/import", async (request, reply) => {

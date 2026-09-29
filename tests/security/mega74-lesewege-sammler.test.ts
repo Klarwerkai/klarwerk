@@ -340,6 +340,12 @@ const REGISTER: Record<string, Eintrag> = {
   "GET /api/kos/trash": { urteil: "KURATORENTOR", recht: "users.manage", grund: "Papierkorb." },
   "GET /api/audit": { urteil: "KURATORENTOR", recht: "ko.validate", grund: "Protokoll." },
   "GET /api/audit/verify": { urteil: "KURATORENTOR", recht: "ko.validate", grund: "Protokoll." },
+  "GET /api/audit/export": { urteil: "KURATORENTOR", recht: "ko.validate", grund: "Protokoll." },
+  "GET /api/audit/ko/:koId/findings": {
+    urteil: "KURATORENTOR",
+    recht: "ko.validate",
+    grund: "Protokoll.",
+  },
   "GET /api/model-runs": {
     urteil: "KURATORENTOR",
     recht: "ko.validate",
