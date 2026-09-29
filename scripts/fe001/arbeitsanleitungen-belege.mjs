@@ -17,9 +17,9 @@
 //       (`docs/Berater/FE-001_PRUEFPAKET_ARBEITSANLEITUNGEN_2026-09-26.md`).
 //
 // Die Schritte sind EXPORTIERT: `tests/fe001-arbeitsanleitungen/bilder-im-browser.integration.test.ts`
-// nimmt die Pflichtbilder (Einstieg, Auswahl, Lesestand je 1280/1024/360 px) mit genau diesen
-// Funktionen gegen eine PostgreSQL-Instanz auf — keine zweite Kopie der Bildlogik. Typen:
-// `arbeitsanleitungen-belege.d.mts`.
+// nimmt die Pflichtbilder (Einstieg, Auswahl, Lesestand und Übersicht mit gespeichertem Bestand je
+// 1280/1024/360 px) mit genau diesen Funktionen gegen eine PostgreSQL-Instanz auf — keine zweite
+// Kopie der Bildlogik. Typen: `arbeitsanleitungen-belege.d.mts`.
 //
 // NIE gegen klarwerk.ai oder eine Instanz mit echten Inhalten richten: das Skript richtet ein
 // Admin-Konto ein und legt Einträge an. Gedacht für `npm start` ohne DATABASE_URL (In-Memory) oder
@@ -62,6 +62,8 @@ function normalhoehe(breite) {
 }
 
 const ANMELDUNG = { name: "Pia Beispiel", email: "pia@fe001.test", passwort: "fe001-Passwort-1" };
+/** Anzeigename des Ersteinrichtungskontos — der erwartete Urheber in der Übersicht (ohne Zugangsdaten). */
+export const ANMELDENAME = ANMELDUNG.name;
 
 export function starteBrowser() {
   return chromium.launch({ headless: true, args: ["--no-sandbox", "--disable-gpu"] });
@@ -97,9 +99,10 @@ async function inhaltshoehe(seite) {
 /**
  * Ein Bild bei GENAU dieser Breite. Ohne `nurFenster` wird die Höhe auf den Inhalt gestreckt
  * (höchstens 9000 px). Rückgabe: Datei, Adresse und der tatsächlich gesetzte Viewport — das Bild
- * hat exakt diese Maße (Gerätefaktor 1).
+ * hat exakt diese Maße (Gerätefaktor 1). `pruefe` läuft statt der Hauptaktionsprüfung im
+ * ENDGÜLTIGEN Viewport unmittelbar vor der Aufnahme und darf nicht scrollen (Übersicht, 33ffc28e).
  */
-async function fotoBei(seite, aus, name, breite, { nurFenster = false, log = () => {}, hauptaktion } = {}) {
+async function fotoBei(seite, aus, name, breite, { nurFenster = false, log = () => {}, hauptaktion, pruefe } = {}) {
   const normal = normalhoehe(breite);
   await seite.setViewportSize({ width: breite, height: normal });
   await seite.waitForTimeout(300);
@@ -110,7 +113,9 @@ async function fotoBei(seite, aus, name, breite, { nurFenster = false, log = () 
     await seite.waitForTimeout(300);
   }
   // Unmittelbar vor der Aufnahme, im endgültigen Viewport: kein Hinweis, Hauptaktion frei (BEN-04).
-  if (hauptaktion) {
+  if (pruefe) {
+    await pruefe(`${name}@${breite}`);
+  } else if (hauptaktion) {
     await hauptaktionFrei(seite, hauptaktion, `${name}@${breite}`);
   } else if (await hinweisSichtbar(seite)) {
     throw new Error(`${name}@${breite}: der Nutzungshinweis ist sichtbar — kein Bild.`);
@@ -329,11 +334,18 @@ export async function nimmAuf(seite, begriff, koId, log = () => {}) {
   await nimmGewaehltAuf(seite, begriff, log);
 }
 
-/** PFLICHTBILD Einstieg (E1/E2) bei dieser Breite — die Übersicht muss schon offen sein. */
+/**
+ * PFLICHTBILD Einstieg (E1/E2) bei dieser Breite — die Übersicht muss schon offen sein. Vor dem Bild
+ * (anfrage:33ffc28e (2)): Titelfeld UND Erstellaktion im endgültigen Bildviewport sichtbar,
+ * vollständig im Ausschnitt, unverdeckt und bedienbar — ohne Scrollen (`anlegenFrei`).
+ */
 export async function einstiegsbild(seite, aus, breite, log = () => {}) {
   await aufBreite(seite, breite);
   await seite.getByTestId("ga-liste-leer").waitFor();
-  return fotoBei(seite, aus, "01-einstieg-leer", breite, { log, hauptaktion: erstellenKnopf(seite) });
+  return fotoBei(seite, aus, "01-einstieg-leer", breite, {
+    log,
+    pruefe: (bezeichnung) => anlegenFrei(seite, bezeichnung),
+  });
 }
 
 /**
@@ -359,6 +371,134 @@ export async function lesestandbild(seite, aus, breite, log = () => {}) {
     log,
     hauptaktion: seite.getByTestId("ga-lesestand-dokument"),
   });
+}
+
+/**
+ * Sichtbar, VOLLSTÄNDIG im aktuellen Bildausschnitt und am Mittelpunkt nicht überdeckt — OHNE zu
+ * scrollen: was hier geprüft ist, steht genau so im anschließenden Bild. Wirft sonst.
+ */
+async function imBildFrei(ort, bezeichnung) {
+  if (!(await ort.isVisible())) throw new Error(`${bezeichnung}: nicht sichtbar — kein Bild.`);
+  const lage = await ort.evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    const oben = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return {
+      drin: r.width > 0 && r.height > 0 && r.left >= 0 && r.top >= 0 && r.right <= window.innerWidth && r.bottom <= window.innerHeight,
+      frei: oben !== null && (oben === el || el.contains(oben)),
+    };
+  });
+  if (!lage.drin) throw new Error(`${bezeichnung}: nicht vollständig im Bildausschnitt — kein Bild.`);
+  if (!lage.frei) throw new Error(`${bezeichnung}: von einem anderen Element verdeckt — kein Bild.`);
+}
+
+/**
+ * Das Anlegen im endgültigen Bildviewport: kein Nutzungshinweis, Titelfeld und Erstellaktion im Bild
+ * und unverdeckt (`imBildFrei`) UND bedienbar — das Titelfeld nimmt Eingaben an, die Erstellaktion ist
+ * frei oder allein wegen des leeren Titels gesperrt, und dann steht der Grund sichtbar daneben
+ * (`ga-bereich-sperre`). Jede andere Sperre (etwa eine laufende Anlage) verhindert das Bild.
+ */
+async function anlegenFrei(seite, bezeichnung) {
+  if (await hinweisSichtbar(seite)) throw new Error(`${bezeichnung}: der Nutzungshinweis ist sichtbar — kein Bild.`);
+  const feld = seite.locator("#ga-bereich-titel");
+  const knopf = erstellenKnopf(seite);
+  await imBildFrei(feld, `${bezeichnung} Titelfeld`);
+  await imBildFrei(knopf, `${bezeichnung} Erstellaktion`);
+  if (!(await feld.isEditable())) throw new Error(`${bezeichnung} Titelfeld: nimmt keine Eingabe an — kein Bild.`);
+  if (await knopf.isEnabled()) return;
+  const titelLeer = (await feld.inputValue()).trim().length === 0;
+  const grund = seite.getByTestId("ga-bereich-sperre");
+  if (!titelLeer || !(await grund.isVisible())) {
+    throw new Error(`${bezeichnung} Erstellaktion: gesperrt, ohne dass allein der leere Titel der Grund ist — kein Bild.`);
+  }
+}
+
+/** Was die Übersicht tatsächlich zeigt (Texte mit zusammengefassten Leerzeichen). */
+async function uebersichtBefund(seite) {
+  const text = async (ort) => (await ort.innerText()).replace(/\s+/g, " ").trim();
+  const zeilen = seite.getByTestId("ga-liste-eintrag");
+  const zeile = zeilen.first();
+  const link = zeile.getByTestId("ga-liste-oeffnen");
+  return {
+    pfad: new URL(seite.url()).pathname,
+    zeilen: await zeilen.count(),
+    leer: await seite.getByTestId("ga-liste-leer").count(),
+    fehler: await seite.getByTestId("ga-liste-fehler").count(),
+    id: await zeile.getAttribute("data-anweisung"),
+    linkId: await link.getAttribute("data-anweisung"),
+    titel: await text(link),
+    href: await link.getAttribute("href"),
+    stand: await text(zeile.getByTestId("ga-liste-stand")),
+    abschnitte: await text(zeile.getByTestId("ga-liste-bausteine")),
+    urheber: await text(zeile.getByTestId("ga-liste-urheber")),
+    datum: await text(zeile.getByTestId("ga-liste-geaendert")),
+  };
+}
+
+/** Der Befund muss GENAU die erwartete gespeicherte Anleitung zeigen; wirft sonst. */
+function uebersichtPasst(b, e, bezeichnung) {
+  const fehler = [];
+  if (b.pfad !== "/gesamtanweisungen") fehler.push(`Adresse ${b.pfad}`);
+  if (b.leer || b.fehler) fehler.push(`Leer-/Fehlersatz sichtbar (${b.leer}/${b.fehler})`);
+  if (b.zeilen !== 1) fehler.push(`${b.zeilen} Zeilen statt genau der gespeicherten Anleitung`);
+  if (b.id !== e.id || b.linkId !== e.id) fehler.push(`Kennung ${b.id}/${b.linkId} ≠ ${e.id}`);
+  if (b.titel !== e.titel) fehler.push(`Titel „${b.titel}"`);
+  if (b.href !== e.pfad) fehler.push(`Link ${b.href} ≠ ${e.pfad}`);
+  if (!b.stand.includes(e.stand)) fehler.push(`Stand „${b.stand}"`);
+  if (b.abschnitte !== e.abschnitte) fehler.push(`Anzahl „${b.abschnitte}"`);
+  if (b.urheber !== e.urheber) fehler.push(`Urheber „${b.urheber}" ≠ „${e.urheber}"`);
+  if (!b.datum.startsWith(e.datumPraefix) || !b.datum.includes(e.datumTag) || !/\d{2}:\d{2}/.test(b.datum)) {
+    fehler.push(`Datum „${b.datum}" (erwartet ${e.datumPraefix}… ${e.datumTag} hh:mm)`);
+  }
+  const zeilentext = `${b.titel} ${b.stand} ${b.abschnitte} ${b.urheber} ${b.datum}`;
+  if (/[0-9a-f]{8}-[0-9a-f]{4}-/i.test(zeilentext) || /\d{4}-\d{2}-\d{2}T\d{2}:/.test(zeilentext)) {
+    fehler.push("rohe UUID oder ISO-Zeit im Lesefluss");
+  }
+  if (fehler.length) throw new Error(`${bezeichnung}: ${fehler.join("; ")} — kein Bild.`);
+}
+
+/**
+ * PFLICHTBILD Übersicht mit gespeichertem Bestand (E2/E9/E10; Nacharbeit anfrage:33ffc28e (2)/(3))
+ * bei dieser Breite. Reihenfolge: Breite setzen (schmale Hülle montiert neu) → Reload UNMITTELBAR vor
+ * der Aufnahme → Zeile prüfen → Vollhöhe → im ENDGÜLTIGEN Bildviewport erneut prüfen, dass Titelfeld
+ * und Erstellaktion bedienbar (`anlegenFrei`) und sie samt Titel-Link, Status, Urheber und Datum
+ * sichtbar und unverdeckt sind (ohne Scrollen) → Bild. `erwartet` stammt vom Aufrufer aus Datenbank,
+ * Verzeichnis und Sprachkatalog.
+ */
+export async function uebersichtbild(seite, aus, breite, erwartet, log = () => {}) {
+  const name = "08-uebersicht-mit-bestand";
+  await aufBreite(seite, breite);
+  await seite.reload();
+  await seite.getByTestId("ga-liste-eintrag").first().waitFor();
+  // Die Zeile steht, sobald die Liste geladen ist; den Namen löst `useAuthorName` aus einer EIGENEN
+  // Abfrage (/api/directory) — bis dahin „Autorenname wird geladen …". Auf den erwarteten Text warten,
+  // nicht auf den ersten Zeichenstand; ohne ihn scheitert das Bild mit Grund.
+  try {
+    await seite.getByTestId("ga-liste-urheber").filter({ hasText: erwartet.urheber }).first().waitFor({ timeout: 20000 });
+  } catch {
+    const ist = await seite.getByTestId("ga-liste-urheber").first().innerText().catch(() => "(fehlt)");
+    throw new Error(`${name}@${breite}: Urheber „${ist.replace(/\s+/g, " ").trim()}" statt „${erwartet.urheber}" — kein Bild.`);
+  }
+  log(`Übersicht @${breite}: Reload unmittelbar vor der Aufnahme · ${seite.url()}`);
+  uebersichtPasst(await uebersichtBefund(seite), erwartet, `${name}@${breite} nach Reload`);
+  let semantik;
+  const bild = await fotoBei(seite, aus, name, breite, {
+    log,
+    pruefe: async (bezeichnung) => {
+      await anlegenFrei(seite, bezeichnung);
+      semantik = await uebersichtBefund(seite);
+      uebersichtPasst(semantik, erwartet, `${bezeichnung} im Bildviewport`);
+      const zeile = seite.getByTestId("ga-liste-eintrag").first();
+      await imBildFrei(zeile.getByTestId("ga-liste-oeffnen"), `${bezeichnung} Titel-Link`);
+      await imBildFrei(zeile.getByTestId("ga-liste-stand"), `${bezeichnung} Status`);
+      await imBildFrei(zeile.getByTestId("ga-liste-urheber"), `${bezeichnung} Urheber`);
+      await imBildFrei(zeile.getByTestId("ga-liste-geaendert"), `${bezeichnung} Datum`);
+    },
+  });
+  log(
+    `SEMANTIK ${name}@${breite}: Anleitung ${semantik.id} „${semantik.titel}" · ${semantik.stand} · ${semantik.abschnitte} · ` +
+      `${semantik.urheber} · ${semantik.datum} · Titelfeld, Erstellaktion, Titel-Link, Status, Urheber, Datum im Bild unverdeckt`,
+  );
+  return { ...bild, semantik };
 }
 
 export function sha256(datei) {

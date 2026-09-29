@@ -8,15 +8,22 @@
 // Kopie der Bildlogik) und geht dabei den FE-001-Beispielablauf (E5) gegen einen echten
 // Serverprozess (`server.ts`) auf einer Wegwerf-Datenbank aus `KLARWERK_PG_TEST_URL`.
 //
-//   · drei Ansichten — Einstieg, Inhalts-/Fassungsauswahl, gefüllter Lesestand — je 1280, 1024 und
-//     360 px Breite; der Viewport ist Parameter jeder Aufnahme,
+//   · vier Ansichten — Einstieg, Inhalts-/Fassungsauswahl, gefüllter Lesestand und (Aktionsliste V2
+//     Punkt 4) die gefüllte Übersicht NACH Reload — je 1280, 1024 und 360 px Breite; der Viewport
+//     ist Parameter jeder Aufnahme,
 //   · Ablage in EINEM festen Ordner (`KLARWERK_FE001_BILDER` oder `.local/run/fe001-bilder-im-browser`)
 //     mit `MANIFEST.json`: Commit aus `git HEAD`, URL, Browser/Version, Viewport, Zeitpunkt,
-//     SHA-256 je PNG,
-//   · jede Datei wird hier nachgeprüft: vorhanden, nicht leer, PNG, Maße = gesetzter Viewport,
+//     SHA-256 je PNG und die ausgeführten Schritte,
+//   · jede Datei wird hier nachgeprüft: vorhanden, nicht leer, PNG, Maße = gesetzter Viewport; die
+//     Liste der Bilder wird gegen die ERWARTETEN Namen × Breiten geprüft, nicht nur gezählt,
 //   · Beispielablauf: benennen → Kopf → drei Inhalte über ihren Titel finden und Fassung 1 binden →
 //     Reihenfolge ändern → Reload → Lesestand mit Herkunft/Fassung → vorlegen → Reload; das
-//     Gespeicherte wird zusätzlich IN DER DATENBANK nachgesehen.
+//     Gespeicherte wird zusätzlich IN DER DATENBANK nachgesehen,
+//   · Übersicht mit gespeichertem Bestand (Nacharbeit anfrage:33ffc28e, Freigabe entscheidung:43aa2652):
+//     `uebersichtbild` DES SKRIPTS lädt je Breite unmittelbar vor der Aufnahme neu und prüft im
+//     endgültigen Bildviewport Titelfeld, Erstellaktion, Titel-Link, Status, Urheber und Datum
+//     (sichtbar, unverdeckt, ohne Scrollen); Kennung, Titel, Link, Stand, Anzahl, Urheber und Datum
+//     werden hier aus Datenbank, Verzeichnis und Sprachkatalog erwartet, nicht aus der Seite.
 //
 // KEIN STILLER SKIP (E10): fehlt `KLARWERK_PG_TEST_URL` oder Chromium, SCHEITERT der Fall mit dem
 // Grund. Eine fehlende gebaute Fläche wird gebaut oder wirft (`stelleFlaecheBereit`).
@@ -29,11 +36,13 @@ import type { Browser } from "@playwright/test";
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
+  ANMELDENAME,
   BEISPIELBESTAND,
   BREITEN,
   type Bild,
   KOPF,
   SUCHBEGRIFFE,
+  type UebersichtBefund,
   anleitungAnlegen,
   aufBreite,
   auswahlbild,
@@ -48,6 +57,7 @@ import {
   richteEin,
   sha256,
   starteBrowser,
+  uebersichtbild,
 } from "../../scripts/fe001/arbeitsanleitungen-belege.mjs";
 import { guardedLocalPgTestUrl } from "../../services/db-tx";
 import { hatBrowser, starteBrowserOderBefund } from "../gesamtanweisung-nutzerweg/browserbefund";
@@ -77,6 +87,16 @@ const AUS = resolve(
 const TITEL = "Start im Homeoffice";
 /** So lange hält der Test die Antwort auf `GET /api/auth/notice` zurück (BEN-04: später Hinweis). */
 const HINWEIS_VERZUG_MS = 4000;
+/** Die Pflichtansichten, die das Manifest je Breite tragen MUSS (Aktionsliste V2 Punkt 4: + Übersicht). */
+const ANSICHTEN = [
+  "01-einstieg-leer",
+  "03-auswahl-fassung-vorschau",
+  "04-lesestand-gefuellt",
+  "08-uebersicht-mit-bestand",
+] as const;
+const UEBERSICHT = "08-uebersicht-mit-bestand";
+const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+const ISO_ZEIT = /\d{4}-\d{2}-\d{2}T\d{2}:/;
 
 describe("FE-001 · Pflichtbilder und Beispielablauf im echten Browser gegen PostgreSQL", () => {
   let adminPool: Pool | undefined;
@@ -127,7 +147,7 @@ describe("FE-001 · Pflichtbilder und Beispielablauf im echten Browser gegen Pos
     }
   }, 120_000);
 
-  it("Einstieg, Auswahl und Lesestand je 1280/1024/360 px — Beispielablauf gespeichert und nach Reload erhalten", async () => {
+  it("Einstieg, Auswahl, Lesestand und gefüllte Übersicht je 1280/1024/360 px — Beispielablauf gespeichert und nach Reload erhalten", async () => {
     // Nicht bewertbar ist NICHT bestanden: der Fall scheitert mit dem Grund.
     expect(zaehltAlsBestanden(laufzustand), befundsatz(MARKE, laufzustand)).toBe(true);
     if (!browser || !verbindung) {
@@ -316,6 +336,99 @@ describe("FE-001 · Pflichtbilder und Beispielablauf im echten Browser gegen Pos
         [idZwei, 1],
       ]);
 
+      // ── 9b · Übersicht mit gespeichertem Bestand je Breite (anfrage:33ffc28e (2)/(3)) ────────────
+      // ALLE Erwartungen kommen von außerhalb der Seite: Kennung, Urheber-Kennung und Änderungszeit
+      // aus der Datenbank (9), der Anzeigename aus dem Verzeichnis des Servers, die Texte aus dem
+      // Sprachkatalog. Der ganze Bestand der Wegwerf-DB ist diese eine Anleitung.
+      const de = sprachbestand("de");
+      const gespeichert = kopf.rows[0]?.id ?? "";
+      const alle = await pool.query<{ n: string }>(
+        "SELECT count(*)::text AS n FROM gesamtanweisungen",
+      );
+      expect(alle.rows[0]?.n, `${MARKE}: Bestand der Wegwerf-DB vor der Übersicht`).toBe("1");
+      const meta = await pool.query<{ urheber: string; geaendert_am: string }>(
+        "SELECT urheber, geaendert_am FROM gesamtanweisungen WHERE id = $1",
+        [gespeichert],
+      );
+      const urheberId = meta.rows[0]?.urheber ?? "";
+      const geaendertAm = meta.rows[0]?.geaendert_am ?? "";
+      expect(urheberId, `${MARKE}: gespeicherter Urheber`).not.toBe("");
+      // Anzeigename: dasselbe Verzeichnis, aus dem die Oberfläche auflöst (`useAuthorName` →
+      // GET /api/directory → { id, name }), aus der angemeldeten Seite. Der Testbestand liefert den
+      // Namen der Ersteinrichtung; fehlt er dort, scheitert der Fall hier ehrlich (kein „Unbekannte
+      // Person" als Beleg für einen tatsächlich gelieferten Namen).
+      const verzeichnis = await seite.evaluate(async () => {
+        const a = await fetch("/api/directory", { credentials: "include" });
+        return { status: a.status, rumpf: (await a.json().catch(() => null)) as unknown };
+      });
+      expect(verzeichnis.status, `${MARKE}: GET /api/directory`).toBe(200);
+      const eintrag = (verzeichnis.rumpf as { id: string; name: string }[]).find(
+        (e) => e.id === urheberId,
+      );
+      expect(eintrag?.name?.trim(), `${MARKE}: Verzeichnisname des Urhebers`).toBe(ANMELDENAME);
+      // Lesbares Datum aus der gespeicherten Änderungszeit, in der Zeitzone DES BROWSERS gebildet (kein
+      // festes Datum, keine Systemzeit des Testlaufs): nur der Tagesteil, die Uhrzeit prüft das Muster.
+      const datumTag = await seite.evaluate(
+        (iso) =>
+          new Date(iso).toLocaleDateString("de-DE", {
+            day: "2-digit",
+            month: "2-digit",
+            year: "numeric",
+          }),
+        geaendertAm,
+      );
+      expect(datumTag, `${MARKE}: gespeicherte Änderungszeit lesbar`).toMatch(
+        /^\d{2}\.\d{2}\.\d{4}$/,
+      );
+      const detailpfad = new URL(adresse).pathname;
+      expect(detailpfad.endsWith(`/${gespeichert}`), `${MARKE}: Detailpfad ${detailpfad}`).toBe(
+        true,
+      );
+      const erwartung = {
+        id: gespeichert,
+        titel: TITEL,
+        pfad: detailpfad,
+        stand: de["ga.stand.vorgelegt"] ?? "(Katalogtext fehlt)",
+        abschnitte: (de["ga.liste.bausteine"] ?? "(Katalogtext fehlt)").replace("{{anzahl}}", "3"),
+        urheber: `${de["ga.liste.urheber"] ?? "(Katalogtext fehlt)"}: ${ANMELDENAME}`,
+        datumPraefix: `${de["ga.liste.geaendert"] ?? "(Katalogtext fehlt)"}: `,
+        datumTag,
+      };
+      await aufBreite(seite, 1280);
+      await seite.goto(`${basis}/gesamtanweisungen`);
+      await seite.getByTestId("ga-liste-eintrag").first().waitFor();
+      const uebersicht: (UebersichtBefund & { breite: number })[] = [];
+      for (const breite of BREITEN) {
+        // Breite → Reload → Prüfung → Vollhöhe → Prüfung im Bildviewport → Bild (alles im Skript).
+        const bild = await uebersichtbild(seite, AUS, breite, erwartung, log);
+        bilder.push(bild);
+        uebersicht.push({ ...bild.semantik, breite });
+        const s = bild.semantik;
+        expect(s.id, `${MARKE}: Übersicht @${breite} Kennung`).toBe(gespeichert);
+        expect(s.titel, `${MARKE}: Übersicht @${breite} Titel`).toBe(TITEL);
+        expect(s.href, `${MARKE}: Übersicht @${breite} Link`).toBe(detailpfad);
+        expect(s.stand, `${MARKE}: Übersicht @${breite} Stand`).toContain(erwartung.stand);
+        expect(s.abschnitte, `${MARKE}: Übersicht @${breite} Anzahl`).toBe(erwartung.abschnitte);
+        expect(s.urheber, `${MARKE}: Übersicht @${breite} Urheber`).toBe(erwartung.urheber);
+        expect(s.datum.startsWith(erwartung.datumPraefix), `${MARKE}: Datum „${s.datum}"`).toBe(
+          true,
+        );
+        expect(s.datum, `${MARKE}: Übersicht @${breite} Datum`).toContain(datumTag);
+        expect(s.datum, `${MARKE}: Übersicht @${breite} Uhrzeit`).toMatch(/\d{2}:\d{2}/);
+        expect(`${s.urheber} ${s.datum}`, `${MARKE}: keine UUID`).not.toMatch(UUID);
+        expect(`${s.urheber} ${s.datum}`, `${MARKE}: keine ISO-Zeit`).not.toMatch(ISO_ZEIT);
+        expect(
+          protokoll.filter((z) => z.startsWith(`SEMANTIK ${UEBERSICHT}@${breite}:`)),
+          `${MARKE}: Semantik der Aufnahme @${breite} im Protokoll`,
+        ).toHaveLength(1);
+        expect(
+          protokoll.some((z) =>
+            z.startsWith(`Übersicht @${breite}: Reload unmittelbar vor der Aufnahme`),
+          ),
+          `${MARKE}: Reload vor der Aufnahme @${breite} im Protokoll`,
+        ).toBe(true);
+      }
+
       // ── 10 · Manifest und Nachprüfung jeder Datei ──────────────────────────────────────────────
       const kopfCommit = execFileSync("git", ["rev-parse", "HEAD"], {
         cwd: WURZEL,
@@ -327,6 +440,9 @@ describe("FE-001 · Pflichtbilder und Beispielablauf im echten Browser gegen Pos
         const masse = pngMasse(b.datei);
         expect(masse, `${MARKE}: ${b.datei} ist kein PNG`).not.toBeNull();
         expect(masse, `${MARKE}: ${b.datei} hat nicht die Maße des Viewports`).toEqual(b.viewport);
+        expect(b.datei, `${MARKE}: Dateiname trägt Ansicht und Breite`).toBe(
+          join(AUS, `${b.name}-${b.viewport.width}.png`),
+        );
         return {
           datei: b.datei.slice(AUS.length + 1),
           ansicht: b.name,
@@ -336,8 +452,25 @@ describe("FE-001 · Pflichtbilder und Beispielablauf im echten Browser gegen Pos
           sha256: sha256(b.datei),
         };
       });
-      expect(eintraege, `${MARKE}: drei Ansichten × drei Breiten`).toHaveLength(9);
-      expect(new Set(eintraege.map((e) => `${e.ansicht}@${e.viewport.width}`)).size).toBe(9);
+      // Nicht bloß zählen: GENAU die erwarteten Ansichten × Breiten, jede einmal.
+      const erwartet = ANSICHTEN.flatMap((a) => BREITEN.map((w) => `${a}@${w}`)).sort();
+      expect(
+        eintraege.map((e) => `${e.ansicht}@${e.viewport.width}`).sort(),
+        `${MARKE}: vier Ansichten × drei Breiten`,
+      ).toEqual(erwartet);
+      expect(eintraege, `${MARKE}: bisherige neun Bilder plus drei Übersichten`).toHaveLength(12);
+      expect(new Set(eintraege.map((e) => e.sha256)).size, `${MARKE}: kein Bild doppelt`).toBe(
+        eintraege.length,
+      );
+      for (const e of eintraege.filter((x) => x.ansicht === UEBERSICHT)) {
+        expect(new URL(e.url).pathname, `${MARKE}: ${e.datei} zeigt die Übersicht`).toBe(
+          "/gesamtanweisungen",
+        );
+      }
+      expect(
+        uebersicht.map((u) => [u.breite, u.id, u.titel, u.urheber]),
+        `${MARKE}: Übersichtsbelege je Breite`,
+      ).toEqual(BREITEN.map((w) => [w, gespeichert, TITEL, erwartung.urheber]));
       const bindung = kandidat();
       expect(bindung.commit, `${MARKE}: Commit der Bindung ≠ git HEAD`).toBe(kopfCommit);
       const manifest = {
@@ -353,6 +486,23 @@ describe("FE-001 · Pflichtbilder und Beispielablauf im echten Browser gegen Pos
         breiten: BREITEN,
         aufgenommen: new Date().toISOString(),
         bilder: eintraege,
+        uebersicht: {
+          ansicht: UEBERSICHT,
+          anweisung: gespeichert,
+          reloadVorJederAufnahme: true,
+          geprueftImBildviewport: [
+            "Titelfeld (bedienbar)",
+            "Erstellaktion (bedienbar oder nur wegen leerem Titel mit sichtbarem Grund gesperrt)",
+            "Titel-Link",
+            "Status",
+            "Urheber",
+            "Datum",
+          ],
+          erwartung,
+          je_breite: uebersicht,
+        },
+        // Die ausgeführten Schritte dieses Laufs (dasselbe wie `protokoll.txt`), im Manifest gebunden.
+        schritte: protokoll,
       };
       writeFileSync(join(AUS, "MANIFEST.json"), `${JSON.stringify(manifest, null, 2)}\n`);
       writeFileSync(join(AUS, "protokoll.txt"), `${protokoll.join("\n")}\n`);
