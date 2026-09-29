@@ -1,8 +1,8 @@
 # Abgleich: Deployment-Commit ↔ `/health.commit` (Auftrag deploy-health-commit)
 
-Stand 29.09.2026, Lauf `deploy-health-commit:4` (setzt Lauf 3 ab `cd688810` fort; Code unverändert,
-nur Messung 7 ergänzt; Runde 2 führt `main` = `8f0ec01c` zusammen, `APP_VERSION` = `package.json` =
-`1.0.0-beta.1.632`). Lauf 3 übernahm den Kandidaten
+Stand 29.09.2026, Lauf `deploy-health-commit:4` (setzt Lauf 3 ab `cd688810` fort; Runde 1 ergänzt
+Messung 7; Runde 2 führt `main` = `8f0ec01c` zusammen, `APP_VERSION` = `package.json` =
+`1.0.0-beta.1.632`; Runde 3 verlegt die Plugin-Fabrik `klara-stand`, siehe R-1028). Lauf 3 übernahm den Kandidaten
 `9a8986c2` aus Lauf 2 (B1–B7, R-0786, R-1028) unverändert auf `1530dfeb` und schloss Bens
 Befund B8 (R-0794, siehe unten). Server und Coolify wurden in keinem dieser Läufe verändert.
 
@@ -152,7 +152,7 @@ Tatsächliche Versionswege (vor dieser Fassung, am Code von `41fad46c`):
 |---|---|---|
 | Web-Topbar / Zahnradmenü | `1.0.0-beta.1.627` | `APP_VERSION`, `apps/web/src/version.ts` |
 | `/health.version` | `1.0.0-beta.1.627` | `package.json` (`buildVersion()`); Gleichlauf mit `version.ts` erzwingt `tests/app/health-version-commit.test.ts` |
-| Word-Panel, Fuß „Klara <Stand>“ (`#kw-stand`) | Bauzeit + Git-Kürzel, **keine** Programmversion | Build-Plugin `klara-stand`, `apps/web/vite.config.ts`, ersetzt `__KLARA_STAND__` in `apps/web/public/word-addin/taskpane.html` |
+| Word-Panel, Fuß „Klara <Stand>“ (`#kw-stand`) | Bauzeit + Git-Kürzel, **keine** Programmversion | Build-Plugin `klara-stand` (eingetragen in `apps/web/vite.config.ts`), ersetzt `__KLARA_STAND__` in `apps/web/public/word-addin/taskpane.html` |
 | Word-Panel, Fassungszeile (`#kw-fassung`) | „Stand 1.0.0.1 · aktuell“ | `KLARA_TASKPANE_FASSUNG` in `services/app/src/web-static.ts`, beim Ausliefern gestempelt (`registerWebStatic(app, dist)`, `services/app/src/server.ts:66`); = `<Version>` im Manifest `docs/word-addin/klara-manifest.xml` |
 
 Die Runde-1-Aussage „das Word-Panel zeigt keine Version“ war falsch: Sie stützte sich auf
@@ -173,10 +173,16 @@ Geändert:
   jedem Schreiben** ab; es gibt kein `git checkout` mehr, vorhandene Arbeitsänderungen bleiben
   erhalten (B7). Geändert wird nur die Versionszeile, portabel mit `sed -i.kwbak`.
 - Beleg: `tests/deploy-health-commit/eine-programmversion.test.ts` führt das **echte** Plugin aus
-  `vite.config.ts` aus und prüft `APP_VERSION` im gestempelten Panel; zusätzlich ein echter
+  und prüft `APP_VERSION` im gestempelten Panel; zusätzlich ein echter
   `npx vite build --outDir /tmp/kw-r1028-build` am 29.09.: Panel
   `var KLARA_STAND = "1.0.0-beta.1.627 · 2026-09-29 04:54Z · b49b9d3f"`, Web-Bundle enthält
   `1.0.0-beta.1.627`.
+- Lauf 4, Runde 3 (Tor rot an `dba7307a`, `tests/legal/mega61-rechtsseiten.test.tsx`: „kein Test
+  verbirgt seinen Modulpfad hinter einem Platzhalter“): Der Test lud `vite.config.ts` über einen
+  Laufzeitpfad. Die Plugin-Fabrik `klaraStand()` wohnt jetzt — wie `textmodulVertrag()` (JOB 4367) —
+  strukturell typisiert in `apps/web/src/lib/klaraStand.ts`; `vite.config.ts` trägt sie nur ein, der
+  Test importiert sie statisch und prüft die Eintragung. Erneuter echter Build am 29.09.T21:24Z:
+  `var KLARA_STAND = "1.0.0-beta.1.632 · 2026-09-29 21:24Z · 30102481"`.
 - Grenze: Physisch gibt es weiter zwei Dateien mit derselben Nummer (`version.ts` für die Oberfläche,
   `package.json` für `/health`), gekoppelt durch Skript und Wächter-Test. Angezeigt wird in Web und
   Word dieselbe Konstante. Ein Browser-/Word-Sichtnachweis wurde nicht geführt.

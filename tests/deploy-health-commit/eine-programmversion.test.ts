@@ -1,37 +1,18 @@
 // AUFTRAG deploy-health-commit · R-1028: Word-Panel und Web-Konsole zeigen die Programmversion aus
 // EINER Quelle (`APP_VERSION`, apps/web/src/version.ts).
 //
-// Geprüft wird das ECHTE Build-Plugin `klara-stand` aus apps/web/vite.config.ts — keine
-// nachgebaute Kopie. Der Import läuft über einen Laufzeitpfad, damit die Datei nicht in den
-// Root-Typcheck gerät (Begründung am Kopf von apps/web/vite.config.ts, JOB 4367).
+// Geprüft wird das ECHTE Build-Plugin `klara-stand`, das apps/web/vite.config.ts einträgt — keine
+// nachgebaute Kopie. Die Fabrik wohnt in apps/web/src/lib/klaraStand.ts und wird statisch
+// importiert (Begründung dort); dass die Konfiguration genau sie einträgt, prüft der letzte Fall.
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { klaraStandText } from "../../apps/web/src/lib/klaraStand";
+import { klaraStand, klaraStandText } from "../../apps/web/src/lib/klaraStand";
 import { APP_VERSION } from "../../apps/web/src/version";
 
 const WURZEL = join(import.meta.dirname, "..", "..");
 const TASKPANE = join(WURZEL, "apps", "web", "public", "word-addin", "taskpane.html");
-
-interface StandPlugin {
-  name: string;
-  configResolved: (c: { root: string; build: { outDir: string } }) => void;
-  closeBundle: () => void;
-}
-
-async function standPlugin(): Promise<StandPlugin> {
-  const pfad = join(WURZEL, "apps", "web", "vite.config.ts");
-  const modul = (await import(pfad)) as { default: { plugins: unknown[] } };
-  const plugin = modul.default.plugins
-    .flat()
-    .find(
-      (p): p is StandPlugin =>
-        typeof p === "object" && p !== null && (p as { name?: unknown }).name === "klara-stand",
-    );
-  if (!plugin) throw new Error("Plugin klara-stand fehlt in apps/web/vite.config.ts");
-  return plugin;
-}
 
 let tmp = "";
 afterEach(() => {
@@ -49,13 +30,13 @@ describe("R-1028 · eine Programmversion für Word-Panel und Web-Konsole", () =>
     expect(klaraStandText("1.0.0-beta.1.627", um, "")).toBe("1.0.0-beta.1.627 · 2026-09-29 04:32Z");
   });
 
-  it("das echte Build-Plugin stempelt APP_VERSION ins gebaute Word-Panel", async () => {
+  it("das echte Build-Plugin stempelt APP_VERSION ins gebaute Word-Panel", () => {
     tmp = mkdtempSync(join(tmpdir(), "klara-stand-"));
     mkdirSync(join(tmp, "dist", "word-addin"), { recursive: true });
     const ziel = join(tmp, "dist", "word-addin", "taskpane.html");
     writeFileSync(ziel, readFileSync(TASKPANE, "utf8"));
 
-    const plugin = await standPlugin();
+    const plugin = klaraStand();
     plugin.configResolved({ root: tmp, build: { outDir: "dist" } });
     plugin.closeBundle();
 
@@ -75,5 +56,11 @@ describe("R-1028 · eine Programmversion für Word-Panel und Web-Konsole", () =>
     for (const z of zeilen) {
       expect(z).toMatch(/^Add-in[- ](Fassung|version|versie) \{geladen\}/);
     }
+  });
+
+  it("die Vite-Konfiguration trägt genau diese Fabrik ein", () => {
+    const vite = readFileSync(join(WURZEL, "apps", "web", "vite.config.ts"), "utf8");
+    expect(vite).toContain('import { klaraStand } from "./src/lib/klaraStand";');
+    expect(vite).toMatch(/plugins: \[[^\]]*\bklaraStand\(\)/);
   });
 });

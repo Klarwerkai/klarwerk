@@ -159,9 +159,13 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     expect(src).toContain('var KLARA_STAND = "__KLARA_STAND__"');
     expect(src).toContain('id="kw-stand"');
     // … und der Build ersetzt ihn (eine Stelle, keine Handpflege).
+    // Die Plugin-Fabrik wohnt seit deploy-health-commit (R-1028) in src/lib/klaraStand.ts, damit
+    // ein Test sie statisch importieren kann; vite.config.ts trägt sie ein.
     const vite = readFileSync(join(WURZEL, "apps", "web", "vite.config.ts"), "utf8");
-    expect(vite).toContain('name: "klara-stand"');
-    expect(vite).toContain('replaceAll("__KLARA_STAND__"');
+    expect(vite).toMatch(/plugins: \[[^\]]*\bklaraStand\(\)/);
+    const fabrik = readFileSync(join(WURZEL, "apps", "web", "src", "lib", "klaraStand.ts"), "utf8");
+    expect(fabrik).toContain('name: "klara-stand"');
+    expect(fabrik).toContain('replaceAll("__KLARA_STAND__"');
   });
 
   it("INHALTS-PIN: eine Änderung an taskpane.html wird rot, bevor sie still ausgeliefert wird", () => {
