@@ -1087,6 +1087,9 @@ export function Blatt({
   // „erst sichern, dann im Formular weiter" gewählt hat. Ein Fehler beim Sichern räumt ihn ab: dann
   // bleibt das Blatt mit seinem Fehlersatz stehen, statt in einen älteren Stand zu wechseln.
   const nachSichernOeffnenRef = useRef<ArbeitsraumModus | null>(null);
+  // Der Arbeitsraum, der nach einem ERFOLGREICHEN vorgeschalteten Sichern zur Entscheidung ansteht
+  // (s. Effekt `formularNachSichern` bei `formularOeffnen`).
+  const [formularNachSichern, setFormularNachSichern] = useState<ArbeitsraumModus | null>(null);
   const save = useMutation({
     mutationFn: () => {
       if (activeDraftId) {
@@ -1202,13 +1205,15 @@ export function Blatt({
           draft.payload?.title?.trim() ||
           deriveFrontDoorTitle(abgesendet.title, abgesendet.bodyHtml, fallbackTitle),
       });
-      // BEN-1: erst JETZT, mit der Kennung in `?draft=`, öffnet das Formular — und lädt damit
-      // genau den Stand, den der Mensch gerade auf dem Blatt hatte.
+      // BEN-1: Die Kennung steht jetzt in `?draft=`. Geöffnet wird hier aber NICHT: dieser
+      // Rückruf kennt nur den ABGESENDETEN Stand. Das Titelfeld und die Schreibfläche bleiben
+      // während des Sicherns bedienbar (Runde 3, Bens Gegenprobe: ein Nachtrag im Titel während der
+      // laufenden Anfrage fehlte danach wortlos im Formular). Entschieden wird deshalb im Effekt
+      // `formularNachSichern` unten, nach dem Ende der Speicherung und mit dem AKTUELLEN Blatt.
       const nachSichern = nachSichernOeffnenRef.current;
       if (nachSichern) {
         nachSichernOeffnenRef.current = null;
-        setOffenesMenue(null);
-        setAnsicht(nachSichern);
+        setFormularNachSichern(nachSichern);
       }
     },
     onError: (e) => {
@@ -1895,6 +1900,38 @@ export function Blatt({
       arbeitsraumOeffnen("formular");
     }
   };
+
+  // Runde 3 (Bens Befund BEN-1, Rest): DIE ENTSCHEIDUNG NACH DEM VORGESCHALTETEN SICHERN.
+  //
+  // Erst wenn die Speicherung wirklich zu Ende ist (`save.isPending` false) und mit dem Blatt, wie
+  // es JETZT ist: `savedStateRef` trägt seit `onSuccess` den abgesendeten Stand, `istSchmutzig`
+  // sagt also genau, ob während der Anfrage weitergeschrieben wurde.
+  //   · nichts nachgetragen → das Formular öffnet und lädt genau diesen gesicherten Stand;
+  //   · nachgetragen → das Formular kennt den Nachtrag nicht. Statt wortlos zu wechseln, fragt das
+  //     Blatt erneut und nennt den Grund; Ja sichert auch den Nachtrag und führt über denselben Weg
+  //     hierher zurück, Nein lässt alles auf dem Blatt.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: entschieden wird genau einmal je Wunsch, mit dem Stand dieses Bildaufbaus
+  useEffect(() => {
+    if (!formularNachSichern || save.isPending) {
+      return;
+    }
+    const modus = formularNachSichern;
+    setFormularNachSichern(null);
+    if (!istSchmutzig) {
+      arbeitsraumOeffnen(modus);
+      return;
+    }
+    if (canSave) {
+      if (window.confirm(t("einstieg.formular.nachtragFrage"))) {
+        nachSichernOeffnenRef.current = modus;
+        requestSave();
+      }
+      return;
+    }
+    if (window.confirm(t("einstieg.formular.ohneSichernFrage"))) {
+      arbeitsraumOeffnen(modus);
+    }
+  }, [formularNachSichern, save.isPending]);
 
   // JOB 3282 (EDITOR-R26): der Rückweg zum Schreibfeld, wenn der Arbeitsraum abgebrochen wurde.
   // Er fasst den Blattinhalt NICHT an: Titel, Rumpf und Entwurfskennung leben in diesem Bauteil,

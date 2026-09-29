@@ -1,7 +1,7 @@
 # Aufnahme `gesamt-erfassung-einstieg` — Abgleich, Lieferung, offene Entscheidungen
 
 Auftrag `aufnahme:20260922:gesamt-erfassung-einstieg` (Aufgabenrevision 2, Lauf
-`lauf:b3:aufnahme:20260922:gesamt-erfassung-einstieg:1`, Runden 1 und 2). Basisstand `b836417d`
+`lauf:b3:aufnahme:20260922:gesamt-erfassung-einstieg:1`, Runden 1 bis 3). Basisstand `b836417d`
 (`1.0.0-beta.1.630`). Stand dieser Datei: 29.09.2026.
 Auftragsquelle: `klarwerk_steuerung/gespraech/auftragsaufnahme-01a0c779-20260922/gesamtbestand/auftragsquellen/erfassung-einstieg.json`
 (42 Aufnahmepunkte; Originalwortlaut in den dort genannten `quellenpakete/aufnahmepunkte-0NN.json`).
@@ -36,7 +36,8 @@ R-0930), widersprechen dieser jüngeren Entscheidung — siehe „Quellenwidersp
 | `tests/i18n-textmodule/werte-vorher.json`, `bestand-vorher.json` | Die zwölf gewollten Textänderungen nachgetragen, Prüfsummen neu berechnet (so verlangt es `bestand-unveraendert.test.ts` K1.1). | — |
 | **Runde 2** `apps/web/src/components/erfassen/Blatt.tsx` | BEN-1: „Datei ▾ → Formular (Experten)" und „Mehr → Anhänge → Anhänge verwalten" laufen über `formularOeffnen`. Weicht das Blatt vom gesicherten Stand ab (`istSchmutzig`), fragt es: sicherbar → „erst sichern, dann im Formular weiter?" (Ja sichert über `requestSave` und öffnet das Formular erst nach der Serverbestätigung, `nachSichernOeffnenRef`; Nein lässt alles auf dem Blatt); nicht sicherbar → die Rückfrage nennt den Wechsel zum gesicherten bzw. leeren Stand. Unverändertes Blatt: keine Rückfrage. | N-0068 |
 | **Runde 2** `apps/web/src/lib/captureFrontDoor.ts` | BEN-2: `deriveFrontDoorTitle` kappt den **getippten** Titel nicht mehr auf 90 Zeichen (nur Leerraum wird zusammengezogen). Der aus dem Text abgeleitete Titel bleibt ein auf 90 Zeichen gekürzter Vorschlag — er stand nie im Feld. Der Server kennt keine Titelgrenze (`services/capture/src/service.ts` `normalizeDraftPayload` kürzt nur Quellen, Prüfer, Interview). | R-1002, Kriterium 1 |
-| **Runde 2** `apps/web/src/texte/einstieg.ts` | `einstieg.formular.sichernFrage`, `einstieg.formular.ohneSichernFrage` in DE/EN/NL. | N-0068 |
+| **Runde 3** `apps/web/src/components/erfassen/Blatt.tsx` | BEN-1 Rest: `onSuccess` öffnet das Formular nicht mehr selbst (kennt nur den abgesendeten Stand), sondern meldet den Wunsch (`formularNachSichern`). Ein Effekt entscheidet nach dem Ende der Speicherung mit dem AKTUELLEN Blatt: nichts nachgetragen → Formular öffnet; während des Sicherns nachgetragen (`istSchmutzig` gegen den abgesendeten Stand — Titel, Text, Stufe, Bereich, offener KI-Vorschlag) → erneute Rückfrage `einstieg.formular.nachtragFrage`; Ja sichert auch den Nachtrag und kommt über denselben Weg zurück, Nein lässt alles auf dem Blatt. | N-0068 |
+| **Runde 2** `apps/web/src/texte/einstieg.ts` | `einstieg.formular.sichernFrage`, `einstieg.formular.ohneSichernFrage`, seit Runde 3 `einstieg.formular.nachtragFrage` in DE/EN/NL. | N-0068 |
 
 ## Die Tests dieses Ordners
 
@@ -50,7 +51,7 @@ R-0930), widersprechen dieser jüngeren Entscheidung — siehe „Quellenwidersp
   `draftPayload`, Eingabe bleibt, kein Entwurf am Server; E2 Rumpf > 5 MiB → echter 413 → „zu
   lang"; E3 (DE/EN/NL) beide Knöpfe tragen ihre aufgelöste Beschreibung, umrandet gegen gefüllt;
   E4 Fokus auf der Erfolgszeile nach dem Einreichen.
-* **Runde 2** `formular-und-titel-mounted.test.tsx` — echter Arbeitsraum hinter dem Blatt. N1 gesichert → Titel geändert → „Datei → Formular": Rückfrage, ein Sichern, Server und Formular tragen den NEUEN Titel (Bens B1). N2 Rückfrage abgelehnt: Blatt bleibt, nichts gesichert. N3 ungesichertes neues Blatt (Bens B2): genau ein Entwurf, Formular zeigt den getippten Titel. N4 Kalibrierung: unverändert gesichert → keine Rückfrage. N5 derselbe Schutz über „Anhänge verwalten". N6/N6b nicht sicherbare Abweichung (nur Stufe gewählt): Rückfrage nennt den Wechsel; abgelehnt bleibt die Stufe stehen. N7 Rückfragen in EN/NL übersetzt. T1 (Bens B3): 120 Zeichen getippt → der Server hat 120, Feld und Bestätigungszeile sagen dasselbe.
+* **Runde 2** `formular-und-titel-mounted.test.tsx` — echter Arbeitsraum hinter dem Blatt. N1 gesichert → Titel geändert → „Datei → Formular": Rückfrage, ein Sichern, Server und Formular tragen den NEUEN Titel (Bens B1). N2 Rückfrage abgelehnt: Blatt bleibt, nichts gesichert. N3 ungesichertes neues Blatt (Bens B2): genau ein Entwurf, Formular zeigt den getippten Titel. N4 Kalibrierung: unverändert gesichert → keine Rückfrage. N5 derselbe Schutz über „Anhänge verwalten". N6/N6b nicht sicherbare Abweichung (nur Stufe gewählt): Rückfrage nennt den Wechsel; abgelehnt bleibt die Stufe stehen. N7 Rückfragen in EN/NL übersetzt. **Runde 3:** N8 Speicheranfrage festgehalten, währenddessen Titel-Nachtrag (Bens Gegenprobe): zweite Rückfrage, auch der Nachtrag wird gesichert, das Formular zeigt ihn. N8b dieselbe Lage, zweite Rückfrage abgelehnt: kein Formular, der Nachtrag steht auf dem Blatt, gesichert ist der zugestimmte Stand. N8c Kalibrierung: festgehalten ohne Nachtrag — solange die Anfrage läuft, kein Formular; danach öffnet es ohne zweite Rückfrage. T1 (Bens B3): 120 Zeichen getippt → der Server hat 120, Feld und Bestätigungszeile sagen dasselbe.
 * **Runde 2** `q3a-zustandsmatrix-mounted.test.tsx` — R-1560, Q3(a) §9 (s. unten): Z0 Kalibrierung, Z1 laden, Z1-en derselbe Ladezustand in EN (CAP-P1 „DE/EN gemeinsam"), Z2 Ladefehler 500, Z3 offline beim Laden, Z4 offline beim Einreichen.
 * **Runde 2** `stufenwerte-am-entwurf.test.ts` — R-1560, R0633-Matrix am echten Server: sechs ungültige Stufenwerte → POST 400 ohne Entwurf und PUT 400 ohne Änderung; drei gültige → 201 und gespeichert; fehlendes Feld → 201 ohne erfundene Stufe.
 * `beispiel-tor-sprachen.test.tsx` — Klickpfad aus `tests/capture/f0007-beispiel-nur-bewusst-ui.test.tsx`
@@ -66,6 +67,8 @@ rot. G9 gescheitertes Einreichen verwirft die Wahl → Z4 rot. G10 Stufenprüfun
 ausgeschaltet → sechs S1-Fälle rot. **Nicht unterschieden:** G6 „Formular sofort öffnen, parallel
 sichern" bleibt grün, weil der Arbeitsraum eine später in `?draft=` erscheinende Kennung nachlädt —
 dass das Formular erst NACH der Bestätigung öffnet, ist gebaut, aber nicht eigens gemessen.
+**Runde 3:** G11 Runde-2-Verhalten (nach dem Sichern bedingungslos öffnen) → N8, N8b rot. G6 erneut
+(„sofort öffnen, parallel sichern") → jetzt N8, N8b, N8c rot — die Reihenfolge ist damit gemessen.
 
 ## Abgleich je Aufnahmepunkt
 
@@ -110,7 +113,7 @@ Test belegt · **teilweise** = Rest benannt · **offen** = nicht geliefert, Ents
 | R-2094 | Vier Erfassungsmodi (MUSS) | **erfüllt** mit Rest | Freitext, Formular, Diktat, Interview (+ Datei) erreichbar. Rest s. SOLL:FR-CAP-01. |
 | N-0004 | Entwurfsmenü ohne zugänglichen Namen | **erfüllt** (JOB 3266 D1) | `Blatt.tsx` Menü „mehr": `beschriftung={t("erfassen.werkzeug.mehr")}` (DE „Mehr", EN „More", NL „Meer"); „Entwürfe" erster Eintrag. Test: `tests/d1-meine-entwuerfe/blatt-zugang-und-liste.test.tsx` B1 (grün). Live-Gegenprüfung nach dem Fix fehlt. |
 | N-0014 | = N-0004 (Folgebeobachtung 1.107) | **Doppel** | wie N-0004. |
-| N-0068 | Expertenformular / „Anhänge verwalten" verlieren den Bearbeitungskontext | **erfüllt** (Runde 2, BEN-1) | `Blatt.tsx` `formularOeffnen`: bei abweichendem Blatt Rückfrage, auf Ja erst sichern, dann Formular mit genau diesem Stand; auf Nein bleibt alles auf dem Blatt; nicht sicherbar → Rückfrage nennt den Wechsel. Beide Wege (Datei-Menü, „Anhänge verwalten"). Tests `formular-und-titel-mounted.test.tsx` N1–N7. Nicht umgesetzt: eine Übergabe **ohne** Sichern (das Formular liest den Entwurf beim Server) — die Rückfrage macht den Wechsel stattdessen ausdrücklich. |
+| N-0068 | Expertenformular / „Anhänge verwalten" verlieren den Bearbeitungskontext | **erfüllt** (Runden 2 und 3, BEN-1) | `Blatt.tsx` `formularOeffnen` + Effekt `formularNachSichern`: bei abweichendem Blatt Rückfrage; auf Ja erst sichern, dann — nach dem Ende der Speicherung und nur, wenn seither nichts nachgetragen wurde — Formular mit genau diesem Stand; ein Nachtrag während des Sicherns löst eine zweite, erklärende Rückfrage aus; auf Nein bleibt alles auf dem Blatt; nicht sicherbar → Rückfrage nennt den Wechsel. Beide Wege (Datei-Menü, „Anhänge verwalten"). Tests `formular-und-titel-mounted.test.tsx` N1–N8c. Nicht umgesetzt: eine Übergabe **ohne** Sichern (das Formular liest den Entwurf beim Server) — die Rückfragen machen jeden Wechsel stattdessen ausdrücklich. |
 | P-UX-22 | Quellenformular: eigene Belegstelle zuordenbar | **erfüllt** (JOB 3133, LIVE 1.155) | `tests/quellen-anker-im-formular/formular-haengt-belegstelle-an.test.tsx` a–e (grün). |
 | P-UX-22b | I2 prüft Anfrage + 403, I3 zählt Anfragen | **erfüllt** (JOB 3178) | `tests/quellen-anker-im-formular/interne-adresse-durch-das-formular.test.tsx` I2 (`rufe.length === 1`, Status 403), I3 (`nachher.length - vorher === 0`) — grün in diesem Lauf. |
 | priority:K2b | Klara Erfassen nach Mockup: Bereich-Zeile, „?"-Menü, Dokumentlink, Leertextfarbe `#9AA2B1` | **Teile 1–3 erfüllt, Teil 4 offen mit Sperre** | Teile 1–3 laut Quelle geliefert (`tests/k2b-bereich-zeile`, `tests/k2b-erfassen-reste/k2b-menue-und-link.test.ts`). Teil 4: `#9AA2B1` steht in `apps/web/public/word-addin/taskpane.html:48` als Mockup-Wert `--hint`, der Erfassungssatz `#capture-leer` nutzt bewusst `--muted`. Die Quelle nennt ausdrücklich: Gestaltung, „nicht vor der Vorführung" (Pedi) — **nicht in diesem Lauf entschieden**. Hinweis zur Entscheidung: `#9AA2B1` auf Weiß erreicht rechnerisch nur etwa 2,6 : 1 Kontrast (unter WCAG 4,5 : 1 für Text). |
@@ -179,7 +182,7 @@ Soll: `klarwerk_steuerung/archiv/3082/AUFTRAG.md:221-234`. Ist: `q3a-zustandsmat
 * R-0149: kein ausdrücklicher Test „nie automatisch anhängen".
 * R-0922: kein gemounteter Test des Zählers.
 * R-1560: der öffentliche `/health`-Commit ist ohne laufende Instanz nicht feststellbar.
-* N-0068: dass das Formular erst **nach** der Serverbestätigung öffnet, misst kein Test (G6 bleibt
-  grün, s. Gegenproben).
+* N-0068: Nachträge während des Sicherns sind im Test über das **Titelfeld** gemessen (N8/N8b). Text,
+  Stufe und Bereich laufen über dasselbe Prädikat `istSchmutzig`, sind aber nicht einzeln gemessen.
 * Die Rückfragen in N-0068 nutzen `window.confirm` wie die übrigen Rückfragen des Blatts
   (`fd.confirmDiscard`, `fd.confirmOpenDraft`); ihre Darstellung im echten Browser ist nicht gesichtet.

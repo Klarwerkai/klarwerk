@@ -22,6 +22,9 @@ const bruecke = vi.hoisted(() => ({
   token: "",
   /** Verändert die nächste Anlage `POST /api/drafts`, bevor sie beim Server ankommt. */
   anlageUmbauen: null as null | ((rumpf: Record<string, unknown>) => Record<string, unknown>),
+  /** Runde 3: hält die nächste Speicheranfrage (PUT/POST auf Entwürfe) fest, bis sie freigegeben wird. */
+  speichernFesthalten: false,
+  festgehalten: [] as (() => void)[],
   antworten: [] as { method: string; url: string; status: number }[],
 }));
 
@@ -102,6 +105,14 @@ function brueckeAufbauen(): void {
       body = JSON.stringify(bruecke.anlageUmbauen(JSON.parse(body) as Record<string, unknown>));
       bruecke.anlageUmbauen = null;
     }
+    if (
+      bruecke.speichernFesthalten &&
+      (method === "PUT" || method === "POST") &&
+      /\/api\/drafts(\/[^/]+)?$/.test(url)
+    ) {
+      bruecke.speichernFesthalten = false;
+      await new Promise<void>((weiter) => bruecke.festgehalten.push(weiter));
+    }
     const res = await bruecke.app.inject({
       method,
       url,
@@ -123,6 +134,8 @@ async function serverStarten(): Promise<void> {
   bruecke.token = "";
   bruecke.anlageUmbauen = null;
   bruecke.antworten = [];
+  bruecke.speichernFesthalten = false;
+  bruecke.festgehalten = [];
   await bruecke.app.inject({
     method: "POST",
     url: "/api/auth/register",
@@ -323,6 +336,16 @@ function formularTitel(): HTMLInputElement | HTMLTextAreaElement | null {
   return el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement ? el : null;
 }
 
+async function freigeben(): Promise<void> {
+  await act(async () => {
+    for (const weiter of bruecke.festgehalten.splice(0)) {
+      weiter();
+    }
+    await flush();
+  });
+  await act(flush);
+}
+
 beforeEach(async () => {
   localStorage.clear();
   sessionStorage.clear();
@@ -338,6 +361,9 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  for (const weiter of bruecke.festgehalten.splice(0)) {
+    weiter();
+  }
   if (root) {
     act(() => root?.unmount());
     root = null;
@@ -451,6 +477,70 @@ describe("BEN-1 · das Formular übernimmt den Stand des Blattes oder sagt es (N
     ).toContain(i18n.t("conf.level.vertraulich"));
   });
 
+  it("N8 · Nachtrag WÄHREND des Sicherns (Bens Gegenprobe R2): erneute Rückfrage, auch der Nachtrag wird gesichert, das Formular zeigt ihn", async () => {
+    const NACHTRAG = "NACHTRAG WÄHREND DES SICHERNS";
+    await blattOeffnen();
+    await blattFuellen();
+    await sichern();
+    await titelSetzen(NEU);
+    bruecke.speichernFesthalten = true;
+
+    await ueberDateiMenueZumFormular();
+    expect(bruecke.festgehalten, "die Speicheranfrage wurde nicht festgehalten").toHaveLength(1);
+    // Das Titelfeld nimmt während der laufenden Anfrage weiter an — genau Bens Fall.
+    await titelSetzen(NACHTRAG);
+    expect(element('[data-testid="blatt-titel"]', HTMLInputElement).value).toBe(NACHTRAG);
+
+    await freigeben();
+
+    expect(rueckfragen).toEqual([
+      i18n.t("einstieg.formular.sichernFrage"),
+      i18n.t("einstieg.formular.nachtragFrage"),
+    ]);
+    expect(await entwurfsTitelAmServer()).toEqual([NACHTRAG]);
+    expect(formularTitel()?.value).toBe(NACHTRAG);
+  });
+
+  it("N8b · derselbe Nachtrag, zweite Rückfrage abgelehnt: kein wortloser Wechsel, das Blatt behält den Nachtrag", async () => {
+    const NACHTRAG = "NACHTRAG WÄHREND DES SICHERNS";
+    await blattOeffnen();
+    await blattFuellen();
+    await sichern();
+    await titelSetzen(NEU);
+    bruecke.speichernFesthalten = true;
+    await ueberDateiMenueZumFormular();
+    await titelSetzen(NACHTRAG);
+    bestaetigen = false;
+
+    await freigeben();
+
+    expect(rueckfragen).toEqual([
+      i18n.t("einstieg.formular.sichernFrage"),
+      i18n.t("einstieg.formular.nachtragFrage"),
+    ]);
+    expect(formularTitel()).toBeNull();
+    expect(element('[data-testid="blatt-titel"]', HTMLInputElement).value).toBe(NACHTRAG);
+    // Gesichert ist der Stand, dem zugestimmt wurde — der Nachtrag steht ungesichert auf dem Blatt.
+    expect(await entwurfsTitelAmServer()).toEqual([NEU]);
+  });
+
+  it("N8c · Kalibrierung: festgehaltene Anfrage OHNE Nachtrag — solange sie läuft kein Formular, danach ohne zweite Rückfrage", async () => {
+    await blattOeffnen();
+    await blattFuellen();
+    await sichern();
+    await titelSetzen(NEU);
+    bruecke.speichernFesthalten = true;
+    await ueberDateiMenueZumFormular();
+    expect(bruecke.festgehalten).toHaveLength(1);
+    // Solange die Anfrage läuft, ist das Formular NICHT offen (die Reihenfolge, Runde-2-Lücke G6).
+    expect(formularTitel()).toBeNull();
+
+    await freigeben();
+
+    expect(rueckfragen).toEqual([i18n.t("einstieg.formular.sichernFrage")]);
+    expect(formularTitel()?.value).toBe(NEU);
+  });
+
   it("N7 · auch in EN und NL steht die Rückfrage in der Sprache der Sitzung", async () => {
     for (const sprache of ["en", "nl"] as const) {
       await i18n.changeLanguage(sprache);
@@ -459,6 +549,9 @@ describe("BEN-1 · das Formular übernimmt den Stand des Blattes oder sagt es (N
       );
       expect(i18n.t("einstieg.formular.ohneSichernFrage")).not.toBe(
         i18n.getFixedT("de")("einstieg.formular.ohneSichernFrage"),
+      );
+      expect(i18n.t("einstieg.formular.nachtragFrage")).not.toBe(
+        i18n.getFixedT("de")("einstieg.formular.nachtragFrage"),
       );
     }
   });

@@ -35,6 +35,8 @@ export default {
     "einstieg.beispiel.bestaetigen": "Ja, Beispiel einreichen",
     "einstieg.formular.sichernFrage":
       "Das Formular arbeitet mit dem gesicherten Stand. Deine ungesicherten Änderungen jetzt als Entwurf sichern und im Formular weiterarbeiten? Abbrechen: Du bleibst auf dem Blatt, nichts geht verloren.",
+    "einstieg.formular.nachtragFrage":
+      "Während des Sicherns hast du auf dem Blatt weitergeschrieben. Das Formular kennt nur den gerade gesicherten Stand. Auch die neuen Änderungen sichern und dann ins Formular wechseln? Abbrechen: Du bleibst auf dem Blatt, nichts geht verloren.",
     "einstieg.formular.ohneSichernFrage":
       "Deine Änderungen auf dem Blatt lassen sich gerade nicht sichern. Das Formular zeigt deshalb den zuletzt gesicherten Stand — oder ein leeres Formular, wenn noch nichts gesichert ist. Dein Blatt bleibt unverändert und ist beim Zurückkehren wieder da. Trotzdem zum Formular wechseln?",
   },
@@ -53,6 +55,8 @@ export default {
     "einstieg.beispiel.bestaetigen": "Yes, submit sample",
     "einstieg.formular.sichernFrage":
       "The form works with the saved state. Save your unsaved changes as a draft now and continue in the form? Cancel: you stay on the sheet, nothing is lost.",
+    "einstieg.formular.nachtragFrage":
+      "You kept writing on the sheet while it was being saved. The form only knows the state that was just saved. Save the new changes too and then switch to the form? Cancel: you stay on the sheet, nothing is lost.",
     "einstieg.formular.ohneSichernFrage":
       "Your changes on the sheet cannot be saved right now. The form therefore shows the last saved state — or an empty form if nothing has been saved yet. Your sheet stays unchanged and is there again when you return. Switch to the form anyway?",
   },
@@ -71,6 +75,8 @@ export default {
     "einstieg.beispiel.bestaetigen": "Ja, voorbeeld indienen",
     "einstieg.formular.sichernFrage":
       "Het formulier werkt met de opgeslagen stand. Je niet-opgeslagen wijzigingen nu als concept opslaan en in het formulier verdergaan? Annuleren: je blijft op het blad, er gaat niets verloren.",
+    "einstieg.formular.nachtragFrage":
+      "Je hebt tijdens het opslaan verder geschreven op het blad. Het formulier kent alleen de zojuist opgeslagen stand. Ook de nieuwe wijzigingen opslaan en dan naar het formulier gaan? Annuleren: je blijft op het blad, er gaat niets verloren.",
     "einstieg.formular.ohneSichernFrage":
       "Je wijzigingen op het blad kunnen nu niet worden opgeslagen. Het formulier toont daarom de laatst opgeslagen stand — of een leeg formulier als er nog niets is opgeslagen. Je blad blijft ongewijzigd en staat er weer als je terugkeert. Toch naar het formulier gaan?",
   },
