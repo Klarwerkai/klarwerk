@@ -4,6 +4,9 @@ import {
   type ConflictVerdict,
   type DetectSubject,
   InMemoryConflictRepo,
+  InMemoryOverlapRepo,
+  OverlapService,
+  type OverlapVerdict,
 } from "../../services/conflicts";
 
 // R-1117 · BEN-1 (Runde 1): Ein Widerspruch wird nur angelegt, wenn beide Belegzitate WÖRTLICH in
@@ -84,5 +87,64 @@ describe("R-1117 · Belegzitate müssen wörtlich stehen", () => {
     expect(
       await angelegt("„höchstens 8 bar.“", "der zulässige betriebsdruck beträgt 1-5 bar"),
     ).toBe(1);
+  });
+});
+
+// BEN-1 (Runde 2): Bens zweite Gegenprobe. Die Randbereinigung nahm einen führenden Dezimalpunkt als
+// bloßen Zitatrand weg — „.5 bar“ wurde zu „5 bar“ und belegte damit „Set pressure to 5 bar.“. Ein
+// Zeichen, das zu einer Zahl gehört, ist kein Rand.
+describe("R-1117 · Zahlenzeichen sind nie Zitatrand (BEN-1, Runde 2)", () => {
+  const QUELLE_EN = subject("ko-quelle-en", "Set pressure to 5 bar.");
+  const NEU_EN = subject("ko-neu-en", "Set pressure to 8 bar.");
+
+  async function angelegtEn(zitatA: string, zitatB: string): Promise<number> {
+    const service = new ConflictService({ repo: new InMemoryConflictRepo() });
+    const created = await service.detectForSubject(NEU_EN, [QUELLE_EN], urteil(zitatA, zitatB));
+    expect(await service.badgeCount()).toBe(created.length);
+    return created.length;
+  }
+
+  it("Z7 · Kontrolle: „5 bar“ und „5 bar.“ belegen „Set pressure to 5 bar.“", async () => {
+    expect(await angelegtEn("8 bar", "5 bar")).toBe(1);
+    expect(await angelegtEn("8 bar", "Set pressure to 5 bar.")).toBe(1);
+  });
+
+  it("Z8 · BEN-1 R2: „.5 bar“ belegt kein „5 bar“ → kein Konflikt, kein erfundenes Zitat gespeichert", async () => {
+    const service = new ConflictService({ repo: new InMemoryConflictRepo() });
+    const created = await service.detectForSubject(NEU_EN, [QUELLE_EN], urteil("8 bar", ".5 bar"));
+    expect(created).toHaveLength(0);
+    expect(await service.badgeCount()).toBe(0);
+  });
+
+  it("Z9 · auch „,5“, „-5“, „+5“, „5%“ und „5.0“ sind andere Zahlen als „5“", async () => {
+    for (const erfunden of [",5 bar", "-5 bar", "+5 bar", "5% bar", "5.0 bar", "to .5 bar"]) {
+      expect(await angelegtEn("8 bar", erfunden), erfunden).toBe(0);
+    }
+  });
+
+  it("Z10 · derselbe Maßstab für Dublettenaspekte: der erfundene Zahlenbeleg wird nicht als geteiltes Zitat geführt", async () => {
+    const a = subject("ko-dup-a", "Set pressure to 5 bar before start.");
+    const b = subject("ko-dup-b", "Before start set the pressure to 5 bar.");
+    const verdict = (zitatA: string): OverlapVerdict => ({
+      beziehung: "teilweise",
+      aspects: [{ beschreibung: "Druckvorgabe", zitatA, zitatB: "pressure to 5 bar" }],
+      nurInA: "",
+      nurInB: "",
+      empfehlung: "zusammenfuehren_pruefen",
+      confidence: 0.9,
+      begruendung: "Gleiche Druckvorgabe.",
+    });
+    const lauf = async (zitatA: string) => {
+      const service = new OverlapService({ repo: new InMemoryOverlapRepo() });
+      const [entry] = await service.detectForSubject(a, [b], async () => verdict(zitatA));
+      return entry;
+    };
+    // Kalibrierung: das echte Zitat wird als geteilter Aspekt geführt — der Weg läuft wirklich.
+    const echt = await lauf("pressure to 5 bar");
+    expect(echt, "Kalibrierung: ohne Eintrag misst Z10 nichts").toBeDefined();
+    expect(echt?.aspects.map((x) => x.zitatA)).toEqual(["pressure to 5 bar"]);
+    // Gegenprobe: „.5 bar“ steht so nicht in A — der Aspekt fällt weg, egal ob ein Eintrag entsteht.
+    const erfunden = await lauf(".5 bar");
+    expect(erfunden?.aspects ?? []).toEqual([]);
   });
 });

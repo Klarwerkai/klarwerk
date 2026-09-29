@@ -9,12 +9,23 @@ Wortlaut und den internen Namen (A27/A28/N1/N5/M3/Q6/KA7, JOB-Nummern). „Fassu
 Commits vor dem 02.09.2026 fallen alle auf `.30`, den ersten Ship-Commit. Runde 2 baut auf dem
 festgehaltenen Stand von Runde 1 auf (`1328f747`).
 
+## Runde 3 — Nacharbeit nach Bens Urteil zu Runde 2
+
+| Befund | Änderung | Beleg |
+|---|---|---|
+| BEN-1 (teilweise behoben) · R-1117/R-0196/R-1096: „.5 bar“ galt als Beleg für „5 bar“. Die Randbereinigung von Runde 2 entfernte einen führenden Dezimalpunkt als bloßen Zitatrand; `verifiedAspects` (Dublettenaspekte) akzeptierte dasselbe. | `services/conflicts/src/detect.ts`, `quoteFound`: Vergleich jetzt **Token für Token** statt Zeichenkette in Zeichenkette (`ZITAT_TOKEN`). Eine Zahl ist EIN Token mit allem, was ihren Sinn trägt: Vorzeichen und führender Dezimaltrenner („-5“, „.5“, „,5“), innere Trenner zwischen Ziffern („1,5“, „1.5“, „1-5“, „10:30“, „1/2“), angehängtes „%“, „‰“ oder „°“. Ein Zitat muss eine lückenlose Tokenfolge des Textes sein; Wortgrenzen ergeben sich daraus. Am Rand fallen nur FREISTEHENDE Anführungs- und Satzzeichen weg; ein Zeichen, das an einer Ziffer hängt, ist nie Rand. `verifiedAspects` nutzt dieselbe Funktion und ist damit mit abgedeckt. Nebenwirkung: „beträgt 1“ belegt „beträgt 1–5“ nicht mehr (Runde 2 ließ das an der Wortgrenze vor dem Bindestrich zu). | `tests/erfassungs-konfliktpruefung/zitat-woertlich.test.ts` Z7–Z10: Z7 Kontrolle „5 bar“/„Set pressure to 5 bar.“ (1 Konflikt); **Z8 Bens Gegenprobe „.5 bar“** durch den echten `ConflictService` (0 Konflikte, Badge 0); Z9 „,5“, „-5“, „+5“, „5%“, „5.0“, „to .5“ (je 0); **Z10 derselbe Fall am echten `OverlapService`** (Kalibrierung: das echte Zitat wird als Aspekt geführt; „.5 bar“ nicht). Dazu `detect.test.ts` „R-1117 (BEN-1, Runde 2): Zeichen, die zu einer Zahl gehören, sind nie Zitatrand“ (u. a. „-8 °C“ ≠ „8 °C“) und `duplicate-detect.test.ts` „erfundener Zahlenbeleg „.5 bar“ … ist kein geteiltes Zitat“. **Rot am Stand von Runde 2 (`26c71ff3`):** Z8, Z9, Z10, beide neuen Kernfälle und der ergänzte Fall „beträgt 1“. |
+| BEN-2 (offen) · R-0249: angekündigter Abschnitt fehlte | Der Abschnitt stand in Runde 2 im Entwurf, wurde aber beim Umbau des Dokuments wieder gelöscht, bevor die Fassung entstand. Jetzt steht er unter „Offen, widersprüchlich oder nicht belegt“: **R-0249 teilweise — drei Wege, verschiedene Wirkung.** | — |
+
+**R-1117 gilt erst nach Bens Gegenprüfung als erledigt.** Der Stand hier ist „in Runde 3
+nachgebessert, belegt durch die Fälle oben“. Die Grenzen des Tokenvergleichs stehen unten unter
+„Offen“.
+
 ## Runde 2 — Nacharbeit nach Bens Urteil
 
 | Befund | Änderung | Beleg |
 |---|---|---|
 | BEN-1 · R-1117/R-0196/R-1096: erfundenes, sinnveränderndes Zitat wurde akzeptiert. Die Zitatprüfung `quoteFound` nutzte `normalizeForCompare`, die jedes Satzzeichen zu Leerraum macht: „1,5 bar“ galt als Beleg für „1–5 bar“, der Konflikt wurde angelegt. | `services/conflicts/src/detect.ts`: eigene Zitatnormalisierung `normalizeForQuote`. Gleichgültig sind nur Groß-/Kleinschreibung, Leerraum und typografische Varianten desselben Zeichens (Anführungszeichen, Binde-/Gedankenstriche, Auslassungszeichen). Satzzeichen im Inneren zählen. Am Rand des Zitats fallen Anführung, Auslassung und Satzendezeichen weg (Modelle setzen sie selbst). Der Fund muss an Wortgrenzen stehen („beträgt 1“ belegt kein „beträgt 15“). `normalizeForCompare` bleibt für die Trigramm-Nähe unverändert. Dieselbe Prüfung gilt für die geteilten Zitate der Dublettenaspekte (`duplicate-detect.ts`, `verifiedAspects`). | `tests/erfassungs-konfliktpruefung/zitat-woertlich.test.ts` Z1–Z6 durch den echten `ConflictService.detectForSubject`: Z1 Kontrolle mit echtem Zitat (1 Konflikt); Z2 Bens Gegenprobe „1,5 bar“ (0); Z3 „1.5“/„15“ (0); Z4 Wortgrenze; Z5 fremdes Zitat (0); Z6 typografische Toleranz (1). Dazu `services/conflicts/src/detect.test.ts` „R-1117 (BEN-1): Satzzeichen zählen …“. **Rot am alten `detect.ts`:** Z2, Z3, Z4 und der neue Fall in `detect.test.ts` (4 von 18 Fällen beider Dateien). |
-| BEN-2 · R-0249 falsch zugeordnet | Zeile unten neu geschrieben: zwei Wege mit getrennter Wirkung, Ablösung des Vorfilters benannt, Belegreichweite je Test. R-0249 steht jetzt unter „teilweise“. | — |
+| BEN-2 · R-0249 falsch zugeordnet | Die falsche Lieferzeile wurde entfernt. Der angekündigte Ersatzabschnitt fehlte in der Fassung von Runde 2 (Bens Befund zu Runde 2); er steht seit Runde 3 im Dokument. | — |
 | BEN-3 · P-M3b Wortlaut nicht angeglichen | Maßgeblich ist Pedis jüngste Entscheidung vom 05.09.2026 (M3 „Haben wir das schon?“, CODEX-POC-ENTSCHEIDUNG-1): der Treffer nennt „Validiert“ bzw. „noch nicht geprüft“. Das Word-Panel zeigt das seit JOB 3093. Die Web-Live-Zone (`LiveReactionZone.tsx`, Fundortzeile) sagte „Offen“ und sagt jetzt dasselbe Wort: neue Texte `intake.live.pruefstand.offen/validiert` in de/en/nl, gleich den Panel-Texten `bestandNochNichtGeprueft`/`askStatusValidiert` („not yet reviewed“/„Validated“, „nog niet beoordeeld“/„Gevalideerd“). Die Farbe der `StatusPill` bleibt; sie nimmt dafür ein optionales `label`. Die Verträge bleiben getrennt (R-0718): Web liest `koStatus`, Word `pruefstand`. Das ältere „zu prüfen“ aus R-0240 ist damit abgelöst. | `tests/erfassungs-konfliktpruefung/pruefstand-wortlaut.test.tsx`: EINE Tabelle, 12 Fälle (2 Flächen × 3 Sprachen × 2 Zustände). Web gemountet an der Fundortzeile; Word am ausgelieferten Aufgabenfenster (`createKlaraPanel`, Klick auf „Haben wir das schon?“). **Rot am alten `LiveReactionZone.tsx`:** die drei Web-Fälle „offen“. Nachgeführt: `tests/fundort-live-check/fundort-in-der-live-zone.test.tsx` (D, G, H), `tests/live-check-verdrahtung/editor-mounted.test.tsx` (`pruefeAehnlichenFundort`), Inventar `tests/app/klara-regressionsinventar.test.ts`. |
 
 Nicht angeglichen ist die Einleitung beider Listen („Ähnliches existiert schon:“ im Web,
@@ -51,7 +62,7 @@ Das ist ein eigener kleiner Auftrag.
 | Kriterium | Geliefert mit (Commit · Fassung) | Beleg (Test) |
 |---|---|---|
 | R-0196, R-1096: KI-Widerspruchsprüfung beim Einreichen gegen die 20 textnächsten, Fehlalarm schließbar, Löschen schließt offene Konflikte, Erkennungsfehler kippt das Einreichen nie | `d25e7dfe`, `bc87f455`, `7ec75f03` (WP-SUBMIT-ASYNC), `5150cd5a` (Deckel 20) · .30; `7c0cdc14` JOB 3887 · .410 | `detect-service.test.ts` (Fehlalarm → dismissed), `services/conflicts/src/service.test.ts` („gelöschtes KO beendet seine offenen Konflikte“), `tests/app/submit-async-check.test.ts`, `tests/conflicts/detection-cap-honesty.test.ts` |
-| R-1117 (und die Zitatzusage in R-0196/R-1096): nur wörtliche Belegzitate | **Bis Runde 1 NICHT erfüllt** (BEN-1): die G-2-Prüfung seit `bc87f455` · .30 verwarf nur völlig fremde Zitate, sinnverändernde Satzzeichen-Abweichungen gingen durch. Behoben in Runde 2 dieses Laufs (noch ohne Fassung). | `tests/erfassungs-konfliktpruefung/zitat-woertlich.test.ts` Z1–Z6, `services/conflicts/src/detect.test.ts` (G-2 und „R-1117 (BEN-1)“) |
+| R-1117 (und die Zitatzusage in R-0196/R-1096): nur wörtliche Belegzitate | **Bis Runde 1 NICHT erfüllt** (BEN-1): die G-2-Prüfung seit `bc87f455` · .30 verwarf nur völlig fremde Zitate, sinnverändernde Satzzeichen-Abweichungen gingen durch. In Runde 2 teilweise behoben („1,5“ ≠ „1–5“), „.5“ ≠ „5“ erst in Runde 3 (Tokenvergleich). Noch ohne Fassung; erledigt erst nach Bens Gegenprüfung. | `tests/erfassungs-konfliktpruefung/zitat-woertlich.test.ts` Z1–Z10, `services/conflicts/src/detect.test.ts` (G-2 und beide „R-1117 (BEN-1 …)“-Fälle), `services/conflicts/src/duplicate-detect.test.ts` („.5 bar“) |
 | R-1072: Dubletten beim Einreichen gegen die 20 nächsten; ab 0,85 deterministischer Eintrag, sonst KI-Urteil; eigene Seite mit Grad, geteilten Zitaten, Eigenanteilen und Empfehlung; Anzeige-Schwelle vom Verwalter einstellbar | `bc87f455`, `5150cd5a` · .30; `1df5dad0` JOB 3469 · .311 | `services/conflicts/src/duplicate-detect.test.ts`, `overlap-settings.test.ts`, `overlap-service.test.ts`, `services/app/src/duplicate-routes.test.ts`, `tests/duplicates/*`, `tests/review26-duplikat-prozente/*` |
 | R-1097: ehrlicher Satz, gegen wie viel geprüft wurde | `5150cd5a` · .30; `c56e03e2` JOB 3068 · .82; `2a795c1e` JOB 3484 · .336 | `tests/conflicts/detection-cap-honesty.test.ts`, `coverage-terms.test.ts`, `tests/validation/ai-check-coverage-*-mounted.test.tsx`, `tests/capture/ai-check-coverage-card-mounted.test.tsx` |
 | R-0197, R-0289, R-0547, R-1596, P1, R-1502/A27: der Autor sieht dauerhaft am eigenen Objekt, dass es kollidiert. Kein fremder Inhalt wird gezeigt, der Deckungssatz steht dabei, eine Rolle ist nicht nötig. | `7fb6acef` JOB 1500, `9b513a06` JOB 1546 (A28) · .30; `cbc458ec` JOB 3032 (Deckung Server) · .44; `3d5af224` JOB 3025 (A27 Anzeige) · .53; `c56e03e2` JOB 3068 (Satz immer sichtbar) · .82 | `services/app/src/duplicate-signal.test.ts` (G-1…G-5 nur Existenz und Art), `tests/ko/a28-signal-route.test.ts`, `tests/ko/job3025-a27-mounted.test.tsx` (R-h/R-i Expertin, nur eigenes Objekt), `tests/start/job3025-a27-start-mounted.test.tsx`, `tests/eigenes-signal/n5-deckung-am-eigenen-objekt.test.ts`, `tests/bibliothek/job3068-deckung-sichtbar.test.tsx` |
@@ -84,6 +95,57 @@ Das ist ein eigener kleiner Auftrag.
   Entwürfe sind keine Wissensobjekte und werden nicht geprüft (`check-text-routes.ts`, Kommentar zu
   `pruefstand`; Test F3). Umgesetzt ist die jüngere Entscheidung. Der Fundort kennt deshalb nur
   „Validiert“ und „noch nicht geprüft“, seit Runde 2 auf beiden Flächen (P-M3b).
+- **R-0249 teilweise — drei Wege, verschiedene Wirkung.** (Runde 1 führte das pauschal als
+  geliefert; BEN-2. Die beiden Verträge bleiben getrennt, R-0718.)
+  - *Automatische Prüfung nach dem Einreichen* (Dubletten: `services/app/src/duplicate-detection.ts`,
+    `detectDuplicatesForKo`; Konflikte: `conflict-detection.ts`, `detectConflictsForKo`):
+    - **Poolwirkung:** Die Bedeutungssuche verengt hier NICHTS. Der Dublettenweg nimmt den vollen
+      Bestand (ohne Demo-Seed und ohne das Objekt selbst). Er deckelt nach Textnähe auf 20
+      (`DETECTION_CANDIDATE_CAP`), vergleicht deterministisch und legt die Kandidaten im Modellband
+      dem KI-Urteil vor. Der Konfliktweg wählt ebenfalls lexikalisch/fachlich (`selectCandidates`)
+      und kennt überhaupt keinen Vorfilter.
+    - **Ablösung:** Der semantische Vorfilter (`72f7c592`, SCRUM-498 Weg 3, · .30) verengte früher
+      den Erkennungs-Pool auf die Vektor-Top-K. Das ist mit D-AISTATE V2.2 (bens V2.2) in
+      `c4a6a5b5` (Ship 10, 24.07.2026, · .30) entfallen. Gründe laut Kommentar: Die
+      deterministische Deckungsprüfung darf nie beschnitten werden, und ein Cloud-Embedder darf
+      vertraulichen Text nie sehen. Der Vektorspeicher wird weiter befüllt und gelöscht
+      (`indexKoForDuplicatePrefilter`, `removeKoFromDuplicatePrefilter`), aber für die Erkennung nicht
+      mehr gelesen.
+    - **Belegreichweite:** `services/app/src/duplicate-detection.test.ts` „Prefilter befüllt: die
+      deterministische Ebene sieht WEITERHIN den Voll-Pool (keine Top-K-Verengung)“ und „D-AISTATE
+      V2.2: der Prefilter VERENGT die Erkennung NICHT mehr — Voll-Pool trotz befülltem Store“. Sie
+      belegen, dass die genaue Prüfung trotz Vorfilter den vollen Pool sieht. Dass die Bedeutung hier
+      etwas vorschlägt, belegen sie nicht, und das tut sie auch nicht.
+    - Gegen R-0249 heißt das: „die genaue Prüfung bleibt vollständig“ ist erfüllt, „die Bedeutung
+      verengt die Kandidatenliste“ gibt es auf diesem Weg nicht.
+  - *`POST /api/check-text` mit `want:"deep"`* (Word-Panel, KA7; `services/app/src/check-text-detection.ts`,
+    `selectPool`):
+    - **Poolwirkung:** Hier ERSETZEN die 20 nächsten Vektortreffer (`RETRIEVAL_TOP_K`) die
+      lexikalische Kandidatenwahl. Die genaue Prüfung läuft unverändert, aber nur auf diesen
+      Kandidaten: deterministische Deckung, Modellurteil, Zitatprüfung, Poolregel `istPoolKandidat`.
+      Ein textnaher Eintrag, der nicht unter den Vektortreffern ist, wird nicht geprüft. Die
+      Bedeutung bestimmt damit die geprüfte Menge und schlägt nicht nur vor.
+    - **Rückfälle:** Ohne Judge (Stufe 1) läuft kein Embedder und der Weg bleibt rein lexikalisch.
+      Bei leerem Speicher oder Embedding-Fehler fällt er lexikalisch zurück (`findCandidates`,
+      Limit 20). Ein Kapazitätsfehler wird durchgereicht (503), nicht still ersetzt.
+    - **Belegreichweite:** `tests/app/w6-prefilter-zustandsmatrix.test.ts` (Zustand 1 aus, 2 leer →
+      Rückfall, 3 befüllt → semantisch) misst, WELCHER Abrufweg läuft. Über die Vollständigkeit
+      der genauen Prüfung sagt er nichts. Sein Fall „DIE LUECKE“ hält fest, dass die Antwort die
+      Abruftiefe nicht trägt: Zustand 2 und 3 sind am Draht nicht zu unterscheiden.
+    - Gegen R-0249 heißt das: **nicht erfüllt**, die Bedeutung entscheidet über die Menge.
+  - *Live-Check im Web-Editor* (`POST /api/knowledge/check`, `knowledge-check.ts`): Hier gibt es keine
+    Bedeutungssuche, nur die lexikalische Vorauswahl (`findCandidates`, zwölf längste Suchwörter, JOB
+    3574). R-0249 greift hier nicht.
+  - Nicht zu R-0249 gehört `9053dd6d` (JOB 3583, · .296). Er betrifft die PostgreSQL-Rangfolge der
+    LEXIKALISCHEN Kandidaten und wurde in Runde 1 fälschlich hier zugeordnet.
+  - Ob der Deep-Weg Vektor- und Textkandidaten vereinigen soll, damit die Bedeutung nur ergänzt, ist
+    eine eigene Umsetzungsentscheidung; nicht auf Verdacht geändert.
+- **R-1117, Grenzen des Tokenvergleichs (Runde 3).** Der Vergleich ist streng. Ein Modellzitat
+  mit anderer Zeichensetzung, anderem Abstand um einen Bindestrich („1 - 5“ statt „1-5“) oder mit
+  einer Auslassung „…“ in der Mitte gilt als nicht wörtlich und legt keinen Konflikt an. Das kann
+  echte Konflikte kosten; gegen einen echten Modellanbieter ist das nicht gemessen. Einheiten aus
+  mehreren Zeichen („bar“, „°C“ mit Leerzeichen) sind eigene Token. Ein Zitat, das die Einheit
+  weglässt („beträgt 5“ in „beträgt 5 bar“), bleibt deshalb zulässig.
 - **R-0194 teilweise.** Kandidaten entstehen aus Metadaten (Kategorie, Anlage, Tags), aus Text
   (Trigramm-Jaccard) und aus dem Abschnittsvergleich (`DuplicateCompare.tsx`); der Mensch
   entscheidet. **Ähnlichkeitsprüfsummen (SimHash/MinHash) gibt es nicht.**

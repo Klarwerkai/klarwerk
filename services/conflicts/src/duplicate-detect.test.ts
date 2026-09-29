@@ -177,6 +177,16 @@ describe("Berater-Konzept Duplikate 04.07. (Stufe D1): Erkennungskern", () => {
     expect(d.reason).toBe("no_verified_aspect");
   });
 
+  it("R-1117 (BEN-1, Runde 2): erfundener Zahlenbeleg „.5 bar“ für „5 bar“ ist kein geteiltes Zitat", () => {
+    const coreA = "Set pressure to 5 bar.";
+    const coreB = "Set pressure to 5 bar before start.";
+    const mit = (zitatA: string) =>
+      verdict({ aspects: [{ beschreibung: "Druck", zitatA, zitatB: "pressure to 5 bar" }] });
+    expect(verifiedAspects(mit("pressure to 5 bar"), coreA, coreB)).toHaveLength(1);
+    expect(verifiedAspects(mit(".5 bar"), coreA, coreB)).toHaveLength(0);
+    expect(decideFromOverlapVerdict(mit(".5 bar"), coreA, coreB).create).toBe(false);
+  });
+
   it("verwandt → kein automatischer Eintrag (related_only)", () => {
     const d = decideFromOverlapVerdict(verdict({ beziehung: "verwandt" }), "x", "y");
     expect(d.create).toBe(false);
