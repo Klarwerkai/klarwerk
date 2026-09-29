@@ -40,12 +40,100 @@ export interface IsoliertePg {
 
 type ContainerStarter = () => Promise<{ url: string; stoppen(): Promise<void> }>;
 
-/** Die Quelle darf genannt werden, das Passwort nicht. */
-function ohneGeheimnis(url: string): string {
-  return url.replace(/:\/\/([^/@]*)@/, (_treffer, anmeldedaten: string) => {
-    const benutzer = anmeldedaten.split(":")[0] ?? "";
-    return `://${benutzer}:***@`;
+/** Das, was der Helfer vom Verwaltungspool braucht — in den Gegenproben ohne Datenbank ersetzbar. */
+interface Verwaltung {
+  query(sql: string): Promise<unknown>;
+  end(): Promise<void>;
+}
+
+const oeffneVerwaltung = (url: string): Verwaltung =>
+  new Pool({ connectionString: url, connectionTimeoutMillis: 15_000 });
+
+/**
+ * Ist dieser Abfrageschlüssel ein Passwortträger? `pg-connection-string` übernimmt JEDEN
+ * Abfrageparameter in die Konfiguration — `?password=…` ist dort ein vollwertiges Passwort (BEN
+ * Runde 1, B1). Geprüft wird der Schlüssel so, wie der Parser ihn liest (`URLSearchParams`: `+` ist
+ * ein Leerzeichen, `%xx` wird entschlüsselt), und bewusst weit: alles mit „pass" gilt als geheim,
+ * ein unlesbarer Schlüssel auch.
+ */
+function istPasswortSchluessel(roh: string): boolean {
+  try {
+    return /pass/i.test(decodeURIComponent(roh.replace(/\+/g, " ")));
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * Die Quelle darf genannt werden, das Passwort nicht — in KEINER Form, die der installierte
+ * PostgreSQL-Parser als Passwort liest:
+ *   · Anmeldedaten vor dem LETZTEN `@` der Authority (ein unkodiertes `@` im Passwort gehört noch
+ *     dazu — so trennt auch die WHATWG-URL, auf der `pg-connection-string` aufsetzt);
+ *   · Abfrageparameter mit Passwortschlüssel (`?password=…`, auch kodiert oder in anderer Schreibung).
+ * Eine Adresse ohne `schema://` wird gar nicht wiedergegeben — lieber keine Herkunft als ein Leck.
+ */
+export function ohneGeheimnis(url: string): string {
+  const teile = /^([^:/?#]+:\/\/)([^/?#]*)([\s\S]*)$/.exec(url);
+  if (!teile) {
+    return "(Verbindungsadresse nicht darstellbar)";
+  }
+  const [, schema = "", autoritaet = "", rest = ""] = teile;
+  const at = autoritaet.lastIndexOf("@");
+  const ohneAnmeldung =
+    at < 0
+      ? autoritaet
+      : `${autoritaet.slice(0, at).split(":")[0] ?? ""}:***@${autoritaet.slice(at + 1)}`;
+  const ohneParameter = rest.replace(
+    /([?&])([^&#=]*)=([^&#]*)/g,
+    (treffer, trenner: string, schluessel: string) =>
+      istPasswortSchluessel(schluessel) ? `${trenner}${schluessel}=***` : treffer,
+  );
+  return `${schema}${ohneAnmeldung}${ohneParameter}`;
+}
+
+/**
+ * Die Passwortwerte einer Adresse, roh und entschlüsselt — damit auch eine fremde Fehlermeldung,
+ * die einen davon wiederholt, geschwärzt werden kann.
+ */
+function passwoerterIn(url: string): string[] {
+  const werte: string[] = [];
+  const teile = /^[^:/?#]+:\/\/([^/?#]*)([\s\S]*)$/.exec(url);
+  const autoritaet = teile?.[1] ?? "";
+  const at = autoritaet.lastIndexOf("@");
+  if (at >= 0) {
+    const info = autoritaet.slice(0, at);
+    const doppelpunkt = info.indexOf(":");
+    if (doppelpunkt >= 0) {
+      werte.push(info.slice(doppelpunkt + 1));
+    }
+  }
+  for (const [, schluessel = "", wert = ""] of (teile?.[2] ?? "").matchAll(
+    /[?&]([^&#=]*)=([^&#]*)/g,
+  )) {
+    if (istPasswortSchluessel(schluessel)) {
+      werte.push(wert);
+    }
+  }
+  const mitEntschluesselt = werte.flatMap((wert) => {
+    try {
+      return [wert, decodeURIComponent(wert.replace(/\+/g, " ")), decodeURIComponent(wert)];
+    } catch {
+      return [wert];
+    }
   });
+  // Längste zuerst: ein kürzerer Wert darf einen längeren nicht halb geschwärzt stehen lassen.
+  return [...new Set(mitEntschluesselt.filter((w) => w.length > 0))].sort(
+    (a, b) => b.length - a.length,
+  );
+}
+
+/** Ein Fehlergrund, in dem kein Passwort der Adresse mehr steht. */
+function geschwaerzt(text: string, url: string): string {
+  let ergebnis = text;
+  for (const passwort of passwoerterIn(url)) {
+    ergebnis = ergebnis.split(passwort).join("***");
+  }
+  return ergebnis;
 }
 
 /**
@@ -96,7 +184,11 @@ const startePgContainer: ContainerStarter = async () => {
  */
 export async function oeffneIsoliertePg(
   marke: string,
-  opts: { env?: NodeJS.ProcessEnv; containerStarten?: ContainerStarter } = {},
+  opts: {
+    env?: NodeJS.ProcessEnv;
+    containerStarten?: ContainerStarter;
+    verwaltungOeffnen?: (url: string) => Verwaltung;
+  } = {},
 ): Promise<IsoliertePg> {
   const env = opts.env ?? process.env;
   const name = isolierterName(marke);
@@ -108,24 +200,33 @@ export async function oeffneIsoliertePg(
         `${FEHLENDER_NACHWEIS} (${marke}): KLARWERK_PG_TEST_URL wurde von der Testdatenbank-Sicherung abgelehnt — kein Container-Rückfall, nichts gemessen.`,
       );
     }
-    const verwaltung = new Pool({ connectionString: url, connectionTimeoutMillis: 15_000 });
+    const isoliert = mitDatenbank(url, name);
+    const verwaltung = (opts.verwaltungOeffnen ?? oeffneVerwaltung)(url);
     try {
       await verwaltung.query("SELECT 1");
     } catch (fehler) {
       await verwaltung.end().catch(() => undefined);
       throw new Error(
-        `${FEHLENDER_NACHWEIS} (${marke}): die Datenbank unter ${ohneGeheimnis(url)} ist nicht erreichbar — nichts gemessen: ${grundVon(fehler)}`,
+        `${FEHLENDER_NACHWEIS} (${marke}): die Datenbank unter ${ohneGeheimnis(url)} ist nicht erreichbar — nichts gemessen: ${geschwaerzt(grundVon(fehler), url)}`,
       );
     }
-    // Ab hier ist die Ressource DA: jeder weitere Fehler ist ein Befund und fliegt ungefangen.
+    // Ab hier ist die Ressource DA: jeder weitere Fehler ist ein Befund und fliegt weiter.
     // Von `template0`, nicht von `template1`: die drei Suiten legen ihre Datenbanken gleichzeitig
     // an, und `template1` darf dabei keine fremde Sitzung tragen („source database is being
     // accessed by other users"). `template0` nimmt keine Verbindungen an und bringt keine
     // Erweiterung mit — `migrate()` legt `pg_trgm` in der frischen Datenbank selbst an, und weil
     // `pg_extension` je Datenbank gilt, ist das kein Wettlauf mit anderen Dateien des Laufs.
-    await verwaltung.query(`CREATE DATABASE ${name} TEMPLATE template0`);
+    //
+    // Scheitert die Anlage, gibt es kein `abraeumen` — der Verwaltungspool wird deshalb HIER
+    // geschlossen, und derselbe Fehler fliegt unverändert weiter (BEN Runde 1, B2).
+    try {
+      await verwaltung.query(`CREATE DATABASE ${name} TEMPLATE template0`);
+    } catch (fehler) {
+      await verwaltung.end().catch(() => undefined);
+      throw fehler;
+    }
     pg = {
-      url: mitDatenbank(url, name),
+      url: isoliert,
       herkunft: `KLARWERK_PG_TEST_URL · isolierte Datenbank ${name} auf ${ohneGeheimnis(url)}`,
       abraeumen: async () => {
         try {
