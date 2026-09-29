@@ -789,3 +789,114 @@ for (const fall of [
     ).toEqual(vorher);
   });
 }
+
+// Fall 12 (de/en) ist der Gegenfall zu Fall 11 aus CAP-P1 („verwaiste Caption"): der Entwurf trägt
+// neben einer echten Paarung eine TATSÄCHLICH verwaiste Beschreibung — eine `figcaption`, deren
+// Kennung auf kein Bild zeigt und die in keiner figure mit Bild steht (die Lage „Bild entfernt,
+// Beschreibung geblieben"). Zugesagt ist in `editorFigures.ts` (`enhanceFiguresForEditing`,
+// `imageForCaption`): sie bleibt sichtbar stehen, trägt die Kennzeichnung „noch keinem Bild
+// zugeordnet" und wird NICHT still an das vorhandene Bild gehängt. Nativ eingefügt wird in den
+// Textabsatz; gemessen wird am Editor, am Server und nach dem Wiederöffnen.
+/** Lage der Beschreibungen OHNE Bild; gelesen über denselben Maßstab wie `bildlage`. */
+async function waisenlage(page: import("@playwright/test").Page) {
+  return await page
+    .locator(EDITOR)
+    .first()
+    .evaluate((el) => {
+      const waisen = [...el.querySelectorAll("figcaption")].filter(
+        (c) => !c.closest("figure")?.querySelector("img"),
+      );
+      return {
+        texte: waisen.map((c) => (c.textContent ?? "").trim()),
+        kennungen: waisen.map((c) => c.getAttribute("data-image-id")),
+        gekennzeichnet: waisen.filter((c) => c.hasAttribute("data-kw-nicht-zugeordnet")).length,
+      };
+    });
+}
+
+for (const fall of [
+  { sprache: "de", sichern: "Entwurf sichern", gesichert: "Entwurf gespeichert." },
+  { sprache: "en", sichern: "Save draft", gesichert: "Draft saved." },
+] as const) {
+  test(`DEMO-UX-V1 · Fall 12 (${fall.sprache}): verwaiste Beschreibung übersteht natives Einfügen, Sichern und Wiederöffnen`, async ({
+    page,
+  }) => {
+    await ensureLoggedIn(page);
+    const lauf = `${fall.sprache.toUpperCase()}-${Date.now()}`;
+    const kennung = `kw-img-capp1-paar-${Date.now()}`;
+    const verlorenesBild = `kw-img-capp1-entfernt-${Date.now()}`;
+    const beschreibung = `Schmierstelle am Exzenter ${lauf}`;
+    const verwaist = `Beschreibung ohne Bild ${lauf}`;
+    const id = await entwurfUeberSchnittstelle(page, {
+      title: `CAP-P1 verwaiste Beschreibung ${lauf}`,
+      bodyHtml: `<p>Ausgangstext ${lauf}.</p><figure data-image-id="${kennung}"><img data-image-id="${kennung}" alt="${beschreibung}" src="${PNG_1PX}"><figcaption data-image-id="${kennung}">${beschreibung}</figcaption></figure><figcaption data-image-id="${verlorenesBild}">${verwaist}</figcaption>`,
+    });
+    const adresse = `${VORDERTUER}?draft=${encodeURIComponent(id)}&lang=${fall.sprache}`;
+    await page.goto(adresse);
+    const editor = page.locator(EDITOR).first();
+    await expect(editor).toContainText(`Ausgangstext ${lauf}.`, { timeout: 15_000 });
+    await expect(editor).toContainText(verwaist);
+    const waisenVorher = await waisenlage(page);
+    expect(waisenVorher, "Kalibrierung: genau eine tatsächlich verwaiste Beschreibung").toEqual({
+      texte: [verwaist],
+      kennungen: [verlorenesBild],
+      gekennzeichnet: 1,
+    });
+    const paarVorher = await bildlage(page);
+    expect(paarVorher, "Kalibrierung: das Bild behält seine eigene Beschreibung").toMatchObject({
+      figuren: 1,
+      bilder: 1,
+      texte: [beschreibung, verwaist],
+      waisen: 1,
+    });
+
+    const probe = `Nativ eingefügt ${lauf}`;
+    await fuelleZwischenablage(page, ` ${probe}`);
+    await editor.locator("p").first().click();
+    await page.keyboard.press("End");
+    await fuegeNativEin(page);
+    await expect(editor).toContainText(probe);
+    expect(await waisenlage(page), "das Einfügen hat die verwaiste Beschreibung verändert").toEqual(
+      waisenVorher,
+    );
+    expect(await bildlage(page), "das Einfügen hat die Paarung verändert").toEqual(paarVorher);
+
+    await page.getByRole("button", { name: fall.sichern, exact: true }).click();
+    await expect(page.getByText(fall.gesichert).first()).toBeVisible({ timeout: 15_000 });
+
+    // Der Server trägt Text, Paarung UND die verwaiste Beschreibung — außerhalb der Bild-figure.
+    const antwort = await page.request.get(`/api/drafts/${encodeURIComponent(id)}`);
+    expect(antwort.ok()).toBe(true);
+    const rumpf =
+      ((await antwort.json()) as { payload: { bodyHtml?: string | null } }).payload.bodyHtml ?? "";
+    expect(rumpf).toContain(probe);
+    const serverlage = await page.evaluate((html) => {
+      const doc = new DOMParser().parseFromString(html, "text/html");
+      const beschreibungen = [...doc.querySelectorAll("figcaption")];
+      return {
+        texte: beschreibungen.map((c) => (c.textContent ?? "").trim()),
+        waisen: beschreibungen
+          .filter((c) => !c.closest("figure")?.querySelector("img"))
+          .map((c) => (c.textContent ?? "").trim()),
+        bilder: doc.querySelectorAll("img").length,
+      };
+    }, rumpf);
+    expect(serverlage, "Serverstand nach dem Sichern").toEqual({
+      texte: [beschreibung, verwaist],
+      waisen: [verwaist],
+      bilder: 1,
+    });
+
+    // Wiederöffnen: frischer Seitenaufbau über die Adresse.
+    await page.goto(adresse);
+    await expect(page.locator(EDITOR).first()).toContainText(probe, { timeout: 15_000 });
+    expect(await page.evaluate(() => document.documentElement.lang)).toBe(fall.sprache);
+    expect(
+      await waisenlage(page),
+      "nach dem Wiederöffnen fehlt die verwaiste Beschreibung oder hängt an einem Bild",
+    ).toEqual(waisenVorher);
+    expect(await bildlage(page), "nach dem Wiederöffnen ist die Paarung verändert").toEqual(
+      paarVorher,
+    );
+  });
+}
