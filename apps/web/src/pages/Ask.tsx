@@ -838,18 +838,28 @@ export function Ask(): JSX.Element {
   // bis der Verfügbarkeits-Status GELADEN ist, und verbraucht seinen Ein-Schuss dann GENAU EINMAL:
   // Modell nutzbar → automatisch fragen; kein Modell → KEINE Mutation (die Frage bleibt nur
   // vorbefüllt, der Hinweis erklärt es).
-  const autoAsked = useRef(false);
+  //
+  // R-0474 · Ben B3 (Runde 2): EIN SCHUSS JE NAVIGATION, UND ER FEUERT DIE FRAGE DER ADRESSE.
+  // Bis hierher las der Auto-Ask den Feldzustand `q` und hatte einen Schuss je MONTAGE. Seit
+  // `/fragen` bei einem Adresswechsel seine Frage übernimmt (Effekt oben), kam `?q=Neu&ask=1` auf
+  // der offenen Seite in einem Durchlauf an, in dem `params` schon neu, `q` aber noch alt war — und
+  // gesendet wurde die ALTE Frage, während das Feld danach die neue zeigte. Jetzt lesen Vorbefüllung
+  // und Auto-Ask dieselbe Quelle (`readAskQuestion(params)`), und verbraucht wird der Schuss der
+  // jeweiligen Navigation (`location.key`). Ohne `ask=1` wird weiterhin nichts gesendet (SCRUM-272).
+  // Läuft gerade eine Anfrage, wartet der Schuss, statt still zu verfallen.
+  const autoAskedFuer = useRef<string | null>(null);
   useEffect(() => {
-    if (autoAsked.current || answerAi.isLoading) {
+    if (autoAskedFuer.current === navigationsSchluessel || answerAi.isLoading || ask.isPending) {
       return;
     }
-    if (shouldAutoAskFromSearch(params) && q.trim().length > 0) {
-      autoAsked.current = true;
+    autoAskedFuer.current = navigationsSchluessel;
+    const frage = readAskQuestion(params);
+    if (shouldAutoAskFromSearch(params) && frage !== null) {
       // WP-UX-WOW-1 U5: die Startfrage auch als Lücken-/Capture-Kontext festhalten (wie Submit) —
       // das übernimmt submitAsk; ohne nutzbares Modell passiert bewusst NICHTS.
-      submitAsk(q);
+      submitAsk(frage);
     }
-  }, [params, q, answerAi.isLoading, submitAsk]);
+  }, [navigationsSchluessel, params, answerAi.isLoading, ask.isPending, submitAsk]);
 
   // SCRUM-430 (VIP): beantwortete Frage inkl. Quellen exportieren/teilen. Quellen bleiben klar
   // ausgewiesen (Status/Trust/Nutzbarkeit). Markdown wird erst beim Klick gebaut (frischer Zeitstempel).

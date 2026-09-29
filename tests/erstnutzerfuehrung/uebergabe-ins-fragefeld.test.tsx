@@ -18,6 +18,14 @@
 //   Ü4  Ausgang /fragen, eigene Eingabe im Feld, Palette-Nulltreffer: die angebotene Frage gewinnt.
 //   Ü5  Hilfe → Link: das Feld trägt das Stichwort.
 //   Ü6  Kein Auto-Ask: keine der Übergaben stellt die Frage.
+//
+// RUNDE 3 (Ben B3) — DERSELBE WECHSEL MIT AUSDRÜCKLICHEM ANTWORTWUNSCH (`ask=1`, `askAnswerHref`):
+// auf der schon offenen Seite wurde die ALTE Frage gesendet, das Feld zeigte danach die neue.
+//   A1  /fragen?q=Alte Frage → askAnswerHref("Neue Frage"): gesendet GENAU „Neue Frage", Feld ebenso.
+//   A2  frisch /fragen?q=Alte Frage&ask=1 → „Alte Frage" einmal; danach askAnswerHref("Neue Frage")
+//       → zusätzlich GENAU „Neue Frage" (ein Schuss je Navigation, nicht je Montage).
+//   A3  Gegenprobe ohne ask=1 (askQuestionHref) auf der offenen Seite: nichts gesendet, Feld neu.
+//   A4  Kein zweiter Schuss: ein erneutes Rendern derselben Navigation sendet nicht nochmals.
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const aufrufe = vi.hoisted(() => ({ ask: [] as string[] }));
@@ -63,10 +71,17 @@ import {
 } from "../../apps/web/node_modules/@tanstack/react-query";
 import { act, createElement } from "../../apps/web/node_modules/react";
 import { type Root, createRoot } from "../../apps/web/node_modules/react-dom/client";
-import { MemoryRouter, Route, Routes } from "../../apps/web/node_modules/react-router-dom";
+import {
+  MemoryRouter,
+  type NavigateFunction,
+  Route,
+  Routes,
+  useNavigate,
+} from "../../apps/web/node_modules/react-router-dom";
 import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
+import { askAnswerHref, askQuestionHref } from "../../apps/web/src/lib/askQuestion";
 import { Ask } from "../../apps/web/src/pages/Ask";
 import { Help } from "../../apps/web/src/pages/Help";
 import { CommandPalette } from "../../apps/web/src/shell/CommandPalette";
@@ -76,6 +91,20 @@ Element.prototype.scrollIntoView = () => {};
 
 const NEU = "zzqx Hydraulikdruck";
 const ALT = "Alte Frage";
+
+/** Hält den echten `navigate` des Routers fest — so navigiert der Test wie ein Link, ohne Neumontage. */
+let lenken: NavigateFunction | null = null;
+function Lenker(): null {
+  lenken = useNavigate();
+  return null;
+}
+
+async function gehe(ziel: string): Promise<void> {
+  await act(async () => {
+    lenken?.(ziel);
+  });
+  await ruhe();
+}
 
 interface Stand {
   container: HTMLDivElement;
@@ -124,6 +153,7 @@ async function montiere(pfad: string): Promise<Stand> {
               NavGuardProvider,
               null,
               createElement(CommandPalette),
+              createElement(Lenker),
               createElement(
                 Routes,
                 null,
@@ -243,5 +273,42 @@ describe("R-0474 · die Hilfe übergibt das Stichwort bis ins Fragefeld", () => 
     await ruhe();
     expect(fragefeld(s).value).toBe(NEU);
     expect(aufrufe.ask).toEqual([]);
+  });
+});
+
+describe("R-0474 · Ben B3 — Antwortlink (ask=1) auf der schon offenen Fragen-Seite", () => {
+  const ALT_Q = `/fragen?q=${encodeURIComponent(ALT)}`;
+  const NEUE = "Neue Frage";
+
+  it("A1: /fragen?q=Alte Frage → askAnswerHref(Neue Frage): gesendet wird genau die neue Frage", async () => {
+    const s = await montiere(ALT_Q);
+    expect(fragefeld(s).value).toBe(ALT);
+    expect(aufrufe.ask, "Kalibrierung: ohne ask=1 nichts gesendet").toEqual([]);
+    await gehe(askAnswerHref(NEUE));
+    expect(fragefeld(s).value).toBe(NEUE);
+    expect(aufrufe.ask).toEqual([NEUE]);
+  });
+
+  it("A2: frisch mit ask=1 → alte Frage einmal; danach Antwortlink → genau zusätzlich die neue", async () => {
+    const s = await montiere(askAnswerHref(ALT));
+    expect(aufrufe.ask, "frische Montage sendet ihre Frage einmal").toEqual([ALT]);
+    await gehe(askAnswerHref(NEUE));
+    expect(fragefeld(s).value).toBe(NEUE);
+    expect(aufrufe.ask).toEqual([ALT, NEUE]);
+  });
+
+  it("A3: Gegenprobe ohne ask=1 auf der offenen Seite: nur vorbefüllt, nichts gesendet", async () => {
+    const s = await montiere(ALT_Q);
+    await gehe(askQuestionHref(NEUE));
+    expect(fragefeld(s).value).toBe(NEUE);
+    expect(aufrufe.ask).toEqual([]);
+  });
+
+  it("A4: derselbe Stand, weiteres Tippen löst keinen zweiten Schuss aus", async () => {
+    const s = await montiere(ALT_Q);
+    await gehe(askAnswerHref(NEUE));
+    await tippe(fragefeld(s), "weiter getippt");
+    await ruhe();
+    expect(aufrufe.ask).toEqual([NEUE]);
   });
 });

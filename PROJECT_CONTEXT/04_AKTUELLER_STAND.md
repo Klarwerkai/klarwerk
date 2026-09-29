@@ -13,6 +13,8 @@
   (`/fragen?q=…`; nur wenn die Rolle „Fragen“ erreicht). Texte in `apps/web/src/texte/erstnutzer.ts`.
   Runde 2: Ist `/fragen` schon offen, übernimmt `Ask` die neue `?q=`-Frage jetzt ins Feld (vorher
   blieb die alte stehen). Weiterhin nur Vorbefüllung, kein Auto-Ask.
+  Runde 3: Ein Antwortlink (`?q=…&ask=1`) auf die offene Seite sendet genau seine Frage; der
+  Auto-Ask gilt je Navigation und liest dieselbe Quelle wie die Vorbefüllung.
 - Missionen: am 26.06. als Start-Kacheln geliefert (`9be7466b`), durch mega38 G2 zurückgenommen und
   in mega39 F gelöscht (`5150cd5a`). Eigene Einstiegsseiten gab es nie; ihr Stand ist ungeklärt.
 - Abgleich aller zugeordneten Anliegen mit Belegen, abgelösten Teilen (JOB 3064 H5) und offenen

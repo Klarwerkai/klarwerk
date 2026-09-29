@@ -1,6 +1,6 @@
 # Aufnahme 20260922 · Gesamt-Erstnutzerführung — Abgleich je Anliegen
 
-Auftrag `aufnahme:20260922:gesamt-erstnutzerfuehrung` (Aufgabenrevision 2, Lauf 1, Runden 1–2),
+Auftrag `aufnahme:20260922:gesamt-erstnutzerfuehrung` (Aufgabenrevision 2, Lauf 1, Runden 1–3),
 Stand der Fassung **1.0.0-beta.1.632** (Basis `8f0ec01c`), abgeglichen am 29.09.2026.
 
 Die Auftragsquelle selbst (Originalwortlaut, Entscheidungen, Erledigungsbelege) liegt **nicht** in
@@ -37,6 +37,23 @@ Die Bibliothek erfüllt R-0474 schon (s. u.). Zwei Suchen hatten aber keinen nä
   - Ü6: keine Anfrage an den Fragendienst.
 
   Gegenprobe mit dem `Ask.tsx` von `HEAD`: Ü2, Ü3 und Ü4 rot, Ü1 und Ü5 grün (frische Montage).
+- **Runde 3 (Ben B3): Antwortlink mit `ask=1` auf der schon offenen Seite sendet die neue Frage.**
+  Nach dem Fix aus B1 kam `/fragen?q=Neu&ask=1` auf der offenen Seite in einem Durchlauf an, in dem
+  die Adresse schon neu, der Feldzustand aber noch alt war. Der Auto-Ask (ein Schuss je Montage,
+  gelesen aus dem Feld) verschoss sich dabei mit der ALTEN Frage. Jetzt lesen Vorbefüllung und
+  Auto-Ask dieselbe Quelle (`readAskQuestion(params)`). Der Schuss gilt je Navigation
+  (`location.key`) und wartet, solange eine Anfrage läuft. Ohne `ask=1` wird weiterhin nichts
+  gesendet; ohne nutzbares Modell ebenfalls nicht (unverändert über `submitAsk`).
+  Tests A1–A4 in `uebergabe-ins-fragefeld.test.tsx`:
+  - A1: Wechsel auf der offenen Seite sendet genau die neue Frage.
+  - A2: frische Montage einmal, danach der Wechsel zusätzlich genau einmal.
+  - A3: Gegenprobe ohne `ask=1`, nichts gesendet.
+  - A4: kein zweiter Schuss beim Weitertippen.
+
+  Gegenprobe mit dem `Ask.tsx` der Runde 2: A1, A2 und A4 rot mit `expected [ 'Alte Frage' ] to deeply
+  equal [ 'Neue Frage' ]`, also Bens Protokoll.
+  Eine Änderung gegenüber früher: Ein Antwortlink mit `ask=1` auf die schon offene Seite sendet jetzt
+  (bisher nur bei frischer Montage). Das ist genau Bens Soll.
 - Beide neuen Testdateien stehen im Klara-Regressionsinventar. Grund: Achse `palette`, derselbe
   Fall wie `navigationsnamen/palette-*`.
 
