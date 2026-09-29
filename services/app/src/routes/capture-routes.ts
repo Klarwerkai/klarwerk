@@ -1551,6 +1551,52 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
         if (!user) {
           return;
         }
+        // Die Nacharbeiten NACH dem Verbrauch des Entwurfs — EINE Stelle für den ersten Lauf und
+        // für jede Wiederholung desselben Vorgangs (Nachschlag unten).
+        //
+        // AUFNAHME gesamt-entwurf-einreichen (Ben Runde 2, F1): JEDER SCHRITT LIEST ZUERST SEINE
+        // EIGENE WIRKUNG. Bricht ein Lauf an irgendeiner Stelle ab — beim Verbrauch, bei der
+        // Zuweisung, beim Prüf-Vermerk —, antwortet er 500, und die Wiederholung holt genau das
+        // nach, was im Bestand fehlt: keine Zuweisung für einen genannten Prüfer → zuweisen und
+        // benachrichtigen; kein Prüf-Vermerk → vermerken und einreihen; Vermerk `pending`, aber
+        // nicht in der Warteschlange → einreihen. Was schon wirkt, läuft kein zweites Mal. Damit
+        // gilt ein Vorgang erst dann als erfolgreich (200/201), wenn alle Folgen im Bestand stehen.
+        const nacharbeiten = async (koId: string, reviewerIds: string[] | undefined) => {
+          const stand = await ko.get(koId);
+          if (!stand) {
+            // Das Objekt ist inzwischen fort (Papierkorb): nichts mehr nachzuholen.
+            return undefined;
+          }
+          const reviewers = [...new Set(reviewerIds ?? [])].filter((id) => id !== user.id);
+          const fehlend =
+            reviewers.length > 0 ? await validation.nichtZugewiesen(koId, reviewers) : [];
+          if (fehlend.length > 0) {
+            await validation.assign(koId, fehlend, user.id);
+            await notifyAssignment?.(koId, fehlend);
+          }
+          // WP-SUBMIT-ASYNC (Pedis R3, 21.07.): wie beim direkten Einreichen — kein synchroner
+          // detect*-Lauf mehr vor der Antwort; nur der Prüf-Job wird vermerkt und der Worker
+          // arbeitet ihn danach ab (dieselben Erkennungs-Pfade, Status im Board sichtbar).
+          // Wie in ko-routes: die Antwort trägt den Vermerk ehrlich mit (aiCheck pending);
+          // Nachlesen VOR dem enqueue → deterministischer Job-Start in der Antwort.
+          if (!aiCheckWorker) {
+            return undefined;
+          }
+          if (stand.aiCheck) {
+            // Schon vermerkt. Steht er noch aus und liegt nicht in der Warteschlange, brach der
+            // frühere Lauf zwischen Vermerk und Einreihen ab — dann (und nur dann) einreihen.
+            if (stand.aiCheck.status === "pending" && !aiCheckWorker.has(koId)) {
+              aiCheckWorker.enqueue(koId, stand.aiCheck.koVersion);
+            }
+            return fehlend.length > 0 ? ((await ko.get(koId)) ?? stand) : stand;
+          }
+          await ko.markAiCheckPending(koId);
+          const vermerkt = await ko.get(koId);
+          // WP-SHIP8-CLOSE-2 (bens F3): Zielversion des frischen Vermerks synchron mitgeben —
+          // die Overflow-Eviction schließt hart versionsgebunden ab (kein unversionierter Write).
+          aiCheckWorker.enqueue(koId, vermerkt?.aiCheck?.koVersion);
+          return vermerkt;
+        };
         try {
           const body = request.body ?? {};
           const operationId = typeof body.operationId === "string" ? body.operationId.trim() : "";
@@ -1577,9 +1623,21 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
               fingerprint,
             });
             if (replay) {
-              // 200 statt 201: derselbe Vorgang, aber das Objekt entsteht NICHT jetzt. Keine
-              // Folgeschritte — sie liefen beim ersten Mal.
-              reply.code(200).send(replay);
+              // AUFNAHME gesamt-entwurf-einreichen (R-0036, R-0058) — KEIN GEISTER-ENTWURF UND
+              // KEIN OBJEKT OHNE PRÜFUNG. Anlage, Verbrauch und Nacharbeiten sind getrennte
+              // Schritte in verschiedenen Modulen; brach der erste Lauf nach der Anlage ab, stand
+              // das Objekt womöglich neben seinem Entwurf, ohne Prüfer und ohne Prüf-Job. Die
+              // Wiederholung DESSELBEN Vorgangs holt jeden fehlenden Schritt nach — jeder prüft
+              // seine eigene Wirkung (`nacharbeiten`), der Verbrauch greift bei einem schon
+              // entfernten Entwurf ins Leere, die Ablage ist ein Upsert. Nach einem vollständigen
+              // ersten Lauf bewirkt die Wiederholung deshalb nichts. Der Abdruck enthält `draftId`,
+              // ein fremder Entwurf wird also nie getroffen.
+              // (tests/entwurf-einreichen/kein-geister-entwurf.test.ts)
+              await capture.entwurfVerbraucht(request.params.id);
+              const nachgeholt = await nacharbeiten(replay.id, body.reviewerIds);
+              // 200 statt 201: derselbe Vorgang, aber das Objekt entsteht NICHT jetzt.
+              reply.code(200).send(nachgeholt ?? replay);
+              await indexKoForDuplicatePrefilter(replay, semanticPrefilter);
               return;
             }
           }
@@ -1636,24 +1694,7 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
           // `deleteDraft` (weich). Es sind zwei verschiedene Vorgänge, die nur zufällig beide
           // dazu führen, dass der Entwurf aus der Liste verschwindet.
           await capture.entwurfVerbraucht(request.params.id);
-          const reviewers = [...new Set(body.reviewerIds ?? [])].filter((id) => id !== user.id);
-          if (reviewers.length > 0) {
-            await validation.assign(created.id, reviewers, user.id);
-            await notifyAssignment?.(created.id, reviewers);
-          }
-          // WP-SUBMIT-ASYNC (Pedis R3, 21.07.): wie beim direkten Einreichen — kein synchroner
-          // detect*-Lauf mehr vor der Antwort; nur der Prüf-Job wird vermerkt und der Worker
-          // arbeitet ihn danach ab (dieselben Erkennungs-Pfade, Status im Board sichtbar).
-          // Wie in ko-routes: die 201-Antwort trägt den Vermerk ehrlich mit (aiCheck pending);
-          // Nachlesen VOR dem enqueue → deterministischer Job-Start in der Antwort.
-          let submitted = created;
-          if (aiCheckWorker) {
-            await ko.markAiCheckPending(created.id);
-            submitted = (await ko.get(created.id)) ?? created;
-            // WP-SHIP8-CLOSE-2 (bens F3): Zielversion des frischen Vermerks synchron mitgeben —
-            // die Overflow-Eviction schließt hart versionsgebunden ab (kein unversionierter Write).
-            aiCheckWorker.enqueue(created.id, submitted.aiCheck?.koVersion);
-          }
+          const submitted = (await nacharbeiten(created.id, body.reviewerIds)) ?? created;
           reply.code(201).send(submitted);
           // Weg 3 (B6): Einbettung + Ablage NACH der Antwort — der Nutzer wartet nie darauf. Flag aus
           // = No-op; Fehler brechen den (bereits gesendeten) Submit nie. await nur zur deterministischen

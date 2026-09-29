@@ -79,6 +79,31 @@ function draftSearchText(draft: Draft, titleFallback: string): string {
   return parts.join(" ").toLowerCase();
 }
 
+// AUFNAHME gesamt-entwurf-einreichen (N-0065): ein kurzer INHALTSAUSZUG je Eintrag — zwei Entwürfe
+// desselben Vorhabens unterscheiden sich oft erst im Text. Wörtlich aus dem Entwurf (Fließtext, sonst
+// Kernaussage), über dieselbe kanonische Reduktion wie die Suche; KEINE Zusammenfassung, keine KI
+// (P-ENTWUERFE-VERWALTEN). Gekürzt wird an einer Wortgrenze. Kein Text → `null`, kein Platzhalter.
+//
+// ER WIEDERHOLT NIE DEN TITEL: Ohne eigenen Titel steht die Kernaussage schon als Titel da
+// (`draftTitle`) und reist deshalb nicht noch einmal als Auszug; und ein Text, der genau dem
+// angezeigten Titel gleicht, sagt nichts Neues. Beides wäre dieselbe Zeile zweimal.
+export const DRAFT_EXCERPT_MAX = 140;
+
+export function draftExcerpt(draft: Pick<Draft, "payload">): string | null {
+  const payload = draft.payload;
+  const aussage = payload.title?.trim() ? (payload.statement ?? "") : "";
+  const text = (htmlToPlainText(payload.bodyHtml ?? "") || aussage).replace(/\s+/g, " ").trim();
+  if (!text || text === draftTitle(draft, "")) {
+    return null;
+  }
+  if (text.length <= DRAFT_EXCERPT_MAX) {
+    return text;
+  }
+  const schnitt = text.slice(0, DRAFT_EXCERPT_MAX);
+  const grenze = schnitt.lastIndexOf(" ");
+  return `${(grenze > DRAFT_EXCERPT_MAX / 2 ? schnitt.slice(0, grenze) : schnitt).trimEnd()} …`;
+}
+
 export interface DraftListFilter {
   // Volltext-/Titelsuche (leer = alle).
   query: string;

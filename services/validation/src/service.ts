@@ -585,6 +585,20 @@ export class ValidationService {
     return staende;
   }
 
+  // AUFNAHME gesamt-entwurf-einreichen (Ben Runde 2, F1): wer von diesen Personen hat für das KO
+  // NOCH KEINE Zuweisung (gleich welchen Status)? Der Einreichweg fragt das vor dem Zuweisen, damit
+  // eine Wiederholung desselben Vorgangs fehlende Zuweisungen nachholt, vorhandene aber nicht
+  // verdoppelt. Reine Lesefrage an die eigene Ablage.
+  async nichtZugewiesen(koId: string, userIds: readonly string[]): Promise<string[]> {
+    const offen: string[] = [];
+    for (const userId of userIds) {
+      if (!(await this.assignments.find(koId, userId))) {
+        offen.push(userId);
+      }
+    }
+    return offen;
+  }
+
   // FR-VAL-05: KO an ≥1 Person zuweisen.
   async assign(koId: string, userIds: string[], actor = "system"): Promise<void> {
     const ko = await this.koService.get(koId);

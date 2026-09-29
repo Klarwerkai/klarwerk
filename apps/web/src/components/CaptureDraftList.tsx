@@ -41,6 +41,7 @@ import {
   DRAFT_SORT_LABEL_KEYS,
   DRAFT_SORT_STORAGE_KEY,
   draftCreatorIds,
+  draftExcerpt,
   draftListView,
 } from "../lib/draftListView";
 import { formatKoTimestamp } from "../lib/koDates";
@@ -253,6 +254,9 @@ export function CaptureDraftList(props: CaptureDraftListProps): JSX.Element | nu
     fallbackTitle,
   );
   const creatorIds = isAdmin ? draftCreatorIds(drafts) : [];
+  // AUFNAHME gesamt-entwurf-einreichen (N-0065): der kurze Inhaltsauszug je Zeile, einmal je Lauf
+  // gerechnet. Kein Text → `null` → keine Zeile, kein Platzhalter.
+  const auszuege = new Map(visibleDrafts.map((d) => [d.id, draftExcerpt(d)] as const));
 
   // ==============================================================================================
   // DIE SUCH- UND SORTIER-BEDIENUNG — EINMAL GESCHRIEBEN, VON BEIDEN FLÄCHEN GEZEIGT.
@@ -481,6 +485,17 @@ export function CaptureDraftList(props: CaptureDraftListProps): JSX.Element | nu
                     </span>
                   ) : null}
                 </div>
+                {/* AUFNAHME gesamt-entwurf-einreichen (N-0065): der kurze Inhaltsauszug, wörtlich
+                    aus dem Entwurf (`draftExcerpt`). Er steht UNTER dem Titel und nicht in dessen
+                    Träger — ein Titelvergleich liest ihn nicht mit. */}
+                {auszuege.get(d.id) ? (
+                  <p
+                    data-testid="entwurfsliste-eintrag-auszug"
+                    className="mt-0.5 line-clamp-2 break-words text-[12px] leading-snug text-muted"
+                  >
+                    {auszuege.get(d.id)}
+                  </p>
+                ) : null}
                 <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11.5px] text-muted">
                   <span>
                     {t("capture.draftCreatorMeta", { name: draftAuthorName(d, directory) })}

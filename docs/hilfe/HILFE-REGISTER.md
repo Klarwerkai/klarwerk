@@ -157,7 +157,7 @@
 | `chelp.modes.title` | Erfassen (captureHelp) | Die vier Erzähl-Wege |
 | `chelp.readiness.body` | Erfassen (captureHelp) | Zeigt ehrlich, was zum Einreichen noch fehlt: Pflichtfelder (ohne sie bleibt der Knopf aus) und Optionales, das dein Wissen stärkt (z. B. Kategorie oder Anhänge). Grün heißt bereit — nicht perfekt: Verbessern kannst du auch nach dem Einreichen noch, dann als neue Version. |
 | `chelp.readiness.title` | Erfassen (captureHelp) | Speicher-Check |
-| `chelp.saveDraftHelp.body` | Erfassen (captureHelp) | Sichert deinen Zwischenstand lokal in deinem Browser — du kannst jederzeit weitermachen, auch nach einem Neustart. Ein Entwurf ist NICHT eingereicht: Niemand sieht ihn, er taucht in keiner Prüfung und keiner Antwort auf. Oben auf der Seite findest du gespeicherte Entwürfe zum Fortsetzen. |
+| `chelp.saveDraftHelp.body` | Erfassen (captureHelp) | Sichert deinen Zwischenstand privat auf dem Server — du kannst jederzeit weitermachen, auf jedem deiner Geräte und auch nach einem Neustart. Ein Entwurf ist NICHT eingereicht: Außer dir sehen ihn nur Administratoren, er taucht in keiner Prüfung und keiner Antwort auf. Deine gespeicherten Entwürfe findest du zum Fortsetzen im Menü unter „Meine Entwürfe“. |
 | `chelp.saveDraftHelp.title` | Erfassen (captureHelp) | Entwurf speichern |
 | `chelp.savedNext.body` | Erfassen (captureHelp) | Dein Wissen ist als Objekt angelegt und wartet auf die Peer-Prüfung — es ist SICHTBAR, aber ehrlich als offen markiert, nicht als gesichert. Du musst nichts weiter tun: Prüfer finden es auf dem Validierungs-Board. Willst du es ansehen oder ergänzen, führt der Link direkt hin. |
 | `chelp.savedNext.title` | Erfassen (captureHelp) | Gespeichert — was jetzt? |

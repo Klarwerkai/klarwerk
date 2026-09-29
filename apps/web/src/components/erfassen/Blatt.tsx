@@ -6,13 +6,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { ApiError } from "../../api/client";
 import { endpoints } from "../../api/endpoints";
 import { useDrafts, useKos } from "../../api/hooks";
-import type {
-  AssistResult,
-  Confidentiality,
-  DraftPayload,
-  KnowledgeObject,
-  StructureResult,
-} from "../../api/types";
+import type { AssistResult, Confidentiality, DraftPayload, StructureResult } from "../../api/types";
 import { useSession } from "../../app/AuthContext";
 import { ImageDescribeProvider } from "../../app/ImageDescribeContext";
 import { WACHE_FLAECHE, useNavGuard, useUnloadGuard } from "../../app/NavGuardContext";
@@ -48,6 +42,7 @@ import {
   newCreateOperationId,
 } from "../../lib/createOperation";
 import { isDemoContext } from "../../lib/demoPilotPath";
+import { deriveStatus } from "../../lib/displayStatus";
 import { CLEARED_DRAFT_BODY_HTML } from "../../lib/draftBody";
 import { dominantCategory, pickExampleKo } from "../../lib/intakeExample";
 import { INTAKE_STARTERS, type IntakeStarter } from "../../lib/intakeStarters";
@@ -73,6 +68,8 @@ import { HelpTip } from "../HelpTip";
 import { RichTextEditor } from "../RichTextEditor";
 import { RoleLink } from "../RoleLink";
 import { LiveReactionZone } from "../capture/intake/LiveReactionZone";
+import { StatusPill } from "../trust/StatusPill";
+import type { DisplayStatus } from "../trust/types";
 import { Menue, MenueEintrag, MenueFlaeche, MenueTrenner } from "./Menue";
 import {
   SymbolBild,
@@ -454,9 +451,7 @@ export function Blatt({
   const [assistAccepted, setAssistAccepted] = useState(false);
 
   // ---- Vorgang ---------------------------------------------------------------------------------
-  const [submittedKo, setSubmittedKo] = useState<Pick<KnowledgeObject, "id" | "title"> | null>(
-    null,
-  );
+  const [submittedKo, setSubmittedKo] = useState<Eingereicht | null>(null);
   const [submitValidation, setSubmitValidation] = useState(false);
   const [restartOffer, setRestartOffer] = useState<string | null>(null);
   // JOB 3062 R6 (Auftrag §9): welche Handlung zuletzt versucht wurde — sie und keine andere
@@ -1255,7 +1250,7 @@ export function Blatt({
       submitOperationRef.current = null;
       submitDraftRef.current = null;
       setRestartOffer(null);
-      setSubmittedKo({ id: ko.id, title: ko.title });
+      setSubmittedKo({ id: ko.id, title: ko.title, zustand: deriveStatus(ko) });
       setTitle("");
       setBodyHtml("");
       setActiveDraftId(null);
@@ -3180,6 +3175,17 @@ function AnhangListe({ bodyHtml }: { bodyHtml: string }): JSX.Element {
   return <p className="text-[12.5px] text-text">{t("erfassen.anhaenge.anzahl", { n: anzahl })}</p>;
 }
 
+/**
+ * AUFNAHME gesamt-entwurf-einreichen (R-0102, R-0111, R-1014): was nach dem Einreichen gilt. Neben
+ * Titel und Kennung reist der ZUSTAND des neuen Objekts mit — aus der Serverantwort abgeleitet
+ * (`deriveStatus`, dieselbe Ableitung wie Bibliothek und Antwortquellen), nicht angenommen.
+ */
+interface Eingereicht {
+  readonly id: string;
+  readonly title: string;
+  readonly zustand: DisplayStatus;
+}
+
 // ------------------------------------------------------------------------------------------------
 // Die Lage des Blattes — EIN Satz, nie eine Karte (Zustandsmodell §9). Fehler bekommt seinen Weg
 // zurück, Erfolg eine Zeile mit Link. „Gespeichert"/„eingereicht" steht nur nach Serverbestätigung.
@@ -3198,7 +3204,7 @@ function BlattLage({
   aufWiederholen,
 }: {
   fehler: string | null;
-  erfolg: Pick<KnowledgeObject, "id" | "title"> | null;
+  erfolg: Eingereicht | null;
   kostet: boolean;
   uebernommen: boolean;
   /**
@@ -3236,7 +3242,14 @@ function BlattLage({
         {t("erfassen.eingereicht")}{" "}
         <Link className="font-semibold underline" to={`/wissen/${erfolg.id}`}>
           {erfolg.title}
-        </Link>
+        </Link>{" "}
+        {/* AUFNAHME gesamt-entwurf-einreichen (R-0102/R-0111): der Zustand steht AN der Zeile —
+            „Offen" bzw. „In Prüfung" statt raten. Die vorhandene `StatusPill`, kein neuer Satz und
+            kein neuer Schlüssel; die Zeile bleibt EINE Zeile (§9). Die KI-Prüfung läuft danach im
+            Hintergrund weiter (WP-SUBMIT-ASYNC); ihr Ergebnis steht am Objekt, nicht hier. */}
+        <span data-testid="blatt-lage-zustand" data-zustand={erfolg.zustand}>
+          <StatusPill status={erfolg.zustand} />
+        </span>
         <RoleLink
           className="ml-2 inline-flex items-center gap-1 font-semibold underline"
           hoverClassName="hover:opacity-80"

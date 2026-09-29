@@ -6342,8 +6342,17 @@ const de = {
   "chelp.captureTitle.body":
     "Der Titel ist das Erste, was Kollegen in Bibliothek und Antworten sehen — er entscheidet, ob dein Wissen gefunden wird. Gut: konkret und handlungsnah („Schweißnaht bei Aluminium unter 5 mm prüfen“). Du kannst ihn jederzeit ändern, auch der KI-Vorschlag ist nur ein Startpunkt.",
   "chelp.saveDraftHelp.title": "Entwurf speichern",
+  // AUFNAHME gesamt-entwurf-einreichen (Ben Runde 1): hier stand „lokal in deinem Browser" und
+  // „oben auf der Seite". Entwürfe liegen am Server (`POST /api/drafts`, R-0026: an einem anderen
+  // Gerät fortsetzbar), und ihr Ort ist der Menüpunkt „Meine Entwürfe" (`mob.drafts`, JOB 3503).
+  // Ben Runde 2 (F3): hier stand „Niemand sieht ihn". Administratoren sehen jeden lebenden Entwurf
+  // (`visibleDraftsFor` in services/app/src/routes/capture-routes.ts), andere Schreibende nur ihre
+  // eigenen. Der Satz beschreibt diese Rechte, er erweitert sie nicht.
+  // Entscheidung Pedi (debbb8e8, „Beides"): Standardfall ist der PRIVATE Entwurf am Server, auf allen
+  // eigenen Geräten fortsetzbar. Das bewusste Freigeben in einen gemeinsamen Pool (R-2099) ist ein
+  // eigener Auftrag und steht deshalb hier nicht.
   "chelp.saveDraftHelp.body":
-    "Sichert deinen Zwischenstand lokal in deinem Browser — du kannst jederzeit weitermachen, auch nach einem Neustart. Ein Entwurf ist NICHT eingereicht: Niemand sieht ihn, er taucht in keiner Prüfung und keiner Antwort auf. Oben auf der Seite findest du gespeicherte Entwürfe zum Fortsetzen.",
+    "Sichert deinen Zwischenstand privat auf dem Server — du kannst jederzeit weitermachen, auf jedem deiner Geräte und auch nach einem Neustart. Ein Entwurf ist NICHT eingereicht: Außer dir sehen ihn nur Administratoren, er taucht in keiner Prüfung und keiner Antwort auf. Deine gespeicherten Entwürfe findest du zum Fortsetzen im Menü unter „Meine Entwürfe“.",
   "chelp.discardHelp.title": "Verwerfen",
   "chelp.discardHelp.body":
     "Verwirft den aktuellen Entwurf endgültig — Text, Struktur und Anhänge dieser Erfassung. Es betrifft NUR deinen Entwurf: Bereits eingereichte oder gespeicherte Wissensobjekte bleiben unberührt. Vorher fragt die App bewusst nach; wer nur einen Schritt zurück will, nutzt die Schritt-Leiste statt Verwerfen.",
@@ -12364,7 +12373,7 @@ const en: typeof de = {
     "The title is the first thing colleagues see in the library and in answers — it decides whether your knowledge is found. Good: concrete and actionable („checking weld seams on aluminium under 5 mm“). You can change it anytime; the AI suggestion is only a starting point.",
   "chelp.saveDraftHelp.title": "Save draft",
   "chelp.saveDraftHelp.body":
-    "Saves your interim state locally in your browser — continue anytime, even after a restart. A draft is NOT submitted: nobody sees it, it appears in no review and no answer. You will find saved drafts at the top of this page to resume.",
+    "Saves your interim state privately on the server — continue anytime, on any of your devices and even after a restart. A draft is NOT submitted: apart from you, only administrators can see it, and it appears in no review and no answer. You will find your saved drafts to resume in the menu under “My drafts”.",
   "chelp.discardHelp.title": "Discard",
   "chelp.discardHelp.body":
     "Discards the current draft for good — text, structure and attachments of this capture. It affects ONLY your draft: already submitted or saved knowledge objects stay untouched. The app deliberately asks first; if you only want one step back, use the step bar instead of discarding.",
@@ -18001,7 +18010,7 @@ const nl: typeof de = {
     "De titel is het eerste wat collega's in bibliotheek en antwoorden zien — hij bepaalt of je kennis wordt gevonden. Goed: concreet en actiegericht („Lasnaad bij aluminium onder 5 mm controleren\"). Je kunt hem altijd wijzigen, ook het KI-voorstel is maar een startpunt.",
   "chelp.saveDraftHelp.title": "Concept opslaan",
   "chelp.saveDraftHelp.body":
-    "Bewaart je tussenstand lokaal in je browser — je kunt altijd verdergaan, ook na een herstart. Een concept is NIET ingediend: niemand ziet het, het duikt in geen enkele beoordeling en geen enkel antwoord op. Boven aan de pagina vind je opgeslagen concepten om verder te gaan.",
+    "Bewaart je tussenstand privé op de server — je kunt altijd verdergaan, op elk van je apparaten en ook na een herstart. Een concept is NIET ingediend: behalve jij zien alleen beheerders het, en het duikt in geen enkele beoordeling en geen enkel antwoord op. Je opgeslagen concepten vind je om verder te gaan in het menu onder „Mijn concepten”.",
   "chelp.discardHelp.title": "Verwerpen",
   "chelp.discardHelp.body":
     "Verwerpt het huidige concept definitief — tekst, structuur en bijlagen van deze vastlegging. Het betreft ALLEEN je concept: reeds ingediende of opgeslagen kennisobjecten blijven onaangetast. Vooraf vraagt de app bewust na; wie maar één stap terug wil, gebruikt de stappenbalk in plaats van verwerpen.",
