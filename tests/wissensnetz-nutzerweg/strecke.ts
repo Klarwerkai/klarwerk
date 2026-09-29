@@ -81,6 +81,7 @@ import {
   starteChromium,
   warte,
 } from "../gast-nutzerweg/browserweg";
+import { SICHT_RUECKFALL } from "../support/sichtRueckfall";
 import type { Laufzustand } from "../wiki-gesamtanweisung-abnahme/laufzustand";
 
 export const MARKE = "[KLARWERK] JOB 4328";
@@ -211,13 +212,19 @@ const kantentitelVon = (b: (typeof BEZIEHUNGEN)[number]): string =>
 //
 // `innerText` und nicht `textContent`: ein ausgeblendetes Feld kommt in `innerText` nicht vor, im
 // Baum schon. Die einzige Ausnahme steht in `KANTEN_METADATEN` und ist dort begruendet.
+//
+// Ohne `checkVisibility` misst der Rückfall die ganze Vorfahrenkette samt Verdeckung
+// (`tests/support/sichtRueckfall.ts`); vorher sah er nur das Element selbst.
 const SICHT = `
+  ${SICHT_RUECKFALL}
   const sichtbar = (e) => {
     if (!e) return false;
     if (typeof e.checkVisibility === "function") {
       if (!e.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true, contentVisibilityAuto: true })) {
         return false;
       }
+    } else if (!sichtRueckfall(e).sichtbar) {
+      return false;
     }
     const s = getComputedStyle(e);
     if (s.visibility === "hidden" || s.display === "none" || s.opacity === "0") return false;
@@ -232,6 +239,8 @@ const SICHT = `
     if (!e) return false;
     if (typeof e.checkVisibility === "function") {
       if (!e.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })) return false;
+    } else if (!sichtRueckfall(e).sichtbar) {
+      return false;
     }
     const s = getComputedStyle(e);
     if (s.visibility === "hidden" || s.display === "none" || s.opacity === "0") return false;

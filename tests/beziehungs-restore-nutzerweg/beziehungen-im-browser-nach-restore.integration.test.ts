@@ -93,6 +93,7 @@ import {
   starteChromium,
   warte,
 } from "../gast-nutzerweg/browserweg";
+import { SICHT_RUECKFALL } from "../support/sichtRueckfall";
 import {
   ADMIN,
   type Abdruck,
@@ -182,13 +183,20 @@ const ART_SCHLUESSEL: Record<string, string> = {
 // Dass diese Messung wirklich greift, ist nicht behauptet, sondern KALIBRIERT: D3 blendet Satz,
 // Herkunft und die Verknuepfungszeile des Wissensnetzes gezielt aus und verlangt konkrete
 // Sichtbarkeitsfehler; danach stellt ein Neuladen die Flaeche her und derselbe Vergleich ist gruen.
+//
+// Der Rückfall ohne `checkVisibility` misst seit dem Auftrag GRAPH-BROWSER-RECHTE die ganze
+// Vorfahrenkette samt Verdeckung (`tests/support/sichtRueckfall.ts`) — vorher sah er nur das
+// Element selbst und damit keinen durchsichtigen Vorfahren.
 const SICHTBARKEIT = `
+  ${SICHT_RUECKFALL}
   const sichtbar = (e) => {
     if (!e) return false;
     if (typeof e.checkVisibility === "function") {
       if (!e.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true, contentVisibilityAuto: true })) {
         return false;
       }
+    } else if (!sichtRueckfall(e).sichtbar) {
+      return false;
     }
     const r = e.getBoundingClientRect();
     const s = getComputedStyle(e);
