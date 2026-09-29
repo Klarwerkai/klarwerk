@@ -9,9 +9,8 @@
 // MENGENGLEICHHEIT je Kennung: die Menge der Ids aus `listAnhangTraeger` muss ZEICHENGLEICH die
 // Menge sein, die die Node-Übersetzung über denselben Bestand liefert.
 //
-// Braucht Docker (Testcontainers); läuft unter `npm run test:integration`, nicht im schnellen Tor —
-// dasselbe Muster wie tests/security/380-trim-paritaet.integration.test.ts.
-import { GenericContainer, type StartedTestContainer, Wait } from "testcontainers";
+// Läuft unter `npm run test:integration`, nicht im schnellen Tor. Die Datenbank kommt aus
+// `./pg-pruefplatz` (isoliert über `KLARWERK_PG_TEST_URL`, sonst Testcontainer, sonst ROT).
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createPool, migrate } from "../../services/app/src/db";
 import type { KnowledgeObject } from "../../services/knowledge-object";
@@ -20,6 +19,7 @@ import {
   PgKoRepo,
   PgKoVersionRepo,
 } from "../../services/knowledge-object/src/repo-pg";
+import { type IsoliertePg, oeffneIsoliertePg } from "./pg-pruefplatz";
 
 const HOCHLADENDER = "u-anna";
 const FREMDER = "u-bert";
@@ -164,17 +164,13 @@ function erwartet(alle: Fall[], objectId: string): string[] {
 }
 
 describe("JOB 2685 D1 · listAnhangTraeger gegen echtes Postgres: Mengengleichheit je Kennung", () => {
-  let container: StartedTestContainer;
+  let pg: IsoliertePg | undefined;
   let url: string;
   const alle = faelle();
 
   beforeAll(async () => {
-    container = await new GenericContainer("postgres:16-alpine")
-      .withEnvironment({ POSTGRES_PASSWORD: "test", POSTGRES_DB: "klarwerk_test" })
-      .withExposedPorts(5432)
-      .withWaitStrategy(Wait.forLogMessage(/database system is ready to accept connections/, 2))
-      .start();
-    url = `postgresql://postgres:test@${container.getHost()}:${container.getMappedPort(5432)}/klarwerk_test`;
+    pg = await oeffneIsoliertePg("job2685");
+    url = pg.url;
     const pool = createPool(url);
     try {
       await migrate(pool);
@@ -211,10 +207,10 @@ describe("JOB 2685 D1 · listAnhangTraeger gegen echtes Postgres: Mengengleichhe
     } finally {
       await pool.end();
     }
-  });
+  }, 180_000);
 
   afterAll(async () => {
-    await container?.stop();
+    await pg?.abraeumen();
   });
 
   it("für JEDE Kennung liefert SQL genau die Objekte, die die Node-Übersetzung der vier Arme liefert", async () => {
