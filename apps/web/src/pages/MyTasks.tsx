@@ -17,6 +17,7 @@ import { HelpTip } from "../components/HelpTip";
 import { PausedMarker, StaleMarker } from "../components/LoadState";
 import { KoAuthorLine } from "../components/trust";
 import { PageHeader } from "../components/ui";
+import { fallHref } from "../lib/fallAbsprung";
 import { gapLocaleTag } from "../lib/gapLocaleTag";
 import { type KoAuthorParts, koAuthorParts } from "../lib/koAuthor";
 import { groupLoadPhase, gruppeAngehalten, isGroupStale } from "../lib/loadingState";
@@ -180,11 +181,15 @@ export function MyTasks(): JSX.Element {
         )
       : []),
     // SCHEIBE D-019b: dieselbe Regel wie der Seitenleisten-Zähler, aus derselben Quelle.
-    ...(conflicts.data ?? [])
-      .filter(isUnresolvedConflict)
-      .map((c) =>
-        task({ id: c.id, label: c.description, typeKey: "task.conflict", to: "/konflikte" }),
-      ),
+    ...(conflicts.data ?? []).filter(isUnresolvedConflict).map((c) =>
+      task({
+        id: c.id,
+        label: c.description,
+        typeKey: "task.conflict",
+        // R-0961: direkter Absprung — die Konfliktfläche wählt genau diesen Fall vor.
+        to: fallHref("/konflikte", c.id),
+      }),
+    ),
     ...(board.data ?? []).map((k) =>
       task({
         id: k.id,
@@ -200,7 +205,7 @@ export function MyTasks(): JSX.Element {
         id: `lc-${id}`,
         label: kosById.get(id)?.title ?? id,
         typeKey: "task.revalidation",
-        to: "/lebenszyklus",
+        to: fallHref("/lebenszyklus", id),
         ...(authorOf(id) ? { author: authorOf(id) as KoAuthorParts } : {}),
       }),
     ),
@@ -212,7 +217,7 @@ export function MyTasks(): JSX.Element {
         id: g.id,
         label: g.redacted ? t("task.gapRedacted") : g.question,
         typeKey: "task.gap",
-        to: "/risiko",
+        to: fallHref("/risiko", g.id),
         ...(sprache ? { localeTag: sprache } : {}),
         // JOB 1111 / D-032: erst ab zwei — eine „1×" wäre Rauschen.
         ...(typeof g.askCount === "number" && g.askCount > 1 ? { askCount: g.askCount } : {}),
@@ -377,7 +382,7 @@ export function MyTasks(): JSX.Element {
           Er rendert nichts im Sichtfeld (`components/HelpTip.tsx`): die Zeilenform von JOB 3064
           bleibt unverändert. */}
       <HelpTip title={t("seitenhilfe.aufgaben.title")} body={t("seitenhilfe.aufgaben.body")} />
-      <PageHeader title={t("nav.tasks")} pageKey="aufgaben" />
+      <PageHeader title={t("nav.tasks")} lead={t("aufgaben.leitsatz")} pageKey="aufgaben" />
       {/* §4: EIN Segment statt sechs Monopillen — die Zähler bleiben, die Schrift wird Fließtext. */}
       <fieldset
         aria-label={t("task.kicker")}

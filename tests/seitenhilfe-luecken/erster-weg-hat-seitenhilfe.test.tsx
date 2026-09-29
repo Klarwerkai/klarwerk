@@ -605,7 +605,8 @@ describe("JOB 3669 R2 · was die Seitenhilfe zusagt, hält die Seite — je Roll
     const zeile = container.querySelector('[data-testid="task-zeile"] a');
     expect(zeile).not.toBeNull();
     const ziel = zeile?.getAttribute("href") ?? "";
-    expect(ziel).toBe("/konflikte");
+    // R-0961 (Aufnahme 20260922): die Zeile führt direkt zu IHREM Fall; das Rollentor bleibt dasselbe.
+    expect(ziel).toBe("/konflikte?fall=c1");
     // `routePathAllows` ist dieselbe Quelle, aus der der Router sein Tor zieht (`navigation.ts:561`).
     expect(routePathAllows(ziel, "viewer")).toBe(false);
     // Also MUSS die Zusage den Vorbehalt tragen — in der Sprache, in der sie dasteht.
@@ -621,7 +622,7 @@ describe("JOB 3669 R2 · was die Seitenhilfe zusagt, hält die Seite — je Roll
     await mount(SEITEN[2]);
     const ziel =
       container.querySelector('[data-testid="task-zeile"] a')?.getAttribute("href") ?? "";
-    expect(ziel).toBe("/konflikte");
+    expect(ziel).toBe("/konflikte?fall=c1");
     expect(routePathAllows(ziel, "admin")).toBe(true);
     // Und der Erklärsatz je Zeile, den die Hilfe nennt („das i"), steht wirklich an der Zeile.
     expect(container.querySelector('[data-testid="task-erklaerung-knopf"]')).not.toBeNull();

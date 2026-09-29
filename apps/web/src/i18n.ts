@@ -45,7 +45,7 @@ const de = {
   "gliederung.verwaltung": "Verwaltung",
   "gliederung.persoenlich": "Persönlich und Hilfe",
   "nav.start": "Start",
-  "nav.tasks": "Meine Aufgaben",
+  "nav.tasks": "Offene Aufgaben",
   "nav.capture": "Wissen erfassen",
   "nav.ask": "Fragen",
   "nav.library": "Bibliothek",
@@ -316,9 +316,9 @@ const de = {
   "seitenhilfe.bibliothek.title": "Bibliothek: der ganze Bestand",
   "seitenhilfe.bibliothek.body":
     "Das ist der gesamte Wissensbestand. Auf einem breiten Bildschirm steht links die Liste und rechts der Eintrag, den du gerade liest; auf einem schmalen Gerät trägt immer nur eines von beiden die Fläche — ohne Wahl die Liste, mit Wahl der Eintrag, und oben bringt dich der Knopf „Zurück zu Bibliothek“ wieder in die Liste (auf dem Tablet legt „Trefferliste einblenden“ sie als Schublade ÜBER den Eintrag, „Trefferliste ausblenden“ nimmt sie wieder weg). Gesucht wird über das Suchfeld oben im Kopfband; Filter, Sortierung, gespeicherte Sichten und Export liegen im Menü „…“ über der Liste. Nächster Schritt: Klick einen Eintrag an und lies ihn — ist die Liste leer, führt der Knopf „Erfassen“ dorthin, wo neues Wissen entsteht, sofern deine Rolle das Erfassen erlaubt; sonst steht dort „Kein Zugriff“.",
-  "seitenhilfe.aufgaben.title": "Meine Aufgaben: was von dir erledigt werden will",
+  "seitenhilfe.aufgaben.title": "Offene Aufgaben: was hier zu erledigen ist",
   "seitenhilfe.aufgaben.body":
-    "Hier steht deine Arbeit an einer Stelle: Prüfungen, Konflikte, fällige Revalidierungen, offene Wissenslücken und Objekte, die zur Nacharbeit an dich zurückgingen. Der farbige Punkt zeigt die Dringlichkeit (rot „Kritisch“, gelb „Heute“, grün „Später“), die Knopfreihe oben filtert nach Art und nennt die Anzahl, und das „i“ an einer Zeile sagt dir, was dort zu tun ist. Nächster Schritt: Klick die oberste Zeile an — sie führt an die Stelle, an der die Aufgabe erledigt wird, sofern diese Fläche für deine Rolle freigegeben ist; sonst bleibt der Weg zu (Konflikte, Risiko und Lebenszyklus sind nicht für jede Rolle offen). Steht „Nichts offen.“, zeigt „Wie geht es weiter?“ die möglichen nächsten Wege.",
+    "Hier steht die offene Arbeit an einer Stelle: Prüfungen, Konflikte, fällige Revalidierungen, offene Wissenslücken und Objekte, die zur Nacharbeit an dich zurückgingen. Der farbige Punkt zeigt die Dringlichkeit (rot „Kritisch“, gelb „Heute“, grün „Später“), die Knopfreihe oben filtert nach Art und nennt die Anzahl, und das „i“ an einer Zeile sagt dir, was dort zu tun ist. Nächster Schritt: Klick die oberste Zeile an — sie führt an die Stelle, an der die Aufgabe erledigt wird, sofern diese Fläche für deine Rolle freigegeben ist; sonst bleibt der Weg zu (Konflikte, Risiko und Lebenszyklus sind nicht für jede Rolle offen). Steht „Nichts offen.“, zeigt „Wie geht es weiter?“ die möglichen nächsten Wege.",
   "seitenhilfe.wissen.title": "Wissensobjekt: eine Aussage und ihre Belege",
   "seitenhilfe.wissen.body":
     "Du liest ein einzelnes Wissensobjekt — dieselbe Fläche wie in der Bibliothek, nur mit diesem Eintrag vorgewählt: auf einem breiten Bildschirm steht die Liste links und seine Aussage mit Status und Quelle rechts, auf einem schmalen Gerät trägt der Eintrag die Fläche allein und der Knopf „Zurück zu Bibliothek“ oben führt in die Liste. Alles Weitere — Quellen und Anhänge, Versionen, Historie, Kommentare, Konflikte — liegt hinter der Zeile „Mehr“; steht deine Oberfläche auf einer anderen Sprache und gibt es eine Leseübersetzung, steht sie oben, ausdrücklich als Übersetzung benannt. Nächster Schritt: Lies die Aussage, sieh auf Status und Quelle, und öffne „Mehr“, wenn du wissen willst, worauf sie sich stützt.",
@@ -5429,7 +5429,7 @@ const de = {
   "klara.page.start":
     "Dein Überblick: was frisch gesichert wurde, was heute geholfen hat und was auf dich wartet. Von hier springst du direkt in jeden Bereich.",
   "klara.page.tasks":
-    "Deine offenen Aufgaben: zugewiesene Prüfungen, Lücken und Fälligkeiten — mit direktem Absprung zur jeweiligen Arbeit.",
+    "Offene Aufgaben: fällige Prüfungen, Lücken und Fälligkeiten — mit direktem Absprung zur jeweiligen Arbeit.",
   "klara.page.capture":
     "Hier sicherst du Erfahrungswissen: erzählen, diktieren, im Interview oder aus einer Datei. Die KI strukturiert nur — du prüfst und reichst ein.",
   "klara.page.ask":
@@ -5733,9 +5733,9 @@ const de = {
   "help.library.title": "Bibliothek & Wissensobjekt",
   "help.library.body":
     "Die Bibliothek ist der gesamte Wissensbestand an einem Ort. Über das Suchfeld oben findest du einen Eintrag; Filter, Sortierung, gespeicherte Sichten und Export liegen im Menü „…“ über der Liste. Ein Klick öffnet das Wissensobjekt: seine Aussage, sein Stand und seine Quelle stehen sofort da; Quellen und Anhänge, Versionen, Historie, Kommentare und gemeldete Widersprüche liegen hinter „Mehr“. Auf einem schmalen Gerät trägt immer nur eines von beiden die Fläche — entweder die Liste oder der Eintrag. Nächster Schritt: einen Eintrag anklicken, die Aussage lesen und „Mehr“ öffnen.",
-  "help.tasks.title": "Meine Aufgaben",
+  "help.tasks.title": "Offene Aufgaben",
   "help.tasks.body":
-    "Hier steht deine eigene Arbeit an einer Stelle: Objekte, die auf deine Prüfung in der Validierung warten, Rückfragen an dich, gemeldete Widersprüche, offene Wissenslücken und Objekte, die nach einer Anlagenänderung noch einmal bestätigt werden sollen. Ein farbiger Punkt zeigt die Dringlichkeit, die Knopfreihe darüber grenzt die Liste auf eine Art ein, und das „i“ an einer Zeile sagt, was dort zu tun ist. Jede Zeile führt genau dorthin, wo die Sache erledigt wird — sofern deine Rolle diesen Bereich sehen darf. Nächster Schritt: die oberste Zeile anklicken und sie abarbeiten.",
+    "Hier steht die offene Arbeit an einer Stelle: Objekte, die auf deine Prüfung in der Validierung warten, Rückfragen an dich, gemeldete Widersprüche, offene Wissenslücken und Objekte, die nach einer Anlagenänderung noch einmal bestätigt werden sollen. Ein farbiger Punkt zeigt die Dringlichkeit, die Knopfreihe darüber grenzt die Liste auf eine Art ein, und das „i“ an einer Zeile sagt, was dort zu tun ist. Jede Zeile führt genau dorthin, wo die Sache erledigt wird — sofern deine Rolle diesen Bereich sehen darf. Nächster Schritt: die oberste Zeile anklicken und sie abarbeiten.",
   "help.risk.title": "Risiko & Lücken",
   "help.risk.body":
     "Diese Seite zeigt, wo Wissen fehlt und wo es an einem einzigen Menschen hängt. Zu jeder offenen Wissenslücke steht der nächste Schritt dabei: die Dringlichkeit einschätzen, sie einer Fachperson zuweisen oder sie mit „Wissen erfassen“ schließen. Daneben sind die Fachgebiete danach eingefärbt, von wie vielen Personen das dort festgehaltene Wissen stammt — rot heißt: alles kam von einer einzigen Person, niemand sonst hat bisher dazu beigetragen. Was dagegen hilft, steht an der roten Zeile selbst. Nächster Schritt: eine rote Zeile ansehen, ihre Objekte öffnen und die dringendste Lücke jemandem zuweisen.",
@@ -7429,7 +7429,7 @@ const en: typeof de = {
   "gliederung.verwaltung": "Administration",
   "gliederung.persoenlich": "Personal and help",
   "nav.start": "Home",
-  "nav.tasks": "My Tasks",
+  "nav.tasks": "Open tasks",
   "nav.capture": "Capture Knowledge",
   "nav.ask": "Ask",
   "nav.library": "Library",
@@ -7561,9 +7561,9 @@ const en: typeof de = {
   "seitenhilfe.bibliothek.title": "Library: the whole stock",
   "seitenhilfe.bibliothek.body":
     "This is your entire knowledge stock. On a wide screen the list stands on the left and the entry you are reading on the right; on a narrow device only one of the two fills the surface — the list without a selection, the entry with one, and the button “Back to Library” at the top takes you back to the list (on a tablet, “Show result list” slides it in as a drawer OVER the entry, “Hide result list” takes it away again). You search with the search field at the top of the header bar; filters, sorting, saved views and export sit in the “…” menu above the list. Next step: click an entry and read it — if the list is empty, the “Capture” button leads to where new knowledge is created, provided your role is allowed to capture; otherwise it says “No access”.",
-  "seitenhilfe.aufgaben.title": "My Tasks: what is waiting for you to do",
+  "seitenhilfe.aufgaben.title": "Open tasks: what is waiting to be done here",
   "seitenhilfe.aufgaben.body":
-    "This is your work in one place: validations, conflicts, due revalidations, open knowledge gaps and objects that came back to you for rework. The coloured dot shows the urgency (red “Critical”, yellow “Today”, green “Later”), the row of buttons above filters by type and states the count, and the “i” on a line tells you what has to be done there. Next step: click the topmost line — it takes you to where the task gets done, provided that area is enabled for your role; otherwise the way stays closed (conflicts, risk and lifecycle are not open to every role). If it says “Nothing open.”, “What happens next?” shows the possible next moves.",
+    "This is the open work in one place: validations, conflicts, due revalidations, open knowledge gaps and objects that came back to you for rework. The coloured dot shows the urgency (red “Critical”, yellow “Today”, green “Later”), the row of buttons above filters by type and states the count, and the “i” on a line tells you what has to be done there. Next step: click the topmost line — it takes you to where the task gets done, provided that area is enabled for your role; otherwise the way stays closed (conflicts, risk and lifecycle are not open to every role). If it says “Nothing open.”, “What happens next?” shows the possible next moves.",
   "seitenhilfe.wissen.title": "Knowledge object: one statement and its evidence",
   "seitenhilfe.wissen.body":
     "You are reading a single knowledge object — the same surface as the library, only with this entry preselected: on a wide screen the list on the left and its statement with status and source on the right, on a narrow device the entry fills the surface alone and the button “Back to Library” at the top leads to the list. Everything else — sources and attachments, versions, history, comments, conflicts — sits behind the “More” line; if your interface is set to another language and a reading translation exists, it stands at the top, explicitly named as a translation. Next step: read the statement, check status and source, and open “More” when you want to know what it rests on.",
@@ -11618,7 +11618,7 @@ const en: typeof de = {
   "klara.page.start":
     "Your overview: what was freshly secured, what helped today and what is waiting for you. Jump into any area from here.",
   "klara.page.tasks":
-    "Your open tasks: assigned reviews, gaps and due items — each with a direct jump to the work.",
+    "Open tasks: due reviews, gaps and due items — each with a direct jump to the work.",
   "klara.page.capture":
     "Here you secure experience knowledge: tell it, dictate it, in an interview or from a file. The AI only structures — you review and submit.",
   "klara.page.ask":
@@ -11839,9 +11839,9 @@ const en: typeof de = {
   "help.library.title": "Library & knowledge object",
   "help.library.body":
     "The library is the whole body of knowledge in one place. The search field above finds an entry; filters, sorting, saved views and export sit in the “…” menu above the list. One click opens the knowledge object: its statement, its state and its source stand there straight away; sources and attachments, versions, history, comments and reported contradictions sit behind “More”. On a narrow device only one of the two fills the surface — either the list or the entry. Next step: click an entry, read the statement and open “More”.",
-  "help.tasks.title": "My tasks",
+  "help.tasks.title": "Open tasks",
   "help.tasks.body":
-    "Your own work stands here in one place: objects waiting for you to check them on Validation, queries directed at you, reported contradictions, open knowledge gaps and objects that should be confirmed once more after a change to a machine or process. A coloured dot shows the urgency, the row of buttons above narrows the list down to one kind, and the “i” on a row tells you what is to be done there. Every row leads exactly to where the matter gets settled — as far as your role is allowed to see that area. Next step: click the top row and work it off.",
+    "The open work stands here in one place: objects waiting for you to check them on Validation, queries directed at you, reported contradictions, open knowledge gaps and objects that should be confirmed once more after a change to a machine or process. A coloured dot shows the urgency, the row of buttons above narrows the list down to one kind, and the “i” on a row tells you what is to be done there. Every row leads exactly to where the matter gets settled — as far as your role is allowed to see that area. Next step: click the top row and work it off.",
   "help.risk.title": "Risk & Gaps",
   "help.risk.body":
     "This page shows where knowledge is missing and where it hangs on one person alone. Every open knowledge gap carries its next step with it: judge the urgency, assign it to a specialist, or close it with “Capture knowledge”. Alongside that, the domains are coloured by how many people the knowledge recorded there came from — red means: all of it came from one person, nobody else has contributed to it so far. What helps against that is written on the red row itself. Next step: look at a red row, open its objects and assign the most urgent gap to someone.",
@@ -13074,7 +13074,7 @@ const nl: typeof de = {
   "gliederung.verwaltung": "Beheer",
   "gliederung.persoenlich": "Persoonlijk en help",
   "nav.start": "Start",
-  "nav.tasks": "Mijn taken",
+  "nav.tasks": "Open taken",
   "nav.capture": "Kennis vastleggen",
   "nav.ask": "Vragen",
   "nav.library": "Bibliotheek",
@@ -13205,9 +13205,9 @@ const nl: typeof de = {
   "seitenhilfe.bibliothek.title": "Bibliotheek: de hele voorraad",
   "seitenhilfe.bibliothek.body":
     "Dit is de volledige kennisvoorraad. Op een breed scherm staat links de lijst en rechts het item dat je leest; op een smal apparaat vult telkens maar één van beide het vlak — zonder keuze de lijst, met keuze het item, en bovenaan brengt de knop “Terug naar Bibliotheek” je weer in de lijst (op een tablet schuift “Resultatenlijst tonen” hem als lade OVER het item, “Resultatenlijst verbergen” haalt hem weer weg). Zoeken doe je met het zoekveld bovenin de kopbalk; filters, sortering, opgeslagen weergaven en export zitten in het menu “…” boven de lijst. Volgende stap: klik een item aan en lees het — is de lijst leeg, dan leidt de knop “Vastleggen” naar de plek waar nieuwe kennis ontstaat, voor zover je rol vastleggen toestaat; anders staat er “Geen toegang”.",
-  "seitenhilfe.aufgaben.title": "Mijn taken: wat er van jou wordt verwacht",
+  "seitenhilfe.aufgaben.title": "Open taken: wat hier te doen is",
   "seitenhilfe.aufgaben.body":
-    "Hier staat je werk op één plek: validaties, conflicten, openstaande hervalidaties, open kennishiaten en objecten die voor nawerk bij jou terugkwamen. De gekleurde stip toont de urgentie (rood “Kritiek”, geel “Vandaag”, groen “Later”), de knoppenrij erboven filtert op soort en noemt het aantal, en de “i” bij een regel zegt wat daar te doen is. Volgende stap: klik de bovenste regel aan — die brengt je naar de plek waar de taak wordt afgerond, voor zover dat gebied is vrijgegeven voor jouw rol; anders blijft de weg dicht (conflicten, risico en levenscyclus zijn niet voor elke rol open). Staat er “Niets open.”, dan toont “Hoe gaat het verder?” de mogelijke volgende wegen.",
+    "Hier staat het openstaande werk op één plek: validaties, conflicten, openstaande hervalidaties, open kennishiaten en objecten die voor nawerk bij jou terugkwamen. De gekleurde stip toont de urgentie (rood “Kritiek”, geel “Vandaag”, groen “Later”), de knoppenrij erboven filtert op soort en noemt het aantal, en de “i” bij een regel zegt wat daar te doen is. Volgende stap: klik de bovenste regel aan — die brengt je naar de plek waar de taak wordt afgerond, voor zover dat gebied is vrijgegeven voor jouw rol; anders blijft de weg dicht (conflicten, risico en levenscyclus zijn niet voor elke rol open). Staat er “Niets open.”, dan toont “Hoe gaat het verder?” de mogelijke volgende wegen.",
   "seitenhilfe.wissen.title": "Kennisobject: één uitspraak en haar bewijs",
   "seitenhilfe.wissen.body":
     "Je leest één kennisobject — hetzelfde vlak als de bibliotheek, alleen met dit item voorgeselecteerd: op een breed scherm links de lijst en rechts de uitspraak met status en bron, op een smal apparaat vult het item het vlak alleen en brengt de knop “Terug naar Bibliotheek” bovenaan je naar de lijst. Al het overige — bronnen en bijlagen, versies, historie, opmerkingen, conflicten — zit achter de regel “Meer”; staat je interface op een andere taal en bestaat er een leesvertaling, dan staat die bovenaan, uitdrukkelijk als vertaling benoemd. Volgende stap: lees de uitspraak, kijk naar status en bron, en open “Meer” als je wilt weten waarop ze steunt.",
@@ -17252,7 +17252,7 @@ const nl: typeof de = {
   "klara.page.start":
     "Jouw overzicht: wat er net is geborgd, wat er vandaag heeft geholpen en wat er op je wacht. Van hieruit spring je direct naar elk onderdeel.",
   "klara.page.tasks":
-    "Jouw open taken: toegewezen beoordelingen, hiaten en vervaldata — met een directe sprong naar het bijbehorende werk.",
+    "Open taken: openstaande beoordelingen, hiaten en vervaldata — met een directe sprong naar het bijbehorende werk.",
   "klara.page.capture":
     "Hier borg je ervaringskennis: vertellen, dicteren, in een interview of uit een bestand. De AI structureert alleen — jij controleert en dient in.",
   "klara.page.ask":
@@ -17473,9 +17473,9 @@ const nl: typeof de = {
   "help.library.title": "Bibliotheek & kennisobject",
   "help.library.body":
     "De bibliotheek is de volledige kennisvoorraad op één plek. Met het zoekveld erboven vind je een item; filters, sortering, opgeslagen weergaven en export zitten in het menu „…“ boven de lijst. Eén klik opent het kennisobject: de uitspraak, de stand en de bron staan er meteen; bronnen en bijlagen, versies, historie, opmerkingen en gemelde tegenstrijdigheden zitten achter „Meer“. Op een smal apparaat draagt steeds maar één van beide het scherm — of de lijst, of het item. Volgende stap: een item aanklikken, de uitspraak lezen en „Meer“ openen.",
-  "help.tasks.title": "Mijn taken",
+  "help.tasks.title": "Open taken",
   "help.tasks.body":
-    "Hier staat je eigen werk op één plek: objecten die op jouw controle in de Validatie wachten, terugvragen aan jou, gemelde tegenstrijdigheden, open kennishiaten en objecten die na een wijziging aan een installatie of proces nog eens bevestigd moeten worden. Een gekleurde stip toont de urgentie, de knoppenrij erboven perkt de lijst in tot één soort, en de „i“ bij een regel zegt wat daar te doen is. Elke regel leidt precies naar de plek waar de zaak wordt afgehandeld — voor zover jouw rol dat onderdeel mag zien. Volgende stap: de bovenste regel aanklikken en afwerken.",
+    "Hier staat het openstaande werk op één plek: objecten die op jouw controle in de Validatie wachten, terugvragen aan jou, gemelde tegenstrijdigheden, open kennishiaten en objecten die na een wijziging aan een installatie of proces nog eens bevestigd moeten worden. Een gekleurde stip toont de urgentie, de knoppenrij erboven perkt de lijst in tot één soort, en de „i“ bij een regel zegt wat daar te doen is. Elke regel leidt precies naar de plek waar de zaak wordt afgehandeld — voor zover jouw rol dat onderdeel mag zien. Volgende stap: de bovenste regel aanklikken en afwerken.",
   "help.risk.title": "Risico & hiaten",
   "help.risk.body":
     "Deze pagina laat zien waar kennis ontbreekt en waar zij aan één mens hangt. Bij elk open kennishiaat staat de volgende stap erbij: de urgentie inschatten, het aan een vakgenoot toewijzen of het met „Kennis vastleggen“ sluiten. Daarnaast zijn de vakgebieden gekleurd naar van hoeveel personen de daar vastgelegde kennis komt — rood betekent: alles komt van één enkele persoon, niemand anders heeft er tot nu toe aan bijgedragen. Wat daartegen helpt, staat bij de rode regel zelf. Volgende stap: een rode regel bekijken, de bijbehorende objecten openen en het dringendste hiaat aan iemand toewijzen.",

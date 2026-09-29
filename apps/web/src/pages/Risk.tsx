@@ -1,7 +1,8 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Check, Trash2 } from "lucide-react";
+import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
 import {
   useBusFactor,
@@ -18,6 +19,7 @@ import { HelpTip } from "../components/HelpTip";
 import { Card, PageHeader, QueryState, SectionLabel } from "../components/ui";
 import { captureGapHref, gapPrivacyNoticeKey } from "../lib/captureFromGap";
 import { canSeeExpertise, contributorNamesFor, expertiseVisible } from "../lib/expertiseView";
+import { leseFall } from "../lib/fallAbsprung";
 import { gapLocaleTag } from "../lib/gapLocaleTag";
 import {
   GAP_PRIORITIES,
@@ -81,6 +83,19 @@ export function Risk(): JSX.Element {
   // abgeschriebene Zeile hier sagte „Unbekannte Person", sobald das Verzeichnis nur NICHT DA war —
   // eine Aussage über die Person, wo gar keine feststand.
   const nameOf = useAuthorName();
+  // R-0961: `?fall=<id>` aus der Aufgabenliste markiert genau diese Lücke und holt sie EINMAL in
+  // Sicht, sobald die Liste sie trägt. Ohne Treffer bleibt die Seite, wie sie war.
+  const [params] = useSearchParams();
+  const zielLuecke = leseFall(params);
+  const zielZeile = useRef<HTMLDivElement | null>(null);
+  const zielGezeigt = useRef(false);
+  const lueckenGeladen = gaps.data !== undefined;
+  useEffect(() => {
+    if (lueckenGeladen && !zielGezeigt.current && zielZeile.current) {
+      zielGezeigt.current = true;
+      zielZeile.current.scrollIntoView({ block: "center" });
+    }
+  }, [lueckenGeladen]);
 
   // SCRUM-230: kompakter Cockpit-Einstieg aus echten Gap-/Conflict-Daten (kein Score, keine Engine).
   const cockpit = buildRiskCockpit(gaps.data ?? [], conflicts.data ?? []);
@@ -327,7 +342,15 @@ export function Risk(): JSX.Element {
             <Card className="p-0">
               <div className="divide-y divide-hairline">
                 {sortGapsByPriority(items).map((g) => (
-                  <div key={g.id} className="flex items-center gap-3 px-4 py-2.5">
+                  <div
+                    key={g.id}
+                    data-testid="luecke-zeile"
+                    ref={g.id === zielLuecke ? zielZeile : undefined}
+                    aria-current={g.id === zielLuecke ? "true" : undefined}
+                    // Die Markierung hängt am `aria-current` selbst: EIN Merkmal trägt Bedeutung
+                    // und Darstellung, und die Klassenkette bleibt statisch lesbar.
+                    className="flex items-center gap-3 px-4 py-2.5 aria-[current=true]:ring-2 aria-[current=true]:ring-inset aria-[current=true]:ring-brand"
+                  >
                     <span
                       className={`shrink-0 rounded-pill px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase ${PRIORITY_TONE[priorityTone(g.priority)]}`}
                     >

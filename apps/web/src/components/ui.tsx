@@ -34,11 +34,14 @@ export function cx(...parts: Array<string | false | undefined | null>): string {
 export function PageHeader({
   kicker,
   title,
+  lead,
   actions,
   pageKey,
 }: {
   kicker?: string;
   title: string;
+  // R-0962: EIN Satz unter der Überschrift, der sagt, was auf dieser Fläche landet.
+  lead?: string;
   actions?: ReactNode;
   pageKey?: string;
 }): JSX.Element {
@@ -52,6 +55,11 @@ export function PageHeader({
           <div className="font-mono text-micro uppercase tracking-wider text-muted-2">{kicker}</div>
         ) : null}
         <h1 className="mt-1 text-2xl font-semibold text-ink">{title}</h1>
+        {lead ? (
+          <p data-testid="page-lead" className="mt-1 text-[13px] leading-relaxed text-muted">
+            {lead}
+          </p>
+        ) : null}
       </div>
       {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
     </div>
