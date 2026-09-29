@@ -31,7 +31,7 @@ import { IMAGE_ID_PREFIX, newImageRunToken } from "./docx";
 // `richText.ts` importiert nur `htmlEntities` und kennt dieses Modul nicht.
 // AUFTRAG-huelle Block A: aus derselben Quelle kommt jetzt auch die Antwort auf die Frage, welches
 // Tag eine bedeutungslose Hülle sein KANN — `FLAT_BODY_TAGS`. Begründung bei `istDurchlaessigesTag`.
-import { FLAT_BODY_TAGS, escapeCaptionText } from "./richText";
+import { FLAT_BODY_TAGS, KENNUNG_SPUR_ATTR, escapeCaptionText } from "./richText";
 
 export const LEGACY_IMAGE_CAPTION_PLACEHOLDERS: readonly string[] = [
   "Noch keine Bildbeschreibung",
@@ -916,6 +916,12 @@ function flacheFigurenHtml(figure: EditableElement, neueKennung: () => string): 
 // zweiter Durchlauf über den Baum, keine zweite Erkennungslogik, keine Nachzählung an der Fläche.
 // Eine zweite Erhebung wäre eine zweite Wahrheit über denselben Sachverhalt — genau die Bauart, aus
 // der die Befunde huelle3/H2-02 und sammel89 entstanden sind.
+/** Wie viele Kennungsreparaturen ein Sanitizer hinterlassen hat, nach Art. */
+export interface KennungsSpuren {
+  doppelt: number;
+  ungueltig: number;
+}
+
 export interface KennungsTrennung {
   /** Die Kennung, die dieses Bild trug — sie war schon von einem früheren Bild beansprucht. */
   alte: string;
@@ -1096,7 +1102,18 @@ export function ensureImageAnchors(
     const eigene = direkte.filter((f) => kennungVon(f) === wirkliche);
     const unmarkierte = direkte.filter((f) => kennungVon(f) === "");
     const eine = unmarkierte[0];
-    if (direkte.length === 0) {
+    // AUFNAHME 20260922 (Runde 2, Bens Befund B2): steht die Fußnote mit der Kennung dieses Bildes
+    // LOSE im Text (außerhalb jeder figure) und ist sie die einzige mit dieser Kennung, ist sie
+    // seine Beschreibung — `captionForImage` findet sie über die Kennung. Eine zweite, leere
+    // danebenzustellen machte die Kennung mehrdeutig und die eigene Beschreibung zur verwaisten.
+    const loseEigene = Array.from(root.querySelectorAll("figcaption")).filter(
+      (f) => kennungVon(f) === wirkliche,
+    );
+    const loseIstEigene =
+      direkte.length === 0 && loseEigene.length === 1 && loseEigene[0]?.closest("figure") === null;
+    if (loseIstEigene) {
+      // Die Beschreibung steht lose, aber ausdrücklich zugeordnet — nichts zu schreiben.
+    } else if (direkte.length === 0) {
       // figure ohne Fußnote — die Fußnote fehlt, nicht die Hülle.
       figure.insertAdjacentHTML(
         "beforeend",
@@ -1173,9 +1190,18 @@ export function ensureImageAnchors(
     img.setAttribute("data-image-id", frische);
     beansprucht.add(frische);
     const figure = img.closest("figure");
-    const fussnote = figure === null ? null : figure.querySelector(":scope > figcaption");
+    // AUFNAHME 20260922 (Runde 2, Bens Befund B3): hier stand die ERSTE direkte Fußnote. Stand dort
+    // eine fremde und erst dahinter die eigene, bekam nur das Bild die frische Kennung, und seine
+    // Beschreibung blieb bei der alten — zugeordnet war sie danach keinem. Gesucht wird deshalb
+    // unter ALLEN direkten Fußnoten die erste, die wirklich die alte Kennung trägt.
+    const fussnote =
+      figure === null
+        ? null
+        : (Array.from(figure.querySelectorAll(":scope > figcaption")).find(
+            (f) => kennungVon(f) === alte,
+          ) ?? null);
     let fussnoteFolgte = false;
-    if (fussnote !== null && kennungVon(fussnote) === alte) {
+    if (fussnote !== null) {
       fussnote.setAttribute("data-image-id", frische);
       fussnoteFolgte = true;
     }
@@ -1755,7 +1781,25 @@ export function enhanceFiguresForEditing(
   captionUnassigned?: string,
   captionUnassignedLabel?: string,
   mehrdeutig?: { readonly bildkennungen: ReadonlySet<string>; readonly text: string },
+  meldeSpuren?: (spuren: KennungsSpuren) => void,
 ): KennungsTrennung[] {
+  // AUFNAHME 20260922 (R-0090, Runde 2 Bens Befund B4): die Spuren, die ein Sanitizer beim
+  // Speichern oder Einfügen hinterlassen hat (`data-kw-kennung`, siehe `richText.ts`), werden hier
+  // gelesen, gemeldet und aus dem Inhalt genommen — VOR dem Verankern, an der einen Stelle, die
+  // jeder Lade- und Einfügeweg durchläuft. Gespeichert wird danach ohne sie: die Meldung ist
+  // erfolgt. Solange nicht gespeichert wird, bleibt sie im gespeicherten Text und meldet sich beim
+  // nächsten Öffnen wieder.
+  const spuren: KennungsSpuren = { doppelt: 0, ungueltig: 0 };
+  for (const el of root.querySelectorAll(`[${KENNUNG_SPUR_ATTR}]`)) {
+    const wert = el.getAttribute(KENNUNG_SPUR_ATTR);
+    if (wert === "doppelt" || wert === "ungueltig") {
+      spuren[wert] += 1;
+    }
+    el.removeAttribute(KENNUNG_SPUR_ATTR);
+  }
+  if (spuren.doppelt > 0 || spuren.ungueltig > 0) {
+    meldeSpuren?.(spuren);
+  }
   // AUFTRAG-mega88 Block B/C: ZUERST die Invariante. Sie läuft INNERHALB dieser Funktion und nicht
   // neben ihr, damit kein Aufrufer sie vergessen kann — und weil der Editor sie an genau einer
   // Stelle ruft, durchläuft JEDER Weg sie: das Laden von außen (Altbestand, Block C), jedes

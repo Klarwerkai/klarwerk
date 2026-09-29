@@ -1,7 +1,12 @@
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { type BodyImage, extractBodyImages } from "../lib/bodyImages";
+import {
+  type BodyImage,
+  bildQuelleDekodiert,
+  extractBodyImages,
+  galerieVorkommen,
+} from "../lib/bodyImages";
 import { SectionLabel } from "./ui";
 
 // WP-BILD-1d (Pedis Galerie-Feature): LESEANSICHT-Galerie der Beitrags-Bilder. Client-seitig aus dem
@@ -36,36 +41,44 @@ export const D44_BILD_EREIGNIS = "kw:d44-bild-oeffnen";
 export interface D44BildEreignis {
   readonly imageId: string;
   readonly nonce: number;
-  // AUFNAHME 20260922 (R-0945): das VORKOMMEN, nicht nur die Kennung — dieselbe Form wie die
-  // Bitte von der Galerie zum Editor (JOB 2084). `index` ist die Stelle in der Liste, die
-  // `extractBodyImages` aus dem Editorinhalt ableitet; `src` bestätigt sie.
+  // AUFNAHME 20260922 (R-0945/R-0053): das VORKOMMEN, nicht nur die Kennung. `src` ist die Quelle
+  // des angeklickten Bildes (wie `getAttribute` sie liefert), `vorkommen` das wievielte Bild mit
+  // dieser Quelle es im Editor ist (0-basiert, über alle Bilder). Begründung bei
+  // `galerieVorkommen` (`lib/bodyImages.ts`).
   readonly src?: string;
-  readonly index?: number;
+  readonly vorkommen?: number;
 }
 
 /**
  * Welcher Galerie-Eintrag zum Körperklick gehört — oder `-1`.
  *
  * Die Galerie liest den zuletzt GEMELDETEN Körper. Der Editor trennt eine doppelte Kennung beim
- * Laden (JOB 3035/3051), speichert dabei aber absichtlich nichts; bis zur ersten Eingabe steht die
- * Doppelung hier also noch. Hier stand `findIndex` über die Kennung: der Klick auf das erste Bild
- * traf nur zufällig, der auf das zweite (jetzt mit frischer Kennung) öffnete gar nichts.
+ * Laden (JOB 3035/3051) und hüllt lose Bilder ein, speichert dabei aber absichtlich nichts; bis zur
+ * ersten Eingabe steht hier also der alte Körper. Hier stand `findIndex` über die Kennung: der
+ * Klick auf das erste Bild traf nur zufällig, der auf das zweite öffnete gar nichts.
  *
- * Reihenfolge: eine Kennung, die hier GENAU EINMAL vorkommt; sonst die gemeldete Position, wenn
- * die Quelle dort übereinstimmt. Sonst nichts — eine falsche Großansicht wäre schlimmer als keine.
+ * Runde 2 (Bens Befund B1): auch die Galerie-POSITION ist keine gemeinsame Größe — der Editor
+ * zählt ein eingehülltes loses Bild mit, die Galerie nicht, und bei gleicher Quelle bestätigte die
+ * Quelle dann ein falsches Vorkommen. Gemeinsam ist beiden nur „das k-te Bild mit dieser Quelle".
+ * Gemeldet mit Quelle und Vorkommen entscheidet allein diese Zahl; trifft sie keinen Eintrag (das
+ * angeklickte Bild ist in der Galerie nicht vertreten), öffnet sich nichts. Ohne diese Angaben
+ * gilt nur eine hier genau einmal vorkommende Kennung.
  */
 export function galerieIndexFuerBildklick(
   images: readonly BodyImage[],
+  vorkommenJeEintrag: readonly number[],
   detail: D44BildEreignis,
 ): number {
+  const { src, vorkommen } = detail;
+  if (src !== undefined && vorkommen !== undefined) {
+    return images.findIndex(
+      (b, i) => bildQuelleDekodiert(b.src) === src && vorkommenJeEintrag[i] === vorkommen,
+    );
+  }
   const treffer = images.flatMap((b, i) => (b.id === detail.imageId ? [i] : []));
   const einziger = treffer[0];
   if (treffer.length === 1 && einziger !== undefined) {
     return einziger;
-  }
-  const { index, src } = detail;
-  if (index !== undefined && src !== undefined && images[index]?.src === src) {
-    return index;
   }
   return -1;
 }
@@ -188,7 +201,7 @@ export function BodyImageGallery({
       if (!detail?.imageId) {
         return;
       }
-      const idx = galerieIndexFuerBildklick(images, detail);
+      const idx = galerieIndexFuerBildklick(images, galerieVorkommen(bodyHtml), detail);
       if (idx < 0) {
         return;
       }
@@ -207,7 +220,7 @@ export function BodyImageGallery({
     };
     eltern.addEventListener(D44_BILD_EREIGNIS, beiKlick);
     return () => eltern.removeEventListener(D44_BILD_EREIGNIS, beiKlick);
-  }, [images]);
+  }, [images, bodyHtml]);
 
   // Pfeiltasten blättern innerhalb des offenen Dialogs (Escape übernimmt der native cancel-Pfad).
   useEffect(() => {

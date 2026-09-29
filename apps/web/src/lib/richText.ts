@@ -161,13 +161,32 @@ function parseAttrs(raw: string): Map<string, string> {
   return attrs;
 }
 
+// AUFNAHME 20260922 (R-0090, Kriterium 2): die SPUR einer Kennungsreparatur. Genau ein Attribut mit
+// genau zwei festen Werten, nur an figure/img/figcaption — kein Fremdwert passiert:
+//   · `ungueltig` — die mitgebrachte `data-image-id` war kein Token und wurde verworfen,
+//   · `doppelt`   — die Kennung war schon vergeben, das Bild wurde getrennt (nur der Server trennt).
+// Der Editor liest die Spur beim Öffnen, meldet sie und nimmt sie aus seinem Inhalt; gespeichert
+// wird danach ohne sie. So verschweigt die Speicherung ihre Bereinigung nicht.
+export const KENNUNG_SPUR_ATTR = "data-kw-kennung";
+const KENNUNG_SPUR_WERTE: ReadonlySet<string> = new Set(["doppelt", "ungueltig"]);
+
 function renderAttrs(tag: string, raw: string): string {
   const allowed = ALLOWED_ATTRS[tag];
   if (!allowed) {
     return "";
   }
   const out: string[] = [];
+  let spur: string | null = null;
   for (const [name, value] of parseAttrs(raw)) {
+    // AUFNAHME 20260922 (R-0090, Runde 2 Bens Befund B4): eine ungültige Kennung fällt weiter
+    // weg (Sicherheitsgrenze), aber NICHT spurlos. An ihre Stelle tritt genau ein festes Merkmal
+    // `data-kw-kennung="ungueltig"`, das der Editor beim Öffnen meldet. Wortgleich in beiden Sanitizern.
+    if (name === KENNUNG_SPUR_ATTR) {
+      if (KENNUNG_SPUR_WERTE.has(value)) {
+        spur = spur ?? value;
+      }
+      continue;
+    }
     if (name.startsWith("on") || !allowed.has(name)) {
       continue;
     }
@@ -198,6 +217,8 @@ function renderAttrs(tag: string, raw: string): string {
     if ((tag === "figcaption" || tag === "img" || tag === "figure") && name === "data-image-id") {
       if (/^[\w-]{1,64}$/.test(value)) {
         out.push(`${name}="${value}"`);
+      } else if (value !== "") {
+        spur = "ungueltig";
       }
       continue;
     }
@@ -214,6 +235,11 @@ function renderAttrs(tag: string, raw: string): string {
   }
   if (tag === "a") {
     out.push('rel="noopener noreferrer nofollow"', 'target="_blank"');
+  }
+  // Die Spur steht immer am Ende des Tags — ein zweiter Durchlauf liest sie dort und schreibt sie
+  // an dieselbe Stelle (Fixpunkt).
+  if (spur !== null && (tag === "figcaption" || tag === "img" || tag === "figure")) {
+    out.push(`${KENNUNG_SPUR_ATTR}="${spur}"`);
   }
   return out.length > 0 ? ` ${out.join(" ")}` : "";
 }

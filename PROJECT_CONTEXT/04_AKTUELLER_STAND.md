@@ -13,9 +13,13 @@
   abweichende Fußnotenkennung mehr. Ein ersetztes Bild in einer verankerten Hülle erbt die alte
   Beschreibung nicht mehr. Die fremde Fußnote bleibt sichtbar, gekennzeichnet und bewusst
   zuordenbar (V7).
-- Der Körperklick öffnet in der Galerie das angeklickte Vorkommen, auch bei doppelter Kennung
-  (R-0945).
-- Abgleich aller 46 Aufnahmepunkte, offene Entscheidungen (R-0014, R-0090, R-0098, R-0898-Ziehen,
+- Runde 2 (nach Bens Befunden): Körperklick und Galerie-Bitte treffen das Vorkommen über „k-tes
+  Bild mit dieser Quelle“ statt über die Listenposition (R-0945/R-0053); eine lose Fußnote behält
+  die Kennung ihres Bildes und wird in Editor, Galerie und Bildsuche gelesen; beim Trennen folgt
+  die eigene Beschreibung auch hinter einer fremden Fußnote; beide Sanitizer hinterlassen bei
+  doppelter oder ungültiger Kennung die Spur `data-kw-kennung`, der Editor meldet sie beim Öffnen
+  (R-0090).
+- Abgleich aller 46 Aufnahmepunkte, offene Entscheidungen (R-0014, R-0098, R-0898-Ziehen,
   Leseversprechen, unverankerter Altbestand): `docs/entscheidungen/bildidentitaet.md`.
 
 ## 26.09.2026 — FE-003 Seitentutorial „Fragen“ (Pilot)

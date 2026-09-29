@@ -181,13 +181,32 @@ function parseAttrs(raw: string): Map<string, string> {
   return attrs;
 }
 
+// AUFNAHME 20260922 (R-0090, Kriterium 2): die SPUR einer Kennungsreparatur. Genau ein Attribut mit
+// genau zwei festen Werten, nur an figure/img/figcaption — kein Fremdwert passiert:
+//   · `ungueltig` — die mitgebrachte `data-image-id` war kein Token und wurde verworfen,
+//   · `doppelt`   — die Kennung war schon vergeben, das Bild wurde getrennt (nur der Server trennt).
+// Der Editor liest die Spur beim Öffnen, meldet sie und nimmt sie aus seinem Inhalt; gespeichert
+// wird danach ohne sie. So verschweigt die Speicherung ihre Bereinigung nicht.
+const KENNUNG_SPUR_ATTR = "data-kw-kennung";
+const KENNUNG_SPUR_WERTE: ReadonlySet<string> = new Set(["doppelt", "ungueltig"]);
+
 function renderAttrs(tag: string, raw: string): string {
   const allowed = ALLOWED_ATTRS[tag];
   if (!allowed) {
     return "";
   }
   const out: string[] = [];
+  let spur: string | null = null;
   for (const [name, value] of parseAttrs(raw)) {
+    // AUFNAHME 20260922 (R-0090, Runde 2 Bens Befund B4): eine ungültige Kennung fällt weiter
+    // weg (Sicherheitsgrenze), aber NICHT spurlos. An ihre Stelle tritt genau ein festes Merkmal
+    // `data-kw-kennung="ungueltig"`, das der Editor beim Öffnen meldet. Wortgleich in beiden Sanitizern.
+    if (name === KENNUNG_SPUR_ATTR) {
+      if (KENNUNG_SPUR_WERTE.has(value)) {
+        spur = spur ?? value;
+      }
+      continue;
+    }
     if (name.startsWith("on") || !allowed.has(name)) {
       continue;
     }
@@ -218,6 +237,8 @@ function renderAttrs(tag: string, raw: string): string {
     if ((tag === "figcaption" || tag === "img" || tag === "figure") && name === IMAGE_ANCHOR_ATTR) {
       if (isImageAnchorId(value)) {
         out.push(`${name}="${value}"`);
+      } else if (value !== "") {
+        spur = "ungueltig";
       }
       continue;
     }
@@ -236,6 +257,11 @@ function renderAttrs(tag: string, raw: string): string {
   // Links immer mit Schutz öffnen.
   if (tag === "a") {
     out.push('rel="noopener noreferrer nofollow"', 'target="_blank"');
+  }
+  // Die Spur steht immer am Ende des Tags — ein zweiter Durchlauf liest sie dort und schreibt sie
+  // an dieselbe Stelle (Fixpunkt).
+  if (spur !== null && (tag === "figcaption" || tag === "img" || tag === "figure")) {
+    out.push(`${KENNUNG_SPUR_ATTR}="${spur}"`);
   }
   return out.length > 0 ? ` ${out.join(" ")}` : "";
 }
@@ -366,6 +392,15 @@ function withAnchor(tagText: string, name: string, id: string): string {
   const base = stripAnchor(tagText);
   const nameEnd = 1 + name.length;
   return `${base.slice(0, nameEnd)} ${IMAGE_ANCHOR_ATTR}="${id}"${base.slice(nameEnd)}`;
+}
+
+// R-0090: die Spur an ein Tag setzen — an dessen Ende, wie `renderAttrs` sie schreibt, damit ein
+// zweiter Durchlauf sie an derselben Stelle wiederfindet. Eine vorhandene Spur bleibt (je Tag eine).
+function mitKennungsSpur(tagText: string, wert: string): string {
+  if (tagText.includes(` ${KENNUNG_SPUR_ATTR}="`)) {
+    return tagText;
+  }
+  return `${tagText.slice(0, -1)} ${KENNUNG_SPUR_ATTR}="${wert}">`;
 }
 
 function anchorFigures(html: string): string {
@@ -515,7 +550,11 @@ function anchorFigures(html: string): string {
       if (eigener && !bildFolge.has(eigener)) {
         bildFolge.set(eigener, ziel);
       }
-      replacements.set(child.start, withAnchor(child.text, child.name, ziel));
+      // R-0090 (Runde 2, Bens Befund B4): trug das Bild eine Kennung und bekommt jetzt eine andere,
+      // war sie schon vergeben — es wurde getrennt. Das bleibt als Spur am Bild stehen.
+      const getrennt = eigener !== null && eigener !== ziel;
+      const neu = withAnchor(child.text, child.name, ziel);
+      replacements.set(child.start, getrennt ? mitKennungsSpur(neu, "doppelt") : neu);
     }
     for (const child of group.children) {
       if (child.name === "img") {
@@ -535,12 +574,19 @@ function anchorFigures(html: string): string {
     }
   }
 
-  // Anker außerhalb jeder figure gehören zu keinem Paar. Sie bleiben stehen — es sei denn, sie
-  // beanspruchen die Identität einer figure ein zweites Mal; dann fällt der lose Anker.
+  // Anker außerhalb jeder figure gehören zu keinem Paar. Sie bleiben stehen.
+  //
+  // AUFNAHME 20260922 (Runde 2, Bens Befund B2): hier fiel bisher JEDER lose Anker, dessen
+  // Kennung eine figure beanspruchte — auch der einer losen FUSSNOTE. Deren Kennung ist aber gerade
+  // die Aussage „ich beschreibe dieses Bild"; getrennt gespeichert war die Zuordnung danach fort.
+  // Eine lose Fußnote behält ihre Kennung jetzt immer; Editor (`ensureImageAnchors`) und Galerie
+  // (`bodyImages.ts`) lesen sie als Beschreibung, wenn sie die einzige mit dieser Kennung ist.
+  // Ein loses BILD mit schon vergebener Kennung ist dagegen ein Doppel: seine Kennung fällt wie
+  // bisher (der Editor verankert es beim Öffnen neu), aber mit der Spur „doppelt".
   for (const slot of loose) {
     const present = readAnchor(slot.text);
-    if (present && claimed.has(present)) {
-      replacements.set(slot.start, stripAnchor(slot.text));
+    if (present && claimed.has(present) && slot.name === "img") {
+      replacements.set(slot.start, mitKennungsSpur(stripAnchor(slot.text), "doppelt"));
     }
   }
 

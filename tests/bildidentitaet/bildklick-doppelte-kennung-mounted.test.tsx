@@ -158,35 +158,70 @@ describe("R-0945 · der Körperklick bei doppelter Kennung öffnet das angeklick
   });
 });
 
+describe("R-0053 · Runde 2 (Bens Befund B1): Editor und Galerie zählen verschiedene Mengen", () => {
+  // Bens Fall G5: ein LOSES Bild vor zwei Einheiten mit gleicher Quelle und Kennung. Der Editor
+  // hüllt das lose Bild ein und zählt es mit, die Galerie nicht. Die Positionen verrutschen, und
+  // bei gleicher Quelle bestätigte die Quelle ein falsches Vorkommen.
+  const G5 = `<p><img src="${BILD_A}" alt="lose"></p>${GLEICH}`;
+
+  it("B1a · Klick auf das Bild „Erste“ öffnet „Erste“ (vorher: „Bild 2 von 2 — Zweite“)", () => {
+    montiere(G5);
+    const bilder = editorBilder();
+    expect(bilder).toHaveLength(3);
+    act(() => bilder[1]?.click());
+    expect(dialog()?.open, "der Klick hat die Großansicht nicht geöffnet").toBe(true);
+    expect(zaehler()).toMatch(/1/);
+    expect(dialog()?.textContent ?? "").toContain("Erste");
+    expect(dialog()?.textContent ?? "").not.toContain("Zweite");
+  });
+
+  it("B1b · Klick auf das Bild „Zweite“ öffnet „Zweite“", () => {
+    montiere(G5);
+    act(() => editorBilder()[2]?.click());
+    expect(dialog()?.open).toBe(true);
+    expect(dialog()?.textContent ?? "").toContain("Zweite");
+    expect(dialog()?.textContent ?? "").not.toContain("Erste");
+  });
+
+  it("B1c · das lose Bild ist in der Galerie nicht vertreten — sein Klick öffnet nichts", () => {
+    montiere(G5);
+    act(() => editorBilder()[0]?.click());
+    expect(dialog()?.open ?? false, "es wurde auf Verdacht ein anderes Bild geöffnet").toBe(false);
+  });
+});
+
 describe("galerieIndexFuerBildklick · die Auflösung ohne Raten", () => {
   const liste = [
     { id: "kw-dup", src: "a", caption: "Erste" },
-    { id: "kw-dup", src: "b", caption: "Zweite" },
+    { id: "kw-dup", src: "a", caption: "Zweite" },
     { id: "kw-eins", src: "c", caption: "Dritte" },
   ];
+  // „a“ steht im Körper dreimal: zuerst lose (nicht in der Galerie), dann die beiden Einträge.
+  const vorkommen = [1, 2, 0];
   const bitte = (d: Partial<D44BildEreignis>): D44BildEreignis => ({
     imageId: "",
     nonce: 1,
     ...d,
   });
 
-  it("A1 · eine hier eindeutige Kennung entscheidet", () => {
-    expect(galerieIndexFuerBildklick(liste, bitte({ imageId: "kw-eins" }))).toBe(2);
+  it("A1 · Quelle und Vorkommen entscheiden — nicht die Position", () => {
+    expect(galerieIndexFuerBildklick(liste, vorkommen, bitte({ src: "a", vorkommen: 1 }))).toBe(0);
+    expect(galerieIndexFuerBildklick(liste, vorkommen, bitte({ src: "a", vorkommen: 2 }))).toBe(1);
+    expect(galerieIndexFuerBildklick(liste, vorkommen, bitte({ src: "c", vorkommen: 0 }))).toBe(2);
   });
 
-  it("A2 · bei doppelter Kennung entscheidet die Position, bestätigt durch die Quelle", () => {
-    expect(galerieIndexFuerBildklick(liste, bitte({ imageId: "kw-dup", index: 1, src: "b" }))).toBe(
-      1,
-    );
-    expect(galerieIndexFuerBildklick(liste, bitte({ imageId: "kw-neu", index: 0, src: "a" }))).toBe(
-      0,
-    );
+  it("A2 · ein Vorkommen, das in der Galerie nicht steht, öffnet nichts — auch bei passender Kennung", () => {
+    expect(
+      galerieIndexFuerBildklick(
+        liste,
+        vorkommen,
+        bitte({ imageId: "kw-eins", src: "a", vorkommen: 0 }),
+      ),
+    ).toBe(-1);
   });
 
-  it("A3 · passt die Quelle an der Position nicht, öffnet sich nichts", () => {
-    expect(galerieIndexFuerBildklick(liste, bitte({ imageId: "kw-dup", index: 1, src: "a" }))).toBe(
-      -1,
-    );
-    expect(galerieIndexFuerBildklick(liste, bitte({ imageId: "kw-dup" }))).toBe(-1);
+  it("A3 · ohne Vorkommen gilt nur eine hier eindeutige Kennung", () => {
+    expect(galerieIndexFuerBildklick(liste, vorkommen, bitte({ imageId: "kw-eins" }))).toBe(2);
+    expect(galerieIndexFuerBildklick(liste, vorkommen, bitte({ imageId: "kw-dup" }))).toBe(-1);
   });
 });

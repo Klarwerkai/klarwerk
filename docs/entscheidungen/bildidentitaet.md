@@ -1,6 +1,6 @@
 # Bilder, Anker und Bildunterschriften konsistent zuordnen — Bestandsabgleich und Lieferung
 
-*Aufnahme 20260922 · `aufnahme:20260922:gesamt-bildidentitaet`, Lauf 3, Runde 1 (29.09.2026).
+*Aufnahme 20260922 · `aufnahme:20260922:gesamt-bildidentitaet`, Lauf 3, Runde 1 und Runde 2 (29.09.2026).
 Basis: `1530dfeb` = 1.0.0-beta.1.628. Die Auftragsquelle
 (`klarwerk_steuerung/gespraech/auftragsaufnahme-01a0c779-20260922/gesamtbestand/auftragsquellen/bildidentitaet.json`)
 verknüpft 46 Aufnahmepunkte. Ihr Originalwortlaut steht unverändert in den dort genannten
@@ -93,11 +93,10 @@ Laden im Editor getrennt (JOB 3035/3051). Der Editor speichert dabei absichtlich
 liest den zuletzt gemeldeten Körper und suchte mit `findIndex` nur über die Kennung. Der Klick auf das
 zweite Bild (jetzt mit frischer Kennung) öffnete nichts, der auf das erste traf nur zufällig.
 
-**Jetzt** meldet der Editor mit dem Klick die Quelle (`src`) und die Position in der Liste, die
-`extractBodyImages` aus dem Editorinhalt ableitet. Das ist dieselbe Form wie die Bitte von der Galerie
-zum Editor (JOB 2084). Die Galerie (`galerieIndexFuerBildklick`, `BodyImageGallery.tsx`) nimmt eine
-Kennung, die in ihrer Liste genau einmal vorkommt. Sonst nimmt sie die Position, sofern die Quelle dort
-übereinstimmt. Sonst öffnet sie nichts.
+**Runde 1** ließ den Editor mit dem Klick Quelle und Listenposition melden, die Galerie nahm eine
+dort eindeutige Kennung, sonst die Position bei passender Quelle. **Das war zu schwach** (Bens B1):
+Editor und Galerie zählen verschiedene Mengen. **Seit Runde 2** entscheidet das Vorkommen der Quelle
+(Punkt 3, B1).
 
 **Beleg:** `tests/bildidentitaet/bildklick-doppelte-kennung-mounted.test.tsx`. Aufbau wie im Produkt
 (Editor und `DraftBodyGallery` als Geschwister, mit Provider).
@@ -107,6 +106,98 @@ Kennung, die in ihrer Liste genau einmal vorkommt. Sonst nimmt sie die Position,
 - A1–A3 prüfen die Auflösung ohne Raten.
 
 Die bestehenden D44-Fälle (`tests/web/d44-bild-klick-grossansicht.test.tsx`) sind grün.
+
+### 3. Runde 2 — Nacharbeit nach Bens Befunden B1–B5
+
+Ben hat die Aussagen aus Runde 1 an vier Stellen mit ausgeführten Gegenproben widerlegt. Runde 1
+hatte R-0009/R-0010 und R-0053/R-0945 zu weit als erfüllt geführt und R-0090 als bloße offene Wahl.
+
+**B1 — Körperklick und Galerie-Bitte zählten verschiedene Mengen (R-0053, R-0945).**
+Der Editor meldete in Runde 1 seine eigene Listenposition, die Galerie schlug sie in ihrer Liste
+nach. Der Editor hüllt aber ein loses Bild beim Laden ein und zählt es mit, die Galerie nicht. Bei
+gleicher Quelle bestätigte die Quelle dann ein falsches Vorkommen. Bens Fall G5: ein loses Bild vor
+zwei Einheiten mit gleicher Quelle und Kennung; der Klick auf „Erste“ öffnete „Bild 2 von 2 — Zweite“.
+
+- Gemeinsam ist beiden nur „das k-te Bild mit dieser Quelle im Körper“, gezählt über **alle**
+  Bilder. Das Verankern fügt kein Bild hinzu und entfernt keines.
+- `galerieVorkommen` (`apps/web/src/lib/bodyImages.ts`) liefert diese Zahl je Galerie-Eintrag.
+- Der Editor meldet beim Klick Quelle und Vorkommen. Die Galerie
+  (`galerieIndexFuerBildklick`) öffnet genau den Eintrag mit beidem, sonst nichts.
+- Dieselbe Schwäche hatte die **Gegenrichtung**: die Bitte „Bildbeschreibung bearbeiten“ aus der
+  Galerie. Stufe 1 schlug die Galerie-Position bisher in der Editorliste nach. Jetzt liest der
+  Editor den Eintrag in der Galerieliste desselben Körpers (`value`), nimmt dessen Vorkommen und
+  sucht dieses Bild bei sich.
+- Belege: `tests/bildidentitaet/bildklick-doppelte-kennung-mounted.test.tsx` (B1a–B1c: Bens G5,
+  gemountet mit Editor und Galerie; A1–A3) und `tests/bildidentitaet/runde2-mounted.test.tsx`
+  (Gegenrichtung, Eintrag 0 → „Erste“, Eintrag 1 → „Zweite“).
+
+**B2 — eine lose Fußnote verlor beim Speichern die Kennung ihres Bildes (R-0009, R-0010).**
+`anchorFigures` strich jeden losen Anker, dessen Kennung eine figure trug, auch den einer
+**Fußnote**.
+
+- Eine lose Fußnote behält ihre Kennung jetzt immer.
+- Editor (`ensureImageAnchors`, `captionForImage`), Galerie (`extractBodyImages`) und Bildsuche
+  (`bestandsbilderAusRumpf`, `services/app/src/routes/library-routes.ts`) lesen sie als
+  Beschreibung dieses Bildes. Dieselbe enge Regel gilt an allen drei Stellen: nur für ein Bild
+  **ohne** eigene Fußnote, nur bei genau **einer** losen Fußnote und genau **einem** Bild mit
+  dieser Kennung. Sonst wird nicht geraten.
+- Der Editor legt dann keine zweite, leere Fußnote an.
+- Die lose Fußnote bleibt an ihrer Stelle; sie wird nicht in die figure verschoben.
+- Ein loses **Bild** mit schon vergebener Kennung verliert seine Kennung weiter (der Editor
+  verankert es beim Öffnen neu), jetzt aber mit Spur „doppelt“ (B4).
+- Belege: `tests/bildidentitaet/runde2-gegenproben.test.ts` (B2: Bens G1, Galerie, Editor,
+  Rundlauf, Gegenprobe mehrdeutig) und `tests/bildidentitaet/lose-fussnote-bildsuche-route.test.ts`
+  (`POST /api/kos` → `GET /api/kos/:id` und `GET /api/library/images`, echter HTTP-Weg).
+
+**B3 — die Entdublettierung sah nur die erste direkte Fußnote.**
+Stand dort eine fremde und dahinter die eigene, bekam nur das Bild die frische Kennung; seine
+Beschreibung war danach keinem Bild zugeordnet. Jetzt folgt die erste direkte Fußnote, die wirklich
+die alte Kennung trägt.
+
+- Beleg: `runde2-gegenproben.test.ts` B3 (Bens G3).
+
+**B4 — R-0090: die Speicherung verschwieg ihre Bereinigung.**
+Die offene Wahl aus Runde 1 ist durch den Bau ersetzt:
+
+- Beide Sanitizer (`services/structure/src/sanitize.ts`, Spiegel `apps/web/src/lib/richText.ts`)
+  verwerfen eine ungültige Kennung weiter, denn sie sind die Sicherheitsgrenze. An ihre Stelle
+  setzen sie genau ein festes Merkmal `data-kw-kennung="ungueltig"`.
+- Der Server setzt `data-kw-kennung="doppelt"` an jedes Bild, das er wegen einer schon vergebenen
+  Kennung trennt, in einer figure wie lose.
+- Das Merkmal hat genau zwei Werte, nur an figure/img/figcaption, steht am Ende des Tags und bleibt
+  Fixpunkt; ein Fremdwert passiert nicht.
+- Der Editor liest die Spur an der einen Verankerungsstelle (`enhanceFiguresForEditing`, Melder
+  `meldeSpuren`) auf jedem Lade- und Einfügeweg. Er meldet „doppelt“ im vorhandenen
+  Trennungshinweis (JOB 3051) und „ungültig“ in einem eigenen Hinweis
+  (`data-testid="editor-kennung-ungueltig"`, `aria-live="polite"`, wegklickbar, DE/EN/NL in
+  `apps/web/src/i18n.ts`). Danach nimmt er die Spur aus seinem Inhalt.
+- Das Speichern wird nicht blockiert.
+- **Grenze, ausdrücklich:** Die Spur meldet sich bei jedem Öffnen, bis nach dem Öffnen einmal
+  gespeichert wurde. Danach ist sie fort. Eine Quittierung über das Speichern hinaus gibt es nicht.
+  Eine leere Kennung (`data-image-id=""`) gilt als fehlend, nicht als ungültig. Beim **Einfügen**
+  bleibt eine fehlende Kennung ungemeldet: ein Bild aus Word oder dem Browser hat nie eine.
+- Belege: `runde2-gegenproben.test.ts` B4 (doppelt über den Server, ungültig in beiden Sanitizern,
+  Einfügeweg, loses Doppelbild, Sicherheitsgrenze, keine Spur ohne Reparatur) und
+  `runde2-mounted.test.tsx` B4 (sichtbare Hinweise, wegklickbar, Spur nicht mehr im Editorinhalt).
+
+**Gegenproben am Stand von Runde 1** (Produktdateien auf `df9797b8` zurückgesetzt):
+
+| Datei | Ergebnis |
+| --- | --- |
+| `runde2-gegenproben.test.ts` | alle Fälle zu B2–B4 rot, Kalibrierungen grün |
+| Klickfälle B1a–B1c, A1, A3 | rot |
+| `runde2-mounted.test.tsx` | 4 von 6 rot |
+| `lose-fussnote-bildsuche-route.test.ts` | 2 von 3 rot |
+
+**Angepasster Bestandstest:** `tests/structure/image-footnote.test.ts` („ungültige data-image-id
+wird verworfen“). Die Kennung wird weiter verworfen, der Fall prüft jetzt zusätzlich die Spur und
+dass der Fremdwert nicht erscheint.
+
+**Grenze des Vorkommen-Abgleichs (B1):** Steht die Galerie auf einem älteren Körper als der Editor
+(zwischen einer Eingabe und der 300-ms-Entprellung oder vor dem ersten Speichern eines neu
+eingefügten Bildes), öffnet der Klick im Zweifel nichts statt eines falschen Bildes. Ein `<img>`
+**innerhalb** einer Fußnote zählt der Galerie-Zerleger nicht mit; diese Lage ist fremdes Markup und
+wird im Editor bei der Zuordnung ohnehin abgelehnt.
 
 ## Abgleich je Aufnahmepunkt
 
@@ -122,15 +213,15 @@ Live-Stände wurden nicht neu gemessen.
 
 | Punkt | Ergebnis | Beleg / verbleibende Entscheidung |
 | --- | --- | --- |
-| R-0009 Kennung schlägt Reihenfolge, nie überschreiben | erfüllt (dieser Lauf) | Paarung getrennter Einheiten: Bestand (`tests/capture/mega90-kennung-vor-reihenfolge.test.ts`). **Bis heute verletzt** im Server-Sanitizer (Hülle führte, Fußnote überschrieben) und im Editor-Rückfall: Punkt 1, W1–W6. |
-| R-0010 Bild, Rahmen, Fußnote ein Anker über Speichern/Laden | erfüllt (Bestand + dieser Lauf) | `tests/capture/mega88-bildstruktur-invariante.test.ts`. Neu: Ein Bild mit nur fremder Fußnote bekommt seine eigene (W3). Der alte Rest aus E06 („außerhalb des Moduls nicht lesbar“) ist überholt: `bodyImages.ts` und `library-routes.ts` lesen `data-image-id`. |
+| R-0009 Kennung schlägt Reihenfolge, nie überschreiben | erfüllt (Runden 1 und 2) | Paarung getrennter Einheiten: Bestand (`tests/capture/mega90-kennung-vor-reihenfolge.test.ts`). **Bis Runde 1 verletzt** im Server-Sanitizer (Hülle führte, Fußnote überschrieben) und im Editor-Rückfall: Punkt 1, W1–W6. **Runde 1 zu weit ausgewiesen:** die lose Fußnote verlor ihre Kennung weiter (Bens B2); seit Runde 2 geschlossen (Punkt 3, B2). |
+| R-0010 Bild, Rahmen, Fußnote ein Anker über Speichern/Laden | erfüllt (Bestand + Runden 1 und 2) | `tests/capture/mega88-bildstruktur-invariante.test.ts`. Runde 1: Ein Bild mit nur fremder Fußnote bekommt seine eigene (W3). Runde 2: Getrennt stehende Fußnote und Bild behalten die gemeinsame Kennung über Speichern und Bildsuche (B2). Der alte Rest aus E06 („außerhalb des Moduls nicht lesbar“) ist überholt: `bodyImages.ts` und `library-routes.ts` lesen `data-image-id`. |
 | R-0014 Bildgröße in der Schreibfläche | Teil / Entscheidung | Vorhanden: Stufen 25/50/75/100 % (`data-kw-scale`, Werkzeugleiste). Freies Ziehen an Griffen gibt es nicht. **Entscheidung:** Reichen die Stufen? |
 | R-0041 / R-2007 / package:bilder fünf Härtungen | erfüllt (Bestand), mit benannten Grenzen | Siehe unten. |
 | R-0052 / R-0901 Deckel + Klick öffnet Großansicht | erfüllt (Bestand) | `tests/web/d44-bildhoehe-deckel.test.tsx`, `d44-bild-klick-grossansicht.test.tsx`. Siehe **Quellenwiderspruch R-0901** unten. |
-| R-0053 / R-0945 Klick trifft genau dieses Bild | erfüllt (dieser Lauf) | Punkt 2. |
+| R-0053 / R-0945 Klick trifft genau dieses Bild | erfüllt (Runde 2) | **Runde 1 zu weit ausgewiesen:** bei gleicher Quelle und einem losen Bild davor öffnete der Klick das falsche Vorkommen (Bens B1). Seit Runde 2 über das Vorkommen je Quelle, in beiden Richtungen (Punkt 3, B1). Grenze: bei einem älteren Galeriekörper öffnet sich nichts statt eines falschen Bildes. |
 | R-0055 / R-0931 Gliederungsleiste | erfüllt (Bestand) | `tests/web/d44-gliederung.test.ts`, `d44-sprung-mounted.test.tsx`. Siehe **Quellenwiderspruch R-0931** unten. |
-| R-0089 eindeutige Kennung je Bild | erfüllt (Bestand + dieser Lauf) | `tests/bildkennung-eindeutig/doppelte-kennung.test.ts`. Server: Eine kopierte Einheit wird getrennt, ihre Fußnote geht mit (W6). Die Verdachtsspur „Commit 365e580“ ist nicht verfolgt; kein Befund dazu. |
-| R-0090 doppelte/ungültige Kennung nur melden | Teil / Entscheidung | Siehe unten. |
+| R-0089 eindeutige Kennung je Bild | erfüllt (Bestand + Runden 1 und 2) | `tests/bildkennung-eindeutig/doppelte-kennung.test.ts`. Server: Eine kopierte Einheit wird getrennt, ihre Fußnote geht mit (W6). Editor: Die eigene Beschreibung folgt auch hinter einer fremden Fußnote (B3). Die Verdachtsspur „Commit 365e580“ ist nicht verfolgt; kein Befund dazu. |
+| R-0090 doppelte/ungültige Kennung nur melden | erfüllt mit benannter Grenze (Runde 2) | Siehe unten. Runde 1 hatte das als offene Wahl geführt; Ben hat die Wahl als Nichterfüllung gewertet (B4). |
 | R-0096 vier Grenzen nach Ship 12 (I50) | erfüllt bis auf eine Wahl | Siehe unten. |
 | R-0098 Server vergibt Kennung aus dem Bildinhalt | Entscheidung (Quellenwiderspruch) | Siehe unten. Nicht gebaut. |
 | R-0107 Anker beim Zusammenführen | zurückgezogen | Laut Quelle Dublette; lebt in R-0089 weiter. |
@@ -139,7 +230,7 @@ Live-Stände wurden nicht neu gemessen.
 | R-0898 / R-2146 / SOLL:FR-STR-03 Anhänge frei platzieren | erfüllt (Bestand) für Klick; Entscheidung für Ziehen | Die Bildauswahl fügt einen Anhang per Klick an der Cursorposition ein (`addImage` → `exec("insertHTML")`). Das historische Abnahmekriterium („an Cursorposition einfügen“) ist damit erfüllt. Ziehen gibt es für Dateien, **nicht** aus der Auswahlliste. R-0898 sagt „per Klick **oder** Ziehen“. **Entscheidung:** Wird das Ziehen aus der Liste zusätzlich gebraucht? |
 | R-1035 Unterschrift ohne Zuordnung erkennbar | erhalten | `tests/fussnote-ohne-bild/**` grün. Die Kennzeichnung trägt jetzt zusätzlich die fremd gekennzeichnete Fußnote neben einem Bild (vorher still gepaart). Fall J bleibt grün. |
 | R-1535 / R-1620 / V8 Eindeutigkeit geprüft, Meldung | erfüllt (Bestand) | JOB 3035/3051: `tests/bildkennung-eindeutig/**`, `tests/bildkennung-getrennt/**` (gemountet). Der sichtbare Warnfall ist nicht im echten Browser belegt. |
-| R-1551 Trennung wird gemeldet | Teil | Editortrennung: gemeldet (JOB 3051). Die **Servertrennung** über API-Speicherwege bleibt still (siehe R-0090). |
+| R-1551 Trennung wird gemeldet | erfüllt (Bestand + Runde 2) | Editortrennung: JOB 3051. Servertrennung über API- und Importwege: seit Runde 2 Spur „doppelt“, gemeldet beim Öffnen im selben Hinweis (B4). |
 | R-1555 / V7 Fußnote ohne Bild per Klick zuordnen | erfüllt (Bestand + dieser Lauf) | `ordneFussnoteZu`; `tests/fussnote-zuordnen/**`. Neu: auch die fremde Fußnote in der Hülle des Bildes (Z1–Z3). |
 | R-1599 / N8 ausgetauschtes Bild erbt nichts | erfüllt (dieser Lauf) | Stufe 2b war entfernt (`job916-stufe2b-abloesung.test.ts`). **Die flache verankerte Hülle erbte weiter**, in Editor und Server. Geschlossen: Punkt 1, E1–E4. Statt eines Herkunftshinweises bleibt die alte Beschreibung sichtbar, gekennzeichnet und zuordenbar. |
 | R-1600 / N9 Anker an der Emissionsgrenze | erfüllt (Bestand) | `emit()` → `ensureImageAnchors(puffer)`; Sammlerfall „JOB 2060 D4“. |
@@ -173,14 +264,12 @@ Live-Stände wurden nicht neu gemessen.
 | Lage | Stand |
 | --- | --- |
 | Doppelte Kennung im Editor | gemeldet (JOB 3051), Speichern nicht blockiert |
-| Fremde oder widersprechende Fußnotenkennung | seit diesem Lauf nicht mehr still überschrieben, sondern gekennzeichnet |
-| Doppelte Kennung auf einem Speicherweg, der **nicht** durch den Editor läuft (API, Import) | wird im Server-Sanitizer getrennt, die Fußnote geht mit — **ohne Meldung** |
-| **Ungültige** Kennung (kein Token `[\w-]{1,64}`) | verwerfen beide Sanitizer als Sicherheitsgrenze **still**; das Bild wird neu verankert |
+| Fremde oder widersprechende Fußnotenkennung | seit Runde 1 nicht mehr still überschrieben, sondern gekennzeichnet |
+| Doppelte Kennung auf einem Speicherweg, der **nicht** durch den Editor läuft (API, Import) | seit Runde 2: getrennt mit Spur `doppelt`, gemeldet beim nächsten Öffnen |
+| **Ungültige** Kennung (kein Token `[\w-]{1,64}`) | seit Runde 2: verworfen mit Spur `ungueltig` (Server und Client), gemeldet beim Öffnen und beim Einfügen |
 
-**Konkrete Entscheidung:** Soll der Server-Sanitizer eine dauerhafte Spur schreiben (festes Merkmal am
-Knoten, das der Editor beim Öffnen meldet), oder soll die API-Antwort die Trennung und Verwerfung
-melden? Eine solche Spur war Gegenstand des zurückgesetzten Laufs 2. Sie ist deshalb nicht erneut
-ohne Entscheidung gebaut.
+**Grenze:** Die Meldung erscheint bei jedem Öffnen, bis einmal gespeichert wurde. Eine dauerhafte
+Quittierung über das Speichern hinaus gibt es nicht. Eine leere Kennung zählt als fehlend.
 
 ### R-0096 — vier Grenzen nach Ship 12 (I50)
 

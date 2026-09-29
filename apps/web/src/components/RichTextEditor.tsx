@@ -20,7 +20,12 @@ import { type EditorFile, fileLinkHtml } from "../lib/bodyFileLink";
 // JOB 2084 (I50-3): die KANONISCHE Galerie-Ableitung. Der Editor löst die Bitte über dieselbe
 // Funktion auf, aus der die Galerie ihre Liste bildet — kein zweiter Filter, keine Nachbildung.
 // JOB 3095: `bestandsbildFigureHtml` — die eine Fassung des übernommenen Bestandsbilds.
-import { bestandsbildFigureHtml, extractBodyImages } from "../lib/bodyImages";
+import {
+  bestandsbildFigureHtml,
+  bildQuelleDekodiert,
+  extractBodyImages,
+  galerieVorkommen,
+} from "../lib/bodyImages";
 import { bodyReadMode } from "../lib/bodyReadMode";
 import {
   CAPTION_AI_TEXT,
@@ -528,6 +533,11 @@ export function RichTextEditor({
   // Die Zahl steht bewusst NICHT in einem Ref: sie wird gerendert, also gehört sie in den Zustand.
   const [getrennteZuordnungen, setGetrennteZuordnungen] = useState(0);
   const [trennungsHinweisZu, setTrennungsHinweisZu] = useState(false);
+  // AUFNAHME 20260922 (R-0090, Runde 2 Bens Befund B4): wie viele UNGÜLTIGE Bildkennungen ein
+  // Sanitizer beim Speichern oder Einfügen verworfen hat. Gezählt aus der Spur `data-kw-kennung`;
+  // doppelte Kennungen, die der Server getrennt hat, zählen in `getrennteZuordnungen` mit.
+  const [ungueltigeKennungen, setUngueltigeKennungen] = useState(0);
+  const [ungueltigHinweisZu, setUngueltigHinweisZu] = useState(false);
   // ── JOB 3123 (PRIORITAETEN.md Q5c): DIE VERWORFENE FREMDFASSUNG WIRD GEMELDET ────────────────
   //
   // Dasselbe Zustandspaar aus demselben Grund wie darüber: OB es etwas zu sagen gibt, und ob die
@@ -758,6 +768,19 @@ export function RichTextEditor({
           bildkennungen: mehrdeutigeFussnotenJetzt(),
           text: t("editor.captionAmbiguous"),
         },
+        // R-0090: die Spuren der Sanitizer. Eine vom Server getrennte Doppelung ist dieselbe
+        // Aussage wie eine Trennung im Editor und zählt in denselben Hinweis; eine verworfene
+        // ungültige Kennung bekommt ihren eigenen Satz.
+        (spuren) => {
+          if (spuren.doppelt > 0) {
+            setGetrennteZuordnungen((n) => n + spuren.doppelt);
+            setTrennungsHinweisZu(false);
+          }
+          if (spuren.ungueltig > 0) {
+            setUngueltigeKennungen((n) => n + spuren.ungueltig);
+            setUngueltigHinweisZu(false);
+          }
+        },
       );
     },
     [t],
@@ -831,6 +854,8 @@ export function RichTextEditor({
     // Reihenfolge an, die Zahl unten zählt also von 0 an.
     setGetrennteZuordnungen(0);
     setTrennungsHinweisZu(false);
+    setUngueltigeKennungen(0);
+    setUngueltigHinweisZu(false);
     // JOB 3123 (Q5c): DERSELBE SCHNITT FÜR DEN VERWORFENEN-HINWEIS, und hier ist er zwingend. Sein
     // Satz lautet „der eigene Text ist geblieben" — genau das stimmt ab dieser Zeile nicht mehr,
     // denn der Inhalt IST gerade durch eine Fassung von außen ersetzt worden. Ein stehen
@@ -977,19 +1002,15 @@ export function RichTextEditor({
       return;
     }
     d44NonceRef.current += 1;
-    // AUFNAHME 20260922 (R-0945): das Vorkommen mitschicken. Die Position kommt aus DERSELBEN
-    // Liste, aus der die Galerie ihre Einträge ableitet (`extractBodyImages`), hier über den
-    // Editorinhalt — in dem ist jede Kennung nach `ensureImageAnchors` eindeutig. Nur bei genau
-    // einem Treffer wird eine Position gemeldet; sonst entscheidet die Galerie allein.
-    const liste = extractBodyImages(sanitizeHtml(el.innerHTML));
-    const stellen = liste.flatMap((b, i) => (b.id === imageId ? [i] : []));
-    const stelle = stellen.length === 1 ? stellen[0] : undefined;
-    const nutzlast: D44BildEreignis = {
-      imageId,
-      nonce: d44NonceRef.current,
-      src: bild.getAttribute("src") ?? "",
-      ...(stelle !== undefined ? { index: stelle } : {}),
-    };
+    // AUFNAHME 20260922 (R-0945/R-0053): das Vorkommen mitschicken — das wievielte Bild mit
+    // dieser Quelle es im Editor ist. Nicht die Galerie-Position: Editor und Galerie zählen
+    // verschiedene Mengen (Bens Befund B1, Begründung bei `galerieVorkommen`).
+    const src = bild.getAttribute("src") ?? "";
+    const alleBilder = Array.from(el.querySelectorAll("img"));
+    const vorkommen = alleBilder
+      .slice(0, alleBilder.indexOf(bild))
+      .filter((b) => b.getAttribute("src") === src).length;
+    const nutzlast: D44BildEreignis = { imageId, nonce: d44NonceRef.current, src, vorkommen };
     // JOB 1890 D13 — DAS EREIGNIS GEHT VOM BILD AUS, NICHT VON DER FLAECHE.
     //
     // Hier stand `el.dispatchEvent(...)`. Damit war `event.target` IMMER das contenteditable
@@ -1346,11 +1367,26 @@ export function RichTextEditor({
 
     const aktuell = extractBodyImages(sanitizeHtml(el.innerHTML));
 
-    // Stufe 1: die Position aus der Galerie, bestätigt durch die Quelle. Das ist der Normalfall —
-    // und der EINZIGE Weg, der auch dann trägt, wenn zwei Bilder dieselbe Kennung UND dieselbe
-    // Quelle haben.
-    const anPosition = aktuell[captionFormRequest.index];
-    let bild = anPosition?.src === captionFormRequest.src ? eindeutig(anPosition.id) : null;
+    // Stufe 1: die Position aus der Galerie, bestätigt durch die Quelle — aufgelöst in DEM Körper,
+    // aus dem die Galerie ihre Liste bildet (`value`), nicht in der Liste des Editors.
+    //
+    // AUFNAHME 20260922 (Runde 2, Bens Befund B1 an der Gegenrichtung): hier wurde die
+    // Galerie-Position bisher in `aktuell` nachgeschlagen, der Liste aus dem EDITORINHALT. Beide
+    // zählen verschiedene Mengen — ein loses Bild hüllt der Editor ein, die Galerie zählt es nicht —,
+    // und bei gleicher Quelle bestätigte die Quelle dann ein falsches Vorkommen. Jetzt wird der
+    // Eintrag in der Galerieliste selbst gelesen, daraus sein Vorkommen („das k-te Bild mit dieser
+    // Quelle") und dieses im Editor gesucht. Das Verankern ändert diese Zahl nicht.
+    const galerie = extractBodyImages(value);
+    const anPosition = galerie[captionFormRequest.index];
+    const k = galerieVorkommen(value)[captionFormRequest.index];
+    let bild: HTMLImageElement | null = null;
+    if (anPosition !== undefined && k !== undefined && anPosition.src === captionFormRequest.src) {
+      const quelle = bildQuelleDekodiert(anPosition.src);
+      const gleiche = Array.from(el.querySelectorAll("img")).filter(
+        (b) => b.getAttribute("src") === quelle,
+      );
+      bild = gleiche[k] ?? null;
+    }
 
     // Stufe 2: die Zählung ist verrutscht (ein nacktes <img> zählt für die Galerie nicht, wird hier
     // aber eingehüllt) — dann trägt die Quelle, sofern sie EINDEUTIG ist.
@@ -3050,6 +3086,28 @@ export function RichTextEditor({
                 type="button"
                 aria-label={t("editor.kennungGetrenntClose")}
                 onClick={() => setTrennungsHinweisZu(true)}
+                className="shrink-0 text-[11px] font-semibold text-muted-2 hover:text-text"
+              >
+                {t("editor.linkCancel")}
+              </button>
+            </div>
+          ) : null}
+          {/* AUFNAHME 20260922 (R-0090): eine ungültige Bildkennung wurde verworfen und das Bild neu
+              verankert. Dieselbe Bauform wie der Trennungshinweis — ein Hinweis, kein Alarm. */}
+          {ungueltigeKennungen > 0 && !ungueltigHinweisZu ? (
+            <div
+              aria-live="polite"
+              data-testid="editor-kennung-ungueltig"
+              data-anzahl={ungueltigeKennungen}
+              className="flex items-start justify-between gap-2 border-b border-hairline bg-page px-3 py-1.5"
+            >
+              <p className="text-[11px] leading-relaxed text-muted">
+                {t("editor.kennungUngueltig", { count: ungueltigeKennungen })}
+              </p>
+              <button
+                type="button"
+                aria-label={t("editor.kennungUngueltigClose")}
+                onClick={() => setUngueltigHinweisZu(true)}
                 className="shrink-0 text-[11px] font-semibold text-muted-2 hover:text-text"
               >
                 {t("editor.linkCancel")}
