@@ -15,6 +15,12 @@
 // einmal ohne `checkVisibility` und einmal ganz ohne Messverfahren. Jede Verstellung MUSS einen
 // benannten Mangel liefern; die unverstellte Fläche liefert keinen.
 //
+// NACHARBEIT R1 (Ben): K8 SVG-Linie frei/verdeckt/durchfallend und K9 Hit-Test ohne Treffer (B1 —
+// eine nicht messbare Verdeckung heisst „NICHT MESSBAR", nie „sichtbar"); K10 Lesefehler der
+// Beziehungsliste und K11 verzögerte Detailantwort (B2 — gewartet wird auf die Antwort und einen
+// eindeutigen Endzustand). Der historische 500 steht nicht mehr hier, sondern als minimale
+// Reproduktion im PostgreSQL-Lauf daneben (B3).
+//
 // WAS HIER NICHT GEMESSEN WIRD: PostgreSQL und Prozessneustart (Integrationslauf daneben bzw.
 // JOB 4328), andere Browser, Bildschirmleser, Word-Add-in.
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -30,17 +36,21 @@ import {
 } from "../gast-nutzerweg/browserweg";
 import { PASSWORT } from "../gast-nutzerweg/strecke";
 import { meldeAnMitTastatur, stelleFlaecheBereit } from "../gesamtanweisung-nutzerweg/weg";
+import { SICHT_RUECKFALL } from "../support/sichtRueckfall";
 import {
   type Aufbau,
   type Bereich,
+  DETAIL_ALT_R1,
+  type KontextMitNetz,
   MARKE,
-  PROBE_ANLAGEN,
   SCHMAL_360,
   baueAuf,
   fahreStrecke,
   kachelMaengel,
   liesBereich,
   mitStil,
+  oeffneEintrag,
+  oeffneUnlesbar,
   protokollzeile,
 } from "./strecke";
 
@@ -56,20 +66,16 @@ afterAll(async () => {
 }, 60_000);
 
 describe(`${MARKE} · Speicherablage im echten Chromium`, () => {
-  it("setzen und widerrufen nur mit der Tastatur bei 360 px, Neuladen, Gegenseite, Rechteentzug an offener Sitzung, 500-Probe bei offenem Graphen", async () => {
+  it("setzen und widerrufen nur mit der Tastatur bei 360 px, Neuladen, Gegenseite, Rechteentzug an offener Sitzung", async () => {
     const aufbau = await baueAuf();
     try {
-      const p = await fahreStrecke({ browser: browser as Browser, aufbau, probe: true });
+      const p = await fahreStrecke({ browser: browser as Browser, aufbau });
       process.stderr.write(`${protokollzeile(p)}\n`);
       expect(p.kachelnAnker, "Kacheln an anker: gesetzt → neu geladen → widerrufen").toEqual([
         2, 2, 1,
       ]);
       expect(p.controllerFlaeche, "Controllerin, Fläche: vor → nach dem Entzug").toEqual([1, 0]);
       expect(p.controllerApi, "Controllerin, API: vor → nach dem Entzug").toEqual([1, 0]);
-      expect(p.probe?.status, "500-Probe: jede Anlage bei offenem Graphen").toEqual({
-        "201": PROBE_ANLAGEN,
-      });
-      expect(p.probe?.serverfehler, "Serverfehler während der 500-Probe").toEqual([]);
       expect(aufbau.serverfehler, "Serverfehler während der ganzen Strecke").toEqual([]);
     } finally {
       await aufbau.strecke.schliessen();
@@ -271,6 +277,161 @@ describe(`${MARKE} · Speicherablage im echten Chromium`, () => {
         },
       );
       expect(fehler).toContain("SICHTMESSUNG NICHT MOEGLICH");
+    }, 180_000);
+
+    // --------------------------------------------------------------------------------------------
+    // B1 · DIE VERDECKUNG, WO SIE NICHT MESSBAR IST — ausdrücklich, nie „sichtbar"
+    // --------------------------------------------------------------------------------------------
+    const svgProbe = async (fall: string): Promise<Record<string, unknown>> => {
+      const { kontext, seite } = await profil(browser as Browser, SCHMAL_360);
+      try {
+        await seite.goto("about:blank");
+        return await seite.evaluate<Record<string, unknown>>(
+          fn(`(fall) => {
+            ${SICHT_RUECKFALL}
+            delete Element.prototype.checkVisibility;
+            document.body.style.margin = "0";
+            const ns = "http://www.w3.org/2000/svg";
+            const svg = document.createElementNS(ns, "svg");
+            svg.setAttribute("width", "300");
+            svg.setAttribute("height", "200");
+            svg.setAttribute("data-testid", "probe-svg");
+            const linie = document.createElementNS(ns, "line");
+            for (const [n, w] of [["x1", "20"], ["y1", "30"], ["x2", "280"], ["y2", "170"], ["stroke", "black"], ["stroke-width", "4"], ["stroke-dasharray", "9 3"]]) linie.setAttribute(n, w);
+            if (fall === "durchfallend") linie.setAttribute("pointer-events", "none");
+            svg.appendChild(linie);
+            document.body.appendChild(svg);
+            if (fall === "verdeckt") {
+              const d = document.createElement("div");
+              d.setAttribute("data-testid", "decke");
+              d.style.cssText = "position:fixed;inset:0;background:#fff";
+              document.body.appendChild(d);
+            }
+            if (fall === "ohneTreffer") Document.prototype.elementFromPoint = () => null;
+            const b = sichtRueckfall(linie);
+            let wurf = "";
+            try { sichtbarOhneCheck(linie); } catch (e) { wurf = String(e && e.message); }
+            return { sichtbar: b.sichtbar, messbar: b.messbar, grund: b.grund, wurf };
+          }`),
+          fall,
+        );
+      } finally {
+        await kontext.close();
+      }
+    };
+
+    it("K8 · SVG-Linie ohne checkVisibility: frei → sichtbar; verdeckt → benannt; durchfallend/ohne Treffer → NICHT MESSBAR, Verbraucher wirft", async () => {
+      const frei = await svgProbe("frei");
+      expect([frei.sichtbar, frei.messbar, frei.wurf], String(frei.grund)).toEqual([
+        true,
+        true,
+        "",
+      ]);
+      expect(String(frei.grund)).toContain("Punkte auf der Form");
+      const verdeckt = await svgProbe("verdeckt");
+      expect([verdeckt.sichtbar, verdeckt.messbar], String(verdeckt.grund)).toEqual([false, true]);
+      expect(String(verdeckt.grund)).toContain("verdeckt von <div decke>");
+      for (const fall of ["durchfallend", "ohneTreffer"]) {
+        const b = await svgProbe(fall);
+        expect([b.sichtbar, b.messbar], `${fall}: ${String(b.grund)}`).toEqual([false, false]);
+        expect(String(b.grund), fall).toMatch(/^NICHT MESSBAR: /);
+        expect(String(b.wurf), fall).toContain("SICHTMESSUNG NICHT MOEGLICH");
+      }
+    }, 180_000);
+
+    it("K9 · Hit-Test ohne Treffer an der echten Kachel (ohne checkVisibility): NICHT MESSBAR statt „sichtbar“", async () => {
+      const b = await lies((k) =>
+        k.addInitScript(
+          "delete Element.prototype.checkVisibility; Document.prototype.elementFromPoint = function () { return null; };",
+        ),
+      );
+      const m = maengel(b);
+      expect(
+        m.some((x) => x.startsWith("satz: NICHT MESSBAR") && x.includes("kein Treffer")),
+        m.join("\n"),
+      ).toBe(true);
+    }, 180_000);
+
+    // --------------------------------------------------------------------------------------------
+    // B2 · GEWARTET WIRD AUF DIE ANTWORT UND EINEN EINDEUTIGEN ENDZUSTAND
+    // --------------------------------------------------------------------------------------------
+    it("K10 · Lesefehler der Beziehungsliste: der Endzustand ist „fehler“, und er zählt NICHT als leerer Bestand", async () => {
+      const a = aufbau as Aufbau;
+      const { kontext, seite } = await profil(browser as Browser, SCHMAL_360);
+      try {
+        await (kontext as KontextMitNetz).route(`**/api/kos/${a.ids.anker}/beziehungen`, (u) =>
+          u.fulfill({
+            status: 500,
+            contentType: "application/json",
+            body: '{"error":"INTERNAL","message":"Kalibrierung K10"}',
+          }),
+        );
+        await meldeAnMitTastatur(
+          seite,
+          a.strecke.basis,
+          "wbr-admin@graph-browser-rechte.test",
+          PASSWORT,
+        );
+        let befund = "";
+        try {
+          await oeffneEintrag(seite, a.strecke.basis, a.ids.anker, "anker (K10)");
+          befund = "kein Fehler — der Lesefehler wäre als Erfolg durchgegangen";
+        } catch (e) {
+          befund = String(e);
+        }
+        expect(befund).toContain("Antwort 500");
+        expect(befund).toContain('Zustand „fehler"');
+        // Genau der Zustand, den die Rechteprüfung aus Runde 1 als „entfernt“ gelesen hätte:
+        const b = await liesBereich(seite);
+        expect({ ids: b.ids, fehlerDa: b.fehler !== "" }).toEqual({ ids: [], fehlerDa: true });
+      } finally {
+        await kontext.close();
+      }
+    }, 180_000);
+
+    it("K11 · verzögerte Detailantwort: das Prädikat aus Runde 1 sagt zu früh ja, `oeffneUnlesbar` wartet die Antwort ab", async () => {
+      const a = aufbau as Aufbau;
+      const VERZUG = 4_000;
+      const { kontext, seite } = await profil(browser as Browser, SCHMAL_360);
+      try {
+        await (kontext as KontextMitNetz).route(`**/api/kos/${a.ids.geheim}`, async (u) => {
+          await new Promise((weiter) => setTimeout(weiter, VERZUG));
+          await u.fulfill({
+            status: 404,
+            contentType: "application/json",
+            body: '{"error":"NOT_FOUND","message":"Kalibrierung K11"}',
+          });
+        });
+        await meldeAnMitTastatur(
+          seite,
+          a.strecke.basis,
+          "wbr-admin@graph-browser-rechte.test",
+          PASSWORT,
+        );
+        const beginn = Date.now();
+        await seite.goto(`${a.strecke.basis}/wissen/${a.ids.geheim}`, {
+          waitUntil: "domcontentloaded",
+        });
+        await warte(seite, DETAIL_ALT_R1, "Prädikat aus Runde 1", undefined, VERZUG * 3);
+        const altMs = Date.now() - beginn;
+        const altEndzustand = await seite.evaluate<boolean>(
+          fn(
+            `() => { const l = document.querySelector('[data-testid="bib-lesen"]'); return !!l && String(l.innerText || "").length > 0; }`,
+          ),
+        );
+        expect(
+          { zuFrueh: altMs < VERZUG, lesenFertig: altEndzustand },
+          `Runde-1-Prädikat nach ${altMs} ms`,
+        ).toEqual({ zuFrueh: true, lesenFertig: false });
+        const neu = await oeffneUnlesbar(seite, a.strecke.basis, a.ids.geheim);
+        expect(neu.status).toBe(404);
+        expect(
+          neu.ms,
+          "oeffneUnlesbar kehrte vor der verzögerten Antwort zurück",
+        ).toBeGreaterThanOrEqual(VERZUG);
+      } finally {
+        await kontext.close();
+      }
     }, 180_000);
   });
 });

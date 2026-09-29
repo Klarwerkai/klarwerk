@@ -186,7 +186,8 @@ const ART_SCHLUESSEL: Record<string, string> = {
 //
 // Der Rückfall ohne `checkVisibility` misst seit dem Auftrag GRAPH-BROWSER-RECHTE die ganze
 // Vorfahrenkette samt Verdeckung (`tests/support/sichtRueckfall.ts`) — vorher sah er nur das
-// Element selbst und damit keinen durchsichtigen Vorfahren.
+// Element selbst und damit keinen durchsichtigen Vorfahren. Kann er die Verdeckung nicht messen,
+// WIRFT `sichtbarOhneCheck` mit „SICHTMESSUNG NICHT MOEGLICH" statt still zu urteilen.
 const SICHTBARKEIT = `
   ${SICHT_RUECKFALL}
   const sichtbar = (e) => {
@@ -195,7 +196,7 @@ const SICHTBARKEIT = `
       if (!e.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true, contentVisibilityAuto: true })) {
         return false;
       }
-    } else if (!sichtRueckfall(e).sichtbar) {
+    } else if (!sichtbarOhneCheck(e)) {
       return false;
     }
     const r = e.getBoundingClientRect();

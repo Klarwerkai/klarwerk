@@ -30,9 +30,11 @@
 //       vertraulichen Eintrag, der Admin stuft sie zur Expertin herab, und DIESELBE Browsersitzung
 //       sieht nach dem Neuladen weder Beziehung noch Titel noch Inhalt — API und Fläche. Der Admin
 //       (berechtigt) sieht Status, Herkunft und Richtung von BEIDEN Seiten weiter richtig.
-//   (5) DIE 500-PROBE (historischer Befund 4328 R1): bei OFFENEM Graphen 101 Einträge über
-//       `POST /api/kos` — gezählt wird jeder Status, und jeder 500 kommt mit Serverfehler ins
-//       Protokoll. Das ist eine Reproduktionsmessung, keine Reparatur.
+//
+// Der historische 500 (4328 R1) steht NICHT mehr in dieser Strecke. Runde 1 legte hier bei offenem
+// Graphen 101 Einträge an und konnte damit nur eine Nicht-Reproduktion belegen (Befund B3, Ben R1).
+// Er ist jetzt zugeordnet und minimal reproduziert: `tastatur-schmal-rechte-pg.integration.test.ts`,
+// Fall ALT-500 (Prüfprotokoll-Folge `seq`, 23505 `audit_pkey`).
 //
 // SICHTBAR HEISST SICHTBAR (REGELN.md 9): jedes Feld einzeln, `innerText`, `checkVisibility` —
 // und ohne `checkVisibility` der Rückfall mit Vorfahrenkette und Verdeckung
@@ -94,9 +96,6 @@ export const GESETZT = { art: "ersetzt", richtung: "gerichtet" } as const;
 /** Die vorab über HTTP gesetzte, die der Rechteentzug verbergen muss — ebenfalls gerichtet. */
 export const VERBORGEN = { art: "gehoert_zu", richtung: "gerichtet" } as const;
 
-/** Wie oft die 500-Probe anlegt — dieselbe Zahl wie in 4328 R1 (`strecke.ts`, `ZUSATZ_KOS`). */
-export const PROBE_ANLAGEN = 101;
-
 const t = (schluessel: string, werte: Record<string, string> = {}): string =>
   String(i18n.t(schluessel, werte));
 
@@ -112,7 +111,7 @@ const t = (schluessel: string, werte: Record<string, string> = {}): string =>
 const SICHT = `
   ${SICHT_RUECKFALL}
   const befund = (e) => {
-    if (!e) return { da: false, sichtbar: false, grund: "kein Element", verfahren: "-", text: "", links: 0, rechts: 0 };
+    if (!e) return { da: false, sichtbar: false, messbar: true, grund: "kein Element", verfahren: "-", text: "", links: 0, rechts: 0 };
     const gruende = [];
     let verfahren = "checkVisibility + Vorfahrenkette/Verdeckung";
     if (typeof e.checkVisibility === "function") {
@@ -122,12 +121,15 @@ const SICHT = `
     } else {
       verfahren = "Rueckfall ohne checkVisibility";
     }
+    // Der Rückfall läuft IMMER mit: checkVisibility sieht kein darüberliegendes Element. Kann er
+    // die Verdeckung nicht messen, steht das als messbar=false im Feld — nie als „sichtbar".
     const rf = sichtRueckfall(e);
     if (!rf.sichtbar) gruende.push(rf.grund);
     const r = e.getBoundingClientRect();
     return {
       da: true,
       sichtbar: gruende.length === 0,
+      messbar: rf.messbar,
       grund: gruende.length === 0 ? "sichtbar" : gruende.join(" / "),
       verfahren,
       text: String(e.innerText || "").replace(/\\s+/g, " ").trim(),
@@ -139,6 +141,8 @@ const SICHT = `
 export interface Feld {
   da: boolean;
   sichtbar: boolean;
+  /** `false`: die Verdeckung war nicht messbar (`sichtRueckfall.ts`) — dann ist `sichtbar` false. */
+  messbar: boolean;
   grund: string;
   verfahren: string;
   text: string;
@@ -208,8 +212,139 @@ const EINZELN = `(sel) => {
   return befund(document.querySelector(sel));
 }`;
 
-const BEREICH_STEHT = `() => !!document.querySelector('[data-testid="wissensbeziehungen"]')
-  && !document.querySelector('[data-testid="wb-laedt"]')`;
+/**
+ * DER ENDZUSTAND DES BEZIEHUNGSBEREICHS — und welcher (Befund B2, Ben R1).
+ *
+ * Hier stand bis Runde 1 „Bereich da und kein `wb-laedt`". Das war auch beim LESEFEHLER wahr
+ * (`wb-fehler`) und während einer Auffrischung aus altem Bestand — ein fehlender Eintrag konnte so
+ * als „entfernt" zählen, obwohl die Antwort gescheitert oder noch unterwegs war. Jetzt liefert das
+ * Prädikat `""`, solange nichts entschieden ist (lädt, oder `wb-stand` sagt „Auffrischung läuft"),
+ * und sonst GENAU EINEN benannten Endzustand. Welcher davon ein Erfolg ist, entscheidet der
+ * Aufrufer (`ladeBereich`) — ein Fehler wird dort nie zu „leer".
+ */
+const BEREICH_ZUSTAND = `(laeuft) => {
+  const b = document.querySelector('[data-testid="wissensbeziehungen"]');
+  if (!b || b.querySelector('[data-testid="wb-laedt"]')) return "";
+  if (b.querySelector('[data-testid="wb-fehler"]')) return "fehler";
+  if (b.querySelector('[data-testid="auffrischung-fehlgeschlagen"]')) return "auffrischung-gescheitert";
+  const stand = b.querySelector('[data-testid="wb-stand"]');
+  if (!stand || String(stand.innerText || "").includes(laeuft)) return "";
+  if (b.querySelector('[data-testid="wb-liste"]')) return "liste";
+  if (b.querySelector('[data-testid="wb-leer"]')) return "leer";
+  return "";
+}`;
+
+type BereichZustand = "liste" | "leer" | "fehler" | "auffrischung-gescheitert";
+
+/** Der Teil von `wb.standAuffrischung`, der NUR während einer laufenden Auffrischung dasteht. */
+const laeuftSatz = (): string => {
+  const teile = t("wb.standAuffrischung", { zeit: "\u0000" }).split("\u0000");
+  const rest = (teile[1] ?? "").trim();
+  expect(rest, "wb.standAuffrischung hat keinen eigenen Satzteil nach der Zeit").not.toBe("");
+  return rest;
+};
+
+// ------------------------------------------------------------------------------------------------
+// DAS NETZ — die Antwort des Servers wird ABGEWARTET, nicht erraten (Befund B2, Ben R1)
+// ------------------------------------------------------------------------------------------------
+//
+// `Seite`/`Kontext` aus `browserweg.ts` sind die schmale Hülle um Playwright; die zwei Methoden,
+// die nur diese Strecke braucht, stehen hier als Erweiterung statt in der geteilten Hülle.
+
+interface Antwort {
+  url(): string;
+  status(): number;
+  text(): Promise<string>;
+  request(): { method(): string };
+}
+type SeiteMitNetz = Seite & {
+  waitForResponse(passt: (a: Antwort) => boolean, opts?: Record<string, unknown>): Promise<Antwort>;
+  waitForLoadState(zustand: "networkidle", opts?: Record<string, unknown>): Promise<void>;
+};
+interface Umleitung {
+  fulfill(o: { status: number; contentType?: string; body?: string }): Promise<void>;
+  continue(): Promise<void>;
+}
+export type KontextMitNetz = Kontext & {
+  route(muster: string, handler: (u: Umleitung) => Promise<void>): Promise<void>;
+};
+
+/** Wartet auf die ERSTE Antwort auf `GET <pfad>`, die nach dem Aufruf eintrifft. */
+function antwortAuf(seite: Seite, pfad: string, frist = 45_000): Promise<Antwort> {
+  const warten = (seite as SeiteMitNetz).waitForResponse(
+    (a) => a.request().method() === "GET" && new URL(a.url()).pathname === pfad,
+    { timeout: frist },
+  );
+  // Scheitert die Aktion davor, wird dieses Versprechen nie abgeholt — kein unbehandelter Wurf.
+  warten.catch(() => undefined);
+  return warten;
+}
+
+/**
+ * Führt `aktion` aus (Navigation/Neuladen), wartet die Antwort auf die Beziehungsliste von `id` ab
+ * und danach den Endzustand der Fläche. Erfolg heisst: Antwort 200 UND Zustand `liste`/`leer`.
+ * Alles andere wirft mit Zustand und Status — ein Lesefehler ist nie ein leerer Bestand.
+ */
+async function ladeBereich(
+  seite: Seite,
+  id: string,
+  was: string,
+  aktion: () => Promise<unknown>,
+): Promise<{ zustand: BereichZustand; status: number }> {
+  const antwort = antwortAuf(seite, `/api/kos/${id}/beziehungen`);
+  await aktion();
+  const a = await antwort;
+  const laeuft = laeuftSatz();
+  await warte(
+    seite,
+    BEREICH_ZUSTAND,
+    `Endzustand des Beziehungsbereichs an ${was}`,
+    laeuft,
+    45_000,
+  );
+  const zustand = await seite.evaluate<BereichZustand>(fn(BEREICH_ZUSTAND), laeuft);
+  if (a.status() !== 200 || (zustand !== "liste" && zustand !== "leer")) {
+    throw new Error(
+      `${MARKE}: der Beziehungsbereich an ${was} hat nicht erfolgreich geladen — Antwort ${a.status()}, Zustand „${zustand}". Ein Lesefehler zählt nicht als leerer Bestand.`,
+    );
+  }
+  return { zustand, status: a.status() };
+}
+
+/**
+ * Öffnet einen Eintrag, den diese Sitzung NICHT lesen darf, und wartet auf den eindeutigen
+ * Endzustand (Befund B2, Ben R1): die Antwort auf `GET /api/kos/<id>` ist da, UND die Lesefläche
+ * steht in ihrem Fehlerzweig („Der Eintrag ließ sich nicht laden.", `BibliothekLesen.tsx`). Vorher
+ * wartete die Strecke nur auf „irgendein Seitentext und kein aria-busy" — das war schon während
+ * des Ladens wahr, denn die ladende Lesefläche setzt kein `aria-busy`.
+ *
+ * Gibt den Status und Rumpf der ersten Antwort zurück; danach wartet sie den Ruhezustand des Netzes
+ * ab (`networkidle`), damit auch die Wiederholung der Abfrage (`retry: 1`, `main.tsx`) und die
+ * Liste daneben beantwortet sind, bevor der Aufrufer den Seitentext liest.
+ */
+export async function oeffneUnlesbar(
+  seite: Seite,
+  basis: string,
+  id: string,
+): Promise<{ status: number; rumpf: string; ms: number }> {
+  const beginn = Date.now();
+  const antwort = antwortAuf(seite, `/api/kos/${id}`);
+  await seite.goto(`${basis}/wissen/${id}`, { waitUntil: "domcontentloaded" });
+  const a = await antwort;
+  await warte(
+    seite,
+    `(satz) => { const l = document.querySelector('[data-testid="bib-lesen"]'); return !!l && String(l.innerText || "").includes(satz); }`,
+    "Endzustand der Lesefläche: ihr Fehlerzweig",
+    t("lib.lesen.fehler"),
+    45_000,
+  );
+  const ms = Date.now() - beginn;
+  await (seite as SeiteMitNetz).waitForLoadState("networkidle", { timeout: 45_000 });
+  return { status: a.status(), rumpf: await a.text(), ms };
+}
+
+/** Das Prädikat aus Runde 1 — steht nur noch für die Kalibrierung da (K11 zeigt, dass es zu früh ja sagt). */
+export const DETAIL_ALT_R1 = `() => document.body.innerText.trim().length > 0 && !document.querySelector('[aria-busy="true"]')`;
 
 /** Steht der Tastaturfokus sichtbar auf dem aktiven Element? Dieselbe Regel wie `browserweg.ts:168`. */
 const FOKUS_SICHTBAR = `() => {
@@ -242,7 +377,9 @@ export function kachelMaengel(k: Kachel, breite: number): string[] {
     ["widerruf", k.widerruf],
   ];
   for (const [name, f] of felder) {
-    if (!f.sichtbar) {
+    if (!f.messbar) {
+      maengel.push(`${name}: NICHT MESSBAR (${f.grund}; ${f.verfahren})`);
+    } else if (!f.sichtbar) {
       maengel.push(`${name}: nicht sichtbar (${f.grund}; ${f.verfahren})`);
     } else if (f.links < 0 || f.rechts > breite) {
       maengel.push(`${name}: ragt aus der Breite ${breite} (${f.links}..${f.rechts})`);
@@ -426,7 +563,6 @@ export interface Protokoll {
   controllerApi: number[];
   controllerGeheimDetail: number;
   adminNachEntzug: string[];
-  probe: { status: Record<string, number>; serverfehler: string[] } | null;
   verfahren: string;
 }
 
@@ -447,8 +583,6 @@ export function protokollzeile(p: Protokoll): string {
     `Controllerin-GET-geheim=${p.controllerGeheimDetail}`,
     `Admin-nach-Entzug=${p.adminNachEntzug.join(" | ")}`,
     `Sichtverfahren=${p.verfahren}`,
-    `500-Probe=${p.probe ? JSON.stringify(p.probe.status) : "nicht gefahren"}`,
-    `Serverfehler=${p.probe ? p.probe.serverfehler.length : "-"}`,
   ].join(" ");
 }
 
@@ -460,8 +594,6 @@ export interface Lauf {
   browser: Browser;
   aufbau: Aufbau;
   pool?: Pool;
-  /** Die 500-Probe mitfahren? */
-  probe: boolean;
 }
 
 async function pgStatus(pool: Pool | undefined, id: string): Promise<string | null> {
@@ -474,14 +606,23 @@ async function pgStatus(pool: Pool | undefined, id: string): Promise<string | nu
   return r.rows[0]?.status ?? "(keine Zeile)";
 }
 
-async function oeffneEintrag(seite: Seite, basis: string, id: string, was: string): Promise<void> {
-  await seite.goto(`${basis}/wissen/${id}`, { waitUntil: "domcontentloaded" });
-  await warte(seite, BEREICH_STEHT, `der Beziehungsbereich an ${was} steht`, undefined, 45_000);
+export async function oeffneEintrag(
+  seite: Seite,
+  basis: string,
+  id: string,
+  was: string,
+): Promise<BereichZustand> {
+  const r = await ladeBereich(seite, id, was, () =>
+    seite.goto(`${basis}/wissen/${id}`, { waitUntil: "domcontentloaded" }),
+  );
+  return r.zustand;
 }
 
-async function neuLaden(seite: Seite, was: string): Promise<void> {
-  await seite.reload({ waitUntil: "domcontentloaded" });
-  await warte(seite, BEREICH_STEHT, `nach dem Neuladen steht ${was}`, undefined, 45_000);
+async function neuLaden(seite: Seite, id: string, was: string): Promise<BereichZustand> {
+  const r = await ladeBereich(seite, id, `${was} (neu geladen)`, () =>
+    seite.reload({ waitUntil: "domcontentloaded" }),
+  );
+  return r.zustand;
 }
 
 interface BeziehungsAntwort {
@@ -515,7 +656,7 @@ export async function mitStil(kontext: Kontext, stil: string): Promise<void> {
 }
 
 /**
- * Fährt (1)–(5). Wirft bei jeder Abweichung mit einer Meldung, die den Befund benennt.
+ * Fährt (1)–(4). Wirft bei jeder Abweichung mit einer Meldung, die den Befund benennt.
  */
 export async function fahreStrecke(lauf: Lauf): Promise<Protokoll> {
   const { browser, aufbau, pool } = lauf;
@@ -536,7 +677,6 @@ export async function fahreStrecke(lauf: Lauf): Promise<Protokoll> {
     controllerApi: [],
     controllerGeheimDetail: 0,
     adminNachEntzug: [],
-    probe: null,
     verfahren: "",
   };
   const profile: Kontext[] = [];
@@ -632,7 +772,7 @@ export async function fahreStrecke(lauf: Lauf): Promise<Protokoll> {
       gesetzt.id,
     );
     p.kachelnAnker.push((await liesBereich(seite)).ids.length);
-    await neuLaden(seite, "anker");
+    expect(await neuLaden(seite, ids.anker, "anker")).toBe("liste");
     const nachReload = await liesBereich(seite);
     p.kachelnAnker.push(nachReload.ids.length);
     p.seitenUeberlauf.push(nachReload.seitenUeberlauf);
@@ -661,13 +801,9 @@ export async function fahreStrecke(lauf: Lauf): Promise<Protokoll> {
       `[data-kante-id="${gesetzt.id}"] a[href]`,
       "Beitrag öffnen",
     );
-    await seite.keyboard.press("Enter");
-    await warte(
-      seite,
-      `(id) => location.pathname.endsWith("/" + id) && !!document.querySelector('[data-testid="wissensbeziehungen"]') && !document.querySelector('[data-testid="wb-laedt"]')`,
-      "die Gegenseite ist geöffnet",
-      ids.ziel,
-      45_000,
+    await ladeBereich(seite, ids.ziel, "der Gegenseite", () => seite.keyboard.press("Enter"));
+    expect(new URL(seite.url()).pathname, "die Gegenseite ist geöffnet").toBe(
+      `/wissen/${ids.ziel}`,
     );
     const gegenseite = await liesBereich(seite);
     const kg = gegenseite.kacheln.find((k) => k.id === gesetzt.id);
@@ -721,7 +857,7 @@ export async function fahreStrecke(lauf: Lauf): Promise<Protokoll> {
       expect(pg2, "PostgreSQL nach dem Widerruf").toBe("widerrufen");
     }
     await oeffneEintrag(seite, basis, ids.anker, "anker nach dem Widerruf");
-    await neuLaden(seite, "anker nach dem Widerruf");
+    await neuLaden(seite, ids.anker, "anker nach dem Widerruf");
     const nachWiderrufFlaeche = await liesBereich(seite);
     p.kachelnAnker.push(nachWiderrufFlaeche.ids.length);
     expect(nachWiderrufFlaeche.ids, "nach Widerruf und Neuladen").toEqual(
@@ -735,7 +871,7 @@ export async function fahreStrecke(lauf: Lauf): Promise<Protokoll> {
     profile.push(c.kontext);
     const cs = c.seite;
     await meldeAnMitTastatur(cs, basis, CONTROLLER.email, PASSWORT);
-    await oeffneEintrag(cs, basis, ids.anker, "anker (Controllerin)");
+    expect(await oeffneEintrag(cs, basis, ids.anker, "anker (Controllerin)")).toBe("liste");
     const cVorher = await liesBereich(cs);
     const apiVorher = await beziehungenAmServer(aufbau.controller, ids.anker);
     p.controllerFlaeche.push(cVorher.ids.length);
@@ -782,10 +918,22 @@ export async function fahreStrecke(lauf: Lauf): Promise<Protokoll> {
       "Beziehungen am vertraulichen Eintrag nach dem Entzug",
     ).toEqual([200, { koId: ids.geheim, kanten: [], total: 0 }]);
 
-    // FLÄCHE — dieselbe offene Browsersitzung, nur neu geladen.
-    await neuLaden(cs, "anker (Controllerin nach dem Entzug)");
+    // FLÄCHE — dieselbe offene Browsersitzung, nur neu geladen. `neuLaden` wartet die Antwort auf
+    // die Beziehungsliste ab und verlangt einen ERFOLGREICHEN Endzustand; hier muss es der leere
+    // sein (die einzige verbliebene Beziehung ist die verborgene). Ein Lesefehler (`wb-fehler`)
+    // sähe ebenfalls „ohne Kachel" aus — er wirft in `ladeBereich` und zählt hier nie als Entzug.
+    const cZustand = await neuLaden(cs, ids.anker, "anker (Controllerin nach dem Entzug)");
     const cNachher = await liesBereich(cs);
     p.controllerFlaeche.push(cNachher.ids.length);
+    expect(
+      {
+        zustand: cZustand,
+        leer: cNachher.leer,
+        fehler: cNachher.fehler,
+        apiTotal: apiNachher.total,
+      },
+      "nach dem Entzug: erfolgreich geladener LEERER Bestand, kein Lesefehler",
+    ).toEqual({ zustand: "leer", leer: true, fehler: "", apiTotal: 0 });
     expect(cNachher.ids, "die Fläche zeigt die Beziehung nach dem Entzug").not.toContain(
       aufbau.verborgenId,
     );
@@ -796,21 +944,12 @@ export async function fahreStrecke(lauf: Lauf): Promise<Protokoll> {
       cNachher.seitentext,
       "der vertrauliche Titel steht nach dem Entzug auf der Seite",
     ).not.toContain(EINTRAEGE.geheim.titel);
-    await cs.goto(`${basis}/wissen/${ids.geheim}`, { waitUntil: "domcontentloaded" });
-    await warte(
-      cs,
-      `() => document.body.innerText.trim().length > 0 && !document.querySelector('[data-testid="wb-laedt"]')`,
-      "die Detailseite des vertraulichen Eintrags hat geantwortet",
-      undefined,
-      45_000,
-    );
-    // Die Anfrage der Seite muss beantwortet sein, bevor ihr Text zählt.
-    await warte(
-      cs,
-      `() => !document.querySelector('[aria-busy="true"]')`,
-      "die Detailseite ist fertig geladen",
-      undefined,
-      45_000,
+    // Die Detailseite: erst die ANTWORT des Servers, dann der Fehlerzweig der Lesefläche — erst
+    // danach zählt ihr Text (`oeffneUnlesbar`, Befund B2).
+    const unlesbar = await oeffneUnlesbar(cs, basis, ids.geheim);
+    expect(unlesbar.status, "Browser-Anfrage GET /api/kos/<geheim> nach dem Entzug").toBe(404);
+    expect(unlesbar.rumpf, "Antwortrumpf der Browser-Anfrage").not.toContain(
+      EINTRAEGE.geheim.titel,
     );
     const geheimSeite = await cs.evaluate<string>(fn("() => document.body.innerText"));
     expect(geheimSeite, "Titel des vertraulichen Eintrags auf seiner Seite").not.toContain(
@@ -844,72 +983,6 @@ export async function fahreStrecke(lauf: Lauf): Promise<Protokoll> {
       expect(pg3, "der Entzug hat an der gespeicherten Beziehung nichts geändert").toBe("aktiv");
     }
 
-    // ============================================================================================
-    // (5) DIE 500-PROBE — Anlage bei OFFENEM Graphen
-    // ============================================================================================
-    if (lauf.probe) {
-      await seite.goto(`${basis}/admin?bereich=system`, { waitUntil: "domcontentloaded" });
-      const schalter = '[data-testid="zeile-stufe2"] input[type="checkbox"]';
-      await warte(
-        seite,
-        "(s) => !!document.querySelector(s)",
-        "Stufe-2-Schalter",
-        schalter,
-        45_000,
-      );
-      if (
-        !(await seite.evaluate<boolean>(fn("(s) => document.querySelector(s).checked"), schalter))
-      ) {
-        await seite.click(schalter);
-      }
-      await warte(
-        seite,
-        `() => { try { return localStorage.getItem("kw.stufe2.v1") === "1"; } catch (e) { return false; } }`,
-        "Stufe 2 ist eingeschaltet",
-      );
-      await seite.goto(`${basis}/graph`, { waitUntil: "domcontentloaded" });
-      await warte(
-        seite,
-        `() => document.querySelectorAll('[data-testid="graph-kante-kuratiert"]').length >= 1`,
-        "der Graph zeigt die Fachkante",
-        undefined,
-        90_000,
-      );
-      const vorProbe = aufbau.serverfehler.length;
-      const status: Record<string, number> = {};
-      // Dieselbe Nutzlastform wie im Altbefund (`wissensnetz-nutzerweg/strecke.ts`, Grenzobjekte):
-      // je Objekt ein EIGENES Schlagwort — sonst wäre es nicht der Fall, der damals scheiterte.
-      for (let i = 0; i < PROBE_ANLAGEN; i += 1) {
-        const nr = String(i).padStart(4, "0");
-        const r = await aufbau.admin.sende("POST", "/api/kos", {
-          title: `Grenzobjekt ${nr}`,
-          statement: `Belegsatz des Grenzobjekts ${nr} fuer die Anlage bei offenem Graphen.`,
-          type: "best_practice",
-          category: "Betrieb",
-          confidentiality: "intern",
-          tags: [`wbr-grenze-${nr}`],
-        });
-        status[String(r.status)] = (status[String(r.status)] ?? 0) + 1;
-        if (r.status >= 500) {
-          aufbau.serverfehler.push(
-            `Anlage ${i + 1}/${PROBE_ANLAGEN}: ${r.status} ${r.text.slice(0, 200)}`,
-          );
-        }
-      }
-      // Der Graph wird bei offener Seite noch einmal angefragt — wie die Fläche es tut. Gewartet
-      // wird auf den Zählsatz der GELIEFERTEN Fachbeziehung, nicht auf ihre Linie: bei jetzt über
-      // 60 Knoten schneidet der Knotendeckel (`limitGraph`) die gezeichnete Menge ab, und ob die
-      // eine Linie dabei bleibt, hängt an der Knotenauswahl — nicht an dieser Probe.
-      await seite.reload({ waitUntil: "domcontentloaded" });
-      await warte(
-        seite,
-        "(satz) => document.body.innerText.includes(satz)",
-        "der Graph steht nach der Anlage wieder (Zählsatz der gelieferten Fachbeziehung)",
-        String(i18n.t("graph.kuratiertCount", { count: 1 })),
-        90_000,
-      );
-      p.probe = { status, serverfehler: aufbau.serverfehler.slice(vorProbe) };
-    }
     return p;
   } finally {
     for (const k of profile) {

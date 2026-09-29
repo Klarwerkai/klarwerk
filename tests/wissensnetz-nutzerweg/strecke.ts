@@ -214,7 +214,8 @@ const kantentitelVon = (b: (typeof BEZIEHUNGEN)[number]): string =>
 // Baum schon. Die einzige Ausnahme steht in `KANTEN_METADATEN` und ist dort begruendet.
 //
 // Ohne `checkVisibility` misst der Rückfall die ganze Vorfahrenkette samt Verdeckung
-// (`tests/support/sichtRueckfall.ts`); vorher sah er nur das Element selbst.
+// (`tests/support/sichtRueckfall.ts`); vorher sah er nur das Element selbst. Kann er die Verdeckung
+// nicht messen (auch an SVG-Linien), WIRFT `sichtbarOhneCheck` mit „SICHTMESSUNG NICHT MOEGLICH".
 const SICHT = `
   ${SICHT_RUECKFALL}
   const sichtbar = (e) => {
@@ -223,7 +224,7 @@ const SICHT = `
       if (!e.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true, contentVisibilityAuto: true })) {
         return false;
       }
-    } else if (!sichtRueckfall(e).sichtbar) {
+    } else if (!sichtbarOhneCheck(e)) {
       return false;
     }
     const s = getComputedStyle(e);
@@ -239,7 +240,7 @@ const SICHT = `
     if (!e) return false;
     if (typeof e.checkVisibility === "function") {
       if (!e.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })) return false;
-    } else if (!sichtRueckfall(e).sichtbar) {
+    } else if (!sichtbarOhneCheck(e)) {
       return false;
     }
     const s = getComputedStyle(e);
