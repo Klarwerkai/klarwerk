@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowRight, Copy, ThumbsUp } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import { useConflicts, useKos, useReasonerStatus } from "../api/hooks";
@@ -468,6 +468,24 @@ export function Ask(): JSX.Element {
   // SCRUM-272: optionale Startfrage aus der URL (/fragen?q=…) — nur vorbefüllen, kein Auto-Ask.
   const [params] = useSearchParams();
   const [q, setQ] = useState(() => readAskQuestion(params) ?? "");
+  // R-0474 (Ben, Runde 1, B1): der Router montiert `/fragen` bei einem Wechsel NUR der Adresszeile
+  // nicht neu — der Initialwert oben sah eine zweite Übergabe (`/fragen?q=Alt` → Palette/Hilfe →
+  // `/fragen?q=Neu`) also nie, im Feld blieb die alte Frage stehen. Jede NAVIGATION mit `?q=`
+  // übernimmt deshalb ihre Frage ins Feld. Gebunden an den Navigationsschlüssel, nicht an den
+  // Text: auch ein zweites Anbieten derselben Frage nach eigenem Tippen kommt an. Nur vorbefüllen,
+  // weiterhin kein Auto-Ask (SCRUM-272); ohne `?q=` bleibt das Feld, wie es ist.
+  const { key: navigationsSchluessel } = useLocation();
+  const ersteNavigation = useRef(navigationsSchluessel);
+  useEffect(() => {
+    if (navigationsSchluessel === ersteNavigation.current) {
+      return;
+    }
+    ersteNavigation.current = navigationsSchluessel;
+    const neu = readAskQuestion(params);
+    if (neu !== null) {
+      setQ(neu);
+    }
+  }, [navigationsSchluessel, params]);
   // AUFTRAG-mega38 BLOCK J2: „Bitte gib zuerst eine Frage ein." stand auf `/fragen`, BEVOR die
   // Leserin irgendetwas getan hatte — eine Zurechtweisung als Begrüssung. Der Satz ist richtig,
   // sein Zeitpunkt war es nicht. Er erscheint jetzt erst, wenn wirklich leer abgesendet wurde.

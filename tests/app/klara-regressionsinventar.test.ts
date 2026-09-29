@@ -1156,6 +1156,10 @@ const INVENTAR: readonly string[] = [
   // K2 lokal `neu im Baum, aber nicht im gepinnten Inventar — Inventar nachfuehren: expected
   // [ Array(1) ] to deeply equal []` mit genau diesem Pfad.
   "tests/erstnutzerfuehrung/nulltreffer-naechster-schritt.test.tsx",
+  // Runde 2 (Ben B1): dieselbe Übergabe bis ins echte Fragefeld von `Ask`. Sie bedient die
+  // Schnellnavigation ebenso und kommt über dieselbe Achse `palette` herein; K5 unverändert.
+  // GEMESSEN, NICHT GESETZT: K2 meldete vor dieser Zeile lokal genau diesen Pfad.
+  "tests/erstnutzerfuehrung/uebergabe-ins-fragefeld.test.tsx",
 ];
 
 // ------------------------------------------------------------------------------------------------
