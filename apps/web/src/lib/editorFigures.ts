@@ -1774,6 +1774,19 @@ export function ordneFussnoteZu(
 // `data-image-id` und an nichts sonst; damit kann die Kennzeichnung weder beim Umhüllen noch beim
 // Flachmachen noch beim Verschieben von Fussnoten an ein anderes Bild wandern, und der
 // Sprachwechsel-Effekt in `RichTextEditor.tsx` frischt ihren Text ohne eigene Verdrahtung auf.
+/** Wofür eine Spur zählt: das Bild selbst, sonst das erste Bild seiner figure, sonst der Knoten. */
+function bildDerEinheit(el: EditableElement): EditableElement {
+  if (el.tagName.toLowerCase() === "img") {
+    return el;
+  }
+  const figure = el.tagName.toLowerCase() === "figure" ? el : el.closest("figure");
+  if (figure === null) {
+    return el;
+  }
+  const bild = alle(figure, "img").find((b) => b.closest("figcaption") === null);
+  return bild ?? figure;
+}
+
 export function enhanceFiguresForEditing(
   root: EditableFigureRoot,
   captionPlaceholder?: string,
@@ -1789,14 +1802,23 @@ export function enhanceFiguresForEditing(
   // jeder Lade- und Einfügeweg durchläuft. Gespeichert wird danach ohne sie: die Meldung ist
   // erfolgt. Solange nicht gespeichert wird, bleibt sie im gespeicherten Text und meldet sich beim
   // nächsten Öffnen wieder.
-  const spuren: KennungsSpuren = { doppelt: 0, ungueltig: 0 };
+  //
+  // Runde 3 (Bens Befund N3): GEZÄHLT WIRD JE BILD, nicht je markiertem Element. Tragen Rahmen, Bild
+  // und Fußnote derselben Einheit die Spur, ist das EIN Befund; bisher meldete der Hinweis drei.
+  // Ein markierter Rahmen oder eine Fußnote in einer figure zählt für das erste Bild dieser figure;
+  // ohne Bild (lose Fußnote, leere Hülle) für sich selbst.
+  const betroffen = { doppelt: new Set<EditableElement>(), ungueltig: new Set<EditableElement>() };
   for (const el of root.querySelectorAll(`[${KENNUNG_SPUR_ATTR}]`)) {
     const wert = el.getAttribute(KENNUNG_SPUR_ATTR);
     if (wert === "doppelt" || wert === "ungueltig") {
-      spuren[wert] += 1;
+      betroffen[wert].add(bildDerEinheit(el));
     }
     el.removeAttribute(KENNUNG_SPUR_ATTR);
   }
+  const spuren: KennungsSpuren = {
+    doppelt: betroffen.doppelt.size,
+    ungueltig: betroffen.ungueltig.size,
+  };
   if (spuren.doppelt > 0 || spuren.ungueltig > 0) {
     meldeSpuren?.(spuren);
   }

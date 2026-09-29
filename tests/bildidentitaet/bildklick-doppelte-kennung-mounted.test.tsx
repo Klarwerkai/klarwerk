@@ -170,7 +170,8 @@ describe("R-0053 · Runde 2 (Bens Befund B1): Editor und Galerie zählen verschi
     expect(bilder).toHaveLength(3);
     act(() => bilder[1]?.click());
     expect(dialog()?.open, "der Klick hat die Großansicht nicht geöffnet").toBe(true);
-    expect(zaehler()).toMatch(/1/);
+    // Runde 3: gezählt wird im Editorstand, dort steht das eingehüllte lose Bild vorn.
+    expect(zaehler()).toMatch(/2\D+3/);
     expect(dialog()?.textContent ?? "").toContain("Erste");
     expect(dialog()?.textContent ?? "").not.toContain("Zweite");
   });
@@ -183,45 +184,101 @@ describe("R-0053 · Runde 2 (Bens Befund B1): Editor und Galerie zählen verschi
     expect(dialog()?.textContent ?? "").not.toContain("Erste");
   });
 
-  it("B1c · das lose Bild ist in der Galerie nicht vertreten — sein Klick öffnet nichts", () => {
+  it("B1c · Klick auf das eingehüllte lose Bild öffnet dieses Bild — nicht „Erste“ oder „Zweite“", () => {
+    // Runde 3: Die Großansicht wird aus dem Editorstand aufgebaut. Dort hat der Editor das lose Bild
+    // eingehüllt und verankert — es ist ein eigenes Bild, und genau das öffnet der Klick.
     montiere(G5);
     act(() => editorBilder()[0]?.click());
-    expect(dialog()?.open ?? false, "es wurde auf Verdacht ein anderes Bild geöffnet").toBe(false);
+    expect(dialog()?.open).toBe(true);
+    expect(zaehler()).toMatch(/1\D+3/);
+    expect(dialog()?.textContent ?? "").not.toContain("Erste");
+    expect(dialog()?.textContent ?? "").not.toContain("Zweite");
+  });
+});
+
+const flaeche = (): HTMLElement => {
+  const el = container.querySelector<HTMLElement>('.prose-kw[contenteditable="true"]');
+  if (!el) {
+    throw new Error("keine Editorfläche");
+  }
+  return el;
+};
+
+const paar = (id: string, text: string): string =>
+  `<figure data-image-id="${id}"><img src="${BILD_A}" data-image-id="${id}"><figcaption data-image-id="${id}">${text}</figcaption></figure>`;
+
+describe("R-0053 · Runde 3 (Bens Befunde N1/N2): kein anderes Vorkommen, auch nicht in Nachbarlagen", () => {
+  it("N1 · erstes Bild gelöscht, Galerie noch nicht nachgezogen: Klick auf das verbliebene öffnet „Zweite“", () => {
+    montiere(`${paar("a", "Erste")}<p>x</p>${paar("b", "Zweite")}`);
+    act(() => {
+      editorBilder()[0]?.closest("figure")?.remove();
+      flaeche().dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    // Die Galerie steht noch auf dem alten Körper (Verzögerung nicht abgelaufen).
+    expect(container.querySelectorAll("button[aria-label] img.h-16").length).toBe(2);
+    const bilder = editorBilder();
+    expect(bilder).toHaveLength(1);
+    act(() => bilder[0]?.click());
+    expect(dialog()?.open).toBe(true);
+    expect(dialog()?.textContent ?? "").toContain("Zweite");
+    expect(dialog()?.textContent ?? "", "die Beschreibung des GELÖSCHTEN Bildes").not.toContain(
+      "Erste",
+    );
+  });
+
+  it("N2 · ein Bild innerhalb einer losen Fußnote verfälscht die Auswahl späterer Bilder nicht", () => {
+    montiere(
+      `<figcaption><img src="${BILD_A}" alt="in der Fußnote"></figcaption>${paar("e1", "Erste")}<p>x</p>${paar("e2", "Zweite")}`,
+    );
+    const erste = editorBilder().find((b) => b.getAttribute("data-image-id") === "e1");
+    const zweite = editorBilder().find((b) => b.getAttribute("data-image-id") === "e2");
+    act(() => erste?.click());
+    expect(dialog()?.open).toBe(true);
+    expect(dialog()?.textContent ?? "").toContain("Erste");
+    expect(dialog()?.textContent ?? "").not.toContain("Zweite");
+    act(() => (dialog() as HTMLDialogElement).close());
+    act(() => zweite?.click());
+    expect(dialog()?.textContent ?? "").toContain("Zweite");
+    expect(dialog()?.textContent ?? "").not.toContain("Erste");
+  });
+
+  it("N2b · Klick auf das Bild INNERHALB der Fußnote öffnet weder „Erste“ noch „Zweite“", () => {
+    montiere(
+      `<figcaption><img src="${BILD_A}" alt="in der Fußnote"></figcaption>${paar("e1", "Erste")}<p>x</p>${paar("e2", "Zweite")}`,
+    );
+    const innen = editorBilder().find((b) => b.closest("figcaption") !== null);
+    expect(innen, "Vorbedingung: ein Bild steht in einer Fußnote").toBeDefined();
+    act(() => innen?.click());
+    const text = dialog()?.textContent ?? "";
+    expect(text).not.toContain("Erste");
+    expect(text).not.toContain("Zweite");
+  });
+
+  it("nach dem Schließen zeigt die Galerie wieder ihren eigenen Stand", () => {
+    montiere(`${paar("a", "Erste")}<p>x</p>${paar("b", "Zweite")}`);
+    act(() => editorBilder()[1]?.click());
+    act(() => (dialog() as HTMLDialogElement).close());
+    expect(dialog()).toBeNull();
+    expect(container.querySelectorAll("button[aria-label] img.h-16").length).toBe(2);
   });
 });
 
 describe("galerieIndexFuerBildklick · die Auflösung ohne Raten", () => {
   const liste = [
-    { id: "kw-dup", src: "a", caption: "Erste" },
-    { id: "kw-dup", src: "a", caption: "Zweite" },
-    { id: "kw-eins", src: "c", caption: "Dritte" },
+    { id: "kw-a", src: "a", caption: "Erste" },
+    { id: "kw-b", src: "a", caption: "Zweite" },
+    { id: "kw-dup", src: "c", caption: "Dritte" },
+    { id: "kw-dup", src: "c", caption: "Vierte" },
   ];
-  // „a“ steht im Körper dreimal: zuerst lose (nicht in der Galerie), dann die beiden Einträge.
-  const vorkommen = [1, 2, 0];
-  const bitte = (d: Partial<D44BildEreignis>): D44BildEreignis => ({
-    imageId: "",
-    nonce: 1,
-    ...d,
+  const bitte = (imageId: string): D44BildEreignis => ({ imageId, nonce: 1 });
+
+  it("A1 · eine in der Liste eindeutige Kennung entscheidet — die Quelle spielt keine Rolle", () => {
+    expect(galerieIndexFuerBildklick(liste, bitte("kw-a"))).toBe(0);
+    expect(galerieIndexFuerBildklick(liste, bitte("kw-b"))).toBe(1);
   });
 
-  it("A1 · Quelle und Vorkommen entscheiden — nicht die Position", () => {
-    expect(galerieIndexFuerBildklick(liste, vorkommen, bitte({ src: "a", vorkommen: 1 }))).toBe(0);
-    expect(galerieIndexFuerBildklick(liste, vorkommen, bitte({ src: "a", vorkommen: 2 }))).toBe(1);
-    expect(galerieIndexFuerBildklick(liste, vorkommen, bitte({ src: "c", vorkommen: 0 }))).toBe(2);
-  });
-
-  it("A2 · ein Vorkommen, das in der Galerie nicht steht, öffnet nichts — auch bei passender Kennung", () => {
-    expect(
-      galerieIndexFuerBildklick(
-        liste,
-        vorkommen,
-        bitte({ imageId: "kw-eins", src: "a", vorkommen: 0 }),
-      ),
-    ).toBe(-1);
-  });
-
-  it("A3 · ohne Vorkommen gilt nur eine hier eindeutige Kennung", () => {
-    expect(galerieIndexFuerBildklick(liste, vorkommen, bitte({ imageId: "kw-eins" }))).toBe(2);
-    expect(galerieIndexFuerBildklick(liste, vorkommen, bitte({ imageId: "kw-dup" }))).toBe(-1);
+  it("A2 · doppelte oder fehlende Kennung: es öffnet sich nichts", () => {
+    expect(galerieIndexFuerBildklick(liste, bitte("kw-dup"))).toBe(-1);
+    expect(galerieIndexFuerBildklick(liste, bitte("kw-weg"))).toBe(-1);
   });
 });

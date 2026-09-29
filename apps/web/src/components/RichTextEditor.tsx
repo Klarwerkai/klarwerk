@@ -1002,15 +1002,15 @@ export function RichTextEditor({
       return;
     }
     d44NonceRef.current += 1;
-    // AUFNAHME 20260922 (R-0945/R-0053): das Vorkommen mitschicken — das wievielte Bild mit
-    // dieser Quelle es im Editor ist. Nicht die Galerie-Position: Editor und Galerie zählen
-    // verschiedene Mengen (Bens Befund B1, Begründung bei `galerieVorkommen`).
-    const src = bild.getAttribute("src") ?? "";
-    const alleBilder = Array.from(el.querySelectorAll("img"));
-    const vorkommen = alleBilder
-      .slice(0, alleBilder.indexOf(bild))
-      .filter((b) => b.getAttribute("src") === src).length;
-    const nutzlast: D44BildEreignis = { imageId, nonce: d44NonceRef.current, src, vorkommen };
+    // AUFNAHME 20260922 (R-0945/R-0053, Runde 3): den AKTUELLEN Körper mitschicken. Die Galerie
+    // baut die Großansicht daraus auf und findet das Bild über seine Kennung, die hier nach
+    // `ensureImageAnchors` eindeutig ist. Eine Übersetzung zwischen dem Editorstand und dem
+    // verzögerten Galeriestand gibt es damit nicht mehr (Begründung bei `galerieIndexFuerBildklick`).
+    const nutzlast: D44BildEreignis = {
+      imageId,
+      nonce: d44NonceRef.current,
+      koerper: sanitizeHtml(el.innerHTML),
+    };
     // JOB 1890 D13 — DAS EREIGNIS GEHT VOM BILD AUS, NICHT VON DER FLAECHE.
     //
     // Hier stand `el.dispatchEvent(...)`. Damit war `event.target` IMMER das contenteditable
@@ -1365,8 +1365,6 @@ export function RichTextEditor({
       return einziges instanceof HTMLImageElement ? einziges : null;
     };
 
-    const aktuell = extractBodyImages(sanitizeHtml(el.innerHTML));
-
     // Stufe 1: die Position aus der Galerie, bestätigt durch die Quelle — aufgelöst in DEM Körper,
     // aus dem die Galerie ihre Liste bildet (`value`), nicht in der Liste des Editors.
     //
@@ -1380,23 +1378,42 @@ export function RichTextEditor({
     const anPosition = galerie[captionFormRequest.index];
     const k = galerieVorkommen(value)[captionFormRequest.index];
     let bild: HTMLImageElement | null = null;
-    if (anPosition !== undefined && k !== undefined && anPosition.src === captionFormRequest.src) {
+    //
+    // Runde 3 (Bens Befunde N1/N2 am Körperklick, hier dieselbe Klasse): Die Galerie steht bis zu
+    // 300 ms hinter `value`. Deshalb muss der Eintrag an dieser Position in `value` die ANGEFRAGTE
+    // Kennung tragen — sonst ist es nicht derselbe Eintrag, und es wird nicht übersetzt. Gezählt
+    // werden auf beiden Seiten nur Bilder AUSSERHALB einer Fußnote: der Galerie-Zerleger liest den
+    // Inhalt einer `figcaption` nicht als Bilder, also darf der Editor sie auch nicht mitzählen.
+    if (
+      anPosition !== undefined &&
+      k !== undefined &&
+      anPosition.src === captionFormRequest.src &&
+      anPosition.id === captionFormRequest.imageId
+    ) {
       const quelle = bildQuelleDekodiert(anPosition.src);
       const gleiche = Array.from(el.querySelectorAll("img")).filter(
-        (b) => b.getAttribute("src") === quelle,
+        (b) => b.getAttribute("src") === quelle && b.closest("figcaption") === null,
       );
       bild = gleiche[k] ?? null;
     }
 
-    // Stufe 2: die Zählung ist verrutscht (ein nacktes <img> zählt für die Galerie nicht, wird hier
-    // aber eingehüllt) — dann trägt die Quelle, sofern sie EINDEUTIG ist.
-    if (bild === null) {
-      const nachQuelle = aktuell.filter((b) => b.src === captionFormRequest.src);
-      bild = nachQuelle.length === 1 && nachQuelle[0] ? eindeutig(nachQuelle[0].id) : null;
-    }
+    // Stufe 2 („die Quelle ist eindeutig") ist in Runde 3 ENTFALLEN. Sie traf nach dem Löschen
+    // eines Bildes das verbliebene Bild gleicher Quelle, auch wenn nach dem gelöschten gefragt war.
+    // Die Lage, für die sie gebaut war (ein eingehülltes loses Bild verschiebt die Zählung), trägt
+    // seit Runde 2 das Vorkommen in Stufe 1.
 
-    // Stufe 3: der Bestandsweg — die Kennung, aber nur bei genau einem Treffer.
-    if (bild === null) {
+    // Stufe 3: der Bestandsweg — die Kennung, aber nur bei genau einem Treffer im Editor, UND nur,
+    // wenn der Galeriekörper (`value`) nicht widerspricht: entweder trägt er an der angefragten
+    // Position genau diese Kennung, oder er kennt sie gar nicht (der Editor hat das Bild erst beim
+    // Laden verankert). Runde 3: ohne diese Bedingung öffnete nach dem Löschen des zweiten von zwei
+    // Bildern gleicher Kennung die Bitte für das gelöschte das verbliebene erste — die Galerie stand
+    // noch auf dem alten Stand, in dem die Kennung doppelt war. Kennt `value` die Kennung an einer
+    // ANDEREN Stelle, ist aus diesem Stand nicht entscheidbar, welches Vorkommen gemeint war: dann
+    // öffnet sich nichts.
+    const widerspruchsfrei =
+      anPosition?.id === captionFormRequest.imageId ||
+      !galerie.some((b) => b.id === captionFormRequest.imageId);
+    if (bild === null && widerspruchsfrei) {
       bild = eindeutig(captionFormRequest.imageId);
     }
 

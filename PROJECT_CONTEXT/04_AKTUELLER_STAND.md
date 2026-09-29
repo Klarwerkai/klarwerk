@@ -19,6 +19,9 @@
   die eigene Beschreibung auch hinter einer fremden Fußnote; beide Sanitizer hinterlassen bei
   doppelter oder ungültiger Kennung die Spur `data-kw-kennung`, der Editor meldet sie beim Öffnen
   (R-0090).
+- Runde 3: Der Körperklick baut die Großansicht aus dem aktuellen Editorstand statt aus dem
+  verzögerten Galeriestand; die Galerie-Bitte ist an die Kennung gebunden und öffnet im Zweifel
+  nichts; der Hinweis zu ungültigen Kennungen zählt je Bild.
 - Abgleich aller 46 Aufnahmepunkte, offene Entscheidungen (R-0014, R-0098, R-0898-Ziehen,
   Leseversprechen, unverankerter Altbestand): `docs/entscheidungen/bildidentitaet.md`.
 

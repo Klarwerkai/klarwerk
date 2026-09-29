@@ -167,7 +167,12 @@ export function extractBodyImages(bodyHtml: string | null | undefined): BodyImag
 /**
  * AUFNAHME 20260922 (R-0945/R-0053, Bens Befund B1): das VORKOMMEN je Galerie-Eintrag — das
  * wievielte `<img>` mit derselben Quelle im GANZEN Körper es ist (0-basiert, in Dokumentreihenfolge,
- * gezählt über ALLE Bilder, auch lose und solche ohne Kennung).
+ * gezählt über alle Bilder AUSSERHALB einer Fußnote, auch lose und solche ohne Kennung; der Inhalt
+ * einer `figcaption` wird nicht als Bild gelesen).
+ *
+ * Runde 3: genutzt nur noch für die Bitte der Galerie an den Editor („Bildbeschreibung
+ * bearbeiten"), dort zusätzlich an die Kennung des Eintrags gebunden. Der Körperklick schickt
+ * seit Runde 3 den Editorstand mit und braucht keine Übersetzung mehr (`galerieIndexFuerBildklick`).
  *
  * Warum diese Zahl und nicht die Position in der Galerie: Editor und Galerie zählen verschiedene
  * Mengen. Der Editor hüllt ein loses Bild beim Laden ein und gibt ihm eine Kennung; in der Galerie

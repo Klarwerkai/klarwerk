@@ -1,6 +1,6 @@
 # Bilder, Anker und Bildunterschriften konsistent zuordnen — Bestandsabgleich und Lieferung
 
-*Aufnahme 20260922 · `aufnahme:20260922:gesamt-bildidentitaet`, Lauf 3, Runde 1 und Runde 2 (29.09.2026).
+*Aufnahme 20260922 · `aufnahme:20260922:gesamt-bildidentitaet`, Lauf 3, Runden 1 bis 3 (29.09.2026).
 Basis: `1530dfeb` = 1.0.0-beta.1.628. Die Auftragsquelle
 (`klarwerk_steuerung/gespraech/auftragsaufnahme-01a0c779-20260922/gesamtbestand/auftragsquellen/bildidentitaet.json`)
 verknüpft 46 Aufnahmepunkte. Ihr Originalwortlaut steht unverändert in den dort genannten
@@ -193,11 +193,68 @@ Die offene Wahl aus Runde 1 ist durch den Bau ersetzt:
 wird verworfen“). Die Kennung wird weiter verworfen, der Fall prüft jetzt zusätzlich die Spur und
 dass der Fremdwert nicht erscheint.
 
-**Grenze des Vorkommen-Abgleichs (B1):** Steht die Galerie auf einem älteren Körper als der Editor
-(zwischen einer Eingabe und der 300-ms-Entprellung oder vor dem ersten Speichern eines neu
-eingefügten Bildes), öffnet der Klick im Zweifel nichts statt eines falschen Bildes. Ein `<img>`
-**innerhalb** einer Fußnote zählt der Galerie-Zerleger nicht mit; diese Lage ist fremdes Markup und
-wird im Editor bei der Zuordnung ohnehin abgelehnt.
+~~**Grenze des Vorkommen-Abgleichs (B1):** Steht die Galerie auf einem älteren Körper als der
+Editor, öffnet der Klick im Zweifel nichts statt eines falschen Bildes. Ein `<img>` innerhalb einer
+Fußnote zählt der Galerie-Zerleger nicht mit.~~ **Berichtigt in Runde 3:** Diese Aussage war
+falsch. Ben hat beide Lagen gemessen (N1, N2), und in beiden öffnete der Klick eine fremde
+Beschreibung. Siehe Abschnitt 4.
+
+### 4. Runde 3 — Nacharbeit nach Bens Befunden R2-1 bis R2-3
+
+**R2-1 (N1) und R2-2 (N2) — auch „das k-te Bild mit dieser Quelle“ verrutschte.**
+
+- N1: Zwei Bilder gleicher Quelle mit eindeutigen Kennungen `a`/`b`. Das erste wird gelöscht, und
+  vor Ablauf der 300-ms-Verzögerung wird `b` angeklickt. Die Galerie zeigte „Bild 1 von 2 — Erste“,
+  also die Beschreibung des gelöschten Bildes.
+- N2: Ein Bild innerhalb einer losen Fußnote zählte nur der Editor. Der Klick auf „Erste“ öffnete
+  „Zweite“.
+- Ursache in beiden Fällen: Jede Zuordnung **zwischen** dem Editorstand und dem verzögerten
+  Galeriestand ist angreifbar, ob über die Position (Runde 1) oder über das Vorkommen (Runde 2).
+- **Körperklick, jetzt:** Der Editor schickt mit dem Klick seinen aktuellen, sanitisierten Körper
+  mit (`D44BildEreignis.koerper`). Die Galerie baut die Großansicht aus genau diesem Stand auf und
+  findet das Bild darin über seine Kennung. Die Kennung ist im Editor nach `ensureImageAnchors`
+  eindeutig. Kommt sie dort nicht genau einmal als Eintrag vor, öffnet sich nichts. Beim Schließen
+  und beim Öffnen über eine Kachel gilt wieder der eigene Galeriestand. Eine Übersetzung zwischen
+  zwei Körpern gibt es auf diesem Weg nicht mehr.
+- **Folge für die Bestandsabnahme D44 K4** (`tests/web/d44-bild-klick-grossansicht.test.tsx`): Ein
+  im gespeicherten Text loses Bild öffnete bisher nichts („eine leere Großansicht wäre schlimmer als
+  keine“). Der Editor hat es aber beim Laden verankert. Jetzt öffnet der Klick dieses Bild selbst
+  (Position 3 von 3), weder leer noch ein anderes. Das ist die Forderung aus R-0052: gedeckelt,
+  aber groß zu sehen. Der Fall ist mit Begründung umgeschrieben.
+- **Gegenrichtung (Bitte „Bildbeschreibung bearbeiten“ aus der Galerie):**
+  - Die Bitte wird weiter mit Position, Quelle und Kennung gestellt. Der Eintrag an dieser Position
+    im Galeriekörper (`value`) muss jetzt die angefragte Kennung tragen.
+  - Bilder innerhalb einer Fußnote zählen auf beiden Seiten nicht.
+  - Die ratende Stufe „die Quelle ist eindeutig“ ist entfallen.
+  - Die Stufe „Kennung genau einmal im Editor“ gilt nur noch, wenn `value` nicht widerspricht: die
+    Kennung steht an der angefragten Position oder ist dort gar nicht bekannt. Beim Bauen gemessen:
+    Ohne diese Bedingung öffnete nach dem Löschen des zweiten von zwei gleich gekennzeichneten
+    Bildern die Bitte für das gelöschte das verbliebene (Fall N1b).
+- **Grenze, ausdrücklich:** In der Gegenrichtung kann eine Bitte aus dem veralteten Galeriestand
+  (bis 300 ms nach einer Eingabe) auch für ein noch vorhandenes Bild **nichts** öffnen, wenn sich
+  seine Position verschoben hat. Aus dem Galeriekörper allein ist diese Lage nicht von N1b zu
+  unterscheiden; nach Ablauf der Verzögerung öffnet dieselbe Bitte das Bild. Gemessen in beiden
+  Richtungen (Fälle „N1 Grenze“ und „N1“).
+- Belege:
+  - `tests/bildidentitaet/bildklick-doppelte-kennung-mounted.test.tsx`: N1, N2, B1a–c, Rückkehr
+    zum eigenen Stand, A1–A2
+  - `tests/bildidentitaet/runde2-mounted.test.tsx`: Gegenrichtung N1, N1 Grenze, N1b, N2
+
+**R2-3 (N3) — der Hinweis zählte markierte Elemente statt Bilder.**
+
+- Tragen Rahmen, Bild und Fußnote derselben Einheit die ungültige Kennung, hieß es „3 Bilder“.
+  Jetzt wird je Bild gezählt: Ein markierter Rahmen und eine markierte Fußnote zählen für das erste
+  Bild ihrer figure, eine lose Fußnote oder leere Hülle für sich selbst (`bildDerEinheit`,
+  `editorFigures.ts`).
+- Der Satz benennt das jetzt genau: „Bei n Bild(ern) oder Bildbeschreibung(en) war die Kennung
+  ungültig …“ (DE/EN/NL).
+- Beleg: `runde2-mounted.test.tsx` N3 (ein Bild → 1) und Kalibrierung (zwei Bilder → 2).
+
+**Gegenproben am Stand von Runde 2** (Commit `99a6e9d4`, Produktdateien zurückgesetzt): N1, N2
+und N3 sowie die neuen Auflösungsfälle sind dort rot; die Kalibrierungen sind grün.
+
+**Klick auf ein Bild, das selbst innerhalb einer Fußnote steht:** Er öffnet keine der Beschreibungen
+der anderen Bilder (Fall N2b in `bildklick-doppelte-kennung-mounted.test.tsx`).
 
 ## Abgleich je Aufnahmepunkt
 
@@ -217,8 +274,8 @@ Live-Stände wurden nicht neu gemessen.
 | R-0010 Bild, Rahmen, Fußnote ein Anker über Speichern/Laden | erfüllt (Bestand + Runden 1 und 2) | `tests/capture/mega88-bildstruktur-invariante.test.ts`. Runde 1: Ein Bild mit nur fremder Fußnote bekommt seine eigene (W3). Runde 2: Getrennt stehende Fußnote und Bild behalten die gemeinsame Kennung über Speichern und Bildsuche (B2). Der alte Rest aus E06 („außerhalb des Moduls nicht lesbar“) ist überholt: `bodyImages.ts` und `library-routes.ts` lesen `data-image-id`. |
 | R-0014 Bildgröße in der Schreibfläche | Teil / Entscheidung | Vorhanden: Stufen 25/50/75/100 % (`data-kw-scale`, Werkzeugleiste). Freies Ziehen an Griffen gibt es nicht. **Entscheidung:** Reichen die Stufen? |
 | R-0041 / R-2007 / package:bilder fünf Härtungen | erfüllt (Bestand), mit benannten Grenzen | Siehe unten. |
-| R-0052 / R-0901 Deckel + Klick öffnet Großansicht | erfüllt (Bestand) | `tests/web/d44-bildhoehe-deckel.test.tsx`, `d44-bild-klick-grossansicht.test.tsx`. Siehe **Quellenwiderspruch R-0901** unten. |
-| R-0053 / R-0945 Klick trifft genau dieses Bild | erfüllt (Runde 2) | **Runde 1 zu weit ausgewiesen:** bei gleicher Quelle und einem losen Bild davor öffnete der Klick das falsche Vorkommen (Bens B1). Seit Runde 2 über das Vorkommen je Quelle, in beiden Richtungen (Punkt 3, B1). Grenze: bei einem älteren Galeriekörper öffnet sich nichts statt eines falschen Bildes. |
+| R-0052 / R-0901 Deckel + Klick öffnet Großansicht | erfüllt (Bestand) | `tests/web/d44-bildhoehe-deckel.test.tsx`, `d44-bild-klick-grossansicht.test.tsx`. Siehe **Quellenwiderspruch R-0901** unten. Runde 3: Auch ein im gespeicherten Text loses (im Editor verankertes) Bild öffnet jetzt seine Großansicht; der Bestandsfall D44 K4 ist mit Begründung umgeschrieben. |
+| R-0053 / R-0945 Klick trifft genau dieses Bild | erfüllt (Runde 3), mit benannter Grenze in der Gegenrichtung | **Runden 1 und 2 zu weit ausgewiesen:** Ein loses Bild davor (B1), ein gelöschtes Bild gleicher Quelle vor Ablauf der Galerieverzögerung (N1) und ein Bild in einer Fußnote (N2) führten zu einer fremden Beschreibung. Seit Runde 3 baut der Körperklick die Großansicht aus dem Editorstand (Abschnitt 4). Die Galerie-Bitte ist an die Kennung gebunden und öffnet im Zweifel nichts; bis 300 ms nach einer Eingabe kann sie auch für ein vorhandenes, verschobenes Bild nichts öffnen. |
 | R-0055 / R-0931 Gliederungsleiste | erfüllt (Bestand) | `tests/web/d44-gliederung.test.ts`, `d44-sprung-mounted.test.tsx`. Siehe **Quellenwiderspruch R-0931** unten. |
 | R-0089 eindeutige Kennung je Bild | erfüllt (Bestand + Runden 1 und 2) | `tests/bildkennung-eindeutig/doppelte-kennung.test.ts`. Server: Eine kopierte Einheit wird getrennt, ihre Fußnote geht mit (W6). Editor: Die eigene Beschreibung folgt auch hinter einer fremden Fußnote (B3). Die Verdachtsspur „Commit 365e580“ ist nicht verfolgt; kein Befund dazu. |
 | R-0090 doppelte/ungültige Kennung nur melden | erfüllt mit benannter Grenze (Runde 2) | Siehe unten. Runde 1 hatte das als offene Wahl geführt; Ben hat die Wahl als Nichterfüllung gewertet (B4). |

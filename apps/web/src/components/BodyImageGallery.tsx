@@ -1,12 +1,7 @@
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  type BodyImage,
-  bildQuelleDekodiert,
-  extractBodyImages,
-  galerieVorkommen,
-} from "../lib/bodyImages";
+import { type BodyImage, extractBodyImages } from "../lib/bodyImages";
 import { SectionLabel } from "./ui";
 
 // WP-BILD-1d (Pedis Galerie-Feature): LESEANSICHT-Galerie der Beitrags-Bilder. Client-seitig aus dem
@@ -41,46 +36,37 @@ export const D44_BILD_EREIGNIS = "kw:d44-bild-oeffnen";
 export interface D44BildEreignis {
   readonly imageId: string;
   readonly nonce: number;
-  // AUFNAHME 20260922 (R-0945/R-0053): das VORKOMMEN, nicht nur die Kennung. `src` ist die Quelle
-  // des angeklickten Bildes (wie `getAttribute` sie liefert), `vorkommen` das wievielte Bild mit
-  // dieser Quelle es im Editor ist (0-basiert, über alle Bilder). Begründung bei
-  // `galerieVorkommen` (`lib/bodyImages.ts`).
-  readonly src?: string;
-  readonly vorkommen?: number;
+  // AUFNAHME 20260922 (R-0945/R-0053, Runde 3): der KÖRPER, wie er im Editor in diesem Augenblick
+  // steht (sanitisiert). Die Galerie öffnet die Großansicht aus genau diesem Stand, nicht aus ihrem
+  // eigenen, verzögerten. Begründung bei `galerieIndexFuerBildklick`.
+  readonly koerper?: string;
 }
 
 /**
- * Welcher Galerie-Eintrag zum Körperklick gehört — oder `-1`.
+ * Welcher Eintrag zum Körperklick gehört — oder `-1`. `images` ist die Liste aus dem Körper, der
+ * mit dem Klick kam (sonst die eigene Liste der Galerie).
  *
- * Die Galerie liest den zuletzt GEMELDETEN Körper. Der Editor trennt eine doppelte Kennung beim
- * Laden (JOB 3035/3051) und hüllt lose Bilder ein, speichert dabei aber absichtlich nichts; bis zur
- * ersten Eingabe steht hier also der alte Körper. Hier stand `findIndex` über die Kennung: der
- * Klick auf das erste Bild traf nur zufällig, der auf das zweite öffnete gar nichts.
- *
- * Runde 2 (Bens Befund B1): auch die Galerie-POSITION ist keine gemeinsame Größe — der Editor
- * zählt ein eingehülltes loses Bild mit, die Galerie nicht, und bei gleicher Quelle bestätigte die
- * Quelle dann ein falsches Vorkommen. Gemeinsam ist beiden nur „das k-te Bild mit dieser Quelle".
- * Gemeldet mit Quelle und Vorkommen entscheidet allein diese Zahl; trifft sie keinen Eintrag (das
- * angeklickte Bild ist in der Galerie nicht vertreten), öffnet sich nichts. Ohne diese Angaben
- * gilt nur eine hier genau einmal vorkommende Kennung.
+ * Die Galerie liest den zuletzt GEMELDETEN, um 300 ms verzögerten Körper. Der Editor trennt beim
+ * Laden doppelte Kennungen und hüllt lose Bilder ein, ohne zu speichern; nach einer Eingabe steht
+ * die Galerie bis zu 300 ms auf dem alten Stand. Jede Zuordnung ZWISCHEN diesen beiden Körpern war
+ * angreifbar, und Ben hat es dreimal gemessen:
+ *   · Runde 1 → 2: Die Position verrutschte (ein eingehülltes loses Bild zählte nur im Editor).
+ *   · Runde 2 → 3: Auch „das k-te Bild mit dieser Quelle" verrutschte — nach dem Löschen eines
+ *     Bildes gleicher Quelle vor Ablauf der Verzögerung (N1) und bei einem Bild innerhalb einer
+ *     Fußnote, das nur der Editor zählte (N2). Geöffnet wurde jeweils eine fremde Beschreibung.
+ * Die Antwort ist, gar nicht mehr zwischen zwei Körpern zu übersetzen: Der Editor schickt seinen
+ * aktuellen Körper mit, und die Großansicht wird aus diesem Körper aufgebaut. Darin ist jede
+ * Kennung eindeutig (`ensureImageAnchors` trennt Doppelungen), und das angeklickte Bild wird über
+ * seine Kennung gefunden. Kommt die Kennung dort nicht GENAU EINMAL als Eintrag vor (etwa ein Bild
+ * innerhalb einer Fußnote, das keinen Eintrag bildet), öffnet sich nichts.
  */
 export function galerieIndexFuerBildklick(
   images: readonly BodyImage[],
-  vorkommenJeEintrag: readonly number[],
   detail: D44BildEreignis,
 ): number {
-  const { src, vorkommen } = detail;
-  if (src !== undefined && vorkommen !== undefined) {
-    return images.findIndex(
-      (b, i) => bildQuelleDekodiert(b.src) === src && vorkommenJeEintrag[i] === vorkommen,
-    );
-  }
   const treffer = images.flatMap((b, i) => (b.id === detail.imageId ? [i] : []));
   const einziger = treffer[0];
-  if (treffer.length === 1 && einziger !== undefined) {
-    return einziger;
-  }
-  return -1;
+  return treffer.length === 1 && einziger !== undefined ? einziger : -1;
 }
 
 export function BodyImageGallery({
@@ -97,8 +83,14 @@ export function BodyImageGallery({
   onEditCaption?: ((imageId: string, src: string, index: number) => void) | undefined;
 }): JSX.Element | null {
   const { t } = useTranslation();
-  const images: BodyImage[] = extractBodyImages(bodyHtml);
   const [openIndex, setOpenIndex] = useState<number | null>(null);
+  // AUFNAHME 20260922 (Runde 3): der Körper, mit dem der Editor den Klick gemeldet hat. Solange die
+  // daraus geöffnete Großansicht offen ist, zeigt sie diesen Stand; beim Schließen und beim Öffnen
+  // über eine Kachel gilt wieder der eigene.
+  const [klickKoerper, setKlickKoerper] = useState<string | null>(null);
+  const images: BodyImage[] = extractBodyImages(
+    openIndex !== null && klickKoerper !== null ? klickKoerper : bodyHtml,
+  );
   // JOB 1117 (schließt JOB-908-M3): der ANSAGETEXT der Fläche. Ein Zustand, eine Quelle — Öffnen,
   // Bildwechsel und Schließen schreiben hier hinein, die beiden Live-Bereiche unten lesen nur.
   const [ansage, setAnsage] = useState<string>("");
@@ -201,7 +193,8 @@ export function BodyImageGallery({
       if (!detail?.imageId) {
         return;
       }
-      const idx = galerieIndexFuerBildklick(images, galerieVorkommen(bodyHtml), detail);
+      const liste = detail.koerper !== undefined ? extractBodyImages(detail.koerper) : images;
+      const idx = galerieIndexFuerBildklick(liste, detail);
       if (idx < 0) {
         return;
       }
@@ -216,11 +209,12 @@ export function BodyImageGallery({
       }
       triggerRef.current = null; // die alte Thumbnail-Referenz gilt für DIESES Öffnen nicht
       herkunftRef.current = "editor";
+      setKlickKoerper(detail.koerper ?? null);
       setOpenIndex(idx);
     };
     eltern.addEventListener(D44_BILD_EREIGNIS, beiKlick);
     return () => eltern.removeEventListener(D44_BILD_EREIGNIS, beiKlick);
-  }, [images, bodyHtml]);
+  }, [images]);
 
   // Pfeiltasten blättern innerhalb des offenen Dialogs (Escape übernimmt der native cancel-Pfad).
   useEffect(() => {
@@ -294,6 +288,7 @@ export function BodyImageGallery({
 
   const onDialogClose = (): void => {
     setOpenIndex(null);
+    setKlickKoerper(null);
     // D44 Teil 2: die Rückkehr folgt der HERKUNFT dieses Öffnens, nicht einem Altzustand. Die
     // Rücksetzung unten ist der Kern — ohne sie wäre `herkunftRef` derselbe Altlastwert wie zuvor
     // `triggerRef`, nur mit besserem Namen.
@@ -352,6 +347,7 @@ export function BodyImageGallery({
               triggerRef.current = e.currentTarget;
               // D44 Teil 2: dieses Öffnen kam vom Thumbnail — die Rückkehr geht dorthin.
               herkunftRef.current = "thumbnail";
+              setKlickKoerper(null);
               setOpenIndex(i);
             }}
           >
