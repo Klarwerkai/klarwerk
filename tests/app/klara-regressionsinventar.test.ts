@@ -1148,6 +1148,14 @@ const INVENTAR: readonly string[] = [
   // gepinnten Inventar — Inventar nachfuehren: expected [ Array(1) ] to deeply equal []`; erst
   // danach wurde diese Zeile angefasst.
   "tests/wiki-orientierung/gliederung-mit-zeiger-chromium.test.ts",
+  // AUFNAHME 20260922 · DEPLOY-HEALTH-COMMIT (R-1028/R-0786, 29.09.2026): der Nachweis „eine
+  // Programmversion" für Word-Panel und Web-Konsole (stempelt `APP_VERSION` in das Klara-Panel) und
+  // der Liefernachweis des Live-Updates, dessen Ship-Skript die Versionsnummer mit anhebt.
+  // Beide ändern, was das Panel als Stand zeigt — sachlich Klara-Regression.
+  // GEMESSEN, NICHT GESETZT: `tools/test tests/app/klara-regressionsinventar` meldete K2 `neu im
+  // Baum, aber nicht im gepinnten Inventar — Inventar nachfuehren` mit genau diesen zwei Pfaden.
+  "tests/deploy-health-commit/eine-programmversion.test.ts",
+  "tests/deploy-liefernachweis/live-update-liefernachweis.test.ts",
 ];
 
 // ------------------------------------------------------------------------------------------------

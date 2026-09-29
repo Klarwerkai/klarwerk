@@ -1,6 +1,6 @@
 # Abgleich: Deployment-Commit ↔ `/health.commit` (Auftrag deploy-health-commit)
 
-Stand 29.09.2026, Lauf `deploy-health-commit:3` (Runde 2, B9 nachgearbeitet). Übernimmt den Kandidaten
+Stand 29.09.2026, Lauf `deploy-health-commit:3` (Runde 3: PostgreSQL-/HTTP-Prüffall ergänzt). Übernimmt den Kandidaten
 `9a8986c2` aus Lauf 2 (B1–B7, R-0786, R-1028) unverändert auf `1530dfeb` und schließt Bens
 Befund B8 (R-0794, siehe unten). Server und Coolify wurden in diesem Lauf nicht verändert.
 
@@ -189,6 +189,20 @@ Geändert:
   eine neue Abfrage je Aufruf (Stand Runde 1) füllt den Pool (10/10) und blockiert `SELECT 1`; mit
   der Korrektur: 11 wiederholte Zeitüberschreitungen → 1 Abfrage, 1 Poolplatz, `SELECT 1`
   beantwortet; ebenso über die echte `/health`-Route mit der echten 1,5-s-Frist.
+- Serverprozess-Prüffall (Runde 3, Bens Prüfplanlücke zu `3958fa4d`):
+  `tests/app/health-gesamtauskunft-pg.integration.test.ts`. Wegwerf-PostgreSQL (`…_test_…`,
+  `DROP … WITH (FORCE)`), `services/app/src/server.ts` als eigener Prozess mit nicht geerbter
+  Umgebung (`serverUmgebung` aus `tests/gesamtanweisung-nutzerweg/weg.ts`), `NODE_ENV=production`,
+  eigener Port, Test-SHA in `KLARWERK_BUILD_COMMIT`, kein Anbieter (deterministisch). Genau ein
+  `POST /api/reasoner`-Lauf; sein `model_runs`-Eintrag wird direkt aus PostgreSQL gelesen und muss
+  per echtem `GET /health` in `aiRuns.recent` stehen (Aufgabe, Ausgang, Endzeit), dazu `status`,
+  `ai.mode`, `version` = `package.json`, `commit` = Test-SHA, kein `provider`/`model`/`id`/`actor`-Feld,
+  keine Laufkennung, kein Passwort. Gegenproben: (a) dieselbe Zuordnungsprüfung scheitert an der
+  Historie vor dem Lauf; (b) zweiter Prozess ohne `KLARWERK_BUILD_COMMIT` meldet `unbekannt`;
+  (c) ohne `KLARWERK_PG_TEST_URL` meldet der Laufzustand ausdrücklich „UEBERSPRUNGEN … NICHT
+  belegt“, eine gesetzte, aber unerreichbare Verbindung wirft in `beforeAll`.
+  **Auf dem Produktions-Mac nicht gegen PostgreSQL ausgeführt** (Serverregel); lokal belegt ist nur
+  Gegenprobe (c). Die Ausführung gegen echtes PostgreSQL steht aus.
 - Grenze B9: Die eine hängende Abfrage wird nicht abgebrochen; ihr Poolplatz bleibt belegt, bis
   die Datenbank antwortet oder die Verbindung fällt. Eine Abfragefrist auf Datenbankseite
   (`statement_timeout`/`query_timeout`) gibt es im Pool weiterhin nicht; sie würde alle Module
