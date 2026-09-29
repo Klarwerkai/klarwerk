@@ -25,6 +25,37 @@ Für die R2-Fassung gibt es keinen Vollcheck. Für die Fassung von Lauf 3 gibt e
 Serverbeleg. Die Admin-Freigabe `f1eedb99` nennt die Prüfvoraussetzungen nur im Text, das
 strukturierte Feld `answer.pruefvoraussetzungen` fehlt. Das ist ein Formmangel der Freigabe und
 nicht Gegenstand des Codes.
+
+## Lauf 3 Runde 2 (29.09.2026): Nacharbeit zu Bens Befunden B1 und B2
+
+Die Serverbelege oben gelten für Code OHNE diese Nacharbeit. Für die geänderten Stellen gibt es
+noch keinen Serverbeleg.
+
+- **B1 · N-0015 / P-UX-04, Rückweg mit verzögerten Daten.** Bens Gegenbeleg: Soll 820, Ist 0.
+  Ursache: `MyTasks.tsx` fuhr die gemerkte Stelle beim Wiedereintritt sofort an und begrenzte sie
+  auf die Höhe der noch leeren Seite; beim Eintreffen der Daten lief nichts mehr.
+  - Die Stelle bleibt jetzt je Verlaufseintrag offen, bis `ladephase === "loaded"` ist, und wird
+    dann einmal angefahren.
+  - Wer vor dem Eintreffen wieder geht, überschreibt die gemerkte Stelle nicht mit der 0 des
+    Ladezustands.
+  - Beleg: `tests/aufgaben-ansicht/rueckkehr-aus-der-aufgabe.test.tsx`, Fälle V1–V3. Sie arbeiten
+    mit einem echten `history.back()`, zuerst ohne und dann mit Daten.
+  - Gegenprobe: Mit dem vorigen `MyTasks.tsx` sind V1–V3 rot (`expected [ +0 ] to deeply equal
+    [ 820 ]`), mit dem neuen grün.
+  - Grenze: In jsdom ist das Layout gestellt. Eine Messung im echten Browser mit verzögerter
+    Antwort gibt es nicht.
+- **B2 · R-1558 / P-H1b, Nachweis „kein Abruf in 35 s“.** Vorher protokollierte der Mitschnitt erst
+  nach der Antwort, und die Herkunft zählte nur HTTP 200.
+  - Der Mitschnitt steht jetzt in `tests/kopfzaehler-frische/abrufmitschnitt.ts`. Er erfasst jeden
+    Start (`__anfragen`) getrennt von den Antworten (`__abrufe`, Netzfehler als Status 0).
+  - Die Chromium-Abnahme vergleicht in A und B die gestarteten Anfragen je Zählquelle. Die
+    erfolgreichen Bestätigungen und ihre Herkunftszeiten behält sie getrennt.
+  - Kalibrierung ohne Browser: `abrufmitschnitt-kalibrierung.test.ts` (K0–K5). Ein zusätzlicher
+    503-, laufender oder Netzfehler-Abruf macht den Startvergleich rot; die 200er-Herkunft allein
+    bliebe gleich. Die Kontrollen (zusätzlicher 200er; kein Abruf) verhalten sich wie erwartet.
+  - Die geänderte Chromium-Abnahme ist lokal NICHT gelaufen (Mac-Regel). Ihr Beleg steht aus, bis
+    der Serverlauf sie ausführt.
+
 Quelle der Anliegen: Funktionsregister (`register.json`, Einträge R-0905, R-0961, R-0962; Herkunft
 `FUNKTIONSREGISTER.json:21028/22351/22373`).
 
@@ -37,12 +68,12 @@ Quelle der Anliegen: Funktionsregister (`register.json`, Einträge R-0905, R-096
 | R-0961 Bündelung/Sortierung/Filter (5 Arten) | geliefert (vorher) | SCRUM-247/-158/-260, JOB 690 | `tests/aufgaben-ansicht/*`, `tests/app/work-center.test.ts` |
 | R-0961 Entwurf fortsetzen, einreichen | **abgelöst** | R-0962 (13.08.), JOB 3503 (Pedi, 10.09., ab 1.270) | siehe „Quellenwidersprüche“ |
 | R-0961 Autorenübergabe | **abgelöst, Bestätigung durch Pedi offen** | R-0962 (13.08.) | siehe „Quellenwidersprüche“ |
-| N-0015 / P-UX-04 | geliefert (vorher) | JOB 3101, `6564c732`, ab 1.115 | `tests/aufgaben-ansicht/aufgabenart-in-der-adresse.test.tsx`, `rueckkehr-aus-der-aufgabe.test.tsx` |
-| P-H1b (Frist 30 s) | geliefert (vorher), Abnahme am Bündel **dieser Lauf** | JOB 3113, `539299c7`, ab 1.133 | `tests/kopfzaehler-frische/frische-im-echten-browser-chromium.test.ts` (neu), `kopfzaehler-frische-mounted.test.tsx` |
+| N-0015 / P-UX-04 | Filter: geliefert (vorher). Position: bei sofort vorliegenden Daten geliefert (vorher); bei verzögerten Daten war sie **nicht erfüllt** (Ben, Lauf 3 R1) und ist **nachgebaut in Lauf 3 R2**, Serverbeleg offen | JOB 3101, `6564c732`, ab 1.115; Lauf 3 R2 | `tests/aufgaben-ansicht/aufgabenart-in-der-adresse.test.tsx`, `rueckkehr-aus-der-aufgabe.test.tsx` (V1–V3 neu) |
+| P-H1b (Frist 30 s) | geliefert (vorher); Abnahme am Bündel mit korrigiertem Abrufnachweis (Lauf 3 R2), Serverbeleg offen | JOB 3113, `539299c7`, ab 1.133 | `tests/kopfzaehler-frische/frische-im-echten-browser-chromium.test.ts`, `abrufmitschnitt-kalibrierung.test.ts`, `kopfzaehler-frische-mounted.test.tsx` |
 | P-H1c (Löschweg) | geliefert (vorher) | JOB 3125, `b5fa6fbb`, ab 1.138 | `tests/kopfzaehler-frische/loeschen-kopfzaehler-mounted.test.tsx` |
 | P-H1d (laufender Folgeabruf) | geliefert (vorher, mit H1c) | JOB 3125, `b5fa6fbb`, ab 1.138 | ebd., Fälle „frischem Board-Stand“ (1 s) mit hängendem Abruf, Erfolg/404/Fehler |
 | P-H1e (Wächter, Kommentar) | geliefert (vorher) | JOB 3136, `703bc25c`, ab 1.156 | `tests/kopfzaehler-frische/kein-frischer-cache-eingriff.test.ts` |
-| R-1558 (H1b-Rest) | **geliefert bis auf Livebetrieb** (dieser Lauf, R2) | R2 dieses Laufs | Chromium-Test oben; offen: Messung am öffentlichen Betrieb |
+| R-1558 (H1b-Rest) | **Nachweis am Bündel gebaut, Beleg offen** | Lauf 2 R2; Abrufnachweis Lauf 3 R2 | Chromium-Test oben. Der Serverlauf aus Lauf 2 (pa-1790512722) nutzte noch den alten Mitschnitt und deckt „ohne Abruf“ nicht. Offen: Serverlauf der neuen Fassung und Messung am öffentlichen Betrieb |
 | R-1576 (H1-Gesamtinventar) | **geliefert für die Hülle** (dieser Lauf, R2) | R2 dieses Laufs | `tests/h1-gesamtinventar/rollen-sprachen-zustaende.test.tsx` |
 | R-0905 (Sammelauftrag) | Sammelposten | — | erfüllt im Umfang der Zeilen oben; Rest unter „Offen“ |
 
@@ -67,8 +98,11 @@ Quelle der Anliegen: Funktionsregister (`register.json`, Einträge R-0905, R-096
     Tastaturweg auf „Prüfen“ holt neu, und die richtige neue Zahl 3 steht da; der Tastaturweg auf
     „Start“ bringt die Zahl 3 auch nach „Weitere Bereiche“ zurück.
   - B — dasselbe im Drawer bei 390 px.
-  - Die Herkunftszeiten je Zählquelle (Anzahl der Abrufe, Seitenzeit des letzten Abrufs) werden
-    je Phase einzeln ausgegeben.
+  - Die Herkunftszeiten je Zählquelle (Anzahl der erfolgreichen Abrufe, Seitenzeit des letzten
+    davon) werden je Phase einzeln ausgegeben.
+  - Einschränkung (Ben, Lauf 3 R1, B2): In der Fassung von Lauf 2 stützte sich „ohne einen
+    einzigen Abruf“ nur auf beantwortete HTTP-200-Abrufe. Seit Lauf 3 R2 werden die Starts
+    verglichen (siehe oben).
 - **R-1576, H1-Gesamtinventar:** 4 Rollen × Stufe 2 aus/an × DE/EN/NL × 7 Zählerzustände = 168
   gemountete Fälle. Die Zustände sind: lädt, geladen, echte 0, Fehler, gestörte Auffrischung,
   abgelaufen, offline. Je Fall werden die drei Orte der Hülle gemessen:

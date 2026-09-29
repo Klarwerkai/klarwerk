@@ -24,28 +24,26 @@
 //       Tastaturweg auf „Prüfen" löst den Neuabruf aus → richtige neue Zahl im Kopfband; Tastaturweg
 //       zurück auf „Start" → auch „Weitere Bereiche" trägt die richtige Zahl wieder;
 //   B   schmal (390 px): derselbe Ablauf im Drawer — Zahl, 35 s → weg, Tastaturweg → wieder da.
+//
+// „OHNE ABRUF" (BEN, Lauf 3 R1, B2): gemessen an den gestarteten Anfragen je Zählquelle
+// (`__anfragen`), nicht an den erfolgreichen Antworten — ein gescheiterter oder noch laufender
+// Abruf zählt mit. Der Mitschnitt und seine Rechnung stehen in `abrufmitschnitt.ts` und sind in
+// `abrufmitschnitt-kalibrierung.test.ts` gegen genau diese Gegenfälle kalibriert.
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { type Seite, type Strecke, fn, oeffne, strecke, warteBis } from "../design/h1-chromium";
-
-interface Abruf {
-  readonly pfad: string;
-  readonly status: number;
-  readonly t: number;
-}
+import {
+  type Abruf,
+  type Anfrage,
+  MITSCHNITT,
+  ZAEHLQUELLEN,
+  anfragenJeQuelle,
+  herkunft,
+} from "./abrufmitschnitt";
 
 type Uhrseite = Seite & {
   clock: { install(o?: { time?: number }): Promise<void>; fastForward(ms: number): Promise<void> };
   focus(selector: string): Promise<void>;
 };
-
-/** Die fünf Quellen der Kopfband-Zahlen (`app/useNavBadges.ts`). */
-const ZAEHLQUELLEN = [
-  "/api/validation/board",
-  "/api/conflicts",
-  "/api/duplicates",
-  "/api/gaps/summary",
-  "/api/lifecycle/pending",
-] as const;
 
 const FRIST_UEBERSCHRITTEN_MS = 35_000;
 
@@ -55,38 +53,13 @@ const BEREICH_ZAHL = '[data-testid="bereich-aufgaben"] .kw-menue-wert';
 const DRAWER_ZAHL = '[data-testid="drawer-punkt-validierung"] .kw-menue-wert';
 const DRAWER_PUNKT = '[data-testid="drawer-punkt-validierung"]';
 
-// Der Mitschnitt läuft VOR jedem Skript der Seite und überlebt keinen Neuaufbau — er wird bei jedem
-// Laden neu gesetzt. `Date.now()` ist dort die Seitenuhr, also die, die auch die Frist misst.
-const MITSCHNITT = `(() => {
-  const roh = window.fetch.bind(window);
-  window.__abrufe = [];
-  window.fetch = async (eingabe, init) => {
-    const url = typeof eingabe === "string" ? eingabe : (eingabe && eingabe.url) || String(eingabe);
-    const antwort = await roh(eingabe, init);
-    try {
-      window.__abrufe.push({ pfad: new URL(url, location.href).pathname, status: antwort.status, t: Date.now() });
-    } catch (e) {}
-    return antwort;
-  };
-})();`;
-
 async function abrufe(seite: Seite): Promise<Abruf[]> {
   return seite.evaluate<Abruf[]>(fn("() => window.__abrufe || []"));
 }
 
-/** Je Zählquelle: wie oft erfolgreich geholt, und wann (Seitenzeit) zuletzt. */
-function herkunft(
-  liste: readonly Abruf[],
-): Record<string, { anzahl: number; zuletzt: number | null }> {
-  const ergebnis: Record<string, { anzahl: number; zuletzt: number | null }> = {};
-  for (const quelle of ZAEHLQUELLEN) {
-    const treffer = liste.filter((a) => a.pfad === quelle && a.status === 200);
-    ergebnis[quelle] = {
-      anzahl: treffer.length,
-      zuletzt: treffer.length > 0 ? (treffer[treffer.length - 1]?.t ?? null) : null,
-    };
-  }
-  return ergebnis;
+/** Gestartete Anfragen je Zählquelle — einschließlich gescheiterter und noch laufender. */
+async function anfragen(seite: Seite): Promise<Record<string, number>> {
+  return anfragenJeQuelle(await seite.evaluate<Anfrage[]>(fn("() => window.__anfragen || []")));
 }
 
 async function text(seite: Seite, selektor: string): Promise<string | null> {
@@ -206,14 +179,22 @@ for (const sprache of ["de", "en"] as const) {
       await weitereBereicheMitTastatur(sp);
       expect(await text(sp, BEREICH_ZAHL)).toBe("2");
       const vorher = herkunft(await abrufe(sp));
+      const gestartetVorher = await anfragen(sp);
       console.info(`R-1558 ${sprache} · A1 · Herkunft je Zählquelle: ${JSON.stringify(vorher)}`);
 
       // (2) 35 s Seitenzeit — ohne jeden Abruf einer Zählquelle.
       await sp.clock.fastForward(FRIST_UEBERSCHRITTEN_MS);
       await warteBis(sp, "(sel) => document.querySelector(sel) === null", KOPF_ZAHL);
       const danach = herkunft(await abrufe(sp));
-      console.info(`R-1558 ${sprache} · A2 · nach 35 s: ${JSON.stringify(danach)}`);
-      expect(danach, "in den 35 s ging keine Zählquelle zum Server").toEqual(vorher);
+      const gestartetDanach = await anfragen(sp);
+      console.info(
+        `R-1558 ${sprache} · A2 · nach 35 s: ${JSON.stringify(danach)} · gestartet ${JSON.stringify(gestartetDanach)}`,
+      );
+      expect(
+        gestartetDanach,
+        "in den 35 s startete keine Zählquelle einen Abruf — auch keinen gescheiterten oder laufenden",
+      ).toEqual(gestartetVorher);
+      expect(danach, "und keine Zählquelle wurde neu bestätigt").toEqual(vorher);
       expect(await text(sp, KOPF_ZAHL)).toBeNull();
       expect(await text(sp, BEREICH_ZAHL)).toBeNull();
       // Der Punkt selbst steht unverändert — nur die Zahl ist weg, kein Ersatzzeichen.
@@ -273,10 +254,15 @@ for (const sprache of ["de", "en"] as const) {
         DRAWER_ZAHL,
       );
       const vorher = herkunft(await abrufe(sp));
+      const gestartetVorher = await anfragen(sp);
 
       await sp.clock.fastForward(FRIST_UEBERSCHRITTEN_MS);
       await warteBis(sp, "(sel) => document.querySelector(sel) === null", DRAWER_ZAHL);
-      expect(herkunft(await abrufe(sp)), "in den 35 s ging keine Zählquelle zum Server").toEqual(
+      expect(
+        await anfragen(sp),
+        "in den 35 s startete keine Zählquelle einen Abruf — auch keinen gescheiterten oder laufenden",
+      ).toEqual(gestartetVorher);
+      expect(herkunft(await abrufe(sp)), "und keine Zählquelle wurde neu bestätigt").toEqual(
         vorher,
       );
       expect(await text(sp, DRAWER_PUNKT)).not.toBeNull();
