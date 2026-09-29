@@ -21,9 +21,18 @@ import { StatusPill } from "../../trust/StatusPill";
 // EIN Stück: fällt die Kategorie weg, fällt das Label mit. Der Zustand steht dann allein als
 // `StatusPill` da — die im Produkt übliche, selbsterklärende Darstellung eines Zustands.
 //
-// Der Zustand wird von der BESTEHENDEN `StatusPill` beschriftet (sie übersetzt über
-// `t("status.<wert>")`). Kein zweiter Statuswortschatz, keine eigene Ableitung — der rohe `KoStatus`
-// reist bis hierher. Die Kategorie ist ein roher Bestandswert und wird unübersetzt gezeigt.
+// Der Zustand steht in der BESTEHENDEN `StatusPill` (Farbe je Zustand); der rohe `KoStatus` reist
+// bis hierher, abgeleitet wird nichts. Die Kategorie ist ein roher Bestandswert, unübersetzt.
+//
+// P-M3b (Runde 2, BEN-3) — DAS WORT IST DAS DER TREFFERLISTE, NICHT DAS DES STATUSFELDS. Web und
+// Word-Panel zeigen denselben Prüfstand: „Validiert“ und „noch nicht geprüft“ (Pedi 05.09., M3
+// „Haben wir das schon?“; im Panel `askStatusValidiert`/`bestandNochNichtGeprueft`). Das allgemeine
+// „Offen“ der StatusPill sagte hier dasselbe mit einem anderen Wort. Geprüft gegen EINE Tabelle:
+// tests/erfassungs-konfliktpruefung/pruefstand-wortlaut.test.tsx.
+const PRUEFSTAND_KEY: Record<KoStatus, string> = {
+  offen: "intake.live.pruefstand.offen",
+  validiert: "intake.live.pruefstand.validiert",
+};
 function Fundort({
   koStatus,
   koCategory,
@@ -46,7 +55,9 @@ function Fundort({
           <span className="font-medium">{koCategory}</span>
         </>
       )}
-      {koStatus === null ? null : <StatusPill status={koStatus} />}
+      {koStatus === null ? null : (
+        <StatusPill status={koStatus} label={t(PRUEFSTAND_KEY[koStatus])} />
+      )}
     </div>
   );
 }

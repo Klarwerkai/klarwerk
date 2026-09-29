@@ -140,15 +140,55 @@ export function selectCandidates(
   return (Number.isFinite(cap) ? scored.slice(0, Math.max(0, cap)) : scored).map((x) => x.subject);
 }
 
+// Typografische Schreibvarianten DESSELBEN Zeichens (Anführungszeichen, Bindestriche, Auslassung).
+// Sie tragen keinen Sinn, ein Modell gibt sie oft anders zurück als der Text sie schreibt.
+const ZITAT_VARIANTEN: readonly (readonly [RegExp, string])[] = [
+  [/[‘’‚‛′‹›`´]/g, "'"],
+  [/[“”„‟″«»]/g, '"'],
+  [/[‐‑‒–—―−]/g, "-"],
+  [/…/g, "..."],
+];
+
+// Zitatvergleich (R-1117): Groß-/Kleinschreibung, Leerraum und typografische Varianten sind
+// gleichgültig — SATZZEICHEN NICHT. `normalizeForCompare` ersetzt sie durch Leerraum und ist für die
+// Textnähe (Trigramme) gemacht; als Zitatprüfung ließ sie „1,5 bar“ als Beleg für „1–5 bar“ durch
+// (Bens Gegenprobe, Runde 1). Nur an den RÄNDERN des Zitats fallen Anführungszeichen, Auslassung
+// und Satzendezeichen weg: ein Modell setzt den Schlusspunkt oder die Anführung oft selbst.
+function normalizeForQuote(text: string): string {
+  let t = text.normalize("NFC").toLowerCase();
+  for (const [muster, ersatz] of ZITAT_VARIANTEN) {
+    t = t.replace(muster, ersatz);
+  }
+  return t.replace(/\s+/g, " ").trim();
+}
+
+function zitatKern(quote: string): string {
+  return normalizeForQuote(quote)
+    .replace(/^[\s"'.,;:!?]+/, "")
+    .replace(/[\s"'.,;:!?]+$/, "");
+}
+
 // G-2 (3.4 Schritt 4): Beide Belegzitate müssen WÖRTLICH in den jeweiligen Kerntexten vorkommen —
-// sonst wird das Urteil als Modell-Halluzination verworfen (kein Konflikt). Vergleich auf
-// normalisiertem Text (Robustheit gegen Leerraum/Satzzeichen), leeres Zitat gilt als Fehlschlag.
+// sonst wird das Urteil als Modell-Halluzination verworfen (kein Konflikt). Leeres Zitat gilt als
+// Fehlschlag. Was „wörtlich“ zulässt, steht bei `normalizeForQuote`. Der Fund muss an Wortgrenzen
+// stehen: „beträgt 1“ ist kein Beleg für „beträgt 15“.
 export function quoteFound(quote: string, core: string): boolean {
-  const q = normalizeForCompare(quote);
+  const q = zitatKern(quote);
   if (q.length === 0) {
     return false;
   }
-  return normalizeForCompare(core).includes(q);
+  const text = normalizeForQuote(core);
+  const wortzeichen = /[\p{L}\p{N}]/u;
+  for (let i = text.indexOf(q); i !== -1; i = text.indexOf(q, i + 1)) {
+    const davor = i > 0 ? text.charAt(i - 1) : "";
+    const danach = text.charAt(i + q.length);
+    const randLinks = !wortzeichen.test(q.charAt(0)) || !wortzeichen.test(davor);
+    const randRechts = !wortzeichen.test(q.charAt(q.length - 1)) || !wortzeichen.test(danach);
+    if (randLinks && randRechts) {
+      return true;
+    }
+  }
+  return false;
 }
 
 export function quotesVerbatim(verdict: ConflictVerdict, coreA: string, coreB: string): boolean {

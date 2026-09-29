@@ -824,6 +824,12 @@ const INVENTAR: readonly string[] = [
   // mit Zustimmung KEINEN Cloudweg oeffnet (er fordert nie `want:"deep"` an) und dass die
   // Einstufung des nicht eingestuften Textes an der Klara-Bindung haengt, nicht am Marker allein.
   "tests/m3-dokumentweg-panel/w6-anschluss-echte-route.test.ts",
+  // P-M3b (29.09.2026, Nacharbeit BEN-3): EIN Prüfstand-Wortlaut für die Web-Live-Zone und die
+  // Bestandsliste des Word-Panels. Von der Achse `komponente` gefunden (die Datei führt das
+  // ausgelieferte Aufgabenfenster über `createKlaraPanel` aus). „klara" steht nicht im Pfad, K5
+  // bleibt unverändert. Sachlich Klara-Regression: sie hält fest, dass das Panel für eingereichte
+  // und validierte Treffer in de/en/nl dasselbe Wort nennt wie die Web-Fläche.
+  "tests/erfassungs-konfliktpruefung/pruefstand-wortlaut.test.tsx",
   // JOB 3052 D6 (04.09.2026): das Wissensnetz der Web-App gegen das Zielbild Wissensnetz.dc.html,
   // in Chromium gemessen (tests/design/zielbild-wissensnetz.test.ts). Von der Inhaltsachse
   // `palette` gefunden: der statische Leseweg loest die Token `rgb(var(--kw-…))` der gerenderten

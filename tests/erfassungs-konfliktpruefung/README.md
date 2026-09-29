@@ -6,9 +6,29 @@ vor. Abgeglichen wurde gegen die Kriterien im Auftrag und gegen Code, Tests und 
 dieses Repositories. Die Nummern R-/P-/N- kommen im Repository nicht vor; die Zuordnung folgt dem
 Wortlaut und den internen Namen (A27/A28/N1/N5/M3/Q6/KA7, JOB-Nummern). „Fassung“ ist der erste
 `ship: 1.0.0-beta.1.NNN`-Commit, der den liefernden Commit enthält (`git log --ancestry-path`).
-Commits vor dem 02.09.2026 fallen alle auf `.30`, den ersten Ship-Commit.
+Commits vor dem 02.09.2026 fallen alle auf `.30`, den ersten Ship-Commit. Runde 2 baut auf dem
+festgehaltenen Stand von Runde 1 auf (`1328f747`).
 
-## In diesem Lauf geändert
+## Runde 2 — Nacharbeit nach Bens Urteil
+
+| Befund | Änderung | Beleg |
+|---|---|---|
+| BEN-1 · R-1117/R-0196/R-1096: erfundenes, sinnveränderndes Zitat wurde akzeptiert. Die Zitatprüfung `quoteFound` nutzte `normalizeForCompare`, die jedes Satzzeichen zu Leerraum macht: „1,5 bar“ galt als Beleg für „1–5 bar“, der Konflikt wurde angelegt. | `services/conflicts/src/detect.ts`: eigene Zitatnormalisierung `normalizeForQuote`. Gleichgültig sind nur Groß-/Kleinschreibung, Leerraum und typografische Varianten desselben Zeichens (Anführungszeichen, Binde-/Gedankenstriche, Auslassungszeichen). Satzzeichen im Inneren zählen. Am Rand des Zitats fallen Anführung, Auslassung und Satzendezeichen weg (Modelle setzen sie selbst). Der Fund muss an Wortgrenzen stehen („beträgt 1“ belegt kein „beträgt 15“). `normalizeForCompare` bleibt für die Trigramm-Nähe unverändert. Dieselbe Prüfung gilt für die geteilten Zitate der Dublettenaspekte (`duplicate-detect.ts`, `verifiedAspects`). | `tests/erfassungs-konfliktpruefung/zitat-woertlich.test.ts` Z1–Z6 durch den echten `ConflictService.detectForSubject`: Z1 Kontrolle mit echtem Zitat (1 Konflikt); Z2 Bens Gegenprobe „1,5 bar“ (0); Z3 „1.5“/„15“ (0); Z4 Wortgrenze; Z5 fremdes Zitat (0); Z6 typografische Toleranz (1). Dazu `services/conflicts/src/detect.test.ts` „R-1117 (BEN-1): Satzzeichen zählen …“. **Rot am alten `detect.ts`:** Z2, Z3, Z4 und der neue Fall in `detect.test.ts` (4 von 18 Fällen beider Dateien). |
+| BEN-2 · R-0249 falsch zugeordnet | Zeile unten neu geschrieben: zwei Wege mit getrennter Wirkung, Ablösung des Vorfilters benannt, Belegreichweite je Test. R-0249 steht jetzt unter „teilweise“. | — |
+| BEN-3 · P-M3b Wortlaut nicht angeglichen | Maßgeblich ist Pedis jüngste Entscheidung vom 05.09.2026 (M3 „Haben wir das schon?“, CODEX-POC-ENTSCHEIDUNG-1): der Treffer nennt „Validiert“ bzw. „noch nicht geprüft“. Das Word-Panel zeigt das seit JOB 3093. Die Web-Live-Zone (`LiveReactionZone.tsx`, Fundortzeile) sagte „Offen“ und sagt jetzt dasselbe Wort: neue Texte `intake.live.pruefstand.offen/validiert` in de/en/nl, gleich den Panel-Texten `bestandNochNichtGeprueft`/`askStatusValidiert` („not yet reviewed“/„Validated“, „nog niet beoordeeld“/„Gevalideerd“). Die Farbe der `StatusPill` bleibt; sie nimmt dafür ein optionales `label`. Die Verträge bleiben getrennt (R-0718): Web liest `koStatus`, Word `pruefstand`. Das ältere „zu prüfen“ aus R-0240 ist damit abgelöst. | `tests/erfassungs-konfliktpruefung/pruefstand-wortlaut.test.tsx`: EINE Tabelle, 12 Fälle (2 Flächen × 3 Sprachen × 2 Zustände). Web gemountet an der Fundortzeile; Word am ausgelieferten Aufgabenfenster (`createKlaraPanel`, Klick auf „Haben wir das schon?“). **Rot am alten `LiveReactionZone.tsx`:** die drei Web-Fälle „offen“. Nachgeführt: `tests/fundort-live-check/fundort-in-der-live-zone.test.tsx` (D, G, H), `tests/live-check-verdrahtung/editor-mounted.test.tsx` (`pruefeAehnlichenFundort`), Inventar `tests/app/klara-regressionsinventar.test.ts`. |
+
+Nicht angeglichen ist die Einleitung beider Listen („Ähnliches existiert schon:“ im Web,
+„Dazu gibt es schon Vergleichbares (geprüft …):“ im Panel). P-M3b nennt ausdrücklich den
+Prüfstand-Wortlaut; die Einleitungen gehören zu verschiedenen Lagen (Live beim Tippen gegenüber
+datierter Einzelfrage) und sind nicht Gegenstand der Entscheidung vom 05.09.
+
+**Folge für die Lesbarkeit:** Unter einem ähnlichen Treffer können im Web jetzt zwei ähnliche Sätze
+nebeneinander stehen. Der Prüfstatus des Laufs sagt „Auf Widerspruch noch nicht geprüft.“, der
+Prüfstand des Treffers „noch nicht geprüft“. Sie meinen Verschiedenes (die Konfliktprüfung dieses
+Textes gegenüber der Validierung des gefundenen Eintrags). Der zweite steht als Zustandsmarke am
+Treffer. Ob das in der Oberfläche verständlich ist, ist nicht im Browser geprüft.
+
+## Runde 1 — geändert
 
 Nur Kommentare, kein Verhalten:
 
@@ -30,13 +50,13 @@ Das ist ein eigener kleiner Auftrag.
 
 | Kriterium | Geliefert mit (Commit · Fassung) | Beleg (Test) |
 |---|---|---|
-| R-0196, R-1096, R-1117: KI-Widerspruchsprüfung beim Einreichen gegen die 20 textnächsten, Konflikt nur mit wörtlichen Zitaten in beiden Texten, Fehlalarm schließbar, Löschen schließt offene Konflikte, Erkennungsfehler kippt das Einreichen nie | `d25e7dfe`, `bc87f455`, `7ec75f03` (WP-SUBMIT-ASYNC), `5150cd5a` (Deckel 20) · .30; `7c0cdc14` JOB 3887 · .410 | `services/conflicts/src/detect.test.ts` (Halluzinations-Wächter G-2), `detect-service.test.ts` (Fehlalarm → dismissed), `services/conflicts/src/service.test.ts` („gelöschtes KO beendet seine offenen Konflikte“), `tests/app/submit-async-check.test.ts`, `tests/conflicts/detection-cap-honesty.test.ts` |
+| R-0196, R-1096: KI-Widerspruchsprüfung beim Einreichen gegen die 20 textnächsten, Fehlalarm schließbar, Löschen schließt offene Konflikte, Erkennungsfehler kippt das Einreichen nie | `d25e7dfe`, `bc87f455`, `7ec75f03` (WP-SUBMIT-ASYNC), `5150cd5a` (Deckel 20) · .30; `7c0cdc14` JOB 3887 · .410 | `detect-service.test.ts` (Fehlalarm → dismissed), `services/conflicts/src/service.test.ts` („gelöschtes KO beendet seine offenen Konflikte“), `tests/app/submit-async-check.test.ts`, `tests/conflicts/detection-cap-honesty.test.ts` |
+| R-1117 (und die Zitatzusage in R-0196/R-1096): nur wörtliche Belegzitate | **Bis Runde 1 NICHT erfüllt** (BEN-1): die G-2-Prüfung seit `bc87f455` · .30 verwarf nur völlig fremde Zitate, sinnverändernde Satzzeichen-Abweichungen gingen durch. Behoben in Runde 2 dieses Laufs (noch ohne Fassung). | `tests/erfassungs-konfliktpruefung/zitat-woertlich.test.ts` Z1–Z6, `services/conflicts/src/detect.test.ts` (G-2 und „R-1117 (BEN-1)“) |
 | R-1072: Dubletten beim Einreichen gegen die 20 nächsten; ab 0,85 deterministischer Eintrag, sonst KI-Urteil; eigene Seite mit Grad, geteilten Zitaten, Eigenanteilen und Empfehlung; Anzeige-Schwelle vom Verwalter einstellbar | `bc87f455`, `5150cd5a` · .30; `1df5dad0` JOB 3469 · .311 | `services/conflicts/src/duplicate-detect.test.ts`, `overlap-settings.test.ts`, `overlap-service.test.ts`, `services/app/src/duplicate-routes.test.ts`, `tests/duplicates/*`, `tests/review26-duplikat-prozente/*` |
 | R-1097: ehrlicher Satz, gegen wie viel geprüft wurde | `5150cd5a` · .30; `c56e03e2` JOB 3068 · .82; `2a795c1e` JOB 3484 · .336 | `tests/conflicts/detection-cap-honesty.test.ts`, `coverage-terms.test.ts`, `tests/validation/ai-check-coverage-*-mounted.test.tsx`, `tests/capture/ai-check-coverage-card-mounted.test.tsx` |
 | R-0197, R-0289, R-0547, R-1596, P1, R-1502/A27: der Autor sieht dauerhaft am eigenen Objekt, dass es kollidiert. Kein fremder Inhalt wird gezeigt, der Deckungssatz steht dabei, eine Rolle ist nicht nötig. | `7fb6acef` JOB 1500, `9b513a06` JOB 1546 (A28) · .30; `cbc458ec` JOB 3032 (Deckung Server) · .44; `3d5af224` JOB 3025 (A27 Anzeige) · .53; `c56e03e2` JOB 3068 (Satz immer sichtbar) · .82 | `services/app/src/duplicate-signal.test.ts` (G-1…G-5 nur Existenz und Art), `tests/ko/a28-signal-route.test.ts`, `tests/ko/job3025-a27-mounted.test.tsx` (R-h/R-i Expertin, nur eigenes Objekt), `tests/start/job3025-a27-start-mounted.test.tsx`, `tests/eigenes-signal/n5-deckung-am-eigenen-objekt.test.ts`, `tests/bibliothek/job3068-deckung-sichtbar.test.tsx` |
 | Q6, Q6b, Q6e: ohne Verbindung ist der letzte Stand als solcher erkennbar, keine Entwarnung (Lesefläche, Startseite, Startkarten FÜR DICH/ZULETZT) | `7fdb5276` JOB 3084 · .103; `b2f90233` JOB 3098 · .120; `a63fda7b` JOB 3118 · .137 | `tests/kollision-netztrennung/regel-und-netz.test.ts` (N-1 = Befund R-1585), `lesenflaeche-mounted.test.tsx` (L-5-experte, L-6), `startflaeche-mounted.test.tsx`, `start-fuerdich-offline.test.tsx` (T-3a KP2, T-3b/c KP3, S-6/S-9, Z…) |
-| N1, R-0240: Prüfung auch gegen eingereichte, ungeprüfte Einträge; Fundort und Art (Dublette/Widerspruch) am Treffer; „nichts gefunden“ wird ausdrücklich gesagt | `ac005c86` JOB 3020 · .39; `bd958311` JOB 3031 · .43; `ca7c4070` JOB 3045 · .69; `5904c20e` JOB 3093 · .136; `de57697d` JOB 3094 · .154 | `tests/pruefung-gegen-alles/*`, `tests/n1-bestand-im-panel/*` (F3 „ein ENTWURF erscheint NICHT“), `tests/fundort-live-check/fundort-in-der-live-zone.test.tsx` |
-| R-0249: die Bedeutungssuche verengt nur die Kandidaten, die genaue Prüfung bleibt vollständig | `72f7c592` · .30; `9053dd6d` JOB 3583 · .296 | `services/app/src/duplicate-detection.test.ts` („D-AISTATE V2.2: der Prefilter VERENGT die Erkennung NICHT mehr“), `tests/app/w6-prefilter-zustandsmatrix.test.ts` |
+| N1, R-0240: Prüfung auch gegen eingereichte, ungeprüfte Einträge; Fundort und Art (Dublette/Widerspruch) am Treffer; „nichts gefunden“ wird ausdrücklich gesagt | `ac005c86` JOB 3020 · .39; `bd958311` JOB 3031 · .43; `ca7c4070` JOB 3045 · .69; `5904c20e` JOB 3093 · .136; `de57697d` JOB 3094 · .154 | `tests/pruefung-gegen-alles/*`, `tests/n1-bestand-im-panel/*` (F3 „ein ENTWURF erscheint NICHT“), `tests/fundort-live-check/fundort-in-der-live-zone.test.tsx`; Wortlaut des Fundorts seit Runde 2 gleich dem Panel (P-M3b) |
 | R-0199: Pedis Dokument liegt doppelt, ist ungeprüft und hat keine Stufe; die Validierung zeigt das | `48de61b4` JOB 3112 · .132 | `tests/validierung-stufe/doppelhinweis-regel.test.ts`, `doppelhinweis-auf-pruefkarte.test.tsx`, `stufenfrage-*.test.tsx`, `tests/app/job2614-bodytext-kette.test.ts` („offen sperrt“) |
 | LIVE-CHECK-VERDRAHTUNG: Herkunft und Zustimmung am Draht, Ähnlichkeit und Prüfstatus getrennt; Verdacht der zwölf Suchwörter | `d7a27aaa` JOB 3427 · .261; `e8845b1f` JOB 3556 · .277; `3a10855b` JOB 3574 (zwölf längste Wörter aus dem ganzen Text) · .287 | `tests/live-check-verdrahtung/*` (K1a–g, F1–F3b, H1–H7), `tests/live-check-suchwoerter/*` |
 | P-M3b Serverteil: handvergebener Titel verhindert den Fund bei gleichem Inhalt nicht mehr | `b8db80a7` JOB 3128 · .164 | `tests/m3-bestand-titel/server-bestand-titel.test.ts`, `services/conflicts/src/duplicate-detect.test.ts` |
@@ -63,13 +83,7 @@ Das ist ein eigener kleiner Auftrag.
 - **R-0240/N1 („auch als Entwurf“) und Pedis Entscheidung N1c vom 05.09. widersprechen sich.**
   Entwürfe sind keine Wissensobjekte und werden nicht geprüft (`check-text-routes.ts`, Kommentar zu
   `pruefstand`; Test F3). Umgesetzt ist die jüngere Entscheidung. Der Fundort kennt deshalb nur
-  „Validiert“ und „noch nicht geprüft“ (Word) bzw. „Validiert“ und „Offen“ (Web).
-- **P-M3b, Wortlaut der beiden Trefferlisten: nicht angeglichen.** Word sagt „Dazu gibt es schon
-  Vergleichbares (geprüft …):“ und „noch nicht geprüft“. Web sagt „Ähnliches existiert schon:“ und
-  „Offen“ (`StatusPill`). Das Web-Wort ist eine Absicht von JOB 3045 („kein zweiter
-  Statuswortschatz“) und in `tests/fundort-live-check` festgeschrieben. Die Quellen nennen drei
-  Wortlaute: R-0240 „zu prüfen“, Pedi „noch nicht geprüft“, Web „Offen“. Deshalb nicht einseitig
-  geändert; zuerst muss der Wortlaut entschieden werden.
+  „Validiert“ und „noch nicht geprüft“, seit Runde 2 auf beiden Flächen (P-M3b).
 - **R-0194 teilweise.** Kandidaten entstehen aus Metadaten (Kategorie, Anlage, Tags), aus Text
   (Trigramm-Jaccard) und aus dem Abschnittsvergleich (`DuplicateCompare.tsx`); der Mensch
   entscheidet. **Ähnlichkeitsprüfsummen (SimHash/MinHash) gibt es nicht.**
