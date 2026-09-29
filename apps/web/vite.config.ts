@@ -4,7 +4,9 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import react from "@vitejs/plugin-react";
 import { type Plugin, type ResolvedConfig, defineConfig } from "vite";
+import { klaraStandText } from "./src/lib/klaraStand";
 import { textmodulVertrag } from "./src/texte/intern/sammeln";
+import { APP_VERSION } from "./src/version";
 
 // ================================================================================================
 // JOB 4367 · DER VERTRAG DER TEXTMODULE, GEPRÜFT IM PRODUKTBUILD.
@@ -39,7 +41,8 @@ import { textmodulVertrag } from "./src/texte/intern/sammeln";
 
 // AUFTRAG-mega69 Block E: der sichtbare Auslieferungsstand von Klara (public/word-addin/
 // taskpane.html trägt den Platzhalter __KLARA_STAND__ und zeigt ihn unauffällig an). Der Wert
-// entsteht HIER, beim Bauen — Datum/Uhrzeit (UTC) plus, wenn verfügbar, das kurze Git-Kürzel.
+// entsteht HIER, beim Bauen — Programmversion (`APP_VERSION`, wie die Web-Topbar; R-1028),
+// Datum/Uhrzeit (UTC) plus, wenn verfügbar, das kurze Git-Kürzel (`src/lib/klaraStand.ts`).
 // Damit ändert er sich bei jeder Auslieferung von selbst; niemand pflegt eine Zahl von Hand, und
 // es gibt keine zweite Wahrheit neben dem Build. Ohne .git (z. B. Docker-Kontext ohne Repo)
 // bleibt ehrlich nur der Zeitstempel. public/ wird von Vite 1:1 kopiert (kein Transform-Hook für
@@ -71,9 +74,8 @@ function klaraStand(): Plugin {
       } catch {
         // ohne Git-Kontext trägt der Stand nur den Zeitstempel — ehrlich statt erfunden
       }
-      const stamp = `${new Date().toISOString().slice(0, 16).replace("T", " ")}Z${
-        sha ? ` · ${sha}` : ""
-      }`;
+      // R-1028: vorn steht die Programmversion aus DERSELBEN Konstante wie in der Web-Topbar.
+      const stamp = klaraStandText(APP_VERSION, new Date(), sha);
       // replaceAll: der Platzhalter steht auch in erklärenden Kommentaren der Datei — nach dem
       // Stempeln trägt die ausgelieferte Fassung überall denselben Stand (replace() erwischte nur
       // das erste Vorkommen, und das war ein Kommentar).

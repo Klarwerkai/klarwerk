@@ -212,6 +212,7 @@ import { type SemanticPrefilter, removeKoFromDuplicatePrefilter } from "./duplic
 import { cappedEmbeddingProvider } from "./embed-concurrency";
 import type { FactoryReset } from "./factory-reset";
 import { schalterAn } from "./feature-flags";
+import { letzteKiLaeufe } from "./health-ki-laeufe";
 import {
   type SessionUser,
   isInternalOnlyError,
@@ -2350,10 +2351,18 @@ export function buildApp(
   // `status` bleibt unverändert `"ok"` — der Container-Healthcheck (`Dockerfile:42-43`) prüft
   // genau dieses Feld, und die bestehenden Bestandstests binden es. Die beiden neuen Felder sind
   // rein additiv.
+  //
+  // R-0794 (deploy-health-commit, Ben B8): dieselbe Adresse nennt zusätzlich den KI-Zustand
+  // (`ai` — wortgleich zu /api/ai-status, dieselbe `publicStatus()`, keine zweite Wahrheit) und die
+  // letzten KI-Läufe (`aiRuns`, abstrahiert, s. `health-ki-laeufe.ts`). Anders als die Statusroute
+  // stößt /health KEINEN Erreichbarkeits-Probe an: der Container-Healthcheck fragt alle 30 s, und
+  // das soll kein Modell-Ping werden — `ai.reachable` ist hier der zuletzt gemessene Stand.
   app.get("/health", async () => ({
     status: "ok",
     version: buildVersion(),
     commit: buildCommit(),
+    ai: services.reasoner.publicStatus(),
+    aiRuns: await letzteKiLaeufe(services.modelRuns),
   }));
   // FR-RSN-05 + WP-VIP2-GATE (bens P1): die beiden OEFFENTLICHEN Status-Routen sind ABSTRAHIERT —
   // KEIN Provider-/Modellname (der stand hier frueher anonym lesbar). Provider-Details liefert
