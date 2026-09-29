@@ -7,6 +7,15 @@
 > `PROJECT_CONTEXT/13_ASSISTENT_ZWISCHENBERICHT.md` (Rohstand: `docs/boss-assistant/`).
 > Live-Version dort bestätigt: **v1.0.0-beta.1.4**.
 
+## 29.09.2026 — Aufnahme „Gesamt-Erstnutzerführung“ (Abgleich + R-0474)
+
+- Die Nulltreffer von „Gehe zu …“ und der Hilfesuche bieten jetzt die Eingabe als Frage an
+  (`/fragen?q=…`; nur wenn die Rolle „Fragen“ erreicht). Texte in `apps/web/src/texte/erstnutzer.ts`.
+- Abgleich aller zugeordneten Anliegen mit Belegen, abgelösten Teilen (JOB 3064 H5) und offenen
+  Punkten: `tests/erstnutzerfuehrung/README.md`. Offen bzw. mit Entscheidungsbedarf (Pedi):
+  „Missions“-Einstiegsseiten (optional), eine Fähigkeitsübersicht für Erstnutzer (R-1012) und die
+  Browser-Messung der Hürden U1–U3.
+
 ## 26.09.2026 — FE-003 Seitentutorial „Fragen“ (Pilot)
 
 - Knopf „Tutorial“ unter dem Kopfband (nur `/fragen`), aufklappender Unterricht in 7 Schritten mit

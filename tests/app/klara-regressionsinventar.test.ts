@@ -1148,6 +1148,14 @@ const INVENTAR: readonly string[] = [
   // gepinnten Inventar — Inventar nachfuehren: expected [ Array(1) ] to deeply equal []`; erst
   // danach wurde diese Zeile angefasst.
   "tests/wiki-orientierung/gliederung-mit-zeiger-chromium.test.ts",
+  // AUFNAHME 20260922 · GESAMT-ERSTNUTZERFÜHRUNG (29.09.2026), R-0474: der Nulltreffer von
+  // „Gehe zu …" und der Hilfesuche. Die Datei bedient die Schnellnavigation über die gemeinsame
+  // Vorrichtung (`paletteOeffnen`, `paletteTippen`) und kommt deshalb — wie die
+  // `navigationsnamen/palette-*`-Dateien — über die Inhaltsachse `palette` herein. „klara" steht
+  // nicht in ihrem Pfad, K5 bleibt unveraendert. GEMESSEN, NICHT GESETZT: vor dieser Zeile meldete
+  // K2 lokal `neu im Baum, aber nicht im gepinnten Inventar — Inventar nachfuehren: expected
+  // [ Array(1) ] to deeply equal []` mit genau diesem Pfad.
+  "tests/erstnutzerfuehrung/nulltreffer-naechster-schritt.test.tsx",
 ];
 
 // ------------------------------------------------------------------------------------------------
