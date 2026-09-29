@@ -13,155 +13,13 @@
 // `./pg-pruefplatz` (isoliert über `KLARWERK_PG_TEST_URL`, sonst Testcontainer, sonst ROT).
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createPool, migrate } from "../../services/app/src/db";
-import type { KnowledgeObject } from "../../services/knowledge-object";
 import {
   PgEvidenceRepo,
   PgKoRepo,
   PgKoVersionRepo,
 } from "../../services/knowledge-object/src/repo-pg";
+import { erwartet, faelle } from "./job2685-anhang-bestand";
 import { type IsoliertePg, oeffneIsoliertePg } from "./pg-pruefplatz";
-
-const HOCHLADENDER = "u-anna";
-const FREMDER = "u-bert";
-
-function ko(overrides: Partial<KnowledgeObject> = {}): KnowledgeObject {
-  return {
-    id: "ko-1",
-    title: "Lieferzeiten",
-    statement: "Fuenf Werktage.",
-    conditions: [],
-    measures: [],
-    type: "best_practice",
-    category: "Logistik",
-    tags: [],
-    confidence: 50,
-    trust: 80,
-    status: "validiert",
-    version: 1,
-    originalAuthor: HOCHLADENDER,
-    author: HOCHLADENDER,
-    neededValidations: 2,
-    assignments: [],
-    asset: null,
-    createdAt: "2026-07-01T10:00:00.000Z",
-    history: [],
-    comments: [],
-    attachments: [],
-    sources: [],
-    bodyHtml: "<p>Anlage freischalten.</p>",
-    ...overrides,
-  } as KnowledgeObject;
-}
-
-function text(objectId: string): string {
-  return `<p>Siehe <img src="/api/objects/${objectId}/raw"></p>`;
-}
-
-interface Fall {
-  objectId: string;
-  ko: KnowledgeObject;
-  fassungen: { author: string; snapshot: KnowledgeObject }[];
-  belege: { objectId: string; createdBy: string }[];
-}
-
-// Elf Fundarten (wie im schnellen Test), je einmal lebend und einmal im Papierkorb; dazu zwei
-// Sonderfälle für die LIKE-Entwertung: eine Kennung MIT `%`/`_`, und ein Objekt, dessen Text einer
-// nicht entwerteten Fassung dieser Kennung entspräche.
-function faelle(): Fall[] {
-  const out: Fall[] = [];
-  let n = 0;
-  for (const fundart of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]) {
-    for (const getrasht of [false, true]) {
-      n += 1;
-      const objectId = `obj-${n}`;
-      const koId = `ko-${n}`;
-      const trash = getrasht ? { deletedAt: "2026-08-01T00:00:00.000Z" } : {};
-      const basis = ko({ id: koId, ...trash });
-      const fall: Fall = { objectId, ko: basis, fassungen: [], belege: [] };
-      const att = (author: string) => [
-        { id: `att-${n}`, name: "b.png", mime: "image/png", objectId, author },
-      ];
-      switch (fundart) {
-        case 2:
-          fall.ko = ko({ id: koId, attachments: att(HOCHLADENDER) as never, ...trash });
-          break;
-        case 3:
-          fall.ko = ko({ id: koId, attachments: att(FREMDER) as never, ...trash });
-          break;
-        case 4:
-          fall.ko = ko({ id: koId, bodyHtml: text(objectId), ...trash });
-          break;
-        case 5:
-        case 6:
-          fall.fassungen.push({
-            author: fundart === 5 ? HOCHLADENDER : FREMDER,
-            snapshot: ko({ id: koId, bodyHtml: text(objectId) }),
-          });
-          break;
-        case 7:
-          fall.fassungen.push(
-            { author: FREMDER, snapshot: ko({ id: koId }) },
-            { author: HOCHLADENDER, snapshot: ko({ id: koId, bodyHtml: text(objectId) }) },
-          );
-          break;
-        case 8:
-          fall.fassungen.push(
-            { author: FREMDER, snapshot: ko({ id: koId, bodyHtml: text(objectId) }) },
-            { author: HOCHLADENDER, snapshot: ko({ id: koId, bodyHtml: text(objectId) }) },
-          );
-          break;
-        case 9:
-        case 10:
-          fall.belege.push({ objectId, createdBy: fundart === 9 ? HOCHLADENDER : FREMDER });
-          break;
-        case 11:
-          fall.fassungen.push({
-            author: HOCHLADENDER,
-            snapshot: ko({ id: koId, attachments: att(FREMDER) as never }),
-          });
-          break;
-        default:
-          break;
-      }
-      out.push(fall);
-    }
-  }
-  // LIKE-Entwertung: die Kennung `obj%son_der` darf NUR ihr eigenes Objekt finden — nicht das
-  // Nachbarobjekt, dessen Text `objXsonYder` einem nicht entwerteten Muster entspräche.
-  out.push({
-    objectId: "obj%son_der",
-    ko: ko({ id: "ko-sonder", bodyHtml: text("obj%son_der") }),
-    fassungen: [],
-    belege: [],
-  });
-  out.push({
-    objectId: "obj-nachbar",
-    ko: ko({ id: "ko-nachbar", bodyHtml: text("objXsonYder") }),
-    fassungen: [],
-    belege: [],
-  });
-  return out;
-}
-
-// Die vier Arme, nach Node übersetzt — dieselbe Übersetzung wie im schnellen Test.
-function armAnhang(s: KnowledgeObject, objectId: string): boolean {
-  return Array.isArray(s.attachments) && s.attachments.some((a) => a.objectId === objectId);
-}
-function armText(s: KnowledgeObject, objectId: string): boolean {
-  return typeof s.bodyHtml === "string" && s.bodyHtml.includes(objectId);
-}
-function erwartet(alle: Fall[], objectId: string): string[] {
-  return alle
-    .filter(
-      (f) =>
-        armAnhang(f.ko, objectId) ||
-        armText(f.ko, objectId) ||
-        f.belege.some((b) => b.objectId === objectId) ||
-        f.fassungen.some((v) => armAnhang(v.snapshot, objectId) || armText(v.snapshot, objectId)),
-    )
-    .map((f) => f.ko.id)
-    .sort();
-}
 
 describe("JOB 2685 D1 · listAnhangTraeger gegen echtes Postgres: Mengengleichheit je Kennung", () => {
   let pg: IsoliertePg | undefined;
@@ -224,8 +82,11 @@ describe("JOB 2685 D1 · listAnhangTraeger gegen echtes Postgres: Mengengleichhe
         expect(sql, `Kennung ${f.objectId}`).toEqual(node);
         treffer += sql.length;
       }
-      // Nicht leer: alle Fundarten außer F1 finden ihr Objekt (10 × 2 + 2 Sonderfälle).
-      expect(treffer).toBe(22);
+      // Nicht leer, und aus dem Bestand abgeleitet: F2 bis F11 finden je ihr eigenes Objekt,
+      // lebend und im Papierkorb (10 × 2 = 20). `obj%son_der` findet `ko-sonder` (1). F1 findet
+      // nichts, weil es keinen Arm trägt, und `obj-nachbar` findet nichts, weil kein Text diese
+      // Kennung enthält. Summe 21.
+      expect(treffer).toBe(21);
     } finally {
       await pool.end();
     }
@@ -268,7 +129,7 @@ describe("JOB 2685 D1 · listAnhangTraeger gegen echtes Postgres: Mengengleichhe
       await pool.query("SET enable_seqscan = off");
       const plan = await pool.query<{ "QUERY PLAN": string }>(
         "EXPLAIN SELECT id FROM kos WHERE data->'attachments' @> ANY($1::jsonb[])",
-        [['[{"objectId":"obj-3"}]']],
+        [['[{"objectId":"obj-03"}]']],
       );
       const text = plan.rows.map((r) => r["QUERY PLAN"]).join("\n");
       expect(text).toContain("idx_kos_anhang_traeger");
@@ -310,8 +171,8 @@ describe("JOB 2685 D1 · listAnhangTraeger gegen echtes Postgres: Mengengleichhe
     const pool = createPool(url);
     try {
       const repo = new PgKoRepo(pool);
-      // F2, getrasht: obj-4 → ko-4 trägt deletedAt.
-      const t = await repo.listAnhangTraeger("obj-4");
+      // F2, getrasht: obj-04 → ko-4 trägt deletedAt.
+      const t = await repo.listAnhangTraeger("obj-04");
       expect(t.map((k) => k.id)).toEqual(["ko-4"]);
       expect(t[0]?.deletedAt).toBe("2026-08-01T00:00:00.000Z");
     } finally {
