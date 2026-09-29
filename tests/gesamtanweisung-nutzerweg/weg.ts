@@ -699,7 +699,30 @@ export async function anweisungAnlegen(seite: Seite, titel: string): Promise<str
   return kennung;
 }
 
-/** Eine vorhandene Fassung als Baustein aufnehmen — alle drei Felder getippt, Knopf per Enter. */
+/**
+ * FE-001 · Der Titel eines Eintrags, wie ihn ein Mensch kennt — am Draht nachgesehen, mit der
+ * Sitzung DIESES Browsers. Die Fläche verlangt keine Kennung mehr; gesucht wird nach dem Titel.
+ */
+const TITEL_AM_DRAHT = `(id) => fetch("/api/kos/" + encodeURIComponent(id), { credentials: "include" })
+  .then((r) => (r.ok ? r.json() : null))
+  .then((k) => (k && typeof k.title === "string" ? k.title : ""))`;
+
+/** Die Kennung des gerade fokussierten Elements — für den Gang durch die Fassungs-Radiogruppe. */
+const AKTIVE_ID = '() => (document.activeElement && document.activeElement.id) || ""';
+
+/**
+ * Eine vorhandene Fassung als Baustein aufnehmen — FE-001: über die MENSCHLICHE Auswahl.
+ *
+ * Bis FE-001 wurden hier Eintragskennung, Fassungsnummer und Nachweis in drei Felder getippt. Die
+ * Fläche fragt keine Kennung mehr ab. Der Weg ist jetzt der eines Menschen, und er bleibt
+ * VOLLSTÄNDIG per Tastatur: Titel ins Suchfeld tippen → Enter → per Tab auf den Treffer → Enter →
+ * per Tab in die Fassungs-Radiogruppe → Pfeiltasten bis zur gewünschten Fassung → (optional) den
+ * Aufklapper „Für Fachleute" öffnen und den Nachweis tippen → per Tab auf „als Abschnitt aufnehmen"
+ * → Enter. Jede Station misst den sichtbaren Fokus (`tabUndEnter`/`tippeAb`).
+ *
+ * DIE SIGNATUR BLEIBT, damit die Strecken, die diesen Helfer rufen, unverändert dieselbe Bindung
+ * (Eintrag, Fassung, Nachweis) herstellen und in der Datenbank nachprüfen können.
+ */
 export async function bausteinAufnehmen(
   seite: Seite,
   koId: string,
@@ -707,13 +730,85 @@ export async function bausteinAufnehmen(
   nachweis: string,
   erwarteteZahl: number,
 ): Promise<void> {
-  await tippeAb(seite, "#ga-aufnahme-koid", koId, "Eintrag (Aufnahme)", 250, true);
-  await tippeAb(seite, "#ga-aufnahme-fassung", String(fassung), "Fassung (Aufnahme)", 20, false);
-  await tippeAb(seite, "#ga-aufnahme-nachweis", nachweis, "Nachweis (Aufnahme)", 20, false);
+  const titel = await seite.evaluate<string>(fn(TITEL_AM_DRAHT), koId);
+  expect(titel.length, `${MARKE}: der Eintrag ${koId} hat am Draht keinen Titel`).toBeGreaterThan(
+    0,
+  );
+
+  // Das Suchfeld behält nach einer Aufnahme seinen Begriff (man sucht oft Verwandtes weiter).
+  // Der neue Titel ERSETZT ihn deshalb: markieren, dann tippen — wie ein Mensch es tut.
+  await tippeAb(seite, "#ga-aufnahme-suche", "", "Suchfeld (Aufnahme)", 250, true);
+  await seite.evaluate<void>(
+    fn(
+      '() => { const e = document.activeElement; if (e && typeof e.select === "function") e.select(); }',
+    ),
+  );
+  await seite.keyboard.type(titel);
+  await seite.keyboard.press("Enter");
+  const treffer = `[data-testid="ga-aufnahme-treffer-eintrag"][data-ko="${koId}"]`;
+  await warte(
+    seite,
+    "(s) => !!document.querySelector(s)",
+    `der Suchtreffer „${titel}"`,
+    treffer,
+    45_000,
+  );
+  await tabUndEnter(seite, treffer, `Suchtreffer „${titel}"`, 40, false);
+
+  const ziel = `ga-aufnahme-fassung-${fassung}`;
+  await warte(
+    seite,
+    "(id) => !!document.getElementById(id)",
+    `die Fassung ${fassung} zur Auswahl`,
+    ziel,
+    45_000,
+  );
+  // In die Radiogruppe: Tab landet auf ihrem ersten Knopf (keiner ist vorausgewählt), die
+  // Pfeiltasten wandern und wählen — so, wie ein Mensch eine Radiogruppe bedient.
+  await tippeAb(
+    seite,
+    'input[name="ga-aufnahme-fassung"]',
+    "",
+    "Fassungsauswahl (Aufnahme)",
+    20,
+    false,
+  );
+  await seite.keyboard.press("Space");
+  for (let schritt = 0; schritt < 40; schritt += 1) {
+    if ((await seite.evaluate<string>(fn(AKTIVE_ID))) === ziel) {
+      break;
+    }
+    await seite.keyboard.press("ArrowDown");
+  }
+  expect(
+    await seite.evaluate<boolean>(
+      fn("(id) => { const e = document.getElementById(id); return !!e && e.checked; }"),
+      ziel,
+    ),
+    `${MARKE}: die Fassung ${fassung} liess sich per Tastatur nicht wählen`,
+  ).toBe(true);
+
+  if (nachweis.length > 0) {
+    // Der Aufklapper behält seinen Zustand über eine Aufnahme hinweg. Er wird nur geöffnet, wenn er
+    // zu ist — ein zweites Enter schlösse ihn, und das Feld wäre nicht mehr per Tab erreichbar.
+    const offen = await seite.evaluate<boolean>(
+      fn(`() => !!document.querySelector('[data-testid="ga-aufnahme-bestaetigen"] details')?.open`),
+    );
+    if (!offen) {
+      await tabUndEnter(
+        seite,
+        '[data-testid="ga-aufnahme-bestaetigen"] summary',
+        "Aufklapper „Für Fachleute“",
+        20,
+        false,
+      );
+    }
+    await tippeAb(seite, "#ga-aufnahme-nachweis", nachweis, "Nachweis (Aufnahme)", 20, false);
+  }
   await tabUndEnter(
     seite,
-    '[data-testid="ga-aufnahme"] button[type="submit"]',
-    "Absendeknopf der Bausteinaufnahme",
+    '[data-testid="ga-aufnahme-knopf"]',
+    "Knopf „als Abschnitt aufnehmen“",
     20,
     false,
   );
