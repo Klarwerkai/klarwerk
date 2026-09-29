@@ -1,0 +1,485 @@
+// @vitest-environment jsdom
+// ================================================================================================
+// Aufnahme `gesamt-erfassung-einstieg`, Runde 2 — Bens Befunde BEN-1 (N-0068) und BEN-2.
+// ================================================================================================
+//
+// BEN-1: „Datei → Formular (Experten)" und „Mehr → Anhänge → Anhänge verwalten" zeigten den älteren
+//        gesicherten Stand (bzw. ein leeres Formular), während auf dem Blatt ungesicherte Änderungen
+//        standen — ohne Rückfrage. Jetzt fragt das Blatt, sichert auf Zustimmung und öffnet das
+//        Formular erst danach; bei Ablehnung bleibt alles auf dem Blatt.
+// BEN-2: Ein getippter Titel über 90 Zeichen wurde still gekürzt gespeichert, während Feld und
+//        Bestätigung den vollen Titel zeigten.
+//
+// Aufbau wie `blatt-einstieg-mounted.test.tsx` (echte Fastify-Anwendung über `app.inject`, das
+// Blatt unter `CaptureFrontDoor` samt dem echten Arbeitsraum, nur der Modelllauf gefälscht). Die
+// Brücke verändert hier NICHTS am Draht.
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+process.env.KLARWERK_SKIP_KEYCHAIN = "1";
+
+const bruecke = vi.hoisted(() => ({
+  app: null as unknown as { inject: (o: Record<string, unknown>) => Promise<AnyRes> },
+  token: "",
+  /** Verändert die nächste Anlage `POST /api/drafts`, bevor sie beim Server ankommt. */
+  anlageUmbauen: null as null | ((rumpf: Record<string, unknown>) => Record<string, unknown>),
+  antworten: [] as { method: string; url: string; status: number }[],
+}));
+
+interface AnyRes {
+  statusCode: number;
+  body: string;
+}
+
+vi.mock("../../apps/web/src/api/endpoints", async (importOriginal) => {
+  const original = (await importOriginal()) as {
+    endpoints: Record<string, Record<string, unknown>>;
+  };
+  return {
+    ...original,
+    endpoints: {
+      ...original.endpoints,
+      reasoner: {
+        ...original.endpoints.reasoner,
+        status: vi.fn(async () => ({
+          active: true,
+          mode: "cloud",
+          reachable: "ok",
+          tasks: { structure: true, extract: true },
+        })),
+        config: vi.fn(async () => null),
+      },
+    },
+  };
+});
+
+import {
+  QueryClient,
+  QueryClientProvider,
+} from "../../apps/web/node_modules/@tanstack/react-query";
+import { act, createElement } from "../../apps/web/node_modules/react";
+import { createRoot } from "../../apps/web/node_modules/react-dom/client";
+import { MemoryRouter, Route, Routes } from "../../apps/web/node_modules/react-router-dom";
+import { AuthProvider } from "../../apps/web/src/app/AuthContext";
+import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
+import { RoleProvider } from "../../apps/web/src/app/RoleContext";
+import { ToastProvider } from "../../apps/web/src/app/ToastContext";
+import i18n from "../../apps/web/src/i18n";
+import { CaptureFrontDoor } from "../../apps/web/src/pages/CaptureFrontDoor";
+import { buildApp, buildServices } from "../../services/app/src/build-app";
+
+(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+Element.prototype.scrollIntoView = () => {};
+(globalThis as unknown as { scrollTo: () => void }).scrollTo = () => {};
+
+const TITEL = "Dosierpumpe nach Gebindewechsel entlüften";
+const KOERPER = "<p>Erst den Nullpunkt am HMI prüfen, dann die Pumpe DP-4 entlüften.</p>";
+
+let container: HTMLDivElement;
+let root: ReturnType<typeof createRoot> | null = null;
+
+const flush = async (): Promise<void> => {
+  for (let i = 0; i < 40; i++) {
+    await new Promise((r) => setTimeout(r, 0));
+  }
+};
+
+function brueckeAufbauen(): void {
+  (globalThis as unknown as { fetch: unknown }).fetch = async (
+    input: unknown,
+    init: { method?: string; body?: string; headers?: HeadersInit } = {},
+  ) => {
+    const url = String(input);
+    const method = init.method ?? "GET";
+    const headers: Record<string, string> = {};
+    new Headers(init.headers).forEach((value, key) => {
+      headers[key] = value;
+    });
+    if (bruecke.token) {
+      headers.authorization = `Bearer ${bruecke.token}`;
+    }
+    let body = init.body;
+    if (method === "POST" && /\/api\/drafts$/.test(url) && bruecke.anlageUmbauen && body) {
+      body = JSON.stringify(bruecke.anlageUmbauen(JSON.parse(body) as Record<string, unknown>));
+      bruecke.anlageUmbauen = null;
+    }
+    const res = await bruecke.app.inject({
+      method,
+      url,
+      headers,
+      ...(body !== undefined ? { payload: body } : {}),
+    });
+    bruecke.antworten.push({ method, url, status: res.statusCode });
+    return {
+      ok: res.statusCode < 400,
+      status: res.statusCode,
+      statusText: "",
+      text: async () => res.body,
+    };
+  };
+}
+
+async function serverStarten(): Promise<void> {
+  bruecke.app = buildApp(buildServices()) as unknown as typeof bruecke.app;
+  bruecke.token = "";
+  bruecke.anlageUmbauen = null;
+  bruecke.antworten = [];
+  await bruecke.app.inject({
+    method: "POST",
+    url: "/api/auth/register",
+    payload: { name: "Pedi", email: "pedi@formular.test", password: "geheim12345" },
+  });
+  const login = await bruecke.app.inject({
+    method: "POST",
+    url: "/api/auth/login",
+    payload: { email: "pedi@formular.test", password: "geheim12345" },
+  });
+  bruecke.token = (JSON.parse(login.body) as { token: string }).token;
+}
+
+/** Der gespeicherte Bestand an Entwürfen — beim Server erfragt, nicht aus Aufrufen abgelesen. */
+async function entwuerfeAmServer(): Promise<unknown[]> {
+  const res = await bruecke.app.inject({
+    method: "GET",
+    url: "/api/drafts",
+    headers: { authorization: `Bearer ${bruecke.token}` },
+  });
+  const daten = JSON.parse(res.body) as unknown;
+  return Array.isArray(daten) ? daten : ((daten as { items?: unknown[] }).items ?? []);
+}
+
+async function blattOeffnen(): Promise<void> {
+  container = document.createElement("div");
+  document.body.appendChild(container);
+  root = createRoot(container);
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  await act(async () => {
+    root?.render(
+      createElement(
+        QueryClientProvider,
+        { client: qc },
+        createElement(
+          AuthProvider,
+          null,
+          createElement(
+            RoleProvider,
+            null,
+            createElement(
+              ToastProvider,
+              null,
+              createElement(
+                NavGuardProvider,
+                null,
+                createElement(
+                  MemoryRouter,
+                  { initialEntries: ["/capture/frontdoor"] },
+                  createElement(
+                    Routes,
+                    null,
+                    createElement(Route, {
+                      path: "/capture/frontdoor",
+                      element: createElement(CaptureFrontDoor),
+                    }),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await flush();
+  });
+  await act(flush);
+}
+
+function seitentext(): string {
+  return (container.textContent ?? "").replace(/\s+/g, " ");
+}
+
+function element<T extends Element>(selektor: string, art: new () => T): T {
+  const el = container.querySelector(selektor);
+  if (!(el instanceof art)) {
+    throw new Error(`${selektor} fehlt. Sichtbar: ${seitentext().slice(0, 700)}`);
+  }
+  return el;
+}
+
+async function klick(knopf: HTMLElement): Promise<void> {
+  await act(async () => {
+    knopf.click();
+    await flush();
+  });
+  await act(flush);
+}
+
+async function titelSetzen(wert: string): Promise<void> {
+  const feld = element('[data-testid="blatt-titel"]', HTMLInputElement);
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(feld, wert);
+  await act(async () => {
+    feld.dispatchEvent(new Event("input", { bubbles: true }));
+    feld.dispatchEvent(new Event("change", { bubbles: true }));
+    await flush();
+  });
+  await act(flush);
+}
+
+async function textSchreiben(): Promise<void> {
+  const el = element('[role="textbox"]', HTMLElement);
+  await act(async () => {
+    el.innerHTML = KOERPER;
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    await flush();
+  });
+  await act(flush);
+}
+
+async function blattFuellen(): Promise<void> {
+  await titelSetzen(TITEL);
+  await textSchreiben();
+}
+
+async function sichern(): Promise<void> {
+  const knopf = element('[data-testid="blatt-entwurf-sichern"]', HTMLButtonElement);
+  expect(knopf.disabled, `Entwurf sichern ist gesperrt. ${seitentext().slice(0, 500)}`).toBe(false);
+  await klick(knopf);
+}
+
+async function stufeWaehlen(stufe: "intern" | "vertraulich" = "intern"): Promise<void> {
+  await klick(element('[data-testid="blatt-werkzeug-vertraulichkeit"]', HTMLButtonElement));
+  const flaeche = element('[data-testid="blatt-menue-vertraulichkeit"]', HTMLElement);
+  const beschriftung = i18n.t(`conf.level.${stufe}`);
+  const eintrag = [...flaeche.querySelectorAll("button")].find((b) =>
+    (b.textContent ?? "").includes(beschriftung),
+  );
+  if (!(eintrag instanceof HTMLButtonElement)) {
+    throw new Error(`Eintrag „${beschriftung}“ fehlt im Menü.`);
+  }
+  await klick(eintrag);
+}
+
+const NEU = "NEUER ungesicherter Bearbeitungsstand";
+let bestaetigen = true;
+let rueckfragen: string[] = [];
+
+/** Der gespeicherte Entwurf beim Server — sein Titel, nicht der der Oberfläche. */
+async function entwurfsTitelAmServer(): Promise<string[]> {
+  const liste = (await entwuerfeAmServer()) as { id: string }[];
+  const titel: string[] = [];
+  for (const eintrag of liste) {
+    const res = await bruecke.app.inject({
+      method: "GET",
+      url: `/api/drafts/${eintrag.id}`,
+      headers: { authorization: `Bearer ${bruecke.token}` },
+    });
+    titel.push((JSON.parse(res.body) as { payload: { title?: string } }).payload.title ?? "");
+  }
+  return titel;
+}
+
+function schreibAufrufe(): { method: string; url: string; status: number }[] {
+  return bruecke.antworten.filter(
+    (a) => (a.method === "POST" || a.method === "PUT") && /\/api\/drafts(\/[^/]+)?$/.test(a.url),
+  );
+}
+
+function knopfIn(behaelter: Element, text: string): HTMLButtonElement {
+  const knopf = [...behaelter.querySelectorAll("button")].find((b) =>
+    (b.textContent ?? "").replace(/\s+/g, " ").includes(text),
+  );
+  if (!(knopf instanceof HTMLButtonElement)) {
+    throw new Error(`Knopf „${text}“ fehlt. Sichtbar: ${seitentext().slice(0, 600)}`);
+  }
+  return knopf;
+}
+
+async function ueberDateiMenueZumFormular(): Promise<void> {
+  await klick(element('[data-testid="blatt-werkzeug-datei"]', HTMLButtonElement));
+  const menue = element('[data-testid="blatt-menue-datei"]', HTMLElement);
+  await klick(knopfIn(menue, i18n.t("erfassen.weg.formular")));
+}
+
+async function ueberAnhaengeZumFormular(): Promise<void> {
+  await klick(element('[data-testid="blatt-werkzeug-mehr"]', HTMLButtonElement));
+  await klick(
+    knopfIn(
+      element('[data-testid="blatt-menue-mehr"]', HTMLElement),
+      i18n.t("erfassen.mehr.anhaenge"),
+    ),
+  );
+  await klick(
+    knopfIn(
+      element('[data-testid="blatt-menue-mehr"]', HTMLElement),
+      i18n.t("erfassen.anhaenge.verwalten"),
+    ),
+  );
+}
+
+/** Das Titelfeld des Expertenformulars, an seiner sichtbaren Beschriftung gefunden. */
+function formularTitel(): HTMLInputElement | HTMLTextAreaElement | null {
+  const l = [...container.querySelectorAll("label")].find(
+    (x) => (x.querySelector("span")?.textContent ?? "").trim() === i18n.t("capture.fTitle"),
+  );
+  const el = l?.querySelector("input, textarea");
+  return el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement ? el : null;
+}
+
+beforeEach(async () => {
+  localStorage.clear();
+  sessionStorage.clear();
+  bestaetigen = true;
+  rueckfragen = [];
+  vi.spyOn(window, "confirm").mockImplementation((frage?: string) => {
+    rueckfragen.push(String(frage ?? ""));
+    return bestaetigen;
+  });
+  brueckeAufbauen();
+  await serverStarten();
+  await i18n.changeLanguage("de");
+});
+
+afterEach(async () => {
+  if (root) {
+    act(() => root?.unmount());
+    root = null;
+  }
+  container?.remove();
+  vi.restoreAllMocks();
+  await i18n.changeLanguage("de");
+});
+
+describe("BEN-1 · das Formular übernimmt den Stand des Blattes oder sagt es (N-0068)", () => {
+  it("N1 · gesichert, dann geändert, dann „Datei → Formular“: Rückfrage, Sichern, das Formular zeigt den NEUEN Titel", async () => {
+    await blattOeffnen();
+    await blattFuellen();
+    await sichern();
+    await titelSetzen(NEU);
+    const vorher = schreibAufrufe().length;
+
+    await ueberDateiMenueZumFormular();
+
+    expect(rueckfragen).toEqual([i18n.t("einstieg.formular.sichernFrage")]);
+    expect(schreibAufrufe().length, "es wurde nicht gesichert").toBe(vorher + 1);
+    expect(await entwurfsTitelAmServer()).toEqual([NEU]);
+    const feld = formularTitel();
+    expect(
+      feld,
+      `das Formular ist nicht offen. Sichtbar: ${seitentext().slice(0, 500)}`,
+    ).not.toBeNull();
+    expect(feld?.value).toBe(NEU);
+    expect(seitentext()).not.toContain(TITEL);
+  });
+
+  it("N2 · dieselbe Lage, Rückfrage abgelehnt: man bleibt auf dem Blatt, nichts wird gesichert oder verloren", async () => {
+    await blattOeffnen();
+    await blattFuellen();
+    await sichern();
+    await titelSetzen(NEU);
+    const vorher = schreibAufrufe().length;
+    bestaetigen = false;
+
+    await ueberDateiMenueZumFormular();
+
+    expect(rueckfragen).toHaveLength(1);
+    expect(schreibAufrufe().length).toBe(vorher);
+    expect(formularTitel()).toBeNull();
+    expect(element('[data-testid="blatt-titel"]', HTMLInputElement).value).toBe(NEU);
+    expect(await entwurfsTitelAmServer()).toEqual([TITEL]);
+  });
+
+  it("N3 · ungesichertes neues Blatt: Rückfrage, genau ein Entwurf entsteht, das Formular zeigt den getippten Titel", async () => {
+    await blattOeffnen();
+    await blattFuellen();
+    expect(await entwuerfeAmServer()).toHaveLength(0);
+
+    await ueberDateiMenueZumFormular();
+
+    expect(rueckfragen).toEqual([i18n.t("einstieg.formular.sichernFrage")]);
+    expect(await entwurfsTitelAmServer()).toEqual([TITEL]);
+    expect(formularTitel()?.value).toBe(TITEL);
+  });
+
+  it("N4 · Kalibrierung: unverändert gesichertes Blatt öffnet das Formular ohne Rückfrage, mit demselben Stand", async () => {
+    await blattOeffnen();
+    await blattFuellen();
+    await sichern();
+    const vorher = schreibAufrufe().length;
+
+    await ueberDateiMenueZumFormular();
+
+    expect(rueckfragen).toEqual([]);
+    expect(schreibAufrufe().length).toBe(vorher);
+    expect(formularTitel()?.value).toBe(TITEL);
+  });
+
+  it("N5 · derselbe Schutz auf dem Weg „Mehr → Anhänge → Anhänge verwalten“", async () => {
+    await blattOeffnen();
+    await blattFuellen();
+    await sichern();
+    await titelSetzen(NEU);
+
+    await ueberAnhaengeZumFormular();
+
+    expect(rueckfragen).toEqual([i18n.t("einstieg.formular.sichernFrage")]);
+    expect(await entwurfsTitelAmServer()).toEqual([NEU]);
+    expect(formularTitel()?.value).toBe(NEU);
+  });
+
+  it("N6 · nicht sicherbare Abweichung (nur eine Stufe gewählt, noch kein Inhalt): die Rückfrage nennt den Wechsel", async () => {
+    await blattOeffnen();
+    await stufeWaehlen("vertraulich");
+    const vorher = schreibAufrufe().length;
+
+    await ueberDateiMenueZumFormular();
+
+    expect(rueckfragen).toEqual([i18n.t("einstieg.formular.ohneSichernFrage")]);
+    expect(schreibAufrufe().length).toBe(vorher);
+    // Der Wechsel ist erklärt: es gibt noch keinen gesicherten Stand, das Formular ist leer.
+    expect(formularTitel()?.value).toBe("");
+  });
+
+  it("N6b · dieselbe Lage, abgelehnt: man bleibt auf dem Blatt, die gewählte Stufe steht weiter da", async () => {
+    await blattOeffnen();
+    await stufeWaehlen("vertraulich");
+    bestaetigen = false;
+
+    await ueberDateiMenueZumFormular();
+
+    expect(rueckfragen).toHaveLength(1);
+    expect(formularTitel()).toBeNull();
+    expect(
+      element('[data-testid="blatt-werkzeug-vertraulichkeit"]', HTMLButtonElement).textContent,
+    ).toContain(i18n.t("conf.level.vertraulich"));
+  });
+
+  it("N7 · auch in EN und NL steht die Rückfrage in der Sprache der Sitzung", async () => {
+    for (const sprache of ["en", "nl"] as const) {
+      await i18n.changeLanguage(sprache);
+      expect(i18n.t("einstieg.formular.sichernFrage")).not.toBe(
+        i18n.getFixedT("de")("einstieg.formular.sichernFrage"),
+      );
+      expect(i18n.t("einstieg.formular.ohneSichernFrage")).not.toBe(
+        i18n.getFixedT("de")("einstieg.formular.ohneSichernFrage"),
+      );
+    }
+  });
+});
+
+describe("BEN-2 · ein getippter Titel wird nicht still gekürzt", () => {
+  it("T1 · 120 Zeichen getippt und gesichert: der Server hat alle 120, Feld und Bestätigung sagen dasselbe", async () => {
+    const lang =
+      `${"Dosierpumpe DP-4 nach jedem Gebindewechsel entlüften und Nullpunkt prüfen ".repeat(2)}`
+        .slice(0, 120)
+        .trimEnd()
+        .padEnd(120, "x");
+    expect(lang).toHaveLength(120);
+    await blattOeffnen();
+    await titelSetzen(lang);
+    await textSchreiben();
+    await sichern();
+
+    expect(await entwurfsTitelAmServer()).toEqual([lang]);
+    expect(element('[data-testid="blatt-titel"]', HTMLInputElement).value).toBe(lang);
+    const zeile = container.querySelector('[data-testid="blatt-entwurf-gespeichert"]');
+    expect(zeile?.textContent ?? "").toContain(lang);
+  });
+});

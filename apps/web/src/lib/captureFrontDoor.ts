@@ -57,7 +57,12 @@ export function deriveFrontDoorTitle(
   bodyHtml: string,
   fallbackTitle: string = CAPTURE_FRONT_DOOR_FALLBACK_TITLE,
 ): string {
-  const explicitTitle = compactTitle(manualTitle);
+  // Aufnahme `gesamt-erfassung-einstieg` (Bens Befund BEN-2): Der GETIPPTE Titel wird nicht mehr
+  // auf MAX_TITLE_LENGTH gekappt. Bis hierher bestätigte das Blatt „gesichert", während der Server
+  // nur die ersten 90 Zeichen bekam und das Feld weiter den vollen Titel zeigte — ein stiller
+  // Verlust. Der Server setzt für Titel keine Grenze; die Kappung gilt deshalb nur noch für den
+  // aus dem Text ABGELEITETEN Titel, der ein Vorschlag ist und nie im Titelfeld stand.
+  const explicitTitle = manualTitle.replace(/\s+/g, " ").trim();
   if (explicitTitle) {
     return explicitTitle;
   }

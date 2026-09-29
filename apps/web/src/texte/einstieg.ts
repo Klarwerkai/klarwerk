@@ -12,6 +12,9 @@
 //   (`tests/design/zielbild-h3-kein-erklaertext.test.ts`).
 // · `einstieg.beispiel.*` — die Sicherheitsfrage vor dem Einreichen von Beispieldaten; bis hierher
 //   stand sie deutsch im Quelltext (`Capture.tsx`, `BEISPIEL_TOR_TEXT`).
+// · `einstieg.formular.*` — die Rückfrage, wenn das Blatt ungesichert vom gesicherten Stand abweicht
+//   und der Mensch ins Expertenformular wechselt (N-0068, Bens Befund BEN-1; `Blatt.tsx`,
+//   `formularOeffnen`).
 import type { Textmodul } from "./intern/pruefung";
 
 export default {
@@ -30,6 +33,10 @@ export default {
       "Einreichen: Dein Eintrag geht zur Prüfung an Kollegen und ist ab dann für andere sichtbar — als „in Prüfung“ markiert, nicht als gesichert.",
     "einstieg.beispiel.frage": "Das sind Beispieldaten. Wirklich als echtes Wissen einreichen?",
     "einstieg.beispiel.bestaetigen": "Ja, Beispiel einreichen",
+    "einstieg.formular.sichernFrage":
+      "Das Formular arbeitet mit dem gesicherten Stand. Deine ungesicherten Änderungen jetzt als Entwurf sichern und im Formular weiterarbeiten? Abbrechen: Du bleibst auf dem Blatt, nichts geht verloren.",
+    "einstieg.formular.ohneSichernFrage":
+      "Deine Änderungen auf dem Blatt lassen sich gerade nicht sichern. Das Formular zeigt deshalb den zuletzt gesicherten Stand — oder ein leeres Formular, wenn noch nichts gesichert ist. Dein Blatt bleibt unverändert und ist beim Zurückkehren wieder da. Trotzdem zum Formular wechseln?",
   },
   en: {
     "einstieg.fehler.form":
@@ -44,6 +51,10 @@ export default {
       "Submit: your entry goes to colleagues for review and is visible to others from then on — marked as “in review”, not as confirmed.",
     "einstieg.beispiel.frage": "This is sample data. Really submit it as real knowledge?",
     "einstieg.beispiel.bestaetigen": "Yes, submit sample",
+    "einstieg.formular.sichernFrage":
+      "The form works with the saved state. Save your unsaved changes as a draft now and continue in the form? Cancel: you stay on the sheet, nothing is lost.",
+    "einstieg.formular.ohneSichernFrage":
+      "Your changes on the sheet cannot be saved right now. The form therefore shows the last saved state — or an empty form if nothing has been saved yet. Your sheet stays unchanged and is there again when you return. Switch to the form anyway?",
   },
   nl: {
     "einstieg.fehler.form":
@@ -58,5 +69,9 @@ export default {
       "Indienen: je item gaat ter controle naar collega's en is vanaf dan zichtbaar voor anderen — gemarkeerd als „in controle”, niet als bevestigd.",
     "einstieg.beispiel.frage": "Dit zijn voorbeeldgegevens. Echt als echte kennis indienen?",
     "einstieg.beispiel.bestaetigen": "Ja, voorbeeld indienen",
+    "einstieg.formular.sichernFrage":
+      "Het formulier werkt met de opgeslagen stand. Je niet-opgeslagen wijzigingen nu als concept opslaan en in het formulier verdergaan? Annuleren: je blijft op het blad, er gaat niets verloren.",
+    "einstieg.formular.ohneSichernFrage":
+      "Je wijzigingen op het blad kunnen nu niet worden opgeslagen. Het formulier toont daarom de laatst opgeslagen stand — of een leeg formulier als er nog niets is opgeslagen. Je blad blijft ongewijzigd en staat er weer als je terugkeert. Toch naar het formulier gaan?",
   },
 } satisfies Textmodul;

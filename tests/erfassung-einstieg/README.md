@@ -1,7 +1,7 @@
 # Aufnahme `gesamt-erfassung-einstieg` — Abgleich, Lieferung, offene Entscheidungen
 
 Auftrag `aufnahme:20260922:gesamt-erfassung-einstieg` (Aufgabenrevision 2, Lauf
-`lauf:b3:aufnahme:20260922:gesamt-erfassung-einstieg:1`, Runde 1). Basisstand `b836417d`
+`lauf:b3:aufnahme:20260922:gesamt-erfassung-einstieg:1`, Runden 1 und 2). Basisstand `b836417d`
 (`1.0.0-beta.1.630`). Stand dieser Datei: 29.09.2026.
 Auftragsquelle: `klarwerk_steuerung/gespraech/auftragsaufnahme-01a0c779-20260922/gesamtbestand/auftragsquellen/erfassung-einstieg.json`
 (42 Aufnahmepunkte; Originalwortlaut in den dort genannten `quellenpakete/aufnahmepunkte-0NN.json`).
@@ -34,6 +34,9 @@ R-0930), widersprechen dieser jüngeren Entscheidung — siehe „Quellenwidersp
 | `apps/web/src/texte/einstieg.ts` (neu) | Die neuen Sätze in DE/EN/NL (Präfix `einstieg.`). | — |
 | `apps/web/src/i18n.ts` | Vier Hilfetexte berichtigt (DE/EN/NL): `chelp.saveDraftHelp.body` (sagte „lokal in deinem Browser" und „oben auf der Seite" — Entwürfe liegen am Server, erreichbar unter „Mehr" → Entwürfe; Pedis Kernsatz „Ein Entwurf ist NICHT eingereicht: Niemand sieht ihn" bleibt wörtlich), `chelp.discardHelp.body` (nannte die nicht mehr vorhandene Schritt-Leiste und „endgültig" für den Entwurf; „Eingabe verwerfen" löscht keinen gesicherten Entwurf, `Blatt.tsx` `resetForNewEntry`), `chelp.wizardSteps.body` (beschrieb drei anklickbare Schritte und zitierte „Prüfen & einreichen"), `fd.whatOnSaveBody` (zitierte „Prüfen / Einreichen" — auf dem Blatt heißt der Knopf „Einreichen"). | R-1000 |
 | `tests/i18n-textmodule/werte-vorher.json`, `bestand-vorher.json` | Die zwölf gewollten Textänderungen nachgetragen, Prüfsummen neu berechnet (so verlangt es `bestand-unveraendert.test.ts` K1.1). | — |
+| **Runde 2** `apps/web/src/components/erfassen/Blatt.tsx` | BEN-1: „Datei ▾ → Formular (Experten)" und „Mehr → Anhänge → Anhänge verwalten" laufen über `formularOeffnen`. Weicht das Blatt vom gesicherten Stand ab (`istSchmutzig`), fragt es: sicherbar → „erst sichern, dann im Formular weiter?" (Ja sichert über `requestSave` und öffnet das Formular erst nach der Serverbestätigung, `nachSichernOeffnenRef`; Nein lässt alles auf dem Blatt); nicht sicherbar → die Rückfrage nennt den Wechsel zum gesicherten bzw. leeren Stand. Unverändertes Blatt: keine Rückfrage. | N-0068 |
+| **Runde 2** `apps/web/src/lib/captureFrontDoor.ts` | BEN-2: `deriveFrontDoorTitle` kappt den **getippten** Titel nicht mehr auf 90 Zeichen (nur Leerraum wird zusammengezogen). Der aus dem Text abgeleitete Titel bleibt ein auf 90 Zeichen gekürzter Vorschlag — er stand nie im Feld. Der Server kennt keine Titelgrenze (`services/capture/src/service.ts` `normalizeDraftPayload` kürzt nur Quellen, Prüfer, Interview). | R-1002, Kriterium 1 |
+| **Runde 2** `apps/web/src/texte/einstieg.ts` | `einstieg.formular.sichernFrage`, `einstieg.formular.ohneSichernFrage` in DE/EN/NL. | N-0068 |
 
 ## Die Tests dieses Ordners
 
@@ -47,6 +50,9 @@ R-0930), widersprechen dieser jüngeren Entscheidung — siehe „Quellenwidersp
   `draftPayload`, Eingabe bleibt, kein Entwurf am Server; E2 Rumpf > 5 MiB → echter 413 → „zu
   lang"; E3 (DE/EN/NL) beide Knöpfe tragen ihre aufgelöste Beschreibung, umrandet gegen gefüllt;
   E4 Fokus auf der Erfolgszeile nach dem Einreichen.
+* **Runde 2** `formular-und-titel-mounted.test.tsx` — echter Arbeitsraum hinter dem Blatt. N1 gesichert → Titel geändert → „Datei → Formular": Rückfrage, ein Sichern, Server und Formular tragen den NEUEN Titel (Bens B1). N2 Rückfrage abgelehnt: Blatt bleibt, nichts gesichert. N3 ungesichertes neues Blatt (Bens B2): genau ein Entwurf, Formular zeigt den getippten Titel. N4 Kalibrierung: unverändert gesichert → keine Rückfrage. N5 derselbe Schutz über „Anhänge verwalten". N6/N6b nicht sicherbare Abweichung (nur Stufe gewählt): Rückfrage nennt den Wechsel; abgelehnt bleibt die Stufe stehen. N7 Rückfragen in EN/NL übersetzt. T1 (Bens B3): 120 Zeichen getippt → der Server hat 120, Feld und Bestätigungszeile sagen dasselbe.
+* **Runde 2** `q3a-zustandsmatrix-mounted.test.tsx` — R-1560, Q3(a) §9 (s. unten): Z0 Kalibrierung, Z1 laden, Z1-en derselbe Ladezustand in EN (CAP-P1 „DE/EN gemeinsam"), Z2 Ladefehler 500, Z3 offline beim Laden, Z4 offline beim Einreichen.
+* **Runde 2** `stufenwerte-am-entwurf.test.ts` — R-1560, R0633-Matrix am echten Server: sechs ungültige Stufenwerte → POST 400 ohne Entwurf und PUT 400 ohne Änderung; drei gültige → 201 und gespeichert; fehlendes Feld → 201 ohne erfundene Stufe.
 * `beispiel-tor-sprachen.test.tsx` — Klickpfad aus `tests/capture/f0007-beispiel-nur-bewusst-ui.test.tsx`
   in DE/EN/NL: Frage und Bestätigung in der Sprache der Sitzung, Bestätigung legt genau ein Objekt an.
 
@@ -54,6 +60,12 @@ R-0930), widersprechen dieser jüngeren Entscheidung — siehe „Quellenwidersp
 G1 Blatt zeigt wieder die Rohmeldung → E1 (3×) und E2 rot. G2 kein Fokus → E4 rot.
 G3 `aria-describedby` am Einreichen-Knopf entfernt → E3 (3×) rot.
 G4 Beispielfrage wieder als deutscher Klartext → EN und NL rot, DE grün.
+**Runde 2:** G5 Formular wieder direkt öffnen (Stand vor BEN-1) → N1, N2, N3, N5, N6, N6b rot.
+G7 `compactTitle` wieder auf den getippten Titel → T1 rot. G8 Ladefehler setzt „intern" → Z2, Z3
+rot. G9 gescheitertes Einreichen verwirft die Wahl → Z4 rot. G10 Stufenprüfung im Entwurfsschema
+ausgeschaltet → sechs S1-Fälle rot. **Nicht unterschieden:** G6 „Formular sofort öffnen, parallel
+sichern" bleibt grün, weil der Arbeitsraum eine später in `?draft=` erscheinende Kennung nachlädt —
+dass das Formular erst NACH der Bestätigung öffnet, ist gebaut, aber nicht eigens gemessen.
 
 ## Abgleich je Aufnahmepunkt
 
@@ -63,8 +75,8 @@ Test belegt · **teilweise** = Rest benannt · **offen** = nicht geliefert, Ents
 
 | Punkt | Kurzinhalt (Quelle) | Ergebnis heute | Beleg / verbleibende Entscheidung |
 |---|---|---|---|
-| R-0003 | Dokument-Canvas als Standardweg; Formular, Diktat, Interview, Datei nachrangig | **erfüllt** (durch H3) | Blatt ist der einzige Einstieg; Diktat als Werkzeugknopf, Interview/Datei/Formular unter „Datei ▾" (`components/erfassen/wege.ts:19`, `Blatt.tsx` Datei-Menü). Tests: `tests/import-einstieg/weg-ins-erfassen.test.tsx`, `tests/erfassen-verwerfen-gesamtfehler/gesamtfehler-modusleiste-mounted.test.tsx`. Die in der Quelle genannten Nebenbefunde (geleerter Fließtext, Fortsetzen) gehören zum gesonderten Auftrag `aufnahme:20260922:erfassen-verwerfen` (R-0075, geliefert dort). |
-| R-0029 | Formular- und Datenwahrheit erheben | **teilweise** | Diese Datei ist die Erhebung der Einstiege. Eine vollständige Matrix „sichtbar vs. gespeichert" je Feld über Blatt **und** Arbeitsraum liegt nicht vor. Gemessener Kernbefund: Blatt speichert Titel, Rumpf-HTML, Stufe, Bereich; der Arbeitsraum führt eigene Felder (Kernaussage, Bedingungen, Maßnahmen …) und reicht die Entwurfskennung zurück (`Capture.tsx` `onEntwurfInsBlatt`). |
+| R-0003 | Dokument-Canvas als Standardweg; Formular, Diktat, Interview, Datei nachrangig | **erfüllt** (durch H3) | Blatt ist der einzige Einstieg; Diktat als Werkzeugknopf, Interview/Datei/Formular unter „Datei ▾" (`components/erfassen/wege.ts:19`, `Blatt.tsx` Datei-Menü). Tests: `tests/import-einstieg/weg-ins-erfassen.test.tsx`, `tests/erfassen-verwerfen-gesamtfehler/gesamtfehler-modusleiste-mounted.test.tsx`. Die in der Quelle genannten Nebenbefunde: **gelöschte Maßnahmen** — JOB 2695, das Blatt schickt beim Ändern nur seine eigenen Felder (`captureFrontDoor.ts` `nurEigene`), belegt von `tests/capture/job2695-vordertuer-loescht-nicht.test.tsx` F1–F5 (grün in Runde 2); **geleerter Fließtext** und **Fortsetzen** — gesonderter Auftrag `aufnahme:20260922:erfassen-verwerfen` (R-0075) bzw. `tests/entwurf-fortsetzen` (grün). |
+| R-0029 | Formular- und Datenwahrheit erheben | **erfüllt als Erhebung** (Runde 2) | Vollständige Matrix „sichtbar vs. gespeichert" für Blatt und Arbeitsraum im Abschnitt **R-0029 — Erhebung** unten, jede Zeile mit Fundstelle. Verbleibende Entscheidung daraus: ob die vom Blatt unsichtbar gesetzten Felder (`statement`, `type`, `category: "Allgemein"`) sichtbar werden sollen. |
 | R-0030 | Erfassungsoptionen festlegen statt gewachsen | **erfüllt** (durch H3) | Festgelegt in `BLATT_WEGE` (`wege.ts`): Interview, Datei, Formular; Diktat als Werkzeug. Quelle nennt den Altjob selbst „VERWORFEN". |
 | R-0031 | Erste Karte „Neues Wissensobjekt erfassen", „Demnächst" ans Ende | **überholt** | Weder die Karte noch „Demnächst" steht auf der Erfassungsfläche (`klara.path.soon` nur in `KlaraPathTeaser` auf Start/Stufe 2). |
 | R-0039 | Freitext-Erfassung | **erfüllt** | Blatt: `blatt-titel`, Schreibfläche `role="textbox"`. Tests: `tests/erfassung-einstieg/blatt-einstieg-mounted.test.tsx` E0, `tests/cap-p1-fruehe-eingabe/blatt-fruehe-eingabe.test.tsx`. |
@@ -88,8 +100,8 @@ Test belegt · **teilweise** = Rest benannt · **offen** = nicht geliefert, Ents
 | R-0930 | Geführte Schrittleiste mit „Empfohlen" | **überholt / Widerspruch** | s. „Die tragende jüngere Entscheidung". |
 | R-0978 | Quittung nach Abschluss, ruhiger Arbeitsraum | **erfüllt** | `blatt-entwurf-gespeichert`, `blatt-lage` (Erfolg mit drei Wegen); jetzt zusätzlich fokussiert (E4). Schmalansicht: `tests-smoke/demo-ux-v1-capture-frontdoor.spec.ts` (Playwright, hier nicht gefahren). |
 | R-1000 | Wortlaut der Vordertür; Hilfe zitiert keine nicht vorhandenen Knöpfe | **erfüllt** (dieser Lauf) | Vier Hilfetexte berichtigt; H1/H2 in `fehlersatz-und-hilfe.test.ts`. |
-| R-1002 | Zu lang ist nicht kaputt | **erfüllt** (dieser Lauf, für den Rumpf) | 413 → `einstieg.fehler.zuLang` (E2 gegen echten Server, F2). Rest: Für Titel/Aussage gibt es serverseitig keine eigene Längengrenze (`draft-payload-schema.ts:30-35`, Kürzung an der Speichergrenze) — ob eine sichtbare Längengrenze gewollt ist, ist eine Produktentscheidung. |
-| R-1560 | Blatt mit Werkzeugmenüs (Kriterien Q3(b), Q3c, CAP-P1) | **erfüllt** in den genannten Teilen | Q3(b) Alias `/erfassen/vordertuer` → Blatt (`CaptureFrontDoor.tsx:19-34`). Q3c Stufenpflicht an `POST /api/kos` (`tests/q3c-stufenpflicht/*`, grün in diesem Lauf). CAP-P1 frühe Eingabe (`tests/cap-p1-fruehe-eingabe`). Die Quelle nennt „breiter Bild-/Word-/Provenienz-, Diktat-/Datei-/Interview-/KI-Gesamtweg bleibt separat" — nicht Teil dieser Lieferung. |
+| R-1002 | Zu lang ist nicht kaputt | **erfüllt** (Runden 1 und 2) | Rumpf: 413 → `einstieg.fehler.zuLang` (E2 gegen echten Server, F2). Titel: die stille Kürzung auf 90 Zeichen ist entfernt (BEN-2, T1). Weder Titel noch Aussage werden serverseitig gekürzt (Berichtigung gegenüber Runde 1: `normalizeDraftPayload` kürzt nur Quellen, Prüfer und Interview; Arbeitsraum-Felder mit Grenze tragen `maxLength` samt sichtbarer Rückmeldung, `Capture.tsx` „mega6 Block D"). |
+| R-1560 | Blatt mit Werkzeugmenüs — Kriterien Q3(b), Q3c, CAP-P1, Q3(a) §9, R0633, /health | **erfüllt in den messbaren Teilen, nicht vollständig abgenommen** | **Q3(b)** Alias `/erfassen/vordertuer` → Blatt (`CaptureFrontDoor.tsx:19-34`). **Q3c** Stufenpflicht an `POST /api/kos` (`tests/q3c-stufenpflicht/*`, `tests/q3c-stufenpflicht-dokumentweg`, grün). **CAP-P1** frühe Eingaben: gemountet DE `tests/cap-p1-fruehe-eingabe` (F1–F7, N1–N8), EN jetzt `q3a-zustandsmatrix-mounted.test.tsx` Z1-en. **Q3(a) §9** Zustandsmatrix: s. Abschnitt unten (Z0–Z4; „Cache"-Zeilen nicht anwendbar, begründet). **R0633-Matrix** `stufenwerte-am-entwurf.test.ts` (11/11). **/health-Commit** öffentlich: nicht prüfbar ohne laufende Instanz — fehlender Beleg. „Breiter H3-Bild-/Word-/Provenienz-, Diktat-/Datei-/Interview-/KI-Gesamtweg bleibt separat" laut Quelle — nicht Teil dieser Lieferung; ebenso ausdrücklich: „nicht als vollständig abgenommen kennzeichnen". |
 | R-1578 | DESIGN Web-App Erfassen (eine Fläche …) | **erfüllt** (JOB 3062) | s. oben. Bereich-Zeile: Auswahl aus den am Client geladenen Kategorien (`Blatt.tsx` ~645-654); der Kategorien-Serverweg aus K2b gilt für Klara in Word. |
 | R-1683 | Erfassungsmodus Freitext | **erfüllt** | wie R-0039. |
 | R-1684 | Erfassungsmodus Strukturiertes Formular | **erfüllt** / s. R-0094 | „Datei ▾" → „Formular (Experten)". |
@@ -98,13 +110,52 @@ Test belegt · **teilweise** = Rest benannt · **offen** = nicht geliefert, Ents
 | R-2094 | Vier Erfassungsmodi (MUSS) | **erfüllt** mit Rest | Freitext, Formular, Diktat, Interview (+ Datei) erreichbar. Rest s. SOLL:FR-CAP-01. |
 | N-0004 | Entwurfsmenü ohne zugänglichen Namen | **erfüllt** (JOB 3266 D1) | `Blatt.tsx` Menü „mehr": `beschriftung={t("erfassen.werkzeug.mehr")}` (DE „Mehr", EN „More", NL „Meer"); „Entwürfe" erster Eintrag. Test: `tests/d1-meine-entwuerfe/blatt-zugang-und-liste.test.tsx` B1 (grün). Live-Gegenprüfung nach dem Fix fehlt. |
 | N-0014 | = N-0004 (Folgebeobachtung 1.107) | **Doppel** | wie N-0004. |
-| N-0068 | Expertenformular / „Anhänge verwalten" verlieren den Bearbeitungskontext | **teilweise / offen** | Mit `?draft=` lädt der Arbeitsraum den **gespeicherten** Entwurf (`Capture.tsx` ~3121-3170; `tests/expertenformular-entwurf/experten-draft-mounted.test.tsx` A–I). Ungesicherte Blatt-Änderungen reisen nicht mit, und es gibt keinen Satz, der den Wechsel erklärt. Auch der Weg „Mehr" → Anhänge → „Anhänge verwalten" ist nicht eigens getestet. Entscheidung: Übergabe des Blatt-Inhalts an den Arbeitsraum oder erklärender Hinweis — nicht in diesem Lauf gebaut, weil beide Varianten den Datenweg Blatt↔Arbeitsraum ändern. |
+| N-0068 | Expertenformular / „Anhänge verwalten" verlieren den Bearbeitungskontext | **erfüllt** (Runde 2, BEN-1) | `Blatt.tsx` `formularOeffnen`: bei abweichendem Blatt Rückfrage, auf Ja erst sichern, dann Formular mit genau diesem Stand; auf Nein bleibt alles auf dem Blatt; nicht sicherbar → Rückfrage nennt den Wechsel. Beide Wege (Datei-Menü, „Anhänge verwalten"). Tests `formular-und-titel-mounted.test.tsx` N1–N7. Nicht umgesetzt: eine Übergabe **ohne** Sichern (das Formular liest den Entwurf beim Server) — die Rückfrage macht den Wechsel stattdessen ausdrücklich. |
 | P-UX-22 | Quellenformular: eigene Belegstelle zuordenbar | **erfüllt** (JOB 3133, LIVE 1.155) | `tests/quellen-anker-im-formular/formular-haengt-belegstelle-an.test.tsx` a–e (grün). |
 | P-UX-22b | I2 prüft Anfrage + 403, I3 zählt Anfragen | **erfüllt** (JOB 3178) | `tests/quellen-anker-im-formular/interne-adresse-durch-das-formular.test.tsx` I2 (`rufe.length === 1`, Status 403), I3 (`nachher.length - vorher === 0`) — grün in diesem Lauf. |
 | priority:K2b | Klara Erfassen nach Mockup: Bereich-Zeile, „?"-Menü, Dokumentlink, Leertextfarbe `#9AA2B1` | **Teile 1–3 erfüllt, Teil 4 offen mit Sperre** | Teile 1–3 laut Quelle geliefert (`tests/k2b-bereich-zeile`, `tests/k2b-erfassen-reste/k2b-menue-und-link.test.ts`). Teil 4: `#9AA2B1` steht in `apps/web/public/word-addin/taskpane.html:48` als Mockup-Wert `--hint`, der Erfassungssatz `#capture-leer` nutzt bewusst `--muted`. Die Quelle nennt ausdrücklich: Gestaltung, „nicht vor der Vorführung" (Pedi) — **nicht in diesem Lauf entschieden**. Hinweis zur Entscheidung: `#9AA2B1` auf Weiß erreicht rechnerisch nur etwa 2,6 : 1 Kontrast (unter WCAG 4,5 : 1 für Text). |
 | priority:UX-22 | = P-UX-22 | **Doppel** | Quelle: `doppelte_quellenfassung`. |
 | priority:UX-22b | = P-UX-22b | **Doppel** | Quelle: `doppelte_quellenfassung`. |
 | SOLL:FR-CAP-01 | Freitext, Formular, Diktat, KI-Interview → strukturierbarer Input | **teilweise** | Alle vier erreichbar. Sie führen **nicht** zu demselben Datenstand: das Blatt speichert Rumpf-HTML, der Arbeitsraum Formularfelder (R-0029). Der Gesamtweg Diktat/Datei/Interview/KI ist in der Quelle (R-1560) ausdrücklich separat. |
+
+## R-0029 — Erhebung „sichtbar vs. gespeichert"
+
+Gemessen am Code (Runde 2). „Blatt" = `components/erfassen/Blatt.tsx` mit
+`lib/captureFrontDoor.ts` `buildFrontDoorPayload`; „Arbeitsraum" = `pages/Capture.tsx`
+`saveDraft` (Nutzlast ~2214-2240). Server: `services/capture/src/service.ts`
+(`normalizeDraftPayload`, Merge „nicht mitgeschickt ⇒ Altwert bleibt, Leerwert ⇒ gelöscht").
+
+| Feld (`DraftPayload`) | Blatt: sichtbar / bearbeitbar | Blatt: was gespeichert wird | Arbeitsraum (Formular) | Beleg |
+|---|---|---|---|---|
+| `title` | Titelfeld | getippter Titel **ungekürzt**; leer → aus dem ersten Block abgeleitet (≤ 90 Z.) bzw. „Unbenanntes Wissensobjekt" | Feld „Kernaussage"; leer → erste Zeile des Rohtexts (≤ 80 Z.) | T1; `capture-front-door.test.ts` |
+| `bodyHtml` | Schreibfläche (Text, Bilder mit Beschreibung als `figcaption`) | vollständig; bewusst geleert → Löschmarker (`draftBodyPatch`) | „Ausführlicher Inhalt" | `draft-body-clear-cycle-mounted.test.tsx`, `mega69-bildweg-mounted.test.tsx` |
+| `statement` | **nicht sichtbar** | aus dem Rumpf abgeleiteter Klartext (`frontDoorStatement`), sonst der Titel; überschreibt beim Sichern eine im Formular geschriebene Aussage | Feld „Aussage" | `captureFrontDoor.ts` `frontDoorStatement` |
+| `confidentiality` | Werkzeug „Vertraulichkeit" | nur eine ausdrücklich gewählte Stufe; keine Wahl ⇒ Schlüssel fehlt | Auswahl in „Erweiterte Details" | `draht-traegt-intern.test.ts` F5–F7, S1–S3 |
+| `category` | Werkzeug „Bereich" | gewählter Bereich; ohne Wahl bei **Neuanlage und Einreichen** unsichtbar `"Allgemein"`, beim Ändern nicht mitgeschickt | Feld Kategorie | `Blatt.tsx` `mitBereich`, `buildFrontDoorPayload` |
+| `type` | **nicht sichtbar** | bei Neuanlage/Einreichen unsichtbar `"best_practice"` | Auswahl Wissensart | `buildFrontDoorPayload` |
+| `origin` | nicht sichtbar | `"frontdoor"` nur bei Neuanlage, danach unverändert | nach Weg (`originForSave`) | `job2695` F4/F5 |
+| `tags`, `conditions`, `measures` | **nicht sichtbar** | Neuanlage `[]`; beim Ändern **nicht mitgeschickt ⇒ bleiben erhalten** | Felder Tags, Bedingungen, Maßnahmen | `job2695-vordertuer-loescht-nicht.test.tsx` F1–F3 |
+| `asset`, `neededValidations`, `reviewerIds`, `pendingSources`, `anchorDocuments`, `sourceForm`, `extQuery`, `interview` | nicht sichtbar | nicht mitgeschickt ⇒ erhalten | in „Erweiterte Details" / Quellen / Interview; Grenzen je Feld mit `maxLength` und sichtbarer Rückmeldung (`DRAFT_LIMITS`); Quellen, Prüfer und Interview kappt der Server mit denselben Werten (`normalizeDraftPayload`) | `capture-sources.test.ts`, `draft-save-interview-sources-mounted.test.tsx` |
+| `sourceImageCount` | nicht bearbeitbar | vom Import gesetzt, beim Laden gelesen (`setQuellBildzahl`); das Blatt schreibt es nicht | — | `Blatt.tsx` Ladeeffekt |
+
+**Folgerungen / verbleibende Entscheidung:** (1) Das Blatt setzt drei Felder, die der Mensch dort
+nicht sieht (`statement`, `type`, `category: "Allgemein"`). Ob sie sichtbar werden sollen, ist eine
+Entscheidung gegen das Zielbild H3 (eine Fläche, kein Formular). (2) Die übrigen unsichtbaren
+Felder gehen auf dem Blatt nicht verloren (JOB 2695). (3) Wechsel Blatt → Formular zeigt jetzt
+denselben Stand oder erklärt, warum nicht (N-0068).
+
+## R-1560 — Q3(a) §9 Zustandsmatrix der Vertraulichkeitswahl
+
+Soll: `klarwerk_steuerung/archiv/3082/AUFTRAG.md:221-234`. Ist: `q3a-zustandsmatrix-mounted.test.tsx`.
+
+| Zustand (§9) | Ergebnis | Beleg |
+|---|---|---|
+| laden | keine Stufe behauptet, Einreichen gesperrt, Schreibfläche erst nach dem Laden (DE und EN) | Z1, Z1-en; `cap-p1-fruehe-eingabe` F1, N8 |
+| erfolgreich leer | Wahl offen, Einreichen gesperrt | `vertraulichkeit-pflicht/fortgesetzter-entwurf-verlangt-stufe.test.tsx` F1 |
+| Fehler (lädt nicht) | Wahl offen, kein „intern" angenommen, Satz + „Erneut versuchen", kein Promote | Z2 (500), Gegenprobe G8 |
+| Cache mit laufender Auffrischung | **nicht anwendbar**: Blatt und Arbeitsraum holen den Entwurf per Direktabruf (`Blatt.tsx` Ladeeffekt `endpoints.drafts.get`, `Capture.tsx` Ladeeffekt Expertenweg), nicht aus einem Abfrage-Cache; die gecachte Entwurfsliste (`useDrafts`) setzt keine Stufe | Code |
+| Cache mit gescheiterter Auffrischung | **nicht anwendbar**, wie oben | Code |
+| offline | beim Laden wie „Fehler" (Z3); beim Einreichen: Fehlersatz, gewählte Stufe unverändert, kein Objekt (Z4, Gegenprobe G9) | Z3, Z4 |
 
 ## Quellenwidersprüche
 
@@ -127,3 +178,8 @@ Test belegt · **teilweise** = Rest benannt · **offen** = nicht geliefert, Ents
   ist aber eine Überlegung, keine Messung.
 * R-0149: kein ausdrücklicher Test „nie automatisch anhängen".
 * R-0922: kein gemounteter Test des Zählers.
+* R-1560: der öffentliche `/health`-Commit ist ohne laufende Instanz nicht feststellbar.
+* N-0068: dass das Formular erst **nach** der Serverbestätigung öffnet, misst kein Test (G6 bleibt
+  grün, s. Gegenproben).
+* Die Rückfragen in N-0068 nutzen `window.confirm` wie die übrigen Rückfragen des Blatts
+  (`fd.confirmDiscard`, `fd.confirmOpenDraft`); ihre Darstellung im echten Browser ist nicht gesichtet.

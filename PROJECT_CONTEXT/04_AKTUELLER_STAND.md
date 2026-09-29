@@ -17,9 +17,13 @@
   (`lib/erfassenFehlersatz.ts`); Folge von „Entwurf sichern“/„Einreichen“ als Beschreibung am Knopf;
   Fokus auf der Erfolgszeile nach dem Einreichen; Beispiel-Rückfrage dreisprachig; vier Hilfetexte,
   die nicht vorhandene Knöpfe bzw. „lokal im Browser“ nannten, berichtigt.
-- Offen zur Entscheidung u. a.: N-0068 (Blatt-Inhalt beim Wechsel ins Expertenformular),
-  Wortlaut „Vordertür-Entwurf geöffnet“ u. a. technische Beschriftungen, Leertextfarbe `#9AA2B1`
-  (K2b, gesperrt „nicht vor der Vorführung“).
+- Runde 2 (Bens Befunde): Wechsel Blatt → Expertenformular fragt bei ungesicherten Änderungen
+  nach und öffnet das Formular erst nach dem Sichern mit genau diesem Stand (N-0068); getippte
+  Titel werden nicht mehr still auf 90 Zeichen gekürzt; Erhebung „sichtbar vs. gespeichert“
+  (R-0029), Q3(a)-§9-Zustandsmatrix und R0633-Stufenmatrix (R-1560) als Tests bzw. Tabelle.
+- Offen zur Entscheidung u. a.: Wortlaut „Vordertür-Entwurf geöffnet“ u. a. technische
+  Beschriftungen, unsichtbar gesetzte Felder des Blatts (`statement`, `type`, `category`),
+  Leertextfarbe `#9AA2B1` (K2b, gesperrt „nicht vor der Vorführung“).
 
 ## 26.09.2026 — FE-003 Seitentutorial „Fragen“ (Pilot)
 

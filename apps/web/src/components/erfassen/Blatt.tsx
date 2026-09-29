@@ -1082,6 +1082,11 @@ export function Blatt({
     },
   });
 
+  // Aufnahme `gesamt-erfassung-einstieg` (Bens Befund BEN-1, N-0068): Der Arbeitsraum, der nach
+  // einem erfolgreichen Sichern zu öffnen ist — gesetzt von `formularOeffnen`, wenn der Mensch dort
+  // „erst sichern, dann im Formular weiter" gewählt hat. Ein Fehler beim Sichern räumt ihn ab: dann
+  // bleibt das Blatt mit seinem Fehlersatz stehen, statt in einen älteren Stand zu wechseln.
+  const nachSichernOeffnenRef = useRef<ArbeitsraumModus | null>(null);
   const save = useMutation({
     mutationFn: () => {
       if (activeDraftId) {
@@ -1197,9 +1202,18 @@ export function Blatt({
           draft.payload?.title?.trim() ||
           deriveFrontDoorTitle(abgesendet.title, abgesendet.bodyHtml, fallbackTitle),
       });
+      // BEN-1: erst JETZT, mit der Kennung in `?draft=`, öffnet das Formular — und lädt damit
+      // genau den Stand, den der Mensch gerade auf dem Blatt hatte.
+      const nachSichern = nachSichernOeffnenRef.current;
+      if (nachSichern) {
+        nachSichernOeffnenRef.current = null;
+        setOffenesMenue(null);
+        setAnsicht(nachSichern);
+      }
     },
     onError: (e) => {
       saveRequestedRef.current = false;
+      nachSichernOeffnenRef.current = null;
       // JOB 2697: den Schlüssel NUR fallen lassen, wenn der Server EINDEUTIG geantwortet hat.
       if (createOperationIsSettled(e instanceof ApiError ? e.status : undefined)) {
         saveOperationRef.current = null;
@@ -1847,6 +1861,41 @@ export function Blatt({
     setAnsicht(modus);
   }, []);
 
+  // ==============================================================================================
+  // Aufnahme `gesamt-erfassung-einstieg` (Bens Befund BEN-1, N-0068) — DAS FORMULAR ÜBERNIMMT DEN
+  // STAND DES BLATTES ODER SAGT, DASS ES DAS NICHT TUT.
+  // ==============================================================================================
+  //
+  // Der Arbeitsraum liest den Entwurf aus `?draft=` beim SERVER (`Capture.tsx`, Ladeeffekt des
+  // Expertenwegs). Ungesicherte Änderungen auf dem Blatt kennt er nicht: Ben hat gemessen, dass
+  // nach „Datei → Formular" wortlos der ältere Titel bzw. ein leeres Formular erschien.
+  //
+  // Jetzt, wenn das Blatt vom gesicherten Stand abweicht (`istSchmutzig`, dasselbe Prädikat wie die
+  // Verlassen-Wache):
+  //   · lässt es sich sichern → Rückfrage „sichern und im Formular weiter?"; Ja sichert über den
+  //     EINEN Speicherweg (`requestSave`) und öffnet das Formular erst nach der Serverbestätigung;
+  //     Nein lässt alles, wie es ist (man bleibt auf dem Blatt).
+  //   · lässt es sich gerade nicht sichern → Rückfrage, die den Wechsel zum gesicherten Stand
+  //     ausdrücklich nennt. Das Blatt bleibt dabei montiert und unverändert (`arbeitsraumSchliessen`).
+  // Ist das Blatt nicht verändert, zeigt das Formular ohnehin denselben Stand — keine Rückfrage.
+  const formularOeffnen = (): void => {
+    if (!istSchmutzig) {
+      arbeitsraumOeffnen("formular");
+      return;
+    }
+    setOffenesMenue(null);
+    if (canSave) {
+      if (window.confirm(t("einstieg.formular.sichernFrage"))) {
+        nachSichernOeffnenRef.current = "formular";
+        requestSave();
+      }
+      return;
+    }
+    if (window.confirm(t("einstieg.formular.ohneSichernFrage"))) {
+      arbeitsraumOeffnen("formular");
+    }
+  };
+
   // JOB 3282 (EDITOR-R26): der Rückweg zum Schreibfeld, wenn der Arbeitsraum abgebrochen wurde.
   // Er fasst den Blattinhalt NICHT an: Titel, Rumpf und Entwurfskennung leben in diesem Bauteil,
   // das während der Arbeitsraum-Ansicht montiert bleibt. Zurückzukommen heisst deshalb wirklich
@@ -2145,7 +2194,12 @@ export function Blatt({
         {/* Die drei Wege kommen aus `./wege.ts` und stehen hier nicht ein zweites Mal: ein neuer
             Erzählweg erscheint ohne Nacharbeit im Menü. */}
         {BLATT_WEGE.map((weg) => (
-          <MenueEintrag key={weg} onClick={() => arbeitsraumOeffnen(weg as ArbeitsraumModus)}>
+          <MenueEintrag
+            key={weg}
+            onClick={() =>
+              weg === "formular" ? formularOeffnen() : arbeitsraumOeffnen(weg as ArbeitsraumModus)
+            }
+          >
             {t(blattWegLabelKey(weg))}
           </MenueEintrag>
         ))}
@@ -2483,7 +2537,7 @@ export function Blatt({
                       einen zweiten Uploadweg zu bauen. */}
                   <button
                     type="button"
-                    onClick={() => arbeitsraumOeffnen("formular")}
+                    onClick={formularOeffnen}
                     className="mt-1 block w-full rounded-[7px] px-2 py-1.5 text-left text-[13px] font-semibold text-text hover:bg-hairline-soft"
                   >
                     {t("erfassen.anhaenge.verwalten")}
