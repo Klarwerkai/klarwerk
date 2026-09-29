@@ -192,8 +192,24 @@ describe("FE-001 · Pflichtbilder und Beispielablauf im echten Browser gegen Pos
         await seite.locator('[data-testid="notice-banner"]:visible').count(),
         `${MARKE}: Nutzungshinweis nach der Einrichtung noch sichtbar`,
       ).toBe(0);
-      const vermerk = await (await kontext.request.get(`${basis}/api/auth/notice`)).json();
-      expect(vermerk.due, `${MARKE}: der Server führt den Hinweis weiter als fällig`).toBe(false);
+      // Nachprüfung am Server AUS DER ANGEMELDETEN SEITE (dieselbe Sitzung wie die Oberfläche; Ben,
+      // Lauf 5 Runde 1: die Anfrage über `kontext.request` trug die Sitzung nicht und lieferte keinen
+      // Vermerk). Geprüft werden Status UND Antwortstruktur — ein fehlendes `due` ist kein „false“.
+      const vermerk = await seite.evaluate(async () => {
+        const a = await fetch("/api/auth/notice", { credentials: "include" });
+        return { status: a.status, rumpf: (await a.json().catch(() => null)) as unknown };
+      });
+      expect(vermerk.status, `${MARKE}: GET /api/auth/notice nicht angemeldet beantwortet`).toBe(
+        200,
+      );
+      expect(vermerk.rumpf, `${MARKE}: Antwortstruktur des Vermerks`).toMatchObject({
+        due: expect.any(Boolean),
+        currentVersion: expect.anything(),
+      });
+      expect(
+        (vermerk.rumpf as { due: boolean }).due,
+        `${MARKE}: der Server führt den Hinweis weiter als fällig`,
+      ).toBe(false);
       const [idEins, idZwei, idDrei] = ids as [string, string, string];
       const [begriffEins, begriffZwei, begriffDrei] = SUCHBEGRIFFE as [string, string, string];
 

@@ -275,11 +275,27 @@ export async function fokusMussSichtbarSein(seite: Seite, was: string): Promise<
  * `textContent` steht nur noch dort, wo es die Zeichen EINES Textknotens meint (ein Textknoten hat
  * keinen anderen Text), und ist selbst kein Beleg: Beleg ist die Messung an genau dieser Stelle.
  */
-const SICHT_HILFEN = `
+export const SICHT_HILFEN = `
   const normal = (t) => String(t || "").replace(/\\s+/g, " ").trim();
   const durchsichtigeFarbe = (s) => {
-    const farbe = String(s.color || "").replace(/\\s/g, "");
-    return farbe === "transparent" || farbe.endsWith(",0)");
+    // Durchsichtig ist nur eine Farbe, deren ALPHA 0 ist — nicht jede, die auf „,0)“ endet: das
+    // traf auch deckendes rgb(138, 90, 0) mit Blauanteil 0 (Ben, Lauf 5 Runde 1, BEN-05).
+    const farbe = String(s.color || "").trim().toLowerCase();
+    if (farbe === "transparent") return true;
+    const auf = farbe.indexOf("(");
+    const zu = farbe.lastIndexOf(")");
+    if (auf < 0 || zu < auf) return false;
+    const innen = farbe.slice(auf + 1, zu);
+    let alpha;
+    if (innen.includes("/")) {
+      alpha = innen.slice(innen.lastIndexOf("/") + 1).trim();
+    } else {
+      const teile = innen.split(",");
+      if (teile.length === 4) alpha = teile[3].trim();
+    }
+    if (alpha === undefined || alpha === "") return false;
+    const wert = alpha.endsWith("%") ? Number.parseFloat(alpha) / 100 : Number.parseFloat(alpha);
+    return wert === 0;
   };
   const inhaltUnterdrueckt = (el, bis) => {
     let lauf = el;

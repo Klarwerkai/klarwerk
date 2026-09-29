@@ -156,6 +156,14 @@ geprüft, dass kein Hinweis sichtbar ist und die Hauptaktion der Ansicht sichtba
 ist; sonst entsteht kein Bild und der Lauf scheitert. Der Bildtest hält die Serverantwort zum
 Hinweis absichtlich 4 s zurück und prüft damit genau diesen späten Fall.
 
+**Nachtrag Lauf 5, Runde 2 (BEN-04/BEN-05).** Die Nachprüfung des Hinweisvermerks läuft jetzt aus
+der angemeldeten Seite und verlangt HTTP 200 samt Antwortstruktur (`due`, `currentVersion`), bevor
+`due === false` gilt; die frühere Abfrage über den Browserkontext trug keine Sitzung. Der gemeinsame
+Sichtbarkeitsprüfer (`tests/gesamtanweisung-nutzerweg/weg.ts`, `SICHT_HILFEN`) wertet eine
+Schriftfarbe nur noch bei Alpha 0 als durchsichtig; die deckende Hinweisfarbe `rgb(138, 90, 0)`
+galt vorher fälschlich als unsichtbar. Abgesichert in
+`tests/gesamtanweisung-nutzerweg/sicht-hilfen-farbe.test.ts`.
+
 Diese Bilder belegen den Kandidaten in einer Testumgebung, nicht den auf klarwerk.ai ausgelieferten
 Stand; ausgeliefert ist er erst nach Ben-Prüfung, grünem Tor und Ship.
 
