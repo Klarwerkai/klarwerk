@@ -123,6 +123,48 @@ describe("R-0163 · Laufkarte: angeglichene Anhänge", () => {
     expect(zeile()).toBeNull();
   });
 
+  // Lauf 3 R2 (Bens B6): die Karte zählt nach `counts`, nicht nach der gedeckelten Liste.
+  for (const sprache of ["de", "en", "nl"] as const) {
+    it(`[${sprache}] Zahlen aus counts, Restriktion, Nachzugsfehler und Kürzungshinweis`, async () => {
+      await i18n.changeLanguage(sprache);
+      const zweihundert = Array.from({ length: 200 }, (_, i) => `P-${i}`);
+      await laufZeigen({
+        ...basis,
+        restored: zweihundert,
+        attachmentsUpdated: zweihundert,
+        restrictionsUpdated: ["P-1"],
+        syncFailed: ["P-2", "P-3"],
+        counts: {
+          removed: 0,
+          restored: 201,
+          outsideScope: 0,
+          unchecked: 0,
+          attachmentsUpdated: 201,
+          restrictionsUpdated: 1,
+          syncFailed: 2,
+        },
+        listsTruncated: true,
+      });
+      const text = (id: string) =>
+        container?.querySelector(`[data-testid="${id}"]`)?.textContent ?? null;
+      expect(text("f0140-abgleich")).toBe(
+        i18n.t("w2.run.sourceSync", { geloescht: 0, wieder: 201, ausserhalb: 0, unbekannt: 0 }),
+      );
+      expect(zeile()?.textContent).toBe(i18n.t("w2.run.attachmentsSynced", { anzahl: 201 }));
+      expect(text("f0140-restriktion")).toBe(i18n.t("w2.run.restrictionsSynced", { anzahl: 1 }));
+      expect(text("f0140-nachzug-gescheitert")).toBe(i18n.t("w2.run.syncFailed", { anzahl: 2 }));
+      expect(text("f0140-listen-gekuerzt")).toBe(i18n.t("w2.run.syncListsTruncated"));
+      for (const id of [
+        "f0140-abgleich",
+        "f0140-restriktion",
+        "f0140-nachzug-gescheitert",
+        "f0140-listen-gekuerzt",
+      ]) {
+        expect(text(id)).not.toContain("w2.run");
+      }
+    });
+  }
+
   it("Altlauf ohne attachmentsUpdated: keine Zeile", async () => {
     await i18n.changeLanguage("de");
     await laufZeigen(basis);

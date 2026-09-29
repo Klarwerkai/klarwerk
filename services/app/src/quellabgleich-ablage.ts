@@ -18,6 +18,19 @@
 // wie der Kindvertrag des Laufs. Kein Titel, kein Inhalt, keine Berechtigung.
 import type { Pool } from "pg";
 
+/** Die Listenfelder des Abgleichs — je Feld eine Liste von Quell-Kennungen und eine Gesamtzahl. */
+export const SOURCE_SYNC_LISTEN = [
+  "removed",
+  "restored",
+  "outsideScope",
+  "unchecked",
+  "attachmentsUpdated",
+  "restrictionsUpdated",
+  "syncFailed",
+] as const;
+
+export type SourceSyncListe = (typeof SOURCE_SYNC_LISTEN)[number];
+
 /** Das dauerhafte Ergebnis eines Quellabgleichs. Listen gedeckelt (`MAX_SOURCE_SYNC_IDS`). */
 export interface ImportRunSourceSync {
   /** Wurde abgeglichen? `false` heisst: über Löschungen sagt dieser Lauf nichts. */
@@ -34,28 +47,54 @@ export interface ImportRunSourceSync {
   readonly unchecked: readonly string[];
   /** R-0163: unveränderte Seiten, deren Anhangsquellen angeglichen wurden. */
   readonly attachmentsUpdated: readonly string[];
+  /** R-0162/R-0549 (Lauf 3 R2): unveränderte Seiten, deren Quellrestriktion nachgezogen wurde. */
+  readonly restrictionsUpdated: readonly string[];
+  /** R-0163 (Lauf 3 R2): Seiten, deren Nachzug (Anhänge/Restriktion) beim Schreiben scheiterte. */
+  readonly syncFailed: readonly string[];
+  /**
+   * Lauf 3 R2 (Bens B6): die GESAMTZAHL je Liste. Die Listen sind gedeckelt, die Zahlen nicht — die
+   * Anzeige zählt hiernach, nie nach der Listenlänge. `listsTruncated`: mindestens eine Liste ist
+   * kürzer als ihre Zahl.
+   */
+  readonly counts: Readonly<Record<SourceSyncListe, number>>;
+  readonly listsTruncated: boolean;
 }
 
 export const MAX_SOURCE_SYNC_IDS = 200;
 
 /**
- * Feld für Feld neu gebaut — nur Kennungen als Zeichenketten, gedeckelt. So kann kein Aufrufer (und
- * kein Altbestand in der Tabelle) über dieses Feld Inhalt an den Lauf hängen.
+ * Feld für Feld neu gebaut — nur Kennungen als Zeichenketten, gedeckelt, und je Liste die Zahl VOR
+ * dem Deckel. So kann kein Aufrufer (und kein Altbestand in der Tabelle) über dieses Feld Inhalt an
+ * den Lauf hängen, und keine Kürzung bleibt stumm.
  */
 export function sourceSyncSnapshot(sync: unknown): ImportRunSourceSync {
   const roh = (sync ?? {}) as Record<string, unknown>;
-  const ids = (werte: unknown) =>
-    (Array.isArray(werte) ? werte : [])
-      .filter((w): w is string => typeof w === "string" && w.length > 0 && w.length <= 512)
-      .slice(0, MAX_SOURCE_SYNC_IDS);
+  const rohZahlen = (roh.counts ?? {}) as Record<string, unknown>;
+  const gueltig = (werte: unknown) =>
+    (Array.isArray(werte) ? werte : []).filter(
+      (w): w is string => typeof w === "string" && w.length > 0 && w.length <= 512,
+    );
+  const listen = {} as Record<SourceSyncListe, string[]>;
+  const counts = {} as Record<SourceSyncListe, number>;
+  let listsTruncated = false;
+  for (const feld of SOURCE_SYNC_LISTEN) {
+    const alle = gueltig(roh[feld]);
+    const gemeldet = rohZahlen[feld];
+    // Eine gemeldete Zahl gilt nur, wenn sie eine ganze Zahl ist und die Liste nicht unterbietet.
+    const zahl =
+      typeof gemeldet === "number" && Number.isSafeInteger(gemeldet) && gemeldet >= alle.length
+        ? gemeldet
+        : alle.length;
+    listen[feld] = alle.slice(0, MAX_SOURCE_SYNC_IDS);
+    counts[feld] = zahl;
+    listsTruncated = listsTruncated || listen[feld].length < zahl;
+  }
   return {
     checked: roh.checked === true,
     reason: typeof roh.reason === "string" ? roh.reason.slice(0, 64) : null,
-    removed: ids(roh.removed),
-    restored: ids(roh.restored),
-    outsideScope: ids(roh.outsideScope),
-    unchecked: ids(roh.unchecked),
-    attachmentsUpdated: ids(roh.attachmentsUpdated),
+    ...listen,
+    counts,
+    listsTruncated,
   };
 }
 

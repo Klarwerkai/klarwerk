@@ -289,7 +289,10 @@ function abschlussStatus(summary: ImportRunSummary): ImportRunStatus {
  */
 function abgleichUnvollstaendig(summary: ImportRunSummary): boolean {
   const sync = summary.sourceSync;
-  return sync !== undefined && (!sync.checked || sync.unchecked.length > 0);
+  // Lauf 3 R2 (Bens B8): ein gescheiterter Nachzug (Anhänge/Restriktion) zählt ebenso.
+  return (
+    sync !== undefined && (!sync.checked || sync.unchecked.length > 0 || sync.syncFailed.length > 0)
+  );
 }
 
 /** R-0162: das dauerhafte Abgleichsergebnis — nur Quell-Kennungen (s. `ImportRunSourceSync`). */
@@ -306,6 +309,20 @@ function abgleichFuerDenLauf(summary: ImportRunSummary): ImportRunSourceSync | u
     outsideScope: [...sync.outsideScope],
     unchecked: [...sync.unchecked],
     attachmentsUpdated: sync.attachmentsUpdated.map((a) => a.externalId),
+    restrictionsUpdated: sync.restrictionsUpdated.map((r) => r.externalId),
+    syncFailed: [...sync.syncFailed],
+    // Lauf 3 R2 (Bens B6): die Zahlen stehen VOR dem Deckel der Ablage fest — hier sind die Listen
+    // noch vollständig. `sourceSyncSnapshot` kürzt die Listen, nie die Zahlen.
+    counts: {
+      removed: sync.removed.length,
+      restored: sync.restored.length,
+      outsideScope: sync.outsideScope.length,
+      unchecked: sync.unchecked.length,
+      attachmentsUpdated: sync.attachmentsUpdated.length,
+      restrictionsUpdated: sync.restrictionsUpdated.length,
+      syncFailed: sync.syncFailed.length,
+    },
+    listsTruncated: false,
   };
 }
 
@@ -320,9 +337,18 @@ function abgleichGrund(summary: ImportRunSummary): { code: string; reason: strin
   }
   return {
     code: "SOURCE_SYNC_INCOMPLETE",
-    reason: sync.checked
-      ? `Löschabgleich unvollständig: ${sync.unchecked.length} Seite(n) mit unbekanntem Zustand, kein Vermerk gesetzt.`
-      : "Löschabgleich nicht durchgeführt — über Löschungen in der Quelle sagt dieser Lauf nichts.",
+    reason: [
+      sync.checked
+        ? sync.unchecked.length > 0
+          ? `Löschabgleich unvollständig: ${sync.unchecked.length} Seite(n) mit unbekanntem Zustand, kein Vermerk gesetzt.`
+          : null
+        : "Löschabgleich nicht durchgeführt — über Löschungen in der Quelle sagt dieser Lauf nichts.",
+      sync.syncFailed.length > 0
+        ? `Nachzug von Anhängen oder Restriktion an ${sync.syncFailed.length} Seite(n) gescheitert — dort gilt der alte Stand.`
+        : null,
+    ]
+      .filter((teil): teil is string => teil !== null)
+      .join(" "),
   };
 }
 

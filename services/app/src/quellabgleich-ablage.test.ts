@@ -46,6 +46,19 @@ describe("R-0162 · Quellabgleichsablage", () => {
       outsideScope: [],
       unchecked: [],
       attachmentsUpdated: [],
+      restrictionsUpdated: [],
+      syncFailed: [],
+      // Lauf 3 R2 (Bens B6): die Zahl zählt die gültigen Kennungen VOR dem Deckel.
+      counts: {
+        removed: MAX_SOURCE_SYNC_IDS + 1,
+        restored: 0,
+        outsideScope: 0,
+        unchecked: 0,
+        attachmentsUpdated: 0,
+        restrictionsUpdated: 0,
+        syncFailed: 0,
+      },
+      listsTruncated: true,
     });
     expect(JSON.stringify(sauber)).not.toContain("Geheim");
   });

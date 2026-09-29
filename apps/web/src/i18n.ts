@@ -7005,6 +7005,14 @@ const de = {
     "Anhänge an {{anzahl}} unveränderten Seite(n) an die Quelle angeglichen.",
   "w2.run.sourceSyncSkipped":
     "Kein Löschabgleich: die Quelle wurde nicht vollständig gelesen, über Löschungen sagt dieser Lauf nichts.",
+  "w2.run.sourceSyncNotSupported":
+    "Kein Löschabgleich: diese Quelle kann Löschungen nicht einzeln nachfragen, über Löschungen sagt dieser Lauf nichts.",
+  "w2.run.restrictionsSynced":
+    "Leserestriktion an {{anzahl}} unveränderten Seite(n) an die Quelle angeglichen; wo die Quelle jetzt strenger ist, wurde die Vertraulichkeit heraufgesetzt.",
+  "w2.run.syncFailed":
+    "Nachzug von Anhängen oder Leserestriktion an {{anzahl}} Seite(n) gescheitert — dort gilt der alte Stand.",
+  "w2.run.syncListsTruncated":
+    "Die Zahlen oben sind vollständig; die Liste der betroffenen Seiten ist gekürzt gespeichert.",
   "w2.run.idle":
     "In diesem Fenster wurde kein Gesamtlauf gestartet. Der Startknopf legt einen an; sein Zustand steht dann hier. Ein Import über „Auswahl übernehmen“ wird ebenfalls festgehalten, erscheint aber nicht hier, sondern oben in der Zeile „Zuletzt erfolgreich abgeschlossener Import“.",
   // JOB 2970 D2: Fortschritt als Zahl — die Zähler kommen fertig vom Server.
@@ -12842,6 +12850,14 @@ const en: typeof de = {
     "Attachments aligned with the source on {{anzahl}} unchanged page(s).",
   "w2.run.sourceSyncSkipped":
     "No deletion sync: the source was not read completely, so this run says nothing about deletions.",
+  "w2.run.sourceSyncNotSupported":
+    "No deletion sync: this source cannot look up deletions page by page, so this run says nothing about deletions.",
+  "w2.run.restrictionsSynced":
+    "Read restriction aligned with the source on {{anzahl}} unchanged page(s); where the source is now stricter, the confidentiality was raised.",
+  "w2.run.syncFailed":
+    "Updating attachments or read restriction failed on {{anzahl}} page(s) — the previous state still applies there.",
+  "w2.run.syncListsTruncated":
+    "The numbers above are complete; the stored list of affected pages is shortened.",
   "w2.run.idle":
     "No full run was started in this window. The start button creates one; its state then appears here. An import via “Import selection” is recorded too, but appears in the “Last successfully completed import” line above rather than here.",
   "w2.run.progress": "{{verarbeitet}} of {{gesamt}} items processed",
@@ -18497,6 +18513,14 @@ const nl: typeof de = {
     "Bijlagen op {{anzahl}} ongewijzigde pagina('s) gelijkgetrokken met de bron.",
   "w2.run.sourceSyncSkipped":
     "Geen verwijderafstemming: de bron is niet volledig gelezen, dus deze run zegt niets over verwijderingen.",
+  "w2.run.sourceSyncNotSupported":
+    "Geen verwijderafstemming: deze bron kan verwijderingen niet per pagina nagaan, dus deze run zegt niets over verwijderingen.",
+  "w2.run.restrictionsSynced":
+    "Leesbeperking op {{anzahl}} ongewijzigde pagina('s) gelijkgetrokken met de bron; waar de bron nu strenger is, is de vertrouwelijkheid verhoogd.",
+  "w2.run.syncFailed":
+    "Bijwerken van bijlagen of leesbeperking mislukt op {{anzahl}} pagina('s) — daar geldt de vorige stand.",
+  "w2.run.syncListsTruncated":
+    "De aantallen hierboven zijn volledig; de opgeslagen lijst van betrokken pagina's is ingekort.",
   "w2.run.idle":
     "In dit venster is geen volledige uitvoering gestart. De startknop maakt er een aan; de status verschijnt dan hier. Een import via „Selectie overnemen” wordt ook vastgelegd, maar verschijnt niet hier: hij staat hierboven in de regel „Laatste succesvol afgeronde import”.",
   "w2.run.progress": "{{verarbeitet}} van {{gesamt}} elementen verwerkt",

@@ -91,6 +91,10 @@ function laufNachAussen(run: ImportRun, abgleich: ImportRunSourceSync | undefine
           outsideScope: [...abgleich.outsideScope],
           unchecked: [...abgleich.unchecked],
           attachmentsUpdated: [...abgleich.attachmentsUpdated],
+          restrictionsUpdated: [...abgleich.restrictionsUpdated],
+          syncFailed: [...abgleich.syncFailed],
+          counts: { ...abgleich.counts },
+          listsTruncated: abgleich.listsTruncated,
         }
       : null,
   };

@@ -6,7 +6,12 @@ import type {
   ConfluenceImportItem,
   ConfluenceSourceAdapter,
 } from "../../confluence";
-import type { KoService } from "../../knowledge-object";
+import {
+  type KoService,
+  confidentialityRank,
+  normalizeConfidentiality,
+  safeSourceUrl,
+} from "../../knowledge-object";
 import {
   type ImportItem,
   type LibraryService,
@@ -79,8 +84,11 @@ const MAX_LOESCHPRUEFUNGEN = 200;
 export interface SourceSyncSummary {
   /** Wurde der Löschabgleich durchgeführt? */
   checked: boolean;
-  /** Warum nicht, falls nicht: die Quelle wurde nicht vollständig gelesen. */
-  reason?: "incomplete-read";
+  /**
+   * Warum nicht, falls nicht: die Quelle wurde nicht vollständig gelesen (`incomplete-read`), oder
+   * der Adapter kann keine Löschungen nachfragen (`not-supported`, nur mit gescheitertem Nachzug).
+   */
+  reason?: "incomplete-read" | "not-supported";
   /** In der Quelle gelöscht (404 bestätigt): Quell-Id und die Wissensobjekte mit diesem Anker. */
   removed: { externalId: string; koIds: string[]; marked: boolean }[];
   /**
@@ -103,7 +111,26 @@ export interface SourceSyncSummary {
     removed: string[];
     synced: boolean;
   }[];
+  /**
+   * R-0162/R-0549 (Lauf 3 R2): Seiten mit unveränderter Fassung, deren Leserestriktion in der
+   * Quelle geändert wurde — Anker nachgezogen, Vertraulichkeit ggf. heraufgesetzt (`raisedTo`).
+   */
+  restrictionsUpdated: {
+    externalId: string;
+    koId: string;
+    restrictionChanged: boolean;
+    raisedTo: string | null;
+    synced: boolean;
+  }[];
+  /**
+   * Lauf 3 R2 (Bens B8): Seiten, deren Nachzug (Anhänge oder Restriktion) beim Schreiben scheiterte.
+   * Nicht still: ein nicht leerer Wert macht den Lauf `PARTIAL` (`SOURCE_SYNC_INCOMPLETE`).
+   */
+  syncFailed: string[];
 }
+
+/** Was der Nachzug unveränderter Seiten ergibt — ein Teil von `SourceSyncSummary`. */
+type Nachzug = Pick<SourceSyncSummary, "attachmentsUpdated" | "restrictionsUpdated" | "syncFailed">;
 
 function istConfluenceAnbieter(provider: string | null | undefined): boolean {
   // Anker ohne Provider (Altbestand) zählen wie überall als Confluence (importSourceKey).
@@ -153,31 +180,44 @@ async function wiederDa(
 }
 
 /**
- * R-0163 (Lauf 2): Anhänge unveränderter Seiten angleichen. Braucht kein vollständiges Lesen des
- * Bereichs — jede gelesene Seite spricht für ihre eigenen Anhänge; ob ihre Liste vollständig ist,
- * trägt das Item selbst (`sourceAttachmentsIncomplete`). Eine gescheiterte Angleichung einer Seite
- * bricht den Lauf nicht ab.
+ * R-0163 (Lauf 2) und R-0162/R-0549 (Lauf 3 R2): unveränderte Seiten nachziehen — ihre Anhänge und
+ * ihre Leserestriktion. Braucht kein vollständiges Lesen des Bereichs — jede gelesene Seite spricht
+ * für sich; ob ihre Anhangsliste vollständig ist, trägt das Item selbst
+ * (`sourceAttachmentsIncomplete`). Scheitert der Nachzug einer Seite, bricht der Lauf nicht ab, aber
+ * die Seite steht in `syncFailed` (Bens B8) — nicht still.
  */
-async function anhangsAbgleich(
+async function nachzug(
   deps: ConfluenceImportDeps,
   unveraendert: readonly ConfluenceImportItem[],
-): Promise<SourceSyncSummary["attachmentsUpdated"]> {
-  const out: SourceSyncSummary["attachmentsUpdated"] = [];
+): Promise<Nachzug> {
+  const out: Nachzug = { attachmentsUpdated: [], restrictionsUpdated: [], syncFailed: [] };
   if (unveraendert.length === 0) {
     return out;
   }
-  // Vorfilter aus EINEM Bestandslesen: nur Seiten, deren gelieferte Anhänge vom Stand am Objekt
-  // abweichen, gehen in die (je Seite teurere) Angleichung.
-  const bestand = new Map<string, Set<string>>();
+  // Vorfilter aus EINEM Bestandslesen: nur Seiten, deren gelieferte Anhänge oder Restriktion vom
+  // Stand am Objekt abweichen, gehen in die (je Seite teurere) Angleichung.
+  const anhaenge = new Map<string, Set<string>>();
+  const anker = new Map<string, { restriktion: string | null; stufe: string }>();
   for (const ko of await deps.koService.list()) {
     for (const s of ko.sources ?? []) {
       if (s.attachmentOf && s.attachment) {
         const key = importSourceKey(s.provider, s.attachmentOf);
-        const set = bestand.get(key) ?? new Set<string>();
+        const set = anhaenge.get(key) ?? new Set<string>();
         set.add(
-          anhangsSignatur(s.attachment.externalId, s.label, s.attachment.mime, s.attachment.size),
+          anhangsSignatur(
+            s.attachment.externalId,
+            s.label,
+            s.attachment.mime,
+            s.attachment.size,
+            s.url ?? null,
+          ),
         );
-        bestand.set(key, set);
+        anhaenge.set(key, set);
+      } else if (s.externalId) {
+        anker.set(importSourceKey(s.provider, s.externalId), {
+          restriktion: restriktionsForm(s.readRestriction),
+          stufe: normalizeConfidentiality(ko.confidentiality),
+        });
       }
     }
   }
@@ -185,30 +225,63 @@ async function anhangsAbgleich(
     if (!item.externalId) {
       continue;
     }
-    const alt = bestand.get(importSourceKey(item.provider, item.externalId)) ?? new Set<string>();
+    const key = importSourceKey(item.provider, item.externalId);
+    const alt = anhaenge.get(key) ?? new Set<string>();
     const neu = new Set(
       (item.sourceAttachments ?? []).map((a) =>
-        anhangsSignatur(a.externalId, a.name, a.mime, a.size),
+        // Lauf 3 R2 (Bens B4): die Abrufadresse gehört zur Signatur — in derselben Form, in der sie
+        // am Objekt steht (`safeSourceUrl`), sonst erreicht eine geänderte Adresse den Abgleich nie.
+        anhangsSignatur(a.externalId, a.name, a.mime, a.size, safeSourceUrl(a.url)),
       ),
     );
-    const abweichend =
+    const anhangAbweichend =
       [...neu].some((sig) => !alt.has(sig)) ||
       (item.sourceAttachmentsIncomplete !== true && [...alt].some((sig) => !neu.has(sig)));
-    if (!abweichend) {
-      continue;
-    }
-    try {
-      const r = await deps.library.syncImportAttachments(item, deps.actor, {
-        dryRun: deps.dryRun,
-      });
-      if (r && item.externalId) {
-        out.push({ externalId: item.externalId, ...r, synced: !deps.dryRun });
+    const stand = anker.get(key);
+    const restriktionAbweichend =
+      stand !== undefined &&
+      (stand.restriktion !== restriktionsForm(item.sourceReadRestriction) ||
+        (item.confidentiality !== undefined &&
+          confidentialityRank(item.confidentiality) >
+            confidentialityRank(normalizeConfidentiality(stand.stufe))));
+    if (anhangAbweichend) {
+      try {
+        const r = await deps.library.syncImportAttachments(item, deps.actor, {
+          dryRun: deps.dryRun,
+        });
+        if (r) {
+          out.attachmentsUpdated.push({ externalId: item.externalId, ...r, synced: !deps.dryRun });
+        }
+      } catch {
+        out.syncFailed.push(item.externalId);
       }
-    } catch {
-      // bewusst still: der Anhangsabgleich ist eine Zugabe; der Lauf zählt die Seite als unverändert.
+    }
+    if (restriktionAbweichend) {
+      try {
+        const r = await deps.library.syncImportRestriction(item, deps.actor, {
+          dryRun: deps.dryRun,
+        });
+        if (r) {
+          out.restrictionsUpdated.push({
+            externalId: item.externalId,
+            ...r,
+            synced: !deps.dryRun,
+          });
+        }
+      } catch {
+        if (!out.syncFailed.includes(item.externalId)) {
+          out.syncFailed.push(item.externalId);
+        }
+      }
     }
   }
   return out;
+}
+
+function restriktionsForm(r: { groups: string[]; users: string[] } | undefined): string | null {
+  return r && (r.groups.length > 0 || r.users.length > 0)
+    ? JSON.stringify([[...new Set(r.groups)].sort(), [...new Set(r.users)].sort()])
+    : null;
 }
 
 function anhangsSignatur(
@@ -216,15 +289,16 @@ function anhangsSignatur(
   name: string,
   mime: string | undefined,
   size: number | undefined,
+  url: string | null,
 ): string {
-  return JSON.stringify([externalId.trim(), name.trim(), mime ?? null, size ?? null]);
+  return JSON.stringify([externalId.trim(), name.trim(), mime ?? null, size ?? null, url]);
 }
 
 async function quellAbgleich(
   deps: ConfluenceImportDeps,
   gesehen: ReadonlySet<string>,
   vollstaendig: boolean,
-  attachmentsUpdated: SourceSyncSummary["attachmentsUpdated"],
+  nachgezogen: Nachzug,
 ): Promise<SourceSyncSummary | undefined> {
   // Runde 3: ein Adapter ohne Einzelnachfrage oder ohne Bereich (Attrappen, künftige Quellen)
   // kann GAR NICHT abgleichen — dieser Weg trägt dann keinen Abgleich, statt einen
@@ -232,12 +306,24 @@ async function quellAbgleich(
   const adapter = deps.adapter as Partial<ConfluenceSourceAdapter>;
   const scope = adapter.sourceScope;
   if (typeof adapter.fetchItem !== "function" || !scope) {
-    return undefined;
+    // Lauf 3 R2 (Bens B8): ein gescheiterter Nachzug wird auch hier nicht verschluckt — dann trägt
+    // der Lauf einen Abgleich, der ausdrücklich keiner über Löschungen ist.
+    return nachgezogen.syncFailed.length > 0
+      ? {
+          checked: false,
+          reason: "not-supported",
+          removed: [],
+          outsideScope: [],
+          unchecked: [],
+          restored: [],
+          ...nachgezogen,
+        }
+      : undefined;
   }
   // Runde 3: wieder aufgetauchte Seiten zuerst — das braucht weder ein vollständiges Lesen noch
   // eine Einzelnachfrage, nur die Bereichsliste dieses Laufs.
   const restored = await wiederDa(deps, gesehen);
-  const leer = { removed: [], outsideScope: [], unchecked: [], restored, attachmentsUpdated };
+  const leer = { removed: [], outsideScope: [], unchecked: [], restored, ...nachgezogen };
   if (!vollstaendig) {
     return { checked: false, reason: "incomplete-read", ...leer };
   }
@@ -267,7 +353,7 @@ async function quellAbgleich(
     outsideScope: [],
     unchecked: [],
     restored,
-    attachmentsUpdated,
+    ...nachgezogen,
   };
   const at = new Date().toISOString();
   let nachfragen = 0;
@@ -542,7 +628,7 @@ export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<I
     deps,
     new Set(items.map((i) => i.externalId).filter((id): id is string => !!id)),
     !truncated && collectFailed.length === 0,
-    await anhangsAbgleich(deps, unveraendert),
+    await nachzug(deps, unveraendert),
   );
 
   return {

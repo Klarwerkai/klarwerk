@@ -70,10 +70,15 @@ export function saeubereQuellangaben(item: ImportItem): ImportItemMitQuellangabe
   const groups = textListe(rohRestriktion?.groups);
   const users = textListe(rohRestriktion?.users);
   const anhaenge: ImportAttachment[] = [];
+  // Lauf 3 R2 (Bens B2): jeder hier VERWORFENE Eintrag — unbrauchbar oder über dem Deckel — macht
+  // die Liste unvollständig. Sonst hielte die Annahme einen vorhandenen, nur lokal abgeschnittenen
+  // Anhang für in der Quelle entfernt und nähme ihn vom Objekt.
+  let verworfen = false;
   for (const a of Array.isArray(rohAnhaenge) ? rohAnhaenge : []) {
     const externalId = kurzerText(a?.externalId);
     const name = kurzerText(a?.name);
     if (!externalId || !name || anhaenge.length >= MAX_QUELL_ANHAENGE) {
+      verworfen = true;
       continue;
     }
     const mime = kurzerText(a.mime);
@@ -92,6 +97,6 @@ export function saeubereQuellangaben(item: ImportItem): ImportItemMitQuellangabe
     ...rest,
     ...(groups.length > 0 || users.length > 0 ? { sourceReadRestriction: { groups, users } } : {}),
     ...(anhaenge.length > 0 ? { sourceAttachments: anhaenge } : {}),
-    ...(rohUnvollstaendig === true ? { sourceAttachmentsIncomplete: true } : {}),
+    ...(rohUnvollstaendig === true || verworfen ? { sourceAttachmentsIncomplete: true } : {}),
   };
 }

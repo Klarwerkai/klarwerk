@@ -2,7 +2,11 @@ import type { Pool } from "pg";
 import { GenericContainer, type StartedTestContainer, Wait } from "testcontainers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createPool, migrate } from "./db";
-import { MAX_SOURCE_SYNC_IDS, PgQuellabgleichRepo } from "./quellabgleich-ablage";
+import {
+  MAX_SOURCE_SYNC_IDS,
+  PgQuellabgleichRepo,
+  sourceSyncSnapshot,
+} from "./quellabgleich-ablage";
 
 // R-0162 (Confluence-Gesamtimport, Lauf 3) · die Quellabgleichsablage gegen echtes PostgreSQL.
 // Lauf: `KLARWERK_SKIP_KEYCHAIN=1 npx vitest run --config vitest.integration.config.ts services/app/src/quellabgleich-ablage.integration.test.ts`
@@ -45,24 +49,32 @@ describe("R-0162 · Quellabgleich je Lauf unter echtem Postgres", () => {
   it("überlebt eine neue Verbindung und ersetzt beim zweiten Schreiben", async () => {
     const repo = new PgQuellabgleichRepo(pool);
     expect(await repo.lies("lauf-1")).toBeUndefined();
-    await repo.speichere("lauf-1", {
-      checked: true,
-      reason: null,
-      removed: ["P-1"],
-      restored: [],
-      outsideScope: ["P-2"],
-      unchecked: [],
-      attachmentsUpdated: ["P-3"],
-    });
-    await repo.speichere("lauf-1", {
-      checked: false,
-      reason: "incomplete-read",
-      removed: [],
-      restored: ["P-4"],
-      outsideScope: [],
-      unchecked: ["P-5"],
-      attachmentsUpdated: [],
-    });
+    await repo.speichere(
+      "lauf-1",
+      sourceSyncSnapshot({
+        checked: true,
+        reason: null,
+        removed: ["P-1"],
+        restored: [],
+        outsideScope: ["P-2"],
+        unchecked: [],
+        attachmentsUpdated: ["P-3"],
+      }),
+    );
+    await repo.speichere(
+      "lauf-1",
+      sourceSyncSnapshot({
+        checked: false,
+        reason: "incomplete-read",
+        removed: [],
+        restored: ["P-4"],
+        outsideScope: [],
+        unchecked: ["P-5"],
+        attachmentsUpdated: [],
+        syncFailed: ["P-6"],
+        counts: { unchecked: 250 },
+      }),
+    );
     const zweiterProzess = createPool(url);
     try {
       expect(await new PgQuellabgleichRepo(zweiterProzess).lies("lauf-1")).toEqual({
@@ -73,6 +85,18 @@ describe("R-0162 · Quellabgleich je Lauf unter echtem Postgres", () => {
         outsideScope: [],
         unchecked: ["P-5"],
         attachmentsUpdated: [],
+        restrictionsUpdated: [],
+        syncFailed: ["P-6"],
+        counts: {
+          removed: 0,
+          restored: 1,
+          outsideScope: 0,
+          unchecked: 250,
+          attachmentsUpdated: 0,
+          restrictionsUpdated: 0,
+          syncFailed: 1,
+        },
+        listsTruncated: true,
       });
     } finally {
       await zweiterProzess.end();
@@ -104,6 +128,18 @@ describe("R-0162 · Quellabgleich je Lauf unter echtem Postgres", () => {
       outsideScope: [],
       unchecked: [],
       attachmentsUpdated: [],
+      restrictionsUpdated: [],
+      syncFailed: [],
+      counts: {
+        removed: MAX_SOURCE_SYNC_IDS + 5,
+        restored: 0,
+        outsideScope: 0,
+        unchecked: 0,
+        attachmentsUpdated: 0,
+        restrictionsUpdated: 0,
+        syncFailed: 0,
+      },
+      listsTruncated: true,
     });
   });
 });

@@ -5765,6 +5765,68 @@ export class KoService {
     return { added, removed };
   }
 
+  /**
+   * R-0162 / R-0549 (Lauf 3 R2, Bens B5): die Leserestriktion am Herkunftsanker an die Quelle
+   * angleichen, wenn sich bei GLEICHER Seitenfassung nur die Restriktion geändert hat.
+   * `restriction` = `undefined` heisst: die Quelle ist jetzt offen, die Angabe entfällt. Wie der
+   * Löschvermerk eine HERKUNFTSANGABE — Inhalt, Stufe und Fassung bleiben unberührt; die
+   * Vertraulichkeit setzt der Aufrufer getrennt über `setConfidentiality`. `false`, wenn der Anker
+   * bereits so dasteht.
+   */
+  async replaceSourceReadRestriction(
+    id: string,
+    anchor: { provider: string | null; externalId: string },
+    restriction: { groups: string[]; users: string[] } | undefined,
+    actor: string,
+  ): Promise<boolean> {
+    const ko = await this.require(id);
+    const trifft = (s: KoSource) =>
+      s.externalId === anchor.externalId &&
+      (s.provider ?? "").trim().toLowerCase() === (anchor.provider ?? "").trim().toLowerCase();
+    const form = (r: { groups: string[]; users: string[] } | undefined) =>
+      r && (r.groups.length > 0 || r.users.length > 0)
+        ? JSON.stringify([[...new Set(r.groups)].sort(), [...new Set(r.users)].sort()])
+        : null;
+    const ziel = form(restriction);
+    const betroffen = (ko.sources ?? []).filter(
+      (s) => trifft(s) && form(s.readRestriction) !== ziel,
+    );
+    if (betroffen.length === 0) {
+      return false;
+    }
+    const updated: KnowledgeObject = {
+      ...ko,
+      sources: (ko.sources ?? []).map((s) => {
+        if (!trifft(s)) {
+          return s;
+        }
+        const { readRestriction: _alt, ...rest } = s;
+        return ziel === null
+          ? rest
+          : {
+              ...rest,
+              readRestriction: {
+                groups: [...(restriction?.groups ?? [])],
+                users: [...(restriction?.users ?? [])],
+              },
+            };
+      }),
+    };
+    await this.repo.update(updated);
+    await this.audit?.record({
+      actor,
+      action: "ko.source-restriction-synced",
+      target: id,
+      payload: {
+        provider: anchor.provider,
+        externalId: anchor.externalId,
+        groups: restriction?.groups.length ?? 0,
+        users: restriction?.users.length ?? 0,
+      },
+    });
+    return true;
+  }
+
   private async require(id: string): Promise<KnowledgeObject> {
     const ko = await this.repo.findById(id);
     // SCRUM-422: getrashte KOs sind für alle normalen Pfade nicht vorhanden.

@@ -1801,6 +1801,79 @@ export class LibraryService {
     return ergebnis ? { koId: ko.id, ...ergebnis } : undefined;
   }
 
+  /**
+   * R-0162 / R-0549 (Lauf 3 R2, Bens B5): QUELLRESTRIKTION NACHZIEHEN OHNE NEUE SEITENFASSUNG.
+   * Confluence erhöht die Fassung einer Seite nicht, wenn nur ihre Leserestriktion geändert wird.
+   * Der Bereichsimport überspringt eine unveränderte Fassung zu Recht als Kandidat — die Restriktion
+   * am Anker und die daraus abgeleitete Vertraulichkeit blieben dann aber veraltet.
+   *
+   * Die Regel (vorläufig, s. docs/bestandsaufnahme-confluence-import.md): trägt ein AKTIVES Objekt
+   * den Anker in GENAU der gelieferten Fassung,
+   *   1. wird die Restriktion am Anker auf den Stand der Quelle gebracht (auch: entfernt, wenn die
+   *      Seite jetzt offen ist) — eine Herkunftsangabe, protokolliert im Audit;
+   *   2. wird die Vertraulichkeit HERAUFGESETZT, wenn die Quelle jetzt eine strengere Stufe ergibt
+   *      (offen → restringiert: `intern` → `vertraulich`), über `setConfidentiality` mit Audit;
+   *   3. wird sie NIE automatisch HERABGESETZT: ob eine jetzt offene Seite in Klara `intern` werden
+   *      darf, entscheidet ein Mensch mit Herabstufungsrecht — ein Objekt kann seit dem Import auch
+   *      von Hand vertraulich gesetzt worden sein.
+   * Papierkorb-Objekte bleiben unberührt. `undefined`, wenn es nichts nachzuziehen gibt.
+   */
+  async syncImportRestriction(
+    item: ImportItem,
+    actor: string,
+    opts: { dryRun?: boolean } = {},
+  ): Promise<
+    { koId: string; restrictionChanged: boolean; raisedTo: Confidentiality | null } | undefined
+  > {
+    const externalId = this.externalUpsert ? item.externalId : undefined;
+    if (!externalId) {
+      return undefined;
+    }
+    const sauber = this.withSanitizedIngest(item);
+    const matchesAnchor = (s: { externalId?: string; provider?: string | null }): boolean =>
+      ankerSchluessel(s.provider, s.externalId) === ankerSchluessel(sauber.provider, externalId);
+    const anker = await this.sucheAnkerKo(matchesAnchor);
+    if (anker?.art !== "aktiv") {
+      return undefined;
+    }
+    const ko = anker.ko;
+    const quelle = ko.sources.find(matchesAnchor);
+    const current = quelle?.sourceVersion ?? 0;
+    if ((sauber.sourceVersion ?? current) !== current) {
+      return undefined; // höhere Fassung → Kandidatenweg; niedrigere → nichts
+    }
+    const form = (r: { groups: string[]; users: string[] } | undefined) =>
+      r && (r.groups.length > 0 || r.users.length > 0)
+        ? JSON.stringify([[...new Set(r.groups)].sort(), [...new Set(r.users)].sort()])
+        : null;
+    const restrictionChanged = form(quelle?.readRestriction) !== form(sauber.sourceReadRestriction);
+    const ziel = sauber.confidentiality;
+    const raisedTo =
+      ziel !== undefined &&
+      confidentialityRank(ziel) > confidentialityRank(normalizeConfidentiality(ko.confidentiality))
+        ? ziel
+        : null;
+    if (!restrictionChanged && raisedTo === null) {
+      return undefined;
+    }
+    if (!opts.dryRun) {
+      const anchorRef = { provider: sauber.provider ?? null, externalId };
+      if (restrictionChanged) {
+        await this.koService.replaceSourceReadRestriction(
+          ko.id,
+          anchorRef,
+          sauber.sourceReadRestriction,
+          actor,
+        );
+      }
+      if (raisedTo !== null) {
+        // Heraufsetzen braucht kein Herabstufungsrecht (`setConfidentiality`, SCRUM-509).
+        await this.koService.setConfidentiality(ko.id, raisedTo, actor);
+      }
+    }
+    return { koId: ko.id, restrictionChanged, raisedTo };
+  }
+
   // ==============================================================================================
   // JOB 3081 — DIE EINE ANKER-SUCHE, UND SIE SIEHT DEN PAPIERKORB.
   // ==============================================================================================

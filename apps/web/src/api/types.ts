@@ -1825,6 +1825,24 @@ export interface ImportRunRecord {
     unchecked: string[];
     /** R-0163 (Lauf 2): unveränderte Seiten mit angeglichenen Anhängen (fehlt bei Altläufen). */
     attachmentsUpdated?: string[];
+    /** R-0162/R-0549 (Lauf 3 R2): unveränderte Seiten mit nachgezogener Quellrestriktion. */
+    restrictionsUpdated?: string[];
+    /** Lauf 3 R2: Seiten, deren Nachzug beim Schreiben scheiterte. */
+    syncFailed?: string[];
+    /**
+     * Lauf 3 R2 (Bens B6): die Gesamtzahl je Liste — die Listen sind gedeckelt, diese Zahlen nicht.
+     * Die Anzeige zählt hiernach; fehlt das Feld (Altlauf), gilt die Listenlänge.
+     */
+    counts?: {
+      removed: number;
+      restored: number;
+      outsideScope: number;
+      unchecked: number;
+      attachmentsUpdated: number;
+      restrictionsUpdated: number;
+      syncFailed: number;
+    };
+    listsTruncated?: boolean;
   } | null;
 }
 

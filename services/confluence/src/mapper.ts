@@ -270,11 +270,14 @@ export function mapConfluencePageToImportItem(
   // unbrauchbar, ist die Anhangslage unbekannt — nie „keine Anhänge" (sonst entfernte die Annahme
   // bestehende Anhangsquellen auf eine Nicht-Antwort hin).
   const anhangsliste = page.children?.attachment;
-  const anhaengeBekannt = istAnhangsliste(anhangsliste) && !anhangsliste._links?.next;
-  const attachments = confluenceAttachments(
-    Array.isArray(anhangsliste?.results) ? anhangsliste.results : [],
-    opts.baseUrl,
-  );
+  const gelieferteAnhaenge = Array.isArray(anhangsliste?.results) ? anhangsliste.results : [];
+  const attachments = confluenceAttachments(gelieferteAnhaenge, opts.baseUrl);
+  // Lauf 3 R2 (Bens B3): verwirft `confluenceAttachments` einen Eintrag (etwa ohne Titel), ist die
+  // Liste NICHT vollständig übernommen — auch wenn die Antwort als Liste brauchbar war.
+  const anhaengeBekannt =
+    istAnhangsliste(anhangsliste) &&
+    !anhangsliste._links?.next &&
+    attachments.length === gelieferteAnhaenge.length;
 
   return {
     title,

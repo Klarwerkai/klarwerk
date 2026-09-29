@@ -225,6 +225,8 @@ describe("R-0162 · Löschungen in der Quelle werden beim nächsten Abgleich nac
       outsideScope: [],
       unchecked: [],
       attachmentsUpdated: [],
+      restrictionsUpdated: [],
+      syncFailed: [],
       restored: [],
     });
     expect(
@@ -292,6 +294,8 @@ describe("R-0162 · Löschungen in der Quelle werden beim nächsten Abgleich nac
       outsideScope: [],
       unchecked: [],
       attachmentsUpdated: [],
+      restrictionsUpdated: [],
+      syncFailed: [],
       restored: [],
     });
     expect(

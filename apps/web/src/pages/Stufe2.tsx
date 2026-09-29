@@ -37,6 +37,7 @@ import {
 import type {
   ImportCandidate,
   ImportItemInput,
+  ImportRunRecord,
   ManagementSnapshot,
   OutputDocument,
   OutputKind,
@@ -511,26 +512,53 @@ export function ImportRunPanel(): JSX.Element {
               </p>
             ) : null}
             {/* R-0162 (Runde 3): der Löschabgleich, wie der Server ihn am Lauf festhält. Gezählt
-                wird hier nichts — es sind die Längen der gelieferten Listen. Ohne Abgleich am Lauf
-                steht hier NICHTS; ein nicht durchgeführter Abgleich wird ausdrücklich benannt. */}
+                wird hier nichts — Lauf 3 R2 (Bens B6): die Zahlen kommen als `counts` vom Server,
+                weil die Kennungslisten gedeckelt sind; nur ein Altlauf ohne `counts` fällt auf die
+                Listenlänge zurück. Ohne Abgleich am Lauf steht hier NICHTS; ein nicht
+                durchgeführter Abgleich wird ausdrücklich benannt. */}
             {lauf.data?.sourceSync ? (
               <p data-testid="f0140-abgleich" className="mt-1 text-[12.5px] text-muted">
                 {lauf.data.sourceSync.checked
                   ? t("w2.run.sourceSync", {
-                      geloescht: lauf.data.sourceSync.removed.length,
-                      wieder: lauf.data.sourceSync.restored.length,
-                      ausserhalb: lauf.data.sourceSync.outsideScope.length,
-                      unbekannt: lauf.data.sourceSync.unchecked.length,
+                      geloescht: abgleichZahl(lauf.data.sourceSync, "removed"),
+                      wieder: abgleichZahl(lauf.data.sourceSync, "restored"),
+                      ausserhalb: abgleichZahl(lauf.data.sourceSync, "outsideScope"),
+                      unbekannt: abgleichZahl(lauf.data.sourceSync, "unchecked"),
                     })
-                  : t("w2.run.sourceSyncSkipped")}
+                  : lauf.data.sourceSync.reason === "not-supported"
+                    ? t("w2.run.sourceSyncNotSupported")
+                    : t("w2.run.sourceSyncSkipped")}
               </p>
             ) : null}
             {/* R-0163 (Lauf 2): Anhänge unveränderter Seiten — nur, wenn der Server welche meldet. */}
-            {lauf.data?.sourceSync?.attachmentsUpdated?.length ? (
+            {lauf.data?.sourceSync &&
+            abgleichZahl(lauf.data.sourceSync, "attachmentsUpdated") > 0 ? (
               <p data-testid="f0140-anhaenge" className="mt-1 text-[12.5px] text-muted">
                 {t("w2.run.attachmentsSynced", {
-                  anzahl: lauf.data.sourceSync.attachmentsUpdated.length,
+                  anzahl: abgleichZahl(lauf.data.sourceSync, "attachmentsUpdated"),
                 })}
+              </p>
+            ) : null}
+            {/* Lauf 3 R2 (Bens B5): Restriktion unveränderter Seiten nachgezogen. */}
+            {lauf.data?.sourceSync &&
+            abgleichZahl(lauf.data.sourceSync, "restrictionsUpdated") > 0 ? (
+              <p data-testid="f0140-restriktion" className="mt-1 text-[12.5px] text-muted">
+                {t("w2.run.restrictionsSynced", {
+                  anzahl: abgleichZahl(lauf.data.sourceSync, "restrictionsUpdated"),
+                })}
+              </p>
+            ) : null}
+            {/* Lauf 3 R2 (Bens B8): gescheiterter Nachzug — nicht still. */}
+            {lauf.data?.sourceSync && abgleichZahl(lauf.data.sourceSync, "syncFailed") > 0 ? (
+              <p data-testid="f0140-nachzug-gescheitert" className="mt-1 text-[12.5px] text-muted">
+                {t("w2.run.syncFailed", {
+                  anzahl: abgleichZahl(lauf.data.sourceSync, "syncFailed"),
+                })}
+              </p>
+            ) : null}
+            {lauf.data?.sourceSync?.listsTruncated ? (
+              <p data-testid="f0140-listen-gekuerzt" className="mt-1 text-[12.5px] text-muted">
+                {t("w2.run.syncListsTruncated")}
               </p>
             ) : null}
           </>
@@ -2622,4 +2650,22 @@ export function GraphView(): JSX.Element {
       </QueryState>
     </div>
   );
+}
+
+// Lauf 3 R2 (Bens B6): die Zahl eines Abgleichsfelds — vom Server (`counts`), nur bei einem Altlauf
+// ohne `counts` die Länge der gelieferten Liste. Gezählt wird hier nichts.
+type AbgleichFeld =
+  | "removed"
+  | "restored"
+  | "outsideScope"
+  | "unchecked"
+  | "attachmentsUpdated"
+  | "restrictionsUpdated"
+  | "syncFailed";
+
+function abgleichZahl(
+  sync: NonNullable<ImportRunRecord["sourceSync"]>,
+  feld: AbgleichFeld,
+): number {
+  return sync.counts?.[feld] ?? sync[feld]?.length ?? 0;
 }
