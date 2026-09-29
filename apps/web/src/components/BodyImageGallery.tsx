@@ -36,6 +36,38 @@ export const D44_BILD_EREIGNIS = "kw:d44-bild-oeffnen";
 export interface D44BildEreignis {
   readonly imageId: string;
   readonly nonce: number;
+  // AUFNAHME 20260922 (R-0945): das VORKOMMEN, nicht nur die Kennung — dieselbe Form wie die
+  // Bitte von der Galerie zum Editor (JOB 2084). `index` ist die Stelle in der Liste, die
+  // `extractBodyImages` aus dem Editorinhalt ableitet; `src` bestätigt sie.
+  readonly src?: string;
+  readonly index?: number;
+}
+
+/**
+ * Welcher Galerie-Eintrag zum Körperklick gehört — oder `-1`.
+ *
+ * Die Galerie liest den zuletzt GEMELDETEN Körper. Der Editor trennt eine doppelte Kennung beim
+ * Laden (JOB 3035/3051), speichert dabei aber absichtlich nichts; bis zur ersten Eingabe steht die
+ * Doppelung hier also noch. Hier stand `findIndex` über die Kennung: der Klick auf das erste Bild
+ * traf nur zufällig, der auf das zweite (jetzt mit frischer Kennung) öffnete gar nichts.
+ *
+ * Reihenfolge: eine Kennung, die hier GENAU EINMAL vorkommt; sonst die gemeldete Position, wenn
+ * die Quelle dort übereinstimmt. Sonst nichts — eine falsche Großansicht wäre schlimmer als keine.
+ */
+export function galerieIndexFuerBildklick(
+  images: readonly BodyImage[],
+  detail: D44BildEreignis,
+): number {
+  const treffer = images.flatMap((b, i) => (b.id === detail.imageId ? [i] : []));
+  const einziger = treffer[0];
+  if (treffer.length === 1 && einziger !== undefined) {
+    return einziger;
+  }
+  const { index, src } = detail;
+  if (index !== undefined && src !== undefined && images[index]?.src === src) {
+    return index;
+  }
+  return -1;
 }
 
 export function BodyImageGallery({
@@ -156,7 +188,7 @@ export function BodyImageGallery({
       if (!detail?.imageId) {
         return;
       }
-      const idx = images.findIndex((b) => b.id === detail.imageId);
+      const idx = galerieIndexFuerBildklick(images, detail);
       if (idx < 0) {
         return;
       }

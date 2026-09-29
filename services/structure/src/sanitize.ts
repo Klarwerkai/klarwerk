@@ -430,9 +430,31 @@ function anchorFigures(html: string): string {
     if (group.children.length === 0 && !figureAnchor) {
       continue; // leere figure — es gibt nichts zu verankern
     }
-    // Vorhandene Anker führen: erst der Container, dann seine Kinder in Dokumentreihenfolge.
-    let id = figureAnchor && !claimed.has(figureAnchor) ? figureAnchor : null;
-    if (!id) {
+    // AUFNAHME 20260922 (Bildidentität, R-0009 / I50 erstens): DIE KENNUNG KOMMT VOM BILD.
+    //
+    // Bis hierher führte der Container, danach das erste Kind mit freiem Anker. Zwei Folgen, beide
+    // still und beide dauerhaft, weil jeder Speicherweg hier durchläuft:
+    //   · Rahmen `a`, Bild `a`, Fußnote `b` → alle `a`. Die fremde Beschreibung hing danach an
+    //     Bild `a`, und die Kennungen behaupteten, das sei richtig — der Fehler löschte seine Spur.
+    //   · Bild OHNE Kennung neben Fußnote `x` (ein ersetztes Bild, I50 erstens) → das Bild erbte
+    //     `x` und damit die alte Beschreibung.
+    // Jetzt führt die Kennung des ERSTEN BILDES. Ist sie schon vergeben, bekommt es eine frische.
+    // Hat es keine, aber die Hülle ist verankert, ist das Bild nachträglich hineingekommen (jede
+    // verankernde Stelle setzt Hülle UND Bild): es bekommt eine frische und erbt nichts. Nur in
+    // einer nie verankerten Hülle (Altbestand, fremdes Markup) gilt die alte Reihenfolge — dort ist
+    // die Struktur die einzige Auskunft. Fußnoten werden unten nur noch angeglichen, wenn sie keine
+    // Kennung tragen oder der Kennung eines Bildes dieser Hülle folgen; jede andere behält ihre.
+    // Dieselbe Regel steht im Editor (`ensureImageAnchors`, `apps/web/src/lib/editorFigures.ts`).
+    const erstesBild = group.children.find((child) => child.name === "img");
+    const bildAnker = erstesBild ? readAnchor(erstesBild.text) : null;
+    const bildFuehrt = erstesBild !== undefined && (bildAnker !== null || figureAnchor !== null);
+    let id: string | null = null;
+    if (bildFuehrt) {
+      id = bildAnker && !claimed.has(bildAnker) ? bildAnker : null;
+    } else {
+      id = figureAnchor && !claimed.has(figureAnchor) ? figureAnchor : null;
+    }
+    if (!id && !bildFuehrt) {
       for (const child of group.children) {
         const childAnchor = readAnchor(child.text);
         if (childAnchor && !claimed.has(childAnchor)) {
@@ -473,19 +495,43 @@ function anchorFigures(html: string): string {
     // DIE FUSSNOTE BLEIBT BEIM ERSTEN BILD. Bei einer Fußnote und zwei Bildern ist nicht
     // entscheidbar, welches sie beschreibt — sie an beide zu hängen behauptete genau das für jedes
     // von ihnen. Das ist wörtlich dieselbe Antwort wie in `editorFigures.ts`, nicht eine zweite.
-    let erstesBild = true;
+    //
+    // `bildFolge` hält fest, welche EINGANGSKENNUNG eines Bildes zu welcher AUSGANGSKENNUNG wurde.
+    // Eine Fußnote mit der Eingangskennung eines Bildes dieser Hülle folgt ihm — auch wenn das Bild
+    // wegen einer Doppelung umbenannt wurde. Das Paar bleibt zusammen.
+    const bildFolge = new Map<string, string>();
+    let erstes = true;
     for (const child of group.children) {
-      if (child.name === "img" && !erstesBild) {
-        const eigener = readAnchor(child.text);
-        const zweit = eigener && !claimed.has(eigener) ? eigener : nextGeneratedAnchor();
-        claimed.add(zweit);
-        replacements.set(child.start, withAnchor(child.text, child.name, zweit));
+      if (child.name !== "img") {
         continue;
       }
-      if (child.name === "img") {
-        erstesBild = false;
+      const eigener = readAnchor(child.text);
+      let ziel = id;
+      if (!erstes) {
+        ziel = eigener && !claimed.has(eigener) ? eigener : nextGeneratedAnchor();
+        claimed.add(ziel);
       }
-      replacements.set(child.start, withAnchor(child.text, child.name, id));
+      erstes = false;
+      if (eigener && !bildFolge.has(eigener)) {
+        bildFolge.set(eigener, ziel);
+      }
+      replacements.set(child.start, withAnchor(child.text, child.name, ziel));
+    }
+    for (const child of group.children) {
+      if (child.name === "img") {
+        continue;
+      }
+      const eigener = readAnchor(child.text);
+      if (!eigener) {
+        replacements.set(child.start, withAnchor(child.text, child.name, id));
+        continue;
+      }
+      // Eine Fußnote mit eigener, abweichender Kennung behält sie — auch in einer Hülle ohne Bild.
+      // Sichtbar danebenstehende Kennungen sind reparierbar; eine überschriebene ist es nicht.
+      const folgt = bildFolge.get(eigener);
+      if (folgt !== undefined) {
+        replacements.set(child.start, withAnchor(child.text, child.name, folgt));
+      }
     }
   }
 

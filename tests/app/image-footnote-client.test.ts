@@ -244,13 +244,26 @@ describe("JOB 2362 · keine verwaiste Referenz, und der Client rät nicht", () =
     // Bild und direkte Fußnote tragen zwei verschiedene, nicht leere Kennungen. `gemeinsameKennung`
     // gibt hier bewusst auf, statt eine Seite zur Wahrheit zu erklären: eine überschriebene
     // Zuordnung ist nicht reparierbar, eine danebenstehende schon (`editorFigures.ts:985-987`).
+    //
+    // AUFNAHME 20260922 (Bildidentität): bis hierher blieb das Bild dabei ohne eigene Fußnote, und
+    // der Editor las die fremde über die Nachbarschaft als seine. Jetzt bekommt es eine EIGENE leere
+    // Fußnote direkt hinter sich — das ist Verankerungsarbeit und wird als solche gezählt. Die
+    // Zusage des Falls bleibt: keine der beiden Kennungen wird überschrieben.
     const root = wurzelMit(
       `<figure><img src="${TINY}" data-image-id="kw-img-eins-1"><figcaption data-image-id="kw-img-zwei-1">Fremde Beschreibung</figcaption></figure>`,
     );
-    expect(ensureImageAnchors(root), "Der Konflikt wurde als Verankerung gezählt").toBe(0);
+    expect(ensureImageAnchors(root), "Die eigene Fußnote wurde nicht angelegt").toBe(1);
 
     const eine = bindungen(root)[0];
     expect(eine?.img, "Die Bildkennung wurde überschrieben").toBe("kw-img-eins-1");
-    expect(eine?.caption, "Die Fußnotenkennung wurde überschrieben").toBe("kw-img-zwei-1");
+    expect(eine?.caption, "Die eigene Fußnote steht nicht direkt hinter dem Bild").toBe(
+      "kw-img-eins-1",
+    );
+    const fremde = Array.from(root.querySelectorAll("figcaption")).filter(
+      (f) => f.getAttribute("data-image-id") === "kw-img-zwei-1",
+    );
+    expect(fremde.length, "Die Fußnotenkennung wurde überschrieben").toBe(1);
+    expect(fremde[0]?.textContent).toBe("Fremde Beschreibung");
+    expect(ensureImageAnchors(root), "Ein zweiter Lauf hat erneut gearbeitet").toBe(0);
   });
 });

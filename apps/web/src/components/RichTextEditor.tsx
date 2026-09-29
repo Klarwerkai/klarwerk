@@ -977,7 +977,19 @@ export function RichTextEditor({
       return;
     }
     d44NonceRef.current += 1;
-    const nutzlast: D44BildEreignis = { imageId, nonce: d44NonceRef.current };
+    // AUFNAHME 20260922 (R-0945): das Vorkommen mitschicken. Die Position kommt aus DERSELBEN
+    // Liste, aus der die Galerie ihre Einträge ableitet (`extractBodyImages`), hier über den
+    // Editorinhalt — in dem ist jede Kennung nach `ensureImageAnchors` eindeutig. Nur bei genau
+    // einem Treffer wird eine Position gemeldet; sonst entscheidet die Galerie allein.
+    const liste = extractBodyImages(sanitizeHtml(el.innerHTML));
+    const stellen = liste.flatMap((b, i) => (b.id === imageId ? [i] : []));
+    const stelle = stellen.length === 1 ? stellen[0] : undefined;
+    const nutzlast: D44BildEreignis = {
+      imageId,
+      nonce: d44NonceRef.current,
+      src: bild.getAttribute("src") ?? "",
+      ...(stelle !== undefined ? { index: stelle } : {}),
+    };
     // JOB 1890 D13 — DAS EREIGNIS GEHT VOM BILD AUS, NICHT VON DER FLAECHE.
     //
     // Hier stand `el.dispatchEvent(...)`. Damit war `event.target` IMMER das contenteditable

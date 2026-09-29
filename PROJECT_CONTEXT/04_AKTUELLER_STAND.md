@@ -7,6 +7,17 @@
 > `PROJECT_CONTEXT/13_ASSISTENT_ZWISCHENBERICHT.md` (Rohstand: `docs/boss-assistant/`).
 > Live-Version dort bestätigt: **v1.0.0-beta.1.4**.
 
+## 29.09.2026 — Bildidentität: die Kennung kommt vom Bild (Aufnahme gesamt-bildidentitaet, Lauf 3)
+
+- Server-Sanitizer (`anchorFigures`) und Editor (`ensureImageAnchors`) überschreiben keine
+  abweichende Fußnotenkennung mehr. Ein ersetztes Bild in einer verankerten Hülle erbt die alte
+  Beschreibung nicht mehr. Die fremde Fußnote bleibt sichtbar, gekennzeichnet und bewusst
+  zuordenbar (V7).
+- Der Körperklick öffnet in der Galerie das angeklickte Vorkommen, auch bei doppelter Kennung
+  (R-0945).
+- Abgleich aller 46 Aufnahmepunkte, offene Entscheidungen (R-0014, R-0090, R-0098, R-0898-Ziehen,
+  Leseversprechen, unverankerter Altbestand): `docs/entscheidungen/bildidentitaet.md`.
+
 ## 26.09.2026 — FE-003 Seitentutorial „Fragen“ (Pilot)
 
 - Knopf „Tutorial“ unter dem Kopfband (nur `/fragen`), aufklappender Unterricht in 7 Schritten mit
