@@ -72,13 +72,22 @@ import { demoHref, isDemoContext } from "../lib/demoPilotPath";
 import { anzeigestatusAus } from "../lib/displayStatus";
 // AUFTRAG-mega33 A: die EINE effektive Antwort-Einstufung — Quelle jeder Einstufungs-Anzeige.
 import { conflictKnowledge, effectiveAnswer } from "../lib/effectiveAnswer";
+// Pedi 28.09.2026 · Ergänzung 1: Entwurf und zuletzt angezeigte Antwort bleiben dem Konto erhalten.
+import {
+  arbeitsstandLesen,
+  arbeitsstandSchreiben,
+  fragenSpeicher,
+  wiederaufnahmeAus,
+} from "../lib/fragenArbeitsstand";
 import { helpfulDisabled, helpfulLabel } from "../lib/helpfulSignal";
 import { type KnowledgeGuidanceTone, knowledgeGuidance } from "../lib/knowledgeGuidance";
+import { formatKoTimestamp } from "../lib/koDates";
 import { type ReasonerBadgeTone, reasonerBadge } from "../lib/reasonerBadge";
 import { toReasonerLocale } from "../lib/reasonerLocale";
 import { useAiAvailable } from "../lib/useAiAvailable";
 import { useAiBillable } from "../lib/useAiBillable";
 import { useAuthorName } from "../lib/useAuthorName";
+import { useKontoKennung } from "../lib/useKontoKennung";
 import { useReadiness } from "../lib/useReadiness";
 
 // Tone → Badge-Stil: seit FE-003 (Runde 2) `EVIDENCE_TONE` aus `components/fragen/QuellenListe.tsx`,
@@ -467,7 +476,25 @@ export function Ask(): JSX.Element {
   const { t, i18n } = useTranslation();
   // SCRUM-272: optionale Startfrage aus der URL (/fragen?q=…) — nur vorbefüllen, kein Auto-Ask.
   const [params] = useSearchParams();
-  const [q, setQ] = useState(() => readAskQuestion(params) ?? "");
+  // ==============================================================================================
+  // PEDI 28.09.2026 · ERGÄNZUNG 1 — WEITERARBEITEN, WO MAN AUFGEHÖRT HAT.
+  // ==============================================================================================
+  // Der Arbeitsstand dieses Kontos (Entwurf + zuletzt angezeigte Antwort) wird beim Aufbau EINMAL
+  // gelesen und füllt die Anfangswerte — es geht dafür keine Modellanfrage hinaus. Eine Startfrage
+  // aus der Adresse (`?q=`) ist ein ausdrücklicher Wunsch und hat Vorrang vor dem Entwurf.
+  // `standFuer` sagt, WESSEN Stand die Fläche gerade zeigt; geschrieben wird nur, solange er zur
+  // angemeldeten Kennung passt (s. die beiden Effekte unter `ask`).
+  const konto = useKontoKennung();
+  const [anfang] = useState(() => arbeitsstandLesen(fragenSpeicher(), konto));
+  const [standFuer, setStandFuer] = useState(konto);
+  const [q, setQ] = useState(() => readAskQuestion(params) ?? anfang?.entwurf ?? "");
+  // Der sichtbare Hinweis „hier kannst du weitermachen" — nur, wenn wirklich etwas aufgenommen
+  // wurde. Er geht, sobald eine neue Frage gestellt wird.
+  const [wiederaufnahme, setWiederaufnahme] = useState(() =>
+    wiederaufnahmeAus(anfang, readAskQuestion(params) !== null),
+  );
+  // Der Zeitpunkt der stehenden Antwort — gespeichert mit ihr, genannt im Hinweis.
+  const [antwortAm, setAntwortAm] = useState<string | null>(anfang?.antwort?.angezeigtAm ?? null);
   // AUFTRAG-mega38 BLOCK J2: „Bitte gib zuerst eine Frage ein." stand auf `/fragen`, BEVOR die
   // Leserin irgendetwas getan hatte — eine Zurechtweisung als Begrüssung. Der Satz ist richtig,
   // sein Zeitpunkt war es nicht. Er erscheint jetzt erst, wenn wirklich leer abgesendet wurde.
@@ -494,20 +521,24 @@ export function Ask(): JSX.Element {
   // erst beim Schliessen — nicht beim Öffnen.
   const menuGriffRef = useRef<HTMLButtonElement | null>(null);
   const [beispiele, setBeispiele] = useState(false);
-  const [result, setResult] = useState<AnswerResult | null>(null);
+  const [result, setResult] = useState<AnswerResult | null>(anfang?.antwort?.result ?? null);
+  // Ergänzung 1: welche Antwort aus dem Arbeitsstand kam (s. das Anspringen unter `revealResult`).
+  const aufgenommeneAntwort = useRef<AnswerResult | null>(result);
   // JOB 2626 D1: die Torlage einer Nicht-Antwort — welche gefundenen Dokumente NICHT antworten
   // konnten und welches Tor bei ihnen zu ist (Freigabe/Stufe/Volltext). „Keine belastbare
   // Grundlage" war ehrlich und unbrauchbar; R3 des Design-Leads gilt auch hier: Störung sieht
   // niemals aus wie Leere. Kommt vom Server nur bei Nicht-Antwort und nur mit Betrachterfilter.
-  const [verschlossen, setVerschlossen] = useState<VerschlossenHinweis[]>([]);
+  const [verschlossen, setVerschlossen] = useState<VerschlossenHinweis[]>(
+    anfang?.antwort?.verschlossen ?? [],
+  );
   // FUNKE-FIX P0 (bens ROT-1): der Answer-Receipt DIESES Antwortvorgangs — das „Danke" je Quelle
   // reicht ihn zurück, damit der Server die Quellen-Bindung serverseitig belegen kann.
-  const [receipt, setReceipt] = useState("");
+  const [receipt, setReceipt] = useState(anfang?.antwort?.receipt ?? "");
   // SCRUM-264: zuletzt gestellte Frage festhalten → für die Anzeige des Rescue-Blocks.
-  const [asked, setAsked] = useState("");
+  const [asked, setAsked] = useState(anfang?.antwort?.frage ?? "");
   // FUNKE-FIX2 P0 (bens Erforderlich 4): die vom Server erzeugte Wissenslücke (mit ID) — der Capture-
   // Einstieg trägt die GAP-ID (kein Fragetext in der URL); Capture lädt den Text nach Berechtigung.
-  const [gapId, setGapId] = useState<string | null>(null);
+  const [gapId, setGapId] = useState<string | null>(anfang?.antwort?.gapId ?? null);
   const qc = useQueryClient();
   const guide = knowledgeGuidance("ask");
 
@@ -616,7 +647,9 @@ export function Ask(): JSX.Element {
   // Ref und kein Zustand: es steuert keine Darstellung, sondern beantwortet beim Absenden die eine
   // Frage „ist das dieselbe wie eben?" — ein Zustand würde dafür einen Renderdurchlauf erzwingen,
   // der genau zwischen `setAsked` und `mutate` fiele.
-  const antwortFrage = useRef("");
+  // Ergänzung 1: eine wiederaufgenommene Antwort gehört zu ihrer gespeicherten Frage — dieselbe
+  // Frage erneut zu stellen ist damit eine Auffrischung, wie bei einer eben angekommenen Antwort.
+  const antwortFrage = useRef(anfang?.antwort?.frage ?? "");
   const ask = useMutation({
     mutationFn: (question: string) => endpoints.ask.ask(question, toReasonerLocale(i18n.language)),
     // D5: eine schon offene Fläche kennt die Abschaltung noch nicht — der Server hat sie eben
@@ -668,6 +701,7 @@ export function Ask(): JSX.Element {
     onSuccess: (r, question) => {
       // Der Beleg für „zu welcher Frage gehört das, was da steht" — s. `onMutate`.
       antwortFrage.current = question;
+      setAntwortAm(new Date().toISOString());
       // JOB 2694 D1: eine Antwort ohne Text kommt hier als Lücke an — Begründung am Helfer oben.
       setResult(leereAntwortAlsLuecke(selectAnswer(r)));
       setReceipt(r.receipt);
@@ -694,6 +728,78 @@ export function Ask(): JSX.Element {
     mutationFn: (koId: string) => endpoints.ask.helpful(koId, receipt),
     onSuccess: (_data, koId) => setThankedSources((prev) => new Set(prev).add(koId)),
   });
+
+  // Ergänzung 1 · SCHREIBEN: jede Änderung an Entwurf oder stehender Antwort geht in den Stand
+  // DIESES Kontos. Eine neue Frage räumt die alte Antwort in `onMutate` ab — damit ist auch der
+  // Wiederherstellungsstand sofort der neue. Ein geleertes Feld ist ein verworfener Entwurf.
+  // Kein Schreiben ohne Kennung und keines, solange die Fläche noch den Stand eines anderen Kontos
+  // zeigt (`standFuer`) — sonst landete fremde Arbeit unter der neuen Kennung.
+  useEffect(() => {
+    if (konto === null || konto !== standFuer) {
+      return;
+    }
+    const frage = antwortFrage.current;
+    arbeitsstandSchreiben(fragenSpeicher(), konto, {
+      entwurf: q,
+      antwort:
+        result && frage
+          ? {
+              frage,
+              result,
+              receipt,
+              verschlossen,
+              gapId,
+              angezeigtAm: antwortAm ?? new Date().toISOString(),
+            }
+          : null,
+    });
+  }, [konto, standFuer, q, result, receipt, verschlossen, gapId, antwortAm]);
+
+  // Ergänzung 1 · DIE KENNUNG KOMMT ODER WECHSELT bei stehender Fläche.
+  //   · WECHSEL (vorher ein anderes Konto): der Stand des neuen Kontos ersetzt den alten
+  //     vollständig — fremde Arbeit bleibt nicht auf dem Bildschirm stehen.
+  //   · ERSTES BEKANNTWERDEN (vorher keine Kennung, etwa weil `/auth/me` noch lief): es wird nur
+  //     aufgefüllt, was leer ist. Eine Startfrage aus der Adresse oder schon Getipptes bleibt,
+  //     eine stehende oder laufende Antwort ebenso.
+  //   · Wird die Kennung nur kurz unbekannt (Auffrischung, Netzlücke), bleibt alles stehen — es
+  //     wird dann bloss nicht geschrieben.
+  // Der aktuelle Stand wird über einen Ref gelesen: der Effekt soll auf die KENNUNG reagieren,
+  // nicht auf jeden Tastendruck.
+  const flaecheJetzt = useRef({ q, result, wartet: ask.isPending });
+  flaecheJetzt.current = { q, result, wartet: ask.isPending };
+  useEffect(() => {
+    if (konto === null || konto === standFuer) {
+      return;
+    }
+    const gelesen = arbeitsstandLesen(fragenSpeicher(), konto);
+    const wechsel = standFuer !== null;
+    const jetzt = flaecheJetzt.current;
+    const entwurfNehmen = wechsel || jetzt.q.trim() === "";
+    const antwortNehmen = wechsel || (jetzt.result === null && !jetzt.wartet);
+    const entwurf = entwurfNehmen ? (gelesen?.entwurf ?? "") : jetzt.q;
+    const antwort = antwortNehmen ? (gelesen?.antwort ?? null) : null;
+    if (entwurfNehmen) {
+      setQ(entwurf);
+    }
+    if (antwortNehmen) {
+      antwortFrage.current = antwort?.frage ?? "";
+      aufgenommeneAntwort.current = antwort?.result ?? null;
+      setResult(antwort?.result ?? null);
+      setReceipt(antwort?.receipt ?? "");
+      setVerschlossen(antwort?.verschlossen ?? []);
+      setGapId(antwort?.gapId ?? null);
+      setAsked(antwort?.frage ?? "");
+      setAntwortAm(antwort?.angezeigtAm ?? null);
+      setThankedSources(new Set());
+    }
+    setWiederaufnahme(
+      wiederaufnahmeAus(
+        gelesen && { entwurf: entwurfNehmen ? entwurf : "", antwort },
+        !entwurfNehmen,
+      ),
+    );
+    setStandFuer(konto);
+  }, [konto, standFuer]);
 
   // ==============================================================================================
   // AUFTRAG-mega38 BLOCK A (Pedi 27.07.) — DIE ANTWORT MUSS ANKOMMEN.
@@ -777,8 +883,10 @@ export function Ask(): JSX.Element {
   }, [ask.isPending, revealResult]);
   // A2: Antwort UND Wissenslücke — beide setzen `result`, beide sind ein Ergebnis. Der Fokus geht
   // mit, damit Tastatur und Screenreader an derselben Stelle weiterlesen wie das Auge.
+  // Ergänzung 1: eine WIEDERAUFGENOMMENE Antwort ist nicht angekommen, sie stand schon da — sie
+  // holt weder Fokus noch Bildlauf, damit das Fragefeld beim Öffnen an seinem Platz bleibt.
   useEffect(() => {
-    if (result) {
+    if (result && result !== aufgenommeneAntwort.current) {
       revealResult(true);
     }
   }, [result, revealResult]);
@@ -799,6 +907,9 @@ export function Ask(): JSX.Element {
         return;
       }
       setAsked(trimmed);
+      // Ergänzung 1: wer eine Frage stellt, arbeitet weiter — der Wiederaufnahme-Hinweis hat
+      // seinen Zweck erfüllt.
+      setWiederaufnahme(null);
       ask.mutate(trimmed);
     },
     [answerAi.available, ask.isPending, ask.mutate],
@@ -808,6 +919,13 @@ export function Ask(): JSX.Element {
   const askExample = (question: string): void => {
     setQ(question);
     submitAsk(question);
+  };
+  // Ergänzung 1: „Entwurf verwerfen" leert das Feld — und weil der Arbeitsstand dem Feld folgt,
+  // ist der Entwurf damit auch aus dem Speicher fort. Eine stehende Antwort bleibt.
+  const entwurfVerwerfen = (): void => {
+    setQ("");
+    setEmptyAttempted(false);
+    setWiederaufnahme((w) => (w?.antwortAm ? { entwurf: false, antwortAm: w.antwortAm } : null));
   };
   // Chips stabil je Bestand memoisiert (die Zufallswahl würfelt sonst bei jedem Render neu).
   const exampleChips = useMemo(() => buildAskExampleChips(kos.data ?? []), [kos.data]);
@@ -1035,6 +1153,37 @@ export function Ask(): JSX.Element {
           />
         )}
       </div>
+      {/* Ergänzung 1 (Pedi 28.09.2026): beim Wiederkommen steht OBEN, was aufgenommen wurde und wo
+          es weitergeht — ein Satz, keine Karte, damit das Fragefeld ohne Bildlauf sichtbar bleibt.
+          Die Antwort wird ausdrücklich als NICHT neu erzeugt benannt, mit ihrem Zeitpunkt. */}
+      {wiederaufnahme ? (
+        <div
+          data-testid="ask-wiederaufnahme"
+          className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-btn bg-page px-3 py-2 text-[12.5px] text-muted"
+        >
+          <p className="min-w-0 flex-1">
+            {wiederaufnahme.entwurf && wiederaufnahme.antwortAm
+              ? t("ask.wiederaufnahme.beides", {
+                  zeit: formatKoTimestamp(wiederaufnahme.antwortAm, i18n.language),
+                })
+              : wiederaufnahme.entwurf
+                ? t("ask.wiederaufnahme.entwurf")
+                : t("ask.wiederaufnahme.antwort", {
+                    zeit: formatKoTimestamp(wiederaufnahme.antwortAm, i18n.language),
+                  })}
+          </p>
+          {wiederaufnahme.entwurf ? (
+            <button
+              type="button"
+              data-testid="ask-entwurf-verwerfen"
+              onClick={entwurfVerwerfen}
+              className="shrink-0 text-[12.5px] font-semibold text-brand-text underline-offset-2 hover:underline"
+            >
+              {t("ask.wiederaufnahme.verwerfen")}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       {/* SCRUM-291: Demo-/Pilotpfad auf der Zielseite wiedererkennbar (nur bei ?demo=stage1). */}
       {isDemoContext(params) ? <DemoBanner surface="ask" /> : null}
 

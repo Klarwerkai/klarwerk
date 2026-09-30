@@ -2734,6 +2734,14 @@ const de = {
   // JOB 3064 §9: offline ist KEIN Fehlschlag, sondern ein Nicht-Versuch — die Frage ist nie
   // losgegangen. Der Fehlersatz („steckengeblieben") wäre hier schlicht unwahr.
   "ask.offline": "Keine Verbindung.",
+  // Pedi 28.09.2026 · Ergänzung 1: der Hinweis beim Wiederkommen auf die Fragenseite.
+  "ask.wiederaufnahme.entwurf":
+    "Hier kannst du weitermachen: Dein noch nicht gesendeter Entwurf steht wieder im Fragefeld.",
+  "ask.wiederaufnahme.antwort":
+    "Hier kannst du weitermachen: Das ist deine zuletzt angezeigte Antwort vom {{zeit}} mit ihren Quellen. Sie wurde nicht neu erzeugt — stelle die Frage erneut, um sie aufzufrischen.",
+  "ask.wiederaufnahme.beides":
+    "Hier kannst du weitermachen: Dein noch nicht gesendeter Entwurf steht wieder im Fragefeld, darüber deine zuletzt angezeigte Antwort vom {{zeit}}. Sie wurde nicht neu erzeugt.",
+  "ask.wiederaufnahme.verwerfen": "Entwurf verwerfen",
   // JOB 3064 §9: die Antwort steht noch, nur das Auffrischen hat nicht geklappt. Der Satz sagt
   // BEIDES — was gilt und was nicht geklappt hat —, damit niemand die stehende Antwort für frisch
   // hält. Der Fehlersatz oben („steckengeblieben") wäre hier falsch: es gibt ja ein Ergebnis.
@@ -6825,6 +6833,10 @@ const de = {
   // bzw. bis feststeht, dass die Sitzung fort ist — ohne Frist), Einordnung (technisch notwendig).
   "legal.privacy.s4.p7":
     "Schlägt das Beenden Ihrer Sitzung fehl, merkt sich die Anwendung das in Ihrem Browser unter dem Namen kw_signout_pending, damit die Nutzung gesperrt bleibt, bis unser Server die Beendigung bestätigt hat. Weil Ihre Sitzung für alle Fenster und Tabs desselben Browsers gilt, liegt dieser Merker im dauerhaften Browserspeicher und wirkt ebenfalls in allen Fenstern und Tabs — ein zweites, schon offenes Fenster würde sonst weiter Inhalte zeigen, obwohl die Beendigung offen ist. Der Merker enthält keine Angaben über Sie und wird nicht an uns übertragen. Er bleibt, bis unser Server die Beendigung bestätigt hat oder feststeht, dass Ihre Sitzung nicht mehr besteht; dann wird er gelöscht. Von selbst verfällt er nicht. Damit das nicht an Ihnen hängen bleibt, versucht die Anwendung die Beendigung von sich aus erneut — sobald Ihre Verbindung wieder besteht und bei jedem neuen Aufbau der Anwendung; außerdem können Sie es jederzeit selbst auslösen. Er ist für die von Ihnen gewünschte Abmeldung technisch notwendig.",
+  // Pedi 28.09.2026 · Ergänzung 1: der Arbeitsstand der Fragenseite liegt im Browser
+  // (`lib/fragenArbeitsstand.ts`) und enthält Inhalte — die Aufzählung nennt ihn deshalb eigens.
+  "legal.privacy.s4.p8":
+    "Auf der Seite „Fragen“ merkt sich die Anwendung in Ihrem Browser Ihren noch nicht gesendeten Entwurf sowie die zuletzt angezeigte Frage und Antwort mit ihren Quellenangaben, damit Sie nach dem Verlassen der Seite, einem Neuladen oder einer erneuten Anmeldung weiterarbeiten können. Der Eintrag ist Ihrem Benutzerkonto zugeordnet; wer sich im selben Browser mit einem anderen Konto anmeldet, bekommt ihn nicht angezeigt. Er kann Inhalte aus dem Wissensbestand Ihrer Organisation enthalten und bleibt auch nach dem Abmelden in diesem Browser gespeichert. Ein verworfener Entwurf wird sofort entfernt, die angezeigte Antwort wird ersetzt, sobald Sie eine neue Frage stellen. Der Eintrag selbst wird nicht an uns übertragen; Sie können ihn jederzeit löschen, indem Sie die Websitedaten dieser Anwendung in Ihrem Browser löschen.",
   "legal.privacy.s5.title": "5. Ihre Inhalte",
   "legal.privacy.s5.body":
     "Die Anwendung dient dazu, Wissen zu erfassen, zu prüfen und wiederzufinden. Die Inhalte, die Sie eingeben oder hochladen, werden zusammen mit dem Zeitpunkt und Ihrer Kennung als Urheber gespeichert, damit Beiträge nachvollziehbar bleiben und Rückfragen möglich sind.",
@@ -9528,6 +9540,13 @@ const en: typeof de = {
     "The request got stuck on the way. This is NOT a statement about the knowledge — it does not mean there is no answer. Please try again.",
   "ask.error.retry": "Try again",
   "ask.offline": "No connection.",
+  "ask.wiederaufnahme.entwurf":
+    "Pick up where you left off: your unsent draft is back in the question field.",
+  "ask.wiederaufnahme.antwort":
+    "Pick up where you left off: this is the answer you last saw, from {{zeit}}, with its sources. It was not generated again — ask the question again to refresh it.",
+  "ask.wiederaufnahme.beides":
+    "Pick up where you left off: your unsent draft is back in the question field, with the answer you last saw, from {{zeit}}, above it. It was not generated again.",
+  "ask.wiederaufnahme.verwerfen": "Discard draft",
   "ask.refreshFailed": "Refresh failed — this answer is from the previous request.",
   // SCRUM-295: hint for a prefilled start question (from KO detail “Use knowledge”) in demo context.
   "ask.demoPrefillHint":
@@ -12743,6 +12762,8 @@ const en: typeof de = {
     "If you use the application as an installed app, your browser stores program files in a cache so that it starts faster. Responses from our server and your content are not stored there.",
   "legal.privacy.s4.p7":
     "If ending your session fails, the application notes this in your browser under the name kw_signout_pending so that use stays blocked until our server has confirmed the session was ended. Because your session applies to every window and tab of the same browser, this marker is kept in persistent browser storage and takes effect in every window and tab as well — otherwise a second window that was already open would keep showing content even though the sign-out is still unresolved. The marker contains no information about you and is not transmitted to us. It stays until our server confirms the session was ended, or until it is established that your session no longer exists; then it is deleted. It does not expire on its own. So that this does not rest on you, the application retries ending the session by itself — as soon as your connection is back and whenever the application is opened again; you can also trigger it yourself at any time. It is technically necessary for the sign-out you requested.",
+  "legal.privacy.s4.p8":
+    "On the “Ask” page, the application keeps your unsent draft and the question and answer you last saw, including their source references, in your browser so that you can continue after leaving the page, reloading or signing in again. The entry is tied to your user account; anyone who signs in with a different account in the same browser is not shown it. It may contain content from your organisation’s knowledge base and remains stored in this browser after you sign out. A discarded draft is removed immediately; the displayed answer is replaced as soon as you ask a new question. The entry itself is not transmitted to us; you can delete it at any time by clearing this application’s site data in your browser.",
   "legal.privacy.s5.title": "5. Your content",
   "legal.privacy.s5.body":
     "The application serves to capture, review and retrieve knowledge. The content you enter or upload is stored together with the time and your identifier as author, so that contributions remain traceable and questions can be asked.",
@@ -15177,6 +15198,13 @@ const nl: typeof de = {
     "Het verzoek is onderweg blijven steken. Dit is GEEN uitspraak over de kennis — het betekent niet dat er geen antwoord is. Probeer het opnieuw.",
   "ask.error.retry": "Opnieuw proberen",
   "ask.offline": "Geen verbinding.",
+  "ask.wiederaufnahme.entwurf":
+    "Hier kun je verdergaan: je nog niet verzonden concept staat weer in het vraagveld.",
+  "ask.wiederaufnahme.antwort":
+    "Hier kun je verdergaan: dit is het antwoord dat je het laatst zag, van {{zeit}}, met de bronnen. Het is niet opnieuw gegenereerd — stel de vraag opnieuw om het te vernieuwen.",
+  "ask.wiederaufnahme.beides":
+    "Hier kun je verdergaan: je nog niet verzonden concept staat weer in het vraagveld, daarboven het antwoord dat je het laatst zag, van {{zeit}}. Het is niet opnieuw gegenereerd.",
+  "ask.wiederaufnahme.verwerfen": "Concept verwerpen",
   "ask.refreshFailed": "Vernieuwen mislukt — dit antwoord komt van het vorige verzoek.",
   "ask.demoPrefillHint":
     "Startvraag overgenomen uit het kennisobject — klik op „Vragen”. Het antwoord blijft brongebonden; status en vertrouwen beslissen, er wordt niets automatisch opgeslagen.",
@@ -18387,6 +18415,8 @@ const nl: typeof de = {
     "Gebruikt u de toepassing als geïnstalleerde app, dan legt uw browser programmabestanden in een buffer zodat de app sneller start. Antwoorden van onze server en uw inhoud worden daar niet opgeslagen.",
   "legal.privacy.s4.p7":
     "Mislukt het beëindigen van uw sessie, dan noteert de toepassing dat in uw browser onder de naam kw_signout_pending, zodat het gebruik geblokkeerd blijft totdat onze server de beëindiging heeft bevestigd. Omdat uw sessie voor alle vensters en tabbladen van dezelfde browser geldt, staat deze markering in de blijvende browseropslag en werkt zij ook in alle vensters en tabbladen — een tweede, al geopend venster zou anders inhoud blijven tonen terwijl de beëindiging nog openstaat. De markering bevat geen gegevens over u en wordt niet aan ons doorgegeven. Zij blijft staan totdat onze server de beëindiging heeft bevestigd of vaststaat dat uw sessie niet meer bestaat; dan wordt zij verwijderd. Vanzelf vervalt zij niet. Om dat niet bij u te laten liggen, probeert de toepassing de beëindiging zelf opnieuw — zodra uw verbinding weer bestaat en bij elke nieuwe start van de toepassing; u kunt het ook op elk moment zelf in gang zetten. Zij is technisch noodzakelijk voor de door u gewenste afmelding.",
+  "legal.privacy.s4.p8":
+    "Op de pagina „Vragen” bewaart de toepassing in uw browser uw nog niet verzonden concept en de laatst getoonde vraag en het antwoord met de bronvermeldingen, zodat u na het verlaten van de pagina, opnieuw laden of opnieuw aanmelden verder kunt werken. De vermelding is aan uw gebruikersaccount gekoppeld; wie zich in dezelfde browser met een ander account aanmeldt, krijgt haar niet te zien. Zij kan inhoud uit de kennisbank van uw organisatie bevatten en blijft ook na het afmelden in deze browser bewaard. Een verworpen concept wordt direct verwijderd; het getoonde antwoord wordt vervangen zodra u een nieuwe vraag stelt. De vermelding zelf wordt niet aan ons doorgegeven; u kunt haar altijd verwijderen door de websitegegevens van deze toepassing in uw browser te wissen.",
   "legal.privacy.s5.title": "5. Uw inhoud",
   "legal.privacy.s5.body":
     "De toepassing dient om kennis vast te leggen, te toetsen en terug te vinden. De inhoud die u invoert of uploadt, wordt samen met het tijdstip en uw code als auteur opgeslagen, zodat bijdragen navolgbaar blijven en vragen mogelijk zijn.",

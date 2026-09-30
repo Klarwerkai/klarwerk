@@ -7,6 +7,16 @@
 > `PROJECT_CONTEXT/13_ASSISTENT_ZWISCHENBERICHT.md` (Rohstand: `docs/boss-assistant/`).
 > Live-Version dort bestätigt: **v1.0.0-beta.1.4**.
 
+## 30.09.2026 — Fragen: Arbeit fortsetzen (Pedi 28.09.2026, Ergänzung 1, Prio 3)
+
+- `/fragen` merkt sich je Konto den ungesendeten Entwurf und die zuletzt angezeigte Frage/Antwort
+  samt Quellen im Browser (`apps/web/src/lib/fragenArbeitsstand.ts`, Kennung aus `["auth","me"]`
+  über `lib/useKontoKennung.ts`). Übersteht Tutorial, Breitenwechsel, Navigation, Neuladen und
+  erneute Anmeldung; andere Konten sehen nichts; keine neue Modellanfrage beim Wiederkommen.
+  Hinweis oben auf der Seite mit „Entwurf verwerfen“; Datenschutz Abschnitt 4 um `s4.p8` ergänzt.
+- Gerätegebunden (kein Serverspeicher): auf einem anderen Gerät gibt es keinen Arbeitsstand.
+  Tests: `tests/fragen-arbeitsstand/`.
+
 ## 26.09.2026 — FE-003 Seitentutorial „Fragen“ (Pilot)
 
 - Knopf „Tutorial“ unter dem Kopfband (nur `/fragen`), aufklappender Unterricht in 7 Schritten mit
