@@ -28,6 +28,7 @@ import {
   type ClaimResolution,
   InMemoryCandidateRepo,
   importProviderKey,
+  isOpenReviewStatus,
 } from "./repo";
 import {
   type Analytics,
@@ -569,6 +570,46 @@ export class LibraryService {
         ? { art: "wissensobjekt", koId: vergleichsId }
         : { art: "kandidat", kandidatId };
     };
+    // ============================================================================================
+    // R-0116 / R-0143 — GENAU EINMAL: AUCH DIE OFFENEN KANDIDATEN FRÜHERER UPLOADS ZÄHLEN.
+    // ============================================================================================
+    //
+    // WAS FALSCH WAR: der Vergleichsbestand bestand aus dem KO-Bestand und den Kandidaten DIESES
+    // Laufs. Wer dieselbe Datei zweimal hochlud, BEVOR jemand geprüft hatte, bekam zwei Kandidaten
+    // mit `keine` — und zwei `accept` machten daraus zwei Wissensobjekte (derselbe Gegenbefund
+    // „ein Dokument lag zweimal im Bestand" wie in R-0116, nur über die Warteschlange).
+    //
+    // WAS JETZT GILT: ein OFFENER Kandidat (`isOpenReviewStatus`: neu/in_bearbeitung), aus dem ein
+    // `accept` ein Wissensobjekt machen KANN (`kandidatErzeugtWissensobjekt`), steht als
+    // Platzhalter im Vergleich — dieselbe Form und dieselbe Rückauflösung wie ein Kandidat des
+    // laufenden Laufs (`vergleichsPlatzhalter`, `trefferVon` → `art: "kandidat"`). Keine neue
+    // Regel, keine neue Schwelle: dieselbe Frage an denselben Port, nur gegen einen Partner mehr.
+    //
+    // WAS NICHT ZÄHLT, und warum: angenommene Kandidaten haben ihr Objekt schon im KO-Bestand;
+    // abgelehnte und `info-angefragt` können kein Objekt mehr anlegen, dürfen also auch nichts
+    // blockieren; als Dublette erkannte oder nicht prüfbare ebenso (dieselbe Begründung wie am
+    // Ende der Schleife). Der KO-Bestand steht in `exakt` VOR den Kandidaten — ein echtes Objekt
+    // wird als Treffer immer vor einem wartenden Kandidaten genannt.
+    //
+    // EHRLICHE KOSTENGRENZE: `candidates.all()` liest die ganze Warteschlange einmal je Lauf,
+    // nicht je Eintrag — dieselbe Lesung, die `GET /api/library/import/candidates` ohnehin macht —
+    // und nur, wenn wenigstens ein Eintrag die Textfrage stellt: ein reiner Anker-Lauf (Confluence
+    // mit Upsert-Strang) liest die Warteschlange dafür nicht. Zwei GLEICHZEITIGE Uploads sehen sich
+    // gegenseitig nicht; dafür bräuchte es einen Riegel in der Datenhaltung, den der Textweg (ohne
+    // Anker) nicht hat.
+    const textfrageImLauf = items.some((item) => !(this.externalUpsert && item.externalId));
+    for (const offen of textfrageImLauf ? await this.candidates.all() : []) {
+      if (!isOpenReviewStatus(offen.status) || !kandidatErzeugtWissensobjekt(offen)) {
+        continue;
+      }
+      const platzhalter = vergleichsPlatzhalter(offen.id, offen.item);
+      bestand.push(platzhalter);
+      kandidatJeVergleichsId.set(platzhalter.id, offen.id);
+      const key = `${offen.item.title}|${offen.item.statement}`;
+      if (!exakt.has(key)) {
+        exakt.set(key, platzhalter.id);
+      }
+    }
     const at = new Date(this.now()).toISOString();
     // SCRUM-510 R2b: Items mit externalId werden per externalId dedupliziert — aber NUR innerhalb dieses
     // Imports (mehrfach dasselbe Quell-Objekt in einer Scheibe). Eine Kollision mit dem BESTAND ist keine
