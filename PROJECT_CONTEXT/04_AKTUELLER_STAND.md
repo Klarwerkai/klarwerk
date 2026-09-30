@@ -16,6 +16,13 @@
   Hinweis oben auf der Seite mit „Entwurf verwerfen“; Datenschutz Abschnitt 4 um `s4.p8` ergänzt.
 - Gerätegebunden (kein Serverspeicher): auf einem anderen Gerät gibt es keinen Arbeitsstand.
   Tests: `tests/fragen-arbeitsstand/`.
+- Nacharbeit nach Ben R1: laufende Anfrage an die Kontogeneration gebunden; Startadresse (`?q=`,
+  `?ask=1`) wird je Navigationskennung nur einmal übernommen; abgelaufener Antwortbeleg erklärt
+  statt „Hat geholfen“; Enter auf Start stellt die Frage (`ask=1`); Markdown-Reste (`__`, `~~`,
+  Backticks, Links) im Antworttext gelesen; gestörte Prüfung (Konflikt-/Bestandsabruf
+  gescheitert) zeigt keine Teilantwort (R-0330); doppeltes Evidenz-Etikett entfällt (R-0287);
+  Admin-Weg zu den KI-Einstellungen ohne Modell (R-1016); gesperrte Quellen zuerst als vorhanden
+  erklärt, mit Prüfweg `/validierung` (N-0009).
 
 ## 26.09.2026 — FE-003 Seitentutorial „Fragen“ (Pilot)
 

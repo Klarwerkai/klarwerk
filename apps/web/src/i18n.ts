@@ -2742,6 +2742,12 @@ const de = {
   "ask.wiederaufnahme.beides":
     "Hier kannst du weitermachen: Dein noch nicht gesendeter Entwurf steht wieder im Fragefeld, darüber deine zuletzt angezeigte Antwort vom {{zeit}}. Sie wurde nicht neu erzeugt.",
   "ask.wiederaufnahme.verwerfen": "Entwurf verwerfen",
+  "ask.pruefungGestoert": "Klara konnte das Firmenwissen gerade nicht verlässlich prüfen.",
+  // Ben R1, F8: die Rückmeldung zu einer wiederaufgenommenen Antwort.
+  "ask.rueckmeldungAbgelaufen":
+    "Rückmeldung ist nur bis 30 Minuten nach der Antwort möglich. Stelle die Frage erneut, um sie zu geben.",
+  "ask.rueckmeldungAbgelehnt":
+    "Deine Rückmeldung wurde nicht angenommen. Stelle die Frage erneut und versuche es dann noch einmal.",
   // JOB 3064 §9: die Antwort steht noch, nur das Auffrischen hat nicht geklappt. Der Satz sagt
   // BEIDES — was gilt und was nicht geklappt hat —, damit niemand die stehende Antwort für frisch
   // hält. Der Fehlersatz oben („steckengeblieben") wäre hier falsch: es gibt ja ein Ergebnis.
@@ -2851,6 +2857,9 @@ const de = {
   // JOB 4224 D5 (Lieferung 5): ohne Modell nennt die Fläche nicht nur die Lage, sondern auch den
   // erlaubten Weg. Der zweite Halbsatz ist keine Floskel — er hält fest, dass hier nichts
   // stillschweigend freigeschaltet wird.
+  "ask.aiUnavailable.adminPfad":
+    "Als Administrator kannst du hier ein KI-Modell verbinden oder die KI einschalten:",
+  "ask.aiUnavailable.toAdmin": "KI-Einstellungen öffnen",
   "ask.aiUnavailable.path":
     "Ohne Modell bleibt der Bestand offen — nichts wird dafür automatisch freigegeben:",
   "ask.aiUnavailable.toLibrary": "Bestand durchsuchen",
@@ -2908,6 +2917,11 @@ const de = {
   // volle Sätze als title-Hinweis — §2 des Auftrags wörtlich.
   // Bewusst eine ZUSTANDSAUSSAGE, keine Kausalbehauptung: gemeldet wird, welche Tore zu sind —
   // nicht, welcher Mechanismus die Antwort verworfen hat (§4: kein falsch benanntes Tor).
+  "ask.verschlossen.titel": "Dazu gibt es Inhalte — sie sind für Antworten noch nicht freigegeben.",
+  "ask.verschlossen.erklaerung":
+    "Klara hat passende Dokumente gefunden, darf sie aber noch nicht als Grundlage einer Antwort verwenden. Du kannst sie lesen; erst nach Prüfung und Einstufung tragen sie Antworten.",
+  "ask.verschlossen.pruefPfad": "Freigeben oder einstufen:",
+  "ask.verschlossen.zurPruefung": "Zur Prüfung",
   "ask.verschlossen.label": "Gefunden — aber diese Tore sind zu:",
   "ask.verschlossen.freigabe": "Freigabe fehlt",
   "ask.verschlossen.freigabeHint": "Das Dokument ist noch nicht freigegeben.",
@@ -9547,6 +9561,11 @@ const en: typeof de = {
   "ask.wiederaufnahme.beides":
     "Pick up where you left off: your unsent draft is back in the question field, with the answer you last saw, from {{zeit}}, above it. It was not generated again.",
   "ask.wiederaufnahme.verwerfen": "Discard draft",
+  "ask.pruefungGestoert": "Klara could not reliably check the company knowledge just now.",
+  "ask.rueckmeldungAbgelaufen":
+    "Feedback is only possible up to 30 minutes after the answer. Ask the question again to give it.",
+  "ask.rueckmeldungAbgelehnt":
+    "Your feedback was not accepted. Ask the question again and then try once more.",
   "ask.refreshFailed": "Refresh failed — this answer is from the previous request.",
   // SCRUM-295: hint for a prefilled start question (from KO detail “Use knowledge”) in demo context.
   "ask.demoPrefillHint":
@@ -9628,6 +9647,9 @@ const en: typeof de = {
   "answerSource.originalUnconfirmed":
     "The state of this source is not confirmed right now — the evidence is offered again once the refresh succeeds.",
   // JOB 4224 D5 (delivery 5): without a model the page names the permitted path, too.
+  "ask.aiUnavailable.adminPfad":
+    "As an administrator you can connect an AI model or switch AI on here:",
+  "ask.aiUnavailable.toAdmin": "Open AI settings",
   "ask.aiUnavailable.path":
     "Without a model the knowledge base stays open — nothing is enabled automatically for it:",
   "ask.aiUnavailable.toLibrary": "Search the knowledge base",
@@ -9672,6 +9694,11 @@ const en: typeof de = {
   // SCRUM-366 / FR-ASK-02 / PI-K2: answer contract — source-bound, honest, not a generic chatbot.
   "ask.contract.label": "Answer basis",
   // JOB 2626 D1: why there was no answer — the closed gates, per document.
+  "ask.verschlossen.titel": "There is content on this — it is not yet released for answers.",
+  "ask.verschlossen.erklaerung":
+    "Klara found matching documents but may not yet use them as the basis of an answer. You can read them; only after review and classification do they carry answers.",
+  "ask.verschlossen.pruefPfad": "Release or classify:",
+  "ask.verschlossen.zurPruefung": "Go to review",
   "ask.verschlossen.label": "Found — but these gates are closed:",
   "ask.verschlossen.freigabe": "Approval missing",
   "ask.verschlossen.freigabeHint": "The document has not been approved yet.",
@@ -15205,6 +15232,11 @@ const nl: typeof de = {
   "ask.wiederaufnahme.beides":
     "Hier kun je verdergaan: je nog niet verzonden concept staat weer in het vraagveld, daarboven het antwoord dat je het laatst zag, van {{zeit}}. Het is niet opnieuw gegenereerd.",
   "ask.wiederaufnahme.verwerfen": "Concept verwerpen",
+  "ask.pruefungGestoert": "Klara kon de bedrijfskennis nu niet betrouwbaar controleren.",
+  "ask.rueckmeldungAbgelaufen":
+    "Feedback is alleen mogelijk tot 30 minuten na het antwoord. Stel de vraag opnieuw om het te geven.",
+  "ask.rueckmeldungAbgelehnt":
+    "Je feedback is niet aangenomen. Stel de vraag opnieuw en probeer het dan nog eens.",
   "ask.refreshFailed": "Vernieuwen mislukt — dit antwoord komt van het vorige verzoek.",
   "ask.demoPrefillHint":
     "Startvraag overgenomen uit het kennisobject — klik op „Vragen”. Het antwoord blijft brongebonden; status en vertrouwen beslissen, er wordt niets automatisch opgeslagen.",
@@ -15278,6 +15310,9 @@ const nl: typeof de = {
   "answerSource.originalUnconfirmed":
     "De stand van deze bron is nu niet bevestigd — het bewijs wordt pas weer aangeboden als het vernieuwen lukt.",
   // JOB 4224 D5 (levering 5): zonder model noemt het scherm ook de toegestane weg.
+  "ask.aiUnavailable.adminPfad":
+    "Als beheerder kun je hier een AI-model koppelen of AI inschakelen:",
+  "ask.aiUnavailable.toAdmin": "AI-instellingen openen",
   "ask.aiUnavailable.path":
     "Zonder model blijft de kennisbank open — daarvoor wordt niets automatisch vrijgegeven:",
   "ask.aiUnavailable.toLibrary": "Kennisbank doorzoeken",
@@ -15320,6 +15355,11 @@ const nl: typeof de = {
   "ask.gap.step.review.hint": "Pas na validatie geldt het als geborgd.",
   "ask.contract.label": "Antwoordbasis",
   // JOB 2626 D1: waarom er geen antwoord was — de gesloten poorten, per document.
+  "ask.verschlossen.titel": "Hier is inhoud over — die is nog niet vrijgegeven voor antwoorden.",
+  "ask.verschlossen.erklaerung":
+    "Klara heeft passende documenten gevonden, maar mag ze nog niet als basis voor een antwoord gebruiken. Je kunt ze lezen; pas na beoordeling en classificatie dragen ze antwoorden.",
+  "ask.verschlossen.pruefPfad": "Vrijgeven of classificeren:",
+  "ask.verschlossen.zurPruefung": "Naar beoordeling",
   "ask.verschlossen.label": "Gevonden — maar deze poorten zijn gesloten:",
   "ask.verschlossen.freigabe": "Vrijgave ontbreekt",
   "ask.verschlossen.freigabeHint": "Het document is nog niet vrijgegeven.",

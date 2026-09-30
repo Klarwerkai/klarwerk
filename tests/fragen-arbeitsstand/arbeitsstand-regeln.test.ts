@@ -14,6 +14,8 @@ import {
   type FragenArbeitsstand,
   arbeitsstandLesen,
   arbeitsstandSchreiben,
+  belegNochGueltig,
+  startadresseMarke,
   wiederaufnahmeAus,
 } from "../../apps/web/src/lib/fragenArbeitsstand";
 
@@ -57,6 +59,7 @@ const STAND: FragenArbeitsstand = {
     gapId: null,
     angezeigtAm: "2026-09-29T08:15:00.000Z",
   },
+  startfrage: null,
 };
 
 describe("Ergänzung 1 · Arbeitsstand der Fragenseite — Regeln", () => {
@@ -70,7 +73,7 @@ describe("Ergänzung 1 · Arbeitsstand der Fragenseite — Regeln", () => {
     arbeitsstandSchreiben(s, null, STAND);
     expect(s.inhalt.size).toBe(1);
     // Die Kennung steckt im Schlüssel — zwei Konten, zwei Einträge.
-    arbeitsstandSchreiben(s, "u2", { entwurf: "Eigene Frage", antwort: null });
+    arbeitsstandSchreiben(s, "u2", { entwurf: "Eigene Frage", antwort: null, startfrage: null });
     expect(s.inhalt.size).toBe(2);
     expect(arbeitsstandLesen(s, "u1")?.entwurf).toBe(STAND.entwurf);
     expect(arbeitsstandLesen(s, "u2")?.entwurf).toBe("Eigene Frage");
@@ -89,9 +92,9 @@ describe("Ergänzung 1 · Arbeitsstand der Fragenseite — Regeln", () => {
 
   it("R3 · ein leerer Stand löscht den Eintrag — der verworfene Entwurf taucht nicht wieder auf", () => {
     const s = speicher();
-    arbeitsstandSchreiben(s, "u1", { entwurf: "Halbe Frage", antwort: null });
+    arbeitsstandSchreiben(s, "u1", { entwurf: "Halbe Frage", antwort: null, startfrage: null });
     expect(arbeitsstandLesen(s, "u1")?.entwurf).toBe("Halbe Frage");
-    arbeitsstandSchreiben(s, "u1", { entwurf: "   ", antwort: null });
+    arbeitsstandSchreiben(s, "u1", { entwurf: "   ", antwort: null, startfrage: null });
     expect(s.inhalt.size).toBe(0);
     expect(arbeitsstandLesen(s, "u1")).toBeNull();
     // Mit stehender Antwort bleibt nur die Antwort — der Entwurf ist fort.
@@ -120,7 +123,11 @@ describe("Ergänzung 1 · Arbeitsstand der Fragenseite — Regeln", () => {
       k,
       JSON.stringify({ entwurf: "Rest", antwort: { ...STAND.antwort, angezeigtAm: "gestern" } }),
     );
-    expect(arbeitsstandLesen(s, "u1")).toEqual({ entwurf: "Rest", antwort: null });
+    expect(arbeitsstandLesen(s, "u1")).toEqual({
+      entwurf: "Rest",
+      antwort: null,
+      startfrage: null,
+    });
 
     const wirft = {
       getItem: () => {
@@ -149,10 +156,47 @@ describe("Ergänzung 1 · Arbeitsstand der Fragenseite — Regeln", () => {
       wiederaufnahmeAus({ ...STAND, entwurf: " Wie oft wird Ventil V4 geprüft? " }, false),
     ).toEqual({ entwurf: false, antwortAm: "2026-09-29T08:15:00.000Z" });
     // Eine Startfrage aus der Adresse steht im Feld — dann wird kein Entwurf angekündigt.
-    expect(wiederaufnahmeAus({ entwurf: "Halbe Frage", antwort: null }, true)).toBeNull();
-    expect(wiederaufnahmeAus({ entwurf: "Halbe Frage", antwort: null }, false)).toEqual({
+    expect(
+      wiederaufnahmeAus({ entwurf: "Halbe Frage", antwort: null, startfrage: null }, true),
+    ).toBeNull();
+    expect(
+      wiederaufnahmeAus({ entwurf: "Halbe Frage", antwort: null, startfrage: null }, false),
+    ).toEqual({
       entwurf: true,
       antwortAm: null,
     });
+  });
+
+  it("R6 · Ben R1, F2: eine übernommene Startadresse hält den Eintrag — auch bei leerem Feld", () => {
+    const s = speicher();
+    const marke = startadresseMarke("default", "Startfrage", false);
+    expect(marke).not.toBeNull();
+    arbeitsstandSchreiben(s, "u1", { entwurf: "", antwort: null, startfrage: marke });
+    // Das bewusst geleerte Feld bleibt leer UND die Adresse bleibt als verbraucht gemerkt.
+    expect(arbeitsstandLesen(s, "u1")).toEqual({ entwurf: "", antwort: null, startfrage: marke });
+    // Ohne Marke ist der leere Stand wirklich leer und fort.
+    arbeitsstandSchreiben(s, "u1", { entwurf: "", antwort: null, startfrage: null });
+    expect(s.inhalt.size).toBe(0);
+  });
+
+  it("R7 · die Marke unterscheidet Navigation, Antwortwunsch und Frage — und fehlt ohne Frage", () => {
+    expect(startadresseMarke("default", null, true)).toBeNull();
+    const a = startadresseMarke("default", "Ventil", true);
+    expect(startadresseMarke("default", "Ventil", true)).toBe(a);
+    expect(startadresseMarke("k2", "Ventil", true)).not.toBe(a);
+    expect(startadresseMarke("default", "Ventil", false)).not.toBe(a);
+    expect(startadresseMarke("default", "Ventile", true)).not.toBe(a);
+  });
+
+  it("R8 · Ben R1, F8: der Antwortbeleg gilt knapp 30 Minuten — ohne Beleg oder Zeit gar nicht", () => {
+    const am = "2026-09-29T08:00:00.000Z";
+    const t0 = Date.parse(am);
+    expect(belegNochGueltig("beleg", am, t0 + 60_000)).toBe(true);
+    expect(belegNochGueltig("beleg", am, t0 + 28 * 60_000)).toBe(true);
+    expect(belegNochGueltig("beleg", am, t0 + 29 * 60_000)).toBe(false);
+    expect(belegNochGueltig("beleg", am, t0 + 1_800_001)).toBe(false);
+    expect(belegNochGueltig("", am, t0)).toBe(false);
+    expect(belegNochGueltig("beleg", null, t0)).toBe(false);
+    expect(belegNochGueltig("beleg", "kaputt", t0)).toBe(false);
   });
 });

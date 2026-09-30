@@ -7,7 +7,7 @@
 // Kopieren/Export bleiben unberührt — sie nutzen weiter den ROHEN Antworttext.
 
 export interface AnswerInlinePart {
-  kind: "text" | "bold" | "italic";
+  kind: "text" | "bold" | "italic" | "strike";
   text: string;
 }
 
@@ -17,8 +17,21 @@ export type AnswerSegment =
   | { kind: "list"; ordered: boolean; items: AnswerInlinePart[][] };
 
 // Inline-Subset: **fett** und *kursiv* (nicht verschachtelt — konservativ; ein unpaariger Marker
-// bleibt wörtlicher Text). Mehr Markdown (Links, Code, Bilder) wird BEWUSST nicht interpretiert.
-const INLINE_RE = /\*\*([^*]+)\*\*|\*([^*\n]+)\*/g;
+// bleibt wörtlicher Text).
+//
+// R-0279 (Ben R1, F4): „In den Antworten stehen keine technischen Auszeichnungszeichen mehr." Bis
+// hierher blieben `__fett__`, `~~durchgestrichen~~`, `` `Code` `` und `[Text](Adresse)` wörtlich
+// stehen. Sie werden jetzt gelesen — und zwar weiterhin OHNE neuen HTML- oder Link-Sink:
+//   · `__x__` ist fett wie `**x**`;
+//   · `~~x~~` bleibt als Durchstreichung erkennbar (`strike`) — sie einfach wegzulassen hiesse,
+//     „veraltet" als gültig zu lesen;
+//   · `` `x` `` wird zu Text (die Backticks sind reine Technik);
+//   · `[Text](Adresse)` wird zu seinem Text. Die Adresse wird NICHT zum Link: ein Modelltext
+//     bestimmt kein Sprungziel in der Anwendung. Kopieren und Export behalten den Rohtext mit
+//     Adresse unverändert.
+// Eine Fussnotenmarke `[1]` ist davon nicht betroffen — sie hat kein `(` dahinter.
+const INLINE_RE =
+  /\*\*([^*]+)\*\*|\*([^*\n]+)\*|__([^_\n]+)__|~~([^~\n]+)~~|`([^`\n]+)`|\[([^\]\n]+)\]\(([^)\s]*)\)/g;
 
 export function parseAnswerInline(text: string): AnswerInlinePart[] {
   const parts: AnswerInlinePart[] = [];
@@ -28,10 +41,14 @@ export function parseAnswerInline(text: string): AnswerInlinePart[] {
     if (m.index > last) {
       parts.push({ kind: "text", text: text.slice(last, m.index) });
     }
-    if (m[1] !== undefined) {
-      parts.push({ kind: "bold", text: m[1] });
+    if (m[1] !== undefined || m[3] !== undefined) {
+      parts.push({ kind: "bold", text: m[1] ?? m[3] ?? "" });
     } else if (m[2] !== undefined) {
       parts.push({ kind: "italic", text: m[2] });
+    } else if (m[4] !== undefined) {
+      parts.push({ kind: "strike", text: m[4] });
+    } else {
+      parts.push({ kind: "text", text: m[5] ?? m[6] ?? "" });
     }
     last = INLINE_RE.lastIndex;
     m = INLINE_RE.exec(text);

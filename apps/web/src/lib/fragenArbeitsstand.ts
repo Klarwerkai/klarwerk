@@ -45,6 +45,12 @@ export interface FragenArbeitsstand {
   /** Der Text im Fragefeld, wie er zuletzt stand. Leer = kein Entwurf. */
   entwurf: string;
   antwort: GespeicherteAntwort | null;
+  /**
+   * Die Startadresse (`?q=`/`?ask=1` samt Navigationskennung), die dieser Stand schon übernommen
+   * hat — s. `startadresseMarke`. Öffnet dieselbe Adresse die Seite erneut (Neuladen, Zurück), ist
+   * sie verbraucht: dann gewinnt der Stand, und es wird nicht noch einmal gefragt. `null` = keine.
+   */
+  startfrage: string | null;
 }
 
 /**
@@ -119,18 +125,21 @@ export function arbeitsstandLesen(
       return null;
     }
     const antwort = antwortAus(wert.antwort);
-    if (wert.entwurf.trim() === "" && antwort === null) {
+    const startfrage = typeof wert.startfrage === "string" ? wert.startfrage : null;
+    if (wert.entwurf.trim() === "" && antwort === null && startfrage === null) {
       return null;
     }
-    return { entwurf: wert.entwurf, antwort };
+    return { entwurf: wert.entwurf, antwort, startfrage };
   } catch {
     return null;
   }
 }
 
 /**
- * Den Arbeitsstand EINES Kontos schreiben. Ein leerer Stand (kein Entwurf, keine Antwort) löscht
- * den Eintrag — es bleibt nichts liegen, was niemand mehr braucht.
+ * Den Arbeitsstand EINES Kontos schreiben. Ein leerer Stand (kein Entwurf, keine Antwort, keine
+ * verbrauchte Startadresse) löscht den Eintrag — es bleibt nichts liegen, was niemand mehr braucht.
+ * Die Startadresse allein hält den Eintrag: sonst käme ein bewusst geleertes Feld beim Neuladen
+ * derselben Adresse mit der Startfrage wieder.
  */
 export function arbeitsstandSchreiben(
   storage: StorageLike | undefined,
@@ -142,7 +151,7 @@ export function arbeitsstandSchreiben(
   }
   try {
     const schluessel = arbeitsstandSchluessel(konto);
-    if (stand.entwurf.trim() === "" && stand.antwort === null) {
+    if (stand.entwurf.trim() === "" && stand.antwort === null && stand.startfrage === null) {
       storage.removeItem(schluessel);
       return;
     }
@@ -183,4 +192,60 @@ export function wiederaufnahmeAus(
   const entwurf = !startfrageAusAdresse && offenerEntwurf(stand);
   const antwortAm = stand.antwort?.angezeigtAm ?? null;
   return entwurf || antwortAm !== null ? { entwurf, antwortAm } : null;
+}
+
+/**
+ * Die Marke einer Startadresse: Navigationskennung + Startfrage + Antwortwunsch — oder `null`, wenn
+ * die Adresse keine Startfrage trägt.
+ *
+ * WARUM DIE NAVIGATIONSKENNUNG (`location.key`) DAZUGEHÖRT: Jeder neue Weg auf die Seite (Link,
+ * Enter auf Start, Suche) erzeugt eine neue Kennung — die Startfrage gilt dann, auch wenn sie
+ * wörtlich dieselbe ist wie beim letzten Mal. Neuladen und Zurück behalten die Kennung — dann ist
+ * es DIESELBE Adresse, sie wurde schon übernommen, und der gespeicherte Stand gewinnt.
+ */
+export function startadresseMarke(
+  navigationsKennung: string,
+  startfrage: string | null,
+  autoFrage: boolean,
+): string | null {
+  return startfrage === null
+    ? null
+    : `${navigationsKennung}:${autoFrage ? "1" : "0"}:${pruefwert(startfrage)}`;
+}
+
+/**
+ * Die Marke trägt die Startfrage NICHT im Klartext, sondern als Prüfwert (FNV-1a, 32 Bit): Sie
+ * bleibt auch nach „Entwurf verwerfen" im Speicher stehen, und dort soll dann kein Fragetext mehr
+ * liegen (Datenschutzerklärung Abschnitt 4, `s4.p8`: „Ein verworfener Entwurf wird sofort
+ * entfernt"). Für die einzige Frage, die sie beantwortet — „ist das dieselbe Adresse?" —, reicht
+ * die Gleichheit des Prüfwerts.
+ */
+function pruefwert(text: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(16);
+}
+
+/**
+ * Ben R1, F8: Der Antwortbeleg (Receipt) gilt auf dem Server 30 Minuten
+ * (`services/ask/src/receipt.ts`, `ANSWER_RECEIPT_TTL_MS`). Die Fläche rechnet mit einer Minute
+ * Abstand, damit ein Klick kurz vor Ablauf nicht erst am Server scheitert. Gemessen wird ab dem
+ * Zeitpunkt, zu dem die Antwort ankam — der Beleg entstand unmittelbar davor.
+ */
+const BELEG_GUELTIG_MS = 29 * 60_000;
+
+/** Kann „Hat geholfen" mit dem Beleg dieser Antwort noch angenommen werden? */
+export function belegNochGueltig(
+  receipt: string,
+  antwortAm: string | null,
+  jetztMs: number,
+): boolean {
+  if (receipt === "" || antwortAm === null) {
+    return false;
+  }
+  const am = Date.parse(antwortAm);
+  return !Number.isNaN(am) && jetztMs - am < BELEG_GUELTIG_MS;
 }
