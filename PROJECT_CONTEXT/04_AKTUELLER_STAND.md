@@ -7,6 +7,17 @@
 > `PROJECT_CONTEXT/13_ASSISTENT_ZWISCHENBERICHT.md` (Rohstand: `docs/boss-assistant/`).
 > Live-Version dort bestätigt: **v1.0.0-beta.1.4**.
 
+## 29.09.2026 — Aufnahme „Vorschau-Reichweite“ (Wissensvorschau beim Erfassen)
+
+- `POST /api/knowledge/check` meldet jetzt immer `coverage`: `{kind:"candidates", checked, limit,
+  limitReached}` oder ausdrücklich `{kind:"unknown"}` (zu kurzer Text, Fehler). Vertrag am Ende von
+  `services/app/src/knowledge-check.ts`.
+- Blatt und `LiveReactionZone` sprechen von „Vorschau“ und nennen nur diesen Umfang; „Das ist neu“
+  gibt es auf diesem Weg nicht mehr (Anzeigezustand `new` → `empty`). Texte in `apps/web/src/texte/vorschau.ts`.
+- Echter Nachweis (PostgreSQL + Chromium, Eintrag auf Rang 41):
+  `tests/vorschau-reichweite/vorschau-reichweite-pg-im-browser.integration.test.ts` — Ausführung auf
+  dem Prüfserver steht aus.
+
 ## 26.09.2026 — FE-003 Seitentutorial „Fragen“ (Pilot)
 
 - Knopf „Tutorial“ unter dem Kopfband (nur `/fragen`), aufklappender Unterricht in 7 Schritten mit
