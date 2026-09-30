@@ -1709,6 +1709,14 @@ export const ERLAUBTE_FEHLERTYPEN: ReadonlySet<string> = new Set([
   "DraftStaleError",
   "ExternalSearchError",
   "FencingVeraltetError",
+  // Auftrag gesamt-dubletten-rueckzug, Lauf 5 (mit BEN-R5-4): der ungewisse Ausgang eines
+  // Rücknahme-Vorgangs im Dev-Journal (dev-persist.ts). Der Name endet NICHT auf `Error`, der
+  // Wächter unten (`class …Error extends`) erhebt ihn deshalb nicht — ohne diesen Eintrag stünde
+  // `type: UNBEKANNT` neben `code: JOURNAL_AUSGANG_UNGEWISS`. ENTSCHEIDUNG: der Name darf ins
+  // Protokoll; er trägt, wie jeder Nachbar hier, ausschliesslich seinen Klassennamen (Meldung ist
+  // ein fester Satz, Vorgangskennung und Ursache sind Felder). Gebunden in
+  // tests/dubletten-ruecknahme-lesepfad/journal-ungewiss-auf-der-logliste.test.ts.
+  "JournalAusgangUngewiss",
   "KlaraError",
   // JOB 4151: aus `services/knowledge-object/src/kanten-types.ts` — der Fachfehler der kuratierten
   // Beziehungen. ENTSCHEIDUNG: der Name darf ins Protokoll. Er trägt, wie jeder Nachbar hier,
@@ -1833,6 +1841,15 @@ export const ERLAUBTE_FEHLERCODES: ReadonlySet<string> = new Set([
   "INVALID_STATUS",
   "INVALID_TYPE",
   "INVALID_UPLOAD_LIMITS",
+  // Auftrag gesamt-dubletten-rueckzug, Lauf 5 (BEN-R5-4): der Ausgang eines Rücknahme-Vorgangs im
+  // Dev-Journal ist UNGEWISS und an der Datei gerade nicht klärbar (`JournalAusgangUngewiss`,
+  // dev-persist.ts). ENTSCHEIDUNG: darf ins Protokoll. Der Code trägt weder Nutzertext noch Kennung
+  // (die Vorgangskennung steht nur im Feld `vorgang`, die Datenträgerursache nur in `cause`), geht
+  // über `http.ts` ohnehin als 503 an den Client — und er ist im Betriebsprotokoll die eine Zeile,
+  // an der ein Betreiber diese Lage erkennt; als `UNBEKANNT` sagte sie über den Vorfall nichts.
+  // Vom Wächter unten (`build-app.test.ts`, Setzform `code = "…"`) verlangt; gebunden an die Klasse
+  // in tests/dubletten-ruecknahme-lesepfad/journal-ungewiss-auf-der-logliste.test.ts.
+  "JOURNAL_AUSGANG_UNGEWISS",
   // D5 (KI aus): der Frageweg ist vom Administrator abgeschaltet (`AskError`, services/ask). Darf ins
   // Protokoll: ein Betriebszustand ohne Nutzertext und ohne Kennung; geht als 503 ohnehin an den Client.
   "KI_ABGESCHALTET",

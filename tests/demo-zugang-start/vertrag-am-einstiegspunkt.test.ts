@@ -1375,4 +1375,52 @@ describe("JOB 3776 R2 · der Startvertrag steht am Einstiegspunkt, nicht im Modu
       )
       .toEqual([]);
   });
+
+  it("R2/9 · Lauf 5 (BEN-R5-6): dev-persist.ts bleibt Bibliothek — ein Aufruf auf Modulebene hebt sie ins Inventar", () => {
+    // ============================================================================================
+    // AUFTRAG gesamt-dubletten-rueckzug, LAUF 5, BEN-R5-6 (Prüfauftrag pa-1790771019-5c5b1fe8).
+    // ============================================================================================
+    //
+    // DER BEFUND: `const NEUAUFSATZ_TEXT = JSON.stringify(NEUAUFSATZ)` auf Modulebene von
+    // `dev-persist.ts` machte R2/7 rot — „UNERWARTET: services/app/src/dev-persist.ts". Ein reiner
+    // Aufruf, kein Prozessstart — und TROTZDEM zu Recht aufgenommen: die Aufnahmeregel ist
+    // mechanisch (Kopf dieser Datei, „was auch jetzt nicht gemessen wird"). Sie entscheidet an der
+    // FORM der Anweisung, nicht daran, was ein Ausdruck zur Laufzeit täte; BEN hat in Runde 2 genau
+    // diese Breite verlangt (`const services = buildServices()`). Eine Liste „harmloser" Funktionen,
+    // die davon ausgenommen wären, wäre ein offener Kanal — derselbe Fehler wie eine Formregel in
+    // `ERLAUBTE_FEHLERCODES`.
+    //
+    // BEHOBEN WURDE DESHALB DIE BIBLIOTHEK, NICHT DIE REGEL: der Aufruf steht in `dev-persist.ts`
+    // jetzt in einer Funktion (`neuaufsatzText`), die Modulebene trägt wieder nur Deklarationen.
+    // Dieser Fall hält beide Richtungen fest, an der ECHTEN Datei:
+    const PFAD = "services/app/src/dev-persist.ts";
+    const echt = quelltext(PFAD);
+    const baum = ts.createSourceFile(PFAD, echt, ts.ScriptTarget.ESNext, false);
+
+    // Die Datei lädt `build-app` wirklich — sonst prüfte (2) nur die erste Hälfte der Regel.
+    expect(
+      laedtBuildApp(baum),
+      `${PFAD} nennt build-app nicht mehr als Modul — dann sagt dieser Fall nichts über die zweite Hälfte der Aufnahmeregel.`,
+    ).toBe(true);
+
+    // (1) POSITIV — die echte Datei, für sich allein gelesen: kein Einstiegspunkt, kein Riegel,
+    //     keine ausführende Modulanweisung. Das ist die Zusage, die BEN-R5-6 gebrochen sah.
+    expect(
+      hatAusfuehrbareModulanweisung(baum),
+      `${PFAD} hat wieder eine Anweisung auf Modulebene, die beim Laden etwas ausführt (s. BEN-R5-6: auch ein Initialisierer wie JSON.stringify(…) zählt). Die Bibliothek muss die Regel einhalten, nicht die Regel weicher werden.`,
+    ).toBe(false);
+    expect(hatDirektaufrufRiegel(baum), `${PFAD} trägt einen Direktaufruf-Riegel.`).toBe(false);
+    expect(
+      einstiegspunkte([{ pfad: PFAD, quelle: echt }]),
+      `${PFAD} steht im Inventar — sie ist eine Bibliothek, die server.ts einbindet.`,
+    ).toEqual([]);
+
+    // (2) NEGATIV — dieselbe Datei plus GENAU die Zeile, die BEN gemessen hat: sofort im Inventar.
+    //     Wer die Regel an dieser Stelle „nachsichtiger" macht, macht diesen Fall rot.
+    const mitAufruf = `${echt}\nconst NEUAUFSATZ_TEXT = JSON.stringify(NEUAUFSATZ);\n`;
+    expect(
+      einstiegspunkte([{ pfad: PFAD, quelle: mitAufruf }]),
+      "Ein Aufruf auf Modulebene (JSON.stringify in einem Initialisierer) wurde NICHT aufgenommen — die Aufnahmeregel ist aufgeweicht worden; BEN-R5-6 wäre damit unsichtbar.",
+    ).toEqual([PFAD]);
+  });
 });

@@ -208,7 +208,24 @@ export interface JournalLine {
  * Kein Repo trägt diesen Namen; auch ein älterer Leser spielt sie nicht zurück.
  */
 const NEUAUFSATZ: JournalEntry = { repo: "journal", method: "neuaufsatz", args: [] };
-const NEUAUFSATZ_TEXT = JSON.stringify(NEUAUFSATZ);
+
+/**
+ * Die Zeile, die der Neuaufsatz in der Datei hinterlässt — DIESELBE Serialisierung, mit der jeder
+ * Eintrag geschrieben wird (`JSON.stringify`, s. `buildDevPersistServices`), damit Schreiben und
+ * Wiedererkennen nie auseinanderlaufen.
+ *
+ * Lauf 5, Nacharbeit BEN-R5-6: ALS FUNKTION, NICHT ALS MODULKONSTANTE. Diese Datei ist eine
+ * Bibliothek, die `server.ts` einbindet; auf Modulebene stehen nur Deklarationen, deren
+ * Initialisierer beim Laden nichts ausführen. Genau das misst das Einstiegspunkt-Inventar
+ * (tests/demo-zugang-start/vertrag-am-einstiegspunkt.test.ts, R2/7) am Syntaxbaum: wer `build-app`
+ * lädt UND auf Modulebene einen Aufruf hat, gilt dort als eigener Prozess. Die Regel ist bewusst
+ * mechanisch — sie unterscheidet nicht „harmloser Aufruf" von „startet etwas", weil eine solche
+ * Liste ein offener Kanal wäre. `const NEUAUFSATZ_TEXT = JSON.stringify(…)` hat diese Datei deshalb
+ * ins Inventar gehoben. Die Bibliothek hält die Regel ein, statt dass die Regel weicher wird.
+ */
+function neuaufsatzText(): string {
+  return JSON.stringify(NEUAUFSATZ);
+}
 
 // Journal defensiv laden: fehlende Datei → leer; eine korrupte (z. B. beim Crash halb
 // geschriebene) Zeile beendet das Einlesen ab dort — alles Gültige davor bleibt erhalten. Eine
@@ -233,9 +250,10 @@ export function readJournalLines(file: string): JournalLine[] {
   // Aufrufer hat dafür einen Fehler bekommen, die Klammer hat zurückgestellt; es wirkt nie.
   const physisch = readFileSync(file, "utf8").split("\n");
   physisch.pop(); // das Unbestätigte (bei sauberem Ende die leere Zeichenkette nach dem letzten "\n")
+  const neuaufsatz = neuaufsatzText();
   for (const line of physisch) {
     lineNumber += 1;
-    if (line.trim().length === 0 || line === NEUAUFSATZ_TEXT) {
+    if (line.trim().length === 0 || line === neuaufsatz) {
       continue;
     }
     try {
@@ -254,7 +272,7 @@ export function readJournalLines(file: string): JournalLine[] {
       // Schreibaufrufs, den der nächste Schreibaufruf mit dem Neuaufsatz abgeschlossen hat (s.
       // `mitNeuaufsatz`). Der Rest wurde als Fehler gemeldet und nie bestätigt; was danach steht,
       // ist bestätigt und wird weiter gelesen. Jede andere ungültige Zeile beendet wie bisher.
-      if (line.endsWith(NEUAUFSATZ_TEXT)) {
+      if (line.endsWith(neuaufsatz)) {
         continue;
       }
       break;

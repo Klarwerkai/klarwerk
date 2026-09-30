@@ -75,7 +75,7 @@
 //         und als Nachbarargument eines echten Aufrufs (Fall (H)). Beides hat BEN an R2 gemessen,
 //         beides steht jetzt als dauerhafter Fall in (e);
 //       · aus `this.snapshot(…)` zählt AUSSCHLIESSLICH das dritte Argument, weil genau dort die
-//         Unterschrift des Dienstes den Vermerk führt (`service.ts:820` `snapshot(ko, author, note,
+//         Unterschrift des Dienstes den Vermerk führt (`service.ts:931` `snapshot(ko, author, note,
 //         tx?)`). Ein Literal in einem Nachbarargument ist der Mandant, der Titel, die Transaktion —
 //         nicht der Vermerk (Fälle (F)/(G) in (e); beide wurden an R1 fälschlich gemeldet).
 //
@@ -148,21 +148,25 @@ const DIENST_VERMERKE = [
     // von `:3715` ein (Begründung dort bei `pruefeHerkunft`), deshalb bleiben die drei „erstellt"-
     // Fundstellen und ihre Nachbarn stehen, wo sie standen. Gemessen mit
     // `grep -n '"erstellt"' services/knowledge-object/src/service.ts`, nicht fortgeschrieben.
-    fundstellen: [2100, 2229],
+    // AUFTRAG gesamt-dubletten-rueckzug, Lauf 5 (BEN-R5-5): NEU GEMESSEN, alle zehn Fundstellen
+    // dieser Tabelle verschoben — um 8 Zeilen bis `findCandidates` (`ruecknahmeKlammer` in
+    // `KoServiceDeps`, zwei Zeilen im Konstruktor), um 17 Zeilen dahinter (`imRuecknahmeVorgang` in
+    // `restore`). Wortlaute und Zahl der Vermerke UNVERÄNDERT; es sind weiterhin dieselben FÜNF.
+    fundstellen: [2108, 2237],
   },
   {
     wort: "erstellt (Dokumentinhalt übernommen)",
     schluessel: "ko.historyNote.createdFromDocument",
     en: "created (document content adopted)",
     nl: "aangemaakt (documentinhoud overgenomen)",
-    fundstellen: [2476],
+    fundstellen: [2484],
   },
   {
     wort: "erstellt (nachgezogen)",
     schluessel: "ko.historyNote.createdBackfilled",
     en: "created (backfilled)",
     nl: "aangemaakt (nagetrokken)",
-    fundstellen: [2890],
+    fundstellen: [2898],
   },
   {
     wort: "überarbeitet",
@@ -197,14 +201,16 @@ const DIENST_VERMERKE = [
     // Wortlaute und Zahl der Vermerke UNVERÄNDERT.
     // D5 (KI aus, Lauf 3): NEU GEMESSEN, alle Fundstellen um 29 Zeilen verschoben — die Sperre des
     // Fragewegs in Bestandsstempel/Lesefassung/`get`, `aktuelleFassungVon` und `findCandidates`.
-    fundstellen: [4476, 4593, 4689, 4878],
+    // AUFTRAG gesamt-dubletten-rueckzug, Lauf 5 (BEN-R5-5): NEU GEMESSEN, um 17 Zeilen verschoben
+    // (s. den Vermerk bei „erstellt"). Weiterhin dieselben VIER Schreibwege, derselbe Vermerk.
+    fundstellen: [4493, 4610, 4706, 4895],
   },
   {
     wort: "überarbeitet (Dokumentinhalt übernommen)",
     schluessel: "ko.historyNote.revisedFromDocument",
     en: "revised (document content adopted)",
     nl: "herzien (documentinhoud overgenomen)",
-    fundstellen: [5109, 5127],
+    fundstellen: [5126, 5144],
   },
 ] as const;
 
@@ -409,7 +415,7 @@ const argumenteVon = (code: string, maske: string, aufruf: string): string[][] =
   return raus;
 };
 
-/** Das Argument, das der Dienst als Vermerk führt: `snapshot(ko, author, note, tx?)`, service.ts:820. */
+/** Das Argument, das der Dienst als Vermerk führt: `snapshot(ko, author, note, tx?)`, service.ts:931. */
 const VERMERK_ARGUMENT = 2;
 
 /**
