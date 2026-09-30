@@ -23,6 +23,10 @@
   gescheitert) zeigt keine Teilantwort (R-0330); doppeltes Evidenz-Etikett entfällt (R-0287);
   Admin-Weg zu den KI-Einstellungen ohne Modell (R-1016); gesperrte Quellen zuerst als vorhanden
   erklärt, mit Prüfweg `/validierung` (N-0009).
+- Nacharbeit nach Ben R2: übernommene Startadressen als begrenzte Liste (nicht nur die letzte);
+  Codezäune und Tabellen im Antworttext als Klartext; Prüfungsstörung auch ohne Antwort und bis
+  zur erfolgreichen Wiederholung; Sperrgründe gesperrter Quellen einzeln erklärt, Prüfweg nur bei
+  fehlender Freigabe/Stufe. Tests: `tests/fragen-arbeitsstand/ben-r2-gegenproben-mounted.test.tsx`.
 
 ## 26.09.2026 — FE-003 Seitentutorial „Fragen“ (Pilot)
 

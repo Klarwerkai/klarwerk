@@ -79,6 +79,7 @@ import {
   belegNochGueltig,
   fragenSpeicher,
   startadresseMarke,
+  startadresseMerken,
   wiederaufnahmeAus,
 } from "../lib/fragenArbeitsstand";
 import { helpfulDisabled, helpfulLabel } from "../lib/helpfulSignal";
@@ -507,12 +508,12 @@ export function Ask(): JSX.Element {
     return { frage, autoFrage, marke: startadresseMarke(location.key, frage, autoFrage) };
   });
   const [startfrageGilt, setStartfrageGilt] = useState(
-    adresse.marke !== null && anfang?.startfrage !== adresse.marke,
+    adresse.marke !== null && !(anfang?.startadressen ?? []).includes(adresse.marke),
   );
   // Die Marke, die mit dem Stand gespeichert wird: die eben übernommene Adresse oder, ohne
   // Startfrage, die zuletzt übernommene.
-  const [gemerkteStartadresse, setGemerkteStartadresse] = useState(
-    adresse.marke ?? anfang?.startfrage ?? null,
+  const [gemerkteStartadressen, setGemerkteStartadressen] = useState(() =>
+    startadresseMerken(anfang?.startadressen ?? [], adresse.marke),
   );
   const [standFuer, setStandFuer] = useState(konto);
   const [q, setQ] = useState(() =>
@@ -804,9 +805,9 @@ export function Ask(): JSX.Element {
               angezeigtAm: antwortAm ?? new Date().toISOString(),
             }
           : null,
-      startfrage: gemerkteStartadresse,
+      startadressen: gemerkteStartadressen,
     });
-  }, [konto, standFuer, q, result, receipt, verschlossen, gapId, antwortAm, gemerkteStartadresse]);
+  }, [konto, standFuer, q, result, receipt, verschlossen, gapId, antwortAm, gemerkteStartadressen]);
 
   // Ergänzung 1 · DIE KENNUNG KOMMT ODER WECHSELT bei stehender Fläche.
   //   · WECHSEL (vorher ein anderes Konto): der Stand des neuen Kontos ersetzt den alten
@@ -835,7 +836,8 @@ export function Ask(): JSX.Element {
       kontoGeneration.current += 1;
       askZuruecksetzen();
     }
-    const adresseVerbraucht = adresse.marke !== null && gelesen?.startfrage === adresse.marke;
+    const adresseVerbraucht =
+      adresse.marke !== null && (gelesen?.startadressen ?? []).includes(adresse.marke);
     const startfrageUnberuehrt = jetzt.startfrageGilt && jetzt.q === (adresse.frage ?? "");
     const entwurfNehmen =
       wechsel || jetzt.q.trim() === "" || (startfrageUnberuehrt && adresseVerbraucht);
@@ -858,15 +860,17 @@ export function Ask(): JSX.Element {
       setThankedSources(new Set());
     }
     setStartfrageGilt(startfrageBleibt);
-    setGemerkteStartadresse(
-      wechsel ? (gelesen?.startfrage ?? null) : (adresse.marke ?? gelesen?.startfrage ?? null),
+    setGemerkteStartadressen(
+      wechsel
+        ? (gelesen?.startadressen ?? [])
+        : startadresseMerken(gelesen?.startadressen ?? [], adresse.marke),
     );
     setWiederaufnahme(
       wiederaufnahmeAus(
         gelesen && {
           entwurf: entwurfNehmen ? entwurf : "",
           antwort,
-          startfrage: gelesen.startfrage,
+          startadressen: gelesen.startadressen,
         },
         !entwurfNehmen,
       ),
@@ -905,9 +909,43 @@ export function Ask(): JSX.Element {
   // statt der Antwort EIN Satz mit EINER Aktion — und die Aktion holt genau das nach, was fehlte,
   // statt das Modell erneut zu fragen. Ein Abruf, der NOCH LÄUFT, ist keine Störung: dort bleibt
   // der benannte Vorbehalt aus mega34 (er schweigt, sobald der Abruf durch ist).
+  //
+  // Ben R2, F5 — ZWEI LÜCKEN DIESER REGEL GESCHLOSSEN:
+  //   · Sie galt nur für `answered: true`. Eine Nicht-Antwort bei abgerissenem Abruf sah wie eine
+  //     Wissenslücke aus — die Störung als Leere, genau das, was R-0330 verbietet. Sie gilt jetzt
+  //     für JEDES Ergebnis.
+  //   · „Erneut versuchen" startet die Abrufe neu; react-query setzt einen Abruf ohne Altdaten dabei
+  //     auf „pending", und `pending` war hier keine Störung — die gesperrte Antwort erschien, bevor
+  //     irgendetwas geprüft war. Nach einem Wiederholversuch bleibt die Sperre deshalb stehen, bis
+  //     BEIDE Abrufe erfolgreich durch sind (`pruefungWiederholt`).
+  const [pruefungWiederholt, setPruefungWiederholt] = useState(false);
+  const pruefungBelegt = conflictKnown.state === "loaded" && kos.isSuccess;
+  useEffect(() => {
+    if (pruefungWiederholt && pruefungBelegt) {
+      setPruefungWiederholt(false);
+    }
+  }, [pruefungWiederholt, pruefungBelegt]);
   const pruefungGestoert =
-    Boolean(result?.answered) && (conflictKnown.state === "failed" || kos.isError);
+    Boolean(result) &&
+    (conflictKnown.state === "failed" || kos.isError || (pruefungWiederholt && !pruefungBelegt));
   const karteSichtbar = Boolean(result) && Boolean(contract) && !pruefungGestoert;
+  // Ben R2, F10: welche Sperrgründe liegen in der Torlage WIRKLICH vor — in fester Reihenfolge —,
+  // und welcher Prüfweg passt dazu (nur Freigabe und Stufe entstehen in der Prüfung).
+  const verschlossenGruende = (["freigabe", "stufe", "volltext"] as const).filter((grund) =>
+    verschlossen.some((h) =>
+      grund === "freigabe" ? h.freigabeFehlt : grund === "stufe" ? h.stufeFehlt : h.volltextFehlt,
+    ),
+  );
+  const pruefFreigabe = verschlossenGruende.includes("freigabe");
+  const pruefStufe = verschlossenGruende.includes("stufe");
+  const verschlossenPruefweg =
+    pruefFreigabe && pruefStufe
+      ? "ask.verschlossen.pruefPfad.beides"
+      : pruefFreigabe
+        ? "ask.verschlossen.pruefPfad.freigabe"
+        : pruefStufe
+          ? "ask.verschlossen.pruefPfad.stufe"
+          : null;
   // Die Antwortkarte im engeren Sinn — die Weiche, welches der beiden „Mehr"-Blätter rendert.
   // KORREKTURPFLICHT 1 (Ben, Runde 5): bis hierher hing sie an `karteSichtbar`, und im LÜCKENFALL
   // war das wahr, ohne dass die Antwortkarte (und damit ihr Blatt) existierte — das sichtbare
@@ -1534,6 +1572,7 @@ export function Ask(): JSX.Element {
               className="mt-3"
               variant="ghost"
               onClick={() => {
+                setPruefungWiederholt(true);
                 void conflicts.refetch();
                 void kos.refetch();
               }}
@@ -2093,7 +2132,18 @@ export function Ask(): JSX.Element {
                       >
                         {t("ask.verschlossen.titel")}
                       </p>
-                      <p className="mt-1 text-sm text-muted">{t("ask.verschlossen.erklaerung")}</p>
+                      {/* Ben R2, F10: die Erklärung nennt die Gründe, die WIRKLICH vorliegen —
+                          nicht pauschal „nicht freigegeben". Ein validiertes, eingestuftes
+                          Dokument ohne durchsuchbaren Text ist kein Prüffall. */}
+                      {verschlossenGruende.map((grund) => (
+                        <p
+                          key={grund}
+                          data-testid={`ask-verschlossen-grund-${grund}`}
+                          className="mt-1 text-sm text-muted"
+                        >
+                          {t(`ask.verschlossen.grund.${grund}`)}
+                        </p>
+                      ))}
                       <p className="mt-2 text-[11.5px] font-medium text-muted-2">
                         {t("ask.verschlossen.label")}
                       </p>
@@ -2190,18 +2240,25 @@ export function Ask(): JSX.Element {
                     </div>
                     {/* N-0009 (Ben R1, F10): der Prüf-/Einstufungsweg NEBEN dem Lesen. Freigabe
                       und Einstufung entstehen in der Prüfung (`/validierung`, Rolle
-                      `controller`); über `RoleLink` sieht, wer sie nicht erreicht, die Lage
-                      ohne toten Link. Die Neuerfassung bleibt unten als weitere Möglichkeit. */}
-                    <div className="-mt-1 mb-3 text-[12px] text-muted-2">
-                      {t("ask.verschlossen.pruefPfad")}{" "}
-                      <RoleLink
-                        to="/validierung"
-                        testId="ask-verschlossen-pruefen"
-                        className="font-semibold text-brand-text"
-                      >
-                        {() => t("ask.verschlossen.zurPruefung")}
-                      </RoleLink>
-                    </div>
+                      `controller`, dort auch die Vertraulichkeitsstufe); über `RoleLink` sieht,
+                      wer sie nicht erreicht, die Lage ohne toten Link. Die Neuerfassung bleibt
+                      unten als weitere Möglichkeit.
+                      Ben R2, F10: der Weg steht NUR, wenn er zum Grund passt — fehlt allein der
+                      durchsuchbare Text, hilft keine Prüfung; der Weg ist dann das Dokument
+                      selbst (der Leselink oben, dort wird Text ergänzt), und der Grund-Satz sagt
+                      das. */}
+                    {verschlossenPruefweg ? (
+                      <div className="-mt-1 mb-3 text-[12px] text-muted-2">
+                        {t(verschlossenPruefweg)}{" "}
+                        <RoleLink
+                          to="/validierung"
+                          testId="ask-verschlossen-pruefen"
+                          className="font-semibold text-brand-text"
+                        >
+                          {() => t("ask.verschlossen.zurPruefung")}
+                        </RoleLink>
+                      </div>
+                    ) : null}
                   </>
                 ) : null}
                 <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-trust-warn-text">

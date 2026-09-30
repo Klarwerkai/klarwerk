@@ -59,7 +59,7 @@ const STAND: FragenArbeitsstand = {
     gapId: null,
     angezeigtAm: "2026-09-29T08:15:00.000Z",
   },
-  startfrage: null,
+  startadressen: [],
 };
 
 describe("Ergänzung 1 · Arbeitsstand der Fragenseite — Regeln", () => {
@@ -73,7 +73,7 @@ describe("Ergänzung 1 · Arbeitsstand der Fragenseite — Regeln", () => {
     arbeitsstandSchreiben(s, null, STAND);
     expect(s.inhalt.size).toBe(1);
     // Die Kennung steckt im Schlüssel — zwei Konten, zwei Einträge.
-    arbeitsstandSchreiben(s, "u2", { entwurf: "Eigene Frage", antwort: null, startfrage: null });
+    arbeitsstandSchreiben(s, "u2", { entwurf: "Eigene Frage", antwort: null, startadressen: [] });
     expect(s.inhalt.size).toBe(2);
     expect(arbeitsstandLesen(s, "u1")?.entwurf).toBe(STAND.entwurf);
     expect(arbeitsstandLesen(s, "u2")?.entwurf).toBe("Eigene Frage");
@@ -92,9 +92,9 @@ describe("Ergänzung 1 · Arbeitsstand der Fragenseite — Regeln", () => {
 
   it("R3 · ein leerer Stand löscht den Eintrag — der verworfene Entwurf taucht nicht wieder auf", () => {
     const s = speicher();
-    arbeitsstandSchreiben(s, "u1", { entwurf: "Halbe Frage", antwort: null, startfrage: null });
+    arbeitsstandSchreiben(s, "u1", { entwurf: "Halbe Frage", antwort: null, startadressen: [] });
     expect(arbeitsstandLesen(s, "u1")?.entwurf).toBe("Halbe Frage");
-    arbeitsstandSchreiben(s, "u1", { entwurf: "   ", antwort: null, startfrage: null });
+    arbeitsstandSchreiben(s, "u1", { entwurf: "   ", antwort: null, startadressen: [] });
     expect(s.inhalt.size).toBe(0);
     expect(arbeitsstandLesen(s, "u1")).toBeNull();
     // Mit stehender Antwort bleibt nur die Antwort — der Entwurf ist fort.
@@ -126,7 +126,7 @@ describe("Ergänzung 1 · Arbeitsstand der Fragenseite — Regeln", () => {
     expect(arbeitsstandLesen(s, "u1")).toEqual({
       entwurf: "Rest",
       antwort: null,
-      startfrage: null,
+      startadressen: [],
     });
 
     const wirft = {
@@ -157,10 +157,10 @@ describe("Ergänzung 1 · Arbeitsstand der Fragenseite — Regeln", () => {
     ).toEqual({ entwurf: false, antwortAm: "2026-09-29T08:15:00.000Z" });
     // Eine Startfrage aus der Adresse steht im Feld — dann wird kein Entwurf angekündigt.
     expect(
-      wiederaufnahmeAus({ entwurf: "Halbe Frage", antwort: null, startfrage: null }, true),
+      wiederaufnahmeAus({ entwurf: "Halbe Frage", antwort: null, startadressen: [] }, true),
     ).toBeNull();
     expect(
-      wiederaufnahmeAus({ entwurf: "Halbe Frage", antwort: null, startfrage: null }, false),
+      wiederaufnahmeAus({ entwurf: "Halbe Frage", antwort: null, startadressen: [] }, false),
     ).toEqual({
       entwurf: true,
       antwortAm: null,
@@ -171,11 +171,19 @@ describe("Ergänzung 1 · Arbeitsstand der Fragenseite — Regeln", () => {
     const s = speicher();
     const marke = startadresseMarke("default", "Startfrage", false);
     expect(marke).not.toBeNull();
-    arbeitsstandSchreiben(s, "u1", { entwurf: "", antwort: null, startfrage: marke });
+    arbeitsstandSchreiben(s, "u1", {
+      entwurf: "",
+      antwort: null,
+      startadressen: [marke as string],
+    });
     // Das bewusst geleerte Feld bleibt leer UND die Adresse bleibt als verbraucht gemerkt.
-    expect(arbeitsstandLesen(s, "u1")).toEqual({ entwurf: "", antwort: null, startfrage: marke });
+    expect(arbeitsstandLesen(s, "u1")).toEqual({
+      entwurf: "",
+      antwort: null,
+      startadressen: [marke as string],
+    });
     // Ohne Marke ist der leere Stand wirklich leer und fort.
-    arbeitsstandSchreiben(s, "u1", { entwurf: "", antwort: null, startfrage: null });
+    arbeitsstandSchreiben(s, "u1", { entwurf: "", antwort: null, startadressen: [] });
     expect(s.inhalt.size).toBe(0);
   });
 

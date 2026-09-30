@@ -2917,10 +2917,17 @@ const de = {
   // volle Sätze als title-Hinweis — §2 des Auftrags wörtlich.
   // Bewusst eine ZUSTANDSAUSSAGE, keine Kausalbehauptung: gemeldet wird, welche Tore zu sind —
   // nicht, welcher Mechanismus die Antwort verworfen hat (§4: kein falsch benanntes Tor).
-  "ask.verschlossen.titel": "Dazu gibt es Inhalte — sie sind für Antworten noch nicht freigegeben.",
-  "ask.verschlossen.erklaerung":
-    "Klara hat passende Dokumente gefunden, darf sie aber noch nicht als Grundlage einer Antwort verwenden. Du kannst sie lesen; erst nach Prüfung und Einstufung tragen sie Antworten.",
-  "ask.verschlossen.pruefPfad": "Freigeben oder einstufen:",
+  "ask.verschlossen.titel":
+    "Dazu gibt es Inhalte — Klara kann sie für Antworten noch nicht verwenden.",
+  "ask.verschlossen.grund.freigabe":
+    "Noch nicht freigegebene Dokumente tragen erst nach der Prüfung Antworten.",
+  "ask.verschlossen.grund.stufe":
+    "Dokumente ohne Vertraulichkeitsstufe tragen erst nach der Einstufung Antworten.",
+  "ask.verschlossen.grund.volltext":
+    "Aus Dokumenten ohne durchsuchbaren Text kann Klara nichts belegen. Du kannst sie lesen und den Text dort ergänzen.",
+  "ask.verschlossen.pruefPfad.beides": "Freigeben oder einstufen:",
+  "ask.verschlossen.pruefPfad.freigabe": "Freigeben:",
+  "ask.verschlossen.pruefPfad.stufe": "Einstufen:",
   "ask.verschlossen.zurPruefung": "Zur Prüfung",
   "ask.verschlossen.label": "Gefunden — aber diese Tore sind zu:",
   "ask.verschlossen.freigabe": "Freigabe fehlt",
@@ -9694,10 +9701,16 @@ const en: typeof de = {
   // SCRUM-366 / FR-ASK-02 / PI-K2: answer contract — source-bound, honest, not a generic chatbot.
   "ask.contract.label": "Answer basis",
   // JOB 2626 D1: why there was no answer — the closed gates, per document.
-  "ask.verschlossen.titel": "There is content on this — it is not yet released for answers.",
-  "ask.verschlossen.erklaerung":
-    "Klara found matching documents but may not yet use them as the basis of an answer. You can read them; only after review and classification do they carry answers.",
-  "ask.verschlossen.pruefPfad": "Release or classify:",
+  "ask.verschlossen.titel": "There is content on this — Klara cannot use it for answers yet.",
+  "ask.verschlossen.grund.freigabe":
+    "Documents that have not been released carry answers only after review.",
+  "ask.verschlossen.grund.stufe":
+    "Documents without a confidentiality level carry answers only after classification.",
+  "ask.verschlossen.grund.volltext":
+    "Klara cannot cite anything from documents without searchable text. You can read them and add the text there.",
+  "ask.verschlossen.pruefPfad.beides": "Release or classify:",
+  "ask.verschlossen.pruefPfad.freigabe": "Release:",
+  "ask.verschlossen.pruefPfad.stufe": "Classify:",
   "ask.verschlossen.zurPruefung": "Go to review",
   "ask.verschlossen.label": "Found — but these gates are closed:",
   "ask.verschlossen.freigabe": "Approval missing",
@@ -15355,10 +15368,17 @@ const nl: typeof de = {
   "ask.gap.step.review.hint": "Pas na validatie geldt het als geborgd.",
   "ask.contract.label": "Antwoordbasis",
   // JOB 2626 D1: waarom er geen antwoord was — de gesloten poorten, per document.
-  "ask.verschlossen.titel": "Hier is inhoud over — die is nog niet vrijgegeven voor antwoorden.",
-  "ask.verschlossen.erklaerung":
-    "Klara heeft passende documenten gevonden, maar mag ze nog niet als basis voor een antwoord gebruiken. Je kunt ze lezen; pas na beoordeling en classificatie dragen ze antwoorden.",
-  "ask.verschlossen.pruefPfad": "Vrijgeven of classificeren:",
+  "ask.verschlossen.titel":
+    "Hier is inhoud over — Klara kan die nog niet voor antwoorden gebruiken.",
+  "ask.verschlossen.grund.freigabe":
+    "Nog niet vrijgegeven documenten dragen pas na beoordeling antwoorden.",
+  "ask.verschlossen.grund.stufe":
+    "Documenten zonder vertrouwelijkheidsniveau dragen pas na classificatie antwoorden.",
+  "ask.verschlossen.grund.volltext":
+    "Uit documenten zonder doorzoekbare tekst kan Klara niets onderbouwen. Je kunt ze lezen en de tekst daar aanvullen.",
+  "ask.verschlossen.pruefPfad.beides": "Vrijgeven of classificeren:",
+  "ask.verschlossen.pruefPfad.freigabe": "Vrijgeven:",
+  "ask.verschlossen.pruefPfad.stufe": "Classificeren:",
   "ask.verschlossen.zurPruefung": "Naar beoordeling",
   "ask.verschlossen.label": "Gevonden — maar deze poorten zijn gesloten:",
   "ask.verschlossen.freigabe": "Vrijgave ontbreekt",

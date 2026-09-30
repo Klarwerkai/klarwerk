@@ -27,6 +27,7 @@ import type { AnswerResult, VerschlossenHinweis } from "../api/types";
 type StorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
 const PRAEFIX = "kw.fragen.arbeitsstand.v1:";
+const STARTADRESSEN_HOECHSTENS = 50;
 
 /** Die zuletzt angezeigte Antwort — genau das, was die Fläche zum Zeichnen braucht. */
 export interface GespeicherteAntwort {
@@ -46,11 +47,17 @@ export interface FragenArbeitsstand {
   entwurf: string;
   antwort: GespeicherteAntwort | null;
   /**
-   * Die Startadresse (`?q=`/`?ask=1` samt Navigationskennung), die dieser Stand schon übernommen
-   * hat — s. `startadresseMarke`. Öffnet dieselbe Adresse die Seite erneut (Neuladen, Zurück), ist
-   * sie verbraucht: dann gewinnt der Stand, und es wird nicht noch einmal gefragt. `null` = keine.
+   * Die Startadressen (`?q=`/`?ask=1` samt Navigationskennung), die dieser Stand schon übernommen
+   * hat — s. `startadresseMarke`. Öffnet eine davon die Seite erneut (Neuladen, Zurück, Vor), ist
+   * sie verbraucht: dann gewinnt der Stand, und es wird nicht noch einmal gefragt.
+   *
+   * Ben R2, F2/F3: bis Runde 2 stand hier nur die ZULETZT übernommene Marke. Lag dazwischen eine
+   * zweite Startadresse, galt die ältere beim Zurückgehen wieder als neu — sie holte einen
+   * verworfenen Entwurf zurück und fragte das Modell ein zweites Mal. Deshalb eine Liste, begrenzt
+   * auf `STARTADRESSEN_HOECHSTENS` (die ältesten fallen heraus; ein so weit zurückliegender
+   * Verlaufseintrag ist kein Wiederaufnehmen mehr).
    */
-  startfrage: string | null;
+  startadressen: string[];
 }
 
 /**
@@ -125,11 +132,16 @@ export function arbeitsstandLesen(
       return null;
     }
     const antwort = antwortAus(wert.antwort);
-    const startfrage = typeof wert.startfrage === "string" ? wert.startfrage : null;
-    if (wert.entwurf.trim() === "" && antwort === null && startfrage === null) {
+    // Runde-2-Einträge trugen EINE Marke unter `startfrage` — sie wird übernommen, nicht verloren.
+    const startadressen = Array.isArray(wert.startadressen)
+      ? wert.startadressen.filter((m): m is string => typeof m === "string")
+      : typeof wert.startfrage === "string"
+        ? [wert.startfrage]
+        : [];
+    if (wert.entwurf.trim() === "" && antwort === null && startadressen.length === 0) {
       return null;
     }
-    return { entwurf: wert.entwurf, antwort, startfrage };
+    return { entwurf: wert.entwurf, antwort, startadressen };
   } catch {
     return null;
   }
@@ -151,7 +163,7 @@ export function arbeitsstandSchreiben(
   }
   try {
     const schluessel = arbeitsstandSchluessel(konto);
-    if (stand.entwurf.trim() === "" && stand.antwort === null && stand.startfrage === null) {
+    if (stand.entwurf.trim() === "" && stand.antwort === null && stand.startadressen.length === 0) {
       storage.removeItem(schluessel);
       return;
     }
@@ -203,6 +215,17 @@ export function wiederaufnahmeAus(
  * wörtlich dieselbe ist wie beim letzten Mal. Neuladen und Zurück behalten die Kennung — dann ist
  * es DIESELBE Adresse, sie wurde schon übernommen, und der gespeicherte Stand gewinnt.
  */
+/**
+ * Eine Marke der Liste der übernommenen Startadressen hinzufügen: ohne Doppel, die jüngste zuletzt,
+ * höchstens `STARTADRESSEN_HOECHSTENS`. Ohne Marke bleibt die Liste, wie sie ist.
+ */
+export function startadresseMerken(liste: readonly string[], marke: string | null): string[] {
+  if (marke === null) {
+    return [...liste];
+  }
+  return [...liste.filter((m) => m !== marke), marke].slice(-STARTADRESSEN_HOECHSTENS);
+}
+
 export function startadresseMarke(
   navigationsKennung: string,
   startfrage: string | null,

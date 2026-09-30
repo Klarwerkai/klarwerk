@@ -327,13 +327,48 @@ export function splitMarken(text: string, zeichen: string): FussnotenStueck[] {
 const HEADING_RE = /^(#{1,6})\s+(.*)$/;
 const UL_ITEM_RE = /^[-*]\s+(.*)$/;
 const OL_ITEM_RE = /^\d+[.)]\s+(.*)$/;
+// R-0279 (Ben R2, F4): Codezäune und Tabellen.
+const ZAUN_RE = /^(`{3,}|~{3,})/;
+const TABELLEN_TRENNER_RE = /^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?$/;
+
+function tabellenZellen(zeile: string): string[] {
+  const innen = zeile.replace(/^\|/, "").replace(/\|$/, "");
+  return innen.split("|").map((z) => z.trim());
+}
+
+// Eine Tabellenzeile: beginnt mit `|` — oder enthält `|` und steht direkt über einer Trennzeile.
+function istTabellenZeile(zeile: string, naechste: string | undefined): boolean {
+  if (TABELLEN_TRENNER_RE.test(zeile) && zeile.includes("|")) {
+    return true;
+  }
+  if (zeile.startsWith("|") && zeile.length > 1) {
+    return true;
+  }
+  return (
+    zeile.includes("|") &&
+    naechste !== undefined &&
+    naechste.includes("|") &&
+    TABELLEN_TRENNER_RE.test(naechste)
+  );
+}
 
 // Zeilenbasierter Block-Parser: Überschriften (#/## → h3, tiefer → h4 — die Antwort ist in eine
 // Karte eingebettet, h1/h2 wären typografisch falsch), Listen (-/*/1.), Leerzeile = Absatzgrenze.
+//
+// R-0279 (Ben R2, F4) — ZWEI BLOCKFORMEN, DIE BIS HIERHER ROH STEHEN BLIEBEN, OHNE NEUE SEGMENTART:
+//   · Codezaun (```…``` oder ~~~…~~~): die Zaunzeilen entfallen, jede Inhaltszeile wird ein Absatz
+//     aus REINEM Text — ohne Inline-Deutung, denn Code-Zeichen sind dort Inhalt, keine Auszeichnung.
+//   · Tabelle (`| a | b |` mit Trennzeile `| --- |`): die Trennzeile entfällt, jede Datenzeile wird
+//     ein Listenpunkt „Kopf: Wert · Kopf: Wert". Ohne Trennzeile fehlt der Kopf; dann stehen die
+//     Zellen mit „ · " getrennt. Kein Wert geht verloren, nur die Rahmenzeichen.
+// Beide landen in den vorhandenen Segmenten (Absatz, Liste) — die Renderer und die Klartextfassung
+// bleiben unverändert und können deshalb nicht auseinanderlaufen.
 export function parseAnswerMarkdown(answer: string): AnswerSegment[] {
   const segments: AnswerSegment[] = [];
   let paragraph: string[] = [];
   let list: { ordered: boolean; items: AnswerInlinePart[][] } | null = null;
+  let imZaun: string | null = null;
+  let tabelle: string[] = [];
 
   const flushParagraph = (): void => {
     if (paragraph.length > 0) {
@@ -348,8 +383,54 @@ export function parseAnswerMarkdown(answer: string): AnswerSegment[] {
     list = null;
   };
 
-  for (const rawLine of answer.replace(/\r\n?/g, "\n").split("\n")) {
-    const line = rawLine.trim();
+  const flushTabelle = (): void => {
+    if (tabelle.length === 0) {
+      return;
+    }
+    const zeilen = tabelle;
+    tabelle = [];
+    const trennerAn = zeilen.findIndex((z) => TABELLEN_TRENNER_RE.test(z));
+    const kopf = trennerAn === 1 ? tabellenZellen(zeilen[0] ?? "") : null;
+    const daten = zeilen.filter((z, i) => !TABELLEN_TRENNER_RE.test(z) && !(kopf && i === 0));
+    const items = daten.map((z) => {
+      const zellen = tabellenZellen(z);
+      const text = zellen
+        .map((zelle, i) => (kopf?.[i] ? `${kopf[i]}: ${zelle}` : zelle))
+        .filter((t) => t.length > 0)
+        .join(" · ");
+      return parseAnswerInline(text);
+    });
+    if (items.length > 0) {
+      segments.push({ kind: "list", ordered: false, items });
+    }
+  };
+
+  const zeilen = answer.replace(/\r\n?/g, "\n").split("\n");
+  for (let index = 0; index < zeilen.length; index++) {
+    const line = (zeilen[index] ?? "").trim();
+    const zaun = ZAUN_RE.exec(line);
+    if (imZaun !== null) {
+      if (zaun?.[1] !== undefined && zaun[1][0] === imZaun && line.replace(/[`~]/g, "") === "") {
+        imZaun = null;
+      } else if (line.length > 0) {
+        segments.push({ kind: "paragraph", parts: [{ kind: "text", text: line }] });
+      }
+      continue;
+    }
+    if (zaun?.[1] !== undefined) {
+      flushParagraph();
+      flushList();
+      flushTabelle();
+      imZaun = zaun[1][0] ?? "`";
+      continue;
+    }
+    if (istTabellenZeile(line, zeilen[index + 1]?.trim())) {
+      flushParagraph();
+      flushList();
+      tabelle.push(line);
+      continue;
+    }
+    flushTabelle();
     if (line.length === 0) {
       flushParagraph();
       flushList();
@@ -384,6 +465,7 @@ export function parseAnswerMarkdown(answer: string): AnswerSegment[] {
   }
   flushParagraph();
   flushList();
+  flushTabelle();
   return segments;
 }
 
