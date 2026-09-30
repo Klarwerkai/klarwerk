@@ -97,21 +97,6 @@ export type DublettenPruefung = (
   bestand: readonly KnowledgeObject[],
 ) => DublettenBefund;
 
-/** Warum ein Eintrag der Sicherung nicht in den Bestand ging. */
-export type UebersprungenGrund = "identisch" | "aehnlich" | "pruefung_nicht_moeglich";
-
-export interface UebersprungenerImport {
-  titel: string;
-  grund: UebersprungenGrund;
-  /**
-   * Das getroffene Wissensobjekt. `null` heisst ehrlich „es wurde keins ermittelt" — bei
-   * `pruefung_nicht_moeglich` gab es gar keine Entscheidung, nicht etwa keinen Treffer.
-   */
-  koId: string | null;
-  /** Nur bei `aehnlich`: der Wert, mit dem die Pruefung entschieden hat. */
-  aehnlichkeit?: number;
-}
-
 // ================================================================================================
 // JOB 3050 — DIESELBE FRAGE AM REVIEW-KANDIDATEN, UND DIE ANTWORT SAGT, WORAUF.
 // ================================================================================================
@@ -150,7 +135,7 @@ export type Dublettentreffer =
  * - `im_papierkorb` — JOB 3081, s. unten.
  * - `wiederverwendet` — JOB 3116, s. unten.
  *
- * Die Woerter sind bewusst die von `UebersprungenGrund` (plus die Faelle, die es dort nicht geben
+ * Die Woerter sind bewusst die des frueheren `UebersprungenGrund` des entfallenen Direktimports (plus die Faelle, die es dort nicht geben
  * kann): dieselbe Frage, dieselbe Sprache auf beiden Importwegen.
  *
  * ------------------------------------------------------------------------------------------------
@@ -207,17 +192,6 @@ export type KandidatDublettenbefund =
   | { readonly ergebnis: "nicht_gestellt" }
   | { readonly ergebnis: "im_papierkorb"; readonly treffer: Dublettentreffer }
   | { readonly ergebnis: "wiederverwendet"; readonly treffer: Dublettentreffer };
-
-export interface ImportResult {
-  imported: number;
-  skipped: number;
-  /**
-   * JOB 3023: die nackte Zahl konnte weder sagen, WARUM etwas uebersprungen wurde, noch worauf es
-   * getroffen ist. Rein ADDITIV — `imported`/`skipped` behalten Name und Bedeutung; `skipped` ist
-   * weiterhin „nicht eingespielt" und damit stets `uebersprungen.length`.
-   */
-  uebersprungen: UebersprungenerImport[];
-}
 
 // SCRUM-510: quell-agnostischer Import-Vertrag. Ein Adapter (Confluence = #1, Jira-TEST später = #2)
 // liest seine Quelle und liefert NORMALISIERTE ImportItems; der Import-Kern (createImportCandidates →

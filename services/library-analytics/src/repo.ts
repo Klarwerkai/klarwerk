@@ -104,6 +104,10 @@ export interface ClaimResolution {
   koId?: string | null;
   note?: string | null;
   item?: ImportItem;
+  // Lauf gesamt-import-adoption (Bens B1/B2): der beim ANNEHMEN neu erhobene Dublettenbefund —
+  // er ersetzt den Stand vom Einreihen, damit der Kandidat sagt, was bei der Entscheidung galt.
+  duplicate?: boolean;
+  dublettenbefund?: ImportCandidate["dublettenbefund"];
   // WP-SHIP8-CLOSE-6 (bens ROT-3a): Wer/Wann der Entscheidung — im SELBEN Statuswrite persistiert.
   reviewedBy?: string;
   reviewedAt?: string;
@@ -324,6 +328,12 @@ export class InMemoryCandidateRepo implements CandidateRepo {
     }
     if (next.item !== undefined) {
       candidate.item = next.item;
+    }
+    if (next.duplicate !== undefined) {
+      candidate.duplicate = next.duplicate;
+    }
+    if (next.dublettenbefund !== undefined) {
+      candidate.dublettenbefund = next.dublettenbefund;
     }
     // WP-SHIP8-CLOSE-6 (bens ROT-3a): Wer/Wann im selben Write (Spiegel des Pg-jsonb-Patches).
     if (next.reviewedBy !== undefined) {

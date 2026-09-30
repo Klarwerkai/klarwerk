@@ -302,6 +302,12 @@ export class PgCandidateRepo implements CandidateRepo {
     if (next.item !== undefined) {
       patch.item = next.item;
     }
+    if (next.duplicate !== undefined) {
+      patch.duplicate = next.duplicate;
+    }
+    if (next.dublettenbefund !== undefined) {
+      patch.dublettenbefund = next.dublettenbefund;
+    }
     // WP-SHIP8-CLOSE-6 (bens ROT-3a): Wer/Wann der Entscheidung reist im selben jsonb-Patch.
     if (next.reviewedBy !== undefined) {
       patch.reviewedBy = next.reviewedBy;

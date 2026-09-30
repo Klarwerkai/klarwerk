@@ -218,11 +218,13 @@ describe(`${JOB} · der JSON-Rundlauf mit Volltext, am echten Socket`, () => {
     ).toBe("vertraulich");
   });
 
-  it("N3 · derselbe Inhaltsvertrag auf dem direkten API-Weg POST /api/library/import", async () => {
+  it("N3 · derselbe Inhaltsvertrag auf dem API-Eingang POST /api/library/import", async () => {
     const { quelle, ziel } = await neuesPaar();
     const titel = `${TITEL} · direkter Weg`;
     // Die Datei entsteht wie beim sichtbaren Weg — aus einem echten Export, durch den echten
-    // Parser. Nur die Oberfläche fehlt: eingespielt wird ohne Warteschlange und ohne Prüfkarte.
+    // Parser. Nur die Oberfläche fehlt. Lauf gesamt-import-adoption (Bens B3, R-0143): dieser
+    // Eingang legt nicht mehr unmittelbar an, sondern reiht ein (201); angelegt wird erst beim
+    // Annehmen. Der Volltext muss also Einreihen UND Annahme überstehen.
     const quellId = await legeQuellobjektAn(quelle, {
       titel,
       kern: KERNAUSSAGE,
@@ -232,14 +234,22 @@ describe(`${JOB} · der JSON-Rundlauf mit Volltext, am echten Socket`, () => {
     await freigeben(quelle, quellId);
     const quellEintrag = exportEintrag(await exportiere(quelle), titel);
     const items = auswahlLesen(exportdatei([quellEintrag]));
-    const befund = await direktImportieren(ziel, items);
+    const kandidat = kandidatMitTitel(await direktImportieren(ziel, items), titel);
+    expect(kandidat.status, `${JOB}: N3 · der Eingang hat nicht eingereiht.`).toBe("neu");
+    expect(kandidat.koId, `${JOB}: N3 · der Eingang hat am Annehmen vorbei angelegt.`).toBeNull();
     expect(
-      befund.imported,
-      `${JOB}: N3 · der direkte Weg hat nichts eingespielt (skipped ${befund.skipped}).`,
-    ).toBe(1);
+      kandidat.item.bodyHtml,
+      `${JOB}: N3 · der eingereihte Kandidat hat den Volltext verloren.`,
+    ).toBe(quellEintrag.bodyHtml);
+    const angenommen = await entscheiden(ziel, kandidat.id, "accept");
+    expect(
+      angenommen.koId,
+      `${JOB}: N3 · das Annehmen hat nichts angelegt (duplicate ${angenommen.duplicate}).`,
+    ).not.toBeNull();
     // Das angelegte Objekt unabhängig suchen und lesen — nicht die Antwort des Schreibwegs glauben.
-    // Sie nennt ohnehin keine Kennung (`ImportResult` zählt nur), und das ist ihr Vertrag.
-    const zielObjekt = await koLesen(ziel, await kennungAusDemBestand(ziel, titel));
+    const zielKennung = await kennungAusDemBestand(ziel, titel);
+    expect(zielKennung).toBe(angenommen.koId);
+    const zielObjekt = await koLesen(ziel, zielKennung);
     expect(
       zielObjekt.bodyHtml,
       `${JOB}: N3 · der direkte Importweg hat den Volltext verloren.`,
@@ -440,10 +450,8 @@ describe(`${JOB} · der JSON-Rundlauf mit Volltext, am echten Socket`, () => {
 });
 
 /**
- * Die Kennung dessen, was der direkte Importweg angelegt hat.
- *
- * Er gibt keine zurück (`ImportResult` zählt nur), und das ist sein Vertrag. Gesucht wird deshalb
- * über die öffentliche Liste — eine unabhängige Lesung, kein Umweg über einen Dienst.
+ * Die Kennung dessen, was der Importweg angelegt hat — über die öffentliche Liste gesucht, eine
+ * unabhängige Lesung neben der Antwort des Annehmens, kein Umweg über einen Dienst.
  */
 async function kennungAusDemBestand(wer: Sitzung, titel: string): Promise<string> {
   const liste = mussAntwort("GET /api/kos", await wer.sende("GET", "/api/kos")) as {

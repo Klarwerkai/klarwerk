@@ -20,6 +20,13 @@
 //   4. Warteschlange — der aiCheck-Worker (Spy VOR buildApp gesetzt, dokumentierter Test-Haken).
 // Jeder Zähler muss NULL sein. Kein neuer Egress: der Stub-Embedder rechnet lokal, der Spy-Client
 // spricht mit niemandem.
+//
+// Lauf gesamt-import-adoption (Bens B3, R-0143): `importJson` ist entfallen. `POST
+// /api/library/import` reiht jetzt Kandidaten ein (201); das Wissensobjekt entsteht erst bei der
+// Annahme (`PUT /api/library/import/candidates/:id`, `acceptToKo`). Die Null-Aussage gilt darum für
+// den GANZEN Weg — Einreihen UND Annahme — und wird hier auch über beide gemessen. Die Annahme-Route
+// startet die Erkennung nur hinter `KLARWERK_CONFLUENCE_IMPORT` (Default AUS, SCRUM-470 S6); dieser
+// Test pinnt den Schalter deshalb ausdrücklich auf AUS und misst genau diesen Standardweg.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Der Embedder-Zähler muss vor der (gehoisteten) Modul-Attrappe existieren.
@@ -55,6 +62,7 @@ const ENV_KEYS = [
   "KLARWERK_SKIP_KEYCHAIN",
   "KLARWERK_DUP_PREFILTER",
   "KLARWERK_EMBEDDING_PROVIDER",
+  "KLARWERK_CONFLUENCE_IMPORT",
 ] as const;
 const saved: Record<string, string | undefined> = {};
 
@@ -67,6 +75,8 @@ beforeEach(() => {
   // Der Prefilter ist AN — sonst wäre „Embedder 0" trivial wahr, weil es gar keinen gäbe.
   process.env.KLARWERK_DUP_PREFILTER = "1";
   process.env.KLARWERK_EMBEDDING_PROVIDER = "stub";
+  // Lauf gesamt-import-adoption: der Import-Schalter steht auf seinem Standard (AUS) — s. Kopf.
+  delete process.env.KLARWERK_CONFLUENCE_IMPORT;
   embedSpy.calls = 0;
 });
 
@@ -233,22 +243,48 @@ async function setup() {
   return { app, headers, model, detection, queue, services };
 }
 
+type App = Awaited<ReturnType<typeof setup>>["app"];
+
+/**
+ * Lauf gesamt-import-adoption: der ganze Importweg — einreihen (201) und JEDEN Kandidaten
+ * annehmen. Liefert die Befunde vom Einreihen und die Kennungen der angelegten Objekte.
+ */
+async function importiereUndNimmAn(app: App, headers: Record<string, string>, items: unknown[]) {
+  const res = await app.inject({
+    method: "POST",
+    url: "/api/library/import",
+    headers,
+    payload: { items },
+  });
+  expect(res.statusCode, res.body).toBe(201);
+  const kandidaten = res.json() as { id: string; dublettenbefund?: { ergebnis: string } }[];
+  const koIds: (string | null)[] = [];
+  for (const kandidat of kandidaten) {
+    const entscheidung = await app.inject({
+      method: "PUT",
+      url: `/api/library/import/candidates/${kandidat.id}`,
+      headers,
+      payload: { action: "accept" },
+    });
+    expect(entscheidung.statusCode, entscheidung.body).toBe(200);
+    koIds.push((entscheidung.json() as { koId: string | null }).koId);
+  }
+  return { befunde: kandidaten.map((k) => k.dublettenbefund?.ergebnis), koIds };
+}
+
 describe("mega28 D: POST /api/library/import erzeugt NULL Modellaufrufe", () => {
   it("Bulk-Import von 25 Objekten: Reasoner, Embedder, Erkennung und Warteschlange bleiben bei null", async () => {
     const { app, headers, model, detection, queue } = await setup();
 
-    const res = await app.inject({
-      method: "POST",
-      url: "/api/library/import",
-      headers,
-      payload: { items: importItems(25) },
-    });
+    const { befunde, koIds } = await importiereUndNimmAn(app, headers, importItems(25));
 
     // Der Import hat wirklich stattgefunden — sonst wären die Nullen wertlos.
-    expect(res.statusCode).toBe(200);
-    // JOB 3023: `uebersprungen` ist additiv hinzugekommen. Die leere Liste wird hier MITGEPRUEFT —
-    // sie ist die zweite, unabhaengige Aussage derselben Vorbedingung: nichts wurde zurueckgehalten.
-    expect(res.json()).toEqual({ imported: 25, skipped: 0, uebersprungen: [] });
+    // Lauf gesamt-import-adoption: statt `imported: 25` zählen die nach der Annahme angelegten
+    // Objekte; statt `uebersprungen: []` sagt jeder Befund vom Einreihen „keine" Dublette — die
+    // zweite, unabhaengige Aussage derselben Vorbedingung: nichts wurde zurueckgehalten.
+    expect(befunde).toEqual(Array(25).fill("keine"));
+    expect(koIds.filter((id) => id !== null)).toHaveLength(25);
+    expect((await app.inject({ method: "GET", url: "/api/kos", headers })).json()).toHaveLength(25);
 
     // … und er hat NICHTS Teures angefasst.
     expect(model.calls).toBe(0);
@@ -261,30 +297,22 @@ describe("mega28 D: POST /api/library/import erzeugt NULL Modellaufrufe", () => 
   it("auch ein ZWEITER Import in einen bereits gefüllten Bestand bleibt bei null (kein nachgeholter Lauf)", async () => {
     const { app, headers, model, detection, queue } = await setup();
 
-    await app.inject({
-      method: "POST",
-      url: "/api/library/import",
-      headers,
-      payload: { items: importItems(25) },
-    });
+    const erste = await importiereUndNimmAn(app, headers, importItems(25));
+    expect(erste.koIds.filter((id) => id !== null)).toHaveLength(25);
     // Der Bestand steht jetzt. Genau hier würde ein „nachgeholter" Lauf n−1 Urteile je Objekt kosten.
-    const second = await app.inject({
-      method: "POST",
-      url: "/api/library/import",
-      headers,
-      // JOB 3023: bis hierher trug die zweite Welle nur einen anderen TITEL bei gleicher Aussage.
-      // Gegen die Aehnlichkeitspruefung ist das die Dublette der ersten Welle — die Vorbedingung
-      // von mega29 D3 waere nicht mehr herstellbar. Sie nutzt darum jetzt den disjunkten zweiten
-      // Ausschnitt des Geraetevorrats: 25 andere Gegenstaende, 25 andere Aussagen.
-      payload: { items: importItems(25, 25) },
-    });
+    // JOB 3023: bis hierher trug die zweite Welle nur einen anderen TITEL bei gleicher Aussage.
+    // Gegen die Aehnlichkeitspruefung ist das die Dublette der ersten Welle — die Vorbedingung
+    // von mega29 D3 waere nicht mehr herstellbar. Sie nutzt darum jetzt den disjunkten zweiten
+    // Ausschnitt des Geraetevorrats: 25 andere Gegenstaende, 25 andere Aussagen.
+    const second = await importiereUndNimmAn(app, headers, importItems(25, 25));
 
-    expect(second.statusCode).toBe(200);
     // AUFTRAG-mega29 D3 (bens M28-4): der Lauf pinnt seine eigene VORBEDINGUNG. Ohne diese Zeile
     // hing die Aussage „auch in einen gefüllten Bestand hinein null Aufrufe" an geänderten Titeln:
     // wären die 25 Objekte als Duplikate abgewiesen worden, wäre die Null trivial richtig gewesen,
-    // weil gar nichts angelegt wurde.
-    expect(second.json()).toEqual({ imported: 25, skipped: 0, uebersprungen: [] });
+    // weil gar nichts angelegt wurde. (Lauf gesamt-import-adoption: gezählt nach der Annahme.)
+    expect(second.befunde).toEqual(Array(25).fill("keine"));
+    expect(second.koIds.filter((id) => id !== null)).toHaveLength(25);
+    expect((await app.inject({ method: "GET", url: "/api/kos", headers })).json()).toHaveLength(50);
     expect(model.calls).toBe(0);
     expect(embedSpy.calls).toBe(0);
     expect(detection.conflicts).toBe(0);

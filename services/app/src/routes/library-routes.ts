@@ -1,4 +1,4 @@
-import type { FastifyPluginAsync } from "fastify";
+import type { FastifyPluginAsync, FastifyReply } from "fastify";
 import {
   type ConflictService,
   type OverlapService,
@@ -735,21 +735,42 @@ export function libraryRoutes(
       reply.code(200).send(await library.exportJson(opts));
     });
 
+    // ============================================================================================
+    // Lauf gesamt-import-adoption (Bens B3, R-0143) — ES GIBT NUR NOCH EINEN IMPORTWEG.
+    // ============================================================================================
+    //
+    // `POST /api/library/import` legte bis hier Wissensobjekte UNMITTELBAR an (`importJson`) und
+    // umging die Prüf-Warteschlange vollständig. R-0143 verlangt das Gegenteil: „erst wenn ein
+    // Mensch übernimmt, entsteht ein echtes Wissensobjekt". Die Adresse bleibt für bestehende
+    // Aufrufer erreichbar, tut aber jetzt GENAU DASSELBE wie `POST /api/library/import/candidates`:
+    // sie reiht Kandidaten ein (201, dieselbe DTO-Liste). Kein zweiter Vertrag, kein Sonderweg.
+    // Guard und Rumpfsignatur stehen an JEDER Route selbst (die Rechte- und Zugangsaudits lesen sie
+    // dort ab); gemeinsam ist nur der Einreiheschritt danach.
+    const kandidatenEinreihen = async (
+      items: readonly ImportItem[] | undefined,
+      userId: string,
+      reply: FastifyReply,
+    ): Promise<void> => {
+      try {
+        // WP-SHIP8-CLOSE-8 (bens GELB-2): auch frisch eingereihte Kandidaten laufen durchs DTO.
+        // JOB 3050: die Dublettenregel reist als Prädikat mit — der Dienst legt sie nicht aus.
+        const created = await library.createImportCandidates(
+          items ?? [],
+          userId,
+          pruefeReImportDublette,
+        );
+        reply.code(201).send(created.map(toImportCandidateDto));
+      } catch (error) {
+        sendError(reply, error);
+      }
+    };
+
     app.post<{ Body: { items: ImportItem[] } }>("/api/library/import", async (request, reply) => {
       const user = await guards.requirePermission("ko.create", request, reply);
       if (!user) {
         return;
       }
-      try {
-        // JOB 3023: die Dublettenregel reist als Prädikat mit — der Dienst legt sie nicht aus.
-        reply
-          .code(200)
-          .send(
-            await library.importJson(request.body.items ?? [], user.id, pruefeReImportDublette),
-          );
-      } catch (error) {
-        sendError(reply, error);
-      }
+      await kandidatenEinreihen(request.body.items, user.id, reply);
     });
 
     // SCRUM-116: Import-/Source-Review-Kandidaten (JSON-Re-Import mit Review-Queue).
@@ -760,19 +781,7 @@ export function libraryRoutes(
         if (!user) {
           return;
         }
-        try {
-          // WP-SHIP8-CLOSE-8 (bens GELB-2): auch frisch eingereihte Kandidaten laufen durchs DTO.
-          // JOB 3050: DIESELBE Instanz der Dublettenregel wie `POST /api/library/import` oben —
-          // beide Importwege beantworten die Frage ab hier gleich.
-          const created = await library.createImportCandidates(
-            request.body.items ?? [],
-            user.id,
-            pruefeReImportDublette,
-          );
-          reply.code(201).send(created.map(toImportCandidateDto));
-        } catch (error) {
-          sendError(reply, error);
-        }
+        await kandidatenEinreihen(request.body.items, user.id, reply);
       },
     );
 
@@ -848,6 +857,9 @@ export function libraryRoutes(
             request.body.action,
             user.id,
             request.body.note,
+            // Lauf gesamt-import-adoption (Bens B1/B2): die Annahme stellt die Dublettenfrage am
+            // heutigen Bestand noch einmal — mit DERSELBEN Instanz der Regel wie das Einreihen.
+            pruefeReImportDublette,
           );
           // SCRUM-470 (S6): ein akzeptierter Import-Kandidat wird — wie ein promoteter Entwurf im
           // Einreiche-Pfad — auf Widerspruch/Duplikat geprüft. Hinter dem Import-Flag (Default AUS).

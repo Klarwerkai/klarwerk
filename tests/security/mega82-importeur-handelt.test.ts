@@ -35,6 +35,12 @@
 // seit WP-SAMMEL21-FIX schon richtig gebaut (`author: actor` + `originalAuthor`); der JSON-Import
 // war es nie.
 //
+// Lauf gesamt-import-adoption (Bens B3, R-0143): `importJson` ist entfallen. `POST
+// /api/library/import` reiht seitdem nur noch Kandidaten ein (201); das Wissensobjekt entsteht
+// erst, wenn ein Controller annimmt. Der dritte Fall misst die Zusage darum über diesen einen Weg:
+// `ko.author` ist der ANNEHMENDE, der gelieferte Name nur `originalAuthor` — und weder der
+// gelieferte Name noch der Einreichende sitzt in der Rechteposition.
+//
 // ALLE FÄLLE SIND AM DRAHT GEBAUT — dieselbe Regel wie mega74/76/78: die Objekte reisen durch die
 // echten HTTP-Wege, damit der Test unabhängig davon bleibt, wie der Import intern zugeschnitten ist.
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -307,7 +313,8 @@ describe("mega82 A — der Importeur handelt, nicht der Genannte", () => {
     const { app, hochladender, angreifer, controller } = await setup("mega82c");
 
     // `POST /api/library/import` steht NICHT hinter dem Import-Schalter und verlangt nur
-    // `ko.create`. Ein gelieferter `author` landete bis mega82 direkt in `ko.author`.
+    // `ko.create`. Ein gelieferter `author` landete bis mega82 direkt in `ko.author`. Seit dem Lauf
+    // gesamt-import-adoption reiht der Eingang nur ein; angelegt wird beim Annehmen.
     const res = await app.inject({
       method: "POST",
       url: "/api/library/import",
@@ -325,21 +332,29 @@ describe("mega82 A — der Importeur handelt, nicht der Genannte", () => {
         ],
       },
     });
-    expect(res.statusCode, res.body).toBe(200);
-    expect(res.json().imported).toBe(1);
+    expect(res.statusCode, res.body).toBe(201);
+    const kandidaten = res.json() as { id: string; koId: string | null; status: string }[];
+    expect(kandidaten).toHaveLength(1);
+    expect(kandidaten[0]?.koId, "Der Eingang legt nichts am Annehmen vorbei an.").toBeNull();
+    const angenommen = await annehmen(app, controller.auth, kandidaten[0]?.id ?? "");
+    expect(angenommen.koId, "Der Accept muss ein Wissensobjekt erzeugt haben.").toBeTruthy();
 
     const liste = await app.inject({ method: "GET", url: "/api/kos", headers: controller.auth });
     expect(liste.statusCode, liste.body).toBe(200);
-    const ko = (liste.json() as { title: string; author: string; originalAuthor: string }[]).find(
-      (k) => k.title === "Untergeschobene Anweisung",
-    );
+    const ko = (
+      liste.json() as { id: string; title: string; author: string; originalAuthor: string }[]
+    ).find((k) => k.title === "Untergeschobene Anweisung");
     expect(ko, "Das importierte Wissensobjekt muss existieren.").toBeTruthy();
 
     expect(
       ko?.author,
       `\`ko.author\` ist eine Rechteposition (darfSehen · Löschrecht · v1-Schnappschussautor).
-      Hier steht ein frei gelieferter Name: ${ko?.author}`,
-    ).toBe(angreifer.id);
+      Hier steht nicht der Annehmende: ${ko?.author}`,
+    ).toBe(controller.id);
+    expect(ko?.id).toBe(angenommen.koId);
+    expect(ko?.author, "Der frei gelieferte Name sitzt in der Rechteposition.").not.toBe(
+      hochladender.id,
+    );
     expect(ko?.originalAuthor, "Der Quellautor reist als Metadatum weiter.").toBe(hochladender.id);
   });
 });

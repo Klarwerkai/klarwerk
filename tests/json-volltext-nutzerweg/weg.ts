@@ -377,31 +377,25 @@ export async function koLesen(wer: Sitzung, koId: string): Promise<Record<string
   >;
 }
 
-export interface Importbefund {
-  imported: number;
-  skipped: number;
-}
-
 /**
- * DER ZWEITE WEG, ohne Oberfläche: `POST /api/library/import` (`library-routes.ts:731` →
- * `LibraryService.importJson`, `services/library-analytics/src/service.ts:2000`).
+ * DER ZWEITE EINGANG, ohne Oberfläche: `POST /api/library/import`.
  *
- * ER IST NICHT ERFUNDEN, sondern im Router gefunden — Auftrag § 5, Lieferung 1. Er ist auch nicht
- * derselbe wie der Kandidatenweg: er legt SOFORT an, ohne Warteschlange und ohne Prüfkarte, und
- * genau dort (und nur dort) fiel der Volltext bis zu diesem Auftrag serverseitig weg.
+ * ER IST NICHT ERFUNDEN, sondern im Router gefunden — Auftrag § 5, Lieferung 1. Bis zum Lauf
+ * gesamt-import-adoption (Bens B3, R-0143) legte er SOFORT an (`LibraryService.importJson`), ohne
+ * Warteschlange und ohne Prüfkarte, und genau dort fiel der Volltext bis JOB 4293 serverseitig weg.
+ * Seitdem reiht er dieselben Kandidaten ein wie `POST /api/library/import/candidates` (201,
+ * dieselbe DTO-Liste); das Objekt entsteht erst beim Annehmen.
  */
 export async function direktImportieren(
   wer: Sitzung,
   items: ImportItemInput[],
-): Promise<Importbefund> {
-  const roh = mussAntwort(
+): Promise<Kandidat[]> {
+  const liste = mussListe(
     "POST /api/library/import",
     await wer.sende("POST", "/api/library/import", { items }),
-  ) as Record<string, unknown>;
-  expect(typeof roh.imported, `${JOB}: POST /api/library/import nennt kein imported.`).toBe(
-    "number",
+    201,
   );
-  return { imported: roh.imported as number, skipped: Number(roh.skipped ?? -1) };
+  return liste.map((roh) => alsKandidat("POST /api/library/import", roh));
 }
 
 /** Die Bibliotheks-Suche — hier nur als GRENZE: ihre Antwort trägt bewusst keinen Volltext. */

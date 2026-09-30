@@ -1159,21 +1159,32 @@ export const SCHREIB_TABELLE: Schreibzeile[] = [
     gruppe: "libraryRoutes",
     methode: "POST",
     route: "/api/library/import",
-    belegstelle: "services/app/src/routes/library-routes.ts:731",
-    erfolg: [200],
+    belegstelle: "services/app/src/routes/library-routes.ts:768",
+    // Lauf gesamt-import-adoption (Bens B3, R-0143): der Direktweg legt kein Wissensobjekt mehr
+    // an, sondern reiht einen Kandidaten ein — gemessen wird darum die Warteschlange, wie bei
+    // `POST /api/library/import/candidates` darunter.
+    erfolg: [201],
     tor: "ko.create",
     erwartet: AB_EXPERTE,
     ruesten: async (buehne) => ({
       pfad: "/api/library/import",
       payload: { items: [{ ...IMPORT_EINTRAG }] },
-      bestand: () => zaehleKos(buehne),
+      bestand: async () => {
+        const liste = await musterhaft(
+          buehne.app,
+          kopf(buehne, "admin"),
+          "GET",
+          "/api/library/import/candidates",
+        );
+        return (liste.json() as unknown[]).length;
+      },
     }),
   },
   {
     gruppe: "libraryRoutes",
     methode: "POST",
     route: "/api/library/import/candidates",
-    belegstelle: "services/app/src/routes/library-routes.ts:749",
+    belegstelle: "services/app/src/routes/library-routes.ts:778",
     erfolg: [201],
     tor: "ko.create",
     erwartet: AB_EXPERTE,
@@ -1195,7 +1206,7 @@ export const SCHREIB_TABELLE: Schreibzeile[] = [
     gruppe: "libraryRoutes",
     methode: "PUT",
     route: "/api/library/import/candidates/:id",
-    belegstelle: "services/app/src/routes/library-routes.ts:821",
+    belegstelle: "services/app/src/routes/library-routes.ts:838",
     erfolg: [200],
     tor: "ko.validate",
     erwartet: AB_CONTROLLER,

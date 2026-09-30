@@ -42,13 +42,11 @@ import {
   type GraphKuratierteKante,
   type ImportCandidate,
   type ImportItem,
-  type ImportResult,
   type KandidatDublettenbefund,
   type KoSichtbar,
   LibraryError,
   type Neighborhood,
   type ReviewAction,
-  type UebersprungenerImport,
 } from "./types";
 
 // WP-BILD-1h (bens sammel15-ROT 2): harter Backfill-Deckel PRO SUCHANFRAGE. Eine nicht-matchende
@@ -274,6 +272,17 @@ function ankerSchluessel(
 // daneben waere eine neue Verhaltensregel; der Auftrag benennt nur das Signal um. Wer das dennoch
 // tut, bricht den Confluence-/Jira-Re-Sync still — `tests/papierkorb-befund/accept-bleibt-resync.
 // test.ts` (R3) misst es samt Gegenprobe.
+// Lauf gesamt-import-adoption (Bens B4): bringt ein Import-Eintrag eine eigene Herkunftsangabe
+// mit? Nur dann entsteht bei der Erstanlage ein Herkunftseintrag — nie ein erfundener.
+// Die URL zählt nur, wenn `safeSourceUrl` sie durchlässt (sonst würde sie ohnehin verworfen).
+function traegtHerkunft(item: ImportItem): boolean {
+  return (
+    Boolean(item.externalId?.trim()) ||
+    Boolean(item.provider?.trim()) ||
+    safeSourceUrl(item.url) !== null
+  );
+}
+
 function kandidatErzeugtWissensobjekt(candidate: ImportCandidate): boolean {
   return !candidate.duplicate && candidate.dublettenbefund?.ergebnis !== "pruefung_nicht_moeglich";
 }
@@ -1155,11 +1164,34 @@ export class LibraryService {
   //      die Recovery stehen. Schlägt die Anker-Suche selbst fehl → fail-closed (Claim bleibt).
   //      Nur wenn sicher KEIN KO existiert, geht der Claim auf 'neu' zurück (Retry sofort
   //      möglich). Crash-Fälle heilt recoverStaleReviewClaims nach Lease-Ablauf.
+  //
+  // ==============================================================================================
+  // LAUF gesamt-import-adoption (Bens B1/B2) — DIE ANNAHME ENTSCHEIDET AM HEUTIGEN BESTAND.
+  // ==============================================================================================
+  //
+  // WAS FALSCH WAR: der Dublettenbefund vom EINREIHEN war beim Annehmen noch entscheidend. Zwei
+  // Fälle, beide von Ben reproduziert: (B1) A und identisches B eingereiht, A abgelehnt, B
+  // angenommen → „angenommen" ohne Objekt, denn B galt als Dublette eines Kandidaten, den es als
+  // Anwärter nicht mehr gab; (B2) Kandidat eingereiht, derselbe Inhalt kam inzwischen anders in
+  // den Bestand, der Kandidat wurde angenommen → zwei Objekte.
+  //
+  // WAS JETZT GILT: mit `pruefeDublette` stellt die Annahme auf dem TEXTWEG die Dublettenfrage
+  // noch einmal — mit derselben Regel (`kandidatDublettenbefund`: exakter Schlüssel, dann der
+  // Port), aber gegen den Wissensobjekt-Bestand DIESES Augenblicks. Wartende Kandidaten zählen
+  // hier nicht: wer zuerst angenommen wird, legt an, und jeder spätere trifft dann dessen Objekt.
+  // Der neue Befund wird im selben Statuswrite persistiert, damit der Kandidat sagt, was bei der
+  // Entscheidung galt. Der Anker-Strang (Upsert mit `externalId`) bleibt unberührt: dort
+  // entscheidet der Herkunfts-Anker in `acceptToKo`, nicht der Text.
+  //
+  // OHNE PORT (Demo-Korpus u. a.) bleibt es beim Befund vom Einreihen — die Bibliotheksroute
+  // übergibt ihn immer. Zwei GLEICHZEITIGE Annahmen zweier gleicher Kandidaten sehen einander
+  // nicht; dafür bräuchte der Textweg einen Riegel in der Datenhaltung, den er nicht hat.
   async reviewImportCandidate(
     id: string,
     action: ReviewAction,
     actor = "system",
     note?: string,
+    pruefeDublette?: DublettenPruefung,
   ): Promise<ImportCandidate> {
     const opId = this.genId();
     // WP-SHIP8-CLOSE-7 (bens ROT-2): Akteur + Aktion reisen IM Claim-CAS mit — crasht die
@@ -1184,6 +1216,9 @@ export class LibraryService {
     // Erst NACH erfolgreicher KO-Erzeugung gesetzt — steuert den Fehlerpfad (s. Kopfkommentar (4)).
     let createdKoId: string | null = null;
     let resolved: ImportCandidate | undefined;
+    // Der Kandidat, wie er bei DIESER Entscheidung gilt — mit dem neu erhobenen Befund (s. oben).
+    // Auch der Fehlerpfad fragt ihn, ob ein Objekt entstanden sein KANN.
+    let entschieden: ImportCandidate = candidate;
     // WP-SHIP8-CLOSE-6 (bens ROT-3a): Wer/Wann der Entscheidung reisen IM SELBEN Statuswrite mit
     // (resolveClaim-Patch) — unverlierbar im Produktbestand, egal was das Aktionsaudit später tut.
     // WP-SHIP8-CLOSE-7 (bens GELB): die Aktion wird WIRKLICH mitpersistiert (reviewedAction).
@@ -1200,6 +1235,11 @@ export class LibraryService {
       auditPending: { eventId: auditEventId, action, actor },
     };
     try {
+      const neuerBefund =
+        action === "accept" ? await this.befundBeiAnnahme(candidate, pruefeDublette) : undefined;
+      if (neuerBefund) {
+        entschieden = { ...candidate, ...neuerBefund };
+      }
       let resolution: ClaimResolution;
       if (action === "reject") {
         resolution = { status: "abgelehnt", ...reviewedStamp };
@@ -1209,14 +1249,14 @@ export class LibraryService {
           note: note?.trim() ? note.trim() : null,
           ...reviewedStamp,
         };
-      } else if (!kandidatErzeugtWissensobjekt(candidate)) {
+      } else if (!kandidatErzeugtWissensobjekt(entschieden)) {
         // JOB 3050: hier landen ZWEI Fälle, und der Kandidat sagt selbst, welcher es war —
         // `dublettenbefund` reist unverändert mit in die Antwort. (a) als Dublette erkannt: es
         // wird nichts angelegt und nichts überschrieben (Verhalten wie vor JOB 3050). (b) die
         // Dublettenfrage war nicht entscheidbar: fail-closed wird ebenfalls nichts angelegt —
         // eine unbemerkte Dublette im Bestand ist teurer als ein Eintrag, der nicht anlegt und
         // dessen Grund am Kandidaten steht.
-        resolution = { status: "angenommen", ...reviewedStamp };
+        resolution = { status: "angenommen", ...(neuerBefund ?? {}), ...reviewedStamp };
       } else {
         // SCRUM-515-Vervollständigung: ein PERSISTIERTER Alt-Kandidat (vor 515 eingereiht; PgCandidateRepo
         // liefert das JSONB unverändert) wurde bei createImportCandidates evtl. nie sanitisiert. Unmittelbar
@@ -1225,7 +1265,13 @@ export class LibraryService {
         // MIT persistiert (nicht nur transient), damit die Queue keinen ungültigen Wert behält.
         const item = this.withSanitizedConfidentiality(candidate.item);
         createdKoId = await this.acceptToKo(item, actor, id);
-        resolution = { status: "angenommen", koId: createdKoId, item, ...reviewedStamp };
+        resolution = {
+          status: "angenommen",
+          koId: createdKoId,
+          item,
+          ...(neuerBefund ?? {}),
+          ...reviewedStamp,
+        };
       }
       // SCRUM-157: Endstatus/koId/Note (+ bereinigtes Item, 515) persistieren — atomar über den
       // opId-CAS (kein stiller Verlust, kein Fremd-Overwrite).
@@ -1248,7 +1294,7 @@ export class LibraryService {
       let ankerUnsettled = false;
       // JOB 3050: dieselbe EINE Stelle wie oben — die Anker-Suche gilt genau für die Kandidaten,
       // für die überhaupt ein Wissensobjekt entstanden sein KANN.
-      if (stampedId === null && action === "accept" && kandidatErzeugtWissensobjekt(candidate)) {
+      if (stampedId === null && action === "accept" && kandidatErzeugtWissensobjekt(entschieden)) {
         try {
           const stamped = await this.koService.findByImportCandidateId(id);
           if (stamped) {
@@ -1529,6 +1575,46 @@ export class LibraryService {
     return { completed, released };
   }
 
+  // Lauf gesamt-import-adoption (Bens B1/B2): der Dublettenbefund im Augenblick der Annahme —
+  // Begründung am Kopf von `reviewImportCandidate`. `undefined` heisst „der Befund vom Einreihen
+  // gilt weiter" (kein Port, oder Anker-Strang).
+  //
+  // Ein Objekt, das DIESEN Kandidaten schon als Stempel trägt (Teilpersistenz eines früheren
+  // Laufs), ist kein Vergleichspartner: es IST sein Ergebnis, und `acceptToKo` adoptiert es.
+  //
+  // EHRLICHE KOSTENGRENZE: eine Bestandslesung und höchstens ein Prüflauf gegen den Bestand je
+  // Annahme — dieselbe Rechnung, die das Einreihen je Eintrag schon macht.
+  private async befundBeiAnnahme(
+    candidate: ImportCandidate,
+    pruefeDublette: DublettenPruefung | undefined,
+  ): Promise<{ duplicate: boolean; dublettenbefund: KandidatDublettenbefund } | undefined> {
+    if (pruefeDublette === undefined || (this.externalUpsert && candidate.item.externalId)) {
+      return undefined;
+    }
+    const bestand = (await this.koService.list()).filter(
+      (ko) => ko.importCandidateId !== candidate.id,
+    );
+    const exakt = new Map<string, string>();
+    for (const ko of bestand) {
+      const key = `${ko.title}|${ko.statement}`;
+      if (!exakt.has(key)) {
+        exakt.set(key, ko.id);
+      }
+    }
+    const dublettenbefund = kandidatDublettenbefund(
+      candidate.item,
+      erzwingeDublettenpruefung(pruefeDublette),
+      exakt,
+      bestand,
+      (koId) => ({ art: "wissensobjekt", koId }),
+    );
+    return {
+      duplicate:
+        dublettenbefund.ergebnis === "identisch" || dublettenbefund.ergebnis === "aehnlich",
+      dublettenbefund,
+    };
+  }
+
   // SCRUM-470: Baut das KO aus einem angenommenen Import-Item — idempotent per pageId.
   // Bekannte pageId (Anker im Bestand) → Re-Sync via revise() (nur bei höherer sourceVersion),
   // sonst neues KO. Gibt die KO-Id zurück (für die nachgelagerte Erkennung im Route-Layer).
@@ -1708,7 +1794,14 @@ export class LibraryService {
         // Freigabe aus Cloud/Export heraus.
         confidentiality: item.confidentiality ?? "vertraulich",
         ...(item.bodyHtml ? { bodyHtml: item.bodyHtml } : {}),
-        ...(externalId ? { sources: [this.buildSource(item, actor, firstVersion)] } : {}),
+        // Lauf gesamt-import-adoption (Bens B4; R-0139/R-0169/R-0180/FR-EXT-02): bis hier entstand
+        // der Herkunftseintrag NUR bei aktivem Upsert-Strang — ohne ihn verwarf die Annahme
+        // mitgelieferte provider/externalId/sourceVersion/url, und das Objekt trug `sources: []`.
+        // Jetzt bleibt JEDE mitgelieferte Herkunft am Objekt; der Upsert-Schalter entscheidet nur
+        // noch, ob ein späterer Import dasselbe Objekt fortschreibt (`externalId` oben), nicht
+        // mehr, ob die Quelle festgehalten wird. Ein Eintrag OHNE jede Herkunftsangabe bekommt
+        // keinen erfundenen Anker; importiert ist er über seinen Kandidaten-Stempel erkennbar.
+        ...(traegtHerkunft(item) ? { sources: [this.buildSource(item, actor, firstVersion)] } : {}),
         // WP-SHIP8-CLOSE-3/4 (bens ROT-1): Kandidaten-Anker VOR dem Endstatus des Kandidaten —
         // Recovery und Insert-or-Adopt erkennen daran eine bereits gelungene Erstanlage.
         ...(candidateId ? { importCandidateId: candidateId } : {}),
@@ -2054,168 +2147,12 @@ export class LibraryService {
     return `<!doctype html><html lang="de"><head><meta charset="utf-8"><title>KLARWERK Export</title><style>${style}</style></head><body><h1>KLARWERK — Wissensexport</h1>${note}${articles}${note}</body></html>`;
   }
 
-  // FR-LIB-02: Import per JSON ohne Duplikate.
-  //
-  // AUFTRAG-mega82 Block A: `actor` ist der EINREICHENDE Nutzer (library-routes.ts übergibt
-  // `user.id`) und damit der Handelnde dieses Imports — nicht mehr bloß ein „Vorgabe-Autor", der
-  // einspringt, wenn das Item keinen nennt.
-  //
-  // JOB 3023: die Vorgabe `"import"` ist entfallen. Sie stand vor dem neuen Pflicht-Port und wäre
-  // damit eine Vorgabe, die kein Aufrufer mehr auslassen KANN (`useDefaultParameterLast`) — eine
-  // Vorgabe, die nie greift, ist eine Behauptung ohne Fall. Alle Aufrufer nennen ihren Handelnden
-  // ohnehin ausdrücklich.
-  //
-  // ==============================================================================================
-  // JOB 3023 — DER RE-IMPORT PRUEFT AUF DUBLETTEN, STATT ZEICHEN ZU VERGLEICHEN.
-  // ==============================================================================================
-  //
-  // WAS FALSCH WAR: der Dublettentest war ein `seen.has()` auf `` `${title}|${statement}` ``. Ein
-  // Satzpunkt am Satzende, ein anderes Leerzeichen oder eine geaenderte Gross-/Kleinschreibung
-  // genuegte, damit derselbe Eintrag ein zweites Mal angelegt wurde; `conditions`, `measures`,
-  // `tags` und `category` gingen gar nicht ein.
-  //
-  // WAS JETZT GILT — ZWEI PAESSE, EINE REGEL:
-  //   1. Der `title|statement`-Schluessel bleibt als BILLIGER erster Pass fuer die exakte
-  //      Zeichengleichheit (`identisch`). Er kostet einen Map-Zugriff und faengt den haeufigsten
-  //      Fall — dieselbe Sicherung noch einmal eingespielt — ohne jede Rechnung ab. Er traegt
-  //      jetzt die getroffene `koId` mit, damit die Antwort auch hier sagen kann, WORAUF.
-  //   2. Alles darueber entscheidet die injizierte `DublettenPruefung` — die Regel, die das
-  //      Produkt bereits besitzt (`coreText` + `trigramSimilarity`), verdrahtet in der
-  //      Kompositionswurzel. Dieses Modul legt sie NICHT aus.
-  //
-  // GEGEN DEN BESTAND *UND* GEGEN DEN EIGENEN LAUF: `bestand` waechst um jedes erzeugte Objekt.
-  // Eine Sicherung, die dieselbe Sache zweimal enthaelt, erzeugt sie darum nicht zweimal.
-  //
-  // EHRLICHE KOSTENGRENZE: der zweite Pass rechnet je NICHT exakt getroffenem Eintrag gegen den
-  // ganzen Bestand (O(neu × bestand) Textvergleiche). Ein Deckel waere eine EIGENE Regel darueber,
-  // welche Kandidaten wegfallen duerfen — genau das zweite Gehirn, das dieser Auftrag ausschliesst.
-  // Die Wiedereinspielung, der haeufige Fall, laeuft ohnehin ueber Pass 1.
-  async importJson(
-    rawItems: readonly ImportItem[],
-    actor: string,
-    // PFLICHT, nicht optional (types.ts, DublettenPruefung): sonst duerfte ein zweiter Aufbau den
-    // Schutz typgueltig weglassen.
-    pruefeDublette: DublettenPruefung,
-  ): Promise<ImportResult> {
-    // SCRUM-515: an der Ingest-Grenze runtime-validieren (ungültig/unbekannt → vertraulich, nie intern).
-    const items = rawItems.map((item) => this.withSanitizedConfidentiality(item));
-    const pruefung = erzwingeDublettenpruefung(pruefeDublette);
-    const existing = await this.koService.list();
-    // Pass 1: exakter Schluessel → getroffenes Objekt. Der ERSTE Träger eines Schluessels gewinnt,
-    // damit die genannte koId bei Altbestand-Dubletten deterministisch ist.
-    const exakt = new Map<string, string>();
-    for (const ko of existing) {
-      const key = `${ko.title}|${ko.statement}`;
-      if (!exakt.has(key)) {
-        exakt.set(key, ko.id);
-      }
-    }
-    const bestand: KnowledgeObject[] = [...existing];
-    const uebersprungen: UebersprungenerImport[] = [];
-    let imported = 0;
-    for (const item of items) {
-      const key = `${item.title}|${item.statement}`;
-      const exakterTreffer = exakt.get(key);
-      if (exakterTreffer !== undefined) {
-        uebersprungen.push({ titel: item.title, grund: "identisch", koId: exakterTreffer });
-        continue;
-      }
-      // FAIL-CLOSED, ausgeschrieben: scheitert die Pruefung fuer EINEN Eintrag, wird er NICHT
-      // eingespielt, sondern als `pruefung_nicht_moeglich` uebersprungen. Eine unbemerkte Dublette
-      // im Bestand ist teurer als ein nicht eingespielter Eintrag, den der Einspielende in der
-      // Antwort sieht und erneut schicken kann. Und der Fehler bleibt LOKAL: er kippt nie den
-      // ganzen Import — die uebrigen Eintraege laufen weiter.
-      //
-      // RUNDE 2 (bens Befund 2): der AUFRUF allein im `try` genuegte nicht — eine Pruefung, die
-      // `null`/`undefined` zurueckgab, warf erst beim Auswerten und riss den ganzen Import mit
-      // (`TypeError: Cannot read properties of undefined (reading 'dublette')`).
-      //
-      // RUNDE 3 (bens Befund): auch das PRUEFEN im `try` genuegte nicht, solange danach WEITER auf
-      // das fremde Objekt zugegriffen wurde. Ein `dublette`-Getter, der beim ersten Lesen `false`
-      // liefert und beim zweiten wirft, kam durch die Pruefung und kippte dann doch den ganzen
-      // Import. Deshalb steht hier jetzt eine MATERIALISIERUNG: `materialisiereBefund` liest jede
-      // Eigenschaft genau einmal und gibt ein EIGENES Objekt zurueck. `befund` unten ist diese
-      // Kopie — das fremde Objekt wird nach dem `try` nie wieder angefasst.
-      let befund: DublettenBefund;
-      try {
-        const eigeneEntscheidung = materialisiereBefund(pruefung(item, bestand));
-        if (eigeneEntscheidung === null) {
-          uebersprungen.push({ titel: item.title, grund: "pruefung_nicht_moeglich", koId: null });
-          continue;
-        }
-        befund = eigeneEntscheidung;
-      } catch {
-        uebersprungen.push({ titel: item.title, grund: "pruefung_nicht_moeglich", koId: null });
-        continue;
-      }
-      if (befund.dublette) {
-        uebersprungen.push({
-          titel: item.title,
-          grund: "aehnlich",
-          koId: befund.koId,
-          aehnlichkeit: befund.aehnlichkeit,
-        });
-        continue;
-      }
-      const erzeugt = await this.koService.create({
-        title: item.title,
-        statement: item.statement,
-        type: item.type,
-        category: item.category,
-        // AUFTRAG-mega82 Block A: DIESELBE ABBILDUNG WIE IM ACCEPT-PFAD (WP-SAMMEL21-FIX weiter
-        // oben) — und bis mega82 war sie hier die einzige, die fehlte.
-        //
-        // `ko.author` ist keine Anzeige, sondern eine RECHTEPOSITION, und zwar gleich vierfach:
-        // `darfSehen` öffnet ein vertrauliches Wissensobjekt für seinen Autor
-        // (app/src/sichtbarkeit.ts:76), `DELETE /api/kos/:id` erlaubt ihm das Löschen
-        // (app/src/routes/ko-routes.ts:1154), `KoService.create` trägt denselben String als Verfasser
-        // des v1-Schnappschusses und als Akteur des `ko.created`-Belegs ein
-        // (knowledge-object/src/service.ts:1254/1266), und die Rückgabe an den Autor legt ihm eine
-        // Aufgabe an (validation/src/service.ts:131).
-        //
-        // `POST /api/library/import` verlangt nur `ko.create` und steht — anders als der
-        // Kandidaten-Accept — NICHT hinter dem Import-Schalter. Ein frei gelieferter `item.author`
-        // besetzte damit alle vier Positionen mit einem Namen, den nie jemand geprüft hat.
-        // Der Handelnde ist der Einreichende; der Quellautor reist als `originalAuthor` weiter
-        // (Wissensträger — Anzeige und busFactor, keine Autorisierung).
-        author: actor,
-        ...quellautorVon(item),
-        tags: item.tags ?? [],
-        // SCRUM-509 R3: JSON-Import ist ein Bulk-Pfad → konservativ „vertraulich" bei fehlendem Signal.
-        confidentiality: item.confidentiality ?? "vertraulich",
-        // ==========================================================================================
-        // JOB 4293 — DER DIREKTE IMPORTWEG VERLOR DEN DOKUMENTTEXT, UND ZWAR ALS EINZIGER.
-        // ==========================================================================================
-        //
-        // `ImportItem` trägt `bodyHtml` (../types.ts), und der Kandidaten-Accept reicht ihn an
-        // BEIDEN Stellen durch — bei der Erstanlage (`acceptToKo`, `...(item.bodyHtml ? …)`) wie
-        // beim Re-Sync-`revise`. NUR hier, auf dem Weg `POST /api/library/import` → `importJson`,
-        // stand das Feld nicht in der Eingabe des `create`. Eine Sicherung, die über diesen Weg
-        // eingespielt wurde, kam also mit Titel, Kernaussage und Tags an — und ohne den Text, den
-        // sie transportieren sollte. Das war keine Regel, sondern eine Lücke: nichts im Bestand
-        // nennt einen Grund, warum derselbe Inhaltsvertrag hier weniger gelten sollte.
-        //
-        // DIESELBE SCHREIBWEISE WIE IM ACCEPT-PFAD, und aus demselben Grund: ein fehlender
-        // Volltext bleibt FEHLEND (kein `bodyHtml: undefined`, kein aus `statement` gebauter
-        // Ersatz). `KoService.create` sanitisiert ihn danach wie jeden anderen Rumpf
-        // (`cleanBody` → `sanitizeHtml`); dieser Weg öffnet also kein zweites, ungefiltertes Tor.
-        ...(item.bodyHtml ? { bodyHtml: item.bodyHtml } : {}),
-      });
-      exakt.set(key, erzeugt.id);
-      bestand.push(erzeugt);
-      imported += 1;
-    }
-    // `skipped` behaelt Name und Bedeutung: nicht eingespielt. Es ist die Laenge der Liste — beide
-    // Zahlen koennen nicht auseinanderlaufen.
-    const skipped = uebersprungen.length;
-    await this.audit?.record({
-      actor,
-      action: "library.import",
-      target: "library",
-      payload: { imported, skipped },
-    });
-    return { imported, skipped, uebersprungen };
-  }
+  // FR-LIB-02 (Import): hier stand bis zum Lauf gesamt-import-adoption `importJson` — ein zweiter
+  // Anlageweg, der Wissensobjekte UNMITTELBAR erzeugte und die Prüf-Warteschlange umging (Bens B3,
+  // R-0143: „erst wenn ein Mensch übernimmt, entsteht ein echtes Wissensobjekt"). Er ist entfallen;
+  // jeder Import läuft über `createImportCandidates` und die Annahme in `reviewImportCandidate`.
+  // Seine Regeln leben dort weiter: Dublettenprüfung per Port (JOB 3023/3050), Handelnder ist der
+  // Einreichende bzw. Annehmende (mega82), Volltext reist mit (JOB 4293).
 
   // FR-LIB-03: Bus-Faktor je Kategorie (Einzelquelle = nur ein Autor).
   //

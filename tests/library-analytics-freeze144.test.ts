@@ -136,6 +136,15 @@ const WIDERRUFENE_FREIGABEN: readonly string[] = [
   // nachträglich decken; ihre Nachfolgerinnen stehen am jeweiligen Eintrag.
   "FREEZE-144/JOB3087-20260905/repo",
   "FREEZE-144/D5-20260817/repo-pg",
+  // LAUF gesamt-import-adoption R2 (Bens B1–B4): verbraucht. Diese fünf Freigaben autorisierten
+  // den Stand MIT dem Direktimport `importJson` (samt seinen Antworttypen) und OHNE den bei der
+  // Annahme neu erhobenen Dublettenbefund in `ClaimResolution`. Sie dürfen den neuen Inhalt nicht
+  // nachträglich decken; ihre Nachfolgerinnen stehen am jeweiligen Eintrag.
+  "FREEZE-144/JOB3087-20260905/index",
+  "FREEZE-144/JOB4155R3-20260917/types",
+  "FREEZE-144/JOB3424-20260909/repo",
+  "FREEZE-144/JOB3424-20260909/repo-pg",
+  "FREEZE-144/JOB3050-20260904/service-test",
 ];
 
 const ERWARTETE_ANZAHL = 6;
@@ -164,10 +173,15 @@ const FREEZE_MANIFEST: readonly FreezeEintrag[] = [
     // alte Name verschwindet, damit daraus kein zweiter Vergleichsweg entstehen kann. Sollhash
     // UND Freigabe sind in EINEM Änderungssatz neu gesetzt, die alte steht in
     // WIDERRUFENE_FREIGABEN.
-    hash: "589ba5e4fe80e236d03adf3a856fd2f0e1418250a1747550867ad41df7d77cc1",
+    // LAUF gesamt-import-adoption R2 · AUSGEWIESENE ÄNDERUNG (Bens B3, R-0143): die Ausleitungen
+    // `ImportResult`, `UebersprungenGrund` und `UebersprungenerImport` sind ENTFALLEN — sie waren
+    // die Antwort des Direktimports `importJson`, der Wissensobjekte an der Prüf-Warteschlange
+    // vorbei anlegte und ersatzlos abgelöst ist. Nichts ist hinzugekommen. Sollhash UND Freigabe
+    // sind in EINEM Änderungssatz neu gesetzt, die alte steht in WIDERRUFENE_FREIGABEN.
+    hash: "236e03df2989fcc0e47b0d73907f9781cf8ec4b2ae83a0b8ab0769b0a812a7ce",
     freigabe: {
-      id: "FREEZE-144/JOB3087-20260905/index",
-      autorisiertHash: "589ba5e4fe80e236d03adf3a856fd2f0e1418250a1747550867ad41df7d77cc1",
+      id: "FREEZE-144/GIA-R2-20260930/index",
+      autorisiertHash: "236e03df2989fcc0e47b0d73907f9781cf8ec4b2ae83a0b8ab0769b0a812a7ce",
     },
   },
   // JOB 3022 · AUSGEWIESENE ÄNDERUNG. `Graph` (types.ts:185-204) trägt seit dem Umbau von
@@ -249,10 +263,16 @@ const FREEZE_MANIFEST: readonly FreezeEintrag[] = [
     // und sie betreffen ausschliesslich dieselbe Menge. `nodes`, `edges`, `totalEdges`,
     // `truncated`, `edgeLimit` und jeder Filter sind unverändert. Die Erweiterung ist additiv und
     // optional; ein Leser ohne sie liest die Antwort wie bisher. BEN prüft Typ, Diff und Hash.
-    hash: "8c36b02e6c305a7d492208f82fb375d672428a8cf18d41bd6263b58d7f7181f2",
+    //
+    // LAUF gesamt-import-adoption R2 · AUSGEWIESENE ÄNDERUNG (Bens B3, R-0143) — NUR ENTFERNUNG:
+    // `ImportResult`, `UebersprungenerImport` und `UebersprungenGrund` sind gelöscht (Antworttypen
+    // des entfallenen Direktimports `importJson`), und ein Kommentarverweis auf `UebersprungenGrund`
+    // ist nachgeführt. `KandidatDublettenbefund`, `ImportCandidate`, `Graph` und alles Übrige sind
+    // unverändert. Sollhash UND Freigabe in EINEM Änderungssatz, die alte in WIDERRUFENE_FREIGABEN.
+    hash: "e9cfe02233c397c75ba8cf83a9af8df057c78473acb408f8c6db873e28423357",
     freigabe: {
-      id: "FREEZE-144/JOB4155R3-20260917/types",
-      autorisiertHash: "8c36b02e6c305a7d492208f82fb375d672428a8cf18d41bd6263b58d7f7181f2",
+      id: "FREEZE-144/GIA-R2-20260930/types",
+      autorisiertHash: "e9cfe02233c397c75ba8cf83a9af8df057c78473acb408f8c6db873e28423357",
     },
   },
   {
@@ -273,10 +293,17 @@ const FREEZE_MANIFEST: readonly FreezeEintrag[] = [
     // `->>` liefert dort `''` und nicht NULL. Der Satz ist korrigiert und nennt die Stelle, an der
     // die Deckungsgleichheit jetzt wirklich hergestellt ist (`NULLIF` in `repo-pg.ts`). AUSFÜHRBAR
     // ist an dieser Datei nichts geändert: der Diff dieses Jobs berührt hier keine Zeile Code.
-    hash: "6b5e93470c11466bfa67f3a9c2d49ba68a52fbbacbc9335cd9965f2f20fa7582",
+    //
+    // LAUF gesamt-import-adoption R2 · AUSGEWIESENE ÄNDERUNG (Bens B1/B2): `ClaimResolution` trägt
+    // zwei ADDITIVE optionale Felder `duplicate` und `dublettenbefund`, und `InMemoryCandidateRepo.
+    // resolveClaim` übernimmt sie wie die übrigen Felder. Grund: die Annahme stellt die
+    // Dublettenfrage am heutigen Bestand neu und persistiert den Befund IM SELBEN opId-CAS wie den
+    // Endstatus. Claim, Lease und Idempotenz sind unverändert. Sollhash UND Freigabe in EINEM
+    // Änderungssatz, die alte in WIDERRUFENE_FREIGABEN.
+    hash: "3926fec3a64bb0169a4b7d0a044e6cd60aed970dc122b4ee7c841a85a278e172",
     freigabe: {
-      id: "FREEZE-144/JOB3424-20260909/repo",
-      autorisiertHash: "6b5e93470c11466bfa67f3a9c2d49ba68a52fbbacbc9335cd9965f2f20fa7582",
+      id: "FREEZE-144/GIA-R2-20260930/repo",
+      autorisiertHash: "3926fec3a64bb0169a4b7d0a044e6cd60aed970dc122b4ee7c841a85a278e172",
     },
   },
   {
@@ -290,10 +317,16 @@ const FREEZE_MANIFEST: readonly FreezeEintrag[] = [
     // nur noch als Erkennungsmerkmal im Heilungs-DO-Block vor, der Bestandsinstanzen nachzieht
     // (`ADD COLUMN IF NOT EXISTS` wäre dort ein stilles No-op). Sollhash UND Freigabe sind in
     // EINEM Änderungssatz neu gesetzt, die alte steht in WIDERRUFENE_FREIGABEN.
-    hash: "7cd125c4c4101cd51c0da9ed88e841acfb65fd78068668aa4456e7bfa49f6043",
+    //
+    // LAUF gesamt-import-adoption R2 · AUSGEWIESENE ÄNDERUNG (Bens B1/B2): `resolveClaim` nimmt die
+    // zwei neuen optionalen Felder `duplicate`/`dublettenbefund` in denselben jsonb-Patch auf —
+    // Spiegel der InMemory-Fassung in `repo.ts`. KEINE DDL-Änderung, kein neuer Index, keine
+    // Migration (die Felder leben im `data`-jsonb wie alle übrigen). Sollhash UND Freigabe in
+    // EINEM Änderungssatz, die alte in WIDERRUFENE_FREIGABEN.
+    hash: "cfa990583ffb26d1195f3342b43f20d60764f6dbdaa81060aba591a02be138e7",
     freigabe: {
-      id: "FREEZE-144/JOB3424-20260909/repo-pg",
-      autorisiertHash: "7cd125c4c4101cd51c0da9ed88e841acfb65fd78068668aa4456e7bfa49f6043",
+      id: "FREEZE-144/GIA-R2-20260930/repo-pg",
+      autorisiertHash: "cfa990583ffb26d1195f3342b43f20d60764f6dbdaa81060aba591a02be138e7",
     },
   },
   {
@@ -306,10 +339,17 @@ const FREEZE_MANIFEST: readonly FreezeEintrag[] = [
     // ausdrücklich — die schon vorhandene, nie treffende `OHNE_AEHNLICHKEIT` aus JOB 3023, damit
     // ihre Zusicherungen unverändert das messen, was sie vorher gemessen haben (Pass 1, exakte
     // Zeichengleichheit). Kein weiterer Aufrufer dieser Datei ist angefasst.
-    hash: "1b0779a403ddede006ff78a6289d94016fdb50b4bc40c3fd246a644ed94d49f9",
+    // LAUF gesamt-import-adoption R2 · AUSGEWIESENE ÄNDERUNG (Bens B3/B4): `importJson` ist
+    // entfallen. Die vier Fälle, die ihn riefen, laufen jetzt über Einreihen + Annahme und messen
+    // dieselbe Zusage (exakter Pass 1, Vertraulichkeit „vertraulich", Audit des Imports — jetzt
+    // `import.candidates-created`). Der Fall „Flag AUS" erwartet nicht mehr `sources: []`: die
+    // mitgelieferte Herkunft bleibt am Objekt (B4), der Schalter entscheidet nur noch über das
+    // Fortschreiben. Sollhash UND Freigabe in EINEM Änderungssatz, die alte in
+    // WIDERRUFENE_FREIGABEN.
+    hash: "ce923d42eb5f13ec64eef4ea65eade1e4a2d9f61821897129f313842222be7c9",
     freigabe: {
-      id: "FREEZE-144/JOB3050-20260904/service-test",
-      autorisiertHash: "1b0779a403ddede006ff78a6289d94016fdb50b4bc40c3fd246a644ed94d49f9",
+      id: "FREEZE-144/GIA-R2-20260930/service-test",
+      autorisiertHash: "ce923d42eb5f13ec64eef4ea65eade1e4a2d9f61821897129f313842222be7c9",
     },
   },
   {

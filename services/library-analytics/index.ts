@@ -43,7 +43,6 @@ export {
 export { PgCandidateRepo, IMPORT_CANDIDATES_SCHEMA, EXTERNAL_SOURCE_SCHEMA } from "./src/repo-pg";
 export type {
   ImportItem,
-  ImportResult,
   ImportCandidate,
   SourceAdapter,
   ReviewStatus,
@@ -62,8 +61,6 @@ export type {
   // die Pruefung nicht typisiert uebergeben — und dieses Modul muesste die Regel selbst auslegen.
   DublettenPruefung,
   DublettenBefund,
-  UebersprungenGrund,
-  UebersprungenerImport,
   // JOB 3050: der Befund derselben Frage am REVIEW-KANDIDATEN. Er MUSS heraus, weil das
   // Antwort-DTO der Route (`services/app/src/routes/library-routes.ts`) ihn ausweist — ohne die
   // Ausleitung könnte die Kompositionswurzel die Auskunft nicht typisiert weitergeben.
