@@ -646,7 +646,9 @@ describe("BEN-R5-1 (Lauf 5, Runde 2): ungewisse Bestätigung — die Instanz fol
     async (_art, wiederherstellen) => {
       const l = await ungewiss(wiederherstellen, "steht");
       expect(l.fehler).toHaveProperty("code", UNGEWISS);
-      expect(String((l.fehler as Error).message)).toContain("EIO");
+      // Die Datenträgerursache steht nur in `cause`, nie in der Meldung (Runde 3, BEN-R5-3).
+      expect(String(((l.fehler as Error).cause as Error).message)).toContain("EIO");
+      expect(String((l.fehler as Error).message)).not.toContain("EIO");
       // Der Fall ist wirklich da: Bestätigung vollständig in der Datei, kein Widerruf.
       const eintraege = readJournal(l.w.datei);
       expect(eintraege.at(-1)).toMatchObject({ repo: "ruecknahmeVorgang", method: "bestaetigung" });
@@ -738,5 +740,71 @@ describe("BEN-R5-1 (Lauf 5, Runde 2): ungewisse Bestätigung — die Instanz fol
     expect(Boolean((await fehlt.w.nachReplay()).a?.deletedAt)).toBe(false);
     await expect(steht.w.services.ko.trashed()).rejects.toHaveProperty("code", UNGEWISS);
     await expect(fehlt.w.services.ko.trashed()).rejects.toHaveProperty("code", UNGEWISS);
+  });
+});
+
+// ================================================================================================
+// Lauf 5, Runde 3 — Bens BEN-R5-2: DER WIDERRUF SELBST MIT UNGEWISSEM AUSGANG.
+// ================================================================================================
+//
+// Ben: Bestätigung vollständig + EIO, Zurücklesen scheitert, der Widerruf wird VOLLSTÄNDIG
+// gespeichert und sein Schreibaufruf meldet trotzdem EIO. Sobald Lesen wieder ging, sah die Klärung
+// in Runde 2 nur die Bestätigung und trug den Vorgang nach — Replay und Neustart verwarfen ihn wegen
+// des Widerrufs. Soll: Klärung und Replay benutzen dieselbe Wirksamkeitsregel (`wirksamIn`).
+describe("BEN-R5-2 (Lauf 5, Runde 3): gespeicherter Widerruf trotz Schreibfehler — Klärung = Replay = Neustart", () => {
+  it.each([
+    ["Rückzug", false],
+    ["Wiederherstellen", true],
+  ] as const)(
+    "%s: nach wieder möglichem Lesen liefern die Dienste den Stand der Datei (Vorgang widerrufen = wie vorher)",
+    async (_art, wiederherstellen) => {
+      const w = await lage("ganz", "kaputt");
+      const aktion = () =>
+        wiederherstellen
+          ? w.services.ko.restore(w.a.id, "admin")
+          : w.services.ko.delete(w.a.id, "anna");
+      if (wiederherstellen) {
+        await w.services.ko.delete(w.a.id, "anna");
+      }
+      const vorher = await w.stand(w.roh);
+      // Vorgangszeile ok; Bestätigung ganz + EIO; Neuaufsatz ok; Widerruf ganz + EIO; danach voll.
+      w.schalter.folge = ["ok", "ganz", "ok", "ganz"];
+      w.schalter.voll = true;
+      await expect(aktion()).rejects.toHaveProperty("code", "JOURNAL_AUSGANG_UNGEWISS");
+      // Der Fall ist wirklich da: Bestätigung UND Widerruf stehen vollständig in der Datei.
+      const methoden = readJournal(w.datei).map((e) => e.method);
+      expect(methoden.slice(-2)).toEqual(["bestaetigung", "widerruf"]);
+      await expect(w.services.ko.trashed()).rejects.toHaveProperty(
+        "code",
+        "JOURNAL_AUSGANG_UNGEWISS",
+      );
+
+      w.schalter.lesenKaputt = false; // Schreiben geht weiterhin nicht
+      const papierkorb = await w.services.ko.trashed();
+      expect(papierkorb.some((k) => k.id === w.a.id)).toBe(Boolean(vorher.a?.deletedAt));
+      expect(await w.services.overlaps.get(w.overlap.id)).toEqual(vorher.befund);
+      expect(await w.services.ko.get(w.b.id)).toEqual(vorher.b); // Gegenseite unangetastet
+      expect(await w.stand(w.roh)).toEqual(vorher);
+      expect(await w.nachReplay()).toEqual(vorher);
+      const neu = await buildDevPersistServices(w.datei);
+      expect((await neu.ko.trashed()).some((k) => k.id === w.a.id)).toBe(
+        Boolean(vorher.a?.deletedAt),
+      );
+      expect(await neu.overlaps.get(w.overlap.id)).toEqual(vorher.befund);
+    },
+  );
+
+  it("die Klärung eines Vorgangs ohne Widerruf trägt ihn weiterhin nach (Kontrollfall)", async () => {
+    const w = await lage("ganz", "kaputt");
+    // Bestätigung ganz + EIO; Widerruf ohne Schreibwirkung; danach voll.
+    w.schalter.folge = ["ok", "ganz", "ok", "nichts"];
+    w.schalter.voll = true;
+    await expect(w.services.ko.delete(w.a.id, "anna")).rejects.toHaveProperty(
+      "code",
+      "JOURNAL_AUSGANG_UNGEWISS",
+    );
+    w.schalter.lesenKaputt = false;
+    expect((await w.services.ko.trashed()).some((k) => k.id === w.a.id)).toBe(true);
+    expect(await w.nachReplay()).toEqual(await w.stand(w.roh));
   });
 });

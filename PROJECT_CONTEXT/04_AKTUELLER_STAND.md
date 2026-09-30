@@ -84,7 +84,8 @@ R-0020 gilt unverändert für **Speichern UND Einreichen**, auch bei verlorener 
   damit auch dann überein, wenn Abschluss UND Widerruf scheitern. Runde 2 (BEN-R5-1): ist auch die
   Bestätigung ungewiss und weder Lesen noch Widerruf möglich, meldet der Aufruf
   `JOURNAL_AUSGANG_UNGEWISS`, und die Instanz liefert bis zur Klärung an der Datei keinen Stand aus;
-  danach folgt sie der Datei. **Nicht abgenommen;**
+  danach folgt sie der Datei — seit Runde 3 mit derselben Wirksamkeitsregel wie das Replay
+  (Widerruf beachtet, BEN-R5-2); am Draht HTTP 503 ohne interne Ursache (BEN-R5-3). **Nicht abgenommen;**
   PostgreSQL-Lauf und `tools/check` stehen aus.
 
 - Rückzug der eigenen Seite (`DELETE /api/kos/:id`, Knopf am eigenen Dublettenhinweis) schliesst

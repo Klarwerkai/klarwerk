@@ -275,24 +275,13 @@ export function readJournal(file: string): JournalEntry[] {
 // kein Toleranzfall, sondern eine Integritätsverletzung (KW-S4-27 A) — er bricht den Start
 // fail-closed ab. Übersprungen wird nichts, fortgesetzt wird nichts, ein Ersatz-Repo gibt es nicht.
 export async function replayJournal(repos: AppRepos, lines: readonly JournalLine[]): Promise<void> {
-  // Lauf 5 (BEN-R4-1): eine Vorgangszeile wirkt nur mit ihrer Bestätigung und ohne Widerruf (s.
-  // `BESTAETIGUNG`, `WIDERRUF`). Beide stehen immer NACH ihrer Vorgangszeile, deshalb zuerst einsammeln.
-  const bestaetigt = new Set<string>();
-  const widerrufen = new Set<string>();
-  for (const { entry } of lines) {
-    const bestaetigung = kennungAus(entry, BESTAETIGUNG);
-    if (bestaetigung !== undefined) {
-      bestaetigt.add(bestaetigung);
-    }
-    const widerruf = kennungAus(entry, WIDERRUF);
-    if (widerruf !== undefined) {
-      widerrufen.add(widerruf);
-    }
-  }
+  // Lauf 5 (BEN-R4-1): eine Vorgangszeile wirkt nur mit ihrer Bestätigung und ohne Widerruf —
+  // dieselbe Regel, mit der auch die laufende Instanz einen ungewissen Ausgang klärt (`wirksamIn`).
+  const wirksam = wirksamIn(lines);
   for (const { lineNumber, entry } of lines) {
     if (istVorgangsZeile(entry)) {
       const vorgang = (entry as VorgangsEintrag).vorgang;
-      if (typeof vorgang !== "string" || !bestaetigt.has(vorgang) || widerrufen.has(vorgang)) {
+      if (typeof vorgang !== "string" || !wirksam(vorgang)) {
         continue;
       }
     }
@@ -460,8 +449,31 @@ function mitNeuaufsatz(
 }
 
 /**
- * Liest zurück, ob die Bestätigung eines Vorgangs bestätigt im Journal steht — mit genau der Lesung,
- * die auch Replay und Neustart verwenden (`readJournalLines`). `undefined`, wenn das nicht
+ * DIE Wirksamkeitsregel einer Vorgangszeile: ihre Bestätigung steht, und kein Widerruf hebt sie auf.
+ * Replay (`replayJournal`) und die Klärung eines ungewissen Ausgangs (`bestaetigungInDatei`) benutzen
+ * beide genau diese Funktion — sonst könnte die laufende Instanz nach der Klärung einen anderen Stand
+ * zeigen als ein Neustart (Lauf 5, Runde 3, BEN-R5-2: ein vollständig geschriebener Widerruf, dessen
+ * Schreibaufruf trotzdem scheiterte, wurde von der Klärung übersehen).
+ */
+function wirksamIn(lines: readonly JournalLine[]): (vorgang: string) => boolean {
+  const bestaetigt = new Set<string>();
+  const widerrufen = new Set<string>();
+  for (const { entry } of lines) {
+    const bestaetigung = kennungAus(entry, BESTAETIGUNG);
+    if (bestaetigung !== undefined) {
+      bestaetigt.add(bestaetigung);
+    }
+    const widerruf = kennungAus(entry, WIDERRUF);
+    if (widerruf !== undefined) {
+      widerrufen.add(widerruf);
+    }
+  }
+  return (vorgang) => bestaetigt.has(vorgang) && !widerrufen.has(vorgang);
+}
+
+/**
+ * Liest zurück, ob ein Vorgang laut Journal WIRKT (`wirksamIn`: Bestätigung steht, kein Widerruf) —
+ * mit genau der Lesung und Regel, die auch Replay und Neustart verwenden. `undefined`, wenn das nicht
  * feststellbar ist (Lesefehler).
  */
 export type BestaetigungLesen = (vorgang: string) => boolean | undefined;
@@ -470,7 +482,7 @@ export type BestaetigungLesen = (vorgang: string) => boolean | undefined;
 export function bestaetigungInDatei(file: string): BestaetigungLesen {
   return (vorgang) => {
     try {
-      return readJournalLines(file).some((l) => kennungAus(l.entry, BESTAETIGUNG) === vorgang);
+      return wirksamIn(readJournalLines(file))(vorgang);
     } catch {
       return undefined;
     }
@@ -488,9 +500,11 @@ export class JournalAusgangUngewiss extends Error {
   readonly vorgang: string;
 
   constructor(vorgang: string, cause: unknown) {
-    const grund = cause instanceof Error ? cause.message : String(cause);
+    // Die Meldung geht über `sendError` nach aussen (http.ts: 503) und ist deshalb ein fester Satz:
+    // Ursache (Datenträgermeldung, ggf. mit Pfad) und Vorgangskennung stehen nur in `cause` bzw.
+    // `vorgang` (Lauf 5, Runde 3, BEN-R5-3).
     super(
-      `Ausgang des Rücknahme-Vorgangs ${vorgang} ungewiss; das Journal ist weder lesbar noch beschreibbar (${grund})`,
+      "Der Ausgang ist ungewiss: der Speicher ist gerade weder lesbar noch beschreibbar. Bitte später neu laden, bevor Sie es erneut versuchen.",
       { cause },
     );
     this.name = "JournalAusgangUngewiss";
@@ -525,9 +539,11 @@ interface Waechter {
  * und Lesen wie Schreiben scheitern. Kein fester Speicherstand passt dann zu beiden möglichen
  * Dateien. Deshalb gilt der Speicher in diesem Zustand NICHT als Wahrheit: die Klammer stellt ihn
  * zurück, der Aufrufer bekommt `JournalAusgangUngewiss` (kein „zurückgestellt“), und JEDER weitere
- * Aufruf der Ablagen klärt zuerst an der Datei (`aufloesen`): steht die Bestätigung, werden die Zeilen
- * des Vorgangs in den Speicher nachgetragen — genau wie beim Replay —, steht sie nicht oder gelingt
- * jetzt der Widerruf, bleibt es beim zurückgestellten Speicher. Solange beides nicht geht, wird der
+ * Aufruf der Ablagen klärt zuerst an der Datei (`aufloesen`) — mit DERSELBEN Regel wie das Replay
+ * (`wirksamIn`): wirkt der Vorgang laut Datei (Bestätigung steht, kein Widerruf — auch keiner, der
+ * trotz Schreibfehler vollständig gespeichert wurde), werden seine Zeilen in den Speicher
+ * nachgetragen; wirkt er nicht oder gelingt jetzt der Widerruf, bleibt es beim zurückgestellten
+ * Speicher. Solange beides nicht geht, wird der
  * Aufruf abgewiesen. So zeigt die laufende Instanz nie einen anderen Stand als Replay und Neustart:
  * sie zeigt entweder den Stand der Datei oder gar keinen.
  */
@@ -554,7 +570,7 @@ function mitBestaetigung(
       return undefined;
     }
   };
-  /** Steht die Bestätigung? Unklar → Widerruf versuchen; gelingt er, steht sie (wirksam) nicht. */
+  /** Wirkt der Vorgang laut Datei? Unklar → Widerruf versuchen; gelingt er, wirkt er nicht. */
   const klaeren = (vorgang: string): boolean | undefined => {
     const steht = liest(vorgang);
     if (steht !== undefined) {
