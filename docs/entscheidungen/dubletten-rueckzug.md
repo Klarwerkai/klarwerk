@@ -3,7 +3,8 @@
 *Aufnahme 20260922 · gesamt-dubletten-rueckzug. **Lauf 5** (Aufgabenrevision 16, Runde 1 auf Basis
 `1.0.0-beta.1.636`, Commit `bf9fcf1c`): übernimmt den Stand von Lauf 4 (letzte Fassung `9356241d`,
 Ausgang „Nacharbeitsgrenze“, nie auf `main`) unverändert und behebt Bens verbliebenen Befund
-BEN-R4-1 (Abschlussfehler UND gescheiterter Widerruf, s. „Nacharbeit Lauf 5“). **Lauf 4** (Aufgabenrevision 14, Runde 1 auf Basis
+BEN-R4-1 (Abschlussfehler UND gescheiterter Widerruf, s. „Nacharbeit Lauf 5“); Runde 2 behebt
+BEN-R5-1 (ungewisse Bestätigung bei gescheitertem Zurücklesen und Widerruf). **Lauf 4** (Aufgabenrevision 14, Runde 1 auf Basis
 `1.0.0-beta.1.635`, Commit `5e44e7e6`): übernimmt den Stand von Lauf 3 (letzte Fassung `ffacfd5a`,
 nie auf `main`) unverändert und behebt Bens verbliebenen Befund BEN-R3-2 (Teilschreiben im Journal,
 s. „Atomar“ und „Nacharbeit Lauf 4“; Runde 2 behebt Bens erneuten BEN-R3-2: ENOSPC vor dem
@@ -80,30 +81,38 @@ nichts geschehen und der Aufrufer bekommt einen Fehler statt 204/200.
        dieselbe Lesung wie Replay und Neustart). Steht sie bestätigt, gilt der Vorgang — der Aufruf
        kehrt OHNE Fehler zurück, der Speicher bleibt. Steht sie nicht (auch halb oder ohne
        Zeilenende), wirkt der Vorgang nie → Fehler. Ist das Zurücklesen nicht möglich, wird
-       widerrufen; scheitert auch das, bleibt der Widerruf offen und jede weitere Zeile schreibt
-       zuerst ihn — sonst wird sie nicht geschrieben (fail-closed, wie Lauf 4).
+       widerrufen; gelingt das, wirkt der Vorgang nie → Fehler.
+     - **Ungewiss** (Runde 2, BEN-R5-1): scheitern Bestätigung, Zurücklesen UND Widerruf, kann der
+       Prozess nicht wissen, ob die Bestätigung in der Datei steht — eine vollständig geschriebene
+       Zeile mit Fehler danach und eine gar nicht geschriebene melden ihm dasselbe. Der Aufrufer
+       bekommt dann `JournalAusgangUngewiss` (Code `JOURNAL_AUSGANG_UNGEWISS`), ausdrücklich KEIN
+       „zurückgestellt“. Bis der Ausgang an der Datei geklärt ist, weisen die Ablagen dieses Journals
+       jeden Aufruf — lesend wie schreibend — mit demselben Fehler ab; jeder Aufruf versucht die
+       Klärung erneut (Zurücklesen, sonst Widerruf). Steht die Bestätigung, trägt die Instanz die
+       Zeilen des Vorgangs in ihren Speicher nach (wie das Replay); steht sie nicht oder gelingt der
+       Widerruf, bleibt der zurückgestellte Speicher. Ein Neustart liest ohnehin die Datei. Die
+       laufende Instanz liefert so nie einen anderen Stand aus als Replay und Neustart.
 
-  Belegt in `journal-teilschreiben.test.ts` (23 Fälle, echte Datei; ENOSPC nach halber Zeile, nach
+  Belegt in `journal-teilschreiben.test.ts` (28 Fälle, echte Datei; ENOSPC nach halber Zeile, nach
   der ganzen Zeile ohne Zeilenende, ohne Schreibwirkung, EIO nach der ganzen Zeile samt Zeilenende):
   Rückzug und Wiederherstellen sind nach dem Fehler live, nach Replay und nach einem Neustart über
   `buildDevPersistServices` wie vorher; die erfolgreiche Wiederholung ist live = nach Replay (kein
   STALE_WRITE); Gegenseite unberührt; Befund nach Wiederherstellen unverändert zu; ungewisse
-  Bestätigung ohne Zurücklesen und ohne schreibbaren Widerruf → die Wiederholung wird abgewiesen und
-  zurückgestellt, das Journal wächst um keine Zeile.
+  Bestätigung ohne Zurücklesen und ohne schreibbaren Widerruf → Zustand „ungewiss“ (Runde 2).
 
-  Lauf 5 belegt dazu in `journal-teilschreiben.test.ts` „BEN-R4-1 (Lauf 5)“ (13 Fälle, echte
+  Lauf 5 belegt dazu in `journal-teilschreiben.test.ts` „BEN-R4-1 (Lauf 5)“ (12 Fälle seit Runde 2, echte
   Datei, je Rückzug und Wiederherstellen): Speicher, Replay, Neustart über
   `buildDevPersistServices` und Aufrufergebnis stimmen überein — geprüft unmittelbar nach dem
   Fehler, VOR jeder weiteren Schreibung.
 
-  **Verbleibende Grenze (ungewisser Ausgang, eng):** nur wenn die BESTÄTIGUNG vollständig
-  geschrieben wurde und trotzdem scheitert, UND das Zurücklesen der Datei scheitert, UND der
-  Widerruf nicht geschrieben werden kann, UND der Prozess endet, bevor er nachgeholt ist, wirkt der
-  Vorgang beim nächsten Start, obwohl der Aufrufer einen Fehler bekam. Ohne lesbaren und ohne
-  beschreibbaren Datenträger ist das nicht auflösbar (der „in doubt“-Fall jeder
-  Commit-Bestätigung; in PostgreSQL: Verbindungsabbruch während COMMIT). Solange der Prozess läuft,
-  bestätigt das Journal in diesem Zustand nichts mehr. Bens Fall (Vorgangszeile ganz + EIO,
-  Widerruf scheitert) liegt NICHT mehr in dieser Grenze. Nicht mit Prozessabbruch geprüft. Für Schreibungen AUSSERHALB eines Rücknahme-Vorgangs gilt dabei der
+  **Ungewisser Ausgang (Runde 2, BEN-R5-1):** die in Runde 1 hier dokumentierte Restgrenze ist
+  keine Grenze mehr, sondern der Zustand „ungewiss“ oben. Was bleibt, ist grundsätzlich und kein
+  Restfehler: solange Datenträger weder lesbar noch beschreibbar sind, kann KEIN Prozess den Ausgang
+  kennen (Beleg „Unmöglichkeit“: zwei Dateien, gleiche Rückmeldungen, entgegengesetzter Inhalt). Die
+  Lieferung antwortet darauf, indem sie in dieser Lage keinen Stand ausliefert und „ungewiss“ statt
+  „gescheitert“ meldet — wie PostgreSQL bei einem Verbindungsabbruch während COMMIT. Die rohen
+  InMemory-Ablagen UNTER der Journal-Schicht sind in dieser Lage zurückgestellt; sie sind kein
+  Auslieferungsweg. Nicht mit Prozessabbruch geprüft. Für Schreibungen AUSSERHALB eines Rücknahme-Vorgangs gilt dabei der
   Bestand: ihre Änderung ist im Speicher schon geschehen, wenn die Journalzeile abgewiesen wird —
   der Aufrufer bekommt den Fehler, die Änderung fehlt nach dem nächsten Start (unverändertes
   Verhalten jeder gescheiterten Einzelzeile, nicht Teil dieses Auftrags).
@@ -149,6 +158,7 @@ Lauf 1/2 (`resolution.imPapierkorb`, `markTrashedSide`, `releaseTrashedSide`,
 | BEN-R3-2 Rest (Lauf 3 Runde 3 → Lauf 4) | Journal-Abschluss schreibt eine halbe Vorgangszeile, dann ENOSPC; danach erfolgreiche Wiederholung | Wiederholung hing am Rest, fehlte nach Replay (Rückzug: nach Replay aktiv; Wiederherstellen: nach Replay im Papierkorb) | `journal-teilschreiben.test.ts` (Lauf 4): nach dem Fehler live und nach Replay wie vorher, Wiederholung live = nach Replay, Gegenseite unberührt, Befund nach Wiederherstellen unverändert zu. Gegenprobe: ohne Neuaufsatz → 6 von 8 rot. |
 | BEN-R3-2 (Lauf 4 Runde 1 → Runde 2) | Journal-Abschluss schreibt die ganze Vorgangszeile ohne Zeilenende, dann ENOSPC; Replay bzw. Neustart | der im Speicher zurückgestellte Vorgang wirkte nach Replay und Neustart (Rückzug: im Papierkorb; Wiederherstellen: aktiv) | `journal-teilschreiben.test.ts` „Lauf 4, Runde 2“: nach dem Fehler live, nach Replay und nach Neustart wie vorher; Datei bleibt ohne Zeilenende; Wiederholung wirkt genau einmal. Gegenprobe: Stand Runde 1 → 3 von 10 rot. |
 | BEN-R4-1 (Lauf 4 Runde 2 → Runde 3) | Journal-Abschluss schreibt die ganze Vorgangszeile samt Zeilenende, dann EIO beim Schliessen; Replay, Neustart, Wiederholung | zurückgestellter Vorgang wirkte nach Replay/Neustart; Replay der Wiederholung brach mit STALE_WRITE ab | in Lauf 4 Runde 3 mit Widerruf behoben (Bens Gegenprobe `journal-abschlussfehler.test.ts` grün); seit Lauf 5 getragen von der Bestätigung. |
+| BEN-R5-1 (Lauf 5 Runde 1 → Runde 2) | Bestätigung vollständig geschrieben, dann EIO; Zurücklesen und Widerruf scheitern | Speicher zurückgestellt und ausgeliefert, Replay/Neustart wirksam (Rückzug: Papierkorb/Befund zu; Wiederherstellen: aktiv) | `journal-teilschreiben.test.ts` „BEN-R5-1“ (6 Fälle): Fehler `JOURNAL_AUSGANG_UNGEWISS`; lesende und schreibende Aufrufe abgewiesen; Replay und Neustart schon VOR der Klärung = Datei; nach Klärung (Lesen wieder möglich bzw. Widerruf schreibbar) live = Replay = Neustart; Spiegelfall (Bestätigung fehlt) und Unmöglichkeitsbeleg. Gegenprobe: `dev-persist.ts` von Runde 1 → genau die 6 neuen Fälle rot, die übrigen 22 grün. |
 | BEN-R4-1 Rest (Lauf 4 Runde 3 → Lauf 5) | wie oben, und auch der Widerruf scheitert (ENOSPC ohne Schreibwirkung); Replay und Neustart VOR jedem Nachholen | live zurückgestellt, nach Replay und Neustart wirksam (Rückzug: Papierkorb/Befund zu; Wiederherstellen: aktiv) | `journal-teilschreiben.test.ts` „BEN-R4-1 (Lauf 5)“, Fall „Bens Fall“ je Richtung: Fehler, live = Replay = Neustart = vorher, dann Wiederholung live = Replay = Neustart. Gegenprobe: Replay ohne Bestätigungspflicht → 5 von 23 rot (darunter beide „Bens Fall“); ohne Zurücklesen → 2 rot. Bens eigene Probe `journal-offener-widerruf.test.ts` auf diesem Stand: 2 von 2 grün. |
 
 ## Die zugeordneten Anliegen — geliefert, mit Fassung und Beleg
@@ -297,9 +307,32 @@ Eintrags: eine neue Fassung schliesst seine versionsgebundenen offenen Befunde a
   scheiterndem Widerruf; Bestätigung ganz + EIO mit erfolgreichem, gescheitertem und fehlendem
   Zurücklesen; Bestätigung halb/ohne Zeilenende; fail-closed; Replay-Regel direkt an einer Datei).
   Der frühere Fall „Widerruf dauerhaft nicht schreibbar → fail-closed“ gilt jetzt für die ungewisse
-  Bestätigung (nach einer gescheiterten Vorgangszeile ist nichts mehr zu sperren).
+  Bestätigung (nach einer gescheiterten Vorgangszeile ist nichts mehr zu sperren). In Runde 2
+  ersetzt durch den Zustand „ungewiss“ und den Block „BEN-R5-1“ (s. unten).
   `atomar-ohne-datenbank.test.ts` „BEN-R3-2“: die erfolgreiche Wiederholung schreibt eine Zeile mehr
   (Bestätigung).
+
+## Nacharbeit Lauf 5, Runde 2 — Bens BEN-R5-1 (ungewisse Bestätigung)
+
+- **Befund (geprüfter Stand Runde 1):** Bestätigung vollständig geschrieben, dann EIO; Zurücklesen
+  und Widerruf scheitern. Der Widerruf blieb nur flüchtig offen, die Klammer stellte zurück und die
+  Instanz lieferte den zurückgestellten Stand aus; Replay und Neustart zeigten den entgegengesetzten.
+- **Behoben:** Zustand „ungewiss“ in `dev-persist.ts` (`JournalAusgangUngewiss`, Wächter in
+  `journaled`, Klärung `aufloesen`). Der flüchtige offene Widerruf aus Lauf 4 entfällt; an seine
+  Stelle tritt die Sperre aller Ablagen dieses Journals bis zur Klärung an der Datei.
+- **Nebenkorrektur:** der Widerruf nach einer Bestätigung, die das Zurücklesen als NICHT stehend
+  erkannt hat, wird nicht mehr geschrieben (unnötig). Der Fall „Bestätigung halb / ohne Zeilenende“
+  braucht deshalb keinen scheiternden Widerruf mehr in seiner Fehlerfolge.
+- **Bens Gegenprobe `journal-gegenprobe.test.ts` auf diesem Stand:** die zwei Fälle an der
+  Vorgangszeile grün; die zwei Fälle an der Bestätigung weiter rot. Sie vergleichen die ROHEN
+  InMemory-Ablagen unterhalb der Journal-Schicht (zurückgestellt) mit der Datei (Bestätigung steht).
+  Diese Forderung ist in der geprüften Lage nicht erfüllbar: im Spiegelfall (Bestätigung gar nicht
+  geschrieben) bekommt der Prozess exakt dieselben Rückmeldungen, die Datei sagt aber das Gegenteil
+  — jeder feste Speicherstand widerspricht einer der beiden Dateien (Beleg „Unmöglichkeit“). Über
+  die Dienste ist in dieser Lage kein Stand lesbar; nach der Klärung stimmen sie mit Replay und
+  Neustart überein. Ob diese Antwort (Sperre + „ungewiss“) der Atomaritätsanforderung genügt, ist
+  eine Urteilsfrage für Ben/Pedi; die Alternative wäre eine Entscheidung, welcher Ausgang im
+  unklärbaren Fall gelten soll — sie hätte im jeweils anderen Fall denselben Widerspruch.
 
 ## Quellenwidersprüche und fehlende Belege
 

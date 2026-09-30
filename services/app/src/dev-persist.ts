@@ -385,11 +385,17 @@ async function wendeAn(repos: AppRepos, lineNumber: number, entry: JournalEntry)
 
 // Proxy um ein Repo: Mutationen laufen unverändert durch und werden NACH Erfolg journaliert.
 // Kein `any`: der Proxy erhält den konkreten Interface-Typ des Repos zurück.
+//
+// Lauf 5, Runde 2 (BEN-R5-1): ist der Ausgang eines Rücknahme-Vorgangs UNGEWISS (s.
+// `mitBestaetigung`), wird jeder Aufruf dieser Ablagen — lesend wie schreibend — zuerst an der Datei
+// aufgelöst (`waechter.aufloesen`); gelingt das nicht, wird er abgewiesen. Ausgenommen sind nur die
+// Rückstellmethoden der Klammer (`RUECKSTELLMETHODEN`), die im selben Zug den Speicher zurücksetzen.
 function journaled<T extends object>(
   repo: T,
   name: keyof AppRepos,
   write: (entry: JournalEntry) => void,
   vorgangAbschluss: (zeilen: JournalEntry[]) => void,
+  waechter: Waechter,
 ): T {
   const mutators = MUTATING_METHODS[name];
   return new Proxy(repo, {
@@ -400,14 +406,21 @@ function journaled<T extends object>(
       }
       const fn = value as (...args: unknown[]) => unknown;
       if (typeof prop !== "string" || !mutators.includes(prop)) {
-        return fn.bind(target);
+        if (typeof prop !== "string" || RUECKSTELLMETHODEN.includes(prop)) {
+          return fn.bind(target);
+        }
+        return (...args: unknown[]) =>
+          waechter.ungewiss()
+            ? waechter.aufloesen().then(() => fn.apply(target, args))
+            : fn.apply(target, args);
       }
       return async (...args: unknown[]) => {
+        await waechter.aufloesen();
         const result = await fn.apply(target, args);
         // Auftrag gesamt-dubletten-rueckzug (Runden 2/3, BEN-R3-1/-2): gehört der Aufruf zu einem
         // offenen Rücknahme-Vorgang ohne Datenbank (speicher-vorgang.ts), wird die Zeile
-        // zurückgehalten und beim Abschluss mit allen anderen des Vorgangs als EINE Vorgangszeile
-        // geschrieben. Scheitert das, stellt die Klammer den Speicher zurück.
+        // zurückgehalten und beim Abschluss mit allen anderen des Vorgangs geschrieben (Vorgangszeile
+        // und Bestätigung). Scheitert das, stellt die Klammer den Speicher zurück.
         const zeile: JournalEntry = { repo: name, method: prop, args: ohneVorgang(args) };
         if (!journalZeileFuer(args, zeile, vorgangAbschluss)) {
           write(zeile);
@@ -417,6 +430,9 @@ function journaled<T extends object>(
     },
   });
 }
+
+/** Die Rückstellmethoden der Klammer (speicher-vorgang.ts) — nie vom Wächter aufgehalten. */
+const RUECKSTELLMETHODEN: readonly string[] = ["zuruecksetzen", "verwerfen"];
 
 /**
  * Die Schreibfunktion mit Neuaufsatz (s. `NEUAUFSATZ`): nach einem gescheiterten Schreibaufruf —
@@ -462,64 +478,137 @@ export function bestaetigungInDatei(file: string): BestaetigungLesen {
 }
 
 /**
- * Lauf 5 (BEN-R4-1): Abschluss eines Rücknahme-Vorgangs in zwei Zeilen — Vorgangszeile, dann
- * Bestätigung (s. `BESTAETIGUNG`). Die Klammer stellt zurück, wenn dieser Abschluss wirft; er wirft
- * deshalb nur, wenn der Vorgang nach Replay und Neustart NICHT wirkt, und kehrt nur zurück, wenn er
- * wirkt:
+ * Lauf 5, Runde 2 (BEN-R5-1): der Ausgang eines Rücknahme-Vorgangs ist UNGEWISS und im Moment
+ * nicht auflösbar. Der Aufrufer bekommt diesen Fehler statt eines gewöhnlichen Fehlschlags: es ist
+ * NICHT gesagt, dass der Vorgang nicht stattfand. Bis der Ausgang an der Datei geklärt ist, weisen
+ * die Ablagen dieses Journals jeden Aufruf mit demselben Fehler ab.
+ */
+export class JournalAusgangUngewiss extends Error {
+  readonly code = "JOURNAL_AUSGANG_UNGEWISS";
+  readonly vorgang: string;
+
+  constructor(vorgang: string, cause: unknown) {
+    const grund = cause instanceof Error ? cause.message : String(cause);
+    super(
+      `Ausgang des Rücknahme-Vorgangs ${vorgang} ungewiss; das Journal ist weder lesbar noch beschreibbar (${grund})`,
+      { cause },
+    );
+    this.name = "JournalAusgangUngewiss";
+    this.vorgang = vorgang;
+  }
+}
+
+/** Der geteilte Zustand eines Journals: steht ein Vorgang mit ungewissem Ausgang offen? */
+interface Waechter {
+  ungewiss(): boolean;
+  /** Klärt einen ungewissen Ausgang an der Datei; wirft `JournalAusgangUngewiss`, solange das nicht geht. */
+  aufloesen(): Promise<void>;
+}
+
+/**
+ * Lauf 5 (BEN-R4-1) und Lauf 5, Runde 2 (BEN-R5-1): Abschluss eines Rücknahme-Vorgangs in zwei
+ * Zeilen — Vorgangszeile, dann Bestätigung (s. `BESTAETIGUNG`). Die Klammer stellt zurück, wenn
+ * dieser Abschluss wirft.
  *
  *   Vorgangszeile scheitert  Keine Bestätigung → wirkt nie, gleich was in der Datei steht. Wirft.
  *                            (Ein Widerruf wird noch versucht, ist hier aber nicht tragend.)
  *   Bestätigung scheitert    Der Ausgang wird durch Zurücklesen geklärt (`lesen`):
- *                              steht sie bestätigt  → der Vorgang wirkt; Rückkehr ohne Fehler, der
- *                                                     Speicher bleibt, wie er ist.
- *                              steht sie nicht      → wirkt nie (ein Rest ohne Zeilenende wird nie
- *                                                     bestätigt, s. `NEUAUFSATZ`). Wirft.
- *                              nicht feststellbar   → Widerruf; wirft. Scheitert auch der, bleibt er
- *                                                     offen, und JEDE weitere Zeile schreibt zuerst
- *                                                     ihn — sonst wird sie nicht geschrieben und ihr
- *                                                     Aufrufer bekommt den Fehler (fail-closed).
+ *                              steht sie bestätigt  → der Vorgang wirkt; Rückkehr ohne Fehler.
+ *                              steht sie nicht      → wirkt nie. Wirft.
+ *                              nicht feststellbar   → Widerruf; gelingt er, wirkt der Vorgang nie.
+ *                                                     Wirft.
+ *                              auch der Widerruf    → UNGEWISS (BEN-R5-1), s. unten.
+ *                              scheitert
  *
- * Grenze: nur wenn Bestätigung, Zurücklesen und Widerruf scheitern UND danach nie wieder etwas
- * geschrieben werden kann, entscheidet beim nächsten Start die Datei — dann kann der Vorgang wirken,
- * obwohl der Aufrufer einen Fehler bekam. Ohne lesbaren und ohne beschreibbaren Datenträger ist das
- * nicht auflösbar.
+ * UNGEWISS: Der Prozess kann nicht wissen, ob die Bestätigung in der Datei steht — eine vollständig
+ * geschriebene Zeile mit anschliessendem Fehler und eine gar nicht geschriebene melden ihm dasselbe,
+ * und Lesen wie Schreiben scheitern. Kein fester Speicherstand passt dann zu beiden möglichen
+ * Dateien. Deshalb gilt der Speicher in diesem Zustand NICHT als Wahrheit: die Klammer stellt ihn
+ * zurück, der Aufrufer bekommt `JournalAusgangUngewiss` (kein „zurückgestellt“), und JEDER weitere
+ * Aufruf der Ablagen klärt zuerst an der Datei (`aufloesen`): steht die Bestätigung, werden die Zeilen
+ * des Vorgangs in den Speicher nachgetragen — genau wie beim Replay —, steht sie nicht oder gelingt
+ * jetzt der Widerruf, bleibt es beim zurückgestellten Speicher. Solange beides nicht geht, wird der
+ * Aufruf abgewiesen. So zeigt die laufende Instanz nie einen anderen Stand als Replay und Neustart:
+ * sie zeigt entweder den Stand der Datei oder gar keinen.
  */
 function mitBestaetigung(
   write: (entry: JournalEntry) => void,
   lesen: BestaetigungLesen | undefined,
+  roh: AppRepos,
 ): {
   write: (entry: JournalEntry) => void;
   vorgangAbschluss: (zeilen: JournalEntry[]) => void;
+  waechter: Waechter;
 } {
-  const offen: string[] = [];
+  let offen: { vorgang: string; zeilen: JournalEntry[]; fehler: unknown } | undefined;
+  let laufend: Promise<void> | undefined;
   const widerruf = (vorgang: string): JournalEntry => ({
     repo: WIDERRUF.repo,
     method: WIDERRUF.method,
     args: [vorgang],
   });
-  const nachholen = (): void => {
-    while (offen.length > 0) {
-      write(widerruf(offen[0] as string));
-      offen.shift();
+  const liest = (vorgang: string): boolean | undefined => {
+    try {
+      return lesen?.(vorgang);
+    } catch {
+      return undefined;
     }
   };
-  /** Widerruf sofort; `tragend`: scheitert er, bleibt er offen (s. oben). */
-  const widerrufen = (vorgang: string, tragend: boolean): void => {
+  /** Steht die Bestätigung? Unklar → Widerruf versuchen; gelingt er, steht sie (wirksam) nicht. */
+  const klaeren = (vorgang: string): boolean | undefined => {
+    const steht = liest(vorgang);
+    if (steht !== undefined) {
+      return steht;
+    }
     try {
       write(widerruf(vorgang));
+      return false;
     } catch {
-      if (tragend) {
-        offen.push(vorgang);
+      return undefined;
+    }
+  };
+  const waechter: Waechter = {
+    ungewiss: () => offen !== undefined,
+    aufloesen: () => {
+      if (!offen) {
+        return Promise.resolve();
       }
+      // Ein Klärungslauf für alle gleichzeitigen Aufrufer; scheitert er, versucht der nächste Aufruf
+      // es neu (das Zurücksetzen läuft asynchron NACH der Zuweisung).
+      laufend ??= (async () => {
+        const ungewiss = offen;
+        if (!ungewiss) {
+          return;
+        }
+        const steht = klaeren(ungewiss.vorgang);
+        if (steht === undefined) {
+          throw new JournalAusgangUngewiss(ungewiss.vorgang, ungewiss.fehler);
+        }
+        if (steht) {
+          // Die Datei sagt: der Vorgang wirkt. Der Speicher folgt ihr — wie beim Replay.
+          for (const teil of ungewiss.zeilen) {
+            await wendeAn(roh, 0, teil);
+          }
+        }
+        offen = undefined;
+      })().finally(() => {
+        laufend = undefined;
+      });
+      return laufend;
+    },
+  };
+  const blockiert = (): void => {
+    if (offen) {
+      throw new JournalAusgangUngewiss(offen.vorgang, offen.fehler);
     }
   };
   return {
     write: (entry) => {
-      nachholen();
+      blockiert();
       write(entry);
     },
     vorgangAbschluss: (zeilen) => {
-      nachholen();
+      blockiert();
       const vorgang = randomUUID();
       const zeile: VorgangsEintrag = {
         repo: VORGANG_ZEILE.repo,
@@ -530,25 +619,28 @@ function mitBestaetigung(
       try {
         write(zeile);
       } catch (fehler) {
-        widerrufen(vorgang, false);
+        try {
+          write(widerruf(vorgang)); // nicht tragend: ohne Bestätigung wirkt die Zeile ohnehin nie
+        } catch {
+          // bewusst ohne Folge
+        }
         throw fehler;
       }
       try {
         write({ repo: BESTAETIGUNG.repo, method: BESTAETIGUNG.method, args: [vorgang] });
       } catch (fehler) {
-        let steht: boolean | undefined;
-        try {
-          steht = lesen?.(vorgang);
-        } catch {
-          steht = undefined;
-        }
+        const steht = klaeren(vorgang);
         if (steht === true) {
           return;
         }
-        widerrufen(vorgang, steht === undefined);
+        if (steht === undefined) {
+          offen = { vorgang, zeilen, fehler };
+          throw new JournalAusgangUngewiss(vorgang, fehler);
+        }
         throw fehler;
       }
     },
+    waechter,
   };
 }
 
@@ -562,13 +654,14 @@ export function journaledRepos(
   restAmEnde = false,
   lesen?: BestaetigungLesen,
 ): AppRepos {
-  const { write, vorgangAbschluss } = mitBestaetigung(
+  const { write, vorgangAbschluss, waechter } = mitBestaetigung(
     mitNeuaufsatz(rohesSchreiben, restAmEnde),
     lesen,
+    repos,
   );
   const wrapped = {} as Record<keyof AppRepos, object>;
   for (const key of Object.keys(MUTATING_METHODS) as (keyof AppRepos)[]) {
-    wrapped[key] = journaled(repos[key] as object, key, write, vorgangAbschluss);
+    wrapped[key] = journaled(repos[key] as object, key, write, vorgangAbschluss, waechter);
   }
   return wrapped as unknown as AppRepos;
 }

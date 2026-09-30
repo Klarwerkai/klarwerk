@@ -15,9 +15,11 @@
 //   JOURNAL        Das Dev-Journal hält die Zeilen des Vorgangs zurück (`journalZeileFuer`) und
 //                  schreibt sie beim Abschluss als EINE Journalzeile (dev-persist.ts,
 //                  `VORGANG_ZEILE`). Das Replay wendet sie nur als Ganzes an und nur mit ihrer
-//                  Bestätigungszeile (Lauf 5, BEN-R4-1). Der Abschluss wirft genau dann, wenn der
-//                  Vorgang nach Replay NICHT wirkt — dann wird der Speicher zurückgestellt; kehrt er
-//                  zurück, wirkt der Vorgang auch nach Replay (dev-persist.ts, `mitBestaetigung`).
+//                  Bestätigungszeile (Lauf 5, BEN-R4-1). Kehrt der Abschluss zurück, wirkt der
+//                  Vorgang auch nach Replay; wirft er, wird der Speicher zurückgestellt. Ist der
+//                  Ausgang ungewiss (Lauf 5, Runde 2, BEN-R5-1: `JournalAusgangUngewiss`), liefert
+//                  das Journal bis zur Klärung an der Datei nichts aus und trägt den Vorgang dann
+//                  nach, wenn die Datei ihn trägt (dev-persist.ts, `mitBestaetigung`).
 //   ISOLATION      (Runde 3, BEN-R3-3) Die Klammer hält für die ganze Dauer des Vorgangs eine
 //                  Sperre. Unter derselben Sperre schreibt der Audit-Dienst ausserhalb eines
 //                  Vorgangs seine Kettenglieder (`kettenSperre`: `last` + `append` ungeteilt). Jeder

@@ -81,7 +81,10 @@ R-0020 gilt unverändert für **Speichern UND Einreichen**, auch bei verlorener 
   Bens BEN-R4-1: der Journal-Abschluss eines Rücknahme-Vorgangs schreibt Vorgangszeile UND
   Bestätigung; ohne Bestätigung wirkt eine Vorgangszeile beim Replay nie. Den ungewissen Ausgang der
   Bestätigung klärt das Zurücklesen der Datei. Speicher, Replay, Neustart und Aufrufergebnis stimmen
-  damit auch dann überein, wenn Abschluss UND Widerruf scheitern. **Nicht abgenommen;**
+  damit auch dann überein, wenn Abschluss UND Widerruf scheitern. Runde 2 (BEN-R5-1): ist auch die
+  Bestätigung ungewiss und weder Lesen noch Widerruf möglich, meldet der Aufruf
+  `JOURNAL_AUSGANG_UNGEWISS`, und die Instanz liefert bis zur Klärung an der Datei keinen Stand aus;
+  danach folgt sie der Datei. **Nicht abgenommen;**
   PostgreSQL-Lauf und `tools/check` stehen aus.
 
 - Rückzug der eigenen Seite (`DELETE /api/kos/:id`, Knopf am eigenen Dublettenhinweis) schliesst

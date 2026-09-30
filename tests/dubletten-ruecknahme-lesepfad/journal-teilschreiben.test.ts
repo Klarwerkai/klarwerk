@@ -64,10 +64,20 @@ type Schnitt = "halb" | "ohneUmbruch" | "ganz" | "nichts" | "ok";
  * Aufrufe scheitern mit dem Grundschnitt; `folge` legt die Schnitte der nächsten Aufrufe einzeln fest.
  */
 function schreiberMitTeilschreiben(datei: string, schnitt: Schnitt = "halb") {
-  const schalter: { teilschreiben: number; folge: Schnitt[] } = { teilschreiben: 0, folge: [] };
+  const schalter: {
+    teilschreiben: number;
+    folge: Schnitt[];
+    /** Lauf 5, Runde 2: der Datenträger nimmt gar nichts mehr an (jeder Aufruf „nichts“). */
+    voll: boolean;
+    /** Lauf 5, Runde 2: das Zurücklesen im Modus `kaputt` scheitert, solange dies gesetzt ist. */
+    lesenKaputt: boolean;
+  } = { teilschreiben: 0, folge: [], voll: false, lesenKaputt: true };
   const schreiben = (e: JournalEntry): void => {
     const text = `${JSON.stringify(e)}\n`;
     let dieser: Schnitt | undefined = schalter.folge.shift();
+    if (dieser === undefined && schalter.voll) {
+      dieser = "nichts";
+    }
     if (dieser === undefined && schalter.teilschreiben > 0) {
       schalter.teilschreiben -= 1;
       dieser = schnitt;
@@ -123,7 +133,8 @@ async function paar(services: AppServices) {
 
 /**
  * `lesen` (Lauf 5): wie das Journal nach einem Schreibfehler seine Bestätigung zurückliest —
- * `datei` wie `buildDevPersistServices`, `kaputt` mit Lesefehler, `ohne` gar nicht.
+ * `datei` wie `buildDevPersistServices`, `kaputt` mit Lesefehler (solange `schalter.lesenKaputt`,
+ * danach wie `datei`), `ohne` gar nicht.
  */
 async function lage(schnitt: Schnitt = "halb", lesen: "datei" | "kaputt" | "ohne" = "ohne") {
   const datei = neueDatei();
@@ -131,8 +142,11 @@ async function lage(schnitt: Schnitt = "halb", lesen: "datei" | "kaputt" | "ohne
   const roh = inMemoryRepos();
   const leser: BestaetigungLesen | undefined = {
     datei: bestaetigungInDatei(datei),
-    kaputt: () => {
-      throw Object.assign(new Error("EIO beim Lesen"), { code: "EIO" });
+    kaputt: (vorgang: string) => {
+      if (schalter.lesenKaputt) {
+        throw Object.assign(new Error("EIO beim Lesen"), { code: "EIO" });
+      }
+      return bestaetigungInDatei(datei)(vorgang);
     },
     ohne: undefined,
   }[lesen];
@@ -511,8 +525,8 @@ describe("BEN-R4-1 (Lauf 5): Abschlussfehler — Speicher, Replay, Neustart und 
     "%s — Bestätigung halb / ohne Zeilenende, Zurücklesen findet sie nicht → Fehler, überall wie vorher",
     async (_art, wiederherstellen) => {
       for (const schnitt of ["halb", "ohneUmbruch"] as const) {
-        // Auch der Widerruf danach scheitert: er ist hier nicht tragend.
-        const l = await ablauf(wiederherstellen, ["ok", schnitt, "nichts"], "datei");
+        // Das Zurücklesen klärt: sie steht nicht — es braucht keinen weiteren Schreibaufruf.
+        const l = await ablauf(wiederherstellen, ["ok", schnitt], "datei");
         await expect(l.aktion()).rejects.toThrow("ENOSPC");
         await wieVorher(l);
         await wiederholungWirkt(l, wiederherstellen);
@@ -536,23 +550,6 @@ describe("BEN-R4-1 (Lauf 5): Abschlussfehler — Speicher, Replay, Neustart und 
     await expect(l.aktion()).rejects.toThrow("EIO");
     await wieVorher(l);
     await wiederholungWirkt(l, false);
-  });
-
-  it("Bestätigung ungewiss, Zurücklesen UND Widerruf scheitern: nichts Weiteres wird bestätigt, bis der Widerruf steht", async () => {
-    const l = await ablauf(false, ["ok", "ganz", "nichts", "nichts"], "kaputt");
-    await expect(l.aktion()).rejects.toThrow("EIO");
-    expect(await l.w.stand(l.w.roh)).toEqual(l.vorher);
-    const zeilenVorher = readJournal(l.w.datei).length;
-    // Die Wiederholung scheitert, weil der offene Widerruf vor ihr nicht geschrieben werden kann —
-    // sie wird zurückgestellt, und hinter der ungewissen Bestätigung steht nichts Bestätigtes.
-    await expect(l.aktion()).rejects.toThrow("ENOSPC");
-    expect(await l.w.stand(l.w.roh)).toEqual(l.vorher);
-    expect(readJournal(l.w.datei).length).toBe(zeilenVorher);
-    // Sobald der Datenträger wieder schreibt: zuerst der Widerruf, dann die Wiederholung.
-    await wiederholungWirkt(l, false);
-    const methoden = readJournal(l.w.datei).map((e) => e.method);
-    expect(methoden.indexOf("widerruf")).toBeGreaterThan(-1);
-    expect(methoden.indexOf("widerruf")).toBeLessThan(methoden.lastIndexOf("abschluss"));
   });
 
   it("eine Vorgangszeile ohne Bestätigung wirkt nie — auch nicht, wenn danach Bestätigtes folgt", async () => {
@@ -589,5 +586,157 @@ describe("BEN-R4-1 (Lauf 5): Abschlussfehler — Speicher, Replay, Neustart und 
     const widerrufen = inMemoryRepos();
     await replayJournal(widerrufen, readJournalLines(datei));
     expect((await widerrufen.drafts.list()).map((d) => d.id)).toEqual(["d-danach"]);
+  });
+});
+
+// ================================================================================================
+// Lauf 5, Runde 2 — Bens BEN-R5-1: UNGEWISSE BESTÄTIGUNG, ZURÜCKLESEN UND WIDERRUF SCHEITERN.
+// ================================================================================================
+//
+// Ben: die Bestätigung steht vollständig in der Datei, der Schreibaufruf meldet trotzdem EIO, und
+// weder Zurücklesen noch Widerruf gelingen. Runde 1 stellte den Speicher zurück und meldete einen
+// gewöhnlichen Fehler — Replay und Neustart zeigten den entgegengesetzten Stand der eigenen Seite.
+//
+// Der Prozess kann in dieser Lage nicht wissen, ob die Bestätigung steht: eine vollständig
+// geschriebene Zeile mit Fehler danach und eine gar nicht geschriebene melden ihm dasselbe (der
+// Fall „Unmöglichkeit“ unten zeigt es an zwei Dateien). Kein fester Speicherstand passt zu beiden.
+// Soll deshalb: der Aufrufer bekommt `JournalAusgangUngewiss` (kein „zurückgestellt“), die laufende
+// Instanz liefert KEINEN Stand aus, bis der Ausgang an der Datei geklärt ist, und danach — wie beim
+// Neustart — genau den Stand der Datei. Live = Replay = Neustart, in beiden Richtungen.
+describe("BEN-R5-1 (Lauf 5, Runde 2): ungewisse Bestätigung — die Instanz folgt der Datei", () => {
+  const UNGEWISS = "JOURNAL_AUSGANG_UNGEWISS";
+
+  /**
+   * `bestaetigung`: `steht` = vollständig geschrieben, dann EIO (Bens Fall); `fehlt` = nichts
+   * geschrieben, dann ENOSPC (der Spiegelfall). Danach nimmt der Datenträger nichts mehr an, und
+   * das Zurücklesen scheitert.
+   */
+  async function ungewiss(wiederherstellen: boolean, bestaetigung: "steht" | "fehlt") {
+    const w = await lage("ganz", "kaputt");
+    const aktion = () =>
+      wiederherstellen
+        ? w.services.ko.restore(w.a.id, "admin")
+        : w.services.ko.delete(w.a.id, "anna");
+    if (wiederherstellen) {
+      await w.services.ko.delete(w.a.id, "anna");
+    }
+    const vorher = await w.stand(w.roh);
+    w.schalter.folge = ["ok", bestaetigung === "steht" ? "ganz" : "nichts"];
+    w.schalter.voll = true;
+    const fehler = await aktion().then(
+      () => undefined,
+      (e: unknown) => e,
+    );
+    async function nachNeustart() {
+      const neu = await buildDevPersistServices(w.datei);
+      return {
+        papierkorb: (await neu.ko.trashed()).some((k) => k.id === w.a.id),
+        befund: await neu.overlaps.get(w.overlap.id),
+        gegenseite: await neu.ko.get(w.b.id),
+      };
+    }
+    return { w, vorher, fehler, nachNeustart };
+  }
+
+  it.each([
+    ["Rückzug", false],
+    ["Wiederherstellen", true],
+  ] as const)(
+    "%s — Bens Fall (Bestätigung steht): Fehler „ungewiss“, keine Auslieferung, nach Klärung live = Replay = Neustart = wirksam",
+    async (_art, wiederherstellen) => {
+      const l = await ungewiss(wiederherstellen, "steht");
+      expect(l.fehler).toHaveProperty("code", UNGEWISS);
+      expect(String((l.fehler as Error).message)).toContain("EIO");
+      // Der Fall ist wirklich da: Bestätigung vollständig in der Datei, kein Widerruf.
+      const eintraege = readJournal(l.w.datei);
+      expect(eintraege.at(-1)).toMatchObject({ repo: "ruecknahmeVorgang", method: "bestaetigung" });
+      expect(eintraege.some((e) => e.method === "widerruf")).toBe(false);
+
+      // Solange weder Lesen noch Schreiben geht: die Instanz liefert nichts aus — lesend wie schreibend.
+      await expect(l.w.services.ko.trashed()).rejects.toHaveProperty("code", UNGEWISS);
+      await expect(l.w.services.overlaps.get(l.w.overlap.id)).rejects.toHaveProperty(
+        "code",
+        UNGEWISS,
+      );
+      await expect(l.w.services.ko.get(l.w.b.id)).rejects.toHaveProperty("code", UNGEWISS);
+      await expect(
+        l.w.services.conflicts.create(
+          { koA: l.w.a.id, koB: l.w.b.id, type: "truth", description: "Widerspruch zur Frist" },
+          "anna",
+        ),
+      ).rejects.toHaveProperty("code", UNGEWISS);
+
+      // Die Datei sagt „wirksam“ — Replay und Neustart schon jetzt, VOR jeder Klärung.
+      const replay = await l.w.nachReplay();
+      expect(Boolean(replay.a?.deletedAt)).toBe(!wiederherstellen);
+      expect(replay.b).toEqual(l.vorher.b); // die Gegenseite bleibt unangetastet
+      const neustart = await l.nachNeustart();
+      expect(neustart.papierkorb).toBe(!wiederherstellen);
+      expect(neustart.gegenseite).toEqual(l.vorher.b);
+      if (wiederherstellen) {
+        expect(neustart.befund).toEqual(l.vorher.befund); // 43017d60: keine Wiederöffnung
+      } else {
+        expect(neustart.befund?.resolution).toMatchObject({ reason: "withdrawn_own", by: "anna" });
+      }
+
+      // Der Datenträger ist wieder lesbar (Schreiben geht weiterhin nicht): der nächste Aufruf klärt.
+      l.w.schalter.lesenKaputt = false;
+      const papierkorb = await l.w.services.ko.trashed();
+      expect(papierkorb.some((k) => k.id === l.w.a.id)).toBe(!wiederherstellen);
+      const live = await l.w.stand(l.w.roh);
+      expect(live).toEqual(await l.w.nachReplay());
+      expect(await l.w.services.overlaps.get(l.w.overlap.id)).toEqual(neustart.befund);
+      expect(await l.w.services.audit.verify()).toBe(true);
+    },
+  );
+
+  it.each([
+    ["Rückzug", false],
+    ["Wiederherstellen", true],
+  ] as const)(
+    "%s — Spiegelfall (Bestätigung fehlt): Fehler „ungewiss“, Replay = Neustart = vorher, nach Klärung live = vorher",
+    async (_art, wiederherstellen) => {
+      const l = await ungewiss(wiederherstellen, "fehlt");
+      expect(l.fehler).toHaveProperty("code", UNGEWISS);
+      await expect(l.w.services.ko.trashed()).rejects.toHaveProperty("code", UNGEWISS);
+      expect(await l.w.nachReplay()).toEqual(l.vorher);
+      expect((await l.nachNeustart()).papierkorb).toBe(Boolean(l.vorher.a?.deletedAt));
+
+      l.w.schalter.lesenKaputt = false;
+      await l.w.services.ko.trashed();
+      expect(await l.w.stand(l.w.roh)).toEqual(l.vorher);
+      expect(await l.w.nachReplay()).toEqual(l.vorher);
+    },
+  );
+
+  it("Klärung über den Widerruf: Lesen scheitert weiter, Schreiben geht wieder → der Vorgang wirkt nie, live = Replay = Neustart = vorher", async () => {
+    const l = await ungewiss(false, "steht");
+    expect(l.fehler).toHaveProperty("code", UNGEWISS);
+    l.w.schalter.voll = false; // Zurücklesen bleibt kaputt
+    await l.w.services.ko.trashed();
+    expect(readJournal(l.w.datei).at(-1)).toMatchObject({ repo: "journal", method: "widerruf" });
+    expect(await l.w.stand(l.w.roh)).toEqual(l.vorher);
+    expect(await l.w.nachReplay()).toEqual(l.vorher);
+    expect((await l.nachNeustart()).papierkorb).toBe(false);
+    // Danach läuft alles wieder normal: die Wiederholung wirkt genau einmal.
+    await l.w.services.ko.delete(l.w.a.id, "anna");
+    const live = await l.w.stand(l.w.roh);
+    expect(live.a?.deletedBy).toBe("anna");
+    expect(await l.w.nachReplay()).toEqual(live);
+  });
+
+  it("Unmöglichkeit: beide Dateien melden dem Prozess dasselbe — deshalb ist sein Speicher in dieser Lage nicht die Wahrheit", async () => {
+    const steht = await ungewiss(false, "steht");
+    const fehlt = await ungewiss(false, "fehlt");
+    // Gleiche Rückmeldung an den Prozess (Fehlerart), gleicher zurückgestellter Speicher …
+    expect((steht.fehler as { code?: string }).code).toBe((fehlt.fehler as { code?: string }).code);
+    const speicher = async (l: typeof steht) => Boolean((await l.w.stand(l.w.roh)).a?.deletedAt);
+    expect(await speicher(steht)).toBe(await speicher(fehlt));
+    // … aber entgegengesetzte Dateien. Ein fester Speicherstand widerspräche einer von beiden;
+    // die Instanz liefert deshalb nichts aus, bis sie an der Datei geklärt hat.
+    expect(Boolean((await steht.w.nachReplay()).a?.deletedAt)).toBe(true);
+    expect(Boolean((await fehlt.w.nachReplay()).a?.deletedAt)).toBe(false);
+    await expect(steht.w.services.ko.trashed()).rejects.toHaveProperty("code", UNGEWISS);
+    await expect(fehlt.w.services.ko.trashed()).rejects.toHaveProperty("code", UNGEWISS);
   });
 });
