@@ -283,6 +283,61 @@ function traegtHerkunft(item: ImportItem): boolean {
   );
 }
 
+// Der bei der Annahme neu erhobene Dublettenbefund (Bens B1/B2).
+type AnnahmeBefund = { duplicate: boolean; dublettenbefund: KandidatDublettenbefund };
+
+// Die Anker der AKTIVEN Objekte (Schlüssel → Kennung, erster Träger gewinnt).
+function aktiveAnkerVon(bestand: readonly KnowledgeObject[]): Map<string, string> {
+  const karte = new Map<string, string>();
+  for (const ko of bestand) {
+    for (const quelle of ko.sources ?? []) {
+      if (quelle.externalId) {
+        const key = ankerSchluessel(quelle.provider, quelle.externalId);
+        if (!karte.has(key)) {
+          karte.set(key, ko.id);
+        }
+      }
+    }
+  }
+  return karte;
+}
+
+// ================================================================================================
+// Lauf gesamt-import-adoption R3 (Bens N2) — DER PAPIERKORB KENNT SEINE TOTEN AUCH OHNE SCHALTER.
+// ================================================================================================
+//
+// Seit B4 schreibt die Annahme den Herkunftsanker unabhängig vom Upsert-Schalter. Gefragt wurde
+// der Papierkorb aber nur im Anker-Strang (Schalter an). Ohne Schalter kam derselbe Datensatz
+// (gleiche externalId) nach dem Löschen als `keine` zurück, und die Annahme legte eine zweite
+// Kennung an. Jetzt stellt auch der Textweg die ANKERfrage an den Papierkorb — dieselbe
+// Gleichheit (`ankerSchluessel`), dieselbe Auskunft (`im_papierkorb` mit Kennung), derselbe
+// Trash-Vertrag: nichts wird angelegt, nichts wiederhergestellt.
+//
+// VORRANG DES LEBENDEN, wie im Anker-Strang: trägt ein AKTIVES Objekt denselben Anker, entscheidet
+// wie bisher die Textfrage (ohne Schalter gibt es kein Fortschreiben). FAIL-CLOSED: war der
+// Papierkorb nicht lesbar, gilt der Eintrag als nicht prüfbar. `undefined` heisst: der Anker
+// liegt nicht im Papierkorb (oder der Eintrag hat keinen) — dann entscheidet die Textfrage.
+function papierkorbBefundImTextweg(
+  item: ImportItem,
+  aktiveAnker: ReadonlyMap<string, string>,
+  papierkorbAnker: ReadonlyMap<string, string> | null,
+): KandidatDublettenbefund | undefined {
+  if (!item.externalId?.trim()) {
+    return undefined;
+  }
+  const key = ankerSchluessel(item.provider, item.externalId);
+  if (aktiveAnker.has(key)) {
+    return undefined;
+  }
+  if (papierkorbAnker === null) {
+    return { ergebnis: "pruefung_nicht_moeglich" };
+  }
+  const koId = papierkorbAnker.get(key);
+  return koId === undefined
+    ? undefined
+    : { ergebnis: "im_papierkorb", treffer: { art: "wissensobjekt", koId } };
+}
+
 function kandidatErzeugtWissensobjekt(candidate: ImportCandidate): boolean {
   return !candidate.duplicate && candidate.dublettenbefund?.ergebnis !== "pruefung_nicht_moeglich";
 }
@@ -659,41 +714,16 @@ export class LibraryService {
     // `pruefung_nicht_moeglich` (kandidatErzeugtWissensobjekt laesst den `accept` dann nichts
     // anlegen); der Lauf bricht NICHT ab, und Eintraege ohne Anker sind unberuehrt. Eine LEERE
     // Liste ist dagegen eine echte Auskunft: dann bleibt es exakt wie bisher `nicht_gestellt`.
-    const ankerImLauf = this.externalUpsert && items.some((item) => item.externalId);
-    const aktiveAnker = new Map<string, string>();
-    if (ankerImLauf) {
-      for (const ko of existing) {
-        for (const quelle of ko.sources ?? []) {
-          if (quelle.externalId) {
-            const key = ankerSchluessel(quelle.provider, quelle.externalId);
-            // Der ERSTE Traeger eines Ankers gewinnt — dieselbe Determinismus-Regel wie bei
-            // `papierkorbAnker` unten und bei `exakt`: sonst haenge die genannte Kennung an der
-            // Lesereihenfolge des Bestands, und zwei Laeufe naennten verschiedene Objekte.
-            if (!aktiveAnker.has(key)) {
-              aktiveAnker.set(key, ko.id);
-            }
-          }
-        }
-      }
-    }
+    //
+    // Lauf gesamt-import-adoption R3 (Bens N2): gelesen wird, sobald IRGENDEIN Eintrag eine
+    // `externalId` trägt — auch ohne Upsert-Strang, denn seither stellt auch der Textweg die
+    // Ankerfrage an den Papierkorb (`papierkorbBefundImTextweg`). Die Regeln (erster Träger
+    // gewinnt, `null` = nicht lesbar, höchstens EINE Lesung je Lauf) sind unverändert.
+    const ankerImLauf = items.some((item) => item.externalId);
+    const aktiveAnker = ankerImLauf ? aktiveAnkerVon(existing) : new Map<string, string>();
     // `null` heisst „nicht gelesen/nicht lesbar" und ist ausdruecklich NICHT dasselbe wie eine leere
     // Karte („gelesen, es liegt nichts im Papierkorb").
-    let papierkorbAnker: Map<string, string> | null = null;
-    if (ankerImLauf) {
-      try {
-        const karte = new Map<string, string>();
-        for (const anker of await this.koService.trashedSourceAnchors()) {
-          const key = ankerSchluessel(anker.provider, anker.externalId);
-          // Der ERSTE Traeger eines Ankers gewinnt — dieselbe Determinismus-Regel wie bei `exakt`.
-          if (!karte.has(key)) {
-            karte.set(key, anker.koId);
-          }
-        }
-        papierkorbAnker = karte;
-      } catch {
-        papierkorbAnker = null;
-      }
-    }
+    const papierkorbAnker = ankerImLauf ? await this.papierkorbAnkerLesen() : null;
     // SCRUM-510 (WP3): externalId-Kandidaten ATOMAR idempotent einreihen (partieller UNIQUE-Index / ON
     // CONFLICT DO NOTHING) — ein bereits offener Kandidat derselben (externalId, sourceVersion) wird NICHT
     // erneut angelegt, auch bei nebenläufigen Läufen/Retries. Nur der externalId-Upsert-Strang nutzt das;
@@ -765,9 +795,14 @@ export class LibraryService {
           dublettenbefund = { ergebnis: "nicht_gestellt" };
         }
       } else {
-        dublettenbefund = kandidatDublettenbefund(item, pruefung, exakt, bestand, trefferVon);
+        // Bens N2: erst die Ankerfrage an den Papierkorb (nur mit `externalId`), dann die Textfrage.
+        dublettenbefund =
+          papierkorbBefundImTextweg(item, aktiveAnker, papierkorbAnker) ??
+          kandidatDublettenbefund(item, pruefung, exakt, bestand, trefferVon);
         duplicate =
-          dublettenbefund.ergebnis === "identisch" || dublettenbefund.ergebnis === "aehnlich";
+          dublettenbefund.ergebnis === "identisch" ||
+          dublettenbefund.ergebnis === "aehnlich" ||
+          dublettenbefund.ergebnis === "im_papierkorb";
       }
       const candidate: ImportCandidate = {
         id,
@@ -1219,6 +1254,10 @@ export class LibraryService {
     // Der Kandidat, wie er bei DIESER Entscheidung gilt — mit dem neu erhobenen Befund (s. oben).
     // Auch der Fehlerpfad fragt ihn, ob ein Objekt entstanden sein KANN.
     let entschieden: ImportCandidate = candidate;
+    // Der bei der Annahme neu erhobene Befund. Er steht AUSSERHALB des `try`, weil auch der
+    // Fehlerabschluss ihn mitschreiben muss (Bens N4) — sonst bliebe ein wirklich anlegender Accept
+    // dauerhaft als Dublette eines längst abgelehnten Kandidaten dokumentiert.
+    let neuerBefund: AnnahmeBefund | undefined;
     // WP-SHIP8-CLOSE-6 (bens ROT-3a): Wer/Wann der Entscheidung reisen IM SELBEN Statuswrite mit
     // (resolveClaim-Patch) — unverlierbar im Produktbestand, egal was das Aktionsaudit später tut.
     // WP-SHIP8-CLOSE-7 (bens GELB): die Aktion wird WIRKLICH mitpersistiert (reviewedAction).
@@ -1235,11 +1274,6 @@ export class LibraryService {
       auditPending: { eventId: auditEventId, action, actor },
     };
     try {
-      const neuerBefund =
-        action === "accept" ? await this.befundBeiAnnahme(candidate, pruefeDublette) : undefined;
-      if (neuerBefund) {
-        entschieden = { ...candidate, ...neuerBefund };
-      }
       let resolution: ClaimResolution;
       if (action === "reject") {
         resolution = { status: "abgelehnt", ...reviewedStamp };
@@ -1249,29 +1283,41 @@ export class LibraryService {
           note: note?.trim() ? note.trim() : null,
           ...reviewedStamp,
         };
-      } else if (!kandidatErzeugtWissensobjekt(entschieden)) {
-        // JOB 3050: hier landen ZWEI Fälle, und der Kandidat sagt selbst, welcher es war —
-        // `dublettenbefund` reist unverändert mit in die Antwort. (a) als Dublette erkannt: es
-        // wird nichts angelegt und nichts überschrieben (Verhalten wie vor JOB 3050). (b) die
-        // Dublettenfrage war nicht entscheidbar: fail-closed wird ebenfalls nichts angelegt —
-        // eine unbemerkte Dublette im Bestand ist teurer als ein Eintrag, der nicht anlegt und
-        // dessen Grund am Kandidaten steht.
-        resolution = { status: "angenommen", ...(neuerBefund ?? {}), ...reviewedStamp };
       } else {
-        // SCRUM-515-Vervollständigung: ein PERSISTIERTER Alt-Kandidat (vor 515 eingereiht; PgCandidateRepo
-        // liefert das JSONB unverändert) wurde bei createImportCandidates evtl. nie sanitisiert. Unmittelbar
-        // VOR acceptToKo erneut sanitisieren — sonst würde ein ungültiger Altwert im Re-Sync-Ranking auf
-        // „intern" normalisiert (fail-open) bzw. bei der Erstanlage hart abgelehnt. Das bereinigte Item wird
-        // MIT persistiert (nicht nur transient), damit die Queue keinen ungültigen Wert behält.
-        const item = this.withSanitizedConfidentiality(candidate.item);
-        createdKoId = await this.acceptToKo(item, actor, id);
-        resolution = {
-          status: "angenommen",
-          koId: createdKoId,
-          item,
-          ...(neuerBefund ?? {}),
-          ...reviewedStamp,
+        // Befund UND Anlage als EIN Schritt: auf dem Textweg läuft er hinter dem Annahme-Riegel
+        // (`nacheinander`, Bens N1), damit zwei überlappende Annahmen gleichen Inhalts nicht beide
+        // den noch leeren Bestand lesen und beide anlegen.
+        const annehmen = async (): Promise<ClaimResolution> => {
+          neuerBefund = await this.befundBeiAnnahme(candidate, pruefeDublette);
+          if (neuerBefund) {
+            entschieden = { ...candidate, ...neuerBefund };
+          }
+          if (!kandidatErzeugtWissensobjekt(entschieden)) {
+            // JOB 3050: hier landen ZWEI Fälle, und der Kandidat sagt selbst, welcher es war —
+            // `dublettenbefund` reist mit in die Antwort. (a) als Dublette erkannt: es wird nichts
+            // angelegt und nichts überschrieben. (b) die Dublettenfrage war nicht entscheidbar:
+            // fail-closed wird ebenfalls nichts angelegt — eine unbemerkte Dublette im Bestand ist
+            // teurer als ein Eintrag, der nicht anlegt und dessen Grund am Kandidaten steht.
+            return { status: "angenommen", ...(neuerBefund ?? {}), ...reviewedStamp };
+          }
+          // SCRUM-515-Vervollständigung: ein PERSISTIERTER Alt-Kandidat (vor 515 eingereiht;
+          // PgCandidateRepo liefert das JSONB unverändert) wurde bei createImportCandidates evtl.
+          // nie sanitisiert. Unmittelbar VOR acceptToKo erneut sanitisieren — sonst würde ein
+          // ungültiger Altwert im Re-Sync-Ranking auf „intern" normalisiert (fail-open) bzw. bei
+          // der Erstanlage hart abgelehnt. Das bereinigte Item wird MIT persistiert.
+          const item = this.withSanitizedConfidentiality(candidate.item);
+          createdKoId = await this.acceptToKo(item, actor, id);
+          return {
+            status: "angenommen",
+            koId: createdKoId,
+            item,
+            ...(neuerBefund ?? {}),
+            ...reviewedStamp,
+          };
         };
+        resolution = this.annahmeAufTextweg(candidate, pruefeDublette)
+          ? await this.nacheinander(annehmen)
+          : await annehmen();
       }
       // SCRUM-157: Endstatus/koId/Note (+ bereinigtes Item, 515) persistieren — atomar über den
       // opId-CAS (kein stiller Verlust, kein Fremd-Overwrite).
@@ -1290,7 +1336,7 @@ export class LibraryService {
       // create-Belege idempotent nachgezogen (ensureCreatedSideEffects: v1-Snapshot + ko.created).
       // Scheitert Anker-Suche ODER Beleg-Nachzug, bleibt der Claim fail-closed stehen — es gibt
       // nie ein „angenommen" ohne vollständige Belege.
-      let stampedId = createdKoId;
+      let stampedId: string | null = createdKoId;
       let ankerUnsettled = false;
       // JOB 3050: dieselbe EINE Stelle wie oben — die Anker-Suche gilt genau für die Kandidaten,
       // für die überhaupt ein Wissensobjekt entstanden sein KANN.
@@ -1309,7 +1355,13 @@ export class LibraryService {
         // Das KO existiert — die Operation DIREKT vollenden statt auf die Recovery zu warten.
         // CAS auf die EIGENE opId: eine übernommene Lease wird nie überschrieben.
         const completed = await this.candidates
-          .resolveClaim(id, opId, { status: "angenommen", koId: stampedId, ...reviewedStamp })
+          .resolveClaim(id, opId, {
+            status: "angenommen",
+            koId: stampedId,
+            // Bens N4: derselbe neu erhobene Befund wie im regulären Abschluss.
+            ...(neuerBefund ?? {}),
+            ...reviewedStamp,
+          })
           .catch(() => undefined);
         if (completed) {
           process.stderr.write(
@@ -1584,16 +1636,30 @@ export class LibraryService {
   //
   // EHRLICHE KOSTENGRENZE: eine Bestandslesung und höchstens ein Prüflauf gegen den Bestand je
   // Annahme — dieselbe Rechnung, die das Einreihen je Eintrag schon macht.
+  //
+  // Bens N2: trägt der Eintrag eine `externalId`, wird VOR der Textfrage der Herkunftsanker gegen
+  // den Papierkorb gehalten (`papierkorbBefundImTextweg`) — ein inzwischen gelöschtes Objekt
+  // derselben Quelle wird genannt und nicht ein zweites Mal angelegt.
   private async befundBeiAnnahme(
     candidate: ImportCandidate,
     pruefeDublette: DublettenPruefung | undefined,
-  ): Promise<{ duplicate: boolean; dublettenbefund: KandidatDublettenbefund } | undefined> {
-    if (pruefeDublette === undefined || (this.externalUpsert && candidate.item.externalId)) {
+  ): Promise<AnnahmeBefund | undefined> {
+    if (!this.annahmeAufTextweg(candidate, pruefeDublette) || pruefeDublette === undefined) {
       return undefined;
     }
     const bestand = (await this.koService.list()).filter(
       (ko) => ko.importCandidateId !== candidate.id,
     );
+    if (candidate.item.externalId?.trim()) {
+      const papierkorb = papierkorbBefundImTextweg(
+        candidate.item,
+        aktiveAnkerVon(bestand),
+        await this.papierkorbAnkerLesen(),
+      );
+      if (papierkorb) {
+        return { duplicate: papierkorb.ergebnis === "im_papierkorb", dublettenbefund: papierkorb };
+      }
+    }
     const exakt = new Map<string, string>();
     for (const ko of bestand) {
       const key = `${ko.title}|${ko.statement}`;
@@ -1613,6 +1679,56 @@ export class LibraryService {
         dublettenbefund.ergebnis === "identisch" || dublettenbefund.ergebnis === "aehnlich",
       dublettenbefund,
     };
+  }
+
+  // Stellt die Annahme dieses Kandidaten die Textfrage neu (und läuft darum hinter dem Riegel)?
+  // Nein beim Anker-Strang (dort entscheidet der Herkunftsanker in `acceptToKo`) und ohne Port.
+  private annahmeAufTextweg(
+    candidate: ImportCandidate,
+    pruefeDublette: DublettenPruefung | undefined,
+  ): boolean {
+    return pruefeDublette !== undefined && !(this.externalUpsert && candidate.item.externalId);
+  }
+
+  // ==============================================================================================
+  // Lauf gesamt-import-adoption R3 (Bens N1) — DER ANNAHME-RIEGEL.
+  // ==============================================================================================
+  //
+  // Zwei gleichzeitige Annahmen gleichen Inhalts lasen denselben noch leeren Bestand und legten
+  // beide an. Befund und Anlage einer Textweg-Annahme laufen darum NACHEINANDER: jeder Schritt
+  // wartet, bis der vorige fertig ist (auch wenn er warf), und sieht damit dessen Objekt.
+  //
+  // WARUM EIN RIEGEL FÜR ALLE UND NICHT JE INHALT: die Dublettenfrage ist eine Ähnlichkeit, kein
+  // Schlüssel — zwei „verschiedene" Einträge können einander treffen. Nur eine vollständige
+  // Reihenfolge schliesst das aus. Der Preis ist gering: eine Annahme ist ein menschlicher Klick,
+  // ohne Modellaufruf, und die Erkennung danach liegt ausserhalb des Riegels (Route).
+  //
+  // EHRLICHE GRENZE: der Riegel gilt je Dienstinstanz, also je Prozess. Laufen mehrere
+  // App-Prozesse gegen dieselbe Datenbank, sehen sie einander nicht; dafür bräuchte der Textweg
+  // eine Sperre in der Datenhaltung.
+  private annahmeKette: Promise<unknown> = Promise.resolve();
+
+  private nacheinander<T>(schritt: () => Promise<T>): Promise<T> {
+    const lauf = this.annahmeKette.then(schritt);
+    this.annahmeKette = lauf.catch(() => undefined);
+    return lauf;
+  }
+
+  // Die Anker der Objekte im Papierkorb, erster Träger gewinnt. `null` heisst „nicht lesbar" und
+  // ist ausdrücklich NICHT dasselbe wie eine leere Karte (fail-closed, s. `papierkorbBefundImTextweg`).
+  private async papierkorbAnkerLesen(): Promise<Map<string, string> | null> {
+    try {
+      const karte = new Map<string, string>();
+      for (const anker of await this.koService.trashedSourceAnchors()) {
+        const key = ankerSchluessel(anker.provider, anker.externalId);
+        if (!karte.has(key)) {
+          karte.set(key, anker.koId);
+        }
+      }
+      return karte;
+    } catch {
+      return null;
+    }
   }
 
   // SCRUM-470: Baut das KO aus einem angenommenen Import-Item — idempotent per pageId.

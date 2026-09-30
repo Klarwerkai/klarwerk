@@ -24,9 +24,12 @@
 // Lauf gesamt-import-adoption (Bens B3, R-0143): `importJson` ist entfallen. `POST
 // /api/library/import` reiht jetzt Kandidaten ein (201); das Wissensobjekt entsteht erst bei der
 // Annahme (`PUT /api/library/import/candidates/:id`, `acceptToKo`). Die Null-Aussage gilt darum für
-// den GANZEN Weg — Einreihen UND Annahme — und wird hier auch über beide gemessen. Die Annahme-Route
-// startet die Erkennung nur hinter `KLARWERK_CONFLUENCE_IMPORT` (Default AUS, SCRUM-470 S6); dieser
-// Test pinnt den Schalter deshalb ausdrücklich auf AUS und misst genau diesen Standardweg.
+// den GANZEN Weg — Einreihen UND Annahme — und wird hier auch über beide gemessen.
+//
+// Runde 3 (Bens N3, R-0145): bis hierher pinnte dieser Test den Import-Schalter auf AUS, weil die
+// Annahme mit Schalter AN die KI-Erkennung je Objekt startete — die Null galt also nur für den
+// Standardweg. Seit die Erkennung nur noch auf ausdrückliche Anforderung des Prüfers läuft
+// (`kiPruefung: true`), gilt die Null für BEIDE Schalterstellungen, und beide werden gemessen.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Der Embedder-Zähler muss vor der (gehoisteten) Modul-Attrappe existieren.
@@ -75,7 +78,7 @@ beforeEach(() => {
   // Der Prefilter ist AN — sonst wäre „Embedder 0" trivial wahr, weil es gar keinen gäbe.
   process.env.KLARWERK_DUP_PREFILTER = "1";
   process.env.KLARWERK_EMBEDDING_PROVIDER = "stub";
-  // Lauf gesamt-import-adoption: der Import-Schalter steht auf seinem Standard (AUS) — s. Kopf.
+  // Lauf gesamt-import-adoption: Ausgangslage Schalter AUS; die Messreihe unten setzt ihn je Lauf.
   delete process.env.KLARWERK_CONFLUENCE_IMPORT;
   embedSpy.calls = 0;
 });
@@ -272,163 +275,179 @@ async function importiereUndNimmAn(app: App, headers: Record<string, string>, it
   return { befunde: kandidaten.map((k) => k.dublettenbefund?.ergebnis), koIds };
 }
 
-describe("mega28 D: POST /api/library/import erzeugt NULL Modellaufrufe", () => {
-  it("Bulk-Import von 25 Objekten: Reasoner, Embedder, Erkennung und Warteschlange bleiben bei null", async () => {
-    const { app, headers, model, detection, queue } = await setup();
-
-    const { befunde, koIds } = await importiereUndNimmAn(app, headers, importItems(25));
-
-    // Der Import hat wirklich stattgefunden — sonst wären die Nullen wertlos.
-    // Lauf gesamt-import-adoption: statt `imported: 25` zählen die nach der Annahme angelegten
-    // Objekte; statt `uebersprungen: []` sagt jeder Befund vom Einreihen „keine" Dublette — die
-    // zweite, unabhaengige Aussage derselben Vorbedingung: nichts wurde zurueckgehalten.
-    expect(befunde).toEqual(Array(25).fill("keine"));
-    expect(koIds.filter((id) => id !== null)).toHaveLength(25);
-    expect((await app.inject({ method: "GET", url: "/api/kos", headers })).json()).toHaveLength(25);
-
-    // … und er hat NICHTS Teures angefasst.
-    expect(model.calls).toBe(0);
-    expect(embedSpy.calls).toBe(0);
-    expect(detection.conflicts).toBe(0);
-    expect(detection.overlaps).toBe(0);
-    expect(queue.enqueued).toBe(0);
-  });
-
-  it("auch ein ZWEITER Import in einen bereits gefüllten Bestand bleibt bei null (kein nachgeholter Lauf)", async () => {
-    const { app, headers, model, detection, queue } = await setup();
-
-    const erste = await importiereUndNimmAn(app, headers, importItems(25));
-    expect(erste.koIds.filter((id) => id !== null)).toHaveLength(25);
-    // Der Bestand steht jetzt. Genau hier würde ein „nachgeholter" Lauf n−1 Urteile je Objekt kosten.
-    // JOB 3023: bis hierher trug die zweite Welle nur einen anderen TITEL bei gleicher Aussage.
-    // Gegen die Aehnlichkeitspruefung ist das die Dublette der ersten Welle — die Vorbedingung
-    // von mega29 D3 waere nicht mehr herstellbar. Sie nutzt darum jetzt den disjunkten zweiten
-    // Ausschnitt des Geraetevorrats: 25 andere Gegenstaende, 25 andere Aussagen.
-    const second = await importiereUndNimmAn(app, headers, importItems(25, 25));
-
-    // AUFTRAG-mega29 D3 (bens M28-4): der Lauf pinnt seine eigene VORBEDINGUNG. Ohne diese Zeile
-    // hing die Aussage „auch in einen gefüllten Bestand hinein null Aufrufe" an geänderten Titeln:
-    // wären die 25 Objekte als Duplikate abgewiesen worden, wäre die Null trivial richtig gewesen,
-    // weil gar nichts angelegt wurde. (Lauf gesamt-import-adoption: gezählt nach der Annahme.)
-    expect(second.befunde).toEqual(Array(25).fill("keine"));
-    expect(second.koIds.filter((id) => id !== null)).toHaveLength(25);
-    expect((await app.inject({ method: "GET", url: "/api/kos", headers })).json()).toHaveLength(50);
-    expect(model.calls).toBe(0);
-    expect(embedSpy.calls).toBe(0);
-    expect(detection.conflicts).toBe(0);
-    expect(detection.overlaps).toBe(0);
-    expect(queue.enqueued).toBe(0);
-  });
-
-  it("Gegenprobe: derselbe Spy-Aufbau ZÄHLT, wenn ein Objekt regulär eingereicht wird", async () => {
-    // Ohne diese Probe wäre „alles null" auch dann grün, wenn die Spione gar nicht verdrahtet wären.
-    const { services, model, detection } = await setup();
-    // ============================================================================================
-    // JOB 3588 · DIE FREIGABE STEHT HIER — IN DER GEGENPROBE — UND AUSDRÜCKLICH NICHT IN `setup()`.
-    // ============================================================================================
-    //
-    // Die vier anderen Fälle dieser Datei sind SPERRFÄLLE: sie belegen, dass ein Bibliotheks-Import
-    // NULL Modellaufrufe erzeugt. Sie bekommen KEINE Freigabe. Nur diese Gegenprobe braucht sie,
-    // denn nur sie behauptet eine Zahl ÜBER null (`model.calls > 0`) — und sie ruft den Runner
-    // direkt auf demselben Reasoner, den `setup()` verdrahtet hat.
-    //
-    // Warum das die richtige Stelle ist: die Sperrfälle messen den IMPORTWEG, nicht den Riegel. Ihre
-    // Null entsteht daraus, dass der Importweg den Reasoner überhaupt nicht anfasst — daran ändert
-    // eine hier gesetzte Freigabe nichts, und deshalb hat sie dort auch nichts zu suchen.
-    // Kein `vertraulicheInhalte`: die beiden Objekte unten sind `intern` eingestuft.
-    await erteileKiFreigabe(services.reasoner);
-    const a = await services.ko.create({
-      title: "Pumpe P2 Druckverlust",
-      statement: "Bei Pumpe P2 faellt der Druck an Ventil V4.",
-      type: "best_practice",
-      category: "Betrieb",
-      author: "u1",
-      confidentiality: "intern",
+describe.each([
+  ["Import-Schalter aus", undefined],
+  ["Import-Schalter an", "1"],
+] as const)(
+  "mega28 D (%s): POST /api/library/import erzeugt NULL Modellaufrufe",
+  (_name, schalter) => {
+    beforeEach(() => {
+      if (schalter !== undefined) {
+        process.env.KLARWERK_CONFLUENCE_IMPORT = schalter;
+      }
     });
-    await services.ko.create({
-      title: "Pumpe P2 Druckverlust",
-      statement: "Bei Pumpe P2 faellt der Druck an Ventil V4.",
-      type: "best_practice",
-      category: "Betrieb",
-      author: "u1",
-      confidentiality: "intern",
+
+    it("Bulk-Import von 25 Objekten: Reasoner, Embedder, Erkennung und Warteschlange bleiben bei null", async () => {
+      const { app, headers, model, detection, queue } = await setup();
+
+      const { befunde, koIds } = await importiereUndNimmAn(app, headers, importItems(25));
+
+      // Der Import hat wirklich stattgefunden — sonst wären die Nullen wertlos.
+      // Lauf gesamt-import-adoption: statt `imported: 25` zählen die nach der Annahme angelegten
+      // Objekte; statt `uebersprungen: []` sagt jeder Befund vom Einreihen „keine" Dublette — die
+      // zweite, unabhaengige Aussage derselben Vorbedingung: nichts wurde zurueckgehalten.
+      expect(befunde).toEqual(Array(25).fill("keine"));
+      expect(koIds.filter((id) => id !== null)).toHaveLength(25);
+      expect((await app.inject({ method: "GET", url: "/api/kos", headers })).json()).toHaveLength(
+        25,
+      );
+
+      // … und er hat NICHTS Teures angefasst.
+      expect(model.calls).toBe(0);
+      expect(embedSpy.calls).toBe(0);
+      expect(detection.conflicts).toBe(0);
+      expect(detection.overlaps).toBe(0);
+      expect(queue.enqueued).toBe(0);
     });
-    const { createAiCheckRunner } = await import("../../services/app/src/ai-check-worker");
-    const run = createAiCheckRunner({
-      ko: services.ko,
-      conflicts: services.conflicts,
-      overlaps: services.overlaps,
-      overlapSettings: services.overlapSettings,
-      reasoner: services.reasoner,
+
+    it("auch ein ZWEITER Import in einen bereits gefüllten Bestand bleibt bei null (kein nachgeholter Lauf)", async () => {
+      const { app, headers, model, detection, queue } = await setup();
+
+      const erste = await importiereUndNimmAn(app, headers, importItems(25));
+      expect(erste.koIds.filter((id) => id !== null)).toHaveLength(25);
+      // Der Bestand steht jetzt. Genau hier würde ein „nachgeholter" Lauf n−1 Urteile je Objekt kosten.
+      // JOB 3023: bis hierher trug die zweite Welle nur einen anderen TITEL bei gleicher Aussage.
+      // Gegen die Aehnlichkeitspruefung ist das die Dublette der ersten Welle — die Vorbedingung
+      // von mega29 D3 waere nicht mehr herstellbar. Sie nutzt darum jetzt den disjunkten zweiten
+      // Ausschnitt des Geraetevorrats: 25 andere Gegenstaende, 25 andere Aussagen.
+      const second = await importiereUndNimmAn(app, headers, importItems(25, 25));
+
+      // AUFTRAG-mega29 D3 (bens M28-4): der Lauf pinnt seine eigene VORBEDINGUNG. Ohne diese Zeile
+      // hing die Aussage „auch in einen gefüllten Bestand hinein null Aufrufe" an geänderten Titeln:
+      // wären die 25 Objekte als Duplikate abgewiesen worden, wäre die Null trivial richtig gewesen,
+      // weil gar nichts angelegt wurde. (Lauf gesamt-import-adoption: gezählt nach der Annahme.)
+      expect(second.befunde).toEqual(Array(25).fill("keine"));
+      expect(second.koIds.filter((id) => id !== null)).toHaveLength(25);
+      expect((await app.inject({ method: "GET", url: "/api/kos", headers })).json()).toHaveLength(
+        50,
+      );
+      expect(model.calls).toBe(0);
+      expect(embedSpy.calls).toBe(0);
+      expect(detection.conflicts).toBe(0);
+      expect(detection.overlaps).toBe(0);
+      expect(queue.enqueued).toBe(0);
     });
-    await run(a.id);
 
-    expect(detection.conflicts).toBeGreaterThan(0);
-    expect(detection.overlaps).toBeGreaterThan(0);
-    expect(model.calls).toBeGreaterThan(0);
-  });
-
-  // ==============================================================================================
-  // AUFTRAG-mega29 BLOCK D (bens M28-4) — ZWEI ZÄHLER WAREN NICHT KALIBRIERT.
-  // ==============================================================================================
-  //
-  // Die Gegenprobe oben ruft den AI-Runner DIREKT auf. Damit beweist sie Reasoner-, Konflikt- und
-  // Duplikatzähler — aber sie UMGEHT die Warteschlange, und sie baut den Runner ohne semantischen
-  // Vorfilter. `queue.enqueued` und `embedSpy.calls` blieben also null, ohne dass irgendetwas
-  // gezeigt hätte, dass diese beiden Spione überhaupt verdrahtet sind. Ein falsch verdrahteter
-  // Nullzähler ist schlechter als keiner: er täuscht Sicherheit vor.
-  //
-  // Beide Positivproben laufen deshalb über eine REGULÄRE HTTP-Einreichung (POST /api/kos) —
-  // denselben Weg, den ein Mensch nimmt, durch dieselbe App, mit denselben Spionen wie der
-  // Bulk-Lauf. Kein neuer Egress: der Stub-Embedder rechnet lokal, der Spy-Client spricht mit
-  // niemandem.
-  it("Kalibrierung Warteschlange: eine reguläre Einreichung über HTTP reiht nachweislich EIN", async () => {
-    const { app, headers, queue } = await setup();
-
-    // Vorher ist der Zähler null — sonst bewiese das „danach > 0" nichts über DIESE Einreichung.
-    expect(queue.enqueued).toBe(0);
-    const res = await app.inject({
-      method: "POST",
-      url: "/api/kos",
-      headers,
-      payload: {
+    it("Gegenprobe: derselbe Spy-Aufbau ZÄHLT, wenn ein Objekt regulär eingereicht wird", async () => {
+      // Ohne diese Probe wäre „alles null" auch dann grün, wenn die Spione gar nicht verdrahtet wären.
+      const { services, model, detection } = await setup();
+      // ============================================================================================
+      // JOB 3588 · DIE FREIGABE STEHT HIER — IN DER GEGENPROBE — UND AUSDRÜCKLICH NICHT IN `setup()`.
+      // ============================================================================================
+      //
+      // Die vier anderen Fälle dieser Datei sind SPERRFÄLLE: sie belegen, dass ein Bibliotheks-Import
+      // NULL Modellaufrufe erzeugt. Sie bekommen KEINE Freigabe. Nur diese Gegenprobe braucht sie,
+      // denn nur sie behauptet eine Zahl ÜBER null (`model.calls > 0`) — und sie ruft den Runner
+      // direkt auf demselben Reasoner, den `setup()` verdrahtet hat.
+      //
+      // Warum das die richtige Stelle ist: die Sperrfälle messen den IMPORTWEG, nicht den Riegel. Ihre
+      // Null entsteht daraus, dass der Importweg den Reasoner überhaupt nicht anfasst — daran ändert
+      // eine hier gesetzte Freigabe nichts, und deshalb hat sie dort auch nichts zu suchen.
+      // Kein `vertraulicheInhalte`: die beiden Objekte unten sind `intern` eingestuft.
+      await erteileKiFreigabe(services.reasoner);
+      const a = await services.ko.create({
         title: "Pumpe P2 Druckverlust",
         statement: "Bei Pumpe P2 faellt der Druck an Ventil V4.",
         type: "best_practice",
         category: "Betrieb",
+        author: "u1",
         confidentiality: "intern",
-      },
-    });
-
-    expect(res.statusCode).toBe(201);
-    // DERSELBE Spion, der im Bulk-Pfad null bleibt, zählt hier. Damit ist seine Null dort eine
-    // Aussage über den Bulk-Import und nicht über einen toten Spion.
-    expect(queue.enqueued).toBeGreaterThan(0);
-    await app.close();
-  });
-
-  it("Kalibrierung Embedder: dieselbe reguläre Einreichung löst die Prefilter-Indizierung aus", async () => {
-    const { app, headers } = await setup();
-
-    expect(embedSpy.calls).toBe(0);
-    const res = await app.inject({
-      method: "POST",
-      url: "/api/kos",
-      headers,
-      payload: {
-        title: "Dichtungswechsel Linie 4",
-        statement: "Dichtung vor jedem Anlauf pruefen und bei Bedarf tauschen.",
+      });
+      await services.ko.create({
+        title: "Pumpe P2 Druckverlust",
+        statement: "Bei Pumpe P2 faellt der Druck an Ventil V4.",
         type: "best_practice",
-        category: "Instandhaltung",
+        category: "Betrieb",
+        author: "u1",
         confidentiality: "intern",
-      },
+      });
+      const { createAiCheckRunner } = await import("../../services/app/src/ai-check-worker");
+      const run = createAiCheckRunner({
+        ko: services.ko,
+        conflicts: services.conflicts,
+        overlaps: services.overlaps,
+        overlapSettings: services.overlapSettings,
+        reasoner: services.reasoner,
+      });
+      await run(a.id);
+
+      expect(detection.conflicts).toBeGreaterThan(0);
+      expect(detection.overlaps).toBeGreaterThan(0);
+      expect(model.calls).toBeGreaterThan(0);
     });
 
-    expect(res.statusCode).toBe(201);
-    // Der Einreiche-Pfad bettet das frische KO NACH der Antwort in den Vektor-Store ein
-    // (indexKoForDuplicatePrefilter) — genau die Kante, an der embedSpy zählt. Der Bulk-Import
-    // tut das nicht, und erst diese Probe macht seine Null zu einer belastbaren Aussage.
-    expect(embedSpy.calls).toBeGreaterThan(0);
-    await app.close();
-  });
-});
+    // ==============================================================================================
+    // AUFTRAG-mega29 BLOCK D (bens M28-4) — ZWEI ZÄHLER WAREN NICHT KALIBRIERT.
+    // ==============================================================================================
+    //
+    // Die Gegenprobe oben ruft den AI-Runner DIREKT auf. Damit beweist sie Reasoner-, Konflikt- und
+    // Duplikatzähler — aber sie UMGEHT die Warteschlange, und sie baut den Runner ohne semantischen
+    // Vorfilter. `queue.enqueued` und `embedSpy.calls` blieben also null, ohne dass irgendetwas
+    // gezeigt hätte, dass diese beiden Spione überhaupt verdrahtet sind. Ein falsch verdrahteter
+    // Nullzähler ist schlechter als keiner: er täuscht Sicherheit vor.
+    //
+    // Beide Positivproben laufen deshalb über eine REGULÄRE HTTP-Einreichung (POST /api/kos) —
+    // denselben Weg, den ein Mensch nimmt, durch dieselbe App, mit denselben Spionen wie der
+    // Bulk-Lauf. Kein neuer Egress: der Stub-Embedder rechnet lokal, der Spy-Client spricht mit
+    // niemandem.
+    it("Kalibrierung Warteschlange: eine reguläre Einreichung über HTTP reiht nachweislich EIN", async () => {
+      const { app, headers, queue } = await setup();
+
+      // Vorher ist der Zähler null — sonst bewiese das „danach > 0" nichts über DIESE Einreichung.
+      expect(queue.enqueued).toBe(0);
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/kos",
+        headers,
+        payload: {
+          title: "Pumpe P2 Druckverlust",
+          statement: "Bei Pumpe P2 faellt der Druck an Ventil V4.",
+          type: "best_practice",
+          category: "Betrieb",
+          confidentiality: "intern",
+        },
+      });
+
+      expect(res.statusCode).toBe(201);
+      // DERSELBE Spion, der im Bulk-Pfad null bleibt, zählt hier. Damit ist seine Null dort eine
+      // Aussage über den Bulk-Import und nicht über einen toten Spion.
+      expect(queue.enqueued).toBeGreaterThan(0);
+      await app.close();
+    });
+
+    it("Kalibrierung Embedder: dieselbe reguläre Einreichung löst die Prefilter-Indizierung aus", async () => {
+      const { app, headers } = await setup();
+
+      expect(embedSpy.calls).toBe(0);
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/kos",
+        headers,
+        payload: {
+          title: "Dichtungswechsel Linie 4",
+          statement: "Dichtung vor jedem Anlauf pruefen und bei Bedarf tauschen.",
+          type: "best_practice",
+          category: "Instandhaltung",
+          confidentiality: "intern",
+        },
+      });
+
+      expect(res.statusCode).toBe(201);
+      // Der Einreiche-Pfad bettet das frische KO NACH der Antwort in den Vektor-Store ein
+      // (indexKoForDuplicatePrefilter) — genau die Kante, an der embedSpy zählt. Der Bulk-Import
+      // tut das nicht, und erst diese Probe macht seine Null zu einer belastbaren Aussage.
+      expect(embedSpy.calls).toBeGreaterThan(0);
+      await app.close();
+    });
+  },
+);
