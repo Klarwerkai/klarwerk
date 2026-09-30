@@ -2202,6 +2202,11 @@ const de = {
   "capture.saveDraft": "Als Entwurf speichern",
   "capture.draftSaved": "Entwurf gespeichert.",
   "capture.draftUpdated": "Entwurf aktualisiert.",
+  // LAUF 6 RUNDE 2 (erfassen-doppelklick, bens B7): der Teilerfolg des gemeinsamen Speicherns.
+  "capture.teilerfolg.dateiAusstehend":
+    "Noch nicht alles gesichert: Der Entwurf ist gespeichert, die Datei „{{name}}“ wird noch gespeichert.",
+  "capture.teilerfolg.dateiGescheitert":
+    "Nur teilweise gespeichert: Der Entwurf ist gesichert, die Datei „{{name}}“ nicht. Sie liegt weiter hier — „Als Entwurf speichern“ versucht es erneut.",
   "capture.draftDiscarded": "Entwurf gelöscht.",
   // Bugfix (Pedi 04.07.): ehrliche Nachfrage vor dem Löschen, keine Behauptung, die der Zustand
   // nicht hergibt. Bis JOB 3668 stand hier „Entwurf endgültig löschen?" — mit der Begründung,
@@ -9114,6 +9119,10 @@ const en: typeof de = {
   "capture.saveDraft": "Save as draft",
   "capture.draftSaved": "Draft saved.",
   "capture.draftUpdated": "Draft updated.",
+  "capture.teilerfolg.dateiAusstehend":
+    "Not everything is saved yet: the draft is saved, the file “{{name}}” is still being saved.",
+  "capture.teilerfolg.dateiGescheitert":
+    "Only partly saved: the draft is saved, the file “{{name}}” is not. It is still here — “Save as draft” tries again.",
   "capture.draftDiscarded": "Draft deleted.",
   // JOB 3768 — see the German entry: since JOB 3668 the draft goes to the recycle bin, so the old
   // “permanently” was a claim the product no longer backs.
@@ -14754,6 +14763,10 @@ const nl: typeof de = {
   "capture.saveDraft": "Als concept opslaan",
   "capture.draftSaved": "Concept opgeslagen.",
   "capture.draftUpdated": "Concept bijgewerkt.",
+  "capture.teilerfolg.dateiAusstehend":
+    "Nog niet alles opgeslagen: het concept is opgeslagen, het bestand “{{name}}” wordt nog opgeslagen.",
+  "capture.teilerfolg.dateiGescheitert":
+    "Slechts gedeeltelijk opgeslagen: het concept is opgeslagen, het bestand “{{name}}” niet. Het staat hier nog — “Als concept opslaan” probeert het opnieuw.",
   "capture.draftDiscarded": "Concept verwijderd.",
   // JOB 3768 — zie de Duitse regel: sinds JOB 3668 gaat het concept naar de prullenbak.
   "capture.discardDraftQ":

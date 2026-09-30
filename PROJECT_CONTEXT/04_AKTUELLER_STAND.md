@@ -31,6 +31,14 @@ Browser-/PostgreSQL-Messung dieser Fassung steht aus.**
   PostgreSQL; neu Q6 (Formular + Datei, Upload angehalten + zweiter Klick, Upload- und
   Anlagefehler, erneuter Druck). Q2 und Q6 sind im Bau **nicht ausgeführt** (keine Datenbank und
   kein Browserlauf auf dem Produktions-Mac).
+- **Runde 2 · B7 (grüner Erfolg zu früh):** Beim gemeinsamen Speichern hält `saveDraft.onSuccess`
+  den Satz „Entwurf aktualisiert./gespeichert." zurück; stattdessen steht der ausdrückliche
+  Teilerfolg `capture-teilerfolg` (`ausstehend`: neutral, „Noch nicht alles gesichert …";
+  `gescheitert`: Warnfarbe, „Nur teilweise gespeichert … die Datei nicht"). Der grüne Satz erscheint
+  erst, wenn auch die Datei gesichert ist (`teilerfolgErledigen`, aufgerufen aus
+  `fileWholeDraft.onSuccess`, `manuellSichern` und dem Wache-Rückruf). Neue Texte de/en/nl
+  `capture.teilerfolg.*`. B1/B2 prüfen grüne Meldungen und Teilerfolg (Gegenprobe ohne
+  Zurückhalten: rot); Q6 prüft dasselbe im Browser, ist aber im Bau nicht ausgeführt.
 
 ## 29.09.2026 — Erfassen: Formular + Datei gemeinsam, Doppelklick und verlorene Antwort (Teilstand)
 

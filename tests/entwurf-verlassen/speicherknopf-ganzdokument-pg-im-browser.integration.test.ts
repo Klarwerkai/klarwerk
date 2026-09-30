@@ -315,6 +315,16 @@ async function aufBlattMitTitel(seite: SeiteMitDialogUndRoute, titel: string): P
   );
 }
 
+/**
+ * LAUF 6 RUNDE 2 (bens B7): steht der Satz in einer GRÜNEN Meldung (Toast oder Hinweiskasten, beide
+ * `bg-trust-pos-bg`)? Q6 prüfte bis Runde 1 nur die Datei-Quittung und sah den grünen
+ * „Entwurf aktualisiert." nicht, der während des hängenden Uploads schon dastand.
+ */
+const GRUEN_ENTHAELT = `(w) => [...document.querySelectorAll('.bg-trust-pos-bg')].some(
+  (e) => (e.textContent || '').includes(w))`;
+/** Die Lage des sichtbaren Teilerfolgs (`ausstehend`/`gescheitert`), `null`, wenn keiner dasteht. */
+const TEILERFOLG_LAGE = `() => document.querySelector('[data-testid="capture-teilerfolg"]')?.dataset.lage ?? null`;
+
 /** Steht der Arbeitsraum (Formular-/Dateiweg) noch auf der Seite? */
 const ARBEITSRAUM_DA = `() => document.querySelector('[data-testid="blatt-arbeitsraum"]') !== null`;
 
@@ -1057,6 +1067,15 @@ describe("JOB 4352 Q · der sichtbare Speicherknopf im Browser, gegen echtes Pos
           await seite.evaluate<boolean>(fn(ARBEITSRAUM_DA)),
           "der Arbeitsraum ist abgebaut, obwohl die Datei noch nicht gesichert ist",
         ).toBe(true);
+        const entwurfErfolg = satz("capture.draftUpdated");
+        expect(
+          await seite.evaluate<boolean>(fn(GRUEN_ENTHAELT), entwurfErfolg),
+          `grüner Gesamterfolg «${entwurfErfolg}», obwohl der Upload noch hängt`,
+        ).toBe(false);
+        expect(
+          await seite.evaluate<string | null>(fn(TEILERFOLG_LAGE)),
+          "der Teilerfolg „Datei läuft noch“ steht nicht da",
+        ).toBe("ausstehend");
 
         riegel();
         await warteBis(() => leitung.anlagen === 2, "die Datei-Anlage wurde versucht");
@@ -1079,10 +1098,26 @@ describe("JOB 4352 Q · der sichtbare Speicherknopf im Browser, gegen echtes Pos
         expect(await zeilenMitQuellsatz(db), "trotz Ablehnung liegt die Datei in `drafts`").toBe(
           vorherDatei,
         );
+        expect(
+          await seite.evaluate<boolean>(fn(GRUEN_ENTHAELT), entwurfErfolg),
+          `grüner Gesamterfolg «${entwurfErfolg}», obwohl die Datei-Anlage abgelehnt wurde`,
+        ).toBe(false);
+        expect(
+          await seite.evaluate<string | null>(fn(TEILERFOLG_LAGE)),
+          "der Teilerfolg „nur teilweise gespeichert“ steht nicht da",
+        ).toBe("gescheitert");
 
         // Der erneute Druck — derselbe Knopf, dieselbe Datei.
         expect(await seite.evaluate<boolean>(fn(KLICK_KNOPF_EXAKT), speichern)).toBe(true);
         await aufBlattMitTitel(seite, NEUER_TITEL);
+        // Erst jetzt, mit gesicherter Datei, der grüne Erfolg — und kein Teilerfolg mehr.
+        await aufZustandWarten(
+          seite,
+          GRUEN_ENTHAELT,
+          `der grüne Erfolg «${entwurfErfolg}» steht nach gesicherter Datei`,
+          entwurfErfolg,
+        );
+        expect(await seite.evaluate<string | null>(fn(TEILERFOLG_LAGE))).toBeNull();
         expect(await zeilenMitQuellsatz(db), "die Datei liegt nicht genau einmal vor").toBe(
           vorherDatei + 1,
         );

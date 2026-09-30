@@ -21,6 +21,11 @@
 //       und Text sind noch da, nichts behauptet „gesichert". Der zweite Druck sichert genau diese
 //       Datei (ein Entwurf) und wechselt erst dann ins Blatt.
 //
+// RUNDE 2 (bens B7): beide Fälle messen zusätzlich die ERFOLGSMELDUNG. Solange die Datei aussteht
+// oder gescheitert ist, steht KEIN grüner Satz „Entwurf aktualisiert." (weder Toast noch Hinweis),
+// sondern der ausdrückliche Teilerfolg (`capture-teilerfolg`, `data-lage`). Der grüne Satz erscheint
+// erst, wenn auch die Datei gesichert ist.
+//
 // WAS DIESE DATEI NICHT BEWEIST: jsdom gegen die Attrappen des Ordners, keine echte HTTP-Grenze,
 // keine Datenbank, kein Browser. Die Browser-/PostgreSQL-Messung steht in
 // `speicherknopf-ganzdokument-pg-im-browser.integration.test.ts` (Q2).
@@ -91,6 +96,25 @@ async function weg(schluessel: string): Promise<void> {
   await klick(knopfGenau(String(i18n.t(schluessel))));
 }
 
+/** Alle GRÜNEN Meldungen der Seite — Toasts und Hinweiskasten, beide mit `bg-trust-pos-bg`. */
+function grueneMeldungen(): string[] {
+  return [...document.querySelectorAll<HTMLElement>(".bg-trust-pos-bg")].map(
+    (el) => el.textContent ?? "",
+  );
+}
+
+function entwurfErfolgGruen(): boolean {
+  const satz = String(i18n.t("capture.draftUpdated"));
+  return grueneMeldungen().some((m) => m.includes(satz));
+}
+
+/** Die Lage des sichtbaren Teilerfolgs, `null`, wenn keiner dasteht. */
+function teilerfolgLage(): string | null {
+  return (
+    document.querySelector<HTMLElement>('[data-testid="capture-teilerfolg"]')?.dataset.lage ?? null
+  );
+}
+
 function arbeitsraumSteht(): boolean {
   return flaeche().querySelector('[data-testid="blatt-arbeitsraum"]') !== null;
 }
@@ -133,6 +157,12 @@ describe("R-0017/R-0020/R-0156 · gemeinsamer Speicherweg an der ganzen Seite (B
     expect(draftsCreate).toHaveBeenCalledTimes(0);
     expect(arbeitsraumSteht()).toBe(true);
     expect(flaeche().textContent).toContain(DATEI);
+    // B7: kein grüner Gesamterfolg, sondern der ausdrückliche Teilerfolg „Datei läuft noch".
+    expect(entwurfErfolgGruen()).toBe(false);
+    expect(teilerfolgLage()).toBe("ausstehend");
+    expect(document.body.textContent).toContain(
+      String(i18n.t("capture.teilerfolg.dateiAusstehend", { name: DATEI })),
+    );
     // Zweiter Druck während des angehaltenen Uploads — direkt am Element, wie ein Tastaturweg.
     await act(async () => {
       speichern.click();
@@ -141,6 +171,8 @@ describe("R-0017/R-0020/R-0156 · gemeinsamer Speicherweg an der ganzen Seite (B
     expect(draftsUpdate).toHaveBeenCalledTimes(1);
     expect(objectsUpload).toHaveBeenCalledTimes(1);
     expect(draftsCreate).toHaveBeenCalledTimes(0);
+    expect(entwurfErfolgGruen()).toBe(false);
+    expect(teilerfolgLage()).toBe("ausstehend");
 
     await act(async () => {
       await uploadBremse.loslassen();
@@ -162,6 +194,9 @@ describe("R-0017/R-0020/R-0156 · gemeinsamer Speicherweg an der ganzen Seite (B
     expect(arbeitsraumSteht()).toBe(false);
     expect(blattTitel()).toBe(FORMULARTITEL);
     expect(window.confirm).not.toHaveBeenCalled();
+    // B7: erst jetzt, mit gesicherter Datei, der grüne Erfolg — und kein Teilerfolg mehr.
+    expect(entwurfErfolgGruen()).toBe(true);
+    expect(teilerfolgLage()).toBeNull();
 
     // Reload: frische Montage, der Inhalt kommt vom Server zurück.
     abbauen();
@@ -192,6 +227,13 @@ describe("R-0017/R-0020/R-0156 · gemeinsamer Speicherweg an der ganzen Seite (B
     expect(arbeitsraumSteht()).toBe(true);
     expect(stand()).toContain(DATEI);
     expect(window.confirm).not.toHaveBeenCalled();
+    // B7: der Knopf ist wieder frei, und die Seite sagt ausdrücklich „nur teilweise" — kein Grün.
+    expect(knopfGenau(String(i18n.t("capture.saveDraft"))).disabled).toBe(false);
+    expect(entwurfErfolgGruen()).toBe(false);
+    expect(teilerfolgLage()).toBe("gescheitert");
+    expect(document.body.textContent).toContain(
+      String(i18n.t("capture.teilerfolg.dateiGescheitert", { name: DATEI })),
+    );
 
     // Die Ursache ist behoben; der naheliegende Handgriff ist derselbe Knopf.
     lasseCreateScheiternFuer();
@@ -208,5 +250,7 @@ describe("R-0017/R-0020/R-0156 · gemeinsamer Speicherweg an der ganzen Seite (B
     ).toHaveLength(1);
     expect(arbeitsraumSteht()).toBe(false);
     expect(blattTitel()).toBe(FORMULARTITEL);
+    expect(entwurfErfolgGruen()).toBe(true);
+    expect(teilerfolgLage()).toBeNull();
   });
 });

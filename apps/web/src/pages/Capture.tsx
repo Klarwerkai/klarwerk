@@ -1467,6 +1467,46 @@ export function CaptureArbeitsraum({
   } | null>(null);
   // KW-W2-01: bewusstes Ganzdokument-MVP. Dieser Weg erzeugt genau EINEN Entwurf über die
   // bestehende Draft-Route; kein KO, keine Validierung, keine KI-Strukturierung.
+  // LAUF 6 (bens B5): der aufgeschobene Blattwechsel des gemeinsamen Speicherwegs. `aufgeschoben`
+  // setzt nur, wer nach dem Eintrag noch die Datei schreibt; `entwurfId` hält die Kennung des
+  // gesicherten Eintrags, bis der Datei-Anteil gelungen ist (Begründung an `saveDraft.onSuccess`).
+  //
+  // LAUF 6 RUNDE 2 (bens B7): AUCH DIE ERFOLGSMELDUNG WARTET. Bis hierher stand nach dem Formular-
+  // Anteil schon der grüne Satz „Entwurf aktualisiert." — während der Upload noch hing, und auch
+  // noch, nachdem die Datei gescheitert war. Der Formularerfolg war echt, der GEMEINSAME Auftrag
+  // aber nicht erledigt. `datei` nennt die Datei, die noch aussteht; `meldung` hält den Satz des
+  // Formularerfolgs zurück, bis beide Anteile gesichert sind. Bis dahin zeigt die Seite den
+  // Teilerfolg ausdrücklich als solchen (`teilerfolg`).
+  const blattWechselRef = useRef<{
+    aufgeschoben: boolean;
+    entwurfId: string | null;
+    datei: string | null;
+    meldung: string | null;
+  }>({
+    aufgeschoben: false,
+    entwurfId: null,
+    datei: null,
+    meldung: null,
+  });
+  // LAUF 6 RUNDE 2 (bens B7): der sichtbare Teilerfolg des gemeinsamen Speicherwegs. „ausstehend":
+  // der Entwurf ist gesichert, die Datei läuft noch. „gescheitert": der Entwurf ist gesichert, die
+  // Datei nicht — sie liegt weiter auf der Fläche und lässt sich erneut speichern. Nie grün.
+  const [teilerfolg, setTeilerfolg] = useState<{
+    lage: "ausstehend" | "gescheitert";
+    datei: string;
+  } | null>(null);
+  // Beide Anteile sind gesichert: der zurückgehaltene Erfolgssatz des Entwurfs gilt jetzt, und der
+  // Teilerfolg ist erledigt. EIN Abschluss für alle Wege — `fileWholeDraft.onSuccess` (jeder Knopf),
+  // und `manuellSichern`/Wache für den Fall, dass `ganzdokumentSichern` einen schon gesicherten
+  // Dateistand zurückgibt, ohne dass die Mutation erneut läuft.
+  const teilerfolgErledigen = useCallback((): void => {
+    const meldung = blattWechselRef.current.meldung;
+    blattWechselRef.current.meldung = null;
+    setTeilerfolg(null);
+    if (meldung !== null) {
+      push("success", meldung);
+    }
+  }, [push]);
   const fileWholeDraft = useMutation({
     // WP-D1/WP-D4: bei DOCX reist das strukturerhaltende HTML mit (Server sanitisiert autoritativ);
     // sourceKind steuert den ehrlichen Format-Hinweis im Quelle-Blockquote.
@@ -1625,6 +1665,10 @@ export function CaptureArbeitsraum({
         ? summary.notices.map((n) => ` ${t(n.key, n.params)}`).join("")
         : "";
       setNotice(`${savedNote}${imageNote}`);
+      // LAUF 6 RUNDE 2 (bens B7): war vorher der Entwurf gesichert und die Datei ausstehend oder
+      // gescheitert, ist der gemeinsame Auftrag JETZT erledigt — egal über welchen Knopf die Datei
+      // kam (manueller Knopf, Kartenknopf, Wache). Erst hier gilt der zurückgehaltene Erfolgssatz.
+      teilerfolgErledigen();
       push("success", savedNote);
       if (!savedDraftId) {
         setErr(t(CAPTURE_FILE_TEXT.wholeOpenMissing));
@@ -2318,13 +2362,6 @@ export function CaptureArbeitsraum({
     eintragVorgangRef.current = vorgang;
     return endpoints.drafts.create(payload, vorgang.id);
   };
-  // LAUF 6 (bens B5): der aufgeschobene Blattwechsel des gemeinsamen Speicherwegs. `aufgeschoben`
-  // setzt nur, wer nach dem Eintrag noch die Datei schreibt; `entwurfId` hält die Kennung des
-  // gesicherten Eintrags, bis der Datei-Anteil gelungen ist (Begründung an `saveDraft.onSuccess`).
-  const blattWechselRef = useRef<{ aufgeschoben: boolean; entwurfId: string | null }>({
-    aufgeschoben: false,
-    entwurfId: null,
-  });
   const saveDraft = useMutation({
     mutationFn: () => {
       const n = parsedValidations();
@@ -2455,8 +2492,20 @@ export function CaptureArbeitsraum({
       // kommt aus der SERVERANTWORT, nicht aus dem Formularzustand.
       setGeradeGesicherterEntwurf(_d.id);
       setDraftsOpen(true);
-      setNotice(msg);
-      push("success", msg);
+      // LAUF 6 RUNDE 2 (bens B7): folgt die Datei noch, ist das hier ein TEILERFOLG — kein grüner
+      // Satz, sondern der ausdrückliche Zwischenstand. Der Erfolgssatz kommt, wenn auch die Datei
+      // gesichert ist (`manuellSichern`, Wache).
+      const ausstehend = blattWechselRef.current.aufgeschoben
+        ? blattWechselRef.current.datei
+        : null;
+      if (ausstehend !== null) {
+        blattWechselRef.current.meldung = msg;
+        setNotice(null);
+        setTeilerfolg({ lage: "ausstehend", datei: ausstehend });
+      } else {
+        setNotice(msg);
+        push("success", msg);
+      }
       // JOB 3062 · H3: DAS ERGEBNIS LANDET IM BLATT. Interview, Dateiimport und Expertenformular
       // sind Ansichten des Blattes; was sie erarbeitet haben, ist nach dem Sichern ein Entwurf.
       // Das Blatt öffnet genau diesen Entwurf und zeigt ihn als seinen Inhalt — sonst bliebe der
@@ -2708,6 +2757,9 @@ export function CaptureArbeitsraum({
     setFileAbgeschnitten(null);
     setFileQueue(null);
     setFileWholeDraftSaved(null);
+    // LAUF 6 RUNDE 2: ohne Datei gibt es keinen ausstehenden Datei-Anteil mehr.
+    setTeilerfolg(null);
+    blattWechselRef.current.meldung = null;
   };
 
   // E2E-003/E2E-008 (bens Auflage C): kanonische Räum-Funktion für den gesamten Interview-Zustand samt
@@ -3508,7 +3560,10 @@ export function CaptureArbeitsraum({
           blattWechselRef.current = {
             aufgeschoben: dateiTraeger?.art === "ganzdokument",
             entwurfId: null,
+            datei: dateiTraeger?.art === "ganzdokument" ? dateiTraeger.eingabe.fileName : null,
+            meldung: null,
           };
+          setTeilerfolg(null);
           try {
             await saveDraft.mutateAsync();
           } catch (e) {
@@ -3554,6 +3609,11 @@ export function CaptureArbeitsraum({
             // wartet die Wache auf DIESEN Lauf, statt einen zweiten zu starten.
             await ganzdokumentSichern(dateiTraeger.eingabe);
           } catch (e) {
+            // LAUF 6 RUNDE 2 (bens B7): war der Entwurf schon gesichert, steht der Teilerfolg
+            // ausdrücklich da — der Entwurf ja, die Datei nicht.
+            if (blattWechselRef.current.meldung !== null) {
+              setTeilerfolg({ lage: "gescheitert", datei: dateiTraeger.eingabe.fileName });
+            }
             // Derselbe Satz, den der Fehlerkasten der Seite zeigt (`fileWholeDraft.onError`) —
             // er reist hier mit, weil die Modalgrenze den Kasten bei offenem Dialog sperrt
             // (Begründung am `saveDraft`-Zweig oben, JOB 3572 R2). Nicht gewechselt wird ohnehin:
@@ -3568,8 +3628,10 @@ export function CaptureArbeitsraum({
           // hierher — und eine Notiz vor dem `await` behauptete eine Sicherung, von der nur
           // feststeht, dass sie losgeschickt wurde.
           geschrieben = true;
-          // LAUF 6: beide Anteile sind gesichert; der gemerkte Eintrag hat keinen Wechsel mehr offen.
+          // LAUF 6: beide Anteile sind gesichert; der gemerkte Eintrag hat keinen Wechsel mehr offen,
+          // und der zurückgehaltene Erfolgssatz gilt (Runde 2, bens B7).
           blattWechselRef.current.entwurfId = null;
+          teilerfolgErledigen();
         }
         if (dateiTraeger?.art === "punkte") {
           // JOB 3600: die Punkte gehen als SIE SELBST hinein, nicht als Abschrift. Bis hierher stand
@@ -3690,6 +3752,8 @@ export function CaptureArbeitsraum({
     // JOB 3770 RUNDE 4: der Ganzdokument-Weg, der die Datei bei „alles abgewählt" trägt — seit
     // R-0020 über seinen Einzellauf (Begründung an `ganzdokumentSichern`).
     ganzdokumentSichern,
+    // LAUF 6 RUNDE 2 (bens B7): der eine Abschluss des gemeinsamen Speicherwegs.
+    teilerfolgErledigen,
     setGuard,
     qc,
     // JOB 3572 R2: der Wächter formuliert den Grund jetzt selbst mit (s. `fehlersatz` oben).
@@ -4992,7 +5056,13 @@ export function CaptureArbeitsraum({
         // LAUF 6 (bens B5): folgt die Datei, wartet der Blattwechsel auf sie (`saveDraft.onSuccess`).
         // Eine Kennung aus einem früheren, an der Datei gescheiterten Durchlauf wird hier von der
         // neuen abgelöst — dieser Eintrag ist jetzt der, zu dem die Datei gehört.
-        blattWechselRef.current = { aufgeschoben: mitDatei, entwurfId: null };
+        blattWechselRef.current = {
+          aufgeschoben: mitDatei,
+          entwurfId: null,
+          datei: mitDatei ? traeger.eingabe.fileName : null,
+          meldung: null,
+        };
+        setTeilerfolg(null);
         try {
           await saveDraft.mutateAsync();
         } catch {
@@ -5003,6 +5073,12 @@ export function CaptureArbeitsraum({
         }
       }
       if (mitDatei) {
+        // LAUF 6 RUNDE 2 (bens B7): ist der Entwurf schon gesichert (in diesem Durchlauf oder in
+        // einem früheren, an der Datei gescheiterten), steht während des Datei-Anteils der
+        // Teilerfolg „Datei läuft noch" da — auch beim erneuten Druck nach einem Fehlschlag.
+        if (blattWechselRef.current.meldung !== null) {
+          setTeilerfolg({ lage: "ausstehend", datei: traeger.eingabe.fileName });
+        }
         try {
           await ganzdokumentSichern(traeger.eingabe);
         } catch {
@@ -5012,8 +5088,15 @@ export function CaptureArbeitsraum({
           // abgebaut, weil das Blatt noch nicht gewechselt hat. Die Kennung des bereits gesicherten
           // Eintrags bleibt gemerkt: gelingt der zweite Druck (dann nur noch die Datei, der Eintrag
           // ist leer), wechselt das Blatt zu genau diesem Eintrag.
+          //
+          // LAUF 6 RUNDE 2 (bens B7): und der Teilerfolg sagt es ausdrücklich — der Entwurf ist
+          // gesichert, die Datei NICHT. Kein grüner Satz behauptet den Gesamterfolg.
+          if (blattWechselRef.current.meldung !== null) {
+            setTeilerfolg({ lage: "gescheitert", datei: traeger.eingabe.fileName });
+          }
           return;
         }
+        teilerfolgErledigen();
         // Beide Anteile sind gesichert: jetzt erst der Wechsel ins Blatt, zum Eintrag dieses Weges.
         const entwurfId = blattWechselRef.current.entwurfId;
         blattWechselRef.current.entwurfId = null;
@@ -6829,6 +6912,29 @@ export function CaptureArbeitsraum({
                 <div className="rounded-btn bg-trust-pos-bg px-3 py-2 text-[12.5px] text-trust-pos-text">
                   {noticeText}
                 </div>
+              ) : null}
+              {/* LAUF 6 RUNDE 2 (bens B7): der Teilerfolg des gemeinsamen Speicherwegs — nie grün.
+                Der Entwurf ist gesichert, die Datei läuft noch (neutral) oder ist gescheitert
+                (Warnfarbe). Der Gesamterfolg erscheint erst, wenn auch die Datei gesichert ist. */}
+              {teilerfolg?.lage === "ausstehend" ? (
+                <output
+                  data-testid="capture-teilerfolg"
+                  data-lage="ausstehend"
+                  aria-live="polite"
+                  className="block rounded-btn border border-hairline px-3 py-2 text-[12.5px] text-muted"
+                >
+                  {t("capture.teilerfolg.dateiAusstehend", { name: teilerfolg.datei })}
+                </output>
+              ) : null}
+              {teilerfolg?.lage === "gescheitert" ? (
+                <output
+                  data-testid="capture-teilerfolg"
+                  data-lage="gescheitert"
+                  aria-live="polite"
+                  className="block rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text"
+                >
+                  {t("capture.teilerfolg.dateiGescheitert", { name: teilerfolg.datei })}
+                </output>
               ) : null}
 
               {/* JOB 3029 (U1): der Unterschied der zwei Knöpfe steht offen an der Entscheidung.
