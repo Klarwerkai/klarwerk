@@ -180,6 +180,8 @@ import {
 import { CONFIDENTIALITY_LEVELS, confidentialityOf } from "../lib/confidentiality";
 // AUFTRAG-mega20 Block A: der Wiederholschlüssel der Erstanlage (stabil über Wiederholungen).
 import {
+  type AnlageVorgang,
+  anlageVorgangFuer,
   createConflictOffersRestart,
   createOperationIsSettled,
   newCreateOperationId,
@@ -1440,6 +1442,29 @@ export function CaptureArbeitsraum({
     onError: fail,
   });
 
+  // R-0020: DER UNKLAR ABGESCHLOSSENE GANZDOKUMENT-VORGANG — Schlüssel UND die Nutzlast, die unter
+  // ihm hinausging.
+  //
+  // Runde 2 band den Schlüssel an die jeweils NEU gebaute Nutzlast. Das trug nicht (bens B1, Runde
+  // 3): scheiterte zuerst der Original-Upload, ging der Textentwurf OHNE Originallink hinaus; verlor
+  // sich dessen Antwort und gelang der Upload beim zweiten Druck, trug die neu gebaute Nutzlast den
+  // Link — anderer Abdruck, neuer Schlüssel, zweiter Entwurf, ohne dass der Mensch etwas geändert
+  // hätte.
+  //
+  // DIE REGEL JETZT: ist der Ausgang einer Anlage UNKLAR (Netzabbruch, 5xx — alles, was
+  // `createOperationIsSettled` nicht als eindeutige Ablehnung erkennt), wird dieser Vorgang beim
+  // nächsten Speichern DERSELBEN Eingabe WÖRTLICH wiederaufgenommen: dieselbe Nutzlast, derselbe
+  // Schlüssel, kein neuer Upload, kein neuer Nutzlastbau. Der Server liefert dann den schon
+  // angelegten Entwurf zurück. Die Upload-Lage des ersten Versuchs reist mit — ein fehlendes Original
+  // wird weiterhin ehrlich gemeldet und nicht durch den Wiederholversuch verdeckt. Der Vorgang fällt
+  // bei Erfolg, bei eindeutiger Ablehnung und wenn eine andere Datei eingelesen wird.
+  const ganzdokumentOffenRef = useRef<{
+    eingabeAbdruck: string;
+    payload: DraftPayload;
+    vorgang: AnlageVorgang;
+    originalFailure: AttachmentFailure | null;
+    originalAttached: boolean;
+  } | null>(null);
   // KW-W2-01: bewusstes Ganzdokument-MVP. Dieser Weg erzeugt genau EINEN Entwurf über die
   // bestehende Draft-Route; kein KO, keine Validierung, keine KI-Strukturierung.
   const fileWholeDraft = useMutation({
@@ -1459,6 +1484,17 @@ export function CaptureArbeitsraum({
       originalFailure: AttachmentFailure | null;
       originalAttached: boolean;
     }> => {
+      // R-0020: ein unklar abgeschlossener Vorgang derselben Eingabe wird wörtlich wiederaufgenommen
+      // (Begründung an `ganzdokumentOffenRef`).
+      const eingabeAbdruck = JSON.stringify(input);
+      const offen = ganzdokumentOffenRef.current;
+      if (offen && offen.eingabeAbdruck === eingabeAbdruck) {
+        return {
+          draft: await endpoints.drafts.create(offen.payload, offen.vorgang.id),
+          originalFailure: offen.originalFailure,
+          originalAttached: offen.originalAttached,
+        };
+      }
       // ==========================================================================================
       // JOB 512 (R5) — DIE QUELLBILDZAHL STEIGT HIER IN DEN ENTWURF EIN.
       // ==========================================================================================
@@ -1533,9 +1569,23 @@ export function CaptureArbeitsraum({
       if (!draftPayloadWithinLimit(payload)) {
         throw new DraftPayloadTooLargeError();
       }
-      return { draft: await endpoints.drafts.create(payload), originalFailure, originalAttached };
+      const vorgang = anlageVorgangFuer(null, JSON.stringify(payload));
+      ganzdokumentOffenRef.current = {
+        eingabeAbdruck,
+        payload,
+        vorgang,
+        originalFailure,
+        originalAttached,
+      };
+      return {
+        draft: await endpoints.drafts.create(payload, vorgang.id),
+        originalFailure,
+        originalAttached,
+      };
     },
     onSuccess: ({ draft, originalFailure, originalAttached }, input) => {
+      // R-0020: der Vorgang ist abgeschlossen.
+      ganzdokumentOffenRef.current = null;
       void qc.invalidateQueries({ queryKey: ["drafts"] });
       setErr(null);
       const savedDraftId =
@@ -1594,6 +1644,11 @@ export function CaptureArbeitsraum({
     // WP-D1d (Fix 2): der Client-Payload-Guard wirft DraftPayloadTooLargeError → ehrliche, spezifische
     // Meldung statt eines stillen 413 (oder der generischen Fehlermeldung).
     onError: (error: unknown) => {
+      // R-0020: den Schlüssel NUR fallen lassen, wenn der Server eindeutig „nichts entstanden"
+      // geantwortet hat — bei Netzabbruch oder 5xx ist der nächste Druck eine Wiederholung.
+      if (createOperationIsSettled(error instanceof ApiError ? error.status : undefined)) {
+        ganzdokumentOffenRef.current = null;
+      }
       if (error instanceof DraftPayloadTooLargeError) {
         setErr(t(CAPTURE_FILE_TEXT.tooLargeForImport));
         push("error", t(CAPTURE_FILE_TEXT.tooLargeForImport));
@@ -1602,6 +1657,66 @@ export function CaptureArbeitsraum({
       fail(error);
     },
   });
+
+  // ==============================================================================================
+  // R-0017 / R-0020 / R-0156 — EIN GANZDOKUMENT-LAUF ZUR ZEIT, EGAL VON WELCHEM KNOPF.
+  // ==============================================================================================
+  //
+  // DER BEFUND. Drei Stellen schicken die geladene Datei über `fileWholeDraft` hinaus: der Knopf
+  // der Ganzdokument-Karte, der manuelle „Als Entwurf speichern" (`manuellSichern`) und der
+  // Rückruf der Verlassen-Wache. Gesperrt waren sie nur über `isPending` — und das ist eine
+  // ANZEIGE, die erst mit dem nächsten Render ankommt. Zwei Lücken folgten daraus:
+  //   1. Der Kartenknopf fragt nur `fileWholeDraft.isPending`. Lief gerade der Eintrags-Anteil des
+  //      manuellen Knopfes (`saveDraft`), war er frei; ein Druck startete die Datei, und danach
+  //      startete `manuellSichern` sie ein zweites Mal. Der Original-Upload hing noch, der
+  //      Ref-Cache (`fileOriginalRef`) war leer — zwei Uploads, zwei Entwürfe mit demselben Inhalt.
+  //   2. Zwei Klicks vor dem nächsten Render (Doppelklick) sahen beide `isPending === false`.
+  //
+  // DIE REGEL: solange ein Lauf unterwegs ist, bekommt jeder weitere Aufrufer GENAU DIESEN Lauf
+  // zurück — keinen neuen. Er wartet also auf dasselbe Ergebnis und meldet denselben Ausgang:
+  // scheitert der erste, scheitert auch der zweite (kein falscher Erfolg), gelingt er, gibt es
+  // genau einen Entwurf. Die Marke ist ein Ref, weil sie im selben Augenblick gelten muss, in dem
+  // der Klick ankommt, nicht erst nach dem Render.
+  //
+  // RUNDE 2 (bens B2): UND EIN BEREITS GESICHERTER DATEISTAND WIRD NICHT NOCHMALS ANGELEGT. Die
+  // Sperre allein reichte nicht: endete der Kartenlauf, BEVOR der Formular-Anteil des manuellen
+  // Knopfes fertig war, war sie schon wieder offen — und der manuelle Lauf schickte seine (beim
+  // Klick gefasste) Eingabe als zweite Anlage hinterher. Deshalb merkt sich dieser Weg nach dem
+  // Erfolg, WELCHE Eingabe gesichert wurde, und gibt jedem späteren Aufrufer mit derselben Eingabe
+  // dasselbe Ergebnis zurück. Die Marke fällt erst, wenn eine neue Datei eingelesen wird
+  // (`onExtractFile`, `onExtractOcr`) — dann ist es ein neuer Stand.
+  const ganzdokumentLaufRef = useRef<ReturnType<typeof fileWholeDraft.mutateAsync> | null>(null);
+  const ganzdokumentGesichertRef = useRef<{
+    abdruck: string;
+    ergebnis: Awaited<ReturnType<typeof fileWholeDraft.mutateAsync>>;
+  } | null>(null);
+  const fileWholeDraftMutateAsync = fileWholeDraft.mutateAsync;
+  const ganzdokumentSichern = useCallback(
+    (
+      eingabe: Parameters<typeof fileWholeDraftMutateAsync>[0],
+    ): ReturnType<typeof fileWholeDraftMutateAsync> => {
+      const laufend = ganzdokumentLaufRef.current;
+      if (laufend) {
+        return laufend;
+      }
+      const abdruck = JSON.stringify(eingabe);
+      const gesichert = ganzdokumentGesichertRef.current;
+      if (gesichert && gesichert.abdruck === abdruck) {
+        return Promise.resolve(gesichert.ergebnis);
+      }
+      const lauf = fileWholeDraftMutateAsync(eingabe)
+        .then((ergebnis) => {
+          ganzdokumentGesichertRef.current = { abdruck, ergebnis };
+          return ergebnis;
+        })
+        .finally(() => {
+          ganzdokumentLaufRef.current = null;
+        });
+      ganzdokumentLaufRef.current = lauf;
+      return lauf;
+    },
+    [fileWholeDraftMutateAsync],
+  );
 
   // Pedi 04.07.: eigentliches Speichern; purgeUnselected bestimmt, ob nicht ausgewählte Punkte
   // nach dem Speichern gelöscht werden (siehe onSuccess der Mutation).
@@ -2191,6 +2306,25 @@ export function CaptureArbeitsraum({
     onSettled: () => setSubmitStage(null),
   });
 
+  // R-0020: der Wiederholschlüssel der ANLAGE über „Als Entwurf speichern" — nur für den Fall ohne
+  // geöffneten Entwurf (mit `draftId` aktualisiert der Weg, und ein wiederholtes Update legt nichts
+  // an). Gebunden an die Nutzlast (`anlageVorgangFuer`): ging die Antwort verloren, trägt der
+  // zweite Druck dieselbe Nutzlast und denselben Schlüssel, und der Server gibt den schon
+  // angelegten Entwurf zurück. Dasselbe gilt für die Wache, wenn sie dieselbe Nutzlast gleichzeitig
+  // schickt.
+  const eintragVorgangRef = useRef<AnlageVorgang | null>(null);
+  const anlegenMitVorgang = (payload: DraftPayload): Promise<Draft> => {
+    const vorgang = anlageVorgangFuer(eintragVorgangRef.current, JSON.stringify(payload));
+    eintragVorgangRef.current = vorgang;
+    return endpoints.drafts.create(payload, vorgang.id);
+  };
+  // LAUF 6 (bens B5): der aufgeschobene Blattwechsel des gemeinsamen Speicherwegs. `aufgeschoben`
+  // setzt nur, wer nach dem Eintrag noch die Datei schreibt; `entwurfId` hält die Kennung des
+  // gesicherten Eintrags, bis der Datei-Anteil gelungen ist (Begründung an `saveDraft.onSuccess`).
+  const blattWechselRef = useRef<{ aufgeschoben: boolean; entwurfId: string | null }>({
+    aufgeschoben: false,
+    entwurfId: null,
+  });
   const saveDraft = useMutation({
     mutationFn: () => {
       const n = parsedValidations();
@@ -2267,9 +2401,11 @@ export function CaptureArbeitsraum({
               ? { expectedUpdatedAt: loadedUpdatedAtRef.current }
               : undefined,
           )
-        : endpoints.drafts.create(payload);
+        : anlegenMitVorgang(payload);
     },
     onSuccess: (_d) => {
+      // R-0020: der Vorgang ist abgeschlossen; der nächste Beitrag ist ein anderer.
+      eintragVorgangRef.current = null;
       void qc.invalidateQueries({ queryKey: ["drafts"] });
       setErr(null);
       const msg = draftId ? t("capture.draftUpdated") : t("capture.draftSaved");
@@ -2326,9 +2462,23 @@ export function CaptureArbeitsraum({
       // Das Blatt öffnet genau diesen Entwurf und zeigt ihn als seinen Inhalt — sonst bliebe der
       // Nutzer im Arbeitsraum stehen und müsste seinen eigenen Entwurf in einer Liste suchen.
       // Der Rückruf ist optional: ohne Blatt (Test, Einzelmontage) bleibt alles wie bisher.
+      //
+      // LAUF 6 (bens B5): FOLGT NOCH DER DATEI-ANTEIL, WECHSELT DAS BLATT NICHT JETZT. Der Wechsel
+      // baut diesen Arbeitsraum ab — und mit ihm die geladene Datei, deren Upload gerade erst
+      // beginnt. Scheiterte er danach, war die Datei samt Wiederholzustand fort. Der gemeinsame Weg
+      // (`manuellSichern`, Wache) merkt sich die Kennung deshalb und wechselt erst, wenn auch die
+      // Datei gesichert ist; scheitert sie, bleibt der Mensch hier bei seiner Datei.
+      if (blattWechselRef.current.aufgeschoben) {
+        blattWechselRef.current.entwurfId = _d.id;
+        return;
+      }
       onEntwurfInsBlatt?.(_d.id);
     },
     onError: (e) => {
+      // R-0020: bei eindeutiger Ablehnung ist nichts entstanden — der nächste Versuch ist neu.
+      if (createOperationIsSettled(e instanceof ApiError ? e.status : undefined)) {
+        eintragVorgangRef.current = null;
+      }
       // JOB 2684 D2 (R2-17): 409 `DRAFT_STALE` — der Entwurf wurde inzwischen an anderer Stelle
       // geändert (zweiter Tab, Vordertür). Nichts wurde gespeichert, nichts überschrieben; der Text
       // bleibt im Editor, der Kasten sagt, was zu tun ist. Kein Toast „Fehler" — es ist keiner.
@@ -3352,6 +3502,13 @@ export function CaptureArbeitsraum({
             setErr(grund);
             throw new NavGuardSaveError(grund);
           }
+          // LAUF 6 (bens B5): folgt die Datei, wechselt das Blatt nach dem Eintrag nicht — der
+          // Wechsel baute den Arbeitsraum mitsamt der Datei ab, bevor sie geschrieben ist. Wohin es
+          // danach geht, entscheidet die Navigation, die diese Wache gerufen hat.
+          blattWechselRef.current = {
+            aufgeschoben: dateiTraeger?.art === "ganzdokument",
+            entwurfId: null,
+          };
           try {
             await saveDraft.mutateAsync();
           } catch (e) {
@@ -3364,6 +3521,8 @@ export function CaptureArbeitsraum({
                 ? t("fd.draftStale")
                 : fehlersatz(e),
             );
+          } finally {
+            blattWechselRef.current.aufgeschoben = false;
           }
           // RUNDE 5, KP1: ab hier IST geschrieben. Wurde dieser Rückruf aus dem Verlassen-Weg
           // heraus ausgelöst („Entwurf speichern und wechseln"), meldet der `proceed`-Zweig unten
@@ -3391,7 +3550,9 @@ export function CaptureArbeitsraum({
         // die Datei, aus der sie kamen, ist nicht verloren.
         if (dateiTraeger?.art === "ganzdokument") {
           try {
-            await fileWholeDraft.mutateAsync(dateiTraeger.eingabe);
+            // R-0020: über den Einzellauf — läuft die Datei schon (Kartenknopf, manueller Knopf),
+            // wartet die Wache auf DIESEN Lauf, statt einen zweiten zu starten.
+            await ganzdokumentSichern(dateiTraeger.eingabe);
           } catch (e) {
             // Derselbe Satz, den der Fehlerkasten der Seite zeigt (`fileWholeDraft.onError`) —
             // er reist hier mit, weil die Modalgrenze den Kasten bei offenem Dialog sperrt
@@ -3407,6 +3568,8 @@ export function CaptureArbeitsraum({
           // hierher — und eine Notiz vor dem `await` behauptete eine Sicherung, von der nur
           // feststeht, dass sie losgeschickt wurde.
           geschrieben = true;
+          // LAUF 6: beide Anteile sind gesichert; der gemerkte Eintrag hat keinen Wechsel mehr offen.
+          blattWechselRef.current.entwurfId = null;
         }
         if (dateiTraeger?.art === "punkte") {
           // JOB 3600: die Punkte gehen als SIE SELBST hinein, nicht als Abschrift. Bis hierher stand
@@ -3524,8 +3687,9 @@ export function CaptureArbeitsraum({
     // beim nächsten Umbau rät, welche der beiden die wahre ist.
     dateiTraeger,
     saveDraft,
-    // JOB 3770 RUNDE 4: der Ganzdokument-Weg, der die Datei bei „alles abgewählt" trägt.
-    fileWholeDraft,
+    // JOB 3770 RUNDE 4: der Ganzdokument-Weg, der die Datei bei „alles abgewählt" trägt — seit
+    // R-0020 über seinen Einzellauf (Begründung an `ganzdokumentSichern`).
+    ganzdokumentSichern,
     setGuard,
     qc,
     // JOB 3572 R2: der Wächter formuliert den Grund jetzt selbst mit (s. `fehlersatz` oben).
@@ -4224,6 +4388,9 @@ export function CaptureArbeitsraum({
         return;
       }
       setFileText(text);
+      // R-0020: eine NEU eingelesene Datei ist ein neuer Stand — auch wenn sie gleich heisst.
+      ganzdokumentGesichertRef.current = null;
+      ganzdokumentOffenRef.current = null;
       setFileRich(rich);
       setFileImageInfo(imageInfo);
       setFileImageTransfer(imageTransfer);
@@ -4338,6 +4505,8 @@ export function CaptureArbeitsraum({
       const res = await runImageOcr(fileImageUrl);
       if (res.status === "success" && res.text.length > 0) {
         setFileText(res.text);
+        ganzdokumentGesichertRef.current = null;
+        ganzdokumentOffenRef.current = null;
         // JOB 3196: derselbe Befund wie beim Datei-Einlesen — auch der OCR-Text bekommt die
         // Quittung der GEWÄHLTEN Importart, gebildet beim Rendern. Ohne formatabhängige Zusätze.
         setNotice({
@@ -4803,25 +4972,60 @@ export function CaptureArbeitsraum({
   // gelegt; die Datei bleibt unangetastet auf der Fläche und ist damit nicht verloren, sondern
   // weiter sicherbar. Ein Weitermachen hiesse, nach einem gemeldeten Fehlschlag die halbe Arbeit
   // trotzdem zu tun, ohne dass jemand dazu Ja gesagt hätte.
-  const manuellSichern = async (traeger: DateiTraeger | null): Promise<void> => {
-    if (eintragSicherbar) {
-      try {
-        await saveDraft.mutateAsync();
-      } catch {
-        // Der Satz steht schon da (`saveDraft.onError`); hier bleibt nur, nicht weiterzuschreiben.
-        return;
-      }
+  //
+  // R-0017 / R-0020 / R-0156: EIN DURCHLAUF ZUR ZEIT. Das `disabled` über `busy` greift erst mit
+  // dem nächsten Render; ein zweiter Klick davor (Doppelklick) oder ein Tastaturweg kam bis hierher
+  // durch und startete beide Anteile ein zweites Mal — bei frischem Formular hiess das zwei
+  // Eintragsentwürfe (`draftId` ist vor der ersten Antwort noch `null`). Der zweite Aufruf bekommt
+  // jetzt den laufenden Durchlauf zurück. Die Datei selbst läuft zusätzlich über
+  // `ganzdokumentSichern`, damit auch ein Druck auf den Kartenknopf während des Eintrags-Anteils
+  // keinen zweiten Ganzdokument-Entwurf anlegt.
+  const manuellLaufRef = useRef<Promise<void> | null>(null);
+  const manuellSichern = (traeger: DateiTraeger | null): Promise<void> => {
+    const laufend = manuellLaufRef.current;
+    if (laufend) {
+      return laufend;
     }
-    if (traeger?.art === "ganzdokument") {
-      try {
-        await fileWholeDraft.mutateAsync(traeger.eingabe);
-      } catch {
-        // Auch hier hat `fileWholeDraft.onError` den Grund bereits gemeldet (samt dem eigenen Satz
-        // für „zu groß für den Import"). Der Dateizustand bleibt stehen: ein zweiter Druck ist der
-        // naheliegende Handgriff, und er findet die Datei noch vor.
-        return;
+    const lauf = (async (): Promise<void> => {
+      const mitDatei = traeger?.art === "ganzdokument";
+      if (eintragSicherbar) {
+        // LAUF 6 (bens B5): folgt die Datei, wartet der Blattwechsel auf sie (`saveDraft.onSuccess`).
+        // Eine Kennung aus einem früheren, an der Datei gescheiterten Durchlauf wird hier von der
+        // neuen abgelöst — dieser Eintrag ist jetzt der, zu dem die Datei gehört.
+        blattWechselRef.current = { aufgeschoben: mitDatei, entwurfId: null };
+        try {
+          await saveDraft.mutateAsync();
+        } catch {
+          // Der Satz steht schon da (`saveDraft.onError`); hier bleibt nur, nicht weiterzuschreiben.
+          return;
+        } finally {
+          blattWechselRef.current.aufgeschoben = false;
+        }
       }
-    }
+      if (mitDatei) {
+        try {
+          await ganzdokumentSichern(traeger.eingabe);
+        } catch {
+          // Auch hier hat `fileWholeDraft.onError` den Grund bereits gemeldet (samt dem eigenen Satz
+          // für „zu groß für den Import"). Der Dateizustand bleibt stehen: ein zweiter Druck ist der
+          // naheliegende Handgriff, und er findet die Datei noch vor — der Arbeitsraum ist nicht
+          // abgebaut, weil das Blatt noch nicht gewechselt hat. Die Kennung des bereits gesicherten
+          // Eintrags bleibt gemerkt: gelingt der zweite Druck (dann nur noch die Datei, der Eintrag
+          // ist leer), wechselt das Blatt zu genau diesem Eintrag.
+          return;
+        }
+        // Beide Anteile sind gesichert: jetzt erst der Wechsel ins Blatt, zum Eintrag dieses Weges.
+        const entwurfId = blattWechselRef.current.entwurfId;
+        blattWechselRef.current.entwurfId = null;
+        if (entwurfId) {
+          onEntwurfInsBlatt?.(entwurfId);
+        }
+      }
+    })().finally(() => {
+      manuellLaufRef.current = null;
+    });
+    manuellLaufRef.current = lauf;
+    return lauf;
   };
   // AUFTRAG-mega5 Block A (bens Verlustpfad 3): der MANUELLE „Als Entwurf speichern"-Knopf leerte
   // Bilder/Dokumente nach dem Erfolg still (:1274-1275 im geprüften Stand). Jetzt verlangt er bei
@@ -5880,14 +6084,22 @@ export function CaptureArbeitsraum({
                               // Eingabe-Bau zweimal dasselbe sagend nebeneinander; jetzt sagt
                               // `ganzdokumentEingabe === null` beides, und der Speicherzweig der
                               // Navigationswache fragt denselben Begriff (Begründung dort).
+                              //
+                              // R-0020: auch gesperrt, solange der Eintrags-Anteil des manuellen
+                              // Knopfes läuft — danach schickt DER die Datei. Hinaus geht sie in
+                              // jedem Fall über den Einzellauf (`ganzdokumentSichern`); den Grund
+                              // eines Fehlschlags meldet `fileWholeDraft.onError`.
                               disabled={
-                                fileWholeDraft.isPending || fileBusy || ganzdokumentEingabe === null
+                                fileWholeDraft.isPending ||
+                                saveDraft.isPending ||
+                                fileBusy ||
+                                ganzdokumentEingabe === null
                               }
                               onClick={() => {
                                 if (ganzdokumentEingabe === null) {
                                   return;
                                 }
-                                fileWholeDraft.mutate(ganzdokumentEingabe);
+                                ganzdokumentSichern(ganzdokumentEingabe).catch(() => undefined);
                               }}
                             >
                               {fileWholeDraft.isPending ? (

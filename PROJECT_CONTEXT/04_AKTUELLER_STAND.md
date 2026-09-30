@@ -7,6 +7,66 @@
 > `PROJECT_CONTEXT/13_ASSISTENT_ZWISCHENBERICHT.md` (Rohstand: `docs/boss-assistant/`).
 > Live-Version dort bestätigt: **v1.0.0-beta.1.4**.
 
+## 30.09.2026 — Erfassen-Doppelklick, Lauf 6: Blattwechsel erst nach dem Datei-Anteil (Teilstand)
+
+Auftrag `aufnahme:20260922:erfassen-doppelklick`, Lauf 6 Runde 1, Basis `5e44e7e6`. Die
+Lauf-5-Commits `cfddc51a`, `7bdef2cd`, `c840a21b` waren nicht in `main`; sie sind unverändert
+übernommen (Cherry-Pick ohne Konflikt) und um Bens Befunde B5/B6 (Lauf 5, Prüfauftrag
+`pa-1790662305-e1b41479`, geprüfter Commit `f2d594cb`) ergänzt. **Nicht abgenommen; die reale
+Browser-/PostgreSQL-Messung dieser Fassung steht aus.**
+
+- **B5 (Datei ging nach Formularerfolg verloren):** `saveDraft.onSuccess` ruft den Blatt-Rückruf
+  `onEntwurfInsBlatt` nicht mehr, solange ein Datei-Anteil folgt (`blattWechselRef` in
+  `Capture.tsx`, gesetzt von `manuellSichern` und vom Wache-Rückruf). Der manuelle Knopf wechselt
+  erst nach gesicherter Datei zum Formularentwurf; scheitert der Datei-Anteil, bleiben Arbeitsraum,
+  Datei und Wiederholzustand stehen, und der nächste Druck sichert nur noch die Datei.
+- **Nebenbefund, mitbehoben:** Nennt die Adresse den Entwurf schon, den das Blatt öffnen soll,
+  lud es bisher nicht neu und zeigte den Stand von vor dem Speichern (alter Titel).
+  `Blatt.tsx` `entwurfOeffnen` erhöht dann den vorhandenen Laderunden-Zähler (`reloadNonce`).
+- **B6 (lokale Regression ohne Blatt, Q2 wartete auf abgebaute Quittung):** `huelle.tsx` montiert
+  auf Wunsch die ganze Seite (`Capture` mit echtem Blatt);
+  `tests/entwurf-verlassen/erfassen-doppelklick-blatt-mounted.test.tsx` B1/B2 grün, Gegenprobe
+  ohne Capture-Korrektur rot. Q2 im Browser-/PostgreSQL-Test wartet jetzt auf den sichtbaren
+  Abschluss (Blatt ohne Arbeitsraum, Titel des Formularentwurfs) und findet die Datei-Zeile über
+  PostgreSQL; neu Q6 (Formular + Datei, Upload angehalten + zweiter Klick, Upload- und
+  Anlagefehler, erneuter Druck). Q2 und Q6 sind im Bau **nicht ausgeführt** (keine Datenbank und
+  kein Browserlauf auf dem Produktions-Mac).
+
+## 29.09.2026 — Erfassen: Formular + Datei gemeinsam, Doppelklick und verlorene Antwort (Teilstand)
+
+Auftrag `aufnahme:20260922:erfassen-doppelklick` (R-0017, R-0020, R-0156). **Stand: Code und
+lokale Tests geliefert, reale Browser-/PostgreSQL-Messung ausstehend — nicht abgenommen.**
+R-0020 gilt unverändert für **Speichern UND Einreichen**, auch bei verlorener Serverantwort.
+
+- **Wiederverwendet, nicht neu gebaut:**
+  - Einreichen: Wiederholschlüssel des Einreichens (`submitOperationRef`, `lib/createOperation.ts`,
+    mega20–22) mit vorhandenen Antwortverlust-Belegen `tests/capture/mega20-capture-submit-mounted`
+    („ANTWORTVERLUST … KEIN zweites Objekt"), `mega21-capture-mounted` (nach Fortsetzen),
+    `mega22-vorgang-mounted` (Promote-Weg), `mega20-erstanlage-antwortverlust`. In diesem Auftrag
+    nicht verändert und nicht neu gemessen; das Doppelklick-Kriterium für Einreichen stützt sich
+    auf diese Belege.
+  - JOB 4352 (manueller Knopf sichert die geladene Datei über `fileWholeDraft`), JOB 3770 R4
+    (`dateiTraeger`), JOB 2697 (`operationId` an `POST /api/drafts`: Route, Dienst, Ablage).
+- **Fassungen:** Runde 1 `cfddc51a` (Einzellauf je Weg) — laut Ben unzureichend. Runde 2 `7bdef2cd`
+  (Wiederholschlüssel an Formular- und Datei-Anlage, Marke für gesicherten Dateistand) — laut Ben
+  weiterhin **Doppelbestand ohne Benutzeränderung**: Upload scheitert, Anlage-Antwort geht
+  verloren, beim zweiten Druck gelingt der Upload, die neu gebaute Nutzlast trägt den Originallink
+  → neuer Schlüssel → zweiter Entwurf (Gegenprobe G5/API-G5). Runde 3 (Commit nach `7bdef2cd`,
+  vom Starter erzeugt): ein unklar abgeschlossener Ganzdokument-Vorgang wird wörtlich
+  wiederaufgenommen (gleiche Nutzlast, gleicher Schlüssel, kein neuer Upload).
+- **Belege lokal (Runde 3):** `tests/entwurf-verlassen/erfassen-doppelklick-mounted.test.tsx`
+  (Attrappen, u. a. V4 = G5) und `…-echte-api-mounted.test.tsx` (echte Fastify-Anwendung,
+  In-Memory-Ablage, A6 = API-G5); Gegenprobe gegen `7bdef2cd`: V4 und A6 rot.
+- **Offen:** `speicherknopf-ganzdokument-pg-im-browser.integration.test.ts` Q2–Q5 (Chromium +
+  PostgreSQL) sind geschrieben, aber nur auf dem Prüfserver ausführbar und nicht gelaufen —
+  die reale API-/Browsermessung mit passendem Commit fehlt.
+- **Verbleibende Grenzen:** Hat der Mensch nach verlorener Antwort den Inhalt WIRKLICH geändert,
+  entsteht ein zweiter Entwurf mit dem neuen Stand (Formularweg: neuer Abdruck, neuer Schlüssel;
+  Dateiweg: nur bei neu eingelesener Datei). Für den Formularweg ist ein automatischer
+  Nutzlastwechsel ohne Benutzerhandlung nicht bekannt, aber nicht ausgeschlossen. Eine sichtbare
+  Erklärung „war bereits gespeichert" (R-0156) gibt es nicht — die Wiederholung meldet den
+  normalen Speichererfolg.
+
 ## 26.09.2026 — FE-003 Seitentutorial „Fragen“ (Pilot)
 
 - Knopf „Tutorial“ unter dem Kopfband (nur `/fragen`), aufklappender Unterricht in 7 Schritten mit
