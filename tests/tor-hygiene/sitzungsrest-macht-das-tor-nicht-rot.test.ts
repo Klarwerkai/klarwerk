@@ -49,6 +49,16 @@
 // oben zitierten Vorfälle, für `.codex/` keinen protokollierten Vorfall — das wird hier nicht
 // behauptet, sondern dieselbe vorbeugende Regel angewandt.
 //
+// NACHTRAG R-2220 (Aufnahme 20260922, gesamt-formatpruefer-sitzungsreste): die Ignore-Regeln oben
+// bleiben unverändert; ergänzt sind nur zwei dauerhafte Fixtures, die ihre Grenzen belegen:
+//   (d) STARTFEHLER — eine nicht ladbare `biome.json` endet auch mit `--no-errors-on-unmatched`
+//       rot (gemessen: Exit-Code 1, „configuration resulted in errors"). Zusätzlich verweigert
+//       `fahreBiome` jeden Lauf, der nicht gestartet ist oder seine Konfiguration nicht geladen
+//       hat — sonst könnten (b), (c) und (e) ihr „nicht 0" aus einem Startfehler beziehen.
+//   (e) TIEFE UND GRENZE — `**/.claude` und `**/.codex` greifen in beliebiger Ordnertiefe;
+//       Namensnachbarn (`.claude-notizen.json`, `src/.claudex/`, `src/codex.json`) werden
+//       weiterhin gemeldet.
+//
 // KEIN `npx`: das Tor ist ohne Netz, also ruft dieser Test den Binärpfad
 // `node_modules/.bin/biome` direkt per `spawnSync`, genau den Bestand, den `tools/lint:7` am
 // Ende auch ausführt.
@@ -98,9 +108,29 @@ function baueFixture(biomeJsonInhalt: string): string {
   return wurzel;
 }
 
-function fahreBiome(cwd: string, pfade: string[]): { code: number | null; aus: string } {
+// Biomes eigene Meldung, wenn die Konfiguration nicht geladen werden konnte (gemessen mit 1.9.4:
+// kaputtes JSON und unbekannter Schlüssel liefern beide diese Zeile und Exit-Code 1).
+const KONFIG_STARTFEHLER = "configuration resulted in errors";
+
+function fahreBiomeRoh(cwd: string, pfade: string[]): { code: number | null; aus: string } {
   const r = spawnSync(BIOME_BIN, ["check", ...pfade], { cwd, encoding: "utf-8" });
+  if (r.error) {
+    throw new Error(`Biome ist nicht gestartet (${BIOME_BIN}): ${String(r.error)}`);
+  }
   return { code: r.status, aus: `${r.stdout ?? ""}${r.stderr ?? ""}` };
+}
+
+/**
+ * Startfehler-Wache (R-2220): Die Fälle (b), (c) und (e) erwarten einen Exit-Code ungleich 0.
+ * Ein Biome, das gar nicht prüft, weil seine Konfiguration nicht lädt, endet ebenfalls mit 1 —
+ * ein solcher Startfehler darf nie als „Befund gefunden" durchgehen.
+ */
+function fahreBiome(cwd: string, pfade: string[]): { code: number | null; aus: string } {
+  const lauf = fahreBiomeRoh(cwd, pfade);
+  if (lauf.aus.includes(KONFIG_STARTFEHLER)) {
+    throw new Error(`Biome hat die Konfiguration nicht geladen — kein Prüflauf:\n${lauf.aus}`);
+  }
+  return lauf;
 }
 
 afterAll(() => {
@@ -165,5 +195,48 @@ describe("JOB 3080 · der Formatprüfer im Tor übersieht Agenten-Sitzungsordner
       ".claude",
     );
     expect(aus).not.toContain(".codex");
+  });
+
+  it("(d) STARTFEHLER — eine nicht ladbare Konfiguration wird nie zum grünen Lauf", () => {
+    const wurzel = baueFixture('{ "files": { "ignore": [ ');
+
+    // Dieselben Argumente wie in (a): gerade `--no-errors-on-unmatched` darf einen Startfehler
+    // nicht in „nichts zu prüfen" umdeuten.
+    const { code, aus } = fahreBiomeRoh(wurzel, [".claude", ".codex", "--no-errors-on-unmatched"]);
+
+    expect(code, aus).not.toBe(0);
+    expect(aus).toContain(KONFIG_STARTFEHLER);
+    expect(() => fahreBiome(wurzel, [".claude", ".codex"])).toThrow(/Konfiguration nicht geladen/);
+  });
+
+  it("(e) TIEFE UND GRENZE — Sitzungsordner in jeder Tiefe schweigen, Namensnachbarn nicht", () => {
+    const echteBiomeJson = readFileSync(repoPfad("biome.json"), "utf-8");
+    const wurzel = baueFixture(echteBiomeJson);
+    const tief = [
+      join("services", "wissen", ".claude", "settings.local.json"),
+      join("apps", "web", "src", ".codex", "tief", "er", "state.json"),
+    ];
+    // Knapp daneben: nur exakt benannte Ordner `.claude`/`.codex` sind Sitzungsreste.
+    const nachbarn = [
+      ".claude-notizen.json",
+      join("src", ".claudex", "a.json"),
+      join("src", "codex.json"),
+    ];
+    for (const datei of [...tief, ...nachbarn]) {
+      mkdirSync(join(wurzel, datei, ".."), { recursive: true });
+      writeFileSync(join(wurzel, datei), FALSCH_FORMATIERTES_JSON, "utf-8");
+    }
+
+    const { code, aus } = fahreBiome(wurzel, ["."]);
+
+    expect(code, aus).not.toBe(0);
+    for (const datei of nachbarn) {
+      expect(aus, `${datei} muss weiterhin gemeldet werden`).toContain(datei);
+    }
+    for (const datei of tief) {
+      expect(aus, `${datei} ist ein Sitzungsrest`).not.toContain(datei);
+    }
+    expect(aus).not.toContain("settings.local.json");
+    expect(aus).not.toContain("state.json");
   });
 });
