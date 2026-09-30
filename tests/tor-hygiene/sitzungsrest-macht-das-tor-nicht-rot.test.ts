@@ -50,14 +50,19 @@
 // behauptet, sondern dieselbe vorbeugende Regel angewandt.
 //
 // NACHTRAG R-2220 (Aufnahme 20260922, gesamt-formatpruefer-sitzungsreste): die Ignore-Regeln oben
-// bleiben unverändert; ergänzt sind nur zwei dauerhafte Fixtures, die ihre Grenzen belegen:
-//   (d) STARTFEHLER — eine nicht ladbare `biome.json` endet auch mit `--no-errors-on-unmatched`
-//       rot (gemessen: Exit-Code 1, „configuration resulted in errors"). Zusätzlich verweigert
-//       `fahreBiome` jeden Lauf, der nicht gestartet ist oder seine Konfiguration nicht geladen
-//       hat — sonst könnten (b), (c) und (e) ihr „nicht 0" aus einem Startfehler beziehen.
+// bleiben unverändert. Der Rest stammt aus Bens Hinweis zu JOB 3080 R3 (Prüflücken, Punkt 6):
+// verschachtelte und ähnlich benannte Kontrollordner ergänzen, und „für `fahreBiome` bleibt ein
+// simulierter Startfehler mit verlangter `npm ci`-Diagnose sinnvoll". Umgesetzt als:
+//   (f) STARTFEHLER „Biome-Binärpfad fehlt" — genau der Fall aus dem Hinweis: `fahreBiomeRoh`
+//       mit einem nicht vorhandenen Binärpfad bricht mit ENOENT und der Anweisung `npm ci` ab,
+//       statt einen leeren, scheinbar „roten" Lauf zu liefern.
 //   (e) TIEFE UND GRENZE — `**/.claude` und `**/.codex` greifen in beliebiger Ordnertiefe;
 //       Namensnachbarn (`.claude-notizen.json`, `src/.claudex/`, `src/codex.json`) werden
 //       weiterhin gemeldet.
+//   (d) ZUSATZ, NICHT AUS DER QUELLE — eine nicht ladbare `biome.json` endet auch mit
+//       `--no-errors-on-unmatched` rot (gemessen: Exit-Code 1, „configuration resulted in
+//       errors"); `fahreBiome` verweigert solche Läufe, sonst könnten (b), (c) und (e) ihr
+//       „nicht 0" aus einem Konfigurationsfehler beziehen. (d) ersetzt (f) nicht.
 //
 // KEIN `npx`: das Tor ist ohne Netz, also ruft dieser Test den Binärpfad
 // `node_modules/.bin/biome` direkt per `spawnSync`, genau den Bestand, den `tools/lint:7` am
@@ -112,10 +117,23 @@ function baueFixture(biomeJsonInhalt: string): string {
 // kaputtes JSON und unbekannter Schlüssel liefern beide diese Zeile und Exit-Code 1).
 const KONFIG_STARTFEHLER = "configuration resulted in errors";
 
-function fahreBiomeRoh(cwd: string, pfade: string[]): { code: number | null; aus: string } {
-  const r = spawnSync(BIOME_BIN, ["check", ...pfade], { cwd, encoding: "utf-8" });
+/**
+ * Startet Biome direkt über den Binärpfad. `bin` ist nur für Fall (f) überschreibbar, der den
+ * fehlenden Binärpfad simuliert; alle anderen Fälle nutzen den echten `node_modules/.bin/biome`.
+ */
+function fahreBiomeRoh(
+  cwd: string,
+  pfade: string[],
+  bin: string = BIOME_BIN,
+): { code: number | null; aus: string } {
+  const r = spawnSync(bin, ["check", ...pfade], { cwd, encoding: "utf-8" });
   if (r.error) {
-    throw new Error(`Biome ist nicht gestartet (${BIOME_BIN}): ${String(r.error)}`);
+    const fehlt = (r.error as NodeJS.ErrnoException).code === "ENOENT";
+    throw new Error(
+      fehlt
+        ? `Biome-Binärpfad fehlt (${bin}) — Abhängigkeiten sind nicht installiert. Im Repo-Wurzelverzeichnis \`npm ci\` ausführen und den Test wiederholen. Ursache: ${String(r.error)}`
+        : `Biome ist nicht gestartet (${bin}): ${String(r.error)}`,
+    );
   }
   return { code: r.status, aus: `${r.stdout ?? ""}${r.stderr ?? ""}` };
 }
@@ -238,5 +256,16 @@ describe("JOB 3080 · der Formatprüfer im Tor übersieht Agenten-Sitzungsordner
     }
     expect(aus).not.toContain("settings.local.json");
     expect(aus).not.toContain("state.json");
+  });
+
+  it("(f) STARTFEHLER — fehlt der Biome-Binärpfad, bricht der Lauf mit `npm ci`-Diagnose ab", () => {
+    const wurzel = baueFixture(readFileSync(repoPfad("biome.json"), "utf-8"));
+    // Ein Binärpfad in einem frischen, leeren Temp-Ordner existiert garantiert nicht — so wie
+    // `node_modules/.bin/biome` in einem Baum ohne `npm ci`.
+    const fehlenderBin = join(wurzel, "node_modules", ".bin", "biome");
+
+    expect(() => fahreBiomeRoh(wurzel, ["."], fehlenderBin)).toThrow(/ENOENT/);
+    expect(() => fahreBiomeRoh(wurzel, ["."], fehlenderBin)).toThrow(/`npm ci`/);
+    expect(() => fahreBiome(wurzel, ["."])).not.toThrow();
   });
 });
