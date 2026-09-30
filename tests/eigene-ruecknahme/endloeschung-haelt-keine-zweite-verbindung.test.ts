@@ -54,7 +54,23 @@ describe("JOB 3071 R2: die Endlöschung läuft mit einer einzigen Verbindung zu 
 
     const services = assembleServices(repos, { withTx });
     buildApp(services); // die Aufräum-Haken der Endlöschung leben in der Kompositionswurzel
-    return services;
+    return { services, repos };
+  }
+
+  // Auftrag gesamt-dubletten-rueckzug: das weiche Löschen schliesst den Befund seither SELBST (in
+  // seiner Transaktion). Die Lage dieses Falls — Beitrag im Papierkorb, Befund noch offen — gibt es
+  // deshalb nur noch als ALTBESTAND (vor diesem Auftrag getrasht). Sie wird hier am Speicher
+  // hergestellt, damit weiter die Endlöschung der Aufräumweg ist, den dieser Fall misst.
+  async function altbestandImPapierkorb(
+    repos: ReturnType<typeof inMemoryRepos>,
+    id: string,
+    wer: string,
+  ): Promise<void> {
+    const ko = await repos.koRepo.findById(id);
+    if (!ko) {
+      throw new Error(`KO ${id} fehlt`);
+    }
+    await repos.koRepo.update({ ...ko, deletedAt: new Date().toISOString(), deletedBy: wer });
   }
 
   /** Läuft der Vorgang zu Ende, oder hängt er? Ohne diese Schranke bliebe der Test selbst stehen. */
@@ -73,7 +89,7 @@ describe("JOB 3071 R2: die Endlöschung läuft mit einer einzigen Verbindung zu 
   }
 
   it("Poolgröße 1: KO-, Befund- und Audit-Wirkung entstehen vollständig", async () => {
-    const services = aufbau();
+    const { services, repos } = aufbau();
     const a = await services.ko.create({
       title: "Ventil V3 zuerst",
       statement: "Bei Überdruck Ventil V3 schließen.",
@@ -102,8 +118,9 @@ describe("JOB 3071 R2: die Endlöschung läuft mit einer einzigen Verbindung zu 
       "system",
     );
 
-    // Die Autorin legt ihren eigenen Beitrag in den Papierkorb (deletedBy === author) …
-    await services.ko.delete(a.id, AUTORIN);
+    // Die Autorin hat ihren eigenen Beitrag in den Papierkorb gelegt (deletedBy === author,
+    // Altbestand — s. `altbestandImPapierkorb`) …
+    await altbestandImPapierkorb(repos, a.id, AUTORIN);
     expect((await services.overlaps.get(eintrag.id))?.status).toBe("offen");
 
     // … und die Endlöschung räumt danach auf, in EINER Transaktion, mit EINER Verbindung.
@@ -129,7 +146,7 @@ describe("JOB 3071 R2: die Endlöschung läuft mit einer einzigen Verbindung zu 
   });
 
   it("die Gegenseite überlebt die Endlöschung unverändert", async () => {
-    const services = aufbau();
+    const { services } = aufbau();
     const a = await services.ko.create({
       title: "Ventil V3 zuerst",
       statement: "Bei Überdruck Ventil V3 schließen.",

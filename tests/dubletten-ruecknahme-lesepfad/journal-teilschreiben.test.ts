@@ -1,0 +1,593 @@
+import { appendFileSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
+import {
+  type AppRepos,
+  type AppServices,
+  assembleServices,
+  buildApp,
+  inMemoryRepos,
+} from "../../services/app/src/build-app";
+import {
+  type BestaetigungLesen,
+  type JournalEntry,
+  bestaetigungInDatei,
+  buildDevPersistServices,
+  journaledRepos,
+  readJournal,
+  readJournalLines,
+  replayJournal,
+} from "../../services/app/src/dev-persist";
+
+// ================================================================================================
+// Auftrag gesamt-dubletten-rueckzug, Lauf 4 — BENS BEN-R3-2 (Rest): TEILSCHREIBEN IM JOURNAL.
+// ================================================================================================
+//
+// Ben (Lauf 3, Runde 3) hat an der Schreibgrenze von `journaledRepos` mit einer ECHTEN Datei
+// gemessen: der Abschluss eines Rückzugs bzw. einer Wiederherstellung schreibt die halbe
+// Vorgangszeile und wirft dann ENOSPC. Speicher und Replay stimmten danach mit dem Vorher überein —
+// aber die anschliessend ERFOLGREICH gemeldete Wiederholung hing ihre Zeile an den Rest, das
+// Einlesen brach dort ab, und nach dem Replay fehlte sie (Rückzug: live im Papierkorb, nach Replay
+// aktiv; Wiederherstellung: live aktiv, nach Replay im Papierkorb).
+//
+// Soll: ein gescheiterter Abschluss wirkt weder live noch nach Replay; jede danach bestätigte
+// Schreibung bleibt beim Replay erhalten. Die Fälle hier sind Bens Gegenprobe (derselbe
+// Schreibfehler, dieselben Dienste) plus die Nachbarn: zweimal hintereinander gescheitert, ein
+// gescheiterter Einzelbeleg ausserhalb eines Vorgangs, und der Rest nach einem Abbruch beim Start.
+
+const verzeichnisse: string[] = [];
+afterEach(() => {
+  for (const dir of verzeichnisse.splice(0)) {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+function neueDatei(): string {
+  const dir = mkdtempSync(join(tmpdir(), "klarwerk-teilschreiben-"));
+  verzeichnisse.push(dir);
+  return join(dir, "journal.jsonl");
+}
+
+/**
+ * Wie viel ein scheiternder Schreibaufruf noch schreibt, bevor er wirft:
+ *   halb         die halbe Zeile, dann ENOSPC (Lauf 3, Runde 3)
+ *   ohneUmbruch  die ganze Zeile bis auf das abschliessende Zeilenende, dann ENOSPC (Lauf 4, Runde 1)
+ *   ganz         die ganze Zeile SAMT Zeilenende, dann EIO beim Schliessen (Lauf 4, Runde 2)
+ *   nichts       gar nichts, dann ENOSPC
+ *   ok           kein Fehler (nur in `folge`, um einen Aufruf gezielt durchzulassen; Lauf 5)
+ */
+type Schnitt = "halb" | "ohneUmbruch" | "ganz" | "nichts" | "ok";
+
+/**
+ * Das Journal wie `buildDevPersistServices` — nur mit schaltbaren Fehlern: `teilschreiben`
+ * Aufrufe scheitern mit dem Grundschnitt; `folge` legt die Schnitte der nächsten Aufrufe einzeln fest.
+ */
+function schreiberMitTeilschreiben(datei: string, schnitt: Schnitt = "halb") {
+  const schalter: { teilschreiben: number; folge: Schnitt[] } = { teilschreiben: 0, folge: [] };
+  const schreiben = (e: JournalEntry): void => {
+    const text = `${JSON.stringify(e)}\n`;
+    let dieser: Schnitt | undefined = schalter.folge.shift();
+    if (dieser === undefined && schalter.teilschreiben > 0) {
+      schalter.teilschreiben -= 1;
+      dieser = schnitt;
+    }
+    if (dieser !== undefined && dieser !== "ok") {
+      const bis = {
+        halb: Math.floor(text.length / 2),
+        ohneUmbruch: text.length - 1,
+        ganz: text.length,
+        nichts: 0,
+      }[dieser];
+      appendFileSync(datei, text.slice(0, bis), "utf8");
+      if (dieser === "ganz") {
+        throw Object.assign(new Error("EIO beim Schliessen"), { code: "EIO", syscall: "close" });
+      }
+      throw Object.assign(new Error("ENOSPC: Datenträger voll"), { code: "ENOSPC" });
+    }
+    appendFileSync(datei, text, "utf8");
+  };
+  return { schalter, schreiben };
+}
+
+async function paar(services: AppServices) {
+  const a = await services.ko.create({
+    title: "KO A",
+    statement: "Pumpe entlüften alle 200h.",
+    type: "best_practice",
+    category: "Wartung",
+    author: "anna",
+  });
+  const b = await services.ko.create({
+    title: "KO B",
+    statement: "Pumpe alle 200 Stunden entlüften.",
+    type: "best_practice",
+    category: "Wartung",
+    author: "bob",
+  });
+  const overlap = await services.overlaps.createAuto(
+    {
+      koA: a.id,
+      koB: b.id,
+      relation: "identisch",
+      aspects: [{ beschreibung: "gleiche Anweisung", zitatA: "entlüften", zitatB: "entlüften" }],
+      eigenanteilA: "",
+      eigenanteilB: "",
+      recommendation: "zusammenfuehren",
+    },
+    { trigger: "manual", method: "deterministic", lexicalScore: 0.95 },
+    "system",
+  );
+  return { a, b, overlap };
+}
+
+/**
+ * `lesen` (Lauf 5): wie das Journal nach einem Schreibfehler seine Bestätigung zurückliest —
+ * `datei` wie `buildDevPersistServices`, `kaputt` mit Lesefehler, `ohne` gar nicht.
+ */
+async function lage(schnitt: Schnitt = "halb", lesen: "datei" | "kaputt" | "ohne" = "ohne") {
+  const datei = neueDatei();
+  const { schalter, schreiben } = schreiberMitTeilschreiben(datei, schnitt);
+  const roh = inMemoryRepos();
+  const leser: BestaetigungLesen | undefined = {
+    datei: bestaetigungInDatei(datei),
+    kaputt: () => {
+      throw Object.assign(new Error("EIO beim Lesen"), { code: "EIO" });
+    },
+    ohne: undefined,
+  }[lesen];
+  const services = assembleServices(journaledRepos(roh, schreiben, false, leser));
+  buildApp(services); // die Aufräum-Haken leben in der Kompositionswurzel
+  const { a, b, overlap } = await paar(services);
+
+  /** Der beobachtbare Zustand: eigene Seite, Gegenseite, Befund, Belege. */
+  async function stand(r: AppRepos) {
+    return {
+      a: await r.koRepo.findById(a.id),
+      b: await r.koRepo.findById(b.id),
+      befund: await r.overlapRepo.findById(overlap.id),
+      belege: await r.auditRepo.all(),
+    };
+  }
+  /** Der Neustart: frische Ablagen, nur die DATEI als Wahrheit. */
+  async function nachReplay() {
+    const frisch = inMemoryRepos();
+    await replayJournal(frisch, readJournalLines(datei));
+    return stand(frisch);
+  }
+  return { datei, schalter, roh, services, a, b, overlap, stand, nachReplay };
+}
+
+describe("BEN-R3-2 (Lauf 4): Teilschreiben beim Journal-Abschluss, danach erfolgreiche Wiederholung", () => {
+  it("Rückzug: Rest im Journal, nichts wirkt; die Wiederholung bleibt nach Replay erhalten", async () => {
+    const w = await lage();
+    const vorher = await w.stand(w.roh);
+    const bytesVorher = statSync(w.datei).size;
+
+    w.schalter.teilschreiben = 1;
+    await expect(w.services.ko.delete(w.a.id, "anna")).rejects.toThrow("ENOSPC");
+    // Der Rest steht wirklich in der Datei — sonst prüfte der Fall nichts.
+    expect(statSync(w.datei).size).toBeGreaterThan(bytesVorher);
+    expect(await w.stand(w.roh)).toEqual(vorher);
+    expect(await w.nachReplay()).toEqual(vorher);
+
+    await w.services.ko.delete(w.a.id, "anna");
+    const live = await w.stand(w.roh);
+    expect(live.a?.deletedBy).toBe("anna");
+    expect(live.befund?.status).toBe("geschlossen");
+    expect(live.befund?.resolution).toMatchObject({ reason: "withdrawn_own", by: "anna" });
+    expect(live.b).toEqual(vorher.b); // die Gegenseite bleibt unangetastet
+    expect(await w.nachReplay()).toEqual(live);
+    expect(await w.services.audit.verify()).toBe(true);
+  });
+
+  it("Wiederherstellen: Rest im Journal, nichts wirkt; die Wiederholung bleibt nach Replay erhalten", async () => {
+    const w = await lage();
+    await w.services.ko.delete(w.a.id, "anna");
+    const vorher = await w.stand(w.roh);
+
+    w.schalter.teilschreiben = 1;
+    await expect(w.services.ko.restore(w.a.id, "admin")).rejects.toThrow("ENOSPC");
+    expect(await w.stand(w.roh)).toEqual(vorher);
+    expect(await w.nachReplay()).toEqual(vorher);
+
+    await w.services.ko.restore(w.a.id, "admin");
+    const live = await w.stand(w.roh);
+    expect(live.a?.deletedAt).toBeUndefined();
+    // Entscheidung 43017d60: der durch Rückzug geschlossene Befund bleibt zu, die Gegenseite unberührt.
+    expect(live.befund).toEqual(vorher.befund);
+    expect(live.b).toEqual(vorher.b);
+    expect(await w.nachReplay()).toEqual(live);
+  });
+
+  it("zweimal hintereinander Teilschreiben, dann Erfolg: nur der bestätigte Vorgang wirkt nach Replay", async () => {
+    const w = await lage();
+    const vorher = await w.stand(w.roh);
+
+    // Drei Fehler: der Abschluss, der sofortige Neuaufsatz vor dem Widerruf (Runde 3) und — bei der
+    // zweiten Rücknahme — erneut der Neuaufsatz. Auch er kann nur halb geschrieben werden: der Rest
+    // wächst, bleibt aber Rest, und die zweite Rücknahme wird abgewiesen, bevor sie schreibt.
+    w.schalter.teilschreiben = 3;
+    await expect(w.services.ko.delete(w.a.id, "anna")).rejects.toThrow("ENOSPC");
+    await expect(w.services.ko.delete(w.a.id, "anna")).rejects.toThrow("ENOSPC");
+    expect(await w.stand(w.roh)).toEqual(vorher);
+    expect(await w.nachReplay()).toEqual(vorher);
+
+    await w.services.ko.delete(w.a.id, "anna");
+    const live = await w.stand(w.roh);
+    expect(live.a?.deletedBy).toBe("anna");
+    expect(await w.nachReplay()).toEqual(live);
+  });
+
+  it("Teilschreiben einer Einzelzeile ausserhalb eines Vorgangs: spätere Zeilen bleiben lesbar", async () => {
+    const w = await lage();
+    w.schalter.teilschreiben = 1;
+    await expect(
+      w.services.conflicts.create(
+        { koA: w.a.id, koB: w.b.id, type: "truth", description: "Widerspruch zur Frist" },
+        "anna",
+      ),
+    ).rejects.toThrow("ENOSPC");
+
+    await w.services.ko.delete(w.a.id, "anna");
+    const nach = await w.nachReplay();
+    expect(nach.a?.deletedBy).toBe("anna");
+    expect(nach.befund?.resolution).toMatchObject({ reason: "withdrawn_own", by: "anna" });
+  });
+});
+
+describe("BEN-R3-2 (Lauf 4): das Einlesen", () => {
+  it("ein Rest OHNE Neuaufsatz beendet das Einlesen weiterhin (Bestandsvertrag)", () => {
+    const datei = neueDatei();
+    const a: JournalEntry = { repo: "drafts", method: "insert", args: [{ id: "d1" }] };
+    const b: JournalEntry = { repo: "drafts", method: "insert", args: [{ id: "d2" }] };
+    appendFileSync(datei, `${JSON.stringify(a)}\n{"repo":"dra\n${JSON.stringify(b)}\n`, "utf8");
+    expect(readJournal(datei)).toEqual([a]);
+  });
+
+  it("der Neuaufsatz erscheint nie als Eintrag — weder allein noch hinter einem Rest", async () => {
+    const datei = neueDatei();
+    const { schalter, schreiben } = schreiberMitTeilschreiben(datei);
+    const services = assembleServices(journaledRepos(inMemoryRepos(), schreiben));
+    // Hinter einem Rest: Teilschreiben, dann eine bestätigte Zeile.
+    const { a } = await paar(services);
+    schalter.teilschreiben = 1;
+    await expect(services.ko.delete(a.id, "anna")).rejects.toThrow("ENOSPC");
+    await services.ko.delete(a.id, "anna");
+    // Allein: ein Fehler, der nichts geschrieben hat, und danach eine bestätigte Zeile.
+    const scheitern = (e: JournalEntry): void => {
+      throw Object.assign(new Error(`ENOSPC vor dem Schreiben (${e.repo})`), { code: "ENOSPC" });
+    };
+    let aufrufe = 0;
+    const zweite = assembleServices(
+      journaledRepos(inMemoryRepos(), (e) => (aufrufe++ === 0 ? scheitern(e) : schreiben(e))),
+    );
+    await expect(paar(zweite)).rejects.toThrow("ENOSPC");
+    await paar(zweite);
+
+    const text = readFileSync(datei, "utf8");
+    expect(text).toContain('{"repo":"journal","method":"neuaufsatz","args":[]}');
+    expect(readJournal(datei).some((e) => e.method === "neuaufsatz")).toBe(false);
+  });
+});
+
+describe("BEN-R3-2 (Lauf 4): Rest am Dateiende beim Start (Abbruch mitten im Anhängen)", () => {
+  it("die erste Schreibung nach dem Start hängt nicht am Rest und überlebt den nächsten Start", async () => {
+    const datei = neueDatei();
+    const erster = await buildDevPersistServices(datei);
+    const app1 = buildApp(erster);
+    const { a, overlap } = await paar(erster);
+    await app1.close();
+    appendFileSync(datei, '{"repo":"koRepo","method":"upd', "utf8"); // Abbruch mitten im Anhängen
+
+    const zweiter = await buildDevPersistServices(datei);
+    const app2 = buildApp(zweiter);
+    await zweiter.ko.delete(a.id, "anna");
+    await app2.close();
+
+    const repos = inMemoryRepos();
+    await replayJournal(repos, readJournalLines(datei));
+    expect((await repos.koRepo.findById(a.id))?.deletedBy).toBe("anna");
+    expect((await repos.overlapRepo.findById(overlap.id))?.resolution).toMatchObject({
+      reason: "withdrawn_own",
+      by: "anna",
+    });
+  });
+
+  it("eine letzte Zeile ohne Zeilenende ist unbestätigt: nie gelesen, auch nicht nach dem nächsten Start", async () => {
+    const datei = neueDatei();
+    const d1: JournalEntry = { repo: "drafts", method: "insert", args: [{ id: "d1" }] };
+    const d2: JournalEntry = { repo: "drafts", method: "insert", args: [{ id: "d2" }] };
+    appendFileSync(datei, `${JSON.stringify(d1)}\n${JSON.stringify(d2)}`, "utf8");
+    expect(readJournal(datei)).toEqual([d1]);
+
+    const services = await buildDevPersistServices(datei);
+    const app = buildApp(services);
+    expect((await services.capture.listDrafts()).map((d) => d.id)).toEqual(["d1"]);
+    await services.ko.create({
+      title: "KO C",
+      statement: "Filter tauschen.",
+      type: "best_practice",
+      category: "Wartung",
+      author: "anna",
+    });
+    await app.close();
+
+    const eintraege = readJournal(datei);
+    expect(eintraege[0]).toEqual(d1);
+    expect(
+      eintraege.some(
+        (e) => e.repo === "drafts" && e.args[0] && (e.args[0] as { id: string }).id === "d2",
+      ),
+    ).toBe(false);
+    expect(eintraege.some((e) => e.repo === "koRepo" && e.method === "insert")).toBe(true);
+  });
+});
+
+// ================================================================================================
+// Lauf 4, Runde 2 — Bens BEN-R3-2 erneut: ENOSPC GENAU VOR DEM LETZTEN ZEILENENDE.
+// ================================================================================================
+//
+// Der gescheiterte Abschluss schreibt die GANZE Vorgangszeile, nur ohne "\n". Runde 1 las sie als
+// gültige Zeile: das Replay (und `buildDevPersistServices`, das ihr sogar das Zeilenende nachtrug)
+// machte den im Speicher zurückgestellten Vorgang wirksam. Soll: unwirksam — nach dem Fehler, nach
+// einem Neustart aus der Datei und nach der erfolgreichen Wiederholung.
+describe("BEN-R3-2 (Lauf 4, Runde 2): ENOSPC vor dem Zeilenende — der zurückgestellte Vorgang wirkt nie", () => {
+  it.each([
+    ["Rückzug", false],
+    ["Wiederherstellen", true],
+  ] as const)(
+    "%s: live, nach Replay und nach Neustart wie vorher; die Wiederholung wirkt genau einmal",
+    async (_art, wiederherstellen) => {
+      const w = await lage("ohneUmbruch");
+      const aktion = () =>
+        wiederherstellen
+          ? w.services.ko.restore(w.a.id, "admin")
+          : w.services.ko.delete(w.a.id, "anna");
+      if (wiederherstellen) {
+        await w.services.ko.delete(w.a.id, "anna");
+      }
+      const vorher = await w.stand(w.roh);
+
+      // Seit Runde 3 folgt dem gescheiterten Abschluss sofort der Widerruf. Damit das Journal
+      // wirklich ohne Zeilenende endet (Bens Fall), scheitert auch dieser Schreibaufruf, ohne zu
+      // schreiben; der Widerruf bleibt offen und wird von der Wiederholung nachgeholt.
+      w.schalter.folge = ["ohneUmbruch", "nichts"];
+      await expect(aktion()).rejects.toThrow("ENOSPC");
+      expect(readFileSync(w.datei, "utf8").endsWith("\n")).toBe(false); // der Fall ist wirklich da
+      expect(await w.stand(w.roh)).toEqual(vorher);
+      expect(await w.nachReplay()).toEqual(vorher);
+
+      // Neustart aus der Datei (zweite Komposition, wie beim Desktop-Neustart) — und die Datei bleibt dabei unbestätigt.
+      const neu = await buildDevPersistServices(w.datei);
+      const imPapierkorb = (await neu.ko.trashed()).some((k) => k.id === w.a.id);
+      expect(imPapierkorb).toBe(Boolean(vorher.a?.deletedAt));
+      expect((await neu.overlaps.get(w.overlap.id))?.status).toBe(vorher.befund?.status);
+      expect(readFileSync(w.datei, "utf8").endsWith("\n")).toBe(false);
+      expect(await w.nachReplay()).toEqual(vorher);
+
+      await aktion();
+      const live = await w.stand(w.roh);
+      expect(Boolean(live.a?.deletedAt)).toBe(!wiederherstellen);
+      expect(live.b).toEqual(vorher.b); // die Gegenseite bleibt unangetastet
+      if (wiederherstellen) {
+        expect(live.befund).toEqual(vorher.befund); // 43017d60: keine Wiederöffnung
+      } else {
+        expect(live.befund?.resolution).toMatchObject({ reason: "withdrawn_own", by: "anna" });
+      }
+      expect(await w.nachReplay()).toEqual(live);
+      // Der Vorgang steht genau EINMAL wirksam im Journal: ein Beleg, nicht zwei.
+      const aktionName = wiederherstellen ? "ko.restored" : "ko.deleted";
+      expect((await w.nachReplay()).belege.filter((b) => b.action === aktionName)).toHaveLength(
+        live.belege.filter((b) => b.action === aktionName).length,
+      );
+    },
+  );
+});
+
+// ================================================================================================
+// Lauf 5 — Bens BEN-R4-1 (Lauf 4, Runde 3): ABSCHLUSSFEHLER UND GESCHEITERTER WIDERRUF.
+// ================================================================================================
+//
+// Bens Gegenprobe: die Vorgangszeile steht samt Zeilenende in der Datei, der Schreibaufruf wirft
+// trotzdem (EIO beim Schliessen), und auch der sofortige Widerruf scheitert (ENOSPC ohne
+// Schreibwirkung). Lauf 4 hielt den Widerruf dann nur flüchtig offen: live zurückgestellt, nach
+// Replay und Neustart wirksam (Rückzug: Papierkorb/Befund geschlossen; Wiederherstellung: aktiv).
+//
+// Soll: Speicher, Replay, Neustart und Aufrufergebnis stimmen überein — in BEIDEN Richtungen und
+// geprüft VOR jeder späteren Schreibung. Lauf 5 schreibt den Abschluss in zwei Zeilen (Vorgangszeile,
+// dann Bestätigung); ohne Bestätigung wirkt eine Vorgangszeile nie (dev-persist.ts, `BESTAETIGUNG`,
+// `mitBestaetigung`). Die Fälle unten decken jeden Schreibaufruf des Abschlusses mit jedem Schnitt ab.
+describe("BEN-R4-1 (Lauf 5): Abschlussfehler — Speicher, Replay, Neustart und Aufrufergebnis stimmen überein", () => {
+  const richtungen = [
+    ["Rückzug", false],
+    ["Wiederherstellen", true],
+  ] as const;
+
+  async function ablauf(
+    wiederherstellen: boolean,
+    folge: Schnitt[],
+    lesen: "datei" | "kaputt" | "ohne" = "ohne",
+  ) {
+    const w = await lage("ganz", lesen);
+    const aktion = () =>
+      wiederherstellen
+        ? w.services.ko.restore(w.a.id, "admin")
+        : w.services.ko.delete(w.a.id, "anna");
+    if (wiederherstellen) {
+      await w.services.ko.delete(w.a.id, "anna");
+    }
+    const vorher = await w.stand(w.roh);
+    w.schalter.folge = folge;
+    /** Der Neustart der Desktop-App aus derselben Datei (zweite Komposition). */
+    async function nachNeustart() {
+      const neu = await buildDevPersistServices(w.datei);
+      return {
+        papierkorb: (await neu.ko.trashed()).some((k) => k.id === w.a.id),
+        befund: (await neu.overlaps.get(w.overlap.id))?.status,
+      };
+    }
+    const kurz = (s: Awaited<ReturnType<typeof w.stand>>) => ({
+      papierkorb: Boolean(s.a?.deletedAt),
+      befund: s.befund?.status,
+    });
+    return { w, aktion, vorher, nachNeustart, kurz };
+  }
+
+  /** Nach einem gemeldeten Fehler: alles wie vorher — live, nach Replay, nach Neustart. */
+  async function wieVorher(l: Awaited<ReturnType<typeof ablauf>>) {
+    expect(await l.w.stand(l.w.roh)).toEqual(l.vorher);
+    expect(await l.w.nachReplay()).toEqual(l.vorher);
+    expect(await l.nachNeustart()).toEqual(l.kurz(l.vorher));
+  }
+
+  /** Die Wiederholung wirkt genau einmal; live = Replay = Neustart; die Gegenseite bleibt. */
+  async function wiederholungWirkt(
+    l: Awaited<ReturnType<typeof ablauf>>,
+    wiederherstellen: boolean,
+  ) {
+    await l.aktion();
+    await wirkt(l, wiederherstellen);
+  }
+
+  async function wirkt(l: Awaited<ReturnType<typeof ablauf>>, wiederherstellen: boolean) {
+    const live = await l.w.stand(l.w.roh);
+    expect(Boolean(live.a?.deletedAt)).toBe(!wiederherstellen);
+    expect(live.b).toEqual(l.vorher.b); // die Gegenseite bleibt unangetastet
+    if (wiederherstellen) {
+      expect(live.befund).toEqual(l.vorher.befund); // 43017d60: keine Wiederöffnung
+    } else {
+      expect(live.befund?.resolution).toMatchObject({ reason: "withdrawn_own", by: "anna" });
+    }
+    expect(await l.w.nachReplay()).toEqual(live);
+    expect(await l.nachNeustart()).toEqual(l.kurz(live));
+    expect(await l.w.services.audit.verify()).toBe(true);
+  }
+
+  it.each(richtungen)(
+    "%s — Bens Fall: Vorgangszeile ganz + EIO, Widerruf ENOSPC → Fehler, und VOR jeder weiteren Schreibung überall wie vorher",
+    async (_art, wiederherstellen) => {
+      // Vorgangszeile: ganz + EIO; Neuaufsatz vor dem Widerruf: ok; Widerruf selbst: scheitert.
+      const l = await ablauf(wiederherstellen, ["ganz", "ok", "nichts"]);
+      await expect(l.aktion()).rejects.toThrow("EIO");
+      // Der Fall ist wirklich da: Vorgangszeile vollständig, kein Widerruf, sauberes Zeilenende.
+      const eintraege = readJournal(l.w.datei);
+      expect(eintraege.at(-1)).toMatchObject({ repo: "ruecknahmeVorgang", method: "abschluss" });
+      expect(eintraege.some((e) => e.method === "widerruf")).toBe(false);
+      expect(readFileSync(l.w.datei, "utf8").endsWith("\n")).toBe(true);
+      await wieVorher(l);
+      await wiederholungWirkt(l, wiederherstellen);
+    },
+  );
+
+  it.each(richtungen)(
+    "%s — Vorgangszeile halb / ohne Zeilenende / gar nicht, Widerruf scheitert → überall wie vorher",
+    async (_art, wiederherstellen) => {
+      for (const schnitt of ["halb", "ohneUmbruch", "nichts"] as const) {
+        const l = await ablauf(wiederherstellen, [schnitt, "nichts"]);
+        await expect(l.aktion()).rejects.toThrow("ENOSPC");
+        await wieVorher(l);
+        await wiederholungWirkt(l, wiederherstellen);
+      }
+    },
+  );
+
+  it.each(richtungen)(
+    "%s — Bestätigung ganz + EIO, Zurücklesen findet sie → KEIN Fehler, der Vorgang wirkt überall",
+    async (_art, wiederherstellen) => {
+      const l = await ablauf(wiederherstellen, ["ok", "ganz"], "datei");
+      await l.aktion(); // der Ausgang ist geklärt: die Bestätigung steht, der Vorgang gilt
+      await wirkt(l, wiederherstellen);
+      // Die nächste Schreibung setzt sauber auf und bleibt einlesbar.
+      await l.w.services.conflicts.create(
+        { koA: l.w.a.id, koB: l.w.b.id, type: "truth", description: "Widerspruch zur Frist" },
+        "anna",
+      );
+      expect(await l.w.nachReplay()).toEqual(await l.w.stand(l.w.roh));
+    },
+  );
+
+  it.each(richtungen)(
+    "%s — Bestätigung halb / ohne Zeilenende, Zurücklesen findet sie nicht → Fehler, überall wie vorher",
+    async (_art, wiederherstellen) => {
+      for (const schnitt of ["halb", "ohneUmbruch"] as const) {
+        // Auch der Widerruf danach scheitert: er ist hier nicht tragend.
+        const l = await ablauf(wiederherstellen, ["ok", schnitt, "nichts"], "datei");
+        await expect(l.aktion()).rejects.toThrow("ENOSPC");
+        await wieVorher(l);
+        await wiederholungWirkt(l, wiederherstellen);
+      }
+    },
+  );
+
+  it.each(richtungen)(
+    "%s — Bestätigung ganz + EIO, Zurücklesen scheitert, Widerruf gelingt → Fehler, überall wie vorher",
+    async (_art, wiederherstellen) => {
+      const l = await ablauf(wiederherstellen, ["ok", "ganz"], "kaputt");
+      await expect(l.aktion()).rejects.toThrow("EIO");
+      expect(readJournal(l.w.datei).at(-1)).toMatchObject({ repo: "journal", method: "widerruf" });
+      await wieVorher(l);
+      await wiederholungWirkt(l, wiederherstellen);
+    },
+  );
+
+  it("ohne Zurücklesen (reine Schreibfunktion) gilt der Ausgang als ungewiss: Widerruf, Fehler, überall wie vorher", async () => {
+    const l = await ablauf(false, ["ok", "ganz"], "ohne");
+    await expect(l.aktion()).rejects.toThrow("EIO");
+    await wieVorher(l);
+    await wiederholungWirkt(l, false);
+  });
+
+  it("Bestätigung ungewiss, Zurücklesen UND Widerruf scheitern: nichts Weiteres wird bestätigt, bis der Widerruf steht", async () => {
+    const l = await ablauf(false, ["ok", "ganz", "nichts", "nichts"], "kaputt");
+    await expect(l.aktion()).rejects.toThrow("EIO");
+    expect(await l.w.stand(l.w.roh)).toEqual(l.vorher);
+    const zeilenVorher = readJournal(l.w.datei).length;
+    // Die Wiederholung scheitert, weil der offene Widerruf vor ihr nicht geschrieben werden kann —
+    // sie wird zurückgestellt, und hinter der ungewissen Bestätigung steht nichts Bestätigtes.
+    await expect(l.aktion()).rejects.toThrow("ENOSPC");
+    expect(await l.w.stand(l.w.roh)).toEqual(l.vorher);
+    expect(readJournal(l.w.datei).length).toBe(zeilenVorher);
+    // Sobald der Datenträger wieder schreibt: zuerst der Widerruf, dann die Wiederholung.
+    await wiederholungWirkt(l, false);
+    const methoden = readJournal(l.w.datei).map((e) => e.method);
+    expect(methoden.indexOf("widerruf")).toBeGreaterThan(-1);
+    expect(methoden.indexOf("widerruf")).toBeLessThan(methoden.lastIndexOf("abschluss"));
+  });
+
+  it("eine Vorgangszeile ohne Bestätigung wirkt nie — auch nicht, wenn danach Bestätigtes folgt", async () => {
+    const datei = neueDatei();
+    const vorgang: JournalEntry & { vorgang: string } = {
+      repo: "ruecknahmeVorgang",
+      method: "abschluss",
+      args: [{ repo: "drafts", method: "insert", args: [{ id: "d-unbestaetigt" }] }],
+      vorgang: "v-1",
+    };
+    const danach: JournalEntry = { repo: "drafts", method: "insert", args: [{ id: "d-danach" }] };
+    appendFileSync(datei, `${JSON.stringify(vorgang)}\n${JSON.stringify(danach)}\n`, "utf8");
+    const repos = inMemoryRepos();
+    await replayJournal(repos, readJournalLines(datei));
+    expect((await repos.drafts.list()).map((d) => d.id)).toEqual(["d-danach"]);
+
+    // Mit Bestätigung wirkt sie; ein Widerruf hebt die Bestätigung auf.
+    appendFileSync(
+      datei,
+      `${JSON.stringify({ repo: "ruecknahmeVorgang", method: "bestaetigung", args: ["v-1"] })}\n`,
+      "utf8",
+    );
+    const bestaetigt = inMemoryRepos();
+    await replayJournal(bestaetigt, readJournalLines(datei));
+    expect((await bestaetigt.drafts.list()).map((d) => d.id).sort()).toEqual([
+      "d-danach",
+      "d-unbestaetigt",
+    ]);
+    appendFileSync(
+      datei,
+      `${JSON.stringify({ repo: "journal", method: "widerruf", args: ["v-1"] })}\n`,
+      "utf8",
+    );
+    const widerrufen = inMemoryRepos();
+    await replayJournal(widerrufen, readJournalLines(datei));
+    expect((await widerrufen.drafts.list()).map((d) => d.id)).toEqual(["d-danach"]);
+  });
+});

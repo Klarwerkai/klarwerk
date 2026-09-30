@@ -17,9 +17,11 @@
 // Die Journal-Datei liegt unter .localdb/ (gitignored) und enthält KEINE Klartext-Passwörter
 // (Auth speichert Salt+Hash), aber Session-Token — sie bleibt deshalb lokal und unversioniert.
 // Bekannte, akzeptierte Grenze: das Journal wächst monoton (Kompaktierung = Folge-Ticket).
+import { randomUUID } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { type AppRepos, type AppServices, assembleServices, inMemoryRepos } from "./build-app";
+import { journalZeileFuer, ohneVorgang } from "./speicher-vorgang";
 
 // Eine Journal-Zeile: welches Repo, welche Methode, welche Argumente (JSON-serialisierbar —
 // alle Repo-Entitäten sind reine Datenobjekte mit String-/Zahl-Feldern).
@@ -195,8 +197,22 @@ export interface JournalLine {
   readonly entry: JournalEntry;
 }
 
+/**
+ * Auftrag gesamt-dubletten-rueckzug (Lauf 4, BEN-R3-2): der NEUAUFSATZ nach einem gescheiterten
+ * Schreibaufruf. Ein Schreibaufruf kann scheitern, nachdem er schon einen Teil seiner Zeile
+ * geschrieben hat (ENOSPC mitten im Anhängen). Ohne Gegenmassnahme hinge die nächste, bestätigte
+ * Zeile an diesem Rest, das Einlesen bräche dort ab — und alles Bestätigte danach fehlte beim
+ * Replay. Deshalb schreibt das Journal nach einem Fehler VOR der nächsten Zeile diese Markierung:
+ * sie schliesst einen etwaigen Rest zu einer als verworfen erkennbaren Zeile ab (`readJournalLines`
+ * überspringt sie) und steht, wenn nichts geschrieben war, als eigene, beim Lesen übergangene Zeile.
+ * Kein Repo trägt diesen Namen; auch ein älterer Leser spielt sie nicht zurück.
+ */
+const NEUAUFSATZ: JournalEntry = { repo: "journal", method: "neuaufsatz", args: [] };
+const NEUAUFSATZ_TEXT = JSON.stringify(NEUAUFSATZ);
+
 // Journal defensiv laden: fehlende Datei → leer; eine korrupte (z. B. beim Crash halb
-// geschriebene) Zeile beendet das Einlesen ab dort — alles Gültige davor bleibt erhalten.
+// geschriebene) Zeile beendet das Einlesen ab dort — alles Gültige davor bleibt erhalten. Eine
+// letzte Zeile OHNE Zeilenende ist nie bestätigt und wird nie gelesen (Lauf 4, Runde 2).
 //
 // W1/N6 (KW-S4-27): Die Zählung läuft über ALLE physischen Zeilen, nicht über die akzeptierten
 // Einträge. Zwei Stellen sorgen sonst für eine Verschiebung — eine übersprungene Leerzeile und
@@ -210,9 +226,16 @@ export function readJournalLines(file: string): JournalLine[] {
   }
   const lines: JournalLine[] = [];
   let lineNumber = 0;
-  for (const line of readFileSync(file, "utf8").split("\n")) {
+  // Lauf 4, Runde 2 (BEN-R3-2): BESTÄTIGT ist eine Zeile erst mit ihrem Zeilenende. Jeder
+  // Schreibaufruf hängt `JSON + "\n"` in EINEM Aufruf an; ist er zurückgekehrt, steht das
+  // Zeilenende. Was nach dem letzten Zeilenende steht, stammt also aus einem Aufruf, der gescheitert
+  // oder abgebrochen ist — auch wenn es gültiges JSON ist (ENOSPC genau vor dem letzten Byte). Der
+  // Aufrufer hat dafür einen Fehler bekommen, die Klammer hat zurückgestellt; es wirkt nie.
+  const physisch = readFileSync(file, "utf8").split("\n");
+  physisch.pop(); // das Unbestätigte (bei sauberem Ende die leere Zeichenkette nach dem letzten "\n")
+  for (const line of physisch) {
     lineNumber += 1;
-    if (line.trim().length === 0) {
+    if (line.trim().length === 0 || line === NEUAUFSATZ_TEXT) {
       continue;
     }
     try {
@@ -227,6 +250,13 @@ export function readJournalLines(file: string): JournalLine[] {
         lines.push({ lineNumber, entry: parsed as JournalEntry });
       }
     } catch {
+      // Auftrag gesamt-dubletten-rueckzug (Lauf 4, BEN-R3-2): ein Rest eines gescheiterten
+      // Schreibaufrufs, den der nächste Schreibaufruf mit dem Neuaufsatz abgeschlossen hat (s.
+      // `mitNeuaufsatz`). Der Rest wurde als Fehler gemeldet und nie bestätigt; was danach steht,
+      // ist bestätigt und wird weiter gelesen. Jede andere ungültige Zeile beendet wie bisher.
+      if (line.endsWith(NEUAUFSATZ_TEXT)) {
+        continue;
+      }
       break;
     }
   }
@@ -245,23 +275,110 @@ export function readJournal(file: string): JournalEntry[] {
 // kein Toleranzfall, sondern eine Integritätsverletzung (KW-S4-27 A) — er bricht den Start
 // fail-closed ab. Übersprungen wird nichts, fortgesetzt wird nichts, ein Ersatz-Repo gibt es nicht.
 export async function replayJournal(repos: AppRepos, lines: readonly JournalLine[]): Promise<void> {
-  for (const { lineNumber, entry } of lines) {
-    const allowed = MUTATING_METHODS[entry.repo as keyof AppRepos];
-    if (!allowed || !allowed.includes(entry.method)) {
-      continue; // N5: Abwärtskompatibilität — und ausdrücklich KEIN Fallback für N6.
+  // Lauf 5 (BEN-R4-1): eine Vorgangszeile wirkt nur mit ihrer Bestätigung und ohne Widerruf (s.
+  // `BESTAETIGUNG`, `WIDERRUF`). Beide stehen immer NACH ihrer Vorgangszeile, deshalb zuerst einsammeln.
+  const bestaetigt = new Set<string>();
+  const widerrufen = new Set<string>();
+  for (const { entry } of lines) {
+    const bestaetigung = kennungAus(entry, BESTAETIGUNG);
+    if (bestaetigung !== undefined) {
+      bestaetigt.add(bestaetigung);
     }
-    const target = repos[entry.repo as keyof AppRepos] as unknown as Record<string, unknown>;
-    const method = target[entry.method];
-    if (typeof method === "function") {
-      try {
-        await (method as (...args: unknown[]) => Promise<unknown>).apply(target, entry.args);
-      } catch (cause) {
-        // `repo` und `method` sind an dieser Stelle bereits gegen das Registry geprüft (die
-        // Zeilen darüber) — sie sind damit kanonische Schlüssel aus dem Code, keine Zeichenketten
-        // aus der Datei. Genau deshalb dürfen sie in Meldung und Feldern erscheinen, ohne dass
-        // ein manipulierter Rohwert je interpoliert würde.
-        throw new DevPersistJournalReplayError(lineNumber, entry.repo, entry.method, cause);
+    const widerruf = kennungAus(entry, WIDERRUF);
+    if (widerruf !== undefined) {
+      widerrufen.add(widerruf);
+    }
+  }
+  for (const { lineNumber, entry } of lines) {
+    if (istVorgangsZeile(entry)) {
+      const vorgang = (entry as VorgangsEintrag).vorgang;
+      if (typeof vorgang !== "string" || !bestaetigt.has(vorgang) || widerrufen.has(vorgang)) {
+        continue;
       }
+    }
+    // Auftrag gesamt-dubletten-rueckzug (Runde 3, BEN-R3-2): eine Vorgangszeile trägt ALLE Zeilen
+    // eines Rücknahme-Vorgangs und wird hier als Ganzes angewandt — mit derselben Prüfung je
+    // Teilzeile.
+    const teile = istVorgangsZeile(entry) ? (entry.args as JournalEntry[]) : [entry];
+    for (const teil of teile) {
+      await wendeAn(repos, lineNumber, teil);
+    }
+  }
+}
+
+/**
+ * Die Journalzeile eines Rücknahme-Vorgangs (speicher-vorgang.ts): `args` sind die Zeilen des
+ * Vorgangs in Schreibreihenfolge, `vorgang` seine Kennung. EINE Zeile, EIN Schreibaufruf — sie wirkt
+ * beim Replay nur ganz und nur, wenn ihre `BESTAETIGUNG` steht (Lauf 5).
+ */
+export const VORGANG_ZEILE = { repo: "ruecknahmeVorgang", method: "abschluss" } as const;
+
+type VorgangsEintrag = JournalEntry & { vorgang?: string };
+
+/**
+ * Lauf 5 (BEN-R4-1): die BESTÄTIGUNG einer Vorgangszeile — eine eigene, zweite Zeile mit der Kennung.
+ *
+ * Ein gescheiterter Schreibaufruf hat einen UNGEWISSEN Ausgang: er kann die Zeile samt Zeilenende
+ * vollständig geschrieben haben und erst danach scheitern (EIO beim Schliessen). In Lauf 4 machte
+ * das die Vorgangszeile selbst ungewiss; ihr Unwirksam-Machen hing an einem Widerruf, der nur
+ * flüchtig offen blieb, wenn auch er nicht geschrieben werden konnte — Replay und Neustart spielten
+ * den im Speicher zurückgestellten Vorgang dann doch zurück. Jetzt gilt: eine Vorgangszeile OHNE
+ * Bestätigung wirkt nie. Scheitert die Vorgangszeile, wird keine Bestätigung geschrieben — was auch
+ * immer von ihr in der Datei steht, bleibt wirkungslos, ohne dass danach noch etwas geschrieben
+ * werden muss. Die verbleibende Ungewissheit sitzt allein in der Bestätigung; wie sie aufgelöst wird,
+ * steht an `mitBestaetigung`.
+ */
+const BESTAETIGUNG = { repo: "ruecknahmeVorgang", method: "bestaetigung" } as const;
+
+/**
+ * Der WIDERRUF einer Vorgangskennung: hebt eine etwa stehende Bestätigung auf. Nur dort tragend, wo
+ * der Ausgang der Bestätigung nicht durch Zurücklesen geklärt werden konnte (s. `mitBestaetigung`).
+ */
+const WIDERRUF = { repo: "journal", method: "widerruf" } as const;
+
+function kennungAus(
+  entry: JournalEntry,
+  art: { readonly repo: string; readonly method: string },
+): string | undefined {
+  if (entry.repo !== art.repo || entry.method !== art.method) {
+    return undefined;
+  }
+  const [kennung] = entry.args;
+  return typeof kennung === "string" ? kennung : undefined;
+}
+
+function istVorgangsZeile(entry: JournalEntry): boolean {
+  return (
+    entry.repo === VORGANG_ZEILE.repo &&
+    entry.method === VORGANG_ZEILE.method &&
+    Array.isArray(entry.args) &&
+    entry.args.every(
+      (t) =>
+        typeof t === "object" &&
+        t !== null &&
+        typeof (t as JournalEntry).repo === "string" &&
+        typeof (t as JournalEntry).method === "string" &&
+        Array.isArray((t as JournalEntry).args),
+    )
+  );
+}
+
+async function wendeAn(repos: AppRepos, lineNumber: number, entry: JournalEntry): Promise<void> {
+  const allowed = MUTATING_METHODS[entry.repo as keyof AppRepos];
+  if (!allowed || !allowed.includes(entry.method)) {
+    return; // N5: Abwärtskompatibilität — und ausdrücklich KEIN Fallback für N6.
+  }
+  const target = repos[entry.repo as keyof AppRepos] as unknown as Record<string, unknown>;
+  const method = target[entry.method];
+  if (typeof method === "function") {
+    try {
+      await (method as (...args: unknown[]) => Promise<unknown>).apply(target, entry.args);
+    } catch (cause) {
+      // `repo` und `method` sind an dieser Stelle bereits gegen das Registry geprüft (die
+      // Zeilen darüber) — sie sind damit kanonische Schlüssel aus dem Code, keine Zeichenketten
+      // aus der Datei. Genau deshalb dürfen sie in Meldung und Feldern erscheinen, ohne dass
+      // ein manipulierter Rohwert je interpoliert würde.
+      throw new DevPersistJournalReplayError(lineNumber, entry.repo, entry.method, cause);
     }
   }
 }
@@ -272,6 +389,7 @@ function journaled<T extends object>(
   repo: T,
   name: keyof AppRepos,
   write: (entry: JournalEntry) => void,
+  vorgangAbschluss: (zeilen: JournalEntry[]) => void,
 ): T {
   const mutators = MUTATING_METHODS[name];
   return new Proxy(repo, {
@@ -286,18 +404,171 @@ function journaled<T extends object>(
       }
       return async (...args: unknown[]) => {
         const result = await fn.apply(target, args);
-        write({ repo: name, method: prop, args });
+        // Auftrag gesamt-dubletten-rueckzug (Runden 2/3, BEN-R3-1/-2): gehört der Aufruf zu einem
+        // offenen Rücknahme-Vorgang ohne Datenbank (speicher-vorgang.ts), wird die Zeile
+        // zurückgehalten und beim Abschluss mit allen anderen des Vorgangs als EINE Vorgangszeile
+        // geschrieben. Scheitert das, stellt die Klammer den Speicher zurück.
+        const zeile: JournalEntry = { repo: name, method: prop, args: ohneVorgang(args) };
+        if (!journalZeileFuer(args, zeile, vorgangAbschluss)) {
+          write(zeile);
+        }
         return result;
       };
     },
   });
 }
 
+/**
+ * Die Schreibfunktion mit Neuaufsatz (s. `NEUAUFSATZ`): nach einem gescheiterten Schreibaufruf —
+ * oder wenn das Journal schon mit einem unvollständigen Rest endet (`restAmEnde`) — geht dem
+ * nächsten Eintrag die Markierung voraus. Scheitert auch sie, bleibt der Zustand „gestört“ und der
+ * Eintrag gilt als nicht geschrieben (der Aufrufer bekommt den Fehler, die Klammer stellt zurück).
+ */
+function mitNeuaufsatz(
+  write: (entry: JournalEntry) => void,
+  restAmEnde: boolean,
+): (entry: JournalEntry) => void {
+  let gestoert = restAmEnde;
+  return (entry) => {
+    try {
+      if (gestoert) {
+        write(NEUAUFSATZ);
+        gestoert = false;
+      }
+      write(entry);
+    } catch (error) {
+      gestoert = true;
+      throw error;
+    }
+  };
+}
+
+/**
+ * Liest zurück, ob die Bestätigung eines Vorgangs bestätigt im Journal steht — mit genau der Lesung,
+ * die auch Replay und Neustart verwenden (`readJournalLines`). `undefined`, wenn das nicht
+ * feststellbar ist (Lesefehler).
+ */
+export type BestaetigungLesen = (vorgang: string) => boolean | undefined;
+
+/** Das Zurücklesen aus der Journaldatei selbst (Komposition `buildDevPersistServices`). */
+export function bestaetigungInDatei(file: string): BestaetigungLesen {
+  return (vorgang) => {
+    try {
+      return readJournalLines(file).some((l) => kennungAus(l.entry, BESTAETIGUNG) === vorgang);
+    } catch {
+      return undefined;
+    }
+  };
+}
+
+/**
+ * Lauf 5 (BEN-R4-1): Abschluss eines Rücknahme-Vorgangs in zwei Zeilen — Vorgangszeile, dann
+ * Bestätigung (s. `BESTAETIGUNG`). Die Klammer stellt zurück, wenn dieser Abschluss wirft; er wirft
+ * deshalb nur, wenn der Vorgang nach Replay und Neustart NICHT wirkt, und kehrt nur zurück, wenn er
+ * wirkt:
+ *
+ *   Vorgangszeile scheitert  Keine Bestätigung → wirkt nie, gleich was in der Datei steht. Wirft.
+ *                            (Ein Widerruf wird noch versucht, ist hier aber nicht tragend.)
+ *   Bestätigung scheitert    Der Ausgang wird durch Zurücklesen geklärt (`lesen`):
+ *                              steht sie bestätigt  → der Vorgang wirkt; Rückkehr ohne Fehler, der
+ *                                                     Speicher bleibt, wie er ist.
+ *                              steht sie nicht      → wirkt nie (ein Rest ohne Zeilenende wird nie
+ *                                                     bestätigt, s. `NEUAUFSATZ`). Wirft.
+ *                              nicht feststellbar   → Widerruf; wirft. Scheitert auch der, bleibt er
+ *                                                     offen, und JEDE weitere Zeile schreibt zuerst
+ *                                                     ihn — sonst wird sie nicht geschrieben und ihr
+ *                                                     Aufrufer bekommt den Fehler (fail-closed).
+ *
+ * Grenze: nur wenn Bestätigung, Zurücklesen und Widerruf scheitern UND danach nie wieder etwas
+ * geschrieben werden kann, entscheidet beim nächsten Start die Datei — dann kann der Vorgang wirken,
+ * obwohl der Aufrufer einen Fehler bekam. Ohne lesbaren und ohne beschreibbaren Datenträger ist das
+ * nicht auflösbar.
+ */
+function mitBestaetigung(
+  write: (entry: JournalEntry) => void,
+  lesen: BestaetigungLesen | undefined,
+): {
+  write: (entry: JournalEntry) => void;
+  vorgangAbschluss: (zeilen: JournalEntry[]) => void;
+} {
+  const offen: string[] = [];
+  const widerruf = (vorgang: string): JournalEntry => ({
+    repo: WIDERRUF.repo,
+    method: WIDERRUF.method,
+    args: [vorgang],
+  });
+  const nachholen = (): void => {
+    while (offen.length > 0) {
+      write(widerruf(offen[0] as string));
+      offen.shift();
+    }
+  };
+  /** Widerruf sofort; `tragend`: scheitert er, bleibt er offen (s. oben). */
+  const widerrufen = (vorgang: string, tragend: boolean): void => {
+    try {
+      write(widerruf(vorgang));
+    } catch {
+      if (tragend) {
+        offen.push(vorgang);
+      }
+    }
+  };
+  return {
+    write: (entry) => {
+      nachholen();
+      write(entry);
+    },
+    vorgangAbschluss: (zeilen) => {
+      nachholen();
+      const vorgang = randomUUID();
+      const zeile: VorgangsEintrag = {
+        repo: VORGANG_ZEILE.repo,
+        method: VORGANG_ZEILE.method,
+        args: zeilen,
+        vorgang,
+      };
+      try {
+        write(zeile);
+      } catch (fehler) {
+        widerrufen(vorgang, false);
+        throw fehler;
+      }
+      try {
+        write({ repo: BESTAETIGUNG.repo, method: BESTAETIGUNG.method, args: [vorgang] });
+      } catch (fehler) {
+        let steht: boolean | undefined;
+        try {
+          steht = lesen?.(vorgang);
+        } catch {
+          steht = undefined;
+        }
+        if (steht === true) {
+          return;
+        }
+        widerrufen(vorgang, steht === undefined);
+        throw fehler;
+      }
+    },
+  };
+}
+
 // Alle Repos eines Satzes journalieren (gemeinsame Schreibfunktion → EINE Datei).
-export function journaledRepos(repos: AppRepos, write: (entry: JournalEntry) => void): AppRepos {
+// `restAmEnde`: das Journal endet beim Start mit einem unvollständigen Rest (s. `buildDevPersistServices`).
+// `lesen`: Zurücklesen einer Bestätigung nach einem Schreibfehler (s. `mitBestaetigung`); ohne es
+// gilt ihr Ausgang als nicht feststellbar.
+export function journaledRepos(
+  repos: AppRepos,
+  rohesSchreiben: (entry: JournalEntry) => void,
+  restAmEnde = false,
+  lesen?: BestaetigungLesen,
+): AppRepos {
+  const { write, vorgangAbschluss } = mitBestaetigung(
+    mitNeuaufsatz(rohesSchreiben, restAmEnde),
+    lesen,
+  );
   const wrapped = {} as Record<keyof AppRepos, object>;
   for (const key of Object.keys(MUTATING_METHODS) as (keyof AppRepos)[]) {
-    wrapped[key] = journaled(repos[key] as object, key, write);
+    wrapped[key] = journaled(repos[key] as object, key, write, vorgangAbschluss);
   }
   return wrapped as unknown as AppRepos;
 }
@@ -314,5 +585,20 @@ export async function buildDevPersistServices(file: string): Promise<AppServices
   const write = (entry: JournalEntry): void => {
     appendFileSync(file, `${JSON.stringify(entry)}\n`, "utf8");
   };
-  return assembleServices(journaledRepos(repos, write));
+  return assembleServices(
+    journaledRepos(repos, write, restAmEnde(file), bestaetigungInDatei(file)),
+  );
+}
+
+// Lauf 4 (BEN-R3-2, Runde 2): endet das Journal ohne Zeilenende (Abbruch oder Fehler mitten im
+// Anhängen), ist der Rest unbestätigt und wurde beim Einlesen eben übergangen (s. `readJournalLines`)
+// — auch dann, wenn er gültiges JSON ist. Das erste Schreiben dieses Laufs setzt deshalb mit dem
+// Neuaufsatz neu auf; sonst hinge seine Zeile am Rest. Der Rest selbst bekommt NIE ein Zeilenende:
+// das machte einen gescheiterten, zurückgestellten Vorgang nachträglich wirksam.
+function restAmEnde(file: string): boolean {
+  if (!existsSync(file)) {
+    return false;
+  }
+  const inhalt = readFileSync(file, "utf8");
+  return inhalt.length > 0 && !inhalt.endsWith("\n");
 }

@@ -75,6 +75,25 @@ R-0020 gilt unverändert für **Speichern UND Einreichen**, auch bei verlorener 
   Erklärung „war bereits gespeichert" (R-0156) gibt es nicht — die Wiederholung meldet den
   normalen Speichererfolg.
 
+## 30.09.2026 — Eigene Seite eines Dublettenbefunds zurückziehen und wiederherstellen (Lauf 5)
+
+- Lauf 5 übernimmt den nie gemergten Stand von Lauf 4 (`9356241d`) auf Basis `bf9fcf1c` und behebt
+  Bens BEN-R4-1: der Journal-Abschluss eines Rücknahme-Vorgangs schreibt Vorgangszeile UND
+  Bestätigung; ohne Bestätigung wirkt eine Vorgangszeile beim Replay nie. Den ungewissen Ausgang der
+  Bestätigung klärt das Zurücklesen der Datei. Speicher, Replay, Neustart und Aufrufergebnis stimmen
+  damit auch dann überein, wenn Abschluss UND Widerruf scheitern. **Nicht abgenommen;**
+  PostgreSQL-Lauf und `tools/check` stehen aus.
+
+- Rückzug der eigenen Seite (`DELETE /api/kos/:id`, Knopf am eigenen Dublettenhinweis) schliesst
+  den Befund als `withdrawn_own` in EINER Transaktion mit Papierkorb-Schreiben und Beleg; der
+  Nachlauf in der Löschroute ist entfernt. Wiederherstellen läuft über denselben Weg, stellt nach
+  Pedis Entscheidung 43017d60 NUR den eigenen Beitrag wieder her — keine Wiederöffnung.
+- Ohne Datenbank (Dev-Journal) atomar über die Rücknahme-Klammer; seit Lauf 4 übersteht das
+  Journal auch einen teilweise geschriebenen, gescheiterten Schreibaufruf (Neuaufsatz), sodass
+  spätere bestätigte Zeilen beim Replay erhalten bleiben.
+- Details, Belege, Abgrenzungen: `docs/entscheidungen/dubletten-rueckzug.md`.
+  **Offen: PostgreSQL-Lauf der Integrationsdatei und `tools/check` auf dem Prüfweg.**
+
 ## 26.09.2026 — FE-003 Seitentutorial „Fragen“ (Pilot)
 
 - Knopf „Tutorial“ unter dem Kopfband (nur `/fragen`), aufklappender Unterricht in 7 Schritten mit
