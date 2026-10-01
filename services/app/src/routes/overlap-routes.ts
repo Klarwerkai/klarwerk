@@ -13,6 +13,7 @@ import {
   type KoSichtbarkeitsZugang,
   feldFreigabe,
   paarSichtbar,
+  paarSichtbarMitPapierkorb,
   redigiereUeberschneidung,
   sichtbarePaare,
 } from "../sichtbarkeit";
@@ -34,10 +35,15 @@ export interface OverlapRoutesDeps {
   // was NUR in je einem der beiden Objekte steht. Pflichtparameter ohne Umbau möglich: einziger
   // Aufrufer ist die Kompositionswurzel (build-app.ts:944).
   kos: KoSichtbarkeitsZugang;
+  // Auftrag gesamt-dubletten-rueckzug (Q7): löst NUR Beiträge im Papierkorb auf (Autor + Stufe),
+  // damit der Grabstein eines zurückgezogenen Befunds für jeden nachvollziehbar bleibt, der BEIDE
+  // Seiten sehen durfte. Optional und fail-closed: fehlt er, bleibt der Nachweis bei dem, der
+  // selbst abgeschlossen hat (Q7/JOB 3450) — enger, nie weiter.
+  papierkorb?: KoSichtbarkeitsZugang;
 }
 
 export function overlapRoutes(deps: OverlapRoutesDeps, guards: Guards): FastifyPluginAsync {
-  const { overlaps, settings, audit, kos } = deps;
+  const { overlaps, settings, audit, kos, papierkorb } = deps;
   return async (app) => {
     app.get("/api/duplicates", async (request, reply) => {
       const user = await guards.requirePermission("ko.read", request, reply);
@@ -126,8 +132,22 @@ export function overlapRoutes(deps: OverlapRoutesDeps, guards: Guards): FastifyP
           // Q7: Nur der Abschließende darf seinen gespeicherten Abschluss auch dann nachweisen,
           // wenn das Paar nicht mehr sichtbar ist. Ausschließlich Abschlussmetadaten ausgeben:
           // auch Objektkennungen, Freitextnotiz und Modellbegründung gehören nicht in den Nachweis.
+          //
+          // Auftrag gesamt-dubletten-rueckzug (Q7, R-1569 „bekannte 404-Grenze"): nach dem EIGENEN
+          // Rückzug (`withdrawn_own`) liest denselben Nachweis auch, wer beide Seiten sehen durfte —
+          // die zurückgezogene über den Papierkorb aufgelöst (`paarSichtbarMitPapierkorb`). Grund,
+          // Urheber und Zeit, sonst nichts; eine endgelöschte Seite bleibt beim 404.
           const resolution = entry?.resolution;
-          if (entry?.status === "geschlossen" && user.id.length > 0 && resolution?.by === user.id) {
+          const eigenerAbschluss = user.id.length > 0 && resolution?.by === user.id;
+          const rueckzugNachvollziehbar =
+            entry?.status === "geschlossen" &&
+            resolution?.reason === "withdrawn_own" &&
+            (await paarSichtbarMitPapierkorb(user, entry.koA, entry.koB, kos, papierkorb));
+          if (
+            entry?.status === "geschlossen" &&
+            resolution &&
+            (eigenerAbschluss || rueckzugNachvollziehbar)
+          ) {
             reply.code(200).send({
               id: entry.id,
               status: entry.status,

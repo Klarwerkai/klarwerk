@@ -59,7 +59,7 @@ import { RoleProvider } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
 import type { CaptureMode } from "../../apps/web/src/lib/captureEntry";
-import { CaptureArbeitsraum } from "../../apps/web/src/pages/Capture";
+import { Capture, CaptureArbeitsraum } from "../../apps/web/src/pages/Capture";
 import { ToastViewport } from "../../apps/web/src/shell/ToastViewport";
 import { attrappenZuruecksetzen, server } from "./attrappen";
 
@@ -180,8 +180,20 @@ export function wechselLink(): HTMLAnchorElement | null {
 
 let mitWechselLink = false;
 
+/**
+ * LAUF 6 (bens B6): die VOLLSTÄNDIGE Seite — `Capture` mit dem echten Blatt und seinem produktiven
+ * Rückruf `onEntwurfInsBlatt`, statt des einzeln montierten Arbeitsraums. Nur so ist der Übergang
+ * messbar, an dem das Blatt nach dem Speichern die Ansicht wechselt und den Arbeitsraum abbaut.
+ */
+let mitGanzerSeite = false;
+
+/**
+ * Der Abfrage-Client der laufenden Montage. Er gehört zur MONTAGE, nicht zum einzelnen Rendern:
+ * nur so behält `ansichtWechseln()` unten den Baum samt Zustand, statt ihn neu aufzubauen.
+ */
+let qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
 function baum(modus: CaptureMode | undefined): ReturnType<typeof createElement> {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return createElement(
     QueryClientProvider,
     { client: qc },
@@ -216,7 +228,9 @@ function baum(modus: CaptureMode | undefined): ReturnType<typeof createElement> 
                       null,
                       createElement(Route, {
                         path: startUrl.split("?")[0] as string,
-                        element: createElement(CaptureArbeitsraum, { modus }),
+                        element: mitGanzerSeite
+                          ? createElement(Capture)
+                          : createElement(CaptureArbeitsraum, { modus }),
                       }),
                     ),
                     // Er liegt IM Seitenbereich, nicht daneben: bei offenem Dialog sperrt ihn die
@@ -237,12 +251,15 @@ export async function mount(
   url: string,
   modus: CaptureMode | undefined,
   wechselwegImBaum = false,
+  ganzeSeite = false,
 ): Promise<void> {
   startUrl = url;
   mitWechselLink = wechselwegImBaum;
+  mitGanzerSeite = ganzeSeite;
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
+  qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   // AB HIER gibt es etwas abzubauen — bewusst VOR dem Rendern: der Behälter hängt schon im `body`,
   // und wirft das Rendern gleich, ist der gemeinsame `afterEach` der Einzige, der ihn noch wegräumt.
   montiert = true;
@@ -251,6 +268,18 @@ export async function mount(
     await flush();
   });
   await act(flush);
+}
+
+/**
+ * R-0020: das Blatt wechselt die ANSICHT, nicht die Montage (`Capture.tsx`, JOB 3062 · H3) — ein
+ * neuer `modus`-Prop an denselben Arbeitsraum, wie beim Menü „Datei ▾". Geöffneter Entwurf und
+ * Formularstand bleiben dabei stehen; genau so entsteht „Formular UND Datei" auf einer Fläche.
+ */
+export async function ansichtWechseln(modus: CaptureMode): Promise<void> {
+  await act(async () => {
+    root.render(baum(modus));
+    await flush();
+  });
 }
 
 /**

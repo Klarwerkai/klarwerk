@@ -116,8 +116,21 @@ describe("JOB 3066 · F1: das ko.purged-Audit trägt den Umfang der Aufräumung"
       Date.now = echtesJetzt;
     }
 
+    // Auftrag gesamt-dubletten-rueckzug (R-1547): der Befund schliesst seither schon beim Weg IN
+    // den Papierkorb, in dessen Transaktion — der Sweep findet nichts Offenes mehr und sagt das
+    // gemessen (0, kein fehlendes Feld). Die 1 steht jetzt dort, wo geschlossen wurde: im
+    // `ko.deleted`-Beleg des weichen Löschens.
     expect(await purgeBeleg(services, a.id)).toMatchObject({
       reason: "trash-expired",
+      ueberschneidungenGeschlossen: 0,
+      konflikteGeschlossen: 0,
+    });
+    const papierkorb = (await services.audit.list({ action: "ko.deleted" })).filter(
+      (e) => e.target === a.id,
+    );
+    expect(papierkorb).toHaveLength(1);
+    expect(papierkorb[0]?.payload).toEqual({
+      trash: true,
       ueberschneidungenGeschlossen: 1,
       konflikteGeschlossen: 0,
     });

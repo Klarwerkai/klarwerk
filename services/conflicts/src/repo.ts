@@ -98,6 +98,17 @@ export class InMemoryConflictRepo implements ConflictRepo {
     return Promise.resolve();
   }
 
+  // Auftrag gesamt-dubletten-rueckzug (Runde 2, BEN-R3-1): Rückstellung eines gescheiterten
+  // Vorgangs ohne Datenbank — der Konflikt steht danach exakt wie vorher. Einziger Aufrufer: die
+  // Rücknahme-Klammer (services/app/src/speicher-vorgang.ts); in PostgreSQL übernimmt das ROLLBACK.
+  zuruecksetzen(id: string, vorher: Conflict | undefined): void {
+    if (vorher) {
+      this.conflicts.set(id, vorher);
+    } else {
+      this.conflicts.delete(id);
+    }
+  }
+
   // Fachlich identisch zum Pg-Prädikat, synchron im selben Makrotask (kein await-Spalt zwischen
   // Auswahl und Schreiben). Der tx wird benannt ignoriert: in dieser Ablage gibt es keine
   // Transaktionsgrenze und deshalb auch keine Atomaritätszusage, nur dasselbe Ergebnis.

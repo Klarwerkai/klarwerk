@@ -550,7 +550,13 @@ export const HELP_TOPICS: readonly HelpTopicDef[] = [
     titleKey: "help.gesamtanweisungen.title",
     bodyKey: "help.gesamtanweisungen.body",
     to: "/gesamtanweisungen",
+    // FE-001: nutzerseitig heisst der Bereich „Arbeitsanleitungen" — gesucht wird auch danach.
     tags: [
+      "arbeitsanleitung",
+      "arbeitsanleitungen",
+      "work instruction",
+      "werkinstructie",
+      "einarbeitung",
       "gesamtanweisung",
       "gesamtanweisungen",
       "composite instruction",

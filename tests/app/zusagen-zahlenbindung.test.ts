@@ -119,8 +119,20 @@ function wochenAusText(text: string, lng: Sprache): number | null {
   return zahl < 0 ? null : zahl;
 }
 
-/** Die Zusagen, die die Frist als Ziffer in Tagen nennen. */
-const TAGES_ZUSAGEN = ["ko.deleteQ", "adm.trash.help", "adm.sich.trash.b"] as const;
+/**
+ * Die Zusagen, die die Frist als Ziffer in Tagen nennen.
+ *
+ * `rueckzug.frage` (Aufnahme 20260922 · gesamt-dubletten-rueckzug): die Rückfrage am Knopf „Eigene
+ * Seite zurückziehen" sagt dieselbe Wiederherstellungsfrist zu wie `ko.deleteQ`. Sie wohnt im
+ * Textmodul `apps/web/src/texte/rueckzug.ts`, erreicht das Sprachbündel aber über den Sammler
+ * (`texte/intern/sammeln.ts`) — `bundle()` unten sieht sie deshalb wie jede andere Zusage.
+ */
+const TAGES_ZUSAGEN = [
+  "ko.deleteQ",
+  "adm.trash.help",
+  "adm.sich.trash.b",
+  "rueckzug.frage",
+] as const;
 
 /**
  * Die Zusagen, die dieselbe Frist als Zahlwort in Wochen nennen — seit JOB 4327 KEINE mehr (s. Kopf).

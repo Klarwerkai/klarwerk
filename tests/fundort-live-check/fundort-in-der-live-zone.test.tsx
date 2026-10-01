@@ -275,7 +275,10 @@ describe("JOB 3045 · Fundort in der Live-Zone", () => {
       createElement(Sonde, { text: "Vor jeder Wartung den Hauptschalter.", debounceMs: 300 }),
     );
     await warten(20);
-    expect(text()).toContain("Prüfe gegen euren Wissensstand");
+    // AUFNAHME 20260922 · VORSCHAU-REICHWEITE: der Laufzustand heisst jetzt „Vorschau läuft" statt
+    // „Prüfe gegen euren Wissensstand" (Kriterium 2: der Vorgang ist eine Vorschau). Gemessen wird
+    // hier unverändert nur, DASS der Laufzustand steht und der alte Fundort weg ist.
+    expect(text()).toContain("Vorschau läuft");
     expect(fundortZeile()).toBeNull();
     expect(text()).not.toContain("Verwaltung");
 
