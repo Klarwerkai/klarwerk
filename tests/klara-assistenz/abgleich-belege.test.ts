@@ -86,6 +86,48 @@ describe("Aufnahme Gesamt-Klara-Assistenz · Abgleich bleibt am Baum", () => {
     expect(lies("services/app/src/build-app.ts")).not.toContain("naechsterSchrittEntwurfRoutes");
   });
 
+  it("R-0301 (Runde 2, B1): KA7 startet nur per Klick, der KA2-Treffer trägt keine Wertung", () => {
+    // Jeder Aufruf von `ka7Pruefen` außerhalb von Deklaration und Kommentar ist ein Klickhandler.
+    const aufrufe = PANEL.split("\n").filter(
+      (zeile) =>
+        zeile.includes("ka7Pruefen") &&
+        !/^\s*\/\//.test(zeile) &&
+        !zeile.includes("function ka7Pruefen()"),
+    );
+    expect(aufrufe.length).toBeGreaterThan(0);
+    for (const zeile of aufrufe) {
+      expect(zeile).toMatch(/addEventListener\("click", ka7Pruefen\)/);
+    }
+    const ka2Treffer = PANEL.slice(
+      PANEL.indexOf("function ka2Treffer("),
+      PANEL.indexOf("return raus;", PANEL.indexOf("function ka2Treffer(")),
+    );
+    expect(ka2Treffer).toContain("raus.push({");
+    expect(ka2Treffer).not.toContain("deviatesFrom");
+    expect(ABGLEICH).toContain("Konfliktabgleich (KA7) startet der Nutzer selbst");
+  });
+
+  it("W3 (Runde 2, B2): die KA5-Teilbelege mit Einwilligung stehen, wo der Abgleich sie nennt", () => {
+    expect(lies("services/app/src/routes/ka5-markierung.test.ts")).toContain(
+      'it("KA5-R6f · auch die KA4-freigegebenen Zweige reichen die Markierung weiter"',
+    );
+    expect(lies("tests/ka5/markierung-kein-egress.test.ts")).toContain(
+      'it("KA5-R3c · MIT KA4-Freigabe (der Modellweg) gilt derselbe Riegel"',
+    );
+    expect(ABGLEICH).toContain("`KA5-R6f`");
+    expect(ABGLEICH).toContain("`KA5-R3c`");
+  });
+
+  it("R-1608 (Runde 2, B3): der M365-Folgeauftrag ist zugeordnet und abgegrenzt", () => {
+    const vorgang = "aufnahme:20260922:m365-anmeldung";
+    const hostabnahme = lies("docs/operations/word-web-hostabnahme.md");
+    expect(hostabnahme).toContain(vorgang);
+    expect(hostabnahme).toContain("entscheidung:ca86022d");
+    expect(ABGLEICH).toContain(`\`${vorgang}\``);
+    expect(ABGLEICH).toContain("`entscheidung:ca86022d`");
+    expect(ABGLEICH).toContain("Er ersetzt **keine** Abnahme von KA1, KA3, KA4, KA5 oder KA7.");
+  });
+
   it("Produktfamilie: das Manifest kennt nur Word", () => {
     const hosts = [...lies("docs/word-addin/klara-manifest.xml").matchAll(/<Host Name="(\w+)"/g)];
     expect(hosts.map(([, name]) => name)).toEqual(["Document"]);
