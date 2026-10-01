@@ -793,6 +793,13 @@ export class AskService {
        * Vorauswahl. Ohne das Feld ist der Ablauf Zeile für Zeile der bisherige.
        */
       selection?: string;
+      /**
+       * F-0295 / R-0639: die Route hat die EIGENE Deckungsprüfung des Dokumenttexts bestanden
+       * (`dokumenttextFreigabe` in `services/app/src/routes/ask-routes.ts`). Nur dann — und nur auf
+       * dem Modellweg, nie mit `retrievalOnly` — geht `selection` als benannter Dokumenttext an
+       * `Reasoner.answer`. Kein Rumpffeld: gesetzt wird es ausschliesslich von der Route.
+       */
+      dokumenttextFreigegeben?: boolean;
     },
   ): Promise<AskResult> {
     // D5: die Abschalt-Epoche beim Beginn DIESER Frage — jede Prüfung unten vergleicht mit ihr.
@@ -937,6 +944,11 @@ export class AskService {
     // Auf `prefilteredRaw` abzuleiten wäre falsch: dann würde eine Frage, die zufällig ein
     // vertrauliches Objekt streift, ihre Antwort verlieren, obwohl das Objekt längst entfernt ist.
     const kontextVertraulich = prefiltered.some((ko) => isConfidential(ko.confidentiality));
+    // F-0295 / R-0639: der markierte Dokumenttext — nur mit bestandener eigener Deckungsprüfung.
+    const dokumenttext =
+      opts?.dokumenttextFreigegeben === true && opts.selection?.trim()
+        ? opts.selection.trim()
+        : undefined;
     // D5: die gelesenen Kandidaten gehen gleich an den Antwortweg (Modell oder deterministischer
     // Ersatz). Wurde inzwischen abgeschaltet, verlassen sie diesen Dienst nicht.
     this.pruefeKiSperre("antwortweg", kiBeginn);
@@ -959,6 +971,7 @@ export class AskService {
             // JOB 3049: TOR 2, üblicher Weg. Der Relevanztext geht an die Kandidatenauswahl des
             // Providers — NICHT in den Modellprompt; der baut unverändert auf `question` auf.
             relevanz,
+            dokumenttext,
           ),
     );
     // D5: danach werden Beleg, Wissenslücke und (in der Route) die Quellobjekte der Einstufung

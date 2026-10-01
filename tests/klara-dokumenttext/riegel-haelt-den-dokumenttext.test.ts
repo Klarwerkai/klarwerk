@@ -1,0 +1,469 @@
+// ================================================================================================
+// F-0295 / R-0639 — DER MARKIERTE DOKUMENTTEXT: EIGENE KLASSE, EIGENE DECKUNG, EIN RIEGEL AUF AUS.
+// ================================================================================================
+//
+// Die Anforderung, wörtlich aus der Auftragsquelle (R-0639): „Der Dokumenttext darf an die externe
+// KI gehen, aber nur mit ausdruecklicher Freigabe fuer genau dieses Dokument; als vertraulich
+// Markiertes bleibt immer draussen. Der Dokumenttext ist dabei eine eigene, benannte Nutzlastklasse
+// neben der Frage, mit eigener Deckungspruefung. Der Riegel steht bis heute auf AUS, und es soll
+// belegt sein, dass wirklich er den externen Aufruf verhindert — nicht zufaellig ein Betriebsmodus,
+// der ohnehin ohne Modell auskommt."
+//
+// WIE DIESE DATEI DAS BELEGT, und das ist ihr Kern: jeder Absagefall hat eine GEGENPROBE, in der
+// genau EIN Umstand anders ist.
+//   · Der externe Antwortweg ist in jedem Fall unten WIRKLICH offen: das echte Tor
+//     (`pruefeExterneAusfuehrung`) sagt `erlaubt: true`, und der mitschreibende Modellclient wird
+//     WIRKLICH gerufen. „Es ging nichts hinaus" ist damit keine Aussage über einen Weg ohne Modell.
+//   · Der Unterschied zwischen „Dokumenttext bleibt draussen" und „Dokumenttext geht mit" ist
+//     ausschliesslich der Riegel (`dokumenttextRiegelOffen`, nur in dieser Gegenprobe gesetzt —
+//     im Produkt gilt die Konstante, gepinnt in R0).
+//
+// ECHT IST: `resolveKlaraPolicy`, der `KlaraSessionService` mit In-Memory-Ablage, die Route
+// `POST /api/ask`, der `AskService` mit echtem Wissensbestand, der `Reasoner` und der
+// `ModelProvider` mit seinem echten Prompt. Ersetzt ist allein der Netzaufruf (`ModelClient`) —
+// er schreibt mit, was hinausginge. Kein Browser, keine Datenbank, kein Netz.
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import Fastify, { type FastifyInstance } from "fastify";
+import { describe, expect, it } from "vitest";
+import { askRoutes } from "../../services/app/src/routes/ask-routes";
+import {
+  KlaraSessionService,
+  pruefeDokumenttextDeckung,
+} from "../../services/app/src/services/klara-session-service";
+import { AskService, InMemoryGapRepo } from "../../services/ask";
+import { AuditService, InMemoryAuditRepo } from "../../services/audit";
+import { InMemoryKoRepo, KoService } from "../../services/knowledge-object";
+import {
+  InMemoryKlaraSessionRepo,
+  KLARA_DOCUMENT_TEXT_EGRESS_ENABLED,
+  KLARA_PAYLOAD_CLASS_DOCUMENT_TEXT,
+  type KlaraConsent,
+  type ModelClient,
+  ModelProvider,
+  Reasoner,
+  resolveKlaraPolicy,
+} from "../../services/reasoner";
+import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
+
+const WURZEL = process.cwd();
+const quelle = (pfad: string): string => readFileSync(resolve(WURZEL, pfad), "utf8");
+/** Der Code ohne Kommentarzeilen — ein Name in einem Kommentar ist keine lesende Stelle. */
+const code = (pfad: string): string =>
+  quelle(pfad)
+    .split("\n")
+    .filter((z) => !z.trimStart().startsWith("*") && !z.trimStart().startsWith("//"))
+    .join("\n");
+
+const FRAGE = "Wie wird die Zylinderkopfdichtung XQ42 gewechselt?";
+/** Ein Satz, der nur in der Markierung steht — wo er im Prompt auftaucht, kam er von dort. */
+const MARKIERUNG = "Absatz 4.2 unseres Entwurfs: Dichtung XQ42 nur mit Drehmoment 38 Nm anziehen.";
+const MARKER = "Drehmoment 38 Nm";
+
+/** Ein Betrieb mit verdrahteter Cloud, Adminwahl extern und zentraler Freigabe. */
+const CLOUD_LAGE = {
+  choice: "cloud" as const,
+  source: "db" as const,
+  effectiveAnswerProvider: "cloud" as const,
+  cloudConfigured: true,
+  localConfigured: false,
+  providerLabel: "anthropic",
+  modelLabel: "claude",
+  zentralFreigegeben: true,
+};
+
+// ------------------------------------------------------------------------------------------------
+// R0 · DER RIEGEL: EIN WERT, EINE LESENDE STELLE, IM PRODUKT NICHT ÜBERSTEUERT
+// ------------------------------------------------------------------------------------------------
+describe("R-0639 · R0 — der Riegel steht auf AUS und ist genau eine Entscheidung", () => {
+  it("R0a · Wert und Klassenname", () => {
+    expect(KLARA_DOCUMENT_TEXT_EGRESS_ENABLED).toBe(false);
+    expect(KLARA_PAYLOAD_CLASS_DOCUMENT_TEXT).toBe("document_text");
+  });
+
+  it("R0b · deklariert in klara-policy.ts, gelesen NUR im Sitzungsdienst, nie über process.env", () => {
+    const policy = code("services/reasoner/src/klara-policy.ts");
+    expect(policy.match(/export const KLARA_DOCUMENT_TEXT_EGRESS_ENABLED\s*=/g) ?? []).toHaveLength(
+      1,
+    );
+    // Der Resolver liest ihn nicht selbst — er bekommt das Ergebnis als Eingabe.
+    expect(policy.match(/KLARA_DOCUMENT_TEXT_EGRESS_ENABLED/g) ?? []).toHaveLength(1);
+    const dienst = code("services/app/src/services/klara-session-service.ts");
+    // Import + genau eine lesende Stelle.
+    expect(dienst.match(/KLARA_DOCUMENT_TEXT_EGRESS_ENABLED/g) ?? []).toHaveLength(2);
+    expect(dienst).not.toMatch(/process\.env/);
+    // Keine Route, kein Fragedienst und keine Kompositionswurzel liest oder übersteuert ihn.
+    for (const pfad of [
+      "services/app/src/routes/ask-routes.ts",
+      "services/ask/src/service.ts",
+      "services/app/src/build-app.ts",
+    ]) {
+      expect(code(pfad), pfad).not.toMatch(/KLARA_DOCUMENT_TEXT_EGRESS_ENABLED/);
+      expect(code(pfad), pfad).not.toMatch(/dokumenttextRiegelOffen/);
+    }
+  });
+
+  it("R0c · die Route nimmt die Freigabe nie aus dem Rumpf — es gibt kein Client-Feld dafür", () => {
+    const route = code("services/app/src/routes/ask-routes.ts");
+    expect(route).not.toMatch(/request\.body\.dokumenttextFreigegeben/);
+    expect(route).not.toMatch(/dokumenttextFreigegeben:\s*\{\s*type/);
+  });
+});
+
+// ------------------------------------------------------------------------------------------------
+// R1 · DIE AUFLÖSUNG WEIST DEN DOKUMENTTEXT NUR BEI OFFENEM RIEGEL AUS
+// ------------------------------------------------------------------------------------------------
+describe("R-0639 · R1 — eine eigene, benannte Klasse neben der Frage", () => {
+  const basis = {
+    ...CLOUD_LAGE,
+    externalConsentGranted: true,
+    now: Date.parse("2026-10-01T09:00:00.000Z"),
+    resolutionId: "res-1",
+  };
+
+  it("R1a · ohne Feld und mit `false`: Frage und Kandidatentexte, KEIN Dokumenttext", () => {
+    for (const r of [
+      resolveKlaraPolicy(basis),
+      resolveKlaraPolicy({ ...basis, dokumenttextFreigeschaltet: false }),
+    ]) {
+      expect(r.executionAllowed).toBe(true);
+      expect(r.effectivePayloadClasses).toEqual(["question", "candidate_texts"]);
+    }
+  });
+
+  it("R1b · mit offenem Riegel steht die Klasse ZUSÄTZLICH da — nie statt der Frage", () => {
+    const r = resolveKlaraPolicy({ ...basis, dokumenttextFreigeschaltet: true });
+    expect(r.effectivePayloadClasses).toEqual(["question", "candidate_texts", "document_text"]);
+    expect(Object.isFrozen(r.effectivePayloadClasses)).toBe(true);
+  });
+});
+
+// ------------------------------------------------------------------------------------------------
+// R2 · DIE EIGENE DECKUNGSPRÜFUNG — REIN, IN IHRER REIHENFOLGE
+// ------------------------------------------------------------------------------------------------
+describe("R-0639 · R2 — pruefeDokumenttextDeckung", () => {
+  const consent = (teil: Partial<KlaraConsent> = {}): KlaraConsent =>
+    ({
+      consentId: "c-1",
+      status: "granted",
+      documentContextId: "doc-1",
+      allowedPayloadClasses: ["question", "candidate_texts", "document_text"],
+      ...teil,
+    }) as KlaraConsent;
+  const lage = (teil: Partial<Parameters<typeof pruefeDokumenttextDeckung>[0]> = {}) => ({
+    consent: consent(),
+    gedeckteConsentId: "c-1" as string | null,
+    documentContextId: "doc-1",
+    vertraulich: false,
+    riegelOffen: true,
+    ...teil,
+  });
+
+  it("R2a · alles erfüllt und Riegel offen: gedeckt — die Kalibrierung aller Absagen darunter", () => {
+    expect(pruefeDokumenttextDeckung(lage())).toEqual({ gedeckt: true });
+  });
+
+  it("R2b · VERTRAULICH schlägt alles, auch einen offenen Riegel mit voller Zustimmung", () => {
+    expect(pruefeDokumenttextDeckung(lage({ vertraulich: true }))).toEqual({
+      gedeckt: false,
+      grund: "vertraulich",
+    });
+  });
+
+  it("R2c · der Riegel allein: alles andere erfüllt, Riegel zu → `riegel_aus`", () => {
+    expect(pruefeDokumenttextDeckung(lage({ riegelOffen: false }))).toEqual({
+      gedeckt: false,
+      grund: "riegel_aus",
+    });
+  });
+
+  it("R2d · ohne Zustimmung oder mit einer FREMDEN Zustimmung fragt der Riegel gar nicht erst", () => {
+    expect(pruefeDokumenttextDeckung(lage({ consent: undefined, riegelOffen: false }))).toEqual({
+      gedeckt: false,
+      grund: "kein_consent",
+    });
+    expect(
+      pruefeDokumenttextDeckung(
+        lage({ consent: consent({ status: "revoked" }), riegelOffen: false }),
+      ),
+    ).toEqual({ gedeckt: false, grund: "kein_consent" });
+    expect(pruefeDokumenttextDeckung(lage({ gedeckteConsentId: null }))).toEqual({
+      gedeckt: false,
+      grund: "kein_consent",
+    });
+    expect(pruefeDokumenttextDeckung(lage({ gedeckteConsentId: "c-anders" }))).toEqual({
+      gedeckt: false,
+      grund: "consent_abweichend",
+    });
+  });
+
+  it("R2e · bei offenem Riegel: die Klasse muss AUSDRÜCKLICH erteilt sein, für GENAU dieses Dokument", () => {
+    expect(
+      pruefeDokumenttextDeckung(
+        lage({ consent: consent({ allowedPayloadClasses: ["question", "candidate_texts"] }) }),
+      ),
+    ).toEqual({ gedeckt: false, grund: "klasse_nicht_erteilt" });
+    expect(pruefeDokumenttextDeckung(lage({ documentContextId: "doc-2" }))).toEqual({
+      gedeckt: false,
+      grund: "dokument_abweichend",
+    });
+  });
+});
+
+// ------------------------------------------------------------------------------------------------
+// R3/R4 · DER GANZE WEG: SITZUNGSDIENST, ROUTE, FRAGEDIENST, REASONER, ECHTER PROMPT
+// ------------------------------------------------------------------------------------------------
+interface Weg {
+  app: FastifyInstance;
+  dienst: KlaraSessionService;
+  repo: InMemoryKlaraSessionRepo;
+  sitzung: string;
+  bindung: { actorId: string; addinInstanceId: string; documentContextId: string };
+  kopf: Record<string, string>;
+  /** Jeder Nutzer-Prompt, der den Modellclient erreicht hat. */
+  prompts: string[];
+  /** Jede rohe Protokollzeile der App. */
+  protokoll: string[];
+  /** Die Protokollzeilen der Dokumenttext-Entscheidung. */
+  entscheidungen: () => { entscheidung: string; grund?: string }[];
+}
+
+async function wegAufbauen(
+  opt: { riegelOffen?: boolean; ohneConsent?: boolean } = {},
+): Promise<Weg> {
+  const prompts: string[] = [];
+  const client: ModelClient = {
+    name: "cloud:mitschreiber",
+    complete: async (_system: string, user: string) => {
+      prompts.push(user);
+      return "Die Dichtung wird nach Verfahren gewechselt [1].";
+    },
+    completeVision: async () => "",
+  };
+  const reasoner = new Reasoner(new ModelProvider(client));
+  await erteileKiFreigabe(reasoner);
+  const koService = new KoService({ repo: new InMemoryKoRepo() });
+  await koService.activateSearchProjectionV2();
+  await koService.create({
+    title: "Zylinderkopfdichtung XQ42 wechseln",
+    statement: "Die Zylinderkopfdichtung XQ42 wird vor dem Wechsel entlastet und gereinigt.",
+    type: "best_practice",
+    category: "Betrieb",
+    author: "anna",
+  });
+  const ask = new AskService({
+    reasoner,
+    koService,
+    gaps: new InMemoryGapRepo(),
+    audit: new AuditService({ repo: new InMemoryAuditRepo() }),
+  });
+  const repo = new InMemoryKlaraSessionRepo();
+  const dienst = new KlaraSessionService({
+    repo,
+    policy: () => CLOUD_LAGE,
+    ...(opt.riegelOffen ? { dokumenttextRiegelOffen: true } : {}),
+  });
+
+  const zeilen: string[] = [];
+  const app = Fastify({
+    logger: { level: "info", stream: { write: (z: string) => zeilen.push(z) } },
+  });
+  app.register(
+    askRoutes(
+      {
+        ask,
+        ko: koService,
+        conflicts: { unresolved: async () => [] } as never,
+        klaraSessions: dienst,
+      },
+      {
+        requireUser: async () => ({ id: "nutzer-1", role: "admin" }),
+        requirePermission: async () => ({ id: "nutzer-1", role: "admin" }),
+      } as never,
+    ),
+  );
+  await app.ready();
+  const sicht = await dienst.createSession("nutzer-1", "inst-1", {
+    kind: "saved",
+    hostDocumentId: "doc-abc",
+  });
+  const bindung = {
+    actorId: "nutzer-1",
+    addinInstanceId: "inst-1",
+    documentContextId: sicht.documentContextId,
+  };
+  if (!opt.ohneConsent) {
+    await dienst.grantConsent(sicht.sessionId, bindung);
+  }
+  return {
+    app,
+    dienst,
+    repo,
+    sitzung: sicht.sessionId,
+    bindung,
+    kopf: {
+      "x-klara-session": sicht.sessionId,
+      "x-klara-instance": "inst-1",
+      "x-klara-document": sicht.documentContextId,
+    },
+    prompts,
+    protokoll: zeilen,
+    entscheidungen: () =>
+      zeilen
+        .map(
+          (z) => JSON.parse(z) as { msg?: string; ka4?: { entscheidung: string; grund?: string } },
+        )
+        .filter((z) => z.msg === "ask.ka4.dokumenttext")
+        .map((z) => ({
+          entscheidung: z.ka4?.entscheidung ?? "",
+          ...(z.ka4?.grund ? { grund: z.ka4.grund } : {}),
+        })),
+  };
+}
+
+const fragen = (w: Weg, rumpf: Record<string, unknown> = {}) =>
+  w.app.inject({
+    method: "POST",
+    url: "/api/ask",
+    headers: { ...w.kopf, "content-type": "application/json" },
+    payload: {
+      question: FRAGE,
+      locale: "de",
+      mode: "retrieval-only",
+      selection: MARKIERUNG,
+      ...rumpf,
+    },
+  });
+
+describe("R-0639 · R3 — der Sitzungsdienst: zwei Tore hintereinander", () => {
+  it("R3a · PRODUKTSTAND: der Antwortweg ist frei, der Dokumenttext nicht — Grund `riegel_aus`", async () => {
+    const w = await wegAufbauen();
+    // Die Kalibrierung: es ist NICHT der Modus und NICHT die Zustimmung, die hier aufhalten.
+    const antwortweg = await w.dienst.pruefeExterneAusfuehrung(w.sitzung, w.bindung);
+    expect(antwortweg.erlaubt).toBe(true);
+    if (antwortweg.erlaubt) {
+      expect(antwortweg.resolution.effectiveMode).toBe("external");
+      expect(antwortweg.resolution.effectivePayloadClasses).not.toContain("document_text");
+    }
+    expect(
+      await w.dienst.pruefeDokumenttextFreigabe(w.sitzung, w.bindung, { vertraulich: false }),
+    ).toEqual({ erlaubt: false, grund: "riegel_aus" });
+    await w.app.close();
+  });
+
+  it("R3b · GEGENPROBE: derselbe Aufbau mit offenem Riegel — erteilt, die Zustimmung nennt die Klasse", async () => {
+    const w = await wegAufbauen({ riegelOffen: true });
+    const consent = await w.repo.findConsent(w.sitzung);
+    expect(consent?.allowedPayloadClasses).toContain("document_text");
+    expect(
+      await w.dienst.pruefeDokumenttextFreigabe(w.sitzung, w.bindung, { vertraulich: false }),
+    ).toEqual({ erlaubt: true });
+    await w.app.close();
+  });
+
+  it("R3c · vertraulich bleibt draussen, auch bei offenem Riegel", async () => {
+    const w = await wegAufbauen({ riegelOffen: true });
+    expect(
+      await w.dienst.pruefeDokumenttextFreigabe(w.sitzung, w.bindung, { vertraulich: true }),
+    ).toEqual({ erlaubt: false, grund: "vertraulich" });
+    await w.app.close();
+  });
+
+  it("R3d · ohne Zustimmung sagt der Grund, dass schon der Antwortweg zu ist — nicht der Riegel", async () => {
+    const w = await wegAufbauen({ riegelOffen: true, ohneConsent: true });
+    const ergebnis = await w.dienst.pruefeDokumenttextFreigabe(w.sitzung, w.bindung, {
+      vertraulich: false,
+    });
+    expect(ergebnis.erlaubt).toBe(false);
+    expect(ergebnis.grund).toMatch(/^antwortweg:/);
+    await w.app.close();
+  });
+
+  it("R3e · eine Zustimmung von VOR dem Öffnen des Riegels deckt den Dokumenttext nicht", async () => {
+    // Erteilt unter geschlossenem Riegel (Klassen ohne document_text) …
+    const vorher = await wegAufbauen();
+    const alt = await vorher.repo.findConsent(vorher.sitzung);
+    expect(alt?.allowedPayloadClasses).not.toContain("document_text");
+    // … und danach von einem Dienst mit offenem Riegel geprüft: der Antwortweg verlangt eine neue
+    // Bestätigung, weil die Auflösung jetzt mehr ausweist, als die Zustimmung nennt.
+    const nachher = new KlaraSessionService({
+      repo: vorher.repo,
+      policy: () => CLOUD_LAGE,
+      dokumenttextRiegelOffen: true,
+    });
+    const ergebnis = await nachher.pruefeDokumenttextFreigabe(vorher.sitzung, vorher.bindung, {
+      vertraulich: false,
+    });
+    expect(ergebnis).toEqual({
+      erlaubt: false,
+      grund: "antwortweg:CONSENT_RECONFIRMATION_REQUIRED",
+    });
+    await vorher.app.close();
+  });
+});
+
+describe("R-0639 · R4 — am Draht: was den Modellclient WIRKLICH erreicht", () => {
+  it("R4a · PRODUKTSTAND: das Modell WIRD gerufen, die Markierung steht NICHT im Prompt", async () => {
+    const w = await wegAufbauen();
+    const res = await fragen(w);
+    expect(res.statusCode).toBe(200);
+    // Kalibrierung gegen „ein Betriebsmodus ohne Modell": der externe Aufruf fand statt.
+    expect(w.prompts.length).toBeGreaterThan(0);
+    expect(w.prompts.join("\n")).toContain(FRAGE);
+    expect(w.prompts.join("\n")).not.toContain(MARKER);
+    // Und der Grund, aus dem sie fehlt, steht im Protokoll: der Riegel.
+    expect(w.entscheidungen()).toEqual([{ entscheidung: "blockiert", grund: "riegel_aus" }]);
+    await w.app.close();
+  });
+
+  it("R4b · GEGENPROBE: einzig der Riegel geöffnet — die Markierung steht benannt im Prompt", async () => {
+    const w = await wegAufbauen({ riegelOffen: true });
+    const res = await fragen(w);
+    expect(res.statusCode).toBe(200);
+    const prompt = w.prompts.join("\n");
+    expect(prompt).toContain(MARKER);
+    // Benannt und VOR den Quellen, ohne Quellennummer — Kontext, keine zitierbare Quelle.
+    expect(prompt).toContain("Markierte Passage im Dokument (Kontext der Frage, keine Quelle):");
+    expect(prompt.indexOf(MARKER)).toBeLessThan(prompt.indexOf("Quellen:"));
+    expect(prompt).not.toMatch(/\[\d+\][^\n]*Drehmoment 38 Nm/);
+    expect(w.entscheidungen()).toEqual([{ entscheidung: "freigegeben" }]);
+    await w.app.close();
+  });
+
+  it("R4c · offener Riegel, Passage als vertraulich markiert: das Modell läuft, die Passage bleibt draussen", async () => {
+    for (const stufe of ["vertraulich", "streng_vertraulich", "Vertraulich", "unbekannt"]) {
+      const w = await wegAufbauen({ riegelOffen: true });
+      await fragen(w, { selectionConfidentiality: stufe });
+      expect(w.prompts.length, stufe).toBeGreaterThan(0);
+      expect(w.prompts.join("\n"), stufe).not.toContain(MARKER);
+      expect(w.entscheidungen(), stufe).toEqual([
+        { entscheidung: "blockiert", grund: "vertraulich" },
+      ]);
+      await w.app.close();
+    }
+  });
+
+  it("R4d · offener Riegel, ohne Klara-Bindung (Kopfzeilen fehlen): nichts geht hinaus, nichts wird gefragt", async () => {
+    const w = await wegAufbauen({ riegelOffen: true });
+    const res = await w.app.inject({
+      method: "POST",
+      url: "/api/ask",
+      headers: { "content-type": "application/json" },
+      payload: { question: FRAGE, locale: "de", mode: "retrieval-only", selection: MARKIERUNG },
+    });
+    expect(res.statusCode).toBe(200);
+    // Ohne Bindung bleibt die Enge: retrieval-only, kein Modellaufruf, keine Dokumenttext-Frage.
+    expect(w.prompts).toEqual([]);
+    expect(w.entscheidungen()).toEqual([]);
+    await w.app.close();
+  });
+
+  it("R4e · keine Protokollzeile der App trägt die Passage — auch nicht bei Freigabe", async () => {
+    const w = await wegAufbauen({ riegelOffen: true });
+    await fragen(w);
+    expect(w.entscheidungen()).toHaveLength(1);
+    expect(w.protokoll.length).toBeGreaterThan(0);
+    expect(w.protokoll.join("\n")).not.toContain(MARKER);
+    await w.app.close();
+  });
+});
