@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { AuditService, InMemoryAuditRepo } from "../../../audit";
-import { InMemoryKlaraSessionRepo } from "../../../reasoner";
+import { InMemoryKlaraSessionRepo, type KlaraConsent } from "../../../reasoner";
 import {
+  KLARA_AUFGABE_ANDERER_ANBIETER,
   KLARA_CONSENT_AUDIT_ENDED,
   KLARA_CONSENT_AUDIT_GRANTED,
   KLARA_SESSION_ABSOLUTE_MS,
@@ -19,11 +20,28 @@ import {
 // diesen Nachweis liesse sich später nicht belegen, dass eine Freigabe überhaupt vorlag."
 //
 // Die Fälle messen den Nachweis im append-only Prüfprotokoll, nicht die Zustimmungszeile — die wird
-// fortgeschrieben und aufgeräumt und ist deshalb kein Beleg.
+// fortgeschrieben und aufgeräumt und ist deshalb kein Beleg. Runde 2 ergänzt Bens Gegenproben
+// B1/B2 (angehaltenes und ausgefallenes Protokoll) und B3 (Anbieter je Aufgabe) am Dienst.
 
 const T0 = Date.parse("2026-10-01T09:00:00.000Z");
 
-function aufbau(protokoll?: KlaraEinwilligungsProtokoll) {
+/** Ein Repo, dessen nächster Grant das Revisionsrennen verliert (Bens B1, verlorenes CAS). */
+class VerlierendesRepo extends InMemoryKlaraSessionRepo {
+  verliereNaechstenGrant = false;
+  override grantConsent(
+    sessionId: string,
+    expectedRevision: number,
+    consent: KlaraConsent,
+  ): Promise<boolean> {
+    if (this.verliereNaechstenGrant) {
+      this.verliereNaechstenGrant = false;
+      return Promise.resolve(false);
+    }
+    return super.grantConsent(sessionId, expectedRevision, consent);
+  }
+}
+
+function aufbau(over: Partial<KlaraPolicyQuelle> = {}) {
   let jetzt = T0;
   let zaehler = 0;
   let quelle: KlaraPolicyQuelle = {
@@ -36,20 +54,40 @@ function aufbau(protokoll?: KlaraEinwilligungsProtokoll) {
     modelLabel: "cloud-modell",
     localProviderLabel: "Lokaler Anbieter",
     zentralFreigegeben: true,
+    ...over,
   };
   const audit = new AuditService({ repo: new InMemoryAuditRepo(), now: () => jetzt });
-  const repo = new InMemoryKlaraSessionRepo();
+  // Das echte Prüfprotokoll hinter einem Schalter: anhalten (B1) und ausfallen lassen (B1/B2).
+  const lage = { ausfall: false, halt: null as Promise<void> | null };
+  const protokoll: KlaraEinwilligungsProtokoll = {
+    async recordOnce(eventId, input) {
+      if (lage.halt) {
+        await lage.halt;
+      }
+      if (lage.ausfall) {
+        throw new Error("Protokoll nicht erreichbar");
+      }
+      return audit.recordOnce(eventId, input);
+    },
+    exists(filter) {
+      return lage.ausfall
+        ? Promise.reject(new Error("Protokoll nicht erreichbar"))
+        : audit.exists(filter);
+    },
+  };
+  const repo = new VerlierendesRepo();
   const dienst = new KlaraSessionService({
     repo,
     policy: () => quelle,
     now: () => jetzt,
     newId: () => `id-${++zaehler}`,
-    protokoll: protokoll ?? audit,
+    protokoll,
   });
   return {
     dienst,
     repo,
     audit,
+    lage,
     vorspulen: (ms: number) => {
       jetzt += ms;
     },
@@ -192,18 +230,166 @@ describe("R-0609 · jedes Ende einer wirksamen Zustimmung steht im Prüfprotokol
   });
 });
 
-describe("R-0609 · keine wirksame Zustimmung ohne Nachweis (fail-closed)", () => {
-  it("scheitert der Protokolleintrag, scheitert die Erteilung und die Tür bleibt zu", async () => {
-    const kaputt: KlaraEinwilligungsProtokoll = {
-      record: () => Promise.reject(new Error("Protokoll nicht erreichbar")),
-    };
-    const { dienst, repo } = aufbau(kaputt);
+const enden = async (audit: AuditService) =>
+  (await audit.list({ action: KLARA_CONSENT_AUDIT_ENDED })).map((e) => e.payload);
+
+describe("Bens B1 · keine wirksame Zustimmung ohne Nachweis", () => {
+  it("während das Protokoll schreibt, ist die Zustimmung noch nicht wirksam", async () => {
+    const { dienst, repo, audit, lage } = aufbau();
     const { sicht, bindung } = await sitzung(dienst);
+    let freigeben: () => void = () => undefined;
+    lage.halt = new Promise<void>((r) => {
+      freigeben = r;
+    });
+    const erteilung = dienst.grantConsent(sicht.sessionId, bindung);
+    await new Promise((r) => setTimeout(r, 0));
+    // Gegenbeleg Fall 1: hier stand erlaubt=true bei 0 Einträgen.
+    expect((await dienst.pruefeExterneAusfuehrung(sicht.sessionId, bindung)).erlaubt).toBe(false);
+    expect((await repo.findConsent(sicht.sessionId))?.status).not.toBe("granted");
+    expect(await audit.list()).toHaveLength(0);
+    lage.halt = null;
+    freigeben();
+    await erteilung;
+    expect(await audit.list({ action: KLARA_CONSENT_AUDIT_GRANTED })).toHaveLength(1);
+    expect((await dienst.pruefeExterneAusfuehrung(sicht.sessionId, bindung)).erlaubt).toBe(true);
+  });
+
+  it("Statusabruf, Protokollausfall, abgelehnte Erteilung: keine wirksame Zustimmung bleibt", async () => {
+    const { dienst, repo, audit, lage, vorspulen } = aufbau();
+    const { sicht, bindung } = await sitzung(dienst);
+    vorspulen(60_000);
+    await dienst.getSession(sicht.sessionId, bindung);
+    lage.ausfall = true;
     await expect(dienst.grantConsent(sicht.sessionId, bindung)).rejects.toThrow(
       "Protokoll nicht erreichbar",
     );
+    lage.ausfall = false;
+    vorspulen(60_000);
+    // Gegenbeleg Fall 2: hier stand danach consent.status=granted und erlaubt=true.
+    const sicht2 = await dienst.getSession(sicht.sessionId, bindung);
+    expect(sicht2.resolution.externalConsentGranted).toBe(false);
     expect((await repo.findConsent(sicht.sessionId))?.status).not.toBe("granted");
-    const freigabe = await dienst.pruefeExterneAusfuehrung(sicht.sessionId, bindung);
-    expect(freigabe.erlaubt).toBe(false);
+    expect((await dienst.pruefeExterneAusfuehrung(sicht.sessionId, bindung)).erlaubt).toBe(false);
+    expect(await audit.list()).toHaveLength(0);
+  });
+
+  it('verliert das Speichern nach dem Eintrag das Rennen, sagt das Protokoll „nicht wirksam"', async () => {
+    const { dienst, repo, audit } = aufbau();
+    const { sicht, bindung } = await sitzung(dienst);
+    repo.verliereNaechstenGrant = true;
+    await expect(dienst.grantConsent(sicht.sessionId, bindung)).rejects.toThrow();
+    expect((await repo.findConsent(sicht.sessionId))?.status).not.toBe("granted");
+    const alle = await audit.list();
+    expect(alle.map((e) => e.action)).toEqual([
+      KLARA_CONSENT_AUDIT_GRANTED,
+      KLARA_CONSENT_AUDIT_ENDED,
+    ]);
+    expect(alle[1]?.payload.status).toBe("nicht_wirksam");
+  });
+});
+
+describe("Bens B2 · ein Ende ohne Eintrag wird nachgetragen — mit Art und Zeit aus der Zeile", () => {
+  it("Protokollausfall beim Widerruf: wirksam sofort, Eintrag beim Wiederholen nachgetragen", async () => {
+    const { dienst, repo, audit, lage, vorspulen } = aufbau();
+    const { sicht, bindung } = await sitzung(dienst);
+    await dienst.grantConsent(sicht.sessionId, bindung);
+    vorspulen(60_000);
+    lage.ausfall = true;
+    await expect(dienst.revokeConsent(sicht.sessionId, bindung)).rejects.toThrow();
+    // Sicherheit vor Nachweis: der Widerruf wirkt trotz Ausfall.
+    expect((await repo.findConsent(sicht.sessionId))?.status).toBe("revoked");
+    lage.ausfall = false;
+    expect((await dienst.pruefeExterneAusfuehrung(sicht.sessionId, bindung)).erlaubt).toBe(false);
+    vorspulen(60_000);
+    // Gegenbeleg Fall 3: Wiederholung und Statusabruf liessen 0 Endeinträge.
+    await dienst.revokeConsent(sicht.sessionId, bindung);
+    await dienst.getSession(sicht.sessionId, bindung);
+    expect(await enden(audit)).toEqual([
+      expect.objectContaining({
+        status: "revoked",
+        // Der Zeitpunkt des WIDERRUFS, nicht der des Nachtrags.
+        endedAt: new Date(T0 + 60_000).toISOString(),
+      }),
+    ]);
+  });
+
+  it("schon der nächste Statusabruf trägt nach", async () => {
+    const { dienst, audit, lage } = aufbau();
+    const { sicht, bindung } = await sitzung(dienst);
+    await dienst.grantConsent(sicht.sessionId, bindung);
+    lage.ausfall = true;
+    await expect(dienst.revokeConsent(sicht.sessionId, bindung)).rejects.toThrow();
+    lage.ausfall = false;
+    await dienst.getSession(sicht.sessionId, bindung);
+    expect((await enden(audit)).map((e) => e.status)).toEqual(["revoked"]);
+  });
+
+  it("Protokollausfall beim Ablauf: der Nachtrag steht, auch wenn die Sitzung abgewiesen wird", async () => {
+    const { dienst, audit, lage, vorspulen } = aufbau();
+    const { sicht, bindung } = await sitzung(dienst);
+    await dienst.grantConsent(sicht.sessionId, bindung);
+    vorspulen(KLARA_SESSION_ABSOLUTE_MS + 1);
+    lage.ausfall = true;
+    await expect(dienst.getSession(sicht.sessionId, bindung)).rejects.toThrow();
+    lage.ausfall = false;
+    await expect(dienst.getSession(sicht.sessionId, bindung)).rejects.toThrow();
+    expect((await enden(audit)).map((e) => e.status)).toEqual(["expired"]);
+  });
+
+  it("Protokollausfall beim Ende der ersten Zustimmung (Zweitgrant): nachgetragen, nie doppelt", async () => {
+    const { dienst, audit, lage } = aufbau();
+    const { sicht, bindung } = await sitzung(dienst);
+    await dienst.grantConsent(sicht.sessionId, bindung);
+    const erste = (await audit.list())[0]?.payload.consentId;
+    lage.ausfall = true;
+    await expect(dienst.grantConsent(sicht.sessionId, bindung)).rejects.toThrow();
+    lage.ausfall = false;
+    // Die erste ist beendet, eine zweite gibt es nicht — die Tür ist zu.
+    expect((await dienst.pruefeExterneAusfuehrung(sicht.sessionId, bindung)).erlaubt).toBe(false);
+    await dienst.getSession(sicht.sessionId, bindung);
+    await dienst.getSession(sicht.sessionId, bindung);
+    expect(await enden(audit)).toEqual([
+      expect.objectContaining({ consentId: erste, status: "invalidated" }),
+    ]);
+  });
+});
+
+describe("Bens B3 · die Zustimmung trägt nur Aufgaben am selben Anbieter", () => {
+  const karte = { answer: "anthropic", assist: "openai", structure: "anthropic", global: "openai" };
+
+  it("gleicher Anbieter trägt, anderer Anbieter nicht — mit benanntem Grund", async () => {
+    const { dienst } = aufbau({ aufgabenAnbieter: karte });
+    const { sicht, bindung } = await sitzung(dienst);
+    await dienst.grantConsent(sicht.sessionId, bindung);
+    const pruefe = (aufgabe: "answer" | "structure" | "assist" | "global") =>
+      dienst.pruefeExterneAusfuehrung(sicht.sessionId, bindung, aufgabe);
+    expect((await pruefe("answer")).erlaubt).toBe(true);
+    expect((await pruefe("structure")).erlaubt).toBe(true);
+    const assist = await pruefe("assist");
+    expect(assist.erlaubt).toBe(false);
+    expect(assist.erlaubt ? null : assist.grund).toBe(KLARA_AUFGABE_ANDERER_ANBIETER);
+    expect((await pruefe("global")).erlaubt).toBe(false);
+  });
+
+  it("ohne Karte trägt die Zustimmung ausschliesslich `answer`", async () => {
+    const { dienst } = aufbau();
+    const { sicht, bindung } = await sitzung(dienst);
+    await dienst.grantConsent(sicht.sessionId, bindung);
+    expect((await dienst.pruefeExterneAusfuehrung(sicht.sessionId, bindung)).erlaubt).toBe(true);
+    expect(
+      (await dienst.pruefeExterneAusfuehrung(sicht.sessionId, bindung, "assist")).erlaubt,
+    ).toBe(false);
+  });
+
+  it("ein Anbieterwechsel einer anderen Aufgabe entwertet die Zustimmung — protokolliert", async () => {
+    const { dienst, audit, umkonfigurieren } = aufbau({
+      aufgabenAnbieter: { ...karte, assist: "anthropic" },
+    });
+    const { sicht, bindung } = await sitzung(dienst);
+    await dienst.grantConsent(sicht.sessionId, bindung);
+    umkonfigurieren({ aufgabenAnbieter: { ...karte, assist: "openai" } });
+    expect((await dienst.pruefeExterneAusfuehrung(sicht.sessionId, bindung)).erlaubt).toBe(false);
+    expect((await dienst.getSession(sicht.sessionId, bindung)).consentState).toBe("invalidated");
+    expect((await enden(audit)).map((e) => e.status)).toEqual(["invalidated"]);
   });
 });

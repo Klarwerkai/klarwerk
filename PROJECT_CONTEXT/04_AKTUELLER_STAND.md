@@ -17,9 +17,19 @@ Richtlinienbindung waren bereits gebaut. **Neu (R-0609):** Jede Erteilung und je
 Klara-Zustimmung (Widerruf, Ablauf, Entwertung, Schliessen, Umbinden, Zweitgrant) steht im
 append-only Prüfprotokoll (`klara.consent.granted` / `klara.consent.ended`, `KlaraSessionService`
 → `services/audit`), mit Wer, Dokumentkontext, Anbieter, Modell, Datenklassen, Richtlinienfassung,
-Erteilung, Ablauf und Endzeitpunkt. Scheitert der Eintrag, wird die Erteilung entwertet
-(fail-closed). Tests: `services/app/src/services/klara-consent-protokoll.test.ts`. Dazu überholte
-Kommentare zum Schalter bereinigt (R-1533). **Nicht abgenommen; PostgreSQL-Lauf steht aus.**
+Erteilung, Ablauf und Endzeitpunkt. Dazu überholte Kommentare zum Schalter bereinigt (R-1533).
+
+**Runde 2 (Bens B1–B3):** Der Erteilungseintrag wird VOR dem Speichern geschrieben (scheitert er,
+entsteht keine Zustimmung; verliert das Speichern danach, folgt `ended`/`nicht_wirksam`). Endeinträge
+sind genau-einmal je Zustimmung (`recordOnce`) und werden bei Protokollausfall vom nächsten
+Sitzungszugriff aus der Zeile nachgetragen (`laden`); ein Zweitgrant beendet die erste Zustimmung
+in einem eigenen Übergang. Das Ausführungstor prüft jetzt die AUFGABE: eine an `answer` gebildete
+Zustimmung trägt eine andere Aufgabe (oder `global` für die Urteile) nur, wenn sie an denselben
+Anbieter geht (`task_provider_mismatch`); die Anbieterkarte je Aufgabe steht in der
+Konfigurationsversion, ein Wechsel entwertet die Zustimmung. Neu im Reasoner-Status:
+`effectiveAnbieterGlobal`. Tests: `services/app/src/services/klara-consent-protokoll.test.ts`,
+`tests/app/einwilligung-anbieter-je-aufgabe.test.ts`. **Nicht abgenommen; PostgreSQL-Lauf steht
+aus.**
 
 ## 30.09.2026 — Erfassen-Doppelklick, Lauf 6: Blattwechsel erst nach dem Datei-Anteil (Teilstand)
 

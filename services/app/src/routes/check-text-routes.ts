@@ -649,6 +649,8 @@ export function checkTextRoutes(deps: CheckTextRouteDeps, guards: Guards): Fasti
             actorId,
             request.log,
             "check-text.ka4.dokument-consent",
+            // Bens B3: die Urteile folgen der GLOBALEN Wahl, nicht der Aufgabe `answer`.
+            "global",
           ));
         const confidential =
           (gebunden && !dokumentZustimmung) ||

@@ -2477,6 +2477,14 @@ export function buildApp(
         providerLabel: antwortCloud?.name ?? config.provider,
         modelLabel: antwortCloud ? antwortCloud.name : config.model,
         localProviderLabel: config.localProvider,
+        // Bens B3: der wirksame Anbieter JE AUFGABE, dazu `global` für die Urteile. Ohne diese
+        // Karte öffnete eine an `answer` gebildete Zustimmung jede andere Aufgabe — auch eine, die
+        // der Reasoner an einen anderen Anbieter schickt. Sie geht in die Konfigurationsversion ein
+        // (Wechsel entwertet) und entscheidet im Tor, welche Aufgabe die Zustimmung tragen darf.
+        aufgabenAnbieter: {
+          ...config.effectiveAnbieter,
+          global: config.effectiveAnbieterGlobal ?? "unbekannt",
+        },
       };
     },
   });

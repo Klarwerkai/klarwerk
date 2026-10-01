@@ -726,7 +726,15 @@ export class Reasoner {
   private effectiveAnbieterFor(
     task: ModelRunTask,
   ): ReasonerCloudAnbieter | "local" | "deterministic" {
-    const first = this.chainForChoice(this.choiceFor(task), false, { fuerAnzeige: true })[0];
+    return this.effectiveAnbieterFuerWahl(this.choiceFor(task));
+  }
+
+  // Auftrag gesamt-ki-einwilligung (Bens B3): dieselbe Auflösung für eine WAHL statt einer Aufgabe —
+  // gebraucht für die globale Wahl, der die Urteile (`judgeProviders` → `globaleKette`) folgen.
+  private effectiveAnbieterFuerWahl(
+    choice: ReasonerAktiveWahl,
+  ): ReasonerCloudAnbieter | "local" | "deterministic" {
+    const first = this.chainForChoice(choice, false, { fuerAnzeige: true })[0];
     if (!first || first === this.fallback) {
       return "deterministic";
     }
@@ -1647,6 +1655,7 @@ export class Reasoner {
       effectiveAnbieter: Object.fromEntries(
         REASONER_TASKS.map((task) => [task, this.effectiveAnbieterFor(task)]),
       ),
+      effectiveAnbieterGlobal: this.effectiveAnbieterFuerWahl(this.taskConfig.global),
       cloudProviders: {
         openai: this.cloudStatus("openai"),
         anthropic: this.cloudStatus("anthropic"),

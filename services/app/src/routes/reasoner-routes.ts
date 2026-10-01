@@ -22,6 +22,7 @@ import {
 import { runConflictSelfTest } from "../conflict-self-test";
 import { runDuplicateSelfTest } from "../duplicate-self-test";
 import type { Guards } from "../http";
+import type { KlaraAufgabe } from "../services/klara-session-service";
 import {
   type Ka4Freigabepruefer,
   ka4Freigabe,
@@ -98,6 +99,9 @@ export interface ReasonerRoutesDeps {
 // handelnder Nutzer, Kopfzeilen (Klara-Bindung) und das Protokoll. Kein Inhalt reist hier mit.
 type Aufrufbindung = {
   inhalt: "text" | "bild";
+  // Bens B3: die Reasoner-Aufgabe, die gleich ein Modell ruft — das Tor prüft, ob die Zustimmung
+  // (gebildet an `answer`) an DENSELBEN Anbieter geht. Pflichtfeld, damit kein Zweig sie vergisst.
+  aufgabe: KlaraAufgabe;
   nichtEingestuft?: unknown;
   draftId: unknown;
   actorId: string;
@@ -357,6 +361,7 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
         bindung.actorId,
         bindung.log,
         "reasoner.ka4.dokument-consent",
+        bindung.aufgabe,
       ));
     let confidential = classifyProvenanceConfidential(source, declared, backstop, {
       dokumentZustimmung: bindung.inhalt === "text" && dokumentZustimmung,
@@ -464,6 +469,7 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
           request.body.confidentiality,
           {
             inhalt: "text",
+            aufgabe: "structure",
             draftId: request.body.draftId,
             nichtEingestuft: request.body.nichtEingestuft,
             actorId: user.id,
@@ -496,6 +502,7 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
             user.id,
             request.log,
             "reasoner.ka4.dokument-consent",
+            "answer",
           ));
         // D5: derselbe Dienst wie `/api/ask` und damit dieselbe Abschaltauskunft. Wie dort gilt die
         // Abschalt-Epoche vom EINGANG der Anfrage und wird NACH dem letzten Warten noch einmal geprüft,
@@ -532,6 +539,7 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
           request.body.confidentiality,
           {
             inhalt: "text",
+            aufgabe: "assist",
             draftId: request.body.draftId,
             nichtEingestuft: request.body.nichtEingestuft,
             actorId: user.id,
@@ -558,6 +566,7 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
           request.body.confidentiality,
           {
             inhalt: "text",
+            aufgabe: "interview",
             draftId: request.body.draftId,
             nichtEingestuft: request.body.nichtEingestuft,
             actorId: user.id,
@@ -604,6 +613,7 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
           request.body.confidentiality,
           {
             inhalt: "text",
+            aufgabe: "extract",
             draftId: request.body.draftId,
             nichtEingestuft: request.body.nichtEingestuft,
             actorId: user.id,
@@ -702,6 +712,7 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
           request.body.confidentiality,
           {
             inhalt: "bild",
+            aufgabe: "describe",
             draftId: request.body.draftId,
             nichtEingestuft: request.body.nichtEingestuft,
             actorId: user.id,

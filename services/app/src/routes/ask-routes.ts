@@ -12,6 +12,7 @@ import { can } from "../../../rbac";
 import { authorizesAsk } from "../addon-principal";
 import { addonRateLimit } from "../addon-rate-limit";
 import { type Guards, type SessionUser, sendError } from "../http";
+import type { KlaraAufgabe } from "../services/klara-session-service";
 // JOB 1591 D1 (W5): NUR gelesen — das bestehende Praedikat, kein zweites.
 import { sichtbarkeitsfilterFuer } from "../sichtbarkeit";
 
@@ -151,6 +152,7 @@ export interface Ka4Freigabepruefer {
   pruefeExterneAusfuehrung(
     sessionId: string,
     bindung: { actorId: string; addinInstanceId: string; documentContextId: string },
+    aufgabe?: KlaraAufgabe,
   ): Promise<{ readonly erlaubt: boolean; readonly grund?: string }>;
 }
 
@@ -181,6 +183,9 @@ export async function ka4Freigabe(
   actorId: string,
   log: { info: (obj: unknown, msg: string) => void },
   ereignis = "ask.ka4.dokument-consent",
+  // Bens B3: die Aufgabe, die gleich ein Modell ruft. Die Zustimmung trägt nur Aufgaben, die an
+  // denselben Anbieter gehen wie `answer` — entschieden im Tor, hier nur durchgereicht.
+  aufgabe: KlaraAufgabe = "answer",
 ): Promise<boolean> {
   if (!pruefer || typeof pruefer.pruefeExterneAusfuehrung !== "function") {
     return false;
@@ -194,11 +199,11 @@ export async function ka4Freigabe(
     return false;
   }
   try {
-    const freigabe = await pruefer.pruefeExterneAusfuehrung(sessionId, {
-      actorId,
-      addinInstanceId,
-      documentContextId,
-    });
+    const freigabe = await pruefer.pruefeExterneAusfuehrung(
+      sessionId,
+      { actorId, addinInstanceId, documentContextId },
+      aufgabe,
+    );
     const erlaubt = freigabe?.erlaubt === true;
     log.info(
       { ka4: { entscheidung: erlaubt ? "freigegeben" : "blockiert", grund: freigabe?.grund } },

@@ -143,6 +143,8 @@ export function knowledgeCheckRoutes(deps: KnowledgeCheckRouteDeps): FastifyPlug
           user.id,
           request.log,
           "knowledge-check.ka4.dokument-consent",
+          // Bens B3: die Urteile folgen der GLOBALEN Wahl, nicht der Aufgabe `answer`.
+          "global",
         ));
       // Fail-safe Vertrag: vertraulich/unklassifiziert ODER kein Modell → KEIN Judge (kein Cloud-Egress
       // des Freitexts). Nur nicht-vertraulich + Modell verfügbar → echter Widerspruchs-Judge.
