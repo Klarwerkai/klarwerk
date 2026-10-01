@@ -638,6 +638,11 @@ describe("Vorschau-Reichweite · Server, PostgreSQL und Chromium", () => {
     }
     const zielB = await eintrag(anwendung, admin, ZIEL_B, ENTWURF_B);
     bestand = { admin, zielA };
+    // B3, ausdrücklich festgehalten: was der Server beim Bestandsaufbau an Routenfehlern meldete —
+    // getrennt von den Fehlern der Messung danach.
+    process.stderr.write(
+      `${JOB} K4 · Bestandsaufbau: ${2 * DECKEL + 1} Einträge mit 201 · Routenfehler beim Aufbau: ${diagnose()}\n`,
+    );
 
     // Unabhängig am Pool nachgesehen: das Ziel A liegt WIRKLICH im Bestand, und mit ihm gibt es
     // mehr passende Einträge als der Deckel fasst.
