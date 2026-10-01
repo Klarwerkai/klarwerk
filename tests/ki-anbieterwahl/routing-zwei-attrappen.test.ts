@@ -1105,6 +1105,12 @@ const FREIGABE_ERLAUBT: ReadonlyMap<string, string> = new Map([
       "protokollieren. Der Schnappschuss ist nicht vertraulich eingestuft.",
   ],
   [
+    "tests/select-lauf-protokoll/tastaturweg-laufkarte-im-echten-browser.test.ts",
+    "Ben P1 (MR-SELECT-1/R-1567, Runde 3): der Tastaturweg im echten Chromium braucht einen ECHTEN " +
+      "Auswahllauf mit Modellnamen, dessen ID die Laufkarte zeigt. Ohne Freigabe endete er " +
+      "„no-model“. Der Schnappschuss ist nicht vertraulich eingestuft.",
+  ],
+  [
     "tests/select-lauf-protokoll/kette-anfrage-bis-laufkarte.test.tsx",
     "Ben P1 (MR-SELECT-1/R-1567): die Kette echte Auswahl-Anfrage → neue select-ID → Laufkarte " +
       "braucht einen ECHTEN Auswahllauf mit Modellnamen. Ohne Freigabe endete er „no-model“. Der " +
@@ -2523,6 +2529,16 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
       K2: { boden: 9, freigaben: [] },
       // K3 baut seinen Reasoner mit einem schreibunfähigen Protokoll selbst und erteilt deshalb selbst.
       K3: { boden: 1, freigaben: ["erteileKiFreigabe(reasoner)"] },
+    },
+  },
+  "tests/select-lauf-protokoll/tastaturweg-laufkarte-im-echten-browser.test.ts": {
+    gesamtboden: 16,
+    vollzaehlig: true,
+    faelle: {
+      VORSPANN: { boden: 5, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      K6: { boden: 8, freigaben: [] },
+      K7: { boden: 1, freigaben: [] },
+      K8: { boden: 2, freigaben: [] },
     },
   },
   "tests/select-lauf-protokoll/kette-anfrage-bis-laufkarte.test.tsx": {

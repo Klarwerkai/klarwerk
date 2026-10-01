@@ -17,9 +17,10 @@
 //      App — die Karte holt sich den Lauf selbst. Der Test reicht ihr keinen Datensatz;
 //   4. in DE, EN und NL steht in der Zeile genau dieser ID die übersetzte Art, kein Schlüssel.
 //
-// TASTATUR: Die Laufkarte ist reine Leseanzeige. Gemessen wird, was jsdom messen kann: Die Zeile
-// liegt nicht in einem verborgenen oder `inert`-Bereich, und kein Element der Karte ist mit
-// `tabindex="-1"` aus der Tab-Reihenfolge genommen. Der Inhalt ist also ohne Zeigegerät erreichbar.
+// TASTATUR UND SICHTBARKEIT BELEGT DIESE DATEI NICHT (Ben, Runde 2): Die Prüfung auf `hidden`,
+// `inert`, `aria-hidden`, `style.display` und `tabindex="-1"` ist nur eine Vorprüfung. Eine per
+// Stylesheet ausgeblendete Karte lässt sie grün. Den Tastaturweg und die Lesbarkeit im echten
+// Browser misst `tastaturweg-laufkarte-im-echten-browser.test.ts` (K6–K8).
 //
 // NICHT GEMESSEN: echte Tab-Bewegung und Layout in Chromium, PostgreSQL-Persistenz
 // (`PgModelRunRepo`), echte Anbieter-API. „Persistiert" heißt hier: im Protokoll-Repo der App
