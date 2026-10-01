@@ -9,7 +9,7 @@ import {
 import type { ConflictService } from "../../../conflicts";
 import type { KnowledgeObject, KoService } from "../../../knowledge-object";
 import { can } from "../../../rbac";
-import { bindeAnbieter, imBindungsrahmen } from "../../../reasoner";
+import { bindeAnbieter, bindeZustimmung, imBindungsrahmen } from "../../../reasoner";
 import { authorizesAsk } from "../addon-principal";
 import { addonRateLimit } from "../addon-rate-limit";
 import { type Guards, type SessionUser, sendError } from "../http";
@@ -154,7 +154,12 @@ export interface Ka4Freigabepruefer {
     sessionId: string,
     bindung: { actorId: string; addinInstanceId: string; documentContextId: string },
     aufgabe?: KlaraAufgabe,
-  ): Promise<{ readonly erlaubt: boolean; readonly grund?: string; readonly anbieter?: string }>;
+  ): Promise<{
+    readonly erlaubt: boolean;
+    readonly grund?: string;
+    readonly anbieter?: string;
+    readonly giltNoch?: () => boolean;
+  }>;
 }
 
 /**
@@ -166,6 +171,8 @@ export interface Ka4Entscheidung {
   readonly erlaubt: boolean;
   readonly grund?: string;
   readonly anbieter?: string;
+  /** Lauf 2 · Bens B5: gilt die Zustimmung, auf die sich die Freigabe stützt, noch? */
+  readonly giltNoch?: () => boolean;
 }
 
 // Dieselben Kopfzeilen wie der Klara-Sitzungsweg (`klara-ai-routes.ts:40-42`) — eine Schreibweise,
@@ -225,7 +232,12 @@ export async function ka4Entscheidung(
     bindeAnbieter(null);
     return entscheidung;
   }
-  if (entscheidung.anbieter !== undefined && !bindeAnbieter(entscheidung.anbieter)) {
+  // Lauf 2 · Bens B5: auch die Zustimmung selbst wird gebunden — ein danach abgeschlossener Widerruf
+  // nimmt den externen Anbieter aus der Kette und sperrt ihn vor der Übertragung.
+  if (
+    (entscheidung.giltNoch !== undefined && !bindeZustimmung(entscheidung.giltNoch)) ||
+    (entscheidung.anbieter !== undefined && !bindeAnbieter(entscheidung.anbieter))
+  ) {
     log.info({ ka4: { entscheidung: "blockiert", grund: "anbieterbindung_fehlt" } }, ereignis);
     return { erlaubt: false, grund: "anbieterbindung_fehlt" };
   }
@@ -266,6 +278,9 @@ async function ka4Pruefen(
       erlaubt,
       ...(typeof freigabe?.grund === "string" ? { grund: freigabe.grund } : {}),
       ...(erlaubt && typeof freigabe?.anbieter === "string" ? { anbieter: freigabe.anbieter } : {}),
+      ...(erlaubt && typeof freigabe?.giltNoch === "function"
+        ? { giltNoch: freigabe.giltNoch }
+        : {}),
     };
   } catch (err) {
     // Fremde/abgelaufene/geschlossene Sitzung wirft (NOT_FOUND/CONFLICT). Das ist eine Absage,

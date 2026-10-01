@@ -11,7 +11,7 @@ import {
   ZurufService,
   type ZurufVorschlag,
 } from "../../../output";
-import { bindeAnbieter, imBindungsrahmen } from "../../../reasoner";
+import { bindeAnbieter, bindeZustimmung, imBindungsrahmen } from "../../../reasoner";
 import type { Guards } from "../http";
 import { sendError } from "../http";
 
@@ -210,7 +210,12 @@ export function klaraZurufRoutes(deps: KlaraZurufRouteDeps, guards: Guards): Fas
         bindeAnbieter(null);
         return freigabe;
       }
-      if (typeof freigabe.anbieter === "string" && !bindeAnbieter(freigabe.anbieter)) {
+      // Lauf 2 · Bens B5: die Zustimmung wird mitgebunden — ein danach abgeschlossener Widerruf
+      // sperrt den Formulierer (`anbieterZugelassen` in `zurufModell`).
+      if (
+        (typeof freigabe.giltNoch === "function" && !bindeZustimmung(freigabe.giltNoch)) ||
+        (typeof freigabe.anbieter === "string" && !bindeAnbieter(freigabe.anbieter))
+      ) {
         return { erlaubt: false, grund: "anbieterbindung_fehlt" };
       }
       return freigabe;

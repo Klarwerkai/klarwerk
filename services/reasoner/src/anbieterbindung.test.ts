@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import { anbieterZugelassen, bindeAnbieter, imBindungsrahmen } from "./anbieterbindung";
+import {
+  anbieterZugelassen,
+  bindeAnbieter,
+  bindeZustimmung,
+  imBindungsrahmen,
+} from "./anbieterbindung";
+import { cappedModelClient, resetModelSemaphoreForTests, withModelSlot } from "./model-concurrency";
 import { ModelProvider } from "./provider-model";
 import { Reasoner } from "./service";
 import { mitKiFreigabe } from "./testhelfer-ki-freigabe";
@@ -96,5 +102,138 @@ describe("Bens B3 · der Anfragerahmen", () => {
       expect(anbieterZugelassen("anthropic")).toBe(false);
       expect(anbieterZugelassen("openai")).toBe(false);
     });
+  });
+});
+
+// ================================================================================================
+// Lauf 2 · Bens B5 — EIN ABGESCHLOSSENER WIDERRUF SPERRT AUCH DIE SCHON LAUFENDE ANFRAGE.
+// ================================================================================================
+
+/** Eine Zustimmung, wie das Tor sie mitliefert: `giltNoch` bis zu ihrem Ende. */
+function zustimmung() {
+  const lage = { beendet: false };
+  return {
+    giltNoch: () => !lage.beendet,
+    beenden: () => {
+      lage.beendet = true;
+    },
+  };
+}
+
+describe("Bens B5 · beendete Zustimmung im Anfragerahmen", () => {
+  it("gebundene Zustimmung beendet: kein externer Anbieter mehr zugelassen, auch der gebundene nicht", async () => {
+    const z = zustimmung();
+    await imBindungsrahmen(async () => {
+      expect(bindeZustimmung(z.giltNoch)).toBe(true);
+      expect(bindeAnbieter("anthropic")).toBe(true);
+      expect(anbieterZugelassen("anthropic")).toBe(true);
+      z.beenden();
+      expect(anbieterZugelassen("anthropic")).toBe(false);
+      expect(anbieterZugelassen("openai")).toBe(false);
+    });
+  });
+
+  it("GEGENPROBE: eine ANDERE beendete Zustimmung berührt die Anfrage nicht", async () => {
+    const eigene = zustimmung();
+    const fremde = zustimmung();
+    await imBindungsrahmen(async () => {
+      bindeZustimmung(eigene.giltNoch);
+      bindeAnbieter("anthropic");
+      fremde.beenden();
+      expect(anbieterZugelassen("anthropic")).toBe(true);
+    });
+  });
+
+  it("ohne Rahmen lässt sich keine Zustimmung binden (fail-closed beim Aufrufer)", () => {
+    expect(bindeZustimmung(zustimmung().giltNoch)).toBe(false);
+  });
+});
+
+describe("Bens B5 · Widerruf zwischen Kettenbau und Übertragung: der Chokepoint lässt nichts hinaus", () => {
+  const MAX = process.env.KLARWERK_MODEL_MAX_INFLIGHT;
+
+  /** Echter Reasoner; Anthropic hinter dem echten Chokepoint (`cappedModelClient`), Slot-Cap 1. */
+  async function chokepointAufbau() {
+    process.env.KLARWERK_MODEL_MAX_INFLIGHT = "1";
+    resetModelSemaphoreForTests();
+    const transport = vi.fn(async () => '{"text":"von Anthropic"}');
+    const reasoner = new Reasoner(
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      {
+        anbieter: {
+          anthropic: new ModelProvider(
+            cappedModelClient(
+              { name: "anthropic:claude", complete: transport },
+              { rejectsConfidential: true },
+            ),
+          ),
+        },
+      },
+    );
+    await reasoner.setTaskConfig(
+      mitKiFreigabe({ global: "anthropic", perTask: { answer: "anthropic", assist: "anthropic" } }),
+    );
+    // Der einzige Slot ist belegt: der Lauf baut seine Kette und wartet DANACH am Chokepoint.
+    let freigeben: () => void = () => undefined;
+    const belegt = withModelSlot(
+      () =>
+        new Promise<void>((r) => {
+          freigeben = r;
+        }),
+    );
+    return { reasoner, transport, freigeben: () => freigeben(), belegt };
+  }
+
+  function aufraeumen(): void {
+    if (MAX === undefined) {
+      delete process.env.KLARWERK_MODEL_MAX_INFLIGHT;
+    } else {
+      process.env.KLARWERK_MODEL_MAX_INFLIGHT = MAX;
+    }
+    resetModelSemaphoreForTests();
+  }
+
+  it("KALIBRIERUNG: ohne Widerruf geht der wartende Lauf nach Slotfreigabe hinaus", async () => {
+    const k = await chokepointAufbau();
+    try {
+      const lauf = imBindungsrahmen(() => {
+        bindeZustimmung(zustimmung().giltNoch);
+        bindeAnbieter("anthropic");
+        return k.reasoner.assistText("Ein Satz.", "de");
+      });
+      await new Promise((r) => setTimeout(r, 10));
+      expect(k.transport).not.toHaveBeenCalled();
+      k.freigeben();
+      await k.belegt;
+      await lauf;
+      expect(k.transport).toHaveBeenCalledTimes(1);
+    } finally {
+      aufraeumen();
+    }
+  });
+
+  it("Widerruf, während der Lauf am Chokepoint wartet: der Transport wird NICHT gerufen", async () => {
+    const k = await chokepointAufbau();
+    try {
+      const z = zustimmung();
+      const lauf = imBindungsrahmen(() => {
+        bindeZustimmung(z.giltNoch);
+        bindeAnbieter("anthropic");
+        return k.reasoner.assistText("Ein Satz.", "de");
+      });
+      await new Promise((r) => setTimeout(r, 10));
+      z.beenden();
+      k.freigeben();
+      await k.belegt;
+      await expect(lauf).rejects.toThrow("keine Antwort");
+      expect(k.transport).not.toHaveBeenCalled();
+    } finally {
+      aufraeumen();
+    }
   });
 });

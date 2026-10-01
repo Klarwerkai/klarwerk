@@ -233,7 +233,7 @@ async function echterAufbau(assist: "openai" | "anthropic") {
         draftId: entwurf.id,
       },
     });
-  return { app, reasoner, openai, anthropic, zustimmung, halt, assistAnfrage };
+  return { app, reasoner, openai, anthropic, zustimmung, halt, assistAnfrage, gebunden };
 }
 
 describe("Bens B3 (Runde 2) · Anbieterwechsel WÄHREND die Anfrage am Tor steht", () => {
@@ -296,6 +296,51 @@ describe("Bens B4 · die Sperre wegen abweichenden Anbieters nennt ihre Ursache"
     expect(res.statusCode).toBe(409);
     expect((res.json() as { reason: string }).reason).toBe("declared");
     expect(k.openai).not.toHaveBeenCalled();
+    await k.app.close();
+  });
+});
+
+// ================================================================================================
+// LAUF 2 · BENS B5 — WIDERRUF, WÄHREND DIE ANFRAGE AM TOR STEHT.
+// ================================================================================================
+//
+// Bens Gegenbeleg (r3-provider-review.test.ts, Fall B5): zweite `findConsent`-Lesung des Tors
+// angehalten, währenddessen `DELETE …/consent` mit HTTP 200 abgeschlossen — danach lief `assist`
+// mit genau einem Aufruf des Anthropic-Adapters. Derselbe Aufbau hier, mit echtem Widerrufsweg.
+
+describe("Bens B5 · ein abgeschlossener Widerruf sperrt die schon am Tor stehende Anfrage", () => {
+  it("DELETE …/consent im Fenster des Tors: HTTP 200, danach erreicht der Text keinen Anbieter", async () => {
+    const k = await echterAufbau("anthropic");
+    expect(k.zustimmung.statusCode).toBe(200);
+    let weiter: () => void = () => undefined;
+    const erreicht = new Promise<void>((r) => {
+      k.halt.erreicht = r;
+    });
+    k.halt.weiter = new Promise<void>((r) => {
+      weiter = r;
+    });
+    k.halt.aktiv = true;
+    const laufend = k.assistAnfrage();
+    await erreicht;
+    const widerruf = await k.app.inject({
+      method: "DELETE",
+      url: `/api/klara/sessions/${k.gebunden["x-klara-session"]}/consent`,
+      headers: k.gebunden,
+    });
+    expect(widerruf.statusCode).toBe(200);
+    expect(k.anthropic).not.toHaveBeenCalled();
+    weiter();
+    const res = await laufend;
+    expect(k.halt.zaehler, "der Halt lag wirklich im Tor").toBeGreaterThanOrEqual(2);
+    expect(k.anthropic, "nach dem Widerruf geht nichts mehr hinaus").not.toHaveBeenCalled();
+    expect(k.openai).not.toHaveBeenCalled();
+    expect(res.statusCode, "keine Antwort, die eine Modellantwort behauptet").not.toBe(200);
+    const status = await k.app.inject({
+      method: "GET",
+      url: `/api/klara/sessions/${k.gebunden["x-klara-session"]}`,
+      headers: k.gebunden,
+    });
+    expect((status.json() as { consentState?: string }).consentState).toBe("revoked");
     await k.app.close();
   });
 });

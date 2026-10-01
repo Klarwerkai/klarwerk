@@ -405,6 +405,9 @@ export function pruefeConsentDeckung(
   return { gedeckt: true, consentId: consent.consentId };
 }
 
+/** Lauf 2 · Bens B5: so lange trägt ein Vermerk „Zustimmung beendet" (länger läuft keine Anfrage). */
+const BEENDET_VERMERK_MS = 6 * 60 * 60 * 1000;
+
 /**
  * Die Antwort des finalen Ausführungstors (KW-S4-23 §2.3). Auch hier kein `boolean`: der Aufrufer
  * bekommt den GRUND und die Auflösung mit, gegen die geprüft wurde.
@@ -421,6 +424,11 @@ export type KlaraAusfuehrungsfreigabe =
        * Fehlt die Karte (Testaufbauten), fehlt auch das Feld.
        */
       readonly anbieter?: string;
+      /**
+       * Lauf 2 · Bens B5: `false`, sobald diese Zustimmung in diesem Dienst beendet wurde. Der
+       * Aufrufer bindet die Prüfung an den Lauf (`bindeZustimmung`).
+       */
+      readonly giltNoch: () => boolean;
     }
   | {
       readonly erlaubt: false;
@@ -456,6 +464,12 @@ export class KlaraSessionService {
 
   private readonly newId: () => string;
   private readonly protokoll: KlaraEinwilligungsProtokoll | undefined;
+  /**
+   * Lauf 2 · Bens B5: in diesem Dienst beendete Zustimmungen mit dem Zeitpunkt des Vermerks.
+   * Gebraucht nur für Anfragen, die gerade laufen (`giltNoch` der Freigabe); jede neue Anfrage liest
+   * die gespeicherte Zeile frisch. Ältere Vermerke verwirft `vermerkeBeendet`.
+   */
+  private readonly beendet = new Map<string, number>();
 
   constructor(deps: KlaraSessionServiceDeps) {
     this.repo = deps.repo;
@@ -498,6 +512,19 @@ export class KlaraSessionService {
     });
   }
 
+  /** Lauf 2 · Bens B5: vermerkt eine beendete Zustimmung (`giltNoch`); verwirft alte Vermerke. */
+  private vermerkeBeendet(consentId: string): void {
+    const jetzt = this.now();
+    this.beendet.delete(consentId);
+    this.beendet.set(consentId, jetzt);
+    for (const [id, am] of this.beendet) {
+      if (jetzt - am <= BEENDET_VERMERK_MS) {
+        break;
+      }
+      this.beendet.delete(id);
+    }
+  }
+
   /**
    * Der Endeintrag einer Zustimmung — GENAU EINER je Zustimmungskennung (`recordOnce`).
    *
@@ -516,6 +543,13 @@ export class KlaraSessionService {
     status: KlaraConsentStatus | "nicht_wirksam",
     endetAm: string,
   ): Promise<void> {
+    // Lauf 2 · Bens B5: jeder Aufrufer hat das Ende soeben festgeschrieben (oder trägt es nach).
+    // Vermerkt wird es VOR jedem Warten auf das Protokoll und damit vor der Antwort an den
+    // Widerrufenden — eine Anfrage, die noch am Tor steht, lässt die Zustimmung danach nicht mehr
+    // hinaus (`services/reasoner/src/anbieterbindung.ts`).
+    if (consent) {
+      this.vermerkeBeendet(consent.consentId);
+    }
     if (!this.protokoll || !consent || consent.status === "pending") {
       return;
     }
@@ -948,11 +982,23 @@ export class KlaraSessionService {
         };
       }
     }
+    // Lauf 2 · Bens B5: die gelesene Zeile kann vor dem Widerruf gelesen worden sein, der inzwischen
+    // abgeschlossen ist. Dann trägt sie nicht mehr — dieselbe Ursache wie eine entwertete Zustimmung.
+    if (this.beendet.has(deckung.consentId)) {
+      return {
+        erlaubt: false,
+        grund: KLARA_CONSENT_RECONFIRMATION_REQUIRED,
+        deckung,
+        resolution: ohneConsent,
+      };
+    }
     const anbieter = karte?.answer;
+    const consentId = deckung.consentId;
     return {
       erlaubt: true,
       resolution,
-      consentId: deckung.consentId,
+      consentId,
+      giltNoch: () => !this.beendet.has(consentId),
       ...(typeof anbieter === "string" ? { anbieter } : {}),
     };
   }

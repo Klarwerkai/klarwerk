@@ -20,18 +20,42 @@ import { AsyncLocalStorage } from "node:async_hooks";
 //
 // Lokale und deterministische Glieder sind nicht betroffen — sie verlassen das Haus nicht. Ohne
 // Bindung (Konsole, Anfragen ohne Klara-Sitzung) bleibt alles wie bisher.
+//
+// LAUF 2 · BENS B5 — EIN ABGESCHLOSSENER WIDERRUF GILT AUCH FÜR DIE ANFRAGE, DIE SCHON AM TOR STEHT.
+// Das Tor entscheidet an der Zustimmungszeile, die es gelesen hat; ein Widerruf kann danach
+// abschliessen. Deshalb bindet die Anfrage auch die ZUSTIMMUNG — als Prüfung `giltNoch`, die das Tor
+// mitliefert (`bindeZustimmung`). Der Sitzungsdienst vermerkt jedes Beenden einer Zustimmung
+// (Widerruf, Entwertung, Ablauf) nach dem Festschreiben und VOR der Antwort; ab da meldet die Prüfung
+// `false`. Ausgewertet wird beim Kettenbau UND unmittelbar vor der Übertragung
+// (`ModellAufrufSpur.vorUebertragung`). Grenze: der Vermerk lebt im Prozess — ein Widerruf, den eine
+// ANDERE Instanz abschliesst, erreicht ihn nicht.
 
 interface Anbieterbindung {
   gebunden: boolean;
   /** Der einzige externe Anbieter, der Text erhalten darf — `null`: keiner. */
   anbieter: string | null;
+  /** Je Freigabe dieser Anfrage: gilt die Zustimmung, auf die sie sich stützt, noch? */
+  zustimmungen: Array<() => boolean>;
 }
 
 const speicher = new AsyncLocalStorage<Anbieterbindung>();
 
 /** Öffnet den Rahmen einer Anfrage; darin ist zunächst NICHTS gebunden. */
 export function imBindungsrahmen<T>(lauf: () => T): T {
-  return speicher.run({ gebunden: false, anbieter: null }, lauf);
+  return speicher.run({ gebunden: false, anbieter: null, zustimmungen: [] }, lauf);
+}
+
+/**
+ * Hält die Zustimmung fest, auf die sich eine Freigabe dieser Anfrage stützt — unabhängig davon,
+ * ob ein Anbieter gebunden wird. Gibt `false` zurück, wenn es keinen Rahmen gibt (fail-closed).
+ */
+export function bindeZustimmung(giltNoch: () => boolean): boolean {
+  const bindung = speicher.getStore();
+  if (!bindung) {
+    return false;
+  }
+  bindung.zustimmungen.push(giltNoch);
+  return true;
 }
 
 /**
@@ -50,11 +74,14 @@ export function bindeAnbieter(anbieter: string | null): boolean {
 }
 
 /**
- * Darf ein externer Anbieter im laufenden Aufruf Text erhalten? Ohne Bindung immer; mit Bindung
- * nur der gebundene.
+ * Darf ein externer Anbieter im laufenden Aufruf Text erhalten? Stützt sich die Anfrage auf eine
+ * inzwischen beendete Zustimmung, keiner. Sonst ohne Bindung immer; mit Bindung nur der gebundene.
  */
 export function anbieterZugelassen(anbieter: string | undefined): boolean {
   const bindung = speicher.getStore();
+  if (bindung && !bindung.zustimmungen.every((giltNoch) => giltNoch())) {
+    return false;
+  }
   if (!bindung?.gebunden) {
     return true;
   }

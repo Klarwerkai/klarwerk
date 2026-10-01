@@ -163,6 +163,8 @@ export interface Ka6Einwilligungspruefer {
      * des Formulierers an genau diesen Anbieter.
      */
     readonly anbieter?: string;
+    /** Lauf 2 · Bens B5: gilt die tragende Zustimmung noch? Die Route bindet den Lauf daran. */
+    readonly giltNoch?: () => boolean;
   }>;
 }
 

@@ -5,6 +5,7 @@ import {
   KLARA_AUFGABE_ANDERER_ANBIETER,
   KLARA_CONSENT_AUDIT_ENDED,
   KLARA_CONSENT_AUDIT_GRANTED,
+  KLARA_CONSENT_RECONFIRMATION_REQUIRED,
   KLARA_SESSION_ABSOLUTE_MS,
   type KlaraEinwilligungsProtokoll,
   type KlaraPolicyQuelle,
@@ -454,5 +455,55 @@ describe("Bens B2 (Runde 2) · das Aufräumen löscht keinen Nachweis", () => {
     vorspulen(TAGE_32);
     await dienst.raeumeAbgelaufeneAuf();
     expect(await enden(audit)).toHaveLength(1);
+  });
+});
+
+// ================================================================================================
+// Lauf 2 · Bens B5 — EIN ABGESCHLOSSENER WIDERRUF TRÄGT AUCH IN DIE SCHON LAUFENDE PRÜFUNG.
+// ================================================================================================
+
+describe("Bens B5 · Widerruf während der Freigabeprüfung", () => {
+  it("die Freigabe liefert `giltNoch` — `true` bis zum Widerruf, danach `false`", async () => {
+    const { dienst } = aufbau();
+    const { sicht, bindung } = await sitzung(dienst);
+    await dienst.grantConsent(sicht.sessionId, bindung);
+    const freigabe = await dienst.pruefeExterneAusfuehrung(sicht.sessionId, bindung);
+    expect(freigabe.erlaubt).toBe(true);
+    const giltNoch = freigabe.erlaubt ? freigabe.giltNoch : () => true;
+    expect(giltNoch()).toBe(true);
+    await dienst.revokeConsent(sicht.sessionId, bindung);
+    expect(giltNoch()).toBe(false);
+  });
+
+  it("die Zeile wurde VOR dem Widerruf gelesen, der Widerruf schliesst ab: das Tor sperrt", async () => {
+    const { dienst, repo } = aufbau();
+    const { sicht, bindung } = await sitzung(dienst);
+    await dienst.grantConsent(sicht.sessionId, bindung);
+    // Halt an der ZWEITEN `findConsent`-Lesung — der des Tors (die erste liest `laden`).
+    const echt = repo.findConsent.bind(repo);
+    let zaehler = 0;
+    let erreicht: () => void = () => undefined;
+    let weiter: () => void = () => undefined;
+    const amHalt = new Promise<void>((r) => {
+      erreicht = r;
+    });
+    const fortsetzen = new Promise<void>((r) => {
+      weiter = r;
+    });
+    repo.findConsent = async (id: string) => {
+      const wert = await echt(id);
+      if (++zaehler === 2) {
+        erreicht();
+        await fortsetzen;
+      }
+      return wert;
+    };
+    const laufend = dienst.pruefeExterneAusfuehrung(sicht.sessionId, bindung);
+    await amHalt;
+    await dienst.revokeConsent(sicht.sessionId, bindung);
+    weiter();
+    const freigabe = await laufend;
+    expect(freigabe.erlaubt).toBe(false);
+    expect(freigabe.erlaubt ? null : freigabe.grund).toBe(KLARA_CONSENT_RECONFIRMATION_REQUIRED);
   });
 });

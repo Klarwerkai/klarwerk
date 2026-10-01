@@ -231,5 +231,6 @@ export {
 export {
   imBindungsrahmen,
   bindeAnbieter,
+  bindeZustimmung,
   anbieterZugelassen,
 } from "./src/anbieterbindung";

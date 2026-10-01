@@ -1245,10 +1245,25 @@ export class Reasoner {
       // D5 (KI aus): für die Aufgabe `answer` trägt die Spur die Abschaltprüfung an den Chokepoint.
       // Die Kette wurde oben VOR jedem Warten gebildet; ob die KI noch an ist, entscheidet sich erst
       // dort, unmittelbar vor der Übertragung (`kiSperreVorUebertragung`).
+      // Lauf 2 · Bens B5: für einen EXTERNEN Anbieter prüft die Spur zusätzlich die Klara-Bindung
+      // am Chokepoint — eine Zustimmung, die seit dem Kettenbau beendet wurde, lässt nichts hinaus.
+      const extern = this.anbieterVon(provider);
+      const kiSperre = task === "answer";
       const spur: ModellAufrufSpur = {
         gerufen: false,
-        ...(task === "answer"
-          ? { vorUebertragung: () => this.kiSperreVorUebertragung(kiBeginn) }
+        ...(kiSperre || extern !== undefined
+          ? {
+              vorUebertragung: () => {
+                if (kiSperre) {
+                  this.kiSperreVorUebertragung(kiBeginn);
+                }
+                if (extern !== undefined && !anbieterZugelassen(extern)) {
+                  throw new Error(
+                    `Die Zustimmung für dieses Dokument trägt keine Übertragung an ${extern} mehr.`,
+                  );
+                }
+              },
+            }
           : {}),
       };
       // JOB 3074 R2 (bens Befund): DIE SPUR EINES VERSUCHS WIRD GENAU EINMAL ÜBERNOMMEN. Runde 1
