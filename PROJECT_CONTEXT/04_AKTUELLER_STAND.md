@@ -7,6 +7,18 @@
 > `PROJECT_CONTEXT/13_ASSISTENT_ZWISCHENBERICHT.md` (Rohstand: `docs/boss-assistant/`).
 > Live-Version dort bestätigt: **v1.0.0-beta.1.4**.
 
+## 01.10.2026 — Aufnahme „KI-Laufprotokoll“ (Abgleich + Auslastungslücke)
+
+- Abgleich aller zugeordneten Anliegen (R-0612 … V9, MR-SELECT-1) mit Fassungen und Belegen:
+  `tests/ki-lauf-protokoll/README.md`. MR-SELECT-1 ist seit JOB 3127 (1.0.0-beta.1.140) geliefert,
+  der Tokenverbrauch seit JOB 3074 (1.0.0-beta.1.88).
+- Geschlossen: Ein Lauf, der an `ModelCapacityError` endet, schreibt jetzt genau einen
+  Fehlerdatensatz mit dem bisher gemeldeten Verbrauch. Die 503 bleibt unverändert
+  (`Reasoner.runTask`, Test `tests/ki-lauf-protokoll/kapazitaet-hinterlaesst-spur.test.ts`).
+- Offen: Preis je Lauf/Zeitraum (braucht eine Preisliste, **Entscheidung Pedi**). Konflikt-/
+  Dublettenurteil, öffentliche Anreicherung und Admin-Probe schreiben keinen Laufdatensatz.
+  Außerdem fehlen erzeugte Gegenstände im Datensatz sowie Dashboards/Metriken.
+
 ## 01.10.2026 — Erstnutzer-Hürden U2/U3 im Browser (Revision 9)
 
 - Neue Playwright-Sonde `tests-smoke/erstnutzer-u2-u3-browser.spec.ts`: U2 (Suchraum der Bibliothek

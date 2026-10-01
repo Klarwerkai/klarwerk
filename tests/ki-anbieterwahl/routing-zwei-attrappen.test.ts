@@ -1104,6 +1104,12 @@ const FREIGABE_ERLAUBT: ReadonlyMap<string, string> = new Map([
       "Modellnamen). Ohne Freigabe endete jeder Lauf „no-model“ und die Route hätte nichts zu " +
       "protokollieren. Der Schnappschuss ist nicht vertraulich eingestuft.",
   ],
+  [
+    "tests/ki-lauf-protokoll/kapazitaet-hinterlaesst-spur.test.ts",
+    "Die Fälle messen den Laufdatensatz eines Laufs, der an der Modell-Auslastung endet (R-1572). " +
+      "Ohne Freigabe stünde kein Modell in der Kette, kein Glied erreichte die Auslastung, und " +
+      "der Lauf endete deterministisch — der gemessene Datensatz entstünde gar nicht.",
+  ],
   // ---- JOB 3666 · die Verdrahtung der zentralen Freigabe in die Kompositionswurzel. ----
   [
     "tests/app/job2666-stufe-die-nur-der-client-behauptet.test.ts",
@@ -2431,6 +2437,17 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
       "#11": { boden: 3, freigaben: [] },
       "#12": { boden: 1, freigaben: [] },
       "#13": { boden: 1, freigaben: ["erteileKiFreigabe(reasoner)"] },
+    },
+  },
+  "tests/ki-lauf-protokoll/kapazitaet-hinterlaesst-spur.test.ts": {
+    gesamtboden: 22,
+    vollzaehlig: true,
+    faelle: {
+      VORSPANN: { boden: 0, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      K1: { boden: 12, freigaben: [] },
+      K2: { boden: 9, freigaben: [] },
+      // K3 baut seinen Reasoner mit einem schreibunfähigen Protokoll selbst und erteilt deshalb selbst.
+      K3: { boden: 1, freigaben: ["erteileKiFreigabe(reasoner)"] },
     },
   },
   "tests/select-lauf-protokoll/route-einstieg.test.ts": {

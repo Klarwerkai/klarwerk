@@ -1291,9 +1291,40 @@ export class Reasoner {
       } catch (err) {
         // SCRUM-498 B2: Backpressure ist KEIN Provider-Fehler — nicht auf den deterministischen
         // Fallback ausweichen, sondern durchreichen (die HTTP-Schicht macht daraus 503 + Retry-After).
-        // Es wird auch nichts protokolliert, also bleibt `lastModel` hier bewusst unberührt.
         // D5: die Abschaltung ebenso — kein Ausweichen auf das nächste Glied, sie gilt für den Lauf.
-        if (err instanceof ModelCapacityError || err instanceof KiAbgeschaltetFehler) {
+        //
+        // Aufnahme gesamt-ki-laufprotokoll (R-1572/R-1621): bis hierhin endete ein Lauf an der
+        // Auslastung OHNE Datensatz — auch dann, wenn ein früheres Glied der Kette schon ein Modell
+        // befragt und Verbrauch gemeldet hatte. Jetzt schreibt er genau einen Fehlerdatensatz: das
+        // Glied, an dem er stand, der bisher gesammelte Verbrauch und die Versuchsfehler samt der
+        // Auslastungsmeldung. Der abgewiesene Aufruf selbst hat kein Modell befragt (der Slot wurde
+        // nie erteilt); `model` nennt nur ein WIRKLICH gerufenes — aus diesem Versuch (`extract`
+        // ruft mehrfach) oder einem früheren Glied. Ein Schreibfehler darf die 503 nicht verdecken.
+        if (err instanceof ModelCapacityError) {
+          uebernimmVerbrauch();
+          const versuchsModell = spur.gerufen ? provider.modelName?.() : undefined;
+          const modell = versuchsModell ?? lastModel;
+          versuchsfehler.push(
+            `${provider.name}${versuchsModell ? ` (${versuchsModell})` : ""}: ${err.message}`,
+          );
+          await this.recordRun(
+            task,
+            locale,
+            startedAt,
+            "error",
+            {
+              fallback: i > 0,
+              demo: false,
+              provider: provider.name,
+              ...(modell ? { model: modell } : {}),
+              ...(laufVerbrauch ? { verbrauch: laufVerbrauch } : {}),
+              error: Reasoner.versuchsfehlerZeile(versuchsfehler),
+            },
+            context,
+          ).catch(() => undefined);
+          throw err;
+        }
+        if (err instanceof KiAbgeschaltetFehler) {
           throw err;
         }
         lastError = err;
