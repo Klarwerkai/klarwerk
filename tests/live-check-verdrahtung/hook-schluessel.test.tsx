@@ -80,7 +80,10 @@ async function zeigen(props: {
 
 // Nur die virtuelle Uhr löst die Entprellung aus. Kein langsamer Prüfkasten kann sie während
 // zeigen() schlagen. Danach zählt der beobachtete Zustand; 5000 ms sind nur die Abbruchschwelle.
-async function abwarten(erwartet = "done/new"): Promise<void> {
+// AUFNAHME 20260922 · VORSCHAU-REICHWEITE: hier stand „done/new". Den Anzeige-Zustand `new` gibt es
+// nicht mehr (keine bestandweite Neuheitsaussage, Kriterium 1); „done" ohne Fund heisst jetzt
+// `empty`. Was dieser Prüfstand misst — WANN neu gefragt wird —, bleibt davon unberührt.
+async function abwarten(erwartet = "done/empty"): Promise<void> {
   await act(async () => {
     await vi.advanceTimersByTimeAsync(DEBOUNCE);
   });
@@ -150,7 +153,7 @@ it("H3 · GEGENKONTROLLE: ändert sich nichts, wird auch nicht neu gefragt", asy
   await zeigen({ text: TEXT, herkunft: HERKUNFT("d-a"), stand: 1 });
   await abwarten();
   expect(zaehler.nutzlasten).toHaveLength(1);
-  expect(lage()).toBe("done/new");
+  expect(lage()).toBe("done/empty");
 });
 
 it("H4 · Transportfehler zeigt failed/unavailable", async () => {

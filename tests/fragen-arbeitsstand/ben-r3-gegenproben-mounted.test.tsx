@@ -9,6 +9,9 @@
 //   F2  Nach MEHR ALS 50 anderen Startadressen holt die erste ihren verworfenen Entwurf nicht zurück.
 //   F3  Dasselbe mit `?ask=1`: die erste Adresse fragt das Modell nicht noch einmal.
 //   F4  Eine Tabelle ohne äußere Striche behält ihre Spaltenköpfe und verliert ihre `|`.
+//   Z   Zusammenführung mit R-0474 (neue Adresse auf der OFFENEN Seite, ohne Neumontage): die neue
+//       Startfrage gilt und fragt einmal; Neuladen und Vor/Zurück auf dieselbe Adresse fragen nicht
+//       noch einmal und holen keinen verworfenen Entwurf zurück.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const lage = vi.hoisted(() => ({
@@ -95,7 +98,12 @@ import {
 } from "../../apps/web/node_modules/@tanstack/react-query";
 import { act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
-import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
+import {
+  MemoryRouter,
+  type NavigateFunction,
+  useLocation,
+  useNavigate,
+} from "../../apps/web/node_modules/react-router-dom";
 import { endpoints } from "../../apps/web/src/api/endpoints";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
@@ -143,6 +151,28 @@ interface Flaeche {
   abbauen: () => void;
 }
 
+// Der echte `navigate` des Routers und die aktuelle Navigationskennung — so navigiert der Test wie
+// ein Link auf der offenen Seite, ohne Neumontage (R-0474).
+let lenken: NavigateFunction | null = null;
+let kennung = "";
+function Lenker(): null {
+  lenken = useNavigate();
+  kennung = useLocation().key;
+  return null;
+}
+
+async function gehe(ziel: string | number): Promise<void> {
+  await act(async () => {
+    if (typeof ziel === "number") {
+      lenken?.(ziel);
+    } else {
+      lenken?.(ziel);
+    }
+    await flush();
+  });
+  await act(flush);
+}
+
 async function oeffnen(client: QueryClient, eintrag: Eintrag = "/fragen"): Promise<Flaeche> {
   const c = document.createElement("div");
   document.body.appendChild(c);
@@ -155,7 +185,7 @@ async function oeffnen(client: QueryClient, eintrag: Eintrag = "/fragen"): Promi
         createElement(
           MemoryRouter,
           { initialEntries: [eintrag] },
-          createElement(ToastProvider, null, createElement(Ask)),
+          createElement(ToastProvider, null, createElement(Lenker), createElement(Ask)),
         ),
       ),
     );
@@ -278,5 +308,29 @@ describe("Ben R3 · Startadressen ohne Grenze, Tabellen ohne Rand", () => {
     expect(text).toContain("Anlage: V5");
     expect(text).toContain("Frist: monatlich");
     f.abbauen();
+  });
+
+  it("Z · neue Adresse auf der offenen Seite: fragt einmal, Neuladen und Vor/Zurück nicht noch einmal", async () => {
+    const f = await oeffnen(neuerCache("u1"), "/fragen");
+    await gehe("/fragen?q=NeuA&ask=1");
+    expect(feld(f).value).toBe("NeuA");
+    expect(fragenAnsModell()).toEqual(["NeuA"]);
+    const kennungA = kennung;
+
+    // Feld bewusst leeren, zurück und wieder vor auf DIESELBE Adresse (gleiche Kennung).
+    await tippen(f, "");
+    await gehe(-1);
+    await gehe(1);
+    expect(kennung).toBe(kennungA);
+    expect(feld(f).value).toBe("");
+    expect(fragenAnsModell()).toEqual(["NeuA"]);
+    f.abbauen();
+
+    // Neuladen derselben Adresse: die Antwort steht aus dem Speicher, keine neue Modellanfrage.
+    const neu = await oeffnen(neuerCache("u1"), eintrag("?q=NeuA&ask=1", kennungA));
+    expect(fragenAnsModell()).toEqual(["NeuA"]);
+    expect(feld(neu).value).toBe("");
+    expect(q(neu, "ask-answer")?.textContent).toContain("Ventil V4 wird jährlich geprüft");
+    neu.abbauen();
   });
 });

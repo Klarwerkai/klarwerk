@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { useRole } from "../app/RoleContext";
-import type { Role } from "../app/navigation";
+import { type Role, routePathAllows } from "../app/navigation";
 import { UploadLimitsHint } from "../components/UploadLimitsHint";
 import { Card, PageHeader } from "../components/ui";
 import { HELP_TOPICS, type HelpSearchItem, filterHelpTopics } from "../lib/helpTopics";
@@ -218,7 +218,27 @@ export function Help(): JSX.Element {
         className="mb-5 h-10 w-full rounded-input border border-hairline bg-surface px-3 text-sm outline-none focus:border-ink/30"
       />
       {visible.length === 0 ? (
-        <Card className="border-dashed text-center text-sm text-muted">{t("help.noResults")}</Card>
+        // R-0474: unter dem Satz steht der nächste Schritt. Die Frage an das Wissen nur, wenn die
+        // Rolle aus einer Sitzung stammt UND der Router sie auf `/fragen` lässt — dieselbe
+        // Zurückhaltung wie die Einstiegsführung oben (JOB 4358).
+        <Card
+          data-testid="hilfe-nulltreffer"
+          className="border-dashed text-center text-sm text-muted"
+        >
+          <p>{t("help.noResults")}</p>
+          {rolle !== null && routePathAllows("/fragen", rolle) && q.trim() ? (
+            <Link
+              to={`/fragen?q=${encodeURIComponent(q.trim())}`}
+              data-testid="hilfe-als-frage"
+              className="mt-1.5 inline-flex items-center gap-1 font-semibold text-ai hover:opacity-80"
+            >
+              {t("erstnutzer.hilfe.alsFrage", { q: q.trim() })}
+              <ArrowRight size={12} />
+            </Link>
+          ) : (
+            <p className="mt-1">{t("erstnutzer.hilfe.anderesWort")}</p>
+          )}
+        </Card>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2">
           {visible.map((topic) => {

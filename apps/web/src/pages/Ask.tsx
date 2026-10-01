@@ -500,9 +500,10 @@ export function Ask(): JSX.Element {
   // Navigationskennung (`startadresseMarke`); dieselbe Adresse erneut ist verbraucht, ein neuer Weg
   // auf die Seite (neue Kennung) gilt wieder.
   const location = useLocation();
+  const navigationsSchluessel = location.key;
   const konto = useKontoKennung();
   const [anfang] = useState(() => arbeitsstandLesen(fragenSpeicher(), konto));
-  const [adresse] = useState(() => {
+  const [adresse, setAdresse] = useState(() => {
     const frage = readAskQuestion(params);
     const autoFrage = shouldAutoAskFromSearch(params);
     return { frage, autoFrage, marke: startadresseMarke(location.key, frage, autoFrage) };
@@ -526,6 +527,35 @@ export function Ask(): JSX.Element {
   );
   // Der Zeitpunkt der stehenden Antwort — gespeichert mit ihr, genannt im Hinweis.
   const [antwortAm, setAntwortAm] = useState<string | null>(anfang?.antwort?.angezeigtAm ?? null);
+  // R-0474 (Ben, Runde 1, B1): der Router montiert `/fragen` bei einem Wechsel NUR der Adresszeile
+  // nicht neu — der Anfangswert oben sah eine zweite Übergabe (`/fragen?q=Alt` → Palette/Hilfe →
+  // `/fragen?q=Neu`) also nie, im Feld blieb die alte Frage stehen. Jede NAVIGATION mit `?q=`
+  // übernimmt deshalb ihre Frage ins Feld. Gebunden an den Navigationsschlüssel, nicht an den
+  // Text: auch ein zweites Anbieten derselben Frage nach eigenem Tippen kommt an. Ohne `?q=` bleibt
+  // das Feld, wie es ist.
+  // Ergänzung 1: dieselbe Regel wie beim Aufbau — eine schon übernommene Adresse (gleiche Marke)
+  // ist verbraucht und überschreibt den Arbeitsstand nicht noch einmal.
+  const ersteNavigation = useRef(navigationsSchluessel);
+  const gemerkteJetzt = useRef(gemerkteStartadressen);
+  gemerkteJetzt.current = gemerkteStartadressen;
+  useEffect(() => {
+    if (navigationsSchluessel === ersteNavigation.current) {
+      return;
+    }
+    ersteNavigation.current = navigationsSchluessel;
+    const frage = readAskQuestion(params);
+    const autoFrage = shouldAutoAskFromSearch(params);
+    const marke = startadresseMarke(navigationsSchluessel, frage, autoFrage);
+    if (frage === null || marke === null || gemerkteJetzt.current.includes(marke)) {
+      return;
+    }
+    setAdresse({ frage, autoFrage, marke });
+    setQ(frage);
+    setStartfrageGilt(true);
+    setGemerkteStartadressen((liste) => startadresseMerken(liste, marke));
+    // Im Feld steht jetzt die angebotene Frage, nicht mehr der aufgenommene Entwurf.
+    setWiederaufnahme((w) => (w?.antwortAm ? { entwurf: false, antwortAm: w.antwortAm } : null));
+  }, [navigationsSchluessel, params]);
   // AUFTRAG-mega38 BLOCK J2: „Bitte gib zuerst eine Frage ein." stand auf `/fragen`, BEVOR die
   // Leserin irgendetwas getan hatte — eine Zurechtweisung als Begrüssung. Der Satz ist richtig,
   // sein Zeitpunkt war es nicht. Er erscheint jetzt erst, wenn wirklich leer abgesendet wurde.
@@ -1059,20 +1089,30 @@ export function Ask(): JSX.Element {
   // bis der Verfügbarkeits-Status GELADEN ist, und verbraucht seinen Ein-Schuss dann GENAU EINMAL:
   // Modell nutzbar → automatisch fragen; kein Modell → KEINE Mutation (die Frage bleibt nur
   // vorbefüllt, der Hinweis erklärt es).
-  const autoAsked = useRef(false);
+  //
+  // R-0474 · Ben B3 (Runde 2): EIN SCHUSS JE NAVIGATION, UND ER FEUERT DIE FRAGE DER ADRESSE.
+  // Bis hierher las der Auto-Ask den Feldzustand `q` und hatte einen Schuss je MONTAGE. Seit
+  // `/fragen` bei einem Adresswechsel seine Frage übernimmt (Effekt oben), kam `?q=Neu&ask=1` auf
+  // der offenen Seite in einem Durchlauf an, in dem `params` schon neu, `q` aber noch alt war — und
+  // gesendet wurde die ALTE Frage, während das Feld danach die neue zeigte. Jetzt lesen Vorbefüllung
+  // und Auto-Ask dieselbe Quelle (`readAskQuestion(params)`), und verbraucht wird der Schuss der
+  // jeweiligen Navigation (`location.key`). Ohne `ask=1` wird weiterhin nichts gesendet (SCRUM-272).
+  // Läuft gerade eine Anfrage, wartet der Schuss, statt still zu verfallen.
+  // Ergänzung 1 (Ben R1, F3): der Antwortwunsch gilt nur, solange die Adresse nicht schon übernommen
+  // wurde (`startfrageGilt`) — eine wiederaufgenommene Antwort wird gezeigt, nicht neu erfragt. Der
+  // Schuss hängt an der Marke der Adresse (Navigationsschlüssel + Frage + Wunsch).
+  const autoAskedFuer = useRef<string | null>(null);
   useEffect(() => {
-    if (autoAsked.current || answerAi.isLoading) {
+    if (autoAskedFuer.current === adresse.marke || answerAi.isLoading || ask.isPending) {
       return;
     }
-    // Ben R1, F3: der Antwortwunsch der Adresse gilt nur, solange die Adresse nicht schon übernommen
-    // wurde — eine wiederaufgenommene Antwort wird gezeigt, nicht neu erfragt.
-    if (adresse.autoFrage && startfrageGilt && q.trim().length > 0) {
-      autoAsked.current = true;
+    if (adresse.autoFrage && startfrageGilt && adresse.frage !== null && adresse.frage.trim()) {
+      autoAskedFuer.current = adresse.marke;
       // WP-UX-WOW-1 U5: die Startfrage auch als Lücken-/Capture-Kontext festhalten (wie Submit) —
       // das übernimmt submitAsk; ohne nutzbares Modell passiert bewusst NICHTS.
-      submitAsk(q);
+      submitAsk(adresse.frage);
     }
-  }, [adresse.autoFrage, startfrageGilt, q, answerAi.isLoading, submitAsk]);
+  }, [adresse, startfrageGilt, answerAi.isLoading, ask.isPending, submitAsk]);
 
   // SCRUM-430 (VIP): beantwortete Frage inkl. Quellen exportieren/teilen. Quellen bleiben klar
   // ausgewiesen (Status/Trust/Nutzbarkeit). Markdown wird erst beim Klick gebaut (frischer Zeitstempel).

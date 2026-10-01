@@ -90,6 +90,7 @@ export function CommandPalette(): JSX.Element | null {
   //
   // `filtered` bleibt die Vorstufe (Suche), ist aber ab hier für die Bedienung nicht mehr zuständig.
   const sichtbareReihenfolge = useMemo(() => gruppen.flatMap((g) => g.ziele), [gruppen]);
+  const fragenErreichbar = ziele.some((z) => z.path === "/fragen");
 
   useEffect(() => {
     offenRef.current = open;
@@ -301,6 +302,9 @@ export function CommandPalette(): JSX.Element | null {
               const it = sichtbareReihenfolge[active];
               if (it) {
                 go(it.path);
+              } else if (fragenErreichbar && q.trim()) {
+                // Kein Ziel da: Enter tut, was der Nulltreffer anbietet (R-0474).
+                go(`/fragen?q=${encodeURIComponent(q.trim())}`);
               }
             }
           }}
@@ -325,7 +329,24 @@ export function CommandPalette(): JSX.Element | null {
             der Kasten hielte seine Obergrenze ein, die Liste liefe trotzdem darüber hinaus. */}
         <ul ref={listeRef} className="max-h-80 min-h-0 overflow-y-auto p-1.5">
           {sichtbareReihenfolge.length === 0 ? (
-            <li className="px-3 py-2 text-[13px] text-muted">{t("cmd.empty")}</li>
+            // R-0474: der Nulltreffer sagt, was jetzt geht. Die Eingabe als Frage wird nur
+            // angeboten, wenn „Fragen" unter den Zielen DIESER Rolle steht — dieselbe Liste, aus der
+            // die Palette sonst liest, keine zweite Rechtefrage.
+            <li data-cmd="nulltreffer" className="px-3 py-2 text-[13px] text-muted">
+              {t("cmd.empty")}{" "}
+              {fragenErreichbar && q.trim() ? (
+                <button
+                  type="button"
+                  data-cmd="als-frage"
+                  onClick={() => go(`/fragen?q=${encodeURIComponent(q.trim())}`)}
+                  className="font-semibold text-ai hover:opacity-80"
+                >
+                  {t("erstnutzer.palette.alsFrage", { q: q.trim() })}
+                </button>
+              ) : (
+                t("erstnutzer.palette.anderesWort")
+              )}
+            </li>
           ) : (
             gruppen.map((g) => (
               <li key={g.gruppe.id}>
