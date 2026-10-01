@@ -6215,7 +6215,8 @@ const de = {
   "mrun.report.costSum": "Kosten gesamt: {{k}} (aus {{n}} von {{total}} Läufen)",
   "mrun.report.priceList": "Preisliste: Stand {{s}}, {{w}}",
   "mrun.report.noPriceList": "Keine Preisliste hinterlegt — Kosten werden nicht berechnet.",
-  "mrun.report.withoutPrice": "{{n}} Läufe mit Verbrauch ohne Preis für ihr Modell",
+  "mrun.report.withoutPrice":
+    "{{n}} Läufe mit Modellaufruf ohne berechenbare Kosten (Preis oder Verbrauch fehlt)",
   "mrun.report.capped": "Sehr viele Läufe — gerechnet wurde über die jüngsten 10000.",
   "mrun.report.empty": "Keine KI-Läufe in diesem Zeitraum.",
   "mrun.taskUnknown": "Aufgabenart unbekannt",
@@ -12270,7 +12271,8 @@ const en: typeof de = {
   "mrun.report.costSum": "Total cost: {{k}} (from {{n}} of {{total}} runs)",
   "mrun.report.priceList": "Price list: as of {{s}}, {{w}}",
   "mrun.report.noPriceList": "No price list configured — costs are not calculated.",
-  "mrun.report.withoutPrice": "{{n}} runs with usage but no price for their model",
+  "mrun.report.withoutPrice":
+    "{{n}} runs with model calls but no computable cost (price or usage missing)",
   "mrun.report.capped": "Very many runs — calculated over the most recent 10000.",
   "mrun.report.empty": "No AI runs in this period.",
   "mrun.taskUnknown": "Task type unknown",
@@ -17944,7 +17946,8 @@ const nl: typeof de = {
   "mrun.report.costSum": "Totale kosten: {{k}} (uit {{n}} van {{total}} runs)",
   "mrun.report.priceList": "Prijslijst: per {{s}}, {{w}}",
   "mrun.report.noPriceList": "Geen prijslijst ingesteld — kosten worden niet berekend.",
-  "mrun.report.withoutPrice": "{{n}} runs met verbruik zonder prijs voor hun model",
+  "mrun.report.withoutPrice":
+    "{{n}} runs met modelaanroep zonder berekenbare kosten (prijs of verbruik ontbreekt)",
   "mrun.report.capped": "Zeer veel runs — berekend over de meest recente 10000.",
   "mrun.report.empty": "Geen AI-runs in deze periode.",
   "mrun.taskUnknown": "Taaktype onbekend",

@@ -111,6 +111,9 @@ function preisFuer(preisliste: Preisliste, modell: string): ModellPreis | undefi
  *   · keine Preisliste hinterlegt ist,
  *   · der Lauf keine Versuche führt (Altdatensatz: wem welcher Verbrauch gehört, ist unbekannt),
  *   · kein Versuch Verbrauch gemeldet hat,
+ *   · ein Versuch ein Modell WIRKLICH gerufen, aber keinen Verbrauch gemeldet hat (Ben R3 B3:
+ *     unbekannter Verbrauch ist kein Nachweis für null Kosten — die übrigen Versuche wären nur
+ *     eine Teilsumme),
  *   · ein Versuch mit Verbrauch kein Modell oder kein Preis für sein Modell hat,
  *   · die Summe der Versuche nicht der Verbrauchssumme des Laufs entspricht.
  * Eine Teilsumme sähe aus wie die Kosten des Laufs und wäre zu niedrig.
@@ -120,6 +123,9 @@ export function kostenEinesLaufs(
   preisliste: Preisliste | null,
 ): ModelRunKosten | undefined {
   if (!preisliste || !lauf.versuche) {
+    return undefined;
+  }
+  if (lauf.versuche.some((v) => v.model !== undefined && v.verbrauch === undefined)) {
     return undefined;
   }
   const mitVerbrauch = lauf.versuche.filter((v) => v.verbrauch !== undefined);

@@ -16,6 +16,7 @@
 import { describe, expect, it } from "vitest";
 import {
   InMemoryModelRunRepo,
+  KI_ERZEUGENDE_AUFGABEN,
   type ModelRunRecord,
   ModelRunService,
   ProtokollModelRunRepo,
@@ -195,6 +196,22 @@ describe("Ben R1 B2: Anreicherung, Urteile und Probe schreiben je Aufruf genau e
     expect(JSON.stringify(lauf)).not.toContain(EINGABEMARKE);
   });
 
+  it("W1b · Entscheidung Pedi 8398db9e: ein enrich-Ergebnis trägt die KI-Kennzeichnung (KI-VO Art. 50)", async () => {
+    const { reasoner } = await aufbau(modell(async () => "Weltwissen"));
+
+    const ergebnis = await reasoner.enrichPublic("Was ist ein Ventil?", "de");
+
+    expect(KI_ERZEUGENDE_AUFGABEN).toContain("enrich");
+    expect(ergebnis.aiGenerated?.aiGenerated).toBe(true);
+    expect(ergebnis.aiGenerated?.task).toBe("enrich");
+    expect(ergebnis.aiGenerated?.mode).toBe("model");
+    expect(Number.isNaN(Date.parse(String(ergebnis.aiGenerated?.at)))).toBe(false);
+    // Ohne erzeugten Text (leerer Rückfall) gibt es nichts zu kennzeichnen.
+    const leer = await (await aufbau(modell(async () => "   "))).reasoner.enrichPublic("x", "de");
+    expect(leer.text).toBe("");
+    expect(Object.hasOwn(leer, "aiGenerated")).toBe(false);
+  });
+
   it("W2 · conflict: gelungenes Urteil → success, Erzeugnis „urteil“", async () => {
     const { reasoner, repo } = await aufbau(modell(async () => KONFLIKT_JSON));
 
@@ -337,6 +354,37 @@ describe("Ben R2 B1: kein Anbietertext im Laufdatensatz", () => {
   });
 });
 
+describe("Ben R3 B7: eine verworfene Modellantwort ist ein fehlgeschlagener Versuch", () => {
+  for (const [art, urteilen] of [
+    ["conflict", (r: Reasoner) => r.judgeConflictOutcome("Kern A", "Kern B", "de", false)],
+    ["duplicate", (r: Reasoner) => r.judgeDuplicateOutcome("Kern A", "Kern B", "de", false)],
+  ] as const) {
+    it(`V1 · ${art}: Nicht-JSON-Antwort → Lauf error UND Versuch fehler`, async () => {
+      const { reasoner, repo } = await aufbau(modell(async () => `${ANTWORTMARKE} kein Urteil`));
+
+      const ausgang = await urteilen(reasoner);
+
+      expect(ausgang.verdict).toBeNull();
+      expect(ausgang.failure).toBe("model-error");
+      const lauf = await einzigerLauf(repo);
+      expect(lauf.status).toBe("error");
+      expect(lauf.error).toContain("Antwort unverwertbar");
+      expect(lauf.versuche?.map((v) => [v.model, v.ausgang, v.verbrauch?.eingabeToken])).toEqual([
+        ["test-modell", "fehler", 23],
+      ]);
+    });
+  }
+
+  it("V2 · Gegenprobe: ein verwertbares Urteil bleibt ein erfolgreicher Versuch", async () => {
+    const { reasoner, repo } = await aufbau(modell(async () => KONFLIKT_JSON));
+
+    await reasoner.judgeConflictOutcome("Kern A", "Kern B", "de", false);
+
+    const lauf = await einzigerLauf(repo);
+    expect(lauf.versuche?.map((v) => v.ausgang)).toEqual(["erfolg"]);
+  });
+});
+
 describe("Ben R2 B3: Kosten je Versuch zum Preis seines Modells", () => {
   it("C1 · teures Modell scheitert nach 1000 Token, billiges antwortet mit 1000: 0,011 EUR, nicht 0,002", async () => {
     const inner = new InMemoryModelRunRepo();
@@ -383,5 +431,44 @@ describe("Ben R2 B3: Kosten je Versuch zum Preis seines Modells", () => {
     expect(lauf?.versuche).toHaveLength(1);
     expect(lauf?.versuche?.[0]?.model).toBe("teuer");
     expect(lauf?.kosten?.betrag).toBe(0.01);
+  });
+
+  it("C3 · Ben R3 B3 (N3): das teure Modell meldet keinen Verbrauch → keine Kosten, als unbelegt gezählt", async () => {
+    const ohneMeldung: ModelClient = cappedModelClient(
+      {
+        name: "anthropic:teuer",
+        model: "teuer",
+        complete: async () => {
+          throw new Error("Modell-API antwortete mit 500");
+        },
+      },
+      { rejectsConfidential: true },
+    );
+    const inner = new InMemoryModelRunRepo();
+    const protokoll = new ProtokollModelRunRepo(inner, ZWEI_PREISE);
+    const reasoner = new Reasoner(
+      new ModelProvider(ohneMeldung),
+      new DeterministicProvider(),
+      protokoll,
+      undefined,
+      new ModelProvider(preisModell("lokal-billig", 1000, "Ein ganz anderer, geglätteter Satz.")),
+    );
+    await erteileKiFreigabe(reasoner);
+
+    await reasoner.assistText("Roher Satz, der geglättet werden soll.", "de");
+
+    const lauf = await einzigerLauf(inner);
+    expect(lauf.versuche?.map((v) => [v.model, v.ausgang, v.verbrauch?.eingabeToken])).toEqual([
+      ["teuer", "fehler", undefined],
+      ["lokal-billig", "erfolg", 1000],
+    ]);
+    // Bis Runde 3: kosten.betrag = 0,001 — als wäre der teure Versuch kostenfrei gewesen.
+    expect(Object.hasOwn(lauf, "kosten")).toBe(false);
+    const auswertung = await new ModelRunService({ repo: protokoll }).auswertung(
+      "2000-01-01T00:00:00.000Z",
+      "2100-01-01T00:00:00.000Z",
+    );
+    expect(auswertung.kosten).toEqual([]);
+    expect(auswertung.verbrauchOhneKosten).toBe(1);
   });
 });

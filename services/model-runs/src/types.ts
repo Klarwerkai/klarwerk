@@ -38,7 +38,7 @@ export type ModelRunStatus = "success" | "error";
 //
 // ------------------------------------------------------------------------------------------------
 // DIE RECHTSAUSLEGUNG, AUSDRÜCKLICH HIER UND NICHT IM BERICHT — damit sie nachvollziehbar bleibt,
-// wenn jemand in einem Jahr fragt, warum drei und nicht acht:
+// wenn jemand in einem Jahr fragt, warum vier und nicht acht:
 //
 // Artikel 50 Absatz 2 nimmt aus, was „eine unterstützende Funktion für die Standardbearbeitung
 // ausführt oder die bereitgestellten Eingabedaten nicht wesentlich verändert".
@@ -49,12 +49,13 @@ export type ModelRunStatus = "success" | "error";
 //                     gelesen wird.
 //     · `interview` — erzeugt Fragen.
 //     · `describe`  — erzeugt eine Bildbeschreibung.
+//     · `enrich`    — erzeugt einen Text aus Weltwissen (öffentliche Anreicherung). Aufgenommen
+//                     durch Entscheidung Pedi 8398db9e-893b-4552-8697-9ec85aced8d6; die
+//                     Auszeichnung „extern/ungeprüft" an der Route bleibt daneben bestehen.
 //
-//   Die vier Protokollarten aus der Aufnahme gesamt-ki-laufprotokoll (`enrich`, `conflict`,
-//   `duplicate`, `probe`) stehen in KEINER der beiden Listen dieser Datei: diese Liste regelt die
-//   Kennzeichnung über `aiGeneratedMark`, und keiner der vier Wege hängt sie an. `enrich` trägt
-//   seine eigene Auszeichnung „extern/ungeprüft" an der Route; die Urteile und die Probe erzeugen
-//   keinen Text, der gelesen wird. Diese Protokollerweiterung entscheidet darüber nicht neu.
+//   Die übrigen drei Protokollarten aus der Aufnahme gesamt-ki-laufprotokoll (`conflict`,
+//   `duplicate`, `probe`) stehen in KEINER der beiden Listen dieser Datei: die Urteile und die
+//   Probe erzeugen keinen Text, der gelesen wird.
 //
 //   NICHT GEKENNZEICHNET (unterstützende Standardbearbeitung an vorhandenem Material):
 //     · `assist`    — formuliert vorhandenen Text um.
@@ -69,8 +70,13 @@ export type ModelRunStatus = "success" | "error";
 // schon — wenn die Einordnung kippt, ist die Erweiterung hier eine Zeile.
 // ------------------------------------------------------------------------------------------------
 
-/** Die drei Aufgaben, deren Ausgabe als KI-erzeugt zu kennzeichnen ist. */
-export const KI_ERZEUGENDE_AUFGABEN: readonly ModelRunTask[] = ["answer", "interview", "describe"];
+/** Die vier Aufgaben, deren Ausgabe als KI-erzeugt zu kennzeichnen ist. */
+export const KI_ERZEUGENDE_AUFGABEN: readonly ModelRunTask[] = [
+  "answer",
+  "interview",
+  "describe",
+  "enrich",
+];
 
 /**
  * Der Betriebsmodus, in dem die Ausgabe entstand.

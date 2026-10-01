@@ -2454,7 +2454,7 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
   // Aufnahme gesamt-ki-laufprotokoll (Ben R1): die Freigabe steht im VORSPANN (`aufbau`), also
   // wird jeder Fall einzeln geführt.
   "tests/ki-lauf-protokoll/protokoll-vollstaendig.test.ts": {
-    gesamtboden: 58,
+    gesamtboden: 75,
     vollzaehlig: true,
     faelle: {
       VORSPANN: { boden: 1, freigaben: ["erteileKiFreigabe(reasoner)"] },
@@ -2462,6 +2462,8 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
       I2: { boden: 2, freigaben: [] },
       I3: { boden: 2, freigaben: [] },
       W1: { boden: 8, freigaben: [] },
+      // Entscheidung Pedi 8398db9e: die KI-Kennzeichnung eines enrich-Ergebnisses.
+      W1b: { boden: 7, freigaben: [] },
       W2: { boden: 6, freigaben: [] },
       W3: { boden: 7, freigaben: [] },
       W4: { boden: 5, freigaben: [] },
@@ -2474,10 +2476,14 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
       H2: { boden: 2, freigaben: [] },
       C1: { boden: 5, freigaben: ["erteileKiFreigabe(reasoner)"] },
       C2: { boden: 3, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      // Ben R3 B3/B7: unbelegter Verbrauch ohne Kosten; verworfene Antwort als Fehlversuch.
+      C3: { boden: 4, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      V1: { boden: 5, freigaben: [] },
+      V2: { boden: 1, freigaben: [] },
     },
   },
   "tests/ki-lauf-protokoll/kosten-und-auswertung.test.ts": {
-    gesamtboden: 80,
+    gesamtboden: 86,
     vollzaehlig: true,
     faelle: {
       VORSPANN: { boden: 1, freigaben: ["erteileKiFreigabe(mutable.reasoner)"] },
@@ -2485,16 +2491,21 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
       P2: { boden: 1, freigaben: [] },
       P3: { boden: 8, freigaben: [] },
       P4: { boden: 3, freigaben: [] },
+      // Ben R3 B3: ein gerufenes Modell ohne Verbrauchsmeldung ergibt keine Teilsumme.
+      P5: { boden: 2, freigaben: [] },
       S1: { boden: 6, freigaben: [] },
       S2: { boden: 2, freigaben: [] },
       A1: { boden: 13, freigaben: [] },
       A2: { boden: 5, freigaben: [] },
+      A3: { boden: 2, freigaben: [] },
       R1: { boden: 11, freigaben: [] },
       R2: { boden: 5, freigaben: [] },
       R3: { boden: 2, freigaben: [] },
       R4: { boden: 10, freigaben: [] },
       R5: { boden: 4, freigaben: [] },
       L1: { boden: 5, freigaben: [] },
+      // Ben R3 B8: Geheimniswerte fallen auch unter Trace-Feldnamen.
+      L2: { boden: 2, freigaben: [] },
     },
   },
   "tests/ki-lauf-protokoll/kapazitaet-hinterlaesst-spur.test.ts": {

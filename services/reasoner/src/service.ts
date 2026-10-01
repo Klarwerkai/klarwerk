@@ -398,8 +398,16 @@ class Laufbuch {
     }
   }
 
-  /** Eine Ursache ohne geworfenen Fehler (z. B. „Antwort unverwertbar"). */
+  /**
+   * Eine Ursache ohne geworfenen Fehler (z. B. „Antwort unverwertbar"). Ben R3 B7: der eben
+   * gebuchte Versuch hat zwar nicht geworfen, seine Antwort wurde aber verworfen — er ist damit
+   * ein FEHLGESCHLAGENER Versuch, nicht „erfolg".
+   */
   vermerke(provider: ReasonerProvider, ursache: string): void {
+    const letzter = this.versuchsliste.at(-1);
+    if (letzter && letzter.provider === provider.name) {
+      letzter.ausgang = "fehler";
+    }
     this.fehler.push(`${provider.name}: ${ursache}`);
   }
 
@@ -2546,7 +2554,8 @@ export class Reasoner {
             status: "success",
             erzeugt: erzeugnisAus("enrich", result),
           });
-          return result;
+          // Entscheidung Pedi 8398db9e: `enrich` steht in KI_ERZEUGENDE_AUFGABEN (KI-VO Art. 50).
+          return { ...result, aiGenerated: aiGeneratedMark("enrich", result.demo) };
         }
         lb.vermerke(provider, "leere Antwort");
       } catch {

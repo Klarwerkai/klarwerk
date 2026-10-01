@@ -44,7 +44,11 @@ export interface ModelRunAuswertung {
   ausgabeToken: number;
   verbrauchGezaehlt: number;
   kosten: ModelRunKostensumme[];
-  /** Läufe MIT gemeldetem Verbrauch, aber OHNE Kosten (kein Preis hinterlegt). */
+  /**
+   * Läufe OHNE Kostennachweis, obwohl sie Verbrauch gemeldet oder ein Modell wirklich gerufen
+   * haben (kein Preis hinterlegt, oder ein gerufenes Modell hat keinen Verbrauch gemeldet —
+   * Ben R3 B3: unbekannter Verbrauch geht nicht still als kostenfrei ein).
+   */
   verbrauchOhneKosten: number;
   /** true: der Zeitraum enthält mehr als MAX_AUSWERTUNG_LAEUFE Läufe; gerechnet wurde über die jüngsten. */
   gekappt: boolean;
@@ -117,7 +121,7 @@ export function werteLaeufeAus(
       summe.betrag = runde(summe.betrag + k.betrag);
       summe.laeufe += 1;
       kosten.set(k.waehrung, summe);
-    } else if (verbrauchBrauchbar) {
+    } else if (verbrauchBrauchbar || lauf.versuche?.some((x) => x.model !== undefined)) {
       verbrauchOhneKosten += 1;
     }
   }

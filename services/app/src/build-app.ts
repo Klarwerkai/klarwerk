@@ -231,7 +231,7 @@ import {
   type LesevariantenRepo,
   PgLesevariantenRepo,
 } from "./lesevarianten";
-import { sanitizeLogText } from "./log-sanitize";
+import { entferneGeheimeEnvWerte, sanitizeLogText } from "./log-sanitize";
 import { makeAssignmentNotifier } from "./notify";
 // AUFTRAG-mega20 Block C: die modulübergreifende Referenzprüfung lebt in services/app (s. Datei).
 import type { ObjectReferenceSources } from "./object-references";
@@ -2050,8 +2050,10 @@ export function senkeUeberWert(
   }
   const ergebnis: Record<string, unknown> = {};
   for (const [schluessel, inhalt] of Object.entries(wert)) {
+    // Ben R3 B8: die Trace-Ausnahme setzt NUR die Token-Regel aus — der Wert einer
+    // secret-benannten Env-Variablen wird auch unter einem Trace-Feldnamen entfernt.
     ergebnis[schluessel] = istTraceKennung(schluessel, inhalt)
-      ? inhalt
+      ? entferneGeheimeEnvWerte(inhalt, env)
       : senkeUeberWert(inhalt, env, tiefe + 1);
   }
   return ergebnis;
@@ -2062,11 +2064,12 @@ export function senkeUeberWert(
 // und die Logzeile ließ sich ihrem Trace nicht mehr zuordnen. Die Ausnahme ist so eng wie möglich:
 // NUR unter genau diesen drei Feldnamen und NUR in der W3C-Form (16 oder 32 Kleinbuchstaben-Hex).
 // Derselbe Wert unter jedem anderen Namen und jeder andere Wert unter diesen Namen bleibt der
-// Bereinigung unterworfen (tests/ki-lauf-protokoll/kosten-und-auswertung.test.ts, L1).
+// Bereinigung unterworfen (tests/ki-lauf-protokoll/kosten-und-auswertung.test.ts, L1); die Werte
+// secret-benannter Env-Variablen werden auch unter diesen Namen entfernt (Ben R3 B8, L2).
 const TRACE_FELDER: ReadonlySet<string> = new Set(["traceId", "spanId", "parentSpanId"]);
 const TRACE_KENNUNG = /^(?:[0-9a-f]{16}|[0-9a-f]{32})$/;
 
-function istTraceKennung(schluessel: string, inhalt: unknown): boolean {
+function istTraceKennung(schluessel: string, inhalt: unknown): inhalt is string {
   return TRACE_FELDER.has(schluessel) && typeof inhalt === "string" && TRACE_KENNUNG.test(inhalt);
 }
 

@@ -226,6 +226,42 @@ describe("B3 · die Preisliste des Betreibers", () => {
     ).toBeUndefined();
   });
 
+  it("P5 · Ben R3 B3: ein gerufenes Modell ohne Verbrauchsmeldung → keine Kosten statt Teilsumme", () => {
+    const { preisliste } = lesePreisliste(
+      JSON.stringify({
+        waehrung: "EUR",
+        preisstand: "s",
+        modelle: {
+          teuer: { eingabeJeMillion: 10, ausgabeJeMillion: 0 },
+          billig: { eingabeJeMillion: 1, ausgabeJeMillion: 0 },
+        },
+      }),
+    );
+    const verbrauch = { eingabeToken: 1000, ausgabeToken: 0, gemeldeteAufrufe: 1 };
+    const ohneMeldung = ohne(
+      versuch({ model: "teuer", ausgang: "fehler" }) as unknown as ModelRunRecord,
+      "verbrauch",
+    ) as unknown as ModelRunVersuch;
+    const n3 = lauf({
+      model: "billig",
+      verbrauch,
+      versuche: [ohneMeldung, versuch({ model: "billig", verbrauch })],
+    });
+    // Bens Gegenbeleg N3: bis Runde 3 ergab das 0,001 EUR — als wäre der teure Versuch kostenfrei.
+    expect(kostenEinesLaufs(n3, preisliste)).toBeUndefined();
+    // Gegenprobe: ein Versuch OHNE gerufenes Modell (kein `model`) verbraucht nichts → Kosten bleiben.
+    const nichtGerufen = ohne(
+      ohneMeldung as unknown as ModelRunRecord,
+      "model",
+    ) as unknown as ModelRunVersuch;
+    expect(
+      kostenEinesLaufs(
+        lauf({ ...n3, versuche: [nichtGerufen, versuch({ model: "billig", verbrauch })] }),
+        preisliste,
+      )?.betrag,
+    ).toBe(0.001);
+  });
+
   it("P4 · Ben R2 B3: zwei Modelle, zwei Preise — jeder Versuch zum Preis SEINES Modells", () => {
     const { preisliste } = lesePreisliste(
       JSON.stringify({
@@ -343,7 +379,8 @@ describe("B3/B5 · die Auswertung eines Zeitraums", () => {
     );
     await repo.append(lauf({ id: "c", kosten: { betrag: 1, waehrung: "USD", preisstand: "s3" } }));
     await repo.append(lauf({ id: "d", status: "error", fallback: true })); // Verbrauch, kein Preis
-    await repo.append(ohne(lauf({ id: "e", demo: true }), "verbrauch", "model"));
+    // Deterministisch: kein Modell gerufen, also auch kein Versuch mit Modell (Ben R3 B3).
+    await repo.append(ohne(lauf({ id: "e", demo: true, versuche: [] }), "verbrauch", "model"));
     await repo.append(lauf({ id: "alt", startedAt: "2026-08-01T00:00:00.000Z" }));
     const service = new ModelRunService({ repo });
 
@@ -370,6 +407,32 @@ describe("B3/B5 · die Auswertung eines Zeitraums", () => {
     expect(a.jeAufgabe.assist?.laeufe).toBe(4);
     expect(a.dauerGezaehlt).toBe(5);
     expect(a.gekappt).toBe(false);
+  });
+
+  it("A3 · Ben R3 B3: Läufe mit gerufenem Modell ohne Kostennachweis werden gezählt, nicht als kostenfrei summiert", async () => {
+    const repo = new InMemoryModelRunRepo();
+    // Teilverbrauch gemeldet, aber ohne Kosten (Kostennachweis unvollständig).
+    await repo.append(lauf({ id: "teil" }));
+    // Modell gerufen, gar kein Verbrauch gemeldet.
+    await repo.append(
+      ohne(
+        lauf({
+          id: "unbekannt",
+          versuche: [
+            ohne(versuch() as unknown as ModelRunRecord, "verbrauch") as unknown as ModelRunVersuch,
+          ],
+        }),
+        "verbrauch",
+      ),
+    );
+    // Kein Modell gerufen (deterministisch): kein Kostennachweis nötig.
+    await repo.append(ohne(lauf({ id: "det", demo: true, versuche: [] }), "verbrauch", "model"));
+    const a = await new ModelRunService({ repo }).auswertung(
+      "2026-09-01T00:00:00.000Z",
+      "2026-10-01T00:00:00.000Z",
+    );
+    expect(a.kosten).toEqual([]);
+    expect(a.verbrauchOhneKosten).toBe(2);
   });
 
   it("A2 · der Zeitraum der Route: Vorgabe 30 Tage, Grenzen geprüft, Form wie im Datensatz", () => {
@@ -526,5 +589,23 @@ describe("B3/B5 · über die echte App", () => {
         >
       ).traceId,
     ).not.toContain("ABCDEFGHIJKLMNOPQRSTUVWXYZ");
+  });
+
+  it("L2 · Ben R3 B8: der Wert einer secret-benannten Env-Variablen fällt auch unter Trace-Feldnamen", () => {
+    // Synthetischer Wert in W3C-Form — kein echtes Geheimnis.
+    const hex32 = "0123456789abcdef0123456789abcdef";
+    const env = { BEN_API_KEY: hex32 };
+    const bereinigt = senkeUeberWert(
+      { traceId: hex32, spanId: hex32, parentSpanId: hex32, anderesFeld: hex32 },
+      env,
+    ) as Record<string, unknown>;
+    for (const feld of ["traceId", "spanId", "parentSpanId", "anderesFeld"]) {
+      expect(bereinigt[feld], feld).toBe("[redacted]");
+    }
+    // Gegenprobe: eine Trace-Kennung, die KEIN Geheimniswert ist, bleibt lesbar.
+    const fremd = "4bf92f3577b34da6a3ce929d0e0e4736";
+    expect((senkeUeberWert({ traceId: fremd }, env) as Record<string, unknown>).traceId).toBe(
+      fremd,
+    );
   });
 });
