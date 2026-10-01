@@ -13,6 +13,13 @@ endete an der Nacharbeitsgrenze. Am 27.09. wurde er ausdrücklich zurückgesetzt
 Branches nach und übernimmt keine ihrer Belege. Was dort als geliefert steht, gilt hier als **nicht
 geliefert**.
 
+**Zuständigkeit heute (Lauf 5, 01.10.2026).** Seit Pedis Entscheidung
+entscheidung:668bb979-bc21-4641-b3b3-6d8f997b2543 (Aufteilen, 30.09.2026) ist dieser Auftrag ein
+Kernauftrag. Vier Anliegen sind in gesonderte Aufträge ausgelagert und hier **nicht** Umfang; siehe
+Abschnitt „Ausgelagerte Anliegen“ vor dem Abgleich. Fragen mit dem Kennzeichen „Entscheidung“, die in
+Lauf 3 zu diesen Anliegen gestellt wurden, sind historischer Stand. Heute sind diese Anliegen dem
+jeweiligen Folgeauftrag zugeordnet.
+
 ## Was dieser Lauf gebaut hat
 
 ### 1. Die Identität kommt vom Bild (R-0009, R-1599/N8, I50 erstens, Kriterien 1–3)
@@ -320,6 +327,25 @@ zusätzlich `nimmtBildklickAn`.
 - Solange eine aus dem Editorklick geöffnete Großansicht offen ist, zeigen auch die Kacheln darunter
   den Klickkörper; nach dem Schließen gilt wieder der eigene Stand.
 
+## Ausgelagerte Anliegen (entscheidung:668bb979, 30.09.2026)
+
+Kern dieses Auftrags sind R-0009, R-0010, R-0089, R-0090, R-1599 und R-0053/R-0945, dazu der
+Abgleich der übrigen Punkte. Die folgenden Anliegen gehören seit der Aufteilung zu eigenen Aufträgen.
+Dieser Auftrag baut und prüft sie nicht; in Lauf 5 wurde dafür nichts umgesetzt und kein Prüflauf
+bestellt. Was die Tabelle unten zu ihnen sagt, ist der Bestandsabgleich aus Lauf 3, kein offener Rest
+dieses Auftrags.
+
+| Anliegen | Punkte | Gesonderter Auftrag | Stand aus Lauf 3 (historisch) |
+| --- | --- | --- | --- |
+| Browser-, Word- und Screenreader-Belege | R-0361 (Zwischenablage-Bilddatei im echten Browser), R-1619 / Q5 / Q5b / Q5c (Cursorlage, echte Screenreader-Ausgabe, Word-Gesamtweg), M5c-b-R (Word-/Browser-Nachweis); dazu die Browserreste unter „Nicht gemessen“ unten | `aufnahme:20260922:gesamt-bildidentitaet:belege-browser-word-screenreader` | Funktion im Bestand gemountet belegt; die genannten echten Browser-/Word-/Assistenztechnik-Belege fehlen |
+| Freies Ziehen der Bildgröße an Griffen | R-0014 | `aufnahme:20260922:gesamt-bildidentitaet:bildgroesse-griffe` | Stufen 25/50/75/100 % vorhanden, Griffe nicht; damals als „Entscheidung: Reichen die Stufen?“ geführt |
+| Anhang aus der Auswahlliste ziehen | R-0898 / R-2146 / SOLL:FR-STR-03 (Teil „Ziehen“) | `aufnahme:20260922:gesamt-bildidentitaet:anhang-ziehen-auswahlliste` | Einfügen per Klick an der Cursorposition erfüllt (Bestand); Ziehen aus der Liste fehlt; damals als „Entscheidung“ geführt |
+| Inhaltskennung als zweiter Begriff | R-0098 | `aufnahme:20260922:gesamt-bildidentitaet:inhaltskennung-zweitbegriff` | Quellenwiderspruch zu R-0089/R-1620/R-0053 benannt, nicht gebaut; damals als Wahl (a)/(b) geführt |
+
+Ausdrücklich **bei diesem Auftrag** bleiben die nicht ausgelagerten Teile derselben Zeilen: der
+Klickweg von R-0898/R-2146 (erfüllt, Bestand) und die im Bestand gemountet belegte Funktion von
+R-0361 und R-1619. Nicht neu geprüft wurden sie in Lauf 5; dort steht der Lauf-3-Beleg.
+
 ## Abgleich je Aufnahmepunkt
 
 Legende:
@@ -329,6 +355,8 @@ Legende:
   Lauf lokal grün gefahren.
 - **Teil**: Ein benannter Rest bleibt.
 - **Entscheidung**: Kein Bau ohne Entscheidung.
+- **ausgelagert**: Seit entscheidung:668bb979 einem gesonderten Auftrag zugeordnet (Abschnitt oben).
+  Eine dort früher gestellte Entscheidungsfrage ist historischer Stand aus Lauf 3.
 
 Live-Stände wurden nicht neu gemessen.
 
@@ -336,19 +364,19 @@ Live-Stände wurden nicht neu gemessen.
 | --- | --- | --- |
 | R-0009 Kennung schlägt Reihenfolge, nie überschreiben | erfüllt (Runden 1 und 2) | Paarung getrennter Einheiten: Bestand (`tests/capture/mega90-kennung-vor-reihenfolge.test.ts`). **Bis Runde 1 verletzt** im Server-Sanitizer (Hülle führte, Fußnote überschrieben) und im Editor-Rückfall: Punkt 1, W1–W6. **Runde 1 zu weit ausgewiesen:** die lose Fußnote verlor ihre Kennung weiter (Bens B2); seit Runde 2 geschlossen (Punkt 3, B2). |
 | R-0010 Bild, Rahmen, Fußnote ein Anker über Speichern/Laden | erfüllt (Bestand + Runden 1 und 2) | `tests/capture/mega88-bildstruktur-invariante.test.ts`. Runde 1: Ein Bild mit nur fremder Fußnote bekommt seine eigene (W3). Runde 2: Getrennt stehende Fußnote und Bild behalten die gemeinsame Kennung über Speichern und Bildsuche (B2). Der alte Rest aus E06 („außerhalb des Moduls nicht lesbar“) ist überholt: `bodyImages.ts` und `library-routes.ts` lesen `data-image-id`. |
-| R-0014 Bildgröße in der Schreibfläche | Teil / Entscheidung | Vorhanden: Stufen 25/50/75/100 % (`data-kw-scale`, Werkzeugleiste). Freies Ziehen an Griffen gibt es nicht. **Entscheidung:** Reichen die Stufen? |
+| R-0014 Bildgröße in der Schreibfläche | **ausgelagert** → `aufnahme:20260922:gesamt-bildidentitaet:bildgroesse-griffe` | Vorhanden: Stufen 25/50/75/100 % (`data-kw-scale`, Werkzeugleiste). Freies Ziehen an Griffen gibt es nicht. *Historisch (Lauf 3): „Entscheidung: Reichen die Stufen?“* Heute: Zuständig ist der Folgeauftrag, hier kein offener Rest. |
 | R-0041 / R-2007 / package:bilder fünf Härtungen | erfüllt (Bestand), mit benannten Grenzen | Siehe unten. |
 | R-0052 / R-0901 Deckel + Klick öffnet Großansicht | erfüllt (Bestand + Lauf 5) | `tests/web/d44-bildhoehe-deckel.test.tsx`, `d44-bild-klick-grossansicht.test.tsx`. Siehe **Quellenwiderspruch R-0901** unten. Runde 3: Auch ein im gespeicherten Text loses (im Editor verankertes) Bild öffnet jetzt seine Großansicht; der Bestandsfall D44 K4 ist mit Begründung umgeschrieben. **Runde 3 zu weit ausgewiesen:** War dieses Bild das einzige des Textes, öffnete sich nichts (Bens R3-2). Seit Lauf 5 geschlossen (Abschnitt 5, `runde3-rueckweg-mounted.test.tsx`). |
 | R-0053 / R-0945 Klick trifft genau dieses Bild | erfüllt (Lauf 5), mit benannter Grenze in der Gegenrichtung | **Runden 1 und 2 zu weit ausgewiesen:** Ein loses Bild davor (B1), ein gelöschtes Bild gleicher Quelle vor Ablauf der Galerieverzögerung (N1) und ein Bild in einer Fußnote (N2) führten zu einer fremden Beschreibung. Seit Runde 3 baut der Körperklick die Großansicht aus dem Editorstand (Abschnitt 4). Die Galerie-Bitte ist an die Kennung gebunden und öffnet im Zweifel nichts; bis 300 ms nach einer Eingabe kann sie auch für ein vorhandenes, verschobenes Bild nichts öffnen. **Runde 3 zu weit ausgewiesen:** Der Weg Klick → Großansicht → „Bildbeschreibung bearbeiten“ öffnete bei einem losen Bild davor und gleicher Quelle und Kennung eine fremde Beschreibung (Bens R3-1). Seit Lauf 5 trägt die Bitte den Klickkörper mit (Abschnitt 5). |
 | R-0055 / R-0931 Gliederungsleiste | erfüllt (Bestand) | `tests/web/d44-gliederung.test.ts`, `d44-sprung-mounted.test.tsx`. Siehe **Quellenwiderspruch R-0931** unten. |
 | R-0089 eindeutige Kennung je Bild | erfüllt (Bestand + Runden 1 und 2) | `tests/bildkennung-eindeutig/doppelte-kennung.test.ts`. Server: Eine kopierte Einheit wird getrennt, ihre Fußnote geht mit (W6). Editor: Die eigene Beschreibung folgt auch hinter einer fremden Fußnote (B3). Die Verdachtsspur „Commit 365e580“ ist nicht verfolgt; kein Befund dazu. |
 | R-0090 doppelte/ungültige Kennung nur melden | erfüllt mit benannter Grenze (Runde 2) | Siehe unten. Runde 1 hatte das als offene Wahl geführt; Ben hat die Wahl als Nichterfüllung gewertet (B4). |
-| R-0096 vier Grenzen nach Ship 12 (I50) | erfüllt bis auf eine Wahl | Siehe unten. |
-| R-0098 Server vergibt Kennung aus dem Bildinhalt | Entscheidung (Quellenwiderspruch) | Siehe unten. Nicht gebaut. |
+| R-0096 vier Grenzen nach Ship 12 (I50) | erfüllt | Siehe unten. Die in Lauf 3 offene Wahl zum Leseversprechen ist durch entscheidung:dac9bd84-078a-4f9d-b574-2351e0ffb3b7 entschieden (verengte Zusage bleibt). |
+| R-0098 Server vergibt Kennung aus dem Bildinhalt | **ausgelagert** → `aufnahme:20260922:gesamt-bildidentitaet:inhaltskennung-zweitbegriff` | Quellenwiderspruch siehe unten (bleibt als Befund für den Folgeauftrag stehen). Nicht gebaut. *Historisch (Lauf 3): Wahl (a)/(b).* |
 | R-0107 Anker beim Zusammenführen | zurückgezogen | Laut Quelle Dublette; lebt in R-0089 weiter. |
 | R-0359 Word-Import: je Bild ein Anker, nicht raten | erfüllt (Bestand) | `docx.ts` (`captionsAmbiguous`); `tests/m5-docx-bildunterschriften/**`, `tests/m5c-ui-bildunterschriften/**`. |
-| R-0361 Knopf, Ziehen, Zwischenablage | erfüllt (Bestand), Browserrest | Bildknopf mit Dateiwahl, `onDrop`, `onPaste` (`RichTextEditor.tsx`, `partitionDropMedia` → `insertImageFile`). Gemountet: `tests/capture/mega88-bildweg-anker-mounted.test.tsx`. Browser: `tests-smoke/mega88-bildanker-browser.spec.ts` (Drop, Speichern, Wiederöffnen), in diesem Lauf nicht wiederholt. **Fehlender Beleg:** Einfügen einer Bild*datei* aus der Zwischenablage im echten Browser. |
-| R-0898 / R-2146 / SOLL:FR-STR-03 Anhänge frei platzieren | erfüllt (Bestand) für Klick; Entscheidung für Ziehen | Die Bildauswahl fügt einen Anhang per Klick an der Cursorposition ein (`addImage` → `exec("insertHTML")`). Das historische Abnahmekriterium („an Cursorposition einfügen“) ist damit erfüllt. Ziehen gibt es für Dateien, **nicht** aus der Auswahlliste. R-0898 sagt „per Klick **oder** Ziehen“. **Entscheidung:** Wird das Ziehen aus der Liste zusätzlich gebraucht? |
+| R-0361 Knopf, Ziehen, Zwischenablage | erfüllt (Bestand), Browserbeleg ausgelagert | Bildknopf mit Dateiwahl, `onDrop`, `onPaste` (`RichTextEditor.tsx`, `partitionDropMedia` → `insertImageFile`). Gemountet: `tests/capture/mega88-bildweg-anker-mounted.test.tsx`. Browser: `tests-smoke/mega88-bildanker-browser.spec.ts` (Drop, Speichern, Wiederöffnen), in diesem Lauf nicht wiederholt. **Fehlender Beleg:** Einfügen einer Bild*datei* aus der Zwischenablage im echten Browser → **ausgelagert** an `aufnahme:20260922:gesamt-bildidentitaet:belege-browser-word-screenreader`. |
+| R-0898 / R-2146 / SOLL:FR-STR-03 Anhänge frei platzieren | erfüllt (Bestand) für Klick; Ziehen ausgelagert | Die Bildauswahl fügt einen Anhang per Klick an der Cursorposition ein (`addImage` → `exec("insertHTML")`). Das historische Abnahmekriterium („an Cursorposition einfügen“) ist damit erfüllt. Ziehen gibt es für Dateien, **nicht** aus der Auswahlliste. R-0898 sagt „per Klick **oder** Ziehen“. *Historisch (Lauf 3): „Entscheidung: Wird das Ziehen aus der Liste zusätzlich gebraucht?“* Heute: Das Ziehen aus der Liste ist **ausgelagert** an `aufnahme:20260922:gesamt-bildidentitaet:anhang-ziehen-auswahlliste`. |
 | R-1035 Unterschrift ohne Zuordnung erkennbar | erhalten | `tests/fussnote-ohne-bild/**` grün. Die Kennzeichnung trägt jetzt zusätzlich die fremd gekennzeichnete Fußnote neben einem Bild (vorher still gepaart). Fall J bleibt grün. |
 | R-1535 / R-1620 / V8 Eindeutigkeit geprüft, Meldung | erfüllt (Bestand) | JOB 3035/3051: `tests/bildkennung-eindeutig/**`, `tests/bildkennung-getrennt/**` (gemountet). Der sichtbare Warnfall ist nicht im echten Browser belegt. |
 | R-1551 Trennung wird gemeldet | erfüllt (Bestand + Runde 2) | Editortrennung: JOB 3051. Servertrennung über API- und Importwege: seit Runde 2 Spur „doppelt“, gemeldet beim Öffnen im selben Hinweis (B4). |
@@ -356,14 +384,14 @@ Live-Stände wurden nicht neu gemessen.
 | R-1599 / N8 ausgetauschtes Bild erbt nichts | erfüllt (dieser Lauf) | Stufe 2b war entfernt (`job916-stufe2b-abloesung.test.ts`). **Die flache verankerte Hülle erbte weiter**, in Editor und Server. Geschlossen: Punkt 1, E1–E4. Statt eines Herkunftshinweises bleibt die alte Beschreibung sichtbar, gekennzeichnet und zuordenbar. |
 | R-1600 / N9 Anker an der Emissionsgrenze | erfüllt (Bestand) | `emit()` → `ensureImageAnchors(puffer)`; Sammlerfall „JOB 2060 D4“. |
 | R-1604 / P4 Hauptweg erzeugt den Anker | erfüllt (Bestand) | `enhanceFiguresForEditing` beim Laden; `tests/capture/mega88-bildweg-anker-mounted.test.tsx`. |
-| R-1619 / Q5 / Q5b / Q5c Studio, Konkurrenz, Speichern | Teil | Zuordnung und Studio-Übernahme mit Speichern und Wiederöffnen (`tests/bildzuordnung-speicherweg/**`) und Konkurrenzhinweis (`tests/studio-konkurrenz/**`) grün. **Fehlende Belege laut Quelle:** Cursorlage, echte Screenreader-Ausgabe, Word-Gesamtweg. Das sind Browser-, Assistenztechnik- und Word-Abnahmen, in jsdom nicht messbar. |
+| R-1619 / Q5 / Q5b / Q5c Studio, Konkurrenz, Speichern | erfüllt (Bestand), Belegrest ausgelagert | Zuordnung und Studio-Übernahme mit Speichern und Wiederöffnen (`tests/bildzuordnung-speicherweg/**`) und Konkurrenzhinweis (`tests/studio-konkurrenz/**`) grün. **Fehlende Belege laut Quelle:** Cursorlage, echte Screenreader-Ausgabe, Word-Gesamtweg. Das sind Browser-, Assistenztechnik- und Word-Abnahmen, in jsdom nicht messbar → **ausgelagert** an `aufnahme:20260922:gesamt-bildidentitaet:belege-browser-word-screenreader`. |
 | R-1799 (OFFEN D44 „ERLEDIGT“) | bestätigt | Beide D44-Teile sind im Code (R-0052, R-0931). |
 | R-1823 (huelle2 „ABGESCHLOSSEN, ROT“) | erledigt (Bestand) | Nachfolger huelle3/huelle4 im Code; `tests/capture/huelle3-kennungskonflikt.test.ts`, `huelle4-nachnormalisierung.test.ts`. |
 | R-1824 (huelle2 „GELIEFERT, BEI BEN“) | überholt | Historischer Prüfstand, siehe R-1823. |
 | R-2005 (OFFEN.md I50 „OFFEN“) | Quellenwiderspruch | `OFFEN.md:379` führt I50 als OFFEN, `PRIORITAETEN.md` N8/N9/V7/V8 als erledigt. Die Wahl zum Leseversprechen (R-0096) ist seit entscheidung:dac9bd84 entschieden. Die Registerzeile ist hier nicht umgeschrieben. |
 | M5c-UI Zähler und Unterscheidung | erfüllt (Bestand) | `Capture.tsx`; `tests/m5c-ui-bildunterschriften/**`. |
 | M5c-b Add-in-Weg gleicher Importvertrag | erfüllt (Bestand) | `tests/m5c-b-addin-bildunterschriften/route.test.ts`. |
-| M5c-b-R EMF-Waise, 503, Suchableitung, Bildbudget | erfüllt (Bestand), Word offen | `tests/m5c-b-bildbudget/**`, `tests/addin-bildbilanz/**`. **Fehlender Beleg laut Quelle:** echter Word-/Browser-Nachweis. |
+| M5c-b-R EMF-Waise, 503, Suchableitung, Bildbudget | erfüllt (Bestand), Word-Beleg ausgelagert | `tests/m5c-b-bildbudget/**`, `tests/addin-bildbilanz/**`. **Fehlender Beleg laut Quelle:** echter Word-/Browser-Nachweis → **ausgelagert** an `aufnahme:20260922:gesamt-bildidentitaet:belege-browser-word-screenreader`. |
 | Q5, Q5b, Q5c | siehe R-1619 | Gesonderte, abgeschlossene Aufträge (JOB 3083, 3107, 3123); hier nicht neu gebaut. |
 | N8, N9, P4, V7, V8 | siehe R-1599, R-1600, R-1604, R-1555, R-1620 | |
 
@@ -410,7 +438,11 @@ entscheidung:dac9bd84-078a-4f9d-b574-2351e0ffb3b7 entschieden (verengte Zusage b
 und R-0053. Diese verlangen für zwei Vorkommen desselben Bildes zwei verschiedene Anker; eine
 Inhaltskennung als Anker bräche genau das.
 
-**Entscheidung:**
+**Zuständigkeit heute:** ausgelagert an `aufnahme:20260922:gesamt-bildidentitaet:inhaltskennung-zweitbegriff`
+(entscheidung:668bb979). Die Wahl unten ist der historische Stand aus Lauf 3 und hier kein offener
+Punkt mehr.
+
+**Entscheidung (historisch, Lauf 3):**
 
 - (a) Die Inhaltskennung als **zweiter Begriff** neben dem Vorkommensanker, etwa für die
   Dublettenerkennung.
@@ -457,7 +489,8 @@ Vollständigkeit behauptet:
   **Entschieden** (entscheidung:2ead4ce4-f105-43c7-9972-a88cfe0b75ae): Die unverankerte flache
   Hülle paart weiter. Die GRENZE in `job916-stufe2b-abloesung.test.ts` bleibt grün (in Lauf 5
   gefahren).
-- **Nicht gemessen, ohne neuen Prüflauf:**
+- **Nicht gemessen, ohne neuen Prüflauf** (seit entscheidung:668bb979 **ausgelagert** an
+  `aufnahme:20260922:gesamt-bildidentitaet:belege-browser-word-screenreader`, hier kein offener Rest):
   - Tastatur- und Screenreader-Ablauf von Großansicht und Zuordnung im echten Browser
   - Einfügen einer Bilddatei aus der Zwischenablage im echten Browser
   - Word-Gesamtweg
