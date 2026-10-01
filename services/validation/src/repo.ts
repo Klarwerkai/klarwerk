@@ -29,7 +29,9 @@ export interface RatingRepo {
 export interface AssignmentRepo {
   // Aufnahme gesamt-auditprotokoll (Lauf 3, Runde 2): optionaler TxContext wie bei den Bewertungen.
   create(assignment: Assignment, tx?: TxContext): Promise<void>;
-  find(koId: string, userId: string): Promise<Assignment | undefined>;
+  // Lauf 5 (BEN-R3-B1): mit `tx` liest `find` den Stand IN der Transaktion — die Rückgabe an die
+  // verantwortliche Person muss eine dort eben erledigte Zuweisung sehen, nicht den alten Stand.
+  find(koId: string, userId: string, tx?: TxContext): Promise<Assignment | undefined>;
   update(assignment: Assignment, tx?: TxContext): Promise<void>;
   /** Runde 3: nur für die Rücknahme ohne Transaktion (s. `RatingRepo.remove`). OPTIONAL. */
   remove?(koId: string, userId: string): Promise<void>;
@@ -70,7 +72,7 @@ export class InMemoryAssignmentRepo implements AssignmentRepo {
     return Promise.resolve();
   }
 
-  find(koId: string, userId: string): Promise<Assignment | undefined> {
+  find(koId: string, userId: string, _tx?: TxContext): Promise<Assignment | undefined> {
     return Promise.resolve(this.assignments.get(`${koId}:${userId}`));
   }
 

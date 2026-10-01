@@ -80,8 +80,8 @@ export class PgAssignmentRepo implements AssignmentRepo {
     );
   }
 
-  async find(koId: string, userId: string): Promise<Assignment | undefined> {
-    const res = await this.pool.query<AssignmentRow>(
+  async find(koId: string, userId: string, tx?: TxContext): Promise<Assignment | undefined> {
+    const res = await ziel(this.pool, tx).query<AssignmentRow>(
       "SELECT data FROM assignments WHERE ko_id=$1 AND user_id=$2",
       [koId, userId],
     );

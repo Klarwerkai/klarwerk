@@ -510,7 +510,10 @@ export class ValidationService {
     const verantwortlich = responsibleOf(ko);
     // EINE Quelle für Name und Payload — s. Kopfkommentar. Zwei Ableitungen wären zwei Wahrheiten.
     const art = responsibleKindOf(ko);
-    const existing = await this.assignments.find(koId, verantwortlich);
+    // Lauf 5 (BEN-R3-B1): im Transaktionsweg auf demselben Client gelesen. Über den Pool sah die
+    // Rückgabe noch „offen", wenn `rate` die Zuweisung der selbst bewertenden verantwortlichen Person
+    // eben in der Transaktion erledigt hatte — und unterließ das Wiederöffnen.
+    const existing = await this.assignments.find(koId, verantwortlich, tx);
     if (existing) {
       if (existing.status !== "open") {
         await this.assignments.update({ ...existing, status: "open" }, tx);

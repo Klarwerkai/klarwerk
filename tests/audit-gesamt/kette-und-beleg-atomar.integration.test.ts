@@ -12,6 +12,9 @@
 //    Weist die Datenbank den Entscheidungsbeleg ab, bleiben Status, Vertrauen, Bewertung,
 //    Zuweisungen und `validationDecisionRef` bitgleich.
 //
+// BEN-R3-B1 (Lauf 5): Gelb/Rot der selbst bewertenden verantwortlichen Person mit schon offener
+//    Zuweisung hinterlässt eine OFFENE Nacharbeitsaufgabe und genau einen passenden Rückgabebeleg.
+//
 // B2 (beleg:1ea197ac, Commit d3c1bc09): Wissensobjekt und Auditeintrag werden gemeinsam
 //    festgeschrieben oder gemeinsam verworfen. Der Ausfall ist ECHT: ein Trigger der Datenbank weist
 //    den Eintrag (bzw. das Speichern am Objekt) ab — kein Test-Double im Dienst. Dazu der gemeldete
@@ -509,6 +512,47 @@ describe("Aufnahme gesamt-auditprotokoll · Lauf 3 · Kette und Beleg gemeinsam 
         ref.auditSeq,
       ]);
       expect(eintrag.rows[0]?.hash).toBe(ref.auditHash);
+      await pruefeKette(pa);
+    });
+  }
+
+  // --------------------------------------------------------------------------------------------
+  // BEN-R3-B1 · Gelb/Rot der selbst bewertenden verantwortlichen Person mit SCHON OFFENER
+  // Zuweisung. `rate` erledigt sie in der Transaktion; die Rückgabe muss diesen Stand sehen und
+  // wieder öffnen. Vorher las sie über den Pool „offen", unterließ das Wiederöffnen, und die
+  // Transaktion schrieb „erledigt" fest — neben einem `ko.returned-to-*`.
+  // --------------------------------------------------------------------------------------------
+  for (const verdict of ["down", "warn"]) {
+    it(`BEN-R3-B1 · ${verdict} mit schon offener Zuweisung: offene Nacharbeit und passender Rückgabebeleg`, async (ctx) => {
+      const { a, pa } = bereit(ctx);
+      const id = await offenesObjekt(a, `Rückgabe offen ${verdict}`);
+      await (servicesA as ReturnType<typeof buildPgServices>).validation.assign(
+        id,
+        [adminId],
+        adminId,
+      );
+      expect((await validierungsStand(pa, id)).zuweisungen).toEqual([
+        expect.objectContaining({ userId: adminId, status: "open" }),
+      ]);
+      const res = await a.inject({
+        method: "PUT",
+        url: `/api/kos/${id}`,
+        headers,
+        payload: { action: "rate", verdict },
+      });
+      expect(res.statusCode, res.body).toBe(200);
+      expect((await validierungsStand(pa, id)).zuweisungen).toEqual([
+        expect.objectContaining({ userId: adminId, status: "open" }),
+      ]);
+      const belege = await pa.query<{ payload: Record<string, unknown> }>(
+        `SELECT payload FROM audit
+          WHERE target = $1 AND action IN ('ko.returned-to-author', 'ko.returned-to-owner')`,
+        [id],
+      );
+      expect(belege.rowCount).toBe(1);
+      expect(belege.rows[0]?.payload).toEqual(
+        expect.objectContaining({ verdict, responsible: adminId }),
+      );
       await pruefeKette(pa);
     });
   }
