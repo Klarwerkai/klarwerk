@@ -4,7 +4,7 @@
 //
 // DIE KETTE, die diese Datei misst:
 //
-//     PostgreSQL (angebotene Testinstanz oder Testcontainer) → `buildPgServices` → `buildApp` auf
+//     PostgreSQL (Testcontainer) → `buildPgServices` → `buildApp` auf
 //     einem echten Port → die gebaute Fläche → Chromium, frisches Profil → „Wissen erfassen" (Blatt)
 //     → `POST /api/knowledge/check` → Antwort UND Anzeige.
 //
@@ -32,21 +32,27 @@
 //
 // RÜCKNAHME, AUSFÜHRBAR (Ben, Runde 1, Befund B2) — Fall K4-R. Dieselbe Prüffunktion läuft gegen
 // das ALTE Verhalten, an derselben Datenbank und im selben Chromium:
-//   · ALTE FLÄCHE: gebaut aus dem Git-Stand VOR dieser Änderung (Elter des Commits, der
-//     `apps/web/src/texte/vorschau.ts` anlegt; ist er noch nicht festgehalten, HEAD), mit
-//     `git archive` in ein Wegwerfverzeichnis gelegt und mit demselben `vite build` gebaut.
-//     Ein Wächter prüft, dass jener Stand wirklich der alte ist (kein `coverage` im Servercode).
+//   · ALTE FLÄCHE: eine Kopie des aktuellen `apps/web`, in der `alte-flaeche.patch` genau diese
+//     Änderung zurücknimmt, gebaut mit demselben `vite build` (`alte-flaeche.ts`). Ohne
+//     Git-Vorgeschichte — der Prüfbaum auf dem Server hat keine (Ben, Lauf 6 Runde 2, Befund P1).
+//     Wächter prüfen, dass die Kopie wirklich der alte Stand ist.
 //   · ALTER DRAHT: eine zweite `buildApp`-Instanz, deren Antwort auf `/api/knowledge/check` das Feld
 //     `coverage` nicht trägt — genau die Drahtform des alten Servers (die Änderung am Server fügt
 //     nur dieses Feld hinzu; `status`, `similar`, `conflicts` sind unverändert).
 // Erwartet: V1 meldet UMFANG_FEHLT und ANZEIGE_OHNE_UMFANG, V2 zusätzlich NEUHEIT („Das ist neu").
-// Fehlt Git oder scheitert der Bau der alten Fläche, wird der Fall ROT, nicht übersprungen.
+// Passt die Umkehrung nicht oder scheitert der Bau der alten Fläche, wird der Fall ROT, nicht
+// übersprungen.
 //
-// PRÜFGRENZE, LAUT GEMELDET (Bauform `tests/sharepoint-inhalt-gesamtweg/gesamtweg-pg-im-browser…`):
-// ohne erreichbare PostgreSQL wird der Grund SICHTBAR gemeldet und übersprungen — dann ist dieser
-// Nachweis NICHT erbracht. KEINE PRODUKTIVDATEN: nur eine Wegwerf-Datenbank mit „test" im Namen.
-import { execFileSync, execSync } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
+// DATENHALTUNG NUR ÜBER TESTCONTAINERS (Ben, Lauf 6 Runde 2, Befund P2). Das Kriterium verlangt
+// echte Datenhaltung über Testcontainers. Bis Runde 2 nahm diese Datei zuerst eine angebotene
+// `KLARWERK_PG_TEST_URL`; die Servervorbereitung setzt sie (direkt gestarteter Docker-Container),
+// und `GenericContainer.start()` lief nie. Jetzt startet die Datei IMMER ihren eigenen Testcontainer;
+// eine gesetzte URL wird nicht benutzt, nur gemeldet.
+//
+// PRÜFGRENZE, LAUT GEMELDET: ohne Container-Laufzeit wird der Grund SICHTBAR gemeldet und
+// übersprungen — dann ist dieser Nachweis NICHT erbracht. KEINE PRODUKTIVDATEN: nur eine
+// Wegwerf-Datenbank mit „test" im Namen.
+import { mkdtempSync, rmSync } from "node:fs";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -57,7 +63,6 @@ import i18n from "../../apps/web/src/i18n";
 import { buildApp, buildPgServices } from "../../services/app/src/build-app";
 import { createPool, migrate } from "../../services/app/src/db";
 import { registerWebStatic } from "../../services/app/src/web-static";
-import { guardedLocalPgTestUrl } from "../../services/db-tx";
 import {
   BREIT,
   anmelden,
@@ -74,6 +79,7 @@ import {
   warte,
 } from "../gast-nutzerweg/browserweg";
 import { Sitzung, type Strecke, ersteinrichtung } from "../gast-nutzerweg/strecke";
+import { baueAlteFlaeche } from "./alte-flaeche";
 import { type Aufgeklappt, type Befund, type Lage, verstoesse } from "./nachweis";
 
 // ------------------------------------------------------------------------------------------------
@@ -108,7 +114,6 @@ vi.mock("../../services/app/src/http", async (original) => {
 });
 
 const JOB = "[KLARWERK] VORSCHAU-REICHWEITE";
-const WURZEL = join(__dirname, "..", "..");
 const PG_SCHEMA = "postgresql:";
 const ADMIN = "admin@vorschau-reichweite.test";
 const T = i18n.getFixedT("de");
@@ -264,56 +269,6 @@ async function eintrag(
 
 function diagnose(): string {
   return SERVERFEHLER.length === 0 ? "(kein Routenfehler)" : SERVERFEHLER.join("\n");
-}
-
-// ------------------------------------------------------------------------------------------------
-// DIE ALTE FLÄCHE — aus dem Git-Stand vor dieser Änderung gebaut.
-// ------------------------------------------------------------------------------------------------
-
-function git(args: string[]): string {
-  return execFileSync("git", args, { cwd: WURZEL, stdio: ["ignore", "pipe", "pipe"] })
-    .toString()
-    .trim();
-}
-
-/** Der Stand vor dieser Änderung: Elter des Commits, der das Textmodul anlegt — sonst HEAD. */
-function alterStand(): string {
-  const anlage = git([
-    "log",
-    "--diff-filter=A",
-    "--format=%H",
-    "--",
-    "apps/web/src/texte/vorschau.ts",
-  ])
-    .split("\n")
-    .filter(Boolean);
-  const erster = anlage[anlage.length - 1];
-  const stand = erster ? `${erster}^` : "HEAD";
-  // Wächter: jener Stand ist WIRKLICH der alte — sonst liefe die Rücknahme gegen das Neue.
-  const server = git(["show", `${stand}:services/app/src/knowledge-check.ts`]);
-  if (server.includes("coverage")) {
-    throw new Error(`${JOB}: ${stand} trägt bereits \`coverage\` — das ist nicht der alte Stand.`);
-  }
-  return git(["rev-parse", stand]);
-}
-
-function baueAlteFlaeche(ziel: string): { dist: string; stand: string } {
-  const stand = alterStand();
-  execSync(`git archive ${stand} apps/web | tar -x -C "${ziel}"`, { cwd: WURZEL, stdio: "pipe" });
-  const web = join(ziel, "apps/web");
-  // Die Abhängigkeiten sind dieselben Pakete wie im Arbeitsbaum — verlinkt, nicht neu installiert.
-  symlinkSync(join(WURZEL, "apps/web/node_modules"), join(web, "node_modules"), "dir");
-  symlinkSync(join(WURZEL, "node_modules"), join(ziel, "node_modules"), "dir");
-  const dist = join(ziel, "dist-alt");
-  execFileSync("npx", ["vite", "build", "--outDir", dist, "--emptyOutDir"], {
-    cwd: web,
-    stdio: "pipe",
-    timeout: 900_000,
-  });
-  if (!existsSync(join(dist, "index.html"))) {
-    throw new Error(`${JOB}: die alte Fläche wurde gebaut, aber ${dist}/index.html fehlt.`);
-  }
-  return { dist, stand };
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -544,24 +499,21 @@ describe("Vorschau-Reichweite · Server, PostgreSQL und Chromium", () => {
   beforeAll(async () => {
     let url = "";
     let grund = "";
-    const lokal = guardedLocalPgTestUrl();
-    if (lokal) {
-      url = lokal;
-      quelleDerDatenbank = "lokale Testinstanz (KLARWERK_PG_TEST_URL)";
-    } else if (process.env.KLARWERK_PG_TEST_URL) {
-      grund = "KLARWERK_PG_TEST_URL wurde von der Testdatenbank-Sicherung abgelehnt";
-    } else {
-      try {
-        container = await new GenericContainer("postgres:16-alpine")
-          .withEnvironment({ POSTGRES_PASSWORD: "test", POSTGRES_DB: "klarwerk_test" })
-          .withExposedPorts(5432)
-          .withWaitStrategy(Wait.forLogMessage(/database system is ready to accept connections/, 2))
-          .start();
-        url = `${PG_SCHEMA}//postgres:test@${container.getHost()}:${container.getMappedPort(5432)}/klarwerk_test`;
-        quelleDerDatenbank = "Testcontainer postgres:16-alpine";
-      } catch (fehler) {
-        grund = `weder KLARWERK_PG_TEST_URL noch eine Container-Laufzeit verfügbar: ${String(fehler)}`;
-      }
+    if (process.env.KLARWERK_PG_TEST_URL) {
+      process.stderr.write(
+        `${JOB} KLARWERK_PG_TEST_URL ist gesetzt und wird NICHT benutzt — dieser Fall verlangt Testcontainers.\n`,
+      );
+    }
+    try {
+      container = await new GenericContainer("postgres:16-alpine")
+        .withEnvironment({ POSTGRES_PASSWORD: "test", POSTGRES_DB: "klarwerk_test" })
+        .withExposedPorts(5432)
+        .withWaitStrategy(Wait.forLogMessage(/database system is ready to accept connections/, 2))
+        .start();
+      url = `${PG_SCHEMA}//postgres:test@${container.getHost()}:${container.getMappedPort(5432)}/klarwerk_test`;
+      quelleDerDatenbank = `Testcontainer postgres:16-alpine (GenericContainer.start, Container ${container.getId().slice(0, 12)})`;
+    } catch (fehler) {
+      grund = `keine Container-Laufzeit für Testcontainers verfügbar: ${String(fehler)}`;
     }
     if (!url) {
       process.stderr.write(
@@ -686,9 +638,11 @@ describe("Vorschau-Reichweite · Server, PostgreSQL und Chromium", () => {
     if (!bestand) {
       throw new Error(`${JOB}: K4-R braucht den Bestand aus K4, der fehlt (K4 ist gescheitert).`);
     }
-    const alt = baueAlteFlaeche(wegwerf);
-    process.stderr.write(`${JOB} K4-R GELAUFEN · alte Fläche aus ${alt.stand}\n`);
-    const altAnwendung = await starteAnwendung(pool, { dist: alt.dist, alterDraht: true });
+    const altDist = baueAlteFlaeche(wegwerf);
+    process.stderr.write(
+      `${JOB} K4-R GELAUFEN · alte Fläche: aktueller Stand mit zurückgenommener Änderung (alte-flaeche.patch)\n`,
+    );
+    const altAnwendung = await starteAnwendung(pool, { dist: altDist, alterDraht: true });
     anwendungen.push(altAnwendung);
 
     const { v1, v2 } = await messeZielHinterDerGrenze(

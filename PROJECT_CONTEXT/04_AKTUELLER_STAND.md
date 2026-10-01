@@ -49,7 +49,9 @@ Browser-/PostgreSQL-Messung dieser Fassung steht aus.**
   gibt es auf diesem Weg nicht mehr (Anzeigezustand `new` → `empty`). Texte in `apps/web/src/texte/vorschau.ts`.
 - Echter Nachweis (PostgreSQL + Chromium, Eintrag auf Rang 41):
   `tests/vorschau-reichweite/vorschau-reichweite-pg-im-browser.integration.test.ts` — Ausführung auf
-  dem Prüfserver steht aus.
+  dem Prüfserver steht aus. Datenhaltung nur über Testcontainers (eine gesetzte
+  `KLARWERK_PG_TEST_URL` wird nicht benutzt); die alte Fläche für K4-R entsteht ohne
+  Git-Vorgeschichte aus `tests/vorschau-reichweite/alte-flaeche.patch` (Umkehrung dieser Änderung).
 
 ## 29.09.2026 — Erfassen: Formular + Datei gemeinsam, Doppelklick und verlorene Antwort (Teilstand)
 
