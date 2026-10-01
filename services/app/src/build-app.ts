@@ -1833,6 +1833,10 @@ export const ERLAUBTE_FEHLERCODES: ReadonlySet<string> = new Set([
   "INVALID_STATUS",
   "INVALID_TYPE",
   "INVALID_UPLOAD_LIMITS",
+  // Dubletten-Rückzug (BEN-R5-4): der Ausgang eines Rückzugs/einer Wiederherstellung ist am
+  // Dev-Journal ungewiss (`JournalAusgangUngewiss`, dev-persist.ts). Darf ins Protokoll: ein
+  // Speicherzustand ohne Nutzertext und ohne Kennung; geht über `http.ts` ohnehin als 503 hinaus.
+  "JOURNAL_AUSGANG_UNGEWISS",
   // D5 (KI aus): der Frageweg ist vom Administrator abgeschaltet (`AskError`, services/ask). Darf ins
   // Protokoll: ein Betriebszustand ohne Nutzertext und ohne Kennung; geht als 503 ohnehin an den Client.
   "KI_ABGESCHALTET",

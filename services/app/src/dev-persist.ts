@@ -208,7 +208,12 @@ export interface JournalLine {
  * Kein Repo trägt diesen Namen; auch ein älterer Leser spielt sie nicht zurück.
  */
 const NEUAUFSATZ: JournalEntry = { repo: "journal", method: "neuaufsatz", args: [] };
-const NEUAUFSATZ_TEXT = JSON.stringify(NEUAUFSATZ);
+// Die geschriebene Form von `NEUAUFSATZ` als Literal, nicht als `JSON.stringify(NEUAUFSATZ)`: ein
+// Aufruf auf Modulebene machte diese Bibliothek für den Einstiegspunkt-Wächter
+// (tests/demo-zugang-start/vertrag-am-einstiegspunkt.test.ts, R2/7) zum Prozessstart (BEN-R5-6).
+// Dass beide Formen übereinstimmen, belegt der Neuaufsatz-Durchlauf in
+// tests/dubletten-ruecknahme-lesepfad/journal-teilschreiben.test.ts.
+const NEUAUFSATZ_TEXT = '{"repo":"journal","method":"neuaufsatz","args":[]}';
 
 // Journal defensiv laden: fehlende Datei → leer; eine korrupte (z. B. beim Crash halb
 // geschriebene) Zeile beendet das Einlesen ab dort — alles Gültige davor bleibt erhalten. Eine
