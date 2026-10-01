@@ -1,10 +1,10 @@
 {
-  "version": 9,
-  "erhoben_am": "2026-09-27",
-  "nachgefuehrt_von": "FE-003 (lauf:b3:arbeit:fe-003-tutorial-fragen-20260926:2): sieben Faelle je Engine mehr aus tests-smoke/fe003-tutorial-fragen.spec.ts (Tutorial „Fragen“ bei 1280/1024/390 px, andere Seiten ohne Tutorial, laufende Vorfuehrung im Blatt bei 1280/390 px, reduzierte Bewegung). Sonst nichts geaendert.",
+  "version": 11,
+  "erhoben_am": "2026-10-01",
+  "nachgefuehrt_von": "gesamt-erstnutzerfuehrung (lauf:b3:aufnahme:20260922:gesamt-erstnutzerfuehrung:3): drei Faelle mehr je Projekt chromium, firefox und webkit, alle in erstnutzer-u2-u3-browser.spec.ts — Erstnutzer-Huerden U2 (Bibliothek, Meine Entwuerfe) und U3 (Meine Aufgaben, Seitenhilfe) am gebauten Bildschirm. Sonst nichts geaendert.",
   "erhoben_mit": "npx playwright test --config playwright.smoke.config.ts --list --reporter=json (KLARWERK_SMOKE_MODE=gate)",
   "zweck": "Sollmanifest der Smoke-Mengen je Projekt. Drift (Hinzufuegen, Entfernen, Umbenennen) macht die Mengenpruefung rot.",
-  "gesamt_fallinstanzen": 185,
+  "gesamt_fallinstanzen": 201,
   "projekte": {
     "setup-zustand": {
       "soll": 1,
@@ -19,7 +19,7 @@
       ]
     },
     "chromium": {
-      "soll": 58,
+      "soll": 61,
       "titel": [
         "a18-live-region-browser.spec.ts › KALIBRIERUNG A · die generische CDP-Sitzung gibt Rolle, Ignoriert und die drei Live-Felder wirklich aus",
         "a18-live-region-browser.spec.ts › KALIBRIERUNG B · Playwrights ARIA-Repraesentation nennt dieselbe Rolle, fuehrt aber KEINE Live-Eigenschaft",
@@ -27,6 +27,9 @@
         "a18-live-region-browser.spec.ts › P1 · <output> ohne ARIA-Attribute ist eine Statusflaeche mit live=polite, atomic und relevant",
         "a18-live-region-browser.spec.ts › PRODUKT · der ausgeloeste Toast wird vom Browser als Statusflaeche mit live=polite gefuehrt",
         "a18-live-region-browser.spec.ts › R1 · <p> ist KEINE Statusflaeche: der Browser fuehrt paragraph und keine Live-Eigenschaft",
+        "erstnutzer-u2-u3-browser.spec.ts › U2 · Bibliothek: das Suchfeld nennt seinen Suchraum, der Nulltreffer führt zum Erfassen",
+        "erstnutzer-u2-u3-browser.spec.ts › U2 · Meine Entwürfe: der Suchraum der Entwürfe ist benannt und führt in die Bibliothek",
+        "erstnutzer-u2-u3-browser.spec.ts › U3 · „Meine Aufgaben“ ist über das Zahnrad erreichbar, und die Seitenhilfe sagt, was gemeint ist",
         "fe003-tutorial-fragen.spec.ts › FE-003 · Tutorial „Fragen“ — Desktop 1280",
         "fe003-tutorial-fragen.spec.ts › FE-003 · Tutorial „Fragen“ — Laptop 1024",
         "fe003-tutorial-fragen.spec.ts › FE-003 · Tutorial „Fragen“ — schmal 390",
@@ -82,7 +85,7 @@
       ]
     },
     "firefox": {
-      "soll": 58,
+      "soll": 61,
       "titel": [
         "a18-live-region-browser.spec.ts › KALIBRIERUNG A · die generische CDP-Sitzung gibt Rolle, Ignoriert und die drei Live-Felder wirklich aus",
         "a18-live-region-browser.spec.ts › KALIBRIERUNG B · Playwrights ARIA-Repraesentation nennt dieselbe Rolle, fuehrt aber KEINE Live-Eigenschaft",
@@ -90,6 +93,9 @@
         "a18-live-region-browser.spec.ts › P1 · <output> ohne ARIA-Attribute ist eine Statusflaeche mit live=polite, atomic und relevant",
         "a18-live-region-browser.spec.ts › PRODUKT · der ausgeloeste Toast wird vom Browser als Statusflaeche mit live=polite gefuehrt",
         "a18-live-region-browser.spec.ts › R1 · <p> ist KEINE Statusflaeche: der Browser fuehrt paragraph und keine Live-Eigenschaft",
+        "erstnutzer-u2-u3-browser.spec.ts › U2 · Bibliothek: das Suchfeld nennt seinen Suchraum, der Nulltreffer führt zum Erfassen",
+        "erstnutzer-u2-u3-browser.spec.ts › U2 · Meine Entwürfe: der Suchraum der Entwürfe ist benannt und führt in die Bibliothek",
+        "erstnutzer-u2-u3-browser.spec.ts › U3 · „Meine Aufgaben“ ist über das Zahnrad erreichbar, und die Seitenhilfe sagt, was gemeint ist",
         "fe003-tutorial-fragen.spec.ts › FE-003 · Tutorial „Fragen“ — Desktop 1280",
         "fe003-tutorial-fragen.spec.ts › FE-003 · Tutorial „Fragen“ — Laptop 1024",
         "fe003-tutorial-fragen.spec.ts › FE-003 · Tutorial „Fragen“ — schmal 390",
@@ -145,7 +151,7 @@
       ]
     },
     "webkit": {
-      "soll": 58,
+      "soll": 61,
       "titel": [
         "a18-live-region-browser.spec.ts › KALIBRIERUNG A · die generische CDP-Sitzung gibt Rolle, Ignoriert und die drei Live-Felder wirklich aus",
         "a18-live-region-browser.spec.ts › KALIBRIERUNG B · Playwrights ARIA-Repraesentation nennt dieselbe Rolle, fuehrt aber KEINE Live-Eigenschaft",
@@ -153,6 +159,9 @@
         "a18-live-region-browser.spec.ts › P1 · <output> ohne ARIA-Attribute ist eine Statusflaeche mit live=polite, atomic und relevant",
         "a18-live-region-browser.spec.ts › PRODUKT · der ausgeloeste Toast wird vom Browser als Statusflaeche mit live=polite gefuehrt",
         "a18-live-region-browser.spec.ts › R1 · <p> ist KEINE Statusflaeche: der Browser fuehrt paragraph und keine Live-Eigenschaft",
+        "erstnutzer-u2-u3-browser.spec.ts › U2 · Bibliothek: das Suchfeld nennt seinen Suchraum, der Nulltreffer führt zum Erfassen",
+        "erstnutzer-u2-u3-browser.spec.ts › U2 · Meine Entwürfe: der Suchraum der Entwürfe ist benannt und führt in die Bibliothek",
+        "erstnutzer-u2-u3-browser.spec.ts › U3 · „Meine Aufgaben“ ist über das Zahnrad erreichbar, und die Seitenhilfe sagt, was gemeint ist",
         "fe003-tutorial-fragen.spec.ts › FE-003 · Tutorial „Fragen“ — Desktop 1280",
         "fe003-tutorial-fragen.spec.ts › FE-003 · Tutorial „Fragen“ — Laptop 1024",
         "fe003-tutorial-fragen.spec.ts › FE-003 · Tutorial „Fragen“ — schmal 390",
@@ -208,15 +217,22 @@
       ]
     },
     "chromium-zustand": {
-      "soll": 9,
+      "soll": 16,
       "titel": [
         "demo-ux-v1-capture-frontdoor.spec.ts › DEMO-UX-V1 · Einreichen ohne Inhalt führt an die Pflichtangabe und legt nichts an",
         "demo-ux-v1-capture-frontdoor.spec.ts › DEMO-UX-V1 · Einreichen zeigt Status und alle nächsten Schritte",
         "demo-ux-v1-capture-frontdoor.spec.ts › DEMO-UX-V1 · Entwurf sichern legt beiseite und hält Blatt und Inhalt",
         "demo-ux-v1-capture-frontdoor.spec.ts › DEMO-UX-V1 · Entwurf und Einreichen stehen nebeneinander und sind unterscheidbar",
+        "demo-ux-v1-capture-frontdoor.spec.ts › DEMO-UX-V1 · Fall 10 (en): natives Einfügen verpufft während der Entwurf lädt",
+        "demo-ux-v1-capture-frontdoor.spec.ts › DEMO-UX-V1 · Fall 11 (de): Bild und Beschreibung überstehen natives Einfügen, Sichern und Wiederöffnen",
+        "demo-ux-v1-capture-frontdoor.spec.ts › DEMO-UX-V1 · Fall 11 (en): Bild und Beschreibung überstehen natives Einfügen, Sichern und Wiederöffnen",
+        "demo-ux-v1-capture-frontdoor.spec.ts › DEMO-UX-V1 · Fall 12 (de): verwaiste Beschreibung übersteht natives Einfügen, Sichern und Wiederöffnen",
+        "demo-ux-v1-capture-frontdoor.spec.ts › DEMO-UX-V1 · Fall 12 (en): verwaiste Beschreibung übersteht natives Einfügen, Sichern und Wiederöffnen",
         "demo-ux-v1-capture-frontdoor.spec.ts › DEMO-UX-V1 · Fall 6: natives Einfügen erreicht Rumpf und Entwurf-Knopf",
         "demo-ux-v1-capture-frontdoor.spec.ts › DEMO-UX-V1 · Fall 7: natives Einfügen erreicht das Titelfeld",
         "demo-ux-v1-capture-frontdoor.spec.ts › DEMO-UX-V1 · Fall 8: natives Einfügen verpufft während der Entwurf lädt",
+        "demo-ux-v1-capture-frontdoor.spec.ts › DEMO-UX-V1 · Fall 9 (de): natives Einfügen übersteht Sichern und Wiederöffnen",
+        "demo-ux-v1-capture-frontdoor.spec.ts › DEMO-UX-V1 · Fall 9 (en): natives Einfügen übersteht Sichern und Wiederöffnen",
         "demo-ux-v1-capture-frontdoor.spec.ts › DEMO-UX-V1 · das Blatt läuft bei 390x844 (Telefon) nicht waagerecht über",
         "demo-ux-v1-capture-frontdoor.spec.ts › DEMO-UX-V1 · das Blatt läuft bei 768x1024 (Tablet) nicht waagerecht über"
       ]

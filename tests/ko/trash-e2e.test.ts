@@ -492,8 +492,8 @@ describe("SCRUM-523 P.3 (WP1-Batch3): Purge-Kaskade end-to-end (echte Verdrahtun
 //   (c) Erfolgsfall: genau EIN ko.purged-Beleg + KO wirklich weg.
 // Ein zusätzlicher Integrationstest gegen ECHTES Postgres (beweist echte Transaktionsgrenzen, die eine
 // In-Memory-Fake-Transaktion strukturell nicht beweisen kann) steht separat in
-// tests/ko/trash-tx-pg.integration.test.ts — bewusst NICHT Teil dieses Laufs (braucht Docker/
-// Testcontainers, s. Kommentar dort).
+// tests/ko/trash-tx-pg.integration.test.ts — bewusst NICHT Teil dieses Laufs (braucht eine
+// echte PostgreSQL über tests/ko/pg-pruefplatz.ts, s. Kommentar dort).
 describe("SCRUM-523 P.3 (WP-A2): repo.delete + audit.record committen/rollbacken ATOMAR (services/db-tx)", () => {
   type TxOp = () => void;
 

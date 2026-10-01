@@ -1,4 +1,4 @@
-import type { KnowledgeObject, KoStatus } from "../api/types";
+import type { KnowledgeCheckCoverage, KnowledgeObject, KoStatus } from "../api/types";
 
 // SCRUM-527 (WP2-Design): die Live-Reaktion braucht eine ehrliche Einschätzung „neu vs. ähnlich" schon
 // WÄHREND des Tippens. Es gibt (Stand 0b-Kartierung) KEINEN dedizierten Pro-Text-Ähnlichkeits-/
@@ -9,8 +9,11 @@ import type { KnowledgeObject, KoStatus } from "../api/types";
 export type LiveVerdict =
   | { status: "idle" }
   | { status: "checking" }
-  // "new" = ehrlich geprüft (status "done") UND nichts Ähnliches/Widersprüchliches gefunden.
-  | { status: "new" }
+  // AUFNAHME 20260922 · VORSCHAU-REICHWEITE: hier stand `"new"` — „ehrlich geprüft UND nichts
+  // gefunden". Das war es nie: die Vorschau vergleicht nur eine begrenzte Vorauswahl des Bestands.
+  // "empty" heisst deshalb nur „in DIESEM Umfang kein Treffer", und der Umfang reist mit — die
+  // Fläche nennt genau ihn und nichts darüber hinaus. `unknown` ist ausdrücklich keine Vollprüfung.
+  | { status: "empty"; coverage: KnowledgeCheckCoverage }
   // G-2-EHRLICHKEIT (SCRUM-527): der Server hat NICHT auf Widerspruch geprüft (kein Modell/Cloud, weil
   // der Freitext unklassifiziert/vertraulich ist). Das ist NICHT „neu" — es ist „noch nicht geprüft".
   | { status: "pending" }
@@ -72,8 +75,9 @@ export function textSimilarity(left: string, right: string): number {
 }
 
 // Klassifiziert den Entwurfstext gegen den Bestand: idle (zu kurz) · similar (bester Treffer über
-// Schwelle) · new. „checking"/„conflict" werden hier NICHT erzeugt (der Hook setzt checking; conflict
-// bleibt dem serverseitigen Check vorbehalten).
+// Schwelle) · empty. „checking"/„conflict" werden hier NICHT erzeugt (der Hook setzt checking; conflict
+// bleibt dem serverseitigen Check vorbehalten). Der Umfang dieses Wegs ist der geladene Bestand, und
+// ob der vollständig ist, weiss diese Funktion nicht — deshalb `unknown` (Vorschau-Reichweite).
 export function classifyIntake(
   text: string,
   kos: readonly KnowledgeObject[] | undefined,
@@ -101,5 +105,5 @@ export function classifyIntake(
   if (best && best.score >= INTAKE_SIMILAR_THRESHOLD) {
     return { status: "similar", match: best };
   }
-  return { status: "new" };
+  return { status: "empty", coverage: { kind: "unknown" } };
 }

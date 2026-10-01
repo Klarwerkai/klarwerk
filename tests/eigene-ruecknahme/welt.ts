@@ -12,8 +12,15 @@
 // `author` wirklich die Kennung des angemeldeten Menschen, und nur so misst der Kernfall die
 // Reihenfolgefalle (§2.4 des Auftrags) am echten Weg — beim Nachlauf der Löschroute liegt das
 // Objekt bereits im Papierkorb.
-import { buildApp, buildServices } from "../../services/app/src/build-app";
+import {
+  type AppRepos,
+  assembleServices,
+  buildApp,
+  buildServices,
+  inMemoryRepos,
+} from "../../services/app/src/build-app";
 import type { OverlapEntry } from "../../services/conflicts";
+import type { WithTx } from "../../services/knowledge-object";
 
 export type App = ReturnType<typeof buildApp>;
 export type Services = ReturnType<typeof buildServices>;
@@ -62,8 +69,15 @@ export interface Welt {
   fremde: Konto;
 }
 
-export async function welt(): Promise<Welt> {
-  const services = buildServices();
+// Auftrag gesamt-dubletten-rueckzug (Runde 2): optional eine eigene Transaktionsklammer. Ohne sie
+// ist die Welt unverändert die von `buildServices()`; mit ihr lassen sich Vorgänge mitten in ihrer
+// Transaktion anhalten (tests/dubletten-ruecknahme-lesepfad, überlappende Wiederherstellungen).
+// Runde 3: zusätzlich optional eigene Ablagen (etwa mit einem Haltepunkt in einem Speicher).
+export async function welt(opts: { withTx?: WithTx; repos?: AppRepos } = {}): Promise<Welt> {
+  const services =
+    opts.withTx || opts.repos
+      ? assembleServices(opts.repos ?? inMemoryRepos(), opts.withTx ? { withTx: opts.withTx } : {})
+      : buildServices();
   const app = buildApp(services);
   // Das erste Konto wird Admin (Bootstrap), alle weiteren sind Experten und brauchen die Freigabe.
   const admin = await registrieren(app, services, undefined, "Admin", "admin@x.de");

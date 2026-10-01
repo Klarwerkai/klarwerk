@@ -31,8 +31,17 @@ export function useAuthorName(): NameResolver {
   // AUFTRAG-mega63 Block B: der VOLLE Abfragezustand geht weiter, nicht nur `data`. Vorher fielen
   // „läuft noch" und „fehlgeschlagen" hier zusammen, weil beide `data === undefined` bedeuten —
   // die Unterscheidung war schon da (api/hooks.ts), sie wurde nur an dieser Zeile weggeworfen.
+  //
+  // FE-001: eine Antwort, die KEINE Liste ist (Anmeldeumleitung, Zwischenspeicher, künftiger Umbau),
+  // ist kein Verzeichnis. Bisher warf `data.find` dann und riss die ganze Fläche mit; jetzt gilt sie
+  // als „nicht abrufbar" — dieselbe ehrliche Auskunft wie bei einem Fehler, nie eine Kennung.
+  const verzeichnis = Array.isArray(directory.data) ? directory.data : undefined;
   return makeAuthorNameResolver(
-    { data: directory.data, isPending: directory.isPending, isError: directory.isError },
+    {
+      data: verzeichnis,
+      isPending: directory.isPending,
+      isError: directory.isError || (directory.data !== undefined && verzeichnis === undefined),
+    },
     {
       unknown: (ref) => t(AUTHOR_UNKNOWN_KEY, { ref }),
       loading: () => t(AUTHOR_LOADING_KEY),
