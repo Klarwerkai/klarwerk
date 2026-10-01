@@ -2234,6 +2234,11 @@ const de = {
   "capture.saveDraft": "Als Entwurf speichern",
   "capture.draftSaved": "Entwurf gespeichert.",
   "capture.draftUpdated": "Entwurf aktualisiert.",
+  // LAUF 6 RUNDE 2 (erfassen-doppelklick, bens B7): der Teilerfolg des gemeinsamen Speicherns.
+  "capture.teilerfolg.dateiAusstehend":
+    "Noch nicht alles gesichert: Der Entwurf ist gespeichert, die Datei „{{name}}“ wird noch gespeichert.",
+  "capture.teilerfolg.dateiGescheitert":
+    "Nur teilweise gespeichert: Der Entwurf ist gesichert, die Datei „{{name}}“ nicht. Sie liegt weiter hier — „Als Entwurf speichern“ versucht es erneut.",
   "capture.draftDiscarded": "Entwurf gelöscht.",
   // Bugfix (Pedi 04.07.): ehrliche Nachfrage vor dem Löschen, keine Behauptung, die der Zustand
   // nicht hergibt. Bis JOB 3668 stand hier „Entwurf endgültig löschen?" — mit der Begründung,
@@ -5879,12 +5884,13 @@ const de = {
     "Der Wissensgraph zeichnet die einzelnen Wissensobjekte und ihre Verbindungen als Netz — näher am Objekt als die Themenkarte, die nach Themen zusammenfasst. Gehört ein Knoten zu einem Objekt aus dem Bestand, führt ein Klick auf ihn zu diesem Wissensobjekt, und mit der Tastatur erreichst du ihn ebenso; ein Knoten ohne solches Objekt ist kein Link und liegt nicht in der Tastatur-Reihenfolge. Fang bei einem Objekt an, das du kennst, und folge seinen Linien.",
   // JOB 4309: das Kapitel zum neuen Menüpunkt „Gesamtanweisungen". Der Titel trägt den ANGEZEIGTEN
   // Namen des Punkts (`ga.bereich.titel`), damit die Suche auf `/hilfe` unter genau dem Wort
-  // anschlägt, das im Menü steht. Der Text verspricht NICHTS, was die Seite nicht kann: es gibt
-  // keine Übersicht und keinen Endpunkt, der Anweisungen aufzählt — das steht hier so drin statt
-  // überspielt zu werden.
-  "help.gesamtanweisungen.title": "Gesamtanweisungen zusammenstellen",
+  // anschlägt, das im Menü steht. Der Text verspricht NICHTS, was die Seite nicht kann.
+  // FE-001: der frühere Satz „eine Liste aller Anweisungen gibt es nicht" ist seit JOB 4357 falsch
+  // (die Übersicht zeigt den Bestand) und ist ersetzt; nutzerseitig heisst der Bereich jetzt
+  // „Arbeitsanleitungen". Die Hilfe beschreibt die heutige Bedienung und braucht kein Modell.
+  "help.gesamtanweisungen.title": "Arbeitsanleitungen zusammenstellen",
   "help.gesamtanweisungen.body":
-    "Hier legst du eine Gesamtanweisung an und setzt sie aus vorhandenen Fassungen zusammen: Du nimmst einen Eintrag mit seiner Fassungsnummer auf, änderst die Reihenfolge und legst das Ergebnis zur Entscheidung vor. Eine Liste aller Anweisungen gibt es nicht — eine bereits angelegte öffnest du über ihre Adresse. Beim Vergleich zweier Stände wird eine geänderte Reihenfolge anders ausgewiesen als ein geänderter Inhalt, und der Vermerk zur Prüfanbindung bleibt sichtbar, solange sie fehlt.",
+    "Arbeitsanleitungen sind lesbare Schritt-für-Schritt-Dokumente aus vorhandenem Wissen – zum Beispiel für die Einarbeitung neuer Mitarbeitender. Die Übersicht zeigt alle Anleitungen, die du lesen darfst; ein Klick auf den Titel öffnet eine. Neu beginnst du mit einem Titel und „Neue Arbeitsanleitung erstellen“. In der geöffneten Anleitung beschreibst du Zweck, Geltungsbereich und Voraussetzungen, suchst vorhandene Einträge nach Titel und nimmst je eine feste Fassung als Abschnitt auf – eine spätere Änderung am Eintrag verändert den Abschnitt nicht still. Die Lesefassung zeigt das Ergebnis; die Reihenfolge änderst du mit „Nach oben“ und „Nach unten“. Zum Schluss legst du die ganze Anleitung zur Entscheidung vor; entscheiden können Personen mit Prüfrecht. „Was hat sich geändert?“ vergleicht zwei gespeicherte Stände. Eine automatische fachliche Prüfung ist noch nicht angebunden, und für all das wird keine KI gebraucht.",
   "help.hilfe.title": "Hilfe",
   "help.hilfe.body":
     "Auf dieser Seite stehen alle Hilfekapitel beieinander, mit einem Suchfeld darüber; jedes Kapitel trägt einen Link auf die Seite, um die es geht. Gesucht wird in Titel, Text und Schlagwörtern der Kapitel — tipp also ruhig das Wort ein, mit dem du dein Problem beschreiben würdest. Gibt es dazu nichts, sagt die Seite das offen, statt ein unpassendes Kapitel zu zeigen.",
@@ -7323,29 +7329,32 @@ const de = {
   // UND EINE VOKABELREGEL: „unverändert" heisst unverändert. Es gibt hier bewusst keinen Satz mit
   // „richtig", „geprüft", „bestätigt" oder „freigegeben" über die Gesamtfassung — ein gleicher
   // Nachweis belegt Unverändertheit, nicht Richtigkeit (Startvertrag).
-  "ga.titel": "Anweisung",
+  "ga.titel": "Arbeitsanleitung",
   "ga.laedt": "Lädt …",
-  "ga.leer": "Diese Anweisung hat noch keine Bausteine.",
-  "ga.fehler": "Die Anweisung konnte nicht geladen werden.",
+  "ga.leer":
+    "Diese Arbeitsanleitung hat noch keine Abschnitte. Füge oben den ersten aus vorhandenem Wissen hinzu.",
+  "ga.fehler":
+    "Die Arbeitsanleitung konnte nicht geladen werden. Lade die Seite neu oder versuche es später erneut.",
   // JOB 4156 R3: der Satz zur abgelehnten Anlage, wenn diese Instanz nichts dauerhaft ablegen kann.
   // Er sagt, was ist, und verspricht nichts: kein „später erneut versuchen" (der nächste Versuch
   // scheitert gleich), keine internen Begriffe (Journal, In-Memory, Repo).
   "ga.ablageFluechtig":
-    "Diese Installation kann Anweisungen nicht dauerhaft speichern. Es wurde nichts angelegt — bitte wenden Sie sich an Ihre Systembetreuung.",
-  "ga.offline": "Keine Verbindung. Ihre Eingaben bleiben erhalten; gespeichert ist nichts.",
+    "Diese Installation kann Arbeitsanleitungen nicht dauerhaft speichern. Es wurde nichts angelegt – bitte wende dich an deine Systembetreuung.",
+  "ga.offline": "Keine Verbindung. Deine Eingaben bleiben erhalten; gespeichert ist nichts.",
   "ga.standVon": "Stand von {{zeit}}",
   "ga.auffrischungLaeuft": "Stand von {{zeit}} · wird aufgefrischt",
   "ga.auffrischungGescheitert": "Stand von {{zeit}} · Auffrischung fehlgeschlagen",
   "ga.gesperrt":
     "Vorlegen und Entscheiden sind gesperrt: der angezeigte Stand ist nicht gesichert.",
-  "ga.unvollstaendig": "Teile dieser Anweisung sind für Sie nicht zugänglich.",
-  "ga.verborgene": "Nicht zugängliche Bausteine: {{anzahl}}",
-  "ga.pruefanbindung": "Prüfanbindung: noch nicht angebunden",
+  "ga.unvollstaendig": "Teile dieser Arbeitsanleitung sind für dich nicht zugänglich.",
+  "ga.verborgene": "Nicht zugängliche Abschnitte: {{anzahl}}",
+  "ga.pruefanbindung":
+    "Prüfanbindung: noch nicht angebunden – eine automatische fachliche Prüfung dieser Anleitung findet nicht statt.",
   "ga.stand.entwurf": "Entwurf",
   "ga.stand.vorgelegt": "Vorgelegt",
   "ga.stand.entschieden": "Entschieden",
   "ga.stand.abgelehnt": "Abgelehnt",
-  "ga.bausteine": "Bausteine",
+  "ga.bausteine": "Abschnitte",
   "ga.baustein.fassung": "Gebundene Fassung {{version}}",
   "ga.baustein.herkunft": "{{titel}} · {{autor}}",
   "ga.baustein.herkunftUnbekannt": "Die gebundene Fassung ist nicht auffindbar.",
@@ -7361,7 +7370,7 @@ const de = {
   // entweder gibt es die Fassung nicht mehr, oder sie trägt keinen Rumpf — beides ist Unwissen.
   "ga.baustein.textUnbelegt": "Der Inhalt dieser Fassung ist nicht belegt.",
   "ga.baustein.gliederung": "Gliederung dieser Fassung",
-  "ga.aufnahme.titel": "Vorhandene Fassung aufnehmen",
+  "ga.aufnahme.titel": "Abschnitt aus vorhandenem Wissen hinzufügen",
   "ga.aufnahme.koId": "Eintrag",
   "ga.aufnahme.koVersion": "Fassung",
   "ga.aufnahme.nachweis": "Nachweis (optional)",
@@ -7370,14 +7379,14 @@ const de = {
   // NICHTS über fremde Einträge — die Liste der vorhandenen Fassungen steht in der Serverantwort
   // für den, der den Eintrag ohnehin sehen darf, nicht in diesem Satz.
   "ga.aufnahme.fassungUnbekannt":
-    "Diese Fassung gibt es nicht. Bitte prüfen Sie die Fassungsnummer.",
+    "Diese Fassung gibt es nicht (mehr). Wähle eine der angezeigten Fassungen.",
   "ga.ordnen.hoch": "Nach oben",
   "ga.ordnen.runter": "Nach unten",
   "ga.voraussetzung.label": "Voraussetzung",
   "ga.voraussetzung.knopf": "Voraussetzung übernehmen",
-  "ga.vergleich.titel": "Zwei Stände vergleichen",
-  "ga.vergleich.von": "Von Stand",
-  "ga.vergleich.bis": "Bis Stand",
+  "ga.vergleich.titel": "Was hat sich geändert?",
+  "ga.vergleich.von": "Älterer Stand",
+  "ga.vergleich.bis": "Neuerer Stand",
   "ga.vergleich.knopf": "Vergleichen",
   "ga.vergleich.unveraendert": "Unverändert. Das ist keine Aussage über Richtigkeit.",
   "ga.vergleich.geaendert": "Geändert.",
@@ -7400,7 +7409,7 @@ const de = {
   "ga.entscheidung.annehmen": "Annehmen",
   "ga.entscheidung.ablehnen": "Ablehnen",
   "ga.entscheidung.konflikt":
-    "Die Anweisung wurde zwischenzeitlich geändert. Bitte neu laden und erneut entscheiden.",
+    "Die Arbeitsanleitung wurde zwischenzeitlich geändert. Bitte lade die Seite neu und versuche es erneut.",
   "ga.kopf.titel": "Titel",
   "ga.kopf.zweck": "Zweck",
   "ga.kopf.geltungsbereich": "Geltungsbereich",
@@ -7415,24 +7424,26 @@ const de = {
   // Weg als den einzigen ausgibt, schickt den Menschen an die Stelle, an der er vorher nichts fand.
   // Der Leersatz selbst steht weiterhin NICHT hier, sondern unter `ga.liste.leer` — und er erscheint
   // nur auf einer erfolgreichen, leeren Antwort (`GesamtanweisungBereich.tsx`).
-  "ga.bereich.titel": "Gesamtanweisungen",
+  "ga.bereich.titel": "Arbeitsanleitungen",
   "ga.bereich.einleitung":
-    "Oben stehen die gespeicherten Gesamtanweisungen; darunter legen Sie eine neue an und stellen sie aus vorhandenen Fassungen zusammen.",
-  "ga.bereich.anlegen": "Gesamtanweisung anlegen",
+    "Stelle vorhandenes Wissen zu einer lesbaren Schritt-für-Schritt-Anleitung zusammen – zum Beispiel für die Einarbeitung neuer Mitarbeitender.",
+  "ga.bereich.anlegen": "Neue Arbeitsanleitung erstellen",
   // JOB 4357 — DIE BESTANDSLISTE. Der Leersatz sagt „nichts gespeichert" und NICHT „konnte nicht
   // nachsehen"; der Fehlersatz sagt das Gegenteil und keines von beiden das andere. Beide Sätze
   // dürfen nie zusammenfallen (`GesamtanweisungBereich.tsx`, Abschnitt zu den vier Lagen).
-  "ga.liste.titel": "Gespeicherte Gesamtanweisungen",
-  "ga.liste.laedt": "Der gespeicherte Bestand wird geladen …",
-  "ga.liste.fehler": "Der gespeicherte Bestand konnte nicht geladen werden.",
-  "ga.liste.leer": "Es ist bisher nichts gespeichert.",
-  "ga.liste.stand": "Stand",
-  "ga.liste.urheber": "Urheber",
-  "ga.liste.geaendert": "Letzte Änderung",
-  "ga.liste.bausteine": "Bausteine: {{anzahl}}",
+  "ga.liste.titel": "Vorhandene Arbeitsanleitungen",
+  "ga.liste.laedt": "Die vorhandenen Arbeitsanleitungen werden geladen …",
+  "ga.liste.fehler":
+    "Die vorhandenen Arbeitsanleitungen konnten nicht geladen werden. Lade die Seite neu oder versuche es später erneut – eine neue Anleitung kannst du trotzdem erstellen.",
+  "ga.liste.leer":
+    "Es gibt noch keine Arbeitsanleitung. Erstelle unten deine erste – sie erscheint danach hier.",
+  "ga.liste.stand": "Status",
+  "ga.liste.urheber": "Erstellt von",
+  "ga.liste.geaendert": "Zuletzt geändert",
+  "ga.liste.bausteine": "Abschnitte: {{anzahl}}",
   // DIE ZAHL GEHÖRT IN DEN SATZ: „unvollständig" allein lässt offen, ob ein Satz oder ein halbes
   // Dokument fehlt. Titel und Kennung des geschützten Eintrags stehen ausdrücklich nicht dabei.
-  "ga.liste.unvollstaendig": "Unvollständig — nicht zugängliche Bausteine: {{anzahl}}",
+  "ga.liste.unvollstaendig": "Unvollständig für dich – nicht zugängliche Abschnitte: {{anzahl}}",
 };
 
 const en: typeof de = {
@@ -9169,6 +9180,10 @@ const en: typeof de = {
   "capture.saveDraft": "Save as draft",
   "capture.draftSaved": "Draft saved.",
   "capture.draftUpdated": "Draft updated.",
+  "capture.teilerfolg.dateiAusstehend":
+    "Not everything is saved yet: the draft is saved, the file “{{name}}” is still being saved.",
+  "capture.teilerfolg.dateiGescheitert":
+    "Only partly saved: the draft is saved, the file “{{name}}” is not. It is still here — “Save as draft” tries again.",
   "capture.draftDiscarded": "Draft deleted.",
   // JOB 3768 — see the German entry: since JOB 3668 the draft goes to the recycle bin, so the old
   // “permanently” was a claim the product no longer backs.
@@ -11971,9 +11986,9 @@ const en: typeof de = {
   // steht jetzt auch hier, mit derselben Wendung, die die Schwesterhilfe „in the holdings" benutzt.
   "help.graph.body":
     "The knowledge graph draws the individual knowledge objects and their connections as a net — closer to the object than the topic map, which groups by topic. If a node belongs to an object in the holdings, a click on it leads to that knowledge object, and the keyboard reaches it just as well; a node without such an object is not a link and is not in the keyboard order. Start at an object you know and follow its lines.",
-  "help.gesamtanweisungen.title": "Composite instructions, assembled",
+  "help.gesamtanweisungen.title": "Assembling work instructions",
   "help.gesamtanweisungen.body":
-    "Here you create a composite instruction and assemble it from existing versions: you take in an entry with its version number, change the order and submit the result for a decision. There is no list of all instructions — one that already exists is opened through its address. When two states are compared, a changed order is reported differently from changed content, and the note on check integration stays visible for as long as it is missing.",
+    "Work instructions are readable step-by-step documents built from existing knowledge – for example for onboarding new colleagues. The overview shows every instruction you may read; clicking a title opens it. You start a new one with a title and “Create new work instruction”. In the open instruction you describe purpose, scope and prerequisites, search existing entries by title and add one fixed version of each as a section – a later change to the entry does not silently replace it. The reading view shows the result; “Move up” and “Move down” change the order. Finally you submit the whole instruction for a decision; people with review rights decide. “What has changed?” compares two saved states. An automatic expert review is not connected yet, and none of this needs AI.",
   "help.hilfe.title": "Help",
   "help.hilfe.body":
     "This page keeps every help chapter together, with a search field above it; each chapter carries a link to the page it is about. The search covers title, text and keywords of the chapters — so type in the word you would use to describe your problem. If there is nothing on it, the page says so openly instead of showing an unrelated chapter.",
@@ -13023,10 +13038,11 @@ const en: typeof de = {
     "On the web surface it depends on whether your own internal model is connected. If one is connected, it carries the work on, and the AI buttons stay usable. If only the public AI is set up, it drops out of the chain without clearance and no model is left for the task: the AI buttons are then greyed out and carry the sentence “AI unavailable — no model is active for this task.” No silent substitute run fakes a model. Klara in the Word pane does not even take the external route: it reports the block as an incompletely stored rule, and no user consent lifts it — nobody can click away a decision of the administrator. If the AI mapping is fixed by the deployment configuration (KLARWERK_REASONER_POLICY), these two switches have no effect either: they are locked, the server would refuse a save, and because the deployment mapping carries no clearance of its own, public AI stays blocked for as long as it applies. The next step then does not run through this card but through the server's deployment configuration; without the variable the choice stored here applies again.",
   // JOB 4154 (WIKI-GESAMTANWEISUNG): mirror of the DE keys. „unchanged" stays „unchanged" — it is
   // never „correct", „checked" or „approved".
-  "ga.titel": "Instruction",
+  "ga.titel": "Work instruction",
   "ga.laedt": "Loading …",
-  "ga.leer": "This instruction has no building blocks yet.",
-  "ga.fehler": "The instruction could not be loaded.",
+  "ga.leer":
+    "This work instruction has no sections yet. Add the first one from existing knowledge above.",
+  "ga.fehler": "The work instruction could not be loaded. Reload the page or try again later.",
   "ga.ablageFluechtig":
     "This installation cannot store instructions permanently. Nothing was created — please contact your system administrator.",
   "ga.offline": "No connection. Your entries are kept; nothing has been saved.",
@@ -13034,14 +13050,15 @@ const en: typeof de = {
   "ga.auffrischungLaeuft": "State as of {{zeit}} · refreshing",
   "ga.auffrischungGescheitert": "State as of {{zeit}} · refresh failed",
   "ga.gesperrt": "Submitting and deciding are blocked: the state shown is not confirmed.",
-  "ga.unvollstaendig": "Parts of this instruction are not accessible to you.",
-  "ga.verborgene": "Inaccessible building blocks: {{anzahl}}",
-  "ga.pruefanbindung": "Check integration: not connected yet",
+  "ga.unvollstaendig": "Parts of this work instruction are not accessible to you.",
+  "ga.verborgene": "Inaccessible sections: {{anzahl}}",
+  "ga.pruefanbindung":
+    "Check integration: not connected yet – no automatic expert review of this instruction takes place.",
   "ga.stand.entwurf": "Draft",
   "ga.stand.vorgelegt": "Submitted",
   "ga.stand.entschieden": "Decided",
   "ga.stand.abgelehnt": "Rejected",
-  "ga.bausteine": "Building blocks",
+  "ga.bausteine": "Sections",
   "ga.baustein.fassung": "Bound version {{version}}",
   "ga.baustein.herkunft": "{{titel}} · {{autor}}",
   "ga.baustein.herkunftUnbekannt": "The bound version cannot be found.",
@@ -13055,19 +13072,20 @@ const en: typeof de = {
   "ga.baustein.keine": "none",
   "ga.baustein.textUnbelegt": "The content of this version is not on record.",
   "ga.baustein.gliederung": "Outline of this version",
-  "ga.aufnahme.titel": "Add an existing version",
+  "ga.aufnahme.titel": "Add a section from existing knowledge",
   "ga.aufnahme.koId": "Entry",
   "ga.aufnahme.koVersion": "Version",
   "ga.aufnahme.nachweis": "Record (optional)",
   "ga.aufnahme.knopf": "Add",
-  "ga.aufnahme.fassungUnbekannt": "This version does not exist. Please check the version number.",
+  "ga.aufnahme.fassungUnbekannt":
+    "This version does not exist (any more). Choose one of the versions shown.",
   "ga.ordnen.hoch": "Move up",
   "ga.ordnen.runter": "Move down",
   "ga.voraussetzung.label": "Precondition",
   "ga.voraussetzung.knopf": "Apply precondition",
-  "ga.vergleich.titel": "Compare two states",
-  "ga.vergleich.von": "From state",
-  "ga.vergleich.bis": "To state",
+  "ga.vergleich.titel": "What has changed?",
+  "ga.vergleich.von": "Older state",
+  "ga.vergleich.bis": "Newer state",
   "ga.vergleich.knopf": "Compare",
   "ga.vergleich.unveraendert": "Unchanged. That is no statement about correctness.",
   "ga.vergleich.geaendert": "Changed.",
@@ -13087,26 +13105,28 @@ const en: typeof de = {
   "ga.entscheidung.annehmen": "Accept",
   "ga.entscheidung.ablehnen": "Reject",
   "ga.entscheidung.konflikt":
-    "The instruction has changed in the meantime. Please reload and decide again.",
+    "The work instruction has changed in the meantime. Please reload the page and try again.",
   "ga.kopf.titel": "Title",
   "ga.kopf.zweck": "Purpose",
   "ga.kopf.geltungsbereich": "Scope",
   "ga.kopf.voraussetzungen": "Preconditions",
-  "ga.bereich.titel": "Composite instructions",
+  "ga.bereich.titel": "Work instructions",
   "ga.bereich.einleitung":
-    "Above you find the stored composite instructions; below you create a new one and assemble it from existing versions.",
-  "ga.bereich.anlegen": "Create composite instruction",
+    "Assemble existing knowledge into a readable step-by-step instruction – for example for onboarding new colleagues.",
+  "ga.bereich.anlegen": "Create new work instruction",
   // JOB 4357 — the stored inventory. „Nothing stored" and „could not look" are two different
   // statements and never share a sentence (see the DE block for the reasoning).
-  "ga.liste.titel": "Stored composite instructions",
-  "ga.liste.laedt": "Loading the stored inventory …",
-  "ga.liste.fehler": "The stored inventory could not be loaded.",
-  "ga.liste.leer": "Nothing has been stored so far.",
-  "ga.liste.stand": "State",
-  "ga.liste.urheber": "Author",
-  "ga.liste.geaendert": "Last change",
-  "ga.liste.bausteine": "Building blocks: {{anzahl}}",
-  "ga.liste.unvollstaendig": "Incomplete — building blocks you cannot access: {{anzahl}}",
+  "ga.liste.titel": "Existing work instructions",
+  "ga.liste.laedt": "Loading the existing work instructions …",
+  "ga.liste.fehler":
+    "The existing work instructions could not be loaded. Reload the page or try again later – you can still create a new instruction.",
+  "ga.liste.leer":
+    "There is no work instruction yet. Create your first one below – it will then appear here.",
+  "ga.liste.stand": "Status",
+  "ga.liste.urheber": "Created by",
+  "ga.liste.geaendert": "Last changed",
+  "ga.liste.bausteine": "Sections: {{anzahl}}",
+  "ga.liste.unvollstaendig": "Incomplete for you – sections you cannot access: {{anzahl}}",
 };
 
 const nl: typeof de = {
@@ -14833,6 +14853,10 @@ const nl: typeof de = {
   "capture.saveDraft": "Als concept opslaan",
   "capture.draftSaved": "Concept opgeslagen.",
   "capture.draftUpdated": "Concept bijgewerkt.",
+  "capture.teilerfolg.dateiAusstehend":
+    "Nog niet alles opgeslagen: het concept is opgeslagen, het bestand “{{name}}” wordt nog opgeslagen.",
+  "capture.teilerfolg.dateiGescheitert":
+    "Slechts gedeeltelijk opgeslagen: het concept is opgeslagen, het bestand “{{name}}” niet. Het staat hier nog — “Als concept opslaan” probeert het opnieuw.",
   "capture.draftDiscarded": "Concept verwijderd.",
   // JOB 3768 — zie de Duitse regel: sinds JOB 3668 gaat het concept naar de prullenbak.
   "capture.discardDraftQ":
@@ -17634,9 +17658,9 @@ const nl: typeof de = {
   // steht jetzt auch hier, mit derselben Wendung, die die Schwesterhilfe „uit het bestand" benutzt.
   "help.graph.body":
     "De kennisgraaf tekent de afzonderlijke kennisobjecten en hun verbindingen als een net — dichter bij het object dan de themakaart, die per thema groepeert. Hoort een knooppunt bij een object uit het bestand, dan leidt een klik erop naar dat kennisobject, en met het toetsenbord bereik je het net zo goed; een knooppunt zonder zo’n object is geen link en ligt niet in de toetsenbordvolgorde. Begin bij een object dat je kent en volg zijn lijnen.",
-  "help.gesamtanweisungen.title": "Samengestelde instructies samenstellen",
+  "help.gesamtanweisungen.title": "Werkinstructies samenstellen",
   "help.gesamtanweisungen.body":
-    "Hier maak je een samengestelde instructie aan en stel je die samen uit bestaande versies: je neemt een item met zijn versienummer op, wijzigt de volgorde en legt het resultaat ter beslissing voor. Een lijst van alle instructies is er niet — een reeds aangemaakte open je via het adres ervan. Bij het vergelijken van twee standen wordt een gewijzigde volgorde anders benoemd dan gewijzigde inhoud, en de notitie over de controle-aansluiting blijft zichtbaar zolang die ontbreekt.",
+    "Werkinstructies zijn leesbare stap-voor-stap-documenten uit bestaande kennis – bijvoorbeeld voor het inwerken van nieuwe collega’s. Het overzicht toont alle instructies die je mag lezen; een klik op de titel opent er een. Een nieuwe begin je met een titel en „Nieuwe werkinstructie maken”. In de geopende instructie beschrijf je doel, toepassingsgebied en voorwaarden, zoek je bestaande items op titel en neem je van elk één vaste versie als onderdeel op – een latere wijziging aan het item vervangt die niet stilzwijgend. De leesversie toont het resultaat; met „Omhoog” en „Omlaag” wijzig je de volgorde. Tot slot leg je de hele instructie ter beslissing voor; personen met beoordelingsrecht beslissen. „Wat is er veranderd?” vergelijkt twee opgeslagen standen. Een automatische inhoudelijke controle is nog niet aangesloten, en voor dit alles is geen AI nodig.",
   "help.hilfe.title": "Help",
   "help.hilfe.body":
     "Op deze pagina staan alle helphoofdstukken bij elkaar, met een zoekveld erboven; elk hoofdstuk heeft een link naar de pagina waar het over gaat. Er wordt gezocht in titel, tekst en trefwoorden van de hoofdstukken — typ dus gerust het woord in waarmee je je probleem zou omschrijven. Is er niets over, dan zegt de pagina dat eerlijk in plaats van een onpassend hoofdstuk te tonen.",
@@ -18699,10 +18723,12 @@ const nl: typeof de = {
     "Op het webscherm hangt het ervan af of een eigen intern model is verbonden. Is er een verbonden, dan rekent dat verder en blijven de AI-knoppen bedienbaar. Is alleen de openbare AI ingericht, dan valt die zonder vrijgave uit de keten en blijft er voor de taak geen model over: de AI-knoppen zijn dan grijs en dragen de zin „AI niet beschikbaar — voor deze taak is geen model actief.“ Geen stille vervangingsrun wendt een model voor. Klara in het Word-venster neemt de externe weg helemaal niet: zij meldt de blokkade als een onvolledig vastgelegde regel, en geen enkele toestemming van de gebruiker heft die op — een beslissing van de beheerder kan niemand wegklikken. Is de AI-toewijzing vastgelegd via de deploy-configuratie (KLARWERK_REASONER_POLICY), dan hebben ook deze twee schakelaars geen effect: ze zijn geblokkeerd, de server zou een opslag weigeren, en omdat de deploy-toewijzing zelf geen vrijgave draagt, blijft de openbare AI zolang geblokkeerd. De volgende stap loopt dan niet via deze kaart, maar via de deploy-configuratie van de server; zonder de variabele geldt weer de hier opgeslagen keuze.",
   // JOB 4154 (WIKI-GESAMTANWEISUNG): spiegel van de DE-sleutels. „ongewijzigd" blijft
   // „ongewijzigd" — nooit „juist", „gecontroleerd" of „vrijgegeven".
-  "ga.titel": "Instructie",
+  "ga.titel": "Werkinstructie",
   "ga.laedt": "Laadt …",
-  "ga.leer": "Deze instructie heeft nog geen bouwstenen.",
-  "ga.fehler": "De instructie kon niet worden geladen.",
+  "ga.leer":
+    "Deze werkinstructie heeft nog geen onderdelen. Voeg hierboven het eerste toe uit bestaande kennis.",
+  "ga.fehler":
+    "De werkinstructie kon niet worden geladen. Laad de pagina opnieuw of probeer het later nog eens.",
   "ga.ablageFluechtig":
     "Deze installatie kan instructies niet blijvend opslaan. Er is niets aangemaakt — neem contact op met je systeembeheerder.",
   "ga.offline": "Geen verbinding. Je invoer blijft behouden; er is niets opgeslagen.",
@@ -18710,14 +18736,15 @@ const nl: typeof de = {
   "ga.auffrischungLaeuft": "Stand van {{zeit}} · wordt ververst",
   "ga.auffrischungGescheitert": "Stand van {{zeit}} · verversen mislukt",
   "ga.gesperrt": "Voorleggen en beslissen zijn geblokkeerd: de getoonde stand is niet zeker.",
-  "ga.unvollstaendig": "Delen van deze instructie zijn voor jou niet toegankelijk.",
-  "ga.verborgene": "Niet toegankelijke bouwstenen: {{anzahl}}",
-  "ga.pruefanbindung": "Controle-aansluiting: nog niet aangesloten",
+  "ga.unvollstaendig": "Delen van deze werkinstructie zijn voor jou niet toegankelijk.",
+  "ga.verborgene": "Niet toegankelijke onderdelen: {{anzahl}}",
+  "ga.pruefanbindung":
+    "Controle-aansluiting: nog niet aangesloten – er vindt geen automatische inhoudelijke controle van deze instructie plaats.",
   "ga.stand.entwurf": "Concept",
   "ga.stand.vorgelegt": "Voorgelegd",
   "ga.stand.entschieden": "Besloten",
   "ga.stand.abgelehnt": "Afgewezen",
-  "ga.bausteine": "Bouwstenen",
+  "ga.bausteine": "Onderdelen",
   "ga.baustein.fassung": "Gebonden versie {{version}}",
   "ga.baustein.herkunft": "{{titel}} · {{autor}}",
   "ga.baustein.herkunftUnbekannt": "De gebonden versie is niet vindbaar.",
@@ -18731,19 +18758,20 @@ const nl: typeof de = {
   "ga.baustein.keine": "geen",
   "ga.baustein.textUnbelegt": "De inhoud van deze versie is niet vastgelegd.",
   "ga.baustein.gliederung": "Overzicht van deze versie",
-  "ga.aufnahme.titel": "Bestaande versie opnemen",
+  "ga.aufnahme.titel": "Onderdeel uit bestaande kennis toevoegen",
   "ga.aufnahme.koId": "Item",
   "ga.aufnahme.koVersion": "Versie",
   "ga.aufnahme.nachweis": "Bewijsstuk (optioneel)",
   "ga.aufnahme.knopf": "Opnemen",
-  "ga.aufnahme.fassungUnbekannt": "Deze versie bestaat niet. Controleer het versienummer.",
+  "ga.aufnahme.fassungUnbekannt":
+    "Deze versie bestaat niet (meer). Kies een van de getoonde versies.",
   "ga.ordnen.hoch": "Omhoog",
   "ga.ordnen.runter": "Omlaag",
   "ga.voraussetzung.label": "Voorwaarde",
   "ga.voraussetzung.knopf": "Voorwaarde overnemen",
-  "ga.vergleich.titel": "Twee standen vergelijken",
-  "ga.vergleich.von": "Van stand",
-  "ga.vergleich.bis": "Tot stand",
+  "ga.vergleich.titel": "Wat is er veranderd?",
+  "ga.vergleich.von": "Oudere stand",
+  "ga.vergleich.bis": "Nieuwere stand",
   "ga.vergleich.knopf": "Vergelijken",
   "ga.vergleich.unveraendert": "Ongewijzigd. Dat zegt niets over juistheid.",
   "ga.vergleich.geaendert": "Gewijzigd.",
@@ -18763,26 +18791,28 @@ const nl: typeof de = {
   "ga.entscheidung.annehmen": "Aannemen",
   "ga.entscheidung.ablehnen": "Afwijzen",
   "ga.entscheidung.konflikt":
-    "De instructie is intussen gewijzigd. Laad opnieuw en beslis nogmaals.",
+    "De werkinstructie is intussen gewijzigd. Laad de pagina opnieuw en probeer het nog eens.",
   "ga.kopf.titel": "Titel",
   "ga.kopf.zweck": "Doel",
   "ga.kopf.geltungsbereich": "Toepassingsgebied",
   "ga.kopf.voraussetzungen": "Voorwaarden",
-  "ga.bereich.titel": "Samengestelde instructies",
+  "ga.bereich.titel": "Werkinstructies",
   "ga.bereich.einleitung":
-    "Boven staan de opgeslagen samengestelde instructies; daaronder maakt u een nieuwe aan en stelt u die samen uit bestaande versies.",
-  "ga.bereich.anlegen": "Samengestelde instructie aanmaken",
+    "Stel bestaande kennis samen tot een leesbare stap-voor-stap-instructie – bijvoorbeeld voor het inwerken van nieuwe collega’s.",
+  "ga.bereich.anlegen": "Nieuwe werkinstructie maken",
   // JOB 4357 — de opgeslagen voorraad. „Niets opgeslagen" en „kon niet kijken" zijn twee
   // verschillende uitspraken en delen nooit één zin (zie het DE-blok voor de onderbouwing).
-  "ga.liste.titel": "Opgeslagen samengestelde instructies",
-  "ga.liste.laedt": "De opgeslagen voorraad wordt geladen …",
-  "ga.liste.fehler": "De opgeslagen voorraad kon niet worden geladen.",
-  "ga.liste.leer": "Er is tot nu toe niets opgeslagen.",
+  "ga.liste.titel": "Bestaande werkinstructies",
+  "ga.liste.laedt": "De bestaande werkinstructies worden geladen …",
+  "ga.liste.fehler":
+    "De bestaande werkinstructies konden niet worden geladen. Laad de pagina opnieuw of probeer het later nog eens – een nieuwe instructie kun je toch maken.",
+  "ga.liste.leer":
+    "Er is nog geen werkinstructie. Maak hieronder je eerste – daarna verschijnt ze hier.",
   "ga.liste.stand": "Status",
-  "ga.liste.urheber": "Auteur",
-  "ga.liste.geaendert": "Laatste wijziging",
-  "ga.liste.bausteine": "Bouwstenen: {{anzahl}}",
-  "ga.liste.unvollstaendig": "Onvolledig — voor u niet toegankelijke bouwstenen: {{anzahl}}",
+  "ga.liste.urheber": "Gemaakt door",
+  "ga.liste.geaendert": "Laatst gewijzigd",
+  "ga.liste.bausteine": "Onderdelen: {{anzahl}}",
+  "ga.liste.unvollstaendig": "Onvolledig voor jou – niet toegankelijke onderdelen: {{anzahl}}",
 };
 
 // ================================================================================================

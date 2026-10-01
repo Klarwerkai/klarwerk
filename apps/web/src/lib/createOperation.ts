@@ -113,3 +113,53 @@ export function createConflictOffersRestart(
 ): boolean {
   return status === 409 && code !== undefined && NEUSTART_ERLAUBT.has(code);
 }
+
+// ============================================================================================
+// R-0020 — DER WIEDERHOLSCHLÜSSEL DER ENTWURFSANLAGE, AN SEINE NUTZLAST GEBUNDEN.
+// ============================================================================================
+//
+// Das Einreichen oben hält seinen Schlüssel über den ganzen Vorgang und bietet bei einem
+// Abdruckkonflikt sichtbar einen Neustart an. Die ENTWURFSANLAGE (`POST /api/drafts`, Formularweg
+// und Ganzdokument-Weg der Erfassung) hat keinen solchen Rückweg auf der Fläche — und braucht ihn
+// auch nicht: ein Entwurf ist ein Zwischenstand, kein geprüftes Objekt.
+//
+// DIE REGEL: derselbe Inhalt ⇒ derselbe Schlüssel. Ging die Antwort auf die erste Anlage verloren
+// und schickt der zweite Druck DIESELBE Nutzlast, bekommt er denselben Schlüssel, und der Server
+// liefert den schon angelegten Entwurf zurück (200) statt einen zweiten anzulegen. Das gilt auch
+// für zwei Wege, die dieselbe Nutzlast GLEICHZEITIG schicken.
+//
+// HAT DER MENSCH ZWISCHEN DEN VERSUCHEN ETWAS GEÄNDERT, ist es ein neuer Inhalt und ein neuer
+// Schlüssel. Der Server legt dann einen zweiten Entwurf an, falls der erste trotz verlorener
+// Antwort entstanden war — ehrlich benannt: beide tragen dann verschiedene Stände, keiner ist
+// ein stilles Duplikat, und ein Abdruckkonflikt ohne Ausweg auf der Fläche bleibt aus.
+
+/** Ein Schlüssel und der Inhalt, für den er vergeben wurde. */
+export interface AnlageVorgang {
+  readonly id: string;
+  readonly abdruck: string;
+}
+
+/**
+ * Der Schlüssel für GENAU diesen Inhalt: der bisherige, wenn er für denselben Abdruck vergeben
+ * wurde, sonst ein frischer. Rein — die Ablage des Vorgangs (Ref) bleibt beim Aufrufer.
+ */
+export function anlageVorgangFuer(bisher: AnlageVorgang | null, abdruck: string): AnlageVorgang {
+  if (bisher && bisher.abdruck === abdruck) {
+    return bisher;
+  }
+  return { id: anlageKennung(), abdruck };
+}
+
+/**
+ * Die Kennung eines Anlagevorgangs. `crypto.randomUUID` gibt es nur in einem SICHEREN Kontext
+ * (https oder localhost); das Speichern eines Entwurfs lief bis hierher auch ohne ihn — etwa auf
+ * einer Insel unter `http://<LAN-Adresse>`. Damit der neue Schlüssel dort nicht jedes Speichern
+ * scheitern lässt, fällt er auf `crypto.getRandomValues` zurück (in jedem Kontext vorhanden).
+ */
+function anlageKennung(): string {
+  if (typeof crypto.randomUUID === "function") {
+    return newCreateOperationId();
+  }
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  return `create-${[...bytes].map((b) => b.toString(16).padStart(2, "0")).join("")}`;
+}

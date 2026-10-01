@@ -312,7 +312,8 @@ interface DataRow {
 //
 // Der Beleg der Gleichheit des URTEILS an allen Faellen, die sichtbarkeit.ts unterscheidet, liegt in
 // tests/app/job2685-traegersuche-gleichheit.test.ts; der Beleg mit Mengengleichheit gegen ein
-// echtes Postgres in tests/ko/job2685-anhang-traeger.integration.test.ts (Docker).
+// echtes Postgres in tests/ko/job2685-anhang-traeger.integration.test.ts
+// (PG-Prüfplatz tests/ko/pg-pruefplatz.ts: KLARWERK_PG_TEST_URL, sonst Testcontainer, sonst rot).
 export const KO_ANHANG_TRAEGER_SQL = `SELECT data FROM kos WHERE id IN (
   SELECT id FROM kos WHERE data->'attachments' @> ANY($1::jsonb[])
   UNION SELECT id FROM kos WHERE data->>'bodyHtml' LIKE ANY($2::text[])

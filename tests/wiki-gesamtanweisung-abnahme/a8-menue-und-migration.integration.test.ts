@@ -385,7 +385,9 @@ describe("JOB 4309 A8 · die Gesamtanweisung auf einer frisch migrierten Datenba
         expect(
           (menuezeile as { text: string }).text,
           "der Menüpunkt trägt keinen Namen in Anwendersprache",
-        ).toContain("Gesamtanweisungen");
+          // FE-001: nutzerseitig heisst der Bereich „Arbeitsanleitungen" (Schlüssel `ga.bereich.titel`);
+          // Route und Kennung bleiben `gesamtanweisungen`.
+        ).toContain("Arbeitsanleitungen");
         await seite.click('[data-testid="bereich-gesamtanweisungen"]');
         await warte(
           seite,
@@ -425,10 +427,42 @@ describe("JOB 4309 A8 · die Gesamtanweisung auf einer frisch migrierten Datenba
           [koEins, fassungEins, NACHWEIS_EINS],
           [koZwei, fassungZwei, NACHWEIS_ZWEI],
         ] as const) {
-          await tippeIn(seite, "#ga-aufnahme-koid", koId);
-          await tippeIn(seite, "#ga-aufnahme-fassung", String(fassung));
+          // FE-001: keine getippte Kennung mehr — über die menschliche Auswahl. Dieser Auftrag
+          // misst die Bedienbarkeit nicht (das tut `gesamtanweisung-nutzerweg`), deshalb hier der
+          // kurze Weg über Klicks: Titel suchen → Treffer → Fassung → Nachweis → aufnehmen.
+          const titel = koId === koEins ? KO_EINS : KO_ZWEI;
+          await tippeIn(seite, "#ga-aufnahme-suche", titel);
+          await seite.click('[data-testid="ga-aufnahme-suche-form"] button[type="submit"]');
+          const treffer = `[data-testid="ga-aufnahme-treffer-eintrag"][data-ko="${koId}"]`;
+          await warte(
+            seite,
+            "(s) => !!document.querySelector(s)",
+            `Treffer ${titel}`,
+            treffer,
+            45_000,
+          );
+          await seite.click(treffer);
+          const radio = `#ga-aufnahme-fassung-${fassung}`;
+          await warte(
+            seite,
+            "(s) => !!document.querySelector(s)",
+            `Fassung ${fassung}`,
+            radio,
+            45_000,
+          );
+          await seite.click(radio);
+          // Der Aufklapper „Für Fachleute" behält seinen Zustand über eine Aufnahme hinweg — nur
+          // öffnen, wenn er zu ist; ein zweiter Klick schlösse ihn wieder.
+          const offen = await seite.evaluate<boolean>(
+            fn(
+              `() => !!document.querySelector('[data-testid="ga-aufnahme-bestaetigen"] details')?.open`,
+            ),
+          );
+          if (!offen) {
+            await seite.click('[data-testid="ga-aufnahme-bestaetigen"] summary');
+          }
           await tippeIn(seite, "#ga-aufnahme-nachweis", nachweis);
-          await seite.click('[data-testid="ga-aufnahme"] button[type="submit"]');
+          await seite.click('[data-testid="ga-aufnahme-knopf"]');
           await warte(
             seite,
             `(n) => document.querySelectorAll('[data-testid="ga-lesestand-baustein"]').length === n`,

@@ -173,7 +173,16 @@ export interface KnowledgeCheckResult {
     koStatus: KoStatus | null;
     koCategory: string | null;
   }[];
+  // AUFNAHME 20260922 · VORSCHAU-REICHWEITE: der belegte Prüfumfang (Vertrag bei
+  // `KnowledgeCheckCoverage` in services/app/src/knowledge-check.ts). Hier OPTIONAL, weil eine
+  // Antwort ohne das Feld (älterer Server) vorkommen kann — sie gilt dann als „Umfang unbekannt",
+  // nie als vollständige Prüfung.
+  coverage?: KnowledgeCheckCoverage;
 }
+
+export type KnowledgeCheckCoverage =
+  | { kind: "candidates"; checked: number; limit: number; limitReached: boolean }
+  | { kind: "unknown" };
 
 export interface MediaAnalysis {
   objectId: string;
