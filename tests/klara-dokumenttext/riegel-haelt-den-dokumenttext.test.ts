@@ -334,6 +334,8 @@ const fragen = (w: Weg, rumpf: Record<string, unknown> = {}) =>
       locale: "de",
       mode: "retrieval-only",
       selection: MARKIERUNG,
+      // Runde 3: mit Klara-Bindung ist eine Frage nur getippt, wenn sie es ausdrücklich sagt.
+      questionSource: "manual",
       ...rumpf,
     },
   });
@@ -727,6 +729,101 @@ describe("R-0639 · R6 — die Herkunft der Frage an der Route, fail-closed", ()
     });
     expect(w.prompts).toEqual([]);
     expect(w.entscheidungen()).toEqual([{ entscheidung: "blockiert", grund: "vertraulich" }]);
+    await w.app.close();
+  });
+});
+
+// ------------------------------------------------------------------------------------------------
+// R7 · BENS BEFUNDE AUS RUNDE 2 — DER ALTE RUMPF UND DER RUMPF OHNE `mode`
+// ------------------------------------------------------------------------------------------------
+//
+// B1: ein noch geladenes älteres Fenster schickt die Markierung als Frage OHNE `questionSource`.
+//     Bis Runde 2 hiess „fehlt" getippt — die Markierung ging zum Modell.
+// B2: ohne `mode` lief eine gebundene Anfrage am ganzen Klara-Zweig vorbei in den Konsolenweg —
+//     auch mit `questionSource: "selection"` und `selectionConfidentiality: "vertraulich"`.
+// Jeder Absagefall hat eine Gegenprobe, in der genau EIN Umstand anders ist.
+const rumpfFrage = (w: Weg, payload: Record<string, unknown>, mitBindung = true) =>
+  w.app.inject({
+    method: "POST",
+    url: "/api/ask",
+    headers: { ...(mitBindung ? w.kopf : {}), "content-type": "application/json" },
+    payload,
+  });
+
+describe("R-0639 · R7 — Bens Befunde B1/B2 aus Runde 2", () => {
+  it("R7a · B1: der ALTE Rumpf (Markierung als Frage, ohne Herkunft) erreicht das Modell NICHT", async () => {
+    const w = await wegAufbauen();
+    const res = await rumpfFrage(w, { question: MARKIERUNG, locale: "de", mode: "retrieval-only" });
+    expect(res.statusCode).toBe(200);
+    expect(w.prompts).toEqual([]);
+    expect(w.entscheidungen()).toEqual([{ entscheidung: "blockiert", grund: "riegel_aus" }]);
+    await w.app.close();
+  });
+
+  it("R7b · B1-GEGENPROBE: derselbe alte Rumpf, einzig der Riegel offen — die Markierung geht hinaus", async () => {
+    const w = await wegAufbauen({ riegelOffen: true });
+    await rumpfFrage(w, { question: MARKIERUNG, locale: "de", mode: "retrieval-only" });
+    expect(w.prompts.join("\n")).toContain(MARKER);
+    await w.app.close();
+  });
+
+  it('R7c · B1-KALIBRIERUNG: dieselbe Lage mit `questionSource: "manual"` — das Modell WIRD gerufen', async () => {
+    const w = await wegAufbauen();
+    await rumpfFrage(w, {
+      question: FRAGE,
+      locale: "de",
+      mode: "retrieval-only",
+      questionSource: "manual",
+    });
+    expect(w.prompts.length).toBe(1);
+    await w.app.close();
+  });
+
+  it("R7d · B2: OHNE `mode`, Herkunft `selection`, vertraulich — kein Modellaufruf, auch bei offenem Riegel", async () => {
+    for (const riegelOffen of [false, true]) {
+      const w = await wegAufbauen({ riegelOffen });
+      const res = await rumpfFrage(w, {
+        question: MARKIERUNG,
+        locale: "de",
+        questionSource: "selection",
+        selectionConfidentiality: "vertraulich",
+      });
+      expect(res.statusCode, `riegelOffen=${riegelOffen}`).toBe(200);
+      expect(w.prompts, `riegelOffen=${riegelOffen}`).toEqual([]);
+      expect(w.entscheidungen(), `riegelOffen=${riegelOffen}`).toEqual([
+        { entscheidung: "blockiert", grund: "vertraulich" },
+      ]);
+      await w.app.close();
+    }
+  });
+
+  it("R7e · B2: OHNE `mode` und OHNE Herkunft — der alte Rumpf ohne Modus bleibt ebenso hinter dem Riegel", async () => {
+    const w = await wegAufbauen();
+    await rumpfFrage(w, { question: MARKIERUNG, locale: "de" });
+    expect(w.prompts).toEqual([]);
+    expect(w.entscheidungen()).toEqual([{ entscheidung: "blockiert", grund: "riegel_aus" }]);
+    await w.app.close();
+  });
+
+  it("R7f · B2-GEGENPROBE: ohne `mode`, Herkunft `selection`, NICHT vertraulich, Riegel offen — geht hinaus", async () => {
+    const w = await wegAufbauen({ riegelOffen: true });
+    await rumpfFrage(w, { question: MARKIERUNG, locale: "de", questionSource: "selection" });
+    expect(w.prompts.join("\n")).toContain(MARKER);
+    await w.app.close();
+  });
+
+  it("R7g · KONSOLE unverändert: ohne Bindung, ohne `mode`, ohne Herkunft — Modellweg wie bisher", async () => {
+    const w = await wegAufbauen();
+    await rumpfFrage(w, { question: FRAGE, locale: "de" }, false);
+    expect(w.prompts.length).toBe(1);
+    expect(w.entscheidungen()).toEqual([]);
+    await w.app.close();
+  });
+
+  it('R7h · ohne Bindung, aber ausdrücklich `questionSource: "selection"` — eingeengt, kein Modell', async () => {
+    const w = await wegAufbauen();
+    await rumpfFrage(w, { question: MARKIERUNG, locale: "de", questionSource: "selection" }, false);
+    expect(w.prompts).toEqual([]);
     await w.app.close();
   });
 });

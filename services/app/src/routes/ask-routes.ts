@@ -62,7 +62,9 @@ const askBodySchema = {
     // `selection`: „Klara fragen" bei leerem Eingabefeld (`prepareAskQuestion`, Lage `selection`)
     // und jeder Zuruf über einer Markierung (`ka6Absenden`). Dann IST die Frage Dokumenttext, und
     // die Klasse `question` deckt sie nicht. Das Fenster sagt es mit `questionSource: "selection"`.
-    // Ohne `enum`: jeder Wert ausser „fehlt" und `manual` zählt als Dokumenttext (`frageAusDokument`).
+    // Ohne `enum`. Mit Klara-Bindung ist NUR `manual` getippt — auch „fehlt" zählt dort als
+    // Dokumenttext (Bens Befund B1, Runde 2: ältere Fenster melden nichts). Begründung an
+    // `frageAusDokument`.
     questionSource: { type: "string" },
   },
 } as const;
@@ -268,11 +270,21 @@ export function klaraBindungVorhanden(headers: Record<string, unknown>): boolean
 // nennt Entscheidung und Grund — nie die Passage, nie die Frage, nie eine Kopfzeile.
 
 /**
- * R-0639, Befund B1: trägt `question` Dokumenttext? Nur „fehlt" (Bestandsclients, Konsole) und
- * ausdrücklich `manual` heissen getippt — jeder andere Wert zählt als Dokument.
+ * R-0639 — trägt `question` Dokumenttext?
+ *
+ * MIT KLARA-BINDUNG (Bens Befund B1, Runde 2): getippt ist NUR, was das Fenster ausdrücklich als
+ * `manual` meldet. Ein noch geladenes älteres Fenster schickt die Markierung ohne jede Angabe als
+ * Frage — „fehlt" darf dort deshalb nicht „getippt" heissen. Eine solche Anfrage verlässt die Enge
+ * erst mit bestandener Dokumenttext-Prüfung; bei geschlossenem Riegel antwortet sie ohne Modell.
+ *
+ * OHNE KLARA-BINDUNG (Konsole, Systemaufrufe): es gibt kein Dokument und keine Markierung; „fehlt"
+ * bleibt getippt. Wer dort ausdrücklich eine andere Herkunft meldet, wird ebenso eingeengt.
  */
-export function frageAusDokument(herkunft: unknown): boolean {
-  return !(herkunft === undefined || herkunft === "manual");
+export function frageAusDokument(herkunft: unknown, gebunden: boolean): boolean {
+  if (herkunft === "manual") {
+    return false;
+  }
+  return gebunden || herkunft !== undefined;
 }
 
 /** Nur ein fehlendes Feld oder ausdrücklich `intern` ist NICHT vertraulich — alles andere sperrt. */
@@ -525,10 +537,12 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
         // R-0639, Befund B1: STAMMT DIE FRAGE SELBST AUS DEM DOKUMENT, verlässt sie die Enge nur mit
         // bestandener Dokumenttext-Prüfung — dieselbe Prüfung, dieselbe Vertraulichkeitsregel wie
         // für `selection`. Hält sie, läuft der Zweig in die unveränderte Enge (retrieval-only, kein
-        // Modell), genau wie ohne Einwilligung. Eine getippte Frage (`manual` oder ohne Angabe)
-        // fragt die Prüfung nicht: sie ist die Klasse `question`, für die zugestimmt wurde.
+        // Modell), genau wie ohne Einwilligung. Eine getippte Frage (`manual`) fragt die Prüfung
+        // nicht: sie ist die Klasse `question`, für die zugestimmt wurde.
+        const gebunden = klaraBindungVorhanden(request.headers);
+        const frageIstDokument = frageAusDokument(request.body.questionSource, gebunden);
         const frageDarfHinaus = async (actorId: string): Promise<boolean> =>
-          !frageAusDokument(request.body.questionSource) ||
+          !frageIstDokument ||
           (await dokumenttextFreigabe(
             deps.klaraSessions,
             request.headers,
@@ -634,7 +648,12 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
         // Die Antwort ist die WOERTLICHE validierte Aussage + Quellen, keine Synthese. Die
         // Wissensluecke wird weiter vermerkt (Session-Nutzer, bestehende gap-Semantik) — darauf
         // baut der Offene-Frage-Weg des Panels. Konsole ohne mode: byte-identisches Verhalten.
-        if (request.body.mode === "retrieval-only") {
+        // R-0639, Bens Befund B2 (Runde 2): die Einwilligungs- und Dokumenttext-Prüfung hängt NICHT
+        // am optionalen `mode`. Eine Anfrage mit Klara-Bindung oder mit Dokumenttext als Frage
+        // nimmt denselben Zweig wie `retrieval-only` — ohne `mode` lief sie bis hierher geradewegs
+        // in den Konsolenweg mit Modell und an Riegel und Vertraulichkeit vorbei. Die Konsole
+        // (keine Bindung, keine Herkunftsangabe) bleibt byte-identisch.
+        if (request.body.mode === "retrieval-only" || gebunden || frageIstDokument) {
           // KW-KA4: derselbe Riegel wie im Add-on-Zweig. Dieser Weg ist der, den das Word-Panel
           // heute tatsächlich fährt (same-origin, Sitzungscookie — `taskpane.html:910-916`), und
           // deshalb muss die Einwilligung genau hier greifen.

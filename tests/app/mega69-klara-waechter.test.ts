@@ -2577,7 +2577,11 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     //                wie vor diesem Auftrag.
     // GEMESSEN: `tests/klara-dokumenttext/riegel-haelt-den-dokumenttext.test.ts` R5 führt beide
     // Einstiege unverändert aus.
-    const PIN = "53da1b30f321b3a2381d0822d1031b822a0f6657e6f09b165937cbd0c7dde70e";
+    // RUNDE 3 desselben Auftrags (Bens Befund B1, Runde 2) — PIN ERNEUT BEWUSST AKTUALISIERT
+    // (53da1b30… -> 6e5284ce…). Einzige Änderung: `askKlara` und `ka6Absenden` melden eine GETIPPTE
+    // Frage jetzt ausdrücklich als `questionSource: "manual"` (der Server zählt bei Klara-Bindung
+    // „fehlt" als Dokumenttext). Abrufziel, Manifest, CSP, Recht unverändert; kein Sideload.
+    const PIN = "6e5284cef9d83352cc5e9b9252e4185314e0f535af9d4adc75882383d6ba5c27";
     const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
     expect(
       ist,

@@ -1752,11 +1752,12 @@
         method: "POST",
         credentials: "include",
         headers: askKopf,
-        // R-0639 (Bens Befund B1): stammt die FRAGE selbst aus der Markierung, sagt das Fenster es
-        // — `questionSource: "selection"`. Der Server verlangt dann fuer die Frage dieselbe
-        // Dokumenttext-Pruefung wie fuer `selection`; ohne Angabe (getippte Frage) faellt das Feld
-        // bei `JSON.stringify` heraus und der Koerper bleibt Zeichen fuer Zeichen der bisherige.
-        body: JSON.stringify({ question: question, locale: locale, mode: "retrieval-only", selection: markierung.length > 0 ? markierung : undefined, questionSource: questionSource === "selection" ? "selection" : undefined }),
+        // R-0639 (Bens Befunde B1, Runden 1 und 2): das Fenster sagt, WOHER die Frage stammt —
+        // `"selection"` (die Markierung IST die Frage) oder `"manual"` (getippt). Mit Klara-Bindung
+        // gilt serverseitig NUR `manual` als getippt; ohne Angabe verlangt der Server fuer die Frage
+        // dieselbe Dokumenttext-Pruefung wie fuer `selection`. Ein Aufrufer ohne Angabe (der
+        // Bestandsblick, ohne Bindung) behaelt seinen bisherigen Koerper.
+        body: JSON.stringify({ question: question, locale: locale, mode: "retrieval-only", selection: markierung.length > 0 ? markierung : undefined, questionSource: questionSource === "selection" || questionSource === "manual" ? questionSource : undefined }),
         signal: controller.signal,
       })
         .then(function (res) {
@@ -7491,8 +7492,8 @@
           // `readAskSelection`, kein zweiter Zustand — sonst koennte die Zeile ueber dem Feld eine
           // andere Markierung meinen als die, die wirklich abgeht.
           prep.selection,
-          // R-0639 (Befund B1): bei leerem Eingabefeld IST die Markierung die Frage.
-          prep.from === "selection" ? "selection" : undefined
+          // R-0639 (Befund B1): bei leerem Eingabefeld IST die Markierung die Frage; sonst getippt.
+          prep.from === "selection" ? "selection" : "manual"
         ).then(function (outcome) {
           currentAskOutcome = outcome;
           // Der EINE Ausgang aus dem Wartezustand — Antwort, Luecke, Frist, Fehler, fehlende
@@ -10395,7 +10396,7 @@
           undefined,
           // R-0639 (Befund B1): ueber einer Markierung ist sie das MATERIAL des Zurufs und reist im
           // Fragetext — der Server muss es wissen, um den Dokumenttext-Riegel anzuwenden.
-          prep.from === "selection" ? "selection" : undefined
+          prep.from === "selection" ? "selection" : "manual"
         ).then(function (outcome) {
           ka6Laeuft = false;
           ka6Zeichnen();
