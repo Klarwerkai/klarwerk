@@ -252,6 +252,13 @@ export interface ModelRunVersuch {
   ausgang: "erfolg" | "fehler";
   /** Nur, wenn die Modell-API in diesem Versuch einen Verbrauch gemeldet hat (Regel aus JOB 3074). */
   verbrauch?: ModelRunVerbrauch;
+  /**
+   * Zahl der in diesem Versuch WIRKLICH ausgeführten Modellaufrufe (gezählt am Chokepoint). Ben
+   * Lauf 3 R1 N1: `extract` ruft je Abschnitt; meldet ein Aufruf keinen Verbrauch, ist
+   * `verbrauch.gemeldeteAufrufe` kleiner — der Verbrauch ist dann nur eine Teilsumme und trägt
+   * keine Kosten. Fehlt in Altdatensätzen und bei Versuchen ohne Modellaufruf.
+   */
+  aufrufe?: number;
   spanId: string;
 }
 

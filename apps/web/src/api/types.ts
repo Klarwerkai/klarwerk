@@ -297,6 +297,7 @@ export interface ModelRunVersuch {
   dauerMs: number;
   ausgang: "erfolg" | "fehler";
   verbrauch?: ModelRunVerbrauch;
+  aufrufe?: number;
   spanId: string;
 }
 

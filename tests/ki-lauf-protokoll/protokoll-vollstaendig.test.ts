@@ -30,7 +30,7 @@ import {
   meldeModellVerbrauch,
 } from "../../services/reasoner/src/model-concurrency";
 import { ModelHttpError } from "../../services/reasoner/src/model-errors";
-import type { ModelClient } from "../../services/reasoner/src/provider-model";
+import { type ModelClient, chunkForExtract } from "../../services/reasoner/src/provider-model";
 import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
 
 const ANTWORTMARKE = "BEN_ANTWORTINHALT_7f3";
@@ -132,6 +132,59 @@ async function einzigerLauf(repo: InMemoryModelRunRepo): Promise<ModelRunRecord>
   const laeufe = await repo.recent(10);
   expect(laeufe).toHaveLength(1);
   return laeufe[0] as ModelRunRecord;
+}
+
+// Ben Lauf 3 R1 N1 (Fälle C4/C5): `extract` über drei Abschnitte mit dem echten OpenAI-kompatiblen
+// Client; `fehlenderAufruf` nimmt einem der drei Aufrufe den `usage`-Block.
+const dokument = "Der Pruefdruck betraegt 16 bar und wird vor Inbetriebnahme geprueft. ".repeat(
+  300,
+);
+const EIN_PREIS = lesePreisliste(
+  JSON.stringify({
+    waehrung: "EUR",
+    preisstand: "n1",
+    modelle: { "n1-modell": { eingabeJeMillion: 1, ausgabeJeMillion: 0 } },
+  }),
+).preisliste;
+
+async function extrahiere(fehlenderAufruf?: number) {
+  expect(chunkForExtract(dokument.trim())).toHaveLength(3);
+  let aufrufe = 0;
+  const fetchFn = (async () => {
+    aufrufe += 1;
+    const ohneUsage = aufrufe === fehlenderAufruf;
+    return new Response(
+      JSON.stringify({
+        choices: [{ message: { content: '{"points":[]}' }, finish_reason: "stop" }],
+        ...(ohneUsage ? {} : { usage: { prompt_tokens: 1000, completion_tokens: 0 } }),
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+  }) as typeof fetch;
+  const client = cappedModelClient(
+    openAiCompatibleClient({
+      baseUrl: "http://127.0.0.1:9/v1",
+      name: "anthropic:n1-modell",
+      model: "n1-modell",
+      fetchFn,
+    }),
+    { rejectsConfidential: true },
+  );
+  const inner = new InMemoryModelRunRepo();
+  const protokoll = new ProtokollModelRunRepo(inner, EIN_PREIS);
+  const reasoner = new Reasoner(new ModelProvider(client), new DeterministicProvider(), protokoll);
+  await erteileKiFreigabe(reasoner);
+
+  const ergebnis = await reasoner.extract(dokument, "de");
+
+  expect(ergebnis.demo).toBe(false);
+  expect(aufrufe).toBe(3);
+  const lauf = await einzigerLauf(inner);
+  const auswertung = await new ModelRunService({ repo: protokoll }).auswertung(
+    "2000-01-01T00:00:00.000Z",
+    "2100-01-01T00:00:00.000Z",
+  );
+  return { lauf, auswertung };
 }
 
 describe("Ben R1 B1: kein Anfrage- oder Antwortinhalt im Laufdatensatz", () => {
@@ -471,4 +524,33 @@ describe("Ben R2 B3: Kosten je Versuch zum Preis seines Modells", () => {
     expect(auswertung.kosten).toEqual([]);
     expect(auswertung.verbrauchOhneKosten).toBe(1);
   });
+});
+
+// Ben Lauf 3 R1 N1: `extract` ruft je Abschnitt das Modell. Fehlt bei EINEM von drei Aufrufen
+// innerhalb desselben Versuchs die Verbrauchsmeldung, ergab das bis hierher 0,002 EUR als Laufkosten
+// und als Zeitraumsumme. Gemessen mit dem echten OpenAI-kompatiblen Client (gestellte Fetch-Antwort),
+// dem echten Chokepoint, Protokoll-Repo und Auswertung.
+describe("Ben Lauf 3 R1 N1: eine fehlende Verbrauchsmeldung innerhalb eines Versuchs", () => {
+  it("C4 · Kontrolle: drei gemeldete Aufrufe → 0,003 EUR, Versuch mit aufrufe 3", async () => {
+    const { lauf, auswertung } = await extrahiere();
+    expect(lauf.versuche?.map((v) => [v.aufrufe, v.verbrauch?.gemeldeteAufrufe])).toEqual([[3, 3]]);
+    expect(lauf.kosten?.betrag).toBe(0.003);
+    expect(auswertung.kosten).toEqual([{ waehrung: "EUR", betrag: 0.003, laeufe: 1 }]);
+    expect(auswertung.verbrauchOhneKosten).toBe(0);
+  });
+
+  for (const fehlt of [1, 2, 3]) {
+    it(`C5 · Aufruf ${fehlt} ohne usage: keine Kostenteilsumme, als unbelegt gezählt`, async () => {
+      const { lauf, auswertung } = await extrahiere(fehlt);
+      // Der bekannte Teilverbrauch bleibt stehen (JOB 3074) — er trägt nur keine Kosten.
+      expect(lauf.verbrauch).toEqual({ eingabeToken: 2000, ausgabeToken: 0, gemeldeteAufrufe: 2 });
+      expect(lauf.versuche?.map((v) => [v.aufrufe, v.verbrauch?.gemeldeteAufrufe])).toEqual([
+        [3, 2],
+      ]);
+      // Bis hierher: kosten.betrag = 0,002 EUR und eine Zeitraumsumme von 0,002 EUR.
+      expect(Object.hasOwn(lauf, "kosten")).toBe(false);
+      expect(auswertung.kosten).toEqual([]);
+      expect(auswertung.verbrauchOhneKosten).toBe(1);
+    });
+  }
 });

@@ -262,6 +262,30 @@ describe("B3 · die Preisliste des Betreibers", () => {
     ).toBe(0.001);
   });
 
+  it("P6 · Ben Lauf 3 R1 N1: mehr Aufrufe als Verbrauchsmeldungen im Versuch → keine Kosten", () => {
+    const { preisliste } = lesePreisliste(LISTE);
+    const zwei = { eingabeToken: 2000, ausgabeToken: 0, gemeldeteAufrufe: 2 };
+    const teilsumme = lauf({
+      verbrauch: zwei,
+      versuche: [versuch({ verbrauch: zwei, aufrufe: 3 })],
+    });
+    // Bens Gegenbeleg: bis hierher 0,006 EUR für zwei von drei Aufrufen, als wären es alle.
+    expect(kostenEinesLaufs(teilsumme, preisliste)).toBeUndefined();
+    // Gegenprobe: so viele Meldungen wie Aufrufe → Kosten wie bisher.
+    const vollstaendig = lauf({
+      verbrauch: zwei,
+      versuche: [versuch({ verbrauch: zwei, aufrufe: 2 })],
+    });
+    expect(kostenEinesLaufs(vollstaendig, preisliste)?.betrag).toBe(0.006);
+    // Ohne Zählung (Versuch ohne `aufrufe`) bleibt die bisherige Regel unverändert.
+    expect(
+      kostenEinesLaufs(
+        lauf({ verbrauch: zwei, versuche: [versuch({ verbrauch: zwei })] }),
+        preisliste,
+      )?.betrag,
+    ).toBe(0.006);
+  });
+
   it("P4 · Ben R2 B3: zwei Modelle, zwei Preise — jeder Versuch zum Preis SEINES Modells", () => {
     const { preisliste } = lesePreisliste(
       JSON.stringify({

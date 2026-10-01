@@ -358,6 +358,9 @@ function versuchAus(
     dauerMs: Math.max(0, Date.now() - beginnMs),
     ausgang,
     ...(spur.verbrauch ? { verbrauch: spur.verbrauch } : {}),
+    // Ben Lauf 3 R1 N1: die Zahl der wirklich gerufenen Aufrufe, damit die Kostenrechnung eine
+    // fehlende Verbrauchsmeldung innerhalb des Versuchs erkennt.
+    ...(spur.aufrufe ? { aufrufe: spur.aufrufe } : {}),
     spanId: neueSpanId(),
   };
 }

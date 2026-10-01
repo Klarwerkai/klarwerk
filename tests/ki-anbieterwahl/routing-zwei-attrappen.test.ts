@@ -2466,10 +2466,15 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
   // Aufnahme gesamt-ki-laufprotokoll (Ben R1): die Freigabe steht im VORSPANN (`aufbau`), also
   // wird jeder Fall einzeln geführt.
   "tests/ki-lauf-protokoll/protokoll-vollstaendig.test.ts": {
-    gesamtboden: 75,
+    gesamtboden: 87,
     vollzaehlig: true,
     faelle: {
-      VORSPANN: { boden: 1, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      // Ben Lauf 3 R1 N1: der zweite Aufruf steht in `extrahiere` (Aufbau für C4/C5, gleiche
+      // Grundfreigabe wie `aufbau`).
+      VORSPANN: {
+        boden: 4,
+        freigaben: ["erteileKiFreigabe(reasoner)", "erteileKiFreigabe(reasoner)"],
+      },
       I1: { boden: 4, freigaben: [] },
       I2: { boden: 2, freigaben: [] },
       I3: { boden: 2, freigaben: [] },
@@ -2492,10 +2497,13 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
       C3: { boden: 4, freigaben: ["erteileKiFreigabe(reasoner)"] },
       V1: { boden: 5, freigaben: [] },
       V2: { boden: 1, freigaben: [] },
+      // Ben Lauf 3 R1 N1: Kontrolle mit drei Meldungen (C4); je ein Aufruf ohne Meldung (C5).
+      C4: { boden: 4, freigaben: [] },
+      C5: { boden: 5, freigaben: [] },
     },
   },
   "tests/ki-lauf-protokoll/kosten-und-auswertung.test.ts": {
-    gesamtboden: 86,
+    gesamtboden: 89,
     vollzaehlig: true,
     faelle: {
       VORSPANN: { boden: 1, freigaben: ["erteileKiFreigabe(mutable.reasoner)"] },
@@ -2505,6 +2513,8 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
       P4: { boden: 3, freigaben: [] },
       // Ben R3 B3: ein gerufenes Modell ohne Verbrauchsmeldung ergibt keine Teilsumme.
       P5: { boden: 2, freigaben: [] },
+      // Ben Lauf 3 R1 N1: mehr Aufrufe als Verbrauchsmeldungen in einem Versuch.
+      P6: { boden: 3, freigaben: [] },
       S1: { boden: 6, freigaben: [] },
       S2: { boden: 2, freigaben: [] },
       A1: { boden: 13, freigaben: [] },
