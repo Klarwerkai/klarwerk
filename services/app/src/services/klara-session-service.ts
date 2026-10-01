@@ -425,8 +425,9 @@ export type KlaraAusfuehrungsfreigabe =
        */
       readonly anbieter?: string;
       /**
-       * Lauf 2 · Bens B5: `false`, sobald diese Zustimmung in diesem Dienst beendet wurde. Der
-       * Aufrufer bindet die Prüfung an den Lauf (`bindeZustimmung`).
+       * Lauf 2 · Bens B5/B6: `false`, sobald diese Zustimmung in diesem Dienst beendet wurde oder
+       * Sitzung bzw. Zustimmung abgelaufen sind. Der Aufrufer bindet die Prüfung an den Lauf
+       * (`bindeZustimmung`); ausgewertet wird sie zuletzt am Chokepoint (`cappedModelClient`).
        */
       readonly giltNoch: () => boolean;
     }
@@ -994,11 +995,20 @@ export class KlaraSessionService {
     }
     const anbieter = karte?.answer;
     const consentId = deckung.consentId;
+    // Lauf 2 · Bens B6: die Zustimmung gilt für GENAU diese Sitzung (R-0590) — eine wartende Anfrage
+    // überträgt nach deren Ende nicht mehr, auch ohne weiteren Sitzungszugriff. Die Frist ist die
+    // frühere aus Sitzungsende (gleitend, durch die absolute Grenze gedeckelt) und Zustimmungsablauf,
+    // so wie das Tor sie eben geprüft hat. Spätere Aktivität verlängert sie für DIESE Anfrage nicht —
+    // im Zweifel endet die Freigabe früher, nie später.
+    const frist = Math.min(
+      Date.parse(gebunden.expiresAt),
+      consent ? Date.parse(consent.expiresAt) : Number.NEGATIVE_INFINITY,
+    );
     return {
       erlaubt: true,
       resolution,
       consentId,
-      giltNoch: () => !this.beendet.has(consentId),
+      giltNoch: () => !this.beendet.has(consentId) && this.now() < frist,
       ...(typeof anbieter === "string" ? { anbieter } : {}),
     };
   }

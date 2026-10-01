@@ -26,9 +26,11 @@ import { AsyncLocalStorage } from "node:async_hooks";
 // abschliessen. Deshalb bindet die Anfrage auch die ZUSTIMMUNG — als Prüfung `giltNoch`, die das Tor
 // mitliefert (`bindeZustimmung`). Der Sitzungsdienst vermerkt jedes Beenden einer Zustimmung
 // (Widerruf, Entwertung, Ablauf) nach dem Festschreiben und VOR der Antwort; ab da meldet die Prüfung
-// `false`. Ausgewertet wird beim Kettenbau UND unmittelbar vor der Übertragung
-// (`ModellAufrufSpur.vorUebertragung`). Grenze: der Vermerk lebt im Prozess — ein Widerruf, den eine
-// ANDERE Instanz abschliesst, erreicht ihn nicht.
+// `false`; Bens B6: ebenso nach Ablauf von Sitzung oder Zustimmung. Ausgewertet wird beim Kettenbau
+// UND unmittelbar vor der Übertragung — im Reasoner-Lauf (`ModellAufrufSpur.vorUebertragung`) und
+// für JEDEN externen Client am Chokepoint (`cappedModelClient`, Bens B7: der Zuruf-Weg).
+// Grenze: der Vermerk lebt im Prozess — ein Widerruf, den eine ANDERE Instanz abschliesst,
+// erreicht ihn nicht.
 
 interface Anbieterbindung {
   gebunden: boolean;
@@ -74,12 +76,22 @@ export function bindeAnbieter(anbieter: string | null): boolean {
 }
 
 /**
+ * Lauf 2 · Bens B7: tragen alle Zustimmungen, auf die sich die laufende Anfrage stützt, noch? Ohne
+ * Rahmen oder ohne gebundene Zustimmung `true`. Gefragt vom Chokepoint (`cappedModelClient`) —
+ * nach jedem Warten auf einen Modellplatz, unmittelbar vor der Übertragung, auf JEDEM Weg.
+ */
+export function zustimmungenTragen(): boolean {
+  const bindung = speicher.getStore();
+  return !bindung || bindung.zustimmungen.every((giltNoch) => giltNoch());
+}
+
+/**
  * Darf ein externer Anbieter im laufenden Aufruf Text erhalten? Stützt sich die Anfrage auf eine
  * inzwischen beendete Zustimmung, keiner. Sonst ohne Bindung immer; mit Bindung nur der gebundene.
  */
 export function anbieterZugelassen(anbieter: string | undefined): boolean {
   const bindung = speicher.getStore();
-  if (bindung && !bindung.zustimmungen.every((giltNoch) => giltNoch())) {
+  if (!zustimmungenTragen()) {
     return false;
   }
   if (!bindung?.gebunden) {

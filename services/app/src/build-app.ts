@@ -944,6 +944,8 @@ export function assembleServices(
                 ),
               );
             }
+            // Lauf 2 · Bens B7: ein Widerruf oder Sitzungsablauf WÄHREND des Wartens auf einen
+            // Modellplatz fängt der gecappte Client selbst ab (`cappedModelClient`, Chokepoint).
             return client.complete(system, user, confidential, maxTokens);
           },
         }

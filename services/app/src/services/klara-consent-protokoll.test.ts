@@ -507,3 +507,46 @@ describe("Bens B5 · Widerruf während der Freigabeprüfung", () => {
     expect(freigabe.erlaubt ? null : freigabe.grund).toBe(KLARA_CONSENT_RECONFIRMATION_REQUIRED);
   });
 });
+
+// ================================================================================================
+// Lauf 2 · Bens B6 — DIE FREIGABE ENDET MIT DER SITZUNG, AUCH OHNE WEITEREN SITZUNGSZUGRIFF.
+// ================================================================================================
+
+describe("Bens B6 · `giltNoch` endet mit Sitzung und Zustimmung", () => {
+  const MINUTE = 60 * 1000;
+
+  it("absolute Acht-Stunden-Grenze: Tor 1 ms davor erlaubt, 2 ms später trägt die Freigabe nicht mehr", async () => {
+    const { dienst, vorspulen } = aufbau();
+    const { sicht, bindung } = await sitzung(dienst);
+    // Durch reguläre Statusaufrufe bis kurz vor die absolute Grenze aktiv gehalten.
+    let vergangen = 0;
+    while (vergangen + 10 * MINUTE < KLARA_SESSION_ABSOLUTE_MS - MINUTE) {
+      vorspulen(10 * MINUTE);
+      vergangen += 10 * MINUTE;
+      await dienst.getSession(sicht.sessionId, bindung);
+    }
+    vorspulen(KLARA_SESSION_ABSOLUTE_MS - 1 - vergangen);
+    await dienst.grantConsent(sicht.sessionId, bindung);
+    const freigabe = await dienst.pruefeExterneAusfuehrung(sicht.sessionId, bindung);
+    expect(freigabe.erlaubt, "1 ms vor der Grenze trägt das Tor").toBe(true);
+    const giltNoch = freigabe.erlaubt ? freigabe.giltNoch : () => true;
+    expect(giltNoch()).toBe(true);
+    vorspulen(2);
+    expect(giltNoch(), "nach dem Sitzungsende keine Übertragung mehr").toBe(false);
+    await expect(dienst.pruefeExterneAusfuehrung(sicht.sessionId, bindung)).rejects.toThrow(
+      "abgelaufen",
+    );
+  });
+
+  it("Inaktivitätsfrist: ohne Zugriff endet die Freigabe mit dem gleitenden Sitzungsende", async () => {
+    const { dienst, vorspulen } = aufbau();
+    const { sicht, bindung } = await sitzung(dienst);
+    await dienst.grantConsent(sicht.sessionId, bindung);
+    const freigabe = await dienst.pruefeExterneAusfuehrung(sicht.sessionId, bindung);
+    const giltNoch = freigabe.erlaubt ? freigabe.giltNoch : () => true;
+    vorspulen(MINUTE);
+    expect(giltNoch(), "KALIBRIERUNG: innerhalb der Frist trägt sie").toBe(true);
+    vorspulen(15 * MINUTE);
+    expect(giltNoch()).toBe(false);
+  });
+});

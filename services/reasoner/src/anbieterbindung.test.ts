@@ -237,3 +237,91 @@ describe("Bens B5 · Widerruf zwischen Kettenbau und Übertragung: der Chokepoin
     }
   });
 });
+
+// ================================================================================================
+// Lauf 2 · Bens B7 — DER CHOKEPOINT SELBST PRÜFT DIE ZUSTIMMUNG, AUF JEDEM WEG (AUCH DEM ZURUF).
+// ================================================================================================
+//
+// Der Zuruf-Formulierer (`zurufModell` in `build-app.ts`) baut keine Reasoner-Kette und hat keine
+// Laufspur; er ruft den gecappten Cloud-Client direkt (`createCappedCloudClientFromEnv` →
+// `cappedModelClient`). Gemessen wird deshalb GENAU dieser Client, ohne Reasoner.
+
+describe("Bens B7 · Widerruf, während ein direkter Aufruf am gecappten Client wartet", () => {
+  const MAX = process.env.KLARWERK_MODEL_MAX_INFLIGHT;
+
+  function aufraeumen(): void {
+    if (MAX === undefined) {
+      delete process.env.KLARWERK_MODEL_MAX_INFLIGHT;
+    } else {
+      process.env.KLARWERK_MODEL_MAX_INFLIGHT = MAX;
+    }
+    resetModelSemaphoreForTests();
+  }
+
+  async function wartenderAufruf(rejectsConfidential: boolean) {
+    process.env.KLARWERK_MODEL_MAX_INFLIGHT = "1";
+    resetModelSemaphoreForTests();
+    const transport = vi.fn(async () => "Zuruf");
+    const client = cappedModelClient(
+      { name: "anthropic:claude", complete: transport },
+      { rejectsConfidential },
+    );
+    let freigeben: () => void = () => undefined;
+    const belegt = withModelSlot(
+      () =>
+        new Promise<void>((r) => {
+          freigeben = r;
+        }),
+    );
+    const z = zustimmung();
+    const aufruf = imBindungsrahmen(() => {
+      bindeZustimmung(z.giltNoch);
+      bindeAnbieter("anthropic");
+      // Wie der Zuruf-Wrapper: Bindung VOR dem Aufruf geprüft, dann direkt an den Client.
+      expect(anbieterZugelassen("anthropic")).toBe(true);
+      return client.complete("system", "user", false);
+    });
+    await new Promise((r) => setTimeout(r, 10));
+    return { transport, z, aufruf, belegt, freigeben: () => freigeben() };
+  }
+
+  it("KALIBRIERUNG: ohne Widerruf überträgt der wartende Aufruf nach Slotfreigabe genau einmal", async () => {
+    try {
+      const k = await wartenderAufruf(true);
+      expect(k.transport).not.toHaveBeenCalled();
+      k.freigeben();
+      await k.belegt;
+      await expect(k.aufruf).resolves.toBe("Zuruf");
+      expect(k.transport).toHaveBeenCalledTimes(1);
+    } finally {
+      aufraeumen();
+    }
+  });
+
+  it("Widerruf während des Wartens: der externe Transport wird NICHT gerufen", async () => {
+    try {
+      const k = await wartenderAufruf(true);
+      expect(k.transport).not.toHaveBeenCalled();
+      k.z.beenden();
+      k.freigeben();
+      await k.belegt;
+      await expect(k.aufruf).rejects.toThrow("keine externe Übertragung");
+      expect(k.transport).not.toHaveBeenCalled();
+    } finally {
+      aufraeumen();
+    }
+  });
+
+  it("GEGENPROBE: ein bestätigt lokaler Endpunkt (kein Abfluss) ist nicht betroffen", async () => {
+    try {
+      const k = await wartenderAufruf(false);
+      k.z.beenden();
+      k.freigeben();
+      await k.belegt;
+      await expect(k.aufruf).resolves.toBe("Zuruf");
+      expect(k.transport).toHaveBeenCalledTimes(1);
+    } finally {
+      aufraeumen();
+    }
+  });
+});
