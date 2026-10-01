@@ -2581,7 +2581,11 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // (53da1b30… -> 6e5284ce…). Einzige Änderung: `askKlara` und `ka6Absenden` melden eine GETIPPTE
     // Frage jetzt ausdrücklich als `questionSource: "manual"` (der Server zählt bei Klara-Bindung
     // „fehlt" als Dokumenttext). Abrufziel, Manifest, CSP, Recht unverändert; kein Sideload.
-    const PIN = "6e5284cef9d83352cc5e9b9252e4185314e0f535af9d4adc75882383d6ba5c27";
+    // LAUF 2, RUNDE 2 (02.10.2026) — PIN ERNEUT (6e5284ce… -> 5fbf5f64…). NUR UMBRUCH UND KOMMENTAR:
+    // die R-0639-Argumente stehen auf den bestehenden Zeilen, damit das Inline-Skript unter der
+    // Schranke von `schnittflaechen.test.ts` B3 bleibt (Server: „expected 12510 to be less than
+    // 12500"). Kein Ausdruck, kein Abrufziel, keine Nutzlast geändert; kein Sideload.
+    const PIN = "5fbf5f64546beb67d70799bb8d18bcf6d2adcc631d79e0b404658867baeb0978";
     const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
     expect(
       ist,
