@@ -13,8 +13,11 @@
 // Produktionsimage existiert: `Dockerfile:37-38` kopiert nur `services` und `apps/web/dist` —
 // `apps/web/src` und damit DIESE Datei liegen dort nicht.
 //
-// WER HIER HOCHZÄHLT, ZÄHLT DORT MIT. `scripts/deploy/klarwerk-ship.command:93` erhöht bisher nur
-// diese Datei; läuft sie gegen `package.json` auseinander, meldet /health einen Stand, den die
-// Oberfläche nicht zeigt. Der Wächter `tests/app/health-version-commit.test.ts` macht genau das
-// rot — die Suite lässt die Abweichung nicht durch.
-export const APP_VERSION = "1.0.0-beta.1.629";
+// WER HIER HOCHZÄHLT, ZÄHLT DORT MIT. `scripts/deploy/klarwerk-ship.command` hebt beide Dateien im
+// selben Schritt an und bricht ab, wenn `package.json` nicht die bisherige Nummer trägt; läuft sie
+// gegen `package.json` auseinander, meldet /health einen Stand, den die Oberfläche nicht zeigt.
+// Der Wächter `tests/app/health-version-commit.test.ts` macht genau das rot.
+//
+// R-1028: Auch das Word-Panel zeigt DIESE Konstante — der Build stempelt sie in „Klara <Stand>"
+// (`apps/web/vite.config.ts`, Plugin `klara-stand`, Text aus `src/lib/klaraStand.ts`).
+export const APP_VERSION = "1.0.0-beta.1.639";

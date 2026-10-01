@@ -55,6 +55,10 @@ const NEUE_DATEIEN = [
   // sonst still an der KI-Freiheitsprüfung vorbeilaufen. Der Wächter ist planmässig rot geworden
   // und wird hier nachgeführt, nicht gelockert.
   "apps/web/src/components/gesamtanweisung/GesamtanweisungBereich.tsx",
+  // FE-001 (Arbeitsanleitungen verständlich und bedienbar): die Kopfbearbeitung und die eine Stelle
+  // der Gestaltung. Planmässig nachgeführt, nicht gelockert — beide laufen durch denselben Scan.
+  "apps/web/src/components/gesamtanweisung/KopfBearbeitung.tsx",
+  "apps/web/src/components/gesamtanweisung/gestaltung.ts",
 ] as const;
 
 /**

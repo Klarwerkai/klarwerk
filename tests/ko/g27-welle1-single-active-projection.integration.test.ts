@@ -16,9 +16,9 @@
 //  3 DIE FASSUNGSBINDUNG IM SQL. Ob `p.projection_version = $1` eine V1-Zeile wirklich aus der
 //    Treffermenge hält, beantwortet der Planner, nicht der Fake-Pool.
 //
-// Läuft unter `npm run test:integration` (Docker/Testcontainers), nicht im schnellen Root-Gate.
+// Läuft unter `npm run test:integration`, nicht im schnellen Root-Gate. Die Datenbank kommt aus
+// `./pg-pruefplatz` (isoliert über `KLARWERK_PG_TEST_URL`, sonst Testcontainer, sonst ROT).
 import type { Pool } from "pg";
-import { GenericContainer, type StartedTestContainer, Wait } from "testcontainers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createPool, migrate } from "../../services/app/src/db";
 // G27 R3: die Gegenprobe startet über GENAU den kanonischen Helper, den App-Ready und der CLI-Seed
@@ -35,6 +35,7 @@ import {
   integritaetsMarkerGueltig,
   parseClassificationSnapshot,
 } from "../../services/knowledge-object";
+import { type IsoliertePg, oeffneIsoliertePg } from "./pg-pruefplatz";
 
 const AT = "2026-08-02T09:00:00.000Z";
 const KO_CREATED_AT = "2024-03-01T08:00:00.000Z";
@@ -79,20 +80,16 @@ function v1Zeile(ko: KnowledgeObject, kategorieImInhalt: string): KoSearchProjec
 }
 
 describe("G27 R1 · Single Active Projection gegen echtes PostgreSQL", () => {
-  let container: StartedTestContainer;
+  let pg: IsoliertePg | undefined;
   let url: string;
 
   beforeAll(async () => {
-    container = await new GenericContainer("postgres:16-alpine")
-      .withEnvironment({ POSTGRES_PASSWORD: "test", POSTGRES_DB: "klarwerk_test" })
-      .withExposedPorts(5432)
-      .withWaitStrategy(Wait.forLogMessage(/database system is ready to accept connections/, 2))
-      .start();
-    url = `postgresql://postgres:test@${container.getHost()}:${container.getMappedPort(5432)}/klarwerk_test`;
-  });
+    pg = await oeffneIsoliertePg("g27");
+    url = pg.url;
+  }, 180_000);
 
   afterAll(async () => {
-    await container?.stop();
+    await pg?.abraeumen();
   });
 
   // Jeder Fall bekommt einen leeren Bestand — die Steuerzeile eingeschlossen. So misst jeder Test

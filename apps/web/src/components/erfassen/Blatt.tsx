@@ -61,6 +61,7 @@ import { type SpeechRec, diktatSprache, makeRec } from "../../lib/speechDictatio
 import { hasSpeechRecognition } from "../../lib/speechSupport";
 import type { TitelMitQuelle } from "../../lib/titelRangfolge";
 import { useAiBillable } from "../../lib/useAiBillable";
+import { umfangKurz } from "../../lib/vorschauUmfang";
 import { AiAssistInstructions } from "../AiAssistBox";
 import { AiCostHint } from "../AiCostHint";
 import { AiGeneratedNotice } from "../AiGeneratedNotice";
@@ -282,6 +283,28 @@ export function Blatt({
   const [bodyHtml, setBodyHtml] = useState(() =>
     startText?.trim() ? diktatAnhaengen("", startText) : "",
   );
+  // N-0064 (Auftrag gesamt-entwurf-datenerhalt) — DER GANZE TITEL STEHT AM FELD. Das Titelfeld ist
+  // einzeilig; ein langer Titel lief rechts aus dem Blick, und was gespeichert würde, war nicht mehr
+  // zu lesen. Läuft er WIRKLICH über (gemessen am Feld, nicht an einer Zeichenzahl), steht er direkt
+  // darunter vollständig und umbrochen. Ein kurzer Titel bekommt keine zweite Zeile.
+  const titelFeldRef = useRef<HTMLInputElement | null>(null);
+  const [titelUeberlaeuft, setTitelUeberlaeuft] = useState(false);
+  useEffect(() => {
+    const feld = titelFeldRef.current;
+    if (!feld) {
+      return;
+    }
+    const messen = (): void =>
+      setTitelUeberlaeuft(title.trim().length > 0 && feld.scrollWidth > feld.clientWidth + 1);
+    messen();
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", messen);
+      return () => window.removeEventListener("resize", messen);
+    }
+    const beobachter = new ResizeObserver(messen);
+    beobachter.observe(feld);
+    return () => beobachter.disconnect();
+  }, [title]);
   const [kategorie, setKategorie] = useState("");
   const [confidentiality, setConfidentiality] = useState<Confidentiality>("intern");
   // JOB 504 D2 (übernommen): der ROHE Herkunftswert — `undefined` heisst „der fortgesetzte Entwurf
@@ -624,7 +647,7 @@ export function Blatt({
         : draftProvenance(declaredConfidentiality, undefined, activeDraftId ?? undefined),
     [declaredConfidentiality, activeDraftId],
   );
-  const { verdict, checkStatus } = useLiveKnowledgeCheck(
+  const { verdict, checkStatus, pruefumfang } = useLiveKnowledgeCheck(
     liveText,
     livePruefHerkunft,
     gespeicherterStand,
@@ -639,6 +662,13 @@ export function Blatt({
           nl: "Nog niet op tegenstrijdigheid gecontroleerd.",
         }[toReasonerLocale(i18n.language)]
       : t("intake.live.unavailable");
+  // AUFNAHME 20260922 · VORSCHAU-REICHWEITE: auch ohne Konfliktprüfung ist die Ähnlichkeitsvorschau
+  // gelaufen. Blieb sie leer, sagt das Blatt das mit ihrem belegten Umfang — in einer EIGENEN Zeile,
+  // damit der Satz über die Konfliktprüfung unverändert für sich steht.
+  const liveVorschauSatz =
+    checkStatus === "pending" && verdict.status === "pending" && pruefumfang !== null
+      ? t("vorschau.ohneTreffer", { umfang: umfangKurz(t, pruefumfang) })
+      : null;
 
   // Die Bereiche kommen aus dem BESTAND, nicht aus einer erfundenen Liste: was es im Haus gibt,
   // steht zur Wahl. Fehlt der Bestand noch, sagt das Menü das (Zustandsmodell §9), statt eine
@@ -1717,6 +1747,15 @@ export function Blatt({
     // Diktatsitzung dieselbe Trennung wie im Ladeeffekt, und zwar VOR dem Adresswechsel.
     diktatVomBlattTrennen();
     setAnsicht("blatt");
+    // LAUF 6 (erfassen-doppelklick, bens B6): NENNT DIE ADRESSE DIESEN ENTWURF SCHON, ÄNDERT SICH AN
+    // IHR NICHTS — und der Ladeeffekt liefe nicht. Genau so kam der Arbeitsraum zurück, nachdem er
+    // den geöffneten Entwurf aktualisiert hatte: das Blatt zeigte weiter seinen Stand von vor dem
+    // Speichern (alter Titel), obwohl der Server längst den neuen trug. Ein neuer Laderunde-Zähler
+    // holt den gespeicherten Stand; derselbe Weg wie „Neu laden" nach einem Standkonflikt.
+    if (resumeDraftId === entwurfId) {
+      setReloadNonce((n) => n + 1);
+      return;
+    }
     setSearchParams({ draft: entwurfId }, { replace: true });
   };
 
@@ -2711,6 +2750,7 @@ export function Blatt({
         >
           <div className="relative">
             <input
+              ref={titelFeldRef}
               data-testid="blatt-titel"
               value={title}
               // JOB 3141 (CAP-P1): DIESELBE Ablesung wie die Schreibfläche darunter. Hier stand
@@ -2733,6 +2773,17 @@ export function Blatt({
               aria-label={t("erfassen.platzhalter.titel")}
               className="w-full bg-transparent text-[28px] font-[650] leading-tight tracking-[-0.3px] text-text outline-none placeholder:text-muted-2/60"
             />
+            {/* N-0064: die vollständige Titelanzeige, nur bei echtem Überlauf (Messung oben). Für
+                Hilfstechnik verborgen — das Feld selbst trägt den ganzen Wert schon. */}
+            {titelUeberlaeuft ? (
+              <p
+                data-testid="blatt-titel-voll"
+                aria-hidden="true"
+                className="mt-1 whitespace-pre-wrap break-words text-[15px] font-[550] leading-snug text-muted"
+              >
+                {title}
+              </p>
+            ) : null}
             {/* §5: Die vier Starter-Chips leben im Titel-Menü des LEEREN Blattes — und seit R6 auch
                 der Titelvorschlag, der bis dahin als gerahmte Karte über dem Schreibfeld stand. */}
             {offenesMenue === "titel" && titelMenueHatEtwas ? (
@@ -2874,7 +2925,15 @@ export function Blatt({
               {liveAusfallSatz}
             </output>
           ) : null}
-          {verdict.status === "new" ||
+          {liveVorschauSatz === null ? null : (
+            <output data-testid="blatt-live-vorschau" className="block text-[12px] text-muted">
+              {liveVorschauSatz}
+            </output>
+          )}
+          {/* AUFNAHME 20260922 · VORSCHAU-REICHWEITE: der Chip heisst „Vorschau" und behauptet nichts
+              über den ganzen Bestand. Ohne Treffer nennt er nur den belegten Umfang — hier stand
+              „Das ist neu". */}
+          {verdict.status === "empty" ||
           verdict.status === "similar" ||
           verdict.status === "conflict" ? (
             <div data-testid="blatt-live-chip" data-lage={verdict.status} className="w-fit">
@@ -2884,12 +2943,15 @@ export function Blatt({
                 onClick={() => setLiveOffen((v) => !v)}
                 className="inline-flex w-fit items-center gap-1.5 rounded-[999px] border border-hairline bg-page px-2.5 py-1 text-[12px] text-muted hover:text-text"
               >
+                <span className="font-semibold uppercase text-[10.5px]">{t("vorschau.name")}</span>
                 {verdict.status === "conflict"
                   ? t("erfassen.live.widerspruch")
                   : verdict.status === "similar"
                     ? t("erfassen.live.aehnlich")
-                    : t("erfassen.live.neu")}
-                {verdict.status === "new" ? null : (
+                    : t("vorschau.keinTreffer")}
+                {verdict.status === "empty" ? (
+                  <span>· {umfangKurz(t, verdict.coverage)}</span>
+                ) : (
                   <span className="font-medium">{verdict.match.title}</span>
                 )}
               </button>

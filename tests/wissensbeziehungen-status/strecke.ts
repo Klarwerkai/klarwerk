@@ -75,6 +75,7 @@ import {
   starteKlarwerk,
 } from "../beziehungs-restore-nutzerweg/vorrichtung";
 import { type Kontext, type Seite, fn, profil, warte } from "../gast-nutzerweg/browserweg";
+import { SICHT_RUECKFALL } from "../support/sichtRueckfall";
 import type { Protokoll, Sprachbefund } from "./pflichtabnahme";
 import { SPRACHEN, sollWort } from "./sollwoerter";
 // Die Voraussetzungen (PostgreSQL, gebaute Fläche, Chromium) werden NICHT ein zweites Mal
@@ -210,13 +211,20 @@ const beziehungVon = (kurz: string): (typeof BEZIEHUNGEN)[number] => {
 // Baum schon. `kinder` wird mitgelesen, weil ein sichtbarer Container nicht belegt, dass sein
 // ganzer Text sichtbar ist (Lehre 17.09., JOB 4295 R3) — bei 0 Kindern ist das Element selbst der
 // texttragende Knoten. In dieser Datei kommt `textContent` nicht vor.
+//
+// Ohne `checkVisibility` misst der Rückfall die ganze Vorfahrenkette samt Verdeckung
+// (`tests/support/sichtRueckfall.ts`); vorher sah er nur das Element selbst. Kann er die Verdeckung
+// nicht messen (auch an SVG-Linien), WIRFT `sichtbarOhneCheck` mit „SICHTMESSUNG NICHT MOEGLICH".
 const SICHT = `
+  ${SICHT_RUECKFALL}
   const sichtbar = (e) => {
     if (!e) return false;
     if (typeof e.checkVisibility === "function") {
       if (!e.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true, contentVisibilityAuto: true })) {
         return false;
       }
+    } else if (!sichtbarOhneCheck(e)) {
+      return false;
     }
     const s = getComputedStyle(e);
     if (s.visibility === "hidden" || s.display === "none" || s.opacity === "0") return false;
