@@ -495,6 +495,8 @@ async function fuehreLaufAus(
       koService: deps.koService,
       dryRun: false,
       actor,
+      // R-0142 (Lauf 5): die Kandidaten dieses Laufs tragen seine Kennung (`laufbindung.ts`).
+      importId,
     });
     const sync = abgleichFuerDenLauf(summary);
     const grund = abgleichGrund(summary);
@@ -1365,7 +1367,16 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
               // WP-SHIP7-FIX (Fix 3): die Rückgabe zählt EHRLICH — nur tatsächlich eingereihte
               // Kandidaten sind „importiert"; ein idempotenter No-op (bereits offener Kandidat
               // derselben externalId/Version, z. B. Retry/Parallel-Lauf) wird SEPARAT ausgewiesen.
-              const created = await deps.library.createImportCandidates([zuSchreiben], user.id);
+              // R-0142 (Lauf 5): an die Kennung dieser Übernahme gebunden, Ordnung = Position der
+              // Id in der Anfrage.
+              const created = await deps.library.createImportCandidates(
+                [zuSchreiben],
+                user.id,
+                undefined,
+                uebernahmelauf
+                  ? { importId: uebernahmelauf, ordinal: includeIds.indexOf(id) }
+                  : undefined,
+              );
               if (created.length > 0) {
                 imported += 1;
                 if (importStatusFor(item, applyAnchors, applyPending).sourceNewer) {

@@ -180,7 +180,7 @@ sind Bestandsangaben, keine Lieferzusage dieses Auftrags.
 |---|---|---|
 | R-0126 | geliefert (unverändert) | Übersicht; in Lauf 5 lokal grün: `verschachtelter-import.test.ts`, `mapper.test.ts`, `adapter.test.ts` |
 | R-0131 | geliefert (unverändert) | Übersicht; in Lauf 5 lokal grün: `pruefkarte-zeigt-volltext-und-quelle.test.tsx` (V3/V8), `quellhinweise-montiert.test.tsx` (H1/H2), `runde3.test.ts` (N1/N2). Nicht gemessen: Rücklink gegen eine echte Confluence-Instanz |
-| R-0142 | **teilweise** — abgeleitete Einheiten und Lücken nicht gebaut (Widerspruch 8, B7; braucht Entscheidungen bzw. FREEZE-144-Freigabe) | Abschnitt „R-0142 im Einzelnen“; `quellhinweise-montiert.test.tsx` (DE/EN/NL) lokal grün |
+| R-0142 | **teilweise** — Runde 1: abgeleitete Einheiten und Lücken nicht gebaut (Widerspruch 8, B7). *Runde 2: Ergebnisweg gebaut, s. „Lauf 5 · Runde 2“; Zerlegung und Lückenbeziehung weiter offen.* | Abschnitt „R-0142 im Einzelnen“; `quellhinweise-montiert.test.tsx` (DE/EN/NL) lokal grün |
 | R-0176 | Arbeitsweise, kein Produktzustand | Übersicht |
 
 **Bens B9-Rest (R-0163, Lauf 3 R3) — behoben**, obwohl R-0163 zum Anhangsauftrag gehört: der
@@ -198,6 +198,69 @@ Fälle rot (`expected [] to deeply equal ['P-1']`).
 gezielte PostgreSQL-Integration grün (`pa-1790500802-63a9ab41`); für Lauf 3 und Lauf 5 liegt kein
 Vollcheck- oder Server-Integrationsbeleg vor (`quellabgleich-ablage.integration.test.ts` lokal
 nicht ausgeführt).
+
+## Lauf 5 · Runde 2 — Bens B7 (R-0142): der Ergebnisweg
+
+Ben (Runde 1): B9-Rest behoben; **B7 besteht fort** — nach Lauf und Annahme lieferte
+`GET /api/admin/import/runs/:id/result` `items: []`, die Lückenbindung war fest
+`RELATION_NOT_AVAILABLE`, und die Ergebnisfläche hatte keinen Aufrufer. Seine Gegenprobe
+(`ben-b7.test.ts`) läuft am Stand dieser Runde **grün** (Ausgabe: ein Element `CREATED` mit
+Objekt-Id und Quellrevision).
+
+**Ursache:** Der Lauf schrieb weder Quellrevision (`ExternalSourceRecord`) noch Elementreferenz
+(`ImportRunItemRef`) — beide Ablagen und Vertragstypen gab es (W2-A/148), aber keinen Schreiber.
+
+**Gebaut (innerhalb des bestehenden Wissenswegs, ohne FREEZE-144-Dateien zu ändern):**
+
+| Teil | Wie | Stelle |
+|---|---|---|
+| Quellrevision je Seite | Beim Einreihen im Namen eines Laufs wird je Seite die Revision festgehalten (idempotent über Quelle+Seite+Version, unveränderlich; `rawOrRenderedContentReference = null` ⇒ `NOT_CAPTURED`, der Volltext liegt am Wissensobjekt), `sourceMetadata.importId` nennt den aufnehmenden Lauf. | `library-analytics/src/laufbindung.ts` (neu), `LibraryService.createImportCandidates` (4. Argument `lauf`), `bindeAnLauf` |
+| Laufbindung am Kandidaten | `importRun = {importId, ordinal, sourceRecordId}`, nur vom Server gesetzt; die Eingangssäuberung entfernt jede vom Client mitgeschickte Bindung. | `quellangaben.ts`, `laufbindung.ts` |
+| Elementreferenz bei Entscheidung | Erst die menschliche Entscheidung schreibt die Referenz: `CREATED` (Objekt trägt den Stempel genau dieses Kandidaten), `BOUND` (bestehendes Objekt fortgeschrieben/adoptiert), `SKIPPED` (abgelehnt oder als Dublette nicht angelegt). Rückfrage (`info`) schreibt nichts. Ein offener Kandidat hat **keinen** Ausgang — `IMPORT_ITEM_OUTCOMES` kennt dafür keinen Wert, und es wird keiner erfunden. | `LibraryService.vermerkeEntscheidungImLauf` (Klassenende), Verdrahtung `build-app.ts` |
+| beide Laufwege | Gesamtlauf (`POST /api/admin/import/confluence`) und Selektivimport (`/apply`, Ordnung = Position in `includeIds`). | `confluence-import.ts`, `confluence-import-routes.ts` |
+| Importergebnis je Wissensobjekt | `GET /api/admin/import/knowledge/:koId`: Quellrevision, Lauf, Elementausgang, Lückenbindung; `users.manage` **und** `darfSehen` am Objekt (unsichtbar/nicht importiert ⇒ 404). Nur bei eingeschaltetem Import registriert. | `import-run-routes.ts`; Vertrag `tests/security/routeGuardAudit.ts` (mit `zeilenrecht`), Urteil `PRAEDIKAT` in `mega74-lesewege-sammler.test.ts` |
+| zusammenhängende Anzeige DE/EN/NL | Auf der Wissensseite (`/wissen/:id`, Abschnitt „Quellen und Belege“) — derselben Fläche mit Original, Quellen, Validierung und Widersprüchen — steht für Admins der Block „Importergebnis“: Quellfassung, Lauf, Ausgang, Lückenhinweis. Angezeigt wird nur, was der Server liefert; fehlende Teile werden benannt. Die gesperrte W2-Resultatfläche bleibt ohne Aufrufer (Block 5 in `w2a-import-run-routes-148.test.ts` grün). | `apps/web/src/components/bibliothek/ImportErgebnis.tsx` (neu), `MehrAbschnitte.tsx`, `i18n.ts` (`ko.importResult.*`) |
+
+**Tests:** `tests/confluence-quellabgleich/r0142-ergebnisweg.test.ts` E1–E6 (E1 = Bens Gegenprobe,
+dazu BOUND im zweiten Lauf, SKIPPED bei Ablehnung, Rückfrage ohne Referenz, Client-Bindung
+verworfen, Objekt-Route samt 404, `/apply`); vor der Korrektur im Annahmepfad waren E1/E2/E5/E6
+rot. Anzeige: `import-ergebnis-montiert.test.tsx` I1 (DE/EN/NL) bis I4; mit ausgehängtem Block alle
+sechs rot.
+
+**Wächter-Korrektur (Harness):** `tests/re-import-dubletten/port-aufrufer-waechter.test.ts` zählte
+nur Argumente; ein wörtliches `undefined` an der Port-Stelle galt als „Port übergeben“. Die neuen
+Aufrufe (`items, actor, undefined, lauf`) hätten den Wächter damit getäuscht und die Altfälle als
+„behoben“ gemeldet. Jetzt ist ein wörtlich leerer dritter Wert portlos (Kalibrierfall W3c); die
+beiden Altfall-Einträge bleiben zutreffend.
+
+**Weiterhin nicht erfüllt bzw. nicht entschieden (konkret):**
+1. *Abgeleitete Wissenseinheiten:* eine Confluence-Seite ergibt genau **ein** Wissensobjekt; das
+   Ergebnis referenziert genau diese Einheit. Eine Zerlegung einer Seite in mehrere Einheiten ist
+   nicht entschieden und nicht gebaut (Widerspruch 8).
+2. *Lücken:* die Lückendomäne (`services/ask`, `Gap`) kennt keine Beziehung Lücke → Wissensobjekt,
+   und das Wissensnetz hält ausdrücklich fest, dass „was fachlich als Lücke zählt, offen ist“
+   (`services/wissensnetz/src/luecken-einstieg.ts`). Server und Fläche melden deshalb
+   `RELATION_NOT_AVAILABLE` bzw. „es wird keine Lücke behauptet“. Eine solche Beziehung wäre eine
+   neue Anforderung jenseits der Quellen.
+3. *Laufzähler* (`counters`) bleiben die Zahlen zum Laufende (eingereihte Kandidaten,
+   `itemsBound = 0`); sie werden nach Entscheidungen nicht fortgeschrieben. Die Elementreferenzen
+   sind die Wahrheit (KW-S4-26 §177-179).
+4. *Lauf-Quelle* `source` der Ergebnisroute bleibt bei einem Bereichslauf `null` (ein Lauf über
+   viele Seiten hat keine einzelne Revision); die Revision steht je Element (`sourceRecordId`).
+5. *Grenzen der Bindung:* (a) Die Objekt-Route findet den Lauf über die Revision; wurde dieselbe
+   Fassung in einem früheren Lauf abgelehnt und in einem späteren erneut eingereiht und angenommen,
+   zeigt sie den früheren Lauf ohne Ausgang für dieses Objekt („kein Ausgang“), die Ergebnisroute des
+   späteren Laufs trägt die Referenz korrekt. (b) Ein Accept, den erst die Claim-Recovery
+   (`recoverStaleReviewClaims`) vollendet, schreibt keine Referenz. (c) Scheitert das Schreiben der
+   Referenz nach einer bereits gespeicherten Entscheidung, wird das laut protokolliert, die
+   Entscheidung bleibt. (d) Kandidaten aus Läufen vor dieser Runde tragen keine Bindung.
+6. *PostgreSQL-Weg nicht lokal gemessen:* Der Lauf schreibt jetzt in `PgExternalSourceRepo`, die
+   Entscheidung in `PgImportRunRepo.appendItemRefs` (beide unverändert, FREEZE-144). Gehört auf den
+   Prüfserver: `services/library-analytics/src/repo-pg.integration.test.ts`,
+   `services/app/src/quellabgleich-ablage.integration.test.ts` und der Liefercheck.
+7. *Bekannter Fremdbefund:* `npx depcruise` meldet einen Zyklus `apps/web/src/api/types.ts →
+   app/navigation.ts → lib/captureFrontDoor.ts → api/types.ts`; er besteht im Ausgangsstand
+   (`types.ts` importiert `Role` aus `navigation`), diese Runde ändert keine dieser Kanten.
 
 ## Abgrenzung
 

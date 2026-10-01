@@ -23,10 +23,19 @@ import {
 // JOB 3075 · P12: DIE EINE THEMENACHSE DES HAUSES. Begruendung am Kopf von `graph()` und in
 // `services/wissensnetz/index.ts`; es ist eine reine Namensableitung, kein Zugang zum Lesemodell.
 import { themenVon } from "../../wissensnetz";
+import {
+  type ImportLaufAuftrag,
+  type ImportLaufBindung,
+  ausgangDerEntscheidung,
+  halteQuellrevisionFest,
+  leseLaufBindung,
+} from "./laufbindung";
 import { type ImportItemMitQuellangaben, saeubereQuellangaben } from "./quellangaben";
 import {
   type CandidateRepo,
   type ClaimResolution,
+  type ExternalSourceRepo,
+  type ImportRunRepo,
   InMemoryCandidateRepo,
   importProviderKey,
 } from "./repo";
@@ -388,6 +397,13 @@ export interface LibraryServiceDeps {
    * unterscheidet genau daran (`apps/web/src/api/types.ts`, `Graph.kuratierteKanten`).
    */
   kanten?: KuratierteKantenLeser;
+  /**
+   * R-0142 (Lauf 5, Bens B7): die Laufdomäne, in die eine Entscheidung über einen laufgebundenen
+   * Kandidaten ihre Elementreferenz schreibt, und die Ablage der Quellrevisionen. Beide optional:
+   * ohne Verdrahtung entsteht keine Bindung, und alles bleibt wie vorher (`laufbindung.ts`).
+   */
+  importRuns?: ImportRunRepo;
+  externalSources?: ExternalSourceRepo;
 }
 
 /**
@@ -461,6 +477,9 @@ export class LibraryService {
   // JOB 4155 (WG-LUECKEN): der Kantenbestand für `/api/graph`. `undefined` = nicht verdrahtet; die
   // Antwort trägt das Feld dann GAR NICHT (s. `LibraryServiceDeps.kanten`).
   private readonly kanten: KuratierteKantenLeser | undefined;
+  // R-0142 (Lauf 5): Laufdomäne und Quellrevisionen (s. `LibraryServiceDeps.importRuns`).
+  private readonly importRuns: ImportRunRepo | undefined;
+  private readonly externalSources: ExternalSourceRepo | undefined;
 
   constructor(deps: LibraryServiceDeps) {
     this.koService = deps.koService;
@@ -470,6 +489,8 @@ export class LibraryService {
     this.now = deps.now ?? (() => Date.now());
     this.externalUpsert = deps.externalUpsert ?? false;
     this.kanten = deps.kanten;
+    this.importRuns = deps.importRuns;
+    this.externalSources = deps.externalSources;
   }
 
   // SCRUM-515: die eine Stelle, an der eine rohe (untrusted) confidentiality in den Import-Kern eintritt.
@@ -541,6 +562,7 @@ export class LibraryService {
     rawItems: readonly ImportItem[],
     actor = "system",
     pruefeDublette?: DublettenPruefung,
+    lauf?: ImportLaufAuftrag,
   ): Promise<ImportCandidate[]> {
     // SCRUM-515: an der Ingest-Grenze runtime-validieren, BEVOR das Item in die Queue/den Bestand geht.
     // WP-IC-PAKET-1d (bens sammel9-ROT): ZENTRALE Codec-Erzeugungsregel. Dies ist DIE eine Stelle,
@@ -553,6 +575,10 @@ export class LibraryService {
       ...this.withSanitizedIngest(item),
       textCodec: "decoded",
     }));
+    // R-0142 (Lauf 5): im Namen eines Laufs eingereiht → Quellrevision festhalten und binden.
+    if (lauf) {
+      await this.bindeAnLauf(items, lauf);
+    }
     const pruefung = erzwingeDublettenpruefung(pruefeDublette);
     const existing = await this.koService.list();
     // Pass 1: exakter Schlüssel → getroffener Partner. Der ERSTE Träger eines Schlüssels gewinnt,
@@ -1149,6 +1175,9 @@ export class LibraryService {
         "Kandidat wurde bereits bearbeitet oder wird gerade bearbeitet.",
       );
     }
+    // R-0142 (Lauf 5): die Laufbindung JETZT lesen — `resolveClaim` ersetzt das Item unten durch
+    // seine gesäuberte Fassung, und die Säuberung entfernt jede Bindung (`laufbindung.ts`).
+    const laufBindung = leseLaufBindung(candidate.item);
     // Erst NACH erfolgreicher KO-Erzeugung gesetzt — steuert den Fehlerpfad (s. Kopfkommentar (4)).
     let createdKoId: string | null = null;
     let resolved: ImportCandidate | undefined;
@@ -1193,7 +1222,13 @@ export class LibraryService {
         // MIT persistiert (nicht nur transient), damit die Queue keinen ungültigen Wert behält.
         const item = this.withSanitizedIngest(candidate.item);
         createdKoId = await this.acceptToKo(item, actor, id);
-        resolution = { status: "angenommen", koId: createdKoId, item, ...reviewedStamp };
+        resolution = {
+          status: "angenommen",
+          koId: createdKoId,
+          // R-0142 (Lauf 5): die Bindung bleibt am persistierten Kandidaten nachvollziehbar.
+          item: laufBindung ? { ...item, importRun: laufBindung } : item,
+          ...reviewedStamp,
+        };
       }
       // SCRUM-157: Endstatus/koId/Note (+ bereinigtes Item, 515) persistieren — atomar über den
       // opId-CAS (kein stiller Verlust, kein Fremd-Overwrite).
@@ -1287,6 +1322,8 @@ export class LibraryService {
     // BEDINGT gelöscht (clearAuditPending: nur die eigene eventId); wirft es, bleibt sie stehen
     // und die API-Antwort weist den Schwebezustand ehrlich aus. Zusätzlich LAUTES, PII-freies
     // Log (dieselbe Semantik wie Cleanup-Regel 5).
+    // R-0142 (Lauf 5): die Entscheidung als Elementreferenz des Laufs (nur laufgebundene Kandidaten).
+    await this.vermerkeEntscheidungImLauf(candidate, laufBindung, resolved);
     let auditRecorded = false;
     try {
       // recordOnce false (ein paralleler Nachzug war schneller) zählt als gesichert — der Beleg
@@ -2845,5 +2882,73 @@ export class LibraryService {
       increment(byCategory, ko.category);
     }
     return { total: list.length, byStatus, byType, byCategory };
+  }
+
+  /**
+   * R-0142 (Lauf 5, Bens B7): hält je Item die Quellrevision fest und bindet es an den Lauf
+   * (`laufbindung.ts`). Ohne Revisionsablage bleibt `sourceRecordId` `null` — die Bindung an den
+   * Lauf entsteht trotzdem.
+   */
+  private async bindeAnLauf(items: ImportItem[], lauf: ImportLaufAuftrag): Promise<void> {
+    const start = lauf.ordinal ?? 0;
+    const at = new Date(this.now()).toISOString();
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (!item) {
+        continue;
+      }
+      const sourceRecordId = this.externalSources
+        ? await halteQuellrevisionFest(this.externalSources, item, lauf.importId, this.genId, at)
+        : null;
+      (item as ImportItemMitQuellangaben).importRun = {
+        importId: lauf.importId,
+        ordinal: start + i,
+        sourceRecordId,
+      };
+    }
+  }
+
+  /**
+   * R-0142 (Lauf 5, Bens B7): schreibt nach einer Entscheidung die Elementreferenz in den Lauf des
+   * Kandidaten — `CREATED`, `BOUND` oder `SKIPPED` (`ausgangDerEntscheidung`). Eine Rückfrage
+   * (`info`) entscheidet nichts und schreibt nichts. Idempotent über `(importId, ordinal)`.
+   *
+   * Die Entscheidung selbst ist zu diesem Zeitpunkt schon persistiert; ein Schreibfehler hier
+   * macht sie nicht rückgängig, wird aber laut protokolliert (kenn- und inhaltsfrei bis auf die
+   * Kandidaten-Id) statt still verschluckt.
+   */
+  private async vermerkeEntscheidungImLauf(
+    candidate: ImportCandidate,
+    bindung: ImportLaufBindung | undefined,
+    resolved: ImportCandidate,
+  ): Promise<void> {
+    if (
+      !bindung ||
+      !this.importRuns ||
+      (resolved.status !== "angenommen" && resolved.status !== "abgelehnt")
+    ) {
+      return;
+    }
+    try {
+      const koId = resolved.status === "angenommen" ? resolved.koId : null;
+      const ko = koId ? await this.koService.get(koId).catch(() => undefined) : undefined;
+      await this.importRuns.appendItemRefs([
+        {
+          importId: bindung.importId,
+          ordinal: bindung.ordinal,
+          sourceRecordId: bindung.sourceRecordId,
+          candidateItemId: candidate.id,
+          knowledgeObjectId: koId,
+          itemOutcome: ausgangDerEntscheidung(koId, ko?.importCandidateId === candidate.id),
+          itemFailureCode: null,
+        },
+      ]);
+    } catch (err) {
+      process.stderr.write(
+        `[KLARWERK] Elementreferenz des Importlaufs nicht geschrieben (kandidat=${candidate.id}, fehler=${
+          err instanceof Error ? err.name : "unknown"
+        }).\n`,
+      );
+    }
   }
 }

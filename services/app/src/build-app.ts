@@ -1049,6 +1049,10 @@ export function assembleServices(
     // JOB 4155: die kuratierten Kanten für `/api/graph` — EINE Mengenabfrage über `alleAktiven`,
     // keine Abfrage je Knoten. Derselbe Bestand, den `kantenRoutes` und die Netzroute lesen.
     kanten: kantenBestand,
+    // R-0142 (Lauf 5): eine Entscheidung über einen laufgebundenen Kandidaten schreibt ihre
+    // Elementreferenz in DIESELBE Laufdomäne, die `importRunRoutes` liest.
+    importRuns: repos.importRuns,
+    externalSources: repos.externalSources,
   });
   const lifecycle = new LifecycleService({ koService: ko, repo: repos.lifecycleRepo });
   // AUFTRAG-mega20 Block C/D: EINE ObjectStore-Instanz für die Composition-Root. Bis mega19 wurde
@@ -3194,6 +3198,8 @@ export function buildApp(
         importRuns: services.importRuns,
         externalSources: services.externalSources,
         quellabgleich: services.quellabgleich,
+        // R-0142 (Lauf 5): das Importergebnis je Wissensobjekt.
+        koService: services.ko,
         guards,
       }),
     );

@@ -411,6 +411,11 @@ export interface ConfluenceImportDeps {
   koService: KoService;
   dryRun: boolean;
   actor: string;
+  /**
+   * R-0142 (Lauf 5): der Lauf, in dessen Namen eingereiht wird. Gesetzt bindet jeder Kandidat an
+   * ihn (Quellrevision + Ordnung); die spätere Entscheidung schreibt die Elementreferenz.
+   */
+  importId?: string;
 }
 
 // Höchste bereits importierte sourceVersion je provider+externalId (aus den KO-Herkunftsankern).
@@ -620,7 +625,12 @@ export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<I
   // eingereihte Seite NICHT persistiert → sie zählt NICHT als importiert (nie mehr toQueue.length blind).
   let imported = toQueue.length;
   if (!deps.dryRun && toQueue.length > 0) {
-    const persisted = await deps.library.createImportCandidates(toQueue, deps.actor);
+    const persisted = await deps.library.createImportCandidates(
+      toQueue,
+      deps.actor,
+      undefined,
+      deps.importId ? { importId: deps.importId } : undefined,
+    );
     imported = persisted.length;
     // perPage ehrlich nachziehen: eingereihte, aber nicht persistierte Seiten → skipped (Parallelkonflikt).
     const persistedKeys = new Set(persisted.map((c) => candidateKey(c.item)));

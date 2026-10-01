@@ -250,6 +250,12 @@ const REGISTER: Record<string, Eintrag> = {
     recht: "users.manage",
     grund: "Quellrevision mit Seitentitel und Inhaltsverweis — nie der Inhalt selbst.",
   },
+  // R-0142 (Lauf 5): das Importergebnis EINES Wissensobjekts — Quellrevision (Seitentitel), Lauf,
+  // Ausgang. Zusätzlich zum Rollentor fährt die Route `darfSehen` am Objekt (unsichtbar ⇒ 404).
+  "GET /api/admin/import/knowledge/:koId": {
+    urteil: "PRAEDIKAT",
+    grund: "darfSehen am Objekt vor jeder Auskunft, sonst 404 — import-run-routes.ts.",
+  },
   // --- Die Anhänge (Block C) ---------------------------------------------------------------
   "GET /api/objects/:id": { urteil: "PRAEDIKAT", grund: "Block C — G2, Anhang erbt seine Stufe." },
   "GET /api/objects/:id/raw": { urteil: "PRAEDIKAT", grund: "Block C — G2 + G4 (no-store)." },

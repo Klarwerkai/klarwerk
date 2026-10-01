@@ -7060,6 +7060,25 @@ const de = {
   "w2.source.system": "System",
   "w2.source.version": "Version",
   // R-0162 / R-0163 / R-0549: Herkunftsangaben importierter Quellen.
+  // R-0142 (Lauf 5): das Importergebnis auf der Wissensseite.
+  "ko.importResult.lead": "Aus welchem Importlauf und welcher Quellfassung dieses Wissen stammt.",
+  "ko.importResult.revision": "Quellfassung {{version}}, aufgenommen {{zeit}}",
+  "ko.importResult.noRevision":
+    "Für diesen Import ist keine Quellfassung festgehalten (übernommen, bevor Importläufe ihr Ergebnis aufzeichneten).",
+  "ko.importResult.contentNotCaptured":
+    "Ein eigener Abzug des Originals ist nicht gespeichert; der übernommene Volltext steht an diesem Wissen.",
+  "ko.importResult.run": "Importlauf: {{status}}",
+  "ko.importResult.noRun": "Der aufnehmende Importlauf ist nicht lesbar.",
+  "ko.importResult.noItem": "Zu diesem Wissen steht im Importlauf noch kein Ausgang fest.",
+  "ko.importResult.outcome.CREATED": "Beim Annehmen ist dieses Wissen neu entstanden.",
+  "ko.importResult.outcome.BOUND":
+    "Beim Annehmen wurde dieses bestehende Wissen mit der Quellfassung fortgeschrieben.",
+  "ko.importResult.outcome.SKIPPED": "Diese Quellfassung wurde nicht übernommen.",
+  "ko.importResult.outcome.FAILED": "Die Übernahme dieser Quellfassung ist gescheitert.",
+  "ko.importResult.outcome.unknown": "Ausgang unbekannt ({{wert}}).",
+  "ko.importResult.gapsNotAvailable":
+    "Wissenslücken: Ein Bezug zwischen Lücken und einzelnem Wissen wird nicht geführt — deshalb wird hier keine Lücke behauptet.",
+  "ko.importResult.gaps": "Wissenslücken zu diesem Wissen: {{anzahl}}",
   "ko.source.removedInOrigin":
     "In der Quelle gelöscht (festgestellt {{zeit}}). Der Link führt nicht mehr zur Seite; das Wissen hier bleibt unverändert.",
   "ko.source.attachment": "Anhang der Quellseite",
@@ -12911,6 +12930,25 @@ const en: typeof de = {
   "w2.source.title": "Title",
   "w2.source.system": "System",
   "w2.source.version": "Version",
+  // R-0142 (Lauf 5): das Importergebnis auf der Wissensseite.
+  "ko.importResult.lead": "Which import run and which source version this knowledge comes from.",
+  "ko.importResult.revision": "Source version {{version}}, captured {{zeit}}",
+  "ko.importResult.noRevision":
+    "No source version is recorded for this import (taken over before import runs recorded their result).",
+  "ko.importResult.contentNotCaptured":
+    "No separate copy of the original is stored; the imported full text is held on this knowledge.",
+  "ko.importResult.run": "Import run: {{status}}",
+  "ko.importResult.noRun": "The import run that captured it cannot be read.",
+  "ko.importResult.noItem": "The import run does not yet record an outcome for this knowledge.",
+  "ko.importResult.outcome.CREATED": "This knowledge was newly created on acceptance.",
+  "ko.importResult.outcome.BOUND":
+    "On acceptance, this existing knowledge was updated with the source version.",
+  "ko.importResult.outcome.SKIPPED": "This source version was not taken over.",
+  "ko.importResult.outcome.FAILED": "Taking over this source version failed.",
+  "ko.importResult.outcome.unknown": "Outcome unknown ({{wert}}).",
+  "ko.importResult.gapsNotAvailable":
+    "Knowledge gaps: no link between gaps and individual knowledge is kept — so no gap is claimed here.",
+  "ko.importResult.gaps": "Knowledge gaps for this knowledge: {{anzahl}}",
   "ko.source.removedInOrigin":
     "Deleted in the source (detected {{zeit}}). The link no longer leads to the page; the knowledge here stays unchanged.",
   "ko.source.attachment": "Attachment of the source page",
@@ -18586,6 +18624,25 @@ const nl: typeof de = {
   "w2.source.title": "Titel",
   "w2.source.system": "Systeem",
   "w2.source.version": "Versie",
+  // R-0142 (Lauf 5): das Importergebnis auf der Wissensseite.
+  "ko.importResult.lead": "Uit welke importrun en welke bronversie deze kennis afkomstig is.",
+  "ko.importResult.revision": "Bronversie {{version}}, opgenomen {{zeit}}",
+  "ko.importResult.noRevision":
+    "Voor deze import is geen bronversie vastgelegd (overgenomen voordat importruns hun resultaat vastlegden).",
+  "ko.importResult.contentNotCaptured":
+    "Er is geen aparte kopie van het origineel opgeslagen; de overgenomen volledige tekst staat bij deze kennis.",
+  "ko.importResult.run": "Importrun: {{status}}",
+  "ko.importResult.noRun": "De importrun die het opnam, is niet leesbaar.",
+  "ko.importResult.noItem": "De importrun legt voor deze kennis nog geen uitkomst vast.",
+  "ko.importResult.outcome.CREATED": "Bij het aannemen is deze kennis nieuw ontstaan.",
+  "ko.importResult.outcome.BOUND":
+    "Bij het aannemen is deze bestaande kennis bijgewerkt met de bronversie.",
+  "ko.importResult.outcome.SKIPPED": "Deze bronversie is niet overgenomen.",
+  "ko.importResult.outcome.FAILED": "Het overnemen van deze bronversie is mislukt.",
+  "ko.importResult.outcome.unknown": "Uitkomst onbekend ({{wert}}).",
+  "ko.importResult.gapsNotAvailable":
+    "Kennislacunes: er wordt geen verband tussen lacunes en afzonderlijke kennis bijgehouden — daarom wordt hier geen lacune beweerd.",
+  "ko.importResult.gaps": "Kennislacunes bij deze kennis: {{anzahl}}",
   "ko.source.removedInOrigin":
     "Verwijderd in de bron (vastgesteld {{zeit}}). De link leidt niet meer naar de pagina; de kennis hier blijft ongewijzigd.",
   "ko.source.attachment": "Bijlage van de bronpagina",

@@ -238,6 +238,11 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "GET /api/admin/import/runs/:importId": { protection: "users.manage" },
   "GET /api/admin/import/runs/:importId/result": { protection: "users.manage" },
   "GET /api/admin/import/source-records/:sourceRecordId": { protection: "users.manage" },
+  // R-0142 (Lauf 5): das Importergebnis EINES Wissensobjekts (Quellrevision, Lauf, Elementausgang).
+  "GET /api/admin/import/knowledge/:koId": {
+    protection: "users.manage",
+    zeilenrecht: ["darfSehen"],
+  },
   // IC-3 (Import-Cockpit): READ-ONLY Auswahl-VORSCHAU (Prompt/Filter → gefilterte Vorschau). Schreibt
   // nichts (keine Kandidaten); gleiche Admin-Auth, nur bei aktivem Confluence-Flag registriert.
   "POST /api/admin/import/confluence/select": { protection: "users.manage" },

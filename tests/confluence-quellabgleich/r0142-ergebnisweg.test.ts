@@ -1,0 +1,329 @@
+// ================================================================================================
+// R-0142 · LAUF 5 · BENS B7 — DER IMPORTLAUF REFERENZIERT, WAS AUS SEINEN SEITEN GEWORDEN IST.
+// ================================================================================================
+//
+//   E1  Bens Gegenprobe wörtlich: abgeschlossener Lauf, Kandidat angenommen → die Ergebnisroute
+//       liefert eine Elementreferenz (CREATED, Objekt-Id, Quellrevision), die Revision selbst ist
+//       über die Quellroute lesbar. Vor der Entscheidung: keine Referenz (kein erfundener Ausgang).
+//   E2  Fortschreibung: Fassung 2 in einem zweiten Lauf, angenommen → BOUND auf dasselbe Objekt.
+//   E3  Ablehnung → SKIPPED ohne Objekt; Rückfrage (`info`) schreibt nichts.
+//   E4  Eine vom Client mitgeschickte Laufbindung wird an der Eingangsgrenze verworfen.
+//   E5  Das Importergebnis EINES Wissensobjekts (`/api/admin/import/knowledge/:koId`): Revision,
+//       Lauf, Ausgang; Lückenbindung ehrlich RELATION_NOT_AVAILABLE; 404 für nicht importierte
+//       Objekte.
+//   E6  Der Selektivimport (`/apply`) bindet ebenso an seine Lauf-Kennung.
+import { describe, expect, it } from "vitest";
+import { buildApp, buildServices } from "../../services/app/src/build-app";
+import { makeGuards } from "../../services/app/src/http";
+import {
+  confluenceImportRoutes,
+  warteAufOffeneImportLaeufe,
+} from "../../services/app/src/routes/confluence-import-routes";
+import { importRunRoutes } from "../../services/app/src/routes/import-run-routes";
+import { adapterFromConfig } from "../../services/confluence/src/adapter";
+import type { ImportItem } from "../../services/library-analytics";
+
+type Seite = Record<string, unknown>;
+
+function seite(id: string, version: number, titel = "Wartung"): Seite {
+  return {
+    id,
+    title: titel,
+    version: { number: version },
+    body: { storage: { value: `<p>Vor ${titel} ausschalten.</p><p>Fassung ${version}.</p>` } },
+    _links: { webui: `/spaces/K/pages/${id}` },
+    metadata: { labels: { results: [{ name: "wartung" }] } },
+    ancestors: [{ id: "parent", title: "Betrieb" }],
+  };
+}
+
+async function aufbau() {
+  const bereich = new Map<string, Seite>();
+  const antwort = (status: number, body: unknown) =>
+    ({ ok: status < 300, status, json: async () => body }) as Response;
+  const fetchFn = (async (u: string) => {
+    const url = new URL(String(u));
+    if (/\/child\/attachment$/.test(url.pathname)) {
+      return antwort(200, { results: [] });
+    }
+    // Einzelabruf einer Seite (Selektivimport lädt je Id frisch, Löschabgleich fragt nach).
+    const id = /\/rest\/api\/content\/([^/?]+)$/.exec(url.pathname)?.[1];
+    if (id) {
+      const s = bereich.get(decodeURIComponent(id));
+      return s ? antwort(200, s) : antwort(404, {});
+    }
+    return antwort(200, { results: [...bereich.values()] });
+  }) as unknown as typeof fetch;
+  const adapter = adapterFromConfig({
+    baseUrl: "https://fixture.example/wiki",
+    email: "fixture@example.test",
+    apiToken: "fixture-only",
+    spaceKey: "K",
+    fetchFn,
+  });
+  process.env.KLARWERK_CONFLUENCE_IMPORT = "1";
+  const services = buildServices();
+  delete process.env.KLARWERK_CONFLUENCE_IMPORT;
+  const app = buildApp(services);
+  const guards = makeGuards(services.auth);
+  app.register(
+    confluenceImportRoutes({
+      library: services.library,
+      koService: services.ko,
+      guards,
+      reasoner: services.reasoner,
+      makeAdapter: () => adapter,
+      importRuns: services.importRuns,
+      quellabgleich: services.quellabgleich,
+    }),
+  );
+  app.register(
+    importRunRoutes({
+      importRuns: services.importRuns,
+      externalSources: services.externalSources,
+      quellabgleich: services.quellabgleich,
+      koService: services.ko,
+      guards,
+    }),
+  );
+  await app.inject({
+    method: "POST",
+    url: "/api/auth/register",
+    payload: { name: "Admin", email: "a@r0142.test", password: "secret123" },
+  });
+  const login = await app.inject({
+    method: "POST",
+    url: "/api/auth/login",
+    payload: { email: "a@r0142.test", password: "secret123" },
+  });
+  const headers = { authorization: `Bearer ${login.json().token}` };
+
+  const lauf = async (): Promise<string> => {
+    const start = await app.inject({
+      method: "POST",
+      url: "/api/admin/import/confluence",
+      headers,
+      payload: {},
+    });
+    expect(start.statusCode, start.body).toBe(202);
+    await warteAufOffeneImportLaeufe(services.importRuns);
+    return (start.json() as { importId: string }).importId;
+  };
+  const ergebnis = async (importId: string) => {
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/admin/import/runs/${importId}/result`,
+      headers,
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    return res.json() as {
+      run: { status: string };
+      items: {
+        ordinal: number;
+        sourceRecordId: string | null;
+        candidateItemId: string;
+        knowledgeObjectId: string | null;
+        itemOutcome: string;
+        knowledgeGapRelationState: string;
+        knowledgeGapIds: null;
+      }[];
+    };
+  };
+  const offene = async () =>
+    (await services.library.listImportCandidates()).filter((k) => k.status === "neu");
+  return { app, services, headers, bereich, lauf, ergebnis, offene };
+}
+
+describe("R-0142 · der Ergebnisweg des Confluence-Imports", () => {
+  it("E1 · Bens Gegenprobe: nach Annahme liefert die Ergebnisroute die Referenz auf das Objekt", async () => {
+    const t = await aufbau();
+    try {
+      t.bereich.set("P-1", seite("P-1", 1));
+      const importId = await t.lauf();
+      // Vor der Entscheidung steht nichts fest — und es wird nichts behauptet.
+      expect((await t.ergebnis(importId)).items).toEqual([]);
+      const [kandidat] = await t.offene();
+      expect(kandidat).toBeDefined();
+      expect(await t.services.ko.list()).toHaveLength(0);
+      const angenommen = await t.services.library.reviewImportCandidate(
+        kandidat?.id ?? "",
+        "accept",
+        "admin",
+      );
+      const kos = await t.services.ko.list();
+      expect(kos).toHaveLength(1);
+      expect(kos[0]?.status).toBe("offen");
+
+      const e = await t.ergebnis(importId);
+      expect(e.run.status).toBe("COMPLETED");
+      expect(e.items).toHaveLength(1);
+      expect(e.items[0]).toMatchObject({
+        ordinal: 0,
+        candidateItemId: kandidat?.id,
+        knowledgeObjectId: angenommen.koId,
+        itemOutcome: "CREATED",
+        knowledgeGapRelationState: "RELATION_NOT_AVAILABLE",
+        knowledgeGapIds: null,
+      });
+      const quelle = await t.app.inject({
+        method: "GET",
+        url: `/api/admin/import/source-records/${e.items[0]?.sourceRecordId}`,
+        headers: t.headers,
+      });
+      expect(quelle.statusCode, quelle.body).toBe(200);
+      expect(quelle.json()).toMatchObject({
+        externalId: "P-1",
+        sourceVersion: 1,
+        title: "Wartung",
+        url: "https://fixture.example/wiki/spaces/K/pages/P-1",
+        contentReferenceState: "NOT_CAPTURED",
+        rawOrRenderedContentReference: null,
+      });
+    } finally {
+      await t.app.close();
+    }
+  });
+
+  it("E2 · Fassung 2 im zweiten Lauf, angenommen: BOUND auf dasselbe Objekt, eigene Revision", async () => {
+    const t = await aufbau();
+    try {
+      t.bereich.set("P-1", seite("P-1", 1));
+      const erster = await t.lauf();
+      const [k1] = await t.offene();
+      const a1 = await t.services.library.reviewImportCandidate(k1?.id ?? "", "accept", "admin");
+      t.bereich.set("P-1", seite("P-1", 2));
+      const zweiter = await t.lauf();
+      const [k2] = await t.offene();
+      expect(k2?.item.sourceVersion).toBe(2);
+      const a2 = await t.services.library.reviewImportCandidate(k2?.id ?? "", "accept", "admin");
+      expect(a2.koId).toBe(a1.koId);
+
+      const e1 = await t.ergebnis(erster);
+      const e2 = await t.ergebnis(zweiter);
+      expect(e1.items.map((i) => i.itemOutcome)).toEqual(["CREATED"]);
+      expect(e2.items).toHaveLength(1);
+      expect(e2.items[0]).toMatchObject({ knowledgeObjectId: a1.koId, itemOutcome: "BOUND" });
+      expect(e2.items[0]?.sourceRecordId).not.toBe(e1.items[0]?.sourceRecordId);
+    } finally {
+      await t.app.close();
+    }
+  });
+
+  it("E3 · Ablehnung → SKIPPED ohne Objekt; eine Rückfrage schreibt keine Referenz", async () => {
+    const t = await aufbau();
+    try {
+      t.bereich.set("P-1", seite("P-1", 1, "Eins"));
+      t.bereich.set("P-2", seite("P-2", 1, "Zwei"));
+      const importId = await t.lauf();
+      const offen = await t.offene();
+      const eins = offen.find((k) => k.item.externalId === "P-1");
+      const zwei = offen.find((k) => k.item.externalId === "P-2");
+      await t.services.library.reviewImportCandidate(zwei?.id ?? "", "info", "admin", "Quelle?");
+      expect((await t.ergebnis(importId)).items).toEqual([]);
+      await t.services.library.reviewImportCandidate(eins?.id ?? "", "reject", "admin");
+      const e = await t.ergebnis(importId);
+      expect(e.items).toHaveLength(1);
+      expect(e.items[0]).toMatchObject({
+        candidateItemId: eins?.id,
+        knowledgeObjectId: null,
+        itemOutcome: "SKIPPED",
+      });
+    } finally {
+      await t.app.close();
+    }
+  });
+
+  it("E4 · eine vom Client mitgeschickte Laufbindung überlebt die Eingangsgrenze nicht", async () => {
+    const t = await aufbau();
+    try {
+      t.bereich.set("P-1", seite("P-1", 1));
+      const importId = await t.lauf();
+      const fremd = {
+        title: "Untergeschoben",
+        statement: "Behauptet, aus einem fremden Lauf zu stammen.",
+        type: "best_practice",
+        category: "ADV",
+        importRun: { importId, ordinal: 7, sourceRecordId: "erfunden" },
+      } as unknown as ImportItem;
+      const [kandidat] = await t.services.library.createImportCandidates([fremd], "admin");
+      expect((kandidat?.item as { importRun?: unknown }).importRun).toBeUndefined();
+      await t.services.library.reviewImportCandidate(kandidat?.id ?? "", "accept", "admin");
+      expect((await t.ergebnis(importId)).items).toEqual([]);
+    } finally {
+      await t.app.close();
+    }
+  });
+
+  it("E5 · das Importergebnis eines Wissensobjekts: Revision, Lauf, Ausgang; 404 ohne Import", async () => {
+    const t = await aufbau();
+    try {
+      t.bereich.set("P-1", seite("P-1", 1));
+      const importId = await t.lauf();
+      const [kandidat] = await t.offene();
+      const a = await t.services.library.reviewImportCandidate(
+        kandidat?.id ?? "",
+        "accept",
+        "admin",
+      );
+      const res = await t.app.inject({
+        method: "GET",
+        url: `/api/admin/import/knowledge/${a.koId}`,
+        headers: t.headers,
+      });
+      expect(res.statusCode, res.body).toBe(200);
+      expect(res.json()).toMatchObject({
+        knowledgeObjectId: a.koId,
+        source: { externalId: "P-1", sourceVersion: 1, contentReferenceState: "NOT_CAPTURED" },
+        run: { importId, status: "COMPLETED" },
+        item: { itemOutcome: "CREATED", knowledgeObjectId: a.koId },
+        knowledgeGapRelationState: "RELATION_NOT_AVAILABLE",
+        knowledgeGapIds: null,
+      });
+
+      const eigen = await t.services.ko.create({
+        title: "Eigenes Wissen",
+        statement: "Nicht importiert.",
+        type: "best_practice",
+        category: "Wartung",
+        author: "admin",
+      });
+      const ohne = await t.app.inject({
+        method: "GET",
+        url: `/api/admin/import/knowledge/${eigen.id}`,
+        headers: t.headers,
+      });
+      expect(ohne.statusCode).toBe(404);
+      expect(ohne.body).not.toContain(eigen.id);
+    } finally {
+      await t.app.close();
+    }
+  });
+
+  it("E6 · der Selektivimport bindet an seine Lauf-Kennung", async () => {
+    const t = await aufbau();
+    try {
+      t.bereich.set("P-1", seite("P-1", 1, "Eins"));
+      t.bereich.set("P-2", seite("P-2", 1, "Zwei"));
+      const res = await t.app.inject({
+        method: "POST",
+        url: "/api/admin/import/confluence/apply",
+        headers: t.headers,
+        payload: { criteria: {}, includeIds: ["P-2", "P-1"] },
+      });
+      expect(res.statusCode, res.body).toBe(200);
+      const { importId } = res.json() as { importId: string };
+      expect(importId).toBeTruthy();
+      for (const k of await t.offene()) {
+        await t.services.library.reviewImportCandidate(k.id, "accept", "admin");
+      }
+      const e = await t.ergebnis(importId);
+      expect(e.items.map((i) => [i.ordinal, i.itemOutcome])).toEqual([
+        [0, "CREATED"],
+        [1, "CREATED"],
+      ]);
+      expect(e.items.every((i) => i.sourceRecordId !== null)).toBe(true);
+    } finally {
+      await t.app.close();
+    }
+  });
+});

@@ -35,6 +35,7 @@
 // aber gar nicht nachgesehen. `pruefeGapBindung` erzwingt das Paar; der Test ruft dieselbe Regel
 // ueber die HTTP-Grenze auf.
 import type { FastifyPluginAsync } from "fastify";
+import type { KoService } from "../../../knowledge-object";
 import type {
   ExternalSourceRecord,
   ExternalSourceRepo,
@@ -48,6 +49,7 @@ import {
   InMemoryQuellabgleichRepo,
   type QuellabgleichRepo,
 } from "../quellabgleich-ablage";
+import { darfSehen } from "../sichtbarkeit";
 
 export interface ImportRunRoutesDeps {
   readonly importRuns: ImportRunRepo;
@@ -58,6 +60,11 @@ export interface ImportRunRoutesDeps {
    * eine eigene, leere Ablage — jeder Lauf trägt dann ehrlich `sourceSync: null`.
    */
   readonly quellabgleich?: QuellabgleichRepo;
+  /**
+   * R-0142 (Lauf 5): für das Importergebnis EINES Wissensobjekts. Fehlt er, gibt es die Route
+   * `GET /api/admin/import/knowledge/:koId` nicht.
+   */
+  readonly koService?: KoService;
   readonly guards: Guards;
 }
 
@@ -140,6 +147,15 @@ function elementNachAussen(ref: ImportRunItemRef) {
   };
 }
 
+/**
+ * R-0142 (Lauf 5): die Lauf-Kennung, unter der eine Revision ZUERST aufgenommen wurde
+ * (`library-analytics/src/laufbindung.ts`). Fail-closed: nur eine nichtleere Zeichenkette.
+ */
+function laufDerRevision(satz: ExternalSourceRecord): string | null {
+  const id = satz.sourceMetadata.importId;
+  return typeof id === "string" && id.length > 0 ? id : null;
+}
+
 export function importRunRoutes(deps: ImportRunRoutesDeps): FastifyPluginAsync {
   const { importRuns, externalSources, guards } = deps;
   const quellabgleich = deps.quellabgleich ?? new InMemoryQuellabgleichRepo();
@@ -194,6 +210,66 @@ export function importRunRoutes(deps: ImportRunRoutesDeps): FastifyPluginAsync {
         return reply;
       },
     );
+
+    // ============================================================================================
+    // R-0142 (Lauf 5, Bens B7) — DAS IMPORTERGEBNIS EINES WISSENSOBJEKTS.
+    // ============================================================================================
+    //
+    // Die Wissensseite ist die zusammenhängende Fläche (Original, Quellen, Validierung,
+    // Widersprüche). Was ihr fehlte, war der Weg zurück in den Lauf: aus welcher Quellrevision das
+    // Objekt stammt, in welchem Lauf sie aufgenommen wurde und mit welchem Ausgang die Entscheidung
+    // es angelegt oder gebunden hat. Alles wird hier aus den autoritativen Ablagen GELESEN — die
+    // Antwort erfindet nichts:
+    //   · kein Herkunftsanker → 404 (dieses Objekt ist nicht importiert);
+    //   · Anker, aber keine festgehaltene Revision (Import vor Lauf 5) → `source: null`;
+    //   · Lauf unbekannt → `run: null`; keine Elementreferenz für dieses Objekt → `item: null`.
+    // Die Lückenbindung bleibt `RELATION_NOT_AVAILABLE`: die Lückendomäne kennt keine Beziehung
+    // Lücke → Wissensobjekt (Kopf dieser Datei).
+    const koService = deps.koService;
+    if (koService) {
+      app.get<{ Params: { koId: string } }>(
+        "/api/admin/import/knowledge/:koId",
+        async (request, reply) => {
+          const user = await guards.requirePermission("users.manage", request, reply);
+          if (!user) {
+            return reply;
+          }
+          const ko = await koService.get(request.params.koId);
+          const anker = ko?.sources.find(
+            (s) => typeof s.externalId === "string" && s.attachmentOf === undefined,
+          );
+          // Unsichtbar ist wie nicht vorhanden (dieselbe Regel wie die Wissensseite selbst).
+          if (!ko || !darfSehen(user, ko) || !anker?.externalId) {
+            reply.code(404).send(nichtGefunden);
+            return reply;
+          }
+          const satz =
+            typeof anker.sourceVersion === "number"
+              ? await externalSources.findByRevision(
+                  anker.provider ?? "confluence",
+                  anker.externalId,
+                  anker.sourceVersion,
+                )
+              : undefined;
+          const importId = satz ? laufDerRevision(satz) : null;
+          const run = importId ? await importRuns.findById(importId) : undefined;
+          const ref = run
+            ? (await importRuns.listItemRefs(run.importId)).find(
+                (r) => r.knowledgeObjectId === ko.id,
+              )
+            : undefined;
+          reply.code(200).send({
+            knowledgeObjectId: ko.id,
+            source: satz ? quelleNachAussen(satz) : null,
+            run: run ? laufNachAussen(run, await quellabgleich.lies(run.importId)) : null,
+            item: ref ? elementNachAussen(ref) : null,
+            knowledgeGapRelationState: "RELATION_NOT_AVAILABLE" as const,
+            knowledgeGapIds: null,
+          });
+          return reply;
+        },
+      );
+    }
 
     app.get<{ Params: { sourceRecordId: string } }>(
       "/api/admin/import/source-records/:sourceRecordId",

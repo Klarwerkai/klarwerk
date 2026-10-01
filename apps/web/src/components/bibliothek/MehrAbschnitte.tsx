@@ -83,6 +83,7 @@ import { UploadLimitsHint } from "../UploadLimitsHint";
 import { ConfidenceBar, KnowledgeTypeTag, ProvenanceLine } from "../trust";
 import { Button, Field, TextInput, cx } from "../ui";
 import { AuffrischungHinweis } from "./AuffrischungHinweis";
+import { ImportErgebnis } from "./ImportErgebnis";
 
 // ==================================================================================================
 // JOB 3063 · H4 — „MEHR": DIE DREIZEHN ABSCHNITTE, ZUGEKLAPPT ALS VORGABE.
@@ -1303,6 +1304,8 @@ export function MehrAbschnitte({
             })}
           </ul>
         )}
+        {/* R-0142 (Lauf 5): woher das importierte Wissen stammt — Fassung, Lauf, Ausgang. */}
+        <ImportErgebnis ko={ko} />
         {canEdit ? (
           <div className="mt-3 space-y-2 border-t border-hairline pt-3">
             <TextInput

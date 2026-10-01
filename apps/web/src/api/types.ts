@@ -1803,6 +1803,35 @@ export interface ImportRunCounters {
   itemsFailed: number;
 }
 
+/**
+ * R-0142 (Lauf 5): das Importergebnis EINES Wissensobjekts (`GET /admin/import/knowledge/:koId`).
+ * Alles serverseitig gelesen; `null` heisst jeweils „liegt nicht vor", nie „leer".
+ */
+export interface ImportKnowledgeResult {
+  knowledgeObjectId: string;
+  source: {
+    sourceRecordId: string;
+    sourceSystem: string;
+    externalId: string;
+    sourceVersion: number;
+    url: string | null;
+    title: string;
+    contentReferenceState: string;
+    importedAt: string;
+  } | null;
+  run: ImportRunRecord | null;
+  item: {
+    ordinal: number;
+    candidateItemId: string;
+    knowledgeObjectId: string | null;
+    /** `CREATED` · `BOUND` · `SKIPPED` · `FAILED` — gelesen, nie hergeleitet. */
+    itemOutcome: string;
+  } | null;
+  /** `RELATION_NOT_AVAILABLE` (mit `null`) oder `AVAILABLE` (mit Kennungen). */
+  knowledgeGapRelationState: string;
+  knowledgeGapIds: string[] | null;
+}
+
 export interface ImportRunRecord {
   importId: string;
   sourceSystem: string;

@@ -12,6 +12,7 @@
 // (s. `services/app/src/sichtbarkeit.ts`, Variante B ist nicht entschieden). Am JSON-Eingang sind
 // sie Behauptungen eines Clients und werden deshalb in `saeubereQuellangaben` auf Form und Menge
 // begrenzt. Der Confluence-Adapter erzeugt dieselbe Form (`services/confluence/src/mapper.ts`).
+import type { ImportLaufBindung } from "./laufbindung";
 import type { ImportItem } from "./types";
 
 /** R-0163: ein Anhang eines Quellobjekts, quellneutral. */
@@ -32,6 +33,9 @@ interface ImportQuellangaben {
   // hat mehr Anhänge gemeldet, als gelesen wurden, oder die Liste war unbrauchbar.
   sourceAttachments?: ImportAttachment[];
   sourceAttachmentsIncomplete?: boolean;
+  // R-0142 (Lauf 5): die Bindung an den Importlauf (`laufbindung.ts`). Nur der Server setzt sie;
+  // die Säuberung unten entfernt jede mitgelieferte.
+  importRun?: ImportLaufBindung;
 }
 
 export type ImportItemMitQuellangaben = ImportItem & ImportQuellangaben;
@@ -70,6 +74,7 @@ export function saeubereQuellangaben(item: ImportItem): ImportItemMitQuellangabe
     sourceReadRestriction: rohRestriktion,
     sourceAttachments: rohAnhaenge,
     sourceAttachmentsIncomplete: rohUnvollstaendig,
+    importRun: _clientBindung,
     ...rest
   } = item as ImportItemMitQuellangaben;
   const groups = textListe(rohRestriktion?.groups);
