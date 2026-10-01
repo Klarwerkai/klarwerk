@@ -27,7 +27,6 @@ import type { AnswerResult, VerschlossenHinweis } from "../api/types";
 type StorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
 const PRAEFIX = "kw.fragen.arbeitsstand.v1:";
-const STARTADRESSEN_HOECHSTENS = 50;
 
 /** Die zuletzt angezeigte Antwort — genau das, was die Fläche zum Zeichnen braucht. */
 export interface GespeicherteAntwort {
@@ -53,9 +52,14 @@ export interface FragenArbeitsstand {
    *
    * Ben R2, F2/F3: bis Runde 2 stand hier nur die ZULETZT übernommene Marke. Lag dazwischen eine
    * zweite Startadresse, galt die ältere beim Zurückgehen wieder als neu — sie holte einen
-   * verworfenen Entwurf zurück und fragte das Modell ein zweites Mal. Deshalb eine Liste, begrenzt
-   * auf `STARTADRESSEN_HOECHSTENS` (die ältesten fallen heraus; ein so weit zurückliegender
-   * Verlaufseintrag ist kein Wiederaufnehmen mehr).
+   * verworfenen Entwurf zurück und fragte das Modell ein zweites Mal. Deshalb eine Liste.
+   *
+   * Ben R3, F2/F3: Runde 3 begrenzte die Liste auf 50 Marken. Nach der 51. Startadresse galt die
+   * erste wieder als neu — mit denselben beiden Folgen. Ein Verlaufseintrag behält seine Kennung,
+   * solange es ihn gibt; eine Grenze, ab der er „vergessen" werden darf, gibt es nicht. Die Liste
+   * ist deshalb UNBEGRENZT. Eine Marke ist rund 25 Zeichen lang (Kennung, Antwortwunsch, Prüfwert —
+   * kein Fragetext); selbst tausende Startadressen bleiben weit unter der Speichergrenze, und
+   * scheitert das Schreiben doch, greift dieselbe stille Grenze wie bei jedem Speicherfehler.
    */
   startadressen: string[];
 }
@@ -217,13 +221,13 @@ export function wiederaufnahmeAus(
  */
 /**
  * Eine Marke der Liste der übernommenen Startadressen hinzufügen: ohne Doppel, die jüngste zuletzt,
- * höchstens `STARTADRESSEN_HOECHSTENS`. Ohne Marke bleibt die Liste, wie sie ist.
+ * ohne Obergrenze (s. `FragenArbeitsstand.startadressen`). Ohne Marke bleibt die Liste, wie sie ist.
  */
 export function startadresseMerken(liste: readonly string[], marke: string | null): string[] {
   if (marke === null) {
     return [...liste];
   }
-  return [...liste.filter((m) => m !== marke), marke].slice(-STARTADRESSEN_HOECHSTENS);
+  return [...liste.filter((m) => m !== marke), marke];
 }
 
 export function startadresseMarke(

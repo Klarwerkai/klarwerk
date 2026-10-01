@@ -400,6 +400,13 @@ export function parseAnswerMarkdown(answer: string): AnswerSegment[] {
         .join(" · ");
       return parseAnswerInline(text);
     });
+    // Ein Kopf ohne Datenzeile ist trotzdem Inhalt — er entfällt nicht.
+    if (items.length === 0 && kopf !== null) {
+      const text = kopf.filter((t) => t.length > 0).join(" · ");
+      if (text.length > 0) {
+        items.push(parseAnswerInline(text));
+      }
+    }
     if (items.length > 0) {
       segments.push({ kind: "list", ordered: false, items });
     }
@@ -424,7 +431,13 @@ export function parseAnswerMarkdown(answer: string): AnswerSegment[] {
       imZaun = zaun[1][0] ?? "`";
       continue;
     }
-    if (istTabellenZeile(line, zeilen[index + 1]?.trim())) {
+    // Ben R3, F4: eine laufende Tabelle setzt sich mit jeder weiteren `|`-Zeile fort — auch ohne
+    // äußere Striche („V4 | jährlich"). Bis Runde 3 endete sie nach der Trennzeile; der Kopf ging
+    // ohne Datenzeile verloren, die Daten blieben als Absatz mit `|` stehen.
+    if (
+      istTabellenZeile(line, zeilen[index + 1]?.trim()) ||
+      (tabelle.length > 0 && line.includes("|"))
+    ) {
       flushParagraph();
       flushList();
       tabelle.push(line);
