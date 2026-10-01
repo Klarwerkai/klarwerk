@@ -480,6 +480,7 @@ export function Blatt({
     imageId: string;
     src: string;
     index: number;
+    koerper?: string | undefined;
     nonce: number;
   } | null>(null);
   const [diktatLaeuft, setDiktatLaeuft] = useState(false);
@@ -2843,11 +2844,12 @@ export function Blatt({
           {/* Die Galerie steht UNTER dem Text im Blatt (§5.2). */}
           <DraftBodyGallery
             bodyHtml={bodyHtml}
-            onEditCaption={(imageId, src, index) =>
+            onEditCaption={(imageId, src, index, koerper) =>
               setCaptionRequest((prev) => ({
                 imageId,
                 src,
                 index,
+                koerper,
                 nonce: (prev?.nonce ?? 0) + 1,
               }))
             }

@@ -394,7 +394,11 @@ export function RichTextEditor({
   // den der Nutzer wirklich geöffnet hat. Eine Bitte, die nur eine (womöglich doppelte) Kennung
   // trägt, ist bereits mehrdeutig, wenn sie entsteht; keine spätere Synchronisierung kann sie
   // eindeutig machen. Auflösung: siehe der Effekt weiter unten.
-  captionFormRequest?: { imageId: string; src: string; index: number; nonce: number } | undefined;
+  // Lauf 5 (Bens Befund R3-1): `koerper` — der Körper, in dem `index` zählt, wenn die Galerie die
+  // Großansicht aus einem Editorklick aufgebaut hat. Fehlt er, zählt `index` in `value`.
+  captionFormRequest?:
+    | { imageId: string; src: string; index: number; koerper?: string | undefined; nonce: number }
+    | undefined;
 }): JSX.Element {
   // JOB 3095: `i18n` nur für die Sprache der Zeitangabe in der Bildsuche („geprüft 18:30").
   const { t, i18n } = useTranslation();
@@ -1374,9 +1378,15 @@ export function RichTextEditor({
     // und bei gleicher Quelle bestätigte die Quelle dann ein falsches Vorkommen. Jetzt wird der
     // Eintrag in der Galerieliste selbst gelesen, daraus sein Vorkommen („das k-te Bild mit dieser
     // Quelle") und dieses im Editor gesucht. Das Verankern ändert diese Zahl nicht.
-    const galerie = extractBodyImages(value);
+    //
+    // Lauf 5 (Bens Befund R3-1): Wurde die Großansicht aus einem Editorklick aufgebaut, zählt die
+    // Position in DEM Körper, den der Editor damals mitgeschickt hat — nicht in `value`. Beim ersten
+    // Öffnen stehen in `value` noch die Doppelkennungen, und ein loses Bild zählt dort nicht; die
+    // Position aus dem Klickkörper in `value` gelesen traf ein fremdes Bild.
+    const galerieKoerper = captionFormRequest.koerper ?? value;
+    const galerie = extractBodyImages(galerieKoerper);
     const anPosition = galerie[captionFormRequest.index];
-    const k = galerieVorkommen(value)[captionFormRequest.index];
+    const k = galerieVorkommen(galerieKoerper)[captionFormRequest.index];
     let bild: HTMLImageElement | null = null;
     //
     // Runde 3 (Bens Befunde N1/N2 am Körperklick, hier dieselbe Klasse): Die Galerie steht bis zu
@@ -1395,6 +1405,15 @@ export function RichTextEditor({
         (b) => b.getAttribute("src") === quelle && b.closest("figcaption") === null,
       );
       bild = gleiche[k] ?? null;
+      // Lauf 5: Der Klickkörper ist ein Abbild DIESES Editors, seine Kennungen stehen so im DOM.
+      // Trägt das gezählte Bild eine andere, hat sich der Editor seit dem Klick verändert — dann
+      // entscheidet allein die eindeutige Kennung (Stufe 3), nicht die Zählung.
+      if (
+        captionFormRequest.koerper !== undefined &&
+        bild?.getAttribute("data-image-id") !== anPosition.id
+      ) {
+        bild = null;
+      }
     }
 
     // Stufe 2 („die Quelle ist eindeutig") ist in Runde 3 ENTFALLEN. Sie traf nach dem Löschen

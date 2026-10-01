@@ -69,9 +69,22 @@ export function galerieIndexFuerBildklick(
   return treffer.length === 1 && einziger !== undefined ? einziger : -1;
 }
 
+/**
+ * Der Rückweg der Großansicht zum Formular. `koerper` ist gesetzt, wenn die Großansicht aus dem
+ * Körper eines Editorklicks aufgebaut wurde (Lauf 5, Bens Befund R3-1): `index` zählt dann in
+ * DIESEM Körper, nicht im Galeriekörper. Fehlt er, gilt der Galeriekörper (Kachel, Leseansicht).
+ */
+export type BildbeschreibungsBitte = (
+  imageId: string,
+  src: string,
+  index: number,
+  koerper?: string,
+) => void;
+
 export function BodyImageGallery({
   bodyHtml,
   onEditCaption,
+  nimmtBildklickAn = false,
 }: {
   bodyHtml: string;
   // JOB 2084 (I50-3): die Bitte trägt die OCCURRENCE, nicht nur die Kennung. `src` und `index`
@@ -80,7 +93,12 @@ export function BodyImageGallery({
   // der zählbaren Bilder ändert (ein nacktes <img> zählt für die Galerie nicht und wird im Editor
   // eingehüllt); `src` allein bricht, wenn dasselbe Bild zweimal im Körper steht. Zusammen tragen
   // sie: `index` wählt, `src` bestätigt (die Auflösung steht in RichTextEditor.tsx).
-  onEditCaption?: ((imageId: string, src: string, index: number) => void) | undefined;
+  onEditCaption?: BildbeschreibungsBitte | undefined;
+  // Lauf 5 (Bens Befund R3-2, R-0052): Diese Galerie steht neben einem Editor und muss dessen
+  // Bildklick auch dann abholen, wenn ihre eigene Liste leer ist — etwa beim einzigen, ursprünglich
+  // losen Bild, das erst der Editor verankert. Dann rendert sie einen unsichtbaren Anker statt
+  // nichts. Reine Leseansichten setzen das nicht und bleiben ohne Bild ganz leer.
+  nimmtBildklickAn?: boolean | undefined;
 }): JSX.Element | null {
   const { t } = useTranslation();
   const [openIndex, setOpenIndex] = useState<number | null>(null);
@@ -310,8 +328,12 @@ export function BodyImageGallery({
   // Kein leerer Abschnitt: ohne verankerte Bilder erscheint die Galerie gar nicht — AUSSER die
   // Lightbox ist gerade noch offen (GELB d): dann bleibt der Dialog einen Takt gerendert, damit
   // der Effekt oben ihn kontrolliert schließen kann (kein stummes Unmount des offenen Modals).
+  //
+  // Lauf 5 (R3-2): neben einem Editor bleibt ein unsichtbarer Anker stehen — an seinem Elternknoten
+  // hängt der Zuhörer für den Bildklick (Effekt oben). Ohne ihn erreichte der Klick auf das einzige,
+  // erst im Editor verankerte Bild keine Galerie.
   if (images.length === 0 && openIndex === null) {
-    return null;
+    return nimmtBildklickAn ? <div ref={wurzelRef} hidden /> : null;
   }
   // GELB d: Anzeige-Index defensiv klemmen — der Effekt zieht den State nach; bis dahin zeigt der
   // offene Dialog das letzte verbliebene Bild statt ins Leere zu greifen.
@@ -433,11 +455,16 @@ export function BodyImageGallery({
                         // Position, die der Nutzer wirklich geöffnet hat (`setOpenIndex(i)` an der
                         // Kachel bzw. der occurrence-treue Weg des Körperklicks); sie ist die
                         // Identität, die eine doppelte Kennung nicht mehr hergibt.
+                        //
+                        // Lauf 5 (Bens Befund R3-1): kam die Ansicht aus einem Editorklick, zählt
+                        // `shownIndex` im mitgeschickten Körper — der geht mit, sonst übersetzte
+                        // der Editor die Position im Galeriekörper und träfe ein fremdes Bild.
                         const imageId = open.id;
                         const src = open.src;
                         const index = shownIndex;
+                        const koerper = klickKoerper ?? undefined;
                         requestClose();
-                        onEditCaption(imageId, src, index);
+                        onEditCaption(imageId, src, index, koerper);
                       }}
                       className="inline-flex items-center gap-1 rounded-btn border border-white/40 px-2 py-1 text-[12px] font-semibold text-white hover:bg-white/10"
                     >

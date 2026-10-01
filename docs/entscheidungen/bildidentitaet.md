@@ -256,6 +256,70 @@ und N3 sowie die neuen Auflösungsfälle sind dort rot; die Kalibrierungen sind 
 **Klick auf ein Bild, das selbst innerhalb einer Fußnote steht:** Er öffnet keine der Beschreibungen
 der anderen Bilder (Fall N2b in `bildklick-doppelte-kennung-mounted.test.tsx`).
 
+**Berichtigt in Lauf 5 (Bens Befund B5):** Die Aussagen dieses Abschnitts zur Gegenrichtung und zu
+R-0052 waren am Stand von Runde 3 zu weit. Zwei Lagen blieben ungedeckt (R3-1, R3-2), siehe
+Abschnitt 5. Der Text oben bleibt als Stand von Runde 3 stehen.
+
+### 5. Lauf 5 — Nacharbeit nach Bens Befunden R3-1, R3-2 und B5
+
+Ausgangsstand: Lauf 3, Runde 3 (`76208dcd`). In den betroffenen Dateien inhaltsgleich mit Ship
+`c760b7bb` (`git diff c760b7bb HEAD` über Galerie, Editor, `Blatt.tsx`, `Capture.tsx`,
+`bodyImages.ts`, `editorFigures.ts` und diese Doku: leer).
+
+**R3-1 — vom angeklickten Bild über die Großansicht zu einer fremden Beschreibung.**
+
+- Lage (Bens P1): ein loses Bild vor zwei Einheiten gleicher Quelle und Kennung, „Erste“/„Zweite“.
+  Klick auf „Erste“ zeigte „Erste“ groß; „Bildbeschreibung bearbeiten“ öffnete „Zweite“.
+- Ursache: Seit Runde 3 baut die Großansicht nach einem Editorklick ihre Liste aus dem
+  mitgeschickten Editorkörper. Der Knopf meldete nur die Position in dieser Liste. Der Editor las sie
+  in `value`, dem Galeriekörper. Dort stehen beim ersten Öffnen noch die Doppelkennungen, und das
+  lose Bild zählt nicht mit.
+- Jetzt: Die Bitte trägt den Körper mit, in dem die Position zählt
+  (`BildbeschreibungsBitte`, 4. Wert `koerper`; im Editor `captionFormRequest.koerper`). Fehlt er
+  (Kachel, Leseansicht), gilt wie bisher `value`. `Blatt.tsx` und `Capture.tsx` reichen ihn durch.
+  Die Leseansicht (`BibliothekLesen.tsx`, `KoRead.tsx`) hat keinen Editor daneben und bleibt
+  unverändert.
+- Härtung: Bei einer Bitte mit Klickkörper muss das gezählte Editorbild auch die Kennung aus dem
+  Klickkörper tragen. Hat sich der Editor seit dem Klick verändert, entscheidet allein die im Editor
+  eindeutige Kennung. Sonst öffnet sich nichts.
+
+**R3-2 — das einzige, ursprünglich lose Bild ließ sich nicht groß anzeigen.**
+
+- Lage (Bens P2): Der Text enthält genau ein loses Bild. Der Editor verankert es, die Galerieliste
+  aus dem gespeicherten Körper bleibt leer. Die Galerie renderte nichts und hatte keinen Zuhörer.
+- Jetzt: Die Entwurfsgalerie (`DraftBodyGallery`) setzt `nimmtBildklickAn`. Bei leerer Liste
+  rendert `BodyImageGallery` dann einen unsichtbaren Anker (`<div hidden>`), an dessen Elternknoten
+  der Zuhörer hängt. Sichtbar bleibt nichts, kein Abschnitt und keine Überschrift. Reine Leseansichten
+  setzen das nicht und bleiben ohne Bild ganz leer (Bestandsfall „0 Bilder → KEIN
+  Galerie-Abschnitt“ in `tests/ko/body-image-gallery-mounted.test.tsx` grün).
+
+**B5 — Dokumentation:** Abschnitt 4 ist oben als zu weit gekennzeichnet; die Tabellenzeilen R-0052
+und R-0053/R-0945 sind fortgeschrieben.
+
+**Belege:** `tests/bildidentitaet/runde3-rueckweg-mounted.test.tsx` mit echtem Knopf
+`gallery-caption-edit` und verdrahtetem `onEditCaption` wie in `Blatt.tsx`:
+
+| Fall | Ausgangsstand `76208dcd` (= `c760b7bb`) | Lauf 5 |
+| --- | --- | --- |
+| R3-1 „Erste“ → Bearbeiten öffnet „Erste“ | rot („Zweite“) | grün |
+| R3-1 „Zweite“, loses Bild, Blättern, Kachelweg | grün (Kalibrierung) | grün |
+| R3-1 Editor ändert sich zwischen Klick und Bitte | – (neuer Fall) | grün; ohne die Härtung rot |
+| R3-2 Klick öffnet die Großansicht | rot (kein Dialog) | grün |
+| R3-2 Schließen räumt auf | rot | grün |
+| R3-2 Vorbedingung (verankert, keine Kachel) | grün | grün |
+
+**Angepasster Bestandstest:** `tests/capture/draft-body-gallery-mounted.test.tsx` („PIN: beide
+Entwurfs-Ansichten …“). Er verlangte die Zeile `<BodyImageGallery bodyHtml={debounced}
+onEditCaption={onEditCaption} />` wörtlich. Jetzt prüft er dieselbe Substanz im Aufruf und
+zusätzlich `nimmtBildklickAn`.
+
+**Grenzen, unverändert:**
+
+- Die Bitte über eine Kachel zählt weiter im Galeriekörper. Bis 300 ms nach einer Eingabe kann sie
+  für ein verschobenes Bild nichts öffnen (Abschnitt 4).
+- Solange eine aus dem Editorklick geöffnete Großansicht offen ist, zeigen auch die Kacheln darunter
+  den Klickkörper; nach dem Schließen gilt wieder der eigene Stand.
+
 ## Abgleich je Aufnahmepunkt
 
 Legende:
@@ -274,8 +338,8 @@ Live-Stände wurden nicht neu gemessen.
 | R-0010 Bild, Rahmen, Fußnote ein Anker über Speichern/Laden | erfüllt (Bestand + Runden 1 und 2) | `tests/capture/mega88-bildstruktur-invariante.test.ts`. Runde 1: Ein Bild mit nur fremder Fußnote bekommt seine eigene (W3). Runde 2: Getrennt stehende Fußnote und Bild behalten die gemeinsame Kennung über Speichern und Bildsuche (B2). Der alte Rest aus E06 („außerhalb des Moduls nicht lesbar“) ist überholt: `bodyImages.ts` und `library-routes.ts` lesen `data-image-id`. |
 | R-0014 Bildgröße in der Schreibfläche | Teil / Entscheidung | Vorhanden: Stufen 25/50/75/100 % (`data-kw-scale`, Werkzeugleiste). Freies Ziehen an Griffen gibt es nicht. **Entscheidung:** Reichen die Stufen? |
 | R-0041 / R-2007 / package:bilder fünf Härtungen | erfüllt (Bestand), mit benannten Grenzen | Siehe unten. |
-| R-0052 / R-0901 Deckel + Klick öffnet Großansicht | erfüllt (Bestand) | `tests/web/d44-bildhoehe-deckel.test.tsx`, `d44-bild-klick-grossansicht.test.tsx`. Siehe **Quellenwiderspruch R-0901** unten. Runde 3: Auch ein im gespeicherten Text loses (im Editor verankertes) Bild öffnet jetzt seine Großansicht; der Bestandsfall D44 K4 ist mit Begründung umgeschrieben. |
-| R-0053 / R-0945 Klick trifft genau dieses Bild | erfüllt (Runde 3), mit benannter Grenze in der Gegenrichtung | **Runden 1 und 2 zu weit ausgewiesen:** Ein loses Bild davor (B1), ein gelöschtes Bild gleicher Quelle vor Ablauf der Galerieverzögerung (N1) und ein Bild in einer Fußnote (N2) führten zu einer fremden Beschreibung. Seit Runde 3 baut der Körperklick die Großansicht aus dem Editorstand (Abschnitt 4). Die Galerie-Bitte ist an die Kennung gebunden und öffnet im Zweifel nichts; bis 300 ms nach einer Eingabe kann sie auch für ein vorhandenes, verschobenes Bild nichts öffnen. |
+| R-0052 / R-0901 Deckel + Klick öffnet Großansicht | erfüllt (Bestand + Lauf 5) | `tests/web/d44-bildhoehe-deckel.test.tsx`, `d44-bild-klick-grossansicht.test.tsx`. Siehe **Quellenwiderspruch R-0901** unten. Runde 3: Auch ein im gespeicherten Text loses (im Editor verankertes) Bild öffnet jetzt seine Großansicht; der Bestandsfall D44 K4 ist mit Begründung umgeschrieben. **Runde 3 zu weit ausgewiesen:** War dieses Bild das einzige des Textes, öffnete sich nichts (Bens R3-2). Seit Lauf 5 geschlossen (Abschnitt 5, `runde3-rueckweg-mounted.test.tsx`). |
+| R-0053 / R-0945 Klick trifft genau dieses Bild | erfüllt (Lauf 5), mit benannter Grenze in der Gegenrichtung | **Runden 1 und 2 zu weit ausgewiesen:** Ein loses Bild davor (B1), ein gelöschtes Bild gleicher Quelle vor Ablauf der Galerieverzögerung (N1) und ein Bild in einer Fußnote (N2) führten zu einer fremden Beschreibung. Seit Runde 3 baut der Körperklick die Großansicht aus dem Editorstand (Abschnitt 4). Die Galerie-Bitte ist an die Kennung gebunden und öffnet im Zweifel nichts; bis 300 ms nach einer Eingabe kann sie auch für ein vorhandenes, verschobenes Bild nichts öffnen. **Runde 3 zu weit ausgewiesen:** Der Weg Klick → Großansicht → „Bildbeschreibung bearbeiten“ öffnete bei einem losen Bild davor und gleicher Quelle und Kennung eine fremde Beschreibung (Bens R3-1). Seit Lauf 5 trägt die Bitte den Klickkörper mit (Abschnitt 5). |
 | R-0055 / R-0931 Gliederungsleiste | erfüllt (Bestand) | `tests/web/d44-gliederung.test.ts`, `d44-sprung-mounted.test.tsx`. Siehe **Quellenwiderspruch R-0931** unten. |
 | R-0089 eindeutige Kennung je Bild | erfüllt (Bestand + Runden 1 und 2) | `tests/bildkennung-eindeutig/doppelte-kennung.test.ts`. Server: Eine kopierte Einheit wird getrennt, ihre Fußnote geht mit (W6). Editor: Die eigene Beschreibung folgt auch hinter einer fremden Fußnote (B3). Die Verdachtsspur „Commit 365e580“ ist nicht verfolgt; kein Befund dazu. |
 | R-0090 doppelte/ungültige Kennung nur melden | erfüllt mit benannter Grenze (Runde 2) | Siehe unten. Runde 1 hatte das als offene Wahl geführt; Ben hat die Wahl als Nichterfüllung gewertet (B4). |
@@ -296,7 +360,7 @@ Live-Stände wurden nicht neu gemessen.
 | R-1799 (OFFEN D44 „ERLEDIGT“) | bestätigt | Beide D44-Teile sind im Code (R-0052, R-0931). |
 | R-1823 (huelle2 „ABGESCHLOSSEN, ROT“) | erledigt (Bestand) | Nachfolger huelle3/huelle4 im Code; `tests/capture/huelle3-kennungskonflikt.test.ts`, `huelle4-nachnormalisierung.test.ts`. |
 | R-1824 (huelle2 „GELIEFERT, BEI BEN“) | überholt | Historischer Prüfstand, siehe R-1823. |
-| R-2005 (OFFEN.md I50 „OFFEN“) | Quellenwiderspruch | `OFFEN.md:379` führt I50 als OFFEN, `PRIORITAETEN.md` N8/N9/V7/V8 als erledigt. Nach diesem Lauf bleibt nur die Wahl zum Leseversprechen offen (R-0096). Die Registerzeile ist hier nicht umgeschrieben. |
+| R-2005 (OFFEN.md I50 „OFFEN“) | Quellenwiderspruch | `OFFEN.md:379` führt I50 als OFFEN, `PRIORITAETEN.md` N8/N9/V7/V8 als erledigt. Die Wahl zum Leseversprechen (R-0096) ist seit entscheidung:dac9bd84 entschieden. Die Registerzeile ist hier nicht umgeschrieben. |
 | M5c-UI Zähler und Unterscheidung | erfüllt (Bestand) | `Capture.tsx`; `tests/m5c-ui-bildunterschriften/**`. |
 | M5c-b Add-in-Weg gleicher Importvertrag | erfüllt (Bestand) | `tests/m5c-b-addin-bildunterschriften/route.test.ts`. |
 | M5c-b-R EMF-Waise, 503, Suchableitung, Bildbudget | erfüllt (Bestand), Word offen | `tests/m5c-b-bildbudget/**`, `tests/addin-bildbilanz/**`. **Fehlender Beleg laut Quelle:** echter Word-/Browser-Nachweis. |
@@ -336,7 +400,8 @@ Quittierung über das Speichern hinaus gibt es nicht. Eine leere Kennung zählt 
 3. Die Trennung, Galerie → Editor (JOB 2084) und jetzt auch Editor → Galerie (Punkt 2).
 4. Kennzeichnung und Zuordnung (JOB 3041/3055).
 
-Offen bleibt nur die Wahl unter „Sammler- und Leseversprechen“ unten.
+Offen blieb nur die Wahl unter „Sammler- und Leseversprechen“ unten; sie ist seit
+entscheidung:dac9bd84-078a-4f9d-b574-2351e0ffb3b7 entschieden (verengte Zusage bleibt).
 
 ### R-0098 — Server vergibt die Kennung aus dem Bildinhalt
 
@@ -373,6 +438,9 @@ Vollständigkeit behauptet:
   nicht. Der Kopf des Sammlers nennt das ausdrücklich („Stufe 1 … bewusst enger“).
 - **Offene Wahl** (seit JOB 1185 D1): bei der verengten Zusage bleiben, oder die Erhebung durch eine
   positive Modulgrenze bzw. eine Laufzeitprobe mit schreibgeschütztem DOM-Adapter tragfähig machen.
+- **Entschieden** (entscheidung:dac9bd84-078a-4f9d-b574-2351e0ffb3b7): Es bleibt bei der verengten
+  Zusage „keine bekannte direkte Schreibform“, mit den oben genannten Grenzen. Keine Ausweitung der
+  Erhebung.
 
 ## Weitere Quellenwidersprüche und fehlende Belege
 
@@ -386,6 +454,9 @@ Vollständigkeit behauptet:
   Kriterium 2 und I50 erstens genau diese Lage benennen. Die unverankerte Hülle (Altbestand) paart
   weiter. **Entscheidung:** ob auch dort nicht mehr gepaart werden soll. Preis: Altbestand ohne
   Bildkennung verlöre die sichtbare Zuordnung seiner Beschreibungen.
+  **Entschieden** (entscheidung:2ead4ce4-f105-43c7-9972-a88cfe0b75ae): Die unverankerte flache
+  Hülle paart weiter. Die GRENZE in `job916-stufe2b-abloesung.test.ts` bleibt grün (in Lauf 5
+  gefahren).
 - **Nicht gemessen, ohne neuen Prüflauf:**
   - Tastatur- und Screenreader-Ablauf von Großansicht und Zuordnung im echten Browser
   - Einfügen einer Bilddatei aus der Zwischenablage im echten Browser
