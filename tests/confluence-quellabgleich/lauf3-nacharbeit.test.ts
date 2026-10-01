@@ -471,3 +471,89 @@ describe("B10 · Restriktionsnachzug an einem Altanker ohne Provider", () => {
     expect((await objekt(d, "P-1")).ko?.confidentiality).toBe("intern");
   });
 });
+
+// ================================================================================================
+// LAUF 5 — BENS B9-REST: EINE ERST AN DER EINGANGSGRENZE ENTSTANDENE MARKE STEHT IM LAUF.
+// ================================================================================================
+//
+// Ben-Gegenprobe (Lauf 3 R3): 10.001 vollständig gelieferte Anhänge — der Mapper nennt die Liste
+// vollständig, erst die Eingangssäuberung (Deckel 10.000) markiert sie. Der Lauf las bisher das
+// rohe Adapter-Item und meldete attachmentsIncomplete=[], counts 0.
+
+describe("B9-Rest · die Kürzung an der Eingangsgrenze steht im Laufergebnis", () => {
+  it("10.001 Anhänge: Kandidat mit 10.000 und Marke; Lauf und Probelauf nennen P-1", async () => {
+    const q = quelle();
+    const d = dienste();
+    q.bereich.set("P-1", seite("P-1", 1, { results: viele(10_001) }));
+    const probe = await runConfluenceImport({ ...d, adapter: q.adapter, dryRun: true, actor: "a" });
+    expect(probe.sourceSync?.attachmentsIncomplete).toEqual(["P-1"]);
+    const lauf = await runConfluenceImport({ ...d, adapter: q.adapter, dryRun: false, actor: "a" });
+    const [kandidat] = await d.library.listImportCandidates();
+    const gespeichert = kandidat?.item as {
+      sourceAttachments?: unknown[];
+      sourceAttachmentsIncomplete?: boolean;
+    };
+    expect(gespeichert.sourceAttachments).toHaveLength(10_000);
+    expect(gespeichert.sourceAttachmentsIncomplete).toBe(true);
+    expect(lauf.sourceSync?.attachmentsIncomplete).toEqual(["P-1"]);
+  });
+
+  it("über die echten Routen: attachmentsIncomplete=[P-1], counts 1", async () => {
+    const q = quelle();
+    q.bereich.set("P-1", seite("P-1", 1, { results: viele(10_001) }));
+    process.env.KLARWERK_CONFLUENCE_IMPORT = "1";
+    const services = buildServices();
+    delete process.env.KLARWERK_CONFLUENCE_IMPORT;
+    const app = buildApp(services);
+    const guards = makeGuards(services.auth);
+    app.register(
+      confluenceImportRoutes({
+        library: services.library,
+        koService: services.ko,
+        guards,
+        reasoner: services.reasoner,
+        makeAdapter: () => q.adapter,
+        importRuns: services.importRuns,
+        quellabgleich: services.quellabgleich,
+      }),
+    );
+    app.register(
+      importRunRoutes({
+        importRuns: services.importRuns,
+        externalSources: services.externalSources,
+        quellabgleich: services.quellabgleich,
+        guards,
+      }),
+    );
+    await app.inject({
+      method: "POST",
+      url: "/api/auth/register",
+      payload: { name: "Admin", email: "a@x.de", password: "secret123" },
+    });
+    const login = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { email: "a@x.de", password: "secret123" },
+    });
+    const headers = { authorization: `Bearer ${login.json().token}` };
+    const { importId } = (
+      await app.inject({
+        method: "POST",
+        url: "/api/admin/import/confluence",
+        headers,
+        payload: {},
+      })
+    ).json() as { importId: string };
+    await warteAufOffeneImportLaeufe(services.importRuns);
+    const ergebnis = (
+      await app.inject({ method: "GET", url: `/api/admin/import/runs/${importId}`, headers })
+    ).json() as {
+      sourceSync: {
+        attachmentsIncomplete: string[];
+        counts: { attachmentsIncomplete: number };
+      } | null;
+    };
+    expect(ergebnis.sourceSync?.attachmentsIncomplete).toEqual(["P-1"]);
+    expect(ergebnis.sourceSync?.counts.attachmentsIncomplete).toBe(1);
+  });
+});

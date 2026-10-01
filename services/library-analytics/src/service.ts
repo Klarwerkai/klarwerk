@@ -1732,6 +1732,15 @@ export class LibraryService {
   }
 
   /**
+   * R-0163 (Lauf 5, Bens B9-Rest): ob die Anhangsliste dieses Items NACH der Eingangsgrenze als
+   * unvollständig gilt — dieselbe Säuberung wie beim Einreihen und Angleichen. Eine erst hier
+   * entstandene Marke (Deckel `MAX_QUELL_ANHAENGE`, verworfene Einträge) fehlte sonst im Lauf.
+   */
+  importAttachmentsIncomplete(item: ImportItem): boolean {
+    return this.withSanitizedIngest(item).sourceAttachmentsIncomplete === true;
+  }
+
+  /**
    * R-0163 (Lauf 2): ANHÄNGE NACHZIEHEN OHNE NEUE SEITENFASSUNG. Confluence erhöht die Fassung
    * einer Seite nicht zwingend, wenn nur ein Anhang dazukommt, ersetzt wird oder verschwindet. Der
    * Bereichsimport reiht eine unveränderte Fassung zu Recht nicht erneut als Kandidat ein — die

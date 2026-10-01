@@ -644,8 +644,10 @@ export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<I
     !truncated && collectFailed.length === 0,
     {
       ...(await nachzug(deps, unveraendert)),
+      // Lauf 5 (Bens B9-Rest): der übernommene Zustand zählt, nicht das rohe Adapter-Item — auch
+      // eine erst an der Eingangsgrenze entstandene Marke steht im Lauf.
       attachmentsIncomplete: items
-        .filter((i) => (i as ConfluenceImportItem).sourceAttachmentsIncomplete === true)
+        .filter((i) => deps.library.importAttachmentsIncomplete(i))
         .map((i) => i.externalId)
         .filter((id): id is string => !!id),
     },

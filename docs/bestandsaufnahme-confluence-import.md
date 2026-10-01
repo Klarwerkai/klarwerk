@@ -163,8 +163,41 @@ B9/B10 in `tests/confluence-quellabgleich/lauf3-nacharbeit.test.ts`, Anzeige in
 |---|---|---|
 | **B1** R-0549 Quellrechte bestimmen den Lesezugriff nicht | **unverändert nicht gebaut — Sperre „Variante B“** (`services/app/src/sichtbarkeit.ts:34-37`), Begründung wie Runde 2. Keine Umgehung. | — |
 | **B7** R-0142 Einheiten, Lücken, Ergebnisreferenzen | **unverändert nicht gebaut** — braucht die drei in Runde 2 benannten Entscheidungen bzw. die FREEZE-144-Freigabe. Bens Hinweis zur Testaussagekraft (`w2a-import-run-routes-148.test.ts`, bedingte Prüfungen über leere Listen) bleibt richtig und unbearbeitet: die Datei gehört dem Laufvertrag W2-A. | — |
-| **B9** R-0163 Erstimport > 200 Anhänge verlor den Rest dauerhaft | behoben: der Deckel der Eingangssäuberung (`MAX_QUELL_ANHAENGE`) lag mit 200 **unter** dem, was der Adapter liefert, und schnitt bei jedem Lauf dieselben 200 heraus. Er steht jetzt auf 10.000, abgestimmt auf die Nachblätter-Grenze des Adapters (`MAX_ATTACHMENT_HOPS` 20 → 200, je 50 Einträge). Oberhalb davon ist die Liste unvollständig markiert (entfernt nichts), und der Lauf weist jede Seite mit unvollständig übernommener Anhangsliste neu aus (`sourceSync.attachmentsIncomplete`, Zahl in `counts`, Zeile auf der Laufkarte). **Grenze, benannt:** eine Seite mit mehr als 10.000 Anhängen verliert den Rest weiterhin — dann aber sichtbar. | `library-analytics/src/quellangaben.ts`, `confluence/src/rest-client.ts`, `app/src/confluence-import.ts` |
+| **B9** R-0163 Erstimport > 200 Anhänge verlor den Rest dauerhaft | behoben: der Deckel der Eingangssäuberung (`MAX_QUELL_ANHAENGE`) lag mit 200 **unter** dem, was der Adapter liefert, und schnitt bei jedem Lauf dieselben 200 heraus. Er steht jetzt auf 10.000, abgestimmt auf die Nachblätter-Grenze des Adapters (`MAX_ATTACHMENT_HOPS` 20 → 200, je 50 Einträge). Oberhalb davon ist die Liste unvollständig markiert (entfernt nichts), und der Lauf weist jede Seite mit unvollständig übernommener Anhangsliste neu aus (`sourceSync.attachmentsIncomplete`, Zahl in `counts`, Zeile auf der Laufkarte). **Grenze, benannt:** eine Seite mit mehr als 10.000 Anhängen verliert den Rest weiterhin. *Korrektur Lauf 5:* „dann aber sichtbar“ traf in Runde 3 **nicht** zu (Ben: 10.001 Anhänge → Lauf `COMPLETED`, `attachmentsIncomplete=[]`); behoben in Lauf 5, s. dort. | `library-analytics/src/quellangaben.ts`, `confluence/src/rest-client.ts`, `app/src/confluence-import.ts` |
 | **B10** R-0162/R-0549 Restriktionsnachzug an Altanker ohne Provider wirkungslos, trotzdem „synced“ | behoben: geschrieben wird am gefundenen Anker mit **seinem** gespeicherten Provider (die Suche wertet „ohne Provider“ als Confluence, die Schreibmethode vergleicht wörtlich). Liefert das Schreiben trotz festgestellter Änderung `false`, wirft der Nachzug; der Lauf führt die Seite in `syncFailed` (PARTIAL), und die Vertraulichkeit wird dann nicht allein heraufgesetzt. | `library-analytics/src/service.ts` (`syncImportRestriction`) |
+
+## Lauf 5 — Übernahme unter dem aktuellen Vertrag (Aufgabenrevision 15)
+
+Lauf 5 setzt auf dem Stand von Lauf 3 / Runde 3 (`5fb2ccf3`) auf. Der Auftrag umfasst nur noch
+**R-0126, R-0131, R-0142, R-0176** und das Abgrenzungs- und Belegkriterium (Entscheidung
+`6a0e73c1`, Pedi, Option A). Die übrigen Anliegen dieser Datei (R-0134, R-0153, R-0159, R-0160,
+R-0162, R-0163, R-0166, R-0171, R-0182, R-0526, R-0549, R-0649, R-1005, R-1126, R-1172, R-1601,
+R-1800, R-2197, package:confluence) gehören in die eigenen Aufträge `confluence-import-anhaenge`,
+`-rechte`, `-hierarchie`, `-abgleich`, `-onprem-anmeldung` und `-bedienung`; ihre Zeilen oben
+sind Bestandsangaben, keine Lieferzusage dieses Auftrags.
+
+| Kriterium | Stand in Lauf 5 | Beleg |
+|---|---|---|
+| R-0126 | geliefert (unverändert) | Übersicht; in Lauf 5 lokal grün: `verschachtelter-import.test.ts`, `mapper.test.ts`, `adapter.test.ts` |
+| R-0131 | geliefert (unverändert) | Übersicht; in Lauf 5 lokal grün: `pruefkarte-zeigt-volltext-und-quelle.test.tsx` (V3/V8), `quellhinweise-montiert.test.tsx` (H1/H2), `runde3.test.ts` (N1/N2). Nicht gemessen: Rücklink gegen eine echte Confluence-Instanz |
+| R-0142 | **teilweise** — abgeleitete Einheiten und Lücken nicht gebaut (Widerspruch 8, B7; braucht Entscheidungen bzw. FREEZE-144-Freigabe) | Abschnitt „R-0142 im Einzelnen“; `quellhinweise-montiert.test.tsx` (DE/EN/NL) lokal grün |
+| R-0176 | Arbeitsweise, kein Produktzustand | Übersicht |
+
+**Bens B9-Rest (R-0163, Lauf 3 R3) — behoben**, obwohl R-0163 zum Anhangsauftrag gehört: der
+Fehler steckte in Code dieser Lieferung und machte die eigene Belegaussage oben falsch. Ursache:
+`attachmentsIncomplete` im Laufergebnis las die rohen Adapter-Items; eine Marke, die erst die
+Eingangssäuberung setzt (Deckel `MAX_QUELL_ANHAENGE`), fehlte dort. Korrektur:
+`LibraryService.importAttachmentsIncomplete` wendet dieselbe Säuberung an
+(`library-analytics/src/service.ts`), der Lauf nutzt sie (`app/src/confluence-import.ts`). Der
+Laufstatus bleibt bei unvollständiger Anhangsliste `COMPLETED` — wie schon für die im Mapper
+gesetzte Marke; der Hinweis ist `attachmentsIncomplete` samt Zahl in `counts`. Test:
+`lauf3-nacharbeit.test.ts` „B9-Rest“ (Lauf, Probelauf, echte Routen); ohne die Korrektur beide
+Fälle rot (`expected [] to deeply equal ['P-1']`).
+
+**Belege des Vorlaufs, nicht wiederholt:** Vollcheck Lauf 2 rot (`pa-1790500728-a825f53a`),
+gezielte PostgreSQL-Integration grün (`pa-1790500802-63a9ab41`); für Lauf 3 und Lauf 5 liegt kein
+Vollcheck- oder Server-Integrationsbeleg vor (`quellabgleich-ablage.integration.test.ts` lokal
+nicht ausgeführt).
 
 ## Abgrenzung
 
