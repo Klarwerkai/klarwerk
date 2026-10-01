@@ -17,6 +17,13 @@
 // Brücke in eine frische Fastify-Instanz mit dem echten Plugin, dem echten Dienst und der echten
 // Rechtematrix.
 //
+// FE-001 · DAS FORMULAR IST JETZT EINE AUSWAHL (Suche → Treffer → Fassung), keine getippte
+// Kennung und Nummer mehr. Eine NICHT belegte Fassung kann ein Mensch deshalb nur noch über eine
+// VERALTETE Fassungsliste wählen — die Liste wurde gelesen, bevor die Fassung verschwand. Genau das
+// stellt `veralteteFassung` her: die lesende Nachbartür (`GET /api/kos/:id/versions`, hier ein
+// Doppel) bietet eine Fassung an, die der echte Dienst beim Aufnehmen nicht anerkennt. Die Frage des
+// Falls bleibt dieselbe: kommt beim Menschen an, was der SERVER sagt, und bleibt die Auswahl stehen?
+//
 // GEGENPROBE: in `api.ts` die Unterscheidung wieder auf `status === 404` stellen → der zweite Fall
 // unten wird rot und nennt den erfundenen Satz.
 import Fastify, { type FastifyInstance } from "fastify";
@@ -85,8 +92,14 @@ class VergesslicheAblage implements AnweisungRepo {
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-const FASSUNG_UNBEKANNT = "Diese Fassung gibt es nicht. Bitte prüfen Sie die Fassungsnummer.";
-const ALLGEMEINER_FEHLER = "Die Anweisung konnte nicht geladen werden.";
+const FASSUNG_UNBEKANNT =
+  "Diese Fassung gibt es nicht (mehr). Wähle eine der angezeigten Fassungen.";
+const ALLGEMEINER_FEHLER =
+  "Die Arbeitsanleitung konnte nicht geladen werden. Lade die Seite neu oder versuche es später erneut.";
+
+/** Die Nummer einer Fassung, die nur die veraltete Liste noch nennt. */
+const VERALTETE_FASSUNG = 999;
+let veralteteFassung = false;
 
 const EINTRAEGE = [
   eintrag({ id: "ko-a", title: "Anlage entlüften", version: 2 }, [
@@ -167,12 +180,6 @@ async function ruhen(): Promise<void> {
   }
 }
 
-function feld(name: string): HTMLInputElement {
-  const treffer = container.querySelector<HTMLInputElement>(`[name="${name}"]`);
-  expect(treffer, `Feld ${name} fehlt`).not.toBeNull();
-  return treffer as HTMLInputElement;
-}
-
 function tippe(element: HTMLInputElement, wert: string): void {
   const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
   setter?.call(element, wert);
@@ -180,14 +187,39 @@ function tippe(element: HTMLInputElement, wert: string): void {
   element.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
-async function sendeAufnahme(koId: string, fassung: string): Promise<void> {
+function radio(fassung: number): HTMLInputElement | null {
+  return container.querySelector<HTMLInputElement>(`#ga-aufnahme-fassung-${fassung}`);
+}
+
+/** Den Eintrag über seinen Titel finden und auswählen — einmal je Fall. */
+async function waehleEintrag(): Promise<void> {
+  const suche = container.querySelector<HTMLInputElement>("#ga-aufnahme-suche");
+  expect(suche, "Suchfeld fehlt").not.toBeNull();
   await act(async () => {
-    tippe(feld("koId"), koId);
-    tippe(feld("koVersion"), fassung);
+    tippe(suche as HTMLInputElement, "entlüften");
   });
   await act(async () => {
-    feld("koId")
-      .closest("form")
+    container
+      .querySelector('[data-testid="ga-aufnahme-suche-form"]')
+      ?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+  });
+  const treffer = () =>
+    container.querySelector<HTMLButtonElement>('[data-testid="ga-aufnahme-treffer-eintrag"]');
+  await warteBis(() => treffer() !== null, "den Treffer „Anlage entlüften“");
+  await act(async () => {
+    treffer()?.click();
+  });
+  await warteBis(() => radio(1) !== null, "die Fassungsliste");
+}
+
+/** Eine Fassung bewusst wählen und aufnehmen. */
+async function sendeAufnahme(fassung: number): Promise<void> {
+  await act(async () => {
+    radio(fassung)?.click();
+  });
+  await act(async () => {
+    container
+      .querySelector('[data-testid="ga-aufnahme-bestaetigen"]')
       ?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
   });
 }
@@ -202,6 +234,30 @@ beforeEach(async () => {
   });
   app = Fastify();
   await app.register(gesamtanweisungRoutes, { dienst, guards });
+  // FE-001 · die lesenden Nachbartüren der Auswahl, als Doppel über DENSELBEN Einträgen.
+  veralteteFassung = false;
+  app.get("/api/library/search", async () =>
+    EINTRAEGE.map((e) => ({ id: e.id, title: e.title, version: e.version, statement: "" })),
+  );
+  app.get<{ Params: { id: string } }>("/api/kos/:id/versions", async (request) => {
+    const saetze = (EINTRAEGE.find((e) => e.id === request.params.id)?.fassungen ?? []).map(
+      (f) => ({ ...f, koId: request.params.id, note: "" }),
+    );
+    return veralteteFassung
+      ? [
+          ...saetze,
+          {
+            koId: request.params.id,
+            version: VERALTETE_FASSUNG,
+            at: "2026-09-03T09:00:00.000Z",
+            author: "anna",
+            note: "",
+            snapshot: { title: "Anlage entlüften", statement: "", version: VERALTETE_FASSUNG },
+          },
+        ]
+      : saetze;
+  });
+  app.get("/api/directory", async () => [{ id: "anna", name: "Anna Beispiel" }]);
   await app.ready();
   echtesFetch = globalThis.fetch;
   globalThis.fetch = bruecke(app);
@@ -250,7 +306,7 @@ async function montiere(anweisungId: string): Promise<void> {
   await warteBis(() => {
     const flaeche = container.querySelector('[data-testid="ga-lesestand"]')?.textContent ?? "";
     return (
-      flaeche.includes("Diese Anweisung hat noch keine Bausteine.") ||
+      flaeche.includes("Diese Arbeitsanleitung hat noch keine Abschnitte.") ||
       container.querySelectorAll("[data-baustein]").length > 0
     );
   }, "den ersten geholten Lesestand");
@@ -258,10 +314,12 @@ async function montiere(anweisungId: string): Promise<void> {
 
 describe("JOB 4233 R2 · das Formular nennt die Ursache, die der Server gemeldet hat", () => {
   it("URSACHE 1 — die Fassung gibt es nicht: der Satz steht am Formular, die Eingabe bleibt", async () => {
+    veralteteFassung = true;
     const id = await anweisungAnlegen();
     await montiere(id);
 
-    await sendeAufnahme("ko-a", "999");
+    await waehleEintrag();
+    await sendeAufnahme(VERALTETE_FASSUNG);
     await warteBis(
       () => (container.textContent ?? "").includes(FASSUNG_UNBEKANNT),
       "die Absage „Diese Fassung gibt es nicht“",
@@ -272,9 +330,8 @@ describe("JOB 4233 R2 · das Formular nennt die Ursache, die der Server gemeldet
     expect(alarm?.getAttribute("role")).toBe("alert");
     expect(alarm?.textContent).toBe(FASSUNG_UNBEKANNT);
 
-    // Die Eingabe steht noch da — nichts gilt als gespeichert, und nichts wurde angelegt.
-    expect(feld("koId").value).toBe("ko-a");
-    expect(feld("koVersion").value).toBe("999");
+    // Die Auswahl steht noch da — nichts gilt als gespeichert, und nichts wurde angelegt.
+    expect(radio(VERALTETE_FASSUNG)?.checked).toBe(true);
     expect(container.querySelectorAll("[data-baustein]")).toHaveLength(0);
   });
 
@@ -301,8 +358,9 @@ describe("JOB 4233 R2 · das Formular nennt die Ursache, die der Server gemeldet
     );
     expect(container.textContent).toContain("Anfahren");
 
+    await waehleEintrag();
     ablage.weg = true;
-    await sendeAufnahme("ko-a", "1");
+    await sendeAufnahme(1);
     await warteBis(
       () => container.querySelector('[data-testid="ga-aufnahme-fehler"]') !== null,
       "die Absage am Formular",
@@ -313,30 +371,31 @@ describe("JOB 4233 R2 · das Formular nennt die Ursache, die der Server gemeldet
     expect(alarm?.textContent).toBe(ALLGEMEINER_FEHLER);
     expect(container.textContent).not.toContain(FASSUNG_UNBEKANNT);
 
-    // Die Eingabe bleibt auch hier stehen, und es ist nichts dazugekommen.
-    expect(feld("koId").value).toBe("ko-a");
-    expect(feld("koVersion").value).toBe("1");
+    // Die Auswahl bleibt auch hier stehen, und es ist nichts dazugekommen.
+    expect(radio(1)?.checked).toBe(true);
     expect(container.querySelectorAll("[data-baustein]")).toHaveLength(1);
   });
 
   it("KONTROLLFALL — eine belegte Fassung wird aufgenommen, und der Satz verschwindet", async () => {
+    veralteteFassung = true;
     const id = await anweisungAnlegen();
     await montiere(id);
 
-    await sendeAufnahme("ko-a", "999");
+    await waehleEintrag();
+    await sendeAufnahme(VERALTETE_FASSUNG);
     await warteBis(
       () => (container.textContent ?? "").includes(FASSUNG_UNBEKANNT),
       "die Absage vor der geglückten Aufnahme",
     );
 
-    await sendeAufnahme("ko-a", "1");
+    await sendeAufnahme(1);
     await warteBis(
       () => container.querySelectorAll("[data-baustein]").length === 1,
       "den aufgenommenen Baustein",
     );
 
-    // Nach dem bestätigten Erfolg ist das Formular leer UND die Absage weg.
-    expect(feld("koId").value).toBe("");
+    // Nach dem bestätigten Erfolg ist die Auswahl zurückgesetzt UND die Absage weg.
+    expect(container.querySelector('[data-testid="ga-aufnahme-nichts-gewaehlt"]')).not.toBeNull();
     expect(container.textContent).not.toContain(FASSUNG_UNBEKANNT);
     // Und der Text der gebundenen Fassung steht wirklich da.
     expect(container.textContent).toContain("Erst absperren.");

@@ -45,7 +45,19 @@ function firstBlockHtml(html: string): string {
 }
 
 function compactTitle(text: string): string {
-  return text.replace(/\s+/g, " ").trim().slice(0, MAX_TITLE_LENGTH).trim();
+  return text.replace(/\s+/g, " ").trim();
+}
+
+// N-0062 (Auftrag gesamt-entwurf-datenerhalt) — EIN ANGENOMMENER TITEL BLEIBT VOLLSTÄNDIG.
+// Bis hierher kürzte dieselbe Funktion auch den GETIPPTEN Titel still auf 90 Zeichen: das Feld nahm
+// jeden Buchstaben an, der Entwurf trug danach nur den Anfang, und niemand hatte gewarnt. Weder der
+// Entwurfsdienst noch das Wissensobjekt kennen eine Titelgrenze — die Kürzung war allein diese Zeile.
+// Die Grenze gilt deshalb nur noch dort, wo KEIN Mensch einen Titel angenommen hat: beim Ableiten
+// aus der ersten Zeile des Textes, die ein ganzer Absatz sein kann. Die beiden KI-Wege unten
+// (Eingabe an die Strukturierung, Titelzeile ihres Vorschlags) behalten ihre Grenze unverändert —
+// sie speichern keinen Titel.
+function derivedTitle(text: string): string {
+  return compactTitle(text).slice(0, MAX_TITLE_LENGTH).trim();
 }
 
 function escapeHtml(text: string): string {
@@ -68,7 +80,7 @@ export function deriveFrontDoorTitle(
   }
 
   const normalizedBody = normalizePastedHtml(bodyHtml);
-  const derived = compactTitle(htmlToPlainText(firstBlockHtml(normalizedBody)));
+  const derived = derivedTitle(htmlToPlainText(firstBlockHtml(normalizedBody)));
   return derived || fallbackTitle;
 }
 
@@ -272,7 +284,7 @@ export function buildFrontDoorStructureInput(input: {
   title: string;
   bodyHtml: string;
 }): string {
-  const title = compactTitle(input.title);
+  const title = derivedTitle(input.title);
   const body = htmlToPlainText(normalizePastedHtml(input.bodyHtml));
   const combined = [title, body]
     .filter((part) => part.length > 0)
@@ -291,7 +303,7 @@ function renderList(items: string[]): string {
 
 export function frontDoorStructuredBodyHtml(result: StructureResult): string {
   const sections: string[] = [];
-  const title = compactTitle(result.title);
+  const title = derivedTitle(result.title);
   const statement = result.statement.trim();
 
   if (title) {
