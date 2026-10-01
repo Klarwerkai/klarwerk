@@ -1,4 +1,4 @@
-import type { KnowledgeCheckResult } from "../../../api/types";
+import type { KnowledgeCheckCoverage, KnowledgeCheckResult } from "../../../api/types";
 import type { LiveVerdict } from "../../../lib/intakeSimilarity";
 
 // JOB 3556 (LIVE-CHECK-VERDRAHTUNG A): DER ZWEITE HAKEN IST WEG, DIE ABBILDUNG BLEIBT HIER.
@@ -14,10 +14,14 @@ import type { LiveVerdict } from "../../../lib/intakeSimilarity";
 // Aufrufer im Haken nur umgehängt und den Prüfstand mitgeschleppt, ohne etwas zu klären.
 
 // G-2-EHRLICHKEIT (SCRUM-527): reine Abbildung des ehrlichen Endpoint-Ergebnisses auf den Anzeige-Verdict.
-// KERNREGEL: „neu" NUR bei status "done" UND leerem similar+conflicts — also wenn WIRKLICH geprüft wurde
-// und nichts existiert. status "pending" (Widerspruch mangels Klassifikation/Modell NICHT geprüft) wird
-// als eigener, sichtbarer Zustand gezeigt — NIE als „neu, du bist die erste Person". status "failed" →
-// „Prüfung nicht verfügbar". Reihenfolge: Widerspruch > Ähnlich > (done→neu | pending | failed).
+// status "pending" (Widerspruch mangels Klassifikation/Modell NICHT geprüft) wird als eigener,
+// sichtbarer Zustand gezeigt. status "failed" → „Prüfung nicht verfügbar".
+// Reihenfolge: Widerspruch > Ähnlich > (done→empty | pending | failed).
+//
+// AUFNAHME 20260922 · VORSCHAU-REICHWEITE: „done" ohne Fund hiess hier bis dahin „neu" — als hätte
+// der Check den ganzen Bestand angesehen. Er sah höchstens die Vorauswahl. Der Zustand heisst jetzt
+// "empty" und trägt den Umfang, den der Server meldet; fehlt die Angabe, ist er ausdrücklich
+// unbekannt (`pruefumfangVon`). Eine bestandweite Neuheitsaussage kann aus keiner Antwort entstehen.
 //
 // JOB 3045: `koStatus`/`koCategory` werden REIN DURCHGEREICHT — kein `?? "offen"`, kein `?? ""`,
 // keine Ableitung, keine Umbenennung. Was der Server sagt (auch sein `null`), steht so im Verdict.
@@ -49,10 +53,28 @@ export function mapKnowledgeCheck(r: KnowledgeCheckResult): LiveVerdict {
     };
   }
   if (r.status === "done") {
-    return { status: "new" }; // ehrlich geprüft, nichts gefunden
+    return { status: "empty", coverage: pruefumfangVon(r) }; // in DIESEM Umfang kein Treffer
   }
   if (r.status === "pending") {
     return { status: "pending" }; // Widerspruch NICHT geprüft — nicht „neu"
   }
   return { status: "unavailable" }; // failed
+}
+
+/**
+ * Der Prüfumfang einer Antwort, so wie sie ihn belegt. Fehlt das Feld oder ist es unvollständig,
+ * gilt er als unbekannt — die Fläche erfindet keine Zahl und keine Vollständigkeit.
+ */
+export function pruefumfangVon(r: KnowledgeCheckResult): KnowledgeCheckCoverage {
+  const c = r.coverage;
+  if (
+    c?.kind === "candidates" &&
+    Number.isInteger(c.checked) &&
+    c.checked >= 0 &&
+    Number.isInteger(c.limit) &&
+    typeof c.limitReached === "boolean"
+  ) {
+    return { kind: "candidates", checked: c.checked, limit: c.limit, limitReached: c.limitReached };
+  }
+  return { kind: "unknown" };
 }

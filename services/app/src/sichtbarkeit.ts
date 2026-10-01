@@ -266,6 +266,37 @@ export async function paarSichtbar(
   return true;
 }
 
+/**
+ * Auftrag gesamt-dubletten-rueckzug (Q7) — DIESELBE PAARREGEL FÜR DEN GRABSTEIN NACH DEM RÜCKZUG.
+ *
+ * Nach dem eigenen Rückzug liegt eine Seite im Papierkorb; `zugang.get` kennt sie nicht mehr, und
+ * `paarSichtbar` sagt für JEDEN Betrachter nein. Hier wird dieselbe Frage gestellt — darf dieser
+ * Mensch BEIDE Seiten sehen? —, nur dass die zurückgezogene Seite über `papierkorb` aufgelöst wird
+ * (Autor und Stufe des getrashten Objekts). `darfSehen` bleibt die eine Regel; gelockert wird nichts:
+ * wer die vertrauliche zurückgezogene Seite vorher nicht sehen durfte, darf es auch jetzt nicht.
+ *
+ * Fail-closed: fehlt der Papierkorb-Zugang oder ist eine Seite endgelöscht (weder im Bestand noch
+ * im Papierkorb), ist die Antwort nein.
+ */
+export async function paarSichtbarMitPapierkorb(
+  user: SessionUser,
+  koA: string,
+  koB: string,
+  zugang: KoSichtbarkeitsZugang,
+  papierkorb: KoSichtbarkeitsZugang | undefined,
+): Promise<boolean> {
+  if (!zugangTauglich(zugang) || !papierkorb || !zugangTauglich(papierkorb)) {
+    return false;
+  }
+  for (const id of new Set([koA, koB])) {
+    const ko = (await zugang.get(id)) ?? (await papierkorb.get(id));
+    if (!ko || !darfSehen(user, ko)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 /** Dieselbe Regel auf eine Liste von Paar-Funden (Konflikte, Überschneidungen). */
 export async function sichtbarePaare<T extends { koA: string; koB: string }>(
   user: SessionUser,
