@@ -7,6 +7,16 @@
 > `PROJECT_CONTEXT/13_ASSISTENT_ZWISCHENBERICHT.md` (Rohstand: `docs/boss-assistant/`).
 > Live-Version dort bestätigt: **v1.0.0-beta.1.4**.
 
+## 01.10.2026 — Erstnutzer-Hürden U2/U3 im Browser (Revision 9)
+
+- Neue Playwright-Sonde `tests-smoke/erstnutzer-u2-u3-browser.spec.ts`: U2 (Suchraum der Bibliothek
+  mit Nulltreffer und Weg zum Erfassen; „Meine Entwürfe“ nennt den Entwurfs-Suchraum und führt in
+  die Bibliothek) und U3 (Weg zu „Meine Aufgaben“ über das Zahnrad, Erklärung in der Seitenhilfe,
+  kein Tooltip am Kopfband). U1 stand schon im Browser. Sollmanifest: Version 11, 201 Fälle.
+  Der Browserlauf selbst steht im Linux-Tor aus.
+- Per Pedi-Entscheidung `622a6ae6` (Option B) liegen R-0455, R-0928, R-0939, R-1012 und R-1675 im
+  Folgeauftrag `…-quellen`. Abgleich: `tests/erstnutzerfuehrung/README.md`.
+
 ## 29.09.2026 — Aufnahme „Gesamt-Erstnutzerführung“ (Abgleich + R-0474)
 
 - Die Nulltreffer von „Gehe zu …“ und der Hilfesuche bieten jetzt die Eingabe als Frage an
