@@ -1451,13 +1451,16 @@ export function Blatt({
   // AUFTRAG-mega9 Block B: das ehrliche Dirty-Prädikat — Abweichung des TATSÄCHLICHEN Inhalts vom
   // gesicherten Stand plus ein offener KI-Vorschlag. Bewusst nicht „ist gesetzt": das bloße Öffnen
   // eines gespeicherten Entwurfs ist keine ungespeicherte Änderung.
-  const istSchmutzig =
+  // Aufnahme `gesamt-erfassung-einstieg` (BEN-4): der INHALTSTEIL steht für sich, denn nur er lässt
+  // sich durch Sichern beheben. Ein offener KI-Vorschlag bleibt nach jedem Sichern offen — wer ihn
+  // als „durch Sichern behebbar" las, fragte und sicherte endlos (`formularOeffnen`).
+  const inhaltWeichtAb =
     title !== savedStateRef.current.title ||
     bodyHtml !== savedStateRef.current.bodyHtml ||
     confidentiality !== savedStateRef.current.confidentiality ||
     // JOB 3062 R6 (bens Befund 1): eine geänderte Bereichswahl IST eine ungespeicherte Änderung.
-    kategorie !== savedStateRef.current.kategorie ||
-    hasPendingProposal;
+    kategorie !== savedStateRef.current.kategorie;
+  const istSchmutzig = inhaltWeichtAb || hasPendingProposal;
 
   // JOB 3106 (UX-01): die Bestätigungszeile steht, SOLANGE das Blatt dem gesicherten Stand
   // entspricht. Sie hängt bewusst am vorhandenen Dirty-Prädikat und nicht an einem zweiten
@@ -1883,9 +1886,24 @@ export function Blatt({
   //   · lässt es sich gerade nicht sichern → Rückfrage, die den Wechsel zum gesicherten Stand
   //     ausdrücklich nennt. Das Blatt bleibt dabei montiert und unverändert (`arbeitsraumSchliessen`).
   // Ist das Blatt nicht verändert, zeigt das Formular ohnehin denselben Stand — keine Rückfrage.
+  //
+  // BEN-4 (Lauf 3): EIN OFFENER KI-VORSCHLAG IST KEIN NACHTRAG. Das Formular kennt ihn nicht, und
+  // Sichern beseitigt ihn nicht (er ist nicht Teil des Entwurfs). Früher galt er als „ungesichert",
+  // also fragte das Blatt, sicherte ohne neue Eingabe, fand ihn danach noch offen und fragte erneut —
+  // ohne Ende, und das Formular öffnete nie. Jetzt steht GENAU EINE erklärende Meldung: erst
+  // übernehmen oder verwerfen. Es wird nichts gesichert, nichts gewechselt; Vorschlag und Blatt
+  // bleiben, wie sie sind.
+  const vorschlagZuerstKlaeren = (): void => {
+    setOffenesMenue(null);
+    window.alert(t("einstieg.formular.vorschlagOffen"));
+  };
   const formularOeffnen = (): void => {
     if (!istSchmutzig) {
       arbeitsraumOeffnen("formular");
+      return;
+    }
+    if (hasPendingProposal) {
+      vorschlagZuerstKlaeren();
       return;
     }
     setOffenesMenue(null);
@@ -1910,6 +1928,10 @@ export function Blatt({
   //   · nachgetragen → das Formular kennt den Nachtrag nicht. Statt wortlos zu wechseln, fragt das
   //     Blatt erneut und nennt den Grund; Ja sichert auch den Nachtrag und führt über denselben Weg
   //     hierher zurück, Nein lässt alles auf dem Blatt.
+  // BEN-4: gemessen wird der Nachtrag am INHALT (`inhaltWeichtAb`), nicht an `istSchmutzig` — ein
+  // offener KI-Vorschlag ist kein Nachtrag und durch erneutes Sichern nicht zu beheben. Ist einer
+  // offen (etwa weil eine schon laufende Strukturierung während des Sicherns eintraf), steht
+  // dieselbe eine Meldung wie in `formularOeffnen`, und es bleibt beim Blatt.
   // biome-ignore lint/correctness/useExhaustiveDependencies: entschieden wird genau einmal je Wunsch, mit dem Stand dieses Bildaufbaus
   useEffect(() => {
     if (!formularNachSichern || save.isPending) {
@@ -1917,7 +1939,11 @@ export function Blatt({
     }
     const modus = formularNachSichern;
     setFormularNachSichern(null);
-    if (!istSchmutzig) {
+    if (hasPendingProposal) {
+      vorschlagZuerstKlaeren();
+      return;
+    }
+    if (!inhaltWeichtAb) {
       arbeitsraumOeffnen(modus);
       return;
     }

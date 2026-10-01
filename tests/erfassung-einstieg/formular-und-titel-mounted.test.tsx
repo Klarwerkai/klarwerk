@@ -50,6 +50,17 @@ vi.mock("../../apps/web/src/api/endpoints", async (importOriginal) => {
           tasks: { structure: true, extract: true },
         })),
         config: vi.fn(async () => null),
+        // BEN-4 (Lauf 3): ein vollständiger Strukturvorschlag, wie ihn die echte Route liefert
+        // (`StructureResult`) — nur der Modelllauf ist gefälscht, der Vorschlag selbst ist echt.
+        structure: vi.fn(async () => ({
+          title: "KI-Titel aus dem Strukturvorschlag",
+          statement: "Die Dosierpumpe wird nach dem Gebindewechsel entlüftet.",
+          conditions: [],
+          measures: [],
+          tags: [],
+          confidence: 0.8,
+          demo: false,
+        })),
       },
     },
   };
@@ -273,6 +284,10 @@ async function stufeWaehlen(stufe: "intern" | "vertraulich" = "intern"): Promise
 const NEU = "NEUER ungesicherter Bearbeitungsstand";
 let bestaetigen = true;
 let rueckfragen: string[] = [];
+/** BEN-4: reine Meldungen (`window.alert`) — sie zählen zu den Rückfragen, die der Mensch sieht. */
+let meldungen: string[] = [];
+/** Schutz für die Gegenprobe B4: ab der n-ten Rückfrage wird abgelehnt (wie Ben bei der vierten). */
+let ablehnenAb = Number.POSITIVE_INFINITY;
 
 /** Der gespeicherte Entwurf beim Server — sein Titel, nicht der der Oberfläche. */
 async function entwurfsTitelAmServer(): Promise<string[]> {
@@ -336,6 +351,68 @@ function formularTitel(): HTMLInputElement | HTMLTextAreaElement | null {
   return el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement ? el : null;
 }
 
+/** Die gespeicherte Nutzlast des (einzigen) Entwurfs beim Server. */
+async function entwurfAmServer(): Promise<Record<string, unknown>> {
+  const liste = (await entwuerfeAmServer()) as { id: string }[];
+  expect(liste, "es gibt nicht genau einen Entwurf").toHaveLength(1);
+  const res = await bruecke.app.inject({
+    method: "GET",
+    url: `/api/drafts/${liste[0]?.id}`,
+    headers: { authorization: `Bearer ${bruecke.token}` },
+  });
+  return (JSON.parse(res.body) as { payload: Record<string, unknown> }).payload;
+}
+
+/** Ein eigenes Wissensobjekt mit Bereich anlegen — sonst bietet das Bereich-Menü nichts an. */
+async function bereichAnlegen(bereich: string): Promise<void> {
+  const res = await bruecke.app.inject({
+    method: "POST",
+    url: "/api/kos",
+    headers: { authorization: `Bearer ${bruecke.token}` },
+    payload: {
+      confidentiality: "intern",
+      title: "Vorhandenes Wissen mit Bereich",
+      statement: "Kurzfassung für den Prüfstand.",
+      type: "best_practice",
+      category: bereich,
+      tags: [],
+      neededValidations: 1,
+    },
+  });
+  expect(res.statusCode, res.body).toBe(201);
+}
+
+async function bereichWaehlen(bereich: string): Promise<void> {
+  await klick(element('[data-testid="blatt-werkzeug-bereich"]', HTMLButtonElement));
+  await klick(knopfIn(element('[data-testid="blatt-menue-bereich"]', HTMLElement), bereich));
+}
+
+async function textErsetzen(html: string): Promise<void> {
+  const el = element('[role="textbox"]', HTMLElement);
+  await act(async () => {
+    el.innerHTML = html;
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    await flush();
+  });
+  await act(flush);
+}
+
+/** Bens Ablauf B4, Schritt 2: „KI → Strukturieren" — der Vorschlag steht danach unübernommen da. */
+async function strukturVorschlagErzeugen(): Promise<void> {
+  await klick(element('[data-testid="blatt-werkzeug-ki"]', HTMLButtonElement));
+  await klick(
+    knopfIn(element('[data-testid="blatt-menue-ki"]', HTMLElement), i18n.t("erfassen.ki.struktur")),
+  );
+  expect(
+    container.querySelector('[data-testid="blatt-ki-vorschlag"]'),
+    `kein KI-Vorschlag sichtbar. ${seitentext().slice(0, 500)}`,
+  ).not.toBeNull();
+}
+
+function vorschlagSteht(): boolean {
+  return container.querySelector('[data-testid="blatt-ki-vorschlag"]') !== null;
+}
+
 async function freigeben(): Promise<void> {
   await act(async () => {
     for (const weiter of bruecke.festgehalten.splice(0)) {
@@ -351,9 +428,14 @@ beforeEach(async () => {
   sessionStorage.clear();
   bestaetigen = true;
   rueckfragen = [];
+  meldungen = [];
+  ablehnenAb = Number.POSITIVE_INFINITY;
   vi.spyOn(window, "confirm").mockImplementation((frage?: string) => {
     rueckfragen.push(String(frage ?? ""));
-    return bestaetigen;
+    return bestaetigen && rueckfragen.length < ablehnenAb;
+  });
+  vi.spyOn(window, "alert").mockImplementation((meldung?: string) => {
+    meldungen.push(String(meldung ?? ""));
   });
   brueckeAufbauen();
   await serverStarten();
@@ -541,6 +623,82 @@ describe("BEN-1 · das Formular übernimmt den Stand des Blattes oder sagt es (N
     expect(formularTitel()?.value).toBe(NEU);
   });
 
+  // Lauf 3 (N-0068, bisher nur Titel gemessen): derselbe Nachtrag während des Sicherns, je einzeln
+  // über Text, Vertraulichkeitsstufe und Bereich. Jeder Fall misst: zweite Rückfrage, genau zwei
+  // Speicherungen, der Server trägt den Nachtrag, das Formular ist offen.
+  it("N9 · Nachtrag im TEXT während des Sicherns: zweite Rückfrage, der neue Text ist gesichert, das Formular öffnet", async () => {
+    const NACHTRAG_TEXT =
+      "<p>Nachtrag im Text während des Sicherns: Ventil V-7 vorher schließen.</p>";
+    await blattOeffnen();
+    await blattFuellen();
+    await sichern();
+    await titelSetzen(NEU);
+    const vorher = schreibAufrufe().length;
+    bruecke.speichernFesthalten = true;
+    await ueberDateiMenueZumFormular();
+    expect(bruecke.festgehalten).toHaveLength(1);
+    await textErsetzen(NACHTRAG_TEXT);
+
+    await freigeben();
+
+    expect(rueckfragen).toEqual([
+      i18n.t("einstieg.formular.sichernFrage"),
+      i18n.t("einstieg.formular.nachtragFrage"),
+    ]);
+    expect(schreibAufrufe().length).toBe(vorher + 2);
+    expect(String((await entwurfAmServer()).bodyHtml ?? "")).toContain("Ventil V-7");
+    expect(formularTitel()?.value).toBe(NEU);
+  });
+
+  it("N9b · Nachtrag der VERTRAULICHKEITSSTUFE während des Sicherns: zweite Rückfrage, die neue Stufe ist gesichert, das Formular öffnet", async () => {
+    await blattOeffnen();
+    await blattFuellen();
+    await stufeWaehlen("intern");
+    await sichern();
+    expect((await entwurfAmServer()).confidentiality).toBe("intern");
+    await titelSetzen(NEU);
+    const vorher = schreibAufrufe().length;
+    bruecke.speichernFesthalten = true;
+    await ueberDateiMenueZumFormular();
+    expect(bruecke.festgehalten).toHaveLength(1);
+    await stufeWaehlen("vertraulich");
+
+    await freigeben();
+
+    expect(rueckfragen).toEqual([
+      i18n.t("einstieg.formular.sichernFrage"),
+      i18n.t("einstieg.formular.nachtragFrage"),
+    ]);
+    expect(schreibAufrufe().length).toBe(vorher + 2);
+    expect((await entwurfAmServer()).confidentiality).toBe("vertraulich");
+    expect(formularTitel()?.value).toBe(NEU);
+  });
+
+  it("N9c · Nachtrag des BEREICHS während des Sicherns: zweite Rückfrage, der Bereich ist gesichert, das Formular öffnet", async () => {
+    await bereichAnlegen("Technik");
+    await blattOeffnen();
+    await blattFuellen();
+    await sichern();
+    // Ohne Wahl trägt der Server seinen Vorgabebereich — jedenfalls nicht den späteren Nachtrag.
+    expect((await entwurfAmServer()).category).not.toBe("Technik");
+    await titelSetzen(NEU);
+    const vorher = schreibAufrufe().length;
+    bruecke.speichernFesthalten = true;
+    await ueberDateiMenueZumFormular();
+    expect(bruecke.festgehalten).toHaveLength(1);
+    await bereichWaehlen("Technik");
+
+    await freigeben();
+
+    expect(rueckfragen).toEqual([
+      i18n.t("einstieg.formular.sichernFrage"),
+      i18n.t("einstieg.formular.nachtragFrage"),
+    ]);
+    expect(schreibAufrufe().length).toBe(vorher + 2);
+    expect((await entwurfAmServer()).category).toBe("Technik");
+    expect(formularTitel()?.value).toBe(NEU);
+  });
+
   it("N7 · auch in EN und NL steht die Rückfrage in der Sprache der Sitzung", async () => {
     for (const sprache of ["en", "nl"] as const) {
       await i18n.changeLanguage(sprache);
@@ -553,7 +711,120 @@ describe("BEN-1 · das Formular übernimmt den Stand des Blattes oder sagt es (N
       expect(i18n.t("einstieg.formular.nachtragFrage")).not.toBe(
         i18n.getFixedT("de")("einstieg.formular.nachtragFrage"),
       );
+      expect(i18n.t("einstieg.formular.vorschlagOffen")).not.toBe(
+        i18n.getFixedT("de")("einstieg.formular.vorschlagOffen"),
+      );
+      expect(i18n.t("einstieg.formular.vorschlagOffen")).not.toBe(
+        "einstieg.formular.vorschlagOffen",
+      );
     }
+  });
+});
+
+// ================================================================================================
+// BEN-4 (Lauf 3) — Bens Ablauf B4: Blatt füllen und sichern, „KI → Strukturieren", Vorschlag stehen
+// lassen, „Datei → Formular". Gemessen: Zahl der Rückfragen (Bestätigungsfragen UND Meldungen),
+// Zahl der Speicherungen, Endzustand.
+// ================================================================================================
+describe("BEN-4 · ein offener KI-Vorschlag beim Wechsel ins Formular", () => {
+  it("B4 · gesichert + offener Vorschlag → „Datei → Formular“: genau EINE erklärende Meldung, KEINE Speicherung, Vorschlag und Blatt bleiben", async () => {
+    // Bei Ben stimmten drei Zustimmungen drei Speicherungen zu; die vierte Frage lehnte er ab.
+    // Derselbe Schutz hier, damit ein Rückfall messbar endet statt ewig zu laufen.
+    ablehnenAb = 4;
+    await blattOeffnen();
+    await blattFuellen();
+    await sichern();
+    const vorher = schreibAufrufe().length;
+    expect(vorher).toBe(1);
+    await strukturVorschlagErzeugen();
+    expect(schreibAufrufe().length, "Strukturieren hat gesichert").toBe(vorher);
+
+    await ueberDateiMenueZumFormular();
+    // Ohne weitere Eingabe nachlaufen lassen: es darf keine Nachfrage nachkommen.
+    await act(flush);
+    await act(flush);
+
+    expect(rueckfragen, "Bestätigungsfragen ohne neue Eingabe").toEqual([]);
+    expect(meldungen).toEqual([i18n.t("einstieg.formular.vorschlagOffen")]);
+    expect(rueckfragen.length + meldungen.length, "Rückfragen gesamt").toBe(1);
+    expect(schreibAufrufe().length, "Speicherungen ohne neue Eingabe").toBe(vorher);
+    // Endzustand: Vorschlagszustand erklärt — die Meldung nennt „übernehmen oder verwerfen".
+    expect(meldungen[0]).toMatch(/Übernimm oder verwirf den Vorschlag zuerst/);
+    expect(formularTitel()).toBeNull();
+    expect(vorschlagSteht(), "der Vorschlag ging verloren").toBe(true);
+    expect(element('[data-testid="blatt-titel"]', HTMLInputElement).value).toBe(TITEL);
+    expect(await entwurfsTitelAmServer()).toEqual([TITEL]);
+  });
+
+  it("B4b · danach verworfen → „Datei → Formular“: das Formular öffnet ohne Rückfrage und ohne Speicherung mit dem gesicherten Stand", async () => {
+    await blattOeffnen();
+    await blattFuellen();
+    await sichern();
+    await strukturVorschlagErzeugen();
+    await ueberDateiMenueZumFormular();
+    const vorher = schreibAufrufe().length;
+
+    await klick(
+      knopfIn(
+        element('[data-testid="blatt-ki-vorschlag"]', HTMLElement),
+        i18n.t("fd.discardProposal"),
+      ),
+    );
+    expect(vorschlagSteht()).toBe(false);
+    await ueberDateiMenueZumFormular();
+
+    expect(meldungen).toHaveLength(1);
+    expect(rueckfragen).toEqual([]);
+    expect(schreibAufrufe().length).toBe(vorher);
+    expect(formularTitel()?.value).toBe(TITEL);
+  });
+
+  it("B4c · danach übernommen → „Datei → Formular“: eine Sichern-Rückfrage, genau eine Speicherung, das Formular zeigt den übernommenen Stand", async () => {
+    await blattOeffnen();
+    await blattFuellen();
+    await sichern();
+    await strukturVorschlagErzeugen();
+    await ueberDateiMenueZumFormular();
+    const vorher = schreibAufrufe().length;
+
+    await klick(
+      knopfIn(element('[data-testid="blatt-ki-vorschlag"]', HTMLElement), i18n.t("fd.accept")),
+    );
+    expect(vorschlagSteht()).toBe(false);
+    const blattTitel = element('[data-testid="blatt-titel"]', HTMLInputElement).value;
+    await ueberDateiMenueZumFormular();
+
+    expect(meldungen).toHaveLength(1);
+    expect(rueckfragen).toEqual([i18n.t("einstieg.formular.sichernFrage")]);
+    expect(schreibAufrufe().length).toBe(vorher + 1);
+    expect(await entwurfsTitelAmServer()).toEqual([blattTitel]);
+    expect(formularTitel()?.value).toBe(blattTitel);
+  });
+
+  // Tippen in Titel oder Text räumt einen offenen Vorschlag bestehender Bauart ab (`changeTitle` →
+  // `clearStructureState`); die Stufenwahl tut das nicht. Daran misst B4d die Kombination.
+  it("B4d · offener Vorschlag UND ungesicherte Stufe (über „Anhänge verwalten“): dieselbe eine Meldung, nichts gesichert, Stufe und Vorschlag bleiben auf dem Blatt", async () => {
+    await blattOeffnen();
+    await blattFuellen();
+    await stufeWaehlen("intern");
+    await sichern();
+    await strukturVorschlagErzeugen();
+    await stufeWaehlen("vertraulich");
+    expect(vorschlagSteht(), "die Stufenwahl hat den Vorschlag abgeräumt").toBe(true);
+    const vorher = schreibAufrufe().length;
+
+    await ueberAnhaengeZumFormular();
+    await act(flush);
+
+    expect(rueckfragen).toEqual([]);
+    expect(meldungen).toEqual([i18n.t("einstieg.formular.vorschlagOffen")]);
+    expect(schreibAufrufe().length).toBe(vorher);
+    expect(formularTitel()).toBeNull();
+    expect(vorschlagSteht()).toBe(true);
+    expect(
+      element('[data-testid="blatt-werkzeug-vertraulichkeit"]', HTMLButtonElement).textContent,
+    ).toContain(i18n.t("conf.level.vertraulich"));
+    expect((await entwurfAmServer()).confidentiality).toBe("intern");
   });
 });
 

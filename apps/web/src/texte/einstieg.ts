@@ -37,6 +37,8 @@ export default {
       "Das Formular arbeitet mit dem gesicherten Stand. Deine ungesicherten Änderungen jetzt als Entwurf sichern und im Formular weiterarbeiten? Abbrechen: Du bleibst auf dem Blatt, nichts geht verloren.",
     "einstieg.formular.nachtragFrage":
       "Während des Sicherns hast du auf dem Blatt weitergeschrieben. Das Formular kennt nur den gerade gesicherten Stand. Auch die neuen Änderungen sichern und dann ins Formular wechseln? Abbrechen: Du bleibst auf dem Blatt, nichts geht verloren.",
+    "einstieg.formular.vorschlagOffen":
+      "Auf dem Blatt steht noch ein offener KI-Vorschlag. Das Formular kennt ihn nicht, und Sichern übernimmt ihn nicht. Übernimm oder verwirf den Vorschlag zuerst auf dem Blatt, dann wechsle ins Formular. Du bleibst auf dem Blatt; der Vorschlag und dein Text bleiben stehen.",
     "einstieg.formular.ohneSichernFrage":
       "Deine Änderungen auf dem Blatt lassen sich gerade nicht sichern. Das Formular zeigt deshalb den zuletzt gesicherten Stand — oder ein leeres Formular, wenn noch nichts gesichert ist. Dein Blatt bleibt unverändert und ist beim Zurückkehren wieder da. Trotzdem zum Formular wechseln?",
   },
@@ -57,6 +59,8 @@ export default {
       "The form works with the saved state. Save your unsaved changes as a draft now and continue in the form? Cancel: you stay on the sheet, nothing is lost.",
     "einstieg.formular.nachtragFrage":
       "You kept writing on the sheet while it was being saved. The form only knows the state that was just saved. Save the new changes too and then switch to the form? Cancel: you stay on the sheet, nothing is lost.",
+    "einstieg.formular.vorschlagOffen":
+      "There is still an open AI suggestion on the sheet. The form does not know it, and saving does not apply it. Accept or discard the suggestion on the sheet first, then switch to the form. You stay on the sheet; the suggestion and your text remain.",
     "einstieg.formular.ohneSichernFrage":
       "Your changes on the sheet cannot be saved right now. The form therefore shows the last saved state — or an empty form if nothing has been saved yet. Your sheet stays unchanged and is there again when you return. Switch to the form anyway?",
   },
@@ -77,6 +81,8 @@ export default {
       "Het formulier werkt met de opgeslagen stand. Je niet-opgeslagen wijzigingen nu als concept opslaan en in het formulier verdergaan? Annuleren: je blijft op het blad, er gaat niets verloren.",
     "einstieg.formular.nachtragFrage":
       "Je hebt tijdens het opslaan verder geschreven op het blad. Het formulier kent alleen de zojuist opgeslagen stand. Ook de nieuwe wijzigingen opslaan en dan naar het formulier gaan? Annuleren: je blijft op het blad, er gaat niets verloren.",
+    "einstieg.formular.vorschlagOffen":
+      "Er staat nog een open AI-voorstel op het blad. Het formulier kent het niet, en opslaan neemt het niet over. Neem het voorstel eerst over of verwerp het op het blad, en ga dan naar het formulier. Je blijft op het blad; het voorstel en je tekst blijven staan.",
     "einstieg.formular.ohneSichernFrage":
       "Je wijzigingen op het blad kunnen nu niet worden opgeslagen. Het formulier toont daarom de laatst opgeslagen stand — of een leeg formulier als er nog niets is opgeslagen. Je blad blijft ongewijzigd en staat er weer als je terugkeert. Toch naar het formulier gaan?",
   },
