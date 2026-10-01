@@ -11,13 +11,14 @@
 // Gemessen bis über die echte App (`buildApp`): Anfrage → Lauf mit Kosten → Liste, Auswertung,
 // Logzeile. Kein Netz: die Anbieterantwort samt `usage` ist gestellt, kein Schlüsselbund.
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { buildApp, buildServices } from "../../services/app/src/build-app";
+import { buildApp, buildServices, senkeUeberWert } from "../../services/app/src/build-app";
 import { leseZeitraum } from "../../services/app/src/routes/model-runs-routes";
 import {
   InMemoryModelRunRepo,
   type KiLaufLogzeile,
   type ModelRunRecord,
   ModelRunService,
+  type ModelRunVersuch,
   ProtokollModelRunRepo,
   kostenEinesLaufs,
   lesePreisliste,
@@ -45,6 +46,21 @@ function lauf(over: Partial<ModelRunRecord> = {}): ModelRunRecord {
     finishedAt: "2026-09-20T10:00:00.250Z",
     status: "success",
     verbrauch: { eingabeToken: 1000, ausgabeToken: 500, gemeldeteAufrufe: 1 },
+    // Ben R2 B3: die Kosten entstehen je Versuch — der Standardlauf hat genau einen.
+    versuche: [versuch()],
+    ...over,
+  };
+}
+
+function versuch(over: Partial<ModelRunVersuch> = {}): ModelRunVersuch {
+  return {
+    provider: "anthropic:claude-sonnet-4-6",
+    model: "claude-sonnet-4-6",
+    startedAt: "2026-09-20T10:00:00.000Z",
+    dauerMs: 250,
+    ausgang: "erfolg",
+    verbrauch: { eingabeToken: 1000, ausgabeToken: 500, gemeldeteAufrufe: 1 },
+    spanId: "00f067aa0ba902b7",
     ...over,
   };
 }
@@ -69,7 +85,7 @@ const CLOUD_ENV = {
 };
 const EINGABE = "Roher Satz EINGABE_GEHEIM_9c1, der geglättet werden soll.";
 
-async function app(preisliste: string | undefined) {
+async function app(preisliste: string | undefined, kopf: Record<string, string> = {}) {
   vi.stubGlobal(
     "fetch",
     (async () =>
@@ -135,7 +151,7 @@ async function app(preisliste: string | undefined) {
   const antwort = await fastify.inject({
     method: "POST",
     url: "/api/reasoner",
-    headers: admin,
+    headers: { ...admin, ...kopf },
     payload: {
       task: "assist",
       text: EINGABE,
@@ -179,20 +195,81 @@ describe("B3 · die Preisliste des Betreibers", () => {
     });
   });
 
-  it("P3 · keine Kosten ohne Liste, ohne Modell, ohne Verbrauch, ohne Preis — und kein geerbter Preis", () => {
+  it("P3 · keine Kosten ohne Liste, ohne Versuche, ohne Modell/Preis eines Versuchs — und kein geerbter Preis", () => {
     const { preisliste } = lesePreisliste(LISTE);
     expect(kostenEinesLaufs(lauf(), null)).toBeUndefined();
-    expect(kostenEinesLaufs(ohne(lauf(), "model"), preisliste)).toBeUndefined();
+    // Altdatensatz ohne Versuche: wem welcher Verbrauch gehört, ist unbekannt → keine Kosten.
+    expect(kostenEinesLaufs(ohne(lauf(), "versuche"), preisliste)).toBeUndefined();
     expect(kostenEinesLaufs(ohne(lauf(), "verbrauch"), preisliste)).toBeUndefined();
-    expect(kostenEinesLaufs(lauf({ model: "anderes-modell" }), preisliste)).toBeUndefined();
-    expect(kostenEinesLaufs(lauf({ model: "constructor" }), preisliste)).toBeUndefined();
+    const versuchOhneModell = ohne(versuch() as unknown as ModelRunRecord, "model");
+    expect(
+      kostenEinesLaufs(
+        lauf({ versuche: [versuchOhneModell as unknown as ModelRunVersuch] }),
+        preisliste,
+      ),
+    ).toBeUndefined();
+    expect(
+      kostenEinesLaufs(lauf({ versuche: [versuch({ model: "anderes-modell" })] }), preisliste),
+    ).toBeUndefined();
+    expect(
+      kostenEinesLaufs(lauf({ versuche: [versuch({ model: "constructor" })] }), preisliste),
+    ).toBeUndefined();
     const mitProto = lesePreisliste(
       '{"waehrung":"EUR","preisstand":"x","modelle":{"__proto__":{"eingabeJeMillion":1,"ausgabeJeMillion":1}}}',
     );
-    expect(kostenEinesLaufs(lauf({ model: "__proto__" }), mitProto.preisliste)?.betrag).toBe(
-      0.0015,
+    expect(
+      kostenEinesLaufs(lauf({ versuche: [versuch({ model: "__proto__" })] }), mitProto.preisliste)
+        ?.betrag,
+    ).toBe(0.0015);
+    expect(
+      kostenEinesLaufs(lauf({ versuche: [versuch({ model: "toString" })] }), mitProto.preisliste),
+    ).toBeUndefined();
+  });
+
+  it("P4 · Ben R2 B3: zwei Modelle, zwei Preise — jeder Versuch zum Preis SEINES Modells", () => {
+    const { preisliste } = lesePreisliste(
+      JSON.stringify({
+        waehrung: "EUR",
+        preisstand: "s",
+        modelle: {
+          teuer: { eingabeJeMillion: 10, ausgabeJeMillion: 0 },
+          billig: { eingabeJeMillion: 1, ausgabeJeMillion: 0 },
+        },
+      }),
     );
-    expect(kostenEinesLaufs(lauf({ model: "toString" }), mitProto.preisliste)).toBeUndefined();
+    const zweiModelle = lauf({
+      model: "billig",
+      verbrauch: { eingabeToken: 2000, ausgabeToken: 0, gemeldeteAufrufe: 2 },
+      versuche: [
+        versuch({
+          model: "teuer",
+          ausgang: "fehler",
+          verbrauch: { eingabeToken: 1000, ausgabeToken: 0, gemeldeteAufrufe: 1 },
+        }),
+        versuch({
+          model: "billig",
+          verbrauch: { eingabeToken: 1000, ausgabeToken: 0, gemeldeteAufrufe: 1 },
+        }),
+      ],
+    });
+    // 1000 × 10/1e6 + 1000 × 1/1e6 = 0,011 — nicht 2000 × 1/1e6 = 0,002 (Bens Gegenbeleg).
+    expect(kostenEinesLaufs(zweiModelle, preisliste)?.betrag).toBe(0.011);
+    // Fehlt der Preis für EIN Modell, gibt es keine Teilsumme.
+    const ohnePreis = lauf({
+      ...zweiModelle,
+      versuche: [versuch({ model: "unbekannt" }), versuch({ model: "billig" })],
+    });
+    expect(kostenEinesLaufs(ohnePreis, preisliste)).toBeUndefined();
+    // Versuche und Laufsumme passen nicht zusammen → keine Kosten statt einer falschen Zahl.
+    expect(
+      kostenEinesLaufs(
+        lauf({
+          ...zweiModelle,
+          verbrauch: { eingabeToken: 999, ausgabeToken: 0, gemeldeteAufrufe: 2 },
+        }),
+        preisliste,
+      ),
+    ).toBeUndefined();
   });
 });
 
@@ -377,5 +454,77 @@ describe("B3/B5 · über die echte App", () => {
     expect(falsch.statusCode).toBe(400);
     const anonym = await fastify.inject({ method: "GET", url: "/api/model-runs/auswertung" });
     expect(anonym.statusCode).toBe(401);
+  });
+
+  it("R4 · Ben R2 B5: ein eingehender traceparent wird fortgesetzt — Lauf, Versuche und Logzeile tragen ihn", async () => {
+    const TRACE = "4bf92f3577b34da6a3ce929d0e0e4736";
+    const { fastify, admin, logzeilen } = await app(LISTE, {
+      traceparent: `00-${TRACE}-00f067aa0ba902b7-01`,
+    });
+
+    const [gelaufen] = (
+      await fastify.inject({ method: "GET", url: "/api/model-runs", headers: admin })
+    ).json() as ModelRunRecord[];
+    expect(gelaufen?.trace?.traceId).toBe(TRACE);
+    expect(gelaufen?.trace?.spanId).toMatch(/^[0-9a-f]{16}$/);
+    expect(gelaufen?.trace?.parentSpanId).toMatch(/^[0-9a-f]{16}$/);
+    expect(gelaufen?.trace?.requestId).toBeTruthy();
+    expect(gelaufen?.versuche).toHaveLength(1);
+    expect(gelaufen?.versuche?.[0]?.spanId).toMatch(/^[0-9a-f]{16}$/);
+    expect(gelaufen?.versuche?.[0]?.spanId).not.toBe(gelaufen?.trace?.spanId);
+
+    const zeile = JSON.parse(logzeilen.find((z) => z.includes('"ki_lauf"')) as string) as Record<
+      string,
+      unknown
+    >;
+    expect(zeile.traceId).toBe(TRACE);
+    expect(zeile.requestId).toBe(gelaufen?.trace?.requestId);
+    expect(zeile.versuche).toBe(1);
+  });
+
+  it("R5 · ohne (oder mit ungültigem) traceparent entsteht je Anfrage ein eigener Trace", async () => {
+    const a = await app(undefined, {
+      traceparent: "00-00000000000000000000000000000000-00f067aa0ba902b7-01",
+    });
+    const b = await app(undefined);
+    const lies = async (x: typeof a): Promise<ModelRunRecord | undefined> =>
+      (
+        (
+          await x.fastify.inject({ method: "GET", url: "/api/model-runs", headers: x.admin })
+        ).json() as ModelRunRecord[]
+      )[0];
+    const ta = (await lies(a))?.trace?.traceId;
+    const tb = (await lies(b))?.trace?.traceId;
+    expect(ta).toMatch(/^[0-9a-f]{32}$/);
+    expect(tb).toMatch(/^[0-9a-f]{32}$/);
+    expect(ta).not.toBe("00000000000000000000000000000000");
+    expect(ta).not.toBe(tb);
+  });
+
+  it("L1 · die Logbereinigung lässt NUR Trace-Kennungen unter ihren Feldnamen durch", () => {
+    const hex32 = "4bf92f3577b34da6a3ce929d0e0e4736";
+    const bereinigt = senkeUeberWert(
+      {
+        traceId: hex32,
+        spanId: "00f067aa0ba902b7",
+        parentSpanId: "b7ad6b7169203331",
+        anderesFeld: hex32,
+        // Kein Hex in W3C-Form: unter dem Tracenamen trotzdem bereinigt.
+        token: "abcdefghijklmnopqrstuvwxyz0123456789",
+      },
+      {},
+    ) as Record<string, unknown>;
+    expect(bereinigt.traceId).toBe(hex32);
+    expect(bereinigt.spanId).toBe("00f067aa0ba902b7");
+    expect(bereinigt.parentSpanId).toBe("b7ad6b7169203331");
+    expect(bereinigt.anderesFeld).toBe("[redacted]");
+    expect(
+      (
+        senkeUeberWert({ traceId: "geheimes-token-ABCDEFGHIJKLMNOPQRSTUVWXYZ" }, {}) as Record<
+          string,
+          unknown
+        >
+      ).traceId,
+    ).not.toContain("ABCDEFGHIJKLMNOPQRSTUVWXYZ");
   });
 });

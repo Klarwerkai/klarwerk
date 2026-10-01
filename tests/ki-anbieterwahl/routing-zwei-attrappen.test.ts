@@ -2454,13 +2454,13 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
   // Aufnahme gesamt-ki-laufprotokoll (Ben R1): die Freigabe steht im VORSPANN (`aufbau`), also
   // wird jeder Fall einzeln geführt.
   "tests/ki-lauf-protokoll/protokoll-vollstaendig.test.ts": {
-    gesamtboden: 45,
+    gesamtboden: 58,
     vollzaehlig: true,
     faelle: {
       VORSPANN: { boden: 1, freigaben: ["erteileKiFreigabe(reasoner)"] },
       I1: { boden: 4, freigaben: [] },
       I2: { boden: 2, freigaben: [] },
-      I3: { boden: 1, freigaben: [] },
+      I3: { boden: 2, freigaben: [] },
       W1: { boden: 8, freigaben: [] },
       W2: { boden: 6, freigaben: [] },
       W3: { boden: 7, freigaben: [] },
@@ -2470,16 +2470,21 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
       E1: { boden: 2, freigaben: [] },
       E2: { boden: 2, freigaben: [] },
       E3: { boden: 2, freigaben: [] },
+      H1: { boden: 2, freigaben: [] },
+      H2: { boden: 2, freigaben: [] },
+      C1: { boden: 5, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      C2: { boden: 3, freigaben: ["erteileKiFreigabe(reasoner)"] },
     },
   },
   "tests/ki-lauf-protokoll/kosten-und-auswertung.test.ts": {
-    gesamtboden: 57,
+    gesamtboden: 80,
     vollzaehlig: true,
     faelle: {
       VORSPANN: { boden: 1, freigaben: ["erteileKiFreigabe(mutable.reasoner)"] },
       P1: { boden: 4, freigaben: [] },
       P2: { boden: 1, freigaben: [] },
-      P3: { boden: 7, freigaben: [] },
+      P3: { boden: 8, freigaben: [] },
+      P4: { boden: 3, freigaben: [] },
       S1: { boden: 6, freigaben: [] },
       S2: { boden: 2, freigaben: [] },
       A1: { boden: 13, freigaben: [] },
@@ -2487,6 +2492,9 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
       R1: { boden: 11, freigaben: [] },
       R2: { boden: 5, freigaben: [] },
       R3: { boden: 2, freigaben: [] },
+      R4: { boden: 10, freigaben: [] },
+      R5: { boden: 4, freigaben: [] },
+      L1: { boden: 5, freigaben: [] },
     },
   },
   "tests/ki-lauf-protokoll/kapazitaet-hinterlaesst-spur.test.ts": {

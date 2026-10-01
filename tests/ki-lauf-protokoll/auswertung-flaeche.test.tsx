@@ -86,6 +86,9 @@ function auswertung(mitListe: boolean): ModelRunAuswertungAntwort {
 }
 
 const angefragt: string[] = [];
+// Ben R2 B6: schaltet die Auswertungsabfrage auf HTTP 500 (die Laufliste bleibt erreichbar).
+let auswertungScheitert = false;
+let letzterClient: QueryClient | undefined;
 
 function stelleFetch(mitListe: boolean): void {
   vi.stubGlobal(
@@ -94,7 +97,9 @@ function stelleFetch(mitListe: boolean): void {
       const pfad = String(url);
       angefragt.push(pfad);
       const koerper = pfad.includes("/api/model-runs/auswertung")
-        ? auswertung(mitListe)
+        ? auswertungScheitert
+          ? null
+          : auswertung(mitListe)
         : pfad.includes("/api/model-runs")
           ? [MIT_KOSTEN, OHNE_KOSTEN]
           : null;
@@ -125,6 +130,7 @@ afterEach(async () => {
     container.remove();
   }
   angefragt.length = 0;
+  auswertungScheitert = false;
   vi.unstubAllGlobals();
   onlineManager.setOnline(true);
   await i18n.changeLanguage("de");
@@ -136,6 +142,7 @@ async function mounten(): Promise<HTMLDivElement> {
   const root = createRoot(container);
   gemountet.push({ root, container });
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  letzterClient = qc;
   await act(async () => {
     root.render(
       createElement(
@@ -261,5 +268,53 @@ describe("Auswertungskarte: Zeitraum, Kosten, Preisgrundlage", () => {
         expect(i18n.exists(`mrun.task.${art}`, { lng: sprache }), `${sprache}: ${art}`).toBe(true);
       }
     }
+  });
+});
+
+describe("Ben R2 B6: die Auswertung täuscht weder Laden noch Aktualität vor", () => {
+  it("F7 · offline ohne geladene Zahlen: kein „Lädt …“, sondern der Fehlersatz", async () => {
+    stelleFetch(true);
+    onlineManager.setOnline(false);
+    const container = await mounten();
+
+    const karte = container.querySelector<HTMLElement>('[data-testid="mrun-auswertung"]');
+    expect(karte?.textContent).not.toContain(i18n.t("state.loading"));
+    expect(karte?.querySelector('[data-testid="mrun-auswertung-fehler"]')?.textContent).toBe(
+      i18n.t("state.error"),
+    );
+  });
+
+  it("F8 · gescheiterte Auffrischung: die alten Kosten bleiben, aber mit dem Hinweis darauf", async () => {
+    stelleFetch(true);
+    const container = await mounten();
+    const karte = (): HTMLElement =>
+      container.querySelector<HTMLElement>('[data-testid="mrun-auswertung"]') as HTMLElement;
+    expect(karte().querySelector('[data-testid="mrun-auswertung-refresh-error"]')).toBeNull();
+
+    auswertungScheitert = true;
+    await act(async () => {
+      await letzterClient?.refetchQueries({ queryKey: ["model-runs", "auswertung"] });
+      await durchlaufen();
+    });
+
+    expect(karte().textContent).toContain(formatiereKosten(0.0105, "EUR"));
+    expect(
+      karte().querySelector('[data-testid="mrun-auswertung-refresh-error"]')?.textContent,
+    ).toBe(i18n.t("mrun.refreshFailed"));
+  });
+
+  it("F9 · offline MIT geladenen Zahlen: sie bleiben, und die Karte sagt, dass sie nicht frisch sind", async () => {
+    stelleFetch(true);
+    const container = await mounten();
+    await act(async () => {
+      onlineManager.setOnline(false);
+      await durchlaufen();
+    });
+
+    const karte = container.querySelector<HTMLElement>('[data-testid="mrun-auswertung"]');
+    expect(karte?.textContent).toContain(formatiereKosten(0.0105, "EUR"));
+    expect(karte?.querySelector('[data-testid="mrun-auswertung-offline"]')?.textContent).toBe(
+      i18n.t("mrun.offline"),
+    );
   });
 });

@@ -14,8 +14,15 @@
 // Der Modellaufruf geht durch den ECHTEN Chokepoint (`cappedModelClient`), damit `model` und
 // `verbrauch` genau dann entstehen, wenn wirklich ein Modell gearbeitet hat (JOB 3036 R2 / 3074).
 import { describe, expect, it } from "vitest";
-import { InMemoryModelRunRepo, type ModelRunRecord } from "../../services/model-runs";
+import {
+  InMemoryModelRunRepo,
+  type ModelRunRecord,
+  ModelRunService,
+  ProtokollModelRunRepo,
+  lesePreisliste,
+} from "../../services/model-runs";
 import { DeterministicProvider, ModelProvider, Reasoner } from "../../services/reasoner";
+import { openAiCompatibleClient } from "../../services/reasoner/src/model-client";
 import {
   ModelCapacityError,
   cappedModelClient,
@@ -68,6 +75,58 @@ async function aufbau(
   return { reasoner, repo };
 }
 
+// Ben R2 B1: der ECHTE OpenAI-kompatible Client mit gestellter Fetch-Antwort — der Anbieter
+// zitiert die Anfrage in seiner Fehlermeldung zurück. Kein Netz, kein Schlüssel.
+function zitierenderAnbieter(koerper: (anfrage: string) => string): ModelClient {
+  const fetchFn = (async (_url: unknown, init?: { body?: unknown }) => {
+    const anfrage = String(init?.body ?? "");
+    return {
+      ok: false,
+      status: 400,
+      text: async () => koerper(anfrage),
+      json: async () => JSON.parse(koerper(anfrage)),
+    } as unknown as Response;
+  }) as unknown as typeof fetch;
+  return cappedModelClient(
+    openAiCompatibleClient({
+      baseUrl: "http://127.0.0.1:9/v1",
+      model: "gpt-test",
+      name: "anthropic:gpt-test",
+      fetchFn,
+    }),
+    { rejectsConfidential: true },
+  );
+}
+
+// Ben R2 B3: ein Modell mit eigenem Namen, das Verbrauch meldet und dann antwortet oder scheitert.
+function preisModell(name: string, ein: number, antwort: string | Error): ModelClient {
+  return cappedModelClient(
+    {
+      name: `${name.startsWith("lokal") ? "lokal" : "anthropic"}:${name}`,
+      model: name,
+      complete: async () => {
+        meldeModellVerbrauch(ein, 0);
+        if (antwort instanceof Error) {
+          throw antwort;
+        }
+        return antwort;
+      },
+    },
+    { rejectsConfidential: !name.startsWith("lokal") },
+  );
+}
+
+const ZWEI_PREISE = lesePreisliste(
+  JSON.stringify({
+    waehrung: "EUR",
+    preisstand: "r2",
+    modelle: {
+      teuer: { eingabeJeMillion: 10, ausgabeJeMillion: 0 },
+      "lokal-billig": { eingabeJeMillion: 1, ausgabeJeMillion: 0 },
+    },
+  }),
+).preisliste;
+
 async function einzigerLauf(repo: InMemoryModelRunRepo): Promise<ModelRunRecord> {
   const laeufe = await repo.recent(10);
   expect(laeufe).toHaveLength(1);
@@ -102,7 +161,7 @@ describe("Ben R1 B1: kein Anfrage- oder Antwortinhalt im Laufdatensatz", () => {
     expect(lauf.error).toContain("Error (unknown), Meldung nicht protokolliert");
   });
 
-  it("I3 · GEGENPROBE: die selbstgebaute HTTP-Meldung samt Anbieterbegründung bleibt wörtlich", async () => {
+  it("I3 · HTTP-Fehler: Status und eigener Teil bleiben, die Anbieterbegründung nicht (Ben R2 B1)", async () => {
     const { reasoner, repo } = await aufbau(
       modell(async () => {
         throw new ModelHttpError("Modell-API antwortete mit 429: rate limit", 429, "rate limit");
@@ -112,7 +171,10 @@ describe("Ben R1 B1: kein Anfrage- oder Antwortinhalt im Laufdatensatz", () => {
     await reasoner.structure("Pumpe schmieren.", "de");
 
     const lauf = await einzigerLauf(repo);
-    expect(lauf.error).toContain("Modell-API antwortete mit 429: rate limit");
+    expect(lauf.error).toContain(
+      "Modell-API antwortete mit 429 (Anbieterbegründung nicht protokolliert)",
+    );
+    expect(lauf.error).not.toContain("rate limit");
   });
 });
 
@@ -237,5 +299,89 @@ describe("Ben R1 B4: Art und Anzahl des Erzeugten, nie der Inhalt", () => {
     const lauf = await einzigerLauf(repo);
     expect(lauf.status).toBe("error");
     expect(Object.hasOwn(lauf, "erzeugt")).toBe(false);
+  });
+});
+
+describe("Ben R2 B1: kein Anbietertext im Laufdatensatz", () => {
+  it("H1 · HTTP 400 zitiert die Anfrage (JSON-Körper): die Marke steht nirgends im Lauf", async () => {
+    const MARKE = "BEN_SYNTHETISCHE_ANFRAGE_42";
+    const client = zitierenderAnbieter((anfrage) =>
+      JSON.stringify({
+        error: {
+          message: `Invalid request: ${anfrage.includes(MARKE) ? MARKE : "?"}`,
+          code: "invalid_request_error",
+        },
+      }),
+    );
+    const { reasoner, repo } = await aufbau(client);
+
+    await reasoner.structure(`${MARKE} Pumpe schmieren.`, "de");
+
+    const lauf = await einzigerLauf(repo);
+    expect(JSON.stringify(lauf)).not.toContain(MARKE);
+    expect(lauf.error).toContain("antwortete mit 400 (Anbieterbegründung nicht protokolliert)");
+  });
+
+  it("H2 · HTTP 400 mit rohem Textkörper, der die Anfrage enthält: ebenfalls nicht im Lauf", async () => {
+    const MARKE = "BEN_ROHTEXT_ANFRAGE_43";
+    const client = zitierenderAnbieter(
+      (anfrage) => `bad request near: ${anfrage.includes(MARKE) ? MARKE : "?"}`,
+    );
+    const { reasoner, repo } = await aufbau(client);
+
+    await reasoner.structure(`${MARKE} Pumpe schmieren.`, "de");
+
+    const lauf = await einzigerLauf(repo);
+    expect(JSON.stringify(lauf)).not.toContain(MARKE);
+    expect(lauf.error).toContain("antwortete mit 400");
+  });
+});
+
+describe("Ben R2 B3: Kosten je Versuch zum Preis seines Modells", () => {
+  it("C1 · teures Modell scheitert nach 1000 Token, billiges antwortet mit 1000: 0,011 EUR, nicht 0,002", async () => {
+    const inner = new InMemoryModelRunRepo();
+    const protokoll = new ProtokollModelRunRepo(inner, ZWEI_PREISE);
+    const reasoner = new Reasoner(
+      new ModelProvider(preisModell("teuer", 1000, new Error("Modell-API antwortete mit 500"))),
+      new DeterministicProvider(),
+      protokoll,
+      undefined,
+      new ModelProvider(preisModell("lokal-billig", 1000, "Ein ganz anderer, geglätteter Satz.")),
+    );
+    await erteileKiFreigabe(reasoner);
+
+    await reasoner.assistText("Roher Satz, der geglättet werden soll.", "de");
+
+    const [lauf] = await inner.recent(10);
+    expect(lauf?.status).toBe("success");
+    expect(lauf?.verbrauch?.eingabeToken).toBe(2000);
+    expect(lauf?.versuche?.map((v) => [v.model, v.ausgang, v.verbrauch?.eingabeToken])).toEqual([
+      ["teuer", "fehler", 1000],
+      ["lokal-billig", "erfolg", 1000],
+    ]);
+    expect(lauf?.kosten).toEqual({ betrag: 0.011, waehrung: "EUR", preisstand: "r2" });
+
+    const auswertung = await new ModelRunService({ repo: protokoll }).auswertung(
+      "2000-01-01T00:00:00.000Z",
+      "2100-01-01T00:00:00.000Z",
+    );
+    expect(auswertung.kosten).toEqual([{ waehrung: "EUR", betrag: 0.011, laeufe: 1 }]);
+  });
+
+  it("C2 · Laufbuch-Weg (conflict): der Versuch trägt Modell und Verbrauch, die Kosten folgen daraus", async () => {
+    const inner = new InMemoryModelRunRepo();
+    const reasoner = new Reasoner(
+      new ModelProvider(preisModell("teuer", 1000, KONFLIKT_JSON)),
+      new DeterministicProvider(),
+      new ProtokollModelRunRepo(inner, ZWEI_PREISE),
+    );
+    await erteileKiFreigabe(reasoner);
+
+    await reasoner.judgeConflictOutcome("Kern A", "Kern B", "de", false);
+
+    const [lauf] = await inner.recent(10);
+    expect(lauf?.versuche).toHaveLength(1);
+    expect(lauf?.versuche?.[0]?.model).toBe("teuer");
+    expect(lauf?.kosten?.betrag).toBe(0.01);
   });
 });

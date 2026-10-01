@@ -21,6 +21,9 @@ export type {
   ModelRunKosten,
   ModelRunErzeugnis,
   ModelRunErzeugnisArt,
+  // Ben R2 B3/B5: Versuche und Trace eines Laufs.
+  ModelRunVersuch,
+  ModelRunTrace,
   // mega61 Block F: die maschinenlesbare Kennzeichnung erzeugter Ausgaben (KI-VO Art. 50 Abs. 2).
   AiGeneratedMark,
   AiOutputMode,
@@ -47,3 +50,11 @@ export {
   type ModelRunKostensumme,
   type ModelRunAufgabenWerte,
 } from "./src/auswertung";
+// Ben R2 B5: Tracing (W3C Trace Context) für KI-Läufe.
+export {
+  mitKiTrace,
+  traceKontextAus,
+  traceFuerLauf,
+  neueSpanId,
+  type KiTraceKontext,
+} from "./src/trace";

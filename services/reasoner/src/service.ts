@@ -5,9 +5,12 @@ import {
   type ModelRunRepo,
   type ModelRunStatus,
   type ModelRunTask,
+  type ModelRunVersuch,
   // mega61 Block F: die maschinenlesbare Kennzeichnung erzeugter Ausgaben (KI-VO Art. 50 Abs. 2).
   aiGeneratedMark,
+  neueSpanId,
   sanitizeModelRunContext,
+  traceFuerLauf,
 } from "../../model-runs";
 import {
   ConfidentialEgressError,
@@ -242,14 +245,32 @@ function probeUrsache(
 // auf 500 Zeichen entfernt ihn nicht.
 //
 // DIE REGEL IST EINE ERLAUBNISLISTE, KEINE SUCHE NACH INHALT: wörtlich übernommen wird nur die
-// Meldung der Fehlertypen, deren Text der eigene Code aus Metadaten baut (Zeitlimit, HTTP-Status
-// samt Anbieterbegründung, leere Antwort, Auslastung, Abschaltung, Vertraulichkeitssperre). Für
-// jeden anderen Fehler steht nur sein Typname und die gemessene Fehlerklasse — die Meldung selbst
-// wird nicht übernommen, weil niemand ihr ansehen kann, ob sie Inhalt trägt.
+// Meldung der Fehlertypen, deren Text der eigene Code aus Metadaten baut (Zeitlimit, leere Antwort,
+// Auslastung, Abschaltung, Vertraulichkeitssperre). Für jeden anderen Fehler steht nur sein
+// Typname und die gemessene Fehlerklasse — die Meldung selbst wird nicht übernommen, weil niemand
+// ihr ansehen kann, ob sie Inhalt trägt.
+//
+// Ben R2 B1 — DIE HTTP-MELDUNG IST NUR ZUR HÄLFTE EIGENER TEXT. `ModelHttpError` hängt an
+// „<Bezeichnung> antwortete mit <Status>" die Begründung des ANBIETERS an (`anbieterGrund`, JOB
+// 3122). Diesen Text schreibt der fremde Dienst, und er darf die Anfrage zurückzitieren — gemessen
+// von Ben mit einer synthetischen Anfrage, die über einen 400er-Körper in `error` landete. Ins
+// Protokoll geht deshalb nur der eigene Teil samt Status; dass eine Begründung vorlag, wird gesagt,
+// ihr Wortlaut nicht. Für die Bedienung bleibt sie dort, wo sie schon immer stand (Probe-Ergebnis,
+// Fehlermeldung an den Aufrufer) — nur nicht in der Ablage.
+function httpProtokollMeldung(err: ModelHttpError): string {
+  const eigenerTeil = /^(.{0,80}? antwortete mit \d{3})/u.exec(err.message)?.[1];
+  const kern = eigenerTeil ?? `ModelHttpError (http ${err.status})`;
+  return err.anbieterGrund === undefined
+    ? kern
+    : `${kern} (Anbieterbegründung nicht protokolliert)`;
+}
+
 function protokollMeldung(err: unknown): string {
+  if (err instanceof ModelHttpError) {
+    return httpProtokollMeldung(err);
+  }
   if (
     err instanceof ModelTimeoutError ||
-    err instanceof ModelHttpError ||
     err instanceof ModelEmptyResponseError ||
     err instanceof ModelCapacityError ||
     err instanceof KiAbgeschaltetFehler ||
@@ -320,6 +341,27 @@ function erzeugtFeld(erzeugt: ModelRunErzeugnis | undefined): { erzeugt?: ModelR
   return erzeugt ? { erzeugt } : {};
 }
 
+// Aufnahme gesamt-ki-laufprotokoll (Ben R2 B3/B5): EIN Versuch eines Laufs — sein Anbieter, das
+// WIRKLICH gerufene Modell, SEIN Verbrauch, Dauer, Ausgang und ein eigener Span. Die Kosten werden
+// später je Versuch mit dem Preis seines Modells berechnet (`kostenEinesLaufs`).
+function versuchAus(
+  provider: ReasonerProvider,
+  spur: ModellAufrufSpur,
+  beginnMs: number,
+  ausgang: ModelRunVersuch["ausgang"],
+): ModelRunVersuch {
+  const modell = spur.gerufen ? provider.modelName?.() : undefined;
+  return {
+    provider: provider.name,
+    ...(modell ? { model: modell } : {}),
+    startedAt: new Date(beginnMs).toISOString(),
+    dauerMs: Math.max(0, Date.now() - beginnMs),
+    ausgang,
+    ...(spur.verbrauch ? { verbrauch: spur.verbrauch } : {}),
+    spanId: neueSpanId(),
+  };
+}
+
 // ================================================================================================
 // Aufnahme gesamt-ki-laufprotokoll (R-0612/R-1666, Ben R1 B2) — DAS LAUFBUCH DER WEGE OHNE runTask.
 // ================================================================================================
@@ -335,17 +377,22 @@ class Laufbuch {
   provider: string | undefined;
   versuche = 0;
   readonly fehler: string[] = [];
+  // Ben R2 B3/B5: jeder Versuch mit eigenem Modell, Verbrauch und Span.
+  readonly versuchsliste: ModelRunVersuch[] = [];
 
   async versuch<T>(provider: ReasonerProvider, aufruf: () => Promise<T>): Promise<T> {
     const spur: ModellAufrufSpur = { gerufen: false };
+    const beginn = Date.now();
     this.versuche += 1;
     this.provider = provider.name;
     try {
       const ergebnis = await mitModellAufrufSpur(spur, aufruf);
       this.uebernimm(spur, provider);
+      this.versuchsliste.push(versuchAus(provider, spur, beginn, "erfolg"));
       return ergebnis;
     } catch (err) {
       const modell = this.uebernimm(spur, provider);
+      this.versuchsliste.push(versuchAus(provider, spur, beginn, "fehler"));
       this.fehler.push(`${provider.name}${modell ? ` (${modell})` : ""}: ${protokollMeldung(err)}`);
       throw err;
     }
@@ -1371,11 +1418,16 @@ export class Reasoner {
     // Anbieterbegründung) — nie Prompt- oder Antworttext. Und gekappt, weil ein Fehlerkörper auch
     // eine ganze Seite sein kann.
     const versuchsfehler: string[] = [];
+    // Ben R2 B3/B5: jeder Versuch mit SEINEM Modell und SEINEM Verbrauch — die Grundlage der
+    // Kostenrechnung je Modellpreis und die Spans des Laufs. Genau ein Eintrag je Versuch, gesetzt
+    // an derselben Stelle wie die Verbrauchsübernahme (und damit ebenso nur einmal).
+    const versuche: ModelRunVersuch[] = [];
     for (let i = 0; i < chain.length; i++) {
       const provider = chain[i];
       if (!provider) {
         continue;
       }
+      const versuchBeginn = Date.now();
       // JOB 3036 R2: die Spur GENAU DIESES Versuchs. Neu je Versuch, damit ein Lauf, der erst die
       // Cloud befragt und dann lokal antwortet, im Datensatz das Modell trägt, das geantwortet hat.
       //
@@ -1396,16 +1448,17 @@ export class Reasoner {
       // gab. Der Merker ist die Antwort und nicht etwa ein `finally`: der Erfolgszweig BRAUCHT den
       // Wert bereits vor `recordRun`, ein `finally` liefe erst danach.
       let uebernommen = false;
-      const uebernimmVerbrauch = (): void => {
+      const uebernimmVerbrauch = (ausgang: ModelRunVersuch["ausgang"]): void => {
         if (uebernommen) {
           return;
         }
         uebernommen = true;
         laufVerbrauch = verbrauchSumme(laufVerbrauch, spur.verbrauch);
+        versuche.push(versuchAus(provider, spur, versuchBeginn, ausgang));
       };
       try {
         const result = await mitModellAufrufSpur(spur, () => run(provider));
-        uebernimmVerbrauch();
+        uebernimmVerbrauch("erfolg");
         // JOB 3036: `model` kommt aus dem Provider selbst, NICHT aus `provider.name` (das ist der
         // Anbieter und steht bereits in `provider`).
         //
@@ -1436,6 +1489,7 @@ export class Reasoner {
             ...(versuchsfehler.length > 0
               ? { error: Reasoner.versuchsfehlerZeile(versuchsfehler) }
               : {}),
+            versuche,
           },
           context,
         );
@@ -1453,7 +1507,7 @@ export class Reasoner {
         // nie erteilt); `model` nennt nur ein WIRKLICH gerufenes — aus diesem Versuch (`extract`
         // ruft mehrfach) oder einem früheren Glied. Ein Schreibfehler darf die 503 nicht verdecken.
         if (err instanceof ModelCapacityError) {
-          uebernimmVerbrauch();
+          uebernimmVerbrauch("fehler");
           const versuchsModell = spur.gerufen ? provider.modelName?.() : undefined;
           const modell = versuchsModell ?? lastModel;
           versuchsfehler.push(
@@ -1471,6 +1525,7 @@ export class Reasoner {
               ...(modell ? { model: modell } : {}),
               ...(laufVerbrauch ? { verbrauch: laufVerbrauch } : {}),
               error: Reasoner.versuchsfehlerZeile(versuchsfehler),
+              versuche,
             },
             context,
           ).catch(() => undefined);
@@ -1494,7 +1549,7 @@ export class Reasoner {
         // nicht verworfen — ein Modellaufruf, der eine Antwort ohne Antwortinhalt zurückbekommt,
         // ist der teure Fall, nicht der billige. Ist der Verbrauch oben schon übernommen worden
         // (der Modellaufruf gelang, erst das Protokollschreiben scheiterte), tut diese Zeile nichts.
-        uebernimmVerbrauch();
+        uebernimmVerbrauch("fehler");
       }
     }
     // mega26 Block A: der FEHLGESCHLAGENE Lauf trägt denselben Kontext wie der erfolgreiche —
@@ -1523,6 +1578,7 @@ export class Reasoner {
             : lastError === undefined
               ? "unknown"
               : protokollMeldung(lastError),
+        versuche,
       },
       context,
     );
@@ -1568,6 +1624,7 @@ export class Reasoner {
       ...(lb.verbrauch ? { verbrauch: lb.verbrauch } : {}),
       ...(error ? { error } : {}),
       ...(ausgang.status === "success" ? erzeugtFeld(ausgang.erzeugt) : {}),
+      versuche: lb.versuchsliste,
     }).catch(() => undefined);
   }
 
@@ -1586,6 +1643,8 @@ export class Reasoner {
       error?: string;
       // Aufnahme gesamt-ki-laufprotokoll: Art und Anzahl des Erzeugten (nur im Erfolg).
       erzeugt?: ModelRunErzeugnis;
+      // Ben R2 B3/B5: die Versuche des Laufs (Modell, Verbrauch, Span je Versuch).
+      versuche?: ModelRunVersuch[];
     },
     // mega26 Block A: der Laufkontext des Aufrufers. Wird hier — und NUR hier — in den Datensatz
     // geschrieben. `sanitizeModelRunContext` ist die Struktursperre gegen Inhalt: was keine Kennung
@@ -1610,6 +1669,9 @@ export class Reasoner {
       ...(extra.model ? { model: extra.model } : {}),
       ...(extra.verbrauch ? { verbrauch: extra.verbrauch } : {}),
       ...(extra.erzeugt ? { erzeugt: extra.erzeugt } : {}),
+      ...(extra.versuche && extra.versuche.length > 0 ? { versuche: [...extra.versuche] } : {}),
+      // Ben R2 B5: der Trace des Laufs — im Kontext einer HTTP-Anfrage deren Trace (W3C).
+      trace: traceFuerLauf(),
       ...(runContext.actor ? { actor: runContext.actor } : {}),
       ...(runContext.subject ? { subject: runContext.subject } : {}),
     });
@@ -2399,6 +2461,7 @@ export class Reasoner {
     // JOB 3036 R2 / JOB 3074: die Spur GENAU DIESES Laufs. Sie entscheidet, ob `model` und
     // `verbrauch` in den Datensatz dürfen — nur ein wirklich erfolgter Aufruf trägt sie ein.
     const spur: ModellAufrufSpur = { gerufen: false };
+    const versuchBeginn = Date.now();
     let ergebnis: ImportCriteriaResult;
     try {
       const raw = await mitModellAufrufSpur(spur, () =>
@@ -2433,6 +2496,15 @@ export class Reasoner {
         ...(spur.verbrauch ? { verbrauch: spur.verbrauch } : {}),
         ...(ergebnis.fallbackReason ? { error: ergebnis.fallbackReason } : {}),
         ...(ergebnis.fallbackReason === null ? erzeugtFeld(erzeugnisAus("select", ergebnis)) : {}),
+        // Ben R2 B3/B5: der eine Versuch dieses Laufs (Grundlage der Kosten, eigener Span).
+        versuche: [
+          versuchAus(
+            model,
+            spur,
+            versuchBeginn,
+            ergebnis.fallbackReason === null ? "erfolg" : "fehler",
+          ),
+        ],
       },
     ).catch(() => undefined);
     return ergebnis;

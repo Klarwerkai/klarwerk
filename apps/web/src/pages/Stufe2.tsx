@@ -1865,6 +1865,18 @@ function ModelRunAuswertungCard(): JSX.Element {
       bis: bis.toISOString(),
     });
   };
+  // Ben R2 B6 — DIESELBE ZUSTANDSREGEL WIE DIE LAUFKARTE DARÜBER (JOB 3044 R2/R3, s. dort): ohne
+  // Netz startet React Query die Abfrage gar nicht (`fetchStatus: "paused"`, `isLoading` bleibt
+  // wahr) — ein „Lädt …" wäre dann ein vorgetäuschter Fortschritt. Und eine gescheiterte
+  // Auffrischung auf vorhandenen Zahlen ist ein ZUSÄTZLICHER Hinweis: die alten Kosten bleiben
+  // stehen, aber sie geben sich nicht als aktuell aus. Das Netz wird abonniert, nicht aus der
+  // Abfrage erraten.
+  const online = useNetzOnline();
+  const stoerung: "keine" | "offline" | "fehler" = !online
+    ? "offline"
+    : abfrage.isError
+      ? "fehler"
+      : "keine";
   const daten = abfrage.data;
   const a = daten?.auswertung;
   const grundlage = daten?.preisgrundlage;
@@ -1887,13 +1899,26 @@ function ModelRunAuswertungCard(): JSX.Element {
         </select>
       </label>
       {a === undefined || grundlage === undefined ? (
-        abfrage.isError ? (
-          <p className="text-[13px] text-danger">{t("state.error")}</p>
+        // Noch keine Zahlen für diesen Zeitraum: nur hier ersetzt ein Zustandstext die Karte, und
+        // offline zählt wie ein Fehler — es steht nichts an, worauf zu warten wäre.
+        stoerung !== "keine" ? (
+          <p className="text-[13px] text-danger" data-testid="mrun-auswertung-fehler">
+            {t("state.error")}
+          </p>
         ) : (
           <p className="text-[13px] text-muted">{t("state.loading")}</p>
         )
       ) : (
         <div className="space-y-2 font-mono text-[11px] text-muted-2">
+          {stoerung === "offline" ? (
+            <p className="text-[12px] text-muted" data-testid="mrun-auswertung-offline">
+              {t("mrun.offline")}
+            </p>
+          ) : stoerung === "fehler" ? (
+            <p className="text-[12px] text-danger" data-testid="mrun-auswertung-refresh-error">
+              {t("mrun.refreshFailed")}
+            </p>
+          ) : null}
           <div className="flex flex-wrap gap-x-4 gap-y-1">
             <span>{t("mrun.total", { n: a.laeufe })}</span>
             <span>{t("mrun.errors", { n: a.fehler })}</span>

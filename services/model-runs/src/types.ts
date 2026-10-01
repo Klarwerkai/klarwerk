@@ -225,6 +225,43 @@ export interface ModelRunErzeugnis {
   anzahl: number;
 }
 
+// ================================================================================================
+// Aufnahme gesamt-ki-laufprotokoll (R-0705/R-1621, Ben R2 B3) — DIE VERSUCHE EINES LAUFS.
+// ================================================================================================
+//
+// Ein Lauf ist EIN Datensatz (JOB 3074 R2), aber er kann mehrere Glieder der Kette versuchen
+// (Cloud scheitert → lokal antwortet → deterministischer Rückfall). Jeder Versuch steht hier mit
+// SEINEM Anbieter, SEINEM Modell und SEINEM gemeldeten Verbrauch — genau das braucht die
+// Kostenrechnung: zwei Modelle mit verschiedenen Preisen dürfen nicht mit dem Preis des letzten
+// bewertet werden. Nur Metadaten; der Ausgang ist „erfolg" oder „fehler", der Grund steht
+// inhaltsfrei in `error` des Laufs.
+//
+// `spanId` ist die Kennung des Versuchs im Trace des Laufs (s. ModelRunTrace).
+export interface ModelRunVersuch {
+  provider: string;
+  /** Nur, wenn in diesem Versuch wirklich ein Modell gerufen wurde (Regel aus JOB 3036 R2). */
+  model?: string;
+  startedAt: string;
+  dauerMs: number;
+  ausgang: "erfolg" | "fehler";
+  /** Nur, wenn die Modell-API in diesem Versuch einen Verbrauch gemeldet hat (Regel aus JOB 3074). */
+  verbrauch?: ModelRunVerbrauch;
+  spanId: string;
+}
+
+// Aufnahme gesamt-ki-laufprotokoll (R-2071, Ben R2 B5) — DER TRACE EINES LAUFS (W3C Trace Context).
+//
+// `traceId` verbindet den Lauf mit der HTTP-Anfrage, die ihn auslöste (aus einem eingehenden
+// `traceparent`-Kopf übernommen oder je Anfrage neu erzeugt), `requestId` mit den Logzeilen dieser
+// Anfrage, `spanId` ist der Lauf selbst, `parentSpanId` der Span der Anfrage. Läufe ohne Anfrage
+// (Hintergrundarbeit) bekommen einen eigenen Trace. Kennungen, nie Inhalt.
+export interface ModelRunTrace {
+  traceId: string;
+  spanId: string;
+  parentSpanId?: string;
+  requestId?: string;
+}
+
 export interface ModelRunRecord {
   id: string;
   task: ModelRunTask;
@@ -273,6 +310,9 @@ export interface ModelRunRecord {
   kosten?: ModelRunKosten;
   // Aufnahme gesamt-ki-laufprotokoll: Art und Anzahl des Erzeugten (s. ModelRunErzeugnis).
   erzeugt?: ModelRunErzeugnis;
+  // Aufnahme gesamt-ki-laufprotokoll (Ben R2 B3/B5): die Versuche des Laufs und sein Trace.
+  versuche?: ModelRunVersuch[];
+  trace?: ModelRunTrace;
   // mega26 Block A (additiv, optional): Laufkontext. Altdatensätze ohne diese Felder bleiben
   // uneingeschränkt gültig — der Lesepfad kennt keine Pflicht auf ihnen.
   actor?: string;

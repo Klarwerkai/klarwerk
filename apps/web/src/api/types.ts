@@ -279,6 +279,25 @@ export interface ModelRunErzeugnis {
   anzahl: number;
 }
 
+// Ben R2 B3/B5: Versuche (je Modell eigener Verbrauch, eigener Span) und Trace eines Laufs.
+// Spiegel von `ModelRunVersuch`/`ModelRunTrace` in `services/model-runs/src/types.ts`.
+export interface ModelRunVersuch {
+  provider: string;
+  model?: string;
+  startedAt: string;
+  dauerMs: number;
+  ausgang: "erfolg" | "fehler";
+  verbrauch?: ModelRunVerbrauch;
+  spanId: string;
+}
+
+export interface ModelRunTrace {
+  traceId: string;
+  spanId: string;
+  parentSpanId?: string;
+  requestId?: string;
+}
+
 // Aufnahme gesamt-ki-laufprotokoll (V9, R-2071): Antwort von `GET /api/model-runs/auswertung`.
 export interface ModelRunAufgabenWerte {
   laeufe: number;
@@ -342,6 +361,8 @@ export interface ModelRunRecord {
   verbrauch?: ModelRunVerbrauch;
   kosten?: ModelRunKosten;
   erzeugt?: ModelRunErzeugnis;
+  versuche?: ModelRunVersuch[];
+  trace?: ModelRunTrace;
 }
 
 export type EvidenceKind = "source" | "attachment";

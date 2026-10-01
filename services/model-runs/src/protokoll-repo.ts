@@ -29,6 +29,13 @@ export interface KiLaufLogzeile {
   kosten?: number;
   waehrung?: string;
   erzeugt?: string;
+  // Ben R2 B5: Trace-Kennungen und Zahl der Versuche — so lässt sich die Logzeile der Anfrage
+  // (requestId) und dem Trace (traceId) zuordnen.
+  traceId?: string;
+  spanId?: string;
+  parentSpanId?: string;
+  requestId?: string;
+  versuche?: number;
 }
 
 export function kiLaufLogzeile(lauf: ModelRunRecord): KiLaufLogzeile {
@@ -50,6 +57,15 @@ export function kiLaufLogzeile(lauf: ModelRunRecord): KiLaufLogzeile {
       : {}),
     ...(lauf.kosten ? { kosten: lauf.kosten.betrag, waehrung: lauf.kosten.waehrung } : {}),
     ...(lauf.erzeugt ? { erzeugt: `${lauf.erzeugt.anzahl} ${lauf.erzeugt.art}` } : {}),
+    ...(lauf.trace
+      ? {
+          traceId: lauf.trace.traceId,
+          spanId: lauf.trace.spanId,
+          ...(lauf.trace.parentSpanId ? { parentSpanId: lauf.trace.parentSpanId } : {}),
+          ...(lauf.trace.requestId ? { requestId: lauf.trace.requestId } : {}),
+        }
+      : {}),
+    ...(lauf.versuche ? { versuche: lauf.versuche.length } : {}),
   };
 }
 

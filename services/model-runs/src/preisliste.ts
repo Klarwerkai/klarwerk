@@ -95,28 +95,60 @@ function runde(betrag: number): number {
   return Math.round(betrag * 1e6) / 1e6;
 }
 
+function preisFuer(preisliste: Preisliste, modell: string): ModellPreis | undefined {
+  // Nur eigene Einträge: ein Modellname wie `constructor` darf keinen geerbten Wert treffen.
+  return Object.hasOwn(preisliste.modelle, modell) ? preisliste.modelle[modell] : undefined;
+}
+
 /**
- * Die Kosten eines Laufs — oder `undefined`, wenn sie sich nicht ehrlich berechnen lassen
- * (kein Verbrauch, kein Modell, keine Liste, kein Preis für dieses Modell).
+ * Die Kosten eines Laufs — oder `undefined`, wenn sie sich nicht ehrlich berechnen lassen.
+ *
+ * Ben R2 B3: GERECHNET WIRD JE VERSUCH, MIT DEM PREIS SEINES EIGENEN MODELLS. Bis Runde 2 wurde der
+ * über alle Versuche addierte Verbrauch mit dem Preis des zuletzt antwortenden Modells bewertet —
+ * eine gescheiterte teure Cloud-Anfrage vor einer billigen lokalen Antwort war damit zu billig.
+ *
+ * Keine Kosten (statt einer Teilsumme), wenn
+ *   · keine Preisliste hinterlegt ist,
+ *   · der Lauf keine Versuche führt (Altdatensatz: wem welcher Verbrauch gehört, ist unbekannt),
+ *   · kein Versuch Verbrauch gemeldet hat,
+ *   · ein Versuch mit Verbrauch kein Modell oder kein Preis für sein Modell hat,
+ *   · die Summe der Versuche nicht der Verbrauchssumme des Laufs entspricht.
+ * Eine Teilsumme sähe aus wie die Kosten des Laufs und wäre zu niedrig.
  */
 export function kostenEinesLaufs(
-  lauf: { model?: string; verbrauch?: ModelRunVerbrauch },
+  lauf: Pick<ModelRunRecord, "versuche" | "verbrauch">,
   preisliste: Preisliste | null,
 ): ModelRunKosten | undefined {
-  if (!preisliste || !lauf.model || !lauf.verbrauch) {
+  if (!preisliste || !lauf.versuche) {
     return undefined;
   }
-  // Nur eigene Einträge: ein Modellname wie `constructor` darf keinen geerbten Wert treffen.
-  const preis = Object.hasOwn(preisliste.modelle, lauf.model)
-    ? preisliste.modelle[lauf.model]
-    : undefined;
-  if (!preis) {
+  const mitVerbrauch = lauf.versuche.filter((v) => v.verbrauch !== undefined);
+  if (mitVerbrauch.length === 0) {
     return undefined;
   }
-  const betrag =
-    (lauf.verbrauch.eingabeToken * preis.eingabeJeMillion +
-      lauf.verbrauch.ausgabeToken * preis.ausgabeJeMillion) /
-    1_000_000;
+  let betrag = 0;
+  let eingabe = 0;
+  let ausgabe = 0;
+  for (const versuch of mitVerbrauch) {
+    const verbrauch = versuch.verbrauch as ModelRunVerbrauch;
+    const preis = versuch.model ? preisFuer(preisliste, versuch.model) : undefined;
+    if (!preis) {
+      return undefined;
+    }
+    eingabe += verbrauch.eingabeToken;
+    ausgabe += verbrauch.ausgabeToken;
+    betrag +=
+      (verbrauch.eingabeToken * preis.eingabeJeMillion +
+        verbrauch.ausgabeToken * preis.ausgabeJeMillion) /
+      1_000_000;
+  }
+  if (
+    !lauf.verbrauch ||
+    lauf.verbrauch.eingabeToken !== eingabe ||
+    lauf.verbrauch.ausgabeToken !== ausgabe
+  ) {
+    return undefined;
+  }
   return {
     betrag: runde(betrag),
     waehrung: preisliste.waehrung,

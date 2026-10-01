@@ -138,6 +138,8 @@ import {
   PgModelRunRepo,
   ProtokollModelRunRepo,
   lesePreisliste,
+  mitKiTrace,
+  traceKontextAus,
 } from "../../model-runs";
 import {
   ConsoleMailer,
@@ -2048,9 +2050,24 @@ export function senkeUeberWert(
   }
   const ergebnis: Record<string, unknown> = {};
   for (const [schluessel, inhalt] of Object.entries(wert)) {
-    ergebnis[schluessel] = senkeUeberWert(inhalt, env, tiefe + 1);
+    ergebnis[schluessel] = istTraceKennung(schluessel, inhalt)
+      ? inhalt
+      : senkeUeberWert(inhalt, env, tiefe + 1);
   }
   return ergebnis;
+}
+
+// Aufnahme gesamt-ki-laufprotokoll (Ben R2 B5, Tracing): Regel 4 von `sanitizeLogText` liest jedes
+// Wort ab 24 Zeichen als Token — eine W3C-Trace-Kennung (32 Hexzeichen) wurde damit zu `[redacted]`,
+// und die Logzeile ließ sich ihrem Trace nicht mehr zuordnen. Die Ausnahme ist so eng wie möglich:
+// NUR unter genau diesen drei Feldnamen und NUR in der W3C-Form (16 oder 32 Kleinbuchstaben-Hex).
+// Derselbe Wert unter jedem anderen Namen und jeder andere Wert unter diesen Namen bleibt der
+// Bereinigung unterworfen (tests/ki-lauf-protokoll/kosten-und-auswertung.test.ts, L1).
+const TRACE_FELDER: ReadonlySet<string> = new Set(["traceId", "spanId", "parentSpanId"]);
+const TRACE_KENNUNG = /^(?:[0-9a-f]{16}|[0-9a-f]{32})$/;
+
+function istTraceKennung(schluessel: string, inhalt: unknown): boolean {
+  return TRACE_FELDER.has(schluessel) && typeof inhalt === "string" && TRACE_KENNUNG.test(inhalt);
 }
 
 /**
@@ -2167,6 +2184,15 @@ export function buildApp(
   app.setErrorHandler(modelBusyErrorHandler);
   // Aufnahme gesamt-ki-laufprotokoll (R-2071): je KI-Lauf eine strukturierte Logzeile `ki_lauf`
   // (nur Metadaten, s. `kiLaufLogzeile`) über den App-Logger mit seinen Redaktionsregeln.
+  // Ben R2 B5 (R-2071, Tracing): je Anfrage ein Trace-Kontext nach W3C Trace Context — ein
+  // eingehender `traceparent` wird fortgesetzt, sonst entsteht ein neuer Trace. Jeder KI-Lauf der
+  // Anfrage trägt `traceId`, seinen Span, den Span der Anfrage und die Anfragekennung (`request.id`,
+  // dieselbe wie in den Anfrage-Logzeilen). Geöffnet im `preHandler`, also NACH dem Lesen des
+  // Körpers: die Stream-Ereignisse des Körpers laufen sonst außerhalb des Kontexts, und der Handler
+  // samt aller asynchronen Fortsetzungen läuft hier sicher darin.
+  app.addHook("preHandler", (request, _reply, done) => {
+    mitKiTrace(traceKontextAus(request.headers.traceparent, request.id), done);
+  });
   // Optional aufgerufen: Prüfaufbauten ersetzen `modelRuns` teils durch eine schmale Attrappe nur
   // mit `recent` (tests/deploy-health-commit) — die App muss auch dann entstehen.
   services.modelRuns.logAn?.((zeile) => app.log.info(zeile, "ki_lauf"));

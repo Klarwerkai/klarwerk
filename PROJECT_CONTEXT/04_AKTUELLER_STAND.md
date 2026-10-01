@@ -7,7 +7,7 @@
 > `PROJECT_CONTEXT/13_ASSISTENT_ZWISCHENBERICHT.md` (Rohstand: `docs/boss-assistant/`).
 > Live-Version dort bestätigt: **v1.0.0-beta.1.4**.
 
-## 01.10.2026 — Aufnahme „KI-Laufprotokoll“ (Runde 1 + Nacharbeit Runde 2)
+## 01.10.2026 — Aufnahme „KI-Laufprotokoll“ (Runde 1 + Nacharbeit Runden 2 und 3)
 
 - Abgleich aller zugeordneten Anliegen (R-0612 … V9, MR-SELECT-1) mit Fassungen und Belegen:
   `tests/ki-lauf-protokoll/README.md`. MR-SELECT-1 ist seit JOB 3127 (1.0.0-beta.1.140) geliefert,
@@ -23,8 +23,13 @@
   „KI-Auswertung (Zeitraum)“ (7/30/90 Tage, Kosten je Währung) über `GET /api/model-runs/auswertung`.
 - **Preise setzt der Betreiber** über `KLARWERK_KI_PREISLISTE` (JSON, im Startvertrag). Der Code
   liefert keine Preise mit. **Entscheidung Pedi offen:** welche Preise, Währung und Stand.
-- Offen: Tracing/Prometheus, Verknüpfung erzeugter Gegenstände mit späteren Entwürfen/KOs,
-  Anzeige des Fehlergrunds. Nicht geprüft: echte Modell-API, PostgreSQL, Browser.
+- Runde 3 (Bens R2-Befunde):
+  - HTTP-Fehler ohne Anbietertext im Protokoll.
+  - `versuche` je Lauf (Modell, Verbrauch, Span); Kosten je Versuch zum Preis seines Modells.
+  - Tracing nach W3C Trace Context (`trace` am Lauf, Kennungen in der Logzeile).
+  - Die Auswertungskarte behandelt Offline und gescheiterte Auffrischung.
+- Offen: Export an einen Trace-/Metrik-Sammler, Verknüpfung erzeugter Gegenstände mit späteren
+  Entwürfen/KOs, Anzeige des Fehlergrunds. Nicht geprüft: echte Modell-API, PostgreSQL, Browser.
 
 ## 01.10.2026 — Erstnutzer-Hürden U2/U3 im Browser (Revision 9)
 
