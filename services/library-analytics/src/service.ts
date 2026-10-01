@@ -342,6 +342,24 @@ function kandidatErzeugtWissensobjekt(candidate: ImportCandidate): boolean {
   return !candidate.duplicate && candidate.dublettenbefund?.ergebnis !== "pruefung_nicht_moeglich";
 }
 
+// Lauf gesamt-import-adoption:2 (Bens R3-2) — DER BEFUND EINER VON DER RECOVERY VOLLENDETEN ANLAGE.
+//
+// Die Recovery vollendet eine Annahme, deren Objekt schon steht (Stempel `importCandidateId`), deren
+// Endstatus aber fehlt. Der bei der Annahme neu erhobene Befund ist mit dem abgebrochenen Lauf
+// verloren; bis hierher übernahm die Recovery deshalb den Stand vom EINREIHEN — und ein wirklich
+// angelegtes Objekt blieb als Dublette eines längst abgelehnten Kandidaten dokumentiert.
+//
+// DER BEFUND IST ABER ABLEITBAR, NICHT GERATEN. Ein Stempel-Objekt entsteht nur, wenn der Kandidat
+// bei der Entscheidung `kandidatErzeugtWissensobjekt` erfüllte. Erfüllt ihn schon der gespeicherte
+// Stand, galt dieser (kein Port oder Anker-Strang: die Annahme erhebt nichts neu) — `undefined`,
+// nichts wird überschrieben. Erfüllt er ihn NICHT, kann das Objekt nur aus der Neuerhebung auf dem
+// Textweg stammen (`befundBeiAnnahme`), und deren einziger anlegender Ausgang ist `keine`.
+function befundNachVollendeterAnlage(candidate: ImportCandidate): AnnahmeBefund | undefined {
+  return kandidatErzeugtWissensobjekt(candidate)
+    ? undefined
+    : { duplicate: false, dublettenbefund: { ergebnis: "keine" } };
+}
+
 // JOB 3050 — DER BEFUND EINES EINZELNEN KANDIDATEN. ZWEI PÄSSE, DIESELBE REIHENFOLGE WIE
 // `importJson`: erst der billige exakte Schlüssel (fängt die häufige Wiedereinspielung ohne jede
 // Rechnung ab und trägt den Treffer mit), dann für alles Übrige der injizierte Port.
@@ -1284,9 +1302,10 @@ export class LibraryService {
           ...reviewedStamp,
         };
       } else {
-        // Befund UND Anlage als EIN Schritt: auf dem Textweg läuft er hinter dem Annahme-Riegel
-        // (`nacheinander`, Bens N1), damit zwei überlappende Annahmen gleichen Inhalts nicht beide
-        // den noch leeren Bestand lesen und beide anlegen.
+        // Befund UND Anlage als EIN Schritt hinter der Annahme-Sperre des Kandidatenbestands
+        // (Bens N1, R3-1): zwei überlappende Annahmen lesen nie beide den noch leeren Bestand —
+        // weder gleichen Inhalts (Textweg) noch derselben Quelle (Herkunftsanker), und auch nicht
+        // aus zwei Dienstinstanzen mit gemeinsamem Bestand.
         const annehmen = async (): Promise<ClaimResolution> => {
           neuerBefund = await this.befundBeiAnnahme(candidate, pruefeDublette);
           if (neuerBefund) {
@@ -1315,9 +1334,10 @@ export class LibraryService {
             ...reviewedStamp,
           };
         };
-        resolution = this.annahmeAufTextweg(candidate, pruefeDublette)
-          ? await this.nacheinander(annehmen)
-          : await annehmen();
+        resolution = await this.candidates.annahmeSperre(
+          { id, opId, leaseMs: REVIEW_CLAIM_LEASE_MS },
+          annehmen,
+        );
       }
       // SCRUM-157: Endstatus/koId/Note (+ bereinigtes Item, 515) persistieren — atomar über den
       // opId-CAS (kein stiller Verlust, kein Fremd-Overwrite).
@@ -1573,8 +1593,9 @@ export class LibraryService {
         // WP-SHIP8-CLOSE-8 (bens GELB-1): der Beleg-Payload (inkl. Recovery-Kennzeichnung) wird
         // EINMAL gebaut und reist auch in der vorbeugenden Markierung mit — ein späterer Retry
         // schreibt den Beleg mit EXAKT dieser Kennzeichnung, nichts geht beim Nachzug verloren.
+        const befund = befundNachVollendeterAnlage(candidate);
         const recoveryPayload: Record<string, unknown> = {
-          duplicate: candidate.duplicate,
+          duplicate: befund?.duplicate ?? candidate.duplicate,
           koId: stamped.id,
           recovered: true,
           recoveredBy: "system",
@@ -1583,6 +1604,7 @@ export class LibraryService {
         const resolved = await this.candidates.resolveClaim(candidate.id, opId, {
           status: "angenommen",
           koId: stamped.id,
+          ...(befund ?? {}),
           reviewedBy: reviewer,
           reviewedAt: new Date(this.now()).toISOString(),
           reviewedAction: "accept",
@@ -1681,37 +1703,22 @@ export class LibraryService {
     };
   }
 
-  // Stellt die Annahme dieses Kandidaten die Textfrage neu (und läuft darum hinter dem Riegel)?
-  // Nein beim Anker-Strang (dort entscheidet der Herkunftsanker in `acceptToKo`) und ohne Port.
+  // Stellt die Annahme dieses Kandidaten die Textfrage neu? Nein beim Anker-Strang (dort
+  // entscheidet der Herkunftsanker in `acceptToKo`) und ohne Port.
+  //
+  // Lauf gesamt-import-adoption R3 (Bens N1) / :2 (Bens R3-1) — DIE REIHENFOLGE DER ANNAHMEN.
+  // Zwei gleichzeitige Annahmen lasen denselben noch leeren Bestand und legten beide an. Befund
+  // und Anlage JEDER Annahme laufen darum hinter `CandidateRepo.annahmeSperre` (repo.ts, Kopf von
+  // `AnnahmeKette`): jeder Schritt wartet, bis der vorige fertig ist (auch wenn er warf), und sieht
+  // dessen Objekt. EIN Riegel für alle und nicht je Inhalt: die Dublettenfrage ist eine
+  // Ähnlichkeit, kein Schlüssel — nur eine vollständige Reihenfolge schliesst den Doppeltreffer
+  // aus. Die Sperre sitzt im Bestand, nicht am Dienst: in Runde 3 galt sie je Dienstinstanz und
+  // nur auf dem Textweg, und genau dort hat Ben zwei Objekte gemessen.
   private annahmeAufTextweg(
     candidate: ImportCandidate,
     pruefeDublette: DublettenPruefung | undefined,
   ): boolean {
     return pruefeDublette !== undefined && !(this.externalUpsert && candidate.item.externalId);
-  }
-
-  // ==============================================================================================
-  // Lauf gesamt-import-adoption R3 (Bens N1) — DER ANNAHME-RIEGEL.
-  // ==============================================================================================
-  //
-  // Zwei gleichzeitige Annahmen gleichen Inhalts lasen denselben noch leeren Bestand und legten
-  // beide an. Befund und Anlage einer Textweg-Annahme laufen darum NACHEINANDER: jeder Schritt
-  // wartet, bis der vorige fertig ist (auch wenn er warf), und sieht damit dessen Objekt.
-  //
-  // WARUM EIN RIEGEL FÜR ALLE UND NICHT JE INHALT: die Dublettenfrage ist eine Ähnlichkeit, kein
-  // Schlüssel — zwei „verschiedene" Einträge können einander treffen. Nur eine vollständige
-  // Reihenfolge schliesst das aus. Der Preis ist gering: eine Annahme ist ein menschlicher Klick,
-  // ohne Modellaufruf, und die Erkennung danach liegt ausserhalb des Riegels (Route).
-  //
-  // EHRLICHE GRENZE: der Riegel gilt je Dienstinstanz, also je Prozess. Laufen mehrere
-  // App-Prozesse gegen dieselbe Datenbank, sehen sie einander nicht; dafür bräuchte der Textweg
-  // eine Sperre in der Datenhaltung.
-  private annahmeKette: Promise<unknown> = Promise.resolve();
-
-  private nacheinander<T>(schritt: () => Promise<T>): Promise<T> {
-    const lauf = this.annahmeKette.then(schritt);
-    this.annahmeKette = lauf.catch(() => undefined);
-    return lauf;
   }
 
   // Die Anker der Objekte im Papierkorb, erster Träger gewinnt. `null` heisst „nicht lesbar" und

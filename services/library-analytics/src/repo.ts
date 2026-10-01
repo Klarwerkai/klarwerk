@@ -89,6 +89,69 @@ export interface CandidateRepo {
   // Ein verschwundener Kandidat ist hier KEIN Fehler (Cleanup darf gewinnen) — der Beleg selbst
   // ist zu diesem Zeitpunkt bereits über recordOnce gesichert bzw. exactly-once nachziehbar.
   clearAuditPending(id: string, eventId: string): Promise<boolean>;
+  // Lauf gesamt-import-adoption:2 (Bens R3-1): DIE ANNAHME-SPERRE. Befund und Anlage einer
+  // Annahme laufen NACHEINANDER — über ALLE Dienstinstanzen, die diesen Kandidatenbestand teilen,
+  // und für JEDEN Annahmeweg (Textweg UND Herkunftsanker). Begründung am Kopf von
+  // `AnnahmeKette` unten. Ein werfender Schritt gibt die Sperre frei; sein Fehler kommt durch.
+  // Die Sperre hängt am Claim des Halters: wird dieser Claim von fremder Hand abgeschlossen
+  // (Recovery nach Lease-Ablauf), ist auch die Sperre gebrochen.
+  annahmeSperre<T>(halter: AnnahmeHalter, schritt: () => Promise<T>): Promise<T>;
+}
+
+// Der Claim, unter dem eine Annahme die Sperre hält, und die Lease, nach der er als tot gilt.
+export interface AnnahmeHalter {
+  id: string;
+  opId: string;
+  leaseMs: number;
+}
+
+// ================================================================================================
+// Lauf gesamt-import-adoption:2 (Bens R3-1) — DIE ANNAHME-SPERRE GEHÖRT ZUM BESTAND, NICHT ZUM DIENST.
+// ================================================================================================
+//
+// WAS FALSCH WAR. Runde 3 serialisierte Annahmen über eine Promise-Kette AM DIENST, und nur auf
+// dem Textweg. Zwei Lücken, beide von Ben ausgeführt belegt:
+//   (a) Der Anker-Weg (Upsert-Schalter an, Eintrag mit externalId) lief ungeschützt: zwei
+//       gleichzeitig angenommene Fassungen derselben Quelle sahen beide keinen Anker und legten
+//       zwei Objekte an — schon innerhalb EINER Dienstinstanz.
+//   (b) Zwei Dienstinstanzen mit gemeinsamem Bestand (in Produktion: zwei Prozesse, eine
+//       Datenbank) sahen die Kette des jeweils anderen nicht.
+// DIE ANTWORT. Die Sperre sitzt im Kandidatenbestand — dem Ort, den alle Instanzen teilen — und
+// umfasst jede Annahme. InMemory: eine Kette am Repo-Objekt. Postgres: eine transaktionsgebundene
+// Advisory-Sperre (`repo-pg.ts`), davor dieselbe Kette im Prozess, damit je Prozess höchstens EINE
+// Verbindung auf die Sperre wartet und die Anlage selbst nie mangels freier Verbindung hängt.
+//
+// DIE SPERRE LEBT NICHT LÄNGER ALS DER CLAIM IHRES HALTERS. Ein Halter, der hängt (nicht stirbt),
+// hielte sonst JEDE weitere Annahme auf — auch die, mit der ein Reviewer nach Ablauf der Lease den
+// von der Recovery freigegebenen Kandidaten erneut annimmt. Schliesst jemand den Claim des Halters
+// ab (`brich`, aus `resolveClaim` — der Halter selbst tut das erst NACH seinem Schritt), läuft der
+// Nächste los. Der abgelöste Halter läuft weiter, aber seine späten Schreibversuche sind wie bisher
+// gefenced: Kandidaten-CAS auf seine alte opId und der DB-unique Kandidatenstempel.
+export class AnnahmeKette {
+  private kette: Promise<unknown> = Promise.resolve();
+  private readonly brechbar = new Map<string, () => void>();
+
+  nacheinander<T>(halter: AnnahmeHalter, schritt: () => Promise<T>): Promise<T> {
+    const schluessel = `${halter.id}\u0000${halter.opId}`;
+    let brechen: () => void = () => undefined;
+    const gebrochen = new Promise<void>((r) => {
+      brechen = r;
+    });
+    const lauf = this.kette.then(async () => {
+      this.brechbar.set(schluessel, brechen);
+      try {
+        return await schritt();
+      } finally {
+        this.brechbar.delete(schluessel);
+      }
+    });
+    this.kette = Promise.race([lauf.catch(() => undefined), gebrochen]);
+    return lauf;
+  }
+
+  brich(id: string, opId: string): void {
+    this.brechbar.get(`${id}\u0000${opId}`)?.();
+  }
 }
 
 // WP-SHIP8-CLOSE (bens F2): ein bedingter Lösch-Auftrag — id + der erwartete (bestätigte) Status.
@@ -257,6 +320,11 @@ export function sameOpenCandidateSource(a: ImportCandidate, b: ImportCandidate):
 export class InMemoryCandidateRepo implements CandidateRepo {
   // Map bewahrt die Einfügereihenfolge (wie die bisherige Array-Queue).
   private readonly items = new Map<string, ImportCandidate>();
+  private readonly annahmen = new AnnahmeKette();
+
+  annahmeSperre<T>(halter: AnnahmeHalter, schritt: () => Promise<T>): Promise<T> {
+    return this.annahmen.nacheinander(halter, schritt);
+  }
 
   insert(candidate: ImportCandidate): Promise<void> {
     this.items.set(candidate.id, candidate);
@@ -353,6 +421,9 @@ export class InMemoryCandidateRepo implements CandidateRepo {
     candidate.claimedAt = undefined;
     candidate.claimedBy = undefined;
     candidate.claimedAction = undefined;
+    // Bens R3-1: hielt dieser Claim noch die Annahme-Sperre, ist er jetzt von fremder Hand
+    // abgeschlossen — die Sperre fällt mit ihm (Kopf von `AnnahmeKette`).
+    this.annahmen.brich(id, opId);
     return Promise.resolve(candidate);
   }
 

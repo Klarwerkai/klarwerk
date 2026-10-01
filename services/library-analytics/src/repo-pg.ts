@@ -1,5 +1,7 @@
 import type { Pool } from "pg";
 import {
+  type AnnahmeHalter,
+  AnnahmeKette,
   type CandidateRepo,
   type ClaimResolution,
   type ExternalSourceRepo,
@@ -220,8 +222,63 @@ interface CandidateRow {
   data: ImportCandidate;
 }
 
+// Lauf gesamt-import-adoption:2 (Bens R3-1): der Schlüssel der Annahme-Sperre (Begründung am Kopf
+// von `AnnahmeKette`, repo.ts). Advisory-Sperren teilen einen datenbankweiten Zahlenraum ohne
+// Namen; diese Zahl ist hier einmal vergeben (vgl. `SPERRSCHLUESSEL_BESTANDSRESET`, db-tx).
+const SPERRSCHLUESSEL_IMPORT_ANNAHME = 3087000001;
+
+// TRANSAKTIONSGEBUNDEN und WARTEND: die Sperre fällt beim Transaktionsende serverseitig — auch
+// wenn der Prozess mitten in der Annahme stirbt —, und eine zweite Annahme wartet statt
+// abgewiesen zu werden (eine Annahme ist ein menschlicher Klick von Sekundenbruchteilen).
+const SQL_ANNAHME_SPERRE = `SELECT pg_advisory_xact_lock(${SPERRSCHLUESSEL_IMPORT_ANNAHME})`;
+
+// DIE SPERRE ÜBERLEBT DIE LEASE NICHT (Kopf von `AnnahmeKette`, repo.ts). Während der Schritt auf
+// anderen Verbindungen arbeitet, ist die Sperr-Transaktion „idle in transaction"; hängt der Halter
+// länger als die Lease seines Claims, beendet der Server diese Sitzung, und mit ihr fällt die
+// Sperre — dieselbe Frist, nach der die Recovery den Claim freigibt.
+function sqlSperrdauer(leaseMs: number): string {
+  return `SET LOCAL idle_in_transaction_session_timeout = ${Math.max(1, Math.trunc(leaseMs))}`;
+}
+
 export class PgCandidateRepo implements CandidateRepo {
+  private readonly annahmen = new AnnahmeKette();
+
   constructor(private readonly pool: Pool) {}
+
+  // Die Sperr-Transaktion trägt NUR die Sperre: der Schritt schreibt über seine eigenen
+  // Verbindungen (Wissensobjekt-Dienst), seine Wirkung hängt also nicht an diesem COMMIT. Darum
+  // ist ein scheiterndes COMMIT/ROLLBACK kein Fehler des Schritts — die Verbindung wird dann
+  // verworfen, und mit ihrer Sitzung fällt die Sperre.
+  annahmeSperre<T>(halter: AnnahmeHalter, schritt: () => Promise<T>): Promise<T> {
+    return this.annahmen.nacheinander(halter, async () => {
+      const client = await this.pool.connect();
+      let verwerfen = false;
+      const abschliessen = (anweisung: "COMMIT" | "ROLLBACK") =>
+        client.query(anweisung).catch(() => {
+          verwerfen = true;
+        });
+      try {
+        await client.query("BEGIN");
+        await client.query(sqlSperrdauer(halter.leaseMs));
+        await client.query(SQL_ANNAHME_SPERRE);
+      } catch (fehler) {
+        // Ohne Sperre läuft der Schritt nicht — sonst wäre die Reihenfolge nur behauptet.
+        await abschliessen("ROLLBACK");
+        client.release(verwerfen);
+        throw fehler;
+      }
+      try {
+        const ergebnis = await schritt();
+        await abschliessen("COMMIT");
+        return ergebnis;
+      } catch (fehler) {
+        await abschliessen("ROLLBACK");
+        throw fehler;
+      } finally {
+        client.release(verwerfen);
+      }
+    });
+  }
 
   async insert(candidate: ImportCandidate): Promise<void> {
     await this.pool.query("INSERT INTO import_candidates(id,data) VALUES($1,$2)", [
@@ -326,7 +383,12 @@ export class PgCandidateRepo implements CandidateRepo {
       "UPDATE import_candidates SET data = (data - 'opId' - 'claimedAt' - 'claimedBy' - 'claimedAction') || $3::jsonb WHERE id=$1 AND data->>'status'='in_bearbeitung' AND data->>'opId'=$2 RETURNING data",
       [id, opId, JSON.stringify(patch)],
     );
-    return res.rows[0]?.data;
+    const abgeschlossen = res.rows[0]?.data;
+    if (abgeschlossen) {
+      // Bens R3-1: hielt dieser Claim im Prozess noch die Annahme-Sperre, fällt sie mit ihm.
+      this.annahmen.brich(id, opId);
+    }
+    return abgeschlossen;
   }
 
   // WP-SHIP8-CLOSE-7 (bens ROT-1): BEDINGTES Entfernen der auditPending-Markierung als EIN

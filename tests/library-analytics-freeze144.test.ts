@@ -145,6 +145,10 @@ const WIDERRUFENE_FREIGABEN: readonly string[] = [
   "FREEZE-144/JOB3424-20260909/repo",
   "FREEZE-144/JOB3424-20260909/repo-pg",
   "FREEZE-144/JOB3050-20260904/service-test",
+  // LAUF gesamt-import-adoption:2 (Bens R3-1): verbraucht. Diese zwei Freigaben autorisierten den
+  // Stand OHNE die Annahme-Sperre im Kandidatenbestand; ihre Nachfolgerinnen stehen am Eintrag.
+  "FREEZE-144/GIA-R2-20260930/repo",
+  "FREEZE-144/GIA-R2-20260930/repo-pg",
 ];
 
 const ERWARTETE_ANZAHL = 6;
@@ -300,10 +304,17 @@ const FREEZE_MANIFEST: readonly FreezeEintrag[] = [
     // Dublettenfrage am heutigen Bestand neu und persistiert den Befund IM SELBEN opId-CAS wie den
     // Endstatus. Claim, Lease und Idempotenz sind unverändert. Sollhash UND Freigabe in EINEM
     // Änderungssatz, die alte in WIDERRUFENE_FREIGABEN.
-    hash: "3926fec3a64bb0169a4b7d0a044e6cd60aed970dc122b4ee7c841a85a278e172",
+    //
+    // LAUF gesamt-import-adoption:2 · AUSGEWIESENE ÄNDERUNG (Bens R3-1): `CandidateRepo` trägt die
+    // neue Methode `annahmeSperre(halter, schritt)` samt Typ `AnnahmeHalter`; neu ist die Klasse
+    // `AnnahmeKette` (Reihenfolge der Annahmen, gebrochen, sobald der Claim des Halters von fremder
+    // Hand abgeschlossen wird). `InMemoryCandidateRepo` implementiert die Sperre und bricht sie in
+    // `resolveClaim`. Claim-CAS, Lease, Idempotenzschlüssel und alle übrigen Felder sind
+    // unverändert. Sollhash UND Freigabe in EINEM Änderungssatz, die alte in WIDERRUFENE_FREIGABEN.
+    hash: "0cd7ea00e6be8d7f8cdbbd7a8f2e65d4ee0328dc66d6d79cd95a8007d0e45757",
     freigabe: {
-      id: "FREEZE-144/GIA-R2-20260930/repo",
-      autorisiertHash: "3926fec3a64bb0169a4b7d0a044e6cd60aed970dc122b4ee7c841a85a278e172",
+      id: "FREEZE-144/GIA2-R1-20261001/repo",
+      autorisiertHash: "0cd7ea00e6be8d7f8cdbbd7a8f2e65d4ee0328dc66d6d79cd95a8007d0e45757",
     },
   },
   {
@@ -323,10 +334,18 @@ const FREEZE_MANIFEST: readonly FreezeEintrag[] = [
     // Spiegel der InMemory-Fassung in `repo.ts`. KEINE DDL-Änderung, kein neuer Index, keine
     // Migration (die Felder leben im `data`-jsonb wie alle übrigen). Sollhash UND Freigabe in
     // EINEM Änderungssatz, die alte in WIDERRUFENE_FREIGABEN.
-    hash: "cfa990583ffb26d1195f3342b43f20d60764f6dbdaa81060aba591a02be138e7",
+    //
+    // LAUF gesamt-import-adoption:2 · AUSGEWIESENE ÄNDERUNG (Bens R3-1): `PgCandidateRepo` trägt
+    // `annahmeSperre` — eine transaktionsgebundene Advisory-Sperre auf eigener Verbindung
+    // (`pg_advisory_xact_lock`, Lebensdauer per `SET LOCAL idle_in_transaction_session_timeout` an
+    // die Claim-Lease gebunden), davor die Prozess-Kette aus `repo.ts`. `resolveClaim` bricht nach
+    // gelungenem CAS die Prozess-Kette eines abgelösten Halters. KEINE DDL-Änderung, kein Index,
+    // keine Migration. Sollhash UND Freigabe in EINEM Änderungssatz, die alte in
+    // WIDERRUFENE_FREIGABEN.
+    hash: "ba170d87fd93138b7147116b9c5db3db93252ec52ae0e44ee7d6f030767f9c47",
     freigabe: {
-      id: "FREEZE-144/GIA-R2-20260930/repo-pg",
-      autorisiertHash: "cfa990583ffb26d1195f3342b43f20d60764f6dbdaa81060aba591a02be138e7",
+      id: "FREEZE-144/GIA2-R1-20261001/repo-pg",
+      autorisiertHash: "ba170d87fd93138b7147116b9c5db3db93252ec52ae0e44ee7d6f030767f9c47",
     },
   },
   {
