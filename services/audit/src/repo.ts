@@ -212,6 +212,23 @@ export class InMemoryAuditRepo implements AuditRepo {
     return Promise.resolve();
   }
 
+  // Auftrag gesamt-dubletten-rueckzug (Runde 2, BEN-R3-1): nimmt den LETZTEN Eintrag zurück, wenn
+  // er die Nummer `seq` trägt — die Rückstellung eines gescheiterten Vorgangs ohne Datenbank
+  // (services/app/src/speicher-vorgang.ts), in PostgreSQL übernimmt das ROLLBACK. Nur am Ende der
+  // Kette: ein Eintrag mitten darin liesse `prevHash` des Nachfolgers ins Leere zeigen. Steht
+  // `seq` nicht am Ende, wirft die Methode und ändert nichts.
+  verwerfen(seq: number): void {
+    const letzter = this.entries.at(-1);
+    if (!letzter || letzter.seq !== seq) {
+      throw new Error(`Audit-Eintrag ${seq} ist nicht der letzte — Rückstellung abgelehnt.`);
+    }
+    this.entries.pop();
+    this.bySeq.delete(seq);
+    if (letzter.eventId) {
+      this.eventIds.delete(letzter.eventId);
+    }
+  }
+
   // Synchron geprüft UND vermerkt — zwei parallele Nachzüge, die beide einen leeren Read sahen,
   // schreiben trotzdem exakt EINEN Eintrag (der zweite Aufruf ist ein ehrlicher No-op).
   appendOnce(entry: AuditEntry, _tx?: TxContext): Promise<boolean> {

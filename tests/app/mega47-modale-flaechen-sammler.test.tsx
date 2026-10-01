@@ -4005,8 +4005,24 @@ describe("JOB 1181 · Klassenbindungen: aufgelöst oder gemeldet, kein dritter Z
     // Tönen sind. Den Ton wegzulassen wäre keine Lösung, sondern eine Unwahrheit: „wird gerade
     // aufgefrischt" ist keine Warnung, „ohne Netzverbindung nicht aktualisiert" und „Aktualisierung
     // fehlgeschlagen" sind eine. Es fällt keine bestehende Bindung weg, und keine ist verschoben.
+    // FE-001 (ARBEITSANLEITUNGEN VERSTÄNDLICH UND BEDIENBAR): von 224 auf 226. GENAU ZWEI Bindungen
+    // kommen dazu, gemessen an diesem Arbeitsbaum (der Sammler meldete `expected 226 to be 224`;
+    // die zwei Einträge wurden einzeln ausgegeben und nicht gerechnet):
+    //
+    //     + components/gesamtanweisung/BausteinAufnahme.tsx — `w-full … ${aktiv ? "border-ink/40
+    //           bg-hairline-soft" : "border-hairline bg-surface"}` (der gewählte Suchtreffer ist
+    //       hervorgehoben; `aria-pressed` trägt dieselbe Aussage für Hilfstechnik)
+    //     + components/gesamtanweisung/LesestandAnsicht.tsx — `text ? "text-[14px] … text-text" :
+    //           HINWEIS` (eine beschriebene Kopfangabe steht als Lesetext, eine leere als leiser
+    //       Hinweis „Noch nicht beschrieben.")
+    //
+    // WARUM NICHT AUFLÖSBAR GESCHRIEBEN (Auflage aus JOB 3267): dieselbe Lage wie bei JOB 4293 R3 —
+    // die Bedingung selbst ist das Unauflösbare. Auflösbar wäre nur, je zwei Knoten mit demselben
+    // Inhalt zu führen (Treffer-Knopf samt `data-ko`, Kopfangabe samt `dd`); die Zustände teilen
+    // sich den Knoten, weil sie dieselbe Aussage in zwei Tönen sind. Keine bestehende Bindung fällt
+    // weg oder ist verschoben.
     expect(UNAUFGELOEST.length, "es gibt heute unauflösbare Bindungen — das ist der Befund").toBe(
-      224,
+      226,
     );
     for (const b of UNAUFGELOEST) {
       expect(b.datei, "Meldung ohne Datei").toMatch(/^apps\/web\/src\/.+\.tsx?$/);
@@ -4188,10 +4204,28 @@ describe("JOB 1181 · A17-Form 4a: modulübergreifende Auflösung der tragenden 
     // gemeinsame Baustein von Seite und Tutorial) und wird von `pages/Ask.tsx` für die
     // Einstufungs-Etiketten von dort gelesen. Dieselbe Tabelle, kein neuer Wert; die Zahl der
     // unaufgelösten Bindungen bleibt unverändert.
+    //
+    // FE-001: von elf auf dreiundzwanzig (nach FE-003). Die zwölf neuen sind die Gestaltungskonstanten der
+    // Arbeitsanleitungen aus `components/gesamtanweisung/gestaltung.ts` — EINE Stelle für Karte,
+    // Knöpfe, Felder und Meldungen, statt sechsmal abgeschriebener Klassenketten. Anders als die
+    // meisten übrigen sind es KONSTANTEN, keine Funktionen; der Sammler löst sie auf (sie stehen
+    // namentlich hier und nicht unter den unaufgelösten Bindungen). Keine trägt eine Vollfläche.
     expect(quellen, `Modulfremde Klassenquellen: ${quellen.join(" · ")}`).toEqual([
       "AUFFRISCHUNG_HINWEIS_KLASSE ← apps/web/src/lib/confidentiality.ts",
+      "BESTAETIGUNG ← apps/web/src/components/gesamtanweisung/gestaltung.ts",
+      "CHIP ← apps/web/src/components/gesamtanweisung/gestaltung.ts",
       "CONF_TONE_CLASS ← apps/web/src/lib/confidentiality.ts",
       "EVIDENCE_TONE ← apps/web/src/components/fragen/QuellenListe.tsx",
+      "FELD ← apps/web/src/components/gesamtanweisung/gestaltung.ts",
+      "FELD_LABEL ← apps/web/src/components/gesamtanweisung/gestaltung.ts",
+      "FELD_MEHRZEILIG ← apps/web/src/components/gesamtanweisung/gestaltung.ts",
+      "HINWEIS ← apps/web/src/components/gesamtanweisung/gestaltung.ts",
+      "KARTE ← apps/web/src/components/gesamtanweisung/gestaltung.ts",
+      "KARTEN_TITEL ← apps/web/src/components/gesamtanweisung/gestaltung.ts",
+      "KNOPF_HAUPT ← apps/web/src/components/gesamtanweisung/gestaltung.ts",
+      "KNOPF_NEBEN ← apps/web/src/components/gesamtanweisung/gestaltung.ts",
+      "MELDUNG_FEHLER ← apps/web/src/components/gesamtanweisung/gestaltung.ts",
+      "MELDUNG_HINWEIS ← apps/web/src/components/gesamtanweisung/gestaltung.ts",
       "QUELLEN_CHIP_KLASSE ← apps/web/src/components/fragen/Quellenplaketten.tsx",
       "evidenceFreshnessTone ← apps/web/src/lib/evidenceFreshnessView.ts",
       "evidenceKindTone ← apps/web/src/lib/evidenceIndex.ts",

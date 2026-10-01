@@ -147,12 +147,20 @@ export interface Instanz {
 export async function starteKlarwerk(opts: {
   datenbankUrl: string;
   was: string;
+  /**
+   * GRAPH-BROWSER-RECHTE (additiv, ohne Aufruferzwang): weitere `--import`-Module NACH `tsx` und
+   * zusätzliche Umgebungsvariablen — für eine Diagnose IM Serverprozess (z. B.
+   * `tests/wissensbeziehungen-browser-rechte/pg-fehlerdiagnose-vorladen.ts`). Ohne Angabe startet
+   * der Prozess wie bisher.
+   */
+  zusatz?: { importe?: readonly string[]; env?: Readonly<Record<string, string>> };
 }): Promise<Instanz> {
   const port = await freierPort();
   const basis = `http://127.0.0.1:${port}`;
+  const importe = (opts.zusatz?.importe ?? []).flatMap((m) => ["--import", m]);
   const prozess: ChildProcessWithoutNullStreams = spawn(
     "node",
-    ["--import", "tsx", "services/app/src/server.ts"],
+    ["--import", "tsx", ...importe, "services/app/src/server.ts"],
     {
       cwd: WURZEL,
       env: {
@@ -166,6 +174,7 @@ export async function starteKlarwerk(opts: {
         DATABASE_URL: opts.datenbankUrl,
         APP_BASE_URL: "https://wiederanlauf.beziehungen.test",
         PORT: String(port),
+        ...(opts.zusatz?.env ?? {}),
       },
     },
   );

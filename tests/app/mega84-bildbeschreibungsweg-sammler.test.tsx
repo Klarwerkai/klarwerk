@@ -2033,8 +2033,23 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // DIE +18 IST GEMESSEN, nicht gerechnet: der Sammler meldete an diesem Arbeitsbaum wörtlich
     // „gemessen: 423 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 511 Quelldateien …
     // expected { komponenten: 423, … } to deeply equal { komponenten: 405, … }".
+    //
+    // FE-001 (ARBEITSANLEITUNGEN VERSTÄNDLICH UND BEDIENBAR): 423 → 430 (nach FE-003 darüber), und es sind GENAU SIEBEN
+    // Bauteile, alle unter `components/gesamtanweisung/`:
+    //     + `KopfBearbeitung` (eigene Datei) — Titel, Zweck, Geltungsbereich, Voraussetzungen
+    //     + `Treffer`, `Fassungswahl` (`BausteinAufnahme.tsx`) — Suche und Fassungswahl
+    //     + `Dokument`, `Kopfangabe` (`LesestandAnsicht.tsx`) — die Lesefassung als Dokument
+    //     + `Standwahl` (`VergleichAnsicht.tsx`) — die Auswahl eines Stands
+    //     + `Eintragsliste` (`GesamtanweisungBereich.tsx`) — die Zeilen der Übersicht
+    // Dieselbe Begründung wie bei jedem Eintrag darüber: die Auflage verbietet, dass eine
+    // UMSTELLUNG die Erhebung verschiebt — nicht, dass der Quellbaum wächst. `anbieter` 1 und
+    // `traeger` 2 bleiben unverändert: keine der Dateien enthält `CAPTION_AI_TEXT`, ein
+    // `documentTitle`-Prop oder ein `<img`. Die Vorschau der Fassung zeichnet deren Rumpf über
+    // `SanitizedHtml` — dasselbe Bauteil wie bisher im Lesestand, kein neuer Bildweg.
+    // DIE +7 IST GEMESSEN: im eigenen Lauf 405 → 412 (Cloud-Lauf pa-1790434819-46fe6fb5); nach der
+    // Zusammenführung mit FE-003 (423) am zusammengeführten Arbeitsbaum erneut gemessen: 430.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 423,
+      komponenten: 430,
       anbieter: 1,
       traeger: 2,
     });

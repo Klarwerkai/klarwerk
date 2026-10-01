@@ -159,9 +159,13 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     expect(src).toContain('var KLARA_STAND = "__KLARA_STAND__"');
     expect(src).toContain('id="kw-stand"');
     // … und der Build ersetzt ihn (eine Stelle, keine Handpflege).
+    // Die Plugin-Fabrik wohnt seit deploy-health-commit (R-1028) in src/lib/klaraStand.ts, damit
+    // ein Test sie statisch importieren kann; vite.config.ts trägt sie ein.
     const vite = readFileSync(join(WURZEL, "apps", "web", "vite.config.ts"), "utf8");
-    expect(vite).toContain('name: "klara-stand"');
-    expect(vite).toContain('replaceAll("__KLARA_STAND__"');
+    expect(vite).toMatch(/plugins: \[[^\]]*\bklaraStand\(\)/);
+    const fabrik = readFileSync(join(WURZEL, "apps", "web", "src", "lib", "klaraStand.ts"), "utf8");
+    expect(fabrik).toContain('name: "klara-stand"');
+    expect(fabrik).toContain('replaceAll("__KLARA_STAND__"');
   });
 
   it("INHALTS-PIN: eine Änderung an taskpane.html wird rot, bevor sie still ausgeliefert wird", () => {
@@ -2553,7 +2557,13 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     //                Mac-Word und im Browsertab (kein Schluessel) ist die Reihenfolge damit exakt
     //                die von vor JOB 4076.
     // GEMESSEN: s. RUECKGABE dieser Runde.
-    const PIN = "6d61b8505a6ede48ada440bd5fdea9747b7d0da706f65e0874e3cf416c3d34ca";
+    // AUFTRAG deploy-health-commit (R-1028): Auslieferungsfolgen geprüft, bevor der Pin wanderte.
+    // Geändert sind AUSSCHLIESSLICH die drei Wörterbuch-Schlüssel der Fassungszeile je Sprache
+    // (`fassungAktuell`, `fassungWechsel`, `fassungUnbekannt`): „Stand/Build {geladen}" heißt jetzt
+    // „Add-in-Fassung/Add-in version/Add-in-versie {geladen}", weil die Manifestnummer keine
+    // Programmversion ist und neben „Klara <Stand>" keinen zweiten Stand behaupten darf. KEIN
+    // Manifest, KEIN Endpunkt, KEIN Recht, kein Abruf, keine Nutzlast; kein erneutes Sideload.
+    const PIN = "575580b0215f68d2db2f982cb5efce3701449092ceec321d8a35d45abe3dade8";
     const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
     expect(
       ist,

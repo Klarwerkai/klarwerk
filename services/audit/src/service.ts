@@ -13,15 +13,24 @@ import type { AuditEntry, AuditFilter, AuditInput } from "./types";
 export interface AuditServiceDeps {
   repo: AuditRepo;
   now?: () => number;
+  // Auftrag gesamt-dubletten-rueckzug (Runde 3, Bens BEN-R3-3): `record`/`recordOnce` sind zwei
+  // Schritte (`last`, dann `append`). Ohne Datenbank, wo kein Primärschlüssel `seq` doppelte
+  // Kettenglieder abweist, reicht die Kompositionswurzel hier eine Sperre, unter der beide Schritte
+  // ungeteilt laufen — und die ein offener Rücknahme-Vorgang (services/app/src/speicher-vorgang.ts)
+  // für seine ganze Dauer hält. Ein Aufruf MIT dem Kontext dieses Vorgangs läuft ohne Warten
+  // hindurch (die Sperre entscheidet das am `tx`). Ohne Angabe unverändert.
+  kettenSperre?: <T>(tx: TxContext | undefined, fn: () => Promise<T>) => Promise<T>;
 }
 
 export class AuditService {
   private readonly repo: AuditRepo;
   private readonly now: () => number;
+  private readonly kettenSperre: <T>(tx: TxContext | undefined, fn: () => Promise<T>) => Promise<T>;
 
   constructor(deps: AuditServiceDeps) {
     this.repo = deps.repo;
     this.now = deps.now ?? (() => Date.now());
+    this.kettenSperre = deps.kettenSperre ?? ((_tx, fn) => fn());
   }
 
   // FR-AUD-01: jede relevante Aktion erzeugt einen Eintrag (wer/was/wann).
@@ -29,7 +38,11 @@ export class AuditService {
   // Reicht ihn an last()/append() durch, damit BEIDE auf demselben Pg-Client laufen wie ein vom
   // Aufrufer parallel geschriebener anderer Store (z. B. KoService.purgeKo: repo.delete + audit.record
   // in EINER echten Transaktion). Ohne tx unverändertes Verhalten.
-  async record(input: AuditInput, tx?: TxContext): Promise<AuditEntry> {
+  record(input: AuditInput, tx?: TxContext): Promise<AuditEntry> {
+    return this.kettenSperre(tx, () => this.recordUngeteilt(input, tx));
+  }
+
+  private async recordUngeteilt(input: AuditInput, tx?: TxContext): Promise<AuditEntry> {
     const last = await this.repo.last(tx);
     const seq = last ? last.seq + 1 : 1;
     const prevHash = last ? last.hash : GENESIS;
@@ -60,7 +73,15 @@ export class AuditService {
   // Read sahen, erzeugen exakt EINEN Eintrag. true = DIESER Aufruf hat geschrieben; false =
   // der Beleg existierte bereits (kein Fehler). Wird nicht geschrieben, bleibt die berechnete
   // seq unbenutzt — der nächste record() liest last() frisch, die Kette bleibt lückenlos.
-  async recordOnce(eventId: string, input: AuditInput, tx?: TxContext): Promise<boolean> {
+  recordOnce(eventId: string, input: AuditInput, tx?: TxContext): Promise<boolean> {
+    return this.kettenSperre(tx, () => this.recordOnceUngeteilt(eventId, input, tx));
+  }
+
+  private async recordOnceUngeteilt(
+    eventId: string,
+    input: AuditInput,
+    tx?: TxContext,
+  ): Promise<boolean> {
     const last = await this.repo.last(tx);
     const seq = last ? last.seq + 1 : 1;
     const prevHash = last ? last.hash : GENESIS;

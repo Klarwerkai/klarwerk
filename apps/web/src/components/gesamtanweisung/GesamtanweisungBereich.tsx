@@ -42,6 +42,20 @@
 // (`routes.tsx`, `GUARDED_ITEMS`) und über die Tür selbst. Hier wird dafür keine Zeile geändert und
 // keine Rolle abgefragt: eine zweite Rechteentscheidung an dieser Stelle wäre die zweite Wahrheit.
 //
+// ================================================================================================
+// FE-001 · DER EINSTIEG ERKLÄRT SICH — UND ER HEISST FÜR MENSCHEN „ARBEITSANLEITUNGEN".
+// ================================================================================================
+//
+// Live-Befund des Beraters (26.09.2026): die Seite sagte nicht, wofür sie da ist, zeigte Urheber als
+// UUID und Zeiten als ISO-Zeichenkette und stand als ungegliederte Textzeilen oben links. Jetzt:
+//   · vier Antworten VOR jeder Eingabe — wofür, was mitbringen, was entsteht, erster Schritt — plus
+//     ein Beispiel, das als Beispiel gekennzeichnet ist (kein vorhandener Demobestand behauptet);
+//   · der Bestand als Karten mit anklickbarem Titel, Statuswort, Abschnittszahl, Name aus dem
+//     Verzeichnis (`useAuthorName`, ehrlicher Ersatz statt Kennung) und lesbarer Zeit;
+//   · „Neue Arbeitsanleitung erstellen" als EINE Hauptaktion mit erklärtem Titel und sichtbarem
+//     Grund, solange der Titel fehlt.
+// Die Reihenfolge Bestand → Anlegen bleibt (Begründung oben), Route und Drahtvertrag auch.
+//
 // LADEN: der Einstieg liest JETZT etwas, also hat er auch eine Ladefläche — die der Liste. Das
 // Formular darunter bleibt davon unberührt; es hängt an keinem Bestand und wird nicht gesperrt,
 // solange die Liste noch lädt. Erst die geöffnete Anweisung hat einen Lesestand, und ihre Zustände
@@ -53,9 +67,24 @@ import type { AnweisungListeneintrag } from "../../api/endpoints";
 import { useSession } from "../../app/AuthContext";
 import { useRole } from "../../app/RoleContext";
 import { ROLE_RANK } from "../../app/navigation";
+import type { NameResolver } from "../../lib/koAuthor";
+import { formatKoTimestamp } from "../../lib/koDates";
+import { useAuthorName } from "../../lib/useAuthorName";
 import { useOnline } from "../../shell/Meldungen";
+import { HelpTip } from "../HelpTip";
 import { GesamtanweisungSeite } from "./GesamtanweisungSeite";
 import { fehlerSchluessel } from "./api";
+import {
+  CHIP,
+  FELD,
+  FELD_LABEL,
+  HINWEIS,
+  KARTE,
+  KARTEN_TITEL,
+  KNOPF_HAUPT,
+  MELDUNG_FEHLER,
+  MELDUNG_HINWEIS,
+} from "./gestaltung";
 import { useAnweisungAnlegen, useAnweisungsListe } from "./hooks";
 import { anzeigelage, standSchluessel } from "./zustand";
 
@@ -84,13 +113,26 @@ function darfEntscheidenAls(rang: number): boolean {
 }
 
 export function GesamtanweisungBereich(): JSX.Element {
+  const { t } = useTranslation();
   const { id } = useParams<{ id?: string }>();
   const { role } = useRole();
   const online = useOnline();
 
   if (id) {
     return (
-      <section data-testid={`${BEREICH_MARKE}-anweisung`}>
+      <section
+        data-testid={`${BEREICH_MARKE}-anweisung`}
+        className="mx-auto max-w-4xl space-y-3 pt-6"
+      >
+        {/* FE-001: die statische Seitenhilfe der Detailseite — sie braucht kein Modell. */}
+        <HelpTip title={t("fe001.hilfe.detailTitel")} body={t("fe001.hilfe.detail")} />
+        <Link
+          to={GESAMTANWEISUNG_PFAD}
+          className="inline-flex items-center gap-1 text-[12.5px] font-semibold text-muted hover:text-text hover:underline"
+          data-testid={`${BEREICH_MARKE}-zurueck`}
+        >
+          {t("fe001.zurUebersicht")}
+        </Link>
         <GesamtanweisungSeite
           anweisungId={id}
           darfEntscheiden={darfEntscheidenAls(ROLE_RANK[role])}
@@ -181,35 +223,54 @@ const ANTWORT_OHNE_BESTAND = {
  * Betrachter nicht sehen darf, kann hier nicht durchsickern, weil der Server es gar nicht schickt
  * (`AnweisungListeneintrag`, `services/knowledge-object/src/gesamtanweisung-types.ts`).
  */
-function Listeneintrag({ eintrag }: { eintrag: AnweisungListeneintrag }): JSX.Element {
-  const { t } = useTranslation();
+function Listeneintrag({
+  eintrag,
+  nameVon,
+}: {
+  eintrag: AnweisungListeneintrag;
+  nameVon: NameResolver;
+}): JSX.Element {
+  const { t, i18n } = useTranslation();
+  const zeit = formatKoTimestamp(eintrag.geaendertAm, i18n.language);
   return (
-    <li data-testid={`${LISTE_MARKE}-eintrag`} data-anweisung={eintrag.id}>
-      <Link
-        to={`${GESAMTANWEISUNG_PFAD}/${eintrag.id}`}
-        data-testid={`${LISTE_MARKE}-oeffnen`}
-        data-anweisung={eintrag.id}
-      >
-        {eintrag.titel}
-      </Link>
-      <p data-testid={`${LISTE_MARKE}-stand`}>
-        {t("ga.liste.stand")}: {t(`ga.stand.${eintrag.stand}`)}
-      </p>
-      <p data-testid={`${LISTE_MARKE}-urheber`}>
-        {t("ga.liste.urheber")}: {eintrag.urheber}
-      </p>
-      <p data-testid={`${LISTE_MARKE}-geaendert`}>
-        {t("ga.liste.geaendert")}: {eintrag.geaendertAm}
-      </p>
-      <p data-testid={`${LISTE_MARKE}-bausteine`}>
-        {t("ga.liste.bausteine", { anzahl: eintrag.sichtbareBausteine })}
+    <li
+      data-testid={`${LISTE_MARKE}-eintrag`}
+      data-anweisung={eintrag.id}
+      className="rounded-card border border-hairline bg-page p-3"
+    >
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <Link
+          to={`${GESAMTANWEISUNG_PFAD}/${eintrag.id}`}
+          data-testid={`${LISTE_MARKE}-oeffnen`}
+          data-anweisung={eintrag.id}
+          className="text-[15px] font-semibold text-ink underline decoration-hairline underline-offset-4 hover:decoration-ink"
+        >
+          {eintrag.titel}
+        </Link>
+        <span data-testid={`${LISTE_MARKE}-stand`} className={CHIP}>
+          <span className="sr-only">{t("ga.liste.stand")}: </span>
+          {t(`ga.stand.${eintrag.stand}`)}
+        </span>
+      </div>
+      <p className={`${HINWEIS} mt-1 flex flex-wrap gap-x-2 gap-y-0.5`}>
+        <span data-testid={`${LISTE_MARKE}-bausteine`}>
+          {t("ga.liste.bausteine", { anzahl: eintrag.sichtbareBausteine })}
+        </span>
+        <span aria-hidden="true">·</span>
+        <span data-testid={`${LISTE_MARKE}-urheber`}>
+          {t("ga.liste.urheber")}: {nameVon(eintrag.urheber)}
+        </span>
+        <span aria-hidden="true">·</span>
+        <span data-testid={`${LISTE_MARKE}-geaendert`}>
+          {t("ga.liste.geaendert")}: {zeit ?? t("fe001.zeitUnbekannt")}
+        </span>
       </p>
       {/* DIE KENNZEICHNUNG NENNT DIE ZAHL: „unvollständig" allein lässt offen, ob ein Satz oder ein
           halbes Dokument fehlt. Dieselbe Regel wie im Lesestand (`ga.verborgene`). Sie hängt an
           `unvollstaendig` ODER an der Zahl — beide kommen aus derselben Zählung des Servers, und wenn
           sie je auseinanderliefen, soll die Kennzeichnung erscheinen und nicht ausfallen. */}
       {eintrag.unvollstaendig || eintrag.verborgeneBausteine > 0 ? (
-        <p data-testid={`${LISTE_MARKE}-unvollstaendig`}>
+        <p data-testid={`${LISTE_MARKE}-unvollstaendig`} className={`${MELDUNG_HINWEIS} mt-2`}>
           {t("ga.liste.unvollstaendig", { anzahl: eintrag.verborgeneBausteine })}
         </p>
       ) : null}
@@ -217,8 +278,28 @@ function Listeneintrag({ eintrag }: { eintrag: AnweisungListeneintrag }): JSX.El
   );
 }
 
+/**
+ * FE-001 · Die Zeilen — ein eigenes Bauteil, damit das Namensverzeichnis NUR gelesen wird, wenn es
+ * Zeilen gibt. Ein leerer oder unbekannter Bestand braucht keine Namen, und der Einstieg ruft dann
+ * weiterhin genau eine Adresse (`tests/wiki-gesamtanweisung-abnahme/a10-…`, Kalibrierung).
+ */
+function Eintragsliste({
+  eintraege,
+}: {
+  eintraege: readonly AnweisungListeneintrag[];
+}): JSX.Element {
+  const nameVon = useAuthorName();
+  return (
+    <ul data-testid={`${LISTE_MARKE}-eintraege`} className="space-y-2">
+      {eintraege.map((eintrag) => (
+        <Listeneintrag key={eintrag.id} eintrag={eintrag} nameVon={nameVon} />
+      ))}
+    </ul>
+  );
+}
+
 function Bestandsliste({ offline }: { offline: boolean }): JSX.Element {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const abfrage = useAnweisungsListe();
 
   const eintraege = bestandAus(abfrage.data);
@@ -238,9 +319,11 @@ function Bestandsliste({ offline }: { offline: boolean }): JSX.Element {
   if (lage.art === "laden") {
     // KEIN Satz über den Bestand — nur, dass nachgesehen wird.
     return (
-      <section data-testid={LISTE_MARKE}>
-        <h2>{t("ga.liste.titel")}</h2>
-        <p aria-live="polite" data-testid={`${LISTE_MARKE}-laedt`}>
+      <section data-testid={LISTE_MARKE} aria-labelledby="ga-liste-titel" className={KARTE}>
+        <h2 id="ga-liste-titel" className={KARTEN_TITEL}>
+          {t("ga.liste.titel")}
+        </h2>
+        <p aria-live="polite" className={HINWEIS} data-testid={`${LISTE_MARKE}-laedt`}>
           {t("ga.liste.laedt")}
         </p>
       </section>
@@ -250,9 +333,11 @@ function Bestandsliste({ offline }: { offline: boolean }): JSX.Element {
   if (lage.art === "fehler") {
     // Fehlersatz und GAR KEINE Bestandsaussage. Der Leersatz erscheint hier ausdrücklich NICHT.
     return (
-      <section data-testid={LISTE_MARKE}>
-        <h2>{t("ga.liste.titel")}</h2>
-        <p role="alert" data-testid={`${LISTE_MARKE}-fehler`}>
+      <section data-testid={LISTE_MARKE} aria-labelledby="ga-liste-titel" className={KARTE}>
+        <h2 id="ga-liste-titel" className={KARTEN_TITEL}>
+          {t("ga.liste.titel")}
+        </h2>
+        <p role="alert" className={MELDUNG_FEHLER} data-testid={`${LISTE_MARKE}-fehler`}>
           {t(lage.offline ? "ga.offline" : "ga.liste.fehler")}
         </p>
       </section>
@@ -262,33 +347,37 @@ function Bestandsliste({ offline }: { offline: boolean }): JSX.Element {
   if (lage.art === "leer" || !eintraege) {
     // ERFOLGREICH UND LEER — eine belegte Aussage, und deshalb darf sie hier stehen.
     return (
-      <section data-testid={LISTE_MARKE}>
-        <h2>{t("ga.liste.titel")}</h2>
-        <p data-testid={`${LISTE_MARKE}-leer`}>{t("ga.liste.leer")}</p>
+      <section data-testid={LISTE_MARKE} aria-labelledby="ga-liste-titel" className={KARTE}>
+        <h2 id="ga-liste-titel" className={KARTEN_TITEL}>
+          {t("ga.liste.titel")}
+        </h2>
+        <p className={MELDUNG_HINWEIS} data-testid={`${LISTE_MARKE}-leer`}>
+          {t("ga.liste.leer")}
+        </p>
       </section>
     );
   }
 
   const standzeile = standSchluessel(lage);
-  const zeit = juengsteAenderung(eintraege);
+  const zeit = formatKoTimestamp(juengsteAenderung(eintraege), i18n.language);
   return (
-    <section data-testid={LISTE_MARKE}>
-      <h2>{t("ga.liste.titel")}</h2>
+    <section data-testid={LISTE_MARKE} aria-labelledby="ga-liste-titel" className={KARTE}>
+      <h2 id="ga-liste-titel" className={KARTEN_TITEL}>
+        {t("ga.liste.titel")}
+      </h2>
       {standzeile && zeit ? (
-        <p data-testid={`${LISTE_MARKE}-zeit`}>{t(standzeile, { zeit })}</p>
+        <p className={HINWEIS} data-testid={`${LISTE_MARKE}-zeit`}>
+          {t(standzeile, { zeit })}
+        </p>
       ) : null}
       {lage.auffrischungGescheitert || lage.offline ? (
         // Die Zeilen BLEIBEN stehen und der Fehler ist trotzdem sichtbar — nichts wird als frisch
         // ausgegeben (Lehre 03.09., JOB 3027/3025/3037).
-        <p role="alert" data-testid={`${LISTE_MARKE}-fehler`}>
+        <p role="alert" className={MELDUNG_FEHLER} data-testid={`${LISTE_MARKE}-fehler`}>
           {t(lage.offline ? "ga.offline" : "ga.liste.fehler")}
         </p>
       ) : null}
-      <ul data-testid={`${LISTE_MARKE}-eintraege`}>
-        {eintraege.map((eintrag) => (
-          <Listeneintrag key={eintrag.id} eintrag={eintrag} />
-        ))}
-      </ul>
+      <Eintragsliste eintraege={eintraege} />
     </section>
   );
 }
@@ -415,30 +504,89 @@ function Einstieg({ offline }: { offline: boolean }): JSX.Element {
     }
   }
 
+  const titelLeer = titel.trim().length === 0;
   return (
-    <section data-testid={BEREICH_MARKE}>
-      <h1>{t("ga.bereich.titel")}</h1>
-      <p data-testid={`${BEREICH_MARKE}-einleitung`}>{t("ga.bereich.einleitung")}</p>
-      <Bestandsliste offline={offline} />
-      <form data-testid={`${BEREICH_MARKE}-anlegen`} onSubmit={absenden}>
-        <label htmlFor="ga-bereich-titel">{t("ga.kopf.titel")}</label>
-        <input
-          id="ga-bereich-titel"
-          name="titel"
-          value={titel}
-          required
-          onChange={(e) => setTitel(e.target.value)}
-        />
-        <button type="submit" disabled={titel.trim().length === 0 || anlegen.isPending}>
-          {t("ga.bereich.anlegen")}
-        </button>
-      </form>
-      {offline ? <p data-testid={`${BEREICH_MARKE}-offline`}>{t("ga.offline")}</p> : null}
-      {anlegen.error ? (
-        <p role="alert" data-testid={`${BEREICH_MARKE}-fehler`}>
-          {t(fehlerSchluessel(anlegen.error))}
+    <section data-testid={BEREICH_MARKE} className="mx-auto max-w-4xl space-y-5 pt-6 pb-10">
+      <HelpTip title={t("fe001.hilfe.uebersichtTitel")} body={t("fe001.hilfe.uebersicht")} />
+      <header className="space-y-3">
+        <h1 className="text-2xl font-semibold text-ink">{t("ga.bereich.titel")}</h1>
+        <p
+          data-testid={`${BEREICH_MARKE}-einleitung`}
+          className="text-[14px] leading-relaxed text-text"
+        >
+          {t("ga.bereich.einleitung")}
         </p>
-      ) : null}
+        <dl className="grid gap-3 sm:grid-cols-3" data-testid={`${BEREICH_MARKE}-orientierung`}>
+          {(["mitbringen", "ergebnis", "ersterSchritt"] as const).map((frage) => (
+            <div key={frage} className="rounded-card border border-hairline bg-page p-3">
+              <dt className="text-[12.5px] font-semibold text-text">
+                {t(`fe001.einstieg.${frage}.frage`)}
+              </dt>
+              <dd className={`${HINWEIS} mt-1`}>{t(`fe001.einstieg.${frage}.antwort`)}</dd>
+            </div>
+          ))}
+        </dl>
+        <p className={HINWEIS} data-testid={`${BEREICH_MARKE}-beispiel`}>
+          {t("fe001.einstieg.beispiel")}
+        </p>
+      </header>
+      <Bestandsliste offline={offline} />
+      <form
+        data-testid={`${BEREICH_MARKE}-anlegen`}
+        onSubmit={absenden}
+        aria-labelledby="ga-bereich-anlegen-titel"
+        className={KARTE}
+      >
+        <h2 id="ga-bereich-anlegen-titel" className={KARTEN_TITEL}>
+          {t("ga.bereich.anlegen")}
+        </h2>
+        <div>
+          <label htmlFor="ga-bereich-titel" className={FELD_LABEL}>
+            {t("fe001.anlegen.titelLabel")}
+          </label>
+          <input
+            id="ga-bereich-titel"
+            name="titel"
+            value={titel}
+            required
+            aria-describedby="ga-bereich-titel-hinweis"
+            onChange={(e) => setTitel(e.target.value)}
+            className={FELD}
+          />
+          <p id="ga-bereich-titel-hinweis" className={`${HINWEIS} mt-1`}>
+            {t("fe001.anlegen.titelHinweis")}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="submit"
+            className={KNOPF_HAUPT}
+            disabled={titelLeer || anlegen.isPending}
+            aria-describedby={titelLeer ? "ga-bereich-sperre" : undefined}
+          >
+            {t("ga.bereich.anlegen")}
+          </button>
+          {titelLeer ? (
+            <p id="ga-bereich-sperre" className={HINWEIS} data-testid={`${BEREICH_MARKE}-sperre`}>
+              {t("fe001.anlegen.titelFehlt")}
+            </p>
+          ) : anlegen.isPending ? (
+            <p className={HINWEIS} aria-live="polite">
+              {t("fe001.anlegen.laeuft")}
+            </p>
+          ) : null}
+        </div>
+        {offline ? (
+          <p className={MELDUNG_HINWEIS} data-testid={`${BEREICH_MARKE}-offline`}>
+            {t("ga.offline")}
+          </p>
+        ) : null}
+        {anlegen.error ? (
+          <p role="alert" className={MELDUNG_FEHLER} data-testid={`${BEREICH_MARKE}-fehler`}>
+            {t(fehlerSchluessel(anlegen.error))}
+          </p>
+        ) : null}
+      </form>
     </section>
   );
 }
