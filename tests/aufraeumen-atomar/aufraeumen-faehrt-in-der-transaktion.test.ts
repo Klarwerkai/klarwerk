@@ -168,13 +168,17 @@ describe("JOB 3066 · F2: Befund-Aufräumung läuft auf dem Kontext der Löschtr
 
   // Lieferung 6 (Ablösung) — R2/R4, bens Korrekturpflicht 1: der Pin darf NICHT nur build-app.ts
   // lesen. Er durchsucht das GANZE Modul services/app/src und schreibt das vollständige Inventar
-  // der Aufräum-Aufrufe fest. Es sind zwei Orte, und seit R4 sind sie einander AUSSCHLIESSEND:
-  //   1. build-app.ts — im transaktionsgebundenen Haken. Der Weg der ENDLÖSCHUNG.
-  //   2. routes/ko-routes.ts — der Nachlauf des WEICHEN Löschens in DELETE /api/kos/:id, seit R4
-  //      hinter `if (!endgeloescht)`. Kippt `ko.delete` dort intern in eine Endlöschung
-  //      (Demo-Seed-Objekte, service.ts:3919-3927), läuft er NICHT.
-  // Ein DRITTER Ort, eine Verschiebung oder ein Wegfall der Bedingung macht diesen Test rot.
-  it("struktureller Pin: services/app/src ruft onKoRemoved nur an den zwei bekannten Orten", async () => {
+  // der Aufräum-Aufrufe fest.
+  //
+  // Auftrag gesamt-dubletten-rueckzug (R-1547, „ohne Altpfad daneben"): der frühere zweite Ort —
+  // der Nachlauf des WEICHEN Löschens in routes/ko-routes.ts hinter `if (!endgeloescht)` — ist
+  // ENTFERNT. Beide Ausgänge von `ko.delete` räumen jetzt im Dienst auf, jeder in seiner
+  // Transaktion, und beide Haken stehen in build-app.ts:
+  //   1. `setPurgeTxCleanup`       — der Weg der ENDLÖSCHUNG.
+  //   2. `setRuecknahmeTxCleanup`  — der Weg des PAPIERKORBS (weiches Löschen).
+  // Je Haken genau ein Ruf je Dienst, sonst nirgends in services/app/src. Ein Ruf in der Route,
+  // ein dritter Ort oder ein Ruf ausserhalb der beiden Haken macht diesen Test rot.
+  it("struktureller Pin: services/app/src ruft onKoRemoved nur in den zwei Transaktionshaken", async () => {
     const { readdir, readFile } = await import("node:fs/promises");
     const wurzel = new URL("../../services/app/src/", import.meta.url);
     const dateien = (await readdir(wurzel, { recursive: true })).filter((d) => d.endsWith(".ts"));
@@ -188,30 +192,9 @@ describe("JOB 3066 · F2: Befund-Aufräumung läuft auf dem Kontext der Löschtr
         }
       }
     }
-    expect(fundorte.filter((d) => d === "build-app.ts")).toHaveLength(2);
-    expect(fundorte.filter((d) => d === "routes/ko-routes.ts")).toHaveLength(2);
-    expect(fundorte).toHaveLength(4); // kein dritter Ort
-
-    // Und die zwei Rufe der Route stehen im Bedingungszweig des WEICHEN Löschens — nicht daneben.
-    const route = await readFile(
-      new URL("../../services/app/src/routes/ko-routes.ts", import.meta.url),
-      "utf8",
-    );
-    const routenzeilen = route.split("\n");
-    const wache = routenzeilen.findIndex((z) => z.includes("if (!endgeloescht) {"));
-    expect(wache, "Bedingung `if (!endgeloescht)` fehlt in ko-routes.ts").toBeGreaterThan(-1);
-    const zweigEnde = routenzeilen.findIndex(
-      (z, i) =>
-        i > wache &&
-        z.trimEnd().endsWith("}") &&
-        z.search(/\S/) === routenzeilen[wache]?.search(/\S/),
-    );
-    expect(zweigEnde).toBeGreaterThan(wache);
-    for (const nadel of ["conflicts.onKoRemoved(", "overlaps.onKoRemoved("]) {
-      const nr = routenzeilen.findIndex((z, i) => i > wache && z.includes(nadel));
-      expect(nr, `${nadel} steht nicht hinter der Bedingung`).toBeGreaterThan(wache);
-      expect(nr, `${nadel} steht nicht mehr IM Bedingungszweig`).toBeLessThan(zweigEnde);
-    }
+    expect(fundorte.filter((d) => d === "routes/ko-routes.ts")).toHaveLength(0);
+    expect(fundorte.filter((d) => d === "build-app.ts")).toHaveLength(4);
+    expect(fundorte).toHaveLength(4); // kein weiterer Ort
 
     const quelle = await readFile(
       new URL("../../services/app/src/build-app.ts", import.meta.url),
@@ -223,22 +206,29 @@ describe("JOB 3066 · F2: Befund-Aufräumung läuft auf dem Kontext der Löschtr
 
     const konflikt = treffer("services.conflicts.onKoRemoved(");
     const ueberschneidung = treffer("services.overlaps.onKoRemoved(");
-    expect(konflikt).toHaveLength(1);
-    expect(ueberschneidung).toHaveLength(1);
+    expect(konflikt).toHaveLength(2);
+    expect(ueberschneidung).toHaveLength(2);
 
     const txHaken = treffer("services.ko.setPurgeTxCleanup(");
+    const papierkorbHaken = treffer("services.ko.setRuecknahmeTxCleanup(");
     const altHaken = treffer("services.ko.setPurgeCleanup(");
     expect(txHaken).toHaveLength(1);
+    expect(papierkorbHaken).toHaveLength(1);
     expect(altHaken).toHaveLength(1);
-    // Der tx-gebundene Haken steht zuerst, der best-effort-Haken danach; beide Aufräumrufe liegen
-    // dazwischen — also IM tx-Haken. Ein zweiter Schliessweg hätte hier keinen Platz mehr.
+    // Reihenfolge: Endlöschungs-Haken, Papierkorb-Haken, best-effort-Haken. Je Dienst liegt der
+    // erste Ruf im ersten, der zweite im zweiten Haken — keiner davor, dazwischen oder danach.
     const txStart = txHaken[0]?.nr ?? 0;
+    const papierkorbStart = papierkorbHaken[0]?.nr ?? 0;
     const altStart = altHaken[0]?.nr ?? 0;
     expect(txStart).toBeGreaterThan(0);
-    expect(txStart).toBeLessThan(altStart);
-    for (const ruf of [konflikt[0]?.nr ?? 0, ueberschneidung[0]?.nr ?? 0]) {
-      expect(ruf).toBeGreaterThan(txStart);
-      expect(ruf).toBeLessThan(altStart);
+    expect(txStart).toBeLessThan(papierkorbStart);
+    expect(papierkorbStart).toBeLessThan(altStart);
+    for (const rufe of [konflikt, ueberschneidung]) {
+      const [imEndloeschHaken, imPapierkorbHaken] = rufe.map((r) => r.nr);
+      expect(imEndloeschHaken).toBeGreaterThan(txStart);
+      expect(imEndloeschHaken).toBeLessThan(papierkorbStart);
+      expect(imPapierkorbHaken).toBeGreaterThan(papierkorbStart);
+      expect(imPapierkorbHaken).toBeLessThan(altStart);
     }
   });
 });

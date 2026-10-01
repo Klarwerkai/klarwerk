@@ -7,6 +7,16 @@
 > `PROJECT_CONTEXT/13_ASSISTENT_ZWISCHENBERICHT.md` (Rohstand: `docs/boss-assistant/`).
 > Live-Version dort bestätigt: **v1.0.0-beta.1.4**.
 
+## 01.10.2026 — Erstnutzer-Hürden U2/U3 im Browser (Revision 9)
+
+- Neue Playwright-Sonde `tests-smoke/erstnutzer-u2-u3-browser.spec.ts`: U2 (Suchraum der Bibliothek
+  mit Nulltreffer und Weg zum Erfassen; „Meine Entwürfe“ nennt den Entwurfs-Suchraum und führt in
+  die Bibliothek) und U3 (Weg zu „Meine Aufgaben“ über das Zahnrad, Erklärung in der Seitenhilfe,
+  kein Tooltip am Kopfband). U1 stand schon im Browser. Sollmanifest: Version 11, 201 Fälle.
+  Der Browserlauf selbst steht im Linux-Tor aus.
+- Per Pedi-Entscheidung `622a6ae6` (Option B) liegen R-0455, R-0928, R-0939, R-1012 und R-1675 im
+  Folgeauftrag `…-quellen`. Abgleich: `tests/erstnutzerfuehrung/README.md`.
+
 ## 30.09.2026 — Erfassen-Doppelklick, Lauf 6: Blattwechsel erst nach dem Datei-Anteil (Teilstand)
 
 Auftrag `aufnahme:20260922:erfassen-doppelklick`, Lauf 6 Runde 1, Basis `5e44e7e6`. Die
@@ -39,6 +49,34 @@ Browser-/PostgreSQL-Messung dieser Fassung steht aus.**
   `fileWholeDraft.onSuccess`, `manuellSichern` und dem Wache-Rückruf). Neue Texte de/en/nl
   `capture.teilerfolg.*`. B1/B2 prüfen grüne Meldungen und Teilerfolg (Gegenprobe ohne
   Zurückhalten: rot); Q6 prüft dasselbe im Browser, ist aber im Bau nicht ausgeführt.
+
+## 29.09.2026 — Aufnahme „Gesamt-Erstnutzerführung“ (Abgleich + R-0474)
+
+- Die Nulltreffer von „Gehe zu …“ und der Hilfesuche bieten jetzt die Eingabe als Frage an
+  (`/fragen?q=…`; nur wenn die Rolle „Fragen“ erreicht). Texte in `apps/web/src/texte/erstnutzer.ts`.
+  Runde 2: Ist `/fragen` schon offen, übernimmt `Ask` die neue `?q=`-Frage jetzt ins Feld (vorher
+  blieb die alte stehen). Weiterhin nur Vorbefüllung, kein Auto-Ask.
+  Runde 3: Ein Antwortlink (`?q=…&ask=1`) auf die offene Seite sendet genau seine Frage; der
+  Auto-Ask gilt je Navigation und liest dieselbe Quelle wie die Vorbefüllung.
+- Missionen: am 26.06. als Start-Kacheln geliefert (`9be7466b`), durch mega38 G2 zurückgenommen und
+  in mega39 F gelöscht (`5150cd5a`). Eigene Einstiegsseiten gab es nie; ihr Stand ist ungeklärt.
+- Abgleich aller zugeordneten Anliegen mit Belegen, abgelösten Teilen (JOB 3064 H5) und offenen
+  Punkten: `tests/erstnutzerfuehrung/README.md`. Offen bzw. mit Entscheidungsbedarf (Pedi):
+  „Missions“-Einstiegsseiten (optional), eine Fähigkeitsübersicht für Erstnutzer (R-1012) und die
+  Browser-Messung der Hürden U1–U3.
+
+## 29.09.2026 — Aufnahme „Vorschau-Reichweite“ (Wissensvorschau beim Erfassen)
+
+- `POST /api/knowledge/check` meldet jetzt immer `coverage`: `{kind:"candidates", checked, limit,
+  limitReached}` oder ausdrücklich `{kind:"unknown"}` (zu kurzer Text, Fehler). Vertrag am Ende von
+  `services/app/src/knowledge-check.ts`.
+- Blatt und `LiveReactionZone` sprechen von „Vorschau“ und nennen nur diesen Umfang; „Das ist neu“
+  gibt es auf diesem Weg nicht mehr (Anzeigezustand `new` → `empty`). Texte in `apps/web/src/texte/vorschau.ts`.
+- Echter Nachweis (PostgreSQL + Chromium, Eintrag auf Rang 41):
+  `tests/vorschau-reichweite/vorschau-reichweite-pg-im-browser.integration.test.ts` — Ausführung auf
+  dem Prüfserver steht aus. Datenhaltung nur über Testcontainers (eine gesetzte
+  `KLARWERK_PG_TEST_URL` wird nicht benutzt); die alte Fläche für K4-R entsteht ohne
+  Git-Vorgeschichte aus `tests/vorschau-reichweite/alte-flaeche.patch` (Umkehrung dieser Änderung).
 
 ## 29.09.2026 — Erfassen: Formular + Datei gemeinsam, Doppelklick und verlorene Antwort (Teilstand)
 
@@ -74,6 +112,29 @@ R-0020 gilt unverändert für **Speichern UND Einreichen**, auch bei verlorener 
   Nutzlastwechsel ohne Benutzerhandlung nicht bekannt, aber nicht ausgeschlossen. Eine sichtbare
   Erklärung „war bereits gespeichert" (R-0156) gibt es nicht — die Wiederholung meldet den
   normalen Speichererfolg.
+
+## 30.09.2026 — Eigene Seite eines Dublettenbefunds zurückziehen und wiederherstellen (Lauf 5)
+
+- Lauf 5 übernimmt den nie gemergten Stand von Lauf 4 (`9356241d`) auf Basis `bf9fcf1c` und behebt
+  Bens BEN-R4-1: der Journal-Abschluss eines Rücknahme-Vorgangs schreibt Vorgangszeile UND
+  Bestätigung; ohne Bestätigung wirkt eine Vorgangszeile beim Replay nie. Den ungewissen Ausgang der
+  Bestätigung klärt das Zurücklesen der Datei. Speicher, Replay, Neustart und Aufrufergebnis stimmen
+  damit auch dann überein, wenn Abschluss UND Widerruf scheitern. Runde 2 (BEN-R5-1): ist auch die
+  Bestätigung ungewiss und weder Lesen noch Widerruf möglich, meldet der Aufruf
+  `JOURNAL_AUSGANG_UNGEWISS`, und die Instanz liefert bis zur Klärung an der Datei keinen Stand aus;
+  danach folgt sie der Datei — seit Runde 3 mit derselben Wirksamkeitsregel wie das Replay
+  (Widerruf beachtet, BEN-R5-2); am Draht HTTP 503 ohne interne Ursache (BEN-R5-3). **Nicht abgenommen;**
+  PostgreSQL-Lauf und `tools/check` stehen aus.
+
+- Rückzug der eigenen Seite (`DELETE /api/kos/:id`, Knopf am eigenen Dublettenhinweis) schliesst
+  den Befund als `withdrawn_own` in EINER Transaktion mit Papierkorb-Schreiben und Beleg; der
+  Nachlauf in der Löschroute ist entfernt. Wiederherstellen läuft über denselben Weg, stellt nach
+  Pedis Entscheidung 43017d60 NUR den eigenen Beitrag wieder her — keine Wiederöffnung.
+- Ohne Datenbank (Dev-Journal) atomar über die Rücknahme-Klammer; seit Lauf 4 übersteht das
+  Journal auch einen teilweise geschriebenen, gescheiterten Schreibaufruf (Neuaufsatz), sodass
+  spätere bestätigte Zeilen beim Replay erhalten bleiben.
+- Details, Belege, Abgrenzungen: `docs/entscheidungen/dubletten-rueckzug.md`.
+  **Offen: PostgreSQL-Lauf der Integrationsdatei und `tools/check` auf dem Prüfweg.**
 
 ## 26.09.2026 — FE-003 Seitentutorial „Fragen“ (Pilot)
 

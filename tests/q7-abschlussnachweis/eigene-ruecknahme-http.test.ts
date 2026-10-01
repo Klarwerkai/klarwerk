@@ -8,7 +8,7 @@ afterEach(async () => {
 
 describe("Q7: eigene Rücknahme mit echter Anmeldung, Löschroute und Dienstverdrahtung", () => {
   it.each(["a", "b"])(
-    "gelöschte Seite %s verhindert den eigenen Nachweis nicht; Fremde bleiben bei 404",
+    "gelöschte Seite %s verhindert den eigenen Nachweis nicht; Berechtigte lesen denselben Grabstein",
     async (seite) => {
       const { app, services, autorin, fremde, admin } = await welt();
       apps.push(app);
@@ -38,14 +38,14 @@ describe("Q7: eigene Rücknahme mit echter Anmeldung, Löschroute und Dienstverd
         status: "geschlossen",
         resolution: { reason: "withdrawn_own", by: autorin.id, at: gespeichert?.resolution?.at },
       });
+      // Auftrag gesamt-dubletten-rueckzug (Q7-Kriterium „für Berechtigte"): beide Seiten sind
+      // „intern", also durften Fremde und Admin das Paar vorher sehen. Sie lesen jetzt denselben
+      // Grabstein — Grund, Urheber, Zeit —, nicht mehr das 404. Wer eine Seite NICHT sehen durfte,
+      // bleibt beim 404: gemessen in tests/dubletten-ruecknahme-lesepfad/.
       for (const konto of [fremde, admin]) {
         const res = await app.inject({ url, headers: konto.headers });
-        const unbekannt = await app.inject({
-          url: "/api/duplicates/unbekannt",
-          headers: konto.headers,
-        });
-        expect(res.statusCode).toBe(404);
-        expect(res.body).toBe(unbekannt.body);
+        expect(res.statusCode).toBe(200);
+        expect(res.json()).toEqual(nachweis.json());
       }
       expect((await app.inject({ url })).statusCode).toBe(401);
       expect(

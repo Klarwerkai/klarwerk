@@ -289,6 +289,7 @@ import { ImportAccessService } from "./services/import-access-service";
 import { KlaraSessionService } from "./services/klara-session-service";
 import { type AnhangQuellen, sichtbarkeitsfilterFuer } from "./sichtbarkeit";
 import { type SlideConverter, createSofficeSlideConverter } from "./slide-converter";
+import { speicherVorgang } from "./speicher-vorgang";
 // JOB 3655: der Startvertrag — die EINE Stelle, die alle Umgebungswerte namentlich führt, den
 // Start bei fehlenden Pflichtwerten verweigert und beim Hochfahren ohne Geheimniswerte berichtet,
 // was diese Instanz hat und was ihr fehlt.
@@ -820,7 +821,7 @@ class FluechtigeAnweisungsablage implements AnweisungRepo {
 // wird vom idempotenten Backfill wiederhergestellt. Ohne Injektion baut sich der KoService seinen
 // In-Memory-Adapter über dasselbe KO-Repo (s. KoServiceDeps.searchProjections).
 export function assembleServices(
-  repos: AppRepos,
+  eingang: AppRepos,
   opts: {
     withTx?: WithTx;
     searchProjections?: KoSearchProjectionRepo;
@@ -850,7 +851,18 @@ export function assembleServices(
     // liegt jetzt in `AppRepos` und kommt wie jedes andere aus `repos.`.
   } = {},
 ): AppServices {
-  const audit = new AuditService({ repo: repos.auditRepo });
+  // Auftrag gesamt-dubletten-rueckzug (Runde 2, Bens BEN-R3-1): ohne Datenbank bekommt der
+  // Rücknahme-Weg (Rückzug/Wiederherstellen) seine eigene Klammer — Vorher-Abbilder der vier
+  // beteiligten Ablagen und zurückgehaltene Journalzeilen (speicher-vorgang.ts). Die erfassenden
+  // Ablagen sind für jeden Aufruf ohne Vorgangskontext durchlässig.
+  const speicher = opts.withTx ? undefined : speicherVorgang(eingang);
+  const repos = speicher?.repos ?? eingang;
+  const audit = new AuditService({
+    repo: repos.auditRepo,
+    // Runde 3 (BEN-R3-3): ohne Datenbank laufen Kettenglieder ausserhalb eines Rücknahme-Vorgangs
+    // unter derselben Sperre wie der Vorgang selbst (speicher-vorgang.ts).
+    ...(speicher ? { kettenSperre: speicher.kettenSperre } : {}),
+  });
   const ko = new KoService({
     repo: repos.koRepo,
     audit,
@@ -862,6 +874,7 @@ export function assembleServices(
     // exactOptionalPropertyTypes: den Key nur setzen, wenn wirklich ein withTx da ist (sonst würde
     // `withTx: undefined` explizit gegen den optionalen KoServiceDeps.withTx?: WithTx verstoßen).
     ...(opts.withTx ? { withTx: opts.withTx } : {}),
+    ...(speicher ? { ruecknahmeKlammer: speicher.klammer } : {}),
     ...(opts.searchProjections ? { searchProjections: opts.searchProjections } : {}),
   });
   // FR-RSN-02/06 + SCRUM-502 R8: echtes Cloud-Modell, wenn der Cloud-Key per Env/Keychain verfügbar ist
@@ -1820,6 +1833,10 @@ export const ERLAUBTE_FEHLERCODES: ReadonlySet<string> = new Set([
   "INVALID_STATUS",
   "INVALID_TYPE",
   "INVALID_UPLOAD_LIMITS",
+  // Dubletten-Rückzug (BEN-R5-4): der Ausgang eines Rückzugs/einer Wiederherstellung ist am
+  // Dev-Journal ungewiss (`JournalAusgangUngewiss`, dev-persist.ts). Darf ins Protokoll: ein
+  // Speicherzustand ohne Nutzertext und ohne Kennung; geht über `http.ts` ohnehin als 503 hinaus.
+  "JOURNAL_AUSGANG_UNGEWISS",
   // D5 (KI aus): der Frageweg ist vom Administrator abgeschaltet (`AskError`, services/ask). Darf ins
   // Protokoll: ein Betriebszustand ohne Nutzertext und ohne Kennung; geht als 503 ohnehin an den Client.
   "KI_ABGESCHALTET",
@@ -2601,6 +2618,24 @@ export function buildApp(
     konflikteGeschlossen: await services.conflicts.onKoRemoved(koId, actor, tx),
     ueberschneidungenGeschlossen: await services.overlaps.onKoRemoved(koId, actor, tx, ruecknahme),
   }));
+  // ==============================================================================================
+  // Auftrag gesamt-dubletten-rueckzug (R-1540/R-1547) — DER WEICHE WEG BEKOMMT DENSELBEN VERTRAG.
+  // ==============================================================================================
+  //
+  // Der Rückzug in den Papierkorb räumt jetzt IN seiner Transaktion auf (KoService.delete →
+  // `imRuecknahmeVorgang`), nicht mehr im Nachlauf der Löschroute — der ist entfernt. Dieselben zwei
+  // Dienste wie oben, dieselbe Obergrenze (mengenbasiertes Schliessen + ein Beleg je Befund).
+  // `ruecknahme` stammt hier nicht aus einer Vorablesung, sondern aus dem Dienst selbst: beim
+  // weichen Löschen kennt er Löscher und Autor schon.
+  //
+  // Das Wiederherstellen (KoService.restore) fährt über denselben Weg, ruft diesen Haken aber NICHT:
+  // nach Pedis Entscheidung (entscheidung:43017d60) stellt es nur den eigenen Beitrag wieder her.
+  // Weder Überschneidungsbefunde noch Konflikte werden dabei wieder geöffnet; die Gegenseite bleibt
+  // unangetastet.
+  services.ko.setRuecknahmeTxCleanup(async (koId, actor, tx, ruecknahme) => ({
+    konflikteGeschlossen: await services.conflicts.onKoRemoved(koId, actor, tx),
+    ueberschneidungenGeschlossen: await services.overlaps.onKoRemoved(koId, actor, tx, ruecknahme),
+  }));
   // SCRUM-523 P.3 (WP2): der vorgeschaltete, NICHT transaktionsgebundene Haken behält genau EIN
   // Mitglied — den Embedding-Vorfilter. Er gehört nicht in die Datenbank-Transaktion: sein Speicher
   // ist ein eigener (Vektor-Store, kein Pg-Client), ein Rollback nähme ihn nicht zurück, und sein
@@ -2907,6 +2942,7 @@ export function buildApp(
         settings: services.overlapSettings,
         audit: services.audit,
         kos: koSichtbarkeit,
+        papierkorb: { get: (id: string) => services.ko.papierkorbFakten(id) },
       },
       guards,
     ),
