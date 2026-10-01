@@ -333,6 +333,27 @@ function payloadKlassenSchluessel(klassen: readonly string[]): string {
  * Reihenfolge wie bei jeder anderen Nichtdeckung) und der externe Weg ist gesperrt, bis der Mensch
  * auf einer FRISCHEN Auflösung erneut zustimmt.
  */
+/**
+ * Lauf 2 · Bens B8: die ZEITGRENZEN einer Zustimmung an EINER Stelle — Ablauf der Zustimmung und
+ * Frist der Auflösung, gegen die zugestimmt wurde (`grantedAt + KLARA_RESOLUTION_TTL_MS`). Die
+ * Deckungsprüfung unten und die Laufbindung des Tors (`giltNoch`) lesen beide hier; eine zweite,
+ * unvollständige Aufzählung der Fristen war genau der Fehler aus B8.
+ */
+function consentFristen(
+  consent: KlaraConsent,
+): ReadonlyArray<readonly [KlaraDeckungsGrund, string, number]> {
+  return [
+    ["abgelaufen", "expiresAt", Date.parse(consent.expiresAt)],
+    // JOB 3079 · S1: die Frist der AUFLÖSUNG, gegen die zugestimmt wurde (Begründung am Kopf).
+    ["aufloesung_abgelaufen", "grantedAt", Date.parse(consent.grantedAt) + KLARA_RESOLUTION_TTL_MS],
+  ];
+}
+
+/** Bis wann eine Zustimmung zeitlich deckt (exklusiv) — die früheste ihrer Fristen. */
+function consentDecktBis(consent: KlaraConsent): number {
+  return Math.min(...consentFristen(consent).map(([, , bis]) => bis));
+}
+
 export function pruefeConsentDeckung(
   consent: KlaraConsent | undefined,
   session: KlaraSession,
@@ -364,12 +385,10 @@ export function pruefeConsentDeckung(
       abweichungen: ["addinInstanceId"],
     };
   }
-  if (jetzt >= Date.parse(consent.expiresAt)) {
-    return { gedeckt: false, grund: "abgelaufen", abweichungen: ["expiresAt"] };
-  }
-  // JOB 3079 · S1: die Frist der AUFLÖSUNG, gegen die zugestimmt wurde (Begründung am Kopf).
-  if (jetzt >= Date.parse(consent.grantedAt) + KLARA_RESOLUTION_TTL_MS) {
-    return { gedeckt: false, grund: "aufloesung_abgelaufen", abweichungen: ["grantedAt"] };
+  for (const [grund, feld, bis] of consentFristen(consent)) {
+    if (jetzt >= bis) {
+      return { gedeckt: false, grund, abweichungen: [feld] };
+    }
   }
 
   // Die neun Bindungen aus KW-S4-23 §1, jede einzeln benannt.
@@ -997,12 +1016,13 @@ export class KlaraSessionService {
     const consentId = deckung.consentId;
     // Lauf 2 · Bens B6: die Zustimmung gilt für GENAU diese Sitzung (R-0590) — eine wartende Anfrage
     // überträgt nach deren Ende nicht mehr, auch ohne weiteren Sitzungszugriff. Die Frist ist die
-    // frühere aus Sitzungsende (gleitend, durch die absolute Grenze gedeckelt) und Zustimmungsablauf,
-    // so wie das Tor sie eben geprüft hat. Spätere Aktivität verlängert sie für DIESE Anfrage nicht —
-    // im Zweifel endet die Freigabe früher, nie später.
+    // früheste aus Sitzungsende (gleitend, durch die absolute Grenze gedeckelt) und ALLEN Fristen der
+    // Deckungsprüfung (`consentDecktBis` — Bens B8: auch die Auflösungsfrist `grantedAt +
+    // KLARA_RESOLUTION_TTL_MS`). Spätere Aktivität verlängert sie für DIESE Anfrage nicht — im
+    // Zweifel endet die Freigabe früher, nie später.
     const frist = Math.min(
       Date.parse(gebunden.expiresAt),
-      consent ? Date.parse(consent.expiresAt) : Number.NEGATIVE_INFINITY,
+      consent ? consentDecktBis(consent) : Number.NEGATIVE_INFINITY,
     );
     return {
       erlaubt: true,

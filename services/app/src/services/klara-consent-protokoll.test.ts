@@ -1,6 +1,15 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { AuditService, InMemoryAuditRepo } from "../../../audit";
-import { InMemoryKlaraSessionRepo, type KlaraConsent } from "../../../reasoner";
+import {
+  InMemoryKlaraSessionRepo,
+  KLARA_RESOLUTION_TTL_MS,
+  type KlaraConsent,
+  bindeZustimmung,
+  cappedModelClient,
+  imBindungsrahmen,
+  resetModelSemaphoreForTests,
+  withModelSlot,
+} from "../../../reasoner";
 import {
   KLARA_AUFGABE_ANDERER_ANBIETER,
   KLARA_CONSENT_AUDIT_ENDED,
@@ -537,16 +546,108 @@ describe("Bens B6 · `giltNoch` endet mit Sitzung und Zustimmung", () => {
       "abgelaufen",
     );
   });
+});
 
-  it("Inaktivitätsfrist: ohne Zugriff endet die Freigabe mit dem gleitenden Sitzungsende", async () => {
+// ================================================================================================
+// Lauf 2 · Bens B8 — AUCH DIE AUFLÖSUNGSFRIST (grantedAt + KLARA_RESOLUTION_TTL_MS) BEENDET DEN LAUF.
+// ================================================================================================
+//
+// Bens Gegenbeleg: Tor bei T0 + 5 min − 1 ms erlaubt; die Anfrage wartet im Modell-Semaphore; die
+// Uhr rückt 2 ms vor — `giltNoch()` blieb `true` und der Transport wurde einmal gerufen, während
+// eine neue Torprüfung dieselbe Zustimmung schon mit `aufloesung_abgelaufen` zurückwies.
+
+describe("Bens B8 · die Laufbindung kennt dieselben Fristen wie die Deckungsprüfung", () => {
+  it("am Dienst: 1 ms vor der Auflösungsfrist erlaubt, 2 ms später trägt `giltNoch` nicht mehr", async () => {
     const { dienst, vorspulen } = aufbau();
     const { sicht, bindung } = await sitzung(dienst);
     await dienst.grantConsent(sicht.sessionId, bindung);
+    vorspulen(KLARA_RESOLUTION_TTL_MS - 1);
     const freigabe = await dienst.pruefeExterneAusfuehrung(sicht.sessionId, bindung);
+    expect(freigabe.erlaubt).toBe(true);
     const giltNoch = freigabe.erlaubt ? freigabe.giltNoch : () => true;
-    vorspulen(MINUTE);
-    expect(giltNoch(), "KALIBRIERUNG: innerhalb der Frist trägt sie").toBe(true);
-    vorspulen(15 * MINUTE);
-    expect(giltNoch()).toBe(false);
+    expect(giltNoch()).toBe(true);
+    vorspulen(2);
+    expect(giltNoch(), "dieselbe Grenze wie die Deckungsprüfung").toBe(false);
+    // Die neue Torprüfung sagt dasselbe — beide Stellen laufen nicht mehr auseinander.
+    const neu = await dienst.pruefeExterneAusfuehrung(sicht.sessionId, bindung);
+    expect(neu.erlaubt).toBe(false);
+    const grund = neu.erlaubt || neu.deckung.gedeckt ? null : neu.deckung.grund;
+    expect(grund).toBe("aufloesung_abgelaufen");
+  });
+
+  describe("über den echten Chokepoint: Freigabe des Dienstes, gecappter Client, Warten im Slot", () => {
+    const MAX = process.env.KLARWERK_MODEL_MAX_INFLIGHT;
+
+    async function wartenderLauf() {
+      const k = aufbau();
+      const { sicht, bindung } = await sitzung(k.dienst);
+      await k.dienst.grantConsent(sicht.sessionId, bindung);
+      k.vorspulen(KLARA_RESOLUTION_TTL_MS - 1);
+      const freigabe = await k.dienst.pruefeExterneAusfuehrung(sicht.sessionId, bindung);
+      expect(freigabe.erlaubt).toBe(true);
+      process.env.KLARWERK_MODEL_MAX_INFLIGHT = "1";
+      resetModelSemaphoreForTests();
+      const transport = vi.fn(async () => "Antwort");
+      const client = cappedModelClient(
+        { name: "anthropic:claude", complete: transport },
+        { rejectsConfidential: true },
+      );
+      let freigeben: () => void = () => undefined;
+      const belegt = withModelSlot(
+        () =>
+          new Promise<void>((r) => {
+            freigeben = r;
+          }),
+      );
+      const lauf = imBindungsrahmen(() => {
+        if (freigabe.erlaubt) {
+          bindeZustimmung(freigabe.giltNoch);
+        }
+        return client.complete("system", "user", false);
+      });
+      await new Promise((r) => setTimeout(r, 10));
+      expect(transport, "der Lauf wartet im Semaphore").not.toHaveBeenCalled();
+      return {
+        transport,
+        lauf,
+        vorspulen: k.vorspulen,
+        weiter: async () => {
+          freigeben();
+          await belegt;
+        },
+      };
+    }
+
+    function aufraeumen(): void {
+      if (MAX === undefined) {
+        delete process.env.KLARWERK_MODEL_MAX_INFLIGHT;
+      } else {
+        process.env.KLARWERK_MODEL_MAX_INFLIGHT = MAX;
+      }
+      resetModelSemaphoreForTests();
+    }
+
+    it("KALIBRIERUNG: innerhalb der Frist überträgt der wartende Lauf genau einmal", async () => {
+      try {
+        const k = await wartenderLauf();
+        await k.weiter();
+        await expect(k.lauf).resolves.toBe("Antwort");
+        expect(k.transport).toHaveBeenCalledTimes(1);
+      } finally {
+        aufraeumen();
+      }
+    });
+
+    it("die Auflösungsfrist läuft während des Wartens ab: der Transport wird NICHT gerufen", async () => {
+      try {
+        const k = await wartenderLauf();
+        k.vorspulen(2);
+        await k.weiter();
+        await expect(k.lauf).rejects.toThrow("keine externe Übertragung");
+        expect(k.transport).not.toHaveBeenCalled();
+      } finally {
+        aufraeumen();
+      }
+    });
   });
 });
