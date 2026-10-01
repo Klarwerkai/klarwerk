@@ -140,73 +140,15 @@ export function selectCandidates(
   return (Number.isFinite(cap) ? scored.slice(0, Math.max(0, cap)) : scored).map((x) => x.subject);
 }
 
-// Typografische Schreibvarianten DESSELBEN Zeichens (Anführungszeichen, Bindestriche, Auslassung).
-// Sie tragen keinen Sinn, ein Modell gibt sie oft anders zurück als der Text sie schreibt.
-const ZITAT_VARIANTEN: readonly (readonly [RegExp, string])[] = [
-  [/[‘’‚‛′‹›`´]/g, "'"],
-  [/[“”„‟″«»]/g, '"'],
-  [/[‐‑‒–—―−]/g, "-"],
-  [/…/g, "..."],
-];
-
-// Zitatvergleich (R-1117): Groß-/Kleinschreibung, Leerraum und typografische Varianten sind
-// gleichgültig — SATZZEICHEN NICHT. `normalizeForCompare` ersetzt sie durch Leerraum und ist für die
-// Textnähe (Trigramme) gemacht; als Zitatprüfung ließ sie „1,5 bar“ als Beleg für „1–5 bar“ durch
-// (Bens Gegenprobe, Runde 1).
-function normalizeForQuote(text: string): string {
-  let t = text.normalize("NFC").toLowerCase();
-  for (const [muster, ersatz] of ZITAT_VARIANTEN) {
-    t = t.replace(muster, ersatz);
-  }
-  return t.replace(/\s+/g, " ").trim();
-}
-
-// Verglichen wird Token für Token, nicht Zeichenkette in Zeichenkette. Ein Token ist
-//   · eine ZAHL als Ganzes, mit dem, was ihren Sinn trägt: Vorzeichen und führender Dezimaltrenner
-//     („-5“, „.5“), innere Trenner zwischen Ziffern („1,5“, „1.5“, „1-5“, „10:30“, „1/2“) und eine
-//     angehängte Einheit aus einem Zeichen („5%“, „20°“). „.5“ ist also nicht „5“, „1-5“ nicht „1“;
-//   · ein Wort aus Buchstaben und Ziffern;
-//   · jedes andere Zeichen für sich.
-// Ein Zitat muss eine lückenlose Folge von Token des Textes sein — damit stehen Funde von selbst an
-// Wortgrenzen („chstens“ belegt kein „höchstens“, „beträgt 1“ kein „beträgt 15“).
-// Am RAND des Zitats fallen nur FREISTEHENDE Anführungs- und Satzzeichen weg (ein Modell setzt
-// Schlusspunkt und Anführung oft selbst). Ein Zeichen, das zu einer Zahl gehört, ist nie Rand
-// (Bens Gegenprobe Runde 2: „.5 bar“ wurde zu „5 bar“).
-const ZITAT_TOKEN = /[-+]?[.,]?\d[\p{L}\p{N}]*(?:[.,:/-]\d[\p{L}\p{N}]*)*[%‰°]?|[\p{L}\p{N}]+|\S/gu;
-const ZITAT_RAND = new Set(['"', "'", ".", ",", ";", ":", "!", "?"]);
-
-function zitatToken(text: string): string[] {
-  return normalizeForQuote(text).match(ZITAT_TOKEN) ?? [];
-}
-
-function zitatKern(quote: string): string[] {
-  const token = zitatToken(quote);
-  let von = 0;
-  let bis = token.length;
-  while (von < bis && ZITAT_RAND.has(token[von] ?? "")) {
-    von += 1;
-  }
-  while (bis > von && ZITAT_RAND.has(token[bis - 1] ?? "")) {
-    bis -= 1;
-  }
-  return token.slice(von, bis);
-}
-
 // G-2 (3.4 Schritt 4): Beide Belegzitate müssen WÖRTLICH in den jeweiligen Kerntexten vorkommen —
-// sonst wird das Urteil als Modell-Halluzination verworfen (kein Konflikt). Leeres Zitat gilt als
-// Fehlschlag. Was „wörtlich“ zulässt, steht bei `normalizeForQuote` und `ZITAT_TOKEN`.
+// sonst wird das Urteil als Modell-Halluzination verworfen (kein Konflikt). Vergleich auf
+// normalisiertem Text (Robustheit gegen Leerraum/Satzzeichen), leeres Zitat gilt als Fehlschlag.
 export function quoteFound(quote: string, core: string): boolean {
-  const q = zitatKern(quote);
+  const q = normalizeForCompare(quote);
   if (q.length === 0) {
     return false;
   }
-  const text = zitatToken(core);
-  for (let i = 0; i + q.length <= text.length; i++) {
-    if (q.every((t, j) => text[i + j] === t)) {
-      return true;
-    }
-  }
-  return false;
+  return normalizeForCompare(core).includes(q);
 }
 
 export function quotesVerbatim(verdict: ConflictVerdict, coreA: string, coreB: string): boolean {

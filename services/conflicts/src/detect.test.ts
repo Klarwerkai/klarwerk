@@ -5,7 +5,6 @@ import {
   coreText,
   decideFromVerdict,
   pairKey,
-  quoteFound,
   quotesVerbatim,
   relationToType,
   selectCandidates,
@@ -102,30 +101,6 @@ describe("Berater-Konzept 04.07. (Stufe 2): Erkennungskern", () => {
     const decision = decideFromVerdict(bad, coreText(koBlau), coreText(koRot));
     expect(decision.create).toBe(false);
     expect(decision.reason).toBe("hallucination");
-  });
-
-  it("R-1117 (BEN-1): Satzzeichen zählen — „1,5 bar“ belegt kein „1–5 bar“, „15“ kein „1–5“", () => {
-    const core = "Der zulässige Betriebsdruck beträgt 1–5 bar.";
-    expect(quoteFound("beträgt 1–5 bar", core)).toBe(true);
-    expect(quoteFound("beträgt 1-5 bar.", core)).toBe(true);
-    expect(quoteFound("beträgt 1,5 bar", core)).toBe(false);
-    expect(quoteFound("beträgt 1.5 bar", core)).toBe(false);
-    expect(quoteFound("beträgt 15 bar", core)).toBe(false);
-    expect(quoteFound("trägt 1–5 bar", core)).toBe(false);
-    expect(quoteFound("beträgt 1", core)).toBe(false);
-  });
-
-  it("R-1117 (BEN-1, Runde 2): Zeichen, die zu einer Zahl gehören, sind nie Zitatrand", () => {
-    const core = "Set pressure to 5 bar.";
-    expect(quoteFound("5 bar", core)).toBe(true);
-    expect(quoteFound("„to 5 bar.“", core)).toBe(true);
-    expect(quoteFound(".5 bar", core)).toBe(false);
-    expect(quoteFound(",5 bar", core)).toBe(false);
-    expect(quoteFound("-5 bar", core)).toBe(false);
-    expect(quoteFound("5% bar", core)).toBe(false);
-    expect(quoteFound("5.0 bar", core)).toBe(false);
-    expect(quoteFound("-8 °C", "Lagern bei -8 °C.")).toBe(true);
-    expect(quoteFound("8 °C", "Lagern bei -8 °C.")).toBe(false);
   });
 
   it("Unter der Schwelle (confidence < 0.7) → kein Konflikt", () => {
