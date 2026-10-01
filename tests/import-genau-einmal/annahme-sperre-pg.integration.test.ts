@@ -16,6 +16,9 @@
 //   S4 — wie S3, aber B mit kurzer Wartezeit: `lock_timeout` → CONFLICT, Claim zurück, nichts angelegt.
 //   S5 — eine für die Sitzung gesetzte `idle_in_transaction_session_timeout` beendet die
 //        Sperrsitzung NICHT, solange der Halter arbeitet (sonst fiele die Sperre wie in B1).
+//   S6 — Bens B4: die SPERRSITZUNG von A stirbt (pg_terminate_backend), der Prozess A lebt weiter.
+//        B bekommt die Sperre und legt an; A setzt mit seinem alten Befund fort, erkennt den
+//        Verlust vor der Anlage (`sperreGilt`) und legt NICHTS an → ein Objekt, kein Absturz.
 //
 // Läuft NUR unter `test:integration` (Docker/Testcontainers oder eine per KLARWERK_PG_TEST_URL
 // angebotene lokale Testinstanz) — dieselbe Bauform wie `tests/q2d-leere-kennung/
@@ -125,7 +128,7 @@ describe("Bens B2 · Annahme-Sperre über zwei unabhängige Pools gegen echtes P
       now: () => uhr.ms,
       ...(opts.wartezeitB === undefined ? {} : { annahmeWartezeitMs: opts.wartezeitB }),
     });
-    return { koService, uhr, repoA, repoB, links, rechts, poolB };
+    return { koService, uhr, repoA, repoB, links, rechts, poolA, poolB };
   }
 
   /** Lässt die ERSTE echte Objektanlage vor `create` hängen, bis `loesen()` gerufen wird. */
@@ -296,4 +299,75 @@ describe("Bens B2 · Annahme-Sperre über zwei unabhängige Pools gegen echtes P
     expect(rb.koId).toBeNull();
     expect(await inst.koService.list()).toHaveLength(1);
   });
+
+  for (const anker of [false, true]) {
+    const weg = anker ? "Herkunftsanker" : "Textweg";
+    const quelle = anker ? { ...EINTRAG, provider: "wiki", externalId: "quelle-42" } : EINTRAG;
+
+    it(`S6 · ${weg} (Bens B4): Sperrsitzung von A beendet, Prozess A lebt → A legt nicht an, ein Objekt`, async (ctx) => {
+      const inst = await zweiInstanzen(ctx, { anker });
+      // Ein Fehler des abgebrochenen Clients darf den Testprozess nicht beenden — der Adapter
+      // fängt ihn selbst; das hier ist nur die Sicherung für einen ungeliehenen Client.
+      inst.poolA.on("error", () => undefined);
+      const [a] = await inst.links.createImportCandidates(
+        [{ ...quelle, sourceVersion: 1 }],
+        "imp",
+        NIE_AEHNLICH,
+      );
+      const [b] = await inst.rechts.createImportCandidates(
+        [{ ...quelle, sourceVersion: 2 }],
+        "imp",
+        NIE_AEHNLICH,
+      );
+      // A liest den Bestand (noch leer) und hängt DANACH — er setzt später mit diesem alten Stand
+      // fort, so wie ein Prozess, der während einer langen Pause seine Sitzung verloren hat.
+      const list = inst.koService.list.bind(inst.koService);
+      let loesen: () => void = () => undefined;
+      let betreten: () => void = () => undefined;
+      const tor = new Promise<void>((r) => {
+        loesen = r;
+      });
+      const bereit = new Promise<void>((r) => {
+        betreten = r;
+      });
+      let erster = true;
+      inst.koService.list = async (...args: Parameters<KoService["list"]>) => {
+        const stand = await list(...args);
+        if (erster) {
+          erster = false;
+          betreten();
+          await tor;
+        }
+        return stand;
+      };
+      const alterLauf = inst.links
+        .reviewImportCandidate(a!.id, "accept", "rev-a", undefined, NIE_AEHNLICH)
+        .then(
+          () => "fulfilled",
+          (e: { code?: string }) => e.code,
+        );
+      await bereit;
+      const halter = await inst.poolB.query<{ pid: number }>(
+        "SELECT pid FROM pg_locks WHERE locktype = 'advisory' AND granted",
+      );
+      expect(halter.rows).toHaveLength(1);
+      await inst.poolB.query("SELECT pg_terminate_backend($1)", [halter.rows[0]!.pid]);
+
+      const angenommen = await inst.rechts.reviewImportCandidate(
+        b!.id,
+        "accept",
+        "rev-b",
+        undefined,
+        NIE_AEHNLICH,
+      );
+      expect(angenommen.koId, "B bekommt die freigewordene Sperre und legt an.").toBeTruthy();
+
+      loesen();
+      expect(await alterLauf, "A erkennt den Sperrverlust vor der Anlage.").toBe("CONFLICT");
+      const kos = await inst.koService.list();
+      expect(kos).toHaveLength(1);
+      expect(kos[0]?.id).toBe(angenommen.koId);
+      expect((await inst.repoB.findById(a!.id))?.status, "As Claim ist zurückgegeben.").toBe("neu");
+    });
+  }
 });

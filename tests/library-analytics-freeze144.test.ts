@@ -153,6 +153,10 @@ const WIDERRUFENE_FREIGABEN: readonly string[] = [
   // mit dem Claim ihres Halters gebrochen wurde; ihre Nachfolgerinnen stehen am Eintrag.
   "FREEZE-144/GIA2-R1-20261001/repo",
   "FREEZE-144/GIA2-R1-20261001/repo-pg",
+  // LAUF gesamt-import-adoption:2 Runde 3 (Bens B4): verbraucht. Sie autorisierten die Sperre ohne
+  // Behandlung des Sitzungsverlusts; ihre Nachfolgerinnen stehen am Eintrag.
+  "FREEZE-144/GIA2-R2-20261001/repo",
+  "FREEZE-144/GIA2-R2-20261001/repo-pg",
 ];
 
 const ERWARTETE_ANZAHL = 6;
@@ -322,10 +326,15 @@ const FREEZE_MANIFEST: readonly FreezeEintrag[] = [
     // CONFLICT); `AnnahmeHalter` und das Brechen in `resolveClaim` sind ENTFALLEN. Claim-CAS, Lease
     // und Idempotenzschlüssel sind unverändert. Sollhash UND Freigabe in EINEM Änderungssatz, die
     // alte in WIDERRUFENE_FREIGABEN.
-    hash: "e3f9788a7685ec6d9c25045fde4e63b7aa7ff135e37d70b7003ed6e4912aeeff",
+    //
+    // LAUF gesamt-import-adoption:2 RUNDE 3 · AUSGEWIESENE ÄNDERUNG (Bens B4): der Schritt der
+    // `annahmeSperre` bekommt `sperreGilt` (vor jeder Mutation zu fragen; InMemory: immer gültig),
+    // dazu `annahmeSperreVerloren()` → CONFLICT. Sonst unverändert. Sollhash UND Freigabe in EINEM
+    // Änderungssatz, die alte in WIDERRUFENE_FREIGABEN.
+    hash: "549edfb36cf1db21f2bacd43c812837ffe75087e68967539e91f91ef560c8c04",
     freigabe: {
-      id: "FREEZE-144/GIA2-R2-20261001/repo",
-      autorisiertHash: "e3f9788a7685ec6d9c25045fde4e63b7aa7ff135e37d70b7003ed6e4912aeeff",
+      id: "FREEZE-144/GIA2-R3-20261001/repo",
+      autorisiertHash: "549edfb36cf1db21f2bacd43c812837ffe75087e68967539e91f91ef560c8c04",
     },
   },
   {
@@ -359,10 +368,16 @@ const FREEZE_MANIFEST: readonly FreezeEintrag[] = [
     // der Lease-Frist, begrenzt wird nur das Warten (`SET LOCAL lock_timeout`, 55P03 → CONFLICT).
     // Das Brechen der Prozess-Kette in `resolveClaim` ist ENTFALLEN. KEINE DDL-Änderung. Sollhash
     // UND Freigabe in EINEM Änderungssatz, die alte in WIDERRUFENE_FREIGABEN.
-    hash: "475ba6dedfb0a027af0f4c30b01849ccec637f034ab5cc95d1de575d4fe6003f",
+    //
+    // LAUF gesamt-import-adoption:2 RUNDE 3 · AUSGEWIESENE ÄNDERUNG (Bens B4): der ausgeliehene
+    // Sperr-Client trägt für die ganze Ausleihe einen `error`-Listener; ein Sitzungsverlust wird
+    // festgehalten, `sperreGilt` prüft ihn (und `SELECT 1` über dieselbe Sitzung) vor jeder Mutation
+    // und wirft dann CONFLICT; die verlorene Verbindung wird verworfen. KEINE DDL-Änderung. Sollhash
+    // UND Freigabe in EINEM Änderungssatz, die alte in WIDERRUFENE_FREIGABEN.
+    hash: "7ebdbd023059b12d2f864b9464a143d53094b0514f2dc8485df5cd3245ecc3c6",
     freigabe: {
-      id: "FREEZE-144/GIA2-R2-20261001/repo-pg",
-      autorisiertHash: "475ba6dedfb0a027af0f4c30b01849ccec637f034ab5cc95d1de575d4fe6003f",
+      id: "FREEZE-144/GIA2-R3-20261001/repo-pg",
+      autorisiertHash: "7ebdbd023059b12d2f864b9464a143d53094b0514f2dc8485df5cd3245ecc3c6",
     },
   },
   {

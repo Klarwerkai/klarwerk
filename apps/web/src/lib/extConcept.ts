@@ -83,8 +83,13 @@ export function candidateFindings(candidate: ImportCandidate): CandidateFindings
     missingInfo,
     // JOB 3116 · ABLÖSUNG: beim Re-Sync wird die Kennung eines BESTEHENDEN Objekts zurückgegeben —
     // erzeugt wurde nichts. „KO erzeugt" wäre schlicht falsch.
+    // Lauf gesamt-import-adoption:2 Runde 3 (Bens B3): dasselbe gilt für den Papierkorb-Anker —
+    // die Annahme nennt dann die Kennung des getrashten Objekts, angelegt wurde nichts.
     acceptedKo:
-      candidate.status === "angenommen" && candidate.koId !== null && wiederverwendet === null,
+      candidate.status === "angenommen" &&
+      candidate.koId !== null &&
+      wiederverwendet === null &&
+      imPapierkorb === null,
     rejected: candidate.status === "abgelehnt",
     infoRequested: candidate.status === "info-angefragt",
     imPapierkorb,

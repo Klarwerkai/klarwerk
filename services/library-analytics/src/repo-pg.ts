@@ -8,6 +8,7 @@ import {
   type ImportRunFortschritt,
   type ImportRunRepo,
   annahmeSperreBelegt,
+  annahmeSperreVerloren,
   externalSourceSystemKey,
   pruefeImportRun,
   pruefeImportRunItemRef,
@@ -254,19 +255,51 @@ export class PgCandidateRepo implements CandidateRepo {
   constructor(private readonly pool: Pool) {}
 
   // Die Sperr-Transaktion trägt NUR die Sperre: der Schritt schreibt über seine eigenen
-  // Verbindungen (Wissensobjekt-Dienst), seine Wirkung hängt also nicht an diesem COMMIT. Darum
-  // ist ein scheiterndes COMMIT/ROLLBACK kein Fehler des Schritts — die Verbindung wird dann
-  // verworfen, und mit ihrer Sitzung fällt die Sperre.
-  // Die Wartezeit gilt EINMAL für beide Stufen: was in der Prozess-Kette verstrichen ist, fehlt
-  // der Datenbank-Wartezeit.
-  annahmeSperre<T>(wartezeitMs: number, schritt: () => Promise<T>): Promise<T> {
+  // Verbindungen (Wissensobjekt-Dienst). Die Wartezeit gilt EINMAL für beide Stufen: was in der
+  // Prozess-Kette verstrichen ist, fehlt der Datenbank-Wartezeit.
+  //
+  // ==============================================================================================
+  // Lauf :2 Runde 3 (Bens B4) — DER VERLUST DER SPERRSITZUNG IST KEIN PROZESSENDE.
+  // ==============================================================================================
+  //
+  // WAS FEHLTE. (a) Auf dem ausgeliehenen Sperr-Client hing kein `error`-Listener: ein
+  // Verbindungsfehler während des Schritts kam als Ereignis, nicht als abgelehnte Promise, und
+  // verliess den Ereignishandler unbehandelt. (b) Verliert die Sitzung ihre Verbindung, gibt der
+  // Server die Sperre frei — der PROZESS lebt aber weiter, und sein Schritt hätte ungeprüft
+  // angelegt, während ein anderer die Sperre schon hält. Runde 2 hatte das mit „ein toter Prozess
+  // legt nichts mehr an" gleichgesetzt; das gilt nur für den Prozess, nicht für seine Sitzung.
+  //
+  // DIE ANTWORT. (a) Der Listener hängt für die ganze Ausleihe am Client und hält nur fest, DASS
+  // die Sitzung verloren ist. (b) Der Schritt fragt `sperreGilt` UNMITTELBAR vor jeder Mutation:
+  // war ein Fehler gemeldet, oder kommt `SELECT 1` über DIESELBE Sitzung nicht zurück, wirft sie
+  // CONFLICT, und es wird nichts geschrieben. Die Verbindung wird danach verworfen (nie in den
+  // Pool zurück).
+  //
+  // EHRLICHE GRENZE. Zwischen der letzten Frage und der Mutation liegt ein Fenster von einem
+  // Aufruf. Reisst GENAU DORT die Sitzung ab UND legt ein anderer Prozess in derselben Spanne an,
+  // entstehen zwei Objekte. Schliessen liesse sich das nur in der Wissensobjekt-Ablage selbst (ein
+  // Riegel, den die Anlage atomar prüft) — ausserhalb dieses Moduls. Geht die Sitzung erst NACH der
+  // letzten Mutation verloren, steht die Wirkung bereits fest; das Ergebnis wird dann zurückgegeben
+  // und der Verlust laut protokolliert.
+  annahmeSperre<T>(
+    wartezeitMs: number,
+    schritt: (sperreGilt: () => Promise<void>) => Promise<T>,
+  ): Promise<T> {
     const frist = Date.now() + wartezeitMs;
     return this.annahmen.nacheinander(wartezeitMs, async () => {
       const client = await this.pool.connect();
-      let verwerfen = false;
+      let verloren = false;
+      const beiFehler = (): void => {
+        verloren = true;
+      };
+      client.on("error", beiFehler);
+      const zurueckgeben = (): void => {
+        client.removeListener("error", beiFehler);
+        client.release(verloren);
+      };
       const abschliessen = (anweisung: "COMMIT" | "ROLLBACK") =>
         client.query(anweisung).catch(() => {
-          verwerfen = true;
+          verloren = true;
         });
       try {
         await client.query("BEGIN");
@@ -277,21 +310,38 @@ export class PgCandidateRepo implements CandidateRepo {
       } catch (fehler) {
         // Ohne Sperre läuft der Schritt nicht — sonst wäre der Ausschluss nur behauptet.
         await abschliessen("ROLLBACK");
-        client.release(verwerfen);
+        zurueckgeben();
         if ((fehler as { code?: unknown }).code === LOCK_NOT_AVAILABLE) {
           throw annahmeSperreBelegt();
         }
         throw fehler;
       }
+      const sperreGilt = async (): Promise<void> => {
+        if (!verloren) {
+          try {
+            await client.query("SELECT 1");
+          } catch {
+            verloren = true;
+          }
+        }
+        if (verloren) {
+          throw annahmeSperreVerloren();
+        }
+      };
       try {
-        const ergebnis = await schritt();
+        const ergebnis = await schritt(sperreGilt);
         await abschliessen("COMMIT");
+        if (verloren) {
+          process.stderr.write(
+            "[KLARWERK] Annahme-Sperre: Sitzung nach der letzten Mutation verloren — die Wirkung stand bereits fest, Ergebnis wird zurückgegeben.\n",
+          );
+        }
         return ergebnis;
       } catch (fehler) {
         await abschliessen("ROLLBACK");
         throw fehler;
       } finally {
-        client.release(verwerfen);
+        zurueckgeben();
       }
     });
   }

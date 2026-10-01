@@ -95,7 +95,14 @@ export interface CandidateRepo {
   // Kopf von `AnnahmeKette` unten. Ein werfender Schritt gibt die Sperre frei; sein Fehler kommt
   // durch. Wer die Sperre nicht binnen `wartezeitMs` bekommt, erhält `CONFLICT` und sein Schritt
   // läuft NICHT.
-  annahmeSperre<T>(wartezeitMs: number, schritt: () => Promise<T>): Promise<T>;
+  //
+  // Lauf :2 Runde 3 (Bens B4): der Schritt bekommt `sperreGilt` — er ruft sie UNMITTELBAR vor jeder
+  // Mutation. Sie wirft (CONFLICT), wenn die Sperre inzwischen nicht mehr gehalten wird; dann
+  // schreibt der Schritt nichts. InMemory kann die Sperre nicht verlieren.
+  annahmeSperre<T>(
+    wartezeitMs: number,
+    schritt: (sperreGilt: () => Promise<void>) => Promise<T>,
+  ): Promise<T>;
 }
 
 // Die Antwort an eine Annahme, die die Sperre nicht rechtzeitig bekam. Ein Konflikt, keine Störung:
@@ -104,6 +111,15 @@ export function annahmeSperreBelegt(): LibraryError {
   return new LibraryError(
     "CONFLICT",
     "Eine andere Annahme läuft gerade noch — bitte in einem Moment erneut annehmen.",
+  );
+}
+
+// Die Antwort, wenn die Sperre WÄHREND des Schritts verloren ging (Bens B4): vor der Mutation
+// erkannt, also ist nichts geschrieben — derselbe Klick gelingt beim nächsten Versuch.
+export function annahmeSperreVerloren(): LibraryError {
+  return new LibraryError(
+    "CONFLICT",
+    "Die Annahme hat ihre Sperre verloren und nichts angelegt — bitte erneut annehmen.",
   );
 }
 
@@ -345,8 +361,11 @@ export class InMemoryCandidateRepo implements CandidateRepo {
   private readonly items = new Map<string, ImportCandidate>();
   private readonly annahmen = new AnnahmeKette();
 
-  annahmeSperre<T>(wartezeitMs: number, schritt: () => Promise<T>): Promise<T> {
-    return this.annahmen.nacheinander(wartezeitMs, schritt);
+  annahmeSperre<T>(
+    wartezeitMs: number,
+    schritt: (sperreGilt: () => Promise<void>) => Promise<T>,
+  ): Promise<T> {
+    return this.annahmen.nacheinander(wartezeitMs, () => schritt(() => Promise.resolve()));
   }
 
   insert(candidate: ImportCandidate): Promise<void> {

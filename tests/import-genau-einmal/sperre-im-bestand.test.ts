@@ -14,8 +14,11 @@
 // datenbankweite Wirkung prüft `annahme-sperre-pg.integration.test.ts` (Prüfserver).
 //
 // Ohne Dienststart, ohne Datenbank: InMemory-Bestände und ein aufzeichnender Pool-Ersatz.
-import type { Pool } from "pg";
+import { EventEmitter } from "node:events";
+import { Client, type Pool } from "pg";
 import { describe, expect, it } from "vitest";
+import type { ImportCandidate as WebImportCandidate } from "../../apps/web/src/api/types";
+import { candidateFindings } from "../../apps/web/src/lib/extConcept";
 import { InMemoryKoRepo, KoService } from "../../services/knowledge-object";
 import {
   type ClaimResolution,
@@ -116,8 +119,11 @@ describe("R3-1 · die Annahme-Sperre gilt für jeden Weg und jede Instanz am sel
   it("R3-1d · KALIBRIERUNG: ohne Sperre (durchreichendes Repo) entstehen am Anker-Weg zwei Objekte", async () => {
     // Belegt, dass R3-1a/c wirklich die Sperre messen: dasselbe Szenario ohne Reihenfolge.
     class OhneSperre extends InMemoryCandidateRepo {
-      override annahmeSperre<T>(_wartezeitMs: number, schritt: () => Promise<T>): Promise<T> {
-        return schritt();
+      override annahmeSperre<T>(
+        _wartezeitMs: number,
+        schritt: (sperreGilt: () => Promise<void>) => Promise<T>,
+      ): Promise<T> {
+        return schritt(() => Promise.resolve());
       }
     }
     const { koService, candidates } = await bestand(new OhneSperre());
@@ -137,7 +143,7 @@ describe("R3-1 · Postgres: die Sperre ist eine transaktionsgebundene Advisory-S
     const protokoll: string[] = [];
     let freigaben = 0;
     let verworfen = 0;
-    const client = {
+    const client = Object.assign(new EventEmitter(), {
       query: (text: string) => {
         protokoll.push(text);
         return Promise.resolve({ rows: [], rowCount: 0 });
@@ -148,7 +154,7 @@ describe("R3-1 · Postgres: die Sperre ist eine transaktionsgebundene Advisory-S
           verworfen += 1;
         }
       },
-    };
+    });
     const pool = { connect: () => Promise.resolve(client) } as unknown as Pool;
     return {
       pool,
@@ -232,7 +238,7 @@ describe("B1 · ein abgelöster, aber lebender Halter behält die Sperre bis zu 
   it("Pg: abgelaufene lock_timeout (55P03) wird CONFLICT, der Schritt läuft nicht, die Verbindung kehrt zurück", async () => {
     const protokoll: string[] = [];
     let freigaben = 0;
-    const client = {
+    const client = Object.assign(new EventEmitter(), {
       query: (text: string) => {
         protokoll.push(text);
         if (text.startsWith("SELECT pg_advisory_xact_lock")) {
@@ -243,7 +249,7 @@ describe("B1 · ein abgelöster, aber lebender Halter behält die Sperre bis zu 
       release: () => {
         freigaben += 1;
       },
-    };
+    });
     const repo = new PgCandidateRepo({ connect: () => Promise.resolve(client) } as unknown as Pool);
     let lief = false;
     await expect(
@@ -377,6 +383,201 @@ describe("B1 · ein abgelöster, aber lebender Halter behält die Sperre bis zu 
       expect(await koService.list()).toHaveLength(1);
     });
   }
+});
+
+describe("B4 · der Verlust der Sperrsitzung wird behandelt und verhindert jede weitere Mutation", () => {
+  // Bens Fehlerkanalprobe: ein ECHTER pg.Client ohne connect (keine Datenbank, kein Socket); nur
+  // die vorbereitenden SQL-Antworten sind simuliert. `_handleErrorEvent` ist derselbe Treiberpfad,
+  // den ein Socketfehler nimmt.
+  function echterClient() {
+    const client = new Client();
+    const zustand = { kaputt: false, freigegebenMitFehler: undefined as unknown };
+    const fehler = Object.assign(new Error("Sperrverbindung abgebrochen"), { code: "ECONNRESET" });
+    client.query = (() =>
+      zustand.kaputt
+        ? Promise.reject(fehler)
+        : Promise.resolve({ rows: [], rowCount: 0 })) as unknown as typeof client.query;
+    Object.assign(client, {
+      release: (f?: unknown) => {
+        zustand.freigegebenMitFehler = f;
+      },
+    });
+    const abbrechen = () => {
+      zustand.kaputt = true;
+      (client as unknown as { _handleErrorEvent(e: Error): void })._handleErrorEvent(fehler);
+    };
+    const repo = new PgCandidateRepo({ connect: async () => client } as unknown as Pool);
+    return { repo, zustand, abbrechen };
+  }
+
+  it("Verbindungsfehler WÄHREND des Schritts: kein unbehandelter Fehler, die nächste Mutation unterbleibt (CONFLICT), Verbindung verworfen", async () => {
+    const { repo, zustand, abbrechen } = echterClient();
+    let betreten: () => void = () => undefined;
+    let weiter: () => void = () => undefined;
+    const bereit = new Promise<void>((r) => {
+      betreten = r;
+    });
+    const tor = new Promise<void>((r) => {
+      weiter = r;
+    });
+    let mutiert = false;
+    const annahme = repo.annahmeSperre(WARTEZEIT, async (sperreGilt) => {
+      betreten();
+      await tor;
+      await sperreGilt();
+      mutiert = true;
+      return 42;
+    });
+    const ausgang = annahme.then(
+      (value) => ({ value }),
+      (error: { code?: string }) => ({ code: error.code }),
+    );
+    await bereit;
+    expect(() => abbrechen(), "Der Adapter behandelt den Fehler seines Clients.").not.toThrow();
+    weiter();
+    expect(await ausgang).toEqual({ code: "CONFLICT" });
+    expect(mutiert, "Nach Sitzungsverlust wird nichts mehr geschrieben.").toBe(false);
+    expect(zustand.freigegebenMitFehler, "Die verlorene Verbindung kehrt nicht in den Pool.").toBe(
+      true,
+    );
+  });
+
+  it("Sitzung tot, aber ohne Fehlerereignis: `SELECT 1` über dieselbe Sitzung scheitert → CONFLICT, nichts geschrieben", async () => {
+    const { repo, zustand } = echterClient();
+    let mutiert = false;
+    await expect(
+      repo.annahmeSperre(WARTEZEIT, async (sperreGilt) => {
+        zustand.kaputt = true;
+        await sperreGilt();
+        mutiert = true;
+      }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(mutiert).toBe(false);
+    expect(zustand.freigegebenMitFehler).toBe(true);
+  });
+
+  it("Sitzung erst NACH der letzten Mutation verloren: die Wirkung steht, das Ergebnis kommt zurück, Verbindung verworfen", async () => {
+    const { repo, zustand, abbrechen } = echterClient();
+    const ergebnis = await repo.annahmeSperre(WARTEZEIT, async (sperreGilt) => {
+      await sperreGilt();
+      abbrechen();
+      return "angelegt";
+    });
+    expect(ergebnis).toBe("angelegt");
+    expect(zustand.freigegebenMitFehler).toBe(true);
+  });
+
+  it("Dienst: verlorene Sperre vor der Anlage → CONFLICT, kein Objekt, Claim zurück", async () => {
+    class SperreVerloren extends InMemoryCandidateRepo {
+      override annahmeSperre<T>(
+        wartezeitMs: number,
+        schritt: (sperreGilt: () => Promise<void>) => Promise<T>,
+      ): Promise<T> {
+        return super.annahmeSperre(wartezeitMs, () =>
+          schritt(() =>
+            Promise.reject(Object.assign(new Error("Sperre verloren"), { code: "CONFLICT" })),
+          ),
+        );
+      }
+    }
+    for (const anker of [false, true]) {
+      const { koService, candidates } = await bestand(new SperreVerloren());
+      const library = new LibraryService({ koService, candidates, externalUpsert: anker });
+      const eintrag = anker ? { ...QUELLE, sourceVersion: 1 } : EINTRAG;
+      const [k] = await library.createImportCandidates([eintrag], "imp", NIE_AEHNLICH);
+      await expect(
+        library.reviewImportCandidate(k!.id, "accept", "rev", undefined, NIE_AEHNLICH),
+      ).rejects.toMatchObject({ code: "CONFLICT" });
+      expect(await koService.list()).toHaveLength(0);
+      expect((await candidates.findById(k!.id))?.status).toBe("neu");
+    }
+  });
+});
+
+describe("B3 · der tatsächliche Annahmeausgang am Herkunftsanker steht in Antwort, Bestand und Fläche", () => {
+  const FASSUNG = (v: number) => ({ ...QUELLE, sourceVersion: v });
+
+  it('zwei Fassungen VOR der ersten Anlage eingereiht: die zweite Annahme meldet `wiederverwendet` mit Kennung, nicht „KO erzeugt"', async () => {
+    const { koService, candidates } = await bestand();
+    const library = new LibraryService({ koService, candidates, externalUpsert: true });
+    const [a] = await library.createImportCandidates([FASSUNG(1)], "imp");
+    const [b] = await library.createImportCandidates([FASSUNG(2)], "imp");
+    expect(b?.dublettenbefund).toEqual({ ergebnis: "nicht_gestellt" });
+    const ra = await library.reviewImportCandidate(a!.id, "accept", "rev");
+    const rb = await library.reviewImportCandidate(b!.id, "accept", "rev");
+    expect(ra.dublettenbefund).toEqual({ ergebnis: "nicht_gestellt" });
+    const erwartet = {
+      ergebnis: "wiederverwendet",
+      treffer: { art: "wissensobjekt", koId: ra.koId },
+    };
+    expect(rb.koId).toBe(ra.koId);
+    expect(rb.dublettenbefund).toEqual(erwartet);
+    expect(rb.duplicate).toBe(false);
+    expect((await candidates.findById(b!.id))?.dublettenbefund, "auch im Bestand").toEqual(
+      erwartet,
+    );
+    const f = candidateFindings(rb as unknown as WebImportCandidate);
+    expect(f.acceptedKo).toBe(false);
+    expect(f.wiederverwendet).toEqual({ koId: ra.koId });
+    expect(candidateFindings(ra as unknown as WebImportCandidate).acceptedKo).toBe(true);
+  });
+
+  it("dasselbe gleichzeitig (Promise.all, Bens Fall): ein Objekt, die zweite Annahme sagt `wiederverwendet`", async () => {
+    const { koService, candidates } = await bestand();
+    const library = new LibraryService({ koService, candidates, externalUpsert: true });
+    const [a] = await library.createImportCandidates([FASSUNG(1)], "imp");
+    const [b] = await library.createImportCandidates([FASSUNG(2)], "imp");
+    const [ra, rb] = await Promise.all([
+      library.reviewImportCandidate(a!.id, "accept", "rev"),
+      library.reviewImportCandidate(b!.id, "accept", "rev"),
+    ]);
+    expect(await koService.list()).toHaveLength(1);
+    expect(rb.koId).toBe(ra.koId);
+    expect(rb.dublettenbefund).toEqual({
+      ergebnis: "wiederverwendet",
+      treffer: { art: "wissensobjekt", koId: ra.koId },
+    });
+    expect(candidateFindings(rb as unknown as WebImportCandidate).acceptedKo).toBe(false);
+  });
+
+  it('nach dem Einreihen gelöscht: die Annahme meldet `im_papierkorb` mit Kennung, nichts angelegt, nicht „KO erzeugt"', async () => {
+    const { koService, candidates } = await bestand();
+    const library = new LibraryService({ koService, candidates, externalUpsert: true });
+    const [a] = await library.createImportCandidates([FASSUNG(1)], "imp");
+    const [b] = await library.createImportCandidates([FASSUNG(2)], "imp");
+    const ra = await library.reviewImportCandidate(a!.id, "accept", "rev");
+    await koService.delete(ra.koId as string, "rev");
+    const rb = await library.reviewImportCandidate(b!.id, "accept", "rev");
+    const erwartet = {
+      ergebnis: "im_papierkorb",
+      treffer: { art: "wissensobjekt", koId: ra.koId },
+    };
+    expect(rb.koId).toBe(ra.koId);
+    expect(rb.dublettenbefund).toEqual(erwartet);
+    expect(rb.duplicate).toBe(true);
+    expect((await candidates.findById(b!.id))?.dublettenbefund).toEqual(erwartet);
+    expect(await koService.list()).toHaveLength(0);
+    const f = candidateFindings(rb as unknown as WebImportCandidate);
+    expect(f.acceptedKo).toBe(false);
+    expect(f.imPapierkorb).toEqual({ koId: ra.koId });
+    expect(f.duplicate).toBe(false);
+  });
+
+  it("eingereiht mit `wiederverwendet`, Träger danach im Papierkorb: die Annahme meldet `im_papierkorb`", async () => {
+    const { koService, candidates } = await bestand();
+    const library = new LibraryService({ koService, candidates, externalUpsert: true });
+    const [a] = await library.createImportCandidates([FASSUNG(1)], "imp");
+    const ra = await library.reviewImportCandidate(a!.id, "accept", "rev");
+    const [b] = await library.createImportCandidates([FASSUNG(2)], "imp");
+    expect(b?.dublettenbefund?.ergebnis).toBe("wiederverwendet");
+    await koService.delete(ra.koId as string, "rev");
+    const rb = await library.reviewImportCandidate(b!.id, "accept", "rev");
+    expect(rb.dublettenbefund).toEqual({
+      ergebnis: "im_papierkorb",
+      treffer: { art: "wissensobjekt", koId: ra.koId },
+    });
+    expect(await koService.list()).toHaveLength(0);
+  });
 });
 
 describe("R3-2 · die Recovery schreibt den tatsächlichen Übernahmebefund", () => {

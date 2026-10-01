@@ -1321,7 +1321,7 @@ export class LibraryService {
         // Claim die Recovery inzwischen freigegeben hat (Bens B1). Bekommt die Annahme die Sperre
         // nicht rechtzeitig, wirft `annahmeSperre` CONFLICT, BEVOR hier etwas läuft — der Fehlerpfad
         // unten gibt den Claim dann zurück (kein Objekt entstanden).
-        const annehmen = async (): Promise<ClaimResolution> => {
+        const annehmen = async (sperreGilt: () => Promise<void>): Promise<ClaimResolution> => {
           neuerBefund = await this.befundBeiAnnahme(candidate, pruefeDublette);
           if (neuerBefund) {
             entschieden = { ...candidate, ...neuerBefund };
@@ -1340,7 +1340,13 @@ export class LibraryService {
           // ungültiger Altwert im Re-Sync-Ranking auf „intern" normalisiert (fail-open) bzw. bei
           // der Erstanlage hart abgelehnt. Das bereinigte Item wird MIT persistiert.
           const item = this.withSanitizedConfidentiality(candidate.item);
-          createdKoId = await this.acceptToKo(item, actor, id);
+          const ausgang = await this.acceptToKo(item, actor, id, sperreGilt);
+          createdKoId = ausgang.koId;
+          // Bens B3: der Ausgang am Herkunftsanker ersetzt den Befund vom Einreihen. Der Textweg
+          // hat seinen neuen Befund oben schon erhoben; dort kommt hier keiner zurück.
+          if (ausgang.befund) {
+            neuerBefund = ausgang.befund;
+          }
           return {
             status: "angenommen",
             koId: createdKoId,
@@ -1770,7 +1776,23 @@ export class LibraryService {
   // nur für den Kandidaten-Stempel — die Anker-Suche läuft über `sucheAnkerKo` (aktiv, dann
   // Papierkorb; Begründung und Reihenfolge dort). Ein getrashtes Objekt wird ADOPTIERT und dabei
   // nicht angefasst; die Trash-Entscheidung bleibt beim Menschen, der gelöscht hat.
-  private async acceptToKo(item: ImportItem, actor: string, candidateId?: string): Promise<string> {
+  //
+  // Lauf gesamt-import-adoption:2 Runde 3 (Bens B3): `acceptToKo` ENTSCHEIDET auf dem Anker-Weg am
+  // heutigen Bestand (anlegen, fortschreiben oder Papierkorb), gab aber nur die Kennung zurück — der
+  // Kandidat behielt den Befund vom Einreihen, und die Fläche sagte „KO erzeugt", wo eine Kennung
+  // wiederverwendet wurde oder im Papierkorb lag. Zurück kommt jetzt AUCH der Ausgang dieser
+  // Entscheidung (`befund`), wo sie am Herkunftsanker fiel. Stempel-Adoptionen tragen keinen: das
+  // Objekt IST das Ergebnis dieses Kandidaten, der Befund seiner Erstanlage gilt weiter.
+  //
+  // Lauf :2 Runde 3 (Bens B4): `sperreGilt` wird UNMITTELBAR vor jeder Mutation gefragt (Anlage,
+  // Vertraulichkeits-Upgrade, Revision). Ist die Annahme-Sperre inzwischen verloren, wirft sie, und
+  // es wird nichts geschrieben (Begründung am Kopf von `PgCandidateRepo.annahmeSperre`).
+  private async acceptToKo(
+    item: ImportItem,
+    actor: string,
+    candidateId: string | undefined,
+    sperreGilt: () => Promise<void>,
+  ): Promise<{ koId: string; befund?: AnnahmeBefund }> {
     if (candidateId) {
       const stamped = await this.koService.findByImportCandidateId(candidateId);
       if (stamped) {
@@ -1778,7 +1800,7 @@ export class LibraryService {
         // create-Seiteneffekte (v1-Snapshot/ko.created) werden idempotent nachgezogen; wirft der
         // Nachzug, wirft die Adoption (fail-closed, kein halber Zustand wird vollendet).
         await this.koService.ensureCreatedSideEffects(stamped);
-        return stamped.id;
+        return { koId: stamped.id };
       }
     }
     // SCRUM-510 R2b: externalId-Upsert/Anker nur bei aktivem Strang. Aus → externalId ignorieren, immer
@@ -1819,7 +1841,16 @@ export class LibraryService {
       // (`dublettenbefund: im_papierkorb`, s. `createImportCandidates`). Dieser Riegel greift
       // UNABHAENGIG davon — auch bei Altkandidaten ohne Befund, bei den Confluence-/Jira-Anker-
       // Wegen und bei der Recovery. Beide Linien ersetzen einander nicht.
-      return anker.koId;
+      return {
+        koId: anker.koId,
+        befund: {
+          duplicate: true,
+          dublettenbefund: {
+            ergebnis: "im_papierkorb",
+            treffer: { art: "wissensobjekt", koId: anker.koId },
+          },
+        },
+      };
     }
     const existing = anker?.ko;
 
@@ -1831,6 +1862,7 @@ export class LibraryService {
       // gleich folgenden Revision), und Kandidat B kann As teilpersistiertes KO nie mit dauerhaft
       // fehlenden Belegen übernehmen. Wirft der Nachzug, wirft der Accept (Muster der anderen
       // Vollendungsstellen); KOs ohne Stempel (vor der Anker-Ära) haben nichts nachzuziehen.
+      await sperreGilt();
       if (existing.importCandidateId) {
         await this.koService.ensureCreatedSideEffects(existing);
       }
@@ -1904,12 +1936,22 @@ export class LibraryService {
           actor,
         );
       }
-      return existing.id;
+      return {
+        koId: existing.id,
+        befund: {
+          duplicate: false,
+          dublettenbefund: {
+            ergebnis: "wiederverwendet",
+            treffer: { art: "wissensobjekt", koId: existing.id },
+          },
+        },
+      };
     }
 
     // Erstanlage: die effektive Version wird IMMER gespeichert (auch ohne Item-Version → 1), damit ein
     // versionsloser Re-Import (current = 1, incoming = 1) sauber als No-op erkannt wird (Idempotenz).
     const firstVersion = item.sourceVersion ?? 1;
+    await sperreGilt();
     try {
       const ko = await this.koService.create({
         title: item.title,
@@ -1943,7 +1985,14 @@ export class LibraryService {
         // Recovery und Insert-or-Adopt erkennen daran eine bereits gelungene Erstanlage.
         ...(candidateId ? { importCandidateId: candidateId } : {}),
       });
-      return ko.id;
+      // Auf dem Anker-Weg heisst eine Erstanlage `nicht_gestellt` (JOB 3116) — auch dann, wenn beim
+      // Einreihen noch ein aktiver Träger gemeldet war, der inzwischen ganz verschwunden ist.
+      return externalId
+        ? {
+            koId: ko.id,
+            befund: { duplicate: false, dublettenbefund: { ergebnis: "nicht_gestellt" } },
+          }
+        : { koId: ko.id };
     } catch (err) {
       // WP-SHIP8-CLOSE-4 (bens ROT-1A/1B): KOLLISIONS-ADOPTION — existiert das KO mit diesem
       // Anker trotz werfendem create (Unique-Kollision ODER Insert gelungen + Snapshot/Audit
@@ -1961,7 +2010,7 @@ export class LibraryService {
               err instanceof Error ? err.name : "unknown"
             }).\n`,
           );
-          return raced.id;
+          return { koId: raced.id };
         }
       }
       throw err;
