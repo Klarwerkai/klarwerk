@@ -141,6 +141,28 @@ Lauf `:2` unverändert (Diff `a7d699eb..8ee44528`, ohne Konflikt anwendbar) und 
     `apps/web/dist`, und schwere Browsertests sind auf dem Produktions-Mac nicht erlaubt. Den Fall
     klärt das Linux-Tor.
 
+**Lauf `:5` Runde 1 (Basis `108d96d8` = Lauf `:3` Runde 3) — Nacharbeit nach Bens Urteil zu Runde 3:**
+
+* **B3-R2 — die Messfunktion von L2 veränderte den Titel.** In `TITELMASSE_SEITE` stand `\s` im
+  Template-String nur einfach maskiert. Ausgewertet ergab das `/s+/g`, und aus „Ausgabe“ wurde „Au
+  gabe“. Behoben:
+  * Die Funktion steht jetzt in `tests/d1-meine-entwuerfe/titelmasse-seite.ts` mit `\\s`, wie
+    `TITELMASSE`. L2 importiert sie unverändert.
+  * Neu ist `tests/d1-meine-entwuerfe/titelmasse-seite.test.ts`. Sie läuft ohne Browser und wertet
+    die Zeichenkette wie `fn` über `new Function` aus. Nachgebildet sind nur `document` und
+    `getComputedStyle`.
+    * S1: Die drei Fixture-Titel kommen ungekürzt Zeichen für Zeichen zurück.
+    * S2: Tabulator, Doppel-Leerzeichen und Umbruch werden zusammengezogen, Buchstaben bleiben.
+    * S3: Eine Kürzung am Zeilenträger wird gemeldet.
+  * Rot vor der Behebung: S1 und S2 („…Au gabe Nord 2026“). Danach 3/3 grün.
+  * L2 selbst läuft im Browser und ist lokal nicht ausgeführt. Den Pixelnachweis liefert das
+    Linux-Tor.
+* **B1-R / B2-R** bleiben unverändert behoben, die Gegenproben sind am Stand `108d96d8` wiederholt:
+  * `sichtbar: entwurfGehoert(entwurf, user.id)` → `entwurf-ist-privat.test.ts` rot (Anhangfall).
+  * „feldlos = erledigt“ → Fall 10 rot (`{ carla: 1 }`).
+  * „feldlos = ausstehend“ → Fall 11 rot (je zwei Mails).
+  * Mit der Lieferung sind alle grün.
+
 **Herkunft.** Lauf `:1` lieferte `2ea90959` (geprüft am Ship-Commit `2525f3d5`, `1.0.0-beta.1.616`).
 Er ist **nicht** in den Basisstand übernommen. Lauf `:2` trägt seine Änderungen wieder ein und
 behebt die drei fachlichen Ben-Befunde aus Runde 1 (Beleg `96239dc4-…`):

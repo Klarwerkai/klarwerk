@@ -46,6 +46,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 process.env.KLARWERK_SKIP_KEYCHAIN = "1";
 
 import { buildApp, buildServices } from "../../services/app/src/build-app";
+import { TITELMASSE_SEITE } from "./titelmasse-seite";
 
 const WURZEL = resolve(process.cwd());
 const DIST = resolve(WURZEL, "apps/web/dist");
@@ -365,40 +366,8 @@ interface Titelmass {
   kuerzung: string;
 }
 
-// ================================================================================================
-// AUFNAHME gesamt-entwurf-einreichen (Ben Lauf :3 Runde 2, B3-R) — DIESELBE MESSUNG AN DER
-// NORMALEN ÜBERSICHT `/entwuerfe`.
-// ================================================================================================
-//
-// Ben: „Die vorhandene Chromium-Titelmessung untersucht die andere Blatt-Menüliste." Die Übersicht
-// trug am Zeilenträger `truncate`; der Titel-`<span>` darin war inline und hätte für sich gemessen
-// `clientWidth = 0` gezeigt. Gemessen wird deshalb der Titelträger UND sein Zeilenträger, und
-// gemeldet wird der schlechtere der beiden — eine Kürzung am Behälter ist dieselbe Kürzung.
-const TITELMASSE_SEITE = `() => {
-  const zeilen = [...document.querySelectorAll('[data-testid="page-entwuerfe"] [data-testid="entwurfsliste-eintrag"]')];
-  return zeilen.map((z) => {
-    const el = z.querySelector('[data-testid="entwurfsliste-eintrag-titel"]');
-    const kandidaten = [el, el.parentElement];
-    const masse = kandidaten.map((k) => {
-      const stil = getComputedStyle(k);
-      return {
-        text: (el.textContent || '').replace(/\s+/g, ' ').trim(),
-        sichtbreite: k.clientWidth,
-        textbreite: k.scrollWidth,
-        sichthoehe: k.clientHeight,
-        texthoehe: k.scrollHeight,
-        umbruch: stil.whiteSpace,
-        kuerzung: stil.textOverflow,
-      };
-    });
-    const ueberhang = (m) => Math.max(m.textbreite - m.sichtbreite, m.texthoehe - m.sichthoehe);
-    const ellipse = masse.find((m) => m.kuerzung === 'ellipsis');
-    if (ellipse) {
-      return ellipse;
-    }
-    return masse.reduce((a, b) => (ueberhang(b) > ueberhang(a) ? b : a));
-  });
-}`;
+// Die Messung der normalen Übersicht `/entwuerfe` (Fall L2) steht in `titelmasse-seite.ts`, damit
+// `titelmasse-seite.test.ts` sie ohne Browser auswerten kann (Ben Lauf :3 Runde 3, B3-R2).
 
 /** Jeder Titel steht GANZ da — nichts ist abgeschnitten, und die Enden unterscheiden sich. */
 function ganzLesbar(titel: Titelmass[], lage: string): void {
