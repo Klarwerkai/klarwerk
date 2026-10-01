@@ -1746,6 +1746,15 @@ export function Blatt({
     // Diktatsitzung dieselbe Trennung wie im Ladeeffekt, und zwar VOR dem Adresswechsel.
     diktatVomBlattTrennen();
     setAnsicht("blatt");
+    // LAUF 6 (erfassen-doppelklick, bens B6): NENNT DIE ADRESSE DIESEN ENTWURF SCHON, ÄNDERT SICH AN
+    // IHR NICHTS — und der Ladeeffekt liefe nicht. Genau so kam der Arbeitsraum zurück, nachdem er
+    // den geöffneten Entwurf aktualisiert hatte: das Blatt zeigte weiter seinen Stand von vor dem
+    // Speichern (alter Titel), obwohl der Server längst den neuen trug. Ein neuer Laderunde-Zähler
+    // holt den gespeicherten Stand; derselbe Weg wie „Neu laden" nach einem Standkonflikt.
+    if (resumeDraftId === entwurfId) {
+      setReloadNonce((n) => n + 1);
+      return;
+    }
     setSearchParams({ draft: entwurfId }, { replace: true });
   };
 

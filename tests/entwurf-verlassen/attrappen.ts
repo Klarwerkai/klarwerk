@@ -48,32 +48,58 @@ export function lasseCreateScheiternFuer(...titel: readonly string[]): void {
   }
 }
 
-let riegel: (() => void) | null = null;
-let warte: Promise<void> | null = null;
+/**
+ * Ein Riegel: `halte()` hängt den nächsten Durchgang auf, bis `loslassen()` kommt. Eine Fabrik,
+ * weil der Ordner seit R-0020 drei davon braucht (Schreibvorgänge, Anlage, Objekt-Upload) — drei
+ * Abschriften derselben sechs Zeilen wären drei Stellen zum Auseinanderlaufen.
+ */
+function neueBremse(): {
+  halte(): void;
+  loslassen(): Promise<void>;
+  passiere(): Promise<void>;
+} {
+  let riegel: (() => void) | null = null;
+  let warte: Promise<void> | null = null;
+  return {
+    /** Ab jetzt hängt der nächste Durchgang, bis `loslassen()` kommt. */
+    halte(): void {
+      warte = new Promise<void>((r) => {
+        riegel = r;
+      });
+    },
+    async loslassen(): Promise<void> {
+      riegel?.();
+      riegel = null;
+      warte = null;
+    },
+    async passiere(): Promise<void> {
+      if (warte) {
+        await warte;
+      }
+    },
+  };
+}
+
 /**
  * JOB 3572, Lieferung 4 (a): der nächste `update` scheitert EINMAL — der Fall „der Server lehnt ab".
  * Kein Schalter, der stehen bleibt: er verbraucht sich beim ersten Aufruf.
  */
 let naechsterUpdateFehler: unknown = null;
 
-export const bremse = {
-  /** Ab jetzt hängt der nächste Schreibvorgang, bis `loslassen()` kommt. */
-  halte(): void {
-    warte = new Promise<void>((r) => {
-      riegel = r;
-    });
-  },
-  async loslassen(): Promise<void> {
-    riegel?.();
-    riegel = null;
-    warte = null;
-  },
-  async passiere(): Promise<void> {
-    if (warte) {
-      await warte;
-    }
-  },
-};
+/** Hängt den nächsten `update`/`remove`/`promote` auf. */
+export const bremse = neueBremse();
+
+/**
+ * R-0020: hängt `drafts.create` auf — das Fenster, in dem der Eintrags-Anteil des manuellen Knopfes
+ * läuft und `draftId` noch `null` ist. Ein zweiter Klick darin legte bis hierher neu an.
+ */
+export const anlageBremse = neueBremse();
+
+/**
+ * R-0020: hängt `objects.upload` auf — der „angehaltene Upload" des Auftrags. Solange er hängt, ist
+ * der Ref-Cache des Originals leer, und jeder zweite Lauf lüde es ein zweites Mal hoch.
+ */
+export const uploadBremse = neueBremse();
 
 /** Der nächste `drafts.update` wirft diesen Fehler, danach schreibt er wieder normal. */
 export function lasseNaechstesUpdateScheitern(fehler: unknown): void {
@@ -105,14 +131,53 @@ let neuZaehler = 0;
  * und genau der Schaden dieses Auftrags (Doppelungen in „Meine Entwürfe") wäre unsichtbar
  * geblieben. Kein Fall dieses Ordners hat sich je auf `neu-1` berufen.
  */
-export const draftsCreate = vi.fn(async (payload: unknown) => {
+/**
+ * R-0020: die Vorgänge, die der Server kennt — Schlüssel → Kennung und Abdruck. Dieselbe Regel wie
+ * `CaptureService.createDraftVorgang`: derselbe Schlüssel mit demselben Inhalt liefert den schon
+ * angelegten Entwurf, mit anderem Inhalt `IDEMPOTENCY_PAYLOAD_MISMATCH`; ohne Schlüssel legt jede
+ * Anlage neu an.
+ */
+const vorgaenge = new Map<string, { id: string; abdruck: string }>();
+
+/**
+ * R-0020: die nächste Anlage wird AUSGEFÜHRT, ihre Antwort aber verworfen — der Netzfehler kommt
+ * NACH dem Schreiben. Genau die Lage „die Antwort des Servers geht unterwegs verloren". Verbraucht
+ * sich beim ersten Aufruf.
+ */
+let naechsteAntwortVerloren = false;
+
+/** Die nächste `drafts.create`-Antwort geht nach dem Schreiben verloren. */
+export function lasseNaechsteAnlageAntwortVerlorenGehen(): void {
+  naechsteAntwortVerloren = true;
+}
+
+export const draftsCreate = vi.fn(async (payload: unknown, operationId?: string) => {
+  await anlageBremse.passiere();
   if (createFehlerTitel.has(titelAus(payload))) {
     throw new Error(`Anlage abgelehnt: ${titelAus(payload)}`);
+  }
+  const abdruck = JSON.stringify(payload);
+  const bekannt = operationId ? vorgaenge.get(operationId) : undefined;
+  if (bekannt) {
+    if (bekannt.abdruck !== abdruck) {
+      throw Object.assign(new Error("IDEMPOTENCY_PAYLOAD_MISMATCH"), {
+        status: 409,
+        code: "IDEMPOTENCY_PAYLOAD_MISMATCH",
+      });
+    }
+    return JSON.parse(JSON.stringify(server.bestand[bekannt.id])) as unknown;
   }
   neuZaehler += 1;
   const id = `neu-${neuZaehler}`;
   const angelegt = { id, updatedAt: "2026-09-10T12:00:00.000Z", payload };
   server.bestand[id] = angelegt;
+  if (operationId) {
+    vorgaenge.set(operationId, { id, abdruck });
+  }
+  if (naechsteAntwortVerloren) {
+    naechsteAntwortVerloren = false;
+    throw new TypeError("Failed to fetch");
+  }
   // JOB 3770 RUNDE 4: der ANGELEGTE ENTWURF geht zurück, nicht bloss seine Kennung. Der echte
   // Endpunkt antwortet mit `Draft` (`api.post<Draft>("/drafts")`), und Aufrufer lesen daraus weiter
   // — der Ganzdokument-Weg etwa bildet seine Quittung mit `draftTitle(draft, …)`, das `draft.payload`
@@ -205,6 +270,7 @@ export function lasseNaechstenUploadScheitern(fehler: unknown): void {
  */
 export const objectsUpload = vi.fn(
   async (input: { name: string; mime: string; data: string }): Promise<Record<string, unknown>> => {
+    await uploadBremse.passiere();
     if (naechsterUploadFehler !== null) {
       const fehler = naechsterUploadFehler;
       naechsterUploadFehler = null;
@@ -260,11 +326,15 @@ export const draftsPromote = vi.fn(async (id: string) => {
 /** Setzt Riegel und Einmalfehler zurück — nichts aus einem Fall reicht in den nächsten hinein. */
 export async function attrappenZuruecksetzen(): Promise<void> {
   await bremse.loslassen();
+  await anlageBremse.loslassen();
+  await uploadBremse.loslassen();
   naechsterUpdateFehler = null;
   // JOB 3822: der Upload-Einmalfehler gehört HIERHER. Ein Fall, der ihn setzt und dessen Upload dann
   // gar nicht mehr stattfindet (Größenabbruch VOR dem Upload), liesse ihn sonst stehen — und der
   // nächste Fall des Ordners verlöre sein Original ohne jeden Bezug zu seiner eigenen Lage.
   naechsterUploadFehler = null;
+  naechsteAntwortVerloren = false;
+  vorgaenge.clear();
   createFehlerTitel.clear();
   extrakt.punkte = [];
   neuZaehler = 0;
