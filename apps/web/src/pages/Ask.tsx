@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowRight, Copy, ThumbsUp } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import { useConflicts, useKos, useReasonerStatus } from "../api/hooks";
@@ -468,6 +468,24 @@ export function Ask(): JSX.Element {
   // SCRUM-272: optionale Startfrage aus der URL (/fragen?q=…) — nur vorbefüllen, kein Auto-Ask.
   const [params] = useSearchParams();
   const [q, setQ] = useState(() => readAskQuestion(params) ?? "");
+  // R-0474 (Ben, Runde 1, B1): der Router montiert `/fragen` bei einem Wechsel NUR der Adresszeile
+  // nicht neu — der Initialwert oben sah eine zweite Übergabe (`/fragen?q=Alt` → Palette/Hilfe →
+  // `/fragen?q=Neu`) also nie, im Feld blieb die alte Frage stehen. Jede NAVIGATION mit `?q=`
+  // übernimmt deshalb ihre Frage ins Feld. Gebunden an den Navigationsschlüssel, nicht an den
+  // Text: auch ein zweites Anbieten derselben Frage nach eigenem Tippen kommt an. Nur vorbefüllen,
+  // weiterhin kein Auto-Ask (SCRUM-272); ohne `?q=` bleibt das Feld, wie es ist.
+  const { key: navigationsSchluessel } = useLocation();
+  const ersteNavigation = useRef(navigationsSchluessel);
+  useEffect(() => {
+    if (navigationsSchluessel === ersteNavigation.current) {
+      return;
+    }
+    ersteNavigation.current = navigationsSchluessel;
+    const neu = readAskQuestion(params);
+    if (neu !== null) {
+      setQ(neu);
+    }
+  }, [navigationsSchluessel, params]);
   // AUFTRAG-mega38 BLOCK J2: „Bitte gib zuerst eine Frage ein." stand auf `/fragen`, BEVOR die
   // Leserin irgendetwas getan hatte — eine Zurechtweisung als Begrüssung. Der Satz ist richtig,
   // sein Zeitpunkt war es nicht. Er erscheint jetzt erst, wenn wirklich leer abgesendet wurde.
@@ -820,18 +838,28 @@ export function Ask(): JSX.Element {
   // bis der Verfügbarkeits-Status GELADEN ist, und verbraucht seinen Ein-Schuss dann GENAU EINMAL:
   // Modell nutzbar → automatisch fragen; kein Modell → KEINE Mutation (die Frage bleibt nur
   // vorbefüllt, der Hinweis erklärt es).
-  const autoAsked = useRef(false);
+  //
+  // R-0474 · Ben B3 (Runde 2): EIN SCHUSS JE NAVIGATION, UND ER FEUERT DIE FRAGE DER ADRESSE.
+  // Bis hierher las der Auto-Ask den Feldzustand `q` und hatte einen Schuss je MONTAGE. Seit
+  // `/fragen` bei einem Adresswechsel seine Frage übernimmt (Effekt oben), kam `?q=Neu&ask=1` auf
+  // der offenen Seite in einem Durchlauf an, in dem `params` schon neu, `q` aber noch alt war — und
+  // gesendet wurde die ALTE Frage, während das Feld danach die neue zeigte. Jetzt lesen Vorbefüllung
+  // und Auto-Ask dieselbe Quelle (`readAskQuestion(params)`), und verbraucht wird der Schuss der
+  // jeweiligen Navigation (`location.key`). Ohne `ask=1` wird weiterhin nichts gesendet (SCRUM-272).
+  // Läuft gerade eine Anfrage, wartet der Schuss, statt still zu verfallen.
+  const autoAskedFuer = useRef<string | null>(null);
   useEffect(() => {
-    if (autoAsked.current || answerAi.isLoading) {
+    if (autoAskedFuer.current === navigationsSchluessel || answerAi.isLoading || ask.isPending) {
       return;
     }
-    if (shouldAutoAskFromSearch(params) && q.trim().length > 0) {
-      autoAsked.current = true;
+    autoAskedFuer.current = navigationsSchluessel;
+    const frage = readAskQuestion(params);
+    if (shouldAutoAskFromSearch(params) && frage !== null) {
       // WP-UX-WOW-1 U5: die Startfrage auch als Lücken-/Capture-Kontext festhalten (wie Submit) —
       // das übernimmt submitAsk; ohne nutzbares Modell passiert bewusst NICHTS.
-      submitAsk(q);
+      submitAsk(frage);
     }
-  }, [params, q, answerAi.isLoading, submitAsk]);
+  }, [navigationsSchluessel, params, answerAi.isLoading, ask.isPending, submitAsk]);
 
   // SCRUM-430 (VIP): beantwortete Frage inkl. Quellen exportieren/teilen. Quellen bleiben klar
   // ausgewiesen (Status/Trust/Nutzbarkeit). Markdown wird erst beim Klick gebaut (frischer Zeitstempel).

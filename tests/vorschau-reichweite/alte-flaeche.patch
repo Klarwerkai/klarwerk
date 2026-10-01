@@ -1,0 +1,455 @@
+diff --git a/apps/web/src/api/types.ts b/apps/web/src/api/types.ts
+index c0182a63..18137416 100644
+--- a/apps/web/src/api/types.ts
++++ b/apps/web/src/api/types.ts
+@@ -173,17 +173,8 @@ export interface KnowledgeCheckResult {
+     koStatus: KoStatus | null;
+     koCategory: string | null;
+   }[];
+-  // AUFNAHME 20260922 · VORSCHAU-REICHWEITE: der belegte Prüfumfang (Vertrag bei
+-  // `KnowledgeCheckCoverage` in services/app/src/knowledge-check.ts). Hier OPTIONAL, weil eine
+-  // Antwort ohne das Feld (älterer Server) vorkommen kann — sie gilt dann als „Umfang unbekannt",
+-  // nie als vollständige Prüfung.
+-  coverage?: KnowledgeCheckCoverage;
+ }
+ 
+-export type KnowledgeCheckCoverage =
+-  | { kind: "candidates"; checked: number; limit: number; limitReached: boolean }
+-  | { kind: "unknown" };
+-
+ export interface MediaAnalysis {
+   objectId: string;
+   transcript: string | null;
+diff --git a/apps/web/src/components/capture/intake/LiveReactionZone.tsx b/apps/web/src/components/capture/intake/LiveReactionZone.tsx
+index 9d36879e..3643c28c 100644
+--- a/apps/web/src/components/capture/intake/LiveReactionZone.tsx
++++ b/apps/web/src/components/capture/intake/LiveReactionZone.tsx
+@@ -2,7 +2,6 @@ import { useTranslation } from "react-i18next";
+ import { Link } from "react-router-dom";
+ import type { KoStatus } from "../../../api/types";
+ import type { LiveVerdict } from "../../../lib/intakeSimilarity";
+-import { umfangErklaerung } from "../../../lib/vorschauUmfang";
+ import { StatusPill } from "../../trust/StatusPill";
+ 
+ // JOB 3045: DIE FUNDORTZEILE — wo der Treffer liegt (Kategorie) und wie er dasteht (Zustand).
+@@ -54,7 +53,7 @@ function Fundort({
+ 
+ // SCRUM-527 (WP2-Design): die „Das System denkt mit"-Zone — die Hauptattraktion, kein grauer Spinner.
+ // Sie reagiert sichtbar/lebendig auf den Entwurfstext: idle (hört zu), checking (ehrlicher Lauf-Zustand
+-// mit pulsierenden Punkten), empty / similar / conflict. never block, only show honest status. Reine
++// mit pulsierenden Punkten), new / similar / conflict. never block, only show honest status. Reine
+ // Präsentation: der Verdict kommt vom gekapselten Hook (useLiveKnowledgeCheck) bzw. im Test gemockt.
+ //
+ // JOB 3556 (LIVE-CHECK-VERDRAHTUNG A) — DIESE ZONE SPRICHT NICHT MEHR ÜBER DEN PRÜFSTATUS.
+@@ -64,11 +63,6 @@ function Fundort({
+ // entfernt, und der TYP hält es fest: was diese Zone nicht mehr darstellen kann, kann ihr auch
+ // niemand mehr übergeben. Ein unerreichbarer Zweig wäre sonst genau die Leiche, die beim nächsten
+ // Umbau wieder mitgepflegt wird.
+-//
+-// AUFNAHME 20260922 · VORSCHAU-REICHWEITE — KEINE BESTANDWEITE NEUHEIT MEHR. Hier stand „Das ist
+-// neu — dazu gibt es noch nichts. Du bist die erste Person." Belegt war das nie: der Server
+-// vergleicht höchstens eine begrenzte Vorauswahl. Lauf und leeres Ergebnis heissen jetzt „Vorschau",
+-// und das leere Ergebnis nennt genau den Umfang, den die Antwort trägt (`umfangErklaerung`).
+ export function LiveReactionZone({
+   verdict,
+ }: {
+@@ -85,19 +79,15 @@ export function LiveReactionZone({
+           <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-ai [animation-delay:150ms]" />
+           <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-ai [animation-delay:300ms]" />
+         </span>
+-        <span>{t("vorschau.laeuft")}</span>
++        <span>{t("intake.live.checking")}</span>
+       </div>
+     );
+   }
+ 
+-  if (verdict.status === "empty") {
++  if (verdict.status === "new") {
+     return (
+-      <div
+-        data-testid="live-vorschau-leer"
+-        data-umfang={verdict.coverage.kind}
+-        className="rounded-card border border-hairline bg-surface px-4 py-3 text-[13px] text-text"
+-      >
+-        {umfangErklaerung(t, verdict.coverage)}
++      <div className="rounded-card border border-trust-pos-fill/30 bg-trust-pos-bg px-4 py-3 text-[13px] font-medium text-trust-pos-text">
++        {t("intake.live.new")}
+       </div>
+     );
+   }
+diff --git a/apps/web/src/components/capture/intake/useLiveKnowledgeCheck.ts b/apps/web/src/components/capture/intake/useLiveKnowledgeCheck.ts
+index 7dea5f25..c19a2605 100644
+--- a/apps/web/src/components/capture/intake/useLiveKnowledgeCheck.ts
++++ b/apps/web/src/components/capture/intake/useLiveKnowledgeCheck.ts
+@@ -1,4 +1,4 @@
+-import type { KnowledgeCheckCoverage, KnowledgeCheckResult } from "../../../api/types";
++import type { KnowledgeCheckResult } from "../../../api/types";
+ import type { LiveVerdict } from "../../../lib/intakeSimilarity";
+ 
+ // JOB 3556 (LIVE-CHECK-VERDRAHTUNG A): DER ZWEITE HAKEN IST WEG, DIE ABBILDUNG BLEIBT HIER.
+@@ -14,14 +14,10 @@ import type { LiveVerdict } from "../../../lib/intakeSimilarity";
+ // Aufrufer im Haken nur umgehängt und den Prüfstand mitgeschleppt, ohne etwas zu klären.
+ 
+ // G-2-EHRLICHKEIT (SCRUM-527): reine Abbildung des ehrlichen Endpoint-Ergebnisses auf den Anzeige-Verdict.
+-// status "pending" (Widerspruch mangels Klassifikation/Modell NICHT geprüft) wird als eigener,
+-// sichtbarer Zustand gezeigt. status "failed" → „Prüfung nicht verfügbar".
+-// Reihenfolge: Widerspruch > Ähnlich > (done→empty | pending | failed).
+-//
+-// AUFNAHME 20260922 · VORSCHAU-REICHWEITE: „done" ohne Fund hiess hier bis dahin „neu" — als hätte
+-// der Check den ganzen Bestand angesehen. Er sah höchstens die Vorauswahl. Der Zustand heisst jetzt
+-// "empty" und trägt den Umfang, den der Server meldet; fehlt die Angabe, ist er ausdrücklich
+-// unbekannt (`pruefumfangVon`). Eine bestandweite Neuheitsaussage kann aus keiner Antwort entstehen.
++// KERNREGEL: „neu" NUR bei status "done" UND leerem similar+conflicts — also wenn WIRKLICH geprüft wurde
++// und nichts existiert. status "pending" (Widerspruch mangels Klassifikation/Modell NICHT geprüft) wird
++// als eigener, sichtbarer Zustand gezeigt — NIE als „neu, du bist die erste Person". status "failed" →
++// „Prüfung nicht verfügbar". Reihenfolge: Widerspruch > Ähnlich > (done→neu | pending | failed).
+ //
+ // JOB 3045: `koStatus`/`koCategory` werden REIN DURCHGEREICHT — kein `?? "offen"`, kein `?? ""`,
+ // keine Ableitung, keine Umbenennung. Was der Server sagt (auch sein `null`), steht so im Verdict.
+@@ -53,28 +49,10 @@ export function mapKnowledgeCheck(r: KnowledgeCheckResult): LiveVerdict {
+     };
+   }
+   if (r.status === "done") {
+-    return { status: "empty", coverage: pruefumfangVon(r) }; // in DIESEM Umfang kein Treffer
++    return { status: "new" }; // ehrlich geprüft, nichts gefunden
+   }
+   if (r.status === "pending") {
+     return { status: "pending" }; // Widerspruch NICHT geprüft — nicht „neu"
+   }
+   return { status: "unavailable" }; // failed
+ }
+-
+-/**
+- * Der Prüfumfang einer Antwort, so wie sie ihn belegt. Fehlt das Feld oder ist es unvollständig,
+- * gilt er als unbekannt — die Fläche erfindet keine Zahl und keine Vollständigkeit.
+- */
+-export function pruefumfangVon(r: KnowledgeCheckResult): KnowledgeCheckCoverage {
+-  const c = r.coverage;
+-  if (
+-    c?.kind === "candidates" &&
+-    Number.isInteger(c.checked) &&
+-    c.checked >= 0 &&
+-    Number.isInteger(c.limit) &&
+-    typeof c.limitReached === "boolean"
+-  ) {
+-    return { kind: "candidates", checked: c.checked, limit: c.limit, limitReached: c.limitReached };
+-  }
+-  return { kind: "unknown" };
+-}
+diff --git a/apps/web/src/components/erfassen/Blatt.tsx b/apps/web/src/components/erfassen/Blatt.tsx
+index da90a288..c7e49ac9 100644
+--- a/apps/web/src/components/erfassen/Blatt.tsx
++++ b/apps/web/src/components/erfassen/Blatt.tsx
+@@ -61,7 +61,6 @@ import { type SpeechRec, diktatSprache, makeRec } from "../../lib/speechDictatio
+ import { hasSpeechRecognition } from "../../lib/speechSupport";
+ import type { TitelMitQuelle } from "../../lib/titelRangfolge";
+ import { useAiBillable } from "../../lib/useAiBillable";
+-import { umfangKurz } from "../../lib/vorschauUmfang";
+ import { AiAssistInstructions } from "../AiAssistBox";
+ import { AiCostHint } from "../AiCostHint";
+ import { AiGeneratedNotice } from "../AiGeneratedNotice";
+@@ -646,7 +645,7 @@ export function Blatt({
+         : draftProvenance(declaredConfidentiality, undefined, activeDraftId ?? undefined),
+     [declaredConfidentiality, activeDraftId],
+   );
+-  const { verdict, checkStatus, pruefumfang } = useLiveKnowledgeCheck(
++  const { verdict, checkStatus } = useLiveKnowledgeCheck(
+     liveText,
+     livePruefHerkunft,
+     gespeicherterStand,
+@@ -661,13 +660,6 @@ export function Blatt({
+           nl: "Nog niet op tegenstrijdigheid gecontroleerd.",
+         }[toReasonerLocale(i18n.language)]
+       : t("intake.live.unavailable");
+-  // AUFNAHME 20260922 · VORSCHAU-REICHWEITE: auch ohne Konfliktprüfung ist die Ähnlichkeitsvorschau
+-  // gelaufen. Blieb sie leer, sagt das Blatt das mit ihrem belegten Umfang — in einer EIGENEN Zeile,
+-  // damit der Satz über die Konfliktprüfung unverändert für sich steht.
+-  const liveVorschauSatz =
+-    checkStatus === "pending" && verdict.status === "pending" && pruefumfang !== null
+-      ? t("vorschau.ohneTreffer", { umfang: umfangKurz(t, pruefumfang) })
+-      : null;
+ 
+   // Die Bereiche kommen aus dem BESTAND, nicht aus einer erfundenen Liste: was es im Haus gibt,
+   // steht zur Wahl. Fehlt der Bestand noch, sagt das Menü das (Zustandsmodell §9), statt eine
+@@ -2914,15 +2906,7 @@ export function Blatt({
+               {liveAusfallSatz}
+             </output>
+           ) : null}
+-          {liveVorschauSatz === null ? null : (
+-            <output data-testid="blatt-live-vorschau" className="block text-[12px] text-muted">
+-              {liveVorschauSatz}
+-            </output>
+-          )}
+-          {/* AUFNAHME 20260922 · VORSCHAU-REICHWEITE: der Chip heisst „Vorschau" und behauptet nichts
+-              über den ganzen Bestand. Ohne Treffer nennt er nur den belegten Umfang — hier stand
+-              „Das ist neu". */}
+-          {verdict.status === "empty" ||
++          {verdict.status === "new" ||
+           verdict.status === "similar" ||
+           verdict.status === "conflict" ? (
+             <div data-testid="blatt-live-chip" data-lage={verdict.status} className="w-fit">
+@@ -2932,15 +2916,12 @@ export function Blatt({
+                 onClick={() => setLiveOffen((v) => !v)}
+                 className="inline-flex w-fit items-center gap-1.5 rounded-[999px] border border-hairline bg-page px-2.5 py-1 text-[12px] text-muted hover:text-text"
+               >
+-                <span className="font-semibold uppercase text-[10.5px]">{t("vorschau.name")}</span>
+                 {verdict.status === "conflict"
+                   ? t("erfassen.live.widerspruch")
+                   : verdict.status === "similar"
+                     ? t("erfassen.live.aehnlich")
+-                    : t("vorschau.keinTreffer")}
+-                {verdict.status === "empty" ? (
+-                  <span>· {umfangKurz(t, verdict.coverage)}</span>
+-                ) : (
++                    : t("erfassen.live.neu")}
++                {verdict.status === "new" ? null : (
+                   <span className="font-medium">{verdict.match.title}</span>
+                 )}
+               </button>
+diff --git a/apps/web/src/hooks/useLiveKnowledgeCheck.ts b/apps/web/src/hooks/useLiveKnowledgeCheck.ts
+index 4db64db3..c2817fa5 100644
+--- a/apps/web/src/hooks/useLiveKnowledgeCheck.ts
++++ b/apps/web/src/hooks/useLiveKnowledgeCheck.ts
+@@ -1,19 +1,12 @@
+ import { useEffect, useState } from "react";
+ import { type ReasonerProvenance, endpoints } from "../api/endpoints";
+-import type { KnowledgeCheckCoverage, KnowledgeCheckResult } from "../api/types";
+-import {
+-  mapKnowledgeCheck,
+-  pruefumfangVon,
+-} from "../components/capture/intake/useLiveKnowledgeCheck";
++import type { KnowledgeCheckResult } from "../api/types";
++import { mapKnowledgeCheck } from "../components/capture/intake/useLiveKnowledgeCheck";
+ import { INTAKE_MIN_LENGTH, type LiveVerdict } from "../lib/intakeSimilarity";
+ 
+ interface LiveCheckState {
+   checkStatus: KnowledgeCheckResult["status"] | "idle" | "checking";
+   verdict: LiveVerdict;
+-  // AUFNAHME 20260922 · VORSCHAU-REICHWEITE: der Umfang der LETZTEN Antwort zu genau dieser Frage —
+-  // `null`, solange keine vorliegt (idle, checking, Transportfehler). Er steht neben dem Verdict,
+-  // weil auch ein „pending" eine gelaufene Ähnlichkeitsvorschau hat, deren Umfang die Fläche nennt.
+-  pruefumfang: KnowledgeCheckCoverage | null;
+ }
+ 
+ // JOB 3556: Die Herkunft gehört zur FRAGE, nicht nur zur Antwort — derselbe Text mit einer anderen
+@@ -66,7 +59,6 @@ export function useLiveKnowledgeCheck(
+     schluessel: "\n\n",
+     checkStatus: "idle",
+     verdict: { status: "idle" },
+-    pruefumfang: null,
+   });
+ 
+   // `herkunft` ist bei jedem Rendern ein NEUES Objekt (`draftProvenance(...)`); als Abhängigkeit
+@@ -76,15 +68,10 @@ export function useLiveKnowledgeCheck(
+   // biome-ignore lint/correctness/useExhaustiveDependencies: Begründung eine Zeile höher.
+   useEffect(() => {
+     if (clean.length < INTAKE_MIN_LENGTH) {
+-      setState({ schluessel, checkStatus: "idle", verdict: { status: "idle" }, pruefumfang: null });
++      setState({ schluessel, checkStatus: "idle", verdict: { status: "idle" } });
+       return;
+     }
+-    setState({
+-      schluessel,
+-      checkStatus: "checking",
+-      verdict: { status: "checking" },
+-      pruefumfang: null,
+-    });
++    setState({ schluessel, checkStatus: "checking", verdict: { status: "checking" } });
+     let cancelled = false;
+     const handle = setTimeout(async () => {
+       try {
+@@ -96,15 +83,10 @@ export function useLiveKnowledgeCheck(
+         const verdict = mapKnowledgeCheck(
+           checkStatus === "done" ? result : { ...result, conflicts: [] },
+         );
+-        setState({ schluessel, checkStatus, verdict, pruefumfang: pruefumfangVon(result) });
++        setState({ schluessel, checkStatus, verdict });
+       } catch {
+         if (!cancelled) {
+-          setState({
+-            schluessel,
+-            checkStatus: "failed",
+-            verdict: { status: "unavailable" },
+-            pruefumfang: null,
+-          });
++          setState({ schluessel, checkStatus: "failed", verdict: { status: "unavailable" } });
+         }
+       }
+     }, debounceMs);
+@@ -118,7 +100,7 @@ export function useLiveKnowledgeCheck(
+   // nicht mehr.
+   if (state.schluessel !== schluessel) {
+     const status = clean.length < INTAKE_MIN_LENGTH ? "idle" : "checking";
+-    return { checkStatus: status, verdict: { status }, pruefumfang: null };
++    return { checkStatus: status, verdict: { status } };
+   }
+   return state;
+ }
+diff --git a/apps/web/src/lib/intakeSimilarity.ts b/apps/web/src/lib/intakeSimilarity.ts
+index d94a6070..a48a2d87 100644
+--- a/apps/web/src/lib/intakeSimilarity.ts
++++ b/apps/web/src/lib/intakeSimilarity.ts
+@@ -1,4 +1,4 @@
+-import type { KnowledgeCheckCoverage, KnowledgeObject, KoStatus } from "../api/types";
++import type { KnowledgeObject, KoStatus } from "../api/types";
+ 
+ // SCRUM-527 (WP2-Design): die Live-Reaktion braucht eine ehrliche Einschätzung „neu vs. ähnlich" schon
+ // WÄHREND des Tippens. Es gibt (Stand 0b-Kartierung) KEINEN dedizierten Pro-Text-Ähnlichkeits-/
+@@ -9,11 +9,8 @@ import type { KnowledgeCheckCoverage, KnowledgeObject, KoStatus } from "../api/t
+ export type LiveVerdict =
+   | { status: "idle" }
+   | { status: "checking" }
+-  // AUFNAHME 20260922 · VORSCHAU-REICHWEITE: hier stand `"new"` — „ehrlich geprüft UND nichts
+-  // gefunden". Das war es nie: die Vorschau vergleicht nur eine begrenzte Vorauswahl des Bestands.
+-  // "empty" heisst deshalb nur „in DIESEM Umfang kein Treffer", und der Umfang reist mit — die
+-  // Fläche nennt genau ihn und nichts darüber hinaus. `unknown` ist ausdrücklich keine Vollprüfung.
+-  | { status: "empty"; coverage: KnowledgeCheckCoverage }
++  // "new" = ehrlich geprüft (status "done") UND nichts Ähnliches/Widersprüchliches gefunden.
++  | { status: "new" }
+   // G-2-EHRLICHKEIT (SCRUM-527): der Server hat NICHT auf Widerspruch geprüft (kein Modell/Cloud, weil
+   // der Freitext unklassifiziert/vertraulich ist). Das ist NICHT „neu" — es ist „noch nicht geprüft".
+   | { status: "pending" }
+@@ -75,9 +72,8 @@ export function textSimilarity(left: string, right: string): number {
+ }
+ 
+ // Klassifiziert den Entwurfstext gegen den Bestand: idle (zu kurz) · similar (bester Treffer über
+-// Schwelle) · empty. „checking"/„conflict" werden hier NICHT erzeugt (der Hook setzt checking; conflict
+-// bleibt dem serverseitigen Check vorbehalten). Der Umfang dieses Wegs ist der geladene Bestand, und
+-// ob der vollständig ist, weiss diese Funktion nicht — deshalb `unknown` (Vorschau-Reichweite).
++// Schwelle) · new. „checking"/„conflict" werden hier NICHT erzeugt (der Hook setzt checking; conflict
++// bleibt dem serverseitigen Check vorbehalten).
+ export function classifyIntake(
+   text: string,
+   kos: readonly KnowledgeObject[] | undefined,
+@@ -105,5 +101,5 @@ export function classifyIntake(
+   if (best && best.score >= INTAKE_SIMILAR_THRESHOLD) {
+     return { status: "similar", match: best };
+   }
+-  return { status: "empty", coverage: { kind: "unknown" } };
++  return { status: "new" };
+ }
+diff --git a/apps/web/src/lib/vorschauUmfang.ts b/apps/web/src/lib/vorschauUmfang.ts
+deleted file mode 100644
+index 25b48df8..00000000
+--- a/apps/web/src/lib/vorschauUmfang.ts
++++ /dev/null
+@@ -1,32 +0,0 @@
+-import type { KnowledgeCheckCoverage } from "../api/types";
+-
+-// AUFNAHME 20260922 · VORSCHAU-REICHWEITE — EINE Stelle, an der der belegte Prüfumfang zu Worten
+-// wird. Chip (Blatt) und Erklärung (LiveReactionZone) sagen damit dasselbe, und keiner der beiden
+-// kann eine Zahl nennen, die die Antwort nicht trägt: bei `unknown` gibt es keine Zahl.
+-//
+-// Die Übersetzer-Signatur als Überladung, nicht `TFunction`: Begründung in `auditAction.ts`
+-// (`exactOptionalPropertyTypes` im Root- und .tsx-Testcheck).
+-interface Translate {
+-  (key: string): string;
+-  (key: string, opts: Record<string, unknown>): string;
+-}
+-
+-/** Die kurze Umfangsangabe für Chip und Statuszeile. */
+-export function umfangKurz(t: Translate, c: KnowledgeCheckCoverage): string {
+-  if (c.kind === "unknown") {
+-    return t("vorschau.umfangUnbekannt");
+-  }
+-  return c.limitReached
+-    ? t("vorschau.umfangGrenze", { count: c.checked })
+-    : t("vorschau.umfang", { count: c.checked });
+-}
+-
+-/** Der ganze Satz zu einer Vorschau ohne Treffer — nennt nur den belegten Umfang. */
+-export function umfangErklaerung(t: Translate, c: KnowledgeCheckCoverage): string {
+-  if (c.kind === "unknown") {
+-    return t("vorschau.erklaerungUnbekannt");
+-  }
+-  return c.limitReached
+-    ? t("vorschau.erklaerungGrenze", { count: c.checked, limit: c.limit })
+-    : t("vorschau.erklaerung", { count: c.checked });
+-}
+diff --git a/apps/web/src/texte/vorschau.ts b/apps/web/src/texte/vorschau.ts
+deleted file mode 100644
+index a28d4f8b..00000000
+--- a/apps/web/src/texte/vorschau.ts
++++ /dev/null
+@@ -1,81 +0,0 @@
+-// ================================================================================================
+-// AUFNAHME 20260922 · VORSCHAU-REICHWEITE — die Texte der Wissensvorschau beim Erfassen.
+-// ================================================================================================
+-//
+-// Die Live-Prüfung beim Erfassen vergleicht den Entwurf nur mit einer begrenzten Vorauswahl des
+-// Bestands (services/app/src/knowledge-check.ts, `KnowledgeCheckCoverage`). Diese Texte nennen sie
+-// deshalb „Vorschau" und sagen nur, was die Antwort belegt: wie viele Einträge verglichen wurden,
+-// ob die Grenze erreicht war — oder dass der Umfang unbekannt ist. Eine erreichte Grenze belegt
+-// NICHT, dass es weitere passende Einträge gibt (bei genau 40 Einträgen im Bestand gibt es keine);
+-// die Texte nennen das deshalb als offene Frage, nie als Tatsache (Ben, Runde 1, Befund B1).
+-// Eine bestandweite Aussage wie „Das ist neu" oder „dazu gibt es noch nichts" steht hier bewusst
+-// nirgends.
+-import type { Textmodul } from "./intern/pruefung";
+-
+-export default {
+-  praefix: "vorschau.",
+-  legacySchluessel: [],
+-  de: {
+-    "vorschau.name": "Vorschau",
+-    "vorschau.laeuft": "Vorschau läuft: Vergleich mit vorausgewählten Einträgen …",
+-    "vorschau.keinTreffer": "kein Treffer",
+-    "vorschau.umfang_one": "{{count}} Eintrag verglichen",
+-    "vorschau.umfang_other": "{{count}} Einträge verglichen",
+-    "vorschau.umfangGrenze_one": "{{count}} Eintrag verglichen, Grenze erreicht",
+-    "vorschau.umfangGrenze_other": "{{count}} Einträge verglichen, Grenze erreicht",
+-    "vorschau.umfangUnbekannt": "Umfang unbekannt",
+-    "vorschau.erklaerung_one":
+-      "Vorschau ohne Treffer: verglichen wurde {{count}} vorausgewählter Eintrag. Das ist kein Abgleich mit dem gesamten Wissensbestand.",
+-    "vorschau.erklaerung_other":
+-      "Vorschau ohne Treffer: verglichen wurden {{count}} vorausgewählte Einträge. Das ist kein Abgleich mit dem gesamten Wissensbestand.",
+-    "vorschau.erklaerungGrenze_one":
+-      "Vorschau ohne Treffer: verglichen wurde {{count}} vorausgewählter Eintrag. Die Auswahlgrenze von {{limit}} war erreicht — ob es darüber hinaus passende Einträge gibt, hat diese Vorschau nicht geprüft.",
+-    "vorschau.erklaerungGrenze_other":
+-      "Vorschau ohne Treffer: verglichen wurden {{count}} vorausgewählte Einträge. Die Auswahlgrenze von {{limit}} war erreicht — ob es darüber hinaus passende Einträge gibt, hat diese Vorschau nicht geprüft.",
+-    "vorschau.erklaerungUnbekannt":
+-      "Vorschau ohne Treffer. Wie viele Einträge verglichen wurden, ist nicht bekannt — das ist kein Abgleich mit dem gesamten Wissensbestand.",
+-    "vorschau.ohneTreffer": "Vorschau ohne ähnlichen Treffer ({{umfang}}).",
+-  },
+-  en: {
+-    "vorschau.name": "Preview",
+-    "vorschau.laeuft": "Preview running: comparing with preselected entries …",
+-    "vorschau.keinTreffer": "no match",
+-    "vorschau.umfang_one": "{{count}} entry compared",
+-    "vorschau.umfang_other": "{{count}} entries compared",
+-    "vorschau.umfangGrenze_one": "{{count}} entry compared, limit reached",
+-    "vorschau.umfangGrenze_other": "{{count}} entries compared, limit reached",
+-    "vorschau.umfangUnbekannt": "scope unknown",
+-    "vorschau.erklaerung_one":
+-      "Preview without a match: {{count}} preselected entry was compared. This is not a comparison with the entire knowledge base.",
+-    "vorschau.erklaerung_other":
+-      "Preview without a match: {{count}} preselected entries were compared. This is not a comparison with the entire knowledge base.",
+-    "vorschau.erklaerungGrenze_one":
+-      "Preview without a match: {{count}} preselected entry was compared. The selection limit of {{limit}} was reached — whether further matching entries exist was not checked by this preview.",
+-    "vorschau.erklaerungGrenze_other":
+-      "Preview without a match: {{count}} preselected entries were compared. The selection limit of {{limit}} was reached — whether further matching entries exist was not checked by this preview.",
+-    "vorschau.erklaerungUnbekannt":
+-      "Preview without a match. How many entries were compared is not known — this is not a comparison with the entire knowledge base.",
+-    "vorschau.ohneTreffer": "Preview without a similar match ({{umfang}}).",
+-  },
+-  nl: {
+-    "vorschau.name": "Voorbeeld",
+-    "vorschau.laeuft": "Voorbeeld loopt: vergelijken met voorgeselecteerde items …",
+-    "vorschau.keinTreffer": "geen treffer",
+-    "vorschau.umfang_one": "{{count}} item vergeleken",
+-    "vorschau.umfang_other": "{{count}} items vergeleken",
+-    "vorschau.umfangGrenze_one": "{{count}} item vergeleken, grens bereikt",
+-    "vorschau.umfangGrenze_other": "{{count}} items vergeleken, grens bereikt",
+-    "vorschau.umfangUnbekannt": "omvang onbekend",
+-    "vorschau.erklaerung_one":
+-      "Voorbeeld zonder treffer: {{count}} voorgeselecteerd item is vergeleken. Dit is geen vergelijking met de volledige kennisbank.",
+-    "vorschau.erklaerung_other":
+-      "Voorbeeld zonder treffer: {{count}} voorgeselecteerde items zijn vergeleken. Dit is geen vergelijking met de volledige kennisbank.",
+-    "vorschau.erklaerungGrenze_one":
+-      "Voorbeeld zonder treffer: {{count}} voorgeselecteerd item is vergeleken. De selectiegrens van {{limit}} was bereikt — of er daarbuiten passende items zijn, heeft dit voorbeeld niet gecontroleerd.",
+-    "vorschau.erklaerungGrenze_other":
+-      "Voorbeeld zonder treffer: {{count}} voorgeselecteerde items zijn vergeleken. De selectiegrens van {{limit}} was bereikt — of er daarbuiten passende items zijn, heeft dit voorbeeld niet gecontroleerd.",
+-    "vorschau.erklaerungUnbekannt":
+-      "Voorbeeld zonder treffer. Hoeveel items zijn vergeleken, is niet bekend — dit is geen vergelijking met de volledige kennisbank.",
+-    "vorschau.ohneTreffer": "Voorbeeld zonder vergelijkbare treffer ({{umfang}}).",
+-  },
+-} satisfies Textmodul;
