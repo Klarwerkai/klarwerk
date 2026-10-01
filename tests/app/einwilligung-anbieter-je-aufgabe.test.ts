@@ -20,7 +20,11 @@ import { describe, expect, it, vi } from "vitest";
 process.env.KLARWERK_SKIP_KEYCHAIN = "1";
 
 import { buildApp, buildServices } from "../../services/app/src/build-app";
-import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
+import { ModelProvider, Reasoner } from "../../services/reasoner";
+import {
+  erteileKiFreigabe,
+  mitKiFreigabe,
+} from "../../services/reasoner/src/testhelfer-ki-freigabe";
 
 type Dienste = ReturnType<typeof buildServices>;
 type App = ReturnType<typeof buildApp>;
@@ -160,6 +164,138 @@ describe("Bens B3 · eine Zustimmung für Anthropic öffnet keine Aufgabe, die a
     expect(k.bit()).toBe(true);
     // Nicht stillschweigend weiter gültig: die Zustimmung ist entwertet, auch für `answer`.
     expect((await k.status()).consentState).toBe("invalidated");
+    await k.app.close();
+  });
+});
+
+// ================================================================================================
+// RUNDE 2 — ECHTER REASONER, ECHTE ANBIETERWAHL, WECHSEL WÄHREND DER LAUFENDEN ANFRAGE.
+// ================================================================================================
+//
+// Bens Gegenbeleg zu Runde 1: die zweite `findConsent`-Lesung des Tors angehalten, währenddessen
+// `assist` regulär auf OpenAI umgestellt — danach HTTP 200 und genau ein Aufruf des OpenAI-Adapters.
+// Hier dasselbe mit dem ECHTEN Reasoner (zwei `ModelProvider`, nur der Transport `complete` ist
+// ein Spion) hinter der echten App: gemessen wird, wer TATSÄCHLICH gerufen wird.
+//
+// Und Bens B4: die Sperre wegen abweichenden Anbieters nennt ihre wirkliche Ursache, nicht die
+// Einstufung.
+
+async function echterAufbau(assist: "openai" | "anthropic") {
+  const services = buildServices();
+  const openai = vi.fn(async () => '{"text":"von OpenAI"}');
+  const anthropic = vi.fn(async () => '{"text":"von Anthropic"}');
+  const reasoner = new Reasoner(undefined, undefined, undefined, undefined, undefined, undefined, {
+    anbieter: {
+      openai: new ModelProvider({ name: "cloud:openai:gpt", complete: openai }),
+      anthropic: new ModelProvider({ name: "anthropic:claude", complete: anthropic }),
+    },
+  });
+  await reasoner.setTaskConfig(
+    mitKiFreigabe({ global: "anthropic", perTask: { answer: "anthropic", assist } }),
+  );
+  // Der Halt an der ZWEITEN `findConsent`-Lesung einer Anfrage — die des Ausführungstors, NACHDEM
+  // es Policy und Anbieterkarte gelesen hat (die erste liest `laden`).
+  const repo = services.klaraSessions as unknown as {
+    findConsent: (id: string) => Promise<unknown>;
+  };
+  const echtFind = repo.findConsent.bind(repo);
+  const halt = { aktiv: false, zaehler: 0, erreicht: () => {}, weiter: Promise.resolve() };
+  repo.findConsent = async (id: string) => {
+    const wert = await echtFind(id);
+    if (halt.aktiv && ++halt.zaehler === 2) {
+      halt.erreicht();
+      await halt.weiter;
+    }
+    return wert;
+  };
+  const app = buildApp({ ...services, reasoner });
+  const auth = await anmelden(app);
+  const gebunden = await klaraBindung(app, auth);
+  const zustimmung = await app.inject({
+    method: "POST",
+    url: `/api/klara/sessions/${gebunden["x-klara-session"]}/consent`,
+    headers: gebunden,
+  });
+  const entwurf = await services.capture.createDraft(
+    { title: "Entwurf B3", statement: "Ein Satz.", confidentiality: "intern" },
+    "autor-b3",
+  );
+  const assistAnfrage = (confidentiality = "intern") =>
+    app.inject({
+      method: "POST",
+      url: "/api/reasoner",
+      headers: gebunden,
+      payload: {
+        task: "assist",
+        text: "Ein Satz aus dem Dokument.",
+        source: "draft",
+        confidentiality,
+        draftId: entwurf.id,
+      },
+    });
+  return { app, reasoner, openai, anthropic, zustimmung, halt, assistAnfrage };
+}
+
+describe("Bens B3 (Runde 2) · Anbieterwechsel WÄHREND die Anfrage am Tor steht", () => {
+  it("KALIBRIERUNG: ohne Wechsel erreicht `assist` den zugestimmten Anbieter (Anthropic)", async () => {
+    const k = await echterAufbau("anthropic");
+    expect(k.zustimmung.statusCode).toBe(200);
+    const res = await k.assistAnfrage();
+    expect(res.statusCode).toBe(200);
+    expect(k.anthropic).toHaveBeenCalledTimes(1);
+    expect(k.openai).not.toHaveBeenCalled();
+    await k.app.close();
+  });
+
+  it("Wechsel von `assist` auf OpenAI im Fenster zwischen Tor und Lauf: OpenAI bekommt nichts", async () => {
+    const k = await echterAufbau("anthropic");
+    expect(k.zustimmung.statusCode).toBe(200);
+    let weiter: () => void = () => undefined;
+    const erreicht = new Promise<void>((r) => {
+      k.halt.erreicht = r;
+    });
+    k.halt.weiter = new Promise<void>((r) => {
+      weiter = r;
+    });
+    k.halt.aktiv = true;
+    const laufend = k.assistAnfrage();
+    await erreicht;
+    // Der reguläre Admin-Weg — mitten in die stehende Anfrage.
+    await k.reasoner.setTaskConfig(
+      mitKiFreigabe({ global: "anthropic", perTask: { answer: "anthropic", assist: "openai" } }),
+    );
+    weiter();
+    await laufend;
+    expect(k.halt.zaehler, "der Halt lag wirklich im Tor").toBeGreaterThanOrEqual(2);
+    expect(k.openai, "der Text erreicht den neuen Anbieter nicht").not.toHaveBeenCalled();
+    expect(k.anthropic).not.toHaveBeenCalled();
+    await k.app.close();
+  });
+});
+
+describe("Bens B4 · die Sperre wegen abweichenden Anbieters nennt ihre Ursache", () => {
+  it("intern eingestufter Text, Zustimmung für Anthropic, `assist` auf OpenAI: 409 `provider_mismatch`", async () => {
+    const k = await echterAufbau("openai");
+    expect(k.zustimmung.statusCode).toBe(200);
+    const res = await k.assistAnfrage();
+    expect(res.statusCode).toBe(409);
+    const body = res.json() as { error: string; reason: string; message: string };
+    expect(body.error).toBe("CONFIDENTIAL_CLOUD_BLOCKED");
+    expect(body.reason).toBe("provider_mismatch");
+    expect(body.message).toContain("Zustimmung für dieses Dokument gilt einem anderen");
+    // Kein Rat zum Umstufen: an der Einstufung liegt es nicht.
+    expect(body.message).not.toContain("Einstufung ändern");
+    expect(k.openai).not.toHaveBeenCalled();
+    await k.app.close();
+  });
+
+  it("GEGENPROBE: ist der Text selbst vertraulich eingestuft, bleibt es bei `declared`", async () => {
+    const k = await echterAufbau("openai");
+    expect(k.zustimmung.statusCode).toBe(200);
+    const res = await k.assistAnfrage("vertraulich");
+    expect(res.statusCode).toBe(409);
+    expect((res.json() as { reason: string }).reason).toBe("declared");
+    expect(k.openai).not.toHaveBeenCalled();
     await k.app.close();
   });
 });

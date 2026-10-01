@@ -8,6 +8,9 @@ import {
   aiGeneratedMark,
   sanitizeModelRunContext,
 } from "../../model-runs";
+// WP-D10 (Fix 3): Fehlerklasse eines gescheiterten Modellaufrufs (timeout|http|network|parse) für die
+// ehrliche Fallback-Ursache und das PII-freie Diagnose-Log.
+import { anbieterZugelassen } from "./anbieterbindung";
 import {
   KiAbgeschaltetFehler,
   ModelCapacityError,
@@ -16,8 +19,6 @@ import {
   mitModellAufrufSpur,
   verbrauchSumme,
 } from "./model-concurrency";
-// WP-D10 (Fix 3): Fehlerklasse eines gescheiterten Modellaufrufs (timeout|http|network|parse) für die
-// ehrliche Fallback-Ursache und das PII-freie Diagnose-Log.
 import { ModelHttpError, classifyModelFailure } from "./model-errors";
 import type { ModelFailureInfo } from "./model-errors";
 import {
@@ -683,7 +684,11 @@ export class Reasoner {
         opts?.fuerAnzeige === true ? !confidential : this.oeffentlicheKiErlaubt(confidential);
       if (darfHinaus && choice !== "local") {
         const cloud = this.cloudFuerWahl(choice);
-        if (cloud) {
+        // Auftrag gesamt-ki-einwilligung (Bens B3, Runde 2): läuft der Aufruf unter einer
+        // Klara-Anbieterbindung, darf nur DER gebundene Anbieter in die Kette — entschieden hier,
+        // beim Bilden der Kette, und nicht beim Tor davor (`anbieterbindung.ts`). Die Anzeige
+        // (`fuerAnzeige`) beantwortet die Konfigurationsfrage und bleibt davon unberührt.
+        if (cloud && (opts?.fuerAnzeige === true || anbieterZugelassen(this.anbieterVon(cloud)))) {
           chain.push(cloud);
         }
       }

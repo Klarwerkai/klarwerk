@@ -393,3 +393,66 @@ describe("Bens B3 · die Zustimmung trägt nur Aufgaben am selben Anbieter", () 
     expect((await enden(audit)).map((e) => e.status)).toEqual(["invalidated"]);
   });
 });
+
+describe("Bens B2 (Runde 2) · das Aufräumen löscht keinen Nachweis", () => {
+  const TAGE_32 = 32 * 24 * 60 * 60 * 1000;
+
+  it("Widerruf bei Protokollausfall, danach KEIN Zugriff, dann Aufräumen: der Endeintrag steht", async () => {
+    const { dienst, repo, audit, lage, vorspulen } = aufbau();
+    const { sicht, bindung } = await sitzung(dienst);
+    await dienst.grantConsent(sicht.sessionId, bindung);
+    vorspulen(60_000);
+    lage.ausfall = true;
+    await expect(dienst.revokeConsent(sicht.sessionId, bindung)).rejects.toThrow();
+    lage.ausfall = false;
+    // Bens Gegenbeleg: Uhr 32 Tage vor, KEIN Sitzungszugriff, Aufräumen.
+    vorspulen(TAGE_32);
+    expect(await dienst.raeumeAbgelaufeneAuf()).toBe(1);
+    expect(await repo.findSession(sicht.sessionId)).toBeUndefined();
+    expect(await enden(audit)).toEqual([
+      expect.objectContaining({
+        status: "revoked",
+        // Der ursprüngliche Zeitpunkt des Widerrufs — nicht der des Aufräumens.
+        endedAt: new Date(T0 + 60_000).toISOString(),
+      }),
+    ]);
+  });
+
+  it("eine nie berührte, noch `granted` stehende Zustimmung wird als abgelaufen nachgetragen", async () => {
+    const { dienst, audit, repo, vorspulen } = aufbau();
+    const { sicht, bindung } = await sitzung(dienst);
+    await dienst.grantConsent(sicht.sessionId, bindung);
+    const ablauf = (await repo.findConsent(sicht.sessionId))?.expiresAt;
+    vorspulen(TAGE_32);
+    expect(await dienst.raeumeAbgelaufeneAuf()).toBe(1);
+    expect(await enden(audit)).toEqual([
+      expect.objectContaining({ status: "expired", endedAt: ablauf }),
+    ]);
+  });
+
+  it("ist das Protokoll beim Aufräumen nicht erreichbar, wird NICHTS gelöscht", async () => {
+    const { dienst, repo, audit, lage, vorspulen } = aufbau();
+    const { sicht, bindung } = await sitzung(dienst);
+    await dienst.grantConsent(sicht.sessionId, bindung);
+    lage.ausfall = true;
+    await expect(dienst.revokeConsent(sicht.sessionId, bindung)).rejects.toThrow();
+    vorspulen(TAGE_32);
+    await expect(dienst.raeumeAbgelaufeneAuf()).rejects.toThrow("Protokoll nicht erreichbar");
+    expect(await repo.findSession(sicht.sessionId)).toBeDefined();
+    expect((await repo.findConsent(sicht.sessionId))?.status).toBe("revoked");
+    // Der nächste Lauf holt beides nach.
+    lage.ausfall = false;
+    expect(await dienst.raeumeAbgelaufeneAuf()).toBe(1);
+    expect((await enden(audit)).map((e) => e.status)).toEqual(["revoked"]);
+  });
+
+  it("ein schon vorhandener Endeintrag wird beim Aufräumen nicht verdoppelt", async () => {
+    const { dienst, audit, vorspulen } = aufbau();
+    const { sicht, bindung } = await sitzung(dienst);
+    await dienst.grantConsent(sicht.sessionId, bindung);
+    await dienst.revokeConsent(sicht.sessionId, bindung);
+    vorspulen(TAGE_32);
+    await dienst.raeumeAbgelaufeneAuf();
+    expect(await enden(audit)).toHaveLength(1);
+  });
+});

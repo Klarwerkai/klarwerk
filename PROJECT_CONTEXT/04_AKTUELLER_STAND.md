@@ -28,8 +28,17 @@ Zustimmung trägt eine andere Aufgabe (oder `global` für die Urteile) nur, wenn
 Anbieter geht (`task_provider_mismatch`); die Anbieterkarte je Aufgabe steht in der
 Konfigurationsversion, ein Wechsel entwertet die Zustimmung. Neu im Reasoner-Status:
 `effectiveAnbieterGlobal`. Tests: `services/app/src/services/klara-consent-protokoll.test.ts`,
-`tests/app/einwilligung-anbieter-je-aufgabe.test.ts`. **Nicht abgenommen; PostgreSQL-Lauf steht
-aus.**
+`tests/app/einwilligung-anbieter-je-aufgabe.test.ts`.
+
+**Runde 3 (Bens B2–B4 aus Runde 2):** `raeumeAbgelaufeneAuf` trägt vor dem Löschen jeden fehlenden
+Endeintrag aus den Zeilen nach (Repo: `findExpiredSessionIds`); scheitert das, wird nichts
+gelöscht. Neue Klara-Anbieterbindung `services/reasoner/src/anbieterbindung.ts`
+(AsyncLocalStorage): die fünf Routen mit Einwilligungstor öffnen je Anfrage einen Rahmen, das Tor
+(`ka4Entscheidung`, Zuruf-Prüfer) hält den zugestimmten Anbieter darin fest, und der Reasoner lässt
+beim Kettenbau (`chainForChoice`) nur diesen Cloud-Anbieter zu; der Zuruf-Modellclient prüft
+dasselbe. Ein Anbieterwechsel zwischen Tor und Lauf erreicht damit nichts mehr. Die Reasoner-Route
+meldet die Anbieterabweichung als eigenen Grund `provider_mismatch` statt als Einstufung.
+**Nicht abgenommen; PostgreSQL-Lauf steht aus.**
 
 ## 30.09.2026 — Erfassen-Doppelklick, Lauf 6: Blattwechsel erst nach dem Datei-Anteil (Teilstand)
 

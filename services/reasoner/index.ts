@@ -226,3 +226,10 @@ export {
   type KlaraConsentStatus,
   type KlaraSessionRepo,
 } from "./src/klara-policy-store";
+// Auftrag gesamt-ki-einwilligung (Bens B3, Runde 2): die Klara-Anbieterbindung eines Laufs — die App
+// startet Läufe nach bestätigter Dokumentzustimmung darin, der Reasoner wertet sie beim Kettenbau aus.
+export {
+  imBindungsrahmen,
+  bindeAnbieter,
+  anbieterZugelassen,
+} from "./src/anbieterbindung";

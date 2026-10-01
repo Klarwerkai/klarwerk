@@ -11,6 +11,7 @@ import {
   ZurufService,
   type ZurufVorschlag,
 } from "../../../output";
+import { bindeAnbieter, imBindungsrahmen } from "../../../reasoner";
 import type { Guards } from "../http";
 import { sendError } from "../http";
 
@@ -198,13 +199,36 @@ function artAus(roh: unknown): ZurufArt | null {
 export function klaraZurufRoutes(deps: KlaraZurufRouteDeps, guards: Guards): FastifyPluginAsync {
   // EIN Erzeuger je Registrierung. Das Tor ist der injizierte Sitzungsdienst; ein Formulierer nur,
   // wenn ein Modell verdrahtet ist — sonst antwortet der Erzeuger `NO_FORMULIERER`, ehrlich.
+  // Bens B3 (Runde 2): das Tor des Zurufs hält sein Ergebnis im Anfragerahmen fest — bei Freigabe
+  // den Anbieter, dem die Zustimmung gilt, bei Absage keinen. Der Formulierer (`zurufModell` in
+  // `build-app.ts`) wählt seinen Anbieter erst beim Aufruf und lehnt jeden anderen ab. Ohne Rahmen
+  // gilt eine Freigabe nicht (fail-closed).
+  const einwilligungspruefer: Ka6Einwilligungspruefer = {
+    async pruefeExterneAusfuehrung(sessionId, bindung) {
+      const freigabe = await deps.sessions.pruefeExterneAusfuehrung(sessionId, bindung);
+      if (freigabe?.erlaubt !== true) {
+        bindeAnbieter(null);
+        return freigabe;
+      }
+      if (typeof freigabe.anbieter === "string" && !bindeAnbieter(freigabe.anbieter)) {
+        return { erlaubt: false, grund: "anbieterbindung_fehlt" };
+      }
+      return freigabe;
+    },
+  };
   const zuruf = new ZurufService({
     koService: deps.ko,
-    einwilligungspruefer: deps.sessions,
+    einwilligungspruefer,
     ...(deps.modell ? { formulierer: formuliererAusModell(deps.modell) } : {}),
   });
 
   return async (app) => {
+    // Bens B3 (Runde 2): je Anfrage ein Rahmen für die Klara-Anbieterbindung
+    // (`services/reasoner/src/anbieterbindung.ts`) — das Tor hält sein Ergebnis darin fest, der
+    // Reasoner liest es beim Kettenbau. `run(…, done)` ist das Muster von `@fastify/request-context`.
+    app.addHook("onRequest", (_request, _reply, done) => {
+      imBindungsrahmen(() => done());
+    });
     app.post<{
       Params: { sessionId: string };
       Body: { text?: unknown; koIds?: unknown; art?: unknown } | null;

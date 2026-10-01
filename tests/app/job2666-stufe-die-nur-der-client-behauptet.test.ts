@@ -621,11 +621,16 @@ describe("JOB 2666 D2 · P — Pins an der Quelle: eine Komposition, eine KA4-H�
 
   it("P2 · reasoner-routes.ts benutzt `ka4Freigabe` aus ask-routes.ts — die doppelte Hülle aus D1 (`klaraRiegel`) gibt es nicht mehr", () => {
     const routen = lesen("services/app/src/routes/reasoner-routes.ts");
-    expect(routen).toMatch(/import \{[^}]*ka4Freigabe[^}]*\} from "\.\/ask-routes"/);
+    // NACHGEFÜHRT DURCH Auftrag gesamt-ki-einwilligung (Bens B3/B4, Runde 2): die Route liest
+    // jetzt `ka4Entscheidung` — DASSELBE Tor aus ask-routes.ts, nur ohne Verdichtung auf einen
+    // Boolean (Grund für die Meldung, Anbieterbindung des Laufs). `ka4Freigabe` ist dessen
+    // Boolean-Form und ruft es selbst; eine zweite Hülle in der Route gibt es weiterhin nicht.
+    expect(routen).toMatch(/import \{[^}]*ka4(Freigabe|Entscheidung)[^}]*\} from "\.\/ask-routes"/);
     expect(routen).not.toMatch(/function klaraRiegel/);
     expect(routen).not.toMatch(/pruefeExterneAusfuehrung\(/);
     const ask = lesen("services/app/src/routes/ask-routes.ts");
     expect(ask).toMatch(/export async function ka4Freigabe\(/);
+    expect(ask).toMatch(/export async function ka4Entscheidung\(/);
   });
 
   it("P3 · der Clientvertrag serialisiert die draftId: provenanceFields in endpoints.ts, draftProvenance in reasonerProvenance.ts, Capture.tsx gibt sie mit", () => {

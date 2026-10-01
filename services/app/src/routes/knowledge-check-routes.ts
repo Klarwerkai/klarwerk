@@ -2,7 +2,7 @@ import type { FastifyPluginAsync } from "fastify";
 import type { CaptureService } from "../../../capture";
 import type { ConflictService } from "../../../conflicts";
 import { type Confidentiality, type KoService, isConfidential } from "../../../knowledge-object";
-import type { Reasoner } from "../../../reasoner";
+import { type Reasoner, imBindungsrahmen } from "../../../reasoner";
 import type { Guards } from "../http";
 import { checkKnowledge } from "../knowledge-check";
 import { type Ka4Freigabepruefer, ka4Freigabe, klaraBindungVorhanden } from "./ask-routes";
@@ -110,6 +110,12 @@ async function resolveDraftConfidential(
 
 export function knowledgeCheckRoutes(deps: KnowledgeCheckRouteDeps): FastifyPluginAsync {
   return async (app) => {
+    // Bens B3 (Runde 2): je Anfrage ein Rahmen für die Klara-Anbieterbindung
+    // (`services/reasoner/src/anbieterbindung.ts`) — das Tor hält sein Ergebnis darin fest, der
+    // Reasoner liest es beim Kettenbau. `run(…, done)` ist das Muster von `@fastify/request-context`.
+    app.addHook("onRequest", (_request, _reply, done) => {
+      imBindungsrahmen(() => done());
+    });
     app.post<{
       // source/koId/confidentiality optional (kein Schema) — Alt-Clients ohne diese Felder bekommen
       // fail-safe „vertraulich" (kein Egress), nie 400.

@@ -164,6 +164,7 @@ import {
   PgReasonerPolicyRepo,
   Reasoner,
   type ReasonerPolicyRepo,
+  anbieterZugelassen,
   createCappedCloudClientFromEnv,
   createCappedLocalClientFromEnv,
 } from "../../reasoner";
@@ -930,6 +931,16 @@ export function assembleServices(
               return Promise.reject(
                 new Error(
                   `Kein externer Anbieter für die Aufgabe „answer" wirksam (${anbieter}) — der Zuruf wird nicht formuliert.`,
+                ),
+              );
+            }
+            // Bens B3 (Runde 2): dieser Weg baut keine Reasoner-Kette — er prüft die Klara-
+            // Anbieterbindung deshalb selbst. Wurde nach dem Tor auf einen anderen Anbieter
+            // umgestellt, geht nichts hinaus.
+            if (!anbieterZugelassen(anbieter)) {
+              return Promise.reject(
+                new Error(
+                  `Die Zustimmung für dieses Dokument gilt einem anderen Anbieter als ${anbieter} — der Zuruf wird nicht formuliert.`,
                 ),
               );
             }

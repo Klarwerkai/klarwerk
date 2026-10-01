@@ -11,7 +11,7 @@ import type {
   KoService,
   KoStatus,
 } from "../../../knowledge-object";
-import type { JudgeFailure, Reasoner } from "../../../reasoner";
+import { type JudgeFailure, type Reasoner, imBindungsrahmen } from "../../../reasoner";
 import { authorizesCheckText } from "../addon-principal";
 import { addonRateLimit } from "../addon-rate-limit";
 import {
@@ -534,6 +534,12 @@ function quellensichtVon(nutzer: SessionUser | undefined): Quellensicht {
 
 export function checkTextRoutes(deps: CheckTextRouteDeps, guards: Guards): FastifyPluginAsync {
   return async (app) => {
+    // Bens B3 (Runde 2): je Anfrage ein Rahmen für die Klara-Anbieterbindung
+    // (`services/reasoner/src/anbieterbindung.ts`) — das Tor hält sein Ergebnis darin fest, der
+    // Reasoner liest es beim Kettenbau. `run(…, done)` ist das Muster von `@fastify/request-context`.
+    app.addHook("onRequest", (_request, _reply, done) => {
+      imBindungsrahmen(() => done());
+    });
     app.post<{
       Body: {
         text: string;

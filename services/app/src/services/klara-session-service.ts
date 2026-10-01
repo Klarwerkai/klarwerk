@@ -414,6 +414,13 @@ export type KlaraAusfuehrungsfreigabe =
       readonly erlaubt: true;
       readonly resolution: KlaraResolution;
       readonly consentId: string;
+      /**
+       * Bens B3 (Runde 2): der externe Anbieter (`openai`/`anthropic`), dem die Zustimmung gilt —
+       * aus derselben Anbieterkarte, gegen die eben geprüft wurde. Der Aufrufer hält ihn im
+       * Anfragerahmen fest (`bindeAnbieter`), damit ein Wechsel NACH dem Tor den Text nicht bekommt.
+       * Fehlt die Karte (Testaufbauten), fehlt auch das Feld.
+       */
+      readonly anbieter?: string;
     }
   | {
       readonly erlaubt: false;
@@ -925,8 +932,8 @@ export class KlaraSessionService {
     // Ohne Karte gibt es dafür keinen Beleg, und dann trägt sie ausschliesslich `answer`.
     // Nachträgliche Wechsel fängt schon die Deckungsprüfung oben: die Karte steht in der
     // Konfigurationsversion, ein Wechsel entwertet die Zustimmung.
+    const karte = quelle.aufgabenAnbieter;
     if (aufgabe !== "answer") {
-      const karte = quelle.aufgabenAnbieter;
       const gleicherAnbieter =
         karte !== undefined &&
         typeof karte.answer === "string" &&
@@ -941,7 +948,13 @@ export class KlaraSessionService {
         };
       }
     }
-    return { erlaubt: true, resolution, consentId: deckung.consentId };
+    const anbieter = karte?.answer;
+    return {
+      erlaubt: true,
+      resolution,
+      consentId: deckung.consentId,
+      ...(typeof anbieter === "string" ? { anbieter } : {}),
+    };
   }
 
   /** Die Auflösung zu einer registrierten Sitzung — der einzige Statusweg (S4-20 §6). */
@@ -1418,6 +1431,29 @@ export class KlaraSessionService {
    */
   async raeumeAbgelaufeneAuf(): Promise<number> {
     const grenze = new Date(this.now() - KLARA_SESSION_AUFBEWAHRUNG_MS).toISOString();
+    // ============================================================================================
+    // BENS B2 (Runde 2) — ERST DER NACHWEIS, DANN DAS LÖSCHEN.
+    // ============================================================================================
+    //
+    // Der Nachtrag fehlender Endeinträge lief bis hierher nur beim nächsten Zugriff auf die
+    // Sitzung (`laden`). Ohne diesen Zugriff löschte das Aufräumen Sitzung und Zustimmungszeile —
+    // und mit ihr die einzige Stelle, an der Art und Zeitpunkt eines Widerrufs noch standen.
+    // Deshalb trägt das Aufräumen JEDE beendete Zustimmung der zu löschenden Sitzungen nach, und
+    // eine noch `granted` stehende als abgelaufen (zum Ablauf ihrer Frist). Scheitert ein Eintrag,
+    // wird NICHTS gelöscht: der Fehler geht hinaus, der nächste Lauf versucht es erneut.
+    // `protokolliereEnde` schreibt genau einmal je Zustimmung — ein schon vorhandener Eintrag
+    // bleibt unberührt, ein zweites Ende entsteht nicht.
+    for (const sessionId of await this.repo.findExpiredSessionIds(grenze)) {
+      for (const consent of await this.repo.alleConsents(sessionId)) {
+        await this.protokolliereEnde(
+          consent,
+          consent.status === "granted" ? "expired" : consent.status,
+          consent.status === "granted"
+            ? consent.expiresAt
+            : (consent.revokedAt ?? consent.expiresAt),
+        );
+      }
+    }
     return this.repo.purgeExpiredSessions(grenze);
   }
 

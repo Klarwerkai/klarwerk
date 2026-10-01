@@ -9,6 +9,7 @@ import {
 import type { ConflictService } from "../../../conflicts";
 import type { KnowledgeObject, KoService } from "../../../knowledge-object";
 import { can } from "../../../rbac";
+import { bindeAnbieter, imBindungsrahmen } from "../../../reasoner";
 import { authorizesAsk } from "../addon-principal";
 import { addonRateLimit } from "../addon-rate-limit";
 import { type Guards, type SessionUser, sendError } from "../http";
@@ -153,7 +154,18 @@ export interface Ka4Freigabepruefer {
     sessionId: string,
     bindung: { actorId: string; addinInstanceId: string; documentContextId: string },
     aufgabe?: KlaraAufgabe,
-  ): Promise<{ readonly erlaubt: boolean; readonly grund?: string }>;
+  ): Promise<{ readonly erlaubt: boolean; readonly grund?: string; readonly anbieter?: string }>;
+}
+
+/**
+ * Bens B3/B4 (Runde 2): das Ergebnis des Tors OHNE Verdichtung auf einen Boolean. `grund` erlaubt
+ * der Route, die richtige Ursache zu nennen (B4); `anbieter` ist der externe Anbieter, an den der
+ * anschliessende Lauf gebunden wird (B3, `bindeAnbieter`).
+ */
+export interface Ka4Entscheidung {
+  readonly erlaubt: boolean;
+  readonly grund?: string;
+  readonly anbieter?: string;
 }
 
 // Dieselben Kopfzeilen wie der Klara-Sitzungsweg (`klara-ai-routes.ts:40-42`) — eine Schreibweise,
@@ -187,8 +199,49 @@ export async function ka4Freigabe(
   // denselben Anbieter gehen wie `answer` — entschieden im Tor, hier nur durchgereicht.
   aufgabe: KlaraAufgabe = "answer",
 ): Promise<boolean> {
+  return (await ka4Entscheidung(pruefer, headers, actorId, log, ereignis, aufgabe)).erlaubt;
+}
+
+/** Dieselbe Prüfung wie `ka4Freigabe`, mit Grund und gebundenem Anbieter (Bens B3/B4). */
+export async function ka4Entscheidung(
+  pruefer: Ka4Freigabepruefer | undefined,
+  headers: Record<string, unknown>,
+  actorId: string,
+  log: { info: (obj: unknown, msg: string) => void },
+  ereignis = "ask.ka4.dokument-consent",
+  aufgabe: KlaraAufgabe = "answer",
+): Promise<Ka4Entscheidung> {
+  const entscheidung = await ka4Pruefen(pruefer, headers, actorId, log, ereignis, aufgabe);
+  // Bens B3 (Runde 2): DAS ERGEBNIS GILT FÜR DEN REST DER ANFRAGE, NICHT NUR FÜR DIESEN AUGENBLICK.
+  // Eine Anfrage MIT Klara-Bindung hält es im Anfragerahmen fest (`bindeAnbieter`): bei Freigabe den
+  // Anbieter, dem die Zustimmung gilt — der Reasoner lässt beim Kettenbau keinen anderen zu, auch
+  // keinen, auf den nach dem Tor umgestellt wurde; bei Absage `null` — dann keinen. Ohne Rahmen
+  // lässt sich eine Freigabe nicht an den Lauf binden, und dann gilt sie nicht (fail-closed).
+  // Anfragen OHNE Klara-Bindung (Konsole) bleiben unberührt.
+  if (!klaraBindungVorhanden(headers)) {
+    return entscheidung;
+  }
+  if (!entscheidung.erlaubt) {
+    bindeAnbieter(null);
+    return entscheidung;
+  }
+  if (entscheidung.anbieter !== undefined && !bindeAnbieter(entscheidung.anbieter)) {
+    log.info({ ka4: { entscheidung: "blockiert", grund: "anbieterbindung_fehlt" } }, ereignis);
+    return { erlaubt: false, grund: "anbieterbindung_fehlt" };
+  }
+  return entscheidung;
+}
+
+async function ka4Pruefen(
+  pruefer: Ka4Freigabepruefer | undefined,
+  headers: Record<string, unknown>,
+  actorId: string,
+  log: { info: (obj: unknown, msg: string) => void },
+  ereignis: string,
+  aufgabe: KlaraAufgabe,
+): Promise<Ka4Entscheidung> {
   if (!pruefer || typeof pruefer.pruefeExterneAusfuehrung !== "function") {
-    return false;
+    return { erlaubt: false };
   }
   const sessionId = klaraKopf(headers, KLARA_SESSION_HEADER);
   const addinInstanceId = klaraKopf(headers, KLARA_INSTANCE_HEADER);
@@ -196,7 +249,7 @@ export async function ka4Freigabe(
   if (!sessionId || !addinInstanceId || !documentContextId) {
     // Kein Protokolleintrag: eine Anfrage ganz ohne Klara-Bindung ist der Normalfall und keine
     // Entscheidung über eine Einwilligung.
-    return false;
+    return { erlaubt: false };
   }
   try {
     const freigabe = await pruefer.pruefeExterneAusfuehrung(
@@ -209,12 +262,16 @@ export async function ka4Freigabe(
       { ka4: { entscheidung: erlaubt ? "freigegeben" : "blockiert", grund: freigabe?.grund } },
       ereignis,
     );
-    return erlaubt;
+    return {
+      erlaubt,
+      ...(typeof freigabe?.grund === "string" ? { grund: freigabe.grund } : {}),
+      ...(erlaubt && typeof freigabe?.anbieter === "string" ? { anbieter: freigabe.anbieter } : {}),
+    };
   } catch (err) {
     // Fremde/abgelaufene/geschlossene Sitzung wirft (NOT_FOUND/CONFLICT). Das ist eine Absage,
     // kein Serverfehler — der Ask läuft in der unveränderten Enge weiter.
     log.info({ ka4: { entscheidung: "blockiert", grund: "bindung_ungueltig" } }, ereignis);
-    return false;
+    return { erlaubt: false, grund: "bindung_ungueltig" };
   }
 }
 
@@ -334,6 +391,12 @@ async function evidenceFor(
 export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsync {
   const ask = deps.ask;
   return async (app) => {
+    // Bens B3 (Runde 2): je Anfrage ein Rahmen für die Klara-Anbieterbindung
+    // (`services/reasoner/src/anbieterbindung.ts`) — das Tor hält sein Ergebnis darin fest, der
+    // Reasoner liest es beim Kettenbau. `run(…, done)` ist das Muster von `@fastify/request-context`.
+    app.addHook("onRequest", (_request, _reply, done) => {
+      imBindungsrahmen(() => done());
+    });
     app.decorateRequest("askSessionUser", null);
     // D5: in der App dekoriert `buildApp` (erster onRequest-Hook); hier nur für eigenständige Aufbauten.
     if (!app.hasRequestDecorator("askKiBeginn")) {
