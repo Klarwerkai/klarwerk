@@ -241,11 +241,17 @@ export class InMemoryAuditRepo implements AuditRepo {
   // herausgegeben — `payload.verdict = …` oder `delete read.payload.verdict` änderte den
   // gespeicherten Eintrag. Jetzt ändert eine Änderung am Eingabeobjekt nichts mehr, und jeder
   // Änderungs- oder Löschversuch an einem gelesenen Eintrag wird verweigert (TypeError).
+  //
+  // Runde 3 (BEN-L5-B1, Date): die Kopie ist eine JSON-Kopie, nicht `structuredClone`. Ein `Date`
+  // (ebenso Map/Set) blieb sonst ein Objekt mit innerem Zustand, den `Object.freeze` nicht schützt —
+  // `read.payload.zeit.setUTCFullYear(2000)` änderte den gespeicherten Eintrag. Die JSON-Kopie
+  // speichert genau das, was auch PostgreSQL (`jsonb`) speichert und was der Hash abdeckt
+  // (`canonicalJson` hat die Wertsemantik von `JSON.stringify`): ein Datum als ISO-Zeichenkette.
   private anhaengen(entry: AuditEntry): AuditEntry {
     if (this.bySeq.has(entry.seq)) {
       throw new Error(`AUDIT_SEQ_BELEGT: seq ${entry.seq} ist bereits vergeben.`);
     }
-    const gespeichert = tiefEingefroren(structuredClone(entry));
+    const gespeichert = tiefEingefroren(JSON.parse(JSON.stringify(entry)) as AuditEntry);
     if (gespeichert.eventId) {
       this.eventIds.add(gespeichert.eventId);
     }

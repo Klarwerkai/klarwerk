@@ -76,6 +76,33 @@ describe("AuditService", () => {
     expect(await s.verify()).toBe(true);
   });
 
+  // Runde 3 (BEN-L5-B1): ein Date im Payload war eingefroren, aber über `setUTCFullYear` änderbar.
+  // Gespeichert wird jetzt, was auch PostgreSQL speichert und was der Hash abdeckt: die ISO-Zeichenkette.
+  it("FR-AUD-02 (BEN-L5-B1): ein Datum im Payload lässt sich über keine Referenz nachträglich ändern", async () => {
+    const zeit = new Date("2026-09-30T10:00:00.000Z");
+    const zurueck = await service.record({
+      actor: "a",
+      action: "ko.rated",
+      target: "k",
+      payload: { zeit, tief: { auch: new Date("2026-01-01T00:00:00.000Z") } },
+    });
+    expect(await service.verify()).toBe(true);
+    zeit.setUTCFullYear(1999);
+    for (const e of [zurueck, ...(await service.list())]) {
+      for (const wert of [e.payload.zeit, (e.payload.tief as { auch: unknown }).auch]) {
+        if (wert instanceof Date) {
+          wert.setUTCFullYear(2000);
+        }
+      }
+    }
+    const [gespeichert] = await service.list();
+    expect(gespeichert?.payload).toEqual({
+      zeit: "2026-09-30T10:00:00.000Z",
+      tief: { auch: "2026-01-01T00:00:00.000Z" },
+    });
+    expect(await service.verify()).toBe(true);
+  });
+
   it("FR-AUD-02: intakte Kette verifiziert", async () => {
     await service.record({ actor: "a", action: "act1", target: "t1" });
     await service.record({ actor: "b", action: "act2", target: "t2" });

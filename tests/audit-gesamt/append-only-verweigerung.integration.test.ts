@@ -14,8 +14,10 @@
 //   PgAuditRepo.append        gefälschter Eintrag mit vorhandener seq (± tx)       abgewiesen, bitgleich
 //   PgAuditRepo.appendOnce    vorhandene seq, neue eventId / vorhandene eventId    abgewiesen/false
 //   PgAuditRepo.appendNext    Bauer liefert vorhandene seq statt Nachfolger (± tx) abgewiesen, bitgleich
-//   Produktwege mit Löschung  DELETE /api/kos/:id, /api/kos/trash/:id,             2xx, alle früheren
-//                             /api/admin/demo-seed, /api/users/:id                 Einträge bitgleich
+//   Produktwege mit Löschung  DELETE /api/kos/:id, /api/kos/trash/:id,             2xx, Löschung in der
+//                             /api/admin/demo-seed, /api/users/:id                 DB gemessen, alle
+//                                                                                  früheren Einträge
+//                                                                                  bitgleich
 //
 // Dazu: AuditService und PgAuditRepo haben KEINE weitere Methode — jede Methode am Prototyp ist hier
 // als lesend oder schreibend eingeordnet; eine neue, nicht eingeordnete Methode lässt den Test fallen.
@@ -311,38 +313,88 @@ describe("BEN-L5-B2 · Append-only-Verweigerung (echtes PostgreSQL)", () => {
     await verweigert(p, () => withPgTx(p, (tx) => repo.appendNext(() => f, tx)), "wirft");
   });
 
-  it("Produktwege mit Löschung (Papierkorb, Endlöschung, Demodaten, Nutzer) lassen jeden früheren Eintrag bitgleich", async (ctx) => {
+  // Runde 3 (BEN-L5-B2): jeder Löschweg muss WIRKLICH löschen, sonst belegt der Erhalt der
+  // Auditzeilen nichts. Deshalb je Weg: Bestand vorher anlegen, Wirkung nachher in der Datenbank
+  // messen, erst dann die früheren Auditzeilen vergleichen. Das Demo-Objekt entsteht über den
+  // gewöhnlichen Produktweg (Anlegen + Schlagwort `pilot-demo`) — das Laden des Demo-Sets ist hinter
+  // dem Schalter `demodaten` gesperrt, der Entfernen-Weg erkennt das Schlagwort ausdrücklich.
+  it("Produktwege mit Löschung (Papierkorb, Endlöschung, Demodaten, Nutzer) löschen wirklich und lassen jeden früheren Eintrag bitgleich", async (ctx) => {
     const { a, p, s } = bereit(ctx);
-    const ko = await a.inject({
-      method: "POST",
-      url: "/api/kos",
+    const neuesObjekt = async (titel: string): Promise<string> => {
+      const res = await a.inject({
+        method: "POST",
+        url: "/api/kos",
+        headers,
+        payload: {
+          confidentiality: "intern",
+          title: titel,
+          statement: `${titel} — dieses Objekt wird gelöscht.`,
+          type: "best_practice",
+          category: "Instandhaltung",
+        },
+      });
+      expect(res.statusCode, res.body).toBe(201);
+      return res.json().id as string;
+    };
+    const koZeile = async (id: string) =>
+      (await p.query<{ data: { deletedAt?: string } }>("SELECT data FROM kos WHERE id=$1", [id]))
+        .rows[0];
+
+    const id = await neuesObjekt("Wird gelöscht");
+    const demoId = await neuesObjekt("Demo-Objekt");
+    const getaggt = await a.inject({
+      method: "PUT",
+      url: `/api/kos/${demoId}`,
       headers,
-      payload: {
-        confidentiality: "intern",
-        title: "Wird gelöscht",
-        statement: "Dieses Objekt wird endgültig gelöscht.",
-        type: "best_practice",
-        category: "Instandhaltung",
-      },
+      payload: { action: "tags", tags: ["pilot-demo"] },
     });
-    expect(ko.statusCode, ko.body).toBe(201);
-    const id = ko.json().id as string;
+    expect(getaggt.statusCode, getaggt.body).toBe(200);
     const nutzer = await s.auth.register({
       name: "Wird gelöscht",
       email: "l5-weg@x.de",
       password: "secret123",
     });
-    for (const url of [
-      `/api/kos/${id}`,
-      `/api/kos/trash/${id}`,
-      "/api/admin/demo-seed",
-      `/api/users/${nutzer.id}`,
-    ]) {
+    expect((await p.query("SELECT 1 FROM users WHERE id=$1", [nutzer.id])).rowCount).toBe(1);
+
+    const wege: Array<{ url: string; wirkung: (body: unknown) => Promise<void> }> = [
+      {
+        url: `/api/kos/${id}`,
+        wirkung: async () => {
+          expect((await koZeile(id))?.data.deletedAt, "im Papierkorb").toBeTruthy();
+        },
+      },
+      {
+        url: `/api/kos/trash/${id}`,
+        wirkung: async () => {
+          expect(await koZeile(id), "endgültig gelöscht").toBeUndefined();
+        },
+      },
+      {
+        url: "/api/admin/demo-seed",
+        wirkung: async (body) => {
+          const ergebnis = body as { kos: number; gefunden: { kos: number }; fehler: unknown[] };
+          expect(ergebnis.gefunden.kos).toBeGreaterThanOrEqual(1);
+          expect(ergebnis.kos).toBe(ergebnis.gefunden.kos);
+          expect(ergebnis.fehler).toEqual([]);
+          expect(await koZeile(demoId), "Demo-Objekt gelöscht").toBeUndefined();
+        },
+      },
+      {
+        url: `/api/users/${nutzer.id}`,
+        wirkung: async () => {
+          expect((await p.query("SELECT 1 FROM users WHERE id=$1", [nutzer.id])).rowCount).toBe(0);
+        },
+      },
+    ];
+    for (const weg of wege) {
       const vorher = await abbild(p);
-      const res = await a.inject({ method: "DELETE", url, headers });
-      expect(res.statusCode, `${url}: ${res.body.slice(0, 200)}`).toBeLessThan(300);
+      const res = await a.inject({ method: "DELETE", url: weg.url, headers });
+      expect(res.statusCode, `${weg.url}: ${res.body.slice(0, 200)}`).toBeLessThan(300);
+      await weg.wirkung(res.body ? res.json() : undefined);
       const nachher = await abbild(p);
-      expect(nachher.slice(0, vorher.length), url).toEqual(vorher);
+      expect(nachher.slice(0, vorher.length), weg.url).toEqual(vorher);
+      // Die Löschung selbst ist angehängt, nicht an die Stelle eines früheren Eintrags getreten.
+      expect(nachher.length, `${weg.url}: Beleg angehängt`).toBeGreaterThan(vorher.length);
       await kette(p);
     }
   });
