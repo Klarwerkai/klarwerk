@@ -216,6 +216,12 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   // einem Schnitt haengt sie an der Fixture. A2 hat die Datei gemeldet (`+ "tests/n1-bestand-im-
   // panel/bestand-im-panel-mounted.test.ts"`), das Verzeichnis hat sie nicht still aufgenommen.
   "tests/n1-bestand-im-panel/bestand-im-panel-mounted.test.ts": "fixture",
+  // AUFNAHME 20260922 · P-M3b (Prüfstand-Wortlaut): misst das Wort am Treffer im Web UND im
+  // ausgelieferten Aufgabenfenster gegen dieselbe Tabelle. Die Word-Hälfte fährt über
+  // `createKlaraPanel` — Griff `fixture`, kein Pfadliteral, keine Marken. A2 hat die Datei im
+  // Server-Gesamtcheck gemeldet (`neu im Baum, aber nicht gepinnt`), das Verzeichnis nimmt sie
+  // nicht still auf.
+  "tests/erfassungs-konfliktpruefung/pruefstand-wortlaut.test.tsx": "fixture",
   // JOB 3243 M3c-UI (08.09.2026): der Quellenfund am ausgelieferten Aufgabenfenster. Dieselbe
   // Technik wie die Zeile darueber (`createKlaraPanel` mit gefaktem `/api/check-text`) — Griff
   // `fixture`; dazu nennt ihr Kopfkommentar `apps/web/public/word-addin/taskpane.html` als das
