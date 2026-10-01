@@ -74,6 +74,45 @@ Gegenproben:
 
   Im Bau wurde nichts davon ausgeführt (kein Docker, kein Browser auf dem Produktions-Mac).
 
+## Zuordnung der 18 Kriterien (Endabnahme der Fassung `84d59561` = 1.0.0-beta.1.641)
+
+Ein Kriterium ist entweder einem Beleg (Datei und Fall) oder ausdrücklich dem Liefertor-Rest
+zugeordnet. Der Liefertor-Rest ist nicht gemessen und kein Bestanden-Beleg:
+**(a)** echter Anbieter-/Schlüsselbund-Aufruf und echte Modell-API, **(b)** PostgreSQL-Persistenz
+(`PgModelRunRepo.zwischen`, jsonb `versuche`/`trace`), **(c)** unbekannte Live-Art, vollständige
+Karten-Zustandsmatrix und Ablösungssuche, **(d)** OpenAI-400/`model-error` unter N12d,
+**(e)** vollständiger eigener `tools/check`- und Chromium-Lauf.
+Pfade ohne Verzeichnis liegen in `tests/ki-lauf-protokoll/`.
+„Server“ heißt: Die Datei startet Chromium und läuft nur auf dem Prüfserver.
+
+| # | Kriterium | Beleg | Liefertor-Rest |
+|---|---|---|---|
+| 1 | R-0612: Anbieter, Aufgabe, Erfolg, Ersatzmodus, Dauer, Ergebnisstatus ohne Frage- und Antworttexte | `protokoll-vollstaendig.test.ts` I1–I3, H1–H2, W1 (Marken für Frage und Antwort fehlen im Datensatz), W1–W6 (je Aufruf ein Lauf); `tests/ki-lauf-modell/`, `tests/ki-lauf-dauer/`; `kosten-und-auswertung.test.ts` S1 (Logzeile nur Metadaten) | (a), (b) |
+| 2 | R-0705: Ausweichversuche zusammengeführt; Verbrauch und Kosten mit eigenem Nachweis | Versuche: `protokoll-vollstaendig.test.ts` C1–C3, V1–V2; Verbrauch: `tests/ki-lauf-verbrauch/`, K2; Kosten: `kosten-und-auswertung.test.ts` P1–P5 | (a), (b) |
+| 3 | R-0759: Herkunft, Modell, Aufgabe, Verbrauch, Kosten, Erzeugtes | `tests/ki-lauf-modell/`, `tests/ki-aufgabenarten/` R3a–R3i, `tests/ki-lauf-verbrauch/`, `kosten-und-auswertung.test.ts` P2–P4, R1; Erzeugtes: `protokoll-vollstaendig.test.ts` E1–E3, `auswertung-flaeche.test.tsx` F2 | (a), (b); Erzeugtes nur als Art und Anzahl (siehe „Offen“) |
+| 4 | R-0833: Modellherkunft, Ausweichweg, Verbrauch, Kosten einer KI-Antwort | wie 2 und 3; zusätzlich `auswertung-flaeche.test.tsx` F1 (Kosten je Lauf in der Karte) | (a), (b) |
+| 5 | R-1536 (Rest) | Sichtbare Weboberfläche nur für die Laufkarte: `tests/select-lauf-protokoll/tastaturweg-laufkarte-im-echten-browser.test.ts` K6–K8 (Server) | (a), (b), (e) |
+| 6 | R-1544 (Rest) | kein eigener Beleg | (e); die drei socketabhängigen Auth-Fälle sind lokal ohne Horchrecht nicht messbar |
+| 7 | R-1567 (Rest): produktiver select-Aufrufer → eigene select-ID → DE/EN/NL-Karte | `tests/select-lauf-protokoll/route-einstieg.test.ts` A1–A4, `laufkarte-kette.test.ts` K1–K3, `kette-anfrage-bis-laufkarte.test.tsx` K5, `tastaturweg-laufkarte-im-echten-browser.test.ts` K6–K8 (Server); Sprachmatrix der jetzt zwölf Arten: `tests/ki-aufgabenarten/` R3a–R3i, `auswertung-flaeche.test.tsx` F6; Auswertungskarte-Zustände F7–F9 | (c), (d); sechs Fallback-Läufe sind keine KI-Abnahme |
+| 8 | R-1572 (Rest): Tokenumfang; `ModelCapacityError` | `tests/ki-lauf-verbrauch/` (1.0.0-beta.1.88); `kapazitaet-hinterlaesst-spur.test.ts` K1–K3, `protokoll-vollstaendig.test.ts` W5 | (a), (b); Browserlayout außer Laufkarte (K6–K8) nicht abgenommen |
+| 9 | R-1621 (Rest): Kosten, Modellfassung, Versuchshistorie, Erzeugtes, `ModelCapacityError` | Kosten: `kosten-und-auswertung.test.ts` P1–P5, R1–R2; Modell: `tests/ki-lauf-modell/`; Versuche: `protokoll-vollstaendig.test.ts` C1–C3; Erzeugtes: E1–E3; Auslastung: K1–K3 | (a), (b); „Modellfassung“ ist der gemeldete Modellname, keine eigene Versionskennung |
+| 10 | R-1666: KI-Läufe nach Aufgabenart | `tests/ki-aufgabenarten/` R3a–R3i; `auswertung-flaeche.test.tsx` F3 (eine Zeile je Aufgabenart), F6; `kosten-und-auswertung.test.ts` A1 | (c) unbekannte Live-Art |
+| 11 | R-1984: Verbrauch und Erzeugtes | `tests/ki-lauf-verbrauch/`; `protokoll-vollstaendig.test.ts` E1–E3, W1–W3; `auswertung-flaeche.test.tsx` F2 | (b) |
+| 12 | R-2071: strukturierte Logs, Metriken, Tracing, KI-Kosten-/Nutzungs-Logging, Dashboard | Log: `kosten-und-auswertung.test.ts` S1–S2, L1–L2; Tracing: R4–R5; Metriken/Summen: A1–A3, R1–R3; Dashboard: `auswertung-flaeche.test.tsx` F3–F9 | externer Export ausgeschlossen (Entscheidung 11e9f7a9) |
+| 13 | MR-SELECT-1 | wie 7: A1–A4, K5, K6 (de/en/nl, Tastatur) mit Kalibrierungen K7–K8 (Server) | (b): Persistenz nur In-Memory |
+| 14 | V9: je Lauf Modell, Dauer, Kosten; Summe je Zeitraum | `tests/ki-lauf-dauer/`; `auswertung-flaeche.test.tsx` F1, F3–F5; `kosten-und-auswertung.test.ts` R1–R2, A1 | (b) |
+| 15 | Gelieferte Ergebnisse mit Fassung und Beleg; Abgrenzung; Quellenwidersprüche | Abschnitte „Gelieferter Stand“, „In diesem Lauf geliefert“, diese Tabelle, „Offen, mit Grund“, „Quellenwidersprüche“ | — |
+| 16 | Entscheidung 6e757462: Preise nur aus `KLARWERK_KI_PREISLISTE` | `kosten-und-auswertung.test.ts` P1 (ohne Wert keine Liste), R1 (mit Liste) / R2 (ohne Liste, Grund); `auswertung-flaeche.test.tsx` F3 / F4 („Keine Preisliste hinterlegt …“) | — |
+| 17 | Entscheidung 11e9f7a9: Auswertungskarte als Dashboard | Karte: `auswertung-flaeche.test.tsx` F3–F5 (Zeitraumwahl, Kostensumme mit Grundmenge); Summen je Währung: `kosten-und-auswertung.test.ts` A1; Route: A2, R1–R3 | F5 misst die Vorgabe 30 und den Wechsel auf 7; die Option 90 ist nicht einzeln geprüft |
+| 18 | Entscheidung 8398db9e: `enrich` gekennzeichnet | `protokoll-vollstaendig.test.ts` W1b; `tests/reasoner/mega61-ki-kennzeichnung.test.ts`; `tests/app/g24-ki-kennzeichnung-laufzeitpruefung.test.ts` G24-4 | — |
+
+Zu 18, Gegenprobe (Lauf 3): Ohne `"enrich"` in `KI_ERZEUGENDE_AUFGABEN` fällt W1b rot aus
+(`expected [ 'answer', 'interview', 'describe' ] to include 'enrich'`). Die Liste ist kein
+Laufzeitschalter an der Route. `enrichPublic` setzt die Marke direkt, wie `answer` und
+`interview` auch. Ihre Wirkung liegt in der Oberfläche: `istKiKennzeichnung`
+(`apps/web/src/lib/wordAddin.ts`, Spiegel im Aufgabenfenster) erkennt nur gespiegelte Aufgaben an,
+und G24-4 hält diese Spiegelung gegen die Liste.
+
 ## Quellenwidersprüche
 
 - „Modellläufe werden nicht protokolliert“ (Register, zeitweise): durch SCRUM-164 (26.06.)
