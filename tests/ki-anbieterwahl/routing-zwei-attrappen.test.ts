@@ -1105,6 +1105,12 @@ const FREIGABE_ERLAUBT: ReadonlyMap<string, string> = new Map([
       "protokollieren. Der Schnappschuss ist nicht vertraulich eingestuft.",
   ],
   [
+    "tests/select-lauf-protokoll/kette-anfrage-bis-laufkarte.test.tsx",
+    "Ben P1 (MR-SELECT-1/R-1567): die Kette echte Auswahl-Anfrage → neue select-ID → Laufkarte " +
+      "braucht einen ECHTEN Auswahllauf mit Modellnamen. Ohne Freigabe endete er „no-model“. Der " +
+      "Schnappschuss ist nicht vertraulich eingestuft.",
+  ],
+  [
     "tests/ki-lauf-protokoll/protokoll-vollstaendig.test.ts",
     "Die Fälle messen Laufdatensätze ECHTER Modellaufrufe (Ben R1 B1/B2/B4): inhaltsfreie " +
       "Fehlerzeile, Anreicherung, Konflikt- und Dublettenurteil, Probe, Erzeugnis. Ohne Freigabe " +
@@ -2517,6 +2523,14 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
       K2: { boden: 9, freigaben: [] },
       // K3 baut seinen Reasoner mit einem schreibunfähigen Protokoll selbst und erteilt deshalb selbst.
       K3: { boden: 1, freigaben: ["erteileKiFreigabe(reasoner)"] },
+    },
+  },
+  "tests/select-lauf-protokoll/kette-anfrage-bis-laufkarte.test.tsx": {
+    gesamtboden: 14,
+    vollzaehlig: true,
+    faelle: {
+      VORSPANN: { boden: 1, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      K5: { boden: 13, freigaben: [] },
     },
   },
   "tests/select-lauf-protokoll/route-einstieg.test.ts": {
