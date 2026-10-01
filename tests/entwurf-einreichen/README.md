@@ -163,6 +163,12 @@ Lauf `:2` unverändert (Diff `a7d699eb..8ee44528`, ohne Konflikt anwendbar) und 
   * „feldlos = ausstehend“ → Fall 11 rot (je zwei Mails).
   * Mit der Lieferung sind alle grün.
 
+**Lauf `:5` Runde 2 — Zusammenführung mit dem Zielbranch `dc40e085`:** Konflikt nur in
+`tests/i18n-textmodule/bestand-vorher.json` (Prüfsummen). Die Datei `werte-vorher.json` wurde ohne
+Konflikt zusammengeführt. Sie trägt beide Seiten: unseren `chelp.saveDraftHelp.body` und die
+`ga.*`-Texte des Zielbranchs. Die drei Prüfsummen sind daraus nach der Regel von K1.0
+(`bestand-unveraendert.test.ts`) neu berechnet. Anzahl (4437) und Basisstand sind unverändert.
+
 **Herkunft.** Lauf `:1` lieferte `2ea90959` (geprüft am Ship-Commit `2525f3d5`, `1.0.0-beta.1.616`).
 Er ist **nicht** in den Basisstand übernommen. Lauf `:2` trägt seine Änderungen wieder ein und
 behebt die drei fachlichen Ben-Befunde aus Runde 1 (Beleg `96239dc4-…`):
