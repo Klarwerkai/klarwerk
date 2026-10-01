@@ -1,0 +1,241 @@
+// ================================================================================================
+// Aufnahme gesamt-ki-laufprotokoll · Bens Befunde R1 B1, B2, B4 — DAS PROTOKOLL, AM REASONER GEMESSEN.
+// ================================================================================================
+//
+// B1 · INHALTSFREI: ein Modell, das unbrauchbaren Text liefert, ließ über die `JSON.parse`-Meldung
+//      einen Ausschnitt seiner ANTWORT in `error` stehen. Gemessen wird hier mit einer synthetischen
+//      Marke im Antworttext und im Eingabetext: sie darf in keinem Feld des Datensatzes stehen.
+// B2 · JEDER MODELLWEG: Anreicherung, Konflikt- und Dublettenurteil und die Anbieterprobe befragten
+//      ein Modell, ohne einen Lauf zu schreiben. Je Aufruf entsteht jetzt genau einer — mit Modell,
+//      Verbrauch und Ausgang. Ohne Modellversuch entsteht keiner (sonst schriebe die Konfliktprüfung
+//      auf einer Installation ohne KI je Paar einen leeren Lauf).
+// B4 · ERZEUGT: Art und Anzahl dessen, was ein gelungener Lauf zurückgab — nie der Inhalt.
+//
+// Der Modellaufruf geht durch den ECHTEN Chokepoint (`cappedModelClient`), damit `model` und
+// `verbrauch` genau dann entstehen, wenn wirklich ein Modell gearbeitet hat (JOB 3036 R2 / 3074).
+import { describe, expect, it } from "vitest";
+import { InMemoryModelRunRepo, type ModelRunRecord } from "../../services/model-runs";
+import { DeterministicProvider, ModelProvider, Reasoner } from "../../services/reasoner";
+import {
+  ModelCapacityError,
+  cappedModelClient,
+  meldeModellVerbrauch,
+} from "../../services/reasoner/src/model-concurrency";
+import { ModelHttpError } from "../../services/reasoner/src/model-errors";
+import type { ModelClient } from "../../services/reasoner/src/provider-model";
+import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
+
+const ANTWORTMARKE = "BEN_ANTWORTINHALT_7f3";
+const EINGABEMARKE = "EINGABE_GEHEIM_9c1";
+
+const KONFLIKT_JSON = JSON.stringify({
+  relation: "widerspruch",
+  older: "a",
+  confidence: 0.8,
+  begruendung: "",
+  zitat_a: "A",
+  zitat_b: "B",
+});
+
+// Ein Modell in Produktverdrahtung: gecappt, meldet je Aufruf Verbrauch, antwortet wie vorgegeben.
+function modell(
+  antwort: () => Promise<string>,
+  verbrauch: [number, number] = [23, 5],
+): ModelClient {
+  return cappedModelClient(
+    {
+      name: "anthropic:test-modell",
+      model: "test-modell",
+      complete: async () => {
+        meldeModellVerbrauch(verbrauch[0], verbrauch[1]);
+        return antwort();
+      },
+    },
+    { rejectsConfidential: true },
+  );
+}
+
+async function aufbau(
+  client: ModelClient | undefined,
+): Promise<{ reasoner: Reasoner; repo: InMemoryModelRunRepo }> {
+  const repo = new InMemoryModelRunRepo();
+  const reasoner = new Reasoner(
+    client ? new ModelProvider(client) : undefined,
+    new DeterministicProvider(),
+    repo,
+  );
+  await erteileKiFreigabe(reasoner);
+  return { reasoner, repo };
+}
+
+async function einzigerLauf(repo: InMemoryModelRunRepo): Promise<ModelRunRecord> {
+  const laeufe = await repo.recent(10);
+  expect(laeufe).toHaveLength(1);
+  return laeufe[0] as ModelRunRecord;
+}
+
+describe("Ben R1 B1: kein Anfrage- oder Antwortinhalt im Laufdatensatz", () => {
+  it("I1 · unbrauchbare Modellantwort (structure): die Antwort steht nirgends, Anbieter und Klasse schon", async () => {
+    const { reasoner, repo } = await aufbau(modell(async () => `${ANTWORTMARKE} ist kein JSON`));
+
+    await reasoner.structure(`${EINGABEMARKE} Pumpe schmieren.`, "de");
+
+    const lauf = await einzigerLauf(repo);
+    const roh = JSON.stringify(lauf);
+    expect(roh).not.toContain(ANTWORTMARKE);
+    expect(roh).not.toContain(EINGABEMARKE);
+    expect(lauf.error).toContain("anthropic:test-modell (test-modell)");
+    expect(lauf.error).toContain("SyntaxError (parse)");
+  });
+
+  it("I2 · ein beliebiger Fehler mit Inhalt in der Meldung: nur Typ und Klasse", async () => {
+    const { reasoner, repo } = await aufbau(
+      modell(async () => {
+        throw new Error(`Fehler beim Verarbeiten von: ${EINGABEMARKE}`);
+      }),
+    );
+
+    await reasoner.structure("Pumpe schmieren.", "de");
+
+    const lauf = await einzigerLauf(repo);
+    expect(JSON.stringify(lauf)).not.toContain(EINGABEMARKE);
+    expect(lauf.error).toContain("Error (unknown), Meldung nicht protokolliert");
+  });
+
+  it("I3 · GEGENPROBE: die selbstgebaute HTTP-Meldung samt Anbieterbegründung bleibt wörtlich", async () => {
+    const { reasoner, repo } = await aufbau(
+      modell(async () => {
+        throw new ModelHttpError("Modell-API antwortete mit 429: rate limit", 429, "rate limit");
+      }),
+    );
+
+    await reasoner.structure("Pumpe schmieren.", "de");
+
+    const lauf = await einzigerLauf(repo);
+    expect(lauf.error).toContain("Modell-API antwortete mit 429: rate limit");
+  });
+});
+
+describe("Ben R1 B2: Anreicherung, Urteile und Probe schreiben je Aufruf genau einen Lauf", () => {
+  it("W1 · enrich: ein Lauf mit Modell, Verbrauch und Erzeugnis — ohne Frage und Antwort", async () => {
+    const { reasoner, repo } = await aufbau(modell(async () => `${ANTWORTMARKE} Weltwissen`));
+
+    const ergebnis = await reasoner.enrichPublic(`${EINGABEMARKE} Was ist ein Ventil?`, "de");
+
+    expect(ergebnis.demo).toBe(false);
+    const lauf = await einzigerLauf(repo);
+    expect(lauf.task).toBe("enrich");
+    expect(lauf.status).toBe("success");
+    expect(lauf.model).toBe("test-modell");
+    expect(lauf.verbrauch).toEqual({ eingabeToken: 23, ausgabeToken: 5, gemeldeteAufrufe: 1 });
+    expect(lauf.erzeugt).toEqual({ art: "text", anzahl: 1 });
+    expect(JSON.stringify(lauf)).not.toContain(ANTWORTMARKE);
+    expect(JSON.stringify(lauf)).not.toContain(EINGABEMARKE);
+  });
+
+  it("W2 · conflict: gelungenes Urteil → success, Erzeugnis „urteil“", async () => {
+    const { reasoner, repo } = await aufbau(modell(async () => KONFLIKT_JSON));
+
+    const ausgang = await reasoner.judgeConflictOutcome("Kern A", "Kern B", "de", false);
+
+    expect(ausgang.verdict?.relation).toBe("widerspruch");
+    const lauf = await einzigerLauf(repo);
+    expect(lauf.task).toBe("conflict");
+    expect(lauf.status).toBe("success");
+    expect(lauf.model).toBe("test-modell");
+    expect(lauf.verbrauch?.eingabeToken).toBe(23);
+    expect(lauf.erzeugt).toEqual({ art: "urteil", anzahl: 1 });
+  });
+
+  it("W3 · duplicate: unverwertbare Antwort → error mit Grund, der Verbrauch bleibt", async () => {
+    const { reasoner, repo } = await aufbau(modell(async () => `${ANTWORTMARKE} kein Urteil`));
+
+    const ausgang = await reasoner.judgeDuplicateOutcome("Kern A", "Kern B", "de", false);
+
+    expect(ausgang.verdict).toBeNull();
+    const lauf = await einzigerLauf(repo);
+    expect(lauf.task).toBe("duplicate");
+    expect(lauf.status).toBe("error");
+    expect(lauf.error).toContain("Antwort unverwertbar");
+    expect(lauf.verbrauch).toEqual({ eingabeToken: 23, ausgabeToken: 5, gemeldeteAufrufe: 1 });
+    expect(Object.hasOwn(lauf, "erzeugt")).toBe(false);
+    expect(JSON.stringify(lauf)).not.toContain(ANTWORTMARKE);
+  });
+
+  it("W4 · probe: die Anbieterprobe ist ein Lauf `probe` mit Modell und Verbrauch", async () => {
+    const { reasoner, repo } = await aufbau(modell(async () => "OK"));
+
+    const probe = await reasoner.probe("anthropic");
+
+    expect(probe.ok).toBe(true);
+    const lauf = await einzigerLauf(repo);
+    expect(lauf.task).toBe("probe");
+    expect(lauf.status).toBe("success");
+    expect(lauf.model).toBe("test-modell");
+    expect(lauf.verbrauch?.ausgabeToken).toBe(5);
+  });
+
+  it("W5 · Urteil an der Auslastung: der Fehler bleibt (503), und genau ein error-Lauf steht da", async () => {
+    const ausgelastet: ModelClient = {
+      name: "anthropic:test-modell",
+      model: "test-modell",
+      complete: async () => {
+        throw new ModelCapacityError("Modell ausgelastet: Warteschlange voll (0).");
+      },
+    };
+    const { reasoner, repo } = await aufbau(ausgelastet);
+
+    await expect(
+      reasoner.judgeConflictOutcome("Kern A", "Kern B", "de", false),
+    ).rejects.toBeInstanceOf(ModelCapacityError);
+
+    const lauf = await einzigerLauf(repo);
+    expect(lauf.task).toBe("conflict");
+    expect(lauf.status).toBe("error");
+    expect(lauf.error).toContain("Modell ausgelastet");
+  });
+
+  it("W6 · ohne Modell kein Modellversuch — und dann auch kein Lauf", async () => {
+    const { reasoner, repo } = await aufbau(undefined);
+
+    await reasoner.enrichPublic("Was ist ein Ventil?", "de");
+    await reasoner.judgeConflictOutcome("Kern A", "Kern B", "de", false);
+    await reasoner.judgeDuplicateOutcome("Kern A", "Kern B", "de", false);
+
+    expect(await repo.recent(10)).toEqual([]);
+  });
+});
+
+describe("Ben R1 B4: Art und Anzahl des Erzeugten, nie der Inhalt", () => {
+  it("E1 · structure (deterministisch): ein Vorschlag", async () => {
+    const { reasoner, repo } = await aufbau(undefined);
+
+    await reasoner.structure("Pumpe alle 200 Betriebsstunden schmieren.", "de");
+
+    const lauf = await einzigerLauf(repo);
+    expect(lauf.status).toBe("success");
+    expect(lauf.erzeugt).toEqual({ art: "vorschlag", anzahl: 1 });
+  });
+
+  it("E2 · assist mit Modell: ein Text", async () => {
+    const { reasoner, repo } = await aufbau(
+      modell(async () => "Ein ganz anderer, geglätteter Satz."),
+    );
+
+    await reasoner.assistText("Roher Satz, der geglättet werden soll.", "de");
+
+    const lauf = await einzigerLauf(repo);
+    expect(lauf.erzeugt).toEqual({ art: "text", anzahl: 1 });
+    expect(JSON.stringify(lauf)).not.toContain("geglätteter Satz");
+  });
+
+  it("E3 · gescheiterter Lauf: kein Erzeugnis", async () => {
+    const { reasoner, repo } = await aufbau(modell(async () => `${ANTWORTMARKE} kein Urteil`));
+
+    await reasoner.judgeConflictOutcome("Kern A", "Kern B", "de", false);
+
+    const lauf = await einzigerLauf(repo);
+    expect(lauf.status).toBe("error");
+    expect(Object.hasOwn(lauf, "erzeugt")).toBe(false);
+  });
+});

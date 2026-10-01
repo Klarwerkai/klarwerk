@@ -1105,6 +1105,18 @@ const FREIGABE_ERLAUBT: ReadonlyMap<string, string> = new Map([
       "protokollieren. Der Schnappschuss ist nicht vertraulich eingestuft.",
   ],
   [
+    "tests/ki-lauf-protokoll/protokoll-vollstaendig.test.ts",
+    "Die Fälle messen Laufdatensätze ECHTER Modellaufrufe (Ben R1 B1/B2/B4): inhaltsfreie " +
+      "Fehlerzeile, Anreicherung, Konflikt- und Dublettenurteil, Probe, Erzeugnis. Ohne Freigabe " +
+      "stünde kein Modell in der Kette, und es gäbe keinen Modellaufruf, dessen Lauf zu messen wäre.",
+  ],
+  [
+    "tests/ki-lauf-protokoll/kosten-und-auswertung.test.ts",
+    "Die App-Fälle R1–R3 messen Kosten, Auswertung und Logzeile eines ECHTEN Cloud-Laufs mit " +
+      "gemeldetem Verbrauch (Ben R1 B3/B5). Ohne Freigabe entstünde kein Cloud-Lauf, kein Verbrauch " +
+      "und damit keine Kosten. Der Text ist ausdrücklich intern eingestuft, nicht vertraulich.",
+  ],
+  [
     "tests/ki-lauf-protokoll/kapazitaet-hinterlaesst-spur.test.ts",
     "Die Fälle messen den Laufdatensatz eines Laufs, der an der Modell-Auslastung endet (R-1572). " +
       "Ohne Freigabe stünde kein Modell in der Kette, kein Glied erreichte die Auslastung, und " +
@@ -2437,6 +2449,44 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
       "#11": { boden: 3, freigaben: [] },
       "#12": { boden: 1, freigaben: [] },
       "#13": { boden: 1, freigaben: ["erteileKiFreigabe(reasoner)"] },
+    },
+  },
+  // Aufnahme gesamt-ki-laufprotokoll (Ben R1): die Freigabe steht im VORSPANN (`aufbau`), also
+  // wird jeder Fall einzeln geführt.
+  "tests/ki-lauf-protokoll/protokoll-vollstaendig.test.ts": {
+    gesamtboden: 45,
+    vollzaehlig: true,
+    faelle: {
+      VORSPANN: { boden: 1, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      I1: { boden: 4, freigaben: [] },
+      I2: { boden: 2, freigaben: [] },
+      I3: { boden: 1, freigaben: [] },
+      W1: { boden: 8, freigaben: [] },
+      W2: { boden: 6, freigaben: [] },
+      W3: { boden: 7, freigaben: [] },
+      W4: { boden: 5, freigaben: [] },
+      W5: { boden: 4, freigaben: [] },
+      W6: { boden: 1, freigaben: [] },
+      E1: { boden: 2, freigaben: [] },
+      E2: { boden: 2, freigaben: [] },
+      E3: { boden: 2, freigaben: [] },
+    },
+  },
+  "tests/ki-lauf-protokoll/kosten-und-auswertung.test.ts": {
+    gesamtboden: 57,
+    vollzaehlig: true,
+    faelle: {
+      VORSPANN: { boden: 1, freigaben: ["erteileKiFreigabe(mutable.reasoner)"] },
+      P1: { boden: 4, freigaben: [] },
+      P2: { boden: 1, freigaben: [] },
+      P3: { boden: 7, freigaben: [] },
+      S1: { boden: 6, freigaben: [] },
+      S2: { boden: 2, freigaben: [] },
+      A1: { boden: 13, freigaben: [] },
+      A2: { boden: 5, freigaben: [] },
+      R1: { boden: 11, freigaben: [] },
+      R2: { boden: 5, freigaben: [] },
+      R3: { boden: 2, freigaben: [] },
     },
   },
   "tests/ki-lauf-protokoll/kapazitaet-hinterlaesst-spur.test.ts": {

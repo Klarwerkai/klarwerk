@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 // JOB 3276: die leere Modellantwort im assist-Pfad ist ein Fehler mit Grund — dieselbe typisierte
 // Klasse, die der HTTP-Chokepoint (model-client.ts) wirft, damit die Kette EINE Fehlerart kennt.
-import { ModelEmptyResponseError } from "./model-errors";
+import { ModelEmptyResponseError, ReasonerMeldungFehler } from "./model-errors";
 import {
   DEFAULT_TOP_K,
   type ReasonerProvider,
@@ -1041,7 +1041,7 @@ export function normalizeCandidateGroups(
   const parsed = JSON.parse(extractJson(raw)) as Record<string, unknown>;
   const rawGroups = Array.isArray(parsed.groups) ? parsed.groups : [];
   if (rawGroups.length === 0) {
-    throw new Error("Modell-Antwort enthält keine Gruppen.");
+    throw new ReasonerMeldungFehler("Modell-Antwort enthält keine Gruppen.");
   }
   const known = new Set(knownIds);
   const seen = new Set<string>();
@@ -1079,7 +1079,7 @@ export function normalizeCandidateGroups(
     }
   }
   if (groups.length === 0) {
-    throw new Error("Modell-Antwort enthält keine verwertbare Gruppe.");
+    throw new ReasonerMeldungFehler("Modell-Antwort enthält keine verwertbare Gruppe.");
   }
   // Vom Modell vergessene ODER aus verworfenen Gruppen stammende Ids: EHRLICH in die markierte
   // Auffanggruppe (eindeutige Eingabereihenfolge — doppelte knownIds zählen einmal).
@@ -1093,11 +1093,11 @@ export function normalizeCandidateGroups(
   // Verletzung → werfen (die Kette fällt auf die deterministische Themen-Gruppierung zurück).
   const flat = groups.flatMap((g) => g.ids);
   if (flat.length !== uniqueKnown.length || new Set(flat).size !== flat.length) {
-    throw new Error("Genau-einmal-Invariante der Gruppierung verletzt.");
+    throw new ReasonerMeldungFehler("Genau-einmal-Invariante der Gruppierung verletzt.");
   }
   for (const id of flat) {
     if (!known.has(id)) {
-      throw new Error("Genau-einmal-Invariante der Gruppierung verletzt.");
+      throw new ReasonerMeldungFehler("Genau-einmal-Invariante der Gruppierung verletzt.");
     }
   }
   return groups;
@@ -1888,7 +1888,7 @@ export class ModelProvider implements ReasonerProvider {
   ): Promise<DescribeImageResult> {
     const client = this.requireClient();
     if (typeof client.completeVision !== "function") {
-      throw new Error("Dieses Modell hat keinen Bild-Eingang (Vision).");
+      throw new ReasonerMeldungFehler("Dieses Modell hat keinen Bild-Eingang (Vision).");
     }
     // WP-BILD-1f: Kontext deterministisch auf das harte Budget kürzen; er reist als Teil des
     // Vision-USER-Prompts mit — also durch DENSELBEN Egress-Wächter wie das Bild. Bei vertraulichem
@@ -2067,7 +2067,7 @@ export class ModelProvider implements ReasonerProvider {
     // Kein einziger verwertbarer Punkt UND mindestens ein Abschnitt scheiterte hart →
     // ehrlich scheitern (SCRUM-411-Meldeweg über den Reasoner-Fallback).
     if (points.length === 0 && hardFailure) {
-      throw new Error(
+      throw new ReasonerMeldungFehler(
         locale === "en"
           ? "model response was not valid JSON (possibly truncated)"
           : "Modell-Antwort war kein gültiges JSON (möglicherweise abgeschnitten)",
@@ -2312,7 +2312,7 @@ export class ModelProvider implements ReasonerProvider {
 
   private requireClient(): ModelClient {
     if (!this.client) {
-      throw new Error("Kein Modell-Client konfiguriert.");
+      throw new ReasonerMeldungFehler("Kein Modell-Client konfiguriert.");
     }
     return this.client;
   }

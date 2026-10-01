@@ -136,6 +136,8 @@ import {
   type ModelRunRepo,
   ModelRunService,
   PgModelRunRepo,
+  ProtokollModelRunRepo,
+  lesePreisliste,
 } from "../../model-runs";
 import {
   ConsoleMailer,
@@ -885,12 +887,17 @@ export function assembleServices(
   // gesetzt sind — ebenfalls gecappt (globaler Cap), aber ohne Egress-Wächter (on-prem, kein externer
   // Egress → bedient vertrauliche Inhalte weiter). Werte aus Launcher/Schlüsselbund, nie aus dem Code.
   const cappedLocal = createCappedLocalClientFromEnv();
+  // Aufnahme gesamt-ki-laufprotokoll (V9, R-2071): EIN Schreibweg für alle Läufe — er berechnet die
+  // Kosten aus der Preisliste des Betreibers (`KLARWERK_KI_PREISLISTE`, ohne Vorgabepreise) und
+  // schreibt je Lauf die strukturierte Logzeile `ki_lauf` (verbunden in `buildApp`).
+  const preislisteLesung = lesePreisliste(process.env.KLARWERK_KI_PREISLISTE);
+  const modelRunProtokoll = new ProtokollModelRunRepo(repos.modelRuns, preislisteLesung.preisliste);
   // SCRUM-164: ModelRun-Protokoll mitgeben (No-op-fähig); API-Shape des Reasoners unverändert.
   const reasoner = new Reasoner(
     // JOB 3134: kein `primary` mehr — die externen Anbieter kommen benannt über `cloud` (unten).
     undefined,
     undefined,
-    repos.modelRuns,
+    modelRunProtokoll,
     // SCRUM-386: Presets über das Repo — persistent in Pg bzw. im Dev-Journal der Desktop-App.
     repos.assistPresets,
     // SCRUM-424: zweites Backend (lokaler LLM) als optionaler Provider.
@@ -1279,7 +1286,12 @@ export function assembleServices(
           .map((k) => k.confidentiality ?? "intern"),
     }),
     // SCRUM-165: read-only ModelRun-Sicht über dasselbe Protokoll-Repo wie der Reasoner.
-    modelRuns: new ModelRunService({ repo: repos.modelRuns }),
+    modelRuns: new ModelRunService({
+      repo: modelRunProtokoll,
+      preisliste: preislisteLesung.preisliste,
+      ...(preislisteLesung.fehler ? { preislisteFehler: preislisteLesung.fehler } : {}),
+      protokoll: modelRunProtokoll,
+    }),
     // FR-AUTH-08/FR-VAL-07: SMTP, wenn konfiguriert; sonst sammelnder Fallback ohne Versand.
     mailer: createMailerFromEnv() ?? new ConsoleMailer(),
     // Audit-P3 (SCRUM-397): Gelesen-Status der Glocke — Repo direkt (schmale Modul-API).
@@ -2153,6 +2165,15 @@ export function buildApp(
   // Fehler wird formtreu an Fastifys Standard-Fehlerbehandlung weitergereicht (Validierungs-400 etc.
   // unverändert).
   app.setErrorHandler(modelBusyErrorHandler);
+  // Aufnahme gesamt-ki-laufprotokoll (R-2071): je KI-Lauf eine strukturierte Logzeile `ki_lauf`
+  // (nur Metadaten, s. `kiLaufLogzeile`) über den App-Logger mit seinen Redaktionsregeln.
+  // Optional aufgerufen: Prüfaufbauten ersetzen `modelRuns` teils durch eine schmale Attrappe nur
+  // mit `recent` (tests/deploy-health-commit) — die App muss auch dann entstehen.
+  services.modelRuns.logAn?.((zeile) => app.log.info(zeile, "ki_lauf"));
+  const preisgrundlage = services.modelRuns.preisgrundlage?.();
+  if (preisgrundlage?.fehler) {
+    app.log.warn({ event: "ki_preisliste" }, preisgrundlage.fehler);
+  }
   // G27 R1 / Entscheidung 06 §3 — DIE READINESS-BINDUNG.
   //
   // `onReady` ist der von Fastify vorgesehene asynchrone Start-/Ready-Pfad: `app.ready()`,

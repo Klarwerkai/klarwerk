@@ -637,6 +637,18 @@ const GRUNDWERTE: readonly Startwert[] = [
     ohneIhn: "Es gilt die eingebaute Zeitgrenze.",
   },
   {
+    // Aufnahme gesamt-ki-laufprotokoll (V9): die Preise je Modell legt der Betreiber fest — der
+    // Code liefert keine (`services/model-runs/src/preisliste.ts`).
+    name: "KLARWERK_KI_PREISLISTE",
+    bereich: "KI",
+    pflicht: { art: "nie" },
+    geheim: false,
+    wofuer:
+      'Preisliste je Modell für die Kosten der KI-Läufe (JSON: {"waehrung","preisstand","modelle":{"<modell>":{"eingabeJeMillion","ausgabeJeMillion"}}}).',
+    ohneIhn:
+      "Es werden keine Kosten berechnet; die KI-Auswertung nennt „keine Preisliste hinterlegt“.",
+  },
+  {
     name: "KLARWERK_LOCAL_LLM_MAX_TOKENS",
     bereich: "KI",
     pflicht: { art: "nie" },

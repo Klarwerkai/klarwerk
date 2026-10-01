@@ -119,9 +119,8 @@ describe("Aufnahme ki-laufprotokoll: Auslastung hinterlässt genau einen Laufdat
     // Das zuletzt WIRKLICH gerufene Modell ist das der Cloud — das lokale bekam keinen Slot.
     expect(lauf.model).toBe("cloud-modell");
     expect(lauf.verbrauch).toEqual({ eingabeToken: 3000, ausgabeToken: 12, gemeldeteAufrufe: 1 });
-    expect(lauf.error).toContain(
-      "anthropic:cloud-modell (cloud-modell): Modell-API antwortete mit 500",
-    );
+    // Ben R1 B1: ein untypisierter Fehler steht nur mit Typ und Klasse da, nie mit seiner Meldung.
+    expect(lauf.error).toContain("anthropic:cloud-modell (cloud-modell): Error (http 500)");
     expect(lauf.error).toContain(`lokal:lokal-modell: ${AUSLASTUNG}`);
   });
 

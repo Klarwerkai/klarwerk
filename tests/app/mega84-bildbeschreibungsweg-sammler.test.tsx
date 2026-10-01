@@ -2048,8 +2048,14 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // `SanitizedHtml` — dasselbe Bauteil wie bisher im Lesestand, kein neuer Bildweg.
     // DIE +7 IST GEMESSEN: im eigenen Lauf 405 → 412 (Cloud-Lauf pa-1790434819-46fe6fb5); nach der
     // Zusammenführung mit FE-003 (423) am zusammengeführten Arbeitsbaum erneut gemessen: 430.
+    //
+    // Aufnahme gesamt-ki-laufprotokoll (V9, R-2071): 430 → 431. GENAU EIN Bauteil kommt dazu:
+    //     + `ModelRunAuswertungCard` (`pages/Stufe2.tsx`) — die KI-Auswertung eines Zeitraums
+    // Gemessen: der Sammler meldete „expected { komponenten: 431, … } to deeply equal
+    // { komponenten: 430, … }". `anbieter` 1 und `traeger` 2 bleiben: die Karte zeigt kein Bild,
+    // keinen `documentTitle` und kein `CAPTION_AI_TEXT`.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 430,
+      komponenten: 431,
       anbieter: 1,
       traeger: 2,
     });

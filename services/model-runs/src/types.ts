@@ -4,6 +4,11 @@
 // PMO-FEA-0006: extract ergänzt — Wissens-Extraktion aus Dokumenten ebenso nachvollziehbar.
 // WP-BILD-1c: describe ergänzt — KI-Bildbeschreibungs-Vorschläge ebenso nachvollziehbar.
 // WP-IC-4: group ergänzt — KI-Gruppierung der Import-Kandidaten ebenso nachvollziehbar.
+// Aufnahme gesamt-ki-laufprotokoll (R-0612, Ben R1 B2): vier Modellwege schrieben bis hierher keinen
+// Lauf, obwohl sie ein Modell befragen — `enrich` (öffentliche Anreicherung), `conflict` und
+// `duplicate` (Konflikt- und Dublettenurteil) und `probe` (Anbieterprobe der KI-Verwaltung). Sie
+// sind keine Aufgaben der KI-Zuordnung (`REASONER_TASKS`), sondern laufen über die globale Wahl —
+// deshalb stehen sie nur hier, nicht in der Zuordnungsliste.
 export type ModelRunTask =
   | "structure"
   | "assist"
@@ -12,7 +17,11 @@ export type ModelRunTask =
   | "select"
   | "extract"
   | "describe"
-  | "group";
+  | "group"
+  | "enrich"
+  | "conflict"
+  | "duplicate"
+  | "probe";
 export type ModelRunStatus = "success" | "error";
 
 // ================================================================================================
@@ -40,6 +49,12 @@ export type ModelRunStatus = "success" | "error";
 //                     gelesen wird.
 //     · `interview` — erzeugt Fragen.
 //     · `describe`  — erzeugt eine Bildbeschreibung.
+//
+//   Die vier Protokollarten aus der Aufnahme gesamt-ki-laufprotokoll (`enrich`, `conflict`,
+//   `duplicate`, `probe`) stehen in KEINER der beiden Listen dieser Datei: diese Liste regelt die
+//   Kennzeichnung über `aiGeneratedMark`, und keiner der vier Wege hängt sie an. `enrich` trägt
+//   seine eigene Auszeichnung „extern/ungeprüft" an der Route; die Urteile und die Probe erzeugen
+//   keinen Text, der gelesen wird. Diese Protokollerweiterung entscheidet darüber nicht neu.
 //
 //   NICHT GEKENNZEICHNET (unterstützende Standardbearbeitung an vorhandenem Material):
 //     · `assist`    — formuliert vorhandenen Text um.
@@ -170,6 +185,46 @@ export interface ModelRunVerbrauch {
   gemeldeteAufrufe: number;
 }
 
+// ================================================================================================
+// Aufnahme gesamt-ki-laufprotokoll (V9, R-0705/R-0759/R-0833, Ben R1 B3) — DIE KOSTEN EINES LAUFS.
+// ================================================================================================
+//
+// EIN EIGENER NACHWEIS NEBEN DEM VERBRAUCH: die Kosten werden beim Schreiben des Laufs aus dem
+// gemeldeten Verbrauch und der zu diesem Zeitpunkt hinterlegten Preisliste berechnet und MIT dem
+// Preisstand festgehalten. Eine spätere Preisänderung rechnet alte Läufe deshalb nicht um.
+//
+// DAS FEHLEN IST EINE AUSSAGE (wie bei `model` und `verbrauch`): kein Verbrauch gemeldet, kein
+// Modellname, keine Preisliste hinterlegt oder kein Preis für dieses Modell → kein Feld. Es wird
+// kein Preis geschätzt und keiner als Vorgabe ausgeliefert — welche Preise gelten, entscheidet der
+// Betreiber über die Preisliste (`preisliste.ts`), nicht der Code.
+export interface ModelRunKosten {
+  /** Berechneter Betrag dieses Laufs in `waehrung` (auf 6 Nachkommastellen gerundet). */
+  betrag: number;
+  waehrung: string;
+  /** Stand der Preisliste, aus der gerechnet wurde (vom Betreiber vergeben, z. B. ein Datum). */
+  preisstand: string;
+}
+
+// Aufnahme gesamt-ki-laufprotokoll (R-0759/R-1984, Ben R1 B4) — WAS EIN LAUF ERZEUGT HAT.
+//
+// Art und Anzahl, nie der Inhalt: „3 Punkte", „1 Antwort", „2 Gruppen". Abgeleitet aus der Form des
+// Ergebnisses, das der Lauf zurückgab. Ein gescheiterter Lauf erzeugt nichts und trägt kein Feld.
+export type ModelRunErzeugnisArt =
+  | "vorschlag"
+  | "text"
+  | "frage"
+  | "antwort"
+  | "punkt"
+  | "beschreibung"
+  | "gruppe"
+  | "kriterien"
+  | "urteil";
+
+export interface ModelRunErzeugnis {
+  art: ModelRunErzeugnisArt;
+  anzahl: number;
+}
+
 export interface ModelRunRecord {
   id: string;
   task: ModelRunTask;
@@ -214,6 +269,10 @@ export interface ModelRunRecord {
   // ADDITIV: `repo-pg.ts` legt den Vollrecord als jsonb ab (`repo-pg.ts:22-25`) — Altdatensätze ohne
   // dieses Feld bleiben uneingeschränkt gültig, und es gibt nichts umzurechnen.
   verbrauch?: ModelRunVerbrauch;
+  // Aufnahme gesamt-ki-laufprotokoll: Kosten aus Verbrauch × Preisliste (s. ModelRunKosten).
+  kosten?: ModelRunKosten;
+  // Aufnahme gesamt-ki-laufprotokoll: Art und Anzahl des Erzeugten (s. ModelRunErzeugnis).
+  erzeugt?: ModelRunErzeugnis;
   // mega26 Block A (additiv, optional): Laufkontext. Altdatensätze ohne diese Felder bleiben
   // uneingeschränkt gültig — der Lesepfad kennt keine Pflicht auf ihnen.
   actor?: string;

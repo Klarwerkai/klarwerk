@@ -7,17 +7,24 @@
 > `PROJECT_CONTEXT/13_ASSISTENT_ZWISCHENBERICHT.md` (Rohstand: `docs/boss-assistant/`).
 > Live-Version dort bestätigt: **v1.0.0-beta.1.4**.
 
-## 01.10.2026 — Aufnahme „KI-Laufprotokoll“ (Abgleich + Auslastungslücke)
+## 01.10.2026 — Aufnahme „KI-Laufprotokoll“ (Runde 1 + Nacharbeit Runde 2)
 
 - Abgleich aller zugeordneten Anliegen (R-0612 … V9, MR-SELECT-1) mit Fassungen und Belegen:
   `tests/ki-lauf-protokoll/README.md`. MR-SELECT-1 ist seit JOB 3127 (1.0.0-beta.1.140) geliefert,
   der Tokenverbrauch seit JOB 3074 (1.0.0-beta.1.88).
-- Geschlossen: Ein Lauf, der an `ModelCapacityError` endet, schreibt jetzt genau einen
-  Fehlerdatensatz mit dem bisher gemeldeten Verbrauch. Die 503 bleibt unverändert
-  (`Reasoner.runTask`, Test `tests/ki-lauf-protokoll/kapazitaet-hinterlaesst-spur.test.ts`).
-- Offen: Preis je Lauf/Zeitraum (braucht eine Preisliste, **Entscheidung Pedi**). Konflikt-/
-  Dublettenurteil, öffentliche Anreicherung und Admin-Probe schreiben keinen Laufdatensatz.
-  Außerdem fehlen erzeugte Gegenstände im Datensatz sowie Dashboards/Metriken.
+- Neu im Laufprotokoll:
+  - Ein Lauf, der an `ModelCapacityError` endet, schreibt jetzt einen Datensatz.
+  - `error` ist inhaltsfrei: Meldungen nur von einer Erlaubnisliste, sonst nur Typ und Klasse.
+  - Vier weitere Laufarten: `enrich`, `conflict`, `duplicate`, `probe`.
+  - `kosten` aus Verbrauch × Preisliste, mit Preisstand.
+  - `erzeugt` mit Art und Anzahl des Erzeugten.
+  - Strukturierte Logzeile `ki_lauf`.
+- Neu in der Oberfläche: Die KI-Übersicht zeigt Kosten und Erzeugtes je Lauf. Dazu kommt die Karte
+  „KI-Auswertung (Zeitraum)“ (7/30/90 Tage, Kosten je Währung) über `GET /api/model-runs/auswertung`.
+- **Preise setzt der Betreiber** über `KLARWERK_KI_PREISLISTE` (JSON, im Startvertrag). Der Code
+  liefert keine Preise mit. **Entscheidung Pedi offen:** welche Preise, Währung und Stand.
+- Offen: Tracing/Prometheus, Verknüpfung erzeugter Gegenstände mit späteren Entwürfen/KOs,
+  Anzeige des Fehlergrunds. Nicht geprüft: echte Modell-API, PostgreSQL, Browser.
 
 ## 01.10.2026 — Erstnutzer-Hürden U2/U3 im Browser (Revision 9)
 

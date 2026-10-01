@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import {
   type ModelRunContext,
+  type ModelRunErzeugnis,
   type ModelRunRepo,
   type ModelRunStatus,
   type ModelRunTask,
@@ -9,6 +10,7 @@ import {
   sanitizeModelRunContext,
 } from "../../model-runs";
 import {
+  ConfidentialEgressError,
   KiAbgeschaltetFehler,
   ModelCapacityError,
   type ModellAufrufSpur,
@@ -18,7 +20,13 @@ import {
 } from "./model-concurrency";
 // WP-D10 (Fix 3): Fehlerklasse eines gescheiterten Modellaufrufs (timeout|http|network|parse) für die
 // ehrliche Fallback-Ursache und das PII-freie Diagnose-Log.
-import { ModelHttpError, classifyModelFailure } from "./model-errors";
+import {
+  ModelEmptyResponseError,
+  ModelHttpError,
+  ModelTimeoutError,
+  ReasonerMeldungFehler,
+  classifyModelFailure,
+} from "./model-errors";
 import type { ModelFailureInfo } from "./model-errors";
 import {
   type AssistPreset,
@@ -222,6 +230,138 @@ function probeUrsache(
     ...(befund.status === undefined ? {} : { status: befund.status }),
     ...(grund === undefined ? {} : { anbieterGrund: grund }),
   };
+}
+
+// ================================================================================================
+// Aufnahme gesamt-ki-laufprotokoll (R-0612, Ben R1 B1) — WAS VON EINEM FEHLER INS PROTOKOLL DARF.
+// ================================================================================================
+//
+// DER BEFUND: die Meldung eines beliebigen geworfenen Fehlers ging wörtlich in `error`. Für einen
+// `SyntaxError` aus `JSON.parse(modellantwort)` enthält diese Meldung einen Ausschnitt der
+// MODELLANTWORT — Antwortinhalt im Protokoll, das ausdrücklich ohne ihn auskommen soll. Die Kappung
+// auf 500 Zeichen entfernt ihn nicht.
+//
+// DIE REGEL IST EINE ERLAUBNISLISTE, KEINE SUCHE NACH INHALT: wörtlich übernommen wird nur die
+// Meldung der Fehlertypen, deren Text der eigene Code aus Metadaten baut (Zeitlimit, HTTP-Status
+// samt Anbieterbegründung, leere Antwort, Auslastung, Abschaltung, Vertraulichkeitssperre). Für
+// jeden anderen Fehler steht nur sein Typname und die gemessene Fehlerklasse — die Meldung selbst
+// wird nicht übernommen, weil niemand ihr ansehen kann, ob sie Inhalt trägt.
+function protokollMeldung(err: unknown): string {
+  if (
+    err instanceof ModelTimeoutError ||
+    err instanceof ModelHttpError ||
+    err instanceof ModelEmptyResponseError ||
+    err instanceof ModelCapacityError ||
+    err instanceof KiAbgeschaltetFehler ||
+    err instanceof ConfidentialEgressError ||
+    err instanceof ReasonerMeldungFehler
+  ) {
+    return err.message;
+  }
+  const befund = classifyModelFailure(err);
+  const art = err instanceof Error ? err.name : typeof err;
+  const klasse =
+    befund.status === undefined ? befund.failureClass : `${befund.failureClass} ${befund.status}`;
+  return `${art} (${klasse}), Meldung nicht protokolliert`;
+}
+
+// ================================================================================================
+// Aufnahme gesamt-ki-laufprotokoll (R-0759/R-1984, Ben R1 B4) — WAS EIN LAUF ERZEUGT HAT.
+// ================================================================================================
+//
+// Art und Anzahl, abgeleitet aus der FORM des Ergebnisses — nie aus seinem Text. Was sich nicht
+// eindeutig ablesen lässt, ergibt kein Feld (z. B. eine nicht beantwortete Frage).
+function anzahlListe(wert: unknown): number {
+  return Array.isArray(wert) ? wert.length : 0;
+}
+
+function erzeugnisAus(task: ModelRunTask, ergebnis: unknown): ModelRunErzeugnis | undefined {
+  const r = (ergebnis ?? {}) as Record<string, unknown>;
+  const nichtLeer = (t: unknown): boolean => typeof t === "string" && t.trim().length > 0;
+  let art: ModelRunErzeugnis["art"] | undefined;
+  let anzahl = 0;
+  switch (task) {
+    case "structure":
+      [art, anzahl] = ["vorschlag", 1];
+      break;
+    case "assist":
+    case "enrich":
+      [art, anzahl] = ["text", nichtLeer(r.text) ? 1 : 0];
+      break;
+    case "interview":
+      [art, anzahl] = nichtLeer(r.question) ? ["frage", 1] : ["vorschlag", r.done === true ? 1 : 0];
+      break;
+    case "answer":
+      [art, anzahl] = ["antwort", r.answered === true ? 1 : 0];
+      break;
+    case "extract":
+      [art, anzahl] = ["punkt", anzahlListe(r.points)];
+      break;
+    case "describe":
+      [art, anzahl] = ["beschreibung", nichtLeer(r.text) ? 1 : 0];
+      break;
+    case "group":
+      [art, anzahl] = ["gruppe", anzahlListe(r.groups)];
+      break;
+    case "select":
+      [art, anzahl] = ["kriterien", 1];
+      break;
+    case "conflict":
+    case "duplicate":
+      [art, anzahl] = ["urteil", 1];
+      break;
+    case "probe":
+      return undefined;
+  }
+  return art !== undefined && anzahl > 0 ? { art, anzahl } : undefined;
+}
+
+function erzeugtFeld(erzeugt: ModelRunErzeugnis | undefined): { erzeugt?: ModelRunErzeugnis } {
+  return erzeugt ? { erzeugt } : {};
+}
+
+// ================================================================================================
+// Aufnahme gesamt-ki-laufprotokoll (R-0612/R-1666, Ben R1 B2) — DAS LAUFBUCH DER WEGE OHNE runTask.
+// ================================================================================================
+//
+// Anreicherung, Konflikt- und Dublettenurteil und die Anbieterprobe gehen nicht durch `runTask`
+// (sie laufen über die globale Wahl und haben eigene Ausgänge). Das Laufbuch sammelt für sie
+// dasselbe, was `runTask` sammelt — je Versuch die Aufrufspur, den addierten Verbrauch, das zuletzt
+// WIRKLICH gerufene Modell und die inhaltsfreie Fehlerzeile —, damit am Ende genau EIN Datensatz
+// je Aufruf entsteht.
+class Laufbuch {
+  verbrauch: ModellVerbrauch | undefined;
+  model: string | undefined;
+  provider: string | undefined;
+  versuche = 0;
+  readonly fehler: string[] = [];
+
+  async versuch<T>(provider: ReasonerProvider, aufruf: () => Promise<T>): Promise<T> {
+    const spur: ModellAufrufSpur = { gerufen: false };
+    this.versuche += 1;
+    this.provider = provider.name;
+    try {
+      const ergebnis = await mitModellAufrufSpur(spur, aufruf);
+      this.uebernimm(spur, provider);
+      return ergebnis;
+    } catch (err) {
+      const modell = this.uebernimm(spur, provider);
+      this.fehler.push(`${provider.name}${modell ? ` (${modell})` : ""}: ${protokollMeldung(err)}`);
+      throw err;
+    }
+  }
+
+  /** Eine Ursache ohne geworfenen Fehler (z. B. „Antwort unverwertbar"). */
+  vermerke(provider: ReasonerProvider, ursache: string): void {
+    this.fehler.push(`${provider.name}: ${ursache}`);
+  }
+
+  private uebernimm(spur: ModellAufrufSpur, provider: ReasonerProvider): string | undefined {
+    this.verbrauch = verbrauchSumme(this.verbrauch, spur.verbrauch);
+    const modell = spur.gerufen ? provider.modelName?.() : undefined;
+    this.model = modell ?? this.model;
+    return modell;
+  }
 }
 
 // WP-BILD-1c: die EINE Task-Liste für Policy-Validierung und KI-Verwaltungs-Anzeige (vorher drei
@@ -705,12 +845,12 @@ export class Reasoner {
     return chain;
   }
 
-  private providerChain(task: ModelRunTask, confidential = false): ReasonerProvider[] {
+  private providerChain(task: ReasonerTask, confidential = false): ReasonerProvider[] {
     return this.chainForChoice(this.choiceFor(task), confidential);
   }
 
   // Welche KI läuft je Aufgabe EFFEKTIV zuerst (für die ehrliche Anzeige) — die STUFE.
-  private providerLabelFor(task: ModelRunTask): "cloud" | "local" | "deterministic" {
+  private providerLabelFor(task: ReasonerTask): "cloud" | "local" | "deterministic" {
     const anbieter = this.effectiveAnbieterFor(task);
     return anbieter === "local" || anbieter === "deterministic" ? anbieter : "cloud";
   }
@@ -724,7 +864,7 @@ export class Reasoner {
   // Schalter, der zu setzen wäre. Ob wirklich etwas läuft, sagt daneben `configStatus().effective`
   // (`effectiveFor`, gegated) — die beiden Antworten stehen bewusst nebeneinander.
   private effectiveAnbieterFor(
-    task: ModelRunTask,
+    task: ReasonerTask,
   ): ReasonerCloudAnbieter | "local" | "deterministic" {
     const first = this.chainForChoice(this.choiceFor(task), false, { fuerAnzeige: true })[0];
     if (!first || first === this.fallback) {
@@ -769,8 +909,13 @@ export class Reasoner {
         anbieter: gewaehlt,
       };
     }
+    // Aufnahme gesamt-ki-laufprotokoll (Ben R1 B2): die Probe ist ein echter Modellaufruf und
+    // schreibt deshalb einen Lauf `probe` — mit Verbrauch, Modell und inhaltsfreier Fehlerzeile.
+    const lb = new Laufbuch();
+    const probe = provider.probe.bind(provider);
     try {
-      await provider.probe();
+      await lb.versuch(provider, probe);
+      await this.protokolliereLaufbuch("probe", undefined, at, lb, { status: "success" });
       return {
         ok: true,
         provider: provider.name,
@@ -780,6 +925,7 @@ export class Reasoner {
         anbieter: gewaehlt,
       };
     } catch (error) {
+      await this.protokolliereLaufbuch("probe", undefined, at, lb, { status: "error" });
       return {
         ok: false,
         provider: provider.name,
@@ -806,8 +952,11 @@ export class Reasoner {
         at,
       };
     }
+    const lb = new Laufbuch();
+    const probe = this.secondary.probe.bind(this.secondary);
     try {
-      await this.secondary.probe();
+      await lb.versuch(this.secondary, probe);
+      await this.protokolliereLaufbuch("probe", undefined, at, lb, { status: "success" });
       return {
         ok: true,
         provider: this.secondary.name,
@@ -816,6 +965,7 @@ export class Reasoner {
         at,
       };
     } catch (error) {
+      await this.protokolliereLaufbuch("probe", undefined, at, lb, { status: "error" });
       return {
         ok: false,
         provider: this.secondary.name,
@@ -1151,13 +1301,13 @@ export class Reasoner {
     return { source: "default", config: this.getTaskConfig() };
   }
 
-  private choiceFor(task: ModelRunTask): ReasonerAktiveWahl {
+  private choiceFor(task: ReasonerTask): ReasonerAktiveWahl {
     return this.taskConfig.perTask[task] ?? this.taskConfig.global;
   }
 
   // Effektiver Modus je Aufgabe — ehrlich: "model" nur, wenn ein echtes Modell (Cloud ODER
   // lokal) zuerst arbeitet. SCRUM-424: leitet sich aus der Provider-Kette ab.
-  private effectiveFor(task: ModelRunTask): "model" | "deterministic" {
+  private effectiveFor(task: ReasonerTask): "model" | "deterministic" {
     return this.providerChain(task)[0] !== this.fallback ? "model" : "deterministic";
   }
 
@@ -1179,7 +1329,7 @@ export class Reasoner {
   }
 
   private async runTask<T extends { demo: boolean }>(
-    task: ModelRunTask,
+    task: ReasonerTask,
     locale: ReasonerLocale,
     run: (provider: ReasonerProvider) => Promise<T>,
     // SCRUM-502 Schicht 2: vertraulicher Eingabetext → Cloud aus der Kette (siehe providerChain).
@@ -1279,6 +1429,8 @@ export class Reasoner {
             // JOB 3074: nur, wenn wirklich ein Verbrauch gemeldet wurde. Fehlt er, FEHLT das Feld —
             // kein Nullwert, keine Schätzung (services/model-runs/src/types.ts).
             ...(laufVerbrauch ? { verbrauch: laufVerbrauch } : {}),
+            // Aufnahme gesamt-ki-laufprotokoll (Ben R1 B4): Art und Anzahl des Erzeugten.
+            ...erzeugtFeld(erzeugnisAus(task, result)),
             // JOB 3276: der Lauf ist gelungen — aber nicht am ersten Glied. Was auf dem Weg dorthin
             // scheiterte, steht hier, sonst nirgends. Kein gescheiterter Versuch → kein Feld.
             ...(versuchsfehler.length > 0
@@ -1305,7 +1457,7 @@ export class Reasoner {
           const versuchsModell = spur.gerufen ? provider.modelName?.() : undefined;
           const modell = versuchsModell ?? lastModel;
           versuchsfehler.push(
-            `${provider.name}${versuchsModell ? ` (${versuchsModell})` : ""}: ${err.message}`,
+            `${provider.name}${versuchsModell ? ` (${versuchsModell})` : ""}: ${protokollMeldung(err)}`,
           );
           await this.recordRun(
             task,
@@ -1334,10 +1486,9 @@ export class Reasoner {
         lastModel = versuchsModell ?? lastModel;
         // JOB 3276: Anbieter, Modell, Grund — die drei Auskünfte, die einen Ausfall zuordenbar
         // machen. Sie stehen im Erfolgsdatensatz unten, falls ein späteres Glied noch antwortet.
+        // Aufnahme gesamt-ki-laufprotokoll (Ben R1 B1): nur die inhaltsfreie Meldung.
         versuchsfehler.push(
-          `${provider.name}${versuchsModell ? ` (${versuchsModell})` : ""}: ${
-            err instanceof Error ? err.message : String(err)
-          }`,
+          `${provider.name}${versuchsModell ? ` (${versuchsModell})` : ""}: ${protokollMeldung(err)}`,
         );
         // JOB 3074: was dieser Versuch bis zu seinem Scheitern verbraucht hat, ist bezahlt und wird
         // nicht verworfen — ein Modellaufruf, der eine Antwort ohne Antwortinhalt zurückbekommt,
@@ -1364,7 +1515,14 @@ export class Reasoner {
         // JOB 3074: der gescheiterte Lauf trägt seinen Verbrauch genauso wie der erfolgreiche.
         // Gerade er muss ihn tragen: er hat bezahlt und nichts bekommen.
         ...(laufVerbrauch ? { verbrauch: laufVerbrauch } : {}),
-        error: lastError instanceof Error ? lastError.message : "unknown",
+        // Ben R1 B1: die inhaltsfreie Versuchszeile ALLER Glieder (Anbieter, Modell, Grund) — sie
+        // enthält auch den Fehler des letzten Glieds. Ohne Versuch: die Meldung des letzten Fehlers.
+        error:
+          versuchsfehler.length > 0
+            ? Reasoner.versuchsfehlerZeile(versuchsfehler)
+            : lastError === undefined
+              ? "unknown"
+              : protokollMeldung(lastError),
       },
       context,
     );
@@ -1385,6 +1543,34 @@ export class Reasoner {
     throw lastError ?? new Error("Kein Provider verfügbar.");
   }
 
+  // Aufnahme gesamt-ki-laufprotokoll (Ben R1 B2): der EINE Datensatz eines Laufbuch-Wegs. Hat kein
+  // Modell einen Versuch bekommen (kein Anbieter verdrahtet oder alle ausgeschlossen), entsteht kein
+  // Datensatz — sonst schriebe z. B. die Konfliktprüfung auf einer Installation ohne KI je Paar einen
+  // leeren Lauf. Ein Schreibfehler darf den Ausgang des Aufrufs nie ändern.
+  private async protokolliereLaufbuch(
+    task: ModelRunTask,
+    locale: ReasonerLocale | undefined,
+    startedAt: string,
+    lb: Laufbuch,
+    ausgang: { status: ModelRunStatus; erzeugt?: ModelRunErzeugnis | undefined; ursache?: string },
+  ): Promise<void> {
+    if (lb.versuche === 0) {
+      return;
+    }
+    const fehlerzeile = lb.fehler.length > 0 ? Reasoner.versuchsfehlerZeile(lb.fehler) : undefined;
+    const error =
+      ausgang.status === "error" ? (fehlerzeile ?? ausgang.ursache ?? "model-error") : fehlerzeile;
+    await this.recordRun(task, locale, startedAt, ausgang.status, {
+      fallback: lb.versuche > 1,
+      demo: false,
+      provider: lb.provider ?? this.fallback.name,
+      ...(lb.model ? { model: lb.model } : {}),
+      ...(lb.verbrauch ? { verbrauch: lb.verbrauch } : {}),
+      ...(error ? { error } : {}),
+      ...(ausgang.status === "success" ? erzeugtFeld(ausgang.erzeugt) : {}),
+    }).catch(() => undefined);
+  }
+
   private async recordRun(
     task: ModelRunTask,
     locale: ReasonerLocale | undefined,
@@ -1398,6 +1584,8 @@ export class Reasoner {
       // JOB 3074: der gemeldete Tokenverbrauch des Laufs — fehlt, wenn keiner genannt wurde.
       verbrauch?: ModellVerbrauch;
       error?: string;
+      // Aufnahme gesamt-ki-laufprotokoll: Art und Anzahl des Erzeugten (nur im Erfolg).
+      erzeugt?: ModelRunErzeugnis;
     },
     // mega26 Block A: der Laufkontext des Aufrufers. Wird hier — und NUR hier — in den Datensatz
     // geschrieben. `sanitizeModelRunContext` ist die Struktursperre gegen Inhalt: was keine Kennung
@@ -1421,6 +1609,7 @@ export class Reasoner {
       ...(extra.error ? { error: extra.error } : {}),
       ...(extra.model ? { model: extra.model } : {}),
       ...(extra.verbrauch ? { verbrauch: extra.verbrauch } : {}),
+      ...(extra.erzeugt ? { erzeugt: extra.erzeugt } : {}),
       ...(runContext.actor ? { actor: runContext.actor } : {}),
       ...(runContext.subject ? { subject: runContext.subject } : {}),
     });
@@ -1462,7 +1651,7 @@ export class Reasoner {
   //
   // KEIN ZWEITER RIEGEL: diese Zeile lässt nichts hinaus. Sie wird ausschließlich gelesen, nachdem
   // die Kette (die durch den Riegel ging) ohne Ergebnis geblieben ist.
-  private cloudExcludedByConfidentiality(task: ModelRunTask, confidential: boolean): boolean {
+  private cloudExcludedByConfidentiality(task: ReasonerTask, confidential: boolean): boolean {
     return confidential && this.cloudFuerWahl(this.choiceFor(task)) !== undefined;
   }
 
@@ -1543,7 +1732,7 @@ export class Reasoner {
   // Laufzeit ohnehin durch erreichbare Glieder). Cloud-unerreichbar + Local-erreichbar + Task=cloud ⇒
   // false (die Kette dieser Task enthält NUR die Cloud). Bewusst nur ein Boolean — kein Provider-/
   // Modellname (Sicherheitsvertrag vip2-gate).
-  private taskModelUsable(task: ModelRunTask): boolean {
+  private taskModelUsable(task: ReasonerTask): boolean {
     const chainModels = this.providerChain(task).filter((p) => p !== this.fallback);
     if (chainModels.length === 0) {
       return false; // Aufgabe bewusst deterministisch gestellt bzw. kein Modell verdrahtet
@@ -1586,7 +1775,7 @@ export class Reasoner {
   // Vertraulichkeit der konkreten Eingabe nimmt die Cloud zur Laufzeit aus der Kette, (3) ein
   // Laufzeitfehler mit lokalem/deterministischem Rückfall erzeugt keine abrechenbare Antwort.
   // Der Oberflächen-Wortlaut sagt deshalb „kann … auslösen" (i18n `ai.costHint`), nie „startet".
-  private taskBillable(task: ModelRunTask): boolean {
+  private taskBillable(task: ReasonerTask): boolean {
     // JOB 3134: das Cloud-Glied DIESER Kette (höchstens eines) und die Erreichbarkeit SEINER Kante.
     const cloud = this.providerChain(task).find((p) => this.anbieterVon(p) !== undefined);
     if (!cloud) {
@@ -2022,7 +2211,8 @@ export class Reasoner {
                   ? "returned the text unchanged."
                   : "gab den Text unverändert zurück.";
               modellOhneAenderung = `${provider.name}${modell ? ` (${modell})` : ""} ${grund}`;
-              throw new Error(modellOhneAenderung);
+              // Nur Anbieter, Modell und fester Satz — darf wörtlich ins Laufprotokoll.
+              throw new ReasonerMeldungFehler(modellOhneAenderung);
             }
             modellErgebnis = ergebnis;
             return ergebnis;
@@ -2049,7 +2239,7 @@ export class Reasoner {
         // lautet „warum sehe ich keinen Vorschlag", und die Antwort darauf ist die Antwort des
         // Modells, nicht der Ausfall daneben.
         if (modellOhneAenderung !== null) {
-          throw new Error(assistOhneAenderungMeldung(locale, modellOhneAenderung));
+          throw new ReasonerMeldungFehler(assistOhneAenderungMeldung(locale, modellOhneAenderung));
         }
         // Die Cloud kann auch OHNE Fehler ausgefallen sein: ist der Text vertraulich eingestuft,
         // nimmt providerChain sie aus der Kette, bevor irgendetwas gerufen wird (SCRUM-502).
@@ -2242,6 +2432,7 @@ export class Reasoner {
         // JOB 3074: der bezahlte, ergebnislose Aufruf behält seinen Verbrauch.
         ...(spur.verbrauch ? { verbrauch: spur.verbrauch } : {}),
         ...(ergebnis.fallbackReason ? { error: ergebnis.fallbackReason } : {}),
+        ...(ergebnis.fallbackReason === null ? erzeugtFeld(erzeugnisAus("select", ergebnis)) : {}),
       },
     ).catch(() => undefined);
     return ergebnis;
@@ -2265,21 +2456,35 @@ export class Reasoner {
   // Modelle (Cloud → lokal) können das; ohne Modell ehrlich leer (demo=true, kein Erfinden).
   // Das Ergebnis ist IMMER extern/ungeprüft; die Freigabe (Stufe „offen") prüft die Route.
   async enrichPublic(query: string, locale: ReasonerLocale = "de"): Promise<EnrichResult> {
+    // Aufnahme gesamt-ki-laufprotokoll (Ben R1 B2): jeder Aufruf mit Modellversuch schreibt genau
+    // einen Lauf `enrich`.
+    const startedAt = new Date().toISOString();
+    const lb = new Laufbuch();
     // JOB 3134 R3: die Kette der GEWÄHLTEN globalen Wahl (s. globaleKette) — nie ein anderer
     // externer Anbieter, auch nicht, wenn der gewählte fehlt.
     for (const provider of this.globaleKette()) {
       if (!provider.isAvailable() || !provider.enrichPublic) {
         continue;
       }
+      const anreichern = provider.enrichPublic.bind(provider);
       try {
-        const result = await provider.enrichPublic(query, locale);
+        const result = await lb.versuch(provider, () => anreichern(query, locale));
         if (result.text.trim().length > 0) {
+          await this.protokolliereLaufbuch("enrich", locale, startedAt, lb, {
+            status: "success",
+            erzeugt: erzeugnisAus("enrich", result),
+          });
           return result;
         }
+        lb.vermerke(provider, "leere Antwort");
       } catch {
         // nächstes Modell versuchen
       }
     }
+    await this.protokolliereLaufbuch("enrich", locale, startedAt, lb, {
+      status: "error",
+      ursache: "leere Antwort",
+    });
     return {
       text: "",
       provider: this.fallback.name,
@@ -2359,20 +2564,32 @@ export class Reasoner {
     let providerFailure: ModelFailureInfo | undefined;
     let attempted = false;
     const { providers, confidentialExcluded } = this.judgeProviders(confidential);
+    // Aufnahme gesamt-ki-laufprotokoll (Ben R1 B2): genau ein Lauf `conflict` je Urteil mit Modellversuch.
+    const startedAt = new Date().toISOString();
+    const lb = new Laufbuch();
     for (const provider of providers) {
       if (!provider.judgeConflict) {
         continue;
       }
       attempted = true;
+      const urteilen = provider.judgeConflict.bind(provider);
       try {
         // aistate-fix3 (bens V1): das ECHTE Paar-Bit reist bis zum ModelClient.complete-Wächter.
-        const result = await provider.judgeConflict(coreA, coreB, locale, confidential);
+        const result = await lb.versuch(provider, () =>
+          urteilen(coreA, coreB, locale, confidential),
+        );
         if (result) {
+          await this.protokolliereLaufbuch("conflict", locale, startedAt, lb, {
+            status: "success",
+            erzeugt: erzeugnisAus("conflict", result),
+          });
           return { verdict: result };
         }
+        lb.vermerke(provider, "Antwort unverwertbar");
         failure = failure ?? "model-error"; // Antwort kam, war aber unverwertbar (Parse → null)
       } catch (err) {
         if (err instanceof ModelCapacityError) {
+          await this.protokolliereLaufbuch("conflict", locale, startedAt, lb, { status: "error" });
           throw err; // Backpressure durchreichen (→ 503), nicht als Modellfehler still schlucken.
         }
         // aistate-fix3 (bens V1, Fail-safe): der zentrale Egress-Wächter hat vertraulich+nicht-lokal
@@ -2393,6 +2610,10 @@ export class Reasoner {
         failure: Reasoner.noJudgeFailure(confidential, confidentialExcluded),
       };
     }
+    await this.protokolliereLaufbuch("conflict", locale, startedAt, lb, {
+      status: "error",
+      ursache: failure ?? "model-error",
+    });
     return {
       verdict: null,
       failure: failure ?? "model-error",
@@ -2428,20 +2649,32 @@ export class Reasoner {
     let providerFailure: ModelFailureInfo | undefined;
     let attempted = false;
     const { providers, confidentialExcluded } = this.judgeProviders(confidential);
+    // Aufnahme gesamt-ki-laufprotokoll (Ben R1 B2): genau ein Lauf `duplicate` je Urteil mit Modellversuch.
+    const startedAt = new Date().toISOString();
+    const lb = new Laufbuch();
     for (const provider of providers) {
       if (!provider.judgeDuplicate) {
         continue;
       }
       attempted = true;
+      const urteilen = provider.judgeDuplicate.bind(provider);
       try {
         // aistate-fix3 (bens V1): das ECHTE Paar-Bit reist bis zum ModelClient.complete-Wächter.
-        const result = await provider.judgeDuplicate(coreA, coreB, locale, confidential);
+        const result = await lb.versuch(provider, () =>
+          urteilen(coreA, coreB, locale, confidential),
+        );
         if (result) {
+          await this.protokolliereLaufbuch("duplicate", locale, startedAt, lb, {
+            status: "success",
+            erzeugt: erzeugnisAus("duplicate", result),
+          });
           return { verdict: result };
         }
+        lb.vermerke(provider, "Antwort unverwertbar");
         failure = failure ?? "model-error"; // Antwort kam, war aber unverwertbar (Parse → null)
       } catch (err) {
         if (err instanceof ModelCapacityError) {
+          await this.protokolliereLaufbuch("duplicate", locale, startedAt, lb, { status: "error" });
           throw err; // Backpressure durchreichen (→ 503), nicht als Modellfehler still schlucken.
         }
         // aistate-fix3 (bens V1, Fail-safe): Egress-Wächter-Ablehnung ⇒ ehrlich "confidential".
@@ -2460,6 +2693,10 @@ export class Reasoner {
         failure: Reasoner.noJudgeFailure(confidential, confidentialExcluded),
       };
     }
+    await this.protokolliereLaufbuch("duplicate", locale, startedAt, lb, {
+      status: "error",
+      ursache: failure ?? "model-error",
+    });
     return {
       verdict: null,
       failure: failure ?? "model-error",
@@ -2490,12 +2727,7 @@ export class Reasoner {
       this.logSelect(startedAt, provider.name, "success");
       return result;
     } catch (err) {
-      this.logSelect(
-        startedAt,
-        provider.name,
-        "error",
-        err instanceof Error ? err.message : "unknown",
-      );
+      this.logSelect(startedAt, provider.name, "error", protokollMeldung(err));
       throw err;
     }
   }
