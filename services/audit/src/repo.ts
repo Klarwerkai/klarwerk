@@ -213,6 +213,17 @@ export function pruefeValidationDecisionRef(
   return "OK";
 }
 
+/** Friert ein Objekt samt aller verschachtelten Objekte und Listen ein. */
+function tiefEingefroren<T>(wert: T): T {
+  if (wert && typeof wert === "object" && !Object.isFrozen(wert)) {
+    for (const kind of Object.values(wert)) {
+      tiefEingefroren(kind);
+    }
+    Object.freeze(wert);
+  }
+  return wert;
+}
+
 export class InMemoryAuditRepo implements AuditRepo {
   private readonly entries: AuditEntry[] = [];
   // WP-SHIP8-CLOSE-6 (bens ROT-1): Spiegel des partiellen Pg-Unique-Index audit_event_id_uq.
@@ -224,15 +235,23 @@ export class InMemoryAuditRepo implements AuditRepo {
   // Aufnahme gesamt-auditprotokoll (Lauf 3): der Spiegel des Primärschlüssels gilt auch beim
   // SCHREIBEN. PostgreSQL weist eine zweite Zeile mit derselben `seq` ab; hier wurde sie bisher
   // angehängt, und die Kette zerbrach (zwei Einträge mit derselben `seq`, `linkageBreaks=1`).
-  private anhaengen(entry: AuditEntry): void {
+  //
+  // Lauf 5 (BEN-L5-B1): gespeichert wird eine EIGENE, TIEF eingefrorene Kopie. Vorher fror nur das
+  // äußere Objekt ein; `payload` blieb die Referenz des Aufrufers und wurde bei jedem Lesen
+  // herausgegeben — `payload.verdict = …` oder `delete read.payload.verdict` änderte den
+  // gespeicherten Eintrag. Jetzt ändert eine Änderung am Eingabeobjekt nichts mehr, und jeder
+  // Änderungs- oder Löschversuch an einem gelesenen Eintrag wird verweigert (TypeError).
+  private anhaengen(entry: AuditEntry): AuditEntry {
     if (this.bySeq.has(entry.seq)) {
       throw new Error(`AUDIT_SEQ_BELEGT: seq ${entry.seq} ist bereits vergeben.`);
     }
-    if (entry.eventId) {
-      this.eventIds.add(entry.eventId);
+    const gespeichert = tiefEingefroren(structuredClone(entry));
+    if (gespeichert.eventId) {
+      this.eventIds.add(gespeichert.eventId);
     }
-    this.entries.push(Object.freeze(entry));
-    this.bySeq.set(entry.seq, entry);
+    this.entries.push(gespeichert);
+    this.bySeq.set(gespeichert.seq, gespeichert);
+    return gespeichert;
   }
 
   append(entry: AuditEntry, _tx?: TxContext): Promise<void> {
@@ -269,8 +288,7 @@ export class InMemoryAuditRepo implements AuditRepo {
       if (entry.eventId && this.eventIds.has(entry.eventId)) {
         return Promise.resolve({ entry, written: false });
       }
-      this.anhaengen(entry);
-      return Promise.resolve({ entry, written: true });
+      return Promise.resolve({ entry: this.anhaengen(entry), written: true });
     } catch (err) {
       return Promise.reject(err);
     }

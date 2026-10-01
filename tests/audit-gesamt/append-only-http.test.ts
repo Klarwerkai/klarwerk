@@ -7,7 +7,10 @@
 //     Rolle — mit POST, PUT, PATCH und DELETE an jede Adresse unter `/api/audit` (Sammlung, einzelner
 //     Eintrag, Prüfung, Export). Keine Anfrage darf durchgehen, und die Kette ist danach Eintrag für
 //     Eintrag dieselbe. Dazu die Ablagen selbst: weder die Speicher- noch die PostgreSQL-Ablage
-//     bietet eine Methode zum Ändern oder Löschen an.
+//     bietet eine Methode zum Ändern oder Löschen an — hier nur am Methodennamen gemessen, auf der
+//     Speicherbühne. Die Verweigerung an vorhandenen Einträgen AUF POSTGRESQL (jede Schreibmethode,
+//     HTTP, Löschwege) steht in `append-only-verweigerung.integration.test.ts` (Lauf 5, BEN-L5-B2);
+//     der statische Beleg unten zeigt, dass kein Produktcode ändernde SQL auf `audit` absetzt.
 //
 //  2. DER EXPORT (R-0613: „ein externer Anker und ein Export fehlen"). `GET /api/audit/export`
 //     liefert die ganze Kette, ihren Prüfbericht und den Kopf (letzte Nummer + Hash). Der Kopf ist
@@ -18,6 +21,8 @@
 // Was hier bewusst NICHT behauptet wird: dass eine Änderung direkt in der Datenbank verhindert wird.
 // Wer die Datenbank beherrscht, kann die Kette neu bilden — erst der außerhalb abgelegte Kopf macht
 // das sichtbar, und diese Ablage ist Betreiberhandlung, keine Produktfunktion.
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   type AuditEntry,
@@ -93,6 +98,49 @@ describe("FR-AUD-02 · keine schreibende Methode am Protokoll (HTTP)", () => {
         `${Ablage.name} bietet eine ändernde Methode an`,
       ).toEqual([]);
     }
+  });
+});
+
+// Lauf 5 (BEN-L5-B2): der Datenbankweg. Ändern oder Löschen in `audit` ginge nur über SQL; kein
+// Produktquelltext (services/**, tools/**, ohne Tests) setzt ein UPDATE, DELETE, TRUNCATE oder DROP
+// auf diese Tabelle ab. Kommentare werden vorher entfernt — erklärende Prosa nennt die Wörter.
+function produktQuellen(verzeichnis: string): string[] {
+  return readdirSync(verzeichnis, { withFileTypes: true }).flatMap((e) => {
+    const pfad = join(verzeichnis, e.name);
+    if (e.isDirectory()) {
+      return e.name === "node_modules" ? [] : produktQuellen(pfad);
+    }
+    return /\.ts$/.test(e.name) && !/\.test\.ts$/.test(e.name) ? [pfad] : [];
+  });
+}
+
+describe("FR-AUD-02 · kein Produktcode ändert oder löscht Zeilen in audit (statisch)", () => {
+  it("services/** und tools/** enthalten kein UPDATE/DELETE/TRUNCATE/DROP auf audit", () => {
+    const wurzel = new URL("../../", import.meta.url).pathname;
+    const dateien = [
+      ...produktQuellen(join(wurzel, "services")),
+      ...produktQuellen(join(wurzel, "tools")),
+    ];
+    expect(dateien.length).toBeGreaterThan(100);
+    const muster =
+      /\b(UPDATE\s+audit|DELETE\s+FROM\s+audit|TRUNCATE\s+(TABLE\s+)?audit|DROP\s+TABLE\s+(IF\s+EXISTS\s+)?audit|ALTER\s+TABLE\s+audit\s+DROP)\b/i;
+    // Kalibrierung: das Muster greift auf genau die Formen, die es ausschließen soll.
+    for (const probe of [
+      'q("UPDATE audit SET actor=$1")',
+      "DELETE FROM audit WHERE seq = 1",
+      "TRUNCATE TABLE audit",
+      "DROP TABLE IF EXISTS audit",
+    ]) {
+      expect(muster.test(probe), probe).toBe(true);
+    }
+    expect(muster.test("SELECT * FROM audit; UPDATE audit_x SET a=1")).toBe(false);
+    const treffer = dateien.filter((datei) => {
+      const code = readFileSync(datei, "utf8")
+        .replace(/\/\*[\s\S]*?\*\//g, " ")
+        .replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+      return muster.test(code);
+    });
+    expect(treffer).toEqual([]);
   });
 });
 
