@@ -1151,6 +1151,18 @@ const INVENTAR: readonly string[] = [
   // gepinnten Inventar — Inventar nachfuehren: expected [ Array(1) ] to deeply equal []`; erst
   // danach wurde diese Zeile angefasst.
   "tests/wiki-orientierung/gliederung-mit-zeiger-chromium.test.ts",
+  // AUFNAHME 20260922 · GESAMT-ERSTNUTZERFÜHRUNG (29.09.2026), R-0474: der Nulltreffer von
+  // „Gehe zu …" und der Hilfesuche. Die Datei bedient die Schnellnavigation über die gemeinsame
+  // Vorrichtung (`paletteOeffnen`, `paletteTippen`) und kommt deshalb — wie die
+  // `navigationsnamen/palette-*`-Dateien — über die Inhaltsachse `palette` herein. „klara" steht
+  // nicht in ihrem Pfad, K5 bleibt unveraendert. GEMESSEN, NICHT GESETZT: vor dieser Zeile meldete
+  // K2 lokal `neu im Baum, aber nicht im gepinnten Inventar — Inventar nachfuehren: expected
+  // [ Array(1) ] to deeply equal []` mit genau diesem Pfad.
+  "tests/erstnutzerfuehrung/nulltreffer-naechster-schritt.test.tsx",
+  // Runde 2 (Ben B1): dieselbe Übergabe bis ins echte Fragefeld von `Ask`. Sie bedient die
+  // Schnellnavigation ebenso und kommt über dieselbe Achse `palette` herein; K5 unverändert.
+  // GEMESSEN, NICHT GESETZT: K2 meldete vor dieser Zeile lokal genau diesen Pfad.
+  "tests/erstnutzerfuehrung/uebergabe-ins-fragefeld.test.tsx",
   // AUFNAHME 20260922 · DEPLOY-HEALTH-COMMIT (R-1028/R-0786, 29.09.2026): der Nachweis „eine
   // Programmversion" für Word-Panel und Web-Konsole (stempelt `APP_VERSION` in das Klara-Panel) und
   // der Liefernachweis des Live-Updates, dessen Ship-Skript die Versionsnummer mit anhebt.
