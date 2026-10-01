@@ -55,7 +55,7 @@ import {
   pruefstandAbbauen,
   pruefstandAufbauen,
 } from "./pruefstand";
-import { tabImTakt } from "./tab-im-takt";
+import { ruheGehalten, tabImTakt } from "./tab-im-takt";
 
 const JOB = "[KLARWERK] JOB 4354";
 
@@ -187,9 +187,9 @@ async function tastaturweg(seite: Seite): Promise<{ bisKopfzeile: number; weiter
   // Aufnahme 20260922 (mobile-abweisung-rest): IM TAKT, nicht mit `tabBisZu`. Ein Umlauf über den
   // Dokumentrand gibt dem Fenster `focus` und startet einen Nachsendelauf, der den Knopf sperrt;
   // `tabBisZu` traf ihn so nach der Rücknahme in T2b 150-mal gesperrt (pa-1790434825-2407df39).
-  // Ursache und Messung: `tab-im-takt.ts`. Die Kalibrierungen in T2 bleiben bei `tabBisZu`: dort
-  // wird das SCHEITERN zugesichert, und dass die Verstellung es trägt, belegen sie selbst (T2a:
-  // `tabIndex === -1`; T2b: die Taste bewegt den Fokus gar nicht, also gibt es keinen Umlauf).
+  // Ursache und Messung: `tab-im-takt.ts`. T2a sucht ebenfalls im Takt (Ben-Befund B1: auch die
+  // negative Suche läuft um und startet Nachsendeläufe). T2b bleibt bei `tabBisZu`: die Taste
+  // bewegt den Fokus dort gar nicht, also gibt es keinen Umlauf.
   const bisKopfzeile = (await tabImTakt(seite, KOPFZEILE, 150, true)).schritte;
   const weiter = (await tabImTakt(seite, GRUND, 25, false)).schritte;
   return { bisKopfzeile, weiter };
@@ -392,7 +392,15 @@ describe("JOB 4354 · der Abweisungsgrund am Vorgang, mit der Tastatur erreicht"
           ohneAttribut.eigenschaft,
           "ohne Attribut wäre die Meldung von sich aus fokussierbar — dann trüge tabIndex={0} nichts",
         ).toBe(-1);
-        await expect(tabBisZu(seite, GRUND, 40, true)).rejects.toThrow(/nicht erreichbar/);
+        // Ben-Befund B1 (pa-1790788737-9307f5fe): mit `tabBisZu` lief die Suche über den
+        // Dokumentrand, das Fenster bekam `focus`, ein Nachsendelauf startete — und die Ankunft las
+        // danach `pending`. Die negative Probe läuft deshalb IM TAKT (Ruhe nach jedem Anschlag,
+        // Entzug weiter gehalten), und vor der Abnahme muss die Ruhe halten. Die Abnahme selbst
+        // bleibt unverändert streng.
+        await expect(tabImTakt(seite, GRUND, 40, true)).rejects.toThrow(
+          /im Takt, ohne laufenden Nachsendelauf\) nicht erreichbar/,
+        );
+        await ruheGehalten(seite);
         await abnahmeAnkunft(seite);
         await abnahmeSichtbar(seite);
 

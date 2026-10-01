@@ -36,6 +36,33 @@ const RUHE = `([s, k]) => {
   return q.every((o) => o.status !== "pending") && !!knopf && !knopf.disabled;
 }`;
 
+/**
+ * Wartet, bis die Warteschlange `haltenMs` lang UNUNTERBROCHEN in Ruhe ist (kein `pending`,
+ * Sendeknopf bedienbar).
+ *
+ * Nach einer NEGATIVEN Tab-Suche (Aufnahme 20260922 mobile-abweisung-rest, Ben-Befund B1,
+ * pa-1790788737-9307f5fe) reicht die Ruhe nach dem letzten Anschlag nicht: `onFocus → syncNow`
+ * setzt `syncing` erst nach seinen eigenen Vorprüfungen, ein soeben ausgelöster Lauf kann also
+ * NACH der letzten Ruheprobe beginnen. Die Ruhe muss deshalb eine Weile halten. Das macht nichts
+ * weicher: was danach am Vorgang steht, wird weiterhin streng abgenommen (`pending` ist keine
+ * Abweisung). Hält die Ruhe nie, scheitert der Aufruf mit Seitentext.
+ */
+export async function ruheGehalten(seite: Seite, haltenMs = 1_000): Promise<void> {
+  await seite.evaluate<boolean>(fn("() => { window.__kwRuheSeit = 0; return true; }"));
+  await warte(
+    seite,
+    `([s, k, ms]) => {
+      const ruhig = (${RUHE})([s, k]);
+      if (!ruhig) { window.__kwRuheSeit = 0; return false; }
+      if (!window.__kwRuheSeit) { window.__kwRuheSeit = performance.now(); }
+      return performance.now() - window.__kwRuheSeit >= ms;
+    }`,
+    `die Warteschlange ist ${haltenMs} ms ununterbrochen ohne Nachsendelauf`,
+    [SCHLUESSEL, KOPFZEILE, haltenMs],
+    60_000,
+  );
+}
+
 export async function tabImTakt(
   seite: Seite,
   selektor: string,
