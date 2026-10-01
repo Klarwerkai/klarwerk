@@ -1126,6 +1126,21 @@ const FREIGABE_ERLAUBT: ReadonlyMap<string, string> = new Map([
       "Grundfreigabe, sonst prüften sie statt der Freigabe nur „kein Modell“. Nie mehr als die " +
       "Grundfreigabe — der zweite Schalter hat mit dieser Frage nichts zu tun.",
   ],
+  // ---- Auftrag gesamt-ki-einwilligung (Bens B3/B5/B7): die Zustimmung bindet den Anbieter. ----
+  [
+    "services/reasoner/src/anbieterbindung.test.ts",
+    "Misst am echten Reasoner, WELCHER Anbieter unter einer Zustimmungsbindung gerufen wird und " +
+      "dass ein Widerruf am Chokepoint nichts mehr hinauslässt. Ohne Grundfreigabe endete jeder " +
+      "Lauf „no-model“, und die Sperre der Bindung wäre von der fehlenden Freigabe nicht zu " +
+      "unterscheiden. Nie mehr als die Grundfreigabe; vertrauliche Inhalte bleiben gesperrt.",
+  ],
+  [
+    "tests/app/einwilligung-anbieter-je-aufgabe.test.ts",
+    "Misst an der echten Komposition, dass eine Zustimmung für Anthropic keine Aufgabe öffnet, die " +
+      "an OpenAI geht. Seit JOB 3666 sperrt das Sitzungstor ohne Adminfreigabe mit " +
+      "`policy_incomplete`; ohne Grundfreigabe prüften die Fälle diese Sperre statt der " +
+      "Anbieterbindung. Nie mehr als die Grundfreigabe — der zweite Schalter bleibt unberührt.",
+  ],
 ]);
 
 /**
@@ -2490,6 +2505,72 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
       W1: { boden: 6, freigaben: [] },
       W2: { boden: 5, freigaben: [] },
       W3: { boden: 8, freigaben: ["erteileKiFreigabe(a.services.reasoner)"] },
+    },
+  },
+  // Auftrag gesamt-ki-einwilligung: VOLLZÄHLIG, weil der gemeinsame Aufbau `aufbau()` im VORSPANN
+  // freigibt. Die Kennungen sind Stellen (`#n`), weil kein Fallkopf eine `X1 ·`-Kennung führt.
+  // Die Freigabe unter `#11` ist der Aufbau `chokepointAufbau()` des B5-Blocks — er steht im
+  // Textbereich des vorangehenden Falls, ein Artefakt der Zerlegung, kein Sperrfall mit Freigabe.
+  "services/reasoner/src/anbieterbindung.test.ts": {
+    gesamtboden: 37,
+    vollzaehlig: true,
+    faelle: {
+      VORSPANN: {
+        boden: 0,
+        freigaben: [
+          'mitKiFreigabe({ global: "anthropic", perTask: { answer: "anthropic", assist } })',
+        ],
+      },
+      "#1": { boden: 1, freigaben: [] },
+      "#2": { boden: 3, freigaben: [] },
+      "#3": { boden: 1, freigaben: [] },
+      "#4": { boden: 3, freigaben: [] },
+      "#5": { boden: 1, freigaben: [] },
+      "#6": { boden: 2, freigaben: [] },
+      "#7": { boden: 4, freigaben: [] },
+      "#8": { boden: 2, freigaben: [] },
+      "#9": { boden: 5, freigaben: [] },
+      "#10": { boden: 1, freigaben: [] },
+      "#11": {
+        boden: 1,
+        freigaben: [
+          'mitKiFreigabe({ global: "anthropic", perTask: { answer: "anthropic", assist: "anthropic" } })',
+        ],
+      },
+      "#12": { boden: 2, freigaben: [] },
+      "#13": { boden: 3, freigaben: [] },
+      "#14": { boden: 3, freigaben: [] },
+      "#15": { boden: 3, freigaben: [] },
+      "#16": { boden: 2, freigaben: [] },
+    },
+  },
+  // Auftrag gesamt-ki-einwilligung: VOLLZÄHLIG aus demselben Grund (`aufbau()` im VORSPANN). Unter
+  // `#3` steht der Aufbau `echterAufbau()` (Textbereich des vorangehenden Falls); unter `#5` steht
+  // der Admin-Wechsel von `assist` auf OpenAI MITTEN in der Anfrage — der Gegenstand dieses Falls,
+  // dessen Erwartung gerade ist, dass OpenAI nichts bekommt.
+  "tests/app/einwilligung-anbieter-je-aufgabe.test.ts": {
+    gesamtboden: 36,
+    vollzaehlig: true,
+    faelle: {
+      VORSPANN: { boden: 0, freigaben: ["erteileKiFreigabe(services.reasoner)"] },
+      "#1": { boden: 3, freigaben: [] },
+      "#2": { boden: 2, freigaben: [] },
+      "#3": {
+        boden: 4,
+        freigaben: [
+          'mitKiFreigabe({ global: "anthropic", perTask: { answer: "anthropic", assist } })',
+        ],
+      },
+      "#4": { boden: 4, freigaben: [] },
+      "#5": {
+        boden: 4,
+        freigaben: [
+          'mitKiFreigabe({ global: "anthropic", perTask: { answer: "anthropic", assist: "openai" } })',
+        ],
+      },
+      "#6": { boden: 7, freigaben: [] },
+      "#7": { boden: 4, freigaben: [] },
+      "#8": { boden: 8, freigaben: [] },
     },
   },
 };
