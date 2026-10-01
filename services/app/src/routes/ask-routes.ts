@@ -483,13 +483,15 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
           return;
         }
         // WP-KLARA-ASK-FIX (bens Fix 1, P0-Kern): "retrieval-only" — der Modus des Word-Add-ins
-        // (markierter DOKUMENTTEXT ist potenziell vertraulich und darf NIE zur Cloud). Bewusst ein
+        // (markierter DOKUMENTTEXT ist potenziell vertraulich und geht OHNE bestätigte
+        // Einwilligung für genau diese Sitzung und dieses Dokument NIE zur Cloud; mit ihr öffnet
+        // seit JOB 3079 allein der KA4-Zweig unten den normalen Answerweg). Bewusst ein
         // Request-Flag statt eines eigenen Endpunkts: Auth, Body-Schema, Rate-Limits und der
         // Add-on-Zweig dieser Route bleiben EINE Quelle der Wahrheit — server-erzwungen ist die
         // SEMANTIK des Modus: ask.ask mit validatedOnly (nur validierte KOs als Grundlage) +
         // retrievalOnly (answerRetrievalOnly = deterministischer Pfad; kein Modell-, kein
         // Embedder-Aufruf erreichbar — exakt der seit SCRUM-490 R2 bestehende Add-on-Vertrag).
-        // Die Antwort ist die WOERTLICHE validierte Aussage + Quellen, keine Synthese. Die
+        // Ohne Einwilligung ist die Antwort die WOERTLICHE validierte Aussage + Quellen, keine Synthese. Die
         // Wissensluecke wird weiter vermerkt (Session-Nutzer, bestehende gap-Semantik) — darauf
         // baut der Offene-Frage-Weg des Panels. Konsole ohne mode: byte-identisches Verhalten.
         if (request.body.mode === "retrieval-only") {

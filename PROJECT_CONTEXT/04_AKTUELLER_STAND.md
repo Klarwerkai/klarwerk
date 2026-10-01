@@ -7,6 +7,20 @@
 > `PROJECT_CONTEXT/13_ASSISTENT_ZWISCHENBERICHT.md` (Rohstand: `docs/boss-assistant/`).
 > Live-Version dort bestätigt: **v1.0.0-beta.1.4**.
 
+## 01.10.2026 — Gesamt-KI-Einwilligung, Lauf 1: Prüfprotokoll der Zustimmung (Teilstand)
+
+Auftrag `aufnahme:20260922:gesamt-ki-einwilligung`, Lauf 1 Runde 1. Bestandsabgleich der Kriterien
+ergab: KA4/Einwilligung je Dokument, aktives Fragen und gemerktes Nein, Word-Einwilligungskarte,
+Schalter `KLARA_EXTERNAL_EXECUTION_MIGRATED = true` (JOB 3079), Kostenhinweis nur bei
+`billable`, serverseitige Entwurfsstufe/`draftId`, N11b, Datenklassen im Dialog und
+Richtlinienbindung waren bereits gebaut. **Neu (R-0609):** Jede Erteilung und jedes Ende einer
+Klara-Zustimmung (Widerruf, Ablauf, Entwertung, Schliessen, Umbinden, Zweitgrant) steht im
+append-only Prüfprotokoll (`klara.consent.granted` / `klara.consent.ended`, `KlaraSessionService`
+→ `services/audit`), mit Wer, Dokumentkontext, Anbieter, Modell, Datenklassen, Richtlinienfassung,
+Erteilung, Ablauf und Endzeitpunkt. Scheitert der Eintrag, wird die Erteilung entwertet
+(fail-closed). Tests: `services/app/src/services/klara-consent-protokoll.test.ts`. Dazu überholte
+Kommentare zum Schalter bereinigt (R-1533). **Nicht abgenommen; PostgreSQL-Lauf steht aus.**
+
 ## 30.09.2026 — Erfassen-Doppelklick, Lauf 6: Blattwechsel erst nach dem Datei-Anteil (Teilstand)
 
 Auftrag `aufnahme:20260922:erfassen-doppelklick`, Lauf 6 Runde 1, Basis `5e44e7e6`. Die

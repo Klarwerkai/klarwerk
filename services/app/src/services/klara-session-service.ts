@@ -137,11 +137,36 @@ export interface KlaraPolicyQuelle {
   zentralFreigegeben?: boolean | undefined;
 }
 
+/**
+ * R-0609 — DER NACHWEIS, DER NICHT ÜBERSCHRIEBEN WIRD.
+ *
+ * Die Zustimmungszeile trägt Wer, Dokument, Anbieter, Datenklassen, Erteilung, Ablauf und Widerruf
+ * — aber ihr Status und ihr Widerrufszeitpunkt werden an Ort und Stelle fortgeschrieben, und
+ * `raeumeAbgelaufeneAuf` löscht sie samt Sitzung. Beweisen liesse sich damit später nicht, dass
+ * eine Freigabe überhaupt vorlag. Deshalb geht jeder Zustimmungsübergang zusätzlich in das
+ * append-only Prüfprotokoll (`services/audit`, Hash-Kette) — die schmale Sicht genügt, der Dienst
+ * kennt die Ablage nicht.
+ */
+export interface KlaraEinwilligungsProtokoll {
+  record(input: {
+    actor: string;
+    action: string;
+    target: string;
+    payload?: Record<string, unknown>;
+  }): Promise<unknown>;
+}
+
+/** Die beiden Protokollereignisse — Erteilung und jedes Ende (Widerruf, Ablauf, Entwertung). */
+export const KLARA_CONSENT_AUDIT_GRANTED = "klara.consent.granted";
+export const KLARA_CONSENT_AUDIT_ENDED = "klara.consent.ended";
+
 export interface KlaraSessionServiceDeps {
   readonly repo: KlaraSessionRepo;
   readonly policy: () => KlaraPolicyQuelle | Promise<KlaraPolicyQuelle>;
   readonly now?: () => number;
   readonly newId?: () => string;
+  /** R-0609: ohne Angabe (Testaufbauten) wird nichts protokolliert; die App reicht es immer. */
+  readonly protokoll?: KlaraEinwilligungsProtokoll;
 }
 
 export type KlaraFehlerCode = "NOT_FOUND" | "FORBIDDEN" | "CONFLICT" | "BAD_REQUEST";
@@ -393,12 +418,75 @@ export class KlaraSessionService {
   private readonly now: () => number;
 
   private readonly newId: () => string;
+  private readonly protokoll: KlaraEinwilligungsProtokoll | undefined;
 
   constructor(deps: KlaraSessionServiceDeps) {
     this.repo = deps.repo;
     this.policy = deps.policy;
     this.now = deps.now ?? (() => Date.now());
     this.newId = deps.newId ?? (() => randomUUID());
+    this.protokoll = deps.protokoll;
+  }
+
+  // ----------------------------------------------------------------------------------------------
+  // R-0609 · DAS PRÜFPROTOKOLL DER ZUSTIMMUNG
+  // ----------------------------------------------------------------------------------------------
+  //
+  // Geschrieben wird erst NACH dem committeten Übergang: ein Eintrag beschreibt, was gilt, nie was
+  // versucht wurde. Inhalt: wer, für welches Dokument (die serverseitige Kontextkennung, nie die
+  // URL), welcher Anbieter/welches Modell, welche Datenklassen, unter welcher Richtlinienfassung,
+  // erteilt wann, gültig bis wann — und beim Ende Zeitpunkt und Art. Kein Dokumentinhalt, keine
+  // Frage, kein Geheimnis.
+
+  private async protokolliereErteilung(consent: KlaraConsent): Promise<void> {
+    await this.protokoll?.record({
+      actor: consent.actorId,
+      action: KLARA_CONSENT_AUDIT_GRANTED,
+      target: `klara-consent:${consent.consentId}`,
+      payload: {
+        consentId: consent.consentId,
+        sessionId: consent.sessionId,
+        tenantId: consent.tenantId,
+        documentContextId: consent.documentContextId,
+        addinInstanceId: consent.addinInstanceId,
+        providerClass: consent.providerClass,
+        providerReference: consent.providerReference,
+        modelReference: consent.modelReference,
+        allowedPayloadClasses: [...consent.allowedPayloadClasses],
+        policyVersion: consent.policyVersion,
+        configurationVersion: consent.configurationVersion,
+        grantedAt: consent.grantedAt,
+        expiresAt: consent.expiresAt,
+      },
+    });
+  }
+
+  /**
+   * Nur eine bis eben WIRKSAME Zustimmung bekommt einen Endeintrag — eine bereits entwertete
+   * Zeile ist schon beendet, ein zweiter Eintrag wäre eine erfundene zweite Beendigung.
+   */
+  private async protokolliereEnde(
+    vorher: KlaraConsent | undefined,
+    status: KlaraConsentStatus,
+    endetAm: string,
+  ): Promise<void> {
+    if (vorher?.status !== "granted") {
+      return;
+    }
+    await this.protokoll?.record({
+      actor: vorher.actorId,
+      action: KLARA_CONSENT_AUDIT_ENDED,
+      target: `klara-consent:${vorher.consentId}`,
+      payload: {
+        consentId: vorher.consentId,
+        sessionId: vorher.sessionId,
+        documentContextId: vorher.documentContextId,
+        providerReference: vorher.providerReference,
+        status,
+        endedAt: endetAm,
+        expiresAt: vorher.expiresAt,
+      },
+    });
   }
 
   // ----------------------------------------------------------------------------------------------
@@ -637,6 +725,7 @@ export class KlaraSessionService {
             revokedAt,
           })
         ) {
+          await this.protokolliereEnde(consent, "invalidated", revokedAt);
           stand = { ...stand, consentState: "invalidated", revision: stand.revision + 1 };
         } else {
           // Ein fremder Write war schneller. Kein zweiter Versuch (KW-S4-21 §3): der Durchlauf
@@ -749,13 +838,15 @@ export class KlaraSessionService {
       // echten nebenläufigen Session-Write den generischen Konflikt) — kein neuer Fehlerwert und
       // kein zweiter Anlauf: das Tor ist die Stelle, an der im Zweifel NICHT ausgeführt wird.
       if (consent?.status === "granted") {
+        const revokedAt = new Date(this.now()).toISOString();
         const entwertet = await this.repo.invalidateSession(sessionId, gebunden.revision, {
           consentState: "invalidated",
-          revokedAt: new Date(this.now()).toISOString(),
+          revokedAt,
         });
         if (!entwertet) {
           throw sitzungsKonflikt();
         }
+        await this.protokolliereEnde(consent, "invalidated", revokedAt);
       }
       return {
         erlaubt: false,
@@ -831,6 +922,7 @@ export class KlaraSessionService {
     if (!(await this.repo.rebindSession(sessionId, session.revision, werte))) {
       throw sitzungsKonflikt();
     }
+    await this.protokolliereEnde(consent, "invalidated", werte.revokedAt);
     const umgebunden: KlaraSession = {
       ...session,
       documentContextId: werte.documentContextId,
@@ -855,7 +947,7 @@ export class KlaraSessionService {
 
   /** `POST .../consent` — Zustimmung AUSSCHLIESSLICH für externe KI (KW-S4-04 §99). */
   async grantConsent(sessionId: string, bindung: KlaraBindung): Promise<KlaraSessionView> {
-    const { session } = await this.laden(sessionId, bindung);
+    const { session, consent: vorherige } = await this.laden(sessionId, bindung);
     const beruehrt = await this.beruehre(session, bindung);
     const {
       session: gebunden,
@@ -923,6 +1015,21 @@ export class KlaraSessionService {
     if (!(await this.repo.grantConsent(gebunden.sessionId, gebunden.revision, consent))) {
       throw sitzungsKonflikt();
     }
+    // R-0609: KEINE WIRKSAME ZUSTIMMUNG OHNE NACHWEIS. Scheitert der Protokolleintrag, wird die
+    // eben erteilte Zustimmung sofort wieder entwertet (fail-closed) und der Fehler geht hinaus —
+    // eine Freigabe, die sich später nicht belegen liesse, darf keine Anfrage öffnen.
+    try {
+      // Ein zweiter Grant entwertet den ersten im selben Schritt (`repo.grantConsent`) — auch das
+      // ist ein Ende und bekommt seinen Eintrag, vor der neuen Erteilung.
+      await this.protokolliereEnde(vorherige, "invalidated", consent.grantedAt);
+      await this.protokolliereErteilung(consent);
+    } catch (fehler) {
+      await this.repo.invalidateSession(gebunden.sessionId, gebunden.revision + 1, {
+        consentState: "invalidated",
+        revokedAt: new Date(this.now()).toISOString(),
+      });
+      throw fehler;
+    }
     const aktualisiert: KlaraSession = {
       ...gebunden,
       consentState: "granted",
@@ -935,7 +1042,7 @@ export class KlaraSessionService {
 
   /** `DELETE .../consent` — Widerruf wirkt SOFORT (KW-S4-04 §219). */
   async revokeConsent(sessionId: string, bindung: KlaraBindung): Promise<KlaraSessionView> {
-    const { session } = await this.laden(sessionId, bindung);
+    const { session, consent } = await this.laden(sessionId, bindung);
     const jetzt = this.now();
     const werte = {
       lastActivityAt: new Date(jetzt).toISOString(),
@@ -950,6 +1057,7 @@ export class KlaraSessionService {
     if (!(await this.repo.revokeConsent(sessionId, session.revision, werte))) {
       throw sitzungsKonflikt();
     }
+    await this.protokolliereEnde(consent, "revoked", werte.revokedAt);
     const aktualisiert: KlaraSession = {
       ...session,
       consentState: "revoked",
@@ -964,7 +1072,7 @@ export class KlaraSessionService {
 
   /** `POST .../close` — Sitzung schliessen; die Zustimmung wird unwirksam. */
   async closeSession(sessionId: string, bindung: KlaraBindung): Promise<KlaraSessionView> {
-    const { session } = await this.laden(sessionId, bindung);
+    const { session, consent } = await this.laden(sessionId, bindung);
     const jetzt = this.now();
     const werte = {
       closedAt: new Date(jetzt).toISOString(),
@@ -976,6 +1084,7 @@ export class KlaraSessionService {
     if (!(await this.repo.closeSession(sessionId, session.revision, werte))) {
       throw sitzungsKonflikt();
     }
+    await this.protokolliereEnde(consent, "invalidated", werte.closedAt);
     const geschlossen: KlaraSession = {
       ...session,
       consentState: "invalidated",
@@ -1064,6 +1173,7 @@ export class KlaraSessionService {
           revokedAt,
         })
       ) {
+        await this.protokolliereEnde(consent, grund, revokedAt);
         gueltig = { ...gueltig, consentState: grund, revision: gueltig.revision + 1 };
         consent = consent ? { ...consent, status: grund, revokedAt } : consent;
         return;
@@ -1090,6 +1200,7 @@ export class KlaraSessionService {
           revokedAt,
         }))
       ) {
+        await this.protokolliereEnde(frischerConsent, grund, revokedAt);
         gueltig = { ...frisch, consentState: grund, revision: frisch.revision + 1 };
         consent = { ...frischerConsent, status: grund, revokedAt };
         return;

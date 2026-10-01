@@ -304,6 +304,9 @@ const INVENTAR: readonly string[] = [
   "services/app/src/routes/addin-static-routes.test.ts",
   "services/app/src/routes/klara-ai-routes.test.ts",
   "services/app/src/services/klara-session-service.test.ts",
+  // Auftrag gesamt-ki-einwilligung (R-0609): das Prüfprotokoll jeder Zustimmungserteilung und
+  // jedes Endes — Klara-Regression im engsten Sinn (dieselbe Sitzungsgrenze wie die Datei darüber).
+  "services/app/src/services/klara-consent-protokoll.test.ts",
   "services/app/src/web-static.test.ts",
   "services/reasoner/src/klara-policy.test.ts",
   // JOB 3337 (ADMIN-NAVIGATION): zwei neue Dateien, von der Achse `palette` gefunden (Muster
@@ -1474,7 +1477,10 @@ describe("JOB 920 · K — das Klara-Regressionsinventar ist ableitbar, nicht be
     // Beleg in der RUECKGABE des Jobs.
     // JOB 4224 RUNDE 3: dazu `kette-postgres.integration.test.ts` — 67 -> 68. GEMESSEN, NICHT
     // GESETZT: Beleg in der RUECKGABE des Jobs.
-    expect(nurName.length).toBe(68);
+    // Auftrag gesamt-ki-einwilligung (01.10.2026): `services/app/src/services/klara-consent-
+    // protokoll.test.ts` trägt „klara" im PFAD — 68 -> 69. GEMESSEN, NICHT GESETZT: mit dem
+    // Inventareintrag und noch unverändertem Zähler meldete der lokale Lauf `expected 69 to be 68`.
+    expect(nurName.length).toBe(69);
     expect(verfehlt.length).toBeGreaterThanOrEqual(25);
     expect(verfehlt.length + nurName.length).toBe(GEFUNDEN.length);
   });

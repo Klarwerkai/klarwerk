@@ -2411,6 +2411,9 @@ export function buildApp(
   // vorhandene gehoben und weitergereicht, nicht kopiert. Keine neue Ablage, keine neue Route.
   const klaraSessions = new KlaraSessionService({
     repo: services.klaraSessions,
+    // R-0609: jede Erteilung und jedes Ende einer Zustimmung geht in die Hash-Kette des
+    // Prüfprotokolls — der Nachweis überdauert das Fortschreiben und Aufräumen der Zustimmungszeile.
+    ...(services.audit ? { protokoll: services.audit } : {}),
     policy: () => {
       const config = services.reasoner.configStatus();
       const antwortWahl = config.taskConfig.perTask.answer ?? config.taskConfig.global;

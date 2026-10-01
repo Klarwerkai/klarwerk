@@ -30,12 +30,12 @@
 //     `reasoner.ka4.dokument-consent` mit SEINEM Grund in die Logsenke. Ein nicht verdrahtetes Tor
 //     schriebe nichts, ein Doppel einen anderen Grund.
 //
-// DER POSITIVE ZWEIG (bestätigte Einwilligung hebt den Riegel) ist im Produkt heute NICHT
-// erreichbar: `KLARA_EXTERNAL_EXECUTION_MIGRATED` steht als Ownerkonstante auf `false`
-// (`services/reasoner/src/klara-policy.ts`), und `pruefeExterneAusfuehrung` kann kein
-// `erlaubt:true` liefern. Der Fall steht hier fertig und springt an, sobald die Konstante kippt —
-// dieselbe Bauform wie `services/app/src/routes/ka4-endzustand.test.ts` (`nurWennFreigegeben`).
-// Bis dahin ist er ausdrücklich NICHT MESSBAR, und V0 protokolliert das in jedem Lauf.
+// DER POSITIVE ZWEIG (bestätigte Einwilligung hebt den Riegel) war bei Entstehung dieses Tests im
+// Produkt NICHT erreichbar: `KLARA_EXTERNAL_EXECUTION_MIGRATED` stand als Ownerkonstante auf
+// `false` (`services/reasoner/src/klara-policy.ts`), und `pruefeExterneAusfuehrung` konnte kein
+// `erlaubt:true` liefern. Seit JOB 3079 (05.09.2026) steht die Konstante auf `true`, und der Fall
+// läuft — gesteuert über `nurWennFreigegeben`, dieselbe Bauform wie
+// `services/app/src/routes/ka4-endzustand.test.ts`. V0 protokolliert den Stand in jedem Lauf.
 //
 // JOB 3033 (03.09.2026) HAT EINE ZWEITE BEDINGUNG SICHTBAR GEMACHT, die dieser Test bis dahin
 // nicht kannte: Die Konstante allein macht die Einwilligung NICHT erteilbar. `grantConsent`
@@ -314,10 +314,10 @@ describe("JOB 2666 D2 · V — die Verdrahtung: das EINE KA4-Tor an /api/reasone
     expect(versuchOhne.message).toContain("nur für externe KI möglich");
     await ohne.app.close();
 
-    // (b) MIT verdrahteter Cloud wird die Einwilligung ANGENOMMEN — auch bei gesperrter Konstante.
-    //     GEMESSEN IN JOB 3033, und es widerlegt die naheliegende Annahme: die Ownerkonstante
-    //     sperrt die AUSFUEHRUNG (`resolveKlaraPolicy` → `external_not_migrated`), nicht die
-    //     Zustimmung. `grantConsent` verlangt nur den effektiven Modus `external`
+    // (b) MIT verdrahteter Cloud wird die Einwilligung ANGENOMMEN — das galt schon bei damals
+    //     gesperrter Konstante. GEMESSEN IN JOB 3033, und es widerlegte die naheliegende Annahme:
+    //     die Ownerkonstante sperrte die AUSFUEHRUNG (`resolveKlaraPolicy` →
+    //     `external_not_migrated`), nicht die Zustimmung; seit JOB 3079 steht sie auf `true`. `grantConsent` verlangt nur den effektiven Modus `external`
     //     (`klara-session-service.ts:798`), und der liegt vor, obwohl blockiert wird. Der Mensch
     //     kann also einwilligen, und der Server speichert das — wirksam wird es erst danach.
     const mit = appBauen();
@@ -358,9 +358,10 @@ describe("JOB 2666 D2 · V — die Verdrahtung: das EINE KA4-Tor an /api/reasone
     // Einwilligung meldet `CONSENT_RECONFIRMATION_REQUIRED`). Ein Doppel oder ein fehlendes Tor kann
     // diesen Wert nicht liefern — `ka4Freigabe` schreibt ohne Tor gar nicht, und ein Doppel kennt
     // die Policy nicht.
-    // JOB 3033: `external_not_migrated` ist aus der Liste genommen. Er war seit dem 03.09.2026
-    // unerreichbar (die Konstante steht auf `true`), und eine Alternative, die nie eintreten kann,
-    // macht die Zusicherung weicher, ohne etwas zu decken.
+    // `external_not_migrated` ist aus der Liste genommen: seit JOB 3079 (05.09.2026) steht die
+    // Konstante auf `true` (am 03.09., JOB 3033, stand sie noch auf `false`), der Grund ist damit
+    // unerreichbar, und eine Alternative, die nie eintreten kann, macht die Zusicherung weicher,
+    // ohne etwas zu decken.
     for (const e of entscheidungen) {
       expect(e.entscheidung).toBe("blockiert");
       expect(e.grund, "der Grund des echten Tors").toMatch(
