@@ -1,6 +1,5 @@
 import type { Pool } from "pg";
 import {
-  type AnnahmeHalter,
   AnnahmeKette,
   type CandidateRepo,
   type ClaimResolution,
@@ -8,6 +7,7 @@ import {
   type ImportCandidateRemoval,
   type ImportRunFortschritt,
   type ImportRunRepo,
+  annahmeSperreBelegt,
   externalSourceSystemKey,
   pruefeImportRun,
   pruefeImportRunItemRef,
@@ -227,17 +227,25 @@ interface CandidateRow {
 // Namen; diese Zahl ist hier einmal vergeben (vgl. `SPERRSCHLUESSEL_BESTANDSRESET`, db-tx).
 const SPERRSCHLUESSEL_IMPORT_ANNAHME = 3087000001;
 
-// TRANSAKTIONSGEBUNDEN und WARTEND: die Sperre fällt beim Transaktionsende serverseitig — auch
-// wenn der Prozess mitten in der Annahme stirbt —, und eine zweite Annahme wartet statt
-// abgewiesen zu werden (eine Annahme ist ein menschlicher Klick von Sekundenbruchteilen).
+// TRANSAKTIONSGEBUNDEN: die Sperre fällt beim Transaktionsende serverseitig — auch wenn der Prozess
+// mitten in der Annahme stirbt; ein toter Prozess kann nichts mehr anlegen.
 const SQL_ANNAHME_SPERRE = `SELECT pg_advisory_xact_lock(${SPERRSCHLUESSEL_IMPORT_ANNAHME})`;
 
-// DIE SPERRE ÜBERLEBT DIE LEASE NICHT (Kopf von `AnnahmeKette`, repo.ts). Während der Schritt auf
-// anderen Verbindungen arbeitet, ist die Sperr-Transaktion „idle in transaction"; hängt der Halter
-// länger als die Lease seines Claims, beendet der Server diese Sitzung, und mit ihr fällt die
-// Sperre — dieselbe Frist, nach der die Recovery den Claim freigibt.
-function sqlSperrdauer(leaseMs: number): string {
-  return `SET LOCAL idle_in_transaction_session_timeout = ${Math.max(1, Math.trunc(leaseMs))}`;
+// Postgres meldet eine abgelaufene `lock_timeout` als `lock_not_available`.
+const LOCK_NOT_AVAILABLE = "55P03";
+
+// Lauf :2 Runde 2 (Bens B1): DIE SPERRE WIRD NIE GEBROCHEN, solange ihr Halter lebt (Kopf von
+// `AnnahmeKette`, repo.ts). Während der Schritt auf ANDEREN Verbindungen arbeitet, ist diese
+// Sperr-Transaktion „idle in transaction". Eine serverweit oder für die Rolle gesetzte
+// `idle_in_transaction_session_timeout` beendete dann die Sitzung, die Sperre fiele, und der
+// fortgesetzte Halter legte neben dem Nächsten an — genau Bens B1. Darum wird sie für DIESE
+// Transaktion ausdrücklich abgeschaltet. Begrenzt wird stattdessen das WARTEN (`lock_timeout`):
+// wer die Sperre nicht bekommt, bekommt `CONFLICT`, nie ein zweites Objekt.
+function sqlSperrVorbereitung(wartezeitMs: number): string[] {
+  return [
+    "SET LOCAL idle_in_transaction_session_timeout = 0",
+    `SET LOCAL lock_timeout = ${Math.max(1, Math.trunc(wartezeitMs))}`,
+  ];
 }
 
 export class PgCandidateRepo implements CandidateRepo {
@@ -249,8 +257,11 @@ export class PgCandidateRepo implements CandidateRepo {
   // Verbindungen (Wissensobjekt-Dienst), seine Wirkung hängt also nicht an diesem COMMIT. Darum
   // ist ein scheiterndes COMMIT/ROLLBACK kein Fehler des Schritts — die Verbindung wird dann
   // verworfen, und mit ihrer Sitzung fällt die Sperre.
-  annahmeSperre<T>(halter: AnnahmeHalter, schritt: () => Promise<T>): Promise<T> {
-    return this.annahmen.nacheinander(halter, async () => {
+  // Die Wartezeit gilt EINMAL für beide Stufen: was in der Prozess-Kette verstrichen ist, fehlt
+  // der Datenbank-Wartezeit.
+  annahmeSperre<T>(wartezeitMs: number, schritt: () => Promise<T>): Promise<T> {
+    const frist = Date.now() + wartezeitMs;
+    return this.annahmen.nacheinander(wartezeitMs, async () => {
       const client = await this.pool.connect();
       let verwerfen = false;
       const abschliessen = (anweisung: "COMMIT" | "ROLLBACK") =>
@@ -259,12 +270,17 @@ export class PgCandidateRepo implements CandidateRepo {
         });
       try {
         await client.query("BEGIN");
-        await client.query(sqlSperrdauer(halter.leaseMs));
+        for (const anweisung of sqlSperrVorbereitung(frist - Date.now())) {
+          await client.query(anweisung);
+        }
         await client.query(SQL_ANNAHME_SPERRE);
       } catch (fehler) {
-        // Ohne Sperre läuft der Schritt nicht — sonst wäre die Reihenfolge nur behauptet.
+        // Ohne Sperre läuft der Schritt nicht — sonst wäre der Ausschluss nur behauptet.
         await abschliessen("ROLLBACK");
         client.release(verwerfen);
+        if ((fehler as { code?: unknown }).code === LOCK_NOT_AVAILABLE) {
+          throw annahmeSperreBelegt();
+        }
         throw fehler;
       }
       try {
@@ -383,12 +399,7 @@ export class PgCandidateRepo implements CandidateRepo {
       "UPDATE import_candidates SET data = (data - 'opId' - 'claimedAt' - 'claimedBy' - 'claimedAction') || $3::jsonb WHERE id=$1 AND data->>'status'='in_bearbeitung' AND data->>'opId'=$2 RETURNING data",
       [id, opId, JSON.stringify(patch)],
     );
-    const abgeschlossen = res.rows[0]?.data;
-    if (abgeschlossen) {
-      // Bens R3-1: hielt dieser Claim im Prozess noch die Annahme-Sperre, fällt sie mit ihm.
-      this.annahmen.brich(id, opId);
-    }
-    return abgeschlossen;
+    return res.rows[0]?.data;
   }
 
   // WP-SHIP8-CLOSE-7 (bens ROT-1): BEDINGTES Entfernen der auditPending-Markierung als EIN

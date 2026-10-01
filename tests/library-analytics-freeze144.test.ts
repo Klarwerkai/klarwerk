@@ -149,6 +149,10 @@ const WIDERRUFENE_FREIGABEN: readonly string[] = [
   // Stand OHNE die Annahme-Sperre im Kandidatenbestand; ihre Nachfolgerinnen stehen am Eintrag.
   "FREEZE-144/GIA-R2-20260930/repo",
   "FREEZE-144/GIA-R2-20260930/repo-pg",
+  // LAUF gesamt-import-adoption:2 Runde 2 (Bens B1): verbraucht. Sie autorisierten die Sperre, die
+  // mit dem Claim ihres Halters gebrochen wurde; ihre Nachfolgerinnen stehen am Eintrag.
+  "FREEZE-144/GIA2-R1-20261001/repo",
+  "FREEZE-144/GIA2-R1-20261001/repo-pg",
 ];
 
 const ERWARTETE_ANZAHL = 6;
@@ -311,10 +315,17 @@ const FREEZE_MANIFEST: readonly FreezeEintrag[] = [
     // Hand abgeschlossen wird). `InMemoryCandidateRepo` implementiert die Sperre und bricht sie in
     // `resolveClaim`. Claim-CAS, Lease, Idempotenzschlüssel und alle übrigen Felder sind
     // unverändert. Sollhash UND Freigabe in EINEM Änderungssatz, die alte in WIDERRUFENE_FREIGABEN.
-    hash: "0cd7ea00e6be8d7f8cdbbd7a8f2e65d4ee0328dc66d6d79cd95a8007d0e45757",
+    //
+    // LAUF gesamt-import-adoption:2 RUNDE 2 · AUSGEWIESENE ÄNDERUNG (Bens B1): die Sperre wird NICHT
+    // mehr mit dem Claim ihres Halters gebrochen. `AnnahmeKette` ist ein Ausschluss mit begrenzter
+    // Wartezeit (`annahmeSperre(wartezeitMs, schritt)`, Abweisung über `annahmeSperreBelegt()` →
+    // CONFLICT); `AnnahmeHalter` und das Brechen in `resolveClaim` sind ENTFALLEN. Claim-CAS, Lease
+    // und Idempotenzschlüssel sind unverändert. Sollhash UND Freigabe in EINEM Änderungssatz, die
+    // alte in WIDERRUFENE_FREIGABEN.
+    hash: "e3f9788a7685ec6d9c25045fde4e63b7aa7ff135e37d70b7003ed6e4912aeeff",
     freigabe: {
-      id: "FREEZE-144/GIA2-R1-20261001/repo",
-      autorisiertHash: "0cd7ea00e6be8d7f8cdbbd7a8f2e65d4ee0328dc66d6d79cd95a8007d0e45757",
+      id: "FREEZE-144/GIA2-R2-20261001/repo",
+      autorisiertHash: "e3f9788a7685ec6d9c25045fde4e63b7aa7ff135e37d70b7003ed6e4912aeeff",
     },
   },
   {
@@ -342,10 +353,16 @@ const FREEZE_MANIFEST: readonly FreezeEintrag[] = [
     // gelungenem CAS die Prozess-Kette eines abgelösten Halters. KEINE DDL-Änderung, kein Index,
     // keine Migration. Sollhash UND Freigabe in EINEM Änderungssatz, die alte in
     // WIDERRUFENE_FREIGABEN.
-    hash: "ba170d87fd93138b7147116b9c5db3db93252ec52ae0e44ee7d6f030767f9c47",
+    //
+    // LAUF gesamt-import-adoption:2 RUNDE 2 · AUSGEWIESENE ÄNDERUNG (Bens B1): die Sperrsitzung wird
+    // NICHT mehr nach der Lease beendet — `SET LOCAL idle_in_transaction_session_timeout = 0` statt
+    // der Lease-Frist, begrenzt wird nur das Warten (`SET LOCAL lock_timeout`, 55P03 → CONFLICT).
+    // Das Brechen der Prozess-Kette in `resolveClaim` ist ENTFALLEN. KEINE DDL-Änderung. Sollhash
+    // UND Freigabe in EINEM Änderungssatz, die alte in WIDERRUFENE_FREIGABEN.
+    hash: "475ba6dedfb0a027af0f4c30b01849ccec637f034ab5cc95d1de575d4fe6003f",
     freigabe: {
-      id: "FREEZE-144/GIA2-R1-20261001/repo-pg",
-      autorisiertHash: "ba170d87fd93138b7147116b9c5db3db93252ec52ae0e44ee7d6f030767f9c47",
+      id: "FREEZE-144/GIA2-R2-20261001/repo-pg",
+      autorisiertHash: "475ba6dedfb0a027af0f4c30b01849ccec637f034ab5cc95d1de575d4fe6003f",
     },
   },
   {

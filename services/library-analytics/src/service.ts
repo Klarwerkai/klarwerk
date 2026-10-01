@@ -406,6 +406,12 @@ export const IMPORT_CLEANUP_PROVIDERS = ["confluence", "jira"] as const;
 // erst danach greift die Crash-Recovery (dieselbe Frist-Philosophie wie AI_CHECK_STALE_PENDING_MS).
 export const REVIEW_CLAIM_LEASE_MS = 10 * 60_000;
 
+// Lauf gesamt-import-adoption:2 (Bens B1): eine Annahme ist ein Klick ohne Modellaufruf und dauert
+// Sekundenbruchteile. Wer länger als das hier auf die Annahme-Sperre wartet, steht hinter einem
+// hängenden Halter — er bekommt CONFLICT statt einer endlos offenen Anfrage. Weit unter der Lease:
+// der wartende Claim läuft dabei nie ab.
+const ANNAHME_WARTEZEIT_MS = 30_000;
+
 // Lease abgelaufen? Ein unlesbares/fehlendes claimedAt zählt defensiv als abgelaufen (Muster
 // shouldReEnqueueAiCheck: lieber einmal zu viel recovern als still liegen lassen — die Recovery
 // selbst ist per opId-CAS gegen laufende Operationen abgesichert).
@@ -449,6 +455,10 @@ export interface LibraryServiceDeps {
   // generischen Import-Enable ab (aktuell durch KLARWERK_CONFLUENCE_IMPORT gesetzt; ein Adapter #2/Jira
   // schaltet denselben Strang über sein eigenes Flag, ohne Confluence-Symbole).
   externalUpsert?: boolean;
+  // Lauf gesamt-import-adoption:2 (Bens B1): wie lange eine Annahme höchstens auf die Annahme-Sperre
+  // wartet, bevor sie mit CONFLICT abbricht (Kopf von `AnnahmeKette`, repo.ts). Ohne Angabe
+  // `ANNAHME_WARTEZEIT_MS`.
+  annahmeWartezeitMs?: number;
   /**
    * ================================================================================================
    * JOB 4155 (WG-LUECKEN) — DIE KURATIERTEN KANTEN IM GLOBALEN GRAPHEN.
@@ -540,6 +550,7 @@ export class LibraryService {
   private readonly candidates: CandidateRepo;
   // SCRUM-510 R2b: quellneutraler externalId-Upsert-Strang aktiv? Aus = heutiges Bestandsverhalten.
   private readonly externalUpsert: boolean;
+  private readonly annahmeWartezeitMs: number;
   // JOB 4155 (WG-LUECKEN): der Kantenbestand für `/api/graph`. `undefined` = nicht verdrahtet; die
   // Antwort trägt das Feld dann GAR NICHT (s. `LibraryServiceDeps.kanten`).
   private readonly kanten: KuratierteKantenLeser | undefined;
@@ -551,6 +562,7 @@ export class LibraryService {
     this.genId = deps.genId ?? (() => randomUUID());
     this.now = deps.now ?? (() => Date.now());
     this.externalUpsert = deps.externalUpsert ?? false;
+    this.annahmeWartezeitMs = deps.annahmeWartezeitMs ?? ANNAHME_WARTEZEIT_MS;
     this.kanten = deps.kanten;
   }
 
@@ -1305,7 +1317,10 @@ export class LibraryService {
         // Befund UND Anlage als EIN Schritt hinter der Annahme-Sperre des Kandidatenbestands
         // (Bens N1, R3-1): zwei überlappende Annahmen lesen nie beide den noch leeren Bestand —
         // weder gleichen Inhalts (Textweg) noch derselben Quelle (Herkunftsanker), und auch nicht
-        // aus zwei Dienstinstanzen mit gemeinsamem Bestand.
+        // aus zwei Dienstinstanzen mit gemeinsamem Bestand, und auch nicht neben einem Halter, dessen
+        // Claim die Recovery inzwischen freigegeben hat (Bens B1). Bekommt die Annahme die Sperre
+        // nicht rechtzeitig, wirft `annahmeSperre` CONFLICT, BEVOR hier etwas läuft — der Fehlerpfad
+        // unten gibt den Claim dann zurück (kein Objekt entstanden).
         const annehmen = async (): Promise<ClaimResolution> => {
           neuerBefund = await this.befundBeiAnnahme(candidate, pruefeDublette);
           if (neuerBefund) {
@@ -1334,10 +1349,7 @@ export class LibraryService {
             ...reviewedStamp,
           };
         };
-        resolution = await this.candidates.annahmeSperre(
-          { id, opId, leaseMs: REVIEW_CLAIM_LEASE_MS },
-          annehmen,
-        );
+        resolution = await this.candidates.annahmeSperre(this.annahmeWartezeitMs, annehmen);
       }
       // SCRUM-157: Endstatus/koId/Note (+ bereinigtes Item, 515) persistieren — atomar über den
       // opId-CAS (kein stiller Verlust, kein Fremd-Overwrite).
@@ -1713,7 +1725,9 @@ export class LibraryService {
   // dessen Objekt. EIN Riegel für alle und nicht je Inhalt: die Dublettenfrage ist eine
   // Ähnlichkeit, kein Schlüssel — nur eine vollständige Reihenfolge schliesst den Doppeltreffer
   // aus. Die Sperre sitzt im Bestand, nicht am Dienst: in Runde 3 galt sie je Dienstinstanz und
-  // nur auf dem Textweg, und genau dort hat Ben zwei Objekte gemessen.
+  // nur auf dem Textweg, und genau dort hat Ben zwei Objekte gemessen. Seit Lauf :2 Runde 2 (Bens
+  // B1) wird sie auch für einen abgelösten, aber noch lebenden Halter nicht gebrochen: wer wartet,
+  // bekommt nach `annahmeWartezeitMs` CONFLICT, nie ein zweites Objekt.
   private annahmeAufTextweg(
     candidate: ImportCandidate,
     pruefeDublette: DublettenPruefung | undefined,

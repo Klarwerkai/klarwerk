@@ -1,5 +1,5 @@
 // ================================================================================================
-// LAUF gesamt-import-adoption:2 — BENS RUNDE-3-BEFUNDE R3-1 UND R3-2.
+// LAUF gesamt-import-adoption:2 — BENS RUNDE-3-BEFUNDE R3-1 UND R3-2, DAZU B1 AUS LAUF :2 RUNDE 1.
 // ================================================================================================
 //
 // R3-1  Die Annahme-Reihenfolge galt nur je Dienstinstanz und nur auf dem Textweg. Zwei
@@ -7,6 +7,11 @@
 //       Objekte an; zwei Dienstinstanzen mit gemeinsamem Bestand ebenso bei gleichem Text.
 // R3-2  Eine von der Recovery vollendete Annahme behielt den Dublettenbefund vom Einreihen — ein
 //       wirklich angelegtes Objekt blieb als Dublette eines abgelehnten Kandidaten dokumentiert.
+// B1    Runde 1 brach die Sperre, sobald die Recovery den Claim ihres Halters freigab; der
+//       fortgesetzte alte Halter legte dann neben einem anderen Kandidaten ein zweites Objekt an.
+//
+// Die Pg-Fälle hier prüfen nur SQL-Folge und Fehlerabbildung über einen Pool-Ersatz. Die echte
+// datenbankweite Wirkung prüft `annahme-sperre-pg.integration.test.ts` (Prüfserver).
 //
 // Ohne Dienststart, ohne Datenbank: InMemory-Bestände und ein aufzeichnender Pool-Ersatz.
 import type { Pool } from "pg";
@@ -20,10 +25,8 @@ import {
   PgCandidateRepo,
   REVIEW_CLAIM_LEASE_MS,
 } from "../../services/library-analytics";
-// Der Halter-Typ ist bewusst nicht über die (eingefrorene) Fassade ausgeleitet — nur dieser Test braucht ihn.
-import type { AnnahmeHalter } from "../../services/library-analytics/src/repo";
 
-const HALTER: AnnahmeHalter = { id: "k-1", opId: "op-1", leaseMs: 600_000 };
+const WARTEZEIT = 600_000;
 
 const NIE_AEHNLICH: DublettenPruefung = () => ({ dublette: false });
 
@@ -113,7 +116,7 @@ describe("R3-1 · die Annahme-Sperre gilt für jeden Weg und jede Instanz am sel
   it("R3-1d · KALIBRIERUNG: ohne Sperre (durchreichendes Repo) entstehen am Anker-Weg zwei Objekte", async () => {
     // Belegt, dass R3-1a/c wirklich die Sperre messen: dasselbe Szenario ohne Reihenfolge.
     class OhneSperre extends InMemoryCandidateRepo {
-      override annahmeSperre<T>(_halter: AnnahmeHalter, schritt: () => Promise<T>): Promise<T> {
+      override annahmeSperre<T>(_wartezeitMs: number, schritt: () => Promise<T>): Promise<T> {
         return schritt();
       }
     }
@@ -158,16 +161,18 @@ describe("R3-1 · Postgres: die Sperre ist eine transaktionsgebundene Advisory-S
   it("Schritt läuft INNERHALB von BEGIN · Sperre · COMMIT, Verbindung wird freigegeben", async () => {
     const p = aufzeichnenderPool();
     const repo = new PgCandidateRepo(p.pool);
-    const ergebnis = await repo.annahmeSperre(HALTER, () => {
+    const ergebnis = await repo.annahmeSperre(WARTEZEIT, () => {
       p.protokoll.push("SCHRITT");
       return Promise.resolve(42);
     });
     expect(ergebnis).toBe(42);
     expect(p.protokoll[0]).toBe("BEGIN");
-    // Die Sperre lebt nicht länger als die Lease des Claims (Server beendet die Sitzung).
-    expect(p.protokoll[1]).toBe("SET LOCAL idle_in_transaction_session_timeout = 600000");
-    expect(p.protokoll[2]).toMatch(/^SELECT pg_advisory_xact_lock\(\d+\)$/);
-    expect(p.protokoll.slice(3)).toEqual(["SCHRITT", "COMMIT"]);
+    // Bens B1: eine server-/rollenweite Leerlauffrist darf die Sperrsitzung nicht beenden; begrenzt
+    // wird nur das Warten.
+    expect(p.protokoll[1]).toBe("SET LOCAL idle_in_transaction_session_timeout = 0");
+    expect(p.protokoll[2]).toMatch(/^SET LOCAL lock_timeout = \d+$/);
+    expect(p.protokoll[3]).toMatch(/^SELECT pg_advisory_xact_lock\(\d+\)$/);
+    expect(p.protokoll.slice(4)).toEqual(["SCHRITT", "COMMIT"]);
     expect(p.freigaben()).toBe(1);
     expect(p.verworfen()).toBe(0);
   });
@@ -176,10 +181,10 @@ describe("R3-1 · Postgres: die Sperre ist eine transaktionsgebundene Advisory-S
     const p = aufzeichnenderPool();
     const repo = new PgCandidateRepo(p.pool);
     await expect(
-      repo.annahmeSperre(HALTER, () => Promise.reject(new Error("kaputt"))),
+      repo.annahmeSperre(WARTEZEIT, () => Promise.reject(new Error("kaputt"))),
     ).rejects.toThrow("kaputt");
     expect(p.protokoll.at(-1)).toBe("ROLLBACK");
-    await expect(repo.annahmeSperre(HALTER, () => Promise.resolve("weiter"))).resolves.toBe(
+    await expect(repo.annahmeSperre(WARTEZEIT, () => Promise.resolve("weiter"))).resolves.toBe(
       "weiter",
     );
     expect(p.freigaben()).toBe(2);
@@ -190,14 +195,14 @@ describe("R3-1 · Postgres: die Sperre ist eine transaktionsgebundene Advisory-S
     const repo = new PgCandidateRepo(p.pool);
     let loesen: () => void = () => undefined;
     const erster = repo.annahmeSperre(
-      HALTER,
+      WARTEZEIT,
       () =>
         new Promise<void>((r) => {
           p.protokoll.push("ERSTER");
           loesen = r;
         }),
     );
-    const zweiter = repo.annahmeSperre(HALTER, () => {
+    const zweiter = repo.annahmeSperre(WARTEZEIT, () => {
       p.protokoll.push("ZWEITER");
       return Promise.resolve();
     });
@@ -210,33 +215,168 @@ describe("R3-1 · Postgres: die Sperre ist eine transaktionsgebundene Advisory-S
   });
 });
 
-describe("R3-1 · die Sperre lebt nicht länger als der Claim ihres Halters", () => {
-  it("ein hängender Halter, dessen Claim die Recovery abschliesst, hält die nächste Annahme nicht auf", async () => {
+describe("B1 · ein abgelöster, aber lebender Halter behält die Sperre bis zu seiner Anlage", () => {
+  it("InMemory: der Claim des hängenden Halters wird freigegeben — der Nächste wartet trotzdem und bekommt nach der Wartezeit CONFLICT", async () => {
     const repo = new InMemoryCandidateRepo();
-    await repo.insert({
-      id: "k-1",
-      item: EINTRAG,
-      status: "neu",
-      duplicate: false,
-      createdAt: "2026-10-01T08:00:00.000Z",
-    } as Parameters<InMemoryCandidateRepo["insert"]>[0]);
-    expect(await repo.claim("k-1", "op-1", "2026-10-01T08:00:00.000Z")).toBeTruthy();
-
-    // Der Halter hängt für immer in seinem Schritt.
-    void repo.annahmeSperre(HALTER, () => new Promise<never>(() => undefined));
+    void repo.annahmeSperre(WARTEZEIT, () => new Promise<never>(() => undefined));
     let zweiterLief = false;
-    const zweiter = repo.annahmeSperre({ id: "k-2", opId: "op-2", leaseMs: 1 }, () => {
-      zweiterLief = true;
-      return Promise.resolve();
-    });
-    await new Promise((r) => setTimeout(r, 5));
-    expect(zweiterLief, "Solange der Claim lebt, gilt die Reihenfolge.").toBe(false);
-
-    // Fremde Hand (Recovery) schliesst den Claim des Halters ab → die Sperre fällt mit ihm.
-    expect(await repo.resolveClaim("k-1", "op-1", { status: "neu" })).toBeTruthy();
-    await zweiter;
-    expect(zweiterLief).toBe(true);
+    await expect(
+      repo.annahmeSperre(20, () => {
+        zweiterLief = true;
+        return Promise.resolve();
+      }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(zweiterLief, "Ein abgewiesener Schritt läuft nie.").toBe(false);
   });
+
+  it("Pg: abgelaufene lock_timeout (55P03) wird CONFLICT, der Schritt läuft nicht, die Verbindung kehrt zurück", async () => {
+    const protokoll: string[] = [];
+    let freigaben = 0;
+    const client = {
+      query: (text: string) => {
+        protokoll.push(text);
+        if (text.startsWith("SELECT pg_advisory_xact_lock")) {
+          return Promise.reject(Object.assign(new Error("lock timeout"), { code: "55P03" }));
+        }
+        return Promise.resolve({ rows: [], rowCount: 0 });
+      },
+      release: () => {
+        freigaben += 1;
+      },
+    };
+    const repo = new PgCandidateRepo({ connect: () => Promise.resolve(client) } as unknown as Pool);
+    let lief = false;
+    await expect(
+      repo.annahmeSperre(WARTEZEIT, () => {
+        lief = true;
+        return Promise.resolve();
+      }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(lief).toBe(false);
+    expect(protokoll.at(-1)).toBe("ROLLBACK");
+    expect(freigaben).toBe(1);
+  });
+
+  // Bens Gegenbeleg (ben-lease-dubletten.test.ts), als Regression übernommen. A hängt unmittelbar
+  // vor der echten Objektanlage, die Lease läuft ab, die Recovery gibt A frei, ein ANDERER Kandidat
+  // B desselben Inhalts bzw. derselben Quelle wird angenommen, dann setzt A fort.
+  //
+  // EINE ABWEICHUNG VON BENS FALL, ausdrücklich: Ben wartete Bs Annahme VOR der Fortsetzung von A
+  // ab und erwartete dort schon ein angelegtes Objekt. Das ist mit dem verlangten Ausschluss „bis
+  // zur wirksamen Objektanlage" unvereinbar, solange A lebt — B kann erst entscheiden, wenn As
+  // Anlage feststeht (sonst entstehen genau die zwei Objekte). Darum: B läuft nebenher und wartet
+  // (Fall 1), oder B gibt nach der Wartezeit mit CONFLICT auf und gelingt beim zweiten Klick (Fall 2).
+  for (const anker of [false, true]) {
+    const weg = anker ? "Herkunftsanker" : "Textweg";
+    const aufbau = async (annahmeWartezeitMs?: number) => {
+      const candidates = new InMemoryCandidateRepo();
+      const koService = new KoService({ repo: new InMemoryKoRepo() });
+      await koService.activateSearchProjectionV2();
+      const uhr = { ms: Date.parse("2026-10-01T08:00:00Z") };
+      const library = new LibraryService({
+        candidates,
+        koService,
+        externalUpsert: anker,
+        now: () => uhr.ms,
+        ...(annahmeWartezeitMs === undefined ? {} : { annahmeWartezeitMs }),
+      });
+      const quelle = anker ? { ...EINTRAG, provider: "wiki", externalId: "quelle-42" } : EINTRAG;
+      const [a] = await library.createImportCandidates(
+        [{ ...quelle, sourceVersion: 1 }],
+        "imp",
+        NIE_AEHNLICH,
+      );
+      const [b] = await library.createImportCandidates(
+        [{ ...quelle, sourceVersion: 2 }],
+        "imp",
+        NIE_AEHNLICH,
+      );
+      expect(a!.id).not.toBe(b!.id);
+      const create = koService.create.bind(koService);
+      let loesen: () => void = () => undefined;
+      let betreten: () => void = () => undefined;
+      const tor = new Promise<void>((r) => {
+        loesen = r;
+      });
+      const bereit = new Promise<void>((r) => {
+        betreten = r;
+      });
+      let erster = true;
+      // Nur eine zeitliche Barriere vor dem unveränderten echten create — wie bei Ben.
+      koService.create = async (input) => {
+        if (erster) {
+          erster = false;
+          betreten();
+          await tor;
+        }
+        return create(input);
+      };
+      const alterLauf = library
+        .reviewImportCandidate(a!.id, "accept", "reviewer-a", undefined, NIE_AEHNLICH)
+        .then(
+          (value) => ({ value }),
+          (error: { code?: string }) => ({ code: error.code }),
+        );
+      await bereit;
+      uhr.ms += REVIEW_CLAIM_LEASE_MS + 1;
+      expect(await library.recoverStaleReviewClaims()).toEqual({ completed: 0, released: 1 });
+      return { candidates, koService, library, a: a!, b: b!, alterLauf, loesen };
+    };
+
+    it(`B1 · ${weg}: B wartet auf den fortgesetzten alten Halter → genau EINE Kennung`, async () => {
+      const { candidates, koService, library, a, b, alterLauf, loesen } = await aufbau();
+      const bLauf = library.reviewImportCandidate(
+        b.id,
+        "accept",
+        "reviewer-b",
+        undefined,
+        NIE_AEHNLICH,
+      );
+      await new Promise((r) => setTimeout(r, 5));
+      expect(await koService.list(), "Solange A lebt, legt B nicht daneben an.").toHaveLength(0);
+      loesen();
+      expect(await alterLauf).toEqual({ code: "CONFLICT" });
+      const angenommen = await bLauf;
+      const kos = await koService.list();
+      expect(kos, "Ein abgelöster Lauf darf kein zweites Objekt hinterlassen.").toHaveLength(1);
+      expect(kos[0]?.importCandidateId).toBe(a.id);
+      expect(angenommen.status).toBe("angenommen");
+      if (anker) {
+        // Dieselbe Quelle: B schreibt As Objekt fort, dieselbe Kennung.
+        expect(angenommen.koId).toBe(kos[0]?.id);
+        expect(kos[0]?.sources.find((s) => s.externalId === "quelle-42")?.sourceVersion).toBe(2);
+      } else {
+        // Derselbe Inhalt: B legt nichts an und nennt As Objekt.
+        expect(angenommen.koId).toBeNull();
+        expect(angenommen.dublettenbefund).toEqual({
+          ergebnis: "identisch",
+          treffer: { art: "wissensobjekt", koId: kos[0]?.id },
+        });
+      }
+      expect((await candidates.findById(a.id))?.status).toBe("neu");
+    });
+
+    it(`B1 · ${weg}: B gibt nach der Wartezeit mit CONFLICT auf, legt nichts an; der zweite Klick gelingt`, async () => {
+      const { candidates, koService, library, b, alterLauf, loesen } = await aufbau(20);
+      await expect(
+        library.reviewImportCandidate(b.id, "accept", "reviewer-b", undefined, NIE_AEHNLICH),
+      ).rejects.toMatchObject({ code: "CONFLICT" });
+      expect(await koService.list()).toHaveLength(0);
+      expect((await candidates.findById(b.id))?.status, "Claim zurückgegeben.").toBe("neu");
+
+      loesen();
+      await alterLauf;
+      const zweiterKlick = await library.reviewImportCandidate(
+        b.id,
+        "accept",
+        "reviewer-b",
+        undefined,
+        NIE_AEHNLICH,
+      );
+      expect(zweiterKlick.status).toBe("angenommen");
+      expect(await koService.list()).toHaveLength(1);
+    });
+  }
 });
 
 describe("R3-2 · die Recovery schreibt den tatsächlichen Übernahmebefund", () => {
