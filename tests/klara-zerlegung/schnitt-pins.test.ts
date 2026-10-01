@@ -498,6 +498,12 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   "tests/rueckweg-bilder-nutzerweg/pruefbilder.ts": "rueckweg",
   "tests/rueckweg-bilder-nutzerweg/rueckweg-bilder-pg-im-browser.integration.test.ts": "rueckweg",
   "tests/rueckweg-bilder-nutzerweg/tor-zeuge.test.ts": "rueckweg",
+  // AUFNAHME 20260922 · DEPLOY-HEALTH-COMMIT (R-1028, 29.09.2026): der Nachweis „eine
+  // Programmversion" führt das echte Build-Plugin `klara-stand` über `word-addin/taskpane.html` aus
+  // und prüft `APP_VERSION` im gestempelten Panel — Griff `zusammengesetzt`.
+  // GEMESSEN, NICHT GESETZT: `tools/test tests/klara-zerlegung/schnitt-pins` meldete A2 `neu im
+  // Baum, aber nicht gepinnt — Verzeichnis nachfuehren` mit genau diesem Pfad und diesem Griff.
+  "tests/deploy-health-commit/eine-programmversion.test.ts": "zusammengesetzt",
 };
 
 // ------------------------------------------------------------------------------------------------

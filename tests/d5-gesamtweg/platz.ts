@@ -389,7 +389,7 @@ export function flaecheNeuBauen(): { dauerMs: number; sha256: string; dateien: n
   for (const p of pfade) {
     summe.update(`${p}\0`);
     const inhalt = readFileSync(join(DIST, p));
-    // Die EINE gewollt nicht reproduzierbare Stelle: `klaraStand()` (apps/web/vite.config.ts)
+    // Die EINE gewollt nicht reproduzierbare Stelle: `klaraStand()` (apps/web/src/lib/klaraStand.ts)
     // stempelt Bauzeit und Git-Kürzel in `word-addin/taskpane.html`. Der Stempel wird für den Hash
     // auf einen festen Wert gesetzt — der Rest der Datei zählt mit. Gemessen: ohne diese Zeile
     // ergaben zwei Bauten aus demselben Baum verschiedene Hashes.

@@ -11,9 +11,42 @@ export interface Bild {
   readonly viewport: { readonly width: number; readonly height: number };
 }
 
+/** Erwartung an die Übersicht — vom Aufrufer aus Datenbank, Verzeichnis und Sprachkatalog abgeleitet. */
+export interface UebersichtErwartung {
+  readonly id: string;
+  readonly titel: string;
+  readonly pfad: string;
+  readonly stand: string;
+  readonly abschnitte: string;
+  readonly urheber: string;
+  readonly datumPraefix: string;
+  readonly datumTag: string;
+}
+
+/** Was die Übersicht im endgültigen Bildviewport tatsächlich zeigte. */
+export interface UebersichtBefund {
+  readonly pfad: string;
+  readonly zeilen: number;
+  readonly leer: number;
+  readonly fehler: number;
+  readonly id: string | null;
+  readonly linkId: string | null;
+  readonly titel: string;
+  readonly href: string | null;
+  readonly stand: string;
+  readonly abschnitte: string;
+  readonly urheber: string;
+  readonly datum: string;
+}
+
+export interface UebersichtBild extends Bild {
+  readonly semantik: UebersichtBefund;
+}
+
 export declare const BEISPIELBESTAND: readonly (readonly [string, string, string])[];
 export declare const SUCHBEGRIFFE: readonly string[];
 export declare const BREITEN: readonly number[];
+export declare const ANMELDENAME: string;
 export declare const KOPF: {
   readonly zweck: string;
   readonly geltungsbereich: string;
@@ -53,6 +86,13 @@ export declare function lesestandbild(
   breite: number,
   log?: Log,
 ): Promise<Bild>;
+export declare function uebersichtbild(
+  seite: Page,
+  aus: string,
+  breite: number,
+  erwartet: UebersichtErwartung,
+  log?: Log,
+): Promise<UebersichtBild>;
 export declare function sha256(datei: string): string;
 export declare function pngMasse(datei: string): { width: number; height: number } | null;
 export declare function kandidat(): {
