@@ -184,6 +184,17 @@ export interface KlaraEinwilligungsProtokoll {
     input: { actor: string; action: string; target: string; payload?: Record<string, unknown> },
   ): Promise<boolean>;
   exists(filter: { action: string; target: string }): Promise<boolean>;
+  /**
+   * Bens B12: die Erteilungseinträge einer Person — das Aufräumen findet darüber Erteilungen, deren
+   * Zustimmung nie gespeichert wurde (`raeumeAbgelaufeneAuf`). Das Prüfprotokoll selbst ist die
+   * dauerhafte Ablage dieses Nachtrags; eine Zustimmungszeile gibt es für sie nicht.
+   */
+  list(filter: { action: string; actor: string }): Promise<
+    ReadonlyArray<{
+      readonly actor: string;
+      readonly payload?: Record<string, unknown> | undefined;
+    }>
+  >;
 }
 
 /** Die beiden Protokollereignisse — Erteilung und jedes Ende (Widerruf, Ablauf, Entwertung). */
@@ -1199,7 +1210,10 @@ export class KlaraSessionService {
     if (!(await this.repo.grantConsent(gebunden.sessionId, gebunden.revision, consent))) {
       // Der Eintrag steht, die Zustimmung nicht: das Protokoll sagt es ausdrücklich, statt eine
       // Erteilung stehen zu lassen, die nie wirksam war. Scheitert auch das, bleibt der Konflikt die
-      // Antwort — wirksam ist in keinem Fall etwas geworden.
+      // Antwort — wirksam ist in keinem Fall etwas geworden. Bens B12: verloren ist der Abschluss
+      // damit nicht. Das Aufräumen schliesst jeden Erteilungseintrag ohne Zustimmungszeile vor dem
+      // Löschen der Sitzung ab (`trageUnwirksameErteilungenNach`); dauerhaft steht dafür der
+      // Erteilungseintrag selbst.
       await this.protokolliereEnde(
         consent,
         "nicht_wirksam",
@@ -1529,8 +1543,66 @@ export class KlaraSessionService {
             : (consent.revokedAt ?? consent.expiresAt),
         );
       }
+      await this.trageUnwirksameErteilungenNach(sessionId);
     }
     return this.repo.purgeExpiredSessions(grenze);
+  }
+
+  /**
+   * Bens B12 — DIE ERTEILUNG, DIE NIE WIRKSAM WURDE, BEKOMMT IHREN ABSCHLUSS AUCH NACH EINEM AUSFALL.
+   *
+   * Verliert `grantConsent` das Speichern, nachdem der Erteilungseintrag schon stand, gibt es keine
+   * Zustimmungszeile — und damit nichts, woraus `laden` oder die Schleife oben einen gescheiterten
+   * Endeintrag `nicht_wirksam` nachtragen könnten. Dauerhaft vorhanden ist nur der Erteilungseintrag.
+   * Deshalb liest das Aufräumen ihn: ein Erteilungseintrag dieser Sitzung ohne Zustimmungszeile und
+   * ohne Endeintrag war nie wirksam (Zustimmungszeilen löscht ausschliesslich das Aufräumen selbst,
+   * und erst danach). Er wird als `nicht_wirksam` abgeschlossen, bevor die Sitzung gelöscht wird;
+   * scheitert das, wird nichts gelöscht und der nächste Lauf versucht es erneut.
+   *
+   * Nur hier und nicht in `laden`: an einer lebenden Sitzung kann eine Erteilung gerade zwischen
+   * Eintrag und Speichern stehen; erst eine abgelaufene Sitzung nimmt keine Zustimmung mehr an.
+   * `endedAt` ist der Erteilungszeitpunkt — wirksam war die Zustimmung zu keinem Zeitpunkt.
+   */
+  private async trageUnwirksameErteilungenNach(sessionId: string): Promise<void> {
+    const session = this.protokoll ? await this.repo.findSession(sessionId) : undefined;
+    if (!this.protokoll || !session) {
+      return;
+    }
+    const gespeichert = new Set((await this.repo.alleConsents(sessionId)).map((c) => c.consentId));
+    const erteilungen = await this.protokoll.list({
+      action: KLARA_CONSENT_AUDIT_GRANTED,
+      actor: session.actorId,
+    });
+    for (const eintrag of erteilungen) {
+      const p = eintrag.payload ?? {};
+      const consentId = p.consentId;
+      if (
+        p.sessionId !== sessionId ||
+        typeof consentId !== "string" ||
+        gespeichert.has(consentId)
+      ) {
+        continue;
+      }
+      const target = `klara-consent:${consentId}`;
+      if (await this.protokoll.exists({ action: KLARA_CONSENT_AUDIT_ENDED, target })) {
+        continue;
+      }
+      await this.protokoll.recordOnce(`${KLARA_CONSENT_AUDIT_ENDED}:${consentId}`, {
+        actor: eintrag.actor,
+        action: KLARA_CONSENT_AUDIT_ENDED,
+        target,
+        payload: {
+          consentId,
+          sessionId,
+          documentContextId: p.documentContextId,
+          providerReference: p.providerReference,
+          status: "nicht_wirksam",
+          endedAt: p.grantedAt,
+          expiresAt: p.expiresAt,
+          nachgetragenAt: new Date(this.now()).toISOString(),
+        },
+      });
+    }
   }
 
   /** `min(lastActivity + inactivityTimeout, createdAt + absoluteLifetime)` — KW-S4-03 §1.2. */

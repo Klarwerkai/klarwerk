@@ -68,21 +68,37 @@ function aufbau(over: Partial<KlaraPolicyQuelle> = {}) {
   };
   const audit = new AuditService({ repo: new InMemoryAuditRepo(), now: () => jetzt });
   // Das echte Prüfprotokoll hinter einem Schalter: anhalten (B1) und ausfallen lassen (B1/B2).
-  const lage = { ausfall: false, halt: null as Promise<void> | null };
+  // Bens B12: `endeAusfall` lässt nur Endeinträge scheitern, `nachErteilung` hält NACH einem
+  // geschriebenen Erteilungseintrag an (das Fenster vor dem Speichern der Zustimmung).
+  const lage = {
+    ausfall: false,
+    endeAusfall: false,
+    halt: null as Promise<void> | null,
+    nachErteilung: null as (() => Promise<void>) | null,
+  };
   const protokoll: KlaraEinwilligungsProtokoll = {
     async recordOnce(eventId, input) {
       if (lage.halt) {
         await lage.halt;
       }
-      if (lage.ausfall) {
+      if (lage.ausfall || (lage.endeAusfall && input.action === KLARA_CONSENT_AUDIT_ENDED)) {
         throw new Error("Protokoll nicht erreichbar");
       }
-      return audit.recordOnce(eventId, input);
+      const geschrieben = await audit.recordOnce(eventId, input);
+      if (input.action === KLARA_CONSENT_AUDIT_GRANTED && lage.nachErteilung) {
+        await lage.nachErteilung();
+      }
+      return geschrieben;
     },
     exists(filter) {
       return lage.ausfall
         ? Promise.reject(new Error("Protokoll nicht erreichbar"))
         : audit.exists(filter);
+    },
+    list(filter) {
+      return lage.ausfall
+        ? Promise.reject(new Error("Protokoll nicht erreichbar"))
+        : audit.list(filter);
     },
   };
   const repo = new VerlierendesRepo();
@@ -464,6 +480,99 @@ describe("Bens B2 (Runde 2) · das Aufräumen löscht keinen Nachweis", () => {
     vorspulen(TAGE_32);
     await dienst.raeumeAbgelaufeneAuf();
     expect(await enden(audit)).toHaveLength(1);
+  });
+});
+
+// ================================================================================================
+// Lauf 3 · Bens B12 — DIE NIE WIRKSAME ERTEILUNG VERLIERT IHREN ABSCHLUSS NICHT.
+// ================================================================================================
+//
+// Bens Fehlerkombination: Erteilungseintrag steht, ein Umbinden gewinnt das Revisionsrennen, das
+// Speichern der Zustimmung scheitert (CONFLICT), und der Endeintrag `nicht_wirksam` fällt aus. Eine
+// Zustimmungszeile, aus der nachgetragen werden könnte, gibt es nicht.
+
+describe("Bens B12 · abgelehnte Erteilung bei Protokollausfall: der Abschluss wird dauerhaft nachgeholt", () => {
+  const TAGE_32 = 32 * 24 * 60 * 60 * 1000;
+
+  /** Erteilung, die nach ihrem Eintrag ein echtes Umbinden verliert — Endeintrag fällt aus. */
+  async function verloreneErteilung() {
+    const a = aufbau();
+    const { sicht, bindung } = await sitzung(a.dienst);
+    let weiter: () => void = () => undefined;
+    let erreicht: () => void = () => undefined;
+    const steht = new Promise<void>((r) => {
+      erreicht = r;
+    });
+    a.lage.nachErteilung = () => {
+      a.lage.nachErteilung = null;
+      erreicht();
+      return new Promise<void>((r) => {
+        weiter = r;
+      });
+    };
+    a.lage.endeAusfall = true;
+    const erteilung = a.dienst.grantConsent(sicht.sessionId, bindung).catch((e) => e);
+    await steht;
+    const neu = await a.dienst.rebindDocumentContext(sicht.sessionId, bindung, {
+      kind: "saved",
+      hostDocumentId: "word-doc-neu",
+    });
+    weiter();
+    expect((await erteilung).code).toBe("CONFLICT");
+    expect(await a.repo.alleConsents(sicht.sessionId)).toHaveLength(0);
+    expect(await enden(a.audit)).toEqual([]);
+    a.lage.endeAusfall = false;
+    const neueBindung = { ...bindung, documentContextId: neu.documentContextId };
+    const [erteilt] = await a.audit.list({ action: KLARA_CONSENT_AUDIT_GRANTED });
+    return { ...a, sicht, neueBindung, erteilt };
+  }
+
+  it("Status, Tor und Aufräumen nach 32 Tagen: genau ein Endeintrag `nicht_wirksam`", async () => {
+    const { dienst, repo, audit, sicht, neueBindung, erteilt, vorspulen } =
+      await verloreneErteilung();
+    await dienst.getSession(sicht.sessionId, neueBindung);
+    expect((await dienst.pruefeExterneAusfuehrung(sicht.sessionId, neueBindung)).erlaubt).toBe(
+      false,
+    );
+    vorspulen(TAGE_32);
+    expect(await dienst.raeumeAbgelaufeneAuf()).toBe(1);
+    expect(await repo.findSession(sicht.sessionId)).toBeUndefined();
+    expect(await enden(audit)).toEqual([
+      expect.objectContaining({
+        consentId: erteilt?.payload.consentId,
+        sessionId: sicht.sessionId,
+        status: "nicht_wirksam",
+        // Wirksam war sie zu keinem Zeitpunkt: das Ende ist der Erteilungsversuch selbst.
+        endedAt: erteilt?.payload.grantedAt,
+        nachgetragenAt: new Date(T0 + TAGE_32).toISOString(),
+      }),
+    ]);
+    // Ein zweiter Lauf erfindet nichts dazu.
+    await dienst.raeumeAbgelaufeneAuf();
+    expect(await enden(audit)).toHaveLength(1);
+    expect(await audit.verify()).toBe(true);
+  });
+
+  it("fällt das Protokoll auch beim Aufräumen aus, wird nichts gelöscht — der nächste Lauf holt nach", async () => {
+    const { dienst, repo, audit, lage, sicht, vorspulen } = await verloreneErteilung();
+    vorspulen(TAGE_32);
+    lage.endeAusfall = true;
+    await expect(dienst.raeumeAbgelaufeneAuf()).rejects.toThrow("Protokoll nicht erreichbar");
+    expect(await repo.findSession(sicht.sessionId)).toBeDefined();
+    lage.endeAusfall = false;
+    expect(await dienst.raeumeAbgelaufeneAuf()).toBe(1);
+    expect((await enden(audit)).map((e) => e.status)).toEqual(["nicht_wirksam"]);
+  });
+
+  it("GEGENPROBE: eine wirksam gespeicherte Zustimmung wird beim Aufräumen nie `nicht_wirksam`", async () => {
+    const { dienst, audit, vorspulen } = aufbau();
+    const { sicht, bindung } = await sitzung(dienst);
+    await dienst.grantConsent(sicht.sessionId, bindung);
+    await dienst.revokeConsent(sicht.sessionId, bindung);
+    await dienst.grantConsent(sicht.sessionId, bindung);
+    vorspulen(TAGE_32);
+    expect(await dienst.raeumeAbgelaufeneAuf()).toBe(1);
+    expect((await enden(audit)).map((e) => e.status).sort()).toEqual(["expired", "revoked"]);
   });
 });
 
