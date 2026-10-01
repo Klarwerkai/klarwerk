@@ -1716,7 +1716,7 @@
     // JOB 3019 (KA5): `selection` ist der SECHSTE und letzte Parameter — aus demselben Grund wie
     // `bindungsKopf`: er kommt herein, er wird nicht hier drinnen geholt. Er steht ANS ENDE, damit
     // jeder bestehende Aufruf mit fuenf Argumenten unveraendert denselben Koerper absetzt.
-    function performAsk(question, locale, fetchFn, timeoutMs, bindungsKopf, selection) {
+    function performAsk(question, locale, fetchFn, timeoutMs, bindungsKopf, selection, questionSource) {
       var controller = new AbortController();
       var timedOut = false;
       var timer = setTimeout(function () {
@@ -1752,7 +1752,11 @@
         method: "POST",
         credentials: "include",
         headers: askKopf,
-        body: JSON.stringify({ question: question, locale: locale, mode: "retrieval-only", selection: markierung.length > 0 ? markierung : undefined }),
+        // R-0639 (Bens Befund B1): stammt die FRAGE selbst aus der Markierung, sagt das Fenster es
+        // — `questionSource: "selection"`. Der Server verlangt dann fuer die Frage dieselbe
+        // Dokumenttext-Pruefung wie fuer `selection`; ohne Angabe (getippte Frage) faellt das Feld
+        // bei `JSON.stringify` heraus und der Koerper bleibt Zeichen fuer Zeichen der bisherige.
+        body: JSON.stringify({ question: question, locale: locale, mode: "retrieval-only", selection: markierung.length > 0 ? markierung : undefined, questionSource: questionSource === "selection" ? "selection" : undefined }),
         signal: controller.signal,
       })
         .then(function (res) {
@@ -7486,7 +7490,9 @@
           // JOB 3019 (KA5): die Markierung aus DERSELBEN Vorbereitung. Kein zweites
           // `readAskSelection`, kein zweiter Zustand — sonst koennte die Zeile ueber dem Feld eine
           // andere Markierung meinen als die, die wirklich abgeht.
-          prep.selection
+          prep.selection,
+          // R-0639 (Befund B1): bei leerem Eingabefeld IST die Markierung die Frage.
+          prep.from === "selection" ? "selection" : undefined
         ).then(function (outcome) {
           currentAskOutcome = outcome;
           // Der EINE Ausgang aus dem Wartezustand — Antwort, Luecke, Frist, Fehler, fehlende
@@ -10385,7 +10391,11 @@
           // dieser Block gar kein neues Ziel anspricht: `/api/ask` steht laengst in der Liste.
           window.fetch.bind(window),
           WORD_ADDIN_ASK_TIMEOUT_MS,
-          klaraS4Header()
+          klaraS4Header(),
+          undefined,
+          // R-0639 (Befund B1): ueber einer Markierung ist sie das MATERIAL des Zurufs und reist im
+          // Fragetext — der Server muss es wissen, um den Dokumenttext-Riegel anzuwenden.
+          prep.from === "selection" ? "selection" : undefined
         ).then(function (outcome) {
           ka6Laeuft = false;
           ka6Zeichnen();

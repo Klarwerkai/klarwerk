@@ -57,7 +57,10 @@ const code = (pfad: string): string =>
 
 const FRAGE = "Wie wird die Zylinderkopfdichtung XQ42 gewechselt?";
 /** Ein Satz, der nur in der Markierung steht — wo er im Prompt auftaucht, kam er von dort. */
-const MARKIERUNG = "Absatz 4.2 unseres Entwurfs: Dichtung XQ42 nur mit Drehmoment 38 Nm anziehen.";
+// R5d verlangt mehr: die Markierung muss ALS FRAGE den Kandidatenfilter tragen, sonst hiesse „nichts
+// ging hinaus" in R5b/R5c nur „nichts war relevant". Deshalb nennt sie den Gegenstand des Eintrags.
+const MARKIERUNG =
+  "Zylinderkopfdichtung XQ42 wechseln: laut Entwurf nur mit Drehmoment 38 Nm anziehen.";
 const MARKER = "Drehmoment 38 Nm";
 
 /** Ein Betrieb mit verdrahteter Cloud, Adminwahl extern und zentraler Freigabe. */
@@ -464,6 +467,266 @@ describe("R-0639 · R4 — am Draht: was den Modellclient WIRKLICH erreicht", ()
     expect(w.entscheidungen()).toHaveLength(1);
     expect(w.protokoll.length).toBeGreaterThan(0);
     expect(w.protokoll.join("\n")).not.toContain(MARKER);
+    await w.app.close();
+  });
+});
+
+// ------------------------------------------------------------------------------------------------
+// R5 · BENS BEFUND B1 (Runde 1): DIE ECHTEN WORD-EINSTIEGE, UNVERÄNDERT AUSGEFÜHRT
+// ------------------------------------------------------------------------------------------------
+//
+// R1 bis R4 bauten den Rumpf selbst — mit getrennter `question` und `selection`. Das Aufgabenfenster
+// tut das auf zwei Wegen NICHT: „Klara fragen" bei leerem Eingabefeld macht die Markierung zur
+// Frage (`prepareAskQuestion`, Lage `selection`), und ein Zuruf über einer Markierung schickt sie
+// im Fragetext (`ka6Absenden`). Ben hat gezeigt, dass genau diese Wege am Riegel vorbeiliefen.
+//
+// HIER LAUFEN DIE AUSGELIEFERTEN FUNKTIONEN SELBST: `askKlara` und `ka6Absenden` werden aus
+// `taskpane.html` geschnitten und mit dem echten Hilfsblock (`prepareAskQuestion`, `performAsk`)
+// ausgeführt. Ersetzt sind nur Hostzugriffe (Word-Markierung, DOM, Wörterbuch, Anzeige) und der
+// Transport: `fetch` geht über `app.inject` an die ECHTE Route aus `wegAufbauen`.
+const TASKPANE = quelle("apps/web/public/word-addin/taskpane.html");
+
+/** Schneidet `function <name>(…) { … }` aus — mit Klammerzählung über Strings und Kommentare. */
+function funktionsquelle(name: string): string {
+  const start = TASKPANE.indexOf(`function ${name}(`);
+  if (start < 0) {
+    throw new Error(`function ${name} fehlt in taskpane.html`);
+  }
+  let tiefe = 0;
+  let i = TASKPANE.indexOf("{", start);
+  for (; i < TASKPANE.length; i += 1) {
+    const z = TASKPANE[i];
+    const weiter = TASKPANE.slice(i, i + 2);
+    if (weiter === "//") {
+      i = TASKPANE.indexOf("\n", i);
+      continue;
+    }
+    if (weiter === "/*") {
+      i = TASKPANE.indexOf("*/", i) + 1;
+      continue;
+    }
+    if (z === '"' || z === "'") {
+      let j = i + 1;
+      while (TASKPANE[j] !== z) {
+        j += TASKPANE[j] === "\\" ? 2 : 1;
+      }
+      i = j;
+      continue;
+    }
+    if (z === "{") tiefe += 1;
+    if (z === "}") {
+      tiefe -= 1;
+      if (tiefe === 0) return TASKPANE.slice(start, i + 1);
+    }
+  }
+  throw new Error(`function ${name}: Ende nicht gefunden`);
+}
+
+const HILFSBLOCK = TASKPANE.slice(
+  TASKPANE.indexOf("// KW-WORDADDIN-HELPERS-START"),
+  TASKPANE.indexOf("// KW-WORDADDIN-HELPERS-END"),
+);
+
+/** Ein `fetch`, der an die echte Route geht — der einzige ersetzte Transport. */
+function fetchAn(app: FastifyInstance, laeufe: Promise<unknown>[]) {
+  return (url: string, init: { headers: Record<string, string>; body: string }) => {
+    const lauf = antworten(app, url, init);
+    laeufe.push(lauf);
+    return lauf;
+  };
+}
+
+async function antworten(
+  app: FastifyInstance,
+  url: string,
+  init: { headers: Record<string, string>; body: string },
+) {
+  {
+    const res = await app.inject({
+      method: "POST",
+      url,
+      headers: init.headers,
+      payload: init.body,
+    });
+    return {
+      status: res.statusCode,
+      ok: res.statusCode >= 200 && res.statusCode < 300,
+      headers: { get: (n: string) => res.headers[n.toLowerCase()] ?? null },
+      json: async () => JSON.parse(res.body) as unknown,
+    };
+  }
+}
+
+/**
+ * Führt einen Einstieg des Fensters aus. Die Hostattrappen stehen in EINEM Objekt, das per `with`
+ * vor den Bereich der Funktionen gelegt wird — so laufen die geschnittenen Funktionen Zeichen für
+ * Zeichen, wie sie ausgeliefert sind. `performAsk` ist der ECHTE aus dem Hilfsblock; gezählt und
+ * abgewartet wird am Transport (`fetch`).
+ */
+async function einstiegAusfuehren(
+  w: Weg,
+  einstieg: "askKlara" | "ka6Absenden",
+  eingabefeld: string,
+  markierung: string,
+): Promise<void> {
+  const laeufe: Promise<unknown>[] = [];
+  const feld = (wert = "") => ({ value: wert, className: "", disabled: false, textContent: "" });
+  const felder: Record<string, ReturnType<typeof feld>> = {
+    "ask-input": feld(eingabefeld),
+  };
+  const leer = () => undefined;
+  const host: Record<string, unknown> = {
+    document: {
+      getElementById: (id: string) => {
+        felder[id] = felder[id] ?? feld();
+        return felder[id];
+      },
+    },
+    window: { fetch: fetchAn(w.app, laeufe) },
+    fetch: fetchAn(w.app, laeufe),
+    readAskSelection: (rueckruf: (text: string) => void) => rueckruf(markierung),
+    klaraS4Header: () => w.kopf,
+    klaraS4FragenGesperrt: () => false,
+    t: (schluessel: string) => schluessel,
+    lang: "de",
+    askLaeuft: false,
+    currentAskQuestion: "",
+    currentAskOutcome: null,
+    resetAskResult: leer,
+    showAskStatus: leer,
+    updateAskState: leer,
+    askWartezustand: leer,
+    renderAskOutcome: leer,
+    ka6Laeuft: false,
+    ka6KiFormuliert: false,
+    ka6VorschlagAktiv: false,
+    ka6Lage: () => ({ erlaubt: true }),
+    ka6Zeichnen: leer,
+    ka6Meldung: leer,
+    ka6KnopfzustandZurueck: leer,
+    ka6KopierknopfOeffnen: leer,
+    applyAnswerCompaction: leer,
+  };
+  const fabrik = new Function(
+    "host",
+    `with (host) {
+       ${HILFSBLOCK}
+       ${funktionsquelle("ka6Zurufgrundlage")}
+       ${funktionsquelle("askKlara")}
+       ${funktionsquelle("ka6Absenden")}
+       return { askKlara: askKlara, ka6Absenden: ka6Absenden };
+     }`,
+  );
+  const fenster = fabrik(host) as {
+    askKlara: () => void;
+    ka6Absenden: (art: { auftrag: string }) => void;
+  };
+  if (einstieg === "askKlara") {
+    fenster.askKlara();
+  } else {
+    fenster.ka6Absenden({ auftrag: "ka6AuftragUmformulieren" });
+  }
+  expect(laeufe.length, `${einstieg}: kein Abruf ist abgegangen`).toBe(1);
+  await Promise.all(laeufe);
+  // Die `.then`-Zweige von `performAsk` und der Einstiege laufen danach — einige Takte abwarten.
+  for (let takt = 0; takt < 5; takt += 1) {
+    await new Promise((r) => setTimeout(r, 0));
+  }
+}
+
+describe("R-0639 · R5 — Bens Befund B1: die Markierung als Frage bleibt hinter dem Riegel", () => {
+  it("R5a · KALIBRIERUNG: getippte Frage über `askKlara` — das Modell WIRD gerufen, ohne Markierung", async () => {
+    const w = await wegAufbauen();
+    await einstiegAusfuehren(w, "askKlara", FRAGE, MARKIERUNG);
+    expect(w.prompts.length).toBe(1);
+    expect(w.prompts[0]).toContain(FRAGE);
+    expect(w.prompts[0]).not.toContain(MARKER);
+    await w.app.close();
+  });
+
+  it("R5b · `askKlara` bei LEEREM Eingabefeld: die Markierung ist die Frage und erreicht das Modell NICHT", async () => {
+    const w = await wegAufbauen();
+    await einstiegAusfuehren(w, "askKlara", "", MARKIERUNG);
+    expect(w.prompts.join("\n")).not.toContain(MARKER);
+    expect(w.prompts).toEqual([]);
+    expect(w.entscheidungen()).toEqual([{ entscheidung: "blockiert", grund: "riegel_aus" }]);
+    await w.app.close();
+  });
+
+  it("R5c · `ka6Absenden` über einer Markierung: der Zuruf erreicht das Modell NICHT", async () => {
+    const w = await wegAufbauen();
+    await einstiegAusfuehren(w, "ka6Absenden", "", MARKIERUNG);
+    expect(w.prompts.join("\n")).not.toContain(MARKER);
+    expect(w.prompts).toEqual([]);
+    expect(w.entscheidungen()).toEqual([{ entscheidung: "blockiert", grund: "riegel_aus" }]);
+    await w.app.close();
+  });
+
+  it("R5d · GEGENPROBE: dieselben zwei Einstiege mit einzig geöffnetem Riegel — die Markierung geht hinaus", async () => {
+    for (const einstieg of ["askKlara", "ka6Absenden"] as const) {
+      const w = await wegAufbauen({ riegelOffen: true });
+      await einstiegAusfuehren(w, einstieg, "", MARKIERUNG);
+      expect(w.prompts.join("\n"), einstieg).toContain(MARKER);
+      expect(w.entscheidungen(), einstieg).toEqual([{ entscheidung: "freigegeben" }]);
+      await w.app.close();
+    }
+  });
+
+  it("R5e · ein Zuruf OHNE Markierung (nur Eingabefeld) bleibt die zugestimmte Klasse `question`", async () => {
+    const w = await wegAufbauen();
+    await einstiegAusfuehren(w, "ka6Absenden", FRAGE, "");
+    expect(w.prompts.length).toBe(1);
+    expect(w.entscheidungen()).toEqual([]);
+    await w.app.close();
+  });
+});
+
+describe("R-0639 · R6 — die Herkunft der Frage an der Route, fail-closed", () => {
+  it("R6a · jeder Wert ausser „fehlt“ und `manual` zählt als Dokumenttext", async () => {
+    for (const herkunft of ["selection", "Selection", "dokument", ""]) {
+      const w = await wegAufbauen();
+      const res = await w.app.inject({
+        method: "POST",
+        url: "/api/ask",
+        headers: { ...w.kopf, "content-type": "application/json" },
+        payload: {
+          question: MARKIERUNG,
+          locale: "de",
+          mode: "retrieval-only",
+          questionSource: herkunft,
+        },
+      });
+      expect(res.statusCode, herkunft).toBe(200);
+      expect(w.prompts, herkunft).toEqual([]);
+      await w.app.close();
+    }
+    const getippt = await wegAufbauen();
+    await getippt.app.inject({
+      method: "POST",
+      url: "/api/ask",
+      headers: { ...getippt.kopf, "content-type": "application/json" },
+      payload: { question: FRAGE, locale: "de", mode: "retrieval-only", questionSource: "manual" },
+    });
+    expect(getippt.prompts.length).toBe(1);
+    await getippt.app.close();
+  });
+
+  it("R6b · offener Riegel, aber als vertraulich markiert: die Markierung als Frage bleibt draussen", async () => {
+    const w = await wegAufbauen({ riegelOffen: true });
+    await w.app.inject({
+      method: "POST",
+      url: "/api/ask",
+      headers: { ...w.kopf, "content-type": "application/json" },
+      payload: {
+        question: MARKIERUNG,
+        locale: "de",
+        mode: "retrieval-only",
+        questionSource: "selection",
+        selectionConfidentiality: "vertraulich",
+      },
+    });
+    expect(w.prompts).toEqual([]);
+    expect(w.entscheidungen()).toEqual([{ entscheidung: "blockiert", grund: "vertraulich" }]);
     await w.app.close();
   });
 });

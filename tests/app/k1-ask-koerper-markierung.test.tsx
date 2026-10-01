@@ -144,7 +144,16 @@ describe("JOB 3056 Nachzug · KA5 am Koerper — Fall C: ohne getippten Text ist
     // verdoppelte dieselben Terme in der serverseitigen Suchschaerfung.
     const lauf = await fragen({ markierung: MARKIERUNG, eingabe: "" });
     const koerper = askKoerper(lauf);
-    expect(koerper).toEqual({ question: MARKIERUNG, locale: "de", mode: "retrieval-only" });
+    // R-0639 (Aufnahme gesamt-klara-extern, Bens Befund B1): die Markierung IST hier die Frage —
+    // und das Fenster sagt es (`questionSource: "selection"`), damit der Server für sie die
+    // Dokumenttext-Prüfung verlangt. Ohne dieses Feld lief Dokumenttext unter der Klasse
+    // `question` am Riegel vorbei. Alles andere bleibt: kein `selection`-Feld, dieselbe Frage.
+    expect(koerper).toEqual({
+      question: MARKIERUNG,
+      locale: "de",
+      mode: "retrieval-only",
+      questionSource: "selection",
+    });
     expect(Object.keys(koerper)).not.toContain("selection");
   });
 });

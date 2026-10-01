@@ -57,6 +57,13 @@ const askBodySchema = {
     // (`markierungVertraulich`). Sie kann den Dokumenttext nur ZURÜCKHALTEN, nie freigeben — die
     // Freigabe entscheidet allein `pruefeDokumenttextFreigabe` im Sitzungsdienst.
     selectionConfidentiality: { type: "string" },
+    // R-0639, BENS BEFUND B1 (Runde 1) — WOHER DER FRAGETEXT STAMMT.
+    // Das Aufgabenfenster schickt die Word-Markierung auf zwei Wegen ALS `question` statt als
+    // `selection`: „Klara fragen" bei leerem Eingabefeld (`prepareAskQuestion`, Lage `selection`)
+    // und jeder Zuruf über einer Markierung (`ka6Absenden`). Dann IST die Frage Dokumenttext, und
+    // die Klasse `question` deckt sie nicht. Das Fenster sagt es mit `questionSource: "selection"`.
+    // Ohne `enum`: jeder Wert ausser „fehlt" und `manual` zählt als Dokumenttext (`frageAusDokument`).
+    questionSource: { type: "string" },
   },
 } as const;
 
@@ -260,6 +267,14 @@ export function klaraBindungVorhanden(headers: Record<string, unknown>): boolean
 // (`KLARA_DOCUMENT_TEXT_EGRESS_ENABLED` in `services/reasoner/src/klara-policy.ts`). Das Protokoll
 // nennt Entscheidung und Grund — nie die Passage, nie die Frage, nie eine Kopfzeile.
 
+/**
+ * R-0639, Befund B1: trägt `question` Dokumenttext? Nur „fehlt" (Bestandsclients, Konsole) und
+ * ausdrücklich `manual` heissen getippt — jeder andere Wert zählt als Dokument.
+ */
+export function frageAusDokument(herkunft: unknown): boolean {
+  return !(herkunft === undefined || herkunft === "manual");
+}
+
 /** Nur ein fehlendes Feld oder ausdrücklich `intern` ist NICHT vertraulich — alles andere sperrt. */
 export function markierungVertraulich(stufe: unknown): boolean {
   return !(stufe === undefined || stufe === "intern");
@@ -421,6 +436,7 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
         mode?: string;
         selection?: string;
         selectionConfidentiality?: string;
+        questionSource?: string;
       };
     }>(
       "/api/ask",
@@ -506,6 +522,20 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
         // hängt der Vertrag von `KA4-E1`.
         // R-0639: gesetzt ausschliesslich in den beiden Zweigen, deren KA4-Freigabe bestätigt ist.
         let ka4Bestaetigt = false;
+        // R-0639, Befund B1: STAMMT DIE FRAGE SELBST AUS DEM DOKUMENT, verlässt sie die Enge nur mit
+        // bestandener Dokumenttext-Prüfung — dieselbe Prüfung, dieselbe Vertraulichkeitsregel wie
+        // für `selection`. Hält sie, läuft der Zweig in die unveränderte Enge (retrieval-only, kein
+        // Modell), genau wie ohne Einwilligung. Eine getippte Frage (`manual` oder ohne Angabe)
+        // fragt die Prüfung nicht: sie ist die Klasse `question`, für die zugestimmt wurde.
+        const frageDarfHinaus = async (actorId: string): Promise<boolean> =>
+          !frageAusDokument(request.body.questionSource) ||
+          (await dokumenttextFreigabe(
+            deps.klaraSessions,
+            request.headers,
+            actorId,
+            markierungVertraulich(request.body.selectionConfidentiality),
+            request.log,
+          ));
         const answer = async (
           actorId: string,
           opts?: Parameters<AskService["ask"]>[3],
@@ -563,7 +593,13 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
           // Dokument hebt die Enge auf. Ohne sie fällt der Ablauf in den unveränderten Zweig
           // darunter — Zeile für Zeile derselbe wie vor KA4.
           if (
-            await ka4Freigabe(deps.klaraSessions, request.headers, auth.principal.id, request.log)
+            (await ka4Freigabe(
+              deps.klaraSessions,
+              request.headers,
+              auth.principal.id,
+              request.log,
+            )) &&
+            (await frageDarfHinaus(auth.principal.id))
           ) {
             ka4Bestaetigt = true;
             // `gapPolicy` bleibt: die Wissenslücken-Nebenwirkung ist keine Egressfrage und war nie
@@ -602,7 +638,10 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
           // KW-KA4: derselbe Riegel wie im Add-on-Zweig. Dieser Weg ist der, den das Word-Panel
           // heute tatsächlich fährt (same-origin, Sitzungscookie — `taskpane.html:910-916`), und
           // deshalb muss die Einwilligung genau hier greifen.
-          if (await ka4Freigabe(deps.klaraSessions, request.headers, user.id, request.log)) {
+          if (
+            (await ka4Freigabe(deps.klaraSessions, request.headers, user.id, request.log)) &&
+            (await frageDarfHinaus(user.id))
+          ) {
             ka4Bestaetigt = true;
             // Der normale Answerweg — dieselbe Form wie der Konsolen-Ask darunter, keine
             // Sonderbehandlung: `validatedOnly`/`retrievalOnly` entfallen, alles andere bleibt.
