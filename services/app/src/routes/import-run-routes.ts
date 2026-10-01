@@ -29,12 +29,19 @@
 // WARUM DIE GAP-BINDUNG HIER `RELATION_NOT_AVAILABLE` IST.
 // ------------------------------------------------------------------------------------------------
 //
-// `ImportRunItemRef` fuehrt keine Wissensluecken-Relation (types.ts:398-408). Der ehrliche Wert ist
-// deshalb genau der kanonische Nichtwissen-Wert des Paares — `RELATION_NOT_AVAILABLE` mit `null` —
-// und NICHT `AVAILABLE` mit `[]`. Die leere Liste hiesse „nachgesehen, es gibt keine"; hier wurde
-// aber gar nicht nachgesehen. `pruefeGapBindung` erzwingt das Paar; der Test ruft dieselbe Regel
-// ueber die HTTP-Grenze auf.
+// `ImportRunItemRef` fuehrt keine Wissensluecken-Relation (types.ts:398-408). Ohne Lückenport ist
+// der ehrliche Wert deshalb genau der kanonische Nichtwissen-Wert des Paares —
+// `RELATION_NOT_AVAILABLE` mit `null` — und NICHT `AVAILABLE` mit `[]`. Die leere Liste hiesse
+// „nachgesehen, es gibt keine"; ohne Port wurde aber gar nicht nachgesehen. `pruefeGapBindung`
+// erzwingt das Paar; der Test ruft dieselbe Regel ueber die HTTP-Grenze auf.
+//
+// R-0142 (Lauf 5 R3): MIT Lückenport (`AskService.offeneLueckenZu`, verdrahtet in der
+// Kompositionswurzel) wird nachgesehen — `AVAILABLE` mit den Kennungen der offenen Lücken, für
+// deren Frage die Antwortsuche das Objekt heranzieht (`[]` = nachgesehen, keine). Wie viele offene
+// Lücken geprüft wurden, steht daneben (`knowledgeGapScope`); ist das weniger als alle, ist die
+// Liste eine Untergrenze.
 import type { FastifyPluginAsync } from "fastify";
+import { type Gap, redactGapForViewer } from "../../../ask";
 import type { KoService } from "../../../knowledge-object";
 import type {
   ExternalSourceRecord,
@@ -43,6 +50,7 @@ import type {
   ImportRunItemRef,
   ImportRunRepo,
 } from "../../../library-analytics";
+import { can } from "../../../rbac";
 import type { Guards } from "../http";
 import {
   type ImportRunSourceSync,
@@ -65,6 +73,15 @@ export interface ImportRunRoutesDeps {
    * `GET /api/admin/import/knowledge/:koId` nicht.
    */
   readonly koService?: KoService;
+  /**
+   * R-0142 (Lauf 5 R3, Bens B7): offene Lücken je Objekt (`AskService.offeneLueckenZu`). Fehlt der
+   * Port, bleibt die Lückenbindung ehrlich `RELATION_NOT_AVAILABLE`.
+   */
+  readonly luecken?: {
+    offeneLueckenZu(
+      koIds: readonly string[],
+    ): Promise<{ bezug: Map<string, Gap[]>; geprueft: number; offen: number }>;
+  };
   readonly guards: Guards;
 }
 
@@ -132,8 +149,18 @@ function quelleNachAussen(satz: ExternalSourceRecord) {
   };
 }
 
+/** Das Lücken-Paar auf der Leitung: ohne Port ehrlich nicht verfügbar, sonst die Kennungen. */
+type LueckenPaar =
+  | { knowledgeGapRelationState: "RELATION_NOT_AVAILABLE"; knowledgeGapIds: null }
+  | { knowledgeGapRelationState: "AVAILABLE"; knowledgeGapIds: string[] };
+
+const KEIN_LUECKENBEZUG: LueckenPaar = {
+  knowledgeGapRelationState: "RELATION_NOT_AVAILABLE",
+  knowledgeGapIds: null,
+};
+
 /** Eine Elementreferenz auf der Leitung, samt des ehrlichen Gap-Paares (siehe Kopf). */
-function elementNachAussen(ref: ImportRunItemRef) {
+function elementNachAussen(ref: ImportRunItemRef, luecken: LueckenPaar = KEIN_LUECKENBEZUG) {
   return {
     importId: ref.importId,
     ordinal: ref.ordinal,
@@ -142,8 +169,7 @@ function elementNachAussen(ref: ImportRunItemRef) {
     knowledgeObjectId: ref.knowledgeObjectId,
     itemOutcome: ref.itemOutcome,
     itemFailureCode: ref.itemFailureCode,
-    knowledgeGapRelationState: "RELATION_NOT_AVAILABLE" as const,
-    knowledgeGapIds: null,
+    ...luecken,
   };
 }
 
@@ -159,6 +185,55 @@ function laufDerRevision(satz: ExternalSourceRecord): string | null {
 export function importRunRoutes(deps: ImportRunRoutesDeps): FastifyPluginAsync {
   const { importRuns, externalSources, guards } = deps;
   const quellabgleich = deps.quellabgleich ?? new InMemoryQuellabgleichRepo();
+
+  /**
+   * R-0142 (Lauf 5 R3): das Lücken-Paar je Objekt, EINMAL je Anfrage erhoben. Nur Objekte, die
+   * dieser Betrachter sehen darf, bekommen einen Bezug; alle anderen (und jeder Aufruf ohne Port)
+   * tragen ehrlich `RELATION_NOT_AVAILABLE`. Die Lücken selbst reisen redigiert wie `/api/gaps`.
+   */
+  const lueckenJeObjekt = async (
+    user: Parameters<typeof darfSehen>[0],
+    koIds: readonly string[],
+  ): Promise<{
+    paar: (koId: string) => LueckenPaar;
+    sichten: (koId: string) => ReturnType<typeof redactGapForViewer>[];
+    scope: { checkedOpenGaps: number; openGaps: number } | null;
+  }> => {
+    const nichts = {
+      paar: () => KEIN_LUECKENBEZUG,
+      sichten: () => [],
+      scope: null,
+    };
+    if (!deps.luecken || !deps.koService || koIds.length === 0) {
+      return nichts;
+    }
+    const sichtbar = new Set<string>();
+    for (const id of new Set(koIds)) {
+      const ko = await deps.koService.get(id);
+      if (ko && darfSehen(user, ko)) {
+        sichtbar.add(id);
+      }
+    }
+    if (sichtbar.size === 0) {
+      return nichts;
+    }
+    const { bezug, geprueft, offen } = await deps.luecken.offeneLueckenZu([...sichtbar]);
+    const betrachter = { viewerId: user.id, maySeeDetail: can(user.role, "ko.validate") };
+    return {
+      paar: (koId) =>
+        sichtbar.has(koId)
+          ? {
+              knowledgeGapRelationState: "AVAILABLE",
+              knowledgeGapIds: (bezug.get(koId) ?? []).map((g) => g.id),
+            }
+          : KEIN_LUECKENBEZUG,
+      sichten: (koId) =>
+        sichtbar.has(koId)
+          ? (bezug.get(koId) ?? []).map((g) => redactGapForViewer(g, betrachter))
+          : [],
+      scope: { checkedOpenGaps: geprueft, openGaps: offen },
+    };
+  };
 
   /** Der eine Nicht-gefunden-Koerper. Ohne Kennung, ohne Fachinhalt — bewusst nichtssagend. */
   const nichtGefunden = { error: "NOT_FOUND", message: "Nicht gefunden." };
@@ -202,10 +277,20 @@ export function importRunRoutes(deps: ImportRunRoutesDeps): FastifyPluginAsync {
         // `listItemRefs` gibt bereits stabil nach `ordinal` aufsteigend zurueck (repo.ts:569-570).
         // Die Reihenfolge ist Vertrag; sie wird hier nicht noch einmal umsortiert, sondern gehalten.
         const elemente = await importRuns.listItemRefs(run.importId);
+        const luecken = await lueckenJeObjekt(
+          user,
+          elemente.map((e) => e.knowledgeObjectId).filter((id): id is string => id !== null),
+        );
         reply.code(200).send({
           run: laufNachAussen(run, await quellabgleich.lies(run.importId)),
           source: quelle ? quelleNachAussen(quelle) : null,
-          items: elemente.map(elementNachAussen),
+          items: elemente.map((e) =>
+            elementNachAussen(
+              e,
+              e.knowledgeObjectId ? luecken.paar(e.knowledgeObjectId) : KEIN_LUECKENBEZUG,
+            ),
+          ),
+          ...(luecken.scope ? { knowledgeGapScope: luecken.scope } : {}),
         });
         return reply;
       },
@@ -223,8 +308,12 @@ export function importRunRoutes(deps: ImportRunRoutesDeps): FastifyPluginAsync {
     //   · kein Herkunftsanker → 404 (dieses Objekt ist nicht importiert);
     //   · Anker, aber keine festgehaltene Revision (Import vor Lauf 5) → `source: null`;
     //   · Lauf unbekannt → `run: null`; keine Elementreferenz für dieses Objekt → `item: null`.
-    // Die Lückenbindung bleibt `RELATION_NOT_AVAILABLE`: die Lückendomäne kennt keine Beziehung
-    // Lücke → Wissensobjekt (Kopf dieser Datei).
+    // Lauf 5 R3 (Bens B11): der Lauf ist der der ANNAHME, die den Anker zuletzt geschrieben hat
+    // (`importRunId` am Anker) — nicht der, der die Revision zuerst aufnahm. Die Revision ist die
+    // der Elementreferenz. Nur bei Ankern ohne Laufkennung (Altbestand) bleibt die Revision der
+    // einzige Hinweis, und dann steht der Ausgang nur, wenn jener Lauf eine Referenz auf genau
+    // dieses Objekt trägt.
+    // Lücken: s. Kopf dieser Datei (`lueckenJeObjekt`).
     const koService = deps.koService;
     if (koService) {
       app.get<{ Params: { koId: string } }>(
@@ -243,7 +332,7 @@ export function importRunRoutes(deps: ImportRunRoutesDeps): FastifyPluginAsync {
             reply.code(404).send(nichtGefunden);
             return reply;
           }
-          const satz =
+          const revision =
             typeof anker.sourceVersion === "number"
               ? await externalSources.findByRevision(
                   anker.provider ?? "confluence",
@@ -251,20 +340,26 @@ export function importRunRoutes(deps: ImportRunRoutesDeps): FastifyPluginAsync {
                   anker.sourceVersion,
                 )
               : undefined;
-          const importId = satz ? laufDerRevision(satz) : null;
+          const importId = anker.importRunId ?? (revision ? laufDerRevision(revision) : null);
           const run = importId ? await importRuns.findById(importId) : undefined;
+          // Die jüngste Referenz dieses Laufs auf genau dieses Objekt.
           const ref = run
-            ? (await importRuns.listItemRefs(run.importId)).find(
-                (r) => r.knowledgeObjectId === ko.id,
-              )
+            ? (await importRuns.listItemRefs(run.importId))
+                .filter((r) => r.knowledgeObjectId === ko.id)
+                .pop()
             : undefined;
+          const satz = ref?.sourceRecordId
+            ? await externalSources.findById(ref.sourceRecordId)
+            : revision;
+          const luecken = await lueckenJeObjekt(user, [ko.id]);
           reply.code(200).send({
             knowledgeObjectId: ko.id,
             source: satz ? quelleNachAussen(satz) : null,
             run: run ? laufNachAussen(run, await quellabgleich.lies(run.importId)) : null,
-            item: ref ? elementNachAussen(ref) : null,
-            knowledgeGapRelationState: "RELATION_NOT_AVAILABLE" as const,
-            knowledgeGapIds: null,
+            item: ref ? elementNachAussen(ref, luecken.paar(ko.id)) : null,
+            ...luecken.paar(ko.id),
+            knowledgeGaps: luecken.sichten(ko.id),
+            knowledgeGapScope: luecken.scope,
           });
           return reply;
         },

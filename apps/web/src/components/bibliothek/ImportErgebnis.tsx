@@ -9,8 +9,9 @@
 // W2-Resultatfläche (`tests/app/w2a-import-run-routes-148.test.ts`, Block 5 hält sie gesperrt).
 //
 // ANGEZEIGT WIRD NUR, WAS DER SERVER LIEFERT (`GET /admin/import/knowledge/:koId`). Fehlt etwas,
-// sagt der Block es; Lücken werden nur genannt, wenn der Server eine Beziehung liefert — heute
-// meldet er ehrlich `RELATION_NOT_AVAILABLE`, und genau das steht dann da.
+// sagt der Block es. Lücken (Lauf 5 R3): der Server liefert die offenen Lücken, für deren Frage
+// die Antwortsuche dieses Wissen heranzieht (`AVAILABLE`), redigiert wie `/api/gaps`, samt
+// Prüfumfang. Ohne Lückenbezug (`RELATION_NOT_AVAILABLE`) steht genau das da.
 //
 // HINTER RECHT UND SCHALTER: nur für die Admin-Rolle angefragt (die Route verlangt `users.manage`
 // und existiert nur bei eingeschaltetem Import). Antwortet der Server nicht mit einem Ergebnis
@@ -94,11 +95,38 @@ export function ImportErgebnis({ ko }: { ko: KnowledgeObject }): JSX.Element | n
           {t("ko.importResult.noRevision")}
         </p>
       )}
-      <p data-testid="bib-import-luecken" className="text-muted">
-        {e.knowledgeGapRelationState === "AVAILABLE" && Array.isArray(e.knowledgeGapIds)
-          ? t("ko.importResult.gaps", { anzahl: e.knowledgeGapIds.length })
-          : t("ko.importResult.gapsNotAvailable")}
-      </p>
+      {e.knowledgeGapRelationState === "AVAILABLE" && Array.isArray(e.knowledgeGapIds) ? (
+        <div data-testid="bib-import-luecken" className="text-muted">
+          <p>
+            {e.knowledgeGapIds.length > 0
+              ? t("ko.importResult.gaps", { anzahl: e.knowledgeGapIds.length })
+              : t("ko.importResult.gapsNone")}
+          </p>
+          {(e.knowledgeGaps ?? []).length > 0 ? (
+            <ul data-testid="bib-import-luecken-liste" className="ml-4 list-disc">
+              {(e.knowledgeGaps ?? []).map((g) => (
+                <li key={g.id}>
+                  {g.redacted || !g.question ? t("ko.importResult.gapRedacted") : g.question}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          <p className="text-[11px]">{t("ko.importResult.gapsRule")}</p>
+          {e.knowledgeGapScope &&
+          e.knowledgeGapScope.checkedOpenGaps < e.knowledgeGapScope.openGaps ? (
+            <p data-testid="bib-import-luecken-umfang" className="text-[11px]">
+              {t("ko.importResult.gapsScope", {
+                geprueft: e.knowledgeGapScope.checkedOpenGaps,
+                offen: e.knowledgeGapScope.openGaps,
+              })}
+            </p>
+          ) : null}
+        </div>
+      ) : (
+        <p data-testid="bib-import-luecken" className="text-muted">
+          {t("ko.importResult.gapsNotAvailable")}
+        </p>
+      )}
     </section>
   );
 }

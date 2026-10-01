@@ -1830,6 +1830,13 @@ export interface ImportKnowledgeResult {
   /** `RELATION_NOT_AVAILABLE` (mit `null`) oder `AVAILABLE` (mit Kennungen). */
   knowledgeGapRelationState: string;
   knowledgeGapIds: string[] | null;
+  /**
+   * Lauf 5 R3: die offenen Lücken, für deren Frage die Antwortsuche dieses Wissen heranzieht —
+   * redigiert wie `/api/gaps` (ohne Freigabe kein Fragetext). Fehlt ohne Lückenbezug.
+   */
+  knowledgeGaps?: { id: string; question: string; redacted?: boolean }[];
+  /** Wie viele offene Lücken geprüft wurden; weniger als alle ⇒ die Liste ist eine Untergrenze. */
+  knowledgeGapScope?: { checkedOpenGaps: number; openGaps: number } | null;
 }
 
 export interface ImportRunRecord {

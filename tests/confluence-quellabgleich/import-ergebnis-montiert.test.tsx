@@ -7,7 +7,8 @@
 // Abschnitt „Quellen und Belege" aufklappen). Geprüft wird, dass die Fläche GENAU zeigt, was der
 // Server liefert:
 //   I1  Revision, Lauf, Ausgang und der ehrliche Lückenhinweis — in jeder Sprache aus dem Katalog.
-//   I2  BOUND und eine vorhandene Lückenbeziehung (AVAILABLE) werden als solche genannt.
+//   I2  BOUND und die gelieferten Lücken (AVAILABLE): Anzahl, Frage bzw. redigierte Lücke, Regel
+//       und Prüfumfang — in DE/EN/NL. I2b: nachgesehen, keine Lücke.
 //   I3  Ohne festgehaltene Revision (Altimport): der Block sagt es, statt Lauf/Ausgang zu erfinden.
 //   I4  Ein Objekt ohne Import-Anker fragt gar nicht erst an; ein 404 zeigt nichts.
 import { describe, expect, it, vi } from "vitest";
@@ -316,18 +317,61 @@ describe("R-0142 · das Importergebnis auf der Wissensseite", () => {
     });
   }
 
-  it("I2: BOUND und eine gelieferte Lückenbeziehung werden genannt, wie sie kommen", async () => {
+  for (const sprache of SPRACHEN) {
+    it(`I2 [${sprache}]: BOUND und die gelieferten Lücken — Frage, redigierte Lücke, Prüfumfang`, async () => {
+      globalThis.__r0142Abrufe = [];
+      globalThis.__r0142Ergebnis = ergebnis({
+        item: {
+          ordinal: 2,
+          candidateItemId: "k-2",
+          knowledgeObjectId: "ko-1",
+          itemOutcome: "BOUND",
+        },
+        knowledgeGapRelationState: "AVAILABLE",
+        knowledgeGapIds: ["g-1", "g-2"],
+        knowledgeGaps: [
+          { id: "g-1", question: "Wie wird die Wartung ausgeschaltet?" },
+          { id: "g-2", question: "", redacted: true },
+        ],
+        knowledgeGapScope: { checkedOpenGaps: 50, openGaps: 72 },
+      });
+      await flaeche([quelle(SEITE_ANKER)], sprache);
+      try {
+        const tt = i18n.getFixedT(sprache);
+        expect(feld("bib-import-ausgang")).toBe(tt("ko.importResult.outcome.BOUND"));
+        const luecken = feld("bib-import-luecken");
+        expect(luecken).toContain(tt("ko.importResult.gaps", { anzahl: 2 }));
+        expect(luecken).toContain(tt("ko.importResult.gapsRule"));
+        const eintraege = [
+          ...(abschnitt()?.querySelectorAll('[data-testid="bib-import-luecken-liste"] li') ?? []),
+        ].map((li) => text(li));
+        expect(eintraege).toEqual([
+          "Wie wird die Wartung ausgeschaltet?",
+          tt("ko.importResult.gapRedacted"),
+        ]);
+        expect(feld("bib-import-luecken-umfang")).toBe(
+          tt("ko.importResult.gapsScope", { geprueft: 50, offen: 72 }),
+        );
+      } finally {
+        abbauen();
+      }
+    });
+  }
+
+  it("I2b: nachgesehen, keine Lücke — das wird gesagt, ohne Liste und ohne Umfangshinweis", async () => {
     globalThis.__r0142Abrufe = [];
     globalThis.__r0142Ergebnis = ergebnis({
-      item: { ordinal: 2, candidateItemId: "k-2", knowledgeObjectId: "ko-1", itemOutcome: "BOUND" },
       knowledgeGapRelationState: "AVAILABLE",
-      knowledgeGapIds: ["g-1", "g-2"],
+      knowledgeGapIds: [],
+      knowledgeGaps: [],
+      knowledgeGapScope: { checkedOpenGaps: 3, openGaps: 3 },
     });
     await flaeche([quelle(SEITE_ANKER)]);
     try {
       const tt = i18n.getFixedT("de");
-      expect(feld("bib-import-ausgang")).toBe(tt("ko.importResult.outcome.BOUND"));
-      expect(feld("bib-import-luecken")).toBe(tt("ko.importResult.gaps", { anzahl: 2 }));
+      expect(feld("bib-import-luecken")).toContain(tt("ko.importResult.gapsNone"));
+      expect(abschnitt()?.querySelector('[data-testid="bib-import-luecken-liste"]')).toBeNull();
+      expect(abschnitt()?.querySelector('[data-testid="bib-import-luecken-umfang"]')).toBeNull();
     } finally {
       abbauen();
     }

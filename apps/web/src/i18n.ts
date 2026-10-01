@@ -7078,6 +7078,12 @@ const de = {
   "ko.importResult.outcome.unknown": "Ausgang unbekannt ({{wert}}).",
   "ko.importResult.gapsNotAvailable":
     "Wissenslücken: Ein Bezug zwischen Lücken und einzelnem Wissen wird nicht geführt — deshalb wird hier keine Lücke behauptet.",
+  "ko.importResult.gapsNone": "Keine offene Wissenslücke betrifft dieses Wissen.",
+  "ko.importResult.gapsRule":
+    "Gezählt werden offene Lücken, für deren Frage die Antwortsuche dieses Wissen heranzieht.",
+  "ko.importResult.gapsScope":
+    "Geprüft wurden die {{geprueft}} jüngsten von {{offen}} offenen Lücken.",
+  "ko.importResult.gapRedacted": "Lücke (Fragetext nicht freigegeben)",
   "ko.importResult.gaps": "Wissenslücken zu diesem Wissen: {{anzahl}}",
   "ko.source.removedInOrigin":
     "In der Quelle gelöscht (festgestellt {{zeit}}). Der Link führt nicht mehr zur Seite; das Wissen hier bleibt unverändert.",
@@ -12948,6 +12954,11 @@ const en: typeof de = {
   "ko.importResult.outcome.unknown": "Outcome unknown ({{wert}}).",
   "ko.importResult.gapsNotAvailable":
     "Knowledge gaps: no link between gaps and individual knowledge is kept — so no gap is claimed here.",
+  "ko.importResult.gapsNone": "No open knowledge gap concerns this knowledge.",
+  "ko.importResult.gapsRule":
+    "Counted are open gaps whose question leads the answer search to this knowledge.",
+  "ko.importResult.gapsScope": "Checked were the {{geprueft}} most recent of {{offen}} open gaps.",
+  "ko.importResult.gapRedacted": "Gap (question text not released)",
   "ko.importResult.gaps": "Knowledge gaps for this knowledge: {{anzahl}}",
   "ko.source.removedInOrigin":
     "Deleted in the source (detected {{zeit}}). The link no longer leads to the page; the knowledge here stays unchanged.",
@@ -18642,6 +18653,12 @@ const nl: typeof de = {
   "ko.importResult.outcome.unknown": "Uitkomst onbekend ({{wert}}).",
   "ko.importResult.gapsNotAvailable":
     "Kennislacunes: er wordt geen verband tussen lacunes en afzonderlijke kennis bijgehouden — daarom wordt hier geen lacune beweerd.",
+  "ko.importResult.gapsNone": "Geen open kennislacune heeft betrekking op deze kennis.",
+  "ko.importResult.gapsRule":
+    "Geteld worden open lacunes waarvoor de antwoordzoektocht deze kennis betrekt.",
+  "ko.importResult.gapsScope":
+    "Gecontroleerd zijn de {{geprueft}} meest recente van {{offen}} open lacunes.",
+  "ko.importResult.gapRedacted": "Lacune (vraagtekst niet vrijgegeven)",
   "ko.importResult.gaps": "Kennislacunes bij deze kennis: {{anzahl}}",
   "ko.source.removedInOrigin":
     "Verwijderd in de bron (vastgesteld {{zeit}}). De link leidt niet meer naar de pagina; de kennis hier blijft ongewijzigd.",

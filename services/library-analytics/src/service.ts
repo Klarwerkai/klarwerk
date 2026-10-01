@@ -1221,12 +1221,14 @@ export class LibraryService {
         // „intern" normalisiert (fail-open) bzw. bei der Erstanlage hart abgelehnt. Das bereinigte Item wird
         // MIT persistiert (nicht nur transient), damit die Queue keinen ungültigen Wert behält.
         const item = this.withSanitizedIngest(candidate.item);
-        createdKoId = await this.acceptToKo(item, actor, id);
+        // R-0142 (Lauf 5): die Bindung bleibt am persistierten Kandidaten nachvollziehbar, und
+        // (Lauf 5 R3, Bens B11) der Herkunftsanker trägt den Lauf GENAU dieser Annahme.
+        const gebunden = laufBindung ? { ...item, importRun: laufBindung } : item;
+        createdKoId = await this.acceptToKo(gebunden, actor, id);
         resolution = {
           status: "angenommen",
           koId: createdKoId,
-          // R-0142 (Lauf 5): die Bindung bleibt am persistierten Kandidaten nachvollziehbar.
-          item: laufBindung ? { ...item, importRun: laufBindung } : item,
+          item: gebunden,
           ...reviewedStamp,
         };
       }
@@ -1423,6 +1425,21 @@ export class LibraryService {
   // Beide Wege laufen über den opId-CAS (resolveClaim) — eine PARALLEL noch laufende Operation
   // oder eine zweite Replika-Recovery kann nie überschrieben werden (0 Zeilen = No-op).
   async recoverStaleReviewClaims(): Promise<{ completed: number; released: number }> {
+    const ergebnis = await this.vollendeHaengendeClaims();
+    // R-0142 (Lauf 5 R3, Bens B12/B13): nach der Wiederaufnahme — und auch, wenn nichts hing —
+    // fehlende Elementreferenzen entschiedener, laufgebundener Kandidaten nachziehen. Ein Fehler
+    // hier bricht weder die Wiederaufnahme noch das Laden der Warteschlange.
+    await this.zieheLaufReferenzenNach().catch((err: unknown) => {
+      process.stderr.write(
+        `[KLARWERK] Nachzug der Elementreferenzen gescheitert (fehler=${
+          err instanceof Error ? err.name : "unknown"
+        }).\n`,
+      );
+    });
+    return ergebnis;
+  }
+
+  private async vollendeHaengendeClaims(): Promise<{ completed: number; released: number }> {
     const nowMs = this.now();
     const stale = (await this.candidates.all()).filter(
       (c) => c.status === "in_bearbeitung" && reviewClaimLeaseExpired(c.claimedAt, nowMs),
@@ -2044,6 +2061,8 @@ export class LibraryService {
           }
         : {}),
       sourceVersion: effectiveVersion,
+      // R-0142 (Lauf 5 R3, Bens B11): der Lauf der Annahme, die diesen Anker schreibt.
+      ...(item.importRun ? { importRunId: item.importRun.importId } : {}),
       // WP-RETEST7 R6: leerer Autor-String → ehrlicher Fallback auf den annehmenden Nutzer.
       author: item.author?.trim() ? item.author : actor,
       at: new Date(this.now()).toISOString(),
@@ -2913,42 +2932,112 @@ export class LibraryService {
    * Kandidaten — `CREATED`, `BOUND` oder `SKIPPED` (`ausgangDerEntscheidung`). Eine Rückfrage
    * (`info`) entscheidet nichts und schreibt nichts. Idempotent über `(importId, ordinal)`.
    *
-   * Die Entscheidung selbst ist zu diesem Zeitpunkt schon persistiert; ein Schreibfehler hier
-   * macht sie nicht rückgängig, wird aber laut protokolliert (kenn- und inhaltsfrei bis auf die
-   * Kandidaten-Id) statt still verschluckt.
+   * Die Entscheidung selbst ist zu diesem Zeitpunkt schon persistiert. Scheitert das Schreiben,
+   * bleibt die Bindung am entschiedenen Kandidaten stehen, und `zieheLaufReferenzenNach` holt die
+   * Referenz beim nächsten Laden der Prüfwarteschlange nach (Lauf 5 R3, Bens B12).
    */
   private async vermerkeEntscheidungImLauf(
     candidate: ImportCandidate,
     bindung: ImportLaufBindung | undefined,
     resolved: ImportCandidate,
   ): Promise<void> {
-    if (
-      !bindung ||
-      !this.importRuns ||
-      (resolved.status !== "angenommen" && resolved.status !== "abgelehnt")
-    ) {
+    if (!bindung) {
       return;
     }
     try {
-      const koId = resolved.status === "angenommen" ? resolved.koId : null;
-      const ko = koId ? await this.koService.get(koId).catch(() => undefined) : undefined;
-      await this.importRuns.appendItemRefs([
-        {
-          importId: bindung.importId,
-          ordinal: bindung.ordinal,
-          sourceRecordId: bindung.sourceRecordId,
-          candidateItemId: candidate.id,
-          knowledgeObjectId: koId,
-          itemOutcome: ausgangDerEntscheidung(koId, ko?.importCandidateId === candidate.id),
-          itemFailureCode: null,
-        },
-      ]);
+      await this.schreibeLaufReferenz(candidate.id, bindung, resolved.status, resolved.koId);
     } catch (err) {
       process.stderr.write(
         `[KLARWERK] Elementreferenz des Importlaufs nicht geschrieben (kandidat=${candidate.id}, fehler=${
           err instanceof Error ? err.name : "unknown"
-        }).\n`,
+        }) — der Nachzug beim Laden der Prüfwarteschlange holt sie nach.\n`,
       );
     }
+  }
+
+  /**
+   * Die EINE Stelle, die eine Elementreferenz baut — für die Entscheidung, die Wiederaufnahme und
+   * den Nachzug gleich. `CREATED` nur, wenn das Objekt den Stempel GENAU dieses Kandidaten trägt
+   * (gesucht inklusive Papierkorb, wie die Wiederaufnahme). Wirft bei einem Schreibfehler.
+   */
+  private async schreibeLaufReferenz(
+    candidateId: string,
+    bindung: ImportLaufBindung,
+    status: ImportCandidate["status"],
+    koIdRoh: string | null | undefined,
+  ): Promise<boolean> {
+    if (!this.importRuns || (status !== "angenommen" && status !== "abgelehnt")) {
+      return false;
+    }
+    const koId = status === "angenommen" ? (koIdRoh ?? null) : null;
+    const gestempelt = koId
+      ? await this.koService.findByImportCandidateId(candidateId).catch(() => undefined)
+      : undefined;
+    const neu = await this.importRuns.appendItemRefs([
+      {
+        importId: bindung.importId,
+        ordinal: bindung.ordinal,
+        sourceRecordId: bindung.sourceRecordId,
+        candidateItemId: candidateId,
+        knowledgeObjectId: koId,
+        itemOutcome: ausgangDerEntscheidung(koId, gestempelt?.id === koId),
+        itemFailureCode: null,
+      },
+    ]);
+    return neu > 0;
+  }
+
+  /**
+   * R-0142 (Lauf 5 R3, Bens B12/B13): DER NACHZUG DER ELEMENTREFERENZEN.
+   *
+   * Jede gespeicherte Entscheidung (`angenommen`/`abgelehnt`) über einen laufgebundenen Kandidaten
+   * muss eine Referenz im Lauf haben — auch wenn das Schreiben direkt nach der Entscheidung
+   * scheiterte (B12) oder die Annahme erst von `recoverStaleReviewClaims` vollendet wurde (B13).
+   * Gelesen wird je Lauf EINMAL (`listItemRefs`), geschrieben nur, was fehlt; die Ablage ist über
+   * `(importId, ordinal)` ohnehin idempotent. Ein Fehler betrifft nur seinen Lauf und wird laut
+   * protokolliert; der nächste Nachzug versucht es erneut. Rückgabe: Zahl neu geschriebener Referenzen.
+   */
+  async zieheLaufReferenzenNach(): Promise<number> {
+    if (!this.importRuns) {
+      return 0;
+    }
+    const jeLauf = new Map<string, { kandidat: ImportCandidate; bindung: ImportLaufBindung }[]>();
+    for (const kandidat of await this.candidates.all()) {
+      if (kandidat.status !== "angenommen" && kandidat.status !== "abgelehnt") {
+        continue;
+      }
+      const bindung = leseLaufBindung(kandidat.item);
+      if (!bindung) {
+        continue;
+      }
+      const liste = jeLauf.get(bindung.importId) ?? [];
+      liste.push({ kandidat, bindung });
+      jeLauf.set(bindung.importId, liste);
+    }
+    let geschrieben = 0;
+    for (const [importId, eintraege] of jeLauf) {
+      try {
+        const vorhanden = new Set(
+          (await this.importRuns.listItemRefs(importId)).map((r) => r.ordinal),
+        );
+        for (const { kandidat, bindung } of eintraege) {
+          if (vorhanden.has(bindung.ordinal)) {
+            continue;
+          }
+          if (
+            await this.schreibeLaufReferenz(kandidat.id, bindung, kandidat.status, kandidat.koId)
+          ) {
+            geschrieben += 1;
+          }
+        }
+      } catch (err) {
+        process.stderr.write(
+          `[KLARWERK] Nachzug der Elementreferenzen gescheitert (lauf=${importId}, fehler=${
+            err instanceof Error ? err.name : "unknown"
+          }) — der nächste Nachzug versucht es erneut.\n`,
+        );
+      }
+    }
+    return geschrieben;
   }
 }

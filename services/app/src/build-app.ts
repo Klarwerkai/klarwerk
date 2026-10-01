@@ -3200,6 +3200,8 @@ export function buildApp(
         quellabgleich: services.quellabgleich,
         // R-0142 (Lauf 5): das Importergebnis je Wissensobjekt.
         koService: services.ko,
+        // R-0142 (Lauf 5 R3, Bens B7): die offenen Lücken je Objekt.
+        luecken: services.ask,
         guards,
       }),
     );

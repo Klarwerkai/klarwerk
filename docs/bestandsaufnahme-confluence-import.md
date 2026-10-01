@@ -262,6 +262,37 @@ beiden Altfall-Einträge bleiben zutreffend.
    app/navigation.ts → lib/captureFrontDoor.ts → api/types.ts`; er besteht im Ausgangsstand
    (`types.ts` importiert `Role` aus `navigation`), diese Runde ändert keine dieser Kanten.
 
+## Lauf 5 · Runde 3 — Bens B7 (Lücken), B11, B12, B13
+
+Ben (Runde 2): Ergebnisweg bestätigt; offen blieben die Lücken (B7) und drei ausgeführte
+Randfälle (B11–B13). Seine unveränderten Proben `ben-b7.test.ts` und `ben-r2-randfaelle.test.ts`
+laufen am Stand dieser Runde **grün** (4/4).
+
+| Befund | Ursache | Korrektur | Beleg |
+|---|---|---|---|
+| **B11** Ablehnung in Lauf 1, Annahme derselben Fassung in Lauf 2 → Objekt zeigte Lauf 1, `item: null` | Die Objekt-Route fand den Lauf über `sourceMetadata.importId` der Revision — das ist der Lauf, der die Fassung ZUERST aufnahm, nicht der der Annahme. | Der Herkunftsanker trägt jetzt `importRunId` = Lauf der Annahme, die ihn geschrieben hat (Erstanlage und Fortschreibung; `buildSource`, `KoSource.importRunId` additiv). Die Route liest diesen Lauf und darin die jüngste Referenz auf genau dieses Objekt; die Revision ist die der Referenz. Nur Altanker ohne Kennung fallen auf die Revision zurück. | `r0142-ergebnisweg.test.ts` E8; ohne die Ankerkennung rot |
+| **B12** einmaliger Schreibfehler der Referenz → dauerhaft `items: []` | Der Fehler wurde nur protokolliert; nichts holte die Referenz nach. | `LibraryService.zieheLaufReferenzenNach`: je entschiedenem, laufgebundenem Kandidaten fehlende Referenzen nachschreiben (je Lauf ein `listItemRefs`, nur Fehlendes, idempotent über `(importId, ordinal)`). Läuft am Ende jeder `recoverStaleReviewClaims` — also bei jedem Laden der Prüfwarteschlange (`library-routes.ts`), auch wenn nichts hing. | E9 (zweiter Nachzug schreibt 0); ohne Nachzug rot |
+| **B13** Wiederaufnahme vollendet Annahme, schreibt keine Referenz | `recoverStaleReviewClaims` kannte die Laufbindung nicht. | Derselbe Nachzug direkt nach der Vollendung; Ausgang über dieselbe Regel wie live (`schreibeLaufReferenz`: `CREATED`, wenn das Objekt den Stempel genau dieses Kandidaten trägt, gesucht inkl. Papierkorb). | E10 (idempotent bei Wiederholung); ohne Nachzug rot |
+| **B7** Lücken fest `RELATION_NOT_AVAILABLE` | Die Lückendomäne kennt keinen Objektbezug (Lücken entstehen aus unbeantworteten Fragen; auch „Erfassen aus Lücke“ speichert keine Bindung). | Der Bezug wird **aus vorhandenen Serverdaten** erhoben, ohne neue Zuordnungsregel: `AskService.offeneLueckenZu` rechnet für jede offene Lücke die deterministische Vorauswahl der Antwortsuche (`prefilterCandidates` über `queryTokens(frage)`) — eine offene Lücke betrifft ein Objekt, wenn die Antwortsuche es für ihre Frage heranzieht. Kein KI-Aufruf, kein Schreiben. Beide Ergebnisrouten liefern dann `AVAILABLE` + Kennungen (`[]` = nachgesehen, keine), die Objekt-Route zusätzlich die Lücken redigiert wie `/api/gaps` und den Prüfumfang `knowledgeGapScope`. Nur sichtbare Objekte bekommen einen Bezug (`darfSehen`, im Routenvertrag als `zeilenrecht` eingetragen). Die Wissensseite zeigt Anzahl, Fragen (bzw. „Fragetext nicht freigegeben“), die Regel und — falls gedeckelt — den Umfang, in DE/EN/NL. | E7 (Lücken über den echten Antwortweg angelegt, BEVOR das Wissen importiert wurde: die passende steht am Objekt und am Element, die fremde und eine geschlossene nicht); Anzeige `import-ergebnis-montiert.test.tsx` I2 (DE/EN/NL), I2b |
+
+**Grenzen, benannt:**
+1. *Lückenbezug ist eine Ablesung, keine Kuratierung:* er sagt „die Antwortsuche zieht dieses
+   Wissen für diese offene Frage heran“, nicht „dieses Wissen beantwortet sie“. Ob eine Lücke damit
+   geschlossen ist, entscheidet weiter ein Mensch (`/api/gaps`).
+2. *Deckel:* je Aufruf werden die 50 jüngsten offenen Lücken geprüft (`OFFENE_LUECKEN_BEZUG_DECKEL`,
+   je Lücke eine Vorauswahl mit bis zu 8 Abfragen). Bei mehr offenen Lücken ist die Liste eine
+   Untergrenze; Antwort und Fläche sagen das (`knowledgeGapScope`).
+3. *Ohne verdrahteten Lückenport* (direkt konstruierte Routen) bleibt die Antwort ehrlich
+   `RELATION_NOT_AVAILABLE` — so in Bens Probenaufbau; die Kompositionswurzel verdrahtet ihn.
+4. *Nachzug nur beim Laden der Prüfwarteschlange:* bis dahin fehlt nach einem Schreibfehler die
+   Referenz am Lauf. Kandidaten aus Läufen vor Runde 2 tragen keine Bindung; Altanker ohne
+   `importRunId` nutzen weiter die Revision (Grenze 5a aus Runde 2 gilt nur noch für sie).
+5. *Abgeleitete Wissenseinheiten:* unverändert eine Seite = ein Objekt; Ben leitet aus R-0142 keine
+   Pflicht zur Zerlegung ab.
+6. *PostgreSQL nicht lokal gemessen:* zusätzlich zu Runde 2 liest der Lückenbezug `findCandidates`
+   je Lücke auf der echten Ablage; `importRunId` reist im JSON des Ankers (keine Migration).
+   Serverprüfung wie in Runde 2 benannt.
+
 ## Abgrenzung
 
 - SharePoint/OneDrive-Import (JOB 4086) ist ein eigener Adapter und eigener Auftrag.

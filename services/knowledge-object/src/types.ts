@@ -341,6 +341,11 @@ export interface KoSource {
   // Das Wissensobjekt bleibt unverändert; der Rücklink führt nicht mehr zur Seite, und die
   // Anzeige sagt das, statt ihn weiter anzubieten.
   sourceRemovedAt?: string;
+  // R-0142 (Confluence-Import, Lauf 5 R3): der Importlauf der ANNAHME, die diesen Anker zuletzt
+  // geschrieben hat (Erstanlage oder Fortschreibung). Eine Kennung, kein Inhalt; die Laufdomäne
+  // (`library-analytics`, `ImportRunItemRef`) trägt den Ausgang. Fehlt bei Ankern von vor dieser
+  // Regel und bei Annahmen ohne Lauf.
+  importRunId?: string;
   author: string;
   at: string;
 }
