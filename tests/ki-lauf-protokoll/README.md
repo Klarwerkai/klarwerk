@@ -116,6 +116,31 @@ Laufzeitschalter an der Route. `enrichPublic` setzt die Marke direkt, wie `answe
 (`apps/web/src/lib/wordAddin.ts`, Spiegel im Aufgabenfenster) erkennt nur gespiegelte Aufgaben an,
 und G24-4 hält diese Spiegelung gegen die Liste.
 
+## Server-Prüfplan für den Liefertor-Rest (Lauf 3 R3, Ben BEN-P1)
+
+Bisher deckte der Plan nur die Chromium-Datei und die Socket-Fälle ab. (b) stand bei R-1572 und
+R-1621 ohne ausführbare Prüfung. Jeder offene Bestandteil steht jetzt unten: entweder mit einer
+ausführbaren Datei oder mit dem Vermerk, dass es im Repository keinen Prüfweg gibt. Bis eine Zeile
+auf dem Server gemessen ist, bleibt sie Liefertor-Rest. Ein übersprungener Fall ist kein Beleg.
+
+| Bestandteil | Kriterien | Ausführbare Prüfung | Stand |
+|---|---|---|---|
+| (b) PostgreSQL: `append`/`recent`, `PgModelRunRepo.zwischen`, jsonb `versuche` (mit `aufrufe`), `trace`, `kosten`, `erzeugt`; Auswertung über das echte Repo | R-1536, R-1544 (Datenbankteil), R-1572, R-1621; Persistenz zu 1–4, 11, 13, 14 | `modelrun-postgres.integration.test.ts` PG1–PG3, Integrationslauf: `npx vitest run --config vitest.integration.config.ts tests/ki-lauf-protokoll/modelrun-postgres.integration.test.ts` (Docker/Testcontainers oder `KLARWERK_PG_TEST_URL`) | lokal nicht ausgeführt (kein Docker auf dem Produktions-Mac); Server ausstehend |
+| Tastaturweg zur Laufkarte im echten Chromium | MR-SELECT-1, R-1567, R-1536 (sichtbare Oberfläche, nur Laufkarte) | `tests/select-lauf-protokoll/tastaturweg-laufkarte-im-echten-browser.test.ts` K6–K8 (Browser-Gruppe) | Server ausstehend |
+| (e) vollständiger `tools/check`- und Chromium-Lauf | R-1536, R-1544 | Liefercheck am finalen Commit (Linux), wie im Vertrag vorgesehen | ausstehend |
+| (a) echter Anbieter-/Schlüsselbund-Aufruf, echte Modell-API | R-1536, R-1567, R-1572, R-1621 | **kein Prüfweg im Repository.** Alle Fälle stellen die Anbieterantwort; ein echter Aufruf bräuchte einen Schlüssel auf dem Prüfserver. | offen, nicht erfüllt |
+| (c) unbekannte Live-Art, vollständige Karten-Zustandsmatrix, vollständige Ablösungssuche | R-1567 | **kein Prüfweg.** Teilbelege: `tests/ki-aufgabenarten/` R3a–R3i, `auswertung-flaeche.test.tsx` F7–F9 | offen, nicht erfüllt |
+| (d) OpenAI-400/`model-error` unter N12d | R-1567 | **kein Prüfweg.** `route-einstieg.test.ts` A2 misst nur den Protokolleintrag eines gestellten Modellfehlers. | offen, nicht erfüllt |
+| Drei socketabhängige Auth-Fälle | R-1544 | Diesem Auftrag ist keine Datei zugeordnet. Die vorhandenen `it.skipIf(!KANN_HORCHEN)`-Fälle (`addin-static-routes.test.ts`, `slides-abort.test.ts`, `mega71-onsend-synchron.test.ts`) gehören zu anderen Verträgen und laufen im Liefercheck mit. | offen |
+
+Grenzen von PG1–PG3: Sie schreiben Datensätze direkt über `ProtokollModelRunRepo` in
+`PgModelRunRepo`. Der Weg Reasoner → App → PostgreSQL und eine select-ID über PostgreSQL bis zur
+Laufkarte sind damit nicht gemessen. Gegenprobe für den Server: Ohne die N1-Prüfung in
+`kostenEinesLaufs` muss PG3 rot werden (Kostensumme 0,006 EUR über drei Läufe statt 0,004 EUR über
+zwei; `verbrauchOhneKosten` 1 statt 2). Die erwarteten Zahlen von PG1–PG3 wurden lokal nur in
+einem Wegwerf-Trockenlauf gegen `InMemoryModelRunRepo` nachgerechnet. Das ist kein Beleg für
+PostgreSQL.
+
 ## Quellenwidersprüche
 
 - „Modellläufe werden nicht protokolliert“ (Register, zeitweise): durch SCRUM-164 (26.06.)
