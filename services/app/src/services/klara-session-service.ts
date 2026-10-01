@@ -1515,9 +1515,9 @@ export class KlaraSessionService {
   /**
    * JOB 2688 D1 — AUFRÄUMEN. Entfernt Sitzungen, deren `expiresAt` länger als die Aufbewahrung
    * (30 Tage) zurückliegt, samt Zustimmungszeilen; gibt die Anzahl zurück. Idempotent, kein Lesen
-   * schreibt. AUSLÖSER: dieser Dienst hat keinen Zeitplan; das Haus besitzt einen in
-   * `services/app/src/trash-sweep-scheduler.ts`, verdrahtet in `server.ts` für den Papierkorb.
-   * Die Verdrahtung dieser Methode dort lag ausserhalb der Lease von 2688 D1 und ist offen.
+   * schreibt. AUSLÖSER (R-0609 · Bens B13): `buildApp` reicht diesen Lauf über die Option
+   * `klaraAufraeumen` heraus, `server.ts` startet ihn beim Start und danach periodisch
+   * (`services/app/src/klara-aufraeumen.ts`, Zeitgeber aus `trash-sweep-scheduler.ts`).
    */
   async raeumeAbgelaufeneAuf(): Promise<number> {
     const grenze = new Date(this.now() - KLARA_SESSION_AUFBEWAHRUNG_MS).toISOString();

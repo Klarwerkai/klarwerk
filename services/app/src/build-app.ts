@@ -2157,7 +2157,15 @@ export function buildApp(
   //
   // JOB 2661: `log` ist der Prüfeinstieg für die Logsenke — ohne ihn ist der Logger derselbe,
   // er schreibt nur auf die Standardausgabe statt in einen lesbaren Puffer.
-  opts: { factoryReset?: FactoryReset; log?: { senke?: LogSenke; stufe?: string } } = {},
+  //
+  // R-0609 · Bens B13: `klaraAufraeumen` bekommt den Aufräumlauf DER Klara-Dienstinstanz dieser App
+  // (Nachtrag fehlender Prüfprotokoll-Enden, dann Löschen abgelaufener Sitzungen). `server.ts`
+  // startet ihn (`klara-aufraeumen.ts`); ohne Option läuft nichts (Tests).
+  opts: {
+    factoryReset?: FactoryReset;
+    log?: { senke?: LogSenke; stufe?: string };
+    klaraAufraeumen?: (lauf: () => Promise<number>) => void;
+  } = {},
 ): FastifyInstance {
   // SCRUM-490 R3 (B2, Fix 4): trustProxy gezielt aus env (KLARWERK_TRUST_PROXY) — request.ip = echte
   // Client-IP hinter dem bekannten Proxy-Hop; Default (unset) = false = Socket-Peer (heutiges Verhalten).
@@ -2518,6 +2526,8 @@ export function buildApp(
       };
     },
   });
+  // R-0609 · Bens B13: der Aufräumlauf GENAU DIESER Instanz geht an den Auslöser in `server.ts`.
+  opts.klaraAufraeumen?.(() => klaraSessions.raeumeAbgelaufeneAuf());
   app.register(klaraAiRoutes({ sessions: klaraSessions }, guards));
   // JOB 3326: die Lesevarianten — Übersicht, Einzelabruf und die Admin-Ladeaktion. Sie bekommen
   // DIESELBE Ablage-Instanz, die auch `koRoutes` oben durchgereicht wird; eine zweite wäre ein
