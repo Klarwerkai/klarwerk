@@ -547,6 +547,10 @@ export function Ask(): JSX.Element {
     const autoFrage = shouldAutoAskFromSearch(params);
     const marke = startadresseMarke(navigationsSchluessel, frage, autoFrage);
     if (frage === null || marke === null || gemerkteJetzt.current.includes(marke)) {
+      // Ben L2 R2, B1: wer die Navigation einer Startfrage VERLÄSST (hierher ohne neue Startfrage),
+      // nimmt ihren noch wartenden Antwortwunsch nicht mit — sonst ginge er nach Ende einer
+      // laufenden Anfrage doch noch hinaus, obwohl die Seite längst woanders steht.
+      setStartfrageGilt(false);
       return;
     }
     setAdresse({ frage, autoFrage, marke });
@@ -556,6 +560,14 @@ export function Ask(): JSX.Element {
     // Im Feld steht jetzt die angebotene Frage, nicht mehr der aufgenommene Entwurf.
     setWiederaufnahme((w) => (w?.antwortAm ? { entwurf: false, antwortAm: w.antwortAm } : null));
   }, [navigationsSchluessel, params]);
+  // Ben L2 R2, B1: ändert der Nutzer die angebotene Startfrage im Feld (leeren = verwerfen,
+  // umschreiben, diktieren), ist sie nicht mehr der Wunsch der Adresse. Ein noch wartender
+  // Antwortwunsch verfällt damit; gesendet wird dann nur, was er selbst absendet.
+  useEffect(() => {
+    if (startfrageGilt && adresse.frage !== null && q !== adresse.frage) {
+      setStartfrageGilt(false);
+    }
+  }, [q, startfrageGilt, adresse.frage]);
   // AUFTRAG-mega38 BLOCK J2: „Bitte gib zuerst eine Frage ein." stand auf `/fragen`, BEVOR die
   // Leserin irgendetwas getan hatte — eine Zurechtweisung als Begrüssung. Der Satz ist richtig,
   // sein Zeitpunkt war es nicht. Er erscheint jetzt erst, wenn wirklich leer abgesendet wurde.
@@ -1106,13 +1118,28 @@ export function Ask(): JSX.Element {
     if (autoAskedFuer.current === adresse.marke || answerAi.isLoading || ask.isPending) {
       return;
     }
-    if (adresse.autoFrage && startfrageGilt && adresse.frage !== null && adresse.frage.trim()) {
+    // Nur der Wunsch DER Navigation, auf der die Seite gerade steht (Ben L2 R2, B1).
+    const zurNavigation = adresse.marke?.startsWith(`${navigationsSchluessel}:`) === true;
+    if (
+      zurNavigation &&
+      adresse.autoFrage &&
+      startfrageGilt &&
+      adresse.frage !== null &&
+      adresse.frage.trim()
+    ) {
       autoAskedFuer.current = adresse.marke;
       // WP-UX-WOW-1 U5: die Startfrage auch als Lücken-/Capture-Kontext festhalten (wie Submit) —
       // das übernimmt submitAsk; ohne nutzbares Modell passiert bewusst NICHTS.
       submitAsk(adresse.frage);
     }
-  }, [adresse, startfrageGilt, answerAi.isLoading, ask.isPending, submitAsk]);
+  }, [
+    adresse,
+    navigationsSchluessel,
+    startfrageGilt,
+    answerAi.isLoading,
+    ask.isPending,
+    submitAsk,
+  ]);
 
   // SCRUM-430 (VIP): beantwortete Frage inkl. Quellen exportieren/teilen. Quellen bleiben klar
   // ausgewiesen (Status/Trust/Nutzbarkeit). Markdown wird erst beim Klick gebaut (frischer Zeitstempel).

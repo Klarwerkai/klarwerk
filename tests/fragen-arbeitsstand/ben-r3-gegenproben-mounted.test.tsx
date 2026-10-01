@@ -12,6 +12,9 @@
 //   Z   Zusammenführung mit R-0474 (neue Adresse auf der OFFENEN Seite, ohne Neumontage): die neue
 //       Startfrage gilt und fragt einmal; Neuladen und Vor/Zurück auf dieselbe Adresse fragen nicht
 //       noch einmal und holen keinen verworfenen Entwurf zurück.
+//   W   Ben L2 R2, B1: ein WARTENDER Antwortwunsch (eine andere Anfrage läuft noch) sendet genau
+//       einmal, solange er gilt — und gar nicht mehr, sobald seine Frage geleert oder seine
+//       Navigation verlassen wurde.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const lage = vi.hoisted(() => ({
@@ -332,5 +335,74 @@ describe("Ben R3 · Startadressen ohne Grenze, Tabellen ohne Rand", () => {
     expect(feld(neu).value).toBe("");
     expect(q(neu, "ask-answer")?.textContent).toContain("Ventil V4 wird jährlich geprüft");
     neu.abbauen();
+  });
+
+  async function laufendeFreigeben(): Promise<void> {
+    await act(async () => {
+      lage.zurueckhalten = false;
+      lage.freigeben();
+      await flush();
+    });
+    await act(flush);
+  }
+
+  it("W1 · ein weiterhin gültiger wartender Antwortwunsch sendet nach der laufenden Antwort genau einmal", async () => {
+    const f = await oeffnen(neuerCache("u1"), "/fragen");
+    lage.zurueckhalten = true;
+    await tippen(f, "Laufend");
+    await absenden(f);
+    await gehe("/fragen?q=Neu&ask=1");
+    expect(fragenAnsModell()).toEqual(["Laufend"]);
+    await laufendeFreigeben();
+    expect(fragenAnsModell()).toEqual(["Laufend", "Neu"]);
+    await act(flush);
+    expect(fragenAnsModell()).toEqual(["Laufend", "Neu"]);
+    f.abbauen();
+  });
+
+  it("W2 · Ben-Fall: geleert und zurück zur verbrauchten Adresse — die verworfene Frage geht nicht hinaus", async () => {
+    const f = await oeffnen(neuerCache("u1"), "/fragen?q=Alt&ask=1");
+    expect(fragenAnsModell()).toEqual(["Alt"]);
+    lage.zurueckhalten = true;
+    await tippen(f, "Laufend");
+    await absenden(f);
+    await gehe("/fragen?q=Neu&ask=1");
+    await tippen(f, "");
+    await gehe(-1);
+    expect(feld(f).value).toBe("");
+    await laufendeFreigeben();
+    expect(fragenAnsModell()).toEqual(["Alt", "Laufend"]);
+    expect(feld(f).value).toBe("");
+    expect(JSON.parse(gespeichert("u1")).antwort?.frage).toBe("Laufend");
+    // Auch Vor auf die verlassene Adresse holt den verworfenen Wunsch nicht zurück.
+    await gehe(1);
+    expect(fragenAnsModell()).toEqual(["Alt", "Laufend"]);
+    expect(feld(f).value).toBe("");
+    f.abbauen();
+  });
+
+  it("W3 · nur geleert (ohne Navigation) — der wartende Wunsch verfällt", async () => {
+    const f = await oeffnen(neuerCache("u1"), "/fragen");
+    lage.zurueckhalten = true;
+    await tippen(f, "Laufend");
+    await absenden(f);
+    await gehe("/fragen?q=Neu&ask=1");
+    await tippen(f, "");
+    await laufendeFreigeben();
+    expect(fragenAnsModell()).toEqual(["Laufend"]);
+    expect(feld(f).value).toBe("");
+    f.abbauen();
+  });
+
+  it("W4 · verlassen ohne Leeren (Navigation ohne Startfrage) — der wartende Wunsch verfällt", async () => {
+    const f = await oeffnen(neuerCache("u1"), "/fragen");
+    lage.zurueckhalten = true;
+    await tippen(f, "Laufend");
+    await absenden(f);
+    await gehe("/fragen?q=Neu&ask=1");
+    await gehe("/fragen");
+    await laufendeFreigeben();
+    expect(fragenAnsModell()).toEqual(["Laufend"]);
+    f.abbauen();
   });
 });
