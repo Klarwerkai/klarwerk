@@ -16,6 +16,16 @@ import { useTranslation } from "react-i18next";
 import { endpoints } from "../api/endpoints";
 import type { LibraryImageHit, LibraryImageSearchResponse } from "../api/types";
 import { useImageDescribe } from "../app/ImageDescribeContext";
+// ANHÄNGE ZIEHEN: Listeneinträge per Maus an die Textstelle — nur Schlüssel reisen, nie Markup.
+import {
+  ANHANG_ZIEH_TYP,
+  type AnhangArt,
+  anhangZiehwert,
+  bildSchluessel,
+  einfuegestelleAmPunkt,
+  liesGezogenenAnhang,
+  loeseGezogenenAnhangAuf,
+} from "../lib/anhangZiehen";
 import { type EditorFile, fileLinkHtml } from "../lib/bodyFileLink";
 // JOB 2084 (I50-3): die KANONISCHE Galerie-Ableitung. Der Editor löst die Bitte über dieselbe
 // Funktion auf, aus der die Galerie ihre Liste bildet — kein zweiter Filter, keine Nachbildung.
@@ -1896,13 +1906,16 @@ export function RichTextEditor({
     uebernimmTrennungen(verankereFiguren(el));
     emit();
   };
-  const addImage = (img: EditorImage): void => {
-    setShowImages(false);
-    const html = img.objectId
+  // Das Markup eines Listenbildes — eine Stelle für Klick UND Ziehen.
+  const bildHtml = (img: EditorImage): string =>
+    img.objectId
       ? insertImageHtml(img.objectId, img.name)
       : img.src
         ? insertImageSrcHtml(img.src, img.name)
         : "";
+  const addImage = (img: EditorImage): void => {
+    setShowImages(false);
+    const html = bildHtml(img);
     if (html) {
       exec("insertHTML", html);
     }
@@ -1982,9 +1995,42 @@ export function RichTextEditor({
     setDragActive(false);
     const files = Array.from(e.dataTransfer?.files ?? []);
     if (files.length === 0) {
+      legeGezogenenAnhangAb(e);
       return;
     }
     void handleMediaFiles(files);
+  };
+  // ANHÄNGE ZIEHEN: ein Eintrag der Bild-/Dateiliste. Eingefügt wird nur, was die Liste gerade
+  // anbietet, über dasselbe Markup wie beim Klick — und an der Textstelle unter dem Mauspunkt.
+  // Alles andere (fremdes HTML, URLs, unbekannte Schlüssel) bleibt wie bisher ohne Wirkung.
+  const legeGezogenenAnhangAb = (e: DragEvent<HTMLDivElement>): void => {
+    const el = ref.current;
+    const daten = e.dataTransfer;
+    const anhang = loeseGezogenenAnhangAuf(
+      liesGezogenenAnhang(
+        typeof daten?.getData === "function" ? daten.getData(ANHANG_ZIEH_TYP) : null,
+      ),
+      images,
+      files,
+    );
+    if (!el || !anhang) {
+      return;
+    }
+    const html =
+      anhang.art === "bild"
+        ? bildHtml(anhang.bild)
+        : fileLinkHtml({ objectId: anhang.datei.objectId, name: anhang.datei.name });
+    setShowImages(false);
+    setShowFiles(false);
+    insertHtmlReliable(html, einfuegestelleAmPunkt(el, e.clientX, e.clientY));
+  };
+  const zieheAnhang = (
+    e: DragEvent<HTMLButtonElement>,
+    art: AnhangArt,
+    schluessel: string,
+  ): void => {
+    e.dataTransfer.setData(ANHANG_ZIEH_TYP, anhangZiehwert({ art, schluessel }));
+    e.dataTransfer.effectAllowed = "copy";
   };
   const onDragOver = (e: DragEvent<HTMLDivElement>): void => {
     // SCRUM-466 Teil A: Default immer unterbinden, damit der Editor ein
@@ -2173,8 +2219,10 @@ export function RichTextEditor({
                       </p>
                       {images.map((img) => (
                         <button
-                          key={img.objectId ?? img.src ?? img.name}
+                          key={bildSchluessel(img)}
                           type="button"
+                          draggable
+                          onDragStart={(e) => zieheAnhang(e, "bild", bildSchluessel(img))}
                           onClick={() => addImage(img)}
                           className="block w-full truncate rounded-btn px-2 py-1 text-left text-[12.5px] text-text hover:bg-hairline-soft"
                         >
@@ -2226,6 +2274,8 @@ export function RichTextEditor({
                         <button
                           key={file.objectId}
                           type="button"
+                          draggable
+                          onDragStart={(e) => zieheAnhang(e, "datei", file.objectId)}
                           onClick={() => addFile(file)}
                           className="block w-full truncate rounded-btn px-2 py-1 text-left text-[12.5px] text-text hover:bg-hairline-soft"
                         >
