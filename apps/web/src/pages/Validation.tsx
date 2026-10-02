@@ -143,6 +143,7 @@ import {
   validationFacetValues,
 } from "../lib/validationFacets";
 import {
+  BegruendungFehler,
   type FeedbackVerdict,
   buildValidationFeedback,
   isFeedbackSubmittable,
@@ -533,35 +534,86 @@ export function Validation(): JSX.Element {
     freigabe.reset();
   };
 
+  // Aufnahme 20260922 · Prüfboard-Bedienung: die Begründung, die der Server schon BESTÄTIGT hat,
+  // während die Bewertung danach scheiterte. Dieselbe Regel wie `stufenfrage.gespeichert`: ein
+  // Fehler ist ein Ereignis, kein Gedächtnis — was angekommen ist, bleibt eine Tatsache des
+  // Vorgangs, auch über Abbrechen und erneutes Öffnen hinweg, bis die Bewertung durch ist.
+  const [begruendungGespeichert, setBegruendungGespeichert] = useState<{
+    id: string;
+    verdict: FeedbackVerdict;
+    text: string;
+  } | null>(null);
+
   const reviewWithFeedback = useMutation({
     mutationFn: async ({
       id,
       verdict,
       text,
-    }: { id: string; title: string; verdict: FeedbackVerdict; text: string }) => {
-      await endpoints.ko.act(id, {
-        action: "comment",
-        text: buildValidationFeedback(verdict, text),
-      });
-      await endpoints.ko.act(id, { action: "rate", verdict });
+      nurBewertung,
+    }: {
+      id: string;
+      title: string;
+      verdict: FeedbackVerdict;
+      text: string;
+      nurBewertung: boolean;
+    }) => {
+      if (!nurBewertung) {
+        try {
+          await endpoints.ko.act(id, {
+            action: "comment",
+            text: buildValidationFeedback(verdict, text),
+          });
+        } catch (e) {
+          throw new BegruendungFehler(false, e);
+        }
+      }
+      try {
+        await endpoints.ko.act(id, { action: "rate", verdict });
+      } catch (e) {
+        throw new BegruendungFehler(true, e);
+      }
     },
     onSuccess: (_data, vars) => {
       setFeedback(null);
       setFeedbackText("");
+      setBegruendungGespeichert(null);
       nachEntscheidung(vars);
+    },
+    onError: (e, vars) => {
+      if (e instanceof BegruendungFehler && e.begruendungGespeichert) {
+        setBegruendungGespeichert({ id: vars.id, verdict: vars.verdict, text: vars.text });
+      }
     },
   });
 
   const openFeedback = (id: string, verdict: FeedbackVerdict): void => {
     setFeedback({ id, verdict });
-    setFeedbackText("");
+    // Liegt die Begründung zu genau diesem Vorgang schon am Server, steht sie wieder da — sie wird
+    // nicht ein zweites Mal geschrieben.
+    const gespeichert =
+      begruendungGespeichert?.id === id && begruendungGespeichert.verdict === verdict
+        ? begruendungGespeichert.text
+        : "";
+    setFeedbackText(gespeichert);
     reviewWithFeedback.reset();
   };
 
   const assign = useMutation({
     mutationFn: ({ id, userId }: { id: string; userId: string }) =>
       endpoints.ko.act(id, { action: "assign", userIds: [userId] }),
-    onSuccess: invalidate,
+    onSuccess: (_data, vars) => {
+      invalidate();
+      push("success", t("pruefboard.zuweisenErfolg", { name: nameOf(vars.userId) }));
+    },
+    // Bisher ohne jede Meldung: das Auswahlfeld sprang zurück, und niemand erfuhr, dass die
+    // Zuweisung nicht angekommen war.
+    onError: (e) =>
+      push(
+        "error",
+        t("pruefboard.zuweisenFehler", {
+          grund: e instanceof ApiError ? e.message : t("state.error"),
+        }),
+      ),
   });
 
   const aiCheckRetry = useMutation({
@@ -1318,6 +1370,14 @@ export function Validation(): JSX.Element {
     const darfVergleichen = role === "admin" || role === "controller";
     const punkte = Array.from({ length: Math.max(sig.needed, 1) }, (_, i) => i);
     const quittung = quittungOffen && lastDecision ? reviewOutcome(lastDecision.verdict) : null;
+    // Die OFFENEN Zuweisungen (die Board-Route reicht nur offene durch, ValidationService
+    // `withOpenAssignments`) — „zugewiesen" allein sagte nicht, an wen.
+    const zugewiesen = k.assignments ?? [];
+    // Rückfrage/Ablehnung: liegt die Begründung dieses Vorgangs schon am Server?
+    const begruendungLiegt =
+      feedback?.id === k.id &&
+      begruendungGespeichert?.id === k.id &&
+      begruendungGespeichert.verdict === feedback.verdict;
 
     return (
       // Der Flächen-Klick ist reiner MAUS-Komfort. Die Karte bekommt ausdrücklich KEINE
@@ -1411,11 +1471,18 @@ export function Validation(): JSX.Element {
                     aria-label={t("val.assign")}
                   >
                     <option value="">{t("val.assign")}</option>
-                    {(users.data ?? []).map((u) => (
-                      <option key={u.id} value={u.id}>
-                        {u.name || u.id}
-                      </option>
-                    ))}
+                    {/* Wer schon offen zugewiesen ist, steht da — aber nicht noch einmal wählbar:
+                        ein zweites Zuweisen derselben Person änderte nichts und sähe aus wie eins. */}
+                    {(users.data ?? []).map((u) => {
+                      const schon = zugewiesen.includes(u.id);
+                      return (
+                        <option key={u.id} value={u.id} disabled={schon}>
+                          {schon
+                            ? t("pruefboard.bereitsZugewiesen", { name: u.name || u.id })
+                            : u.name || u.id}
+                        </option>
+                      );
+                    })}
                   </select>
                 </div>
                 <PruefenMenueEintrag onClick={() => navigate(`/wissen/${k.id}?edit=1`)}>
@@ -1543,6 +1610,13 @@ export function Validation(): JSX.Element {
               {sig.authorTransferred ? ` · ${t("val.transferred")}` : ""}
               {sig.assigned ? ` · ${t("val.assigned")}` : ""}
             </PruefenMehrZeile>
+            {zugewiesen.length > 0 ? (
+              <PruefenMehrZeile beschriftung={t("pruefboard.zugewiesenAn")}>
+                <span data-testid="pruefen-zugewiesen-an">
+                  {zugewiesen.map((id) => nameOf(id)).join(", ")}
+                </span>
+              </PruefenMehrZeile>
+            ) : null}
             <PruefenMehrZeile beschriftung={t("pruefen.mehr.aiCheck")}>
               <AiCheckBadge
                 aiCheck={k.aiCheck}
@@ -1863,6 +1937,9 @@ export function Validation(): JSX.Element {
                 onChange={(e) => setFeedbackText(e.target.value)}
                 placeholder={t("val.feedback.placeholder")}
                 rows={3}
+                // Die gespeicherte Begründung wird nicht mehr geschrieben — also auch nicht mehr
+                // bearbeitet: eine geänderte Fassung käme nie am Server an.
+                readOnly={begruendungLiegt}
                 aria-label={
                   feedback.verdict === "warn"
                     ? t("val.feedback.condTitle")
@@ -1870,8 +1947,21 @@ export function Validation(): JSX.Element {
                 }
                 className="w-full resize-y rounded-input border border-hairline bg-surface p-2.5 text-sm text-text outline-none placeholder:text-muted-2 focus:border-ink/30"
               />
-              {reviewWithFeedback.isError ? (
-                <div className="mt-2 rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text">
+              {/* Zwei Zustände, zwei Sätze: „nichts gespeichert" ist etwas anderes als „die
+                  Begründung liegt, die Bewertung nicht" (dieselbe Unterscheidung wie an der
+                  Stufenfrage, `val.stufenfrage.fehlerNachStufe`). */}
+              {begruendungLiegt ? (
+                <div
+                  data-testid="pruefen-begruendung-teilerfolg"
+                  className="mt-2 rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text"
+                >
+                  {t("pruefboard.begruendungGespeichert")}
+                </div>
+              ) : reviewWithFeedback.isError ? (
+                <div
+                  data-testid="pruefen-begruendung-fehler"
+                  className="mt-2 rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text"
+                >
                   {t("val.feedback.error")}
                 </div>
               ) : null}
@@ -1899,10 +1989,11 @@ export function Validation(): JSX.Element {
                       title: k.title,
                       verdict: feedback.verdict,
                       text: feedbackText,
+                      nurBewertung: begruendungLiegt,
                     })
                   }
                 >
-                  {t("val.feedback.submit")}
+                  {begruendungLiegt ? t("pruefboard.bewertungSenden") : t("val.feedback.submit")}
                 </Button>
               </div>
             </div>
