@@ -296,8 +296,19 @@ describe("Anhänge ziehen · Z2/Z3 — Anker je Vorkommen, stabil über Speicher
     const nachher = figuren(schreibfeld());
 
     expect(nachher).toEqual(vorher);
+    // Der gespeicherte Rumpf, strukturell gelesen: je Kennung GENAU ein Bild und GENAU eine
+    // Unterschrift, beide in derselben Hülle. Die Hülle selbst darf die Kennung mittragen
+    // (`editorFigures.ts` setzt sie, der Sanitizer lässt sie an `figure` zu) — dann dieselbe.
+    const rumpf = geparst(gespeichert);
     for (const f of vorher) {
-      expect(gespeichert.split(`data-image-id="${f.bildId}"`).length - 1, gespeichert).toBe(2);
+      const id = f.bildId as string;
+      const bilder = rumpf.querySelectorAll(`img[data-image-id="${id}"]`);
+      const unterschriften = rumpf.querySelectorAll(`figcaption[data-image-id="${id}"]`);
+      expect([bilder.length, unterschriften.length], gespeichert).toEqual([1, 1]);
+      const huelle = bilder[0]?.closest("figure");
+      expect(huelle, gespeichert).toBeTruthy();
+      expect(unterschriften[0]?.closest("figure")).toBe(huelle);
+      expect(huelle?.getAttribute("data-image-id") ?? id).toBe(id);
     }
   });
 });
@@ -375,8 +386,19 @@ describe("Anhänge ziehen · Z6 — nur bekannte Anhänge, nie fremdes Markup", 
 });
 
 describe("Anhänge ziehen · ohne Punkt-Auskunft des Browsers", () => {
-  it("R1 · liefert der Browser keine Stelle, gilt der bisherige Einfügeweg (Cursor, sonst Ende)", () => {
+  // WARUM R1 EINEN CURSOR AUFBAUT. Ohne Punkt-Auskunft geht der Editor den bisherigen Weg
+  // (`fuegeAmCursorEin`, unverändert, derselbe wie beim Datei-Drop): ERST `el.focus()`, DANN die
+  // lebende Auswahl, nur ohne Auswahl im Feld das Ende. Ein Editor, der den Fokus noch nicht hat,
+  // bekommt beim `focus()` eine Einfügemarke am ANFANG gesetzt — gemessen im ersten Cloudlauf
+  // (davor `''`), und Browser tun dasselbe. Die frühere Erwartung „Ende" beschrieb also einen Zweig,
+  // den dieser Aufbau gar nicht erreicht. Gefragt ist hier, dass der Cursor des Menschen gilt: der
+  // Mensch hat ins Feld geklickt (Fokus + Marke vor „Nachher"), dann gezogen.
+  it("R1 · liefert der Browser keine Stelle, gilt der bisherige Einfügeweg: am Cursor", () => {
     mount("<p>Vorher Nachher</p>");
+    schreibfeld().focus();
+    const marke = stelleVor("Nachher")();
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(marke);
     oeffneListe("bild");
     const dt = ziehdaten();
     beginneZiehen("Pumpe.png", dt);
@@ -384,7 +406,21 @@ describe("Anhänge ziehen · ohne Punkt-Auskunft des Browsers", () => {
     legeAb(dt);
     const [f] = figuren(schreibfeld());
     expect(f?.src).toBe("/api/objects/obj-pumpe/raw");
-    expect(f?.davor).toBe("Vorher Nachher");
+    expect(f?.davor).toBe("Vorher");
     expect(f?.unterschriftId).toBe(f?.bildId);
+  });
+
+  it("R1b · ohne Punkt-Auskunft und ohne Cursor: eingefügt und verankert, kein Text verloren", () => {
+    mount("<p>Vorher Nachher</p>");
+    oeffneListe("bild");
+    const dt = ziehdaten();
+    beginneZiehen("Pumpe.png", dt);
+    legeAb(dt);
+    const alle = figuren(schreibfeld());
+    expect(alle).toHaveLength(1);
+    expect(alle[0]?.src).toBe("/api/objects/obj-pumpe/raw");
+    expect(alle[0]?.bildId).toBeTruthy();
+    expect(alle[0]?.unterschriftId).toBe(alle[0]?.bildId);
+    expect(norm(schreibfeld().textContent ?? "")).toBe("Vorher Nachher");
   });
 });

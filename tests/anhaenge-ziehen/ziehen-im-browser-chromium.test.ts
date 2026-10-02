@@ -355,9 +355,25 @@ describe("Anhänge ziehen · Z2/Z3 — ein Anker je Vorkommen, stabil über Spei
     expect(nachher.figuren.map((f) => [f.davor, f.danach])).toEqual(
       vorher.figuren.map((f) => [f.davor, f.danach]),
     );
+    // Der gespeicherte Rumpf, strukturell gelesen: je Kennung GENAU ein Bild und GENAU eine
+    // Unterschrift in derselben Hülle; trägt die Hülle die Kennung mit (Produktvertrag:
+    // `editorFigures.ts` setzt sie, der Sanitizer lässt sie an `figure` zu), dann dieselbe.
     for (const f of vorher.figuren) {
-      // Bild und Unterschrift tragen die Kennung im gespeicherten Rumpf — je genau einmal.
-      expect(gespeichert.split(`data-image-id="${f.bildId}"`).length - 1, gespeichert).toBe(2);
+      const befund = await s.evaluate<[number, number, boolean, boolean]>(`(() => {
+        const d = document.createElement("div");
+        d.innerHTML = ${JSON.stringify(gespeichert)};
+        const id = ${JSON.stringify(f.bildId)};
+        const bilder = d.querySelectorAll('img[data-image-id="' + id + '"]');
+        const unterschriften = d.querySelectorAll('figcaption[data-image-id="' + id + '"]');
+        const huelle = bilder[0] ? bilder[0].closest("figure") : null;
+        return [
+          bilder.length,
+          unterschriften.length,
+          !!huelle && !!unterschriften[0] && unterschriften[0].closest("figure") === huelle,
+          !!huelle && (huelle.getAttribute("data-image-id") ?? id) === id,
+        ];
+      })()`);
+      expect(befund, gespeichert).toEqual([1, 1, true, true]);
     }
   });
 });
