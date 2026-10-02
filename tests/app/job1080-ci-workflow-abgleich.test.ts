@@ -83,6 +83,11 @@ const EINORDNUNG: ReadonlyArray<{ job: string; befehl: string; lage: Lage }> = [
   { job: "check", befehl: "./tools/check", lage: "IST_DAS_TOR" },
   { job: "integration", befehl: "npm ci", lage: "AUSSERHALB" },
   { job: "integration", befehl: "npm ci --prefix apps/web", lage: "AUSSERHALB" },
+  {
+    job: "integration",
+    befehl: "npx playwright install --with-deps chromium",
+    lage: "AUSSERHALB",
+  },
   { job: "integration", befehl: "npm run test:integration", lage: "AUSSERHALB" },
 ];
 

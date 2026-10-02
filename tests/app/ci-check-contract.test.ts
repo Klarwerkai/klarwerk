@@ -105,6 +105,7 @@ describe("I51 · der Check-Job fährt dasselbe Gesamttor wie die Hand", () => {
     expect(runBefehle(integration)).toEqual([
       "npm ci",
       "npm ci --prefix apps/web",
+      "npx playwright install --with-deps chromium",
       "npm run test:integration",
     ]);
     expect(integration).toContain('node-version: "24"');
