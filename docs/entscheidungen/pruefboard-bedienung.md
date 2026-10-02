@@ -23,6 +23,12 @@ nicht mitgegeben. Andere Aufnahme-Läufe vom 20260922 haben sie im Auftrag erhal
   Quelle nicht selbst zuordnen. **Die Steuerung muss die Aufnahmepunkte nachreichen.** Bis dahin
   bleibt das Kriterium „je Aufnahmepunkt“ unerfüllt. Aus dem Fehlen werden keine zusätzlichen
   Produktanforderungen abgeleitet.
+- **Runde 3:** Bens Beleg zu Runde 2 (`beleg:84f86ed2-fbab-4380-9027-542c82b15afa`, geprüfter
+  Commit `0d5aee54`) bestätigt B1 als behoben und lässt B2 aus demselben Grund offen. Auch der
+  Auftrag für Runde 3 enthält keine Aufnahmepunkte: keine R-Nummer, kein Originalwortlaut, keine
+  Entscheidungen oder Erledigungsbelege, und auch keinen Admin-Hinweis. Damit ist der Stand
+  unverändert. Die Einzelzuordnung kann erst entstehen, wenn die Steuerung die Punkte bereitstellt.
+  Eine Produktänderung folgt daraus nicht.
 
 ## Kurzbild (§8.2 und Kriterien)
 
