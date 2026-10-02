@@ -114,7 +114,7 @@ um Zeile 3965). Ihn rufen der Papierkorb-Sweep (`runTrashSweep`), `purgeTrashed`
 | Modellläufe (`model_runs`) | kein Löschweg; Frist „vom Betreiber festzulegen“ |
 | Antworten (`answer_records`, `answer_snapshots`) | kein Löschweg |
 | Geschlossene Wissenslücken | nur manuell `DELETE /api/gaps/:id` |
-| Abgelaufene Anmeldesitzungen | Aufräumen nur beim Serverstart |
+| Abgelaufene Anmeldesitzungen | zwei Löschwege, beide ohne Frist und ohne Zeitplan: **beim Zugriff** löscht `AuthService.authenticate` eine abgelaufene Sitzung, deren Token vorgelegt wird (`services/auth/src/service.ts`, „abgelaufen → beim Zugriff aufraeumen“; Beleg `services/auth/src/service.test.ts` „abgelaufene Sitzung gilt nicht mehr“); **beim PostgreSQL-Serverstart** löscht `migrateAuthTokensAtRest` alle abgelaufenen Sitzungen und Rücksetz-Token (`services/auth/src/repo-pg.ts`). Einen periodischen Aufräumlauf für abgelaufene Sitzungen, die niemand mehr vorlegt, gibt es nicht. |
 | Abgelaufene Klara-Sitzungen | `raeumeAbgelaufeneAuf()` (30 Tage) existiert und ist getestet (`tests/app/job2688-klara-jedes-hinsehen-ist-ein-schreibvorgang.test.ts`), aber **nicht verdrahtet** (Kommentar in `klara-session-service.ts`: „ist offen“) |
 | Audit | bewusst nur anhängend, nicht löschbar |
 | Server-/Proxy-Logs | Betreiber |
@@ -166,8 +166,13 @@ Abschaltweg, kein Löschprotokoll, kein Beleg für Sicherungen und Offsite-Kopie
    30 Tage. Die jüngere Nutzerentscheidung bleibt wirksam.
 4. **„Sicherungen fehlen ganz“ (R-0657)** ist durch JOB 4010/4057/4097/4227 überholt; was weiter
    fehlt, ist Löschung **in** Sicherungen und die Löschsperre.
-5. **„Nur eine Planungsunterlage“ (R-0638)** ist für die Wiederherstellung überholt (Restore-Drill
-   geliefert), für Export und Fristen weiter zutreffend.
+5. **„Nur eine Planungsunterlage“ (R-0638)** ist überholt für die Wiederherstellung (Restore-Drill
+   geliefert) und für den fachlichen Export: `GET /api/library/export`
+   (`services/app/src/routes/library-routes.ts`) liefert JSON, Markdown, MediaWiki und HTML mit
+   Rollenfilter, belegt in `tests/security/library-export-egress.test.ts` und
+   `tests/security/g6-export-formate-vertraulich.test.ts`. Weiter zutreffend ist die Aussage nur für
+   den **personenbezogenen Komplettexport** (Art. 15/20; heute manuell durch Admin/DSB, NFR-PRV-04)
+   und für die **Aufbewahrungsfristen** (nur offene Betreiberfristen in der Doku).
 6. **Dokumentation gegen Code:** `docs/compliance/data-protection-requirements.md` §3 sagt
    „Prompts/Antworten werden nicht gespeichert“. Antworten liegen heute in `answer_records` und
    `answer_snapshots` (`services/ask/src/repo-pg.ts`). Diese Aussage ist veraltet; sie wird hier
