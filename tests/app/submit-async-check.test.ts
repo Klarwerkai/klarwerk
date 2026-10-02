@@ -315,6 +315,7 @@ describe("WP-SUBMIT-ASYNC (f): Lazy-Re-Enqueue beim Board-Load (Neustart-Ausglei
           enqueued.push(koId);
         },
         has: () => false,
+        laeuft: () => false,
         queuedCount: () => 0,
         idle: async () => {},
       },

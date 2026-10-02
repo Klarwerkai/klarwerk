@@ -88,6 +88,13 @@ export interface AiCheck {
   // NUR LESEFASSUNG, nie gespeichert: bei jedem Lesen aus `basis` gegen das jetzige Objekt
   // abgeleitet (mitPruefstand). true = der abgeschlossene Nachweis gilt für eine frühere Basis.
   ueberholt?: boolean;
+  // PRÜFSTATUS-ANZEIGE (R-0208) · NUR LESEFASSUNG DES PRÜFBRETTS, nie gespeichert. `laeuft`
+  // (nur bei pending): der Worker bearbeitet den Job gerade — sonst ist er bloß ausstehend.
+  // `konfliktGefunden` (nur bei done): zu DIESEM Objekt als Subjekt steht ein offener, automatisch
+  // erkannter Konflikt, dessen Gegenseite der Leser sehen darf. Fehlt das Feld, ist es nicht
+  // erhoben — es heißt dann weder „kein Konflikt" noch „läuft nicht".
+  laeuft?: boolean;
+  konfliktGefunden?: boolean;
 }
 
 // Fingerabdrücke der Prüfbasis (s. pruefbasis.ts): quelle = Fassung + Quellen + Anhänge;

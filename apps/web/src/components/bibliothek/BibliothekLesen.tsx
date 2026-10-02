@@ -18,6 +18,7 @@ import { useSession } from "../../app/AuthContext";
 import { ImageDescribeProvider } from "../../app/ImageDescribeContext";
 import { useRole } from "../../app/RoleContext";
 import { useToast } from "../../app/ToastContext";
+import { abfrageMitBestand, auffrischungGescheitert } from "../../lib/abfrageBestand";
 import {
   type AppendDocumentOutcome,
   commitDocumentAppend,
@@ -32,12 +33,7 @@ import {
 } from "../../lib/bodyFileLink";
 import type { OriginalDocument, OriginalRefCache } from "../../lib/captureAttachments";
 import { fileSourcePayload } from "../../lib/captureFromFile";
-import {
-  CONF_TONE_CLASS,
-  abfrageMitBestand,
-  auffrischungGescheitert,
-  vertraulichkeitsAuskunft,
-} from "../../lib/confidentiality";
+import { CONF_TONE_CLASS, vertraulichkeitsAuskunft } from "../../lib/confidentiality";
 import { conflictImpact, conflictNotice } from "../../lib/conflictImpact";
 import { anzeigestatusAnker, anzeigestatusAus } from "../../lib/displayStatus";
 import { studioSaveConfidence } from "../../lib/editorApplySafety";
@@ -113,7 +109,7 @@ import { type ZustandsTon, zustandsTon } from "./zustand";
 //   · JOB 3034 R2 · KONFLIKTRUNDE 2 (nachgezogen): scheitert die Auffrischung eines schon
 //     geholten Eintrags, bleibt der Eintrag samt Stufenkennzeichen stehen — der Fehler steht als
 //     Hinweis über der Fläche, aus derselben Quelle wie auf der (frueheren) Detailseite
-//     (`lib/confidentiality.ts`, `abfrageMitBestand`/`auffrischungGescheitert`).
+//     (`lib/abfrageBestand.ts`, `abfrageMitBestand`/`auffrischungGescheitert`).
 //
 // ==================================================================================================
 // JOB 3068 · N5 — DER EIGENE BEFUND STEHT HIER, DAUERHAFT, UND NICHT MEHR HINTER „MEHR".
@@ -2087,7 +2083,7 @@ export function BibliothekLesen({
 
   // JOB 3034 R2 · KONFLIKTRUNDE 2 (nachgezogen): scheitert die Auffrischung eines schon geholten
   // Eintrags, bleiben Eintrag und Stufenkennzeichen stehen — der Fehler wird als Hinweis über der
-  // Fläche gesagt, nicht als Verlust des Bestands (`lib/confidentiality.ts`, `abfrageMitBestand`).
+  // Fläche gesagt, nicht als Verlust des Bestands (`lib/abfrageBestand.ts`, `abfrageMitBestand`).
   const bestand = abfrageMitBestand(query);
   if (bestand.isError) {
     return (

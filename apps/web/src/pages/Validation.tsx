@@ -76,6 +76,7 @@ import { ConfidenceBar, KnowledgeTypeTag, KoAuthorLine } from "../components/tru
 import { Button, cx } from "../components/ui";
 import { aiModelUsable } from "../lib/aiAvailability";
 import { AI_CHECK_POLL_MS } from "../lib/aiCheckStatusCard";
+import { bewertungsumfang } from "../lib/bewertungsumfang";
 import { type PruefZeile, boardZeilen, stufenFacetLabelKey } from "../lib/boardAuskunft";
 import {
   DEMO_KNOWLEDGE_FILTERS,
@@ -1815,6 +1816,22 @@ export function Validation(): JSX.Element {
               </button>
             );
           })}
+          {/* PRÜFSTATUS-ANZEIGE (N-0078): „Freigeben" ist EINE positive Bewertung, nicht schon die
+              Validierung. Der noch nötige Umfang steht deshalb unmittelbar daneben — als Text,
+              nicht nur als Punkte mit Tooltip (`lib/bewertungsumfang.ts`). */}
+          {((): JSX.Element => {
+            const umfang = bewertungsumfang(sig);
+            return (
+              <span
+                data-testid="pruefen-restumfang"
+                data-umfang={umfang.art}
+                data-text="text"
+                className="text-[12px] text-muted"
+              >
+                {t(umfang.schluessel, umfang.werte)}
+              </span>
+            );
+          })()}
           {/* Die drei Punkte: grün gefüllt je Stimme, rot je Gegenstimme (Pruefen.dc.html:60). */}
           <span
             data-testid="pruefen-stimmenpunkte"

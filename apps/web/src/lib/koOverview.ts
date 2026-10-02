@@ -24,7 +24,14 @@ export interface KoOverview {
   nextAction: KoNextAction;
 }
 
-function usabilityOf(status: DisplayStatus): KoUsability {
+// PRÜFSTATUS-ANZEIGE (R-0216/R-0212): `konflikt` kommt seither auch vom Server an (der Lesepfad
+// erhebt ihn). Er bekommt dieselbe Wirkung wie die Konfliktliste der Fläche
+// (`conflictLimitedUsability`): was sonst nutzbar wäre — validiert —, ist „in Prüfung"; was
+// ohnehin offen ist, bleibt „zu prüfen". Ohne diese Zeile fiel er auf „zu prüfen" zurück.
+function usabilityOf(status: DisplayStatus, kern: KnowledgeObject["status"]): KoUsability {
+  if (status === "konflikt") {
+    return kern === "validiert" ? "in-review" : "needs-work";
+  }
   if (status === "validiert") {
     return "ready";
   }
@@ -50,7 +57,7 @@ export function koOverview(ko: KnowledgeObject): KoOverview {
   const sig = reviewSignals(ko);
   const sourceCount = ko.sources?.length ?? 0;
   const attachmentCount = ko.attachments?.length ?? 0;
-  const usability = usabilityOf(sig.status);
+  const usability = usabilityOf(sig.status, ko.status);
   return {
     usability,
     status: sig.status,

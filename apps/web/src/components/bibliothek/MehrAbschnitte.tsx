@@ -23,13 +23,10 @@ import type {
 } from "../../api/types";
 import { useRole } from "../../app/RoleContext";
 import { useToast } from "../../app/ToastContext";
+import { abfrageMitBestand } from "../../lib/abfrageBestand";
 import { auditActionLabel } from "../../lib/auditAction";
 import { objectRawHref } from "../../lib/bodyFileLink";
-import {
-  CONFIDENTIALITY_LEVELS,
-  abfrageMitBestand,
-  confidentialityOf,
-} from "../../lib/confidentiality";
+import { CONFIDENTIALITY_LEVELS, confidentialityOf } from "../../lib/confidentiality";
 import { conflictImpact, conflictLimitedUsability } from "../../lib/conflictImpact";
 import { isDemoKnowledge } from "../../lib/demoKnowledge";
 import { deriveStatus } from "../../lib/displayStatus";
@@ -64,6 +61,7 @@ import {
 import { diffForVersion, paarDiff } from "../../lib/koVersionDiff";
 import { koVersionRows, uebernahmeHerkunft } from "../../lib/koVersionSnapshots";
 import { useNetzOnline } from "../../lib/netzzustand";
+import { nochNichtFachlichGeprueft } from "../../lib/pruefeinordnung";
 import {
   type SourceContributionInput,
   formatSourceComment,
@@ -1727,7 +1725,7 @@ export function MehrAbschnitte({
         {/* AUFTRAG-mega51 D2 (unverändert übernommen): „Validiert" NEBEN einer 0-Leiste verwirrt —
             Bedingung und Anzeige lesen deshalb DENSELBEN Wert (`confidence`), und bei validiert +
             Sicherheit 0 steht statt der leeren Leiste der nüchterne Hinweis. */}
-        <div className="mb-3">
+        <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1">
           {deriveStatus(ko) === "validiert" && ko.confidence === 0 ? (
             <span title={t("lib.confidenceNoneHint")} className="text-[12px] text-muted-2">
               {t("lib.confidenceNone")}
@@ -1735,6 +1733,16 @@ export function MehrAbschnitte({
           ) : (
             <ConfidenceBar value={ko.confidence} showLabel={false} percentPhrase />
           )}
+          {/* PRÜFSTATUS-ANZEIGE (N-0054): die Einordnung steht DIREKT am Wert — und nur, wenn die
+              Daten belegen, dass noch niemand fachlich geprüft hat (`lib/pruefeinordnung.ts`). */}
+          {nochNichtFachlichGeprueft(ko) ? (
+            <span
+              data-testid="pruefwert-einordnung"
+              className="text-[12px] font-semibold text-trust-warn-text"
+            >
+              {t("pruefstatus.wert.nochNichtGeprueft")}
+            </span>
+          ) : null}
         </div>
         {/* SCRUM-359 / AG-05 / PI-K2: Trust ist ein Review-/Evidenzsignal, KEINE Wahrheitsgarantie —
             die Grundaussage steht ohne Klick bei der Zahl; nur die Vertiefung ist aufklappbar. */}

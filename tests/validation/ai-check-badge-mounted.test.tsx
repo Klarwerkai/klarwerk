@@ -49,7 +49,9 @@ describe("WP-SUBMIT-ASYNC: AiCheckBadge — pending/failed sichtbar, done/Altbes
     expect(container.querySelector("button")).toBeNull();
   });
 
-  it("(b) failed/no-model → Warn-Pill, Ursache im Tooltip, Retry-Klick feuert onRetry", () => {
+  // PRÜFSTATUS-ANZEIGE (R-0208): „kein Modell" ist der Zustand „KI nicht verfügbar" — die Ursache
+  // steht unverändert im Tooltip, der Retry bleibt.
+  it("(b) failed/no-model → „KI nicht verfügbar“, Ursache im Tooltip, Retry-Klick feuert onRetry", () => {
     let retried = 0;
     mount({
       aiCheck: {
@@ -62,7 +64,8 @@ describe("WP-SUBMIT-ASYNC: AiCheckBadge — pending/failed sichtbar, done/Altbes
         retried += 1;
       },
     });
-    expect(container.textContent).toContain(de("val.aiCheck.failed"));
+    expect(container.textContent).toContain(de("pruefstatus.ki.nichtVerfuegbar"));
+    expect(container.textContent).not.toContain(de("val.aiCheck.failed"));
     const pill = container.querySelector("span[title]");
     expect(pill?.getAttribute("title")).toBe(de("val.aiCheck.reason.no-model"));
     const retry = container.querySelector("button");
@@ -102,7 +105,10 @@ describe("WP-SUBMIT-ASYNC: AiCheckBadge — pending/failed sichtbar, done/Altbes
     expect(container.querySelector("button")?.disabled).toBe(true);
   });
 
-  it("(c) done → NICHTS im DOM", () => {
+  // PRÜFSTATUS-ANZEIGE (R-0208, Ben R2 BEN-03): bis hierher „done → NICHTS im DOM". Der Auftrag
+  // verlangt das Gegenteil: eine abgeschlossene KI-Prüfung ist ein eigener, sichtbarer Zustand —
+  // und er sagt ausdrücklich, dass er keine Freigabe ist.
+  it("(c) done → eigenes Kennzeichen „geprüft – keine Freigabe“, kein Retry", () => {
     mount({
       aiCheck: {
         status: "done",
@@ -111,7 +117,11 @@ describe("WP-SUBMIT-ASYNC: AiCheckBadge — pending/failed sichtbar, done/Altbes
       },
       onRetry: () => {},
     });
-    expect(container.innerHTML).toBe("");
+    const pill = container.querySelector('[data-ki-pruefzustand="geprueft"]');
+    expect(pill?.textContent).toBe(de("pruefstatus.ki.geprueft"));
+    expect(pill?.getAttribute("title")).toBe(de("pruefstatus.ki.geprueftHinweis"));
+    expect(container.textContent).not.toMatch(/validiert/i);
+    expect(container.querySelector("button")).toBeNull();
   });
 
   it("(c2) Altbestand ohne aiCheck-Feld → NICHTS im DOM (kein Pruef-Job vermerkt)", () => {
