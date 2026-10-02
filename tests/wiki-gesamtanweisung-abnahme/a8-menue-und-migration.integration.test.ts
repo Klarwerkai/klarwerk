@@ -667,7 +667,7 @@ describe("JOB 4309 A8 · die Gesamtanweisung auf einer frisch migrierten Datenba
         await seite.click('[data-testid="ga-entscheidung-annehmen"]');
         await warte(
           seite,
-          `() => (document.querySelector('[data-testid="ga-entscheidung-stand"]')?.textContent || "").includes("Entschieden")`,
+          `() => (document.querySelector('[data-testid="ga-entscheidung-stand"]')?.textContent || "").includes("Freigegeben")`,
           "die entschiedene Anweisung",
           undefined,
           45_000,
@@ -721,7 +721,7 @@ describe("JOB 4309 A8 · die Gesamtanweisung auf einer frisch migrierten Datenba
         ).toEqual(folgeNachOrdnen);
         const text = await nachNeustart.seite.evaluate<string>(fn(LIES_TEXT));
         expect(text, "der Titel ist nach dem Neustart weg").toContain(ANWEISUNGSTITEL);
-        expect(text, "die Entscheidung ist nach dem Neustart weg").toContain("Entschieden");
+        expect(text, "die Entscheidung ist nach dem Neustart weg").toContain("Freigegeben");
         expect(
           text,
           "der Lückenvermerk überlebt den Neustart nicht — er wäre dann eine Anzeigelaune",

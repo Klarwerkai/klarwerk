@@ -24,7 +24,7 @@ import { useTranslation } from "react-i18next";
 import { formatKoTimestamp } from "../../lib/koDates";
 import { useAuthorName } from "../../lib/useAuthorName";
 import { BausteinAufnahme } from "./BausteinAufnahme";
-import { EntscheidungsVorlage } from "./EntscheidungsVorlage";
+import { EntscheidungsVorlage, FreigabeStatus } from "./EntscheidungsVorlage";
 import { KopfBearbeitung } from "./KopfBearbeitung";
 import { LesestandAnsicht } from "./LesestandAnsicht";
 import { VergleichAnsicht, vergleichsauswahl } from "./VergleichAnsicht";
@@ -34,7 +34,7 @@ import {
   istOhneVerbindung,
   istUnbekannteFassung,
 } from "./api";
-import { CHIP, HINWEIS, MELDUNG_FEHLER } from "./gestaltung";
+import { HINWEIS, MELDUNG_FEHLER } from "./gestaltung";
 import {
   useAnweisung,
   useAnweisungStaende,
@@ -47,6 +47,7 @@ import {
   useVorlegen,
 } from "./hooks";
 import {
+  type Freigaberechte,
   type Sperre,
   anzeigelage,
   entscheidungSperre,
@@ -95,10 +96,17 @@ export function verschobeneFolge(
 export function GesamtanweisungSeite({
   anweisungId,
   darfEntscheiden,
+  darfVorlegen = true,
   offline = false,
 }: {
   anweisungId: string;
   darfEntscheiden: boolean;
+  /**
+   * PRÜFSTATUS-ANZEIGE · das Vorlegerecht (`ko.create`) — es bestimmt nur den ERKLÄRTEN nächsten
+   * Schritt. Ohne Angabe gilt das bisherige Verhalten dieser Fläche (Vorlegen wird angeboten); die
+   * Hülle `GesamtanweisungBereich` übergibt es aus der Rolle.
+   */
+  darfVorlegen?: boolean;
   /** Ausdrücklich übergeben statt geraten — die Hülle weiss es, dieses Bauteil nicht. */
   offline?: boolean;
 }): JSX.Element {
@@ -218,6 +226,7 @@ export function GesamtanweisungSeite({
     (istUnbekannteFassung(aufnahmeFehler) ? null : aufnahmeFehler) ??
     null;
   const geaendertAm = stand ? formatKoTimestamp(stand.geaendertAm, i18n.language) : null;
+  const rechte: Freigaberechte = { darfVorlegen, darfEntscheiden };
 
   return (
     <div data-testid={SEITE_MARKE} className="space-y-5 pb-10">
@@ -229,8 +238,21 @@ export function GesamtanweisungSeite({
           {stand?.titel ?? t("ga.titel")}
         </h1>
         {stand ? (
+          // PRÜFSTATUS-ANZEIGE: derselbe Block wie in der Übersicht (`GesamtanweisungBereich`).
+          <FreigabeStatus
+            marke={SEITE_MARKE}
+            eingabe={{
+              stand: stand.stand,
+              version: stand.version,
+              geaendertAm: stand.geaendertAm,
+              abschnitte: stand.bausteine.length + stand.verborgeneBausteine,
+              unvollstaendig,
+            }}
+            rechte={rechte}
+          />
+        ) : null}
+        {stand ? (
           <p className={`${HINWEIS} flex flex-wrap items-center gap-x-2 gap-y-1`}>
-            <span className={CHIP}>{t(`ga.stand.${stand.stand}`)}</span>
             <span>{t("fe001.meta.erstelltVon", { name: nameVon(stand.urheber) })}</span>
             <span aria-hidden="true">·</span>
             <span>

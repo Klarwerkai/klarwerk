@@ -2048,8 +2048,14 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // `SanitizedHtml` — dasselbe Bauteil wie bisher im Lesestand, kein neuer Bildweg.
     // DIE +7 IST GEMESSEN: im eigenen Lauf 405 → 412 (Cloud-Lauf pa-1790434819-46fe6fb5); nach der
     // Zusammenführung mit FE-003 (423) am zusammengeführten Arbeitsbaum erneut gemessen: 430.
+    //
+    // PRÜFSTATUS-ANZEIGE (Pedi 28.09.2026, Ergänzung 3): 430 → 431, GENAU EIN Bauteil:
+    //     + `FreigabeStatus` (`components/gesamtanweisung/EntscheidungsVorlage.tsx`) — der eine
+    //       Statusblock für Übersicht und Detailansicht der Arbeitsanleitungen.
+    // Kein Bild, kein `CAPTION_AI_TEXT`, kein `documentTitle`: `anbieter` 1 und `traeger` 2 bleiben.
+    // GEMESSEN: „gemessen: 431 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 527 Quelldateien".
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 430,
+      komponenten: 431,
       anbieter: 1,
       traeger: 2,
     });
