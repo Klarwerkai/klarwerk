@@ -93,17 +93,21 @@ describe("I51 · der Check-Job fährt dasselbe Gesamttor wie die Hand", () => {
   });
 
   it("erhält Node-Version, beide npm-Installationen und die Auslöser", () => {
-    expect(CHECK).toContain('node-version: "20"');
+    expect(CHECK).toContain('node-version: "24"');
     expect(CHECK_RUNS).toContain("npm ci");
     expect(CHECK_RUNS).toContain("npm ci --prefix apps/web");
     expect(yml).toContain("push: { branches: [main] }");
     expect(yml).toContain("pull_request: {}");
   });
 
-  it("lässt den Postgres-Integrationsjob unangetastet", () => {
+  it("versorgt den getrennten Postgres-Integrationsjob mit denselben Abhängigkeiten", () => {
     const integration = jobBlock("integration");
-    expect(runBefehle(integration)).toEqual(["npm ci", "npm run test:integration"]);
-    expect(integration).toContain('node-version: "20"');
+    expect(runBefehle(integration)).toEqual([
+      "npm ci",
+      "npm ci --prefix apps/web",
+      "npm run test:integration",
+    ]);
+    expect(integration).toContain('node-version: "24"');
     // Er bekommt ausdrücklich KEIN Gesamttor: er ist der zweite, langsamere Nachweis.
     expect(integration).not.toContain("./tools/check");
   });
