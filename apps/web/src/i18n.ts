@@ -2922,12 +2922,14 @@ const de = {
   // volle Sätze als title-Hinweis — §2 des Auftrags wörtlich.
   // Bewusst eine ZUSTANDSAUSSAGE, keine Kausalbehauptung: gemeldet wird, welche Tore zu sind —
   // nicht, welcher Mechanismus die Antwort verworfen hat (§4: kein falsch benanntes Tor).
-  "ask.verschlossen.titel":
-    "Dazu gibt es Inhalte — Klara kann sie für Antworten noch nicht verwenden.",
+  // Der Konsolenweg setzt kein `validatedOnly` (ask-routes.ts, letzter `answer`-Aufruf): auch
+  // nicht freigegebene oder nicht eingestufte Dokumente KÖNNEN Antworten tragen. Ein „erst nach
+  // Prüfung" wäre deshalb falsch (mega52 C3).
+  "ask.verschlossen.titel": "Dazu gibt es Inhalte — Klara konnte darauf keine Antwort stützen.",
   "ask.verschlossen.grund.freigabe":
-    "Noch nicht freigegebene Dokumente tragen erst nach der Prüfung Antworten.",
+    "Mindestens eines dieser Dokumente ist noch nicht freigegeben.",
   "ask.verschlossen.grund.stufe":
-    "Dokumente ohne Vertraulichkeitsstufe tragen erst nach der Einstufung Antworten.",
+    "Mindestens eines dieser Dokumente hat noch keine Vertraulichkeitsstufe.",
   "ask.verschlossen.grund.volltext":
     "Aus Dokumenten ohne durchsuchbaren Text kann Klara nichts belegen. Du kannst sie lesen und den Text dort ergänzen.",
   "ask.verschlossen.pruefPfad.beides": "Freigeben oder einstufen:",
@@ -9710,11 +9712,10 @@ const en: typeof de = {
   // SCRUM-366 / FR-ASK-02 / PI-K2: answer contract — source-bound, honest, not a generic chatbot.
   "ask.contract.label": "Answer basis",
   // JOB 2626 D1: why there was no answer — the closed gates, per document.
-  "ask.verschlossen.titel": "There is content on this — Klara cannot use it for answers yet.",
-  "ask.verschlossen.grund.freigabe":
-    "Documents that have not been released carry answers only after review.",
+  "ask.verschlossen.titel": "There is content on this — Klara could not base an answer on it.",
+  "ask.verschlossen.grund.freigabe": "At least one of these documents has not been released yet.",
   "ask.verschlossen.grund.stufe":
-    "Documents without a confidentiality level carry answers only after classification.",
+    "At least one of these documents has no confidentiality level yet.",
   "ask.verschlossen.grund.volltext":
     "Klara cannot cite anything from documents without searchable text. You can read them and add the text there.",
   "ask.verschlossen.pruefPfad.beides": "Release or classify:",
@@ -15381,12 +15382,10 @@ const nl: typeof de = {
   "ask.gap.step.review.hint": "Pas na validatie geldt het als geborgd.",
   "ask.contract.label": "Antwoordbasis",
   // JOB 2626 D1: waarom er geen antwoord was — de gesloten poorten, per document.
-  "ask.verschlossen.titel":
-    "Hier is inhoud over — Klara kan die nog niet voor antwoorden gebruiken.",
-  "ask.verschlossen.grund.freigabe":
-    "Nog niet vrijgegeven documenten dragen pas na beoordeling antwoorden.",
+  "ask.verschlossen.titel": "Hier is inhoud over — Klara kon er geen antwoord op baseren.",
+  "ask.verschlossen.grund.freigabe": "Minstens één van deze documenten is nog niet vrijgegeven.",
   "ask.verschlossen.grund.stufe":
-    "Documenten zonder vertrouwelijkheidsniveau dragen pas na classificatie antwoorden.",
+    "Minstens één van deze documenten heeft nog geen vertrouwelijkheidsniveau.",
   "ask.verschlossen.grund.volltext":
     "Uit documenten zonder doorzoekbare tekst kan Klara niets onderbouwen. Je kunt ze lezen en de tekst daar aanvullen.",
   "ask.verschlossen.pruefPfad.beides": "Vrijgeven of classificeren:",
