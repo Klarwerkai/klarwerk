@@ -136,6 +136,26 @@ R-0020 gilt unverändert für **Speichern UND Einreichen**, auch bei verlorener 
 - Details, Belege, Abgrenzungen: `docs/entscheidungen/dubletten-rueckzug.md`.
   **Offen: PostgreSQL-Lauf der Integrationsdatei und `tools/check` auf dem Prüfweg.**
 
+## 29.09.2026 — Aufnahme „Erfassungsfläche und ihre Einstiege“ (gesamt-erfassung-einstieg)
+
+- Alle 42 Aufnahmepunkte am Code abgeglichen; Ergebnis bzw. offene Entscheidung je Punkt in
+  `tests/erfassung-einstieg/README.md`. Tragend: das Blatt (JOB 3062/H3) ersetzt Schrittleiste,
+  „Weitere Wege“ und Modus-Leiste — ältere Punkte dazu sind als Widerspruch zur Entscheidung Pedi
+  vorgelegt, nicht zurückgebaut.
+- Geliefert: übersetzter Satz im roten Kasten für Formfehler, zu große Inhalte und abgelaufene Frist
+  (`lib/erfassenFehlersatz.ts`); Folge von „Entwurf sichern“/„Einreichen“ als Beschreibung am Knopf;
+  Fokus auf der Erfolgszeile nach dem Einreichen; Beispiel-Rückfrage dreisprachig; vier Hilfetexte,
+  die nicht vorhandene Knöpfe bzw. „lokal im Browser“ nannten, berichtigt.
+- Runde 2 (Bens Befunde): Wechsel Blatt → Expertenformular fragt bei ungesicherten Änderungen
+  nach und öffnet das Formular erst nach dem Sichern mit genau diesem Stand (N-0068); getippte
+  Titel werden nicht mehr still auf 90 Zeichen gekürzt; Erhebung „sichtbar vs. gespeichert“
+  (R-0029), Q3(a)-§9-Zustandsmatrix und R0633-Stufenmatrix (R-1560) als Tests bzw. Tabelle.
+- Runde 3: Was während dieses vorgeschalteten Sicherns noch eingegeben wird, führt zu einer
+  zweiten, erklärenden Rückfrage statt zu einem wortlosen Wechsel auf den älteren Stand.
+- Offen zur Entscheidung u. a.: Wortlaut „Vordertür-Entwurf geöffnet“ u. a. technische
+  Beschriftungen, unsichtbar gesetzte Felder des Blatts (`statement`, `type`, `category`),
+  Leertextfarbe `#9AA2B1` (K2b, gesperrt „nicht vor der Vorführung“).
+
 ## 30.09.2026 — Fragen: Arbeit fortsetzen (Pedi 28.09.2026, Ergänzung 1, Prio 3)
 
 - `/fragen` merkt sich je Konto den ungesendeten Entwurf und die zuletzt angezeigte Frage/Antwort

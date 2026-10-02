@@ -220,11 +220,21 @@ function panelAsk(app: FastifyInstance, kopf: Record<string, string>) {
      }`,
   );
   const geschnitten = factory(umgebung) as {
-    performAsk: (q: string, l: string, f: unknown, t: number) => Promise<AskAusgang>;
+    performAsk: (
+      q: string,
+      l: string,
+      f: unknown,
+      t: number,
+      kopf: null,
+      markierung: undefined,
+      herkunft: "manual",
+    ) => Promise<AskAusgang>;
     askAiNoticeVisible: (o: AskAusgang) => boolean;
   };
   return {
-    fragen: () => geschnitten.performAsk(FRAGE, "de", umgebung.fetch, 5000),
+    // R-0639 Runde 3: dieselben Argumente wie `askKlara` bei getippter Frage (Herkunft `manual`).
+    fragen: () =>
+      geschnitten.performAsk(FRAGE, "de", umgebung.fetch, 5000, null, undefined, "manual"),
     notizSichtbar: geschnitten.askAiNoticeVisible,
   };
 }
@@ -376,7 +386,8 @@ const fragen = (k: Kette) =>
     method: "POST",
     url: "/api/ask",
     headers: { ...k.bindung, "content-type": "application/json" },
-    payload: { question: FRAGE, locale: "de", mode: "retrieval-only" },
+    // R-0639 Runde 3 (Bens Befund B1): das Fenster meldet eine getippte Frage als `manual`.
+    payload: { question: FRAGE, locale: "de", mode: "retrieval-only", questionSource: "manual" },
   });
 
 describe("JOB 3079 · V2 · die Einwilligung wirkt bis zum Anbieter", () => {

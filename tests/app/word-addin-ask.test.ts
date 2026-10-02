@@ -1719,8 +1719,12 @@ describe("JOB 1153 · KA6 Stufe 1: die Schreibflaeche im Aufgabenfenster", () =>
       // Der Auftragssatz des Zurufs plus die MARKIERUNG — nicht der getippte Text.
       expect(koerper.question).toBe(`${ka6Wortlaut(zuruf.auftrag)} ${ka6Markierung}`);
       expect(String(koerper.question)).not.toContain("Wie oft wird die Spannrolle geprueft?");
-      // Und byte-gleich zum Stand vor KA5: der Zuruf schickt KEIN `selection`-Feld mit.
-      expect(Object.keys(koerper).sort()).toEqual(["locale", "mode", "question"]);
+      // Der Zuruf schickt weiterhin KEIN `selection`-Feld mit. R-0639 (Aufnahme
+      // gesamt-klara-extern, Bens Befund B1): die Markierung reist hier im FRAGETEXT, und das
+      // Fenster sagt es mit `questionSource: "selection"` — sonst ginge Dokumenttext unter der
+      // Klasse `question` am Dokumenttext-Riegel vorbei.
+      expect(Object.keys(koerper).sort()).toEqual(["locale", "mode", "question", "questionSource"]);
+      expect(koerper.questionSource).toBe("selection");
       expect(koerper.mode, "Der server-garantierte Modus fehlt").toBe("retrieval-only");
     });
   }

@@ -6351,7 +6351,7 @@ const de = {
     "Das klassische Formular mit allen Feldern auf einen Blick — für alle, die genau wissen, was sie eintragen wollen. Es ist derselbe Datenstand wie der geführte Weg, kein Extra-Feature und keine Abkürzung an der Prüfung vorbei. Der Rückweg auf den geführten Weg ist jederzeit einen Klick entfernt.",
   "chelp.wizardSteps.title": "Die drei Schritte",
   "chelp.wizardSteps.body":
-    "Erfassen läuft in drei Schritten: ERZÄHLEN (Rohwissen loswerden), WISSENSSEITE (prüfen und verfeinern, mit KI-Hilfe), EINREICHEN (in die Peer-Prüfung geben). Fertige Schritte kannst du anklicken und zurückgehen — dabei geht nichts verloren. Erst „Prüfen & einreichen“ macht aus deinem Entwurf ein Wissensobjekt für die Kollegen.",
+    "Erfassen läuft in drei Schritten: SCHREIBEN (Titel und Text aufs Blatt — oder über „Datei“ als Interview, aus einer Datei oder im Formular; „Diktieren“ schreibt mit), SICHERN (als Entwurf, nur für dich sichtbar) und EINREICHEN (in die Peer-Prüfung geben). Du kannst jederzeit weiterschreiben — dabei geht nichts verloren. Erst das Einreichen macht aus deinem Entwurf ein Wissensobjekt für die Kollegen.",
   "chelp.loadExample.title": "Beispiel laden",
   "chelp.loadExample.body":
     "Füllt die Felder mit einem Demo-Beispiel, damit du den kompletten Weg gefahrlos ausprobieren kannst. Achtung: Es überschreibt deine aktuellen Eingaben — nutze es auf leerer Seite. Eingereicht wird auch ein Beispiel erst, wenn du es bewusst einreichst.",
@@ -6378,10 +6378,10 @@ const de = {
     "Der Titel ist das Erste, was Kollegen in Bibliothek und Antworten sehen — er entscheidet, ob dein Wissen gefunden wird. Gut: konkret und handlungsnah („Schweißnaht bei Aluminium unter 5 mm prüfen“). Du kannst ihn jederzeit ändern, auch der KI-Vorschlag ist nur ein Startpunkt.",
   "chelp.saveDraftHelp.title": "Entwurf speichern",
   "chelp.saveDraftHelp.body":
-    "Sichert deinen Zwischenstand lokal in deinem Browser — du kannst jederzeit weitermachen, auch nach einem Neustart. Ein Entwurf ist NICHT eingereicht: Niemand sieht ihn, er taucht in keiner Prüfung und keiner Antwort auf. Oben auf der Seite findest du gespeicherte Entwürfe zum Fortsetzen.",
+    "Sichert deinen Zwischenstand auf dem Server unter deinem Konto — du kannst jederzeit weitermachen, auch auf einem anderen Gerät. Ein Entwurf ist NICHT eingereicht: Niemand sieht ihn, er taucht in keiner Prüfung und keiner Antwort auf. Gespeicherte Entwürfe findest du unter „Mehr“ → Entwürfe.",
   "chelp.discardHelp.title": "Verwerfen",
   "chelp.discardHelp.body":
-    "Verwirft den aktuellen Entwurf endgültig — Text, Struktur und Anhänge dieser Erfassung. Es betrifft NUR deinen Entwurf: Bereits eingereichte oder gespeicherte Wissensobjekte bleiben unberührt. Vorher fragt die App bewusst nach; wer nur einen Schritt zurück will, nutzt die Schritt-Leiste statt Verwerfen.",
+    "Verwirft die aktuelle Eingabe — Text, Struktur und Anhänge dieser Erfassung. Es betrifft NUR diese Eingabe: Bereits eingereichte Wissensobjekte und gesicherte Entwürfe bleiben unberührt. Vorher fragt die App bewusst nach.",
   "chelp.submitReview.title": "Prüfen & einreichen",
   "chelp.submitReview.body":
     "Macht aus deinem Entwurf ein Wissensobjekt und gibt es in die Peer-Prüfung: Kollegen prüfen, stellen Rückfragen oder geben frei. Ab jetzt ist es für andere sichtbar — aber ehrlich als „in Prüfung“ markiert, NICHT als gesichert. Validiert wird es durch genug Freigaben. Für Antworten nutzbar ist es schon vorher — dann aber sichtbar als ungeprüft gekennzeichnet.",
@@ -6538,7 +6538,7 @@ const de = {
   "fd.author": "Autor",
   "fd.whatOnSave": "Was beim Speichern passiert",
   "fd.whatOnSaveBody":
-    "Wird als Entwurf gesichert — jederzeit fortsetzbar. Zur Prüfung geht er erst, wenn du „Prüfen / Einreichen“ wählst; nichts wird automatisch validiert.",
+    "Wird als Entwurf gesichert — jederzeit fortsetzbar. Zur Prüfung geht er erst, wenn du „Einreichen“ wählst; nichts wird automatisch validiert.",
   "fd.moreWays": "Mehr Erfassungswege",
   "fd.moreWaysBody":
     "Brauchst du das klassische Formular, Diktat oder das geführte Interview? Der vollständige Erfassen-Bereich hat alle Wege — diese Fläche hier ist der schnelle Einstieg.",
@@ -12411,7 +12411,7 @@ const en: typeof de = {
     "The classic form with every field at once — for those who know exactly what to enter. It is the same data as the guided path, no extra feature and no shortcut past review. The way back to the guided path is always one click away.",
   "chelp.wizardSteps.title": "The three steps",
   "chelp.wizardSteps.body":
-    "Capturing runs in three steps: TELL (get the raw knowledge out), KNOWLEDGE PAGE (check and refine, with AI help), SUBMIT (hand it to peer review). Completed steps are clickable — going back loses nothing. Only „review & submit“ turns your draft into a knowledge object for your colleagues.",
+    "Capturing runs in three steps: WRITE (title and text on the sheet — or via “File” as an interview, from a file or in the form; “Dictate” writes along), SAVE (as a draft, visible only to you) and SUBMIT (hand it to peer review). You can keep writing at any time — nothing is lost. Only submitting turns your draft into a knowledge object for your colleagues.",
   "chelp.loadExample.title": "Load example",
   "chelp.loadExample.body":
     "Fills the fields with a demo example so you can try the whole path safely. Careful: it overwrites your current input — use it on an empty page. Even an example is only submitted once you submit it deliberately.",
@@ -12438,10 +12438,10 @@ const en: typeof de = {
     "The title is the first thing colleagues see in the library and in answers — it decides whether your knowledge is found. Good: concrete and actionable („checking weld seams on aluminium under 5 mm“). You can change it anytime; the AI suggestion is only a starting point.",
   "chelp.saveDraftHelp.title": "Save draft",
   "chelp.saveDraftHelp.body":
-    "Saves your interim state locally in your browser — continue anytime, even after a restart. A draft is NOT submitted: nobody sees it, it appears in no review and no answer. You will find saved drafts at the top of this page to resume.",
+    "Saves your interim state on the server under your account — continue anytime, even on another device. A draft is NOT submitted: nobody sees it, it appears in no review and no answer. You find saved drafts under “More” → Drafts.",
   "chelp.discardHelp.title": "Discard",
   "chelp.discardHelp.body":
-    "Discards the current draft for good — text, structure and attachments of this capture. It affects ONLY your draft: already submitted or saved knowledge objects stay untouched. The app deliberately asks first; if you only want one step back, use the step bar instead of discarding.",
+    "Discards the current input — text, structure and attachments of this capture. It affects ONLY this input: already submitted knowledge objects and saved drafts stay untouched. The app deliberately asks first.",
   "chelp.submitReview.title": "Review & submit",
   "chelp.submitReview.body":
     "Turns your draft into a knowledge object and hands it to peer review: colleagues check it, raise queries or approve. From now on it is visible to others — but honestly marked as „in review“, NOT as validated. It becomes validated through enough approvals. It can carry answers before that too — but is then visibly marked as unverified.",
@@ -12577,7 +12577,7 @@ const en: typeof de = {
   "fd.author": "Author",
   "fd.whatOnSave": "What happens on save",
   "fd.whatOnSaveBody":
-    "It is saved as a draft — resumable at any time. It only goes to review when you choose “Review / submit”; nothing is validated automatically.",
+    "It is saved as a draft — resumable at any time. It only goes to review when you choose “Submit”; nothing is validated automatically.",
   "fd.moreWays": "More capture paths",
   "fd.moreWaysBody":
     "Need the classic form, dictation or the guided interview? The full capture area has every path — this surface here is the fast entry point.",
@@ -18086,7 +18086,7 @@ const nl: typeof de = {
     "Het klassieke formulier met alle velden in één oogopslag — voor iedereen die precies weet wat hij wil invullen. Het is dezelfde datastand als de begeleide weg, geen extra functie en geen sluiproute langs de controle. De terugweg naar de begeleide weg is altijd één klik verwijderd.",
   "chelp.wizardSteps.title": "De drie stappen",
   "chelp.wizardSteps.body":
-    "Vastleggen verloopt in drie stappen: VERTELLEN (ruwe kennis kwijtraken), KENNISPAGINA (controleren en verfijnen, met KI-hulp), INDIENEN (in de peer-beoordeling geven). Voltooide stappen kun je aanklikken en teruggaan — daarbij gaat niets verloren. Pas „Controleren & indienen\" maakt van je concept een kennisobject voor de collega's.",
+    "Vastleggen verloopt in drie stappen: SCHRIJVEN (titel en tekst op het blad — of via „Bestand” als interview, uit een bestand of in het formulier; „Dicteren” schrijft mee), OPSLAAN (als concept, alleen voor jou zichtbaar) en INDIENEN (in de peer-beoordeling geven). Je kunt altijd verder schrijven — daarbij gaat niets verloren. Pas het indienen maakt van je concept een kennisobject voor de collega's.",
   "chelp.loadExample.title": "Voorbeeld laden",
   "chelp.loadExample.body":
     "Vult de velden met een demovoorbeeld, zodat je de volledige weg gevaarloos kunt uitproberen. Let op: het overschrijft je huidige invoer — gebruik het op een lege pagina. Ook een voorbeeld wordt pas ingediend als je het bewust indient.",
@@ -18113,10 +18113,10 @@ const nl: typeof de = {
     "De titel is het eerste wat collega's in bibliotheek en antwoorden zien — hij bepaalt of je kennis wordt gevonden. Goed: concreet en actiegericht („Lasnaad bij aluminium onder 5 mm controleren\"). Je kunt hem altijd wijzigen, ook het KI-voorstel is maar een startpunt.",
   "chelp.saveDraftHelp.title": "Concept opslaan",
   "chelp.saveDraftHelp.body":
-    "Bewaart je tussenstand lokaal in je browser — je kunt altijd verdergaan, ook na een herstart. Een concept is NIET ingediend: niemand ziet het, het duikt in geen enkele beoordeling en geen enkel antwoord op. Boven aan de pagina vind je opgeslagen concepten om verder te gaan.",
+    "Bewaart je tussenstand op de server onder je account — je kunt altijd verdergaan, ook op een ander apparaat. Een concept is NIET ingediend: niemand ziet het, het duikt in geen enkele beoordeling en geen enkel antwoord op. Opgeslagen concepten vind je onder „Meer” → Concepten.",
   "chelp.discardHelp.title": "Verwerpen",
   "chelp.discardHelp.body":
-    "Verwerpt het huidige concept definitief — tekst, structuur en bijlagen van deze vastlegging. Het betreft ALLEEN je concept: reeds ingediende of opgeslagen kennisobjecten blijven onaangetast. Vooraf vraagt de app bewust na; wie maar één stap terug wil, gebruikt de stappenbalk in plaats van verwerpen.",
+    "Verwerpt de huidige invoer — tekst, structuur en bijlagen van deze vastlegging. Het betreft ALLEEN deze invoer: reeds ingediende kennisobjecten en opgeslagen concepten blijven onaangetast. Vooraf vraagt de app bewust na.",
   "chelp.submitReview.title": "Controleren & indienen",
   "chelp.submitReview.body":
     "Maakt van je concept een kennisobject en geeft het in de peer-beoordeling: collega's controleren, stellen vragen of keuren goed. Vanaf nu is het voor anderen zichtbaar — maar eerlijk als „in beoordeling\" gemarkeerd, NIET als zeker. Gevalideerd wordt het door genoeg goedkeuringen. Voor antwoorden bruikbaar is het al eerder — maar dan zichtbaar als ongecontroleerd gemarkeerd.",
@@ -18253,7 +18253,7 @@ const nl: typeof de = {
   "fd.author": "Auteur",
   "fd.whatOnSave": "Wat er bij het opslaan gebeurt",
   "fd.whatOnSaveBody":
-    'Wordt als concept bewaard — altijd voort te zetten. Ter beoordeling gaat het pas als je „Controleren / indienen" kiest; er wordt niets automatisch gevalideerd.',
+    "Wordt als concept bewaard — altijd voort te zetten. Ter beoordeling gaat het pas als je „Indienen” kiest; er wordt niets automatisch gevalideerd.",
   "fd.moreWays": "Meer vastleg-wegen",
   "fd.moreWaysBody":
     "Heb je het klassieke formulier, dictaat of het begeleide interview nodig? Het volledige vastleg-gebied heeft alle wegen — dit vlak hier is de snelle instap.",
