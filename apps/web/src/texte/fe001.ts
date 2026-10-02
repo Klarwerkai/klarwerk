@@ -175,6 +175,8 @@ export default {
       "Eine automatische fachliche Prüfung ist noch nicht angebunden. Über die Anleitung entscheiden allein Menschen.",
     "fe001.status.fassung": "Stand {{nummer}}",
     "fe001.status.naechsterSchritt": "Nächster Schritt:",
+    "fe001.sperre.keinErfassungsrecht":
+      "Nur lesen: Ändern und Vorlegen können Personen, die Wissen erfassen dürfen.",
     "fe001.status.bedeutung.entwurf":
       "Gespeichert, aber noch nicht zur Entscheidung vorgelegt – nicht freigegeben.",
     "fe001.status.bedeutung.vorgelegt":
@@ -358,6 +360,8 @@ export default {
     "fe001.entscheidung.pruefungOffen":
       "An automatic expert review is not connected yet. Only people decide on the instruction.",
     "fe001.status.fassung": "State {{nummer}}",
+    "fe001.sperre.keinErfassungsrecht":
+      "Read only: people who may capture knowledge can change and submit it.",
     "fe001.status.naechsterSchritt": "Next step:",
     "fe001.status.bedeutung.entwurf": "Saved, but not yet submitted for decision – not approved.",
     "fe001.status.bedeutung.vorgelegt":
@@ -547,6 +551,8 @@ export default {
       "Een automatische inhoudelijke controle is nog niet aangesloten. Alleen mensen beslissen over de instructie.",
     "fe001.status.fassung": "Stand {{nummer}}",
     "fe001.status.naechsterSchritt": "Volgende stap:",
+    "fe001.sperre.keinErfassungsrecht":
+      "Alleen lezen: wijzigen en voorleggen kunnen personen die kennis mogen vastleggen.",
     "fe001.status.bedeutung.entwurf":
       "Opgeslagen, maar nog niet ter beslissing voorgelegd – niet goedgekeurd.",
     "fe001.status.bedeutung.vorgelegt":

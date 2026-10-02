@@ -864,8 +864,10 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
   // DER LESEPFAD BRAUCHT VOM LEBENSZYKLUS GENAU EINE FRAGE, und er nimmt sie in der Form entgegen,
   // in der er sie stellen darf. `RevalidierungMerkerLeser` traegt nur `revalidierungAnstehtFuer`;
   // `pendingRevalidation()` — der selbstheilende, SCHREIBENDE Arbeitsbereichsweg (SCRUM-420) — ist
-  // von hier aus nicht erreichbar. Die Zusage „ein Lesepfad schreibt nicht" haelt damit der
-  // Compiler und nicht eine Sichtpruefung; gemessen wird sie zusaetzlich in R-4.
+  // UEBER DIESEN ALIAS nicht erreichbar. Das ist eine Begrenzung, keine Garantie des Compilers: das
+  // volle `lifecycle` bleibt in diesem Closure fuer die Mutationsrouten erreichbar. Die Zusage „ein
+  // Lesepfad schreibt nicht" belegt deshalb der Laufzeitfall R-4
+  // (`tests/anzeigestatus-revalidierung/revalidierung-wird-erhoben.test.ts`).
   const merkerLeser: RevalidierungMerkerLeser = lifecycle;
 
   /**

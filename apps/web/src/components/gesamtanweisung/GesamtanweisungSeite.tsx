@@ -71,6 +71,19 @@ function mitStandsperre(sperre: Sperre, stand: string | undefined): Sperre {
 }
 
 /**
+ * PRÜFSTATUS-ANZEIGE (Ben R1, BEN-01) · Ohne `ko.create` nimmt der Server KEINEN Schreibweg dieser
+ * Fläche an (`gesamtanweisung-routes.ts`: Kopf, Aufnehmen, Ordnen, Voraussetzung, Vorlegen). Die
+ * Fläche bot sie trotzdem an, während der Statusblock „nur lesen" sagte. Die Sperre steht jetzt
+ * VOR dem Versuch, mit dem wirklichen Grund. Die Regel bleibt die des Servers.
+ */
+function mitRechtesperre(sperre: Sperre, darfVorlegen: boolean): Sperre {
+  if (!sperre.gesperrt && !darfVorlegen) {
+    return { gesperrt: true, grund: "fe001.sperre.keinErfassungsrecht" };
+  }
+  return sperre;
+}
+
+/**
  * Die neue Folge nach einem Schritt nach oben oder unten.
  *
  * Rein und hier, weil sie zum Zustand dieser Fläche gehört: am Rand passiert NICHTS (der erste
@@ -163,7 +176,10 @@ export function GesamtanweisungSeite({
   const stand = anweisung.data;
   // ZWEI SPERREN, nicht eine: auf der leeren Anweisung darf man BEARBEITEN (sonst käme nie ein
   // erster Baustein hinein), aber nicht VORLEGEN (es gäbe nichts zu entscheiden).
-  const bearbeiten = mitStandsperre(schreibSperre(lage), stand?.stand);
+  const bearbeiten = mitRechtesperre(
+    mitStandsperre(schreibSperre(lage), stand?.stand),
+    darfVorlegen,
+  );
   // RUNDE 2 (E8): ungespeicherte Kopfangaben sperren Vorlegen und Entscheiden — vorgelegt würde
   // sonst ein Stand, der nicht der ist, den der Mensch gerade vor sich sieht.
   const [kopfUngespeichert, setKopfUngespeichert] = useState(false);
@@ -348,6 +364,7 @@ export function GesamtanweisungSeite({
         stand={stand?.stand ?? "entwurf"}
         sperre={sperre}
         darfEntscheiden={darfEntscheiden}
+        darfVorlegen={darfVorlegen}
         vorlegen={() => {
           if (version !== null) {
             vorlegen.mutate({ version });

@@ -177,6 +177,10 @@ freigegeben oder abgelehnt hat, speichert der Server bisher nicht – das steht 
 zweite Person wird nicht vorausgesetzt (es gibt keine solche Kontoregel). Geprüft in
 `tests/fe001-arbeitsanleitungen/pruefstatus-uebersicht-und-detail.test.tsx`. Zusatzfrage für die
 Probe unten: „Was bedeutet der Status dieser Anleitung, und was ist dein nächster Schritt?“
+Runde 2 (Ben-Befund BEN-01): Wer kein Erfassungsrecht hat (Rolle Viewer), bekommt keinen
+Vorlegen-Knopf mehr, und Ändern ist mit sichtbarem Grund gesperrt – passend zur Serverregel
+`ko.create`. Der Abgleich der älteren Kriterien des Auftrags steht in
+`docs/Berater/PRUEFSTATUS_ANZEIGE_BESTANDSABGLEICH_2026-10-03.md`.
 
 ## 6 · Bekannte Grenzen
 

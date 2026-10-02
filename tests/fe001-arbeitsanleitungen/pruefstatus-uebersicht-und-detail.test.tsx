@@ -429,3 +429,47 @@ describe("B · Übersicht und Detail zeigen denselben Status derselben Fassung",
     expect(marke("ga-entscheidung-annehmen")).toBeNull();
   });
 });
+
+// ================================================================================================
+// TEIL C · BEN R1, BEN-01 — die ANGEBOTENE Handlung entspricht dem Recht, nicht nur der Text
+// ================================================================================================
+//
+// Befund: Ein Viewer (kein `ko.create`) las „Du kannst die Anleitung lesen …" und bekam trotzdem
+// einen aktiven „Vorlegen"-Knopf. Jeder Schreibweg dieser Fläche verlangt am Server `ko.create`
+// (`services/app/src/routes/gesamtanweisung-routes.ts`). Gegenproben: Experte (darf vorlegen,
+// nicht entscheiden) und Controller (darf beides).
+
+const knopf = (id: string) => marke(id) as HTMLButtonElement | null;
+
+describe("C · BEN-01: Vorlegen und Ändern nur, wer es darf", () => {
+  for (const stand of ["entwurf", "abgelehnt"] as const) {
+    it(`Viewer, ${stand}: kein Vorlegen-Knopf, Ändern gesperrt mit Grund`, async () => {
+      await beideAnsichten(stand, 7, "viewer", "fe001.status.schritt.nurLesen");
+      expect(marke("ga-entscheidung-vorlegen"), "Vorlegen darf nicht angeboten werden").toBeNull();
+      expect(marke("ga-entscheidung-annehmen")).toBeNull();
+      expect(knopf("ga-kopf-speichern")?.disabled).toBe(true);
+      expect(marke("ga-kopf-sperre")?.textContent).toBe(text("fe001.sperre.keinErfassungsrecht"));
+      expect(knopf("ga-aufnahme-knopf")?.disabled).toBe(true);
+      expect(marke("ga-entscheidung-erklaerung")?.textContent ?? "").not.toContain(
+        "erneut vorlegen",
+      );
+    });
+
+    it(`Experte, ${stand}: Vorlegen angeboten und aktiv, Ändern nicht aus Rechtegründen gesperrt`, async () => {
+      const schritt =
+        stand === "entwurf"
+          ? "fe001.status.schritt.vorlegen"
+          : "fe001.status.schritt.ueberarbeiten";
+      await beideAnsichten(stand, 7, "experte", schritt);
+      expect(knopf("ga-entscheidung-vorlegen")?.disabled).toBe(false);
+      expect(marke("ga-kopf-sperre")?.textContent ?? "").not.toBe(
+        text("fe001.sperre.keinErfassungsrecht"),
+      );
+    });
+  }
+
+  it("Controller, entwurf: Vorlegen angeboten und aktiv", async () => {
+    await beideAnsichten("entwurf", 7, "controller", "fe001.status.schritt.vorlegen");
+    expect(knopf("ga-entscheidung-vorlegen")?.disabled).toBe(false);
+  });
+});

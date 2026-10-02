@@ -92,7 +92,11 @@ export function FreigabeStatus({
 }
 
 /** Der erklärende Satz zum Stand — was er bedeutet und was als Nächstes möglich ist. */
-function erklaerung(stand: AnweisungStand, darfEntscheiden: boolean): string {
+function erklaerung(
+  stand: AnweisungStand,
+  darfEntscheiden: boolean,
+  darfVorlegen: boolean,
+): string {
   if (stand === "vorgelegt") {
     return darfEntscheiden ? "fe001.entscheidung.wartetAufDich" : "fe001.entscheidung.wartet";
   }
@@ -100,7 +104,8 @@ function erklaerung(stand: AnweisungStand, darfEntscheiden: boolean): string {
     return "fe001.entscheidung.angenommen";
   }
   if (stand === "abgelehnt") {
-    return "fe001.entscheidung.abgelehnt";
+    // „Überarbeiten und erneut vorlegen" nur, wer es darf — sonst nur die Bedeutung (BEN-01).
+    return darfVorlegen ? "fe001.entscheidung.abgelehnt" : "fe001.status.bedeutung.abgelehnt";
   }
   return "fe001.entscheidung.bedeutung";
 }
@@ -109,6 +114,7 @@ export function EntscheidungsVorlage({
   stand,
   sperre,
   darfEntscheiden,
+  darfVorlegen,
   vorlegen,
   entscheiden,
   fehlerSatz,
@@ -117,13 +123,19 @@ export function EntscheidungsVorlage({
   sperre: Sperre;
   /** Das Freigaberecht des Betrachters. Ohne es gibt es die Entscheidungsknöpfe gar nicht. */
   darfEntscheiden: boolean;
+  /**
+   * Das Vorlegerecht (`ko.create`) des Betrachters. Ohne es gibt es den Vorlegeknopf gar nicht —
+   * dieselbe Regel wie beim Freigaberecht (Ben R1, BEN-01: ein Viewer las „nur lesen" und bekam
+   * trotzdem einen aktiven Knopf, der am Server nur 403 kann).
+   */
+  darfVorlegen: boolean;
   vorlegen: () => void;
   entscheiden: (entscheidung: "angenommen" | "abgelehnt") => void;
   /** Der Satz zum letzten gescheiterten Versuch, oder `null`. */
   fehlerSatz: string | null;
 }): JSX.Element {
   const { t } = useTranslation();
-  const vorlegbar = stand === "entwurf" || stand === "abgelehnt";
+  const vorlegbar = darfVorlegen && (stand === "entwurf" || stand === "abgelehnt");
   const entscheidbar = stand === "vorgelegt";
 
   return (
@@ -141,7 +153,7 @@ export function EntscheidungsVorlage({
         </span>
       </div>
       <p className={HINWEIS} data-testid={`${ENTSCHEIDUNG_MARKE}-erklaerung`}>
-        {t(erklaerung(stand, darfEntscheiden))}
+        {t(erklaerung(stand, darfEntscheiden, darfVorlegen))}
       </p>
       <ul className={`${HINWEIS} list-disc space-y-0.5 pl-5`}>
         <li>{t("fe001.entscheidung.wer")}</li>
