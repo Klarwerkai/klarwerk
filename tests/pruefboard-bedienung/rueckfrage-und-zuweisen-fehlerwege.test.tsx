@@ -169,6 +169,75 @@ describe("R1 · Begründung gespeichert, Bewertung gescheitert", () => {
   });
 });
 
+// RUNDE 2 · BENS BEFUND B1: Runde 1 hielt EINEN Vorgang für die ganze Seite. Der Teilerfolg auf B
+// verdrängte den von A, und A schrieb ihre Begründung danach doppelt. Die Fälle oben sahen das nicht,
+// weil in ihnen nie zwei Vorgänge gleichzeitig offen waren.
+describe("R3 · unterbrochene Rückfragen über mehrere Karten", () => {
+  const eintraege = () =>
+    brett.container.querySelectorAll('[data-testid="pruefen-warteschlange-eintrag"]');
+  const feld = () =>
+    finde(brett.container, '[data-testid="pruefen-begruendung"] textarea') as HTMLTextAreaElement;
+
+  async function teilerfolg(index: number, text: string): Promise<void> {
+    await klick(eintraege()[index]);
+    await klick(finde(brett.container, RUECKFRAGE));
+    await tippen(brett.container, text);
+    await klick(knopfMitText(brett.container, de("val.feedback.submit")));
+    expect(finde(brett.container, TEILERFOLG)).not.toBeNull();
+    await klick(knopfMitText(brett.container, de("val.feedback.cancel")));
+  }
+
+  function kommentare(id: string): unknown[] {
+    return (endpoints.ko.act as unknown as Fn).mock.calls.filter(
+      ([kid, body]) => kid === id && (body as KoAction).action === "comment",
+    );
+  }
+
+  it("der Teilerfolg auf B verdrängt den von A nicht — A wiederholt nur die Bewertung", async () => {
+    antworten((b) => {
+      if (b.action === "rate") throw new ApiError(500, "server_error", "kaputt");
+    });
+    brett = await mounteBrett({
+      zeilen: [zeile({ id: "k1", title: "Karte A" }), zeile({ id: "k2", title: "Karte B" })],
+    });
+    await teilerfolg(0, "Quelle A fehlt");
+    await teilerfolg(1, "Quelle B fehlt");
+
+    await klick(eintraege()[0]);
+    await klick(finde(brett.container, RUECKFRAGE));
+    expect(feld().value).toBe("Quelle A fehlt");
+    expect(feld().readOnly).toBe(true);
+    expect(finde(brett.container, TEILERFOLG)).not.toBeNull();
+
+    antworten(() => undefined);
+    await klick(knopfMitText(brett.container, de("pruefboard.bewertungSenden")));
+    expect(kommentare("k1")).toHaveLength(1);
+  });
+
+  it("der Abschluss von A lässt den offenen Vorgang von B stehen", async () => {
+    antworten((b) => {
+      if (b.action === "rate") throw new ApiError(500, "server_error", "kaputt");
+    });
+    brett = await mounteBrett({
+      zeilen: [zeile({ id: "k1", title: "Karte A" }), zeile({ id: "k2", title: "Karte B" })],
+    });
+    await teilerfolg(0, "Quelle A fehlt");
+    await teilerfolg(1, "Quelle B fehlt");
+
+    antworten(() => undefined);
+    await klick(eintraege()[0]);
+    await klick(finde(brett.container, RUECKFRAGE));
+    await klick(knopfMitText(brett.container, de("pruefboard.bewertungSenden")));
+
+    await klick(eintraege()[1]);
+    await klick(finde(brett.container, RUECKFRAGE));
+    expect(feld().value).toBe("Quelle B fehlt");
+    expect(feld().readOnly).toBe(true);
+    await klick(knopfMitText(brett.container, de("pruefboard.bewertungSenden")));
+    expect(kommentare("k2")).toHaveLength(1);
+  });
+});
+
 describe("R2 · scheitert schon die Begründung, wird nichts als gespeichert gemeldet", () => {
   it("alte Meldung, kein Teilerfolg, und die Wiederholung schickt beides", async () => {
     antworten((b) => {

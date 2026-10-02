@@ -202,6 +202,21 @@ const RAD_SCHWELLE_PX = 40;
 // erreichte je die Schwelle.
 const RAD_MASS_PX: Record<number, number> = { 0: 1, 1: 16, 2: 400 };
 
+// Rückfrage/Ablehnung: ein unterbrochener Vorgang ist EINE Karte mit EINER Entscheidung.
+function vorgangSchluessel(id: string, verdict: FeedbackVerdict): string {
+  return `${id}|${verdict}`;
+}
+
+function ohneKarte(
+  vorgaenge: Readonly<Record<string, string>>,
+  id: string,
+): Readonly<Record<string, string>> {
+  const weg = new Set([vorgangSchluessel(id, "warn"), vorgangSchluessel(id, "down")]);
+  return Object.fromEntries(
+    Object.entries(vorgaenge).filter(([schluessel]) => !weg.has(schluessel)),
+  );
+}
+
 /**
  * JOB 3112 · V3 — die zwei Wege, auf denen ein Wissensobjekt die Prüffläche FREIGEGEBEN verlässt.
  * `rate` ist der Knopf „Freigeben" im Fußband (Recht `ko.validate`), `admin` das „Als wahr
@@ -538,11 +553,16 @@ export function Validation(): JSX.Element {
   // während die Bewertung danach scheiterte. Dieselbe Regel wie `stufenfrage.gespeichert`: ein
   // Fehler ist ein Ereignis, kein Gedächtnis — was angekommen ist, bleibt eine Tatsache des
   // Vorgangs, auch über Abbrechen und erneutes Öffnen hinweg, bis die Bewertung durch ist.
-  const [begruendungGespeichert, setBegruendungGespeichert] = useState<{
-    id: string;
-    verdict: FeedbackVerdict;
-    text: string;
-  } | null>(null);
+  //
+  // RUNDE 2 · BENS BEFUND B1: EIN VORGANG JE KARTE UND ENTSCHEIDUNG, nicht einer für die Seite.
+  // Runde 1 hielt genau einen Platz; der Teilerfolg auf Karte B überschrieb den noch offenen von
+  // Karte A, und A schrieb ihre Begründung danach ein zweites Mal. Der Schlüssel ist
+  // `vorgangSchluessel(id, verdict)`.
+  const [begruendungenGespeichert, setBegruendungenGespeichert] = useState<
+    Readonly<Record<string, string>>
+  >({});
+  const gespeicherteBegruendung = (id: string, verdict: FeedbackVerdict): string | undefined =>
+    begruendungenGespeichert[vorgangSchluessel(id, verdict)];
 
   const reviewWithFeedback = useMutation({
     mutationFn: async ({
@@ -576,12 +596,17 @@ export function Validation(): JSX.Element {
     onSuccess: (_data, vars) => {
       setFeedback(null);
       setFeedbackText("");
-      setBegruendungGespeichert(null);
+      // Entschieden ist die KARTE: auch ein offener Vorgang mit der anderen Entscheidung auf
+      // derselben Karte ist damit überholt. Andere Karten bleiben unberührt.
+      setBegruendungenGespeichert((alt) => ohneKarte(alt, vars.id));
       nachEntscheidung(vars);
     },
     onError: (e, vars) => {
       if (e instanceof BegruendungFehler && e.begruendungGespeichert) {
-        setBegruendungGespeichert({ id: vars.id, verdict: vars.verdict, text: vars.text });
+        setBegruendungenGespeichert((alt) => ({
+          ...alt,
+          [vorgangSchluessel(vars.id, vars.verdict)]: vars.text,
+        }));
       }
     },
   });
@@ -590,11 +615,7 @@ export function Validation(): JSX.Element {
     setFeedback({ id, verdict });
     // Liegt die Begründung zu genau diesem Vorgang schon am Server, steht sie wieder da — sie wird
     // nicht ein zweites Mal geschrieben.
-    const gespeichert =
-      begruendungGespeichert?.id === id && begruendungGespeichert.verdict === verdict
-        ? begruendungGespeichert.text
-        : "";
-    setFeedbackText(gespeichert);
+    setFeedbackText(gespeicherteBegruendung(id, verdict) ?? "");
     reviewWithFeedback.reset();
   };
 
@@ -1375,9 +1396,7 @@ export function Validation(): JSX.Element {
     const zugewiesen = k.assignments ?? [];
     // Rückfrage/Ablehnung: liegt die Begründung dieses Vorgangs schon am Server?
     const begruendungLiegt =
-      feedback?.id === k.id &&
-      begruendungGespeichert?.id === k.id &&
-      begruendungGespeichert.verdict === feedback.verdict;
+      feedback?.id === k.id && gespeicherteBegruendung(k.id, feedback.verdict) !== undefined;
 
     return (
       // Der Flächen-Klick ist reiner MAUS-Komfort. Die Karte bekommt ausdrücklich KEINE

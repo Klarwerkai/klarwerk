@@ -3,7 +3,7 @@
 *Aufnahme 20260922 · gesamt-pruefboard-bedienung. **Lauf 1** (Aufgabenrevision 2, Runde 1 auf
 Basis `1.0.0-beta.1.643`, Commit `972c469b`). Nutzen laut Auftrag: Parität zur Bibliothek
 (Funktionsbeschreibung §8.2). Alle Angaben unten sind am Code dieses Stands gelesen; „heute“ heißt
-Commit `972c469b`.*
+Commit `972c469b`. Runde 2 (Nacharbeit zu Bens Befunden B1/B2) baut auf Commit `ddaa9c4b` auf.*
 
 ## Quellenlage — was dieser Lauf NICHT hatte
 
@@ -16,6 +16,13 @@ nicht mitgegeben. Andere Aufnahme-Läufe vom 20260922 haben sie im Auftrag erhal
   Abgleich gegen Funktionsbeschreibung §8.2 und gegen die sechs Kriterien.
 - Die geforderte Zuordnung „Ergebnis oder verbleibende Entscheidung je Punkt“ bleibt offen, bis die
   Punkte vorliegen. Sie ist ausdrücklich eine **fehlende Quelle** und kein erledigter Teil.
+- **Runde 2:** Ben hat dieses Fehlen als Befund B2 bestätigt und verlangt, die Quelle zu beschaffen
+  bzw. von der Steuerung zuordnen zu lassen. Auch der Auftrag für Runde 2 enthält keine
+  Aufnahmepunkte (beide Rundenaufträge geprüft). Eine Suche nach Auftragskennung und Titel in den
+  Zustands-, Wächter- und Steuerungsordnern dieses Rechners fand ebenfalls nichts. Die Bahn kann die
+  Quelle nicht selbst zuordnen. **Die Steuerung muss die Aufnahmepunkte nachreichen.** Bis dahin
+  bleibt das Kriterium „je Aufnahmepunkt“ unerfüllt. Aus dem Fehlen werden keine zusätzlichen
+  Produktanforderungen abgeleitet.
 
 ## Kurzbild (§8.2 und Kriterien)
 
@@ -32,7 +39,7 @@ nicht mitgegeben. Andere Aufnahme-Läufe vom 20260922 haben sie im Auftrag erhal
 | K1 Zuständigkeiten | bisher nur „zugewiesen“ ohne Namen, Zuweisen-Fehler ohne Meldung | **in diesem Lauf behoben** |
 | K2 Rückfrage/Ablehnung begründen | Begründungspflicht (Absenden ohne Text gesperrt) | geliefert |
 | K2 an den richtigen Verantwortlichen | `warn`/`down` gibt an den Eigentümer zurück, nicht an den Erzeuger (JOB 557) | geliefert |
-| K2 Teilerfolg Begründung/Bewertung | bisher „Konnte nicht gespeichert werden“, zweiter Versuch schrieb die Begründung doppelt | **in diesem Lauf behoben** |
+| K2 Teilerfolg Begründung/Bewertung | bisher „Konnte nicht gespeichert werden“, zweiter Versuch schrieb die Begründung doppelt | Runde 1 nur für **einen** offenen Vorgang behoben; der Mehrkartenfall war fehlerhaft (Ben B1). **In Runde 2 je Vorgang behoben**, siehe unten |
 | K2 keine ungefragte Freigabe/Rollenänderung | Stufenfrage vor jeder Freigabe, nichts vorbelegt; Admin-Weg mit Rückfrage | geliefert |
 | K3 Quellen, Stufe, Zeitpunkt, Original, fehlende Belege | Quellennachweis je Quelle (Zeitpunkt, Adresse, Belegstelle, Datei); Stufe mit Herkunft; kein „keine Quellen“-Satz | geliefert (schmaler Nachweis wiederverwendet) |
 | K4 Liste/Tastatur | Pfeiltasten und Mausrad nur an der Liste, eigene Rollbereiche | geliefert |
@@ -60,6 +67,15 @@ Jetzt (`apps/web/src/pages/Validation.tsx`, `reviewWithFeedback`; Fehlerklasse
 - Keine Quittung ohne erfolgreiche Bewertung. Das ist dieselbe Regel wie an der Stufenfrage
   (`val.stufenfrage.fehlerNachStufe`).
 
+**Runde 2 — Korrektur nach Ben B1.** Runde 1 hielt für die ganze Seite nur **einen** unterbrochenen
+Vorgang. Ein Teilerfolg auf Karte B verdrängte den noch offenen Vorgang von Karte A. A öffnete
+danach mit leerem, bearbeitbarem Feld, und das erneute Absenden schrieb ihre Begründung ein zweites
+Mal. Die Aussage „behoben“ aus Runde 1 galt deshalb nur für einen einzelnen Vorgang.
+
+Jetzt hält die Seite die bestätigten Begründungen **je Karte und Entscheidung**
+(`vorgangSchluessel(id, verdict)`). Ein Abschluss räumt nur die Vorgänge seiner eigenen Karte ab
+(`ohneKarte`). Offene Vorgänge anderer Karten bleiben stehen.
+
 ### 2. Zuständigkeit sichtbar, Zuweisen meldet sich
 
 - Im „Mehr“ steht die Zeile „Zugewiesen an: <Namen>“ für die **offenen** Zuweisungen. Die
@@ -72,8 +88,12 @@ Jetzt (`apps/web/src/pages/Validation.tsx`, `reviewWithFeedback`; Fehlerklasse
 Neue Texte: `apps/web/src/texte/pruefboard.ts` (DE/EN/NL). `i18n.ts` ist unberührt.
 
 Beleg: `tests/pruefboard-bedienung/rueckfrage-und-zuweisen-fehlerwege.test.tsx` (gemountete
-Prüffläche, jsdom, 8 Fälle). Gegenprobe ohne die Produktänderung: 7 von 8 rot. Der achte Fall prüft
-die Abwesenheit der Zeile ohne Zuweisung und ist in beiden Fassungen grün.
+Prüffläche, jsdom, 10 Fälle).
+
+- Runde 1: Gegenprobe ohne die Produktänderung, 7 von 8 Fällen rot. Der achte Fall prüft die
+  Abwesenheit der Zeile ohne Zuweisung und ist in beiden Fassungen grün.
+- Runde 2: zwei Mehrkartenfälle neu (R3). Gegenprobe mit dem Produktcode aus Runde 1 (`ddaa9c4b`):
+  beide R3-Fälle und Bens Testfall rot, die übrigen 8 grün. Mit der Korrektur sind alle grün.
 
 ## Bereits geliefert — abgegrenzt, nicht neu gebaut
 
