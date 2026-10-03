@@ -191,27 +191,27 @@ describe("W6 · der gebaute Teil von Auflage 1 — Vertraulichkeit wird gemeldet
 
 // JOB 3020: `note` ist nicht mehr entweder-leer-oder-Vertraulichkeit. Auf dem Sitzungs-Pfad trägt
 // es seit dieser Runde den Satz, WOGEGEN geprüft wurde (auch gegen noch nicht validierte Einträge).
-// Der Fehlstand dieser Datei ist davon UNBERUEHRT: über die ABRUFTIEFE (semantischer Weg vs.
-// lexikalischer Rueckfall) sagt die Antwort weiterhin nichts. Die Zusicherungen unten sind deshalb
-// nicht gelöscht, sondern auf genau diese Aussage geschaerft — „`note` ist null" war nur der
-// damalige Traeger des Befundes, nie der Befund selbst.
-const REICHWEITEN_WOERTER = /semantisch|lexikalisch|Vektorspeicher|Rückfall|Reichweite|Abruftiefe/i;
+//
+// R-0249 SCHLIESST DEN FEHLSTAND: im freigegebenen tiefen Zweig trägt `note` jetzt den
+// Deckungssatz des Kerns — Weg (Vereinigung oder Rückfall aus der Textsuche) und die tatsächliche
+// Zahl geprüfter Einträge. Die früheren Sollbruchstellen sind deshalb bewusst umgedreht.
+const VEREINIGUNG_SATZ = "Geprüft gegen 2 Einträge aus Textsuche und Bedeutungssuche zusammen.";
+const RUECKFALL_SATZ =
+  "Geprüft gegen 2 Einträge nur aus der Textsuche; die Bedeutungssuche trug nichts bei.";
 
-describe("W6 · DER FEHLSTAND — der leere Vektorspeicher wird NICHT gemeldet", () => {
-  it("Speicher befuellt: der semantische Weg traegt, `note` sagt nichts zur Abruftiefe", async () => {
+describe("W6 · R-0249 — der Deckungssatz meldet Vereinigung und Rückfall auf der Leitung", () => {
+  it("Speicher befuellt: Vereinigung, `note` nennt beide Suchwege und die Zahl", async () => {
     const { tiefenpruefung, embed, findCandidates } = await app2([{ id: "v2" }]);
     const res = await tiefenpruefung();
 
-    // Zustand 3: embed lief, kein lexikalischer Rueckfall. Hier IST die Tiefe gedeckt — es gibt
-    // nichts zu melden. Dieser Fall ist der Massstab fuer den naechsten.
     // R-0249: die Textkandidaten laufen im befuellten Zustand MIT (Vereinigung), daher genau ein
-    // `findCandidates` auch hier — ein Rueckfall ist das nicht.
+    // `findCandidates` auch hier — ein Rueckfall ist das nicht. v2 steht in beiden Mengen.
     expect(embed).toHaveBeenCalled();
     expect(findCandidates).toHaveBeenCalledTimes(1);
-    expect(res.json().note ?? "").not.toMatch(REICHWEITEN_WOERTER);
+    expect(res.json().note).toContain(VEREINIGUNG_SATZ);
   });
 
-  it("Speicher LEER: lexikalischer Rueckfall — und der Aufrufer erfaehrt es nicht", async () => {
+  it("Speicher LEER: lexikalischer Rueckfall — und der Aufrufer erfaehrt es", async () => {
     const { tiefenpruefung, embed, nearest, findCandidates } = await app2([]);
     const res = await tiefenpruefung();
 
@@ -221,20 +221,15 @@ describe("W6 · DER FEHLSTAND — der leere Vektorspeicher wird NICHT gemeldet",
     // Gearbeitet wurde lexikalisch — dieselbe Deckelung wie ohne Prefilter.
     expect(findCandidates).toHaveBeenCalledTimes(1);
 
-    // FEHLSTANDSBELEG, KEINE ZUSAGE: `note` schweigt zur Abruftiefe. Die Antwort ist damit von der
-    // des vorigen Falls nicht zu unterscheiden, obwohl die Reichweite eine voellig andere war.
-    // Wer Auflage 1 baut, macht diese Zeile rot — das ist beabsichtigt und ist dann der Beleg,
-    // dass der Mangel behoben wurde.
-    expect(res.json().note ?? "").not.toMatch(REICHWEITEN_WOERTER);
+    // Früher der Fehlstandsbeleg (`note` schwieg). Seit R-0249 nennt `note` den Rückfall samt Zahl.
+    expect(res.json().note).toContain(RUECKFALL_SATZ);
   });
 
-  it("die Antwort fuehrt ueberhaupt kein Feld, das Reichweite ausdrueckt", async () => {
+  it("gleiche Schluessel, aber `note` unterscheidet jetzt Vereinigung und Rueckfall", async () => {
     const voll = (await (await app2([{ id: "v2" }])).tiefenpruefung()).json();
     const leer = (await (await app2([])).tiefenpruefung()).json();
 
-    // Gleiche Schluessel, gleiche Semantik — und keiner davon sagt etwas ueber die Abruftiefe.
-    // Das ist der Kern von Auflage 1: nicht „der Hinweis ist falsch", sondern „es gibt kein Feld,
-    // an dem ein Add-in die Degradierung ueberhaupt festmachen koennte".
+    // Gleiche Schluessel: R-0249 führt KEIN neues Antwortfeld ein, die Auskunft reist über `note`.
     expect(Object.keys(leer).sort()).toEqual(Object.keys(voll).sort());
     // JOB 3094 (KA7): `konfliktpruefung` kam hinzu. Es sagt, ob die KONFLIKTPRÜFUNG lief (Modell,
     // vorgelegte Quellen) — NICHT, ob der Vektorspeicher trug. Über die Abruftiefe der
@@ -248,8 +243,7 @@ describe("W6 · DER FEHLSTAND — der leere Vektorspeicher wird NICHT gemeldet",
     //   · `sourceHitsTruncated` meldet den Deckel der QUELLENFUNDE, nicht den der Duplikatsuche;
     //   · in beiden Läufen dieses Falls (Speicher voll / Speicher leer) sind sie identisch — die
     //     Zeile darunter misst genau das und wäre sonst rot.
-    // Der Befund dieser Datei steht damit unverändert: es gibt weiterhin KEIN Feld, an dem ein
-    // Add-in die semantische Degradierung festmachen könnte.
+    // Seit R-0249 trägt `note` die Unterscheidung (unten), nicht ein eigenes Feld.
     expect(Object.keys(leer).sort()).toEqual([
       "answer",
       "conflicts",
@@ -268,11 +262,13 @@ describe("W6 · DER FEHLSTAND — der leere Vektorspeicher wird NICHT gemeldet",
     expect(leer.sourceHitsTruncated).toEqual(voll.sourceHitsTruncated);
     expect(leer.quellenfund).toEqual(voll.quellenfund);
     expect(leer.konfliktpruefung).toEqual(voll.konfliktpruefung);
-    // JOB 3020: der Traeger des Befundes ist die UNUNTERSCHEIDBARKEIT, nicht der Wert `null`. Beide
-    // Antworten tragen jetzt denselben Hinweis über den geprüften BESTAND — über die ABRUFTIEFE
-    // sagt keine von beiden etwas, obwohl die eine semantisch und die andere lexikalisch arbeitete.
-    expect(leer.note).toEqual(voll.note);
-    expect(voll.note ?? "").not.toMatch(REICHWEITEN_WOERTER);
+    // R-0249: die UNUNTERSCHEIDBARKEIT ist aufgehoben. Beide tragen weiterhin den JOB-3020-Satz
+    // über den geprüften BESTAND, dazu jeweils ihren eigenen Deckungssatz.
+    expect(leer.note).not.toEqual(voll.note);
+    expect(voll.note).toContain(VEREINIGUNG_SATZ);
+    expect(leer.note).toContain(RUECKFALL_SATZ);
+    expect(voll.note).toContain("Auch noch nicht validierte Einträge wurden mitgeprüft.");
+    expect(leer.note).toContain("Auch noch nicht validierte Einträge wurden mitgeprüft.");
 
     // NEBENBEFUND, seit R-0249 umgekehrt: bis dahin ersetzten die Vektortreffer die
     // Textkandidaten, und der Rueckfall legte dem Judge MEHR vor als der befuellte Speicher. Jetzt
@@ -280,9 +276,5 @@ describe("W6 · DER FEHLSTAND — der leere Vektorspeicher wird NICHT gemeldet",
     expect(voll.duplicates.length).toBeGreaterThanOrEqual(leer.duplicates.length);
     // Wie VIELE davon in Wahrheit Duplikate waeren, sagt dieser Test NICHT: der Judge ist hier ein
     // Fake, der jeden Kandidaten bejaht.
-    //
-    // OFFEN NACH R-0249: der Kern führt die Abruftiefe jetzt (`kandidatenwahl`, s.
-    // w6-prefilter-zustandsmatrix.test.ts), `toResponse` reicht sie aber nicht auf die Leitung.
-    // Der Fehlstand dieser Datei betrifft die HTTP-Antwort und bleibt deshalb stehen.
   });
 });

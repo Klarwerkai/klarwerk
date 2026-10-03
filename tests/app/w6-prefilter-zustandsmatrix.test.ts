@@ -61,15 +61,19 @@
 //
 // Und die Lücke unten ist geschlossen: das Ergebnis trägt `kandidatenwahl` mit dem Weg und einem
 // Deckungssatz, der die TATSÄCHLICHE Zahl geprüfter Kandidaten nennt. Die Sollbruchstelle von
-// damals ist deshalb bewusst umgedreht — das ist der Beleg, nicht ihr Verlust. Die HTTP-Antwort
-// (`toResponse`) reicht das Feld in diesem Auftrag noch NICHT durch; das steht in
-// `w6-reichweitenhinweis-luecke.test.ts` weiter als offen.
+// damals ist deshalb bewusst umgedreht — das ist der Beleg, nicht ihr Verlust. Auf der Leitung
+// reist der Deckungssatz im tiefen, nicht vertraulichen Zweig über `note` (check-text-routes.ts);
+// die HTTP-Gegenproben stehen am Ende dieser Datei.
+import Fastify from "fastify";
 import { describe, expect, it, vi } from "vitest";
 import { checkText } from "../../services/app/src/check-text-detection";
 import type { SemanticPrefilter } from "../../services/app/src/duplicate-detection";
+import type { Guards } from "../../services/app/src/http";
+import { checkTextRoutes } from "../../services/app/src/routes/check-text-routes";
 import { InMemoryOverlapRepo, OverlapService, type OverlapVerdict } from "../../services/conflicts";
 import type { EmbeddingProvider, EmbeddingStore } from "../../services/embedding";
 import type { KnowledgeObject, KoService } from "../../services/knowledge-object";
+import type { Reasoner } from "../../services/reasoner";
 
 /** Der geprüfte Text. */
 const EINGABE = "Nach dem Anfahren 10 Sekunden warten, dann die Pumpe entlüften.";
@@ -312,5 +316,105 @@ describe("W6 · DIE LUECKE — am Kern geschlossen (R-0249)", () => {
     expect(leererSpeicher.ergebnis.kandidatenwahl?.deckungssatz).not.toEqual(
       befuellterSpeicher.ergebnis.kandidatenwahl?.deckungssatz,
     );
+  });
+});
+
+// ================================================================================================
+// R-0249 · GEGENPROBE AUF DER LEITUNG — die echte Route, nicht nur das Kernergebnis.
+// ================================================================================================
+//
+// Bens Befund (Nacharbeit 1): `kandidatenwahl` stand im Kernergebnis, `toResponse` verlor es.
+// Diese Fälle schicken den Text über `checkTextRoutes` per `inject` und lesen die HTTP-Antwort
+// so, wie das Panel sie liest. Kontrolliert sind nur Bestand, Vektorspeicher, Embedder und Judge.
+//
+//   findCandidates → lex, beide       nearest → sem, beide       (alle validiert, alle zulässig)
+const SATZ_VEREINIGUNG_3 = "Geprüft gegen 3 Einträge aus Textsuche und Bedeutungssuche zusammen.";
+const SATZ_RUECKFALL_2 =
+  "Geprüft gegen 2 Einträge nur aus der Textsuche; die Bedeutungssuche trug nichts bei.";
+
+const routenGuards = {
+  requireUser: async () => ({ id: "u1", role: "experte" }),
+  requirePermission: async () => ({ id: "u1", role: "experte" }),
+} as unknown as Guards;
+
+async function routenLauf(speicher: "befuellt" | "leer" | "fehler") {
+  const seed = [mkKo("lex"), mkKo("beide"), mkKo("sem")];
+  const findCandidates = vi.fn(async () => seed.filter((k) => k.id === "lex" || k.id === "beide"));
+  const get = vi.fn(async (id: string) => seed.find((k) => k.id === id));
+  const { prefilter, embed, nearest } = spyPrefilter(
+    speicher === "befuellt" ? [{ id: "sem" }, { id: "beide" }] : [],
+  );
+  if (speicher === "fehler") {
+    embed.mockRejectedValueOnce(new Error("Embedder-Netzfehler"));
+  }
+  const judgeDuplicate = vi.fn(async () => treffer);
+  const app = Fastify();
+  await app.register(
+    checkTextRoutes(
+      {
+        ko: { list: vi.fn(async () => seed), findCandidates, get } as unknown as KoService,
+        overlaps: new OverlapService({ repo: new InMemoryOverlapRepo() }),
+        reasoner: { judgeDuplicate, judgeConflict: vi.fn(async () => null) } as unknown as Reasoner,
+        semanticPrefilter: prefilter,
+      },
+      routenGuards,
+    ),
+  );
+  try {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/check-text",
+      payload: {
+        text: EINGABE,
+        title: "Pumpe entlüften",
+        want: "deep",
+        source: "transient-document",
+        confidentiality: "intern",
+      },
+    });
+    return { res, embed, nearest, findCandidates, judgeDuplicate };
+  } finally {
+    await app.close();
+  }
+}
+
+describe("W6 · R-0249 — der Deckungssatz erreicht den Panel-Aufrufer (HTTP)", () => {
+  it("befuellt: die Antwort nennt die Vereinigung mit genau 3 geprueften Eintraegen", async () => {
+    const { res, embed, nearest, findCandidates, judgeDuplicate } = await routenLauf("befuellt");
+
+    expect(res.statusCode).toBe(200);
+    expect(embed).toHaveBeenCalledTimes(1);
+    expect(nearest).toHaveBeenCalledTimes(1);
+    expect(findCandidates).toHaveBeenCalledTimes(1);
+    // `beide` steht in beiden Mengen und wird genau einmal beurteilt: 3 Urteile, nicht 4.
+    expect(judgeDuplicate).toHaveBeenCalledTimes(3);
+    const body = res.json();
+    expect(body.note).toContain(SATZ_VEREINIGUNG_3);
+    const ids = body.duplicates.map((d: { koId: string }) => d.koId).sort();
+    expect(ids).toEqual(["beide", "lex", "sem"]);
+  });
+
+  it("leerer Speicher: die Antwort nennt den lexikalischen Rueckfall mit genau 2 Eintraegen", async () => {
+    const { res, embed, nearest, findCandidates } = await routenLauf("leer");
+
+    expect(res.statusCode).toBe(200);
+    expect(embed).toHaveBeenCalledTimes(1);
+    expect(nearest).toHaveBeenCalledTimes(1);
+    expect(findCandidates).toHaveBeenCalledTimes(1);
+    const body = res.json();
+    expect(body.note).toContain(SATZ_RUECKFALL_2);
+    expect(body.note).not.toContain(SATZ_VEREINIGUNG_3);
+  });
+
+  it("Embedding-Fehler: die Antwort nennt den lexikalischen Rueckfall mit genau 2 Eintraegen", async () => {
+    const { res, embed, nearest, findCandidates } = await routenLauf("fehler");
+
+    expect(res.statusCode).toBe(200);
+    expect(embed).toHaveBeenCalledTimes(1);
+    expect(nearest).not.toHaveBeenCalled();
+    expect(findCandidates).toHaveBeenCalledTimes(1);
+    const body = res.json();
+    expect(body.note).toContain(SATZ_RUECKFALL_2);
+    expect(body.note).not.toContain(SATZ_VEREINIGUNG_3);
   });
 });
