@@ -895,13 +895,13 @@ export interface KoSearchHit {
 //    (`services/library-analytics/src/service.ts:1334`). Die Güte hätte dort also still die
 //    Trefferliste verschoben. Wer die Güteauswahl will, sagt es jetzt: `deckelauswahl`.
 //
-// STAND HEUTE, ausgesprochen statt verschwiegen: NIEMAND fordert sie an. Die eine Stelle, die es
-// tun müsste, ist `KoService.findCandidates` (`service.ts:3028`) — der gemeinsame Kandidatenweg von
-// Klara, Textprüfung und Wissensprüfung. Diese Datei liegt nicht in den Zielpfaden von JOB 3048;
-// die Vorprüfung des Taktgebers weist einen Diff dort ab. Die Regel ist damit gebaut, geprüft und
-// WIRKUNGSLOS, bis die Zielpfade um `service.ts` erweitert werden. Der Nachweis, dass sich diese
+// WER SIE ANFORDERT (seit JOB 3053): genau EINE Stelle, `KoService.findCandidates` — der gemeinsame
+// Kandidatenweg von Klara, Textprüfung und Wissensprüfung. Die Bibliothek fordert sie nicht an und
+// behält ihre Liste. Gemessen am echten Dienst in
+// `tests/suchraum-deckel/kandidatenweg-waehlt-nach-treffergute.test.ts`. Dass sich die
 // Unterscheidung nicht im Adapter treffen lässt, steht als Fall K1 in
-// `tests/suchraum-deckel/deckel-waehlt-nach-treffergute.test.ts`.
+// `tests/suchraum-deckel/deckel-waehlt-nach-treffergute.test.ts`. Wie VIELE Plätze der Deckel hat,
+// regelt diese Leiter nicht — s. `bestandsgerechterKandidatendeckel` (Aufnahme 20260922).
 export const SUCH_TREFFERGUETE = {
   titel: 4,
   aussage: 3,
@@ -989,6 +989,41 @@ export function normalizeSearchTerms(terms: readonly string[]): string[] {
     out.push(term);
   }
   return out;
+}
+
+// ================================================================================================
+// AUFNAHME 20260922 (R-0316, R-0430) — DER KANDIDATENDECKEL WÄCHST MIT DEM BESTAND.
+// ================================================================================================
+//
+// DER BEFUND. Klaras Vorauswahl fragte je Fragebegriff mit einem FESTEN Deckel (50). Bei 500
+// Objekten ist das ein Zehntel des Bestands, bei 50.000 ein Promille: je mehr Wissen im Haus liegt,
+// desto mehr Objekte, die einen Begriff gleich stark tragen, konkurrieren um dieselben 50 Plätze —
+// und die richtige Antwort wird abgeschnitten, bevor eine Relevanzauswahl sie überhaupt sieht.
+//
+// DIE REGEL. Der Deckel deckt mindestens jedes `KANDIDATENDECKEL_BESTAND_JE_PLATZ`-te Objekt des
+// Bestands (1 %), nie weniger als der Grunddeckel des Aufrufers und nie mehr als dessen
+// `KANDIDATENDECKEL_HOECHSTFAKTOR`-faches. Bis 5.000 Objekte bleibt Klaras Deckel also bei 50,
+// darüber wächst er linear, ab 50.000 Objekten steht er bei 500.
+//
+// BEIDE ZAHLEN SIND EINE SETZUNG, KEINE MESSUNG — ausgesprochen statt verschwiegen: es gibt in
+// diesem Haus keinen gewachsenen Kundenbestand, an dem die richtige Quote gemessen wäre. Die
+// Obergrenze hält R-0430 („Vorauswahl in der Datenbank mit begrenzter Trefferliste"): auch der
+// größte Bestand wird nie vollständig geladen, der Deckel bleibt ein hartes `LIMIT` je Abfrage.
+//
+// WAS DIESE REGEL AUSDRÜCKLICH NICHT TUT: sie gibt nicht den gesamten Bestand als Zusammenhang an
+// das Modell (R-0344, gestrichen), und sie gilt NUR für den Aufrufer, der sie über
+// `KoCandidateQuery.deckelWaechstMitBestand` anfordert. Textprüfung und Wissensprüfung melden
+// ihren Deckel als Prüfumfang an der Oberfläche; ihre Zahl verschiebt sich hierdurch nicht.
+export const KANDIDATENDECKEL_BESTAND_JE_PLATZ = 100;
+export const KANDIDATENDECKEL_HOECHSTFAKTOR = 10;
+
+export function bestandsgerechterKandidatendeckel(grunddeckel: number, bestand: number): number {
+  const grund = Math.max(0, Math.floor(grunddeckel));
+  if (!Number.isFinite(bestand) || bestand <= 0) {
+    return grund;
+  }
+  const anteil = Math.ceil(bestand / KANDIDATENDECKEL_BESTAND_JE_PLATZ);
+  return Math.min(grund * KANDIDATENDECKEL_HOECHSTFAKTOR, Math.max(grund, anteil));
 }
 
 // Der Treffer-Vertrag selbst ist mit S1/S2 in die Zusammensetzung gewandert: er braucht BEIDE

@@ -66,7 +66,8 @@
 // aus dem Schlüsselbund ab (dieselbe Begründung wie in `tests/ask/g27-klara-volltext.test.ts`) —
 // ohne diese Zeile entschiede auf einer Maschine mit hinterlegtem Schlüssel ein ECHTER Modellaufruf
 // über das Ergebnis.
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createHash } from "node:crypto";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { KnowledgeObject } from "../../services/knowledge-object";
 import {
   DEFAULT_TOP_K,
@@ -356,6 +357,138 @@ describe("JOB 3425 · S7 — die Zusage: die passende Titelquelle bleibt in der 
     expect(result.sources).toEqual([ziel.id]);
     expect(result.answered).toBe(true);
   });
+});
+
+// ================================================================================================
+// AUFNAHME 20260922 · R-1548 — A/B/E/F NACH DER REPARATUR WIEDERHOLT, ALS EINE ZUSTANDSFOLGE.
+// ================================================================================================
+//
+// Ein Bestand, eine Zielquelle, eine Frage — vier Zustände nacheinander, nicht vier getrennte
+// Aufbauten. So ist ausgeschlossen, dass ein Zustand nur deshalb besteht, weil er eine andere
+// Zielquelle, eine andere Kennung oder einen anderen Text bekommen hat:
+//   A  die Zielquelle allein, Trust 99
+//   B  + 60 validierte Objekte mit Trust 99, die ALLE Fragewörter ausschliesslich im Fließtext tragen
+//   E  NUR der Ziel-Trust sinkt auf 83 (60 × 99 gegen 83)
+//   F  die 60 Störer über den regulären Löschweg (`KoService.delete`, Papierkorb) entfernt
+// Beobachtet wird an drei Stellen, jeweils mit durchreichenden Spionen am ECHTEN Weg: die
+// Ergebnisse von `findCandidates` (Kandidatenmenge), der Kontext, den der Fragedienst an
+// `Reasoner.answer` übergibt (Auswahl), und `result.sources`/`answered` (Ausgabe).
+// NICHT beobachtet: der Modellprompt — dieser Aufbau antwortet ohne Modell (deterministisch). Den
+// Prompt und die Quellenmarke misst `tests/suchraum-deckel/s7-prompt-quellenanker.test.ts`.
+describe("R-1548 · A/B/E/F — dieselbe Zielquelle, dieselbe Frage, vier Zustände", () => {
+  const AB_TRUST = 99;
+
+  it("A allein · B mit 60 Körpertreffern · E Ziel-Trust 83 · F Störer entfernt — die Quelle bleibt", async () => {
+    const { services } = await aufbauen();
+    const ziel = await services.ko.create({
+      title: ZIELTITEL,
+      statement: ZIELAUSSAGE,
+      type: "best_practice",
+      category: "Wartung",
+      author: "anna",
+    });
+    await services.ko.setValidationState(ziel.id, { trust: AB_TRUST, status: "validiert" });
+
+    const kandidatenAbrufe: string[][] = [];
+    const auswahlAbrufe: string[][] = [];
+    const echteSuche = services.ko.findCandidates.bind(services.ko);
+    const sucheSpion = vi.spyOn(services.ko, "findCandidates");
+    sucheSpion.mockImplementation(async (query) => {
+      const treffer = await echteSuche(query);
+      kandidatenAbrufe.push(treffer.map((k) => k.id));
+      return treffer;
+    });
+    const echteAntwort = services.reasoner.answer.bind(services.reasoner);
+    const antwortSpion = vi.spyOn(services.reasoner, "answer");
+    antwortSpion.mockImplementation(async (...args) => {
+      auswahlAbrufe.push(args[1].map((r) => r.id));
+      return echteAntwort(...args);
+    });
+
+    const inhaltshash = async (): Promise<string> => {
+      const ko = await services.ko.get(ziel.id);
+      expect(ko, "die Zielquelle ist lesbar").toBeDefined();
+      return createHash("sha256")
+        .update(JSON.stringify([ko?.title, ko?.statement, ko?.bodyHtml ?? null]))
+        .digest("hex");
+    };
+
+    const stoerer: string[] = [];
+    const zustand = async (name: string, zielTrust: number) => {
+      kandidatenAbrufe.length = 0;
+      auswahlAbrufe.length = 0;
+      const frage = FRAGE;
+      const { result } = await services.ask.ask(frage);
+      const kandidaten = new Set(kandidatenAbrufe.flat());
+      const auswahl = auswahlAbrufe[0] ?? [];
+      const beobachtung = {
+        name,
+        frage,
+        zielId: ziel.id,
+        zielTrust: (await services.ko.get(ziel.id))?.trust,
+        hash: await inhaltshash(),
+        quellabfragen: kandidatenAbrufe.length,
+        kandidaten: kandidaten.size,
+        stoererInKandidaten: stoerer.filter((id) => kandidaten.has(id)).length,
+        zielInKandidaten: kandidaten.has(ziel.id),
+        auswahl: auswahl.length,
+        zielInAuswahl: auswahl.includes(ziel.id),
+        answered: result.answered,
+        sources: result.sources,
+      };
+      console.info(`[R-1548 · ${name}] ${JSON.stringify(beobachtung)}`);
+      // Die Spione haben den echten Weg wirklich gesehen — sonst wäre jede Aussage unten leer.
+      expect(beobachtung.quellabfragen, `${name}: findCandidates gerufen`).toBeGreaterThan(0);
+      expect(auswahlAbrufe, `${name}: Reasoner.answer genau einmal gerufen`).toHaveLength(1);
+      expect(beobachtung.zielTrust, `${name}: Ziel-Trust`).toBe(zielTrust);
+      expect(beobachtung.zielInKandidaten, `${name}: Ziel in der Kandidatenmenge`).toBe(true);
+      expect(beobachtung.zielInAuswahl, `${name}: Ziel in der Auswahl an den Reasoner`).toBe(true);
+      expect(result.sources, `${name}: Ziel in result.sources`).toContain(ziel.id);
+      expect(result.answered, `${name}: beantwortet`).toBe(true);
+      return beobachtung;
+    };
+
+    try {
+      const a = await zustand("A", AB_TRUST);
+      expect(a.stoererInKandidaten).toBe(0);
+
+      for (let i = 0; i < KOERPERTREFFER; i += 1) {
+        const neu = await services.ko.create({
+          title: `Sammelvermerk ${i}`,
+          statement: `Allgemeine Ablaufnotiz ${i} ohne eigene Auskunft.`,
+          type: "best_practice",
+          category: "Wartung",
+          author: "anna",
+          bodyHtml: koerperMitAllenFragewoertern(i),
+        });
+        await services.ko.setValidationState(neu.id, { trust: AB_TRUST, status: "validiert" });
+        stoerer.push(neu.id);
+      }
+      const b = await zustand("B", AB_TRUST);
+      // Die 60 stehen wirklich im Wettbewerb — sonst sagte B nichts über ihre Wirkung aus.
+      expect(b.stoererInKandidaten, "B: Körpertreffer in der Kandidatenmenge").toBeGreaterThan(0);
+
+      await services.ko.setValidationState(ziel.id, { trust: ZIEL_TRUST, status: "validiert" });
+      const e = await zustand("E", ZIEL_TRUST);
+      expect(e.stoererInKandidaten, "E: Körpertreffer in der Kandidatenmenge").toBeGreaterThan(0);
+
+      for (const id of stoerer) {
+        await services.ko.delete(id, "anna");
+      }
+      const f = await zustand("F", ZIEL_TRUST);
+      expect(f.stoererInKandidaten, "F: kein entfernter Störer mehr in den Kandidaten").toBe(0);
+
+      // Dieselbe Quelle, dieselbe Frage, derselbe Inhalt über alle vier Zustände.
+      for (const z of [b, e, f]) {
+        expect(z.zielId).toBe(a.zielId);
+        expect(z.frage).toBe(a.frage);
+        expect(z.hash, `${z.name}: Inhaltshash der Zielquelle unverändert`).toBe(a.hash);
+      }
+    } finally {
+      sucheSpion.mockRestore();
+      antwortSpion.mockRestore();
+    }
+  }, 180_000);
 });
 
 // ================================================================================================
