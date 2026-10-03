@@ -88,6 +88,7 @@ type Buehne = Seite & {
     down(): Promise<void>;
     up(): Promise<void>;
     click(x: number, y: number): Promise<void>;
+    wheel(deltaX: number, deltaY: number): Promise<void>;
   };
   on(ereignis: "response", f: (a: Antwort) => void): void;
   waitForEvent(ereignis: "filechooser", o?: Record<string, unknown>): Promise<Dateiwahl>;
@@ -159,7 +160,7 @@ const lageAus = (htmlAusdruck: string): string => `(() => {
   }));
 })()`;
 
-async function mitte(seite: Buehne, elementAusdruck: string): Promise<Punkt> {
+async function mitte(seite: Buehne, elementAusdruck: string, zentrieren = true): Promise<Punkt> {
   // Ein echter Mausklick wartet nicht auf Reacts folgende Zustandsänderung. Vor dem nächsten
   // Klick/Zug deshalb auf das konkrete Ziel warten (Palette, Dialog, Formular), nicht schlafen.
   await warteBis(
@@ -173,7 +174,7 @@ async function mitte(seite: Buehne, elementAusdruck: string): Promise<Punkt> {
   );
   return seiteAusfuehren<Punkt>(
     seite,
-    `(() => { const e = ${elementAusdruck}; e.scrollIntoView({ block: "center" });
+    `(() => { const e = ${elementAusdruck}; if (${zentrieren}) { e.scrollIntoView({ block: "center" }); }
       const r = e.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`,
   );
 }
@@ -195,11 +196,8 @@ const BILDKNOPF = `(() => {
   throw new Error("kein Bildknopf am Schreibfeld");
 })()`;
 
-/** Die linke Kante von `wort` im Schreibfeld — sichtbar und tatsächlich über dem Feld. */
-async function vorWort(seite: Buehne, wort: string): Promise<Punkt> {
-  return seiteAusfuehren<Punkt>(
-    seite,
-    `(() => {
+/** Ausschließlich ablesen: die linke Kante des tatsächlichen Textes, auch vor dem Scrollen. */
+const wortPunkt = (wort: string): string => `(() => {
       const feld = ${FELD};
       const gang = document.createTreeWalker(feld, NodeFilter.SHOW_TEXT);
       for (let k = gang.nextNode(); k; k = gang.nextNode()) {
@@ -207,13 +205,21 @@ async function vorWort(seite: Buehne, wort: string): Promise<Punkt> {
         if (i < 0) { continue; }
         const r = document.createRange(); r.setStart(k, i); r.setEnd(k, i + 1);
         const b = r.getBoundingClientRect();
-        const p = { x: b.left + 1, y: b.top + b.height / 2 };
-        if (p.y < 0 || p.y > innerHeight || !feld.contains(document.elementFromPoint(p.x, p.y))) {
-          throw new Error("Ziel verdeckt oder ausserhalb des Fensters: " + ${JSON.stringify(wort)} + " " + JSON.stringify(p));
-        }
-        return p;
+        return { x: b.left + 1, y: b.top + b.height / 2 };
       }
       throw new Error("Wort nicht im Schreibfeld: " + ${JSON.stringify(wort)});
+    })()`;
+
+/** Vor dem Loslassen muss der echte Text sichtbar und tatsächlich unter der Maus sein. */
+async function vorWort(seite: Buehne, wort: string): Promise<Punkt> {
+  return seiteAusfuehren<Punkt>(
+    seite,
+    `(() => {
+      const p = ${wortPunkt(wort)};
+      if (p.y < 0 || p.y > innerHeight || !${FELD}.contains(document.elementFromPoint(p.x, p.y))) {
+        throw new Error("Ziel verdeckt oder ausserhalb des Fensters: " + ${JSON.stringify(wort)} + " " + JSON.stringify(p));
+      }
+      return p;
     })()`,
   );
 }
@@ -221,13 +227,72 @@ async function vorWort(seite: Buehne, wort: string): Promise<Punkt> {
 async function zieheBildVor(seite: Buehne, wort: string): Promise<void> {
   const knopf = await mitte(seite, BILDKNOPF);
   await seite.mouse.click(knopf.x, knopf.y);
-  const quelle = await mitte(seite, knopfMitText("document", BILD_NAME));
+  const quellKnopf = knopfMitText("document", BILD_NAME);
+  const vorher = await mitte(seite, quellKnopf);
+  const zielVorher = await seiteAusfuehren<Punkt>(seite, wortPunkt(wort));
+  const hoehe = await seiteAusfuehren<number>(seite, "innerHeight");
+  const oben = Math.min(vorher.y, zielVorher.y);
+  const unten = Math.max(vorher.y, zielVorher.y);
+  if (oben < 80 || unten > hoehe - 80) {
+    // Das erste Bild verschiebt den zweiten Zieltext. Beide passen gemeinsam ins Fenster;
+    // mit dem echten Mausrad das Paar ausrichten, nicht danach erneut die Quelle zentrieren.
+    expect(
+      unten - oben,
+      "Abstand zwischen Palette und Textziel passt ins Browserfenster",
+    ).toBeLessThan(hoehe - 160);
+    await seite.mouse.move(vorher.x, vorher.y);
+    await seite.mouse.wheel(0, (oben + unten) / 2 - hoehe / 2);
+    await warteBis(
+      seite,
+      `(async () => {
+        const messen = () => {
+          const r = ${quellKnopf}.getBoundingClientRect();
+          return { quelle: r.top + r.height / 2, ziel: ${wortPunkt(wort)}.y };
+        };
+        const a = messen();
+        await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        const b = messen();
+        return Math.min(b.quelle, b.ziel) >= 80 && Math.max(b.quelle, b.ziel) <= innerHeight - 80 &&
+          Math.abs(a.quelle - b.quelle) < 0.5 && Math.abs(a.ziel - b.ziel) < 0.5;
+      })()`,
+      "Palette und Textziel stehen nach dem Mausrad gemeinsam ruhig im sichtbaren Fenster",
+    );
+  }
+  // Neue echte Koordinaten nach dem Scrollen; kein zweites scrollIntoView auf die Quelle.
+  const quelle = await mitte(seite, quellKnopf, false);
   const ziel = await vorWort(seite, wort);
+  await warteBis(
+    seite,
+    `${quellKnopf}.contains(document.elementFromPoint(${quelle.x}, ${quelle.y}))`,
+    "die gezogene Palettenquelle liegt unverdeckt unter der Maus",
+  );
   await seite.mouse.move(quelle.x, quelle.y);
   await seite.mouse.down();
   await seite.mouse.move(quelle.x + 6, quelle.y + 6, { steps: 3 });
   await seite.mouse.move(ziel.x, ziel.y, { steps: 12 });
   await seite.mouse.up();
+}
+
+async function fehlerBefund(seite: Buehne, phase: string, fehler: unknown): Promise<void> {
+  const befund = await seiteAusfuehren<unknown>(
+    seite,
+    `(() => {
+      const sichtbar = (e) => e.offsetParent !== null;
+      const rect = (e) => { const r = e.getBoundingClientRect(); return { x:r.x, y:r.y, w:r.width, h:r.height }; };
+      const editor = [...document.querySelectorAll('[role="textbox"][contenteditable="true"]')].find(sichtbar);
+      return { url:location.href, viewport:{ w:innerWidth, h:innerHeight }, scroll:{ x:scrollX, y:scrollY },
+        editor:editor ? { rect:rect(editor), text:editor.textContent.slice(0,400),
+          figuren:[...editor.querySelectorAll('figure')].map((f) => ({ id:f.getAttribute('data-image-id'), rect:rect(f) })) } : null,
+        knoepfe:[...document.querySelectorAll('button')].filter(sichtbar).map((b) => ({
+          text:b.textContent.trim().slice(0,90), title:b.title, disabled:b.disabled, rect:rect(b)
+        })).filter((b) => b.text || b.title).slice(-28),
+        dialoge:[...document.querySelectorAll('[role="dialog"]')].filter(sichtbar).map((e) => e.textContent.slice(0,500)),
+        bilder:[...document.querySelectorAll('img')].filter(sichtbar).slice(0,6).map((e) => ({alt:e.alt, geladen:e.complete, breite:e.naturalWidth, rect:rect(e)})) };
+    })()`,
+  ).catch((e) => ({ diagnoseFehler: String(e) }));
+  process.stderr.write(
+    `${KENNZEICHEN} FEHLER · ${phase} · ${String(fehler).slice(0, 500)}\n${JSON.stringify(befund).slice(0, 7000)}\n`,
+  );
 }
 
 async function zumFormular(seite: Buehne): Promise<void> {
@@ -473,6 +538,9 @@ describe("Anhänge ziehen · K2 · gezogen → regulär gespeichert → aus Post
           id,
           `die Speicherantwort nennt keine Entwurfskennung: ${JSON.stringify(gesichert).slice(0, 300)}`,
         ).not.toBe("");
+      } catch (fehler) {
+        await fehlerBefund(seite, "Ziehen und Speichern", fehler);
+        throw fehler;
       } finally {
         await seite.close({ runBeforeUnload: false }).catch(() => undefined);
       }
@@ -514,6 +582,9 @@ describe("Anhänge ziehen · K2 · gezogen → regulär gespeichert → aus Post
         process.stderr.write(
           `${KENNZEICHEN} GRÜN · Entwurf ${id} · Anker ${vorher.map((f) => f.bildId).join(", ")}\n`,
         );
+      } catch (fehler) {
+        await fehlerBefund(neu, "Wiederöffnen", fehler);
+        throw fehler;
       } finally {
         await neu.close({ runBeforeUnload: false }).catch(() => undefined);
       }
