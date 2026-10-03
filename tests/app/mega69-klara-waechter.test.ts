@@ -2611,9 +2611,10 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // KEIN neues Abrufziel (gefragt wird weiter nur `/api/ask`), keine Nutzlastaenderung ausser den
     // Begriffen des aktuellen Dokuments, ein zusaetzlicher LESENDER `Word.run` nach der
     // Schreibruhe (kein Schreibweg, gemessen in w1 KA3), Manifest/CSP/Recht unveraendert, kein
-    // Sideload. OFFEN: der Pin ist NICHT nachgefuehrt — in dieser Sitzung war kein Hashwerkzeug
-    // freigegeben. Dieser Fall meldet den Ist-Wert im naechsten Lauf; erst dann darf er wandern.
-    const PIN = "8627e4c01479cd3bdab3687557f8749a9ef9c800ed979149b73ba121d2344d81";
+    // Sideload. NACHARBEIT 3: PIN BEWUSST AKTUALISIERT (8627e4c0… -> 1a53c5b2…). Der Wert ist
+    // GEMESSEN, nicht geschätzt: dieser Fall meldete ihn am Kandidaten 67512822 im Prüflauf
+    // (`Received: "1a53c5b2…476952f8"`, funktion-erhalten-jsdom); die Datei ist seither unverändert.
+    const PIN = "1a53c5b2045519dec1915d04df6d7dfc462c9c4bf997a5d8580af9a9476952f8";
     const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
     expect(
       ist,
