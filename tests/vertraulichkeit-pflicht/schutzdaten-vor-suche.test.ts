@@ -165,4 +165,51 @@ describe("R-0658 · Schutzdaten: Warnung, Quarantäne, kein Treffer in der Suche
     expect(revidiert.schutzdatenQuarantaene).toBeUndefined();
     expect(await suche(a, "Quarantaenewortzeta")).toContain(ko.id);
   });
+
+  // BEN, Nacharbeit 5: der DRITTE Schreibrand — die Dokumentübernahme (`appendDocumentExtract`)
+  // schrieb neuen Inhalt und eine neue Suchprojektion, ohne die Schutzdaten zu prüfen.
+  it("S7 · Dokumentübernahme mit Personalnummer: Befund, leere Projektion, kein Treffer — sauber übernommen wieder auffindbar", async () => {
+    const a = await aufbau();
+    const ko = await anlegen(
+      a,
+      "Lohnabrechnung Quarantaenewortomega",
+      "Für die Abrechnung gilt das Stammblatt der Personalabteilung.",
+    );
+    expect(ko.schutzdatenQuarantaene).toBeUndefined();
+    expect(await suche(a, "Quarantaenewortomega"), "Vorbedingung: sauber auffindbar").toContain(
+      ko.id,
+    );
+
+    const uebernahme = (operationId: string, bodyHtml: string) =>
+      a.services.ko.appendDocumentExtract(ko.id, "pedi", {
+        operationId,
+        anchor: { objectId: `anker-${operationId}`, name: "Stammblatt.docx", mime: "text/plain" },
+        sources: [{ label: "Stammblatt, Abschnitt 2", excerpt: "Abrechnungsgrundlage" }],
+        changes: { bodyHtml },
+      });
+
+    const mitSchutzdaten = await uebernahme(
+      "s7-mit",
+      "<p>Für die Abrechnung gilt Personalnummer: 12345678 laut Stammblatt.</p>",
+    );
+    expect(mitSchutzdaten.ko.schutzdatenQuarantaene?.arten).toEqual(["personalnummer"]);
+    expect((await a.services.ko.get(ko.id))?.schutzdatenQuarantaene?.arten).toEqual([
+      "personalnummer",
+    ]);
+    const projektion = await a.services.ko.searchProjectionOf(ko.id);
+    expect(projektion?.searchText).toBe("");
+    expect(JSON.stringify(projektion)).not.toContain("12345678");
+    expect(await suche(a, "Quarantaenewortomega")).not.toContain(ko.id);
+    expect(await suche(a, "12345678")).not.toContain(ko.id);
+    expect(await suche(a, "")).not.toContain(ko.id);
+
+    // Über DENSELBEN Produktweg sauberen Inhalt übernehmen: die Quarantäne fällt, die Suche kehrt zurück.
+    const sauber = await uebernahme(
+      "s7-sauber",
+      "<p>Für die Abrechnung gilt das Stammblatt der Personalabteilung.</p>",
+    );
+    expect(sauber.ko.schutzdatenQuarantaene).toBeUndefined();
+    expect(await suche(a, "Quarantaenewortomega")).toContain(ko.id);
+    expect(await suche(a, "")).toContain(ko.id);
+  });
 });

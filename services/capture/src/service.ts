@@ -511,8 +511,30 @@ function mergeDraftPayload(base: DraftPayload, changes: DraftPayload): DraftPayl
 // (3) Am WISSENSOBJEKT gilt weiterhin SCRUM-509 (Senken mit Prüfer-/Admin-Rolle). Dass R-0632
 // dort „nie gesenkt" verlangt und Q3d/Validierungsbestand berechtigte Herabstufungen kennen, ist
 // ein offener Quellenwiderspruch — er wird hier nicht durch eine stille Rollenänderung entschieden.
-function pruefeKeineHerabstufung(bisher: DraftPayload, neu: DraftPayload): void {
-  if (bisher.origin !== "word_addin" || !isValidConfidentiality(bisher.confidentiality)) {
+/**
+ * R-0632 (BEN-Befund, Nacharbeit 5): unterliegt dieser Entwurf der Word-Herabstufungssperre?
+ *
+ * DER BEFUND: bis hierher fragte die Sperre nach der Herkunft IN DER NUTZLAST. Die ist änderbar —
+ * ein erstes `PUT {origin: "frontdoor"}` ließ die Stufe stehen und bestand die Prüfung, das zweite
+ * `PUT {confidentiality: "intern"}` traf dann einen Entwurf, der nicht mehr als Word-Entwurf galt.
+ *
+ * DIE REGEL: maßgeblich ist die Marke `stufeNurAnheben` am DRAFT (nicht im Payload). Sie entsteht
+ * beim Anlegen eines Word-Entwurfs und bei jedem Schreiben eines Altbestands, der noch
+ * `origin: "word_addin"` trägt; kein Rumpf kann sie setzen oder entfernen, weil `continueDraft`
+ * ausschließlich die Nutzlast mischt. Die Herkunft selbst bleibt änderbar wie bisher (gepinnt in
+ * `service.test.ts`, „leer"/„unbekannt" verwerfen eine gültige Herkunft) — sie entscheidet nur
+ * nicht mehr über die Sperre.
+ */
+function unterliegtWordSperre(draft: Draft): boolean {
+  return draft.stufeNurAnheben === true || draft.payload.origin === "word_addin";
+}
+
+function pruefeKeineHerabstufung(
+  bisher: DraftPayload,
+  neu: DraftPayload,
+  stufeNurAnheben: boolean,
+): void {
+  if (!stufeNurAnheben || !isValidConfidentiality(bisher.confidentiality)) {
     return;
   }
   if (!isValidConfidentiality(neu.confidentiality)) {
@@ -662,6 +684,9 @@ export class CaptureService {
       lastEditor: author,
       createdAt: at,
       updatedAt: at,
+      // R-0632 (BEN, Nacharbeit 5): ein Word-Entwurf trägt ab der Anlage die unveränderliche
+      // Marke der Herabstufungssperre — unabhängig davon, was später in `origin` steht.
+      ...(payload.origin === "word_addin" ? { stufeNurAnheben: true as const } : {}),
     };
     // ============================================================================================
     // JOB 2697 — HIER ENTSCHEIDET SICH: NEUER ENTWURF ODER DERSELBE VORGANG NOCH EINMAL.
@@ -912,7 +937,12 @@ export class CaptureService {
         const merged: DraftPayload = mergeDraftPayload(draft.payload, changes);
         validateMetadata(merged);
         // R-0632: eine gespeicherte Stufe eines Word-Entwurfs wird nie gesenkt (s. Funktion).
-        pruefeKeineHerabstufung(draft.payload, merged);
+        // BEN, Nacharbeit 5: die Sperre hängt an der UNVERÄNDERLICHEN Marke am Entwurf, nicht an
+        // der änderbaren Herkunft in der Nutzlast — ein vorgeschaltetes `origin: "frontdoor"`
+        // hebelte sie sonst im nächsten Aufruf aus. Altbestand ohne Marke wird über seine noch
+        // gespeicherte Herkunft erkannt und bekommt die Marke mit diesem Schreibvorgang.
+        const stufeNurAnheben = unterliegtWordSperre(draft);
+        pruefeKeineHerabstufung(draft.payload, merged, stufeNurAnheben);
         // SCRUM-524 P.1 (WP5) + mega5 Block B: auch beim Fortsetzen an der Persistenz-Grenze säubern
         // und normalisieren — der Merge über den Bestand streift dabei auch Alt-Felder ab.
         const bisher = Date.parse(draft.updatedAt);
@@ -921,6 +951,8 @@ export class CaptureService {
           ...draft,
           payload: normalizeDraftPayload(sanitizeDraftPayload(merged)),
           lastEditor: editor,
+          // R-0632: die Marke reist weiter (über `...draft`) und wird für Altbestand hier gesetzt.
+          ...(stufeNurAnheben ? { stufeNurAnheben: true as const } : {}),
           // JOB 2684 D1: streng steigend (s. Kopf) — nie derselbe Wert wie der Vorgänger.
           updatedAt: new Date(
             Number.isFinite(bisher) ? Math.max(jetzt, bisher + 1) : jetzt,

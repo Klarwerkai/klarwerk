@@ -5151,6 +5151,11 @@ export class KoService {
             { version, at, author, note: "überarbeitet (Dokumentinhalt übernommen)" },
           ],
         };
+        // R-0658 (BEN, Nacharbeit 5): der DRITTE Schreibrand. Die Übernahme trägt neuen Inhalt und
+        // schreibt gleich darunter eine neue Suchprojektion — also dieselbe Schutzdatenprüfung wie
+        // beim Anlegen und Überarbeiten, VOR Commit und Projektion. Ein übernommener Text mit
+        // Schutzdaten setzt die Quarantäne, einer ohne hebt eine bestehende auf.
+        committed = mitSchutzdatenBefund(committed, at);
       }
 
       // ---- DER COMMIT: GENAU EIN SCHREIBVORGANG ---------------------------------------------

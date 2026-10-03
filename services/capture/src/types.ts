@@ -130,6 +130,13 @@ export interface Draft {
    */
   createOperation?: DraftCreateOperation;
   /**
+   * R-0632 (BEN-Befund, Nacharbeit 5) — AM `Draft`, NICHT IM `DraftPayload`, aus demselben Grund
+   * wie `createOperation`: kein Rumpf erreicht dieses Feld (`continueDraft` mischt nur die
+   * Nutzlast). Gesetzt bei der Anlage eines Word-Entwurfs; solange es steht, wird eine gespeicherte
+   * Stufe nur angehoben, nie gesenkt — auch wenn die Herkunft in der Nutzlast später wechselt.
+   */
+  stufeNurAnheben?: true;
+  /**
    * JOB 3668 (Papierkorb) — GESETZT BEIM WEICHEN LÖSCHEN.
    *
    * DIE FORM IST ÜBERNOMMEN, NICHT ERFUNDEN: zeichengleich die zwei Felder des Wissensobjekts

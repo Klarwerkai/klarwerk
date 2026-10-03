@@ -305,6 +305,33 @@ describe("R-0632 · eine gespeicherte Stufe eines Word-Entwurfs wird nur angehob
     expect((await gespeicherterEntwurf(id)).confidentiality).toBe("streng_vertraulich");
   });
 
+  // BEN, Nacharbeit 5: die Sperre hing an der ÄNDERBAREN Herkunft in der Nutzlast. Ein vorgeschaltetes
+  // `origin: "frontdoor"` ließ das Senken im nächsten Aufruf durch. Jetzt trägt der Entwurf die
+  // unveränderliche Marke `stufeNurAnheben` (Draft, nicht Payload).
+  it("H5 · erst die Herkunft auf frontdoor, dann senken: das Senken scheitert weiter, GET bleibt vertraulich", async () => {
+    const id = await wordEntwurf("vertraulich");
+    const umetikettiert = await aendern(id, { origin: "frontdoor" });
+    expect(umetikettiert.statusCode, umetikettiert.body).toBe(200);
+
+    const gesenkt = await aendern(id, { confidentiality: "intern" });
+    expect(gesenkt.statusCode, gesenkt.body).toBe(400);
+    expect((gesenkt.json() as { error?: string }).error).toBe("CONFIDENTIALITY_DOWNGRADE");
+    expect((await gespeicherterEntwurf(id)).confidentiality).toBe("vertraulich");
+
+    // Gleichbleiben und Anheben gehen weiterhin — die Sperre verbietet nur das Senken.
+    expect((await aendern(id, { confidentiality: "vertraulich" })).statusCode).toBe(200);
+    const angehoben = await aendern(id, { confidentiality: "streng_vertraulich" });
+    expect(angehoben.statusCode, angehoben.body).toBe(200);
+    expect((await gespeicherterEntwurf(id)).confidentiality).toBe("streng_vertraulich");
+  });
+
+  it("H6 · auch Herkunft UND Senken in EINEM Aufruf scheitern", async () => {
+    const id = await wordEntwurf("vertraulich");
+    const res = await aendern(id, { origin: "frontdoor", confidentiality: "intern" });
+    expect(res.statusCode, res.body).toBe(400);
+    expect((await gespeicherterEntwurf(id)).confidentiality).toBe("vertraulich");
+  });
+
   it("H3 · ABGRENZUNG: ein Entwurf des Blatts (nicht word_addin) bleibt frei korrigierbar", async () => {
     const angelegt = await app.inject({
       method: "POST",

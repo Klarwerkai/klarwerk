@@ -25,6 +25,7 @@ import {
   alsMenge,
   alsSchreibpatch,
   createOperationFingerprint,
+  inSchutzdatenQuarantaene,
   isValidConfidentiality,
 } from "../../../knowledge-object";
 // JOB 2703 D2: DIE EINE Kuerzungsregel fuer die Kernaussage — dieselbe Funktion wie im
@@ -1665,7 +1666,11 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
           // Wie in ko-routes: die 201-Antwort trägt den Vermerk ehrlich mit (aiCheck pending);
           // Nachlesen VOR dem enqueue → deterministischer Job-Start in der Antwort.
           let submitted = created;
-          if (aiCheckWorker) {
+          // R-0658: dieselbe Regel wie am direkten Einreichen (`ko-routes.ts`) — ein Objekt in
+          // Schutzdaten-Quarantäne geht weder in die KI-Prüfung noch in die Ähnlichkeitsablage.
+          // Die Warnung reist als `schutzdatenQuarantaene` in der 201-Antwort an das Blatt.
+          const inQuarantaene = inSchutzdatenQuarantaene(created);
+          if (aiCheckWorker && !inQuarantaene) {
             await ko.markAiCheckPending(created.id);
             submitted = (await ko.get(created.id)) ?? created;
             // WP-SHIP8-CLOSE-2 (bens F3): Zielversion des frischen Vermerks synchron mitgeben —
@@ -1676,7 +1681,9 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
           // Weg 3 (B6): Einbettung + Ablage NACH der Antwort — der Nutzer wartet nie darauf. Flag aus
           // = No-op; Fehler brechen den (bereits gesendeten) Submit nie. await nur zur deterministischen
           // Fertigstellung der Ablage, nicht zur Client-Latenz (201 ist schon raus).
-          await indexKoForDuplicatePrefilter(created, semanticPrefilter);
+          if (!inQuarantaene) {
+            await indexKoForDuplicatePrefilter(created, semanticPrefilter);
+          }
         } catch (error) {
           // JOB 2684 D1: ein veralteter Stand ist ein Konflikt, kein Eingabefehler — 409, und es ist
           // NICHTS entstanden (der Vergleich steht vor `continueDraft` und vor `ko.create`).
