@@ -41,28 +41,36 @@ const steuer = vi.hoisted(() => {
   };
 });
 
-vi.mock("../../apps/web/src/i18n", async () => {
-  const { createInstance } = await import("../../apps/web/node_modules/i18next");
-  const { initReactI18next } = await import("../../apps/web/node_modules/react-i18next");
-  const { sprachNachlader } = await import("../../apps/web/src/lib/sprachNachlader");
-  const i18n = createInstance();
-  const sprachBereit = i18n
-    .use(
-      sprachNachlader((sprache) => {
-        steuer.gefragt.push(sprache);
-        return steuer.lader(sprache);
-      }),
-    )
-    .use(initReactI18next)
-    .init({
-      lng: steuer.sprache,
-      fallbackLng: "de",
-      partialBundledLanguages: true,
-      resources: { de: { translation: steuer.DEUTSCH } },
-      interpolation: { escapeValue: false },
-    });
-  return { default: i18n, sprachBereit };
-});
+// DER i18n-RAND WIRD JE FALL NEU REGISTRIERT (Nacharbeit 4). Ein `vi.mock` oben wertet seine Fabrik
+// genau EINMAL aus: `vi.resetModules()` leert die Modulablage, aber NICHT das Mock-Register
+// (Vitest 2). Gemessen am Kandidaten 8bfab8c: der erste Fall (en) war grün, alle folgenden sahen
+// dessen schon geladene englische Instanz („Application ready" statt „Lädt …"). `vi.doMock` nach
+// `resetModules` registriert die Fabrik neu, und der nächste Import von `main.tsx` bekommt eine
+// FRISCHE i18next-Instanz mit der Startsprache und dem Lader genau dieses Falls.
+function registriereI18nRand(): void {
+  vi.doMock("../../apps/web/src/i18n", async () => {
+    const { createInstance } = await import("../../apps/web/node_modules/i18next");
+    const { initReactI18next } = await import("../../apps/web/node_modules/react-i18next");
+    const { sprachNachlader } = await import("../../apps/web/src/lib/sprachNachlader");
+    const i18n = createInstance();
+    const sprachBereit = i18n
+      .use(
+        sprachNachlader((sprache) => {
+          steuer.gefragt.push(sprache);
+          return steuer.lader(sprache);
+        }),
+      )
+      .use(initReactI18next)
+      .init({
+        lng: steuer.sprache,
+        fallbackLng: "de",
+        partialBundledLanguages: true,
+        resources: { de: { translation: steuer.DEUTSCH } },
+        interpolation: { escapeValue: false },
+      });
+    return { default: i18n, sprachBereit };
+  });
+}
 
 vi.mock("../../apps/web/src/App", async () => {
   const { createElement } = await import("../../apps/web/node_modules/react");
@@ -99,6 +107,7 @@ function steuerbar(): Steuerbar {
 /** Startet den ECHTEN Einstieg gegen ein leeres `#root` — wie der Browser `index.html` lädt. */
 async function starteEinstieg(sprache: string, paket?: Steuerbar): Promise<HTMLElement> {
   vi.resetModules();
+  registriereI18nRand();
   steuer.sprache = sprache;
   steuer.gefragt = [];
   steuer.lader = (gefragt) => (gefragt === sprache && paket ? paket.versprechen : undefined);
@@ -106,6 +115,20 @@ async function starteEinstieg(sprache: string, paket?: Steuerbar): Promise<HTMLE
   const wurzel = document.getElementById("root") as HTMLElement;
   expect(wurzel.childNodes.length, "Vorbedingung: `#root` ist leer wie in index.html").toBe(0);
   await import("../../apps/web/src/main");
+  // Vorbedingung der Vorrichtung: main.tsx hat die FRISCHE Instanz dieses Falls bekommen — in der
+  // Startsprache dieses Falls und ohne fremdes Paket. Ohne diese Zeile sähe eine wiederverwendete
+  // Instanz aus wie ein Produktbefund (Nacharbeit 4).
+  const rand = (await import("../../apps/web/src/i18n")) as {
+    default: { language: string; hasResourceBundle(lng: string, ns: string): boolean };
+  };
+  expect(rand.default.language, "die Vorrichtung hat keine frische Instanz geliefert").toBe(
+    sprache,
+  );
+  for (const fremd of ["en", "nl"].filter((s) => s !== sprache)) {
+    expect(rand.default.hasResourceBundle(fremd, "translation"), `fremdes Paket ${fremd}`).toBe(
+      false,
+    );
+  }
   return wurzel;
 }
 
