@@ -17,8 +17,8 @@
 //     Fallnamen (z. B. „V14 · titel-laufweite -0.3px"), der gegen das Mockup geschrieben wurde.
 //
 // KEIN WERT KOMMT AUS DEM PRODUKT. Der Schatten des Blattes (V7) nennt im Fallnamen nur das Token
-// `shadow-tile`, keinen Wert; ihn aus `themes.css` zu übernehmen hiesse, das Produkt gegen sich
-// selbst zu messen. Er fehlt im Auszug ausdrücklich (`OHNE_AUSZUG`), V7 misst nur gegen das Mockup.
+// `shadow-tile`, keinen Wert. Er stammt deshalb aus der unabhängigen Lektüre des Prüfers (Ben,
+// Nacharbeit 2) am Original — Pfad und Prüfsumme in `SCHATTEN_QUELLE` —, nicht aus `themes.css`.
 //
 // DRIFT. Liegt das Mockup vor, prüft `zielbild-h3-erfassen.test.ts` (Fall A) jeden Wert dieses
 // Auszugs gegen das Mockup. Ändert Pedi das Zielbild, wird A dort rot, wo das Mockup liegt.
@@ -42,10 +42,14 @@ export const AUSZUG: readonly AuszugBlock[] = [
     anker: "padding: 6px 12px; background: #FFFFFF; border: 1px solid #E9E5DE",
     zusatz: { "border-radius": "8px", "font-size": "13px" },
   },
-  // Blatt (Mockup Z.46-52) — V2, V11; Schatten V7 bewusst nicht
+  // Blatt (Mockup Z.46-52) — V2, V11, V7 (Schatten: Herkunft `SCHATTEN_QUELLE`)
   {
     anker: "border-radius: 14px 14px 0 0; padding: 56px 72px 0",
-    zusatz: { background: "#FFFFFF", gap: "22px" },
+    zusatz: {
+      background: "#FFFFFF",
+      gap: "22px",
+      "box-shadow": "0 1px 2px rgba(14, 22, 38, 0.05), 0 8px 24px -12px rgba(14, 22, 38, 0.12)",
+    },
   },
   // Titel — V14
   { anker: "font-size: 28px; font-weight: 650", zusatz: { "letter-spacing": "-0.3px" } },
@@ -63,8 +67,15 @@ export const AUSZUG: readonly AuszugBlock[] = [
   },
 ];
 
-/** Werte, die der Auszug NICHT trägt, weil das Repository keinen unabhängigen Beleg hat. */
-export const OHNE_AUSZUG = ["blatt.box-shadow"] as const;
+/**
+ * Herkunft des Blattschattens: gelesen am Original, nicht abgeleitet. Liegt das Mockup vor, prüft
+ * Fall A den Wert zusätzlich gegen die Datei selbst.
+ */
+export const SCHATTEN_QUELLE = {
+  pfad: "/Users/peterkohnert/klarwerk_steuerung/design/klarwerk/Erfassen.dc.html",
+  sha256: "13416f03e22147f7d9181f14079806c3cb01b021204fca0faf17f6a04c9e0cd2",
+  gelesen: "Ben, Nacharbeit 2 (BEN/ANTWORT.json)",
+} as const;
 
 /**
  * Der Auszug in der Schreibweise des Mockups: je Block ein `style="…"`. Damit lesen `zielStil` und

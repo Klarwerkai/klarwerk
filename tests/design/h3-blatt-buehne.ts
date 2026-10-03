@@ -70,6 +70,12 @@ interface Route {
     contentType?: string;
     headers?: Record<string, string>;
   }): Promise<void>;
+  /**
+   * Aufnahme `gesamt-erfassung-einstieg:layout` (Nacharbeit 2): eine später angemeldete Route darf
+   * einen Request nur FESTHALTEN und ihn danach unverändert an die Bühnenroute weiterreichen —
+   * so wird der echte Speicherweg verzögert, nicht ersetzt (`h3-wirkung.test.ts`, W8).
+   */
+  fallback(): Promise<void>;
 }
 
 export interface Seite {

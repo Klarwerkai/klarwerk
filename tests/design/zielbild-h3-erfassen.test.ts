@@ -179,15 +179,12 @@ describe(`JOB 3062 · H3 · /erfassen — das Blatt, gemessen an der gebauten Se
     expect(await messen(S_BLATT, "border-bottom-left-radius")).toBe(`${soll[3]}px`);
   });
 
-  // Der Auszug trägt keinen Schattenwert (`OHNE_AUSZUG`): ohne Mockup wird V7 nicht gemessen.
-  it.runIf(mockupDa)(
-    "V7 · blatt-schatten (Token shadow-tile → --kw-shadow-tile modern) — box-shadow am realen Blatt",
-    async () => {
-      expect(schattenSichtbar(await messen(S_BLATT, "box-shadow"))).toBe(
-        schattenKanon(zielProp(zielStil(ziel, A_BLATT), "box-shadow")),
-      );
-    },
-  );
+  // Ohne Mockup kommt der Sollwert aus dem Auszug (Herkunft `SCHATTEN_QUELLE`, mit Prüfsumme).
+  it("V7 · blatt-schatten (Token shadow-tile → --kw-shadow-tile modern) — box-shadow am realen Blatt", async () => {
+    expect(schattenSichtbar(await messen(S_BLATT, "box-shadow"))).toBe(
+      schattenKanon(zielProp(zielStil(ziel, A_BLATT), "box-shadow")),
+    );
+  });
 
   it("V8 · blatt-innen oben 56px — padding-top am realen Blatt", async () => {
     const soll = (zielProp(zielStil(ziel, A_BLATT), "padding") ?? "").split(/\s+/);
@@ -359,6 +356,7 @@ describe(`JOB 3062 · H3 · /erfassen — das Blatt, gemessen an der gebauten Se
       ["blatt", A_BLATT, "background"],
       ["titel", A_TITEL, "letter-spacing"],
       ["einreichen", A_EINREICHEN, "font-weight"],
+      ["blatt", A_BLATT, "box-shadow"],
     ] as const) {
       expect(zielProp(zielStil(ziel, anker), eigenschaft), `${name}.${eigenschaft}`).not.toBeNull();
     }
@@ -370,6 +368,20 @@ describe(`JOB 3062 · H3 · /erfassen — das Blatt, gemessen an der gebauten Se
     expect(schattenSichtbar("rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(1, 2, 3) 0px 0px 0px 2px")).toBe(
       "rgb(1, 2, 3) 0px 0px 0px 2px",
     );
+    // V7-GEGENPROBE: der Vergleich unterscheidet Farbe und Ausdehnung. Die Ist-Schreibweise
+    // entspricht der Serialisierung von `getComputedStyle` für den Sollschatten; jede Verstellung
+    // muss den Vergleich kippen.
+    const sollSchatten = schattenKanon(zielProp(zielStil(ziel, A_BLATT), "box-shadow"));
+    const istGleich =
+      "rgba(14, 22, 38, 0.05) 0px 1px 2px 0px, rgba(14, 22, 38, 0.12) 0px 8px 24px -12px";
+    expect(schattenSichtbar(istGleich)).toBe(sollSchatten);
+    for (const verstellt of [
+      "rgba(14, 22, 38, 0.05) 0px 1px 2px 0px, rgba(200, 22, 38, 0.12) 0px 8px 24px -12px",
+      "rgba(14, 22, 38, 0.05) 0px 1px 2px 0px, rgba(14, 22, 38, 0.12) 0px 8px 24px -10px",
+      "rgba(14, 22, 38, 0.05) 0px 1px 2px 0px",
+    ]) {
+      expect(schattenSichtbar(verstellt), verstellt).not.toBe(sollSchatten);
+    }
   });
 
   // ==========================================================================================
