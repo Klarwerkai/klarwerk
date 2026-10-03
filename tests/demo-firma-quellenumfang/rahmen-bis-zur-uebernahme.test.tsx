@@ -19,14 +19,20 @@
 // die ECHTEN Routen `select`/`group`/`apply` — die Ersatzfunktionen reichen dort an die echten
 // Endpunktfunktionen durch (`vi.importActual`), und die Brücke führt sie über `app.inject` an eine
 // App mit echtem Confluence-Adapter (`../confluence-import-bedienung/confluence-buehne.ts`).
-// Ersetzt ist dort allein die Antwort der externen Confluence-Instanz.
+// Ersetzt ist dort allein die Antwort der externen Confluence-Instanz. Seit Bens Befund
+// nacharbeit-4 beginnt er am ECHTEN Einstieg: `ImportExplore` unter Router und Cockpit, der Rahmen
+// wird im Feld „Firma oder Demobereich" eingetippt, mit „Rahmen setzen" gesetzt und mit „Rahmen
+// aufheben" gewechselt — er ist dort nirgends eine Test-Prop.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../apps/web/src/api/endpoints", () => ({
   endpoints: {
     // `run`: die Lauf-Akte der Übernahme (`ImportGroups` → `useImportRun`). Die bisherigen Fälle
     // lösen sie nie aus (ihre Bilanz trägt keine Laufkennung); der K6-Fall reicht sie durch.
-    admin: { import: { select: vi.fn(), group: vi.fn(), apply: vi.fn(), run: vi.fn() } },
+    // `explore`: der Erkunden-Knopf von `ImportExplore`, nur vom K6-Fall ausgelöst und durchgereicht.
+    admin: {
+      import: { explore: vi.fn(), select: vi.fn(), group: vi.fn(), apply: vi.fn(), run: vi.fn() },
+    },
     reasoner: { status: vi.fn().mockResolvedValue({ active: false, mode: "deterministic" }) },
   },
 }));
@@ -37,8 +43,14 @@ import {
 } from "../../apps/web/node_modules/@tanstack/react-query";
 import { act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
+import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
 import { endpoints } from "../../apps/web/src/api/endpoints";
+import { ImportExplore } from "../../apps/web/src/components/ImportExplore";
 import { ImportSelect } from "../../apps/web/src/components/ImportSelect";
+import {
+  ImportCockpitProvider,
+  ImportStepperBar,
+} from "../../apps/web/src/components/ImportStepper";
 import i18n from "../../apps/web/src/i18n";
 import {
   type Buehne,
@@ -335,12 +347,49 @@ function hatKnopf(teil: string): boolean {
   );
 }
 
+/** Der Speicherschlüssel, unter dem `ImportExplore` den Rahmen im Browser merkt. */
+const VORFUEHRRAHMEN_SPEICHER = "klarwerk.import.vorfuehrrahmen";
+
+/** Den Rahmen über das sichtbare Feld setzen — eintippen, dann „Rahmen setzen". */
+async function rahmenEingeben(firma: string): Promise<void> {
+  const feld = [...container.querySelectorAll("input")].find(
+    (el) => el.getAttribute("aria-label") === i18n.t("imp.rahmen.feldLabel"),
+  );
+  if (!(feld instanceof HTMLInputElement)) {
+    throw new Error(`Rahmen-Feld fehlt; sichtbar: ${sichtbarerText()}`);
+  }
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+  act(() => {
+    setter?.call(feld, firma);
+    feld.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await klicken(i18n.t("imp.rahmen.setzen"));
+}
+
+/**
+ * Der letzte VORSCHAU-Aufruf der Auswahlroute samt Antwort. `ImportExplore` zählt den Rahmen über
+ * dieselbe Route mit `limit: 1` (Umfangsmessung) — diese Aufrufe sind keine Vorschau und zählen
+ * hier nicht.
+ */
+function letzteVorschau(): { body: { criteria: Record<string, unknown> }; ergebnis: unknown } {
+  const aufrufe = selectMock.mock.calls;
+  for (let i = aufrufe.length - 1; i >= 0; i--) {
+    const body = aufrufe[i]?.[0] as { criteria: Record<string, unknown> };
+    if (body.criteria.limit !== 1) {
+      return { body, ergebnis: selectMock.mock.results[i]?.value };
+    }
+  }
+  throw new Error("Es gab keinen Vorschau-Aufruf der Auswahlroute.");
+}
+
 describe("K6 · Firmenrahmen an den echten Routen: Vorschau, Abwahl, Gruppierung, Übernahme", () => {
   it("gespeichert ist genau die gewählte Advisor-Seite; der Wechsel auf Basic sperrt die alte Auswahl", async () => {
     const echt = await vi.importActual<typeof import("../../apps/web/src/api/endpoints")>(
       "../../apps/web/src/api/endpoints",
     );
     const runMock = endpoints.admin.import.run as unknown as ReturnType<typeof vi.fn>;
+    const exploreMock = endpoints.admin.import.explore as unknown as ReturnType<typeof vi.fn>;
+    exploreMock.mockImplementation(echt.endpoints.admin.import.explore);
     selectMock.mockImplementation(echt.endpoints.admin.import.select);
     groupMock.mockImplementation(echt.endpoints.admin.import.group);
     applyMock.mockImplementation(echt.endpoints.admin.import.apply);
@@ -352,36 +401,50 @@ describe("K6 · Firmenrahmen an den echten Routen: Vorschau, Abwahl, Gruppierung
       });
       const b = buehne;
 
+      // DER ECHTE EINSTIEG (Bens Befund nacharbeit-4): `ImportExplore` samt Schrittleiste unter
+      // Router und Cockpit — der Rahmen kommt aus dem sichtbaren Feld „Firma oder Demobereich" und
+      // dem Knopf „Rahmen setzen", nie als Prop. Ein im Browser gemerkter Rahmen wird vorher
+      // geleert, sonst begänne der Fall in einem Zustand, den der Mensch nicht hergestellt hat.
+      globalThis.localStorage?.removeItem(VORFUEHRRAHMEN_SPEICHER);
       container = document.createElement("div");
       document.body.appendChild(container);
       root = createRoot(container);
       const qc = new QueryClient({
         defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
       });
-      const zeichne = async (rahmen: string): Promise<void> => {
-        await act(async () => {
-          root.render(
+      await act(async () => {
+        root.render(
+          createElement(
+            QueryClientProvider,
+            { client: qc },
             createElement(
-              QueryClientProvider,
-              { client: qc },
-              createElement(ImportSelect, {
-                chip: { themes: [], authors: [], spaces: [] },
-                rahmen,
-              }),
+              MemoryRouter,
+              { initialEntries: ["/import"] },
+              createElement(
+                ImportCockpitProvider,
+                null,
+                createElement(ImportStepperBar),
+                createElement(ImportExplore),
+              ),
             ),
-          );
-        });
-      };
+          ),
+        );
+      });
+      await act(flush);
+      expect(container.querySelector('[data-testid="vorfuehrrahmen-wahl"]')).not.toBeNull();
 
-      // 1 · DIE VORSCHAU IM RAHMEN — vom echten Server gefiltert.
-      await zeichne(FIRMA);
+      // 0 · DEN RAHMEN SETZEN — eintippen und den Knopf drücken, wie der Mensch.
+      await rahmenEingeben(FIRMA);
+      expect(container.querySelector('[data-testid="vorfuehrrahmen-leiste"]')).not.toBeNull();
+      expect(sichtbarerText()).toContain(i18n.t("imp.rahmen.aktiv", { firma: FIRMA }));
+
+      // 1 · ERKUNDEN UND DIE VORSCHAU IM RAHMEN — vom echten Server gefiltert.
+      await klicken(i18n.t("imp.explore.cta"));
+      await warteBis(() => hatKnopf(i18n.t("imp.select.previewCta")));
       await klicken(i18n.t("imp.select.previewCta"));
       await warteBis(() => sichtbarerText().includes(GEWAEHLT));
-      expect(
-        (selectMock.mock.calls.at(-1)?.[0] as { criteria: Record<string, unknown> }).criteria
-          .titleContains,
-      ).toEqual([FIRMA]);
-      const vorschau = (await selectMock.mock.results.at(-1)?.value) as {
+      expect(letzteVorschau().body.criteria.titleContains).toEqual([FIRMA]);
+      const vorschau = (await letzteVorschau().ergebnis) as {
         preview: Array<{ id?: string; title: string }>;
       };
       expect(vorschau.preview.map((p) => p.title).sort()).toEqual([ABGEWAEHLT, GEWAEHLT].sort());
@@ -433,11 +496,14 @@ describe("K6 · Firmenrahmen an den echten Routen: Vorschau, Abwahl, Gruppierung
       };
       expect(await kandidatenNachUebernahme()).toEqual(["401"]);
 
-      // 5 · RAHMENWECHSEL AUF BASIC — die alte Auswahl ist sofort gesperrt …
+      // 5 · RAHMENWECHSEL AUF BASIC über die sichtbaren Bedienelemente: aufheben, eintippen,
+      // setzen — die alte Auswahl ist sofort gesperrt …
       const uebernahmenVorher = applyMock.mock.calls.length;
       const sperre = (): Element | null =>
         container.querySelector('[data-testid="rahmen-gruppen-gesperrt"]');
-      await zeichne("Basic");
+      await klicken(i18n.t("imp.rahmen.aufheben"));
+      await rahmenEingeben("Basic");
+      expect(sichtbarerText()).toContain(i18n.t("imp.rahmen.aktiv", { firma: "Basic" }));
       expect(sperre()).not.toBeNull();
       expect(hatKnopf(i18n.t("imp.groups.applyCta", { n: 1 }))).toBe(false);
       // … bis die Vorschau zum neuen Rahmen passt (lädt die Fläche nicht selbst nach, holt der
@@ -447,10 +513,7 @@ describe("K6 · Firmenrahmen an den echten Routen: Vorschau, Abwahl, Gruppierung
         await klicken(i18n.t("imp.select.previewCta"));
         await warteBis(() => sichtbarerText().includes(FREMD));
       }
-      expect(
-        (selectMock.mock.calls.at(-1)?.[0] as { criteria: Record<string, unknown> }).criteria
-          .titleContains,
-      ).toEqual(["Basic"]);
+      expect(letzteVorschau().body.criteria.titleContains).toEqual(["Basic"]);
       await warteBis(() => sperre() === null);
       expect(sperre()).toBeNull();
       expect(sichtbarerText()).not.toContain(GEWAEHLT);
@@ -463,6 +526,7 @@ describe("K6 · Firmenrahmen an den echten Routen: Vorschau, Abwahl, Gruppierung
       groupMock.mockReset();
       applyMock.mockReset();
       runMock.mockReset();
+      exploreMock.mockReset();
     }
   });
 });
