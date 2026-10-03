@@ -313,10 +313,12 @@ export interface DeckungsAuskunft {
    */
   readonly satzKey: string;
   /**
-   * Nennt dieser Satz die zwei Zahlen? Genau dann `true`, wenn `geprueft` UND `bestand` vorliegen.
+   * Nennt der tatsächlich gewählte Satz (`satzKey`) die zwei Zahlen? Abgeleitet aus dem SATZ
+   * (`SAETZE_MIT_ZAHLEN`), nicht aus der Eingabe: `geprueft` UND `bestand` vorhanden ist nötig, aber
+   * nicht hinreichend — bei `ohne_protokoll`/`kein_lauf` bleibt es auch mit Zahlen `false`.
    *
    * Das Feld steht hier, damit die Zusage MESSBAR ist und nicht aus dem Schlüsselnamen erraten
-   * werden muss: „eine Ziffer steht genau dann da, wenn eine Zahl gemessen wurde."
+   * werden muss: „eine Ziffer steht genau dann im Satz, wenn `nenntZahlen` gilt."
    */
   readonly nenntZahlen: boolean;
 }

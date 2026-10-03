@@ -190,17 +190,26 @@ describe("AUFTRAG-huelle4 Probe 1 (Konfliktschranke): I, X und Y überleben die 
       expect(
         kennungsbild(root),
         `Eine vorhandene Kennung wurde still überschrieben. Bild "${I}", innerer Anker "${X}" und äußere Fußnote "${Y}" widersprechen einander; jede Antwort auf die Frage "welche gilt?" überschreibt eine Wahrheit, die jemand gesetzt hat. Danach behauptet die überschriebene Fußnote eine Zugehörigkeit, die niemand belegt hat.`,
-      ).toEqual([`figcaption=${X}`, `figcaption=${Y}`, `img=${I}`].sort());
+      ).toEqual([`figcaption=${I}`, `figcaption=${X}`, `figcaption=${Y}`, `img=${I}`].sort());
+      // AUFNAHME 20260922 (Bildidentität): bis hierher hatte der innere Anker genau EINE direkte
+      // Fußnote, und `captionForImage` las die widersprechende `X` über die Nachbarschaft als
+      // Beschreibung von `I`. Seit der Aufnahme bekommt `I` eine EIGENE leere Fußnote direkt hinter
+      // sich; `X` bleibt daneben stehen — unverändert, leer und als nicht zugeordnet erkennbar.
       const innere = direkteFussnoten(root, "table figure");
-      expect(innere.length, "Der innere Anker hat nicht mehr genau eine direkte Fußnote").toBe(1);
+      expect(innere.length, "Der innere Anker hat nicht genau zwei direkte Fußnoten").toBe(2);
+      const mitX = innere.filter((f) => f.getAttribute("data-image-id") === X);
+      expect(
+        mitX.length,
+        `Die Kennung "${X}" der inneren Fußnote wurde durch die Bildkennung ersetzt`,
+      ).toBe(1);
+      expect(
+        innere.map((f) => (f.textContent ?? "").trim()),
+        `Der äußere Text ist in die innere Fußnote gewandert, obwohl "${Y}" der dortigen Kennung widerspricht`,
+      ).toEqual(["", ""]);
       expect(
         innere[0]?.getAttribute("data-image-id"),
-        `Die Kennung "${X}" der inneren Fußnote wurde durch die Bildkennung ersetzt`,
-      ).toBe(X);
-      expect(
-        (innere[0]?.textContent ?? "").trim(),
-        `Der äußere Text ist in die innere Fußnote gewandert, obwohl "${Y}" der dortigen Kennung widerspricht`,
-      ).toBe("");
+        "Die eigene Fußnote steht nicht direkt hinter dem Bild",
+      ).toBe(I);
     });
 
     it(`${richtung} — NACHWEIS 2 (Text und Sichtbarkeit): Y steht genau einmal und sichtbar`, () => {
@@ -210,10 +219,17 @@ describe("AUFTRAG-huelle4 Probe 1 (Konfliktschranke): I, X und Y überleben die 
         textVorkommen(root, AUSSEN),
         "Der Text der äußeren Fußnote ist verschwunden oder steht doppelt im Dokument",
       ).toBe(1);
+      // AUFNAHME 20260922: auch die leere innere Fußnote `X` ist jetzt ein sichtbarer Rest — sie
+      // widerspricht ihrem Bild und wird ihm nicht mehr über die Nachbarschaft zugeschrieben.
       expect(
-        verwaisteFussnoten(root),
+        verwaisteFussnoten(root).sort((a, b) => String(a.id).localeCompare(String(b.id))),
         "Die widersprüchlich gekennzeichnete Fußnote ist nicht als sichtbarer Rest stehen geblieben — entweder wurde sie gepaart oder sie ist verschwunden",
-      ).toEqual([{ id: Y, text: AUSSEN }]);
+      ).toEqual(
+        [
+          { id: X, text: "" },
+          { id: Y, text: AUSSEN },
+        ].sort((a, b) => a.id.localeCompare(b.id)),
+      );
     });
 
     it(`${richtung} — NACHWEIS 3 (Struktur): die äußere Fußnote wandert nicht, die Tabelle bleibt`, () => {

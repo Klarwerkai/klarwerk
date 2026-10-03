@@ -34,6 +34,22 @@ describe("KW-STR FE: sanitizeHtml (Defense-in-Depth, gleiche Allowlist)", () => 
     );
   });
 
+  // R-0014: die frei gezogene Breite ist ein EIGENES enges Attribut — data-kw-scale bleibt oben
+  // unverändert auf die vier Stufen beschränkt (42 fällt weiter).
+  it("img width: nur Prozent 10–100 (eine Nachkommastelle), kanonisch; Pixel/Ausdrücke raus", () => {
+    const src = "/api/objects/x-1/raw";
+    const bild = (attrs: string): string => sanitizeHtml(`<img src="${src}"${attrs}>`);
+    expect(bild(' width="42%"')).toBe(`<img src="${src}" width="42%">`);
+    expect(bild(' width="37.0%"')).toBe(`<img src="${src}" width="37%">`);
+    expect(bild(' data-kw-scale="42" width="42.5%"')).toBe(`<img src="${src}" width="42.5%">`);
+    for (const falsch of ["600", "5%", "100.5%", "37.25%", "Infinity%", "50px", "50% x"]) {
+      expect(bild(` width="${falsch}"`), falsch).toBe(`<img src="${src}">`);
+    }
+    expect(bild(' width="50%" style="width:1px" onclick="x"')).toBe(
+      `<img src="${src}" width="50%">`,
+    );
+  });
+
   // Formatierung Stufe 2: Tabellen aus Import/Paste bleiben erhalten (Struktur), colspan/rowspan
   // nur numerisch; kein style/Handler/Script überlebt in Zellen.
   it("Tabellen: table/tr/th/td bleiben; colspan nur numerisch; script in Zelle raus", () => {

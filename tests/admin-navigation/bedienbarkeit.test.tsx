@@ -34,8 +34,8 @@ import { useNavGuard } from "../../apps/web/src/app/NavGuardContext";
 import { direktzugangZiele } from "../../apps/web/src/app/navigationGliederung";
 import i18n from "../../apps/web/src/i18n";
 import { adminHref } from "../../apps/web/src/lib/adminSections";
+import { ArbeitsbereicheMenue } from "../../apps/web/src/shell/ArbeitsbereicheMenue";
 import { CommandPalette } from "../../apps/web/src/shell/CommandPalette";
-import { ZahnradMenue } from "../../apps/web/src/shell/ZahnradMenue";
 import {
   type Netzprotokoll,
   type Stand,
@@ -82,7 +82,7 @@ async function taste(key: string, mit: { metaKey?: boolean } = {}): Promise<void
 }
 
 function paletteOffen(s: Stand): boolean {
-  return s.container.querySelector(`[aria-label="${t("cmd.suchfeld")}"]`) !== null;
+  return s.container.querySelector(`[aria-label="${t("fe002.seiteFinden")}"]`) !== null;
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -114,19 +114,26 @@ describe("JOB 3337 R2 · G · „Gehe zu …“ gibt den Fokus zurück, wo er he
     expect(document.activeElement, "Escape hat den Fokus nicht zurückgegeben").toBe(ausloeser);
   });
 
-  it("G2 · dasselbe über die Menüzeile: der Fokus landet auf dem Zahnrad, nicht im Nichts", async () => {
+  // FE-002: die Menüzeile „Gehe zu …" ist aus dem Zahnrad unter „Arbeitsbereiche" gezogen und
+  // heißt dort „Seite finden …" — die Zusage (Fokus auf den Auslöser des Menüs) gilt unverändert.
+  it("G2 · dasselbe über die Menüzeile: der Fokus landet auf dem Menü-Auslöser, nicht im Nichts", async () => {
     const s = montiere(
       "/start",
-      createElement("div", null, createElement(ZahnradMenue), createElement(CommandPalette)),
+      createElement(
+        "div",
+        null,
+        createElement(ArbeitsbereicheMenue),
+        createElement(CommandPalette),
+      ),
     );
     stand = s;
     await beruhige();
 
     const zahnrad = s.container.querySelector<HTMLButtonElement>(
-      '[data-testid="kopfband-zahnrad"]',
+      '[data-testid="kopfband-arbeitsbereiche"]',
     );
     await klicke(zahnrad);
-    await klicke(s.container.querySelector('[data-testid="zahnrad-schnellnavigation"]'));
+    await klicke(s.container.querySelector('[data-testid="arbeitsbereiche-seite-finden"]'));
     expect(paletteOffen(s), "die Menüzeile hat die Liste nicht geöffnet").toBe(true);
 
     await taste("Escape");
@@ -165,11 +172,14 @@ async function palette(): Promise<Stand> {
   return s;
 }
 
-function zeilen(s: Stand): { name: string; kontext: string; route: string; pfad: string }[] {
+function zeilen(
+  s: Stand,
+): { name: string; kontext: string; route: string; pfad: string; zeile: string }[] {
   return [...s.container.querySelectorAll<HTMLButtonElement>("[data-cmd-ziel]")].map((k) => ({
     name: k.querySelector("[data-cmd-name]")?.textContent ?? "",
     kontext: k.querySelector("[data-cmd-kontext]")?.textContent ?? "",
     route: k.querySelector("[data-cmd-route]")?.textContent ?? "",
+    zeile: k.textContent ?? "",
     pfad: k.getAttribute("data-cmd-pfad") ?? "",
   }));
 }
@@ -197,11 +207,15 @@ describe("JOB 3337 R2 · H · jede Zeile sagt, wie das Ziel heißt und wo es woh
     expect(demo?.route).toBe("");
   });
 
-  it("H3 · ein Bereich der App nennt seine Obergruppe — die Route bleibt kleine Zusatzangabe", async () => {
+  // FE-002 (Pedi, 26.09.2026): „Technische URL-Pfade gehören nicht in die normale
+  // Auswahlbeschreibung." Die kleine Zusatzangabe der Route (JOB 3337 R2) ist deshalb fort; der Weg
+  // bleibt als Marke `data-cmd-pfad` am Knopf, gesehen wird er nicht.
+  it("H3 · ein Bereich der App nennt seine Obergruppe — und KEINE Route mehr", async () => {
     const s = await palette();
     const konflikte = zeilen(s).find((z) => z.pfad === "/konflikte");
     expect(konflikte?.kontext).toBe(t("gliederung.qualitaet"));
-    expect(konflikte?.route).toBe("/konflikte");
+    expect(konflikte?.route).toBe("");
+    expect(konflikte?.zeile).not.toContain("/konflikte");
   });
 
   it("H4 · wer „Verwaltung“ liest, findet damit auch die Verwaltung (Codex 9)", async () => {

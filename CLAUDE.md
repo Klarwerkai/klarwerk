@@ -1,55 +1,36 @@
-# CLAUDE.md — Agent-Regelwerk Klarwerk
+# KLARWERK: Auftrag bis zur Lieferung
 
-> Dauerhafte Regeln für jeden Coding-Agenten in diesem Repo. Kurz, präzise, stabil.
-> Generiert aus `/harness`. Bei Regelverstößen wird **der Harness korrigiert, nicht nur der Code** ("Harness Correction Development").
+Diese Anleitung beschreibt den von Pedi freigegebenen vereinfachten Ablauf. Die zugehörigen Grundsätze stehen in `harness/00-principles.md`, die Prüfauswahl in `harness/40-testing-strategy.md` und der Abschluss in `harness/80-definition-of-done.md`.
 
-## Quelle der Wahrheit
-1. `/specs` — Was gebaut wird (Ideen → Stories → Akzeptanzkriterien).
-2. `/harness` — Wie gebaut wird (Architektur, Stil, Tests, Betrieb).
-3. `/tests` — Ob es korrekt ist (deterministische Evidenz).
+## Auftrag und Bestand
 
-Code ist ein **regenerierbares Ergebnis** aus Spec + Harness, nicht die primäre Wahrheit.
+Der aktuelle Nutzerauftrag hat Vorrang vor älteren Repository-Regeln. Lies den zugeordneten Auftrag mit Originalkriterien, Quellen, Entscheidungen und Nichtzielen. Prüfe dann gezielt den heutigen Code und die vorhandenen Ergebnisse. Historische Aussagen beschreiben ihren damaligen Stand; fertig gebaute Teile und erhaltene Kandidaten werden weiterverwendet.
 
-**Onboarding & Projektgedächtnis:** Neue Mitarbeiter und neue Claude-Sessions starten mit
-`/PROJECT_CONTEXT` (Dateien 00–12 in Reihenfolge). Bei größeren Änderungen
-`PROJECT_CONTEXT/04_AKTUELLER_STAND.md` fortschreiben — kein Wissensverlust.
+`specs`, `harness`, `tests` und `PROJECT_CONTEXT` sind Arbeitsunterlagen. Lies die relevanten Teile, nicht bei jeder Fortsetzung sämtliche Projektdateien. Eine Regel oder ein Test kann fehlerhaft, veraltet oder für diesen Auftrag ohne Bedeutung sein. Eine Änderung daran braucht einen konkreten Grund; sie darf keinen noch bestehenden Produktfehler verdecken.
 
-## Rangordnung der Qualitätskontrolle (nicht verhandelbar)
-1. Compiler / Build (`tools/build`)
-2. Architektur- & Strukturregeln (`dependency-cruiser`)
-3. Statische Codeanalyse / Lint (`tools/lint` → Biome)
-4. Akzeptanz-, API- & Workflow-Tests (`tools/test`)
-5. LLM-Review
-6. Menschliche Freigabe (Stakeholder: Pedi)
+## Ein Ablauf
 
-Das LLM darf erklären und reparieren, aber **nicht selbst entscheiden**, ob sein Ergebnis korrekt ist. Nur ein grüner `tools/check`-Lauf erlaubt den nächsten Schritt.
+1. Claude bearbeitet den Auftrag am vorhandenen Arbeitsstand und liefert passende Tests beziehungsweise konkrete Prüfschritte.
+2. Die Koordination führt die Änderung mit dem aktuellen Hauptstand zusammen. Die Ausführung lässt die passenden Prüfungen gegen diesen endgültigen Kandidaten laufen. Schwere Prüfungen laufen auf dem vorgesehenen Prüfplatz.
+3. Ben prüft unabhängig Originalkriterien, Code und echte Prüfberichte. Ein konkreter Produkt- oder Testfehler geht mit seinem Befund an dieselbe Claude-Sitzung zurück. Erhaltene Arbeit bleibt erhalten.
+4. Genau der geprüfte Kandidat wird gepusht und regulär veröffentlicht. Danach folgen Liveprüfung und der gespeicherte Auftragsabschluss. Änderungen am Kandidaten nach Bens Prüfung erfordern eine passende erneute Prüfung der geänderten Fassung.
 
-## Architekturregeln
-- **Modularer Monolith** zum Start (keine 10 Microservices). Module unter `/services/<modul>`.
-- Jedes Modul hat klare Grenzen; **keine direkten Zugriffe über Modulgrenzen** außer über definierte öffentliche Schnittstellen/Events.
-- Jedes Modul kapselt seine Datenhaltung; keine geteilten DB-Tabellen über Modulgrenzen.
-- Abhängigkeitsrichtung wird von `dependency-cruiser` erzwungen (siehe `.dependency-cruiser.cjs`).
+Die Koordination übernimmt Zusammenführung und Veröffentlichung. Arbeitet ein Agent mit einem engeren Auftrag, hält er diesen Schreibbereich ein und liefert sein Ergebnis an die Koordination; er startet keine zusätzlichen Modelle oder Prüfserver auf eigene Faust.
 
-## Code-Stil & Stack
-- Node 20+, TypeScript (strict), React (Frontend), Fastify (HTTP je Modul).
-- Lint/Format: **Biome**. Tests: **Vitest + Testcontainers**.
-- Keine `any` ohne Begründung; keine ungenutzten Exports; keine TODOs im gemergten Code.
+## Was geprüft wird
 
-## Definition of Done
-Build grün · Lint grün · Architekturregeln grün · Tests grün (Akzeptanzkriterien als Tests vorhanden) · Doku aktualisiert · keine Secrets im Code · keine offenen TODOs.
+Prüfe das geforderte Verhalten und die konkret betroffenen bestehenden Funktionen. Dazu gehören je nach Änderung Build/Typprüfung, gezielte Tests, Format und betroffene Schnittstellen. Ein Speichern-und-Wiederöffnen-Kriterium braucht einen echten Speicherweg; ein Browserkriterium tatsächliche Browserbedienung.
 
-## Verbote
-- Keine Secrets im Code oder Harness.
-- Keine ungetesteten Endpunkte.
-- Keine Abkürzungen an Tests (Tests werden aus Anforderungen erzeugt, nicht aus vorhandenem Code).
-- Kein direkter Schreibzugriff auf Produktion. Deployment nur über CI/CD.
-- Finanz-/Kommunikationsaktionen nur mit menschlicher Freigabe.
+`tools/check` bleibt als breite Diagnose verfügbar. Ein von diesem Auftrag unabhängiger historischer Rotfall ist keine pauschale Liefersperre. Ursache und Reichweite eines roten Ergebnisses werden benannt. Betroffene Fehler werden behoben; unbeteiligte Fehler bleiben sichtbar getrennt. Testerwartungen dürfen keinen noch bestehenden Produktfehler verdecken. Übersprungene Fälle werden nicht als bestanden ausgegeben.
 
-## Befehle
-- `tools/lint` · `tools/format` · `tools/test` · `tools/build` · `tools/check` (alles zusammen).
-- Der Agent ruft diese selbst auf und liefert nur bei grünem `check`.
+Ein Auftrag, eine vollständige Reparatur oder eine technische Abnahme wird nicht durch Freigabe ersetzt. Eine bereits erteilte Nutzerfreigabe muss für routinemäßige nächste Schritte nicht erneut eingeholt werden. Tatsächlich fehlende menschliche Bedienung, Anmeldung oder fachliche Entscheidung wird konkret benannt. Prüfbare technische Fragen erledigen die beauftragten Agenten selbst.
 
-## Workflow-Namenskonvention
-`W-<DOMAIN>-<NR> · <Auslöser> → <Aktion>` (z. B. `W-OPS-03 · WebhookPayments → Zahlungen abgleichen`).
+## Was erhalten bleibt
 
-Siehe `/harness/90-correction-log.md` für die laufende Liste behobener Harness-Lücken.
+- Bestehende Kandidaten, Sitzungen, Quellen und echte Lieferbelege; kein Neubau ohne Grund.
+- Modulgrenzen und Datenzugriff über die vorhandenen passenden Schnittstellen.
+- TypeScript, React, Fastify, Biome und Vitest im bestehenden Projektaufbau.
+- Geheimnisse außerhalb des Repositorys; bestehende Anmeldung, Rechte und Datentrennung.
+- Reguläre Deploymentwege und eigene berechtigte Identität für Betriebsaktionen.
+
+Keine neue Regel nur deshalb hinzufügen, weil ein Fehler auftrat. Behebe die Ursache im einfachsten geeigneten Weg; entferne eine unnötige Übergabe oder doppelte Prüfung, wenn sie den Fehler verursacht.

@@ -441,7 +441,7 @@ const BILD_KENNUNG_RE = /^[\w-]{1,64}$/;
  * verbleibende Fußnote hat hier die Beschreibung `""` (Runde 2: es bleibt ein Bild, das über
  * seine Benennung gefunden werden kann).
  */
-function bilderEinerFigur(figur: string): Bestandsbild[] {
+function bilderEinerFigurMitPaarung(figur: string): { bild: Bestandsbild; gepaart: boolean }[] {
   const bilder: { id: string; src: string; name: string | null }[] = [];
   const imgRe = /<img\b[^>]*>/gi;
   let m: RegExpExecArray | null;
@@ -461,14 +461,18 @@ function bilderEinerFigur(figur: string): Bestandsbild[] {
     return [];
   }
   const fussnoten: { id: string | null; text: string }[] = [];
+  // Kennungen ALLER Fußnoten dieser figure, auch der leeren: ein Bild mit eigener (leerer) Fußnote
+  // gilt als gepaart — dieselbe Auskunft wie `captionForImage` im Editor.
+  const alleKennungen: (string | null)[] = [];
   const capRe = /<figcaption\b[^>]*>[\s\S]*?<\/figcaption>/gi;
   // biome-ignore lint/suspicious/noAssignInExpressions: Standard-Regex-Iteration.
   while ((m = capRe.exec(figur)) !== null) {
+    const oeffner = m[0].slice(0, m[0].indexOf(">") + 1);
+    alleKennungen.push(attributWert(oeffner, "data-image-id"));
     const [text] = imageCaptionTexts(m[0]);
     if (text === undefined) {
       continue;
     }
-    const oeffner = m[0].slice(0, m[0].indexOf(">") + 1);
     fussnoten.push({ id: attributWert(oeffner, "data-image-id"), text });
   }
   const belegt = fussnoten.map(() => false);
@@ -490,12 +494,40 @@ function bilderEinerFigur(figur: string): Bestandsbild[] {
       texte[i] = fussnoten[k]?.text ?? null;
     }
   });
-  return bilder.map((bild, i) => ({
-    imageId: bild.id,
-    src: bild.src,
-    caption: texte[i] ?? "",
-    name: bild.name,
-  }));
+  // Gepaart wie in `paare`/`captionForImage`: über die Kennung, sonst eine unmarkierte Fußnote der
+  // Reihe nach — hier über ALLE Fußnoten gezählt, auch die leeren.
+  let freieUnmarkierte = alleKennungen.filter((k) => k === null || k === "").length;
+  return bilder.map((bild, i) => {
+    let gepaart = alleKennungen.includes(bild.id);
+    if (!gepaart && freieUnmarkierte > 0) {
+      freieUnmarkierte -= 1;
+      gepaart = true;
+    }
+    return {
+      bild: { imageId: bild.id, src: bild.src, caption: texte[i] ?? "", name: bild.name },
+      gepaart,
+    };
+  });
+}
+
+/**
+ * AUFNAHME 20260922 (Runde 2, Bens Befund B2): Fußnoten AUSSERHALB jeder figure mit ihrer
+ * Kennung. Der Server-Sanitizer lässt einer losen Fußnote seit dieser Runde ihre Kennung; sie ist
+ * die Beschreibung des Bildes, dessen Kennung sie trägt — dieselbe enge Regel wie Galerie
+ * (`extractBodyImages`) und Editor (`captionForImage`): nur für ein Bild ohne eigene Fußnote, nur
+ * bei genau einer losen Fußnote und genau einem Bild mit dieser Kennung.
+ */
+function loseFussnoten(aussen: string): { id: string | null; text: string }[] {
+  const aus: { id: string | null; text: string }[] = [];
+  const capRe = /<figcaption\b[^>]*>[\s\S]*?<\/figcaption>/gi;
+  let m: RegExpExecArray | null;
+  // biome-ignore lint/suspicious/noAssignInExpressions: Standard-Regex-Iteration.
+  while ((m = capRe.exec(aussen)) !== null) {
+    const oeffner = m[0].slice(0, m[0].indexOf(">") + 1);
+    const [text] = imageCaptionTexts(m[0]);
+    aus.push({ id: attributWert(oeffner, "data-image-id"), text: text ?? "" });
+  }
+  return aus;
 }
 
 /**
@@ -507,7 +539,9 @@ function bestandsbilderAusRumpf(bodyHtml: string | null | undefined): Bestandsbi
   if (!bodyHtml || bodyHtml.indexOf("<figure") < 0) {
     return [];
   }
-  const out: Bestandsbild[] = [];
+  const out: { bild: Bestandsbild; gepaart: boolean }[] = [];
+  const aussen: string[] = [];
+  let aussenAb = 0;
   const marken = /<figure\b|<\/figure\s*>/gi;
   let tiefe = 0;
   let start = -1;
@@ -517,22 +551,37 @@ function bestandsbilderAusRumpf(bodyHtml: string | null | undefined): Bestandsbi
     if (m[0].startsWith("</")) {
       tiefe = Math.max(0, tiefe - 1);
       if (tiefe === 0 && start >= 0) {
-        out.push(...bilderEinerFigur(bodyHtml.slice(start, marken.lastIndex)));
+        out.push(...bilderEinerFigurMitPaarung(bodyHtml.slice(start, marken.lastIndex)));
         start = -1;
+        aussenAb = marken.lastIndex;
       }
       continue;
     }
     if (tiefe === 0) {
       start = m.index;
+      aussen.push(bodyHtml.slice(aussenAb, m.index));
     }
     tiefe += 1;
   }
   if (start >= 0) {
     // Unbalanciertes Markup (ein `</figure>` fehlt): was noch offen ist, wird ausgeliefert statt
     // still verworfen.
-    out.push(...bilderEinerFigur(bodyHtml.slice(start)));
+    out.push(...bilderEinerFigurMitPaarung(bodyHtml.slice(start)));
+  } else {
+    aussen.push(bodyHtml.slice(aussenAb));
   }
-  return out;
+  const lose = loseFussnoten(aussen.join(""));
+  return out.map(({ bild, gepaart }) => {
+    if (gepaart) {
+      return bild;
+    }
+    const passende = lose.filter((f) => f.id === bild.imageId);
+    const gleicheBilder = out.filter((b) => b.bild.imageId === bild.imageId);
+    if (passende.length === 1 && gleicheBilder.length === 1) {
+      return { ...bild, caption: passende[0]?.text ?? "" };
+    }
+    return bild;
+  });
 }
 
 // Bibliothek & Analytics (§2.3/§2.4 / FR-LIB, FR-ANA).

@@ -23,7 +23,10 @@ describe("B1: Kopfband-Layout robust (keine Überlappung)", () => {
   // bei SEHR schmalen Breiten darf er selbst schrumpfen (min-w-0, shrink) statt aus dem Kopf zu
   // laufen. Die Suche gibt weiterhin ZUERST nach (min-w-0 im Formular).
   it("der rechte Block läuft bei schmalen Breiten nicht über (min-w-0/shrink)", () => {
-    expect(src).toContain('className="ml-auto flex min-w-0 shrink items-center gap-4"');
+    // FE-002: der rechte Block nimmt seit dem 26.09.2026 den Restplatz (`flex-1`) und fragt ihn
+    // als Container ab; `min-w-0` bleibt — unter 1024 px sogar mit kleinerer Mindestbreite, damit
+    // die Suche zur Lupe zurücktreten kann, statt überzulaufen (Messung: tests/fe002-kopfband/).
+    expect(src).toMatch(/className="kw-kopfband-rechts ml-auto flex min-w-0 flex-1 [^"]*"/);
   });
 });
 

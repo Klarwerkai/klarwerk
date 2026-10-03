@@ -1179,8 +1179,20 @@ export function Mobile(): JSX.Element {
                     <ul className="space-y-1">
                       {queue.queue.map((op) => (
                         <li key={op.id} className="text-[12px]">
+                          {/* Aufnahme 20260922 (mobile-abweisung-rest): Ein abgewiesener Vorgang
+                              zeigt seinen Titel GANZ — er sagt, wozu der Grund darunter gehört.
+                              Gekürzt waren bei 390 px zwei lange Titel mit gleichem Anfang nicht
+                              zu unterscheiden (gemessen: 345 px Text in 226 px Breite). Wartende
+                              und laufende Vorgänge bleiben einzeilig. Die Klassenliste bleibt
+                              EINE feste Zeichenkette (auflösbar für den Sammler aus JOB 1181);
+                              die Lage trägt `data-abgewiesen`, die Variante hebt die Kürzung auf. */}
                           <div className="flex items-center gap-2">
-                            <span className="min-w-0 flex-1 truncate text-text">{op.title}</span>
+                            <span
+                              data-abgewiesen={op.status === "failed" ? "ja" : undefined}
+                              className="min-w-0 flex-1 truncate text-text data-[abgewiesen=ja]:overflow-visible data-[abgewiesen=ja]:whitespace-normal data-[abgewiesen=ja]:break-words"
+                            >
+                              {op.title}
+                            </span>
                             <span
                               className={`rounded-pill px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase ${QUEUE_TONE[op.status]}`}
                             >
