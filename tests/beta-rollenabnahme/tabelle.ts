@@ -855,6 +855,17 @@ export const TABELLE: Zeile[] = [
     erwartet: ANGEMELDET,
   },
   {
+    // R-1064 · der Supportweg dieser Installation. `requireUser` wie `/api/features` mit Token: die
+    // Hilfe steht jeder Rolle offen, ein Recht darüber hinaus versteckte den Weg genau denen, die ihn
+    // brauchen (Kopf von `support-routes.ts`). Ohne Anmeldung 401.
+    gruppe: "supportRoutes",
+    methode: "GET",
+    pfad: "/api/support",
+    belegstelle: "services/app/src/routes/support-routes.ts:150",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
+  {
     gruppe: "importAccessRoutes",
     methode: "GET",
     pfad: "/api/import/confluence/zugang",
