@@ -26,7 +26,9 @@ import { themenVon } from "../../wissensnetz";
 import {
   type CandidateRepo,
   type ClaimResolution,
+  type ExternalSourceRepo,
   InMemoryCandidateRepo,
+  MAX_SOURCE_VERSION,
   importProviderKey,
 } from "./repo";
 import {
@@ -36,6 +38,7 @@ import {
   type DublettenPruefung,
   type Dublettentreffer,
   type ExpertiseEntry,
+  type ExternalSourceRecord,
   type Graph,
   type GraphEdge,
   type GraphKuratierteKante,
@@ -367,6 +370,17 @@ export interface LibraryServiceDeps {
   // schaltet denselben Strang über sein eigenes Flag, ohne Confluence-Symbole).
   externalUpsert?: boolean;
   /**
+   * R-0169 (herkunft-identitaet) — DER SCHREIBWEG DER QUELLREVISIONEN.
+   *
+   * `ExternalSourceRecord` (types.ts, W2-A) war bis hierher ein Bestand ohne Schreiber: die
+   * Importlauf-Routen lasen ihn, kein Import legte ihn an. Ist der Port verdrahtet, schreibt jede
+   * übernommene Quellfassung (Erstanlage und Re-Sync mit höherer Version, an BEIDEN Importwegen)
+   * ihre unveränderliche Revision und bindet deren `sourceRecordId` an den Herkunfts-Anker des
+   * Wissensobjekts. OPTIONAL wie `candidates`: ohne Port bleibt es beim Anker allein — dann gibt es
+   * keine Revision, und der Anker trägt ehrlich keine `sourceRecordId`.
+   */
+  externalSources?: ExternalSourceRepo;
+  /**
    * ================================================================================================
    * JOB 4155 (WG-LUECKEN) — DIE KURATIERTEN KANTEN IM GLOBALEN GRAPHEN.
    * ================================================================================================
@@ -448,6 +462,43 @@ function quellautorVon(item: ImportItemMitUrheberschaft): { originalAuthor?: str
   return quelle === undefined ? {} : { originalAuthor: quelle };
 }
 
+// ================================================================================================
+// R-0139 / R-0169 (herkunft-identitaet) — EIN ANKERWEG FÜR BEIDE IMPORTWEGE.
+// ================================================================================================
+//
+// Bis hierher legte allein der Kandidaten-Accept (`acceptToKo`) einen Herkunfts-Anker an. Der
+// direkte JSON-Import (`importJson`) verwarf `provider`, `externalId`, `sourceVersion` und `url`
+// vollständig — das Objekt trug danach nur die Wegkennzeichnung `importedVia`, aber nicht, WOHER
+// es stammt (bens Befund F1). Statt einer zweiten Ankerlogik läuft der direkte Import für Einträge
+// mit `externalId` jetzt durch DIESELBE Stelle; nur zwei Dinge unterscheiden die Wege:
+//
+//   · `importedVia` — welcher Weg am Objekt steht.
+//   · `ankerOhneSchalter` — der Kandidatenweg bleibt hinter `externalUpsert` (SCRUM-510, Bestand).
+//     Der direkte Import bringt seine Quellenangaben im eigenen Rumpf mit; sie wegzuwerfen, weil
+//     kein Quelladapter eingeschaltet ist, hiesse, eine gelieferte Herkunft still zu verlieren.
+//
+// `ausgang` meldet dem direkten Import, was geschah — er zählt `imported`/`uebersprungen` danach.
+type AnkerAusgang = "angelegt" | "fortgeschrieben" | "unveraendert" | "papierkorb";
+
+interface ImportWeg {
+  readonly importedVia: "import_candidate" | "library_import";
+  readonly ankerOhneSchalter: boolean;
+  readonly ausgang?: (art: AnkerAusgang) => void;
+}
+
+const KANDIDATEN_WEG: ImportWeg = { importedVia: "import_candidate", ankerOhneSchalter: false };
+
+/**
+ * R-0169: der Inhaltsabdruck einer übernommenen Quellfassung — über GENAU das, was aus ihr ins
+ * Wissensobjekt geht (Titel, Kernaussage, Volltext). Er bindet die Revision an ihre Aussage: wer die
+ * Aussage einer Objektfassung neben die Revision legt, kann prüfen, ob sie aus ihr stammt.
+ */
+function quellinhaltAbdruck(item: ImportItem): string {
+  return createHash("sha256")
+    .update(JSON.stringify([item.title, item.statement, item.bodyHtml ?? null]))
+    .digest("hex");
+}
+
 export class LibraryService {
   private readonly koService: KoService;
   private readonly audit: AuditService | undefined;
@@ -460,6 +511,8 @@ export class LibraryService {
   // JOB 4155 (WG-LUECKEN): der Kantenbestand für `/api/graph`. `undefined` = nicht verdrahtet; die
   // Antwort trägt das Feld dann GAR NICHT (s. `LibraryServiceDeps.kanten`).
   private readonly kanten: KuratierteKantenLeser | undefined;
+  // R-0169: Schreibweg der Quellrevisionen; `undefined` = nicht verdrahtet (s. Deps).
+  private readonly externalSources: ExternalSourceRepo | undefined;
 
   constructor(deps: LibraryServiceDeps) {
     this.koService = deps.koService;
@@ -469,6 +522,7 @@ export class LibraryService {
     this.now = deps.now ?? (() => Date.now());
     this.externalUpsert = deps.externalUpsert ?? false;
     this.kanten = deps.kanten;
+    this.externalSources = deps.externalSources;
   }
 
   // SCRUM-515: die eine Stelle, an der eine rohe (untrusted) confidentiality in den Import-Kern eintritt.
@@ -1506,7 +1560,13 @@ export class LibraryService {
   // nur für den Kandidaten-Stempel — die Anker-Suche läuft über `sucheAnkerKo` (aktiv, dann
   // Papierkorb; Begründung und Reihenfolge dort). Ein getrashtes Objekt wird ADOPTIERT und dabei
   // nicht angefasst; die Trash-Entscheidung bleibt beim Menschen, der gelöscht hat.
-  private async acceptToKo(item: ImportItem, actor: string, candidateId?: string): Promise<string> {
+  private async acceptToKo(
+    item: ImportItem,
+    actor: string,
+    candidateId?: string,
+    // R-0139 / R-0169: welcher Importweg hier anlegt (Begründung an `ImportWeg`).
+    weg: ImportWeg = KANDIDATEN_WEG,
+  ): Promise<string> {
     if (candidateId) {
       const stamped = await this.koService.findByImportCandidateId(candidateId);
       if (stamped) {
@@ -1523,7 +1583,8 @@ export class LibraryService {
     // Anker kennt beide) — ein Jira-Item mit zufällig gleicher externalId wie eine Confluence-
     // pageId revidiert NIE das Confluence-KO. Anker ohne Provider (Altbestand) zählen wie
     // importProviderKey als Confluence (der einzige Adapter vor dem Provider-Schlüssel).
-    const externalId = this.externalUpsert ? item.externalId : undefined;
+    // R-0139: der direkte Import behält seine mitgelieferte Quelle auch ohne Quellschalter.
+    const externalId = this.externalUpsert || weg.ankerOhneSchalter ? item.externalId : undefined;
     // JOB 3081 RUNDE 2 (bens ROT): DIESELBE Funktion, mit der die Kandidatenpruefung ihre Karten
     // schluesselt (`ankerSchluessel`, Begruendung dort). Vorher stand hier der Feldvergleich und
     // dort eine `@`-Verkettung — zwei Ausdruecke fuer dieselbe Gleichheit, von denen einer
@@ -1555,6 +1616,7 @@ export class LibraryService {
       // (`dublettenbefund: im_papierkorb`, s. `createImportCandidates`). Dieser Riegel greift
       // UNABHAENGIG davon — auch bei Altkandidaten ohne Befund, bei den Confluence-/Jira-Anker-
       // Wegen und bei der Recovery. Beide Linien ersetzen einander nicht.
+      weg.ausgang?.("papierkorb");
       return anker.koId;
     }
     const existing = anker?.ko;
@@ -1598,9 +1660,13 @@ export class LibraryService {
       if (incoming > current) {
         // bens F3: nur der Anker DESSELBEN Providers wird fortgeschrieben — ein gleichnamiger
         // Anker eines anderen Providers am selben KO bliebe unangetastet.
+        // R-0169: die neue Quellfassung wird VOR der Revision als eigene, unveränderliche Revision
+        // festgeschrieben; die vorige Revision bleibt unangetastet (der Repo-Vertrag kennt kein
+        // Update). Der Anker der neuen Objektfassung zeigt auf genau diese Revision.
+        const revision = await this.quellrevisionFestschreiben(item, incoming);
         const nextSources = [
           ...existing.sources.filter((s) => !matchesAnchor(s)),
-          this.buildSource(item, actor, incoming),
+          this.buildSource(item, actor, incoming, revision),
         ];
         // ==========================================================================================
         // AUFTRAG-mega82 BLOCK A — WER IMPORTIERT, HANDELT. WER IM IMPORT GENANNT WIRD, HANDELT NICHT.
@@ -1639,6 +1705,9 @@ export class LibraryService {
           },
           actor,
         );
+        weg.ausgang?.("fortgeschrieben");
+      } else {
+        weg.ausgang?.("unveraendert");
       }
       return existing.id;
     }
@@ -1646,6 +1715,12 @@ export class LibraryService {
     // Erstanlage: die effektive Version wird IMMER gespeichert (auch ohne Item-Version → 1), damit ein
     // versionsloser Re-Import (current = 1, incoming = 1) sauber als No-op erkannt wird (Idempotenz).
     const firstVersion = item.sourceVersion ?? 1;
+    // R-0169: die erste Quellfassung als unveränderliche Revision, VOR dem Objekt — scheitert die
+    // Anlage danach, bleibt die Revision als Tatsache stehen und wird beim Wiederholen über ihre
+    // Revisionsidentität wiedergefunden (`insertIfAbsent` → `findByRevision`), nie verdoppelt.
+    const ersteRevision = externalId
+      ? await this.quellrevisionFestschreiben(item, firstVersion)
+      : undefined;
     try {
       const ko = await this.koService.create({
         title: item.title,
@@ -1667,13 +1742,16 @@ export class LibraryService {
         // Freigabe aus Cloud/Export heraus.
         confidentiality: item.confidentiality ?? "vertraulich",
         ...(item.bodyHtml ? { bodyHtml: item.bodyHtml } : {}),
-        ...(externalId ? { sources: [this.buildSource(item, actor, firstVersion)] } : {}),
+        ...(externalId
+          ? { sources: [this.buildSource(item, actor, firstVersion, ersteRevision)] }
+          : {}),
         // WP-SHIP8-CLOSE-3/4 (bens ROT-1): Kandidaten-Anker VOR dem Endstatus des Kandidaten —
         // Recovery und Insert-or-Adopt erkennen daran eine bereits gelungene Erstanlage.
         ...(candidateId ? { importCandidateId: candidateId } : {}),
         // R-0139 / FR-EXT-02: als importiert gekennzeichnet (Begründung am Modell, types.ts).
-        importedVia: "import_candidate",
+        importedVia: weg.importedVia,
       });
+      weg.ausgang?.("angelegt");
       return ko.id;
     } catch (err) {
       // WP-SHIP8-CLOSE-4 (bens ROT-1A/1B): KOLLISIONS-ADOPTION — existiert das KO mit diesem
@@ -1750,8 +1828,15 @@ export class LibraryService {
   // (die Confluence-Route setzt "Confluence"); externe Importquellen sind nie peer-validiert.
   // `effectiveVersion` (ben-Review #3): die tatsächlich geschriebene Version — IMMER gesetzt, damit der
   // Monotonie-Vergleich beim Re-Sync verlässlich ist (nie ein „versionsloser" Anker im Bestand).
-  private buildSource(item: ImportItem, actor: string, effectiveVersion: number): KoSource {
+  // R-0169: `sourceRecordId` = die festgeschriebene Quellrevision dieser Fassung (falls verdrahtet).
+  private buildSource(
+    item: ImportItem,
+    actor: string,
+    effectiveVersion: number,
+    sourceRecordId?: string,
+  ): KoSource {
     return {
+      ...(sourceRecordId ? { sourceRecordId } : {}),
       id: this.genId(),
       label: item.title,
       // SCRUM-527 (WP2): importierte URL nur, wenn absolute http/https — sonst verworfen (kein Egress
@@ -1770,6 +1855,68 @@ export class LibraryService {
       author: item.author?.trim() ? item.author : actor,
       at: new Date(this.now()).toISOString(),
     };
+  }
+
+  // ==============================================================================================
+  // R-0169 (herkunft-identitaet) — DIE QUELLFASSUNG WIRD FESTGESCHRIEBEN, BEVOR SIE WIRKT.
+  // ==============================================================================================
+  //
+  // Schreibt die unveränderliche Revision (`ExternalSourceRecord`) dieser Quellfassung und gibt ihre
+  // `sourceRecordId` zurück. Die Dokumentidentität ist die Quellenidentität `sourceSystem +
+  // externalId`, die Fassung `sourceVersion` — dieselben zwei Identitäten, die types.ts (W2-A)
+  // festlegt.
+  //
+  // `sourceSystem` ist `importProviderKey(provider)`: GENAU die Normalisierung, mit der der
+  // Herkunfts-Anker seinen Re-Sync-Partner findet (`ankerSchluessel`). Eine zweite Lesart hier hätte
+  // zwei Antworten auf „welche Quelle?" erzeugt — eine am Anker, eine an der Revision.
+  //
+  // IDEMPOTENT: existiert die Revision schon (Wiederholung, zweiter Importweg mit derselben Fassung),
+  // bleibt die vorhandene Zeile unangetastet und ihre Kennung gilt. Fehler beim Schreiben werfen —
+  // der Import einer Fassung ohne ihre Revision wäre genau die Lücke, die hier geschlossen wird.
+  private async quellrevisionFestschreiben(
+    item: ImportItem,
+    sourceVersion: number,
+  ): Promise<string | undefined> {
+    if (!this.externalSources || !item.externalId?.trim()) {
+      return undefined;
+    }
+    // Eine Version, die die Revisionsidentität nicht tragen kann (Bruchzahl, negativ, zu gross),
+    // ergibt KEINE Revision statt eines geworfenen Imports: der Anker trägt dann ehrlich keine
+    // `sourceRecordId`. Dieselbe Grenze wie am Repo-Rand (`pruefeRevisionsidentitaet`).
+    if (
+      !Number.isInteger(sourceVersion) ||
+      sourceVersion < 0 ||
+      sourceVersion > MAX_SOURCE_VERSION
+    ) {
+      return undefined;
+    }
+    const sourceSystem = importProviderKey(item.provider);
+    const record: ExternalSourceRecord = {
+      sourceRecordId: this.genId(),
+      sourceSystem,
+      externalId: item.externalId,
+      sourceVersion,
+      url: safeSourceUrl(item.url),
+      title: item.title,
+      // Ehrlich `null`: der Import hält keinen eigenen Roh-/Renderinhalt der Quelle vor.
+      rawOrRenderedContentReference: null,
+      importedAt: new Date(this.now()).toISOString(),
+      contentHash: quellinhaltAbdruck(item),
+      sourceMetadata: {
+        ...(item.sourceScope ? { sourceScope: item.sourceScope } : {}),
+        ...(item.sourcePath ? { sourcePath: item.sourcePath } : {}),
+        ...(item.updatedAt ? { updatedAt: item.updatedAt } : {}),
+      },
+    };
+    if (await this.externalSources.insertIfAbsent(record)) {
+      return record.sourceRecordId;
+    }
+    const vorhanden = await this.externalSources.findByRevision(
+      sourceSystem,
+      item.externalId,
+      sourceVersion,
+    );
+    return vorhanden?.sourceRecordId;
   }
 
   // FR-LIB-01: Suche + Filter.
@@ -2076,6 +2223,44 @@ export class LibraryService {
     let imported = 0;
     for (const item of items) {
       const key = `${item.title}|${item.statement}`;
+      // ==========================================================================================
+      // R-0139 / R-0169 (bens Befunde F1/F2) — EINE MITGELIEFERTE QUELLE GEHT NICHT MEHR VERLOREN.
+      // ==========================================================================================
+      //
+      // Trägt der Eintrag eine Quellkennung, läuft er durch DENSELBEN Ankerweg wie der
+      // Kandidaten-Accept (`acceptToKo`, Begründung an `ImportWeg`): Erstanlage mit Herkunfts-Anker
+      // und festgeschriebener Quellrevision, bei höherer Quellfassung derselben Quelle Re-Sync in
+      // DASSELBE Objekt, bei gleicher/älterer Fassung nichts. Die Textdublettenfrage wird hier —
+      // wie im Ankerstrang der Kandidaten — nicht gestellt: dieselbe Quelle erkennt der Anker.
+      if (item.externalId?.trim()) {
+        const gemeldet: { art?: AnkerAusgang } = {};
+        const koId = await this.acceptToKo(item, actor, undefined, {
+          importedVia: "library_import",
+          ankerOhneSchalter: true,
+          ausgang: (art) => {
+            gemeldet.art = art;
+          },
+        });
+        const ausgang = gemeldet.art;
+        if (ausgang === "angelegt") {
+          const erzeugt = await this.koService.get(koId);
+          if (erzeugt) {
+            exakt.set(key, erzeugt.id);
+            bestand.push(erzeugt);
+          }
+          imported += 1;
+        } else if (ausgang === "fortgeschrieben") {
+          // Eine neue Quellfassung WURDE eingespielt — als neue Fassung desselben Objekts.
+          imported += 1;
+        } else {
+          // Gleiche/ältere Fassung oder das Objekt dieser Quelle liegt im Papierkorb: nichts
+          // geschrieben. `identisch` ist die vorhandene Antwortform für „diese Quelle ist schon da"
+          // (die Grundliste ist unter Freeze-144 und wird hier nicht erweitert); `koId` nennt das
+          // Objekt, an dem die Quelle hängt.
+          uebersprungen.push({ titel: item.title, grund: "identisch", koId });
+        }
+        continue;
+      }
       const exakterTreffer = exakt.get(key);
       if (exakterTreffer !== undefined) {
         uebersprungen.push({ titel: item.title, grund: "identisch", koId: exakterTreffer });
@@ -2165,6 +2350,12 @@ export class LibraryService {
         // nicht zu unterscheiden — es trug weder Kandidaten-Anker noch Quelle. Jetzt steht der Weg
         // dauerhaft am Objekt (Begründung am Modell, knowledge-object/src/types.ts).
         importedVia: "library_import",
+        // R-0139 (bens Befund F1): ein Eintrag OHNE Quellkennung, aber mit Quell-URL oder Anbieter,
+        // behält diese Angaben als Quellverweis (kein Re-Sync-Anker, keine Revision — ohne
+        // `externalId` gibt es keine Quellenidentität, und eine erfundene wäre schlimmer als keine).
+        ...(safeSourceUrl(item.url) || item.provider?.trim()
+          ? { sources: [this.buildSource(item, actor, item.sourceVersion ?? 1)] }
+          : {}),
       });
       exakt.set(key, erzeugt.id);
       bestand.push(erzeugt);

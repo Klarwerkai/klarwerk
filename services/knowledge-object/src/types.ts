@@ -319,6 +319,14 @@ export interface KoSource {
   // (`apps/web/src/lib/koSource.ts`, `quellennachweis`). Ein an die Quelle kopierter Name würde
   // durch eine Umbenennung des Anhangs zur Lüge, ohne dass irgendjemand es merkt.
   objectId?: string;
+  // R-0169 (herkunft-identitaet): DIE FESTGESCHRIEBENE QUELLFASSUNG dieses Ankers — die interne
+  // `sourceRecordId` der unveränderlichen Quellrevision (`ExternalSourceRecord`,
+  // services/library-analytics), die der Import für genau `externalId` + `sourceVersion` angelegt
+  // hat. Weil der Anker im Versionsschnappschuss des Objekts mitreist, sagt jede Objektfassung,
+  // aus welcher Quellfassung ihre Aussage stammt. Nur die Importwege setzen das Feld; die
+  // öffentlichen Schreibrouten verwerfen `sources` ohnehin. Additiv, JSON-persistiert, kein Backfill:
+  // Altanker ohne Feld sind vor dieser Regel entstanden.
+  sourceRecordId?: string;
   author: string;
   at: string;
 }

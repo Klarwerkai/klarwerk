@@ -1047,6 +1047,10 @@ export function assembleServices(
     audit,
     candidates: repos.candidates,
     externalUpsert: externalImportEnabled,
+    // R-0169 (herkunft-identitaet): DERSELBE Quellrevisionsbestand, den die Importlauf-Routen lesen
+    // (`importRunRoutes`, unten). Bis hierher las ihn das Produkt nur — geschrieben hat ihn kein
+    // Importweg. Jetzt legt jede übernommene Quellfassung ihre unveränderliche Revision an.
+    externalSources: repos.externalSources,
     // JOB 4155: die kuratierten Kanten für `/api/graph` — EINE Mengenabfrage über `alleAktiven`,
     // keine Abfrage je Knoten. Derselbe Bestand, den `kantenRoutes` und die Netzroute lesen.
     kanten: kantenBestand,

@@ -262,13 +262,17 @@ async function flaeche(marke: string) {
     payload: { name: "Admin", email: `admin@${marke}.test`, password: "geheim12345" },
   });
   const admin = await anmelden(app, `admin@${marke}.test`);
-  for (const wer of ["importeur", "genannt"]) {
+  for (const [wer, role] of [
+    ["importeur", "experte"],
+    ["genannt", "experte"],
+    ["controller", "controller"],
+  ] as const) {
     const email = `${wer}@${marke}.test`;
     const res = await app.inject({
       method: "POST",
       url: "/api/users",
       headers: admin.auth,
-      payload: { name: email, email, password: "geheim12345", role: "experte" },
+      payload: { name: email, email, password: "geheim12345", role },
     });
     if (res.statusCode !== 201) {
       throw new Error(`Konto ${email} nicht angelegt: ${res.statusCode} ${res.body}`);
@@ -277,9 +281,67 @@ async function flaeche(marke: string) {
   return {
     app,
     services,
+    admin,
     importeur: await anmelden(app, `importeur@${marke}.test`),
     genannt: await anmelden(app, `genannt@${marke}.test`),
+    controller: await anmelden(app, `controller@${marke}.test`),
   };
+}
+
+/**
+ * Der vorhandene aktivierte Importzweig (wie mega82): der Quellschalter gilt NUR für den Körper —
+ * die übrigen Drahtfälle laufen ausdrücklich OHNE ihn, weil der direkte Import seine mitgelieferte
+ * Quelle auch ohne Quelladapter behalten muss.
+ */
+async function mitQuellimport<T>(fn: () => Promise<T>): Promise<T> {
+  const vorher = process.env.KLARWERK_CONFLUENCE_IMPORT;
+  process.env.KLARWERK_CONFLUENCE_IMPORT = "1";
+  try {
+    return await fn();
+  } finally {
+    if (vorher === undefined) {
+      delete process.env.KLARWERK_CONFLUENCE_IMPORT;
+    } else {
+      process.env.KLARWERK_CONFLUENCE_IMPORT = vorher;
+    }
+  }
+}
+
+const QUELL_URL = "https://wiki.example.test/display/WART/SEITE-HERKUNFT";
+
+function quellEintrag(fassung: number, aussage: string) {
+  return {
+    title: "Herkunftsseite Pumpe P7",
+    statement: aussage,
+    type: "best_practice",
+    category: "Wartung",
+    confidentiality: "intern",
+    provider: "Confluence",
+    externalId: "SEITE-HERKUNFT",
+    sourceVersion: fassung,
+    url: QUELL_URL,
+  };
+}
+
+async function direktImportieren(app: App, wer: Auth, item: Record<string, unknown>) {
+  const res = await app.inject({
+    method: "POST",
+    url: "/api/library/import",
+    headers: wer,
+    payload: { items: [item] },
+  });
+  expect(res.statusCode, res.body).toBe(200);
+  return res.json() as { imported: number; skipped: number };
+}
+
+async function koMitQuelle(services: ReturnType<typeof buildServices>, externalId: string) {
+  const ko = (await services.ko.list()).find((k) =>
+    k.sources.some((s) => s.externalId === externalId),
+  );
+  if (!ko) {
+    throw new Error(`kein Wissensobjekt trägt die Quelle ${externalId}`);
+  }
+  return ko;
 }
 
 describe("am Draht — R-0505 Sichtbarkeit/Löschrecht, R-0139 keine behauptete Herkunft", () => {
@@ -361,5 +423,257 @@ describe("am Draht — R-0505 Sichtbarkeit/Löschrecht, R-0139 keine behauptete 
     expect(gespeichert).not.toHaveProperty("origin");
     expect(gespeichert).not.toHaveProperty("importedVia");
     expect(gespeichert?.author).toBe(importeur.id);
+  });
+});
+
+// ================================================================================================
+// NACHARBEIT 1 (bens Befunde zu K1, K2, K4) — GEGENPROBEN AM DRAHT.
+// ================================================================================================
+//
+// K1/F1: der direkte JSON-Import behält provider/externalId/sourceVersion/url — am Objekt, in der
+//        Belegkette und nach einer regulären Inhaltsrevision.
+// K2/F2: der REGULÄRE Import (Kandidatenweg UND direkter Import) schreibt selbst die
+//        unveränderlichen Quellrevisionen; kein Test fügt hier Quellrecords ein.
+// K4:    der direkte Import steht auf dem tatsächlichen Prüfboard (`ValidationService.board`).
+
+type Dienste = ReturnType<typeof buildServices>;
+
+/** Zwei Quellfassungen derselben Quelle → zwei Revisionen, ein Objekt, je Fassung die passende. */
+async function pruefeZweiFassungen(
+  services: Dienste,
+  ersteVorher: Awaited<ReturnType<Dienste["externalSources"]["findById"]>>,
+) {
+  expect(ersteVorher, "die erste Quellfassung wurde nicht festgeschrieben").toBeDefined();
+  const revisionen = await services.externalSources.listBySource("Confluence", "SEITE-HERKUNFT");
+  expect(revisionen.map((r) => r.sourceVersion)).toEqual([1, 2]);
+  const [r1, r2] = revisionen;
+  const meldung = "zwei Fassungen teilen sich eine Revisionskennung";
+  expect(r1?.sourceRecordId, meldung).not.toBe(r2?.sourceRecordId);
+  expect(r1?.contentHash).not.toBe(r2?.contentHash);
+  expect(r1?.url).toBe(QUELL_URL);
+  // Unveränderlich: die erste Revision ist nach dem zweiten Import Feld für Feld dieselbe.
+  const quellen = services.externalSources;
+  const erste = await quellen.findByRevision("Confluence", "SEITE-HERKUNFT", 1);
+  const zweite = await quellen.findByRevision("Confluence", "SEITE-HERKUNFT", 2);
+  expect(erste).toEqual(ersteVorher);
+  expect(zweite).toEqual(r2);
+
+  // EINE Dokumentidentität: beide Fassungen landen in demselben Wissensobjekt.
+  const traeger = (await services.ko.list()).filter((k) =>
+    k.sources.some((s) => s.externalId === "SEITE-HERKUNFT"),
+  );
+  expect(traeger, "dieselbe Quelle wurde zu zwei Objekten").toHaveLength(1);
+  // Jede Objektfassung nennt die Revision, aus der ihre Aussage stammt.
+  const fassungen = [...(await services.ko.versionsOf(traeger[0]?.id ?? ""))].sort(
+    (a, b) => a.version - b.version,
+  );
+  expect(
+    fassungen.map((f) => [
+      f.snapshot.statement,
+      f.snapshot.sources.find((s) => s.externalId === "SEITE-HERKUNFT")?.sourceRecordId,
+    ]),
+  ).toEqual([
+    ["Aussage der Quellfassung 1.", r1?.sourceRecordId],
+    ["Aussage der Quellfassung 2.", r2?.sourceRecordId],
+  ]);
+}
+
+describe("Nacharbeit 1 — Quelle, Quellfassung und Prüfboard am Draht", () => {
+  it("K1 · direkter JSON-Import behält die mitgelieferte Quelle, auch nach einer regulären Revision", async () => {
+    const { app, services, admin, importeur } = await flaeche("n1k1");
+    const antwort = await direktImportieren(
+      app,
+      importeur.auth,
+      quellEintrag(7, "Aussage aus Quellfassung 7."),
+    );
+    expect(antwort.imported).toBe(1);
+    const ko = await koMitQuelle(services, "SEITE-HERKUNFT");
+    expect((await services.ko.get(ko.id))?.importedVia).toBe("library_import");
+
+    type Quelle = {
+      provider?: string | null;
+      externalId?: string;
+      sourceVersion?: number;
+      url?: string | null;
+      sourceRecordId?: string;
+    };
+    const lesen = async () => {
+      const res = await app.inject({
+        method: "GET",
+        url: `/api/kos/${ko.id}`,
+        headers: importeur.auth,
+      });
+      expect(res.statusCode, res.body).toBe(200);
+      return res.json() as { statement: string; version: number; sources: Quelle[] };
+    };
+    const vorher = await lesen();
+    expect(vorher.sources).toEqual([
+      expect.objectContaining({
+        provider: "Confluence",
+        externalId: "SEITE-HERKUNFT",
+        sourceVersion: 7,
+        url: QUELL_URL,
+      }),
+    ]);
+    const revisionsId = vorher.sources[0]?.sourceRecordId;
+    expect(revisionsId, "der Anker zeigt auf keine festgeschriebene Quellfassung").toBeTruthy();
+    expect(await services.externalSources.findById(revisionsId ?? "")).toMatchObject({
+      externalId: "SEITE-HERKUNFT",
+      sourceVersion: 7,
+      url: QUELL_URL,
+    });
+    const belegeVorher = await services.ko.evidenceOf(ko.id);
+    expect(belegeVorher.filter((b) => b.kind === "source")).toEqual([
+      expect.objectContaining({ url: QUELL_URL, createdBy: importeur.id, koVersion: 1 }),
+    ]);
+
+    // Reguläre Inhaltsrevision über die Schreibroute.
+    const revidiert = await app.inject({
+      method: "PUT",
+      url: `/api/kos/${ko.id}`,
+      headers: admin.auth,
+      payload: { action: "revise", changes: { statement: "Später überarbeitet." } },
+    });
+    expect(revidiert.statusCode, revidiert.body).toBe(200);
+
+    const nachher = await lesen();
+    expect(nachher.version).toBe(2);
+    expect(nachher.statement).toBe("Später überarbeitet.");
+    expect(nachher.sources, "die Herkunft ging bei der Revision verloren").toEqual([
+      expect.objectContaining({
+        provider: "Confluence",
+        externalId: "SEITE-HERKUNFT",
+        sourceVersion: 7,
+        url: QUELL_URL,
+        sourceRecordId: revisionsId,
+      }),
+    ]);
+    // Die ursprüngliche Fassung und ihr Beleg bleiben lesbar.
+    const v1 = (await services.ko.versionsOf(ko.id)).find((f) => f.version === 1);
+    expect(v1?.snapshot.statement).toBe("Aussage aus Quellfassung 7.");
+    expect(v1?.snapshot.sources[0]?.sourceRecordId).toBe(revisionsId);
+    const belegeNachher = await services.ko.evidenceOf(ko.id);
+    expect(
+      belegeNachher.some(
+        (b) =>
+          b.kind === "source" &&
+          b.koVersion === 1 &&
+          b.url === QUELL_URL &&
+          b.createdBy === importeur.id,
+      ),
+    ).toBe(true);
+  });
+
+  it("K1 · ohne Quellkennung bleibt eine mitgelieferte Quell-URL als Verweis erhalten — ohne erfundene Identität", async () => {
+    const { app, services, importeur } = await flaeche("n1k1b");
+    await direktImportieren(app, importeur.auth, {
+      title: "Nur mit Verweis",
+      statement: "Kein Quellsystem-Schlüssel mitgeliefert.",
+      type: "technik",
+      category: "A",
+      provider: "Confluence",
+      url: QUELL_URL,
+    });
+    const ko = (await services.ko.list()).find((k) => k.title === "Nur mit Verweis");
+    expect(ko?.sources).toEqual([
+      expect.objectContaining({ provider: "Confluence", url: QUELL_URL }),
+    ]);
+    expect(ko?.sources[0]).not.toHaveProperty("externalId");
+    expect(ko?.sources[0]).not.toHaveProperty("sourceRecordId");
+  });
+
+  it("K2 · Kandidatenweg: zwei Quellfassungen ergeben zwei unveränderliche Revisionen derselben Quelle", () =>
+    mitQuellimport(async () => {
+      const { app, services, importeur, controller } = await flaeche("n1k2a");
+      let ersteVorher: Awaited<ReturnType<Dienste["externalSources"]["findById"]>> = undefined;
+      for (const fassung of [1, 2]) {
+        const eingereicht = await app.inject({
+          method: "POST",
+          url: "/api/library/import/candidates",
+          headers: importeur.auth,
+          payload: { items: [quellEintrag(fassung, `Aussage der Quellfassung ${fassung}.`)] },
+        });
+        expect(eingereicht.statusCode, eingereicht.body).toBe(201);
+        const kandidatId = (eingereicht.json() as { id: string }[])[0]?.id;
+        const angenommen = await app.inject({
+          method: "PUT",
+          url: `/api/library/import/candidates/${kandidatId}`,
+          headers: controller.auth,
+          payload: { action: "accept" },
+        });
+        expect(angenommen.statusCode, angenommen.body).toBe(200);
+        if (fassung === 1) {
+          ersteVorher = await services.externalSources.findByRevision(
+            "Confluence",
+            "SEITE-HERKUNFT",
+            1,
+          );
+        }
+      }
+      await pruefeZweiFassungen(services, ersteVorher);
+    }));
+
+  it("K2 · direkter JSON-Import: dieselbe Prüfung, zwei Aussagen, eine Quellenidentität", async () => {
+    const { app, services, importeur } = await flaeche("n1k2b");
+    const ersteFassung = quellEintrag(1, "Aussage der Quellfassung 1.");
+    const erste = await direktImportieren(app, importeur.auth, ersteFassung);
+    expect(erste.imported).toBe(1);
+    const ersteVorher = await services.externalSources.findByRevision(
+      "Confluence",
+      "SEITE-HERKUNFT",
+      1,
+    );
+    const zweite = await direktImportieren(
+      app,
+      importeur.auth,
+      quellEintrag(2, "Aussage der Quellfassung 2."),
+    );
+    expect(zweite, "die neue Quellfassung wurde nicht eingespielt").toMatchObject({
+      imported: 1,
+      skipped: 0,
+    });
+    await pruefeZweiFassungen(services, ersteVorher);
+
+    // Eine ältere Fassung schreibt weder eine Revision noch eine Objektfassung.
+    const aeltere = await direktImportieren(
+      app,
+      importeur.auth,
+      quellEintrag(1, "Abweichender Text unter alter Fassung."),
+    );
+    expect(aeltere).toMatchObject({ imported: 0, skipped: 1 });
+    await pruefeZweiFassungen(services, ersteVorher);
+  });
+
+  it("K4 · direkter JSON-Import steht ungeprüft auf dem tatsächlichen Prüfboard, mit Originalquelle", async () => {
+    const { app, services, importeur } = await flaeche("n1k4");
+    await direktImportieren(app, importeur.auth, {
+      ...quellEintrag(3, "Ungeprüft aus der Quelle."),
+      externalId: "SEITE-K4",
+    });
+    const ko = await koMitQuelle(services, "SEITE-K4");
+
+    const brett = await services.validation.board();
+    const zeile = brett.find((k) => k.id === ko.id);
+    expect(zeile, "das importierte Objekt fehlt auf dem Prüfboard").toBeDefined();
+    expect(zeile).toMatchObject({
+      status: "offen",
+      trust: 0,
+      version: 1,
+      importedVia: "library_import",
+    });
+    expect(zeile?.sources).toEqual([
+      expect.objectContaining({
+        kind: "external",
+        peerValidated: false,
+        provider: "Confluence",
+        externalId: "SEITE-K4",
+        sourceVersion: 3,
+        url: QUELL_URL,
+      }),
+    ]);
+    const belege = await services.ko.evidenceOf(ko.id);
+    expect(belege.filter((b) => b.kind === "source")).toEqual([
+      expect.objectContaining({ url: QUELL_URL, createdBy: importeur.id }),
+    ]);
   });
 });
