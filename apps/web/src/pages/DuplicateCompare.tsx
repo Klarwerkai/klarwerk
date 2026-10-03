@@ -36,6 +36,7 @@ import {
   buildDuplicateCompareSections,
   compareHeadline,
   compareToneLabelKey,
+  kandidatenQuellen,
   overallFromConflict,
   overallFromOverlap,
   overlapLeadBridge,
@@ -276,6 +277,15 @@ export function DuplicateCompare({ kind }: { kind: DuplicateCompareKind }): JSX.
   // darunter sagt es feldweise. Die zwei Karten zeigen deshalb den Text ohne Markierung.
   const teileA = markiereTeile(left?.statement ?? "", []);
   const teileB = markiereTeile(right?.statement ?? "", []);
+  const quellen = isDuplicate ? kandidatenQuellen(entry as OverlapEntry) : undefined;
+  const quelleText =
+    quellen === undefined
+      ? null
+      : quellen === null
+        ? t("dcmp.quelle.manuell")
+        : t("dcmp.quelle.label", {
+            quellen: quellen.map((q) => t(`dcmp.quelle.${q}`)).join(" · "),
+          });
 
   return (
     <div className="mx-auto max-w-[1040px]">
@@ -294,7 +304,14 @@ export function DuplicateCompare({ kind }: { kind: DuplicateCompareKind }): JSX.
               ? t(head.leadTextKey, { percent: Math.round(head.leadPercent) })
               : percent(head.leadPercent)}
           </PruefenPille>
+          {quelleText ? <PruefenPille kennung="quelle">{quelleText}</PruefenPille> : null}
         </PruefenPaarZeile>
+
+        {quelleText ? (
+          <p data-testid="dcmp-quelle" className="text-[12.5px] leading-relaxed text-muted">
+            {t("dcmp.quelle.hinweis", { brett: t("pruefen.tab.duplikate") })}
+          </p>
+        ) : null}
 
         {bruecke ? (
           <p data-testid="dcmp-metrikbruecke" className="text-[12.5px] leading-relaxed text-muted">

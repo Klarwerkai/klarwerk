@@ -6730,6 +6730,15 @@ const de = {
     "Hier stehen dieselben zwei Objekte wie auf dem Brett einander gegenüber; auf schmalen Fenstern untereinander — die obere Karte ist die, die im Vergleich Feld für Feld „Links“ heißt. Im Aufklapper „{{mehr}}“ liegen Ähnlichkeit, Unsicherheit, Textunterschied und dieser Feldvergleich; was die drei Ampelfarben bedeuten, erklärt dort die Legende „{{legende}}“ — sie wird hier nicht wiederholt. Gespeichert wird auf dieser Seite nichts: sie führt nicht zusammen, löscht nicht, validiert nicht und hält keine Entscheidung fest. Falsch machen kannst du hier also nichts; entschieden wird auf dem Brett „{{brett}}“, und der gleichnamige Reiter oben führt dorthin zurück.",
   "dcmp.sourceDuplicate": "Duplikatvergleich: {{relation}}",
   "dcmp.sourceConflict": "Konfliktvergleich: {{type}}",
+  // R-0194: aus welcher Quelle der Kandidat stammt. Die Quelle schlägt nur vor — sie urteilt nicht.
+  "dcmp.quelle.label": "Kandidatenquelle: {{quellen}}",
+  "dcmp.quelle.metadaten": "Metadaten",
+  "dcmp.quelle.text": "Text",
+  "dcmp.quelle.pruefsumme": "Prüfsumme",
+  "dcmp.quelle.abschnitt": "Abschnitt",
+  "dcmp.quelle.manuell": "Kandidatenquelle: von Hand gemeldet",
+  "dcmp.quelle.hinweis":
+    "Die Kandidatenquelle sagt nur, wie das Paar zur Prüfung kam; sie ist kein Urteil. Ob es ein Duplikat ist, entscheidest du auf dem Brett „{{brett}}“.",
   "dcmp.sectionCompareUnavailable":
     "Abschnittsvergleich nicht möglich, weil ein Wissensobjekt fehlt.",
   "dcmp.relation.identisch": "identisch",
@@ -12777,6 +12786,14 @@ const en: typeof de = {
     "This page puts the same two objects as the board opposite each other; on narrow windows one below the other — the upper card is the one called “Left” in the field-by-field comparison. The “{{mehr}}” disclosure holds similarity, uncertainty, text difference and that field comparison; what the three signal colours mean is explained there by the legend “{{legende}}” — it is not repeated here. Nothing is saved on this page: it does not merge, delete or validate, and it records no decision. So there is nothing you can get wrong here; decisions are made on the “{{brett}}” board, and the tab of the same name at the top leads back there.",
   "dcmp.sourceDuplicate": "Duplicate comparison: {{relation}}",
   "dcmp.sourceConflict": "Conflict comparison: {{type}}",
+  "dcmp.quelle.label": "Candidate source: {{quellen}}",
+  "dcmp.quelle.metadaten": "Metadata",
+  "dcmp.quelle.text": "Text",
+  "dcmp.quelle.pruefsumme": "Checksum",
+  "dcmp.quelle.abschnitt": "Section",
+  "dcmp.quelle.manuell": "Candidate source: reported by hand",
+  "dcmp.quelle.hinweis":
+    "The candidate source only says how the pair came up for review; it is not a verdict. Whether it is a duplicate is decided by you on the “{{brett}}” board.",
   "dcmp.sectionCompareUnavailable":
     "Section comparison not possible because a knowledge object is missing.",
   "dcmp.relation.identisch": "identical",
@@ -18495,6 +18512,14 @@ const nl: typeof de = {
     "Hier staan dezelfde twee objecten als op het bord tegenover elkaar; op smalle vensters onder elkaar — de bovenste kaart is die welke in de vergelijking veld voor veld „Links“ heet. In de uitklapper „{{mehr}}“ staan gelijkenis, onzekerheid, tekstverschil en die veldvergelijking; wat de drie stoplichtkleuren betekenen, legt daar de legenda „{{legende}}“ uit — dat wordt hier niet herhaald. Op deze pagina wordt niets opgeslagen: ze voegt niet samen, verwijdert niet, valideert niet en houdt geen beslissing vast. Verkeerd doen kun je hier dus niets; beslist wordt op het bord „{{brett}}“, en het tabblad met dezelfde naam bovenaan leidt daarheen terug.",
   "dcmp.sourceDuplicate": "Duplicaatvergelijking: {{relation}}",
   "dcmp.sourceConflict": "Conflictvergelijking: {{type}}",
+  "dcmp.quelle.label": "Kandidaatbron: {{quellen}}",
+  "dcmp.quelle.metadaten": "Metadata",
+  "dcmp.quelle.text": "Tekst",
+  "dcmp.quelle.pruefsumme": "Controlesom",
+  "dcmp.quelle.abschnitt": "Sectie",
+  "dcmp.quelle.manuell": "Kandidaatbron: handmatig gemeld",
+  "dcmp.quelle.hinweis":
+    "De kandidaatbron zegt alleen hoe het paar ter beoordeling kwam; het is geen oordeel. Of het een duplicaat is, beslis je op het bord „{{brett}}“.",
   "dcmp.sectionCompareUnavailable":
     "Sectievergelijking niet mogelijk, omdat een kennisobject ontbreekt.",
   "dcmp.relation.identisch": "identiek",
