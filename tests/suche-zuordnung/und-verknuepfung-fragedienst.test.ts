@@ -64,6 +64,21 @@ describe("R-0473 · welche Fragebegriffe gebunden sind", () => {
     );
   });
 
+  it("die Begriffe kommen aus DER EINEN Zerlegung — Satzgrenzen, Bindestrich, Stoppwörter", () => {
+    // Nacharbeit 2: kein eigenes Zerlegen mehr (mega54-eine-zerlegung-sammler). Die Wortstellen
+    // müssen deshalb genau zu `tokenize` passen — gemessen an Fällen, bei denen eine Verschiebung
+    // um eine Stelle sichtbar würde.
+    const frage = "Gilt das? Wo hängt Sie die Firmenwagen-Bestellrichtlinie und der Filter F3 ab.";
+    const gebunden = undVerknuepfteFragebegriffe(frage);
+    // „Gilt" und „Wo" stehen am Satzanfang, „Sie" ist ein Stoppwort: alle drei sind nicht gebunden.
+    expect(gebunden).toEqual(queryTokens("Firmenwagen Bestellrichtlinie Filter F3"));
+    for (const begriff of gebunden) {
+      expect(queryTokens(frage)).toContain(begriff);
+    }
+    // Ohne Großschreibung bleibt nur die Kennung gebunden.
+    expect(undVerknuepfteFragebegriffe("welche temperatur gilt für ventil f3?")).toEqual(["f3"]);
+  });
+
   it("eine deklarierte Entsprechung zählt als derselbe Begriff — sonst nicht", () => {
     const frage = "Wo finde ich die Urlaubsregelungen im Handbuch?";
     const text = "Abwesenheiten Die Urlaubszeiten stehen im Handbuch.";

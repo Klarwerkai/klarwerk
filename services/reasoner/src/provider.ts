@@ -1180,20 +1180,78 @@ function grundform(token: string, herkunft?: Herkunft): string {
 // zweites, paralleles Feld NEBEN dem Tokenstrom, kein zweites Token und keine zweite Zerlegung. Die
 // Rückgabe bleibt byteweise dieselbe, ob der Ausgang mitgegeben wird oder nicht; wer ihn weglässt
 // (etwa `queryTokens` für den Repo-Prefilter), sieht exakt die Zerlegung von mega54.
-function tokenize(text: string, ausNominalisierung?: Set<string>): string[] {
+//
+// R-0473 (K8): `ausBegriff` ist ein ZWEITER solcher Ausgang, nach demselben Muster — er sammelt die
+// Token, die aus einem gebundenen Fragebegriff stammen (s. `undVerknuepfteFragebegriffe`). Die
+// Groß-/Kleinschreibung, an der das hängt, liest `gebundeneWortstellen` je Wortstelle DIESER
+// Zerlegung; Token und Reihenfolge bleiben byteweise dieselben, ob der Ausgang mitgegeben wird oder
+// nicht. Das Aussieben leerer Stücke vorab ändert nichts: ein leeres Stück fiel schon immer an der
+// Längengrenze.
+function tokenize(
+  text: string,
+  ausNominalisierung?: Set<string>,
+  ausBegriff?: Set<string>,
+): string[] {
+  const gebunden = ausBegriff ? gebundeneWortstellen(text) : [];
   return text
     .toLowerCase()
     .split(/[^a-zäöüß0-9]+/)
-    .filter((w) => (w.length > 2 || istKennung(w)) && !STOPWORDS.has(w))
-    .map((w) => {
+    .filter((w) => w.length > 0)
+    .map((w, stelle) => ({ w, stelle }))
+    .filter(({ w }) => (w.length > 2 || istKennung(w)) && !STOPWORDS.has(w))
+    .map(({ w, stelle }) => {
       const herkunft: Herkunft = { nominalisierung: false };
       const norm = grundform(w, herkunft);
       if (ausNominalisierung && herkunft.nominalisierung) {
         ausNominalisierung.add(norm);
       }
-      return norm;
+      return { norm, stelle };
     })
-    .filter((w) => !istStoppform(w));
+    .filter(({ norm }) => !istStoppform(norm))
+    .map(({ norm, stelle }) => {
+      if (gebunden[stelle] === true) {
+        ausBegriff?.add(norm);
+      }
+      return norm;
+    });
+}
+
+// R-0473 (K8): JE WORTSTELLE DER EINEN ZERLEGUNG — ist sie ein gebundener Fragebegriff?
+//
+// Keine zweite Zerlegung: hier entsteht kein Token, nur ein Merkmal je Stelle, in genau der
+// Reihenfolge, in der `tokenize` seine nichtleeren Stücke bildet. Dafür wird jedes Zeichen so
+// eingeordnet, wie `tokenize` es nach dem Kleinschreiben einordnet (Wortzeichen `[a-zäöüß0-9]`,
+// alles andere trennt) — nur dass hier die ursprüngliche Schreibung noch sichtbar ist.
+// Gebunden: eine Kennung, oder ein großgeschriebenes Wort, das nicht am Satzanfang steht.
+function gebundeneWortstellen(text: string): boolean[] {
+  const raus: boolean[] = [];
+  let wort = "";
+  let gross = false;
+  let satzanfang = true;
+  const schliessen = () => {
+    if (wort.length > 0) {
+      raus.push(istKennung(wort) || (gross && !satzanfang));
+      satzanfang = false;
+      wort = "";
+    }
+  };
+  for (const zeichen of text) {
+    for (const klein of zeichen.toLowerCase()) {
+      if (/[a-zäöüß0-9]/.test(klein)) {
+        if (wort.length === 0) {
+          gross = /[A-ZÄÖÜ]/.test(zeichen);
+        }
+        wort += klein;
+      } else {
+        schliessen();
+        if (/[.!?:;]/.test(klein)) {
+          satzanfang = true;
+        }
+      }
+    }
+  }
+  schliessen();
+  return raus;
 }
 
 // AUFTRAG-mega54 C3 — DIE GRUNDFORM HEBELT DIE MINDESTSUBSTANZ NICHT AUS.
@@ -1478,22 +1536,14 @@ export function queryTokens(text: string): string[] {
 //
 // DIE BENANNTE GRENZE: Englische und niederländische Fragen schreiben Substantive klein; dort bindet
 // die Regel nur Kennungen. Ein klein getippter deutscher Satz ebenso.
+//
+// KEINE EIGENE ZERLEGUNG (Prüfbefund Nacharbeit 2, `mega54-eine-zerlegung-sammler`): Die Begriffe
+// kommen als paralleler Ausgang aus DER EINEN Zerlegung `tokenize` — dieselben Token in derselben
+// Grundform, nur die gebundenen Stellen ausgewählt.
 export function undVerknuepfteFragebegriffe(question: string): string[] {
-  const raus = new Set<string>();
-  for (const satz of question.split(/[.!?:;]+/)) {
-    const woerter = satz.split(/[^A-Za-zÄÖÜäöüß0-9]+/).filter((w) => w.length > 0);
-    for (const [i, wort] of woerter.entries()) {
-      const kennung = istKennung(wort.toLowerCase());
-      const begriff = i > 0 && /^[A-ZÄÖÜ]/.test(wort);
-      if (!kennung && !begriff) {
-        continue;
-      }
-      for (const token of tokenize(wort)) {
-        raus.add(token);
-      }
-    }
-  }
-  return [...raus];
+  const gebunden = new Set<string>();
+  tokenize(question, undefined, gebunden);
+  return [...gebunden];
 }
 
 /**
