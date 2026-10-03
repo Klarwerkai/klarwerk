@@ -116,10 +116,20 @@ um Zeile 3965). Ihn rufen der Papierkorb-Sweep (`runTrashSweep`), `purgeTrashed`
 | Geschlossene Wissenslücken | nur manuell `DELETE /api/gaps/:id` |
 | Abgelaufene Anmeldesitzungen | zwei Löschwege, beide ohne Frist und ohne Zeitplan: **beim Zugriff** löscht `AuthService.authenticate` eine abgelaufene Sitzung, deren Token vorgelegt wird (`services/auth/src/service.ts`, „abgelaufen → beim Zugriff aufraeumen“; Beleg `services/auth/src/service.test.ts` „abgelaufene Sitzung gilt nicht mehr“); **beim PostgreSQL-Serverstart** löscht `migrateAuthTokensAtRest` alle abgelaufenen Sitzungen und Rücksetz-Token (`services/auth/src/repo-pg.ts`). Einen periodischen Aufräumlauf für abgelaufene Sitzungen, die niemand mehr vorlegt, gibt es nicht. |
 | Abgelaufene Klara-Sitzungen | `raeumeAbgelaufeneAuf()` (30 Tage) existiert und ist getestet (`tests/app/job2688-klara-jedes-hinsehen-ist-ein-schreibvorgang.test.ts`), aber **nicht verdrahtet** (Kommentar in `klara-session-service.ts`: „ist offen“) |
+| Abgelaufene Dokumentenfreigaben | **ungeklärt, nicht belegt.** Die Quelle ordnet einen Aufräumlauf für abgelaufene Dokumentenfreigaben ausdrücklich R-0654 zu („gehoert hierher und ist nicht belegt“). Ein solcher Lauf ist nicht belegt; eine gezielte Suche in `services` nach Freigabelinks (`shareLink`, `share_links`, `Freigabelink`, `/api/share`) fand keine Fundstelle. Ob und wo Dokumentenfreigaben mit Ablauf heute gespeichert werden, ist damit nicht geklärt. |
 | Audit | bewusst nur anhängend, nicht löschbar |
 | Server-/Proxy-Logs | Betreiber |
 
 Es gibt keine Umgebungsvariable für Aufbewahrungsfristen.
+
+**Historische Fristvorschläge — nicht beschlossen, nicht im Code.** Die Quelle (R-0654, Begründung
+DSGVO Art. 5 Abs. 1 lit. e) nennt Vorschlagswerte aus der ersten Landkartenfassung: **90 Tage** für
+Modellläufe, **180 Tage** für Klara-Sitzungen, **365 Tage** für Antworten. Das sind Vorschläge, keine
+Entscheidung; welche Fristen gelten, entscheidet der Betreiber (Ownerfrage 1). Sie sind von den
+vorhandenen Codefristen zu trennen: im Code stehen nur die Papierkorbfrist (30 Tage,
+`TRASH_RETENTION_DAYS`) und die nicht verdrahtete Aufbewahrung abgelaufener Klara-Sitzungen
+(30 Tage, `KLARA_SESSION_AUFBEWAHRUNG_MS`) — der Vorschlag von 180 Tagen weicht davon ab. Keine dieser
+Vorschlagsfristen ist aktiviert, und dieser Auftrag aktiviert keine.
 
 ### R-0657 — Löschung in Ableitungen, Sicherungen; Löschsperre; Folgenabschätzung
 
@@ -147,6 +157,18 @@ Abschaltweg, kein Löschprotokoll, kein Beleg für Sicherungen und Offsite-Kopie
   den Einzelupdate-Weg. Sie nennen jetzt den mengenbasierten Weg `closeOpenForKo` und seinen
   Journaleintrag in `services/app/src/dev-persist.ts` (JOB 3066 `8efa9e92`). Nur Kommentar,
   Testkörper unverändert.
+- **Technischer Rest aus JOB 3066 — offen, gesondert:** mengenbasiert ist nur das **Schliessen**
+  der Befunde (`closeOpenForKo`, EINE Anweisung je Speicher). Die **Audit-Belege** dazu werden
+  weiterhin einzeln geschrieben: einer je Überschneidung (`services/conflicts/src/overlap-service.ts`,
+  Schleife um `audit.record` mit `overlap.participant-removed` bzw. `overlap.withdrawn-own`) und zwei
+  je Konflikt (`services/conflicts/src/service.ts`, `conflict.participant-removed` und
+  `conflict.auto-resolved`). Die Grenze steht in `services/app/src/build-app.ts` („GEMESSENE
+  OBERGRENZE des Hakens: 2 + n + 2m“, n/m = offene Überschneidungen/Konflikte dieses Beitrags),
+  nachgezählt in `tests/aufraeumen-atomar/aufraeumumfang-bleibt-begrenzt.test.ts`. Ein Sammelbeleg
+  (`appendMany`) läge in `services/audit` und ist dort als „nicht erreichbar“ begründet (Umbau der
+  Audit-Kette ausgeschlossen, Rückverfolgbarkeit je Befund). Diese `appendMany`-Frage ist **nicht
+  erledigt** und bleibt eine gesonderte Entscheidung; diese Aufnahme leitet daraus weder einen
+  Umbau der Audit-Kette noch einen Prüflauf ab.
 - **Weiter ungeprüft** (aus der Quelle übernommen, keine neue Prüfung bestellt): echter
   PostgreSQL-Lauf, EXPLAIN ANALYZE, Verbindungsabbruch mit ungewissem Commit-Ausgang,
   Mehrprozess-/Nebenläufigkeitsversuch, eigener Browserlauf, vollständiger `tools/check`.
@@ -182,7 +204,9 @@ Abschaltweg, kein Löschprotokoll, kein Beleg für Sicherungen und Offsite-Kopie
 ## Fünf Ownerfragen (vor jedem Purge-Vertrag)
 
 1. **Aufbewahrung:** Welche Frist gilt je Datenart (Modellläufe, Antworten, geschlossene Lücken,
-   abgelaufene Sitzungen, Protokolle, Sicherungen), und ist sie einstellbar (R-0654, R-0657)?
+   abgelaufene Sitzungen, abgelaufene Dokumentenfreigaben, Protokolle, Sicherungen), und ist sie
+   einstellbar (R-0654, R-0657)? Als Ausgangspunkt liegen nur die nicht beschlossenen historischen
+   Vorschläge vor (90 Tage Modellläufe, 180 Tage Klara-Sitzungen, 365 Tage Antworten; s. R-0654).
 2. **Datenschutz:** Wird bei Kontolöschung auf „ehemaliger Nutzer“ umgeschrieben, und gilt das
    auch für das hash-verkettete Audit (Art. 17 gegen Nachweispflicht) (R-0642)?
 3. **RESTRICT oder Cleanup je Träger:** Welche Träger verhindern ihre Löschung bei abhängigen Daten
