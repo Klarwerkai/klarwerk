@@ -1180,78 +1180,20 @@ function grundform(token: string, herkunft?: Herkunft): string {
 // zweites, paralleles Feld NEBEN dem Tokenstrom, kein zweites Token und keine zweite Zerlegung. Die
 // Rückgabe bleibt byteweise dieselbe, ob der Ausgang mitgegeben wird oder nicht; wer ihn weglässt
 // (etwa `queryTokens` für den Repo-Prefilter), sieht exakt die Zerlegung von mega54.
-//
-// R-0473 (K8): `ausBegriff` ist ein ZWEITER solcher Ausgang, nach demselben Muster — er sammelt die
-// Token, die aus einem gebundenen Fragebegriff stammen (s. `undVerknuepfteFragebegriffe`). Die
-// Groß-/Kleinschreibung, an der das hängt, liest `gebundeneWortstellen` je Wortstelle DIESER
-// Zerlegung; Token und Reihenfolge bleiben byteweise dieselben, ob der Ausgang mitgegeben wird oder
-// nicht. Das Aussieben leerer Stücke vorab ändert nichts: ein leeres Stück fiel schon immer an der
-// Längengrenze.
-function tokenize(
-  text: string,
-  ausNominalisierung?: Set<string>,
-  ausBegriff?: Set<string>,
-): string[] {
-  const gebunden = ausBegriff ? gebundeneWortstellen(text) : [];
+function tokenize(text: string, ausNominalisierung?: Set<string>): string[] {
   return text
     .toLowerCase()
     .split(/[^a-zäöüß0-9]+/)
-    .filter((w) => w.length > 0)
-    .map((w, stelle) => ({ w, stelle }))
-    .filter(({ w }) => (w.length > 2 || istKennung(w)) && !STOPWORDS.has(w))
-    .map(({ w, stelle }) => {
+    .filter((w) => (w.length > 2 || istKennung(w)) && !STOPWORDS.has(w))
+    .map((w) => {
       const herkunft: Herkunft = { nominalisierung: false };
       const norm = grundform(w, herkunft);
       if (ausNominalisierung && herkunft.nominalisierung) {
         ausNominalisierung.add(norm);
       }
-      return { norm, stelle };
-    })
-    .filter(({ norm }) => !istStoppform(norm))
-    .map(({ norm, stelle }) => {
-      if (gebunden[stelle] === true) {
-        ausBegriff?.add(norm);
-      }
       return norm;
-    });
-}
-
-// R-0473 (K8): JE WORTSTELLE DER EINEN ZERLEGUNG — ist sie ein gebundener Fragebegriff?
-//
-// Keine zweite Zerlegung: hier entsteht kein Token, nur ein Merkmal je Stelle, in genau der
-// Reihenfolge, in der `tokenize` seine nichtleeren Stücke bildet. Dafür wird jedes Zeichen so
-// eingeordnet, wie `tokenize` es nach dem Kleinschreiben einordnet (Wortzeichen `[a-zäöüß0-9]`,
-// alles andere trennt) — nur dass hier die ursprüngliche Schreibung noch sichtbar ist.
-// Gebunden: eine Kennung, oder ein großgeschriebenes Wort, das nicht am Satzanfang steht.
-function gebundeneWortstellen(text: string): boolean[] {
-  const raus: boolean[] = [];
-  let wort = "";
-  let gross = false;
-  let satzanfang = true;
-  const schliessen = () => {
-    if (wort.length > 0) {
-      raus.push(istKennung(wort) || (gross && !satzanfang));
-      satzanfang = false;
-      wort = "";
-    }
-  };
-  for (const zeichen of text) {
-    for (const klein of zeichen.toLowerCase()) {
-      if (/[a-zäöüß0-9]/.test(klein)) {
-        if (wort.length === 0) {
-          gross = /[A-ZÄÖÜ]/.test(zeichen);
-        }
-        wort += klein;
-      } else {
-        schliessen();
-        if (/[.!?:;]/.test(klein)) {
-          satzanfang = true;
-        }
-      }
-    }
-  }
-  schliessen();
-  return raus;
+    })
+    .filter((w) => !istStoppform(w));
 }
 
 // AUFTRAG-mega54 C3 — DIE GRUNDFORM HEBELT DIE MINDESTSUBSTANZ NICHT AUS.
@@ -1514,16 +1456,19 @@ export function queryTokens(text: string): string[] {
 // Antworttor verlangt nur `MIN_ANSWER_SUBSTANCE` (2) gemeinsame Inhaltstoken. „Ventil F3
 // Temperatur" konnte deshalb aus einer Quelle beantwortet werden, die nur „Ventil F3" kennt.
 //
-// WELCHE FRAGEBEGRIFFE GEBUNDEN SIND — nicht jedes Inhaltstoken, und das ist gemessen, nicht
-// bequem: Fragewörter und Verben wie „finde", „gilt" oder „hängt" sind Inhaltstoken der Zerlegung,
-// stehen aber nicht in der Quelle, die die Frage beantwortet („Wo finde ich die Urlaubsregelungen
-// im Handbuch?" gegen „Die Urlaubszeiten stehen im Handbuch.", N2 Z1). Ein UND über ALLE Token
-// machte aus fast jeder natürlich formulierten Frage eine Wissenslücke. Gebunden sind deshalb die
-// BEGRIFFE der Frage:
-//   · Kennungen („F3", „L4") — immer;
-//   · großgeschriebene Wörter innerhalb eines Satzes — im Deutschen die Substantive. Das erste Wort
-//     eines Satzes zählt nicht, weil es aus Satzbau großgeschrieben ist („Gilt das Ventil …?").
-// Was die Zerlegung als Stoppwort entfernt („Sie", „Ihr"), entfällt auch hier — dieselbe Zerlegung.
+// WELCHE FRAGEBEGRIFFE GEBUNDEN SIND — Nacharbeit 3 (ben): UNABHÄNGIG VON SCHREIBUNG UND POSITION.
+// Die Regel aus Nacharbeit 1 (nur Kennungen und großgeschriebene Wörter außerhalb des Satzanfangs)
+// liess „temperatur" in „ventil f3 temperatur" und „Temperatur Ventil F3" ungebunden; die Quelle
+// „Ventil F3" kam durch. Sie ist ersetzt. Gebunden ist jetzt JEDES Inhaltstoken der einen Zerlegung,
+// gleich wie geschrieben und wo es steht. Ausgenommen ist nur, was nachweislich keinen Sachbezug
+// trägt, und zwar ausdrücklich benannt statt pauschal:
+//   · Stoppwörter und Kurzwörter — die Zerlegung entfernt sie ohnehin;
+//   · die mehrdeutigen Funktionsformen aus mega57 („würd", „woll" …), solange sie nicht als
+//     Nominalisierung im Satz stehen — dieselbe Regel wie für die Substanz;
+//   · das FRAGEGERÜST (`FRAGEGERUEST` unten): Verben, mit denen man nach einer Sache FRAGT, ohne sie
+//     zu benennen („Wo FINDE ich …", „Was GILT für …", „Wo STEHT …"). Ohne diese Ausnahme wäre
+//     „Wo finde ich die Urlaubsregelungen im Handbuch?" gegen „Die Urlaubszeiten stehen im Handbuch."
+//     eine Wissenslücke (N2 Z1) — die Quelle sagt nicht „finden".
 //
 // WANN EIN BEGRIFF VORKOMMT: nach DEMSELBEN Treffervertrag wie die Suche selbst — die Grundform als
 // Teilzeichenkette des durchsuchbaren Texts (`effective-search-document.ts`, `lower.includes`, in
@@ -1534,16 +1479,47 @@ export function queryTokens(text: string): string[] {
 // WAS DAS NICHT ÄNDERT: Vorkommen ist nicht Tragen. Die Mindestsubstanz, die Trennung
 // suchbar/tragend und die Fachkomposita-Liste entscheiden danach unverändert über die Antwort.
 //
-// DIE BENANNTE GRENZE: Englische und niederländische Fragen schreiben Substantive klein; dort bindet
-// die Regel nur Kennungen. Ein klein getippter deutscher Satz ebenso.
-//
 // KEINE EIGENE ZERLEGUNG (Prüfbefund Nacharbeit 2, `mega54-eine-zerlegung-sammler`): Die Begriffe
-// kommen als paralleler Ausgang aus DER EINEN Zerlegung `tokenize` — dieselben Token in derselben
-// Grundform, nur die gebundenen Stellen ausgewählt.
+// sind eine Auswahl aus DER EINEN Zerlegung `tokenize` — dieselben Token in derselben Grundform.
+//
+// DAS FRAGEGERÜST — eine begrenzte, deklarierte Liste in Oberflächenformen; die Grundform rechnet
+// dieselbe Zerlegung aus. Jeder Eintrag ist an einem gemessenen Fall belegt; wer ergänzt, braucht
+// einen solchen Fall, keine Meinung. Ein Sachverb gehört NICHT hierher („prüfen", „wechseln",
+// „anlegen" benennen, was getan wird, und bleiben gebunden).
+const FRAGEGERUEST: readonly string[] = [
+  // „Wo finde ich die Urlaubsregelungen im Handbuch?" (N2 Z1)
+  "finde",
+  "findet",
+  "finden",
+  // „Welche Temperatur gilt für das Ventil F3?" (K8-Gegenprobe), „Welcher Schutz gilt …" (N-3)
+  "gilt",
+  "gelten",
+  // „Wo steht etwas zum Dienstwagen?" (N2 F2b)
+  "steht",
+  "stehen",
+  // „Was tun bei Überdruck am Ventil?" (reasoner-eval)
+  "tun",
+  "tut",
+  // „Was gibt es zu …?"
+  "gibt",
+  "geben",
+  // „Was sagt der Betrieb zum Ventil?" (mega59-komposita)
+  "sagt",
+  "sagen",
+];
+
+let fragegeruestCache: ReadonlySet<string> | undefined;
+function fragegeruest(): ReadonlySet<string> {
+  fragegeruestCache ??= new Set(FRAGEGERUEST.flatMap((form) => tokenize(form)));
+  return fragegeruestCache;
+}
+
 export function undVerknuepfteFragebegriffe(question: string): string[] {
-  const gebunden = new Set<string>();
-  tokenize(question, undefined, gebunden);
-  return [...gebunden];
+  const nominal = new Set<string>();
+  const gebunden = tokenize(question, nominal).filter(
+    (token) => !fragegeruest().has(token) && (istSubstanztragend(token) || nominal.has(token)),
+  );
+  return [...new Set(gebunden)];
 }
 
 /**

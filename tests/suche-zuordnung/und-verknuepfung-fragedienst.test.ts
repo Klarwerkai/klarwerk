@@ -48,35 +48,41 @@ async function stapel() {
   return { ko, ask };
 }
 
-// Drei gebundene Begriffe: Temperatur, Ventil, F3. „gilt" ist ein Inhaltstoken, aber kein Begriff.
+// Drei gebundene Begriffe: Temperatur, Ventil, F3. „gilt" gehört zum Fragegerüst.
 const FRAGE = "Welche Temperatur gilt für das Ventil F3?";
 const VOLL = { title: "Ventil F3", statement: "Die Temperatur am Ventil F3 liegt bei 80 Grad." };
 const TEIL = { title: "Ventil F3 Wartung", statement: "Das Ventil F3 wird jährlich gewartet." };
 
+// Nacharbeit 3 (ben): dieselben drei Begriffe klein geschrieben und mit dem fehlenden Begriff am
+// Satzanfang. Die Regel aus Nacharbeit 1 band hier nur „f3" bzw. „ventil, f3".
+const OHNE_SATZBAU = ["ventil f3 temperatur", "Temperatur Ventil F3"] as const;
+
 describe("R-0473 · welche Fragebegriffe gebunden sind", () => {
-  it("Substantive im Satz und Kennungen — nicht Verben, nicht das Satzanfangswort", () => {
+  it("jedes Inhaltstoken — unabhängig von Schreibung und Satzposition", () => {
     const gebunden = undVerknuepfteFragebegriffe(FRAGE);
     expect(gebunden).toEqual(queryTokens("Temperatur Ventil F3"));
     expect(gebunden).not.toContain(queryTokens("gilt")[0]);
-    // bens Fall wörtlich: „Ventil" steht am Satzanfang, F3 und Temperatur sind gebunden.
-    expect(undVerknuepfteFragebegriffe("Ventil F3 Temperatur")).toEqual(
-      queryTokens("F3 Temperatur"),
+    for (const frage of OHNE_SATZBAU) {
+      expect(undVerknuepfteFragebegriffe(frage), frage).toEqual(queryTokens(frage));
+      expect(undVerknuepfteFragebegriffe(frage), frage).toContain(queryTokens("Temperatur")[0]);
+    }
+    expect(undVerknuepfteFragebegriffe("welche temperatur gilt für ventil f3?")).toEqual(
+      queryTokens("Temperatur Ventil F3"),
     );
   });
 
-  it("die Begriffe kommen aus DER EINEN Zerlegung — Satzgrenzen, Bindestrich, Stoppwörter", () => {
-    // Nacharbeit 2: kein eigenes Zerlegen mehr (mega54-eine-zerlegung-sammler). Die Wortstellen
-    // müssen deshalb genau zu `tokenize` passen — gemessen an Fällen, bei denen eine Verschiebung
-    // um eine Stelle sichtbar würde.
-    const frage = "Gilt das? Wo hängt Sie die Firmenwagen-Bestellrichtlinie und der Filter F3 ab.";
-    const gebunden = undVerknuepfteFragebegriffe(frage);
-    // „Gilt" und „Wo" stehen am Satzanfang, „Sie" ist ein Stoppwort: alle drei sind nicht gebunden.
-    expect(gebunden).toEqual(queryTokens("Firmenwagen Bestellrichtlinie Filter F3"));
-    for (const begriff of gebunden) {
-      expect(queryTokens(frage)).toContain(begriff);
-    }
-    // Ohne Großschreibung bleibt nur die Kennung gebunden.
-    expect(undVerknuepfteFragebegriffe("welche temperatur gilt für ventil f3?")).toEqual(["f3"]);
+  it("ausgenommen sind nur Fragegerüst und mehrdeutige Funktionsformen — benannt, nicht pauschal", () => {
+    // Das Fragegerüst: „finde" steht nicht in der Quelle, die die Frage beantwortet (N2 Z1).
+    const z1 = "Wo finde ich die Urlaubsregelungen im Handbuch?";
+    expect(undVerknuepfteFragebegriffe(z1)).toEqual(queryTokens("Urlaubsregelungen Handbuch"));
+    // Die mehrdeutige Funktionsform „würde" (mega57) ist im Tokenstrom, aber kein Begriff.
+    const frage = "Was würde für das Ventil gelten?";
+    expect(queryTokens(frage)).toContain(queryTokens("würde")[0]);
+    expect(undVerknuepfteFragebegriffe(frage)).toEqual(queryTokens("Ventil"));
+    // Ein Sachverb bleibt gebunden — auch klein und am Satzanfang.
+    expect(undVerknuepfteFragebegriffe("hängt der Speiseplan aus?")).toEqual(
+      queryTokens("hängt Speiseplan"),
+    );
   });
 
   it("eine deklarierte Entsprechung zählt als derselbe Begriff — sonst nicht", () => {
@@ -116,6 +122,31 @@ describe("R-0473 · UND im regulären Fragedienst", () => {
     expect(out.result.answered).toBe(false);
     expect(out.result.sources).not.toContain(teil);
   });
+
+  // Nacharbeit 3 (ben, K8): klein geschrieben und mit dem fehlenden Begriff am Satzanfang, jeweils
+  // auf BEIDEN Aufrufarten — dem Retrieval-Weg des Add-ins und dem regulären Weg ohne Option.
+  for (const frage of OHNE_SATZBAU) {
+    it(`NEGATIV „${frage}“: nur die unvollständige Quelle — keine Antwort, keine Quelle`, async () => {
+      const { ko, ask } = await stapel();
+      await ko.create({ ...VORLAGE, ...TEIL });
+      for (const opts of [{ retrievalOnly: true }, {}]) {
+        const out = await ask.ask(frage, "nutzer-1", "de", opts);
+        expect(out.result.answered, JSON.stringify(opts)).toBe(false);
+        expect(out.result.sources, JSON.stringify(opts)).toEqual([]);
+      }
+    });
+
+    it(`POSITIV „${frage}“: vollständige und unvollständige Quelle — es trägt allein VOLL`, async () => {
+      const { ko, ask } = await stapel();
+      await ko.create({ ...VORLAGE, ...TEIL });
+      const voll = (await ko.create({ ...VORLAGE, ...VOLL })).id;
+      for (const opts of [{ retrievalOnly: true }, {}]) {
+        const out = await ask.ask(frage, "nutzer-1", "de", opts);
+        expect(out.result.answered, JSON.stringify(opts)).toBe(true);
+        expect(out.result.sources, JSON.stringify(opts)).toEqual([voll]);
+      }
+    });
+  }
 
   it("POSITIV: die Quelle mit allen drei Begriffen trägt — die unvollständige bleibt draußen", async () => {
     const { ko, ask } = await stapel();
