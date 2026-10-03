@@ -64,6 +64,12 @@ export const useModelRuns = (limit?: number) =>
     queryKey: ["model-runs", limit],
     queryFn: () => endpoints.modelRuns.recent(limit),
   });
+// Aufnahme gesamt-ki-laufprotokoll (V9, R-2071): Auswertung eines Zeitraums für die KI-Übersicht.
+export const useModelRunAuswertung = (von: string, bis: string) =>
+  useQuery({
+    queryKey: ["model-runs", "auswertung", von, bis],
+    queryFn: () => endpoints.modelRuns.auswertung(von, bis),
+  });
 // SCRUM-169: KO-übergreifender read-only Evidence-Index (QM/Stufe 2).
 export const useEvidenceIndex = (limit?: number) =>
   useQuery({

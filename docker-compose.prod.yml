@@ -146,6 +146,9 @@ services:
       # App-Container. Erklaert in docs/operations/kundeninstanz-neuinstallation.md §2.6,
       # gehuetet von tests/neuinstallation/pflichtkonfiguration.test.ts (M1 bis M3).
       KLARWERK_M365_MANDANTEN: ${KLARWERK_M365_MANDANTEN:-}
+      # Optionaler Supportweg dieser Installation; leer bleibt ausdrücklich nicht eingerichtet.
+      KLARWERK_SUPPORT_URL: ${KLARWERK_SUPPORT_URL:-}
+      KLARWERK_SUPPORT_LABEL: ${KLARWERK_SUPPORT_LABEL:-}
     ports:
       # JOB 4201: containerseitig derselbe Port wie oben — sonst zeigt die Veroeffentlichung auf
       # einen Port, auf dem nichts horcht. Wirtsseitig bleibt es dieselbe Zahl; wer die Instanz

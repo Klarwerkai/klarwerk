@@ -646,6 +646,18 @@ const GRUNDWERTE: readonly Startwert[] = [
     ohneIhn: "Es gilt die eingebaute Zeitgrenze.",
   },
   {
+    // Aufnahme gesamt-ki-laufprotokoll (V9): die Preise je Modell legt der Betreiber fest — der
+    // Code liefert keine (`services/model-runs/src/preisliste.ts`).
+    name: "KLARWERK_KI_PREISLISTE",
+    bereich: "KI",
+    pflicht: { art: "nie" },
+    geheim: false,
+    wofuer:
+      'Preisliste je Modell für die Kosten der KI-Läufe (JSON: {"waehrung","preisstand","modelle":{"<modell>":{"eingabeJeMillion","ausgabeJeMillion"}}}).',
+    ohneIhn:
+      "Es werden keine Kosten berechnet; die KI-Auswertung nennt „keine Preisliste hinterlegt“.",
+  },
+  {
     name: "KLARWERK_LOCAL_LLM_MAX_TOKENS",
     bereich: "KI",
     pflicht: { art: "nie" },
@@ -973,6 +985,31 @@ const GRUNDWERTE: readonly Startwert[] = [
       "Die SharePoint-Domänenstämme der Microsoft-365-Mandanten (kommagetrennt; der Teil vor .sharepoint.com, z. B. klarwerktest4711 — kein Anzeigename, keine Entra-GUID), aus deren SharePoint Word im Browser das Klara-Taskpane einbetten darf: je Stamm genau https://<stamm>.sharepoint.com und https://<stamm>-my.sharepoint.com in frame-ancestors. Ungültige Einträge werden beim Start mit Grund verworfen. Wirkt erst mit einem neuen App-Prozess.",
     ohneIhn:
       "Keine SharePoint-Herkunft darf Klara einbetten. Wer ein Dokument aus OneDrive/SharePoint in Word im Browser öffnet, sieht statt des Seitenbereichs eine Browser-Fehlerseite (refused to connect).",
+  },
+  // ----------------------------------------------------------------------------- Hilfe (R-1064)
+  // Der Supportweg dieser Installation (`routes/support-routes.ts`). Beide Werte sind optional und
+  // kein Startkriterium: fehlen sie, zeigt die Hilfe ehrlich „nicht eingerichtet".
+  {
+    name: "KLARWERK_SUPPORT_URL",
+    bereich: "Hilfe",
+    pflicht: { art: "nie" },
+    geheim: false,
+    vorgabe: "leer = kein Supportweg eingerichtet",
+    wofuer:
+      "Der Supportweg dieser Installation auf der Hilfeseite: eine https-Adresse ohne Zugangsdaten oder mailto: mit genau einer Adresse, höchstens 500 Zeichen (auch nach der URL-Normalisierung). Ungültige Werte werden nicht ausgeliefert, die Hilfe zeigt sie als ungültig. Wirkt erst mit einem neuen App-Prozess.",
+    ohneIhn:
+      "Die Hilfeseite zeigt, dass für diese Installation noch kein Supportweg hinterlegt ist. Der Start ist davon nicht betroffen.",
+  },
+  {
+    name: "KLARWERK_SUPPORT_LABEL",
+    bereich: "Hilfe",
+    pflicht: { art: "nie" },
+    geheim: false,
+    vorgabe: "leer = eingebauter Text der gewählten Sprache",
+    wofuer:
+      "Der sichtbare Name des Supportwegs auf der Hilfeseite (höchstens 80 Zeichen, keine Steuerzeichen); nur zusammen mit KLARWERK_SUPPORT_URL wirksam. Wirkt erst mit einem neuen App-Prozess.",
+    ohneIhn:
+      "Die Hilfeseite benennt den Supportweg mit dem eingebauten Text der gewählten Sprache.",
   },
   // ------------------------------------------------------------------------------------- Sonstiges
   // R-0166: der Anmeldeweg. Kein Geheimnis, keine Pflicht — ungesetzt gilt die Cloud-Anmeldung.

@@ -219,10 +219,14 @@ describe("mega32 E / mega33 A · die Antwortansicht sagt nicht mehr „gesichert
     const { container, unmount } = await mountAsk();
     const text = document.body.textContent ?? "";
 
-    // 1 Vertragskasten · 2 Statusplakette · 3 Evidenzplakette — alles, was der Leser SIEHT.
+    // 1 Vertragskasten · 2 Statusplakette — alles, was der Leser SIEHT.
     expect(text).not.toContain(GESICHERT);
     expect(text).toContain(i18n.t("ask.status.unverified"));
-    expect(text).toContain(`${i18n.t("ask.evidence")}: ${i18n.t("ask.knowledgeClass.ungeprueft")}`);
+    // R-0287 (Ben R1, F6): die Evidenzplakette sagte hier dasselbe wie die Statusplakette
+    // („Evidenz: Ungeprüft" neben „Noch ungeprüft") und steht deshalb nicht mehr ein zweites Mal.
+    expect(text).not.toContain(
+      `${i18n.t("ask.evidence")}: ${i18n.t("ask.knowledgeClass.ungeprueft")}`,
+    );
     // 4 Review-Wächter: er schweigt nicht mehr, nur weil die rohe Klasse „gesichert“ sagt.
     expect(text).toContain(i18n.t("ask.reviewGuard.unverifiedLabel"));
 

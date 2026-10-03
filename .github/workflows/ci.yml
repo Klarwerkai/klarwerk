@@ -29,7 +29,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "24"
           cache: "npm"
       - run: npm ci
       - run: npm ci --prefix apps/web
@@ -50,17 +50,20 @@ jobs:
   # via Testcontainers; Docker ist auf ubuntu-latest vorhanden) — so ein Fehler stoppt jetzt die
   # Pipeline, nicht den Deploy.
   #
-  # I51: Er bleibt bewusst getrennt und unverändert. Das Gesamttor oben braucht kein Docker, und
-  # dieser Job soll nicht daran hängen.
+  # Der Integrationsjob bleibt getrennt. Beide Jobs benötigen Root- und Web-Abhängigkeiten:
+  # Integrationstests importieren auch Webmodule und führen den gemeinsamen Typecheck aus.
   integration:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "24"
           cache: "npm"
       - run: npm ci
+      - run: npm ci --prefix apps/web
+      - name: browser (Chromium für die Postgres-Browser-Integration)
+        run: npx playwright install --with-deps chromium
       - name: integration (Postgres via Testcontainers)
         run: npm run test:integration
 # Regel: Nichts kommt nach main, das diese Pipeline nicht grün durchläuft.

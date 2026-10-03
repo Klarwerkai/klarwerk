@@ -171,6 +171,13 @@ export interface KlaraPolicyInput {
    * gleich") — und seit JOB 3767 liest dieser Resolver sie ebenso.
    */
   readonly zentralFreigegeben?: boolean | undefined;
+  /**
+   * F-0295 / R-0639 — DER STAND DES DOKUMENTTEXT-RIEGELS (`KLARA_DOCUMENT_TEXT_EGRESS_ENABLED`).
+   *
+   * Nur `true` zählt; fehlt das Feld, weist die Auflösung den Dokumenttext NICHT aus — dieselbe
+   * Lesart wie `zentralFreigegeben`. Gesetzt wird es ausschliesslich vom `KlaraSessionService`.
+   */
+  readonly dokumenttextFreigeschaltet?: boolean | undefined;
   /** Erzeugungszeitpunkt (ms). Injiziert, damit die Auflösung reproduzierbar ist. */
   readonly now: number;
   /**
@@ -302,6 +309,55 @@ export const KLARA_PAYLOAD_CLASS_CANDIDATE_TEXTS = "candidate_texts";
 export const KLARA_PAYLOAD_CLASSES: readonly string[] = Object.freeze([
   KLARA_PAYLOAD_CLASS_QUESTION,
   KLARA_PAYLOAD_CLASS_CANDIDATE_TEXTS,
+]);
+
+/**
+ * ================================================================================================
+ * F-0295 / R-0639 — DER MARKIERTE DOKUMENTTEXT IST EINE EIGENE, BENANNTE NUTZLASTKLASSE.
+ * ================================================================================================
+ *
+ * Pedis Weiche vom 18.08.2026: „Externe KI mit Dokumenttext: JA, aber nie still. Je Dokument eine
+ * ausdrückliche Einwilligung … Vertraulich Markiertes bleibt IMMER draußen." Der Kommentar über
+ * `KLARA_PAYLOAD_CLASS_QUESTION` hält fest, dass die markierte Passage (`selection`) das Modell
+ * bisher NICHT erreicht. Daran ändert diese Klasse nichts, solange ihr Riegel zu ist — sie macht den
+ * Weg BENENNBAR und PRÜFBAR, statt ihn in „question" oder „candidate_texts" zu verstecken:
+ *
+ *   · Sie steht NEBEN der Frage, nicht in ihr. Eine Zustimmung, die „Deine Frage" nennt, deckt den
+ *     Dokumenttext nicht mit.
+ *   · Sie hat eine EIGENE Deckungsprüfung (`pruefeDokumenttextDeckung` in
+ *     `services/app/src/services/klara-session-service.ts`): Vertraulichkeit, ausdrücklich erteilte
+ *     Klasse, genau dieses Dokument, genau diese Zustimmung — und zuletzt der Riegel.
+ *   · Eine Auflösung weist sie nur aus, wenn der Riegel offen ist (`dokumenttextFreigeschaltet`
+ *     unten). Bei geschlossenem Riegel steht sie in keiner Auflösung und damit in keiner Zustimmung —
+ *     die Zustimmung bleibt wahr, weil nichts hinausgeht, was sie nicht nennt.
+ */
+export const KLARA_PAYLOAD_CLASS_DOCUMENT_TEXT = "document_text";
+
+/**
+ * DER RIEGEL FÜR DEN DOKUMENTTEXT — er steht auf AUS.
+ *
+ * Er ist ein EIGENER Schalter neben dem Antwortweg-Schalter weiter oben und ausdrücklich nicht
+ * dessen Teil: der Antwortweg ist seit JOB 3079 freigeschaltet (Frage und Kandidatentexte, Pedis
+ * „JA" vom 05.09.2026), die Weitergabe des markierten Dokumenttexts ist es nicht. Sie umzulegen ist
+ * wegen des Datenabflusses eine eigene, ausdrückliche Entscheidung — kein Nebeneffekt eines
+ * Bauauftrags.
+ *
+ * GELESEN WIRD ER AN GENAU EINER STELLE: im `KlaraSessionService`, der ihn in jede Auflösung und in
+ * die Deckungsprüfung reicht. Dieser Resolver liest ihn nicht selbst, sondern bekommt sein Ergebnis
+ * als Eingabe — damit bleibt er rein, und die Gegenprobe (Riegel offen, sonst alles gleich) ist
+ * messbar, ohne den Wert im Produkt anzufassen
+ * (`tests/klara-dokumenttext/riegel-haelt-den-dokumenttext.test.ts`).
+ */
+export const KLARA_DOCUMENT_TEXT_EGRESS_ENABLED = false;
+
+/**
+ * Die Menge MIT Dokumenttext — ebenso eingefroren und ebenso in fester Reihenfolge wie die
+ * Grundmenge. Sie ist eine Obermenge: wer den Dokumenttext erlaubt, erlaubt ihn ZUSÄTZLICH.
+ */
+export const KLARA_PAYLOAD_CLASSES_WITH_DOCUMENT_TEXT: readonly string[] = Object.freeze([
+  KLARA_PAYLOAD_CLASS_QUESTION,
+  KLARA_PAYLOAD_CLASS_CANDIDATE_TEXTS,
+  KLARA_PAYLOAD_CLASS_DOCUMENT_TEXT,
 ]);
 
 /** Die Admin-Wahl auf die drei kanonischen Modi abbilden — die WUNSCHseite. */
@@ -543,7 +599,12 @@ export function resolveKlaraPolicy(input: KlaraPolicyInput): KlaraResolution {
     // BEN-35 Befund 1: die Auflösung nennt ihre Nutzlastklassen selbst. Sie ist für jeden Modus
     // gleich, weil der Server für jeden Modus dasselbe versendet — Frage und Kandidatentexte. Das
     // ist ehrlicher als eine modusabhängige Menge zu erfinden, die keinem Codepfad entspricht.
-    effectivePayloadClasses: KLARA_PAYLOAD_CLASSES,
+    // R-0639: der Dokumenttext kommt NUR bei offenem Riegel dazu — dann versendet der Server ihn
+    // (nach seiner eigenen Deckungsprüfung) tatsächlich, und die Zustimmung muss ihn nennen.
+    effectivePayloadClasses:
+      input.dokumenttextFreigeschaltet === true
+        ? KLARA_PAYLOAD_CLASSES_WITH_DOCUMENT_TEXT
+        : KLARA_PAYLOAD_CLASSES,
   };
 }
 

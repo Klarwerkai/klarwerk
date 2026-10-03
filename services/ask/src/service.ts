@@ -721,6 +721,9 @@ export class AskService {
         this.koService.findCandidates({
           terms: [term],
           limit: ASK_PREFILTER_TERM_LIMIT,
+          // AUFNAHME 20260922 (R-0316): der Deckel je Begriff wächst mit dem Bestand (Regel an
+          // `bestandsgerechterKandidatendeckel`). Bis 5.000 Objekte bleibt er bei 50.
+          deckelWaechstMitBestand: true,
           // D5: die Sperre reist mit bis vor jedes Lesen in Suche und Nachladen (s. KoService).
           ...(this.kiSperre
             ? { vorInhaltsabruf: () => this.pruefeKiSperre("vorauswahl", kiBeginn) }
@@ -743,9 +746,17 @@ export class AskService {
         gesammelt.set(kandidat.id, { ko: kandidat, termTreffer: 1, besterRang: rang });
       });
     }
+    // AUFNAHME 20260922 (R-0316): eine vollständige Einzelliste wird von der Vereinigung nie
+    // gekürzt. Ist der Deckel je Begriff über 200 gewachsen, stünde die Kürzung sonst wieder in
+    // der Ausgabeordnung (validiert ↓, Trust ↓) — und nähme genau den Titeltreffer mit niedrigem
+    // Trust weg, den die Güteauswahl im Deckel eben hereingeholt hat.
+    const gesamtDeckel = Math.max(
+      ASK_CANDIDATE_PREFILTER_LIMIT,
+      ...trefferlisten.map((liste) => liste.length),
+    );
     return [...gesammelt.values()]
       .sort((a, b) => b.termTreffer - a.termTreffer || a.besterRang - b.besterRang)
-      .slice(0, ASK_CANDIDATE_PREFILTER_LIMIT)
+      .slice(0, gesamtDeckel)
       .map((eintrag) => eintrag.ko);
   }
 
@@ -799,6 +810,13 @@ export class AskService {
        * Vorauswahl. Ohne das Feld ist der Ablauf Zeile für Zeile der bisherige.
        */
       selection?: string;
+      /**
+       * F-0295 / R-0639: die Route hat die EIGENE Deckungsprüfung des Dokumenttexts bestanden
+       * (`dokumenttextFreigabe` in `services/app/src/routes/ask-routes.ts`). Nur dann — und nur auf
+       * dem Modellweg, nie mit `retrievalOnly` — geht `selection` als benannter Dokumenttext an
+       * `Reasoner.answer`. Kein Rumpffeld: gesetzt wird es ausschliesslich von der Route.
+       */
+      dokumenttextFreigegeben?: boolean;
     },
   ): Promise<AskResult> {
     // D5: die Abschalt-Epoche beim Beginn DIESER Frage — jede Prüfung unten vergleicht mit ihr.
@@ -943,6 +961,11 @@ export class AskService {
     // Auf `prefilteredRaw` abzuleiten wäre falsch: dann würde eine Frage, die zufällig ein
     // vertrauliches Objekt streift, ihre Antwort verlieren, obwohl das Objekt längst entfernt ist.
     const kontextVertraulich = prefiltered.some((ko) => isConfidential(ko.confidentiality));
+    // F-0295 / R-0639: der markierte Dokumenttext — nur mit bestandener eigener Deckungsprüfung.
+    const dokumenttext =
+      opts?.dokumenttextFreigegeben === true && opts.selection?.trim()
+        ? opts.selection.trim()
+        : undefined;
     // D5: die gelesenen Kandidaten gehen gleich an den Antwortweg (Modell oder deterministischer
     // Ersatz). Wurde inzwischen abgeschaltet, verlassen sie diesen Dienst nicht.
     this.pruefeKiSperre("antwortweg", kiBeginn);
@@ -965,6 +988,7 @@ export class AskService {
             // JOB 3049: TOR 2, üblicher Weg. Der Relevanztext geht an die Kandidatenauswahl des
             // Providers — NICHT in den Modellprompt; der baut unverändert auf `question` auf.
             relevanz,
+            dokumenttext,
           ),
     );
     // D5: danach werden Beleg, Wissenslücke und (in der Route) die Quellobjekte der Einstufung

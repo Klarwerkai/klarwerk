@@ -41,6 +41,7 @@ import {
 import { useDiktat } from "../components/start/useDiktat";
 // A27 (OFFEN.md:81) · JOB 3025: DIESELBE Funktion wie auf der Detailseite — ein zweiter
 // Ableitungsweg wäre genau die Drift, an der JOB 3002 Runde 4 fiel.
+import { askAnswerHref } from "../lib/askQuestion";
 import { eigeneKollisionStart } from "../lib/eigeneKollision";
 // JOB 3098 · Q6b: der Onlinezustand wird GEREICHT, nicht gedeutet — aus derselben einen Quelle wie
 // an den zwei Flächen von JOB 3084 (`components/start/StartPanel.tsx:88`).
@@ -105,7 +106,11 @@ export function Start(): JSX.Element {
   const absenden = (e: FormEvent): void => {
     e.preventDefault();
     const begriff = frage.trim();
-    navigate(begriff ? `/fragen?q=${encodeURIComponent(begriff)}` : "/fragen");
+    // N-0007 (Ben R1, F9): Enter auf Start STELLT die Frage — bis hierher füllte es das Feld auf
+    // /fragen nur vor, und die Antwort brauchte einen zweiten Klick. `askAnswerHref` setzt den
+    // Antwortwunsch (`ask=1`), den /fragen über denselben zentralen Submit einlöst: ohne nutzbares
+    // Modell wird dort nichts gesendet, nur vorbefüllt; der Wartezustand steht auf /fragen.
+    navigate(begriff ? askAnswerHref(begriff) : "/fragen");
   };
 
   // ---- Die drei Quellen von „FÜR DICH" (keine neue: alle drei standen schon auf dieser Seite) ---

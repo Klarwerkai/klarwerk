@@ -160,6 +160,12 @@ describe("JOB 3060 · H1 · die drei Orte der Navigation", () => {
       "topbar.notifications",
       "topbar.design.classic",
       "topbar.design.modern",
+      // FE-002 (26.09.2026): die sichtbaren Namen der vier Zwecke im Kopfband.
+      "fe002.arbeitsbereiche",
+      "fe002.wissenSuchen",
+      "fe002.seiteFinden",
+      "fe002.einstellungen",
+      "fe002.meldungen",
     ]) {
       for (const lng of ["de", "en", "nl"]) {
         expect(sprache(lng, key).length, `${key} fehlt in ${lng}`).toBeGreaterThan(0);

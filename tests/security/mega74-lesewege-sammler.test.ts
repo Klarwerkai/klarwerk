@@ -351,6 +351,12 @@ const REGISTER: Record<string, Eintrag> = {
     recht: "ko.validate",
     grund: "Projektion entfernt actor/subject (model-runs-routes.ts:46).",
   },
+  // Aufnahme gesamt-ki-laufprotokoll: nur Zähler und Summen über Läufe (Aufgabe, Status, Token,
+  // Kosten) — kein Anfragender, kein Gegenstand, kein Fehlertext, kein Wissensobjekt.
+  "GET /api/model-runs/auswertung": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "nur Laufsummen je Aufgabe/Währung (model-runs-routes.ts:52-68).",
+  },
   "GET /api/analytics/expertise": {
     urteil: "KURATORENTOR",
     recht: "ko.assign",

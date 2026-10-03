@@ -578,6 +578,8 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
     zeilenrecht: ["sichtbarkeitsfilterFuer"],
   },
   "GET /api/model-runs": { protection: "ko.read" },
+  // Aufnahme gesamt-ki-laufprotokoll: Zeitraum-Auswertung (nur Summen) — dieselbe Lesestufe.
+  "GET /api/model-runs/auswertung": { protection: "ko.read" },
   "GET /api/external/search": { protection: "ko.read" },
   // Der Feed wird über den lokalen Helfer `loadFeed` gebaut; dessen RUMPF ruft beide Prädikate
   // (notifications-routes.ts:116) — nachgeprüft, nicht dem Helfernamen geglaubt.
@@ -654,6 +656,12 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // und BEWUSST kein weitergehendes Recht (auch eine Betrachterin muss wissen, welche Flächen es
   // gibt, sonst rendert die Oberfläche für sie tote Knöpfe).
   "GET /api/features": { protection: "auth" },
+
+  // --- Supportweg dieser Installation (support-routes.ts, R-1064) ---
+  // Rein lesend: der vom Betreiber festgelegte, serverseitig geprüfte Kontakt für die Hilfeseite.
+  // Angemeldete Nutzung genügt (requireUser) — dieselbe Tür wie /api/features; die Hilfe steht
+  // jeder Rolle offen, ein Adminrecht würde den Supportweg genau vor Betrachterinnen verstecken.
+  "GET /api/support": { protection: "auth" },
 
   // --- Erscheinungsbild der Instanz (branding-routes.ts, JOB 3510) ---
   // Die Markenwahl ist Darstellungslage, kein Bestand: ein Profilname, zwei Logofarben, ein

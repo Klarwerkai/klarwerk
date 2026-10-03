@@ -466,7 +466,8 @@ async function pruefeAehnlichenFundort(): Promise<void> {
   });
   const fundort = chip()?.querySelector('[data-testid="live-fundort"]');
   expect(fundort?.textContent).toContain("Anlage");
-  expect(fundort?.textContent).toContain(i18n.t("status.offen"));
+  // P-M3b (BEN-3): der Prüfstand steht im Wortlaut der Trefferlisten, derselbe wie im Word-Panel.
+  expect(fundort?.textContent).toContain(i18n.t("intake.live.pruefstand.offen"));
   expect(chip()?.querySelector("a")?.getAttribute("href")).toBe("/wissen/kc");
   expect(chip()?.querySelector("a")?.textContent).toBe("Kaltstart Vorwärmung");
 }

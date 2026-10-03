@@ -136,6 +136,10 @@ import {
   type ModelRunRepo,
   ModelRunService,
   PgModelRunRepo,
+  ProtokollModelRunRepo,
+  lesePreisliste,
+  mitKiTrace,
+  traceKontextAus,
 } from "../../model-runs";
 import {
   ConsoleMailer,
@@ -227,7 +231,7 @@ import {
   type LesevariantenRepo,
   PgLesevariantenRepo,
 } from "./lesevarianten";
-import { sanitizeLogText } from "./log-sanitize";
+import { entferneGeheimeEnvWerte, sanitizeLogText } from "./log-sanitize";
 import { makeAssignmentNotifier } from "./notify";
 // AUFTRAG-mega20 Block C: die modulübergreifende Referenzprüfung lebt in services/app (s. Datei).
 import type { ObjectReferenceSources } from "./object-references";
@@ -283,6 +287,7 @@ import { reasonerRoutes } from "./routes/reasoner-routes";
 // JOB 4086: Adapter #2 des quellneutralen Import-Vertrags — SharePoint/OneDrive.
 import { sharepointImportRoutes } from "./routes/sharepoint-import-routes";
 import { slidesRoutes } from "./routes/slides-routes";
+import { supportKontaktAusUmgebung, supportRoutes } from "./routes/support-routes";
 import { validationRoutes } from "./routes/validation-routes";
 // G27 R2 (Entscheidung 15 §A): der EINE kanonische Startupvertrag der Suchprojektion — von
 // App-Ready hier und von `runSeed()` in `seed.ts` gemeinsam benutzt.
@@ -907,12 +912,17 @@ export function assembleServices(
   // gesetzt sind — ebenfalls gecappt (globaler Cap), aber ohne Egress-Wächter (on-prem, kein externer
   // Egress → bedient vertrauliche Inhalte weiter). Werte aus Launcher/Schlüsselbund, nie aus dem Code.
   const cappedLocal = createCappedLocalClientFromEnv();
+  // Aufnahme gesamt-ki-laufprotokoll (V9, R-2071): EIN Schreibweg für alle Läufe — er berechnet die
+  // Kosten aus der Preisliste des Betreibers (`KLARWERK_KI_PREISLISTE`, ohne Vorgabepreise) und
+  // schreibt je Lauf die strukturierte Logzeile `ki_lauf` (verbunden in `buildApp`).
+  const preislisteLesung = lesePreisliste(process.env.KLARWERK_KI_PREISLISTE);
+  const modelRunProtokoll = new ProtokollModelRunRepo(repos.modelRuns, preislisteLesung.preisliste);
   // SCRUM-164: ModelRun-Protokoll mitgeben (No-op-fähig); API-Shape des Reasoners unverändert.
   const reasoner = new Reasoner(
     // JOB 3134: kein `primary` mehr — die externen Anbieter kommen benannt über `cloud` (unten).
     undefined,
     undefined,
-    repos.modelRuns,
+    modelRunProtokoll,
     // SCRUM-386: Presets über das Repo — persistent in Pg bzw. im Dev-Journal der Desktop-App.
     repos.assistPresets,
     // SCRUM-424: zweites Backend (lokaler LLM) als optionaler Provider.
@@ -1306,7 +1316,12 @@ export function assembleServices(
           .map((k) => k.confidentiality ?? "intern"),
     }),
     // SCRUM-165: read-only ModelRun-Sicht über dasselbe Protokoll-Repo wie der Reasoner.
-    modelRuns: new ModelRunService({ repo: repos.modelRuns }),
+    modelRuns: new ModelRunService({
+      repo: modelRunProtokoll,
+      preisliste: preislisteLesung.preisliste,
+      ...(preislisteLesung.fehler ? { preislisteFehler: preislisteLesung.fehler } : {}),
+      protokoll: modelRunProtokoll,
+    }),
     // FR-AUTH-08/FR-VAL-07: SMTP, wenn konfiguriert; sonst sammelnder Fallback ohne Versand.
     mailer: createMailerFromEnv() ?? new ConsoleMailer(),
     // Audit-P3 (SCRUM-397): Gelesen-Status der Glocke — Repo direkt (schmale Modul-API).
@@ -2079,9 +2094,27 @@ export function senkeUeberWert(
   }
   const ergebnis: Record<string, unknown> = {};
   for (const [schluessel, inhalt] of Object.entries(wert)) {
-    ergebnis[schluessel] = senkeUeberWert(inhalt, env, tiefe + 1);
+    // Ben R3 B8: die Trace-Ausnahme setzt NUR die Token-Regel aus — der Wert einer
+    // secret-benannten Env-Variablen wird auch unter einem Trace-Feldnamen entfernt.
+    ergebnis[schluessel] = istTraceKennung(schluessel, inhalt)
+      ? entferneGeheimeEnvWerte(inhalt, env)
+      : senkeUeberWert(inhalt, env, tiefe + 1);
   }
   return ergebnis;
+}
+
+// Aufnahme gesamt-ki-laufprotokoll (Ben R2 B5, Tracing): Regel 4 von `sanitizeLogText` liest jedes
+// Wort ab 24 Zeichen als Token — eine W3C-Trace-Kennung (32 Hexzeichen) wurde damit zu `[redacted]`,
+// und die Logzeile ließ sich ihrem Trace nicht mehr zuordnen. Die Ausnahme ist so eng wie möglich:
+// NUR unter genau diesen drei Feldnamen und NUR in der W3C-Form (16 oder 32 Kleinbuchstaben-Hex).
+// Derselbe Wert unter jedem anderen Namen und jeder andere Wert unter diesen Namen bleibt der
+// Bereinigung unterworfen (tests/ki-lauf-protokoll/kosten-und-auswertung.test.ts, L1); die Werte
+// secret-benannter Env-Variablen werden auch unter diesen Namen entfernt (Ben R3 B8, L2).
+const TRACE_FELDER: ReadonlySet<string> = new Set(["traceId", "spanId", "parentSpanId"]);
+const TRACE_KENNUNG = /^(?:[0-9a-f]{16}|[0-9a-f]{32})$/;
+
+function istTraceKennung(schluessel: string, inhalt: unknown): inhalt is string {
+  return TRACE_FELDER.has(schluessel) && typeof inhalt === "string" && TRACE_KENNUNG.test(inhalt);
 }
 
 /**
@@ -2196,6 +2229,24 @@ export function buildApp(
   // Fehler wird formtreu an Fastifys Standard-Fehlerbehandlung weitergereicht (Validierungs-400 etc.
   // unverändert).
   app.setErrorHandler(modelBusyErrorHandler);
+  // Aufnahme gesamt-ki-laufprotokoll (R-2071): je KI-Lauf eine strukturierte Logzeile `ki_lauf`
+  // (nur Metadaten, s. `kiLaufLogzeile`) über den App-Logger mit seinen Redaktionsregeln.
+  // Ben R2 B5 (R-2071, Tracing): je Anfrage ein Trace-Kontext nach W3C Trace Context — ein
+  // eingehender `traceparent` wird fortgesetzt, sonst entsteht ein neuer Trace. Jeder KI-Lauf der
+  // Anfrage trägt `traceId`, seinen Span, den Span der Anfrage und die Anfragekennung (`request.id`,
+  // dieselbe wie in den Anfrage-Logzeilen). Geöffnet im `preHandler`, also NACH dem Lesen des
+  // Körpers: die Stream-Ereignisse des Körpers laufen sonst außerhalb des Kontexts, und der Handler
+  // samt aller asynchronen Fortsetzungen läuft hier sicher darin.
+  app.addHook("preHandler", (request, _reply, done) => {
+    mitKiTrace(traceKontextAus(request.headers.traceparent, request.id), done);
+  });
+  // Optional aufgerufen: Prüfaufbauten ersetzen `modelRuns` teils durch eine schmale Attrappe nur
+  // mit `recent` (tests/deploy-health-commit) — die App muss auch dann entstehen.
+  services.modelRuns.logAn?.((zeile) => app.log.info(zeile, "ki_lauf"));
+  const preisgrundlage = services.modelRuns.preisgrundlage?.();
+  if (preisgrundlage?.fehler) {
+    app.log.warn({ event: "ki_preisliste" }, preisgrundlage.fehler);
+  }
   // G27 R1 / Entscheidung 06 §3 — DIE READINESS-BINDUNG.
   //
   // `onReady` ist der von Fastify vorgesehene asynchrone Start-/Ready-Pfad: `app.ready()`,
@@ -3023,7 +3074,8 @@ export function buildApp(
   );
   // SCRUM-491 Slice 5: /api/check-text existiert NUR bei aktivem Add-on-Flag — sonst gar nicht
   // registriert → Endpunkt existiert nicht → bit-identisch zum heutigen Verhalten. Deterministische
-  // Stufe-1-Dry-Run-Prüfung (validated-only, kein Modell, keine Persistenz).
+  // Stufe-1-Dry-Run-Prüfung (kein Modell, keine Persistenz; nur Validiertes gilt allein für den
+  // Add-in-Pfad, der Session-Pfad prüft seit JOB 3020 auch Ungeprüftes — check-text-routes.ts).
   if (addonApiEnabled()) {
     app.register(
       checkTextRoutes(
@@ -3097,6 +3149,10 @@ export function buildApp(
   app.register(reasonerRoutes({ ...services, ka4: klaraSessions }, guards));
   // Klara Stufe 2 (Pedi 05.07.): KI-gestuetzte Hilfe-Antwort aus Hilfe-Schnipseln (help-routes).
   app.register(helpRoutes({ reasoner: services.reasoner }, guards));
+  // R-1064: der vom Betreiber festgelegte Supportweg dieser Installation (optional, kein
+  // Pflichtwert für den Start). Gelesen EINMAL hier beim Aufbau; Zustände und Prüfung in
+  // support-routes.ts.
+  app.register(supportRoutes({ kontakt: supportKontaktAusUmgebung(process.env) }, guards));
   // AUFTRAG-mega74 BLOCK C (G2): der Anhang-Lesepfad erfährt hier — und nur hier —, welche
   // Wissensobjekte einen Anhang tragen. `services/object-store` darf das nicht selbst wissen
   // (dieselbe Modulgrenze wie object-references.ts); die Kompositionswurzel reicht den Zugang.

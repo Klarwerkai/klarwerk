@@ -78,6 +78,7 @@ import type {
   LiveWall,
   ManagementSnapshot,
   MediaAnalysis,
+  ModelRunAuswertungAntwort,
   ModelRunRecord,
   MyImpact,
   Neighborhood,
@@ -1033,6 +1034,9 @@ export const endpoints = {
   modelRuns: {
     recent: (limit?: number) =>
       api.get<ModelRunRecord[]>(`/model-runs${qs({ limit: limit?.toString() })}`),
+    // Aufnahme gesamt-ki-laufprotokoll (V9, R-2071): Auswertung eines Zeitraums.
+    auswertung: (von: string, bis: string) =>
+      api.get<ModelRunAuswertungAntwort>(`/model-runs/auswertung${qs({ von, bis })}`),
   },
   // SCRUM-169: KO-übergreifender read-only Evidence-Index (QM/Stufe 2; nur Metadaten).
   evidence: {

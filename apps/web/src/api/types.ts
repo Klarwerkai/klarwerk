@@ -243,7 +243,11 @@ export interface KoVersionSnapshot {
 // Begründung bei `REASONER_TASKS`, :1360-1366). Der Typ bleibt ein Spiegel; die Bindung an das
 // Original leistet `tests/ki-aufgabenarten/aufgabenarten-eine-wahrheit.test.ts` (R3), der rot
 // wird, sobald eine Seite wandert — in beide Richtungen.
-export type ModelRunTask = ReasonerTask;
+//
+// Aufnahme gesamt-ki-laufprotokoll (Ben R1 B2): das Protokoll kennt seither vier Arten MEHR als die
+// KI-Zuordnung (`enrich`, `conflict`, `duplicate`, `probe`). Die Liste der Laufarten ist deshalb
+// `MODEL_RUN_TASKS` (bei `REASONER_TASKS` unten) — die acht Zuordnungsaufgaben plus diese vier.
+export type ModelRunTask = (typeof MODEL_RUN_TASKS)[number];
 export type ModelRunStatus = "success" | "error";
 
 // JOB 3074: der Tokenverbrauch eines Laufs, so wie die Modell-API ihn selbst gemeldet hat.
@@ -255,13 +259,106 @@ export type ModelRunStatus = "success" | "error";
 // deckungsgleich BLEIBEN, prüft der Compiler in `tests/ki-lauf-verbrauch/eine-wahrheit.test.ts` —
 // dieselbe Bauform, mit der JOB 3069 die Aufgabenarten gebunden hat.
 //
-// KEIN PREIS: hier stehen Token, keine Kosten. Die Preisliste je Modell ist Pedis Entscheid und eine
-// eigene Scheibe; ohne sie zeigt die Oberfläche keine Kostenzahl — sie erfindet keine.
+// KEIN PREIS HIER: hier stehen Token. Die Kosten sind ein eigener Nachweis (`ModelRunKosten` unten,
+// Aufnahme gesamt-ki-laufprotokoll) und entstehen nur aus der Preisliste des Betreibers; ohne sie
+// zeigt die Oberfläche keine Kostenzahl — sie erfindet keine.
 export interface ModelRunVerbrauch {
   eingabeToken: number;
   ausgabeToken: number;
   /** Zahl der Modellaufrufe dieses Laufs, die einen Verbrauch gemeldet haben — die Grundmenge. */
   gemeldeteAufrufe: number;
+}
+
+// Aufnahme gesamt-ki-laufprotokoll (V9, Ben R1 B3): Kosten eines Laufs aus Verbrauch × Preisliste
+// des Betreibers, mit Preisstand. Spiegel von `ModelRunKosten` in `services/model-runs/src/types.ts`.
+// FEHLT, wenn keine Preisliste oder kein Preis für das Modell hinterlegt ist — dann steht nichts da.
+export interface ModelRunKosten {
+  betrag: number;
+  waehrung: string;
+  preisstand: string;
+}
+
+// Aufnahme gesamt-ki-laufprotokoll (Ben R1 B4): Art und Anzahl des Erzeugten, nie der Inhalt.
+export type ModelRunErzeugnisArt =
+  | "vorschlag"
+  | "text"
+  | "frage"
+  | "antwort"
+  | "punkt"
+  | "beschreibung"
+  | "gruppe"
+  | "kriterien"
+  | "urteil";
+
+export interface ModelRunErzeugnis {
+  art: ModelRunErzeugnisArt;
+  anzahl: number;
+}
+
+// Ben R2 B3/B5: Versuche (je Modell eigener Verbrauch, eigener Span) und Trace eines Laufs.
+// Spiegel von `ModelRunVersuch`/`ModelRunTrace` in `services/model-runs/src/types.ts`.
+export interface ModelRunVersuch {
+  provider: string;
+  model?: string;
+  startedAt: string;
+  dauerMs: number;
+  ausgang: "erfolg" | "fehler";
+  verbrauch?: ModelRunVerbrauch;
+  aufrufe?: number;
+  spanId: string;
+}
+
+export interface ModelRunTrace {
+  traceId: string;
+  spanId: string;
+  parentSpanId?: string;
+  requestId?: string;
+}
+
+// Aufnahme gesamt-ki-laufprotokoll (V9, R-2071): Antwort von `GET /api/model-runs/auswertung`.
+export interface ModelRunAufgabenWerte {
+  laeufe: number;
+  fehler: number;
+  eingabeToken: number;
+  ausgabeToken: number;
+}
+
+export interface ModelRunKostensumme {
+  waehrung: string;
+  betrag: number;
+  laeufe: number;
+}
+
+export interface ModelRunAuswertung {
+  von: string;
+  bis: string;
+  laeufe: number;
+  erfolg: number;
+  fehler: number;
+  rueckfall: number;
+  demo: number;
+  jeAufgabe: Record<string, ModelRunAufgabenWerte>;
+  dauerSummeMs: number;
+  dauerGezaehlt: number;
+  eingabeToken: number;
+  ausgabeToken: number;
+  verbrauchGezaehlt: number;
+  kosten: ModelRunKostensumme[];
+  verbrauchOhneKosten: number;
+  gekappt: boolean;
+}
+
+export interface ModelRunPreisgrundlage {
+  hinterlegt: boolean;
+  waehrung?: string;
+  preisstand?: string;
+  modelle?: number;
+  fehler?: string;
+}
+
+export interface ModelRunAuswertungAntwort {
+  auswertung: ModelRunAuswertung;
+  preisgrundlage: ModelRunPreisgrundlage;
 }
 
 export interface ModelRunRecord {
@@ -279,6 +376,10 @@ export interface ModelRunRecord {
   // JOB 3074: FEHLT, wenn keine Modell-API in diesem Lauf einen Verbrauch genannt hat. Das Fehlen
   // ist eine Aussage und wird nie zu `0` geglättet — die Fläche schreibt dann nichts hin.
   verbrauch?: ModelRunVerbrauch;
+  kosten?: ModelRunKosten;
+  erzeugt?: ModelRunErzeugnis;
+  versuche?: ModelRunVersuch[];
+  trace?: ModelRunTrace;
 }
 
 export type EvidenceKind = "source" | "attachment";
@@ -2272,6 +2373,18 @@ export const REASONER_TASKS = [
 
 // Abgeleitet, nicht abgeschrieben — die Union kann nicht mehr hinter der Liste zurückbleiben.
 export type ReasonerTask = (typeof REASONER_TASKS)[number];
+
+// Aufnahme gesamt-ki-laufprotokoll (Ben R1 B2): die Laufarten des Protokolls — die acht Aufgaben der
+// KI-Zuordnung plus die vier Modellwege, die über die globale Wahl laufen. Spiegel der Union
+// `ModelRunTask` in `services/model-runs/src/types.ts`; gebunden durch
+// `tests/ki-aufgabenarten/aufgabenarten-eine-wahrheit.test.ts`.
+export const MODEL_RUN_TASKS = [
+  ...REASONER_TASKS,
+  "enrich",
+  "conflict",
+  "duplicate",
+  "probe",
+] as const;
 
 // JOB 3134 (KI-WAHL): die beiden externen Anbieter sind eigene Auswahlwerte. Dieselbe Liste wie
 // `services/reasoner/src/types.ts` (`REASONER_CLOUD_ANBIETER`) — hier gehalten und nicht importiert,

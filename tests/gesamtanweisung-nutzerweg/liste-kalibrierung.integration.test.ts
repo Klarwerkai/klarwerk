@@ -272,7 +272,7 @@ describe("JOB 4357 · Kalibrierung: vier Verstellungen, die den Listenweg rot ma
   async function deutscherMenueweg(seite: Seite): Promise<void> {
     await menuewegOhneMaus(
       seite,
-      sprachbestand("de")["menue.weitereBereiche"] ?? "",
+      sprachbestand("de")["fe002.arbeitsbereiche"] ?? "",
       sprachbestand("de")["ga.bereich.titel"] ?? "",
       "de",
     );
