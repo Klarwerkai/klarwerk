@@ -22,6 +22,12 @@
 //   F1  Filterleiste: Status allein und zusammen mit dem Titelteil (Suche)
 //   D1  Detailfenster: Titel, Status, Konflikte, Verbindungen mit Grund, Öffnen-Link — rein lesend
 //   D2  fällt der Eintrag aus dem Filter, schließt das Detailfenster
+//   F5a Nacharbeit 5: Konfliktabfrage läuft → „werden erhoben“; scheitert sie danach ohne Cache →
+//       „nicht erhoben“ — nie eine 0 aus einem leeren Ersatz
+//   F5b sofort gescheitert → „nicht erhoben“
+//   F5c erfolgreiche Gegenfälle: [] → 0, ein offener Konflikt an n1 → 1
+//   S1–S4 R-1983: die kuratierte Sicht „So arbeitet Klarwerk“ — zugeklappt als Vorgabe, nur gesetzte
+//       Fachbeziehungen mit beiden Einträgen, „nicht geliefert“ ≠ „keine gesetzt“, Kürzung genannt
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../apps/web/src/app/RoleContext", () => ({
@@ -40,6 +46,12 @@ const JUENGSTER_IM_GRAPHEN = "2026-09-30T10:00:00.000Z";
 const d = vi.hoisted(() => ({
   dublettenFehler: false,
   anstehendHaengt: false,
+  /** Nacharbeit 5: Konfliktantwort — Bestand, hängend, Fehler, leer, genau einer an n1. */
+  konflikte: "bestand" as "bestand" | "haengt" | "fehler" | "leer" | "einer",
+  /** Nacharbeit 5: gesetzte Fachbeziehungen — vorhanden, nicht geliefert, leer, gekürzt. */
+  kuratiert: "da" as "da" | "fehlt" | "leer" | "gekuerzt",
+  /** Lehnt die hängende Konfliktabfrage ab („danach scheitert sie"). */
+  konflikteAblehnen: (_grund: unknown): void => undefined,
   duplicates: vi.fn(),
   pending: vi.fn(),
   luecken: vi.fn(),
@@ -84,42 +96,75 @@ vi.mock("../../apps/web/src/api/endpoints", () => {
   }));
   const base: Record<string, unknown> = {
     library: {
-      graph: vi.fn(async () => ({
-        nodes: [
-          { id: "n1", title: "Pumpe P2 schmieren" },
-          { id: "n2", title: "Pumpe P3 schmieren" },
-          { id: "n3", title: "Ventil X schliessen" },
-          { id: "n4", title: "Filter F3 pruefen" },
-          { id: "n5", title: "Notstrom testen" },
-        ],
-        edges: [{ a: "n1", b: "n2", via: "pumpe" }],
-        kuratierteKanten: [
-          {
-            a: "n2",
-            b: "n3",
-            art: "ergaenzt",
-            richtung: "ungerichtet",
-            status: "aktiv",
-            herkunft: "kuratiert",
-          },
-        ],
-        kuratierteKantenGesamt: 1,
-        kuratierteKantenGekuerzt: false,
-      })),
+      graph: vi.fn(async () => {
+        const grund = {
+          nodes: [
+            { id: "n1", title: "Pumpe P2 schmieren" },
+            { id: "n2", title: "Pumpe P3 schmieren" },
+            { id: "n3", title: "Ventil X schliessen" },
+            { id: "n4", title: "Filter F3 pruefen" },
+            { id: "n5", title: "Notstrom testen" },
+          ],
+          edges: [{ a: "n1", b: "n2", via: "pumpe" }],
+        };
+        const kante = {
+          a: "n2",
+          b: "n3",
+          art: "ergaenzt",
+          richtung: "ungerichtet",
+          status: "aktiv",
+          herkunft: "kuratiert",
+        };
+        if (d.kuratiert === "fehlt") {
+          return grund;
+        }
+        if (d.kuratiert === "leer") {
+          return {
+            ...grund,
+            kuratierteKanten: [],
+            kuratierteKantenGesamt: 0,
+            kuratierteKantenGekuerzt: false,
+          };
+        }
+        return {
+          ...grund,
+          kuratierteKanten: [kante],
+          kuratierteKantenGesamt: d.kuratiert === "gekuerzt" ? 7 : 1,
+          kuratierteKantenGekuerzt: d.kuratiert === "gekuerzt",
+        };
+      }),
     },
     conflicts: {
-      list: vi.fn(async () => [
-        { id: "c1", koA: "n1", koB: "n3", status: "offen", createdAt: "2026-09-01T00:00:00Z" },
-        { id: "c2", koA: "n4", koB: "n5", status: "geloest", createdAt: "2026-09-01T00:00:00Z" },
-        // Ein Konflikt ausserhalb der Graphantwort darf keine Zahl erhoehen.
-        {
-          id: "c3",
-          koA: "fremd",
-          koB: "fremd-2",
-          status: "offen",
-          createdAt: "2026-09-01T00:00:00Z",
-        },
-      ]),
+      list: vi.fn(() => {
+        if (d.konflikte === "haengt") {
+          return new Promise((_, ablehnen) => {
+            d.konflikteAblehnen = ablehnen;
+          });
+        }
+        if (d.konflikte === "fehler") {
+          return Promise.reject(new Error("Pruefstand: Konflikte gestoert"));
+        }
+        if (d.konflikte === "leer") {
+          return Promise.resolve([]);
+        }
+        if (d.konflikte === "einer") {
+          return Promise.resolve([
+            { id: "c9", koA: "n1", koB: "n4", status: "offen", createdAt: "2026-09-01T00:00:00Z" },
+          ]);
+        }
+        return Promise.resolve([
+          { id: "c1", koA: "n1", koB: "n3", status: "offen", createdAt: "2026-09-01T00:00:00Z" },
+          { id: "c2", koA: "n4", koB: "n5", status: "geloest", createdAt: "2026-09-01T00:00:00Z" },
+          // Ein Konflikt ausserhalb der Graphantwort darf keine Zahl erhoehen.
+          {
+            id: "c3",
+            koA: "fremd",
+            koB: "fremd-2",
+            status: "offen",
+            createdAt: "2026-09-01T00:00:00Z",
+          },
+        ]);
+      }),
     },
     ko: {
       list: vi.fn(async () => [
@@ -249,6 +294,8 @@ const quote = (was: string, anzahl: number, nenner: number): string =>
 beforeEach(async () => {
   d.dublettenFehler = false;
   d.anstehendHaengt = false;
+  d.konflikte = "bestand";
+  d.kuratiert = "da";
   await i18n.changeLanguage("de");
 });
 
@@ -389,11 +436,120 @@ describe("R-0744 · Kopfkennzahlen, Filterleiste, Suche und Detailfenster — re
     expect(marke("graph-detail")).toBeNull();
   });
 
+  // ---- Nacharbeit 5 (BEN, F5): die Konfliktzahl im Detailfenster nur bei vorliegender Antwort ----
+  const oeffneN1 = async (): Promise<void> => {
+    await klick(container.querySelector('[data-id="n1"] [data-testid="graph-objekt-details"]'));
+    expect(marke("graph-detail")?.getAttribute("data-id")).toBe("n1");
+  };
+
+  it("F5a · Konfliktabfrage läuft: „werden erhoben“ statt 0 — und scheitert sie danach ohne Cache: „nicht erhoben“, weiter keine 0", async () => {
+    d.konflikte = "haengt";
+    await mount();
+    await oeffneN1();
+    const zeile = (): HTMLElement | null => marke("graph-detail-konflikte");
+    expect(zeile()?.getAttribute("data-zustand")).toBe("laedt");
+    expect(zeile()?.textContent).toBe(i18n.t("graph.detail.konflikteLaedt"));
+    expect(zeile()?.textContent ?? "").not.toMatch(/\d/);
+    // DANACH scheitert dieselbe Abfrage — es gibt keinen Cache, aus dem eine Zahl käme.
+    await act(async () => {
+      d.konflikteAblehnen(new Error("Pruefstand: Konflikte gestoert"));
+      await flush();
+    });
+    await act(flush);
+    expect(zeile()?.getAttribute("data-zustand")).toBe("nicht-erhoben");
+    expect(zeile()?.textContent).toBe(i18n.t("graph.detail.konflikteNichtErhoben"));
+    expect(zeile()?.textContent ?? "").not.toMatch(/\d/);
+  });
+
+  it("F5b · gleich gescheitert ohne Cache: „nicht erhoben“, keine 0", async () => {
+    d.konflikte = "fehler";
+    await mount();
+    await oeffneN1();
+    expect(marke("graph-detail-konflikte")?.getAttribute("data-zustand")).toBe("nicht-erhoben");
+    expect(marke("graph-detail-konflikte")?.textContent).toBe(
+      i18n.t("graph.detail.konflikteNichtErhoben"),
+    );
+  });
+
+  it("F5c · erfolgreiche Gegenfälle: [] ergibt 0, ein offener Konflikt an n1 ergibt 1", async () => {
+    d.konflikte = "leer";
+    await mount();
+    await oeffneN1();
+    expect(marke("graph-detail-konflikte")?.getAttribute("data-zustand")).toBe("erhoben");
+    expect(marke("graph-detail-konflikte")?.textContent).toBe(
+      i18n.t("graph.detail.konflikte", { count: 0 }),
+    );
+    abbauen();
+    d.konflikte = "einer";
+    await mount();
+    await oeffneN1();
+    expect(marke("graph-detail-konflikte")?.textContent).toBe(
+      i18n.t("graph.detail.konflikte", { count: 1 }),
+    );
+  });
+
   it("D2 · fällt der Eintrag aus dem Filter, schließt das Detailfenster", async () => {
     await mount();
     await klick(container.querySelector('[data-id="n3"] [data-testid="graph-objekt-details"]'));
     expect(marke("graph-detail")?.getAttribute("data-id")).toBe("n3");
     await setzeFeld("graph-objektliste-status", "validiert");
     expect(marke("graph-detail")).toBeNull();
+  });
+});
+
+describe("R-1983 · die kuratierte Sicht „So arbeitet Klarwerk“ — nur gesetzte Fachbeziehungen, ohne Behauptung", () => {
+  it("S1 · zugeklappt als Vorgabe; geöffnet: drei Erklärsätze und die gesetzte Beziehung n2–n3 mit Art und beiden Einträgen", async () => {
+    await mount();
+    expect(marke("graph-sicht-schalter")?.getAttribute("aria-expanded")).toBe("false");
+    expect(marke("graph-sicht-inhalt")).toBeNull();
+    await klick(marke("graph-sicht-schalter"));
+    expect(marke("graph-sicht-schalter")?.getAttribute("aria-expanded")).toBe("true");
+    const inhalt = marke("graph-sicht-inhalt");
+    for (const k of ["schritt1", "schritt2", "schritt3"]) {
+      expect(inhalt?.textContent).toContain(i18n.t(`graph.sicht.${k}`));
+    }
+    const zeilen = [...container.querySelectorAll('[data-testid="graph-sicht-beziehung"]')];
+    // Nur die GESETZTE Beziehung — die Schlagwortnähe n1–n2 („pumpe“) steht hier nicht.
+    expect(zeilen.map((z) => `${z.getAttribute("data-a")}-${z.getAttribute("data-b")}`)).toEqual([
+      "n2-n3",
+    ]);
+    const z = zeilen[0];
+    expect(z?.textContent).toContain("Pumpe P3 schmieren");
+    expect(z?.textContent).toContain("Ventil X schliessen");
+    expect(z?.textContent ?? "").not.toContain("pumpe");
+    expect([...(z?.querySelectorAll("a") ?? [])].map((a) => a.getAttribute("href"))).toEqual([
+      koDetailPath("n2"),
+      koDetailPath("n3"),
+    ]);
+    // Rein lesend: nichts zum Bearbeiten in der Sicht.
+    expect(inhalt?.querySelectorAll("input, select, textarea, form, button").length).toBe(0);
+  });
+
+  it("S2 · der Server liefert die Menge nicht: das steht da — nicht „keine gesetzt“", async () => {
+    d.kuratiert = "fehlt";
+    await mount();
+    await klick(marke("graph-sicht-schalter"));
+    expect(marke("graph-sicht-nicht-geliefert")?.textContent).toBe(
+      i18n.t("graph.sicht.nichtGeliefert"),
+    );
+    expect(marke("graph-sicht-leer")).toBeNull();
+    expect(marke("graph-sicht-beziehungen")).toBeNull();
+  });
+
+  it("S3 · leere Menge: „keine gesetzt“ mit dem Zusatz, dass das keine Prüfaussage ist", async () => {
+    d.kuratiert = "leer";
+    await mount();
+    await klick(marke("graph-sicht-schalter"));
+    expect(marke("graph-sicht-leer")?.textContent).toBe(i18n.t("graph.sicht.leer"));
+    expect(marke("graph-sicht-nicht-geliefert")).toBeNull();
+  });
+
+  it("S4 · gekürzte Menge: Lieferzahl und Gesamtzahl stehen da", async () => {
+    d.kuratiert = "gekuerzt";
+    await mount();
+    await klick(marke("graph-sicht-schalter"));
+    expect(marke("graph-sicht-gekuerzt")?.textContent).toBe(
+      i18n.t("graph.sicht.gekuerzt", { geladen: 1, gesamt: 7 }),
+    );
   });
 });

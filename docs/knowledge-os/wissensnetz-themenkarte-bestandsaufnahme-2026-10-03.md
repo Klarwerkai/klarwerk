@@ -67,6 +67,31 @@ für geliefert.
     sichtbarem Titel, und das Zurücksetzen auf die 28 Kennungen.
   - Ausgeführt wird sie in der Cloud; ein Ergebnis liegt dieser Lieferung noch nicht vor.
 
+**R-1983 — kuratierte Sicht „So arbeitet Klarwerk“ (Nacharbeit 5).**
+
+- **Was die Quelle sagt:** R-1983 nennt sie nur beim Namen (SCRUM-545–551: „… kuratierte Sicht ‚So
+  arbeitet Klarwerk‘ · Adminseite · Qualitätsblick“). Das Konzept vom 26.07., zitiert in R-0744,
+  ordnet den Qualitätsblick „nach der kuratierten Vorführsicht“ ein. Weiteren Wortlaut gibt es nicht.
+- **Umgesetzt** an `/graph` als zuklappbarer Abschnitt „So arbeitet Klarwerk“, vor dem
+  Qualitätsblick:
+  - drei Sätze, wie das Bild entsteht (Punkt = sichtbarer Eintrag; graue Linie = abgeleitete
+    Schlagwortnähe, keine Fachaussage; gesetzte Fachbeziehung = von einem Menschen verantwortet);
+  - darunter ausschließlich die gesetzten Fachbeziehungen aus derselben `/api/graph`-Antwort, als
+    Satz mit beiden Einträgen (verlinkt), Art und Richtung.
+- **Ehrliche Zustände:** Liefert der Server die Menge nicht, steht „nicht mitgeliefert“, nicht
+  „keine“. Eine leere Menge heißt „keine gesetzt“, mit dem Zusatz, dass das keine Prüfaussage ist.
+  Bei Kürzung stehen Liefer- und Gesamtzahl da.
+- Die Sicht ist rein lesend, braucht keine neue Abfrage und keinen neuen Server-Weg.
+- Gegenprobe: `tests/wissensnetz-flaeche/netz-verwaltung.test.tsx`, S1–S4.
+- **Grenze:** Die Lesart „kuratiert = von Menschen gesetzt“ ist eine Auslegung des Namens. Ob die
+  Vorführsicht mehr enthalten sollte (z. B. eine geführte Vorführung für einen Pilotpartner), sagt
+  die Quelle nicht; das bleibt Owner-Entscheidung.
+
+**Konfliktzahl im Detailfenster (Nacharbeit 5, BEN F5).** Die Zahl wurde aus einem leeren
+Ersatzarray gerechnet und stand bei laufender oder gescheiterter Konfliktabfrage als „0“ da. Jetzt
+steht sie nur bei vorliegender Antwort; sonst steht dort „werden erhoben …“ bzw. „nicht erhoben“.
+Gegenprobe F5a–F5c.
+
 **R-0744 — Verwalterseite rund um die Netzdarstellung mit wählbarem Qualitätsblick (Nacharbeit 3).**
 Wortlaut: „Für Verwalter gibt es eine Seite rund um die Netzdarstellung: Kopfkennzahlen,
 Filterleiste, Detailfenster und Suche, rein lesend, ohne Bearbeiten im Netz. Dazu kommt ein
@@ -151,7 +176,7 @@ oder verbleibende Entscheidung.
 | R-1971 | arbeitsauftrag | ENTSCHEIDUNG (OFFEN:H6, `raw.herkunft`) | Entscheidung Pedi 31.07.: „H1 H2 weiter, im nächsten Code-Lauf.“ Die offene Rückfrage betraf die zwei Schnitte neben der Nachbarschaft: **B Themenlandkarte** und **C Leseweg**. **Erledigt:** Beide sind gebaut, B als Themenkarte `/wissensnetz` (JOB 2600, 3052), C als Leseweg in Sätzen (JOB 3070/3073). Kein Rest. |
 | R-1972 | quellenrest | BEAUFTRAGT (OFFEN:H1, `criteria_text`) | Auftrag „Variante A, die Nachbarschaft“ (mega68) mit harten Grenzen: Die Auskunft geht von einem Objekt aus und ist gedeckelt. Ein Schlagwort, das fast alle tragen, erzeugt keine Kante. Ein Nachbar ohne Leserecht existiert nicht. Der Ort ist das Wissensobjekt. An jeder Kante steht das gemeinsame Schlagwort, ein Klick geht weiter. **Geliefert:** `GET /api/kos/:id/neighbors` (gedeckelt, `via`, `excludedTags`, Sichtbarkeit vor dem Zählen) und `KnowledgeNeighborhood.tsx` am Wissensobjekt; jeder Nachbar verlinkt auf `koDetailPath`. **Offene Rückfrage aus derselben Zeile:** Ob Pedis „LLM-Wiki-Grafik“ ein gezeichnetes Netz oder eine durchblätterbare Wissenssicht meint („nicht raten, ihn fragen“). Eine Antwort darauf ist in den Quellen nicht belegt. |
 | R-1976 | quellenrest | BEFUND (OFFEN:H5, `criteria_text`) | Befund: `graph()` verglich jedes Paar, Kanten entstanden über jedes geteilte Schlagwort, begrenzt wurde erst im Browser. Bauvorgabe: Die Anwendersicht geht von einem Objekt aus, die Route wird begrenzt, ein Schlagwort, das fast alle tragen, erzeugt keine Kante. **Geliefert:** Schlagwort-Index statt Paarschleife, Ubiquitätssperre, Kantendeckel `GRAPH_EDGE_LIMIT` mit `totalEdges`/`truncated` im Server (JOB 3022, 3075, 4155), Nachbarschaft von einem Objekt aus (R-1972). **Rest am Quelltext:** `GET /api/graph` liefert die **Knotenliste ungedeckelt**; der 60-Knoten-Deckel (`MAX_GRAPH_NODES`, `limitGraph`) wirkt weiter erst im Browser (`Stufe2.tsx`). Das widerspricht der Vorgabe „Begrenzung SERVERSEITIG“ für die Knoten. Dieser Rest ist in diesem Auftrag nicht behoben und nicht als Befund bestellt. |
-| R-1983 | quellenrest | OFFEN (OFFEN:H3, `criteria_text`) | Stand 23.08.: Das Lesemodell hat einen Aufrufer im Produkt (JOB 2009 D4). Offen blieben Kanten- und UI-Wirkung (H3b, JOB 2018). Ursprünglich SCRUM-545–551: Beziehungen erheben · Lücken schließen · Graph-Lesemodell · kuratierte Sicht „So arbeitet Klarwerk“ · Adminseite · Qualitätsblick. **Geliefert:** Kanten- und UI-Wirkung über JOB 3067 (Sichtmetrik), JOB 2600/3070 (Karte, Leseweg) und JOB 4151/4155 (kuratierte Beziehungen im Lesepfad), dazu Beziehungen erheben, Lesemodell und Lücken als Sichtmetrik. Adminseite und Qualitätsblick (= R-0744): seit Nacharbeit 3 umgesetzt. **Nicht geliefert:** eine kuratierte Sicht „So arbeitet Klarwerk“. Für Letztere ist im Arbeitsbaum keine Umsetzung auffindbar. |
+| R-1983 | quellenrest | OFFEN (OFFEN:H3, `criteria_text`) | Stand 23.08.: Das Lesemodell hat einen Aufrufer im Produkt (JOB 2009 D4). Offen blieben Kanten- und UI-Wirkung (H3b, JOB 2018). Ursprünglich SCRUM-545–551: Beziehungen erheben · Lücken schließen · Graph-Lesemodell · kuratierte Sicht „So arbeitet Klarwerk“ · Adminseite · Qualitätsblick. **Geliefert:** Kanten- und UI-Wirkung über JOB 3067 (Sichtmetrik), JOB 2600/3070 (Karte, Leseweg) und JOB 4151/4155 (kuratierte Beziehungen im Lesepfad), dazu Beziehungen erheben, Lesemodell und Lücken als Sichtmetrik. Adminseite und Qualitätsblick (= R-0744): seit Nacharbeit 3 umgesetzt. Kuratierte Sicht „So arbeitet Klarwerk“: seit Nacharbeit 5 umgesetzt an `/graph` (Abschnitt „R-1983“ oben). Ihr Inhalt ist eine Auslegung, weil die Quelle nur den Namen nennt. Für Letztere ist im Arbeitsbaum keine Umsetzung auffindbar. |
 | R-2122 | arbeitsauftrag | Wissensgraph (SOLL) | Abgedeckt durch R-0454/R-1727 im gedeckelten Zuschnitt (R-0481). |
 | R-2213 | gelieferter_teilstand | Wissensnetz auf kleiner Fläche und Sonderbeständen | Teilstand bestätigt: Leseweg statt Zeichnung unter 900 px (JOB 3070), Null-/Misch-/Kettenbestände (`tests/app/themenkarte-*-mounted.test.tsx`). |
 | N-0011 | arbeitsauftrag | Überlagerte und gekürzte Beschriftungen erschweren die Zielwahl | Wortlaut: Beschriftungen mit Abstand, vollständiger Titel bei Fokus und Hover, „synchronisierte lesbare Objektliste als weiteren Einstieg“. Abstand und voller Titel: UX-07 (JOB 3103, `lib/graphLayout.ts`, `<title>`/`aria-label`). **Objektliste: seit Nacharbeit 2** (`GraphObjektliste`, Gegenprobe `tests/wissensnetz-flaeche/graph-listenweg.test.tsx`). Ein *sichtbarer* Volltitel bei Fokus im Bild ist nur über das SVG-`<title>` (Tooltip) belegt; eine Chromium-Messung dazu wurde hier nicht gefahren. |

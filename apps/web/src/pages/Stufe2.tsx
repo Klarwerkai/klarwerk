@@ -37,6 +37,7 @@ import {
 } from "../api/hooks";
 import type {
   Conflict,
+  GraphKuratierteKante,
   ImportCandidate,
   ImportItemInput,
   ManagementSnapshot,
@@ -2335,7 +2336,13 @@ function LegendDot({ colorClass, label }: { colorClass: string; label: string })
 interface GraphDetail {
   status: string;
   verbindungen: { id: string; title: string; grund: string }[];
-  offeneKonflikte: number;
+  /**
+   * Nacharbeit 5 (BEN, F5): die Zahl NUR bei vorliegender Konfliktantwort. Läuft die Abfrage noch
+   * oder ist sie ohne Cache gescheitert, gibt es keine Zahl — `null` mit dem Zustand daneben, nie
+   * eine aus einem leeren Ersatz gerechnete 0.
+   */
+  offeneKonflikte: number | null;
+  konflikteZustand: "laedt" | "nicht-erhoben" | "erhoben";
 }
 
 type Statusfilter = "alle" | "validiert" | "nicht-validiert";
@@ -2476,8 +2483,16 @@ function GraphObjektliste({
                   : t("graph.liste.statusNichtValidiert"),
             })}
           </p>
-          <p data-testid="graph-detail-konflikte" className="mt-1 text-[12.5px] text-muted">
-            {t("graph.detail.konflikte", { count: detail.offeneKonflikte })}
+          <p
+            data-testid="graph-detail-konflikte"
+            data-zustand={detail.konflikteZustand}
+            className="mt-1 text-[12.5px] text-muted"
+          >
+            {detail.konflikteZustand === "laedt"
+              ? t("graph.detail.konflikteLaedt")
+              : detail.offeneKonflikte === null
+                ? t("graph.detail.konflikteNichtErhoben")
+                : t("graph.detail.konflikte", { count: detail.offeneKonflikte })}
           </p>
           <p className="mt-2 text-[12.5px] font-medium text-text">
             {t("graph.detail.verbindungen", { count: detail.verbindungen.length })}
@@ -2511,6 +2526,116 @@ function GraphObjektliste({
             </button>
           </div>
         </aside>
+      ) : null}
+    </section>
+  );
+}
+
+// ==================================================================================================
+// R-1983 — DIE KURATIERTE SICHT „SO ARBEITET KLARWERK".
+// ==================================================================================================
+//
+// Die Quelle (R-1983, SCRUM-545–551) nennt sie nur beim Namen: „kuratierte Sicht ‚So arbeitet
+// Klarwerk'"; das Konzept vom 26.07. (zitiert in R-0744) ordnet sie als Vorführsicht VOR dem
+// Qualitätsblick ein. Umgesetzt ist sie hier in der engsten Lesart, die das Wort „kuratiert" trägt:
+// sie zeigt ausschließlich das, was MENSCHEN gesetzt haben — die gesetzten Fachbeziehungen aus
+// DERSELBEN `/api/graph`-Antwort (JOB 4151/4155), als lesbare Sätze mit beiden Einträgen —, und sagt
+// in drei Sätzen, wie das Bild entsteht. Keine abgeleitete Schlagwortnähe in der Liste, keine neue
+// Abfrage, nichts zum Bearbeiten.
+//
+// ZUSTÄNDE OHNE BEHAUPTUNG: Sendet der Server die Menge nicht, steht genau das da — nicht „keine".
+// Ist sie leer, steht „keine gesetzt" mit dem Zusatz, dass das keine Prüfaussage ist. Hat der Server
+// gekürzt, steht die Lieferzahl neben der Gesamtzahl. Standardmäßig zugeklappt: eine Vorführsicht
+// wird geöffnet, sie drängt sich nicht vor das Bild. Gemessen in
+// `tests/wissensnetz-flaeche/netz-verwaltung.test.tsx` (S1–S4).
+function SoArbeitetKlarwerk({
+  kanten,
+  gesamt,
+  gekuerzt,
+  titelVon,
+  bekannt,
+}: {
+  kanten: readonly GraphKuratierteKante[] | undefined;
+  gesamt: number | undefined;
+  gekuerzt: boolean | undefined;
+  titelVon: ReadonlyMap<string, string>;
+  bekannt: ReadonlySet<string>;
+}): JSX.Element {
+  const { t } = useTranslation();
+  const [offen, setOffen] = useState(false);
+  const eintrag = (id: string): JSX.Element => {
+    const titel = titelVon.get(id) ?? id;
+    return isNavigableNode(id, bekannt) ? (
+      <Link to={koDetailPath(id)} className="font-medium underline">
+        {titel}
+      </Link>
+    ) : (
+      <span className="font-medium">{titel}</span>
+    );
+  };
+  // Nur Beziehungen, deren BEIDE Einträge in der Graphantwort stehen — der Server liefert sie so
+  // (`kuratierteKantenFuer`, Sichtbarkeitsschnitt vor dem Zählen); hier wird es nicht unterstellt.
+  const sichtbar = (kanten ?? [])
+    .filter((k) => titelVon.has(k.a) && titelVon.has(k.b))
+    .sort(
+      (x, y) =>
+        (titelVon.get(x.a) ?? "").localeCompare(titelVon.get(y.a) ?? "") ||
+        (titelVon.get(x.b) ?? "").localeCompare(titelVon.get(y.b) ?? ""),
+    );
+  return (
+    <section data-testid="graph-sicht" className="mt-4 border-t border-hairline pt-3">
+      <button
+        type="button"
+        data-testid="graph-sicht-schalter"
+        aria-expanded={offen}
+        aria-controls="graph-sicht-inhalt"
+        onClick={() => setOffen((o) => !o)}
+        className="text-sm font-medium underline"
+      >
+        {offen ? t("graph.sicht.aus") : t("graph.sicht.an")}
+      </button>
+      {offen ? (
+        <div id="graph-sicht-inhalt" data-testid="graph-sicht-inhalt" className="mt-2 text-sm">
+          <h2 className="font-semibold text-text">{t("graph.sicht.titel")}</h2>
+          <ol className="mt-1 list-decimal pl-5 text-[12.5px] text-muted">
+            <li>{t("graph.sicht.schritt1")}</li>
+            <li>{t("graph.sicht.schritt2")}</li>
+            <li>{t("graph.sicht.schritt3")}</li>
+          </ol>
+          {kanten === undefined ? (
+            <p data-testid="graph-sicht-nicht-geliefert" className="mt-2 text-muted">
+              {t("graph.sicht.nichtGeliefert")}
+            </p>
+          ) : sichtbar.length === 0 ? (
+            <p data-testid="graph-sicht-leer" className="mt-2 text-muted">
+              {t("graph.sicht.leer")}
+            </p>
+          ) : (
+            <ul data-testid="graph-sicht-beziehungen" className="mt-2 flex flex-col gap-1">
+              {sichtbar.map((k) => (
+                <li
+                  key={`${k.a}-${k.art}-${k.b}`}
+                  data-testid="graph-sicht-beziehung"
+                  data-a={k.a}
+                  data-b={k.b}
+                  className="break-words"
+                >
+                  {eintrag(k.a)}
+                  {` ${t("graph.sicht.verbindung", {
+                    art: beziehungsartText(k.art, t),
+                    richtung: beziehungsrichtungKurz(k.richtung, t),
+                  })} `}
+                  {eintrag(k.b)}
+                </li>
+              ))}
+            </ul>
+          )}
+          {kanten !== undefined && gekuerzt === true && typeof gesamt === "number" ? (
+            <p data-testid="graph-sicht-gekuerzt" className="mt-2 text-[12.5px] text-muted">
+              {t("graph.sicht.gekuerzt", { geladen: kanten.length, gesamt })}
+            </p>
+          ) : null}
+        </div>
       ) : null}
     </section>
   );
@@ -2698,9 +2823,19 @@ export function GraphView(): JSX.Element {
             merke(k.a, k.b, grund);
             merke(k.b, k.a, grund);
           }
-          const offeneKonflikte = (conflictsQ.data ?? []).filter((c) => c.status !== "geloest");
-          const offeneKonflikteVon = (id: string): number =>
-            offeneKonflikte.filter((c) => c.koA === id || c.koB === id).length;
+          // Nacharbeit 5 (BEN, F5): KEIN leeres Ersatzarray. Ohne Konfliktantwort ist die Zahl
+          // unbekannt — laufend „wird erhoben", gescheitert „nicht erhoben", nie 0.
+          const konflikteZustand: GraphDetail["konflikteZustand"] =
+            conflictsQ.data !== undefined
+              ? "erhoben"
+              : conflictsQ.isError
+                ? "nicht-erhoben"
+                : "laedt";
+          const offeneKonflikte = conflictsQ.data?.filter((c) => c.status !== "geloest");
+          const offeneKonflikteVon = (id: string): number | null =>
+            offeneKonflikte === undefined
+              ? null
+              : offeneKonflikte.filter((c) => c.koA === id || c.koB === id).length;
 
           return (
             <Card>
@@ -2935,7 +3070,15 @@ export function GraphView(): JSX.Element {
                   status: statusOf.get(id) ?? "offen",
                   verbindungen: verbindungenJe.get(id) ?? [],
                   offeneKonflikte: offeneKonflikteVon(id),
+                  konflikteZustand,
                 })}
+              />
+              <SoArbeitetKlarwerk
+                kanten={raw.kuratierteKanten}
+                gesamt={raw.kuratierteKantenGesamt}
+                gekuerzt={raw.kuratierteKantenGekuerzt}
+                titelVon={titelVon}
+                bekannt={knownKoIds}
               />
               <Qualitaetsblick
                 graphIds={raw.nodes.map((n) => n.id)}

@@ -6324,6 +6324,25 @@ const de = {
   "graph.qb.alter_other":
     "Alter des Bestands: jüngster Eintrag im Graphen vom {{datum}}, vor {{count}} Tagen",
   "graph.qb.alterUnbekannt": "Alter des Bestands: nicht erhoben",
+  // Nacharbeit 5 (F5): Konfliktzahl im Detailfenster nur bei vorliegender Antwort.
+  "graph.detail.konflikteLaedt": "Konflikte: werden erhoben …",
+  "graph.detail.konflikteNichtErhoben": "Konflikte: nicht erhoben",
+  // R-1983: die kuratierte Sicht „So arbeitet Klarwerk“.
+  "graph.sicht.an": "So arbeitet Klarwerk anzeigen",
+  "graph.sicht.aus": "So arbeitet Klarwerk ausblenden",
+  "graph.sicht.titel": "So arbeitet Klarwerk — die gesetzten Fachbeziehungen",
+  "graph.sicht.schritt1": "Jeder Punkt im Bild ist ein Wissenseintrag, den Sie sehen dürfen.",
+  "graph.sicht.schritt2":
+    "Eine graue Linie heißt nur: Zwei Einträge teilen ein Schlagwort. Das ist abgeleitete Nähe, keine Fachaussage.",
+  "graph.sicht.schritt3":
+    "Eine gesetzte Fachbeziehung hat ein Mensch verantwortet. Nur diese Beziehungen stehen in der Liste darunter.",
+  "graph.sicht.nichtGeliefert":
+    "Der Server hat die gesetzten Fachbeziehungen nicht mitgeliefert; hier steht deshalb keine Aussage über sie.",
+  "graph.sicht.leer":
+    "Unter den sichtbaren Einträgen ist keine Fachbeziehung gesetzt. Das ist keine Aussage darüber, ob die Einträge einander widersprechen.",
+  "graph.sicht.verbindung": "— {{art}} ({{richtung}}) —",
+  "graph.sicht.gekuerzt":
+    "Gezeigt werden {{geladen}} von {{gesamt}} gesetzten Fachbeziehungen; der Server hat die Menge gekürzt.",
 
   // SCRUM-406: ausführliche ?-Hilfen im Prüfbereich (Schema: Was? · Wann? · Was passiert danach?).
   "vhelp.originFilter.title": "Herkunft filtern",
@@ -12437,6 +12456,23 @@ const en: typeof de = {
   "graph.qb.alter_other":
     "Age of the stock: newest entry in the graph from {{datum}}, {{count}} days ago",
   "graph.qb.alterUnbekannt": "Age of the stock: not collected",
+  "graph.detail.konflikteLaedt": "Conflicts: being collected …",
+  "graph.detail.konflikteNichtErhoben": "Conflicts: not collected",
+  "graph.sicht.an": "Show how Klarwerk works",
+  "graph.sicht.aus": "Hide how Klarwerk works",
+  "graph.sicht.titel": "How Klarwerk works — the curated subject-matter relations",
+  "graph.sicht.schritt1": "Every dot in the picture is a knowledge entry you are allowed to see.",
+  "graph.sicht.schritt2":
+    "A grey line only means: two entries share a keyword. That is derived proximity, not a statement.",
+  "graph.sicht.schritt3":
+    "A curated subject-matter relation was set by a person who is accountable for it. Only these relations appear in the list below.",
+  "graph.sicht.nichtGeliefert":
+    "The server did not deliver the curated subject-matter relations, so nothing is said about them here.",
+  "graph.sicht.leer":
+    "No subject-matter relation is set among the visible entries. This says nothing about whether the entries contradict each other.",
+  "graph.sicht.verbindung": "— {{art}} ({{richtung}}) —",
+  "graph.sicht.gekuerzt":
+    "Showing {{geladen}} of {{gesamt}} curated subject-matter relations; the server shortened the set.",
 
   // SCRUM-406: detailed ?-help in the review area (pattern: What? · When? · What happens next?).
   "vhelp.originFilter.title": "Filter by origin",
@@ -18168,6 +18204,23 @@ const nl: typeof de = {
   "graph.qb.alter_other":
     "Leeftijd van de verzameling: nieuwste item in de graaf van {{datum}}, {{count}} dagen geleden",
   "graph.qb.alterUnbekannt": "Leeftijd van de verzameling: niet verzameld",
+  "graph.detail.konflikteLaedt": "Conflicten: worden verzameld …",
+  "graph.detail.konflikteNichtErhoben": "Conflicten: niet verzameld",
+  "graph.sicht.an": "Zo werkt Klarwerk tonen",
+  "graph.sicht.aus": "Zo werkt Klarwerk verbergen",
+  "graph.sicht.titel": "Zo werkt Klarwerk — de gelegde vakrelaties",
+  "graph.sicht.schritt1": "Elk punt in het beeld is een kennisitem dat u mag zien.",
+  "graph.sicht.schritt2":
+    "Een grijze lijn betekent alleen: twee items delen een trefwoord. Dat is afgeleide nabijheid, geen vakuitspraak.",
+  "graph.sicht.schritt3":
+    "Een gelegde vakrelatie is door een mens verantwoord. Alleen deze relaties staan in de lijst hieronder.",
+  "graph.sicht.nichtGeliefert":
+    "De server heeft de gelegde vakrelaties niet meegeleverd; daarom staat hier geen uitspraak over.",
+  "graph.sicht.leer":
+    "Tussen de zichtbare items is geen vakrelatie gelegd. Dat zegt niets over de vraag of de items elkaar tegenspreken.",
+  "graph.sicht.verbindung": "— {{art}} ({{richtung}}) —",
+  "graph.sicht.gekuerzt":
+    "Getoond worden {{geladen}} van {{gesamt}} gelegde vakrelaties; de server heeft de set ingekort.",
   "vhelp.originFilter.title": "Herkomst filteren",
   "vhelp.originFilter.body":
     "Toont de lijst gefilterd op herkomst: demovoorbeelden of eigen kennis van jouw organisatie. Dit is alleen een weergave om dingen terug te vinden — het verandert geen controlestatus en gooit niets weg. Het getal achter elk filter geeft aan hoeveel vermeldingen het bevat.",
