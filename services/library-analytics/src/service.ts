@@ -1668,6 +1668,12 @@ export class LibraryService {
         confidentiality: item.confidentiality ?? "vertraulich",
         ...(item.bodyHtml ? { bodyHtml: item.bodyHtml } : {}),
         ...(externalId ? { sources: [this.buildSource(item, actor, firstVersion)] } : {}),
+        // R-0180/R-2108: das angenommene Objekt ist ALS IMPORTIERT gekennzeichnet — dasselbe Feld,
+        // das das Prüf-Board als Herkunft zeigt (`mitHerkunft`, services/validation). Es startet
+        // weiterhin ungeprüft (`buildCreatedKo`: status offen, trust 0) und steht damit auf dem
+        // Validierungs-Board (`ValidationService.board` liest status offen). Die Re-Sync-Revision
+        // eines bestehenden Objekts oben fasst die Herkunft bewusst nicht an.
+        origin: "import",
         // WP-SHIP8-CLOSE-3/4 (bens ROT-1): Kandidaten-Anker VOR dem Endstatus des Kandidaten —
         // Recovery und Insert-or-Adopt erkennen daran eine bereits gelungene Erstanlage.
         ...(candidateId ? { importCandidateId: candidateId } : {}),

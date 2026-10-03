@@ -350,6 +350,19 @@ function sendMissingConfidentiality(reply: FastifyReply): void {
   });
 }
 
+// R-0180/R-2108: die Herkunft `import` kennzeichnet ein Objekt, das ein Mensch aus der
+// Import-Prüfwarteschlange übernommen hat (`LibraryService.acceptToKo`). Auf den öffentlichen
+// Schreibwegen (`POST /api/kos`, frischer Zweig des Dokumentwegs) wird sie verworfen wie
+// `sources` und `importCandidateId` — sonst könnte jeder mit `ko.create` ein Objekt als importiert
+// ausgeben. Die übrigen Herkunftswerte bleiben unverändert erhalten.
+export function ohneImportHerkunft<T extends { origin?: unknown }>(rumpf: T): T {
+  if (rumpf.origin !== "import") {
+    return rumpf;
+  }
+  const { origin: _verworfen, ...ohne } = rumpf;
+  return ohne as unknown as T;
+}
+
 interface KoQuery {
   type?: KnowledgeType;
   status?: KoStatus;
@@ -1293,13 +1306,16 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
           // gewesen — und wer ein Objekt anlegt, könnte damit die Nacharbeit eines fremden
           // Menschen erklären. Serverwerte werden hier nicht aus ungeprüftem Clientspread geerbt;
           // der autorisierte Weg ist die Aktion `ownership` (Recht `ko.validate`) weiter unten.
+          // R-0180/R-2108: die Herkunft `import` ebenfalls verwerfen — sie gehört allein der
+          // menschlichen Annahme eines Importkandidaten (s. `ohneImportHerkunft`).
           const {
             reviewerIds,
             sources: _ignoredSources,
             importCandidateId: _ignoredAnchor,
             ownership: _ignoredOwnership,
-            ...input
+            ...rumpf
           } = request.body;
+          const input = ohneImportHerkunft(rumpf);
           // ==========================================================================================
           // JOB 3429 (Q3 c) — OHNE EINSTUFUNG ENTSTEHT HIER KEIN WISSENSOBJEKT.
           // ==========================================================================================
@@ -1586,7 +1602,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             importCandidateId: _ignoredAnchor,
             ...rest
           } = body.create ?? ({} as Omit<CreateKoInput, "author">);
-          input = { ...rest, author: user.id } as CreateKoInput;
+          input = { ...ohneImportHerkunft(rest), author: user.id } as CreateKoInput;
         }
         // ==========================================================================================
         // JOB 3569 (Q3 c) — AUCH DURCH DIE ZWEITE TÜR ENTSTEHT KEIN UNEINGESTUFTES WISSENSOBJEKT.
