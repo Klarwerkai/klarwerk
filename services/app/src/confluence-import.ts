@@ -248,6 +248,18 @@ export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<I
   // eingereihte Seite NICHT persistiert → sie zählt NICHT als importiert (nie mehr toQueue.length blind).
   let imported = toQueue.length;
   if (!deps.dryRun && toQueue.length > 0) {
+    // R-0163 (Ben, Nacharbeit 2): `collectAll` liefert die Seiten OHNE Anhangsliste — so bleibt die
+    // Erkundung ohne Anhangsabrufe. Was hier wirklich eingereiht wird, bekommt seine Anhänge vorher,
+    // je Seite nacheinander; sonst endete die Annahme ohne Anhang und ohne Anhangsaudit. Ein
+    // Adapter ohne `withAttachments` (Fixture-Doppel) reiht unverändert ein. `dryRun` liest nichts nach.
+    if (typeof deps.adapter.withAttachments === "function") {
+      for (let i = 0; i < toQueue.length; i++) {
+        const item = toQueue[i];
+        if (item) {
+          toQueue[i] = await deps.adapter.withAttachments(item);
+        }
+      }
+    }
     const persisted = await deps.library.createImportCandidates(toQueue, deps.actor);
     imported = persisted.length;
     // perPage ehrlich nachziehen: eingereihte, aber nicht persistierte Seiten → skipped (Parallelkonflikt).

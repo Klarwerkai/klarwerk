@@ -11,6 +11,7 @@ import {
   type ConfluenceMapOptions,
   confluenceAhnenBefund,
   confluenceAncestorIds,
+  confluenceAnhangsFelder,
   mapConfluencePageToImportItem,
 } from "./mapper";
 import type { ConfluenceAbbruch, ConfluenceAttachment, ConfluencePage } from "./rest-client";
@@ -199,6 +200,29 @@ export class ConfluenceSourceAdapter implements SourceAdapter {
       anhaenge = { attachments: [], unvollstaendig: true };
     }
     return mapConfluencePageToImportItem(page, this.mapOpts, anhaenge);
+  }
+
+  /**
+   * R-0163 (Ben, Nacharbeit 2): der SCHREIBENDE Bereichsimport (`runConfluenceImport`) reiht die
+   * Items aus `collectAll` ein — die tragen keine Anhangsliste, weil die Erkundung bewusst ohne
+   * Anhangsabrufe läuft. Bevor ein solches Item in die Review-Queue geht, holt diese Methode die
+   * Anhangsliste seiner Seite nach und setzt dieselben Felder wie `fetchItem`
+   * (`confluenceAnhangsFelder`). Scheitert das Lesen, geht das Item mit `attachmentsIncomplete`
+   * weiter — der Text geht nicht verloren, und niemand liest „keine Anhänge".
+   */
+  async withAttachments(item: ImportItem): Promise<ImportItem> {
+    const pageId = item.externalId?.trim();
+    if (!pageId) {
+      return item;
+    }
+    let anhaenge: { attachments: ConfluenceAttachment[]; unvollstaendig: boolean };
+    try {
+      const gelesen = await this.client.listAttachments(pageId);
+      anhaenge = { attachments: gelesen.attachments, unvollstaendig: gelesen.truncated };
+    } catch {
+      anhaenge = { attachments: [], unvollstaendig: true };
+    }
+    return { ...item, ...confluenceAnhangsFelder(anhaenge) };
   }
 
   /**

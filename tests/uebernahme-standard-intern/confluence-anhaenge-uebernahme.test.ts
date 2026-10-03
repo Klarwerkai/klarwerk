@@ -14,7 +14,9 @@
 // und Origin-Pin misst `services/confluence/src/anhaenge.test.ts` am echten Client.
 import { describe, expect, it } from "vitest";
 import { confluenceAnhangsUebernahme } from "../../services/app/src/confluence-anhaenge";
+import { runConfluenceImport } from "../../services/app/src/confluence-import";
 import { AuditService, InMemoryAuditRepo } from "../../services/audit";
+import { adapterFromConfig } from "../../services/confluence/src/adapter";
 import { mapConfluencePageToImportItem } from "../../services/confluence/src/mapper";
 import type { ConfluencePage } from "../../services/confluence/src/rest-client";
 import {
@@ -208,3 +210,151 @@ describe("R-0163 · Anhänge und Bilder einer übernommenen Confluence-Seite", (
     expect(eintrag?.payload).toMatchObject({ uebernommen: 1, fehlgeschlagen: 1 });
   });
 });
+
+// ==================================================================================================
+// BEN, NACHARBEIT 2 — DER REGULÄRE BEREICHSIMPORT, OHNE ABKÜRZUNG.
+// ==================================================================================================
+//
+// U1–U7 setzen die Anhangsliste direkt per Mapper an das Item. Der Weg, den ein Admin wirklich
+// nimmt (POST /api/admin/import/confluence → `runConfluenceImport`), sammelt aber über
+// `collectAll` — und das las bis hierher keine Anhänge: der Kandidat trug weder `attachments`
+// noch `attachmentsIncomplete`, die Annahme legte nichts an und schrieb kein Anhangsaudit.
+//
+// Diese Gegenprobe fährt die ganze Kette mit dem ECHTEN Adapter (`adapterFromConfig`, nur `fetch`
+// ist injiziert): Space-Liste → Anhangsliste → Review-Queue → reguläre Annahme → Download →
+// Objektspeicher. Nichts wird vorab in die Queue gesetzt.
+const BASIS = "https://acme.atlassian.net/wiki";
+const PNG_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+const PDF_BYTES = Buffer.from("%PDF-1.4 Wartung", "utf8");
+
+function antwort(status: number, body: unknown, bytes?: Buffer): Response {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    headers: { get: () => null },
+    json: async () => body,
+    arrayBuffer: async () => {
+      const b = bytes ?? Buffer.alloc(0);
+      return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength);
+    },
+  } as unknown as Response;
+}
+
+function confluenceFixture() {
+  const rufe: string[] = [];
+  const fetchFn = async (eingabe: string | URL | Request): Promise<Response> => {
+    const url = new URL(String(eingabe));
+    rufe.push(url.pathname);
+    if (url.pathname === "/wiki/rest/api/content/3001/child/attachment") {
+      return antwort(200, { results: ANHAENGE });
+    }
+    if (url.pathname === "/wiki/download/attachments/3001/plan.png") {
+      return antwort(200, null, PNG_BYTES);
+    }
+    if (url.pathname === "/wiki/download/attachments/3001/Wartung.pdf") {
+      return antwort(200, null, PDF_BYTES);
+    }
+    if (url.pathname === "/wiki/rest/api/content" && url.searchParams.get("spaceKey") === "K") {
+      return antwort(200, { results: [seite(1)] });
+    }
+    return antwort(404, null);
+  };
+  const adapter = adapterFromConfig({
+    baseUrl: BASIS,
+    email: "svc@acme.example",
+    apiToken: "read-only-tok-123",
+    spaceKey: "K",
+    fetchFn: fetchFn as unknown as typeof fetch,
+  });
+  return { adapter, rufe };
+}
+
+describe("R-0163 · Bereichsimport über runConfluenceImport (Ben, Nacharbeit 2)", () => {
+  it("B1 · Seite mit Bild und PDF: eingereiht, regulär angenommen, beide Anhänge mit exakten Bytes im Objektspeicher", async () => {
+    const { adapter, rufe } = confluenceFixture();
+    const koService = new KoService({ repo: new InMemoryKoRepo() });
+    await koService.activateSearchProjectionV2();
+    const audit = new AuditService({ repo: new InMemoryAuditRepo() });
+    const objects = new ObjectStore({ repo: new InMemoryObjectRepo() });
+    const library = new LibraryService({
+      koService,
+      audit,
+      externalUpsert: true,
+      anhaenge: confluenceAnhangsUebernahme({
+        ko: koService,
+        objects,
+        uploadLimits: new InMemoryUploadLimitsRepo(),
+        makeAdapter: () => adapter,
+      }),
+    });
+
+    const lauf = await runConfluenceImport({
+      adapter,
+      library,
+      koService,
+      dryRun: false,
+      actor: "admin",
+    });
+    expect(lauf.imported).toBe(1);
+
+    const [kandidat] = await library.listImportCandidates();
+    expect(kandidat, "der Bereichsimport hat die Seite eingereiht").toBeDefined();
+    // Der eingereihte Kandidat trägt die Anhänge aus dem Import selbst — nicht aus dem Test.
+    expect(leseImportAnhaenge(kandidat!.item).map((a) => a.name)).toEqual([
+      "plan.png",
+      "Wartung.pdf",
+    ]);
+
+    const ergebnis = await library.reviewImportCandidate(kandidat!.id, "accept", "reviewerin");
+    const ko = await koService.get(ergebnis.koId!);
+    expect(ko?.attachments.map((a) => [a.name, a.mime])).toEqual([
+      ["plan.png", "image/png"],
+      ["Wartung.pdf", "application/pdf"],
+    ]);
+
+    const erwartet = [
+      { mime: "image/png", bytes: PNG_BYTES },
+      { mime: "application/pdf", bytes: PDF_BYTES },
+    ];
+    for (const [i, anhang] of (ko?.attachments ?? []).entries()) {
+      expect(anhang.objectId, "Referenz in den Objektspeicher").toBeTruthy();
+      const gespeichert = await gespeicherteDaten(objects, anhang.objectId!);
+      const soll = erwartet[i]!;
+      expect(gespeichert).toBe(`data:${soll.mime};base64,${soll.bytes.toString("base64")}`);
+      const roh = Buffer.from(gespeichert!.split(",")[1]!, "base64");
+      expect(roh.equals(soll.bytes), "exakt dieselben Bytes wie in Confluence").toBe(true);
+    }
+
+    const [eintrag] = await audit.list({ action: "import.attachments", target: ko!.id });
+    expect(eintrag?.payload).toMatchObject({
+      gemeldet: 2,
+      uebernommen: 2,
+      vorhanden: 0,
+      fehlgeschlagen: 0,
+    });
+    // Der Bereichsimport hat die Anhangsliste wirklich bei Confluence gelesen.
+    expect(rufe).toContain("/wiki/rest/api/content/3001/child/attachment");
+  });
+
+  it("B2 · ein Probelauf (dryRun) liest keine Anhänge und reiht nichts ein", async () => {
+    const { adapter, rufe } = confluenceFixture();
+    const koService = new KoService({ repo: new InMemoryKoRepo() });
+    await koService.activateSearchProjectionV2();
+    const library = new LibraryService({ koService, externalUpsert: true });
+
+    const lauf = await runConfluenceImport({
+      adapter,
+      library,
+      koService,
+      dryRun: true,
+      actor: "admin",
+    });
+    expect(lauf.imported).toBe(1);
+    expect(await library.listImportCandidates()).toEqual([]);
+    expect(rufe).not.toContain("/wiki/rest/api/content/3001/child/attachment");
+  });
+});
+
+async function gespeicherteDaten(objects: ObjectStore, id: string): Promise<string | undefined> {
+  return (await objects.read(id))?.data;
+}

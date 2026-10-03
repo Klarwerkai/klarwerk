@@ -230,11 +230,6 @@ export function mapConfluencePageToImportItem(
   const governance = confluenceGovernanceConfidentiality(page);
   // AUFTRAG-mega27 A2: die Elternkette (Wurzel zuerst, ohne die Seite selbst) — oder gar nichts.
   const sourcePath = confluenceSourcePath(page);
-  // R-0163: die Anhänge der Seite; ein Eintrag ohne Pflichtangabe zählt als unvollständig.
-  const gemappt = (anhaenge?.attachments ?? []).map(mapConfluenceAttachment);
-  const attachments = gemappt.filter((a): a is ConfluenceImportAnhang => a !== undefined);
-  const attachmentsIncomplete =
-    anhaenge !== undefined && (anhaenge.unvollstaendig || attachments.length < gemappt.length);
 
   return {
     title,
@@ -266,7 +261,25 @@ export function mapConfluencePageToImportItem(
     // die Anzeige darf sie nicht erneut dekodieren (Doppel-Dekodier-Kette bei Literal-Entities).
     textCodec: "decoded",
     // R-0163: Anhänge und Bilder der Seite — nur, wenn die Liste gelesen wurde und etwas trägt.
+    ...(anhaenge ? confluenceAnhangsFelder(anhaenge) : {}),
+  };
+}
+
+/**
+ * R-0163: die Anhangsfelder eines Items aus einer gelesenen Anhangsliste — die EINE Regel für
+ * beide Wege, auf denen eine Seite in die Review-Queue kommt (`fetchItem` beim Anwenden,
+ * `withAttachments` im Bereichsimport). Ein Eintrag ohne Pflichtangabe oder eine abgeschnittene
+ * Liste macht das Item sichtbar unvollständig; eine leere, vollständige Liste setzt kein Feld.
+ */
+export function confluenceAnhangsFelder(anhaenge: {
+  attachments: readonly ConfluenceAttachment[];
+  unvollstaendig: boolean;
+}): Pick<ConfluenceImportItem, "attachments" | "attachmentsIncomplete"> {
+  const gemappt = anhaenge.attachments.map(mapConfluenceAttachment);
+  const attachments = gemappt.filter((a): a is ConfluenceImportAnhang => a !== undefined);
+  const unvollstaendig = anhaenge.unvollstaendig || attachments.length < gemappt.length;
+  return {
     ...(attachments.length > 0 ? { attachments } : {}),
-    ...(attachmentsIncomplete ? { attachmentsIncomplete: true as const } : {}),
+    ...(unvollstaendig ? { attachmentsIncomplete: true as const } : {}),
   };
 }
