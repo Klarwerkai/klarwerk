@@ -2998,7 +2998,8 @@ export function buildApp(
   );
   // SCRUM-491 Slice 5: /api/check-text existiert NUR bei aktivem Add-on-Flag — sonst gar nicht
   // registriert → Endpunkt existiert nicht → bit-identisch zum heutigen Verhalten. Deterministische
-  // Stufe-1-Dry-Run-Prüfung (validated-only, kein Modell, keine Persistenz).
+  // Stufe-1-Dry-Run-Prüfung (kein Modell, keine Persistenz; nur Validiertes gilt allein für den
+  // Add-in-Pfad, der Session-Pfad prüft seit JOB 3020 auch Ungeprüftes — check-text-routes.ts).
   if (addonApiEnabled()) {
     app.register(
       checkTextRoutes(

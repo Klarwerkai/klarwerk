@@ -494,6 +494,8 @@ const de = {
   // JOB 3045: Label der Fundortzeile. Behauptet nichts über den Inhalt, nennt nur den Ort — was
   // dahinter steht, kommt roh aus dem Bestand (Kategorie) bzw. aus der StatusPill (Zustand).
   "intake.live.fundort": "Liegt in:",
+  "intake.live.pruefstand.offen": "noch nicht geprüft",
+  "intake.live.pruefstand.validiert": "Validiert",
   "intake.live.openKo": "Ansehen",
   // JOB 3556: Der frühere Satz zur laufenden Widerspruchsprüfung ist hier GESTRICHEN (in allen drei
   // Sprachen). Er behauptete zweierlei in einem — „nichts Ähnliches gefunden" UND „auf Widerspruch
@@ -7763,6 +7765,8 @@ const en: typeof de = {
   "intake.live.similarAsk": "Add to it or start fresh?",
   "intake.live.conflictLead": "Careful — this may contradict:",
   "intake.live.fundort": "Sits in:",
+  "intake.live.pruefstand.offen": "not yet reviewed",
+  "intake.live.pruefstand.validiert": "Validated",
   "intake.live.openKo": "View",
   "intake.live.unavailable": "Check currently unavailable.",
   "intake.structure.heading": "Klarwerk suggests — tap anything that's off:",
@@ -13458,6 +13462,8 @@ const nl: typeof de = {
   "intake.live.similarAsk": "Aanvullen of nieuw?",
   "intake.live.conflictLead": "Let op — dit kan in tegenspraak zijn met:",
   "intake.live.fundort": "Staat in:",
+  "intake.live.pruefstand.offen": "nog niet beoordeeld",
+  "intake.live.pruefstand.validiert": "Gevalideerd",
   "intake.live.openKo": "Bekijken",
   "intake.live.unavailable": "Controle momenteel niet beschikbaar.",
   "intake.structure.heading": "Klarwerk stelt voor — tik aan wat niet klopt:",

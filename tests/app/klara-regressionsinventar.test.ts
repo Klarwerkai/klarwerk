@@ -850,6 +850,12 @@ const INVENTAR: readonly string[] = [
   // mit Zustimmung KEINEN Cloudweg oeffnet (er fordert nie `want:"deep"` an) und dass die
   // Einstufung des nicht eingestuften Textes an der Klara-Bindung haengt, nicht am Marker allein.
   "tests/m3-dokumentweg-panel/w6-anschluss-echte-route.test.ts",
+  // P-M3b (29.09.2026, Nacharbeit BEN-3): EIN Prüfstand-Wortlaut für die Web-Live-Zone und die
+  // Bestandsliste des Word-Panels. Von der Achse `komponente` gefunden (die Datei führt das
+  // ausgelieferte Aufgabenfenster über `createKlaraPanel` aus). „klara" steht nicht im Pfad, K5
+  // bleibt unverändert. Sachlich Klara-Regression: sie hält fest, dass das Panel für eingereichte
+  // und validierte Treffer in de/en/nl dasselbe Wort nennt wie die Web-Fläche.
+  "tests/erfassungs-konfliktpruefung/pruefstand-wortlaut.test.tsx",
   // JOB 3052 D6 (04.09.2026): das Wissensnetz der Web-App gegen das Zielbild Wissensnetz.dc.html,
   // in Chromium gemessen (tests/design/zielbild-wissensnetz.test.ts). Von der Inhaltsachse
   // `palette` gefunden: der statische Leseweg loest die Token `rgb(var(--kw-…))` der gerenderten
@@ -1210,6 +1216,14 @@ const INVENTAR: readonly string[] = [
   "services/app/src/ask-routes.test.ts",
   "services/app/src/db.migrate.integration.test.ts",
   "services/app/src/routes/ka5-markierung.test.ts",
+  // Übernahme `erfassungs-konfliktpruefung` (03.10.2026): kam mit dem eingemischten Hauptstand in
+  // den Baum. GEFUNDEN VON GENAU EINER ACHSE: `palette` — die Datei nennt die „Bildpalette“ des
+  // Erfassungsblatts (Kopfkommentar und Ablauf), nicht die Klara-Palette. Sachlich keine
+  // Klara-Regression; gepinnt, weil das Verzeichnis die abgeleitete Menge exakt abbildet und die
+  // Achse hier nicht still verengt wird. Kein „klara" im Pfad: fällt in `verfehlt`, K5 bleibt bei
+  // 69. GEMESSEN, NICHT GESETZT: der Serverlauf am Kandidaten c1c7f0d9 meldete K2 `neu im Baum,
+  // aber nicht im gepinnten Inventar` mit genau diesem Pfad.
+  "tests/anhaenge-ziehen/speichern-wiederoeffnen-pg.integration.test.ts",
 ];
 
 // ------------------------------------------------------------------------------------------------
