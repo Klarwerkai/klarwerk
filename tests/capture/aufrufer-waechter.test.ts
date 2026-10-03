@@ -1296,6 +1296,16 @@ const BEWUSST_WEB: readonly Ausnahme[] = [
     schluessel: "apps/web/src/test/render.tsx::makeSource",
     grund: "Dieselbe Bauart und derselbe Grund wie `makeKo`.",
   },
+  {
+    schluessel: "apps/web/src/lib/imageResize.ts::imageWidthPercent",
+    grund:
+      "Seit b4e6d86b (R-0014, gezogene Bildbreite) ohne Produktaufrufer, am Code geprueft: der " +
+      "Editor fuehrt die Breite ausschliesslich in Attributform („62.5%“) — `RichTextEditor.tsx` " +
+      "liest sie mit `normalizeImageWidth` und schreibt sie mit `formatImageWidth`; einen " +
+      "Zahlenwert braucht kein Produktweg. Gelesen wird der Export nur in " +
+      "`tests/bildgroesse/resize.test.ts` als Pruefhilfe der Kanonform. Ein erfundener " +
+      "Produktaufruf waere hier der Fehler; entfaellt die Pruefhilfe, ist der Export zu streichen.",
+  },
   // HIER STAND `GesamtanweisungSeite` (JOB 4154) UND IST MIT JOB 4156 GESTRICHEN — ebenfalls
   // selbstauslaufend und ebenfalls von A3 erzwungen. Ihr Aufrufer ist jetzt
   // `apps/web/src/components/gesamtanweisung/GesamtanweisungBereich.tsx`, und der haengt ueber
