@@ -16,6 +16,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { extractBodyImages } from "../../apps/web/src/lib/bodyImages";
 import {
   CAPTION_UNASSIGNED_ATTR,
+  type EditableElement,
   captionForImage,
   enhanceFiguresForEditing,
   imageForCaption,
@@ -136,23 +137,36 @@ async function lesen(app: App, headers: Auth, id: string): Promise<string> {
   return (res.json() as { bodyHtml?: string }).bodyHtml ?? "";
 }
 
+// DOM-lib-frei wie `identitaet-vom-bild.test.ts`: `.ts`-Testdateien werden ohne `dom`-Bibliothek
+// typgeprüft. Ein echtes jsdom-Element erfüllt diese Typen strukturell.
+interface ElementLike extends EditableElement {
+  innerHTML: string;
+  textContent: string | null;
+  querySelector(selectors: string): ElementLike | null;
+  querySelectorAll(selectors: string): Iterable<ElementLike>;
+}
+interface DocumentLike {
+  createElement(tag: string): ElementLike;
+}
+const doc = (globalThis as unknown as { document: DocumentLike }).document;
+
 /** Wie der Editor lädt: Körper in einen Baum, verankern und kennzeichnen. */
-function imEditor(html: string): HTMLDivElement {
-  const el = document.createElement("div");
+function imEditor(html: string): ElementLike {
+  const el = doc.createElement("div");
   el.innerHTML = html;
   enhanceFiguresForEditing(el, "Platzhalter", "Öffnen", "nicht zugeordnet", "Label");
   return el;
 }
 
 /** Wie der Editor ausgibt (`emit()` → Client-Sanitizer). */
-const ausgabe = (el: HTMLElement): string => clientSanitize(el.innerHTML);
+const ausgabe = (el: ElementLike): string => clientSanitize(el.innerHTML);
 
-function fussnoteMitText(el: HTMLElement, text: string): HTMLElement {
+function fussnoteMitText(el: ElementLike, text: string): ElementLike {
   const treffer = Array.from(el.querySelectorAll("figcaption")).filter(
     (f) => (f.textContent ?? "").trim() === text,
   );
   const eine = treffer[0];
-  if (treffer.length !== 1 || !(eine instanceof HTMLElement)) {
+  if (treffer.length !== 1 || eine === undefined) {
     throw new Error(`${treffer.length} Fußnoten mit dem Text „${text}" statt genau einer`);
   }
   return eine;
@@ -212,7 +226,7 @@ describe("K3 · bewusste Zuordnung: die zugeordnete Fußnote bleibt beim gewähl
     expect(beschreibung.getAttribute("data-image-id")).toBe("kw-a");
     expect(beschreibung.getAttribute(CAPTION_UNASSIGNED_ATTR)).toBeNull();
     expect(imageForCaption(beschreibung, wieder)?.getAttribute("data-image-id")).toBe("kw-a");
-    expect(wieder.querySelectorAll("figcaption")).toHaveLength(1);
+    expect(Array.from(wieder.querySelectorAll("figcaption"))).toHaveLength(1);
   });
 });
 
