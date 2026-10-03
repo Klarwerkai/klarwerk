@@ -1448,6 +1448,76 @@ export function queryTokens(text: string): string[] {
   return tokenize(text);
 }
 
+// ================================================================================================
+// R-0473 (K8) — MEHRERE WÖRTER MÜSSEN ALLE VORKOMMEN.
+// ================================================================================================
+//
+// DER BEFUND (ben, Nacharbeit 1, F1): Die Vorauswahl vereinigt Einzelterm-Treffer, und das
+// Antworttor verlangt nur `MIN_ANSWER_SUBSTANCE` (2) gemeinsame Inhaltstoken. „Ventil F3
+// Temperatur" konnte deshalb aus einer Quelle beantwortet werden, die nur „Ventil F3" kennt.
+//
+// WELCHE FRAGEBEGRIFFE GEBUNDEN SIND — nicht jedes Inhaltstoken, und das ist gemessen, nicht
+// bequem: Fragewörter und Verben wie „finde", „gilt" oder „hängt" sind Inhaltstoken der Zerlegung,
+// stehen aber nicht in der Quelle, die die Frage beantwortet („Wo finde ich die Urlaubsregelungen
+// im Handbuch?" gegen „Die Urlaubszeiten stehen im Handbuch.", N2 Z1). Ein UND über ALLE Token
+// machte aus fast jeder natürlich formulierten Frage eine Wissenslücke. Gebunden sind deshalb die
+// BEGRIFFE der Frage:
+//   · Kennungen („F3", „L4") — immer;
+//   · großgeschriebene Wörter innerhalb eines Satzes — im Deutschen die Substantive. Das erste Wort
+//     eines Satzes zählt nicht, weil es aus Satzbau großgeschrieben ist („Gilt das Ventil …?").
+// Was die Zerlegung als Stoppwort entfernt („Sie", „Ihr"), entfällt auch hier — dieselbe Zerlegung.
+//
+// WANN EIN BEGRIFF VORKOMMT: nach DEMSELBEN Treffervertrag wie die Suche selbst — die Grundform als
+// Teilzeichenkette des durchsuchbaren Texts (`effective-search-document.ts`, `lower.includes`, in
+// SQL als ILIKE). Eine DEKLARIERTE Entsprechung (Relevanztext) gilt als derselbe Begriff in anderer
+// Form: „Urlaubsregelung" kommt in einer Quelle vor, die „Urlaubszeiten" führt. Ein deklariertes
+// Fachkompositum ist über die Teilzeichenkette ohnehin erfasst („farb" in „Pflichtfarbe").
+//
+// WAS DAS NICHT ÄNDERT: Vorkommen ist nicht Tragen. Die Mindestsubstanz, die Trennung
+// suchbar/tragend und die Fachkomposita-Liste entscheiden danach unverändert über die Antwort.
+//
+// DIE BENANNTE GRENZE: Englische und niederländische Fragen schreiben Substantive klein; dort bindet
+// die Regel nur Kennungen. Ein klein getippter deutscher Satz ebenso.
+export function undVerknuepfteFragebegriffe(question: string): string[] {
+  const raus = new Set<string>();
+  for (const satz of question.split(/[.!?:;]+/)) {
+    const woerter = satz.split(/[^A-Za-zÄÖÜäöüß0-9]+/).filter((w) => w.length > 0);
+    for (const [i, wort] of woerter.entries()) {
+      const kennung = istKennung(wort.toLowerCase());
+      const begriff = i > 0 && /^[A-ZÄÖÜ]/.test(wort);
+      if (!kennung && !begriff) {
+        continue;
+      }
+      for (const token of tokenize(wort)) {
+        raus.add(token);
+      }
+    }
+  }
+  return [...raus];
+}
+
+/**
+ * Kommen ALLE gebundenen Fragebegriffe (oder ihre deklarierte Entsprechung) im durchsuchbaren Text
+ * vor? `durchsuchbar` sind dieselben Felder, die die Suche trifft — Titel, Aussage, Fußnoten,
+ * Dokumenttext, Kategorie und Tags; der Aufrufer setzt sie zusammen, weil `KnowledgeRef` Kategorie
+ * und Tags nicht führt.
+ */
+export function decktAlleFragebegriffe(
+  question: string,
+  durchsuchbar: string,
+  relevanz: Relevanztext = [],
+): boolean {
+  const text = durchsuchbar.toLowerCase();
+  return undVerknuepfteFragebegriffe(question).every(
+    (begriff) =>
+      text.includes(begriff) ||
+      relevanz.some(
+        (paar) =>
+          paar.getippt.includes(begriff) && paar.ergaenzt.some((term) => text.includes(term)),
+      ),
+  );
+}
+
 // WP-RETEST7 R5: der durchsuchbare Text eines Refs — Titel + Aussage + (falls vorhanden) die
 // persistierten Bild-Fußnoten. EINE Quelle für keywordSelect UND rankCandidates, damit ein KO,
 // dessen Wissen nur in der Fußnote steht, das Relevanz-Gate passieren kann.

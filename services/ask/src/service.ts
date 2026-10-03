@@ -20,6 +20,7 @@ import {
   type ReasonerLocale,
   type Relevanztext,
   type ZuordnungsPaar,
+  decktAlleFragebegriffe,
   queryTokens,
   waehleKandidaten,
 } from "../../reasoner";
@@ -928,7 +929,30 @@ export class AskService {
     // trifft, überlebt damit beide oder keines, aber nie nur das erste.
     // JOB 3353: `waehleKandidaten` IST `selectCandidates` plus die Zwillingsregel — dieselbe
     // Funktion, die Tor 2 ruft (Begründung und Grenzen dort, `reasoner/src/provider-model.ts`).
-    const candidates = waehleKandidaten(question, refs, DEFAULT_TOP_K, relevanz);
+    // R-0473 (K8): MEHRERE BEGRIFFE MÜSSEN ALLE VORKOMMEN. Die Vorauswahl bleibt term-weise ODER
+    // (sonst fände der Deckel nichts mehr), aber eine Quelle, der ein gebundener Fragebegriff fehlt,
+    // erreicht weder Tor 1 noch Tor 2. Eine deklarierte Entsprechung zählt als derselbe Begriff.
+    // Welche Begriffe gebunden sind und warum nicht jedes Token: `undVerknuepfteFragebegriffe`.
+    // Gebunden wird nur die FRAGE — die Markierung ergänzt die Suche, sie verschärft sie nicht.
+    // Geprüft wird auf DENSELBEN Feldern, die die Suche trifft — Kategorie und Tags eingeschlossen,
+    // die `KnowledgeRef` nicht führt; sie kommen deshalb aus `prefiltered`.
+    const ordnung = new Map<string, string[]>(
+      prefiltered.map((ko): [string, string[]] => [ko.id, [ko.category, ...(ko.tags ?? [])]]),
+    );
+    const vollstaendig = refs.filter((ref) =>
+      decktAlleFragebegriffe(
+        question,
+        [
+          ref.title,
+          ref.statement,
+          ...(ref.captionTexts ?? []),
+          ref.bodyText ?? "",
+          ...(ordnung.get(ref.id) ?? []),
+        ].join(" "),
+        relevanz,
+      ),
+    );
+    const candidates = waehleKandidaten(question, vollstaendig, DEFAULT_TOP_K, relevanz);
     // SCRUM-490 R2 (B1): Add-on-Pfad → RETRIEVAL-ONLY (kein Modell-/Embedder-Egress des Dokumenttexts).
     // Sonst der übliche Reasoner-Weg (Session-Pfad unverändert).
     // AUFTRAG-mega61 BLOCK G — DAS ZWEITE NETZ, AUS DEM KONTEXT ABGELEITET.
