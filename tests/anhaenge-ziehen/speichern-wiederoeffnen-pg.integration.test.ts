@@ -91,10 +91,7 @@ type Buehne = Seite & {
   };
   on(ereignis: "response", f: (a: Antwort) => void): void;
   waitForEvent(ereignis: "filechooser", o?: Record<string, unknown>): Promise<Dateiwahl>;
-  waitForResponse(
-    f: (a: Antwort) => boolean,
-    o?: Record<string, unknown>,
-  ): Promise<Antwort>;
+  waitForResponse(f: (a: Antwort) => boolean, o?: Record<string, unknown>): Promise<Antwort>;
   close(o?: Record<string, unknown>): Promise<void>;
 };
 interface Punkt {
@@ -224,13 +221,24 @@ async function zieheBildVor(seite: Buehne, wort: string): Promise<void> {
 
 async function zumFormular(seite: Buehne): Promise<void> {
   await seite.click('[data-testid="blatt-werkzeug-datei"]');
-  await warteBis(seite, `!!document.querySelector('[data-testid="blatt-menue-datei"]')`, "das Dateimenü ist offen");
+  await warteBis(
+    seite,
+    `!!document.querySelector('[data-testid="blatt-menue-datei"]')`,
+    "das Dateimenü ist offen",
+  );
   const formular = await mitte(
     seite,
-    knopfMitText(`document.querySelector('[data-testid="blatt-menue-datei"]')`, t("erfassen.weg.formular")),
+    knopfMitText(
+      `document.querySelector('[data-testid="blatt-menue-datei"]')`,
+      t("erfassen.weg.formular"),
+    ),
   );
   await seite.mouse.click(formular.x, formular.y);
-  await warteBis(seite, `(() => { try { return !!${FELD}; } catch { return false; } })()`, "das Expertenformular mit Schreibfeld steht");
+  await warteBis(
+    seite,
+    `(() => { try { return !!${FELD}; } catch { return false; } })()`,
+    "das Expertenformular mit Schreibfeld steht",
+  );
 }
 
 const figurenzahl = (n: number): string =>
@@ -253,14 +261,19 @@ function rumpfAus(wert: unknown): string | null {
 }
 
 // Für Meldungen: eine data:-Quelle ist zehntausende Zeichen lang. Verglichen wird sie trotzdem voll.
-const kurz = (f: Figur) => ({ ...f, src: `${f.src.slice(0, 24)}…(${f.src.length})` });
+const kurz = (f: Omit<Figur, "huelleId">) => ({
+  ...f,
+  src: `${f.src.slice(0, 24)}…(${f.src.length})`,
+});
 
 function pruefeLage(lage: Figur[], wo: string, soll?: Figur[]): void {
   expect(lage.length, `${wo}: Zahl der Bildhüllen`).toBe(2);
   const [a, b] = lage as [Figur, Figur];
   for (const f of lage) {
     expect(f.bildId, `${wo}: Bild ohne Anker`).toBeTruthy();
-    expect(f.unterschriftId, `${wo}: Unterschrift trägt nicht den Anker ihres Bildes`).toBe(f.bildId);
+    expect(f.unterschriftId, `${wo}: Unterschrift trägt nicht den Anker ihres Bildes`).toBe(
+      f.bildId,
+    );
     // Die Hülle DARF den Anker mittragen (Produktvertrag `editorFigures.ts`/Sanitizer) — dann denselben.
     expect(f.huelleId ?? f.bildId, `${wo}: Hülle mit fremdem Anker`).toBe(f.bildId);
     expect(f.src.startsWith("data:image/"), `${wo}: Quelle ist nicht das Listenbild`).toBe(true);
@@ -382,11 +395,21 @@ describe("Anhänge ziehen · K2 · gezogen → regulär gespeichert → aus Post
         await seite.keyboard.type(TITEL);
 
         // Das Bild über das sichtbare Upload-Label — der Dateidialog des Browsers.
+        const details = await mitte(seite, knopfMitText("document", t("capture.advanced.title")));
+        await seite.mouse.click(details.x, details.y);
+        await warteBis(
+          seite,
+          `!!document.querySelector('input[type="file"][accept="image/*"]')`,
+          "Bildauswahl in erweiterten Details offen",
+        );
+
         const label = await mitte(
           seite,
           `[...document.querySelectorAll("label")].find((l) => (l.textContent || "").trim().startsWith(${JSON.stringify(t("capture.imagesUpload"))}) && l.querySelector('input[type="file"][accept="image/*"]'))`,
         );
-        const wahl = seite.waitForEvent("filechooser", { timeout: wartebudget("aufFlaechensatzWarten") });
+        const wahl = seite.waitForEvent("filechooser", {
+          timeout: wartebudget("aufFlaechensatzWarten"),
+        });
         await seite.mouse.click(label.x, label.y);
         await (await wahl).setFiles({ name: BILD_NAME, mimeType: "image/png", buffer: BILD_PNG });
 
@@ -417,13 +440,19 @@ describe("Anhänge ziehen · K2 · gezogen → regulär gespeichert → aus Post
         );
         const sichern = await mitte(seite, knopfMitText("document", t("capture.saveDraft")));
         await seite.mouse.click(sichern.x, sichern.y);
-        const bestaetigen = await mitte(seite, knopfMitText("document", t("capture.saveLimit.confirm")));
+        const bestaetigen = await mitte(
+          seite,
+          knopfMitText("document", t("capture.saveLimit.confirm")),
+        );
         await seite.mouse.click(bestaetigen.x, bestaetigen.y);
         const antwort = await gespeichert;
         expect(antwort.status(), "Speichern über den Socket").toBeLessThan(300);
         const gesichert = (await antwort.json()) as { id?: unknown };
         id = typeof gesichert.id === "string" ? gesichert.id : "";
-        expect(id, `die Speicherantwort nennt keine Entwurfskennung: ${JSON.stringify(gesichert).slice(0, 300)}`).not.toBe("");
+        expect(
+          id,
+          `die Speicherantwort nennt keine Entwurfskennung: ${JSON.stringify(gesichert).slice(0, 300)}`,
+        ).not.toBe("");
       } finally {
         await seite.close({ runBeforeUnload: false }).catch(() => undefined);
       }
