@@ -29,18 +29,22 @@ Verhaltenstests; ob sie auf diesem Stand grün sind, sagt erst deren Lauf, nicht
 | W9-Aussage | Heute im Bestand | Belegt durch |
 | --- | --- | --- |
 | `check-text` ohne Aufrufer | Route `POST /api/check-text` (`services/app/src/routes/check-text-routes.ts`); das Panel ruft sie über genau einen Übersetzer `w6DublettenAusCheckText` (Block `KW-KLARA-W6-CHECKTEXT` in `apps/web/public/word-addin/taskpane.html`). Der Satz „ohne Aufrufer“ ist **überholt**. | `tests/s6-belegte-antwort/check-text-vor-einreichen.test.ts` |
-| Output Factory ohne Aufrufer | `OutputService` hängt an `/api/output/generate` (`services/app/src/routes/output-routes.ts`); der Zuruf-Erzeuger `ZurufService` (`services/output/src/zuruf.ts`) an `POST /api/klara/sessions/:sessionId/zuruf`. Der Satz „ohne Aufrufer“ ist **überholt**. | `tests/output/ka6-zuruf.test.ts`, `tests/ka6-memo-panel/memo-route.test.ts` |
+| Output Factory ohne Aufrufer | Die Output Factory (`OutputService.generate`, `services/output/src/service.ts`) hängt an `POST /api/output/generate` (`services/app/src/routes/output-routes.ts`). Ein Aufrufer steht in der **Web-App** (`apps/web/src/api/endpoints.ts`, `/output/generate`); das **Word-Panel** ruft `/api/output/` nirgends. Für die Web-App ist „ohne Aufrufer“ also **überholt**, für Word nicht. | `services/app/src/output-routes.test.ts` (Route, nicht hier ausgeführt) |
 | **Stufe 1** „Gibt es das schon?“ | Die Erfassen-Fläche fragt bei stehender Markierung vor dem Senden (`#capture-dubletten`), ohne zu blockieren; Grenzen 40 / 8.000 Zeichen. | `tests/s6-belegte-antwort/check-text-vor-einreichen.test.ts` |
 | **Stufe 2** gedeckt / im Widerspruch / Lücke | Word-Vergleich (Block `KW-WORDVERGLEICH`, Knopf `#wv-btn`): grün „wörtlich belegt“, gelb „ähnlich“, türkis „kein Fund“, rot „Widerspruch“ — rot nur mit Einwilligung für den tiefen Zweig; schreibt nichts, färbt nur. | `tests/word-vergleich/absatzvergleich-mounted.test.ts` |
-| **Stufe 3** Output Factory → Word über den vorhandenen Einfügeweg | Memo aus einer Quelle (Block `KW-KA6-MEMO`, `ka6MemoAnfordern`, Knopf `#ka6-memo-btn`) über die Zuruf-Route; eingefügt wird erst auf den zweiten Klick über `Word.run` / `setSelectedDataAsync`. | `tests/ka6-memo-panel/memo-panel-mounted.test.ts` |
+| **Stufe 3** Output Factory → Word über den vorhandenen Einfügeweg | **Nicht nachgewiesen.** Die Output Factory hat keine Tür nach Word: das Panel ruft `/api/output/` nirgends. Ob die ursprüngliche Factory-Verbindung später anders gelöst oder bewusst ersetzt wurde, ist aus diesen Belegen **ungeklärt**. | — |
+| *Verwandter heutiger Bestand zu Stufe 3* (kein Nachweis der Factory-Verbindung) | Memo aus einer Quelle (Block `KW-KA6-MEMO`, `ka6MemoAnfordern`, Knopf `#ka6-memo-btn`) über `POST /api/klara/sessions/:sessionId/zuruf`; eingefügt wird erst auf den zweiten Klick über `Word.run` / `setSelectedDataAsync`. Die Route verwendet `ZurufService` mit einem injizierten Formulierer, **nicht** `OutputService.generate`; `services/output/src/zuruf.ts` beschreibt beide ausdrücklich als getrennte Erzeuger (ganzes Dokument gegen Passage). Die Zuruf-Tests belegen diesen Weg, **keine Gleichwertigkeit** mit dem Factory-Weg. | `tests/ka6-memo-panel/memo-panel-mounted.test.ts`, `tests/ka6-memo-panel/memo-route.test.ts`, `tests/output/ka6-zuruf.test.ts` |
 | Rückkopplung Lücke → `interview` (K5) | **Nicht zugeordnet.** Die Lücke im Panel (`KW-D2-LUECKE`) bietet „Frage ändern“ und „offene Frage“ (`sendOpenQuestion`); ein Angebot des Lehrlings-Gesprächs über die `interview`-Aufgabe ist im Panel nicht gefunden. | — |
-| Kein neuer Egress, Retrieval-only | Stufe 1 und die Farben grün/gelb/türkis laufen ohne Modell; Widerspruch (Stufe 2) und Zuruf (Stufe 3) gehen nur mit der dokumentbezogenen Einwilligung (KA4) nach außen. Ob das der Grenze aus W9 genügt, ist eine **Bewertung, die dieses Dokument nicht trifft**. | — |
+| Kein neuer Egress, Retrieval-only | Stufe 1 und die Farben grün/gelb/türkis laufen ohne Modell; Widerspruch (Stufe 2) und der Zuruf-Weg (verwandt zu Stufe 3) gehen nur mit der dokumentbezogenen Einwilligung (KA4) nach außen. Ob das der Grenze aus W9 genügt, ist eine **Bewertung, die dieses Dokument nicht trifft**. | — |
 | Reihenfolge S5 → 1 → 2 → 3, Mitlesen zuletzt | Nicht aus dem Quelltext prüfbar (Geschichte, keine Eigenschaft des Stands). Ein Mitlesen beim Tippen ist im Panel nicht gebaut. | — |
 
 ## Grenzen
 
 - `_relay/kopf/KLARA-Zwei-Wege-Konzept.md`, auf das W9 verweist, liegt **nicht** im Arbeitsbaum und
-  wurde nicht gelesen; zugeordnet ist allein die OFFEN-Zeile.
+  wurde nicht gelesen (auch nicht sein Abschnitt 7 mit der Unterscheidung hausinterne KI gegen
+  Cloud-Egress); zugeordnet ist allein die OFFEN-Zeile. Der Abgleich mit dieser Datei ist **offen**.
+- Die ursprüngliche Output-Factory-Verbindung nach Word (Stufe 3) ist **nicht** quellengebunden
+  zugeordnet; der Memo-/Zuruf-Weg ist nur verwandter Bestand.
 - Die Zeilenangabe `taskpane.html:573-680` aus W9 stammt vom 30.07. und trifft den heutigen Stand
   nicht mehr; zugeordnet ist über die Blockmarken, nicht über Zeilen.
 - Ob Pedi W9 nach dem Vortest entschieden hat, steht nicht in der Quelle (die Zeile trägt weiter

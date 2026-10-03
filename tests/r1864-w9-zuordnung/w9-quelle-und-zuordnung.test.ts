@@ -96,15 +96,35 @@ describe("R-1864 · Z — jede Zuordnung zeigt auf Vorhandenes", () => {
     }
   });
 
-  it("Z3: Stufe 3 — Output Factory und Zuruf haben Routen, das Panel ruft den Zuruf", () => {
+  // Ben (Nacharbeit 2): Stufe 3 nennt die Output Factory. Der Memo-Weg ruft den Zuruf, nicht die
+  // Factory. Z3a/Z3b halten beide Wege GETRENNT fest, Z3c bindet die Einstufung im Dokument daran.
+  it("Z3a: Output Factory hat Route und Web-Aufrufer, keinen im Word-Panel", () => {
     const app = lies("services/app/src/build-app.ts");
     expect(app).toContain("app.register(outputRoutes(services.output, guards));");
+    expect(lies("apps/web/src/api/endpoints.ts")).toContain('"/output/generate"');
+    expect(panel).not.toContain("/api/output/");
+  });
+
+  it("Z3b: der Memo-Weg ruft den Zuruf, und der Zuruf ist nicht die Output Factory", () => {
     const sitzung = lies("services/app/src/routes/klara-session-routes.ts");
     expect(sitzung).toContain('"/api/klara/sessions/:sessionId/zuruf"');
+    expect(sitzung).not.toContain("OutputService");
+    const zuruf = lies("services/output/src/zuruf.ts");
+    expect(zuruf).not.toMatch(/from "\.\/service"/);
+    expect(zuruf).not.toContain(".generate(");
     const block = zwischen(panel, "// KW-KA6-MEMO-START", "// KW-KA6-MEMO-END");
     expect(block).toContain("function ka6MemoAnfordern(");
     expect(block).toContain('knopf.id = "ka6-memo-btn"');
     expect(block).toContain('"/zuruf"');
+  });
+
+  it("Z3c: Stufe 3 ist „Nicht nachgewiesen“, solange das Panel die Factory nicht ruft", () => {
+    const dokument = lies(DOKUMENT);
+    const zeile = /\| \*\*Stufe 3\*\* Output Factory → Word[^|]*\| \*\*Nicht nachgewiesen\.\*\*/;
+    expect(zeile.test(dokument)).toBe(!panel.includes("/api/output/"));
+    // Der Memo-Weg darf nur als verwandter Bestand stehen, nie als Stufe 3 selbst.
+    expect(dokument).toMatch(/\| \*Verwandter heutiger Bestand zu Stufe 3\* \(kein Nachweis/);
+    expect(dokument).not.toMatch(/\| \*\*Stufe 3\*\*[^|]*\| Memo aus einer Quelle/);
   });
 
   it("Z4: K5 steht nur so lange als „Nicht zugeordnet“, wie die Luecke kein interview anbietet", () => {
