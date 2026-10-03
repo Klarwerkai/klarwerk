@@ -265,7 +265,11 @@ export function Blatt({
 }): JSX.Element {
   const { i18n, t } = useTranslation();
   const { user } = useSession();
-  const strukturKostet = useAiBillable(["structure", "assist"]);
+  // Auftrag anzeige-kosten (R-0952): JE AUFGABE, nicht als Paar. Die Mehrfachform sagte „ja",
+  // sobald EINE der beiden kostet — lief dann die andere (lokal/deterministisch), stand der
+  // Kostensatz über einem Klick, der nichts kostet. Unten wird jede Auskunft an IHREN Lauf gebunden.
+  const strukturKostet = useAiBillable("structure");
+  const assistKostet = useAiBillable("assist");
   const { push } = useToast();
   const qc = useQueryClient();
   const { setGuard } = useNavGuard();
@@ -3315,7 +3319,7 @@ export function Blatt({
           <BlattLage
             fehler={blattFehler}
             erfolg={submittedKo}
-            kostet={strukturKostet && (structure.isPending || assist.isPending)}
+            kostet={(strukturKostet && structure.isPending) || (assistKostet && assist.isPending)}
             uebernommen={structureAccepted || assistAccepted}
             rumpfZurueckgehalten={rumpfZurueckgehalten}
             keptRichBody={structureKeptRichBody}
@@ -3506,7 +3510,7 @@ function BlattLage({
     // mega62: der Kostenhinweis kommt aus SEINER Komponente, nicht aus einem zweiten `t()`-Aufruf.
     // Ein abgeschriebener Wortlaut wäre eine zweite Wahrheit über dieselben Kosten — und der
     // Sammler, der jede Auslösestelle prüft, sähe diese Fläche gar nicht.
-    // `billable` ist hier definitionsgemäß wahr: `kostet` IST `useAiBillable([...]) && läuft`.
+    // `billable` ist hier definitionsgemäß wahr: `kostet` IST „die LAUFENDE Aufgabe ist billable".
     return (
       <p data-testid="blatt-lage" className="pointer-events-auto text-[13px] text-muted">
         <AiCostHint billable />
