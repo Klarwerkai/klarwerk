@@ -376,4 +376,50 @@ describe("R-0162 · offene Kandidaten gelöschter Seiten", () => {
     expect(angenommen.koId).toBeTruthy();
     expect(await traeger(d, "p2")).toHaveLength(1);
   });
+
+  // Nacharbeit 2 (bens Befund): HTTP 200 MIT Seiten-Id, aber ungültigem/unbekanntem Statuswert ist
+  // KEINE bestätigte Löschung — weder für einen angenommenen Bestand noch für einen offenen
+  // Kandidaten. Die Erfolgsfälle 404 (L1/K1) und trashed (L2) bleiben unverändert.
+  const ungueltigeStatus: [string, unknown][] = [
+    ["null", null],
+    ["42", 42],
+    ["unbekannter String", "verschollen"],
+  ];
+  for (const [name, status] of ungueltigeStatus) {
+    it(`G7: Status ${name} bei angenommenem Bestand — Wissen bleibt, Prüfung offen`, async () => {
+      const d = await bestand();
+      const [vorher] = await traeger(d, "p2");
+      const { adapter, einzelabrufe } = adapterFuer({
+        liste: [seite("p1", "Pumpe warten")],
+        jeId: { p2: { roh200: { id: "p2", status } } },
+      });
+      const lauf = await abgleich(d, adapter);
+      expect(einzelabrufe).toEqual(["p2"]);
+      expect(lauf.removed).toBe(0);
+      expect(lauf.candidatesRejected).toBe(0);
+      expect(lauf.removalOpen).toBe(1);
+      const eintrag = lauf.perPage.find((p) => p.ref === "p2");
+      expect(eintrag?.status).toBe("failed");
+      expect(eintrag?.note).toContain("ConfluenceStatusUnbekannt");
+      const [nachher] = await traeger(d, "p2");
+      expect(nachher?.id).toBe(vorher?.id);
+      expect(nachher?.version).toBe(vorher?.version);
+      expect(await d.koService.trashed()).toHaveLength(0);
+    });
+
+    it(`G7: Status ${name} bei offenem Kandidaten — Kandidat bleibt neu, Prüfung offen`, async () => {
+      const { d, kandidatId } = await eingereiht();
+      const { adapter } = adapterFuer({
+        liste: [],
+        jeId: { p2: { roh200: { id: "p2", status } } },
+      });
+      const lauf = await abgleich(d, adapter);
+      expect(lauf.removed).toBe(0);
+      expect(lauf.candidatesRejected).toBe(0);
+      expect(lauf.removalOpen).toBe(1);
+      expect(lauf.perPage.find((p) => p.ref === "p2")?.status).toBe("failed");
+      expect((await kandidat(d, kandidatId))?.status).toBe("neu");
+      expect(await d.koService.list()).toHaveLength(0);
+    });
+  }
 });

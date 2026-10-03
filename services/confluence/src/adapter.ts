@@ -132,6 +132,10 @@ export function hierarchieBefund(pages: readonly ConfluencePage[]): ConfluenceHi
   };
 }
 
+// R-0162 (Nacharbeit 2): die Confluence-Inhaltszustände, die eine Seite aus dem Space nehmen.
+// Nur sie lösen eine Entfernung aus; alles andere außer `current` ist eine offene Gegenprobe.
+const GELOESCHTE_STATUS: ReadonlySet<string> = new Set(["trashed", "archived", "deleted"]);
+
 export class ConfluenceSourceAdapter implements SourceAdapter {
   readonly source = "Confluence";
 
@@ -198,17 +202,27 @@ export class ConfluenceSourceAdapter implements SourceAdapter {
   /**
    * R-0162 (Abgleich): die GEGENPROBE vor jedem Nachziehen einer Löschung. Dass eine Seite in der
    * Liste fehlt, reicht nicht — erst wenn die Quelle sie auch je Id nicht mehr liefert (404) oder
-   * sie nicht mehr `current` ist (Papierkorb/Archiv), gilt sie als gelöscht. Netz- und Serverfehler
-   * werfen weiter, ebenso eine 2xx-Antwort ohne gültige Seite (getPageStateById); der Aufrufer
-   * verbucht sie als „nicht prüfbar" und ändert nichts.
+   * sie einen AUSDRÜCKLICH unterstützten Lösch-/Archivzustand trägt (GELOESCHTE_STATUS), gilt sie
+   * als gelöscht. `current` oder ein fehlendes Statusfeld heißt: die Seite existiert. Jeder andere
+   * Statuswert (null, Zahl, unbekannter String) ist eine unklare Antwort und WIRFT — ebenso Netz-
+   * und Serverfehler und eine 2xx-Antwort ohne gültige Seite (getPageStateById). Der Aufrufer
+   * verbucht das als „nicht prüfbar" und ändert nichts.
    */
   async isGoneAtSource(externalId: string): Promise<boolean> {
     const zustand = await this.client.getPageStateById(externalId);
     if (!zustand.gefunden) {
       return true;
     }
-    const { status } = zustand.page;
-    return status !== undefined && status !== "current";
+    const status: unknown = zustand.page.status;
+    if (status === undefined || status === "current") {
+      return false;
+    }
+    if (typeof status === "string" && GELOESCHTE_STATUS.has(status)) {
+      return true;
+    }
+    const err = new Error("Confluence-Einzelantwort mit unbekanntem Seitenstatus");
+    err.name = "ConfluenceStatusUnbekannt";
+    throw err;
   }
 }
 
