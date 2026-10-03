@@ -271,9 +271,24 @@ describe("R-0578 · ein UNGÜLTIG gespeicherter Altentwurf erbt keine Stufe", ()
     expect(titel.value).toBe(TITEL);
 
     // Der unbekannte Wert ist keine Einstufung: das Werkzeug trägt das neutrale Wort, keine Stufe.
-    expect(werkzeugWort()).toContain(i18n.t("erfassen.werkzeug.vertraulichkeit"));
+    //
+    // NACHARBEIT 1 (Prüflauf auf 315144fb): Die erste Fassung prüfte jede Stufenbezeichnung als
+    // Teilzeichenkette des GANZEN Werkzeugworts — und „Vertraulich" steckt im neutralen Wort
+    // „Vertraulichkeit". Der Fall war damit rot, obwohl das Blatt genau das Richtige zeigte
+    // (gemessen: „Vertraulichkeit·"). Deshalb wird das neutrale Wort zuerst als GANZES Wort
+    // festgestellt und herausgenommen; nur der REST darf keine Stufe tragen.
+    const neutral = i18n.t("erfassen.werkzeug.vertraulichkeit");
+    const wort = werkzeugWort();
+    expect(wort.startsWith(neutral), `das Werkzeug zeigt nicht das neutrale Wort: „${wort}“`).toBe(
+      true,
+    );
+    const rest = wort.slice(neutral.length);
     for (const stufe of ["intern", "vertraulich", "streng_vertraulich"]) {
-      expect(werkzeugWort()).not.toContain(i18n.t(`conf.level.${stufe}`));
+      const bezeichnung = i18n.t(`conf.level.${stufe}`);
+      expect(wort, `das Werkzeug behauptet die Stufe „${bezeichnung}“`).not.toBe(bezeichnung);
+      expect(rest, `neben dem neutralen Wort steht eine Stufe: „${wort}“`).not.toContain(
+        bezeichnung,
+      );
     }
 
     await klick(einreichenKnopf());
@@ -304,6 +319,13 @@ describe("R-0578 · ein UNGÜLTIG gespeicherter Altentwurf erbt keine Stufe", ()
       throw new Error(`Eintrag „${wort}“ fehlt im Menü`);
     }
     await klick(eintrag);
+    // GEGENPROBE zur Prüfung in B1 (Nacharbeit 1): nach der Wahl trägt das Werkzeug die Stufe und
+    // NICHT mehr das neutrale Wort. Fiele die B1-Prüfung hier nicht um, unterschiede sie nichts.
+    const neutral = i18n.t("erfassen.werkzeug.vertraulichkeit");
+    expect(werkzeugWort().startsWith(wort), `gewählt, aber angezeigt: „${werkzeugWort()}“`).toBe(
+      true,
+    );
+    expect(werkzeugWort().startsWith(neutral)).toBe(false);
     await klick(einreichenKnopf());
 
     expect(promote()).toHaveBeenCalledTimes(1);
