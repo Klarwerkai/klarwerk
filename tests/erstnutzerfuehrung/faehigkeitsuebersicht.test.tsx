@@ -217,10 +217,15 @@ describe("R-1012 · F0 — die Tabelle nennt nur Vorhandenes", () => {
     ];
     for (const lng of SPRACHEN) {
       const t = i18n.getFixedT(lng);
+      // GEGENPROBE: ein Schlüssel ohne Text kommt als Schlüssel zurück — nur deshalb belegt
+      // `not.toBe(k)` unten, dass ein Text da ist.
+      const fehlt = "erstnutzer.faehigkeiten.gibtEsNicht";
+      expect(t(fehlt), `${lng}: Gegenprobe`).toBe(fehlt);
       for (const k of schluessel) {
         const wert = t(k);
         expect(wert, `${lng}:${k}`).not.toBe(k);
-        expect(wert.length, `${lng}:${k}`).toBeGreaterThan(3);
+        // Keine Mindestlänge über null: echte Namen sind kurz (EN `nav.ask` = „Ask“, Prüfung 1).
+        expect(wert.trim().length, `${lng}:${k}`).toBeGreaterThan(0);
       }
       const hilfe = t("erstnutzer.faehigkeiten.hilfe", { seitenhilfe: t("menue.seitenhilfe") });
       expect(hilfe, `${lng}: Hilfesatz`).not.toContain("{{");
