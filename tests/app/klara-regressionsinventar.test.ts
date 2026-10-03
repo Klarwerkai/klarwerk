@@ -146,6 +146,32 @@ const ACHSEN: Achse[] = [
     positiv: "tests/demo-firmen-ci-verbraucher/panel-marke.test.ts",
     gegenprobe: "tests/app/word-addin.test.ts",
   },
+  // ----------------------------------------------------------------------------------------------
+  // AUFNAHME 20260922 · GESAMT-KLARA-EXTERN (R-1526) — DIE ACHTE ACHSE.
+  // ----------------------------------------------------------------------------------------------
+  // DER BEFUND, wörtlich aus der Auftragsquelle: „tests/ka6/job3026-riegel-am-erzeuger.test.ts wird
+  // von den sechs Erkennungsachsen des Klara-Regressionsinventars nicht gefunden und ist dort nicht
+  // gepinnt, obwohl REGELN.md §5 jeden neuen Klara-Test verlangt." Die Datei prüft Klaras
+  // Einwilligungsriegel am Erzeuger, trägt aber weder „klara" im Pfad noch eines der Wörter der
+  // übrigen Achsen.
+  // DAS MUSTER IST GEMESSEN, NICHT GERATEN (`node`-Erhebung über dieselben drei Flächen):
+  //   · mit zusätzlich `KLARA_EXTERNAL_EXECUTION_MIGRATED` — 25 Treffer, 15 neu, darunter
+  //     `job2622-sandbox-skips.test.ts`, das den Namen nur als Ruhegrund der Sandbox nennt. Zu weit.
+  //   · die hier stehende Fassung — 16 Treffer, 11 neu (eine davon die mit dieser Achse angelegte
+  //     `tests/klara-dokumenttext/…`, die ohnehin über `name` hereinkommt). Jede der zehn übrigen
+  //     ruft das Einwilligungstor des Klara-Sitzungsdienstes (`pruefeExterneAusfuehrung`) oder die
+  //     Prüferschnittstelle des Zuruf-Erzeugers (`Ka6Einwilligungspruefer`) — das sind die Tore, an
+  //     denen der externe Klara-Weg hängt.
+  {
+    kennung: "einwilligung",
+    wo: "inhalt",
+    muster: /Ka6Einwilligungspruefer|pruefeExterneAusfuehrung|pruefeDokumenttextFreigabe/,
+    zweck:
+      "Klaras Einwilligungstore für den externen Weg — Sitzungsdienst, Dokumenttext und Zuruf-Erzeuger. " +
+      "Noetig, weil eine Pruefung dieser Tore weder „klara“ im Pfad noch ein Wort der anderen Achsen tragen muss.",
+    positiv: "tests/ka6/job3026-riegel-am-erzeuger.test.ts",
+    gegenprobe: "tests/app/mega40-token-disziplin.test.ts",
+  },
 ];
 
 // ------------------------------------------------------------------------------------------------
@@ -824,6 +850,12 @@ const INVENTAR: readonly string[] = [
   // mit Zustimmung KEINEN Cloudweg oeffnet (er fordert nie `want:"deep"` an) und dass die
   // Einstufung des nicht eingestuften Textes an der Klara-Bindung haengt, nicht am Marker allein.
   "tests/m3-dokumentweg-panel/w6-anschluss-echte-route.test.ts",
+  // P-M3b (29.09.2026, Nacharbeit BEN-3): EIN Prüfstand-Wortlaut für die Web-Live-Zone und die
+  // Bestandsliste des Word-Panels. Von der Achse `komponente` gefunden (die Datei führt das
+  // ausgelieferte Aufgabenfenster über `createKlaraPanel` aus). „klara" steht nicht im Pfad, K5
+  // bleibt unverändert. Sachlich Klara-Regression: sie hält fest, dass das Panel für eingereichte
+  // und validierte Treffer in de/en/nl dasselbe Wort nennt wie die Web-Fläche.
+  "tests/erfassungs-konfliktpruefung/pruefstand-wortlaut.test.tsx",
   // JOB 3052 D6 (04.09.2026): das Wissensnetz der Web-App gegen das Zielbild Wissensnetz.dc.html,
   // in Chromium gemessen (tests/design/zielbild-wissensnetz.test.ts). Von der Inhaltsachse
   // `palette` gefunden: der statische Leseweg loest die Token `rgb(var(--kw-…))` der gerenderten
@@ -1148,6 +1180,50 @@ const INVENTAR: readonly string[] = [
   // gepinnten Inventar — Inventar nachfuehren: expected [ Array(1) ] to deeply equal []`; erst
   // danach wurde diese Zeile angefasst.
   "tests/wiki-orientierung/gliederung-mit-zeiger-chromium.test.ts",
+  // AUFNAHME 20260922 · GESAMT-ERSTNUTZERFÜHRUNG (29.09.2026), R-0474: der Nulltreffer von
+  // „Gehe zu …" und der Hilfesuche. Die Datei bedient die Schnellnavigation über die gemeinsame
+  // Vorrichtung (`paletteOeffnen`, `paletteTippen`) und kommt deshalb — wie die
+  // `navigationsnamen/palette-*`-Dateien — über die Inhaltsachse `palette` herein. „klara" steht
+  // nicht in ihrem Pfad, K5 bleibt unveraendert. GEMESSEN, NICHT GESETZT: vor dieser Zeile meldete
+  // K2 lokal `neu im Baum, aber nicht im gepinnten Inventar — Inventar nachfuehren: expected
+  // [ Array(1) ] to deeply equal []` mit genau diesem Pfad.
+  "tests/erstnutzerfuehrung/nulltreffer-naechster-schritt.test.tsx",
+  // Runde 2 (Ben B1): dieselbe Übergabe bis ins echte Fragefeld von `Ask`. Sie bedient die
+  // Schnellnavigation ebenso und kommt über dieselbe Achse `palette` herein; K5 unverändert.
+  // GEMESSEN, NICHT GESETZT: K2 meldete vor dieser Zeile lokal genau diesen Pfad.
+  "tests/erstnutzerfuehrung/uebergabe-ins-fragefeld.test.tsx",
+  // AUFNAHME 20260922 · DEPLOY-HEALTH-COMMIT (R-1028/R-0786, 29.09.2026): der Nachweis „eine
+  // Programmversion" für Word-Panel und Web-Konsole (stempelt `APP_VERSION` in das Klara-Panel) und
+  // der Liefernachweis des Live-Updates, dessen Ship-Skript die Versionsnummer mit anhebt.
+  // Beide ändern, was das Panel als Stand zeigt — sachlich Klara-Regression.
+  // GEMESSEN, NICHT GESETZT: `tools/test tests/app/klara-regressionsinventar` meldete K2 `neu im
+  // Baum, aber nicht im gepinnten Inventar — Inventar nachfuehren` mit genau diesen zwei Pfaden.
+  "tests/deploy-health-commit/eine-programmversion.test.ts",
+  "tests/deploy-liefernachweis/live-update-liefernachweis.test.ts",
+  // AUFNAHME 20260922 · GESAMT-KLARA-EXTERN (01.10.2026), R-0639: der Dokumenttext-Riegel. Traegt
+  // „klara" im PFAD und kommt ueber `name` herein (K5: 68 -> 69). GEMESSEN, NICHT GESETZT: K2
+  // meldete lokal `neu im Baum, aber nicht im gepinnten Inventar` mit genau diesem Pfad.
+  "tests/klara-dokumenttext/riegel-haelt-den-dokumenttext.test.ts",
+  // R-1526: die zehn Pruefungen, die erst die Achse `einwilligung` findet — Begruendung und Messung
+  // an der Achse. Keine traegt „klara" im Pfad; sie fallen in `verfehlt`, K5 bleibt bei 69.
+  "tests/ka6/job3026-riegel-am-erzeuger.test.ts",
+  "tests/app/job2666-stufe-die-nur-der-client-behauptet.test.ts",
+  "tests/app/job2692-ein-dokument-das-nur-der-client-beschreibt.test.ts",
+  "tests/d5-ki-aus/halt-vor-dem-dienst.test.ts",
+  "tests/ka6-memo-panel/memo-route.test.ts",
+  "tests/live-check-verdrahtung/anker-und-zustimmung.test.ts",
+  "tests/output/ka6-zuruf.test.ts",
+  "services/app/src/ask-routes.test.ts",
+  "services/app/src/db.migrate.integration.test.ts",
+  "services/app/src/routes/ka5-markierung.test.ts",
+  // Übernahme `erfassungs-konfliktpruefung` (03.10.2026): kam mit dem eingemischten Hauptstand in
+  // den Baum. GEFUNDEN VON GENAU EINER ACHSE: `palette` — die Datei nennt die „Bildpalette“ des
+  // Erfassungsblatts (Kopfkommentar und Ablauf), nicht die Klara-Palette. Sachlich keine
+  // Klara-Regression; gepinnt, weil das Verzeichnis die abgeleitete Menge exakt abbildet und die
+  // Achse hier nicht still verengt wird. Kein „klara" im Pfad: fällt in `verfehlt`, K5 bleibt bei
+  // 69. GEMESSEN, NICHT GESETZT: der Serverlauf am Kandidaten c1c7f0d9 meldete K2 `neu im Baum,
+  // aber nicht im gepinnten Inventar` mit genau diesem Pfad.
+  "tests/anhaenge-ziehen/speichern-wiederoeffnen-pg.integration.test.ts",
   // FE-002 (HEADER TEIL 1, 26.09.2026): von der Achse `palette` gefunden (Muster `palette`) — die
   // Datei montiert `CommandPalette` und misst den Schnellzugriff „Seite finden" (vormals „Gehe zu …")
   // samt Namenssuche und ohne technische Pfade. Dieselbe Klasse wie die `admin-navigation`-Dateien
@@ -1258,7 +1334,8 @@ describe("JOB 920 · K — das Klara-Regressionsinventar ist ableitbar, nicht be
     }
     expect(befunde, "Achse ohne tragende Kalibrierung").toEqual([]);
     // 6 -> 7 am 12.09.2026 (JOB 3781): die Achse `erweiterung` ist dazugekommen.
-    expect(ACHSEN, "weniger als sieben Achsen — eine ist weggefallen").toHaveLength(7);
+    // 7 -> 8 am 01.10.2026 (Aufnahme gesamt-klara-extern, R-1526): die Achse `einwilligung`.
+    expect(ACHSEN, "weniger als acht Achsen — eine ist weggefallen").toHaveLength(8);
   });
 
   it("K4 · der Eigenbeitrag jeder Achse ist gemessen, nicht angenommen", () => {
@@ -1272,10 +1349,16 @@ describe("JOB 920 · K — das Klara-Regressionsinventar ist ableitbar, nicht be
     // 5 -> 6 am 12.09.2026 (JOB 3781): die neue Achse `erweiterung` traegt 6 Dateien allein, die
     // Schwelle steigt deshalb mit. Gemessene Eigenbeitraege an diesem Stand: name 22, taskpane 55,
     // manifest 0, version 3, komponente 10, palette 34, erweiterung 6.
+    // 6 -> 7 am 01.10.2026 (R-1526): die Achse `einwilligung` traegt allein bei (Messung unten).
     const alleine = [...eigen.entries()].filter(([, n]) => n > 0).map(([k]) => k);
     expect(alleine.length, `Eigenbeitraege: ${JSON.stringify([...eigen])}`).toBeGreaterThanOrEqual(
-      6,
+      7,
     );
+    // R-1526: dieselbe Pflicht wie bei `erweiterung` — die Achse muss den Auslöser WIRKLICH holen.
+    expect(
+      eigen.get("einwilligung"),
+      "die Achse `einwilligung` holt keine Datei allein herein — sie ist wirkungslos",
+    ).toBeGreaterThan(0);
     // JOB 3781: die neue Achse muss WIRKEN, nicht nur dastehen. Waere ihr Eigenbeitrag 0, faende sie
     // ausschliesslich Dateien, die andere Achsen ohnehin holen — dann waere das Muster falsch
     // gewaehlt und die Luecke aus dem 3512-Kommentar nur scheinbar geschlossen.
@@ -1473,7 +1556,10 @@ describe("JOB 920 · K — das Klara-Regressionsinventar ist ableitbar, nicht be
     // Beleg in der RUECKGABE des Jobs.
     // JOB 4224 RUNDE 3: dazu `kette-postgres.integration.test.ts` — 67 -> 68. GEMESSEN, NICHT
     // GESETZT: Beleg in der RUECKGABE des Jobs.
-    expect(nurName.length).toBe(68);
+    // AUFNAHME 20260922 · GESAMT-KLARA-EXTERN (01.10.2026):
+    // `tests/klara-dokumenttext/riegel-haelt-den-dokumenttext.test.ts` traegt „klara" im PFAD —
+    // 68 -> 69. GEMESSEN, NICHT GESETZT: K5 meldete lokal `expected 69 to be 68`.
+    expect(nurName.length).toBe(69);
     expect(verfehlt.length).toBeGreaterThanOrEqual(25);
     expect(verfehlt.length + nurName.length).toBe(GEFUNDEN.length);
   });

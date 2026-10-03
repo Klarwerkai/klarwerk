@@ -356,17 +356,25 @@ describe("mega34 A3 · Desktop: ein unbekannter Konfliktstand behauptet keine Si
     expect(text).toContain(i18n.t("ask.contract.unverified.title"));
   });
 
-  it("Konfliktabruf fehlgeschlagen: kein „Gesichert“, dafür der benannte Hinweis", async () => {
+  // R-0330 (Ben R1, F5): ein ABGERISSENER Konfliktabruf ist eine Störung der Prüfung. Bis hierher
+  // stand die Antwort mit Vorbehalt da; der Zielzustand verlangt KEINE Teilantwort, sondern den
+  // Störungssatz mit der einzigen Aktion „Erneut versuchen". Die mega34-Zusage (nie „Gesichert"
+  // ohne belegten Konfliktstand) gilt dabei erst recht — es steht gar keine Einstufung da.
+  it("Konfliktabruf fehlgeschlagen: keine Teilantwort, sondern der Störungssatz mit „Erneut versuchen“", async () => {
     await i18n.changeLanguage("de");
     netz.kos = [ko()];
     netz.conflicts = "failed";
     const text = await mountAsk();
 
-    expect(text).toContain("Ventil V4 wird jährlich geprüft.");
+    expect(text).not.toContain("Ventil V4 wird jährlich geprüft.");
     expect(text).not.toContain(GESICHERT);
-    expect(find('[data-testid="ask-conflict-caveat"]')).not.toBeNull();
-    expect(text).toContain(i18n.t("ask.conflictCaveat.failed"));
-    expect(text).toContain(i18n.t("ask.contract.unverified.title"));
+    expect(find('[data-testid="ask-answer"]')).toBeNull();
+    const stoerung = find('[data-testid="ask-pruefung-gestoert"]');
+    expect(stoerung?.textContent).toContain(
+      "Klara konnte das Firmenwissen gerade nicht verlässlich prüfen",
+    );
+    const knoepfe = [...(stoerung?.querySelectorAll("button") ?? [])];
+    expect(knoepfe.map((k) => k.textContent?.trim())).toEqual([i18n.t("ask.error.retry")]);
   });
 
   it("Gegenprobe: erfolgreich geladen und leer ⇒ „Gesichert“ steht, kein Hinweis", async () => {

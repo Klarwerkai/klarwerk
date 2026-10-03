@@ -3,15 +3,15 @@
   "sprachen": {
     "de": {
       "anzahl": 4437,
-      "sha256": "9b2cf17d318c0a6442010f810819009e57c6f4f5dd25115b2e949b69fb072aad"
+      "sha256": "c49f51741ad2603e7f026f837baeb607e3ea97bdb90631366d08f6bfb137328b"
     },
     "en": {
       "anzahl": 4437,
-      "sha256": "b0519cab8e3dd0fc4b69de0a986582ff63d824e5a464ef944f2b1bcdb07789f6"
+      "sha256": "1cdf5a83247eb316c46469e7beb9c05f9128b2d92a50b09160940ae2b5756bfb"
     },
     "nl": {
       "anzahl": 4437,
-      "sha256": "eb80b60889bd2ab8bb8134d9b275c8f63d46b3f578bf1e0ba01e89af4f32e9fc"
+      "sha256": "0e82bd1cd1658faa07f033d706b2f2d2b13d45352d958db71b6ceb12ecc11727"
     }
   }
 }

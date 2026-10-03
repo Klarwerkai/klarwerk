@@ -48,6 +48,7 @@ import {
   juengsteAenderung,
 } from "../../apps/web/src/components/gesamtanweisung/GesamtanweisungBereich";
 import i18n from "../../apps/web/src/i18n";
+import { formatKoTimestamp } from "../../apps/web/src/lib/koDates";
 import { ZAEHLER_FRISCHE_MS } from "../../apps/web/src/lib/loadingState";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -120,6 +121,27 @@ function antworte(status: number, rumpf: unknown): void {
         statusText: String(status),
         text: async () => JSON.stringify(rumpf),
       }) as unknown as Response,
+  });
+}
+
+/**
+ * FE-001 · Bestand UND Namensverzeichnis — adressabhängig. Die Zeilen zeigen den Namen aus dem
+ * Verzeichnis statt der Kennung; „u-ben" steht absichtlich NICHT darin (ehrlicher Ersatz).
+ */
+function antworteMitVerzeichnis(bestand: unknown): void {
+  Object.defineProperty(globalThis, "fetch", {
+    configurable: true,
+    writable: true,
+    value: async (eingabe: unknown) => {
+      const rumpf =
+        String(eingabe) === "/api/directory" ? [{ id: "u-pia", name: "Pia Muster" }] : bestand;
+      return {
+        status: 200,
+        ok: true,
+        statusText: "200",
+        text: async () => JSON.stringify(rumpf),
+      } as unknown as Response;
+    },
   });
 }
 
@@ -467,7 +489,7 @@ describe("A12 · die Bestandsliste auf der Fläche", () => {
   // ==============================================================================================
   for (const sprache of SPRACHEN) {
     it(`${sprache}: je Eintrag stehen Titel, Stand, Urheber, letzte Änderung und die Zahl der Bausteine`, async () => {
-      antworte(200, { eintraege: [EINTRAG_A, EINTRAG_B] });
+      antworteMitVerzeichnis({ eintraege: [EINTRAG_A, EINTRAG_B] });
       await act(async () => {
         await i18n.changeLanguage(sprache);
       });
@@ -494,11 +516,21 @@ describe("A12 · die Bestandsliste auf der Fläche", () => {
       expect(inhalt, `${sprache}: die Beschriftung „Urheber" fehlt`).toContain(
         text(sprache, "ga.liste.urheber"),
       );
-      expect(inhalt, `${sprache}: der Urheber fehlt`).toContain(EINTRAG_A.urheber);
+      // FE-001: der NAME aus dem Verzeichnis, nie die Kennung als Normalanzeige.
+      expect(inhalt, `${sprache}: der Urheber fehlt`).toContain("Pia Muster");
+      expect(inhalt, `${sprache}: die Kennung steht als Urheber da`).not.toContain(
+        EINTRAG_A.urheber,
+      );
       expect(inhalt, `${sprache}: die Beschriftung „letzte Änderung" fehlt`).toContain(
         text(sprache, "ga.liste.geaendert"),
       );
-      expect(inhalt, `${sprache}: die letzte Änderung fehlt`).toContain(EINTRAG_A.geaendertAm);
+      // FE-001: die Zeit LESBAR, wie auf den Hauptseiten — nie die rohe ISO-Zeichenkette.
+      expect(inhalt, `${sprache}: die letzte Änderung fehlt`).toContain(
+        formatKoTimestamp(EINTRAG_A.geaendertAm, sprache) ?? "—",
+      );
+      expect(inhalt, `${sprache}: die rohe ISO-Zeit steht im Lesefluss`).not.toContain(
+        EINTRAG_A.geaendertAm,
+      );
       // DIE ZAHL DER BAUSTEINE — und die Kennzeichnung „unvollständig" MIT ihrer Zahl.
       expect(inhalt, `${sprache}: die Zahl der Bausteine fehlt`).toContain(
         satz("ga.liste.bausteine", { anzahl: EINTRAG_A.sichtbareBausteine }),
@@ -519,6 +551,11 @@ describe("A12 · die Bestandsliste auf der Fläche", () => {
         zweite.textContent ?? "",
         `${sprache}: die Zahl 0 fehlt beim zweiten Eintrag`,
       ).toContain(satz("ga.liste.bausteine", { anzahl: 0 }));
+      // Ein Urheber, den das Verzeichnis nicht kennt: der ehrliche Ersatz, nicht die Kennung.
+      expect(zweite.textContent ?? "").toContain(
+        String(i18n.t("ko.authorUnknown", { ref: "uben" })),
+      );
+      expect(zweite.textContent ?? "").not.toContain(EINTRAG_B.urheber);
 
       // KEIN DEUTSCHER RÜCKFALL: stünde der deutsche Satz da, wäre der Nachweis oben auch mit einer
       // nicht übersetzten Fläche grün.

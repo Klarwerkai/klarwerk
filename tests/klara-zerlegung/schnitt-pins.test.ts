@@ -216,6 +216,12 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   // einem Schnitt haengt sie an der Fixture. A2 hat die Datei gemeldet (`+ "tests/n1-bestand-im-
   // panel/bestand-im-panel-mounted.test.ts"`), das Verzeichnis hat sie nicht still aufgenommen.
   "tests/n1-bestand-im-panel/bestand-im-panel-mounted.test.ts": "fixture",
+  // AUFNAHME 20260922 · P-M3b (Prüfstand-Wortlaut): misst das Wort am Treffer im Web UND im
+  // ausgelieferten Aufgabenfenster gegen dieselbe Tabelle. Die Word-Hälfte fährt über
+  // `createKlaraPanel` — Griff `fixture`, kein Pfadliteral, keine Marken. A2 hat die Datei im
+  // Server-Gesamtcheck gemeldet (`neu im Baum, aber nicht gepinnt`), das Verzeichnis nimmt sie
+  // nicht still auf.
+  "tests/erfassungs-konfliktpruefung/pruefstand-wortlaut.test.tsx": "fixture",
   // JOB 3243 M3c-UI (08.09.2026): der Quellenfund am ausgelieferten Aufgabenfenster. Dieselbe
   // Technik wie die Zeile darueber (`createKlaraPanel` mit gefaktem `/api/check-text`) — Griff
   // `fixture`; dazu nennt ihr Kopfkommentar `apps/web/public/word-addin/taskpane.html` als das
@@ -498,6 +504,18 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   "tests/rueckweg-bilder-nutzerweg/pruefbilder.ts": "rueckweg",
   "tests/rueckweg-bilder-nutzerweg/rueckweg-bilder-pg-im-browser.integration.test.ts": "rueckweg",
   "tests/rueckweg-bilder-nutzerweg/tor-zeuge.test.ts": "rueckweg",
+  // AUFNAHME 20260922 · DEPLOY-HEALTH-COMMIT (R-1028, 29.09.2026): der Nachweis „eine
+  // Programmversion" führt das echte Build-Plugin `klara-stand` über `word-addin/taskpane.html` aus
+  // und prüft `APP_VERSION` im gestempelten Panel — Griff `zusammengesetzt`.
+  // GEMESSEN, NICHT GESETZT: `tools/test tests/klara-zerlegung/schnitt-pins` meldete A2 `neu im
+  // Baum, aber nicht gepinnt — Verzeichnis nachfuehren` mit genau diesem Pfad und diesem Griff.
+  "tests/deploy-health-commit/eine-programmversion.test.ts": "zusammengesetzt",
+  // AUFNAHME 20260922 · GESAMT-KLARA-EXTERN (R-0639, Bens Befund B1, 01.10.2026): R5 schneidet
+  // `askKlara`, `ka6Absenden`, `ka6Zurufgrundlage` und den Block KW-WORDADDIN-HELPERS aus dem
+  // ausgelieferten Fenster und führt sie aus — eine Zerlegung muss diese Datei mitnehmen.
+  // GEMESSEN, NICHT GESETZT: A2 meldete lokal `neu im Baum, aber nicht gepinnt` mit genau diesem
+  // Pfad; der Griff `pfad,marken` steht so im gedruckten Verzeichnis (A4).
+  "tests/klara-dokumenttext/riegel-haelt-den-dokumenttext.test.ts": "pfad,marken",
 };
 
 // ------------------------------------------------------------------------------------------------

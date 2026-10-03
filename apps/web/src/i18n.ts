@@ -494,6 +494,8 @@ const de = {
   // JOB 3045: Label der Fundortzeile. Behauptet nichts über den Inhalt, nennt nur den Ort — was
   // dahinter steht, kommt roh aus dem Bestand (Kategorie) bzw. aus der StatusPill (Zustand).
   "intake.live.fundort": "Liegt in:",
+  "intake.live.pruefstand.offen": "noch nicht geprüft",
+  "intake.live.pruefstand.validiert": "Validiert",
   "intake.live.openKo": "Ansehen",
   // JOB 3556: Der frühere Satz zur laufenden Widerspruchsprüfung ist hier GESTRICHEN (in allen drei
   // Sprachen). Er behauptete zweierlei in einem — „nichts Ähnliches gefunden" UND „auf Widerspruch
@@ -2202,6 +2204,11 @@ const de = {
   "capture.saveDraft": "Als Entwurf speichern",
   "capture.draftSaved": "Entwurf gespeichert.",
   "capture.draftUpdated": "Entwurf aktualisiert.",
+  // LAUF 6 RUNDE 2 (erfassen-doppelklick, bens B7): der Teilerfolg des gemeinsamen Speicherns.
+  "capture.teilerfolg.dateiAusstehend":
+    "Noch nicht alles gesichert: Der Entwurf ist gespeichert, die Datei „{{name}}“ wird noch gespeichert.",
+  "capture.teilerfolg.dateiGescheitert":
+    "Nur teilweise gespeichert: Der Entwurf ist gesichert, die Datei „{{name}}“ nicht. Sie liegt weiter hier — „Als Entwurf speichern“ versucht es erneut.",
   "capture.draftDiscarded": "Entwurf gelöscht.",
   // Bugfix (Pedi 04.07.): ehrliche Nachfrage vor dem Löschen, keine Behauptung, die der Zustand
   // nicht hergibt. Bis JOB 3668 stand hier „Entwurf endgültig löschen?" — mit der Begründung,
@@ -2734,6 +2741,20 @@ const de = {
   // JOB 3064 §9: offline ist KEIN Fehlschlag, sondern ein Nicht-Versuch — die Frage ist nie
   // losgegangen. Der Fehlersatz („steckengeblieben") wäre hier schlicht unwahr.
   "ask.offline": "Keine Verbindung.",
+  // Pedi 28.09.2026 · Ergänzung 1: der Hinweis beim Wiederkommen auf die Fragenseite.
+  "ask.wiederaufnahme.entwurf":
+    "Hier kannst du weitermachen: Dein noch nicht gesendeter Entwurf steht wieder im Fragefeld.",
+  "ask.wiederaufnahme.antwort":
+    "Hier kannst du weitermachen: Das ist deine zuletzt angezeigte Antwort vom {{zeit}} mit ihren Quellen. Sie wurde nicht neu erzeugt — stelle die Frage erneut, um sie aufzufrischen.",
+  "ask.wiederaufnahme.beides":
+    "Hier kannst du weitermachen: Dein noch nicht gesendeter Entwurf steht wieder im Fragefeld, darüber deine zuletzt angezeigte Antwort vom {{zeit}}. Sie wurde nicht neu erzeugt.",
+  "ask.wiederaufnahme.verwerfen": "Entwurf verwerfen",
+  "ask.pruefungGestoert": "Klara konnte das Firmenwissen gerade nicht verlässlich prüfen.",
+  // Ben R1, F8: die Rückmeldung zu einer wiederaufgenommenen Antwort.
+  "ask.rueckmeldungAbgelaufen":
+    "Rückmeldung ist nur bis 30 Minuten nach der Antwort möglich. Stelle die Frage erneut, um sie zu geben.",
+  "ask.rueckmeldungAbgelehnt":
+    "Deine Rückmeldung wurde nicht angenommen. Stelle die Frage erneut und versuche es dann noch einmal.",
   // JOB 3064 §9: die Antwort steht noch, nur das Auffrischen hat nicht geklappt. Der Satz sagt
   // BEIDES — was gilt und was nicht geklappt hat —, damit niemand die stehende Antwort für frisch
   // hält. Der Fehlersatz oben („steckengeblieben") wäre hier falsch: es gibt ja ein Ergebnis.
@@ -2843,6 +2864,9 @@ const de = {
   // JOB 4224 D5 (Lieferung 5): ohne Modell nennt die Fläche nicht nur die Lage, sondern auch den
   // erlaubten Weg. Der zweite Halbsatz ist keine Floskel — er hält fest, dass hier nichts
   // stillschweigend freigeschaltet wird.
+  "ask.aiUnavailable.adminPfad":
+    "Als Administrator kannst du hier ein KI-Modell verbinden oder die KI einschalten:",
+  "ask.aiUnavailable.toAdmin": "KI-Einstellungen öffnen",
   "ask.aiUnavailable.path":
     "Ohne Modell bleibt der Bestand offen — nichts wird dafür automatisch freigegeben:",
   "ask.aiUnavailable.toLibrary": "Bestand durchsuchen",
@@ -2900,6 +2924,20 @@ const de = {
   // volle Sätze als title-Hinweis — §2 des Auftrags wörtlich.
   // Bewusst eine ZUSTANDSAUSSAGE, keine Kausalbehauptung: gemeldet wird, welche Tore zu sind —
   // nicht, welcher Mechanismus die Antwort verworfen hat (§4: kein falsch benanntes Tor).
+  // Der Konsolenweg setzt kein `validatedOnly` (ask-routes.ts, letzter `answer`-Aufruf): auch
+  // nicht freigegebene oder nicht eingestufte Dokumente KÖNNEN Antworten tragen. Ein „erst nach
+  // Prüfung" wäre deshalb falsch (mega52 C3).
+  "ask.verschlossen.titel": "Dazu gibt es Inhalte — Klara konnte darauf keine Antwort stützen.",
+  "ask.verschlossen.grund.freigabe":
+    "Mindestens eines dieser Dokumente ist noch nicht freigegeben.",
+  "ask.verschlossen.grund.stufe":
+    "Mindestens eines dieser Dokumente hat noch keine Vertraulichkeitsstufe.",
+  "ask.verschlossen.grund.volltext":
+    "Aus Dokumenten ohne durchsuchbaren Text kann Klara nichts belegen. Du kannst sie lesen und den Text dort ergänzen.",
+  "ask.verschlossen.pruefPfad.beides": "Freigeben oder einstufen:",
+  "ask.verschlossen.pruefPfad.freigabe": "Freigeben:",
+  "ask.verschlossen.pruefPfad.stufe": "Einstufen:",
+  "ask.verschlossen.zurPruefung": "Zur Prüfung",
   "ask.verschlossen.label": "Gefunden — aber diese Tore sind zu:",
   "ask.verschlossen.freigabe": "Freigabe fehlt",
   "ask.verschlossen.freigabeHint": "Das Dokument ist noch nicht freigegeben.",
@@ -5394,6 +5432,19 @@ const de = {
     "Kurze Einstiegshilfe zu den wichtigsten Klarwerk-Abläufen. Suche nach Stichwort oder springe direkt in den passenden Bereich.",
   "help.noResults": "Keine Hilfe zu diesem Stichwort gefunden.",
   "help.openRoute": "Bereich öffnen",
+  // R-1064: der vom Betreiber festgelegte Supportweg dieser Installation (Hilfeseite).
+  "help.support.title": "Support dieser Installation",
+  "help.support.configured": "Der Betreiber dieser Installation hat diesen Supportweg hinterlegt:",
+  "help.support.linkDefault": "Supportseite öffnen",
+  "help.support.mailDefault": "E-Mail an den Support schreiben",
+  "help.support.newTab": "neuer Tab",
+  "help.support.notConfigured":
+    "Für diese Installation ist noch kein Supportweg hinterlegt. Wende dich mit Fragen an die Administration deiner Instanz.",
+  "help.support.invalid":
+    "Für diese Installation ist ein Supportweg eingetragen, er ist aber ungültig und wird deshalb nicht angezeigt. Bitte gib der Administration deiner Instanz Bescheid.",
+  "help.support.loadError":
+    "Der Supportweg konnte gerade nicht geladen werden. Die Hilfe auf dieser Seite funktioniert trotzdem.",
+  "help.support.loading": "Supportweg wird geladen …",
   // Klara v1 (Pedi 05.07.): kontextsensitive Hilfe — Panel-Texte + Seiten-Erklärungen.
   "klara.title": "Klara",
   "klara.subtitle": "Deine Hilfe in KLARWERK",
@@ -5847,12 +5898,13 @@ const de = {
     "Der Wissensgraph zeichnet die einzelnen Wissensobjekte und ihre Verbindungen als Netz — näher am Objekt als die Themenkarte, die nach Themen zusammenfasst. Gehört ein Knoten zu einem Objekt aus dem Bestand, führt ein Klick auf ihn zu diesem Wissensobjekt, und mit der Tastatur erreichst du ihn ebenso; ein Knoten ohne solches Objekt ist kein Link und liegt nicht in der Tastatur-Reihenfolge. Fang bei einem Objekt an, das du kennst, und folge seinen Linien.",
   // JOB 4309: das Kapitel zum neuen Menüpunkt „Gesamtanweisungen". Der Titel trägt den ANGEZEIGTEN
   // Namen des Punkts (`ga.bereich.titel`), damit die Suche auf `/hilfe` unter genau dem Wort
-  // anschlägt, das im Menü steht. Der Text verspricht NICHTS, was die Seite nicht kann: es gibt
-  // keine Übersicht und keinen Endpunkt, der Anweisungen aufzählt — das steht hier so drin statt
-  // überspielt zu werden.
-  "help.gesamtanweisungen.title": "Gesamtanweisungen zusammenstellen",
+  // anschlägt, das im Menü steht. Der Text verspricht NICHTS, was die Seite nicht kann.
+  // FE-001: der frühere Satz „eine Liste aller Anweisungen gibt es nicht" ist seit JOB 4357 falsch
+  // (die Übersicht zeigt den Bestand) und ist ersetzt; nutzerseitig heisst der Bereich jetzt
+  // „Arbeitsanleitungen". Die Hilfe beschreibt die heutige Bedienung und braucht kein Modell.
+  "help.gesamtanweisungen.title": "Arbeitsanleitungen zusammenstellen",
   "help.gesamtanweisungen.body":
-    "Hier legst du eine Gesamtanweisung an und setzt sie aus vorhandenen Fassungen zusammen: Du nimmst einen Eintrag mit seiner Fassungsnummer auf, änderst die Reihenfolge und legst das Ergebnis zur Entscheidung vor. Eine Liste aller Anweisungen gibt es nicht — eine bereits angelegte öffnest du über ihre Adresse. Beim Vergleich zweier Stände wird eine geänderte Reihenfolge anders ausgewiesen als ein geänderter Inhalt, und der Vermerk zur Prüfanbindung bleibt sichtbar, solange sie fehlt.",
+    "Arbeitsanleitungen sind lesbare Schritt-für-Schritt-Dokumente aus vorhandenem Wissen – zum Beispiel für die Einarbeitung neuer Mitarbeitender. Die Übersicht zeigt alle Anleitungen, die du lesen darfst; ein Klick auf den Titel öffnet eine. Neu beginnst du mit einem Titel und „Neue Arbeitsanleitung erstellen“. In der geöffneten Anleitung beschreibst du Zweck, Geltungsbereich und Voraussetzungen, suchst vorhandene Einträge nach Titel und nimmst je eine feste Fassung als Abschnitt auf – eine spätere Änderung am Eintrag verändert den Abschnitt nicht still. Die Lesefassung zeigt das Ergebnis; die Reihenfolge änderst du mit „Nach oben“ und „Nach unten“. Zum Schluss legst du die ganze Anleitung zur Entscheidung vor; entscheiden können Personen mit Prüfrecht. „Was hat sich geändert?“ vergleicht zwei gespeicherte Stände. Eine automatische fachliche Prüfung ist noch nicht angebunden, und für all das wird keine KI gebraucht.",
   "help.hilfe.title": "Hilfe",
   "help.hilfe.body":
     "Auf dieser Seite stehen alle Hilfekapitel beieinander, mit einem Suchfeld darüber; jedes Kapitel trägt einen Link auf die Seite, um die es geht. Gesucht wird in Titel, Text und Schlagwörtern der Kapitel — tipp also ruhig das Wort ein, mit dem du dein Problem beschreiben würdest. Gibt es dazu nichts, sagt die Seite das offen, statt ein unpassendes Kapitel zu zeigen.",
@@ -6316,7 +6368,7 @@ const de = {
     "Das klassische Formular mit allen Feldern auf einen Blick — für alle, die genau wissen, was sie eintragen wollen. Es ist derselbe Datenstand wie der geführte Weg, kein Extra-Feature und keine Abkürzung an der Prüfung vorbei. Der Rückweg auf den geführten Weg ist jederzeit einen Klick entfernt.",
   "chelp.wizardSteps.title": "Die drei Schritte",
   "chelp.wizardSteps.body":
-    "Erfassen läuft in drei Schritten: ERZÄHLEN (Rohwissen loswerden), WISSENSSEITE (prüfen und verfeinern, mit KI-Hilfe), EINREICHEN (in die Peer-Prüfung geben). Fertige Schritte kannst du anklicken und zurückgehen — dabei geht nichts verloren. Erst „Prüfen & einreichen“ macht aus deinem Entwurf ein Wissensobjekt für die Kollegen.",
+    "Erfassen läuft in drei Schritten: SCHREIBEN (Titel und Text aufs Blatt — oder über „Datei“ als Interview, aus einer Datei oder im Formular; „Diktieren“ schreibt mit), SICHERN (als Entwurf, nur für dich sichtbar) und EINREICHEN (in die Peer-Prüfung geben). Du kannst jederzeit weiterschreiben — dabei geht nichts verloren. Erst das Einreichen macht aus deinem Entwurf ein Wissensobjekt für die Kollegen.",
   "chelp.loadExample.title": "Beispiel laden",
   "chelp.loadExample.body":
     "Füllt die Felder mit einem Demo-Beispiel, damit du den kompletten Weg gefahrlos ausprobieren kannst. Achtung: Es überschreibt deine aktuellen Eingaben — nutze es auf leerer Seite. Eingereicht wird auch ein Beispiel erst, wenn du es bewusst einreichst.",
@@ -6343,10 +6395,10 @@ const de = {
     "Der Titel ist das Erste, was Kollegen in Bibliothek und Antworten sehen — er entscheidet, ob dein Wissen gefunden wird. Gut: konkret und handlungsnah („Schweißnaht bei Aluminium unter 5 mm prüfen“). Du kannst ihn jederzeit ändern, auch der KI-Vorschlag ist nur ein Startpunkt.",
   "chelp.saveDraftHelp.title": "Entwurf speichern",
   "chelp.saveDraftHelp.body":
-    "Sichert deinen Zwischenstand lokal in deinem Browser — du kannst jederzeit weitermachen, auch nach einem Neustart. Ein Entwurf ist NICHT eingereicht: Niemand sieht ihn, er taucht in keiner Prüfung und keiner Antwort auf. Oben auf der Seite findest du gespeicherte Entwürfe zum Fortsetzen.",
+    "Sichert deinen Zwischenstand auf dem Server unter deinem Konto — du kannst jederzeit weitermachen, auch auf einem anderen Gerät. Ein Entwurf ist NICHT eingereicht: Niemand sieht ihn, er taucht in keiner Prüfung und keiner Antwort auf. Gespeicherte Entwürfe findest du unter „Mehr“ → Entwürfe.",
   "chelp.discardHelp.title": "Verwerfen",
   "chelp.discardHelp.body":
-    "Verwirft den aktuellen Entwurf endgültig — Text, Struktur und Anhänge dieser Erfassung. Es betrifft NUR deinen Entwurf: Bereits eingereichte oder gespeicherte Wissensobjekte bleiben unberührt. Vorher fragt die App bewusst nach; wer nur einen Schritt zurück will, nutzt die Schritt-Leiste statt Verwerfen.",
+    "Verwirft die aktuelle Eingabe — Text, Struktur und Anhänge dieser Erfassung. Es betrifft NUR diese Eingabe: Bereits eingereichte Wissensobjekte und gesicherte Entwürfe bleiben unberührt. Vorher fragt die App bewusst nach.",
   "chelp.submitReview.title": "Prüfen & einreichen",
   "chelp.submitReview.body":
     "Macht aus deinem Entwurf ein Wissensobjekt und gibt es in die Peer-Prüfung: Kollegen prüfen, stellen Rückfragen oder geben frei. Ab jetzt ist es für andere sichtbar — aber ehrlich als „in Prüfung“ markiert, NICHT als gesichert. Validiert wird es durch genug Freigaben. Für Antworten nutzbar ist es schon vorher — dann aber sichtbar als ungeprüft gekennzeichnet.",
@@ -6503,7 +6555,7 @@ const de = {
   "fd.author": "Autor",
   "fd.whatOnSave": "Was beim Speichern passiert",
   "fd.whatOnSaveBody":
-    "Wird als Entwurf gesichert — jederzeit fortsetzbar. Zur Prüfung geht er erst, wenn du „Prüfen / Einreichen“ wählst; nichts wird automatisch validiert.",
+    "Wird als Entwurf gesichert — jederzeit fortsetzbar. Zur Prüfung geht er erst, wenn du „Einreichen“ wählst; nichts wird automatisch validiert.",
   "fd.moreWays": "Mehr Erfassungswege",
   "fd.moreWaysBody":
     "Brauchst du das klassische Formular, Diktat oder das geführte Interview? Der vollständige Erfassen-Bereich hat alle Wege — diese Fläche hier ist der schnelle Einstieg.",
@@ -6824,6 +6876,10 @@ const de = {
   // bzw. bis feststeht, dass die Sitzung fort ist — ohne Frist), Einordnung (technisch notwendig).
   "legal.privacy.s4.p7":
     "Schlägt das Beenden Ihrer Sitzung fehl, merkt sich die Anwendung das in Ihrem Browser unter dem Namen kw_signout_pending, damit die Nutzung gesperrt bleibt, bis unser Server die Beendigung bestätigt hat. Weil Ihre Sitzung für alle Fenster und Tabs desselben Browsers gilt, liegt dieser Merker im dauerhaften Browserspeicher und wirkt ebenfalls in allen Fenstern und Tabs — ein zweites, schon offenes Fenster würde sonst weiter Inhalte zeigen, obwohl die Beendigung offen ist. Der Merker enthält keine Angaben über Sie und wird nicht an uns übertragen. Er bleibt, bis unser Server die Beendigung bestätigt hat oder feststeht, dass Ihre Sitzung nicht mehr besteht; dann wird er gelöscht. Von selbst verfällt er nicht. Damit das nicht an Ihnen hängen bleibt, versucht die Anwendung die Beendigung von sich aus erneut — sobald Ihre Verbindung wieder besteht und bei jedem neuen Aufbau der Anwendung; außerdem können Sie es jederzeit selbst auslösen. Er ist für die von Ihnen gewünschte Abmeldung technisch notwendig.",
+  // Pedi 28.09.2026 · Ergänzung 1: der Arbeitsstand der Fragenseite liegt im Browser
+  // (`lib/fragenArbeitsstand.ts`) und enthält Inhalte — die Aufzählung nennt ihn deshalb eigens.
+  "legal.privacy.s4.p8":
+    "Auf der Seite „Fragen“ merkt sich die Anwendung in Ihrem Browser Ihren noch nicht gesendeten Entwurf sowie die zuletzt angezeigte Frage und Antwort mit ihren Quellenangaben, damit Sie nach dem Verlassen der Seite, einem Neuladen oder einer erneuten Anmeldung weiterarbeiten können. Der Eintrag ist Ihrem Benutzerkonto zugeordnet; wer sich im selben Browser mit einem anderen Konto anmeldet, bekommt ihn nicht angezeigt. Er kann Inhalte aus dem Wissensbestand Ihrer Organisation enthalten und bleibt auch nach dem Abmelden in diesem Browser gespeichert. Ein verworfener Entwurf wird sofort entfernt, die angezeigte Antwort wird ersetzt, sobald Sie eine neue Frage stellen. Der Eintrag selbst wird nicht an uns übertragen; Sie können ihn jederzeit löschen, indem Sie die Websitedaten dieser Anwendung in Ihrem Browser löschen.",
   "legal.privacy.s5.title": "5. Ihre Inhalte",
   "legal.privacy.s5.body":
     "Die Anwendung dient dazu, Wissen zu erfassen, zu prüfen und wiederzufinden. Die Inhalte, die Sie eingeben oder hochladen, werden zusammen mit dem Zeitpunkt und Ihrer Kennung als Urheber gespeichert, damit Beiträge nachvollziehbar bleiben und Rückfragen möglich sind.",
@@ -7291,29 +7347,32 @@ const de = {
   // UND EINE VOKABELREGEL: „unverändert" heisst unverändert. Es gibt hier bewusst keinen Satz mit
   // „richtig", „geprüft", „bestätigt" oder „freigegeben" über die Gesamtfassung — ein gleicher
   // Nachweis belegt Unverändertheit, nicht Richtigkeit (Startvertrag).
-  "ga.titel": "Anweisung",
+  "ga.titel": "Arbeitsanleitung",
   "ga.laedt": "Lädt …",
-  "ga.leer": "Diese Anweisung hat noch keine Bausteine.",
-  "ga.fehler": "Die Anweisung konnte nicht geladen werden.",
+  "ga.leer":
+    "Diese Arbeitsanleitung hat noch keine Abschnitte. Füge oben den ersten aus vorhandenem Wissen hinzu.",
+  "ga.fehler":
+    "Die Arbeitsanleitung konnte nicht geladen werden. Lade die Seite neu oder versuche es später erneut.",
   // JOB 4156 R3: der Satz zur abgelehnten Anlage, wenn diese Instanz nichts dauerhaft ablegen kann.
   // Er sagt, was ist, und verspricht nichts: kein „später erneut versuchen" (der nächste Versuch
   // scheitert gleich), keine internen Begriffe (Journal, In-Memory, Repo).
   "ga.ablageFluechtig":
-    "Diese Installation kann Anweisungen nicht dauerhaft speichern. Es wurde nichts angelegt — bitte wenden Sie sich an Ihre Systembetreuung.",
-  "ga.offline": "Keine Verbindung. Ihre Eingaben bleiben erhalten; gespeichert ist nichts.",
+    "Diese Installation kann Arbeitsanleitungen nicht dauerhaft speichern. Es wurde nichts angelegt – bitte wende dich an deine Systembetreuung.",
+  "ga.offline": "Keine Verbindung. Deine Eingaben bleiben erhalten; gespeichert ist nichts.",
   "ga.standVon": "Stand von {{zeit}}",
   "ga.auffrischungLaeuft": "Stand von {{zeit}} · wird aufgefrischt",
   "ga.auffrischungGescheitert": "Stand von {{zeit}} · Auffrischung fehlgeschlagen",
   "ga.gesperrt":
     "Vorlegen und Entscheiden sind gesperrt: der angezeigte Stand ist nicht gesichert.",
-  "ga.unvollstaendig": "Teile dieser Anweisung sind für Sie nicht zugänglich.",
-  "ga.verborgene": "Nicht zugängliche Bausteine: {{anzahl}}",
-  "ga.pruefanbindung": "Prüfanbindung: noch nicht angebunden",
+  "ga.unvollstaendig": "Teile dieser Arbeitsanleitung sind für dich nicht zugänglich.",
+  "ga.verborgene": "Nicht zugängliche Abschnitte: {{anzahl}}",
+  "ga.pruefanbindung":
+    "Prüfanbindung: noch nicht angebunden – eine automatische fachliche Prüfung dieser Anleitung findet nicht statt.",
   "ga.stand.entwurf": "Entwurf",
   "ga.stand.vorgelegt": "Vorgelegt",
   "ga.stand.entschieden": "Entschieden",
   "ga.stand.abgelehnt": "Abgelehnt",
-  "ga.bausteine": "Bausteine",
+  "ga.bausteine": "Abschnitte",
   "ga.baustein.fassung": "Gebundene Fassung {{version}}",
   "ga.baustein.herkunft": "{{titel}} · {{autor}}",
   "ga.baustein.herkunftUnbekannt": "Die gebundene Fassung ist nicht auffindbar.",
@@ -7329,7 +7388,7 @@ const de = {
   // entweder gibt es die Fassung nicht mehr, oder sie trägt keinen Rumpf — beides ist Unwissen.
   "ga.baustein.textUnbelegt": "Der Inhalt dieser Fassung ist nicht belegt.",
   "ga.baustein.gliederung": "Gliederung dieser Fassung",
-  "ga.aufnahme.titel": "Vorhandene Fassung aufnehmen",
+  "ga.aufnahme.titel": "Abschnitt aus vorhandenem Wissen hinzufügen",
   "ga.aufnahme.koId": "Eintrag",
   "ga.aufnahme.koVersion": "Fassung",
   "ga.aufnahme.nachweis": "Nachweis (optional)",
@@ -7338,14 +7397,14 @@ const de = {
   // NICHTS über fremde Einträge — die Liste der vorhandenen Fassungen steht in der Serverantwort
   // für den, der den Eintrag ohnehin sehen darf, nicht in diesem Satz.
   "ga.aufnahme.fassungUnbekannt":
-    "Diese Fassung gibt es nicht. Bitte prüfen Sie die Fassungsnummer.",
+    "Diese Fassung gibt es nicht (mehr). Wähle eine der angezeigten Fassungen.",
   "ga.ordnen.hoch": "Nach oben",
   "ga.ordnen.runter": "Nach unten",
   "ga.voraussetzung.label": "Voraussetzung",
   "ga.voraussetzung.knopf": "Voraussetzung übernehmen",
-  "ga.vergleich.titel": "Zwei Stände vergleichen",
-  "ga.vergleich.von": "Von Stand",
-  "ga.vergleich.bis": "Bis Stand",
+  "ga.vergleich.titel": "Was hat sich geändert?",
+  "ga.vergleich.von": "Älterer Stand",
+  "ga.vergleich.bis": "Neuerer Stand",
   "ga.vergleich.knopf": "Vergleichen",
   "ga.vergleich.unveraendert": "Unverändert. Das ist keine Aussage über Richtigkeit.",
   "ga.vergleich.geaendert": "Geändert.",
@@ -7368,7 +7427,7 @@ const de = {
   "ga.entscheidung.annehmen": "Annehmen",
   "ga.entscheidung.ablehnen": "Ablehnen",
   "ga.entscheidung.konflikt":
-    "Die Anweisung wurde zwischenzeitlich geändert. Bitte neu laden und erneut entscheiden.",
+    "Die Arbeitsanleitung wurde zwischenzeitlich geändert. Bitte lade die Seite neu und versuche es erneut.",
   "ga.kopf.titel": "Titel",
   "ga.kopf.zweck": "Zweck",
   "ga.kopf.geltungsbereich": "Geltungsbereich",
@@ -7383,24 +7442,26 @@ const de = {
   // Weg als den einzigen ausgibt, schickt den Menschen an die Stelle, an der er vorher nichts fand.
   // Der Leersatz selbst steht weiterhin NICHT hier, sondern unter `ga.liste.leer` — und er erscheint
   // nur auf einer erfolgreichen, leeren Antwort (`GesamtanweisungBereich.tsx`).
-  "ga.bereich.titel": "Gesamtanweisungen",
+  "ga.bereich.titel": "Arbeitsanleitungen",
   "ga.bereich.einleitung":
-    "Oben stehen die gespeicherten Gesamtanweisungen; darunter legen Sie eine neue an und stellen sie aus vorhandenen Fassungen zusammen.",
-  "ga.bereich.anlegen": "Gesamtanweisung anlegen",
+    "Stelle vorhandenes Wissen zu einer lesbaren Schritt-für-Schritt-Anleitung zusammen – zum Beispiel für die Einarbeitung neuer Mitarbeitender.",
+  "ga.bereich.anlegen": "Neue Arbeitsanleitung erstellen",
   // JOB 4357 — DIE BESTANDSLISTE. Der Leersatz sagt „nichts gespeichert" und NICHT „konnte nicht
   // nachsehen"; der Fehlersatz sagt das Gegenteil und keines von beiden das andere. Beide Sätze
   // dürfen nie zusammenfallen (`GesamtanweisungBereich.tsx`, Abschnitt zu den vier Lagen).
-  "ga.liste.titel": "Gespeicherte Gesamtanweisungen",
-  "ga.liste.laedt": "Der gespeicherte Bestand wird geladen …",
-  "ga.liste.fehler": "Der gespeicherte Bestand konnte nicht geladen werden.",
-  "ga.liste.leer": "Es ist bisher nichts gespeichert.",
-  "ga.liste.stand": "Stand",
-  "ga.liste.urheber": "Urheber",
-  "ga.liste.geaendert": "Letzte Änderung",
-  "ga.liste.bausteine": "Bausteine: {{anzahl}}",
+  "ga.liste.titel": "Vorhandene Arbeitsanleitungen",
+  "ga.liste.laedt": "Die vorhandenen Arbeitsanleitungen werden geladen …",
+  "ga.liste.fehler":
+    "Die vorhandenen Arbeitsanleitungen konnten nicht geladen werden. Lade die Seite neu oder versuche es später erneut – eine neue Anleitung kannst du trotzdem erstellen.",
+  "ga.liste.leer":
+    "Es gibt noch keine Arbeitsanleitung. Erstelle unten deine erste – sie erscheint danach hier.",
+  "ga.liste.stand": "Status",
+  "ga.liste.urheber": "Erstellt von",
+  "ga.liste.geaendert": "Zuletzt geändert",
+  "ga.liste.bausteine": "Abschnitte: {{anzahl}}",
   // DIE ZAHL GEHÖRT IN DEN SATZ: „unvollständig" allein lässt offen, ob ein Satz oder ein halbes
   // Dokument fehlt. Titel und Kennung des geschützten Eintrags stehen ausdrücklich nicht dabei.
-  "ga.liste.unvollstaendig": "Unvollständig — nicht zugängliche Bausteine: {{anzahl}}",
+  "ga.liste.unvollstaendig": "Unvollständig für dich – nicht zugängliche Abschnitte: {{anzahl}}",
 };
 
 const en: typeof de = {
@@ -7697,6 +7758,8 @@ const en: typeof de = {
   "intake.live.similarAsk": "Add to it or start fresh?",
   "intake.live.conflictLead": "Careful — this may contradict:",
   "intake.live.fundort": "Sits in:",
+  "intake.live.pruefstand.offen": "not yet reviewed",
+  "intake.live.pruefstand.validiert": "Validated",
   "intake.live.openKo": "View",
   "intake.live.unavailable": "Check currently unavailable.",
   "intake.structure.heading": "Klarwerk suggests — tap anything that's off:",
@@ -9108,6 +9171,10 @@ const en: typeof de = {
   "capture.saveDraft": "Save as draft",
   "capture.draftSaved": "Draft saved.",
   "capture.draftUpdated": "Draft updated.",
+  "capture.teilerfolg.dateiAusstehend":
+    "Not everything is saved yet: the draft is saved, the file “{{name}}” is still being saved.",
+  "capture.teilerfolg.dateiGescheitert":
+    "Only partly saved: the draft is saved, the file “{{name}}” is not. It is still here — “Save as draft” tries again.",
   "capture.draftDiscarded": "Draft deleted.",
   // JOB 3768 — see the German entry: since JOB 3668 the draft goes to the recycle bin, so the old
   // “permanently” was a claim the product no longer backs.
@@ -9522,6 +9589,18 @@ const en: typeof de = {
     "The request got stuck on the way. This is NOT a statement about the knowledge — it does not mean there is no answer. Please try again.",
   "ask.error.retry": "Try again",
   "ask.offline": "No connection.",
+  "ask.wiederaufnahme.entwurf":
+    "Pick up where you left off: your unsent draft is back in the question field.",
+  "ask.wiederaufnahme.antwort":
+    "Pick up where you left off: this is the answer you last saw, from {{zeit}}, with its sources. It was not generated again — ask the question again to refresh it.",
+  "ask.wiederaufnahme.beides":
+    "Pick up where you left off: your unsent draft is back in the question field, with the answer you last saw, from {{zeit}}, above it. It was not generated again.",
+  "ask.wiederaufnahme.verwerfen": "Discard draft",
+  "ask.pruefungGestoert": "Klara could not reliably check the company knowledge just now.",
+  "ask.rueckmeldungAbgelaufen":
+    "Feedback is only possible up to 30 minutes after the answer. Ask the question again to give it.",
+  "ask.rueckmeldungAbgelehnt":
+    "Your feedback was not accepted. Ask the question again and then try once more.",
   "ask.refreshFailed": "Refresh failed — this answer is from the previous request.",
   // SCRUM-295: hint for a prefilled start question (from KO detail “Use knowledge”) in demo context.
   "ask.demoPrefillHint":
@@ -9603,6 +9682,9 @@ const en: typeof de = {
   "answerSource.originalUnconfirmed":
     "The state of this source is not confirmed right now — the evidence is offered again once the refresh succeeds.",
   // JOB 4224 D5 (delivery 5): without a model the page names the permitted path, too.
+  "ask.aiUnavailable.adminPfad":
+    "As an administrator you can connect an AI model or switch AI on here:",
+  "ask.aiUnavailable.toAdmin": "Open AI settings",
   "ask.aiUnavailable.path":
     "Without a model the knowledge base stays open — nothing is enabled automatically for it:",
   "ask.aiUnavailable.toLibrary": "Search the knowledge base",
@@ -9647,6 +9729,16 @@ const en: typeof de = {
   // SCRUM-366 / FR-ASK-02 / PI-K2: answer contract — source-bound, honest, not a generic chatbot.
   "ask.contract.label": "Answer basis",
   // JOB 2626 D1: why there was no answer — the closed gates, per document.
+  "ask.verschlossen.titel": "There is content on this — Klara could not base an answer on it.",
+  "ask.verschlossen.grund.freigabe": "At least one of these documents has not been released yet.",
+  "ask.verschlossen.grund.stufe":
+    "At least one of these documents has no confidentiality level yet.",
+  "ask.verschlossen.grund.volltext":
+    "Klara cannot cite anything from documents without searchable text. You can read them and add the text there.",
+  "ask.verschlossen.pruefPfad.beides": "Release or classify:",
+  "ask.verschlossen.pruefPfad.freigabe": "Release:",
+  "ask.verschlossen.pruefPfad.stufe": "Classify:",
+  "ask.verschlossen.zurPruefung": "Go to review",
   "ask.verschlossen.label": "Found — but these gates are closed:",
   "ask.verschlossen.freigabe": "Approval missing",
   "ask.verschlossen.freigabeHint": "The document has not been approved yet.",
@@ -11583,6 +11675,18 @@ const en: typeof de = {
     "A short starter guide to the most important Klarwerk flows. Search by keyword or jump straight into the relevant area.",
   "help.noResults": "No help found for this keyword.",
   "help.openRoute": "Open area",
+  "help.support.title": "Support for this installation",
+  "help.support.configured": "The operator of this installation has set up this support channel:",
+  "help.support.linkDefault": "Open support page",
+  "help.support.mailDefault": "Email support",
+  "help.support.newTab": "new tab",
+  "help.support.notConfigured":
+    "No support channel has been set up for this installation yet. Please contact the administrators of your instance with questions.",
+  "help.support.invalid":
+    "A support channel is configured for this installation, but it is invalid and is therefore not shown. Please let the administrators of your instance know.",
+  "help.support.loadError":
+    "The support channel could not be loaded right now. The help on this page still works.",
+  "help.support.loading": "Loading support channel …",
   // Klara v1 (Pedi 05.07.): context-sensitive help — panel copy + page explanations.
   "klara.title": "Klara",
   "klara.subtitle": "Your help in KLARWERK",
@@ -11910,9 +12014,9 @@ const en: typeof de = {
   // steht jetzt auch hier, mit derselben Wendung, die die Schwesterhilfe „in the holdings" benutzt.
   "help.graph.body":
     "The knowledge graph draws the individual knowledge objects and their connections as a net — closer to the object than the topic map, which groups by topic. If a node belongs to an object in the holdings, a click on it leads to that knowledge object, and the keyboard reaches it just as well; a node without such an object is not a link and is not in the keyboard order. Start at an object you know and follow its lines.",
-  "help.gesamtanweisungen.title": "Composite instructions, assembled",
+  "help.gesamtanweisungen.title": "Assembling work instructions",
   "help.gesamtanweisungen.body":
-    "Here you create a composite instruction and assemble it from existing versions: you take in an entry with its version number, change the order and submit the result for a decision. There is no list of all instructions — one that already exists is opened through its address. When two states are compared, a changed order is reported differently from changed content, and the note on check integration stays visible for as long as it is missing.",
+    "Work instructions are readable step-by-step documents built from existing knowledge – for example for onboarding new colleagues. The overview shows every instruction you may read; clicking a title opens it. You start a new one with a title and “Create new work instruction”. In the open instruction you describe purpose, scope and prerequisites, search existing entries by title and add one fixed version of each as a section – a later change to the entry does not silently replace it. The reading view shows the result; “Move up” and “Move down” change the order. Finally you submit the whole instruction for a decision; people with review rights decide. “What has changed?” compares two saved states. An automatic expert review is not connected yet, and none of this needs AI.",
   "help.hilfe.title": "Help",
   "help.hilfe.body":
     "This page keeps every help chapter together, with a search field above it; each chapter carries a link to the page it is about. The search covers title, text and keywords of the chapters — so type in the word you would use to describe your problem. If there is nothing on it, the page says so openly instead of showing an unrelated chapter.",
@@ -12337,7 +12441,7 @@ const en: typeof de = {
     "The classic form with every field at once — for those who know exactly what to enter. It is the same data as the guided path, no extra feature and no shortcut past review. The way back to the guided path is always one click away.",
   "chelp.wizardSteps.title": "The three steps",
   "chelp.wizardSteps.body":
-    "Capturing runs in three steps: TELL (get the raw knowledge out), KNOWLEDGE PAGE (check and refine, with AI help), SUBMIT (hand it to peer review). Completed steps are clickable — going back loses nothing. Only „review & submit“ turns your draft into a knowledge object for your colleagues.",
+    "Capturing runs in three steps: WRITE (title and text on the sheet — or via “File” as an interview, from a file or in the form; “Dictate” writes along), SAVE (as a draft, visible only to you) and SUBMIT (hand it to peer review). You can keep writing at any time — nothing is lost. Only submitting turns your draft into a knowledge object for your colleagues.",
   "chelp.loadExample.title": "Load example",
   "chelp.loadExample.body":
     "Fills the fields with a demo example so you can try the whole path safely. Careful: it overwrites your current input — use it on an empty page. Even an example is only submitted once you submit it deliberately.",
@@ -12364,10 +12468,10 @@ const en: typeof de = {
     "The title is the first thing colleagues see in the library and in answers — it decides whether your knowledge is found. Good: concrete and actionable („checking weld seams on aluminium under 5 mm“). You can change it anytime; the AI suggestion is only a starting point.",
   "chelp.saveDraftHelp.title": "Save draft",
   "chelp.saveDraftHelp.body":
-    "Saves your interim state locally in your browser — continue anytime, even after a restart. A draft is NOT submitted: nobody sees it, it appears in no review and no answer. You will find saved drafts at the top of this page to resume.",
+    "Saves your interim state on the server under your account — continue anytime, even on another device. A draft is NOT submitted: nobody sees it, it appears in no review and no answer. You find saved drafts under “More” → Drafts.",
   "chelp.discardHelp.title": "Discard",
   "chelp.discardHelp.body":
-    "Discards the current draft for good — text, structure and attachments of this capture. It affects ONLY your draft: already submitted or saved knowledge objects stay untouched. The app deliberately asks first; if you only want one step back, use the step bar instead of discarding.",
+    "Discards the current input — text, structure and attachments of this capture. It affects ONLY this input: already submitted knowledge objects and saved drafts stay untouched. The app deliberately asks first.",
   "chelp.submitReview.title": "Review & submit",
   "chelp.submitReview.body":
     "Turns your draft into a knowledge object and hands it to peer review: colleagues check it, raise queries or approve. From now on it is visible to others — but honestly marked as „in review“, NOT as validated. It becomes validated through enough approvals. It can carry answers before that too — but is then visibly marked as unverified.",
@@ -12503,7 +12607,7 @@ const en: typeof de = {
   "fd.author": "Author",
   "fd.whatOnSave": "What happens on save",
   "fd.whatOnSaveBody":
-    "It is saved as a draft — resumable at any time. It only goes to review when you choose “Review / submit”; nothing is validated automatically.",
+    "It is saved as a draft — resumable at any time. It only goes to review when you choose “Submit”; nothing is validated automatically.",
   "fd.moreWays": "More capture paths",
   "fd.moreWaysBody":
     "Need the classic form, dictation or the guided interview? The full capture area has every path — this surface here is the fast entry point.",
@@ -12737,6 +12841,8 @@ const en: typeof de = {
     "If you use the application as an installed app, your browser stores program files in a cache so that it starts faster. Responses from our server and your content are not stored there.",
   "legal.privacy.s4.p7":
     "If ending your session fails, the application notes this in your browser under the name kw_signout_pending so that use stays blocked until our server has confirmed the session was ended. Because your session applies to every window and tab of the same browser, this marker is kept in persistent browser storage and takes effect in every window and tab as well — otherwise a second window that was already open would keep showing content even though the sign-out is still unresolved. The marker contains no information about you and is not transmitted to us. It stays until our server confirms the session was ended, or until it is established that your session no longer exists; then it is deleted. It does not expire on its own. So that this does not rest on you, the application retries ending the session by itself — as soon as your connection is back and whenever the application is opened again; you can also trigger it yourself at any time. It is technically necessary for the sign-out you requested.",
+  "legal.privacy.s4.p8":
+    "On the “Ask” page, the application keeps your unsent draft and the question and answer you last saw, including their source references, in your browser so that you can continue after leaving the page, reloading or signing in again. The entry is tied to your user account; anyone who signs in with a different account in the same browser is not shown it. It may contain content from your organisation’s knowledge base and remains stored in this browser after you sign out. A discarded draft is removed immediately; the displayed answer is replaced as soon as you ask a new question. The entry itself is not transmitted to us; you can delete it at any time by clearing this application’s site data in your browser.",
   "legal.privacy.s5.title": "5. Your content",
   "legal.privacy.s5.body":
     "The application serves to capture, review and retrieve knowledge. The content you enter or upload is stored together with the time and your identifier as author, so that contributions remain traceable and questions can be asked.",
@@ -12962,10 +13068,11 @@ const en: typeof de = {
     "On the web surface it depends on whether your own internal model is connected. If one is connected, it carries the work on, and the AI buttons stay usable. If only the public AI is set up, it drops out of the chain without clearance and no model is left for the task: the AI buttons are then greyed out and carry the sentence “AI unavailable — no model is active for this task.” No silent substitute run fakes a model. Klara in the Word pane does not even take the external route: it reports the block as an incompletely stored rule, and no user consent lifts it — nobody can click away a decision of the administrator. If the AI mapping is fixed by the deployment configuration (KLARWERK_REASONER_POLICY), these two switches have no effect either: they are locked, the server would refuse a save, and because the deployment mapping carries no clearance of its own, public AI stays blocked for as long as it applies. The next step then does not run through this card but through the server's deployment configuration; without the variable the choice stored here applies again.",
   // JOB 4154 (WIKI-GESAMTANWEISUNG): mirror of the DE keys. „unchanged" stays „unchanged" — it is
   // never „correct", „checked" or „approved".
-  "ga.titel": "Instruction",
+  "ga.titel": "Work instruction",
   "ga.laedt": "Loading …",
-  "ga.leer": "This instruction has no building blocks yet.",
-  "ga.fehler": "The instruction could not be loaded.",
+  "ga.leer":
+    "This work instruction has no sections yet. Add the first one from existing knowledge above.",
+  "ga.fehler": "The work instruction could not be loaded. Reload the page or try again later.",
   "ga.ablageFluechtig":
     "This installation cannot store instructions permanently. Nothing was created — please contact your system administrator.",
   "ga.offline": "No connection. Your entries are kept; nothing has been saved.",
@@ -12973,14 +13080,15 @@ const en: typeof de = {
   "ga.auffrischungLaeuft": "State as of {{zeit}} · refreshing",
   "ga.auffrischungGescheitert": "State as of {{zeit}} · refresh failed",
   "ga.gesperrt": "Submitting and deciding are blocked: the state shown is not confirmed.",
-  "ga.unvollstaendig": "Parts of this instruction are not accessible to you.",
-  "ga.verborgene": "Inaccessible building blocks: {{anzahl}}",
-  "ga.pruefanbindung": "Check integration: not connected yet",
+  "ga.unvollstaendig": "Parts of this work instruction are not accessible to you.",
+  "ga.verborgene": "Inaccessible sections: {{anzahl}}",
+  "ga.pruefanbindung":
+    "Check integration: not connected yet – no automatic expert review of this instruction takes place.",
   "ga.stand.entwurf": "Draft",
   "ga.stand.vorgelegt": "Submitted",
   "ga.stand.entschieden": "Decided",
   "ga.stand.abgelehnt": "Rejected",
-  "ga.bausteine": "Building blocks",
+  "ga.bausteine": "Sections",
   "ga.baustein.fassung": "Bound version {{version}}",
   "ga.baustein.herkunft": "{{titel}} · {{autor}}",
   "ga.baustein.herkunftUnbekannt": "The bound version cannot be found.",
@@ -12994,19 +13102,20 @@ const en: typeof de = {
   "ga.baustein.keine": "none",
   "ga.baustein.textUnbelegt": "The content of this version is not on record.",
   "ga.baustein.gliederung": "Outline of this version",
-  "ga.aufnahme.titel": "Add an existing version",
+  "ga.aufnahme.titel": "Add a section from existing knowledge",
   "ga.aufnahme.koId": "Entry",
   "ga.aufnahme.koVersion": "Version",
   "ga.aufnahme.nachweis": "Record (optional)",
   "ga.aufnahme.knopf": "Add",
-  "ga.aufnahme.fassungUnbekannt": "This version does not exist. Please check the version number.",
+  "ga.aufnahme.fassungUnbekannt":
+    "This version does not exist (any more). Choose one of the versions shown.",
   "ga.ordnen.hoch": "Move up",
   "ga.ordnen.runter": "Move down",
   "ga.voraussetzung.label": "Precondition",
   "ga.voraussetzung.knopf": "Apply precondition",
-  "ga.vergleich.titel": "Compare two states",
-  "ga.vergleich.von": "From state",
-  "ga.vergleich.bis": "To state",
+  "ga.vergleich.titel": "What has changed?",
+  "ga.vergleich.von": "Older state",
+  "ga.vergleich.bis": "Newer state",
   "ga.vergleich.knopf": "Compare",
   "ga.vergleich.unveraendert": "Unchanged. That is no statement about correctness.",
   "ga.vergleich.geaendert": "Changed.",
@@ -13026,26 +13135,28 @@ const en: typeof de = {
   "ga.entscheidung.annehmen": "Accept",
   "ga.entscheidung.ablehnen": "Reject",
   "ga.entscheidung.konflikt":
-    "The instruction has changed in the meantime. Please reload and decide again.",
+    "The work instruction has changed in the meantime. Please reload the page and try again.",
   "ga.kopf.titel": "Title",
   "ga.kopf.zweck": "Purpose",
   "ga.kopf.geltungsbereich": "Scope",
   "ga.kopf.voraussetzungen": "Preconditions",
-  "ga.bereich.titel": "Composite instructions",
+  "ga.bereich.titel": "Work instructions",
   "ga.bereich.einleitung":
-    "Above you find the stored composite instructions; below you create a new one and assemble it from existing versions.",
-  "ga.bereich.anlegen": "Create composite instruction",
+    "Assemble existing knowledge into a readable step-by-step instruction – for example for onboarding new colleagues.",
+  "ga.bereich.anlegen": "Create new work instruction",
   // JOB 4357 — the stored inventory. „Nothing stored" and „could not look" are two different
   // statements and never share a sentence (see the DE block for the reasoning).
-  "ga.liste.titel": "Stored composite instructions",
-  "ga.liste.laedt": "Loading the stored inventory …",
-  "ga.liste.fehler": "The stored inventory could not be loaded.",
-  "ga.liste.leer": "Nothing has been stored so far.",
-  "ga.liste.stand": "State",
-  "ga.liste.urheber": "Author",
-  "ga.liste.geaendert": "Last change",
-  "ga.liste.bausteine": "Building blocks: {{anzahl}}",
-  "ga.liste.unvollstaendig": "Incomplete — building blocks you cannot access: {{anzahl}}",
+  "ga.liste.titel": "Existing work instructions",
+  "ga.liste.laedt": "Loading the existing work instructions …",
+  "ga.liste.fehler":
+    "The existing work instructions could not be loaded. Reload the page or try again later – you can still create a new instruction.",
+  "ga.liste.leer":
+    "There is no work instruction yet. Create your first one below – it will then appear here.",
+  "ga.liste.stand": "Status",
+  "ga.liste.urheber": "Created by",
+  "ga.liste.geaendert": "Last changed",
+  "ga.liste.bausteine": "Sections: {{anzahl}}",
+  "ga.liste.unvollstaendig": "Incomplete for you – sections you cannot access: {{anzahl}}",
 };
 
 const nl: typeof de = {
@@ -13339,6 +13450,8 @@ const nl: typeof de = {
   "intake.live.similarAsk": "Aanvullen of nieuw?",
   "intake.live.conflictLead": "Let op — dit kan in tegenspraak zijn met:",
   "intake.live.fundort": "Staat in:",
+  "intake.live.pruefstand.offen": "nog niet beoordeeld",
+  "intake.live.pruefstand.validiert": "Gevalideerd",
   "intake.live.openKo": "Bekijken",
   "intake.live.unavailable": "Controle momenteel niet beschikbaar.",
   "intake.structure.heading": "Klarwerk stelt voor — tik aan wat niet klopt:",
@@ -14743,6 +14856,10 @@ const nl: typeof de = {
   "capture.saveDraft": "Als concept opslaan",
   "capture.draftSaved": "Concept opgeslagen.",
   "capture.draftUpdated": "Concept bijgewerkt.",
+  "capture.teilerfolg.dateiAusstehend":
+    "Nog niet alles opgeslagen: het concept is opgeslagen, het bestand “{{name}}” wordt nog opgeslagen.",
+  "capture.teilerfolg.dateiGescheitert":
+    "Slechts gedeeltelijk opgeslagen: het concept is opgeslagen, het bestand “{{name}}” niet. Het staat hier nog — “Als concept opslaan” probeert het opnieuw.",
   "capture.draftDiscarded": "Concept verwijderd.",
   // JOB 3768 — zie de Duitse regel: sinds JOB 3668 gaat het concept naar de prullenbak.
   "capture.discardDraftQ":
@@ -15166,6 +15283,18 @@ const nl: typeof de = {
     "Het verzoek is onderweg blijven steken. Dit is GEEN uitspraak over de kennis — het betekent niet dat er geen antwoord is. Probeer het opnieuw.",
   "ask.error.retry": "Opnieuw proberen",
   "ask.offline": "Geen verbinding.",
+  "ask.wiederaufnahme.entwurf":
+    "Hier kun je verdergaan: je nog niet verzonden concept staat weer in het vraagveld.",
+  "ask.wiederaufnahme.antwort":
+    "Hier kun je verdergaan: dit is het antwoord dat je het laatst zag, van {{zeit}}, met de bronnen. Het is niet opnieuw gegenereerd — stel de vraag opnieuw om het te vernieuwen.",
+  "ask.wiederaufnahme.beides":
+    "Hier kun je verdergaan: je nog niet verzonden concept staat weer in het vraagveld, daarboven het antwoord dat je het laatst zag, van {{zeit}}. Het is niet opnieuw gegenereerd.",
+  "ask.wiederaufnahme.verwerfen": "Concept verwerpen",
+  "ask.pruefungGestoert": "Klara kon de bedrijfskennis nu niet betrouwbaar controleren.",
+  "ask.rueckmeldungAbgelaufen":
+    "Feedback is alleen mogelijk tot 30 minuten na het antwoord. Stel de vraag opnieuw om het te geven.",
+  "ask.rueckmeldungAbgelehnt":
+    "Je feedback is niet aangenomen. Stel de vraag opnieuw en probeer het dan nog eens.",
   "ask.refreshFailed": "Vernieuwen mislukt — dit antwoord komt van het vorige verzoek.",
   "ask.demoPrefillHint":
     "Startvraag overgenomen uit het kennisobject — klik op „Vragen”. Het antwoord blijft brongebonden; status en vertrouwen beslissen, er wordt niets automatisch opgeslagen.",
@@ -15239,6 +15368,9 @@ const nl: typeof de = {
   "answerSource.originalUnconfirmed":
     "De stand van deze bron is nu niet bevestigd — het bewijs wordt pas weer aangeboden als het vernieuwen lukt.",
   // JOB 4224 D5 (levering 5): zonder model noemt het scherm ook de toegestane weg.
+  "ask.aiUnavailable.adminPfad":
+    "Als beheerder kun je hier een AI-model koppelen of AI inschakelen:",
+  "ask.aiUnavailable.toAdmin": "AI-instellingen openen",
   "ask.aiUnavailable.path":
     "Zonder model blijft de kennisbank open — daarvoor wordt niets automatisch vrijgegeven:",
   "ask.aiUnavailable.toLibrary": "Kennisbank doorzoeken",
@@ -15281,6 +15413,16 @@ const nl: typeof de = {
   "ask.gap.step.review.hint": "Pas na validatie geldt het als geborgd.",
   "ask.contract.label": "Antwoordbasis",
   // JOB 2626 D1: waarom er geen antwoord was — de gesloten poorten, per document.
+  "ask.verschlossen.titel": "Hier is inhoud over — Klara kon er geen antwoord op baseren.",
+  "ask.verschlossen.grund.freigabe": "Minstens één van deze documenten is nog niet vrijgegeven.",
+  "ask.verschlossen.grund.stufe":
+    "Minstens één van deze documenten heeft nog geen vertrouwelijkheidsniveau.",
+  "ask.verschlossen.grund.volltext":
+    "Uit documenten zonder doorzoekbare tekst kan Klara niets onderbouwen. Je kunt ze lezen en de tekst daar aanvullen.",
+  "ask.verschlossen.pruefPfad.beides": "Vrijgeven of classificeren:",
+  "ask.verschlossen.pruefPfad.freigabe": "Vrijgeven:",
+  "ask.verschlossen.pruefPfad.stufe": "Classificeren:",
+  "ask.verschlossen.zurPruefung": "Naar beoordeling",
   "ask.verschlossen.label": "Gevonden — maar deze poorten zijn gesloten:",
   "ask.verschlossen.freigabe": "Vrijgave ontbreekt",
   "ask.verschlossen.freigabeHint": "Het document is nog niet vrijgegeven.",
@@ -17218,6 +17360,18 @@ const nl: typeof de = {
     "Korte startgids voor de belangrijkste Klarwerk-processen. Zoek op trefwoord of spring direct naar het juiste onderdeel.",
   "help.noResults": "Geen help gevonden voor dit trefwoord.",
   "help.openRoute": "Onderdeel openen",
+  "help.support.title": "Support voor deze installatie",
+  "help.support.configured": "De beheerder van deze installatie heeft dit supportkanaal ingesteld:",
+  "help.support.linkDefault": "Supportpagina openen",
+  "help.support.mailDefault": "E-mail naar support sturen",
+  "help.support.newTab": "nieuw tabblad",
+  "help.support.notConfigured":
+    "Voor deze installatie is nog geen supportkanaal ingesteld. Neem met vragen contact op met de beheerders van je omgeving.",
+  "help.support.invalid":
+    "Voor deze installatie is een supportkanaal ingevoerd, maar het is ongeldig en wordt daarom niet getoond. Laat het de beheerders van je omgeving weten.",
+  "help.support.loadError":
+    "Het supportkanaal kon nu niet worden geladen. De help op deze pagina werkt gewoon.",
+  "help.support.loading": "Supportkanaal wordt geladen …",
   "klara.title": "Klara",
   "klara.subtitle": "Jouw hulp in KLARWERK",
   "klara.open": "Klara openen — hulp bij deze pagina",
@@ -17544,9 +17698,9 @@ const nl: typeof de = {
   // steht jetzt auch hier, mit derselben Wendung, die die Schwesterhilfe „uit het bestand" benutzt.
   "help.graph.body":
     "De kennisgraaf tekent de afzonderlijke kennisobjecten en hun verbindingen als een net — dichter bij het object dan de themakaart, die per thema groepeert. Hoort een knooppunt bij een object uit het bestand, dan leidt een klik erop naar dat kennisobject, en met het toetsenbord bereik je het net zo goed; een knooppunt zonder zo’n object is geen link en ligt niet in de toetsenbordvolgorde. Begin bij een object dat je kent en volg zijn lijnen.",
-  "help.gesamtanweisungen.title": "Samengestelde instructies samenstellen",
+  "help.gesamtanweisungen.title": "Werkinstructies samenstellen",
   "help.gesamtanweisungen.body":
-    "Hier maak je een samengestelde instructie aan en stel je die samen uit bestaande versies: je neemt een item met zijn versienummer op, wijzigt de volgorde en legt het resultaat ter beslissing voor. Een lijst van alle instructies is er niet — een reeds aangemaakte open je via het adres ervan. Bij het vergelijken van twee standen wordt een gewijzigde volgorde anders benoemd dan gewijzigde inhoud, en de notitie over de controle-aansluiting blijft zichtbaar zolang die ontbreekt.",
+    "Werkinstructies zijn leesbare stap-voor-stap-documenten uit bestaande kennis – bijvoorbeeld voor het inwerken van nieuwe collega’s. Het overzicht toont alle instructies die je mag lezen; een klik op de titel opent er een. Een nieuwe begin je met een titel en „Nieuwe werkinstructie maken”. In de geopende instructie beschrijf je doel, toepassingsgebied en voorwaarden, zoek je bestaande items op titel en neem je van elk één vaste versie als onderdeel op – een latere wijziging aan het item vervangt die niet stilzwijgend. De leesversie toont het resultaat; met „Omhoog” en „Omlaag” wijzig je de volgorde. Tot slot leg je de hele instructie ter beslissing voor; personen met beoordelingsrecht beslissen. „Wat is er veranderd?” vergelijkt twee opgeslagen standen. Een automatische inhoudelijke controle is nog niet aangesloten, en voor dit alles is geen AI nodig.",
   "help.hilfe.title": "Help",
   "help.hilfe.body":
     "Op deze pagina staan alle helphoofdstukken bij elkaar, met een zoekveld erboven; elk hoofdstuk heeft een link naar de pagina waar het over gaat. Er wordt gezocht in titel, tekst en trefwoorden van de hoofdstukken — typ dus gerust het woord in waarmee je je probleem zou omschrijven. Is er niets over, dan zegt de pagina dat eerlijk in plaats van een onpassend hoofdstuk te tonen.",
@@ -17974,7 +18128,7 @@ const nl: typeof de = {
     "Het klassieke formulier met alle velden in één oogopslag — voor iedereen die precies weet wat hij wil invullen. Het is dezelfde datastand als de begeleide weg, geen extra functie en geen sluiproute langs de controle. De terugweg naar de begeleide weg is altijd één klik verwijderd.",
   "chelp.wizardSteps.title": "De drie stappen",
   "chelp.wizardSteps.body":
-    "Vastleggen verloopt in drie stappen: VERTELLEN (ruwe kennis kwijtraken), KENNISPAGINA (controleren en verfijnen, met KI-hulp), INDIENEN (in de peer-beoordeling geven). Voltooide stappen kun je aanklikken en teruggaan — daarbij gaat niets verloren. Pas „Controleren & indienen\" maakt van je concept een kennisobject voor de collega's.",
+    "Vastleggen verloopt in drie stappen: SCHRIJVEN (titel en tekst op het blad — of via „Bestand” als interview, uit een bestand of in het formulier; „Dicteren” schrijft mee), OPSLAAN (als concept, alleen voor jou zichtbaar) en INDIENEN (in de peer-beoordeling geven). Je kunt altijd verder schrijven — daarbij gaat niets verloren. Pas het indienen maakt van je concept een kennisobject voor de collega's.",
   "chelp.loadExample.title": "Voorbeeld laden",
   "chelp.loadExample.body":
     "Vult de velden met een demovoorbeeld, zodat je de volledige weg gevaarloos kunt uitproberen. Let op: het overschrijft je huidige invoer — gebruik het op een lege pagina. Ook een voorbeeld wordt pas ingediend als je het bewust indient.",
@@ -18001,10 +18155,10 @@ const nl: typeof de = {
     "De titel is het eerste wat collega's in bibliotheek en antwoorden zien — hij bepaalt of je kennis wordt gevonden. Goed: concreet en actiegericht („Lasnaad bij aluminium onder 5 mm controleren\"). Je kunt hem altijd wijzigen, ook het KI-voorstel is maar een startpunt.",
   "chelp.saveDraftHelp.title": "Concept opslaan",
   "chelp.saveDraftHelp.body":
-    "Bewaart je tussenstand lokaal in je browser — je kunt altijd verdergaan, ook na een herstart. Een concept is NIET ingediend: niemand ziet het, het duikt in geen enkele beoordeling en geen enkel antwoord op. Boven aan de pagina vind je opgeslagen concepten om verder te gaan.",
+    "Bewaart je tussenstand op de server onder je account — je kunt altijd verdergaan, ook op een ander apparaat. Een concept is NIET ingediend: niemand ziet het, het duikt in geen enkele beoordeling en geen enkel antwoord op. Opgeslagen concepten vind je onder „Meer” → Concepten.",
   "chelp.discardHelp.title": "Verwerpen",
   "chelp.discardHelp.body":
-    "Verwerpt het huidige concept definitief — tekst, structuur en bijlagen van deze vastlegging. Het betreft ALLEEN je concept: reeds ingediende of opgeslagen kennisobjecten blijven onaangetast. Vooraf vraagt de app bewust na; wie maar één stap terug wil, gebruikt de stappenbalk in plaats van verwerpen.",
+    "Verwerpt de huidige invoer — tekst, structuur en bijlagen van deze vastlegging. Het betreft ALLEEN deze invoer: reeds ingediende kennisobjecten en opgeslagen concepten blijven onaangetast. Vooraf vraagt de app bewust na.",
   "chelp.submitReview.title": "Controleren & indienen",
   "chelp.submitReview.body":
     "Maakt van je concept een kennisobject en geeft het in de peer-beoordeling: collega's controleren, stellen vragen of keuren goed. Vanaf nu is het voor anderen zichtbaar — maar eerlijk als „in beoordeling\" gemarkeerd, NIET als zeker. Gevalideerd wordt het door genoeg goedkeuringen. Voor antwoorden bruikbaar is het al eerder — maar dan zichtbaar als ongecontroleerd gemarkeerd.",
@@ -18141,7 +18295,7 @@ const nl: typeof de = {
   "fd.author": "Auteur",
   "fd.whatOnSave": "Wat er bij het opslaan gebeurt",
   "fd.whatOnSaveBody":
-    'Wordt als concept bewaard — altijd voort te zetten. Ter beoordeling gaat het pas als je „Controleren / indienen" kiest; er wordt niets automatisch gevalideerd.',
+    "Wordt als concept bewaard — altijd voort te zetten. Ter beoordeling gaat het pas als je „Indienen” kiest; er wordt niets automatisch gevalideerd.",
   "fd.moreWays": "Meer vastleg-wegen",
   "fd.moreWaysBody":
     "Heb je het klassieke formulier, dictaat of het begeleide interview nodig? Het volledige vastleg-gebied heeft alle wegen — dit vlak hier is de snelle instap.",
@@ -18376,6 +18530,8 @@ const nl: typeof de = {
     "Gebruikt u de toepassing als geïnstalleerde app, dan legt uw browser programmabestanden in een buffer zodat de app sneller start. Antwoorden van onze server en uw inhoud worden daar niet opgeslagen.",
   "legal.privacy.s4.p7":
     "Mislukt het beëindigen van uw sessie, dan noteert de toepassing dat in uw browser onder de naam kw_signout_pending, zodat het gebruik geblokkeerd blijft totdat onze server de beëindiging heeft bevestigd. Omdat uw sessie voor alle vensters en tabbladen van dezelfde browser geldt, staat deze markering in de blijvende browseropslag en werkt zij ook in alle vensters en tabbladen — een tweede, al geopend venster zou anders inhoud blijven tonen terwijl de beëindiging nog openstaat. De markering bevat geen gegevens over u en wordt niet aan ons doorgegeven. Zij blijft staan totdat onze server de beëindiging heeft bevestigd of vaststaat dat uw sessie niet meer bestaat; dan wordt zij verwijderd. Vanzelf vervalt zij niet. Om dat niet bij u te laten liggen, probeert de toepassing de beëindiging zelf opnieuw — zodra uw verbinding weer bestaat en bij elke nieuwe start van de toepassing; u kunt het ook op elk moment zelf in gang zetten. Zij is technisch noodzakelijk voor de door u gewenste afmelding.",
+  "legal.privacy.s4.p8":
+    "Op de pagina „Vragen” bewaart de toepassing in uw browser uw nog niet verzonden concept en de laatst getoonde vraag en het antwoord met de bronvermeldingen, zodat u na het verlaten van de pagina, opnieuw laden of opnieuw aanmelden verder kunt werken. De vermelding is aan uw gebruikersaccount gekoppeld; wie zich in dezelfde browser met een ander account aanmeldt, krijgt haar niet te zien. Zij kan inhoud uit de kennisbank van uw organisatie bevatten en blijft ook na het afmelden in deze browser bewaard. Een verworpen concept wordt direct verwijderd; het getoonde antwoord wordt vervangen zodra u een nieuwe vraag stelt. De vermelding zelf wordt niet aan ons doorgegeven; u kunt haar altijd verwijderen door de websitegegevens van deze toepassing in uw browser te wissen.",
   "legal.privacy.s5.title": "5. Uw inhoud",
   "legal.privacy.s5.body":
     "De toepassing dient om kennis vast te leggen, te toetsen en terug te vinden. De inhoud die u invoert of uploadt, wordt samen met het tijdstip en uw code als auteur opgeslagen, zodat bijdragen navolgbaar blijven en vragen mogelijk zijn.",
@@ -18609,10 +18765,12 @@ const nl: typeof de = {
     "Op het webscherm hangt het ervan af of een eigen intern model is verbonden. Is er een verbonden, dan rekent dat verder en blijven de AI-knoppen bedienbaar. Is alleen de openbare AI ingericht, dan valt die zonder vrijgave uit de keten en blijft er voor de taak geen model over: de AI-knoppen zijn dan grijs en dragen de zin „AI niet beschikbaar — voor deze taak is geen model actief.“ Geen stille vervangingsrun wendt een model voor. Klara in het Word-venster neemt de externe weg helemaal niet: zij meldt de blokkade als een onvolledig vastgelegde regel, en geen enkele toestemming van de gebruiker heft die op — een beslissing van de beheerder kan niemand wegklikken. Is de AI-toewijzing vastgelegd via de deploy-configuratie (KLARWERK_REASONER_POLICY), dan hebben ook deze twee schakelaars geen effect: ze zijn geblokkeerd, de server zou een opslag weigeren, en omdat de deploy-toewijzing zelf geen vrijgave draagt, blijft de openbare AI zolang geblokkeerd. De volgende stap loopt dan niet via deze kaart, maar via de deploy-configuratie van de server; zonder de variabele geldt weer de hier opgeslagen keuze.",
   // JOB 4154 (WIKI-GESAMTANWEISUNG): spiegel van de DE-sleutels. „ongewijzigd" blijft
   // „ongewijzigd" — nooit „juist", „gecontroleerd" of „vrijgegeven".
-  "ga.titel": "Instructie",
+  "ga.titel": "Werkinstructie",
   "ga.laedt": "Laadt …",
-  "ga.leer": "Deze instructie heeft nog geen bouwstenen.",
-  "ga.fehler": "De instructie kon niet worden geladen.",
+  "ga.leer":
+    "Deze werkinstructie heeft nog geen onderdelen. Voeg hierboven het eerste toe uit bestaande kennis.",
+  "ga.fehler":
+    "De werkinstructie kon niet worden geladen. Laad de pagina opnieuw of probeer het later nog eens.",
   "ga.ablageFluechtig":
     "Deze installatie kan instructies niet blijvend opslaan. Er is niets aangemaakt — neem contact op met je systeembeheerder.",
   "ga.offline": "Geen verbinding. Je invoer blijft behouden; er is niets opgeslagen.",
@@ -18620,14 +18778,15 @@ const nl: typeof de = {
   "ga.auffrischungLaeuft": "Stand van {{zeit}} · wordt ververst",
   "ga.auffrischungGescheitert": "Stand van {{zeit}} · verversen mislukt",
   "ga.gesperrt": "Voorleggen en beslissen zijn geblokkeerd: de getoonde stand is niet zeker.",
-  "ga.unvollstaendig": "Delen van deze instructie zijn voor jou niet toegankelijk.",
-  "ga.verborgene": "Niet toegankelijke bouwstenen: {{anzahl}}",
-  "ga.pruefanbindung": "Controle-aansluiting: nog niet aangesloten",
+  "ga.unvollstaendig": "Delen van deze werkinstructie zijn voor jou niet toegankelijk.",
+  "ga.verborgene": "Niet toegankelijke onderdelen: {{anzahl}}",
+  "ga.pruefanbindung":
+    "Controle-aansluiting: nog niet aangesloten – er vindt geen automatische inhoudelijke controle van deze instructie plaats.",
   "ga.stand.entwurf": "Concept",
   "ga.stand.vorgelegt": "Voorgelegd",
   "ga.stand.entschieden": "Besloten",
   "ga.stand.abgelehnt": "Afgewezen",
-  "ga.bausteine": "Bouwstenen",
+  "ga.bausteine": "Onderdelen",
   "ga.baustein.fassung": "Gebonden versie {{version}}",
   "ga.baustein.herkunft": "{{titel}} · {{autor}}",
   "ga.baustein.herkunftUnbekannt": "De gebonden versie is niet vindbaar.",
@@ -18641,19 +18800,20 @@ const nl: typeof de = {
   "ga.baustein.keine": "geen",
   "ga.baustein.textUnbelegt": "De inhoud van deze versie is niet vastgelegd.",
   "ga.baustein.gliederung": "Overzicht van deze versie",
-  "ga.aufnahme.titel": "Bestaande versie opnemen",
+  "ga.aufnahme.titel": "Onderdeel uit bestaande kennis toevoegen",
   "ga.aufnahme.koId": "Item",
   "ga.aufnahme.koVersion": "Versie",
   "ga.aufnahme.nachweis": "Bewijsstuk (optioneel)",
   "ga.aufnahme.knopf": "Opnemen",
-  "ga.aufnahme.fassungUnbekannt": "Deze versie bestaat niet. Controleer het versienummer.",
+  "ga.aufnahme.fassungUnbekannt":
+    "Deze versie bestaat niet (meer). Kies een van de getoonde versies.",
   "ga.ordnen.hoch": "Omhoog",
   "ga.ordnen.runter": "Omlaag",
   "ga.voraussetzung.label": "Voorwaarde",
   "ga.voraussetzung.knopf": "Voorwaarde overnemen",
-  "ga.vergleich.titel": "Twee standen vergelijken",
-  "ga.vergleich.von": "Van stand",
-  "ga.vergleich.bis": "Tot stand",
+  "ga.vergleich.titel": "Wat is er veranderd?",
+  "ga.vergleich.von": "Oudere stand",
+  "ga.vergleich.bis": "Nieuwere stand",
   "ga.vergleich.knopf": "Vergelijken",
   "ga.vergleich.unveraendert": "Ongewijzigd. Dat zegt niets over juistheid.",
   "ga.vergleich.geaendert": "Gewijzigd.",
@@ -18673,26 +18833,28 @@ const nl: typeof de = {
   "ga.entscheidung.annehmen": "Aannemen",
   "ga.entscheidung.ablehnen": "Afwijzen",
   "ga.entscheidung.konflikt":
-    "De instructie is intussen gewijzigd. Laad opnieuw en beslis nogmaals.",
+    "De werkinstructie is intussen gewijzigd. Laad de pagina opnieuw en probeer het nog eens.",
   "ga.kopf.titel": "Titel",
   "ga.kopf.zweck": "Doel",
   "ga.kopf.geltungsbereich": "Toepassingsgebied",
   "ga.kopf.voraussetzungen": "Voorwaarden",
-  "ga.bereich.titel": "Samengestelde instructies",
+  "ga.bereich.titel": "Werkinstructies",
   "ga.bereich.einleitung":
-    "Boven staan de opgeslagen samengestelde instructies; daaronder maakt u een nieuwe aan en stelt u die samen uit bestaande versies.",
-  "ga.bereich.anlegen": "Samengestelde instructie aanmaken",
+    "Stel bestaande kennis samen tot een leesbare stap-voor-stap-instructie – bijvoorbeeld voor het inwerken van nieuwe collega’s.",
+  "ga.bereich.anlegen": "Nieuwe werkinstructie maken",
   // JOB 4357 — de opgeslagen voorraad. „Niets opgeslagen" en „kon niet kijken" zijn twee
   // verschillende uitspraken en delen nooit één zin (zie het DE-blok voor de onderbouwing).
-  "ga.liste.titel": "Opgeslagen samengestelde instructies",
-  "ga.liste.laedt": "De opgeslagen voorraad wordt geladen …",
-  "ga.liste.fehler": "De opgeslagen voorraad kon niet worden geladen.",
-  "ga.liste.leer": "Er is tot nu toe niets opgeslagen.",
+  "ga.liste.titel": "Bestaande werkinstructies",
+  "ga.liste.laedt": "De bestaande werkinstructies worden geladen …",
+  "ga.liste.fehler":
+    "De bestaande werkinstructies konden niet worden geladen. Laad de pagina opnieuw of probeer het later nog eens – een nieuwe instructie kun je toch maken.",
+  "ga.liste.leer":
+    "Er is nog geen werkinstructie. Maak hieronder je eerste – daarna verschijnt ze hier.",
   "ga.liste.stand": "Status",
-  "ga.liste.urheber": "Auteur",
-  "ga.liste.geaendert": "Laatste wijziging",
-  "ga.liste.bausteine": "Bouwstenen: {{anzahl}}",
-  "ga.liste.unvollstaendig": "Onvolledig — voor u niet toegankelijke bouwstenen: {{anzahl}}",
+  "ga.liste.urheber": "Gemaakt door",
+  "ga.liste.geaendert": "Laatst gewijzigd",
+  "ga.liste.bausteine": "Onderdelen: {{anzahl}}",
+  "ga.liste.unvollstaendig": "Onvolledig voor jou – niet toegankelijke onderdelen: {{anzahl}}",
 };
 
 // ================================================================================================

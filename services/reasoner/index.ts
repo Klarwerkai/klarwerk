@@ -207,6 +207,10 @@ export {
   KLARA_MODES,
   KLARA_RESOLUTION_TTL_MS,
   KLARA_EXTERNAL_EXECUTION_MIGRATED,
+  // R-0639: der Dokumenttext als eigene Klasse mit eigenem Riegel — gelesen im App-Layer
+  // (`klara-session-service.ts`), deshalb hier ausgeleitet.
+  KLARA_DOCUMENT_TEXT_EGRESS_ENABLED,
+  KLARA_PAYLOAD_CLASS_DOCUMENT_TEXT,
   KLARA_DETERMINISTIC_PROVIDER,
   KLARA_DETERMINISTIC_MODEL,
   type KlaraMode,
