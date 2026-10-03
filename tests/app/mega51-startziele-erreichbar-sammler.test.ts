@@ -63,6 +63,7 @@ import {
   routePathAllows,
 } from "../../apps/web/src/app/navigation";
 import { DEMO_PILOT_PATH, captureDemoHref } from "../../apps/web/src/lib/demoPilotPath";
+import { FAEHIGKEITEN } from "../../apps/web/src/lib/faehigkeiten";
 import { KNOWLEDGE_CYCLE } from "../../apps/web/src/lib/knowledgeCycle";
 import { knowledgeGuidance } from "../../apps/web/src/lib/knowledgeGuidance";
 import { CTA_PRIMARY, CTA_QUEUE } from "../../apps/web/src/lib/startCtas";
@@ -186,6 +187,10 @@ const AUSDRUCK_HERKUNFT: { muster: RegExp; herkunft: string }[] = [
     muster: /^zeile\.to$/,
     herkunft: "components/start/forYou.ts · forYouZeilen (Arbeit, Meldung, Kollision)",
   },
+  // R-1012 (Folgeauftrag gesamt-erstnutzerfuehrung-quellen) NACHGEZOGEN, nicht gelockert: das Blatt
+  // „Über KLARWERK" trägt die Fähigkeitsübersicht. Ihre Ziele sind die Pfade der Navigationspunkte
+  // (`lib/faehigkeiten.ts` liest sie aus `ALL_ITEMS`) und stehen unten in `ZIELE`.
+  { muster: /^faehigkeit\.to$/, herkunft: "lib/faehigkeiten.ts · FAEHIGKEITEN" },
 ];
 
 // Alle `to=`-Vorkommen: `to="…"` (Literal) und `to={…}` (Ausdruck).
@@ -235,6 +240,7 @@ const ZIELE: { ziel: string; herkunft: string }[] = [
   ...Object.entries(CTA_PRIMARY).map(([r, c]) => ({ ziel: c.to, herkunft: `CTA_PRIMARY/${r}` })),
   ...Object.entries(CTA_QUEUE).map(([r, c]) => ({ ziel: c.to, herkunft: `CTA_QUEUE/${r}` })),
   { ziel: captureDemoHref(), herkunft: "captureDemoHref" },
+  ...FAEHIGKEITEN.map((f) => ({ ziel: f.to, herkunft: `FAEHIGKEITEN/${f.id}` })),
   ...vorkommen
     .filter((v) => v.literal !== null)
     .map((v) => ({ ziel: v.literal as string, herkunft: "Literal in Start.tsx" })),
@@ -289,9 +295,15 @@ describe("mega51 A3 · Stufe 3 — die Rollenfrage wird an derselben Registry be
     // Zeile wie `/erfassen` und `/erfassen?demo=stage1` — für „viewer" eine Lage, für alle anderen
     // Rollen unverändert ein Weg. Dass er als Lage wirklich kein Link ist, misst der gemountete
     // Fall A3 in `tests/d1-meine-entwuerfe/start-zugang-meine-entwuerfe.test.tsx`.
+    //
+    // R-1012 NACHGEFÜHRT, nicht gelockert: die Fähigkeitsübersicht im Blatt „Über KLARWERK" nennt
+    // „Duplikate" (`/duplikate`, minRole „controller") — für „viewer" und „experte" eine Lage, wie
+    // `/konflikte` daneben. Ihre übrigen Ziele standen schon in der Matrix oder sind für jede Rolle
+    // offen. Gemessen als Lage im gemounteten Fall F2 von
+    // `tests/erstnutzerfuehrung/faehigkeitsuebersicht.test.tsx`.
     expect(matrix).toEqual([
-      "viewer: /aufgaben /erfassen /erfassen?demo=stage1 /erfassen?entwuerfe=1 /konflikte /lebenszyklus /risiko /validierung /validierung?demo=stage1",
-      "experte: /konflikte /lebenszyklus /risiko /validierung /validierung?demo=stage1",
+      "viewer: /aufgaben /duplikate /erfassen /erfassen?demo=stage1 /erfassen?entwuerfe=1 /konflikte /lebenszyklus /risiko /validierung /validierung?demo=stage1",
+      "experte: /duplikate /konflikte /lebenszyklus /risiko /validierung /validierung?demo=stage1",
       "controller: ",
       "admin: ",
     ]);

@@ -4,6 +4,69 @@ Auftrag `aufnahme:20260922:gesamt-erstnutzerfuehrung`: Aufgabenrevision 2, Lauf 
 Stand der Fassung **1.0.0-beta.1.632** (Basis `8f0ec01c`), abgeglichen am 29.09.2026. Fortgesetzt in
 Aufgabenrevision 9, Lauf 3, Runde 1 (01.10.2026, Basis `21ee1ef0`); siehe „Lauf 3“ unten.
 
+## Folgeauftrag `…-quellen` (Option B, Revision 4): Zuordnung und Umsetzung
+
+Auftrag `aufnahme:20260922:gesamt-erstnutzerfuehrung-quellen`, Basis `2042438a`, 03.10.2026. Hier
+geht es um die fünf Zielzustände, die Pedi mit `entscheidung:622a6ae6` (Option B) aus dem
+Ursprungsauftrag ausgelagert hat. Die Zeilen weiter unten (Lauf 1) bleiben als älterer Abgleich
+stehen. **Quellenlage:** Die Auftragsquelle enthält zu R-0455, R-0928, R-0939, R-1012 und R-1675 nur
+den Kurzwortlaut und Verweise auf die Quellenpakete (`aufnahmepunkte-004.json` `$[68]`,
+`aufnahmepunkte-008.json` `$[21]`, `$[32]`, `$[105]`, `aufnahmepunkte-021.json` `$[10]`). Den
+Originalwortlaut dieser Pakete gibt es weder in der Auftragsquelle noch im Repository. Die Zuordnung
+unten stützt sich daher auf Repository, Git-Historie und `OFFEN.md`.
+
+| Zielzustand | Stand heute | Beleg |
+|---|---|---|
+| **R-0455** Erstbesucher findet ohne Erklärung, wonach er sucht (Inventar, Anschlusspaket, Rotvertrag, Klarheitsvertrag, Ownerpaket) | Artefakte **nicht auffindbar** · Zielzustand **als prüfbares Kriterium abgeleitet**, teilweise belegt | Gesucht wurde in Repository und `git log --all` (Nachrichten), auch nach Schreibvarianten. **Ownerpaket, Klarheitsvertrag:** kein Treffer. **Rotvertrag:** nur als allgemeiner Prüfbegriff des Hauses (z. B. `tests/capture/frontdoor-bedeutung-mounted.test.tsx:28`), kein Erstbesucher-Artefakt. **Anschlusspaket:** nur `dbe0e182` (JOB 4156, „Anschlusspaket WIKI-GESAMTANWEISUNG-ANSCHLUSS“), das ist ein anderes Thema. **Inventar:** Es gibt die Funktionsinventare `tests/design/h1…h6-funktionsinventar.test.ts`. Ob eines davon das genannte Inventar ist, lässt sich nicht belegen. **Abgeleitetes Kriterium:** (a) Jede Funktion, die von der Startfläche verschwunden ist, hat einen benannten, bedienbaren Ort (`tests/design/h5-funktionsinventar.test.ts`, Chromium). (b) Die Startfläche trägt keinen Erklärtext über 40 Zeichen (`tests/design/zielbild-h5-kein-erklaertext.test.ts`). (c) **Neu:** Ein Blatt nennt alle Kernbereiche mit Namen, Zweck und Weg (R-1012 unten). Ob ein Mensch damit „ohne Erklärung findet“, belegt erst ein Nachtest mit Menschen. |
+| **R-0928** Kurze thematische Einstiegsseiten (Erfassen, Validieren, Fragen, Bibliothek) → volle Konsole | **eigene Einstiegsseiten: offen** · Teilersatz **geliefert** | Eigene Seiten gab es nie. `routes.tsx` hat keine Einstiegsroute, und unter `apps/web/src/pages` gibt es keine Missionsseite (Stand `bf9fcf1c` bestätigt). Seit diesem Auftrag führt das Blatt „Über KLARWERK“ zu allen vier Themen, je mit einem Satz und einem Weg in die volle Funktion (`lib/faehigkeiten.ts`, Test F0c/F1/F4). Das ist **keine** eigene Seite je Thema. Ein Neubau ist ohne Entscheidung nicht erfolgt (Frage 1 unten). |
+| **R-1675** „Missions“-Einstiegsseiten → Vollfunktion (**optional** laut Quelle) | **geliefert, dann abgelöst** (Kachelform) | Geliefert in `9be7466b` (26.06., `lib/missions.ts`, Kacheln auf Start). Zurückgenommen mit mega38 G2 (Pedi 27.07.: „eine zweite Navigation in Kachelform“) und gelöscht in `5150cd5a` (28.07.). Beide Commits sind in der Historie geprüft. Die Ablösung bleibt wirksam. Nichts wurde zurückgebaut oder neu gebaut. |
+| **R-0939** Kernschleife erfassen → prüfen → finden, erhoben und priorisiert | **Nachweis fehlte** · Erhebung **hier geliefert** (s. u.) | Im Repository gab es keine Dokumentation der Erhebung oder Priorisierung. Deshalb ist die Erhebung unten das Ergebnis dieses Auftrags. Die Übersicht ordnet die Bereiche in genau dieser Schleife (F0b). |
+| **R-1012** Einstiegsfläche: umfassendes Bild, was das System kann | **zugeordnet** (`OFFEN.md:123` U4 / SCRUM-474) · **geliefert** als Fähigkeitsübersicht im Blatt „Über KLARWERK“ | Das Blatt hat jetzt unter dem Zwecksatz den Abschnitt „Was KLARWERK kann“: drei Schritte, acht Bereiche, je Name, Satz und Weg, dazu der Weg zur Hilfe. Der Ort ist das „…“-Menü und nicht das Sichtfeld. So bleiben H5 (Pedi 04.09., ≤ 40 Zeichen Erklärtext) und mega38 G2 (keine Kacheln auf der Fläche) unberührt. Namen und Ziele kommen aus `app/navigation.ts`, es gibt kein zweites Register. Bereiche außerhalb der Rolle bleiben als Auskunft stehen (`RoleLink`). Test: `faehigkeitsuebersicht.test.tsx` F0–F5. Der Startziel-Sammler `tests/app/mega51-startziele-erreichbar-sammler.test.ts` ist nachgeführt (`/duplikate` als Lage für viewer/experte). |
+
+### R-0939 · Erhebung der Kernschleife (Stand `2042438a`, am Code)
+
+Der Weg in Schritten, mit dem Übergang, der im Code existiert:
+
+| Nr. | Übergang | Im Code | Lage |
+|---|---|---|---|
+| S1 | Start → Finden | Feld „Was möchtest du wissen?“ → `/fragen?q=…&ask=1` (`pages/Start.tsx:113`) | geschlossen |
+| S2 | Start (leerer Bestand) → Erfassen | Zeile „Noch kein Wissen im Bestand — das erste erfassen“ → `/erfassen` (`pages/Start.tsx:331-349`) | geschlossen |
+| S3 | Finden ohne Treffer → Erfassen | Bibliothek „Nichts gefunden.“ + „Erfassen“ (`BibliothekListe.tsx`) · Fragen ohne Modell: Bibliothek/Erfassen (`components/fragen/Antwortbausteine.tsx:78-87`) · Palette/Hilfe → Fragen (Lauf 1) | geschlossen; für „viewer“ ist Erfassen Auskunft statt Weg (Rolle) |
+| S4 | Erfassen → Prüfen | Nach dem Einreichen: „Eingereicht“ + Objektlink + „Validierung öffnen“ (`components/erfassen/Blatt.tsx:3444-3454`) | für Experten **Auskunft, kein Weg** (`/validierung` verlangt „controller“) |
+| S5 | Prüfen → zurück an die Autorin | Rückgabe erscheint als Aufgabe „Nacharbeit“ in „Meine Aufgaben“ (`lib/taskFilters.ts:13`, `task.returned`) | geschlossen für die Rückgabe |
+| S6 | Prüfen → Finden | Prüfseite öffnet das Objekt (`pages/Validation.tsx:1337`, `:1469`) | geschlossen |
+| S7 | Freigabe → Autorin erfährt es | `NotificationKind` kennt nur `conflict`, `duplicate`, `gap`, `assignment`, `impact` (`api/types.ts:2500`) | **Abbruchstelle**: keine eigene Meldung bei Freigabe |
+
+**Priorisierung (Vorschlag dieses Auftrags, Begründung je Punkt):**
+
+1. **S7 – Freigabe kommt bei der Autorin nicht an (hoch).** Hier fällt der Mensch aus der Schleife.
+   Wer erfasst, erfährt nicht, dass sein Wissen jetzt gefunden werden kann. Behebung wäre eine neue
+   Meldungsart, also eine neue Funktion, und die schließt U4 aus („keine neue Funktion“). **Nicht
+   gebaut**, Frage 2 an Pedi.
+2. **S4 – „Validierung öffnen“ ist für Experten kein Weg (mittel).** Das ist bewusst so (mega70 B,
+   Rollenrecht) und kein Fehler. Der Mensch sieht aber keinen nächsten Schritt außer „Neuer
+   Eintrag“. Nicht geändert, weil das die Rechtelogik berührt (U4-Grenze).
+3. **S3 – Nulltreffer für „viewer“ (niedrig).** Der Weg „Erfassen“ erscheint als Auskunft. Das ist
+   rollenrichtig, und „Fragen“ bleibt als Alternative.
+4. **S1, S2, S5, S6 – geschlossen.** Kein Handlungsbedarf aus dieser Erhebung.
+
+**Grenze der Erhebung:** Sie liest den Code. Gemessene Abbruchquoten echter Nutzer gibt es nicht.
+Dafür fehlen Nutzungsdaten oder ein Nachtest mit Menschen.
+
+### Fragen an Pedi (mit Optionen)
+
+1. **R-0928 – eigene thematische Einstiegsseiten?** (A) Das Blatt „Über KLARWERK“ mit Übersicht
+   genügt, R-0928 gilt damit als erfüllt. (B) Je Thema eine kurze eigene Seite unter neuer Route,
+   was gegen mega38 G2 und H5 abzuwägen wäre. (C) R-0928 als durch mega38 G2 abgelöst schließen.
+   Ohne Entscheidung bleibt R-0928 **offen**.
+2. **R-0939/S7 – Meldung bei Freigabe an die Autorin?** (A) Neue Meldungsart „freigegeben“ in „FÜR
+   DICH“/Glocke, als eigener Auftrag, weil es eine neue Funktion ist. (B) Bewusst nicht. Dann bleibt
+   S7 als bekannte Abbruchstelle stehen.
+3. **R-0455 – die fünf Artefakte.** Sie sind im Repository nicht auffindbar. (A) Pedi oder die
+   Ursprungsquelle (`aufnahmepunkte-004.json` `$[68]`) nennt ihren Ablageort, dann wird nachgeführt.
+   (B) Das oben abgeleitete Kriterium (a)–(c) ersetzt sie. (C) R-0455 bleibt offen bis zum
+   Nachtest mit Menschen.
+
 ## Lauf 3 (Revision 9): U2 und U3 im Browser, Abgrenzung Option B
 
 - **R-1507 / R-1609 gebaut:** `tests-smoke/erstnutzer-u2-u3-browser.spec.ts` misst die Hürden U2 und

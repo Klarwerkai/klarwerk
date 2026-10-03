@@ -31,6 +31,21 @@
 - Offen: Export an einen Trace-/Metrik-Sammler, Verknüpfung erzeugter Gegenstände mit späteren
   Entwürfen/KOs, Anzeige des Fehlergrunds. Nicht geprüft: echte Modell-API, PostgreSQL, Browser.
 
+## 03.10.2026 — Erstnutzerführung: ausgelagerte Zielzustände (Folgeauftrag `…-quellen`)
+
+- R-1012 (OFFEN.md U4, SCRUM-474): Das Blatt „Über KLARWERK“ (Start → „…“) trägt die
+  Fähigkeitsübersicht „Was KLARWERK kann“: erfassen → prüfen → finden, acht Bereiche mit je einem
+  Satz und einem Weg. Namen und Ziele kommen aus `app/navigation.ts` (`lib/faehigkeiten.ts`), die
+  Texte DE/EN/NL aus `texte/erstnutzer.ts`. Das Sichtfeld von `/start` ist unverändert.
+  Test: `tests/erstnutzerfuehrung/faehigkeitsuebersicht.test.tsx`. Der Startziel-Sammler (mega51)
+  ist nachgeführt.
+- Zugeordnet mit Belegen: R-0455 (Artefakte nicht auffindbar, Kriterium abgeleitet), R-0928
+  (eigene Einstiegsseiten offen), R-1675 (Kacheln geliefert und abgelöst), R-0939 (Erhebung mit
+  Abbruchstellen geliefert; höchste: keine Meldung an die Autorin bei Freigabe). Drei Fragen an Pedi:
+  `tests/erstnutzerfuehrung/README.md`.
+- Nicht geprüft: Nachtest mit Menschen, Browser-Lauf des H5-Funktionsinventars mit der erweiterten
+  Übersicht.
+
 ## 01.10.2026 — Erstnutzer-Hürden U2/U3 im Browser (Revision 9)
 
 - Neue Playwright-Sonde `tests-smoke/erstnutzer-u2-u3-browser.spec.ts`: U2 (Suchraum der Bibliothek
