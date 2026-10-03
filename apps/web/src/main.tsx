@@ -3,6 +3,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App";
+import { SplashFlaeche } from "./components/Splash";
 import i18n, { sprachBereit } from "./i18n";
 import "./index.css";
 import { initBrandTheme } from "./lib/brandTheme";
@@ -52,15 +53,25 @@ if (!root) {
   throw new Error("Root-Element fehlt.");
 }
 
-// R-0801: der erste Aufbau wartet, bis die Startsprache vollständig vorliegt. Für Deutsch ist das
+// R-0801: die ANWENDUNG wartet, bis die Startsprache vollständig vorliegt. Für Deutsch ist das
 // sofort der Fall (das Wörterbuch liegt im Eintritt). Für eine gespeicherte Wahl en/nl oder einen
 // Eintritt mit `?lang=en` wird das Sprachpaket erst nachgeladen — ohne dieses Warten erschiene die
 // Oberfläche kurz deutsch und spränge dann um (`lib/htmlLang.ts`: „SOFORT, nicht nach einem
 // sichtbaren Umschlag"). Scheitert das Nachladen, erfüllt sich `sprachBereit` trotzdem, und die
 // Oberfläche erscheint über `fallbackLng` auf Deutsch, statt gar nicht.
+//
+// DIE WURZEL WARTET NICHT (ben, Nacharbeit 3, F1): bis hierher lief `createRoot` erst nach
+// `sprachBereit`, und `#root` (index.html) blieb so lange LEER — ohne Ladefläche, ohne
+// Fehlergrenze. Jetzt steht SOFORT die Ladefläche da. Sie braucht kein Sprachpaket: `i18n.t` fällt
+// bei fehlendem Paket über `fallbackLng` auf das deutsche Wörterbuch im Eintritt zurück, und
+// `SplashFlaeche` wartet auf keinen Übersetzungshaken. Danach ersetzt dieselbe Wurzel sie durch die
+// Anwendung. Gegenprobe: `tests/erstladezeit/startsprache-ladeflaeche.test.tsx`.
+const wurzel = createRoot(root);
+wurzel.render(<SplashFlaeche text={i18n.t("state.loading")} />);
+
 void sprachBereit.finally(() => {
   bindSpracheSpeichern(i18n);
-  createRoot(root).render(
+  wurzel.render(
     <StrictMode>
       <QueryClientProvider client={queryClient}>
         <BrowserRouter>

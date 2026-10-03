@@ -357,6 +357,40 @@ interface KartenBefund {
   // dass wirklich der erzeugte Block erkannt wurde und nicht irgendein `export{` im Modulcode.
   ausfuhrBytes: number;
   ausfuhrEintraege: number;
+  // Ob am Stückende überhaupt eine erzeugte Ausfuhrliste steht. Ohne Block ist `ausfuhrEintraege`
+  // 0 — und nur dann gültig, wenn rollup für das Stück auch keine Ausfuhr meldet (`ausfuhrAbgleich`).
+  ausfuhrBlock: boolean;
+  // WAS „INHALT" HIER HEISST (ben, Nacharbeit 3, R-1573): ein Kartensegment sagt nur, wo Code einer
+  // Quelle BEGINNT; dass er bis zum nächsten Segment reicht, ist eine KONVENTION dieses Zuordners.
+  // Ein Helfer, den rollup oder esbuild INNERHALB eines solchen Segments erzeugt, zählt deshalb als
+  // Inhalt der Quelle — die Karte unterscheidet ihn nicht. Getrennt wird erst an einem quellenlosen
+  // Segment. Der Befund trägt das ausdrücklich, statt semantisch gesicherte Herkunft zu behaupten
+  // (Fälle Z7/Z8 unten).
+  zuordnung: "segmentkonvention";
+}
+
+const ZUORDNUNG = "segmentkonvention" as const;
+
+// ── DER EXPORTABGLEICH, EINMAL — für den Bau UND für die Erwartungsfälle (ben, Nacharbeit 3, F2) ──
+// Bis hierher stand der Vergleich inline in `baue()` als `ausfuhrEintraege === exports.length`, und
+// ein Stück OHNE erzeugte Liste trug `ausfuhrEintraege = -1`. Ein gültiges exportloses Stück (etwa
+// nur `console.log(1);`) wäre damit als Fehlschlag gemeldet worden: −1 gegen 0. Jetzt gilt:
+//   · kein Block und rollup meldet keine Ausfuhr → gültiger Nullfall;
+//   · kein Block, aber rollup meldet Ausfuhren   → ungültig (die Liste fehlt);
+//   · Block vorhanden                            → Eintragszahl muss zu rollups Angabe passen.
+function ausfuhrAbgleich(befund: KartenBefund, exporte: readonly string[]): boolean {
+  if (!befund.ausfuhrBlock) {
+    return exporte.length === 0;
+  }
+  return befund.ausfuhrEintraege === exporte.length;
+}
+
+/** Die erkannte Liste für die Fehlermeldung: Eintragszahl, „fehlt" ohne Block, „—" ohne Karte. */
+function ausfuhrListe(befund: KartenBefund | null): string {
+  if (befund === null) {
+    return "—";
+  }
+  return befund.ausfuhrBlock ? String(befund.ausfuhrEintraege) : "fehlt";
 }
 
 // ── DIE ERZEUGTE AUSFUHRLISTE AM STÜCKENDE (ben, R2, Korrekturpflicht 1) ────────────────────────
@@ -463,7 +497,9 @@ function byteHerkunft(
     kartenZeilen: kartenZeilen.length,
     fremdeQuellen: [...fremdeQuellen],
     ausfuhrBytes: block ? Buffer.byteLength(code.slice(block.start), "utf8") : 0,
-    ausfuhrEintraege: block ? block.eintraege : -1,
+    ausfuhrEintraege: block ? block.eintraege : 0,
+    ausfuhrBlock: block !== null,
+    zuordnung: ZUORDNUNG,
   };
 }
 
@@ -641,8 +677,8 @@ async function baue(name: string, plugins: Plugin[]): Promise<Bau> {
         // Der unabhängige Abgleich je Stück: die Zahl der Einträge in der erkannten Ausfuhrliste
         // gegen rollups `exports`. Stimmt sie nicht, ist der Block falsch (oder gar nicht) erkannt.
         ausfuhrBytes: karte ? karte.ausfuhrBytes : -1,
-        ausfuhrStimmt: karte ? karte.ausfuhrEintraege === (a.exports ?? []).length : false,
-        ausfuhrBefund: `${a.fileName}: Liste ${karte?.ausfuhrEintraege ?? "—"} Einträge, rollup meldet ${(a.exports ?? []).length}`,
+        ausfuhrStimmt: karte ? ausfuhrAbgleich(karte, a.exports ?? []) : false,
+        ausfuhrBefund: `${a.fileName}: Liste ${ausfuhrListe(karte)} Einträge, rollup meldet ${(a.exports ?? []).length}`,
         kartenZeilen: karte ? karte.kartenZeilen : -1,
         // Der Code endet auf `\n`; `split` liefert dafür ein leeres Schlussstück, das keine
         // Kartenzeile hat. Verglichen wird deshalb gegen die Zahl der ECHTEN Zeilen.
@@ -895,6 +931,66 @@ describe("KALIBRIERUNG DES ZUORDNERS · an von Hand bekannten Fällen", () => {
     // Segment bei 0 (Quelle 0), dann bei Spalte 10 ein EINFELDRIGES Segment (nur Spaltendelta).
     const befund = byteHerkunft(code, "AAAA,U", [QUELLE], IDS);
     expect(befund.jeQuelle.get(QUELLE), "nur bis zum quellenlosen Segment").toBe(10);
+  });
+
+  // ── Z6 · DAS EXPORTLOSE STÜCK (ben, Nacharbeit 3, F2; JOB 3077 R3 Prüfpunkt 6) ─────────────────
+  // Ein gültiges Stück, das nur etwas AUSFÜHRT und nichts exportiert: kein `export{…}`,
+  // rollup meldet `exports = []`. Geprüft mit DEMSELBEN `ausfuhrAbgleich`, den `baue()` benutzt —
+  // keine Vergleichslogik nur im Test. Bis Nacharbeit 3 stand hier −1 gegen 0, und dieser Fall war
+  // ein Fehlschlag.
+  it("Z6 ein exportloses Stück ist ein gültiger Nullfall — fehlt die Liste bei echten Ausfuhren, nicht", () => {
+    const code = "console.log(1);";
+    expect(Buffer.byteLength(code), "Stücklänge, von Hand nachgezählt").toBe(15);
+    const befund = byteHerkunft(code, "AAAA", [QUELLE], IDS);
+    expect(befund.ausfuhrBlock, "kein erzeugter Block").toBe(false);
+    expect(befund.ausfuhrBytes, "null Bytes Ausfuhrliste").toBe(0);
+    expect(befund.ausfuhrEintraege, "null Einträge").toBe(0);
+    expect(ausfuhrAbgleich(befund, []), "rollup meldet nichts — gültig").toBe(true);
+    expect(befund.zugeordnet, "der ganze Code ist Modulinhalt").toBe(15);
+    expect(
+      befund.zugeordnet + (Buffer.byteLength(code) - befund.zugeordnet),
+      "Inhalt + Rahmen ergibt unverändert die Stücklänge",
+    ).toBe(15);
+    // NEGATIVE KONTROLLE: derselbe Code, aber rollup meldet eine Ausfuhr — dann FEHLT die Liste.
+    expect(ausfuhrAbgleich(befund, ["x"]), "Ausfuhr gemeldet, Liste fehlt — ungültig").toBe(false);
+    // Und mit Block bleibt der Abgleich streng: `export{a as b};` führt genau einen Eintrag.
+    const mitBlock = byteHerkunft("const a=1;export{a as b};", "AAAA", [QUELLE], IDS);
+    expect(ausfuhrAbgleich(mitBlock, ["b"])).toBe(true);
+    expect(ausfuhrAbgleich(mitBlock, [])).toBe(false);
+    expect(ausfuhrAbgleich(mitBlock, ["b", "c"])).toBe(false);
+  });
+
+  // ── Z7/Z8 · EIN ERZEUGTER HELFER INNERHALB EINES QUELLSEGMENTS (ben, Nacharbeit 3; JOB 3077 R3) ──
+  // Die Grenze zwischen BELEGTER Herkunft und bloßer ZUORDNUNGSKONVENTION, an einem von Hand
+  // festgelegten Paar. Der Code ist Modulcode `const a=1;` (10 B) und dahinter ein erzeugter Helfer
+  // `var __h=e=>e;` (13 B), wie rollup oder esbuild ihn einfügen.
+  //   Z7: die Karte hat EIN Segment an Spalte 0 — sie sagt nichts darüber, wo der Modulcode endet.
+  //       Nach der Konvention zählt der Helfer als Inhalt (23 B). Das ist KEIN Herkunftsbeweis, und
+  //       der Befund sagt das selbst (`zuordnung: "segmentkonvention"`).
+  //   Z8: Kontrollvariante — ein quellenloses Segment an Spalte 10 VOR dem Helfer. Jetzt ist die
+  //       Grenze belegt, und die 13 B des Helfers sind Rahmen.
+  const MODUL = "const a=1;";
+  const HELFER = "var __h=e=>e;";
+
+  it("Z7 ein Helfer IM Quellsegment zählt nach Konvention als Inhalt — und der Befund sagt es", () => {
+    expect(MODUL.length, "Modulcode, von Hand nachgezählt").toBe(10);
+    expect(HELFER.length, "Helfer, von Hand nachgezählt").toBe(13);
+    const befund = byteHerkunft(`${MODUL}${HELFER}`, "AAAA", [QUELLE], IDS);
+    expect(befund.jeQuelle.get(QUELLE), "Konvention: das Segment reicht bis zum Zeilenende").toBe(
+      23,
+    );
+    expect(
+      befund.zuordnung,
+      "ohne quellenloses Segment ist die Grenze nicht belegt — die Zuordnung ist Konvention",
+    ).toBe("segmentkonvention");
+  });
+
+  it("Z8 Kontrolle: ein quellenloses Segment vor dem Helfer weist dessen Bytes als Rahmen aus", () => {
+    const code = `${MODUL}${HELFER}`;
+    // Segment 1: Spalte 0 → Quelle 0 („AAAA"). Segment 2: Spaltendelta 10, ohne Quelle („U").
+    const befund = byteHerkunft(code, "AAAA,U", [QUELLE], IDS);
+    expect(befund.jeQuelle.get(QUELLE), "nur der Modulcode ist Inhalt").toBe(10);
+    expect(Buffer.byteLength(code) - befund.zugeordnet, "der Helfer ist Rahmen").toBe(13);
   });
 });
 
@@ -1256,7 +1352,7 @@ describe("MUTATIONSSUITE · das gebaute Bündel zerfällt in Stücke", () => {
     // Die Aufschlüsselung gehört in JEDEN Lauf, nicht nur in die Fehlermeldung: eine Zahl, die nur
     // bei Rot erscheint, ist im grünen Lauf keine Messung. Genau das war Bens Einwand zu (c2).
     const messung = [
-      "[JOB 3077] (c3) Herkunft des AUSGELIEFERTEN Zuwachses, in UTF-8-Bytes:",
+      `[JOB 3077] (c3) Herkunft des AUSGELIEFERTEN Zuwachses, in UTF-8-Bytes (Zuordnung: ${ZUORDNUNG}, Z7/Z8):`,
       `  VORHER  ${v.summeJs} B = Inhalt ${v.inhaltBytesJs} + Rahmen ${v.rahmenBytesJs}`,
       `  NACHHER ${g.summeJs} B = Inhalt ${g.inhaltBytesJs} + Rahmen ${g.rahmenBytesJs}`,
       `  Zuwachs ${summeZuwachs} B = INHALT ${inhaltZuwachs} B (${anteil(inhaltZuwachs)}) + RAHMEN ${rahmenZuwachs} B (${anteil(rahmenZuwachs)}) · Budget für Inhalt ${INHALT_BUDGET_BYTES} B`,
