@@ -705,7 +705,14 @@ describe("JOB 3060 · H1 · das Funktionsinventar — jede Zeile der Tabelle heu
   beforeAll(async () => {
     try {
       await i18n.changeLanguage("de");
-      s = await strecke({ email: "pedi@job3060-inventar.test", stufe2: true });
+      // Das Inventar liest keinen Wert aus `Main.dc.html` (kein `zielStil`/`zielProp`/`ZIELBILD`),
+      // es misst nur Bedienwege in der gebauten App. Die Mockup-Vorbedingung gilt für Hülle und
+      // Erklärtext, nicht hier. `apps/web/dist` bleibt Pflicht (FE-002, Nacharbeit 3).
+      s = await strecke({
+        email: "pedi@job3060-inventar.test",
+        stufe2: true,
+        zielbildPflicht: false,
+      });
       for (const title of [
         "Halterungen ohne waagerechte Oberseiten",
         "Profile: Ablaufbohrung 8 mm",

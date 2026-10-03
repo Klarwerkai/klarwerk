@@ -1,7 +1,8 @@
 # FE-002 · Diagnose der 44 roten Fälle in `tests/design/h1-funktionsinventar.test.ts` (Nacharbeit 2)
 
-**Status: Ursache ist die Prüfumgebung, kein Produkt- und kein FE-002-Befund. Keine Produkt- oder
-Teständerung. FE-002 noch nicht menschlich abgenommen.**
+**Status: Ursache ist die Prüfumgebung, kein Produkt- und kein FE-002-Befund. Nacharbeit 2 brachte
+keine Änderung. In Nacharbeit 3 ist die Vorbedingung gezielt am Inventar gelöst (Abschnitt 4a). Kein
+Produktcode geändert. FE-002 noch nicht menschlich abgenommen.**
 
 Gebunden an: Kandidat `a3116cac95e7ba227d24649f1b8513335a5f7012`, Prüfplan
 `uebernahme-fe002-a3116cac95e7`, Prüfschritt `header-gezielt` (Belege unter
@@ -67,6 +68,29 @@ node_modules/.bin/vitest run tests/design/h1-funktionsinventar.test.ts --maxWork
 **Erwartung:** Alle Fälle der Datei sind grün, ohne übersprungene Fälle. Das schließt den schon jetzt
 grünen Fall „die Tabelle ist vollständig … = 44“ und die 44 Zeilenfälle ein. Bleibt danach ein Fall rot, ist das ein echter Inventarbefund und wird an genau
 dieser Zeile behoben.
+
+## 4a. Nacharbeit 3 (Kandidat `ad3b1cc4`): gezielte Korrektur
+
+Derselbe Befund kam unverändert zurück, mit demselben Fingerabdruck und unverändertem `PLAN.json`
+ohne Bereitstellung der Vorlage. Eine genauere Lesung zeigt: Das Funktionsinventar **liest keinen
+einzigen Wert aus dem Mockup**. Es importiert aus `h1-chromium.ts` nur `strecke`, `oeffne`,
+`warteBis`, `fn` und Typen, nicht `ZIELBILD`, `zielStil`, `zielProp`, `zielText` oder `zielSymbol`.
+Die Vorbedingung in `strecke()` gehört zu den Dateien, die Sollwerte aus dem Mockup lesen
+(`zielbild-h1-huelle` liest `ziel` mit leerem Rückfall und verlässt sich auf diesen Abbruch). Das
+Repository vermerkt selbst, dass die Vorlage dem Cloud-Prüfstand nicht vorliegt
+(`tests/tor-inventar/tor-bestand-vollstaendig.test.ts:318-320`).
+
+**Änderung:**
+- `tests/design/h1-chromium.ts`: neue Option `zielbildPflicht` (Vorgabe `true`). Ohne Angabe bricht
+  die Strecke wie bisher ab, wenn das Mockup fehlt. Hülle, Erklärtext und alle übrigen Aufrufer sind
+  unverändert. Die Pflicht auf `apps/web/dist` bleibt für alle.
+- `tests/design/h1-funktionsinventar.test.ts`: ruft `strecke({ …, zielbildPflicht: false })` mit
+  Begründung auf. Keine Inventarzeile, keine Zusicherung und kein Zähler wurde geändert.
+
+**Gegenprobe (Server, Schritt `header-gezielt` unverändert):** Die Datei läuft dann auch ohne Mockup
+gegen die gebaute App. Erwartet: alle 45 Fälle der Datei grün und keiner übersprungen. Ein danach
+roter Zeilenfall ist ein echter Inventarbefund und kein Umgebungsfehler mehr. Abschwächung
+ausgeschlossen: Mit vorhandenem Mockup (B6-Volllauf) ändert sich am Verhalten nichts.
 
 ## 5. Fehlendes Mittel
 
