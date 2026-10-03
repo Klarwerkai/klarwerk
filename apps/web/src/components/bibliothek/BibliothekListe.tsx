@@ -185,6 +185,7 @@ export function BibliothekListe({
   gesamt,
   onNachladen,
   leerAktion,
+  leerRaum,
   lage,
 }: {
   q: string;
@@ -228,6 +229,9 @@ export function BibliothekListe({
   onNachladen: () => void;
   // Ein Knopf im Leerzustand (Erfassen) — die Rolle entscheidet der Aufrufer.
   leerAktion: ReactNode;
+  // R-0446: WORIN nichts gefunden wurde (und ggf. der Weg in den anderen Bestand). Steht nur unter
+  // „Nichts gefunden." — der Bestandssatz „Noch keine Einträge." braucht keinen Suchraum.
+  leerRaum: ReactNode;
   // JOB 3335: die Lage auf der Fläche — s. `LAGE_KLASSE` oben. Der Aufrufer weiss, welches Band
   // gilt; diese Datei weiss, wie breit sie darin ist.
   lage: BibListenLage;
@@ -412,6 +416,16 @@ export function BibliothekListe({
             <p className="text-[12.5px] leading-relaxed text-muted">
               {eingegrenzt ? t("lib.liste.leerSuche") : t("lib.liste.leer")}
             </p>
+            {/* Der erste Absatz bleibt der Satz selbst (Tests lesen `bib-leer p`); die Ortsangabe
+                folgt als eigener Block darunter. */}
+            {eingegrenzt ? (
+              <div
+                data-testid="bib-leer-raum"
+                className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12.5px] leading-relaxed text-muted"
+              >
+                {leerRaum}
+              </div>
+            ) : null}
             <div className="mt-2">{leerAktion}</div>
           </div>
         ) : null}

@@ -4440,6 +4440,10 @@ const de = {
   "lib.liste.eintraegeUnbekannt": "–",
   "lib.liste.leer": "Noch keine Einträge.",
   "lib.liste.leerSuche": "Nichts gefunden.",
+  // R-0446 / R-1812: der Nulltreffer sagt, WORIN nichts gefunden wurde — mit dem Wort der
+  // Ortszeile (`lib.ownScope.*`) — und nennt in der eigenen Ablage den Weg in den Gesamtbestand.
+  "lib.liste.leerRaum": "Gesucht in: {{raum}}",
+  "lib.liste.leerAndererRaum": "In „{{raum}}“ suchen",
   "lib.liste.fehler": "Die Liste ließ sich nicht laden.",
   "lib.liste.erneut": "Erneut versuchen",
   "lib.liste.erfassen": "Erfassen",
@@ -10853,6 +10857,8 @@ const en: typeof de = {
   "lib.liste.eintraegeUnbekannt": "–",
   "lib.liste.leer": "No entries yet.",
   "lib.liste.leerSuche": "Nothing found.",
+  "lib.liste.leerRaum": "Searched in: {{raum}}",
+  "lib.liste.leerAndererRaum": "Search in “{{raum}}”",
   "lib.liste.fehler": "The list could not be loaded.",
   "lib.liste.erneut": "Try again",
   "lib.liste.erfassen": "Capture",
@@ -16536,6 +16542,8 @@ const nl: typeof de = {
   "lib.liste.eintraegeUnbekannt": "–",
   "lib.liste.leer": "Nog geen items.",
   "lib.liste.leerSuche": "Niets gevonden.",
+  "lib.liste.leerRaum": "Gezocht in: {{raum}}",
+  "lib.liste.leerAndererRaum": "Zoeken in ‘{{raum}}’",
   "lib.liste.fehler": "De lijst kon niet worden geladen.",
   "lib.liste.erneut": "Opnieuw proberen",
   "lib.liste.erfassen": "Vastleggen",

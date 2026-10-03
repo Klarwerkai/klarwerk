@@ -1506,6 +1506,29 @@ export function BibliothekFlaeche({
               setWindowLimit((n) => n + LIBRARY_RESULT_LIMIT);
             }
           }}
+          // R-0446 / R-1812: der Nulltreffer nennt den Bestand, in dem gesucht wurde — mit
+          // demselben Wort wie die Ortszeile darüber. In der eigenen Ablage ist der Gesamtbestand
+          // die plausibel gemeinte andere Suche; der Knopf schaltet nur den Bereich um, Suchwort und
+          // Filter bleiben stehen. Umgekehrt gibt es keinen Weg: „Alle Inhalte" enthält die Ablage.
+          leerRaum={
+            <>
+              <span>
+                {t("lib.liste.leerRaum", {
+                  raum: t(scope === "meine" ? "lib.ownScope.meine" : "lib.ownScope.alle"),
+                })}
+              </span>
+              {scope === "meine" ? (
+                <button
+                  type="button"
+                  data-testid="bib-leer-anderer-raum"
+                  onClick={() => setScope("alle")}
+                  className="rounded-btn border border-hairline px-2.5 py-1 text-[12.5px] font-semibold text-text hover:bg-hairline-soft"
+                >
+                  {t("lib.liste.leerAndererRaum", { raum: t("lib.ownScope.alle") })}
+                </button>
+              ) : null}
+            </>
+          }
           leerAktion={
             <RoleLink
               // Beta Own-Knowledge Work Queue v0: unter der Linse „Eigenes Wissen" führt der Knopf
