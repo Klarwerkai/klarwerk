@@ -27,6 +27,15 @@ describe("R-0216 · Detailansicht", () => {
     expect(zeile).not.toContain("Nutzbar");
   });
 
+  // Ben R3, BEN-07: der reale Zustand nach einem Wahrheitswiderspruch (R-0231) — Kern offen, 87.
+  it("offen/87 + Konflikt (Server, nach R-0231): Reife „In Prüfung“, nicht „Zu prüfen“", async () => {
+    await i18n.changeLanguage("de");
+    await mount({ status: "offen", confidence: 87, trust: 87, anzeigestatus: "konflikt" });
+    const zeile = await reifeZeile();
+    expect(zeile).toContain("In Prüfung");
+    expect(zeile).not.toContain("Zu prüfen");
+  });
+
   it("Gegenprobe ohne Konflikt: „Nutzbar“", async () => {
     await i18n.changeLanguage("de");
     await mount({ status: "validiert", confidence: 80, trust: 80, anzeigestatus: "validiert" });

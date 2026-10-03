@@ -25,12 +25,15 @@ export interface KoOverview {
 }
 
 // PRÜFSTATUS-ANZEIGE (R-0216/R-0212): `konflikt` kommt seither auch vom Server an (der Lesepfad
-// erhebt ihn). Er bekommt dieselbe Wirkung wie die Konfliktliste der Fläche
-// (`conflictLimitedUsability`): was sonst nutzbar wäre — validiert —, ist „in Prüfung"; was
-// ohnehin offen ist, bleibt „zu prüfen". Ohne diese Zeile fiel er auf „zu prüfen" zurück.
-function usabilityOf(status: DisplayStatus, kern: KnowledgeObject["status"]): KoUsability {
+// erhebt ihn). Ein Objekt mit offenem Widerspruch heißt „In Prüfung" — UNABHÄNGIG vom Kernstatus.
+//
+// Ben R3, BEN-07: der echte Wahrheitswiderspruch setzt ein validiertes Objekt serverseitig auf
+// `offen` zurück (R-0231: validiert/99 → offen/87, Anzeigestatus `konflikt`). Die frühere Regel
+// „in Prüfung nur bei Kern validiert" lieferte deshalb genau im realen Fall „Zu prüfen". Der Kern
+// wird hier nicht mehr gefragt; der Widerspruch selbst ist die Prüfung, die läuft.
+function usabilityOf(status: DisplayStatus): KoUsability {
   if (status === "konflikt") {
-    return kern === "validiert" ? "in-review" : "needs-work";
+    return "in-review";
   }
   if (status === "validiert") {
     return "ready";
@@ -57,7 +60,7 @@ export function koOverview(ko: KnowledgeObject): KoOverview {
   const sig = reviewSignals(ko);
   const sourceCount = ko.sources?.length ?? 0;
   const attachmentCount = ko.attachments?.length ?? 0;
-  const usability = usabilityOf(sig.status, ko.status);
+  const usability = usabilityOf(sig.status);
   return {
     usability,
     status: sig.status,

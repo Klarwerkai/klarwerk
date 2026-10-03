@@ -82,11 +82,22 @@ describe("R-0216 · validiert + offener Widerspruch ist nicht mehr „nutzbar“
     expect(ref?.conflictLimited).toBe(true);
   });
 
-  it("ein OFFENES Objekt mit Konflikt bleibt „zu prüfen“ — es war nie nutzbar", () => {
-    const k = ko({ status: "offen", trust: 0, confidence: 0, anzeigestatus: "konflikt" });
+  // Ben R3, BEN-07: der ECHTE Wahrheitswiderspruch setzt den Kern auf `offen` zurück (R-0231). Bis
+  // hierher stand an dieser Stelle „offen + Konflikt bleibt zu prüfen" — genau die Annahme, die
+  // Bens Gegenprobe widerlegt hat. Der reale Ablauf über die Produkt-Routen steht in
+  // `r0216-echter-konflikt-gegenprobe.test.ts`; hier die reine Ableitung derselben Lage.
+  it("offen/87 + Konflikt (der reale Zustand nach R-0231): überall „In Prüfung“", () => {
+    const k = ko({ status: "offen", trust: 87, confidence: 87, anzeigestatus: "konflikt" });
+    expect(koOverview(k).usability).toBe("in-review");
+    expect(libraryMaturity(k).usability).toBe("in-review");
+    expect(conflictAwareSourceRefs(["k1"], [k], [OFFENER_KONFLIKT])[0]?.usability).toBe(
+      "in-review",
+    );
+    expect(label(koOverview(k).usability)).toBe("In Prüfung");
+  });
+
+  it("Gegenprobe: offen OHNE Konflikt bleibt „Zu prüfen“", () => {
+    const k = ko({ status: "offen", trust: 0, confidence: 0, anzeigestatus: "offen" });
     expect(koOverview(k).usability).toBe("needs-work");
-    expect(
-      conflictAwareSourceRefs(["k1"], [ko({ status: "offen" })], [OFFENER_KONFLIKT])[0]?.usability,
-    ).toBe("needs-work");
   });
 });
