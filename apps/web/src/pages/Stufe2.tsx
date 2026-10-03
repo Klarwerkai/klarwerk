@@ -32,9 +32,11 @@ import {
   useManagementSnapshot,
   useModelRuns,
   useOutputSources,
+  useQualitaetsblick,
   useReasonerConfig,
 } from "../api/hooks";
 import type {
+  Conflict,
   ImportCandidate,
   ImportItemInput,
   ManagementSnapshot,
@@ -125,6 +127,7 @@ import {
   modelRunVerbrauch,
   summarizeModelRuns,
 } from "../lib/modelRuns";
+import { bestandsalter, qualitaetsblick } from "../lib/netzQualitaet";
 import { useNetzOnline } from "../lib/netzzustand";
 import { buildCompositionPreview, moveInOrder, sanitizeOrder } from "../lib/outputComposition";
 import { OUTPUT_KIND_OPTIONS, downloadFilename } from "../lib/outputDoc";
@@ -2318,24 +2321,53 @@ function LegendDot({ colorClass, label }: { colorClass: string; label: string })
 // DERSELBE SPRUNG WIE AM KNOTEN: `koDetailPath`, und nur wenn `isNavigableNode` es erlaubt. Ein Knoten,
 // dessen Objekt im Bestand unbekannt ist, steht als Text ohne Link da — wie im Bild.
 //
-// Gemessen in `tests/wissensnetz-flaeche/graph-listenweg.test.tsx` (Funktion und Navigation). Die
-// geometrische Bedienbarkeit auf schmalen Fenstern misst diese Datei nicht.
+// Gemessen in `tests/wissensnetz-flaeche/graph-listenweg.test.tsx` (Funktion und Navigation, jsdom)
+// und in `tests/design/zielbild-wissensnetz.test.ts`, Fall GL (Chromium, 390×844, echte App).
+//
+// R-0744 (VERWALTERSEITE RUND UM DIE NETZDARSTELLUNG): Diese Liste ist zugleich Suche und
+// Filterleiste (Titelteil UND Status) und öffnet je Eintrag ein Detailfenster — rein lesend, ohne
+// Bearbeiten im Netz. `/graph` ist eine Stufe-2-Seite; Stufe 2 gibt es nur für Verwalter
+// (`effectiveStufe2`, `lib/effectiveRole.ts`). Gemessen in
+// `tests/wissensnetz-flaeche/netz-verwaltung.test.tsx`.
+
+/** Was das Detailfenster je Objekt liest — alles aus der Graphantwort, nichts nachgeladen. */
+interface GraphDetail {
+  status: string;
+  verbindungen: { id: string; title: string; grund: string }[];
+  offeneKonflikte: number;
+}
+
+type Statusfilter = "alle" | "validiert" | "nicht-validiert";
+
 function GraphObjektliste({
   knoten,
   bekannt,
+  statusVon,
+  detailVon,
 }: {
   knoten: readonly { id: string; title: string }[];
   bekannt: ReadonlySet<string>;
+  statusVon: (id: string) => string;
+  detailVon: (id: string) => GraphDetail;
 }): JSX.Element {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [filter, setFilter] = useState("");
+  const [statusfilter, setStatusfilter] = useState<Statusfilter>("alle");
+  const [offen, setOffen] = useState<string | null>(null);
   const suche = filter.trim().toLocaleLowerCase();
   const sortiert = [...knoten].sort(
     (a, b) => a.title.localeCompare(b.title) || a.id.localeCompare(b.id),
   );
-  const treffer =
-    suche === "" ? sortiert : sortiert.filter((k) => k.title.toLocaleLowerCase().includes(suche));
+  const passtStatus = (id: string): boolean =>
+    statusfilter === "alle" || (statusfilter === "validiert") === (statusVon(id) === "validiert");
+  const treffer = sortiert.filter(
+    (k) => passtStatus(k.id) && (suche === "" || k.title.toLocaleLowerCase().includes(suche)),
+  );
+  // Das Detailfenster gehört zu einem Eintrag, der gerade in der Liste steht — fällt er aus dem
+  // Filter, schließt es, statt über ein unsichtbares Objekt zu berichten.
+  const gezeigt = offen !== null ? treffer.find((k) => k.id === offen) : undefined;
+  const detail = gezeigt ? detailVon(gezeigt.id) : null;
   return (
     <section
       data-testid="graph-objektliste"
@@ -2356,6 +2388,20 @@ function GraphObjektliste({
         onChange={(e) => setFilter(e.target.value)}
         className="mt-1 w-full rounded-md border border-hairline bg-surface px-2 py-1.5 text-sm"
       />
+      <label htmlFor="graph-objektliste-status" className="mt-2 block text-[12.5px] text-muted">
+        {t("graph.liste.status")}
+      </label>
+      <select
+        id="graph-objektliste-status"
+        data-testid="graph-objektliste-status"
+        value={statusfilter}
+        onChange={(e) => setStatusfilter(e.target.value as Statusfilter)}
+        className="mt-1 w-full rounded-md border border-hairline bg-surface px-2 py-1.5 text-sm"
+      >
+        <option value="alle">{t("graph.liste.statusAlle")}</option>
+        <option value="validiert">{t("graph.legendValidated")}</option>
+        <option value="nicht-validiert">{t("graph.liste.statusNichtValidiert")}</option>
+      </select>
       <p
         data-testid="graph-objektliste-anzahl"
         aria-live="polite"
@@ -2394,11 +2440,166 @@ function GraphObjektliste({
                 </Link>
               ) : (
                 <span data-testid="graph-objekt-text">{k.title}</span>
-              )}
+              )}{" "}
+              <button
+                type="button"
+                data-testid="graph-objekt-details"
+                aria-expanded={gezeigt?.id === k.id}
+                aria-controls="graph-detail"
+                aria-label={t("graph.detail.oeffnen", { title: k.title })}
+                onClick={() => setOffen((o) => (o === k.id ? null : k.id))}
+                className="ml-1 text-[12px] text-muted underline"
+              >
+                {t("graph.detail.schalter")}
+              </button>
             </li>
           ))}
         </ul>
       )}
+      {gezeigt && detail ? (
+        <aside
+          id="graph-detail"
+          data-testid="graph-detail"
+          data-id={gezeigt.id}
+          aria-label={t("graph.detail.titel", { title: gezeigt.title })}
+          className="mt-3 rounded-md border border-hairline bg-surface p-3 text-sm"
+        >
+          <h3 data-testid="graph-detail-titel" className="break-words font-semibold text-text">
+            {gezeigt.title}
+          </h3>
+          <p data-testid="graph-detail-status" className="mt-1 text-[12.5px] text-muted">
+            {t("graph.detail.status", {
+              status:
+                detail.status === "validiert"
+                  ? t("graph.legendValidated")
+                  : t("graph.liste.statusNichtValidiert"),
+            })}
+          </p>
+          <p data-testid="graph-detail-konflikte" className="mt-1 text-[12.5px] text-muted">
+            {t("graph.detail.konflikte", { count: detail.offeneKonflikte })}
+          </p>
+          <p className="mt-2 text-[12.5px] font-medium text-text">
+            {t("graph.detail.verbindungen", { count: detail.verbindungen.length })}
+          </p>
+          {detail.verbindungen.length > 0 ? (
+            <ul data-testid="graph-detail-verbindungen" className="mt-1 flex flex-col gap-0.5">
+              {detail.verbindungen.map((v) => (
+                <li key={`${v.id}-${v.grund}`} className="break-words text-[12.5px] text-muted">
+                  {t("graph.detail.verbindung", { title: v.title, grund: v.grund })}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          <div className="mt-2 flex flex-wrap gap-3">
+            {isNavigableNode(gezeigt.id, bekannt) ? (
+              <Link
+                data-testid="graph-detail-oeffnen"
+                to={koDetailPath(gezeigt.id)}
+                className="text-[12.5px] font-medium underline"
+              >
+                {t("graph.openNode", { title: gezeigt.title })}
+              </Link>
+            ) : null}
+            <button
+              type="button"
+              data-testid="graph-detail-schliessen"
+              onClick={() => setOffen(null)}
+              className="text-[12.5px] text-muted underline"
+            >
+              {t("graph.detail.schliessen")}
+            </button>
+          </div>
+        </aside>
+      ) : null}
+    </section>
+  );
+}
+
+// ==================================================================================================
+// R-0744 — DER AUSDRÜCKLICH ZU WÄHLENDE QUALITÄTSBLICK.
+// ==================================================================================================
+//
+// „nie Vorgabe, immer zu wählen": Der Schalter steht aus, und solange er aus ist, wird keiner seiner
+// Eingänge geladen (`useQualitaetsblick(false)`). Gewählt zeigt er vier Quoten, JEDE mit ihrem
+// Nenner, und das Alter des Bestands. Eine nicht erhobene Zahl steht als „nicht erhoben", nie als 0.
+// Die Rechnung steht in `lib/netzQualitaet.ts`; diese Komponente liest und schreibt nichts.
+function Qualitaetsblick({
+  graphIds,
+  konflikte,
+  konflikteLaden,
+  objekte,
+}: {
+  graphIds: readonly string[];
+  konflikte: readonly Conflict[] | undefined;
+  konflikteLaden: boolean;
+  objekte: readonly { id: string; createdAt?: string }[];
+}): JSX.Element {
+  const { t, i18n } = useTranslation();
+  const [gewaehlt, setGewaehlt] = useState(false);
+  const daten = useQualitaetsblick(gewaehlt);
+  const blick = qualitaetsblick({
+    graphIds,
+    konflikte,
+    dubletten: daten.dubletten.data,
+    anstehend: daten.anstehend.data,
+    luecken: daten.luecken.data,
+  });
+  // „Wird erhoben" ist etwas anderes als „nicht erhoben": solange eine Abfrage läuft, sagt die
+  // Zeile das — erst eine gescheiterte (oder fehlende) Antwort heißt „nicht erhoben".
+  const laedt: Record<keyof typeof blick, boolean> = {
+    konflikte: konflikteLaden,
+    luecken: daten.luecken.isPending && !daten.luecken.isError,
+    veraltet: daten.anstehend.isPending && !daten.anstehend.isError,
+    dubletten: daten.dubletten.isPending && !daten.dubletten.isError,
+  };
+  const alter = bestandsalter(objekte, graphIds, Date.now());
+  const zeile = (schluessel: keyof typeof blick): JSX.Element => {
+    const q = blick[schluessel];
+    const was = t(`graph.qb.${schluessel}`);
+    const zustand = laedt[schluessel]
+      ? "laedt"
+      : q.anzahl === null || q.nenner === null
+        ? "nicht-erhoben"
+        : "erhoben";
+    return (
+      <li key={schluessel} data-testid={`graph-qb-${schluessel}`} data-zustand={zustand}>
+        {zustand === "laedt"
+          ? t("graph.qb.laedt", { was })
+          : q.anzahl === null || q.nenner === null
+            ? t("graph.qb.nichtErhoben", { was })
+            : t("graph.qb.quote", { was, anzahl: q.anzahl, nenner: q.nenner })}
+      </li>
+    );
+  };
+  return (
+    <section data-testid="graph-qualitaetsblick" className="mt-4 border-t border-hairline pt-3">
+      <button
+        type="button"
+        data-testid="graph-qb-schalter"
+        aria-pressed={gewaehlt}
+        onClick={() => setGewaehlt((g) => !g)}
+        className="text-sm font-medium underline"
+      >
+        {gewaehlt ? t("graph.qb.aus") : t("graph.qb.an")}
+      </button>
+      {gewaehlt ? (
+        <div data-testid="graph-qb-inhalt" className="mt-2 text-[12.5px] text-muted">
+          <ul className="flex flex-col gap-0.5">
+            {zeile("konflikte")}
+            {zeile("luecken")}
+            {zeile("veraltet")}
+            {zeile("dubletten")}
+          </ul>
+          <p data-testid="graph-qb-alter" className="mt-2">
+            {alter.juengster === null || alter.tage === null
+              ? t("graph.qb.alterUnbekannt")
+              : t("graph.qb.alter", {
+                  datum: new Date(alter.juengster).toLocaleDateString(i18n.language),
+                  count: alter.tage,
+                })}
+          </p>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -2471,10 +2672,40 @@ export function GraphView(): JSX.Element {
             (conflictsQ.data ?? []).map((c) => ({ a: c.koA, b: c.koB })),
             layout.positions,
           );
+          // R-0744 · DAS DETAILFENSTER LIEST NUR, WAS DIE SEITE SCHON HAT: die Verbindungen eines
+          // Objekts aus derselben Graphantwort (Schlagwortkanten mit ihrem `via`, gesetzte
+          // Fachbeziehungen mit ihrer Art) und seine nicht gelösten Konflikte. Beide Endpunkte
+          // müssen in der Graphantwort stehen — sonst nennte das Fenster einen fremden Titel.
+          const titelVon = new Map(raw.nodes.map((n) => [n.id, n.title]));
+          const verbindungenJe = new Map<string, { id: string; title: string; grund: string }[]>();
+          const merke = (von: string, nach: string, grund: string): void => {
+            const titel = titelVon.get(nach);
+            if (titel === undefined || !titelVon.has(von)) {
+              return;
+            }
+            const liste = verbindungenJe.get(von) ?? [];
+            liste.push({ id: nach, title: titel, grund });
+            verbindungenJe.set(von, liste);
+          };
+          for (const e of raw.edges) {
+            const grund = t("graph.detail.grundSchlagwort", { via: e.via });
+            merke(e.a, e.b, grund);
+            merke(e.b, e.a, grund);
+          }
+          for (const k of raw.kuratierteKanten ?? []) {
+            const grund = beziehungsartText(k.art, t);
+            merke(k.a, k.b, grund);
+            merke(k.b, k.a, grund);
+          }
+          const offeneKonflikte = (conflictsQ.data ?? []).filter((c) => c.status !== "geloest");
+          const offeneKonflikteVon = (id: string): number =>
+            offeneKonflikte.filter((c) => c.koA === id || c.koB === id).length;
 
           return (
             <Card>
-              <p className="mb-2 text-[13px] text-muted">
+              {/* R-0744: die Kopfkennzahlen der Verwalterseite — Objekte, Verbindungen, gesetzte
+                  Fachbeziehungen und Kürzung, gezählt an der ungetrimmten Antwort. */}
+              <p data-testid="graph-kopfkennzahlen" className="mb-2 text-[13px] text-muted">
                 {t("s2.graphCount", { nodes: raw.nodes.length, edges: raw.edges.length })}
                 {/* JOB 4153: eine EIGENE Zahl, gezählt an der ungetrimmten Antwort wie die zwei
                     davor. Sie erscheint nur, wenn der Server die Menge auch geschickt hat — ein
@@ -2695,7 +2926,22 @@ export function GraphView(): JSX.Element {
                     Legende erklärt die Sprache des Bildes und ist keine Bestandsaussage. */}
                 <LegendDot colorClass="bg-ai" label={t("graph.legendKuratiert")} />
               </div>
-              <GraphObjektliste knoten={g.nodes} bekannt={knownKoIds} />
+              <GraphObjektliste
+                knoten={g.nodes}
+                bekannt={knownKoIds}
+                statusVon={(id) => statusOf.get(id) ?? "offen"}
+                detailVon={(id) => ({
+                  status: statusOf.get(id) ?? "offen",
+                  verbindungen: verbindungenJe.get(id) ?? [],
+                  offeneKonflikte: offeneKonflikteVon(id),
+                })}
+              />
+              <Qualitaetsblick
+                graphIds={raw.nodes.map((n) => n.id)}
+                konflikte={conflictsQ.data}
+                konflikteLaden={conflictsQ.isPending && !conflictsQ.isError}
+                objekte={kos}
+              />
             </Card>
           );
         }}

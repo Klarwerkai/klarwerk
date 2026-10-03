@@ -193,6 +193,28 @@ export const useAudit = () => useQuery({ queryKey: ["audit"], queryFn: endpoints
 // JOB 2600 D1: die Themenkarte kommt als Teil der Sichtmetrik — eine Route, eine Rechte-Naht.
 export const useWissensnetz = () =>
   useQuery({ queryKey: ["wissensnetz", "luecken"], queryFn: endpoints.wissensnetz.luecken });
+// R-0744: die Eingänge des Qualitätsblicks am Wissensgraphen. Er ist „ausdrücklich zu wählen" —
+// deshalb lädt nichts davon, bevor er gewählt ist (`enabled`). Die Abfragen teilen Schlüssel und
+// Endpunkt mit `useDuplicates`, `useLifecyclePending` und `useWissensnetz` (kein zweiter Server-Weg)
+// und lesen die Endpunkt-Funktion LAZY wie `useConflicts`: eine Fläche, deren Testbestand diese
+// Endpunkte nicht kennt, reißt beim bloßen Rendern nicht ab.
+export const useQualitaetsblick = (gewaehlt: boolean) => ({
+  dubletten: useQuery({
+    queryKey: ["duplicates"],
+    queryFn: () => endpoints.duplicates.list(),
+    enabled: gewaehlt,
+  }),
+  anstehend: useQuery({
+    queryKey: ["lifecycle", "pending"],
+    queryFn: () => endpoints.lifecycle.pending(),
+    enabled: gewaehlt,
+  }),
+  luecken: useQuery({
+    queryKey: ["wissensnetz", "luecken"],
+    queryFn: () => endpoints.wissensnetz.luecken(),
+    enabled: gewaehlt,
+  }),
+});
 export const useLifecyclePending = () =>
   useQuery({ queryKey: ["lifecycle", "pending"], queryFn: endpoints.lifecycle.pending });
 export const useLearningPath = (role: string) =>

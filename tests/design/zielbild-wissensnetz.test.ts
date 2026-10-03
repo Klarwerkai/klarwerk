@@ -58,6 +58,7 @@ process.env.KLARWERK_SKIP_KEYCHAIN = "1";
 import i18n from "../../apps/web/src/i18n";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 import { WERTE_WISSENSNETZ, farbeKanon, vergleiche } from "../../tools/design-vergleich/werte";
+import { TITEL as GRAPH_TITEL } from "../wissensgraph-lesbarkeit/bestand";
 
 const WURZEL = resolve(process.cwd());
 const DIST = resolve(WURZEL, "apps/web/dist");
@@ -182,7 +183,8 @@ interface Seite {
   evaluate<T>(fn: BrowserFn, arg?: unknown): Promise<T>;
   click(selector: string): Promise<void>;
   focus(selector: string): Promise<void>;
-  keyboard: { press(key: string): Promise<void> };
+  fill(selector: string, value: string): Promise<void>;
+  keyboard: { press(key: string): Promise<void>; type(text: string): Promise<void> };
   setViewportSize(size: { width: number; height: number }): Promise<void>;
   url(): string;
 }
@@ -1798,6 +1800,176 @@ describe("JOB 3052 · D6 · das Wissensnetz des Zielbilds — die echte Seite, g
       zielApp = hauptApp;
       zielToken = hauptToken;
       await fuenfte.a.close();
+      await s.setViewportSize({ width: 1280, height: 800 });
+      await ladeSeite(s);
+    }
+  });
+
+  // ---- N-0024 / R-0744 (Nacharbeit 3, BEN): die Volltitelliste am Graphen auf dem Telefon ----------
+  // Wortlaut N-0024: „… auf schmalen Fenstern eine gut bedienbare Listenansicht anbieten." Gemessen an
+  // der GEBAUTEN App gegen eine ECHTE Fastify-App: 28 Objekte mit den aehnlichen langen Titeln aus
+  // dem Beleg N-0011 (`tests/wissensgraph-lesbarkeit/bestand.ts`) ueber den authentifizierten
+  // `POST /api/kos`; Stufe 2 am ECHTEN Schalter unter `/admin?bereich=system` (das erste Konto ist
+  // Verwalter); dann `/graph` bei 390×844. Kein SVG-Nachbau, keine jsdom-Geometrie.
+  interface GlGeometrie {
+    breite: number;
+    scrollBreite: number;
+    filter: { links: number; rechts: number; oben: number; unten: number; hoehe: number };
+    titel: { text: string; links: number; rechts: number }[];
+  }
+  const GL_FILTER = '[data-testid="graph-objektliste-filter"]';
+  const GL_SCHALTER = '[data-testid="zeile-stufe2"] input[type="checkbox"]';
+  const GL_DA = "(sel) => !!document.querySelector(sel)";
+  const GL_AN = "(sel) => document.querySelector(sel).checked === true";
+  const GL_STUFE2 = `() => { try { return localStorage.getItem("kw.stufe2.v1") === "1"; } catch (e) { return false; } }`;
+  const GL_PFAD = "(p) => location.pathname === p";
+  const GL_ANZAHL = `(n) => document.querySelectorAll('[data-testid="graph-objekt"]').length === n`;
+  const GL_IDS = `() => [...document.querySelectorAll('[data-testid="graph-objekt"]')].map((e) => e.getAttribute('data-id'))`;
+  const GL_TITEL = `(t) => { const h = document.querySelector('[data-testid="bib-titel"]'); return !!h && h.getBoundingClientRect().height > 0 && h.innerText.trim() === t; }`;
+  const GL_LAGE = `(sel) => { const el = document.querySelector(sel); el.scrollIntoView({ block: 'center' }); const r = el.getBoundingClientRect(); return { links: r.left, rechts: r.right, hoehe: r.height }; }`;
+  const GL_FOKUS = `(id) => { const a = document.activeElement; return !!a && a.getAttribute('data-testid') === 'graph-objekt-link' && a.closest('[data-testid="graph-objekt"]').getAttribute('data-id') === id; }`;
+  const GL_GEOMETRIE = `(filter) => { const el = document.querySelector(filter); el.scrollIntoView({ block: 'center' }); const f = el.getBoundingClientRect(); return { breite: window.innerWidth, scrollBreite: document.documentElement.scrollWidth, filter: { links: f.left, rechts: f.right, oben: f.top, unten: f.bottom, hoehe: f.height }, titel: [...document.querySelectorAll('[data-testid="graph-objekt-link"]')].map((a) => { const r = a.getBoundingClientRect(); return { text: a.innerText.replace(/\\s+/g, ' ').trim(), links: r.left, rechts: r.right }; }) }; }`;
+  const GL_QB_STEHT = `() => ['konflikte', 'luecken', 'veraltet', 'dubletten'].every((k) => { const el = document.querySelector('[data-testid="graph-qb-' + k + '"]'); return !!el && el.getAttribute('data-zustand') !== 'laedt'; })`;
+  const GL_QB = `() => Object.fromEntries(['konflikte', 'luecken', 'veraltet', 'dubletten', 'alter'].map((k) => [k, (document.querySelector('[data-testid="graph-qb-' + k + '"]') || {}).innerText || '']))`;
+  it("GL · TELEFON 390×844 auf /graph: Volltitelliste im Fenster, echter Filter, Treffer per Mausklick und per Tab+Enter, Zuruecksetzen, Qualitaetsblick", async () => {
+    const s = S("GL");
+    const hauptApp = zielApp as ReturnType<typeof buildApp>;
+    const hauptToken = zielToken;
+    const graphApp = await frischeApp("pedi-graphliste@nacharbeit3.test");
+    const FILTER = GL_FILTER;
+    // Wartet, bis die Liste GENAU n Eintraege zeigt.
+    const warteAufAnzahl = async (n: number): Promise<void> => {
+      await s.waitForFunction(fn(GL_ANZAHL), n, { timeout: 30_000 });
+    };
+    // Die Detailroute steht, und ihr sichtbarer Titel ist der erwartete.
+    const pruefeZiel = async (id: string, titel: string): Promise<void> => {
+      await s.waitForFunction(fn(GL_PFAD), `/wissen/${id}`, { timeout: 30_000 });
+      await s.waitForFunction(fn(GL_TITEL), titel, { timeout: 30_000 });
+    };
+    const zurueckZurListe = async (): Promise<void> => {
+      await s.evaluate(fn("() => history.back()"));
+      await s.waitForFunction(fn(GL_PFAD), "/graph", { timeout: 30_000 });
+      await warteAufAnzahl(GRAPH_TITEL.length);
+    };
+    try {
+      const kennung = new Map<string, string>();
+      for (const titel of GRAPH_TITEL) {
+        kennung.set(titel, await objektAnlegen(graphApp.a, graphApp.headers, titel, []));
+      }
+      expect(kennung.size, "28 Objekte ueber POST /api/kos").toBe(28);
+      zielApp = graphApp.a;
+      zielToken = graphApp.token;
+      await s.setViewportSize({ width: 390, height: 844 });
+
+      // STUFE 2 AM ECHTEN SCHALTER — bedient, nicht vorgesetzt.
+      await s.goto(`${ORIGIN}/admin?bereich=system`, { waitUntil: "load", timeout: 60_000 });
+      await s.waitForFunction(fn(GL_DA), GL_SCHALTER, { timeout: 45_000 });
+      const an = await s.evaluate<boolean>(fn(GL_AN), GL_SCHALTER);
+      if (!an) {
+        await s.click(GL_SCHALTER);
+      }
+      await s.waitForFunction(fn(GL_STUFE2), undefined, { timeout: 30_000 });
+
+      await s.goto(`${ORIGIN}/graph`, { waitUntil: "load", timeout: 60_000 });
+      await warteAufAnzahl(28);
+      const ausgang = (await s.evaluate<string[]>(fn(GL_IDS))).sort();
+      expect(ausgang, "die Liste traegt genau die 28 angelegten Objekte").toEqual(
+        [...kennung.values()].sort(),
+      );
+
+      // GEOMETRIE: das Filterfeld in den sichtbaren Bereich, dann messen.
+      const geometrie = await s.evaluate<GlGeometrie>(fn(GL_GEOMETRIE), FILTER);
+      console.info(
+        `Nacharbeit 3 · GL · Geometrie ${JSON.stringify({ ...geometrie, titel: geometrie.titel.length })}`,
+      );
+      expect(geometrie.scrollBreite, "kein seitlicher Ueberlauf").toBeLessThanOrEqual(
+        geometrie.breite,
+      );
+      expect(geometrie.filter.links).toBeGreaterThanOrEqual(0);
+      expect(geometrie.filter.rechts).toBeLessThanOrEqual(geometrie.breite);
+      expect(geometrie.filter.oben).toBeGreaterThanOrEqual(0);
+      expect(geometrie.filter.unten).toBeLessThanOrEqual(844);
+      expect(geometrie.filter.hoehe, "das Filterfeld ist bedienbar hoch").toBeGreaterThanOrEqual(
+        24,
+      );
+      expect(geometrie.titel.map((t) => t.text).sort(), "jeder Titel steht vollstaendig").toEqual(
+        [...GRAPH_TITEL].sort(),
+      );
+      for (const t of geometrie.titel) {
+        expect(t.links, `${t.text}: links im Fenster`).toBeGreaterThanOrEqual(0);
+        expect(t.rechts, `${t.text}: rechts im Fenster`).toBeLessThanOrEqual(geometrie.breite);
+      }
+
+      // ECHTE EINGABE eines unterscheidenden Titelteils → genau die erwartete Kennung.
+      const erfassen = "NUTZERPRUEFUNG Erfassen Langtext 20260905-1900";
+      const erfassenId = kennung.get(erfassen) ?? "?";
+      await s.click(FILTER);
+      await s.keyboard.type("Erfassen Langtext");
+      await warteAufAnzahl(1);
+      expect(await s.evaluate<string[]>(fn(GL_IDS))).toEqual([erfassenId]);
+      const treffer = `[data-testid="graph-objekt"][data-id="${erfassenId}"] a`;
+      const trefferLage = await s.evaluate<{ links: number; rechts: number; hoehe: number }>(
+        fn(GL_LAGE),
+        treffer,
+      );
+      expect(trefferLage.links).toBeGreaterThanOrEqual(0);
+      expect(trefferLage.rechts).toBeLessThanOrEqual(390);
+      expect(trefferLage.hoehe).toBeGreaterThan(0);
+
+      // (1) ECHTER MAUSKLICK.
+      await s.click(treffer);
+      await pruefeZiel(erfassenId, erfassen);
+
+      // (2) ZURUECK, neuer Titelteil, dann TAB + ENTER vom Filterfeld aus.
+      await zurueckZurListe();
+      const bibliothek = "NUTZERPRUEFUNG Bibliothek Langtext 20260905-175543";
+      const bibliothekId = kennung.get(bibliothek) ?? "?";
+      await s.click(FILTER);
+      await s.keyboard.type("Bibliothek Langtext");
+      await warteAufAnzahl(1);
+      expect(await s.evaluate<string[]>(fn(GL_IDS))).toEqual([bibliothekId]);
+      let erreicht = false;
+      for (let i = 0; i < 6 && !erreicht; i++) {
+        await s.keyboard.press("Tab");
+        erreicht = await s.evaluate<boolean>(fn(GL_FOKUS), bibliothekId);
+      }
+      expect(erreicht, "der Treffer ist per Tab erreichbar").toBe(true);
+      await s.keyboard.press("Enter");
+      await pruefeZiel(bibliothekId, bibliothek);
+
+      // (3) ZURUECKSETZEN → die urspruengliche Graphmenge.
+      await zurueckZurListe();
+      await s.click(FILTER);
+      await s.keyboard.type("Langtext");
+      await warteAufAnzahl(2);
+      await s.fill(FILTER, "");
+      await warteAufAnzahl(28);
+      expect((await s.evaluate<string[]>(fn(GL_IDS))).sort()).toEqual(ausgang);
+
+      // R-0744 · der Qualitaetsblick am echten Server: gewaehlt, jede Zahl mit Nenner. Gewartet
+      // wird, bis die Lueckenzeile ihre Zahl traegt (die Abfragen starten erst mit der Wahl).
+      await s.click('[data-testid="graph-qb-schalter"]');
+      await s.waitForFunction(fn(GL_QB_STEHT), undefined, { timeout: 30_000 });
+      const t = i18n.getFixedT("de");
+      const qb = await s.evaluate<Record<string, string>>(fn(GL_QB));
+      console.info(`Nacharbeit 3 · GL · Qualitaetsblick ${JSON.stringify(qb)}`);
+      // Kein Objekt traegt ein Schlagwort: 28 von 28 ohne Thema — eine Zahl, die feststeht.
+      expect(qb.luecken).toBe(
+        t("graph.qb.quote", { was: t("graph.qb.luecken"), anzahl: 28, nenner: 28 }),
+      );
+      for (const k of ["konflikte", "veraltet", "dubletten"]) {
+        expect(qb[k], `${k}: Nenner 28 oder ehrlich „nicht erhoben“`).toMatch(
+          / von 28$|nicht erhoben$/,
+        );
+      }
+      expect(qb.alter).not.toBe(t("graph.qb.alterUnbekannt"));
+    } finally {
+      zielApp = hauptApp;
+      zielToken = hauptToken;
+      await s.evaluate(
+        fn(`() => { try { localStorage.setItem("kw.stufe2.v1", "0"); } catch (e) {} }`),
+      );
+      await graphApp.a.close();
       await s.setViewportSize({ width: 1280, height: 800 });
       await ladeSeite(s);
     }

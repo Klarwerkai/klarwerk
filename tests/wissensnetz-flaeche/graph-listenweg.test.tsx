@@ -245,7 +245,10 @@ describe("N-0011 / N-0024 · die Volltitelliste am Graphen", () => {
     schalter.ohneN28 = true;
     await mount();
     const eintrag = container.querySelector('[data-testid="graph-objekt"][data-id="n28"]');
-    expect(eintrag?.textContent).toBe(KNOTEN.find((k) => k.id === "n28")?.title);
+    // Gelesen am Textelement: der Eintrag trägt daneben den Detailschalter (R-0744).
+    expect(eintrag?.querySelector('[data-testid="graph-objekt-text"]')?.textContent).toBe(
+      KNOTEN.find((k) => k.id === "n28")?.title,
+    );
     expect(eintrag?.querySelector("a")).toBeNull();
     expect(link("n27")).not.toBeNull();
   });
