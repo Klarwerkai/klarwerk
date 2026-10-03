@@ -1216,6 +1216,14 @@ const INVENTAR: readonly string[] = [
   "services/app/src/ask-routes.test.ts",
   "services/app/src/db.migrate.integration.test.ts",
   "services/app/src/routes/ka5-markierung.test.ts",
+  // Übernahme `erfassungs-konfliktpruefung` (03.10.2026): kam mit dem eingemischten Hauptstand in
+  // den Baum. GEFUNDEN VON GENAU EINER ACHSE: `palette` — die Datei nennt die „Bildpalette“ des
+  // Erfassungsblatts (Kopfkommentar und Ablauf), nicht die Klara-Palette. Sachlich keine
+  // Klara-Regression; gepinnt, weil das Verzeichnis die abgeleitete Menge exakt abbildet und die
+  // Achse hier nicht still verengt wird. Kein „klara" im Pfad: fällt in `verfehlt`, K5 bleibt bei
+  // 69. GEMESSEN, NICHT GESETZT: der Serverlauf am Kandidaten c1c7f0d9 meldete K2 `neu im Baum,
+  // aber nicht im gepinnten Inventar` mit genau diesem Pfad.
+  "tests/anhaenge-ziehen/speichern-wiederoeffnen-pg.integration.test.ts",
 ];
 
 // ------------------------------------------------------------------------------------------------
