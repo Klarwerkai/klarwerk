@@ -197,3 +197,21 @@ Soll: `klarwerk_steuerung/archiv/3082/AUFTRAG.md:221-234`. Ist: `q3a-zustandsmat
   sofort (der Vorschlag trifft dann auf dem verdeckten Blatt ein) — nicht Teil von B4, nicht geändert.
 * Die Rückfragen in N-0068 nutzen `window.confirm` wie die übrigen Rückfragen des Blatts
   (`fd.confirmDiscard`, `fd.confirmOpenDraft`); ihre Darstellung im echten Browser ist nicht gesichtet.
+  **Nachtrag `gesamt-erfassung-einstieg:layout`:** `tests/design/h3-wechsel-rueckfragen.test.ts`
+  misst `sichernFrage` und `ohneSichernFrage` jetzt an der gebauten Seite in Chromium (Art `confirm`,
+  vollständiger deutscher Text, Wirkung von OK/Abbrechen am Server). Das Pixelbild des nativen
+  Dialogs bleibt ungesichtet (kopfloses Chromium zeichnet ihn nicht); `nachtragFrage` und
+  `vorschlagOffen` bleiben gemountet belegt.
+
+## Nachtrag `gesamt-erfassung-einstieg:layout` — die H3-Browsermessungen laufen auf dem Linux-Prüfweg
+
+`zielbild-h3-erfassen`, `zielbild-h3-kein-erklaertext` und `h3-wirkung` hingen am Mockup
+`design/klarwerk/Erfassen.dc.html`, das nur auf dem Produktions-Mac liegt, und übersprangen sich
+deshalb genau dort, wo Chromium laufen darf. Jetzt: der Textmesser und die Wirkungsnachweise laufen
+ohne Mockup (sie lesen keinen Sollwert daraus); der Wertevergleich misst ohne Mockup gegen den Auszug
+`tests/design/h3-zielbild-auszug.ts` (Anker wörtlich aus JOB 3062, Zusatzwerte aus dessen
+Fallnamen; der Blattschatten V7 hat keinen unabhängigen Wert und wird nur gegen das Mockup gemessen).
+Wo das Mockup liegt, prüft Fall A den Auszug gegen das Mockup. Neu dort: Fall N, Schmalansicht
+390 px (kein Überlauf, Blatt und beide Knöpfe im Fenster). Die Leertextfarbe (K2b Teil 4,
+`#9AA2B1`; auf dem Blatt `placeholder:text-muted-2/60`) bleibt unberührt — Pedis Vorbehalt „nicht
+vor der Vorführung".

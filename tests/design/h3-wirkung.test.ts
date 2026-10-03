@@ -25,7 +25,6 @@
 // `zielbild-validierung.test.ts` und die drei H3-Messungen daneben. Wo eine Antwort im hermetischen
 // Betrieb gar nicht entstehen kann, wird sie ausdrücklich gescriptet und das steht am Fall dabei
 // (W3; die Begründung im Kopf von `h3-blatt-buehne.ts`).
-import { existsSync } from "node:fs";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import * as appModul from "../../services/app/src/build-app";
 import {
@@ -35,9 +34,7 @@ import {
   Reasoner,
   cappedModelClient,
 } from "../../services/reasoner";
-import { type Buehne, MOCKUP, ORIGIN, buehneAufbauen, fn } from "./h3-blatt-buehne";
-
-const mockupDa = existsSync(MOCKUP);
+import { type Buehne, ORIGIN, buehneAufbauen, fn } from "./h3-blatt-buehne";
 
 /** Der Bereich, den W1 wählt — er liegt als Kategorie des angelegten Bestands wirklich im Menü. */
 const BEREICH = "Konstruktion";
@@ -93,7 +90,10 @@ interface Ko {
   category: string;
 }
 
-describe.runIf(mockupDa)("JOB 3062 · H3 · R6 · Wirkungsnachweise am gebauten Blatt", () => {
+// Aufnahme `gesamt-erfassung-einstieg:layout`: Die Wirkungsnachweise lesen keinen Sollwert aus dem
+// Mockup, hingen aber an dessen Vorhandensein und übersprangen sich so auf dem Linux-Prüfweg. Sie
+// laufen jetzt immer; fehlt `apps/web/dist`, meldet die Bühne das in `fehler`.
+describe("JOB 3062 · H3 · R6 · Wirkungsnachweise am gebauten Blatt", () => {
   // ==============================================================================================
   // W1 — DER BEREICH KOMMT AN. (bens Korrekturpflicht 1)
   // ==============================================================================================
@@ -737,11 +737,5 @@ describe.runIf(mockupDa)("JOB 3062 · H3 · R6 · Wirkungsnachweise am gebauten 
       );
       expect(r.antworten?.[1]?.body.text).toBeUndefined();
     }, 180_000);
-  });
-});
-
-describe.runIf(!mockupDa)("JOB 3062 · H3 · R6 · Wirkungsnachweise übersprungen", () => {
-  it("meldet das fehlende Mockup, statt eine Prüfung vorzutäuschen", () => {
-    expect(existsSync(MOCKUP), `Mockup nicht lesbar: ${MOCKUP}`).toBe(false);
   });
 });
