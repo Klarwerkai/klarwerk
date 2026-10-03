@@ -26,7 +26,8 @@ Menge ein Klick trifft.
   Doppelgänger, also Namen mit gleichem Schriftbild nach NFKC und zusammengezogenem Leerraum. Nur
   bei diesen wird gespeicherter Leerraum als `␣` gezeigt (Rand, doppelt, Tab, geschütztes
   Leerzeichen). Sieht ein Name auch danach noch gleich aus (andere Unicode-Form), bekommt er eine
-  Nummer `#1…n` in seiner Untergruppe. Das gilt für Knoten (Beschriftung, `aria-label`, Tooltip),
+  Nummer `#1…n`. Seit Nacharbeit 1 wird das über alle endgültigen Anzeigen der Seite geprüft, auch
+  wenn die Markierung einen so gespeicherten Namen trifft (`"␣Dichtungen␣"`). Das gilt für Knoten (Beschriftung, `aria-label`, Tooltip),
   Seitenleistentitel, Themenzeilen samt Zusammen-Satz und „Alle Themen“.
 - **Die Identität bleibt unverändert.** `data-thema`, die Auswahl, `themenHref` und der
   Suchparameter der Seitenleiste tragen weiter den gespeicherten Wert.

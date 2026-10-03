@@ -309,8 +309,9 @@ export function themenHref(thema: string): string {
 // gespeicherten Wert — nur so trifft der Sprung die Facette der Bibliothek. Geändert wird allein das
 // SCHRIFTBILD, und nur dort, wo zwei Namen sonst gleich aussähen: gespeicherter Leerraum, der im
 // Schriftbild verschwände (Rand, doppelt, Tab, geschütztes Leerzeichen), steht dann als `␣` da. Sehen
-// sich zwei Namen auch danach noch gleich (andere Unicode-Form desselben Zeichens), bekommen sie
-// zusätzlich eine Nummer in ihrer Gruppe. Ein Name ohne Doppelgänger bleibt unverändert — L14 aus
+// sich zwei Namen auch danach noch gleich (andere Unicode-Form desselben Zeichens, oder die Markierung
+// trifft einen anderen, so gespeicherten Namen wie `"␣Dichtungen␣"`), bekommen sie zusätzlich eine
+// Nummer — geprüft über ALLE Anzeigen der Seite, nicht nur innerhalb einer Gruppe. Ein Name ohne Doppelgänger bleibt unverändert — L14 aus
 // `tests/wissensnetz-leseweg/leseweg.test.tsx` (getrimmte Zeile) gilt weiter.
 // Gemessen in `tests/wissensnetz-achse/gleich-angezeigt.test.tsx`.
 // ------------------------------------------------------------------------------------------------
@@ -345,19 +346,34 @@ export function themenAnzeige(namen: readonly string[]): Map<string, string> {
     if (gruppe.length < 2) {
       continue;
     }
-    // Nach der Markierung noch einmal gruppiert: wer auch jetzt gleich aussieht, bekommt eine Nummer
-    // in SEINER Untergruppe — deterministisch nach dem gespeicherten Wert, nicht nach Ankunft.
-    const nachMarkierung = new Map<string, string[]>();
     for (const name of gruppe) {
-      const sichtbar = leerraumSichtbar(name);
-      const schluessel = sichtbar.normalize("NFKC");
-      nachMarkierung.set(schluessel, [...(nachMarkierung.get(schluessel) ?? []), name]);
-      anzeige.set(name, sichtbar);
+      anzeige.set(name, leerraumSichtbar(name));
     }
-    for (const gleich of nachMarkierung.values()) {
+  }
+  // NACHARBEIT 1 (BEN): Die Markierung kann mit einem ANDEREN gespeicherten Namen zusammenfallen —
+  // aus `" Dichtungen "` wird `"␣Dichtungen␣"`, und genau so kann ein drittes Schlagwort bereits
+  // gespeichert sein. Bis hierher wurde nur innerhalb der ursprünglichen Schriftbildgruppe weiter
+  // unterschieden; zwei Themen trugen dann dieselbe Beschriftung. Deshalb wird jetzt über ALLE
+  // endgültigen Anzeigen der Seite geprüft, auch über unveränderte Namen. Was gleich aussieht, bekommt
+  // eine Nummer in seiner Kollisionsgruppe — deterministisch nach dem gespeicherten Wert, nicht nach
+  // Ankunft — und das wiederholt sich, bis keine Anzeige mehr einer anderen gleicht (eine Nummer
+  // könnte ihrerseits einen gespeicherten Namen wie `"X #1"` treffen).
+  const alle = [...new Set(namen)];
+  // Jede Runde verlängert die Anzeige jedes Kollidierenden um eine in seiner Gruppe eindeutige Nummer.
+  // Eine neue Kollision entsteht nur, wenn ein gespeicherter Name genau so lautet; die Rundengrenze
+  // (Anzahl der Namen) ist die Sicherung gegen eine Endlosschleife.
+  for (let runde = 0; runde <= alle.length; runde++) {
+    const nachBild = new Map<string, string[]>();
+    for (const name of alle) {
+      const schluessel = schriftbild(anzeige.get(name) ?? name);
+      nachBild.set(schluessel, [...(nachBild.get(schluessel) ?? []), name]);
+    }
+    let kollision = false;
+    for (const gleich of nachBild.values()) {
       if (gleich.length < 2) {
         continue;
       }
+      kollision = true;
       // Codepunktordnung, nicht `localeCompare`: die hielte NFC und NFD desselben Wortes für gleich.
       const geordnet = [...gleich].sort((a, b) => {
         if (a === b) {
@@ -368,6 +384,9 @@ export function themenAnzeige(namen: readonly string[]): Map<string, string> {
       geordnet.forEach((name, i) => {
         anzeige.set(name, `${anzeige.get(name) ?? name} #${i + 1}`);
       });
+    }
+    if (!kollision) {
+      break;
     }
   }
   return anzeige;

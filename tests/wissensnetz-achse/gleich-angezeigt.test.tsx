@@ -17,6 +17,11 @@
 //   S5  GERENDERT · Knoten, Zeilen, Leiste und „Alle Themen" zeigen verschiedene Namen — Link,
 //       `data-thema` und Suchparameter tragen weiter den GESPEICHERTEN Wert; der Hinweis steht
 //   S6  GERENDERT · ein einzelner Name mit Rand → keine Markierung, kein Hinweis (L14 bleibt)
+//   S7  NACHARBEIT 1 (BEN) · die Markierung `"␣Dichtungen␣"` trifft einen SO GESPEICHERTEN dritten
+//       Namen → alle drei Anzeigen verschieden, ankunftsunabhaengig; auch eine Nummer, die einen
+//       gespeicherten Namen `"X #1"` trifft, wird weiter unterschieden
+//   S8  NACHARBEIT 1 (BEN) · GERENDERT mit diesem Bestand → drei verschiedene Knotenbeschriftungen,
+//       aria-labels und Zeilennamen; Links und `data-thema` tragen die drei gespeicherten Werte
 //
 // Bauform wie `tests/wissensnetz-leseweg/leseweg.test.tsx`: jsdom, echte Seite, i18n, React-Query
 // und Router; die Endpointgrenze ist die einzige Attrappe.
@@ -58,6 +63,8 @@ import {
 
 const BLANK = "Dichtungen";
 const MIT_RAND = " Dichtungen ";
+/** Ein Schlagwort, das GENAU SO gespeichert ist, wie die Markierung von MIT_RAND aussieht. */
+const SCHON_MARKIERT = "␣Dichtungen␣";
 const NFC = "Café";
 const NFD = "Café";
 
@@ -190,6 +197,31 @@ describe("Kriterium 2 · themenAnzeige — nur das Schriftbild aendert sich, nie
     expect(a.get(NFD)).toBe(`${NFD} #1`);
     expect(a.get(NFC)).toBe(`${NFC} #2`);
   });
+
+  it("S7 · die Markierung trifft einen so gespeicherten Namen: alle Anzeigen bleiben verschieden", () => {
+    const namen = [BLANK, MIT_RAND, SCHON_MARKIERT];
+    const a = themenAnzeige(namen);
+    const zeige = (m: Map<string, string>, n: string): string => m.get(n) ?? n;
+    // Der Befund woertlich: vorher trugen MIT_RAND und SCHON_MARKIERT beide "␣Dichtungen␣".
+    expect(new Set(namen.map((n) => zeige(a, n))).size, "drei Namen, drei Anzeigen").toBe(3);
+    expect(zeige(a, BLANK)).toBe(BLANK);
+    // Codepunktordnung: U+0020 vor U+2423 — der Randname bekommt #1, der gespeicherte #2.
+    expect(zeige(a, MIT_RAND)).toBe(`${SCHON_MARKIERT} #1`);
+    expect(zeige(a, SCHON_MARKIERT)).toBe(`${SCHON_MARKIERT} #2`);
+    // Ankunftsunabhaengig.
+    const b = themenAnzeige([...namen].reverse());
+    for (const n of namen) {
+      expect(zeige(b, n), n).toBe(zeige(a, n));
+    }
+    // Auch was im SCHRIFTBILD gleich aussaehe (Browser ziehen Leerraum zusammen), ist verschieden.
+    const bild = (s: string): string => s.normalize("NFKC").replace(/\s+/g, " ").trim();
+    expect(new Set(namen.map((n) => bild(zeige(a, n)))).size).toBe(3);
+
+    // Die Nummer selbst kann einen gespeicherten Namen treffen — auch dann bleibt alles verschieden.
+    const mitNummer = [...namen, `${SCHON_MARKIERT} #1`];
+    const c = themenAnzeige(mitNummer);
+    expect(new Set(mitNummer.map((n) => bild(zeige(c, n)))).size).toBe(mitNummer.length);
+  });
 });
 
 describe("Kriterium 2 · gerendert — verschiedene Namen sichtbar, gespeicherter Wert im Sprung", () => {
@@ -261,5 +293,50 @@ describe("Kriterium 2 · gerendert — verschiedene Namen sichtbar, gespeicherte
     expect(marke("netz-schreibweisen-hinweis")).toBeNull();
     expect(zeileEl(MIT_RAND)?.querySelector("a")?.textContent).toBe(BLANK);
     expect(container.textContent ?? "").not.toContain(LEERRAUM_MARKE);
+  });
+
+  it("S8 · drei gespeicherte Werte, einer davon schon markiert: drei verschiedene Namen auf der Fläche", async () => {
+    const namen = [BLANK, MIT_RAND, SCHON_MARKIERT];
+    await mitAntwort({
+      objekteGesamt: 3,
+      ohneThema: 0,
+      sichtbareBeitragendeGesamt: 1,
+      themen: [thema(BLANK, 3), thema(MIT_RAND, 2), thema(SCHON_MARKIERT, 1)],
+      themenkarte: {
+        ...DOPPELT.themenkarte,
+        themen: [
+          knoten(BLANK, 3, "belegt"),
+          knoten(MIT_RAND, 2, "offen"),
+          knoten(SCHON_MARKIERT, 1, "belegt"),
+        ],
+        kanten: [],
+        weitere: [],
+      },
+    });
+    expect(marke("netz-schreibweisen-hinweis")).not.toBeNull();
+
+    // KNOTEN: drei gespeicherte Identitaeten, drei verschiedene Namen im aria-label.
+    const knotenListe = namen.map((n) => knotenEl(n));
+    expect(
+      knotenListe.every((k) => k !== undefined),
+      "jeder Wert hat seinen Knoten",
+    ).toBe(true);
+    const labels = knotenListe.map((k) => k?.getAttribute("aria-label") ?? "");
+    expect(new Set(labels).size, `aria-labels: ${labels.join(" | ")}`).toBe(3);
+
+    // ZEILEN: drei verschiedene sichtbare Namen, Links mit dem jeweils gespeicherten Wert.
+    const links = namen.map((n) => zeileEl(n)?.querySelector("a"));
+    const texte = links.map((l) => l?.textContent ?? "");
+    expect(new Set(texte).size, `Zeilennamen: ${texte.join(" | ")}`).toBe(3);
+    expect(links.map((l) => l?.getAttribute("href"))).toEqual(namen.map((n) => themenHref(n)));
+
+    // LEISTE: der schon markierte Wert wird gewaehlt und gesucht — nicht der Randname.
+    await act(async () => {
+      knotenEl(SCHON_MARKIERT)?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await flush();
+    });
+    expect(marke("leiste-titel")?.textContent).toBe(texte[2]);
+    expect(marke("leiste-alle")?.getAttribute("href")).toBe(themenHref(SCHON_MARKIERT));
+    expect(d.search).toHaveBeenCalledWith({ tag: SCHON_MARKIERT });
   });
 });
