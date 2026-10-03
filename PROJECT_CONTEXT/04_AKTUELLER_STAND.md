@@ -113,6 +113,24 @@ R-0020 gilt unverändert für **Speichern UND Einreichen**, auch bei verlorener 
   Erklärung „war bereits gespeichert" (R-0156) gibt es nicht — die Wiederholung meldet den
   normalen Speichererfolg.
 
+## 29.09.2026 — Bildidentität: die Kennung kommt vom Bild (Aufnahme gesamt-bildidentitaet, Lauf 3)
+
+- Server-Sanitizer (`anchorFigures`) und Editor (`ensureImageAnchors`) überschreiben keine
+  abweichende Fußnotenkennung mehr. Ein ersetztes Bild in einer verankerten Hülle erbt die alte
+  Beschreibung nicht mehr. Die fremde Fußnote bleibt sichtbar, gekennzeichnet und bewusst
+  zuordenbar (V7).
+- Runde 2 (nach Bens Befunden): Körperklick und Galerie-Bitte treffen das Vorkommen über „k-tes
+  Bild mit dieser Quelle“ statt über die Listenposition (R-0945/R-0053); eine lose Fußnote behält
+  die Kennung ihres Bildes und wird in Editor, Galerie und Bildsuche gelesen; beim Trennen folgt
+  die eigene Beschreibung auch hinter einer fremden Fußnote; beide Sanitizer hinterlassen bei
+  doppelter oder ungültiger Kennung die Spur `data-kw-kennung`, der Editor meldet sie beim Öffnen
+  (R-0090).
+- Runde 3: Der Körperklick baut die Großansicht aus dem aktuellen Editorstand statt aus dem
+  verzögerten Galeriestand; die Galerie-Bitte ist an die Kennung gebunden und öffnet im Zweifel
+  nichts; der Hinweis zu ungültigen Kennungen zählt je Bild.
+- Abgleich aller 46 Aufnahmepunkte, offene Entscheidungen (R-0014, R-0098, R-0898-Ziehen,
+  Leseversprechen, unverankerter Altbestand): `docs/entscheidungen/bildidentitaet.md`.
+
 ## 30.09.2026 — Eigene Seite eines Dublettenbefunds zurückziehen und wiederherstellen (Lauf 5)
 
 - Lauf 5 übernimmt den nie gemergten Stand von Lauf 4 (`9356241d`) auf Basis `bf9fcf1c` und behebt

@@ -9,6 +9,7 @@ import type {
   FocusEvent as ReactFocusEvent,
   KeyboardEvent as ReactKeyboardEvent,
   ReactNode,
+  PointerEvent as ReactPointerEvent,
 } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -16,11 +17,26 @@ import { useTranslation } from "react-i18next";
 import { endpoints } from "../api/endpoints";
 import type { LibraryImageHit, LibraryImageSearchResponse } from "../api/types";
 import { useImageDescribe } from "../app/ImageDescribeContext";
+// ANHÄNGE ZIEHEN: Listeneinträge per Maus an die Textstelle — nur Schlüssel reisen, nie Markup.
+import {
+  ANHANG_ZIEH_TYP,
+  type AnhangArt,
+  anhangZiehwert,
+  bildSchluessel,
+  einfuegestelleAmPunkt,
+  liesGezogenenAnhang,
+  loeseGezogenenAnhangAuf,
+} from "../lib/anhangZiehen";
 import { type EditorFile, fileLinkHtml } from "../lib/bodyFileLink";
 // JOB 2084 (I50-3): die KANONISCHE Galerie-Ableitung. Der Editor löst die Bitte über dieselbe
 // Funktion auf, aus der die Galerie ihre Liste bildet — kein zweiter Filter, keine Nachbildung.
 // JOB 3095: `bestandsbildFigureHtml` — die eine Fassung des übernommenen Bestandsbilds.
-import { bestandsbildFigureHtml, extractBodyImages } from "../lib/bodyImages";
+import {
+  bestandsbildFigureHtml,
+  bildQuelleDekodiert,
+  extractBodyImages,
+  galerieVorkommen,
+} from "../lib/bodyImages";
 import { bodyReadMode } from "../lib/bodyReadMode";
 import {
   CAPTION_AI_TEXT,
@@ -67,6 +83,14 @@ import {
 import { editorFileButtonVisible } from "../lib/editorFiles";
 import { editorLinkHtml } from "../lib/editorLinks";
 import { fileToThumbDataUrl } from "../lib/files";
+// R-0014: freie Bildbreite an Griffen — DOM-freie Rechnung und dieselbe Wertregel wie der Sanitizer.
+import {
+  type ResizeKante,
+  type ResizeStart,
+  breiteAusZug,
+  formatImageWidth,
+  normalizeImageWidth,
+} from "../lib/imageResize";
 // JOB 3095: die eine Quelle des Onlinezustands (JOB 3084) für den ehrlichen Offline-Satz der Bildsuche.
 import { useNetzOnline } from "../lib/netzzustand";
 import {
@@ -160,6 +184,56 @@ const IMAGE_SCALE_OPTIONS: Array<{ value: ImageScaleValue; label: string }> = [
   { value: "75", label: "Groß" },
   { value: "100", label: "Volle Breite" },
 ];
+
+// R-0014: die vier Griffe an den Ecken des ausgewählten Bildes. Rechte Griffe ziehen die rechte
+// Kante, linke die linke; die Breite folgt dem waagerechten Zeigerweg (die Höhe dem Seitenverhältnis).
+interface BildGriff {
+  ecke: "nw" | "ne" | "sw" | "se";
+  kante: ResizeKante;
+  x: 0 | 1;
+  y: 0 | 1;
+}
+const BILD_GRIFFE: BildGriff[] = [
+  { ecke: "nw", kante: "links", x: 0, y: 0 },
+  { ecke: "ne", kante: "rechts", x: 1, y: 0 },
+  { ecke: "sw", kante: "links", x: 0, y: 1 },
+  { ecke: "se", kante: "rechts", x: 1, y: 1 },
+];
+
+// Lage des ausgewählten Bildes relativ zur Hülle des Schreibfelds (px).
+interface BildRahmen {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+// Gleiche Lage → derselbe Zustand, damit eine Messung ohne Änderung kein Rendern auslöst.
+function gleicherRahmen(a: BildRahmen | null, b: BildRahmen): boolean {
+  return (
+    a !== null &&
+    a.left === b.left &&
+    a.top === b.top &&
+    a.width === b.width &&
+    a.height === b.height
+  );
+}
+
+// Die Spalte, auf die sich eine Prozentbreite bezieht: der nächste nicht-inline Vorfahr des Bildes,
+// gemessen an seiner Inhaltsbreite (ohne Innenabstand) — genau die Basis, gegen die der Browser
+// `width="NN%"` auflöst.
+function spaltenBreiteVon(img: HTMLElement): number {
+  for (let e = img.parentElement; e; e = e.parentElement) {
+    const stil = window.getComputedStyle(e);
+    if (stil.display.startsWith("inline") || stil.display === "contents") {
+      continue;
+    }
+    const innen =
+      (Number.parseFloat(stil.paddingLeft) || 0) + (Number.parseFloat(stil.paddingRight) || 0);
+    return e.clientWidth - innen;
+  }
+  return 0;
+}
 
 // SCRUM-456-Fix (VIP 06.07.): zuverlässiges Einfügen von HTML — unabhängig von
 // `document.execCommand`. Nach dem nativen Datei-Dialog („Bild vom Rechner …") hat der Editor
@@ -389,7 +463,11 @@ export function RichTextEditor({
   // den der Nutzer wirklich geöffnet hat. Eine Bitte, die nur eine (womöglich doppelte) Kennung
   // trägt, ist bereits mehrdeutig, wenn sie entsteht; keine spätere Synchronisierung kann sie
   // eindeutig machen. Auflösung: siehe der Effekt weiter unten.
-  captionFormRequest?: { imageId: string; src: string; index: number; nonce: number } | undefined;
+  // Lauf 5 (Bens Befund R3-1): `koerper` — der Körper, in dem `index` zählt, wenn die Galerie die
+  // Großansicht aus einem Editorklick aufgebaut hat. Fehlt er, zählt `index` in `value`.
+  captionFormRequest?:
+    | { imageId: string; src: string; index: number; koerper?: string | undefined; nonce: number }
+    | undefined;
 }): JSX.Element {
   // JOB 3095: `i18n` nur für die Sprache der Zeitangabe in der Bildsuche („geprüft 18:30").
   const { t, i18n } = useTranslation();
@@ -445,7 +523,24 @@ export function RichTextEditor({
   const [linkLabel, setLinkLabel] = useState("");
   const [linkErr, setLinkErr] = useState<string | null>(null);
   const [selectedImage, setSelectedImage] = useState<HTMLImageElement | null>(null);
-  const [selectedImageScale, setSelectedImageScale] = useState<ImageScaleValue>("100");
+  // R-0014: `null` heißt „frei gezogene Breite" — dann ist keine der vier Stufen gedrückt, und
+  // `selectedImageWidth` nennt den Wert („37.5%").
+  const [selectedImageScale, setSelectedImageScale] = useState<ImageScaleValue | null>("100");
+  const [selectedImageWidth, setSelectedImageWidth] = useState<string | null>(null);
+  // R-0014: Lage des ausgewählten Bildes relativ zur Hülle des Schreibfelds — dort liegen die
+  // Griffe, NEBEN dem contenteditable und damit nie im gespeicherten Inhalt.
+  const schreibHuelleRef = useRef<HTMLDivElement>(null);
+  const [bildRahmen, setBildRahmen] = useState<BildRahmen | null>(null);
+  // Der laufende Griffzug. Ein Ref: er wird nicht gerendert, und jeder Zeigerschritt liest den
+  // aktuellen Stand. `vorherBreite` ist das `width`-Attribut vor dem Zug — der Abbruch stellt es her.
+  const griffZugRef = useRef<{
+    img: HTMLImageElement;
+    startX: number;
+    start: ResizeStart;
+    vorherBreite: string | null;
+  } | null>(null);
+  // Nach einem Escape-Abbruch noch ausstehende Freigaben (Taste/Maus) derselben Geste.
+  const griffAbbruchRef = useRef({ taste: false, zeiger: false });
   // WP-BILD-1f (bens P1): Bindung Request↔Fußnote. Die Generation zählte bei jedem Wechsel der
   // AKTUELLEN Fußnote hoch; ein laufender Request merkt sich (Generation + data-image-id + Element)
   // seiner Ausgangs-Fußnote und wendet seine Antwort NUR an, wenn all das noch aktuell ist.
@@ -528,6 +623,11 @@ export function RichTextEditor({
   // Die Zahl steht bewusst NICHT in einem Ref: sie wird gerendert, also gehört sie in den Zustand.
   const [getrennteZuordnungen, setGetrennteZuordnungen] = useState(0);
   const [trennungsHinweisZu, setTrennungsHinweisZu] = useState(false);
+  // AUFNAHME 20260922 (R-0090, Runde 2 Bens Befund B4): wie viele UNGÜLTIGE Bildkennungen ein
+  // Sanitizer beim Speichern oder Einfügen verworfen hat. Gezählt aus der Spur `data-kw-kennung`;
+  // doppelte Kennungen, die der Server getrennt hat, zählen in `getrennteZuordnungen` mit.
+  const [ungueltigeKennungen, setUngueltigeKennungen] = useState(0);
+  const [ungueltigHinweisZu, setUngueltigHinweisZu] = useState(false);
   // ── JOB 3123 (PRIORITAETEN.md Q5c): DIE VERWORFENE FREMDFASSUNG WIRD GEMELDET ────────────────
   //
   // Dasselbe Zustandspaar aus demselben Grund wie darüber: OB es etwas zu sagen gibt, und ob die
@@ -758,6 +858,19 @@ export function RichTextEditor({
           bildkennungen: mehrdeutigeFussnotenJetzt(),
           text: t("editor.captionAmbiguous"),
         },
+        // R-0090: die Spuren der Sanitizer. Eine vom Server getrennte Doppelung ist dieselbe
+        // Aussage wie eine Trennung im Editor und zählt in denselben Hinweis; eine verworfene
+        // ungültige Kennung bekommt ihren eigenen Satz.
+        (spuren) => {
+          if (spuren.doppelt > 0) {
+            setGetrennteZuordnungen((n) => n + spuren.doppelt);
+            setTrennungsHinweisZu(false);
+          }
+          if (spuren.ungueltig > 0) {
+            setUngueltigeKennungen((n) => n + spuren.ungueltig);
+            setUngueltigHinweisZu(false);
+          }
+        },
       );
     },
     [t],
@@ -831,6 +944,8 @@ export function RichTextEditor({
     // Reihenfolge an, die Zahl unten zählt also von 0 an.
     setGetrennteZuordnungen(0);
     setTrennungsHinweisZu(false);
+    setUngueltigeKennungen(0);
+    setUngueltigHinweisZu(false);
     // JOB 3123 (Q5c): DERSELBE SCHNITT FÜR DEN VERWORFENEN-HINWEIS, und hier ist er zwingend. Sein
     // Satz lautet „der eigene Text ist geblieben" — genau das stimmt ab dieser Zeile nicht mehr,
     // denn der Inhalt IST gerade durch eine Fassung von außen ersetzt worden. Ein stehen
@@ -977,7 +1092,15 @@ export function RichTextEditor({
       return;
     }
     d44NonceRef.current += 1;
-    const nutzlast: D44BildEreignis = { imageId, nonce: d44NonceRef.current };
+    // AUFNAHME 20260922 (R-0945/R-0053, Runde 3): den AKTUELLEN Körper mitschicken. Die Galerie
+    // baut die Großansicht daraus auf und findet das Bild über seine Kennung, die hier nach
+    // `ensureImageAnchors` eindeutig ist. Eine Übersetzung zwischen dem Editorstand und dem
+    // verzögerten Galeriestand gibt es damit nicht mehr (Begründung bei `galerieIndexFuerBildklick`).
+    const nutzlast: D44BildEreignis = {
+      imageId,
+      nonce: d44NonceRef.current,
+      koerper: sanitizeHtml(el.innerHTML),
+    };
     // JOB 1890 D13 — DAS EREIGNIS GEHT VOM BILD AUS, NICHT VON DER FLAECHE.
     //
     // Hier stand `el.dispatchEvent(...)`. Damit war `event.target` IMMER das contenteditable
@@ -1001,10 +1124,16 @@ export function RichTextEditor({
     if (!img || !ref.current?.contains(img)) {
       setSelectedImage(null);
       setSelectedImageScale("100");
+      setSelectedImageWidth(null);
       return;
     }
     setSelectedImage(img);
-    setSelectedImageScale(normalizeImageScale(img.getAttribute("data-kw-scale")) ?? "100");
+    // R-0014: eine gültige gezogene Breite hat Vorrang (dieselbe Regel wie index.css).
+    const gezogen = normalizeImageWidth(img.getAttribute("width"));
+    setSelectedImageWidth(gezogen);
+    setSelectedImageScale(
+      gezogen ? null : (normalizeImageScale(img.getAttribute("data-kw-scale")) ?? "100"),
+    );
   };
 
   const updateImageSelectionFromNode = (node: Node | null): void => {
@@ -1332,23 +1461,70 @@ export function RichTextEditor({
       return einziges instanceof HTMLImageElement ? einziges : null;
     };
 
-    const aktuell = extractBodyImages(sanitizeHtml(el.innerHTML));
-
-    // Stufe 1: die Position aus der Galerie, bestätigt durch die Quelle. Das ist der Normalfall —
-    // und der EINZIGE Weg, der auch dann trägt, wenn zwei Bilder dieselbe Kennung UND dieselbe
-    // Quelle haben.
-    const anPosition = aktuell[captionFormRequest.index];
-    let bild = anPosition?.src === captionFormRequest.src ? eindeutig(anPosition.id) : null;
-
-    // Stufe 2: die Zählung ist verrutscht (ein nacktes <img> zählt für die Galerie nicht, wird hier
-    // aber eingehüllt) — dann trägt die Quelle, sofern sie EINDEUTIG ist.
-    if (bild === null) {
-      const nachQuelle = aktuell.filter((b) => b.src === captionFormRequest.src);
-      bild = nachQuelle.length === 1 && nachQuelle[0] ? eindeutig(nachQuelle[0].id) : null;
+    // Stufe 1: die Position aus der Galerie, bestätigt durch die Quelle — aufgelöst in DEM Körper,
+    // aus dem die Galerie ihre Liste bildet (`value`), nicht in der Liste des Editors.
+    //
+    // AUFNAHME 20260922 (Runde 2, Bens Befund B1 an der Gegenrichtung): hier wurde die
+    // Galerie-Position bisher in `aktuell` nachgeschlagen, der Liste aus dem EDITORINHALT. Beide
+    // zählen verschiedene Mengen — ein loses Bild hüllt der Editor ein, die Galerie zählt es nicht —,
+    // und bei gleicher Quelle bestätigte die Quelle dann ein falsches Vorkommen. Jetzt wird der
+    // Eintrag in der Galerieliste selbst gelesen, daraus sein Vorkommen („das k-te Bild mit dieser
+    // Quelle") und dieses im Editor gesucht. Das Verankern ändert diese Zahl nicht.
+    //
+    // Lauf 5 (Bens Befund R3-1): Wurde die Großansicht aus einem Editorklick aufgebaut, zählt die
+    // Position in DEM Körper, den der Editor damals mitgeschickt hat — nicht in `value`. Beim ersten
+    // Öffnen stehen in `value` noch die Doppelkennungen, und ein loses Bild zählt dort nicht; die
+    // Position aus dem Klickkörper in `value` gelesen traf ein fremdes Bild.
+    const galerieKoerper = captionFormRequest.koerper ?? value;
+    const galerie = extractBodyImages(galerieKoerper);
+    const anPosition = galerie[captionFormRequest.index];
+    const k = galerieVorkommen(galerieKoerper)[captionFormRequest.index];
+    let bild: HTMLImageElement | null = null;
+    //
+    // Runde 3 (Bens Befunde N1/N2 am Körperklick, hier dieselbe Klasse): Die Galerie steht bis zu
+    // 300 ms hinter `value`. Deshalb muss der Eintrag an dieser Position in `value` die ANGEFRAGTE
+    // Kennung tragen — sonst ist es nicht derselbe Eintrag, und es wird nicht übersetzt. Gezählt
+    // werden auf beiden Seiten nur Bilder AUSSERHALB einer Fußnote: der Galerie-Zerleger liest den
+    // Inhalt einer `figcaption` nicht als Bilder, also darf der Editor sie auch nicht mitzählen.
+    if (
+      anPosition !== undefined &&
+      k !== undefined &&
+      anPosition.src === captionFormRequest.src &&
+      anPosition.id === captionFormRequest.imageId
+    ) {
+      const quelle = bildQuelleDekodiert(anPosition.src);
+      const gleiche = Array.from(el.querySelectorAll("img")).filter(
+        (b) => b.getAttribute("src") === quelle && b.closest("figcaption") === null,
+      );
+      bild = gleiche[k] ?? null;
+      // Lauf 5: Der Klickkörper ist ein Abbild DIESES Editors, seine Kennungen stehen so im DOM.
+      // Trägt das gezählte Bild eine andere, hat sich der Editor seit dem Klick verändert — dann
+      // entscheidet allein die eindeutige Kennung (Stufe 3), nicht die Zählung.
+      if (
+        captionFormRequest.koerper !== undefined &&
+        bild?.getAttribute("data-image-id") !== anPosition.id
+      ) {
+        bild = null;
+      }
     }
 
-    // Stufe 3: der Bestandsweg — die Kennung, aber nur bei genau einem Treffer.
-    if (bild === null) {
+    // Stufe 2 („die Quelle ist eindeutig") ist in Runde 3 ENTFALLEN. Sie traf nach dem Löschen
+    // eines Bildes das verbliebene Bild gleicher Quelle, auch wenn nach dem gelöschten gefragt war.
+    // Die Lage, für die sie gebaut war (ein eingehülltes loses Bild verschiebt die Zählung), trägt
+    // seit Runde 2 das Vorkommen in Stufe 1.
+
+    // Stufe 3: der Bestandsweg — die Kennung, aber nur bei genau einem Treffer im Editor, UND nur,
+    // wenn der Galeriekörper (`value`) nicht widerspricht: entweder trägt er an der angefragten
+    // Position genau diese Kennung, oder er kennt sie gar nicht (der Editor hat das Bild erst beim
+    // Laden verankert). Runde 3: ohne diese Bedingung öffnete nach dem Löschen des zweiten von zwei
+    // Bildern gleicher Kennung die Bitte für das gelöschte das verbliebene erste — die Galerie stand
+    // noch auf dem alten Stand, in dem die Kennung doppelt war. Kennt `value` die Kennung an einer
+    // ANDEREN Stelle, ist aus diesem Stand nicht entscheidbar, welches Vorkommen gemeint war: dann
+    // öffnet sich nichts.
+    const widerspruchsfrei =
+      anPosition?.id === captionFormRequest.imageId ||
+      !galerie.some((b) => b.id === captionFormRequest.imageId);
+    if (bild === null && widerspruchsfrei) {
       bild = eindeutig(captionFormRequest.imageId);
     }
 
@@ -1688,9 +1864,169 @@ export function RichTextEditor({
       return;
     }
     selectedImage.setAttribute("data-kw-scale", scale);
+    // R-0014: eine Stufe ersetzt eine zuvor gezogene Breite — sonst überstimmte diese die Stufe.
+    selectedImage.removeAttribute("width");
     setSelectedImageScale(scale);
+    setSelectedImageWidth(null);
     emit();
   };
+
+  // ── R-0014: BILDGRÖSSE FREI AN GRIFFEN ZIEHEN ───────────────────────────────────────────────
+  //
+  // Die Griffe liegen in der Hülle NEBEN dem contenteditable. Sie sind damit nie Teil von
+  // `ref.current.innerHTML`, und `emit()` kann sie weder lesen noch speichern. Verändert wird am
+  // Dokument genau ein Attribut des ausgewählten Bildes: `width="NN.N%"`. Kennung, Quelle, Hülle
+  // und Fußnote bleiben unberührt; es läuft keine Verankerung, es entsteht kein Anker.
+  const vermesseBild = useCallback((): void => {
+    const huelle = schreibHuelleRef.current;
+    const img = selectedImage;
+    if (!huelle || !img || !ref.current?.contains(img)) {
+      setBildRahmen(null);
+      return;
+    }
+    const h = huelle.getBoundingClientRect();
+    const b = img.getBoundingClientRect();
+    const neu = { left: b.left - h.left, top: b.top - h.top, width: b.width, height: b.height };
+    setBildRahmen((alt) => (gleicherRahmen(alt, neu) ? alt : neu));
+  }, [selectedImage]);
+
+  // Die Lage folgt dem Bild: Auswahl, Modus, jeder neue Inhalt (Tippen verschiebt das Bild),
+  // Fenstergröße, Bildgröße (Laden, Zug) — ohne Dauerschleife.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `value` ist der Auslöser „Inhalt hat sich geändert".
+  useEffect(() => {
+    if (mode !== "edit" || !selectedImage) {
+      setBildRahmen(null);
+      return;
+    }
+    vermesseBild();
+    window.addEventListener("resize", vermesseBild);
+    const beobachter =
+      typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => vermesseBild());
+    beobachter?.observe(selectedImage);
+    if (ref.current) {
+      beobachter?.observe(ref.current);
+    }
+    return () => {
+      window.removeEventListener("resize", vermesseBild);
+      beobachter?.disconnect();
+    };
+  }, [mode, selectedImage, vermesseBild, value]);
+
+  const beendeGriffZug = (uebernehmen: boolean): void => {
+    const zug = griffZugRef.current;
+    if (!zug) {
+      return;
+    }
+    griffZugRef.current = null;
+    const jetzt = zug.img.getAttribute("width");
+    if (!uebernehmen || !ref.current?.contains(zug.img)) {
+      // Abbruch: genau der Stand vor dem Zug — nichts wird gemeldet.
+      if (zug.vorherBreite === null) {
+        zug.img.removeAttribute("width");
+      } else {
+        zug.img.setAttribute("width", zug.vorherBreite);
+      }
+      if (zug.img === selectedImage) {
+        selectImage(zug.img);
+      }
+      vermesseBild();
+      return;
+    }
+    if (jetzt === zug.vorherBreite) {
+      return; // Griff nur angetippt — keine Änderung, keine Meldung
+    }
+    // Die gezogene Breite gilt; die Stufe tritt zurück (Editor führt immer genau eine Angabe).
+    zug.img.removeAttribute("data-kw-scale");
+    setSelectedImageScale(null);
+    setSelectedImageWidth(jetzt);
+    emit();
+  };
+
+  const starteGriffZug = (kante: ResizeKante, e: ReactPointerEvent<HTMLSpanElement>): void => {
+    const img = selectedImage;
+    if (!img || !ref.current?.contains(img) || e.button !== 0) {
+      return;
+    }
+    e.preventDefault();
+    e.stopPropagation();
+    // Ein neuer Zug beginnt frisch — eine ausgebliebene Freigabe des letzten Abbruchs zählt nicht.
+    griffAbbruchRef.current = { taste: false, zeiger: false };
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      // Ohne Zeigerfang (z. B. synthetische Ereignisse) trägt der Zug trotzdem über die Griffhülle.
+    }
+    griffZugRef.current = {
+      img,
+      startX: e.clientX,
+      start: {
+        startBreitePx: img.getBoundingClientRect().width,
+        spaltenBreitePx: spaltenBreiteVon(img),
+        kante,
+      },
+      vorherBreite: img.getAttribute("width"),
+    };
+  };
+
+  const fuehreGriffZug = (e: ReactPointerEvent<HTMLSpanElement>): void => {
+    const zug = griffZugRef.current;
+    if (!zug) {
+      return;
+    }
+    e.preventDefault();
+    const prozent = breiteAusZug(zug.start, e.clientX - zug.startX);
+    const breite = prozent === null ? null : formatImageWidth(prozent);
+    if (breite === null || !ref.current?.contains(zug.img)) {
+      return;
+    }
+    zug.img.setAttribute("width", breite);
+    setSelectedImageScale(null);
+    setSelectedImageWidth(breite);
+    vermesseBild();
+  };
+
+  // Escape bricht einen laufenden Zug ab — der Zeiger darf dabei noch gedrückt sein.
+  //
+  // DIE FREIGABE GEHÖRT ZUM ABBRUCH (Cloudbefund root-nacharbeit-01): Abgefangen war nur `keydown`.
+  // Das folgende `keyup` erreichte das Schreibfeld (`onKeyUp` → `updateImageSelectionFromCursor`),
+  // und dessen Cursor zeigt nie in ein Bild (`contenteditable="false"`) — die gültige Auswahl fiel,
+  // die Griffe verschwanden. Dasselbe gälte für das Loslassen der noch gedrückten Maustaste über dem
+  // Text. Beides ist Teil derselben Abbruchgeste und wird deshalb hier verschluckt, genau einmal.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: liest den Zug über den Ref, nicht über Zustand.
+  useEffect(() => {
+    if (!selectedImage) {
+      return;
+    }
+    const taste = (e: KeyboardEvent): void => {
+      if (e.key === "Escape" && griffZugRef.current) {
+        // Während eines Zugs gehört Escape dem Zug — kein Dialog/Formular schließt mit.
+        e.preventDefault();
+        e.stopPropagation();
+        griffAbbruchRef.current = { taste: true, zeiger: true };
+        beendeGriffZug(false);
+      }
+    };
+    const tasteLos = (e: KeyboardEvent): void => {
+      if (e.key === "Escape" && griffAbbruchRef.current.taste) {
+        griffAbbruchRef.current.taste = false;
+        e.stopPropagation();
+      }
+    };
+    const zeigerLos = (e: Event): void => {
+      if (griffAbbruchRef.current.zeiger) {
+        griffAbbruchRef.current.zeiger = false;
+        e.stopPropagation();
+      }
+    };
+    window.addEventListener("keydown", taste, true);
+    window.addEventListener("keyup", tasteLos, true);
+    window.addEventListener("mouseup", zeigerLos, true);
+    return () => {
+      window.removeEventListener("keydown", taste, true);
+      window.removeEventListener("keyup", tasteLos, true);
+      window.removeEventListener("mouseup", zeigerLos, true);
+    };
+  }, [selectedImage]);
 
   const exec = (command: string, arg?: string): void => {
     ref.current?.focus();
@@ -1896,13 +2232,16 @@ export function RichTextEditor({
     uebernimmTrennungen(verankereFiguren(el));
     emit();
   };
-  const addImage = (img: EditorImage): void => {
-    setShowImages(false);
-    const html = img.objectId
+  // Das Markup eines Listenbildes — eine Stelle für Klick UND Ziehen.
+  const bildHtml = (img: EditorImage): string =>
+    img.objectId
       ? insertImageHtml(img.objectId, img.name)
       : img.src
         ? insertImageSrcHtml(img.src, img.name)
         : "";
+  const addImage = (img: EditorImage): void => {
+    setShowImages(false);
+    const html = bildHtml(img);
     if (html) {
       exec("insertHTML", html);
     }
@@ -1982,9 +2321,42 @@ export function RichTextEditor({
     setDragActive(false);
     const files = Array.from(e.dataTransfer?.files ?? []);
     if (files.length === 0) {
+      legeGezogenenAnhangAb(e);
       return;
     }
     void handleMediaFiles(files);
+  };
+  // ANHÄNGE ZIEHEN: ein Eintrag der Bild-/Dateiliste. Eingefügt wird nur, was die Liste gerade
+  // anbietet, über dasselbe Markup wie beim Klick — und an der Textstelle unter dem Mauspunkt.
+  // Alles andere (fremdes HTML, URLs, unbekannte Schlüssel) bleibt wie bisher ohne Wirkung.
+  const legeGezogenenAnhangAb = (e: DragEvent<HTMLDivElement>): void => {
+    const el = ref.current;
+    const daten = e.dataTransfer;
+    const anhang = loeseGezogenenAnhangAuf(
+      liesGezogenenAnhang(
+        typeof daten?.getData === "function" ? daten.getData(ANHANG_ZIEH_TYP) : null,
+      ),
+      images,
+      files,
+    );
+    if (!el || !anhang) {
+      return;
+    }
+    const html =
+      anhang.art === "bild"
+        ? bildHtml(anhang.bild)
+        : fileLinkHtml({ objectId: anhang.datei.objectId, name: anhang.datei.name });
+    setShowImages(false);
+    setShowFiles(false);
+    insertHtmlReliable(html, einfuegestelleAmPunkt(el, e.clientX, e.clientY));
+  };
+  const zieheAnhang = (
+    e: DragEvent<HTMLButtonElement>,
+    art: AnhangArt,
+    schluessel: string,
+  ): void => {
+    e.dataTransfer.setData(ANHANG_ZIEH_TYP, anhangZiehwert({ art, schluessel }));
+    e.dataTransfer.effectAllowed = "copy";
   };
   const onDragOver = (e: DragEvent<HTMLDivElement>): void => {
     // SCRUM-466 Teil A: Default immer unterbinden, damit der Editor ein
@@ -2173,8 +2545,10 @@ export function RichTextEditor({
                       </p>
                       {images.map((img) => (
                         <button
-                          key={img.objectId ?? img.src ?? img.name}
+                          key={bildSchluessel(img)}
                           type="button"
+                          draggable
+                          onDragStart={(e) => zieheAnhang(e, "bild", bildSchluessel(img))}
                           onClick={() => addImage(img)}
                           className="block w-full truncate rounded-btn px-2 py-1 text-left text-[12.5px] text-text hover:bg-hairline-soft"
                         >
@@ -2226,6 +2600,8 @@ export function RichTextEditor({
                         <button
                           key={file.objectId}
                           type="button"
+                          draggable
+                          onDragStart={(e) => zieheAnhang(e, "datei", file.objectId)}
                           onClick={() => addFile(file)}
                           className="block w-full truncate rounded-btn px-2 py-1 text-left text-[12.5px] text-text hover:bg-hairline-soft"
                         >
@@ -2359,6 +2735,16 @@ export function RichTextEditor({
               {opt.label}
             </button>
           ))}
+          {/* R-0014: die frei gezogene Breite als neutrale Größenangabe — keine Stufe ist dann
+              gedrückt, und hier steht, was gilt. */}
+          {selectedImageWidth ? (
+            <span
+              data-testid="bildgroesse-gezogen"
+              className="ml-1 text-[11.5px] font-semibold tabular-nums text-ai"
+            >
+              {selectedImageWidth.replace("%", " %")}
+            </span>
+          ) : null}
           {/* AUFTRAG-mega9 Block F (Pedi): die SICHTBARE Aktion am Bild, die das echte
               Eingabeformular öffnet. Bisher war die Bildbeschreibung nur erreichbar, indem man in
               die Fußnote hineinklickte — eine Aktion, die man kennen musste. */}
@@ -3044,6 +3430,28 @@ export function RichTextEditor({
               </button>
             </div>
           ) : null}
+          {/* AUFNAHME 20260922 (R-0090): eine ungültige Bildkennung wurde verworfen und das Bild neu
+              verankert. Dieselbe Bauform wie der Trennungshinweis — ein Hinweis, kein Alarm. */}
+          {ungueltigeKennungen > 0 && !ungueltigHinweisZu ? (
+            <div
+              aria-live="polite"
+              data-testid="editor-kennung-ungueltig"
+              data-anzahl={ungueltigeKennungen}
+              className="flex items-start justify-between gap-2 border-b border-hairline bg-page px-3 py-1.5"
+            >
+              <p className="text-[11px] leading-relaxed text-muted">
+                {t("editor.kennungUngueltig", { count: ungueltigeKennungen })}
+              </p>
+              <button
+                type="button"
+                aria-label={t("editor.kennungUngueltigClose")}
+                onClick={() => setUngueltigHinweisZu(true)}
+                className="shrink-0 text-[11px] font-semibold text-muted-2 hover:text-text"
+              >
+                {t("editor.linkCancel")}
+              </button>
+            </div>
+          ) : null}
           {/* JOB 3123 (PRIORITAETEN.md Q5c) — DIE VERWORFENE FREMDFASSUNG BEKOMMT IHREN SATZ.
 
               Seit JOB 3107 wird eine von außen gekommene Fassung, die bei liegender Einfügemarke
@@ -3072,7 +3480,7 @@ export function RichTextEditor({
               </button>
             </div>
           ) : null}
-          <div className="relative">
+          <div ref={schreibHuelleRef} className="relative">
             <div
               ref={ref}
               contentEditable
@@ -3106,6 +3514,39 @@ export function RichTextEditor({
             {dragActive ? (
               <div className="pointer-events-none absolute inset-1 grid place-items-center rounded-input border-2 border-dashed border-ai/50 bg-ai/5 text-[12.5px] font-semibold text-ai">
                 {t(EDITOR_DROP_KEYS.imageActive)}
+              </div>
+            ) : null}
+            {/* R-0014: Rahmen und Griffe des ausgewählten Bildes — Oberfläche NEBEN dem
+                contenteditable, nie Dokumentinhalt. Der Rahmen lässt Klicks durch; nur die Griffe
+                nehmen den Zeiger an. Der Tastaturweg zur Größe sind die vier Stufen darüber. */}
+            {bildRahmen ? (
+              <div
+                aria-hidden="true"
+                data-testid="bildgriffe"
+                className="pointer-events-none absolute z-[5] rounded-[2px] outline outline-2 outline-ai/70"
+                style={{
+                  left: bildRahmen.left,
+                  top: bildRahmen.top,
+                  width: bildRahmen.width,
+                  height: bildRahmen.height,
+                }}
+              >
+                {BILD_GRIFFE.map((griff) => (
+                  <span
+                    key={griff.ecke}
+                    data-kw-griff={griff.ecke}
+                    className="kw-bildgriff pointer-events-auto border border-white bg-ai shadow"
+                    style={{ left: `${griff.x * 100}%`, top: `${griff.y * 100}%` }}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onPointerDown={(e) => starteGriffZug(griff.kante, e)}
+                    onPointerMove={fuehreGriffZug}
+                    onPointerUp={() => beendeGriffZug(true)}
+                    onPointerCancel={() => beendeGriffZug(false)}
+                    // Nach `pointerup` ist der Zug schon beendet; ein Fangverlust OHNE Loslassen
+                    // ist ein Abbruch.
+                    onLostPointerCapture={() => beendeGriffZug(false)}
+                  />
+                ))}
               </div>
             ) : null}
           </div>

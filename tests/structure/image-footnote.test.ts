@@ -208,8 +208,11 @@ describe("WP-BILD-1a: Sanitizer erhalten figure/figcaption/data-image-id, stripp
 
     it(`${label}: ungültige data-image-id (Leerzeichen) wird verworfen`, () => {
       const clean = sanitize('<figcaption data-image-id="evil id spaces">x</figcaption>');
-      expect(clean).toContain("<figcaption>");
+      // AUFNAHME 20260922 (R-0090): verworfen bleibt verworfen — aber nicht spurlos. An die Stelle
+      // der Kennung tritt genau das feste Merkmal, das der Editor beim Öffnen meldet.
+      expect(clean).toContain('<figcaption data-kw-kennung="ungueltig">');
       expect(clean).not.toContain("data-image-id");
+      expect(clean).not.toContain("evil");
     });
 
     it(`${label}: <script> in der Fußnote wird komplett entfernt`, () => {

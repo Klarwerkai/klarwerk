@@ -13,14 +13,22 @@ const STYLE: Record<DisplayStatus, { color: string; background: string }> = {
   konflikt: { color: "#9e352e", background: "#f8e7e5" },
 };
 
-export function StatusPill({ status }: { status: DisplayStatus }): JSX.Element {
+// `label` ersetzt nur das Wort, nie die Farbe: eine Fläche mit eigenem, entschiedenem Wortlaut
+// (Prüfstand der Trefferlisten, P-M3b) behält die Zustandsfarbe.
+export function StatusPill({
+  status,
+  label,
+}: {
+  status: DisplayStatus;
+  label?: string;
+}): JSX.Element {
   const { t } = useTranslation();
   return (
     <span
       className="inline-flex items-center rounded-pill px-2 py-0.5 font-mono text-[11px] font-semibold"
       style={STYLE[status]}
     >
-      {t(`status.${status}`)}
+      {label ?? t(`status.${status}`)}
     </span>
   );
 }

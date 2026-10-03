@@ -5,6 +5,7 @@ import { sprachAusEintritt } from "./lib/htmlLang";
 // JOB 3326 R4: die Texte der Lesevariante wohnen bei ihrer Funktion, damit diese Woerterbuchdatei
 // unter dem 1-MiB-Deckel von Biome bleibt. Messung und Begruendung: `lib/lesevariante.ts`.
 import { lesevarianteTexteDe, lesevarianteTexteEn, lesevarianteTexteNl } from "./lib/lesevariante";
+import { sprachNachlader } from "./lib/sprachNachlader";
 import { gespeicherteSprache } from "./lib/sprachwahl";
 import {
   type Textmodul,
@@ -494,6 +495,8 @@ const de = {
   // JOB 3045: Label der Fundortzeile. Behauptet nichts über den Inhalt, nennt nur den Ort — was
   // dahinter steht, kommt roh aus dem Bestand (Kategorie) bzw. aus der StatusPill (Zustand).
   "intake.live.fundort": "Liegt in:",
+  "intake.live.pruefstand.offen": "noch nicht geprüft",
+  "intake.live.pruefstand.validiert": "Validiert",
   "intake.live.openKo": "Ansehen",
   // JOB 3556: Der frühere Satz zur laufenden Widerspruchsprüfung ist hier GESTRICHEN (in allen drei
   // Sprachen). Er behauptete zweierlei in einem — „nichts Ähnliches gefunden" UND „auf Widerspruch
@@ -2478,6 +2481,13 @@ const de = {
   "editor.kennungGetrennt_other":
     "Mehrere Bilder trugen dieselbe Kennung. {{count}} Zuordnungen wurden getrennt — bitte prüfen Sie die betroffenen Bildbeschreibungen.",
   "editor.kennungGetrenntClose": "Hinweis zu getrennten Bildkennungen schließen",
+  // AUFNAHME 20260922 (R-0090): eine ungültige Bildkennung wurde beim Speichern oder Einfügen
+  // verworfen. Der Satz sagt, was geschehen ist, und bittet um eine Sichtprüfung.
+  "editor.kennungUngueltig_one":
+    "Bei {{count}} Bild oder Bildbeschreibung war die Kennung ungültig. Sie wurde verworfen und neu vergeben — bitte prüfen Sie die Zuordnung.",
+  "editor.kennungUngueltig_other":
+    "Bei {{count}} Bildern oder Bildbeschreibungen war die Kennung ungültig. Sie wurde verworfen und neu vergeben — bitte prüfen Sie die Zuordnung.",
+  "editor.kennungUngueltigClose": "Hinweis zu ungültigen Bildkennungen schließen",
   // JOB 3123 (PRIORITAETEN.md Q5c): eine von außen gekommene, vertagte Fassung wurde verworfen,
   // weil im Editor weitergeschrieben wurde (JOB 3107, `emit()`). Die Entscheidung ist richtig und
   // bleibt; sie war nur stumm. Der Satz sagt, was geschehen ist — er behauptet nicht, welche der
@@ -5430,6 +5440,19 @@ const de = {
     "Kurze Einstiegshilfe zu den wichtigsten Klarwerk-Abläufen. Suche nach Stichwort oder springe direkt in den passenden Bereich.",
   "help.noResults": "Keine Hilfe zu diesem Stichwort gefunden.",
   "help.openRoute": "Bereich öffnen",
+  // R-1064: der vom Betreiber festgelegte Supportweg dieser Installation (Hilfeseite).
+  "help.support.title": "Support dieser Installation",
+  "help.support.configured": "Der Betreiber dieser Installation hat diesen Supportweg hinterlegt:",
+  "help.support.linkDefault": "Supportseite öffnen",
+  "help.support.mailDefault": "E-Mail an den Support schreiben",
+  "help.support.newTab": "neuer Tab",
+  "help.support.notConfigured":
+    "Für diese Installation ist noch kein Supportweg hinterlegt. Wende dich mit Fragen an die Administration deiner Instanz.",
+  "help.support.invalid":
+    "Für diese Installation ist ein Supportweg eingetragen, er ist aber ungültig und wird deshalb nicht angezeigt. Bitte gib der Administration deiner Instanz Bescheid.",
+  "help.support.loadError":
+    "Der Supportweg konnte gerade nicht geladen werden. Die Hilfe auf dieser Seite funktioniert trotzdem.",
+  "help.support.loading": "Supportweg wird geladen …",
   // Klara v1 (Pedi 05.07.): kontextsensitive Hilfe — Panel-Texte + Seiten-Erklärungen.
   "klara.title": "Klara",
   "klara.subtitle": "Deine Hilfe in KLARWERK",
@@ -7743,6 +7766,8 @@ const en: typeof de = {
   "intake.live.similarAsk": "Add to it or start fresh?",
   "intake.live.conflictLead": "Careful — this may contradict:",
   "intake.live.fundort": "Sits in:",
+  "intake.live.pruefstand.offen": "not yet reviewed",
+  "intake.live.pruefstand.validiert": "Validated",
   "intake.live.openKo": "View",
   "intake.live.unavailable": "Check currently unavailable.",
   "intake.structure.heading": "Klarwerk suggests — tap anything that's off:",
@@ -9368,6 +9393,11 @@ const en: typeof de = {
   "editor.kennungGetrennt_other":
     "Several images carried the same identifier. {{count}} links were separated — please check the image descriptions concerned.",
   "editor.kennungGetrenntClose": "Close the notice about separated image identifiers",
+  "editor.kennungUngueltig_one":
+    "{{count}} image or image description had an invalid identifier. It was discarded and replaced — please check the assignment.",
+  "editor.kennungUngueltig_other":
+    "{{count}} images or image descriptions had an invalid identifier. It was discarded and replaced — please check the assignment.",
+  "editor.kennungUngueltigClose": "Close the notice about invalid image identifiers",
   "editor.fremdfassungVerworfen":
     "While you were writing, a newer version arrived from elsewhere. Your own text was kept; the other version was discarded.",
   "editor.fremdfassungVerworfenClose": "Close the notice about the discarded version",
@@ -11658,6 +11688,18 @@ const en: typeof de = {
     "A short starter guide to the most important Klarwerk flows. Search by keyword or jump straight into the relevant area.",
   "help.noResults": "No help found for this keyword.",
   "help.openRoute": "Open area",
+  "help.support.title": "Support for this installation",
+  "help.support.configured": "The operator of this installation has set up this support channel:",
+  "help.support.linkDefault": "Open support page",
+  "help.support.mailDefault": "Email support",
+  "help.support.newTab": "new tab",
+  "help.support.notConfigured":
+    "No support channel has been set up for this installation yet. Please contact the administrators of your instance with questions.",
+  "help.support.invalid":
+    "A support channel is configured for this installation, but it is invalid and is therefore not shown. Please let the administrators of your instance know.",
+  "help.support.loadError":
+    "The support channel could not be loaded right now. The help on this page still works.",
+  "help.support.loading": "Loading support channel …",
   // Klara v1 (Pedi 05.07.): context-sensitive help — panel copy + page explanations.
   "klara.title": "Klara",
   "klara.subtitle": "Your help in KLARWERK",
@@ -13421,6 +13463,8 @@ const nl: typeof de = {
   "intake.live.similarAsk": "Aanvullen of nieuw?",
   "intake.live.conflictLead": "Let op — dit kan in tegenspraak zijn met:",
   "intake.live.fundort": "Staat in:",
+  "intake.live.pruefstand.offen": "nog niet beoordeeld",
+  "intake.live.pruefstand.validiert": "Gevalideerd",
   "intake.live.openKo": "Bekijken",
   "intake.live.unavailable": "Controle momenteel niet beschikbaar.",
   "intake.structure.heading": "Klarwerk stelt voor — tik aan wat niet klopt:",
@@ -15040,6 +15084,11 @@ const nl: typeof de = {
   "editor.kennungGetrennt_other":
     "Meerdere afbeeldingen droegen dezelfde kenmerkcode. {{count}} koppelingen zijn losgemaakt — controleer de betrokken afbeeldingsbeschrijvingen.",
   "editor.kennungGetrenntClose": "Melding over losgemaakte afbeeldingskenmerken sluiten",
+  "editor.kennungUngueltig_one":
+    "Bij {{count}} afbeelding of afbeeldingsbeschrijving was het kenmerk ongeldig. Het is verwijderd en vervangen — controleer de koppeling.",
+  "editor.kennungUngueltig_other":
+    "Bij {{count}} afbeeldingen of afbeeldingsbeschrijvingen was het kenmerk ongeldig. Het is verwijderd en vervangen — controleer de koppeling.",
+  "editor.kennungUngueltigClose": "Melding over ongeldige afbeeldingskenmerken sluiten",
   "editor.fremdfassungVerworfen":
     "Tijdens het schrijven is van buitenaf een nieuwere versie binnengekomen. De eigen tekst is behouden; de andere versie is verworpen.",
   "editor.fremdfassungVerworfenClose": "Melding over de verworpen versie sluiten",
@@ -17329,6 +17378,18 @@ const nl: typeof de = {
     "Korte startgids voor de belangrijkste Klarwerk-processen. Zoek op trefwoord of spring direct naar het juiste onderdeel.",
   "help.noResults": "Geen help gevonden voor dit trefwoord.",
   "help.openRoute": "Onderdeel openen",
+  "help.support.title": "Support voor deze installatie",
+  "help.support.configured": "De beheerder van deze installatie heeft dit supportkanaal ingesteld:",
+  "help.support.linkDefault": "Supportpagina openen",
+  "help.support.mailDefault": "E-mail naar support sturen",
+  "help.support.newTab": "nieuw tabblad",
+  "help.support.notConfigured":
+    "Voor deze installatie is nog geen supportkanaal ingesteld. Neem met vragen contact op met de beheerders van je omgeving.",
+  "help.support.invalid":
+    "Voor deze installatie is een supportkanaal ingevoerd, maar het is ongeldig en wordt daarom niet getoond. Laat het de beheerders van je omgeving weten.",
+  "help.support.loadError":
+    "Het supportkanaal kon nu niet worden geladen. De help op deze pagina werkt gewoon.",
+  "help.support.loading": "Supportkanaal wordt geladen …",
   "klara.title": "Klara",
   "klara.subtitle": "Jouw hulp in KLARWERK",
   "klara.open": "Klara openen — hulp bij deze pagina",
@@ -18815,6 +18876,25 @@ const nl: typeof de = {
 };
 
 // ================================================================================================
+// R-0801 · NUR DIE STARTSPRACHE GEHÖRT IN DEN EINTRITT — en und nl werden nachgeladen.
+// ================================================================================================
+//
+// Die drei Blöcke oben bleiben, wo sie sind: diese Datei ist die eine Quelle aller Texte, und
+// zahlreiche Wächter lesen sie als Text. Getrennt wird erst im PRODUKTIONSBAU: das Plugin
+// `sprachpaketeNachladen` (`texte/intern/sprachpakete.ts`) schneidet die Blöcke `en` und `nl` als
+// eigene Stücke heraus, ersetzt `{ en, nl }` in `VORLIEGEND` durch `{}` und trägt in `NACHLADEN`
+// je Sprache ein `import()` ein. Es greift NUR auf die zwei Zeilen unten und bricht den Bau ab, wenn
+// es eine davon nicht genau einmal findet — sonst lägen beide Sprachen still wieder im Eintritt.
+//
+// Im Quelltext — und damit in jedem Vitest-Lauf und im Entwicklungsserver — liegen weiterhin alle
+// drei Sprachen sofort vor; der Nachlader (`lib/sprachNachlader.ts`) wird dann nie gefragt.
+type NachladbareSprache = "en" | "nl";
+type Woerterbuch = typeof de;
+
+const VORLIEGEND: Partial<Record<NachladbareSprache, Woerterbuch>> = { en, nl };
+const NACHLADEN: Partial<Record<NachladbareSprache, () => Promise<Woerterbuch>>> = {};
+
+// ================================================================================================
 // JOB 4367 · DIE TEXTMODULE — jeder Nutzerweg bringt seine eigenen Texte mit.
 // ================================================================================================
 //
@@ -18843,26 +18923,55 @@ if (textmodulFehler.length > 0) {
 }
 const modulTexte = fuehreTextmoduleZusammen(textmodule);
 
-void i18n.use(initReactI18next).init({
-  resources: {
-    de: { translation: { ...de, ...modulTexte.de } },
-    en: { translation: { ...en, ...modulTexte.en } },
-    nl: { translation: { ...nl, ...modulTexte.nl } },
-  },
-  // JOB 3323 (Nachführung aus JOB 3280): DIE ADRESSE SCHLÄGT DIE GESPEICHERTE WAHL — aber nur,
-  // wenn sie eine Sprache des LINKVERTRAGS nennt (`EINTRITT_SPRACHEN` = de|en, htmlLang.ts). Der
-  // Eintritt aus Klara (`/capture/frontdoor?draft=<id>&lang=en`) bestimmt so die Sprache DIESES
-  // Aufrufs, ohne dass jemand erst umschalten muss; ohne `?lang` und bei JEDEM nicht vereinbarten
-  // Wert — auch bei `nl`, das die Anwendung zwar kann, der Link aber nicht setzen darf — bleibt es
-  // Zeichen für Zeichen beim bisherigen Verhalten. Die Reihenfolge ist die Rangfolge: Adresse,
-  // dann gespeicherte Wahl, dann die Vorgabe „de" (in `gespeicherteSprache`).
-  //
-  // BEWUSST NICHT GESPEICHERT: `lng` löst kein `languageChanged` aus, `bindSpracheSpeichern`
-  // (`lib/sprachwahl.ts`) schreibt also nichts. Ein Link aus Word ist der Wunsch für DIESEN
-  // Aufruf, keine Wahl für diesen Browser — er soll die Wahl unter /profil nicht überschreiben.
-  lng: sprachAusEintritt() ?? gespeicherteSprache(),
-  fallbackLng: "de",
-  interpolation: { escapeValue: false },
-});
+function istNachladbar(sprache: string): sprache is NachladbareSprache {
+  return sprache === "en" || sprache === "nl";
+}
+
+/** Das Bündel einer Sprache, sofern es schon beim Start vorliegt — sonst nichts. */
+function vorliegend(sprache: NachladbareSprache) {
+  const paket = VORLIEGEND[sprache];
+  return paket ? { [sprache]: { translation: { ...paket, ...modulTexte[sprache] } } } : {};
+}
+
+/** Holt ein fehlendes Bündel nach; die Textmodule derselben Sprache kommen dazu wie oben. */
+function nachladen(sprache: string): Promise<Record<string, string>> | undefined {
+  if (!istNachladbar(sprache)) {
+    return undefined;
+  }
+  const zusatz = modulTexte[sprache];
+  return NACHLADEN[sprache]?.().then((paket) => ({ ...paket, ...zusatz }));
+}
+
+// R-0801: `sprachBereit` erfüllt sich, sobald die Startsprache vollständig vorliegt. Für Deutsch
+// geschieht das sofort; für eine gespeicherte Wahl en/nl wartet `main.tsx` damit den ersten Aufbau
+// ab, damit die Oberfläche nicht erst deutsch erscheint und dann umspringt.
+export const sprachBereit = i18n
+  .use(sprachNachlader(nachladen))
+  .use(initReactI18next)
+  .init({
+    resources: {
+      de: { translation: { ...de, ...modulTexte.de } },
+      ...vorliegend("en"),
+      ...vorliegend("nl"),
+    },
+    // Fehlt einer Sprache das Bündel, fragt i18next den Nachlader; vorhandene Bündel bleiben.
+    partialBundledLanguages: true,
+    // JOB 3323 (Nachführung aus JOB 3280): DIE ADRESSE SCHLÄGT DIE GESPEICHERTE WAHL — aber nur,
+    // wenn sie eine Sprache des LINKVERTRAGS nennt (`EINTRITT_SPRACHEN` = de|en, htmlLang.ts). Der
+    // Eintritt aus Klara (`/capture/frontdoor?draft=<id>&lang=en`) bestimmt so die Sprache DIESES
+    // Aufrufs, ohne dass jemand erst umschalten muss; ohne `?lang` und bei JEDEM nicht vereinbarten
+    // Wert — auch bei `nl`, das die Anwendung zwar kann, der Link aber nicht setzen darf — bleibt es
+    // Zeichen für Zeichen beim bisherigen Verhalten. Die Reihenfolge ist die Rangfolge: Adresse,
+    // dann gespeicherte Wahl, dann die Vorgabe „de" (in `gespeicherteSprache`).
+    //
+    // BEWUSST NICHT GESPEICHERT: das `languageChanged` des Starts kommt, bevor `bindSpracheSpeichern`
+    // (`lib/sprachwahl.ts`) zuhört — bei nachgeladener Startsprache erst nach `sprachBereit`, und
+    // genau deshalb bindet `main.tsx` den Schreiber erst danach. Ein Link aus Word ist der Wunsch
+    // für DIESEN Aufruf, keine Wahl für diesen Browser — er soll die Wahl unter /profil nicht
+    // überschreiben.
+    lng: sprachAusEintritt() ?? gespeicherteSprache(),
+    fallbackLng: "de",
+    interpolation: { escapeValue: false },
+  });
 
 export default i18n;

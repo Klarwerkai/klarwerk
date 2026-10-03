@@ -48,6 +48,9 @@ import { D44_EDITOR_MARKE } from "../../apps/web/src/components/D44Gliederung";
 import { KnowledgeInputStudio } from "../../apps/web/src/components/KnowledgeInputStudio";
 import { RichTextEditor } from "../../apps/web/src/components/RichTextEditor";
 import i18n from "../../apps/web/src/i18n";
+import { extractBodyImages } from "../../apps/web/src/lib/bodyImages";
+import { CAPTION_UNASSIGNED_ATTR, captionForImage } from "../../apps/web/src/lib/editorFigures";
+import { buildApp, buildServices } from "../../services/app/src/build-app";
 import {
   beschreibungsfeld,
   klickWieBrowser,
@@ -406,5 +409,97 @@ describe("JOB 3083 · S7 — die Nachführung nimmt dem Autor nichts weg", () =>
     expect(koerper, "die bewusste Übernahme hat den Entwurf des Autors verloren").toContain(
       "Im Studio ergaenzt",
     );
+  });
+});
+
+// ================================================================================================
+// S8 — AUFNAHME 20260922 (gesamt-bildidentitaet, Bens Befund K1 an ac5e0482): DER VERBUNDENE WEG
+// ================================================================================================
+//
+// S1–S7 messen bis zum übernommenen Zustand, also bis zu dem, was gespeichert WÜRDE. Hier geht
+// GENAU dieser übernommene Körper über den regulären Produktweg weiter: `POST /api/kos` (Server-
+// Sanitizer) → `GET /api/kos/:id` (frisch gelesen) → der Antwortkörper wird im Editor neu geöffnet.
+// Keine vorgefertigte Ersatzfassung: gespeichert wird `koerper` nach `uebernehmen()`.
+describe("Aufnahme 20260922 · S8 — Studio-Zuordnung → Übernahme → Speichern → Laden → Wiederöffnen", () => {
+  type App = ReturnType<typeof buildApp>;
+  let app: App | null = null;
+
+  afterEach(async () => {
+    await app?.close();
+    app = null;
+  });
+
+  async function anmelden(a: App): Promise<{ authorization: string }> {
+    const reg = await a.inject({
+      method: "POST",
+      url: "/api/auth/register",
+      payload: { name: "Studio", email: "studio@s8.test", password: "geheim12345" },
+    });
+    expect(reg.statusCode, reg.body).toBe(201);
+    const login = await a.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { email: "studio@s8.test", password: "geheim12345" },
+    });
+    expect(login.statusCode, login.body).toBe(200);
+    return { authorization: `Bearer ${login.json().token}` };
+  }
+
+  it("S8 · die gewählte Beschreibung gehört nach Speichern und Wiederöffnen weiter zu abnahme-bild-a", async () => {
+    mount();
+    studioOeffnen();
+    // Bewusst zuordnen — ohne neuen Text: die GEWÄHLTE lose Beschreibung wandert an das Bild.
+    zuordnenUndSpeichern(studioFlaechePflicht());
+    uebernehmen();
+    const uebernommen = koerper;
+    expect(uebernommen).not.toContain("abnahme-ohne-bild");
+
+    app = buildApp(buildServices());
+    const kopf = await anmelden(app);
+    const angelegt = await app.inject({
+      method: "POST",
+      url: "/api/kos",
+      headers: kopf,
+      payload: {
+        confidentiality: "intern",
+        title: "Wartungsnotiz",
+        statement: "Kurzfassung.",
+        type: "best_practice",
+        category: "Wartung",
+        bodyHtml: uebernommen,
+      },
+    });
+    expect(angelegt.statusCode, angelegt.body).toBe(201);
+    const id = angelegt.json().id as string;
+
+    const gelesen = await app.inject({ method: "GET", url: `/api/kos/${id}`, headers: kopf });
+    expect(gelesen.statusCode, gelesen.body).toBe(200);
+    const geladen = (gelesen.json() as { bodyHtml?: string }).bodyHtml ?? "";
+
+    // Auf dem Speicherweg: genau ein Galerie-Eintrag, das Bild mit der gewählten Beschreibung.
+    expect(extractBodyImages(geladen)).toEqual([
+      { id: "abnahme-bild-a", src: "/api/objects/a/raw", caption: VERWAIST },
+    ]);
+    expect(geladen, "die alte verwaiste Kennung ist zurückgekehrt").not.toContain(
+      "abnahme-ohne-bild",
+    );
+
+    // Wiederöffnen: genau dieser Antwortkörper im Editor.
+    act(() => root.unmount());
+    container.remove();
+    mount(geladen);
+    const editor = aussenEditor();
+    const figure = figureDesBildes(editor);
+    expect(figure, "die figure des Bildes fehlt nach dem Wiederöffnen").not.toBeNull();
+    const caps = Array.from(figure?.querySelectorAll(":scope > figcaption") ?? []);
+    expect(caps).toHaveLength(1);
+    expect(caps[0]?.getAttribute("data-image-id")).toBe("abnahme-bild-a");
+    expect((caps[0]?.textContent ?? "").trim()).toBe(VERWAIST);
+    const bild = figure?.querySelector(":scope > img");
+    const eigene = bild instanceof HTMLImageElement ? captionForImage(bild, editor) : null;
+    expect(eigene).toBe(caps[0]);
+    // Keine fremde Zuordnung und keine als „nicht zugeordnet" gekennzeichnete Fußnote.
+    expect(editor.querySelector(`figcaption[${CAPTION_UNASSIGNED_ATTR}]`)).toBeNull();
+    expect(editor.innerHTML).not.toContain("abnahme-ohne-bild");
   });
 });
