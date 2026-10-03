@@ -310,10 +310,14 @@ export function MeldungenListe({
                               : "bg-trust-info-text"
                   }`}
                 />
+                {/* FE-002 K5: Kennung und Art, damit der Tastaturweg im Browser nachweist, WELCHE
+                    Meldung den Fokus hat und ausgeführt wird. */}
                 <button
                   type="button"
                   onClick={openTarget}
-                  className="min-w-0 flex-1 truncate text-left text-[13px] text-text hover:text-ai"
+                  data-testid="meldung-oeffnen"
+                  data-art={n.kind}
+                  className="min-w-0 flex-1 truncate rounded-[4px] text-left text-[13px] text-text outline-none hover:text-ai focus-visible:bg-hairline-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-brand"
                   title={target ? t("topbar.notifOpen") : undefined}
                 >
                   {/* SCRUM-363: ruhige „Dir ist Review-Arbeit zugewiesen"-Kennzeichnung. */}
@@ -340,7 +344,7 @@ export function MeldungenListe({
                   <button
                     type="button"
                     onClick={() => markRead(n.id)}
-                    className="shrink-0 rounded-btn px-1 text-[11px] font-semibold text-muted-2 hover:text-text"
+                    className="shrink-0 rounded-btn px-1 text-[11px] font-semibold text-muted-2 outline-none hover:text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-brand"
                     title={t("topbar.notifMarkRead")}
                   >
                     ✓

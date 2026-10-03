@@ -20,7 +20,9 @@
 //     Zahnrad, Meldungen, Konto, Menü-Knopf)
 //   · die vier Zwecke haben an jeder Breite einen sichtbaren Griff
 // Die Tastaturwege (Tab, Enter, Pfeile, Escape, Fokusrückgabe, sichtbarer Fokusring) laufen mit
-// echten Tasten.
+// echten Tasten. C8 führt in Einstellungen, Meldungen und Konto je einen Eintrag per Tastatur aus
+// (1280/1024/390 px; Bilder `auswahl-*` mit dem fokussierten Eintrag und `ziel-*` mit der
+// erreichten Seite).
 //
 // BILDBELEGE (E6): steht `FE002_BELEGE` auf einem Verzeichnis, legt der Lauf dort die gerenderten
 // Ansichten ab (ruhende Leiste je Breite, geöffnete Menüs, Palette, Drawer). Ohne die Variable
@@ -625,6 +627,174 @@ describe("FE-002 · Kopfband in Chromium", () => {
       );
     }
   }, 120_000);
+
+  // ==============================================================================================
+  // C8 — EINTRAG PER TASTATUR WÄHLEN UND AUSFÜHREN (Ben, K5, Kandidat b1b53642).
+  // ==============================================================================================
+  // C4 öffnet Einstellungen, Meldungen und Konto und schließt sie sofort per Escape; ein Eintrag
+  // wurde dort nie gewählt. Hier läuft der ganze Weg mit echten Tasten, ohne `focus()` oder
+  // `click()` aus dem Skript: ab dem Seitenanfang von /start Tab bis zum Auslöser (sichtbarer Fokus),
+  // Enter öffnet, Pfeil ab bis zum Eintrag (sichtbarer Fokus, im Menü), Enter führt ihn aus. Danach
+  // stehen die Zielroute und ihr Seitenanker (`page-<schlüssel>`, wie in der UI-Rauchprobe) sichtbar
+  // da, und das Menü ist zu. Einstellungen → „Persönliche Einstellungen“ → /profil; Meldungen → eine
+  // der beiden Wissenslücken aus dem Testbestand (POST /api/ask, s. o.) → /risiko; Konto → „Profil“
+  // → /profil. An 1280, 1024 und 390 px sind Zahnrad, Glocke und Konto direkte Griffe im Kopfband.
+  it("C8 · Tastatur bis zur Ausführung: Einstellungen, Meldungen und Konto — Tab, Enter, Pfeil, Enter führt den Eintrag aus (1280/1024/390 px)", async () => {
+    type Fokus = {
+      testid: string;
+      art: string;
+      imMenue: boolean;
+      fv: boolean;
+      outline: string;
+      outlineBreite: number;
+      hintergrund: string;
+      text: string;
+      pfad: string;
+    };
+    const FOKUS = fn(`() => {
+      const a = document.activeElement;
+      const echt = !!a && a !== document.body;
+      const s = echt ? getComputedStyle(a) : null;
+      return {
+        testid: echt ? (a.getAttribute('data-testid') || '') : '',
+        art: echt ? (a.getAttribute('data-art') || '') : '',
+        imMenue: echt && !!a.closest('[role="menu"]'),
+        fv: echt && a.matches(':focus-visible'),
+        outline: s ? s.outlineStyle : '',
+        outlineBreite: s ? (Number.parseFloat(s.outlineWidth) || 0) : 0,
+        hintergrund: s ? s.backgroundColor : '',
+        text: echt ? (a.textContent || '').trim().slice(0, 80) : '',
+        pfad: location.pathname,
+      };
+    }`);
+    const fokusSichtbar = (f: Fokus): boolean =>
+      f.fv &&
+      ((f.outline !== "none" && f.outlineBreite >= 1) ||
+        (f.hintergrund !== "rgba(0, 0, 0, 0)" && f.hintergrund !== "transparent"));
+    const offen = fn(`(id) => !!document.querySelector('[data-testid="' + id + '"]')`);
+    const FAELLE = [
+      {
+        name: "einstellungen",
+        ausloeser: "kopfband-zahnrad",
+        flaeche: "zahnrad-menue",
+        eintrag: "„Persönliche Einstellungen“ (zahnrad-persoenlich)",
+        istEintrag: (f: Fokus) => f.testid === "zahnrad-persoenlich",
+        pfad: "/profil",
+        anker: "page-profil",
+      },
+      {
+        name: "meldungen",
+        ausloeser: "kopfband-meldungen",
+        flaeche: "meldungen-menue",
+        eintrag: "eine Wissenslücke (meldung-oeffnen, Art gap)",
+        istEintrag: (f: Fokus) => f.testid === "meldung-oeffnen" && f.art === "gap",
+        pfad: "/risiko",
+        anker: "page-risiko",
+      },
+      {
+        name: "konto",
+        ausloeser: "kopfband-konto",
+        flaeche: "konto-menue",
+        eintrag: "„Profil“ (konto-profil)",
+        istEintrag: (f: Fokus) => f.testid === "konto-profil",
+        pfad: "/profil",
+        anker: "page-profil",
+      },
+    ] as const;
+    const wege: string[] = [];
+    for (const breite of [1280, 1024, 390]) {
+      for (const fall of FAELLE) {
+        const kennung = `${fall.name} ${breite} px`;
+        await stelle(breite);
+
+        // 1 · Tab ab dem Seitenanfang bis zum Auslöser, sichtbarer Fokus.
+        let f = await seite().evaluate<Fokus>(FOKUS);
+        let tabs = 0;
+        while (f.testid !== fall.ausloeser && tabs < 60) {
+          await seite().keyboard.press("Tab");
+          tabs += 1;
+          f = await seite().evaluate<Fokus>(FOKUS);
+        }
+        expect(
+          f.testid,
+          `${kennung}: Tab erreicht ${fall.ausloeser} nicht (${tabs} Schritte)`,
+        ).toBe(fall.ausloeser);
+        expect(
+          fokusSichtbar(f),
+          `${kennung}: Fokus am Auslöser unsichtbar ${JSON.stringify(f)}`,
+        ).toBe(true);
+
+        // 2 · Enter öffnet; der Fokus liegt danach IM Menü.
+        await seite().keyboard.press("Enter");
+        await seite().waitForFunction(offen, fall.flaeche, { timeout: 10_000 });
+        const imMenue = await seite()
+          .waitForFunction(
+            fn(`() => !!document.activeElement?.closest('[role="menu"]')`),
+            undefined,
+            { timeout: 5_000 },
+          )
+          .then(() => true)
+          .catch(() => false);
+        const nachEnter = await seite().evaluate<Fokus>(FOKUS);
+        expect(
+          imMenue,
+          `${kennung}: Fokus nach Enter nicht im Menü ${JSON.stringify(nachEnter)}`,
+        ).toBe(true);
+
+        // 3 · Pfeil ab bis zum Eintrag, sichtbarer Fokus im Menü.
+        f = await seite().evaluate<Fokus>(FOKUS);
+        let pfeile = 0;
+        while (!fall.istEintrag(f) && pfeile < 40) {
+          await seite().keyboard.press("ArrowDown");
+          pfeile += 1;
+          f = await seite().evaluate<Fokus>(FOKUS);
+        }
+        const zuletzt = JSON.stringify(f);
+        expect(
+          fall.istEintrag(f),
+          `${kennung}: Pfeil ab erreicht ${fall.eintrag} nicht (${pfeile} Schritte, zuletzt ${zuletzt})`,
+        ).toBe(true);
+        expect(f.imMenue, `${kennung}: Eintrag liegt nicht im Menü`).toBe(true);
+        expect(
+          fokusSichtbar(f),
+          `${kennung}: Fokus am Eintrag unsichtbar ${JSON.stringify(f)}`,
+        ).toBe(true);
+        await beleg(
+          `auswahl-${fall.name}-${breite}`,
+          false,
+          `Tastatur: ${tabs}× Tab bis ${fall.ausloeser}, Enter, ${pfeile}× Pfeil ab bis ${fall.eintrag}`,
+        );
+
+        // 4 · Enter führt aus: Zielroute, sichtbarer Seitenanker, Menü zu.
+        await seite().keyboard.press("Enter");
+        await seite().waitForFunction(fn("(p) => location.pathname === p"), fall.pfad, {
+          timeout: 15_000,
+        });
+        await seite().waitForFunction(
+          fn(`(id) => {
+            const el = document.querySelector('[data-testid="' + id + '"]');
+            if (!el) return false;
+            const r = el.getBoundingClientRect();
+            return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden';
+          }`),
+          fall.anker,
+          { timeout: 15_000 },
+        );
+        expect(
+          await seite().evaluate<boolean>(offen, fall.flaeche),
+          `${kennung}: ${fall.flaeche} bleibt nach der Ausführung offen`,
+        ).toBe(false);
+        await beleg(
+          `ziel-${fall.name}-${breite}`,
+          false,
+          `Tastatur: Enter auf ${fall.eintrag} → ${fall.pfad}`,
+        );
+        wege.push(`${kennung}: ${tabs} Tab, ${pfeile} Pfeil → ${fall.pfad} („${f.text}“)`);
+      }
+    }
+    console.info(`FE-002 · C8 · Tastaturwege: ${wege.join(" | ")}`);
+    expect(wege).toHaveLength(9);
+  }, 300_000);
 
   it("C5 · Seite finden: Strg+K öffnet die Palette ohne technische Pfade, Tippen findet, Enter öffnet; Wissen suchen führt in die Bibliothek", async () => {
     await stelle(1280);
