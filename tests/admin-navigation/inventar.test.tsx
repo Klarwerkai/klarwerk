@@ -47,6 +47,7 @@ import {
 import i18n from "../../apps/web/src/i18n";
 import { ADMIN_DETAILS, ADMIN_SECTIONS, adminHref } from "../../apps/web/src/lib/adminSections";
 import { ANALYTICS_AUDIT_PATH } from "../../apps/web/src/lib/analyticsSections";
+import { ArbeitsbereicheEintraege } from "../../apps/web/src/shell/ArbeitsbereicheMenue";
 import { CommandPalette } from "../../apps/web/src/shell/CommandPalette";
 import { KopfbandPunkteListe } from "../../apps/web/src/shell/KopfbandPunkte";
 import { ZahnradEintraege } from "../../apps/web/src/shell/ZahnradMenue";
@@ -203,7 +204,7 @@ async function palette(eingabe?: string): Promise<Stand> {
   await beruhige(3);
   if (eingabe !== undefined) {
     const feld = s.container.querySelector<HTMLInputElement>(
-      `input[aria-label="${t("cmd.suchfeld")}"]`,
+      `input[aria-label="${t("fe002.seiteFinden")}"]`,
     );
     if (!feld) {
       throw new Error("Die Liste „Gehe zu …“ hat kein benanntes Suchfeld.");
@@ -259,10 +260,10 @@ describe("JOB 3337 · B · der Direktzugang „Gehe zu …“ auf der Fläche", 
 
   it("B3 · das Suchfeld hat einen eigenen zugänglichen Namen (Codex' Livebefund)", async () => {
     const s = await palette();
-    const feld = s.container.querySelector(`input[aria-label="${t("cmd.suchfeld")}"]`);
+    const feld = s.container.querySelector(`input[aria-label="${t("fe002.seiteFinden")}"]`);
     expect(feld, "Suchfeld ohne zugänglichen Namen").not.toBeNull();
     // Nicht-vakuös: der Name ist ein Name und nicht der durchgereichte Schlüssel.
-    expect(t("cmd.suchfeld")).not.toBe("cmd.suchfeld");
+    expect(t("fe002.seiteFinden")).not.toBe("fe002.seiteFinden");
   });
 
   it("B4 · die Kunden-Suchbegriffe der Abnahme finden ihr Ziel (DE)", async () => {
@@ -301,20 +302,22 @@ describe("JOB 3337 · B · der Direktzugang „Gehe zu …“ auf der Fläche", 
 // ------------------------------------------------------------------------------------------------
 
 describe("JOB 3337 · C · der Weg über das Menü", () => {
-  it("C1 · jedes Routenziel steht im Kopfband, unter „Bereiche“ oder als Zeile „Einstellungen“", async () => {
+  // FE-002 (26.09.2026): die weiteren Bereiche stehen nicht mehr im Zahnrad unter „Bereiche",
+  // sondern unter dem beschrifteten Einstieg „Arbeitsbereiche" (`ArbeitsbereicheEintraege`) —
+  // dieselbe Liste, offen statt aufzuklappen. „Einstellungen" bleibt die Zeile im Zahnrad.
+  it("C1 · jedes Routenziel steht im Kopfband, unter „Arbeitsbereiche“ oder als Zeile „Einstellungen“", async () => {
     const s = montiere(
       "/start",
       createElement(
         "div",
         null,
         createElement(KopfbandPunkteListe),
+        createElement(ArbeitsbereicheEintraege),
         createElement(ZahnradEintraege),
       ),
     );
     stand = s;
     await beruhige();
-    // Das Untermenü „Bereiche" aufklappen — geschlossen steht sein Inhalt gar nicht im DOM.
-    await klicke(s.container.querySelector('[data-testid="zahnrad-weitere-bereiche"]'));
 
     const erreichbar = new Set<string>();
     for (const el of s.container.querySelectorAll("[data-testid]")) {
@@ -333,11 +336,10 @@ describe("JOB 3337 · C · der Weg über das Menü", () => {
     expect(fehlend, `ohne Weg im Menü: ${fehlend.join(" · ")}`).toEqual([]);
   });
 
-  it("C2 · die „Bereiche“ tragen die Obergruppen, und „Verwaltung“ steht ausdrücklich dabei", async () => {
-    const s = montiere("/start", createElement(ZahnradEintraege));
+  it("C2 · die „Arbeitsbereiche“ tragen die Obergruppen, und „Verwaltung“ steht ausdrücklich dabei", async () => {
+    const s = montiere("/start", createElement(ArbeitsbereicheEintraege));
     stand = s;
     await beruhige();
-    await klicke(s.container.querySelector('[data-testid="zahnrad-weitere-bereiche"]'));
     const gruppen = [...s.container.querySelectorAll("[data-bereichsgruppe]")].map(
       (g) => g.getAttribute("data-bereichsgruppe") ?? "",
     );

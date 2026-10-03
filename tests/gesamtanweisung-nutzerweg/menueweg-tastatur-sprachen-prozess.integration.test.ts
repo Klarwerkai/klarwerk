@@ -262,7 +262,7 @@ describe("JOB 4323 · der Menüweg zur Gesamtanweisung ohne Maus, in drei Sprach
         await seite.goto(`${basis}/start`, { waitUntil: "domcontentloaded" });
         menue.de = await menuewegOhneMaus(
           seite,
-          sprachbestand("de")["menue.weitereBereiche"] ?? "",
+          sprachbestand("de")["fe002.arbeitsbereiche"] ?? "",
           sprachbestand("de")["ga.bereich.titel"] ?? "",
           "de",
         );
@@ -305,7 +305,7 @@ describe("JOB 4323 · der Menüweg zur Gesamtanweisung ohne Maus, in drei Sprach
         // ══ (d) ENGLISCH UND NIEDERLÄNDISCH — über den ECHTEN Schalter, per Tastatur. ═══════════
         for (const sprache of SPRACHEN.filter((s) => s !== "de")) {
           const bestand = sprachbestand(sprache);
-          const sollBereiche = bestand["menue.weitereBereiche"] ?? "";
+          const sollBereiche = bestand["fe002.arbeitsbereiche"] ?? "";
           const sollTitel = bestand["ga.bereich.titel"] ?? "";
           const sollAnlegen = bestand["ga.bereich.anlegen"] ?? "";
           expect(
@@ -468,10 +468,10 @@ describe("JOB 4323 · der Menüweg zur Gesamtanweisung ohne Maus, in drei Sprach
       expect(zeilenNachher.bausteine).toBe(2);
 
       process.stderr.write(
-        `${MARKE} PROTOKOLL · Chromium ${chromium} · Socket 127.0.0.1:${port} · ${pgFassung.split(" ").slice(0, 2).join(" ")} · pid1=${String(pidVorher)} pid2=${String(prozess.pid)} · Tastenfolge je Sprache (Tab-Anschläge bis Zahnrad / bis „Bereiche“ / bis Menüpunkt, dann Enter): ${SPRACHEN.map(
+        `${MARKE} PROTOKOLL · Chromium ${chromium} · Socket 127.0.0.1:${port} · ${pgFassung.split(" ").slice(0, 2).join(" ")} · pid1=${String(pidVorher)} pid2=${String(prozess.pid)} · Tastenfolge je Sprache (Tab-Anschläge bis „Arbeitsbereiche“ / bis Menüpunkt, dann Enter — FE-002): ${SPRACHEN.map(
           (s) => {
             const b = menue[s];
-            return b ? `${s}=${b.zahnrad}/${b.bereiche}/${b.eintrag}` : `${s}=(nicht gefahren)`;
+            return b ? `${s}=${b.arbeitsbereiche}/${b.eintrag}` : `${s}=(nicht gefahren)`;
           },
         ).join(
           " · ",

@@ -5,6 +5,7 @@ import { sprachAusEintritt } from "./lib/htmlLang";
 // JOB 3326 R4: die Texte der Lesevariante wohnen bei ihrer Funktion, damit diese Woerterbuchdatei
 // unter dem 1-MiB-Deckel von Biome bleibt. Messung und Begruendung: `lib/lesevariante.ts`.
 import { lesevarianteTexteDe, lesevarianteTexteEn, lesevarianteTexteNl } from "./lib/lesevariante";
+import { sprachNachlader } from "./lib/sprachNachlader";
 import { gespeicherteSprache } from "./lib/sprachwahl";
 import {
   type Textmodul,
@@ -6258,6 +6259,33 @@ const de = {
   // (neuerer Server, älterer Bestand). BEWUSST NICHT unter `mrun.task.*` — dieser Namensraum ist
   // genau die acht Arten, und ein Wert vom Draht darf nie in einen Schlüssel eingesetzt werden.
   // Bauform wie `imp.status.unknown`: ehrlich benannt statt roher Schlüssel in der Oberfläche.
+  // Aufnahme gesamt-ki-laufprotokoll: vier Modellwege mit eigenem Lauf, Kosten, Erzeugnis, Auswertung.
+  "mrun.task.enrich": "Anreichern",
+  "mrun.task.conflict": "Konfliktprüfung",
+  "mrun.task.duplicate": "Dublettenprüfung",
+  "mrun.task.probe": "Anbieterprobe",
+  "mrun.cost": "Kosten: {{k}}",
+  "mrun.costStand": "Preisstand: {{s}}",
+  "mrun.produced": "Erzeugt: {{n}} × {{art}}",
+  "mrun.erzeugnis.vorschlag": "Vorschlag",
+  "mrun.erzeugnis.text": "Text",
+  "mrun.erzeugnis.frage": "Frage",
+  "mrun.erzeugnis.antwort": "Antwort",
+  "mrun.erzeugnis.punkt": "Punkt",
+  "mrun.erzeugnis.beschreibung": "Beschreibung",
+  "mrun.erzeugnis.gruppe": "Gruppe",
+  "mrun.erzeugnis.kriterien": "Auswahlkriterien",
+  "mrun.erzeugnis.urteil": "Urteil",
+  "mrun.report.title": "KI-Auswertung (Zeitraum)",
+  "mrun.report.period": "Zeitraum:",
+  "mrun.report.days": "Letzte {{n}} Tage",
+  "mrun.report.costSum": "Kosten gesamt: {{k}} (aus {{n}} von {{total}} Läufen)",
+  "mrun.report.priceList": "Preisliste: Stand {{s}}, {{w}}",
+  "mrun.report.noPriceList": "Keine Preisliste hinterlegt — Kosten werden nicht berechnet.",
+  "mrun.report.withoutPrice":
+    "{{n}} Läufe mit Modellaufruf ohne berechenbare Kosten (Preis oder Verbrauch fehlt)",
+  "mrun.report.capped": "Sehr viele Läufe — gerechnet wurde über die jüngsten 10000.",
+  "mrun.report.empty": "Keine KI-Läufe in diesem Zeitraum.",
   "mrun.taskUnknown": "Aufgabenart unbekannt",
   "mrun.status.success": "OK",
   "mrun.status.error": "Fehler",
@@ -12343,6 +12371,32 @@ const en: typeof de = {
   "mrun.task.extract": "Extract",
   "mrun.task.describe": "Describe image",
   "mrun.task.group": "Group",
+  "mrun.task.enrich": "Enrich",
+  "mrun.task.conflict": "Conflict check",
+  "mrun.task.duplicate": "Duplicate check",
+  "mrun.task.probe": "Provider probe",
+  "mrun.cost": "Cost: {{k}}",
+  "mrun.costStand": "Price list as of: {{s}}",
+  "mrun.produced": "Produced: {{n}} × {{art}}",
+  "mrun.erzeugnis.vorschlag": "suggestion",
+  "mrun.erzeugnis.text": "text",
+  "mrun.erzeugnis.frage": "question",
+  "mrun.erzeugnis.antwort": "answer",
+  "mrun.erzeugnis.punkt": "point",
+  "mrun.erzeugnis.beschreibung": "description",
+  "mrun.erzeugnis.gruppe": "group",
+  "mrun.erzeugnis.kriterien": "selection criteria",
+  "mrun.erzeugnis.urteil": "verdict",
+  "mrun.report.title": "AI report (period)",
+  "mrun.report.period": "Period:",
+  "mrun.report.days": "Last {{n}} days",
+  "mrun.report.costSum": "Total cost: {{k}} (from {{n}} of {{total}} runs)",
+  "mrun.report.priceList": "Price list: as of {{s}}, {{w}}",
+  "mrun.report.noPriceList": "No price list configured — costs are not calculated.",
+  "mrun.report.withoutPrice":
+    "{{n}} runs with model calls but no computable cost (price or usage missing)",
+  "mrun.report.capped": "Very many runs — calculated over the most recent 10000.",
+  "mrun.report.empty": "No AI runs in this period.",
   "mrun.taskUnknown": "Task type unknown",
   "mrun.status.success": "OK",
   "mrun.status.error": "Error",
@@ -18045,6 +18099,32 @@ const nl: typeof de = {
   "mrun.task.extract": "Extraheren",
   "mrun.task.describe": "Afbeelding beschrijven",
   "mrun.task.group": "Groeperen",
+  "mrun.task.enrich": "Verrijken",
+  "mrun.task.conflict": "Conflictcontrole",
+  "mrun.task.duplicate": "Duplicaatcontrole",
+  "mrun.task.probe": "Aanbiedertest",
+  "mrun.cost": "Kosten: {{k}}",
+  "mrun.costStand": "Prijslijst per: {{s}}",
+  "mrun.produced": "Gemaakt: {{n}} × {{art}}",
+  "mrun.erzeugnis.vorschlag": "voorstel",
+  "mrun.erzeugnis.text": "tekst",
+  "mrun.erzeugnis.frage": "vraag",
+  "mrun.erzeugnis.antwort": "antwoord",
+  "mrun.erzeugnis.punkt": "punt",
+  "mrun.erzeugnis.beschreibung": "beschrijving",
+  "mrun.erzeugnis.gruppe": "groep",
+  "mrun.erzeugnis.kriterien": "selectiecriteria",
+  "mrun.erzeugnis.urteil": "oordeel",
+  "mrun.report.title": "AI-overzicht (periode)",
+  "mrun.report.period": "Periode:",
+  "mrun.report.days": "Laatste {{n}} dagen",
+  "mrun.report.costSum": "Totale kosten: {{k}} (uit {{n}} van {{total}} runs)",
+  "mrun.report.priceList": "Prijslijst: per {{s}}, {{w}}",
+  "mrun.report.noPriceList": "Geen prijslijst ingesteld — kosten worden niet berekend.",
+  "mrun.report.withoutPrice":
+    "{{n}} runs met modelaanroep zonder berekenbare kosten (prijs of verbruik ontbreekt)",
+  "mrun.report.capped": "Zeer veel runs — berekend over de meest recente 10000.",
+  "mrun.report.empty": "Geen AI-runs in deze periode.",
   "mrun.taskUnknown": "Taaktype onbekend",
   "mrun.status.success": "OK",
   "mrun.status.error": "Fout",
@@ -18902,6 +18982,25 @@ const nl: typeof de = {
 };
 
 // ================================================================================================
+// R-0801 · NUR DIE STARTSPRACHE GEHÖRT IN DEN EINTRITT — en und nl werden nachgeladen.
+// ================================================================================================
+//
+// Die drei Blöcke oben bleiben, wo sie sind: diese Datei ist die eine Quelle aller Texte, und
+// zahlreiche Wächter lesen sie als Text. Getrennt wird erst im PRODUKTIONSBAU: das Plugin
+// `sprachpaketeNachladen` (`texte/intern/sprachpakete.ts`) schneidet die Blöcke `en` und `nl` als
+// eigene Stücke heraus, ersetzt `{ en, nl }` in `VORLIEGEND` durch `{}` und trägt in `NACHLADEN`
+// je Sprache ein `import()` ein. Es greift NUR auf die zwei Zeilen unten und bricht den Bau ab, wenn
+// es eine davon nicht genau einmal findet — sonst lägen beide Sprachen still wieder im Eintritt.
+//
+// Im Quelltext — und damit in jedem Vitest-Lauf und im Entwicklungsserver — liegen weiterhin alle
+// drei Sprachen sofort vor; der Nachlader (`lib/sprachNachlader.ts`) wird dann nie gefragt.
+type NachladbareSprache = "en" | "nl";
+type Woerterbuch = typeof de;
+
+const VORLIEGEND: Partial<Record<NachladbareSprache, Woerterbuch>> = { en, nl };
+const NACHLADEN: Partial<Record<NachladbareSprache, () => Promise<Woerterbuch>>> = {};
+
+// ================================================================================================
 // JOB 4367 · DIE TEXTMODULE — jeder Nutzerweg bringt seine eigenen Texte mit.
 // ================================================================================================
 //
@@ -18930,26 +19029,55 @@ if (textmodulFehler.length > 0) {
 }
 const modulTexte = fuehreTextmoduleZusammen(textmodule);
 
-void i18n.use(initReactI18next).init({
-  resources: {
-    de: { translation: { ...de, ...modulTexte.de } },
-    en: { translation: { ...en, ...modulTexte.en } },
-    nl: { translation: { ...nl, ...modulTexte.nl } },
-  },
-  // JOB 3323 (Nachführung aus JOB 3280): DIE ADRESSE SCHLÄGT DIE GESPEICHERTE WAHL — aber nur,
-  // wenn sie eine Sprache des LINKVERTRAGS nennt (`EINTRITT_SPRACHEN` = de|en, htmlLang.ts). Der
-  // Eintritt aus Klara (`/capture/frontdoor?draft=<id>&lang=en`) bestimmt so die Sprache DIESES
-  // Aufrufs, ohne dass jemand erst umschalten muss; ohne `?lang` und bei JEDEM nicht vereinbarten
-  // Wert — auch bei `nl`, das die Anwendung zwar kann, der Link aber nicht setzen darf — bleibt es
-  // Zeichen für Zeichen beim bisherigen Verhalten. Die Reihenfolge ist die Rangfolge: Adresse,
-  // dann gespeicherte Wahl, dann die Vorgabe „de" (in `gespeicherteSprache`).
-  //
-  // BEWUSST NICHT GESPEICHERT: `lng` löst kein `languageChanged` aus, `bindSpracheSpeichern`
-  // (`lib/sprachwahl.ts`) schreibt also nichts. Ein Link aus Word ist der Wunsch für DIESEN
-  // Aufruf, keine Wahl für diesen Browser — er soll die Wahl unter /profil nicht überschreiben.
-  lng: sprachAusEintritt() ?? gespeicherteSprache(),
-  fallbackLng: "de",
-  interpolation: { escapeValue: false },
-});
+function istNachladbar(sprache: string): sprache is NachladbareSprache {
+  return sprache === "en" || sprache === "nl";
+}
+
+/** Das Bündel einer Sprache, sofern es schon beim Start vorliegt — sonst nichts. */
+function vorliegend(sprache: NachladbareSprache) {
+  const paket = VORLIEGEND[sprache];
+  return paket ? { [sprache]: { translation: { ...paket, ...modulTexte[sprache] } } } : {};
+}
+
+/** Holt ein fehlendes Bündel nach; die Textmodule derselben Sprache kommen dazu wie oben. */
+function nachladen(sprache: string): Promise<Record<string, string>> | undefined {
+  if (!istNachladbar(sprache)) {
+    return undefined;
+  }
+  const zusatz = modulTexte[sprache];
+  return NACHLADEN[sprache]?.().then((paket) => ({ ...paket, ...zusatz }));
+}
+
+// R-0801: `sprachBereit` erfüllt sich, sobald die Startsprache vollständig vorliegt. Für Deutsch
+// geschieht das sofort; für eine gespeicherte Wahl en/nl wartet `main.tsx` damit den ersten Aufbau
+// ab, damit die Oberfläche nicht erst deutsch erscheint und dann umspringt.
+export const sprachBereit = i18n
+  .use(sprachNachlader(nachladen))
+  .use(initReactI18next)
+  .init({
+    resources: {
+      de: { translation: { ...de, ...modulTexte.de } },
+      ...vorliegend("en"),
+      ...vorliegend("nl"),
+    },
+    // Fehlt einer Sprache das Bündel, fragt i18next den Nachlader; vorhandene Bündel bleiben.
+    partialBundledLanguages: true,
+    // JOB 3323 (Nachführung aus JOB 3280): DIE ADRESSE SCHLÄGT DIE GESPEICHERTE WAHL — aber nur,
+    // wenn sie eine Sprache des LINKVERTRAGS nennt (`EINTRITT_SPRACHEN` = de|en, htmlLang.ts). Der
+    // Eintritt aus Klara (`/capture/frontdoor?draft=<id>&lang=en`) bestimmt so die Sprache DIESES
+    // Aufrufs, ohne dass jemand erst umschalten muss; ohne `?lang` und bei JEDEM nicht vereinbarten
+    // Wert — auch bei `nl`, das die Anwendung zwar kann, der Link aber nicht setzen darf — bleibt es
+    // Zeichen für Zeichen beim bisherigen Verhalten. Die Reihenfolge ist die Rangfolge: Adresse,
+    // dann gespeicherte Wahl, dann die Vorgabe „de" (in `gespeicherteSprache`).
+    //
+    // BEWUSST NICHT GESPEICHERT: das `languageChanged` des Starts kommt, bevor `bindSpracheSpeichern`
+    // (`lib/sprachwahl.ts`) zuhört — bei nachgeladener Startsprache erst nach `sprachBereit`, und
+    // genau deshalb bindet `main.tsx` den Schreiber erst danach. Ein Link aus Word ist der Wunsch
+    // für DIESEN Aufruf, keine Wahl für diesen Browser — er soll die Wahl unter /profil nicht
+    // überschreiben.
+    lng: sprachAusEintritt() ?? gespeicherteSprache(),
+    fallbackLng: "de",
+    interpolation: { escapeValue: false },
+  });
 
 export default i18n;

@@ -569,6 +569,8 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
     zeilenrecht: ["sichtbarkeitsfilterFuer"],
   },
   "GET /api/model-runs": { protection: "ko.read" },
+  // Aufnahme gesamt-ki-laufprotokoll: Zeitraum-Auswertung (nur Summen) — dieselbe Lesestufe.
+  "GET /api/model-runs/auswertung": { protection: "ko.read" },
   "GET /api/external/search": { protection: "ko.read" },
   // Der Feed wird über den lokalen Helfer `loadFeed` gebaut; dessen RUMPF ruft beide Prädikate
   // (notifications-routes.ts:116) — nachgeprüft, nicht dem Helfernamen geglaubt.

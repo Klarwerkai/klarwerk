@@ -320,10 +320,25 @@ describe("JOB 3060 · H1 · das Kopfband — die echte Seite, gemountet in Chrom
     );
     expect(Math.abs(k.bandRechts - k.blockRechts)).toBeLessThan(2);
   });
-  it("V12 · suchfeld: 260px, Polster 7px 12px, #16213A, Radius 9px, Abstand 8px — am realen Suchfeld", async () => {
+  // FE-002 (Runde 3, Bens Linux-Lauf): die rechte Gruppe passt sich seit FE-002 dem Restplatz an
+  // (`shell/kopfbandStufe.ts`); das Feld hat die 260 px des Mockups als OBERGRENZE und schrumpft
+  // bis 140 px — auf Linux misst es bei 1280 px 240,8 px, auf dem Mac 260 px. Zugesichert wird statt
+  // der festen Zahl: höchstens das Mockup-Mass, mindestens die Untergrenze, und der Platzhalter
+  // „Wissen suchen" steht ungekürzt darin (Bedienbarkeit und Benennung). Polster, Farbe, Radius und
+  // Abstand bleiben wörtlich die des Mockups.
+  it("V12 · suchfeld: bis 260px (Mockup-Obergrenze, FE-002 responsiv ab 140px, Platzhalter ungekürzt), Polster 7px 12px, #16213A, Radius 9px, Abstand 8px — am realen Suchfeld", async () => {
     const stil = zielStil(ziel, Z_SUCHE);
     const p = zielProp(stil, "padding")?.split(" ") ?? [];
-    expect(await messen(sel?.suche, "width")).toBe(zielProp(stil, "width"));
+    const breite = Number.parseFloat((await messen(sel?.suche, "width")) ?? "0");
+    expect(breite).toBeLessThanOrEqual(Number.parseFloat(zielProp(stil, "width") ?? "260") + 0.5);
+    expect(breite).toBeGreaterThanOrEqual(140);
+    const platzhalter = await (s as Strecke).seite.evaluate<{ passt: boolean; text: string }>(
+      fn(
+        "() => { const f = document.querySelector('[data-testid=\"kopfband-wissen-suchen\"]'); const st = getComputedStyle(f); const c = document.createElement('canvas').getContext('2d'); c.font = st.fontWeight + ' ' + st.fontSize + ' ' + st.fontFamily; return { passt: c.measureText(f.placeholder).width <= f.clientWidth + 0.5, text: f.placeholder }; }",
+      ),
+    );
+    expect(platzhalter.text).toBe("Wissen suchen");
+    expect(platzhalter.passt, "der Platzhalter „Wissen suchen“ ist abgeschnitten").toBe(true);
     expect(await messen(sel?.suche, "padding-top")).toBe(p[0]);
     expect(await messen(sel?.suche, "padding-left")).toBe(p[1]);
     expect(await messen(sel?.suche, "background-color")).toBe(kanon(zielProp(stil, "background")));
@@ -336,9 +351,13 @@ describe("JOB 3060 · H1 · das Kopfband — die echte Seite, gemountet in Chrom
     expect(await messen(sel?.lupe, "stroke")).toBe(kanon("#7E879A"));
     expect(await messen(sel?.lupe, "stroke-width")).toBe(`${z?.strichBreite}px`);
   });
-  it("V14 · suchtext: Platzhalter „Suchen“ (Z.29), 13px, #7E879A — placeholder und ::placeholder am realen Eingabefeld", async () => {
+  // FE-002 (Pedi, 26.09.2026): der Platzhalter ist BENANNT ABWEICHEND vom Mockup (Z.29 „Suchen") —
+  // „Wissen suchen", damit die Wissenssuche sichtbar von „Seite finden ⌘K" unterscheidbar ist.
+  // Schriftgrösse und Farbe bleiben die des Mockups und werden weiter daran gemessen.
+  it("V14 · suchtext: Platzhalter BENANNT ABWEICHEND „Wissen suchen“ statt Mockup-„Suchen“ (FE-002), 13px, #7E879A — placeholder und ::placeholder am realen Eingabefeld", async () => {
     const stil = zielStil(ziel, Z_SUCHTEXT);
-    expect(sel?.placeholder).toBe(zielText(ziel, Z_SUCHTEXT));
+    expect(zielText(ziel, Z_SUCHTEXT)).toBe("Suchen");
+    expect(sel?.placeholder).toBe("Wissen suchen");
     expect(await messen(sel?.input, "font-size")).toBe(zielProp(stil, "font-size"));
     expect(
       await (s as Strecke).seite.evaluate<string | null>(fn(LESEN_PSEUDO), [
