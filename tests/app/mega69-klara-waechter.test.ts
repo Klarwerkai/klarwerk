@@ -2597,9 +2597,16 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     //   · Inline-Skript bleibt unter der Schranke von `schnittflaechen.test.ts` B3 (gemessen 12492):
     //                drei Kommentarblöcke im Sendeweg sind dafür verdichtet, kein Ausdruck entfernt.
     //   · Manifest, CSP, Recht: unverändert. Kein erneutes Sideload.
-    // Der Wert ist im Prüflauf auf Kandidat 9612aa9c GEMESSEN (Zusicherung dieses Falls, „Received")
-    // und unverändert übernommen; `taskpane.html` ist seit dieser Messung nicht mehr angefasst.
-    const PIN = "72213c311bb4f2777222a9aba5406129fe54c104e56a569c5d764a65aaecb376";
+    // Der Wert 72213c31… war im Prüflauf auf Kandidat 9612aa9c GEMESSEN.
+    // HAUPTSTAND INTEGRIERT (Commit 605704eb, aus 0a4a2c1d „Modellläufe ohne Anfrage- und
+    // Antwortinhalte nachvollziehen") — PIN ERNEUT BEWUSST AKTUALISIERT (72213c31… -> 9549900a…).
+    // Die mitgebrachte Änderung ist EINE Zeile in `istKiKennzeichnung`: die Liste der gültigen
+    // Aufgaben einer KI-Kennzeichnung nimmt zusätzlich „enrich" auf. Auslieferungsfolgen geprüft:
+    //   · Abrufziel, Nutzlast, Manifest, CSP, Recht: unverändert — die Zeile LIEST nur eine
+    //     Serverantwort und entscheidet, ob ihr KI-Vermerk gezeigt wird. Kein erneutes Sideload.
+    // Der Wert ist im Prüflauf auf Kandidat 897ebc1a GEMESSEN (Zusicherung dieses Falls,
+    // „Received") und unverändert übernommen; `taskpane.html` ist seit dieser Messung unberührt.
+    const PIN = "9549900a268b5c942beb729cf706753149ac618fe4be4c5fb4704275ed0a93f8";
     const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
     expect(
       ist,
