@@ -86,10 +86,30 @@ interface ImportCandidateDto {
   auditPending?: boolean;
 }
 
+// AUFNAHME 20260922 · confluence-import-rechte — Quellrechte (Leser einer Confluence-Seite) setzt
+// nur ein Quell-Adapter auf dem Server (services/confluence/src/mapper.ts). Ein öffentlicher
+// Importrumpf verliert sie hier: ein Client mit `ko.create` darf sich keine Leserechte an einem
+// Objekt schreiben und keine quellgetreue Herabstufung auslösen. Kein Array → unverändert (die
+// Route prüft weiter wie bisher).
+function ohneQuellrechte<T>(items: T): T {
+  if (!Array.isArray(items)) {
+    return items;
+  }
+  return items.map((item) => {
+    if (item === null || typeof item !== "object" || !("quellrechte" in item)) {
+      return item;
+    }
+    const { quellrechte: _verworfen, ...rest } = item as Record<string, unknown>;
+    return rest;
+  }) as T;
+}
+
 function toImportCandidateDto(candidate: ImportCandidate): ImportCandidateDto {
   return {
     id: candidate.id,
-    item: candidate.item,
+    // AUFNAHME 20260922 · confluence-import-rechte: die Quellrechte (Mailadressen der Leser) bleiben
+    // im Server — die Prüfkarte braucht sie nicht, und `ko.read` reicht für diese Liste.
+    item: ohneQuellrechte([candidate.item])[0] ?? candidate.item,
     status: candidate.status,
     duplicate: candidate.duplicate,
     note: candidate.note,
@@ -794,7 +814,11 @@ export function libraryRoutes(
         reply
           .code(200)
           .send(
-            await library.importJson(request.body.items ?? [], user.id, pruefeReImportDublette),
+            await library.importJson(
+              ohneQuellrechte(request.body.items ?? []),
+              user.id,
+              pruefeReImportDublette,
+            ),
           );
       } catch (error) {
         sendError(reply, error);
@@ -813,8 +837,10 @@ export function libraryRoutes(
           // WP-SHIP8-CLOSE-8 (bens GELB-2): auch frisch eingereihte Kandidaten laufen durchs DTO.
           // JOB 3050: DIESELBE Instanz der Dublettenregel wie `POST /api/library/import` oben —
           // beide Importwege beantworten die Frage ab hier gleich.
+          // AUFNAHME 20260922 · confluence-import-rechte: Leserechte setzt nur ein Quell-Adapter auf
+          // dem Server — ein Rumpf mit `quellrechte` verliert sie hier, vor dem Import-Kern.
           const created = await library.createImportCandidates(
-            request.body.items ?? [],
+            ohneQuellrechte(request.body.items ?? []),
             user.id,
             pruefeReImportDublette,
           );

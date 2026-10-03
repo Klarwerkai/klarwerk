@@ -9,10 +9,11 @@
 import type { ImportItem, SourceAdapter } from "../../library-analytics";
 import {
   type ConfluenceAhnenBeschraenkung,
+  type ConfluenceLeseEbene,
   type ConfluenceMapOptions,
   confluenceAhnenBefund,
   confluenceAncestorIds,
-  isPageRestricted,
+  confluenceLeseEbene,
   mapConfluencePageToImportItem,
 } from "./mapper";
 import type { ConfluenceAbbruch, ConfluencePage } from "./rest-client";
@@ -141,15 +142,24 @@ export function hierarchieBefund(pages: readonly ConfluencePage[]): ConfluenceHi
  * der Mapper stuft das Kind dann fail-closed als vertraulich ein.
  */
 export function ahnenAusSammlung(pages: readonly ConfluencePage[]): ConfluenceAhnenBeschraenkung {
-  const beschraenkt = new Map<string, boolean>();
+  const ebenen = new Map<string, ConfluenceLeseEbene>();
   for (const page of pages) {
     const id = page.id?.trim();
     if (id) {
-      // Doppelt geliefert: beschränkt gewinnt.
-      beschraenkt.set(id, beschraenkt.get(id) === true || isPageRestricted(page));
+      const neu = confluenceLeseEbene(page);
+      const alt = ebenen.get(id);
+      // Doppelt geliefert: beschränkt gewinnt, und von zwei Leserlisten gilt die Schnittmenge.
+      if (!alt || (!alt.beschraenkt && neu.beschraenkt)) {
+        ebenen.set(id, neu);
+      } else if (alt.beschraenkt && neu.beschraenkt) {
+        ebenen.set(id, {
+          beschraenkt: true,
+          emails: alt.emails.filter((email) => neu.emails.includes(email)),
+        });
+      }
     }
   }
-  return (ancestorId) => beschraenkt.get(ancestorId);
+  return (ancestorId) => ebenen.get(ancestorId);
 }
 
 export class ConfluenceSourceAdapter implements SourceAdapter {
@@ -213,28 +223,26 @@ export class ConfluenceSourceAdapter implements SourceAdapter {
   /**
    * R-0549: beim Nachladen EINER Seite gibt es keine Sammlung — die Vorfahren werden je ID frisch
    * nachgesehen, auf demselben Netzweg (`getPageById`). Ein Vorfahr, den das Dienstkonto nicht lesen
-   * darf (404), bleibt unbekannt und macht die Seite vertraulich. Beim ersten beschränkten Vorfahren
-   * ist die Einstufung entschieden; weitere Abrufe entfallen.
+   * darf (404), bleibt unbekannt und macht die Seite vertraulich, ohne zuordenbare Leser.
    */
   private async ahnenNachladen(page: ConfluencePage): Promise<ConfluenceAhnenBeschraenkung> {
-    const beschraenkt = new Map<string, boolean>();
-    if (!isPageRestricted(page) && Array.isArray(page.ancestors)) {
+    // Nacharbeit 2 (Befund F1): KEIN Abbruch mehr beim ersten beschränkten Vorfahren — für die
+    // Leser zählt jede beschränkte Ebene (Schnittmenge), nicht nur die Einstufung.
+    const ebenen = new Map<string, ConfluenceLeseEbene>();
+    if (Array.isArray(page.ancestors)) {
       for (const ancestor of page.ancestors) {
         const id = ancestor?.id?.trim();
-        if (!id || beschraenkt.has(id)) {
+        if (!id || ebenen.has(id)) {
           continue; // ohne ID entscheidet der Mapper fail-closed
         }
         const ahne = await this.client.getPageById(id);
         if (!ahne) {
           continue;
         }
-        beschraenkt.set(id, isPageRestricted(ahne));
-        if (beschraenkt.get(id)) {
-          break;
-        }
+        ebenen.set(id, confluenceLeseEbene(ahne));
       }
     }
-    return (ancestorId) => beschraenkt.get(ancestorId);
+    return (ancestorId) => ebenen.get(ancestorId);
   }
 }
 

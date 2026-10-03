@@ -1050,6 +1050,18 @@ export function assembleServices(
     // JOB 4155: die kuratierten Kanten für `/api/graph` — EINE Mengenabfrage über `alleAktiven`,
     // keine Abfrage je Knoten. Derselbe Bestand, den `kantenRoutes` und die Netzroute lesen.
     kanten: kantenBestand,
+    // AUFNAHME 20260922 · confluence-import-rechte (R-0549): Quellleser → Klara-Konten über die
+    // Mailadresse, dasselbe Verzeichnis wie die Anmeldung. Nicht gefunden = kein Leserecht.
+    quellLeserAufloesen: async (emails) => {
+      const ids: string[] = [];
+      for (const email of emails) {
+        const konto = await repos.users.findByEmail(email);
+        if (konto) {
+          ids.push(konto.id);
+        }
+      }
+      return ids;
+    },
   });
   const lifecycle = new LifecycleService({ koService: ko, repo: repos.lifecycleRepo });
   // AUFTRAG-mega20 Block C/D: EINE ObjectStore-Instanz für die Composition-Root. Bis mega19 wurde

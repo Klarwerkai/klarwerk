@@ -51,6 +51,10 @@ import type { SessionUser } from "./http";
 export interface SichtbarkeitsFakten {
   confidentiality?: Confidentiality | null | undefined;
   author?: string | null | undefined;
+  // AUFNAHME 20260922 · confluence-import-rechte (R-0549): die Leser aus der Quelle. Optional in
+  // der Mindestform — eine Projektion ohne das Feld fällt auf die Stufenregel zurück (s. Grenze
+  // an `darfSehen`).
+  quellrechte?: { leser?: readonly string[] | undefined } | null | undefined;
 }
 
 /**
@@ -63,17 +67,31 @@ export interface SichtbarkeitsFakten {
  * Die Autor-Ausnahme ist keine Erfindung dieses Auftrags: dieselbe Zeile trägt bereits das Löschen
  * (`ko-routes.ts:1019`). Ohne sie könnte ein Experte ein vertrauliches Objekt erfassen und es
  * danach nicht mehr öffnen — der Alltagsweg „ich schreibe etwas Sensibles auf" ginge zu.
+ *
+ * AUFNAHME 20260922 · confluence-import-rechte (R-0549) — QUELLLESER VOR STUFE. Trägt das Objekt
+ * eine Leserliste aus der Quelle, entscheidet NUR sie (plus der annehmende Autor): wer in Confluence
+ * lesen darf, liest in Klara, sonst niemand — auch kein `ko.validate`-Inhaber. Eine leere Liste
+ * heisst „kein Klara-Konto zuordenbar", nicht „offen". Ohne Liste gilt die Regel oben unverändert.
+ *
+ * GRENZE: Projektionen, die `quellrechte` nicht mittragen, fallen auf die Stufenregel zurück. Ein
+ * quellbeschränktes Objekt ist immer zugleich vertraulich; dort sehen es dann `ko.validate` und der
+ * Autor — nie ein gewöhnlicher Leser ohne Quellrecht.
  */
 export function darfSehen(user: SessionUser, ko: SichtbarkeitsFakten): boolean {
+  // Leerer/fehlender Autor ist KEINE Autorschaft — sonst wäre ein Altobjekt ohne Autorfeld für
+  // jeden sichtbar, dessen Kennung ebenfalls leer ist.
+  const istAutor = typeof ko.author === "string" && ko.author.length > 0 && ko.author === user.id;
+  const leser = ko.quellrechte?.leser;
+  if (Array.isArray(leser)) {
+    return istAutor || (user.id.length > 0 && leser.includes(user.id));
+  }
   if (!isConfidential(ko.confidentiality)) {
     return true;
   }
   if (can(user.role, "ko.validate")) {
     return true;
   }
-  // Leerer/fehlender Autor ist KEINE Autorschaft — sonst wäre ein Altobjekt ohne Autorfeld für
-  // jeden sichtbar, dessen Kennung ebenfalls leer ist.
-  return typeof ko.author === "string" && ko.author.length > 0 && ko.author === user.id;
+  return istAutor;
 }
 
 /**
@@ -190,13 +208,21 @@ export function sqlSichtbarkeitFuer(user: SessionUser): SqlSichtbarkeitstrim {
       //   · oder der Autor selbst — und ein LEERER Autor ist keine Autorschaft, ebenso wenig einer,
       //     der im JSON keine Zeichenfolge ist (`typeof ko.author === "string"`; `->>` macht aus
       //     der Zahl 4359 den Text '4359' — BEN 4359 Befund B1).
+      //   · AUFNAHME 20260922 (R-0549): trägt die Zeile eine Leserliste aus der Quelle, gilt NUR
+      //     sie plus der Autor — wörtlich der erste Zweig von `darfSehen`. Dieselbe Kennung `autor`
+      //     ist auch der Betrachter; ein leerer Betrachter steht in keiner Liste (normalisiert).
+      const istAutor =
+        `(COALESCE(${spaltenTraeger}.author_key, '') <> ''` +
+        ` AND jsonb_typeof(${spaltenTraeger}.data->'author') = 'string'` +
+        ` AND ${spaltenTraeger}.author_key = ${autor})`;
+      const leser = `${spaltenTraeger}.data->'quellrechte'->'leser'`;
       return (
         `((${spaltenTraeger}.deleted_at_key IS NULL OR ${sqlDeletedAtLeer(spaltenTraeger)})` +
-        ` AND (${spaltenTraeger}.confidentiality_key = 'intern'` +
+        ` AND (CASE WHEN jsonb_typeof(${leser}) = 'array'` +
+        ` THEN (${istAutor} OR (${autor}::text <> '' AND ${leser} @> jsonb_build_array(${autor}::text)))` +
+        ` ELSE (${spaltenTraeger}.confidentiality_key = 'intern'` +
         ` OR ${rolle}::boolean` +
-        ` OR (COALESCE(${spaltenTraeger}.author_key, '') <> ''` +
-        ` AND jsonb_typeof(${spaltenTraeger}.data->'author') = 'string'` +
-        ` AND ${spaltenTraeger}.author_key = ${autor})))`
+        ` OR ${istAutor}) END))`
       );
     },
     params: [darfVertraulich, betrachter],

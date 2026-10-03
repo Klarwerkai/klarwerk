@@ -424,4 +424,6 @@ export type {
   AiCheckCoverageSummary,
   // AUFNAHME 20260922: die gespeicherte Basisbindung eines Prüfnachweises.
   AiCheckBasis,
+  // AUFNAHME 20260922 · confluence-import-rechte: die aus der Quelle übernommenen Leserechte.
+  KoQuellrechte,
 } from "./src/types";

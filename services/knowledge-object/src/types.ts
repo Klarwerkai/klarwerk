@@ -342,6 +342,23 @@ export interface KoAppendOp {
 
 // FR-KO-01: Datenmodell inkl. version/history/originalAuthor/needed/assignments/asset
 // (Pflichtenheft §3.5, Technischer Anhang §1).
+/**
+ * Die Leserechte, wie die Quelle sie beim letzten Abgleich geliefert hat.
+ *
+ * `stufe` ist die Vertraulichkeit, die die QUELLE ergab. Steht das Objekt noch auf genau dieser
+ * Stufe, hat seither kein Mensch eingestuft — dann darf ein späterer Abgleich ihr folgen, auch nach
+ * unten. Weicht die Objektstufe ab, gehört sie dem Menschen und wird nur noch angehoben.
+ *
+ * `leser` ist GESETZT, wenn die Quelle das Lesen beschränkt: genau diese Klara-Konten (Kennungen)
+ * sehen das Objekt, dazu der annehmende Autor — sonst niemand, auch kein `ko.validate`-Inhaber.
+ * Eine leere Liste heisst „in Klara kein Konto zuordenbar". FEHLT `leser`, beschränkt die Quelle
+ * nicht.
+ */
+export interface KoQuellrechte {
+  stufe: Confidentiality;
+  leser?: string[];
+}
+
 export interface KnowledgeObject {
   id: string;
   title: string; // Titel als Aussage
@@ -383,6 +400,11 @@ export interface KnowledgeObject {
   assignments: string[];
   // SCRUM-415: Vertraulichkeitsstufe (fehlt = „intern"). Vertrauliche KOs gehen nie in externe Kontexte.
   confidentiality?: Confidentiality;
+  // AUFNAHME 20260922 · confluence-import-rechte (R-0549, R-2197): die aus der Quelle übernommenen
+  // Leserechte. Nur der Import-Accept setzt sie (`KoService.create`-Parameter `quellrechte`,
+  // `setQuellrechte`); keine öffentliche Schreibroute reicht sie durch. FEHLT das Feld, gilt die
+  // Sichtbarkeitsregel wie bisher. Optional im JSONB-Dokument, keine Migration.
+  quellrechte?: KoQuellrechte;
   // ============================================================================================
   // JOB 679 / D2 (K1.2, Weg A) — WO DAS WISSEN HERKOMMT, UND WARUM ES HIER STEHT.
   // ============================================================================================

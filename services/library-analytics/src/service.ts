@@ -9,6 +9,8 @@ import {
   type KnowledgeObject,
   KoError,
   type KoFilter,
+  // AUFNAHME 20260922 · confluence-import-rechte: die Leserechte der Quelle am Objekt.
+  type KoQuellrechte,
   type KoService,
   // AUFTRAG-BASIC-380: der injizierte Sicherheitstrim — nur durchgereicht, nie ausgelegt.
   type KoSichtbarkeitstrim,
@@ -387,6 +389,50 @@ export interface LibraryServiceDeps {
    * unterscheidet genau daran (`apps/web/src/api/types.ts`, `Graph.kuratierteKanten`).
    */
   kanten?: KuratierteKantenLeser;
+  /**
+   * AUFNAHME 20260922 · confluence-import-rechte (R-0549): bildet die Mailadressen der Quellleser
+   * auf Klara-Konten ab (Kennungen). Die Kompositionswurzel verdrahtet das Benutzerverzeichnis.
+   * OHNE Verdrahtung ist keine Zuordnung möglich — eine beschränkte Seite bekommt dann eine LEERE
+   * Leserliste (nur der annehmende Autor sieht sie), nie eine offene.
+   */
+  quellLeserAufloesen?: (emails: readonly string[]) => Promise<string[]>;
+}
+
+/**
+ * AUFNAHME 20260922 · confluence-import-rechte — die Quellrechte, die ein Adapter am Eintrag
+ * mitliefert (`quellrechte`, s. services/confluence/src/mapper.ts). Wie `originalAuthor` ein
+ * zusätzliches Feld neben dem eingefrorenen `ImportItem` und deshalb hier als FREMD gelesen: nur eine
+ * gültige Stufe und eine Liste aus Texten zählen, alles andere ergibt `undefined` (= keine
+ * Quellrechte, Bestandsverhalten).
+ *
+ * VERTRAUEN: das Feld setzen nur die Quell-Adapter auf dem Server. Die öffentlichen Importrouten
+ * entfernen es aus dem Rumpf (`ohneQuellrechte`, services/app/src/routes/library-routes.ts), bevor
+ * ein Eintrag diesen Dienst erreicht.
+ */
+interface EintragsQuellrechte {
+  stufe: Confidentiality;
+  emails?: string[];
+}
+
+function quellrechteVon(item: ImportItem): EintragsQuellrechte | undefined {
+  const roh = (item as ImportItem & { readonly quellrechte?: unknown }).quellrechte;
+  if (roh === null || typeof roh !== "object") {
+    return undefined;
+  }
+  const { stufe, emails } = roh as { stufe?: unknown; emails?: unknown };
+  if (!isValidConfidentiality(stufe)) {
+    return undefined;
+  }
+  if (emails === undefined) {
+    return { stufe };
+  }
+  if (!Array.isArray(emails)) {
+    return undefined;
+  }
+  return {
+    stufe,
+    emails: emails.filter((e): e is string => typeof e === "string" && e.trim().length > 0),
+  };
 }
 
 /**
@@ -460,6 +506,9 @@ export class LibraryService {
   // JOB 4155 (WG-LUECKEN): der Kantenbestand für `/api/graph`. `undefined` = nicht verdrahtet; die
   // Antwort trägt das Feld dann GAR NICHT (s. `LibraryServiceDeps.kanten`).
   private readonly kanten: KuratierteKantenLeser | undefined;
+  private readonly quellLeserAufloesen:
+    | ((emails: readonly string[]) => Promise<string[]>)
+    | undefined;
 
   constructor(deps: LibraryServiceDeps) {
     this.koService = deps.koService;
@@ -469,6 +518,27 @@ export class LibraryService {
     this.now = deps.now ?? (() => Date.now());
     this.externalUpsert = deps.externalUpsert ?? false;
     this.kanten = deps.kanten;
+    this.quellLeserAufloesen = deps.quellLeserAufloesen;
+  }
+
+  /**
+   * AUFNAHME 20260922 · confluence-import-rechte: die Quellrechte des Eintrags als Objektrechte —
+   * Mailadressen werden ERST HIER, beim Annehmen, auf Klara-Konten abgebildet. Was sich nicht
+   * zuordnen lässt, fällt weg; eine beschränkte Seite bleibt damit beschränkt (leere Liste).
+   */
+  private async objektQuellrechte(item: ImportItem): Promise<KoQuellrechte | undefined> {
+    const quelle = quellrechteVon(item);
+    if (!quelle) {
+      return undefined;
+    }
+    if (quelle.emails === undefined) {
+      return { stufe: quelle.stufe };
+    }
+    const leser =
+      quelle.emails.length > 0 && this.quellLeserAufloesen
+        ? await this.quellLeserAufloesen(quelle.emails)
+        : [];
+    return { stufe: quelle.stufe, leser };
   }
 
   // SCRUM-515: die eine Stelle, an der eine rohe (untrusted) confidentiality in den Import-Kern eintritt.
@@ -1576,13 +1646,23 @@ export class LibraryService {
       // Importstufe wird respektiert. Ziel = die höhere aus (aktueller Stufe, Import-Boden) → nie ein
       // Downgrade über Re-Sync. Der Upgrade läuft durch setConfidentiality (transaktional: Lock + CAS +
       // Audit) und wird von der nachfolgenden revise() nicht angetastet.
+      //
+      // AUFNAHME 20260922 · confluence-import-rechte (Ben, Nacharbeit 2, Befund F2): liefert die
+      // Quelle ihre Rechte mit, gleicht `setQuellrechte` ab — Leser immer nach der Quelle, die Stufe
+      // nach der Quelle, solange seit dem letzten Abgleich kein Mensch eingestuft hat (dann auch
+      // nach unten: eine aufgehobene Confluence-Beschränkung macht das Objekt wieder intern). Eine
+      // ausdrücklich menschliche Einstufung wird dort weiter nur angehoben. Ohne Quellrechte gilt
+      // der Bestandszweig darunter unverändert.
+      const quellrechte = await this.objektQuellrechte(item);
       const currentConf = normalizeConfidentiality(existing.confidentiality);
       const importFloor: Confidentiality = item.confidentiality ?? "vertraulich";
       const target =
         confidentialityRank(importFloor) > confidentialityRank(currentConf)
           ? importFloor
           : currentConf;
-      if (target !== currentConf) {
+      if (quellrechte) {
+        await this.koService.setQuellrechte(existing.id, quellrechte, actor);
+      } else if (target !== currentConf) {
         // AUFTRAG-mega82 Block A: der Akteur dieser Mutation ist der ANNEHMENDE, nie `item.author`.
         // Der Wert steht im Prüfprotokoll dieses Upgrades; ein aus dem Rumpf gelieferter Name
         // machte dort einen Ungeprüften zum Handelnden. Begründung in voller Länge an der revise()
@@ -1646,8 +1726,10 @@ export class LibraryService {
     // Erstanlage: die effektive Version wird IMMER gespeichert (auch ohne Item-Version → 1), damit ein
     // versionsloser Re-Import (current = 1, incoming = 1) sauber als No-op erkannt wird (Idempotenz).
     const firstVersion = item.sourceVersion ?? 1;
+    // AUFNAHME 20260922 · confluence-import-rechte: die Quellrechte gehen im SELBEN Insert mit.
+    const erstRechte = await this.objektQuellrechte(item);
     try {
-      const ko = await this.koService.create({
+      const anlage: Parameters<KoService["create"]>[0] = {
         title: item.title,
         statement: item.statement,
         type: item.type,
@@ -1671,7 +1753,8 @@ export class LibraryService {
         // WP-SHIP8-CLOSE-3/4 (bens ROT-1): Kandidaten-Anker VOR dem Endstatus des Kandidaten —
         // Recovery und Insert-or-Adopt erkennen daran eine bereits gelungene Erstanlage.
         ...(candidateId ? { importCandidateId: candidateId } : {}),
-      });
+      };
+      const ko = await this.koService.create(anlage, undefined, erstRechte);
       return ko.id;
     } catch (err) {
       // WP-SHIP8-CLOSE-4 (bens ROT-1A/1B): KOLLISIONS-ADOPTION — existiert das KO mit diesem
