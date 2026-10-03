@@ -143,19 +143,63 @@ const MARKEN_QUELLE =
 interface GalerieBild {
   id: string;
   src: string;
+  vorkommen: number;
 }
 interface GalerieFussnote {
   id: string | null;
   text: string;
 }
 
+/** Attributwert, wie ihn `getAttribute` im DOM liefert (die Sanitizer-Entities zurückübersetzt). */
+export function bildQuelleDekodiert(src: string): string {
+  return src
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
+}
+
 export function extractBodyImages(bodyHtml: string | null | undefined): BodyImage[] {
-  const out: BodyImage[] = [];
+  return zerlege(bodyHtml).map(({ id, src, caption }) => ({ id, src, caption }));
+}
+
+/**
+ * AUFNAHME 20260922 (R-0945/R-0053, Bens Befund B1): das VORKOMMEN je Galerie-Eintrag — das
+ * wievielte `<img>` mit derselben Quelle im GANZEN Körper es ist (0-basiert, in Dokumentreihenfolge,
+ * gezählt über alle Bilder AUSSERHALB einer Fußnote, auch lose und solche ohne Kennung; der Inhalt
+ * einer `figcaption` wird nicht als Bild gelesen).
+ *
+ * Runde 3: genutzt nur noch für die Bitte der Galerie an den Editor („Bildbeschreibung
+ * bearbeiten"), dort zusätzlich an die Kennung des Eintrags gebunden. Der Körperklick schickt
+ * seit Runde 3 den Editorstand mit und braucht keine Übersetzung mehr (`galerieIndexFuerBildklick`).
+ *
+ * Warum diese Zahl und nicht die Position in der Galerie: Editor und Galerie zählen verschiedene
+ * Mengen. Der Editor hüllt ein loses Bild beim Laden ein und gibt ihm eine Kennung; in der Galerie
+ * (die den zuletzt gemeldeten Körper liest) zählt es nicht. Die Position verrutscht damit, und bei
+ * gleicher Quelle bestätigt die Quelle ein falsches Vorkommen. Das Verankern fügt aber kein Bild
+ * hinzu und entfernt keines — das k-te Bild mit Quelle S im Editor ist das k-te im Körper.
+ */
+export function galerieVorkommen(bodyHtml: string | null | undefined): number[] {
+  return zerlege(bodyHtml).map((b) => b.vorkommen);
+}
+
+interface ZerlegtesBild extends BodyImage {
+  vorkommen: number;
+}
+
+function zerlege(bodyHtml: string | null | undefined): ZerlegtesBild[] {
+  const out: ZerlegtesBild[] = [];
   if (!bodyHtml) {
     return out;
   }
   let bilder: GalerieBild[] = [];
   let fussnoten: GalerieFussnote[] = [];
+  const gepaart: boolean[] = [];
+  const quellenZaehler = new Map<string, number>();
+  // B2: Fußnoten AUSSERHALB jeder figure. Sie gehören zu keinem Paar der Struktur, tragen aber
+  // womöglich ausdrücklich die Kennung eines Bildes (Bild und Fußnote getrennt gespeichert).
+  const loseFussnoten: GalerieFussnote[] = [];
 
   /** Eine äußerste figure ist zu Ende: ihre Bilder mit ihren Fußnoten paaren. */
   const gruppeAbschliessen = (): void => {
@@ -183,7 +227,8 @@ export function extractBodyImages(bodyHtml: string | null | undefined): BodyImag
       }
     });
     bilder.forEach((bild, i) => {
-      out.push({ id: bild.id, src: bild.src, caption: texte[i] ?? "" });
+      out.push({ id: bild.id, src: bild.src, caption: texte[i] ?? "", vorkommen: bild.vorkommen });
+      gepaart.push(texte[i] !== null);
     });
     bilder = [];
     fussnoten = [];
@@ -208,28 +253,53 @@ export function extractBodyImages(bodyHtml: string | null | undefined): BodyImag
       }
       continue;
     }
+    const offenerTag = m[1];
+    // Jedes `<img>` zählt für das Vorkommen seiner Quelle — auch außerhalb einer figure.
+    const src = offenerTag === undefined ? attrOf(marke, "src") : null;
+    const vorkommen = src === null ? 0 : (quellenZaehler.get(src) ?? 0);
+    if (src !== null) {
+      quellenZaehler.set(src, vorkommen + 1);
+    }
     if (tiefe === 0) {
       // Außerhalb jeder figure: kein Galerie-Eintrag. Der Vertrag ist unverändert.
+      if (offenerTag !== undefined) {
+        loseFussnoten.push({
+          id: attrOf(offenerTag, "data-image-id"),
+          text: captionText(m[2] ?? ""),
+        });
+      }
       continue;
     }
-    const offenerTag = m[1];
     if (offenerTag !== undefined) {
       // Die Kennung wird aus dem ÖFFNENDEN Tag gelesen, nie aus dem Fußnotentext.
       fussnoten.push({ id: attrOf(offenerTag, "data-image-id"), text: captionText(m[2] ?? "") });
       continue;
     }
     const id = attrOf(marke, "data-image-id");
-    const src = attrOf(marke, "src");
     // Ohne gültige data-image-id (oder ohne src) kein Galerie-Eintrag — die Galerie zeigt nur die
     // verankerten Import-Bilder (Fußnoten-Vertrag), keine losen Alt-Bilder. WP-D9c: die src läuft
     // zusätzlich durch die zentrale isSafeImgSrc-Policy (Legacy-Daten/Repo-Importe fail-closed).
     if (!id || !IMAGE_ID_TOKEN_RE.test(id) || !src || !isSafeImgSrc(src)) {
       continue;
     }
-    bilder.push({ id, src });
+    bilder.push({ id, src, vorkommen });
   }
   // Unbalanciertes Markup (ein `</figure>` fehlt): was noch offen ist, wird trotzdem ausgeliefert
   // statt still verworfen.
   gruppeAbschliessen();
+  // AUFNAHME 20260922 (Bens Befund B2): eine LOSE Fußnote, die ausdrücklich die Kennung eines
+  // Bildes trägt, ist dessen Beschreibung — dieselbe Regel wie `captionForImage` im Editor. Eng,
+  // damit nichts geraten wird: nur für ein Bild ohne eigene Fußnote, nur wenn genau EIN Bild und
+  // genau EINE lose Fußnote diese Kennung tragen.
+  out.forEach((bild, i) => {
+    if (gepaart[i]) {
+      return;
+    }
+    const lose = loseFussnoten.filter((f) => f.id === bild.id);
+    const gleicheBilder = out.filter((b) => b.id === bild.id);
+    if (lose.length === 1 && gleicheBilder.length === 1) {
+      bild.caption = lose[0]?.text ?? "";
+    }
+  });
   return out;
 }

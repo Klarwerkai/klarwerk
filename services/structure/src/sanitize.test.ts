@@ -407,13 +407,30 @@ describe("JOB 509 / R2: sanitizeHtml verankert Figure/Bild/Fußnote eindeutig", 
     expect(anchorOf(figs[1] ?? "", "figure")).toBe(second);
   });
 
-  it("eine im Eingang vorhandene figure-Ankerung überlebt und führt die Gruppe", () => {
+  // AUFNAHME 20260922 (Bildidentität, R-0009 / I50 erstens): hier stand „eine im Eingang vorhandene
+  // figure-Ankerung überlebt und führt die Gruppe" — Rahmen `kw-img-fuehrend`, Bild ohne Kennung,
+  // Fußnote `kw-img-alt` wurden alle zu `kw-img-fuehrend`. Das ist genau die Lage eines ersetzten
+  // Bildes (verankerte Hülle, neues Bild ohne Kennung): das neue Bild erbte die Hülle, die Fußnote
+  // verlor ihre Kennung, und die alte Beschreibung hing still am neuen Bild. Jetzt führt das Bild.
+  it("ein Bild ohne Kennung in einer verankerten Hülle erbt nichts; die Fußnote behält ihre Kennung", () => {
     const clean = sanitizeHtml(
       `<figure data-image-id="kw-img-fuehrend"><img src="${OBJ_SRC}"><figcaption data-image-id="kw-img-alt">A</figcaption></figure>`,
     );
-    expect(anchorOf(clean, "figure")).toBe("kw-img-fuehrend");
-    expect(anchorOf(clean, "img")).toBe("kw-img-fuehrend");
-    expect(anchorOf(clean, "figcaption")).toBe("kw-img-fuehrend");
+    const bild = anchorOf(clean, "img");
+    expect(bild).toMatch(/^kw-fig-\d+$/);
+    expect(anchorOf(clean, "figure")).toBe(bild);
+    expect(anchorOf(clean, "figcaption")).toBe("kw-img-alt");
+    expect(sanitizeHtml(clean)).toBe(clean);
+  });
+
+  it("eine abweichende Fußnotenkennung neben einem gekennzeichneten Bild wird nicht überschrieben", () => {
+    const clean = sanitizeHtml(
+      `<figure data-image-id="kw-a"><img src="${OBJ_SRC}" data-image-id="kw-a"><figcaption data-image-id="kw-b">B</figcaption></figure>`,
+    );
+    expect(anchorOf(clean, "figure")).toBe("kw-a");
+    expect(anchorOf(clean, "img")).toBe("kw-a");
+    expect(anchorOf(clean, "figcaption")).toBe("kw-b");
+    expect(sanitizeHtml(clean)).toBe(clean);
   });
 
   it("Sicherheitsgrenze: figure bekommt KEINE allgemeine Attributfreigabe", () => {

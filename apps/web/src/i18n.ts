@@ -2480,6 +2480,13 @@ const de = {
   "editor.kennungGetrennt_other":
     "Mehrere Bilder trugen dieselbe Kennung. {{count}} Zuordnungen wurden getrennt — bitte prüfen Sie die betroffenen Bildbeschreibungen.",
   "editor.kennungGetrenntClose": "Hinweis zu getrennten Bildkennungen schließen",
+  // AUFNAHME 20260922 (R-0090): eine ungültige Bildkennung wurde beim Speichern oder Einfügen
+  // verworfen. Der Satz sagt, was geschehen ist, und bittet um eine Sichtprüfung.
+  "editor.kennungUngueltig_one":
+    "Bei {{count}} Bild oder Bildbeschreibung war die Kennung ungültig. Sie wurde verworfen und neu vergeben — bitte prüfen Sie die Zuordnung.",
+  "editor.kennungUngueltig_other":
+    "Bei {{count}} Bildern oder Bildbeschreibungen war die Kennung ungültig. Sie wurde verworfen und neu vergeben — bitte prüfen Sie die Zuordnung.",
+  "editor.kennungUngueltigClose": "Hinweis zu ungültigen Bildkennungen schließen",
   // JOB 3123 (PRIORITAETEN.md Q5c): eine von außen gekommene, vertagte Fassung wurde verworfen,
   // weil im Editor weitergeschrieben wurde (JOB 3107, `emit()`). Die Entscheidung ist richtig und
   // bleibt; sie war nur stumm. Der Satz sagt, was geschehen ist — er behauptet nicht, welche der
@@ -9385,6 +9392,11 @@ const en: typeof de = {
   "editor.kennungGetrennt_other":
     "Several images carried the same identifier. {{count}} links were separated — please check the image descriptions concerned.",
   "editor.kennungGetrenntClose": "Close the notice about separated image identifiers",
+  "editor.kennungUngueltig_one":
+    "{{count}} image or image description had an invalid identifier. It was discarded and replaced — please check the assignment.",
+  "editor.kennungUngueltig_other":
+    "{{count}} images or image descriptions had an invalid identifier. It was discarded and replaced — please check the assignment.",
+  "editor.kennungUngueltigClose": "Close the notice about invalid image identifiers",
   "editor.fremdfassungVerworfen":
     "While you were writing, a newer version arrived from elsewhere. Your own text was kept; the other version was discarded.",
   "editor.fremdfassungVerworfenClose": "Close the notice about the discarded version",
@@ -15071,6 +15083,11 @@ const nl: typeof de = {
   "editor.kennungGetrennt_other":
     "Meerdere afbeeldingen droegen dezelfde kenmerkcode. {{count}} koppelingen zijn losgemaakt — controleer de betrokken afbeeldingsbeschrijvingen.",
   "editor.kennungGetrenntClose": "Melding over losgemaakte afbeeldingskenmerken sluiten",
+  "editor.kennungUngueltig_one":
+    "Bij {{count}} afbeelding of afbeeldingsbeschrijving was het kenmerk ongeldig. Het is verwijderd en vervangen — controleer de koppeling.",
+  "editor.kennungUngueltig_other":
+    "Bij {{count}} afbeeldingen of afbeeldingsbeschrijvingen was het kenmerk ongeldig. Het is verwijderd en vervangen — controleer de koppeling.",
+  "editor.kennungUngueltigClose": "Melding over ongeldige afbeeldingskenmerken sluiten",
   "editor.fremdfassungVerworfen":
     "Tijdens het schrijven is van buitenaf een nieuwere versie binnengekomen. De eigen tekst is behouden; de andere versie is verworpen.",
   "editor.fremdfassungVerworfenClose": "Melding over de verworpen versie sluiten",

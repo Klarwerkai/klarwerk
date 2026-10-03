@@ -129,13 +129,23 @@ describe("JOB 3051: die getrennte Bildkennung wird gemeldet", () => {
     ensureImageAnchors(wurzel, (trennung) => bericht.push(trennung));
 
     expect(bericht).toHaveLength(1);
-    expect(bericht[0]?.fussnoteFolgte, "eine fremd gekennzeichnete Fußnote wurde mitgezogen").toBe(
-      false,
+    // AUFNAHME 20260922 (Bildidentität): das zweite Bild bekommt vor der Trennung eine EIGENE leere
+    // Fußnote, weil die fremde `Z` nicht seine ist. Mitgegangen ist diese eigene — die fremde
+    // bleibt, wo und wie sie war. Die Zusage des Falls ist unverändert: `Z` wird nie überschrieben.
+    const fremde = Array.from(wurzel.querySelectorAll("figcaption")).find(
+      (f) => (f.textContent ?? "").trim() === "Fremde",
     );
     expect(
-      kennungen(wurzel, "figcaption")[1],
+      fremde?.getAttribute("data-image-id"),
       "die fremde Kennung Z wurde überschrieben — genau das darf nicht geschehen",
     ).toBe("Z");
+    const zweitesBild = Array.from(wurzel.querySelectorAll("img"))[1];
+    const eigene = zweitesBild?.closest("figure")?.querySelector(":scope > figcaption");
+    expect(eigene?.textContent ?? "", "die eigene Fußnote des Bildes ist nicht leer").toBe("");
+    expect(eigene?.getAttribute("data-image-id")).toBe(bericht[0]?.frische);
+    expect(bericht[0]?.fussnoteFolgte, "die eigene Fußnote ist der Trennung nicht gefolgt").toBe(
+      true,
+    );
   });
 
   it("B5 · `enhanceFiguresForEditing` reicht die Auskunft weiter, statt sie wegzuwerfen", () => {

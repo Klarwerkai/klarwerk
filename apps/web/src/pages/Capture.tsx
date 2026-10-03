@@ -53,6 +53,7 @@ import { AiUnavailableHint } from "../components/AiUnavailableHint";
 import { AppendToArticleModal } from "../components/AppendToArticleModal";
 // SCRUM-405: „Aus Dokument ergänzen" — extract-Punkte anhängen (nichts ersetzen).
 import { BodyExtractPanel } from "../components/BodyExtractPanel";
+import type { BildbeschreibungsBitte } from "../components/BodyImageGallery";
 import { BodyTemplateChooser } from "../components/BodyTemplateChooser";
 // AUFTRAG-uxpol1 (PAKET 2): geteiltes, poliertes Dateityp-Kachel-Bauteil + IC-7-Wahrheitsquelle.
 import { CaptureDraftList } from "../components/CaptureDraftList";
@@ -698,10 +699,12 @@ export function CaptureArbeitsraum({
     imageId: string;
     src: string;
     index: number;
+    koerper?: string | undefined;
     nonce: number;
   } | null>(null);
-  const bildbeschreibungAusGalerie = (imageId: string, src: string, index: number): void => {
-    setCaptionRequest((prev) => ({ imageId, src, index, nonce: (prev?.nonce ?? 0) + 1 }));
+  // Lauf 5 (R3-1): `koerper` gibt an, in welchem Körper `index` zählt (siehe `BildbeschreibungsBitte`).
+  const bildbeschreibungAusGalerie: BildbeschreibungsBitte = (imageId, src, index, koerper) => {
+    setCaptionRequest((prev) => ({ imageId, src, index, koerper, nonce: (prev?.nonce ?? 0) + 1 }));
   };
   // SCRUM-375 / AG-12: erweiterte/technische Felder (Metadaten, Dokumente, Bilder) sind Progressive
   // Disclosure — standardmäßig eingeklappt, damit „Wissen erzählen → im Studio strukturieren" führt.

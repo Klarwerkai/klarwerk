@@ -31,7 +31,12 @@ import { type EditorFile, fileLinkHtml } from "../lib/bodyFileLink";
 // JOB 2084 (I50-3): die KANONISCHE Galerie-Ableitung. Der Editor löst die Bitte über dieselbe
 // Funktion auf, aus der die Galerie ihre Liste bildet — kein zweiter Filter, keine Nachbildung.
 // JOB 3095: `bestandsbildFigureHtml` — die eine Fassung des übernommenen Bestandsbilds.
-import { bestandsbildFigureHtml, extractBodyImages } from "../lib/bodyImages";
+import {
+  bestandsbildFigureHtml,
+  bildQuelleDekodiert,
+  extractBodyImages,
+  galerieVorkommen,
+} from "../lib/bodyImages";
 import { bodyReadMode } from "../lib/bodyReadMode";
 import {
   CAPTION_AI_TEXT,
@@ -458,7 +463,11 @@ export function RichTextEditor({
   // den der Nutzer wirklich geöffnet hat. Eine Bitte, die nur eine (womöglich doppelte) Kennung
   // trägt, ist bereits mehrdeutig, wenn sie entsteht; keine spätere Synchronisierung kann sie
   // eindeutig machen. Auflösung: siehe der Effekt weiter unten.
-  captionFormRequest?: { imageId: string; src: string; index: number; nonce: number } | undefined;
+  // Lauf 5 (Bens Befund R3-1): `koerper` — der Körper, in dem `index` zählt, wenn die Galerie die
+  // Großansicht aus einem Editorklick aufgebaut hat. Fehlt er, zählt `index` in `value`.
+  captionFormRequest?:
+    | { imageId: string; src: string; index: number; koerper?: string | undefined; nonce: number }
+    | undefined;
 }): JSX.Element {
   // JOB 3095: `i18n` nur für die Sprache der Zeitangabe in der Bildsuche („geprüft 18:30").
   const { t, i18n } = useTranslation();
@@ -614,6 +623,11 @@ export function RichTextEditor({
   // Die Zahl steht bewusst NICHT in einem Ref: sie wird gerendert, also gehört sie in den Zustand.
   const [getrennteZuordnungen, setGetrennteZuordnungen] = useState(0);
   const [trennungsHinweisZu, setTrennungsHinweisZu] = useState(false);
+  // AUFNAHME 20260922 (R-0090, Runde 2 Bens Befund B4): wie viele UNGÜLTIGE Bildkennungen ein
+  // Sanitizer beim Speichern oder Einfügen verworfen hat. Gezählt aus der Spur `data-kw-kennung`;
+  // doppelte Kennungen, die der Server getrennt hat, zählen in `getrennteZuordnungen` mit.
+  const [ungueltigeKennungen, setUngueltigeKennungen] = useState(0);
+  const [ungueltigHinweisZu, setUngueltigHinweisZu] = useState(false);
   // ── JOB 3123 (PRIORITAETEN.md Q5c): DIE VERWORFENE FREMDFASSUNG WIRD GEMELDET ────────────────
   //
   // Dasselbe Zustandspaar aus demselben Grund wie darüber: OB es etwas zu sagen gibt, und ob die
@@ -844,6 +858,19 @@ export function RichTextEditor({
           bildkennungen: mehrdeutigeFussnotenJetzt(),
           text: t("editor.captionAmbiguous"),
         },
+        // R-0090: die Spuren der Sanitizer. Eine vom Server getrennte Doppelung ist dieselbe
+        // Aussage wie eine Trennung im Editor und zählt in denselben Hinweis; eine verworfene
+        // ungültige Kennung bekommt ihren eigenen Satz.
+        (spuren) => {
+          if (spuren.doppelt > 0) {
+            setGetrennteZuordnungen((n) => n + spuren.doppelt);
+            setTrennungsHinweisZu(false);
+          }
+          if (spuren.ungueltig > 0) {
+            setUngueltigeKennungen((n) => n + spuren.ungueltig);
+            setUngueltigHinweisZu(false);
+          }
+        },
       );
     },
     [t],
@@ -917,6 +944,8 @@ export function RichTextEditor({
     // Reihenfolge an, die Zahl unten zählt also von 0 an.
     setGetrennteZuordnungen(0);
     setTrennungsHinweisZu(false);
+    setUngueltigeKennungen(0);
+    setUngueltigHinweisZu(false);
     // JOB 3123 (Q5c): DERSELBE SCHNITT FÜR DEN VERWORFENEN-HINWEIS, und hier ist er zwingend. Sein
     // Satz lautet „der eigene Text ist geblieben" — genau das stimmt ab dieser Zeile nicht mehr,
     // denn der Inhalt IST gerade durch eine Fassung von außen ersetzt worden. Ein stehen
@@ -1063,7 +1092,15 @@ export function RichTextEditor({
       return;
     }
     d44NonceRef.current += 1;
-    const nutzlast: D44BildEreignis = { imageId, nonce: d44NonceRef.current };
+    // AUFNAHME 20260922 (R-0945/R-0053, Runde 3): den AKTUELLEN Körper mitschicken. Die Galerie
+    // baut die Großansicht daraus auf und findet das Bild über seine Kennung, die hier nach
+    // `ensureImageAnchors` eindeutig ist. Eine Übersetzung zwischen dem Editorstand und dem
+    // verzögerten Galeriestand gibt es damit nicht mehr (Begründung bei `galerieIndexFuerBildklick`).
+    const nutzlast: D44BildEreignis = {
+      imageId,
+      nonce: d44NonceRef.current,
+      koerper: sanitizeHtml(el.innerHTML),
+    };
     // JOB 1890 D13 — DAS EREIGNIS GEHT VOM BILD AUS, NICHT VON DER FLAECHE.
     //
     // Hier stand `el.dispatchEvent(...)`. Damit war `event.target` IMMER das contenteditable
@@ -1424,23 +1461,70 @@ export function RichTextEditor({
       return einziges instanceof HTMLImageElement ? einziges : null;
     };
 
-    const aktuell = extractBodyImages(sanitizeHtml(el.innerHTML));
-
-    // Stufe 1: die Position aus der Galerie, bestätigt durch die Quelle. Das ist der Normalfall —
-    // und der EINZIGE Weg, der auch dann trägt, wenn zwei Bilder dieselbe Kennung UND dieselbe
-    // Quelle haben.
-    const anPosition = aktuell[captionFormRequest.index];
-    let bild = anPosition?.src === captionFormRequest.src ? eindeutig(anPosition.id) : null;
-
-    // Stufe 2: die Zählung ist verrutscht (ein nacktes <img> zählt für die Galerie nicht, wird hier
-    // aber eingehüllt) — dann trägt die Quelle, sofern sie EINDEUTIG ist.
-    if (bild === null) {
-      const nachQuelle = aktuell.filter((b) => b.src === captionFormRequest.src);
-      bild = nachQuelle.length === 1 && nachQuelle[0] ? eindeutig(nachQuelle[0].id) : null;
+    // Stufe 1: die Position aus der Galerie, bestätigt durch die Quelle — aufgelöst in DEM Körper,
+    // aus dem die Galerie ihre Liste bildet (`value`), nicht in der Liste des Editors.
+    //
+    // AUFNAHME 20260922 (Runde 2, Bens Befund B1 an der Gegenrichtung): hier wurde die
+    // Galerie-Position bisher in `aktuell` nachgeschlagen, der Liste aus dem EDITORINHALT. Beide
+    // zählen verschiedene Mengen — ein loses Bild hüllt der Editor ein, die Galerie zählt es nicht —,
+    // und bei gleicher Quelle bestätigte die Quelle dann ein falsches Vorkommen. Jetzt wird der
+    // Eintrag in der Galerieliste selbst gelesen, daraus sein Vorkommen („das k-te Bild mit dieser
+    // Quelle") und dieses im Editor gesucht. Das Verankern ändert diese Zahl nicht.
+    //
+    // Lauf 5 (Bens Befund R3-1): Wurde die Großansicht aus einem Editorklick aufgebaut, zählt die
+    // Position in DEM Körper, den der Editor damals mitgeschickt hat — nicht in `value`. Beim ersten
+    // Öffnen stehen in `value` noch die Doppelkennungen, und ein loses Bild zählt dort nicht; die
+    // Position aus dem Klickkörper in `value` gelesen traf ein fremdes Bild.
+    const galerieKoerper = captionFormRequest.koerper ?? value;
+    const galerie = extractBodyImages(galerieKoerper);
+    const anPosition = galerie[captionFormRequest.index];
+    const k = galerieVorkommen(galerieKoerper)[captionFormRequest.index];
+    let bild: HTMLImageElement | null = null;
+    //
+    // Runde 3 (Bens Befunde N1/N2 am Körperklick, hier dieselbe Klasse): Die Galerie steht bis zu
+    // 300 ms hinter `value`. Deshalb muss der Eintrag an dieser Position in `value` die ANGEFRAGTE
+    // Kennung tragen — sonst ist es nicht derselbe Eintrag, und es wird nicht übersetzt. Gezählt
+    // werden auf beiden Seiten nur Bilder AUSSERHALB einer Fußnote: der Galerie-Zerleger liest den
+    // Inhalt einer `figcaption` nicht als Bilder, also darf der Editor sie auch nicht mitzählen.
+    if (
+      anPosition !== undefined &&
+      k !== undefined &&
+      anPosition.src === captionFormRequest.src &&
+      anPosition.id === captionFormRequest.imageId
+    ) {
+      const quelle = bildQuelleDekodiert(anPosition.src);
+      const gleiche = Array.from(el.querySelectorAll("img")).filter(
+        (b) => b.getAttribute("src") === quelle && b.closest("figcaption") === null,
+      );
+      bild = gleiche[k] ?? null;
+      // Lauf 5: Der Klickkörper ist ein Abbild DIESES Editors, seine Kennungen stehen so im DOM.
+      // Trägt das gezählte Bild eine andere, hat sich der Editor seit dem Klick verändert — dann
+      // entscheidet allein die eindeutige Kennung (Stufe 3), nicht die Zählung.
+      if (
+        captionFormRequest.koerper !== undefined &&
+        bild?.getAttribute("data-image-id") !== anPosition.id
+      ) {
+        bild = null;
+      }
     }
 
-    // Stufe 3: der Bestandsweg — die Kennung, aber nur bei genau einem Treffer.
-    if (bild === null) {
+    // Stufe 2 („die Quelle ist eindeutig") ist in Runde 3 ENTFALLEN. Sie traf nach dem Löschen
+    // eines Bildes das verbliebene Bild gleicher Quelle, auch wenn nach dem gelöschten gefragt war.
+    // Die Lage, für die sie gebaut war (ein eingehülltes loses Bild verschiebt die Zählung), trägt
+    // seit Runde 2 das Vorkommen in Stufe 1.
+
+    // Stufe 3: der Bestandsweg — die Kennung, aber nur bei genau einem Treffer im Editor, UND nur,
+    // wenn der Galeriekörper (`value`) nicht widerspricht: entweder trägt er an der angefragten
+    // Position genau diese Kennung, oder er kennt sie gar nicht (der Editor hat das Bild erst beim
+    // Laden verankert). Runde 3: ohne diese Bedingung öffnete nach dem Löschen des zweiten von zwei
+    // Bildern gleicher Kennung die Bitte für das gelöschte das verbliebene erste — die Galerie stand
+    // noch auf dem alten Stand, in dem die Kennung doppelt war. Kennt `value` die Kennung an einer
+    // ANDEREN Stelle, ist aus diesem Stand nicht entscheidbar, welches Vorkommen gemeint war: dann
+    // öffnet sich nichts.
+    const widerspruchsfrei =
+      anPosition?.id === captionFormRequest.imageId ||
+      !galerie.some((b) => b.id === captionFormRequest.imageId);
+    if (bild === null && widerspruchsfrei) {
       bild = eindeutig(captionFormRequest.imageId);
     }
 
@@ -3340,6 +3424,28 @@ export function RichTextEditor({
                 type="button"
                 aria-label={t("editor.kennungGetrenntClose")}
                 onClick={() => setTrennungsHinweisZu(true)}
+                className="shrink-0 text-[11px] font-semibold text-muted-2 hover:text-text"
+              >
+                {t("editor.linkCancel")}
+              </button>
+            </div>
+          ) : null}
+          {/* AUFNAHME 20260922 (R-0090): eine ungültige Bildkennung wurde verworfen und das Bild neu
+              verankert. Dieselbe Bauform wie der Trennungshinweis — ein Hinweis, kein Alarm. */}
+          {ungueltigeKennungen > 0 && !ungueltigHinweisZu ? (
+            <div
+              aria-live="polite"
+              data-testid="editor-kennung-ungueltig"
+              data-anzahl={ungueltigeKennungen}
+              className="flex items-start justify-between gap-2 border-b border-hairline bg-page px-3 py-1.5"
+            >
+              <p className="text-[11px] leading-relaxed text-muted">
+                {t("editor.kennungUngueltig", { count: ungueltigeKennungen })}
+              </p>
+              <button
+                type="button"
+                aria-label={t("editor.kennungUngueltigClose")}
+                onClick={() => setUngueltigHinweisZu(true)}
                 className="shrink-0 text-[11px] font-semibold text-muted-2 hover:text-text"
               >
                 {t("editor.linkCancel")}

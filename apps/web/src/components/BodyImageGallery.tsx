@@ -36,11 +36,55 @@ export const D44_BILD_EREIGNIS = "kw:d44-bild-oeffnen";
 export interface D44BildEreignis {
   readonly imageId: string;
   readonly nonce: number;
+  // AUFNAHME 20260922 (R-0945/R-0053, Runde 3): der KÖRPER, wie er im Editor in diesem Augenblick
+  // steht (sanitisiert). Die Galerie öffnet die Großansicht aus genau diesem Stand, nicht aus ihrem
+  // eigenen, verzögerten. Begründung bei `galerieIndexFuerBildklick`.
+  readonly koerper?: string;
 }
+
+/**
+ * Welcher Eintrag zum Körperklick gehört — oder `-1`. `images` ist die Liste aus dem Körper, der
+ * mit dem Klick kam (sonst die eigene Liste der Galerie).
+ *
+ * Die Galerie liest den zuletzt GEMELDETEN, um 300 ms verzögerten Körper. Der Editor trennt beim
+ * Laden doppelte Kennungen und hüllt lose Bilder ein, ohne zu speichern; nach einer Eingabe steht
+ * die Galerie bis zu 300 ms auf dem alten Stand. Jede Zuordnung ZWISCHEN diesen beiden Körpern war
+ * angreifbar, und Ben hat es dreimal gemessen:
+ *   · Runde 1 → 2: Die Position verrutschte (ein eingehülltes loses Bild zählte nur im Editor).
+ *   · Runde 2 → 3: Auch „das k-te Bild mit dieser Quelle" verrutschte — nach dem Löschen eines
+ *     Bildes gleicher Quelle vor Ablauf der Verzögerung (N1) und bei einem Bild innerhalb einer
+ *     Fußnote, das nur der Editor zählte (N2). Geöffnet wurde jeweils eine fremde Beschreibung.
+ * Die Antwort ist, gar nicht mehr zwischen zwei Körpern zu übersetzen: Der Editor schickt seinen
+ * aktuellen Körper mit, und die Großansicht wird aus diesem Körper aufgebaut. Darin ist jede
+ * Kennung eindeutig (`ensureImageAnchors` trennt Doppelungen), und das angeklickte Bild wird über
+ * seine Kennung gefunden. Kommt die Kennung dort nicht GENAU EINMAL als Eintrag vor (etwa ein Bild
+ * innerhalb einer Fußnote, das keinen Eintrag bildet), öffnet sich nichts.
+ */
+export function galerieIndexFuerBildklick(
+  images: readonly BodyImage[],
+  detail: D44BildEreignis,
+): number {
+  const treffer = images.flatMap((b, i) => (b.id === detail.imageId ? [i] : []));
+  const einziger = treffer[0];
+  return treffer.length === 1 && einziger !== undefined ? einziger : -1;
+}
+
+/**
+ * Der Rückweg der Großansicht zum Formular. `koerper` ist gesetzt, wenn die Großansicht aus dem
+ * Körper eines Editorklicks aufgebaut wurde (Lauf 5, Bens Befund R3-1): `index` zählt dann in
+ * DIESEM Körper, nicht im Galeriekörper. Fehlt er, gilt der Galeriekörper (Kachel, Leseansicht).
+ */
+export type BildbeschreibungsBitte = (
+  imageId: string,
+  src: string,
+  index: number,
+  koerper?: string,
+) => void;
 
 export function BodyImageGallery({
   bodyHtml,
   onEditCaption,
+  nimmtBildklickAn = false,
 }: {
   bodyHtml: string;
   // JOB 2084 (I50-3): die Bitte trägt die OCCURRENCE, nicht nur die Kennung. `src` und `index`
@@ -49,11 +93,22 @@ export function BodyImageGallery({
   // der zählbaren Bilder ändert (ein nacktes <img> zählt für die Galerie nicht und wird im Editor
   // eingehüllt); `src` allein bricht, wenn dasselbe Bild zweimal im Körper steht. Zusammen tragen
   // sie: `index` wählt, `src` bestätigt (die Auflösung steht in RichTextEditor.tsx).
-  onEditCaption?: ((imageId: string, src: string, index: number) => void) | undefined;
+  onEditCaption?: BildbeschreibungsBitte | undefined;
+  // Lauf 5 (Bens Befund R3-2, R-0052): Diese Galerie steht neben einem Editor und muss dessen
+  // Bildklick auch dann abholen, wenn ihre eigene Liste leer ist — etwa beim einzigen, ursprünglich
+  // losen Bild, das erst der Editor verankert. Dann rendert sie einen unsichtbaren Anker statt
+  // nichts. Reine Leseansichten setzen das nicht und bleiben ohne Bild ganz leer.
+  nimmtBildklickAn?: boolean | undefined;
 }): JSX.Element | null {
   const { t } = useTranslation();
-  const images: BodyImage[] = extractBodyImages(bodyHtml);
   const [openIndex, setOpenIndex] = useState<number | null>(null);
+  // AUFNAHME 20260922 (Runde 3): der Körper, mit dem der Editor den Klick gemeldet hat. Solange die
+  // daraus geöffnete Großansicht offen ist, zeigt sie diesen Stand; beim Schließen und beim Öffnen
+  // über eine Kachel gilt wieder der eigene.
+  const [klickKoerper, setKlickKoerper] = useState<string | null>(null);
+  const images: BodyImage[] = extractBodyImages(
+    openIndex !== null && klickKoerper !== null ? klickKoerper : bodyHtml,
+  );
   // JOB 1117 (schließt JOB-908-M3): der ANSAGETEXT der Fläche. Ein Zustand, eine Quelle — Öffnen,
   // Bildwechsel und Schließen schreiben hier hinein, die beiden Live-Bereiche unten lesen nur.
   const [ansage, setAnsage] = useState<string>("");
@@ -156,7 +211,8 @@ export function BodyImageGallery({
       if (!detail?.imageId) {
         return;
       }
-      const idx = images.findIndex((b) => b.id === detail.imageId);
+      const liste = detail.koerper !== undefined ? extractBodyImages(detail.koerper) : images;
+      const idx = galerieIndexFuerBildklick(liste, detail);
       if (idx < 0) {
         return;
       }
@@ -171,6 +227,7 @@ export function BodyImageGallery({
       }
       triggerRef.current = null; // die alte Thumbnail-Referenz gilt für DIESES Öffnen nicht
       herkunftRef.current = "editor";
+      setKlickKoerper(detail.koerper ?? null);
       setOpenIndex(idx);
     };
     eltern.addEventListener(D44_BILD_EREIGNIS, beiKlick);
@@ -249,6 +306,7 @@ export function BodyImageGallery({
 
   const onDialogClose = (): void => {
     setOpenIndex(null);
+    setKlickKoerper(null);
     // D44 Teil 2: die Rückkehr folgt der HERKUNFT dieses Öffnens, nicht einem Altzustand. Die
     // Rücksetzung unten ist der Kern — ohne sie wäre `herkunftRef` derselbe Altlastwert wie zuvor
     // `triggerRef`, nur mit besserem Namen.
@@ -270,8 +328,12 @@ export function BodyImageGallery({
   // Kein leerer Abschnitt: ohne verankerte Bilder erscheint die Galerie gar nicht — AUSSER die
   // Lightbox ist gerade noch offen (GELB d): dann bleibt der Dialog einen Takt gerendert, damit
   // der Effekt oben ihn kontrolliert schließen kann (kein stummes Unmount des offenen Modals).
+  //
+  // Lauf 5 (R3-2): neben einem Editor bleibt ein unsichtbarer Anker stehen — an seinem Elternknoten
+  // hängt der Zuhörer für den Bildklick (Effekt oben). Ohne ihn erreichte der Klick auf das einzige,
+  // erst im Editor verankerte Bild keine Galerie.
   if (images.length === 0 && openIndex === null) {
-    return null;
+    return nimmtBildklickAn ? <div ref={wurzelRef} hidden /> : null;
   }
   // GELB d: Anzeige-Index defensiv klemmen — der Effekt zieht den State nach; bis dahin zeigt der
   // offene Dialog das letzte verbliebene Bild statt ins Leere zu greifen.
@@ -307,6 +369,7 @@ export function BodyImageGallery({
               triggerRef.current = e.currentTarget;
               // D44 Teil 2: dieses Öffnen kam vom Thumbnail — die Rückkehr geht dorthin.
               herkunftRef.current = "thumbnail";
+              setKlickKoerper(null);
               setOpenIndex(i);
             }}
           >
@@ -392,11 +455,16 @@ export function BodyImageGallery({
                         // Position, die der Nutzer wirklich geöffnet hat (`setOpenIndex(i)` an der
                         // Kachel bzw. der occurrence-treue Weg des Körperklicks); sie ist die
                         // Identität, die eine doppelte Kennung nicht mehr hergibt.
+                        //
+                        // Lauf 5 (Bens Befund R3-1): kam die Ansicht aus einem Editorklick, zählt
+                        // `shownIndex` im mitgeschickten Körper — der geht mit, sonst übersetzte
+                        // der Editor die Position im Galeriekörper und träfe ein fremdes Bild.
                         const imageId = open.id;
                         const src = open.src;
                         const index = shownIndex;
+                        const koerper = klickKoerper ?? undefined;
                         requestClose();
-                        onEditCaption(imageId, src, index);
+                        onEditCaption(imageId, src, index, koerper);
                       }}
                       className="inline-flex items-center gap-1 rounded-btn border border-white/40 px-2 py-1 text-[12px] font-semibold text-white hover:bg-white/10"
                     >
