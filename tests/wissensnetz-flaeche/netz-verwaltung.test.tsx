@@ -221,6 +221,11 @@ async function klick(el: Element | null): Promise<void> {
     (el as HTMLElement).click();
     await flush();
   });
+  // Nacharbeit 4: React 18 rendert eine Zustandsänderung aus `act` erst beim Verlassen des Blocks.
+  // Erst DANN schaltet `enabled` der Qualitätsblick-Abfragen um und sie starten — ohne diesen
+  // zweiten Durchlauf (wie in `mount`) prüfte der Fall einen Zustand, in dem noch nichts geladen
+  // haben KANN, und sah „wird erhoben“ statt der Zahl.
+  await act(flush);
 }
 
 async function setzeFeld(id: string, wert: string): Promise<void> {

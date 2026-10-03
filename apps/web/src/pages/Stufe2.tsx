@@ -2322,7 +2322,8 @@ function LegendDot({ colorClass, label }: { colorClass: string; label: string })
 // dessen Objekt im Bestand unbekannt ist, steht als Text ohne Link da — wie im Bild.
 //
 // Gemessen in `tests/wissensnetz-flaeche/graph-listenweg.test.tsx` (Funktion und Navigation, jsdom)
-// und in `tests/design/zielbild-wissensnetz.test.ts`, Fall GL (Chromium, 390×844, echte App).
+// und in `tests/wissensnetz-flaeche/graph-liste-telefon-chromium.test.ts` (Chromium, 390×844,
+// echte App).
 //
 // R-0744 (VERWALTERSEITE RUND UM DIE NETZDARSTELLUNG): Diese Liste ist zugleich Suche und
 // Filterleiste (Titelteil UND Status) und öffnet je Eintrag ein Detailfenster — rein lesend, ohne
