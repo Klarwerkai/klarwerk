@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import { klaraStand } from "./src/lib/klaraStand";
 import { textmodulVertrag } from "./src/texte/intern/sammeln";
+import { sprachpaketeNachladen } from "./src/texte/intern/sprachpakete";
 
 // ================================================================================================
 // JOB 4367 · DER VERTRAG DER TEXTMODULE, GEPRÜFT IM PRODUKTBUILD.
@@ -39,6 +40,10 @@ import { textmodulVertrag } from "./src/texte/intern/sammeln";
 // Word-Panel (Programmversion `APP_VERSION`, Bauzeit, Git-Kürzel; R-1028). Die Fabrik wohnt in
 // `src/lib/klaraStand.ts`, damit der Test sie statisch importieren kann (Begründung dort).
 
+// R-0801: das Plugin `sprachpakete-nachladen` nimmt im Produktionsbau die Wörterbücher en und nl aus
+// dem Eintritt und lädt sie erst, wenn die Sprache gebraucht wird (Begründung und Anker in
+// `src/texte/intern/sprachpakete.ts`). Der Deckel dazu steht in `tests/erstladezeit/`.
+
 // Dev-Proxy: /api → laufendes Backend (services/app). Ziel via VITE_API_TARGET überschreibbar.
 // Default = der DEFAULT-Port des Fastify-Servers (services/app/src/server.ts: PORT ?? 3001). Vorher
 // stand hier 3000 — das passte weder zum Server-Default (3001) noch zu Umgebungen, in denen 3000 schon
@@ -47,7 +52,7 @@ import { textmodulVertrag } from "./src/texte/intern/sammeln";
 const apiTarget = process.env.VITE_API_TARGET ?? "http://localhost:3001";
 
 export default defineConfig({
-  plugins: [react(), klaraStand(), textmodulVertrag()],
+  plugins: [react(), klaraStand(), textmodulVertrag(), sprachpaketeNachladen()],
   resolve: { alias: { "@": "/src" } },
   // Kein Inline-Modulepreload-Polyfill → strikte CSP (script-src 'self') ohne 'unsafe-inline'.
   build: { modulePreload: { polyfill: false } },
