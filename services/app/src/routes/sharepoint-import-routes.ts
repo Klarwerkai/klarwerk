@@ -107,6 +107,12 @@ export interface SharePointImportRouteDeps {
  */
 export const MAX_SHAREPOINT_IDS = 50;
 
+/**
+ * Die Grösse EINES Loses bei der Ordnerübernahme (Tür 3). Bewusst dieselbe Kante wie Tür 2: ein Los
+ * ist eine Übernahme, und für eine Übernahme gilt dieselbe Grenze, gleich wer die Kennungen wählt.
+ */
+export const SHAREPOINT_LOS_GROESSE = MAX_SHAREPOINT_IDS;
+
 /** Das Quellsystem dieser Routen — derselbe Name, den die Zugangs-Auskunft nachschlägt. */
 const SYSTEM = "sharepoint";
 
@@ -482,163 +488,343 @@ export function sharepointImportRoutes(deps: SharePointImportRouteDeps): Fastify
           });
           return reply;
         }
-        // Die Kennung des Laufs steht ausserhalb des `try`, damit auch der Fehlerausgang sie kennt
-        // und den Lauf nicht in QUEUED stehen lässt.
-        let lauf: string | null = null;
-        try {
-          let eingereiht = 0;
-          let bereitsInQueue = 0;
-          const failed: { id: string; reason: string }[] = [];
-          const notFound: string[] = [];
-          const neuerStand: string[] = [];
-          const dateien: Uebernommen[] = [];
-          // JOB 4232: die Dateien, deren Inhalt gemessen wurde und nicht trägt — je Kennung mit dem
-          // Befund, damit die Fläche den RICHTIGEN Satz zeigt und nicht einen Sammelsatz.
-          const ohneInhalt: { id: string; befund: (typeof OHNE_INHALT)[number] }[] = [];
-          // JOB 4125: der Stand der Warteschlange, wie er VOR diesem Aufruf war. Er muss vor dem
-          // ersten eigenen Schreibeffekt gelesen werden — sonst sähe dieser Lauf die Vorgänge, die
-          // er selbst gerade anlegt, und hielte jede Erstanlage für einen „neueren Stand".
-          const staende = await leseStaende(deps.library, request.log);
-          // DIE KENNUNG VOR DEM ERSTEN SCHREIBEFFEKT (KW-S4-26 §133, wie JOB 3288 es für den
-          // Confluence-Weg hält): ab hier kann dieser Aufruf Kandidaten anlegen.
-          lauf = await legeLaufAn(deps.importRuns, adapter.driveId, ids.length, request.log);
-          for (const id of ids) {
-            try {
-              const eintrag = await adapter.holeItem(id);
-              if (!eintrag) {
-                notFound.push(id);
-                continue;
-              }
-              const { item, inhalt } = eintrag;
-              // JOB 4232 — DER EHRLICHE ABBRUCH, VOR DEM SCHREIBEFFEKT. Wer eine Textdatei wählt,
-              // will ihren Text; ist er nachweislich nicht da (leer), passt er nicht (zu gross) oder
-              // liess er sich nicht dekodieren (unlesbar), entsteht KEIN Eintrag. Ein Kandidat, der
-              // nur den Dateinamen trägt, sähe in der Prüfung aus wie ein gelungener Inhaltsimport.
-              if (istOhneInhalt(inhalt.art)) {
-                ohneInhalt.push({ id, befund: inhalt.art });
-                continue;
-              }
-              // JOB 4232 R2 — DERSELBE STAND IST SCHON IM BESTAND (bens Korrekturpflicht 3).
-              // Wurde zu dieser Quelle bereits ein Vorgang ANGENOMMEN und daraus ein Wissensobjekt,
-              // dann bringt dieselbe (oder eine ältere) Version nichts Neues. Sie wird deshalb nicht
-              // noch einmal eingereiht, sondern als „schon vorhanden" gemeldet — genau der Satz, den
-              // Lieferung 7 verlangt. Ein WIRKLICH neuerer Stand läuft unverändert weiter (W3b).
-              const angenommenerStand =
-                item.externalId === undefined
-                  ? undefined
-                  : staende.angenommen.get(importProviderKey(item.provider))?.get(item.externalId);
-              if (
-                angenommenerStand !== undefined &&
-                (item.sourceVersion ?? 1) <= angenommenerStand
-              ) {
-                bereitsInQueue += 1;
-                continue;
-              }
-              const angelegt = await deps.library.createImportCandidates([item], user.id);
-              if (angelegt.length > 0) {
-                eingereiht += 1;
-                // JOB 4125: Stand dieser Übernahme gegen den Stand des Vorgangs, der zu DERSELBEN
-                // Quelle schon offen wartete. Nur ein WIRKLICH höherer Stand ist ein neuer Stand;
-                // ohne wartenden Vorgang ist es eine Erstanlage und hier ist nichts zu sagen.
-                const vorher =
-                  item.externalId === undefined
-                    ? undefined
-                    : staende.offen.get(importProviderKey(item.provider))?.get(item.externalId);
-                if (vorher !== undefined && (item.sourceVersion ?? 1) > vorher) {
-                  neuerStand.push(id);
-                }
-                dateien.push({
-                  id,
-                  name: item.title,
-                  url: item.url ?? null,
-                  geaendertAm: item.updatedAt ?? null,
-                  // Der Befund DIESES Abrufs. `bodyHtml` und er hängen zusammen (mapper.ts), also
-                  // ist das keine zweite Wahrheit über denselben Sachverhalt.
-                  inhalt: inhalt.art,
-                });
-              } else {
-                bereitsInQueue += 1;
-              }
-            } catch (err) {
-              const lage = sharepointFehlerlage(err);
-              if (lage === "nicht-gefunden") {
-                // Die Datei ist zwischen Auswahl und Übernahme verschwunden. Das ist kein Fehler
-                // dieses Laufs, sondern eine Auskunft über die Quelle — und sie bekommt ihren
-                // eigenen Ausgang, damit der Mensch den richtigen Satz liest.
-                notFound.push(id);
-                continue;
-              }
-              if (lage !== null) {
-                // Eine Lage, die den GANZEN Lauf betrifft (kein Zugang, keine Berechtigung, nicht
-                // erreichbar): weiterzumachen hiesse, dieselbe Antwort noch 49-mal zu holen.
-                throw err;
-              }
-              // PII-frei: nur Kennung und Fehlerklasse, nie Inhalte.
-              failed.push({ id, reason: err instanceof Error ? err.name : "unknown" });
-            }
-          }
-          const bilanz: Uebernahmebilanz = {
-            beauftragt: ids.length,
-            eingereiht,
-            bereitsInQueue,
-            gescheitert: failed.length,
-            nichtGefunden: notFound.length,
-            ohneInhalt: ohneInhalt.length,
-          };
-          await schliesseLauf(
-            deps.importRuns,
-            lauf,
-            {
-              status: uebernahmeStatus(bilanz),
-              completedAt: new Date().toISOString(),
-              counters: uebernahmeZaehler(bilanz),
-            },
-            request.log,
-          );
-          reply.code(200).send({
-            imported: eingereiht,
-            alreadyQueued: bereitsInQueue,
-            // JOB 4125: die Teilmenge von `imported`, die einen NEUEREN Stand einer bereits
-            // wartenden Quelle gebracht hat. Immer geführt — eine leere Liste ist die Auskunft
-            // „kein solcher Fall", nicht ein fehlendes Feld.
-            neuerStand,
-            failed,
-            notFound,
-            // JOB 4232: Immer geführt — eine leere Liste ist die Auskunft „kein solcher Fall", nicht
-            // ein fehlendes Feld (dieselbe Regel wie bei `neuerStand`).
-            ohneInhalt,
-            // Name, Originaladresse und Stand der WIRKLICH übernommenen Dateien — das Ergebnisbild
-            // der Oberfläche liest genau das und erfindet nichts dazu.
-            dateien,
-            ...(lauf !== null ? { importId: lauf } : {}),
-          });
+        const ausgang = await fuehreUebernahmeAus(
+          deps,
+          adapter,
+          ids,
+          user.id,
+          `drive:${adapter.driveId}`,
+          request.log,
+        );
+        reply.code(ausgang.code).send(ausgang.body);
+        return reply;
+      },
+    );
+
+    // ------------------------------------------------------------------------------------------
+    // TÜR 3 (R-0145/R-0190): einen GANZEN Ordner übernehmen — in Losen, mit Halt nach jedem Los.
+    // ------------------------------------------------------------------------------------------
+    //
+    // Tür 2 nimmt höchstens 50 einzeln gewählte Kennungen. Ein Kundenordner mit Hunderten Dateien
+    // war damit nur von Hand in Häppchen zu übernehmen, und welche Häppchen vollständig waren,
+    // wusste niemand ausser dem Menschen, der sie gewählt hatte. Diese Tür schneidet den Ordner
+    // selbst in Lose:
+    //
+    //   LOS        = höchstens `SHAREPOINT_LOS_GROESSE` Dateien des Ordners, nach Kennung sortiert.
+    //                Dieselbe Ordnerliste ergibt deshalb dieselben Lose — ein Wiederholaufruf trifft
+    //                dieselben Dateien und ist über die Idempotenz von Tür 2 gefahrlos.
+    //   HALT       = EIN Aufruf übernimmt GENAU EIN Los und endet. Das nächste Los läuft erst, wenn
+    //                jemand ausdrücklich danach fragt (`naechstesLos`). Weiter läuft hier nichts.
+    //   NACHWEIS   = jedes Los ist ein eigener Lauf (`importId`, Scope `…/los:N-von-M`). Ob es
+    //                vollständig ist, steht am Lauf (`COMPLETED` gegen `PARTIAL`/`FAILED`) und in
+    //                der Antwort (`los.vollstaendig`).
+    //   KEIN MODELL = diese Routen kennen keinen Reasoner. Der Weg endet wie Tür 2 bei
+    //                `library.createImportCandidates`; geprüft wird ohne Modell, angenommen erst
+    //                von einem Menschen.
+    //
+    // DIE GRENZEN, AUSDRÜCKLICH: nur die Dateien DIREKT in diesem Ordner (Unterordner sind eigene
+    // Ordner und eigene Aufrufe), und die Ordnerliste ist gedeckelt (`SHAREPOINT_MAX_PAGES`). Ist sie
+    // abgeschnitten, sagt `los.ordnerVollstaendigGelesen: false`, dass es weitere Dateien gibt, die
+    // in keinem Los stehen.
+    app.post<{ Body: { folderId?: unknown; los?: unknown } }>(
+      "/api/admin/import/sharepoint/folder-apply",
+      async (request, reply) => {
+        const user = await deps.guards.requirePermission("users.manage", request, reply);
+        if (!user) {
           return reply;
-        } catch (err) {
-          warne(request.log, "Uebernahme", err);
-          const lage = sharepointFehlerlage(err);
-          const ausgang = lage ? sharepointAntwort(lage) : sharepointAntwort("nicht-erreichbar");
-          await schliesseLauf(
-            deps.importRuns,
-            lauf,
-            {
-              status: "FAILED",
-              completedAt: new Date().toISOString(),
-              failureCode: ausgang.error,
-              failureReason: sanitizeImportFailureReason(
-                MELDUNG[ausgang.error] ?? "SharePoint-Übernahme fehlgeschlagen.",
-              ),
-            },
-            request.log,
-          );
-          reply.code(ausgang.status).send({
-            error: ausgang.error,
-            message: MELDUNG[ausgang.error] ?? "SharePoint-Übernahme fehlgeschlagen.",
+        }
+        const adapter = makeAdapter();
+        if (!adapter) {
+          reply
+            .code(503)
+            .send({ error: "IMPORT_UNAVAILABLE", message: MELDUNG.IMPORT_UNAVAILABLE });
+          return reply;
+        }
+        const los = leseLos(request.body?.los);
+        if (los === null) {
+          reply.code(400).send({
+            error: "LOS_INVALID",
+            message: "Die Losnummer muss eine ganze Zahl ab 0 sein.",
           });
           return reply;
         }
+        const ordnerId = leseOrdnerId(request.body?.folderId);
+        let alle: string[];
+        let abgeschnitten: boolean;
+        try {
+          // LESEN VOR JEDEM SCHREIBEFFEKT: scheitert schon die Liste, entsteht kein Lauf — es wurde
+          // nichts übernommen, und die Antwort ist dieselbe Lage wie an Tür 1.
+          const liste = await adapter.listeDateien(ordnerId);
+          alle = [...new Set(liste.dateien.map((datei) => datei.id))].sort(vergleicheKennung);
+          abgeschnitten = liste.truncated;
+        } catch (err) {
+          warne(request.log, "Ordnerliste", err);
+          return sendeLage(reply, err);
+        }
+        const anzahl = Math.ceil(alle.length / SHAREPOINT_LOS_GROESSE);
+        if (anzahl === 0 && los === 0) {
+          // Ein leerer Ordner ist eine Auskunft, kein Fehler — und kein Lauf: es gab nichts zu tun.
+          reply.code(200).send({
+            imported: 0,
+            alreadyQueued: 0,
+            neuerStand: [],
+            failed: [],
+            notFound: [],
+            ohneInhalt: [],
+            dateien: [],
+            los: {
+              index: 0,
+              anzahl: 0,
+              groesse: SHAREPOINT_LOS_GROESSE,
+              kennungen: [],
+              vollstaendig: true,
+              naechstesLos: null,
+              ordnerVollstaendigGelesen: !abgeschnitten,
+            },
+          });
+          return reply;
+        }
+        if (los >= anzahl) {
+          reply.code(400).send({
+            error: "LOS_OUT_OF_RANGE",
+            message: `Diesen Teil gibt es nicht (Los ${los + 1} von ${anzahl}).`,
+          });
+          return reply;
+        }
+        const kennungen = alle.slice(
+          los * SHAREPOINT_LOS_GROESSE,
+          (los + 1) * SHAREPOINT_LOS_GROESSE,
+        );
+        const ausgang = await fuehreUebernahmeAus(
+          deps,
+          adapter,
+          kennungen,
+          user.id,
+          `drive:${adapter.driveId}/folder:${ordnerId ?? "root"}/los:${los + 1}-von-${anzahl}`,
+          request.log,
+        );
+        if (ausgang.code !== 200) {
+          reply.code(ausgang.code).send(ausgang.body);
+          return reply;
+        }
+        reply.code(200).send({
+          ...ausgang.body,
+          los: {
+            index: los,
+            anzahl,
+            groesse: SHAREPOINT_LOS_GROESSE,
+            kennungen,
+            vollstaendig: ausgang.laufStatus === "COMPLETED",
+            naechstesLos: los + 1 < anzahl ? los + 1 : null,
+            ordnerVollstaendigGelesen: !abgeschnitten,
+          },
+        });
+        return reply;
       },
     );
   };
+}
+
+/** Die Losnummer aus dem Rumpf: fehlt sie, ist es Los 0; alles ausser 0, 1, 2, … ist `null`. */
+function leseLos(raw: unknown): number | null {
+  if (raw === undefined || raw === null) {
+    return 0;
+  }
+  return typeof raw === "number" && Number.isSafeInteger(raw) && raw >= 0 ? raw : null;
+}
+
+/** Feste Reihenfolge nach Kennung — unabhängig davon, in welcher Folge Graph die Liste liefert. */
+function vergleicheKennung(a: string, b: string): number {
+  if (a === b) {
+    return 0;
+  }
+  return a < b ? -1 : 1;
+}
+
+/** Was eine Übernahme ergibt: die Antwort für die Leitung UND der Ausgang ihres Laufs. */
+type UebernahmeAusgang =
+  | {
+      readonly code: 200;
+      readonly body: Record<string, unknown>;
+      readonly laufStatus: ImportRunStatus;
+    }
+  | {
+      readonly code: 403 | 404 | 502;
+      readonly body: { error: string; message: string };
+      readonly laufStatus: "FAILED";
+    };
+
+/**
+ * Die gewählten Kennungen abrufen und in die Prüf-Warteschlange stellen — der EINE Übernahmeweg,
+ * den Tür 2 (Auswahl) und Tür 3 (Ordner-Los) teilen. `sourceScope` ist das Einzige, worin sie sich
+ * unterscheiden: er sagt am Lauf, WAS übernommen werden sollte.
+ */
+async function fuehreUebernahmeAus(
+  deps: SharePointImportRouteDeps,
+  adapter: SharePointSourceAdapter,
+  ids: readonly string[],
+  userId: string,
+  sourceScope: string,
+  log: FastifyBaseLogger,
+): Promise<UebernahmeAusgang> {
+  // Die Kennung des Laufs steht ausserhalb des `try`, damit auch der Fehlerausgang sie kennt
+  // und den Lauf nicht in QUEUED stehen lässt.
+  let lauf: string | null = null;
+  try {
+    let eingereiht = 0;
+    let bereitsInQueue = 0;
+    const failed: { id: string; reason: string }[] = [];
+    const notFound: string[] = [];
+    const neuerStand: string[] = [];
+    const dateien: Uebernommen[] = [];
+    // JOB 4232: die Dateien, deren Inhalt gemessen wurde und nicht trägt — je Kennung mit dem
+    // Befund, damit die Fläche den RICHTIGEN Satz zeigt und nicht einen Sammelsatz.
+    const ohneInhalt: { id: string; befund: (typeof OHNE_INHALT)[number] }[] = [];
+    // JOB 4125: der Stand der Warteschlange, wie er VOR diesem Aufruf war. Er muss vor dem
+    // ersten eigenen Schreibeffekt gelesen werden — sonst sähe dieser Lauf die Vorgänge, die
+    // er selbst gerade anlegt, und hielte jede Erstanlage für einen „neueren Stand".
+    const staende = await leseStaende(deps.library, log);
+    // DIE KENNUNG VOR DEM ERSTEN SCHREIBEFFEKT (KW-S4-26 §133, wie JOB 3288 es für den
+    // Confluence-Weg hält): ab hier kann dieser Aufruf Kandidaten anlegen.
+    lauf = await legeLaufAn(deps.importRuns, sourceScope, ids.length, log);
+    for (const id of ids) {
+      try {
+        const eintrag = await adapter.holeItem(id);
+        if (!eintrag) {
+          notFound.push(id);
+          continue;
+        }
+        const { item, inhalt } = eintrag;
+        // JOB 4232 — DER EHRLICHE ABBRUCH, VOR DEM SCHREIBEFFEKT. Wer eine Textdatei wählt,
+        // will ihren Text; ist er nachweislich nicht da (leer), passt er nicht (zu gross) oder
+        // liess er sich nicht dekodieren (unlesbar), entsteht KEIN Eintrag. Ein Kandidat, der
+        // nur den Dateinamen trägt, sähe in der Prüfung aus wie ein gelungener Inhaltsimport.
+        if (istOhneInhalt(inhalt.art)) {
+          ohneInhalt.push({ id, befund: inhalt.art });
+          continue;
+        }
+        // JOB 4232 R2 — DERSELBE STAND IST SCHON IM BESTAND (bens Korrekturpflicht 3).
+        // Wurde zu dieser Quelle bereits ein Vorgang ANGENOMMEN und daraus ein Wissensobjekt,
+        // dann bringt dieselbe (oder eine ältere) Version nichts Neues. Sie wird deshalb nicht
+        // noch einmal eingereiht, sondern als „schon vorhanden" gemeldet — genau der Satz, den
+        // Lieferung 7 verlangt. Ein WIRKLICH neuerer Stand läuft unverändert weiter (W3b).
+        const angenommenerStand =
+          item.externalId === undefined
+            ? undefined
+            : staende.angenommen.get(importProviderKey(item.provider))?.get(item.externalId);
+        if (angenommenerStand !== undefined && (item.sourceVersion ?? 1) <= angenommenerStand) {
+          bereitsInQueue += 1;
+          continue;
+        }
+        const angelegt = await deps.library.createImportCandidates([item], userId);
+        if (angelegt.length > 0) {
+          eingereiht += 1;
+          // JOB 4125: Stand dieser Übernahme gegen den Stand des Vorgangs, der zu DERSELBEN
+          // Quelle schon offen wartete. Nur ein WIRKLICH höherer Stand ist ein neuer Stand;
+          // ohne wartenden Vorgang ist es eine Erstanlage und hier ist nichts zu sagen.
+          const vorher =
+            item.externalId === undefined
+              ? undefined
+              : staende.offen.get(importProviderKey(item.provider))?.get(item.externalId);
+          if (vorher !== undefined && (item.sourceVersion ?? 1) > vorher) {
+            neuerStand.push(id);
+          }
+          dateien.push({
+            id,
+            name: item.title,
+            url: item.url ?? null,
+            geaendertAm: item.updatedAt ?? null,
+            // Der Befund DIESES Abrufs. `bodyHtml` und er hängen zusammen (mapper.ts), also
+            // ist das keine zweite Wahrheit über denselben Sachverhalt.
+            inhalt: inhalt.art,
+          });
+        } else {
+          bereitsInQueue += 1;
+        }
+      } catch (err) {
+        const lage = sharepointFehlerlage(err);
+        if (lage === "nicht-gefunden") {
+          // Die Datei ist zwischen Auswahl und Übernahme verschwunden. Das ist kein Fehler
+          // dieses Laufs, sondern eine Auskunft über die Quelle — und sie bekommt ihren
+          // eigenen Ausgang, damit der Mensch den richtigen Satz liest.
+          notFound.push(id);
+          continue;
+        }
+        if (lage !== null) {
+          // Eine Lage, die den GANZEN Lauf betrifft (kein Zugang, keine Berechtigung, nicht
+          // erreichbar): weiterzumachen hiesse, dieselbe Antwort noch 49-mal zu holen.
+          throw err;
+        }
+        // PII-frei: nur Kennung und Fehlerklasse, nie Inhalte.
+        failed.push({ id, reason: err instanceof Error ? err.name : "unknown" });
+      }
+    }
+    const bilanz: Uebernahmebilanz = {
+      beauftragt: ids.length,
+      eingereiht,
+      bereitsInQueue,
+      gescheitert: failed.length,
+      nichtGefunden: notFound.length,
+      ohneInhalt: ohneInhalt.length,
+    };
+    const laufStatus = uebernahmeStatus(bilanz);
+    await schliesseLauf(
+      deps.importRuns,
+      lauf,
+      {
+        status: laufStatus,
+        completedAt: new Date().toISOString(),
+        counters: uebernahmeZaehler(bilanz),
+      },
+      log,
+    );
+    return {
+      code: 200,
+      laufStatus,
+      body: {
+        imported: eingereiht,
+        alreadyQueued: bereitsInQueue,
+        // JOB 4125: die Teilmenge von `imported`, die einen NEUEREN Stand einer bereits
+        // wartenden Quelle gebracht hat. Immer geführt — eine leere Liste ist die Auskunft
+        // „kein solcher Fall", nicht ein fehlendes Feld.
+        neuerStand,
+        failed,
+        notFound,
+        // JOB 4232: Immer geführt — eine leere Liste ist die Auskunft „kein solcher Fall", nicht
+        // ein fehlendes Feld (dieselbe Regel wie bei `neuerStand`).
+        ohneInhalt,
+        // Name, Originaladresse und Stand der WIRKLICH übernommenen Dateien — das Ergebnisbild
+        // der Oberfläche liest genau das und erfindet nichts dazu.
+        dateien,
+        ...(lauf !== null ? { importId: lauf } : {}),
+      },
+    };
+  } catch (err) {
+    warne(log, "Uebernahme", err);
+    const lage = sharepointFehlerlage(err);
+    const ausgang = lage ? sharepointAntwort(lage) : sharepointAntwort("nicht-erreichbar");
+    await schliesseLauf(
+      deps.importRuns,
+      lauf,
+      {
+        status: "FAILED",
+        completedAt: new Date().toISOString(),
+        failureCode: ausgang.error,
+        failureReason: sanitizeImportFailureReason(
+          MELDUNG[ausgang.error] ?? "SharePoint-Übernahme fehlgeschlagen.",
+        ),
+      },
+      log,
+    );
+    return {
+      code: ausgang.status,
+      laufStatus: "FAILED",
+      body: {
+        error: ausgang.error,
+        message: MELDUNG[ausgang.error] ?? "SharePoint-Übernahme fehlgeschlagen.",
+      },
+    };
+  }
 }
 
 /** Ein Fehler aus dem Modul wird zur Antwort. Kein fremder Text, kein Statusdurchgriff. */
@@ -663,7 +849,7 @@ function sendeLage(reply: FastifyReply, err: unknown): FastifyReply {
  */
 async function legeLaufAn(
   importRuns: ImportRunRepo | undefined,
-  driveId: string,
+  sourceScope: string,
   beauftragt: number,
   log: FastifyBaseLogger,
 ): Promise<string | null> {
@@ -676,11 +862,12 @@ async function legeLaufAn(
     sourceSystem: SYSTEM,
     externalId: null,
     // `pruefeImportRun` verlangt ein Quellobjekt ODER einen expliziten Scope. Eine Übernahme über
-    // mehrere Dateien hat kein einzelnes Objekt, also trägt sie den Container — die Bibliothek.
-    // Sie kommt vom ADAPTER und nicht aus der Umgebung: der Adapter IST die Stelle, die weiss,
-    // gegen welches Laufwerk dieser Lauf tatsächlich lief. Ein zweiter Umgebungsleser wäre eine
-    // zweite Wahrheit, die beim nächsten Umbau still auseinanderliefe.
-    sourceScope: `drive:${driveId}`,
+    // mehrere Dateien hat kein einzelnes Objekt, also trägt sie den Container — die Bibliothek,
+    // beim Ordner-Los zusätzlich Ordner und Los (Tür 3). Das Laufwerk kommt vom ADAPTER und nicht
+    // aus der Umgebung: der Adapter IST die Stelle, die weiss, gegen welches Laufwerk dieser Lauf
+    // tatsächlich lief. Ein zweiter Umgebungsleser wäre eine zweite Wahrheit, die beim nächsten
+    // Umbau still auseinanderliefe.
+    sourceScope,
     requestedSourceVersion: null,
     status: "QUEUED",
     sourceRecordId: null,

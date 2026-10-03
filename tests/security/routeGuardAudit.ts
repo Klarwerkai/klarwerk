@@ -686,6 +686,9 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // `apply` stellt die gewählten Dateien in die Review-Queue — nie ein Wissensobjekt.
   "POST /api/admin/import/sharepoint/files": { protection: "users.manage" },
   "POST /api/admin/import/sharepoint/apply": { protection: "users.manage" },
+  // R-0145/R-0190: die dritte Tür — einen ganzen Ordner in Losen übernehmen, ein Los je Aufruf.
+  // Derselbe Übernahmeweg wie `apply`, also dieselbe Schranke.
+  "POST /api/admin/import/sharepoint/folder-apply": { protection: "users.manage" },
 
   // --- Admin (admin-routes.ts) ---
   // AUFTRAG-mega14 Block H (SCRUM-437): LESENDER Demodaten-Stand für die Bereitschafts-Zeile.

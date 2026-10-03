@@ -647,6 +647,9 @@ const REGISTER: Record<string, Eintrag> = {
     // Wissensobjekts aus — sie geben Namen, Adressen und Stände von QUELLDATEIEN aus.
     "POST /api/admin/import/sharepoint/files": "users.manage.",
     "POST /api/admin/import/sharepoint/apply": "users.manage.",
+    // R-0145/R-0190: `folder-apply` ist derselbe Übernahmeweg für ein Los eines Ordners — er gibt
+    // dieselben Quelldatei-Angaben aus wie `apply`, dazu die Kennungen des Loses.
+    "POST /api/admin/import/sharepoint/folder-apply": "users.manage.",
     "PUT /api/reasoner/config": "users.manage.",
     "PUT /api/reasoner/assist-presets": "users.manage.",
     "POST /api/reasoner/test": "users.manage.",

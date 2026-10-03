@@ -894,6 +894,16 @@ export const TABELLE: Zeile[] = [
     payload: {},
     erwartet: NUR_ADMIN,
   },
+  // R-0145/R-0190: die Ordnerübernahme in Losen. Ohne Zugangsdaten ebenso ein 503 vor jedem Effekt.
+  {
+    gruppe: "sharepointImportRoutes",
+    methode: "POST",
+    pfad: "/api/admin/import/sharepoint/folder-apply",
+    belegstelle: "services/app/src/routes/sharepoint-import-routes.ts:530",
+    tor: "users.manage",
+    payload: {},
+    erwartet: NUR_ADMIN,
+  },
   {
     gruppe: "importRunRoutes",
     methode: "GET",
