@@ -349,15 +349,43 @@ function kandidatErzeugtWissensobjekt(candidate: ImportCandidate): boolean {
 // verloren; bis hierher übernahm die Recovery deshalb den Stand vom EINREIHEN — und ein wirklich
 // angelegtes Objekt blieb als Dublette eines längst abgelehnten Kandidaten dokumentiert.
 //
-// DER BEFUND IST ABER ABLEITBAR, NICHT GERATEN. Ein Stempel-Objekt entsteht nur, wenn der Kandidat
-// bei der Entscheidung `kandidatErzeugtWissensobjekt` erfüllte. Erfüllt ihn schon der gespeicherte
-// Stand, galt dieser (kein Port oder Anker-Strang: die Annahme erhebt nichts neu) — `undefined`,
-// nichts wird überschrieben. Erfüllt er ihn NICHT, kann das Objekt nur aus der Neuerhebung auf dem
-// Textweg stammen (`befundBeiAnnahme`), und deren einziger anlegender Ausgang ist `keine`.
-function befundNachVollendeterAnlage(candidate: ImportCandidate): AnnahmeBefund | undefined {
-  return kandidatErzeugtWissensobjekt(candidate)
-    ? undefined
-    : { duplicate: false, dublettenbefund: { ergebnis: "keine" } };
+// DER BEFUND IST ABER ABLEITBAR, NICHT GERATEN. Ein Stempel-Objekt entsteht nur durch eine
+// ERSTANLAGE dieses Kandidaten (`acceptToKo`, Erstanlage-Zweig). Deren Ausgang ist eindeutig: auf
+// dem Anker-Weg `nicht_gestellt`, auf dem Textweg `keine`.
+//
+// Lauf :2 Nacharbeit nach Runde 3 (Bens B5): bis hierher blieb jeder gespeicherte Stand stehen,
+// der `kandidatErzeugtWissensobjekt` erfüllte. Seit die Annahme am Herkunftsanker neu entscheidet,
+// stimmt das nicht mehr: ein mit `wiederverwendet` eingereihter Kandidat legt neu an, wenn sein
+// Träger inzwischen endgültig gelöscht ist — und die Recovery behielt `wiederverwendet` mit der
+// Kennung des gelöschten Objekts. Jetzt bleibt nur ein gespeicherter Stand stehen, der selbst eine
+// Erstanlage sagt (`keine`, `nicht_gestellt`, oder gar keiner bei Altkandidaten); jeder andere
+// wird durch den Erstanlage-Ausgang ersetzt.
+function befundNachVollendeterAnlage(
+  candidate: ImportCandidate,
+  ankerWeg: boolean,
+): AnnahmeBefund | undefined {
+  const ergebnis = candidate.dublettenbefund?.ergebnis;
+  if (
+    !candidate.duplicate &&
+    (ergebnis === undefined || ergebnis === "keine" || ergebnis === "nicht_gestellt")
+  ) {
+    return undefined;
+  }
+  return {
+    duplicate: false,
+    dublettenbefund: { ergebnis: ankerWeg ? "nicht_gestellt" : "keine" },
+  };
+}
+
+// Lauf :2 Nacharbeit nach Runde 3 (Bens B4): die Annahme-Sperre war NACH der eigenen Anlage nicht
+// mehr gültig. Trägt die Kennung des eigenen, eben angelegten Objekts; aufgelöst wird der Fall in
+// `reviewImportCandidate` unter neu erworbener Sperre (Begründung an der Nachprüfung in
+// `acceptToKo`).
+class SperreNachAnlageVerloren extends Error {
+  constructor(readonly eigeneKoId: string) {
+    super("Annahme-Sperre nach der eigenen Anlage verloren");
+    this.name = "SperreNachAnlageVerloren";
+  }
 }
 
 // JOB 3050 — DER BEFUND EINES EINZELNEN KANDIDATEN. ZWEI PÄSSE, DIESELBE REIHENFOLGE WIE
@@ -1288,6 +1316,8 @@ export class LibraryService {
     // Fehlerabschluss ihn mitschreiben muss (Bens N4) — sonst bliebe ein wirklich anlegender Accept
     // dauerhaft als Dublette eines längst abgelehnten Kandidaten dokumentiert.
     let neuerBefund: AnnahmeBefund | undefined;
+    // Bens B4: steht ein zweiter Durchgang nach Sperrverlust noch aus (s. `nachSperrverlust`)?
+    let zweiterDurchgangOffen = false;
     // WP-SHIP8-CLOSE-6 (bens ROT-3a): Wer/Wann der Entscheidung reisen IM SELBEN Statuswrite mit
     // (resolveClaim-Patch) — unverlierbar im Produktbestand, egal was das Aktionsaudit später tut.
     // WP-SHIP8-CLOSE-7 (bens GELB): die Aktion wird WIRKLICH mitpersistiert (reviewedAction).
@@ -1355,7 +1385,71 @@ export class LibraryService {
             ...reviewedStamp,
           };
         };
-        resolution = await this.candidates.annahmeSperre(this.annahmeWartezeitMs, annehmen);
+        // ========================================================================================
+        // Lauf :2 Nacharbeit nach Runde 3 (Bens B4) — DER ZWEITE DURCHGANG NACH SPERRVERLUST.
+        // ========================================================================================
+        //
+        // `acceptToKo` hat angelegt und danach festgestellt, dass die Sperre nicht mehr hielt
+        // (`SperreNachAnlageVerloren`). Ob inzwischen ein ANDERER angelegt hat, wird jetzt unter
+        // einer NEU erworbenen Sperre entschieden — alle, die in der Lücke liefen, sind dann fertig:
+        //   · kein Mitbewerber neben dem eigenen Objekt → es bleibt, die Annahme ist eine
+        //     Erstanlage (wer in der Lücke lief, hat es gesehen und darauf verwiesen);
+        //   · ein Mitbewerber → das EIGENE, eben angelegte Objekt wird endgültig entfernt (es ist
+        //     die zweite Kennung), und die Annahme läuft noch einmal regulär: sie trifft dann den
+        //     Mitbewerber (Textweg: Dublette mit Kennung; Anker-Weg: Wiederverwendung).
+        // Ist die Sperre nicht zurückzugewinnen (z. B. die Datenbank weist ab), fällt dieselbe
+        // Entscheidung ohne Sperre — laut protokolliert. Das ist schwächer als der gesperrte Weg,
+        // aber besser als eine sicher stehende zweite Kennung.
+        const nachSperrverlust = async (
+          eigeneKoId: string,
+          sperreGilt: () => Promise<void>,
+        ): Promise<ClaimResolution> => {
+          if (!(await this.mitbewerberNebenAnlage(candidate, eigeneKoId, pruefeDublette))) {
+            const item = this.withSanitizedConfidentiality(candidate.item);
+            if (this.ankerWeg(candidate)) {
+              neuerBefund = { duplicate: false, dublettenbefund: { ergebnis: "nicht_gestellt" } };
+            }
+            createdKoId = eigeneKoId;
+            return {
+              status: "angenommen",
+              koId: eigeneKoId,
+              item,
+              ...(neuerBefund ?? {}),
+              ...reviewedStamp,
+            };
+          }
+          await sperreGilt();
+          await this.koService.delete(eigeneKoId, actor, { hard: true });
+          process.stderr.write(
+            `[KLARWERK] Annahme-Sperre nach der Anlage verloren, Mitbewerber vorhanden — eigenes Objekt entfernt (kandidat=${id}, ko=${eigeneKoId}).\n`,
+          );
+          return annehmen(sperreGilt);
+        };
+        try {
+          resolution = await this.candidates.annahmeSperre(this.annahmeWartezeitMs, annehmen);
+        } catch (fehler) {
+          if (!(fehler instanceof SperreNachAnlageVerloren)) {
+            throw fehler;
+          }
+          const eigeneKoId = fehler.eigeneKoId;
+          zweiterDurchgangOffen = true;
+          let schrittLief = false;
+          try {
+            resolution = await this.candidates.annahmeSperre(this.annahmeWartezeitMs, (gilt) => {
+              schrittLief = true;
+              return nachSperrverlust(eigeneKoId, gilt);
+            });
+          } catch (zweiter) {
+            if (schrittLief) {
+              throw zweiter;
+            }
+            process.stderr.write(
+              `[KLARWERK] Annahme-Sperre nach Sperrverlust nicht zurückgewonnen (kandidat=${id}) — Entscheidung über das eigene Objekt ohne Sperre.\n`,
+            );
+            resolution = await nachSperrverlust(eigeneKoId, () => Promise.resolve());
+          }
+          zweiterDurchgangOffen = false;
+        }
       }
       // SCRUM-157: Endstatus/koId/Note (+ bereinigtes Item, 515) persistieren — atomar über den
       // opId-CAS (kein stiller Verlust, kein Fremd-Overwrite).
@@ -1374,11 +1468,25 @@ export class LibraryService {
       // create-Belege idempotent nachgezogen (ensureCreatedSideEffects: v1-Snapshot + ko.created).
       // Scheitert Anker-Suche ODER Beleg-Nachzug, bleibt der Claim fail-closed stehen — es gibt
       // nie ein „angenommen" ohne vollständige Belege.
-      let stampedId: string | null = createdKoId;
-      let ankerUnsettled = false;
+      // Bens B4: ist der zweite Durchgang nach Sperrverlust nicht zu Ende gekommen, ist offen, ob
+      // das eigene Objekt eine zweite Kennung ist. Dann weder vollenden noch freigeben —
+      // fail-closed stehen lassen (derselbe Zweig wie eine nicht gesicherte Anker-Suche).
+      const sperrverlustOffen = zweiterDurchgangOffen || err instanceof SperreNachAnlageVerloren;
+      let stampedId: string | null = sperrverlustOffen ? null : createdKoId;
+      let ankerUnsettled = sperrverlustOffen;
+      if (sperrverlustOffen) {
+        process.stderr.write(
+          `[KLARWERK] Annahme nach Sperrverlust nicht abgeschlossen (kandidat=${id}) — Claim bleibt stehen (fail-closed).\n`,
+        );
+      }
       // JOB 3050: dieselbe EINE Stelle wie oben — die Anker-Suche gilt genau für die Kandidaten,
       // für die überhaupt ein Wissensobjekt entstanden sein KANN.
-      if (stampedId === null && action === "accept" && kandidatErzeugtWissensobjekt(entschieden)) {
+      if (
+        !ankerUnsettled &&
+        stampedId === null &&
+        action === "accept" &&
+        kandidatErzeugtWissensobjekt(entschieden)
+      ) {
         try {
           const stamped = await this.koService.findByImportCandidateId(id);
           if (stamped) {
@@ -1389,6 +1497,12 @@ export class LibraryService {
           ankerUnsettled = true; // Anker/Belege nicht gesichert → fail-closed (s. unten).
         }
       }
+      // Bens B5: fehlt der neu erhobene Befund (die Anlage warf, bevor ihr Ausgang zurückkam),
+      // trägt das gestempelte Objekt die Auskunft — es ist die Erstanlage dieses Kandidaten.
+      let abschlussBefund = neuerBefund;
+      if (abschlussBefund === undefined && createdKoId === null) {
+        abschlussBefund = befundNachVollendeterAnlage(entschieden, this.ankerWeg(candidate));
+      }
       if (stampedId !== null) {
         // Das KO existiert — die Operation DIREKT vollenden statt auf die Recovery zu warten.
         // CAS auf die EIGENE opId: eine übernommene Lease wird nie überschrieben.
@@ -1397,7 +1511,7 @@ export class LibraryService {
             status: "angenommen",
             koId: stampedId,
             // Bens N4: derselbe neu erhobene Befund wie im regulären Abschluss.
-            ...(neuerBefund ?? {}),
+            ...(abschlussBefund ?? {}),
             ...reviewedStamp,
           })
           .catch(() => undefined);
@@ -1611,7 +1725,7 @@ export class LibraryService {
         // WP-SHIP8-CLOSE-8 (bens GELB-1): der Beleg-Payload (inkl. Recovery-Kennzeichnung) wird
         // EINMAL gebaut und reist auch in der vorbeugenden Markierung mit — ein späterer Retry
         // schreibt den Beleg mit EXAKT dieser Kennzeichnung, nichts geht beim Nachzug verloren.
-        const befund = befundNachVollendeterAnlage(candidate);
+        const befund = befundNachVollendeterAnlage(candidate, this.ankerWeg(candidate));
         const recoveryPayload: Record<string, unknown> = {
           duplicate: befund?.duplicate ?? candidate.duplicate,
           koId: stamped.id,
@@ -1719,6 +1833,12 @@ export class LibraryService {
         dublettenbefund.ergebnis === "identisch" || dublettenbefund.ergebnis === "aehnlich",
       dublettenbefund,
     };
+  }
+
+  // Läuft die Annahme dieses Kandidaten über den Herkunftsanker (dieselbe Bedingung wie
+  // `externalId` in `acceptToKo`)?
+  private ankerWeg(candidate: ImportCandidate): boolean {
+    return Boolean(this.externalUpsert && candidate.item.externalId);
   }
 
   // Stellt die Annahme dieses Kandidaten die Textfrage neu? Nein beim Anker-Strang (dort
@@ -1879,6 +1999,8 @@ export class LibraryService {
           ? importFloor
           : currentConf;
       if (target !== currentConf) {
+        // Bens Grenzbeobachtung Runde 3: die Frage steht vor JEDER Mutation dieses Zweigs.
+        await sperreGilt();
         // AUFTRAG-mega82 Block A: der Akteur dieser Mutation ist der ANNEHMENDE, nie `item.author`.
         // Der Wert steht im Prüfprotokoll dieses Upgrades; ein aus dem Rumpf gelieferter Name
         // machte dort einen Ungeprüften zum Handelnden. Begründung in voller Länge an der revise()
@@ -1924,6 +2046,7 @@ export class LibraryService {
         //
         // Der Erstanlage-Zweig weiter unten war seit WP-SAMMEL21-FIX schon so gebaut. Diese Stelle
         // und der Vertraulichkeits-Upgrade darüber waren die beiden, die es noch nicht waren.
+        await sperreGilt();
         await this.koService.revise(
           existing.id,
           {
@@ -1952,8 +2075,9 @@ export class LibraryService {
     // versionsloser Re-Import (current = 1, incoming = 1) sauber als No-op erkannt wird (Idempotenz).
     const firstVersion = item.sourceVersion ?? 1;
     await sperreGilt();
+    let ko: KnowledgeObject;
     try {
-      const ko = await this.koService.create({
+      ko = await this.koService.create({
         title: item.title,
         statement: item.statement,
         type: item.type,
@@ -1985,14 +2109,6 @@ export class LibraryService {
         // Recovery und Insert-or-Adopt erkennen daran eine bereits gelungene Erstanlage.
         ...(candidateId ? { importCandidateId: candidateId } : {}),
       });
-      // Auf dem Anker-Weg heisst eine Erstanlage `nicht_gestellt` (JOB 3116) — auch dann, wenn beim
-      // Einreihen noch ein aktiver Träger gemeldet war, der inzwischen ganz verschwunden ist.
-      return externalId
-        ? {
-            koId: ko.id,
-            befund: { duplicate: false, dublettenbefund: { ergebnis: "nicht_gestellt" } },
-          }
-        : { koId: ko.id };
     } catch (err) {
       // WP-SHIP8-CLOSE-4 (bens ROT-1A/1B): KOLLISIONS-ADOPTION — existiert das KO mit diesem
       // Anker trotz werfendem create (Unique-Kollision ODER Insert gelungen + Snapshot/Audit
@@ -2015,6 +2131,69 @@ export class LibraryService {
       }
       throw err;
     }
+    // ============================================================================================
+    // Lauf :2 Nacharbeit nach Runde 3 (Bens B4) — DIE NACHPRÜFUNG NACH DER ANLAGE.
+    // ============================================================================================
+    //
+    // Die Frage VOR `create` deckt das Fenster bis zum Insert nicht: Ben hat A nach bestandener
+    // Frage unmittelbar vor dem Insert angehalten, die Sperrsitzung verloren gehen lassen, B
+    // anlegen lassen — und A legte danach ebenfalls an. Frage und Insert sind über zwei Module
+    // verteilt und lassen sich hier nicht atomar verbinden.
+    //
+    // Darum wird NACH dem Insert noch einmal gefragt. Hält die Sperre jetzt noch (Postgres:
+    // `SELECT 1` über dieselbe, nie abgebrochene Sitzung), hielt sie ununterbrochen seit dem
+    // Bestandslesen — eine transaktionsgebundene Advisory-Sperre fällt nur mit ihrer Sitzung bzw.
+    // Transaktion, und beide leben noch. Dann ist die Anlage unter Ausschluss geschehen. Hält sie
+    // NICHT mehr, ist unbekannt, ob ein anderer daneben angelegt oder As Objekt schon gesehen hat;
+    // die Entscheidung fällt dann in einem zweiten Durchgang UNTER NEU ERWORBENER SPERRE
+    // (`nachSperrverlust` im Aufrufer), nicht hier.
+    try {
+      await sperreGilt();
+    } catch {
+      throw new SperreNachAnlageVerloren(ko.id);
+    }
+    // Auf dem Anker-Weg heisst eine Erstanlage `nicht_gestellt` (JOB 3116) — auch dann, wenn beim
+    // Einreihen noch ein aktiver Träger gemeldet war, der inzwischen ganz verschwunden ist.
+    return externalId
+      ? {
+          koId: ko.id,
+          befund: { duplicate: false, dublettenbefund: { ergebnis: "nicht_gestellt" } },
+        }
+      : { koId: ko.id };
+  }
+
+  // Bens B4: liegt — ausser dem eigenen Objekt `eigeneKoId` — ein ANDERES Wissensobjekt im
+  // Bestand, das dieser Kandidat getroffen hätte? Dieselbe Frage wie bei der Annahme, nur mit dem
+  // eigenen Objekt ausgenommen: Anker-Weg über den Herkunftsanker (aktiv; ein Papierkorb-Träger
+  // ist kein Mitbewerber, er wurde vor dieser Anlage gelöscht), Textweg über `befundBeiAnnahme`
+  // (das eigene Objekt trägt den Stempel dieses Kandidaten und ist dort schon ausgenommen).
+  // Ohne Port ist die Textfrage nicht stellbar — dann gilt „kein Mitbewerber erkennbar".
+  private async mitbewerberNebenAnlage(
+    candidate: ImportCandidate,
+    eigeneKoId: string,
+    pruefeDublette: DublettenPruefung | undefined,
+  ): Promise<boolean> {
+    const item = candidate.item;
+    if (this.externalUpsert && item.externalId) {
+      const schluessel = ankerSchluessel(item.provider, item.externalId);
+      for (const ko of await this.koService.list()) {
+        if (ko.id === eigeneKoId) {
+          continue;
+        }
+        for (const quelle of ko.sources ?? []) {
+          const ext = quelle.externalId;
+          if (ext && ankerSchluessel(quelle.provider, ext) === schluessel) {
+            return true;
+          }
+        }
+      }
+      return false;
+    }
+    const befund = await this.befundBeiAnnahme(candidate, pruefeDublette);
+    // Ein Objekt im Papierkorb ist kein Mitbewerber im aktiven Bestand; `pruefung_nicht_moeglich`
+    // belegt keinen — in beiden Fällen bleibt das eigene, bereits angelegte Objekt stehen.
+    const ergebnis = befund?.dublettenbefund.ergebnis;
+    return ergebnis === "identisch" || ergebnis === "aehnlich";
   }
 
   // ==============================================================================================

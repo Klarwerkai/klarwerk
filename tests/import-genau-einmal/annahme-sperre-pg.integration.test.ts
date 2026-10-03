@@ -19,6 +19,10 @@
 //   S6 — Bens B4: die SPERRSITZUNG von A stirbt (pg_terminate_backend), der Prozess A lebt weiter.
 //        B bekommt die Sperre und legt an; A setzt mit seinem alten Befund fort, erkennt den
 //        Verlust vor der Anlage (`sperreGilt`) und legt NICHTS an → ein Objekt, kein Absturz.
+//   S7 — Bens B4 (Nacharbeit nach Runde 3): A hat die LETZTE Prüfung bestanden und hängt im echten
+//        Insert der Ablage; DANN stirbt seine Sperrsitzung. B legt an; A setzt fort, legt an,
+//        erkennt den Verlust in der Nachprüfung, entscheidet unter neu erworbener Sperre (neue
+//        Verbindung aus Pool A) und entfernt sein eigenes Objekt → genau ein Objekt.
 //
 // Läuft NUR unter `test:integration` (Docker/Testcontainers oder eine per KLARWERK_PG_TEST_URL
 // angebotene lokale Testinstanz) — dieselbe Bauform wie `tests/q2d-leere-kennung/
@@ -104,13 +108,13 @@ describe("Bens B2 · Annahme-Sperre über zwei unabhängige Pools gegen echtes P
   /** Zwei Dienstinstanzen auf frischer Tabelle, je ein eigener Pool, gemeinsamer KO-Bestand. */
   async function zweiInstanzen(
     ctx: { skip: () => void },
-    opts: { anker?: boolean; wartezeitB?: number; optionsA?: string } = {},
+    opts: { anker?: boolean; wartezeitB?: number; optionsA?: string; koRepo?: InMemoryKoRepo } = {},
   ) {
     const poolA = neuerPool(ctx, opts.optionsA);
     const poolB = neuerPool(ctx);
     await poolA.query("DROP TABLE IF EXISTS import_candidates");
     await poolA.query(IMPORT_CANDIDATES_SCHEMA);
-    const koService = new KoService({ repo: new InMemoryKoRepo() });
+    const koService = new KoService({ repo: opts.koRepo ?? new InMemoryKoRepo() });
     await koService.activateSearchProjectionV2();
     const uhr = { ms: Date.parse("2026-10-01T08:00:00Z") };
     const repoA = new PgCandidateRepo(poolA);
@@ -368,6 +372,80 @@ describe("Bens B2 · Annahme-Sperre über zwei unabhängige Pools gegen echtes P
       expect(kos).toHaveLength(1);
       expect(kos[0]?.id).toBe(angenommen.koId);
       expect((await inst.repoB.findById(a!.id))?.status, "As Claim ist zurückgegeben.").toBe("neu");
+    });
+  }
+
+  for (const anker of [false, true]) {
+    const weg = anker ? "Herkunftsanker" : "Textweg";
+    const quelle = anker ? { ...EINTRAG, provider: "wiki", externalId: "quelle-42" } : EINTRAG;
+
+    it(`S7 · ${weg} (Bens B4, Nacharbeit): Sperrsitzung stirbt NACH der letzten Prüfung, im Insert → ein Objekt`, async (ctx) => {
+      // Der ERSTE echte Insert der Ablage hält an — also nach `sperreGilt` vor `create`.
+      let betreten: () => void = () => undefined;
+      let fortsetzen: () => void = () => undefined;
+      const bereit = new Promise<void>((r) => {
+        betreten = r;
+      });
+      const tor = new Promise<void>((r) => {
+        fortsetzen = r;
+      });
+      class Ablage extends InMemoryKoRepo {
+        erster = true;
+        override async insert(input: Parameters<InMemoryKoRepo["insert"]>[0]): Promise<void> {
+          if (this.erster) {
+            this.erster = false;
+            betreten();
+            await tor;
+          }
+          return super.insert(input);
+        }
+      }
+      const inst = await zweiInstanzen(ctx, { anker, koRepo: new Ablage() });
+      inst.poolA.on("error", () => undefined);
+      const [a] = await inst.links.createImportCandidates(
+        [{ ...quelle, sourceVersion: 1 }],
+        "imp",
+        NIE_AEHNLICH,
+      );
+      const [b] = await inst.rechts.createImportCandidates(
+        [{ ...quelle, sourceVersion: 2 }],
+        "imp",
+        NIE_AEHNLICH,
+      );
+      const aLauf = inst.links.reviewImportCandidate(
+        a!.id,
+        "accept",
+        "rev-a",
+        undefined,
+        NIE_AEHNLICH,
+      );
+      await bereit;
+      const halter = await inst.poolB.query<{ pid: number }>(
+        "SELECT pid FROM pg_locks WHERE locktype = 'advisory' AND granted",
+      );
+      expect(halter.rows).toHaveLength(1);
+      await inst.poolB.query("SELECT pg_terminate_backend($1)", [halter.rows[0]!.pid]);
+
+      const rb = await inst.rechts.reviewImportCandidate(
+        b!.id,
+        "accept",
+        "rev-b",
+        undefined,
+        NIE_AEHNLICH,
+      );
+      expect(rb.koId, "B bekommt die freigewordene Sperre und legt an.").toBeTruthy();
+
+      fortsetzen();
+      const ra = await aLauf;
+      const kos = await inst.koService.list();
+      expect(kos, "Keine zweite Kennung.").toHaveLength(1);
+      expect(kos[0]?.id).toBe(rb.koId);
+      expect(ra.status).toBe("angenommen");
+      expect(ra.dublettenbefund).toEqual({
+        ergebnis: anker ? "wiederverwendet" : "identisch",
+        treffer: { art: "wissensobjekt", koId: rb.koId },
+      });
+      expect(await gehalteneAnnahmeSperren(inst.poolB)).toBe(0);
     });
   }
 });
