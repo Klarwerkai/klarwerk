@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowRight, Copy, ThumbsUp } from "lucide-react";
+import { ArrowRight, Copy, ThumbsUp, Volume2 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
@@ -35,6 +35,7 @@ import {
   type Verwendung,
   chipPunkt,
 } from "../components/fragen/Quellenplaketten";
+import { useVorlesen } from "../components/fragen/useVorlesen";
 import { FRAGEN_ZIEL } from "../components/fragen/ziele";
 // WP-UX-WOW-1 U1 / JOB 3064 §5: sichere Markdown-Darstellung der Antwort (React-Elemente, kein
 // HTML-Sink) — mit den Fussnotenmarken des H5-Zielbilds. Derselbe Parser wie `AnswerMarkdown`.
@@ -87,6 +88,7 @@ import { type KnowledgeGuidanceTone, knowledgeGuidance } from "../lib/knowledgeG
 import { formatKoTimestamp } from "../lib/koDates";
 import { type ReasonerBadgeTone, reasonerBadge } from "../lib/reasonerBadge";
 import { toReasonerLocale } from "../lib/reasonerLocale";
+import { istIosGeraet } from "../lib/speechSupport";
 import { useAiAvailable } from "../lib/useAiAvailable";
 import { useAiBillable } from "../lib/useAiBillable";
 import { useAuthorName } from "../lib/useAuthorName";
@@ -266,10 +268,12 @@ function MehrFlaechenInfo({
   badge,
   guide,
   speechSupported,
+  vorlesenMoeglich,
 }: {
   badge: ReturnType<typeof reasonerBadge>;
   guide: ReturnType<typeof knowledgeGuidance>;
   speechSupported: boolean;
+  vorlesenMoeglich: boolean;
 }): JSX.Element {
   const { t } = useTranslation();
   return (
@@ -318,6 +322,17 @@ function MehrFlaechenInfo({
           className="mb-3 rounded-btn bg-trust-warn-bg px-2.5 py-2 text-[12px] text-trust-warn-text"
         >
           {t("ask.diktatUnsupported")}
+          {/* FR-CAP-03: auf iPhone/iPad ist der Ausweg das Mikrofon der Bildschirmtastatur. */}
+          {istIosGeraet(window) ? ` ${t("capture.diktatIosTastatur")}` : null}
+        </p>
+      )}
+      {/* R-1053: dieselbe Ehrlichkeit für die Sprachausgabe — ohne sie fehlt der Vorlese-Knopf. */}
+      {vorlesenMoeglich ? null : (
+        <p
+          data-testid="ask-vorlesen-na"
+          className="mb-3 rounded-btn bg-trust-warn-bg px-2.5 py-2 text-[12px] text-trust-warn-text"
+        >
+          {t("ask.vorlesenUnsupported")}
         </p>
       )}
       {/* SCRUM-289 / D-034: warum Klarwerk kein generischer Chat ist — Titel, Fliesstext und
@@ -583,6 +598,8 @@ export function Ask(): JSX.Element {
   // ANGEHÄNGT, und das Stoppen löst KEINE Modellanfrage aus.
   const diktat = useDiktat((text: string) => setQ((prev) => (prev ? `${prev} ${text}` : text)));
   const speechSupported = diktat.moeglich;
+  // R-1053: die Antwort auf Klick vorlesen — Browser-Sprachausgabe, kein Auto-Play.
+  const vorlesen = useVorlesen();
   // JOB 3064 §5: zwei Schalter der Fläche — das Info-Blatt („…" → „Mehr") und die Beispielliste
   // im leeren Frage-Feld. Beide sind reine Anzeige-Zustände; keiner löst eine Modellanfrage aus.
   const [mehr, setMehr] = useState(false);
@@ -595,6 +612,12 @@ export function Ask(): JSX.Element {
   const menuGriffRef = useRef<HTMLButtonElement | null>(null);
   const [beispiele, setBeispiele] = useState(false);
   const [result, setResult] = useState<AnswerResult | null>(anfang?.antwort?.result ?? null);
+  // Eine neue (oder keine) Antwort: was gerade vorgelesen wird, gilt nicht mehr.
+  const vorlesenStoppen = vorlesen.stoppen;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Absichts-Abhängigkeit — genau beim Antwortwechsel stoppen.
+  useEffect(() => {
+    vorlesenStoppen();
+  }, [result, vorlesenStoppen]);
   // Ergänzung 1: welche Antwort aus dem Arbeitsstand kam (s. das Anspringen unter `revealResult`).
   const aufgenommeneAntwort = useRef<AnswerResult | null>(result);
   // JOB 2626 D1: die Torlage einer Nicht-Antwort — welche gefundenen Dokumente NICHT antworten
@@ -1822,6 +1845,7 @@ export function Ask(): JSX.Element {
                         badge={badge}
                         guide={guide}
                         speechSupported={speechSupported}
+                        vorlesenMoeglich={vorlesen.moeglich}
                       />
                       <div
                         data-testid="ask-mehr-antwort"
@@ -2150,6 +2174,21 @@ export function Ask(): JSX.Element {
                     <Copy size={14} aria-hidden="true" />
                     {t("ask.export.copy")}
                   </button>
+                  {/* R-1053: die Antwort vorlesen — nur wo der Browser sprechen kann; sonst nennt
+                      das „Mehr"-Blatt den Grund (`ask-vorlesen-na`), kein toter Knopf. Vorgelesen
+                      wird der Antworttext selbst, ohne Markdown-Zeichen und Fussnotenmarken. */}
+                  {vorlesen.moeglich ? (
+                    <button
+                      type="button"
+                      data-testid="ask-vorlesen"
+                      aria-pressed={vorlesen.liest}
+                      onClick={() => vorlesen.umschalten(result.answer ?? "")}
+                      className="inline-flex items-center gap-1.5 rounded-[10px] border border-hairline bg-surface px-5 py-2.5 text-[14px] text-text hover:bg-hairline-soft"
+                    >
+                      <Volume2 size={14} aria-hidden="true" />
+                      {vorlesen.liest ? t("ask.vorlesenStop") : t("ask.vorlesen")}
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     disabled={helpfulDisabled(
@@ -2411,7 +2450,12 @@ export function Ask(): JSX.Element {
           onSchliessen={() => setMehr(false)}
           ausloeser={() => menuGriffRef.current}
         >
-          <MehrFlaechenInfo badge={badge} guide={guide} speechSupported={speechSupported} />
+          <MehrFlaechenInfo
+            badge={badge}
+            guide={guide}
+            speechSupported={speechSupported}
+            vorlesenMoeglich={vorlesen.moeglich}
+          />
           {karteSichtbar && result && contract && !result.answered ? (
             <MehrLueckenInfo contract={contract} sourceSummary={sourceSummary} />
           ) : null}

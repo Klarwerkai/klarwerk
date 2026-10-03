@@ -59,7 +59,7 @@ import { toReasonerLocale } from "../../lib/reasonerLocale";
 import { draftProvenance } from "../../lib/reasonerProvenance";
 import { isEmptyHtml } from "../../lib/richText";
 import { type SpeechRec, diktatSprache, makeRec } from "../../lib/speechDictation";
-import { hasSpeechRecognition } from "../../lib/speechSupport";
+import { hasSpeechRecognition, istIosGeraet } from "../../lib/speechSupport";
 import type { TitelMitQuelle } from "../../lib/titelRangfolge";
 import { useAiBillable } from "../../lib/useAiBillable";
 import { umfangKurz } from "../../lib/vorschauUmfang";
@@ -510,6 +510,8 @@ export function Blatt({
     nonce: number;
   } | null>(null);
   const [diktatLaeuft, setDiktatLaeuft] = useState(false);
+  // FR-CAP-03: das noch nicht Endgültige, sofort sichtbar — reine Anzeige, nie im Rumpf.
+  const [diktatZwischen, setDiktatZwischen] = useState("");
   const recRef = useRef<SpeechRec | null>(null);
   const diktatMoeglich = hasSpeechRecognition(window);
 
@@ -849,6 +851,7 @@ export function Blatt({
     }
     recRef.current = null;
     setDiktatLaeuft(false);
+    setDiktatZwischen("");
     getrennt.stop();
   }, []);
 
@@ -1701,8 +1704,15 @@ export function Blatt({
           return;
         }
         setDiktatLaeuft(false);
+        setDiktatZwischen("");
       },
       diktatSprache(i18n.language),
+      (text) => {
+        // Derselbe Identitätsriegel: eine getrennte Sitzung malt nicht mehr in dieses Blatt.
+        if (recRef.current === rec) {
+          setDiktatZwischen(text);
+        }
+      },
     );
     if (!rec) {
       return;
@@ -2255,7 +2265,9 @@ export function Blatt({
             ? blattNimmtAn
               ? undefined
               : t("erfassen.laden.nichtBereit")
-            : t("capture.diktatUnsupported")
+            : istIosGeraet(window)
+              ? `${t("capture.diktatUnsupported")} ${t("capture.diktatIosTastatur")}`
+              : t("capture.diktatUnsupported")
         }
         onClick={diktatUmschalten}
         className={`inline-flex items-center gap-1.5 text-[13px] ${
@@ -2269,6 +2281,15 @@ export function Blatt({
         <SymbolMikrofon />
         {t("erfassen.werkzeug.diktieren")}
       </button>
+      {diktatLaeuft && diktatZwischen ? (
+        <span
+          data-testid="blatt-diktat-zwischen"
+          aria-live="polite"
+          className="max-w-[16rem] truncate text-[13px] italic text-muted-2"
+        >
+          {diktatZwischen}
+        </span>
+      ) : null}
 
       <button
         type="button"

@@ -2737,6 +2737,14 @@ const de = {
   "ask.diktatStop": "Aufnahme beenden",
   "ask.diktatUnsupported":
     "Spracheingabe ist in diesem Browser nicht verfügbar. Nutze Chrome/Edge oder tippe die Frage.",
+  // R-1053: die Antwort vorlesen (Browser-Sprachausgabe); ohne sie der ehrliche Satz.
+  "ask.vorlesen": "Vorlesen",
+  "ask.vorlesenStop": "Vorlesen stoppen",
+  "ask.vorlesenUnsupported":
+    "Vorlesen ist in diesem Browser nicht verfügbar. Die Antwort steht vollständig als Text da.",
+  // FR-CAP-03: auf iOS kein Browser-Diktat (es friert dort ein) — der Ausweg ist die Tastatur.
+  "capture.diktatIosTastatur":
+    "Auf iPhone und iPad nutze das Mikrofon der Bildschirmtastatur – es schreibt direkt ins Feld.",
   // AUFTRAG-mega38 BLOCK A: Warten und Fehlschlag stehen DORT, wo die Antwort erscheint.
   "ask.pending.title": "Die Frage läuft gegen das Werkswissen.",
   "ask.pending.body":
@@ -9631,6 +9639,12 @@ const en: typeof de = {
   "ask.diktatStop": "Stop recording",
   "ask.diktatUnsupported":
     "Speech input is not available in this browser. Use Chrome/Edge or type your question.",
+  "ask.vorlesen": "Read aloud",
+  "ask.vorlesenStop": "Stop reading",
+  "ask.vorlesenUnsupported":
+    "Reading aloud is not available in this browser. The full answer is shown as text.",
+  "capture.diktatIosTastatur":
+    "On iPhone and iPad, use the microphone on the on-screen keyboard — it types straight into the field.",
   "ask.reasoner.model": "Model mode",
   "ask.reasoner.deterministic": "Deterministic mode",
   "ask.reasoner.loading": "Checking mode …",
@@ -15291,6 +15305,12 @@ const nl: typeof de = {
   "ask.diktatStop": "Opname stoppen",
   "ask.diktatUnsupported":
     "Spraakinvoer is in deze browser niet beschikbaar. Gebruik Chrome/Edge of typ je vraag.",
+  "ask.vorlesen": "Voorlezen",
+  "ask.vorlesenStop": "Voorlezen stoppen",
+  "ask.vorlesenUnsupported":
+    "Voorlezen is in deze browser niet beschikbaar. Het volledige antwoord staat als tekst.",
+  "capture.diktatIosTastatur":
+    "Gebruik op iPhone en iPad de microfoon van het schermtoetsenbord — die schrijft direct in het veld.",
   // AUFTRAG-mega38 BLOCK A: wachten en mislukken staan DAAR waar het antwoord verschijnt.
   "ask.pending.title": "De vraag loopt tegen de fabriekskennis.",
   "ask.pending.body":
