@@ -759,11 +759,55 @@ describe("FE-002 · Kopfband in Chromium", () => {
           fokusSichtbar(f),
           `${kennung}: Fokus am Eintrag unsichtbar ${JSON.stringify(f)}`,
         ).toBe(true);
+        // 3b · Lage (Ben, Kandidat b18faa93: bei 390 px ragte das Einstellungsmenü links aus dem
+        // Fenster, Beschriftungen und Fokusring abgeschnitten). Fläche UND fokussierter Eintrag samt
+        // sichtbarem Ring müssen ganz zwischen 0 und der Fensterbreite liegen. Das Bild entsteht vor
+        // den Zusicherungen, damit es auch im roten Fall vorliegt.
+        const lage = await seite().evaluate<{
+          fenster: number;
+          flaeche: { links: number; rechts: number };
+          eintrag: { links: number; rechts: number };
+          ring: number;
+        }>(
+          fn(`(id) => {
+            const f = document.querySelector('[data-testid="' + id + '"]').getBoundingClientRect();
+            const a = document.activeElement;
+            const e = a.getBoundingClientRect();
+            const s = getComputedStyle(a);
+            const ring = s.outlineStyle === 'none'
+              ? 0
+              : (Number.parseFloat(s.outlineWidth) || 0) + Math.max(0, Number.parseFloat(s.outlineOffset) || 0);
+            return {
+              fenster: window.innerWidth,
+              flaeche: { links: f.left, rechts: f.right },
+              eintrag: { links: e.left - ring, rechts: e.right + ring },
+              ring: ring,
+            };
+          }`),
+          fall.flaeche,
+        );
         await beleg(
           `auswahl-${fall.name}-${breite}`,
           false,
           `Tastatur: ${tabs}× Tab bis ${fall.ausloeser}, Enter, ${pfeile}× Pfeil ab bis ${fall.eintrag}`,
         );
+        const lageText = JSON.stringify(lage);
+        expect(
+          lage.flaeche.links,
+          `${kennung}: Menü ragt links hinaus ${lageText}`,
+        ).toBeGreaterThanOrEqual(0);
+        expect(
+          lage.flaeche.rechts,
+          `${kennung}: Menü ragt rechts hinaus ${lageText}`,
+        ).toBeLessThanOrEqual(lage.fenster);
+        expect(
+          lage.eintrag.links,
+          `${kennung}: Eintrag/Fokusring links abgeschnitten ${lageText}`,
+        ).toBeGreaterThanOrEqual(0);
+        expect(
+          lage.eintrag.rechts,
+          `${kennung}: Eintrag/Fokusring rechts abgeschnitten ${lageText}`,
+        ).toBeLessThanOrEqual(lage.fenster);
 
         // 4 · Enter führt aus: Zielroute, sichtbarer Seitenanker, Menü zu.
         await seite().keyboard.press("Enter");
