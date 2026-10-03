@@ -5430,6 +5430,19 @@ const de = {
     "Kurze Einstiegshilfe zu den wichtigsten Klarwerk-Abläufen. Suche nach Stichwort oder springe direkt in den passenden Bereich.",
   "help.noResults": "Keine Hilfe zu diesem Stichwort gefunden.",
   "help.openRoute": "Bereich öffnen",
+  // R-1064: der vom Betreiber festgelegte Supportweg dieser Installation (Hilfeseite).
+  "help.support.title": "Support dieser Installation",
+  "help.support.configured": "Der Betreiber dieser Installation hat diesen Supportweg hinterlegt:",
+  "help.support.linkDefault": "Supportseite öffnen",
+  "help.support.mailDefault": "E-Mail an den Support schreiben",
+  "help.support.newTab": "neuer Tab",
+  "help.support.notConfigured":
+    "Für diese Installation ist noch kein Supportweg hinterlegt. Wende dich mit Fragen an die Administration deiner Instanz.",
+  "help.support.invalid":
+    "Für diese Installation ist ein Supportweg eingetragen, er ist aber ungültig und wird deshalb nicht angezeigt. Bitte gib der Administration deiner Instanz Bescheid.",
+  "help.support.loadError":
+    "Der Supportweg konnte gerade nicht geladen werden. Die Hilfe auf dieser Seite funktioniert trotzdem.",
+  "help.support.loading": "Supportweg wird geladen …",
   // Klara v1 (Pedi 05.07.): kontextsensitive Hilfe — Panel-Texte + Seiten-Erklärungen.
   "klara.title": "Klara",
   "klara.subtitle": "Deine Hilfe in KLARWERK",
@@ -11658,6 +11671,18 @@ const en: typeof de = {
     "A short starter guide to the most important Klarwerk flows. Search by keyword or jump straight into the relevant area.",
   "help.noResults": "No help found for this keyword.",
   "help.openRoute": "Open area",
+  "help.support.title": "Support for this installation",
+  "help.support.configured": "The operator of this installation has set up this support channel:",
+  "help.support.linkDefault": "Open support page",
+  "help.support.mailDefault": "Email support",
+  "help.support.newTab": "new tab",
+  "help.support.notConfigured":
+    "No support channel has been set up for this installation yet. Please contact the administrators of your instance with questions.",
+  "help.support.invalid":
+    "A support channel is configured for this installation, but it is invalid and is therefore not shown. Please let the administrators of your instance know.",
+  "help.support.loadError":
+    "The support channel could not be loaded right now. The help on this page still works.",
+  "help.support.loading": "Loading support channel …",
   // Klara v1 (Pedi 05.07.): context-sensitive help — panel copy + page explanations.
   "klara.title": "Klara",
   "klara.subtitle": "Your help in KLARWERK",
@@ -17329,6 +17354,18 @@ const nl: typeof de = {
     "Korte startgids voor de belangrijkste Klarwerk-processen. Zoek op trefwoord of spring direct naar het juiste onderdeel.",
   "help.noResults": "Geen help gevonden voor dit trefwoord.",
   "help.openRoute": "Onderdeel openen",
+  "help.support.title": "Support voor deze installatie",
+  "help.support.configured": "De beheerder van deze installatie heeft dit supportkanaal ingesteld:",
+  "help.support.linkDefault": "Supportpagina openen",
+  "help.support.mailDefault": "E-mail naar support sturen",
+  "help.support.newTab": "nieuw tabblad",
+  "help.support.notConfigured":
+    "Voor deze installatie is nog geen supportkanaal ingesteld. Neem met vragen contact op met de beheerders van je omgeving.",
+  "help.support.invalid":
+    "Voor deze installatie is een supportkanaal ingevoerd, maar het is ongeldig en wordt daarom niet getoond. Laat het de beheerders van je omgeving weten.",
+  "help.support.loadError":
+    "Het supportkanaal kon nu niet worden geladen. De help op deze pagina werkt gewoon.",
+  "help.support.loading": "Supportkanaal wordt geladen …",
   "klara.title": "Klara",
   "klara.subtitle": "Jouw hulp in KLARWERK",
   "klara.open": "Klara openen — hulp bij deze pagina",
