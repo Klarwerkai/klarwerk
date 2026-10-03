@@ -245,6 +245,63 @@ describe("K3: Pflege bei Anlage, Änderung, Löschung; Demo-Seed und das Objekt 
     expect(judgeDuplicateOutcome).toHaveBeenCalledTimes(1);
     expect(svc.checksums.has("ko-demo")).toBe(false);
   });
+
+  // bens Befund (Nacharbeit 1): der App-Pfad kehrte bei leerem Vergleichspool vor detectForSubject
+  // zurück — Anlage und Änderung des einzigen regulären Objekts pflegten dann keine Prüfsumme.
+  function appLauf(bestand: () => KnowledgeObject[]): {
+    svc: OverlapService;
+    deps: DuplicateDetectionDeps;
+    judgeDuplicateOutcome: ReturnType<typeof vi.fn>;
+  } {
+    const svc = new OverlapService({ repo: new InMemoryOverlapRepo() });
+    const judgeDuplicateOutcome = vi.fn(async () => ({ verdict: verschieden }));
+    const deps = {
+      ko: {
+        get: async (id: string) => bestand().find((k) => k.id === id),
+        list: async () => bestand(),
+      },
+      overlaps: svc,
+      reasoner: { judgeDuplicateOutcome },
+      settings: { get: async () => null },
+    } as unknown as DuplicateDetectionDeps;
+    return { svc, deps, judgeDuplicateOutcome };
+  }
+
+  const sV1 = { ...S, version: 1 };
+  const sV2 = { ...FREMD, refId: "ko-s", version: 2 };
+  const versioniert = (s: DetectSubject, demoSeed: boolean): KnowledgeObject =>
+    ({ ...ko(s, demoSeed), version: s.version }) as KnowledgeObject;
+
+  async function lebenszyklus(weitere: KnowledgeObject[]): Promise<void> {
+    let stand = versioniert(sV1, false);
+    const { svc, deps, judgeDuplicateOutcome } = appLauf(() => [stand, ...weitere]);
+
+    // Anlage
+    await detectDuplicatesForKo("ko-s", deps);
+    expect(svc.checksums.get("ko-s")).toEqual(similarityChecksum(sV1));
+
+    // Inhaltsänderung: derselbe Datensatz, anderer Kerntext, version=2
+    stand = versioniert(sV2, false);
+    await detectDuplicatesForKo("ko-s", deps);
+    expect(svc.checksums.get("ko-s")).toEqual(similarityChecksum(sV2));
+    expect(svc.checksums.get("ko-s")).not.toEqual(similarityChecksum(sV1));
+
+    expect(judgeDuplicateOutcome).not.toHaveBeenCalled();
+    for (const demo of weitere) {
+      expect(svc.checksums.has(demo.id)).toBe(false);
+    }
+  }
+
+  it("App-Pfad, leerer Vergleichspool: Anlage legt an, Änderung rechnet neu — kein Modell", async () => {
+    await lebenszyklus([]);
+  });
+
+  it("App-Pfad, nur weitere Demo-Seeds: Prüfsumme gepflegt, keine Demo-Prüfsumme, kein Modell", async () => {
+    await lebenszyklus([
+      versioniert({ ...N, refId: "ko-demo1" }, true),
+      versioniert({ ...S, refId: "ko-demo2" }, true),
+    ]);
+  });
 });
 
 describe("K4: kein Text verlässt das System für die Prüfsumme (Quelleninspektion)", () => {

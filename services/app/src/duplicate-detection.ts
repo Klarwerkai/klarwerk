@@ -93,6 +93,9 @@ export async function detectDuplicatesForKo(
       .filter((k) => k.id !== koId && !k.demoSeed)
       .map(toDetectSubject);
     if (pool.length === 0) {
+      // R-0194 (bens Befund zu K3): auch ohne Vergleichspartner ist das eine Anlage bzw. Änderung —
+      // die lokale Prüfsumme des (nicht-Demo-)Subjekts wird gepflegt. Kein Vergleich, kein Modell.
+      deps.overlaps.checksums.upsert(subjectSubject);
       return coverage;
     }
     const minConfidence =
