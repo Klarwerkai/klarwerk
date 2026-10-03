@@ -2064,11 +2064,18 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // Glocke und Meldungsliste, kein Bildweg. `anbieter` 1 und `traeger` 2 bleiben unverändert.
     // Die spätere Lagekorrektur `useImFenster` (`shell/Menue.tsx`) ist ein Hook, kein Bauteil.
     // GEMESSEN war die FE-002-Stufe auf dem Stand vor dem KI-Laufprotokoll: 430 → 435 (Serverlauf
-    // `header-gezielt` am Kandidaten a3116cac, Sammler grün). Die 436 nach dieser Zusammenführung
-    // (431 + 5) ist NOCH NICHT gemessen; die Tormeldung am zusammengeführten Kandidaten entscheidet
-    // und ersetzt diese Zahl.
+    // `header-gezielt` am Kandidaten a3116cac, Sammler grün).
+    //
+    // DIE 437 IST GEMESSEN, nicht gerechnet: am zusammengeführten Kandidaten c5560a74 meldete der
+    // Sammler wörtlich „gemessen: 437 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 536
+    // Quelldateien … expected { komponenten: 437, … } to deeply equal { komponenten: 436, … }".
+    // Gerechnet waren 431 + 5 = 436. Die eine Komponente mehr stammt NICHT aus FE-002: seit der
+    // Messung 435 kamen dort nur ein Hook (`useImFenster`, kleingeschrieben, vom Sammler nicht
+    // gezählt) und Attribute dazu. Sie kam mit dem eingemischten Hauptstand; welches Bauteil es ist,
+    // ist an diesem Arbeitsbaum ohne Git-Verlauf nicht namentlich bestimmt. `anbieter` 1 und
+    // `traeger` 2 sind in derselben Meldung unverändert.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 436,
+      komponenten: 437,
       anbieter: 1,
       traeger: 2,
     });
