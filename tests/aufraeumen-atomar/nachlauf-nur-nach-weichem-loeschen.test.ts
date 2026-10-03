@@ -17,10 +17,14 @@ import { describe, expect, it } from "vitest";
 // mehr ist. Dieser Test liest deshalb den Chokepoint selbst und hält fest, WAS dort hart löscht.
 // Wird die Bedingung dort geändert, wird er rot und zeigt auf die Route, die nachzuziehen ist.
 //
+// Auftrag gesamt-dubletten-rueckzug (R-1547): Nachlauf und gespiegelte Bedingung sind entfernt;
+// die ersten beiden Absätze beschreiben den Stand bis dahin. Der erste Fall bleibt als Pin auf den
+// Chokepoint stehen, die beiden anderen halten die Entfernung fest.
+//
 // Er ersetzt keinen Verhaltenstest: dass auf beiden Ausgängen genau EIN Ruf je Aufräumdienst
 // steht, misst demo-endloeschung-laeuft-genau-einmal.test.ts an der laufenden App. Dieser hier
 // deckt den Fall ab, den ein Verhaltenstest nicht sehen kann — den künftigen dritten Auslöser.
-describe("JOB 3066 R4 · F7: die Route spiegelt den Hart-Auslöser des Chokepoints", () => {
+describe("JOB 3066 R4 · F7: die Route spiegelt den Hart-Auslöser des Chokepoints nicht mehr", () => {
   async function quelle(pfad: string): Promise<string> {
     return readFile(new URL(pfad, import.meta.url), "utf8");
   }
@@ -36,44 +40,34 @@ describe("JOB 3066 R4 · F7: die Route spiegelt den Hart-Auslöser des Chokepoin
     );
   });
 
-  it("die Route übergibt keinen der beiden Auslöser und liest deshalb nur demoSeed", async () => {
+  // Auftrag gesamt-dubletten-rueckzug (R-1547): die gespiegelte Bedingung `endgeloescht` ist mit dem
+  // Nachlauf ENTFERNT — beide Ausgänge räumen im Dienst auf, die Route muss nicht mehr wissen,
+  // welcher genommen wurde. Die zwei Fälle hier halten fest, dass sie auch nicht zurückkommt.
+  it("die Route übergibt keinen der beiden Auslöser und spiegelt keinen Ausgang mehr", async () => {
     const route = await quelle("../../services/app/src/routes/ko-routes.ts");
     const zeilen = route.split("\n");
 
-    // Der eine `ko.delete`-Aufruf dieser Route, ohne Optionen — sonst stimmte die Spiegelung nicht.
+    // Der eine `ko.delete`-Aufruf dieser Route, ohne Optionen.
     const loeschrufe = zeilen.filter(
       (z) => z.includes("await ko.delete(") && !z.trimStart().startsWith("//"),
     );
     expect(loeschrufe).toHaveLength(1);
     expect(loeschrufe[0]?.trim()).toBe("await ko.delete(request.params.id, user.id);");
 
-    // Und die Bedingung, die daraus den Ausgang ableitet.
+    // Keine gespiegelte Ausgangsbedingung mehr.
     const bedingung = zeilen.filter(
-      (z) => z.includes("const endgeloescht =") && !z.trimStart().startsWith("//"),
+      (z) => z.includes("endgeloescht") && !z.trimStart().startsWith("//"),
     );
-    expect(bedingung).toHaveLength(1);
-    expect(bedingung[0]?.trim()).toBe("const endgeloescht = target.demoSeed === true;");
+    expect(bedingung).toEqual([]);
   });
 
-  it("kein anderer Löschweg der Route umgeht die Bedingung", async () => {
+  it("kein Löschweg der Route räumt selbst Befunde auf", async () => {
     const route = await quelle("../../services/app/src/routes/ko-routes.ts");
-    const zeilen = route.split("\n");
-    const aufraeumrufe = zeilen.filter(
-      (z) => z.includes(".onKoRemoved(") && !z.trimStart().startsWith("//"),
-    );
-    // Genau zwei — conflicts und overlaps, beide im selben Zweig (die Lage im Zweig prüft der
-    // strukturelle Pin in aufraeumen-faehrt-in-der-transaktion.test.ts).
-    expect(aufraeumrufe).toHaveLength(2);
-    // Die harte Endlöschungsroute (/api/kos/trash/:id) räumt NICHT selbst auf — sie läuft über
-    // purgeTrashed und damit über denselben Chokepoint mit demselben Haken.
-    const trashRoute = route.slice(
-      route.indexOf('app.delete<{ Params: { id: string } }>("/api/kos/trash/:id"'),
-    );
-    const bisZurNaechsten = trashRoute.slice(
-      0,
-      trashRoute.indexOf('app.delete<{ Params: { id: string } }>("/api/kos/:id"'),
-    );
-    expect(bisZurNaechsten.length).toBeGreaterThan(0);
-    expect(bisZurNaechsten).not.toContain(".onKoRemoved(");
+    const aufraeumrufe = route
+      .split("\n")
+      .filter((z) => z.includes(".onKoRemoved(") && !z.trimStart().startsWith("//"));
+    // Null — der Papierkorb räumt über `setRuecknahmeTxCleanup`, die Endlöschung (auch
+    // /api/kos/trash/:id über purgeTrashed) über `setPurgeTxCleanup` auf, beide in build-app.ts.
+    expect(aufraeumrufe).toEqual([]);
   });
 });

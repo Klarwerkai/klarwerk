@@ -504,6 +504,12 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   // GEMESSEN, NICHT GESETZT: `tools/test tests/klara-zerlegung/schnitt-pins` meldete A2 `neu im
   // Baum, aber nicht gepinnt — Verzeichnis nachfuehren` mit genau diesem Pfad und diesem Griff.
   "tests/deploy-health-commit/eine-programmversion.test.ts": "zusammengesetzt",
+  // AUFNAHME 20260922 · GESAMT-KLARA-EXTERN (R-0639, Bens Befund B1, 01.10.2026): R5 schneidet
+  // `askKlara`, `ka6Absenden`, `ka6Zurufgrundlage` und den Block KW-WORDADDIN-HELPERS aus dem
+  // ausgelieferten Fenster und führt sie aus — eine Zerlegung muss diese Datei mitnehmen.
+  // GEMESSEN, NICHT GESETZT: A2 meldete lokal `neu im Baum, aber nicht gepinnt` mit genau diesem
+  // Pfad; der Griff `pfad,marken` steht so im gedruckten Verzeichnis (A4).
+  "tests/klara-dokumenttext/riegel-haelt-den-dokumenttext.test.ts": "pfad,marken",
 };
 
 // ------------------------------------------------------------------------------------------------

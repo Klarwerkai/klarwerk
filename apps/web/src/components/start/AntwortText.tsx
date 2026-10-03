@@ -89,6 +89,9 @@ function Teil({ teil, zeichen }: { teil: AnswerInlinePart; zeichen: string }): J
   if (teil.kind === "italic") {
     return <em>{inhalt}</em>;
   }
+  if (teil.kind === "strike") {
+    return <s>{inhalt}</s>;
+  }
   return <span>{inhalt}</span>;
 }
 

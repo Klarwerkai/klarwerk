@@ -100,6 +100,12 @@ const STATUS_BY_CODE: Record<string, number> = {
   // ANDEREN Weg, auf dem der Fehler nach aussen geht; er ist die Absicherung gegen die stille 400,
   // nicht die Ablösung des Sonderzweigs.
   STAND_VERALTET: 409,
+  // Auftrag gesamt-dubletten-rueckzug (Lauf 5, Runde 3, BEN-R5-3): der Datenträger des Dev-Journals
+  // ist weder lesbar noch beschreibbar, der Ausgang eines Rückzugs/einer Wiederherstellung ungewiss
+  // (dev-persist.ts, `JournalAusgangUngewiss`). Kein Eingabefehler des Aufrufers → 503, nicht der
+  // Auffangwert 400. Der Code bleibt sichtbar, damit der Aufrufer „ungewiss" von „gescheitert"
+  // unterscheiden kann; die Meldung ist ein fester Satz ohne Ursache, Pfad oder Kennung.
+  JOURNAL_AUSGANG_UNGEWISS: 503,
 };
 
 // G27 R1 (KW-ARCH-G27-HTTP-MASKIERUNG-07 §1): Fehlercodes, die REIN INTERN sind — technische

@@ -60,6 +60,44 @@ describe("KW-STR / NFR-SEC-04: sanitizeHtml", () => {
     );
   });
 
+  // R-0014: die frei gezogene Breite — eigenes enges Attribut, der Stufenvertrag oben bleibt.
+  it("img width: nur Prozent 10–100 mit höchstens einer Nachkommastelle, kanonisch; sonst raus", () => {
+    const src = "/api/objects/abc-1/raw";
+    const bild = (attrs: string): string => sanitizeHtml(`<img src="${src}"${attrs}>`);
+    expect(bild(' width="37.5%"')).toBe(`<img src="${src}" width="37.5%">`);
+    expect(bild(' width=" 40.0% "')).toBe(`<img src="${src}" width="40%">`);
+    expect(bild(' width="10%"')).toBe(`<img src="${src}" width="10%">`);
+    expect(bild(' width="100%"')).toBe(`<img src="${src}" width="100%">`);
+    for (const falsch of [
+      "600",
+      "9.9%",
+      "100.1%",
+      "250%",
+      "-20%",
+      "37.55%",
+      "NaN%",
+      "Infinity%",
+      "1e2%",
+      "50px",
+      "calc(50%)",
+      '50%" onerror="x',
+    ]) {
+      expect(bild(` width='${falsch}'`), falsch).toBe(`<img src="${src}">`);
+    }
+    // Keine Nebenfreigabe: style/Handler und unsichere Quellen fallen wie bisher.
+    expect(bild(' width="50%" style="width:1px" onload="x"')).toBe(
+      `<img src="${src}" width="50%">`,
+    );
+    expect(sanitizeHtml('<img src="javascript:alert(1)" width="50%">')).toBe("");
+    expect(sanitizeHtml('<img src="data:image/svg+xml;base64,PHN2Zz4=" width="50%">')).toBe("");
+    // Andere Tags bekommen kein width.
+    expect(sanitizeHtml('<p width="50%">x</p>')).toBe("<p>x</p>");
+    // Fixpunkt und unveränderte Anker der Hülle.
+    const huelle = `<figure data-image-id="a1"><img data-image-id="a1" src="${src}" width="62.5%"><figcaption data-image-id="a1">Ventil</figcaption></figure>`;
+    expect(sanitizeHtml(huelle)).toBe(huelle);
+    expect(sanitizeHtml(sanitizeHtml(huelle))).toBe(sanitizeHtml(huelle));
+  });
+
   it("NFR-SEC-04: data:image/svg+xml wird abgelehnt (SVG kann Skripte tragen)", () => {
     expect(sanitizeHtml('<img src="data:image/svg+xml;base64,PHN2Zz4=" alt="z">')).toBe("");
     expect(sanitizeHtml('<img src="data:image/svg+xml;utf8,<svg onload=alert(1)>" alt="z">')).toBe(

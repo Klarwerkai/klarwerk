@@ -3,6 +3,7 @@
 // für Preview/UX (gleiche Allowlist) plus Editor-State-Helfer. Rein/testbar ohne DOM.
 
 import { decodeHtmlEntities } from "./htmlEntities";
+import { normalizeImageWidth } from "./imageResize";
 
 const ALLOWED_TAGS = new Set([
   "p",
@@ -59,7 +60,8 @@ const TAG_MAP: Record<string, string> = {
 const ALLOWED_ATTRS: Record<string, Set<string>> = {
   a: new Set(["href", "title"]),
   // WP-BILD-1b: img trägt zusätzlich data-image-id (beidseitige Verankerung Bild↔Fußnote).
-  img: new Set(["src", "alt", "data-kw-scale", "data-image-id"]),
+  // R-0014: `width` NUR als gezogene Prozentbreite (normalizeImageWidth) — Pixelwerte fallen.
+  img: new Set(["src", "alt", "data-kw-scale", "data-image-id", "width"]),
   div: new Set(["class"]),
   // Formatierung Stufe 2 (Tabellen): nur numerische Zell-Spannen erhalten (Merges aus Word/HTML).
   th: new Set(["colspan", "rowspan"]),
@@ -200,6 +202,14 @@ function renderAttrs(tag: string, raw: string): string {
       const scale = normalizeImageScale(value);
       if (scale) {
         out.push(`${name}="${scale}"`);
+      }
+      continue;
+    }
+    // R-0014: die frei gezogene Breite — nur innerhalb der Grenzen, kanonisch („37.5%").
+    if (tag === "img" && name === "width") {
+      const width = normalizeImageWidth(value);
+      if (width) {
+        out.push(`${name}="${width}"`);
       }
       continue;
     }

@@ -2746,6 +2746,20 @@ const de = {
   // JOB 3064 §9: offline ist KEIN Fehlschlag, sondern ein Nicht-Versuch — die Frage ist nie
   // losgegangen. Der Fehlersatz („steckengeblieben") wäre hier schlicht unwahr.
   "ask.offline": "Keine Verbindung.",
+  // Pedi 28.09.2026 · Ergänzung 1: der Hinweis beim Wiederkommen auf die Fragenseite.
+  "ask.wiederaufnahme.entwurf":
+    "Hier kannst du weitermachen: Dein noch nicht gesendeter Entwurf steht wieder im Fragefeld.",
+  "ask.wiederaufnahme.antwort":
+    "Hier kannst du weitermachen: Das ist deine zuletzt angezeigte Antwort vom {{zeit}} mit ihren Quellen. Sie wurde nicht neu erzeugt — stelle die Frage erneut, um sie aufzufrischen.",
+  "ask.wiederaufnahme.beides":
+    "Hier kannst du weitermachen: Dein noch nicht gesendeter Entwurf steht wieder im Fragefeld, darüber deine zuletzt angezeigte Antwort vom {{zeit}}. Sie wurde nicht neu erzeugt.",
+  "ask.wiederaufnahme.verwerfen": "Entwurf verwerfen",
+  "ask.pruefungGestoert": "Klara konnte das Firmenwissen gerade nicht verlässlich prüfen.",
+  // Ben R1, F8: die Rückmeldung zu einer wiederaufgenommenen Antwort.
+  "ask.rueckmeldungAbgelaufen":
+    "Rückmeldung ist nur bis 30 Minuten nach der Antwort möglich. Stelle die Frage erneut, um sie zu geben.",
+  "ask.rueckmeldungAbgelehnt":
+    "Deine Rückmeldung wurde nicht angenommen. Stelle die Frage erneut und versuche es dann noch einmal.",
   // JOB 3064 §9: die Antwort steht noch, nur das Auffrischen hat nicht geklappt. Der Satz sagt
   // BEIDES — was gilt und was nicht geklappt hat —, damit niemand die stehende Antwort für frisch
   // hält. Der Fehlersatz oben („steckengeblieben") wäre hier falsch: es gibt ja ein Ergebnis.
@@ -2855,6 +2869,9 @@ const de = {
   // JOB 4224 D5 (Lieferung 5): ohne Modell nennt die Fläche nicht nur die Lage, sondern auch den
   // erlaubten Weg. Der zweite Halbsatz ist keine Floskel — er hält fest, dass hier nichts
   // stillschweigend freigeschaltet wird.
+  "ask.aiUnavailable.adminPfad":
+    "Als Administrator kannst du hier ein KI-Modell verbinden oder die KI einschalten:",
+  "ask.aiUnavailable.toAdmin": "KI-Einstellungen öffnen",
   "ask.aiUnavailable.path":
     "Ohne Modell bleibt der Bestand offen — nichts wird dafür automatisch freigegeben:",
   "ask.aiUnavailable.toLibrary": "Bestand durchsuchen",
@@ -2912,6 +2929,20 @@ const de = {
   // volle Sätze als title-Hinweis — §2 des Auftrags wörtlich.
   // Bewusst eine ZUSTANDSAUSSAGE, keine Kausalbehauptung: gemeldet wird, welche Tore zu sind —
   // nicht, welcher Mechanismus die Antwort verworfen hat (§4: kein falsch benanntes Tor).
+  // Der Konsolenweg setzt kein `validatedOnly` (ask-routes.ts, letzter `answer`-Aufruf): auch
+  // nicht freigegebene oder nicht eingestufte Dokumente KÖNNEN Antworten tragen. Ein „erst nach
+  // Prüfung" wäre deshalb falsch (mega52 C3).
+  "ask.verschlossen.titel": "Dazu gibt es Inhalte — Klara konnte darauf keine Antwort stützen.",
+  "ask.verschlossen.grund.freigabe":
+    "Mindestens eines dieser Dokumente ist noch nicht freigegeben.",
+  "ask.verschlossen.grund.stufe":
+    "Mindestens eines dieser Dokumente hat noch keine Vertraulichkeitsstufe.",
+  "ask.verschlossen.grund.volltext":
+    "Aus Dokumenten ohne durchsuchbaren Text kann Klara nichts belegen. Du kannst sie lesen und den Text dort ergänzen.",
+  "ask.verschlossen.pruefPfad.beides": "Freigeben oder einstufen:",
+  "ask.verschlossen.pruefPfad.freigabe": "Freigeben:",
+  "ask.verschlossen.pruefPfad.stufe": "Einstufen:",
+  "ask.verschlossen.zurPruefung": "Zur Prüfung",
   "ask.verschlossen.label": "Gefunden — aber diese Tore sind zu:",
   "ask.verschlossen.freigabe": "Freigabe fehlt",
   "ask.verschlossen.freigabeHint": "Das Dokument ist noch nicht freigegeben.",
@@ -5406,6 +5437,19 @@ const de = {
     "Kurze Einstiegshilfe zu den wichtigsten Klarwerk-Abläufen. Suche nach Stichwort oder springe direkt in den passenden Bereich.",
   "help.noResults": "Keine Hilfe zu diesem Stichwort gefunden.",
   "help.openRoute": "Bereich öffnen",
+  // R-1064: der vom Betreiber festgelegte Supportweg dieser Installation (Hilfeseite).
+  "help.support.title": "Support dieser Installation",
+  "help.support.configured": "Der Betreiber dieser Installation hat diesen Supportweg hinterlegt:",
+  "help.support.linkDefault": "Supportseite öffnen",
+  "help.support.mailDefault": "E-Mail an den Support schreiben",
+  "help.support.newTab": "neuer Tab",
+  "help.support.notConfigured":
+    "Für diese Installation ist noch kein Supportweg hinterlegt. Wende dich mit Fragen an die Administration deiner Instanz.",
+  "help.support.invalid":
+    "Für diese Installation ist ein Supportweg eingetragen, er ist aber ungültig und wird deshalb nicht angezeigt. Bitte gib der Administration deiner Instanz Bescheid.",
+  "help.support.loadError":
+    "Der Supportweg konnte gerade nicht geladen werden. Die Hilfe auf dieser Seite funktioniert trotzdem.",
+  "help.support.loading": "Supportweg wird geladen …",
   // Klara v1 (Pedi 05.07.): kontextsensitive Hilfe — Panel-Texte + Seiten-Erklärungen.
   "klara.title": "Klara",
   "klara.subtitle": "Deine Hilfe in KLARWERK",
@@ -6329,7 +6373,7 @@ const de = {
     "Das klassische Formular mit allen Feldern auf einen Blick — für alle, die genau wissen, was sie eintragen wollen. Es ist derselbe Datenstand wie der geführte Weg, kein Extra-Feature und keine Abkürzung an der Prüfung vorbei. Der Rückweg auf den geführten Weg ist jederzeit einen Klick entfernt.",
   "chelp.wizardSteps.title": "Die drei Schritte",
   "chelp.wizardSteps.body":
-    "Erfassen läuft in drei Schritten: ERZÄHLEN (Rohwissen loswerden), WISSENSSEITE (prüfen und verfeinern, mit KI-Hilfe), EINREICHEN (in die Peer-Prüfung geben). Fertige Schritte kannst du anklicken und zurückgehen — dabei geht nichts verloren. Erst „Prüfen & einreichen“ macht aus deinem Entwurf ein Wissensobjekt für die Kollegen.",
+    "Erfassen läuft in drei Schritten: SCHREIBEN (Titel und Text aufs Blatt — oder über „Datei“ als Interview, aus einer Datei oder im Formular; „Diktieren“ schreibt mit), SICHERN (als Entwurf, nur für dich sichtbar) und EINREICHEN (in die Peer-Prüfung geben). Du kannst jederzeit weiterschreiben — dabei geht nichts verloren. Erst das Einreichen macht aus deinem Entwurf ein Wissensobjekt für die Kollegen.",
   "chelp.loadExample.title": "Beispiel laden",
   "chelp.loadExample.body":
     "Füllt die Felder mit einem Demo-Beispiel, damit du den kompletten Weg gefahrlos ausprobieren kannst. Achtung: Es überschreibt deine aktuellen Eingaben — nutze es auf leerer Seite. Eingereicht wird auch ein Beispiel erst, wenn du es bewusst einreichst.",
@@ -6356,10 +6400,10 @@ const de = {
     "Der Titel ist das Erste, was Kollegen in Bibliothek und Antworten sehen — er entscheidet, ob dein Wissen gefunden wird. Gut: konkret und handlungsnah („Schweißnaht bei Aluminium unter 5 mm prüfen“). Du kannst ihn jederzeit ändern, auch der KI-Vorschlag ist nur ein Startpunkt.",
   "chelp.saveDraftHelp.title": "Entwurf speichern",
   "chelp.saveDraftHelp.body":
-    "Sichert deinen Zwischenstand lokal in deinem Browser — du kannst jederzeit weitermachen, auch nach einem Neustart. Ein Entwurf ist NICHT eingereicht: Niemand sieht ihn, er taucht in keiner Prüfung und keiner Antwort auf. Oben auf der Seite findest du gespeicherte Entwürfe zum Fortsetzen.",
+    "Sichert deinen Zwischenstand auf dem Server unter deinem Konto — du kannst jederzeit weitermachen, auch auf einem anderen Gerät. Ein Entwurf ist NICHT eingereicht: Niemand sieht ihn, er taucht in keiner Prüfung und keiner Antwort auf. Gespeicherte Entwürfe findest du unter „Mehr“ → Entwürfe.",
   "chelp.discardHelp.title": "Verwerfen",
   "chelp.discardHelp.body":
-    "Verwirft den aktuellen Entwurf endgültig — Text, Struktur und Anhänge dieser Erfassung. Es betrifft NUR deinen Entwurf: Bereits eingereichte oder gespeicherte Wissensobjekte bleiben unberührt. Vorher fragt die App bewusst nach; wer nur einen Schritt zurück will, nutzt die Schritt-Leiste statt Verwerfen.",
+    "Verwirft die aktuelle Eingabe — Text, Struktur und Anhänge dieser Erfassung. Es betrifft NUR diese Eingabe: Bereits eingereichte Wissensobjekte und gesicherte Entwürfe bleiben unberührt. Vorher fragt die App bewusst nach.",
   "chelp.submitReview.title": "Prüfen & einreichen",
   "chelp.submitReview.body":
     "Macht aus deinem Entwurf ein Wissensobjekt und gibt es in die Peer-Prüfung: Kollegen prüfen, stellen Rückfragen oder geben frei. Ab jetzt ist es für andere sichtbar — aber ehrlich als „in Prüfung“ markiert, NICHT als gesichert. Validiert wird es durch genug Freigaben. Für Antworten nutzbar ist es schon vorher — dann aber sichtbar als ungeprüft gekennzeichnet.",
@@ -6516,7 +6560,7 @@ const de = {
   "fd.author": "Autor",
   "fd.whatOnSave": "Was beim Speichern passiert",
   "fd.whatOnSaveBody":
-    "Wird als Entwurf gesichert — jederzeit fortsetzbar. Zur Prüfung geht er erst, wenn du „Prüfen / Einreichen“ wählst; nichts wird automatisch validiert.",
+    "Wird als Entwurf gesichert — jederzeit fortsetzbar. Zur Prüfung geht er erst, wenn du „Einreichen“ wählst; nichts wird automatisch validiert.",
   "fd.moreWays": "Mehr Erfassungswege",
   "fd.moreWaysBody":
     "Brauchst du das klassische Formular, Diktat oder das geführte Interview? Der vollständige Erfassen-Bereich hat alle Wege — diese Fläche hier ist der schnelle Einstieg.",
@@ -6837,6 +6881,10 @@ const de = {
   // bzw. bis feststeht, dass die Sitzung fort ist — ohne Frist), Einordnung (technisch notwendig).
   "legal.privacy.s4.p7":
     "Schlägt das Beenden Ihrer Sitzung fehl, merkt sich die Anwendung das in Ihrem Browser unter dem Namen kw_signout_pending, damit die Nutzung gesperrt bleibt, bis unser Server die Beendigung bestätigt hat. Weil Ihre Sitzung für alle Fenster und Tabs desselben Browsers gilt, liegt dieser Merker im dauerhaften Browserspeicher und wirkt ebenfalls in allen Fenstern und Tabs — ein zweites, schon offenes Fenster würde sonst weiter Inhalte zeigen, obwohl die Beendigung offen ist. Der Merker enthält keine Angaben über Sie und wird nicht an uns übertragen. Er bleibt, bis unser Server die Beendigung bestätigt hat oder feststeht, dass Ihre Sitzung nicht mehr besteht; dann wird er gelöscht. Von selbst verfällt er nicht. Damit das nicht an Ihnen hängen bleibt, versucht die Anwendung die Beendigung von sich aus erneut — sobald Ihre Verbindung wieder besteht und bei jedem neuen Aufbau der Anwendung; außerdem können Sie es jederzeit selbst auslösen. Er ist für die von Ihnen gewünschte Abmeldung technisch notwendig.",
+  // Pedi 28.09.2026 · Ergänzung 1: der Arbeitsstand der Fragenseite liegt im Browser
+  // (`lib/fragenArbeitsstand.ts`) und enthält Inhalte — die Aufzählung nennt ihn deshalb eigens.
+  "legal.privacy.s4.p8":
+    "Auf der Seite „Fragen“ merkt sich die Anwendung in Ihrem Browser Ihren noch nicht gesendeten Entwurf sowie die zuletzt angezeigte Frage und Antwort mit ihren Quellenangaben, damit Sie nach dem Verlassen der Seite, einem Neuladen oder einer erneuten Anmeldung weiterarbeiten können. Der Eintrag ist Ihrem Benutzerkonto zugeordnet; wer sich im selben Browser mit einem anderen Konto anmeldet, bekommt ihn nicht angezeigt. Er kann Inhalte aus dem Wissensbestand Ihrer Organisation enthalten und bleibt auch nach dem Abmelden in diesem Browser gespeichert. Ein verworfener Entwurf wird sofort entfernt, die angezeigte Antwort wird ersetzt, sobald Sie eine neue Frage stellen. Der Eintrag selbst wird nicht an uns übertragen; Sie können ihn jederzeit löschen, indem Sie die Websitedaten dieser Anwendung in Ihrem Browser löschen.",
   "legal.privacy.s5.title": "5. Ihre Inhalte",
   "legal.privacy.s5.body":
     "Die Anwendung dient dazu, Wissen zu erfassen, zu prüfen und wiederzufinden. Die Inhalte, die Sie eingeben oder hochladen, werden zusammen mit dem Zeitpunkt und Ihrer Kennung als Urheber gespeichert, damit Beiträge nachvollziehbar bleiben und Rückfragen möglich sind.",
@@ -9549,6 +9597,18 @@ const en: typeof de = {
     "The request got stuck on the way. This is NOT a statement about the knowledge — it does not mean there is no answer. Please try again.",
   "ask.error.retry": "Try again",
   "ask.offline": "No connection.",
+  "ask.wiederaufnahme.entwurf":
+    "Pick up where you left off: your unsent draft is back in the question field.",
+  "ask.wiederaufnahme.antwort":
+    "Pick up where you left off: this is the answer you last saw, from {{zeit}}, with its sources. It was not generated again — ask the question again to refresh it.",
+  "ask.wiederaufnahme.beides":
+    "Pick up where you left off: your unsent draft is back in the question field, with the answer you last saw, from {{zeit}}, above it. It was not generated again.",
+  "ask.wiederaufnahme.verwerfen": "Discard draft",
+  "ask.pruefungGestoert": "Klara could not reliably check the company knowledge just now.",
+  "ask.rueckmeldungAbgelaufen":
+    "Feedback is only possible up to 30 minutes after the answer. Ask the question again to give it.",
+  "ask.rueckmeldungAbgelehnt":
+    "Your feedback was not accepted. Ask the question again and then try once more.",
   "ask.refreshFailed": "Refresh failed — this answer is from the previous request.",
   // SCRUM-295: hint for a prefilled start question (from KO detail “Use knowledge”) in demo context.
   "ask.demoPrefillHint":
@@ -9630,6 +9690,9 @@ const en: typeof de = {
   "answerSource.originalUnconfirmed":
     "The state of this source is not confirmed right now — the evidence is offered again once the refresh succeeds.",
   // JOB 4224 D5 (delivery 5): without a model the page names the permitted path, too.
+  "ask.aiUnavailable.adminPfad":
+    "As an administrator you can connect an AI model or switch AI on here:",
+  "ask.aiUnavailable.toAdmin": "Open AI settings",
   "ask.aiUnavailable.path":
     "Without a model the knowledge base stays open — nothing is enabled automatically for it:",
   "ask.aiUnavailable.toLibrary": "Search the knowledge base",
@@ -9674,6 +9737,16 @@ const en: typeof de = {
   // SCRUM-366 / FR-ASK-02 / PI-K2: answer contract — source-bound, honest, not a generic chatbot.
   "ask.contract.label": "Answer basis",
   // JOB 2626 D1: why there was no answer — the closed gates, per document.
+  "ask.verschlossen.titel": "There is content on this — Klara could not base an answer on it.",
+  "ask.verschlossen.grund.freigabe": "At least one of these documents has not been released yet.",
+  "ask.verschlossen.grund.stufe":
+    "At least one of these documents has no confidentiality level yet.",
+  "ask.verschlossen.grund.volltext":
+    "Klara cannot cite anything from documents without searchable text. You can read them and add the text there.",
+  "ask.verschlossen.pruefPfad.beides": "Release or classify:",
+  "ask.verschlossen.pruefPfad.freigabe": "Release:",
+  "ask.verschlossen.pruefPfad.stufe": "Classify:",
+  "ask.verschlossen.zurPruefung": "Go to review",
   "ask.verschlossen.label": "Found — but these gates are closed:",
   "ask.verschlossen.freigabe": "Approval missing",
   "ask.verschlossen.freigabeHint": "The document has not been approved yet.",
@@ -11610,6 +11683,18 @@ const en: typeof de = {
     "A short starter guide to the most important Klarwerk flows. Search by keyword or jump straight into the relevant area.",
   "help.noResults": "No help found for this keyword.",
   "help.openRoute": "Open area",
+  "help.support.title": "Support for this installation",
+  "help.support.configured": "The operator of this installation has set up this support channel:",
+  "help.support.linkDefault": "Open support page",
+  "help.support.mailDefault": "Email support",
+  "help.support.newTab": "new tab",
+  "help.support.notConfigured":
+    "No support channel has been set up for this installation yet. Please contact the administrators of your instance with questions.",
+  "help.support.invalid":
+    "A support channel is configured for this installation, but it is invalid and is therefore not shown. Please let the administrators of your instance know.",
+  "help.support.loadError":
+    "The support channel could not be loaded right now. The help on this page still works.",
+  "help.support.loading": "Loading support channel …",
   // Klara v1 (Pedi 05.07.): context-sensitive help — panel copy + page explanations.
   "klara.title": "Klara",
   "klara.subtitle": "Your help in KLARWERK",
@@ -12364,7 +12449,7 @@ const en: typeof de = {
     "The classic form with every field at once — for those who know exactly what to enter. It is the same data as the guided path, no extra feature and no shortcut past review. The way back to the guided path is always one click away.",
   "chelp.wizardSteps.title": "The three steps",
   "chelp.wizardSteps.body":
-    "Capturing runs in three steps: TELL (get the raw knowledge out), KNOWLEDGE PAGE (check and refine, with AI help), SUBMIT (hand it to peer review). Completed steps are clickable — going back loses nothing. Only „review & submit“ turns your draft into a knowledge object for your colleagues.",
+    "Capturing runs in three steps: WRITE (title and text on the sheet — or via “File” as an interview, from a file or in the form; “Dictate” writes along), SAVE (as a draft, visible only to you) and SUBMIT (hand it to peer review). You can keep writing at any time — nothing is lost. Only submitting turns your draft into a knowledge object for your colleagues.",
   "chelp.loadExample.title": "Load example",
   "chelp.loadExample.body":
     "Fills the fields with a demo example so you can try the whole path safely. Careful: it overwrites your current input — use it on an empty page. Even an example is only submitted once you submit it deliberately.",
@@ -12391,10 +12476,10 @@ const en: typeof de = {
     "The title is the first thing colleagues see in the library and in answers — it decides whether your knowledge is found. Good: concrete and actionable („checking weld seams on aluminium under 5 mm“). You can change it anytime; the AI suggestion is only a starting point.",
   "chelp.saveDraftHelp.title": "Save draft",
   "chelp.saveDraftHelp.body":
-    "Saves your interim state locally in your browser — continue anytime, even after a restart. A draft is NOT submitted: nobody sees it, it appears in no review and no answer. You will find saved drafts at the top of this page to resume.",
+    "Saves your interim state on the server under your account — continue anytime, even on another device. A draft is NOT submitted: nobody sees it, it appears in no review and no answer. You find saved drafts under “More” → Drafts.",
   "chelp.discardHelp.title": "Discard",
   "chelp.discardHelp.body":
-    "Discards the current draft for good — text, structure and attachments of this capture. It affects ONLY your draft: already submitted or saved knowledge objects stay untouched. The app deliberately asks first; if you only want one step back, use the step bar instead of discarding.",
+    "Discards the current input — text, structure and attachments of this capture. It affects ONLY this input: already submitted knowledge objects and saved drafts stay untouched. The app deliberately asks first.",
   "chelp.submitReview.title": "Review & submit",
   "chelp.submitReview.body":
     "Turns your draft into a knowledge object and hands it to peer review: colleagues check it, raise queries or approve. From now on it is visible to others — but honestly marked as „in review“, NOT as validated. It becomes validated through enough approvals. It can carry answers before that too — but is then visibly marked as unverified.",
@@ -12530,7 +12615,7 @@ const en: typeof de = {
   "fd.author": "Author",
   "fd.whatOnSave": "What happens on save",
   "fd.whatOnSaveBody":
-    "It is saved as a draft — resumable at any time. It only goes to review when you choose “Review / submit”; nothing is validated automatically.",
+    "It is saved as a draft — resumable at any time. It only goes to review when you choose “Submit”; nothing is validated automatically.",
   "fd.moreWays": "More capture paths",
   "fd.moreWaysBody":
     "Need the classic form, dictation or the guided interview? The full capture area has every path — this surface here is the fast entry point.",
@@ -12764,6 +12849,8 @@ const en: typeof de = {
     "If you use the application as an installed app, your browser stores program files in a cache so that it starts faster. Responses from our server and your content are not stored there.",
   "legal.privacy.s4.p7":
     "If ending your session fails, the application notes this in your browser under the name kw_signout_pending so that use stays blocked until our server has confirmed the session was ended. Because your session applies to every window and tab of the same browser, this marker is kept in persistent browser storage and takes effect in every window and tab as well — otherwise a second window that was already open would keep showing content even though the sign-out is still unresolved. The marker contains no information about you and is not transmitted to us. It stays until our server confirms the session was ended, or until it is established that your session no longer exists; then it is deleted. It does not expire on its own. So that this does not rest on you, the application retries ending the session by itself — as soon as your connection is back and whenever the application is opened again; you can also trigger it yourself at any time. It is technically necessary for the sign-out you requested.",
+  "legal.privacy.s4.p8":
+    "On the “Ask” page, the application keeps your unsent draft and the question and answer you last saw, including their source references, in your browser so that you can continue after leaving the page, reloading or signing in again. The entry is tied to your user account; anyone who signs in with a different account in the same browser is not shown it. It may contain content from your organisation’s knowledge base and remains stored in this browser after you sign out. A discarded draft is removed immediately; the displayed answer is replaced as soon as you ask a new question. The entry itself is not transmitted to us; you can delete it at any time by clearing this application’s site data in your browser.",
   "legal.privacy.s5.title": "5. Your content",
   "legal.privacy.s5.body":
     "The application serves to capture, review and retrieve knowledge. The content you enter or upload is stored together with the time and your identifier as author, so that contributions remain traceable and questions can be asked.",
@@ -15207,6 +15294,18 @@ const nl: typeof de = {
     "Het verzoek is onderweg blijven steken. Dit is GEEN uitspraak over de kennis — het betekent niet dat er geen antwoord is. Probeer het opnieuw.",
   "ask.error.retry": "Opnieuw proberen",
   "ask.offline": "Geen verbinding.",
+  "ask.wiederaufnahme.entwurf":
+    "Hier kun je verdergaan: je nog niet verzonden concept staat weer in het vraagveld.",
+  "ask.wiederaufnahme.antwort":
+    "Hier kun je verdergaan: dit is het antwoord dat je het laatst zag, van {{zeit}}, met de bronnen. Het is niet opnieuw gegenereerd — stel de vraag opnieuw om het te vernieuwen.",
+  "ask.wiederaufnahme.beides":
+    "Hier kun je verdergaan: je nog niet verzonden concept staat weer in het vraagveld, daarboven het antwoord dat je het laatst zag, van {{zeit}}. Het is niet opnieuw gegenereerd.",
+  "ask.wiederaufnahme.verwerfen": "Concept verwerpen",
+  "ask.pruefungGestoert": "Klara kon de bedrijfskennis nu niet betrouwbaar controleren.",
+  "ask.rueckmeldungAbgelaufen":
+    "Feedback is alleen mogelijk tot 30 minuten na het antwoord. Stel de vraag opnieuw om het te geven.",
+  "ask.rueckmeldungAbgelehnt":
+    "Je feedback is niet aangenomen. Stel de vraag opnieuw en probeer het dan nog eens.",
   "ask.refreshFailed": "Vernieuwen mislukt — dit antwoord komt van het vorige verzoek.",
   "ask.demoPrefillHint":
     "Startvraag overgenomen uit het kennisobject — klik op „Vragen”. Het antwoord blijft brongebonden; status en vertrouwen beslissen, er wordt niets automatisch opgeslagen.",
@@ -15280,6 +15379,9 @@ const nl: typeof de = {
   "answerSource.originalUnconfirmed":
     "De stand van deze bron is nu niet bevestigd — het bewijs wordt pas weer aangeboden als het vernieuwen lukt.",
   // JOB 4224 D5 (levering 5): zonder model noemt het scherm ook de toegestane weg.
+  "ask.aiUnavailable.adminPfad":
+    "Als beheerder kun je hier een AI-model koppelen of AI inschakelen:",
+  "ask.aiUnavailable.toAdmin": "AI-instellingen openen",
   "ask.aiUnavailable.path":
     "Zonder model blijft de kennisbank open — daarvoor wordt niets automatisch vrijgegeven:",
   "ask.aiUnavailable.toLibrary": "Kennisbank doorzoeken",
@@ -15322,6 +15424,16 @@ const nl: typeof de = {
   "ask.gap.step.review.hint": "Pas na validatie geldt het als geborgd.",
   "ask.contract.label": "Antwoordbasis",
   // JOB 2626 D1: waarom er geen antwoord was — de gesloten poorten, per document.
+  "ask.verschlossen.titel": "Hier is inhoud over — Klara kon er geen antwoord op baseren.",
+  "ask.verschlossen.grund.freigabe": "Minstens één van deze documenten is nog niet vrijgegeven.",
+  "ask.verschlossen.grund.stufe":
+    "Minstens één van deze documenten heeft nog geen vertrouwelijkheidsniveau.",
+  "ask.verschlossen.grund.volltext":
+    "Uit documenten zonder doorzoekbare tekst kan Klara niets onderbouwen. Je kunt ze lezen en de tekst daar aanvullen.",
+  "ask.verschlossen.pruefPfad.beides": "Vrijgeven of classificeren:",
+  "ask.verschlossen.pruefPfad.freigabe": "Vrijgeven:",
+  "ask.verschlossen.pruefPfad.stufe": "Classificeren:",
+  "ask.verschlossen.zurPruefung": "Naar beoordeling",
   "ask.verschlossen.label": "Gevonden — maar deze poorten zijn gesloten:",
   "ask.verschlossen.freigabe": "Vrijgave ontbreekt",
   "ask.verschlossen.freigabeHint": "Het document is nog niet vrijgegeven.",
@@ -17259,6 +17371,18 @@ const nl: typeof de = {
     "Korte startgids voor de belangrijkste Klarwerk-processen. Zoek op trefwoord of spring direct naar het juiste onderdeel.",
   "help.noResults": "Geen help gevonden voor dit trefwoord.",
   "help.openRoute": "Onderdeel openen",
+  "help.support.title": "Support voor deze installatie",
+  "help.support.configured": "De beheerder van deze installatie heeft dit supportkanaal ingesteld:",
+  "help.support.linkDefault": "Supportpagina openen",
+  "help.support.mailDefault": "E-mail naar support sturen",
+  "help.support.newTab": "nieuw tabblad",
+  "help.support.notConfigured":
+    "Voor deze installatie is nog geen supportkanaal ingesteld. Neem met vragen contact op met de beheerders van je omgeving.",
+  "help.support.invalid":
+    "Voor deze installatie is een supportkanaal ingevoerd, maar het is ongeldig en wordt daarom niet getoond. Laat het de beheerders van je omgeving weten.",
+  "help.support.loadError":
+    "Het supportkanaal kon nu niet worden geladen. De help op deze pagina werkt gewoon.",
+  "help.support.loading": "Supportkanaal wordt geladen …",
   "klara.title": "Klara",
   "klara.subtitle": "Jouw hulp in KLARWERK",
   "klara.open": "Klara openen — hulp bij deze pagina",
@@ -18015,7 +18139,7 @@ const nl: typeof de = {
     "Het klassieke formulier met alle velden in één oogopslag — voor iedereen die precies weet wat hij wil invullen. Het is dezelfde datastand als de begeleide weg, geen extra functie en geen sluiproute langs de controle. De terugweg naar de begeleide weg is altijd één klik verwijderd.",
   "chelp.wizardSteps.title": "De drie stappen",
   "chelp.wizardSteps.body":
-    "Vastleggen verloopt in drie stappen: VERTELLEN (ruwe kennis kwijtraken), KENNISPAGINA (controleren en verfijnen, met KI-hulp), INDIENEN (in de peer-beoordeling geven). Voltooide stappen kun je aanklikken en teruggaan — daarbij gaat niets verloren. Pas „Controleren & indienen\" maakt van je concept een kennisobject voor de collega's.",
+    "Vastleggen verloopt in drie stappen: SCHRIJVEN (titel en tekst op het blad — of via „Bestand” als interview, uit een bestand of in het formulier; „Dicteren” schrijft mee), OPSLAAN (als concept, alleen voor jou zichtbaar) en INDIENEN (in de peer-beoordeling geven). Je kunt altijd verder schrijven — daarbij gaat niets verloren. Pas het indienen maakt van je concept een kennisobject voor de collega's.",
   "chelp.loadExample.title": "Voorbeeld laden",
   "chelp.loadExample.body":
     "Vult de velden met een demovoorbeeld, zodat je de volledige weg gevaarloos kunt uitproberen. Let op: het overschrijft je huidige invoer — gebruik het op een lege pagina. Ook een voorbeeld wordt pas ingediend als je het bewust indient.",
@@ -18042,10 +18166,10 @@ const nl: typeof de = {
     "De titel is het eerste wat collega's in bibliotheek en antwoorden zien — hij bepaalt of je kennis wordt gevonden. Goed: concreet en actiegericht („Lasnaad bij aluminium onder 5 mm controleren\"). Je kunt hem altijd wijzigen, ook het KI-voorstel is maar een startpunt.",
   "chelp.saveDraftHelp.title": "Concept opslaan",
   "chelp.saveDraftHelp.body":
-    "Bewaart je tussenstand lokaal in je browser — je kunt altijd verdergaan, ook na een herstart. Een concept is NIET ingediend: niemand ziet het, het duikt in geen enkele beoordeling en geen enkel antwoord op. Boven aan de pagina vind je opgeslagen concepten om verder te gaan.",
+    "Bewaart je tussenstand op de server onder je account — je kunt altijd verdergaan, ook op een ander apparaat. Een concept is NIET ingediend: niemand ziet het, het duikt in geen enkele beoordeling en geen enkel antwoord op. Opgeslagen concepten vind je onder „Meer” → Concepten.",
   "chelp.discardHelp.title": "Verwerpen",
   "chelp.discardHelp.body":
-    "Verwerpt het huidige concept definitief — tekst, structuur en bijlagen van deze vastlegging. Het betreft ALLEEN je concept: reeds ingediende of opgeslagen kennisobjecten blijven onaangetast. Vooraf vraagt de app bewust na; wie maar één stap terug wil, gebruikt de stappenbalk in plaats van verwerpen.",
+    "Verwerpt de huidige invoer — tekst, structuur en bijlagen van deze vastlegging. Het betreft ALLEEN deze invoer: reeds ingediende kennisobjecten en opgeslagen concepten blijven onaangetast. Vooraf vraagt de app bewust na.",
   "chelp.submitReview.title": "Controleren & indienen",
   "chelp.submitReview.body":
     "Maakt van je concept een kennisobject en geeft het in de peer-beoordeling: collega's controleren, stellen vragen of keuren goed. Vanaf nu is het voor anderen zichtbaar — maar eerlijk als „in beoordeling\" gemarkeerd, NIET als zeker. Gevalideerd wordt het door genoeg goedkeuringen. Voor antwoorden bruikbaar is het al eerder — maar dan zichtbaar als ongecontroleerd gemarkeerd.",
@@ -18182,7 +18306,7 @@ const nl: typeof de = {
   "fd.author": "Auteur",
   "fd.whatOnSave": "Wat er bij het opslaan gebeurt",
   "fd.whatOnSaveBody":
-    'Wordt als concept bewaard — altijd voort te zetten. Ter beoordeling gaat het pas als je „Controleren / indienen" kiest; er wordt niets automatisch gevalideerd.',
+    "Wordt als concept bewaard — altijd voort te zetten. Ter beoordeling gaat het pas als je „Indienen” kiest; er wordt niets automatisch gevalideerd.",
   "fd.moreWays": "Meer vastleg-wegen",
   "fd.moreWaysBody":
     "Heb je het klassieke formulier, dictaat of het begeleide interview nodig? Het volledige vastleg-gebied heeft alle wegen — dit vlak hier is de snelle instap.",
@@ -18417,6 +18541,8 @@ const nl: typeof de = {
     "Gebruikt u de toepassing als geïnstalleerde app, dan legt uw browser programmabestanden in een buffer zodat de app sneller start. Antwoorden van onze server en uw inhoud worden daar niet opgeslagen.",
   "legal.privacy.s4.p7":
     "Mislukt het beëindigen van uw sessie, dan noteert de toepassing dat in uw browser onder de naam kw_signout_pending, zodat het gebruik geblokkeerd blijft totdat onze server de beëindiging heeft bevestigd. Omdat uw sessie voor alle vensters en tabbladen van dezelfde browser geldt, staat deze markering in de blijvende browseropslag en werkt zij ook in alle vensters en tabbladen — een tweede, al geopend venster zou anders inhoud blijven tonen terwijl de beëindiging nog openstaat. De markering bevat geen gegevens over u en wordt niet aan ons doorgegeven. Zij blijft staan totdat onze server de beëindiging heeft bevestigd of vaststaat dat uw sessie niet meer bestaat; dan wordt zij verwijderd. Vanzelf vervalt zij niet. Om dat niet bij u te laten liggen, probeert de toepassing de beëindiging zelf opnieuw — zodra uw verbinding weer bestaat en bij elke nieuwe start van de toepassing; u kunt het ook op elk moment zelf in gang zetten. Zij is technisch noodzakelijk voor de door u gewenste afmelding.",
+  "legal.privacy.s4.p8":
+    "Op de pagina „Vragen” bewaart de toepassing in uw browser uw nog niet verzonden concept en de laatst getoonde vraag en het antwoord met de bronvermeldingen, zodat u na het verlaten van de pagina, opnieuw laden of opnieuw aanmelden verder kunt werken. De vermelding is aan uw gebruikersaccount gekoppeld; wie zich in dezelfde browser met een ander account aanmeldt, krijgt haar niet te zien. Zij kan inhoud uit de kennisbank van uw organisatie bevatten en blijft ook na het afmelden in deze browser bewaard. Een verworpen concept wordt direct verwijderd; het getoonde antwoord wordt vervangen zodra u een nieuwe vraag stelt. De vermelding zelf wordt niet aan ons doorgegeven; u kunt haar altijd verwijderen door de websitegegevens van deze toepassing in uw browser te wissen.",
   "legal.privacy.s5.title": "5. Uw inhoud",
   "legal.privacy.s5.body":
     "De toepassing dient om kennis vast te leggen, te toetsen en terug te vinden. De inhoud die u invoert of uploadt, wordt samen met het tijdstip en uw code als auteur opgeslagen, zodat bijdragen navolgbaar blijven en vragen mogelijk zijn.",

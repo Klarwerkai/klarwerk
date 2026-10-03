@@ -67,7 +67,8 @@ export function isImageAnchorId(value: string): boolean {
 const ALLOWED_ATTRS: Record<string, Set<string>> = {
   a: new Set(["href", "title"]),
   // WP-BILD-1b: img trägt zusätzlich data-image-id (beidseitige Verankerung Bild↔Fußnote).
-  img: new Set(["src", "alt", "data-kw-scale", "data-image-id"]),
+  // R-0014: `width` NUR als gezogene Prozentbreite (sanitizeImageWidth) — Pixelwerte fallen.
+  img: new Set(["src", "alt", "data-kw-scale", "data-image-id", "width"]),
   div: new Set(["class"]),
   // Formatierung Stufe 2 (Tabellen): nur numerische Zell-Spannen erhalten (Merges aus Word/HTML).
   th: new Set(["colspan", "rowspan"]),
@@ -86,6 +87,31 @@ const IMAGE_SCALE_VALUES = new Set(["25", "50", "75", "100"]);
 function sanitizeImageScale(value: string): string | null {
   const scale = value.trim();
   return IMAGE_SCALE_VALUES.has(scale) ? scale : null;
+}
+
+// R-0014 (Bildgröße frei an Griffen ziehen): die gezogene Breite als HTML-`width` am <img>, NUR als
+// Prozent der Spalte mit höchstens einer Nachkommastelle, 10–100. Kanonische Ausgabe („37.0%" →
+// „37%"), damit sanitize(sanitize(x)) === sanitize(x). Pixelwerte, Einheiten, Ausdrücke und Werte
+// außerhalb der Grenzen fallen ersatzlos. Spiegel: apps/web/src/lib/imageResize.ts.
+const IMAGE_WIDTH_MIN_PERCENT = 10;
+const IMAGE_WIDTH_MAX_PERCENT = 100;
+const IMAGE_WIDTH_RE = /^(\d{1,3}(?:\.\d)?)%$/;
+
+function sanitizeImageWidth(value: string): string | null {
+  const m = IMAGE_WIDTH_RE.exec(value.trim());
+  if (!m) {
+    return null;
+  }
+  const percent = Number(m[1]);
+  if (
+    !Number.isFinite(percent) ||
+    percent < IMAGE_WIDTH_MIN_PERCENT ||
+    percent > IMAGE_WIDTH_MAX_PERCENT
+  ) {
+    return null;
+  }
+  const gerundet = Math.round(percent * 10) / 10;
+  return Number.isInteger(gerundet) ? `${gerundet}%` : `${gerundet.toFixed(1)}%`;
 }
 
 // href: nur sichere Schemes; KEIN javascript:/data: etc.
@@ -220,6 +246,13 @@ function renderAttrs(tag: string, raw: string): string {
       const scale = sanitizeImageScale(value);
       if (scale) {
         out.push(`${name}="${scale}"`);
+      }
+      continue;
+    }
+    if (tag === "img" && name === "width") {
+      const width = sanitizeImageWidth(value);
+      if (width) {
+        out.push(`${name}="${width}"`);
       }
       continue;
     }

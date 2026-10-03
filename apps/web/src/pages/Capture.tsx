@@ -207,6 +207,7 @@ import { EDITOR_BLOCKS } from "../lib/editorBlocks";
 // die Begründung, warum es kein Prop und kein Kontext ist, steht dort.
 import { merkeMehrdeutigeFussnoten } from "../lib/editorFigures";
 import { editorImagesFromLocalImages } from "../lib/editorImages";
+import { erfassenFehlerSchluessel } from "../lib/erfassenFehlersatz";
 // AUFTRAG-mega14 Block D (SCRUM-414): dieselbe Anhängen-Regel wie Prüfbereich und Server.
 import {
   SOURCE_ATTACH_HINT_KEYS,
@@ -486,15 +487,12 @@ export function beispielEinreichSchritt(args: {
   return args.bestaetigt ? "einreichen" : "rueckfrage";
 }
 
-// Die drei Texte der Rueckfrage. Sie stehen hier als Klartext und NICHT in `i18n.ts`, weil diese
-// Datei in diesem Zug JOB 2945 gehoert und fuer diesen Durchgang gesperrt ist. Wo der vorhandene
-// Schluesselbestand traegt, wird er benutzt (`demo.badge.label` fuer die Markierung,
-// `capture.file.cancel` fuer den Abbruch — beide dreisprachig vorhanden); fuer Frage und
-// Bestaetigung gibt es keinen passenden Schluessel. Das ist eine Ownerfrage der Rueckgabe, kein
-// stiller Dauerzustand: die drei Werte gehoeren nach `i18n.ts`, sobald die Datei wieder frei ist.
+// Die Texte der Rueckfrage: `demo.badge.label` fuer die Markierung, `capture.file.cancel` fuer den
+// Abbruch, Frage und Bestaetigung aus `texte/einstieg.ts` (dreisprachig). Bis zur Aufnahme
+// `gesamt-erfassung-einstieg` standen die beiden letzten hier als deutscher Klartext.
 const BEISPIEL_TOR_TEXT = {
-  frage: "Das sind Beispieldaten. Wirklich als echtes Wissen einreichen?",
-  bestaetigen: "Ja, Beispiel einreichen",
+  frage: "einstieg.beispiel.frage",
+  bestaetigen: "einstieg.beispiel.bestaetigen",
 } as const;
 
 // ================================================================================================
@@ -1208,7 +1206,15 @@ export function CaptureArbeitsraum({
   // Satz, nicht einen zweiten. `useCallback`, weil der zweite Aufrufer im Wächter-Effekt sitzt: eine
   // bei jedem Render neu gebaute Funktion wäre dort eine Abhängigkeit, die sich jedes Mal ändert.
   const fehlersatz = useCallback(
-    (e: unknown): string => (e instanceof ApiError ? e.message : t("state.error")),
+    (e: unknown): string => {
+      // Aufnahme `gesamt-erfassung-einstieg` (R-0080, R-1002): Formfehler, zu grosse Inhalte und
+      // die abgelaufene Frist bekommen den übersetzten Satz (`lib/erfassenFehlersatz.ts`).
+      const schluessel = erfassenFehlerSchluessel(e);
+      if (schluessel) {
+        return t(schluessel);
+      }
+      return e instanceof ApiError ? e.message : t("state.error");
+    },
     [t],
   );
   const fail = (e: unknown): void => setErr(fehlersatz(e));
@@ -4925,10 +4931,10 @@ export function CaptureArbeitsraum({
   const beispielRueckfrage = (): JSX.Element | null =>
     exampleInForm && confirmExampleSubmit ? (
       <div className="rounded-card border border-hairline bg-page px-3 py-2.5">
-        <p className="text-[12.5px] font-semibold text-text">{BEISPIEL_TOR_TEXT.frage}</p>
+        <p className="text-[12.5px] font-semibold text-text">{t(BEISPIEL_TOR_TEXT.frage)}</p>
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <Button variant="primary" disabled={submit.isPending} onClick={() => requestSubmit(true)}>
-            {BEISPIEL_TOR_TEXT.bestaetigen}
+            {t(BEISPIEL_TOR_TEXT.bestaetigen)}
           </Button>
           <button
             type="button"
@@ -7032,7 +7038,9 @@ export function CaptureArbeitsraum({
                     </Field>
                     {/* KW-STR / FR-STR-02: optionaler WYSIWYG-Body. SCRUM-321: lokale Bild-Anhänge
                     können vor dem Speichern als sichere data:image-Vorschau eingefügt werden. */}
-                    <Field label={t("capture.fBody")}>
+                    {/* `gruppe`: der Bereich enthält Studio-Knöpfe UND den Editor — als implizites
+                      Label aktivierte jeder Klick ins Schreibfeld den ersten Knopf (Studio ging auf). */}
+                    <Field label={t("capture.fBody")} gruppe>
                       {/* SCRUM-340: aus dem vorhandenen Reasoner-Entwurf einen strukturierten Body-Artikel
                       erzeugen und direkt im Studio weiterbearbeiten. Vorschlag, kein validiertes Wissen;
                       vorhandener Body wird nicht still überschrieben (leer = setzen, sonst anhängen). */}

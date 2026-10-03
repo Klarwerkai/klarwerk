@@ -249,6 +249,12 @@ interface Zeile {
   zeilen: number;
   /** Ziel des Wegs, an dem die Zeile hängt. */
   href: string | null;
+  /** Schriftgrösse des Titels in px. */
+  titelSchrift: number;
+  /** Rechte Kante des Titelkastens. */
+  titelRechts: number;
+  /** Die Meta-Angabe der Zeile (Datum bzw. Art) — die zweite Beschriftung hinter dem Titel. */
+  meta: { voll: string; sichtbar: string; links: number; schrift: number } | null;
 }
 interface Messung {
   dokumentBreite: number;
@@ -300,15 +306,23 @@ const MESSUNG = `(() => {
     return text;
   };
   const zeilen = (testId) => [...document.querySelectorAll('[data-testid="' + testId + '"]')].map((z) => {
-    const titel = z.querySelector('[data-h5-zeile]');
+    const [titel, metaEl] = z.querySelectorAll('[data-h5-zeile]');
     const stil = getComputedStyle(titel);
-    const hoehe = titel.getBoundingClientRect().height;
+    const kasten = titel.getBoundingClientRect();
     const zh = Number.parseFloat(stil.lineHeight) || Number.parseFloat(stil.fontSize) * 1.2;
     return {
       voll: titel.textContent ?? "",
       sichtbar: sichtbarerText(titel),
-      zeilen: Math.round(hoehe / zh),
+      zeilen: Math.round(kasten.height / zh),
       href: z.getAttribute("href"),
+      titelSchrift: Number.parseFloat(stil.fontSize),
+      titelRechts: kasten.right,
+      meta: metaEl ? {
+        voll: metaEl.textContent ?? "",
+        sichtbar: sichtbarerText(metaEl),
+        links: metaEl.getBoundingClientRect().left,
+        schrift: Number.parseFloat(getComputedStyle(metaEl).fontSize),
+      } : null,
     };
   });
   // Karte → Spalte (Kicker + Karte) → Raster. Der Weg über den Baum statt über eine Klassenliste:
@@ -482,6 +496,26 @@ for (const breite of [320, 390]) {
       // Der Normalfall bleibt der Normalfall: ein kurzer Titel belegt weiterhin EINE Zeile, die
       // Karte wird also nicht pauschal hoch.
       expect((m.zuletzt[2] as Zeile).zeilen).toBe(1);
+    });
+
+    it(`${nr}e · das Datum steht NACHRANGIG: hinter dem Titel, kleiner, ganz sichtbar`, async () => {
+      const m = await messen("de", breite);
+      // N-0034 verlangt das Datum nachrangig. Bis hierher maß keine Zeile dieser Datei die
+      // Meta-Angabe — weder ob sie dasteht noch wo. Nachrangig heisst hier: sie folgt dem Titel
+      // (rechts daneben, nicht davor oder darüber), ist kleiner als er und wird selbst nicht
+      // abgeschnitten. Für „ZULETZT" ist sie das Datum (vor drei Tagen → Wochentag), für
+      // „FÜR DICH" die Art der Meldung.
+      for (const z of [...m.zuletzt, ...m.fuerdich]) {
+        const meta = z.meta;
+        expect(meta, `keine Meta-Angabe an „${z.voll}“`).not.toBeNull();
+        if (meta === null) continue;
+        expect(meta.voll.trim(), `leere Meta-Angabe an „${z.voll}“`).not.toBe("");
+        expect(meta.sichtbar.trim()).toBe(meta.voll.trim());
+        expect(meta.links, `Meta vor dem Titel an „${z.voll}“`).toBeGreaterThanOrEqual(
+          z.titelRechts - 0.5,
+        );
+        expect(meta.schrift).toBeLessThan(z.titelSchrift);
+      }
     });
   });
 }
