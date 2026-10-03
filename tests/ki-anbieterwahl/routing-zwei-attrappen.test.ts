@@ -1010,6 +1010,12 @@ const FREIGABE_ERLAUBT: ReadonlyMap<string, string> = new Map([
       "Kein Fall stuft hier etwas vertraulich ein.",
   ],
   [
+    "tests/suchraum-deckel/s7-prompt-quellenanker.test.ts",
+    "S7 misst, dass die Titelquelle im PROMPT des echten Modellwegs steht und ihre Marke bis " +
+      "citedSources trägt. Ohne Freigabe ruft der Fragedienst kein Modell, und es gäbe keinen " +
+      "Prompt, über den die Aussage etwas sagen könnte. Nichts ist vertraulich eingestuft.",
+  ],
+  [
     "tests/ask-volltext/vollkette-und-rechte.test.ts",
     "Auch die beiden RECHTE-Fälle brauchen sie: sie messen nicht „kein Modellaufruf“, sondern " +
       "„das Modell LÄUFT und bekommt den geschützten Dokumenttext trotzdem nicht“ (Promptzahl 1). " +
@@ -2281,6 +2287,17 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
       "#1": { boden: 9, freigaben: [] },
       K3: { boden: 7, freigaben: [] },
       K4: { boden: 2, freigaben: [] },
+    },
+  },
+  // Aus main zusammengeführt (S7): die Freigabe steht im gemeinsamen Aufbau `aufbauen` → vollzählig.
+  "tests/suchraum-deckel/s7-prompt-quellenanker.test.ts": {
+    gesamtboden: 18,
+    vollzaehlig: true,
+    faelle: {
+      VORSPANN: { boden: 0, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      K0: { boden: 3, freigaben: [] },
+      P1: { boden: 9, freigaben: [] },
+      P2: { boden: 6, freigaben: [] },
     },
   },
   "tests/ask-volltext/vollkette-und-rechte.test.ts": {
