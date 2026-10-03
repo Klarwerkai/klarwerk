@@ -2,6 +2,8 @@ import { createHash, randomUUID } from "node:crypto";
 import type { AuditService } from "../../audit";
 import {
   type Confidentiality,
+  // NACHARBEIT 2: die Wertmenge der Wissensarten — Vorprüfung vor der ersten Persistenz.
+  KNOWLEDGE_TYPES,
   // JOB 4155: die beiden geschlossenen Unions der kuratierten Beziehungen — importiert wie
   // `KnowledgeObject`, über dieselbe öffentliche `index.ts`. Keine neue Modulkante.
   type KantenArt,
@@ -478,22 +480,91 @@ function quellautorVon(item: ImportItemMitUrheberschaft): { originalAuthor?: str
 //     kein Quelladapter eingeschaltet ist, hiesse, eine gelieferte Herkunft still zu verlieren.
 //
 // `ausgang` meldet dem direkten Import, was geschah — er zählt `imported`/`uebersprungen` danach.
-type AnkerAusgang = "angelegt" | "fortgeschrieben" | "unveraendert" | "papierkorb";
+//
+// NACHARBEIT 2 (bens F3): `verweigert` — der Anker trifft ein Objekt, das der Einreichende nicht
+// sehen oder nicht überarbeiten darf. Dann wird NICHTS angefasst und KEINE Kennung zurückgegeben.
+type AnkerAusgang = "angelegt" | "fortgeschrieben" | "unveraendert" | "papierkorb" | "verweigert";
+
+/**
+ * NACHARBEIT 2 (bens F3) — DIE RECHTE AM ZIELOBJEKT EINES ANKER-TREFFERS, ALS DATUM.
+ *
+ * Der Kandidaten-Accept braucht sie nicht: ihn darf nur `ko.validate` auslösen (library-routes.ts),
+ * und diese Rolle sieht jedes Objekt. Der DIREKTE Import verlangt dagegen nur `ko.create` — über
+ * eine mitgelieferte Quellkennung fände er sonst fremde vertrauliche oder freigegebene Objekte und
+ * überarbeitete sie. Die Entscheidung fällt deshalb in der Route (Sichtbarkeit `darfSehen`, dieselbe
+ * Freigaberegel wie `PUT /api/kos/:id` revise) und reist als Prädikat herein; dieses Modul legt
+ * keine Rolle aus. FEHLT es am direkten Weg, gilt kein Treffer als erlaubt (fail-closed).
+ */
+export type AnkerZielRecht = (ko: KnowledgeObject) => boolean;
 
 interface ImportWeg {
   readonly importedVia: "import_candidate" | "library_import";
   readonly ankerOhneSchalter: boolean;
   readonly ausgang?: (art: AnkerAusgang) => void;
+  readonly zielDarf?: AnkerZielRecht;
 }
 
 const KANDIDATEN_WEG: ImportWeg = { importedVia: "import_candidate", ankerOhneSchalter: false };
+
+// ================================================================================================
+// NACHARBEIT 2 (bens F1) — DER DATEIWEG ÜBER DIE PRÜFWARTESCHLANGE BEHÄLT SEINE QUELLANGABEN.
+// ================================================================================================
+//
+// Der JSON-Dateiimport der Oberfläche (Stufe2 → `parseImportItems` → `POST
+// /api/library/import/candidates`) bringt Quellangaben im eigenen Rumpf mit — wie der direkte
+// Import. Ohne eingeschalteten Quelladapter warf der Kandidatenweg sie bisher weg (SCRUM-510,
+// `externalUpsert`). Der Schalter bleibt für Adapterkandidaten genau so (Bestandstest „Flag AUS →
+// kein Anker"); nur Einträge, die über die Dateiroute eingereicht wurden, tragen diesen Vermerk.
+//
+// WARUM AM EINTRAG: der Kandidat wird eingereiht und erst SPÄTER angenommen — die Tatsache „kam
+// über den Dateiweg" muss die Ablage überleben. `ImportItem`/`ImportCandidate` stehen unter
+// Freeze-144; der Vermerk ist deshalb ein zusätzliches, als fremd gelesenes Feld des abgelegten
+// Eintrags (dieselbe Bauform wie `originalAuthor`, s. `quellautorVon`). Gesetzt wird er NUR in
+// `createImportCandidates` auf Anweisung des Aufrufers; ein vom Client mitgeschickter Wert wird
+// dort entfernt.
+const DATEIWEG_VERMERK = "quellangabenEingereicht";
+
+function kamUeberDateiweg(item: ImportItem): boolean {
+  return (
+    (item as ImportItem & { readonly [DATEIWEG_VERMERK]?: unknown })[DATEIWEG_VERMERK] === true
+  );
+}
+
+const DATEI_KANDIDATEN_WEG: ImportWeg = {
+  importedVia: "import_candidate",
+  ankerOhneSchalter: true,
+};
+
+/**
+ * NACHARBEIT 2 (bens F2/F5) — ein Ankereintrag wird VOR der ersten Persistenz geprüft.
+ *
+ * Eine Quellfassung, die keine Revisionsidentität tragen kann (Bruchzahl, negativ, über
+ * `MAX_SOURCE_VERSION`), und eine unbekannte Wissensart werden abgewiesen, BEVOR eine Revision oder
+ * ein Objekt geschrieben wird. Bis hierher entstand bei ungültiger Fassung ein Objekt OHNE Revision,
+ * und bei ungültiger Art blieb eine Revision ohne Objekt zurück.
+ */
+function pruefeAnkerEintrag(item: ImportItem): void {
+  const fassung = item.sourceVersion;
+  if (
+    fassung !== undefined &&
+    (!Number.isInteger(fassung) || fassung < 0 || fassung > MAX_SOURCE_VERSION)
+  ) {
+    throw new LibraryError(
+      "BAD_REQUEST",
+      `Ungültige sourceVersion für „${item.externalId}" (erlaubt: ganzzahlig 0..${MAX_SOURCE_VERSION}).`,
+    );
+  }
+  if (!KNOWLEDGE_TYPES.includes(item.type)) {
+    throw new LibraryError("BAD_REQUEST", `Unbekannte Wissensart für „${item.externalId}".`);
+  }
+}
 
 /**
  * R-0169: der Inhaltsabdruck einer übernommenen Quellfassung — über GENAU das, was aus ihr ins
  * Wissensobjekt geht (Titel, Kernaussage, Volltext). Er bindet die Revision an ihre Aussage: wer die
  * Aussage einer Objektfassung neben die Revision legt, kann prüfen, ob sie aus ihr stammt.
  */
-function quellinhaltAbdruck(item: ImportItem): string {
+export function quellinhaltAbdruck(item: ImportItem): string {
   return createHash("sha256")
     .update(JSON.stringify([item.title, item.statement, item.bodyHtml ?? null]))
     .digest("hex");
@@ -586,6 +657,8 @@ export class LibraryService {
     rawItems: readonly ImportItem[],
     actor = "system",
     pruefeDublette?: DublettenPruefung,
+    // NACHARBEIT 2 (bens F1): nur die Dateiroute setzt das — Begründung an `DATEIWEG_VERMERK`.
+    opts: { quellangabenEingereicht?: boolean } = {},
   ): Promise<ImportCandidate[]> {
     // SCRUM-515: an der Ingest-Grenze runtime-validieren, BEVOR das Item in die Queue/den Bestand geht.
     // WP-IC-PAKET-1d (bens sammel9-ROT): ZENTRALE Codec-Erzeugungsregel. Dies ist DIE eine Stelle,
@@ -594,10 +667,26 @@ export class LibraryService {
     // Kandidat IST per Definition kanonischer Text: liefert ein Aufrufer rohe Entities, ist das SEIN
     // Text — hier wird nichts nachträglich dekodiert, nur markiert. Damit gilt wieder verlässlich:
     // Marker fehlt = echter Altbestand (gespeichert VOR dieser Regel).
-    const items = rawItems.map<ImportItem>((item) => ({
-      ...this.withSanitizedConfidentiality(item),
-      textCodec: "decoded",
-    }));
+    const items = rawItems.map<ImportItem>((item) => {
+      // NACHARBEIT 2: ein mitgeschickter Vermerk zählt nie — er entsteht nur hier, auf Anweisung.
+      const { [DATEIWEG_VERMERK]: _clientVermerk, ...ohneVermerk } = item as ImportItem &
+        Record<string, unknown>;
+      return {
+        ...this.withSanitizedConfidentiality(ohneVermerk as ImportItem),
+        textCodec: "decoded",
+        ...(opts.quellangabenEingereicht && item.externalId ? { [DATEIWEG_VERMERK]: true } : {}),
+      };
+    });
+    // Ein Ankereintrag läuft durch den Ankerstrang: bei eingeschaltetem Quellstrang (Bestand) oder
+    // wenn er seine Quellangaben über den Dateiweg selbst mitbringt.
+    const ankerStrang = (item: ImportItem): boolean =>
+      Boolean(item.externalId) && (this.externalUpsert || kamUeberDateiweg(item));
+    // NACHARBEIT 2 (bens F5): ungültige Fassung oder Art eines Ankereintrags vor jeder Einreihung.
+    for (const item of items) {
+      if (ankerStrang(item)) {
+        pruefeAnkerEintrag(item);
+      }
+    }
     const pruefung = erzwingeDublettenpruefung(pruefeDublette);
     const existing = await this.koService.list();
     // Pass 1: exakter Schlüssel → getroffener Partner. Der ERSTE Träger eines Schlüssels gewinnt,
@@ -663,7 +752,7 @@ export class LibraryService {
     // `pruefung_nicht_moeglich` (kandidatErzeugtWissensobjekt laesst den `accept` dann nichts
     // anlegen); der Lauf bricht NICHT ab, und Eintraege ohne Anker sind unberuehrt. Eine LEERE
     // Liste ist dagegen eine echte Auskunft: dann bleibt es exakt wie bisher `nicht_gestellt`.
-    const ankerImLauf = this.externalUpsert && items.some((item) => item.externalId);
+    const ankerImLauf = items.some(ankerStrang);
     const aktiveAnker = new Map<string, string>();
     if (ankerImLauf) {
       for (const ko of existing) {
@@ -727,7 +816,7 @@ export class LibraryService {
       let duplicate: boolean;
       let dublettenbefund: KandidatDublettenbefund;
       // externalId-Dedup nur bei aktivem Upsert-Strang. Aus → Dublettenprüfung für ALLE Items.
-      if (this.externalUpsert && item.externalId) {
+      if (item.externalId && ankerStrang(item)) {
         // JOB 3081 R2: auch der Lauf-interne Dedup-Schluessel laeuft ueber `ankerSchluessel` —
         // er stellt DIESELBE Frage („dasselbe Quellobjekt?") und muss sie darum mit DERSELBEN
         // Gleichheit beantworten. Zuvor kollidierten hier ebenfalls zwei verschiedene Anker
@@ -783,10 +872,9 @@ export class LibraryService {
         koId: null,
         createdAt: at,
       };
-      const inserted =
-        this.externalUpsert && item.externalId
-          ? await this.candidates.insertIfAbsent(candidate)
-          : await this.candidates.insert(candidate).then(() => true);
+      const inserted = ankerStrang(item)
+        ? await this.candidates.insertIfAbsent(candidate)
+        : await this.candidates.insert(candidate).then(() => true);
       if (!inserted) {
         // Nicht eingereiht (idempotenter No-op): dieser Kandidat existiert nicht. Er geht weder in
         // die Antwort noch in den Vergleich der folgenden Einträge — sonst wäre seine Id ein
@@ -1237,7 +1325,13 @@ export class LibraryService {
         // „intern" normalisiert (fail-open) bzw. bei der Erstanlage hart abgelehnt. Das bereinigte Item wird
         // MIT persistiert (nicht nur transient), damit die Queue keinen ungültigen Wert behält.
         const item = this.withSanitizedConfidentiality(candidate.item);
-        createdKoId = await this.acceptToKo(item, actor, id);
+        // NACHARBEIT 2 (bens F1): über den Dateiweg eingereichte Quellangaben bleiben erhalten.
+        createdKoId = await this.acceptToKo(
+          item,
+          actor,
+          id,
+          kamUeberDateiweg(item) ? DATEI_KANDIDATEN_WEG : KANDIDATEN_WEG,
+        );
         resolution = { status: "angenommen", koId: createdKoId, item, ...reviewedStamp };
       }
       // SCRUM-157: Endstatus/koId/Note (+ bereinigtes Item, 515) persistieren — atomar über den
@@ -1585,6 +1679,11 @@ export class LibraryService {
     // importProviderKey als Confluence (der einzige Adapter vor dem Provider-Schlüssel).
     // R-0139: der direkte Import behält seine mitgelieferte Quelle auch ohne Quellschalter.
     const externalId = this.externalUpsert || weg.ankerOhneSchalter ? item.externalId : undefined;
+    // NACHARBEIT 2 (bens F4/F5): VOR der ersten Persistenz — keine Revision ohne tragfähige Fassung
+    // und keine Revision, deren Objekt danach an einer ungültigen Wissensart scheitert.
+    if (externalId) {
+      pruefeAnkerEintrag(item);
+    }
     // JOB 3081 RUNDE 2 (bens ROT): DIESELBE Funktion, mit der die Kandidatenpruefung ihre Karten
     // schluesselt (`ankerSchluessel`, Begruendung dort). Vorher stand hier der Feldvergleich und
     // dort eine `@`-Verkettung — zwei Ausdruecke fuer dieselbe Gleichheit, von denen einer
@@ -1595,6 +1694,13 @@ export class LibraryService {
     const matchesAnchor = (s: { externalId?: string; provider?: string | null }): boolean =>
       ankerSchluessel(s.provider, s.externalId) === ankerSchluessel(item.provider, externalId);
     const anker = externalId ? await this.sucheAnkerKo(matchesAnchor) : undefined;
+    // NACHARBEIT 2 (bens F3): am direkten Weg entscheidet das Recht am Zielobjekt, BEVOR adoptiert,
+    // eine Kennung zurückgegeben, eingestuft oder überarbeitet wird. Ein getrashtes Ziel ist dort nie
+    // erlaubt — der Papierkorb gehört dem Admin, und seine Kennung wäre eine Existenzauskunft.
+    if (anker && weg.zielDarf && (anker.art !== "aktiv" || !weg.zielDarf(anker.ko))) {
+      weg.ausgang?.("verweigert");
+      return "";
+    }
     if (anker?.art === "getrasht") {
       // ==========================================================================================
       // JOB 3081 — DER TRASH-VERTRAG: ADOPTIEREN, NICHT AUFERSTEHEN LASSEN.
@@ -1880,15 +1986,15 @@ export class LibraryService {
     if (!this.externalSources || !item.externalId?.trim()) {
       return undefined;
     }
-    // Eine Version, die die Revisionsidentität nicht tragen kann (Bruchzahl, negativ, zu gross),
-    // ergibt KEINE Revision statt eines geworfenen Imports: der Anker trägt dann ehrlich keine
-    // `sourceRecordId`. Dieselbe Grenze wie am Repo-Rand (`pruefeRevisionsidentitaet`).
+    // NACHARBEIT 2 (bens F5): eine Version, die die Revisionsidentität nicht tragen kann, wird
+    // ABGEWIESEN — nicht mehr still als Anker ohne Revision übernommen. Die Aufrufer prüfen das schon
+    // vor der ersten Persistenz (`pruefeAnkerEintrag`); diese Zeile ist die letzte Linie davor.
     if (
       !Number.isInteger(sourceVersion) ||
       sourceVersion < 0 ||
       sourceVersion > MAX_SOURCE_VERSION
     ) {
-      return undefined;
+      throw new LibraryError("BAD_REQUEST", "Quellfassung ohne tragfähige sourceVersion.");
     }
     const sourceSystem = importProviderKey(item.provider);
     const record: ExternalSourceRecord = {
@@ -1916,7 +2022,17 @@ export class LibraryService {
       item.externalId,
       sourceVersion,
     );
-    return vorhanden?.sourceRecordId;
+    // NACHARBEIT 2 (bens F4): eine vorhandene Revision wird nur wiederverwendet, wenn sie DENSELBEN
+    // Inhalt festschreibt. Bis hierher wurde ihre Kennung ungeprüft übernommen — nach einem
+    // gescheiterten ersten Versuch mit Text A verwies ein Objekt mit Text B auf die Revision von A.
+    // Jetzt: Konflikt, abgewiesen VOR jeder Objektmutation; die vorhandene Revision bleibt, wie sie ist.
+    if (!vorhanden || vorhanden.contentHash !== record.contentHash) {
+      throw new LibraryError(
+        "CONFLICT",
+        `Quellfassung ${sourceVersion} von „${item.externalId}" ist bereits mit anderem Inhalt festgeschrieben.`,
+      );
+    }
+    return vorhanden.sourceRecordId;
   }
 
   // FR-LIB-01: Suche + Filter.
@@ -2204,9 +2320,22 @@ export class LibraryService {
     // PFLICHT, nicht optional (types.ts, DublettenPruefung): sonst duerfte ein zweiter Aufbau den
     // Schutz typgueltig weglassen.
     pruefeDublette: DublettenPruefung,
+    // NACHARBEIT 2 (bens F3): das Recht des Einreichenden an einem Anker-Treffer (s. `AnkerZielRecht`).
+    // Optional nur, weil Altaufrufer ohne Ankereinträge es nicht brauchen — FEHLT es, ist JEDER
+    // Anker-Treffer verweigert, nie erlaubt.
+    opts: { zielDarf?: AnkerZielRecht } = {},
   ): Promise<ImportResult> {
     // SCRUM-515: an der Ingest-Grenze runtime-validieren (ungültig/unbekannt → vertraulich, nie intern).
     const items = rawItems.map((item) => this.withSanitizedConfidentiality(item));
+    // NACHARBEIT 2 (bens F4/F5): ALLE Ankereinträge der Anfrage werden geprüft, bevor auch nur einer
+    // geschrieben wird — eine ungültige Fassung oder Art weist die ganze Anfrage ab (400), der
+    // Objekt- und Revisionsbestand bleibt unverändert.
+    for (const item of items) {
+      if (item.externalId?.trim()) {
+        pruefeAnkerEintrag(item);
+      }
+    }
+    const zielDarf: AnkerZielRecht = opts.zielDarf ?? (() => false);
     const pruefung = erzwingeDublettenpruefung(pruefeDublette);
     const existing = await this.koService.list();
     // Pass 1: exakter Schluessel → getroffenes Objekt. Der ERSTE Träger eines Schluessels gewinnt,
@@ -2240,9 +2369,15 @@ export class LibraryService {
           ausgang: (art) => {
             gemeldet.art = art;
           },
+          zielDarf,
         });
         const ausgang = gemeldet.art;
-        if (ausgang === "angelegt") {
+        if (ausgang === "verweigert") {
+          // NACHARBEIT 2 (bens F3): das Ziel ist für den Einreichenden nicht sichtbar, nicht
+          // überarbeitbar oder im Papierkorb. Nichts geschrieben, KEINE Kennung — dieselbe
+          // Antwortform wie eine nicht entscheidbare Prüfung, damit die Antwort kein Objekt verrät.
+          uebersprungen.push({ titel: item.title, grund: "pruefung_nicht_moeglich", koId: null });
+        } else if (ausgang === "angelegt") {
           const erzeugt = await this.koService.get(koId);
           if (erzeugt) {
             exakt.set(key, erzeugt.id);
@@ -2253,10 +2388,10 @@ export class LibraryService {
           // Eine neue Quellfassung WURDE eingespielt — als neue Fassung desselben Objekts.
           imported += 1;
         } else {
-          // Gleiche/ältere Fassung oder das Objekt dieser Quelle liegt im Papierkorb: nichts
-          // geschrieben. `identisch` ist die vorhandene Antwortform für „diese Quelle ist schon da"
-          // (die Grundliste ist unter Freeze-144 und wird hier nicht erweitert); `koId` nennt das
-          // Objekt, an dem die Quelle hängt.
+          // Gleiche/ältere Fassung an einem Objekt, das der Einreichende sehen und überarbeiten
+          // darf: nichts geschrieben. `identisch` ist die vorhandene Antwortform für „diese Quelle
+          // ist schon da" (die Grundliste ist unter Freeze-144 und wird hier nicht erweitert);
+          // `koId` nennt das Objekt, an dem die Quelle hängt.
           uebersprungen.push({ titel: item.title, grund: "identisch", koId });
         }
         continue;

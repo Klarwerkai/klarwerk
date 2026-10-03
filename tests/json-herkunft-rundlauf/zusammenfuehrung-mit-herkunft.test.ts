@@ -85,6 +85,13 @@ describe("UX-20b-R · eigener Export in einen gefüllten Bestand zusammenführen
       "author",
       "originalAuthor",
       "bodyHtml",
+      // Nacharbeit 2 (R-0139/R-0169, bens F1): geprüfte Quellangaben, WENN die Datei sie liefert.
+      // Der eigene Export trägt sie nicht auf oberster Ebene — Kennung, Version, Status und
+      // `sources` bleiben weiterhin ausserhalb des Austauschvertrags.
+      "provider",
+      "externalId",
+      "sourceVersion",
+      "url",
     ]);
     for (const item of parseImportItems(datei)) {
       const fremd = Object.keys(item).filter((k) => !erlaubt.has(k));

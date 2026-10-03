@@ -1472,6 +1472,14 @@ export interface ImportItemInput {
   // er wird NIE aus `statement` nachgebildet (`statement` ist seit JOB 2703 der Anriss, nicht der
   // Text). Rein additiv; kein bestehender Aufrufer muss etwas mitgeben.
   bodyHtml?: string;
+  // R-0139 / R-0169 (Nacharbeit 2, bens F1): DIE QUELLANGABEN EINER EINGEREICHTEN DATEI. Der Server
+  // führt dieselben Felder am `ImportItem` (services/library-analytics/src/types.ts) und legt daraus
+  // Herkunfts-Anker und Quellrevision an; fiel das hier weg, ging die Herkunft schon im Browser
+  // verloren. Alle optional — fehlen sie, fehlt die Herkunft ehrlich.
+  provider?: string;
+  externalId?: string;
+  sourceVersion?: number;
+  url?: string;
   // WP-IC-PAKET-1c (ROT-2): Decode-Marker des Server-Kandidaten — "decoded" heisst: Textfelder sind
   // kanonisch dekodiert, die Queue-Karte dekodiert NICHT erneut; fehlt er (Altbestand), defensiv nach.
   textCodec?: "decoded";

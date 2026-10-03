@@ -791,11 +791,17 @@ export function libraryRoutes(
       }
       try {
         // JOB 3023: die Dublettenregel reist als Prädikat mit — der Dienst legt sie nicht aus.
-        reply
-          .code(200)
-          .send(
-            await library.importJson(request.body.items ?? [], user.id, pruefeReImportDublette),
-          );
+        // NACHARBEIT 2 (bens F3): ebenso das Recht am Zielobjekt eines Anker-Treffers. Ein Eintrag mit
+        // Quellkennung darf nur ein Objekt fortschreiben, das dieser Mensch SIEHT (`darfSehen`) und
+        // über die reguläre Bearbeitung ändern dürfte — ein freigegebener Stand nur mit
+        // `users.manage`, dieselbe Regel wie `PUT /api/kos/:id` revise (PROPOSAL_REQUIRED).
+        const zielDarf = (ko: KnowledgeObject): boolean =>
+          darfSehen(user, ko) && (ko.status !== "validiert" || can(user.role, "users.manage"));
+        reply.code(200).send(
+          await library.importJson(request.body.items ?? [], user.id, pruefeReImportDublette, {
+            zielDarf,
+          }),
+        );
       } catch (error) {
         sendError(reply, error);
       }
@@ -813,10 +819,14 @@ export function libraryRoutes(
           // WP-SHIP8-CLOSE-8 (bens GELB-2): auch frisch eingereihte Kandidaten laufen durchs DTO.
           // JOB 3050: DIESELBE Instanz der Dublettenregel wie `POST /api/library/import` oben —
           // beide Importwege beantworten die Frage ab hier gleich.
+          // NACHARBEIT 2 (bens F1): diese Route ist der Dateiweg (Stufe2 → parseImportItems). Was
+          // ein Eintrag hier an Quellangaben mitbringt, bleibt bei der Übernahme erhalten — auch
+          // ohne eingeschalteten Quelladapter (Begründung an `DATEIWEG_VERMERK`).
           const created = await library.createImportCandidates(
             request.body.items ?? [],
             user.id,
             pruefeReImportDublette,
+            { quellangabenEingereicht: true },
           );
           reply.code(201).send(created.map(toImportCandidateDto));
         } catch (error) {
