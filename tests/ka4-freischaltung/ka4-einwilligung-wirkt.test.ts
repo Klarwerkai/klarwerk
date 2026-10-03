@@ -9,9 +9,11 @@
 // Auftrags trägt also nicht — und eine Freischaltung, die dem Menschen einen falschen Empfänger,
 // einen zu schmalen Umfang, keine Frist und einen widersprechenden Panelsatz liefert, ist keine.
 //
-// DIE KONSTANTE STEHT DESHALB WEITER AUF `false` (`services/reasoner/src/klara-policy.ts`, dort
-// sind die vier Sperrgründe einzeln benannt). Diese Datei ist der Vertrag, unter dem sie umgelegt
-// werden darf.
+// DIE KONSTANTE BLIEB DESHALB IN JOB 3033 AUF `false`. Diese Datei ist der Vertrag, unter dem sie
+// umgelegt werden darf. JOB 3079 (05.09.2026) hat die vier Sperrgründe behoben und sie auf `true`
+// gelegt (`services/reasoner/src/klara-policy.ts`, dort steht je Sperrgrund, wo er behoben ist).
+// Heute greift also jeweils die `true`-Hälfte der Fälle; die `false`-Hälfte bleibt für den Fall
+// stehen, dass jemand den Schalter zurücklegt.
 //
 // WIE SIE GESCHRIEBEN IST, und das ist der Kern: JEDER Fall sagt BEIDE Zustände. Er misst, was bei
 // `KLARA_EXTERNAL_EXECUTION_MIGRATED === false` gelten muss, UND was bei `true` gelten muss. Kein
@@ -358,13 +360,13 @@ describe("JOB 3033 · KA4 · die Einwilligung hebt die Enge — und nur sie", ()
 // DIE VIER SPERRGRÜNDE — jeder ein Riegel am Schalter, keiner eine Behauptung.
 // ================================================================================================
 //
-// Sie sind die Antwort auf BENs Korrekturpflichten 1 bis 4 zu Runde 1. Behoben werden können sie
-// in diesem Auftrag nicht: drei von ihnen liegen in `services/app/src/services/klara-session-
-// service.ts` beziehungsweise `apps/web/public/word-addin/taskpane.html`, und beide Pfade stehen
-// nicht in den abschliessenden ZIELPFADEN (`taskpane.html` ist in §10 sogar ausdrücklich
-// ausgeschlossen). Was in diesem Auftrag möglich ist — und was hier steht —, ist die BINDUNG:
-// jeder Sperrgrund ist so gemessen, dass er heute grün ist und in dem Augenblick rot wird, in dem
-// jemand `KLARA_EXTERNAL_EXECUTION_MIGRATED` auf `true` legt, ohne ihn zu beheben.
+// Sie sind die Antwort auf BENs Korrekturpflichten 1 bis 4 zu Runde 1. JOB 3033 konnte sie nicht
+// beheben: drei von ihnen liegen in `services/app/src/services/klara-session-service.ts`
+// beziehungsweise `apps/web/public/word-addin/taskpane.html`, und beide Pfade standen nicht in den
+// damaligen ZIELPFADEN. Was dort möglich war — und was hier steht —, ist die BINDUNG: jeder
+// Sperrgrund ist so gemessen, dass er rot wird, sobald `KLARA_EXTERNAL_EXECUTION_MIGRATED` auf
+// `true` steht, ohne dass er behoben ist. JOB 3079 hat alle vier behoben und den Schalter
+// umgelegt; seither messen S1 bis S4 die `true`-Hälfte.
 describe("JOB 3033 · KA4 · die vier Sperrgründe der Freischaltung", () => {
   // ----------------------------------------------------------------------------------------------
   // S1 · DIE FRIST — gemessen, nicht geglaubt.
@@ -392,8 +394,8 @@ describe("JOB 3033 · KA4 · die vier Sperrgründe der Freischaltung", () => {
     expect(a.gesehen[0]).toEqual(MIT_EINWILLIGUNG);
 
     // Eine Millisekunde nach Ablauf der Auflösungsfrist MUSS die Enge stehen — unabhängig davon,
-    // dass die Sitzung noch lebt. Heute ist das grün, weil ohnehin alles eng ist; nach einer
-    // Freischaltung ohne durchgesetzte Frist wird genau diese Zeile rot.
+    // dass die Sitzung noch lebt. Bei freigeschaltetem Weg trägt diese Zeile nur, weil
+    // `pruefeConsentDeckung` die Frist durchsetzt (JOB 3079); ohne sie wird genau diese Zeile rot.
     a.vorstellen(2_000);
     await fragen(a.app, a.bindung);
     expect(
