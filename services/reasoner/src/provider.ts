@@ -1,3 +1,4 @@
+import { FACHKOMPOSITA, type Fachkompositum } from "./fachkomposita";
 import type {
   AnswerResult,
   AssistResult,
@@ -1288,7 +1289,9 @@ interface Ueberschneidung {
 // weiterhin NICHT — die Frage liefert nur die zwei Terme „farb" und „firmenwag", und „farb" ist in
 // „pflichtfarb" nur ein Kompositumtreffer, der Substanzwert bleibt bei eins. Die Recall-Schuld S5 ist
 // damit nicht beglichen, sondern präziser beschrieben. Die dazu passende Lösung — eine begrenzte und
-// getestete Domänenrelation echter Fachkomposita — steht im Register und kommt nach dem Vortest.
+// getestete Domänenrelation echter Fachkomposita — ist seit R-0461 gebaut: `./fachkomposita.ts`,
+// angewandt in `trifftAlsFachkompositum` unten. Nur dort gelistete Paare tragen; alles andere bleibt
+// bei der Regel dieses Blocks.
 const MIN_KOMPOSITUM_TEIL = MIN_GRUNDFORM_LAENGE;
 const FUGEN_S = "s";
 
@@ -1317,6 +1320,59 @@ function trifftAlsKompositum(wort: string, ziel: readonly string[]): boolean {
   return false;
 }
 
+// ------------------------------------------------------------------------------------------------
+// R-0461 / R-1943 (S5b) — DIE DEKLARIERTE DOMÄNENRELATION, DER WEG NACH mega60 A.
+// ------------------------------------------------------------------------------------------------
+//
+// Die Liste steht in `./fachkomposita.ts` und ist dort ohne Programmierarbeit pflegbar. Hier wird sie
+// EINMAL in die Grundform derselben Zerlegung umgerechnet (`tokenize`), damit Beugung und
+// Großschreibung in der Liste keine Rolle spielen. Ein Eintrag wirkt nur, wenn beide Seiten genau ein
+// Token ergeben UND das Grundwort an einer belegbaren Kompositumgrenze im Kompositum steht — sonst
+// ist er kein echtes Kompositum dieses Grundworts und wird fail-closed übergangen. Die Relation hebt
+// also ausschließlich einen Treffer, den `trifftAlsKompositum` ohnehin als suchbar erkennt, auf
+// tragend; sie erfindet keinen neuen.
+//
+// Index: Frage-Grundwort → die Quell-Komposita, die es tragen. Nur diese Richtung.
+export function fachkompositaIndex(
+  liste: readonly Fachkompositum[] = FACHKOMPOSITA,
+): ReadonlyMap<string, ReadonlySet<string>> {
+  const index = new Map<string, Set<string>>();
+  for (const eintrag of liste) {
+    const [kompositum, ...restK] = tokenize(eintrag.kompositum);
+    const [grundwort, ...restG] = tokenize(eintrag.grundwort);
+    if (
+      kompositum === undefined ||
+      grundwort === undefined ||
+      restK.length > 0 ||
+      restG.length > 0 ||
+      !trifftAlsWortteil(grundwort, kompositum)
+    ) {
+      continue;
+    }
+    const vorhanden = index.get(grundwort) ?? new Set<string>();
+    vorhanden.add(kompositum);
+    index.set(grundwort, vorhanden);
+  }
+  return index;
+}
+
+// Einmal gebaut, beim ersten Gebrauch — `tokenize` hängt an Konstanten weiter oben in dieser Datei.
+let fachkompositaIndexCache: ReadonlyMap<string, ReadonlySet<string>> | undefined;
+function deklarierteKomposita(): ReadonlyMap<string, ReadonlySet<string>> {
+  fachkompositaIndexCache ??= fachkompositaIndex();
+  return fachkompositaIndexCache;
+}
+
+// Trägt das Frage-Grundwort über ein DEKLARIERTES Fachkompositum der Quelle?
+function trifftAlsFachkompositum(wort: string, ziel: ReadonlySet<string>): boolean {
+  for (const kompositum of deklarierteKomposita().get(wort) ?? []) {
+    if (ziel.has(kompositum)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function ueberschneidung(
   a: readonly string[],
   b: readonly string[],
@@ -1333,6 +1389,10 @@ function ueberschneidung(
   const exakt = new Set<string>();
   for (const word of a) {
     if (ziel.has(word)) {
+      gemeinsam.add(word);
+      exakt.add(word);
+    } else if (trifftAlsFachkompositum(word, ziel)) {
+      // R-0461: deklariertes Fachkompositum („farb" → „pflichtfarb") — suchbar UND tragend.
       gemeinsam.add(word);
       exakt.add(word);
     } else if (trifftAlsKompositum(word, b)) {
