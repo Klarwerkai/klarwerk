@@ -118,9 +118,16 @@ describe("JOB 3014 · B — die Grobstruktur der ausgelieferten Seite", () => {
     // ist derselbe Fassungsplatzhalter, den der Server auch ins Meta stempelt (`stempleFassung`),
     // also genau die Zahl des Manifests. Ein Eintrag ohne diese zwei Eigenschaften — fremder
     // Ursprung oder absolute Adresse — fällt hier weiterhin auf.
+    //
+    // ZERLEGUNGSAUFTRAG BESTANDSBLICK (03.10.2026): eine ZWEITE eigene Quelle, mit denselben zwei
+    // Eigenschaften. Der Block KW-MARKE (222 Zeilen, das Ende des Inline-Skripts) wohnt seither in
+    // `marke.js`; sie lädt mit `defer` und läuft damit an derselben Stelle wie vorher — nach dem
+    // Inline-Skript. Anlass ist wieder B3 unten: der Bestandsblick-Kandidat riss die Schranke mit
+    // 12551 Zeilen, und angehoben wird sie nicht.
     expect(extern).toEqual([
       "https://appsforoffice.microsoft.com/lib/1/hosted/office.js",
       `rueckweg.js?v=${FASSUNG}`,
+      `marke.js?v=${FASSUNG}`,
     ]);
   });
 
@@ -248,6 +255,12 @@ describe("JOB 3014 · B — die Grobstruktur der ausgelieferten Seite", () => {
     // ANBAUT, hat wieder rund 120 Zeilen Luft und danach dieselbe Wahl wie dieser Job: schneiden
     // oder melden. P11 (JOB 3227) ist damit NICHT erledigt — die Seite trägt weiterhin 12380 Zeilen
     // in EINEM Block; erledigt ist nur, dass ein Anbau sie nicht weiter hat wachsen lassen.
+    // ZERLEGUNGSAUFTRAG BESTANDSBLICK (03.10.2026): DIE SCHRANKE RÜCKT WIEDER NICHT. Der
+    // Bestandsblick-Kandidat riss sie mit 12551 Zeilen (Vollcheck pa-1790499744-198b9217); auf dem
+    // Arbeitsstand dieses Auftrags stand das Skript bei 12499, also ohne jede Luft. Geschnitten
+    // wurde nach derselben Regel wie in JOB 3667: der Abschnitt KW-MARKE (222 Zeilen, geschlossen,
+    // von keiner Zeile ausserhalb gerufen) ist Zeile für Zeile nach `marke.js` gewandert (B1 oben
+    // sieht die dritte Quelle). Das Inline-Skript steht danach bei 12276 Zeilen.
     expect(zeilenzahl).toBeLessThan(12500);
     expect(SOLL_ZEILEN_JE_SKRIPT).toBe(500);
   });

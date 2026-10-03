@@ -60,6 +60,9 @@ const TASKPANE = "apps/web/public/word-addin/taskpane.html";
 // Inline-Skript ausfuehrt, laesst `rwZeichnen` fehlen — `renderCapture` bricht dann mit
 // ReferenceError, und der Fall misst ein Fenster, das es so nicht gibt.
 const RUECKWEG = "apps/web/public/word-addin/rueckweg.js";
+// Zerlegungsauftrag Bestandsblick: der Block KW-MARKE laeuft aus `marke.js` (`defer`) NACH dem
+// Inline-Skript — dort, wo er vorher stand.
+const MARKE = "apps/web/public/word-addin/marke.js";
 
 function read(rel: string): string {
   return readFileSync(resolve(process.cwd(), rel), "utf8");
@@ -1333,7 +1336,7 @@ async function ladeKa6Fenster(lage: Ka6Lage): Promise<void> {
   const skriptStart = quelle.lastIndexOf("<script>");
   const skriptEnde = quelle.lastIndexOf("</script>");
   expect(skriptStart, `${TASKPANE}: Inline-Skript nicht gefunden`).toBeGreaterThan(0);
-  const skript = `${read(RUECKWEG)}\n${quelle.slice(skriptStart + "<script>".length, skriptEnde)}`;
+  const skript = `${read(RUECKWEG)}\n${quelle.slice(skriptStart + "<script>".length, skriptEnde)}\n${read(MARKE)}`;
 
   const bodyStart = quelle.indexOf("<body>");
   expect(bodyStart, `${TASKPANE}: <body> nicht gefunden`).toBeGreaterThan(0);

@@ -32,6 +32,9 @@ const TASKPANE = "apps/web/public/word-addin/taskpane.html";
 // Inline-Skript ausfuehrt, laesst `rwZeichnen` fehlen — `renderCapture` bricht dann mit
 // ReferenceError, und der Fall misst ein Fenster, das es so nicht gibt.
 const RUECKWEG = "apps/web/public/word-addin/rueckweg.js";
+// Zerlegungsauftrag Bestandsblick: der Block KW-MARKE laeuft aus `marke.js` (`defer`) NACH dem
+// Inline-Skript — dort, wo er vorher stand.
+const MARKE = "apps/web/public/word-addin/marke.js";
 
 const ANTWORT = "Ventil V4 wird jaehrlich geprueft und vor der Wartung entlastet.";
 
@@ -49,7 +52,7 @@ function taskpaneStarten(): Laufzeit {
   const skript = `${readFileSync(resolve(process.cwd(), RUECKWEG), "utf8")}\n${body.slice(
     skriptStart,
     skriptEnd,
-  )}`;
+  )}\n${readFileSync(resolve(process.cwd(), MARKE), "utf8")}`;
   document.body.innerHTML = body.slice(0, body.indexOf("<script>"));
 
   let quellenAufloesen: () => void = () => undefined;

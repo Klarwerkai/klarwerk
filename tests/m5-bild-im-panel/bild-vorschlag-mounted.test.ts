@@ -28,6 +28,9 @@ const TASKPANE = "apps/web/public/word-addin/taskpane.html";
 // Inline-Skript ausfuehrt, laesst `rwZeichnen` fehlen — `renderCapture` bricht dann mit
 // ReferenceError, und der Fall misst ein Fenster, das es so nicht gibt.
 const RUECKWEG = "apps/web/public/word-addin/rueckweg.js";
+// Zerlegungsauftrag Bestandsblick: der Block KW-MARKE laeuft aus `marke.js` (`defer`) NACH dem
+// Inline-Skript — dort, wo er vorher stand.
+const MARKE = "apps/web/public/word-addin/marke.js";
 
 function read(rel: string): string {
   return readFileSync(resolve(process.cwd(), rel), "utf8");
@@ -234,7 +237,7 @@ async function ladeFenster(lage: Lage): Promise<void> {
   const skriptStart = quelle.lastIndexOf("<script>");
   const skriptEnde = quelle.lastIndexOf("</script>");
   expect(skriptStart, `${TASKPANE}: Inline-Skript nicht gefunden`).toBeGreaterThan(0);
-  const skript = `${read(RUECKWEG)}\n${quelle.slice(skriptStart + "<script>".length, skriptEnde)}`;
+  const skript = `${read(RUECKWEG)}\n${quelle.slice(skriptStart + "<script>".length, skriptEnde)}\n${read(MARKE)}`;
   const bodyStart = quelle.indexOf("<body>");
   expect(bodyStart).toBeGreaterThan(0);
   const markup = quelle.slice(bodyStart + "<body>".length, skriptStart);
@@ -683,7 +686,7 @@ describe("JOB 3096 · M5 · das Bild im Word-Panel", () => {
     const quelle = read(TASKPANE);
     const skriptStart = quelle.lastIndexOf("<script>");
     const skriptEnde = quelle.lastIndexOf("</script>");
-    const skript = `${read(RUECKWEG)}\n${quelle.slice(skriptStart + "<script>".length, skriptEnde)}`;
+    const skript = `${read(RUECKWEG)}\n${quelle.slice(skriptStart + "<script>".length, skriptEnde)}\n${read(MARKE)}`;
     umgebung.document.body.innerHTML = quelle.slice(
       quelle.indexOf("<body>") + "<body>".length,
       skriptStart,

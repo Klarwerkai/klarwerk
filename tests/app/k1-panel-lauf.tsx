@@ -11,7 +11,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { expect } from "vitest";
-import { readRueckweg } from "./klara-panel-fixture";
+import { readMarke, readRueckweg } from "./klara-panel-fixture";
 
 export const TASKPANE = "apps/web/public/word-addin/taskpane.html";
 export const HTML = readFileSync(resolve(process.cwd(), TASKPANE), "utf8");
@@ -68,7 +68,8 @@ export function panelStarten(bedienen: Router): Lauf {
   const skriptEnd = body.lastIndexOf("</script>");
   // JOB 3667: das Fenster wird aus ZWEI Skripten ausgeliefert — `rueckweg.js` laedt davor. Wer nur
   // das Inline-Skript ausfuehrt, laesst `rwZeichnen` fehlen, und `setLang` bricht mit ReferenceError.
-  const skript = `${readRueckweg()}\n${body.slice(skriptStart, skriptEnd)}`;
+  // Zerlegungsauftrag Bestandsblick: `marke.js` laedt mit `defer` danach (Block KW-MARKE).
+  const skript = `${readRueckweg()}\n${body.slice(skriptStart, skriptEnd)}\n${readMarke()}`;
   expect(skript.length, `${TASKPANE}: Inline-Skript nicht gefunden`).toBeGreaterThan(1000);
   document.body.innerHTML = body.slice(0, body.indexOf("<script>"));
 

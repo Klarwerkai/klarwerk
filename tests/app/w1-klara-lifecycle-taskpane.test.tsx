@@ -28,6 +28,12 @@ const HTML = readFileSync(resolve(process.cwd(), TASKPANE), "utf8");
 // ReferenceError, und der Fall misst ein Fenster, das es so nicht gibt.
 const RUECKWEG = "apps/web/public/word-addin/rueckweg.js";
 const RUECKWEG_QUELLE = readFileSync(resolve(process.cwd(), RUECKWEG), "utf8");
+// Zerlegungsauftrag Bestandsblick: der Block KW-MARKE wohnt in `marke.js`, die mit `defer` NACH
+// dem Inline-Skript laeuft — dort, wo er vorher stand.
+const MARKE_QUELLE = readFileSync(
+  resolve(process.cwd(), "apps/web/public/word-addin/marke.js"),
+  "utf8",
+);
 
 interface Aufruf {
   url: string;
@@ -338,7 +344,7 @@ async function ladeTaskpane(): Promise<void> {
   const skriptStart = HTML.lastIndexOf("<script>");
   const skriptEnde = HTML.lastIndexOf("</script>");
   expect(skriptStart, `${TASKPANE}: Inline-Skript nicht gefunden`).toBeGreaterThan(0);
-  const skript = `${RUECKWEG_QUELLE}\n${HTML.slice(skriptStart + "<script>".length, skriptEnde)}`;
+  const skript = `${RUECKWEG_QUELLE}\n${HTML.slice(skriptStart + "<script>".length, skriptEnde)}\n${MARKE_QUELLE}`;
 
   const bodyStart = HTML.indexOf("<body>");
   const bodyEnde = HTML.lastIndexOf("</body>");

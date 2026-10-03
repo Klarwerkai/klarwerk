@@ -35,6 +35,12 @@ export const TASKPANE_PATH = "apps/web/public/word-addin/taskpane.html";
 export const RUECKWEG_PATH = "apps/web/public/word-addin/rueckweg.js";
 /** Das Verweis-Tag, an dem der Rumpf endet — es steht im Markup, gehoert aber zum Skriptteil. */
 const RUECKWEG_TAG = '<script src="rueckweg.js';
+/**
+ * Zerlegungsauftrag Bestandsblick (01.10.2026): der Block KW-MARKE wohnt in dieser dritten
+ * Geschwisterdatei. `taskpane.html` laedt sie mit `defer`, also NACH dem Inline-Skript — genau dort,
+ * wo der Block vorher stand. `splitTaskpane` haengt sie deshalb hinten an.
+ */
+export const MARKE_PATH = "apps/web/public/word-addin/marke.js";
 
 // ---- Schmale Struktur-Typen (Ersatz fuer die fehlende DOM-lib) ---------------------------------
 
@@ -310,12 +316,17 @@ export function readRueckweg(): string {
   return readFileSync(resolve(process.cwd(), RUECKWEG_PATH), "utf8");
 }
 
+export function readMarke(): string {
+  return readFileSync(resolve(process.cwd(), MARKE_PATH), "utf8");
+}
+
 /**
  * Rumpf und Skript aus der AUSGELIEFERTEN Seite schneiden (kein zweiter Quelltext).
  *
  * `script` ist das, was der Browser in dieser Reihenfolge ausfuehrt: erst `rueckweg.js`, dann das
- * Inline-Skript. Der Rumpf endet am Verweis-Tag, nicht erst am Inline-Skript — sonst stuende ein
- * `<script src>` im `innerHTML`, das im jsdom stumm bliebe und nur verwirrte.
+ * Inline-Skript, dann das zurueckgestellte `marke.js`. Der Rumpf endet am Verweis-Tag, nicht erst
+ * am Inline-Skript — sonst stuende ein `<script src>` im `innerHTML`, das im jsdom stumm bliebe und
+ * nur verwirrte.
  */
 export function splitTaskpane(html: string): { markup: string; script: string } {
   const bodyOpen = html.indexOf("<body>");
@@ -328,7 +339,7 @@ export function splitTaskpane(html: string): { markup: string; script: string } 
   const rumpfBis = tagOpen >= 0 && tagOpen < scriptOpen ? tagOpen : scriptOpen;
   return {
     markup: html.slice(bodyOpen + "<body>".length, rumpfBis),
-    script: `${readRueckweg()}\n${html.slice(scriptOpen + "<script>".length, scriptClose)}`,
+    script: `${readRueckweg()}\n${html.slice(scriptOpen + "<script>".length, scriptClose)}\n${readMarke()}`,
   };
 }
 

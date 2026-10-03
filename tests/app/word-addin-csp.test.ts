@@ -212,9 +212,12 @@ describe("AUFTRAG-JOB507-D4: CSP und Panelverhalten sind konsistent", () => {
     // getrennt: FREMD bleibt office.js allein, und nur dafuer steht ein Fremd-Ursprung in der CSP.
     // Jede weitere Quelle muss RELATIV und damit gleichherkuenftig sein — `script-src 'self'`
     // deckt sie ohne neue Erlaubnis. Ein absoluter oder protokollrelativer Eintrag faellt hier auf.
+    // Zerlegungsauftrag Bestandsblick (03.10.2026): eine DRITTE Quelle nach derselben Regel — der
+    // Block KW-MARKE wohnt in `marke.js` (relativ, gleichherkuenftig, mit `defer`).
     expect(externeScripts).toEqual([
       "https://appsforoffice.microsoft.com/lib/1/hosted/office.js",
       "rueckweg.js?v=__KW_FASSUNG__",
+      "marke.js?v=__KW_FASSUNG__",
     ]);
     const fremde = externeScripts.filter((s) => /^[a-z]+:|^\/\//.test(s));
     expect(fremde).toEqual(["https://appsforoffice.microsoft.com/lib/1/hosted/office.js"]);

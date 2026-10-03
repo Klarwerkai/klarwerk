@@ -43,6 +43,20 @@ export function rueckwegQuelle(): string {
   return readFileSync(repoPfad(RUECKWEG_RELATIV), "utf8");
 }
 
+/**
+ * Zerlegungsauftrag Bestandsblick (03.10.2026) — DIE DRITTE AUSGELIEFERTE DATEI DES FENSTERS.
+ *
+ * Sie trägt den Abschnitt KW-MARKE Zeile für Zeile. `taskpane.html` lädt sie mit `defer`, also
+ * läuft sie NACH dem Inline-Skript — dort, wo der Abschnitt vorher stand.
+ */
+export const MARKE_RELATIV = "apps/web/public/word-addin/marke.js";
+/** Der Dateiname, unter dem sie neben `taskpane.html` liegt (und so auch im `src` steht). */
+export const MARKE_DATEI = "marke.js";
+
+export function markeQuelle(): string {
+  return readFileSync(repoPfad(MARKE_RELATIV), "utf8");
+}
+
 // ------------------------------------------------------------------------------------------------
 // 1. Die Blöcke: Inline-Stil, Inline-Skript, externe Quellen
 // ------------------------------------------------------------------------------------------------

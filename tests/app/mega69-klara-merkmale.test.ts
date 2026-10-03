@@ -50,15 +50,21 @@ const TASKPANE = join(WURZEL, "apps", "web", "public", "word-addin", "taskpane.h
  * Inline-Skript lädt.
  */
 const RUECKWEG = join(WURZEL, "apps", "web", "public", "word-addin", "rueckweg.js");
+/**
+ * Zerlegungsauftrag Bestandsblick (01.10.2026): die dritte Datei. Der Block KW-MARKE (mit dem
+ * fünfzehnten Abrufziel `/api/branding`) wohnt seither in `marke.js`, die `taskpane.html` mit
+ * `defer` lädt. Die Zahl der Abrufziele bleibt 17 — sie verteilen sich nur auf drei Dateien.
+ */
+const MARKE = join(WURZEL, "apps", "web", "public", "word-addin", "marke.js");
 
 /**
- * Die Quelle, über die die zehn Merkmale reden: DAS AUSGELIEFERTE FENSTER, nicht eine seiner zwei
- * Dateien. Beides zählt zusammen — sonst verschwänden Abrufziele und Herkunftsangaben aus dem
+ * Die Quelle, über die die zehn Merkmale reden: DAS AUSGELIEFERTE FENSTER, nicht eine seiner drei
+ * Dateien. Alle zählen zusammen — sonst verschwänden Abrufziele und Herkunftsangaben aus dem
  * Bestand, sobald jemand Code verschiebt, und der Wächter meldete eine Verbesserung, wo nichts
- * besser geworden ist. Die Reihenfolge ist die der Auslieferung.
+ * besser geworden ist.
  */
 function quelle(): string {
-  return `${readFileSync(TASKPANE, "utf8")}\n${readFileSync(RUECKWEG, "utf8")}`;
+  return [TASKPANE, RUECKWEG, MARKE].map((datei) => readFileSync(datei, "utf8")).join("\n");
 }
 
 /**

@@ -29,7 +29,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { readRueckweg, splitTaskpane } from "../app/klara-panel-fixture";
+import { readMarke, readRueckweg, splitTaskpane } from "../app/klara-panel-fixture";
 
 const TASKPANE = "apps/web/public/word-addin/taskpane.html";
 const HTML = readFileSync(resolve(process.cwd(), TASKPANE), "utf8");
@@ -583,8 +583,14 @@ describe("JOB 3008 · der Pruefstand misst ein LEBENDES Fenster", () => {
     // der Reihenfolge der Auslieferung zusammen. „Nicht nachgebaut" heisst deshalb ab hier: jedes
     // Stueck stammt wörtlich aus SEINER Datei, und zusammen sind sie das ganze Skript — geprüft an
     // beiden Quellen statt an einer, sonst wäre der Fall nach dem Schnitt nur noch halb scharf.
-    expect(HTML).toContain(splitTaskpane(HTML).script.slice(readRueckweg().length + 1));
+    // Zerlegungsauftrag Bestandsblick: dazu kommt `marke.js` HINTER dem Inline-Skript (`defer`).
+    const inlineTeil = SKRIPT.slice(
+      readRueckweg().length + 1,
+      SKRIPT.length - readMarke().length - 1,
+    );
+    expect(HTML).toContain(inlineTeil);
     expect(SKRIPT.startsWith(readRueckweg())).toBe(true);
+    expect(SKRIPT.endsWith(`\n${readMarke()}`)).toBe(true);
     expect(OFFICE_FRIST).toBeGreaterThan(0);
   });
 

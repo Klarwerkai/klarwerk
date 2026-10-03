@@ -2585,6 +2585,25 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // die R-0639-Argumente stehen auf den bestehenden Zeilen, damit das Inline-Skript unter der
     // Schranke von `schnittflaechen.test.ts` B3 bleibt (Server: „expected 12510 to be less than
     // 12500"). Kein Ausdruck, kein Abrufziel, keine Nutzlast geändert; kein Sideload.
+    // ZERLEGUNGSAUFTRAG BESTANDSBLICK (aufnahme:20260922:gesamt-bestandsblick:zerlegung-aufraeumen,
+    // 03.10.2026) — DER ZWEITE SCHNITT. VORHERHASH: `5fbf5f64…` (der Wert unten). Geändert an
+    // DIESER Datei: (1) der Abschnitt KW-MARKE (222 Zeilen, das Ende des Inline-Skripts) ist Zeile
+    // für Zeile nach `apps/web/public/word-addin/marke.js` gewandert; (2) EINE Zeile kommt hinzu:
+    // `<script src="marke.js?v=__KW_FASSUNG__" defer></script>` direkt nach dem Verweis auf
+    // `rueckweg.js`. Wegen `defer` läuft der Block weiterhin NACH dem Inline-Skript und vor
+    // `DOMContentLoaded` — dieselbe Stelle wie vorher. Das Inline-Skript fällt von 12499 auf 12276
+    // Zeilen; die Schranke von `schnittflaechen.test.ts` B3 bleibt bei 12500.
+    //   · Abrufziel: UNVERÄNDERT 17. `/api/branding` steht jetzt in `marke.js`;
+    //                `mega69-klara-merkmale.test.ts` zählt über alle drei Dateien.
+    //   · CSP:       unverändert — relative, gleichherkünftige Adresse, `script-src 'self'`.
+    //   · Recht, Nutzlast, Frequenz: unverändert (derselbe Code, dieselbe Reihenfolge).
+    //   · Manifest:  unverändert, kein Sideload. Die Datei liegt unter `public/` und wird wie
+    //                `rueckweg.js` nach `dist/word-addin/` kopiert und ausgeliefert.
+    //   · Alter Server ohne die Datei: 404 — das Fenster bleibt voll bedienbar, nur ohne
+    //                Firmen-CI (der normale Look; keine Zeile ausserhalb des Blocks ruft ihn).
+    // OFFEN IN DIESER RUNDE: der neue Hash ist NICHT eingetragen. In der Arbeitsumgebung dieses
+    // Auftrags war kein Hashwerkzeug freigegeben; ein geschätzter Wert wäre ein falscher Pin. Dieser
+    // Fall meldet den Ist-Wert im ersten Lauf — erst danach darf der Pin wandern.
     const PIN = "5fbf5f64546beb67d70799bb8d18bcf6d2adcc631d79e0b404658867baeb0978";
     const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
     expect(

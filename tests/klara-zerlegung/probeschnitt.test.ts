@@ -56,11 +56,13 @@ import {
   type Block,
   CSS_DATEI,
   JS_DATEI,
+  MARKE_DATEI,
   type Probeschnitt,
   RUECKWEG_DATEI,
   bloeckeVon,
   bytes,
   inline,
+  markeQuelle,
   rueckwegQuelle,
   schneideDrei,
   taskpaneQuelle,
@@ -72,9 +74,12 @@ const CSS_PFAD = `/word-addin/${CSS_DATEI}`;
 const JS_PFAD = `/word-addin/${JS_DATEI}`;
 /** JOB 3667 R8: die zweite Datei der ECHTEN Auslieferung — kein Ergebnis dieses Probeschnitts. */
 const RUECKWEG_PFAD = `/word-addin/${RUECKWEG_DATEI}`;
+/** Zerlegungsauftrag Bestandsblick: die dritte Datei der ECHTEN Auslieferung (Block KW-MARKE). */
+const MARKE_PFAD = `/word-addin/${MARKE_DATEI}`;
 
 const QUELLE = taskpaneQuelle();
 const RUECKWEG_QUELLE = rueckwegQuelle();
+const MARKE_QUELLE = markeQuelle();
 const SCHNITT: Probeschnitt = schneideDrei(QUELLE);
 
 const aufraeumenDirs: string[] = [];
@@ -92,6 +97,9 @@ afterAll(() => {
  * sondern eine Datei der echten Auslieferung — `taskpane.html` lädt sie in beiden Fassungen
  * gleich. Fehlte sie, verglichen die Fälle unten zwei Fenster OHNE Rückweg, und der Unterschied,
  * den sie messen wollen, wäre von einem ReferenceError überdeckt.
+ *
+ * Zerlegungsauftrag Bestandsblick (03.10.2026): aus demselben Grund liegt auch `marke.js` immer
+ * dabei — sie ist eine Datei der echten Auslieferung, kein Ergebnis dieses Probeschnitts.
  */
 function dist(dateien: Record<string, string>): string {
   const dir = mkdtempSync(join(tmpdir(), "kw-probeschnitt-"));
@@ -100,6 +108,7 @@ function dist(dateien: Record<string, string>): string {
   writeFileSync(join(dir, "index.html"), "<!doctype html><title>SPA</title>");
   for (const [name, inhalt] of Object.entries({
     [RUECKWEG_DATEI]: RUECKWEG_QUELLE,
+    [MARKE_DATEI]: MARKE_QUELLE,
     ...dateien,
   })) {
     writeFileSync(join(dir, "word-addin", name), inhalt);
@@ -159,6 +168,8 @@ describe("JOB 3014 · A — der Probeschnitt ist eine reine Textoperation", () =
     // ist (s. schnittflaechen.test.ts B3). Er steht hier, damit die Zahl der Verweise nicht
     // unbemerkt wächst: wer einen vierten anlegt, sieht diese Stelle.
     expect(SCHNITT.html).toContain(`<script src="${RUECKWEG_DATEI}?v=`);
+    // Zerlegungsauftrag Bestandsblick: der VIERTE Verweis, ebenfalls aus der Quelle (Block KW-MARKE).
+    expect(SCHNITT.html).toContain(`<script src="${MARKE_DATEI}?v=`);
     // Kein Inline-Code mehr in der Seite — und office.js steht unverändert davor.
     expect(SCHNITT.html).not.toContain("<style>");
     expect(SCHNITT.html.indexOf("appsforoffice.microsoft.com")).toBeGreaterThan(0);
@@ -172,12 +183,16 @@ describe("JOB 3014 · A — der Probeschnitt ist eine reine Textoperation", () =
     // die, die ausgeliefert wird") und seit JOB 3667 die Cachekennung am Verweis auf `rueckweg.js`.
     // Beide stempelt derselbe `stempleFassung`-Lauf; keiner darf in die geschnittenen Dateien
     // wandern, denn die gehen NICHT durch die Stempelroute (sie kämen roh beim Browser an).
-    expect(SCHNITT.html.split(KLARA_FASSUNG_PLATZHALTER)).toHaveLength(3);
+    // Zerlegungsauftrag Bestandsblick: DREI Vorkommen — dazu die Cachekennung am Verweis auf
+    // `marke.js`, gestempelt vom selben Lauf.
+    expect(SCHNITT.html.split(KLARA_FASSUNG_PLATZHALTER)).toHaveLength(4);
     expect(SCHNITT.html).toContain(`content="${KLARA_FASSUNG_PLATZHALTER}"`);
     expect(SCHNITT.html).toContain(`${RUECKWEG_DATEI}?v=${KLARA_FASSUNG_PLATZHALTER}`);
+    expect(SCHNITT.html).toContain(`${MARKE_DATEI}?v=${KLARA_FASSUNG_PLATZHALTER}`);
     expect(SCHNITT.js).not.toContain(KLARA_FASSUNG_PLATZHALTER);
     expect(SCHNITT.css).not.toContain(KLARA_FASSUNG_PLATZHALTER);
     expect(RUECKWEG_QUELLE).not.toContain(KLARA_FASSUNG_PLATZHALTER);
+    expect(MARKE_QUELLE).not.toContain(KLARA_FASSUNG_PLATZHALTER);
   });
 });
 
@@ -293,16 +308,18 @@ describe("JOB 3014 · C — was HTML, JS und CSS an Kopfzeilen tragen", () => {
     // JOB 3667 R8: `rueckweg.js` steht als DRITTE Quelle mit dazwischen — sie kommt nicht aus
     // diesem Probeschnitt, sondern schon aus der Quelle, und sie ist ebenfalls relativ.
     const skriptquellen = [...SCHNITT.html.matchAll(/<script\s+src="([^"]+)"/g)].map((m) => m[1]);
+    // Zerlegungsauftrag Bestandsblick: `marke.js` als VIERTE, ebenfalls relativ und aus der Quelle.
     expect(skriptquellen).toEqual([
       "https://appsforoffice.microsoft.com/lib/1/hosted/office.js",
       `${RUECKWEG_DATEI}?v=${KLARA_FASSUNG_PLATZHALTER}`,
+      `${MARKE_DATEI}?v=${KLARA_FASSUNG_PLATZHALTER}`,
       JS_DATEI,
     ]);
     const stilquellen = [
       ...SCHNITT.html.matchAll(/<link\s+rel="stylesheet"\s+href="([^"]+)"/g),
     ].map((m) => m[1]);
     expect(stilquellen).toEqual([CSS_DATEI]);
-    for (const ref of [JS_DATEI, CSS_DATEI, RUECKWEG_DATEI]) {
+    for (const ref of [JS_DATEI, CSS_DATEI, RUECKWEG_DATEI, MARKE_DATEI]) {
       expect(ref, `${ref} ist nicht relativ`).not.toMatch(/^[a-z]+:|^\/\//);
     }
   });
@@ -412,9 +429,11 @@ describe("JOB 3014 · D — derselbe Startzustand, geschnitten wie ungeschnitten
     // hier die SORTIERTE Menge: die Reihenfolge, in der jsdom seine Ressourcen anfordert, ist keine
     // Zusage dieses Falls (sie war es auch vorher nicht — sie stand nur zufällig fest), und ein
     // Pin auf sie hätte hier eine Wahrheit behauptet, die niemand gemessen hat.
+    // Zerlegungsauftrag Bestandsblick: dasselbe gilt für `marke.js`.
     expect([...original.geholt].sort()).toEqual(
       [
         `http://localhost${RUECKWEG_PFAD}?v=${FASSUNG}`,
+        `http://localhost${MARKE_PFAD}?v=${FASSUNG}`,
         "https://appsforoffice.microsoft.com/lib/1/hosted/office.js",
       ].sort(),
     );
@@ -422,6 +441,7 @@ describe("JOB 3014 · D — derselbe Startzustand, geschnitten wie ungeschnitten
       [
         `http://localhost${CSS_PFAD}`,
         `http://localhost${RUECKWEG_PFAD}?v=${FASSUNG}`,
+        `http://localhost${MARKE_PFAD}?v=${FASSUNG}`,
         `http://localhost${JS_PFAD}`,
         "https://appsforoffice.microsoft.com/lib/1/hosted/office.js",
       ].sort(),
@@ -464,7 +484,9 @@ describe("JOB 3014 · D — derselbe Startzustand, geschnitten wie ungeschnitten
     expect(ohneJs.geholt).toContain(`http://localhost${JS_PFAD}`);
     expect(ohneJs.abdruck.fehler.join(" ")).toContain("taskpane.js");
     // Das Panel ist ohne sein Skript stumm: keine Netzaufrufe, keine Office-Zugriffe.
-    expect(ohneJs.abdruck.netzaufrufe).toEqual([]);
+    // Zerlegungsauftrag Bestandsblick: AUSGENOMMEN ist genau der eine Abruf von `marke.js` — die
+    // Datei liegt in beiden Fassungen bei und hängt nicht am Inline-Skript. Nichts sonst.
+    expect(ohneJs.abdruck.netzaufrufe.filter((a) => a !== "GET /api/branding")).toEqual([]);
     expect(ohneJs.abdruck.officeBindungen).toEqual([]);
   });
 

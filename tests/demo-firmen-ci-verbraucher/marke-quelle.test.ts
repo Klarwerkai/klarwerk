@@ -22,6 +22,12 @@ const WURZEL = join(__dirname, "..", "..");
 const lies = (rel: string) => readFileSync(join(WURZEL, rel), "utf8");
 
 const TASKPANE = lies("apps/web/public/word-addin/taskpane.html");
+/**
+ * Zerlegungsauftrag Bestandsblick (01.10.2026): der Markenblock des Aufgabenfensters ist Zeile für
+ * Zeile in diese Geschwisterdatei gewandert (`taskpane.html` lädt sie mit `defer`). Die Zusagen
+ * über den Block lesen ihn deshalb dort; die Zusagen über Stil und Markup bleiben an `TASKPANE`.
+ */
+const MARKE_JS = lies("apps/web/public/word-addin/marke.js");
 const PANEL_JS = lies("extensions/klara-browser/panel.js");
 const PANEL_CSS = lies("extensions/klara-browser/panel.css");
 const PANEL_HTML = lies("extensions/klara-browser/panel.html");
@@ -144,7 +150,13 @@ describe("JOB 3512 Q1 · das Logo ist die Originaldatei, Byte für Byte", () => 
 
 describe("JOB 3512 Q2 · EINE Quelle, kein zweiter Schalter, kein zweiter Farbsatz", () => {
   it("beide Oberflächen lesen genau `/api/branding` — und sonst nichts Neues", () => {
-    expect(block(TASKPANE, "KW-MARKE")).toContain('"/api/branding"');
+    expect(block(MARKE_JS, "KW-MARKE")).toContain('"/api/branding"');
+    // Der Block steht genau EINMAL im ausgelieferten Fenster: in der Geschwisterdatei, nicht
+    // zusätzlich noch im Inline-Skript (sonst liefen zwei Abrufketten nebeneinander). Die Marke
+    // steht bewusst zusammengesetzt da: als Literal griffe `schnitt-pins.test.ts` sie als `marken`.
+    const markenname = "KW-MARKE";
+    expect(TASKPANE).not.toContain(`${markenname}-START`);
+    expect(TASKPANE).toContain('<script src="marke.js?v=__KW_FASSUNG__" defer></script>');
     // Der Worker setzt den Pfad an seine EINE Hostkonstante (`HOST`), deshalb hier ohne die
     // Anführungszeichen — der Host selbst wird im Fall darunter (Q3) auf app.klarwerk.ai gepinnt.
     expect(block(WORKER, "KW-MARKE")).toContain("/api/branding");
@@ -163,7 +175,7 @@ describe("JOB 3512 Q2 · EINE Quelle, kein zweiter Schalter, kein zweiter Farbsa
     // `localStorage` oder ein Formularelement im Markenblock wäre der zweite Schalter, den der
     // Auftrag (Lieferung 1) ausdrücklich ausschliesst.
     for (const [name, roh] of [
-      ["taskpane.html", block(TASKPANE, "KW-MARKE")],
+      ["marke.js", block(MARKE_JS, "KW-MARKE")],
       ["panel.js", block(PANEL_JS, "KW-MARKE")],
       ["worker.js", block(WORKER, "KW-MARKE")],
     ] as const) {
@@ -257,7 +269,7 @@ describe("JOB 3512 Q4 · dieselbe Ableitung wie im Web — keine dritte Farbwahr
 
   it("Word und Chrome rechnen mit demselben Faktor 0.8", () => {
     for (const [name, roh] of [
-      ["taskpane.html", block(TASKPANE, "KW-MARKE")],
+      ["marke.js", block(MARKE_JS, "KW-MARKE")],
       ["panel.js", block(PANEL_JS, "KW-MARKE")],
     ] as const) {
       expect(roh, `${name}: der Abtönungsfaktor der Markenebene fehlt`).toContain("0.8");
