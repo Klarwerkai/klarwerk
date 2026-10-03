@@ -1331,5 +1331,11 @@ export const endpoints = {
       api.post<Anweisung>(`/gesamtanweisungen/${id}/vorlegen`, { version }),
     entscheiden: (id: string, version: number, entscheidung: "angenommen" | "abgelehnt") =>
       api.post<Anweisung>(`/gesamtanweisungen/${id}/entscheiden`, { version, entscheidung }),
+    // QUELLENÄNDERUNGEN: eine neuere Fassung EINES Abschnitts bewusst übernehmen.
+    uebernehmen: (id: string, version: number, bausteinId: string, aufVersion: number) =>
+      api.post<Anweisung>(`/gesamtanweisungen/${id}/bausteine/${bausteinId}/uebernehmen`, {
+        version,
+        aufVersion,
+      }),
   },
 };

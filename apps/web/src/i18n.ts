@@ -7395,6 +7395,47 @@ const de = {
   // entweder gibt es die Fassung nicht mehr, oder sie trägt keinen Rumpf — beides ist Unwissen.
   "ga.baustein.textUnbelegt": "Der Inhalt dieser Fassung ist nicht belegt.",
   "ga.baustein.gliederung": "Gliederung dieser Fassung",
+  // QUELLENÄNDERUNGEN (aufnahme:20260928): letzte Prüfung, gefundene und übernommene Änderungen.
+  // „aktuell" steht ausschliesslich im Ergebnis `aktuell`.
+  "ga.quellen.titel": "Quellenänderungen",
+  "ga.quellen.letzte": "Letzte Änderungsprüfung: {{zeit}}",
+  "ga.quellen.ergebnis.aktuell": "Ergebnis: Alle verwendeten Quellenfassungen sind aktuell.",
+  "ga.quellen.ergebnis.aenderungen_gefunden": "Ergebnis: Es gibt neuere Quellenfassungen.",
+  "ga.quellen.ergebnis.fehlgeschlagen":
+    "Ergebnis: Prüfung fehlgeschlagen – {{anzahl}} Quelle(n) konnten nicht gelesen werden. Ob es neuere Fassungen gibt, ist unbekannt.",
+  "ga.quellen.ergebnis.unvollstaendig":
+    "Ergebnis: Nicht für alle Quellen bestimmbar – einige Abschnitte sind für dich nicht zugänglich.",
+  "ga.quellen.ergebnis.keine_quellen": "Ergebnis: Diese Anleitung verwendet noch keine Quellen.",
+  "ga.quellen.ergebnis.nichtGesichert":
+    "Ergebnis: nicht gesichert – die Prüfung konnte nicht wiederholt werden.",
+  "ga.quellen.gefunden": "Gefundene Änderungen: {{anzahl}}",
+  "ga.quellen.uebernommen": "Übernommene Änderungen",
+  "ga.quellen.uebernahme":
+    "Abschnitt {{abschnitt}}: Fassung {{von}} → {{bis}}, übernommen am {{zeit}} (Anleitungsstand {{stand}})",
+  "ga.quellen.ueberwachungNichtEingerichtet":
+    "Automatische Überwachung: nicht eingerichtet. Nach neueren Fassungen wird beim Öffnen der Anleitung gesehen.",
+  "ga.quellen.quelle": "Betroffene Quelle",
+  "ga.quellen.verwendet": "Bisherige, verwendete Fassung",
+  "ga.quellen.neuere": "Neue Fassung",
+  "ga.quellen.betroffen": "Betroffene Abschnitte",
+  "ga.quellen.fassung": "Fassung {{version}}",
+  "ga.quellen.unterschiedeAnsehen": "Unterschiede ansehen",
+  "ga.quellen.beibehalten": "Bisherige Fassung beibehalten",
+  "ga.quellen.beibehaltenHinweis":
+    "Die Anleitung verwendet weiterhin Fassung {{version}}. Es wurde nichts geändert.",
+  "ga.quellen.uebernehmen": "Fassung {{version}} übernehmen",
+  "ga.quellen.uebernehmenFolge":
+    "Eine Übernahme erzeugt einen neuen Anleitungsstand; frühere Stände bleiben erhalten. Die Anleitung wird dabei wieder zum Entwurf und muss erneut vorgelegt und entschieden werden.",
+  "ga.quellen.weiterhin":
+    "Während du die Änderung ansiehst, verwendet die Anleitung weiterhin Fassung {{version}}.",
+  "ga.quellen.unterschiedeLaden": "Unterschiede werden geladen …",
+  "ga.quellen.unterschiedeFehler":
+    "Die Unterschiede konnten nicht geladen werden. An der Anleitung ändert sich dadurch nichts.",
+  "ga.quellen.bisher": "Bisher (Fassung {{version}})",
+  "ga.quellen.neu": "Neu (Fassung {{version}})",
+  "ga.quellen.momentaufnahme":
+    "Hochgeladene Datei „{{name}}“: Momentaufnahme vom {{zeit}}. Spätere Änderungen an der Originaldatei werden nicht erkannt.",
+  "ga.quellen.dateiOhneName": "ohne Namen",
   "ga.aufnahme.titel": "Abschnitt aus vorhandenem Wissen hinzufügen",
   "ga.aufnahme.koId": "Eintrag",
   "ga.aufnahme.koVersion": "Fassung",
@@ -13114,6 +13155,44 @@ const en: typeof de = {
   "ga.baustein.keine": "none",
   "ga.baustein.textUnbelegt": "The content of this version is not on record.",
   "ga.baustein.gliederung": "Outline of this version",
+  "ga.quellen.titel": "Source changes",
+  "ga.quellen.letzte": "Last change check: {{zeit}}",
+  "ga.quellen.ergebnis.aktuell": "Result: All source versions in use are current.",
+  "ga.quellen.ergebnis.aenderungen_gefunden": "Result: Newer source versions exist.",
+  "ga.quellen.ergebnis.fehlgeschlagen":
+    "Result: Check failed – {{anzahl}} source(s) could not be read. Whether newer versions exist is unknown.",
+  "ga.quellen.ergebnis.unvollstaendig":
+    "Result: Not determinable for all sources – some sections are not accessible to you.",
+  "ga.quellen.ergebnis.keine_quellen": "Result: This instruction does not use any sources yet.",
+  "ga.quellen.ergebnis.nichtGesichert": "Result: not confirmed – the check could not be repeated.",
+  "ga.quellen.gefunden": "Changes found: {{anzahl}}",
+  "ga.quellen.uebernommen": "Adopted changes",
+  "ga.quellen.uebernahme":
+    "Section {{abschnitt}}: version {{von}} → {{bis}}, adopted on {{zeit}} (instruction state {{stand}})",
+  "ga.quellen.ueberwachungNichtEingerichtet":
+    "Automatic monitoring: not set up. Newer versions are looked up when the instruction is opened.",
+  "ga.quellen.quelle": "Affected source",
+  "ga.quellen.verwendet": "Previous version in use",
+  "ga.quellen.neuere": "New version",
+  "ga.quellen.betroffen": "Affected sections",
+  "ga.quellen.fassung": "Version {{version}}",
+  "ga.quellen.unterschiedeAnsehen": "View differences",
+  "ga.quellen.beibehalten": "Keep previous version",
+  "ga.quellen.beibehaltenHinweis":
+    "The instruction keeps using version {{version}}. Nothing was changed.",
+  "ga.quellen.uebernehmen": "Adopt version {{version}}",
+  "ga.quellen.uebernehmenFolge":
+    "Adopting creates a new instruction state; earlier states are kept. The instruction becomes a draft again and must be submitted and decided again.",
+  "ga.quellen.weiterhin":
+    "While you review the change, the instruction keeps using version {{version}}.",
+  "ga.quellen.unterschiedeLaden": "Loading differences …",
+  "ga.quellen.unterschiedeFehler":
+    "The differences could not be loaded. Nothing changes in the instruction.",
+  "ga.quellen.bisher": "Previous (version {{version}})",
+  "ga.quellen.neu": "New (version {{version}})",
+  "ga.quellen.momentaufnahme":
+    "Uploaded file “{{name}}”: snapshot from {{zeit}}. Later changes to the original file are not detected.",
+  "ga.quellen.dateiOhneName": "unnamed",
   "ga.aufnahme.titel": "Add a section from existing knowledge",
   "ga.aufnahme.koId": "Entry",
   "ga.aufnahme.koVersion": "Version",
@@ -18817,6 +18896,45 @@ const nl: typeof de = {
   "ga.baustein.keine": "geen",
   "ga.baustein.textUnbelegt": "De inhoud van deze versie is niet vastgelegd.",
   "ga.baustein.gliederung": "Overzicht van deze versie",
+  "ga.quellen.titel": "Bronwijzigingen",
+  "ga.quellen.letzte": "Laatste wijzigingscontrole: {{zeit}}",
+  "ga.quellen.ergebnis.aktuell": "Resultaat: Alle gebruikte bronversies zijn actueel.",
+  "ga.quellen.ergebnis.aenderungen_gefunden": "Resultaat: Er zijn nieuwere bronversies.",
+  "ga.quellen.ergebnis.fehlgeschlagen":
+    "Resultaat: Controle mislukt – {{anzahl}} bron(nen) konden niet worden gelezen. Of er nieuwere versies zijn, is onbekend.",
+  "ga.quellen.ergebnis.unvollstaendig":
+    "Resultaat: Niet voor alle bronnen te bepalen – sommige onderdelen zijn voor jou niet toegankelijk.",
+  "ga.quellen.ergebnis.keine_quellen": "Resultaat: Deze instructie gebruikt nog geen bronnen.",
+  "ga.quellen.ergebnis.nichtGesichert":
+    "Resultaat: niet bevestigd – de controle kon niet worden herhaald.",
+  "ga.quellen.gefunden": "Gevonden wijzigingen: {{anzahl}}",
+  "ga.quellen.uebernommen": "Overgenomen wijzigingen",
+  "ga.quellen.uebernahme":
+    "Onderdeel {{abschnitt}}: versie {{von}} → {{bis}}, overgenomen op {{zeit}} (instructiestand {{stand}})",
+  "ga.quellen.ueberwachungNichtEingerichtet":
+    "Automatische bewaking: niet ingericht. Bij het openen van de instructie wordt naar nieuwere versies gekeken.",
+  "ga.quellen.quelle": "Betrokken bron",
+  "ga.quellen.verwendet": "Huidige, gebruikte versie",
+  "ga.quellen.neuere": "Nieuwe versie",
+  "ga.quellen.betroffen": "Betrokken onderdelen",
+  "ga.quellen.fassung": "Versie {{version}}",
+  "ga.quellen.unterschiedeAnsehen": "Verschillen bekijken",
+  "ga.quellen.beibehalten": "Huidige versie behouden",
+  "ga.quellen.beibehaltenHinweis":
+    "De instructie blijft versie {{version}} gebruiken. Er is niets gewijzigd.",
+  "ga.quellen.uebernehmen": "Versie {{version}} overnemen",
+  "ga.quellen.uebernehmenFolge":
+    "Overnemen maakt een nieuwe instructiestand; eerdere standen blijven bewaard. De instructie wordt weer een concept en moet opnieuw worden voorgelegd en besloten.",
+  "ga.quellen.weiterhin":
+    "Terwijl je de wijziging bekijkt, blijft de instructie versie {{version}} gebruiken.",
+  "ga.quellen.unterschiedeLaden": "Verschillen worden geladen …",
+  "ga.quellen.unterschiedeFehler":
+    "De verschillen konden niet worden geladen. Aan de instructie verandert daardoor niets.",
+  "ga.quellen.bisher": "Huidig (versie {{version}})",
+  "ga.quellen.neu": "Nieuw (versie {{version}})",
+  "ga.quellen.momentaufnahme":
+    "Geüploade bestand „{{name}}”: momentopname van {{zeit}}. Latere wijzigingen aan het originele bestand worden niet herkend.",
+  "ga.quellen.dateiOhneName": "zonder naam",
   "ga.aufnahme.titel": "Onderdeel uit bestaande kennis toevoegen",
   "ga.aufnahme.koId": "Item",
   "ga.aufnahme.koVersion": "Versie",
