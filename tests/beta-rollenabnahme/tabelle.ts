@@ -854,6 +854,17 @@ export const TABELLE: Zeile[] = [
     tor: "requireUser",
     erwartet: ANGEMELDET,
   },
+  // Der Supportkontakt der Installation (1.0.0-beta.1.654). Er war registriert, stand aber in
+  // keiner Zeile — W2/E2 haben das gemeldet. Rein lesend, `requireUser`: jede angemeldete Rolle
+  // bekommt dieselbe Auskunft (Adresse/Bezeichnung aus der Umgebung), der Unangemeldete nicht.
+  {
+    gruppe: "supportRoutes",
+    methode: "GET",
+    pfad: "/api/support",
+    belegstelle: "services/app/src/routes/support-routes.ts:150",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
   {
     gruppe: "importAccessRoutes",
     methode: "GET",

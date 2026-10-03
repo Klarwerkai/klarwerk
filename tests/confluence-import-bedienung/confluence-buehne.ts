@@ -32,6 +32,16 @@ export const TOKEN = "kw-bedienung-GEHEIM-0123456789abcdef";
 /** Die Confluence-Adresse der Bühne. Auch sie gehört in keine Meldung. */
 export const BASIS = "https://kw-bedienung.example.net/wiki";
 export const SPACE = "KW";
+/** Das Dienstkonto der Bühne — derselbe Wert im Adapter und in der Umgebung. */
+const DIENSTKONTO = "dienstkonto@kw-bedienung.example";
+
+/** Die vier Zugangsvariablen einer freigegebenen Bühne (nur mit `freigabe: true` gesetzt). */
+const ZUGANGSDATEN: Record<string, string> = {
+  KLARWERK_CONFLUENCE_BASE_URL: BASIS,
+  KLARWERK_CONFLUENCE_USER: DIENSTKONTO,
+  KLARWERK_CONFLUENCE_TOKEN: TOKEN,
+  KLARWERK_CONFLUENCE_SPACE: SPACE,
+};
 
 export type App = ReturnType<typeof buildApp>;
 export type Dienste = ReturnType<typeof buildServices>;
@@ -129,7 +139,11 @@ export async function baueBuehne(opts: {
   totalBudgetMs?: number;
   freigabe?: boolean;
 }): Promise<Buehne> {
-  const freigabeVorher = process.env.KLARWERK_CONFLUENCE_IMPORT;
+  // Alles, was diese Bühne an der Umgebung ändert — und beim Abbau wörtlich zurückstellt.
+  const umgebungVorher: Record<string, string | undefined> = {};
+  for (const name of ["KLARWERK_CONFLUENCE_IMPORT", ...Object.keys(ZUGANGSDATEN)]) {
+    umgebungVorher[name] = process.env[name];
+  }
   process.env.KLARWERK_CONFLUENCE_IMPORT = "1";
   const dienste = buildServices();
   // Entfernen statt `= undefined`: Node schriebe sonst die Zeichenkette "undefined" in die Umgebung.
@@ -138,7 +152,7 @@ export async function baueBuehne(opts: {
   const guards = makeGuards(dienste.auth);
   const adapter = adapterFromConfig({
     baseUrl: BASIS,
-    email: "dienstkonto@kw-bedienung.example",
+    email: DIENSTKONTO,
     apiToken: TOKEN,
     spaceKey: SPACE,
     fetchFn: opts.fetchFn,
@@ -176,7 +190,14 @@ export async function baueBuehne(opts: {
   const token = (login.json() as { token?: string }).token ?? "";
   const kopf: Record<string, string> = { authorization: `Bearer ${token}` };
   if (opts.freigabe) {
+    // Eine FREIGEGEBENE Installation heißt hier: Schalter UND die vier Zugangsvariablen stehen —
+    // sonst meldet die Zugangsauskunft (liest die Umgebung, `confluenceCredentialState`) ehrlich
+    // „ohne Zugangsdaten" (Befund nacharbeit-3, B1). Die Werte sind dieselben, mit denen der
+    // eingesetzte Adapter oben gebaut ist; Confluence erreicht weiterhin nur `fetchFn`.
     process.env.KLARWERK_CONFLUENCE_IMPORT = "1";
+    for (const [name, wert] of Object.entries(ZUGANGSDATEN)) {
+      process.env[name] = wert;
+    }
   }
 
   const aufrufe: Array<{ method: string; url: string }> = [];
@@ -212,10 +233,12 @@ export async function baueBuehne(opts: {
     aufrufe,
     abbauen() {
       globalThis.fetch = fetchVorher;
-      if (freigabeVorher === undefined) {
-        Reflect.deleteProperty(process.env, "KLARWERK_CONFLUENCE_IMPORT");
-      } else {
-        process.env.KLARWERK_CONFLUENCE_IMPORT = freigabeVorher;
+      for (const [name, wert] of Object.entries(umgebungVorher)) {
+        if (wert === undefined) {
+          Reflect.deleteProperty(process.env, name);
+        } else {
+          process.env[name] = wert;
+        }
       }
     },
   };
