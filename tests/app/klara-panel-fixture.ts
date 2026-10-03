@@ -23,6 +23,7 @@
 // wird im `afterEach` UNBEDINGT gerufen — nicht „falls exportiert", nicht „wenn vorhanden".
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { panelQuelleAus } from "../support/panelquelle";
 
 export const TASKPANE_PATH = "apps/web/public/word-addin/taskpane.html";
 /**
@@ -302,8 +303,12 @@ interface PanelExports {
   t(key: string, vars?: Record<string, string>): string;
 }
 
+/**
+ * Das Fenster als EIN Dokument. Seit dem Drei-Datei-Schnitt (R-1611) liegen Stil und Skript in
+ * `taskpane.css`/`taskpane.js`; `panelQuelleAus` fügt sie an ihren Stellen wieder ein.
+ */
 function readTaskpane(): string {
-  return readFileSync(resolve(process.cwd(), TASKPANE_PATH), "utf8");
+  return panelQuelleAus(resolve(process.cwd(), TASKPANE_PATH));
 }
 
 export function readRueckweg(): string {

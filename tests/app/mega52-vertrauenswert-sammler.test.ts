@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { panelQuelleAus } from "../support/panelquelle";
 
 // ================================================================================================
 // AUFTRAG-mega52 BLOCK E5 — DER SAMMLER FÜR DEN VERTRAUENSWERT.
@@ -105,7 +106,7 @@ function i18nWerte(sprache: string): Fund[] {
 const ADDIN_EINTRAG = /^\s+(\w+):\s*"((?:[^"\\]|\\.)*)",?$/gm;
 
 function addinWerte(sprache: string): Fund[] {
-  const quelle = readFileSync(join(WURZEL, WORD_ADDIN), "utf8");
+  const quelle = panelQuelleAus(join(WURZEL, WORD_ADDIN));
   const grenzen: Array<[string, number]> = [];
   for (const s of SPRACHEN) {
     const m = new RegExp(`^\\s+${s}:\\s*\\{`, "m").exec(quelle);

@@ -22,6 +22,7 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { panelQuelleAus } from "../support/panelquelle";
 
 const WURZEL = join(__dirname, "..", "..");
 const WEB = join("apps", "web", "src");
@@ -140,7 +141,7 @@ describe("mega61 E · der dauerhaft sichtbare Satz an jeder Modellfläche", () =
   it("das Word-Add-in trägt ihn ebenfalls — mit eigenem Wörterbuch, gleichem Inhalt", () => {
     // Es ist kein React-Projekt und kann `apps/web/src/i18n.ts` baulich nicht lesen. Der Satz
     // steht deshalb sinngleich in seinem eigenen Wörterbuch — in allen drei Sprachen.
-    const addin = readFileSync(ADDIN, "utf8");
+    const addin = panelQuelleAus(ADDIN);
     expect(addin).toContain('data-t="aiGeneratedNotice"');
     expect(addin.split("aiGeneratedNotice:").length - 1).toBe(3);
   });
@@ -165,7 +166,7 @@ describe("mega61 E · der dauerhaft sichtbare Satz an jeder Modellfläche", () =
   // tests/app/mega81-ki-kennzeichnung-am-verhalten.test.ts. Hier steht die strukturelle Hälfte:
   // keine Fläche behauptet die Erzeugung dauerhaft, und die Bindung ans Signal existiert.
   it("im Add-in behauptet KEINE Fläche die KI-Erzeugung dauerhaft — sie hängt am Signal", () => {
-    const addin = readFileSync(ADDIN, "utf8");
+    const addin = panelQuelleAus(ADDIN);
     // Jedes Element, das den Satz trägt, ist zustandsgebunden (Startzustand: verborgen).
     const traeger = [...addin.matchAll(/<([a-z]+)\b([^>]*\bdata-t="aiGeneratedNotice"[^>]*)>/g)];
     expect(traeger.length, "der Satz hängt an keinem Element mehr").toBeGreaterThan(0);
@@ -193,7 +194,7 @@ describe("mega61 E · der dauerhaft sichtbare Satz an jeder Modellfläche", () =
   it("der fachliche Prüfhinweis bleibt dauerhaft — die Kennzeichnung wird nicht ersatzlos entfernt", () => {
     // Block A ausdrücklich: richtiggestellt, nicht abgeschaltet. Was auf dem retrieval-only-Weg
     // WAHR bleibt — die Antwort ist vor Verwendung fachlich zu prüfen —, steht weiter da.
-    const addin = readFileSync(ADDIN, "utf8");
+    const addin = panelQuelleAus(ADDIN);
     expect(addin).toContain('data-t="askReviewNotice"');
     expect(addin.split("askReviewNotice:").length - 1).toBe(3);
   });

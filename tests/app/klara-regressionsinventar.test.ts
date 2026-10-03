@@ -866,6 +866,12 @@ const INVENTAR: readonly string[] = [
   "tests/design/zielbild-wissensnetz.test.ts",
   "tests/klara-zerlegung/marken-skelett.test.ts",
   "tests/klara-zerlegung/probeschnitt.test.ts",
+  // AUFNAHME 20260922 · ZENTRALE-MODULE-AUFTEILEN (R-1611): der fünfte Messpunkt der Zerlegung —
+  // er belegt, dass die drei Dateien des echten Schnitts Byte für Byte die frühere `taskpane.html`
+  // ergeben. Liegt unter `tests/klara-zerlegung/`, trägt „klara" also im PFAD (K5: 69 -> 70), dazu
+  // die Inhaltsachse `taskpane`. Sachlich Klara-Regression: fällt er, lesen rund hundert
+  // Prüfstände ein Fenster, das es so nicht gibt.
+  "tests/klara-zerlegung/schnitt-echt.test.ts",
   "tests/klara-zerlegung/schnitt-pins.test.ts",
   "tests/klara-zerlegung/schnittflaechen.test.ts",
   // JOB 3062 · H3 (04.09.2026): zwei Dateien der Web-Flaeche „Erfassen" kamen in die Erhebung.
@@ -1552,7 +1558,10 @@ describe("JOB 920 · K — das Klara-Regressionsinventar ist ableitbar, nicht be
     // AUFNAHME 20260922 · GESAMT-KLARA-EXTERN (01.10.2026):
     // `tests/klara-dokumenttext/riegel-haelt-den-dokumenttext.test.ts` traegt „klara" im PFAD —
     // 68 -> 69. GEMESSEN, NICHT GESETZT: K5 meldete lokal `expected 69 to be 68`.
-    expect(nurName.length).toBe(69);
+    // AUFNAHME 20260922 · ZENTRALE-MODULE-AUFTEILEN (R-1611): `tests/klara-zerlegung/schnitt-
+    // echt.test.ts` trägt „klara" im PFAD — 69 -> 70. NICHT GEMESSEN, sondern aus der Pfadregel
+    // abgeleitet: in dieser Lieferung wurde kein Testlauf gestartet; der Cloud-Lauf ist der Beleg.
+    expect(nurName.length).toBe(70);
     expect(verfehlt.length).toBeGreaterThanOrEqual(25);
     expect(verfehlt.length + nurName.length).toBe(GEFUNDEN.length);
   });
