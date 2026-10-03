@@ -944,6 +944,17 @@ export function BibliothekFlaeche({
   const einspaltig = schmal || tablet;
   const vorwahl = einspaltig ? null : (sichtbareIds[0] ?? null);
   const gewaehltEffektiv = gewaehlt ?? vorwahl;
+  // N-0074 (K27): die AUSDRÜCKLICHE Wahl bleibt stehen (N-0006, oben) — aber die Lesefläche sagt
+  // jetzt, wenn Suche, Facetten, Zeitraum, Umschalter oder Bereich sie aus der Treffermenge
+  // ausschliessen. Geprüft wird gegen die VOLLE gefilterte Menge (`sorted`), nicht gegen das
+  // sichtbare Fenster: ein Eintrag hinter „Mehr laden" ist ein Treffer. Nur bei frischem Abruf
+  // und geprüfter Auswahl — sonst wäre „nicht dabei" eine Aussage ohne Grundlage. Die Vorwahl
+  // (`vorwahl`) ist per Bau immer ein Treffer und braucht die Prüfung nicht.
+  const auswahlAusserhalbTreffer =
+    gewaehlt !== null &&
+    frisch &&
+    !keimBrauchtBestand &&
+    !sorted.some((item) => item.ko.id === gewaehlt);
   // ================================================================================================
   // JOB 3121 · UX-14 — WELCHE FLÄCHE DIE BREITE TRÄGT. EINE BEDINGUNG, ZWEIMAL GELESEN.
   // ================================================================================================
@@ -1632,6 +1643,7 @@ export function BibliothekFlaeche({
                             <button
                               type="button"
                               data-testid="bib-sicht-speichern"
+                              aria-describedby="bib-sicht-speichern-umfang"
                               // JOB 3115: ein UNGEPRÜFTER Wert aus der Adresse erreicht keine
                               // gespeicherte Sicht. Damit bleibt die Grenze aus mega11 Block C
                               // (`lib/libraryUrlFilters.ts`) unverschoben, obwohl der Filter aus der
@@ -1658,6 +1670,23 @@ export function BibliothekFlaeche({
                             >
                               {t("lib.views.remember")}
                             </button>
+                            {/* N-0060 (K26): der zugesicherte Speicherumfang steht DORT, wo
+                                gespeichert wird — nicht nur im getrennten Untermenü „Sichten".
+                                Kurzfassung derselben Zusage wie `lib.views.storageHint`, mit
+                                derselben Anmeldungsangabe. */}
+                            <span
+                              id="bib-sicht-speichern-umfang"
+                              data-testid="bib-sicht-speichern-umfang"
+                              className="block text-[12px] leading-snug text-muted whitespace-normal [overflow-wrap:anywhere]"
+                            >
+                              {t("lib.views.saveScope", {
+                                ownership: t(
+                                  viewsUserId === "anon"
+                                    ? "lib.views.ownershipAnon"
+                                    : "lib.views.ownershipSignedIn",
+                                ),
+                              })}
+                            </span>
                           </span>
                         </MenueZeile>
                       </MenueUntermenue>
@@ -1934,6 +1963,16 @@ export function BibliothekFlaeche({
             {zeigeListe ? null : hinweisKnoten}
             {/* SCRUM-291: Demo-/Pilotpfad bleibt auf der Zielseite wiedererkennbar (nur ?demo=stage1). */}
             {isDemoContext(params) ? <DemoBanner surface="library" /> : null}
+            {/* N-0074: der geöffnete Beitrag steht nicht (mehr) unter den aktuellen Treffern. */}
+            {gewaehltEffektiv && auswahlAusserhalbTreffer ? (
+              // Ein natives <output> trägt die Rolle „status" selbst (lint/a11y/useSemanticElements).
+              <output
+                data-testid="bib-lesen-ausserhalb"
+                className="mx-4 mt-3 block rounded-btn border border-hairline bg-page px-3 py-2 text-[12.5px] leading-relaxed text-muted"
+              >
+                {t("lib.lesen.ausserhalbTreffer")}
+              </output>
+            ) : null}
             {gewaehltEffektiv ? (
               <BibliothekLesen
                 key={gewaehltEffektiv}

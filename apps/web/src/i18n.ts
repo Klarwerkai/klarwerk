@@ -4340,6 +4340,9 @@ const de = {
   "lib.sort.title": "Titel A→Z",
   "lib.sort.trust": "Vertrauen (hoch→niedrig)",
   "lib.sort.recent": "Zuletzt geändert (neu→alt)",
+  // R-1006: Reife (Zu prüfen → In Prüfung → Nutzbar), darin Vertrauen niedrig zuerst
+  // (`librarySort.ts`, `koRiskRank`).
+  "lib.sort.risk": "Risiko (unsicher zuerst)",
   "lib.groupBy.label": "Untergruppen",
   "lib.groupBy.none": "keine",
   "lib.views.label": "Sichten",
@@ -4347,6 +4350,9 @@ const de = {
   "lib.views.namePlaceholder": "Name der Sicht",
   "lib.views.save": "Sicht speichern",
   "lib.views.remove": "Sicht löschen",
+  // N-0060: der Speicherumfang direkt unter „Diese Suche merken" (Kurzfassung von storageHint).
+  "lib.views.saveScope":
+    "Wird nur in diesem Browser gespeichert – nicht auf dem Server, nicht auf anderen Geräten. {{ownership}}",
   "lib.views.storageHint":
     "Sichten bleiben nur in diesem Browser. {{ownership}} Sie werden nicht auf dem Server gespeichert und nicht auf andere Geräte oder Browser übertragen. Wer Browserdaten löscht, löscht auch die Sichten. Gespeichert: {{dimensions}}. Nicht gespeichert: Sortierung und Fenstergröße („Mehr laden“). Die Sortierung bleibt beim Aufrufen unverändert; die Fenstergröße beginnt neu.",
   "lib.views.ownershipSignedIn": "Sie gehören zu deiner aktuellen Anmeldung.",
@@ -4469,6 +4475,9 @@ const de = {
   "lib.lesen.bilder_one": "{{count}} Bild",
   "lib.lesen.bilder_other": "{{count}} Bilder",
   "lib.lesen.fehler": "Der Eintrag ließ sich nicht laden.",
+  // N-0074: der geöffnete Beitrag liegt ausserhalb der aktuellen Treffer (Suche/Filter/Bereich).
+  "lib.lesen.ausserhalbTreffer":
+    "Dieser Beitrag ist nicht unter den aktuellen Treffern – Suche, Filter oder Bereich schließen ihn aus.",
   // JOB 3108 · UX-03: die Beschriftung der zwei Sprungknöpfe am Berichtskopf. Die Zahl steht IM
   // Knopf, und bei null steht dort „keine" — der Knopf verschwindet nicht, er führt zum ehrlichen
   // Leersatz (`ko.sourcesEmpty` / `ko.attachmentsEmpty`).
@@ -10784,6 +10793,7 @@ const en: typeof de = {
   "lib.sort.title": "Title A→Z",
   "lib.sort.trust": "Trust (high→low)",
   "lib.sort.recent": "Last changed (new→old)",
+  "lib.sort.risk": "Risk (least reliable first)",
   "lib.groupBy.label": "Subgroups",
   "lib.groupBy.none": "none",
   "lib.views.label": "Views",
@@ -10791,6 +10801,8 @@ const en: typeof de = {
   "lib.views.namePlaceholder": "View name",
   "lib.views.save": "Save view",
   "lib.views.remove": "Delete view",
+  "lib.views.saveScope":
+    "Saved only in this browser – not on the server, not on other devices. {{ownership}}",
   "lib.views.storageHint":
     "Views stay only in this browser. {{ownership}} They are not stored on the server and not transferred to other devices or browsers. Clearing browser data also deletes the views. Saved: {{dimensions}}. Not saved: sort order and window size (“Load more”). The sort order stays unchanged when loading a view; the window size starts over.",
   "lib.views.ownershipSignedIn": "They belong to your current sign-in.",
@@ -10871,6 +10883,8 @@ const en: typeof de = {
   "lib.lesen.bilder_one": "{{count}} image",
   "lib.lesen.bilder_other": "{{count}} images",
   "lib.lesen.fehler": "The entry could not be loaded.",
+  "lib.lesen.ausserhalbTreffer":
+    "This entry is not among the current results – search, filters or scope exclude it.",
   // JOB 3108 · UX-03 — see the German entry for the reasoning.
   "lib.lesen.sprung.quellen": "Sources and evidence · {{count}}",
   "lib.lesen.sprung.quellenLeer": "Sources and evidence · none",
@@ -16469,6 +16483,7 @@ const nl: typeof de = {
   "lib.sort.title": "Titel A→Z",
   "lib.sort.trust": "Vertrouwen (hoog→laag)",
   "lib.sort.recent": "Laatst gewijzigd (nieuw→oud)",
+  "lib.sort.risk": "Risico (minst betrouwbaar eerst)",
   "lib.groupBy.label": "Subgroepen",
   "lib.groupBy.none": "geen",
   "lib.views.label": "Weergaven",
@@ -16476,6 +16491,8 @@ const nl: typeof de = {
   "lib.views.namePlaceholder": "Naam van de weergave",
   "lib.views.save": "Weergave opslaan",
   "lib.views.remove": "Weergave verwijderen",
+  "lib.views.saveScope":
+    "Alleen in deze browser opgeslagen – niet op de server, niet op andere apparaten. {{ownership}}",
   "lib.views.storageHint":
     "Weergaven blijven alleen in deze browser. {{ownership}} Ze worden niet op de server opgeslagen en niet overgedragen naar andere apparaten of browsers. Wie browsergegevens wist, wist ook de weergaven. Opgeslagen: {{dimensions}}. Niet opgeslagen: sortering en venstergrootte (“Meer laden”). De sortering blijft bij het laden ongewijzigd; de venstergrootte begint opnieuw.",
   "lib.views.ownershipSignedIn": "Ze horen bij je huidige aanmelding.",
@@ -16556,6 +16573,8 @@ const nl: typeof de = {
   "lib.lesen.bilder_one": "{{count}} afbeelding",
   "lib.lesen.bilder_other": "{{count}} afbeeldingen",
   "lib.lesen.fehler": "Het item kon niet worden geladen.",
+  "lib.lesen.ausserhalbTreffer":
+    "Dit item staat niet tussen de huidige resultaten – zoekopdracht, filters of bereik sluiten het uit.",
   // JOB 3108 · UX-03 — zie de Duitse regel voor de toelichting.
   "lib.lesen.sprung.quellen": "Bronnen en bewijs · {{count}}",
   "lib.lesen.sprung.quellenLeer": "Bronnen en bewijs · geen",

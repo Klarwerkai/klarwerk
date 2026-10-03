@@ -5,8 +5,9 @@
 // bleibt nach Größe). „Relevanz" ist der Default = die bisherige Reihenfolge (searchLibrary-Ranking),
 // die anderen Optionen tragen je eine FESTE, klar benannte Richtung (kein verwirrender Umschalter).
 import type { KnowledgeObject } from "../api/types";
+import { type KoUsability, koOverview } from "./koOverview";
 
-export const LIBRARY_SORT_KEYS = ["relevance", "title", "trust", "recent"] as const;
+export const LIBRARY_SORT_KEYS = ["relevance", "title", "trust", "recent", "risk"] as const;
 export type LibrarySortKey = (typeof LIBRARY_SORT_KEYS)[number];
 
 // Default = bisherige Reihenfolge (Relevanz-Ranking aus searchLibrary), damit nichts still umsortiert.
@@ -19,7 +20,19 @@ export const LIBRARY_SORT_LABEL_KEYS: Record<LibrarySortKey, string> = {
   title: "lib.sort.title",
   trust: "lib.sort.trust",
   recent: "lib.sort.recent",
+  risk: "lib.sort.risk",
 };
+
+// R-1006 (K16): „Risiko" je Wissensobjekt — kein neuer Score, sondern die vorhandene Reife aus
+// `koOverview` (dieselbe, die „Nutzbar"/„In Prüfung"/„Zu prüfen" zeigt): wer sich auf ein Objekt
+// am wenigsten verlassen kann, steht oben. Innerhalb derselben Reife entscheidet das Vertrauen,
+// niedrig zuerst. Das Bereichsrisiko der Risiko-Seite (`domainRisk`) gilt je Kategorie und ist
+// hier bewusst NICHT verwendet — es sagt nichts über das einzelne Objekt.
+const RISK_RANK: Record<KoUsability, number> = { "needs-work": 0, "in-review": 1, ready: 2 };
+
+export function koRiskRank(ko: KnowledgeObject): number {
+  return RISK_RANK[koOverview(ko).usability];
+}
 
 export function isLibrarySortKey(value: unknown): value is LibrarySortKey {
   return typeof value === "string" && (LIBRARY_SORT_KEYS as readonly string[]).includes(value);
@@ -58,6 +71,10 @@ export function sortLibrary<T>(
         return (koOf(b).trust ?? 0) - (koOf(a).trust ?? 0);
       case "recent":
         return koChangedMs(koOf(b)) - koChangedMs(koOf(a));
+      case "risk":
+        return (
+          koRiskRank(koOf(a)) - koRiskRank(koOf(b)) || (koOf(a).trust ?? 0) - (koOf(b).trust ?? 0)
+        );
       default:
         return 0;
     }
