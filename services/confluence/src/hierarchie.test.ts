@@ -231,4 +231,132 @@ describe("Confluence-Import · verschachtelter Testraum mit Untergruppen", () =>
     expect(stufe("14")).toBe("vertraulich");
     expect(stufe("13")).toBe("intern");
   });
+
+  // ----------------------------------------------------------------------------------------------
+  // NACHARBEIT 1 (Befund K1 / service.ts:1650, :1751): H-6 endete VOR dem Annehmen. Die Elternkette
+  // blieb am Kandidaten; `acceptToKo`/`buildSource` legten sie nicht ins Wissensobjekt. Die beiden
+  // Fälle unten nehmen REGULÄR an (`reviewImportCandidate(…, "accept", …)`), laden die erzeugten
+  // Wissensobjekte über den KoService und lesen die Struktur AUSSCHLIESSLICH dort ab — nicht am
+  // Kandidaten, nicht an der Vorschau.
+  // ----------------------------------------------------------------------------------------------
+
+  // Erwarteter direkter Elternteil je Seite (Seitenanker), wörtlich — nicht aus dem Fixture gerechnet.
+  const ERWARTETER_ELTERNTEIL: Record<string, string | undefined> = {
+    "1": undefined,
+    "10": "1",
+    "11": "10",
+    "12": "11",
+    "13": "12",
+    "14": "12",
+    "15": "11",
+    "16": "10",
+    "17": "16",
+    "20": "1",
+    "21": "20",
+    "22": "21",
+    "23": "20",
+    "30": "1",
+    "31": "30",
+  };
+
+  /** Alle Kandidaten regulär annehmen und die erzeugten Wissensobjekte frisch laden. */
+  async function annehmenUndLaden(pages1: ConfluencePage[], pages2: ConfluencePage[]) {
+    const koService = new KoService({ repo: new InMemoryKoRepo() });
+    const library = new LibraryService({ koService, externalUpsert: true });
+    const { fetchFn } = verschachtelterSpace(pages1, pages2);
+    const { items } = await adapterFromConfig(config(fetchFn)).collectAll();
+    const kandidaten = await library.createImportCandidates(items, "importer");
+    expect(kandidaten).toHaveLength(15);
+    for (const kandidat of kandidaten) {
+      const ergebnis = await library.reviewImportCandidate(kandidat.id, "accept", "importer");
+      expect(ergebnis.koId, `Kandidat ${kandidat.item.externalId} ohne Wissensobjekt`).toBeTruthy();
+    }
+    // Ab hier nur noch das, was der Bestand liefert.
+    const geladen = await koService.list();
+    const jeAnker = new Map<string, { titel: string; spaceKey?: string; pfad?: string[] }>();
+    for (const ko of geladen) {
+      const anker = ko.sources.find((s) => s.provider === "Confluence" && s.externalId);
+      if (anker?.externalId) {
+        jeAnker.set(anker.externalId, {
+          titel: ko.title,
+          ...(anker.spaceKey ? { spaceKey: anker.spaceKey } : {}),
+          ...(anker.sourcePath ? { pfad: anker.sourcePath } : {}),
+        });
+      }
+    }
+    return jeAnker;
+  }
+
+  /**
+   * Den Elternteil eines Wissensobjekts IM ZIELBESTAND auflösen: das Objekt desselben Space, dessen
+   * Titel das letzte Pfadsegment ist und dessen eigener Pfad dem Rest entspricht (Confluence hält
+   * Titel je Space eindeutig). `undefined`, wenn das Objekt keinen Pfad trägt.
+   */
+  function elternteilImBestand(
+    bestand: Map<string, { titel: string; spaceKey?: string; pfad?: string[] }>,
+    anker: string,
+  ): string | undefined {
+    const kind = bestand.get(anker);
+    const pfad = kind?.pfad;
+    if (!kind || !pfad || pfad.length === 0) {
+      return undefined;
+    }
+    const treffer = [...bestand.entries()].filter(
+      ([, ko]) =>
+        ko.spaceKey === kind.spaceKey &&
+        ko.titel === pfad[pfad.length - 1] &&
+        JSON.stringify(ko.pfad ?? []) === JSON.stringify(pfad.slice(0, -1)),
+    );
+    expect(treffer, `Elternteil von ${anker} muss eindeutig im Bestand liegen`).toHaveLength(1);
+    return treffer[0]?.[0];
+  }
+
+  it("H-7: nach regulärer Annahme tragen die GELADENEN Wissensobjekte den Baum — 1 Wurzel, 3 Untergruppen, getrennte Zweige, Tiefe 4", async () => {
+    const bestand = await annehmenUndLaden(CURSOR_1, CURSOR_2);
+    expect([...bestand.keys()].sort()).toEqual(Object.keys(ERWARTETER_PFAD).sort());
+
+    // Vollständige Elternkette je Objekt, aus dem Bestand gelesen.
+    for (const [anker, ko] of bestand) {
+      expect(ko.spaceKey).toBe("K");
+      expect(ko.pfad, `Elternkette am Wissensobjekt ${anker}`).toEqual(ERWARTETER_PFAD[anker]);
+    }
+    // Die Wurzel hat KEIN Feld — kein leeres Array.
+    expect(bestand.get("1") && Object.hasOwn(bestand.get("1")!, "pfad")).toBe(false);
+
+    // Zielbeziehungen: jedes Objekt findet seinen Elternteil als anderes Objekt im Bestand.
+    for (const anker of bestand.keys()) {
+      expect(elternteilImBestand(bestand, anker), `Elternteil von ${anker}`).toBe(
+        ERWARTETER_ELTERNTEIL[anker],
+      );
+    }
+    const alle = [...bestand.keys()];
+    const wurzeln = alle.filter((a) => elternteilImBestand(bestand, a) === undefined);
+    expect(wurzeln).toEqual(["1"]);
+    const untergruppen = alle.filter((a) => elternteilImBestand(bestand, a) === "1").sort();
+    expect(untergruppen).toEqual(["10", "20", "30"]);
+    expect(Math.max(...[...bestand.values()].map((ko) => ko.pfad?.length ?? 0))).toBe(4);
+
+    // Getrennte Zweige: „Notausgänge" (Produktion › Halle 7 › …) und „Rücksicherung testen"
+    // (IT-Betrieb › Datensicherung) teilen nur die Wurzel.
+    const kette = (anker: string): string[] => {
+      const out: string[] = [];
+      for (let a = elternteilImBestand(bestand, anker); a; a = elternteilImBestand(bestand, a)) {
+        out.unshift(a);
+      }
+      return out;
+    };
+    expect(kette("13")).toEqual(["1", "10", "11", "12"]);
+    expect(kette("22")).toEqual(["1", "20", "21"]);
+    expect(kette("17")).toEqual(["1", "10", "16"]);
+  });
+
+  it("H-8: GEGENPROBE — dieselben Seiten OHNE ancestors angenommen: keine Elternbeziehung wird erfunden", async () => {
+    const flach = (pages: ConfluencePage[]) => pages.map((p) => seite(p.id, p.title, []));
+    const bestand = await annehmenUndLaden(flach(CURSOR_1), flach(CURSOR_2));
+    expect(bestand.size).toBe(15);
+    for (const [anker, ko] of bestand) {
+      expect(ko.pfad, `Wissensobjekt ${anker} darf keine Elternkette tragen`).toBeUndefined();
+      expect(elternteilImBestand(bestand, anker)).toBeUndefined();
+    }
+  });
 });

@@ -303,6 +303,12 @@ export interface KoSource {
   // JSON-persistiert → keine Migration; Altquellen ohne diese Felder bleiben gültig.
   externalId?: string;
   spaceKey?: string;
+  // aufnahme:20260922:confluence-import-hierarchie (R-0153): die ELTERNKETTE der Quellseite
+  // innerhalb von `spaceKey` — Elterntitel, Wurzel zuerst, ohne die Seite selbst (dieselbe Form wie
+  // `ImportItem.sourcePath`). Nur der Import-Accept setzt es; fehlt die Kette in der Quelle, fehlt
+  // das Feld (kein leeres Array, kein erfundener Elternteil). Additiv, JSON-persistiert → keine
+  // Migration; Altquellen ohne das Feld bleiben gültig.
+  sourcePath?: string[];
   sourceVersion?: number;
   // JOB 4077: DER ANKER DIESER BELEGSTELLE — die `objectId` eines Anhangs, den DIESES Wissensobjekt
   // trägt. Additiv, JSON-persistiert → keine Migration; Altquellen ohne das Feld bleiben gültig.

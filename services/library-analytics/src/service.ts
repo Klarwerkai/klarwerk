@@ -1749,6 +1749,15 @@ export class LibraryService {
   // `effectiveVersion` (ben-Review #3): die tatsächlich geschriebene Version — IMMER gesetzt, damit der
   // Monotonie-Vergleich beim Re-Sync verlässlich ist (nie ein „versionsloser" Anker im Bestand).
   private buildSource(item: ImportItem, actor: string, effectiveVersion: number): KoSource {
+    // aufnahme:20260922:confluence-import-hierarchie (R-0153): die Elternkette endete bisher am
+    // Kandidaten — das angenommene Wissensobjekt kam flach an. Sie reist jetzt mit dem Anker, denn
+    // nur dort ist sie eindeutig einer Quelle zugeordnet (dasselbe KO kann mehrere Anker tragen).
+    // Gleiche Zurückhaltung wie toPreviewEntry: leere Segmente fallen weg, bleibt nichts, fehlt das
+    // Feld. Beim Re-Sync baut derselbe Aufruf den Anker neu — eine verschobene Seite trägt danach
+    // ihre neue Kette.
+    const sourcePath = (item.sourcePath ?? [])
+      .map((segment) => segment.trim())
+      .filter((segment) => segment.length > 0);
     return {
       id: this.genId(),
       label: item.title,
@@ -1763,6 +1772,7 @@ export class LibraryService {
       // (KO-seitig weiterhin so genanntes) spaceKey-Container-Label — der Match läuft NUR über externalId.
       ...(item.externalId ? { externalId: item.externalId } : {}),
       ...(item.sourceScope ? { spaceKey: item.sourceScope } : {}),
+      ...(sourcePath.length > 0 ? { sourcePath } : {}),
       sourceVersion: effectiveVersion,
       // WP-RETEST7 R6: leerer Autor-String → ehrlicher Fallback auf den annehmenden Nutzer.
       author: item.author?.trim() ? item.author : actor,
