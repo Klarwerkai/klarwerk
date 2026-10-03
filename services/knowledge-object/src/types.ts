@@ -340,6 +340,16 @@ export interface KoAppendOp {
   sourceIds: string[];
 }
 
+/** R-0658: welche Art Schutzdaten erkannt wurde — nie der Wert selbst. */
+export type SchutzdatenArt = "personalnummer" | "kontodaten";
+
+/** R-0658: die Quarantänemarke am Wissensobjekt (Begründung in `schutzdaten.ts`). */
+export interface SchutzdatenQuarantaene {
+  arten: SchutzdatenArt[];
+  /** Zeitpunkt des ERSTEN Befunds; eine weitere Fassung mit Schutzdaten setzt ihn nicht neu. */
+  seit: string;
+}
+
 // FR-KO-01: Datenmodell inkl. version/history/originalAuthor/needed/assignments/asset
 // (Pflichtenheft §3.5, Technischer Anhang §1).
 export interface KnowledgeObject {
@@ -363,6 +373,11 @@ export interface KnowledgeObject {
   // Feld, ist es ein Legacy-KO von vor dieser Regel → Nachzug über den Wartungslauf
   // (ensureSearchArtifacts); `[]` heißt ausdrücklich „keine Benennungen", nicht „unbekannt".
   imageNames?: string[];
+  // R-0658: die Quarantänemarke, gesetzt beim Anlegen/Überarbeiten, wenn der Inhalt Schutzdaten
+  // trägt (`schutzdaten.ts`). Sie nennt nur die ARTEN, nie die Werte. Solange sie steht, trägt die
+  // Suchprojektion keinen Text und die Sucheinstiege lassen das Objekt aus. Optional/additiv im
+  // JSONB-Dokument (keine Migration); fehlt sie, liegt das Objekt nicht in Quarantäne.
+  schutzdatenQuarantaene?: SchutzdatenQuarantaene;
   conditions: string[];
   measures: string[];
   type: KnowledgeType;

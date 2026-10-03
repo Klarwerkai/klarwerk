@@ -1029,6 +1029,16 @@
          nichts dasteht, was der Bestand nicht hergibt. -->
     <label class="capture-zeile" for="capture-bereich"><span data-t="captureBereichLabel"></span><select id="capture-bereich" disabled></select></label>
   </div>
+  <!-- R-0632: DIE STUFE MIT EINEM KLICK. Drei Knoepfe, keiner vorgewaehlt — „nicht gewaehlt" wird
+       nicht als Wahl ausgegeben, und ohne Wahl reist kein Feld mit (das Einreichen in der App fragt
+       dann, Q3). Bewusst KEIN `label.capture-zeile` in #capture-felder: dort stehen genau zwei Zeilen
+       (Zielbild K2, gepinnt). Die Wahl reist an BEIDEN Einreichwegen mit (sendeEntwurf). -->
+  <div id="capture-stufe" role="group" aria-labelledby="capture-stufe-titel">
+    <span id="capture-stufe-titel" data-t="captureStufeLabel"></span>
+    <button type="button" class="ghost" id="capture-stufe-intern" data-stufe="intern" aria-pressed="false" data-t="captureStufeIntern"></button>
+    <button type="button" class="ghost" id="capture-stufe-vertraulich" data-stufe="vertraulich" aria-pressed="false" data-t="captureStufeVertraulich"></button>
+    <button type="button" class="ghost" id="capture-stufe-streng_vertraulich" data-stufe="streng_vertraulich" aria-pressed="false" data-t="captureStufeStreng"></button>
+  </div>
   <div id="capture-aktion"><button type="button" class="primary" id="send-btn" data-t="sendCta" disabled></button></div>
   <div id="office-hint" class="hidden"></div>
   <button type="button" class="ghost capture-knopf hidden" id="office-hint-btn" data-t="captureReload"></button>
@@ -1464,14 +1474,11 @@
       return out.join("\n");
     }
 
-    // JOB 3555 K2b: `category` ist OPTIONAL und steht bewusst HIER — an der EINEN Entscheidungs-
-    // stelle, die den finalen Payload baut (bens Bedingung 4, WP-SHIP8-FINAL): das Budget misst
-    // damit den String, der wirklich gesendet wird, samt Bereich. Ohne Wahl bleibt der Parameter
-    // undefiniert, `JSON.stringify` laesst das Feld weg — der Rumpf ist dann BYTEGLEICH der von
-    // vorher (nicht `""`, nicht `null`), und der Bibliotheksspiegel `wordAddin.ts#draftPostPayload`
-    // (drei Parameter, nicht Zielpfad dieses Jobs) bleibt der gemessene Zwilling.
-    function draftPostPayload(title, statement, bodyHtml, category) {
-      return JSON.stringify({ title: title, statement: statement, bodyHtml: bodyHtml, category: category, origin: "word_addin" });
+    // JOB 3555 K2b / R-0632: `category` und `confidentiality` sind OPTIONAL und stehen an der EINEN Stelle, die den
+    // finalen Payload baut (bens Bedingung 4: das Budget misst den gesendeten String). Ohne Wahl laesst `JSON.stringify`
+    // das Feld weg — Rumpf BYTEGLEICH wie vorher; der Spiegel `wordAddin.ts#draftPostPayload` (drei Parameter) bleibt Zwilling.
+    function draftPostPayload(title, statement, bodyHtml, category, confidentiality) {
+      return JSON.stringify({ title: title, statement: statement, confidentiality: confidentiality, bodyHtml: bodyHtml, category: category, origin: "word_addin" });
     }
 
     // JOB 2613 D1 — Spiegel von wordAddin.ts#trimWordImagesToBudget. Groesstes Bild zuerst
@@ -1498,13 +1505,14 @@
       return { html: aktuell, dropped: dropped, passt: false };
     }
 
-    function prepareWordDraftRequest(html, text, titleOverride, categoryWahl) {
+    function prepareWordDraftRequest(html, text, titleOverride, categoryWahl, stufeWahl) {
       // JOB 3057 K2: ein von Hand gesetzter Titel (Zeile „Titel") geht vor der Ableitung.
       var eigen = (titleOverride || "").slice(0, WORD_ADDIN_TITLE_MAX).trim();
       var title = eigen.length > 0 ? eigen : deriveDraftTitleFromSelection(text);
       // JOB 3555 K2b: der gewaehlte Bereich (Zeile „Bereich"). NUR eine echte Wahl reist mit —
       // ohne sie bleibt `category` undefiniert und der Payload unveraendert wie bisher.
       var category = typeof categoryWahl === "string" && categoryWahl.length > 0 ? categoryWahl : undefined;
+      var stufe = stufeWahl === "intern" || stufeWahl === "vertraulich" || stufeWahl === "streng_vertraulich" ? stufeWahl : undefined;
       // JOB 2703 D3: KEINE Kuerzung mehr im Client. Bis D2 stand hier `slice(0, 500)` — was der
       // Client abschnitt, sah der Server nie, und keine kanonische Regel konnte es zurueckholen.
       // Der Server kuerzt die Aussage an EINEM Ort (kernaussageAusKlartext, capture-routes.ts).
@@ -1516,19 +1524,19 @@
       // "alles gut", obwohl Formatierung und Bilder verschwanden — die stille Null. Keine
       // geratene Bildzahl: wo kein HTML ankam, ist jede Zahl erfunden.
       if (inner.length === 0) {
-        return { payload: draftPostPayload(title, statement, selectionToBodyHtml(text), category), title: title, usedHtml: false, overBudget: false, undeliveredImages: 0, plainTextFallback: true, droppedImages: 0 };
+        return { payload: draftPostPayload(title, statement, selectionToBodyHtml(text), category, stufe), title: title, usedHtml: false, overBudget: false, undeliveredImages: 0, plainTextFallback: true, droppedImages: 0 };
       }
       var passt = function (kandidat) {
-        return wordHtmlUtf8Bytes(draftPostPayload(title, statement, kandidat, category)) <= WORD_ADDIN_BODY_BUDGET_BYTES;
+        return wordHtmlUtf8Bytes(draftPostPayload(title, statement, kandidat, category, stufe)) <= WORD_ADDIN_BODY_BUDGET_BYTES;
       };
-      var htmlPayload = draftPostPayload(title, statement, inner, category);
+      var htmlPayload = draftPostPayload(title, statement, inner, category, stufe);
       if (wordHtmlUtf8Bytes(htmlPayload) > WORD_ADDIN_BODY_BUDGET_BYTES) {
         // JOB 2613 D1: erst Bilder weglassen, dann erst den ganzen Rumpf aufgeben.
         var getrimmt = trimWordImagesToBudget(inner, passt);
         if (getrimmt.passt && getrimmt.dropped > 0) {
-          return { payload: draftPostPayload(title, statement, getrimmt.html, category), title: title, usedHtml: true, overBudget: false, undeliveredImages: countUndeliveredWordImages(getrimmt.html), plainTextFallback: false, droppedImages: getrimmt.dropped };
+          return { payload: draftPostPayload(title, statement, getrimmt.html, category, stufe), title: title, usedHtml: true, overBudget: false, undeliveredImages: countUndeliveredWordImages(getrimmt.html), plainTextFallback: false, droppedImages: getrimmt.dropped };
         }
-        return { payload: draftPostPayload(title, statement, selectionToBodyHtml(text), category), title: title, usedHtml: false, overBudget: true, undeliveredImages: undeliveredImages, plainTextFallback: false, droppedImages: 0 };
+        return { payload: draftPostPayload(title, statement, selectionToBodyHtml(text), category, stufe), title: title, usedHtml: false, overBudget: true, undeliveredImages: undeliveredImages, plainTextFallback: false, droppedImages: 0 };
       }
       return { payload: htmlPayload, title: title, usedHtml: true, overBudget: false, undeliveredImages: undeliveredImages, plainTextFallback: false, droppedImages: 0 };
     }
@@ -2698,6 +2706,7 @@
         // Bestand (die Route sieht nur die Sicht des Fragenden, category-routes.ts:9-11), „Fehler"
         // sagt Fehler statt Leere. Die Zeile bleibt in jeder Lage sichtbar, Senden bleibt moeglich.
         captureBereichLabel: "Bereich",
+        captureStufeLabel: "Vertraulichkeit", captureStufeIntern: "Öffentlich-intern", captureStufeVertraulich: "Vertraulich", captureStufeStreng: "Streng vertraulich",
         captureBereichWahl: "Bereich wählen",
         captureBereichLaedt: "Wird geladen …",
         captureBereichLeer: "Noch kein Bereich in deinem Bestand",
@@ -3153,6 +3162,7 @@
         // JOB 3555 K2b: „Area" ist der Begriff, den dieses Panel fuer `category` schon fuehrt
         // (bestandBereich: „Area: {bereich}") — kein zweites Wort fuer dieselbe Sache.
         captureBereichLabel: "Area",
+        captureStufeLabel: "Confidentiality", captureStufeIntern: "Internal", captureStufeVertraulich: "Confidential", captureStufeStreng: "Strictly confidential",
         captureBereichWahl: "Choose area",
         captureBereichLaedt: "Loading …",
         captureBereichLeer: "No area in your knowledge yet",
@@ -3486,6 +3496,7 @@
         captureTitleLabel: "Titel",
         // JOB 3555 K2b: „Gebied" wie in bestandBereich („Gebied: {bereich}").
         captureBereichLabel: "Gebied",
+        captureStufeLabel: "Vertrouwelijkheid", captureStufeIntern: "Intern", captureStufeVertraulich: "Vertrouwelijk", captureStufeStreng: "Strikt vertrouwelijk",
         captureBereichWahl: "Gebied kiezen",
         captureBereichLaedt: "Wordt geladen …",
         captureBereichLeer: "Nog geen gebied in jouw bestand",
@@ -3899,6 +3910,15 @@
     var captureBereiche = [];
     var captureBereichWahl = "";
     var captureBereichLauf = 0;
+    // R-0632: die im Panel per Klick gewaehlte Stufe ("" = nicht gewaehlt; nur die drei Werte gehen hinaus).
+    var CAPTURE_STUFEN = ["intern", "vertraulich", "streng_vertraulich"], captureStufeWahl = "";
+    function captureStufeGewaehlt() { return CAPTURE_STUFEN.indexOf(captureStufeWahl) >= 0 ? captureStufeWahl : ""; }
+    function renderCaptureStufe() { // `aria-pressed` ist die Auskunft, nicht die Farbe
+      CAPTURE_STUFEN.forEach(function (s) {
+        var k = document.getElementById("capture-stufe-" + s), an = captureStufeGewaehlt() === s;
+        if (k) { k.setAttribute("aria-pressed", an ? "true" : "false"); k.className = an ? "primary" : "ghost"; }
+      });
+    }
 
     function updateSendState() {
       var sendBtn = document.getElementById("send-btn");
@@ -6013,24 +6033,15 @@
           showSendStatus("warn", t(emptyKey));
           return;
         }
-        // WP-SHIP8-FINAL (bens Bedingung 4): EINE Entscheidungsstelle baut den FINALEN Payload —
-        // das Budget hat genau DIESEN String gemessen (Envelope inkl. Escaping), er wird gesendet.
-        // JOB 3555 K2b: die Wahl aus der Zeile „Bereich" reist mit — und zwar GENAU DAS, was die
-        // Zeile in diesem Augenblick sichtbar traegt (`captureBereichGewaehlt`, an die Lage
-        // gebunden). RUNDE 5 (BEN): bis Runde 4 stand hier der gehaltene Zustand. Der ueberlebte
-        // eine Auffrischung, die nichts mehr zu waehlen fand, und reiste unsichtbar mit.
-        // ZWEI SCHREIBWEISEN, EIN WEG — und das ist Absicht: OHNE Wahl steht hier BUCHSTAeBLICH
-        // der Aufruf von vorher (`tests/app/word-addin.test.ts:792` pinnt genau ihn, weil er die
-        // Zusage traegt, dass die Auswahl als HTML durch DIESE eine Stelle reist). Ein vierter
-        // Parameter, der in beiden Faellen mitginge, haette den Pin gebrochen und dabei nichts
-        // gewonnen: `undefined` und „kein Argument" bauen denselben Payload.
+        // WP-SHIP8-FINAL (bens Bedingung 4): EINE Entscheidungsstelle baut den FINALEN Payload, das Budget misst genau ihn.
+        // JOB 3555 K2b RUNDE 5: der Bereich ist GENAU, was die Zeile jetzt sichtbar traegt (`captureBereichGewaehlt`), nie ein
+        // gehaltener Altwert. OHNE Wahl steht BUCHSTAeBLICH der Aufruf von vorher (gepinnt, `tests/app/word-addin.test.ts:792`).
         var bereichWahl = captureBereichGewaehlt();
-        var prepared = bereichWahl
+        var stufeWahl = captureStufeGewaehlt(); // R-0632: an derselben Entscheidungsstelle, Budget misst mit
+        var prepared = stufeWahl ? prepareWordDraftRequest(html, text, titelWunsch, bereichWahl || undefined, stufeWahl) : bereichWahl
           ? prepareWordDraftRequest(html, text, titelWunsch, bereichWahl)
           : prepareWordDraftRequest(html, text, titelWunsch);
-        // JOB 3594 K2b RUNDE 2: hier stand `showSendStatus("busy", t("sendBusy"))`. Der Satz steht
-        // seit dieser Runde schon am Eingang von `sendeEntwurf` — ein zweites Setzen waere eine
-        // zweite Stelle fuer denselben Zustand und koennte den ersten nur noch wiederholen.
+        // JOB 3594 K2b RUNDE 2: `sendBusy` steht schon am Eingang von `sendeEntwurf` — kein zweites Setzen hier.
         fetch("/api/drafts", {
           method: "POST",
           credentials: "include",
@@ -6095,25 +6106,11 @@
           finish(text, gefuellt.html, emptyKey);
         });
       };
-      // ==========================================================================================
-      // JOB 2613 D3 — DIE GANZE DATEI STATT DES HTML (Station 1 des Pedi-Pfads).
-      // ==========================================================================================
-      //
-      // DER BEFUND, den Pedi selbst erhoben hat (Panel-Stand 2026-08-28 01:41Z): „Wissen erfassen"
-      // uebertraegt KEINE Bilder. Der Weg darueber liest `body.getHtml()` — HTML OHNE Bildbytes —
-      // und holt die Bilder danach EINZELN ueber `body.inlinePictures` nach. Genau dieses
-      // Nachholen liefert bei ihm nichts.
-      //
-      // DER NEUE WEG: Fuer „Ganzes Dokument" wird zuerst die GANZE .docx geholt
-      // (`getFileAsync` — ein Zip MIT den Bildern) und an `/api/drafts/from-docx` geschickt. Dort
-      // laeuft derselbe Kern wie im Konsolenweg (`extractDocxRich`), der die Bilder als
-      // `data:image` einbettet.
-      //
-      // WARUM DER RUECKFALL PFLICHT IST, nicht Kuer: `getFileAsync` gehoert zum Requirement-Set
-      // „File 1.1", das Manifest nennt nur `WordApi 1.1` (`klara-manifest.xml:33-37`). Ob Pedis
-      // Word-Host es hat, ist aus dem Code NICHT belegbar. Deshalb: Laufzeitversuch, und bei
-      // jedem Fehlschlag exakt der heutige Weg mit seinen ehrlichen Meldungen. Kein stiller
-      // Abbruch, kein leerer Entwurf, keine Aenderung am Manifest.
+      // JOB 2613 D3 — DIE GANZE DATEI STATT DES HTML (Station 1 des Pedi-Pfads). Pedis Befund (2026-08-28): `body.getHtml()`
+      // traegt KEINE Bildbytes, das Nachholen ueber `body.inlinePictures` lieferte nichts. Fuer „Ganzes Dokument" geht deshalb
+      // zuerst die GANZE .docx (`getFileAsync`, Zip MIT Bildern) an `/api/drafts/from-docx` (Kern `extractDocxRich`).
+      // RUECKFALL IST PFLICHT: `getFileAsync` gehoert zu „File 1.1", das Manifest nennt nur `WordApi 1.1` — bei jedem
+      // Fehlschlag laeuft exakt der heutige Weg mit seinen ehrlichen Meldungen; kein stiller Abbruch, kein Manifestwechsel.
       if (scope === "document") {
         holeGanzeDatei(
           function (bytes) { sendeDocxDatei(bytes, titelWunsch, lauf, gesendeteMarkierung); },
@@ -6221,6 +6218,7 @@
       // capture-routes.ts); ohne ihn nimmt die Route wie bisher den Dateinamen.
       var titel = (titelWunsch || "").slice(0, WORD_ADDIN_TITLE_MAX).trim();
       if (titel.length > 0) { koerper.title = titel; }
+      if (captureStufeGewaehlt()) { koerper.confidentiality = captureStufeGewaehlt(); } // R-0632: nur echte Wahl
       var nutzlast = JSON.stringify(koerper);
       fetch("/api/drafts/from-docx", {
         method: "POST",
@@ -8007,6 +8005,11 @@
     document.getElementById("capture-bereich").addEventListener("change", function () {
       captureBereichWahl = this.value;
     });
+    // R-0632: ein Klick waehlt die Stufe; sie wird gewechselt, nie still zurueckgenommen.
+    CAPTURE_STUFEN.forEach(function (s) {
+      document.getElementById("capture-stufe-" + s).addEventListener("click", function () { captureStufeWahl = s; renderCaptureStufe(); });
+    });
+    renderCaptureStufe();
     // JOB 3506 K2b: das „?"-Menue der Erfassen-Flaeche ist entfallen — es gibt nichts mehr auf-
     // und zuzuklappen. Die vier Saetze stehen offen hinter dem Zahnrad (#einst-erfassen).
 

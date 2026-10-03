@@ -25,6 +25,7 @@ import {
   alsMenge,
   alsSchreibpatch,
   createOperationFingerprint,
+  isValidConfidentiality,
 } from "../../../knowledge-object";
 // JOB 2703 D2: DIE EINE Kuerzungsregel fuer die Kernaussage — dieselbe Funktion wie im
 // Confluence-Mapper (services/confluence/src/mapper.ts). Der Server kuerzt; der Client nicht mehr.
@@ -248,6 +249,12 @@ export interface DocxDraftRequest {
   data: string;
   /** Titelvorschlag des Panels; ohne ihn wird der Dateiname genommen. */
   title?: string;
+  /**
+   * R-0632: die im Panel mit einem Klick GEWÄHLTE Stufe. Fehlt sie, entsteht der Entwurf wie
+   * bisher ohne Stufe — „nicht gewählt" wird nicht als Wahl ausgegeben, und das Einreichen fragt
+   * danach (Q3). Ein gesetzter, aber unbekannter Wert wird mit 400 abgewiesen, nie geraten.
+   */
+  confidentiality?: unknown;
 }
 
 // Der Bildzähler zählt EINZELNE eingebettete Bilder — `data:image/…;base64,` je `<img>`. Er zählt
@@ -1051,11 +1058,20 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
         if (!user) {
           return;
         }
-        const { name, data, title } = request.body ?? ({} as DocxDraftRequest);
+        const { name, data, title, confidentiality } = request.body ?? ({} as DocxDraftRequest);
         if (typeof data !== "string" || data.length === 0) {
           reply
             .code(400)
             .send({ error: "BAD_REQUEST", message: "Es wurden keine Dokumentbytes uebergeben." });
+          return;
+        }
+        // R-0632: dieselbe Schärfe wie die Gestaltprüfung von `POST /api/drafts`
+        // (`draft-payload-schema.ts`) — gültig oder abgewiesen, vor jeder Umwandlung.
+        if (confidentiality !== undefined && !isValidConfidentiality(confidentiality)) {
+          reply.code(400).send({
+            error: "BAD_REQUEST",
+            message: "confidentiality muss intern, vertraulich oder streng_vertraulich sein.",
+          });
           return;
         }
         // Nur `.docx`. Das alte Binärformat `.doc` liest mammoth nicht — eine ehrliche Absage ist
@@ -1182,6 +1198,8 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
             statement: kernaussageAusKlartext(reich.text) || titelVorschlag || "",
             bodyHtml,
             origin: "word_addin",
+            // R-0632: NUR die ausdrückliche Wahl aus dem Panel — ohne sie fehlt das Feld.
+            ...(isValidConfidentiality(confidentiality) ? { confidentiality } : {}),
             // JOB 512 (R5): die Zahl der Bilder in der QUELLDATEI, vor jedem Budgetabzug. Der
             // Client entscheidet damit fail-closed, ob etwas verloren ging.
             sourceImageCount: quellbilder,

@@ -224,6 +224,9 @@ export type CaptureErrorCode =
   // Anlagerouten für dasselbe Versäumnis schon tragen. NUR DAS FEHLEN; ein vorhandener, aber
   // ungültiger Wert bleibt `INCOMPLETE`. Begründung: `services/capture/src/service.ts`.
   | "MISSING_CONFIDENTIALITY"
+  // R-0632: die gespeicherte Stufe eines Word-Entwurfs würde gesenkt — sie wird nur angehoben.
+  // Begründung und Abgrenzung: `pruefeKeineHerabstufung` in `services/capture/src/service.ts`.
+  | "CONFIDENTIALITY_DOWNGRADE"
   // JOB 2684 D1 (Review R2-17): der Aufrufer hat einen ÄLTEREN Stand des Entwurfs gelesen, als
   // jetzt gespeichert ist — ein zweiter Tab, das Studio, die Vordertür. Sein Schreiben würde still
   // überschreiben; deshalb Konflikt (409), nicht Merge.

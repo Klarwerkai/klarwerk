@@ -3,6 +3,7 @@ import {
   type CreateKoInput,
   type KoSource,
   createOperationFingerprint,
+  isConfidentialityDowngrade,
   isValidConfidentiality,
 } from "../../knowledge-object";
 import { sanitizeHtml } from "../../structure";
@@ -495,6 +496,41 @@ function mergeDraftPayload(base: DraftPayload, changes: DraftPayload): DraftPayl
   return merged as DraftPayload;
 }
 
+// ================================================================================================
+// R-0632 · EINE GESPEICHERTE STUFE EINES WORD-ENTWURFS WIRD NUR ANGEHOBEN, NIE GESENKT.
+// ================================================================================================
+//
+// Der Originalpunkt (R-0632) spricht vom „aus Word eingereichten Entwurf": im Panel wählt der
+// Mensch die Stufe mit einem Klick, und eine einmal gespeicherte Stufe kann später nur angehoben
+// werden. Geprüft wird deshalb genau dort, wo ein gespeicherter Entwurf fortgeschrieben wird —
+// `continueDraft`, über den auch der Promote seinen mitgeschickten Rumpf schreibt.
+//
+// ABGEGRENZT, ausdrücklich: (1) NUR Entwürfe mit `origin: "word_addin"` — für Entwürfe des Blatts
+// nennt keine Quelle diese Regel, und dort korrigiert der Mensch seine Wahl vor dem Einreichen.
+// (2) NUR eine GÜLTIGE gespeicherte Stufe zählt; ein Entwurf ohne Stufe hat nichts zu senken.
+// (3) Am WISSENSOBJEKT gilt weiterhin SCRUM-509 (Senken mit Prüfer-/Admin-Rolle). Dass R-0632
+// dort „nie gesenkt" verlangt und Q3d/Validierungsbestand berechtigte Herabstufungen kennen, ist
+// ein offener Quellenwiderspruch — er wird hier nicht durch eine stille Rollenänderung entschieden.
+function pruefeKeineHerabstufung(bisher: DraftPayload, neu: DraftPayload): void {
+  if (bisher.origin !== "word_addin" || !isValidConfidentiality(bisher.confidentiality)) {
+    return;
+  }
+  if (!isValidConfidentiality(neu.confidentiality)) {
+    // Die Route weist einen ungültigen Wert schon vorher ab; ein Löschen der Stufe ist hier
+    // ebenfalls ein Senken („nie eingestuft" liegt unter jeder gespeicherten Stufe).
+    throw new CaptureError(
+      "CONFIDENTIALITY_DOWNGRADE",
+      "Die gespeicherte Vertraulichkeitsstufe dieses Word-Entwurfs kann nur angehoben werden.",
+    );
+  }
+  if (isConfidentialityDowngrade(bisher.confidentiality, neu.confidentiality)) {
+    throw new CaptureError(
+      "CONFIDENTIALITY_DOWNGRADE",
+      "Die gespeicherte Vertraulichkeitsstufe dieses Word-Entwurfs kann nur angehoben werden.",
+    );
+  }
+}
+
 function validateMetadata(payload: DraftPayload): void {
   // FR-CAP-08: nötige Validierungen 1–5 (Standard 3 wird erst beim KO gesetzt).
   if (payload.neededValidations !== undefined) {
@@ -875,6 +911,8 @@ export class CaptureService {
         // AUFTRAG-mega6 Block B: Merge mit eindeutiger Löschsemantik (s. mergeDraftPayload).
         const merged: DraftPayload = mergeDraftPayload(draft.payload, changes);
         validateMetadata(merged);
+        // R-0632: eine gespeicherte Stufe eines Word-Entwurfs wird nie gesenkt (s. Funktion).
+        pruefeKeineHerabstufung(draft.payload, merged);
         // SCRUM-524 P.1 (WP5) + mega5 Block B: auch beim Fortsetzen an der Persistenz-Grenze säubern
         // und normalisieren — der Merge über den Bestand streift dabei auch Alt-Felder ab.
         const bisher = Date.parse(draft.updatedAt);

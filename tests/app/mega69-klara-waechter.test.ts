@@ -2585,6 +2585,21 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // die R-0639-Argumente stehen auf den bestehenden Zeilen, damit das Inline-Skript unter der
     // Schranke von `schnittflaechen.test.ts` B3 bleibt (Server: „expected 12510 to be less than
     // 12500"). Kein Ausdruck, kein Abrufziel, keine Nutzlast geändert; kein Sideload.
+    // AUFNAHME 20260922 · GESAMT-VERTRAULICHKEIT-ERFASSUNG (R-0632, BEN-Befund K2, 03.10.2026) —
+    // PIN MUSS WANDERN (5fbf5f64… -> neuer Wert aus dem nächsten Messlauf). Auslieferungsfolgen,
+    // jede geprüft:
+    //   · Abrufziel: KEINES neu. `POST /api/drafts` und `POST /api/drafts/from-docx` wie bisher.
+    //   · Nutzlast:  EIN Feld mehr, und nur nach einem Klick auf eine der drei neuen Stufenknöpfe
+    //                (#capture-stufe-*): `confidentiality` ∈ intern|vertraulich|streng_vertraulich.
+    //                Ohne Klick fällt es bei `JSON.stringify` heraus — Körper Zeichen für Zeichen
+    //                der bisherige. Der Server weist einen unbekannten Wert mit 400 ab.
+    //   · Markup:    eine Knopfgruppe #capture-stufe NACH #capture-felder (die zwei gepinnten
+    //                `label.capture-zeile` bleiben unverändert); vier Wörterbuchschlüssel je Sprache.
+    //   · Inline-Skript bleibt unter der Schranke von `schnittflaechen.test.ts` B3 (gemessen 12492):
+    //                drei Kommentarblöcke im Sendeweg sind dafür verdichtet, kein Ausdruck entfernt.
+    //   · Manifest, CSP, Recht: unverändert. Kein erneutes Sideload.
+    // OFFEN: den neuen Hash konnte dieser Lauf nicht berechnen (kein Hash-Werkzeug freigegeben);
+    // der Wert unten ist noch der alte — der nächste Lauf meldet den Ist-Wert in dieser Zusicherung.
     const PIN = "5fbf5f64546beb67d70799bb8d18bcf6d2adcc631d79e0b404658867baeb0978";
     const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
     expect(
