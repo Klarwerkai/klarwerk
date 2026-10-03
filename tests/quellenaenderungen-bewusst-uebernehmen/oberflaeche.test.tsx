@@ -32,6 +32,19 @@ import {
 import type { Anzeigelage } from "../../apps/web/src/components/gesamtanweisung/zustand";
 import "../../apps/web/src/i18n";
 import { formatKoTimestamp } from "../../apps/web/src/lib/koDates";
+import {
+  type AnweisungKoLeser,
+  GesamtanweisungDienst,
+} from "../../services/knowledge-object/src/gesamtanweisung-service";
+import {
+  InMemoryAnweisungRepo,
+  type PruefEintrag,
+  eintrag,
+  kennungen,
+  koLeser,
+  sichtbarAls,
+  uhr,
+} from "../wiki-gesamtanweisung/pruefstand";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -349,6 +362,190 @@ describe("K7 · letzte Prüfung, gefundene und übernommene Änderungen — getr
     expect(container.querySelector('[data-testid="ga-lesestand-quellen"]')).toBeNull();
     expect(container.querySelector("[data-ergebnis]")).toBeNull();
     expect(container.textContent).not.toContain("sind aktuell");
+  });
+});
+
+// ================================================================================================
+// NACHARBEIT 3 · BEN F1 — DERSELBE EINTRAG, VERSCHIEDENE BINDUNGSSTÄNDE
+// ================================================================================================
+//
+// GEGENPROBE: in `betroffeneAbschnitte` (`LesestandAnsicht.tsx`) wieder nur nach `koId` filtern →
+// beide Fälle werden rot, weil der schon aktualisierte Abschnitt als betroffen erscheint.
+
+async function zeichneAuf(stand: AnweisungLesestand) {
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  const neu = async (naechster: AnweisungLesestand): Promise<void> => {
+    await act(async () => {
+      root.render(
+        createElement(LesestandAnsicht, {
+          lage: FRISCH,
+          stand: naechster,
+          zeit: naechster.geaendertAm,
+          aenderung: bearbeitung(),
+        }),
+      );
+    });
+  };
+  await neu(stand);
+  return { container, neu };
+}
+
+function karten(container: HTMLElement): HTMLElement[] {
+  return [...container.querySelectorAll<HTMLElement>('[data-testid="ga-lesestand-aenderung"]')];
+}
+
+describe("K3 · Betroffen sind nur Abschnitte mit offenem Vorschlag (BEN F1)", () => {
+  it("ein veralteter und ein schon aktualisierter Abschnitt derselben Quelle: nur der veraltete", async () => {
+    const { container } = await zeichneAuf(
+      lesestand([
+        baustein({
+          id: "b-1",
+          koVersion: 1,
+          aktuelleKoVersion: 2,
+          aktualisierungsvorschlag: { aufVersion: 2 },
+        }),
+        baustein({ id: "b-2", position: 1, koVersion: 2, aktuelleKoVersion: 2 }),
+      ]),
+    );
+    expect(karten(container)).toHaveLength(1);
+    expect(text(container, "ga-lesestand-aenderung-abschnitte")).toBe("1");
+  });
+
+  it("nach teilweiser Übernahme fällt der übernommene Abschnitt aus der Liste", async () => {
+    const veraltet = (id: string, position: number) =>
+      baustein({
+        id,
+        position,
+        koVersion: 1,
+        aktuelleKoVersion: 2,
+        aktualisierungsvorschlag: { aufVersion: 2 },
+      });
+    const aktuell = (id: string, position: number) =>
+      baustein({ id, position, koVersion: 2, aktuelleKoVersion: 2 });
+
+    const { container, neu } = await zeichneAuf(
+      lesestand([veraltet("b-1", 0), veraltet("b-2", 1), aktuell("b-3", 2)]),
+    );
+    const listen = () => karten(container).map((k) => text(k, "ga-lesestand-aenderung-abschnitte"));
+    expect(listen()).toEqual(["1, 2", "1, 2"]);
+
+    // Abschnitt 1 hat übernommen — der Server liefert den neuen Lesestand, die Fläche zeichnet ihn.
+    await neu(lesestand([aktuell("b-1", 0), veraltet("b-2", 1), aktuell("b-3", 2)]));
+    expect(listen()).toEqual(["2"]);
+  });
+});
+
+// ================================================================================================
+// NACHARBEIT 3 · BEN F2 — EIN HOCHGELADENER ANHANG OHNE BELEGSTELLE, ÜBER DEN ECHTEN DIENST
+// ================================================================================================
+//
+// Der Lesestand kommt aus `GesamtanweisungDienst.lesen` und wird nur über JSON geschickt (wie am
+// Draht), nicht von Hand gebaut. GEGENPROBE: in `momentaufnahmenAus` (`gesamtanweisung-service.ts`)
+// die Schleife über `attachments` entfernen → der Momentaufnahme-Vermerk fehlt, beide Fälle rot.
+
+const ANHANG_V1 = {
+  id: "att-1",
+  objectId: "obj-plan-1",
+  name: "Wartungsplan.pdf",
+  mime: "application/pdf",
+  author: "anna",
+  at: PRUEFZEIT,
+};
+const ANHANG_V2 = {
+  id: "att-2",
+  objectId: "obj-plan-2",
+  name: "Wartungsplan-2027.pdf",
+  mime: "application/pdf",
+  author: "anna",
+  at: "2026-10-02T08:30:00.000Z",
+};
+
+// Bewusst `sources: []`: die Datei hängt NUR als Anhang an der Fassung, ohne Belegstelle.
+const FASSUNG_1 = {
+  version: 1,
+  bodyHtml: "<p>Druck auf 4 bar.</p>",
+  attachments: [ANHANG_V1],
+  sources: [],
+};
+const FASSUNG_2 = {
+  version: 2,
+  bodyHtml: "<p>Druck auf 5 bar.</p>",
+  attachments: [ANHANG_V2],
+  sources: [],
+};
+
+function quelleMitAnhang() {
+  const bestand = new Map<string, PruefEintrag>([
+    ["ko-a", eintrag({ id: "ko-a", title: "Druck einstellen", version: 1 }, [FASSUNG_1])],
+  ]);
+  const leser: AnweisungKoLeser = {
+    get: (id) => koLeser([...bestand.values()]).get(id),
+    versionsOf: (id) => koLeser([...bestand.values()]).versionsOf(id),
+  };
+  const dienst = new GesamtanweisungDienst({
+    repo: new InMemoryAnweisungRepo(),
+    ko: leser,
+    jetzt: uhr(),
+    kennung: kennungen("b"),
+  });
+  const veroeffentlicheV2 = (): void => {
+    const fassungen12 = [FASSUNG_1, FASSUNG_2];
+    bestand.set(
+      "ko-a",
+      eintrag({ id: "ko-a", title: "Druck einstellen", version: 2 }, fassungen12),
+    );
+  };
+  return { dienst, veroeffentlicheV2 };
+}
+
+/** Der Lesestand des echten Dienstes, so wie er über den Draht ankommt. */
+async function amDraht(dienst: GesamtanweisungDienst, id: string): Promise<AnweisungLesestand> {
+  const stand = await dienst.lesen(id, sichtbarAls({ id: "anna", darfPruefen: true }));
+  return JSON.parse(JSON.stringify(stand)) as AnweisungLesestand;
+}
+
+describe("K8 · hochgeladener Anhang ohne Belegstelle (BEN F2)", () => {
+  it("Dateiname und Momentaufnahme stehen da; keine Überwachung wird behauptet", async () => {
+    const { dienst } = quelleMitAnhang();
+    let a = await dienst.anlegen({ titel: "Anfahren" }, "anna");
+    a = await dienst.bausteinAufnehmen(
+      a.id,
+      a.version,
+      { koId: "ko-a", koVersion: 1, nachweisHash: null },
+      sichtbarAls({ id: "anna", darfPruefen: true }),
+    );
+    const container = await zeichne(await amDraht(dienst, a.id));
+    const vermerke = container.querySelectorAll('[data-testid="ga-lesestand-momentaufnahme"]');
+    expect([...vermerke].map((v) => v.textContent)).toEqual([
+      `Hochgeladene Datei „Wartungsplan.pdf“: Momentaufnahme vom ${LESBAR}. Spätere Änderungen an der Originaldatei werden nicht erkannt.`,
+    ]);
+    expect(text(container, "ga-lesestand-quellen-ueberwachung")).toContain("nicht eingerichtet");
+  });
+
+  it("eine neuere Fassung mit anderem Anhang ändert die Anzeige erst nach der Übernahme", async () => {
+    const { dienst, veroeffentlicheV2 } = quelleMitAnhang();
+    const anna = sichtbarAls({ id: "anna", darfPruefen: true });
+    let a = await dienst.anlegen({ titel: "Anfahren" }, "anna");
+    a = await dienst.bausteinAufnehmen(
+      a.id,
+      a.version,
+      { koId: "ko-a", koVersion: 1, nachweisHash: null },
+      anna,
+    );
+    veroeffentlicheV2();
+
+    const vorher = await zeichne(await amDraht(dienst, a.id));
+    const vorherText = text(vorher, "ga-lesestand-momentaufnahme");
+    expect(vorherText).toContain("Wartungsplan.pdf");
+    expect(vorherText).not.toContain("Wartungsplan-2027.pdf");
+    expect(text(vorher, "ga-lesestand-aenderung-neu")).toBe("Fassung 2");
+
+    const bausteinId = a.bausteine[0]?.id ?? "";
+    await dienst.fassungUebernehmen(a.id, a.version, bausteinId, 2, null, anna);
+    const nachher = await zeichne(await amDraht(dienst, a.id));
+    expect(text(nachher, "ga-lesestand-momentaufnahme")).toContain("Wartungsplan-2027.pdf");
   });
 });
 

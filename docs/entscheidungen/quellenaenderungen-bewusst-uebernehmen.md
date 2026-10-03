@@ -61,8 +61,13 @@ belegen.
   `fehlgeschlagen`, ein verborgener Abschnitt `unvollstaendig`; beides wird nie zu `aktuell`. In der
   Oberfläche wird ein früheres `aktuell` nach gescheiterter Auffrischung oder ohne Verbindung als
   „nicht gesichert“ gezeigt.
-- **K8: Momentaufnahme.** Belegstellen mit bestätigter Anhangskennung (`KoSource.objectId`) der
-  gebundenen Fassung erscheinen als „Hochgeladene Datei … Momentaufnahme vom …“. Der Server meldet
+- **K8: Momentaufnahme.** Jede hochgeladene Datei der gebundenen Fassung erscheint als
+  „Hochgeladene Datei … Momentaufnahme vom …“: Anhänge (`attachments`, auch ohne Belegstelle) und
+  Belegstellen mit bestätigter Anhangskennung (`KoSource.objectId`). Verweisen beide auf dieselbe
+  `objectId`, erscheint die Datei einmal unter dem Anhangsnamen (Nacharbeit 3, BEN F2).
+- **K3: betroffene Abschnitte.** Als betroffen gelten nur Abschnitte derselben Quelle mit offenem
+  Vorschlag auf dieselbe neue Fassung. Ein Abschnitt, der sie schon übernommen hat, fällt heraus
+  (Nacharbeit 3, BEN F1). Der Server meldet
   `ueberwachung: "nicht_eingerichtet"`, und die Oberfläche sagt das so. Eine aktive Überwachung wird
   nirgends angezeigt, weil keine eingerichtet ist.
 
@@ -73,9 +78,9 @@ belegen.
   jemand übernimmt.
 - Eine Übernahme trägt keinen Nachweis-Hash weiter (`nachweisHash: null`). Der alte Hash belegt eine
   andere Fassung.
-- Als „hochgeladene Datei“ gilt eine Belegstelle mit bestätigtem Anhang. Andere Uploadwege, etwa ein
-  Wissenseintrag, der direkt aus einem Dokument erfasst wurde und keine solche Belegstelle hat,
-  werden nicht als Momentaufnahme gekennzeichnet.
+- Ein Anhang, der über `ko.addAttachment` NACH der letzten Fassung hochgeladen wurde, steht erst in
+  der nächsten Fassung (der Upload erzeugt selbst keine neue Fassung). Für eine gebundene Fassung
+  zählt nur, was in ihrem Fassungssatz steht.
 - Ältere, weitergehende Kriterien aus `aufnahme:20260922:wiki-gesamtweg` (Word-/Hostweg,
   sechsstufige Gesamtsitzung) sind mit dieser Lieferung **nicht** erfüllt und werden hier auch
   nicht abgenommen.

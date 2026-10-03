@@ -358,8 +358,53 @@ describe("K8 · eine hochgeladene Datei ist als Momentaufnahme gekennzeichnet", 
   });
 });
 
+describe("K8 · Anhang und Belegstelle derselben Datei (Nacharbeit 3, BEN F2)", () => {
+  it("ein Anhang ohne Belegstelle zählt; Anhang plus Belegstelle derselben Kennung erscheint EINMAL", async () => {
+    const anhang = {
+      id: "att-1",
+      objectId: "obj-1",
+      name: "Wartungsplan.pdf",
+      mime: "application/pdf",
+      author: "anna",
+      at: "2026-09-01T08:00:00.000Z",
+    };
+    const foto = {
+      ...anhang,
+      id: "att-2",
+      objectId: "obj-2",
+      name: "Foto.jpg",
+      mime: "image/jpeg",
+    };
+    const { dienst } = bau([
+      eintrag({ id: "ko-a", version: 1 }, [
+        {
+          version: 1,
+          attachments: [anhang, foto],
+          sources: [
+            { label: "Beleg zum Plan", objectId: "obj-1", at: "2026-09-01T08:00:00.000Z" },
+            { label: "Beleg ohne Anhang", objectId: "obj-9", at: "2026-09-01T09:00:00.000Z" },
+          ],
+        },
+      ]),
+    ]);
+    let a = await dienst.anlegen({ titel: "Anfahren" }, "anna");
+    a = await dienst.bausteinAufnehmen(
+      a.id,
+      a.version,
+      { koId: "ko-a", koVersion: 1, nachweisHash: null },
+      ANNA,
+    );
+    const stand = await dienst.lesen(a.id, ANNA);
+    expect(abschnitt(stand, "ko-a").momentaufnahmen).toEqual([
+      { bezeichnung: "Wartungsplan.pdf", erfasstAm: "2026-09-01T08:00:00.000Z" },
+      { bezeichnung: "Foto.jpg", erfasstAm: "2026-09-01T08:00:00.000Z" },
+      { bezeichnung: "Beleg ohne Anhang", erfasstAm: "2026-09-01T09:00:00.000Z" },
+    ]);
+  });
+});
+
 // ================================================================================================
-// DIE TÜR — `POST /api/gesamtanweisungen/:id/bausteine/:bausteinId/uebernehmen`
+// DIE TÜR —`POST /api/gesamtanweisungen/:id/bausteine/:bausteinId/uebernehmen`
 // ================================================================================================
 
 function testGuards(aktuell: () => SessionUser | null): Guards {

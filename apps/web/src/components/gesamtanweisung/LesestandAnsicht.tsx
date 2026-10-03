@@ -181,9 +181,26 @@ function BausteinText({ rumpfHtml }: { rumpfHtml: string | null }): JSX.Element 
 // gebunden und wird auch während des Ansehens ausdrücklich genannt. „Beibehalten" schreibt nichts —
 // die gebundene Fassung IST schon die bisherige; die gefundene Änderung bleibt als solche sichtbar.
 
-/** Die Abschnitte (ab 1), die denselben Eintrag verwenden — eine Quellenänderung betrifft sie alle. */
-function abschnitteMitQuelle(bausteine: readonly BausteinLesestand[], koId: string): number[] {
-  return bausteine.flatMap((b, index) => (b.koId === koId ? [index + 1] : []));
+/**
+ * Die Abschnitte (ab 1), die von DIESER Quellenänderung betroffen sind: dieselbe Quelle UND ein
+ * offener Vorschlag auf dieselbe neue Fassung.
+ *
+ * BEN, Nacharbeit 3 (F1): hier wurde nur nach `koId` gefiltert. Hatte ein zweiter Abschnitt
+ * derselben Quelle die neue Fassung schon übernommen, stand er trotzdem als „betroffen" da. Die
+ * Liste entsteht bei jedem Zeichnen aus dem gerade gelesenen Lesestand — nach einer Übernahme fällt
+ * der übernommene Abschnitt deshalb von selbst heraus.
+ */
+function betroffeneAbschnitte(
+  bausteine: readonly BausteinLesestand[],
+  baustein: BausteinLesestand,
+): number[] {
+  const ziel = baustein.aktualisierungsvorschlag?.aufVersion;
+  if (ziel === undefined) {
+    return [];
+  }
+  return bausteine.flatMap((b, index) =>
+    b.koId === baustein.koId && b.aktualisierungsvorschlag?.aufVersion === ziel ? [index + 1] : [],
+  );
 }
 
 type Unterschiedslage =
@@ -293,7 +310,7 @@ function Aenderungskarte({
   baustein: BausteinLesestand;
   aufVersion: number;
   quelle: string;
-  /** Alle Abschnitte (ab 1), die dieselbe Quelle verwenden. */
+  /** Die Abschnitte (ab 1) derselben Quelle mit offenem Vorschlag auf dieselbe Fassung. */
   betroffen: readonly number[];
   aenderung?: Aenderungsbearbeitung;
 }): JSX.Element {
@@ -750,7 +767,7 @@ export function LesestandAnsicht({
                 nummer={index + 1}
                 anzahl={stand.bausteine.length}
                 nameVon={namen}
-                betroffen={abschnitteMitQuelle(stand.bausteine, baustein.koId)}
+                betroffen={betroffeneAbschnitte(stand.bausteine, baustein)}
                 {...(bearbeiten ? { bearbeiten } : {})}
                 {...(aenderung ? { aenderung } : {})}
               />

@@ -21,12 +21,15 @@
 import { Pool } from "pg";
 import { GenericContainer, type StartedTestContainer, Wait } from "testcontainers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { migrate } from "../../services/app/src/db";
 import { guardedLocalPgTestUrl } from "../../services/db-tx";
 import { PgAnweisungRepo } from "../../services/knowledge-object/src/gesamtanweisung-repo-pg";
 import {
   type AnweisungKoLeser,
   GesamtanweisungDienst,
 } from "../../services/knowledge-object/src/gesamtanweisung-service";
+import { PgKoRepo, PgKoVersionRepo } from "../../services/knowledge-object/src/repo-pg";
+import { KoService } from "../../services/knowledge-object/src/service";
 import {
   type PruefEintrag,
   eintrag,
@@ -230,5 +233,109 @@ describe("QUELLENÄNDERUNGEN · bewusste Übernahme gegen echtes PostgreSQL", ()
     // Der frühere Stand mit Fassung 1 ist weiterhin lesbar und vergleichbar.
     const vergleich = await zweiter.vergleichen(a.id, a.version, neu.version, ANNA);
     expect(vergleich.gesamt).toBe("geaendert");
+  });
+
+  // ==============================================================================================
+  // NACHARBEIT 3 · BEN K9 — DIE QUELLE IST EIN ECHT GESPEICHERTES WISSENSOBJEKT.
+  // ==============================================================================================
+  //
+  // Kein `koLeser`: die Quelle entsteht über den regulären `KoService` mit `PgKoRepo` und
+  // `PgKoVersionRepo` in `kos`/`ko_versions`, wird über `revise` regulär geändert, und JEDER Schritt
+  // danach liest über NEU aufgebaute Repositories und Dienste — kein geteilter Arbeitsspeicher.
+  //
+  // GEGENPROBE: in `fassungslagenFuer` (`gesamtanweisung-service.ts`) `rumpfHtml` aus `eintrag`
+  // statt aus `satz.snapshot` nehmen → „alte Bindung zeigt 4 bar" wird rot.
+  it("gespeicherte Quelle: reguläre Änderung → Vorschlag; Übernahme → neue Bindung, Entwurf, Historie", async (ctx) => {
+    const p = requirePool(ctx);
+    await migrate(p);
+    await frisch(p);
+    const quellen = (): KoService =>
+      new KoService({ repo: new PgKoRepo(p), versions: new PgKoVersionRepo(p) });
+    const anleitungen = (ko: KoService): GesamtanweisungDienst =>
+      new GesamtanweisungDienst({
+        repo: new PgAnweisungRepo(p),
+        ko,
+        jetzt: () => new Date().toISOString(),
+        kennung: kennungen("k9"),
+      });
+
+    // 1 · Quelle speichern und ihre Fassung binden; die Anleitung wird entschieden.
+    const erstQuellen = quellen();
+    const quelle = await erstQuellen.create({
+      title: "Druck einstellen",
+      statement: "Druck einstellen.",
+      type: "best_practice",
+      category: "Anlage 1",
+      author: "anna",
+      bodyHtml: "<p>Druck auf 4 bar</p>",
+    });
+    const erst = anleitungen(erstQuellen);
+    let a = await erst.anlegen({ titel: "Anfahren" }, "anna");
+    a = await erst.bausteinAufnehmen(
+      a.id,
+      a.version,
+      { koId: quelle.id, koVersion: quelle.version, nachweisHash: null },
+      ANNA,
+    );
+    a = await erst.vorlegen(a.id, a.version, ANNA);
+    a = await erst.entscheiden(a.id, a.version, "angenommen", ANNA);
+    const bausteinId = a.bausteine[0]?.id ?? "";
+
+    // 2 · Regulärer Änderungsweg der Quelle.
+    const geaendert = await erstQuellen.revise(
+      quelle.id,
+      { bodyHtml: "<p>Druck auf 5 bar</p>" },
+      "anna",
+    );
+    expect(geaendert.version).toBe(quelle.version + 1);
+
+    // 3 · Neuaufbau: alte Bindung, neuer Vorschlag, Anleitung unverändert.
+    const vorher = await bild(p, a.id);
+    const zweit = anleitungen(quellen());
+    const gelesen = await zweit.lesen(a.id, ANNA);
+    expect(gelesen.version).toBe(a.version);
+    expect(gelesen.stand).toBe("entschieden");
+    expect(gelesen.bausteine[0]?.koVersion).toBe(quelle.version);
+    expect(gelesen.bausteine[0]?.rumpfHtml).toContain("4 bar");
+    expect(gelesen.bausteine[0]?.aktualisierungsvorschlag).toEqual({
+      aufVersion: geaendert.version,
+    });
+    expect(gelesen.aenderungspruefung.ergebnis).toBe("aenderungen_gefunden");
+    expect(await bild(p, a.id)).toEqual(vorher);
+
+    // 4 · Bewusste Übernahme, dann erneut über frische Dienste laden.
+    const neu = await zweit.fassungUebernehmen(
+      a.id,
+      a.version,
+      bausteinId,
+      geaendert.version,
+      null,
+      ANNA,
+    );
+    const dritt = anleitungen(quellen());
+    const danach = await dritt.lesen(a.id, ANNA);
+    expect(danach.version).toBe(neu.version);
+    expect(danach.stand).toBe("entwurf");
+    expect(danach.bausteine[0]?.koVersion).toBe(geaendert.version);
+    expect(danach.bausteine[0]?.rumpfHtml).toContain("5 bar");
+    expect(danach.bausteine[0]?.aktualisierungsvorschlag).toBeNull();
+    expect(danach.uebernommeneAenderungen).toEqual([
+      {
+        bausteinId,
+        vonFassung: quelle.version,
+        aufFassung: geaendert.version,
+        anweisungVersion: neu.version,
+        uebernommenAm: expect.any(String),
+      },
+    ]);
+
+    // Der frühere, entschiedene Anleitungsstand ist unverändert lesbar.
+    const frueher = await new PgAnweisungRepo(p).standLesen(a.id, a.version);
+    expect(frueher?.bausteine.map((b) => [b.id, b.koVersion])).toEqual([
+      [bausteinId, quelle.version],
+    ]);
+    const nachher = await bild(p, a.id);
+    expect(nachher.aufnahmen.slice(0, vorher.aufnahmen.length)).toEqual(vorher.aufnahmen);
+    expect(nachher.kopf).toEqual({ version: neu.version, stand: "entwurf" });
   });
 });

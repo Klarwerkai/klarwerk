@@ -836,6 +836,8 @@ export interface AnweisungKoFakten {
   readonly bodyHtml?: string | null | undefined;
   /** Die Belegstellen — strukturell `KoSource` (`types.ts`); gelesen werden nur diese drei Felder. */
   readonly sources?: readonly AnweisungBelegstelle[] | null | undefined;
+  /** Die hochgeladenen Anhänge — strukturell `KoAttachment` (`types.ts`); nur drei Felder gelesen. */
+  readonly attachments?: readonly AnweisungAnhang[] | null | undefined;
 }
 
 export interface AnweisungBelegstelle {
@@ -844,21 +846,53 @@ export interface AnweisungBelegstelle {
   readonly at?: string | null | undefined;
 }
 
+export interface AnweisungAnhang {
+  readonly name?: string | null | undefined;
+  readonly objectId?: string | null | undefined;
+  readonly at?: string | null | undefined;
+}
+
+function textOderNull(wert: string | null | undefined): string | null {
+  return typeof wert === "string" && wert.length > 0 ? wert : null;
+}
+
 /**
- * Die hochgeladenen Dateien einer Fassung: Belegstellen mit bestätigter Anhangskennung.
+ * Die hochgeladenen Dateien einer Fassung — jede GENAU EINMAL.
  *
- * `null`, wenn die Fassung keine Belegliste trägt — dann ist es unbekannt, nicht „keine".
+ * ZWEI WEGE FÜHREN ZU EINER HOCHGELADENEN DATEI, und beide zählen (BEN, Nacharbeit 3, F2):
+ *   · der Anhang selbst (`attachments`, Upload über `ko.addAttachment`) — auch OHNE Belegstelle;
+ *   · eine Belegstelle mit bestätigter Anhangskennung (`sources[].objectId`).
+ * Verweist eine Belegstelle auf einen vorhandenen Anhang derselben Fassung, ist das DIESELBE Datei:
+ * sie erscheint einmal, unter dem Dateinamen des Anhangs. Eine Belegstelle, deren Anhang in der
+ * Fassung nicht (mehr) steht, bleibt mit ihrer Bezeichnung stehen.
+ *
+ * `null` nur, wenn die Fassung WEDER Anhangs- NOCH Belegliste trägt — dann ist es unbekannt, nicht
+ * „keine".
  */
 function momentaufnahmenAus(fakten: AnweisungKoFakten): readonly Momentaufnahme[] | null {
-  if (!Array.isArray(fakten.sources)) {
+  const anhaenge = Array.isArray(fakten.attachments) ? fakten.attachments : null;
+  const belege = Array.isArray(fakten.sources) ? fakten.sources : null;
+  if (anhaenge === null && belege === null) {
     return null;
   }
-  return fakten.sources
-    .filter((q) => typeof q.objectId === "string" && q.objectId.length > 0)
-    .map((q) => ({
-      bezeichnung: typeof q.label === "string" ? q.label : "",
-      erfasstAm: typeof q.at === "string" ? q.at : null,
-    }));
+  const dateien: Momentaufnahme[] = [];
+  const gesehen = new Set<string>();
+  for (const anhang of anhaenge ?? []) {
+    dateien.push({ bezeichnung: anhang.name ?? "", erfasstAm: textOderNull(anhang.at) });
+    const kennung = textOderNull(anhang.objectId);
+    if (kennung !== null) {
+      gesehen.add(kennung);
+    }
+  }
+  for (const beleg of belege ?? []) {
+    const kennung = textOderNull(beleg.objectId);
+    if (kennung === null || gesehen.has(kennung)) {
+      continue;
+    }
+    gesehen.add(kennung);
+    dateien.push({ bezeichnung: beleg.label ?? "", erfasstAm: textOderNull(beleg.at) });
+  }
+  return dateien;
 }
 
 /** Ein Fassungssatz — strukturell erfüllt von `KoVersionSnapshot` (`types.ts:457`). */
