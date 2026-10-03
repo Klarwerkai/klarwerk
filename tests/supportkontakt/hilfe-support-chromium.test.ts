@@ -208,17 +208,26 @@ async function beleg(seite: Page, name: string): Promise<void> {
 /** Sichtbarkeit, Rechteck und Fensterlage eines Elements — gemessen, nicht angenommen. */
 async function vermessen(seite: Page, selektor: string) {
   return seite.locator(selektor).evaluate((el) => {
-    const r = el.getBoundingClientRect();
-    const pruefbar = el as unknown as { checkVisibility(o: Record<string, boolean>): boolean };
+    // Diese Funktion läuft in Chromium; der Testtreiber bleibt ein Node-Modul.
+    const pruefbar = el as unknown as {
+      checkVisibility(o: Record<string, boolean>): boolean;
+      getBoundingClientRect(): { left: number; right: number; width: number; height: number };
+      innerText: string;
+    };
+    const browser = globalThis as unknown as {
+      innerWidth: number;
+      document: { documentElement: { scrollWidth: number } };
+    };
+    const r = pruefbar.getBoundingClientRect();
     return {
       sichtbar: pruefbar.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }),
-      text: (el as HTMLElement).innerText.replace(/\s+/g, " ").trim(),
+      text: pruefbar.innerText.replace(/\s+/g, " ").trim(),
       links: Math.round(r.left * 10) / 10,
       rechts: Math.round(r.right * 10) / 10,
       breite: Math.round(r.width * 10) / 10,
       hoehe: Math.round(r.height * 10) / 10,
-      fenster: window.innerWidth,
-      dokument: document.documentElement.scrollWidth,
+      fenster: browser.innerWidth,
+      dokument: browser.document.documentElement.scrollWidth,
     };
   });
 }
