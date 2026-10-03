@@ -1306,6 +1306,17 @@ const BEWUSST_WEB: readonly Ausnahme[] = [
       "`tests/bildgroesse/resize.test.ts` als Pruefhilfe der Kanonform. Ein erfundener " +
       "Produktaufruf waere hier der Fehler; entfaellt die Pruefhilfe, ist der Export zu streichen.",
   },
+  {
+    schluessel: "apps/web/src/lib/captureAdvancedFields.ts::ADVANCED_FIELDS_TOTAL",
+    grund:
+      "Seit R-0922 (neun gezaehlte Angaben) eine Pruefhilfe, am Code geprueft: der Kommentar am " +
+      "Export sagt woertlich „fuer Tests und Pruefer, nicht fuer die Anzeige“. `Capture.tsx` zeigt " +
+      "nur `filledCount` aus `advancedFieldsSummary` — eine Obergrenze braucht kein Produktweg. " +
+      "Gelesen wird der Export in `tests/app/capture-advanced-fields.test.ts` und " +
+      "`tests/capture/job2683-d2-suche-flaeche.test.tsx`, die den Zaehler gegen die Feldzahl " +
+      "halten. Ein erfundener Produktaufruf (etwa „X von 9“ im Badge) waere eine Anzeigeaenderung " +
+      "ohne Auftrag; entfaellt die Pruefhilfe, ist der Export zu streichen.",
+  },
   // HIER STAND `GesamtanweisungSeite` (JOB 4154) UND IST MIT JOB 4156 GESTRICHEN — ebenfalls
   // selbstauslaufend und ebenfalls von A3 erzwungen. Ihr Aufrufer ist jetzt
   // `apps/web/src/components/gesamtanweisung/GesamtanweisungBereich.tsx`, und der haengt ueber
