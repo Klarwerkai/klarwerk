@@ -15,8 +15,9 @@
 //   · die Auswahl-Anfrage geht über HTTP mit dem Sitzungskeks der Ersteinrichtung. Die neue
 //     select-ID wird über `GET /api/model-runs` derselben Instanz gelesen — sie war vorher nicht da;
 //   · ein echtes Chromium, angemeldet über die echte Maske, AUSSCHLIESSLICH per Tastatur: Tab,
-//     sichtbarer Fokus, Enter. Weg: Zahnrad → „Bereiche“ → „Kapital-Sichten“ (in der Sprache der
-//     Anwenderin) → `/kapital`. In dieser Datei steht kein `.click(`;
+//     sichtbarer Fokus, Enter. Weg: „Arbeitsbereiche“ im Kopfband (FE-002; vorher Zahnrad →
+//     „Bereiche“) → „Kapital-Sichten“ (in der Sprache der Anwenderin) → `/kapital`. In dieser Datei
+//     steht kein `.click(`;
 //   · LESBAR heißt: die Zeile genau dieser ID trägt die übersetzte Art und das Modell SICHTBAR, je
 //     Textknoten gemessen (`mussSichtbarTragen`: `checkVisibility` samt Deckkraft, Fläche des
 //     Textes). Danach wird per Tab bis zur Zeitraumwahl der Auswertungskarte direkt darunter
@@ -75,10 +76,10 @@ import {
   tabBisBeschriftungUndEnter,
 } from "../gesamtanweisung-nutzerweg/weg";
 import {
+  AUSLOESER,
   FLAECHE_STEHT_AUF,
   SPRACHEN,
-  klappeBereicheAuf,
-  oeffneZahnrad,
+  oeffneArbeitsbereiche,
   profilFuer,
 } from "../gesamtanweisung-tastaturweg/weg";
 import { sprachbestand } from "../support/i18nBestand";
@@ -245,7 +246,9 @@ function soll(sprache: string): Soll {
     return wert as string;
   };
   return {
-    bereiche: hole("menue.weitereBereiche"),
+    // FE-002: die weiteren Bereiche liegen seit dem Header-Umbau unter dem sichtbar beschrifteten
+    // Einstieg „Arbeitsbereiche“ im Kopfband, nicht mehr im Zahnrad unter „Bereiche“.
+    bereiche: hole("fe002.arbeitsbereiche"),
     kapital: hole("nav.capital"),
     art: hole("mrun.task.select"),
   };
@@ -268,10 +271,21 @@ async function angemeldetAufStart(
   return { kontext, seite };
 }
 
-/** Zahnrad → „Bereiche“ → „Kapital-Sichten“, nur Tab und Enter. Gibt die Anschläge zurück. */
+/**
+ * „Arbeitsbereiche“ → „Kapital-Sichten“, nur Tab und Enter. Gibt die Anschläge zurück.
+ *
+ * FE-002: bis zum Header-Umbau führte der Weg über Zahnrad → „Bereiche“. Dieselben Zusagen (Tab,
+ * sichtbarer Fokus, Enter, Fokus im Menü, sichtbare Beschriftung des Menüpunkts) gelten jetzt am
+ * neuen Einstieg; dessen sichtbares Wort wird zusätzlich gemessen.
+ */
 async function zurKapitalseiteOhneMaus(seite: Seite, s: Soll, sprache: string): Promise<number> {
-  const zahnrad = await oeffneZahnrad(seite, sprache);
-  const bereiche = await klappeBereicheAuf(seite, s.bereiche, sprache);
+  const bereiche = await oeffneArbeitsbereiche(seite, sprache);
+  await mussSichtbarTragen(
+    seite,
+    AUSLOESER,
+    s.bereiche,
+    `der Einstieg heißt in „${sprache}" nicht „${s.bereiche}"`,
+  );
   await warte(
     seite,
     "(sel) => !!document.querySelector(sel)",
@@ -298,7 +312,7 @@ async function zurKapitalseiteOhneMaus(seite: Seite, s: Soll, sprache: string): 
     KAPITAL_PFAD,
     45_000,
   );
-  return zahnrad + bereiche + eintrag;
+  return bereiche + eintrag;
 }
 
 /** Die Zeile der ID ist da, und ihre Art und ihr Modell stehen SICHTBAR darin. */
@@ -426,7 +440,7 @@ describe("MR-SELECT-1 · neue select-ID → Laufkarte, ohne Maus, im echten Chro
       })();`),
     );
     try {
-      // Rot genau am Tab-Weg zum Menüpunkt (`tabBisText`), nicht am Zahnrad oder an „Bereiche“.
+      // Rot genau am Tab-Weg zum Menüpunkt (`tabBisText`), nicht an „Arbeitsbereiche“.
       await expect(zurKapitalseiteOhneMaus(seite, s, "de")).rejects.toThrow(/nur mit der Maus/);
       expect(
         await seite.evaluate<string>(fn("() => window.location.pathname")),

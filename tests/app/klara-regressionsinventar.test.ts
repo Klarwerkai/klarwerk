@@ -1224,6 +1224,13 @@ const INVENTAR: readonly string[] = [
   // 69. GEMESSEN, NICHT GESETZT: der Serverlauf am Kandidaten c1c7f0d9 meldete K2 `neu im Baum,
   // aber nicht im gepinnten Inventar` mit genau diesem Pfad.
   "tests/anhaenge-ziehen/speichern-wiederoeffnen-pg.integration.test.ts",
+  // FE-002 (HEADER TEIL 1, 26.09.2026): von der Achse `palette` gefunden (Muster `palette`) — die
+  // Datei montiert `CommandPalette` und misst den Schnellzugriff „Seite finden" (vormals „Gehe zu …")
+  // samt Namenssuche und ohne technische Pfade. Dieselbe Klasse wie die `admin-navigation`-Dateien
+  // oben. GEMESSEN, NICHT GESETZT: K2 meldete `neu im Baum, aber nicht im gepinnten Inventar`
+  // (tests/fe002-kopfband/kopfband-fe002.test.tsx); erst danach wurde diese Zeile angefasst. Der
+  // Chromium-Zwilling derselben Mappe nennt das Muster nicht und steht deshalb nicht hier.
+  "tests/fe002-kopfband/kopfband-fe002.test.tsx",
 ];
 
 // ------------------------------------------------------------------------------------------------

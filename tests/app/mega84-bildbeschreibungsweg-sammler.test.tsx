@@ -2054,8 +2054,28 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // Gemessen: der Sammler meldete „expected { komponenten: 431, … } to deeply equal
     // { komponenten: 430, … }". `anbieter` 1 und `traeger` 2 bleiben: die Karte zeigt kein Bild,
     // keinen `documentTitle` und kein `CAPTION_AI_TEXT`.
+    //
+    // FE-002 (HEADER TEIL 1 · FUNKTIONEN FINDEN): 431 → 436 (zusammengeführt nach dem KI-Laufprotokoll
+    // darüber). Es sind GENAU FÜNF Bauteile der Kopfbandhülle, in anderen Dateien als die darüber:
+    //     + `ArbeitsbereicheEintraege`, `ArbeitsbereicheMenue` (`shell/ArbeitsbereicheMenue.tsx`)
+    //     + `MeldungenMenue`, `MeldungenUndKonto` (`shell/MeldungenMenue.tsx`)
+    //     + `MeldungenListe` (`shell/Meldungen.tsx`, aus `Meldungen` herausgelöst)
+    // Keines enthält `CAPTION_AI_TEXT`, ein `documentTitle`-Prop oder ein `<img` — Menüs,
+    // Glocke und Meldungsliste, kein Bildweg. `anbieter` 1 und `traeger` 2 bleiben unverändert.
+    // Die spätere Lagekorrektur `useImFenster` (`shell/Menue.tsx`) ist ein Hook, kein Bauteil.
+    // GEMESSEN war die FE-002-Stufe auf dem Stand vor dem KI-Laufprotokoll: 430 → 435 (Serverlauf
+    // `header-gezielt` am Kandidaten a3116cac, Sammler grün).
+    //
+    // DIE 437 IST GEMESSEN, nicht gerechnet: am zusammengeführten Kandidaten c5560a74 meldete der
+    // Sammler wörtlich „gemessen: 437 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 536
+    // Quelldateien … expected { komponenten: 437, … } to deeply equal { komponenten: 436, … }".
+    // Gerechnet waren 431 + 5 = 436. Die eine Komponente mehr stammt NICHT aus FE-002: seit der
+    // Messung 435 kamen dort nur ein Hook (`useImFenster`, kleingeschrieben, vom Sammler nicht
+    // gezählt) und Attribute dazu. Sie kam mit dem eingemischten Hauptstand; welches Bauteil es ist,
+    // ist an diesem Arbeitsbaum ohne Git-Verlauf nicht namentlich bestimmt. `anbieter` 1 und
+    // `traeger` 2 sind in derselben Meldung unverändert.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 431,
+      komponenten: 437,
       anbieter: 1,
       traeger: 2,
     });
