@@ -95,6 +95,8 @@
 // Genau deshalb stehen KALIBRIERUNG und MUTATIONSSUITE unten in ZWEI `describe`-Blöcken: der eine
 // prüft, dass hier DAS Bündel gemessen wird, der andere, was an diesem Bündel wahr ist. Gemessen am
 // 05.09.2026: der statische Rückbau von `Admin` macht GENAU (a) und (b) rot, alles andere bleibt grün.
+// Der später ergänzte Block DECKEL (R-0801) misst eine feste Obergrenze und kann bei einer solchen
+// Mutation je nach verbleibender Luft zusätzlich kippen; er gehört nicht zur Trefferliste oben.
 // Die dritte Zeile ist nicht optional: ohne den Neubau meldet die KALIBRIERUNG vier abweichende
 // Zahlen, und man sucht den Fehler in der Aufteilung statt im veralteten `dist`.
 // BEWUSST KEINE ZWEITE TESTDATEI: `baue()` ruft `process.chdir`, und das ist prozessweit — zwei
@@ -1486,5 +1488,54 @@ describe("MUTATIONSSUITE · das gebaute Bündel zerfällt in Stücke", () => {
       );
     }
     expect(ZIELE.length, "beide Bauläufe brauchen ein eigenes Ziel").toBe(2);
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// DECKEL · der erste geladene Brocken wächst nicht unbemerkt (R-0801, Ladebudget der Weboberfläche)
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// Zielzustand R-0801 wörtlich: „Der erste geladene Brocken der Weboberflaeche ist rund 1,95 Megabyte
+// gross. Ein verbindlicher Deckel von etwa 1,36 Megabyte verhindert, dass er unbemerkt weiterwaechst
+// und die Anwendung langsam startet." Gewählt ist damit die balancierte Stufe (rund −30 % gegen
+// 1,95 MB), nicht „konservativ" (nur einfrieren) und nicht „streng" (−74 %).
+//
+// EIN EIGENER BLOCK, weil es eine dritte Frage ist: KALIBRIERUNG fragt, ob hier DAS Bündel gemessen
+// wird; die MUTATIONSSUITE fragt, ob die Aufteilung gegen den Vorzustand wirkt (Verhältnisse aus
+// demselben Lauf); DIESER Block fragt, ob das ausgelieferte Bündel eine feste Obergrenze hält.
+//
+// WARUM HIER BEWUSST EINE BYTE-ZAHL STEHT, obwohl der Kopf dieser Datei vor festen Byte-Pins warnt
+// (Runde 4): dort sollte ein Pin die WIRKUNG DER AUFTEILUNG messen und wurde vom Wachstum des Produkts
+// rot. Hier ist genau dieses Wachstum der Gegenstand. Wird der Fall rot, ist der Eintritt über den
+// Deckel gewachsen — dann ist der Eintritt zu verkleinern oder die Grenze ausdrücklich neu zu
+// entscheiden, nicht still zu heben.
+//
+// GEMESSEN WIRD DIE EINTRITTS-HÜLLE, nicht nur die Eintrittsdatei: alles, was der Browser STATISCH
+// mitladen muss, bevor überhaupt etwas erscheint. Sonst ließe sich der Deckel unterlaufen, indem
+// Code aus dem Eintritt in ein statisch eingebundenes Nachbarstück wandert — die Eintrittsdatei
+// würde kleiner, der Erstabruf nicht. Die Eintrittsdatei allein wird zusätzlich geprüft, weil sie
+// der „Brocken" im Wortlaut ist.
+//
+// EINHEIT: ausgelieferte, minimierte Bytes (wie `summeJs` und Kalibrierung), dezimal gerechnet:
+// 1,36 MB = 1 360 000 B. Keine Kompression — die Quelle nennt Rohgrößen (1,95 MB / 2,6 MB).
+// Letzte vorliegende Messung (05.09.2026, `e8116ba`): Eintritt 1 285 166 B. Seither ist u. a.
+// `apps/web/src/i18n.ts` (hängt am Eintritt) im Quelltext von 981 515 B auf 1 401 396 B gewachsen;
+// ob der heutige Eintritt unter dem Deckel liegt, entscheidet erst dieser Lauf.
+describe("DECKEL · der erste geladene Brocken wächst nicht unbemerkt (R-0801)", () => {
+  const EINTRITT_DECKEL_BYTES = 1_360_000;
+
+  it("Eintrittsdatei und Eintritts-Hülle bleiben unter 1,36 MB", () => {
+    const g = GETEILT as Bau;
+    expect(g.eintritt, "kein Eintritts-Stück in der Rollup-Ausgabe").not.toBeNull();
+    const eintritt = g.eintritt?.bytes ?? 0;
+    const huelleDateien = huelle(g, g.eintritt ? [g.eintritt.fileName] : []);
+    const huelleBytes = bytes(g, huelleDateien);
+    const messung = `Eintritt ${g.eintritt?.fileName ?? "—"} ${eintritt} B · Eintritts-Hülle ${huelleDateien.size} Stücke ${huelleBytes} B · Deckel ${EINTRITT_DECKEL_BYTES} B · Luft ${EINTRITT_DECKEL_BYTES - huelleBytes} B.`;
+    console.log(`[R-0801] ${messung}`);
+    expect(eintritt, "Eintrittsgröße nicht gemessen").toBeGreaterThan(0);
+    const hinweis =
+      "Der Eintritt ist über den verbindlichen Deckel aus R-0801 gewachsen. Eintritt verkleinern " +
+      "(Nachladen statt statisch einbinden) oder die Grenze ausdrücklich neu entscheiden — nicht still heben.";
+    expect(eintritt, `${messung} ${hinweis}`).toBeLessThanOrEqual(EINTRITT_DECKEL_BYTES);
+    expect(huelleBytes, `${messung} ${hinweis}`).toBeLessThanOrEqual(EINTRITT_DECKEL_BYTES);
   });
 });
