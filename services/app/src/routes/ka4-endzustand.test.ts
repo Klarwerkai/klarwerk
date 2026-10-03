@@ -197,7 +197,8 @@ const fragen = (a: Aufbau, kopf: Record<string, string>) =>
     method: "POST",
     url: "/api/ask",
     headers: { ...kopf, "content-type": "application/json" },
-    payload: { question: FRAGE, locale: "de", mode: "retrieval-only" },
+    // R-0639 Runde 3 (Bens Befund B1): mit Klara-Bindung ist nur ausdrücklich `manual` getippt.
+    payload: { question: FRAGE, locale: "de", mode: "retrieval-only", questionSource: "manual" },
   });
 
 describe("KA4 · D3 · der ownerfreigegebene Endzustand", () => {

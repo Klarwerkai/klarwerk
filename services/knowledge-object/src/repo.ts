@@ -75,6 +75,12 @@ export interface KoSichtbarkeitstrim {
 export interface KoCandidateQuery {
   terms: readonly string[];
   limit: number;
+  /**
+   * AUFNAHME 20260922 (R-0316): `limit` ist dann der GRUNDdeckel; `KoService.findCandidates` hebt
+   * ihn nach der Bestandsgröße an (`bestandsgerechterKandidatendeckel`). Ohne Angabe gilt `limit`
+   * unverändert — Textprüfung und Wissensprüfung melden ihren Deckel als Prüfumfang.
+   */
+  deckelWaechstMitBestand?: boolean;
   /** D5 (KI aus): s. `KoSearchQuery.vorInhaltsabruf` — reist mit in die Suche und vor `listByIds`. */
   vorInhaltsabruf?: () => void;
 }
@@ -241,7 +247,7 @@ export interface KoRepo {
   // die Projektion der AKTIVEN KO-Version. Was hier steht, ist ein Test-/Bibliotheksweg.
   //
   // WER AN DER KANDIDATENWAHL ETWAS ÄNDERN WILL, ÄNDERT ES DORT — und muss nicht suchen:
-  // `services/knowledge-object/src/service.ts:3827-3856` ist der Rumpf, `service.ts:3838` der
+  // `services/knowledge-object/src/service.ts:3836-3866` ist der Rumpf, `service.ts:3847` der
   // Aufruf von `findSearchHits`. Das ist der EINE Wegweiser mit Datei und Zeile; die Marken in
   // `repo-pg.ts` verweisen hierher, statt eine zweite Wahrheit zu führen.
   //
@@ -453,6 +459,21 @@ export class InMemoryKoRepo implements KoRepo {
     this.items.set(ko.id, { ...ko, rowVersion: expected + 1 });
     this.schreibstand.geaendert();
     return Promise.resolve();
+  }
+
+  // Auftrag gesamt-dubletten-rueckzug (Runde 2, Bens BEN-R3-1): Rückstellung eines Vorgangs ohne
+  // Datenbank. Setzt die Zeile EXAKT auf ihr Vorher-Abbild (einschliesslich `rowVersion`) bzw.
+  // entfernt sie, wenn es keines gab — ohne CAS, denn es nimmt nur den eigenen, eben geschriebenen
+  // Schritt eines gescheiterten Vorgangs zurück. Einziger Aufrufer: die Rücknahme-Klammer der
+  // Kompositionswurzel (services/app/src/speicher-vorgang.ts). Keine Schnittstellenmethode: in
+  // PostgreSQL übernimmt das ROLLBACK.
+  zuruecksetzen(id: string, vorher: KnowledgeObject | undefined): void {
+    if (vorher) {
+      this.items.set(id, vorher);
+    } else {
+      this.items.delete(id);
+    }
+    this.schreibstand.geaendert();
   }
 
   // SCRUM-523 P.3 (WP-A3): konsistent zu PgKoRepo.delete — 0 gelöschte Zeilen (KO bereits weg,

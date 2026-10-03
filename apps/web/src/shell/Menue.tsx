@@ -5,6 +5,7 @@ import {
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
 } from "react";
@@ -88,12 +89,14 @@ export function useMenue(): MenueZustand {
   }, [offen]);
 
   // Beim Öffnen: Fokus auf die erste Zeile, damit die Tastatur sofort im Menü ist.
+  // FE-002: hat die Fläche KEINE Zeile (Meldungen: leere Liste), bekommt die Fläche selbst den
+  // Fokus — sonst bliebe er auf dem Auslöser, und Escape erreichte die Fläche nie.
   useEffect(() => {
     if (!offen) {
       return;
     }
     const erste = zeilenIn(flaecheRef.current)[0];
-    erste?.focus();
+    (erste ?? flaecheRef.current)?.focus();
   }, [offen]);
 
   const onKeyDown = useCallback(
@@ -127,6 +130,45 @@ export function useMenue(): MenueZustand {
   return { offen, oeffnen, schliessen, umschalten, ausloeserRef, flaecheRef, flaecheId, onKeyDown };
 }
 
+/** Mindestabstand der geöffneten Fläche zum Fensterrand (px) — Platz auch für den Fokusring. */
+const FENSTER_RAND = 8;
+
+/**
+ * FE-002 (Ben, Kandidat b18faa93): die Fläche hängt rechts an ihrem Auslöser (`right-0`). Bei 390 px
+ * steht das Zahnrad so weit links, dass die 260 px breite Fläche links aus dem Fenster ragte —
+ * Beschriftungen und Fokusring waren abgeschnitten. Nach dem Öffnen und bei jeder Fenstergrösse wird
+ * deshalb gemessen und eine überstehende Fläche waagerecht ins Fenster geschoben. Steht nichts über
+ * (Desktop), bleibt sie unverändert am Auslöser. Ohne Layout (jsdom: Breite 0) wird nichts verschoben.
+ */
+function useImFenster(menue: MenueZustand): void {
+  useLayoutEffect(() => {
+    const flaeche = menue.flaecheRef.current;
+    if (!menue.offen || !flaeche) {
+      return undefined;
+    }
+    const anpassen = (): void => {
+      flaeche.style.transform = "";
+      const r = flaeche.getBoundingClientRect();
+      if (r.width <= 0) {
+        return;
+      }
+      const fenster = document.documentElement.clientWidth || window.innerWidth;
+      let versatz = 0;
+      if (r.left < FENSTER_RAND) {
+        versatz = FENSTER_RAND - r.left;
+      } else if (r.right > fenster - FENSTER_RAND) {
+        versatz = fenster - FENSTER_RAND - r.right;
+      }
+      if (versatz !== 0) {
+        flaeche.style.transform = `translateX(${versatz}px)`;
+      }
+    };
+    anpassen();
+    window.addEventListener("resize", anpassen);
+    return () => window.removeEventListener("resize", anpassen);
+  }, [menue.offen, menue.flaecheRef]);
+}
+
 /** Die aufklappende Fläche (Pages-Art). Rendert nur, wenn offen. */
 export function MenueFlaeche({
   menue,
@@ -141,6 +183,7 @@ export function MenueFlaeche({
   children: ReactNode;
   testid?: string;
 }): JSX.Element | null {
+  useImFenster(menue);
   if (!menue.offen) {
     return null;
   }
@@ -151,8 +194,9 @@ export function MenueFlaeche({
       role="menu"
       aria-label={label}
       data-testid={testid}
+      tabIndex={-1}
       onKeyDown={menue.onKeyDown}
-      className={`kw-menue absolute right-0 top-[calc(100%+8px)] z-30 flex w-[260px] flex-col rounded-[10px] border border-hairline bg-surface p-1.5 text-text shadow-popover ${className}`}
+      className={`kw-menue absolute right-0 top-[calc(100%+8px)] z-30 flex w-[260px] max-w-[calc(100vw-16px)] flex-col rounded-[10px] border border-hairline bg-surface p-1.5 text-text shadow-popover ${className}`}
     >
       {children}
     </div>

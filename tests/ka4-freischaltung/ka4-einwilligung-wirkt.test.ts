@@ -226,7 +226,11 @@ const fragen = (app: FastifyInstance, kopf: Record<string, string>, mode = "retr
     url: "/api/ask",
     headers: { ...kopf, "content-type": "application/json" },
     payload:
-      mode === "" ? { question: FRAGE, locale: "de" } : { question: FRAGE, locale: "de", mode },
+      // R-0639 Runde 3 (Bens Befund B1): das Fenster meldet eine getippte Frage als `manual`;
+      // mit Klara-Bindung zählt „fehlt" als Dokumenttext.
+      mode === ""
+        ? { question: FRAGE, locale: "de", questionSource: "manual" }
+        : { question: FRAGE, locale: "de", mode, questionSource: "manual" },
   });
 
 /**
@@ -323,19 +327,29 @@ describe("JOB 3033 · KA4 · die Einwilligung hebt die Enge — und nur sie", ()
     await mit.app.close();
   });
 
-  it("KA4-F7 · DER KONSOLEN-ASK ohne `mode` ist von KA4 gar nicht berührt", async () => {
-    // Er kennt die Weiche nicht (`ask-routes.ts:443`) und darf sich durch eine Einwilligung nicht
-    // verändern — weder gelockert noch verengt, in keinem Zustand des Schalters.
+  it("KA4-F7 · DER KONSOLEN-ASK ohne `mode` und OHNE Bindung ist von KA4 gar nicht berührt", async () => {
+    // Er kennt die Weiche nicht und darf sich durch eine Einwilligung nicht verändern.
     const KONSOLE = { verschlossenSichtbarFuer: expect.any(Function) };
     const a = await aufbauen();
     await fragen(a.app, {}, "");
     expect(await einwilligen(a)).toBe("granted");
-    await fragen(a.app, a.bindung, "");
-    // Beide Läufe gegen DIESELBE Form: `toEqual` vergleicht Funktionen sonst über die Identität,
-    // und zwei Aufrufe erzeugen zwangsläufig zwei Filterinstanzen.
+    await fragen(a.app, {}, "");
     expect(a.gesehen[0]).toEqual(KONSOLE);
     expect(a.gesehen[1]).toEqual(KONSOLE);
-    expect(Object.keys(a.gesehen[1] ?? {})).toEqual(Object.keys(a.gesehen[0] ?? {}));
+    await a.app.close();
+  });
+
+  it("KA4-F7b · eine GEBUNDENE Anfrage ohne `mode` nimmt dieselbe Weiche wie `retrieval-only`", async () => {
+    // R-0639 Runde 3 (Bens Befund B2): bis hierher galt „ohne `mode` = Konsole, auch mit
+    // Bindung". Damit lief eine gebundene Anfrage mit Dokumenttext an Einwilligung, Riegel und
+    // Vertraulichkeit vorbei. Die Einwilligungs- und Dokumenttext-Prüfung hängt jetzt NICHT mehr
+    // am optionalen Modusfeld: ohne Einwilligung die Enge, mit Einwilligung der freigegebene Weg.
+    const a = await aufbauen();
+    await fragen(a.app, a.bindung, "");
+    expect(await einwilligen(a)).toBe("granted");
+    await fragen(a.app, a.bindung, "");
+    expect(a.gesehen[0]).toEqual(ENGE);
+    expect(a.gesehen[1]).toEqual(MIT_EINWILLIGUNG);
     await a.app.close();
   });
 });

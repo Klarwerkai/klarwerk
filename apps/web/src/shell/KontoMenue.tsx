@@ -9,14 +9,20 @@ import { useRole } from "../app/RoleContext";
 // wie im schmalen Kopfband und der Off-Canvas-Drawer (DrawerMenue.tsx). Ein Ort, jede Seite.
 import { SprachSchalter } from "../components/SprachSchalter";
 import { DarstellungWahl } from "./Darstellung";
-import { Meldungen, type MeldungenZustand, useMeldungenZustand } from "./Meldungen";
+import { Meldungen, type MeldungenZustand } from "./Meldungen";
 import { MenueFlaeche, MenueTrenner, MenueZeile, useMenue } from "./Menue";
 
 // ================================================================================================
 // JOB 3060 · H1 — DAS KONTO-MENÜ: Name und Rolle · Meldungen · Mobil · Darstellung · Profil ·
 // Abmelden. Auslöser ist der Konto-Kreis (30 px, Initialen aus der bestätigten Sitzung, sonst
-// leer); ein kleiner Punkt daran meldet ungelesene Meldungen (nur nach frischem Abruf, §9).
+// leer).
 // ================================================================================================
+//
+// FE-002 (Pedi, 26.09.2026): der kleine Punkt am Kreis, der bis hierher ungelesene Meldungen
+// meldete, ist fort. Ungelesene Meldungen zeigt jetzt der eigene, benannte Zugang „Meldungen"
+// neben dem Kreis (`MeldungenMenue.tsx`) — mit Zahl und vor dem Öffnen dieses Menüs. Der Kreis ist
+// damit nur noch, was er sein soll: das Konto. Die Zeile „Meldungen" hier drin BLEIBT (kein Weg
+// fällt weg); sie liest denselben Zustand, den das Kopfband einmal hält und hereinreicht.
 
 /** „Peter Kohnert" → „PK", „Pia" → „PI" — aus der bestätigten Sitzung, sonst leer. */
 function initialen(name: string | undefined): string {
@@ -81,24 +87,17 @@ export function KontoEintraege({
 }
 
 /** Der Konto-Kreis und seine aufklappende Fläche. */
-export function KontoMenue(): JSX.Element {
+export function KontoMenue({ meldungen }: { meldungen: MeldungenZustand }): JSX.Element {
   const { t } = useTranslation();
   const { user } = useSession();
   const menue = useMenue();
   const { pathname } = useLocation();
   const { schliessen } = menue;
-  // Der Meldungs-Zustand lebt HIER (immer montiert), nicht in der Liste (nur bei offenem Menü).
-  const meldungen = useMeldungenZustand();
   // biome-ignore lint/correctness/useExhaustiveDependencies: bewusst nur auf Pfadwechsel schließen.
   useEffect(() => {
     schliessen(false);
   }, [pathname, schliessen]);
   const kuerzel = initialen(user?.name);
-  const ungelesen = meldungen.frisch ? meldungen.unreadCount : 0;
-  const label =
-    ungelesen > 0
-      ? `${t("kopfband.konto")} · ${t("kopfband.ungelesen", { count: ungelesen })}`
-      : t("kopfband.konto");
   // JOB 3085 · Q4 (Pedis Entscheidung 21, 05.09.2026) — DIE FARBE DES KREISES.
   // Er trägt den vollen Funke des Mockups (Main.dc.html Z.32, #E8630A) und deshalb NACHT-Initialen
   // (`text-ink`, #0E1626, 5,36:1) statt Weiß (3,38:1, unter AA). Der Kreis ist damit die eine
@@ -112,7 +111,8 @@ export function KontoMenue(): JSX.Element {
       <button
         type="button"
         ref={menue.ausloeserRef}
-        aria-label={label}
+        aria-label={t("kopfband.konto")}
+        title={t("kopfband.konto")}
         aria-haspopup="menu"
         aria-expanded={menue.offen}
         aria-controls={menue.offen ? menue.flaecheId : undefined}
@@ -121,13 +121,6 @@ export function KontoMenue(): JSX.Element {
         className="kw-konto-kreis relative grid h-[30px] w-[30px] place-items-center rounded-[50%] bg-brand text-[12px] font-bold leading-none text-ink outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
       >
         {kuerzel}
-        {ungelesen > 0 ? (
-          <span
-            aria-hidden="true"
-            data-testid="konto-punkt"
-            className="kw-konto-punkt absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-ink bg-trust-crit-fill"
-          />
-        ) : null}
       </button>
       <MenueFlaeche menue={menue} label={t("kopfband.konto")} testid="konto-menue">
         <KontoEintraege meldungen={meldungen} onNavigiert={() => schliessen(false)} />

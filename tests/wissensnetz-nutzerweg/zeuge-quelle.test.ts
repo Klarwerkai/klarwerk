@@ -109,8 +109,12 @@ describe("JOB 4328 · Zeuge (iv): der Graph wird über das Menü erreicht", () =
     expect(quelle, "das Wissensnetz wird nicht über das Menue erreicht").toContain(
       'inDenBereich("wissensnetz", "/wissensnetz")',
     );
-    expect(quelle, "der Menueausloeser fehlt").toContain('data-testid="kopfband-zahnrad"');
-    expect(quelle, "die Menuegruppe fehlt").toContain('data-testid="zahnrad-weitere-bereiche"');
+    // FE-002: der Auslöser ist seit dem 26.09.2026 „Arbeitsbereiche“ im Kopfband, die Liste steht
+    // darin offen — eine aufzuklappende Menügruppe gibt es nicht mehr.
+    expect(quelle, "der Menueausloeser fehlt").toContain('data-testid="kopfband-arbeitsbereiche"');
+    expect(quelle, "der alte Weg über das Zahnrad steht noch da").not.toContain(
+      'data-testid="zahnrad-weitere-bereiche"',
+    );
   });
 });
 

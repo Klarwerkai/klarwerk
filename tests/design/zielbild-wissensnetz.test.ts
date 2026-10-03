@@ -1196,9 +1196,9 @@ describe("JOB 3052 · D6 · das Wissensnetz des Zielbilds — die echte Seite, g
       );
       expect(knopf, `kein Sprachknopf „${lng}“ auf /profil`).toBeTruthy();
       await s.click(knopf as string);
-      // Zurueck zur Themenkarte ueber das Zahnrad-Menue (Weitere Bereiche) — SPA-Navigation.
-      await s.click('[data-testid="kopfband-zahnrad"]');
-      await s.click('[data-testid="zahnrad-weitere-bereiche"]');
+      // Zurueck zur Themenkarte ueber „Arbeitsbereiche“ im Kopfband — SPA-Navigation (FE-002; bis
+      // dahin Zahnrad → „Weitere Bereiche“).
+      await s.click('[data-testid="kopfband-arbeitsbereiche"]');
       await s.click('[data-testid="bereich-wissensnetz"]');
       await s.waitForFunction(fn("() => location.pathname === '/wissensnetz'"), undefined, {
         timeout: 10_000,

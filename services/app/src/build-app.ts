@@ -136,6 +136,10 @@ import {
   type ModelRunRepo,
   ModelRunService,
   PgModelRunRepo,
+  ProtokollModelRunRepo,
+  lesePreisliste,
+  mitKiTrace,
+  traceKontextAus,
 } from "../../model-runs";
 import {
   ConsoleMailer,
@@ -227,7 +231,7 @@ import {
   type LesevariantenRepo,
   PgLesevariantenRepo,
 } from "./lesevarianten";
-import { sanitizeLogText } from "./log-sanitize";
+import { entferneGeheimeEnvWerte, sanitizeLogText } from "./log-sanitize";
 import { makeAssignmentNotifier } from "./notify";
 // AUFTRAG-mega20 Block C: die modulübergreifende Referenzprüfung lebt in services/app (s. Datei).
 import type { ObjectReferenceSources } from "./object-references";
@@ -278,6 +282,7 @@ import { reasonerRoutes } from "./routes/reasoner-routes";
 // JOB 4086: Adapter #2 des quellneutralen Import-Vertrags — SharePoint/OneDrive.
 import { sharepointImportRoutes } from "./routes/sharepoint-import-routes";
 import { slidesRoutes } from "./routes/slides-routes";
+import { supportKontaktAusUmgebung, supportRoutes } from "./routes/support-routes";
 import { validationRoutes } from "./routes/validation-routes";
 // G27 R2 (Entscheidung 15 §A): der EINE kanonische Startupvertrag der Suchprojektion — von
 // App-Ready hier und von `runSeed()` in `seed.ts` gemeinsam benutzt.
@@ -289,6 +294,7 @@ import { ImportAccessService } from "./services/import-access-service";
 import { KlaraSessionService } from "./services/klara-session-service";
 import { type AnhangQuellen, sichtbarkeitsfilterFuer } from "./sichtbarkeit";
 import { type SlideConverter, createSofficeSlideConverter } from "./slide-converter";
+import { speicherVorgang } from "./speicher-vorgang";
 // JOB 3655: der Startvertrag — die EINE Stelle, die alle Umgebungswerte namentlich führt, den
 // Start bei fehlenden Pflichtwerten verweigert und beim Hochfahren ohne Geheimniswerte berichtet,
 // was diese Instanz hat und was ihr fehlt.
@@ -820,7 +826,7 @@ class FluechtigeAnweisungsablage implements AnweisungRepo {
 // wird vom idempotenten Backfill wiederhergestellt. Ohne Injektion baut sich der KoService seinen
 // In-Memory-Adapter über dasselbe KO-Repo (s. KoServiceDeps.searchProjections).
 export function assembleServices(
-  repos: AppRepos,
+  eingang: AppRepos,
   opts: {
     withTx?: WithTx;
     searchProjections?: KoSearchProjectionRepo;
@@ -850,7 +856,18 @@ export function assembleServices(
     // liegt jetzt in `AppRepos` und kommt wie jedes andere aus `repos.`.
   } = {},
 ): AppServices {
-  const audit = new AuditService({ repo: repos.auditRepo });
+  // Auftrag gesamt-dubletten-rueckzug (Runde 2, Bens BEN-R3-1): ohne Datenbank bekommt der
+  // Rücknahme-Weg (Rückzug/Wiederherstellen) seine eigene Klammer — Vorher-Abbilder der vier
+  // beteiligten Ablagen und zurückgehaltene Journalzeilen (speicher-vorgang.ts). Die erfassenden
+  // Ablagen sind für jeden Aufruf ohne Vorgangskontext durchlässig.
+  const speicher = opts.withTx ? undefined : speicherVorgang(eingang);
+  const repos = speicher?.repos ?? eingang;
+  const audit = new AuditService({
+    repo: repos.auditRepo,
+    // Runde 3 (BEN-R3-3): ohne Datenbank laufen Kettenglieder ausserhalb eines Rücknahme-Vorgangs
+    // unter derselben Sperre wie der Vorgang selbst (speicher-vorgang.ts).
+    ...(speicher ? { kettenSperre: speicher.kettenSperre } : {}),
+  });
   const ko = new KoService({
     repo: repos.koRepo,
     audit,
@@ -862,6 +879,7 @@ export function assembleServices(
     // exactOptionalPropertyTypes: den Key nur setzen, wenn wirklich ein withTx da ist (sonst würde
     // `withTx: undefined` explizit gegen den optionalen KoServiceDeps.withTx?: WithTx verstoßen).
     ...(opts.withTx ? { withTx: opts.withTx } : {}),
+    ...(speicher ? { ruecknahmeKlammer: speicher.klammer } : {}),
     ...(opts.searchProjections ? { searchProjections: opts.searchProjections } : {}),
   });
   // FR-RSN-02/06 + SCRUM-502 R8: echtes Cloud-Modell, wenn der Cloud-Key per Env/Keychain verfügbar ist
@@ -885,12 +903,17 @@ export function assembleServices(
   // gesetzt sind — ebenfalls gecappt (globaler Cap), aber ohne Egress-Wächter (on-prem, kein externer
   // Egress → bedient vertrauliche Inhalte weiter). Werte aus Launcher/Schlüsselbund, nie aus dem Code.
   const cappedLocal = createCappedLocalClientFromEnv();
+  // Aufnahme gesamt-ki-laufprotokoll (V9, R-2071): EIN Schreibweg für alle Läufe — er berechnet die
+  // Kosten aus der Preisliste des Betreibers (`KLARWERK_KI_PREISLISTE`, ohne Vorgabepreise) und
+  // schreibt je Lauf die strukturierte Logzeile `ki_lauf` (verbunden in `buildApp`).
+  const preislisteLesung = lesePreisliste(process.env.KLARWERK_KI_PREISLISTE);
+  const modelRunProtokoll = new ProtokollModelRunRepo(repos.modelRuns, preislisteLesung.preisliste);
   // SCRUM-164: ModelRun-Protokoll mitgeben (No-op-fähig); API-Shape des Reasoners unverändert.
   const reasoner = new Reasoner(
     // JOB 3134: kein `primary` mehr — die externen Anbieter kommen benannt über `cloud` (unten).
     undefined,
     undefined,
-    repos.modelRuns,
+    modelRunProtokoll,
     // SCRUM-386: Presets über das Repo — persistent in Pg bzw. im Dev-Journal der Desktop-App.
     repos.assistPresets,
     // SCRUM-424: zweites Backend (lokaler LLM) als optionaler Provider.
@@ -1279,7 +1302,12 @@ export function assembleServices(
           .map((k) => k.confidentiality ?? "intern"),
     }),
     // SCRUM-165: read-only ModelRun-Sicht über dasselbe Protokoll-Repo wie der Reasoner.
-    modelRuns: new ModelRunService({ repo: repos.modelRuns }),
+    modelRuns: new ModelRunService({
+      repo: modelRunProtokoll,
+      preisliste: preislisteLesung.preisliste,
+      ...(preislisteLesung.fehler ? { preislisteFehler: preislisteLesung.fehler } : {}),
+      protokoll: modelRunProtokoll,
+    }),
     // FR-AUTH-08/FR-VAL-07: SMTP, wenn konfiguriert; sonst sammelnder Fallback ohne Versand.
     mailer: createMailerFromEnv() ?? new ConsoleMailer(),
     // Audit-P3 (SCRUM-397): Gelesen-Status der Glocke — Repo direkt (schmale Modul-API).
@@ -1820,6 +1848,10 @@ export const ERLAUBTE_FEHLERCODES: ReadonlySet<string> = new Set([
   "INVALID_STATUS",
   "INVALID_TYPE",
   "INVALID_UPLOAD_LIMITS",
+  // Dubletten-Rückzug (BEN-R5-4): der Ausgang eines Rückzugs/einer Wiederherstellung ist am
+  // Dev-Journal ungewiss (`JournalAusgangUngewiss`, dev-persist.ts). Darf ins Protokoll: ein
+  // Speicherzustand ohne Nutzertext und ohne Kennung; geht über `http.ts` ohnehin als 503 hinaus.
+  "JOURNAL_AUSGANG_UNGEWISS",
   // D5 (KI aus): der Frageweg ist vom Administrator abgeschaltet (`AskError`, services/ask). Darf ins
   // Protokoll: ein Betriebszustand ohne Nutzertext und ohne Kennung; geht als 503 ohnehin an den Client.
   "KI_ABGESCHALTET",
@@ -2036,9 +2068,27 @@ export function senkeUeberWert(
   }
   const ergebnis: Record<string, unknown> = {};
   for (const [schluessel, inhalt] of Object.entries(wert)) {
-    ergebnis[schluessel] = senkeUeberWert(inhalt, env, tiefe + 1);
+    // Ben R3 B8: die Trace-Ausnahme setzt NUR die Token-Regel aus — der Wert einer
+    // secret-benannten Env-Variablen wird auch unter einem Trace-Feldnamen entfernt.
+    ergebnis[schluessel] = istTraceKennung(schluessel, inhalt)
+      ? entferneGeheimeEnvWerte(inhalt, env)
+      : senkeUeberWert(inhalt, env, tiefe + 1);
   }
   return ergebnis;
+}
+
+// Aufnahme gesamt-ki-laufprotokoll (Ben R2 B5, Tracing): Regel 4 von `sanitizeLogText` liest jedes
+// Wort ab 24 Zeichen als Token — eine W3C-Trace-Kennung (32 Hexzeichen) wurde damit zu `[redacted]`,
+// und die Logzeile ließ sich ihrem Trace nicht mehr zuordnen. Die Ausnahme ist so eng wie möglich:
+// NUR unter genau diesen drei Feldnamen und NUR in der W3C-Form (16 oder 32 Kleinbuchstaben-Hex).
+// Derselbe Wert unter jedem anderen Namen und jeder andere Wert unter diesen Namen bleibt der
+// Bereinigung unterworfen (tests/ki-lauf-protokoll/kosten-und-auswertung.test.ts, L1); die Werte
+// secret-benannter Env-Variablen werden auch unter diesen Namen entfernt (Ben R3 B8, L2).
+const TRACE_FELDER: ReadonlySet<string> = new Set(["traceId", "spanId", "parentSpanId"]);
+const TRACE_KENNUNG = /^(?:[0-9a-f]{16}|[0-9a-f]{32})$/;
+
+function istTraceKennung(schluessel: string, inhalt: unknown): inhalt is string {
+  return TRACE_FELDER.has(schluessel) && typeof inhalt === "string" && TRACE_KENNUNG.test(inhalt);
 }
 
 /**
@@ -2153,6 +2203,24 @@ export function buildApp(
   // Fehler wird formtreu an Fastifys Standard-Fehlerbehandlung weitergereicht (Validierungs-400 etc.
   // unverändert).
   app.setErrorHandler(modelBusyErrorHandler);
+  // Aufnahme gesamt-ki-laufprotokoll (R-2071): je KI-Lauf eine strukturierte Logzeile `ki_lauf`
+  // (nur Metadaten, s. `kiLaufLogzeile`) über den App-Logger mit seinen Redaktionsregeln.
+  // Ben R2 B5 (R-2071, Tracing): je Anfrage ein Trace-Kontext nach W3C Trace Context — ein
+  // eingehender `traceparent` wird fortgesetzt, sonst entsteht ein neuer Trace. Jeder KI-Lauf der
+  // Anfrage trägt `traceId`, seinen Span, den Span der Anfrage und die Anfragekennung (`request.id`,
+  // dieselbe wie in den Anfrage-Logzeilen). Geöffnet im `preHandler`, also NACH dem Lesen des
+  // Körpers: die Stream-Ereignisse des Körpers laufen sonst außerhalb des Kontexts, und der Handler
+  // samt aller asynchronen Fortsetzungen läuft hier sicher darin.
+  app.addHook("preHandler", (request, _reply, done) => {
+    mitKiTrace(traceKontextAus(request.headers.traceparent, request.id), done);
+  });
+  // Optional aufgerufen: Prüfaufbauten ersetzen `modelRuns` teils durch eine schmale Attrappe nur
+  // mit `recent` (tests/deploy-health-commit) — die App muss auch dann entstehen.
+  services.modelRuns.logAn?.((zeile) => app.log.info(zeile, "ki_lauf"));
+  const preisgrundlage = services.modelRuns.preisgrundlage?.();
+  if (preisgrundlage?.fehler) {
+    app.log.warn({ event: "ki_preisliste" }, preisgrundlage.fehler);
+  }
   // G27 R1 / Entscheidung 06 §3 — DIE READINESS-BINDUNG.
   //
   // `onReady` ist der von Fastify vorgesehene asynchrone Start-/Ready-Pfad: `app.ready()`,
@@ -2601,6 +2669,24 @@ export function buildApp(
     konflikteGeschlossen: await services.conflicts.onKoRemoved(koId, actor, tx),
     ueberschneidungenGeschlossen: await services.overlaps.onKoRemoved(koId, actor, tx, ruecknahme),
   }));
+  // ==============================================================================================
+  // Auftrag gesamt-dubletten-rueckzug (R-1540/R-1547) — DER WEICHE WEG BEKOMMT DENSELBEN VERTRAG.
+  // ==============================================================================================
+  //
+  // Der Rückzug in den Papierkorb räumt jetzt IN seiner Transaktion auf (KoService.delete →
+  // `imRuecknahmeVorgang`), nicht mehr im Nachlauf der Löschroute — der ist entfernt. Dieselben zwei
+  // Dienste wie oben, dieselbe Obergrenze (mengenbasiertes Schliessen + ein Beleg je Befund).
+  // `ruecknahme` stammt hier nicht aus einer Vorablesung, sondern aus dem Dienst selbst: beim
+  // weichen Löschen kennt er Löscher und Autor schon.
+  //
+  // Das Wiederherstellen (KoService.restore) fährt über denselben Weg, ruft diesen Haken aber NICHT:
+  // nach Pedis Entscheidung (entscheidung:43017d60) stellt es nur den eigenen Beitrag wieder her.
+  // Weder Überschneidungsbefunde noch Konflikte werden dabei wieder geöffnet; die Gegenseite bleibt
+  // unangetastet.
+  services.ko.setRuecknahmeTxCleanup(async (koId, actor, tx, ruecknahme) => ({
+    konflikteGeschlossen: await services.conflicts.onKoRemoved(koId, actor, tx),
+    ueberschneidungenGeschlossen: await services.overlaps.onKoRemoved(koId, actor, tx, ruecknahme),
+  }));
   // SCRUM-523 P.3 (WP2): der vorgeschaltete, NICHT transaktionsgebundene Haken behält genau EIN
   // Mitglied — den Embedding-Vorfilter. Er gehört nicht in die Datenbank-Transaktion: sein Speicher
   // ist ein eigener (Vektor-Store, kein Pg-Client), ein Rollback nähme ihn nicht zurück, und sein
@@ -2907,6 +2993,7 @@ export function buildApp(
         settings: services.overlapSettings,
         audit: services.audit,
         kos: koSichtbarkeit,
+        papierkorb: { get: (id: string) => services.ko.papierkorbFakten(id) },
       },
       guards,
     ),
@@ -2961,7 +3048,8 @@ export function buildApp(
   );
   // SCRUM-491 Slice 5: /api/check-text existiert NUR bei aktivem Add-on-Flag — sonst gar nicht
   // registriert → Endpunkt existiert nicht → bit-identisch zum heutigen Verhalten. Deterministische
-  // Stufe-1-Dry-Run-Prüfung (validated-only, kein Modell, keine Persistenz).
+  // Stufe-1-Dry-Run-Prüfung (kein Modell, keine Persistenz; nur Validiertes gilt allein für den
+  // Add-in-Pfad, der Session-Pfad prüft seit JOB 3020 auch Ungeprüftes — check-text-routes.ts).
   if (addonApiEnabled()) {
     app.register(
       checkTextRoutes(
@@ -3035,6 +3123,10 @@ export function buildApp(
   app.register(reasonerRoutes({ ...services, ka4: klaraSessions }, guards));
   // Klara Stufe 2 (Pedi 05.07.): KI-gestuetzte Hilfe-Antwort aus Hilfe-Schnipseln (help-routes).
   app.register(helpRoutes({ reasoner: services.reasoner }, guards));
+  // R-1064: der vom Betreiber festgelegte Supportweg dieser Installation (optional, kein
+  // Pflichtwert für den Start). Gelesen EINMAL hier beim Aufbau; Zustände und Prüfung in
+  // support-routes.ts.
+  app.register(supportRoutes({ kontakt: supportKontaktAusUmgebung(process.env) }, guards));
   // AUFTRAG-mega74 BLOCK C (G2): der Anhang-Lesepfad erfährt hier — und nur hier —, welche
   // Wissensobjekte einen Anhang tragen. `services/object-store` darf das nicht selbst wissen
   // (dieselbe Modulgrenze wie object-references.ts); die Kompositionswurzel reicht den Zugang.

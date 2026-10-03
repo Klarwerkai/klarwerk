@@ -162,7 +162,7 @@ function knopf(): HTMLButtonElement {
 function palettenFelder(): HTMLInputElement[] {
   return [
     ...container.querySelectorAll<HTMLInputElement>(
-      `input[aria-label="${i18n.t("cmd.suchfeld")}"]`,
+      `input[aria-label="${i18n.t("fe002.seiteFinden")}"]`,
     ),
   ];
 }
@@ -230,9 +230,10 @@ describe("JOB 3503 · 3b-A · der Knopf steht sichtbar im Kopfband", () => {
   it("er trägt den vorhandenen Namen „Gehe zu …“ UND die Tastenkombination ⌘K", async () => {
     await montiere();
     const k = knopf();
-    // Der Name kommt aus derselben Quelle wie die Zahnrad-Zeile — kein zweiter Textschlüssel.
-    expect(k.textContent).toContain(i18n.t("menue.schnellnavigation"));
-    expect(i18n.t("menue.schnellnavigation")).toBe("Gehe zu …");
+    // Der Name kommt aus derselben Quelle wie die Zeile unter „Arbeitsbereiche" (FE-002).
+    expect(k.textContent).toContain(i18n.t("fe002.seiteFinden"));
+    // FE-002 (26.09.2026): der Name sagt jetzt, WAS gefunden wird — Seiten, nicht Wissen.
+    expect(i18n.t("fe002.seiteFinden")).toBe("Seite finden");
     // Und die Kombination ist am Knopf ERKENNBAR (Auftrag §3b), nicht bloss im Hintergrund aktiv.
     expect(k.textContent, "die Tastenkombination steht nicht am Knopf").toContain("⌘K");
     // Ein Knopf, kein Verweis: er navigiert nicht, er öffnet eine Fläche.
@@ -243,7 +244,7 @@ describe("JOB 3503 · 3b-A · der Knopf steht sichtbar im Kopfband", () => {
   it("auf Englisch trägt derselbe Knopf den englischen Namen — und dasselbe Zeichen", async () => {
     await i18n.changeLanguage("en");
     await montiere();
-    expect(knopf().textContent).toContain("Go to …");
+    expect(knopf().textContent).toContain("Find page");
     expect(knopf().textContent).toContain("⌘K");
     await i18n.changeLanguage("de");
   });

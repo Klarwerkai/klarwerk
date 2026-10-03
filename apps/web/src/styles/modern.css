@@ -177,9 +177,17 @@
 [data-theme="modern"] .kw-kopfband .kw-kopfband-zahnrad:hover {
   color: rgb(var(--kw-shell-fg));
 }
-/* Der Punkt am Konto-Kreis (ungelesene Meldungen) trägt einen Rand in der Farbe der Fläche. */
-[data-theme="modern"] .kw-kopfband .kw-konto-punkt {
-  border-color: rgb(var(--kw-night));
+/* FE-002: „Arbeitsbereiche" und der Meldungszugang tragen die Farben der Punkte bzw. des
+   Zahnrads — gedämpft, beim Zeigen Papier. Der frühere Punkt am Konto-Kreis ist fort; ungelesene
+   Meldungen zählt jetzt der Meldungszugang selbst (shell/MeldungenMenue.tsx). */
+[data-theme="modern"] .kw-kopfband .kw-kopfband-bereiche,
+[data-theme="modern"] .kw-kopfband .kw-kopfband-meldungen {
+  color: rgb(var(--kw-shell-muted));
+}
+[data-theme="modern"] .kw-kopfband .kw-kopfband-bereiche:hover,
+[data-theme="modern"] .kw-kopfband .kw-kopfband-bereiche[aria-expanded="true"],
+[data-theme="modern"] .kw-kopfband .kw-kopfband-meldungen:hover {
+  color: rgb(var(--kw-shell-fg));
 }
 
 /* Die Menüs des Kopfbands (Zahnrad, Konto) sind Karten nach Pages-Art: Papier, Linie, Licht

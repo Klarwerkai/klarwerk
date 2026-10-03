@@ -1208,6 +1208,15 @@ export const TABELLE: Zeile[] = [
     erwartet: NUR_LESEN,
   },
   {
+    // Aufnahme gesamt-ki-laufprotokoll (V9, R-2071): die Zeitraum-Auswertung, dieselbe Lesestufe.
+    gruppe: "modelRunRoutes",
+    methode: "GET",
+    pfad: "/api/model-runs/auswertung",
+    belegstelle: "services/app/src/routes/model-runs-routes.ts:53",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
     gruppe: "notificationsRoutes",
     methode: "GET",
     pfad: "/api/notifications",
