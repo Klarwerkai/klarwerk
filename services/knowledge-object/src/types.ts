@@ -478,6 +478,27 @@ export interface KnowledgeObject {
   // es wie `sources`); die Claim-Recovery findet darüber ein bereits erzeugtes KO — auch im
   // Papierkorb.
   importCandidateId?: string;
+  // ============================================================================================
+  // R-0139 / FR-EXT-02 (aufnahme:20260922:gesamt-import-adoption:herkunft-identitaet) — DASS DIESES
+  // OBJEKT IMPORTIERT IST, STEHT AM OBJEKT, UND ZWAR FÜR BEIDE IMPORTWEGE GLEICH.
+  // ============================================================================================
+  //
+  // Bis hierher trug nur der Kandidaten-Accept eine Spur (`importCandidateId`); ein über
+  // `POST /api/library/import` (importJson) eingespieltes Objekt war von einem frei erfassten nicht
+  // zu unterscheiden — die Herkunft „importiert" ging an der Persistenzgrenze verloren, genau wie
+  // `origin` vor JOB 679.
+  //
+  //   · "library_import"   — direkter JSON-Import (`LibraryService.importJson`).
+  //   · "import_candidate" — Prüfwarteschlange → Annehmen (`acceptToKo`); die Quelle selbst steht
+  //                          dann in `sources` (Anker mit provider/externalId/sourceVersion) bzw.
+  //                          über `importCandidateId` am Kandidaten.
+  //
+  // NUR SERVERPFADE SETZEN DAS FELD. Die öffentlichen Schreibrouten verwerfen es wie `sources` und
+  // `importCandidateId` (ko-routes.ts) — sonst könnte jeder mit `ko.create` ein Objekt als
+  // importiert ausgeben. Additiv im JSONB, keine Migration. FEHLT das Feld, ist das Objekt nicht
+  // über einen der beiden Importwege entstanden ODER Altbestand von vor dieser Regel — ein Backfill
+  // findet bewusst nicht statt, weil er für importJson-Altbestand raten müsste.
+  importedVia?: "library_import" | "import_candidate";
   // WP-SUBMIT-ASYNC (Pedis R3 21.07.): Status der HINTERGRUND-KI-Prüfung nach dem Einreichen —
   // additiv im JSONB, keine Migration; Altbestand ohne Feld = kein Prüf-Job. Die Ergebnis-Signale
   // (Konflikte/Überschneidungen) entstehen unverändert in ihren Services — aiCheck trägt nur den

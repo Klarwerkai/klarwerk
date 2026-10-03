@@ -426,6 +426,9 @@ export interface CreateKoInput {
   // setzt ihn; die öffentlichen Schreibrouten verwerfen das Feld wie `sources` (sonst könnte
   // ein Client die Crash-Recovery eines fremden Review-Claims kapern).
   importCandidateId?: string;
+  // R-0139 / FR-EXT-02: der Importweg (Begründung am Modell, types.ts). Nur die beiden Importwege
+  // setzen ihn; die öffentlichen Schreibrouten verwerfen das Feld wie `importCandidateId`.
+  importedVia?: KnowledgeObject["importedVia"];
   // JOB 557: das Eigentümer-Aggregat ab Erfassen — für SERVERPFADE (Import, Seed, interne Anlage),
   // die die Verantwortung schon kennen.
   //
@@ -2093,6 +2096,8 @@ export class KoService {
       // WP-SHIP8-CLOSE-3/4 (bens ROT-1): stabiler Kandidaten-Anker des Import-Accepts (DB-unique
       // erzwungen — der Insert eines zweiten KO desselben Kandidaten scheitert am Index/Guard).
       ...(input.importCandidateId ? { importCandidateId: input.importCandidateId } : {}),
+      // R-0139 / FR-EXT-02: der Importweg — dieselbe Bauform, kein stiller Default.
+      ...(input.importedVia ? { importedVia: input.importedVia } : {}),
       // JOB 557: das Eigentümer-Aggregat nur setzen, wenn der Aufrufer eines MITBRINGT — dieselbe
       // Bauform wie `confidentiality` und `origin` daneben. KEIN stiller Default auf den Autor: ein
       // Objekt ohne benannte Verantwortung bleibt ein Objekt ohne benannte Verantwortung, und genau

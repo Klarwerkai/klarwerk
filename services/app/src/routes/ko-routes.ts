@@ -1293,11 +1293,19 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
           // gewesen — und wer ein Objekt anlegt, könnte damit die Nacharbeit eines fremden
           // Menschen erklären. Serverwerte werden hier nicht aus ungeprüftem Clientspread geerbt;
           // der autorisierte Weg ist die Aktion `ownership` (Recht `ko.validate`) weiter unten.
+          // R-0139 / FR-EXT-02: `origin` und `importedVia` ebenfalls verwerfen. Beide sind
+          // HERKUNFTSAUSSAGEN — `origin` prüft allein der Entwurfsweg (`normalizeOriginIn`,
+          // services/capture), `importedVia` setzen allein die Importwege. `KoService.create` prüft
+          // keines von beiden nach; über diesen Spread hätte jeder mit `ko.create` ein Objekt als
+          // „aus Word" oder „importiert" ausgeben können. Kein Client dieser Route sendet sie
+          // (Capture.tsx `createPayload`).
           const {
             reviewerIds,
             sources: _ignoredSources,
             importCandidateId: _ignoredAnchor,
             ownership: _ignoredOwnership,
+            origin: _ignoredOrigin,
+            importedVia: _ignoredImportedVia,
             ...input
           } = request.body;
           // ==========================================================================================
@@ -1581,9 +1589,12 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
           // Dieselbe Verwerfung wie POST /api/kos: Herkunfts-/Vertrauensanker und der Kandidaten-
           // Anker kommen NIE vom Client. Was an Quellen entsteht, entsteht unten aus den geprüften
           // Dokumenten — nicht aus diesem Feld.
+          // R-0139 / FR-EXT-02: `origin` und `importedVia` aus demselben Grund wie an POST /api/kos.
           const {
             sources: _ignoredSources,
             importCandidateId: _ignoredAnchor,
+            origin: _ignoredOrigin,
+            importedVia: _ignoredImportedVia,
             ...rest
           } = body.create ?? ({} as Omit<CreateKoInput, "author">);
           input = { ...rest, author: user.id } as CreateKoInput;

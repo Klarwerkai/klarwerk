@@ -1671,6 +1671,8 @@ export class LibraryService {
         // WP-SHIP8-CLOSE-3/4 (bens ROT-1): Kandidaten-Anker VOR dem Endstatus des Kandidaten —
         // Recovery und Insert-or-Adopt erkennen daran eine bereits gelungene Erstanlage.
         ...(candidateId ? { importCandidateId: candidateId } : {}),
+        // R-0139 / FR-EXT-02: als importiert gekennzeichnet (Begründung am Modell, types.ts).
+        importedVia: "import_candidate",
       });
       return ko.id;
     } catch (err) {
@@ -2159,6 +2161,10 @@ export class LibraryService {
         // Ersatz). `KoService.create` sanitisiert ihn danach wie jeden anderen Rumpf
         // (`cleanBody` → `sanitizeHtml`); dieser Weg öffnet also kein zweites, ungefiltertes Tor.
         ...(item.bodyHtml ? { bodyHtml: item.bodyHtml } : {}),
+        // R-0139 / FR-EXT-02: bis hierher war ein so eingespieltes Objekt von einem frei erfassten
+        // nicht zu unterscheiden — es trug weder Kandidaten-Anker noch Quelle. Jetzt steht der Weg
+        // dauerhaft am Objekt (Begründung am Modell, knowledge-object/src/types.ts).
+        importedVia: "library_import",
       });
       exakt.set(key, erzeugt.id);
       bestand.push(erzeugt);
