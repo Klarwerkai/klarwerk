@@ -283,7 +283,8 @@ async function kontaktPruefen(
     // abgefangen und abgebrochen — beobachtet wird der VERSUCH, nicht eine Verbindung.
     const eigenerHost = new URL(eigen.url).host;
     const [anfrage] = await Promise.all([
-      f.kontext.waitForEvent("request", {
+      // Erst nach dem Abbruch ist auch der Route-Handler mit seinem Beobachtungsbeleg fertig.
+      f.kontext.waitForEvent("requestfailed", {
         predicate: (r) => new URL(r.url()).host === eigenerHost,
         timeout: 15_000,
       }),
