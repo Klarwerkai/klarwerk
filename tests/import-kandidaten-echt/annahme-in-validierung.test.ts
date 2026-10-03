@@ -11,13 +11,16 @@
 //     gekennzeichnet (`origin: "import"`) und mit dem Kandidaten-Anker (R-0180/R-2108),
 //   · dieses Objekt steht auf dem Validierungs-Board und trägt dort die Herkunft (R-1736),
 //   · bei externer Quelle (Confluence/SharePoint-Strang, `externalUpsert`) reist die Originalquelle
-//     als Herkunftsanker mit,
-//   · die öffentlichen Schreibrouten können die Kennzeichnung nicht fälschen.
+//     als Herkunftsanker mit — und (bens F2) eine sichere Original-URL bleibt auch OHNE externalId
+//     bzw. bei ausgeschaltetem Anker-Strang am Objekt, eine unsichere wird verworfen (W5a-W5c),
+//   · die öffentlichen Schreibrouten können die Kennzeichnung nicht fälschen,
+//   · vom angenommenen Objekt führt der reguläre Zuweisungsweg (`ValidationService.assign`) zu
+//     genau einer offenen Prüfaufgabe der benannten Person (W8, K6).
 //
 // WAS DIESE DATEI NICHT DECKT (ehrlich): echtes HTTP, Postgres, Browser, ein echter Confluence-/
-// SharePoint-Lauf und eine menschliche Bedienung. Die konkrete Zuweisung an benannte Prüfer bleibt
-// eine menschliche Entscheidung (`ValidationService.assign`) und wird hier NICHT automatisch
-// getroffen — gemessen wird, dass das Objekt auf dem Board zur Zuweisung bereitsteht.
+// SharePoint-Lauf und eine menschliche Bedienung. Die Auswahl der Prüferin trifft weiterhin ein
+// Mensch; W8 führt den regulären Zuweisungsschritt aus, wie ihn die Prüfseite auslöst, und
+// erfindet keine automatische Auswahl.
 import { describe, expect, it } from "vitest";
 import { herkunftsAuskunft } from "../../apps/web/src/lib/boardAuskunft";
 import { ohneImportHerkunft } from "../../services/app/src/routes/ko-routes";
@@ -208,23 +211,126 @@ describe("Importkandidaten · die Annahme fuehrt in den Validierungsfluss", () =
     ]);
   });
 
-  it("W5 (benannte Grenze): JSON-Kandidat OHNE externe Kennung → importiert gekennzeichnet, aber ohne Quellenanker", async () => {
-    // Gemessener Ist-Zustand, keine Zusage: `acceptToKo` schreibt den Herkunftsanker nur mit
-    // externalId bei aktivem Anker-Strang. Ein hochgeladenes JSON ohne Kennung hat keine verlinkbare
-    // Originalquelle; die Kennzeichnung `import` und der Kandidaten-Anker bleiben die Spur zurück.
+  // bens F2 (K5/K6): die Originalquelle hängt nicht am Anker-Strang. Zwei Ausgangslagen, dieselbe
+  // Erwartung — die URL steht als Quelle am Objekt, ungeprüft und als importiert gekennzeichnet.
+  // Sie ist dabei KEIN Re-Sync-Anker (keine externalId an der Quelle).
+  const ORIGINAL_URL = "https://wiki.example.test/pages/4711";
+  for (const [fall, externalUpsert, extra] of [
+    ["W5a · Anker-Strang AN, aber ohne externalId", true, { url: ORIGINAL_URL }],
+    [
+      "W5b · Anker-Strang AUS, mit externalId",
+      false,
+      { url: ORIGINAL_URL, externalId: "PAGE-4711", provider: "confluence" },
+    ],
+  ] as const) {
+    it(`${fall} → die Original-URL bleibt als Quelle am angenommenen Objekt`, async () => {
+      const { koService, library } = await dienst(externalUpsert);
+      const [k] = await library.createImportCandidates(
+        [eintrag("Pumpe entlueften", "Pumpe alle 200h entlueften.", extra)],
+        "anna",
+        OHNE_AEHNLICHKEIT,
+      );
+      const antwort = await library.reviewImportCandidate(k?.id ?? "", "accept", "pedi");
+      expect(antwort.status).toBe("angenommen");
+      const objekt = await koService.get(antwort.koId ?? "");
+      expect(
+        {
+          status: objekt?.status,
+          trust: objekt?.trust,
+          origin: objekt?.origin,
+          importCandidateId: objekt?.importCandidateId,
+        },
+        "das Objekt startet nicht ungeprüft und als importiert gekennzeichnet",
+      ).toEqual({ status: "offen", trust: 0, origin: "import", importCandidateId: k?.id });
+      expect(
+        objekt?.sources.map((s) => s.url),
+        "die mitgelieferte Original-URL ist am angenommenen Objekt verloren gegangen",
+      ).toEqual([ORIGINAL_URL]);
+      expect(
+        objekt?.sources.map((s) => [s.kind, s.peerValidated, s.externalId]),
+        "die Originalquelle ohne wirksamen Anker darf kein Re-Sync-Anker sein",
+      ).toEqual([["external", false, undefined]]);
+    });
+  }
+
+  it("W5c · Sicherheitsgegenprobe: eine javascript:-URL wird auf demselben Weg verworfen", async () => {
     const { koService, library } = await dienst(true);
     const [k] = await library.createImportCandidates(
-      [eintrag("Pumpe entlueften", "Pumpe alle 200h entlueften.")],
+      [
+        eintrag("Pumpe entlueften", "Pumpe alle 200h entlueften.", {
+          url: "javascript:alert(1)",
+        }),
+      ],
       "anna",
       OHNE_AEHNLICHKEIT,
     );
     const antwort = await library.reviewImportCandidate(k?.id ?? "", "accept", "pedi");
     const objekt = await koService.get(antwort.koId ?? "");
-    expect([objekt?.origin, objekt?.importCandidateId, objekt?.sources]).toEqual([
-      "import",
-      k?.id,
-      [],
-    ]);
+    expect(objekt?.origin).toBe("import");
+    expect(
+      JSON.stringify(objekt?.sources ?? []),
+      "eine unsichere URL ist als Quelle am Objekt gelandet",
+    ).not.toContain("javascript:");
+    expect(objekt?.sources, "eine verworfene URL erzeugt keine leere Quellenzeile").toEqual([]);
+  });
+});
+
+describe("Importkandidaten · vom angenommenen Objekt zur offenen Prüfaufgabe (K6)", () => {
+  it("W8: Annahme → reguläre Prüferzuweisung → genau eine offene Aufgabe der benannten Person", async () => {
+    const { koService, library, validation } = await dienst(true);
+    const [k] = await library.createImportCandidates(
+      [
+        eintrag("Pumpe entlueften", "Pumpe alle 200h entlueften.", {
+          provider: "confluence",
+          externalId: "PAGE-4711",
+          url: "https://wiki.example.test/pages/4711",
+          sourceVersion: 1,
+        }),
+      ],
+      "anna",
+      OHNE_AEHNLICHKEIT,
+    );
+    const antwort = await library.reviewImportCandidate(k?.id ?? "", "accept", "pedi");
+    const koId = antwort.koId ?? "";
+    expect(koId, "die Annahme hat kein Objekt angelegt").not.toBe("");
+
+    // OHNE Zuweisungsschritt: keine Aufgabe — die Annahme selbst weist niemanden zu.
+    expect(
+      await validation.openAssignmentsFor("anna"),
+      "schon die Annahme hat eine Prüfaufgabe erzeugt",
+    ).toEqual([]);
+    expect((await koService.get(koId))?.assignments).toEqual([]);
+
+    // Der reguläre Zuweisungsweg (derselbe Dienstaufruf wie hinter der Zuweisungsaktion der Route).
+    await validation.assign(koId, ["anna"], "pedi");
+
+    expect(
+      (await validation.openAssignmentsFor("anna")).map((a) => a.koId),
+      "anna hat nicht genau die eine offene Aufgabe zum angenommenen Objekt",
+    ).toEqual([koId]);
+    expect(
+      await validation.openAssignmentsFor("bert"),
+      "eine nicht zugewiesene Person hat eine Aufgabe bekommen",
+    ).toEqual([]);
+    expect(
+      (await validation.board()).map((o) => o.id),
+      "das zugewiesene Objekt steht nicht mehr auf dem Prüf-Board",
+    ).toContain(koId);
+
+    const objekt = await koService.get(koId);
+    expect({
+      status: objekt?.status,
+      trust: objekt?.trust,
+      origin: objekt?.origin,
+      importCandidateId: objekt?.importCandidateId,
+      quellen: objekt?.sources.map((s) => [s.url, s.externalId]),
+    }).toEqual({
+      status: "offen",
+      trust: 0,
+      origin: "import",
+      importCandidateId: k?.id,
+      quellen: [["https://wiki.example.test/pages/4711", "PAGE-4711"]],
+    });
   });
 });
 

@@ -1667,7 +1667,13 @@ export class LibraryService {
         // Freigabe aus Cloud/Export heraus.
         confidentiality: item.confidentiality ?? "vertraulich",
         ...(item.bodyHtml ? { bodyHtml: item.bodyHtml } : {}),
-        ...(externalId ? { sources: [this.buildSource(item, actor, firstVersion)] } : {}),
+        // R-0180 (bens F2): die ORIGINALQUELLE haengt nicht mehr am Anker-Strang. Mit wirksamer
+        // externalId entsteht wie bisher der Herkunfts-Anker (Re-Sync-Schluessel); OHNE sie — kein
+        // externalId geliefert ODER `externalUpsert` aus — bleibt eine mitgelieferte, sichere URL
+        // trotzdem als Quelle am Objekt (`originalquelleOhneAnker`, bewusst OHNE Anker-Felder).
+        ...(externalId
+          ? { sources: [this.buildSource(item, actor, firstVersion)] }
+          : this.originalquelleOhneAnker(item, actor)),
         // R-0180/R-2108: das angenommene Objekt ist ALS IMPORTIERT gekennzeichnet — dasselbe Feld,
         // das das Prüf-Board als Herkunft zeigt (`mitHerkunft`, services/validation). Es startet
         // weiterhin ungeprüft (`buildCreatedKo`: status offen, trust 0) und steht damit auf dem
@@ -1754,6 +1760,34 @@ export class LibraryService {
   // (die Confluence-Route setzt "Confluence"); externe Importquellen sind nie peer-validiert.
   // `effectiveVersion` (ben-Review #3): die tatsächlich geschriebene Version — IMMER gesetzt, damit der
   // Monotonie-Vergleich beim Re-Sync verlässlich ist (nie ein „versionsloser" Anker im Bestand).
+  // R-0180 (bens F2): die Originalquelle eines Imports OHNE wirksame externe Kennung. Nur eine
+  // sichere URL (`safeSourceUrl`: absolut, http/https) wird übernommen — eine verworfene URL
+  // erzeugt KEINE Quelle (eine leere Quellenzeile wäre eine Herkunftsbehauptung ohne Inhalt).
+  // BEWUSST OHNE `externalId`/`sourceVersion`/`spaceKey`: diese Quelle ist kein Re-Sync-Anker.
+  // Die Anker-Suche (`matchesAnchor`, `aktiveAnker`, `trashedSourceAnchors`) liest nur Quellen mit
+  // externalId — der Upsert-Strang bleibt damit genau so, wie er bei ausgeschaltetem Schalter war.
+  private originalquelleOhneAnker(item: ImportItem, actor: string): { sources?: KoSource[] } {
+    const url = safeSourceUrl(item.url);
+    if (url === null) {
+      return {};
+    }
+    return {
+      sources: [
+        {
+          id: this.genId(),
+          label: item.title,
+          url,
+          excerpt: null,
+          kind: "external",
+          peerValidated: false,
+          provider: item.provider ?? null,
+          author: item.author?.trim() ? item.author : actor,
+          at: new Date(this.now()).toISOString(),
+        },
+      ],
+    };
+  }
+
   private buildSource(item: ImportItem, actor: string, effectiveVersion: number): KoSource {
     return {
       id: this.genId(),

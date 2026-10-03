@@ -22,10 +22,14 @@ Grundlage ist die Quelleninspektion. Ausgeführte Tests stehen hier nicht. Die f
 - **JSON-Upload der Oberfläche**: `Stufe2.tsx:1096` → `POST /api/library/import/candidates` (`library-routes.ts:816`).
 - **Demo-Korpus**: `services/app/src/demo-corpus.ts:14-15` (Kandidat → `accept`).
 
-**Nicht über die Warteschlange** läuft `POST /api/library/import` (`library-routes.ts:787-802`,
-`LibraryService.importJson`). Er legt Wissensobjekte direkt an (Recht `ko.create`). Die Oberfläche
-ruft ihn nicht auf (`apps/web/src` kennt nur `/library/import/candidates`). Er bleibt als reiner
-API-Weg offen. Dieser Auftrag entfernt ihn nicht.
+- **Direkter API-Eingang `POST /api/library/import`** (Nacharbeit 1, bens F1): Bis Kandidat
+  `1d1cc373` legte er über `LibraryService.importJson` Wissensobjekte direkt an. Jetzt reiht er über
+  dieselbe Einreihstelle wie der Kandidatenweg ein (`einreihen` in `library-routes.ts`, gleiche
+  Dublettenregel). Die Antwort nennt `imported: 0`, `uebersprungen`/`skipped` (Einträge, aus denen
+  auch eine Annahme kein Objekt macht), `eingereiht` und `kandidaten`. Ein Objekt entsteht erst
+  durch `PUT /api/library/import/candidates/:id` (Recht `ko.validate`). Gegenprobe:
+  `tests/import-kandidaten-echt/direkter-import-reviewpflicht.test.ts` D1–D3. Die Dienstmethode
+  `importJson` bleibt bestehen, hat aber keinen Produktaufrufer mehr.
 
 ## In diesem Auftrag ergänzt: Kennzeichnung „importiert“ (R-0180/R-2108)
 
@@ -43,18 +47,21 @@ unbekannt“ (`services/validation/src/board-herkunft.ts:128`).
 - Tests: `tests/import-kandidaten-echt/annahme-in-validierung.test.ts` W3/W6/W7 und
   `tests/pruefseite/stufe-und-herkunft-am-brett.test.tsx` (Fall `import`).
 
-## Was von der Kandidatenannahme weiterhin fehlt (offen benannt)
+## Nacharbeit 1: Originalquelle unabhängig vom Anker-Schalter (bens F2)
 
-1. **Konkrete Validierungszuweisung**: Die Annahme ruft `ValidationService.assign`
-   (`services/validation/src/service.ts:544`) nicht auf. Das Objekt steht ungeprüft auf dem Board.
-   Die Prüfer wählt ein Mensch (`ko.assign`). Eine automatische Zuweisung würde eine Prüferauswahl
-   erfinden und ist hier bewusst nicht gebaut.
-2. **Originalquelle bei JSON ohne externe Kennung**: Ohne `externalId` bzw. ohne aktiven
-   Anker-Strang entsteht kein Quellenanker. Die Spur zurück sind dann `origin: "import"` und
-   `importCandidateId` (Test W5 misst diesen Ist-Zustand).
-3. **Re-Import eines bestehenden Objekts** (Revise-Zweig, `service.ts:1562-1644`) setzt die
-   Herkunft nicht nachträglich. Altobjekte aus früheren Annahmen tragen weiterhin keine Herkunft
-   (kein Backfill).
-4. **Direkter API-Import** `POST /api/library/import` umgeht die Warteschlange (siehe oben).
-5. Ungeprüft sind echtes HTTP, Postgres, Browser, ein echter Confluence- oder SharePoint-Lauf und
-   die Bedienung durch einen echten Menschen.
+Eine mitgelieferte, sichere URL (`safeSourceUrl`: absolut, http/https) bleibt jetzt auch OHNE
+`externalId` oder bei ausgeschaltetem `externalUpsert` als Quelle am angenommenen Objekt
+(`originalquelleOhneAnker` in `services/library-analytics/src/service.ts`). Diese Quelle trägt
+bewusst keine `externalId`/`sourceVersion` und ist damit kein Re-Sync-Anker. Eine unsichere URL
+(z. B. `javascript:`) erzeugt keine Quelle. Gegenprobe: `annahme-in-validierung.test.ts` W5a–W5c.
+
+## Was von der Kandidatenannahme weiterhin gilt bzw. offen bleibt
+
+1. **Validierungszuweisung**: Die Annahme weist niemanden automatisch zu. Den Prüfer wählt ein
+   Mensch über den regulären Weg (`ValidationService.assign`, Recht `ko.assign`). Dass dieser Weg
+   vom angenommenen Importobjekt zu genau einer offenen Aufgabe der benannten Person führt, misst
+   W8. Eine automatische Prüferauswahl ist im Original nicht verlangt und nicht gebaut.
+2. **Re-Import eines bestehenden Objekts** (Revise-Zweig) setzt die Herkunft nicht nachträglich.
+   Altobjekte aus früheren Annahmen tragen weiterhin keine Herkunft (kein Backfill).
+3. Ungeprüft sind Postgres, Browser, ein echter Confluence- oder SharePoint-Lauf und die
+   Bedienung durch einen echten Menschen. Echtes HTTP über `app.inject` decken D1–D3 ab.

@@ -105,6 +105,70 @@ function toImportCandidateDto(candidate: ImportCandidate): ImportCandidateDto {
   };
 }
 
+// ================================================================================================
+// R-0143 — DER DIREKTE IMPORTEINGANG FÜHRT IN DIE PRÜFWARTESCHLANGE, NICHT IN DEN BESTAND.
+// ================================================================================================
+//
+// `POST /api/library/import` rief bis hierher `LibraryService.importJson` und legte jeden nicht
+// doppelten Eintrag SOFORT als Wissensobjekt an — ohne Kandidat und ohne menschliche Entscheidung.
+// Ab hier reiht er genau wie `POST /api/library/import/candidates` Kandidaten ein (dieselbe
+// Dublettenregel, dieselbe Einreihstelle). Ein Wissensobjekt entsteht erst durch die berechtigte
+// Annahme (`PUT /api/library/import/candidates/:id`, Recht `ko.validate`).
+//
+// DIE ANTWORT bleibt in ihren Feldern lesbar, sagt aber die Wahrheit über den neuen Weg:
+//   · `imported` ist immer 0 — direkt angelegt wird nichts mehr.
+//   · `uebersprungen`/`skipped` nennen die Einträge, aus denen auch eine Annahme KEIN Objekt macht
+//     (Dublette `identisch`/`aehnlich` oder `pruefung_nicht_moeglich`), mit dem getroffenen Objekt
+//     bzw. — neu — dem getroffenen Kandidaten desselben Laufs (`kandidatId`, dann `koId: null`).
+//   · `eingereiht` und `kandidaten` nennen, was jetzt in der Warteschlange steht (auch die
+//     Dubletten: sie stehen dort mit ihrem Befund, wie auf dem Kandidatenweg).
+interface DirektimportUebersprungen {
+  titel: string;
+  grund: "identisch" | "aehnlich" | "pruefung_nicht_moeglich";
+  koId: string | null;
+  kandidatId?: string;
+  aehnlichkeit?: number;
+}
+
+interface DirektimportAntwort {
+  imported: 0;
+  skipped: number;
+  uebersprungen: DirektimportUebersprungen[];
+  eingereiht: number;
+  kandidaten: ImportCandidateDto[];
+}
+
+function uebersprungenAus(candidate: ImportCandidate): DirektimportUebersprungen | undefined {
+  const befund = candidate.dublettenbefund;
+  const titel = candidate.item.title;
+  if (befund?.ergebnis === "pruefung_nicht_moeglich") {
+    return { titel, grund: "pruefung_nicht_moeglich", koId: null };
+  }
+  if (befund?.ergebnis !== "identisch" && befund?.ergebnis !== "aehnlich") {
+    return undefined;
+  }
+  const treffer =
+    befund.treffer.art === "wissensobjekt"
+      ? { koId: befund.treffer.koId }
+      : { koId: null, kandidatId: befund.treffer.kandidatId };
+  return befund.ergebnis === "aehnlich"
+    ? { titel, grund: "aehnlich", ...treffer, aehnlichkeit: befund.aehnlichkeit }
+    : { titel, grund: "identisch", ...treffer };
+}
+
+export function direktimportAntwort(kandidaten: readonly ImportCandidate[]): DirektimportAntwort {
+  const uebersprungen = kandidaten
+    .map(uebersprungenAus)
+    .filter((e): e is DirektimportUebersprungen => e !== undefined);
+  return {
+    imported: 0,
+    skipped: uebersprungen.length,
+    uebersprungen,
+    eingereiht: kandidaten.length,
+    kandidaten: kandidaten.map(toImportCandidateDto),
+  };
+}
+
 // ben-Review #6: schmale, immer sichtbare Log-Linie für best-effort-Erkennung am Import-Accept-Pfad
 // (Fastify läuft ohne eigenen Logger) — analog defaultLog des dup-prefilters. Bewusst kein Werfen.
 function importDetectionLog(msg: string, err: unknown): void {
@@ -784,18 +848,23 @@ export function libraryRoutes(
       reply.code(200).send(await library.exportJson(opts));
     });
 
+    // R-0143: DIE EINE Einreihstelle beider Importeingänge — dieselbe Dublettenregel (JOB 3050),
+    // derselbe Dienstweg. Der Wächter `tests/re-import-dubletten/port-aufrufer-waechter.test.ts`
+    // zählt genau diese eine Nennung für diese Datei.
+    const einreihen = (items: readonly ImportItem[], actor: string): Promise<ImportCandidate[]> =>
+      library.createImportCandidates(items, actor, pruefeReImportDublette);
+
     app.post<{ Body: { items: ImportItem[] } }>("/api/library/import", async (request, reply) => {
       const user = await guards.requirePermission("ko.create", request, reply);
       if (!user) {
         return;
       }
       try {
-        // JOB 3023: die Dublettenregel reist als Prädikat mit — der Dienst legt sie nicht aus.
+        // R-0143 (s. `direktimportAntwort`): kein `importJson` mehr — der Eingang reiht Kandidaten
+        // ein, ein Wissensobjekt entsteht erst durch die berechtigte Annahme.
         reply
           .code(200)
-          .send(
-            await library.importJson(request.body.items ?? [], user.id, pruefeReImportDublette),
-          );
+          .send(direktimportAntwort(await einreihen(request.body.items ?? [], user.id)));
       } catch (error) {
         sendError(reply, error);
       }
@@ -813,11 +882,7 @@ export function libraryRoutes(
           // WP-SHIP8-CLOSE-8 (bens GELB-2): auch frisch eingereihte Kandidaten laufen durchs DTO.
           // JOB 3050: DIESELBE Instanz der Dublettenregel wie `POST /api/library/import` oben —
           // beide Importwege beantworten die Frage ab hier gleich.
-          const created = await library.createImportCandidates(
-            request.body.items ?? [],
-            user.id,
-            pruefeReImportDublette,
-          );
+          const created = await einreihen(request.body.items ?? [], user.id);
           reply.code(201).send(created.map(toImportCandidateDto));
         } catch (error) {
           sendError(reply, error);
