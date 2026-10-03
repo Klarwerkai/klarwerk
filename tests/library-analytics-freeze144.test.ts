@@ -136,6 +136,10 @@ const WIDERRUFENE_FREIGABEN: readonly string[] = [
   // nachträglich decken; ihre Nachfolgerinnen stehen am jeweiligen Eintrag.
   "FREEZE-144/JOB3087-20260905/repo",
   "FREEZE-144/D5-20260817/repo-pg",
+  // AUFNAHME 20260922 · GESAMT-VERTRAULICHKEIT-ERFASSUNG (N11): verbraucht. Diese Freigabe
+  // autorisierte den `service.test.ts`-Stand, in dem ein Import ohne Stufe „vertraulich" ergab.
+  // Sie darf den nachgeführten Inhalt nicht decken; ihre Nachfolgerin steht am Eintrag.
+  "FREEZE-144/JOB3050-20260904/service-test",
 ];
 
 const ERWARTETE_ANZAHL = 6;
@@ -306,10 +310,18 @@ const FREEZE_MANIFEST: readonly FreezeEintrag[] = [
     // ausdrücklich — die schon vorhandene, nie treffende `OHNE_AEHNLICHKEIT` aus JOB 3023, damit
     // ihre Zusicherungen unverändert das messen, was sie vorher gemessen haben (Pass 1, exakte
     // Zeichengleichheit). Kein weiterer Aufrufer dieser Datei ist angefasst.
-    hash: "1b0779a403ddede006ff78a6289d94016fdb50b4bc40c3fd246a644ed94d49f9",
+    // AUFNAHME 20260922 · GESAMT-VERTRAULICHKEIT-ERFASSUNG (N11, BEN-Befund K6) · AUSGEWIESENE
+    // ÄNDERUNG: Pedis Entscheidung 23 (05.09.2026) setzt den Übernahme-Standard auf „intern". Die
+    // Fälle, die ein Import OHNE Stufe als „vertraulich" pinnten (JSON-Import, Confluence-Accept,
+    // Re-Sync R4a, Fake-Adapter), messen jetzt „intern"; dazu EINE Gegenprobe (mitgelieferte
+    // vertrauliche Stufen bleiben). Die Fälle zu ungültigen Werten (restriktiv „vertraulich") und
+    // zum ausgeschlossenen Downgrade sind unverändert. Der Hash ist im Prüflauf auf Kandidat
+    // 9612aa9c gemessen („gemessen:" dieses Wächters) und unverändert übernommen. Sollhash UND
+    // Freigabe sind in EINEM Änderungssatz neu gesetzt, die alte steht in WIDERRUFENE_FREIGABEN.
+    hash: "14d15fc3fa5cffc52153bb9ca3115a2552a499c9c1d6f59a1b2477f3093262f5",
     freigabe: {
-      id: "FREEZE-144/JOB3050-20260904/service-test",
-      autorisiertHash: "1b0779a403ddede006ff78a6289d94016fdb50b4bc40c3fd246a644ed94d49f9",
+      id: "FREEZE-144/N11-20261003/service-test",
+      autorisiertHash: "14d15fc3fa5cffc52153bb9ca3115a2552a499c9c1d6f59a1b2477f3093262f5",
     },
   },
   {

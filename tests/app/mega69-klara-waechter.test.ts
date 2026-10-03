@@ -2586,8 +2586,7 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // Schranke von `schnittflaechen.test.ts` B3 bleibt (Server: „expected 12510 to be less than
     // 12500"). Kein Ausdruck, kein Abrufziel, keine Nutzlast geändert; kein Sideload.
     // AUFNAHME 20260922 · GESAMT-VERTRAULICHKEIT-ERFASSUNG (R-0632, BEN-Befund K2, 03.10.2026) —
-    // PIN MUSS WANDERN (5fbf5f64… -> neuer Wert aus dem nächsten Messlauf). Auslieferungsfolgen,
-    // jede geprüft:
+    // PIN BEWUSST AKTUALISIERT (5fbf5f64… -> 72213c31…). Auslieferungsfolgen, jede geprüft:
     //   · Abrufziel: KEINES neu. `POST /api/drafts` und `POST /api/drafts/from-docx` wie bisher.
     //   · Nutzlast:  EIN Feld mehr, und nur nach einem Klick auf eine der drei neuen Stufenknöpfe
     //                (#capture-stufe-*): `confidentiality` ∈ intern|vertraulich|streng_vertraulich.
@@ -2598,9 +2597,9 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     //   · Inline-Skript bleibt unter der Schranke von `schnittflaechen.test.ts` B3 (gemessen 12492):
     //                drei Kommentarblöcke im Sendeweg sind dafür verdichtet, kein Ausdruck entfernt.
     //   · Manifest, CSP, Recht: unverändert. Kein erneutes Sideload.
-    // OFFEN: den neuen Hash konnte dieser Lauf nicht berechnen (kein Hash-Werkzeug freigegeben);
-    // der Wert unten ist noch der alte — der nächste Lauf meldet den Ist-Wert in dieser Zusicherung.
-    const PIN = "5fbf5f64546beb67d70799bb8d18bcf6d2adcc631d79e0b404658867baeb0978";
+    // Der Wert ist im Prüflauf auf Kandidat 9612aa9c GEMESSEN (Zusicherung dieses Falls, „Received")
+    // und unverändert übernommen; `taskpane.html` ist seit dieser Messung nicht mehr angefasst.
+    const PIN = "72213c311bb4f2777222a9aba5406129fe54c104e56a569c5d764a65aaecb376";
     const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
     expect(
       ist,
