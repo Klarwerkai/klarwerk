@@ -5219,6 +5219,9 @@ const de = {
   // dem VOLLEN Konfliktabzug. Die große Zahl ist die schlechtere; der optimistische Rand steht
   // daneben und sagt, was er ist.
   "health.band.unproven": "Einstufung unbelegt",
+  "health.unknown": "unbekannt",
+  "health.unknownExplain":
+    "Für den Wert fehlen gerade Live-Signale (Wissensobjekte, Lücken, Konflikte, Revalidierungen oder Bus-Faktor sind nicht geladen oder nicht erreichbar). Deshalb steht hier keine Zahl — geschätzt wird nicht.",
   "health.range.explain":
     "{{worst}} von 100 im schlechtesten Fall, {{best}} im besten. Solange nicht belegt ist, dass vollständig nach Konflikten gesucht wurde, gilt der schlechtere Wert — deshalb steht hier kein Band.",
   "health.conflictUnproven.title":
@@ -11491,6 +11494,9 @@ const en: typeof de = {
   "health.factor.openGaps": "Open knowledge gaps",
   "health.factor.openConflicts": "Open conflicts",
   "health.band.unproven": "rating not evidenced",
+  "health.unknown": "unknown",
+  "health.unknownExplain":
+    "Live signals for this value are currently missing (knowledge objects, gaps, conflicts, revalidations or bus factor are not loaded or not reachable). That is why no number is shown here — nothing is estimated.",
   "health.range.explain":
     "{{worst}} out of 100 in the worst case, {{best}} in the best. As long as it is not evidenced that conflicts were searched for completely, the worse value applies — which is why no band is shown here.",
   "health.conflictUnproven.title":
@@ -17179,6 +17185,9 @@ const nl: typeof de = {
   "health.factor.openGaps": "Open kennishiaten",
   "health.factor.openConflicts": "Open conflicten",
   "health.band.unproven": "indeling niet aangetoond",
+  "health.unknown": "onbekend",
+  "health.unknownExplain":
+    "Voor deze waarde ontbreken op dit moment live-signalen (kennisobjecten, lacunes, conflicten, hervalidaties of busfactor zijn niet geladen of niet bereikbaar). Daarom staat hier geen getal — er wordt niets geschat.",
   "health.range.explain":
     "{{worst}} van 100 in het slechtste geval, {{best}} in het beste. Zolang niet is aangetoond dat er volledig naar conflicten is gezocht, geldt de slechtere waarde — daarom staat hier geen band.",
   "health.conflictUnproven.title":
