@@ -6288,6 +6288,12 @@ const de = {
   "graph.legendConflict": "Konflikt",
   "graph.clickHint": "Knoten anklicken, um das Wissensobjekt zu öffnen",
   "graph.openNode": "Wissensobjekt öffnen: {{title}}",
+  // N-0011 / N-0024: die filterbare Volltitelliste unter dem Graphen (`GraphObjektliste`).
+  "graph.liste.titel": "Objekte im Graphen",
+  "graph.liste.filter": "Titel filtern",
+  "graph.liste.anzahl_one": "{{count}} von {{gesamt}} Objekten im Graphen",
+  "graph.liste.anzahl_other": "{{count}} von {{gesamt}} Objekten im Graphen",
+  "graph.liste.keinTreffer": "Kein Objekt im Graphen trägt diesen Titelteil.",
 
   // SCRUM-406: ausführliche ?-Hilfen im Prüfbereich (Schema: Was? · Wann? · Was passiert danach?).
   "vhelp.originFilter.title": "Herkunft filtern",
@@ -12368,6 +12374,11 @@ const en: typeof de = {
   "graph.legendConflict": "conflict",
   "graph.clickHint": "Click a node to open the knowledge object",
   "graph.openNode": "Open knowledge object: {{title}}",
+  "graph.liste.titel": "Objects in the graph",
+  "graph.liste.filter": "Filter titles",
+  "graph.liste.anzahl_one": "{{count}} of {{gesamt}} objects in the graph",
+  "graph.liste.anzahl_other": "{{count}} of {{gesamt}} objects in the graph",
+  "graph.liste.keinTreffer": "No object in the graph has this part in its title.",
 
   // SCRUM-406: detailed ?-help in the review area (pattern: What? · When? · What happens next?).
   "vhelp.originFilter.title": "Filter by origin",
@@ -18066,6 +18077,11 @@ const nl: typeof de = {
   "graph.legendConflict": "conflict",
   "graph.clickHint": "Klik op een knoop om het kennisobject te openen",
   "graph.openNode": "Kennisobject openen: {{title}}",
+  "graph.liste.titel": "Objecten in de graaf",
+  "graph.liste.filter": "Titels filteren",
+  "graph.liste.anzahl_one": "{{count}} van {{gesamt}} objecten in de graaf",
+  "graph.liste.anzahl_other": "{{count}} van {{gesamt}} objecten in de graaf",
+  "graph.liste.keinTreffer": "Geen object in de graaf heeft dit deel in de titel.",
   "vhelp.originFilter.title": "Herkomst filteren",
   "vhelp.originFilter.body":
     "Toont de lijst gefilterd op herkomst: demovoorbeelden of eigen kennis van jouw organisatie. Dit is alleen een weergave om dingen terug te vinden — het verandert geen controlestatus en gooit niets weg. Het getal achter elk filter geeft aan hoeveel vermeldingen het bevat.",

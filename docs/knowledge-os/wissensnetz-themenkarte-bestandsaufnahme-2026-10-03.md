@@ -9,9 +9,11 @@ Arbeitsbaums (Code, Testdateien, Git-Historie). In diesem Arbeitsgang wurde **ke
 Die gezielten Prüfläufe stehen im Prüfplan des Auftrags und laufen in der Cloud. Ein in einer
 früheren Lieferung genannter Prüflauf wird hier nur zitiert und nicht wiederholt.
 
-Die Quelle (`QUELLEN.json`) führt je Punkt Kennung, Zustand und Titel; den vollständigen
-Originalwortlaut tragen die dort referenzierten `aufnahmepunkte-0xx.json`, die diesem Auftrag nicht
-beiliegen. Wo ein Titel gekürzt ist, ist das unten vermerkt.
+Die erste Fassung kannte aus `QUELLEN.json` nur Kennung, Zustand und Titel je Punkt. Seit
+Nacharbeit 2 trägt `QUELLEN.json` unter `original_points` die Originalabschnitte aller 48 Punkte
+(`requirement`, `criteria_text`, `qualification`, `raw`). Die Einträge zu R-0744, R-0754,
+R-1971/R-1972/R-1976/R-1983, N-0011/N-0024, P-WG-LUECKEN und `question:K06` sind daran berichtigt.
+Die übrigen Zeilen stammen weiterhin aus der ersten Fassung.
 
 ## Lieferung dieses Auftrags
 
@@ -35,7 +37,26 @@ Menge ein Klick trifft.
   die Marke und erscheint nur, wenn markiert wurde.
 - Ein Name ohne Doppelgänger bleibt wie bisher. L14 in `tests/wissensnetz-leseweg/leseweg.test.tsx`
   (getrimmte Zeile) gilt weiter.
-- Neuer Test: `tests/wissensnetz-achse/gleich-angezeigt.test.tsx` mit den Fällen S1–S6.
+- Neuer Test: `tests/wissensnetz-achse/gleich-angezeigt.test.tsx` mit den Fällen S1–S8 (S7/S8 aus
+  Nacharbeit 1).
+
+**N-0011 / N-0024 — filterbare Volltitelliste am Wissensgraphen (Nacharbeit 2).** Wortlaut N-0024:
+„Eine filterbare Liste mit vollständigen Titeln ergänzen; … auf schmalen Fenstern eine gut bedienbare
+Listenansicht anbieten.“ N-0011: „eine synchronisierte lesbare Objektliste als weiteren Einstieg
+anbieten.“ Diese Liste fehlte bis hierher; die erste Fassung erklärte N-0024 zu Unrecht über N-0011
+für geliefert.
+
+- `apps/web/src/pages/Stufe2.tsx`: `GraphObjektliste` steht unter dem Bild in `GraphView`.
+  - Sie enthält genau die gezeichneten Knoten (`g.nodes` nach `limitGraph`) mit vollständigem Titel,
+    alphabetisch, mit beschriftetem Filterfeld und Trefferzahl.
+  - Der Sprung ist derselbe wie am Knoten (`koDetailPath`, nur wenn `isNavigableNode`), per Klick,
+    Enter oder Leertaste. Ein Objekt, das der Bestand nicht kennt, steht als Text ohne Link da.
+  - Was die Graphantwort nicht trägt, erscheint dort nicht.
+- Texte `graph.liste.*` in de/en/nl (`apps/web/src/i18n.ts`).
+- Gegenprobe: `tests/wissensnetz-flaeche/graph-listenweg.test.tsx` (V1–V6, jsdom, 28-Knoten-Bestand
+  aus `tests/wissensgraph-lesbarkeit/bestand.ts`).
+- **Nicht belegt:** die geometrische Bedienbarkeit der Liste auf 390 px. Das misst nur ein echter
+  Browser, und dieser Prüfweg wurde hier nicht gefahren.
 
 **Grenzen dieser Lieferung.**
 
@@ -65,8 +86,8 @@ oder verbleibende Entscheidung.
 | R-0728 | arbeitsauftrag | Bestandsaufnahme der Beziehungen im Wissensnetz | Mit dieser Datei erfüllt für den Stand `3b79c5d1`. |
 | R-0738 | arbeitsauftrag | Kantenaggregat mit Leserechteprüfung | Geliefert: Sichtbarkeit wird **vor** jedem Zähler angewandt (`policy-naht.ts`, `lesemodell.ts`, `service.ts:graph`, `kuratierteKantenFuer`). Beleg: `tests/wissensnetz/lesemodell-sicht.test.ts`, `tests/wissensgraph-integration/rechte-am-draht.test.ts`. |
 | R-0739 | arbeitsauftrag | Lesemodell des Wissensnetzes | Geliefert (JOB 1496, `lesemodell.ts`, `tests/app/f0458-wissensnetz-lesemodell.test.ts`). |
-| R-0744 | arbeitsauftrag | Qualitätsblick und Adminseite zum Wissensnetz | **Offen.** Eine eigene Adminseite zum Wissensnetz ist im Arbeitsbaum nicht auffindbar. Die Sichtmetrik ist nutzerbezogen. Zu entscheiden: ob eine Adminsicht gewünscht ist und welche Rechte-/Zählgrenze dort gilt (eine Gesamtzahl über Verborgenes wäre eine Existenzauskunft). |
-| R-0754 | arbeitsauftrag | Wissensnetz für jeden Anwender: Warum weiß Klarwerk das? | Teilweise: Die Nachbarschaft nennt je Kante das `via`, die Themenkarte die Kodierung in der Legende. Eine eigene „Warum“-Erklärung je Antwort ist nicht belegt. Der Originalwortlaut liegt nicht bei, die Entscheidung über den Umfang bleibt offen. |
+| R-0744 | arbeitsauftrag | Qualitätsblick und Adminseite zum Wissensnetz | **Bestellt und nicht geliefert.** Wortlaut: „Für Verwalter gibt es eine Seite rund um die Netzdarstellung: Kopfkennzahlen, Filterleiste, Detailfenster und Suche, rein lesend, ohne Bearbeiten im Netz. Dazu kommt ein ausdrücklich zu wählender Qualitätsblick auf Konflikte, Lücken, veraltetes Wissen und Dubletten – jede Zahl mit ihrem Nenner und dem Alter des Bestands.“ Die Anforderung ist ausdrücklich; die Frage „ob gewünscht“ der ersten Fassung war falsch und ist gestrichen. Stand im Arbeitsbaum: Eine Verwalterseite zum Netz und ein wählbarer Qualitätsblick mit Nenner und Bestandsalter sind nicht auffindbar. Vorhanden sind nur Bausteine für Anwender: Sichtmetrik (JOB 3067), Kürzungshinweis am Graphen (JOB 4328) und seit Nacharbeit 2 Suche/Liste am Graphen. Die Quelle selbst nennt den Stand „angedacht“, Prüfstatus „nur_altquelle“, JOB 1553/1576 grün, „Einbau oder Wirkung nicht belegt“, für Z5 „keine Umsetzung belegt“, dazu einen ungeklärten Nummern-Widerspruch zu SCRUM-550/551. **Verbleibend:** Umsetzung als eigener Bau; sie ist in diesem Auftrag nicht erfolgt. |
+| R-0754 | arbeitsauftrag | Wissensnetz für jeden Anwender: Warum weiß Klarwerk das? | **Teilstand.** Wortlaut: „Nicht nur Verwalter, sondern jeder Anwender kann sehen, wie eine Aussage mit ihren Quellen, Belegen, Prüfungen und Nachbarn zusammenhängt.“ Für jeden Anwender vorhanden: Nachbarn mit Begründung `via` (mega45/mega68, `KnowledgeNeighborhood.tsx`), gesetzte Beziehungen (`WissensbeziehungenBereich.tsx`, JOB 4153/4155), Themenkarte und Graph. Eine Ansicht, die Quellen, Belege, Prüfungen **und** Nachbarn einer Aussage als **einen** Zusammenhang zeigt, ist nicht belegt. Die Quelle nennt einen offenen Widerspruch: Das Konzept vom 26.07. hält das Wissensnetz adminseitig und je Mandant schaltbar, hier ist ausdrücklich die Anwendersicht gemeint. **Verbleibend:** diese Entscheidung des Owners und, je nach Ergebnis, die zusammenführende Ansicht. |
 | R-0767 | arbeitsauftrag | Skalierung des Wissensnetzes | Geliefert: JOB 3022 (Schlagwort-Index statt Paarschleife, 12.000 Objekte) und JOB 4303. Bekannte Grenze laut `service.ts`: quadratisch in der Gruppengröße eines häufigen Schlagworts. |
 | R-1135 | entschiedene_grenze | Ausgeschlossene Wissensnetz-Ausbauten (Streichliste) | Eingehalten: keine Graphdatenbank, keine Ontologie, keine automatische Themenbildung, keine Animation, kein Designsystemumbau. |
 | R-1505 | arbeitsauftrag | Wissensnetz — was ist gebaut, was nicht: ein Befund mit Tes… | Befund mit dieser Datei. Testzuordnung im Prüfplan des Auftrags. |
@@ -78,18 +99,18 @@ oder verbleibende Entscheidung.
 | R-1612 | gelieferter_teilstand | Wissensnetz: vier unvereinbare Belege in vier Tagen … | Teilstand bestätigt: P12 (JOB 3075), eine Achse in Karte, Liste und `/graph`. |
 | R-1618 | gelieferter_teilstand | Das Wissensnetz gibt es auch in Sätzen statt als Zeichnung… | Teilstand bestätigt: JOB 3070. |
 | R-1727 | arbeitsauftrag | Knowledge Graph (SVG aus Live-Daten) | Geliefert: `/graph` (`Stufe2.tsx`) aus `GET /api/graph`, gedeckelt, mit kuratierten Kanten (JOB 4155) und Kürzungshinweis (JOB 4328). |
-| R-1971 | arbeitsauftrag | ENTSCHEIDUNG | Der Titel trägt keinen Inhalt, der Originalwortlaut liegt nicht bei. **Nicht zuordenbar**: der Inhalt muss aus `aufnahmepunkte-022.json` `$[111]` nachgereicht werden. |
-| R-1972 | quellenrest | BEAUFTRAGT | wie R-1971 (`$[112]`). |
-| R-1976 | quellenrest | BEFUND | wie R-1971 (`$[116]`). |
-| R-1983 | quellenrest | OFFEN | wie R-1971 (`$[123]`). |
+| R-1971 | arbeitsauftrag | ENTSCHEIDUNG (OFFEN:H6, `raw.herkunft`) | Entscheidung Pedi 31.07.: „H1 H2 weiter, im nächsten Code-Lauf.“ Die offene Rückfrage betraf die zwei Schnitte neben der Nachbarschaft: **B Themenlandkarte** und **C Leseweg**. **Erledigt:** Beide sind gebaut, B als Themenkarte `/wissensnetz` (JOB 2600, 3052), C als Leseweg in Sätzen (JOB 3070/3073). Kein Rest. |
+| R-1972 | quellenrest | BEAUFTRAGT (OFFEN:H1, `criteria_text`) | Auftrag „Variante A, die Nachbarschaft“ (mega68) mit harten Grenzen: Die Auskunft geht von einem Objekt aus und ist gedeckelt. Ein Schlagwort, das fast alle tragen, erzeugt keine Kante. Ein Nachbar ohne Leserecht existiert nicht. Der Ort ist das Wissensobjekt. An jeder Kante steht das gemeinsame Schlagwort, ein Klick geht weiter. **Geliefert:** `GET /api/kos/:id/neighbors` (gedeckelt, `via`, `excludedTags`, Sichtbarkeit vor dem Zählen) und `KnowledgeNeighborhood.tsx` am Wissensobjekt; jeder Nachbar verlinkt auf `koDetailPath`. **Offene Rückfrage aus derselben Zeile:** Ob Pedis „LLM-Wiki-Grafik“ ein gezeichnetes Netz oder eine durchblätterbare Wissenssicht meint („nicht raten, ihn fragen“). Eine Antwort darauf ist in den Quellen nicht belegt. |
+| R-1976 | quellenrest | BEFUND (OFFEN:H5, `criteria_text`) | Befund: `graph()` verglich jedes Paar, Kanten entstanden über jedes geteilte Schlagwort, begrenzt wurde erst im Browser. Bauvorgabe: Die Anwendersicht geht von einem Objekt aus, die Route wird begrenzt, ein Schlagwort, das fast alle tragen, erzeugt keine Kante. **Geliefert:** Schlagwort-Index statt Paarschleife, Ubiquitätssperre, Kantendeckel `GRAPH_EDGE_LIMIT` mit `totalEdges`/`truncated` im Server (JOB 3022, 3075, 4155), Nachbarschaft von einem Objekt aus (R-1972). **Rest am Quelltext:** `GET /api/graph` liefert die **Knotenliste ungedeckelt**; der 60-Knoten-Deckel (`MAX_GRAPH_NODES`, `limitGraph`) wirkt weiter erst im Browser (`Stufe2.tsx`). Das widerspricht der Vorgabe „Begrenzung SERVERSEITIG“ für die Knoten. Dieser Rest ist in diesem Auftrag nicht behoben und nicht als Befund bestellt. |
+| R-1983 | quellenrest | OFFEN (OFFEN:H3, `criteria_text`) | Stand 23.08.: Das Lesemodell hat einen Aufrufer im Produkt (JOB 2009 D4). Offen blieben Kanten- und UI-Wirkung (H3b, JOB 2018). Ursprünglich SCRUM-545–551: Beziehungen erheben · Lücken schließen · Graph-Lesemodell · kuratierte Sicht „So arbeitet Klarwerk“ · Adminseite · Qualitätsblick. **Geliefert:** Kanten- und UI-Wirkung über JOB 3067 (Sichtmetrik), JOB 2600/3070 (Karte, Leseweg) und JOB 4151/4155 (kuratierte Beziehungen im Lesepfad), dazu Beziehungen erheben, Lesemodell und Lücken als Sichtmetrik. **Nicht geliefert:** Adminseite und Qualitätsblick (= R-0744) sowie eine kuratierte Sicht „So arbeitet Klarwerk“. Für Letztere ist im Arbeitsbaum keine Umsetzung auffindbar. |
 | R-2122 | arbeitsauftrag | Wissensgraph (SOLL) | Abgedeckt durch R-0454/R-1727 im gedeckelten Zuschnitt (R-0481). |
 | R-2213 | gelieferter_teilstand | Wissensnetz auf kleiner Fläche und Sonderbeständen | Teilstand bestätigt: Leseweg statt Zeichnung unter 900 px (JOB 3070), Null-/Misch-/Kettenbestände (`tests/app/themenkarte-*-mounted.test.tsx`). |
-| N-0011 | arbeitsauftrag | Überlagerte und gekürzte Beschriftungen erschweren die Zielwahl | Geliefert: UX-07 (JOB 3103), kollisionsfreie Beschriftung (`beschriftungen`), voller Name in `aria-label`/Tooltip. |
+| N-0011 | arbeitsauftrag | Überlagerte und gekürzte Beschriftungen erschweren die Zielwahl | Wortlaut: Beschriftungen mit Abstand, vollständiger Titel bei Fokus und Hover, „synchronisierte lesbare Objektliste als weiteren Einstieg“. Abstand und voller Titel: UX-07 (JOB 3103, `lib/graphLayout.ts`, `<title>`/`aria-label`). **Objektliste: seit Nacharbeit 2** (`GraphObjektliste`, Gegenprobe `tests/wissensnetz-flaeche/graph-listenweg.test.tsx`). Ein *sichtbarer* Volltitel bei Fokus im Bild ist nur über das SVG-`<title>` (Tooltip) belegt; eine Chromium-Messung dazu wurde hier nicht gefahren. |
 | N-0023 | arbeitsauftrag | Tastaturfokus im Wissensgraphen bleibt visuell unsichtbar | Geliefert: Fokusring `themenknoten-fokus` (Themenkarte), UX-07 für `/graph`. Eine echte Bedienung mit Tastatur durch einen Menschen ist nicht belegt (s. Grenzen). |
-| N-0024 | arbeitsauftrag | Gekürzte und überlappende Graphentitel erschweren die gezielte Auswahl | wie N-0011. |
+| N-0024 | arbeitsauftrag | Gekürzte und überlappende Graphentitel erschweren die gezielte Auswahl | Wortlaut: „Eine filterbare Liste mit vollständigen Titeln ergänzen; im Graphen vollständige Titel bei Fokus/Überfahren zeigen, Überlappungen vermeiden und auf schmalen Fenstern eine gut bedienbare Listenansicht anbieten.“ Die erste Fassung erklärte den Punkt über N-0011 für geliefert; das war falsch, die Liste fehlte. **Seit Nacharbeit 2:** filterbare Volltitelliste unter dem Graphen, synchron mit den gezeichneten Knoten, Öffnen per Maus, Enter und Leertaste (V1–V6). Überlappungsfreiheit: JOB 3103. **Nicht belegt:** die Bedienbarkeit der Liste auf 390 px im echten Browser; der Graph selbst wird schmal weiter skaliert. |
 | P-WG-PERSISTENZ | arbeitsauftrag | Kuratierte Beziehungen dauerhaft, eigenes Recht, setzen/lesen/ändern/widerrufen … | Geliefert (JOB 4151, K06: „Persistenz steht“). Belege: `tests/wissensgraph-integration/*` (u. a. `widerruf-und-konflikt.test.ts`). Neustart und PG: `neustart-und-restore.integration.test.ts`, in diesem Auftrag nicht wiederholt. |
 | P-WG-ANZEIGE | arbeitsauftrag | Dieselbe Beziehung im Eintrag und im Netz sichtbar … | Geliefert: JOB 4155/4328 (`WissensbeziehungenBereich.tsx`, `tests/wissensgraph-anzeige/*`, `tests/wissensgraph-abnahme/*`). |
-| P-WG-LUECKEN | arbeitsauftrag | Kuratierte Beziehungen im Netz-Lesepfad, „keine Kante“ ≠ „konfliktfrei“, App-Abnahme G1/G2/G7/G10 im Browser | Produkt geliefert (JOB 4155, `luecken.ts`, `Themenzeilen` Satz „verknuepfung“, Auslassungsgründe). Die verlangte **Browserabnahme G1/G2/G7/G10** ist eine Playwright-Abnahme und liegt beim gesonderten Auftrag `graph-browser-rechte`. Hier nicht wiederholt. |
+| P-WG-LUECKEN | arbeitsauftrag | Kuratierte Beziehungen im Netz-Lesepfad, „keine Kante“ ≠ „konfliktfrei“, App-Abnahme G1/G2/G7/G10 im Browser | Laut Originalqualifikation **erledigt 17.09.2026, JOB 4155 LIVE als `1.0.0-beta.1.552`** (BEN-Urteil Runde 3 grün). Einzeln, wie die Quelle sie unterscheidet: Beziehungsbereich ohne Aufklappen in der Lesespalte (DOM-Beleg `tests/wissensgraph-abnahme/eintragsansicht-direkt.test.tsx`); **G1 und G7** im echten Browser gefahren (`tests-smoke/wg-luecken-beziehungen-browser.spec.ts`, Sollmanifest Version 7); **G9** ohne Skip gemessen; **G10** als Regressionslauf 4145/4146 mitgelaufen. **Rest G2** (echter Serverprozess-Neustart) ist laut Quelle kein Browserfall und kein eigener Auftrag, sondern Lieferung 3 in **JOB 4275**. Im Arbeitsbaum steht dazu `tests/beziehungs-restore-nutzerweg/beziehungen-im-browser-nach-restore.integration.test.ts` (PID-Wechsel vor/nach, Commit `265e3276`, „BEN GRUEN“ laut Commit-Text). Ein ausgeführtes Ergebnis dieses PG- und Chromium-Laufs liegt diesem Auftrag **nicht** vor. Die erste Fassung verwies das pauschal an `graph-browser-rechte`; das war falsch und ist ersetzt. Alles hier ist aus Quelle und Repository zitiert, nicht neu geprüft. |
 | P-UX-07 | arbeitsauftrag | DESIGN Wissensgraph: Beschriftungen entzerren … 28 Knoten … | Geliefert: JOB 3103 (`tests/wissensgraph-lesbarkeit/*`). |
 | priority:WG-PERSISTENZ / WG-ANZEIGE / WG-LUECKEN / UX-07 | doppelte_quellenfassung | — | Doppelte Fassung der jeweiligen P-Punkte. Kein eigener Umfang. |
 | priority:D6 | arbeitsauftrag | DESIGN Klarwerk: Zielbild „Wissensnetz… | wie R-1591/R-1552. |
@@ -97,7 +118,7 @@ oder verbleibende Entscheidung.
 | priority:P12 | arbeitsauftrag | Vier unvereinbare Belege … ehrlicher Befund mit Tests | wie R-1612. |
 | priority:V6 | arbeitsauftrag | Das Wissensnetz in Sätzen … | wie R-1618. |
 | package:wissensnetz | arbeitsauftrag | Wissensnetz und Themenkarte | Sammelpunkt. Mit dieser Zuordnung abgedeckt. |
-| question:K06 | arbeitsauftrag | „4151 Persistenz steht; 4155 R2 begrenzt mehr als 5000 Kanten unvollständig, Graph-Sperre im Browser nicht wirksam gegengeprüft.“ | (1) Persistenz: siehe P-WG-PERSISTENZ. (2) Begrenzung: in JOB 4155 Runde 3 geschlossen. `kuratierteKanten` ist bei `GRAPH_EDGE_LIMIT` gedeckelt und meldet `kuratierteKantenGesamt`/`kuratierteKantenGekuerzt` (`service.ts:kuratierteKantenFuer`, `tests/wissensgraph-abnahme/graph-antwortbegrenzung.test.ts`). (3) Die Graph-Sperre im Browser bleibt **in diesem Auftrag offen** und gehört zum gesonderten Auftrag `graph-browser-rechte` (Commits `37b527f1`…`13e37aea`, `tests/wissensbeziehungen-browser-rechte/*`). Dessen Ergebnis wird hier nicht behauptet. |
+| question:K06 | arbeitsauftrag | „4151 Persistenz steht; 4155 R2 begrenzt mehr als 5000 Kanten unvollständig, Graph-Sperre im Browser nicht wirksam gegengeprüft.“ | (1) Persistenz: siehe P-WG-PERSISTENZ. (2) Begrenzung: in JOB 4155 Runde 3 geschlossen. `kuratierteKanten` ist bei `GRAPH_EDGE_LIMIT` gedeckelt und meldet `kuratierteKantenGesamt`/`kuratierteKantenGekuerzt` (`service.ts:kuratierteKantenFuer`, `tests/wissensgraph-abnahme/graph-antwortbegrenzung.test.ts`). (3) Graph-Sperre im Browser: Im Arbeitsbaum gibt es dazu den Prüfweg `tests/wissensbeziehungen-browser-rechte/tastatur-schmal-rechte-im-echten-browser.test.ts` und `…-pg.integration.test.ts`, gebaut in den Läufen `graph-browser-rechte:3` (Commits `37b527f1`…`13e37aea`) und `graph-browser-rechte:6` (Ship `4ae7b2a5`, 1.0.0-beta.1.637). Ein **ausgeführtes, diesem Auftrag zugeordnetes Ergebnis** liegt nicht vor. Die Graph-Sperre bleibt deshalb hier **unbelegt**; behauptet wird nur die Existenz des Prüfwegs. |
 | SOLL:FR-LIB-04 | arbeitsauftrag | Wissensgraph der Zusammenhänge. | Abgedeckt durch Themenkarte und Nachbarschaft im begrenzten Zuschnitt (R-0481, R-1135). |
 
 ## Abgrenzung
@@ -106,8 +127,9 @@ oder verbleibende Entscheidung.
   3022/4303 (Skalierung), 3052 (Zielbild), 3067 (Sichtmetrik), 3070/3073/3075 (Leseweg, eine Achse),
   3103 (UX-07), 3115 (Themenlink), 4151/4155/4328 (kuratierte Beziehungen, Kürzungshinweis).
 - **Gesonderte bestehende Aufträge:** `aufnahme:20260922:gesamt-wissensnetz-export` (Export in offenem
-  Format, eigener Strang) und `graph-browser-rechte` (Browser- und Rechteabnahme). Beide sind hier
-  nicht bearbeitet.
+  Format, eigener Strang), `graph-browser-rechte` (Browser- und Rechteabnahme, Graph-Sperre) und
+  JOB 4275 (G2-Prozessneustart, laut P-WG-LUECKEN dort Lieferung 3). Alle drei sind hier nicht
+  bearbeitet; ihre Ergebnisse werden nicht behauptet.
 
 ## Quellenwidersprüche und fehlende Belege
 
@@ -117,9 +139,14 @@ oder verbleibende Entscheidung.
 - `themenkarte.ts:215-227` führt eine **offene Owner-Frage aus JOB 2600 D1**: Zählt „belegt“ auch an
   unfreigegebenen Objekten? Heute zählt es nicht. Die Entscheidung liegt beim Owner und wurde hier
   nicht getroffen.
-- R-1971, R-1972, R-1976 und R-1983 sind ohne Originalwortlaut nicht zuordenbar.
-- Kriterium 2 nennt „fehlende Fundorte gemäß den aufgenommenen Fällen“. Den Originalfall dazu enthält
-  die beiliegende Quelle nicht. Im Arbeitsbaum zeigt die Seitenleiste bei leerer Trefferliste
+- R-0744 (Konzept: Wissensnetz adminseitig, je Mandant schaltbar) gegen R-0754 (ausdrücklich
+  Anwendersicht für jeden): Diesen Widerspruch nennt die Quelle selbst. Er ist Owner-Sache.
+- R-1976 verlangt Begrenzung auf dem Server; die Knotenliste von `GET /api/graph` ist weiter ungedeckelt
+  und wird erst im Browser auf 60 Knoten gekürzt (s. R-1976).
+- R-1972 enthält die unbeantwortete Rückfrage, ob „LLM-Wiki-Grafik“ ein gezeichnetes Netz oder eine
+  durchblätterbare Wissenssicht meint.
+- Kriterium 2 nennt „fehlende Fundorte“ und „Familiensprünge“ gemäß den aufgenommenen Fällen. Auch
+  nach Abgleich aller 48 `original_points` ist dafür kein konkreter Fall zugeordnet. Im Arbeitsbaum zeigt die Seitenleiste bei leerer Trefferliste
   `wissensnetz.leiste.leer`, bei einem Fehler `wissensnetz.leiste.fehler`, und kein unbekannter Wert
   wird still verworfen (`bibliothekstreffer.test.tsx` L2/L6). Ob damit der aufgenommene Fall
   getroffen ist, ist **ungeklärt**.

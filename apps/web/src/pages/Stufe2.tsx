@@ -2301,6 +2301,108 @@ function LegendDot({ colorClass, label }: { colorClass: string; label: string })
   );
 }
 
+// ==================================================================================================
+// N-0011 / N-0024 — DIE FILTERBARE VOLLTITELLISTE NEBEN DEM GRAPHEN.
+// ==================================================================================================
+//
+// Wortlaut N-0024: „Eine filterbare Liste mit vollständigen Titeln ergänzen; … auf schmalen Fenstern
+// eine gut bedienbare Listenansicht anbieten." N-0011: „eine synchronisierte lesbare Objektliste als
+// weiteren Einstieg anbieten." Die Zeichnung kürzt Titel (UX-07, `lib/graphLayout.ts`) und wird auf
+// einem Telefon klein skaliert; die Liste ist gewöhnliches HTML, steht in voller Breite unter dem Bild
+// und zeigt jeden Titel ungekürzt.
+//
+// SYNCHRON MIT DEM BILD: Die Liste bekommt GENAU die gezeichneten Knoten (`g.nodes` nach
+// `limitGraph`) — keine zweite Abfrage, kein Objekt aus dem Bestand, das der Graph nicht enthält.
+// Was die Graphantwort nicht trägt, kann über diese Liste nicht erscheinen.
+//
+// DERSELBE SPRUNG WIE AM KNOTEN: `koDetailPath`, und nur wenn `isNavigableNode` es erlaubt. Ein Knoten,
+// dessen Objekt im Bestand unbekannt ist, steht als Text ohne Link da — wie im Bild.
+//
+// Gemessen in `tests/wissensnetz-flaeche/graph-listenweg.test.tsx` (Funktion und Navigation). Die
+// geometrische Bedienbarkeit auf schmalen Fenstern misst diese Datei nicht.
+function GraphObjektliste({
+  knoten,
+  bekannt,
+}: {
+  knoten: readonly { id: string; title: string }[];
+  bekannt: ReadonlySet<string>;
+}): JSX.Element {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+  const [filter, setFilter] = useState("");
+  const suche = filter.trim().toLocaleLowerCase();
+  const sortiert = [...knoten].sort(
+    (a, b) => a.title.localeCompare(b.title) || a.id.localeCompare(b.id),
+  );
+  const treffer =
+    suche === "" ? sortiert : sortiert.filter((k) => k.title.toLocaleLowerCase().includes(suche));
+  return (
+    <section
+      data-testid="graph-objektliste"
+      aria-labelledby="graph-objektliste-titel"
+      className="mt-4 border-t border-hairline pt-3"
+    >
+      <h2 id="graph-objektliste-titel" className="text-sm font-semibold text-text">
+        {t("graph.liste.titel")}
+      </h2>
+      <label htmlFor="graph-objektliste-filter" className="mt-2 block text-[12.5px] text-muted">
+        {t("graph.liste.filter")}
+      </label>
+      <input
+        id="graph-objektliste-filter"
+        data-testid="graph-objektliste-filter"
+        type="search"
+        value={filter}
+        onChange={(e) => setFilter(e.target.value)}
+        className="mt-1 w-full rounded-md border border-hairline bg-surface px-2 py-1.5 text-sm"
+      />
+      <p
+        data-testid="graph-objektliste-anzahl"
+        aria-live="polite"
+        className="mt-1 text-[12px] text-muted"
+      >
+        {t("graph.liste.anzahl", { count: treffer.length, gesamt: knoten.length })}
+      </p>
+      {treffer.length === 0 ? (
+        <p data-testid="graph-objektliste-leer" className="mt-2 text-sm text-muted">
+          {t("graph.liste.keinTreffer")}
+        </p>
+      ) : (
+        <ul className="mt-2 flex flex-col">
+          {treffer.map((k) => (
+            <li
+              key={k.id}
+              data-testid="graph-objekt"
+              data-id={k.id}
+              className="break-words border-b border-hairline py-1.5 text-sm last:border-b-0"
+            >
+              {isNavigableNode(k.id, bekannt) ? (
+                <Link
+                  data-testid="graph-objekt-link"
+                  to={koDetailPath(k.id)}
+                  className="font-medium underline"
+                  // Enter öffnet einen Link ohnehin; Leertaste wie am Knoten im Bild. Beides läuft
+                  // über denselben Router-Sprung, und `preventDefault` verhindert den zweiten.
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      navigate(koDetailPath(k.id));
+                    }
+                  }}
+                >
+                  {k.title}
+                </Link>
+              ) : (
+                <span data-testid="graph-objekt-text">{k.title}</span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 // SCRUM-119 / FR-ANA-03: echter SVG-Wissensgraph aus Live-Daten. Tag-Kanten aus
 // /api/graph, Knotenstatus per FE-Join, Konfliktkanten aus echten Conflict-Daten.
 //
@@ -2593,6 +2695,7 @@ export function GraphView(): JSX.Element {
                     Legende erklärt die Sprache des Bildes und ist keine Bestandsaussage. */}
                 <LegendDot colorClass="bg-ai" label={t("graph.legendKuratiert")} />
               </div>
+              <GraphObjektliste knoten={g.nodes} bekannt={knownKoIds} />
             </Card>
           );
         }}
