@@ -47,6 +47,13 @@
 // die Lage eines Betriebs MIT verdrahteter Cloud her: nicht gefälscht, sondern über
 // `configStatus()`, die einzige Quelle, aus der `build-app.ts:1574-1592` die Klara-Policy speist.
 // Alles danach — Sitzung, Einwilligung, Tor, Routen — bleibt echt.
+//
+// NACHARBEIT K6 (03.10.2026, Bens Befund): Diese Datei misst am `confidential`-Bit hinter Spionen.
+// Den POSITIVEN Bildweg (`/api/reasoner/describe` mit Dokumentfreigabe) und die Anbieterantwort auf
+// beiden direkten Wegen misst `tests/admin-ki-freigabe/ka4-direktwege-volle-kette.test.ts` — gleicher
+// Aufbau über `buildApp`, aber ohne Spione am Reasoner: echte Fabrik, gecappter Client, mitgeschrieben
+// am Transport. Dort stehen auch die Sperrfälle mit beiden zentralen Freigaben, die nur in jenem
+// Verzeichnis gesetzt werden dürfen.
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 

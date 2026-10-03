@@ -1050,7 +1050,9 @@ const FREIGABE_ERLAUBT: ReadonlyMap<string, string> = new Map([
     "tests/ka4-freischaltung/ka4-einwilligung-wirkt.test.ts",
     "Ein Fall: KA4-S3/KA4-F8a messen, dass der Anbieter über diesen Weg WIRKLICH gerufen wird " +
       "(Zähler 1) und dass das Gesehene von den ausgewiesenen Nutzlastklassen gedeckt ist. KEIN " +
-      "`vertraulicheInhalte`: das vertrauliche Objekt soll den Modellweg gerade nicht erreichen.",
+      "`vertraulicheInhalte`: das vertrauliche Objekt soll den Modellweg gerade nicht erreichen. " +
+      "Dazu KA4-B1/B2 (Nacharbeit K3): der Bytevergleich ohne Einwilligung braucht die " +
+      "Grundfreigabe, sonst bewiese die Anbieter-Null nichts über die Enge.",
   ],
   [
     "tests/ki-lauf-modell/api-lauf-modell.test.ts",
@@ -2364,6 +2366,18 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
     faelle: {
       // R-0639 (01.10.2026): der neue Fall KA4-F7b steht davor — derselbe Fall heisst jetzt #11.
       "#11": { boden: 5, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      // Nacharbeit K3 (R-1777, 03.10.2026): der Bytevergleich ohne Einwilligung (KA4-B1) und seine
+      // Kalibrierung (KA4-B2), angehängt hinter KA4-F8b. B1 ist ein SPERRFALL mit Grundfreigabe in
+      // BEIDEN Aufbauten: ohne sie wäre „null Anbieteraufrufe" auch ohne Enge wahr. B2 zeigt am
+      // selben Aufbau, dass der Anbieter mit Zustimmung gerufen wird. Kein `vertraulicheInhalte`.
+      "#15": {
+        boden: 23,
+        freigaben: ["erteileKiFreigabe(ohne.reasoner)", "erteileKiFreigabe(mit.reasoner)"],
+      },
+      "#16": {
+        boden: 7,
+        freigaben: ["erteileKiFreigabe(ohne.reasoner)", "erteileKiFreigabe(mit.reasoner)"],
+      },
     },
   },
   "tests/klara-dokumenttext/riegel-haelt-den-dokumenttext.test.ts": {

@@ -1208,6 +1208,10 @@ const INVENTAR: readonly string[] = [
   // an der Achse. Keine traegt „klara" im Pfad; sie fallen in `verfehlt`, K5 bleibt bei 69.
   "tests/ka6/job3026-riegel-am-erzeuger.test.ts",
   "tests/app/job2666-stufe-die-nur-der-client-behauptet.test.ts",
+  // Nacharbeit K6 (aufnahme:20260922:gesamt-ki-einwilligung:freigabe-wirkung, 03.10.2026): die
+  // Dokumentfreigabe auf `structure` und `/describe` durch die echte Anbieterkette. Kein „klara" im
+  // Pfad; gefunden über die Achse `einwilligung` (nennt das Tor im Kopf). K5 bleibt bei 69.
+  "tests/admin-ki-freigabe/ka4-direktwege-volle-kette.test.ts",
   "tests/app/job2692-ein-dokument-das-nur-der-client-beschreibt.test.ts",
   "tests/d5-ki-aus/halt-vor-dem-dienst.test.ts",
   "tests/ka6-memo-panel/memo-route.test.ts",

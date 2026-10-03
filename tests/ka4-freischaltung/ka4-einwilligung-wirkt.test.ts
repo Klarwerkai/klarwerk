@@ -29,7 +29,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import Fastify, { type FastifyInstance } from "fastify";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ADDON_ACTOR_ID, ASK_CAPABILITY } from "../../services/app/src/addon-principal";
 import { askRoutes } from "../../services/app/src/routes/ask-routes";
 import {
@@ -751,5 +751,303 @@ describe("JOB 3033 · KA4 · Umfang und Vertraulichkeit des Egress", () => {
     expect(roh).not.toContain("Sonderverfahren");
     expect(roh).not.toContain("Mueller");
     await e.app.close();
+  });
+});
+
+// ================================================================================================
+// OHNE EINWILLIGUNG BYTEGLEICH — am ausgelieferten Ergebnis, nicht am Optionssatz.
+// ================================================================================================
+//
+// BENS BEFUND (Nacharbeit 1, K3/R-1777): F1, F6 und F7 vergleichen den Optionssatz, den die Route
+// an den Dienst übergibt. Ein Vergleich mit `expect.any(Function)` belegt aber keine Bytegleichheit
+// dessen, was der Server ausliefert und nebenbei schreibt.
+//
+// DESHALB ZWEI AUFBAUTEN, DIE SICH NUR IN EINEM PUNKT UNTERSCHEIDEN:
+//   A · `askRoutes` OHNE `klaraSessions` — der Weg ohne KA4 (`ka4Freigabe` kehrt sofort um),
+//   B · derselbe Aufbau MIT dem echten `KlaraSessionService`, echter Sitzung, KEINER Zustimmung.
+// Echt sind `AskService`, `KoService`, `Reasoner` und `AuditService`. Damit die Bytes vergleichbar
+// sind, ist alles Zufällige festgelegt: eine feste Uhr, je Dienst ein eigener Kennungszähler (so
+// verschieben die Sitzungskennungen in B die Kennungen des Antwortwegs nicht) und ein festes
+// Beleggeheimnis. Verglichen werden je Anfrage Status und `res.payload`, danach der vollständige
+// Lücken- und Auditbestand. Die KA4-Protokollzeilen sind die EINZIGE erwartete Abweichung und
+// werden getrennt geprüft.
+//
+// Die Grundfreigabe steht in BEIDEN Aufbauten. Ohne sie wäre „null Anbieteraufrufe" auch dann wahr,
+// wenn die Enge fehlte. KA4-B2 zeigt am selben Aufbau, dass der Anbieter gerufen wird, sobald
+// zugestimmt ist.
+describe("KA4 · ohne Einwilligung antwortet der Server bytegleich wie ohne KA4-Prüfer", () => {
+  const T0 = Date.parse("2026-10-03T08:00:00.000Z");
+  const LUECKE = "Welcher Druck gilt für das Ventil QZ17 im Winterbetrieb?";
+  /** Nur im Test: welcher Zweig der Route bedient wird (Add-on-Schlüssel oder Sitzung). */
+  const ZUGANG = "x-test-zugang";
+
+  // Zusätzlich zur injizierten Uhr: auch ein Zeitstempel, der nicht über `now` läuft, ist in beiden
+  // Aufbauten derselbe. Nur `Date` wird angehalten — Zeitgeber laufen normal.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(T0);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** Deterministische Kennungen im UUID-Format — je Dienst ein eigener Block. */
+  function kennungen(block: string): () => string {
+    let n = 0;
+    return () => {
+      n += 1;
+      return `${block}-0000-4000-8000-${n.toString(16).padStart(12, "0")}`;
+    };
+  }
+
+  interface Vergleich {
+    app: FastifyInstance;
+    reasoner: Reasoner;
+    dienst: KlaraSessionService;
+    gaps: InMemoryGapRepo;
+    auditRepo: InMemoryAuditRepo;
+    anbieterAufrufe: string[];
+    zeilen: string[];
+    sitzung: string;
+    bindung: Record<string, string>;
+    koId: string;
+  }
+
+  async function vergleichsaufbau(mitPruefer: boolean): Promise<Vergleich> {
+    const jetzt = (): number => T0;
+    const anbieterAufrufe: string[] = [];
+    const provider = {
+      name: "mitschreiber",
+      isAvailable: () => true,
+      answer: async (
+        frage: string,
+        kontext: readonly KnowledgeRef[],
+        _locale?: ReasonerLocale,
+      ): Promise<AnswerResult> => {
+        anbieterAufrufe.push(frage);
+        return {
+          answered: true,
+          answer: "Antwort des Anbieters. [1]",
+          knowledgeClass: "gesichert",
+          trust: 60,
+          sources: kontext.map((k) => k.id),
+          citedSources: kontext.map((k) => k.id),
+          steps: [],
+          demo: false,
+        };
+      },
+    } as unknown as ReasonerProvider;
+
+    const koService = new KoService({
+      repo: new InMemoryKoRepo(),
+      now: jetzt,
+      genId: kennungen("a1000000"),
+    });
+    await koService.activateSearchProjectionV2();
+    const ko = await koService.create({
+      title: "Zylinderkopfdichtung XQ42 Grundlagen",
+      statement: "Die Zylinderkopfdichtung XQ42 wird vor dem Wechsel entlastet.",
+      type: "best_practice",
+      category: "Betrieb",
+      author: "anna",
+    });
+    // Validiert: nur dann ist die retrieval-only-Frage ein TREFFER (`validatedOnly` bleibt stehen).
+    await koService.setValidationState(ko.id, { trust: 90, status: "validiert" });
+
+    const reasoner = new Reasoner(provider);
+    const gaps = new InMemoryGapRepo();
+    const auditRepo = new InMemoryAuditRepo();
+    const ask = new AskService({
+      reasoner,
+      koService,
+      gaps,
+      audit: new AuditService({ repo: auditRepo, now: jetzt }),
+      now: jetzt,
+      genId: kennungen("a2000000"),
+      receiptSecret: Buffer.alloc(32, 7),
+    });
+    // In BEIDEN Aufbauten gebaut, damit beide dieselbe Sitzung und dieselben Kopfzeilen haben —
+    // verdrahtet wird er nur in B.
+    const dienst = new KlaraSessionService({
+      repo: new InMemoryKlaraSessionRepo(),
+      policy: () => CLOUD_LAGE,
+      now: jetzt,
+      newId: kennungen("a3000000"),
+    });
+
+    const zeilen: string[] = [];
+    const app = Fastify({
+      logger: { level: "info", stream: { write: (z: string) => void zeilen.push(z) } },
+    });
+    app.decorateRequest("authContext", null);
+    app.addHook("onRequest", async (request) => {
+      if (request.headers[ZUGANG] === "addon") {
+        request.authContext = {
+          authKind: "addon",
+          principal: { kind: "addon", id: ADDON_ACTOR_ID, capabilities: [ASK_CAPABILITY] },
+        };
+      }
+    });
+    app.register(
+      askRoutes(
+        {
+          ask,
+          ko: koService,
+          conflicts: { unresolved: async () => [] } as never,
+          ...(mitPruefer ? { klaraSessions: dienst as never } : {}),
+        },
+        {
+          requireUser: async () => ({ id: "nutzer-1", role: "admin" }),
+          requirePermission: async () => ({ id: "nutzer-1", role: "admin" }),
+        } as never,
+      ),
+    );
+    await app.ready();
+
+    const sicht = await dienst.createSession("nutzer-1", "inst-1", {
+      kind: "saved",
+      hostDocumentId: "doc-abc",
+    });
+    return {
+      app,
+      reasoner,
+      dienst,
+      gaps,
+      auditRepo,
+      anbieterAufrufe,
+      zeilen,
+      sitzung: sicht.sessionId,
+      bindung: {
+        "x-klara-session": sicht.sessionId,
+        "x-klara-instance": "inst-1",
+        "x-klara-document": sicht.documentContextId,
+      },
+      koId: ko.id,
+    };
+  }
+
+  const ANFRAGEN = [
+    { name: "Sitzungszweig · Treffer", frage: FRAGE, addon: false },
+    { name: "Sitzungszweig · Wissensluecke", frage: LUECKE, addon: false },
+    { name: "Add-on-Zweig · Treffer", frage: FRAGE, addon: true },
+    { name: "Add-on-Zweig · Wissensluecke", frage: LUECKE, addon: true },
+  ] as const;
+
+  const senden = (v: Vergleich, anfrage: (typeof ANFRAGEN)[number]) =>
+    v.app.inject({
+      method: "POST",
+      url: "/api/ask",
+      headers: {
+        ...v.bindung,
+        ...(anfrage.addon ? { [ZUGANG]: "addon" } : {}),
+        "content-type": "application/json",
+      },
+      payload: {
+        question: anfrage.frage,
+        locale: "de",
+        mode: "retrieval-only",
+        questionSource: "manual",
+      },
+    });
+
+  /** Die Entscheidungszeilen des KA4-Tors am Ask-Weg — Entscheidung und Grund, sonst nichts. */
+  const ka4Entscheidungen = (zeilen: string[]): { entscheidung: string; grund?: string }[] =>
+    zeilen
+      .filter((z) => z.includes('"ask.ka4.dokument-consent"'))
+      .map((z) => (JSON.parse(z) as { ka4: { entscheidung: string; grund?: string } }).ka4);
+
+  it("KA4-B1 · Sitzungs- und Add-on-Zweig, Treffer und Wissenslücke: Status, Antwortbytes, Lücken und Audit gleich — null Anbieteraufrufe", async () => {
+    const ohne = await vergleichsaufbau(false);
+    const mit = await vergleichsaufbau(true);
+    await erteileKiFreigabe(ohne.reasoner);
+    await erteileKiFreigabe(mit.reasoner);
+
+    // KALIBRIERUNG: beide Aufbauten fragen mit denselben Kopfzeilen über denselben Bestand.
+    expect(mit.bindung).toEqual(ohne.bindung);
+    expect(mit.koId).toBe(ohne.koId);
+    expect(JSON.stringify(await mit.gaps.all())).toBe(JSON.stringify(await ohne.gaps.all()));
+    expect(JSON.stringify(await mit.auditRepo.all())).toBe(
+      JSON.stringify(await ohne.auditRepo.all()),
+    );
+
+    const ausgeliefert = new Map<string, Record<string, unknown>>();
+    for (const anfrage of ANFRAGEN) {
+      const a = await senden(ohne, anfrage);
+      const b = await senden(mit, anfrage);
+      expect([anfrage.name, a.statusCode]).toEqual([anfrage.name, 200]);
+      expect([anfrage.name, b.statusCode]).toEqual([anfrage.name, a.statusCode]);
+      // DIE AUSSAGE: das vollständige Ergebnis, Byte für Byte.
+      expect([anfrage.name, b.payload]).toEqual([anfrage.name, a.payload]);
+      ausgeliefert.set(anfrage.name, JSON.parse(a.payload) as Record<string, unknown>);
+    }
+
+    // NICHT VAKUOS: der Treffer trägt die validierte Quelle, die Lücke legt im Sitzungszweig eine
+    // Wissenslücke an und im Add-on-Zweig (`count_only`) keine.
+    const treffer = ausgeliefert.get("Sitzungszweig · Treffer") as {
+      result: { answered: boolean; sources: string[] };
+    };
+    expect(treffer.result.answered).toBe(true);
+    expect(treffer.result.sources).toContain(ohne.koId);
+    const luecke = ausgeliefert.get("Sitzungszweig · Wissensluecke") as {
+      result: { answered: boolean };
+      gap: unknown;
+    };
+    expect(luecke.result.answered).toBe(false);
+    expect(luecke.gap).not.toBeNull();
+    const addonLuecke = ausgeliefert.get("Add-on-Zweig · Wissensluecke") as { gap: unknown };
+    expect(addonLuecke.gap).toBeNull();
+
+    // DIE NEBENWIRKUNGEN: Lücken- und Auditbestand nach allen vier Anfragen, vollständig.
+    const lueckenOhne = await ohne.gaps.all();
+    expect(lueckenOhne).toHaveLength(1);
+    expect(JSON.stringify(await mit.gaps.all())).toBe(JSON.stringify(lueckenOhne));
+    const auditOhne = await ohne.auditRepo.all();
+    expect(auditOhne.length).toBeGreaterThanOrEqual(ANFRAGEN.length);
+    expect(JSON.stringify(await mit.auditRepo.all())).toBe(JSON.stringify(auditOhne));
+
+    // Kein Modellaufruf in keinem der beiden Aufbauten.
+    expect(ohne.anbieterAufrufe).toEqual([]);
+    expect(mit.anbieterAufrufe).toEqual([]);
+
+    // GETRENNT: das Protokoll des Tors. A schreibt keine Zeile (kein Prüfer), B je Anfrage genau
+    // eine Absage — und keine Dokumenttext-Entscheidung, weil keine Freigabe bestätigt wurde.
+    expect(ka4Entscheidungen(ohne.zeilen)).toEqual([]);
+    const entscheidungen = ka4Entscheidungen(mit.zeilen);
+    expect(entscheidungen).toHaveLength(ANFRAGEN.length);
+    for (const e of entscheidungen) {
+      expect(e.entscheidung).toBe("blockiert");
+    }
+    expect(ohne.zeilen.some((z) => z.includes('"ask.ka4.dokumenttext"'))).toBe(false);
+    expect(mit.zeilen.some((z) => z.includes('"ask.ka4.dokumenttext"'))).toBe(false);
+
+    await ohne.app.close();
+    await mit.app.close();
+  });
+
+  it("KA4-B2 · KALIBRIERUNG: derselbe Aufbau B ruft den Anbieter, sobald zugestimmt ist — die Null oben hängt an der Einwilligung", async () => {
+    const ohne = await vergleichsaufbau(false);
+    const mit = await vergleichsaufbau(true);
+    await erteileKiFreigabe(ohne.reasoner);
+    await erteileKiFreigabe(mit.reasoner);
+    const zustimmung = await mit.dienst.grantConsent(mit.sitzung, {
+      actorId: "nutzer-1",
+      addinInstanceId: "inst-1",
+      documentContextId: mit.bindung["x-klara-document"] ?? "",
+    });
+    expect(zustimmung.consentState).toBe("granted");
+
+    const anfrage = ANFRAGEN[0];
+    const a = await senden(ohne, anfrage);
+    const b = await senden(mit, anfrage);
+    expect(a.statusCode).toBe(200);
+    expect(b.statusCode).toBe(200);
+    expect(ohne.anbieterAufrufe).toEqual([]);
+    expect(mit.anbieterAufrufe).toEqual([FRAGE]);
+    // Mit Zustimmung ist das Ergebnis ein anderes — der Bytevergleich oben kann also unterscheiden.
+    expect(b.payload).not.toBe(a.payload);
+    expect(ka4Entscheidungen(mit.zeilen).at(-1)?.entscheidung).toBe("freigegeben");
+
+    await ohne.app.close();
+    await mit.app.close();
   });
 });
