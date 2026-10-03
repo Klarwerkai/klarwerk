@@ -38,10 +38,11 @@ function seite(id: string, title: string, version = 1, status?: string): Conflue
 /**
  * Die Quelle: `liste` ist, was das Space-Listing liefert; `jeId` beantwortet den Einzelabruf
  * (Seite, 404 oder ein HTTP-Status als Fehler). Fehlt eine Id in `jeId`, gilt das Listing.
+ * `{ roh200 }` antwortet mit HTTP 200 und genau diesem Body (z. B. `{}` oder `null`).
  */
 interface Quelle {
   liste: ConfluencePage[];
-  jeId?: Record<string, ConfluencePage | 404 | 500>;
+  jeId?: Record<string, ConfluencePage | 404 | 500 | { roh200: unknown }>;
 }
 
 function adapterFuer(quelle: Quelle, spaceKey = "K") {
@@ -60,6 +61,9 @@ function adapterFuer(quelle: Quelle, spaceKey = "K") {
     }
     if (vorgabe === 500) {
       return antwort(500, {});
+    }
+    if (vorgabe && "roh200" in vorgabe) {
+      return antwort(200, vorgabe.roh200);
     }
     const page = vorgabe ?? quelle.liste.find((p) => p.id === id);
     return page ? antwort(200, page) : antwort(404, { message: "not found" });
@@ -280,6 +284,96 @@ describe("R-0162 · Gegenfälle — „fehlt in der Liste“ allein löscht nie"
     expect(lauf.removalKept).toBe(1);
     expect(lauf.removalOpen).toBe(0);
     expect(lauf.perPage.find((p) => p.ref === "p2")?.status).toBe("kept");
+    expect(await traeger(d, "p2")).toHaveLength(1);
+  });
+
+  // Nacharbeit (bens Befund 1/3): HTTP 200 ohne gültige Seite ist KEINE bestätigte Löschung.
+  const ungueltigeBodies: [string, unknown][] = [
+    ["{}", {}],
+    ["null", null],
+  ];
+  for (const [name, body] of ungueltigeBodies) {
+    it(`G6: Einzelabruf HTTP 200 mit Body ${name} — Wissen bleibt, Prüfung offen`, async () => {
+      const d = await bestand();
+      const { adapter, einzelabrufe } = adapterFuer({
+        liste: [seite("p1", "Pumpe warten")],
+        jeId: { p2: { roh200: body } },
+      });
+      const lauf = await abgleich(d, adapter);
+      expect(einzelabrufe).toEqual(["p2"]);
+      expect(lauf.removed).toBe(0);
+      expect(lauf.removalOpen).toBe(1);
+      const eintrag = lauf.perPage.find((p) => p.ref === "p2");
+      expect(eintrag?.status).toBe("failed");
+      expect(eintrag?.note).toContain("ConfluenceAntwortUngueltig");
+      expect(await traeger(d, "p2")).toHaveLength(1);
+      expect(await d.koService.trashed()).toHaveLength(0);
+    });
+  }
+});
+
+// Nacharbeit (bens Befund 2/4): eine Seite wird eingereiht, dann in der Quelle gelöscht, BEVOR
+// jemand den Kandidaten annimmt. Der nächste Abgleich muss die spätere Übernahme verhindern.
+describe("R-0162 · offene Kandidaten gelöschter Seiten", () => {
+  async function eingereiht() {
+    const d = dienst();
+    const erst = await abgleich(d, adapterFuer({ liste: [seite("p2", "Filter")] }).adapter);
+    expect(erst.imported).toBe(1);
+    const [kandidat] = await d.library.listImportCandidates();
+    if (!kandidat) {
+      throw new Error("Vorbedingung verletzt: kein Kandidat eingereiht.");
+    }
+    expect(kandidat.status).toBe("neu");
+    expect(await d.koService.list()).toHaveLength(0);
+    return { d, kandidatId: kandidat.id };
+  }
+
+  async function kandidat(d: Dienst, id: string) {
+    return (await d.library.listImportCandidates()).find((c) => c.id === id);
+  }
+
+  it("K1: bestätigte Löschung lehnt den offenen Kandidaten ab — Annehmen legt nichts an", async () => {
+    const { d, kandidatId } = await eingereiht();
+    const { adapter, einzelabrufe } = adapterFuer({ liste: [], jeId: { p2: 404 } });
+    const lauf = await abgleich(d, adapter);
+
+    expect(einzelabrufe).toEqual(["p2"]);
+    expect(lauf.candidatesRejected).toBe(1);
+    expect(lauf.removalOpen).toBe(0);
+    const eintrag = lauf.perPage.find((p) => p.ref === "p2");
+    expect(eintrag?.status).toBe("removed");
+    expect(eintrag?.note).toContain("Importkandidat abgelehnt");
+    const nachher = await kandidat(d, kandidatId);
+    expect(nachher?.status).toBe("abgelehnt");
+    expect(nachher?.reviewedBy).toBe("r0162@test");
+
+    await expect(d.library.reviewImportCandidate(kandidatId, "accept", "pedi")).rejects.toThrow();
+    expect(await d.koService.list()).toHaveLength(0);
+    expect(await d.koService.trashed()).toHaveLength(0);
+  });
+
+  it("K2: im Probelauf bleibt der Kandidat unverändert und regulär annehmbar", async () => {
+    const { d, kandidatId } = await eingereiht();
+    const lauf = await abgleich(d, adapterFuer({ liste: [], jeId: { p2: 404 } }).adapter, true);
+    expect(lauf.candidatesRejected).toBe(1);
+    expect(lauf.perPage.find((p) => p.ref === "p2")?.note).toContain("würde abgelehnt");
+    expect((await kandidat(d, kandidatId))?.status).toBe("neu");
+
+    const angenommen = await d.library.reviewImportCandidate(kandidatId, "accept", "pedi");
+    expect(angenommen.koId).toBeTruthy();
+    expect(await traeger(d, "p2")).toHaveLength(1);
+  });
+
+  it("K3: scheitert die Gegenprobe (500), bleibt der Kandidat unverändert und annehmbar", async () => {
+    const { d, kandidatId } = await eingereiht();
+    const lauf = await abgleich(d, adapterFuer({ liste: [], jeId: { p2: 500 } }).adapter);
+    expect(lauf.candidatesRejected).toBe(0);
+    expect(lauf.removalOpen).toBe(1);
+    expect(lauf.perPage.find((p) => p.ref === "p2")?.status).toBe("failed");
+    expect((await kandidat(d, kandidatId))?.status).toBe("neu");
+
+    const angenommen = await d.library.reviewImportCandidate(kandidatId, "accept", "pedi");
+    expect(angenommen.koId).toBeTruthy();
     expect(await traeger(d, "p2")).toHaveLength(1);
   });
 });

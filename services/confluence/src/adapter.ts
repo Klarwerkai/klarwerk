@@ -199,11 +199,16 @@ export class ConfluenceSourceAdapter implements SourceAdapter {
    * R-0162 (Abgleich): die GEGENPROBE vor jedem Nachziehen einer Löschung. Dass eine Seite in der
    * Liste fehlt, reicht nicht — erst wenn die Quelle sie auch je Id nicht mehr liefert (404) oder
    * sie nicht mehr `current` ist (Papierkorb/Archiv), gilt sie als gelöscht. Netz- und Serverfehler
-   * werfen weiter; der Aufrufer verbucht sie als „nicht prüfbar" und ändert nichts.
+   * werfen weiter, ebenso eine 2xx-Antwort ohne gültige Seite (getPageStateById); der Aufrufer
+   * verbucht sie als „nicht prüfbar" und ändert nichts.
    */
   async isGoneAtSource(externalId: string): Promise<boolean> {
-    const page = await this.client.getPageById(externalId);
-    return !page || (page.status !== undefined && page.status !== "current");
+    const zustand = await this.client.getPageStateById(externalId);
+    if (!zustand.gefunden) {
+      return true;
+    }
+    const { status } = zustand.page;
+    return status !== undefined && status !== "current";
   }
 }
 
