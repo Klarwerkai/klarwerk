@@ -303,7 +303,7 @@ beforeAll(async () => {
   expect(gebaut, "apps/web/dist fehlt — vorher ./tools/build").toBe(true);
   browser = await chromium.launch({
     headless: true,
-    args: ["--no-sandbox", "--disable-gpu", "--single-process", "--no-zygote"],
+    args: ["--no-sandbox", "--disable-gpu"],
   });
 }, 120_000);
 
