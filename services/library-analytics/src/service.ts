@@ -353,9 +353,90 @@ export function cleanupDigest(candidateIds: readonly string[], koIds: readonly s
  */
 export const LIBRARY_SEARCH_HIT_LIMIT = 200;
 
+// ================================================================================================
+// R-0163 — ZU EINER ÜBERNOMMENEN SEITE GEHÖREN IHRE ANHÄNGE UND BILDER.
+// ================================================================================================
+//
+// WARUM KEIN FELD AN `ImportItem`: `src/types.ts` und `index.ts` stehen unter Freeze-144, und eine
+// Freigabe dafür zeichnet nicht der Bau (dieselbe Lage wie `originalAuthor`, s. `quellautorVon`).
+// Der Adapter legt die Anhänge als zusätzliches Feld `attachments` an das Item; die Kandidaten-
+// ablagen speichern `item` als Ganzes. Gelesen wird es hier als FREMDES, UNGEPRÜFTES Feld — nur
+// ein Eintrag mit allen Pflichtangaben zählt (`leseImportAnhaenge`).
+//
+// WARUM EIN PORT: dieses Modul kennt weder die Quelle noch den Objektspeicher. Wie die Bytes
+// geholt und abgelegt werden, entscheidet die Kompositionswurzel; hier fällt nur, OB und WELCHE
+// Anhänge an WELCHES Wissensobjekt gehören.
+export interface ImportAnhang {
+  readonly externalId: string;
+  readonly name: string;
+  readonly mime: string;
+  readonly size?: number;
+  readonly sourceVersion?: number;
+  readonly abruf: string;
+}
+
+export interface AnhangsAuftrag {
+  readonly koId: string;
+  readonly provider: string | undefined;
+  /** Nur die Anhänge, die das Wissensobjekt noch NICHT trägt (Abgleich über den Dateinamen). */
+  readonly anhaenge: readonly ImportAnhang[];
+  /** Der Annehmende — Hochladender und Handelnder der Anlage, nie der Quellautor. */
+  readonly actor: string;
+  /** Die Stufe des Wissensobjekts; ein Anhang erbt sie. */
+  readonly confidentiality: Confidentiality | undefined;
+}
+
+export interface AnhangsErgebnis {
+  readonly uebernommen: number;
+  readonly fehlgeschlagen: number;
+}
+
+export type AnhangsUebernahme = (auftrag: AnhangsAuftrag) => Promise<AnhangsErgebnis>;
+
+/** Liest das fremde Feld `attachments` eines Items. Unbrauchbare Einträge fallen weg. */
+export function leseImportAnhaenge(item: ImportItem): ImportAnhang[] {
+  const roh: unknown = (item as { attachments?: unknown }).attachments;
+  if (!Array.isArray(roh)) {
+    return [];
+  }
+  const text = (wert: unknown): string | undefined =>
+    typeof wert === "string" && wert.trim() ? wert.trim() : undefined;
+  const out: ImportAnhang[] = [];
+  for (const eintrag of roh as unknown[]) {
+    if (typeof eintrag !== "object" || eintrag === null) {
+      continue;
+    }
+    const e = eintrag as Record<string, unknown>;
+    const externalId = text(e.externalId);
+    const name = text(e.name);
+    const mime = text(e.mime);
+    const abruf = text(e.abruf);
+    if (!externalId || !name || !mime || !abruf) {
+      continue;
+    }
+    const size = typeof e.size === "number" && Number.isFinite(e.size) ? e.size : undefined;
+    const version =
+      typeof e.sourceVersion === "number" && Number.isFinite(e.sourceVersion)
+        ? e.sourceVersion
+        : undefined;
+    out.push({
+      externalId,
+      name,
+      mime,
+      abruf,
+      ...(size !== undefined ? { size } : {}),
+      ...(version !== undefined ? { sourceVersion: version } : {}),
+    });
+  }
+  return out;
+}
+
 export interface LibraryServiceDeps {
   koService: KoService;
   audit?: AuditService;
+  // R-0163: legt die Anhänge eines übernommenen Eintrags am Wissensobjekt an. Ohne Port werden
+  // keine Anhänge übernommen — und das wird je Annahme auditiert, nicht verschwiegen.
+  anhaenge?: AnhangsUebernahme;
   // SCRUM-157: persistente Import-Queue. Optional; ohne Angabe In-Memory (Dev/Test).
   candidates?: CandidateRepo;
   genId?: () => string;
@@ -460,10 +541,13 @@ export class LibraryService {
   // JOB 4155 (WG-LUECKEN): der Kantenbestand für `/api/graph`. `undefined` = nicht verdrahtet; die
   // Antwort trägt das Feld dann GAR NICHT (s. `LibraryServiceDeps.kanten`).
   private readonly kanten: KuratierteKantenLeser | undefined;
+  // R-0163: s. `LibraryServiceDeps.anhaenge`.
+  private readonly anhaenge: AnhangsUebernahme | undefined;
 
   constructor(deps: LibraryServiceDeps) {
     this.koService = deps.koService;
     this.audit = deps.audit;
+    this.anhaenge = deps.anhaenge;
     this.candidates = deps.candidates ?? new InMemoryCandidateRepo();
     this.genId = deps.genId ?? (() => randomUUID());
     this.now = deps.now ?? (() => Date.now());
@@ -1195,6 +1279,12 @@ export class LibraryService {
           "Der Review-Claim wurde zwischenzeitlich übernommen — Aktion nicht gespeichert.",
         );
       }
+      // R-0163: die Anhänge NACH dem persistierten Endstatus — ihr Nachladen verlängert so nie die
+      // Claim-Lease, und ein gescheiterter Anhang kann weder die Annahme noch das Wissensobjekt
+      // zurücknehmen. `uebernimmAnhaenge` wirft nicht; ihr Ausgang steht im Audit.
+      if (createdKoId !== null && action === "accept") {
+        await this.uebernimmAnhaenge(createdKoId, resolved.item, actor);
+      }
     } catch (err) {
       // WP-SHIP8-CLOSE-4 (bens ROT-1A): der ANKER entscheidet über den Fehlerpfad — eine blinde
       // Freigabe, während das gestempelte KO existiert (z. B. create-Teilpersistenz: Insert
@@ -1486,6 +1576,75 @@ export class LibraryService {
       }
     }
     return { completed, released };
+  }
+
+  /**
+   * R-0163: die Anhänge eines angenommenen Eintrags an SEIN Wissensobjekt.
+   *
+   * - Ein Wissensobjekt im Papierkorb wird nicht angefasst (`get` liefert es nicht) — derselbe
+   *   Trash-Vertrag wie in `acceptToKo`.
+   * - Re-Sync und Wiederholung legen nichts doppelt an: was das Objekt unter demselben Dateinamen
+   *   schon trägt, geht nicht erneut an den Port. Confluence führt je Seite jeden Dateinamen
+   *   genau einmal; eine neue Version desselben Anhangs ersetzt den vorhandenen NICHT (Grenze).
+   * - Wirft nie. Ein fehlender Port, ein Fehler des Ports und eine unvollständig gelesene
+   *   Anhangsliste stehen im Audit (`import.attachments`) — nur Zähler, keine Dateinamen.
+   */
+  private async uebernimmAnhaenge(koId: string, item: ImportItem, actor: string): Promise<void> {
+    const anhaenge = leseImportAnhaenge(item);
+    const fremd = item as { attachmentsIncomplete?: unknown };
+    const unvollstaendig = fremd.attachmentsIncomplete === true;
+    if (anhaenge.length === 0 && !unvollstaendig) {
+      return;
+    }
+    let uebernommen = 0;
+    let fehlgeschlagen = 0;
+    let vorhanden = 0;
+    let ohnePort = false;
+    try {
+      const ko = await this.koService.get(koId);
+      if (!ko) {
+        return;
+      }
+      const namen = new Set((ko.attachments ?? []).map((a) => a.name));
+      const offen = anhaenge.filter((a) => !namen.has(a.name));
+      vorhanden = anhaenge.length - offen.length;
+      if (offen.length > 0) {
+        if (this.anhaenge) {
+          ({ uebernommen, fehlgeschlagen } = await this.anhaenge({
+            koId,
+            provider: item.provider,
+            anhaenge: offen,
+            actor,
+            confidentiality: ko.confidentiality,
+          }));
+        } else {
+          ohnePort = true;
+          fehlgeschlagen = offen.length;
+        }
+      }
+    } catch (err) {
+      fehlgeschlagen = anhaenge.length - vorhanden - uebernommen;
+      process.stderr.write(
+        `[KLARWERK] Anhangsuebernahme fehlgeschlagen (ko=${koId}, fehler=${
+          err instanceof Error ? err.name : "unknown"
+        }).\n`,
+      );
+    }
+    await this.audit
+      ?.record({
+        actor,
+        action: "import.attachments",
+        target: koId,
+        payload: {
+          gemeldet: anhaenge.length,
+          uebernommen,
+          vorhanden,
+          fehlgeschlagen,
+          ...(unvollstaendig ? { listeUnvollstaendig: true } : {}),
+          ...(ohnePort ? { ohneUebernahmeweg: true } : {}),
+        },
+      })
+      .catch(() => undefined);
   }
 
   // SCRUM-470: Baut das KO aus einem angenommenen Import-Item — idempotent per pageId.

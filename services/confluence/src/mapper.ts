@@ -10,8 +10,61 @@ import { kernaussageAusHtml } from "../../structure";
 // WP-IC-PAKET-1b (bens ROT-1): decodeHtmlEntities auch für die NICHT-Body-Felder — Confluence liefert
 // Entities nicht nur im Storage-HTML, sondern auch in Titel/Autor/Labels.
 import { decodeHtmlEntities } from "../../structure";
-import type { ConfluencePage } from "./rest-client";
+import type { ConfluenceAttachment, ConfluencePage } from "./rest-client";
 import { confluenceStorageToHtml } from "./storage";
+
+// ================================================================================================
+// R-0163 — DIE ANHÄNGE EINER SEITE, QUELLNEUTRAL.
+// ================================================================================================
+//
+// `ImportItem` steht unter Freeze-144 (`tests/library-analytics-freeze144.test.ts`), dessen Freigabe
+// der Bau nicht zeichnet. Das Feld reist deshalb wie `originalAuthor` als ZUSÄTZLICHES Feld am Item:
+// der Import-Kern liest es als fremdes, ungeprüftes Feld (`leseImportAnhaenge` in
+// `library-analytics/src/service.ts`) und übernimmt nur, was dort besteht. Die Begriffe sind
+// quellneutral — ein Jira-Adapter füllt dieselbe Form.
+export interface ConfluenceImportAnhang {
+  // Kennung des Anhangs in der Quelle (Confluence: attachment id).
+  externalId: string;
+  // Dateiname, an der Quelle EINMAL dekodiert (wie Titel/Labels).
+  name: string;
+  mime: string;
+  size?: number;
+  sourceVersion?: number;
+  // Quellinterner Abrufweg — nur der Adapter derselben Quelle löst ihn auf (`fetchAttachment`).
+  abruf: string;
+}
+
+export type ConfluenceImportItem = ImportItem & {
+  attachments?: ConfluenceImportAnhang[];
+  // Die Anhangsliste konnte nicht oder nicht vollständig gelesen werden. Fehlt das Feld, ist sie
+  // vollständig — ein stilles „keine Anhänge" bei einem Lesefehler gibt es nicht.
+  attachmentsIncomplete?: true;
+};
+
+/**
+ * Ein Confluence-Anhang → quellneutraler Import-Anhang, oder `undefined`, wenn eine Pflichtangabe
+ * fehlt (Kennung, Dateiname, Abrufweg). Kein geratener Name, kein erfundener Link.
+ */
+export function mapConfluenceAttachment(
+  att: ConfluenceAttachment,
+): ConfluenceImportAnhang | undefined {
+  const externalId = att.id?.trim();
+  const name = att.title ? decodeHtmlEntities(att.title).trim() : "";
+  const abruf = att._links?.download?.trim();
+  if (!externalId || !name || !abruf) {
+    return undefined;
+  }
+  const mime = (att.extensions?.mediaType ?? att.metadata?.mediaType ?? "").trim().toLowerCase();
+  const size = att.extensions?.fileSize;
+  return {
+    externalId,
+    name,
+    mime: mime || "application/octet-stream",
+    ...(typeof size === "number" && Number.isFinite(size) && size >= 0 ? { size } : {}),
+    ...(typeof att.version?.number === "number" ? { sourceVersion: att.version.number } : {}),
+    abruf,
+  };
+}
 
 export interface ConfluenceMapOptions {
   baseUrl: string; // für die absolute Seiten-URL (Provenienz)
@@ -147,10 +200,14 @@ export function confluenceAhnenBefund(page: ConfluencePage): ConfluenceAhnenBefu
   return new Set(ids).size === ids.length ? "ok" : "zyklus";
 }
 
+// R-0163: `anhaenge` ist die gelesene Anhangsliste der Seite. Fehlt das Argument, wurde sie nicht
+// gelesen (Erkundung/Space-Liste) — das Item trägt dann KEIN `attachments`-Feld. `unvollstaendig`
+// stammt aus dem Lesen der Liste (Abbruch, Fehler) und reist sichtbar mit.
 export function mapConfluencePageToImportItem(
   page: ConfluencePage,
   opts: ConfluenceMapOptions,
-): ImportItem {
+  anhaenge?: { attachments: readonly ConfluenceAttachment[]; unvollstaendig: boolean },
+): ConfluenceImportItem {
   const bodyHtml = confluenceStorageToHtml(page.body?.storage?.value ?? "");
   // JOB 2703 D1 (Review R2-3): hier stand `htmlToPlainText(bodyHtml)` — der GESAMTE Klartext der
   // Seite wurde zur Kernaussage, während der Volltext ohnehin als `bodyHtml` mitreist. Jetzt: der
@@ -173,6 +230,11 @@ export function mapConfluencePageToImportItem(
   const governance = confluenceGovernanceConfidentiality(page);
   // AUFTRAG-mega27 A2: die Elternkette (Wurzel zuerst, ohne die Seite selbst) — oder gar nichts.
   const sourcePath = confluenceSourcePath(page);
+  // R-0163: die Anhänge der Seite; ein Eintrag ohne Pflichtangabe zählt als unvollständig.
+  const gemappt = (anhaenge?.attachments ?? []).map(mapConfluenceAttachment);
+  const attachments = gemappt.filter((a): a is ConfluenceImportAnhang => a !== undefined);
+  const attachmentsIncomplete =
+    anhaenge !== undefined && (anhaenge.unvollstaendig || attachments.length < gemappt.length);
 
   return {
     title,
@@ -203,5 +265,8 @@ export function mapConfluencePageToImportItem(
     // WP-IC-PAKET-1c (bens ROT-2): Decode-Marker — die Textfelder sind hier KANONISCH dekodiert;
     // die Anzeige darf sie nicht erneut dekodieren (Doppel-Dekodier-Kette bei Literal-Entities).
     textCodec: "decoded",
+    // R-0163: Anhänge und Bilder der Seite — nur, wenn die Liste gelesen wurde und etwas trägt.
+    ...(attachments.length > 0 ? { attachments } : {}),
+    ...(attachmentsIncomplete ? { attachmentsIncomplete: true as const } : {}),
   };
 }

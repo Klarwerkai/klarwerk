@@ -56,6 +56,7 @@ import {
   PgOverlapRepo,
   PgOverlapSettingsRepo,
 } from "../../conflicts";
+import { createConfluenceAdapterFromEnv } from "../../confluence";
 // SCRUM-523 P.3 (WP-A2): gemeinsamer Transaktions-Kernel — nur die Kompositionswurzel bindet withPgTx
 // an den echten, mit PgKoRepo/PgAuditRepo geteilten Pool (s. buildPgServices unten).
 import { gatedPool, withPgTx } from "../../db-tx";
@@ -212,6 +213,7 @@ import {
   InMemoryBrandingSettingsRepo,
   PgBrandingSettingsRepo,
 } from "./branding-settings";
+import { confluenceAnhangsUebernahme } from "./confluence-anhaenge";
 import { type SemanticPrefilter, removeKoFromDuplicatePrefilter } from "./duplicate-detection";
 import { cappedEmbeddingProvider } from "./embed-concurrency";
 import type { FactoryReset } from "./factory-reset";
@@ -1042,6 +1044,14 @@ export function assembleServices(
   // Beziehungsroute nicht kennt. Die Wahlregel selbst ist UNVERÄNDERT (Postgres, wenn injiziert,
   // sonst der DEDUPLIZIERENDE Speicherbestand — die Begründung steht unten an der Verwendung).
   const kantenBestand = opts.kanten ?? new DeduplizierenderKantenBestand();
+  // AUFTRAG-mega20 Block C/D: EINE ObjectStore-Instanz für die Composition-Root. Bis mega19 wurde
+  // sie zweimal gebaut (einmal für die Routen, einmal für die Medien-Analyse); solange der Store
+  // nur las und schrieb, war das folgenlos. Mit `list`/`delete` und der Lebenszyklus-Zuordnung ist
+  // es das nicht mehr — zwei Instanzen wären zwei Orte, an denen jemand künftig einen Cache oder
+  // eine Sperre einbaut, ohne die andere zu kennen. Ein Repo, ein Store.
+  // R-0163: eine Stufe früher gebaut, weil der Anhangsweg des `LibraryService` ihn braucht —
+  // dieselbe Instanz, kein zweiter Store.
+  const objects = new ObjectStore({ repo: repos.objects });
   const library = new LibraryService({
     koService: ko,
     audit,
@@ -1050,14 +1060,21 @@ export function assembleServices(
     // JOB 4155: die kuratierten Kanten für `/api/graph` — EINE Mengenabfrage über `alleAktiven`,
     // keine Abfrage je Knoten. Derselbe Bestand, den `kantenRoutes` und die Netzroute lesen.
     kanten: kantenBestand,
+    // R-0163: Anhänge und Bilder einer angenommenen Confluence-Seite — nur hinter demselben
+    // Schalter wie der Import selbst; der Adapter entsteht je Annahme aus derselben Factory wie in
+    // den Importrouten (Token bleibt in der Client-Closure).
+    ...(schalterAn("confluenceImport")
+      ? {
+          anhaenge: confluenceAnhangsUebernahme({
+            ko,
+            objects,
+            uploadLimits: repos.uploadLimits,
+            makeAdapter: () => createConfluenceAdapterFromEnv(),
+          }),
+        }
+      : {}),
   });
   const lifecycle = new LifecycleService({ koService: ko, repo: repos.lifecycleRepo });
-  // AUFTRAG-mega20 Block C/D: EINE ObjectStore-Instanz für die Composition-Root. Bis mega19 wurde
-  // sie zweimal gebaut (einmal für die Routen, einmal für die Medien-Analyse); solange der Store
-  // nur las und schrieb, war das folgenlos. Mit `list`/`delete` und der Lebenszyklus-Zuordnung ist
-  // es das nicht mehr — zwei Instanzen wären zwei Orte, an denen jemand künftig einen Cache oder
-  // eine Sperre einbaut, ohne die andere zu kennen. Ein Repo, ein Store.
-  const objects = new ObjectStore({ repo: repos.objects });
 
   // ==============================================================================================
   // JOB 2009 · D2 — HIER WIRD DIE SICHTBARKEITSNAHT DES WISSENSNETZES GESCHLOSSEN (H3, Weg D).
