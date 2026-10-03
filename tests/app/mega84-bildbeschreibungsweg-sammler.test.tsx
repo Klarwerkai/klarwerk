@@ -2049,18 +2049,26 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // DIE +7 IST GEMESSEN: im eigenen Lauf 405 → 412 (Cloud-Lauf pa-1790434819-46fe6fb5); nach der
     // Zusammenführung mit FE-003 (423) am zusammengeführten Arbeitsbaum erneut gemessen: 430.
     //
-    // FE-002 (HEADER TEIL 1 · FUNKTIONEN FINDEN): 430 → 435 (zusammengeführt nach FE-001). Es sind
-    // GENAU FÜNF Bauteile der Kopfbandhülle, in anderen Dateien als die von FE-001:
+    // Aufnahme gesamt-ki-laufprotokoll (V9, R-2071): 430 → 431. GENAU EIN Bauteil kommt dazu:
+    //     + `ModelRunAuswertungCard` (`pages/Stufe2.tsx`) — die KI-Auswertung eines Zeitraums
+    // Gemessen: der Sammler meldete „expected { komponenten: 431, … } to deeply equal
+    // { komponenten: 430, … }". `anbieter` 1 und `traeger` 2 bleiben: die Karte zeigt kein Bild,
+    // keinen `documentTitle` und kein `CAPTION_AI_TEXT`.
+    //
+    // FE-002 (HEADER TEIL 1 · FUNKTIONEN FINDEN): 431 → 436 (zusammengeführt nach dem KI-Laufprotokoll
+    // darüber). Es sind GENAU FÜNF Bauteile der Kopfbandhülle, in anderen Dateien als die darüber:
     //     + `ArbeitsbereicheEintraege`, `ArbeitsbereicheMenue` (`shell/ArbeitsbereicheMenue.tsx`)
     //     + `MeldungenMenue`, `MeldungenUndKonto` (`shell/MeldungenMenue.tsx`)
     //     + `MeldungenListe` (`shell/Meldungen.tsx`, aus `Meldungen` herausgelöst)
     // Keines enthält `CAPTION_AI_TEXT`, ein `documentTitle`-Prop oder ein `<img` — Menüs,
     // Glocke und Meldungsliste, kein Bildweg. `anbieter` 1 und `traeger` 2 bleiben unverändert.
-    // Vor FE-001 gemessen: 423 → 428 („gemessen: 428 Komponenten · 1 Anbieter · 2 Traeger",
-    // macOS). Die 435 nach der Zusammenführung mit FE-001 (430 + 5) ist NOCH NICHT gemessen; die
-    // Tormeldung am zusammengeführten Kandidaten entscheidet und ersetzt diese Zahl.
+    // Die spätere Lagekorrektur `useImFenster` (`shell/Menue.tsx`) ist ein Hook, kein Bauteil.
+    // GEMESSEN war die FE-002-Stufe auf dem Stand vor dem KI-Laufprotokoll: 430 → 435 (Serverlauf
+    // `header-gezielt` am Kandidaten a3116cac, Sammler grün). Die 436 nach dieser Zusammenführung
+    // (431 + 5) ist NOCH NICHT gemessen; die Tormeldung am zusammengeführten Kandidaten entscheidet
+    // und ersetzt diese Zahl.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 435,
+      komponenten: 436,
       anbieter: 1,
       traeger: 2,
     });
