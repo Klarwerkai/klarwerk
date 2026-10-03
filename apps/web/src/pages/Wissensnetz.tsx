@@ -298,6 +298,82 @@ export function themenHref(thema: string): string {
 }
 
 // ------------------------------------------------------------------------------------------------
+// GLEICH ANGEZEIGT, ABER VERSCHIEDEN GESPEICHERT (Auftrag „Themenkarte und begründete Nachbarschaft",
+// Kriterium 2). Die in `themenVon` (`services/wissensnetz/src/themenkarte.ts`) ausdrücklich in Kauf
+// genommene Grenze: liegen `"Dichtungen"` und `" Dichtungen "` nebeneinander im Bestand, sind das
+// zwei Themen mit zwei Objektmengen — und bis hierher zwei Knoten, zwei Zeilen, zwei Links mit
+// GLEICHER Beschriftung (HTML und SVG ziehen Randleerraum zusammen). Wer eines anklickte, konnte nicht
+// wissen, welche der beiden Mengen er bekommt.
+//
+// DIE IDENTITÄT BLEIBT, WIE SIE IST: `data-thema`, Auswahl und `themenHref` tragen weiter den
+// gespeicherten Wert — nur so trifft der Sprung die Facette der Bibliothek. Geändert wird allein das
+// SCHRIFTBILD, und nur dort, wo zwei Namen sonst gleich aussähen: gespeicherter Leerraum, der im
+// Schriftbild verschwände (Rand, doppelt, Tab, geschütztes Leerzeichen), steht dann als `␣` da. Sehen
+// sich zwei Namen auch danach noch gleich (andere Unicode-Form desselben Zeichens), bekommen sie
+// zusätzlich eine Nummer in ihrer Gruppe. Ein Name ohne Doppelgänger bleibt unverändert — L14 aus
+// `tests/wissensnetz-leseweg/leseweg.test.tsx` (getrimmte Zeile) gilt weiter.
+// Gemessen in `tests/wissensnetz-achse/gleich-angezeigt.test.tsx`.
+// ------------------------------------------------------------------------------------------------
+/** Das Zeichen für gespeicherten Leerraum, der im Schriftbild sonst verschwände. */
+export const LEERRAUM_MARKE = "␣";
+
+/** Wie ein Name im Schriftbild aussieht: Unicode-Form angeglichen, Leerraum zusammengezogen, Rand weg. */
+function schriftbild(name: string): string {
+  return name.normalize("NFKC").replace(/\s+/g, " ").trim();
+}
+
+/** Jeden Leerraum sichtbar machen, außer einem einzelnen gewöhnlichen Leerzeichen im Wortinnern. */
+function leerraumSichtbar(name: string): string {
+  return name.replace(/\s+/g, (lauf: string, stelle: number) => {
+    const innen = stelle > 0 && stelle + lauf.length < name.length;
+    return innen && lauf === " " ? " " : LEERRAUM_MARKE.repeat(lauf.length);
+  });
+}
+
+/**
+ * Gespeicherter Themenname → angezeigter Name, für alle Namen, die auf DIESER Seite zusammen stehen.
+ * Fehlt ein Name in der Antwort, ist er unverändert anzuzeigen (er hat keinen Doppelgänger).
+ */
+export function themenAnzeige(namen: readonly string[]): Map<string, string> {
+  const gruppen = new Map<string, string[]>();
+  for (const name of new Set(namen)) {
+    const schluessel = schriftbild(name);
+    gruppen.set(schluessel, [...(gruppen.get(schluessel) ?? []), name]);
+  }
+  const anzeige = new Map<string, string>();
+  for (const gruppe of gruppen.values()) {
+    if (gruppe.length < 2) {
+      continue;
+    }
+    // Nach der Markierung noch einmal gruppiert: wer auch jetzt gleich aussieht, bekommt eine Nummer
+    // in SEINER Untergruppe — deterministisch nach dem gespeicherten Wert, nicht nach Ankunft.
+    const nachMarkierung = new Map<string, string[]>();
+    for (const name of gruppe) {
+      const sichtbar = leerraumSichtbar(name);
+      const schluessel = sichtbar.normalize("NFKC");
+      nachMarkierung.set(schluessel, [...(nachMarkierung.get(schluessel) ?? []), name]);
+      anzeige.set(name, sichtbar);
+    }
+    for (const gleich of nachMarkierung.values()) {
+      if (gleich.length < 2) {
+        continue;
+      }
+      // Codepunktordnung, nicht `localeCompare`: die hielte NFC und NFD desselben Wortes für gleich.
+      const geordnet = [...gleich].sort((a, b) => {
+        if (a === b) {
+          return 0;
+        }
+        return a < b ? -1 : 1;
+      });
+      geordnet.forEach((name, i) => {
+        anzeige.set(name, `${anzeige.get(name) ?? name} #${i + 1}`);
+      });
+    }
+  }
+  return anzeige;
+}
+
+// ------------------------------------------------------------------------------------------------
 // DER NAME IM KREIS (Zielbild Z.34–59): Schriftgrad nach Radius, Umbruch auf zwei Zeilen.
 // ------------------------------------------------------------------------------------------------
 /** Schriftgrad nach Radius — die Stufen der Vorlage (r46→13, r38/36/34→12, r30→11.5, r26/24→11, r22→10.5). */
@@ -586,7 +662,7 @@ const KARTE_STIL = {
   borderRadius: 9,
 } as const;
 
-function Seitenleiste({ thema }: { thema: string }): JSX.Element {
+function Seitenleiste({ thema, name }: { thema: string; name: string }): JSX.Element {
   const { t, i18n } = useTranslation();
   // Dieselben Parameter wie die Facette `tag` der Bibliothek (Library.tsx, buildLibraryQuery).
   const suche = useLibrarySearch({ tag: thema });
@@ -601,7 +677,7 @@ function Seitenleiste({ thema }: { thema: string }): JSX.Element {
   return (
     <aside
       data-testid="netz-seitenleiste"
-      aria-label={t("wissensnetz.leiste.alt", { thema })}
+      aria-label={t("wissensnetz.leiste.alt", { thema: name })}
       style={{
         width: 340,
         flexShrink: 0,
@@ -630,7 +706,7 @@ function Seitenleiste({ thema }: { thema: string }): JSX.Element {
           className="text-text"
           style={{ fontSize: 16, fontWeight: 650 }}
         >
-          {thema}
+          {name}
         </h2>
       </div>
       {objekte !== undefined && objekte.length > 0 ? (
@@ -704,8 +780,15 @@ function Seitenleiste({ thema }: { thema: string }): JSX.Element {
 // ------------------------------------------------------------------------------------------------
 // DIE KARTE: Netz, Legenden-Karte und Seitenleiste in einem Rahmen (Zielbild Z.23–91).
 // ------------------------------------------------------------------------------------------------
-function Karte({ karte }: { karte: Themenkarte }): JSX.Element {
+function Karte({
+  karte,
+  anzeige,
+}: {
+  karte: Themenkarte;
+  anzeige: ReadonlyMap<string, string>;
+}): JSX.Element {
   const { t } = useTranslation();
+  const nameVon = (thema: string): string => anzeige.get(thema) ?? thema;
   // DIE BREITE DER FLAECHE (Runde 6, BEN): gemessen am Inhaltskasten der Zeichenflaeche, hoechstens
   // 880 (Zielbild). Das SVG bekommt genau diese Breite als `viewBox` UND als Groesse — Skalierung 1,
   // jede Zahl im Bild ist ein Pixel. Ohne ResizeObserver (jsdom) bleibt es bei 880×660.
@@ -733,7 +816,8 @@ function Karte({ karte }: { karte: Themenkarte }): JSX.Element {
   const plaetze = netzplaetze(karte.themen, breite, hoehe);
   // Runde 7: wo sich die Namen dieses Bildes unterscheiden — fuer die Kuerzung (beschriftung).
   // Runde 8: die Beschriftungen des ganzen Bildes, kollisionsfrei ueber alle Labels (beschriftungen).
-  const labels = beschriftungen(plaetze.map((p) => ({ name: p.knoten.thema, r: p.r })));
+  // Gezeichnet wird der ANGEZEIGTE Name (`themenAnzeige`); Auswahl und `data-thema` bleiben gespeichert.
+  const labels = beschriftungen(plaetze.map((p) => ({ name: nameVon(p.knoten.thema), r: p.r })));
   // Vorgabe = das groesste Thema (Auftrag §2c), damit die Leiste nie leer ist. Faellt das gewaehlte
   // Thema bei einer Auffrischung aus der Karte, greift wieder die Vorgabe.
   const [gewaehltRoh, setGewaehlt] = useState<string | null>(null);
@@ -825,7 +909,7 @@ function Karte({ karte }: { karte: Themenkarte }): JSX.Element {
                 zeilen,
                 grad,
                 gekuerzt: istGekuerzt,
-              } = labels[plaetze.indexOf(p)] ?? beschriftung(thema, p.r);
+              } = labels[plaetze.indexOf(p)] ?? beschriftung(nameVon(thema), p.r);
               const waehlen = (): void => setGewaehlt(thema);
               return (
                 // Auswahl statt Sprung (Auftrag §2c): Klick oder Enter/Leertaste WAEHLT das Thema
@@ -840,7 +924,10 @@ function Karte({ karte }: { karte: Themenkarte }): JSX.Element {
                   role="button"
                   tabIndex={0}
                   aria-pressed={istGewaehlt}
-                  aria-label={t("wissensnetz.knoten.alt", { thema, count: p.knoten.objekte })}
+                  aria-label={t("wissensnetz.knoten.alt", {
+                    thema: nameVon(thema),
+                    count: p.knoten.objekte,
+                  })}
                   style={{ cursor: "pointer", outline: "none" }}
                   onClick={waehlen}
                   onKeyDown={(e) => {
@@ -854,7 +941,7 @@ function Karte({ karte }: { karte: Themenkarte }): JSX.Element {
                 >
                   {/* Musste der Name gekuerzt werden, steht der volle als Tooltip — zusaetzlich zum
                       aria-label, das ihn immer traegt. */}
-                  {istGekuerzt ? <title>{thema}</title> : null}
+                  {istGekuerzt ? <title>{nameVon(thema)}</title> : null}
                   {/* Fokusring fuer die Tastatur — nur am fokussierten, nicht gewaehlten Knoten;
                       der gewaehlte zeigt seinen Zustand selbst. */}
                   {fokus === thema && !istGewaehlt ? (
@@ -1023,12 +1110,18 @@ function Karte({ karte }: { karte: Themenkarte }): JSX.Element {
           ) : null}
         </div>
       </div>
-      {gewaehlt !== null ? <Seitenleiste thema={gewaehlt} /> : null}
+      {gewaehlt !== null ? <Seitenleiste thema={gewaehlt} name={nameVon(gewaehlt)} /> : null}
     </section>
   );
 }
 
-function AlleThemen({ karte }: { karte: Themenkarte }): JSX.Element | null {
+function AlleThemen({
+  karte,
+  anzeige,
+}: {
+  karte: Themenkarte;
+  anzeige: ReadonlyMap<string, string>;
+}): JSX.Element | null {
   const { t } = useTranslation();
   const [offen, setOffen] = useState(false);
   if (karte.weitere.length === 0) {
@@ -1049,7 +1142,7 @@ function AlleThemen({ karte }: { karte: Themenkarte }): JSX.Element | null {
           {karte.weitere.map((thema) => (
             <li key={thema}>
               <Link className="rounded-full bg-page px-2 py-0.5 text-micro" to={themenHref(thema)}>
-                {thema}
+                {anzeige.get(thema) ?? thema}
               </Link>
             </li>
           ))}
@@ -1456,8 +1549,15 @@ function Umschalter({
  * Gemessen: `tests/wissensnetz-leseweg/leseweg.test.tsx` (L12) und
  * `tests/wissensnetz-leseweg/namensraum-kette.test.tsx` (N4).
  */
-function Themenzeilen({ metrik }: { metrik: Sichtmetrik }): JSX.Element | null {
+function Themenzeilen({
+  metrik,
+  anzeige,
+}: {
+  metrik: Sichtmetrik;
+  anzeige: ReadonlyMap<string, string>;
+}): JSX.Element | null {
   const { t } = useTranslation();
+  const nameVon = (thema: string): string => anzeige.get(thema) ?? thema;
   const [offen, setOffen] = useState(false);
   const gelesen = leseThemen(metrik);
   // Die GEZEICHNETEN Themen, zu denen diese Liste keine Zeile hat. Bewusst nur `themenkarte.themen`
@@ -1492,7 +1592,9 @@ function Themenzeilen({ metrik }: { metrik: Sichtmetrik }): JSX.Element | null {
             saetze.push({
               anker: "zusammen",
               // Die Namen als Aufzaehlung IM Satz — das Komma ist hoerbar, ein Flex-Abstand nicht.
-              text: t("wissensnetz.lesen.zusammen", { themen: m.zusammenMit.join(", ") }),
+              text: t("wissensnetz.lesen.zusammen", {
+                themen: m.zusammenMit.map((n) => nameVon(n).trim()).join(", "),
+              }),
             });
           }
           // JOB 4155 (WG-LUECKEN): die gesetzten Beziehungen. GANZ ODER GAR NICHT — nur wenn der
@@ -1538,13 +1640,15 @@ function Themenzeilen({ metrik }: { metrik: Sichtmetrik }): JSX.Element | null {
                   dieser eine Satz je Zeile ist die Zusage aus JOB 3070 (Korrekturpflicht 3), und
                   sie darf an einem Schlagwort mit Rand-Leerzeichen nicht ausfransen. Der Browser
                   zieht den Leerraum optisch ohnehin zusammen — sichtbar aendert sich nichts.
-                  Gemessen: `tests/wissensnetz-leseweg/leseweg.test.tsx` (L14). */}
+                  Gemessen: `tests/wissensnetz-leseweg/leseweg.test.tsx` (L14).
+                  Hat der Name einen gleich aussehenden Doppelgänger, steht statt dessen sein
+                  markiertes Schriftbild (`themenAnzeige`) — der Trimm ändert daran nichts mehr. */}
               <Link
                 className="break-words font-medium"
                 style={{ color: "rgb(var(--kw-brand-text))" }}
                 to={themenHref(m.thema)}
               >
-                {m.thema.trim()}
+                {nameVon(m.thema).trim()}
               </Link>
               {/* Echte Textknoten, keine Abstaende: nur so ist die Trennung hoerbar. */}
               {": "}
@@ -1606,6 +1710,19 @@ function Inhalt({ metrik, hinweis }: { metrik: Sichtmetrik; hinweis: string | nu
   // Umschalter gibt es dann auch nicht, weil es nichts zu waehlen gibt.
   const schmal = useSchmal();
   const [ansicht, setAnsicht] = useState<Ansicht>("netz");
+  // EINE Anzeigeentscheidung fuer alle Namen dieser Seite — Knoten, Zeilen und „Alle Themen" zeigen
+  // denselben Doppelgaenger gleich markiert. Der Hinweis darunter steht nur, wenn markiert wurde.
+  const anzeige = themenAnzeige([
+    ...(karte?.themen ?? []).map((k) => k.thema),
+    ...(karte?.weitere ?? []),
+    ...metrik.themen.map((m) => m.thema),
+  ]);
+  const schreibweisen =
+    anzeige.size > 0 ? (
+      <p data-testid="netz-schreibweisen-hinweis" className="text-micro text-muted">
+        {t("wissensnetz.schreibweisen.hinweis", { marke: LEERRAUM_MARKE })}
+      </p>
+    ) : null;
   // Ehrlich statt leer: eine Karte ohne Knoten ist kein leerer Bestand, sondern ein Bestand ohne
   // Schlagworte. Beides sagt der Text, keines behauptet das andere — und seit JOB 3067 stehen
   // GENAU HIER auch die Zahlen, die das belegen (`objekteGesamt`/`ohneThema`).
@@ -1620,15 +1737,17 @@ function Inhalt({ metrik, hinweis }: { metrik: Sichtmetrik; hinweis: string | nu
             </p>
           ) : null}
         </Card>
+        {schreibweisen}
         <Sichtzahlen metrik={metrik} />
-        <Themenzeilen metrik={metrik} />
+        <Themenzeilen metrik={metrik} anzeige={anzeige} />
       </>
     );
   }
   return (
     <>
       {schmal ? null : <Umschalter ansicht={ansicht} waehlen={setAnsicht} />}
-      {schmal || ansicht === "lesen" ? null : <Karte karte={karte} />}
+      {schmal || ansicht === "lesen" ? null : <Karte karte={karte} anzeige={anzeige} />}
+      {schreibweisen}
       {/* Zustandsmodell (Auftrag §9, Lehre JOB 3037 R2/R3): scheitert eine Auffrischung, bleibt die
           zuletzt geholte Karte SICHTBAR — mit dem Stand und dem Wort, dass die Auffrischung
           fehlschlug. Nie Karte oder Auswahl leeren. Dasselbe gilt fuer die Zahlen darunter und fuer
@@ -1643,8 +1762,8 @@ function Inhalt({ metrik, hinweis }: { metrik: Sichtmetrik; hinweis: string | nu
         </p>
       ) : null}
       <Sichtzahlen metrik={metrik} />
-      <Themenzeilen metrik={metrik} />
-      <AlleThemen karte={karte} />
+      <Themenzeilen metrik={metrik} anzeige={anzeige} />
+      <AlleThemen karte={karte} anzeige={anzeige} />
     </>
   );
 }

@@ -197,6 +197,9 @@ const de = {
   // deshalb nur, was gemessen ist: die Zahl.
   "wissensnetz.lesen.nichtInListe":
     "Die Zeichnung führt {{count}} Themen, zu denen diese Liste keine Zeile hat.",
+  // Gleich aussehende, verschieden gespeicherte Schlagworte (`themenAnzeige` in `Wissensnetz.tsx`).
+  "wissensnetz.schreibweisen.hinweis":
+    "Einige Themen sehen gleich aus, sind aber verschieden gespeicherte Schlagwörter und führen auf verschiedene Einträge. {{marke}} zeigt ein gespeichertes Leerzeichen; eine Nummer unterscheidet sonst gleich aussehende Schreibweisen.",
   "nav.external": "Externes Wissen",
   "nav.validation": "Validierung",
   "nav.conflicts": "Konflikte",
@@ -7565,6 +7568,8 @@ const en: typeof de = {
   "wissensnetz.lesen.zustand": "State: {{wort}}.",
   "wissensnetz.lesen.nichtInListe":
     "The drawing shows {{count}} topics that this list has no row for.",
+  "wissensnetz.schreibweisen.hinweis":
+    "Some topics look the same but are differently stored keywords and lead to different entries. {{marke}} marks a stored space; a number distinguishes spellings that otherwise look the same.",
   "nav.external": "External knowledge",
   "nav.validation": "Validation",
   "nav.conflicts": "Conflicts",
@@ -13266,6 +13271,8 @@ const nl: typeof de = {
   "wissensnetz.lesen.zustand": "Status: {{wort}}.",
   "wissensnetz.lesen.nichtInListe":
     "De tekening toont {{count}} thema's waarvoor deze lijst geen regel heeft.",
+  "wissensnetz.schreibweisen.hinweis":
+    "Sommige thema's zien er hetzelfde uit, maar zijn verschillend opgeslagen trefwoorden en leiden naar verschillende items. {{marke}} toont een opgeslagen spatie; een nummer onderscheidt schrijfwijzen die er verder hetzelfde uitzien.",
   "nav.external": "Externe kennis",
   "nav.validation": "Validatie",
   "nav.conflicts": "Conflicten",
