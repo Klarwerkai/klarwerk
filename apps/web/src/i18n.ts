@@ -7079,6 +7079,10 @@ const de = {
   "ko.importResult.gapsNotAvailable":
     "Wissenslücken: Ein Bezug zwischen Lücken und einzelnem Wissen wird nicht geführt — deshalb wird hier keine Lücke behauptet.",
   "ko.importResult.gapsNone": "Keine offene Wissenslücke betrifft dieses Wissen.",
+  "ko.importResult.gapsNoneChecked":
+    "Unter den {{geprueft}} geprüften offenen Lücken betrifft keine dieses Wissen. Über die übrigen ist nichts gesagt.",
+  "ko.importResult.gapsUnavailableKi":
+    "Wissenslücken: Der Bezug wird über die Antwortsuche ermittelt, und die KI ist derzeit abgeschaltet — deshalb wird hier keine Lücke behauptet und keine ausgeschlossen.",
   "ko.importResult.gapsRule":
     "Gezählt werden offene Lücken, für deren Frage die Antwortsuche dieses Wissen heranzieht.",
   "ko.importResult.gapsScope":
@@ -12955,6 +12959,10 @@ const en: typeof de = {
   "ko.importResult.gapsNotAvailable":
     "Knowledge gaps: no link between gaps and individual knowledge is kept — so no gap is claimed here.",
   "ko.importResult.gapsNone": "No open knowledge gap concerns this knowledge.",
+  "ko.importResult.gapsNoneChecked":
+    "Among the {{geprueft}} open gaps checked, none concerns this knowledge. Nothing is said about the rest.",
+  "ko.importResult.gapsUnavailableKi":
+    "Knowledge gaps: the link is determined via the answer search, and AI is currently switched off — so no gap is claimed or ruled out here.",
   "ko.importResult.gapsRule":
     "Counted are open gaps whose question leads the answer search to this knowledge.",
   "ko.importResult.gapsScope": "Checked were the {{geprueft}} most recent of {{offen}} open gaps.",
@@ -18654,6 +18662,10 @@ const nl: typeof de = {
   "ko.importResult.gapsNotAvailable":
     "Kennislacunes: er wordt geen verband tussen lacunes en afzonderlijke kennis bijgehouden — daarom wordt hier geen lacune beweerd.",
   "ko.importResult.gapsNone": "Geen open kennislacune heeft betrekking op deze kennis.",
+  "ko.importResult.gapsNoneChecked":
+    "Van de {{geprueft}} gecontroleerde open lacunes heeft er geen betrekking op deze kennis. Over de overige wordt niets gezegd.",
+  "ko.importResult.gapsUnavailableKi":
+    "Kennislacunes: het verband wordt via de antwoordzoektocht bepaald, en AI is momenteel uitgeschakeld — daarom wordt hier geen lacune beweerd of uitgesloten.",
   "ko.importResult.gapsRule":
     "Geteld worden open lacunes waarvoor de antwoordzoektocht deze kennis betrekt.",
   "ko.importResult.gapsScope":

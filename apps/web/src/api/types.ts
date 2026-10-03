@@ -1837,6 +1837,11 @@ export interface ImportKnowledgeResult {
   knowledgeGaps?: { id: string; question: string; redacted?: boolean }[];
   /** Wie viele offene Lücken geprüft wurden; weniger als alle ⇒ die Liste ist eine Untergrenze. */
   knowledgeGapScope?: { checkedOpenGaps: number; openGaps: number } | null;
+  /**
+   * Lauf 5 R4: warum der Lückenbezug nicht erhoben werden konnte (`KI_ABGESCHALTET`,
+   * `LUECKENBEZUG_FEHLER`). Fehlt, wenn er erhoben wurde oder kein Lückenport verdrahtet ist.
+   */
+  knowledgeGapUnavailableReason?: string;
 }
 
 export interface ImportRunRecord {

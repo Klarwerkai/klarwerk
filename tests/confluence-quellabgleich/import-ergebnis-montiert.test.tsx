@@ -9,6 +9,8 @@
 //   I1  Revision, Lauf, Ausgang und der ehrliche Lückenhinweis — in jeder Sprache aus dem Katalog.
 //   I2  BOUND und die gelieferten Lücken (AVAILABLE): Anzahl, Frage bzw. redigierte Lücke, Regel
 //       und Prüfumfang — in DE/EN/NL. I2b: nachgesehen, keine Lücke.
+//   I5  (Bens B16) 50 von 51 geprüft, kein Treffer: keine globale Keine-Lücke-Aussage (DE/EN/NL).
+//   I6  (Bens B15) Lückenbezug wegen abgeschalteter KI nicht erhoben: Grund genannt (DE/EN/NL).
 //   I3  Ohne festgehaltene Revision (Altimport): der Block sagt es, statt Lauf/Ausgang zu erfinden.
 //   I4  Ein Objekt ohne Import-Anker fragt gar nicht erst an; ein 404 zeigt nichts.
 import { describe, expect, it, vi } from "vitest";
@@ -410,4 +412,51 @@ describe("R-0142 · das Importergebnis auf der Wissensseite", () => {
       abbauen();
     }
   });
+
+  // Lauf 5 R4 (Bens B16): 50 von 51 geprüft, kein Treffer — keine globale Keine-Lücke-Aussage.
+  for (const sprache of SPRACHEN) {
+    it(`I5 [${sprache}]: begrenzte Prüfung ohne Treffer — die Aussage gilt nur für den geprüften Teil`, async () => {
+      globalThis.__r0142Abrufe = [];
+      globalThis.__r0142Ergebnis = ergebnis({
+        knowledgeGapRelationState: "AVAILABLE",
+        knowledgeGapIds: [],
+        knowledgeGaps: [],
+        knowledgeGapScope: { checkedOpenGaps: 50, openGaps: 51 },
+      });
+      await flaeche([quelle(SEITE_ANKER)], sprache);
+      try {
+        const tt = i18n.getFixedT(sprache);
+        const gezeigt = feld("bib-import-luecken");
+        expect(gezeigt).not.toContain(tt("ko.importResult.gapsNone"));
+        expect(gezeigt).toContain(tt("ko.importResult.gapsNoneChecked", { geprueft: 50 }));
+        expect(feld("bib-import-luecken-umfang")).toBe(
+          tt("ko.importResult.gapsScope", { geprueft: 50, offen: 51 }),
+        );
+      } finally {
+        abbauen();
+      }
+    });
+  }
+
+  // Lauf 5 R4 (Bens B15): bei abgeschalteter KI nennt die Fläche den Grund, das Ergebnis bleibt.
+  for (const sprache of SPRACHEN) {
+    it(`I6 [${sprache}]: Lückenbezug wegen abgeschalteter KI nicht erhoben — Ergebnis steht, Grund wird genannt`, async () => {
+      globalThis.__r0142Abrufe = [];
+      globalThis.__r0142Ergebnis = ergebnis({
+        knowledgeGapRelationState: "RELATION_NOT_AVAILABLE",
+        knowledgeGapIds: null,
+        knowledgeGaps: [],
+        knowledgeGapScope: null,
+        knowledgeGapUnavailableReason: "KI_ABGESCHALTET",
+      });
+      await flaeche([quelle(SEITE_ANKER)], sprache);
+      try {
+        const tt = i18n.getFixedT(sprache);
+        expect(feld("bib-import-ausgang")).toBe(tt("ko.importResult.outcome.CREATED"));
+        expect(feld("bib-import-luecken")).toBe(tt("ko.importResult.gapsUnavailableKi"));
+      } finally {
+        abbauen();
+      }
+    });
+  }
 });

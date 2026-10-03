@@ -22,6 +22,12 @@
 //   E9  (B12) einmaliger Schreibfehler der Referenz: die Wiederaufnahme beim Laden der
 //       Warteschlange zieht sie nach — genau eine Referenz, auch bei wiederholtem Nachzug.
 //   E10 (B13) eine von der Wiederaufnahme vollendete Annahme bekommt ihre Referenz (CREATED).
+//
+// LAUF 5 · RUNDE 4 (Bens B14, B15):
+//   E11 (B14) ein vorübergehender Lesefehler der Herkunftsabfrage schreibt keine falsche BOUND;
+//       der Nachzug schreibt danach CREATED.
+//   E12 (B15) bei administrativ abgeschalteter KI liefern Objekt- und Ergebnisroute HTTP 200 mit
+//       dem gespeicherten Ergebnis, `RELATION_NOT_AVAILABLE` und Grund `KI_ABGESCHALTET`.
 import { describe, expect, it } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 import { makeGuards } from "../../services/app/src/http";
@@ -495,6 +501,95 @@ describe("R-0142 · der Ergebnisweg des Confluence-Imports", () => {
       });
       await t.services.library.recoverStaleReviewClaims();
       expect((await t.ergebnis(importId)).items).toHaveLength(1);
+    } finally {
+      await t.app.close();
+    }
+  });
+
+  it("E11 · (B14) ein Lesefehler der Herkunftsabfrage macht CREATED nicht zu BOUND; der Nachzug schreibt CREATED", async () => {
+    const t = await aufbau();
+    try {
+      t.bereich.set("P-1", seite("P-1", 1));
+      const importId = await t.lauf();
+      const [k] = await t.offene();
+      const echt = t.services.ko.findByImportCandidateId.bind(t.services.ko);
+      let gescheitert = false;
+      // Genau die Herkunftsabfrage NACH der gespeicherten Annahme scheitert einmal (Bens Probe).
+      t.services.ko.findByImportCandidateId = async (id) => {
+        const kandidat = await t.services.candidates.findById(id);
+        if (!gescheitert && kandidat?.status === "angenommen") {
+          gescheitert = true;
+          throw new Error("vorübergehender Lesefehler");
+        }
+        return echt(id);
+      };
+      const a = await t.services.library.reviewImportCandidate(k?.id ?? "", "accept", "admin");
+      expect(gescheitert).toBe(true);
+      expect((await t.services.ko.get(a.koId ?? ""))?.importCandidateId).toBe(k?.id);
+      // Keine falsche Referenz — lieber keine, bis der Nachzug sie richtig schreibt.
+      expect((await t.ergebnis(importId)).items).toEqual([]);
+      await t.services.library.recoverStaleReviewClaims();
+      const e = await t.ergebnis(importId);
+      expect(e.items.map((i) => i.itemOutcome)).toEqual(["CREATED"]);
+      expect(await t.services.library.zieheLaufReferenzenNach()).toBe(0);
+    } finally {
+      await t.app.close();
+    }
+  });
+
+  it("E12 · (B15) bei abgeschalteter KI bleiben beide Ergebnisse lesbar — ohne Lückenbezug, mit Grund", async () => {
+    const t = await aufbau();
+    try {
+      const frage = await t.services.ask.ask("Wie wird die Wartung ausgeschaltet?", "admin");
+      expect(frage.gap?.id).toBeTruthy();
+      t.bereich.set("P-1", seite("P-1", 1));
+      const importId = await t.lauf();
+      const [k] = await t.offene();
+      const a = await t.services.library.reviewImportCandidate(k?.id ?? "", "accept", "admin");
+      const url = `/api/admin/import/knowledge/${a.koId}`;
+      const vorher = await t.app.inject({ method: "GET", url, headers: t.headers });
+      expect(vorher.statusCode, vorher.body).toBe(200);
+      expect(vorher.json().knowledgeGapIds).toEqual([frage.gap?.id]);
+
+      // Der echte administrative Abschaltweg — die Sperre wird danach NICHT umgangen.
+      const aus = await t.app.inject({
+        method: "PUT",
+        url: "/api/reasoner/config",
+        headers: t.headers,
+        payload: { global: "deterministic" },
+      });
+      expect(aus.statusCode, aus.body).toBe(200);
+      expect(t.services.reasoner.kiAbschaltung().abgeschaltet).toBe(true);
+
+      const objekt = await t.app.inject({ method: "GET", url, headers: t.headers });
+      expect(objekt.statusCode, objekt.body).toBe(200);
+      expect(objekt.json()).toMatchObject({
+        knowledgeObjectId: a.koId,
+        run: { importId },
+        item: { itemOutcome: "CREATED", knowledgeGapRelationState: "RELATION_NOT_AVAILABLE" },
+        knowledgeGapRelationState: "RELATION_NOT_AVAILABLE",
+        knowledgeGapIds: null,
+        knowledgeGaps: [],
+        knowledgeGapScope: null,
+        knowledgeGapUnavailableReason: "KI_ABGESCHALTET",
+      });
+      const ergebnis = await t.app.inject({
+        method: "GET",
+        url: `/api/admin/import/runs/${importId}/result`,
+        headers: t.headers,
+      });
+      expect(ergebnis.statusCode, ergebnis.body).toBe(200);
+      expect(ergebnis.json()).toMatchObject({
+        items: [
+          {
+            knowledgeObjectId: a.koId,
+            itemOutcome: "CREATED",
+            knowledgeGapRelationState: "RELATION_NOT_AVAILABLE",
+            knowledgeGapIds: null,
+          },
+        ],
+        knowledgeGapUnavailableReason: "KI_ABGESCHALTET",
+      });
     } finally {
       await t.app.close();
     }

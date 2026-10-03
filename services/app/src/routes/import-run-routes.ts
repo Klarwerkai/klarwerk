@@ -41,7 +41,7 @@
 // Lücken geprüft wurden, steht daneben (`knowledgeGapScope`); ist das weniger als alle, ist die
 // Liste eine Untergrenze.
 import type { FastifyPluginAsync } from "fastify";
-import { type Gap, redactGapForViewer } from "../../../ask";
+import { AskError, type Gap, redactGapForViewer } from "../../../ask";
 import type { KoService } from "../../../knowledge-object";
 import type {
   ExternalSourceRecord,
@@ -190,6 +190,12 @@ export function importRunRoutes(deps: ImportRunRoutesDeps): FastifyPluginAsync {
    * R-0142 (Lauf 5 R3): das Lücken-Paar je Objekt, EINMAL je Anfrage erhoben. Nur Objekte, die
    * dieser Betrachter sehen darf, bekommen einen Bezug; alle anderen (und jeder Aufruf ohne Port)
    * tragen ehrlich `RELATION_NOT_AVAILABLE`. Die Lücken selbst reisen redigiert wie `/api/gaps`.
+   *
+   * Lauf 5 R4 (Bens B15): der Lückenbezug ist eine ZUGABE zum gespeicherten Importergebnis. Kann er
+   * nicht erhoben werden — etwa weil die KI administrativ abgeschaltet ist und die Vorauswahl der
+   * Antwortsuche deshalb gesperrt bleibt —, wird die Sperre NICHT umgangen: das Ergebnis wird
+   * trotzdem ausgeliefert, mit `RELATION_NOT_AVAILABLE` und dem Grund `unavailableReason`
+   * (`KI_ABGESCHALTET` bzw. `LUECKENBEZUG_FEHLER`).
    */
   const lueckenJeObjekt = async (
     user: Parameters<typeof darfSehen>[0],
@@ -198,11 +204,13 @@ export function importRunRoutes(deps: ImportRunRoutesDeps): FastifyPluginAsync {
     paar: (koId: string) => LueckenPaar;
     sichten: (koId: string) => ReturnType<typeof redactGapForViewer>[];
     scope: { checkedOpenGaps: number; openGaps: number } | null;
+    unavailableReason: "KI_ABGESCHALTET" | "LUECKENBEZUG_FEHLER" | null;
   }> => {
     const nichts = {
       paar: () => KEIN_LUECKENBEZUG,
       sichten: () => [],
       scope: null,
+      unavailableReason: null,
     };
     if (!deps.luecken || !deps.koService || koIds.length === 0) {
       return nichts;
@@ -217,7 +225,25 @@ export function importRunRoutes(deps: ImportRunRoutesDeps): FastifyPluginAsync {
     if (sichtbar.size === 0) {
       return nichts;
     }
-    const { bezug, geprueft, offen } = await deps.luecken.offeneLueckenZu([...sichtbar]);
+    let erhoben: Awaited<ReturnType<NonNullable<typeof deps.luecken>["offeneLueckenZu"]>>;
+    try {
+      erhoben = await deps.luecken.offeneLueckenZu([...sichtbar]);
+    } catch (err) {
+      // `AskError` aus der Antwortdomäne; der Code wird auch gelesen, falls eine Zwischenschicht
+      // (Suchprojektion) den Fehler unverändert, aber nicht als dieselbe Klasse weiterreicht.
+      const kiAus =
+        (err instanceof AskError && err.code === "KI_ABGESCHALTET") ||
+        (err as { code?: unknown } | null)?.code === "KI_ABGESCHALTET";
+      if (!kiAus) {
+        process.stderr.write(
+          `[KLARWERK] Lückenbezug des Importergebnisses nicht erhoben (fehler=${
+            err instanceof Error ? err.name : "unknown"
+          }) — Ergebnis ohne Lückenbezug ausgeliefert.\n`,
+        );
+      }
+      return { ...nichts, unavailableReason: kiAus ? "KI_ABGESCHALTET" : "LUECKENBEZUG_FEHLER" };
+    }
+    const { bezug, geprueft, offen } = erhoben;
     const betrachter = { viewerId: user.id, maySeeDetail: can(user.role, "ko.validate") };
     return {
       paar: (koId) =>
@@ -232,6 +258,7 @@ export function importRunRoutes(deps: ImportRunRoutesDeps): FastifyPluginAsync {
           ? (bezug.get(koId) ?? []).map((g) => redactGapForViewer(g, betrachter))
           : [],
       scope: { checkedOpenGaps: geprueft, openGaps: offen },
+      unavailableReason: null,
     };
   };
 
@@ -291,6 +318,9 @@ export function importRunRoutes(deps: ImportRunRoutesDeps): FastifyPluginAsync {
             ),
           ),
           ...(luecken.scope ? { knowledgeGapScope: luecken.scope } : {}),
+          ...(luecken.unavailableReason
+            ? { knowledgeGapUnavailableReason: luecken.unavailableReason }
+            : {}),
         });
         return reply;
       },
@@ -360,6 +390,9 @@ export function importRunRoutes(deps: ImportRunRoutesDeps): FastifyPluginAsync {
             ...luecken.paar(ko.id),
             knowledgeGaps: luecken.sichten(ko.id),
             knowledgeGapScope: luecken.scope,
+            ...(luecken.unavailableReason
+              ? { knowledgeGapUnavailableReason: luecken.unavailableReason }
+              : {}),
           });
           return reply;
         },

@@ -100,7 +100,13 @@ export function ImportErgebnis({ ko }: { ko: KnowledgeObject }): JSX.Element | n
           <p>
             {e.knowledgeGapIds.length > 0
               ? t("ko.importResult.gaps", { anzahl: e.knowledgeGapIds.length })
-              : t("ko.importResult.gapsNone")}
+              : // Lauf 5 R4 (Bens B16): aus einer begrenzten Prüfung folgt kein „keine Lücke".
+                e.knowledgeGapScope &&
+                  e.knowledgeGapScope.checkedOpenGaps < e.knowledgeGapScope.openGaps
+                ? t("ko.importResult.gapsNoneChecked", {
+                    geprueft: e.knowledgeGapScope.checkedOpenGaps,
+                  })
+                : t("ko.importResult.gapsNone")}
           </p>
           {(e.knowledgeGaps ?? []).length > 0 ? (
             <ul data-testid="bib-import-luecken-liste" className="ml-4 list-disc">
@@ -124,7 +130,10 @@ export function ImportErgebnis({ ko }: { ko: KnowledgeObject }): JSX.Element | n
         </div>
       ) : (
         <p data-testid="bib-import-luecken" className="text-muted">
-          {t("ko.importResult.gapsNotAvailable")}
+          {/* Lauf 5 R4 (Bens B15): bei abgeschalteter KI wird der Lückenbezug nicht erhoben. */}
+          {e.knowledgeGapUnavailableReason === "KI_ABGESCHALTET"
+            ? t("ko.importResult.gapsUnavailableKi")
+            : t("ko.importResult.gapsNotAvailable")}
         </p>
       )}
     </section>

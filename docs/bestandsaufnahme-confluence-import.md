@@ -293,6 +293,25 @@ laufen am Stand dieser Runde **grün** (4/4).
    je Lücke auf der echten Ablage; `importRunId` reist im JSON des Ankers (keine Migration).
    Serverprüfung wie in Runde 2 benannt.
 
+## Lauf 5 · Runde 4 — Bens B14, B15, B16 (Kandidat `97b9bdc3`)
+
+Ben (Runde 3): B11–B13 bestätigt behoben, B7 liefert Lücken aus echten Dienstdaten. Drei neue
+Befunde; je einer hier, mit Test. Diese Runde wurde **ohne eigene Testausführung** geliefert (der
+Auftrag untersagt Testläufe in dieser Sitzung); die Tests laufen über `CLAUDE/PRUEFPLAN.json`. Grüne
+Belege früherer Runden gelten nur für ihre Fassung.
+
+| Befund | Ursache | Korrektur | Test |
+|---|---|---|---|
+| **B14** Lesefehler der Herkunftsabfrage → `BOUND` statt `CREATED`, dauerhaft | `schreibeLaufReferenz` fing den Fehler von `findByImportCandidateId` als „kein Stempel“ ab. | Kein Abfangen mehr: bei Lesefehler entsteht **keine** Referenz (Entscheidung bleibt gespeichert, Fehler protokolliert); der Nachzug schreibt sie beim nächsten Laden mit dem richtigen Ausgang. `undefined` heisst nur noch „kein Objekt trägt den Stempel“. | `r0142-ergebnisweg.test.ts` E11 (Bens Probe nachgebaut) |
+| **B15** abgeschaltete KI → beide Ergebnisrouten HTTP 500 | Der Lückenbezug nutzt die KI-sperrgebundene Vorauswahl; ihr `KI_ABGESCHALTET` lief bis an die Route durch. | Die Sperre bleibt unangetastet. Die Routen fangen den Fehler des Lückenbezugs ab und liefern das gespeicherte Ergebnis mit `RELATION_NOT_AVAILABLE` und `knowledgeGapUnavailableReason` (`KI_ABGESCHALTET` bzw. `LUECKENBEZUG_FEHLER`). Die Wissensseite nennt den Grund (DE/EN/NL). | E12 (echter Abschaltweg `PUT /api/reasoner/config`); `import-ergebnis-montiert.test.tsx` I6 |
+| **B16** 50 von 51 geprüft, kein Treffer → „Keine offene Wissenslücke betrifft dieses Wissen.“ | Der Satz hing nur an der Trefferzahl. | Bei begrenzter Prüfung heisst es jetzt „Unter den 50 geprüften offenen Lücken betrifft keine dieses Wissen. Über die übrigen ist nichts gesagt.“ (DE/EN/NL); die globale Aussage nur bei vollständiger Prüfung. | `import-ergebnis-montiert.test.tsx` I5 (DE/EN/NL, Bens Fall) |
+
+**Weiter offen:** R-0131 — kein an diese Fassung gebundener Beleg einer tatsächlichen Navigation zur
+Confluence-Seite; vorhanden sind nur die jsdom-Prüfungen der gerenderten Zieladresse
+(`pruefkarte-zeigt-volltext-und-quelle.test.tsx` V3/V8, `quellhinweise-montiert.test.tsx` H1/H2) und
+die URL-Bildung (`mapper.test.ts`). Fehlende Mittel: eine erreichbare Confluence-Testinstanz und ein
+Mensch bzw. Browserlauf gegen sie. PostgreSQL-Nachweise wie in Runde 2/3 benannt.
+
 ## Abgrenzung
 
 - SharePoint/OneDrive-Import (JOB 4086) ist ein eigener Adapter und eigener Auftrag.

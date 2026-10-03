@@ -2958,7 +2958,8 @@ export class LibraryService {
   /**
    * Die EINE Stelle, die eine Elementreferenz baut — für die Entscheidung, die Wiederaufnahme und
    * den Nachzug gleich. `CREATED` nur, wenn das Objekt den Stempel GENAU dieses Kandidaten trägt
-   * (gesucht inklusive Papierkorb, wie die Wiederaufnahme). Wirft bei einem Schreibfehler.
+   * (gesucht inklusive Papierkorb, wie die Wiederaufnahme). Wirft bei einem Schreib- ODER
+   * Herkunftslesefehler — dann bleibt die Referenz aus, bis der Nachzug sie richtig schreibt.
    */
   private async schreibeLaufReferenz(
     candidateId: string,
@@ -2970,9 +2971,11 @@ export class LibraryService {
       return false;
     }
     const koId = status === "angenommen" ? (koIdRoh ?? null) : null;
-    const gestempelt = koId
-      ? await this.koService.findByImportCandidateId(candidateId).catch(() => undefined)
-      : undefined;
+    // Lauf 5 R4 (Bens B14): ein LESEFEHLER der Herkunftsabfrage ist kein fehlender Stempel. Er wird
+    // nicht abgefangen — es entsteht dann KEINE Referenz (statt einer falschen `BOUND`), und der
+    // Nachzug (`zieheLaufReferenzenNach`) schreibt sie beim nächsten Laden mit dem richtigen
+    // Ausgang. `undefined` heisst hier ausschliesslich: kein Objekt trägt diesen Stempel.
+    const gestempelt = koId ? await this.koService.findByImportCandidateId(candidateId) : undefined;
     const neu = await this.importRuns.appendItemRefs([
       {
         importId: bindung.importId,
