@@ -5402,6 +5402,8 @@ const de = {
   "adm.seedHint":
     "Lädt einen kleinen, echten Demo-Bestand (KOs, Validierung, Lücke, Konflikt, Duplikat, Anhang) — auch neben vorhandenen Daten. Dein echter Bestand bleibt unberührt und wird nie überschrieben. Über „Demodaten entfernen“ gezielt wieder entfernbar. (Konflikt-/Duplikat-Befund erscheint mit aktivem KI-Reasoner.)",
   "adm.seedButton": "Demodaten laden",
+  // R-0913: bestätigt ausgeschalteter Betriebsschalter `demodaten` — sichtbar statt leer.
+  "adm.seedAus": "Laden ist in diesem Betrieb ausgeschaltet.",
   "adm.seedDone": "Demodaten geladen: {{kos}} Wissensobjekte, {{users}} Nutzer.",
   "adm.seedSkipped": "Übersprungen: Instanz ist nicht leer (Bestand vorhanden).",
   "empty.cta.capture": "Wissen erfassen",
@@ -11650,6 +11652,7 @@ const en: typeof de = {
   "adm.seedHint":
     "Loads a small, real demo set (KOs, validation, gap, conflict, duplicate, attachment) — also alongside existing data. Your real content stays untouched and is never overwritten. Removable on demand via “Remove demo data”. (Conflict/duplicate findings appear with an active AI reasoner.)",
   "adm.seedButton": "Load demo data",
+  "adm.seedAus": "Loading is switched off in this installation.",
   "adm.seedDone": "Demo data loaded: {{kos}} knowledge objects, {{users}} users.",
   "adm.seedSkipped": "Skipped: instance is not empty (content present).",
   "empty.cta.capture": "Capture knowledge",
@@ -17340,6 +17343,7 @@ const nl: typeof de = {
   "adm.seedHint":
     "Laadt een kleine, echte demovoorraad (KO's, validatie, hiaat, conflict, duplicaat, bijlage) — ook naast bestaande gegevens. Je echte bestand blijft onaangeroerd en wordt nooit overschreven. Gericht te verwijderen via „Demogegevens verwijderen“. (Conflict-/duplicaatbevinding verschijnt met een actieve AI-reasoner.)",
   "adm.seedButton": "Demogegevens laden",
+  "adm.seedAus": "Laden is in deze omgeving uitgeschakeld.",
   "adm.seedDone": "Demogegevens geladen: {{kos}} kennisobjecten, {{users}} gebruikers.",
   "adm.seedSkipped": "Overgeslagen: instantie is niet leeg (voorraad aanwezig).",
   "empty.cta.capture": "Kennis vastleggen",

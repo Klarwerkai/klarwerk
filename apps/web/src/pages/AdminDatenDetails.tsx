@@ -19,7 +19,7 @@ import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
-import { useAudit, useUsers } from "../api/hooks";
+import { useAudit, useFeatures, useUsers } from "../api/hooks";
 import type {
   DemoPackageInfo,
   DemoPackageResult,
@@ -290,6 +290,22 @@ export function DemodatenDetail({ onZurueck }: { onZurueck: () => void }): JSX.E
     queryFn: endpoints.admin.demoStatus,
   });
 
+  /**
+   * R-0913 (BEN, Nacharbeit 2) — AUSGESCHALTET IST EIN ZUSTAND, KEIN LEERES FELD.
+   *
+   * `FeatureGate` rendert bei „aus" nichts; bis hierher stand die Karte dann ohne Ladeknopf und
+   * ohne ein Wort darüber da, während das „?"-Menü weiter das Laden beschrieb. Jetzt gilt:
+   *   bestätigt an  (`true`)  → Knopf (über `FeatureGate`, unverändert) und Ladehilfe im „?"-Menü.
+   *   bestätigt aus (`false`) → eine knappe Zeile „Laden ist ausgeschaltet", KEINE Ladehilfe.
+   *   lädt / Fehler / Schalter nicht genannt → weder Knopf noch Aus-Zeile: das ist keine
+   *     bestätigte Aussage über den Schalter, also behauptet die Karte auch keine.
+   * Der Entfernen-Block weiter unten hängt an keinem dieser Zweige (mega64 Block A). Der Schalter
+   * selbst und das Recht am Server (`users.manage`) bleiben, was sie sind.
+   */
+  const demoSchalter = useFeatures().data?.features.demodaten;
+  const demoLadenAn = demoSchalter === true;
+  const demoLadenAus = demoSchalter === false;
+
   const demoSeed = useMutation<DemoSeedResult, unknown, boolean | undefined>({
     // Pedi 05.07./14.07.: force lädt den Demo-Bestand frisch. SCRUM-487: Demo-Sprache = UI-Sprache.
     mutationFn: (force) => endpoints.admin.demoSeed(force ?? false, i18n.language),
@@ -481,7 +497,7 @@ export function DemodatenDetail({ onZurueck }: { onZurueck: () => void }): JSX.E
       titel={t("adm.seedTitle")}
       onZurueck={onZurueck}
       testId="detail-demodaten"
-      hilfe={[{ titel: t("adm.seedTitle"), text: t("adm.seedHint") }]}
+      hilfe={demoLadenAn ? [{ titel: t("adm.seedTitle"), text: t("adm.seedHint") }] : []}
     >
       {/* JOB 3670: die Seitenhilfe dieses Bildschirms. Sie sagt, was das „?"-Menü der Karte nicht
           sagt: dass hier ZWEI verschiedene Bestände wohnen (Kommentar unten, Z. 252-253), dass die
@@ -536,6 +552,11 @@ export function DemodatenDetail({ onZurueck }: { onZurueck: () => void }): JSX.E
               {t("adm.seedButton")}
             </Button>
           </FeatureGate>
+          {demoLadenAus ? (
+            <p data-testid="demo-laden-aus" className="text-[12.5px] text-muted-2">
+              {t("adm.seedAus")}
+            </p>
+          ) : null}
         </div>
         {/* JOB 3636: Rückfrage, Einmalkennwörter und Next-Steps gehören ZU DIESEM Knopf und stehen
             deshalb in seiner Karte. Bis hierher standen sie unterhalb des Entfernen-Blocks — mit
