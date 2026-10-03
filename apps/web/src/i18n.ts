@@ -5,6 +5,7 @@ import { sprachAusEintritt } from "./lib/htmlLang";
 // JOB 3326 R4: die Texte der Lesevariante wohnen bei ihrer Funktion, damit diese Woerterbuchdatei
 // unter dem 1-MiB-Deckel von Biome bleibt. Messung und Begruendung: `lib/lesevariante.ts`.
 import { lesevarianteTexteDe, lesevarianteTexteEn, lesevarianteTexteNl } from "./lib/lesevariante";
+import { sprachNachlader } from "./lib/sprachNachlader";
 import { gespeicherteSprache } from "./lib/sprachwahl";
 import {
   type Textmodul,
@@ -18875,6 +18876,25 @@ const nl: typeof de = {
 };
 
 // ================================================================================================
+// R-0801 · NUR DIE STARTSPRACHE GEHÖRT IN DEN EINTRITT — en und nl werden nachgeladen.
+// ================================================================================================
+//
+// Die drei Blöcke oben bleiben, wo sie sind: diese Datei ist die eine Quelle aller Texte, und
+// zahlreiche Wächter lesen sie als Text. Getrennt wird erst im PRODUKTIONSBAU: das Plugin
+// `sprachpaketeNachladen` (`texte/intern/sprachpakete.ts`) schneidet die Blöcke `en` und `nl` als
+// eigene Stücke heraus, ersetzt `{ en, nl }` in `VORLIEGEND` durch `{}` und trägt in `NACHLADEN`
+// je Sprache ein `import()` ein. Es greift NUR auf die zwei Zeilen unten und bricht den Bau ab, wenn
+// es eine davon nicht genau einmal findet — sonst lägen beide Sprachen still wieder im Eintritt.
+//
+// Im Quelltext — und damit in jedem Vitest-Lauf und im Entwicklungsserver — liegen weiterhin alle
+// drei Sprachen sofort vor; der Nachlader (`lib/sprachNachlader.ts`) wird dann nie gefragt.
+type NachladbareSprache = "en" | "nl";
+type Woerterbuch = typeof de;
+
+const VORLIEGEND: Partial<Record<NachladbareSprache, Woerterbuch>> = { en, nl };
+const NACHLADEN: Partial<Record<NachladbareSprache, () => Promise<Woerterbuch>>> = {};
+
+// ================================================================================================
 // JOB 4367 · DIE TEXTMODULE — jeder Nutzerweg bringt seine eigenen Texte mit.
 // ================================================================================================
 //
@@ -18903,26 +18923,55 @@ if (textmodulFehler.length > 0) {
 }
 const modulTexte = fuehreTextmoduleZusammen(textmodule);
 
-void i18n.use(initReactI18next).init({
-  resources: {
-    de: { translation: { ...de, ...modulTexte.de } },
-    en: { translation: { ...en, ...modulTexte.en } },
-    nl: { translation: { ...nl, ...modulTexte.nl } },
-  },
-  // JOB 3323 (Nachführung aus JOB 3280): DIE ADRESSE SCHLÄGT DIE GESPEICHERTE WAHL — aber nur,
-  // wenn sie eine Sprache des LINKVERTRAGS nennt (`EINTRITT_SPRACHEN` = de|en, htmlLang.ts). Der
-  // Eintritt aus Klara (`/capture/frontdoor?draft=<id>&lang=en`) bestimmt so die Sprache DIESES
-  // Aufrufs, ohne dass jemand erst umschalten muss; ohne `?lang` und bei JEDEM nicht vereinbarten
-  // Wert — auch bei `nl`, das die Anwendung zwar kann, der Link aber nicht setzen darf — bleibt es
-  // Zeichen für Zeichen beim bisherigen Verhalten. Die Reihenfolge ist die Rangfolge: Adresse,
-  // dann gespeicherte Wahl, dann die Vorgabe „de" (in `gespeicherteSprache`).
-  //
-  // BEWUSST NICHT GESPEICHERT: `lng` löst kein `languageChanged` aus, `bindSpracheSpeichern`
-  // (`lib/sprachwahl.ts`) schreibt also nichts. Ein Link aus Word ist der Wunsch für DIESEN
-  // Aufruf, keine Wahl für diesen Browser — er soll die Wahl unter /profil nicht überschreiben.
-  lng: sprachAusEintritt() ?? gespeicherteSprache(),
-  fallbackLng: "de",
-  interpolation: { escapeValue: false },
-});
+function istNachladbar(sprache: string): sprache is NachladbareSprache {
+  return sprache === "en" || sprache === "nl";
+}
+
+/** Das Bündel einer Sprache, sofern es schon beim Start vorliegt — sonst nichts. */
+function vorliegend(sprache: NachladbareSprache) {
+  const paket = VORLIEGEND[sprache];
+  return paket ? { [sprache]: { translation: { ...paket, ...modulTexte[sprache] } } } : {};
+}
+
+/** Holt ein fehlendes Bündel nach; die Textmodule derselben Sprache kommen dazu wie oben. */
+function nachladen(sprache: string): Promise<Record<string, string>> | undefined {
+  if (!istNachladbar(sprache)) {
+    return undefined;
+  }
+  const zusatz = modulTexte[sprache];
+  return NACHLADEN[sprache]?.().then((paket) => ({ ...paket, ...zusatz }));
+}
+
+// R-0801: `sprachBereit` erfüllt sich, sobald die Startsprache vollständig vorliegt. Für Deutsch
+// geschieht das sofort; für eine gespeicherte Wahl en/nl wartet `main.tsx` damit den ersten Aufbau
+// ab, damit die Oberfläche nicht erst deutsch erscheint und dann umspringt.
+export const sprachBereit = i18n
+  .use(sprachNachlader(nachladen))
+  .use(initReactI18next)
+  .init({
+    resources: {
+      de: { translation: { ...de, ...modulTexte.de } },
+      ...vorliegend("en"),
+      ...vorliegend("nl"),
+    },
+    // Fehlt einer Sprache das Bündel, fragt i18next den Nachlader; vorhandene Bündel bleiben.
+    partialBundledLanguages: true,
+    // JOB 3323 (Nachführung aus JOB 3280): DIE ADRESSE SCHLÄGT DIE GESPEICHERTE WAHL — aber nur,
+    // wenn sie eine Sprache des LINKVERTRAGS nennt (`EINTRITT_SPRACHEN` = de|en, htmlLang.ts). Der
+    // Eintritt aus Klara (`/capture/frontdoor?draft=<id>&lang=en`) bestimmt so die Sprache DIESES
+    // Aufrufs, ohne dass jemand erst umschalten muss; ohne `?lang` und bei JEDEM nicht vereinbarten
+    // Wert — auch bei `nl`, das die Anwendung zwar kann, der Link aber nicht setzen darf — bleibt es
+    // Zeichen für Zeichen beim bisherigen Verhalten. Die Reihenfolge ist die Rangfolge: Adresse,
+    // dann gespeicherte Wahl, dann die Vorgabe „de" (in `gespeicherteSprache`).
+    //
+    // BEWUSST NICHT GESPEICHERT: das `languageChanged` des Starts kommt, bevor `bindSpracheSpeichern`
+    // (`lib/sprachwahl.ts`) zuhört — bei nachgeladener Startsprache erst nach `sprachBereit`, und
+    // genau deshalb bindet `main.tsx` den Schreiber erst danach. Ein Link aus Word ist der Wunsch
+    // für DIESEN Aufruf, keine Wahl für diesen Browser — er soll die Wahl unter /profil nicht
+    // überschreiben.
+    lng: sprachAusEintritt() ?? gespeicherteSprache(),
+    fallbackLng: "de",
+    interpolation: { escapeValue: false },
+  });
 
 export default i18n;

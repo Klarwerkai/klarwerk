@@ -1517,11 +1517,55 @@ describe("MUTATIONSSUITE · das gebaute Bündel zerfällt in Stücke", () => {
 //
 // EINHEIT: ausgelieferte, minimierte Bytes (wie `summeJs` und Kalibrierung), dezimal gerechnet:
 // 1,36 MB = 1 360 000 B. Keine Kompression — die Quelle nennt Rohgrößen (1,95 MB / 2,6 MB).
-// Letzte vorliegende Messung (05.09.2026, `e8116ba`): Eintritt 1 285 166 B. Seither ist u. a.
-// `apps/web/src/i18n.ts` (hängt am Eintritt) im Quelltext von 981 515 B auf 1 401 396 B gewachsen;
-// ob der heutige Eintritt unter dem Deckel liegt, entscheidet erst dieser Lauf.
+// GEMESSEN am Kandidaten 06e6c8f (03.10.2026): Eintritt 1 750 692 B, Luft −390 692 B — der Deckel
+// riss. Ursache: `apps/web/src/i18n.ts` trug alle drei Wörterbücher in den Eintritt. Seither nimmt
+// das Plugin `sprachpakete-nachladen` (`apps/web/src/texte/intern/sprachpakete.ts`) en und nl im
+// Produktionsbau heraus; der zweite Fall unten belegt am gebauten Bündel, dass sie wirklich als
+// eigene Stücke AUSSERHALB der Eintritts-Hülle liegen — sonst hielte der Deckel womöglich aus einem
+// anderen Grund und die Sprachtrennung wäre unbelegt.
 describe("DECKEL · der erste geladene Brocken wächst nicht unbemerkt (R-0801)", () => {
   const EINTRITT_DECKEL_BYTES = 1_360_000;
+  // Die Paketmodule, wie das Plugin sie benennt (`paketSpezifizierer` in sprachpakete.ts).
+  const SPRACHPAKETE = ["en", "nl"].map((sprache) =>
+    posix(join(WEB, "src", `i18n.sprachpaket.${sprache}.js`)),
+  );
+  // Untergrenze für den Inhalt eines Pakets: weit unter dem heutigen Umfang (en und nl zusammen
+  // 818 533 B Quelltext), aber hoch genug, dass ein leeres oder fast leeres Paket auffällt.
+  const PAKET_MINDESTINHALT_BYTES = 100_000;
+
+  it("die Sprachpakete en und nl liegen je in einem eigenen Stück außerhalb der Eintritts-Hülle", () => {
+    const g = GETEILT as Bau;
+    const huelleDateien = huelle(g, g.eintritt ? [g.eintritt.fileName] : []);
+    const befunde = SPRACHPAKETE.map((paket) => {
+      const traeger = g.jsStuecke.filter((s) => s.moduleIds.includes(paket));
+      return {
+        paket: kurz(paket),
+        traeger: traeger.map((s) => s.fileName),
+        inHuelle: traeger.some((s) => huelleDateien.has(s.fileName)),
+        inhalt: g.inhaltBytesJeModul.get(paket) ?? 0,
+      };
+    });
+    console.log(
+      `[R-0801] Sprachpakete: ${befunde.map((b) => `${b.paket} → ${b.traeger.join(", ") || "—"} (Inhalt ${b.inhalt} B)`).join(" · ")}`,
+    );
+    for (const b of befunde) {
+      expect(b.traeger, `${b.paket} muss in GENAU einem Stück liegen`).toHaveLength(1);
+      expect(b.inHuelle, `${b.paket} liegt in der Eintritts-Hülle — es würde sofort geladen`).toBe(
+        false,
+      );
+      expect(b.inhalt, `${b.paket} trägt kaum Inhalt — ist der Block leer?`).toBeGreaterThan(
+        PAKET_MINDESTINHALT_BYTES,
+      );
+    }
+    // Deutsch bleibt im Eintritt: die Startsprache darf nicht erst nachgeladen werden.
+    const i18nModul = posix(join(WEB, "src", "i18n.ts"));
+    expect(
+      [...huelleDateien].some((datei) =>
+        g.stuecke.find((s) => s.fileName === datei)?.moduleIds.includes(i18nModul),
+      ),
+      "`i18n.ts` (mit dem deutschen Wörterbuch) muss in der Eintritts-Hülle liegen",
+    ).toBe(true);
+  });
 
   it("Eintrittsdatei und Eintritts-Hülle bleiben unter 1,36 MB", () => {
     const g = GETEILT as Bau;
