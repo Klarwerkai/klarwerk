@@ -854,6 +854,16 @@ export const TABELLE: Zeile[] = [
     tor: "requireUser",
     erwartet: ANGEMELDET,
   },
+  // R-1064: der Supportweg der Installation. Jede angemeldete Rolle braucht ihn (Hilfeseite
+  // `minRole: "viewer"`), deshalb bewusst kein Recht über die Anmeldung hinaus.
+  {
+    gruppe: "supportRoutes",
+    methode: "GET",
+    pfad: "/api/support",
+    belegstelle: "services/app/src/routes/support-routes.ts:150",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
   {
     gruppe: "importAccessRoutes",
     methode: "GET",

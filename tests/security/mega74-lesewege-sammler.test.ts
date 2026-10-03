@@ -452,6 +452,13 @@ const REGISTER: Record<string, Eintrag> = {
   "GET /api/ai-status": { urteil: "KEIN_KO_INHALT", grund: "Modellzustand." },
   "GET /api/reasoner/status": { urteil: "KEIN_KO_INHALT", grund: "Modellzustand." },
   "GET /api/features": { urteil: "KEIN_KO_INHALT", grund: "Schalter als Ja/Nein." },
+  // R-1064: Supportweg der Installation — Zustand, geprüftes Ziel und Beschriftung aus zwei
+  // Betreiberwerten (support-routes.ts:119), kein Feld aus einem Wissensobjekt.
+  "GET /api/support": {
+    urteil: "KEIN_KO_INHALT",
+    grund:
+      "R-1064 — Supportkontakt der Instanz aus der Umgebung (support-routes.ts), kein Bestand.",
+  },
   // JOB 3510 · die Markenwahl. Beide Wege geben ausschließlich die Darstellungslage der Instanz
   // aus: Profilname, `aktiv`, Änderungszahl und — nur bei eingeschalteter Wahl — Markenname, zwei
   // Logofarben und der Pfad des mitgelieferten Logos (`branding-settings.ts`, BRANDING_PROFILE).
