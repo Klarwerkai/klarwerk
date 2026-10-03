@@ -132,6 +132,7 @@ interface Dateiwahl {
   setFiles(datei: { name: string; mimeType: string; buffer: Buffer }): Promise<void>;
 }
 type Buehne = Seite & {
+  getByText(text: string, options: { exact: boolean }): { click(): Promise<void> };
   mouse: {
     move(x: number, y: number, o?: Record<string, unknown>): Promise<void>;
     down(): Promise<void>;
@@ -675,14 +676,12 @@ describe("Bildgröße an Griffen · K1–K4 · Chromium → Fastify → PostgreS
           `!!document.querySelector('input[type="file"][accept="image/*"]')`,
           "Bildauswahl in erweiterten Details offen",
         );
-        const label = await mitte(
-          s,
-          `[...document.querySelectorAll("label")].find((l) => (l.textContent || "").trim().startsWith(${JSON.stringify(t("capture.imagesUpload"))}) && l.querySelector('input[type="file"][accept="image/*"]'))`,
-        );
         const wahl = s.waitForEvent("filechooser", {
           timeout: wartebudget("aufFlaechensatzWarten"),
         });
-        await s.mouse.click(label.x, label.y);
+        // Playwright wartet auf eine stabile, unverdeckte Fläche nach dem Aufklappen.
+        // Der reguläre Dateidialog bleibt Teil der tatsächlichen Browserbedienung.
+        await s.getByText(t("capture.imagesUpload"), { exact: true }).click();
         await (await wahl).setFiles({ name: BILD_NAME, mimeType: "image/png", buffer: BILD_PNG });
         await warteBis(
           s,
