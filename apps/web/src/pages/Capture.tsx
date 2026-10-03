@@ -7035,7 +7035,9 @@ export function CaptureArbeitsraum({
                     </Field>
                     {/* KW-STR / FR-STR-02: optionaler WYSIWYG-Body. SCRUM-321: lokale Bild-Anhänge
                     können vor dem Speichern als sichere data:image-Vorschau eingefügt werden. */}
-                    <Field label={t("capture.fBody")}>
+                    {/* `gruppe`: der Bereich enthält Studio-Knöpfe UND den Editor — als implizites
+                      Label aktivierte jeder Klick ins Schreibfeld den ersten Knopf (Studio ging auf). */}
+                    <Field label={t("capture.fBody")} gruppe>
                       {/* SCRUM-340: aus dem vorhandenen Reasoner-Entwurf einen strukturierten Body-Artikel
                       erzeugen und direkt im Studio weiterbearbeiten. Vorschlag, kein validiertes Wissen;
                       vorhandener Body wird nicht still überschrieben (leer = setzen, sonst anhängen). */}
