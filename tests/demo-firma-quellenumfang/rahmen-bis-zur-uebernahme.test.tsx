@@ -14,11 +14,19 @@
 //      `titleContains` wirken als ODER — den Rahmen dort hineinzulegen würde die Auswahl
 //      AUSWEITEN. Der Knopf entfällt deshalb im Rahmen. Der Fall dazu ist KALIBRIERT: ohne Rahmen
 //      muss derselbe Knopf da sein, sonst prüfte er nichts.
+//
+// K6 (Bens Befund, package:confluence): der LETZTE Fall dieser Datei fährt dieselbe Fläche gegen
+// die ECHTEN Routen `select`/`group`/`apply` — die Ersatzfunktionen reichen dort an die echten
+// Endpunktfunktionen durch (`vi.importActual`), und die Brücke führt sie über `app.inject` an eine
+// App mit echtem Confluence-Adapter (`../confluence-import-bedienung/confluence-buehne.ts`).
+// Ersetzt ist dort allein die Antwort der externen Confluence-Instanz.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../apps/web/src/api/endpoints", () => ({
   endpoints: {
-    admin: { import: { select: vi.fn(), group: vi.fn(), apply: vi.fn() } },
+    // `run`: die Lauf-Akte der Übernahme (`ImportGroups` → `useImportRun`). Die bisherigen Fälle
+    // lösen sie nie aus (ihre Bilanz trägt keine Laufkennung); der K6-Fall reicht sie durch.
+    admin: { import: { select: vi.fn(), group: vi.fn(), apply: vi.fn(), run: vi.fn() } },
     reasoner: { status: vi.fn().mockResolvedValue({ active: false, mode: "deterministic" }) },
   },
 }));
@@ -32,6 +40,12 @@ import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { endpoints } from "../../apps/web/src/api/endpoints";
 import { ImportSelect } from "../../apps/web/src/components/ImportSelect";
 import i18n from "../../apps/web/src/i18n";
+import {
+  type Buehne,
+  baueBuehne,
+  confluenceInstanz,
+  seite,
+} from "../confluence-import-bedienung/confluence-buehne";
 import { FIRMA } from "./bestand";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -271,6 +285,184 @@ describe("JOB 3640 · der Rahmen trägt bis in die Übernahme", () => {
       expect(knopfTexte()).not.toMatch(/Show (that|those)/);
     } finally {
       await i18n.changeLanguage("de");
+    }
+  });
+});
+
+// ================================================================================================
+// K6 · DER RAHMEN AN DER ECHTEN APP — FREMDE UND EIGENE SEITEN BIS ZUR TATSÄCHLICHEN ÜBERNAHME.
+// ================================================================================================
+//
+// Drei Quellseiten: zwei tragen den Rahmen im Titel, eine (`Basic`) nicht. Der Mensch setzt den
+// Rahmen, öffnet die Vorschau, wählt EINE Advisor-Seite ab, gruppiert (deterministisch — kein Modell
+// in der Test-App, `reasoner.status` meldet „inaktiv") und übernimmt. Gemessen wird an drei Stellen:
+// den Antworten der echten Routen, den gespeicherten Kandidaten und — beim Wechsel auf `Basic` — an
+// der Fläche, die die alte Auswahl bis zur passenden neuen Vorschau sperrt.
+//
+// GRENZE, AUSDRÜCKLICH: der „Firmenrahmen" ist ein erklärter TITELWORTFILTER (`titleContains`),
+// keine Zuordnung zu einer Firmenstruktur. Genau das wird hier gemessen — nicht mehr.
+const RAHMEN_SEITEN = [
+  seite("401", `[${FIRMA}] Onboarding`, 1, "Neue Kunden werden in drei Schritten eingerichtet."),
+  seite("402", `[${FIRMA}] Abrechnung`, 1, "Rechnungen gehen am Monatsende hinaus."),
+  seite("403", "[Basic] Onboarding", 1, "Basic-Kunden richten sich selbst ein."),
+];
+const GEWAEHLT = `[${FIRMA}] Onboarding`;
+const ABGEWAEHLT = `[${FIRMA}] Abrechnung`;
+const FREMD = "[Basic] Onboarding";
+
+async function warteBis(bedingung: () => boolean, ms = 8000): Promise<void> {
+  const ende = Date.now() + ms;
+  while (!bedingung() && Date.now() < ende) {
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 25));
+    });
+  }
+}
+
+function haken(titel: string): HTMLInputElement {
+  const el = [...container.querySelectorAll('input[type="checkbox"]')].find(
+    (k) => k.getAttribute("aria-label") === titel,
+  );
+  if (!(el instanceof HTMLInputElement)) {
+    throw new Error(`Haken „${titel}" fehlt; sichtbar: ${sichtbarerText()}`);
+  }
+  return el;
+}
+
+function hatKnopf(teil: string): boolean {
+  return [...container.querySelectorAll("button")].some(
+    (b) => (b.textContent ?? "").includes(teil) && !verborgen(b),
+  );
+}
+
+describe("K6 · Firmenrahmen an den echten Routen: Vorschau, Abwahl, Gruppierung, Übernahme", () => {
+  it("gespeichert ist genau die gewählte Advisor-Seite; der Wechsel auf Basic sperrt die alte Auswahl", async () => {
+    const echt = await vi.importActual<typeof import("../../apps/web/src/api/endpoints")>(
+      "../../apps/web/src/api/endpoints",
+    );
+    const runMock = endpoints.admin.import.run as unknown as ReturnType<typeof vi.fn>;
+    selectMock.mockImplementation(echt.endpoints.admin.import.select);
+    groupMock.mockImplementation(echt.endpoints.admin.import.group);
+    applyMock.mockImplementation(echt.endpoints.admin.import.apply);
+    runMock.mockImplementation(echt.endpoints.admin.import.run);
+    let buehne: Buehne | null = null;
+    try {
+      buehne = await baueBuehne({
+        fetchFn: confluenceInstanz({ ergebnisseiten: [RAHMEN_SEITEN] }).fetchFn,
+      });
+      const b = buehne;
+
+      container = document.createElement("div");
+      document.body.appendChild(container);
+      root = createRoot(container);
+      const qc = new QueryClient({
+        defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+      });
+      const zeichne = async (rahmen: string): Promise<void> => {
+        await act(async () => {
+          root.render(
+            createElement(
+              QueryClientProvider,
+              { client: qc },
+              createElement(ImportSelect, {
+                chip: { themes: [], authors: [], spaces: [] },
+                rahmen,
+              }),
+            ),
+          );
+        });
+      };
+
+      // 1 · DIE VORSCHAU IM RAHMEN — vom echten Server gefiltert.
+      await zeichne(FIRMA);
+      await klicken(i18n.t("imp.select.previewCta"));
+      await warteBis(() => sichtbarerText().includes(GEWAEHLT));
+      expect(
+        (selectMock.mock.calls.at(-1)?.[0] as { criteria: Record<string, unknown> }).criteria
+          .titleContains,
+      ).toEqual([FIRMA]);
+      const vorschau = (await selectMock.mock.results.at(-1)?.value) as {
+        preview: Array<{ id?: string; title: string }>;
+      };
+      expect(vorschau.preview.map((p) => p.title).sort()).toEqual([ABGEWAEHLT, GEWAEHLT].sort());
+      expect(sichtbarerText()).not.toContain(FREMD);
+      const gewaehlteId = vorschau.preview.find((p) => p.title === GEWAEHLT)?.id;
+      expect(gewaehlteId, "die Vorschau trägt keine Kandidaten-Id").toBeTruthy();
+
+      // 2 · EINE ADVISOR-SEITE ABWÄHLEN — am Haken, wie der Mensch.
+      expect(haken(ABGEWAEHLT).checked).toBe(true);
+      await act(async () => {
+        haken(ABGEWAEHLT).click();
+      });
+      await act(flush);
+      expect(haken(ABGEWAEHLT).checked).toBe(false);
+      expect(haken(GEWAEHLT).checked).toBe(true);
+
+      // 3 · GRUPPIEREN — der echte Server bekommt Rahmen UND Auswahl und gibt nur die gewählte zurück.
+      await klicken(i18n.t("imp.groups.cta"));
+      await warteBis(() => hatKnopf(i18n.t("imp.groups.applyCta", { n: 1 })));
+      const gruppenAnfrage = groupMock.mock.calls.at(-1)?.[0] as {
+        criteria: Record<string, unknown>;
+        selectedCandidateIds: string[];
+      };
+      expect(gruppenAnfrage.criteria).toEqual({ titleContains: [FIRMA] });
+      expect(gruppenAnfrage.selectedCandidateIds).toEqual([gewaehlteId]);
+      const gruppen = (await groupMock.mock.results.at(-1)?.value) as {
+        candidates: Array<{ id: string; title: string }>;
+      };
+      expect(gruppen.candidates.map((c) => c.title)).toEqual([GEWAEHLT]);
+
+      // 4 · ÜBERNEHMEN — und nachlesen, was WIRKLICH eingereiht wurde.
+      await klicken(i18n.t("imp.groups.applyCta", { n: 1 }));
+      await warteBis(() => applyMock.mock.results.length > 0);
+      const bilanz = (await applyMock.mock.results.at(-1)?.value) as {
+        imported: number;
+        notFound: string[];
+      };
+      expect(bilanz.imported).toBe(1);
+      expect(bilanz.notFound).toEqual([]);
+      const kandidatenNachUebernahme = async (): Promise<string[]> => {
+        const res = await b.app.inject({
+          method: "GET",
+          url: "/api/library/import/candidates",
+          headers: b.kopf,
+        });
+        expect(res.statusCode).toBe(200);
+        const liste = res.json() as Array<{ item: { externalId?: string; title: string } }>;
+        return liste.map((k) => k.item.externalId ?? k.item.title).sort();
+      };
+      expect(await kandidatenNachUebernahme()).toEqual(["401"]);
+
+      // 5 · RAHMENWECHSEL AUF BASIC — die alte Auswahl ist sofort gesperrt …
+      const uebernahmenVorher = applyMock.mock.calls.length;
+      const sperre = (): Element | null =>
+        container.querySelector('[data-testid="rahmen-gruppen-gesperrt"]');
+      await zeichne("Basic");
+      expect(sperre()).not.toBeNull();
+      expect(hatKnopf(i18n.t("imp.groups.applyCta", { n: 1 }))).toBe(false);
+      // … bis die Vorschau zum neuen Rahmen passt (lädt die Fläche nicht selbst nach, holt der
+      // Mensch sie — beide Wege enden in derselben Prüfung).
+      await warteBis(() => sichtbarerText().includes(FREMD), 1500);
+      if (!sichtbarerText().includes(FREMD)) {
+        await klicken(i18n.t("imp.select.previewCta"));
+        await warteBis(() => sichtbarerText().includes(FREMD));
+      }
+      expect(
+        (selectMock.mock.calls.at(-1)?.[0] as { criteria: Record<string, unknown> }).criteria
+          .titleContains,
+      ).toEqual(["Basic"]);
+      await warteBis(() => sperre() === null);
+      expect(sperre()).toBeNull();
+      expect(sichtbarerText()).not.toContain(GEWAEHLT);
+      // Mit der alten Auswahl wurde nichts mehr abgeschickt, und im Bestand steht weiter nur sie.
+      expect(applyMock.mock.calls.length).toBe(uebernahmenVorher);
+      expect(await kandidatenNachUebernahme()).toEqual(["401"]);
+    } finally {
+      buehne?.abbauen();
+      selectMock.mockReset();
+      groupMock.mockReset();
+      applyMock.mockReset();
+      runMock.mockReset();
     }
   });
 });

@@ -44,6 +44,8 @@ export interface ImportAccessFacts {
   enabled: boolean;
   /** Kämen mit den hinterlegten Variablen Zugangsdaten zustande? (Nicht: sind sie gültig.) */
   credentialsUsable: boolean;
+  /** Nur Confluence: Freigabe und Betreiberschalter (s. `betreiberHatAusgeschaltet` unten). */
+  betreiber?: ImportAccessBetreiber;
 }
 
 // `facts` ist PFLICHT und bewusst nicht optional: „noch keine Auskunft" ist KEINER dieser drei
@@ -103,6 +105,41 @@ export const IMPORT_START_GESPERRT_TEXT: Record<Exclude<ImportAccessState, "read
   "no-credentials": "w2.run.gesperrt.noCredentials",
 };
 
+// ================================================================================================
+// R-0134 / R-1005 — DER BETREIBERSCHALTER: „AUSGESCHALTET" HAT JETZT ZWEI URSACHEN.
+// ================================================================================================
+//
+// Für Confluence gibt es seit dem Betreiberschalter zwei Gründe für `enabled: false`: die
+// Installation gibt den Import nicht frei (Umgebung, nur auf dem Server änderbar), ODER ein
+// Betreiber hat ihn über die Oberfläche ausgeschaltet (hier wieder einschaltbar). Beides mit
+// demselben Satz zu beschreiben, schickte den Betreiber zum Server, obwohl der Knopf daneben liegt.
+//
+// BEWUSST KEIN VIERTER WERT IN `ImportAccessState`: die Ableitung oben ist quellneutral und wird von
+// der SharePoint-Karte mit eigener Textliste je Zustand benutzt; einen Zustand, den SharePoint nicht
+// kennt, dort einzutragen, wäre eine Behauptung über ein anderes System. Der Betreiberzustand steht
+// deshalb daneben — und nur, wenn der Server ihn meldet (`betreiber`).
+
+/** Die Betreiberangabe der Confluence-Auskunft (fehlt, wenn der Server keinen Schalter kennt). */
+export interface ImportAccessBetreiber {
+  freigegeben: boolean;
+  an: boolean;
+}
+
+/** Freigegeben, aber vom Betreiber ausgeschaltet — hier über die Oberfläche umlegbar. */
+export function betreiberHatAusgeschaltet(betreiber: ImportAccessBetreiber | undefined): boolean {
+  return betreiber?.freigegeben === true && betreiber.an === false;
+}
+
+/** Eigener Text für „vom Betreiber ausgeschaltet" — nicht der Satz, der zum Server schickt. */
+export const IMPORT_ACCESS_SWITCHED_OFF_TEXT = {
+  titleKey: "imp.access.switchedOff.title",
+  bodyKey: "imp.access.switchedOff.body",
+  tone: "neutral",
+} as const;
+
+/** Warum der Start gesperrt ist, wenn der Betreiber ausgeschaltet hat. */
+export const IMPORT_START_BETREIBER_AUS_TEXT = "w2.run.gesperrt.switchedOff";
+
 /**
  * Der Text zu einer abgelehnten Startanfrage — aus Status und Code der Antwort, nie aus ihrem
  * Wortlaut (der ist deutsch und kann sich ändern). Unbekanntes bleibt beim allgemeinen Fehlertext:
@@ -110,12 +147,16 @@ export const IMPORT_START_GESPERRT_TEXT: Record<Exclude<ImportAccessState, "read
  *
  *   404  die Route existiert nicht ⇒ der Schalter steht (inzwischen) aus
  *   403  das Recht fehlt
+ *   409  `IMPORT_SWITCHED_OFF` — der Betreiber hat den Import ausgeschaltet
  *   503  `IMPORT_UNAVAILABLE` — eingeschaltet, aber ohne brauchbare Zugangsdaten
  *   504  `CONFLUENCE_TIMEOUT` / `CONFLUENCE_BUDGET` — Confluence hat nicht rechtzeitig geantwortet
  */
 export function importStartFehlerKey(status: number, code: string): string {
   if (code === "CONFLUENCE_TIMEOUT" || code === "CONFLUENCE_BUDGET") {
     return "w2.run.startFehler.zeitlimit";
+  }
+  if (code === "IMPORT_SWITCHED_OFF") {
+    return "w2.run.startFehler.betreiberAus";
   }
   if (code === "IMPORT_UNAVAILABLE") {
     return "w2.run.startFehler.nichtKonfiguriert";

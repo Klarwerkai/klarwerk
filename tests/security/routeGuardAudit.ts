@@ -677,6 +677,9 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // den Zustand „ausgeschaltet" melden können, und hinter dem Schalter gäbe es nur einen 404,
   // ununterscheidbar von „kaputt".
   "GET /api/import/confluence/zugang": { protection: "users.manage" },
+  // R-0134 / R-1005: der Betreiberschalter — nimmt genau ein Ja/Nein entgegen (keine Zugangsdaten),
+  // dasselbe Recht wie jede Confluence-Importroute. Liegt wie die Auskunft VOR dem Schalter.
+  "PUT /api/import/confluence/schalter": { protection: "users.manage" },
   // JOB 4086: dieselbe Auskunft für SharePoint/OneDrive, dieselbe Tür und derselbe Grund, warum
   // sie VOR ihrem Schalter steht — sie muss „ausgeschaltet" melden können.
   "GET /api/import/sharepoint/zugang": { protection: "users.manage" },

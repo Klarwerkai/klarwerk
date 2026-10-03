@@ -4601,6 +4601,18 @@ const de = {
   "imp.access.whereSet":
     "Diese Werte werden als Umgebungsvariablen auf dem Server gesetzt — nicht hier. Klarwerk zeigt nur, ob sie stehen, nie ihren Inhalt.",
   "imp.access.whoMay": "Ändern kann das, wer Zugang zum Server dieser Installation hat.",
+  // R-0134 / R-1005: der Betreiberschalter — eigener Zustand, eigener Knopf, eigene Fehler.
+  "imp.access.switchedOff.title": "Vom Betreiber ausgeschaltet",
+  "imp.access.switchedOff.body":
+    "Der Confluence-Import ist in dieser Installation freigegeben, aber ausgeschaltet. Solange das so ist, lehnt der Server jeden Import ab. Einschalten lässt er sich mit dem Knopf darunter.",
+  "imp.access.schalter.an": "Import einschalten",
+  "imp.access.schalter.aus": "Import ausschalten",
+  "imp.access.schalter.hinweis":
+    "Wirkt sofort und ohne Neustart. Zugangsdaten werden hier nicht eingegeben.",
+  "imp.access.schalter.nichtFreigegeben":
+    "Der Import ist in dieser Installation nicht freigegeben — der Schalter wirkt erst nach der Freigabe auf dem Server.",
+  "imp.access.schalter.fehler":
+    "Der Schalter konnte nicht umgelegt werden. Bitte erneut versuchen.",
   // JOB-924 D6: Der frühere Satz („wird nicht festgehalten") ist überholt — es WIRD festgehalten,
   // es gibt nur noch keinen erfolgreichen Lauf. Beide Sätze sind ausdrücklich rückblickend: der
   // Zeitpunkt sagt, dass es damals ging, nicht dass es jetzt geht. Das wüsste nur ein Aufruf, und
@@ -7130,6 +7142,10 @@ const de = {
   "w2.run.startFehler.ausgeschaltet":
     "Der Confluence-Import ist in dieser Installation ausgeschaltet — der Start ist nicht verfügbar.",
   "w2.run.startFehler.keinRecht": "Für den Start eines Imports fehlt die Berechtigung.",
+  "w2.run.startFehler.betreiberAus":
+    "Der Confluence-Import ist vom Betreiber ausgeschaltet — einschalten lässt er sich oben im Bereich Zugang.",
+  "w2.run.gesperrt.switchedOff":
+    "Der Confluence-Import ist vom Betreiber ausgeschaltet. Einschalten lässt er sich oben im Bereich Zugang.",
   // R-0159: die verständliche Erklärung neben einem eindeutigen Fehlercode eines Laufs.
   "w2.run.failureText.CONFLUENCE_TIMEOUT":
     "Confluence hat nicht rechtzeitig geantwortet (Zeitüberschreitung). Der Lauf wurde abgebrochen; ein erneuter Start ist möglich.",
@@ -11011,6 +11027,16 @@ const en: typeof de = {
   "imp.access.whereSet":
     "These values are set as environment variables on the server — not here. Klarwerk only shows whether they are set, never their content.",
   "imp.access.whoMay": "This can be changed by whoever has access to this installation's server.",
+  "imp.access.switchedOff.title": "Switched off by the operator",
+  "imp.access.switchedOff.body":
+    "The Confluence import is released in this installation but switched off. While it is off, the server rejects every import. Use the button below to switch it on.",
+  "imp.access.schalter.an": "Switch import on",
+  "imp.access.schalter.aus": "Switch import off",
+  "imp.access.schalter.hinweis":
+    "Takes effect immediately, without a restart. Credentials are not entered here.",
+  "imp.access.schalter.nichtFreigegeben":
+    "The import is not released in this installation — the switch only takes effect once it is released on the server.",
+  "imp.access.schalter.fehler": "The switch could not be changed. Please try again.",
   "imp.access.lastConnectedUnknown": "No successfully completed import has been recorded yet.",
   "imp.access.lastConnected":
     "Last successfully completed import: {{date}}. Whether it works now, this look back does not say.",
@@ -13051,6 +13077,10 @@ const en: typeof de = {
   "w2.run.startFehler.ausgeschaltet":
     "The Confluence import is switched off in this installation — starting is not available.",
   "w2.run.startFehler.keinRecht": "You do not have permission to start an import.",
+  "w2.run.startFehler.betreiberAus":
+    "The Confluence import has been switched off by the operator — switch it on above under Access.",
+  "w2.run.gesperrt.switchedOff":
+    "The Confluence import has been switched off by the operator. Switch it on above under Access.",
   "w2.run.failureText.CONFLUENCE_TIMEOUT":
     "Confluence did not respond in time (timeout). The run was stopped; you can start it again.",
   "w2.run.failureText.CONFLUENCE_BUDGET":
@@ -16740,6 +16770,16 @@ const nl: typeof de = {
     "Deze waarden worden als omgevingsvariabelen op de server gezet — niet hier. Klarwerk laat alleen zien of ze er staan, nooit hun inhoud.",
   "imp.access.whoMay":
     "Dit kan worden gewijzigd door wie toegang heeft tot de server van deze installatie.",
+  "imp.access.switchedOff.title": "Door de beheerder uitgeschakeld",
+  "imp.access.switchedOff.body":
+    "De Confluence-import is in deze installatie vrijgegeven, maar uitgeschakeld. Zolang dat zo is, weigert de server elke import. Met de knop hieronder schakel je hem in.",
+  "imp.access.schalter.an": "Import inschakelen",
+  "imp.access.schalter.aus": "Import uitschakelen",
+  "imp.access.schalter.hinweis":
+    "Werkt direct en zonder herstart. Toegangsgegevens worden hier niet ingevoerd.",
+  "imp.access.schalter.nichtFreigegeben":
+    "De import is in deze installatie niet vrijgegeven — de schakelaar werkt pas na vrijgave op de server.",
+  "imp.access.schalter.fehler": "De schakelaar kon niet worden omgezet. Probeer het opnieuw.",
   "imp.access.lastConnectedUnknown": "Er is nog geen succesvol afgeronde import vastgelegd.",
   "imp.access.lastConnected":
     "Laatste succesvol afgeronde import: {{date}}. Of het nu werkt, zegt deze terugblik niet.",
@@ -18793,6 +18833,10 @@ const nl: typeof de = {
   "w2.run.startFehler.ausgeschaltet":
     "De Confluence-import is in deze installatie uitgeschakeld — starten is niet beschikbaar.",
   "w2.run.startFehler.keinRecht": "Je hebt geen recht om een import te starten.",
+  "w2.run.startFehler.betreiberAus":
+    "De Confluence-import is door de beheerder uitgeschakeld — inschakelen kan hierboven bij Toegang.",
+  "w2.run.gesperrt.switchedOff":
+    "De Confluence-import is door de beheerder uitgeschakeld. Inschakelen kan hierboven bij Toegang.",
   "w2.run.failureText.CONFLUENCE_TIMEOUT":
     "Confluence heeft niet op tijd geantwoord (time-out). De uitvoering is afgebroken; opnieuw starten is mogelijk.",
   "w2.run.failureText.CONFLUENCE_BUDGET":

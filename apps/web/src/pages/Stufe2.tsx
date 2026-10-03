@@ -95,7 +95,9 @@ import { isNavigableNode, koDetailPath } from "../lib/graphNav";
 import { displayImportText } from "../lib/htmlEntities";
 // R-0134 / R-1005 / R-0159: derselbe Zugangszustand wie im Zugangskasten, dazu die Fehlertexte.
 import {
+  IMPORT_START_BETREIBER_AUS_TEXT,
   IMPORT_START_GESPERRT_TEXT,
+  betreiberHatAusgeschaltet,
   importAccessState,
   importStartFehlerKey,
 } from "../lib/importAccessState";
@@ -451,11 +453,17 @@ export function ImportRunPanel(): JSX.Element {
   // GELESEN, nie hergeleitet: der Zustand kommt vom Server, die Bedeutung aus dem View-Kern.
   const zustand = importRunStateView(lauf.data?.status);
   const zugang = useImportAccessConfluence(false).data;
-  const zugangsZustand = zugang ? importAccessState(zugang) : null;
-  const gesperrtKey =
-    zugangsZustand && zugangsZustand !== "ready"
-      ? IMPORT_START_GESPERRT_TEXT[zugangsZustand]
-      : null;
+  // Vom Betreiber ausgeschaltet ist ein EIGENER Grund (über die Oberfläche umlegbar, Zugangskasten
+  // darüber) — nicht derselbe Satz wie „in dieser Installation nicht freigegeben".
+  const betreiberAus = betreiberHatAusgeschaltet(zugang?.betreiber);
+  const quellZustand = zugang ? importAccessState(zugang) : null;
+  const zugangsZustand = betreiberAus ? "switched-off" : quellZustand;
+  let gesperrtKey: string | null = null;
+  if (betreiberAus) {
+    gesperrtKey = IMPORT_START_BETREIBER_AUS_TEXT;
+  } else if (quellZustand && quellZustand !== "ready") {
+    gesperrtKey = IMPORT_START_GESPERRT_TEXT[quellZustand];
+  }
   // JOB 2970 D2: Ein Startversuch waehrend eines laufenden Imports ist KEIN Fehlschlag.
   //
   // Der Server antwortet dann `409 IMPORT_ALREADY_RUNNING` und nennt im selben Koerper die
