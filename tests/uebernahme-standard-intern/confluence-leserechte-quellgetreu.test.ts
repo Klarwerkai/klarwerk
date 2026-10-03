@@ -166,7 +166,9 @@ describe("R-0182/R-0649 · geänderte Quellversion", () => {
     const koService = new KoService({ repo: new InMemoryKoRepo() });
     const library = new LibraryService({ koService, externalUpsert: true });
 
-    const v1 = await fixture([wurzel, kapitel]).adapter.collectAll();
+    // v1 enthält die GANZE offene Kette (Wurzel 1, Handbuch 5) — fehlte der Elternteil 5, wäre das
+    // Kapitel nach V3 zu Recht fail-closed vertraulich und der Fall mäße nichts.
+    const v1 = await fixture([wurzel, handbuch, kapitel]).adapter.collectAll();
     const c1 = (await library.createImportCandidates(v1.items, "importeur")).find(
       (c) => c.item.externalId === "6",
     );
