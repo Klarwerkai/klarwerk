@@ -32,7 +32,7 @@ import {
 } from "../ai-check-worker";
 import type { SemanticPrefilter } from "../duplicate-detection";
 import { schalterAn } from "../feature-flags";
-import { type Guards, sendError } from "../http";
+import { type Guards, type SessionUser, sendError } from "../http";
 import {
   darfSehen,
   sichtbareFuer,
@@ -103,6 +103,61 @@ function toImportCandidateDto(candidate: ImportCandidate): ImportCandidateDto {
     ...(candidate.reviewedAction !== undefined ? { reviewedAction: candidate.reviewedAction } : {}),
     ...(candidate.auditPending !== undefined ? { auditPending: true } : {}),
   };
+}
+
+// ================================================================================================
+// NACHARBEIT 3 (bens F3) — EINE TREFFERKENNUNG IST EINE AUSKUNFT ÜBER EIN OBJEKT.
+// ================================================================================================
+//
+// `dublettenbefund.treffer.koId` (und `koId` eines angenommenen Kandidaten) nennen ein Wissensobjekt.
+// Der Ankervergleich beim Einreihen läuft über den GANZEN Bestand — ohne diese Grenze gab die
+// Einreichungsantwort einem Experten die Kennung eines vertraulichen Objekts aus, das er nicht sehen
+// darf. Die Entscheidung ist dieselbe wie überall (`darfSehen`, am vollen Objekt). Wer `ko.validate`
+// hat, sieht jedes Objekt und braucht die Treffer zum Prüfen — für ihn bleibt die Antwort unverändert
+// (auch Papierkorb-Treffer, wie bisher).
+//
+// WAS AN DIE STELLE TRITT: ein unsichtbarer Treffer wird zu `pruefung_nicht_moeglich` — dem
+// vorhandenen Ausgang „für dich ist dazu keine Aussage möglich", den der Client bereits darstellt.
+// Eine Ersatzform mit leerem Treffer gäbe es im Vertrag nicht. Die ENTSCHEIDUNG des Annehmenden
+// hängt daran nicht: der Dienst liest den abgelegten Kandidaten, nie dieses DTO.
+async function kandidatenDtosFuer(
+  library: LibraryService,
+  user: SessionUser,
+  candidates: readonly ImportCandidate[],
+): Promise<ImportCandidateDto[]> {
+  const dtos = candidates.map(toImportCandidateDto);
+  if (can(user.role, "ko.validate")) {
+    return dtos;
+  }
+  const sichtbar = new Map<string, boolean>();
+  const pruefe = async (koId: string): Promise<boolean> => {
+    const bekannt = sichtbar.get(koId);
+    if (bekannt !== undefined) {
+      return bekannt;
+    }
+    const ko = await library.wissensobjektFuerSicht(koId);
+    const darf = ko !== undefined && darfSehen(user, ko);
+    sichtbar.set(koId, darf);
+    return darf;
+  };
+  const ergebnis: ImportCandidateDto[] = [];
+  for (const dto of dtos) {
+    const befund = dto.dublettenbefund;
+    const trefferKo =
+      befund && "treffer" in befund && befund.treffer.art === "wissensobjekt"
+        ? befund.treffer.koId
+        : undefined;
+    const trefferVerdeckt = trefferKo !== undefined && !(await pruefe(trefferKo));
+    const koVerdeckt = dto.koId !== null && !(await pruefe(dto.koId));
+    ergebnis.push({
+      ...dto,
+      ...(trefferVerdeckt
+        ? { dublettenbefund: { ergebnis: "pruefung_nicht_moeglich" as const } }
+        : {}),
+      ...(koVerdeckt ? { koId: null } : {}),
+    });
+  }
+  return ergebnis;
 }
 
 // ben-Review #6: schmale, immer sichtbare Log-Linie für best-effort-Erkennung am Import-Accept-Pfad
@@ -828,7 +883,8 @@ export function libraryRoutes(
             pruefeReImportDublette,
             { quellangabenEingereicht: true },
           );
-          reply.code(201).send(created.map(toImportCandidateDto));
+          // NACHARBEIT 3 (bens F3): Trefferkennungen nur für sichtbare Ziele.
+          reply.code(201).send(await kandidatenDtosFuer(library, user, created));
         } catch (error) {
           sendError(reply, error);
         }
@@ -850,7 +906,9 @@ export function libraryRoutes(
       await library.retryPendingReviewAudits();
       // WP-SHIP8-CLOSE-8 (bens GELB-2): NIE rohe Kandidatenobjekte auf den Draht — das DTO
       // hält Lease-/Claim-Felder und Beleg-Interna zurück (ko.read-Nutzer sehen nur Produktdaten).
-      reply.code(200).send((await library.listImportCandidates()).map(toImportCandidateDto));
+      // NACHARBEIT 3 (bens F3): dieselbe Sichtbarkeitsgrenze für die Kandidatenliste.
+      const kandidaten = await library.listImportCandidates();
+      reply.code(200).send(await kandidatenDtosFuer(library, user, kandidaten));
     });
 
     // WP-D-CLEAN (Pedis Entscheid: alle Testdaten löschen, auch Confluence und Jira): ZWEISTUFIGER

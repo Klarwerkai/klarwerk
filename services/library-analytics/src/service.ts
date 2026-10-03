@@ -502,6 +502,10 @@ interface ImportWeg {
   readonly ankerOhneSchalter: boolean;
   readonly ausgang?: (art: AnkerAusgang) => void;
   readonly zielDarf?: AnkerZielRecht;
+  // NACHARBEIT 3 (bens F1): ein eingereichter Quellverweis OHNE `externalId` (nur URL/Anbieter)
+  // bleibt als einfacher Verweis am Objekt — ohne Anker, ohne Revision, ohne erfundene Kennung.
+  // Nur für eingereichte Einträge; Adapterkandidaten bleiben beim Bestand (Test „Flag AUS").
+  readonly quellverweisOhneKennung?: boolean;
 }
 
 const KANDIDATEN_WEG: ImportWeg = { importedVia: "import_candidate", ankerOhneSchalter: false };
@@ -533,7 +537,13 @@ function kamUeberDateiweg(item: ImportItem): boolean {
 const DATEI_KANDIDATEN_WEG: ImportWeg = {
   importedVia: "import_candidate",
   ankerOhneSchalter: true,
+  quellverweisOhneKennung: true,
 };
+
+/** Liefert der Eintrag einen verwertbaren Quellverweis (sichere URL oder Anbieter)? */
+function hatQuellverweis(item: ImportItem): boolean {
+  return Boolean(safeSourceUrl(item.url) || item.provider?.trim());
+}
 
 /**
  * NACHARBEIT 2 (bens F2/F5) — ein Ankereintrag wird VOR der ersten Persistenz geprüft.
@@ -594,6 +604,16 @@ export class LibraryService {
     this.externalUpsert = deps.externalUpsert ?? false;
     this.kanten = deps.kanten;
     this.externalSources = deps.externalSources;
+  }
+
+  /**
+   * NACHARBEIT 3 (bens F3): das Wissensobjekt hinter einer Trefferkennung, damit die Route ihre
+   * Sichtbarkeitsentscheidung (`darfSehen`) am VOLLEN Objekt treffen kann, bevor sie eine Kennung
+   * ausgibt. Reiner Lesezugang; der Papierkorb bleibt ausgeblendet (`get`) — ein getrashtes Ziel
+   * ist für die Route damit „nicht vorhanden" und wird wie ein unsichtbares behandelt.
+   */
+  async wissensobjektFuerSicht(koId: string): Promise<KnowledgeObject | undefined> {
+    return this.koService.get(koId);
   }
 
   // SCRUM-515: die eine Stelle, an der eine rohe (untrusted) confidentiality in den Import-Kern eintritt.
@@ -674,7 +694,10 @@ export class LibraryService {
       return {
         ...this.withSanitizedConfidentiality(ohneVermerk as ImportItem),
         textCodec: "decoded",
-        ...(opts.quellangabenEingereicht && item.externalId ? { [DATEIWEG_VERMERK]: true } : {}),
+        // NACHARBEIT 3 (bens F1): auch ein Eintrag mit Quellverweis ohne Kennung trägt den Vermerk.
+        ...(opts.quellangabenEingereicht && (item.externalId || hatQuellverweis(item))
+          ? { [DATEIWEG_VERMERK]: true }
+          : {}),
       };
     });
     // Ein Ankereintrag läuft durch den Ankerstrang: bei eingeschaltetem Quellstrang (Bestand) oder
@@ -1738,6 +1761,19 @@ export class LibraryService {
       if (existing.importCandidateId) {
         await this.koService.ensureCreatedSideEffects(existing);
       }
+      const current = existing.sources.find(matchesAnchor)?.sourceVersion ?? 0;
+      // ben-Review #3: Ohne explizite Version NICHT hochzählen (früher `current + 1` → jeder versions-
+      // lose Re-Import revidierte endlos). `?? current` heißt: „gleiche Version wie zuletzt" → No-op.
+      // Nur eine tatsächlich höhere (explizite) Version schreibt monoton fort — kein Downgrade.
+      const incoming = item.sourceVersion ?? current;
+      // R-0169: die neue Quellfassung wird VOR jeder Mutation am Objekt als eigene, unveränderliche
+      // Revision festgeschrieben; die vorige Revision bleibt unangetastet (der Repo-Vertrag kennt kein
+      // Update). Der Anker der neuen Objektfassung zeigt auf genau diese Revision.
+      // NACHARBEIT 3 (bens F4): VOR dem Einstufungs-Upgrade darunter. Stand die Revision nach ihm,
+      // hob ein Re-Sync, dessen Fassung dann am Inhaltskonflikt (CONFLICT) scheiterte, die Stufe
+      // trotzdem an — eine abgelehnte Übernahme hinterliess eine eigenständig persistierte Änderung.
+      const revision =
+        incoming > current ? await this.quellrevisionFestschreiben(item, incoming) : undefined;
       // SCRUM-509 R4: Re-Sync eines bestehenden KO aus externer Quelle darf die Vertraulichkeit nur
       // ANHEBEN, nie still niedrig halten. Fail-safe wie der Create-Import (R3): fehlt das Governance-
       // Signal (ImportItem.confidentiality, s. 511), gilt „vertraulich"; eine explizit HÖHERE
@@ -1758,18 +1794,9 @@ export class LibraryService {
         await this.koService.setConfidentiality(existing.id, target, actor);
       }
 
-      const current = existing.sources.find(matchesAnchor)?.sourceVersion ?? 0;
-      // ben-Review #3: Ohne explizite Version NICHT hochzählen (früher `current + 1` → jeder versions-
-      // lose Re-Import revidierte endlos). `?? current` heißt: „gleiche Version wie zuletzt" → No-op.
-      // Nur eine tatsächlich höhere (explizite) Version schreibt monoton fort — kein Downgrade.
-      const incoming = item.sourceVersion ?? current;
       if (incoming > current) {
         // bens F3: nur der Anker DESSELBEN Providers wird fortgeschrieben — ein gleichnamiger
         // Anker eines anderen Providers am selben KO bliebe unangetastet.
-        // R-0169: die neue Quellfassung wird VOR der Revision als eigene, unveränderliche Revision
-        // festgeschrieben; die vorige Revision bleibt unangetastet (der Repo-Vertrag kennt kein
-        // Update). Der Anker der neuen Objektfassung zeigt auf genau diese Revision.
-        const revision = await this.quellrevisionFestschreiben(item, incoming);
         const nextSources = [
           ...existing.sources.filter((s) => !matchesAnchor(s)),
           this.buildSource(item, actor, incoming, revision),
@@ -1850,7 +1877,9 @@ export class LibraryService {
         ...(item.bodyHtml ? { bodyHtml: item.bodyHtml } : {}),
         ...(externalId
           ? { sources: [this.buildSource(item, actor, firstVersion, ersteRevision)] }
-          : {}),
+          : weg.quellverweisOhneKennung && hatQuellverweis(item)
+            ? { sources: [this.quellverweis(item, actor)] }
+            : {}),
         // WP-SHIP8-CLOSE-3/4 (bens ROT-1): Kandidaten-Anker VOR dem Endstatus des Kandidaten —
         // Recovery und Insert-or-Adopt erkennen daran eine bereits gelungene Erstanlage.
         ...(candidateId ? { importCandidateId: candidateId } : {}),
@@ -1961,6 +1990,17 @@ export class LibraryService {
       author: item.author?.trim() ? item.author : actor,
       at: new Date(this.now()).toISOString(),
     };
+  }
+
+  // NACHARBEIT 3 (bens F1): der Quellverweis eines Eintrags OHNE `externalId` — dieselbe Form wie
+  // der Anker (`buildSource`), aber ohne Kennung, ohne Revision und mit einer Quellfassung NUR, wenn
+  // der Eintrag eine geliefert hat. `buildSource` setzt die Fassung für den Re-Sync-Vergleich immer;
+  // ohne Quellenidentität gibt es keinen Vergleich, und eine gesetzte 1 wäre eine erfundene Fassung.
+  private quellverweis(item: ImportItem, actor: string): KoSource {
+    const { sourceVersion: _immerGesetzt, ...verweis } = this.buildSource(item, actor, 0);
+    return item.sourceVersion === undefined
+      ? verweis
+      : { ...verweis, sourceVersion: item.sourceVersion };
   }
 
   // ==============================================================================================
@@ -2488,9 +2528,7 @@ export class LibraryService {
         // R-0139 (bens Befund F1): ein Eintrag OHNE Quellkennung, aber mit Quell-URL oder Anbieter,
         // behält diese Angaben als Quellverweis (kein Re-Sync-Anker, keine Revision — ohne
         // `externalId` gibt es keine Quellenidentität, und eine erfundene wäre schlimmer als keine).
-        ...(safeSourceUrl(item.url) || item.provider?.trim()
-          ? { sources: [this.buildSource(item, actor, item.sourceVersion ?? 1)] }
-          : {}),
+        ...(hatQuellverweis(item) ? { sources: [this.quellverweis(item, actor)] } : {}),
       });
       exakt.set(key, erzeugt.id);
       bestand.push(erzeugt);

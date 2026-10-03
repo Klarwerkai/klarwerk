@@ -1009,3 +1009,191 @@ describe("Nacharbeit 2 — Dateiparser, Fassungsbindung und Rechte am Draht", ()
     expect((await services.ko.get(ko.id))?.statement).toBe("Vom Admin fortgeschrieben.");
   });
 });
+
+// ================================================================================================
+// NACHARBEIT 3 (bens Befunde zu K1, K2, K3, K4) — GEGENPROBEN.
+// ================================================================================================
+//
+// K1/K4: Datei mit Quell-URL OHNE `externalId` über Parser und Kandidatenweg (Quelladapter AUS).
+// K2:    Inhaltskonflikt beim Re-Sync eines bestehenden Objekts ändert auch die Einstufung nicht.
+// K3:    die Kandidatenantworten nennen die Kennung eines unsichtbaren Ziels nicht.
+
+async function kandidatEinreichen(app: App, wer: Auth, items: unknown[]) {
+  const res = await app.inject({
+    method: "POST",
+    url: "/api/library/import/candidates",
+    headers: wer,
+    payload: { items },
+  });
+  expect(res.statusCode, res.body).toBe(201);
+  return res;
+}
+
+describe("Nacharbeit 3 — Verweis ohne Kennung, Konflikt vor Einstufung, verdeckte Treffer", () => {
+  it("K1/K4 · Datei mit Quell-URL ohne externalId → Kandidat → Annahme: Verweis erhalten, ohne erfundene Kennung", () =>
+    mitQuellimport(async () => {
+      const { app, services, importeur, controller } = await flaeche("n3k1");
+      const datei = JSON.stringify([
+        {
+          title: "Verweis ohne Kennung aus der Datei",
+          statement: "Die Datei nennt nur Anbieter und Adresse der Quelle.",
+          type: "best_practice",
+          category: "Wartung",
+          provider: "Confluence",
+          url: QUELL_URL,
+        },
+      ]);
+      const items = parseImportItems(datei);
+      expect(items[0]).toMatchObject({ provider: "Confluence", url: QUELL_URL });
+      expect(items[0]).not.toHaveProperty("externalId");
+
+      const eingereicht = await kandidatEinreichen(app, importeur.auth, items);
+      const kandidatId = (eingereicht.json() as { id: string }[])[0]?.id;
+      const angenommen = await app.inject({
+        method: "PUT",
+        url: `/api/library/import/candidates/${kandidatId}`,
+        headers: controller.auth,
+        payload: { action: "accept" },
+      });
+      expect(angenommen.statusCode, angenommen.body).toBe(200);
+      const koId = (angenommen.json() as { koId: string | null }).koId ?? "";
+      expect(koId, "die Annahme legte kein Wissensobjekt an").toBeTruthy();
+
+      // K1: zurückgelesen über die Route — die Adresse als Quelle, KEINE Kennung, Fassung, Revision.
+      const gelesen = await app.inject({
+        method: "GET",
+        url: `/api/kos/${koId}`,
+        headers: controller.auth,
+      });
+      expect(gelesen.statusCode, gelesen.body).toBe(200);
+      const quellen = (gelesen.json() as { sources: Record<string, unknown>[] }).sources;
+      expect(quellen).toEqual([
+        expect.objectContaining({ provider: "Confluence", url: QUELL_URL, kind: "external" }),
+      ]);
+      for (const erfunden of ["externalId", "sourceVersion", "sourceRecordId"]) {
+        expect(quellen[0], `der Verweis trägt ein erfundenes ${erfunden}`).not.toHaveProperty(
+          erfunden,
+        );
+      }
+
+      // K4: das tatsächliche Prüfboard und die Belegzeile des authentifizierten Annehmenden.
+      const zeile = (await services.validation.board()).find((k) => k.id === koId);
+      expect(zeile, "das Objekt fehlt auf dem Prüfboard").toBeDefined();
+      expect(zeile).toMatchObject({ status: "offen", trust: 0, importedVia: "import_candidate" });
+      expect(zeile?.sources[0]?.url).toBe(QUELL_URL);
+      const belege = await services.ko.evidenceOf(koId);
+      expect(belege.filter((b) => b.kind === "source")).toEqual([
+        expect.objectContaining({ url: QUELL_URL, createdBy: controller.id }),
+      ]);
+    }, false));
+
+  it("K2 · Inhaltskonflikt beim Re-Sync: 409, und auch die höhere Einstufung wird nicht übernommen", async () => {
+    const { app, services, importeur } = await flaeche("n3k2");
+    const anlage = await direktRoh(app, importeur.auth, anker("RESYNC-KONFLIKT", 1, "Fassung 1."));
+    expect(anlage.statusCode, anlage.body).toBe(200);
+    const ko = await koMitQuelle(services, "RESYNC-KONFLIKT");
+
+    // Fehlerausgangslage wie im Abbruchtest: Fassung 2 ist bereits mit Text A festgeschrieben.
+    const textA = anker("RESYNC-KONFLIKT", 2, "Text A", "vertraulich");
+    await services.externalSources.insertIfAbsent({
+      sourceRecordId: "rev-2-text-a",
+      sourceSystem: "confluence",
+      externalId: "RESYNC-KONFLIKT",
+      sourceVersion: 2,
+      url: QUELL_URL,
+      title: textA.title,
+      rawOrRenderedContentReference: null,
+      importedAt: "2026-10-04T08:00:00.000Z",
+      contentHash: quellinhaltAbdruck(textA as unknown as ImportItem),
+      sourceMetadata: {},
+    });
+    const vorher = await services.ko.get(ko.id);
+    const revisionenVorher = await services.externalSources.listBySource(
+      "Confluence",
+      "RESYNC-KONFLIKT",
+    );
+
+    const textB = anker("RESYNC-KONFLIKT", 2, "Text B", "vertraulich");
+    const konflikt = await direktRoh(app, importeur.auth, textB);
+    expect(konflikt.statusCode, konflikt.body).toBe(409);
+    const nachher = await services.ko.get(ko.id);
+    const stand = (k: typeof nachher) => ({
+      statement: k?.statement,
+      confidentiality: k?.confidentiality,
+      version: k?.version,
+      sources: k?.sources,
+    });
+    expect(stand(nachher), "die abgelehnte Übernahme hat das Objekt verändert").toEqual(
+      stand(vorher),
+    );
+    expect(nachher?.confidentiality).toBe("intern");
+    const revisionenNachher = await services.externalSources.listBySource(
+      "Confluence",
+      "RESYNC-KONFLIKT",
+    );
+    expect(revisionenNachher).toEqual(revisionenVorher);
+
+    // Positive Gegenprobe: der zur Revision passende Text A wird übernommen — samt Einstufung.
+    const passend = await direktRoh(app, importeur.auth, textA);
+    expect(passend.statusCode, passend.body).toBe(200);
+    expect((passend.json() as ImportAntwort).imported).toBe(1);
+    const fortgeschrieben = await services.ko.get(ko.id);
+    expect(fortgeschrieben?.statement).toBe("Text A");
+    expect(fortgeschrieben?.confidentiality).toBe("vertraulich");
+    expect(fortgeschrieben?.sources[0]?.sourceRecordId).toBe("rev-2-text-a");
+  });
+
+  it("K3 · die Kandidatenantworten nennen die Kennung eines unsichtbaren Ziels nicht", () =>
+    mitQuellimport(async () => {
+      const { app, services, importeur, genannt, controller } = await flaeche("n3k3");
+      const anlage = await direktRoh(
+        app,
+        importeur.auth,
+        anker("SEITE-VERDECKT", 1, "Vertraulich bei A.", "vertraulich"),
+      );
+      expect(anlage.statusCode, anlage.body).toBe(200);
+      const ko = await koMitQuelle(services, "SEITE-VERDECKT");
+      const sieht = await app.inject({
+        method: "GET",
+        url: `/api/kos/${ko.id}`,
+        headers: genannt.auth,
+      });
+      expect(sieht.statusCode, "VORBEDINGUNG: B sieht das Objekt nicht").toBe(404);
+
+      // B reicht dieselbe Quellenidentität über den echten Parser und die Dateiroute ein.
+      const datei = JSON.stringify([{ ...anker("SEITE-VERDECKT", 2, "Von B eingereicht.") }]);
+      const eingereicht = await kandidatEinreichen(app, genannt.auth, parseImportItems(datei));
+      expect(eingereicht.body, "die Einreichungsantwort nennt die fremde Kennung").not.toContain(
+        ko.id,
+      );
+      const [kandidat] = eingereicht.json() as {
+        id: string;
+        koId: string | null;
+        dublettenbefund?: { ergebnis: string };
+      }[];
+      expect(kandidat?.dublettenbefund).toEqual({ ergebnis: "pruefung_nicht_moeglich" });
+
+      const listeB = await app.inject({
+        method: "GET",
+        url: "/api/library/import/candidates",
+        headers: genannt.auth,
+      });
+      expect(listeB.statusCode, listeB.body).toBe(200);
+      expect(listeB.body, "die Kandidatenliste nennt die fremde Kennung").not.toContain(ko.id);
+
+      // Positive Gegenprobe: die berechtigte Reviewer-Sicht behält den Treffer.
+      const listeReviewer = await app.inject({
+        method: "GET",
+        url: "/api/library/import/candidates",
+        headers: controller.auth,
+      });
+      expect(listeReviewer.statusCode, listeReviewer.body).toBe(200);
+      const fuerReviewer = (
+        listeReviewer.json() as { id: string; dublettenbefund?: unknown }[]
+      ).find((k) => k.id === kandidat?.id);
+      expect(fuerReviewer?.dublettenbefund).toEqual({
+        ergebnis: "wiederverwendet",
+        treffer: { art: "wissensobjekt", koId: ko.id },
+      });
+    }, false));
+});
