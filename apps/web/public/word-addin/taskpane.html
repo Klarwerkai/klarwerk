@@ -1905,7 +1905,7 @@
     // KW-KLARA-AI-MARK-START
     function istKiKennzeichnung(wert) {
       if (typeof wert !== "object" || wert === null) { return false; }
-      var aufgaben = ["answer", "interview", "describe"];
+      var aufgaben = ["answer", "interview", "describe", "enrich"];
       var modi = ["model", "deterministic"];
       return wert.aiGenerated === true
         && typeof wert.task === "string" && aufgaben.indexOf(wert.task) !== -1

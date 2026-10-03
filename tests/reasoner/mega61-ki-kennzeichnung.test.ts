@@ -7,7 +7,8 @@
 // hier ein ausdrückliches Feld in der Serverantwort.
 //
 // Der Test hat zwei Hälften, und die zweite ist die wichtigere:
-//   F1  Die drei ERZEUGENDEN Aufgaben tragen das Feld, richtig gefüllt.
+//   F1  Die ERZEUGENDEN Aufgaben tragen das Feld, richtig gefüllt (`enrich` seit Entscheidung
+//       Pedi 8398db9e; ihr Fall steht in tests/ki-lauf-protokoll/protokoll-vollstaendig.test.ts, W1b).
 //   F2  Die fünf AUSGENOMMENEN Aufgaben tragen es NICHT.
 //
 // F2 deckt eine Rechtsauslegung ab (Ausnahme für „unterstützende Standardbearbeitung", Begründung
@@ -23,7 +24,7 @@ import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-fre
 // Genau das prüft die Betriebsmodus-Angabe unten mit ab.
 const reasoner = (): Reasoner => new Reasoner();
 
-describe("mega61 F1 · die drei erzeugenden Aufgaben tragen die Kennzeichnung", () => {
+describe("mega61 F1 · die erzeugenden Aufgaben tragen die Kennzeichnung", () => {
   it("answer", async () => {
     const res = await reasoner().answer("Was tun bei Überdruck?", [], "de");
     expect(res.aiGenerated).toBeDefined();
@@ -61,7 +62,12 @@ describe("mega61 F1 · die drei erzeugenden Aufgaben tragen die Kennzeichnung", 
   });
 
   it("die Liste der erzeugenden Aufgaben ist die BEGRÜNDETE — nicht mehr und nicht weniger", () => {
-    expect([...KI_ERZEUGENDE_AUFGABEN].sort()).toEqual(["answer", "describe", "interview"]);
+    expect([...KI_ERZEUGENDE_AUFGABEN].sort()).toEqual([
+      "answer",
+      "describe",
+      "enrich",
+      "interview",
+    ]);
   });
 });
 
