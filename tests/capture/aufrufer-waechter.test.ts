@@ -1306,6 +1306,17 @@ const BEWUSST_WEB: readonly Ausnahme[] = [
       "`tests/bildgroesse/resize.test.ts` als Pruefhilfe der Kanonform. Ein erfundener " +
       "Produktaufruf waere hier der Fehler; entfaellt die Pruefhilfe, ist der Export zu streichen.",
   },
+  {
+    schluessel: "apps/web/src/lib/captureAdvancedFields.ts::ADVANCED_FIELDS_TOTAL",
+    grund:
+      "Seit 8f70ef9a (R-0922, Zaehler der erweiterten Details) ohne Produktaufrufer, am Code " +
+      "geprueft: der Kommentar an der Konstante sagt woertlich „fuer Tests und Pruefer, nicht fuer " +
+      "die Anzeige“ — das Badge zeigt nur `filledCount` aus `advancedFieldsSummary`, eine " +
+      "Hoechstzahl erscheint auf keiner Flaeche. Gelesen wird der Export in " +
+      "`tests/app/capture-advanced-fields.test.ts` und " +
+      "`tests/capture/job2683-d2-suche-flaeche.test.tsx` als Pruefhilfe dafuer, dass der Zaehler alle neun Angaben erreicht. Ein erfundener " +
+      "Produktaufruf waere hier der Fehler; entfaellt die Pruefhilfe, ist der Export zu streichen.",
+  },
   // HIER STAND `GesamtanweisungSeite` (JOB 4154) UND IST MIT JOB 4156 GESTRICHEN — ebenfalls
   // selbstauslaufend und ebenfalls von A3 erzwungen. Ihr Aufrufer ist jetzt
   // `apps/web/src/components/gesamtanweisung/GesamtanweisungBereich.tsx`, und der haengt ueber
