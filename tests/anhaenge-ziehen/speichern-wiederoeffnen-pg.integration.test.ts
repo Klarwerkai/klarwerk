@@ -160,6 +160,17 @@ const lageAus = (htmlAusdruck: string): string => `(() => {
 })()`;
 
 async function mitte(seite: Buehne, elementAusdruck: string): Promise<Punkt> {
+  // Ein echter Mausklick wartet nicht auf Reacts folgende Zustandsänderung. Vor dem nächsten
+  // Klick/Zug deshalb auf das konkrete Ziel warten (Palette, Dialog, Formular), nicht schlafen.
+  await warteBis(
+    seite,
+    `(() => { try {
+      const e = ${elementAusdruck};
+      if (!e || e.offsetParent === null || e.disabled) { return false; }
+      const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0;
+    } catch { return false; } })()`,
+    `das nächste Bedienziel steht: ${elementAusdruck.slice(0, 160)}`,
+  );
   return seiteAusfuehren<Punkt>(
     seite,
     `(() => { const e = ${elementAusdruck}; e.scrollIntoView({ block: "center" });
@@ -412,6 +423,15 @@ describe("Anhänge ziehen · K2 · gezogen → regulär gespeichert → aus Post
         });
         await seite.mouse.click(label.x, label.y);
         await (await wahl).setFiles({ name: BILD_NAME, mimeType: "image/png", buffer: BILD_PNG });
+        // onImages liest und konvertiert die Datei asynchron. Erst das fertige Vorschaubild
+        // belegt, dass der Upload im Produktzustand angekommen ist; setFiles allein tut das nicht.
+        await warteBis(
+          seite,
+          `[...document.querySelectorAll("img")].some((img) =>
+            img.alt === ${JSON.stringify(BILD_NAME)} && img.offsetParent !== null &&
+            img.src.startsWith("data:image/") && img.complete && img.naturalWidth > 0)`,
+          "das hochgeladene Bild ist im Produkt als geladene Vorschau sichtbar",
+        );
 
         // Text ins Schreibfeld — getippt.
         const feld = await mitte(seite, FELD);

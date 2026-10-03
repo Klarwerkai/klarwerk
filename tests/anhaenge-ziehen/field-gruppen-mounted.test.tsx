@@ -9,8 +9,9 @@
 // erstes beschriftbares Element, hier den ersten Knopf.
 //
 // Gefahren wird mit dem ECHTEN `Field` und dem ECHTEN `RichTextEditor`, in derselben Anordnung wie
-// `Capture.tsx` (Knopf vor dem Editor im selben Feld). K0 kalibriert: die alte Labelform zeigt den
-// Fehler in dieser Umgebung wirklich — sonst wäre G1 auch ohne Reparatur grün.
+// `Capture.tsx` (Knopf vor dem Editor im selben Feld). K0 prüft die falsche Labelzuordnung im DOM:
+// jsdom simuliert die native Aktivierung aus einem contentEditable nicht wie Chromium. Der
+// tatsächliche Klickfehler ist live belegt; der PG-Browserrundlauf bedient den reparierten Editor.
 import { afterEach, describe, expect, it } from "vitest";
 import { act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
@@ -108,10 +109,12 @@ function tippe(): void {
 }
 
 describe("Field · gruppe — zusammengesetzte Bereiche ohne implizites Label", () => {
-  it("K0 · Kalibrierung: in der ALTEN Labelform drückt der Klick ins Schreibfeld den Knopf (der Live-Befund)", () => {
+  it("K0 · die ALTE Labelform ordnet den gesamten Editor dem Studio-Knopf zu", () => {
     mountGruppe(false);
-    klickInsSchreibfeld();
-    expect(studioKlicks).toBe(1);
+    const label = container?.querySelector("label") as HTMLLabelElement;
+    const studio = container?.querySelector('[data-testid="studio"]') as HTMLButtonElement;
+    expect(label.control).toBe(studio);
+    expect(label.contains(schreibfeld())).toBe(true);
   });
 
   it("G1 · als Gruppe: Klicken und Tippen im Schreibfeld lösen den Knopf daneben NICHT aus", () => {
