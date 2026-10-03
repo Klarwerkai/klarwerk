@@ -5,6 +5,11 @@
 //
 // Der Helfer liefert nur, WIE VIELE dieser Felder schon Inhalt haben (für ein ehrliches „X ausgefüllt"-
 // Badge und die Auto-Aufklapp-Entscheidung). Reine Datenlogik, kein DOM, kein Backend.
+//
+// R-0922: Gezählt wird ALLES, was hinter dem zugeklappten Aufklapper liegt und vom Menschen kommt —
+// auch die bewusst gewählte Vertraulichkeit, vorgeschlagene Prüfer und gesammelte Quellen. Bis hierher
+// fehlten diese drei: wer drei Quellen gesammelt hatte, sah auf dem zugeklappten Kopf kein Badge.
+// Die Wissensart zählt NICHT: sie trägt immer einen Vorgabewert, niemand hat sie dafür ausgefüllt.
 
 export interface AdvancedFieldsState {
   category?: string | null;
@@ -13,7 +18,13 @@ export interface AdvancedFieldsState {
   tags?: readonly string[];
   documentCount?: number;
   imageCount?: number;
+  confidentialityDeclared?: boolean;
+  reviewerCount?: number;
+  sourceCount?: number;
 }
+
+// Wie viele Angaben der Zähler höchstens zählen kann — für Tests und Prüfer, nicht für die Anzeige.
+export const ADVANCED_FIELDS_TOTAL = 9;
 
 export interface AdvancedFieldsSummary {
   // Wie viele der erweiterten Felder tragen bereits Inhalt? (für „X ausgefüllt" + Auto-Aufklappen)
@@ -43,6 +54,15 @@ export function advancedFieldsSummary(state: AdvancedFieldsState): AdvancedField
     filledCount += 1;
   }
   if ((state.imageCount ?? 0) > 0) {
+    filledCount += 1;
+  }
+  if (state.confidentialityDeclared === true) {
+    filledCount += 1;
+  }
+  if ((state.reviewerCount ?? 0) > 0) {
+    filledCount += 1;
+  }
+  if ((state.sourceCount ?? 0) > 0) {
     filledCount += 1;
   }
   return { filledCount, hasAny: filledCount > 0 };

@@ -18,7 +18,8 @@
 // Art.
 //
 // WAS HIER NICHT GEMESSEN WIRD: die gemountete Karte (das tut `tests/ki-aufgabenarten/
-// aufgabenart-an-der-flaeche.test.tsx` für alle acht Arten) und die Lesbarkeit im Browser.
+// aufgabenart-an-der-flaeche.test.tsx` für alle acht Arten) und die Lesbarkeit im Browser. Die
+// durchgehende Kette mit der von der Route erzeugten ID steht in `kette-anfrage-bis-laufkarte.test.tsx`.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";

@@ -45,5 +45,54 @@ export function modelRunRoutes(service: ModelRunService, guards: Guards): Fastif
       const maySeeContext = can(user.role, "ko.validate");
       reply.code(200).send(records.map((r) => projectModelRunForReader(r, maySeeContext)));
     });
+
+    // Aufnahme gesamt-ki-laufprotokoll (V9, R-2071): Auswertung eines Zeitraums — Läufe, Fehler,
+    // Rückfälle, Dauer, Token und Kosten je Währung, je Aufgabenart. Nur Summen und Zähler: kein
+    // Anfragender, kein Gegenstand, kein Fehlertext — deshalb dieselbe Lesestufe wie die Liste.
+    app.get<{ Querystring: { von?: string; bis?: string } }>(
+      "/api/model-runs/auswertung",
+      async (request, reply) => {
+        const user = await guards.requirePermission("ko.read", request, reply);
+        if (!user) {
+          return;
+        }
+        const zeitraum = leseZeitraum(request.query.von, request.query.bis, new Date());
+        if ("fehler" in zeitraum) {
+          reply.code(400).send({ error: "BAD_REQUEST", message: zeitraum.fehler });
+          return;
+        }
+        const auswertung = await service.auswertung(zeitraum.von, zeitraum.bis);
+        reply.code(200).send({ auswertung, preisgrundlage: service.preisgrundlage() });
+      },
+    );
   };
+}
+
+/** Vorgabe ohne Angabe: die letzten 30 Tage. Längster Zeitraum: 366 Tage. */
+const AUSWERTUNG_VORGABE_TAGE = 30;
+const AUSWERTUNG_MAX_TAGE = 366;
+const TAG_MS = 24 * 60 * 60 * 1000;
+
+// Liest `von`/`bis` als Zeitpunkte (ISO 8601) und gibt sie normalisiert (`toISOString`) zurück —
+// in genau der Form, in der die Läufe ihren Start speichern; nur so stimmt der Textvergleich.
+export function leseZeitraum(
+  von: string | undefined,
+  bis: string | undefined,
+  jetzt: Date,
+): { von: string; bis: string } | { fehler: string } {
+  const bisMs = bis === undefined ? jetzt.getTime() : Date.parse(bis);
+  if (Number.isNaN(bisMs)) {
+    return { fehler: "`bis` ist kein gültiger Zeitpunkt (ISO 8601)." };
+  }
+  const vonMs = von === undefined ? bisMs - AUSWERTUNG_VORGABE_TAGE * TAG_MS : Date.parse(von);
+  if (Number.isNaN(vonMs)) {
+    return { fehler: "`von` ist kein gültiger Zeitpunkt (ISO 8601)." };
+  }
+  if (vonMs >= bisMs) {
+    return { fehler: "`von` muss vor `bis` liegen." };
+  }
+  if (bisMs - vonMs > AUSWERTUNG_MAX_TAGE * TAG_MS) {
+    return { fehler: `Der Zeitraum darf höchstens ${AUSWERTUNG_MAX_TAGE} Tage umfassen.` };
+  }
+  return { von: new Date(vonMs).toISOString(), bis: new Date(bisMs).toISOString() };
 }

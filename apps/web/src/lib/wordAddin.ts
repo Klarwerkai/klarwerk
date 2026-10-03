@@ -577,7 +577,7 @@ export function askAiNoticeVisible(outcome: AskOutcome | null | undefined): bool
 // DIE MENGEN SIND GESPIEGELT, NICHT ERFUNDEN: `KI_ERZEUGENDE_AUFGABEN` (types.ts:58) und
 // `AiOutputMode` (:67). Die Oberflaeche importiert keine Services — derselbe Grund wie bei
 // `apps/web/src/api/types.ts`. Ein Test haelt die Spiegelung gegen das Original.
-const G24_AUFGABEN: readonly string[] = ["answer", "interview", "describe"];
+const G24_AUFGABEN: readonly string[] = ["answer", "interview", "describe", "enrich"];
 const G24_MODI: readonly string[] = ["model", "deterministic"];
 
 /**

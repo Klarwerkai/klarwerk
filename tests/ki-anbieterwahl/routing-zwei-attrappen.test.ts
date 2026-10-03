@@ -1010,6 +1010,12 @@ const FREIGABE_ERLAUBT: ReadonlyMap<string, string> = new Map([
       "Kein Fall stuft hier etwas vertraulich ein.",
   ],
   [
+    "tests/suchraum-deckel/s7-prompt-quellenanker.test.ts",
+    "S7 misst, dass die Titelquelle im PROMPT des echten Modellwegs steht und ihre Marke bis " +
+      "citedSources trägt. Ohne Freigabe ruft der Fragedienst kein Modell, und es gäbe keinen " +
+      "Prompt, über den die Aussage etwas sagen könnte. Nichts ist vertraulich eingestuft.",
+  ],
+  [
     "tests/ask-volltext/vollkette-und-rechte.test.ts",
     "Auch die beiden RECHTE-Fälle brauchen sie: sie messen nicht „kein Modellaufruf“, sondern " +
       "„das Modell LÄUFT und bekommt den geschützten Dokumenttext trotzdem nicht“ (Promptzahl 1). " +
@@ -1110,6 +1116,36 @@ const FREIGABE_ERLAUBT: ReadonlyMap<string, string> = new Map([
     "Beide Fälle messen, dass der Routeneinstieg einen ECHTEN Auswahllauf protokolliert (mit " +
       "Modellnamen). Ohne Freigabe endete jeder Lauf „no-model“ und die Route hätte nichts zu " +
       "protokollieren. Der Schnappschuss ist nicht vertraulich eingestuft.",
+  ],
+  [
+    "tests/select-lauf-protokoll/tastaturweg-laufkarte-im-echten-browser.test.ts",
+    "Ben P1 (MR-SELECT-1/R-1567, Runde 3): der Tastaturweg im echten Chromium braucht einen ECHTEN " +
+      "Auswahllauf mit Modellnamen, dessen ID die Laufkarte zeigt. Ohne Freigabe endete er " +
+      "„no-model“. Der Schnappschuss ist nicht vertraulich eingestuft.",
+  ],
+  [
+    "tests/select-lauf-protokoll/kette-anfrage-bis-laufkarte.test.tsx",
+    "Ben P1 (MR-SELECT-1/R-1567): die Kette echte Auswahl-Anfrage → neue select-ID → Laufkarte " +
+      "braucht einen ECHTEN Auswahllauf mit Modellnamen. Ohne Freigabe endete er „no-model“. Der " +
+      "Schnappschuss ist nicht vertraulich eingestuft.",
+  ],
+  [
+    "tests/ki-lauf-protokoll/protokoll-vollstaendig.test.ts",
+    "Die Fälle messen Laufdatensätze ECHTER Modellaufrufe (Ben R1 B1/B2/B4): inhaltsfreie " +
+      "Fehlerzeile, Anreicherung, Konflikt- und Dublettenurteil, Probe, Erzeugnis. Ohne Freigabe " +
+      "stünde kein Modell in der Kette, und es gäbe keinen Modellaufruf, dessen Lauf zu messen wäre.",
+  ],
+  [
+    "tests/ki-lauf-protokoll/kosten-und-auswertung.test.ts",
+    "Die App-Fälle R1–R3 messen Kosten, Auswertung und Logzeile eines ECHTEN Cloud-Laufs mit " +
+      "gemeldetem Verbrauch (Ben R1 B3/B5). Ohne Freigabe entstünde kein Cloud-Lauf, kein Verbrauch " +
+      "und damit keine Kosten. Der Text ist ausdrücklich intern eingestuft, nicht vertraulich.",
+  ],
+  [
+    "tests/ki-lauf-protokoll/kapazitaet-hinterlaesst-spur.test.ts",
+    "Die Fälle messen den Laufdatensatz eines Laufs, der an der Modell-Auslastung endet (R-1572). " +
+      "Ohne Freigabe stünde kein Modell in der Kette, kein Glied erreichte die Auslastung, und " +
+      "der Lauf endete deterministisch — der gemessene Datensatz entstünde gar nicht.",
   ],
   // ---- JOB 3666 · die Verdrahtung der zentralen Freigabe in die Kompositionswurzel. ----
   [
@@ -2253,6 +2289,17 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
       K4: { boden: 2, freigaben: [] },
     },
   },
+  // Aus main zusammengeführt (S7): die Freigabe steht im gemeinsamen Aufbau `aufbauen` → vollzählig.
+  "tests/suchraum-deckel/s7-prompt-quellenanker.test.ts": {
+    gesamtboden: 18,
+    vollzaehlig: true,
+    faelle: {
+      VORSPANN: { boden: 0, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      K0: { boden: 3, freigaben: [] },
+      P1: { boden: 9, freigaben: [] },
+      P2: { boden: 6, freigaben: [] },
+    },
+  },
   "tests/ask-volltext/vollkette-und-rechte.test.ts": {
     gesamtboden: 20,
     vollzaehlig: true,
@@ -2446,6 +2493,102 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
       "#11": { boden: 3, freigaben: [] },
       "#12": { boden: 1, freigaben: [] },
       "#13": { boden: 1, freigaben: ["erteileKiFreigabe(reasoner)"] },
+    },
+  },
+  // Aufnahme gesamt-ki-laufprotokoll (Ben R1): die Freigabe steht im VORSPANN (`aufbau`), also
+  // wird jeder Fall einzeln geführt.
+  "tests/ki-lauf-protokoll/protokoll-vollstaendig.test.ts": {
+    gesamtboden: 87,
+    vollzaehlig: true,
+    faelle: {
+      // Ben Lauf 3 R1 N1: der zweite Aufruf steht in `extrahiere` (Aufbau für C4/C5, gleiche
+      // Grundfreigabe wie `aufbau`).
+      VORSPANN: {
+        boden: 4,
+        freigaben: ["erteileKiFreigabe(reasoner)", "erteileKiFreigabe(reasoner)"],
+      },
+      I1: { boden: 4, freigaben: [] },
+      I2: { boden: 2, freigaben: [] },
+      I3: { boden: 2, freigaben: [] },
+      W1: { boden: 8, freigaben: [] },
+      // Entscheidung Pedi 8398db9e: die KI-Kennzeichnung eines enrich-Ergebnisses.
+      W1b: { boden: 7, freigaben: [] },
+      W2: { boden: 6, freigaben: [] },
+      W3: { boden: 7, freigaben: [] },
+      W4: { boden: 5, freigaben: [] },
+      W5: { boden: 4, freigaben: [] },
+      W6: { boden: 1, freigaben: [] },
+      E1: { boden: 2, freigaben: [] },
+      E2: { boden: 2, freigaben: [] },
+      E3: { boden: 2, freigaben: [] },
+      H1: { boden: 2, freigaben: [] },
+      H2: { boden: 2, freigaben: [] },
+      C1: { boden: 5, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      C2: { boden: 3, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      // Ben R3 B3/B7: unbelegter Verbrauch ohne Kosten; verworfene Antwort als Fehlversuch.
+      C3: { boden: 4, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      V1: { boden: 5, freigaben: [] },
+      V2: { boden: 1, freigaben: [] },
+      // Ben Lauf 3 R1 N1: Kontrolle mit drei Meldungen (C4); je ein Aufruf ohne Meldung (C5).
+      C4: { boden: 4, freigaben: [] },
+      C5: { boden: 5, freigaben: [] },
+    },
+  },
+  "tests/ki-lauf-protokoll/kosten-und-auswertung.test.ts": {
+    gesamtboden: 89,
+    vollzaehlig: true,
+    faelle: {
+      VORSPANN: { boden: 1, freigaben: ["erteileKiFreigabe(mutable.reasoner)"] },
+      P1: { boden: 4, freigaben: [] },
+      P2: { boden: 1, freigaben: [] },
+      P3: { boden: 8, freigaben: [] },
+      P4: { boden: 3, freigaben: [] },
+      // Ben R3 B3: ein gerufenes Modell ohne Verbrauchsmeldung ergibt keine Teilsumme.
+      P5: { boden: 2, freigaben: [] },
+      // Ben Lauf 3 R1 N1: mehr Aufrufe als Verbrauchsmeldungen in einem Versuch.
+      P6: { boden: 3, freigaben: [] },
+      S1: { boden: 6, freigaben: [] },
+      S2: { boden: 2, freigaben: [] },
+      A1: { boden: 13, freigaben: [] },
+      A2: { boden: 5, freigaben: [] },
+      A3: { boden: 2, freigaben: [] },
+      R1: { boden: 11, freigaben: [] },
+      R2: { boden: 5, freigaben: [] },
+      R3: { boden: 2, freigaben: [] },
+      R4: { boden: 10, freigaben: [] },
+      R5: { boden: 4, freigaben: [] },
+      L1: { boden: 5, freigaben: [] },
+      // Ben R3 B8: Geheimniswerte fallen auch unter Trace-Feldnamen.
+      L2: { boden: 2, freigaben: [] },
+    },
+  },
+  "tests/ki-lauf-protokoll/kapazitaet-hinterlaesst-spur.test.ts": {
+    gesamtboden: 22,
+    vollzaehlig: true,
+    faelle: {
+      VORSPANN: { boden: 0, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      K1: { boden: 12, freigaben: [] },
+      K2: { boden: 9, freigaben: [] },
+      // K3 baut seinen Reasoner mit einem schreibunfähigen Protokoll selbst und erteilt deshalb selbst.
+      K3: { boden: 1, freigaben: ["erteileKiFreigabe(reasoner)"] },
+    },
+  },
+  "tests/select-lauf-protokoll/tastaturweg-laufkarte-im-echten-browser.test.ts": {
+    gesamtboden: 16,
+    vollzaehlig: true,
+    faelle: {
+      VORSPANN: { boden: 5, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      K6: { boden: 8, freigaben: [] },
+      K7: { boden: 1, freigaben: [] },
+      K8: { boden: 2, freigaben: [] },
+    },
+  },
+  "tests/select-lauf-protokoll/kette-anfrage-bis-laufkarte.test.tsx": {
+    gesamtboden: 14,
+    vollzaehlig: true,
+    faelle: {
+      VORSPANN: { boden: 1, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      K5: { boden: 13, freigaben: [] },
     },
   },
   "tests/select-lauf-protokoll/route-einstieg.test.ts": {
