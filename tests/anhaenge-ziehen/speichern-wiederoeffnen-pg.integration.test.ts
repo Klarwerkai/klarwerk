@@ -389,6 +389,19 @@ async function anmelden(roh: Seite): Promise<void> {
   await tippeMitTastatur(roh, "#auth-password", PASSWORT, "Passwort");
   await roh.keyboard.press("Enter");
   await warte(roh, `() => !document.querySelector("#auth-email")`, "die Anmeldung trägt");
+  // Frisches Testkonto: den tatsächlich angezeigten Ersthinweis regulär quittieren.
+  // Der Banner belegt sonst einen Teil der Inhaltsfläche; innerHeight ist dann nicht deren Höhe.
+  await warte(
+    roh,
+    `() => !!document.querySelector('[data-testid="notice-ack"]')`,
+    "der Ersthinweis steht",
+  );
+  await roh.click('[data-testid="notice-ack"]');
+  await warte(
+    roh,
+    `() => !document.querySelector('[data-testid="notice-ack"]')`,
+    "der Ersthinweis wurde gespeichert",
+  );
 }
 
 describe("Anhänge ziehen · K2 · gezogen → regulär gespeichert → aus PostgreSQL wiedergeöffnet", () => {
