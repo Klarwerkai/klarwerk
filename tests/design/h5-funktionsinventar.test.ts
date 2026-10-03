@@ -29,6 +29,7 @@ import {
   type StartPanelId,
 } from "../../apps/web/src/components/start/startPunkte";
 import i18n from "../../apps/web/src/i18n";
+import { FAEHIGKEITEN } from "../../apps/web/src/lib/faehigkeiten";
 import { knowledgeGuidance } from "../../apps/web/src/lib/knowledgeGuidance";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 
@@ -471,4 +472,114 @@ describe("JOB 3064 · H5 · das Funktionsinventar — jeder umgezogene Block hat
     );
     expect(kickerZiel, "der Kicker fuehrt nicht in die Aufgabenliste").toBe("/aufgaben");
   });
+
+  // ==============================================================================================
+  // R-1012 (Folgeauftrag gesamt-erstnutzerfuehrung-quellen, Bens Pruefcode-Nacharbeit K4):
+  // die Faehigkeitsuebersicht im Blatt „Über KLARWERK“ an der GEBAUTEN App — und ihre Uebergaben.
+  // ==============================================================================================
+  // I2-ueber verlangt nur den Zwecksatz. Hier wird die Uebersicht selbst verlangt (acht Bereiche,
+  // je Name und Zweck, alle als Weg fuer das Testkonto), und fuer Erfassen, Pruefen, Fragen und
+  // Bibliothek je ein echter Klick von `/start` aus: Adresse UND ein bedienbares Element der
+  // Zielseite. Ein reiner Pfadwechsel genuegt nicht — die Zielseite muss wirklich stehen.
+  //
+  // DAS KONTO: der erste registrierte Nutzer dieser Sonde. Dass er pruefen darf, belegt I4 schon
+  // (Pruefaufgaben in /aufgaben); I9 kalibriert es zusaetzlich: alle acht Eintraege sind Links.
+  async function ueberOeffnen(): Promise<void> {
+    const s = seite as Seite;
+    await aufStart();
+    await menueAuf();
+    await s.click('[data-testid="h5-start-menu-punkt-ueber"]');
+    await s.waitForFunction(fn(DA), '[data-testid="erstnutzer-faehigkeiten"]', { timeout: 10_000 });
+  }
+
+  it("I9 · „Über KLARWERK“ zeigt die Faehigkeitsuebersicht: acht Bereiche mit Zweck, alle als Weg", async () => {
+    expect(fehler).toBeNull();
+    const s = seite as Seite;
+    await aufStart();
+    const vorher = await s.evaluate<string>(fn(SICHTBAR), "main");
+    expect(vorher, "die Uebersicht steht schon im Sichtfeld (H5)").not.toContain(
+      t("erstnutzer.faehigkeiten.titel"),
+    );
+    await ueberOeffnen();
+    const blatt = await s.evaluate<string>(fn(SICHTBAR), '[data-testid="erstnutzer-faehigkeiten"]');
+    expect(blatt).toContain(t("erstnutzer.faehigkeiten.titel"));
+    expect(blatt).toContain(t("erstnutzer.faehigkeiten.einleitung"));
+    expect(FAEHIGKEITEN.length).toBe(8);
+    for (const f of FAEHIGKEITEN) {
+      expect(blatt, `Name „${f.id}“ fehlt`).toContain(t(f.nameKey));
+      expect(blatt, `Zweck „${f.id}“ fehlt`).toContain(t(f.textKey));
+      const ziel = await s.evaluate<string | null>(
+        fn(
+          `(sel) => { const a = document.querySelector(sel); return a && a.tagName === 'A' ? a.getAttribute('href') : null; }`,
+        ),
+        `[data-testid="erstnutzer-faehigkeit-${f.id}"]`,
+      );
+      expect(ziel, `„${f.id}“ ist fuer das Testkonto kein Weg`).toBe(f.to);
+    }
+  });
+
+  /** In der Seite: steht das Element, ist es sichtbar, nicht gesperrt und bedienbar? */
+  const BEDIENBAR = `(sel) => {
+    const el = document.querySelector(sel);
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return {
+      sichtbar: r.width > 0 && r.height > 0,
+      gesperrt: !!el.disabled || el.getAttribute('aria-disabled') === 'true' || !!el.closest('[inert]'),
+      eingabe: el.isContentEditable || el.tagName === 'INPUT' || el.tagName === 'TEXTAREA',
+    };
+  }`;
+
+  type Lage = { sichtbar: boolean; gesperrt: boolean; eingabe: boolean } | null;
+
+  interface Uebergabe {
+    id: "erfassen" | "validierung" | "fragen" | "bibliothek";
+    /** Das bedienbare Element, an dem die Zielseite erkannt wird. */
+    anker: string;
+    /** Eingabefeld (true) oder Bedienknopf (false). */
+    eingabe: boolean;
+    /** Wird in das Feld getippt und wieder gelesen — Beweis, dass es WIRKLICH bedienbar ist. */
+    tippen?: string;
+  }
+  const UEBERGABEN: Uebergabe[] = [
+    { id: "erfassen", anker: '[data-testid="blatt-text"] [role="textbox"]', eingabe: true },
+    { id: "validierung", anker: '[data-testid="pruefen-reiter-offen"]', eingabe: false },
+    {
+      id: "fragen",
+      anker: '[data-testid="page-fragen"] form input',
+      eingabe: true,
+      tippen: FRAGE,
+    },
+    { id: "bibliothek", anker: '[data-testid="bib-suche"]', eingabe: true, tippen: "Profile" },
+  ];
+
+  for (const u of UEBERGABEN) {
+    it(`I10-${u.id} · von /start ueber „Über KLARWERK“ in die volle Funktion: Adresse und bedienbare Zielseite`, async () => {
+      expect(fehler).toBeNull();
+      const s = seite as Seite;
+      const f = FAEHIGKEITEN.find((x) => x.id === u.id);
+      expect(f, `„${u.id}“ steht nicht in der Uebersicht`).toBeDefined();
+      const ziel = (f as (typeof FAEHIGKEITEN)[number]).to;
+      await ueberOeffnen();
+      await s.click(`[data-testid="erstnutzer-faehigkeit-${u.id}"]`);
+      await s.waitForFunction(fn("(p) => location.pathname === p"), ziel, { timeout: 30_000 });
+      await s.waitForFunction(fn(DA), u.anker, { timeout: 30_000 });
+      const lage = await s.evaluate<Lage>(fn(BEDIENBAR), u.anker);
+      expect(lage, `${ziel}: Anker ${u.anker} fehlt`).not.toBeNull();
+      expect(lage?.sichtbar, `${ziel}: Anker unsichtbar`).toBe(true);
+      expect(lage?.gesperrt, `${ziel}: Anker gesperrt`).toBe(false);
+      expect(lage?.eingabe, `${ziel}: Anker ist nicht die erwartete Bedienart`).toBe(u.eingabe);
+      if (u.tippen) {
+        await s.fill(u.anker, u.tippen);
+        const wert = await s.evaluate<string | null>(
+          fn("(sel) => { const el = document.querySelector(sel); return el ? el.value : null; }"),
+          u.anker,
+        );
+        expect(wert, `${ziel}: das Feld nimmt keine Eingabe an`).toBe(u.tippen);
+      }
+      // Das Blatt ist zu: die Zielseite steht, nicht mehr die Startseite mit offenem Blatt.
+      const blattOffen = await s.evaluate<boolean>(fn(DA), '[data-testid="h5-start-blatt-ueber"]');
+      expect(blattOffen, "das Blatt steht noch — keine Uebergabe").toBe(false);
+    });
+  }
 });

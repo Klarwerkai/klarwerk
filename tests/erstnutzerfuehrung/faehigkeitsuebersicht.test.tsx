@@ -13,7 +13,9 @@
 //       Fragen, Bibliothek) ab; jeder Text steht in DE/EN/NL.
 //   F1  das Blatt trägt Zwecksatz UND Übersicht; jeder Eintrag ist für „controller" ein Weg in die
 //       volle Funktion, der Hilfe-Weg führt nach `/hilfe`.
-//   F2  für „viewer" bleiben Bereiche ausserhalb der Rolle als Auskunft stehen und sind kein Link.
+//   F2  viewer/experte × DE/EN/NL: Bereiche ausserhalb der Rolle bleiben Auskunft mit
+//       Zugriffshinweis und ohne Link; die Einleitung verspricht keine Wege, die es nicht gibt.
+//       controller ist die Gegenprobe mit acht Links.
 //   F3  das Sichtfeld der Startseite bleibt unverändert (H5): vor dem Klick steht die Übersicht nicht da.
 //   F4  ein Klick auf einen Eintrag landet wirklich auf der Route.
 //   F5  EN und NL zeigen übersetzte Überschriften, keine Schlüssel.
@@ -258,28 +260,78 @@ describe("R-1012 · gemountet am echten Weg „…“ → „Über KLARWERK“",
     expect(hilfe?.getAttribute("href")).toBe("/hilfe");
   });
 
-  it("F2 · viewer: was die Rolle nicht erreicht, bleibt Auskunft und wird kein Link", async () => {
-    box.rolle = "viewer";
-    await mount();
-    await oeffneUeber();
-    uebersicht();
-    let gesperrt = 0;
-    for (const f of FAEHIGKEITEN) {
-      const el = eintrag(f.id);
-      expect(el, `Eintrag ${f.id} fehlt`).not.toBeNull();
-      // Der Text bleibt in beiden Fassungen stehen — die Übersicht verschweigt nichts.
-      expect(el?.textContent).toContain(i18n.t(f.textKey));
-      if (routePathAllows(f.to, "viewer")) {
-        expect(el?.tagName, `${f.id} sollte für viewer ein Weg sein`).toBe("A");
-      } else {
-        gesperrt += 1;
-        expect(el?.tagName, `${f.id} darf für viewer kein Link sein`).not.toBe("A");
-        expect(el?.getAttribute("data-role-no-reach")).toBe("true");
-        expect(el?.querySelector("a")).toBeNull();
-      }
+  // ----------------------------------------------------------------------------------------------
+  // F2 · BENS BEFUND F1 (Nacharbeit 2): die Einleitung versprach „Jeder Eintrag führt direkt in den
+  // Bereich" — für viewer und experte stimmte das nicht, `RoleLink` zeigt dort „Kein Zugriff".
+  // Gemessen wird je Rolle und Sprache am echten Weg (Start → „…“ → „Über KLARWERK“):
+  //   · gesperrte Einträge: kein Link, kein href, sichtbarer Zugriffshinweis, Zweck bleibt stehen
+  //   · erreichbare Einträge: Link auf die Route
+  //   · die Einleitung ist die rollenunabhängig wahre Fassung, nicht mehr die alte Zusage
+  // controller ist die GEGENPROBE: dort ist jeder Eintrag ein Link, kein Zugriffshinweis.
+  // ----------------------------------------------------------------------------------------------
+  const ALTE_ZUSAGE: Record<(typeof SPRACHEN)[number], string> = {
+    de: "Jeder Eintrag führt direkt in den Bereich.",
+    en: "Every entry takes you straight to the area.",
+    nl: "Elk item brengt je direct naar het onderdeel.",
+  };
+
+  for (const rolle of ["viewer", "experte", "controller"] as const) {
+    for (const lng of SPRACHEN) {
+      it(`F2-${rolle}-${lng} · Einleitung wahr; Gesperrtes bleibt Auskunft ohne Link, Erreichbares ist Weg`, async () => {
+        box.rolle = rolle;
+        await i18n.changeLanguage(lng);
+        await mount();
+        await oeffneUeber();
+        const t = i18n.getFixedT(lng);
+        const text = uebersicht().textContent ?? "";
+        expect(text).toContain(t("erstnutzer.faehigkeiten.einleitung"));
+        expect(text, "die alte, rollenblinde Zusage steht wieder da").not.toContain(
+          ALTE_ZUSAGE[lng],
+        );
+        let gesperrt = 0;
+        for (const f of FAEHIGKEITEN) {
+          const el = eintrag(f.id);
+          expect(el, `Eintrag ${f.id} fehlt`).not.toBeNull();
+          // Der Zweck bleibt in beiden Fassungen stehen — die Übersicht verschweigt nichts.
+          expect(el?.textContent).toContain(t(f.textKey));
+          if (routePathAllows(f.to, rolle)) {
+            expect(el?.tagName, `${f.id} sollte für ${rolle} ein Weg sein`).toBe("A");
+            expect(el?.getAttribute("href")).toBe(f.to);
+            expect(el?.textContent).not.toContain(t("roleLink.noReach"));
+          } else {
+            gesperrt += 1;
+            expect(el?.tagName, `${f.id} darf für ${rolle} kein Link sein`).not.toBe("A");
+            expect(el?.hasAttribute("href")).toBe(false);
+            expect(el?.querySelector("a, [href]")).toBeNull();
+            expect(el?.getAttribute("data-role-no-reach")).toBe("true");
+            expect(el?.textContent, `${f.id}: Zugriffshinweis fehlt`).toContain(
+              t("roleLink.noReach"),
+            );
+            expect(el?.getAttribute("title")).toBe(t("roleLink.noReachHint"));
+          }
+        }
+        if (rolle === "controller") {
+          // GEGENPROBE: alles erreichbar — kein Eintrag gesperrt, alle acht verlinkt.
+          expect(gesperrt).toBe(0);
+          expect(uebersicht().querySelectorAll("[data-role-no-reach]").length).toBe(0);
+          const links = uebersicht().querySelectorAll('a[data-testid^="erstnutzer-faehigkeit-"]');
+          expect(links.length).toBe(FAEHIGKEITEN.length);
+        } else {
+          // KALIBRIERUNG: ohne gesperrten Eintrag bewiese dieser Fall nichts über die Rollenfrage.
+          expect(gesperrt).toBeGreaterThan(0);
+        }
+      });
     }
-    // KALIBRIERUNG: ohne gesperrten Eintrag bewiese dieser Fall nichts über die Rollenfrage.
-    expect(gesperrt).toBeGreaterThan(0);
+  }
+
+  it("F2-Gegenprobe · die alte Zusage hätte die Prüfung oben wirklich verfehlt", () => {
+    // Die alten Sätze sind nicht mehr im Wörterbuch — sonst prüfte `not.toContain` nichts.
+    for (const lng of SPRACHEN) {
+      expect(i18n.getFixedT(lng)("erstnutzer.faehigkeiten.einleitung")).not.toContain(
+        ALTE_ZUSAGE[lng],
+      );
+      expect(ALTE_ZUSAGE[lng].length).toBeGreaterThan(10);
+    }
   });
 
   it("F3 · das Sichtfeld der Startseite bleibt unverändert: vor dem Klick keine Übersicht", async () => {

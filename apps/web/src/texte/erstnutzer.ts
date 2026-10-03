@@ -26,7 +26,7 @@ export default {
     "erstnutzer.hilfe.alsFrage": "„{{q}}“ als Frage an das Wissen stellen",
     "erstnutzer.faehigkeiten.titel": "Was KLARWERK kann",
     "erstnutzer.faehigkeiten.einleitung":
-      "Ein Kreislauf in drei Schritten: Wissen erfassen, prüfen, wiederfinden. Jeder Eintrag führt direkt in den Bereich.",
+      "Ein Kreislauf in drei Schritten: Wissen erfassen, prüfen, wiederfinden. Bereiche, die du mit deiner Rolle öffnen kannst, sind direkt verlinkt; die übrigen stehen hier zur Auskunft.",
     "erstnutzer.faehigkeiten.schritt.erfassen": "1 · Erfassen",
     "erstnutzer.faehigkeiten.schritt.pruefen": "2 · Prüfen",
     "erstnutzer.faehigkeiten.schritt.finden": "3 · Finden und nutzen",
@@ -57,7 +57,7 @@ export default {
     "erstnutzer.hilfe.alsFrage": "Ask the knowledge base: “{{q}}”",
     "erstnutzer.faehigkeiten.titel": "What KLARWERK can do",
     "erstnutzer.faehigkeiten.einleitung":
-      "One cycle in three steps: capture knowledge, check it, find it again. Every entry takes you straight to the area.",
+      "One cycle in three steps: capture knowledge, check it, find it again. Areas your role can open are linked directly; the others are listed here for information.",
     "erstnutzer.faehigkeiten.schritt.erfassen": "1 · Capture",
     "erstnutzer.faehigkeiten.schritt.pruefen": "2 · Check",
     "erstnutzer.faehigkeiten.schritt.finden": "3 · Find and use",
@@ -87,7 +87,7 @@ export default {
     "erstnutzer.hilfe.alsFrage": "„{{q}}” als vraag aan de kennis stellen",
     "erstnutzer.faehigkeiten.titel": "Wat KLARWERK kan",
     "erstnutzer.faehigkeiten.einleitung":
-      "Eén kringloop in drie stappen: kennis vastleggen, controleren, terugvinden. Elk item brengt je direct naar het onderdeel.",
+      "Eén kringloop in drie stappen: kennis vastleggen, controleren, terugvinden. Onderdelen die je met jouw rol kunt openen, zijn direct gelinkt; de overige staan hier ter informatie.",
     "erstnutzer.faehigkeiten.schritt.erfassen": "1 · Vastleggen",
     "erstnutzer.faehigkeiten.schritt.pruefen": "2 · Controleren",
     "erstnutzer.faehigkeiten.schritt.finden": "3 · Vinden en gebruiken",
