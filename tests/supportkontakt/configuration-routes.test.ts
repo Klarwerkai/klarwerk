@@ -197,6 +197,11 @@ describe("R-1064 · die Prüfung der Betreiberwerte (dieselbe Funktion, die buil
     ["Leerzeichen im Ziel", { [URL_NAME]: "https://support.invalid/a b" }],
     ["Steuerzeichen im Ziel", { [URL_NAME]: "https://support.invalid/\u0007" }],
     ["Ziel über 500 Zeichen", { [URL_NAME]: `https://support.invalid/${"x".repeat(500)}` }],
+    // Ben F1: 104 Zeichen roh, 504 Zeichen normalisiert (jedes „ä" wird `%C3%A4`).
+    [
+      "normalisiertes Ziel über 500 Zeichen",
+      { [URL_NAME]: `https://support.invalid/${"ä".repeat(80)}` },
+    ],
     ["Bezeichnung über 80 Zeichen", { [URL_NAME]: A.url, [LABEL_NAME]: "x".repeat(81) }],
     [
       "Bezeichnung mit Richtungsumkehr (U+202E)",

@@ -324,6 +324,64 @@ describe("R-1064 · die Supportkarte der echten Hilfeseite", () => {
     }
   });
 
+  // ==============================================================================================
+  // BEN F1 (Nacharbeit 1) — DIE LÄNGENGRENZE GILT FÜR DAS NORMALISIERTE ZIEL, AUF BEIDEN SEITEN.
+  // `new URL` kodiert jedes „ä" als `%C3%A4`. Der Rohwert `https://support.invalid/` + 80 × „ä" hat
+  // 104 Zeichen, sein normalisiertes Ziel 24 + 80 × 6 = 504 — über der Grenze von 500. Vorher
+  // lieferte der Server „eingerichtet", der Client verwarf die Antwort, und die Karte zeigte
+  // „fehler", obwohl der Abruf gelungen war. Gemessen wird an der ECHTEN Antwort, nicht an einer
+  // gefälschten; 79 × „ä" (498 Zeichen) ist die Gegenseite der Grenze und muss verlinkt werden.
+  // ==============================================================================================
+  it("M9: normalisiertes Ziel über 500 Zeichen — Antwort UND Karte „ungueltig“, kein Link, nie „fehler“", async () => {
+    const roh = `https://support.invalid/${"ä".repeat(80)}`;
+    expect(roh.length, "der Rohwert liegt unter der Grenze").toBeLessThan(500);
+    const inst = await installation({ url: roh });
+    draht = inst;
+    if (inst.art !== "app" || !inst.token) {
+      throw new Error("keine angemeldete Installation");
+    }
+    const antwort = await inst.app.inject({
+      method: "GET",
+      url: "/api/support",
+      headers: { authorization: `Bearer ${inst.token}` },
+    });
+    expect(antwort.statusCode).toBe(200);
+    expect(antwort.json()).toEqual({ zustand: "ungueltig" });
+    const k = karte(await hilfe());
+    expect(k.dataset.supportZustand, "ein gelungener Abruf wurde zu „fehler“").toBe("ungueltig");
+    expect(flach(k.textContent)).toContain(i18n.t("help.support.invalid"));
+    expect(k.querySelectorAll("a")).toHaveLength(0);
+  });
+
+  it("M9b: Gegenseite der Grenze — 79 × „ä“ (498 Zeichen normalisiert) ist eingerichtet und verlinkt", async () => {
+    const roh = `https://support.invalid/${"ä".repeat(79)}`;
+    const ziel = `https://support.invalid/${"%C3%A4".repeat(79)}`;
+    expect(ziel.length).toBe(498);
+    const inst = await installation({ url: roh });
+    draht = inst;
+    if (inst.art !== "app" || !inst.token) {
+      throw new Error("keine angemeldete Installation");
+    }
+    const antwort = await inst.app.inject({
+      method: "GET",
+      url: "/api/support",
+      headers: { authorization: `Bearer ${inst.token}` },
+    });
+    expect(antwort.statusCode).toBe(200);
+    expect(antwort.json()).toEqual({
+      zustand: "eingerichtet",
+      art: "https",
+      ziel,
+      anzeige: ziel,
+      bezeichnung: null,
+    });
+    const k = karte(await hilfe());
+    expect(k.dataset.supportZustand).toBe("eingerichtet");
+    const links = k.querySelectorAll<HTMLAnchorElement>("a");
+    expect(links).toHaveLength(1);
+    expect(links[0]?.getAttribute("href")).toBe(ziel);
+  });
+
   it("M8: alle neuen Texte stehen in de, en und nl — und die Karte spricht die gewählte Sprache", async () => {
     const wert = (sprache: string, schluessel: string): string =>
       String(i18n.getResource(sprache, "translation", schluessel) ?? "").trim();

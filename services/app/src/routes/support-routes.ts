@@ -102,6 +102,13 @@ function pruefeZiel(roh: string): GeprueftesZiel | null {
   if (url.protocol !== "https:" || url.username !== "" || url.password !== "" || !url.hostname) {
     return null;
   }
+  // Die Längengrenze gilt für das AUSGELIEFERTE Ziel, nicht nur für den Rohwert: `new URL` kodiert
+  // z. B. jedes „ä" als `%C3%A4` (1 → 6 Zeichen). Ohne diese zweite Prüfung lieferte der Server ein
+  // „eingerichtet" mit über 500 Zeichen, das der Client (`apps/web/src/api/support.ts`, dieselbe
+  // Grenze) verwirft — die Hilfe zeigte dann „nicht ladbar" statt der ehrlichen Lage „ungueltig".
+  if (url.href.length > MAX_ZIEL) {
+    return null;
+  }
   return { art: "https", ziel: url.href, anzeige: url.href };
 }
 
