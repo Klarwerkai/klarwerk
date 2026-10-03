@@ -87,3 +87,56 @@ export const IMPORT_ACCESS_BLOCKER_TEXT: Record<string, string> = {
   missing: "imp.access.blocker.missing",
   "insecure-base-url": "imp.access.blocker.insecureBaseUrl",
 };
+
+// ================================================================================================
+// R-0134 / R-1005 / R-0159 — DER SCHALTER WIRKT AUF DIE BEDIENUNG, UND FEHLER HABEN WORTE.
+// ================================================================================================
+//
+// Bis hierher las nur der Zugangskasten den Schalter. Der Startknopf der Lauf-Karte stand auch bei
+// ausgeschaltetem Import da; ein Klick lief gegen eine Route, die es nicht gibt (404), und der
+// Mensch las „Fehler". Ab hier liest die Lauf-Karte DENSELBEN Zustand (`importAccessState`) und
+// sperrt den Start mit Grund, solange er nicht „ready" ist — kein zweiter Schalterleser.
+
+/** Warum der Start gesperrt ist — `null` heißt: nicht gesperrt. Je Grund ein eigener Text. */
+export const IMPORT_START_GESPERRT_TEXT: Record<Exclude<ImportAccessState, "ready">, string> = {
+  disabled: "w2.run.gesperrt.disabled",
+  "no-credentials": "w2.run.gesperrt.noCredentials",
+};
+
+/**
+ * Der Text zu einer abgelehnten Startanfrage — aus Status und Code der Antwort, nie aus ihrem
+ * Wortlaut (der ist deutsch und kann sich ändern). Unbekanntes bleibt beim allgemeinen Fehlertext:
+ * lieber „Fehler" als eine Erklärung, die nicht belegt ist.
+ *
+ *   404  die Route existiert nicht ⇒ der Schalter steht (inzwischen) aus
+ *   403  das Recht fehlt
+ *   503  `IMPORT_UNAVAILABLE` — eingeschaltet, aber ohne brauchbare Zugangsdaten
+ *   504  `CONFLUENCE_TIMEOUT` / `CONFLUENCE_BUDGET` — Confluence hat nicht rechtzeitig geantwortet
+ */
+export function importStartFehlerKey(status: number, code: string): string {
+  if (code === "CONFLUENCE_TIMEOUT" || code === "CONFLUENCE_BUDGET") {
+    return "w2.run.startFehler.zeitlimit";
+  }
+  if (code === "IMPORT_UNAVAILABLE") {
+    return "w2.run.startFehler.nichtKonfiguriert";
+  }
+  if (status === 404) {
+    return "w2.run.startFehler.ausgeschaltet";
+  }
+  if (status === 403) {
+    return "w2.run.startFehler.keinRecht";
+  }
+  return "state.error";
+}
+
+/**
+ * Die verständliche Erklärung zu einem Fehlercode eines Laufs. Der Code selbst bleibt sichtbar
+ * (er ist der Suchbegriff für den Betrieb); dies ist der Satz daneben, in der Sprache der Fläche.
+ * Nur Codes mit EINDEUTIGER Bedeutung stehen hier — `IMPORT_FAILED` etwa kann vieles heißen.
+ */
+export const IMPORT_FAILURE_CODE_TEXT: Record<string, string> = {
+  CONFLUENCE_TIMEOUT: "w2.run.failureText.CONFLUENCE_TIMEOUT",
+  CONFLUENCE_BUDGET: "w2.run.failureText.CONFLUENCE_BUDGET",
+  CONFLUENCE_RESPONSE_TOO_LARGE: "w2.run.failureText.CONFLUENCE_RESPONSE_TOO_LARGE",
+  IMPORT_UNAVAILABLE: "w2.run.failureText.IMPORT_UNAVAILABLE",
+};

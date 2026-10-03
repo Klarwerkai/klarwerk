@@ -7117,6 +7117,28 @@ const de = {
     "Der Server hat einen Zustand gemeldet, den diese Version nicht kennt. Das Gezeigte ist deshalb nicht als abgeschlossen zu lesen.",
   "w2.run.failureCode": "Fehlercode",
   "w2.run.failureReason": "Grund",
+  // R-0134 / R-1005: warum der Start gesperrt ist — derselbe Zustand wie im Zugangskasten.
+  "w2.run.gesperrt.disabled":
+    "Der Confluence-Import ist in dieser Installation ausgeschaltet. Deshalb lässt sich hier kein Lauf starten. Eingeschaltet wird er auf dem Server (siehe Zugang oben).",
+  "w2.run.gesperrt.noCredentials":
+    "Der Confluence-Import ist eingeschaltet, aber die Zugangsdaten sind nicht vollständig oder nicht brauchbar. Erst wenn sie stehen, lässt sich ein Lauf starten (siehe Zugang oben).",
+  // R-0159: der Grund einer abgelehnten Startanfrage — aus Status und Code abgeleitet.
+  "w2.run.startFehler.zeitlimit":
+    "Confluence hat nicht rechtzeitig geantwortet (Zeitüberschreitung). Bitte später erneut versuchen.",
+  "w2.run.startFehler.nichtKonfiguriert":
+    "Der Import ist nicht startbereit: Die Zugangsdaten zu Confluence fehlen oder sind nicht brauchbar.",
+  "w2.run.startFehler.ausgeschaltet":
+    "Der Confluence-Import ist in dieser Installation ausgeschaltet — der Start ist nicht verfügbar.",
+  "w2.run.startFehler.keinRecht": "Für den Start eines Imports fehlt die Berechtigung.",
+  // R-0159: die verständliche Erklärung neben einem eindeutigen Fehlercode eines Laufs.
+  "w2.run.failureText.CONFLUENCE_TIMEOUT":
+    "Confluence hat nicht rechtzeitig geantwortet (Zeitüberschreitung). Der Lauf wurde abgebrochen; ein erneuter Start ist möglich.",
+  "w2.run.failureText.CONFLUENCE_BUDGET":
+    "Das Zeitbudget für das Lesen des Bereichs war erschöpft. Der Bereich wurde nicht vollständig gelesen.",
+  "w2.run.failureText.CONFLUENCE_RESPONSE_TOO_LARGE":
+    "Eine Antwort von Confluence war zu groß und wurde nicht gelesen.",
+  "w2.run.failureText.IMPORT_UNAVAILABLE":
+    "Der Import war nicht startbereit: Die Zugangsdaten zu Confluence fehlen oder sind nicht brauchbar.",
   // Das ORIGINAL — der eine Block links. Er ist das Dokument, nicht das Wissen.
   "w2.source.heading": "Original",
   "w2.source.lead": "Das importierte Dokument in genau der Fassung, aus der das Wissen entstand.",
@@ -13018,6 +13040,25 @@ const en: typeof de = {
     "The server reported a state this build does not know. What you see must not be read as finished.",
   "w2.run.failureCode": "Error code",
   "w2.run.failureReason": "Reason",
+  "w2.run.gesperrt.disabled":
+    "The Confluence import is switched off in this installation, so no run can be started here. It is switched on on the server (see Access above).",
+  "w2.run.gesperrt.noCredentials":
+    "The Confluence import is switched on, but the credentials are incomplete or unusable. A run can only be started once they are in place (see Access above).",
+  "w2.run.startFehler.zeitlimit":
+    "Confluence did not respond in time (timeout). Please try again later.",
+  "w2.run.startFehler.nichtKonfiguriert":
+    "The import is not ready to start: the Confluence credentials are missing or unusable.",
+  "w2.run.startFehler.ausgeschaltet":
+    "The Confluence import is switched off in this installation — starting is not available.",
+  "w2.run.startFehler.keinRecht": "You do not have permission to start an import.",
+  "w2.run.failureText.CONFLUENCE_TIMEOUT":
+    "Confluence did not respond in time (timeout). The run was stopped; you can start it again.",
+  "w2.run.failureText.CONFLUENCE_BUDGET":
+    "The time budget for reading the space ran out. The space was not read completely.",
+  "w2.run.failureText.CONFLUENCE_RESPONSE_TOO_LARGE":
+    "A response from Confluence was too large and was not read.",
+  "w2.run.failureText.IMPORT_UNAVAILABLE":
+    "The import was not ready to start: the Confluence credentials are missing or unusable.",
   "w2.source.heading": "Original",
   "w2.source.lead": "The imported document in exactly the revision the knowledge came from.",
   "w2.source.missing": "No original was delivered for this run.",
@@ -18741,6 +18782,25 @@ const nl: typeof de = {
     "De server meldde een toestand die deze versie niet kent. Wat u ziet mag niet als afgerond worden gelezen.",
   "w2.run.failureCode": "Foutcode",
   "w2.run.failureReason": "Reden",
+  "w2.run.gesperrt.disabled":
+    "De Confluence-import is in deze installatie uitgeschakeld. Daarom kan hier geen uitvoering worden gestart. Inschakelen gebeurt op de server (zie Toegang hierboven).",
+  "w2.run.gesperrt.noCredentials":
+    "De Confluence-import is ingeschakeld, maar de toegangsgegevens zijn onvolledig of onbruikbaar. Pas als ze aanwezig zijn, kan een uitvoering worden gestart (zie Toegang hierboven).",
+  "w2.run.startFehler.zeitlimit":
+    "Confluence heeft niet op tijd geantwoord (time-out). Probeer het later opnieuw.",
+  "w2.run.startFehler.nichtKonfiguriert":
+    "De import is niet startklaar: de toegangsgegevens voor Confluence ontbreken of zijn onbruikbaar.",
+  "w2.run.startFehler.ausgeschaltet":
+    "De Confluence-import is in deze installatie uitgeschakeld — starten is niet beschikbaar.",
+  "w2.run.startFehler.keinRecht": "Je hebt geen recht om een import te starten.",
+  "w2.run.failureText.CONFLUENCE_TIMEOUT":
+    "Confluence heeft niet op tijd geantwoord (time-out). De uitvoering is afgebroken; opnieuw starten is mogelijk.",
+  "w2.run.failureText.CONFLUENCE_BUDGET":
+    "Het tijdsbudget voor het lezen van de ruimte was op. De ruimte is niet volledig gelezen.",
+  "w2.run.failureText.CONFLUENCE_RESPONSE_TOO_LARGE":
+    "Een antwoord van Confluence was te groot en is niet gelezen.",
+  "w2.run.failureText.IMPORT_UNAVAILABLE":
+    "De import was niet startklaar: de toegangsgegevens voor Confluence ontbreken of zijn onbruikbaar.",
   "w2.source.heading": "Origineel",
   "w2.source.lead": "Het geïmporteerde document in precies de versie waaruit de kennis ontstond.",
   "w2.source.missing": "Voor deze uitvoering is geen origineel geleverd.",
