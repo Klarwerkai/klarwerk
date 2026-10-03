@@ -5,6 +5,7 @@ import { sprachAusEintritt } from "./lib/htmlLang";
 // JOB 3326 R4: die Texte der Lesevariante wohnen bei ihrer Funktion, damit diese Woerterbuchdatei
 // unter dem 1-MiB-Deckel von Biome bleibt. Messung und Begruendung: `lib/lesevariante.ts`.
 import { lesevarianteTexteDe, lesevarianteTexteEn, lesevarianteTexteNl } from "./lib/lesevariante";
+import { sprachNachlader } from "./lib/sprachNachlader";
 import { gespeicherteSprache } from "./lib/sprachwahl";
 import {
   type Textmodul,
@@ -494,6 +495,8 @@ const de = {
   // JOB 3045: Label der Fundortzeile. Behauptet nichts über den Inhalt, nennt nur den Ort — was
   // dahinter steht, kommt roh aus dem Bestand (Kategorie) bzw. aus der StatusPill (Zustand).
   "intake.live.fundort": "Liegt in:",
+  "intake.live.pruefstand.offen": "noch nicht geprüft",
+  "intake.live.pruefstand.validiert": "Validiert",
   "intake.live.openKo": "Ansehen",
   // JOB 3556: Der frühere Satz zur laufenden Widerspruchsprüfung ist hier GESTRICHEN (in allen drei
   // Sprachen). Er behauptete zweierlei in einem — „nichts Ähnliches gefunden" UND „auf Widerspruch
@@ -2478,6 +2481,13 @@ const de = {
   "editor.kennungGetrennt_other":
     "Mehrere Bilder trugen dieselbe Kennung. {{count}} Zuordnungen wurden getrennt — bitte prüfen Sie die betroffenen Bildbeschreibungen.",
   "editor.kennungGetrenntClose": "Hinweis zu getrennten Bildkennungen schließen",
+  // AUFNAHME 20260922 (R-0090): eine ungültige Bildkennung wurde beim Speichern oder Einfügen
+  // verworfen. Der Satz sagt, was geschehen ist, und bittet um eine Sichtprüfung.
+  "editor.kennungUngueltig_one":
+    "Bei {{count}} Bild oder Bildbeschreibung war die Kennung ungültig. Sie wurde verworfen und neu vergeben — bitte prüfen Sie die Zuordnung.",
+  "editor.kennungUngueltig_other":
+    "Bei {{count}} Bildern oder Bildbeschreibungen war die Kennung ungültig. Sie wurde verworfen und neu vergeben — bitte prüfen Sie die Zuordnung.",
+  "editor.kennungUngueltigClose": "Hinweis zu ungültigen Bildkennungen schließen",
   // JOB 3123 (PRIORITAETEN.md Q5c): eine von außen gekommene, vertagte Fassung wurde verworfen,
   // weil im Editor weitergeschrieben wurde (JOB 3107, `emit()`). Die Entscheidung ist richtig und
   // bleibt; sie war nur stumm. Der Satz sagt, was geschehen ist — er behauptet nicht, welche der
@@ -2739,6 +2749,20 @@ const de = {
   // JOB 3064 §9: offline ist KEIN Fehlschlag, sondern ein Nicht-Versuch — die Frage ist nie
   // losgegangen. Der Fehlersatz („steckengeblieben") wäre hier schlicht unwahr.
   "ask.offline": "Keine Verbindung.",
+  // Pedi 28.09.2026 · Ergänzung 1: der Hinweis beim Wiederkommen auf die Fragenseite.
+  "ask.wiederaufnahme.entwurf":
+    "Hier kannst du weitermachen: Dein noch nicht gesendeter Entwurf steht wieder im Fragefeld.",
+  "ask.wiederaufnahme.antwort":
+    "Hier kannst du weitermachen: Das ist deine zuletzt angezeigte Antwort vom {{zeit}} mit ihren Quellen. Sie wurde nicht neu erzeugt — stelle die Frage erneut, um sie aufzufrischen.",
+  "ask.wiederaufnahme.beides":
+    "Hier kannst du weitermachen: Dein noch nicht gesendeter Entwurf steht wieder im Fragefeld, darüber deine zuletzt angezeigte Antwort vom {{zeit}}. Sie wurde nicht neu erzeugt.",
+  "ask.wiederaufnahme.verwerfen": "Entwurf verwerfen",
+  "ask.pruefungGestoert": "Klara konnte das Firmenwissen gerade nicht verlässlich prüfen.",
+  // Ben R1, F8: die Rückmeldung zu einer wiederaufgenommenen Antwort.
+  "ask.rueckmeldungAbgelaufen":
+    "Rückmeldung ist nur bis 30 Minuten nach der Antwort möglich. Stelle die Frage erneut, um sie zu geben.",
+  "ask.rueckmeldungAbgelehnt":
+    "Deine Rückmeldung wurde nicht angenommen. Stelle die Frage erneut und versuche es dann noch einmal.",
   // JOB 3064 §9: die Antwort steht noch, nur das Auffrischen hat nicht geklappt. Der Satz sagt
   // BEIDES — was gilt und was nicht geklappt hat —, damit niemand die stehende Antwort für frisch
   // hält. Der Fehlersatz oben („steckengeblieben") wäre hier falsch: es gibt ja ein Ergebnis.
@@ -2848,6 +2872,9 @@ const de = {
   // JOB 4224 D5 (Lieferung 5): ohne Modell nennt die Fläche nicht nur die Lage, sondern auch den
   // erlaubten Weg. Der zweite Halbsatz ist keine Floskel — er hält fest, dass hier nichts
   // stillschweigend freigeschaltet wird.
+  "ask.aiUnavailable.adminPfad":
+    "Als Administrator kannst du hier ein KI-Modell verbinden oder die KI einschalten:",
+  "ask.aiUnavailable.toAdmin": "KI-Einstellungen öffnen",
   "ask.aiUnavailable.path":
     "Ohne Modell bleibt der Bestand offen — nichts wird dafür automatisch freigegeben:",
   "ask.aiUnavailable.toLibrary": "Bestand durchsuchen",
@@ -2905,6 +2932,20 @@ const de = {
   // volle Sätze als title-Hinweis — §2 des Auftrags wörtlich.
   // Bewusst eine ZUSTANDSAUSSAGE, keine Kausalbehauptung: gemeldet wird, welche Tore zu sind —
   // nicht, welcher Mechanismus die Antwort verworfen hat (§4: kein falsch benanntes Tor).
+  // Der Konsolenweg setzt kein `validatedOnly` (ask-routes.ts, letzter `answer`-Aufruf): auch
+  // nicht freigegebene oder nicht eingestufte Dokumente KÖNNEN Antworten tragen. Ein „erst nach
+  // Prüfung" wäre deshalb falsch (mega52 C3).
+  "ask.verschlossen.titel": "Dazu gibt es Inhalte — Klara konnte darauf keine Antwort stützen.",
+  "ask.verschlossen.grund.freigabe":
+    "Mindestens eines dieser Dokumente ist noch nicht freigegeben.",
+  "ask.verschlossen.grund.stufe":
+    "Mindestens eines dieser Dokumente hat noch keine Vertraulichkeitsstufe.",
+  "ask.verschlossen.grund.volltext":
+    "Aus Dokumenten ohne durchsuchbaren Text kann Klara nichts belegen. Du kannst sie lesen und den Text dort ergänzen.",
+  "ask.verschlossen.pruefPfad.beides": "Freigeben oder einstufen:",
+  "ask.verschlossen.pruefPfad.freigabe": "Freigeben:",
+  "ask.verschlossen.pruefPfad.stufe": "Einstufen:",
+  "ask.verschlossen.zurPruefung": "Zur Prüfung",
   "ask.verschlossen.label": "Gefunden — aber diese Tore sind zu:",
   "ask.verschlossen.freigabe": "Freigabe fehlt",
   "ask.verschlossen.freigabeHint": "Das Dokument ist noch nicht freigegeben.",
@@ -5399,6 +5440,19 @@ const de = {
     "Kurze Einstiegshilfe zu den wichtigsten Klarwerk-Abläufen. Suche nach Stichwort oder springe direkt in den passenden Bereich.",
   "help.noResults": "Keine Hilfe zu diesem Stichwort gefunden.",
   "help.openRoute": "Bereich öffnen",
+  // R-1064: der vom Betreiber festgelegte Supportweg dieser Installation (Hilfeseite).
+  "help.support.title": "Support dieser Installation",
+  "help.support.configured": "Der Betreiber dieser Installation hat diesen Supportweg hinterlegt:",
+  "help.support.linkDefault": "Supportseite öffnen",
+  "help.support.mailDefault": "E-Mail an den Support schreiben",
+  "help.support.newTab": "neuer Tab",
+  "help.support.notConfigured":
+    "Für diese Installation ist noch kein Supportweg hinterlegt. Wende dich mit Fragen an die Administration deiner Instanz.",
+  "help.support.invalid":
+    "Für diese Installation ist ein Supportweg eingetragen, er ist aber ungültig und wird deshalb nicht angezeigt. Bitte gib der Administration deiner Instanz Bescheid.",
+  "help.support.loadError":
+    "Der Supportweg konnte gerade nicht geladen werden. Die Hilfe auf dieser Seite funktioniert trotzdem.",
+  "help.support.loading": "Supportweg wird geladen …",
   // Klara v1 (Pedi 05.07.): kontextsensitive Hilfe — Panel-Texte + Seiten-Erklärungen.
   "klara.title": "Klara",
   "klara.subtitle": "Deine Hilfe in KLARWERK",
@@ -6830,6 +6884,10 @@ const de = {
   // bzw. bis feststeht, dass die Sitzung fort ist — ohne Frist), Einordnung (technisch notwendig).
   "legal.privacy.s4.p7":
     "Schlägt das Beenden Ihrer Sitzung fehl, merkt sich die Anwendung das in Ihrem Browser unter dem Namen kw_signout_pending, damit die Nutzung gesperrt bleibt, bis unser Server die Beendigung bestätigt hat. Weil Ihre Sitzung für alle Fenster und Tabs desselben Browsers gilt, liegt dieser Merker im dauerhaften Browserspeicher und wirkt ebenfalls in allen Fenstern und Tabs — ein zweites, schon offenes Fenster würde sonst weiter Inhalte zeigen, obwohl die Beendigung offen ist. Der Merker enthält keine Angaben über Sie und wird nicht an uns übertragen. Er bleibt, bis unser Server die Beendigung bestätigt hat oder feststeht, dass Ihre Sitzung nicht mehr besteht; dann wird er gelöscht. Von selbst verfällt er nicht. Damit das nicht an Ihnen hängen bleibt, versucht die Anwendung die Beendigung von sich aus erneut — sobald Ihre Verbindung wieder besteht und bei jedem neuen Aufbau der Anwendung; außerdem können Sie es jederzeit selbst auslösen. Er ist für die von Ihnen gewünschte Abmeldung technisch notwendig.",
+  // Pedi 28.09.2026 · Ergänzung 1: der Arbeitsstand der Fragenseite liegt im Browser
+  // (`lib/fragenArbeitsstand.ts`) und enthält Inhalte — die Aufzählung nennt ihn deshalb eigens.
+  "legal.privacy.s4.p8":
+    "Auf der Seite „Fragen“ merkt sich die Anwendung in Ihrem Browser Ihren noch nicht gesendeten Entwurf sowie die zuletzt angezeigte Frage und Antwort mit ihren Quellenangaben, damit Sie nach dem Verlassen der Seite, einem Neuladen oder einer erneuten Anmeldung weiterarbeiten können. Der Eintrag ist Ihrem Benutzerkonto zugeordnet; wer sich im selben Browser mit einem anderen Konto anmeldet, bekommt ihn nicht angezeigt. Er kann Inhalte aus dem Wissensbestand Ihrer Organisation enthalten und bleibt auch nach dem Abmelden in diesem Browser gespeichert. Ein verworfener Entwurf wird sofort entfernt, die angezeigte Antwort wird ersetzt, sobald Sie eine neue Frage stellen. Der Eintrag selbst wird nicht an uns übertragen; Sie können ihn jederzeit löschen, indem Sie die Websitedaten dieser Anwendung in Ihrem Browser löschen.",
   "legal.privacy.s5.title": "5. Ihre Inhalte",
   "legal.privacy.s5.body":
     "Die Anwendung dient dazu, Wissen zu erfassen, zu prüfen und wiederzufinden. Die Inhalte, die Sie eingeben oder hochladen, werden zusammen mit dem Zeitpunkt und Ihrer Kennung als Urheber gespeichert, damit Beiträge nachvollziehbar bleiben und Rückfragen möglich sind.",
@@ -7708,6 +7766,8 @@ const en: typeof de = {
   "intake.live.similarAsk": "Add to it or start fresh?",
   "intake.live.conflictLead": "Careful — this may contradict:",
   "intake.live.fundort": "Sits in:",
+  "intake.live.pruefstand.offen": "not yet reviewed",
+  "intake.live.pruefstand.validiert": "Validated",
   "intake.live.openKo": "View",
   "intake.live.unavailable": "Check currently unavailable.",
   "intake.structure.heading": "Klarwerk suggests — tap anything that's off:",
@@ -9333,6 +9393,11 @@ const en: typeof de = {
   "editor.kennungGetrennt_other":
     "Several images carried the same identifier. {{count}} links were separated — please check the image descriptions concerned.",
   "editor.kennungGetrenntClose": "Close the notice about separated image identifiers",
+  "editor.kennungUngueltig_one":
+    "{{count}} image or image description had an invalid identifier. It was discarded and replaced — please check the assignment.",
+  "editor.kennungUngueltig_other":
+    "{{count}} images or image descriptions had an invalid identifier. It was discarded and replaced — please check the assignment.",
+  "editor.kennungUngueltigClose": "Close the notice about invalid image identifiers",
   "editor.fremdfassungVerworfen":
     "While you were writing, a newer version arrived from elsewhere. Your own text was kept; the other version was discarded.",
   "editor.fremdfassungVerworfenClose": "Close the notice about the discarded version",
@@ -9537,6 +9602,18 @@ const en: typeof de = {
     "The request got stuck on the way. This is NOT a statement about the knowledge — it does not mean there is no answer. Please try again.",
   "ask.error.retry": "Try again",
   "ask.offline": "No connection.",
+  "ask.wiederaufnahme.entwurf":
+    "Pick up where you left off: your unsent draft is back in the question field.",
+  "ask.wiederaufnahme.antwort":
+    "Pick up where you left off: this is the answer you last saw, from {{zeit}}, with its sources. It was not generated again — ask the question again to refresh it.",
+  "ask.wiederaufnahme.beides":
+    "Pick up where you left off: your unsent draft is back in the question field, with the answer you last saw, from {{zeit}}, above it. It was not generated again.",
+  "ask.wiederaufnahme.verwerfen": "Discard draft",
+  "ask.pruefungGestoert": "Klara could not reliably check the company knowledge just now.",
+  "ask.rueckmeldungAbgelaufen":
+    "Feedback is only possible up to 30 minutes after the answer. Ask the question again to give it.",
+  "ask.rueckmeldungAbgelehnt":
+    "Your feedback was not accepted. Ask the question again and then try once more.",
   "ask.refreshFailed": "Refresh failed — this answer is from the previous request.",
   // SCRUM-295: hint for a prefilled start question (from KO detail “Use knowledge”) in demo context.
   "ask.demoPrefillHint":
@@ -9618,6 +9695,9 @@ const en: typeof de = {
   "answerSource.originalUnconfirmed":
     "The state of this source is not confirmed right now — the evidence is offered again once the refresh succeeds.",
   // JOB 4224 D5 (delivery 5): without a model the page names the permitted path, too.
+  "ask.aiUnavailable.adminPfad":
+    "As an administrator you can connect an AI model or switch AI on here:",
+  "ask.aiUnavailable.toAdmin": "Open AI settings",
   "ask.aiUnavailable.path":
     "Without a model the knowledge base stays open — nothing is enabled automatically for it:",
   "ask.aiUnavailable.toLibrary": "Search the knowledge base",
@@ -9662,6 +9742,16 @@ const en: typeof de = {
   // SCRUM-366 / FR-ASK-02 / PI-K2: answer contract — source-bound, honest, not a generic chatbot.
   "ask.contract.label": "Answer basis",
   // JOB 2626 D1: why there was no answer — the closed gates, per document.
+  "ask.verschlossen.titel": "There is content on this — Klara could not base an answer on it.",
+  "ask.verschlossen.grund.freigabe": "At least one of these documents has not been released yet.",
+  "ask.verschlossen.grund.stufe":
+    "At least one of these documents has no confidentiality level yet.",
+  "ask.verschlossen.grund.volltext":
+    "Klara cannot cite anything from documents without searchable text. You can read them and add the text there.",
+  "ask.verschlossen.pruefPfad.beides": "Release or classify:",
+  "ask.verschlossen.pruefPfad.freigabe": "Release:",
+  "ask.verschlossen.pruefPfad.stufe": "Classify:",
+  "ask.verschlossen.zurPruefung": "Go to review",
   "ask.verschlossen.label": "Found — but these gates are closed:",
   "ask.verschlossen.freigabe": "Approval missing",
   "ask.verschlossen.freigabeHint": "The document has not been approved yet.",
@@ -11598,6 +11688,18 @@ const en: typeof de = {
     "A short starter guide to the most important Klarwerk flows. Search by keyword or jump straight into the relevant area.",
   "help.noResults": "No help found for this keyword.",
   "help.openRoute": "Open area",
+  "help.support.title": "Support for this installation",
+  "help.support.configured": "The operator of this installation has set up this support channel:",
+  "help.support.linkDefault": "Open support page",
+  "help.support.mailDefault": "Email support",
+  "help.support.newTab": "new tab",
+  "help.support.notConfigured":
+    "No support channel has been set up for this installation yet. Please contact the administrators of your instance with questions.",
+  "help.support.invalid":
+    "A support channel is configured for this installation, but it is invalid and is therefore not shown. Please let the administrators of your instance know.",
+  "help.support.loadError":
+    "The support channel could not be loaded right now. The help on this page still works.",
+  "help.support.loading": "Loading support channel …",
   // Klara v1 (Pedi 05.07.): context-sensitive help — panel copy + page explanations.
   "klara.title": "Klara",
   "klara.subtitle": "Your help in KLARWERK",
@@ -12752,6 +12854,8 @@ const en: typeof de = {
     "If you use the application as an installed app, your browser stores program files in a cache so that it starts faster. Responses from our server and your content are not stored there.",
   "legal.privacy.s4.p7":
     "If ending your session fails, the application notes this in your browser under the name kw_signout_pending so that use stays blocked until our server has confirmed the session was ended. Because your session applies to every window and tab of the same browser, this marker is kept in persistent browser storage and takes effect in every window and tab as well — otherwise a second window that was already open would keep showing content even though the sign-out is still unresolved. The marker contains no information about you and is not transmitted to us. It stays until our server confirms the session was ended, or until it is established that your session no longer exists; then it is deleted. It does not expire on its own. So that this does not rest on you, the application retries ending the session by itself — as soon as your connection is back and whenever the application is opened again; you can also trigger it yourself at any time. It is technically necessary for the sign-out you requested.",
+  "legal.privacy.s4.p8":
+    "On the “Ask” page, the application keeps your unsent draft and the question and answer you last saw, including their source references, in your browser so that you can continue after leaving the page, reloading or signing in again. The entry is tied to your user account; anyone who signs in with a different account in the same browser is not shown it. It may contain content from your organisation’s knowledge base and remains stored in this browser after you sign out. A discarded draft is removed immediately; the displayed answer is replaced as soon as you ask a new question. The entry itself is not transmitted to us; you can delete it at any time by clearing this application’s site data in your browser.",
   "legal.privacy.s5.title": "5. Your content",
   "legal.privacy.s5.body":
     "The application serves to capture, review and retrieve knowledge. The content you enter or upload is stored together with the time and your identifier as author, so that contributions remain traceable and questions can be asked.",
@@ -13359,6 +13463,8 @@ const nl: typeof de = {
   "intake.live.similarAsk": "Aanvullen of nieuw?",
   "intake.live.conflictLead": "Let op — dit kan in tegenspraak zijn met:",
   "intake.live.fundort": "Staat in:",
+  "intake.live.pruefstand.offen": "nog niet beoordeeld",
+  "intake.live.pruefstand.validiert": "Gevalideerd",
   "intake.live.openKo": "Bekijken",
   "intake.live.unavailable": "Controle momenteel niet beschikbaar.",
   "intake.structure.heading": "Klarwerk stelt voor — tik aan wat niet klopt:",
@@ -14978,6 +15084,11 @@ const nl: typeof de = {
   "editor.kennungGetrennt_other":
     "Meerdere afbeeldingen droegen dezelfde kenmerkcode. {{count}} koppelingen zijn losgemaakt — controleer de betrokken afbeeldingsbeschrijvingen.",
   "editor.kennungGetrenntClose": "Melding over losgemaakte afbeeldingskenmerken sluiten",
+  "editor.kennungUngueltig_one":
+    "Bij {{count}} afbeelding of afbeeldingsbeschrijving was het kenmerk ongeldig. Het is verwijderd en vervangen — controleer de koppeling.",
+  "editor.kennungUngueltig_other":
+    "Bij {{count}} afbeeldingen of afbeeldingsbeschrijvingen was het kenmerk ongeldig. Het is verwijderd en vervangen — controleer de koppeling.",
+  "editor.kennungUngueltigClose": "Melding over ongeldige afbeeldingskenmerken sluiten",
   "editor.fremdfassungVerworfen":
     "Tijdens het schrijven is van buitenaf een nieuwere versie binnengekomen. De eigen tekst is behouden; de andere versie is verworpen.",
   "editor.fremdfassungVerworfenClose": "Melding over de verworpen versie sluiten",
@@ -15190,6 +15301,18 @@ const nl: typeof de = {
     "Het verzoek is onderweg blijven steken. Dit is GEEN uitspraak over de kennis — het betekent niet dat er geen antwoord is. Probeer het opnieuw.",
   "ask.error.retry": "Opnieuw proberen",
   "ask.offline": "Geen verbinding.",
+  "ask.wiederaufnahme.entwurf":
+    "Hier kun je verdergaan: je nog niet verzonden concept staat weer in het vraagveld.",
+  "ask.wiederaufnahme.antwort":
+    "Hier kun je verdergaan: dit is het antwoord dat je het laatst zag, van {{zeit}}, met de bronnen. Het is niet opnieuw gegenereerd — stel de vraag opnieuw om het te vernieuwen.",
+  "ask.wiederaufnahme.beides":
+    "Hier kun je verdergaan: je nog niet verzonden concept staat weer in het vraagveld, daarboven het antwoord dat je het laatst zag, van {{zeit}}. Het is niet opnieuw gegenereerd.",
+  "ask.wiederaufnahme.verwerfen": "Concept verwerpen",
+  "ask.pruefungGestoert": "Klara kon de bedrijfskennis nu niet betrouwbaar controleren.",
+  "ask.rueckmeldungAbgelaufen":
+    "Feedback is alleen mogelijk tot 30 minuten na het antwoord. Stel de vraag opnieuw om het te geven.",
+  "ask.rueckmeldungAbgelehnt":
+    "Je feedback is niet aangenomen. Stel de vraag opnieuw en probeer het dan nog eens.",
   "ask.refreshFailed": "Vernieuwen mislukt — dit antwoord komt van het vorige verzoek.",
   "ask.demoPrefillHint":
     "Startvraag overgenomen uit het kennisobject — klik op „Vragen”. Het antwoord blijft brongebonden; status en vertrouwen beslissen, er wordt niets automatisch opgeslagen.",
@@ -15263,6 +15386,9 @@ const nl: typeof de = {
   "answerSource.originalUnconfirmed":
     "De stand van deze bron is nu niet bevestigd — het bewijs wordt pas weer aangeboden als het vernieuwen lukt.",
   // JOB 4224 D5 (levering 5): zonder model noemt het scherm ook de toegestane weg.
+  "ask.aiUnavailable.adminPfad":
+    "Als beheerder kun je hier een AI-model koppelen of AI inschakelen:",
+  "ask.aiUnavailable.toAdmin": "AI-instellingen openen",
   "ask.aiUnavailable.path":
     "Zonder model blijft de kennisbank open — daarvoor wordt niets automatisch vrijgegeven:",
   "ask.aiUnavailable.toLibrary": "Kennisbank doorzoeken",
@@ -15305,6 +15431,16 @@ const nl: typeof de = {
   "ask.gap.step.review.hint": "Pas na validatie geldt het als geborgd.",
   "ask.contract.label": "Antwoordbasis",
   // JOB 2626 D1: waarom er geen antwoord was — de gesloten poorten, per document.
+  "ask.verschlossen.titel": "Hier is inhoud over — Klara kon er geen antwoord op baseren.",
+  "ask.verschlossen.grund.freigabe": "Minstens één van deze documenten is nog niet vrijgegeven.",
+  "ask.verschlossen.grund.stufe":
+    "Minstens één van deze documenten heeft nog geen vertrouwelijkheidsniveau.",
+  "ask.verschlossen.grund.volltext":
+    "Uit documenten zonder doorzoekbare tekst kan Klara niets onderbouwen. Je kunt ze lezen en de tekst daar aanvullen.",
+  "ask.verschlossen.pruefPfad.beides": "Vrijgeven of classificeren:",
+  "ask.verschlossen.pruefPfad.freigabe": "Vrijgeven:",
+  "ask.verschlossen.pruefPfad.stufe": "Classificeren:",
+  "ask.verschlossen.zurPruefung": "Naar beoordeling",
   "ask.verschlossen.label": "Gevonden — maar deze poorten zijn gesloten:",
   "ask.verschlossen.freigabe": "Vrijgave ontbreekt",
   "ask.verschlossen.freigabeHint": "Het document is nog niet vrijgegeven.",
@@ -17242,6 +17378,18 @@ const nl: typeof de = {
     "Korte startgids voor de belangrijkste Klarwerk-processen. Zoek op trefwoord of spring direct naar het juiste onderdeel.",
   "help.noResults": "Geen help gevonden voor dit trefwoord.",
   "help.openRoute": "Onderdeel openen",
+  "help.support.title": "Support voor deze installatie",
+  "help.support.configured": "De beheerder van deze installatie heeft dit supportkanaal ingesteld:",
+  "help.support.linkDefault": "Supportpagina openen",
+  "help.support.mailDefault": "E-mail naar support sturen",
+  "help.support.newTab": "nieuw tabblad",
+  "help.support.notConfigured":
+    "Voor deze installatie is nog geen supportkanaal ingesteld. Neem met vragen contact op met de beheerders van je omgeving.",
+  "help.support.invalid":
+    "Voor deze installatie is een supportkanaal ingevoerd, maar het is ongeldig en wordt daarom niet getoond. Laat het de beheerders van je omgeving weten.",
+  "help.support.loadError":
+    "Het supportkanaal kon nu niet worden geladen. De help op deze pagina werkt gewoon.",
+  "help.support.loading": "Supportkanaal wordt geladen …",
   "klara.title": "Klara",
   "klara.subtitle": "Jouw hulp in KLARWERK",
   "klara.open": "Klara openen — hulp bij deze pagina",
@@ -18400,6 +18548,8 @@ const nl: typeof de = {
     "Gebruikt u de toepassing als geïnstalleerde app, dan legt uw browser programmabestanden in een buffer zodat de app sneller start. Antwoorden van onze server en uw inhoud worden daar niet opgeslagen.",
   "legal.privacy.s4.p7":
     "Mislukt het beëindigen van uw sessie, dan noteert de toepassing dat in uw browser onder de naam kw_signout_pending, zodat het gebruik geblokkeerd blijft totdat onze server de beëindiging heeft bevestigd. Omdat uw sessie voor alle vensters en tabbladen van dezelfde browser geldt, staat deze markering in de blijvende browseropslag en werkt zij ook in alle vensters en tabbladen — een tweede, al geopend venster zou anders inhoud blijven tonen terwijl de beëindiging nog openstaat. De markering bevat geen gegevens over u en wordt niet aan ons doorgegeven. Zij blijft staan totdat onze server de beëindiging heeft bevestigd of vaststaat dat uw sessie niet meer bestaat; dan wordt zij verwijderd. Vanzelf vervalt zij niet. Om dat niet bij u te laten liggen, probeert de toepassing de beëindiging zelf opnieuw — zodra uw verbinding weer bestaat en bij elke nieuwe start van de toepassing; u kunt het ook op elk moment zelf in gang zetten. Zij is technisch noodzakelijk voor de door u gewenste afmelding.",
+  "legal.privacy.s4.p8":
+    "Op de pagina „Vragen” bewaart de toepassing in uw browser uw nog niet verzonden concept en de laatst getoonde vraag en het antwoord met de bronvermeldingen, zodat u na het verlaten van de pagina, opnieuw laden of opnieuw aanmelden verder kunt werken. De vermelding is aan uw gebruikersaccount gekoppeld; wie zich in dezelfde browser met een ander account aanmeldt, krijgt haar niet te zien. Zij kan inhoud uit de kennisbank van uw organisatie bevatten en blijft ook na het afmelden in deze browser bewaard. Een verworpen concept wordt direct verwijderd; het getoonde antwoord wordt vervangen zodra u een nieuwe vraag stelt. De vermelding zelf wordt niet aan ons doorgegeven; u kunt haar altijd verwijderen door de websitegegevens van deze toepassing in uw browser te wissen.",
   "legal.privacy.s5.title": "5. Uw inhoud",
   "legal.privacy.s5.body":
     "De toepassing dient om kennis vast te leggen, te toetsen en terug te vinden. De inhoud die u invoert of uploadt, wordt samen met het tijdstip en uw code als auteur opgeslagen, zodat bijdragen navolgbaar blijven en vragen mogelijk zijn.",
@@ -18726,6 +18876,25 @@ const nl: typeof de = {
 };
 
 // ================================================================================================
+// R-0801 · NUR DIE STARTSPRACHE GEHÖRT IN DEN EINTRITT — en und nl werden nachgeladen.
+// ================================================================================================
+//
+// Die drei Blöcke oben bleiben, wo sie sind: diese Datei ist die eine Quelle aller Texte, und
+// zahlreiche Wächter lesen sie als Text. Getrennt wird erst im PRODUKTIONSBAU: das Plugin
+// `sprachpaketeNachladen` (`texte/intern/sprachpakete.ts`) schneidet die Blöcke `en` und `nl` als
+// eigene Stücke heraus, ersetzt `{ en, nl }` in `VORLIEGEND` durch `{}` und trägt in `NACHLADEN`
+// je Sprache ein `import()` ein. Es greift NUR auf die zwei Zeilen unten und bricht den Bau ab, wenn
+// es eine davon nicht genau einmal findet — sonst lägen beide Sprachen still wieder im Eintritt.
+//
+// Im Quelltext — und damit in jedem Vitest-Lauf und im Entwicklungsserver — liegen weiterhin alle
+// drei Sprachen sofort vor; der Nachlader (`lib/sprachNachlader.ts`) wird dann nie gefragt.
+type NachladbareSprache = "en" | "nl";
+type Woerterbuch = typeof de;
+
+const VORLIEGEND: Partial<Record<NachladbareSprache, Woerterbuch>> = { en, nl };
+const NACHLADEN: Partial<Record<NachladbareSprache, () => Promise<Woerterbuch>>> = {};
+
+// ================================================================================================
 // JOB 4367 · DIE TEXTMODULE — jeder Nutzerweg bringt seine eigenen Texte mit.
 // ================================================================================================
 //
@@ -18754,26 +18923,55 @@ if (textmodulFehler.length > 0) {
 }
 const modulTexte = fuehreTextmoduleZusammen(textmodule);
 
-void i18n.use(initReactI18next).init({
-  resources: {
-    de: { translation: { ...de, ...modulTexte.de } },
-    en: { translation: { ...en, ...modulTexte.en } },
-    nl: { translation: { ...nl, ...modulTexte.nl } },
-  },
-  // JOB 3323 (Nachführung aus JOB 3280): DIE ADRESSE SCHLÄGT DIE GESPEICHERTE WAHL — aber nur,
-  // wenn sie eine Sprache des LINKVERTRAGS nennt (`EINTRITT_SPRACHEN` = de|en, htmlLang.ts). Der
-  // Eintritt aus Klara (`/capture/frontdoor?draft=<id>&lang=en`) bestimmt so die Sprache DIESES
-  // Aufrufs, ohne dass jemand erst umschalten muss; ohne `?lang` und bei JEDEM nicht vereinbarten
-  // Wert — auch bei `nl`, das die Anwendung zwar kann, der Link aber nicht setzen darf — bleibt es
-  // Zeichen für Zeichen beim bisherigen Verhalten. Die Reihenfolge ist die Rangfolge: Adresse,
-  // dann gespeicherte Wahl, dann die Vorgabe „de" (in `gespeicherteSprache`).
-  //
-  // BEWUSST NICHT GESPEICHERT: `lng` löst kein `languageChanged` aus, `bindSpracheSpeichern`
-  // (`lib/sprachwahl.ts`) schreibt also nichts. Ein Link aus Word ist der Wunsch für DIESEN
-  // Aufruf, keine Wahl für diesen Browser — er soll die Wahl unter /profil nicht überschreiben.
-  lng: sprachAusEintritt() ?? gespeicherteSprache(),
-  fallbackLng: "de",
-  interpolation: { escapeValue: false },
-});
+function istNachladbar(sprache: string): sprache is NachladbareSprache {
+  return sprache === "en" || sprache === "nl";
+}
+
+/** Das Bündel einer Sprache, sofern es schon beim Start vorliegt — sonst nichts. */
+function vorliegend(sprache: NachladbareSprache) {
+  const paket = VORLIEGEND[sprache];
+  return paket ? { [sprache]: { translation: { ...paket, ...modulTexte[sprache] } } } : {};
+}
+
+/** Holt ein fehlendes Bündel nach; die Textmodule derselben Sprache kommen dazu wie oben. */
+function nachladen(sprache: string): Promise<Record<string, string>> | undefined {
+  if (!istNachladbar(sprache)) {
+    return undefined;
+  }
+  const zusatz = modulTexte[sprache];
+  return NACHLADEN[sprache]?.().then((paket) => ({ ...paket, ...zusatz }));
+}
+
+// R-0801: `sprachBereit` erfüllt sich, sobald die Startsprache vollständig vorliegt. Für Deutsch
+// geschieht das sofort; für eine gespeicherte Wahl en/nl wartet `main.tsx` damit den ersten Aufbau
+// ab, damit die Oberfläche nicht erst deutsch erscheint und dann umspringt.
+export const sprachBereit = i18n
+  .use(sprachNachlader(nachladen))
+  .use(initReactI18next)
+  .init({
+    resources: {
+      de: { translation: { ...de, ...modulTexte.de } },
+      ...vorliegend("en"),
+      ...vorliegend("nl"),
+    },
+    // Fehlt einer Sprache das Bündel, fragt i18next den Nachlader; vorhandene Bündel bleiben.
+    partialBundledLanguages: true,
+    // JOB 3323 (Nachführung aus JOB 3280): DIE ADRESSE SCHLÄGT DIE GESPEICHERTE WAHL — aber nur,
+    // wenn sie eine Sprache des LINKVERTRAGS nennt (`EINTRITT_SPRACHEN` = de|en, htmlLang.ts). Der
+    // Eintritt aus Klara (`/capture/frontdoor?draft=<id>&lang=en`) bestimmt so die Sprache DIESES
+    // Aufrufs, ohne dass jemand erst umschalten muss; ohne `?lang` und bei JEDEM nicht vereinbarten
+    // Wert — auch bei `nl`, das die Anwendung zwar kann, der Link aber nicht setzen darf — bleibt es
+    // Zeichen für Zeichen beim bisherigen Verhalten. Die Reihenfolge ist die Rangfolge: Adresse,
+    // dann gespeicherte Wahl, dann die Vorgabe „de" (in `gespeicherteSprache`).
+    //
+    // BEWUSST NICHT GESPEICHERT: das `languageChanged` des Starts kommt, bevor `bindSpracheSpeichern`
+    // (`lib/sprachwahl.ts`) zuhört — bei nachgeladener Startsprache erst nach `sprachBereit`, und
+    // genau deshalb bindet `main.tsx` den Schreiber erst danach. Ein Link aus Word ist der Wunsch
+    // für DIESEN Aufruf, keine Wahl für diesen Browser — er soll die Wahl unter /profil nicht
+    // überschreiben.
+    lng: sprachAusEintritt() ?? gespeicherteSprache(),
+    fallbackLng: "de",
+    interpolation: { escapeValue: false },
+  });
 
 export default i18n;

@@ -117,11 +117,13 @@ describe("JOB 3056 Nachzug · KA5 am Koerper — Fall A: die getippte Frage gewi
 
   it("`body.question` ist die getippte Frage, `body.selection` die Markierung", async () => {
     const lauf = await fragen({ markierung: MARKIERUNG, eingabe: FRAGE });
+    // R-0639 Runde 3 (Bens Befund B1): die getippte Frage meldet ihre Herkunft ausdrücklich.
     expect(askKoerper(lauf)).toEqual({
       question: FRAGE,
       locale: "de",
       mode: "retrieval-only",
       selection: MARKIERUNG,
+      questionSource: "manual",
     });
   });
 
@@ -144,7 +146,16 @@ describe("JOB 3056 Nachzug · KA5 am Koerper — Fall C: ohne getippten Text ist
     // verdoppelte dieselben Terme in der serverseitigen Suchschaerfung.
     const lauf = await fragen({ markierung: MARKIERUNG, eingabe: "" });
     const koerper = askKoerper(lauf);
-    expect(koerper).toEqual({ question: MARKIERUNG, locale: "de", mode: "retrieval-only" });
+    // R-0639 (Aufnahme gesamt-klara-extern, Bens Befund B1): die Markierung IST hier die Frage —
+    // und das Fenster sagt es (`questionSource: "selection"`), damit der Server für sie die
+    // Dokumenttext-Prüfung verlangt. Ohne dieses Feld lief Dokumenttext unter der Klasse
+    // `question` am Riegel vorbei. Alles andere bleibt: kein `selection`-Feld, dieselbe Frage.
+    expect(koerper).toEqual({
+      question: MARKIERUNG,
+      locale: "de",
+      mode: "retrieval-only",
+      questionSource: "selection",
+    });
     expect(Object.keys(koerper)).not.toContain("selection");
   });
 });
@@ -157,13 +168,24 @@ describe("JOB 3056 Nachzug · KA5 am Koerper — Fall D: ohne Markierung bleibt 
   it("`question` ist die Eingabe, und ein `selection`-Feld gibt es NICHT", async () => {
     const lauf = await fragen({ markierung: "", eingabe: FRAGE });
     const koerper = askKoerper(lauf);
-    expect(koerper).toEqual({ question: FRAGE, locale: "de", mode: "retrieval-only" });
+    // R-0639 Runde 3 (Bens Befund B1): EIN Feld mehr — die Herkunft `manual`. Sonst unverändert.
+    expect(koerper).toEqual({
+      question: FRAGE,
+      locale: "de",
+      mode: "retrieval-only",
+      questionSource: "manual",
+    });
     expect(Object.keys(koerper)).not.toContain("selection");
   });
 
   it("eine rein weisse Markierung ist keine Markierung", async () => {
     const lauf = await fragen({ markierung: "   \n\t ", eingabe: FRAGE });
-    expect(askKoerper(lauf)).toEqual({ question: FRAGE, locale: "de", mode: "retrieval-only" });
+    expect(askKoerper(lauf)).toEqual({
+      question: FRAGE,
+      locale: "de",
+      mode: "retrieval-only",
+      questionSource: "manual",
+    });
   });
 
   it("ohne Markierung UND ohne Eingabe geht gar keine Frage hinaus", async () => {

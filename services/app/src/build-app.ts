@@ -278,6 +278,7 @@ import { reasonerRoutes } from "./routes/reasoner-routes";
 // JOB 4086: Adapter #2 des quellneutralen Import-Vertrags — SharePoint/OneDrive.
 import { sharepointImportRoutes } from "./routes/sharepoint-import-routes";
 import { slidesRoutes } from "./routes/slides-routes";
+import { supportKontaktAusUmgebung, supportRoutes } from "./routes/support-routes";
 import { validationRoutes } from "./routes/validation-routes";
 // G27 R2 (Entscheidung 15 §A): der EINE kanonische Startupvertrag der Suchprojektion — von
 // App-Ready hier und von `runSeed()` in `seed.ts` gemeinsam benutzt.
@@ -2997,7 +2998,8 @@ export function buildApp(
   );
   // SCRUM-491 Slice 5: /api/check-text existiert NUR bei aktivem Add-on-Flag — sonst gar nicht
   // registriert → Endpunkt existiert nicht → bit-identisch zum heutigen Verhalten. Deterministische
-  // Stufe-1-Dry-Run-Prüfung (validated-only, kein Modell, keine Persistenz).
+  // Stufe-1-Dry-Run-Prüfung (kein Modell, keine Persistenz; nur Validiertes gilt allein für den
+  // Add-in-Pfad, der Session-Pfad prüft seit JOB 3020 auch Ungeprüftes — check-text-routes.ts).
   if (addonApiEnabled()) {
     app.register(
       checkTextRoutes(
@@ -3071,6 +3073,10 @@ export function buildApp(
   app.register(reasonerRoutes({ ...services, ka4: klaraSessions }, guards));
   // Klara Stufe 2 (Pedi 05.07.): KI-gestuetzte Hilfe-Antwort aus Hilfe-Schnipseln (help-routes).
   app.register(helpRoutes({ reasoner: services.reasoner }, guards));
+  // R-1064: der vom Betreiber festgelegte Supportweg dieser Installation (optional, kein
+  // Pflichtwert für den Start). Gelesen EINMAL hier beim Aufbau; Zustände und Prüfung in
+  // support-routes.ts.
+  app.register(supportRoutes({ kontakt: supportKontaktAusUmgebung(process.env) }, guards));
   // AUFTRAG-mega74 BLOCK C (G2): der Anhang-Lesepfad erfährt hier — und nur hier —, welche
   // Wissensobjekte einen Anhang tragen. `services/object-store` darf das nicht selbst wissen
   // (dieselbe Modulgrenze wie object-references.ts); die Kompositionswurzel reicht den Zugang.

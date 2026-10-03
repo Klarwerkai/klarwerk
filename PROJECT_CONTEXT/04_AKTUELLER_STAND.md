@@ -113,6 +113,24 @@ R-0020 gilt unverändert für **Speichern UND Einreichen**, auch bei verlorener 
   Erklärung „war bereits gespeichert" (R-0156) gibt es nicht — die Wiederholung meldet den
   normalen Speichererfolg.
 
+## 29.09.2026 — Bildidentität: die Kennung kommt vom Bild (Aufnahme gesamt-bildidentitaet, Lauf 3)
+
+- Server-Sanitizer (`anchorFigures`) und Editor (`ensureImageAnchors`) überschreiben keine
+  abweichende Fußnotenkennung mehr. Ein ersetztes Bild in einer verankerten Hülle erbt die alte
+  Beschreibung nicht mehr. Die fremde Fußnote bleibt sichtbar, gekennzeichnet und bewusst
+  zuordenbar (V7).
+- Runde 2 (nach Bens Befunden): Körperklick und Galerie-Bitte treffen das Vorkommen über „k-tes
+  Bild mit dieser Quelle“ statt über die Listenposition (R-0945/R-0053); eine lose Fußnote behält
+  die Kennung ihres Bildes und wird in Editor, Galerie und Bildsuche gelesen; beim Trennen folgt
+  die eigene Beschreibung auch hinter einer fremden Fußnote; beide Sanitizer hinterlassen bei
+  doppelter oder ungültiger Kennung die Spur `data-kw-kennung`, der Editor meldet sie beim Öffnen
+  (R-0090).
+- Runde 3: Der Körperklick baut die Großansicht aus dem aktuellen Editorstand statt aus dem
+  verzögerten Galeriestand; die Galerie-Bitte ist an die Kennung gebunden und öffnet im Zweifel
+  nichts; der Hinweis zu ungültigen Kennungen zählt je Bild.
+- Abgleich aller 46 Aufnahmepunkte, offene Entscheidungen (R-0014, R-0098, R-0898-Ziehen,
+  Leseversprechen, unverankerter Altbestand): `docs/entscheidungen/bildidentitaet.md`.
+
 ## 30.09.2026 — Eigene Seite eines Dublettenbefunds zurückziehen und wiederherstellen (Lauf 5)
 
 - Lauf 5 übernimmt den nie gemergten Stand von Lauf 4 (`9356241d`) auf Basis `bf9fcf1c` und behebt
@@ -155,6 +173,27 @@ R-0020 gilt unverändert für **Speichern UND Einreichen**, auch bei verlorener 
 - Offen zur Entscheidung u. a.: Wortlaut „Vordertür-Entwurf geöffnet“ u. a. technische
   Beschriftungen, unsichtbar gesetzte Felder des Blatts (`statement`, `type`, `category`),
   Leertextfarbe `#9AA2B1` (K2b, gesperrt „nicht vor der Vorführung“).
+
+## 30.09.2026 — Fragen: Arbeit fortsetzen (Pedi 28.09.2026, Ergänzung 1, Prio 3)
+
+- `/fragen` merkt sich je Konto den ungesendeten Entwurf und die zuletzt angezeigte Frage/Antwort
+  samt Quellen im Browser (`apps/web/src/lib/fragenArbeitsstand.ts`, Kennung aus `["auth","me"]`
+  über `lib/useKontoKennung.ts`). Übersteht Tutorial, Breitenwechsel, Navigation, Neuladen und
+  erneute Anmeldung; andere Konten sehen nichts; keine neue Modellanfrage beim Wiederkommen.
+  Hinweis oben auf der Seite mit „Entwurf verwerfen“; Datenschutz Abschnitt 4 um `s4.p8` ergänzt.
+- Gerätegebunden (kein Serverspeicher): auf einem anderen Gerät gibt es keinen Arbeitsstand.
+  Tests: `tests/fragen-arbeitsstand/`.
+- Nacharbeit nach Ben R1: laufende Anfrage an die Kontogeneration gebunden; Startadresse (`?q=`,
+  `?ask=1`) wird je Navigationskennung nur einmal übernommen; abgelaufener Antwortbeleg erklärt
+  statt „Hat geholfen“; Enter auf Start stellt die Frage (`ask=1`); Markdown-Reste (`__`, `~~`,
+  Backticks, Links) im Antworttext gelesen; gestörte Prüfung (Konflikt-/Bestandsabruf
+  gescheitert) zeigt keine Teilantwort (R-0330); doppeltes Evidenz-Etikett entfällt (R-0287);
+  Admin-Weg zu den KI-Einstellungen ohne Modell (R-1016); gesperrte Quellen zuerst als vorhanden
+  erklärt, mit Prüfweg `/validierung` (N-0009).
+- Nacharbeit nach Ben R2: übernommene Startadressen als begrenzte Liste (nicht nur die letzte);
+  Codezäune und Tabellen im Antworttext als Klartext; Prüfungsstörung auch ohne Antwort und bis
+  zur erfolgreichen Wiederholung; Sperrgründe gesperrter Quellen einzeln erklärt, Prüfweg nur bei
+  fehlender Freigabe/Stufe. Tests: `tests/fragen-arbeitsstand/ben-r2-gegenproben-mounted.test.tsx`.
 
 ## 26.09.2026 — FE-003 Seitentutorial „Fragen“ (Pilot)
 

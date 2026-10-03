@@ -1715,8 +1715,8 @@
     //
     // JOB 3019 (KA5): `selection` ist der SECHSTE und letzte Parameter — aus demselben Grund wie
     // `bindungsKopf`: er kommt herein, er wird nicht hier drinnen geholt. Er steht ANS ENDE, damit
-    // jeder bestehende Aufruf mit fuenf Argumenten unveraendert denselben Koerper absetzt.
-    function performAsk(question, locale, fetchFn, timeoutMs, bindungsKopf, selection) {
+    // jeder bestehende Aufruf mit fuenf Argumenten unveraendert denselben Koerper absetzt. R-0639: `questionSource` — Markierung ("selection") oder getippt ("manual").
+    function performAsk(question, locale, fetchFn, timeoutMs, bindungsKopf, selection, questionSource) {
       var controller = new AbortController();
       var timedOut = false;
       var timer = setTimeout(function () {
@@ -1752,7 +1752,7 @@
         method: "POST",
         credentials: "include",
         headers: askKopf,
-        body: JSON.stringify({ question: question, locale: locale, mode: "retrieval-only", selection: markierung.length > 0 ? markierung : undefined }),
+        body: JSON.stringify({ question: question, locale: locale, mode: "retrieval-only", selection: markierung.length > 0 ? markierung : undefined, questionSource: questionSource === "selection" || questionSource === "manual" ? questionSource : undefined }),
         signal: controller.signal,
       })
         .then(function (res) {
@@ -7486,7 +7486,7 @@
           // JOB 3019 (KA5): die Markierung aus DERSELBEN Vorbereitung. Kein zweites
           // `readAskSelection`, kein zweiter Zustand — sonst koennte die Zeile ueber dem Feld eine
           // andere Markierung meinen als die, die wirklich abgeht.
-          prep.selection
+          prep.selection, prep.from === "selection" ? "selection" : "manual" // R-0639: Herkunft der Frage
         ).then(function (outcome) {
           currentAskOutcome = outcome;
           // Der EINE Ausgang aus dem Wartezustand — Antwort, Luecke, Frist, Fehler, fehlende
@@ -10385,7 +10385,7 @@
           // dieser Block gar kein neues Ziel anspricht: `/api/ask` steht laengst in der Liste.
           window.fetch.bind(window),
           WORD_ADDIN_ASK_TIMEOUT_MS,
-          klaraS4Header()
+          klaraS4Header(), undefined, prep.from === "selection" ? "selection" : "manual" // R-0639: Markierung reist im Fragetext
         ).then(function (outcome) {
           ka6Laeuft = false;
           ka6Zeichnen();

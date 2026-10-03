@@ -118,8 +118,11 @@ describe("Teil B: Galerie im Entwurf (DraftBodyGallery, gemountet)", () => {
       "utf8",
     );
     expect(wrapper).toContain("useDebouncedValue(bodyHtml, LIBRARY_SEARCH_DEBOUNCE_MS)");
-    expect(wrapper).toContain(
-      "<BodyImageGallery bodyHtml={debounced} onEditCaption={onEditCaption} />",
-    );
+    // Aufnahme 20260922, Lauf 5 (R3-2): die Galerie bekommt zusätzlich `nimmtBildklickAn` — sie
+    // steht neben einem Editor. Geprüft wird die Substanz der Zeile, nicht ihre Zeichenfolge.
+    const aufruf = wrapper.match(/<BodyImageGallery\b[^>]*\/>/)?.[0] ?? "";
+    expect(aufruf).toContain("bodyHtml={debounced}");
+    expect(aufruf).toContain("onEditCaption={onEditCaption}");
+    expect(aufruf).toContain("nimmtBildklickAn");
   });
 });
