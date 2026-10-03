@@ -146,6 +146,32 @@ const ACHSEN: Achse[] = [
     positiv: "tests/demo-firmen-ci-verbraucher/panel-marke.test.ts",
     gegenprobe: "tests/app/word-addin.test.ts",
   },
+  // ----------------------------------------------------------------------------------------------
+  // AUFNAHME 20260922 · GESAMT-KLARA-EXTERN (R-1526) — DIE ACHTE ACHSE.
+  // ----------------------------------------------------------------------------------------------
+  // DER BEFUND, wörtlich aus der Auftragsquelle: „tests/ka6/job3026-riegel-am-erzeuger.test.ts wird
+  // von den sechs Erkennungsachsen des Klara-Regressionsinventars nicht gefunden und ist dort nicht
+  // gepinnt, obwohl REGELN.md §5 jeden neuen Klara-Test verlangt." Die Datei prüft Klaras
+  // Einwilligungsriegel am Erzeuger, trägt aber weder „klara" im Pfad noch eines der Wörter der
+  // übrigen Achsen.
+  // DAS MUSTER IST GEMESSEN, NICHT GERATEN (`node`-Erhebung über dieselben drei Flächen):
+  //   · mit zusätzlich `KLARA_EXTERNAL_EXECUTION_MIGRATED` — 25 Treffer, 15 neu, darunter
+  //     `job2622-sandbox-skips.test.ts`, das den Namen nur als Ruhegrund der Sandbox nennt. Zu weit.
+  //   · die hier stehende Fassung — 16 Treffer, 11 neu (eine davon die mit dieser Achse angelegte
+  //     `tests/klara-dokumenttext/…`, die ohnehin über `name` hereinkommt). Jede der zehn übrigen
+  //     ruft das Einwilligungstor des Klara-Sitzungsdienstes (`pruefeExterneAusfuehrung`) oder die
+  //     Prüferschnittstelle des Zuruf-Erzeugers (`Ka6Einwilligungspruefer`) — das sind die Tore, an
+  //     denen der externe Klara-Weg hängt.
+  {
+    kennung: "einwilligung",
+    wo: "inhalt",
+    muster: /Ka6Einwilligungspruefer|pruefeExterneAusfuehrung|pruefeDokumenttextFreigabe/,
+    zweck:
+      "Klaras Einwilligungstore für den externen Weg — Sitzungsdienst, Dokumenttext und Zuruf-Erzeuger. " +
+      "Noetig, weil eine Pruefung dieser Tore weder „klara“ im Pfad noch ein Wort der anderen Achsen tragen muss.",
+    positiv: "tests/ka6/job3026-riegel-am-erzeuger.test.ts",
+    gegenprobe: "tests/app/mega40-token-disziplin.test.ts",
+  },
 ];
 
 // ------------------------------------------------------------------------------------------------
@@ -1174,6 +1200,22 @@ const INVENTAR: readonly string[] = [
   // Baum, aber nicht im gepinnten Inventar — Inventar nachfuehren` mit genau diesen zwei Pfaden.
   "tests/deploy-health-commit/eine-programmversion.test.ts",
   "tests/deploy-liefernachweis/live-update-liefernachweis.test.ts",
+  // AUFNAHME 20260922 · GESAMT-KLARA-EXTERN (01.10.2026), R-0639: der Dokumenttext-Riegel. Traegt
+  // „klara" im PFAD und kommt ueber `name` herein (K5: 68 -> 69). GEMESSEN, NICHT GESETZT: K2
+  // meldete lokal `neu im Baum, aber nicht im gepinnten Inventar` mit genau diesem Pfad.
+  "tests/klara-dokumenttext/riegel-haelt-den-dokumenttext.test.ts",
+  // R-1526: die zehn Pruefungen, die erst die Achse `einwilligung` findet — Begruendung und Messung
+  // an der Achse. Keine traegt „klara" im Pfad; sie fallen in `verfehlt`, K5 bleibt bei 69.
+  "tests/ka6/job3026-riegel-am-erzeuger.test.ts",
+  "tests/app/job2666-stufe-die-nur-der-client-behauptet.test.ts",
+  "tests/app/job2692-ein-dokument-das-nur-der-client-beschreibt.test.ts",
+  "tests/d5-ki-aus/halt-vor-dem-dienst.test.ts",
+  "tests/ka6-memo-panel/memo-route.test.ts",
+  "tests/live-check-verdrahtung/anker-und-zustimmung.test.ts",
+  "tests/output/ka6-zuruf.test.ts",
+  "services/app/src/ask-routes.test.ts",
+  "services/app/src/db.migrate.integration.test.ts",
+  "services/app/src/routes/ka5-markierung.test.ts",
 ];
 
 // ------------------------------------------------------------------------------------------------
@@ -1277,7 +1319,8 @@ describe("JOB 920 · K — das Klara-Regressionsinventar ist ableitbar, nicht be
     }
     expect(befunde, "Achse ohne tragende Kalibrierung").toEqual([]);
     // 6 -> 7 am 12.09.2026 (JOB 3781): die Achse `erweiterung` ist dazugekommen.
-    expect(ACHSEN, "weniger als sieben Achsen — eine ist weggefallen").toHaveLength(7);
+    // 7 -> 8 am 01.10.2026 (Aufnahme gesamt-klara-extern, R-1526): die Achse `einwilligung`.
+    expect(ACHSEN, "weniger als acht Achsen — eine ist weggefallen").toHaveLength(8);
   });
 
   it("K4 · der Eigenbeitrag jeder Achse ist gemessen, nicht angenommen", () => {
@@ -1291,10 +1334,16 @@ describe("JOB 920 · K — das Klara-Regressionsinventar ist ableitbar, nicht be
     // 5 -> 6 am 12.09.2026 (JOB 3781): die neue Achse `erweiterung` traegt 6 Dateien allein, die
     // Schwelle steigt deshalb mit. Gemessene Eigenbeitraege an diesem Stand: name 22, taskpane 55,
     // manifest 0, version 3, komponente 10, palette 34, erweiterung 6.
+    // 6 -> 7 am 01.10.2026 (R-1526): die Achse `einwilligung` traegt allein bei (Messung unten).
     const alleine = [...eigen.entries()].filter(([, n]) => n > 0).map(([k]) => k);
     expect(alleine.length, `Eigenbeitraege: ${JSON.stringify([...eigen])}`).toBeGreaterThanOrEqual(
-      6,
+      7,
     );
+    // R-1526: dieselbe Pflicht wie bei `erweiterung` — die Achse muss den Auslöser WIRKLICH holen.
+    expect(
+      eigen.get("einwilligung"),
+      "die Achse `einwilligung` holt keine Datei allein herein — sie ist wirkungslos",
+    ).toBeGreaterThan(0);
     // JOB 3781: die neue Achse muss WIRKEN, nicht nur dastehen. Waere ihr Eigenbeitrag 0, faende sie
     // ausschliesslich Dateien, die andere Achsen ohnehin holen — dann waere das Muster falsch
     // gewaehlt und die Luecke aus dem 3512-Kommentar nur scheinbar geschlossen.
@@ -1492,7 +1541,10 @@ describe("JOB 920 · K — das Klara-Regressionsinventar ist ableitbar, nicht be
     // Beleg in der RUECKGABE des Jobs.
     // JOB 4224 RUNDE 3: dazu `kette-postgres.integration.test.ts` — 67 -> 68. GEMESSEN, NICHT
     // GESETZT: Beleg in der RUECKGABE des Jobs.
-    expect(nurName.length).toBe(68);
+    // AUFNAHME 20260922 · GESAMT-KLARA-EXTERN (01.10.2026):
+    // `tests/klara-dokumenttext/riegel-haelt-den-dokumenttext.test.ts` traegt „klara" im PFAD —
+    // 68 -> 69. GEMESSEN, NICHT GESETZT: K5 meldete lokal `expected 69 to be 68`.
+    expect(nurName.length).toBe(69);
     expect(verfehlt.length).toBeGreaterThanOrEqual(25);
     expect(verfehlt.length + nurName.length).toBe(GEFUNDEN.length);
   });

@@ -965,6 +965,31 @@ const GRUNDWERTE: readonly Startwert[] = [
     ohneIhn:
       "Keine SharePoint-Herkunft darf Klara einbetten. Wer ein Dokument aus OneDrive/SharePoint in Word im Browser öffnet, sieht statt des Seitenbereichs eine Browser-Fehlerseite (refused to connect).",
   },
+  // ----------------------------------------------------------------------------- Hilfe (R-1064)
+  // Der Supportweg dieser Installation (`routes/support-routes.ts`). Beide Werte sind optional und
+  // kein Startkriterium: fehlen sie, zeigt die Hilfe ehrlich „nicht eingerichtet".
+  {
+    name: "KLARWERK_SUPPORT_URL",
+    bereich: "Hilfe",
+    pflicht: { art: "nie" },
+    geheim: false,
+    vorgabe: "leer = kein Supportweg eingerichtet",
+    wofuer:
+      "Der Supportweg dieser Installation auf der Hilfeseite: eine https-Adresse ohne Zugangsdaten oder mailto: mit genau einer Adresse, höchstens 500 Zeichen (auch nach der URL-Normalisierung). Ungültige Werte werden nicht ausgeliefert, die Hilfe zeigt sie als ungültig. Wirkt erst mit einem neuen App-Prozess.",
+    ohneIhn:
+      "Die Hilfeseite zeigt, dass für diese Installation noch kein Supportweg hinterlegt ist. Der Start ist davon nicht betroffen.",
+  },
+  {
+    name: "KLARWERK_SUPPORT_LABEL",
+    bereich: "Hilfe",
+    pflicht: { art: "nie" },
+    geheim: false,
+    vorgabe: "leer = eingebauter Text der gewählten Sprache",
+    wofuer:
+      "Der sichtbare Name des Supportwegs auf der Hilfeseite (höchstens 80 Zeichen, keine Steuerzeichen); nur zusammen mit KLARWERK_SUPPORT_URL wirksam. Wirkt erst mit einem neuen App-Prozess.",
+    ohneIhn:
+      "Die Hilfeseite benennt den Supportweg mit dem eingebauten Text der gewählten Sprache.",
+  },
   // ------------------------------------------------------------------------------------- Sonstiges
   {
     name: "KLARWERK_CONFLUENCE_BUDGET_MS",

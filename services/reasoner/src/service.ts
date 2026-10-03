@@ -1898,11 +1898,18 @@ export class Reasoner {
     // OHNE IHN ÄNDERT SICH NICHTS: jeder andere Aufrufer (Sitzungspfad, Hilfeweg, Routen) lässt
     // ihn weg und bekommt Zeichen für Zeichen das bisherige Verhalten.
     relevanz?: Relevanztext,
+    // F-0295 / R-0639: der markierte Dokumenttext — nur gesetzt, wenn seine eigene Deckungsprüfung
+    // getragen hat (`services/ask/src/service.ts`). Ohne ihn ist der Aufruf Zeichen für Zeichen der
+    // bisherige.
+    dokumenttext?: string,
   ): Promise<AnswerResult> {
     const result = await this.runTask(
       "answer",
       locale,
-      (p) => p.answer(question, context, locale, confidential, relevanz),
+      (p) =>
+        dokumenttext === undefined
+          ? p.answer(question, context, locale, confidential, relevanz)
+          : p.answer(question, context, locale, confidential, relevanz, dokumenttext),
       confidential,
       runContext,
     );

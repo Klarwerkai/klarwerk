@@ -90,6 +90,10 @@ function ohneSprachausgabe(): void {
 }
 
 beforeEach(async () => {
+  // Pedi 28.09.2026 · Ergänzung 1: die Fragenseite merkt sich Entwurf und Antwort je Konto im
+  // Browserspeicher, und alle Fälle hier melden dasselbe Konto (`u-ex`). Jeder Fall ist ein
+  // ERSTBESUCH — ohne diese Zeile begänne er mit dem Arbeitsstand des vorigen.
+  localStorage.clear();
   netz.anfragen = [];
   netz.lage = { kiAktiv: true, rolle: "experte" };
   medienStub();

@@ -119,12 +119,15 @@ export interface ReasonerProvider {
   // wird ausschließlich an die Kandidatenauswahl weitergegeben; `question` bleibt unverändert die
   // Frage, und kein Provider mischt ein ergänztes Wort in Prompt, Antworttext oder Quellenliste.
   // Fehlt er, verhält sich jeder Provider Zeichen für Zeichen wie vorher.
+  // F-0295 / R-0639: `dokumenttext` — die markierte Passage, NUR nach bestandener eigener
+  // Deckungsprüfung. Sie ist Kontext der Frage, keine Quelle; der deterministische Weg ignoriert sie.
   answer(
     question: string,
     context: readonly KnowledgeRef[],
     locale?: ReasonerLocale,
     confidential?: boolean,
     relevanz?: Relevanztext,
+    dokumenttext?: string,
   ): Promise<AnswerResult>;
   // FR-RSN-03: Text sprachlich präzisieren (ohne Inhalt zu erfinden).
   // SCRUM-312: optionale, frei-/aktionsbasierte Anweisung (z. B. „klarer", „strukturieren").

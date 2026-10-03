@@ -12,6 +12,8 @@
 // `tests/app/mega54-ein-naechster-schritt-sammler.test.ts` an jeder Fläche mit GENAU EINEM nächsten
 // Schritt verbunden; ein herausgelöster Kopf ohne diesen Schritt wäre eine Lückenfläche ohne Weg.
 import { useTranslation } from "react-i18next";
+import { useRole } from "../../app/RoleContext";
+import { adminHref } from "../../lib/adminSections";
 import { RoleLink } from "../RoleLink";
 import { FRAGEN_ZIEL } from "./ziele";
 
@@ -50,6 +52,12 @@ export function KiNichtVerfuegbar({
   hinweisTestId?: string;
 }): JSX.Element {
   const { t } = useTranslation();
+  // R-1016 (Ben R1, F7): „Ein Administrator soll einen klaren Weg zum Verbinden sehen." Nur er
+  // kann ein Modell verbinden oder die KI wieder einschalten — deshalb steht der Weg nur bei ihm,
+  // und zwar VOR den Alternativen. Das Ziel ist die KI-Karte der Verwaltung, dieselbe Adresse wie
+  // die Zeile „KI-Modell" dort (`pages/Admin.tsx`, `geheZu("ki", "ki")`); über `RoleLink`, damit
+  // eine Rollenvorschau keinen toten Link sieht. Alle anderen behalten Satz und Alternativen.
+  const { role } = useRole();
   return (
     <>
       <p
@@ -59,6 +67,14 @@ export function KiNichtVerfuegbar({
       >
         {t(hinweisKey)}
       </p>
+      {role === "admin" ? (
+        <div data-testid="ask-ki-verbinden" className="mt-1.5 text-[12px] text-muted-2">
+          {t("ask.aiUnavailable.adminPfad")}{" "}
+          <RoleLink to={adminHref("ki", "ki")} className="font-semibold text-brand-text">
+            {() => t("ask.aiUnavailable.toAdmin")}
+          </RoleLink>
+        </div>
+      ) : null}
       <p data-testid="ask-ai-alternative" className="mt-1.5 text-[12px] text-muted-2">
         {t("ask.aiUnavailable.path")}{" "}
         <RoleLink to="/bibliothek" className="font-semibold text-brand-text">
