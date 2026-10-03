@@ -2601,10 +2601,11 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     //                `rueckweg.js` nach `dist/word-addin/` kopiert und ausgeliefert.
     //   · Alter Server ohne die Datei: 404 — das Fenster bleibt voll bedienbar, nur ohne
     //                Firmen-CI (der normale Look; keine Zeile ausserhalb des Blocks ruft ihn).
-    // OFFEN IN DIESER RUNDE: der neue Hash ist NICHT eingetragen. In der Arbeitsumgebung dieses
-    // Auftrags war kein Hashwerkzeug freigegeben; ein geschätzter Wert wäre ein falscher Pin. Dieser
-    // Fall meldet den Ist-Wert im ersten Lauf — erst danach darf der Pin wandern.
-    const PIN = "5fbf5f64546beb67d70799bb8d18bcf6d2adcc631d79e0b404658867baeb0978";
+    // NACHARBEIT 1: PIN BEWUSST AKTUALISIERT (5fbf5f64… -> 8627e4c0…). Der Wert ist GEMESSEN, nicht
+    // geschätzt: dieser Fall meldete ihn am Kandidaten cddd2898 im Prüflauf (`Received:
+    // "8627e4c0…2344d81"`, funktion-erhalten-jsdom). Die Datei ist seit diesem Lauf unverändert;
+    // die Auslieferungsfolgen stehen im Absatz darüber.
+    const PIN = "8627e4c01479cd3bdab3687557f8749a9ef9c800ed979149b73ba121d2344d81";
     const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
     expect(
       ist,
