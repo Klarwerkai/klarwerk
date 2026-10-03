@@ -204,8 +204,10 @@ describe("W6 · DER FEHLSTAND — der leere Vektorspeicher wird NICHT gemeldet",
 
     // Zustand 3: embed lief, kein lexikalischer Rueckfall. Hier IST die Tiefe gedeckt — es gibt
     // nichts zu melden. Dieser Fall ist der Massstab fuer den naechsten.
+    // R-0249: die Textkandidaten laufen im befuellten Zustand MIT (Vereinigung), daher genau ein
+    // `findCandidates` auch hier — ein Rueckfall ist das nicht.
     expect(embed).toHaveBeenCalled();
-    expect(findCandidates).not.toHaveBeenCalled();
+    expect(findCandidates).toHaveBeenCalledTimes(1);
     expect(res.json().note ?? "").not.toMatch(REICHWEITEN_WOERTER);
   });
 
@@ -272,11 +274,15 @@ describe("W6 · DER FEHLSTAND — der leere Vektorspeicher wird NICHT gemeldet",
     expect(leer.note).toEqual(voll.note);
     expect(voll.note ?? "").not.toMatch(REICHWEITEN_WOERTER);
 
-    // NEBENBEFUND, ehrlich eingeordnet: die Trefferlisten sind NICHT gleich — der lexikalische
-    // Rueckfall reicht mehr und schlechter vorgefilterte Kandidaten an den Judge weiter.
-    expect(leer.duplicates.length).toBeGreaterThan(voll.duplicates.length);
+    // NEBENBEFUND, seit R-0249 umgekehrt: bis dahin ersetzten die Vektortreffer die
+    // Textkandidaten, und der Rueckfall legte dem Judge MEHR vor als der befuellte Speicher. Jetzt
+    // ist der befuellte Zustand die Vereinigung — er prueft nie weniger als der Rueckfall.
+    expect(voll.duplicates.length).toBeGreaterThanOrEqual(leer.duplicates.length);
     // Wie VIELE davon in Wahrheit Duplikate waeren, sagt dieser Test NICHT: der Judge ist hier ein
-    // Fake, der jeden Kandidaten bejaht. Belegt ist nur, dass der Rueckfall dem Modell mehr Arbeit
-    // vorlegt — die Bewertung dieser Kosten braucht einen echten Judge und gehoert nicht hierher.
+    // Fake, der jeden Kandidaten bejaht.
+    //
+    // OFFEN NACH R-0249: der Kern führt die Abruftiefe jetzt (`kandidatenwahl`, s.
+    // w6-prefilter-zustandsmatrix.test.ts), `toResponse` reicht sie aber nicht auf die Leitung.
+    // Der Fehlstand dieser Datei betrifft die HTTP-Antwort und bleibt deshalb stehen.
   });
 });
