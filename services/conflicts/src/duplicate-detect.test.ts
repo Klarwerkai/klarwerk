@@ -177,6 +177,20 @@ describe("Berater-Konzept Duplikate 04.07. (Stufe D1): Erkennungskern", () => {
     expect(d.reason).toBe("no_verified_aspect");
   });
 
+  it("R-1117: geteilte Zitate gelten nur als lückenlose Tokenfolge ('.5 bar' ≠ '5 bar')", () => {
+    const coreA = "Kesseldruck\nSet pressure to 5 bar.";
+    const coreB = "Before start, set pressure to 5 bar and open valve V2.";
+    const unecht = { beschreibung: "Solldruck", zitatA: ".5 bar", zitatB: ".5 bar" };
+    const echt = { beschreibung: "Solldruck", zitatA: "5 bar", zitatB: "„5 bar“" };
+    expect(verifiedAspects(verdict({ aspects: [unecht, echt] }), coreA, coreB)).toEqual([echt]);
+    const nurUnecht = decideFromOverlapVerdict(verdict({ aspects: [unecht] }), coreA, coreB);
+    expect(nurUnecht.create).toBe(false);
+    expect(nurUnecht.reason).toBe("no_verified_aspect");
+    const zahl = { beschreibung: "Wartezeit", zitatA: "Sekunden warten", zitatB: "1 Sekunden" };
+    const zahlVerdict = verdict({ aspects: [zahl] });
+    expect(verifiedAspects(zahlVerdict, "10 Sekunden warten.", "10 Sekunden.")).toEqual([]);
+  });
+
   it("verwandt → kein automatischer Eintrag (related_only)", () => {
     const d = decideFromOverlapVerdict(verdict({ beziehung: "verwandt" }), "x", "y");
     expect(d.create).toBe(false);
