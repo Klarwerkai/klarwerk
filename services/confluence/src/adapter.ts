@@ -8,9 +8,11 @@
 
 import type { ImportItem, SourceAdapter } from "../../library-analytics";
 import {
+  type ConfluenceAhnenBeschraenkung,
   type ConfluenceMapOptions,
   confluenceAhnenBefund,
   confluenceAncestorIds,
+  isPageRestricted,
   mapConfluencePageToImportItem,
 } from "./mapper";
 import type { ConfluenceAbbruch, ConfluencePage } from "./rest-client";
@@ -132,6 +134,24 @@ export function hierarchieBefund(pages: readonly ConfluencePage[]): ConfluenceHi
   };
 }
 
+/**
+ * AUFNAHME 20260922 · confluence-import-rechte (R-0549): die Ahnenlage aus einer EINGESAMMELTEN
+ * Seitenmenge. Jede gelieferte Seite trägt ihre eigene Leseeinschränkung; ein Vorfahr, der nicht in
+ * der Sammlung steht (abgeschnittener Lauf, für das Dienstkonto nicht lesbar), bleibt `undefined` —
+ * der Mapper stuft das Kind dann fail-closed als vertraulich ein.
+ */
+export function ahnenAusSammlung(pages: readonly ConfluencePage[]): ConfluenceAhnenBeschraenkung {
+  const beschraenkt = new Map<string, boolean>();
+  for (const page of pages) {
+    const id = page.id?.trim();
+    if (id) {
+      // Doppelt geliefert: beschränkt gewinnt.
+      beschraenkt.set(id, beschraenkt.get(id) === true || isPageRestricted(page));
+    }
+  }
+  return (ancestorId) => beschraenkt.get(ancestorId);
+}
+
 export class ConfluenceSourceAdapter implements SourceAdapter {
   readonly source = "Confluence";
 
@@ -142,7 +162,8 @@ export class ConfluenceSourceAdapter implements SourceAdapter {
 
   async collect(): Promise<ImportItem[]> {
     const pages = await this.client.listPages();
-    return pages.map((page) => mapConfluencePageToImportItem(page, this.mapOpts));
+    const ahnen = ahnenAusSammlung(pages);
+    return pages.map((page) => mapConfluencePageToImportItem(page, this.mapOpts, ahnen));
   }
 
   // SCRUM-510 WP2: liest den GESAMTEN Space (Cursor-Pagination) und mappt jede Seite EINZELN. Scheitert
@@ -152,9 +173,10 @@ export class ConfluenceSourceAdapter implements SourceAdapter {
     const { pages, truncated, abbruch } = await this.client.listAllPages();
     const items: ImportItem[] = [];
     const failed: CollectResult["failed"] = [];
+    const ahnen = ahnenAusSammlung(pages);
     for (const page of pages) {
       try {
-        items.push(mapConfluencePageToImportItem(page, this.mapOpts));
+        items.push(mapConfluencePageToImportItem(page, this.mapOpts, ahnen));
       } catch (err) {
         failed.push({
           ref: page.id || page.title || "(unbekannt)",
@@ -183,7 +205,36 @@ export class ConfluenceSourceAdapter implements SourceAdapter {
    */
   async fetchItem(externalId: string): Promise<ImportItem | undefined> {
     const page = await this.client.getPageById(externalId);
-    return page ? mapConfluencePageToImportItem(page, this.mapOpts) : undefined;
+    return page
+      ? mapConfluencePageToImportItem(page, this.mapOpts, await this.ahnenNachladen(page))
+      : undefined;
+  }
+
+  /**
+   * R-0549: beim Nachladen EINER Seite gibt es keine Sammlung — die Vorfahren werden je ID frisch
+   * nachgesehen, auf demselben Netzweg (`getPageById`). Ein Vorfahr, den das Dienstkonto nicht lesen
+   * darf (404), bleibt unbekannt und macht die Seite vertraulich. Beim ersten beschränkten Vorfahren
+   * ist die Einstufung entschieden; weitere Abrufe entfallen.
+   */
+  private async ahnenNachladen(page: ConfluencePage): Promise<ConfluenceAhnenBeschraenkung> {
+    const beschraenkt = new Map<string, boolean>();
+    if (!isPageRestricted(page) && Array.isArray(page.ancestors)) {
+      for (const ancestor of page.ancestors) {
+        const id = ancestor?.id?.trim();
+        if (!id || beschraenkt.has(id)) {
+          continue; // ohne ID entscheidet der Mapper fail-closed
+        }
+        const ahne = await this.client.getPageById(id);
+        if (!ahne) {
+          continue;
+        }
+        beschraenkt.set(id, isPageRestricted(ahne));
+        if (beschraenkt.get(id)) {
+          break;
+        }
+      }
+    }
+    return (ancestorId) => beschraenkt.get(ancestorId);
   }
 }
 

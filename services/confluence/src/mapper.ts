@@ -46,8 +46,55 @@ export function isPageRestricted(page: ConfluencePage): boolean {
 // entschieden, ein dritter „weiß nicht" existiert an dieser Quelle nicht. Was der Import-Kern mit
 // einer echten Leerstelle tut (andere Provider, die gar kein Governance-Signal liefern), bleibt
 // davon unberührt — dort gilt sein fail-safe „vertraulich" weiter.
-export function confluenceGovernanceConfidentiality(page: ConfluencePage): Confidentiality {
-  return isPageRestricted(page) ? "vertraulich" : "intern";
+//
+// AUFNAHME 20260922 · confluence-import-rechte (R-0549) — DIE VERERBTE BESCHRÄNKUNG.
+//
+// `restrictions.read` trägt nur die EIGENE Leseeinschränkung einer Seite. In Confluence gilt eine
+// Leseeinschränkung aber auch für alle Unterseiten: wer die Elternseite nicht sehen darf, sieht das
+// Kind ebenfalls nicht — obwohl dessen eigene Listen leer sind. Bis hierher wurde ein solches Kind
+// „intern" und war damit in Klara für jeden mit `ko.read` offen. Das widerspricht wörtlich dem
+// Zielzustand „wer sie in der Quelle sehen darf … und sonst niemand".
+//
+// Deshalb fragt die Einstufung, wenn der Aufrufer die Lage der Vorfahren kennt (`ahnen`), auch sie:
+// ein beschränkter Vorfahr macht die Seite vertraulich. Ein Vorfahr, dessen Lage NICHT nachgesehen
+// werden konnte (nicht in der Sammlung, für das Dienstkonto nicht lesbar, ohne ID), zählt ebenfalls
+// als beschränkt — „intern" bleibt eine Einstufung mit Erzeuger (nachgesehene, nicht vorhandene
+// Einschränkung), kein Vorgabewert für eine Lücke. Der Adapter liefert `ahnen` auf JEDEM seiner
+// Wege; ohne `ahnen` beurteilt die Funktion nur die Seite selbst (reine Einzelseiten-Sicht).
+//
+// GRENZE, ausdrücklich: Klara bildet Quellbenutzer und -gruppen NICHT auf eigene Leser ab. Eine
+// beschränkte Seite wird „vertraulich" und ist damit für `ko.validate` und die annehmende Person
+// sichtbar (app/src/sichtbarkeit.ts, Pedis Variante A) — nicht für genau die Confluence-Gruppe.
+// Eine Leserliste je Objekt wäre Variante B und ist dort ausdrücklich nicht entschieden.
+
+/**
+ * Die nachgesehene Leseeinschränkung eines Vorfahren: `true` beschränkt, `false` nachgesehen und
+ * offen, `undefined` nicht nachgesehen bzw. nicht lesbar.
+ */
+export type ConfluenceAhnenBeschraenkung = (ancestorId: string) => boolean | undefined;
+
+/** Eigene ODER (bei bekannter Ahnenlage) vererbte Leseeinschränkung, fail-closed für Lücken. */
+export function isPageEffectivelyRestricted(
+  page: ConfluencePage,
+  ahnen?: ConfluenceAhnenBeschraenkung,
+): boolean {
+  if (isPageRestricted(page)) {
+    return true;
+  }
+  if (!ahnen || !Array.isArray(page.ancestors)) {
+    return false;
+  }
+  return page.ancestors.some((ancestor) => {
+    const id = ahnenId(ancestor);
+    return id === undefined || ahnen(id) !== false;
+  });
+}
+
+export function confluenceGovernanceConfidentiality(
+  page: ConfluencePage,
+  ahnen?: ConfluenceAhnenBeschraenkung,
+): Confidentiality {
+  return isPageEffectivelyRestricted(page, ahnen) ? "vertraulich" : "intern";
 }
 
 // AUFTRAG-mega27 A2: Elternkette → QUELLNEUTRALER Pfad. Die Elterntitel in Quell-Reihenfolge
@@ -150,6 +197,7 @@ export function confluenceAhnenBefund(page: ConfluencePage): ConfluenceAhnenBefu
 export function mapConfluencePageToImportItem(
   page: ConfluencePage,
   opts: ConfluenceMapOptions,
+  ahnen?: ConfluenceAhnenBeschraenkung,
 ): ImportItem {
   const bodyHtml = confluenceStorageToHtml(page.body?.storage?.value ?? "");
   // JOB 2703 D1 (Review R2-3): hier stand `htmlToPlainText(bodyHtml)` — der GESAMTE Klartext der
@@ -170,7 +218,7 @@ export function mapConfluencePageToImportItem(
   const author = rawAuthor ? decodeHtmlEntities(rawAuthor) : undefined;
   // IC-1: Provenienz-Datum der letzten Version (Confluence version.when, ISO) → nur wenn vorhanden.
   const updatedAt = page.version?.when?.trim();
-  const governance = confluenceGovernanceConfidentiality(page);
+  const governance = confluenceGovernanceConfidentiality(page, ahnen);
   // AUFTRAG-mega27 A2: die Elternkette (Wurzel zuerst, ohne die Seite selbst) — oder gar nichts.
   const sourcePath = confluenceSourcePath(page);
 
