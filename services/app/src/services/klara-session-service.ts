@@ -1,5 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
+  KLARA_DOCUMENT_TEXT_EGRESS_ENABLED,
+  KLARA_PAYLOAD_CLASS_DOCUMENT_TEXT,
   KLARA_RESOLUTION_TTL_MS,
   type KlaraConsent,
   type KlaraConsentStatus,
@@ -142,6 +144,15 @@ export interface KlaraSessionServiceDeps {
   readonly policy: () => KlaraPolicyQuelle | Promise<KlaraPolicyQuelle>;
   readonly now?: () => number;
   readonly newId?: () => string;
+  /**
+   * R-0639 — NUR FÜR DIE GEGENPROBE. Fehlt das Feld, gilt `KLARA_DOCUMENT_TEXT_EGRESS_ENABLED`
+   * (`services/reasoner/src/klara-policy.ts`), und das ist im Produkt immer so: die einzige
+   * Konstruktionsstelle (`build-app.ts`) setzt es nicht — gepinnt in
+   * `tests/klara-dokumenttext/riegel-haelt-den-dokumenttext.test.ts`. Mit `true` misst ein Test,
+   * dass hinter dem Riegel NICHTS ANDERES den Dokumenttext aufhält; ohne diese Gegenprobe wäre
+   * „der Riegel hält" nicht von „irgendetwas hält" zu unterscheiden.
+   */
+  readonly dokumenttextRiegelOffen?: boolean;
 }
 
 export type KlaraFehlerCode = "NOT_FOUND" | "FORBIDDEN" | "CONFLICT" | "BAD_REQUEST";
@@ -350,6 +361,77 @@ export function pruefeConsentDeckung(
   return { gedeckt: true, consentId: consent.consentId };
 }
 
+// ================================================================================================
+// F-0295 / R-0639 — DIE EIGENE DECKUNGSPRÜFUNG FÜR DEN MARKIERTEN DOKUMENTTEXT.
+// ================================================================================================
+//
+// Pedi, 18.08.2026: „Externe KI mit Dokumenttext: JA, aber nie still. Je Dokument eine
+// ausdrückliche Einwilligung … Vertraulich Markiertes bleibt IMMER draußen."
+//
+// Sie steht NEBEN `pruefeConsentDeckung` und ersetzt sie nicht: der Aufrufer
+// (`pruefeDokumenttextFreigabe` unten) verlangt ZUERST, dass der externe Antwortweg selbst gedeckt
+// ist, und fragt DANACH diese Prüfung. Sie beantwortet die Frage, die die allgemeine Deckung nicht
+// stellt: darf zusätzlich zur Frage der markierte Text DIESES Dokuments hinaus?
+//
+// DIE REIHENFOLGE IST DER BELEG, und sie ist mit Absicht so:
+//   1. VERTRAULICH zuerst und unbedingt — kein Riegel, keine Zustimmung hebt das auf.
+//   2. Die ZUSTIMMUNG: dieselbe, die der Antwortweg soeben als deckend erkannt hat (`consentId`).
+//   3. Der RIEGEL.
+//   4. Erst bei offenem Riegel: die Zustimmung nennt die Klasse `document_text` ausdrücklich und
+//      gilt für GENAU dieses Dokument.
+// Weil der Riegel NACH Vertraulichkeit und Zustimmung fragt, meldet `riegel_aus` nur dann, wenn
+// diese beiden den Text NICHT aufhielten. Stünde er vorn, sähe jede Absage gleich aus, und „der
+// Riegel hält" wäre von „irgendwas hält" nicht zu unterscheiden — genau die Verwechslung, gegen die
+// R-0639 einen Beleg verlangt.
+//
+// WARUM STUFE 4 HINTER DEM RIEGEL STEHT: bei geschlossenem Riegel trägt eine im Produkt erteilte
+// Zustimmung die Klasse gar nicht (die Auflösung weist sie nicht aus, `klara-policy.ts`). Das Fehlen
+// der Klasse ist dann die FOLGE des Riegels, keine eigene Lücke — der Grund heisst deshalb
+// `riegel_aus` und nicht `klasse_nicht_erteilt`.
+export type KlaraDokumenttextGrund =
+  | "vertraulich"
+  | "kein_consent"
+  | "consent_abweichend"
+  | "klasse_nicht_erteilt"
+  | "dokument_abweichend"
+  | "riegel_aus";
+
+export type KlaraDokumenttextDeckung =
+  | { readonly gedeckt: true }
+  | { readonly gedeckt: false; readonly grund: KlaraDokumenttextGrund };
+
+export function pruefeDokumenttextDeckung(lage: {
+  readonly consent: KlaraConsent | undefined;
+  /** Die Zustimmung, die der Antwortweg als deckend erkannt hat — `null`, wenn keine. */
+  readonly gedeckteConsentId: string | null;
+  readonly documentContextId: string;
+  readonly vertraulich: boolean;
+  readonly riegelOffen: boolean;
+}): KlaraDokumenttextDeckung {
+  if (lage.vertraulich !== false) {
+    return { gedeckt: false, grund: "vertraulich" };
+  }
+  const consent = lage.consent;
+  if (!consent || consent.status !== "granted" || lage.gedeckteConsentId === null) {
+    return { gedeckt: false, grund: "kein_consent" };
+  }
+  if (consent.consentId !== lage.gedeckteConsentId) {
+    return { gedeckt: false, grund: "consent_abweichend" };
+  }
+  if (lage.riegelOffen !== true) {
+    return { gedeckt: false, grund: "riegel_aus" };
+  }
+  if (
+    !consent.allowedPayloadClasses.map((k) => k.trim()).includes(KLARA_PAYLOAD_CLASS_DOCUMENT_TEXT)
+  ) {
+    return { gedeckt: false, grund: "klasse_nicht_erteilt" };
+  }
+  if (consent.documentContextId !== lage.documentContextId) {
+    return { gedeckt: false, grund: "dokument_abweichend" };
+  }
+  return { gedeckt: true };
+}
+
 /**
  * Die Antwort des finalen Ausführungstors (KW-S4-23 §2.3). Auch hier kein `boolean`: der Aufrufer
  * bekommt den GRUND und die Auflösung mit, gegen die geprüft wurde.
@@ -394,11 +476,16 @@ export class KlaraSessionService {
 
   private readonly newId: () => string;
 
+  /** R-0639: die EINE lesende Stelle des Dokumenttext-Riegels. */
+  private readonly dokumenttextRiegelOffen: boolean;
+
   constructor(deps: KlaraSessionServiceDeps) {
     this.repo = deps.repo;
     this.policy = deps.policy;
     this.now = deps.now ?? (() => Date.now());
     this.newId = deps.newId ?? (() => randomUUID());
+    this.dokumenttextRiegelOffen =
+      (deps.dokumenttextRiegelOffen ?? KLARA_DOCUMENT_TEXT_EGRESS_ENABLED) === true;
   }
 
   // ----------------------------------------------------------------------------------------------
@@ -498,6 +585,7 @@ export class KlaraSessionService {
 
     const resolution = resolveKlaraPolicy({
       ...quelle,
+      dokumenttextFreigeschaltet: this.dokumenttextRiegelOffen,
       externalConsentGranted: consentGranted,
       now: this.now(),
       resolutionId: gebunden.resolutionId as string,
@@ -689,6 +777,7 @@ export class KlaraSessionService {
   ): KlaraResolution {
     return resolveKlaraPolicy({
       ...quelle,
+      dokumenttextFreigeschaltet: this.dokumenttextRiegelOffen,
       externalConsentGranted: consentGranted,
       now: this.now(),
       resolutionId: session.resolutionId as string,
@@ -782,6 +871,37 @@ export class KlaraSessionService {
     return { erlaubt: true, resolution, consentId: deckung.consentId };
   }
 
+  /**
+   * F-0295 / R-0639 — DARF DER MARKIERTE DOKUMENTTEXT ZUSÄTZLICH HINAUS?
+   *
+   * ZWEI TORE HINTEREINANDER, keines ersetzt das andere: zuerst das finale Tor des Antwortwegs
+   * (`pruefeExterneAusfuehrung`, frisch gelesen, mit allen zehn Bindungen), danach die eigene
+   * Deckungsprüfung des Dokumenttexts (`pruefeDokumenttextDeckung`). Ist schon der Antwortweg
+   * nicht frei, wird die zweite Frage gar nicht gestellt — und der Grund sagt das (`antwortweg:…`),
+   * damit eine Absage wegen Modus oder Zustimmung nie wie eine Absage des Riegels aussieht.
+   *
+   * DIE VERTRAULICHKEIT KOMMT VOM AUFRUFER (der Route), weil nur sie den Rumpf der Anfrage kennt.
+   * Sie kann hier nur ENGER machen: `vertraulich !== false` sperrt.
+   */
+  async pruefeDokumenttextFreigabe(
+    sessionId: string,
+    bindung: KlaraBindung,
+    lage: { readonly vertraulich: boolean },
+  ): Promise<{ readonly erlaubt: boolean; readonly grund?: string }> {
+    const antwortweg = await this.pruefeExterneAusfuehrung(sessionId, bindung);
+    if (!antwortweg.erlaubt) {
+      return { erlaubt: false, grund: `antwortweg:${antwortweg.grund}` };
+    }
+    const deckung = pruefeDokumenttextDeckung({
+      consent: await this.repo.findConsent(sessionId),
+      gedeckteConsentId: antwortweg.consentId,
+      documentContextId: bindung.documentContextId,
+      vertraulich: lage.vertraulich,
+      riegelOffen: this.dokumenttextRiegelOffen,
+    });
+    return deckung.gedeckt ? { erlaubt: true } : { erlaubt: false, grund: deckung.grund };
+  }
+
   /** Die Auflösung zu einer registrierten Sitzung — der einzige Statusweg (S4-20 §6). */
   async statusFor(sessionId: string, bindung: KlaraBindung): Promise<KlaraResolution> {
     return (await this.getSession(sessionId, bindung)).resolution;
@@ -846,6 +966,7 @@ export class KlaraSessionService {
     // committet wurden — `aufloesen` hätte hier nichts mehr zu tun und dürfte nichts mehr tun.
     const resolution = resolveKlaraPolicy({
       ...quelle,
+      dokumenttextFreigeschaltet: this.dokumenttextRiegelOffen,
       externalConsentGranted: false,
       now: jetzt,
       resolutionId: werte.resolutionId,

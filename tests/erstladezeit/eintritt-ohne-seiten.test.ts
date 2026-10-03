@@ -95,6 +95,8 @@
 // Genau deshalb stehen KALIBRIERUNG und MUTATIONSSUITE unten in ZWEI `describe`-Blöcken: der eine
 // prüft, dass hier DAS Bündel gemessen wird, der andere, was an diesem Bündel wahr ist. Gemessen am
 // 05.09.2026: der statische Rückbau von `Admin` macht GENAU (a) und (b) rot, alles andere bleibt grün.
+// Der später ergänzte Block DECKEL (R-0801) misst eine feste Obergrenze und kann bei einer solchen
+// Mutation je nach verbleibender Luft zusätzlich kippen; er gehört nicht zur Trefferliste oben.
 // Die dritte Zeile ist nicht optional: ohne den Neubau meldet die KALIBRIERUNG vier abweichende
 // Zahlen, und man sucht den Fehler in der Aufteilung statt im veralteten `dist`.
 // BEWUSST KEINE ZWEITE TESTDATEI: `baue()` ruft `process.chdir`, und das ist prozessweit — zwei
@@ -355,6 +357,40 @@ interface KartenBefund {
   // dass wirklich der erzeugte Block erkannt wurde und nicht irgendein `export{` im Modulcode.
   ausfuhrBytes: number;
   ausfuhrEintraege: number;
+  // Ob am Stückende überhaupt eine erzeugte Ausfuhrliste steht. Ohne Block ist `ausfuhrEintraege`
+  // 0 — und nur dann gültig, wenn rollup für das Stück auch keine Ausfuhr meldet (`ausfuhrAbgleich`).
+  ausfuhrBlock: boolean;
+  // WAS „INHALT" HIER HEISST (ben, Nacharbeit 3, R-1573): ein Kartensegment sagt nur, wo Code einer
+  // Quelle BEGINNT; dass er bis zum nächsten Segment reicht, ist eine KONVENTION dieses Zuordners.
+  // Ein Helfer, den rollup oder esbuild INNERHALB eines solchen Segments erzeugt, zählt deshalb als
+  // Inhalt der Quelle — die Karte unterscheidet ihn nicht. Getrennt wird erst an einem quellenlosen
+  // Segment. Der Befund trägt das ausdrücklich, statt semantisch gesicherte Herkunft zu behaupten
+  // (Fälle Z7/Z8 unten).
+  zuordnung: "segmentkonvention";
+}
+
+const ZUORDNUNG = "segmentkonvention" as const;
+
+// ── DER EXPORTABGLEICH, EINMAL — für den Bau UND für die Erwartungsfälle (ben, Nacharbeit 3, F2) ──
+// Bis hierher stand der Vergleich inline in `baue()` als `ausfuhrEintraege === exports.length`, und
+// ein Stück OHNE erzeugte Liste trug `ausfuhrEintraege = -1`. Ein gültiges exportloses Stück (etwa
+// nur `console.log(1);`) wäre damit als Fehlschlag gemeldet worden: −1 gegen 0. Jetzt gilt:
+//   · kein Block und rollup meldet keine Ausfuhr → gültiger Nullfall;
+//   · kein Block, aber rollup meldet Ausfuhren   → ungültig (die Liste fehlt);
+//   · Block vorhanden                            → Eintragszahl muss zu rollups Angabe passen.
+function ausfuhrAbgleich(befund: KartenBefund, exporte: readonly string[]): boolean {
+  if (!befund.ausfuhrBlock) {
+    return exporte.length === 0;
+  }
+  return befund.ausfuhrEintraege === exporte.length;
+}
+
+/** Die erkannte Liste für die Fehlermeldung: Eintragszahl, „fehlt" ohne Block, „—" ohne Karte. */
+function ausfuhrListe(befund: KartenBefund | null): string {
+  if (befund === null) {
+    return "—";
+  }
+  return befund.ausfuhrBlock ? String(befund.ausfuhrEintraege) : "fehlt";
 }
 
 // ── DIE ERZEUGTE AUSFUHRLISTE AM STÜCKENDE (ben, R2, Korrekturpflicht 1) ────────────────────────
@@ -461,7 +497,9 @@ function byteHerkunft(
     kartenZeilen: kartenZeilen.length,
     fremdeQuellen: [...fremdeQuellen],
     ausfuhrBytes: block ? Buffer.byteLength(code.slice(block.start), "utf8") : 0,
-    ausfuhrEintraege: block ? block.eintraege : -1,
+    ausfuhrEintraege: block ? block.eintraege : 0,
+    ausfuhrBlock: block !== null,
+    zuordnung: ZUORDNUNG,
   };
 }
 
@@ -639,8 +677,8 @@ async function baue(name: string, plugins: Plugin[]): Promise<Bau> {
         // Der unabhängige Abgleich je Stück: die Zahl der Einträge in der erkannten Ausfuhrliste
         // gegen rollups `exports`. Stimmt sie nicht, ist der Block falsch (oder gar nicht) erkannt.
         ausfuhrBytes: karte ? karte.ausfuhrBytes : -1,
-        ausfuhrStimmt: karte ? karte.ausfuhrEintraege === (a.exports ?? []).length : false,
-        ausfuhrBefund: `${a.fileName}: Liste ${karte?.ausfuhrEintraege ?? "—"} Einträge, rollup meldet ${(a.exports ?? []).length}`,
+        ausfuhrStimmt: karte ? ausfuhrAbgleich(karte, a.exports ?? []) : false,
+        ausfuhrBefund: `${a.fileName}: Liste ${ausfuhrListe(karte)} Einträge, rollup meldet ${(a.exports ?? []).length}`,
         kartenZeilen: karte ? karte.kartenZeilen : -1,
         // Der Code endet auf `\n`; `split` liefert dafür ein leeres Schlussstück, das keine
         // Kartenzeile hat. Verglichen wird deshalb gegen die Zahl der ECHTEN Zeilen.
@@ -893,6 +931,66 @@ describe("KALIBRIERUNG DES ZUORDNERS · an von Hand bekannten Fällen", () => {
     // Segment bei 0 (Quelle 0), dann bei Spalte 10 ein EINFELDRIGES Segment (nur Spaltendelta).
     const befund = byteHerkunft(code, "AAAA,U", [QUELLE], IDS);
     expect(befund.jeQuelle.get(QUELLE), "nur bis zum quellenlosen Segment").toBe(10);
+  });
+
+  // ── Z6 · DAS EXPORTLOSE STÜCK (ben, Nacharbeit 3, F2; JOB 3077 R3 Prüfpunkt 6) ─────────────────
+  // Ein gültiges Stück, das nur etwas AUSFÜHRT und nichts exportiert: kein `export{…}`,
+  // rollup meldet `exports = []`. Geprüft mit DEMSELBEN `ausfuhrAbgleich`, den `baue()` benutzt —
+  // keine Vergleichslogik nur im Test. Bis Nacharbeit 3 stand hier −1 gegen 0, und dieser Fall war
+  // ein Fehlschlag.
+  it("Z6 ein exportloses Stück ist ein gültiger Nullfall — fehlt die Liste bei echten Ausfuhren, nicht", () => {
+    const code = "console.log(1);";
+    expect(Buffer.byteLength(code), "Stücklänge, von Hand nachgezählt").toBe(15);
+    const befund = byteHerkunft(code, "AAAA", [QUELLE], IDS);
+    expect(befund.ausfuhrBlock, "kein erzeugter Block").toBe(false);
+    expect(befund.ausfuhrBytes, "null Bytes Ausfuhrliste").toBe(0);
+    expect(befund.ausfuhrEintraege, "null Einträge").toBe(0);
+    expect(ausfuhrAbgleich(befund, []), "rollup meldet nichts — gültig").toBe(true);
+    expect(befund.zugeordnet, "der ganze Code ist Modulinhalt").toBe(15);
+    expect(
+      befund.zugeordnet + (Buffer.byteLength(code) - befund.zugeordnet),
+      "Inhalt + Rahmen ergibt unverändert die Stücklänge",
+    ).toBe(15);
+    // NEGATIVE KONTROLLE: derselbe Code, aber rollup meldet eine Ausfuhr — dann FEHLT die Liste.
+    expect(ausfuhrAbgleich(befund, ["x"]), "Ausfuhr gemeldet, Liste fehlt — ungültig").toBe(false);
+    // Und mit Block bleibt der Abgleich streng: `export{a as b};` führt genau einen Eintrag.
+    const mitBlock = byteHerkunft("const a=1;export{a as b};", "AAAA", [QUELLE], IDS);
+    expect(ausfuhrAbgleich(mitBlock, ["b"])).toBe(true);
+    expect(ausfuhrAbgleich(mitBlock, [])).toBe(false);
+    expect(ausfuhrAbgleich(mitBlock, ["b", "c"])).toBe(false);
+  });
+
+  // ── Z7/Z8 · EIN ERZEUGTER HELFER INNERHALB EINES QUELLSEGMENTS (ben, Nacharbeit 3; JOB 3077 R3) ──
+  // Die Grenze zwischen BELEGTER Herkunft und bloßer ZUORDNUNGSKONVENTION, an einem von Hand
+  // festgelegten Paar. Der Code ist Modulcode `const a=1;` (10 B) und dahinter ein erzeugter Helfer
+  // `var __h=e=>e;` (13 B), wie rollup oder esbuild ihn einfügen.
+  //   Z7: die Karte hat EIN Segment an Spalte 0 — sie sagt nichts darüber, wo der Modulcode endet.
+  //       Nach der Konvention zählt der Helfer als Inhalt (23 B). Das ist KEIN Herkunftsbeweis, und
+  //       der Befund sagt das selbst (`zuordnung: "segmentkonvention"`).
+  //   Z8: Kontrollvariante — ein quellenloses Segment an Spalte 10 VOR dem Helfer. Jetzt ist die
+  //       Grenze belegt, und die 13 B des Helfers sind Rahmen.
+  const MODUL = "const a=1;";
+  const HELFER = "var __h=e=>e;";
+
+  it("Z7 ein Helfer IM Quellsegment zählt nach Konvention als Inhalt — und der Befund sagt es", () => {
+    expect(MODUL.length, "Modulcode, von Hand nachgezählt").toBe(10);
+    expect(HELFER.length, "Helfer, von Hand nachgezählt").toBe(13);
+    const befund = byteHerkunft(`${MODUL}${HELFER}`, "AAAA", [QUELLE], IDS);
+    expect(befund.jeQuelle.get(QUELLE), "Konvention: das Segment reicht bis zum Zeilenende").toBe(
+      23,
+    );
+    expect(
+      befund.zuordnung,
+      "ohne quellenloses Segment ist die Grenze nicht belegt — die Zuordnung ist Konvention",
+    ).toBe("segmentkonvention");
+  });
+
+  it("Z8 Kontrolle: ein quellenloses Segment vor dem Helfer weist dessen Bytes als Rahmen aus", () => {
+    const code = `${MODUL}${HELFER}`;
+    // Segment 1: Spalte 0 → Quelle 0 („AAAA"). Segment 2: Spaltendelta 10, ohne Quelle („U").
+    const befund = byteHerkunft(code, "AAAA,U", [QUELLE], IDS);
+    expect(befund.jeQuelle.get(QUELLE), "nur der Modulcode ist Inhalt").toBe(10);
+    expect(Buffer.byteLength(code) - befund.zugeordnet, "der Helfer ist Rahmen").toBe(13);
   });
 });
 
@@ -1254,7 +1352,7 @@ describe("MUTATIONSSUITE · das gebaute Bündel zerfällt in Stücke", () => {
     // Die Aufschlüsselung gehört in JEDEN Lauf, nicht nur in die Fehlermeldung: eine Zahl, die nur
     // bei Rot erscheint, ist im grünen Lauf keine Messung. Genau das war Bens Einwand zu (c2).
     const messung = [
-      "[JOB 3077] (c3) Herkunft des AUSGELIEFERTEN Zuwachses, in UTF-8-Bytes:",
+      `[JOB 3077] (c3) Herkunft des AUSGELIEFERTEN Zuwachses, in UTF-8-Bytes (Zuordnung: ${ZUORDNUNG}, Z7/Z8):`,
       `  VORHER  ${v.summeJs} B = Inhalt ${v.inhaltBytesJs} + Rahmen ${v.rahmenBytesJs}`,
       `  NACHHER ${g.summeJs} B = Inhalt ${g.inhaltBytesJs} + Rahmen ${g.rahmenBytesJs}`,
       `  Zuwachs ${summeZuwachs} B = INHALT ${inhaltZuwachs} B (${anteil(inhaltZuwachs)}) + RAHMEN ${rahmenZuwachs} B (${anteil(rahmenZuwachs)}) · Budget für Inhalt ${INHALT_BUDGET_BYTES} B`,
@@ -1486,5 +1584,98 @@ describe("MUTATIONSSUITE · das gebaute Bündel zerfällt in Stücke", () => {
       );
     }
     expect(ZIELE.length, "beide Bauläufe brauchen ein eigenes Ziel").toBe(2);
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// DECKEL · der erste geladene Brocken wächst nicht unbemerkt (R-0801, Ladebudget der Weboberfläche)
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// Zielzustand R-0801 wörtlich: „Der erste geladene Brocken der Weboberflaeche ist rund 1,95 Megabyte
+// gross. Ein verbindlicher Deckel von etwa 1,36 Megabyte verhindert, dass er unbemerkt weiterwaechst
+// und die Anwendung langsam startet." Gewählt ist damit die balancierte Stufe (rund −30 % gegen
+// 1,95 MB), nicht „konservativ" (nur einfrieren) und nicht „streng" (−74 %).
+//
+// EIN EIGENER BLOCK, weil es eine dritte Frage ist: KALIBRIERUNG fragt, ob hier DAS Bündel gemessen
+// wird; die MUTATIONSSUITE fragt, ob die Aufteilung gegen den Vorzustand wirkt (Verhältnisse aus
+// demselben Lauf); DIESER Block fragt, ob das ausgelieferte Bündel eine feste Obergrenze hält.
+//
+// WARUM HIER BEWUSST EINE BYTE-ZAHL STEHT, obwohl der Kopf dieser Datei vor festen Byte-Pins warnt
+// (Runde 4): dort sollte ein Pin die WIRKUNG DER AUFTEILUNG messen und wurde vom Wachstum des Produkts
+// rot. Hier ist genau dieses Wachstum der Gegenstand. Wird der Fall rot, ist der Eintritt über den
+// Deckel gewachsen — dann ist der Eintritt zu verkleinern oder die Grenze ausdrücklich neu zu
+// entscheiden, nicht still zu heben.
+//
+// GEMESSEN WIRD DIE EINTRITTS-HÜLLE, nicht nur die Eintrittsdatei: alles, was der Browser STATISCH
+// mitladen muss, bevor überhaupt etwas erscheint. Sonst ließe sich der Deckel unterlaufen, indem
+// Code aus dem Eintritt in ein statisch eingebundenes Nachbarstück wandert — die Eintrittsdatei
+// würde kleiner, der Erstabruf nicht. Die Eintrittsdatei allein wird zusätzlich geprüft, weil sie
+// der „Brocken" im Wortlaut ist.
+//
+// EINHEIT: ausgelieferte, minimierte Bytes (wie `summeJs` und Kalibrierung), dezimal gerechnet:
+// 1,36 MB = 1 360 000 B. Keine Kompression — die Quelle nennt Rohgrößen (1,95 MB / 2,6 MB).
+// GEMESSEN am Kandidaten 06e6c8f (03.10.2026): Eintritt 1 750 692 B, Luft −390 692 B — der Deckel
+// riss. Ursache: `apps/web/src/i18n.ts` trug alle drei Wörterbücher in den Eintritt. Seither nimmt
+// das Plugin `sprachpakete-nachladen` (`apps/web/src/texte/intern/sprachpakete.ts`) en und nl im
+// Produktionsbau heraus; der zweite Fall unten belegt am gebauten Bündel, dass sie wirklich als
+// eigene Stücke AUSSERHALB der Eintritts-Hülle liegen — sonst hielte der Deckel womöglich aus einem
+// anderen Grund und die Sprachtrennung wäre unbelegt.
+describe("DECKEL · der erste geladene Brocken wächst nicht unbemerkt (R-0801)", () => {
+  const EINTRITT_DECKEL_BYTES = 1_360_000;
+  // Die Paketmodule, wie das Plugin sie benennt (`paketSpezifizierer` in sprachpakete.ts).
+  const SPRACHPAKETE = ["en", "nl"].map((sprache) =>
+    posix(join(WEB, "src", `i18n.sprachpaket.${sprache}.js`)),
+  );
+  // Untergrenze für den Inhalt eines Pakets: weit unter dem heutigen Umfang (en und nl zusammen
+  // 818 533 B Quelltext), aber hoch genug, dass ein leeres oder fast leeres Paket auffällt.
+  const PAKET_MINDESTINHALT_BYTES = 100_000;
+
+  it("die Sprachpakete en und nl liegen je in einem eigenen Stück außerhalb der Eintritts-Hülle", () => {
+    const g = GETEILT as Bau;
+    const huelleDateien = huelle(g, g.eintritt ? [g.eintritt.fileName] : []);
+    const befunde = SPRACHPAKETE.map((paket) => {
+      const traeger = g.jsStuecke.filter((s) => s.moduleIds.includes(paket));
+      return {
+        paket: kurz(paket),
+        traeger: traeger.map((s) => s.fileName),
+        inHuelle: traeger.some((s) => huelleDateien.has(s.fileName)),
+        inhalt: g.inhaltBytesJeModul.get(paket) ?? 0,
+      };
+    });
+    console.log(
+      `[R-0801] Sprachpakete: ${befunde.map((b) => `${b.paket} → ${b.traeger.join(", ") || "—"} (Inhalt ${b.inhalt} B)`).join(" · ")}`,
+    );
+    for (const b of befunde) {
+      expect(b.traeger, `${b.paket} muss in GENAU einem Stück liegen`).toHaveLength(1);
+      expect(b.inHuelle, `${b.paket} liegt in der Eintritts-Hülle — es würde sofort geladen`).toBe(
+        false,
+      );
+      expect(b.inhalt, `${b.paket} trägt kaum Inhalt — ist der Block leer?`).toBeGreaterThan(
+        PAKET_MINDESTINHALT_BYTES,
+      );
+    }
+    // Deutsch bleibt im Eintritt: die Startsprache darf nicht erst nachgeladen werden.
+    const i18nModul = posix(join(WEB, "src", "i18n.ts"));
+    expect(
+      [...huelleDateien].some((datei) =>
+        g.stuecke.find((s) => s.fileName === datei)?.moduleIds.includes(i18nModul),
+      ),
+      "`i18n.ts` (mit dem deutschen Wörterbuch) muss in der Eintritts-Hülle liegen",
+    ).toBe(true);
+  });
+
+  it("Eintrittsdatei und Eintritts-Hülle bleiben unter 1,36 MB", () => {
+    const g = GETEILT as Bau;
+    expect(g.eintritt, "kein Eintritts-Stück in der Rollup-Ausgabe").not.toBeNull();
+    const eintritt = g.eintritt?.bytes ?? 0;
+    const huelleDateien = huelle(g, g.eintritt ? [g.eintritt.fileName] : []);
+    const huelleBytes = bytes(g, huelleDateien);
+    const messung = `Eintritt ${g.eintritt?.fileName ?? "—"} ${eintritt} B · Eintritts-Hülle ${huelleDateien.size} Stücke ${huelleBytes} B · Deckel ${EINTRITT_DECKEL_BYTES} B · Luft ${EINTRITT_DECKEL_BYTES - huelleBytes} B.`;
+    console.log(`[R-0801] ${messung}`);
+    expect(eintritt, "Eintrittsgröße nicht gemessen").toBeGreaterThan(0);
+    const hinweis =
+      "Der Eintritt ist über den verbindlichen Deckel aus R-0801 gewachsen. Eintritt verkleinern " +
+      "(Nachladen statt statisch einbinden) oder die Grenze ausdrücklich neu entscheiden — nicht still heben.";
+    expect(eintritt, `${messung} ${hinweis}`).toBeLessThanOrEqual(EINTRITT_DECKEL_BYTES);
+    expect(huelleBytes, `${messung} ${hinweis}`).toBeLessThanOrEqual(EINTRITT_DECKEL_BYTES);
   });
 });

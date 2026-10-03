@@ -1517,6 +1517,9 @@ const LABELS: Record<ReasonerLocale, Record<string, string>> = {
     // und nicht an die Aussage angehängt — der Leser des Prompts (das Modell) soll sehen, dass hier
     // Quelltext steht, den es zitieren darf, und nicht eine zweite Kernaussage.
     excerpt: "Dokumenttext (Auszug)",
+    // F-0295 / R-0639: die markierte Passage aus dem Word-Dokument. Sie steht VOR den Quellen und
+    // ohne Nummer: sie ist Kontext der Frage und keine Quelle, die das Modell zitieren dürfte.
+    selection: "Markierte Passage im Dokument (Kontext der Frage, keine Quelle)",
   },
   en: {
     question: "Question",
@@ -1525,6 +1528,7 @@ const LABELS: Record<ReasonerLocale, Record<string, string>> = {
     guiding: "Guiding question",
     none: "(none yet)",
     excerpt: "Document text (excerpt)",
+    selection: "Selected passage in the document (context of the question, not a source)",
   },
   // mega52 D1: Niederländisch ist eine eigene Reasoner-Sprache — der Compiler verlangt diesen
   // Zweig jetzt, statt ihn stillschweigend auf Deutsch fallen zu lassen.
@@ -1535,6 +1539,7 @@ const LABELS: Record<ReasonerLocale, Record<string, string>> = {
     guiding: "Leidende vraag",
     none: "(nog geen)",
     excerpt: "Documenttekst (fragment)",
+    selection: "Gemarkeerde passage in het document (context van de vraag, geen bron)",
   },
 };
 
@@ -2102,6 +2107,10 @@ export class ModelProvider implements ReasonerProvider {
     // Zeile tiefer — der Prompt darunter baut unverändert auf `question` und den Quelltexten auf,
     // und kein ergänztes Wort verlässt diesen Dienst (kein Egress, kein Netzaufruf).
     relevanz: Relevanztext = [],
+    // F-0295 / R-0639: die markierte Passage — nur nach bestandener eigener Deckungsprüfung gesetzt
+    // (`services/ask/src/service.ts`). Sie wirkt AUSSCHLIESSLICH auf den Prompt, nicht auf die
+    // Auswahl, die Marken oder die Quellenliste: die Antwort bleibt an die Quellen gebunden.
+    dokumenttext?: string,
   ): Promise<AnswerResult> {
     // SCRUM-360: begrenzte, status-/trust-bewusste Top-K-Auswahl → das Modell bekommt nur eine
     // gedeckelte, relevant gerankte Quellenmenge (kein blindes Durchreichen aller KOs).
@@ -2146,7 +2155,9 @@ export class ModelProvider implements ReasonerProvider {
     const { wert: rohAntwort, abbruch } = await mitAbbruchBefund(() =>
       client.complete(
         answerSystem(locale),
-        `${labels.question}: ${question}\n\n${labels.sources}:\n${grounding}`,
+        `${labels.question}: ${question}\n\n${
+          dokumenttext ? `${labels.selection}:\n${dokumenttext}\n\n` : ""
+        }${labels.sources}:\n${grounding}`,
         // AUFTRAG-mega61 Block G: hier stand hart `false`, begründet mit „Ask-Antwortkontext ist
         // bereits Schicht-1-gefiltert". Das ist eine ANNAHME über einen entfernten Aufrufer, keine
         // Garantie im Code — und sie machte den Egress-Wächter am Chokepoint auf diesem Weg

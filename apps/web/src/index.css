@@ -139,17 +139,39 @@
 .prose-kw[contenteditable="true"] img {
   max-height: 320px;
 }
-.prose-kw img[data-kw-scale="25"] {
+/* R-0014 (freies Ziehen an Griffen): eine gezogene Breite steht als HTML-`width="NN.N%"` am Bild
+   und wirkt als Darstellungshinweis. Den überstimmt jede Autorenregel — die Stufen gelten deshalb
+   nur, solange KEINE gezogene Breite da ist (`:not([width])`). Der Editor führt ohnehin nur eine
+   der beiden Angaben; das hier entscheidet nur fremdes Markup mit beiden. */
+.prose-kw img[data-kw-scale="25"]:not([width]) {
   width: 25%;
 }
-.prose-kw img[data-kw-scale="50"] {
+.prose-kw img[data-kw-scale="50"]:not([width]) {
   width: 50%;
 }
-.prose-kw img[data-kw-scale="75"] {
+.prose-kw img[data-kw-scale="75"]:not([width]) {
   width: 75%;
 }
-.prose-kw img[data-kw-scale="100"] {
+.prose-kw img[data-kw-scale="100"]:not([width]) {
   width: 100%;
+}
+/* Die Griffe sind Oberfläche, kein Inhalt: sie liegen NEBEN dem contenteditable (nie darin) und
+   werden deshalb weder emittiert noch gespeichert. */
+.kw-bildgriff {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  margin: -6px 0 0 -6px;
+  border-radius: 2px;
+  touch-action: none;
+}
+.kw-bildgriff[data-kw-griff="nw"],
+.kw-bildgriff[data-kw-griff="se"] {
+  cursor: nwse-resize;
+}
+.kw-bildgriff[data-kw-griff="ne"],
+.kw-bildgriff[data-kw-griff="sw"] {
+  cursor: nesw-resize;
 }
 .prose-kw blockquote {
   @apply my-2 border-l-2 border-hairline pl-3 text-muted;

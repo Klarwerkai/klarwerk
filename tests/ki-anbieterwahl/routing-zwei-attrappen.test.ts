@@ -1060,6 +1060,13 @@ const FREIGABE_ERLAUBT: ReadonlyMap<string, string> = new Map([
       "keinen Anbieter.",
   ],
   [
+    "tests/klara-dokumenttext/riegel-haelt-den-dokumenttext.test.ts",
+    "R-0639: R4/R5/R7 messen am Modellclient, dass das Modell WIRKLICH gerufen wird und einzig der " +
+      "Dokumenttext-Riegel die Markierung zurückhält. Ohne Grundfreigabe liefe kein Modell, und " +
+      "„der Riegel hält“ wäre von „ohnehin kein Modell“ nicht zu unterscheiden. KEIN " +
+      "`vertraulicheInhalte`: Vertrauliches soll gerade draussen bleiben.",
+  ],
+  [
     "tests/klara-freigabe/v2-einwilligung-ende-zu-ende.test.ts",
     "V2-E1/E3 messen, ob die EINWILLIGUNG den Anbieterweg öffnet bzw. nach Ablauf wieder schließt. " +
       "Ohne Adminfreigabe wäre der Weg immer zu und beide prüften die falsche Sperre. Die Freigabe " +
@@ -2338,7 +2345,15 @@ const FALLAKTEN: Readonly<Record<string, Dateiakte>> = {
   "tests/ka4-freischaltung/ka4-einwilligung-wirkt.test.ts": {
     gesamtboden: 55,
     faelle: {
-      "#10": { boden: 5, freigaben: ["erteileKiFreigabe(reasoner)"] },
+      // R-0639 (01.10.2026): der neue Fall KA4-F7b steht davor — derselbe Fall heisst jetzt #11.
+      "#11": { boden: 5, freigaben: ["erteileKiFreigabe(reasoner)"] },
+    },
+  },
+  "tests/klara-dokumenttext/riegel-haelt-den-dokumenttext.test.ts": {
+    gesamtboden: 87,
+    faelle: {
+      // Der Aufbauhelfer mit der Grundfreigabe steht zwischen R2e und R3 — im Bereich von R2e.
+      R2e: { boden: 2, freigaben: ["erteileKiFreigabe(reasoner)"] },
     },
   },
   "tests/ki-lauf-modell/api-lauf-modell.test.ts": {

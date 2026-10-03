@@ -648,6 +648,12 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // gibt, sonst rendert die Oberfläche für sie tote Knöpfe).
   "GET /api/features": { protection: "auth" },
 
+  // --- Supportweg dieser Installation (support-routes.ts, R-1064) ---
+  // Rein lesend: der vom Betreiber festgelegte, serverseitig geprüfte Kontakt für die Hilfeseite.
+  // Angemeldete Nutzung genügt (requireUser) — dieselbe Tür wie /api/features; die Hilfe steht
+  // jeder Rolle offen, ein Adminrecht würde den Supportweg genau vor Betrachterinnen verstecken.
+  "GET /api/support": { protection: "auth" },
+
   // --- Erscheinungsbild der Instanz (branding-routes.ts, JOB 3510) ---
   // Die Markenwahl ist Darstellungslage, kein Bestand: ein Profilname, zwei Logofarben, ein
   // Logopfad und eine Änderungszahl. Sie ist BEWUSST weiter offen als `/api/features` darüber, und
