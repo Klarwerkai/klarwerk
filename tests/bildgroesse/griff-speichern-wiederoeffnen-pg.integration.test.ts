@@ -132,6 +132,7 @@ interface Dateiwahl {
   setFiles(datei: { name: string; mimeType: string; buffer: Buffer }): Promise<void>;
 }
 type Buehne = Seite & {
+  getByRole(role: "button", options: { name: string; exact: boolean }): { click(): Promise<void> };
   getByText(text: string, options: { exact: boolean }): { click(): Promise<void> };
   mouse: {
     move(x: number, y: number, o?: Record<string, unknown>): Promise<void>;
@@ -862,8 +863,9 @@ describe("Bildgröße an Griffen · K1–K4 · Chromium → Fastify → PostgreS
       await mitBefund("K3", async (s) => {
         await waehleBild(s, 1);
         for (const [label, anteil] of STUFEN) {
-          const k = await mitte(s, knopfMitText(LEISTE, label), false);
-          await s.mouse.click(k.x, k.y);
+          // Der Knopf kann nach der Bildauswahl oberhalb des Scrollausschnitts liegen.
+          // Ein regulärer Locator-Klick scrollt ihn sichtbar und prüft die echte Trefferfläche.
+          await s.getByRole("button", { name: label, exact: true }).click();
           await warteBis(
             s,
             `${BILD(1)}.getAttribute("data-kw-scale") === ${JSON.stringify(String(anteil * 100))}`,
