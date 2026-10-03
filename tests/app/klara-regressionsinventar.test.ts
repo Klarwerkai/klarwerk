@@ -415,6 +415,10 @@ const INVENTAR: readonly string[] = [
   // Aufgabenfenster und misst Pedis Auflage am VERHALTEN — Inhaltsachse `taskpane`, deshalb
   // verlangt K2 diesen Eintrag. Nachgefuehrt in JOB 1571 D9, nachdem K2 ihn gemeldet hat.
   "tests/app/ka3-fokusverhalten.test.tsx",
+  // Aufnahme 20260922 (gesamt-bestandsblick, Runde 2): der Wirkungsnachweis, dass der
+  // Bestandsblick mit dem Begriffsbild des AKTUELLEN Dokuments fragt (verzoegertes Lesen,
+  // geaenderter Text). Inhaltsachse `taskpane`; K2 hat ihn gemeldet.
+  "tests/app/ka3-bestandsblick-aktueller-stand.test.tsx",
   "tests/app/klara-ai-header.test.ts",
   "tests/app/klara-ai-session-consent.test.ts",
   "tests/app/klara-ai-status-contract.test.ts",

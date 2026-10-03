@@ -2605,6 +2605,14 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // geschätzt: dieser Fall meldete ihn am Kandidaten cddd2898 im Prüflauf (`Received:
     // "8627e4c0…2344d81"`, funktion-erhalten-jsdom). Die Datei ist seit diesem Lauf unverändert;
     // die Auslieferungsfolgen stehen im Absatz darüber.
+    // NACHARBEIT 2 (Bens Befund K3): die Bestandsblick-Lesekoordination aus 67d5e6fd ist wieder
+    // aufgenommen — `readWholeDocument(done, fehlschlag)`, `ka1Generation`/`ka1Stand`/`ka1Aktuell`
+    // und das Warten bzw. Neulesen vor dem Vertragsaufruf in `ka3Ausfuehren`. Auslieferungsfolgen:
+    // KEIN neues Abrufziel (gefragt wird weiter nur `/api/ask`), keine Nutzlastaenderung ausser den
+    // Begriffen des aktuellen Dokuments, ein zusaetzlicher LESENDER `Word.run` nach der
+    // Schreibruhe (kein Schreibweg, gemessen in w1 KA3), Manifest/CSP/Recht unveraendert, kein
+    // Sideload. OFFEN: der Pin ist NICHT nachgefuehrt — in dieser Sitzung war kein Hashwerkzeug
+    // freigegeben. Dieser Fall meldet den Ist-Wert im naechsten Lauf; erst dann darf er wandern.
     const PIN = "8627e4c01479cd3bdab3687557f8749a9ef9c800ed979149b73ba121d2344d81";
     const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
     expect(

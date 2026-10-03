@@ -6299,8 +6299,12 @@
 
     // Umfang "Ganzes Dokument": Word.run — body.text + body.getHtml() in EINEM context.sync-Batch,
     // also bereits EIN konsistenter Snapshot (WP-SHIP8-FINAL Bedingung 4: hier kein Umbau noetig).
-    function readWholeDocument(done) {
+    // Aufnahme 20260922 (gesamt-bestandsblick): `fehlschlag` ist optional. Wer ihn reicht, meldet
+    // einen Lesefehler selbst — ein Hintergrundvorgang (KA1-Begriffsbild) schreibt dann keine
+    // Sendemeldung in die Erfassen-Flaeche und erfaehrt trotzdem, dass nichts kam.
+    function readWholeDocument(done, fehlschlag) {
       if (!window.Word || typeof Word.run !== "function") {
+        if (typeof fehlschlag === "function") { fehlschlag(); return; }
         showSendStatus("warn", t("sendError", { detail: "Word-API" }), "retry");
         return;
       }
@@ -6312,6 +6316,7 @@
           done(String(body.text || ""), String(htmlResult.value || ""), "sendEmptyDoc");
         });
       }).catch(function () {
+        if (typeof fehlschlag === "function") { fehlschlag(); return; }
         showSendStatus("warn", t("sendError", { detail: "Word-API" }), "retry");
       });
     }
@@ -8480,18 +8485,52 @@
      * Sendefehler in die ERFASSEN-Flaeche schreiben — eine Meldung am falschen Ort fuer einen
      * Vorgang, den niemand ausgeloest hat.
      */
+    //
+    // Aufnahme 20260922 (gesamt-bestandsblick, Bens Befunde 1+2): der Lesevorgang liefert ein
+    // VERSPRECHEN, das erst aufloest, wenn das Begriffsbild zum gelesenen Stand gehoert — und NIE
+    // haengt (ein Lesefehler loest mit leerem Bild auf: kein Bestand aus altem Text). `ka1Stand`
+    // haelt den juengsten Lesevorgang, damit der Oeffnungsanlass von KA3 auf die Startlesung
+    // wartet statt ihr zuvorzukommen. Die Generation verwirft eine ueberholte, spaet eintreffende
+    // Lesung: es gilt immer die zuletzt begonnene.
+    var ka1Generation = 0;
+    var ka1Stand = Promise.resolve();
+
     function ka1Aktualisieren() {
+      ka1Generation += 1;
+      var generation = ka1Generation;
       if (!window.Word || typeof Word.run !== "function" ||
           typeof readWholeDocument !== "function") {
         ka1Terms = [];
         ka1Verfuegbar = false;
         ka1Neuzeichnen();
-        return;
+        ka1Stand = Promise.resolve();
+        return ka1Stand;
       }
-      readWholeDocument(function (text) {
-        ka1Terms = ka1TermsFromText(String(text || ""));
-        ka1Verfuegbar = true;
-        ka1Neuzeichnen();
+      ka1Stand = new Promise(function (fertig) {
+        readWholeDocument(function (text) {
+          if (generation === ka1Generation) {
+            ka1Terms = ka1TermsFromText(String(text || ""));
+            ka1Verfuegbar = true;
+            ka1Neuzeichnen();
+          }
+          fertig();
+        }, function () {
+          if (generation === ka1Generation) {
+            ka1Terms = [];
+            ka1Verfuegbar = false;
+            ka1Neuzeichnen();
+          }
+          fertig();
+        });
+      });
+      return ka1Stand;
+    }
+
+    /** Wartet, bis die JUENGSTE Lesung fertig ist — auch eine, die waehrend des Wartens begann. */
+    function ka1Aktuell() {
+      var stand = ka1Stand;
+      return stand.then(function () {
+        return stand === ka1Stand ? undefined : ka1Aktuell();
       });
     }
 
@@ -9127,8 +9166,21 @@
       if (!vertrag) { return; }
       ka3Laeuft = true;
       var generation = ka3Generation;
+      // Aufnahme 20260922 (Bens Befunde 1+2): der Bestandsblick fragt mit dem Begriffsbild des
+      // AKTUELLEN Dokuments. Beim Oeffnen wird auf die laufende Startlesung gewartet (sonst fragt
+      // KA2 mit leeren Begriffen und schweigt); nach der Schreibruhe liest KA1 das Dokument neu,
+      // bevor gefragt wird (sonst fragt KA2 mit den Begriffen von gestern). KA3 sucht und zerlegt
+      // weiterhin nichts selbst — es bittet KA1 um den Stand und KA2 um den Bestand.
       Promise.resolve()
-        .then(function () { return vertrag(grund); })
+        .then(function () {
+          if (typeof ka1Aktualisieren !== "function") { return undefined; }
+          if (grund !== "oeffnen") { ka1Aktualisieren(); }
+          return ka1Aktuell();
+        })
+        .then(function () {
+          if (ka3Beendet) { return { treffer: [] }; }
+          return vertrag(grund);
+        })
         .then(function (ergebnis) {
           if (ka3Beendet || generation !== ka3Generation) { return; }
           ka3Treffer = ka3Normalisieren(ergebnis);

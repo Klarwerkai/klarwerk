@@ -801,7 +801,8 @@ describe("WP-KLARA-2: Taskpane-Verdrahtung (Umfang, HTML, Deep-Link, ehrliche Gr
   it("Bedingung 4: Snapshot-Konsistenz — HTML zuerst, Klartext daraus abgeleitet, Text-Aufruf nur im Fallback", () => {
     const readSel = html.slice(
       html.indexOf("function readSelection(done)"),
-      html.indexOf("function readWholeDocument(done)"),
+      // Aufnahme 20260922: die Signatur traegt seit Runde 2 einen optionalen `fehlschlag`.
+      html.indexOf("function readWholeDocument("),
     );
     // HTML-Aufruf kommt VOR dem Text-Aufruf; der Erfolgszweig leitet den Klartext ab und returned.
     const htmlCall = readSel.indexOf("Office.CoercionType.Html");

@@ -151,6 +151,11 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   "tests/app/k1-word-addin-origin-panel.test.ts": "zusammengesetzt",
   "tests/app/ka2-vertrag-bestandsblick.test.ts": "pfad",
   "tests/app/ka3-fokusverhalten.test.tsx": "pfad,rueckweg,marken",
+  // AUFNAHME 20260922 · GESAMT-BESTANDSBLICK: der Wirkungsnachweis, dass der Bestandsblick mit dem
+  // aktuellen Dokument fragt. Er laedt das GANZE Fenster (rueckweg.js, Inline-Skript, marke.js)
+  // und nennt Taskpane und Rueckweg ueber ihr Pfadliteral — Griffe `pfad` und `rueckweg`, keine
+  // Marken, keine Fixture. A2b haelt diesen Eintrag ausdruecklich fest.
+  "tests/app/ka3-bestandsblick-aktueller-stand.test.tsx": "pfad,rueckweg",
   "tests/app/klara-ai-header.test.ts": "pfad,marken",
   "tests/app/klara-ai-session-consent.test.ts": "pfad,marken",
   // Der wichtigste Mitfahrer überhaupt: die Fixture selbst schneidet Rumpf und Skript aus der
@@ -591,6 +596,21 @@ describe("JOB 3014 · A — die Mitfahrer der Zerlegung, abgeleitet statt behaup
     expect(neu, "neu im Baum, aber nicht gepinnt — Verzeichnis nachfuehren").toEqual([]);
     expect(weg, "gepinnt, aber im Baum nicht mehr gefunden").toEqual([]);
     expect(anders, "der Griff hat sich geaendert — Verzeichnis nachfuehren").toEqual([]);
+  });
+
+  // AUFNAHME 20260922 · ZERLEGUNG-AUFRAEUMEN (Bens Befund K1, Nacharbeit 2): A2 allein bestaetigt
+  // nur den Bestand, den es vorfindet — fehlt der Bestandsblick-Mitfahrer im Baum UND im
+  // Verzeichnis, ist A2 trotzdem gruen. A2b verlangt ihn deshalb ausdruecklich: Datei im Baum,
+  // vom Sammler gefunden, gepinnt, und der gepinnte Griff ist der abgeleitete.
+  it("A2b · der Bestandsblick-Mitfahrer ist im Baum, gefunden und mit seinem Griff gepinnt", () => {
+    const datei = join("tests", "app", "ka3-bestandsblick-aktueller-stand.test.tsx");
+    const kurz = datei.split(sep).join("/");
+    expect(existsSync(join(REPO_WURZEL, datei)), `${kurz} fehlt im Baum`).toBe(true);
+    expect(ALLE, `${kurz} vom Sammler nicht erfasst`).toContain(datei);
+    const abgeleitet = GEFUNDEN.get(datei);
+    expect(abgeleitet, `${kurz} greift das Fenster nicht an`).toBeDefined();
+    expect(MITFAHRER[kurz], `${kurz} fehlt im gepinnten Verzeichnis`).toBeDefined();
+    expect(MITFAHRER[kurz]).toBe((abgeleitet ?? []).join(","));
   });
 
   it("A3 · jeder Griff ist kalibriert: Positivdatei greift, Gegenprobe greift NICHT", () => {
