@@ -1,0 +1,285 @@
+// ================================================================================================
+// R-0162 — ÄNDERT ODER LÖSCHT JEMAND EINE SEITE IN DER QUELLE, ZIEHT KLARA BEIM NÄCHSTEN ABGLEICH NACH
+// ================================================================================================
+//
+// Gemessen wird der ganze Produktweg innerhalb des Servers:
+//   echter Confluence-Adapter (fetch-Attrappe an der Netzgrenze) → runConfluenceImport →
+//   Review-Queue → Annehmen (acceptToKo) → echter KoService auf InMemoryKoRepo.
+//
+// ÄNDERUNG: höhere sourceVersion → neuer Kandidat → Annehmen revidiert DASSELBE Wissensobjekt.
+// LÖSCHUNG: fehlt eine Seite im VOLLSTÄNDIGEN Lauf und bestätigt die Quelle das je Id (404 oder
+// nicht mehr `current`), wandert das Wissensobjekt in den Papierkorb — wiederherstellbar.
+// Die Gegenfälle pinnen, dass „fehlt in der Liste" allein nie etwas löscht.
+import { describe, expect, it, vi } from "vitest";
+import { runConfluenceImport } from "../../services/app/src/confluence-import";
+import { adapterFromConfig } from "../../services/confluence/src/adapter";
+import type { ConfluencePage } from "../../services/confluence/src/rest-client";
+import { InMemoryKoRepo, KoService } from "../../services/knowledge-object";
+import { InMemoryCandidateRepo, LibraryService } from "../../services/library-analytics";
+
+function antwort(status: number, body: unknown): Response {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    json: async () => body,
+  } as unknown as Response;
+}
+
+function seite(id: string, title: string, version = 1, status?: string): ConfluencePage {
+  return {
+    id,
+    title,
+    ...(status ? { status } : {}),
+    body: { storage: { value: `<p>${title}</p>` } },
+    version: { number: version },
+  };
+}
+
+/**
+ * Die Quelle: `liste` ist, was das Space-Listing liefert; `jeId` beantwortet den Einzelabruf
+ * (Seite, 404 oder ein HTTP-Status als Fehler). Fehlt eine Id in `jeId`, gilt das Listing.
+ */
+interface Quelle {
+  liste: ConfluencePage[];
+  jeId?: Record<string, ConfluencePage | 404 | 500>;
+}
+
+function adapterFuer(quelle: Quelle, spaceKey = "K") {
+  const einzelabrufe: string[] = [];
+  const fetchFn = (async (url: string | URL | Request) => {
+    const u = new URL(String(url));
+    const treffer = /\/rest\/api\/content\/([^/]+)$/.exec(u.pathname);
+    if (!treffer) {
+      return antwort(200, { results: quelle.liste });
+    }
+    const id = decodeURIComponent(treffer[1] ?? "");
+    einzelabrufe.push(id);
+    const vorgabe = quelle.jeId?.[id];
+    if (vorgabe === 404) {
+      return antwort(404, { message: "not found" });
+    }
+    if (vorgabe === 500) {
+      return antwort(500, {});
+    }
+    const page = vorgabe ?? quelle.liste.find((p) => p.id === id);
+    return page ? antwort(200, page) : antwort(404, { message: "not found" });
+  }) as unknown as typeof fetch;
+  const adapter = adapterFromConfig({
+    baseUrl: "https://acme.atlassian.net/wiki",
+    email: "svc@acme.example",
+    apiToken: "read-only-tok",
+    spaceKey,
+    fetchFn,
+  });
+  return { adapter, einzelabrufe };
+}
+
+function dienst() {
+  const koService = new KoService({ repo: new InMemoryKoRepo() });
+  const library = new LibraryService({
+    koService,
+    candidates: new InMemoryCandidateRepo(),
+    externalUpsert: true,
+  });
+  return { koService, library };
+}
+
+type Dienst = ReturnType<typeof dienst>;
+
+async function abgleich(
+  d: Dienst,
+  adapter: ReturnType<typeof adapterFuer>["adapter"],
+  dryRun = false,
+) {
+  return runConfluenceImport({
+    adapter,
+    library: d.library,
+    koService: d.koService,
+    dryRun,
+    actor: "r0162@test",
+  });
+}
+
+/** Der Mensch nimmt alle offenen Kandidaten an — der reguläre Review-Weg. */
+async function nimmAlleAn(d: Dienst): Promise<void> {
+  for (const c of await d.library.listImportCandidates()) {
+    if (c.status === "neu") {
+      await d.library.reviewImportCandidate(c.id, "accept", "pedi");
+    }
+  }
+}
+
+async function traeger(d: Dienst, externalId: string) {
+  return (await d.koService.list()).filter((ko) =>
+    (ko.sources ?? []).some((s) => s.externalId === externalId),
+  );
+}
+
+/** Ausgangsbestand: p1 und p2 aus Space K sind importiert und angenommen. */
+async function bestand() {
+  const d = dienst();
+  const { adapter } = adapterFuer({ liste: [seite("p1", "Pumpe warten"), seite("p2", "Filter")] });
+  const erst = await abgleich(d, adapter);
+  expect(erst.imported).toBe(2);
+  await nimmAlleAn(d);
+  expect(await d.koService.list()).toHaveLength(2);
+  return d;
+}
+
+describe("R-0162 · Änderungen der Quelle werden beim nächsten Abgleich nachgezogen", () => {
+  it("A1: eine geänderte Seite (höhere Version) revidiert DASSELBE Wissensobjekt", async () => {
+    const d = await bestand();
+    const [vorher] = await traeger(d, "p1");
+    expect(vorher?.title).toBe("Pumpe warten");
+
+    const { adapter } = adapterFuer({
+      liste: [seite("p1", "Pumpe warten und prüfen", 2), seite("p2", "Filter")],
+    });
+    const lauf = await abgleich(d, adapter);
+    expect(lauf.imported).toBe(1);
+    expect(lauf.perPage.find((p) => p.ref === "p1")?.status).toBe("imported");
+    expect(lauf.perPage.find((p) => p.ref === "p2")?.status).toBe("skipped");
+    await nimmAlleAn(d);
+
+    const nachher = await traeger(d, "p1");
+    expect(nachher).toHaveLength(1);
+    expect(nachher[0]?.id).toBe(vorher?.id);
+    expect(nachher[0]?.title).toBe("Pumpe warten und prüfen");
+    expect(nachher[0]?.sources?.find((s) => s.externalId === "p1")?.sourceVersion).toBe(2);
+    expect(await d.koService.list()).toHaveLength(2);
+  });
+
+  it("A2: eine unveränderte Seite erzeugt keinen neuen Kandidaten (idempotent)", async () => {
+    const d = await bestand();
+    const { adapter } = adapterFuer({
+      liste: [seite("p1", "Pumpe warten"), seite("p2", "Filter")],
+    });
+    const lauf = await abgleich(d, adapter);
+    expect(lauf.imported).toBe(0);
+    expect(lauf.removed).toBe(0);
+    expect(lauf.removalChecked).toBe(true);
+  });
+});
+
+describe("R-0162 · Löschungen der Quelle werden beim nächsten Abgleich nachgezogen", () => {
+  it("L1: eine in der Quelle gelöschte Seite legt ihr Wissensobjekt in den Papierkorb", async () => {
+    const d = await bestand();
+    const [p2] = await traeger(d, "p2");
+    const { adapter, einzelabrufe } = adapterFuer({
+      liste: [seite("p1", "Pumpe warten")],
+      jeId: { p2: 404 },
+    });
+    const lauf = await abgleich(d, adapter);
+
+    expect(lauf.removalChecked).toBe(true);
+    expect(lauf.removed).toBe(1);
+    expect(lauf.removalOpen).toBe(0);
+    expect(lauf.perPage.find((p) => p.ref === "p2")?.status).toBe("removed");
+    // Gegenprobe genau für die fehlende Seite, nicht für die vorhandene.
+    expect(einzelabrufe).toEqual(["p2"]);
+    expect(await traeger(d, "p2")).toHaveLength(0);
+    expect(await traeger(d, "p1")).toHaveLength(1);
+    // Wiederherstellbar: Papierkorb, keine Endlöschung.
+    const papierkorb = await d.koService.trashed();
+    expect(papierkorb.map((t) => t.id)).toEqual([p2?.id]);
+    expect(papierkorb[0]?.deletedBy).toBe("r0162@test");
+  });
+
+  it("L2: eine archivierte/getrashte Seite (status ≠ current) gilt ebenfalls als gelöscht", async () => {
+    const d = await bestand();
+    const { adapter } = adapterFuer({
+      liste: [seite("p1", "Pumpe warten")],
+      jeId: { p2: seite("p2", "Filter", 1, "trashed") },
+    });
+    const lauf = await abgleich(d, adapter);
+    expect(lauf.removed).toBe(1);
+    expect(await traeger(d, "p2")).toHaveLength(0);
+  });
+
+  it("L3: der nächste Abgleich nach der Löschung ist ruhig (kein zweites Nachziehen)", async () => {
+    const d = await bestand();
+    const quelle = { liste: [seite("p1", "Pumpe warten")], jeId: { p2: 404 as const } };
+    await abgleich(d, adapterFuer(quelle).adapter);
+    const zweiter = await abgleich(d, adapterFuer(quelle).adapter);
+    expect(zweiter.removed).toBe(0);
+    expect(zweiter.removalOpen).toBe(0);
+    expect(await d.koService.trashed()).toHaveLength(1);
+  });
+
+  it("L4: der Probelauf meldet die Löschung, schreibt aber nichts", async () => {
+    const d = await bestand();
+    const { adapter } = adapterFuer({ liste: [seite("p1", "Pumpe warten")], jeId: { p2: 404 } });
+    const lauf = await abgleich(d, adapter, true);
+    expect(lauf.removed).toBe(1);
+    expect(lauf.perPage.find((p) => p.ref === "p2")?.status).toBe("removed");
+    expect(await traeger(d, "p2")).toHaveLength(1);
+    expect(await d.koService.trashed()).toHaveLength(0);
+  });
+});
+
+describe("R-0162 · Gegenfälle — „fehlt in der Liste“ allein löscht nie", () => {
+  it("G1: liefert die Quelle die Seite je Id noch (current), bleibt alles stehen", async () => {
+    const d = await bestand();
+    const { adapter } = adapterFuer({
+      liste: [seite("p1", "Pumpe warten")],
+      jeId: { p2: seite("p2", "Filter", 1, "current") },
+    });
+    const lauf = await abgleich(d, adapter);
+    expect(lauf.removed).toBe(0);
+    expect(lauf.removalOpen).toBe(0);
+    expect(await traeger(d, "p2")).toHaveLength(1);
+  });
+
+  it("G2: scheitert die Gegenprobe, wird nichts geändert und die Seite als offen gemeldet", async () => {
+    const d = await bestand();
+    const { adapter } = adapterFuer({ liste: [seite("p1", "Pumpe warten")], jeId: { p2: 500 } });
+    const lauf = await abgleich(d, adapter);
+    expect(lauf.removed).toBe(0);
+    expect(lauf.removalOpen).toBe(1);
+    const eintrag = lauf.perPage.find((p) => p.ref === "p2");
+    expect(eintrag?.status).toBe("failed");
+    expect(eintrag?.note).toContain("nichts geändert");
+    expect(await traeger(d, "p2")).toHaveLength(1);
+  });
+
+  it("G3: ein abgeschnittener Lauf (truncated) prüft keine Löschungen", async () => {
+    const d = await bestand();
+    const { adapter, einzelabrufe } = adapterFuer({ liste: [seite("p1", "Pumpe warten")] });
+    const echt = await adapter.collectAll();
+    vi.spyOn(adapter, "collectAll").mockResolvedValue({ ...echt, truncated: true });
+    const lauf = await abgleich(d, adapter);
+    expect(lauf.removalChecked).toBe(false);
+    expect(lauf.removed).toBe(0);
+    expect(einzelabrufe).toEqual([]);
+    expect(await traeger(d, "p2")).toHaveLength(1);
+  });
+
+  it("G4: Anker eines ANDEREN Space werden von diesem Lauf nicht beurteilt", async () => {
+    const d = dienst();
+    await abgleich(d, adapterFuer({ liste: [seite("x1", "Fremd")] }, "ANDERS").adapter);
+    await nimmAlleAn(d);
+    expect(await traeger(d, "x1")).toHaveLength(1);
+
+    const { adapter, einzelabrufe } = adapterFuer({ liste: [] }, "K");
+    const lauf = await abgleich(d, adapter);
+    expect(lauf.removed).toBe(0);
+    expect(einzelabrufe).toEqual([]);
+    expect(await traeger(d, "x1")).toHaveLength(1);
+  });
+
+  it("G5: trägt das Objekt weitere Quellen, bleibt es stehen und wird als behalten gemeldet", async () => {
+    const d = await bestand();
+    const [p2] = await traeger(d, "p2");
+    if (!p2) {
+      throw new Error("Vorbedingung verletzt: kein Träger für p2.");
+    }
+    await d.koService.addSource(p2.id, "pedi", { label: "Handbuch Kapitel 4" });
+    const { adapter } = adapterFuer({ liste: [seite("p1", "Pumpe warten")], jeId: { p2: 404 } });
+    const lauf = await abgleich(d, adapter);
+    expect(lauf.removed).toBe(0);
+    expect(lauf.removalKept).toBe(1);
+    expect(lauf.removalOpen).toBe(0);
+    expect(lauf.perPage.find((p) => p.ref === "p2")?.status).toBe("kept");
+    expect(await traeger(d, "p2")).toHaveLength(1);
+  });
+});

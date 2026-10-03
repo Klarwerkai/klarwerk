@@ -185,6 +185,26 @@ export class ConfluenceSourceAdapter implements SourceAdapter {
     const page = await this.client.getPageById(externalId);
     return page ? mapConfluencePageToImportItem(page, this.mapOpts) : undefined;
   }
+
+  /**
+   * R-0162 (Abgleich): der Quell-Container, den dieser Adapter liest — derselbe Wert, den der Mapper
+   * als `sourceScope` an jedes Item schreibt. Der Abgleich zieht Löschungen nur für Anker DIESES
+   * Containers nach; ein Anker aus einem anderen Space ist mit diesem Lauf nicht beurteilbar.
+   */
+  get sourceScope(): string {
+    return this.mapOpts.spaceKey;
+  }
+
+  /**
+   * R-0162 (Abgleich): die GEGENPROBE vor jedem Nachziehen einer Löschung. Dass eine Seite in der
+   * Liste fehlt, reicht nicht — erst wenn die Quelle sie auch je Id nicht mehr liefert (404) oder
+   * sie nicht mehr `current` ist (Papierkorb/Archiv), gilt sie als gelöscht. Netz- und Serverfehler
+   * werfen weiter; der Aufrufer verbucht sie als „nicht prüfbar" und ändert nichts.
+   */
+  async isGoneAtSource(externalId: string): Promise<boolean> {
+    const page = await this.client.getPageById(externalId);
+    return !page || (page.status !== undefined && page.status !== "current");
+  }
 }
 
 function isConfluenceImportEnabled(env: Record<string, string | undefined>): boolean {

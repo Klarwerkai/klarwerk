@@ -2,7 +2,7 @@
 // der Lease) und auch nicht hier nachgebaut — er wird aus dem bereits oeffentlichen `CollectResult`
 // abgeleitet. Eine Wahrheit, kein zweiter Typ, keine Scopeerweiterung.
 import type { CollectResult, ConfluenceSourceAdapter } from "../../confluence";
-import type { KoService } from "../../knowledge-object";
+import type { KnowledgeObject, KoService, KoSource } from "../../knowledge-object";
 import {
   type ImportItem,
   type LibraryService,
@@ -15,7 +15,10 @@ import {
 // KEINE stillen Auto-KOs, alles landet ausschließlich als Kandidat. Never block: eine fehlerhafte Seite
 // wird als `failed` verbucht, der Lauf läuft weiter. Ehrliche Zusammenfassung je Seite.
 
-export type ImportPageStatus = "imported" | "skipped" | "failed";
+// R-0162: "removed" = die Seite ist in der Quelle gelöscht und das Wissensobjekt wurde in den
+// Papierkorb gelegt (bzw. würde es im Probelauf); "kept" = in der Quelle gelöscht, das Objekt
+// bleibt aber, weil es weitere Quellen trägt oder zwischenzeitlich überarbeitet wurde.
+export type ImportPageStatus = "imported" | "skipped" | "failed" | "removed" | "kept";
 
 export interface ImportRunSummary {
   dryRun: boolean;
@@ -36,6 +39,18 @@ export interface ImportRunSummary {
   // die Station, die ein Mensch nach einem Importlauf liest — der Urteilspunkt „SERVERINTERN,
   // Verluststelle gefunden, Zielwirkung offen" schliesst sich erst hier.
   hierarchie?: NonNullable<CollectResult["hierarchie"]>;
+  // R-0162 (Abgleich): in der Quelle gelöschte Seiten, deren Wissensobjekt in den Papierkorb
+  // gelegt wurde (bei dryRun: gelegt WÜRDE). Wiederherstellbar über den Papierkorb.
+  removed: number;
+  // R-0162: in der Quelle gelöscht, Objekt bleibt BEWUSST — es trägt weitere Quellen.
+  removalKept: number;
+  // R-0162: Löschungen, die NICHT nachgezogen werden konnten — Gegenprobe gescheitert oder das
+  // Objekt wurde zwischenzeitlich überarbeitet (STALE_WRITE). Je Seite in perPage; der Lauf ist
+  // dann nicht vollständig (PARTIAL).
+  removalOpen: number;
+  // R-0162: false, wenn der Löschabgleich gar nicht lief — bei einem abgeschnittenen Lauf
+  // (truncated) ist „fehlt in der Liste" kein Beleg für eine Löschung.
+  removalChecked: boolean;
   perPage: { ref: string; status: ImportPageStatus; note?: string }[];
 }
 
@@ -265,6 +280,14 @@ export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<I
     }
   }
 
+  // R-0162: Änderungen laufen oben über die höhere sourceVersion (neuer Kandidat → Re-Sync beim
+  // Annehmen). Löschungen zieht der folgende Abgleich nach — nur bei VOLLSTÄNDIG gelesenem Space
+  // und nur mit bekanntem Space: ohne ihn wäre jeder fremde oder scopelose Anker ein „Fehlender".
+  const removal =
+    truncated || !deps.adapter.sourceScope
+      ? { removed: 0, removalKept: 0, removalOpen: 0, removalChecked: false }
+      : await reconcileRemovals(deps, items, collectFailed, perPage);
+
   return {
     dryRun: deps.dryRun,
     found: items.length,
@@ -275,8 +298,141 @@ export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<I
     truncated,
     // JOB 1042 D3: unveraendert durchgereicht — nur gesetzt, wenn der Adapter ihn geliefert hat.
     ...(hierarchie ? { hierarchie } : {}),
+    ...removal,
     perPage,
   };
+}
+
+// ---- R-0162: LÖSCHUNGEN DER QUELLE BEIM NÄCHSTEN ABGLEICH NACHZIEHEN ----
+//
+// KANDIDAT: ein lebender KO-Herkunftsanker dieses Providers UND dieses Space, dessen externalId der
+// vollständige Lauf nicht mehr gesehen hat (weder als Item noch als fehlgeschlagene Seite).
+// GEGENPROBE: die Quelle wird je Id gefragt (adapter.isGoneAtSource) — fehlt die Seite nur in der
+// Liste, liefert sie aber je Id noch, bleibt alles, wie es ist. Scheitert die Gegenprobe, wird
+// nichts geändert und die Seite als offen gemeldet.
+// WIRKUNG: das Wissensobjekt wandert in den PAPIERKORB (forceTrash, nie Endlöschung, mit
+// expectedVersion) — wiederherstellbar, auditiert über ko.deleted. Trägt das Objekt weitere
+// Quellen, bleibt es stehen ("kept"): es hat dann noch eine Grundlage außerhalb dieser Seite.
+// dryRun schreibt nichts und meldet nur, was nachgezogen würde.
+async function reconcileRemovals(
+  deps: ConfluenceImportDeps,
+  items: readonly ImportItem[],
+  collectFailed: CollectResult["failed"],
+  perPage: ImportRunSummary["perPage"],
+): Promise<{ removed: number; removalKept: number; removalOpen: number; removalChecked: true }> {
+  const provider = deps.adapter.source;
+  const scope = deps.adapter.sourceScope;
+  // Der Schlüssel eines Ankers, der zu DIESEM Lauf gehört (Provider + Space), sonst null.
+  const ownKey = (s: KoSource): string | null => {
+    if (!s.externalId || s.spaceKey !== scope) {
+      return null;
+    }
+    const key = importSourceKey(s.provider, s.externalId);
+    return key === importSourceKey(provider, s.externalId) ? key : null;
+  };
+  const seenKeys = new Set<string>();
+  for (const item of items) {
+    if (item.externalId) {
+      seenKeys.add(importSourceKey(item.provider ?? provider, item.externalId));
+    }
+  }
+  for (const f of collectFailed) {
+    seenKeys.add(importSourceKey(provider, f.ref));
+  }
+
+  // Je fehlender Seite die betroffenen Objekte (ein Anker kann — etwa nach einer Zusammenführung —
+  // an mehr als einem Objekt hängen).
+  const missing = new Map<string, { externalId: string; kos: KnowledgeObject[] }>();
+  for (const ko of await deps.koService.list()) {
+    for (const s of ko.sources ?? []) {
+      const key = ownKey(s);
+      if (!key || !s.externalId || seenKeys.has(key)) {
+        continue;
+      }
+      const entry = missing.get(key) ?? { externalId: s.externalId, kos: [] };
+      if (!entry.kos.includes(ko)) {
+        entry.kos.push(ko);
+      }
+      missing.set(key, entry);
+    }
+  }
+
+  let removed = 0;
+  let removalKept = 0;
+  let removalOpen = 0;
+  const goneKeys = new Set<string>();
+  const checks: { externalId: string; kos: KnowledgeObject[] }[] = [];
+  for (const [key, entry] of missing) {
+    let gone: boolean;
+    try {
+      gone = await deps.adapter.isGoneAtSource(entry.externalId);
+    } catch (err) {
+      removalOpen += 1;
+      perPage.push({
+        ref: entry.externalId,
+        status: "failed",
+        note: `Löschprüfung nicht möglich (${err instanceof Error ? err.name : "unknown"}) — nichts geändert`,
+      });
+      continue;
+    }
+    if (gone) {
+      goneKeys.add(key);
+      checks.push(entry);
+    }
+  }
+
+  // Ein Objekt mit mehreren gelöschten Ankern wird genau einmal behandelt.
+  const handled = new Set<string>();
+  for (const { externalId, kos } of checks) {
+    for (const ko of kos) {
+      if (handled.has(ko.id)) {
+        continue;
+      }
+      handled.add(ko.id);
+      const weitereQuellen = (ko.sources ?? []).some((s) => {
+        const key = ownKey(s);
+        return !key || !goneKeys.has(key);
+      });
+      if (weitereQuellen) {
+        removalKept += 1;
+        perPage.push({
+          ref: externalId,
+          status: "kept",
+          note: "in der Quelle gelöscht — Wissensobjekt trägt weitere Quellen und bleibt",
+        });
+        continue;
+      }
+      if (deps.dryRun) {
+        removed += 1;
+        perPage.push({
+          ref: externalId,
+          status: "removed",
+          note: "in der Quelle gelöscht — würde in den Papierkorb gelegt",
+        });
+        continue;
+      }
+      try {
+        await deps.koService.delete(ko.id, deps.actor, {
+          forceTrash: true,
+          expectedVersion: ko.version,
+        });
+        removed += 1;
+        perPage.push({
+          ref: externalId,
+          status: "removed",
+          note: "in der Quelle gelöscht — Wissensobjekt in den Papierkorb gelegt",
+        });
+      } catch (err) {
+        removalOpen += 1;
+        perPage.push({
+          ref: externalId,
+          status: "kept",
+          note: `in der Quelle gelöscht — nicht nachgezogen (${err instanceof Error ? err.name : "unknown"})`,
+        });
+      }
+    }
+  }
+  return { removed, removalKept, removalOpen, removalChecked: true };
 }
 
 // Der Dedup-/Vergleichsschlüssel eines Items: provider@externalId@version (Anker, bens F3) bzw.
