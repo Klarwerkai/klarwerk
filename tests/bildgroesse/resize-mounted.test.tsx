@@ -267,16 +267,30 @@ describe("R-0014 · Griffe am ausgewählten Bild (gemountet)", () => {
     zeiger(se, "pointerdown", 500);
     zeiger(se, "pointermove", 640);
     expect(bild("a1").getAttribute("width")).toBe("67.5%");
+    // Die ganze Escape-Geste, wie der Browser sie liefert: keydown UND keyup am fokussierten
+    // Schreibfeld. Das keyup darf die Bildauswahl nicht über den Cursorweg löschen (Cloudbefund
+    // root-nacharbeit-01: danach fehlten die Griffe).
     act(() => {
-      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      editor().dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }),
+      );
+    });
+    act(() => {
+      editor().dispatchEvent(new KeyboardEvent("keyup", { key: "Escape", bubbles: true }));
     });
     expect(bild("a1").hasAttribute("width"), "Escape stellt den Stand vor dem Zug her").toBe(false);
     expect(gedrueckt()).toEqual(["Volle Breite"]);
-    // Weitere Bewegung nach dem Abbruch zieht nicht mehr, Loslassen meldet nichts.
+    expect(griff("se"), "nach dem Abbruch bleibt das Bild ausgewählt").toBe(se);
+    // Weitere Bewegung nach dem Abbruch zieht nicht mehr; das Loslassen über dem Text meldet
+    // nichts und wählt das Bild nicht ab.
     zeiger(se, "pointermove", 700);
     zeiger(se, "pointerup", 700);
+    act(() => {
+      editor().dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    });
     expect(bild("a1").hasAttribute("width")).toBe(false);
     expect(meldungen).toEqual([]);
+    expect(griff("se"), "nach dem Loslassen bleibt das Bild ausgewählt").toBe(se);
 
     // Ein zweiter, regulärer Zug funktioniert danach — kein hängender Zustand.
     zeiger(se, "pointerdown", 500);

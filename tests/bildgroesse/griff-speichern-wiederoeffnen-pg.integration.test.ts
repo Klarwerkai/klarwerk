@@ -423,22 +423,21 @@ async function schliesseGrossansicht(s: Buehne): Promise<void> {
   await warteBis(s, `!document.querySelector("dialog[open]")`, "die Großansicht ist geschlossen");
 }
 
+// Der Griffrahmen liegt deckungsgleich auf Bild i.
+const griffeUmfassen = (i: number): string => `(() => { try {
+  const g = ${GRIFFE}; const img = ${BILD(i)};
+  if (!g || !img) { return false; }
+  const a = g.getBoundingClientRect(); const b = img.getBoundingClientRect();
+  return Math.abs(a.left - b.left) < 1.5 && Math.abs(a.top - b.top) < 1.5 &&
+    Math.abs(a.width - b.width) < 1.5 && Math.abs(a.height - b.height) < 1.5;
+} catch { return false; } })()`;
+
 // Bild i mit der echten Maus auswählen; danach umfassen die Griffe genau dieses Bild.
 async function waehleBild(s: Buehne, i: number): Promise<void> {
   const p = await mitte(s, BILD(i));
   await s.mouse.click(p.x, p.y);
   await schliesseGrossansicht(s);
-  await warteBis(
-    s,
-    `(() => { try {
-      const g = ${GRIFFE}; const img = ${BILD(i)};
-      if (!g || !img) { return false; }
-      const a = g.getBoundingClientRect(); const b = img.getBoundingClientRect();
-      return Math.abs(a.left - b.left) < 1.5 && Math.abs(a.top - b.top) < 1.5 &&
-        Math.abs(a.width - b.width) < 1.5 && Math.abs(a.height - b.height) < 1.5;
-    } catch { return false; } })()`,
-    `die Griffe umfassen Bild ${i + 1}`,
-  );
+  await warteBis(s, griffeUmfassen(i), `die Griffe umfassen Bild ${i + 1}`);
 }
 
 // Griff `ecke` greifen und um `dx` waagerecht bewegen — echte Maus, in Schritten. Losgelassen wird
@@ -817,6 +816,9 @@ describe("Bildgröße an Griffen · K1–K4 · Chromium → Fastify → PostgreS
           await seiteAusfuehren<boolean>(s, `!!document.querySelector("dialog[open]")`),
           "Escape während des Zugs hat einen Dialog berührt",
         ).toBe(false);
+        // Abbruch (Escape drücken UND loslassen, Maus über dem Text loslassen) lässt die Auswahl
+        // stehen — bewusst OHNE erneuten Klick auf das Bild (Cloudbefund root-nacharbeit-01).
+        await warteBis(s, griffeUmfassen(0), "nach dem Abbruch umfassen die Griffe weiter Bild 1");
 
         // 3. Zug am linken oberen Griff: 20 % der Spalte nach rechts → schmaler. Kein Hängen.
         await greifeUndBewege(s, "nw", 0.2 * start.spaltePx);

@@ -530,6 +530,8 @@ export function RichTextEditor({
     start: ResizeStart;
     vorherBreite: string | null;
   } | null>(null);
+  // Nach einem Escape-Abbruch noch ausstehende Freigaben (Taste/Maus) derselben Geste.
+  const griffAbbruchRef = useRef({ taste: false, zeiger: false });
   // WP-BILD-1f (bens P1): Bindung Request↔Fußnote. Die Generation zählte bei jedem Wechsel der
   // AKTUELLEN Fußnote hoch; ein laufender Request merkt sich (Generation + data-image-id + Element)
   // seiner Ausgangs-Fußnote und wendet seine Antwort NUR an, wenn all das noch aktuell ist.
@@ -1863,6 +1865,8 @@ export function RichTextEditor({
     }
     e.preventDefault();
     e.stopPropagation();
+    // Ein neuer Zug beginnt frisch — eine ausgebliebene Freigabe des letzten Abbruchs zählt nicht.
+    griffAbbruchRef.current = { taste: false, zeiger: false };
     try {
       e.currentTarget.setPointerCapture(e.pointerId);
     } catch {
@@ -1898,6 +1902,12 @@ export function RichTextEditor({
   };
 
   // Escape bricht einen laufenden Zug ab — der Zeiger darf dabei noch gedrückt sein.
+  //
+  // DIE FREIGABE GEHÖRT ZUM ABBRUCH (Cloudbefund root-nacharbeit-01): Abgefangen war nur `keydown`.
+  // Das folgende `keyup` erreichte das Schreibfeld (`onKeyUp` → `updateImageSelectionFromCursor`),
+  // und dessen Cursor zeigt nie in ein Bild (`contenteditable="false"`) — die gültige Auswahl fiel,
+  // die Griffe verschwanden. Dasselbe gälte für das Loslassen der noch gedrückten Maustaste über dem
+  // Text. Beides ist Teil derselben Abbruchgeste und wird deshalb hier verschluckt, genau einmal.
   // biome-ignore lint/correctness/useExhaustiveDependencies: liest den Zug über den Ref, nicht über Zustand.
   useEffect(() => {
     if (!selectedImage) {
@@ -1908,11 +1918,30 @@ export function RichTextEditor({
         // Während eines Zugs gehört Escape dem Zug — kein Dialog/Formular schließt mit.
         e.preventDefault();
         e.stopPropagation();
+        griffAbbruchRef.current = { taste: true, zeiger: true };
         beendeGriffZug(false);
       }
     };
+    const tasteLos = (e: KeyboardEvent): void => {
+      if (e.key === "Escape" && griffAbbruchRef.current.taste) {
+        griffAbbruchRef.current.taste = false;
+        e.stopPropagation();
+      }
+    };
+    const zeigerLos = (e: Event): void => {
+      if (griffAbbruchRef.current.zeiger) {
+        griffAbbruchRef.current.zeiger = false;
+        e.stopPropagation();
+      }
+    };
     window.addEventListener("keydown", taste, true);
-    return () => window.removeEventListener("keydown", taste, true);
+    window.addEventListener("keyup", tasteLos, true);
+    window.addEventListener("mouseup", zeigerLos, true);
+    return () => {
+      window.removeEventListener("keydown", taste, true);
+      window.removeEventListener("keyup", tasteLos, true);
+      window.removeEventListener("mouseup", zeigerLos, true);
+    };
   }, [selectedImage]);
 
   const exec = (command: string, arg?: string): void => {
