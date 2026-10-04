@@ -10,6 +10,9 @@
 //              eine falsche Client-Behauptung „intern" darf den Egress-Riegel nicht öffnen.
 //              → U1 (Standard bis zum Objekt), E1 (Egress mit dem Anker des Objekts),
 //                G1/G2 (Gegenfälle: gespeichert vertraulich/streng + Behauptung „intern" → 409).
+//              Nacharbeit 11: derselbe Nachweis für die Word-MARKIERUNG (`POST /api/drafts`,
+//              origin word_addin) — MU1, MG; MK als Kontrollfall: ein manueller Entwurf ohne Stufe
+//              bleibt unklassifiziert, das Promote scheitert, der KI-Aufruf bleibt gesperrt.
 //
 //   K2 / R-0632 · „Einen Word-Entwurf mit vertraulich speichern, regulär promoten und anschließend
 //              als Administrator beziehungsweise Controller über die KO-Route intern setzen.
@@ -115,6 +118,27 @@ async function wordUebernahme(a: Aufbau, stufe?: Stufe): Promise<string> {
   return (res.json() as { id: string }).id;
 }
 
+/**
+ * Nacharbeit 11: der Markierungsweg — `POST /api/drafts` in der Form, die der Sendeknopf des Panels
+ * schickt (Titel, Aussage, Word-HTML, `origin: "word_addin"`; die Stufe nur bei Panelwahl).
+ */
+async function markierungUebernahme(a: Aufbau, stufe?: Stufe): Promise<string> {
+  const res = await a.app.inject({
+    method: "POST",
+    url: "/api/drafts",
+    headers: a.admin,
+    payload: {
+      title: "Pumpe entlüften",
+      statement: AUSSAGE,
+      bodyHtml: `<p>${AUSSAGE}</p>`,
+      origin: "word_addin",
+      ...(stufe !== undefined ? { confidentiality: stufe } : {}),
+    },
+  });
+  expect(res.statusCode, res.body).toBe(201);
+  return (res.json() as { id: string }).id;
+}
+
 async function entwurf(a: Aufbau, id: string): Promise<Record<string, unknown>> {
   const res = await a.app.inject({ method: "GET", url: `/api/drafts/${id}`, headers: a.admin });
   expect(res.statusCode, res.body).toBe(200);
@@ -205,6 +229,75 @@ describe("N11 · Word-Übernahme ohne Panelwahl: „intern“ bis zum Wissensobj
       expect(a.gesehen).toEqual([]);
     });
   }
+});
+
+describe("N11 · Word-MARKIERUNG ohne Panelwahl: „intern“ bis zum Wissensobjekt und zum KI-Egress", () => {
+  it("MU1 — ohne Wahl: Entwurf intern → Promote → Wissensobjekt intern → Anker öffnet den Transport", async () => {
+    const a = await aufbauen();
+    const draftId = await markierungUebernahme(a);
+    const gespeichert = await entwurf(a, draftId);
+    expect(gespeichert.confidentiality).toBe("intern");
+    expect(gespeichert.origin).toBe("word_addin");
+    const koId = await promote(a, draftId);
+    expect(await koStufe(a, koId)).toBe("intern");
+    a.gesehen.length = 0;
+    const res = await reasoner(a, koId);
+    expect(res.statusCode, res.body).toBe(200);
+    expect((res.json() as { demo: boolean }).demo).toBe(false);
+    expect(a.gesehen.join("\n")).toContain(AUSSAGE);
+  });
+
+  for (const stufe of ["vertraulich", "streng_vertraulich"] as const) {
+    it(`MG — GEGENFALL ${stufe}: die Wahl bleibt am Objekt, Behauptung „intern“ → 409 backstop`, async () => {
+      const a = await aufbauen();
+      const draftId = await markierungUebernahme(a, stufe);
+      expect((await entwurf(a, draftId)).confidentiality).toBe(stufe);
+      const koId = await promote(a, draftId);
+      expect(await koStufe(a, koId)).toBe(stufe);
+      a.gesehen.length = 0;
+      const res = await reasoner(a, koId);
+      expect(res.statusCode, res.body).toBe(409);
+      expect((res.json() as { code?: unknown }).code).toBe(CONFIDENTIAL_CLOUD_BLOCKED);
+      expect((res.json() as { reason?: unknown }).reason).toBe("backstop");
+      expect(res.body).not.toContain(AUSSAGE);
+      expect(a.gesehen).toEqual([]);
+    });
+  }
+
+  it("MK — KONTROLLFALL: ein manueller Entwurf ohne Stufe bleibt unklassifiziert und gesperrt", async () => {
+    const a = await aufbauen();
+    const angelegt = await a.app.inject({
+      method: "POST",
+      url: "/api/drafts",
+      headers: a.admin,
+      payload: { title: "Pumpe entlüften", statement: AUSSAGE },
+    });
+    expect(angelegt.statusCode, angelegt.body).toBe(201);
+    const draftId = (angelegt.json() as { id: string }).id;
+    // Keine Vorbelegung: der manuelle Weg behält die Pflicht zur ausdrücklichen Wahl (Q3).
+    expect(Object.hasOwn(await entwurf(a, draftId), "confidentiality")).toBe(false);
+
+    const eingereicht = await a.app.inject({
+      method: "POST",
+      url: `/api/drafts/${draftId}/promote`,
+      headers: a.admin,
+      payload: { draftPayload: { type: "best_practice", category: "Wartung" } },
+    });
+    expect(eingereicht.statusCode, eingereicht.body).toBe(400);
+    expect((eingereicht.json() as { error?: unknown }).error).toBe("MISSING_CONFIDENTIALITY");
+
+    // Der KI-Aufruf mit dem tatsächlichen Stand dieses Entwurfs (nicht eingestuft, Entwurfsanker).
+    a.gesehen.length = 0;
+    const res = await a.app.inject({
+      method: "POST",
+      url: "/api/reasoner",
+      headers: { ...a.admin, "content-type": "application/json" },
+      payload: { task: "assist", text: AUSSAGE, ...draftProvenance(undefined, undefined, draftId) },
+    });
+    expect(res.statusCode, res.body).toBe(409);
+    expect((res.json() as { code?: unknown }).code).toBe(CONFIDENTIAL_CLOUD_BLOCKED);
+    expect(a.gesehen).toEqual([]);
+  });
 });
 
 describe("R-0632 · die Herabstufungssperre eines Word-Entwurfs gilt auch am Wissensobjekt", () => {

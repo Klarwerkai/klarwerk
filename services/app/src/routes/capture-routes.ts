@@ -247,7 +247,9 @@ function docxDraftTooLargeErrorHandler(
 /**
  * N11 (Pedi, Entscheidung 23 vom 05.09.2026): der Übernahme-Standard einer Word-Dokumentübernahme
  * ohne ausdrückliche Einstufung — derselbe Wert wie im Import-Kern (`UEBERNAHME_STANDARD`,
- * services/library-analytics). Gilt NUR für `POST /api/drafts/from-docx`.
+ * services/library-analytics). Gilt für beide Word-Übernahmewege beim Neuanlegen: das ganze
+ * Dokument (`POST /api/drafts/from-docx`) und die Markierung (`POST /api/drafts` mit
+ * `origin: "word_addin"`, Nacharbeit 11). Manuelle Entwürfe und Altentwürfe bleiben unberührt.
  */
 const WORD_UEBERNAHME_STANDARD = "intern" as const;
 
@@ -1098,6 +1100,14 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
           sendeUnbekannteDokumentkennung(reply);
           return;
         }
+        // N11 (BEN, Nacharbeit 11): auch die Übernahme einer Word-MARKIERUNG ist eine Übernahme aus
+        // Word — ohne ausdrückliche Panelwahl gilt derselbe Übernahme-Standard wie an `/from-docx`.
+        // Nur beim NEU Anlegen: manuelle Entwürfe (ohne Word-Herkunft) und bereits gespeicherte,
+        // unklassifizierte Altentwürfe bleiben ohne Vorbelegung (Q3, N-0017/UX-05).
+        const neuerEntwurf: DraftPayload =
+          ausWord && gestalt.payload.confidentiality === undefined
+            ? { ...gestalt.payload, confidentiality: WORD_UEBERNAHME_STANDARD }
+            : gestalt.payload;
         try {
           // JOB 2697: DIE ROUTE ÜBERSETZT NUR. Sie trifft keine eigene Entscheidung über
           // Wiederholung oder Konflikt und führt kein eigenes Register — der Dienst hat
@@ -1108,7 +1118,7 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
           // Bestandspfad antwortet unverändert mit 201.
           const { draft, angelegt } = await capture.createDraftVorgang(
             // JOB 2703 D2: die Aussage geht kanonisch gekuerzt in die Ablage — eine Regel, ein Ort.
-            mitKanonischerAussage(gestalt.payload),
+            mitKanonischerAussage(neuerEntwurf),
             user.id,
             vorgangsId,
           );

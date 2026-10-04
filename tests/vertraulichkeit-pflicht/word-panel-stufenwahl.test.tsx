@@ -16,6 +16,8 @@
 //     exakt die gewählte Stufe und `origin: "word_addin"`.
 //   · P0: ohne Klick sendet das Panel KEINE Stufe; gespeichert wird der Übernahme-Standard
 //     „intern" (N11, BEN Nacharbeit 10).
+//   · M0/M: derselbe Nachweis für den Markierungsweg (Sendeknopf → `POST /api/drafts`,
+//     BEN Nacharbeit 11): ohne Klick gespeichert „intern", mit Klick genau die gewählte Stufe.
 //   · H1/H2: eine gespeicherte Stufe eines Word-Entwurfs wird nur angehoben, nie gesenkt
 //     (`continueDraft`); H3 grenzt ab: ein Entwurf des Blatts ist davon nicht betroffen.
 //
@@ -46,6 +48,11 @@ interface DocxAufruf {
   antwort: Record<string, unknown>;
 }
 let docxAufrufe: DocxAufruf[];
+/** Nacharbeit 11: dasselbe für den Markierungsweg (`POST /api/drafts`). */
+let markierungsAufrufe: DocxAufruf[];
+/** Was Word als Markierung meldet — leer heißt: nichts markiert (Ausgangslage aller P-Fälle). */
+let markierung = "";
+const MARKIERUNG = "Nach dem Anfahren zehn Sekunden warten, dann die Pumpe entlüften.";
 
 const zuhoerer: Array<{ ziel: EventTarget; typ: string; fn: EventListenerOrEventListenerObject }> =
   [];
@@ -97,6 +104,13 @@ function bruecke(): void {
         antwort: res.body ? (JSON.parse(res.body) as Record<string, unknown>) : {},
       });
     }
+    if (url === "/api/drafts" && methode === "POST") {
+      markierungsAufrufe.push({
+        body: JSON.parse(String(init?.body)) as Record<string, unknown>,
+        status: res.statusCode,
+        antwort: res.body ? (JSON.parse(res.body) as Record<string, unknown>) : {},
+      });
+    }
     return antwortAus(res.statusCode, res.body, res.headers as Record<string, unknown>);
   });
 }
@@ -109,8 +123,10 @@ function officeAttrappe(): void {
       document: {
         url: "",
         addHandlerAsync() {},
-        getSelectedDataAsync(_t: string, fn: (r: { status: string; value: string }) => void) {
-          fn({ status: ok, value: "" });
+        getSelectedDataAsync(t: string, fn: (r: { status: string; value: string }) => void) {
+          // Nacharbeit 11: mit Markierung liefert Word sie als Text bzw. als HTML-Absatz.
+          const wert = markierung === "" ? "" : t === "html" ? `<p>${markierung}</p>` : markierung;
+          fn({ status: ok, value: wert });
         },
         getFileAsync(
           _typ: string,
@@ -188,6 +204,18 @@ async function dokumentEinreichen(): Promise<DocxAufruf> {
   return aufruf as DocxAufruf;
 }
 
+/** Der Markierungsweg: der Sendeknopf („Übernehmen") → `POST /api/drafts`, origin word_addin. */
+async function markierungEinreichen(): Promise<DocxAufruf> {
+  const knopf = el("send-btn") as HTMLButtonElement;
+  await warteBis(() => !knopf.disabled);
+  const vorher = markierungsAufrufe.length;
+  knopf.click();
+  await warteBis(() => markierungsAufrufe.length > vorher);
+  const aufruf = markierungsAufrufe[markierungsAufrufe.length - 1];
+  expect(aufruf?.status, JSON.stringify(aufruf?.antwort)).toBe(201);
+  return aufruf as DocxAufruf;
+}
+
 async function gespeicherterEntwurf(id: string): Promise<Record<string, unknown>> {
   const res = await app.inject({ method: "GET", url: `/api/drafts/${id}`, headers: kopf });
   expect(res.statusCode, res.body).toBe(200);
@@ -197,6 +225,8 @@ async function gespeicherterEntwurf(id: string): Promise<Record<string, unknown>
 beforeEach(async () => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   docxAufrufe = [];
+  markierungsAufrufe = [];
+  markierung = "";
   app = buildApp(buildServices());
   await app.inject({
     method: "POST",
@@ -270,6 +300,32 @@ describe("R-0632 · die drei Stufen im Panel, je ein Klick, bis zum gespeicherte
     const aufruf = await dokumentEinreichen();
     expect(aufruf.body.confidentiality).toBe("vertraulich");
   });
+
+  // BEN, Nacharbeit 11 (K6/N11): der ZWEITE Word-Übernahmeweg — die Markierung über den Sendeknopf
+  // und `POST /api/drafts`. Ohne Panelwahl gilt derselbe Übernahme-Standard wie am Dokumentweg.
+  it("M0 · Markierung ohne Klick: das Panel sendet keine Stufe — gespeichert wird intern", async () => {
+    markierung = MARKIERUNG;
+    await ladeTaskpane();
+    const aufruf = await markierungEinreichen();
+    expect(aufruf.body.origin).toBe("word_addin");
+    expect(Object.keys(aufruf.body)).not.toContain("confidentiality");
+    const gespeichert = await gespeicherterEntwurf(String(aufruf.antwort.id));
+    expect(gespeichert.confidentiality).toBe("intern");
+    expect(gespeichert.origin).toBe("word_addin");
+  });
+
+  for (const stufe of ["vertraulich", "streng_vertraulich"] as const) {
+    it(`M · Markierung mit Klick auf ${stufe}: genau diese Stufe reist und bleibt gespeichert`, async () => {
+      markierung = MARKIERUNG;
+      await ladeTaskpane();
+      el(`capture-stufe-${stufe}`).click();
+      const aufruf = await markierungEinreichen();
+      expect(aufruf.body.confidentiality).toBe(stufe);
+      const gespeichert = await gespeicherterEntwurf(String(aufruf.antwort.id));
+      expect(gespeichert.confidentiality).toBe(stufe);
+      expect(gespeichert.origin).toBe("word_addin");
+    });
+  }
 });
 
 describe("R-0632 · eine gespeicherte Stufe eines Word-Entwurfs wird nur angehoben", () => {
