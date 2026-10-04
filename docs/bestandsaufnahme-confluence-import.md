@@ -312,6 +312,16 @@ Confluence-Seite; vorhanden sind nur die jsdom-Prüfungen der gerenderten Zielad
 die URL-Bildung (`mapper.test.ts`). Fehlende Mittel: eine erreichbare Confluence-Testinstanz und ein
 Mensch bzw. Browserlauf gegen sie. PostgreSQL-Nachweise wie in Runde 2/3 benannt.
 
+**Nacharbeit 1 (Kandidat `2153161b`, Prüflauf):** (a) `services/app/src/quellabgleich-ablage.integration.test.ts`
+scheiterte am Prüfserver ohne Container-Laufzeit („Could not find a working container runtime
+strategy“), beide Fälle unausgeführt. Er nutzt jetzt wie `repo-pg.integration.test.ts` zuerst die
+abgesicherte `KLARWERK_PG_TEST_URL` (`guardedLocalPgTestUrl`), sonst Testcontainers; ohne beides
+scheitert er weiter hart. Eigene Zeilen tragen ein Präfix und werden danach entfernt.
+(b) `tests/security/mega74-lesewege-sammler.test.ts` ist rot wegen `GET /api/support` ohne
+Register-Urteil — eingeführt vom Supportkontakt-Auftrag und mit dem Hauptstand integriert, von
+dieser Lieferung nicht berührt. Nicht hier repariert; aus der Auftragsauswahl genommen und als
+fremder Basisbefund benannt. Der globale Test bleibt rot, bis jener Auftrag sein Urteil nachträgt.
+
 ## Abgrenzung
 
 - SharePoint/OneDrive-Import (JOB 4086) ist ein eigener Adapter und eigener Auftrag.
