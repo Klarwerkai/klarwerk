@@ -1231,6 +1231,16 @@ const INVENTAR: readonly string[] = [
   // (tests/fe002-kopfband/kopfband-fe002.test.tsx); erst danach wurde diese Zeile angefasst. Der
   // Chromium-Zwilling derselben Mappe nennt das Muster nicht und steht deshalb nicht hier.
   "tests/fe002-kopfband/kopfband-fe002.test.tsx",
+  // Folgeauftrag gesamt-erstnutzerfuehrung-quellen, Nacharbeit 4 (04.10.2026): zwei Dateien kamen
+  // mit dem eingemischten Hauptstand in den Baum (`0d0da66a` Klara-Assistenz, `76f07f96`
+  // Importherkunft); der Hauptstand `4c1746be` führt sie selbst nicht im Inventar. GEMESSEN, NICHT
+  // GESETZT: der Prüflauf am Kandidaten 039d5468 meldete K2 `neu im Baum, aber nicht im gepinnten
+  // Inventar` mit genau diesen zwei Pfaden.
+  //   · `word-addin-dokumentkennung` fährt das ausgelieferte `taskpane.html` über `createKlaraPanel`
+  //     — Inhaltsachsen `taskpane` und `komponente`; kein „klara" im Pfad, fällt in `verfehlt`.
+  //   · `klara-assistenz/abgleich-belege` trägt „klara" im PFAD — Namensachse, K5 69 -> 70.
+  "tests/app/word-addin-dokumentkennung.test.ts",
+  "tests/klara-assistenz/abgleich-belege.test.ts",
 ];
 
 // ------------------------------------------------------------------------------------------------
@@ -1559,7 +1569,10 @@ describe("JOB 920 · K — das Klara-Regressionsinventar ist ableitbar, nicht be
     // AUFNAHME 20260922 · GESAMT-KLARA-EXTERN (01.10.2026):
     // `tests/klara-dokumenttext/riegel-haelt-den-dokumenttext.test.ts` traegt „klara" im PFAD —
     // 68 -> 69. GEMESSEN, NICHT GESETZT: K5 meldete lokal `expected 69 to be 68`.
-    expect(nurName.length).toBe(69);
+    // Nacharbeit 4 (04.10.2026, eingemischter Hauptstand): `tests/klara-assistenz/abgleich-belege
+    // .test.ts` traegt „klara" im PFAD — 69 -> 70. GEMESSEN, NICHT GESETZT: der Prüflauf am
+    // Kandidaten 039d5468 meldete `expected 70 to be 69`.
+    expect(nurName.length).toBe(70);
     expect(verfehlt.length).toBeGreaterThanOrEqual(25);
     expect(verfehlt.length + nurName.length).toBe(GEFUNDEN.length);
   });

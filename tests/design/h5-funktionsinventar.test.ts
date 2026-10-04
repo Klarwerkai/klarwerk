@@ -35,7 +35,13 @@ import { buildApp, buildServices } from "../../services/app/src/build-app";
 
 const WURZEL = resolve(process.cwd());
 const DIST = resolve(WURZEL, "apps/web/dist");
-const ORIGIN = "http://klarwerk.test";
+// Folgeauftrag gesamt-erstnutzerfuehrung-quellen, Nacharbeit 4 — WARUM `https`: I12 misst einen
+// SCHREIBWEG (Einreichen). Unter `http://klarwerk.test` ist der Kontext für Chromium nicht sicher,
+// `crypto.randomUUID` fehlt, und der Vorgangsschlüssel (`lib/createOperation.ts`) wirft —
+// gemessen am Kandidaten 039d5468: „crypto.randomUUID is not a function“ in der Lagezeile des
+// Blatts. Dieselbe Umstellung wie h4/h6 (`tests/vorrichtung-sicherer-kontext/`); alle Anfragen
+// beantwortet weiterhin die Route unten, ein Zertifikat ist nicht im Spiel.
+const ORIGIN = "https://klarwerk.test";
 const FRAGE = "Welche Profile sind in Spritzzonen erlaubt?";
 const t = i18n.getFixedT("de");
 
@@ -718,23 +724,48 @@ describe("JOB 3064 · H5 · das Funktionsinventar — jeder umgezogene Block hat
     );
   }
 
+  /**
+   * Der Bereich, den die Trefferzeile dieses Eintrags nennt (`Bereich · Zustand`, BibliothekListe).
+   * Nacharbeit 4: der Bereich wird ABGELESEN statt als „Allgemein“ angenommen — der Prueflauf am
+   * Kandidaten 039d5468 fand keine waehlbare Option mit diesem Namen.
+   */
+  async function bereichVon(id: string): Promise<string> {
+    const s = seite as Seite;
+    const meta = await s.evaluate<string | null>(
+      fn(`(id) => {
+        const z = document.querySelector('[data-testid="bib-zeile"][data-bib-id="' + id + '"]');
+        const m = z ? z.querySelector('[data-bib-text="zeile-meta"]') : null;
+        return m ? (m.textContent || '').trim() : null;
+      }`),
+      id,
+    );
+    expect(meta, `die Trefferzeile ${id} nennt keinen Bereich`).not.toBeNull();
+    return (meta ?? "").split(" · ")[0]?.trim() ?? "";
+  }
+
   /** Das Menue „Bereich" oeffnen, die Option `wert` umschalten und das Menue wieder schliessen. */
   async function bereichUmschalten(wert: string): Promise<void> {
     const s = seite as Seite;
     const OPTION = '[role="menu"] [role="menuitemcheckbox"]';
     await s.click('[data-testid="bib-menue-bereich"]');
     await warte(DA, OPTION, "Bereichsmenue offen");
-    const geklickt = await s.evaluate<boolean>(
+    const ergebnis = await s.evaluate<{ geklickt: boolean; optionen: string[] }>(
       fn(`([sel, wert]) => {
-        const o = [...document.querySelectorAll(sel)].find((b) =>
-          (b.textContent || '').trim().startsWith(wert) && !b.disabled);
-        if (!o) return false;
+        const alle = [...document.querySelectorAll(sel)];
+        const optionen = alle.map((b) =>
+          (b.textContent || '').trim() + (b.disabled ? ' [gesperrt]' : ''));
+        const o = alle.find((b) =>
+          (b.textContent || '').trim().replace(/^✓/, '').startsWith(wert + ' · ') && !b.disabled);
+        if (!o) return { geklickt: false, optionen };
         o.click();
-        return true;
+        return { geklickt: true, optionen };
       }`),
       [OPTION, wert],
     );
-    expect(geklickt, `Bereichsoption «${wert}» nicht waehlbar`).toBe(true);
+    expect(
+      ergebnis.geklickt,
+      `Bereichsoption «${wert}» nicht waehlbar; angeboten: ${ergebnis.optionen.join(" | ")}`,
+    ).toBe(true);
     await s.click('[data-testid="bib-menue-bereich"]');
   }
 
@@ -813,11 +844,16 @@ describe("JOB 3064 · H5 · das Funktionsinventar — jeder umgezogene Block hat
     expect(lesetext).toContain("Spritzzonen zu vermeiden");
     expect((await koVomDienst(profilId)).title).toBe(PROFIL_TITEL);
 
-    // Ausschliessender Bereichsfilter „Allgemein“ (dort steht nur „Halterungen …“). Die Suche wird
-    // vorher geleert, damit die Option waehlbar ist.
+    // Ausschliessender Bereichsfilter: der Bereich von „Halterungen …“, abgelesen an seiner Zeile
+    // und verschieden von dem des Profils. Die Suche wird vorher geleert, damit die Option waehlbar ist.
     const MENUE_BEREICH = '[data-testid="bib-menue-bereich"]';
     await bibliothekSuchen("", [profilId, halterungId]);
-    await bereichUmschalten("Allgemein");
+    const ausschliessend = await bereichVon(halterungId);
+    expect(ausschliessend.length, "Bereich der Halterungen-Zeile leer").toBeGreaterThan(0);
+    expect(ausschliessend, "beide Eintraege im selben Bereich").not.toBe(
+      await bereichVon(profilId),
+    );
+    await bereichUmschalten(ausschliessend);
     // GEGENPROBE zur Kennung: im Filter steht der ANDERE Eintrag.
     await listeIst("", [halterungId]);
     await bibliothekSuchen("Profile", []);
@@ -828,7 +864,7 @@ describe("JOB 3064 · H5 · das Funktionsinventar — jeder umgezogene Block hat
     expect(mitFilter).toContain(`${t("lib.menue.bereich")} · 1`);
 
     // Ruecknahme: derselbe Gegenstand erscheint wieder — dieselbe Kennung, derselbe Titel.
-    await bereichUmschalten("Allgemein");
+    await bereichUmschalten(ausschliessend);
     await listeIst("Profile", [profilId]);
     const ohneFilter = await s.evaluate<string>(fn(SICHTBAR), MENUE_BEREICH);
     expect(ohneFilter.trim()).toBe(t("lib.menue.bereich"));

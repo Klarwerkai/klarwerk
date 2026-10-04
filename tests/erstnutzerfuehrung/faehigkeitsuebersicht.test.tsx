@@ -172,6 +172,12 @@ async function oeffneUeber(punkt = "ueber"): Promise<void> {
       ?.click();
     await flush();
   });
+  // Nacharbeit 4: das Blatt baut sich erst am Ende des Klick-`act` an — und mit ihm die Abfrage des
+  // KI-Status. Ihre Antwort braucht eigene Durchläufe, sonst stünde der Satz der Lage „unbekannt“
+  // da (Prüflauf am Kandidaten 039d5468: `expected 'unbekannt' to be 'verfuegbar'`). Derselbe
+  // Abschluss wie `oeffnePanel` in `tests/kollision-netztrennung/startflaeche-mounted.test.tsx`.
+  await act(flush);
+  await act(flush);
 }
 
 /** Ein offenes Startblatt über seinen regulären Schließknopf im Kopf schliessen. */
@@ -300,6 +306,8 @@ describe("R-1012 · gemountet am echten Weg „…“ → „Über KLARWERK“",
     await oeffneUeber();
     const blatt = document.querySelector<HTMLElement>('[data-testid="h5-start-blatt-ueber"]');
     expect(blatt?.textContent).toContain(i18n.t("start.purpose"));
+    // KALIBRIERUNG (Nacharbeit 4): der KI-Status ist angekommen, bevor Texte verglichen werden.
+    expect(uebersicht().getAttribute("data-antwort-lage")).toBe("verfuegbar");
     const text = uebersicht().textContent ?? "";
     expect(text).toContain(i18n.t("erstnutzer.faehigkeiten.titel"));
     for (const s of FAEHIGKEITS_SCHRITTE) {
@@ -509,6 +517,9 @@ describe("R-1012 · F7 — schliessen, weiter bedienen, wieder öffnen", () => {
       await mount();
       await oeffneUeber();
       const t = i18n.getFixedT(lng);
+      // KALIBRIERUNG (Nacharbeit 4): beide Blicke müssen dieselbe Statuslage sehen, sonst vergliche
+      // der Fall einen Ladezustand mit einem geladenen.
+      expect(uebersicht().getAttribute("data-antwort-lage")).toBe("verfuegbar");
       const ersterBlick = { text: uebersicht().textContent ?? "", folge: eintragsFolge() };
       expect(ersterBlick.folge).toEqual(FAEHIGKEITEN.map((f) => f.id));
 
