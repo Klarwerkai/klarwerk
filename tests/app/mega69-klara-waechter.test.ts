@@ -2616,8 +2616,10 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // sind auf ihre Titelzeile verdichtet (die reinen `// ====`-Trennlinien entfernt), damit das
     // Skript wieder unter der Schranke von `schnittflaechen.test.ts` B3 liegt (12590 -> 12494).
     // Kein Ausdruck, kein Abrufziel, keine Nutzlast, keine Blockmarke geändert; kein Sideload.
-    // OFFEN: der Hash DIESES Stands ist nicht gemessen (kein Hash-Werkzeug freigegeben).
-    const PIN = "9549900a268b5c942beb729cf706753149ac618fe4be4c5fb4704275ed0a93f8";
+    // PIN BEWUSST AKTUALISIERT (9549900a… -> 175ddaef…): der Wert ist im Prüflauf auf Kandidat
+    // 6eb0541a GEMESSEN (Zusicherung dieses Falls, „Received") und unverändert übernommen;
+    // `taskpane.html` ist seit dieser Messung unberührt (geprüft mit `git diff` gegen 6eb0541a).
+    const PIN = "175ddaef38c27b128319ccc5bf37eba158bf08bbcf6ac1fc14fa002c10b6cc07";
     const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
     expect(
       ist,
