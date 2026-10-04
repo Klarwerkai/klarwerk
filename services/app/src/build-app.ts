@@ -3240,8 +3240,13 @@ export function buildApp(
         importRuns: services.importRuns,
       }),
     );
-    // W2-A/148: der Leseweg der Laufdomäne. Hinter demselben Schalter wie der Start — ein Lesepfad
-    // auf Läufe, die es ohne den Schalter gar nicht geben kann, wäre eine Route ins Leere.
+  }
+
+  // W2-A/148: der Leseweg der Laufdomäne. Er ist QUELLNEUTRAL und steht deshalb hinter JEDEM
+  // Importweg, der Läufe schreibt — nicht nur hinter Confluence. Bis R-0145 hing er allein am
+  // Confluence-Schalter: eine Instanz nur mit SharePoint gab eine `importId` heraus, hinter der eine
+  // 404 stand. Sind alle Importwege aus, gibt es keine Läufe und damit auch keinen Leseweg.
+  if (schalterAn("confluenceImport") || schalterAn("sharepointImport")) {
     app.register(
       importRunRoutes({
         importRuns: services.importRuns,
