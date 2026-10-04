@@ -945,6 +945,130 @@ describe("JOB 3064 · H5 · das Funktionsinventar — jeder umgezogene Block hat
   }, 180_000);
 
   // ==============================================================================================
+  // I11b · R-0455 (K1), Bens Pruefcode Nacharbeit 9: DIE BEREICHSAUSWAHL IST VOLLSTAENDIG.
+  // ==============================================================================================
+  // Bei leerer Suche und zwei sichtbaren Eintraegen verschiedener Bereiche muss das Menue BEIDE
+  // Bereiche gleichzeitig waehlbar anbieten. Dreimal (a57aed0d, 8f34e1b4, 1eae3516) bot es beim
+  // ersten Oeffnen nur einen an — ungeklaert. Dieser Fall weicht NICHT auf „irgendeine“ Option aus:
+  // er verlangt beide, waehlt jeden einzeln (genau die zugehoerige Kennung), nimmt zurueck (beide
+  // Eintraege, beide Optionen) und wiederholt das nach einer trefferlosen Suche. Scheitert er, steht
+  // im Protokoll, was das Menue anbot UND was die Liste zeigte.
+  const BEREICH_OPTION = '[role="menu"] [role="menuitemcheckbox"]';
+
+  /** Momentaufnahme fuer Fehlermeldungen: Optionen, Zeilen, Suchwort, Adresse, Menuezahl. */
+  async function bereichsLage(): Promise<string> {
+    const s = seite as Seite;
+    const lage = await s.evaluate<Record<string, unknown>>(
+      fn(`(sel) => ({
+        optionen: [...document.querySelectorAll(sel)].map((b) =>
+          (b.textContent || '').trim() + (b.disabled ? ' [gesperrt]' : '')),
+        weitere: [...document.querySelectorAll('[role="menu"] [role="menuitem"]')].map((b) =>
+          (b.textContent || '').trim()),
+        zeilen: [...document.querySelectorAll('[data-testid="bib-zeile"]')].map((z) => {
+          const m = z.querySelector('[data-bib-text="zeile-meta"]');
+          return z.getAttribute('data-bib-id') + ' = ' + (m ? (m.textContent || '').trim() : '?');
+        }),
+        suche: (document.querySelector('[data-testid="bib-suche"]') || {}).value,
+        adresse: location.pathname + location.search,
+        bereichsmenues: document.querySelectorAll('[data-testid="bib-menue-bereich"]').length,
+        offeneMenues: document.querySelectorAll('[role="menu"]').length,
+      })`),
+      BEREICH_OPTION,
+    );
+    return JSON.stringify(lage);
+  }
+
+  /** Menue oeffnen, warten, bis ALLE `bereiche` waehlbar sind, ablesen, schliessen, verlangen. */
+  async function bereicheAlleWaehlbar(bereiche: readonly string[], wann: string): Promise<void> {
+    const s = seite as Seite;
+    await s.click('[data-testid="bib-menue-bereich"]');
+    await warte(DA, BEREICH_OPTION, "Bereichsmenue offen");
+    const ALLE_DA = `([sel, bereiche]) => {
+      const da = [...document.querySelectorAll(sel)]
+        .filter((b) => !b.disabled)
+        .map((b) => (b.textContent || '').trim().replace(/^✓/, ''));
+      return bereiche.every((w) => da.some((t) => t.startsWith(w + ' · ')));
+    }`;
+    let vollstaendig = true;
+    try {
+      await s.waitForFunction(fn(ALLE_DA), [BEREICH_OPTION, bereiche], { timeout: 15_000 });
+    } catch {
+      vollstaendig = false;
+    }
+    const lage = await bereichsLage();
+    await s.click('[data-testid="bib-menue-bereich"]');
+    expect(
+      vollstaendig,
+      `${wann}: das Menue bietet nicht alle Bereiche ${bereiche.join(" / ")} waehlbar an — ${lage}`,
+    ).toBe(true);
+  }
+
+  /** Bereich waehlen (oder abwaehlen) und GENAU diese Kennungen in der Liste verlangen. */
+  async function bereichUndListe(
+    wert: string,
+    begriff: string,
+    erwartet: readonly string[],
+    wann: string,
+  ): Promise<void> {
+    await bereichUmschalten(wert);
+    try {
+      await listeIst(begriff, erwartet);
+    } catch (e) {
+      throw new Error(`${wann}: ${String(e).split("\n")[0]} — ${await bereichsLage()}`);
+    }
+  }
+
+  it("I11b · R-0455: bei leerer Suche bietet „Bereich“ BEIDE Bereiche an — jeder einzeln waehlbar, auch nach einer trefferlosen Suche", async () => {
+    expect(fehler).toBeNull();
+    const s = seite as Seite;
+    tokenAktiv = tokenAdmin;
+    await aufStart();
+    await s.click('a[data-kopfband-punkt="bibliothek"]');
+    await warte(DA, '[data-testid="bib-suche"]', "Suchfeld der Bibliothek");
+    const MENUE_BEREICH = '[data-testid="bib-menue-bereich"]';
+
+    // Von „Profile“ zur leeren Suche — auf BEIDE tatsaechlichen Treffer-Kennungen warten.
+    await bibliothekSuchen("Profile", [profilId]);
+    await bibliothekSuchen("", [profilId, halterungId]);
+    const eintraege = [
+      { id: profilId, bereich: await bereichVon(profilId) },
+      { id: halterungId, bereich: await bereichVon(halterungId) },
+    ];
+    const bereiche = eintraege.map((e) => e.bereich);
+    expect(
+      bereiche.every((b) => b.length > 0),
+      "eine Zeile nennt keinen Bereich",
+    ).toBe(true);
+    expect(bereiche[0], "beide Eintraege im selben Bereich — der Fall misst dann nichts").not.toBe(
+      bereiche[1],
+    );
+
+    for (const durchgang of ["nach der Suche „Profile“", "nach einer trefferlosen Suche"]) {
+      if (durchgang === "nach einer trefferlosen Suche") {
+        await bibliothekSuchen("Kein-Eintrag-heisst-so-4711", []);
+        await bibliothekSuchen("", [profilId, halterungId]);
+      }
+      await bereicheAlleWaehlbar(bereiche, `${durchgang}, vor der Auswahl`);
+      for (const e of eintraege) {
+        // Waehlen: genau DIESE Kennung, sichtbarer Filterzustand.
+        await bereichUndListe(e.bereich, "", [e.id], `${durchgang}, Bereich ${e.bereich}`);
+        const mitFilter = await s.evaluate<string>(fn(SICHTBAR), MENUE_BEREICH);
+        expect(mitFilter).toContain(`${t("lib.menue.bereich")} · 1`);
+        // Ruecknahme: beide Eintraege und beide Optionen wieder da.
+        await bereichUndListe(
+          e.bereich,
+          "",
+          [profilId, halterungId],
+          `${durchgang}, Ruecknahme ${e.bereich}`,
+        );
+        const ohneFilter = await s.evaluate<string>(fn(SICHTBAR), MENUE_BEREICH);
+        expect(ohneFilter.trim()).toBe(t("lib.menue.bereich"));
+        await bereicheAlleWaehlbar(bereiche, `${durchgang}, nach Ruecknahme ${e.bereich}`);
+      }
+    }
+  }, 240_000);
+
+  // ==============================================================================================
   // I12 · R-0939 (K3): DIE KERNSCHLEIFE MIT EINEM GEGENSTAND — erfassen (Admin) → fremd pruefen
   // (zweite Person, „controller“) → freigeben (Admin, „Als wahr kennzeichnen“) → wiederfinden.
   // Jeder Uebergang laeuft ueber die regulaere Oberflaeche; der Dienst wird nur GELESEN
