@@ -56,6 +56,50 @@ export interface SharePointDateiliste {
   readonly truncated: boolean;
 }
 
+/**
+ * R-0145/R-0190 — DER STAND EINER FORTSETZBAREN ORDNER-INVENTUR.
+ *
+ * Er hält genau das fest, was nötig ist, um später an derselben Stelle weiterzulesen: die Ordner,
+ * deren Liste noch (ganz oder teilweise) zu lesen ist, den Graph-Cursor der laufenden Ordnerliste,
+ * die schon gesehenen Datei- und Ordnerkennungen und die gefundenen, noch keinem Los zugeteilten
+ * Dateien. Es gibt KEINE Gesamtkante: ein Aufruf liest höchstens eine begrenzte Zahl Seiten, aber
+ * der Rest geht nicht verloren — er bleibt im Stand und wird beim nächsten Aufruf gelesen.
+ *
+ * Die Kennungen darin sind Graph-Kennungen der Quelle. Sie dienen nur als Lesezeiger und Dedup-
+ * Schlüssel dieser Inventur, nicht als Identität im Produkt.
+ */
+export interface SharePointInventur {
+  /** Noch zu lesende Ordner; der erste ist der gerade gelesene (`undefined` = Wurzel). */
+  readonly warteschlange: { readonly id: string | undefined }[];
+  /** Graph-Cursor der Folgeseite des ersten Ordners der Warteschlange — `null`: erste Seite. */
+  weiter: string | null;
+  readonly besuchteOrdner: Set<string>;
+  readonly gesehen: Set<string>;
+  /** Gefundene Dateien in Lieferfolge, die noch keinem Los zugeteilt sind. */
+  readonly puffer: string[];
+  /** Bisher gefundene Dateien bzw. Unterordner (alle Ebenen). */
+  dateien: number;
+  unterordner: number;
+}
+
+/** Eine neue Inventur über den gewählten Ordner (`undefined` = Wurzel der Bibliothek). */
+export function neueInventur(ordnerId?: string): SharePointInventur {
+  return {
+    warteschlange: [{ id: ordnerId }],
+    weiter: null,
+    besuchteOrdner: new Set(ordnerId ? [ordnerId] : []),
+    gesehen: new Set(),
+    puffer: [],
+    dateien: 0,
+    unterordner: 0,
+  };
+}
+
+/** Fertig heisst: jede Seite jedes Ordners ist gelesen. Über den Puffer sagt das nichts. */
+export function inventurFertig(inventur: SharePointInventur): boolean {
+  return inventur.warteschlange.length === 0;
+}
+
 export class SharePointSourceAdapter {
   readonly source = "SharePoint";
 
@@ -84,6 +128,52 @@ export class SharePointSourceAdapter {
       }
     }
     return { dateien, truncated };
+  }
+
+  /**
+   * R-0145/R-0190 — DIE ORDNER-INVENTUR EIN STÜCK WEITERFÜHREN.
+   *
+   * Liest Listenseiten — dem Graph-Cursor folgend, Unterordner auf allen Ebenen in die Warteschlange
+   * —, bis wenigstens `bisDateien` Dateien im Puffer liegen, die Inventur fertig ist oder
+   * `maxSeiten` Seiten in DIESEM Aufruf gelesen sind. Die letzte Kante begrenzt nur die Arbeit
+   * eines Aufrufs; was danach noch zu lesen ist, bleibt im Stand und wird beim nächsten gelesen.
+   *
+   * Ordner werden nie Dateien. Jede Datei kommt höchstens einmal in den Puffer, jeder Ordner wird
+   * höchstens einmal gelesen. Der Stand wird erst NACH einer erfolgreich gelesenen Seite fortgeschrieben:
+   * scheitert ein Abruf, liest der nächste Aufruf dieselbe Seite noch einmal.
+   */
+  async setzeInventurFort(
+    inventur: SharePointInventur,
+    bisDateien: number,
+    maxSeiten: number,
+  ): Promise<void> {
+    let seiten = 0;
+    while (inventur.puffer.length < bisDateien && seiten < maxSeiten && !inventurFertig(inventur)) {
+      const ordner = inventur.warteschlange[0];
+      const seite = await this.client.listeOrdnerSeite(ordner?.id, inventur.weiter);
+      seiten += 1;
+      for (const item of seite.items) {
+        const datei = zuDatei(item);
+        if (datei) {
+          if (!inventur.gesehen.has(datei.id)) {
+            inventur.gesehen.add(datei.id);
+            inventur.puffer.push(datei.id);
+            inventur.dateien += 1;
+          }
+          continue;
+        }
+        const id = item.id?.trim();
+        if (item.folder !== undefined && id && !inventur.besuchteOrdner.has(id)) {
+          inventur.besuchteOrdner.add(id);
+          inventur.unterordner += 1;
+          inventur.warteschlange.push({ id });
+        }
+      }
+      inventur.weiter = seite.weiter;
+      if (seite.weiter === null) {
+        inventur.warteschlange.shift();
+      }
+    }
   }
 
   /**

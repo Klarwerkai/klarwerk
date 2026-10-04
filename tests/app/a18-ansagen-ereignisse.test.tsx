@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { woerterbuchQuelleAus } from "../support/woerterbuchquelle";
 
 // ================================================================================================
 // JOB 1049 / D3 — A18 SPRACHAUSGABE: DAS EREIGNISREGISTER UND SEINE VERTRAEGE
@@ -260,7 +260,7 @@ const FUNDSTELLENTREFFER_D2 = 161;
 // ------------------------------------------------------------------------------------------------
 // Der echte Sprachkatalog. Gelesen, nicht nachgebaut — sonst pruefte die Datei ihre eigene Kopie.
 // ------------------------------------------------------------------------------------------------
-const I18N_ROH = readFileSync(join(__dirname, "..", "..", "apps", "web", "src", "i18n.ts"), "utf8");
+const I18N_ROH = woerterbuchQuelleAus(join(__dirname, "..", "..", "apps", "web", "src", "i18n.ts"));
 
 /** Alle Werte eines Schluessels ueber die drei Sprachbloecke, in Dateireihenfolge. */
 function katalogwerte(schluessel: string): string[] {

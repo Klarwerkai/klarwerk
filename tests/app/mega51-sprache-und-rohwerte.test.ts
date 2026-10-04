@@ -19,9 +19,11 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { woerterbuchQuelleAus } from "../support/woerterbuchquelle";
 
 const WEB_SRC = join(__dirname, "../../apps/web/src");
-const I18N = readFileSync(join(WEB_SRC, "i18n.ts"), "utf8");
+// I18N-AUFTEILUNG: das Wörterbuch liegt je Sprache in `woerterbuch/`; gelesen wird es als EIN Text.
+const I18N = woerterbuchQuelleAus(join(WEB_SRC, "i18n.ts"));
 
 // Die drei Sprachblöcke — an ihren Wörterbuch-Deklarationen erhoben, nicht an Zeilennummern.
 function sprachbloecke(): { name: string; text: string }[] {
@@ -55,7 +57,10 @@ function quelldateien(dir: string): string[] {
   }
   return out;
 }
-const QUELLEN = quelldateien(WEB_SRC).filter((f) => !f.endsWith("i18n.ts"));
+// Der Katalog selbst ist keine Quelle für Rohwerte — weder `i18n.ts` noch seine Sprachdateien.
+const QUELLEN = quelldateien(WEB_SRC).filter(
+  (f) => !f.endsWith("i18n.ts") && !/[\\/]woerterbuch[\\/][a-z]+\.ts$/.test(f),
+);
 
 // Kommentare raus, sonst zählt die ERWÄHNUNG eines Musters als Vorkommen. Genau daran ist diese
 // Erhebung beim ersten Lauf hängengeblieben: die Kommentare, die den behobenen Fehler ZITIEREN

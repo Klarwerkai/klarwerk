@@ -21,8 +21,6 @@
 //
 // Muster wie in den Nachbardateien (KLARA-2): DOM-freie Helfer + ausgefuehrter Inline-Spiegel +
 // Quelltext-Pins auf die WIRKLICH ausgelieferte Datei.
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { ReasonerStatus } from "../../apps/web/src/api/types";
 import {
@@ -38,9 +36,10 @@ import {
   klaraTrustHead,
   performAsk,
 } from "../../apps/web/src/lib/wordAddin";
+import { panelQuelleAus } from "../support/panelquelle";
 
 const TASKPANE = "apps/web/public/word-addin/taskpane.html";
-const HTML = readFileSync(resolve(process.cwd(), TASKPANE), "utf8");
+const HTML = panelQuelleAus(TASKPANE);
 
 const SPRACHEN = ["de", "en", "nl"] as const;
 type Sprache = (typeof SPRACHEN)[number];

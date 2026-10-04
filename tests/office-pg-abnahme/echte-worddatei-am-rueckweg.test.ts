@@ -40,6 +40,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 import { type KlaraPanel, createKlaraPanel, reply } from "../app/klara-panel-fixture";
+import { panelQuelleAus } from "../support/panelquelle";
 import {
   ECHTE_DATEI,
   MARKIERTER_ABSATZ,
@@ -83,7 +84,9 @@ const TASKPANE_DATEI = "apps/web/public/word-addin/taskpane.html";
 const RUECKWEG_DATEI = "apps/web/public/word-addin/rueckweg.js";
 
 const RUECKWEG_QUELLE = readFileSync(join(process.cwd(), RUECKWEG_DATEI), "utf8");
-const TASKPANE_QUELLE = readFileSync(join(process.cwd(), TASKPANE_DATEI), "utf8");
+// R-1611: das Fenster liegt in drei Dateien; die Zahl steht im Skript und wird aus dem
+// zusammengefügten Dokument gelesen.
+const TASKPANE_QUELLE = panelQuelleAus(join(process.cwd(), TASKPANE_DATEI));
 
 /** Das Budget des ENTWURFSWEGS. Für diesen Weg ist es eine Obergrenze, nicht das Mass. */
 const FENSTER_BUDGET_BYTES = zahlAus(

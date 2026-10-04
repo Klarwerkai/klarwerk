@@ -1,6 +1,7 @@
 // SCRUM-120 / FE-MGMT: Management-/Wissenskapital-Kennzahlen. Stateless, keine Persistenz.
 // Alle Zahlen aus echten Bestandsdaten — keine Demo-/Beispielwerte, keine Bilanzbewertung.
 import type { KnowledgeObject } from "../../knowledge-object";
+import type { CategoryProfile } from "./profiles";
 
 // Plain-Data-Eingabe für die reinen Metrikfunktionen (DOM-frei, testbar).
 export interface BusFactorLike {
@@ -17,6 +18,14 @@ export interface MetricsInput {
   pendingRevalidation: readonly string[];
   busFactor: readonly BusFactorLike[];
   now: number;
+  // R-0751 / FR-EXT-04 (Nacharbeit 1): die Kennungen der SICHTBAREN Objekte, die an einem offenen
+  // Konflikt beteiligt sind (Paar-Regel wie /api/conflicts). Fehlt die Angabe, hat der Faktor
+  // „Konfliktdichte" keine Eingangsdaten — er wird dann nicht geschätzt.
+  openConflictKoIds?: readonly string[] | null;
+  // R-0751 (Nacharbeit 3): gepflegte Bereichsprofile (profiles.ts) — die Eingänge der Faktoren
+  // Kritikalität, Prozessnähe, Wiederholhäufigkeit, Schadenspotenzial. Ohne Profil oder ohne Stufe
+  // bleibt der jeweilige Faktor „keine Eingangsdaten".
+  categoryProfiles?: readonly CategoryProfile[] | null;
 }
 
 export type Band = "gut" | "mittel" | "kritisch";
@@ -72,15 +81,37 @@ export interface Maturity {
   progressPct: number; // 0–100
 }
 
+// R-0751 / FR-EXT-04 (Nacharbeit 1): die NEUN FAKTOREN DER QUELLE, in ihrer Reihenfolge — Bus-Faktor,
+// Kritikalität, Prozessnähe, Alter, Quellenqualität, Konfliktdichte, Wiederholhäufigkeit,
+// Schadenspotenzial, Schutzwert (IP-Wert). Keiner wird durch einen andersartigen ersetzt. Die
+// Reihenfolge hält `PRIORITY_FACTOR_KEYS` in metrics.ts.
+export type PriorityFactorKey =
+  | "busFactor"
+  | "criticality"
+  | "processProximity"
+  | "age"
+  | "sourceQuality"
+  | "conflictDensity"
+  | "repetition"
+  | "damagePotential"
+  | "protection";
+
 export interface PriorityFactor {
-  key: string;
-  value: number; // 0–100 (höher = dringender)
+  key: PriorityFactorKey;
+  // 0–100 (höher = dringender). `null` = für diesen Faktor gibt es im Bestand KEINE Eingangsdaten:
+  // er zählt nicht in den Score und wird nicht geschätzt.
+  value: number | null;
 }
+
+// Die Filter der Quelle: alles · Bus-Faktor eins · Veraltetes · hoher Schutzwert.
+export type PriorityFlag = "busFactorOne" | "stale" | "highProtection";
 
 export interface CategoryPriority {
   category: string;
-  score: number; // 0–100 gewichtete Dringlichkeit
-  factors: PriorityFactor[];
+  score: number; // 0–100, Mittel der Faktoren MIT Eingangsdaten
+  knownFactors: number; // wie viele der neun Faktoren Eingangsdaten haben
+  factors: PriorityFactor[]; // immer alle neun, in der Reihenfolge der Quelle
+  flags: PriorityFlag[];
 }
 
 export type RecommendationSeverity = "hoch" | "mittel";

@@ -41,9 +41,10 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
+import { woerterbuchQuelleAus } from "../support/woerterbuchquelle";
 
 const WURZEL = process.cwd();
-const I18N = readFileSync(join(WURZEL, "apps/web/src/i18n.ts"), "utf8");
+const I18N = woerterbuchQuelleAus(join(WURZEL, "apps/web/src/i18n.ts"));
 
 // ------------------------------------------------------------------------------------------------
 // 1. Welche Rueckfragen sind zerstoerend? — aus dem Katalog abgeleitet, nicht aufgezaehlt.
