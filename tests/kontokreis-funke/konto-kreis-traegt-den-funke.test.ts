@@ -357,8 +357,14 @@ const KONTO_EL = sucheJsx(
 );
 const KONTO_KLASSEN = klassenVon(KONTO_EL);
 
-// Der Punkt für ungelesene Meldungen sitzt AUF dem Kreis (§9: nur nach frischem Abruf sichtbar).
-const PUNKT_EL = sucheJsx(KONTO_QUELLE, (el) => attributText(el, "data-testid") === "konto-punkt");
+// FE-002 (Pedi, 26.09.2026): der Punkt für ungelesene Meldungen sitzt NICHT mehr auf dem Kreis.
+// Ungelesene Meldungen zählt der eigene Meldungszugang daneben (`shell/MeldungenMenue.tsx`); der
+// Kreis ist nur noch das Konto. Fall E misst deshalb jetzt die Zahl am Meldungszugang.
+const MELDUNGEN_QUELLE = quelleVon("shell/MeldungenMenue.tsx");
+const ZAHL_EL = sucheJsx(
+  MELDUNGEN_QUELLE,
+  (el) => attributText(el, "data-testid") === "meldungen-zahl",
+);
 
 // Der DOM-Pfad über die Bauteilgrenze: `<KontoMenue />` steht in shell/Kopfband.tsx unter dem
 // `<header class="kw-kopfband …">`. Ohne diesen Teil des Pfades wären Nachfahren-Regeln blind.
@@ -367,11 +373,13 @@ const KOPFBAND_EL = sucheJsx(
   KOPFBAND_QUELLE,
   (el) => attributText(el, "data-testid") === "kopfband",
 );
-const KONTO_MENUE_EL = sucheJsx(KOPFBAND_QUELLE, (el) => tagName(el) === "KontoMenue");
+// FE-002: das Kopfband bindet den Kreis über `<MeldungenUndKonto />` ein — ein Fragment ohne eigenes
+// DOM (MeldungenMenue.tsx), die DOM-Vorfahren des Kreises sind also dieselben wie an diesem Knoten.
+const KONTO_MENUE_EL = sucheJsx(KOPFBAND_QUELLE, (el) => tagName(el) === "MeldungenUndKonto");
 // Die Vorfahren des Einbauorts (ohne das Bauteil-Element selbst — es zeichnet kein eigenes DOM).
 const HUELLE_PFAD = pfadImBauteil(KONTO_MENUE_EL).slice(0, -1);
 const KREIS_PFAD = [...HUELLE_PFAD, ...pfadImBauteil(KONTO_EL)];
-const PUNKT_PFAD = [...HUELLE_PFAD, ...pfadImBauteil(PUNKT_EL)];
+const ZAHL_PFAD = [...HUELLE_PFAD, ...pfadImBauteil(ZAHL_EL)];
 
 // ------------------------------------------------------------------------------------------------
 // Die wirksame Farbe: was modern.css für den Pfad setzt, schlägt die Utility (Attribut + Klassen).
@@ -474,22 +482,28 @@ describe("JOB 3085 · Q4 · der Konto-Kreis: Funke als Fläche, Nacht als Schrif
     );
   });
 
-  // ---- Lieferung 4/Prüfpunkt 6(d): der Meldungspunkt auf der nun helleren Fläche ------------------
-  it("E · der Meldungspunkt bleibt abgesetzt: sein Nachtrand trägt gegen den Funke ≥3:1", () => {
-    const punktKlassen = PUNKT_PFAD[PUNKT_PFAD.length - 1] ?? [];
-    expect(punktKlassen).toContain("kw-konto-punkt");
-    const fuellung = wirksam(PUNKT_PFAD, "background-color", "bg", "modern");
-    const rand = wirksam(PUNKT_PFAD, "border-color", "border", "modern");
-    const randGegenKreis = kontrast(rand.farbe, KREIS_FLAECHE.farbe);
-    const fuellungGegenKreis = kontrast(fuellung.farbe, KREIS_FLAECHE.farbe);
-    // Der Rand ist das trennende Merkmal (modern.css: `.kw-kopfband .kw-konto-punkt` → Nacht).
-    expect(rand.herkunft).toContain("modern.css");
-    expect(
-      randGegenKreis,
-      `Rand ${hex(rand.farbe)} auf ${hex(KREIS_FLAECHE.farbe)}`,
-    ).toBeGreaterThanOrEqual(3);
+  // ---- Lieferung 4/Prüfpunkt 6(d) → FE-002: das Meldungssignal ------------------------------------
+  it("E · FE-002: kein Punkt mehr am Kreis — die Zahl am Meldungszugang trägt Funke mit Nacht-Schrift ≥4,5:1", () => {
+    // Der Kreis trägt kein Meldungssignal mehr (sonst stünden zwei Signale für dieselbe Sache da).
+    const hatPunkt = (() => {
+      try {
+        sucheJsx(KONTO_QUELLE, (el) => attributText(el, "data-testid") === "konto-punkt");
+        return true;
+      } catch {
+        return false;
+      }
+    })();
+    expect(hatPunkt, "der Punkt am Konto-Kreis ist zurück").toBe(false);
+    const zahlKlassen = ZAHL_PFAD[ZAHL_PFAD.length - 1] ?? [];
+    expect(zahlKlassen).toContain("kw-kopfband-meldungen-zahl");
+    const flaeche = wirksam(ZAHL_PFAD, "background-color", "bg", "modern");
+    const schrift = wirksam(ZAHL_PFAD, "color", "text", "modern");
+    const wert = kontrast(schrift.farbe, flaeche.farbe);
+    expect(wert, `Zahl ${hex(schrift.farbe)} auf ${hex(flaeche.farbe)}`).toBeGreaterThanOrEqual(
+      4.5,
+    );
     console.info(
-      `JOB 3085 Q4 · Meldungspunkt: Füllung ${hex(fuellung.farbe)} ${fuellungGegenKreis.toFixed(2)}:1 · Rand ${hex(rand.farbe)} ${randGegenKreis.toFixed(2)}:1 — gegen den Kreis`,
+      `FE-002 · Meldungszahl: ${hex(schrift.farbe)} auf ${hex(flaeche.farbe)} = ${wert.toFixed(2)}:1`,
     );
   });
 

@@ -5,6 +5,7 @@ import { sprachAusEintritt } from "./lib/htmlLang";
 // JOB 3326 R4: die Texte der Lesevariante wohnen bei ihrer Funktion, damit diese Woerterbuchdatei
 // unter dem 1-MiB-Deckel von Biome bleibt. Messung und Begruendung: `lib/lesevariante.ts`.
 import { lesevarianteTexteDe, lesevarianteTexteEn, lesevarianteTexteNl } from "./lib/lesevariante";
+import { sprachNachlader } from "./lib/sprachNachlader";
 import { gespeicherteSprache } from "./lib/sprachwahl";
 import {
   type Textmodul,
@@ -761,6 +762,8 @@ const de = {
   "ko.origin.studio": "Aus dem Studio",
   "ko.origin.expert": "Aus dem Expertenformular",
   "ko.origin.frontdoor": "Aus der Erfassung",
+  // R-0180/R-2108: aus der Import-Prüfwarteschlange von einem Menschen übernommen.
+  "ko.origin.import": "Importiert",
   // JOB 3027 · Station 4: die drei Lagen je Auskunft am Prüfbrett. „nicht eingestuft“ ist eine
   // Aussage über das OBJEKT, „nicht in dieser Antwort“ eine über die ANTWORT — wer beide zusammen-
   // wirft, muss raten (services/validation/src/board-herkunft.ts:10-18).
@@ -4600,6 +4603,18 @@ const de = {
   "imp.access.whereSet":
     "Diese Werte werden als Umgebungsvariablen auf dem Server gesetzt — nicht hier. Klarwerk zeigt nur, ob sie stehen, nie ihren Inhalt.",
   "imp.access.whoMay": "Ändern kann das, wer Zugang zum Server dieser Installation hat.",
+  // R-0134 / R-1005: der Betreiberschalter — eigener Zustand, eigener Knopf, eigene Fehler.
+  "imp.access.switchedOff.title": "Vom Betreiber ausgeschaltet",
+  "imp.access.switchedOff.body":
+    "Der Confluence-Import ist in dieser Installation freigegeben, aber ausgeschaltet. Solange das so ist, lehnt der Server jeden Import ab. Einschalten lässt er sich mit dem Knopf darunter.",
+  "imp.access.schalter.an": "Import einschalten",
+  "imp.access.schalter.aus": "Import ausschalten",
+  "imp.access.schalter.hinweis":
+    "Wirkt sofort und ohne Neustart. Zugangsdaten werden hier nicht eingegeben.",
+  "imp.access.schalter.nichtFreigegeben":
+    "Der Import ist in dieser Installation nicht freigegeben — der Schalter wirkt erst nach der Freigabe auf dem Server.",
+  "imp.access.schalter.fehler":
+    "Der Schalter konnte nicht umgelegt werden. Bitte erneut versuchen.",
   // JOB-924 D6: Der frühere Satz („wird nicht festgehalten") ist überholt — es WIRD festgehalten,
   // es gibt nur noch keinen erfolgreichen Lauf. Beide Sätze sind ausdrücklich rückblickend: der
   // Zeitpunkt sagt, dass es damals ging, nicht dass es jetzt geht. Das wüsste nur ein Aufruf, und
@@ -6245,6 +6260,33 @@ const de = {
   // (neuerer Server, älterer Bestand). BEWUSST NICHT unter `mrun.task.*` — dieser Namensraum ist
   // genau die acht Arten, und ein Wert vom Draht darf nie in einen Schlüssel eingesetzt werden.
   // Bauform wie `imp.status.unknown`: ehrlich benannt statt roher Schlüssel in der Oberfläche.
+  // Aufnahme gesamt-ki-laufprotokoll: vier Modellwege mit eigenem Lauf, Kosten, Erzeugnis, Auswertung.
+  "mrun.task.enrich": "Anreichern",
+  "mrun.task.conflict": "Konfliktprüfung",
+  "mrun.task.duplicate": "Dublettenprüfung",
+  "mrun.task.probe": "Anbieterprobe",
+  "mrun.cost": "Kosten: {{k}}",
+  "mrun.costStand": "Preisstand: {{s}}",
+  "mrun.produced": "Erzeugt: {{n}} × {{art}}",
+  "mrun.erzeugnis.vorschlag": "Vorschlag",
+  "mrun.erzeugnis.text": "Text",
+  "mrun.erzeugnis.frage": "Frage",
+  "mrun.erzeugnis.antwort": "Antwort",
+  "mrun.erzeugnis.punkt": "Punkt",
+  "mrun.erzeugnis.beschreibung": "Beschreibung",
+  "mrun.erzeugnis.gruppe": "Gruppe",
+  "mrun.erzeugnis.kriterien": "Auswahlkriterien",
+  "mrun.erzeugnis.urteil": "Urteil",
+  "mrun.report.title": "KI-Auswertung (Zeitraum)",
+  "mrun.report.period": "Zeitraum:",
+  "mrun.report.days": "Letzte {{n}} Tage",
+  "mrun.report.costSum": "Kosten gesamt: {{k}} (aus {{n}} von {{total}} Läufen)",
+  "mrun.report.priceList": "Preisliste: Stand {{s}}, {{w}}",
+  "mrun.report.noPriceList": "Keine Preisliste hinterlegt — Kosten werden nicht berechnet.",
+  "mrun.report.withoutPrice":
+    "{{n}} Läufe mit Modellaufruf ohne berechenbare Kosten (Preis oder Verbrauch fehlt)",
+  "mrun.report.capped": "Sehr viele Läufe — gerechnet wurde über die jüngsten 10000.",
+  "mrun.report.empty": "Keine KI-Läufe in diesem Zeitraum.",
   "mrun.taskUnknown": "Aufgabenart unbekannt",
   "mrun.status.success": "OK",
   "mrun.status.error": "Fehler",
@@ -7089,6 +7131,32 @@ const de = {
     "Der Server hat einen Zustand gemeldet, den diese Version nicht kennt. Das Gezeigte ist deshalb nicht als abgeschlossen zu lesen.",
   "w2.run.failureCode": "Fehlercode",
   "w2.run.failureReason": "Grund",
+  // R-0134 / R-1005: warum der Start gesperrt ist — derselbe Zustand wie im Zugangskasten.
+  "w2.run.gesperrt.disabled":
+    "Der Confluence-Import ist in dieser Installation ausgeschaltet. Deshalb lässt sich hier kein Lauf starten. Eingeschaltet wird er auf dem Server (siehe Zugang oben).",
+  "w2.run.gesperrt.noCredentials":
+    "Der Confluence-Import ist eingeschaltet, aber die Zugangsdaten sind nicht vollständig oder nicht brauchbar. Erst wenn sie stehen, lässt sich ein Lauf starten (siehe Zugang oben).",
+  // R-0159: der Grund einer abgelehnten Startanfrage — aus Status und Code abgeleitet.
+  "w2.run.startFehler.zeitlimit":
+    "Confluence hat nicht rechtzeitig geantwortet (Zeitüberschreitung). Bitte später erneut versuchen.",
+  "w2.run.startFehler.nichtKonfiguriert":
+    "Der Import ist nicht startbereit: Die Zugangsdaten zu Confluence fehlen oder sind nicht brauchbar.",
+  "w2.run.startFehler.ausgeschaltet":
+    "Der Confluence-Import ist in dieser Installation ausgeschaltet — der Start ist nicht verfügbar.",
+  "w2.run.startFehler.keinRecht": "Für den Start eines Imports fehlt die Berechtigung.",
+  "w2.run.startFehler.betreiberAus":
+    "Der Confluence-Import ist vom Betreiber ausgeschaltet — einschalten lässt er sich oben im Bereich Zugang.",
+  "w2.run.gesperrt.switchedOff":
+    "Der Confluence-Import ist vom Betreiber ausgeschaltet. Einschalten lässt er sich oben im Bereich Zugang.",
+  // R-0159: die verständliche Erklärung neben einem eindeutigen Fehlercode eines Laufs.
+  "w2.run.failureText.CONFLUENCE_TIMEOUT":
+    "Confluence hat nicht rechtzeitig geantwortet (Zeitüberschreitung). Der Lauf wurde abgebrochen; ein erneuter Start ist möglich.",
+  "w2.run.failureText.CONFLUENCE_BUDGET":
+    "Das Zeitbudget für das Lesen des Bereichs war erschöpft. Der Bereich wurde nicht vollständig gelesen.",
+  "w2.run.failureText.CONFLUENCE_RESPONSE_TOO_LARGE":
+    "Eine Antwort von Confluence war zu groß und wurde nicht gelesen.",
+  "w2.run.failureText.IMPORT_UNAVAILABLE":
+    "Der Import war nicht startbereit: Die Zugangsdaten zu Confluence fehlen oder sind nicht brauchbar.",
   // Das ORIGINAL — der eine Block links. Er ist das Dokument, nicht das Wissen.
   "w2.source.heading": "Original",
   "w2.source.lead": "Das importierte Dokument in genau der Fassung, aus der das Wissen entstand.",
@@ -7984,6 +8052,8 @@ const en: typeof de = {
   "ko.origin.studio": "From the studio",
   "ko.origin.expert": "From the expert form",
   "ko.origin.frontdoor": "From the capture form",
+  // R-0180/R-2108: taken over from the import review queue by a person.
+  "ko.origin.import": "Imported",
   // JOB 3027 · Station 4: the three states per disclosure. „not classified" is a statement about the
   // OBJECT, „not in this response" one about the RESPONSE — merging them forces the reader to guess.
   "val.stufe.nichtEingestuft": "not classified",
@@ -10961,6 +11031,16 @@ const en: typeof de = {
   "imp.access.whereSet":
     "These values are set as environment variables on the server — not here. Klarwerk only shows whether they are set, never their content.",
   "imp.access.whoMay": "This can be changed by whoever has access to this installation's server.",
+  "imp.access.switchedOff.title": "Switched off by the operator",
+  "imp.access.switchedOff.body":
+    "The Confluence import is released in this installation but switched off. While it is off, the server rejects every import. Use the button below to switch it on.",
+  "imp.access.schalter.an": "Switch import on",
+  "imp.access.schalter.aus": "Switch import off",
+  "imp.access.schalter.hinweis":
+    "Takes effect immediately, without a restart. Credentials are not entered here.",
+  "imp.access.schalter.nichtFreigegeben":
+    "The import is not released in this installation — the switch only takes effect once it is released on the server.",
+  "imp.access.schalter.fehler": "The switch could not be changed. Please try again.",
   "imp.access.lastConnectedUnknown": "No successfully completed import has been recorded yet.",
   "imp.access.lastConnected":
     "Last successfully completed import: {{date}}. Whether it works now, this look back does not say.",
@@ -12323,6 +12403,32 @@ const en: typeof de = {
   "mrun.task.extract": "Extract",
   "mrun.task.describe": "Describe image",
   "mrun.task.group": "Group",
+  "mrun.task.enrich": "Enrich",
+  "mrun.task.conflict": "Conflict check",
+  "mrun.task.duplicate": "Duplicate check",
+  "mrun.task.probe": "Provider probe",
+  "mrun.cost": "Cost: {{k}}",
+  "mrun.costStand": "Price list as of: {{s}}",
+  "mrun.produced": "Produced: {{n}} × {{art}}",
+  "mrun.erzeugnis.vorschlag": "suggestion",
+  "mrun.erzeugnis.text": "text",
+  "mrun.erzeugnis.frage": "question",
+  "mrun.erzeugnis.antwort": "answer",
+  "mrun.erzeugnis.punkt": "point",
+  "mrun.erzeugnis.beschreibung": "description",
+  "mrun.erzeugnis.gruppe": "group",
+  "mrun.erzeugnis.kriterien": "selection criteria",
+  "mrun.erzeugnis.urteil": "verdict",
+  "mrun.report.title": "AI report (period)",
+  "mrun.report.period": "Period:",
+  "mrun.report.days": "Last {{n}} days",
+  "mrun.report.costSum": "Total cost: {{k}} (from {{n}} of {{total}} runs)",
+  "mrun.report.priceList": "Price list: as of {{s}}, {{w}}",
+  "mrun.report.noPriceList": "No price list configured — costs are not calculated.",
+  "mrun.report.withoutPrice":
+    "{{n}} runs with model calls but no computable cost (price or usage missing)",
+  "mrun.report.capped": "Very many runs — calculated over the most recent 10000.",
+  "mrun.report.empty": "No AI runs in this period.",
   "mrun.taskUnknown": "Task type unknown",
   "mrun.status.success": "OK",
   "mrun.status.error": "Error",
@@ -12964,6 +13070,29 @@ const en: typeof de = {
     "The server reported a state this build does not know. What you see must not be read as finished.",
   "w2.run.failureCode": "Error code",
   "w2.run.failureReason": "Reason",
+  "w2.run.gesperrt.disabled":
+    "The Confluence import is switched off in this installation, so no run can be started here. It is switched on on the server (see Access above).",
+  "w2.run.gesperrt.noCredentials":
+    "The Confluence import is switched on, but the credentials are incomplete or unusable. A run can only be started once they are in place (see Access above).",
+  "w2.run.startFehler.zeitlimit":
+    "Confluence did not respond in time (timeout). Please try again later.",
+  "w2.run.startFehler.nichtKonfiguriert":
+    "The import is not ready to start: the Confluence credentials are missing or unusable.",
+  "w2.run.startFehler.ausgeschaltet":
+    "The Confluence import is switched off in this installation — starting is not available.",
+  "w2.run.startFehler.keinRecht": "You do not have permission to start an import.",
+  "w2.run.startFehler.betreiberAus":
+    "The Confluence import has been switched off by the operator — switch it on above under Access.",
+  "w2.run.gesperrt.switchedOff":
+    "The Confluence import has been switched off by the operator. Switch it on above under Access.",
+  "w2.run.failureText.CONFLUENCE_TIMEOUT":
+    "Confluence did not respond in time (timeout). The run was stopped; you can start it again.",
+  "w2.run.failureText.CONFLUENCE_BUDGET":
+    "The time budget for reading the space ran out. The space was not read completely.",
+  "w2.run.failureText.CONFLUENCE_RESPONSE_TOO_LARGE":
+    "A response from Confluence was too large and was not read.",
+  "w2.run.failureText.IMPORT_UNAVAILABLE":
+    "The import was not ready to start: the Confluence credentials are missing or unusable.",
   "w2.source.heading": "Original",
   "w2.source.lead": "The imported document in exactly the revision the knowledge came from.",
   "w2.source.missing": "No original was delivered for this run.",
@@ -13669,6 +13798,8 @@ const nl: typeof de = {
   "ko.origin.studio": "Uit de studio",
   "ko.origin.expert": "Uit het expertformulier",
   "ko.origin.frontdoor": "Uit de vastlegging",
+  // R-0180/R-2108: door een mens uit de importcontrolewachtrij overgenomen.
+  "ko.origin.import": "Geïmporteerd",
   // JOB 3027 · Station 4: de drie standen per opgave. „niet ingedeeld“ zegt iets over het OBJECT,
   // „niet in dit antwoord“ iets over het ANTWOORD — wie ze samenvoegt, laat de lezer gokken.
   "val.stufe.nichtEingestuft": "niet ingedeeld",
@@ -16645,6 +16776,16 @@ const nl: typeof de = {
     "Deze waarden worden als omgevingsvariabelen op de server gezet — niet hier. Klarwerk laat alleen zien of ze er staan, nooit hun inhoud.",
   "imp.access.whoMay":
     "Dit kan worden gewijzigd door wie toegang heeft tot de server van deze installatie.",
+  "imp.access.switchedOff.title": "Door de beheerder uitgeschakeld",
+  "imp.access.switchedOff.body":
+    "De Confluence-import is in deze installatie vrijgegeven, maar uitgeschakeld. Zolang dat zo is, weigert de server elke import. Met de knop hieronder schakel je hem in.",
+  "imp.access.schalter.an": "Import inschakelen",
+  "imp.access.schalter.aus": "Import uitschakelen",
+  "imp.access.schalter.hinweis":
+    "Werkt direct en zonder herstart. Toegangsgegevens worden hier niet ingevoerd.",
+  "imp.access.schalter.nichtFreigegeben":
+    "De import is in deze installatie niet vrijgegeven — de schakelaar werkt pas na vrijgave op de server.",
+  "imp.access.schalter.fehler": "De schakelaar kon niet worden omgezet. Probeer het opnieuw.",
   "imp.access.lastConnectedUnknown": "Er is nog geen succesvol afgeronde import vastgelegd.",
   "imp.access.lastConnected":
     "Laatste succesvol afgeronde import: {{date}}. Of het nu werkt, zegt deze terugblik niet.",
@@ -18018,6 +18159,32 @@ const nl: typeof de = {
   "mrun.task.extract": "Extraheren",
   "mrun.task.describe": "Afbeelding beschrijven",
   "mrun.task.group": "Groeperen",
+  "mrun.task.enrich": "Verrijken",
+  "mrun.task.conflict": "Conflictcontrole",
+  "mrun.task.duplicate": "Duplicaatcontrole",
+  "mrun.task.probe": "Aanbiedertest",
+  "mrun.cost": "Kosten: {{k}}",
+  "mrun.costStand": "Prijslijst per: {{s}}",
+  "mrun.produced": "Gemaakt: {{n}} × {{art}}",
+  "mrun.erzeugnis.vorschlag": "voorstel",
+  "mrun.erzeugnis.text": "tekst",
+  "mrun.erzeugnis.frage": "vraag",
+  "mrun.erzeugnis.antwort": "antwoord",
+  "mrun.erzeugnis.punkt": "punt",
+  "mrun.erzeugnis.beschreibung": "beschrijving",
+  "mrun.erzeugnis.gruppe": "groep",
+  "mrun.erzeugnis.kriterien": "selectiecriteria",
+  "mrun.erzeugnis.urteil": "oordeel",
+  "mrun.report.title": "AI-overzicht (periode)",
+  "mrun.report.period": "Periode:",
+  "mrun.report.days": "Laatste {{n}} dagen",
+  "mrun.report.costSum": "Totale kosten: {{k}} (uit {{n}} van {{total}} runs)",
+  "mrun.report.priceList": "Prijslijst: per {{s}}, {{w}}",
+  "mrun.report.noPriceList": "Geen prijslijst ingesteld — kosten worden niet berekend.",
+  "mrun.report.withoutPrice":
+    "{{n}} runs met modelaanroep zonder berekenbare kosten (prijs of verbruik ontbreekt)",
+  "mrun.report.capped": "Zeer veel runs — berekend over de meest recente 10000.",
+  "mrun.report.empty": "Geen AI-runs in deze periode.",
   "mrun.taskUnknown": "Taaktype onbekend",
   "mrun.status.success": "OK",
   "mrun.status.error": "Fout",
@@ -18661,6 +18828,29 @@ const nl: typeof de = {
     "De server meldde een toestand die deze versie niet kent. Wat u ziet mag niet als afgerond worden gelezen.",
   "w2.run.failureCode": "Foutcode",
   "w2.run.failureReason": "Reden",
+  "w2.run.gesperrt.disabled":
+    "De Confluence-import is in deze installatie uitgeschakeld. Daarom kan hier geen uitvoering worden gestart. Inschakelen gebeurt op de server (zie Toegang hierboven).",
+  "w2.run.gesperrt.noCredentials":
+    "De Confluence-import is ingeschakeld, maar de toegangsgegevens zijn onvolledig of onbruikbaar. Pas als ze aanwezig zijn, kan een uitvoering worden gestart (zie Toegang hierboven).",
+  "w2.run.startFehler.zeitlimit":
+    "Confluence heeft niet op tijd geantwoord (time-out). Probeer het later opnieuw.",
+  "w2.run.startFehler.nichtKonfiguriert":
+    "De import is niet startklaar: de toegangsgegevens voor Confluence ontbreken of zijn onbruikbaar.",
+  "w2.run.startFehler.ausgeschaltet":
+    "De Confluence-import is in deze installatie uitgeschakeld — starten is niet beschikbaar.",
+  "w2.run.startFehler.keinRecht": "Je hebt geen recht om een import te starten.",
+  "w2.run.startFehler.betreiberAus":
+    "De Confluence-import is door de beheerder uitgeschakeld — inschakelen kan hierboven bij Toegang.",
+  "w2.run.gesperrt.switchedOff":
+    "De Confluence-import is door de beheerder uitgeschakeld. Inschakelen kan hierboven bij Toegang.",
+  "w2.run.failureText.CONFLUENCE_TIMEOUT":
+    "Confluence heeft niet op tijd geantwoord (time-out). De uitvoering is afgebroken; opnieuw starten is mogelijk.",
+  "w2.run.failureText.CONFLUENCE_BUDGET":
+    "Het tijdsbudget voor het lezen van de ruimte was op. De ruimte is niet volledig gelezen.",
+  "w2.run.failureText.CONFLUENCE_RESPONSE_TOO_LARGE":
+    "Een antwoord van Confluence was te groot en is niet gelezen.",
+  "w2.run.failureText.IMPORT_UNAVAILABLE":
+    "De import was niet startklaar: de toegangsgegevens voor Confluence ontbreken of zijn onbruikbaar.",
   "w2.source.heading": "Origineel",
   "w2.source.lead": "Het geïmporteerde document in precies de versie waaruit de kennis ontstond.",
   "w2.source.missing": "Voor deze uitvoering is geen origineel geleverd.",
@@ -18875,6 +19065,25 @@ const nl: typeof de = {
 };
 
 // ================================================================================================
+// R-0801 · NUR DIE STARTSPRACHE GEHÖRT IN DEN EINTRITT — en und nl werden nachgeladen.
+// ================================================================================================
+//
+// Die drei Blöcke oben bleiben, wo sie sind: diese Datei ist die eine Quelle aller Texte, und
+// zahlreiche Wächter lesen sie als Text. Getrennt wird erst im PRODUKTIONSBAU: das Plugin
+// `sprachpaketeNachladen` (`texte/intern/sprachpakete.ts`) schneidet die Blöcke `en` und `nl` als
+// eigene Stücke heraus, ersetzt `{ en, nl }` in `VORLIEGEND` durch `{}` und trägt in `NACHLADEN`
+// je Sprache ein `import()` ein. Es greift NUR auf die zwei Zeilen unten und bricht den Bau ab, wenn
+// es eine davon nicht genau einmal findet — sonst lägen beide Sprachen still wieder im Eintritt.
+//
+// Im Quelltext — und damit in jedem Vitest-Lauf und im Entwicklungsserver — liegen weiterhin alle
+// drei Sprachen sofort vor; der Nachlader (`lib/sprachNachlader.ts`) wird dann nie gefragt.
+type NachladbareSprache = "en" | "nl";
+type Woerterbuch = typeof de;
+
+const VORLIEGEND: Partial<Record<NachladbareSprache, Woerterbuch>> = { en, nl };
+const NACHLADEN: Partial<Record<NachladbareSprache, () => Promise<Woerterbuch>>> = {};
+
+// ================================================================================================
 // JOB 4367 · DIE TEXTMODULE — jeder Nutzerweg bringt seine eigenen Texte mit.
 // ================================================================================================
 //
@@ -18903,26 +19112,55 @@ if (textmodulFehler.length > 0) {
 }
 const modulTexte = fuehreTextmoduleZusammen(textmodule);
 
-void i18n.use(initReactI18next).init({
-  resources: {
-    de: { translation: { ...de, ...modulTexte.de } },
-    en: { translation: { ...en, ...modulTexte.en } },
-    nl: { translation: { ...nl, ...modulTexte.nl } },
-  },
-  // JOB 3323 (Nachführung aus JOB 3280): DIE ADRESSE SCHLÄGT DIE GESPEICHERTE WAHL — aber nur,
-  // wenn sie eine Sprache des LINKVERTRAGS nennt (`EINTRITT_SPRACHEN` = de|en, htmlLang.ts). Der
-  // Eintritt aus Klara (`/capture/frontdoor?draft=<id>&lang=en`) bestimmt so die Sprache DIESES
-  // Aufrufs, ohne dass jemand erst umschalten muss; ohne `?lang` und bei JEDEM nicht vereinbarten
-  // Wert — auch bei `nl`, das die Anwendung zwar kann, der Link aber nicht setzen darf — bleibt es
-  // Zeichen für Zeichen beim bisherigen Verhalten. Die Reihenfolge ist die Rangfolge: Adresse,
-  // dann gespeicherte Wahl, dann die Vorgabe „de" (in `gespeicherteSprache`).
-  //
-  // BEWUSST NICHT GESPEICHERT: `lng` löst kein `languageChanged` aus, `bindSpracheSpeichern`
-  // (`lib/sprachwahl.ts`) schreibt also nichts. Ein Link aus Word ist der Wunsch für DIESEN
-  // Aufruf, keine Wahl für diesen Browser — er soll die Wahl unter /profil nicht überschreiben.
-  lng: sprachAusEintritt() ?? gespeicherteSprache(),
-  fallbackLng: "de",
-  interpolation: { escapeValue: false },
-});
+function istNachladbar(sprache: string): sprache is NachladbareSprache {
+  return sprache === "en" || sprache === "nl";
+}
+
+/** Das Bündel einer Sprache, sofern es schon beim Start vorliegt — sonst nichts. */
+function vorliegend(sprache: NachladbareSprache) {
+  const paket = VORLIEGEND[sprache];
+  return paket ? { [sprache]: { translation: { ...paket, ...modulTexte[sprache] } } } : {};
+}
+
+/** Holt ein fehlendes Bündel nach; die Textmodule derselben Sprache kommen dazu wie oben. */
+function nachladen(sprache: string): Promise<Record<string, string>> | undefined {
+  if (!istNachladbar(sprache)) {
+    return undefined;
+  }
+  const zusatz = modulTexte[sprache];
+  return NACHLADEN[sprache]?.().then((paket) => ({ ...paket, ...zusatz }));
+}
+
+// R-0801: `sprachBereit` erfüllt sich, sobald die Startsprache vollständig vorliegt. Für Deutsch
+// geschieht das sofort; für eine gespeicherte Wahl en/nl wartet `main.tsx` damit den ersten Aufbau
+// ab, damit die Oberfläche nicht erst deutsch erscheint und dann umspringt.
+export const sprachBereit = i18n
+  .use(sprachNachlader(nachladen))
+  .use(initReactI18next)
+  .init({
+    resources: {
+      de: { translation: { ...de, ...modulTexte.de } },
+      ...vorliegend("en"),
+      ...vorliegend("nl"),
+    },
+    // Fehlt einer Sprache das Bündel, fragt i18next den Nachlader; vorhandene Bündel bleiben.
+    partialBundledLanguages: true,
+    // JOB 3323 (Nachführung aus JOB 3280): DIE ADRESSE SCHLÄGT DIE GESPEICHERTE WAHL — aber nur,
+    // wenn sie eine Sprache des LINKVERTRAGS nennt (`EINTRITT_SPRACHEN` = de|en, htmlLang.ts). Der
+    // Eintritt aus Klara (`/capture/frontdoor?draft=<id>&lang=en`) bestimmt so die Sprache DIESES
+    // Aufrufs, ohne dass jemand erst umschalten muss; ohne `?lang` und bei JEDEM nicht vereinbarten
+    // Wert — auch bei `nl`, das die Anwendung zwar kann, der Link aber nicht setzen darf — bleibt es
+    // Zeichen für Zeichen beim bisherigen Verhalten. Die Reihenfolge ist die Rangfolge: Adresse,
+    // dann gespeicherte Wahl, dann die Vorgabe „de" (in `gespeicherteSprache`).
+    //
+    // BEWUSST NICHT GESPEICHERT: das `languageChanged` des Starts kommt, bevor `bindSpracheSpeichern`
+    // (`lib/sprachwahl.ts`) zuhört — bei nachgeladener Startsprache erst nach `sprachBereit`, und
+    // genau deshalb bindet `main.tsx` den Schreiber erst danach. Ein Link aus Word ist der Wunsch
+    // für DIESEN Aufruf, keine Wahl für diesen Browser — er soll die Wahl unter /profil nicht
+    // überschreiben.
+    lng: sprachAusEintritt() ?? gespeicherteSprache(),
+    fallbackLng: "de",
+    interpolation: { escapeValue: false },
+  });
 
 export default i18n;

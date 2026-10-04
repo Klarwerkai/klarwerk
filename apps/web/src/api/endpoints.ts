@@ -77,6 +77,7 @@ import type {
   LiveWall,
   ManagementSnapshot,
   MediaAnalysis,
+  ModelRunAuswertungAntwort,
   ModelRunRecord,
   MyImpact,
   Neighborhood,
@@ -1032,6 +1033,9 @@ export const endpoints = {
   modelRuns: {
     recent: (limit?: number) =>
       api.get<ModelRunRecord[]>(`/model-runs${qs({ limit: limit?.toString() })}`),
+    // Aufnahme gesamt-ki-laufprotokoll (V9, R-2071): Auswertung eines Zeitraums.
+    auswertung: (von: string, bis: string) =>
+      api.get<ModelRunAuswertungAntwort>(`/model-runs/auswertung${qs({ von, bis })}`),
   },
   // SCRUM-169: KO-übergreifender read-only Evidence-Index (QM/Stufe 2; nur Metadaten).
   evidence: {
@@ -1220,6 +1224,9 @@ export const endpoints = {
   // „ausgeschaltet" melden können muss. Begründung ausführlich in import-access-routes.ts.
   importAccess: {
     confluence: () => api.get<ImportAccessStatus>("/import/confluence/zugang"),
+    // R-0134 / R-1005: der Betreiberschalter — genau ein Ja/Nein, die Antwort ist die neue Auskunft.
+    confluenceSchalter: (an: boolean) =>
+      api.put<ImportAccessStatus>("/import/confluence/schalter", { an }),
   },
   users: {
     list: () => api.get<PublicUser[]>("/users"),
