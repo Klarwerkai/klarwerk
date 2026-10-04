@@ -188,8 +188,9 @@ describe("R-0658 · Schutzdaten: Warnung, Quarantäne, kein Treffer in der Suche
         changes: { bodyHtml },
       });
 
+    // Vorgangsschlüssel nach `OPERATION_ID_PATTERN` (document-append.ts): 8–120 Zeichen.
     const mitSchutzdaten = await uebernahme(
-      "s7-mit",
+      "s7-mit-schutzdaten",
       "<p>Für die Abrechnung gilt Personalnummer: 12345678 laut Stammblatt.</p>",
     );
     expect(mitSchutzdaten.ko.schutzdatenQuarantaene?.arten).toEqual(["personalnummer"]);
@@ -205,7 +206,7 @@ describe("R-0658 · Schutzdaten: Warnung, Quarantäne, kein Treffer in der Suche
 
     // Über DENSELBEN Produktweg sauberen Inhalt übernehmen: die Quarantäne fällt, die Suche kehrt zurück.
     const sauber = await uebernahme(
-      "s7-sauber",
+      "s7-sauber-uebernahme",
       "<p>Für die Abrechnung gilt das Stammblatt der Personalabteilung.</p>",
     );
     expect(sauber.ko.schutzdatenQuarantaene).toBeUndefined();
