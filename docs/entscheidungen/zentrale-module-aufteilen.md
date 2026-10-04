@@ -35,7 +35,7 @@ Umgestellt: alle Prüfstände, die Skript- oder Stilinhalte aus `taskpane.html` 
 | K2 | R-1148 ein Auslieferungsstück, getrennte Module, gemeinsame DB-Klammern, Infrastruktur über Adapter | **im Bestand vorhanden, jetzt als Inventar belegt (Nacharbeit 1)** | `zusammenschaltung.md` Abschnitt 7 ordnet jeden Teil von R-1148 dem Bestand zu (Abschnitte 3–6, vom Prüfstand K1 gehalten). Offen und dort benannt: die Architekturregel misst nur `services/`; ob jede Route ausschliesslich über Adapter auf Infrastruktur zugreift, ist nicht erhoben (bekannt: `GET /api/admin/sicherungen` liest ein Verzeichnis direkt). |
 | K3 | R-1304 Architekturdrift und Modulgrenzen messen | **im Bestand vorhanden** | Quelleninspektion: `.dependency-cruiser.cjs` (`no-circular`, `module-boundaries` = nur über `index.ts`, `no-orphans` als Warnung), gefahren in `tools/check` (Zeile „architecture") und `npm run arch`. Grenze: misst nur `services/`, nicht `apps/web` und nicht `tests/`. Eine eigene Architekturentscheidung als Dokument fehlt; die Regel steht im Kopf der Konfiguration. |
 | K4 | R-1337 ein Typname, zwei Definitionen | **offener Beleg, keine fehlende Umsetzung** | Die Quelle nennt weder Typ noch Fundstelle und spricht in der Vergangenheit („war … mussten abgeglichen werden"). Zuordnen lässt sich der Punkt erst mit `aufnahmepunkte-010.json` `$[127]`; diese Datei liegt diesem Auftrag nicht vor. Eine Erhebung doppelter Typnamen wurde nicht ausgeführt. |
-| K5 | R-1499 Sammeldateien, die fast jeder Auftrag anfasst | **Aufgabenfenster und Wörterbuch geliefert; Rest offen** | Geliefert: Markup, Stil und Skript des Fensters sind getrennte Dateien; `apps/web/src/i18n.ts` ist von 18.928 auf 71 Zeilen geschrumpft, die Wörterbücher stehen je Sprache in `apps/web/src/woerterbuch/` (K10). Offen und gemessen: `services/app/src/build-app.ts` 3.226 Zeilen (jetzt beschrieben, nicht aufgeteilt), `taskpane.js` 12.497 Zeilen, `woerterbuch/de.ts` 7.467 Zeilen. |
+| K5 | R-1499 Sammeldateien, die fast jeder Auftrag anfasst | **Aufgabenfenster und Wörterbuch geliefert; Rest offen** | Geliefert: Markup, Stil und Skript des Fensters sind getrennte Dateien; `apps/web/src/i18n.ts` ist von 18.928 auf 71 Zeilen geschrumpft (nach der Integration mit `main` 120, mit dem R-0801-Start), die Wörterbücher stehen je Sprache in `apps/web/src/woerterbuch/` (K10). Offen und gemessen: `services/app/src/build-app.ts` 3.226 Zeilen (jetzt beschrieben, nicht aufgeteilt), `taskpane.js` 12.497 Zeilen (nach der Integration 12.595, s. Nacharbeit 3), `woerterbuch/de.ts` 7.467 Zeilen (nach der Integration 7.601). |
 | K6 | R-1514 Rest aus JOB 3014 | **teilweise; der Rest bleibt NICHT GEPRÜFT** | Der Hinweis „nach dem echten Schnitt trägt nur HTML den Fassungskopf" ist jetzt gemessen statt vermutet: `tests/klara-zerlegung/probeschnitt.test.ts` B4 (Kopf nur an HTML, Cachekennung `?v=<Fassung>` an beiden Verweisen, Server liefert unter jeder Kennung die aktuelle Datei). NICHT GEPRÜFT, und ohne Mensch mit Word nicht prüfbar: echtes Word-WebView, Sideload, echtes Office-CDN, visuelles Layout, UI-Smoke. Ein voller `tools/check`-Lauf wurde nicht gestartet. |
 | K7 | R-1611 Markup/Stil/Skript trennen, Funktion vorher und nachher belegen | **geliefert** | `tests/klara-zerlegung/schnitt-echt.test.ts` (E2: Git-Blob `95226f65…` des Basisstands; E3/E4 Gegenproben); `probeschnitt.test.ts` A1 (Schnitt = Textoperation), D2/D7 (vorher/nachher gleich, Word- und Nicht-Word-Zustand), D3–D6 (Gegenproben); `tests/app/mega69-klara-waechter.test.ts` (Inhalts-Pin unverändert). |
 | K8 | R-2076 modularer, getesteter Code; Coverage-Ziel + API-Doku | **API-Doku geliefert (Nacharbeit 1); Coverage-Ziel vorhanden, nicht durchgesetzt** | [`docs/architektur/http-api-referenz.md`](../architektur/http-api-referenz.md): alle 200 registrierten Endpunkte (ohne `HEAD`-Spiegel) mit Methode, Pfad, Recht, Eingaben, Erfolg und Fehlern; dazu Anmeldung, Rollen, Add-in-Zugang und die allgemeinen Fehlerfälle. Prüfstand `tests/architektur-vertrag/http-api-referenz.test.ts` (A1–A3 gegen den Router der vollständigen App, A4 Gegenproben). Coverage-Ziel weiterverwendet: `vitest.config.ts` `thresholds: { lines: 80, functions: 80 }` (Abschnitt 4 der Referenz). Kein Paketskript fährt `--coverage`, und `@vitest/coverage-v8` ist nicht installiert — Installation ist in diesem Auftrag nicht erlaubt. |
@@ -97,6 +97,35 @@ Umgestellt: alle Prüfstände, die Skript- oder Stilinhalte aus `taskpane.html` 
 | | Prüfstände, die `i18n.ts` als Text lasen, lesen jetzt den zusammengefügten früheren Text (`woerterbuchQuelleAus`) — Aussage und Erwartung unverändert | 37 Testdateien unter `tests/` (Liste in `CLAUDE/PRUEFPLAN.json`, Suite `woerterbuch-leser-umgestellt`) |
 | R-1141: Vertrag fehlte | Zusammenschaltungsvertrag mit R-1148-Inventar | `docs/architektur/zusammenschaltung.md`, `tests/architektur-vertrag/zusammenschaltung.test.ts` |
 | R-2076/NFR-MNT-02: API-Doku fehlte | HTTP-API-Referenz, Coverage-Ziel zugeordnet | `docs/architektur/http-api-referenz.md`, `tests/architektur-vertrag/http-api-referenz.test.ts` |
+
+## Nacharbeit 3 — Integration mit `main` a2ff8da8
+
+Zwei Gitkonflikte, beide aus derselben Ursache: `main` hat Dateien weitergebaut, die dieser Auftrag
+aufgeteilt hat. Beide Seiten sind erhalten.
+
+| Datei | `main` hat | Auflösung |
+| --- | --- | --- |
+| `apps/web/public/word-addin/taskpane.html` | R-0169 (Dokumentkennung im Word-Panel) und KI-Aufgabe `enrich`: 99 Zeilen im Inline-Skript, Markup und Stil unverändert | Markup bleibt die geschnittene Seite; die 99 Zeilen stehen Zeile für Zeile in `taskpane.js`. Beleg: `schnitt-echt.test.ts` E2 — die drei Dateien ergeben jetzt Byte für Byte die `taskpane.html` von `main` (Blob `7d5a6234…`, `PANEL_VOR_SCHNITT_BLOB`). |
+| `apps/web/src/i18n.ts` | neue Schlüssel in de/en/nl (134/128/128 Zeilen) und R-0801: en und nl werden im Produktionsbau nachgeladen (Plugin `sprachpaketeNachladen`) | Die neuen Schlüssel stehen an derselben Stelle in `woerterbuch/{de,en,nl}.ts`; `i18n.ts` trägt den R-0801-Start (`sprachBereit`, `VORLIEGEND`, `NACHLADEN`). Das Plugin nimmt jetzt die Importe von `woerterbuch/en.ts`/`nl.ts` aus dem Eintritt und baut die Pakete aus den Sprachdateien. Belege: `aufteilung-unveraendert.test.ts` W1 gegen die Datei von `main` (Blob `42ab6f8b…`, Kopie `i18n-vor-aufteilung.txt`); `tests/erstladezeit/sprachpakete-nachladen.test.ts` S1–S6 auf die Aufteilung umgestellt (dieselben Aussagen: Eintritt ohne en/nl, Paket = wörtlicher Block, gleiche Schlüssel, fail-closed), N und Q unverändert; Block DECKEL in `eintritt-ohne-seiten.test.ts` unverändert. |
+
+Mitgeführt: `tests/klara-assistenz/abgleich-belege.test.ts` (neu auf `main`, las Skriptmarken direkt
+aus `taskpane.html`) liest über `panelQuelleAus`; `schnitt-pins.test.ts` führt es und
+`tests/app/word-addin-dokumentkennung.test.ts` als Mitfahrer.
+
+**Fremde Befunde aus `main`, nicht von diesem Auftrag verursacht und hier NICHT geändert** — sie
+treten auf `main` an der ungeschnittenen Datei genauso auf:
+
+- `tests/klara-zerlegung/schnittflaechen.test.ts` B3: R-0169 hat das Skript auf 12.595 Zeilen
+  gebracht; die Schranke steht bei 12.500, ihr Anheben ist seit JOB 3667 verboten. Auf `main` misst
+  derselbe Fall das Inline-Skript mit derselben Schranke und denselben Zeilen. Abhilfe ist entweder
+  ein weiterer Schnitt (Schritt 2 des Schnittplans) oder eine Entscheidung über die Schranke — beides
+  eine Steuerungsentscheidung, hier nicht selbst getroffen.
+- `tests/app/mega69-klara-waechter.test.ts` INHALTS-PIN: R-0169 hat den Panelinhalt geändert, der Pin
+  (`5fbf5f64…`) ist auf `main` nicht nachgeführt. Ein Pin wandert nur nach geprüften
+  Auslieferungsfolgen durch den Eigner der Änderung.
+- `tests/app/klara-regressionsinventar.test.ts` K2: `tests/klara-assistenz/abgleich-belege.test.ts`
+  und `tests/app/word-addin-dokumentkennung.test.ts` sind auf `main` entstanden und nicht ins
+  Inventar eingetragen.
 
 **Beobachtung ohne Änderung:** `GET /api/support` (`services/app/src/routes/support-routes.ts`) ist
 registriert, steht aber weder in `TABELLE`, `SCHREIB_TABELLE` noch `NICHT_ABGENOMMEN` der

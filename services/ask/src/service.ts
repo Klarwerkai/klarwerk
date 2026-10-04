@@ -20,6 +20,7 @@ import {
   type ReasonerLocale,
   type Relevanztext,
   type ZuordnungsPaar,
+  decktAlleFragebegriffe,
   queryTokens,
   waehleKandidaten,
 } from "../../reasoner";
@@ -715,6 +716,9 @@ export class AskService {
         this.koService.findCandidates({
           terms: [term],
           limit: ASK_PREFILTER_TERM_LIMIT,
+          // AUFNAHME 20260922 (R-0316): der Deckel je Begriff wächst mit dem Bestand (Regel an
+          // `bestandsgerechterKandidatendeckel`). Bis 5.000 Objekte bleibt er bei 50.
+          deckelWaechstMitBestand: true,
           // D5: die Sperre reist mit bis vor jedes Lesen in Suche und Nachladen (s. KoService).
           ...(this.kiSperre
             ? { vorInhaltsabruf: () => this.pruefeKiSperre("vorauswahl", kiBeginn) }
@@ -737,9 +741,17 @@ export class AskService {
         gesammelt.set(kandidat.id, { ko: kandidat, termTreffer: 1, besterRang: rang });
       });
     }
+    // AUFNAHME 20260922 (R-0316): eine vollständige Einzelliste wird von der Vereinigung nie
+    // gekürzt. Ist der Deckel je Begriff über 200 gewachsen, stünde die Kürzung sonst wieder in
+    // der Ausgabeordnung (validiert ↓, Trust ↓) — und nähme genau den Titeltreffer mit niedrigem
+    // Trust weg, den die Güteauswahl im Deckel eben hereingeholt hat.
+    const gesamtDeckel = Math.max(
+      ASK_CANDIDATE_PREFILTER_LIMIT,
+      ...trefferlisten.map((liste) => liste.length),
+    );
     return [...gesammelt.values()]
       .sort((a, b) => b.termTreffer - a.termTreffer || a.besterRang - b.besterRang)
-      .slice(0, ASK_CANDIDATE_PREFILTER_LIMIT)
+      .slice(0, gesamtDeckel)
       .map((eintrag) => eintrag.ko);
   }
 
@@ -928,7 +940,30 @@ export class AskService {
     // trifft, überlebt damit beide oder keines, aber nie nur das erste.
     // JOB 3353: `waehleKandidaten` IST `selectCandidates` plus die Zwillingsregel — dieselbe
     // Funktion, die Tor 2 ruft (Begründung und Grenzen dort, `reasoner/src/provider-model.ts`).
-    const candidates = waehleKandidaten(question, refs, DEFAULT_TOP_K, relevanz);
+    // R-0473 (K8): MEHRERE BEGRIFFE MÜSSEN ALLE VORKOMMEN. Die Vorauswahl bleibt term-weise ODER
+    // (sonst fände der Deckel nichts mehr), aber eine Quelle, der ein gebundener Fragebegriff fehlt,
+    // erreicht weder Tor 1 noch Tor 2. Eine deklarierte Entsprechung zählt als derselbe Begriff.
+    // Welche Begriffe gebunden sind und warum nicht jedes Token: `undVerknuepfteFragebegriffe`.
+    // Gebunden wird nur die FRAGE — die Markierung ergänzt die Suche, sie verschärft sie nicht.
+    // Geprüft wird auf DENSELBEN Feldern, die die Suche trifft — Kategorie und Tags eingeschlossen,
+    // die `KnowledgeRef` nicht führt; sie kommen deshalb aus `prefiltered`.
+    const ordnung = new Map<string, string[]>(
+      prefiltered.map((ko): [string, string[]] => [ko.id, [ko.category, ...(ko.tags ?? [])]]),
+    );
+    const vollstaendig = refs.filter((ref) =>
+      decktAlleFragebegriffe(
+        question,
+        [
+          ref.title,
+          ref.statement,
+          ...(ref.captionTexts ?? []),
+          ref.bodyText ?? "",
+          ...(ordnung.get(ref.id) ?? []),
+        ].join(" "),
+        relevanz,
+      ),
+    );
+    const candidates = waehleKandidaten(question, vollstaendig, DEFAULT_TOP_K, relevanz);
     // SCRUM-490 R2 (B1): Add-on-Pfad → RETRIEVAL-ONLY (kein Modell-/Embedder-Egress des Dokumenttexts).
     // Sonst der übliche Reasoner-Weg (Session-Pfad unverändert).
     // AUFTRAG-mega61 BLOCK G — DAS ZWEITE NETZ, AUS DEM KONTEXT ABGELEITET.

@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation } from "react-router-dom";
 import { GuardedLink } from "../app/NavGuardContext";
@@ -160,7 +161,17 @@ function KopfbandPunkt({
  * Die Punkte im Kopfband: `<a>` mit sichtbarem Text, aktiver Punkt `aria-current="page"` und
  * 2 px Unterstrich (modern.css), „Prüfen" mit dem Zähler der offenen Prüfungen.
  */
-export function KopfbandPunkte(): JSX.Element {
+export function KopfbandPunkte({
+  nachsatz,
+}: {
+  /**
+   * FE-002: was in derselben Hauptnavigation NACH den Punkten steht — der Einstieg
+   * „Arbeitsbereiche". Er ist kein Punkt (kein `data-kopfband-punkt`, keine Aktivregel), sondern
+   * die Übersicht über alle weiteren Seiten; er gehört aber zur Navigation und nicht zu den
+   * Werkzeugen rechts.
+   */
+  nachsatz?: ReactNode;
+} = {}): JSX.Element {
   const { t } = useTranslation();
   const { pathname } = useLocation();
   const punkte = useSichtbareKopfbandPunkte();
@@ -169,7 +180,7 @@ export function KopfbandPunkte(): JSX.Element {
   return (
     <nav
       aria-label={t("kopfband.navigation")}
-      className="kw-kopfband-punkte flex items-center gap-[26px]"
+      className="kw-kopfband-punkte flex min-w-0 items-center gap-3 min-[1280px]:gap-[26px]"
     >
       {punkte.map((item) => (
         <KopfbandPunkt
@@ -180,6 +191,7 @@ export function KopfbandPunkte(): JSX.Element {
           pathname={pathname}
         />
       ))}
+      {nachsatz}
     </nav>
   );
 }

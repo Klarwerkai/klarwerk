@@ -505,6 +505,8 @@ const nl: typeof de = {
   "ko.origin.studio": "Uit de studio",
   "ko.origin.expert": "Uit het expertformulier",
   "ko.origin.frontdoor": "Uit de vastlegging",
+  // R-0180/R-2108: door een mens uit de importcontrolewachtrij overgenomen.
+  "ko.origin.import": "Geïmporteerd",
   // JOB 3027 · Station 4: de drie standen per opgave. „niet ingedeeld“ zegt iets over het OBJECT,
   // „niet in dit antwoord“ iets over het ANTWOORD — wie ze samenvoegt, laat de lezer gokken.
   "val.stufe.nichtEingestuft": "niet ingedeeld",
@@ -3481,6 +3483,16 @@ const nl: typeof de = {
     "Deze waarden worden als omgevingsvariabelen op de server gezet — niet hier. Klarwerk laat alleen zien of ze er staan, nooit hun inhoud.",
   "imp.access.whoMay":
     "Dit kan worden gewijzigd door wie toegang heeft tot de server van deze installatie.",
+  "imp.access.switchedOff.title": "Door de beheerder uitgeschakeld",
+  "imp.access.switchedOff.body":
+    "De Confluence-import is in deze installatie vrijgegeven, maar uitgeschakeld. Zolang dat zo is, weigert de server elke import. Met de knop hieronder schakel je hem in.",
+  "imp.access.schalter.an": "Import inschakelen",
+  "imp.access.schalter.aus": "Import uitschakelen",
+  "imp.access.schalter.hinweis":
+    "Werkt direct en zonder herstart. Toegangsgegevens worden hier niet ingevoerd.",
+  "imp.access.schalter.nichtFreigegeben":
+    "De import is in deze installatie niet vrijgegeven — de schakelaar werkt pas na vrijgave op de server.",
+  "imp.access.schalter.fehler": "De schakelaar kon niet worden omgezet. Probeer het opnieuw.",
   "imp.access.lastConnectedUnknown": "Er is nog geen succesvol afgeronde import vastgelegd.",
   "imp.access.lastConnected":
     "Laatste succesvol afgeronde import: {{date}}. Of het nu werkt, zegt deze terugblik niet.",
@@ -3990,6 +4002,48 @@ const nl: typeof de = {
     "Alle kennis van dit domein komt van één enkele persoon. Valt die weg (ziekte, opzegging, pensioen), dan is de kennis verdwenen — dat is het grootste kennisrisico. Tegenmaatregel: meer mensen betrekken, kennis dubbel laten controleren (valideren) en bronnen aanvullen.",
   "risk.bearer": "Gedragen door: {{names}}",
   "risk.viewObjects": "Objecten van dit domein bekijken",
+  "risk.vsPlant.above": "Gevalideerd aandeel boven het fabrieksgemiddelde ({{avg}}%)",
+  "risk.vsPlant.below": "Gevalideerd aandeel onder het fabrieksgemiddelde ({{avg}}%)",
+  "risk.vsPlant.equal": "Gevalideerd aandeel gelijk aan het fabrieksgemiddelde ({{avg}}%)",
+  "risk.staleByAssetChange_one": "{{count}} object na een installatiewijziging te controleren",
+  "risk.staleByAssetChange_other": "{{count}} objecten na een installatiewijziging te controleren",
+  "risk.horizon.title": "Mijn gebied · Kennis borgen vóór het pensioen",
+  "risk.horizon.filterLabel": "Pensioenhorizon",
+  "risk.horizon.filter": "komende {{months}} maanden",
+  "risk.horizon.notCountable":
+    "Wat iemand weet dat nog niet in het systeem staat, valt niet te tellen. Getoond wordt wat van de persoon afhangt — en wat vóór de termijn geborgd moet worden.",
+  "risk.horizon.noAreas": "Er is nog geen gebied onderhouden.",
+  "risk.horizon.noOwnArea":
+    "Aan u is nog geen gebied toegewezen. De toewijzing wordt door de beheerder onderhouden.",
+  "risk.horizon.busFactorOne": "Busfactor 1",
+  "risk.horizon.criticality": "Kritikaliteit: {{level}}",
+  "risk.horizon.level.niedrig": "laag",
+  "risk.horizon.level.mittel": "middel",
+  "risk.horizon.level.hoch": "hoog",
+  "risk.horizon.noManager": "Nog geen verantwoordelijke persoon ingevoerd",
+  "risk.horizon.manager": "Verantwoordelijk: {{name}}",
+  "risk.horizon.noneInHorizon":
+    "Volgens de onderhouden gegevens gaat niemand uit dit gebied in de komende {{months}} maanden met pensioen.",
+  "risk.horizon.bearer":
+    "{{name}} · pensioen in de komende {{months}} maanden · kennis borgen vóór {{due}}",
+  "risk.horizon.todo.soleBearer":
+    "Enige bron in dit gebied — valt die weg, dan gaat de kennis verloren.",
+  "risk.horizon.todo.openKos_one": "{{count}} eigen object nog niet gevalideerd",
+  "risk.horizon.todo.openKos_other": "{{count}} eigen objecten nog niet gevalideerd",
+  "risk.horizon.todo.openGaps_one": "{{count}} open vraag toegewezen",
+  "risk.horizon.todo.openGaps_other": "{{count}} open vragen toegewezen",
+  "risk.horizon.todo.koCount_one": "{{count}} object in dit gebied vastgelegd",
+  "risk.horizon.todo.koCount_other": "{{count}} objecten in dit gebied vastgelegd",
+  "risk.pflege.title": "Gebiedsprofielen en pensioenhorizonten onderhouden",
+  "risk.pflege.intro":
+    "Per categorie: wie verantwoordelijk is voor het gebied en de inschatting van kritikaliteit, procesnabijheid, herhalingsfrequentie en schadepotentieel (leeg = geen invoergegevens). Per persoon: pensioen in de komende 24 of 36 maanden — alleen horizon en termijn worden opgeslagen.",
+  "risk.pflege.manager": "Verantwoordelijk voor {{category}}",
+  "risk.pflege.noManager": "Geen verantwoordelijke persoon",
+  "risk.pflege.save": "Opslaan",
+  "risk.pflege.error": "Opslaan is niet gelukt.",
+  "risk.pflege.retirementTitle": "Pensioenhorizonten",
+  "risk.pflege.retirement": "Pensioenhorizon van {{name}}",
+  "risk.pflege.noRetirement": "Geen pensioen ingevoerd",
   "risk.busLegendSingle": "rood = enkele bron (uitvalrisico)",
   "risk.busLegendOk": "groen = meerdere bronnen",
   "risk.help.summary":
@@ -4015,6 +4069,9 @@ const nl: typeof de = {
   "health.factor.openGaps": "Open kennishiaten",
   "health.factor.openConflicts": "Open conflicten",
   "health.band.unproven": "indeling niet aangetoond",
+  "health.unknown": "onbekend",
+  "health.unknownExplain":
+    "Voor deze waarde ontbreken op dit moment live-signalen (kennisobjecten, lacunes, conflicten, hervalidaties of busfactor zijn niet geladen of niet bereikbaar). Daarom staat hier geen getal — er wordt niets geschat.",
   "health.range.explain":
     "{{worst}} van 100 in het slechtste geval, {{best}} in het beste. Zolang niet is aangetoond dat er volledig naar conflicten is gezocht, geldt de slechtere waarde — daarom staat hier geen band.",
   "health.conflictUnproven.title":
@@ -4854,6 +4911,32 @@ const nl: typeof de = {
   "mrun.task.extract": "Extraheren",
   "mrun.task.describe": "Afbeelding beschrijven",
   "mrun.task.group": "Groeperen",
+  "mrun.task.enrich": "Verrijken",
+  "mrun.task.conflict": "Conflictcontrole",
+  "mrun.task.duplicate": "Duplicaatcontrole",
+  "mrun.task.probe": "Aanbiedertest",
+  "mrun.cost": "Kosten: {{k}}",
+  "mrun.costStand": "Prijslijst per: {{s}}",
+  "mrun.produced": "Gemaakt: {{n}} × {{art}}",
+  "mrun.erzeugnis.vorschlag": "voorstel",
+  "mrun.erzeugnis.text": "tekst",
+  "mrun.erzeugnis.frage": "vraag",
+  "mrun.erzeugnis.antwort": "antwoord",
+  "mrun.erzeugnis.punkt": "punt",
+  "mrun.erzeugnis.beschreibung": "beschrijving",
+  "mrun.erzeugnis.gruppe": "groep",
+  "mrun.erzeugnis.kriterien": "selectiecriteria",
+  "mrun.erzeugnis.urteil": "oordeel",
+  "mrun.report.title": "AI-overzicht (periode)",
+  "mrun.report.period": "Periode:",
+  "mrun.report.days": "Laatste {{n}} dagen",
+  "mrun.report.costSum": "Totale kosten: {{k}} (uit {{n}} van {{total}} runs)",
+  "mrun.report.priceList": "Prijslijst: per {{s}}, {{w}}",
+  "mrun.report.noPriceList": "Geen prijslijst ingesteld — kosten worden niet berekend.",
+  "mrun.report.withoutPrice":
+    "{{n}} runs met modelaanroep zonder berekenbare kosten (prijs of verbruik ontbreekt)",
+  "mrun.report.capped": "Zeer veel runs — berekend over de meest recente 10000.",
+  "mrun.report.empty": "Geen AI-runs in deze periode.",
   "mrun.taskUnknown": "Taaktype onbekend",
   "mrun.status.success": "OK",
   "mrun.status.error": "Fout",
@@ -4879,6 +4962,28 @@ const nl: typeof de = {
   "mgmt.rec.resolveConflicts": "{{count}} open conflict(en) oplossen.",
   "mgmt.rec.validateBacklog": "{{count}} open objecten valideren.",
   "mgmt.priorities": "Kennisprioritering (9 factoren)",
+  "mgmt.prio.filterLabel": "Prioritering filteren",
+  "mgmt.prio.filter.all": "Alles",
+  "mgmt.prio.filter.busFactorOne": "Busfactor 1",
+  "mgmt.prio.filter.stale": "Verouderd",
+  "mgmt.prio.filter.highProtection": "Hoge beschermingswaarde",
+  "mgmt.prio.flag.busFactorOne": "busfactor 1",
+  "mgmt.prio.flag.stale": "verouderd",
+  "mgmt.prio.flag.highProtection": "hoge beschermingswaarde",
+  "mgmt.prio.factor.busFactor": "Busfactor",
+  "mgmt.prio.factor.criticality": "Kritikaliteit",
+  "mgmt.prio.factor.processProximity": "Procesnabijheid",
+  "mgmt.prio.factor.age": "Leeftijd",
+  "mgmt.prio.factor.sourceQuality": "Bronkwaliteit",
+  "mgmt.prio.factor.conflictDensity": "Conflictdichtheid",
+  "mgmt.prio.factor.repetition": "Herhalingsfrequentie",
+  "mgmt.prio.factor.damagePotential": "Schadepotentieel",
+  "mgmt.prio.factor.protection": "Beschermingswaarde",
+  "mgmt.prio.noData": "geen invoergegevens",
+  "mgmt.prio.noDataNote":
+    "Voor {{factors}} zijn er in het bestand geen invoergegevens. Deze factoren worden niet geschat; de score komt uit de overige.",
+  "mgmt.prio.detail": "Factordetail · berekend uit {{known}} van 9 factoren",
+  "mgmt.prio.emptyFilter": "Geen categorie in dit filter.",
   "mgmt.pilot": "Pilotrapport 30/60/90",
   "mgmt.print": "Afdrukken / PDF",
   "mgmt.pilotNote": "Afdruk-/HTML-weergave (via browserafdruk), geen gecertificeerde PDF.",
@@ -5497,6 +5602,29 @@ const nl: typeof de = {
     "De server meldde een toestand die deze versie niet kent. Wat u ziet mag niet als afgerond worden gelezen.",
   "w2.run.failureCode": "Foutcode",
   "w2.run.failureReason": "Reden",
+  "w2.run.gesperrt.disabled":
+    "De Confluence-import is in deze installatie uitgeschakeld. Daarom kan hier geen uitvoering worden gestart. Inschakelen gebeurt op de server (zie Toegang hierboven).",
+  "w2.run.gesperrt.noCredentials":
+    "De Confluence-import is ingeschakeld, maar de toegangsgegevens zijn onvolledig of onbruikbaar. Pas als ze aanwezig zijn, kan een uitvoering worden gestart (zie Toegang hierboven).",
+  "w2.run.startFehler.zeitlimit":
+    "Confluence heeft niet op tijd geantwoord (time-out). Probeer het later opnieuw.",
+  "w2.run.startFehler.nichtKonfiguriert":
+    "De import is niet startklaar: de toegangsgegevens voor Confluence ontbreken of zijn onbruikbaar.",
+  "w2.run.startFehler.ausgeschaltet":
+    "De Confluence-import is in deze installatie uitgeschakeld — starten is niet beschikbaar.",
+  "w2.run.startFehler.keinRecht": "Je hebt geen recht om een import te starten.",
+  "w2.run.startFehler.betreiberAus":
+    "De Confluence-import is door de beheerder uitgeschakeld — inschakelen kan hierboven bij Toegang.",
+  "w2.run.gesperrt.switchedOff":
+    "De Confluence-import is door de beheerder uitgeschakeld. Inschakelen kan hierboven bij Toegang.",
+  "w2.run.failureText.CONFLUENCE_TIMEOUT":
+    "Confluence heeft niet op tijd geantwoord (time-out). De uitvoering is afgebroken; opnieuw starten is mogelijk.",
+  "w2.run.failureText.CONFLUENCE_BUDGET":
+    "Het tijdsbudget voor het lezen van de ruimte was op. De ruimte is niet volledig gelezen.",
+  "w2.run.failureText.CONFLUENCE_RESPONSE_TOO_LARGE":
+    "Een antwoord van Confluence was te groot en is niet gelezen.",
+  "w2.run.failureText.IMPORT_UNAVAILABLE":
+    "De import was niet startklaar: de toegangsgegevens voor Confluence ontbreken of zijn onbruikbaar.",
   "w2.source.heading": "Origineel",
   "w2.source.lead": "Het geïmporteerde document in precies de versie waaruit de kennis ontstond.",
   "w2.source.missing": "Voor deze uitvoering is geen origineel geleverd.",

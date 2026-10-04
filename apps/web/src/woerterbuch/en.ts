@@ -520,6 +520,8 @@ const en: typeof de = {
   "ko.origin.studio": "From the studio",
   "ko.origin.expert": "From the expert form",
   "ko.origin.frontdoor": "From the capture form",
+  // R-0180/R-2108: taken over from the import review queue by a person.
+  "ko.origin.import": "Imported",
   // JOB 3027 · Station 4: the three states per disclosure. „not classified" is a statement about the
   // OBJECT, „not in this response" one about the RESPONSE — merging them forces the reader to guess.
   "val.stufe.nichtEingestuft": "not classified",
@@ -3497,6 +3499,16 @@ const en: typeof de = {
   "imp.access.whereSet":
     "These values are set as environment variables on the server — not here. Klarwerk only shows whether they are set, never their content.",
   "imp.access.whoMay": "This can be changed by whoever has access to this installation's server.",
+  "imp.access.switchedOff.title": "Switched off by the operator",
+  "imp.access.switchedOff.body":
+    "The Confluence import is released in this installation but switched off. While it is off, the server rejects every import. Use the button below to switch it on.",
+  "imp.access.schalter.an": "Switch import on",
+  "imp.access.schalter.aus": "Switch import off",
+  "imp.access.schalter.hinweis":
+    "Takes effect immediately, without a restart. Credentials are not entered here.",
+  "imp.access.schalter.nichtFreigegeben":
+    "The import is not released in this installation — the switch only takes effect once it is released on the server.",
+  "imp.access.schalter.fehler": "The switch could not be changed. Please try again.",
   "imp.access.lastConnectedUnknown": "No successfully completed import has been recorded yet.",
   "imp.access.lastConnected":
     "Last successfully completed import: {{date}}. Whether it works now, this look back does not say.",
@@ -4002,6 +4014,48 @@ const en: typeof de = {
     "All knowledge in this domain comes from a single person. If they leave (illness, resignation, retirement), the knowledge is gone — the biggest knowledge risk. Countermeasure: involve more people, have the knowledge second-checked (validated) and add sources.",
   "risk.bearer": "Carried by: {{names}}",
   "risk.viewObjects": "View this domain's objects",
+  "risk.vsPlant.above": "Validated share above the plant average ({{avg}}%)",
+  "risk.vsPlant.below": "Validated share below the plant average ({{avg}}%)",
+  "risk.vsPlant.equal": "Validated share equal to the plant average ({{avg}}%)",
+  "risk.staleByAssetChange_one": "{{count}} object to recheck after an asset change",
+  "risk.staleByAssetChange_other": "{{count}} objects to recheck after an asset change",
+  "risk.horizon.title": "My area · Secure knowledge before retirement",
+  "risk.horizon.filterLabel": "Retirement horizon",
+  "risk.horizon.filter": "next {{months}} months",
+  "risk.horizon.notCountable":
+    "What someone knows that is not yet in the system cannot be counted. Shown is what depends on the person — and what needs securing before the deadline.",
+  "risk.horizon.noAreas": "No area has been maintained yet.",
+  "risk.horizon.noOwnArea":
+    "No area has been assigned to you yet. The assignment is maintained by the administration.",
+  "risk.horizon.busFactorOne": "Bus factor 1",
+  "risk.horizon.criticality": "Criticality: {{level}}",
+  "risk.horizon.level.niedrig": "low",
+  "risk.horizon.level.mittel": "medium",
+  "risk.horizon.level.hoch": "high",
+  "risk.horizon.noManager": "No responsible person entered yet",
+  "risk.horizon.manager": "Responsible: {{name}}",
+  "risk.horizon.noneInHorizon":
+    "According to the maintained data, nobody in this area retires within the next {{months}} months.",
+  "risk.horizon.bearer":
+    "{{name}} · retiring within the next {{months}} months · knowledge to secure by {{due}}",
+  "risk.horizon.todo.soleBearer":
+    "Only source in this area — if it drops out, the knowledge is gone.",
+  "risk.horizon.todo.openKos_one": "{{count}} own object not yet validated",
+  "risk.horizon.todo.openKos_other": "{{count}} own objects not yet validated",
+  "risk.horizon.todo.openGaps_one": "{{count}} open question assigned",
+  "risk.horizon.todo.openGaps_other": "{{count}} open questions assigned",
+  "risk.horizon.todo.koCount_one": "{{count}} object captured in this area",
+  "risk.horizon.todo.koCount_other": "{{count}} objects captured in this area",
+  "risk.pflege.title": "Maintain area profiles and retirement horizons",
+  "risk.pflege.intro":
+    "Per category: who is responsible for the area and the assessment of criticality, process proximity, repetition frequency and damage potential (empty = no input data). Per person: retirement within the next 24 or 36 months — only the horizon and the deadline are stored.",
+  "risk.pflege.manager": "Responsible for {{category}}",
+  "risk.pflege.noManager": "No responsible person",
+  "risk.pflege.save": "Save",
+  "risk.pflege.error": "Saving did not succeed.",
+  "risk.pflege.retirementTitle": "Retirement horizons",
+  "risk.pflege.retirement": "Retirement horizon of {{name}}",
+  "risk.pflege.noRetirement": "No retirement entered",
   "risk.busLegendSingle": "red = single source (failure risk)",
   "risk.busLegendOk": "green = multiple sources",
   "risk.help.summary":
@@ -4027,6 +4081,9 @@ const en: typeof de = {
   "health.factor.openGaps": "Open knowledge gaps",
   "health.factor.openConflicts": "Open conflicts",
   "health.band.unproven": "rating not evidenced",
+  "health.unknown": "unknown",
+  "health.unknownExplain":
+    "Live signals for this value are currently missing (knowledge objects, gaps, conflicts, revalidations or bus factor are not loaded or not reachable). That is why no number is shown here — nothing is estimated.",
   "health.range.explain":
     "{{worst}} out of 100 in the worst case, {{best}} in the best. As long as it is not evidenced that conflicts were searched for completely, the worse value applies — which is why no band is shown here.",
   "health.conflictUnproven.title":
@@ -4859,6 +4916,32 @@ const en: typeof de = {
   "mrun.task.extract": "Extract",
   "mrun.task.describe": "Describe image",
   "mrun.task.group": "Group",
+  "mrun.task.enrich": "Enrich",
+  "mrun.task.conflict": "Conflict check",
+  "mrun.task.duplicate": "Duplicate check",
+  "mrun.task.probe": "Provider probe",
+  "mrun.cost": "Cost: {{k}}",
+  "mrun.costStand": "Price list as of: {{s}}",
+  "mrun.produced": "Produced: {{n}} × {{art}}",
+  "mrun.erzeugnis.vorschlag": "suggestion",
+  "mrun.erzeugnis.text": "text",
+  "mrun.erzeugnis.frage": "question",
+  "mrun.erzeugnis.antwort": "answer",
+  "mrun.erzeugnis.punkt": "point",
+  "mrun.erzeugnis.beschreibung": "description",
+  "mrun.erzeugnis.gruppe": "group",
+  "mrun.erzeugnis.kriterien": "selection criteria",
+  "mrun.erzeugnis.urteil": "verdict",
+  "mrun.report.title": "AI report (period)",
+  "mrun.report.period": "Period:",
+  "mrun.report.days": "Last {{n}} days",
+  "mrun.report.costSum": "Total cost: {{k}} (from {{n}} of {{total}} runs)",
+  "mrun.report.priceList": "Price list: as of {{s}}, {{w}}",
+  "mrun.report.noPriceList": "No price list configured — costs are not calculated.",
+  "mrun.report.withoutPrice":
+    "{{n}} runs with model calls but no computable cost (price or usage missing)",
+  "mrun.report.capped": "Very many runs — calculated over the most recent 10000.",
+  "mrun.report.empty": "No AI runs in this period.",
   "mrun.taskUnknown": "Task type unknown",
   "mrun.status.success": "OK",
   "mrun.status.error": "Error",
@@ -4883,6 +4966,28 @@ const en: typeof de = {
   "mgmt.rec.resolveConflicts": "Resolve {{count}} open conflict(s).",
   "mgmt.rec.validateBacklog": "Validate {{count}} open objects.",
   "mgmt.priorities": "Knowledge prioritization (9 factors)",
+  "mgmt.prio.filterLabel": "Filter prioritization",
+  "mgmt.prio.filter.all": "All",
+  "mgmt.prio.filter.busFactorOne": "Bus factor 1",
+  "mgmt.prio.filter.stale": "Outdated",
+  "mgmt.prio.filter.highProtection": "High protection value",
+  "mgmt.prio.flag.busFactorOne": "bus factor 1",
+  "mgmt.prio.flag.stale": "outdated",
+  "mgmt.prio.flag.highProtection": "high protection value",
+  "mgmt.prio.factor.busFactor": "Bus factor",
+  "mgmt.prio.factor.criticality": "Criticality",
+  "mgmt.prio.factor.processProximity": "Process proximity",
+  "mgmt.prio.factor.age": "Age",
+  "mgmt.prio.factor.sourceQuality": "Source quality",
+  "mgmt.prio.factor.conflictDensity": "Conflict density",
+  "mgmt.prio.factor.repetition": "Repetition frequency",
+  "mgmt.prio.factor.damagePotential": "Damage potential",
+  "mgmt.prio.factor.protection": "Protection value",
+  "mgmt.prio.noData": "no input data",
+  "mgmt.prio.noDataNote":
+    "There is no input data in the holdings for {{factors}}. These factors are not estimated; the score comes from the others.",
+  "mgmt.prio.detail": "Factor detail · calculated from {{known}} of 9 factors",
+  "mgmt.prio.emptyFilter": "No category in this filter.",
   "mgmt.pilot": "Pilot report 30/60/90",
   "mgmt.print": "Print / PDF",
   "mgmt.pilotNote": "Print/HTML view (via browser print), not a certified PDF.",
@@ -5500,6 +5605,29 @@ const en: typeof de = {
     "The server reported a state this build does not know. What you see must not be read as finished.",
   "w2.run.failureCode": "Error code",
   "w2.run.failureReason": "Reason",
+  "w2.run.gesperrt.disabled":
+    "The Confluence import is switched off in this installation, so no run can be started here. It is switched on on the server (see Access above).",
+  "w2.run.gesperrt.noCredentials":
+    "The Confluence import is switched on, but the credentials are incomplete or unusable. A run can only be started once they are in place (see Access above).",
+  "w2.run.startFehler.zeitlimit":
+    "Confluence did not respond in time (timeout). Please try again later.",
+  "w2.run.startFehler.nichtKonfiguriert":
+    "The import is not ready to start: the Confluence credentials are missing or unusable.",
+  "w2.run.startFehler.ausgeschaltet":
+    "The Confluence import is switched off in this installation — starting is not available.",
+  "w2.run.startFehler.keinRecht": "You do not have permission to start an import.",
+  "w2.run.startFehler.betreiberAus":
+    "The Confluence import has been switched off by the operator — switch it on above under Access.",
+  "w2.run.gesperrt.switchedOff":
+    "The Confluence import has been switched off by the operator. Switch it on above under Access.",
+  "w2.run.failureText.CONFLUENCE_TIMEOUT":
+    "Confluence did not respond in time (timeout). The run was stopped; you can start it again.",
+  "w2.run.failureText.CONFLUENCE_BUDGET":
+    "The time budget for reading the space ran out. The space was not read completely.",
+  "w2.run.failureText.CONFLUENCE_RESPONSE_TOO_LARGE":
+    "A response from Confluence was too large and was not read.",
+  "w2.run.failureText.IMPORT_UNAVAILABLE":
+    "The import was not ready to start: the Confluence credentials are missing or unusable.",
   "w2.source.heading": "Original",
   "w2.source.lead": "The imported document in exactly the revision the knowledge came from.",
   "w2.source.missing": "No original was delivered for this run.",

@@ -7,7 +7,6 @@ import { ALL_ITEMS, anzeigeNameKey, einstellungenItem, istAktiverEintrag } from 
 import { LegalFooter, useRechtsseitenAn } from "../legal/LegalPages";
 import { navHilfeFor } from "../lib/navHilfe";
 import { APP_VERSION } from "../version";
-import { WeitereBereicheZeilen } from "./KopfbandPunkte";
 import {
   MenueAufklapp,
   MenueFlaeche,
@@ -26,11 +25,20 @@ import { readIslandMarker } from "./islandMarker";
 // ================================================================================================
 //
 // Einträge (Auftrag, Lieferung 1 und 5a): Einstellungen (→ /admin, nur admin) · Status (KI-Modus,
-// Reasoner, Extern — nur admin, Ziel /admin) · Ansicht als Rolle / Erweiterte Module (Admin-
-// Sitzung; Endort /admin Konten liegt bei JOB 3065, s. RollenVorschau.tsx) · Seitenhilfe „?"
-// (die HelpTip-Texte und der Nav-Erklärsatz der aktuellen Seite) · Weitere Bereiche (alle
-// Gruppenpunkte ohne Kopfband-Platz, mit Zählern) · Schnellnavigation ⌘K · Hilfe (→ /hilfe) ·
-// Rechtliches (LegalFooter) · Fuß: Version und Insel-Marker.
+// Reasoner, Extern — nur admin, Ziel /admin) · Persönliche Einstellungen (→ /profil, FE-002) ·
+// Ansicht als Rolle / Erweiterte Module (Admin-Sitzung; Endort /admin Konten liegt bei JOB 3065,
+// s. RollenVorschau.tsx) · Seitenhilfe „?" (die HelpTip-Texte und der Nav-Erklärsatz der aktuellen
+// Seite) · Hilfe (→ /hilfe) · Rechtliches (LegalFooter) · Fuß: Version und Insel-Marker.
+//
+// FE-002 (Pedi, 26.09.2026): „Das Zahnrad erhält eine klar erkennbare Funktion für Einstellungen."
+// Bis hierher standen hier ZUSÄTZLICH „Bereiche" (die weiteren Arbeitsseiten) und „Gehe zu …" —
+// wer „Meine Aufgaben" suchte, musste wissen, dass ein Einstellungssymbol zu Arbeitsseiten führt.
+// Beide sind umgezogen, nicht entfallen: die Übersicht unter das beschriftete „Arbeitsbereiche"
+// (`ArbeitsbereicheMenue.tsx`, mit „Seite finden … ⌘K" als letzter Zeile), der Schnellzugriff
+// zusätzlich als „Seite finden ⌘K" ins Kopfband. Das Zahnrad heißt jetzt „Einstellungen und
+// Hilfe" — genau das, was darin steht. Für JEDE Rolle steht darin eine Einstellung
+// („Persönliche Einstellungen" → /profil, dieselbe Seite wie „Profil" im Kontomenü), damit der
+// Name auch für Nicht-Admins stimmt; kein neues Ziel, keine neue Berechtigung.
 //
 // Die Einträge sind eine EIGENE Komponente (`ZahnradEintraege`), damit der Off-Canvas-Drawer
 // dieselbe Liste zeigt — ein Bau, zwei Orte.
@@ -72,38 +80,16 @@ function SeitenhilfeListe(): JSX.Element {
 }
 
 /** Die Einträge des Zahnrad-Menüs — im Menü und im Drawer dieselben. */
-export function ZahnradEintraege({
-  onNavigiert,
-  onSchnellnavigation,
-}: {
-  onNavigiert?: () => void;
-  /**
-   * JOB 3337 R2: das Schließen VOR dem Öffnen der Liste „Gehe zu …", MIT Fokusrückgabe.
-   *
-   * Die Liste merkt sich beim Öffnen, wer gerade den Fokus hat, und gibt ihn beim Schließen dorthin
-   * zurück. Schlösse das Menü hier ohne Fokusrückgabe, wäre dieser Auslöser die Menüzeile selbst —
-   * und die ist einen Wimpernschlag später abgebaut. Der Fokus hätte kein Zuhause mehr. Deshalb
-   * bekommt das Zahnrad den Fokus zuerst zurück; ES ist dann der Auslöser, und es bleibt stehen.
-   */
-  onSchnellnavigation?: () => void;
-}): JSX.Element {
+export function ZahnradEintraege(): JSX.Element {
   const { t } = useTranslation();
   const { role } = useRole();
   const { pathname } = useLocation();
   const rechtsseiten = useRechtsseitenAn();
   const [seitenhilfeOffen, setSeitenhilfeOffen] = useState(false);
-  const [bereicheOffen, setBereicheOffen] = useState(false);
   const [rechtlichesOffen, setRechtlichesOffen] = useState(false);
   const [islandMarker] = useState(() => readIslandMarker());
   const einstellungen = einstellungenItem();
   const admin = role === "admin";
-
-  const schnellnavigation = (): void => {
-    // Die Reihenfolge ist der Punkt: erst den Fokus dorthin zurück, wo er bleiben kann, dann öffnen.
-    // `focus()` läuft synchron, `document.activeElement` steht beim Auslösen also schon richtig.
-    (onSchnellnavigation ?? onNavigiert)?.();
-    window.dispatchEvent(new Event("open-command-palette"));
-  };
 
   return (
     <>
@@ -130,6 +116,9 @@ export function ZahnradEintraege({
           <MenueTrenner />
         </>
       ) : null}
+      <MenueZeile to="/profil" aktiv={pathname === "/profil"} testid="zahnrad-persoenlich">
+        {t("fe002.persoenlicheEinstellungen")}
+      </MenueZeile>
       <RollenVorschau />
       <MenueAufklapp
         label={t("menue.seitenhilfe")}
@@ -140,17 +129,6 @@ export function ZahnradEintraege({
       >
         <SeitenhilfeListe />
       </MenueAufklapp>
-      <MenueAufklapp
-        label={t("menue.weitereBereiche")}
-        offen={bereicheOffen}
-        onToggle={() => setBereicheOffen((v) => !v)}
-        testid="zahnrad-weitere-bereiche"
-      >
-        <WeitereBereicheZeilen />
-      </MenueAufklapp>
-      <MenueZeile onClick={schnellnavigation} wert="⌘K" testid="zahnrad-schnellnavigation">
-        {t("menue.schnellnavigation")}
-      </MenueZeile>
       <MenueTrenner />
       <MenueZeile to="/hilfe" aktiv={pathname === "/hilfe"} testid="zahnrad-hilfe">
         {t("nav.help")}
@@ -204,11 +182,12 @@ export function ZahnradMenue(): JSX.Element {
       <button
         type="button"
         ref={menue.ausloeserRef}
-        aria-label={t("kopfband.menue")}
-        // JOB 3337: „Kein alleinstehendes, unerklärtes Zahnrad." Der sichtbare Text des Kopfbands
-        // ist gepinnt (tests/design/zielbild-h1-kein-erklaertext.test.ts) und bleibt es — der
-        // Zeigehinweis nennt das Symbol trotzdem beim Namen, ohne die Leiste zu verändern.
-        title={t("kopfband.menue")}
+        // JOB 3337: „Kein alleinstehendes, unerklärtes Zahnrad." FE-002: der Name sagt jetzt, was
+        // darin steht — Einstellungen und Hilfe —, statt des allgemeinen „Menü", das auf dem
+        // schmalen Band zugleich der beschriftete Menü-Knopf ist. Der Zeigehinweis nennt ihn auch
+        // der Maus.
+        aria-label={t("fe002.einstellungen")}
+        title={t("fe002.einstellungen")}
         aria-haspopup="menu"
         aria-expanded={menue.offen}
         aria-controls={menue.offen ? menue.flaecheId : undefined}
@@ -218,11 +197,8 @@ export function ZahnradMenue(): JSX.Element {
       >
         <Settings size={18} strokeWidth={1.8} aria-hidden="true" />
       </button>
-      <MenueFlaeche menue={menue} label={t("kopfband.menue")} testid="zahnrad-menue">
-        <ZahnradEintraege
-          onNavigiert={() => schliessen(false)}
-          onSchnellnavigation={() => schliessen(true)}
-        />
+      <MenueFlaeche menue={menue} label={t("fe002.einstellungen")} testid="zahnrad-menue">
+        <ZahnradEintraege />
       </MenueFlaeche>
     </div>
   );

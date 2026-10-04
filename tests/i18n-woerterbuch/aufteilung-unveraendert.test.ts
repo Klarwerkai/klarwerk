@@ -8,9 +8,13 @@
 //
 //   W1/W2 — TEXT. Die vier Dateien ergeben, wieder zusammengefügt, Byte für Byte den früheren
 //           Inhalt von `i18n.ts`. Bezugspunkt ist `i18n-vor-aufteilung.txt` daneben: eine
-//           unveränderte Kopie (`cp`) der Datei unmittelbar vor der Aufteilung, nachprüfbar mit
+//           unveränderte Kopie der ungeteilten Datei. Seit der Integration mit `main` (Nacharbeit 3)
+//           ist das die Datei von `main` a2ff8da8 — mit den dort neuen Schlüsseln und dem
+//           R-0801-Nachladen —, nachprüfbar mit
 //           `git hash-object tests/i18n-woerterbuch/i18n-vor-aufteilung.txt` gegen
-//           `git rev-parse 69ac08a3:apps/web/src/i18n.ts`.
+//           `git rev-parse a2ff8da8:apps/web/src/i18n.ts` (`42ab6f8b…`). Einziger Unterschied
+//           außer den Blöcken: ein Kommentarabsatz von R-0801, den das Zusammenfügen zurücksetzt
+//           (`R0801_ABSATZ_JETZT` in `tests/support/woerterbuchquelle.ts`).
 //   W3    — LAUFZEIT. Das initialisierte i18next trägt jeden Schlüssel der drei Dateien mit genau
 //           ihrem Wert. Der Umzugsnachweis gegen den älteren Basisstand (JOB 4367,
 //           `tests/i18n-textmodule/bestand-unveraendert.test.ts` K1.1) gilt daneben unverändert.

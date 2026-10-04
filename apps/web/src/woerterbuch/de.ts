@@ -754,6 +754,8 @@ const de = {
   "ko.origin.studio": "Aus dem Studio",
   "ko.origin.expert": "Aus dem Expertenformular",
   "ko.origin.frontdoor": "Aus der Erfassung",
+  // R-0180/R-2108: aus der Import-Prüfwarteschlange von einem Menschen übernommen.
+  "ko.origin.import": "Importiert",
   // JOB 3027 · Station 4: die drei Lagen je Auskunft am Prüfbrett. „nicht eingestuft“ ist eine
   // Aussage über das OBJEKT, „nicht in dieser Antwort“ eine über die ANTWORT — wer beide zusammen-
   // wirft, muss raten (services/validation/src/board-herkunft.ts:10-18).
@@ -4593,6 +4595,18 @@ const de = {
   "imp.access.whereSet":
     "Diese Werte werden als Umgebungsvariablen auf dem Server gesetzt — nicht hier. Klarwerk zeigt nur, ob sie stehen, nie ihren Inhalt.",
   "imp.access.whoMay": "Ändern kann das, wer Zugang zum Server dieser Installation hat.",
+  // R-0134 / R-1005: der Betreiberschalter — eigener Zustand, eigener Knopf, eigene Fehler.
+  "imp.access.switchedOff.title": "Vom Betreiber ausgeschaltet",
+  "imp.access.switchedOff.body":
+    "Der Confluence-Import ist in dieser Installation freigegeben, aber ausgeschaltet. Solange das so ist, lehnt der Server jeden Import ab. Einschalten lässt er sich mit dem Knopf darunter.",
+  "imp.access.schalter.an": "Import einschalten",
+  "imp.access.schalter.aus": "Import ausschalten",
+  "imp.access.schalter.hinweis":
+    "Wirkt sofort und ohne Neustart. Zugangsdaten werden hier nicht eingegeben.",
+  "imp.access.schalter.nichtFreigegeben":
+    "Der Import ist in dieser Installation nicht freigegeben — der Schalter wirkt erst nach der Freigabe auf dem Server.",
+  "imp.access.schalter.fehler":
+    "Der Schalter konnte nicht umgelegt werden. Bitte erneut versuchen.",
   // JOB-924 D6: Der frühere Satz („wird nicht festgehalten") ist überholt — es WIRD festgehalten,
   // es gibt nur noch keinen erfolgreichen Lauf. Beide Sätze sind ausdrücklich rückblickend: der
   // Zeitpunkt sagt, dass es damals ging, nicht dass es jetzt geht. Das wüsste nur ein Aufruf, und
@@ -5183,6 +5197,48 @@ const de = {
     "Das gesamte Wissen dieser Domäne stammt von einer einzigen Person. Fällt sie aus (Krankheit, Kündigung, Ruhestand), ist das Wissen weg — das ist das größte Wissensrisiko. Gegenmaßnahme: weitere Personen einbinden, Wissen zweitprüfen (validieren) und Quellen ergänzen.",
   "risk.bearer": "Getragen von: {{names}}",
   "risk.viewObjects": "Objekte dieser Domäne ansehen",
+  "risk.vsPlant.above": "Prüfanteil über dem Werksdurchschnitt ({{avg}}%)",
+  "risk.vsPlant.below": "Prüfanteil unter dem Werksdurchschnitt ({{avg}}%)",
+  "risk.vsPlant.equal": "Prüfanteil gleich dem Werksdurchschnitt ({{avg}}%)",
+  "risk.staleByAssetChange_one": "{{count}} Objekt nach Anlagenänderung zu prüfen",
+  "risk.staleByAssetChange_other": "{{count}} Objekte nach Anlagenänderung zu prüfen",
+  "risk.horizon.title": "Mein Bereich · Wissen vor dem Ruhestand sichern",
+  "risk.horizon.filterLabel": "Ruhestandshorizont",
+  "risk.horizon.filter": "nächste {{months}} Monate",
+  "risk.horizon.notCountable":
+    "Was jemand weiß, das noch nicht im System steht, lässt sich nicht zählen. Gezeigt wird, was an der Person hängt — und was bis zur Frist zu sichern ist.",
+  "risk.horizon.noAreas": "Es ist noch kein Bereich gepflegt.",
+  "risk.horizon.noOwnArea":
+    "Ihnen ist noch kein Bereich zugeordnet. Die Zuordnung pflegt die Administration.",
+  "risk.horizon.busFactorOne": "Bus-Faktor 1",
+  "risk.horizon.criticality": "Kritikalität: {{level}}",
+  "risk.horizon.level.niedrig": "niedrig",
+  "risk.horizon.level.mittel": "mittel",
+  "risk.horizon.level.hoch": "hoch",
+  "risk.horizon.noManager": "Noch keine verantwortliche Person eingetragen",
+  "risk.horizon.manager": "Verantwortlich: {{name}}",
+  "risk.horizon.noneInHorizon":
+    "Laut Pflege geht niemand aus diesem Bereich in den nächsten {{months}} Monaten in den Ruhestand.",
+  "risk.horizon.bearer":
+    "{{name}} · Ruhestand in den nächsten {{months}} Monaten · sichern bis {{due}}",
+  "risk.horizon.todo.soleBearer":
+    "Einzige Quelle in diesem Bereich — fällt sie aus, ist das Wissen weg.",
+  "risk.horizon.todo.openKos_one": "{{count}} eigenes Objekt noch nicht geprüft",
+  "risk.horizon.todo.openKos_other": "{{count}} eigene Objekte noch nicht geprüft",
+  "risk.horizon.todo.openGaps_one": "{{count}} offene Frage zugewiesen",
+  "risk.horizon.todo.openGaps_other": "{{count}} offene Fragen zugewiesen",
+  "risk.horizon.todo.koCount_one": "{{count}} Objekt in diesem Bereich erfasst",
+  "risk.horizon.todo.koCount_other": "{{count}} Objekte in diesem Bereich erfasst",
+  "risk.pflege.title": "Bereichsprofile und Ruhestandshorizonte pflegen",
+  "risk.pflege.intro":
+    "Je Kategorie: wer den Bereich verantwortet und die Einschätzung von Kritikalität, Prozessnähe, Wiederholhäufigkeit und Schadenspotenzial (leer = keine Eingangsdaten). Je Person: Ruhestand in den nächsten 24 oder 36 Monaten — gespeichert werden nur Horizont und Frist.",
+  "risk.pflege.manager": "Verantwortlich für {{category}}",
+  "risk.pflege.noManager": "Keine verantwortliche Person",
+  "risk.pflege.save": "Speichern",
+  "risk.pflege.error": "Speichern ist fehlgeschlagen.",
+  "risk.pflege.retirementTitle": "Ruhestandshorizonte",
+  "risk.pflege.retirement": "Ruhestandshorizont von {{name}}",
+  "risk.pflege.noRetirement": "Kein Ruhestand eingetragen",
   "risk.busLegendSingle": "rot = Einzelquelle (Ausfallrisiko)",
   "risk.busLegendOk": "grün = mehrere Quellen",
   "risk.help.summary":
@@ -5212,6 +5268,9 @@ const de = {
   // dem VOLLEN Konfliktabzug. Die große Zahl ist die schlechtere; der optimistische Rand steht
   // daneben und sagt, was er ist.
   "health.band.unproven": "Einstufung unbelegt",
+  "health.unknown": "unbekannt",
+  "health.unknownExplain":
+    "Für den Wert fehlen gerade Live-Signale (Wissensobjekte, Lücken, Konflikte, Revalidierungen oder Bus-Faktor sind nicht geladen oder nicht erreichbar). Deshalb steht hier keine Zahl — geschätzt wird nicht.",
   "health.range.explain":
     "{{worst}} von 100 im schlechtesten Fall, {{best}} im besten. Solange nicht belegt ist, dass vollständig nach Konflikten gesucht wurde, gilt der schlechtere Wert — deshalb steht hier kein Band.",
   "health.conflictUnproven.title":
@@ -6238,6 +6297,33 @@ const de = {
   // (neuerer Server, älterer Bestand). BEWUSST NICHT unter `mrun.task.*` — dieser Namensraum ist
   // genau die acht Arten, und ein Wert vom Draht darf nie in einen Schlüssel eingesetzt werden.
   // Bauform wie `imp.status.unknown`: ehrlich benannt statt roher Schlüssel in der Oberfläche.
+  // Aufnahme gesamt-ki-laufprotokoll: vier Modellwege mit eigenem Lauf, Kosten, Erzeugnis, Auswertung.
+  "mrun.task.enrich": "Anreichern",
+  "mrun.task.conflict": "Konfliktprüfung",
+  "mrun.task.duplicate": "Dublettenprüfung",
+  "mrun.task.probe": "Anbieterprobe",
+  "mrun.cost": "Kosten: {{k}}",
+  "mrun.costStand": "Preisstand: {{s}}",
+  "mrun.produced": "Erzeugt: {{n}} × {{art}}",
+  "mrun.erzeugnis.vorschlag": "Vorschlag",
+  "mrun.erzeugnis.text": "Text",
+  "mrun.erzeugnis.frage": "Frage",
+  "mrun.erzeugnis.antwort": "Antwort",
+  "mrun.erzeugnis.punkt": "Punkt",
+  "mrun.erzeugnis.beschreibung": "Beschreibung",
+  "mrun.erzeugnis.gruppe": "Gruppe",
+  "mrun.erzeugnis.kriterien": "Auswahlkriterien",
+  "mrun.erzeugnis.urteil": "Urteil",
+  "mrun.report.title": "KI-Auswertung (Zeitraum)",
+  "mrun.report.period": "Zeitraum:",
+  "mrun.report.days": "Letzte {{n}} Tage",
+  "mrun.report.costSum": "Kosten gesamt: {{k}} (aus {{n}} von {{total}} Läufen)",
+  "mrun.report.priceList": "Preisliste: Stand {{s}}, {{w}}",
+  "mrun.report.noPriceList": "Keine Preisliste hinterlegt — Kosten werden nicht berechnet.",
+  "mrun.report.withoutPrice":
+    "{{n}} Läufe mit Modellaufruf ohne berechenbare Kosten (Preis oder Verbrauch fehlt)",
+  "mrun.report.capped": "Sehr viele Läufe — gerechnet wurde über die jüngsten 10000.",
+  "mrun.report.empty": "Keine KI-Läufe in diesem Zeitraum.",
   "mrun.taskUnknown": "Aufgabenart unbekannt",
   "mrun.status.success": "OK",
   "mrun.status.error": "Fehler",
@@ -6262,6 +6348,28 @@ const de = {
   "mgmt.rec.resolveConflicts": "{{count}} offene(n) Konflikt(e) lösen.",
   "mgmt.rec.validateBacklog": "{{count}} offene Objekte validieren.",
   "mgmt.priorities": "Wissens-Priorisierung (9 Faktoren)",
+  "mgmt.prio.filterLabel": "Priorisierung filtern",
+  "mgmt.prio.filter.all": "Alles",
+  "mgmt.prio.filter.busFactorOne": "Bus-Faktor 1",
+  "mgmt.prio.filter.stale": "Veraltet",
+  "mgmt.prio.filter.highProtection": "Hoher Schutzwert",
+  "mgmt.prio.flag.busFactorOne": "Bus-Faktor 1",
+  "mgmt.prio.flag.stale": "veraltet",
+  "mgmt.prio.flag.highProtection": "hoher Schutzwert",
+  "mgmt.prio.factor.busFactor": "Bus-Faktor",
+  "mgmt.prio.factor.criticality": "Kritikalität",
+  "mgmt.prio.factor.processProximity": "Prozessnähe",
+  "mgmt.prio.factor.age": "Alter",
+  "mgmt.prio.factor.sourceQuality": "Quellenqualität",
+  "mgmt.prio.factor.conflictDensity": "Konfliktdichte",
+  "mgmt.prio.factor.repetition": "Wiederholhäufigkeit",
+  "mgmt.prio.factor.damagePotential": "Schadenspotenzial",
+  "mgmt.prio.factor.protection": "Schutzwert",
+  "mgmt.prio.noData": "keine Eingangsdaten",
+  "mgmt.prio.noDataNote":
+    "Für {{factors}} gibt es im Bestand keine Eingangsdaten. Diese Faktoren werden nicht geschätzt; der Score stammt aus den übrigen.",
+  "mgmt.prio.detail": "Faktor-Detail · aus {{known}} von 9 Faktoren berechnet",
+  "mgmt.prio.emptyFilter": "Keine Kategorie in diesem Filter.",
   "mgmt.pilot": "Pilot-Bericht 30/60/90",
   "mgmt.print": "Drucken / PDF",
   "mgmt.pilotNote": "Druck-/HTML-Ansicht (über Browser-Druck), kein zertifiziertes PDF.",
@@ -7082,6 +7190,32 @@ const de = {
     "Der Server hat einen Zustand gemeldet, den diese Version nicht kennt. Das Gezeigte ist deshalb nicht als abgeschlossen zu lesen.",
   "w2.run.failureCode": "Fehlercode",
   "w2.run.failureReason": "Grund",
+  // R-0134 / R-1005: warum der Start gesperrt ist — derselbe Zustand wie im Zugangskasten.
+  "w2.run.gesperrt.disabled":
+    "Der Confluence-Import ist in dieser Installation ausgeschaltet. Deshalb lässt sich hier kein Lauf starten. Eingeschaltet wird er auf dem Server (siehe Zugang oben).",
+  "w2.run.gesperrt.noCredentials":
+    "Der Confluence-Import ist eingeschaltet, aber die Zugangsdaten sind nicht vollständig oder nicht brauchbar. Erst wenn sie stehen, lässt sich ein Lauf starten (siehe Zugang oben).",
+  // R-0159: der Grund einer abgelehnten Startanfrage — aus Status und Code abgeleitet.
+  "w2.run.startFehler.zeitlimit":
+    "Confluence hat nicht rechtzeitig geantwortet (Zeitüberschreitung). Bitte später erneut versuchen.",
+  "w2.run.startFehler.nichtKonfiguriert":
+    "Der Import ist nicht startbereit: Die Zugangsdaten zu Confluence fehlen oder sind nicht brauchbar.",
+  "w2.run.startFehler.ausgeschaltet":
+    "Der Confluence-Import ist in dieser Installation ausgeschaltet — der Start ist nicht verfügbar.",
+  "w2.run.startFehler.keinRecht": "Für den Start eines Imports fehlt die Berechtigung.",
+  "w2.run.startFehler.betreiberAus":
+    "Der Confluence-Import ist vom Betreiber ausgeschaltet — einschalten lässt er sich oben im Bereich Zugang.",
+  "w2.run.gesperrt.switchedOff":
+    "Der Confluence-Import ist vom Betreiber ausgeschaltet. Einschalten lässt er sich oben im Bereich Zugang.",
+  // R-0159: die verständliche Erklärung neben einem eindeutigen Fehlercode eines Laufs.
+  "w2.run.failureText.CONFLUENCE_TIMEOUT":
+    "Confluence hat nicht rechtzeitig geantwortet (Zeitüberschreitung). Der Lauf wurde abgebrochen; ein erneuter Start ist möglich.",
+  "w2.run.failureText.CONFLUENCE_BUDGET":
+    "Das Zeitbudget für das Lesen des Bereichs war erschöpft. Der Bereich wurde nicht vollständig gelesen.",
+  "w2.run.failureText.CONFLUENCE_RESPONSE_TOO_LARGE":
+    "Eine Antwort von Confluence war zu groß und wurde nicht gelesen.",
+  "w2.run.failureText.IMPORT_UNAVAILABLE":
+    "Der Import war nicht startbereit: Die Zugangsdaten zu Confluence fehlen oder sind nicht brauchbar.",
   // Das ORIGINAL — der eine Block links. Er ist das Dokument, nicht das Wissen.
   "w2.source.heading": "Original",
   "w2.source.lead": "Das importierte Dokument in genau der Fassung, aus der das Wissen entstand.",

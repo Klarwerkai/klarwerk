@@ -14,8 +14,8 @@
 // geht auf das Byte auf. Diese Datei ist ihr Gegenstück: sie fügt die drei Dateien wieder zu genau
 // dem Dokument zusammen, das vorher in `taskpane.html` stand. Dass es WIRKLICH dasselbe ist, misst
 // `tests/klara-zerlegung/schnitt-echt.test.ts` gegen die Git-Blob-Kennung des Basisstands
-// (`PANEL_VOR_SCHNITT_BLOB`) — nachprüfbar ohne diesen Test mit
-// `git rev-parse 3b79c5d1:apps/web/public/word-addin/taskpane.html`.
+// (`PANEL_VOR_SCHNITT_BLOB`) — seit der Integration die Datei von `main` a2ff8da8, nachprüfbar
+// ohne diesen Test mit `git rev-parse a2ff8da8:apps/web/public/word-addin/taskpane.html`.
 //
 // WOZU DAS ZUSAMMENFÜGEN: rund hundert bestehende Prüfstände lesen das Fenster als EIN Dokument —
 // sie schneiden Blöcke an `KW-…`-Marken heraus, bauen den Rumpf ins jsdom-DOM und führen das
@@ -47,10 +47,16 @@ export const PANEL_CSS_VERWEIS = `<link rel="stylesheet" href="${PANEL_CSS_DATEI
 export const PANEL_JS_VERWEIS = `<script src="${PANEL_JS_DATEI}?v=__KW_FASSUNG__"></script>`;
 
 /**
- * Git-Blob-Kennung von `apps/web/public/word-addin/taskpane.html` am Basisstand `3b79c5d1` — also
- * der EINEN Datei unmittelbar vor dem Schnitt.
+ * Git-Blob-Kennung der EINEN Datei `apps/web/public/word-addin/taskpane.html`, die die drei Dateien
+ * zusammengefügt ergeben müssen.
+ *
+ * Bis zur Integration mit `main` war das der Basisstand `3b79c5d1` (`95226f6582e5…`). Auf `main`
+ * (a2ff8da8) hat R-0169 das Inline-Skript weitergebaut (Dokumentkennung, KI-Aufgabe `enrich`) — in
+ * der ungeschnittenen Datei. Diese Änderung ist Zeile für Zeile in `taskpane.js` übernommen; der
+ * Bezugspunkt ist deshalb jetzt die Datei von `main`. Nachprüfbar ohne Test mit
+ * `git rev-parse a2ff8da8:apps/web/public/word-addin/taskpane.html`.
  */
-export const PANEL_VOR_SCHNITT_BLOB = "95226f6582e51480973024e16e1cf4d132fb80c0";
+export const PANEL_VOR_SCHNITT_BLOB = "7d5a6234660b1e21e160d35893913f90a5b84428";
 
 export interface PanelTeile {
   html: string;

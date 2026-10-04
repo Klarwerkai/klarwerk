@@ -547,6 +547,15 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   // GEMESSEN, NICHT GESETZT: A2 meldete lokal `neu im Baum, aber nicht gepinnt` mit genau diesem
   // Pfad; der Griff `pfad,marken` steht so im gedruckten Verzeichnis (A4).
   "tests/klara-dokumenttext/riegel-haelt-den-dokumenttext.test.ts": "pfad,marken,panelquelle",
+  // INTEGRATION MIT main a2ff8da8 (Nacharbeit 3 dieses Auftrags): zwei Prüfstände, die auf `main`
+  // OHNE den Schnitt entstanden sind und das Fenster anfassen.
+  //   · `word-addin-dokumentkennung.test.ts` (R-0169) fährt das Fenster über `createKlaraPanel`
+  //     und nennt das Pfadliteral im Kopf — dieselbe Doppelung wie `panel-rueckweg-mounted.test.ts`.
+  //   · `abgleich-belege.test.ts` (gesamt-klara-assistenz) prüft Marken und `ka2Treffer` am Skript;
+  //     es las `taskpane.html` direkt und liest seit der Integration über `panelQuelleAus`.
+  // Die Griffe sind aus den Mustern oben abgelesen, nicht gemessen — kein Lauf in dieser Runde.
+  "tests/app/word-addin-dokumentkennung.test.ts": "pfad,fixture",
+  "tests/klara-assistenz/abgleich-belege.test.ts": "pfad,marken,panelquelle",
 };
 
 // ------------------------------------------------------------------------------------------------

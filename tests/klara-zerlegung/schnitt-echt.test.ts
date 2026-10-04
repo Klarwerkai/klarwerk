@@ -8,8 +8,10 @@
 // dieses Dokument WIRKLICH das ist, was vorher in der einen Datei stand.
 //
 // Genau das misst diese Datei, und zwar gegen einen Wert, den der Test nicht selbst erzeugt: die
-// Git-Blob-Kennung der Datei am Basisstand `3b79c5d1`. Nachprüfbar ohne diesen Test mit
-// `git rev-parse 3b79c5d1:apps/web/public/word-addin/taskpane.html`.
+// Git-Blob-Kennung der ungeschnittenen Datei. Das war der Basisstand `3b79c5d1`; seit der
+// Integration mit `main` ist es die Datei von `main` a2ff8da8 (R-0169 hat dort das Inline-Skript
+// weitergebaut, die Änderung steht jetzt in `taskpane.js`). Nachprüfbar ohne diesen Test mit
+// `git rev-parse a2ff8da8:apps/web/public/word-addin/taskpane.html`.
 //
 // Das Verhalten (vorher gegen nachher, je ein eigenes jsdom-Fenster) misst `probeschnitt.test.ts`.
 import { describe, expect, it } from "vitest";

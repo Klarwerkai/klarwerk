@@ -10,8 +10,10 @@
 // Diese Datei ist ihr Gegenstück. Sie fügt die vier Dateien wieder zu GENAU dem Text zusammen, der
 // vorher in `i18n.ts` stand. Dass es wirklich derselbe ist, misst
 // `tests/i18n-woerterbuch/aufteilung-unveraendert.test.ts` gegen die unveränderte Kopie
-// `tests/i18n-woerterbuch/i18n-vor-aufteilung.txt` (nachprüfbar ohne Test mit
-// `git hash-object` gegen `git rev-parse 69ac08a3:apps/web/src/i18n.ts`).
+// `tests/i18n-woerterbuch/i18n-vor-aufteilung.txt`. Seit der Integration von `main` (Nacharbeit 3)
+// ist das die Datei des integrierten Hauptstands `a2ff8da8` — dieselbe Datei samt der dort
+// hinzugekommenen Schlüssel und des R-0801-Nachladens (nachprüfbar ohne Test mit
+// `git hash-object` gegen `git rev-parse a2ff8da8:apps/web/src/i18n.ts`, Blob `42ab6f8b…`).
 //
 // WOZU DAS ZUSAMMENFÜGEN: rund fünfzig bestehende Prüfstände lesen das Wörterbuch als TEXT (sie
 // suchen Schlüssel, Wortlaute und Verbote quer über alle drei Sprachen). Sie lesen ab hier
@@ -56,6 +58,31 @@ export const WOERTERBUCH_MARKE = [
   "// `woerterbuch/de.ts`, `woerterbuch/en.ts` und `woerterbuch/nl.ts` — Zeile für Zeile verschoben,",
   "// kein Schlüssel und kein Wert geändert. Neue Texte kommen in ein Textmodul (`texte/`).",
   "",
+  "",
+].join("\n");
+
+/**
+ * Der eine Kommentarabsatz, den die Aufteilung in `i18n.ts` umformulieren MUSSTE: R-0801 (Nachladen
+ * von en/nl, integriert aus `main` a2ff8da8) beschrieb die drei Blöcke als „oben, wo sie sind". Nach
+ * der Aufteilung wäre der Satz falsch; das Zusammenfügen setzt den früheren Wortlaut wieder ein.
+ * Nur Kommentarzeilen, kein Code — und fail-closed wie jede andere Ersetzung hier.
+ */
+export const R0801_ABSATZ_JETZT = [
+  "// Die drei Wörterbücher stehen je Sprache in `woerterbuch/` (I18N-AUFTEILUNG) und werden oben",
+  "// statisch importiert. Getrennt wird erst im PRODUKTIONSBAU: das Plugin `sprachpaketeNachladen`",
+  "// (`texte/intern/sprachpakete.ts`) nimmt die Importe von `en` und `nl` aus dieser Datei heraus,",
+  "// liefert ihre Blöcke als eigene Stücke, ersetzt `{ en, nl }` in `VORLIEGEND` durch `{}` und trägt",
+  "// in `NACHLADEN` je Sprache ein `import()` ein. Es bricht den Bau ab, wenn es einen seiner Anker",
+  "// nicht genau einmal findet — sonst lägen beide Sprachen still wieder im Eintritt.",
+  "",
+].join("\n");
+const R0801_ABSATZ_VORHER = [
+  "// Die drei Blöcke oben bleiben, wo sie sind: diese Datei ist die eine Quelle aller Texte, und",
+  "// zahlreiche Wächter lesen sie als Text. Getrennt wird erst im PRODUKTIONSBAU: das Plugin",
+  "// `sprachpaketeNachladen` (`texte/intern/sprachpakete.ts`) schneidet die Blöcke `en` und `nl` als",
+  "// eigene Stücke heraus, ersetzt `{ en, nl }` in `VORLIEGEND` durch `{}` und trägt in `NACHLADEN`",
+  "// je Sprache ein `import()` ein. Es greift NUR auf die zwei Zeilen unten und bricht den Bau ab, wenn",
+  "// es eine davon nicht genau einmal findet — sonst lägen beide Sprachen still wieder im Eintritt.",
   "",
 ].join("\n");
 
@@ -124,6 +151,7 @@ export function fuegeWoerterbuchZusammen(teile: WoerterbuchTeile): string {
   const bloecke = WOERTERBUCH_SPRACHEN.map((sprache) => woerterbuchBlock(sprache, teile[sprache]));
   let text = einmal(teile.i18n, KOPF_ANKER, `${KOPF_ANKER}${KOPF_VORHER}`, I18N_RELATIV);
   text = einmal(text, WOERTERBUCH_IMPORTE, "", I18N_RELATIV);
+  text = einmal(text, R0801_ABSATZ_JETZT, R0801_ABSATZ_VORHER, I18N_RELATIV);
   return einmal(text, WOERTERBUCH_MARKE, `${bloecke.join("\n")}\n`, I18N_RELATIV);
 }
 
