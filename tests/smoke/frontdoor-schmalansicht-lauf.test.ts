@@ -54,7 +54,8 @@ function faelle(suiten: JSONReportSuite[] | undefined): Fall[] {
           titel: spec.title,
           projekt: test.projectName,
           status: test.status,
-          ergebnisse: test.results.map((r) => r.status),
+          // Playwright typisiert den Status optional; ein fehlender Status ist KEIN „passed".
+          ergebnisse: test.results.map((r) => r.status ?? "ohne Status"),
         });
       }
     }
