@@ -2082,8 +2082,18 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // `traeger` 2 bleiben. EHRLICH GESAGT: diese 438 ist GERECHNET (437 + 1), nicht gemessen — der
     // Arbeitsbaum dieses Auftrags führt keine Tests aus. Weicht der Prüflauf ab, nennt die Meldung
     // oben die gemessene Zahl, und DIE gehört hier hin.
+    //
+    // Nacharbeit 12: GEMESSEN 444. Am Kandidaten 3874b441 meldete der Sammler wörtlich „gemessen:
+    // 444 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 542 Quelldateien … expected
+    // { komponenten: 444, … } to deeply equal { komponenten: 438, … }". Die sechs über 438 kamen mit
+    // dem eingemischten Hauptstand (`a2ff8da8`, der selbst noch 437 führt), namentlich:
+    //     + `ProfilZeile`, `RuhestandZeile`, `BereichsprofilPflege` (`components/BereichsprofilPflege.tsx`)
+    //     + `Bereich`, `RisikoHorizont` (`components/RisikoHorizont.tsx`)
+    //     + `WissensPriorisierung` (`components/WissensPriorisierung.tsx`)
+    // 437 + 6 + 1 (`Einstieg`) = 444 — Rechnung und Messung stimmen überein. `anbieter` 1 und
+    // `traeger` 2 sind in derselben Meldung unverändert.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 438,
+      komponenten: 444,
       anbieter: 1,
       traeger: 2,
     });
