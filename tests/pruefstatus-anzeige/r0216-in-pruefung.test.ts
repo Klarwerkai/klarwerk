@@ -23,7 +23,13 @@ import {
   conflictLimitedUsability,
   effectiveUsability,
 } from "../../apps/web/src/lib/conflictImpact";
+import {
+  type FacetValues,
+  applyFacetSelection,
+  combinableFacetCounts,
+} from "../../apps/web/src/lib/facets";
 import { koOverview } from "../../apps/web/src/lib/koOverview";
+import { libraryFilterValues } from "../../apps/web/src/lib/libraryFacets";
 import { libraryMaturity } from "../../apps/web/src/lib/libraryMaturity";
 import { useReadiness } from "../../apps/web/src/lib/useReadiness";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
@@ -242,6 +248,29 @@ describe("R-0216 · Listenweg oberhalb des Deckels: /api/kos + /api/conflicts", 
       // Kontrolle: das konfliktfreie offene Objekt bleibt „Zu prüfen“.
       expect(effectiveUsability(zielKontrolle, konflikte)).toBe("needs-work");
       expect(refKontrolle?.usability).toBe("needs-work");
+
+      // Ben (Nacharbeit 3): DER TATSÄCHLICHE BIBLIOTHEKSFILTER — dieselbe Ableitung, die
+      // `BibliothekFlaeche` für Zähler und Filter benutzt (`libraryFilterValues` mit der
+      // Konfliktliste der Fläche), dieselben Zähl-/Filterfunktionen (`combinableFacetCounts`,
+      // `applyFacetSelection`).
+      const jetzt = Date.now();
+      const werte = new Map(kos.map((k) => [k.id, libraryFilterValues(k, jetzt, konflikte)]));
+      const werteVon = (k: KnowledgeObject): FacetValues => werte.get(k.id) ?? {};
+      expect(werteVon(zielA).maturity).toEqual(["in-review"]);
+      expect(werteVon(zielKontrolle).maturity).toEqual(["needs-work"]);
+      const inPruefung = applyFacetSelection(kos, werteVon, { maturity: ["in-review"] });
+      const zuPruefen = applyFacetSelection(kos, werteVon, { maturity: ["needs-work"] });
+      expect(inPruefung.map((k) => k.id)).toContain(a);
+      expect(inPruefung.map((k) => k.id)).not.toContain(kontrolle);
+      expect(zuPruefen.map((k) => k.id)).toContain(kontrolle);
+      expect(zuPruefen.map((k) => k.id)).not.toContain(a);
+      const zaehler = combinableFacetCounts([...werte.values()], ["maturity"], {}).maturity ?? [];
+      const anzahl = (wert: string) => zaehler.find((z) => z.value === wert)?.count ?? 0;
+      // Zähler und Filter sagen dasselbe.
+      expect(anzahl("in-review")).toBe(inPruefung.length);
+      expect(anzahl("needs-work")).toBe(zuPruefen.length);
+      // Kalibrierung: OHNE Konfliktliste (die alte Ableitung) läge `a` unter „Zu prüfen“.
+      expect(libraryFilterValues(zielA, jetzt).maturity).toEqual(["needs-work"]);
     } finally {
       await app.close();
     }

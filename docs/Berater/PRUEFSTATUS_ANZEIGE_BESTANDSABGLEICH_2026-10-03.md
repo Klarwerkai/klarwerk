@@ -107,11 +107,15 @@ Neue Tests dieser Runde liegen unter `tests/pruefstatus-anzeige/`, außerdem
   Konfliktliste kennt, wurde nur aus „nutzbar“ auf „In Prüfung“ begrenzt. Die frühere Aussage,
   das trete nur bei gescheiterter Konflikterhebung auf, war unvollständig. Auch oberhalb des
   Listendeckels von 200 erhebt `GET /api/kos` den Konflikt nicht (Ben). Siehe C2.
-- Verbleibende Grenze: Die Reife-Facette der Bibliothek (`lib/libraryFacets.ts` →
-  `libraryMaturity`) kennt die Konfliktliste nicht. Oberhalb des Deckels zählt sie ein
-  zurückgesetztes Objekt mit Konflikt weiter als „Zu prüfen“. Statuspunkt und -wort der Zeile
-  zeigen dort trotzdem „Konflikt“ (`anzeigestatusAus`). `libraryFacets.ts` liegt außerhalb der
-  freigegebenen Pfade und ist nicht geändert.
+- Reife-Facette der Bibliothek, in Nacharbeit 3 behoben: `libraryFilterValues` nimmt jetzt die
+  Konfliktliste der Fläche entgegen (`BibliothekFlaeche.tsx`, `facetBase` mit `conflicts.data`).
+  Damit nutzt die Reife (Zähler und Filter) dieselbe konfliktbegrenzte Nutzbarkeit wie Detail und
+  Antwort. Gegenprobe: der Deckelfall in `r0216-in-pruefung.test.ts`. Das konfliktbetroffene
+  Objekt gehört zu „In Prüfung“, die konfliktfreie offene Kontrolle zu „Zu prüfen“. Zähler und
+  Filter stimmen überein; die Kalibrierung ohne Konfliktliste ergibt die alte Einordnung.
+  Grenzen: Solange die Konfliktliste noch nicht geladen ist, gilt die bisherige Ableitung. Die
+  Bestandsprüfung beim Öffnen einer Adresse mit Filtern (`knownFacetValues`, Zeile ~421) bleibt
+  ohne Konfliktliste.
 - R-0208 „Prüfung ausstehend“ und „läuft“: Der gespeicherte Vermerk unterscheidet sie nicht. Die
   Unterscheidung stammt aus dem Speicher des Workers und ist nur am Prüfbrett erhoben. Ohne diese
   Auskunft bleibt der bisherige Satz „läuft“.

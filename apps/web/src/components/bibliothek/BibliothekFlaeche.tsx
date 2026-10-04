@@ -442,10 +442,14 @@ export function BibliothekFlaeche({
   const query = useLibrarySearch(buildLibraryQuery({ ...EMPTY_LIBRARY_FILTER, q: debouncedQ }));
   const trimmedQ = q.trim();
 
+  // PRÜFSTATUS-ANZEIGE (R-0216): die Reife (Zähler UND Filter) kennt die Konfliktliste — dieselbe
+  // konfliktbegrenzte Nutzbarkeit wie Detail und Antwort. Solange die Liste fehlt, gilt die bisherige
+  // Ableitung (kein erfundener Konflikt, keine erfundene Konfliktfreiheit über die Reife hinaus).
   const facetBase = useMemo(() => {
     const now = Date.now();
-    return new Map((query.data ?? []).map((k) => [k.id, libraryFilterValues(k, now)]));
-  }, [query.data]);
+    const konflikte = conflicts.data;
+    return new Map((query.data ?? []).map((k) => [k.id, libraryFilterValues(k, now, konflikte)]));
+  }, [query.data, conflicts.data]);
 
   // ================================================================================================
   // JOB 3072 · N4 — DER ZUSTAND EINES EINTRAGS: EINMAL BESCHAFFT, VIERMAL VERWENDET.
