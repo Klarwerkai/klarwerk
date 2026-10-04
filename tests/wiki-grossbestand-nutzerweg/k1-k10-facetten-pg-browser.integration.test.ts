@@ -553,6 +553,7 @@ async function messen(
   sollwert: unknown,
   ausloesen: () => Promise<void>,
   was: string,
+  frist: number = FRIST,
 ): Promise<Messwert> {
   const vorher = await s.evaluate<boolean>(fn(bedingung), sollwert);
   expect(vorher, `${K}: ${was} — der Sollzustand stand schon VOR der Bedienung da`).toBe(false);
@@ -579,7 +580,7 @@ async function messen(
   await s.evaluate<boolean>(fn(beobachter), sollwert);
   await ausloesen();
   const fertig = "() => !!window.__k1k10 && window.__k1k10.t2 !== null";
-  await warte(s, fertig, `${K}: ${was} — Sollzustand erreicht`, undefined, FRIST);
+  await warte(s, fertig, `${K}: ${was} — Sollzustand erreicht`, undefined, frist);
   const k = await s.evaluate<{ t0: number; t1: number; t2: number }>(fn("() => window.__k1k10"));
   const wert = { was, bisZustandMs: k.t1 - k.t0, bisBildMs: k.t2 - k.t0 };
   process.stderr.write(`${K} MESSUNG ${JSON.stringify(wert)}\n`);
@@ -811,6 +812,121 @@ function auswertung(werte: readonly number[], grenzeMs: number) {
   };
 }
 
+// ------------------------------------------------------------------------------------------------
+// ERSTANZEIGE (Nacharbeit 26) — gemessen im Dokument selbst, ab Navigationsbeginn.
+// ------------------------------------------------------------------------------------------------
+
+/** Einmal-Marke im Sitzungsspeicher: nur die NÄCHSTE Navigation dieses Tabs wird gemessen. */
+const ERSTANZEIGE_MARKE = "k1k10.erstanzeige.messen";
+
+/**
+ * Läuft als Init-Skript VOR jedem Seitenskript. Ohne Marke tut es nichts. Mit Marke prüft es je
+ * Bild (`requestAnimationFrame`), ob der Listenfuss den vollen Bestand nennt und das erste Fenster
+ * vollständig steht, und hält dann den Zeitpunkt und das nächste Bild fest — gelesen, nie gesetzt.
+ */
+const ERSTANZEIGE_SKRIPT = `(() => {
+  let soll = null;
+  try {
+    const roh = sessionStorage.getItem(${JSON.stringify(ERSTANZEIGE_MARKE)});
+    if (roh !== null) {
+      sessionStorage.removeItem(${JSON.stringify(ERSTANZEIGE_MARKE)});
+      soll = JSON.parse(roh);
+    }
+  } catch (e) {
+    soll = null;
+  }
+  if (!soll) return;
+  const m = { zustandMs: null, bildMs: null, fuss: null, ids: null, bilder: 0 };
+  window.__k1k10Erstanzeige = m;
+  const pruefe = () => {
+    m.bilder += 1;
+    const fuss = document.querySelector('[data-testid="bib-fuss"]');
+    const zahl = fuss ? Number((fuss.textContent || "").replace(/[^0-9]/g, "")) : -1;
+    const zeilen = document.querySelectorAll('[data-testid="bib-zeile"]');
+    if (zahl === soll.zahl && zeilen.length === soll.fenster) {
+      m.zustandMs = performance.now();
+      m.fuss = zahl;
+      m.ids = Array.from(zeilen, (e) => e.getAttribute("data-bib-id"));
+      requestAnimationFrame(() => {
+        m.bildMs = performance.now();
+      });
+      return;
+    }
+    requestAnimationFrame(pruefe);
+  };
+  requestAnimationFrame(pruefe);
+})();`;
+
+interface Erstanzeige {
+  /** Navigationsbeginn → erstes Bild, in dem Fuss und erstes Fenster stimmten. */
+  zustandMs: number;
+  /** Navigationsbeginn → nächstes Bild danach (Framebeobachtung, kein Pixelnachweis). */
+  bildMs: number;
+  fuss: number;
+  ids: string[];
+  bilder: number;
+  navigation: { responseEndMs: number; domContentLoadedMs: number; loadMs: number };
+}
+
+/**
+ * Marke setzen (auf der aktuellen Seite derselben Herkunft), Init-Skript am Profil anmelden, die
+ * Bibliothek öffnen und den Beobachter auslesen. Die Navigation selbst ist ein gewöhnliches `goto`.
+ */
+async function erstanzeigeMessen(
+  k: Kontext,
+  s: Seite,
+  basis: string,
+  gesamt: number,
+  frist: number = FRIST,
+): Promise<Erstanzeige> {
+  const herkunft = await s.evaluate<string>(fn("() => location.origin"));
+  expect(herkunft, `${K}: Erstanzeige — Marke auf der Herkunft der Instanz`).toBe(
+    new URL(basis).origin,
+  );
+  await k.addInitScript(ERSTANZEIGE_SKRIPT);
+  const soll = { zahl: gesamt, fenster: Math.min(gesamt, LIBRARY_RESULT_LIMIT) };
+  await s.evaluate<void>(fn("([k, wert]) => { sessionStorage.setItem(k, wert); }"), [
+    ERSTANZEIGE_MARKE,
+    JSON.stringify(soll),
+  ]);
+  await s.goto(`${basis}/bibliothek`, { waitUntil: "load" });
+  const fertig = "() => !!window.__k1k10Erstanzeige && window.__k1k10Erstanzeige.bildMs !== null";
+  await warte(s, fertig, `${K}: Erstanzeige — Sollzustand beobachtet`, undefined, frist);
+  return s.evaluate<Erstanzeige>(
+    fn(`() => {
+      const m = window.__k1k10Erstanzeige;
+      const n = performance.getEntriesByType("navigation")[0];
+      return {
+        zustandMs: m.zustandMs,
+        bildMs: m.bildMs,
+        fuss: m.fuss,
+        ids: m.ids,
+        bilder: m.bilder,
+        navigation: {
+          responseEndMs: n ? n.responseEnd : -1,
+          domContentLoadedMs: n ? n.domContentLoadedEventEnd : -1,
+          loadMs: n ? n.loadEventEnd : -1,
+        },
+      };
+    }`),
+  );
+}
+
+/** Das erste Fenster: voller Fuss, genau das erste Fenster, eindeutig, nur Kennungen aus dem Seed. */
+function erstanzeigePruefen(
+  e: Erstanzeige,
+  seed: ReadonlySet<string>,
+  gesamt: number,
+  was: string,
+): void {
+  const fenster = Math.min(gesamt, LIBRARY_RESULT_LIMIT);
+  expect(e.fuss, `${K}: ${was} — Listenfuss`).toBe(gesamt);
+  expect(e.ids.length, `${K}: ${was} — Zeilen im ersten Fenster`).toBe(fenster);
+  expect(new Set(e.ids).size, `${K}: ${was} — eindeutige Kennungen`).toBe(fenster);
+  const fremd = e.ids.filter((id) => !seed.has(id));
+  expect(fremd, `${K}: ${was} — Kennungen ausserhalb des Seeds`).toEqual([]);
+}
+
 /** N2 (Nacharbeit 23): der tatsächliche Zustand nach der SPA-Rückkehr — nur gelesen. */
 interface N2Ist {
   adresse: string;
@@ -894,19 +1010,30 @@ describe("K1/K10 · Bibliotheksfilter bei 10.001 Objekten (PG + Chromium, unver�
     const messungen: Messwert[] = [];
 
     // ── 1 · LEERE SUCHE: Bestandszahl und sichtbares Fenster. Erstanzeige ab Navigationsbeginn. ──
-    await s.goto(`${basis}/bibliothek`, { waitUntil: "load" });
+    // Nacharbeit 26 (Ben, Lauf HISTORIE/nacharbeit-25): bisher wurde `performance.now()` erst NACH
+    // `goto`, Wartefunktion und einer weiteren Browserabfrage gelesen — die 1.202 ms belegten weder
+    // die Grenze noch einen Verstoss. Jetzt misst ein VOR der Navigation installierter Beobachter
+    // (`erstanzeigeMessen`) im Dokument selbst den ersten Bildaufbau mit vollem Bestandszähler und
+    // vollem ersten Fenster, gegen den Navigationsbeginn (`performance.now()` = Zeit seit
+    // `timeOrigin`). Geprüft gegen NFR-PERF-01 „Standardlisten < 1 s bei 10.000 KOs".
     const leer = { zahl: GESAMT, ids: null, fenster: Math.min(GESAMT, LIBRARY_RESULT_LIMIT) };
-    await warte(s, LISTE_IST, `${K}: Bestand ${GESAMT} sichtbar`, leer, FRIST);
-    const erstanzeige = await s.evaluate<number>(fn("() => performance.now()"));
+    const erstanzeige = await erstanzeigeMessen(kontext as Kontext, s, basis, GESAMT);
+    const bekannt = new Set(alle);
     bericht.erstanzeigeMs = {
-      wert: Math.round(erstanzeige),
-      art: "Navigationsbeginn → Listenfuss zeigt 10.001 (Abfrageraster der Wartefunktion)",
+      ...erstanzeige,
+      art: "Navigationsbeginn (timeOrigin) → erster Bildaufbau mit Listenfuss 10.001 und 200 Zeilen (rAF-Beobachter ab Dokumentbeginn)",
+      grenzeMs: 1000,
     };
+    erstanzeigePruefen(erstanzeige, bekannt, GESAMT, "Erstanzeige 10.001");
+    expect(
+      erstanzeige.bildMs,
+      `${K}: Erstanzeige ${Math.round(erstanzeige.bildMs)} ms bei ${GESAMT} Objekten (NFR-PERF-01 < 1000 ms)`,
+    ).toBeLessThan(1000);
+    await warte(s, LISTE_IST, `${K}: Bestand ${GESAMT} sichtbar`, leer, FRIST);
     const fensterIds = await s.evaluate<string[]>(
       fn(`() => [...document.querySelectorAll('[data-testid="bib-zeile"]')]
         .map((e) => e.dataset.bibId)`),
     );
-    const bekannt = new Set(alle);
     expect(
       fensterIds.every((id) => bekannt.has(id)),
       `${K}: fremde Zeile im Fenster`,
@@ -1732,4 +1859,362 @@ describe("K1/K10 · Bibliotheksfilter bei 10.001 Objekten (PG + Chromium, unver�
     expect(zahlen, `${K}: N2 — keine Aktivzahl`).toEqual(sollZahlen);
     fensterPruefen(await zeilenIds(s), new Set(GRUPPEN.flatMap((g) => ids[g])), "N2 Fenster");
   }, 600_000);
+});
+
+// ================================================================================================
+// K16 / R-1006 · 100.000 OBJEKTE (Nacharbeit 26) — derselbe PG-/Browserweg, eigener Bestand.
+// ================================================================================================
+//
+// Ben (HISTORIE/nacharbeit-25): der zugeordnete Umfang „mindestens 100.000 Objekte" war durch keinen
+// ausgeführten Bedienlauf belegt; der Lauf oben hat 10.001. Dieser Fall ist GETRENNT davon: eigene
+// Wegwerf-Datenbank, eigener Seed über den Produktdienst, eigene Instanz, eigenes Browserprofil.
+// Geprüft wird an BEKANNTEN Zielkennungen: Bestandsidentität (SQL), Erstanzeige, Nachladen durch
+// echtes Rollen, gezielte Suche, kombinierte Facetten, Liste ⇄ Karten und Mehrfachauswahl.
+// Bedienzeiten werden gemessen und berichtet. R-1006 nennt KEINE Zeitgrenze („bleibt bedienbar"),
+// deshalb wird hier keine erfunden: `FRIST_K16` ist eine Abbruchfrist für das Warten, kein Sollwert.
+
+const K16 = "[KLARWERK] K16 · R-1006";
+const GESAMT_K16 = 100_000;
+/** Abbruchfrist für das Warten bei 100.000 Objekten — KEIN Sollwert. */
+const FRIST_K16 = 600_000;
+/** Steht NUR in den drei Suchgruppen, nie im Füllbestand. */
+const SUCHWORT_K16 = "Spindelabgleich";
+const K16_WARTUNG = "K16 Wartung";
+const K16_MONTAGE = "K16 Montage";
+const K16_KATEGORIEN = [
+  K16_WARTUNG,
+  K16_MONTAGE,
+  "K16 Qualität",
+  "K16 Logistik",
+  "K16 Einkauf",
+  "K16 Schulung",
+] as const;
+const K16_PUMPE = "k16-pumpe";
+const K16_NORM = "k16-norm";
+const K16_SCHLAGWORTE = [
+  K16_PUMPE,
+  "k16-ventil",
+  "k16-lager",
+  K16_NORM,
+  "k16-audit",
+  "k16-sicherheit",
+] as const;
+
+type GruppeK16 = "ziel" | "neben" | "fremd" | "fuell";
+const GRUPPEN_K16: readonly GruppeK16[] = ["ziel", "neben", "fremd", "fuell"];
+
+/** Titelpräfix je Gruppe — darüber ordnet die SQL-Rücklesung jede Zeile ihrer Gruppe zu. */
+const PRAEFIX_K16: Record<GruppeK16, string> = {
+  ziel: `K16 ${SUCHWORT_K16} Zielbericht`,
+  neben: `K16 ${SUCHWORT_K16} Wartungsnotiz`,
+  fremd: `K16 ${SUCHWORT_K16} Montagenotiz`,
+  fuell: "K16 Bestandseintrag",
+};
+
+interface EintragK16 {
+  gruppe: GruppeK16;
+  eingabe: CreateKoInput;
+}
+
+/**
+ * Der Plan: drei kleine Suchgruppen (25 Ziel = Wartung + pumpe + norm, 15 Wartung + pumpe,
+ * 10 Montage + norm) und 99.950 Füllzeilen über sechs Kategorien und sechs Schlagwörter. Im
+ * Füllbestand trägt keine Wartung-Zeile „k16-norm" (i % 6 = 0 → pumpe, lager) — „Wartung + norm"
+ * trifft damit genau die 25 Zielkennungen. Alles „intern": kein Zähler hängt an einer Rechtefrage.
+ */
+function bauplanK16(): EintragK16[] {
+  type Stufe = NonNullable<CreateKoInput["confidentiality"]>;
+  const intern: Stufe = "intern";
+  function such(gruppe: GruppeK16, anzahl: number, category: string, tags: string[]) {
+    return Array.from({ length: anzahl }, (_, i): EintragK16 => {
+      const nr = String(i).padStart(3, "0");
+      return {
+        gruppe,
+        eingabe: {
+          title: `${PRAEFIX_K16[gruppe]} ${nr}`,
+          statement: `${SUCHWORT_K16} an Spindel ${nr} geprüft.`,
+          type: ART,
+          category,
+          tags,
+          author: "k16-autor-b",
+          confidentiality: intern,
+        },
+      };
+    });
+  }
+  const plan: EintragK16[] = [
+    ...such("ziel", 25, K16_WARTUNG, [K16_PUMPE, K16_NORM]),
+    ...such("neben", 15, K16_WARTUNG, [K16_PUMPE]),
+    ...such("fremd", 10, K16_MONTAGE, [K16_NORM]),
+  ];
+  const fuell = GESAMT_K16 - plan.length;
+  for (let i = 0; i < fuell; i += 1) {
+    const nr = String(i).padStart(6, "0");
+    plan.push({
+      gruppe: "fuell",
+      eingabe: {
+        title: `${PRAEFIX_K16.fuell} ${nr}`,
+        statement: `Abschnitt ${nr}: Ablauf und Nachweis sind im Ordner hinterlegt.`,
+        type: ART,
+        category: K16_KATEGORIEN[i % 6] as string,
+        tags: [K16_SCHLAGWORTE[i % 6] as string, K16_SCHLAGWORTE[(i + 2) % 6] as string],
+        author: "k16-autor-c",
+        confidentiality: intern,
+      },
+    });
+  }
+  return plan;
+}
+
+const IST_TESTID = '(a, id) => a.getAttribute("data-testid") === id';
+
+/** Darstellung und Zeilen: `data-ansicht` der Trefferliste und dieselben Kennungen in Reihenfolge. */
+const ANSICHT_IST = `(soll) => {
+  const spur = document.querySelector('[data-testid="bib-spur"]');
+  if (!spur || spur.getAttribute("data-ansicht") !== soll.ansicht) return false;
+  const ids = [...document.querySelectorAll('[data-testid="bib-zeile"]')].map((e) => e.dataset.bibId);
+  return JSON.stringify(ids) === soll.ids;
+}`;
+
+interface AuswahlIst {
+  anzahl: string;
+  haken: string[];
+  markiert: string[];
+}
+
+const AUSWAHL_IST = `() => ({
+  anzahl: (document.querySelector('[data-testid="bib-auswahl-anzahl"]')?.textContent || "").trim(),
+  haken: [...document.querySelectorAll('[data-testid="bib-zeile-markieren"]')]
+    .filter((e) => e.checked)
+    .map((e) => e.getAttribute("data-bib-id")),
+  markiert: [...document.querySelectorAll('[data-testid="bib-zeilenblock"][data-markiert="true"]')]
+    .map((e) => e.getAttribute("data-bib-id")),
+})`;
+
+const AUSWAHL_ANZAHL = `(soll) =>
+  (document.querySelector('[data-testid="bib-auswahl-anzahl"]')?.textContent || "").trim() === soll`;
+
+describe("K16 · 100.000 Objekte (PG + Chromium, derselbe Produktweg, eigener Bestand)", () => {
+  let dbK16: Wegwerfdatenbank | undefined;
+  let instanzK16: Instanz | undefined;
+  let kontextK16: Kontext | undefined;
+  let seiteK16: Seite | undefined;
+  const idsK16: Record<GruppeK16, string[]> = { ziel: [], neben: [], fremd: [], fuell: [] };
+  const berichtK16: Record<string, unknown> = {
+    zeitpunkt: new Date().toISOString(),
+    umfang: GESAMT_K16,
+    massstab:
+      "R-1006 'auch bei sehr grossen Beständen bedienbar' — keine Zeitgrenze; Zeiten berichtet, Ergebnisse an bekannten Kennungen geprüft",
+  };
+
+  beforeAll(async () => {
+    if (!platz || !browser) {
+      return;
+    }
+    const p = platz;
+    const b = browser;
+    dbK16 = await p.wegwerfdatenbank("k16");
+    berichtK16.datenbank = dbK16.name;
+    berichtK16.commit = commit();
+    const leer = await instanzStarten(dbK16.pool);
+    const admin = await adminAnlegen(leer.app, "k16");
+    await leer.schliessen();
+
+    // Der Seed über den Produktdienst — eine Anlage nach der anderen, wie oben.
+    const planK16 = bauplanK16();
+    const dienste = buildPgServices(dbK16.pool);
+    const tAnlegen = Date.now();
+    for (const e of planK16) {
+      idsK16[e.gruppe].push((await dienste.ko.create(e.eingabe)).id);
+    }
+    berichtK16.seed = { anlegenMs: Date.now() - tAnlegen, geplant: planK16.length };
+
+    const tStart = Date.now();
+    try {
+      instanzK16 = await instanzStarten(dbK16.pool);
+    } catch (fehler) {
+      const grund = fehler instanceof Error ? fehler.message : String(fehler);
+      berichtK16.kaltstart = { ms: Date.now() - tStart, fehler: grund };
+      schreibeBericht(`k16-${dbK16.name}.json`, berichtK16);
+      throw new Error(
+        `${K16} PRODUKTBEFUND: die App startet auf ${GESAMT_K16} Objekten nicht bereit (nach ${Date.now() - tStart} ms, ohne Voraktivierung): ${grund}`,
+      );
+    }
+    berichtK16.kaltstart = { ms: Date.now() - tStart, voraktivierung: "keine" };
+    const lage = await profil(b, { width: 1440, height: 900 });
+    kontextK16 = lage.kontext;
+    seiteK16 = lage.seite;
+    await anmelden(seiteK16, instanzK16.basis, admin.email);
+  }, 3_600_000);
+
+  afterAll(async () => {
+    await kontextK16?.close().catch(() => undefined);
+    await instanzK16?.schliessen().catch(() => undefined);
+    if (dbK16) {
+      const datei = schreibeBericht(`k16-${dbK16.name}.json`, berichtK16);
+      process.stderr.write(`${K16} BERICHT (${datei}): ${JSON.stringify(berichtK16)}\n`);
+    }
+  }, 300_000);
+
+  it("K16 — 100.000 Objekte: Bestand, Erstanzeige, Nachladen, Suche, Facetten, Karten, Mehrfachauswahl", async (ctx) => {
+    if (!dbK16 || !instanzK16 || !seiteK16 || !kontextK16) {
+      process.stderr.write(`${MELDUNG_KEINE_DATENBANK} ${skipGrund}\n`);
+      ctx.skip();
+      return;
+    }
+    const s = seiteK16;
+    const alle = new Set(GRUPPEN_K16.flatMap((g) => idsK16[g]));
+    const zeiten: Record<string, unknown> = {};
+
+    // 0 · Bestandsidentität unabhängig aus SQL: Zahl, Eindeutigkeit, Kennungshash je Gruppe.
+    const zeilen = await dbK16.pool.query<{ id: string; titel: string }>(
+      "SELECT id, data->>'title' AS titel FROM kos",
+    );
+    expect(zeilen.rowCount, `${K16}: Zeilen in kos`).toBe(GESAMT_K16);
+    expect(new Set(zeilen.rows.map((z) => z.id)).size, `${K16}: eindeutige Kennungen`).toBe(
+      GESAMT_K16,
+    );
+    const ausSql: Record<GruppeK16, string[]> = { ziel: [], neben: [], fremd: [], fuell: [] };
+    const ohneGruppe: string[] = [];
+    for (const z of zeilen.rows) {
+      const gruppe = GRUPPEN_K16.find((g) => z.titel.startsWith(`${PRAEFIX_K16[g]} `));
+      if (gruppe === undefined) {
+        ohneGruppe.push(z.id);
+      } else {
+        ausSql[gruppe].push(z.id);
+      }
+    }
+    expect(ohneGruppe, `${K16}: Zeilen ohne Gruppe`).toEqual([]);
+    const hashes: Record<string, string> = {};
+    for (const g of GRUPPEN_K16) {
+      const gelesen = kennungsHash([...ausSql[g]].sort());
+      expect(gelesen, `${K16}: Kennungshash der Gruppe ${g}`).toBe(
+        kennungsHash([...idsK16[g]].sort()),
+      );
+      hashes[g] = `${ausSql[g].length} · ${gelesen}`;
+    }
+    berichtK16.bestand = { anzahl: zeilen.rowCount, gruppen: hashes };
+
+    // 1 · Erstanzeige — derselbe Beobachter wie bei 10.001, berichtet ohne Grenze.
+    const erst = await erstanzeigeMessen(kontextK16, s, instanzK16.basis, GESAMT_K16, FRIST_K16);
+    erstanzeigePruefen(erst, alle, GESAMT_K16, "K16 Erstanzeige");
+    zeiten.erstanzeige = { ...erst, ids: erst.ids.length };
+
+    // 2 · Nachladen durch echtes Mausrad über der Trefferliste.
+    const vor = await zeilenIds(s);
+    const tRollen = Date.now();
+    await rollenUeberDerListe(s);
+    await warte(s, FENSTER_GROESSER, `${K16}: Nachladen nach dem Rollen`, vor.length, FRIST_K16);
+    zeiten.nachladenMs = {
+      wert: Date.now() - tRollen,
+      art: "Mausrad → mehr als das erste Fenster im DOM (Wanduhr des Prüfprozesses, Abfrageraster)",
+    };
+    const nach = await zeilenIds(s);
+    fensterPruefen(nach, alle, "K16 nach Rollen");
+    expect(nach.slice(0, vor.length), `${K16}: erstes Fenster bleibt vorne`).toEqual(vor);
+
+    // 3 · Gezielte Suche: genau die 50 Kennungen der drei Suchgruppen.
+    const suchIds = [...idsK16.ziel, ...idsK16.neben, ...idsK16.fremd];
+    await bedienelementErreichen(s, '[data-testid="bib-suche"]');
+    zeiten.suche = await messen(
+      s,
+      LISTE_IST,
+      listensoll(suchIds),
+      () => s.keyboard.type(SUCHWORT_K16),
+      `K16 Suche „${SUCHWORT_K16}" (ab letztem Tastenanschlag)`,
+      FRIST_K16,
+    );
+
+    // 4 · Kombinierte Facetten: Bereich „K16 Wartung" (40), dann Schlagwort „k16-norm" (25 Ziel).
+    await menueOeffnen(s, "bib-menue-bereich");
+    await tabBisPassend(s, IST_WERT, K16_WARTUNG, `Wert „${K16_WARTUNG}"`);
+    zeiten.bereich = await messen(
+      s,
+      ZUSTAND_IST,
+      zustand([...idsK16.ziel, ...idsK16.neben], null, knoepfe(1, true)),
+      ENTER(s),
+      "K16 Bereich Wartung an",
+      FRIST_K16,
+    );
+    await s.keyboard.press("Escape");
+    await menueOeffnen(s, "bib-menue-filter");
+    await untermenueOeffnen(s, i18n.t("lib.facet.tag"));
+    await tabBisPassend(s, IST_WERT, K16_NORM, `Wert „${K16_NORM}"`);
+    zeiten.schlagwort = await messen(
+      s,
+      ZUSTAND_IST,
+      zustand(idsK16.ziel, null, knoepfe(1, true)),
+      ENTER(s),
+      "K16 Schlagwort norm an",
+      FRIST_K16,
+    );
+    await s.keyboard.press("Escape");
+
+    // 5 · Liste → Karten: dieselben Treffer in derselben Reihenfolge.
+    const listeIds = await zeilenIds(s);
+    expect([...listeIds].sort(), `${K16}: Treffer vor dem Wechsel`).toEqual(
+      [...idsK16.ziel].sort(),
+    );
+    const listeSoll = JSON.stringify(listeIds);
+    await menueOeffnen(s, "bib-liste-menue");
+    await untermenueOeffnen(s, i18n.t("lib.ansicht.label"));
+    await tabBisPassend(s, IST_TESTID, "bib-ansicht-karten", "Ansicht Karten");
+    zeiten.karten = await messen(
+      s,
+      ANSICHT_IST,
+      { ansicht: "karten", ids: listeSoll },
+      ENTER(s),
+      "K16 Liste → Karten",
+      FRIST_K16,
+    );
+
+    // 6 · Mehrfachauswahl an drei bekannten Zielkennungen, per Tab und Leertaste.
+    await menueOeffnen(s, "bib-liste-menue");
+    await tabBisPassend(s, IST_TESTID, "bib-auswahl-modus", "Mehrfachauswahl");
+    await s.keyboard.press("Enter");
+    const leiste = `() => !!document.querySelector('[data-testid="bib-auswahl-leiste"]')`;
+    await warte(s, leiste, `${K16}: Auswahlleiste`, undefined, FRIST_K16);
+    const gewaehlt = [idsK16.ziel[0], idsK16.ziel[7], idsK16.ziel[19]] as string[];
+    for (const id of gewaehlt) {
+      await bedienelementErreichen(s, `[data-testid="bib-zeile-markieren"][data-bib-id="${id}"]`);
+      await s.keyboard.press("Space");
+    }
+    const drei = i18n.t("lib.auswahl.anzahl", { count: gewaehlt.length });
+    await warte(s, AUSWAHL_ANZAHL, `${K16}: Auswahlzähler`, drei, FRIST_K16);
+    const auswahl = await s.evaluate<AuswahlIst>(fn(AUSWAHL_IST));
+    expect(auswahl.anzahl, `${K16}: Auswahlzähler`).toBe(drei);
+    expect([...auswahl.haken].sort(), `${K16}: Häkchen`).toEqual([...gewaehlt].sort());
+    expect([...auswahl.markiert].sort(), `${K16}: markierte Zeilen`).toEqual([...gewaehlt].sort());
+    await bedienelementErreichen(s, '[data-testid="bib-auswahl-leeren"]');
+    await s.keyboard.press("Enter");
+    const null0 = i18n.t("lib.auswahl.anzahl", { count: 0 });
+    await warte(s, AUSWAHL_ANZAHL, `${K16}: Auswahl aufgehoben`, null0, FRIST_K16);
+
+    // 7 · Modus verlassen, Karten → Liste: dieselben Treffer, keine Häkchen mehr.
+    await menueOeffnen(s, "bib-liste-menue");
+    await tabBisPassend(s, IST_TESTID, "bib-auswahl-modus", "Mehrfachauswahl aus");
+    await s.keyboard.press("Enter");
+    const ohneLeiste = `() => !document.querySelector('[data-testid="bib-auswahl-leiste"]')`;
+    await warte(s, ohneLeiste, `${K16}: Auswahlmodus verlassen`, undefined, FRIST_K16);
+    await menueOeffnen(s, "bib-liste-menue");
+    await untermenueOeffnen(s, i18n.t("lib.ansicht.label"));
+    await tabBisPassend(s, IST_TESTID, "bib-ansicht-liste", "Ansicht Liste");
+    zeiten.liste = await messen(
+      s,
+      ANSICHT_IST,
+      { ansicht: "liste", ids: listeSoll },
+      ENTER(s),
+      "K16 Karten → Liste",
+      FRIST_K16,
+    );
+
+    berichtK16.zeiten = zeiten;
+    berichtK16.ergebnis = {
+      suche: suchIds.length,
+      bereichWartung: idsK16.ziel.length + idsK16.neben.length,
+      kombiniert: idsK16.ziel.length,
+      nachRollen: nach.length,
+      mehrfachauswahl: gewaehlt,
+    };
+  }, 1_800_000);
 });
