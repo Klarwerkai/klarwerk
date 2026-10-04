@@ -932,7 +932,10 @@ describe("JOB 3064 · H5 · das Funktionsinventar — jeder umgezogene Block hat
     expect(mitFilter).toContain(`${t("lib.menue.bereich")} · 1`);
 
     // Ruecknahme: der ausgeschlossene Gegenstand erscheint wieder — dieselbe Kennung, derselbe Titel.
-    // Die gewaehlte Option bleibt im Menue immer sichtbar (`keepSelectedVisible`), sie ist abwaehlbar.
+    // Die gewaehlte Option muss im Menue sichtbar und abwaehlbar bleiben — auch wenn die Suche gerade
+    // keinen Eintrag ihres Bereichs zeigt. NACHARBEIT 8: genau hier fiel sie am Kandidaten 6586a224
+    // aus dem Menue (angeboten nur „Konstruktion · 1“); behoben in `lib/facetFilter.ts`
+    // (`buildFacetGroups`), Gegenprobe in `tests/library/facet-filter-logic.test.ts`.
     await bereichUmschalten(filterBereich);
     await listeIst(weg.suchwort, [weg.id]);
     const ohneFilter = await s.evaluate<string>(fn(SICHTBAR), MENUE_BEREICH);
