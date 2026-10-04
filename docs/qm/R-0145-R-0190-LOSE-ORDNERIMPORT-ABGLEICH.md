@@ -30,17 +30,26 @@ deshalb Codestellen und Testdateien der Basisfassung.
 
 `POST /api/admin/import/sharepoint/folder-apply` (`services/app/src/routes/sharepoint-import-routes.ts`, Tür 3):
 
-- Rumpf `{ folderId?, los? }`. Der Ordner wird gelistet, nach Datei-Kennung sortiert und in Lose zu
-  `SHAREPOINT_LOS_GROESSE` (= 50) geschnitten.
+- Rumpf `{ folderId?, fortsetzungAb? }`. Jeder Aufruf inventarisiert den ganzen Ordner
+  (`SharePointSourceAdapter.inventarisiereOrdner`): alle Listenseiten, alle Unterordner auf allen
+  Ebenen; Ordner werden nie Kandidaten. Die Dateien werden nach Kennung sortiert.
+- **Los:** die nächsten höchstens `SHAREPOINT_LOS_GROESSE` (= 50) Dateien hinter `fortsetzungAb`.
+  Die Fortsetzung hängt an der Kennung, nicht an einem Versatz: verschwindet zwischen zwei Losen
+  eine Datei, fällt keine weiterhin vorhandene Datei aus der Losfolge.
 - **Halt:** ein Aufruf übernimmt genau ein Los. Das nächste läuft nur auf ausdrückliche Anfrage
-  (`los.naechstesLos`).
-- **Nachweis:** jedes Los ist ein eigener `ImportRun` mit Scope `drive:…/folder:…/los:N-von-M`;
-  `los.vollstaendig` entspricht `COMPLETED`.
+  mit der angebotenen `los.fortsetzungAb`.
+- **Nachweis:** jedes Los ist ein eigener `ImportRun` mit Scope `drive:…/folder:…/ab:<Kennung>`;
+  `los.vollstaendig` entspricht `COMPLETED`. `los.ordnerAbgeschlossen` ist erst wahr, wenn hinter
+  dem Los nichts mehr liegt und die Inventur vollständig war.
+- **Leseweg der Laufakte:** `GET /api/admin/import/runs/…` ist hinter jedem Importweg registriert,
+  der Läufe schreibt (Confluence oder SharePoint), nicht mehr nur hinter Confluence (`build-app.ts`).
 - **Kein Modell:** die SharePoint-Routen haben keinen Reasoner; der Weg endet wie Tür 2 bei
   `createImportCandidates` (Prüf-Warteschlange, Annahme durch einen Menschen).
 - Tür 2 und Tür 3 teilen einen Übernahmeweg (`fuehreUebernahmeAus`); Tür 2 ist im Verhalten unverändert.
 
-Test: `tests/sharepoint-onedrive-import/ordner-in-losen-am-draht.test.ts` (L1–L6, Netzprobe).
+Test: `tests/sharepoint-onedrive-import/ordner-in-losen-am-draht.test.ts` (L1–L6, nach bens
+Befunden L7 Änderung der Ordnerliste, L8 elf Listenseiten, L9 Unterordner, L10 nur SharePoint;
+Netzprobe). `wiederholimport-am-draht.test.ts` W1b erwartet seitdem 200 statt 404.
 
 ## Quellenwidersprüche
 
@@ -57,11 +66,11 @@ Test: `tests/sharepoint-onedrive-import/ordner-in-losen-am-draht.test.ts` (L1–
 
 - Kein gefahrener Microsoft-365/Graph-Lauf. Die Tests laufen gegen ein Vertrags-Double.
 - Tür 3 hat noch keine Fläche in der Oberfläche. Eine Bedienung durch Menschen ist nicht belegt.
-- Nur Dateien direkt im Ordner; Unterordner brauchen eigene Aufrufe. Die Ordnerliste ist gedeckelt
-  (`SHAREPOINT_MAX_PAGES`); ist sie abgeschnitten, meldet `los.ordnerVollstaendigGelesen: false`.
-- Ändert sich der Ordner zwischen zwei Losen, verschieben sich die Lose. Doppelt eingereiht wird
-  dabei nichts (Idempotenz), aber einzelne Dateien können aus der Losfolge fallen. Ein erneuter
-  Durchlauf holt sie.
+- Die Inventur ist gedeckelt (`SHAREPOINT_INVENTAR_MAX_SEITEN_JE_ORDNER` = 1000 Seiten je Ordner,
+  `SHAREPOINT_INVENTAR_MAX_ORDNER` = 1000 Ordner). Wird eine Kante erreicht, meldet
+  `los.inventar.vollstaendig: false`, und die Losfolge schliesst nie als abgeschlossen.
+- Jeder Losaufruf inventarisiert den ganzen Ordner neu: bei sehr grossen Ordnern kostet das
+  entsprechend viele Listenabrufe je Los.
+- Eine Datei, die während einer Losfolge neu hinzukommt und deren Kennung vor der Fortsetzung liegt,
+  gehört nicht zu dieser Losfolge. Eine neue Losfolge ab Anfang holt sie ohne Doppelbestand.
 - Ein lokaler Ordner (Dateisystem) und andere Quellsysteme sind nicht Teil dieses Wegs.
-- Der Leseweg der Laufakte ist weiterhin nur hinter dem Confluence-Schalter registriert (Befund
-  aus `tests/sharepoint-onedrive-import/wiederholimport-am-draht.test.ts`, W1b; `build-app.ts` nicht geändert).

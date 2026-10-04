@@ -903,9 +903,12 @@ export class SharePointGraphClient {
    * `keine-berechtigung`; eine LEERE Liste ist deshalb eine Aussage über das Ergebnis und nie eine
    * über die Rechte.
    */
-  async listeDateien(ordnerId?: string): Promise<SharePointListResult> {
+  async listeDateien(ordnerId?: string, maxSeiten?: number): Promise<SharePointListResult> {
     const erlaubteOrigin = this.erlaubteOrigin();
-    const maxPages = this.config.maxPages ?? SHAREPOINT_MAX_PAGES;
+    // `maxSeiten` setzt nur die Ordner-Inventur (`SharePointSourceAdapter.inventarisiereOrdner`):
+    // sie muss einen ganzen Kundenordner lesen und trägt dafür ihre EIGENE, grössere Kante. Die
+    // Auswahlliste bleibt bei `SHAREPOINT_MAX_PAGES`.
+    const maxPages = maxSeiten ?? this.config.maxPages ?? SHAREPOINT_MAX_PAGES;
     const items: GraphDriveItem[] = [];
     let url: string | null = this.ersteSeite(ordnerId);
     let seiten = 0;

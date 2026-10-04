@@ -510,23 +510,36 @@ export function sharepointImportRoutes(deps: SharePointImportRouteDeps): Fastify
     // wusste niemand ausser dem Menschen, der sie gewählt hatte. Diese Tür schneidet den Ordner
     // selbst in Lose:
     //
-    //   LOS        = höchstens `SHAREPOINT_LOS_GROESSE` Dateien des Ordners, nach Kennung sortiert.
-    //                Dieselbe Ordnerliste ergibt deshalb dieselben Lose — ein Wiederholaufruf trifft
-    //                dieselben Dateien und ist über die Idempotenz von Tür 2 gefahrlos.
+    //   INVENTUR   = jeder Aufruf liest den GANZEN Ordner: alle Listenseiten, alle Unterordner auf
+    //                allen Ebenen (`adapter.inventarisiereOrdner`). Ordner werden nie Kandidaten.
+    //   LOS        = die nächsten höchstens `SHAREPOINT_LOS_GROESSE` Dateien nach Kennung sortiert,
+    //                deren Kennung HINTER `fortsetzungAb` liegt (beim ersten Aufruf: ab Anfang).
     //   HALT       = EIN Aufruf übernimmt GENAU EIN Los und endet. Das nächste Los läuft erst, wenn
-    //                jemand ausdrücklich danach fragt (`naechstesLos`). Weiter läuft hier nichts.
-    //   NACHWEIS   = jedes Los ist ein eigener Lauf (`importId`, Scope `…/los:N-von-M`). Ob es
+    //                jemand ausdrücklich mit der angebotenen `los.fortsetzungAb` fragt.
+    //   NACHWEIS   = jedes Los ist ein eigener Lauf (`importId`, Scope `…/ab:<Kennung>`). Ob es
     //                vollständig ist, steht am Lauf (`COMPLETED` gegen `PARTIAL`/`FAILED`) und in
     //                der Antwort (`los.vollstaendig`).
     //   KEIN MODELL = diese Routen kennen keinen Reasoner. Der Weg endet wie Tür 2 bei
     //                `library.createImportCandidates`; geprüft wird ohne Modell, angenommen erst
     //                von einem Menschen.
     //
-    // DIE GRENZEN, AUSDRÜCKLICH: nur die Dateien DIREKT in diesem Ordner (Unterordner sind eigene
-    // Ordner und eigene Aufrufe), und die Ordnerliste ist gedeckelt (`SHAREPOINT_MAX_PAGES`). Ist sie
-    // abgeschnitten, sagt `los.ordnerVollstaendigGelesen: false`, dass es weitere Dateien gibt, die
-    // in keinem Los stehen.
-    app.post<{ Body: { folderId?: unknown; los?: unknown } }>(
+    // WARUM EINE FORTSETZUNGSKENNUNG UND KEINE LOSNUMMER (bens Befund F2): mit einer Losnummer
+    // schnitte jeder Aufruf die NEU gelesene Liste nach Versatz. Verschwindet zwischen zwei Losen
+    // eine Datei aus einem schon übernommenen Los, rückt alles nach vorn — und die erste Datei des
+    // nächsten Loses fällt still heraus. Die Fortsetzung „hinter dieser Kennung" hängt nicht am
+    // Versatz: jede Datei, die beim Aufruf noch da ist und hinter der Kennung liegt, kommt in einem
+    // der folgenden Lose an; alles davor wurde bereits angeboten.
+    //
+    // WAS „ABGESCHLOSSEN" HEISST: `los.ordnerAbgeschlossen` ist nur wahr, wenn hinter diesem Los
+    // keine Datei mehr liegt UND die Inventur vollständig war. Ob jedes einzelne Los vollständig war,
+    // sagen die Läufe — der Abschluss der Losfolge behauptet das nicht.
+    //
+    // DIE GRENZEN, AUSDRÜCKLICH: die Inventur ist gedeckelt (`SHAREPOINT_INVENTAR_MAX_*`, s. Adapter);
+    // wird eine Kante erreicht, ist `los.inventar.vollstaendig` falsch und die Losfolge schliesst nie
+    // als „abgeschlossen". Eine Datei, die WÄHREND der Losfolge neu hinzukommt und deren Kennung vor
+    // der Fortsetzungskennung liegt, gehört nicht zu dieser Losfolge — eine neue Losfolge ab Anfang
+    // holt sie, ohne Bereits-Übernommenes doppelt einzureihen (Idempotenz von Tür 2).
+    app.post<{ Body: { folderId?: unknown; fortsetzungAb?: unknown } }>(
       "/api/admin/import/sharepoint/folder-apply",
       async (request, reply) => {
         const user = await deps.guards.requirePermission("users.manage", request, reply);
@@ -540,30 +553,48 @@ export function sharepointImportRoutes(deps: SharePointImportRouteDeps): Fastify
             .send({ error: "IMPORT_UNAVAILABLE", message: MELDUNG.IMPORT_UNAVAILABLE });
           return reply;
         }
-        const los = leseLos(request.body?.los);
-        if (los === null) {
+        const fortsetzungAb = leseFortsetzung(request.body?.fortsetzungAb);
+        if (fortsetzungAb === null) {
           reply.code(400).send({
-            error: "LOS_INVALID",
-            message: "Die Losnummer muss eine ganze Zahl ab 0 sein.",
+            error: "FORTSETZUNG_INVALID",
+            message: "Die Fortsetzung muss die angebotene Kennung aus dem vorigen Los sein.",
           });
           return reply;
         }
         const ordnerId = leseOrdnerId(request.body?.folderId);
         let alle: string[];
-        let abgeschnitten: boolean;
+        let unterordner: number;
+        let inventurVollstaendig: boolean;
         try {
-          // LESEN VOR JEDEM SCHREIBEFFEKT: scheitert schon die Liste, entsteht kein Lauf — es wurde
-          // nichts übernommen, und die Antwort ist dieselbe Lage wie an Tür 1.
-          const liste = await adapter.listeDateien(ordnerId);
-          alle = [...new Set(liste.dateien.map((datei) => datei.id))].sort(vergleicheKennung);
-          abgeschnitten = liste.truncated;
+          // LESEN VOR JEDEM SCHREIBEFFEKT: scheitert schon die Inventur, entsteht kein Lauf — es
+          // wurde nichts übernommen, und die Antwort ist dieselbe Lage wie an Tür 1.
+          const inventar = await adapter.inventarisiereOrdner(ordnerId);
+          alle = inventar.dateien.map((datei) => datei.id).sort(vergleicheKennung);
+          unterordner = inventar.unterordner;
+          inventurVollstaendig = inventar.vollstaendig;
         } catch (err) {
-          warne(request.log, "Ordnerliste", err);
+          warne(request.log, "Ordnerinventur", err);
           return sendeLage(reply, err);
         }
-        const anzahl = Math.ceil(alle.length / SHAREPOINT_LOS_GROESSE);
-        if (anzahl === 0 && los === 0) {
-          // Ein leerer Ordner ist eine Auskunft, kein Fehler — und kein Lauf: es gab nichts zu tun.
+        const offen =
+          fortsetzungAb === undefined
+            ? alle
+            : alle.filter((id) => vergleicheKennung(id, fortsetzungAb) > 0);
+        const kennungen = offen.slice(0, SHAREPOINT_LOS_GROESSE);
+        const verbleibend = offen.length - kennungen.length;
+        const letzte = kennungen[kennungen.length - 1] ?? null;
+        const naechsteFortsetzung = verbleibend > 0 ? letzte : null;
+        const losAuskunft = (vollstaendig: boolean) => ({
+          kennungen,
+          vollstaendig,
+          fortsetzungAb: naechsteFortsetzung,
+          verbleibend,
+          inventar: { dateien: alle.length, unterordner, vollstaendig: inventurVollstaendig },
+          ordnerAbgeschlossen: naechsteFortsetzung === null && inventurVollstaendig,
+        });
+        if (kennungen.length === 0) {
+          // Nichts (mehr) zu tun — ein leerer Ordner oder eine Fortsetzung hinter der letzten
+          // Datei. Eine Auskunft, kein Fehler, und kein Lauf.
           reply.code(200).send({
             imported: 0,
             alreadyQueued: 0,
@@ -572,35 +603,16 @@ export function sharepointImportRoutes(deps: SharePointImportRouteDeps): Fastify
             notFound: [],
             ohneInhalt: [],
             dateien: [],
-            los: {
-              index: 0,
-              anzahl: 0,
-              groesse: SHAREPOINT_LOS_GROESSE,
-              kennungen: [],
-              vollstaendig: true,
-              naechstesLos: null,
-              ordnerVollstaendigGelesen: !abgeschnitten,
-            },
+            los: losAuskunft(true),
           });
           return reply;
         }
-        if (los >= anzahl) {
-          reply.code(400).send({
-            error: "LOS_OUT_OF_RANGE",
-            message: `Diesen Teil gibt es nicht (Los ${los + 1} von ${anzahl}).`,
-          });
-          return reply;
-        }
-        const kennungen = alle.slice(
-          los * SHAREPOINT_LOS_GROESSE,
-          (los + 1) * SHAREPOINT_LOS_GROESSE,
-        );
         const ausgang = await fuehreUebernahmeAus(
           deps,
           adapter,
           kennungen,
           user.id,
-          `drive:${adapter.driveId}/folder:${ordnerId ?? "root"}/los:${los + 1}-von-${anzahl}`,
+          `drive:${adapter.driveId}/folder:${ordnerId ?? "root"}/ab:${fortsetzungAb ?? "anfang"}`,
           request.log,
         );
         if (ausgang.code !== 200) {
@@ -609,15 +621,7 @@ export function sharepointImportRoutes(deps: SharePointImportRouteDeps): Fastify
         }
         reply.code(200).send({
           ...ausgang.body,
-          los: {
-            index: los,
-            anzahl,
-            groesse: SHAREPOINT_LOS_GROESSE,
-            kennungen,
-            vollstaendig: ausgang.laufStatus === "COMPLETED",
-            naechstesLos: los + 1 < anzahl ? los + 1 : null,
-            ordnerVollstaendigGelesen: !abgeschnitten,
-          },
+          los: losAuskunft(ausgang.laufStatus === "COMPLETED"),
         });
         return reply;
       },
@@ -625,12 +629,19 @@ export function sharepointImportRoutes(deps: SharePointImportRouteDeps): Fastify
   };
 }
 
-/** Die Losnummer aus dem Rumpf: fehlt sie, ist es Los 0; alles ausser 0, 1, 2, … ist `null`. */
-function leseLos(raw: unknown): number | null {
+/** Höchstlänge einer Fortsetzungskennung — eine DriveItem-Kennung ist weit kürzer. */
+const MAX_FORTSETZUNG = 512;
+
+/**
+ * Die Fortsetzung aus dem Rumpf: fehlt sie, beginnt die Losfolge am Anfang (`undefined`); eine
+ * nicht leere Zeichenkette ist die Kennung, HINTER der das nächste Los beginnt; alles andere ist
+ * ungültig (`null`). Sie ist ein reiner Lesezeiger in die Ordnerliste, keine Identität.
+ */
+function leseFortsetzung(raw: unknown): string | undefined | null {
   if (raw === undefined || raw === null) {
-    return 0;
+    return undefined;
   }
-  return typeof raw === "number" && Number.isSafeInteger(raw) && raw >= 0 ? raw : null;
+  return typeof raw === "string" && raw.length > 0 && raw.length <= MAX_FORTSETZUNG ? raw : null;
 }
 
 /** Feste Reihenfolge nach Kennung — unabhängig davon, in welcher Folge Graph die Liste liefert. */

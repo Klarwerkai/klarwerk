@@ -56,6 +56,20 @@ export interface SharePointDateiliste {
   readonly truncated: boolean;
 }
 
+/** Listenseiten, die die Ordner-Inventur JE ORDNER höchstens liest (bei 50 je Seite: 50.000). */
+export const SHAREPOINT_INVENTAR_MAX_SEITEN_JE_ORDNER = 1000;
+/** Ordner (der gewählte samt aller Unterordner), die eine Inventur höchstens liest. */
+export const SHAREPOINT_INVENTAR_MAX_ORDNER = 1000;
+
+/** Das Ergebnis der Ordner-Inventur: alle Dateien auf allen Ebenen — oder ehrlich „nicht alle". */
+export interface SharePointOrdnerinventar {
+  readonly dateien: SharePointDatei[];
+  /** Wie viele Unterordner (alle Ebenen) gelesen wurden. */
+  readonly unterordner: number;
+  /** `false`, sobald eine Kante der Inventur erreicht wurde: es kann weitere Dateien geben. */
+  readonly vollstaendig: boolean;
+}
+
 export class SharePointSourceAdapter {
   readonly source = "SharePoint";
 
@@ -84,6 +98,56 @@ export class SharePointSourceAdapter {
       }
     }
     return { dateien, truncated };
+  }
+
+  /**
+   * R-0145/R-0190 — DIE INVENTUR EINES GANZEN KUNDENORDNERS: alle Dateien auf allen Ebenen.
+   *
+   * Anders als `listeDateien` (die Auswahlliste EINER Ebene, gedeckelt auf `SHAREPOINT_MAX_PAGES`)
+   * folgt sie jedem Listen-Cursor und steigt in jeden Unterordner ab. Ordner selbst werden nie
+   * Dateien; jede Datei steht genau einmal darin (Kennung als Schlüssel), auch wenn Graph sie
+   * doppelt liefert. Ein bereits besuchter Ordner wird nicht noch einmal gelesen.
+   *
+   * SIE IST GEDECKELT, ABER NICHT STILL: je Ordner `SHAREPOINT_INVENTAR_MAX_SEITEN_JE_ORDNER`
+   * Listenseiten, insgesamt `SHAREPOINT_INVENTAR_MAX_ORDNER` Ordner. Wird eine Kante erreicht, ist
+   * `vollstaendig` falsch — die Inventur gibt sich dann nie für den ganzen Ordner aus.
+   */
+  async inventarisiereOrdner(ordnerId?: string): Promise<SharePointOrdnerinventar> {
+    const warteschlange: { readonly id: string | undefined }[] = [{ id: ordnerId }];
+    const besucht = new Set<string>(ordnerId ? [ordnerId] : []);
+    const dateien = new Map<string, SharePointDatei>();
+    let unterordner = 0;
+    let vollstaendig = true;
+    for (let i = 0; i < warteschlange.length; i++) {
+      if (i >= SHAREPOINT_INVENTAR_MAX_ORDNER) {
+        vollstaendig = false;
+        break;
+      }
+      const ordner = warteschlange[i];
+      const { items, truncated } = await this.client.listeDateien(
+        ordner?.id,
+        SHAREPOINT_INVENTAR_MAX_SEITEN_JE_ORDNER,
+      );
+      if (truncated) {
+        vollstaendig = false;
+      }
+      for (const item of items) {
+        const datei = zuDatei(item);
+        if (datei) {
+          if (!dateien.has(datei.id)) {
+            dateien.set(datei.id, datei);
+          }
+          continue;
+        }
+        const id = item.id?.trim();
+        if (item.folder !== undefined && id && !besucht.has(id)) {
+          besucht.add(id);
+          unterordner += 1;
+          warteschlange.push({ id });
+        }
+      }
+    }
+    return { dateien: [...dateien.values()], unterordner, vollstaendig };
   }
 
   /**
