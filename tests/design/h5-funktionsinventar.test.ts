@@ -749,6 +749,20 @@ describe("JOB 3064 · H5 · das Funktionsinventar — jeder umgezogene Block hat
     const OPTION = '[role="menu"] [role="menuitemcheckbox"]';
     await s.click('[data-testid="bib-menue-bereich"]');
     await warte(DA, OPTION, "Bereichsmenue offen");
+    // Nacharbeit 5: der Prueflauf am Kandidaten a57aed0d bot nur „Konstruktion · 1“ an — genau die
+    // Bereiche der VORIGEN Suche „Profile“, obwohl die Trefferliste schon beide Eintraege zeigte.
+    // Gewartet wird deshalb auf den ZUSTAND „die Option ist waehlbar“, nicht auf das blosse Menue.
+    // Bleibt sie aus, meldet die Ablesung darunter alle angebotenen Optionen.
+    try {
+      await s.waitForFunction(
+        fn(`([sel, wert]) => [...document.querySelectorAll(sel)].some((b) =>
+          (b.textContent || '').trim().replace(/^✓/, '').startsWith(wert + ' · ') && !b.disabled)`),
+        [OPTION, wert],
+        { timeout: 15_000 },
+      );
+    } catch {
+      // Die Zusicherung unten nennt, was stattdessen angeboten wird.
+    }
     const ergebnis = await s.evaluate<{ geklickt: boolean; optionen: string[] }>(
       fn(`([sel, wert]) => {
         const alle = [...document.querySelectorAll(sel)];
