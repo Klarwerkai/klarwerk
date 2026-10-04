@@ -1247,6 +1247,11 @@ const INVENTAR: readonly string[] = [
   //     im Pfad); sie zählt deshalb in K5 mit (70 -> 71).
   "tests/app/word-addin-dokumentkennung.test.ts",
   "tests/klara-assistenz/abgleich-belege.test.ts",
+  // Nacharbeit 7 desselben Auftrags (Integration mit main): R-1864 hält die Zuordnung der Quelle W9
+  // an den Panelblöcken fest (KW-KLARA-W6-CHECKTEXT, KW-WORDVERGLEICH, KW-KA6-MEMO, KW-D2-LUECKE) —
+  // Achse `taskpane`; „klara" steht nicht im Pfad, K5 bleibt bei 71. GEMESSEN, NICHT GESETZT: der
+  // Prüflauf am Kandidaten cd1073c0 meldete K2 mit genau diesem Pfad.
+  "tests/r1864-w9-zuordnung/w9-quelle-und-zuordnung.test.ts",
 ];
 
 // ------------------------------------------------------------------------------------------------

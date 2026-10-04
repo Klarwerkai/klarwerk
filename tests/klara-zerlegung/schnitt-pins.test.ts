@@ -556,6 +556,12 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   // Die Griffe sind aus den Mustern oben abgelesen, nicht gemessen — kein Lauf in dieser Runde.
   "tests/app/word-addin-dokumentkennung.test.ts": "pfad,fixture",
   "tests/klara-assistenz/abgleich-belege.test.ts": "pfad,marken,panelquelle",
+  // Nacharbeit 7 (Integration mit main): `r1864-w9-zuordnung/w9-quelle-und-zuordnung.test.ts`
+  // (R-1864, auf main ohne den Schnitt entstanden) schneidet KW-Marken aus dem Fenster und nennt
+  // das Pfadliteral. GEMESSEN: der Prüflauf am Kandidaten cd1073c0 meldete A2 `neu im Baum, aber
+  // nicht gepinnt` mit genau diesem Pfad. Sie las `taskpane.html` direkt und liest seither über
+  // `panelQuelleAus` — daher der Griff `panelquelle` (abgelesen, nicht gemessen).
+  "tests/r1864-w9-zuordnung/w9-quelle-und-zuordnung.test.ts": "pfad,marken,panelquelle",
 };
 
 // ------------------------------------------------------------------------------------------------

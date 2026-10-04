@@ -146,6 +146,14 @@ bleibt die geteilte Fassung. Die Bezugskopie `tests/i18n-woerterbuch/i18n-vor-au
 ungeteilte Datei von `main` 1147c026 (Blob `1dbd6f42…`); die drei Blöcke der Sprachdateien sind
 gegen sie zeilen- und inhaltsgleich verglichen (Git-Diff ohne Abweichung), Beleg im Lauf: W1.
 
+## Nacharbeit 7 — Prüflauf am Kandidaten `cd1073c0`
+
+`klara-regressionsinventar.test.ts` K2 und `schnitt-pins.test.ts` A2 meldeten je die auf `main`
+entstandene Datei `tests/r1864-w9-zuordnung/w9-quelle-und-zuordnung.test.ts` (R-1864). Sie schneidet
+KW-Marken aus dem Fenster und las dazu `taskpane.html` direkt; nach dem Drei-Datei-Schnitt stehen die
+Marken in `taskpane.js`. Sie liest jetzt über `panelQuelleAus` und ist in beiden Verzeichnissen
+nachgeführt.
+
 **Beobachtung ohne Änderung:** `GET /api/support` (`services/app/src/routes/support-routes.ts`) ist
 registriert, steht aber weder in `TABELLE`, `SCHREIB_TABELLE` noch `NICHT_ABGENOMMEN` der
 Rollenabnahme. `tests/beta-rollenabnahme/jede-registrierte-route-ist-abgenommen.test.ts` E2 müsste

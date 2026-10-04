@@ -15,6 +15,7 @@
 // genannten Verhaltenstests; hier wird nur geprueft, dass die Zuordnung auf Vorhandenes zeigt.
 import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { panelQuelleAus } from "../support/panelquelle";
 
 const OFFEN = "OFFEN.md";
 const DOKUMENT = "docs/entscheidungen/r1864-w9-zwei-wege.md";
@@ -78,7 +79,10 @@ describe("R-1864 · D — das Zuordnungsdokument zitiert die Quelle zeichengleic
 });
 
 describe("R-1864 · Z — jede Zuordnung zeigt auf Vorhandenes", () => {
-  const panel = lies(TASKPANE);
+  // R-1611 (Drei-Datei-Schnitt): das Fenster liegt in `taskpane.html`/`.css`/`.js`; die Marken
+  // stehen in `taskpane.js`. `panelQuelleAus` fügt die drei Dateien zu genau dem einen Dokument
+  // zusammen, das hier bisher gelesen wurde.
+  const panel = panelQuelleAus(TASKPANE);
 
   it("Z1: Stufe 1 — check-text hat einen Aufrufer im Panel", () => {
     expect(lies("services/app/src/routes/check-text-routes.ts")).toContain('"/api/check-text"');
