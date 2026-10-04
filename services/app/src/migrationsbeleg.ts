@@ -243,6 +243,10 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
   // `CREATE TABLE IF NOT EXISTS` (mit Unique-Schlüssel) und ein `CREATE INDEX IF NOT EXISTS`, kein
   // RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine Extension. Ein zweiter Lauf ist folgenlos.
   { stufe: "DOKUMENTAKTE_SCHEMA", risiko: "ADDITIV" },
+  // R-0134 / R-1005: die eine Zeile des Betreiberschalters für den Confluence-Import. ADDITIV,
+  // nachgezählt: ein einziges `CREATE TABLE IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein
+  // Fremdschlüssel, keine Extension. Ein zweiter Lauf ist folgenlos.
+  { stufe: "CONFLUENCE_IMPORT_SCHALTER_SCHEMA", risiko: "ADDITIV" },
 ];
 
 /**

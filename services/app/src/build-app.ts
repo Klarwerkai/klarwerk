@@ -217,6 +217,13 @@ import {
   InMemoryBrandingSettingsRepo,
   PgBrandingSettingsRepo,
 } from "./branding-settings";
+// R-0134 / R-1005: der Betreiberschalter des Confluence-Imports — dieselbe Bauform wie die
+// Markenwahl (haltbar im Postgres-Betrieb, im Speicher ohne Datenbank).
+import {
+  type ConfluenceImportSchalterRepo,
+  InMemoryConfluenceImportSchalterRepo,
+  PgConfluenceImportSchalterRepo,
+} from "./confluence-import-schalter";
 import { type SemanticPrefilter, removeKoFromDuplicatePrefilter } from "./duplicate-detection";
 import { cappedEmbeddingProvider } from "./embed-concurrency";
 import type { FactoryReset } from "./factory-reset";
@@ -396,6 +403,12 @@ export interface AppServices {
    * In-Memory-Ablage, genau wie bei `lesevarianten` und `klaraSessions`.
    */
   brandingSettings: BrandingSettingsRepo;
+  /**
+   * R-0134 / R-1005: der Betreiberschalter des Confluence-Imports — über die Oberfläche umlegbar,
+   * von jeder Confluence-Importroute je Anfrage durchgesetzt. Aus demselben Grund wie
+   * `brandingSettings` NICHT in `AppRepos`; im Postgres-Betrieb haltbar (`buildPgServices`).
+   */
+  confluenceImportSchalter: ConfluenceImportSchalterRepo;
   /**
    * WIKI-BEARBEITUNGSRESERVIERUNG: die laufenden Bearbeitungshinweise („hier bearbeitet gerade
    * jemand"). Neben `kanten` und ausdrücklich NICHT in `AppRepos`, aus demselben Grund wie dort
@@ -857,6 +870,8 @@ export function assembleServices(
     // `buildPgServices` (echter Pool); ohne Injektion die In-Memory-Ablage — derselbe Vertrag,
     // andere Haltbarkeit, beide werden getrennt geprüft.
     brandingSettings?: BrandingSettingsRepo;
+    // R-0134 / R-1005: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
+    confluenceImportSchalter?: ConfluenceImportSchalterRepo;
     // WIKI-BEARBEITUNGSRESERVIERUNG: gesetzt von `buildPgServices` (echter Pool); ohne Injektion
     // die Speicherfassung — dieselbe Regel, die Uhr des Prozesses statt der Datenbank.
     bearbeitungen?: BearbeitungsRepo;
@@ -1122,6 +1137,9 @@ export function assembleServices(
       opts.anweisungen ?? new FluechtigeAnweisungsablage(process.env.KLARWERK_DEV_PERSIST === "1"),
     // JOB 3510/3578: die Markenwahl — Postgres, wenn injiziert, sonst im Speicher.
     brandingSettings: opts.brandingSettings ?? new InMemoryBrandingSettingsRepo(),
+    // R-0134 / R-1005: der Betreiberschalter — Postgres, wenn injiziert, sonst im Speicher.
+    confluenceImportSchalter:
+      opts.confluenceImportSchalter ?? new InMemoryConfluenceImportSchalterRepo(),
     // WIKI-BEARBEITUNGSRESERVIERUNG: die Bearbeitungshinweise — Postgres, wenn injiziert, sonst im
     // Speicher.
     bearbeitungen: opts.bearbeitungen ?? new InMemoryBearbeitungsRepo(),
@@ -1500,6 +1518,9 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // überlebt die vom Administrator gesetzte Firmen-CI Neustart und Deploy; ohne sie fiele
       // `assembleServices` auch im Postgres-Betrieb auf die flüchtige In-Memory-Ablage zurück.
       brandingSettings: new PgBrandingSettingsRepo(pool),
+      // R-0134 / R-1005: der Betreiberschalter überlebt Neustart und Deploy — sonst stünde ein
+      // ausgeschalteter Import nach dem nächsten Neustart still wieder auf „an".
+      confluenceImportSchalter: new PgConfluenceImportSchalterRepo(pool),
       // WIKI-BEARBEITUNGSRESERVIERUNG: die Bearbeitungshinweise liegen in DERSELBEN Datenbank. Nur
       // so sehen mehrere App-Prozesse derselben Instanz denselben Hinweis — und die Uhr, die über
       // Ablauf und Erneuerung entscheidet, ist die der Datenbank, nicht die eines Prozesses.
@@ -3220,8 +3241,17 @@ export function buildApp(
   // melden — und genau der ist einer der vier Zustaende aus Block D.
   // JOB-924 D6: Die Route bekommt den Dienst, nicht die Ablage. Die Ablage geht AUSSCHLIESSLICH
   // hier hinein — das ist die einzige Stelle, an der beide zusammenkommen.
+  // R-0134 / R-1005: derselbe Dienst trägt jetzt auch den Betreiberschalter (Auskunft UND Umlegen,
+  // mit Prüfprotokoll) — die Route kennt weiterhin nur ihn.
   app.register(
-    importAccessRoutes(guards, new ImportAccessService({ importRuns: services.importRuns })),
+    importAccessRoutes(
+      guards,
+      new ImportAccessService({
+        importRuns: services.importRuns,
+        betreiberSchalter: services.confluenceImportSchalter,
+        audit: services.audit,
+      }),
+    ),
   );
   app.register(adminRoutes(services, guards, opts.factoryReset)); // SCRUM-181: Demo-Seed; Pedi 05.07.: Werksreset
   // SCRUM-510 WP2: Admin-Trigger für den Confluence-Space-Import — NUR bei aktivem Import-Flag registriert
@@ -3238,6 +3268,8 @@ export function buildApp(
         reasoner: services.reasoner,
         // W2-A/148: der echte Lauf bekommt seine Identität VOR dem ersten Effekt.
         importRuns: services.importRuns,
+        // R-0134 / R-1005: der Betreiberschalter, je Anfrage durchgesetzt.
+        betreiberSchalter: services.confluenceImportSchalter,
       }),
     );
   }

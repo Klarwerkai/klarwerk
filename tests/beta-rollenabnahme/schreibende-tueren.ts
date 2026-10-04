@@ -933,6 +933,36 @@ export const SCHREIB_TABELLE: Schreibzeile[] = [
       },
     }),
   },
+  // R-0134 / R-1005: der Betreiberschalter des Confluence-Imports. Gemessen an frischer Bühne je
+  // Akteur, weil ein gelungenes Ausschalten die Confluence-Zeilen einer GEMEINSAMEN Bühne verstellen
+  // würde. Gelesen wird über den Leseweg der Zugangsauskunft — die Nachlesung belegt die Wirkung
+  // (vorher „an" als Vorgabe, nachher „aus"), nicht nur den Status.
+  {
+    gruppe: "importAccessRoutes",
+    methode: "PUT",
+    route: "/api/import/confluence/schalter",
+    belegstelle: "services/app/src/routes/import-access-routes.ts:89",
+    erfolg: [200],
+    tor: "users.manage",
+    erwartet: NUR_ADMIN,
+    ruesten: async (buehne) => ({
+      pfad: "/api/import/confluence/schalter",
+      payload: { an: false },
+      bestand: async () => {
+        const stand = await musterhaft(
+          buehne.app,
+          kopf(buehne, "admin"),
+          "GET",
+          "/api/import/confluence/zugang",
+        );
+        return (stand.json() as { betreiber?: { an?: boolean } }).betreiber?.an;
+      },
+      wirkung: {
+        beschreibung: "der Betreiberschalter des Confluence-Imports steht auf aus",
+        eingetreten: (bestand) => bestand === false,
+      },
+    }),
+  },
 
   // --- Entwürfe ---------------------------------------------------------------------------------
   {

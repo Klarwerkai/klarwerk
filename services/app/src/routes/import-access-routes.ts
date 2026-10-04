@@ -35,8 +35,9 @@
 //
 // KEIN Aufruf an Confluence. Kein neuer Egress, keine Verbindungsprüfung auf Verdacht. Sie liest
 // den Schalter und die Anwesenheit der Variablen, beides lokal. KEIN Wert, KEINE Maske mit Länge.
-// KEIN Schreibweg: es gibt hier nichts zu setzen, weil die Zugangsdaten nach Pedis Entscheidung vom
-// 30.07. ausschließlich auf dem Server in der Umgebung stehen.
+// KEIN Schreibweg für Zugangsdaten: sie stehen nach Pedis Entscheidung vom 30.07. ausschließlich
+// auf dem Server in der Umgebung. Der EINE Schreibweg hier (R-0134/R-1005, unten) legt nur den
+// Betreiberschalter um — ein Ja/Nein, kein Wert.
 //
 // `users.manage`, wie JEDE Confluence-Import-Route (confluence-import-routes.ts) — der Import ist
 // ohnehin admin-gebunden, eine weichere Tür für seinen Zustand wäre eine Rechte-Ausweitung durch
@@ -73,6 +74,52 @@ export function importAccessRoutes(
       }
       reply.code(200).send(await zugang.zugangsstatus());
     });
+
+    // ==========================================================================================
+    // R-0134 / R-1005 — DER BETREIBERSCHALTER: EIN- UND AUSSCHALTEN ÜBER DIE OBERFLÄCHE.
+    // ==========================================================================================
+    //
+    // Der einzige Schreibweg dieser Datei, und er nimmt GENAU EIN Ja/Nein entgegen — keine
+    // Zugangsdaten, keinen Wert, keinen Namen (die stehen weiterhin nur in der Umgebung). Dasselbe
+    // Recht wie jede Confluence-Importroute (`users.manage`). Die Wirkung setzen die Importrouten
+    // je Anfrage durch (confluence-import-routes.ts, `betreiberSperre`).
+    //
+    // 409, wenn die Installation den Import nicht freigibt: ein „an", das nichts bewirken kann,
+    // wird nicht gespeichert. 503, wenn kein Betreiberschalter verdrahtet ist.
+    app.put<{ Body: { an?: unknown } }>(
+      "/api/import/confluence/schalter",
+      async (request, reply) => {
+        const user = await guards.requirePermission("users.manage", request, reply);
+        if (!user) {
+          return;
+        }
+        const an = request.body?.an;
+        if (typeof an !== "boolean") {
+          reply.code(400).send({
+            error: "BAD_REQUEST",
+            message: "Erwartet wird { an: true | false }.",
+          });
+          return;
+        }
+        const ergebnis = await zugang.setzeBetreiberSchalter(an, user.id);
+        if (ergebnis === "nicht-freigegeben") {
+          reply.code(409).send({
+            error: "IMPORT_NOT_RELEASED",
+            message:
+              "Der Confluence-Import ist in dieser Installation nicht freigegeben; der Schalter wirkt erst nach der Freigabe auf dem Server.",
+          });
+          return;
+        }
+        if (ergebnis === "kein-schalter") {
+          reply.code(503).send({
+            error: "SWITCH_UNAVAILABLE",
+            message: "Der Betreiberschalter ist in dieser Instanz nicht verfügbar.",
+          });
+          return;
+        }
+        reply.code(200).send(ergebnis);
+      },
+    );
 
     // ==========================================================================================
     // JOB 4086 — DIESELBE AUSKUNFT FÜR SHAREPOINT/ONEDRIVE.

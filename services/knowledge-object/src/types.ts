@@ -290,6 +290,30 @@ export const MAX_ATTACHMENTS = 8;
 // (klare Stufe-2-Markierung); kein automatisches Peer-Validation-Verfahren.
 export type KoSourceKind = "external";
 
+/**
+ * package:confluence (K6) — die LESE-EINSCHRÄNKUNG, wie die QUELLE sie führt, am Herkunftsanker.
+ *
+ * WAS ES IST: die Kennungen der Quelle selbst — Benutzerkennungen (Confluence: `accountId`, auf
+ * älteren Instanzen `userKey`/`username`) und Gruppennamen —, unverändert übernommen, damit
+ * nachvollziehbar bleibt, WEM die Quelle diese Seite zugänglich gemacht hat.
+ *
+ * WAS ES AUSDRÜCKLICH NICHT IST: eine Rechte- oder Rollenabbildung in KLARWERK. Kein Zugriffspfad
+ * wertet dieses Feld aus; die wirksame Einstufung bleibt `confidentiality`. Wie (und ob) diese
+ * Kennungen auf KLARWERK-Konten oder -Rollen abgebildet werden, gehört dem gesonderten
+ * Rechteauftrag (Entscheidung a7834397) und wird hier nicht vorweggenommen.
+ *
+ * ERZEUGER: ausschließlich ein Quell-Adapter (`services/confluence/src/mapper.ts`). Aus einem
+ * Client-Rumpf wird das Feld verworfen (`ohneQuellRestriktionen`, library-analytics) — es ist eine
+ * Herkunftsangabe der Quelle, keine Behauptung eines Einreichers. Fehlt das Feld, hat die Quelle
+ * keine konkrete Einschränkung geliefert.
+ */
+export interface KoSourceRestrictions {
+  /** Benutzerkennungen der Quelle, in Quell-Reihenfolge, ohne Doppelte. */
+  users: string[];
+  /** Gruppennamen der Quelle, in Quell-Reihenfolge, ohne Doppelte. */
+  groups: string[];
+}
+
 export interface KoSource {
   id: string;
   label: string;
@@ -306,6 +330,9 @@ export interface KoSource {
   externalId?: string;
   spaceKey?: string;
   sourceVersion?: number;
+  // package:confluence (K6): die Lese-Einschränkung der Quelle zu GENAU dieser Quellfassung
+  // (`sourceVersion`). Additiv, JSON-persistiert → keine Migration. Begründung am Typ oben.
+  sourceRestrictions?: KoSourceRestrictions;
   // JOB 4077: DER ANKER DIESER BELEGSTELLE — die `objectId` eines Anhangs, den DIESES Wissensobjekt
   // trägt. Additiv, JSON-persistiert → keine Migration; Altquellen ohne das Feld bleiben gültig.
   //

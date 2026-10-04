@@ -429,6 +429,7 @@ export type {
   KoCreateOperationState,
   KoSource,
   KoSourceKind,
+  KoSourceRestrictions,
   KoVersionSnapshot,
   KoErrorCode,
   // SCRUM-422: Papierkorb-Zeile (Admin-Ansicht).

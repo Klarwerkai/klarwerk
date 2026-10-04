@@ -8,6 +8,7 @@ import type {
   KantenRichtung,
   KnowledgeObject,
   KnowledgeType,
+  KoSourceRestrictions,
   KoStatus,
 } from "../../knowledge-object";
 
@@ -38,6 +39,11 @@ export interface ImportItem {
   // Titel/Autor: sie sind an der Quelle EINMAL kanonisch dekodiert.
   sourcePath?: string[];
   sourceVersion?: number;
+  // package:confluence (K6): die konkrete Lese-Einschränkung der Quelle (Benutzer-/Gruppenkennungen
+  // der Quelle). Reist unverändert über den Kandidaten bis an den Herkunftsanker des
+  // Wissensobjekts (`buildSource`). Erzeuger ist allein ein Quell-Adapter; aus Client-Rümpfen wird
+  // das Feld verworfen (`ohneQuellRestriktionen` unten). KEINE Rechteabbildung — Begründung am Typ.
+  sourceRestrictions?: KoSourceRestrictions;
   url?: string;
   provider?: string;
   bodyHtml?: string;
@@ -53,6 +59,26 @@ export interface ImportItem {
   // (Explore/Select laufen ohne Kandidaten-Erzeugung direkt auf Mapper-Items). FEHLT der Marker, ist
   // es ECHTER Altbestand (gespeichert vor dieser Regel) → defensiver Anzeige-Decode. JSON-persistiert.
   textCodec?: "decoded";
+}
+
+/**
+ * package:confluence (K6): Einträge aus einem CLIENT-RUMPF (`POST /api/library/import`,
+ * `…/import/candidates`) ohne `sourceRestrictions`.
+ *
+ * Die Lese-Einschränkung ist eine Angabe der QUELLE und hat genau einen Erzeuger: den Quell-Adapter.
+ * Über die generischen Importwege kann jeder mit `ko.create` beliebige Einträge einreichen — ein dort
+ * mitgeschicktes Feld wäre eine Behauptung des Einreichers, die am Wissensobjekt wie eine
+ * Quellangabe aussähe. Es wird deshalb verworfen, nicht geprüft; alle übrigen Felder bleiben
+ * unberührt.
+ */
+export function ohneQuellRestriktionen(items: readonly ImportItem[]): ImportItem[] {
+  return items.map((item) => {
+    if (!item || typeof item !== "object" || !("sourceRestrictions" in item)) {
+      return item;
+    }
+    const { sourceRestrictions: _verworfen, ...rest } = item;
+    return rest;
+  });
 }
 
 // ================================================================================================

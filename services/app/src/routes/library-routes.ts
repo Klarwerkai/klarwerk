@@ -7,14 +7,15 @@ import {
   trigramSimilarity,
 } from "../../../conflicts";
 import type { AiCheckBasis, KnowledgeObject, KoFilter, KoService } from "../../../knowledge-object";
-import type {
-  DublettenBefund,
-  DublettenPruefung,
-  ImportCandidate,
-  ImportItem,
-  KandidatDublettenbefund,
-  LibraryService,
-  ReviewAction,
+import {
+  type DublettenBefund,
+  type DublettenPruefung,
+  type ImportCandidate,
+  type ImportItem,
+  type KandidatDublettenbefund,
+  type LibraryService,
+  type ReviewAction,
+  ohneQuellRestriktionen,
 } from "../../../library-analytics";
 import { can } from "../../../rbac";
 import type { Reasoner } from "../../../reasoner";
@@ -939,8 +940,10 @@ export function libraryRoutes(
         // ein, ein Wissensobjekt entsteht erst durch die berechtigte Annahme. Damit entfällt hier
         // auch der direkte Re-Sync fremder Objekte (NACHARBEIT 2, `zielDarf`): fortgeschrieben wird
         // nur noch über die Annahme mit `ko.validate`.
+        // package:confluence (K6): die Lese-Einschränkung ist eine Quellangabe, kein Rumpffeld.
+        const items = ohneQuellRestriktionen(request.body.items ?? []);
+        const kandidaten = await einreihen(items, user.id);
         // NACHARBEIT 3 (bens F3): Trefferkennungen nur für sichtbare Ziele — auch hier.
-        const kandidaten = await einreihen(request.body.items ?? [], user.id);
         const dtos = await kandidatenDtosFuer(library, user, kandidaten);
         reply.code(200).send(direktimportAntwort(kandidaten, dtos));
       } catch (error) {
@@ -963,7 +966,9 @@ export function libraryRoutes(
           // NACHARBEIT 2 (bens F1): diese Route ist der Dateiweg (Stufe2 → parseImportItems). Was
           // ein Eintrag hier an Quellangaben mitbringt, bleibt bei der Übernahme erhalten — auch
           // ohne eingeschalteten Quelladapter (`einreihen` setzt den Dateiweg-Vermerk).
-          const created = await einreihen(request.body.items ?? [], user.id);
+          // package:confluence (K6): nur der Quell-Adapter erzeugt `sourceRestrictions`.
+          const items = ohneQuellRestriktionen(request.body.items ?? []);
+          const created = await einreihen(items, user.id);
           // NACHARBEIT 3 (bens F3): Trefferkennungen nur für sichtbare Ziele.
           reply.code(201).send(await kandidatenDtosFuer(library, user, created));
         } catch (error) {

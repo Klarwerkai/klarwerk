@@ -396,6 +396,13 @@ const REGISTER: Record<string, Eintrag> = {
     recht: "users.manage",
     grund: "Zugangszustand, Admin.",
   },
+  // R-0134 / R-1005: der Betreiberschalter. Nimmt genau ein Ja/Nein entgegen und antwortet mit
+  // derselben Zugangsauskunft wie der Leseweg darüber — kein Inhalt eines Wissensobjekts.
+  "PUT /api/import/confluence/schalter": {
+    urteil: "KURATORENTOR",
+    recht: "users.manage",
+    grund: "Betreiberschalter (Ja/Nein) + Zugangszustand, Admin.",
+  },
   // JOB 4086: dieselbe Auskunft für SharePoint/OneDrive. Sie gibt Schalterzustand, die NAMEN der
   // Umgebungsvariablen und ja/nein je Variable aus — nie einen Wert, nie eine Maske mit Länge und
   // keinen Inhalt eines Wissensobjekts (`services/sharepoint/src/credential-state.ts`).

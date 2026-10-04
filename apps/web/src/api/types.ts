@@ -2573,8 +2573,17 @@ export type FeatureFlags = Partial<Record<FeatureName, boolean>>;
 // eine AUSSAGE und kein Platzhalter: „es ist kein erfolgreicher Lauf belegt."
 export interface ImportAccessStatus {
   system: string;
-  /** Ist der Import eingeschaltet? Schalter aus ⇒ die Import-Routen existieren gar nicht. */
+  /**
+   * Ist der Import eingeschaltet? Freigegeben (Umgebung) UND vom Betreiber eingeschaltet — genau
+   * das, was die Import-Routen am Server durchsetzen.
+   */
   enabled: boolean;
+  /**
+   * R-0134 / R-1005: die zwei Teile von `enabled` (nur Confluence). `freigegeben` = Umgebung der
+   * Installation, `an` = Betreiberschalter (über `PUT /api/import/confluence/schalter` umlegbar).
+   * Fehlt, wenn der Server keinen Betreiberschalter kennt.
+   */
+  betreiber?: { freigegeben: boolean; an: boolean };
   /** Je Variable: benannt, und ob sie steht. Niemals ihr Wert. */
   credentials: { name: string; present: boolean }[];
   /** Kämen damit Zugangsdaten zustande? (Nicht: sind sie gültig — das wüsste nur ein Aufruf.) */

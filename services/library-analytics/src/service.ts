@@ -2120,6 +2120,18 @@ export class LibraryService {
       ...(item.externalId ? { externalId: item.externalId } : {}),
       ...(item.sourceScope ? { spaceKey: item.sourceScope } : {}),
       sourceVersion: effectiveVersion,
+      // package:confluence (K6): die Lese-Einschränkung der Quelle zu DIESER Fassung — als Kopie,
+      // damit keine spätere Änderung am Kandidaten den gespeicherten Anker mitverändert. Erst-
+      // anlage und Re-Sync (neue Quellversion) laufen beide hierdurch; eine geänderte Einschränkung
+      // der Quelle wird also mit der neuen Version fortgeschrieben. Keine Rechteabbildung.
+      ...(item.sourceRestrictions
+        ? {
+            sourceRestrictions: {
+              users: [...item.sourceRestrictions.users],
+              groups: [...item.sourceRestrictions.groups],
+            },
+          }
+        : {}),
       // WP-RETEST7 R6: leerer Autor-String → ehrlicher Fallback auf den annehmenden Nutzer.
       author: item.author?.trim() ? item.author : actor,
       at: new Date(this.now()).toISOString(),
