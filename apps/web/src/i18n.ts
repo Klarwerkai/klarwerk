@@ -791,6 +791,12 @@ const de = {
   "val.doppel.satzMehrere":
     "Zu diesem Eintrag liegen {{n}} überschneidende Exemplare im Bestand — stärkste Überschneidung: {{beziehung}}.",
   "val.doppel.vergleich": "Vergleich öffnen",
+  // R-0247 (Pedis Entscheidung 73b53301, weiche Sperre): die ausdrückliche Bestätigung vor dem
+  // Validieren, solange eine offene Dublette vorliegt. Keine Sperre, keine Auflösung der Dublette.
+  "val.doppel.bestaetigung.frage":
+    "Zu diesem Eintrag liegt eine offene Dublette vor. Bitte bestätigen Sie, dass Sie sie gesehen haben, bevor Sie validieren.",
+  "val.doppel.bestaetigung.ja": "Dublette gesehen — trotzdem validieren",
+  "val.doppel.bestaetigung.abbrechen": "Abbrechen",
   // Bewusst NICHT „Herkunft“: dieses Wort trägt auf derselben Seite schon der Demo-/Eigenes-Filter
   // (`lib.originLabel`). Zwei Sachen, ein Wort — genau die Verwechslung wird hier vermieden.
   "val.herkunft.label": "Erfassungsweg",
@@ -8194,6 +8200,11 @@ const en: typeof de = {
   "val.doppel.satzMehrere":
     "{{n}} overlapping copies of this entry exist in the stock — strongest overlap: {{beziehung}}.",
   "val.doppel.vergleich": "Open comparison",
+  // R-0247: explicit confirmation before validating while an open duplicate exists.
+  "val.doppel.bestaetigung.frage":
+    "There is an open duplicate for this entry. Please confirm that you have seen it before validating.",
+  "val.doppel.bestaetigung.ja": "Duplicate seen — validate anyway",
+  "val.doppel.bestaetigung.abbrechen": "Cancel",
   "val.herkunft.label": "Capture path",
   "val.herkunft.unbekannt": "Origin unknown",
   "val.herkunft.auskunftFehlt": "Origin not in this response",
@@ -14059,6 +14070,11 @@ const nl: typeof de = {
   "val.doppel.satzMehrere":
     "Van dit item liggen {{n}} overlappende exemplaren in de voorraad — sterkste overlap: {{beziehung}}.",
   "val.doppel.vergleich": "Vergelijking openen",
+  // R-0247: uitdrukkelijke bevestiging vóór het valideren zolang er een open duplicaat is.
+  "val.doppel.bestaetigung.frage":
+    "Voor dit item ligt een open duplicaat. Bevestig dat u het hebt gezien voordat u valideert.",
+  "val.doppel.bestaetigung.ja": "Duplicaat gezien — toch valideren",
+  "val.doppel.bestaetigung.abbrechen": "Annuleren",
   "val.herkunft.label": "Vastlegroute",
   "val.herkunft.unbekannt": "Herkomst onbekend",
   "val.herkunft.auskunftFehlt": "Herkomst niet in dit antwoord",
