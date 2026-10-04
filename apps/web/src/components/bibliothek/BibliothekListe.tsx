@@ -206,7 +206,6 @@ export function BibliothekListe({
   lage,
   ansicht = "liste",
   markierung = null,
-  aktiveAuswahl = null,
 }: {
   q: string;
   onQ: (wert: string) => void;
@@ -259,9 +258,6 @@ export function BibliothekListe({
   // Mehrfachauswahl. Beide optional: ohne sie zeichnet die Liste exakt wie bisher.
   ansicht?: BibAnsicht;
   markierung?: BibMarkierung | null;
-  // R-0428 (K1/K10): die entfernbaren Pillen der aktiven Auswahl, direkt unter den Menüs. Der
-  // Aufrufer baut sie (er kennt Auswahl und Filterlogik); ohne aktive Auswahl ist hier nichts.
-  aktiveAuswahl?: ReactNode;
 }): JSX.Element {
   const { t } = useTranslation();
   const spur = useRef<HTMLDivElement | null>(null);
@@ -353,7 +349,6 @@ export function BibliothekListe({
             {menues.filter}
           </div>
         </div>
-        {aktiveAuswahl}
       </div>
 
       {/* JOB 3063 R6: der Hinweis „Stand von <Zeit> · Auffrischung fehlgeschlagen" — die zweite

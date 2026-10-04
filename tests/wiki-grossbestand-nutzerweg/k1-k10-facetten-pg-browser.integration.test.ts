@@ -26,16 +26,27 @@
 //      Kontextzähler gegen die Seedgruppen, ausgegraute Nullwerte (vorhanden, `disabled`, nicht
 //      anwählbar), vollständiges Neuladen der Adresse, Abwählen jeder aktiven Auswahl einzeln und
 //      „Alle zurücksetzen".
-//   4. Zeiten im Browser: vom TATSÄCHLICHEN `keydown` (`Event.timeStamp`) bis zum korrekten
-//      Listen-/Zählerzustand (geprüft je Bildaufbau) und bis zum nächsten Bild danach
-//      (`requestAnimationFrame`). Die reine API-Antwortzeit wird GETRENNT im Browser gemessen; die
-//      Entprellung der Sucheingabe (`LIBRARY_SEARCH_DEBOUNCE_MS`) wird ausgewiesen, nicht verrechnet.
+//   4. Zeiten im Browser: vom TATSÄCHLICHEN `keydown` (`Event.timeStamp`) bis Liste, erwartete IDs,
+//      Listenfuss, die Kontextzähler des OFFENEN Menüs UND die Zahlen an den Menüknöpfen gemeinsam
+//      korrekt sind (geprüft je Bildaufbau), dann bis zum nächsten `requestAnimationFrame`. Das ist
+//      eine FRAMEBEOBACHTUNG, kein Nachweis physischer Pixelanzeige. Zähler geschlossener Menüs
+//      stehen nicht im DOM und werden nach dem Schritt einzeln geöffnet und geprüft. Die reine
+//      API-Antwortzeit wird GETRENNT gemessen; die Entprellung (`LIBRARY_SEARCH_DEBOUNCE_MS`) und der
+//      Kaltstart werden ausgewiesen, nicht verrechnet.
+//   5. Nachladen (S1): ECHTES Mausrad über der Trefferliste, über das erste 200er-Fenster hinaus;
+//      Fensterrücksatz bei Filterwechsel und nach vollständigem Neuladen.
+//   6. Struktureller Nulltreffer (N1): eine widersprüchliche Altsicht bzw. ein gespeichertes
+//      `{noMatch:true}` über den vorhandenen Sichtenweg (`migrateSavedFacetSelection`), 0 Treffer,
+//      Neuladen, Wiederanwenden, Dimension lösen — der Marker erscheint nie als wählbarer Wert.
 //
-// DIE PILLENLEISTE STEHT IN EINEM EIGENEN FALL (P1). Lauf g18 hat dort rot gemessen: die Bibliothek
-// zeigte aktive Werte nur als angehakte Menüpunkte, `FacetActiveBar` war allein in
-// `ImportSelect.tsx` eingebunden. Seit Nacharbeit 19 führt `BibliothekFlaeche.tsx` dieselbe Leiste
-// unter den Menüs (ohne aktive Auswahl zeichnet sie nichts). P1 zählt die Pillen und entfernt sie
-// einzeln per Tab und Enter.
+// P1 · DIE AKTIVE AUSWAHL AM H4-MENÜORT. Historisch (Nacharbeit 18, Lauf g17/g18) hat P1 R-0428
+// wörtlich gemessen — „entfernbare Pillen" — und rot gezeigt; das Original samt Aussage bleibt unter
+// HISTORIE/nacharbeit-18 archiviert. Die in Nacharbeit 19 ohne Freigabe gebaute Pillenleiste ist auf
+// Weisung der Aufsicht zurückgenommen: die spätere ausdrückliche H4-Gestaltung (JOB 3063, Pedi
+// 04.09.: aktive Filter „als Zahl am Menü", jede Facette ein Untermenü) gilt. P1 prüft deshalb den
+// H4-Menüort: alle drei aktiven Werte auffindbar und angehakt, einzeln durch echte Menübedienung
+// abwählbar, nach jedem Schritt IDs, Gesamtzahl, ALLE Kontextzähler, Menüzahlen und Adresse. Ob die
+// H4-Qualifikation die historische Pillenforderung trägt, beurteilt der Originalprüfer.
 //
 // KEINE PRODUKTIVDATEN, KEIN NACHBAU: Wegwerf-Datenbank aus `platz.ts` (Name mit `test` und `4334`),
 // kein `route.fulfill`, keine In-Memory-Antwort. `inject` nur für das Admin-Konto.
@@ -220,7 +231,10 @@ let instanz: Instanz | undefined;
 let kontext: Kontext | undefined;
 let seite: Seite | undefined;
 let adminEmail = "";
+let adminId = "";
 let plan: Eintrag[] = [];
+/** Die erzeugten Kennungen in Planreihenfolge — `erzeugt[i]` gehört zu `plan[i]`. */
+let erzeugt: string[] = [];
 const ids: Record<Gruppe, string[]> = { ziel: [], wartung: [], montage: [], ventil: [], fuell: [] };
 /** Die Adresse der kombinierten Auswahl — P1 öffnet dieselbe. */
 let kombiAdresse = "";
@@ -267,13 +281,14 @@ beforeAll(async () => {
   const leer = await instanzStarten(db.pool);
   const admin = await adminAnlegen(leer.app, "k1k10");
   adminEmail = admin.email;
+  adminId = admin.id;
   await leer.schliessen();
 
   // ── DER SEED ÜBER DEN PRODUKTDIENST — eine Anlage nach der anderen (`bestand.ts`, GLEICHZEITIG). ─
   plan = bauplan(admin.id);
   const dienste = buildPgServices(db.pool);
   const tAnlegen = Date.now();
-  const erzeugt: string[] = [];
+  erzeugt = [];
   for (const e of plan) {
     erzeugt.push((await dienste.ko.create(e.eingabe)).id);
   }
@@ -423,6 +438,57 @@ function listensoll(erwartet: readonly string[]): Listensoll {
   return { zahl: erwartet.length, ids: JSON.stringify([...erwartet].sort()), fenster };
 }
 
+/**
+ * DER GEMEINSAME SOLLZUSTAND EINES BEDIENSCHRITTS (Nacharbeit 20): Liste (IDs + Listenfuss), die
+ * Kontextzähler des gerade OFFENEN Menüs bzw. Untermenüs und die Zahlen an beiden Menüknöpfen.
+ * Erst wenn ALLES zugleich stimmt, gilt der Schritt als erreicht. Zähler geschlossener Menüs stehen
+ * nicht im DOM; sie prüft der Fall danach durch echtes Öffnen (`alleZaehler`).
+ */
+interface Zustandssoll {
+  liste: Listensoll;
+  menue: { name: string; werte: Wert[] } | null;
+  knoepfe: Record<string, string>;
+}
+
+const ZUSTAND_IST = `(soll) => {
+  if (!(${LISTE_IST})(soll.liste)) return false;
+  for (const [id, text] of Object.entries(soll.knoepfe)) {
+    const k = document.querySelector('[data-testid="' + id + '"]');
+    if (!k || (k.textContent || "").trim() !== text) return false;
+  }
+  if (soll.menue === null) return true;
+  return JSON.stringify((${WERTE})(soll.menue.name)) === JSON.stringify(soll.menue.werte);
+}`;
+
+/** Ein Menüwert, wie `WERTE` ihn liest — Schlüsselreihenfolge gleich, damit der Vergleich trägt. */
+function w(text: string, n: number, haken: boolean, gesperrt = false): Wert {
+  return { text: `${text} · ${n}`, haken: haken ? "true" : "false", gesperrt };
+}
+
+/** Die Beschriftung beider Menüknöpfe: Bereich mit Zahl gewählter Werte, Filter mit „· 1" bei Wahl. */
+function knoepfe(bereich: number, filterAktiv: boolean): Record<string, string> {
+  const b = i18n.t("lib.menue.bereich");
+  const f = i18n.t("lib.menue.filter");
+  return {
+    "bib-menue-bereich": bereich > 0 ? `${b} · ${bereich}` : b,
+    "bib-menue-filter": filterAktiv ? `${f} · 1` : f,
+  };
+}
+
+function zustand(
+  erwartet: readonly string[],
+  menue: { name: string; werte: Wert[] } | null,
+  knopf: Record<string, string>,
+): Zustandssoll {
+  const sortiert = menue === null ? null : { name: menue.name, werte: soll(menue.werte) };
+  return { liste: listensoll(erwartet), menue: sortiert, knoepfe: knopf };
+}
+
+/** Die Kennungen aller Planzeilen einer Kategorie — aus dem Plan, nie aus der Oberfläche. */
+function kategorieIds(kategorie: string): string[] {
+  return plan.flatMap((e, i) => (e.eingabe.category === kategorie ? [erzeugt[i] as string] : []));
+}
+
 interface Messwert {
   was: string;
   /** keydown (Event.timeStamp) → Zustand erstmals korrekt (geprüft je Bildaufbau). */
@@ -481,11 +547,82 @@ const ENTER = (s: Seite) => () => s.keyboard.press("Enter");
 async function wertUmschalten(
   s: Seite,
   wert: string,
-  erwartet: readonly string[],
+  sollwert: Zustandssoll,
   was: string,
 ): Promise<Messwert> {
   await tabBisPassend(s, IST_WERT, wert, `Wert „${wert}"`);
-  return messen(s, LISTE_IST, listensoll(erwartet), ENTER(s), was);
+  return messen(s, ZUSTAND_IST, sollwert, ENTER(s), was);
+}
+
+/** Erwartete Zähler aller drei Dimensionen, Menüknöpfe und Adresse nach einem Bedienschritt. */
+interface Gesamtsoll {
+  bereich: Wert[];
+  schlagwort: Wert[];
+  vertraulichkeit: Wert[];
+  knoepfe: Record<string, string>;
+  adresse: { category: string[]; tag: string[]; confidentiality: string[]; q: string | null };
+}
+
+/**
+ * Jedes Menü durch ECHTES Öffnen lesen (Tab/Enter, Escape) und gegen das Soll halten — dazu die
+ * Menüknöpfe und die von der Anwendung geschriebene Adresse.
+ */
+async function alleZaehler(s: Seite, sollwert: Gesamtsoll, was: string): Promise<void> {
+  const schlagwort = i18n.t("lib.facet.tag");
+  const vertraulichkeit = i18n.t("lib.facet.confidentiality");
+  await menueOeffnen(s, "bib-menue-bereich");
+  expect(await werte(s, "Bereich"), `${K}: ${was} — Bereich`).toEqual(soll(sollwert.bereich));
+  await s.keyboard.press("Escape");
+  await menueOeffnen(s, "bib-menue-filter");
+  await untermenueOeffnen(s, schlagwort);
+  const sw = await werte(s, schlagwort);
+  expect(sw, `${K}: ${was} — Schlagwort`).toEqual(soll(sollwert.schlagwort));
+  await untermenueOeffnen(s, vertraulichkeit);
+  const vt = await werte(s, vertraulichkeit);
+  expect(vt, `${K}: ${was} — Vertraulichkeit`).toEqual(soll(sollwert.vertraulichkeit));
+  await s.keyboard.press("Escape");
+  for (const [id, text] of Object.entries(sollwert.knoepfe)) {
+    expect(await knopftext(s, id), `${K}: ${was} — Knopf ${id}`).toBe(text);
+  }
+  const adresse = new URL(await s.evaluate<string>(fn("() => location.href"))).searchParams;
+  expect(adresse.getAll("category"), `${K}: ${was} — Adresse category`).toEqual(
+    sollwert.adresse.category,
+  );
+  expect(adresse.getAll("tag"), `${K}: ${was} — Adresse tag`).toEqual(sollwert.adresse.tag);
+  expect(adresse.getAll("confidentiality"), `${K}: ${was} — Adresse Stufe`).toEqual(
+    sollwert.adresse.confidentiality,
+  );
+  expect(adresse.get("q"), `${K}: ${was} — Adresse q`).toBe(sollwert.adresse.q);
+}
+
+/** Das echte Mausrad über der Trefferliste — kein Aufruf des Nachladehandlers, kein setState. */
+interface Maus {
+  move(x: number, y: number): Promise<void>;
+  wheel(dx: number, dy: number): Promise<void>;
+}
+
+async function rollenUeberDerListe(s: Seite): Promise<number> {
+  const maus = (s as unknown as { mouse: Maus }).mouse;
+  const lage = await s.evaluate<{ x: number; y: number }>(
+    fn(`() => {
+      const r = document.querySelector('[data-testid="bib-spur"]').getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    }`),
+  );
+  await maus.move(lage.x, lage.y);
+  await maus.wheel(0, 200_000);
+  return s.evaluate<number>(
+    fn(`() => document.querySelector('[data-testid="bib-spur"]').scrollTop`),
+  );
+}
+
+const FENSTER_GROESSER = `(n) => document.querySelectorAll('[data-testid="bib-zeile"]').length > n`;
+
+function zeilenIds(s: Seite): Promise<string[]> {
+  return s.evaluate<string[]>(
+    fn(`() => [...document.querySelectorAll('[data-testid="bib-zeile"]')]
+      .map((e) => e.dataset.bibId)`),
+  );
 }
 
 /** Reine API-Antwortzeit, im Browser über dieselbe Sitzung gemessen — ohne Darstellung. */
@@ -612,6 +749,7 @@ describe("K1/K10 · Bibliotheksfilter bei 10.001 Objekten (PG + Chromium, unver�
     await s.keyboard.press("Escape");
 
     // ── 2 · UNBEKANNTER WERT IN DER ADRESSE: kein Filterwert, keine Eingrenzung der Treffer. ─────
+    // Ein echter String, NICHT der strukturelle No-Match-Zustand — den prüft N1 über die Sichten.
     await s.goto(`${basis}/bibliothek?category=${encodeURIComponent(UNBEKANNT)}`, {
       waitUntil: "load",
     });
@@ -652,7 +790,18 @@ describe("K1/K10 · Bibliotheksfilter bei 10.001 Objekten (PG + Chromium, unver�
         { text: `${WARTUNG} · 74`, haken: "false", gesperrt: false },
       ]),
     );
-    messungen.push(await wertUmschalten(s, WARTUNG, wartungTreffer, "Bereich Wartung an (kalt)"));
+    const bereichMitWartung = {
+      name: "Bereich",
+      werte: [w(MONTAGE, 19, false), w(WARTUNG, 74, true)],
+    };
+    messungen.push(
+      await wertUmschalten(
+        s,
+        WARTUNG,
+        zustand(wartungTreffer, bereichMitWartung, knoepfe(1, true)),
+        "Bereich Wartung an (kalt)",
+      ),
+    );
     await s.keyboard.press("Escape");
 
     // ── 5 · VERTRAULICHKEIT „Vertraulich" — die bestehende weitere Facette. ──────────────────────
@@ -664,8 +813,17 @@ describe("K1/K10 · Bibliotheksfilter bei 10.001 Objekten (PG + Chromium, unver�
         { text: `${vertraulich} · 51`, haken: "false", gesperrt: false },
       ]),
     );
+    const vertraulichAn = {
+      name: i18n.t("lib.facet.confidentiality"),
+      werte: [w(intern, 23, false), w(vertraulich, 51, true)],
+    };
     messungen.push(
-      await wertUmschalten(s, vertraulich, wartungVertraulich, "Vertraulichkeit an (kalt)"),
+      await wertUmschalten(
+        s,
+        vertraulich,
+        zustand(wartungVertraulich, vertraulichAn, knoepfe(1, true)),
+        "Vertraulichkeit an (kalt)",
+      ),
     );
     await s.keyboard.press("Escape");
 
@@ -679,7 +837,18 @@ describe("K1/K10 · Bibliotheksfilter bei 10.001 Objekten (PG + Chromium, unver�
         { text: `${VENTIL} · 14`, haken: "false", gesperrt: false },
       ]),
     );
-    messungen.push(await wertUmschalten(s, NORM, kombi, "Schlagwort norm an (kalt)"));
+    const normAn = {
+      name: i18n.t("lib.facet.tag"),
+      werte: [w(NORM, 37, true), w(PUMPE, 37, false), w(VENTIL, 14, false)],
+    };
+    messungen.push(
+      await wertUmschalten(
+        s,
+        NORM,
+        zustand(kombi, normAn, knoepfe(1, true)),
+        "Schlagwort norm an (kalt)",
+      ),
+    );
     await s.keyboard.press("Escape");
 
     // ── 7 · DER KOMBINIERTE ZUSTAND: Zähler, ausgegraute Nullwerte, nicht anwählbar. ─────────────
@@ -741,31 +910,19 @@ describe("K1/K10 · Bibliotheksfilter bei 10.001 Objekten (PG + Chromium, unver�
     expect(await s.evaluate<string>(fn(feld)), `${K}: Suchfeld nach Neuladen`).toBe(SUCHWORT);
     await kombiZaehler("nach Neuladen");
 
-    // ── 9 · JEDE AKTIVE AUSWAHL EINZELN ABWÄHLEN — die Treffermenge kehrt Schritt für Schritt zurück. ─
-    await menueOeffnen(s, "bib-menue-filter");
-    await untermenueOeffnen(s, i18n.t("lib.facet.tag"));
-    messungen.push(await wertUmschalten(s, NORM, wartungVertraulich, "Schlagwort norm ab"));
-    await s.keyboard.press("Escape");
-    await menueOeffnen(s, "bib-menue-filter");
-    await untermenueOeffnen(s, i18n.t("lib.facet.confidentiality"));
-    messungen.push(await wertUmschalten(s, vertraulich, wartungTreffer, "Vertraulichkeit ab"));
-    await s.keyboard.press("Escape");
-    await menueOeffnen(s, "bib-menue-bereich");
-    messungen.push(await wertUmschalten(s, WARTUNG, suchtreffer, "Bereich Wartung ab"));
-    await s.keyboard.press("Escape");
-    expect(await knopftext(s, "bib-menue-bereich"), `${K}: Bereich-Knopf nach Abwahl`).toBe(
-      i18n.t("lib.menue.bereich"),
-    );
-
-    // „Alle zurücksetzen" — der zweite vorhandene Rückweg.
-    await menueOeffnen(s, "bib-menue-bereich");
-    await wertUmschalten(s, WARTUNG, wartungTreffer, "Bereich Wartung an (vor Zurücksetzen)");
-    await s.keyboard.press("Escape");
+    // ── 9 · „ALLE ZURÜCKSETZEN" AUS DER KOMBINATION — das einzelne Abwählen prüft P1 vollständig. ──
     await menueOeffnen(s, "bib-menue-filter");
     await tabBisZu(s, '[data-testid="bib-filter-reset"]', TAB_DECKEL, false);
     messungen.push(
-      await messen(s, LISTE_IST, listensoll(suchtreffer), ENTER(s), "Alle zurücksetzen"),
+      await messen(
+        s,
+        ZUSTAND_IST,
+        zustand(suchtreffer, null, knoepfe(0, false)),
+        ENTER(s),
+        "Alle zurücksetzen",
+      ),
     );
+    await s.keyboard.press("Escape");
 
     // ── 10 · WARME STICHPROBEN: dasselbe Umschalten wiederholt, Einzelwerte, Median, Maximum. ────
     const warmFilter: number[] = [];
@@ -774,8 +931,23 @@ describe("K1/K10 · Bibliotheksfilter bei 10.001 Objekten (PG + Chromium, unver�
       await tabBisZu(s, '[data-testid="bib-menue-bereich"]', TAB_DECKEL, true);
       const offen = await messen(s, MENUE_OFFEN, "bib-menue-bereich", ENTER(s), "Menü (warm)");
       warmMenue.push(offen.bisBildMs);
-      const an = await wertUmschalten(s, WARTUNG, wartungTreffer, "Bereich an (warm)");
-      const ab = await messen(s, LISTE_IST, listensoll(suchtreffer), ENTER(s), "Bereich ab (warm)");
+      const an = await wertUmschalten(
+        s,
+        WARTUNG,
+        zustand(wartungTreffer, bereichMitWartung, knoepfe(1, true)),
+        "Bereich an (warm)",
+      );
+      const bereichOhne = {
+        name: "Bereich",
+        werte: [w(MONTAGE, 19, false), w(WARTUNG, 74, false)],
+      };
+      const ab = await messen(
+        s,
+        ZUSTAND_IST,
+        zustand(suchtreffer, bereichOhne, knoepfe(0, false)),
+        ENTER(s),
+        "Bereich ab (warm)",
+      );
       warmFilter.push(an.bisBildMs, ab.bisBildMs);
       await s.keyboard.press("Escape");
     }
@@ -811,55 +983,368 @@ describe("K1/K10 · Bibliotheksfilter bei 10.001 Objekten (PG + Chromium, unver�
   }, 1_800_000);
 
   // ==============================================================================================
-  // P1 · R-0428 WÖRTLICH: ENTFERNBARE PILLEN JE AKTIVER AUSWAHL.
+  // P1 · DIE AKTIVE AUSWAHL AM H4-MENÜORT — auffindbar, angehakt, einzeln abwählbar.
   // ==============================================================================================
   //
-  // NACHARBEIT 19: Lauf g18 hat hier rot gemessen (0 Pillen bei drei aktiven Auswahlen). Seitdem
-  // führt `BibliothekFlaeche.tsx` die vorhandene `FacetActiveBar` unter den Menüs. P1 zählt die
-  // Pillen und ENTFERNT sie dann einzeln per Tab und Enter — nach jeder Pille muss genau die
-  // Treffermenge zurückkehren, die die verbleibende Auswahl verlangt.
-  it("P1 — entfernbare Filterpillen je aktiver Auswahl (R-0428) auf der Bibliotheksfläche", async (ctx) => {
+  // HISTORIE: Nacharbeit 18 hat hier R-0428 wörtlich gemessen („entfernbare Pillen") und rot
+  // gezeigt (0 Pillen; HISTORIE/nacharbeit-18). Die daraufhin in Nacharbeit 19 gebaute Pillenleiste
+  // ist zurückgenommen; maßgeblich ist die spätere ausdrückliche H4-Gestaltung (JOB 3063: aktive
+  // Filter als Zahl am Menü, jede Facette ein Untermenü). Gemessen wird deshalb der Menüort — nicht
+  // durch Zählen von Knöpfen, sondern durch Bedienung mit dem vollen Sollzustand nach jedem Schritt.
+  it("P1 — drei aktive Werte im H4-Menü angehakt und einzeln per Menü abwählbar", async (ctx) => {
     if (!seite || kombiAdresse === "") {
       process.stderr.write(`${MELDUNG_KEINE_DATENBANK} ${skipGrund}\n`);
       ctx.skip();
       return;
     }
     const s = seite;
+    const intern = i18n.t("conf.level.intern");
+    const vertraulich = i18n.t("conf.level.vertraulich");
+    const schlagwort = i18n.t("lib.facet.tag");
+    const vertraulichkeit = i18n.t("lib.facet.confidentiality");
     await s.goto(kombiAdresse, { waitUntil: "load" });
     await warte(s, LISTE_IST, `${K}: P1 — Kombination`, listensoll(ids.ziel), FRIST);
-    const entfernen = i18n.t("facet.remove", { label: "" }).trim();
-    const vertraulich = i18n.t("conf.level.vertraulich");
-    const werteDerAuswahl = [WARTUNG, NORM, vertraulich];
-    const quelle = `([wort, werte]) => [...document.querySelectorAll("button[aria-label]")]
-      .map((b) => b.getAttribute("aria-label") || "")
-      .filter((l) => l.endsWith(wort) && werte.some((w) => l.includes(w)))`;
-    const pillen = await s.evaluate<string[]>(fn(quelle), [entfernen, werteDerAuswahl]);
-    bericht.pillen = { gefunden: pillen };
-    expect(pillen.length, `${K}: entfernbare Pillen zu drei aktiven Auswahlen`).toBe(3);
+    const zeiten: Messwert[] = [];
 
-    // Die Pille mit genau diesem Wert per Tab erreichen und mit Enter entfernen — gemessen.
-    const istPille = `(a, [wort, wert]) => a.tagName === "BUTTON"
-      && (a.getAttribute("aria-label") || "").endsWith(wort)
-      && (a.getAttribute("aria-label") || "").includes(wert)`;
-    const pilleEntfernen = async (wert: string, erwartet: readonly string[]) => {
-      await tabBisZu(s, '[data-testid="bib-suche"]', TAB_DECKEL, true);
-      await tabBisPassend(s, istPille, [entfernen, wert], `Pille „${wert}"`);
-      return messen(s, LISTE_IST, listensoll(erwartet), ENTER(s), `Pille „${wert}" entfernen`);
+    // 0 · Alle drei aktiven Werte auffindbar und angehakt, Nullwerte gesperrt, Zahlen am Menü.
+    await alleZaehler(
+      s,
+      {
+        bereich: [w(MONTAGE, 0, false, true), w(WARTUNG, 37, true)],
+        schlagwort: [w(NORM, 37, true), w(PUMPE, 37, false), w(VENTIL, 14, false)],
+        vertraulichkeit: [w(intern, 0, false, true), w(vertraulich, 37, true)],
+        knoepfe: knoepfe(1, true),
+        adresse: {
+          category: [WARTUNG],
+          tag: [NORM],
+          confidentiality: ["vertraulich"],
+          q: SUCHWORT,
+        },
+      },
+      "P1 Ausgang",
+    );
+
+    // 1 · Schlagwort „norm" im Untermenü abwählen → Ziel + Ventil (51).
+    await menueOeffnen(s, "bib-menue-filter");
+    await untermenueOeffnen(s, schlagwort);
+    const schlagwortOffen = {
+      name: schlagwort,
+      werte: [w(NORM, 37, false), w(PUMPE, 37, false), w(VENTIL, 14, false)],
     };
-    const schlagwortAb = [...ids.ziel, ...ids.ventil];
-    const vertraulichAb = [...ids.ziel, ...ids.wartung, ...ids.ventil];
-    const alleSuchtreffer = [...vertraulichAb, ...ids.montage];
-    const zeiten = [
-      await pilleEntfernen(NORM, schlagwortAb),
-      await pilleEntfernen(vertraulich, vertraulichAb),
-      await pilleEntfernen(WARTUNG, alleSuchtreffer),
+    const nachNorm = [...ids.ziel, ...ids.ventil];
+    zeiten.push(
+      await wertUmschalten(
+        s,
+        NORM,
+        zustand(nachNorm, schlagwortOffen, knoepfe(1, true)),
+        "P1 Schlagwort ab",
+      ),
+    );
+    await s.keyboard.press("Escape");
+    await alleZaehler(
+      s,
+      {
+        bereich: [w(MONTAGE, 0, false, true), w(WARTUNG, 51, true)],
+        schlagwort: [w(NORM, 37, false), w(PUMPE, 37, false), w(VENTIL, 14, false)],
+        vertraulichkeit: [w(intern, 23, false), w(vertraulich, 51, true)],
+        knoepfe: knoepfe(1, true),
+        adresse: { category: [WARTUNG], tag: [], confidentiality: ["vertraulich"], q: SUCHWORT },
+      },
+      "P1 nach Schlagwort",
+    );
+
+    // 2 · Vertraulichkeit „Vertraulich" abwählen → Ziel + Wartung + Ventil (74).
+    await menueOeffnen(s, "bib-menue-filter");
+    await untermenueOeffnen(s, vertraulichkeit);
+    const stufeOffen = {
+      name: vertraulichkeit,
+      werte: [w(intern, 23, false), w(vertraulich, 51, false)],
+    };
+    const nachStufe = [...ids.ziel, ...ids.wartung, ...ids.ventil];
+    zeiten.push(
+      await wertUmschalten(
+        s,
+        vertraulich,
+        zustand(nachStufe, stufeOffen, knoepfe(1, true)),
+        "P1 Vertraulichkeit ab",
+      ),
+    );
+    await s.keyboard.press("Escape");
+    await alleZaehler(
+      s,
+      {
+        bereich: [w(MONTAGE, 19, false), w(WARTUNG, 74, true)],
+        schlagwort: [w(NORM, 37, false), w(PUMPE, 60, false), w(VENTIL, 14, false)],
+        vertraulichkeit: [w(intern, 23, false), w(vertraulich, 51, false)],
+        knoepfe: knoepfe(1, true),
+        adresse: { category: [WARTUNG], tag: [], confidentiality: [], q: SUCHWORT },
+      },
+      "P1 nach Vertraulichkeit",
+    );
+
+    // 3 · Bereich „Wartung" abwählen → alle 93 Suchtreffer, keine Zahl mehr an den Menüs.
+    await menueOeffnen(s, "bib-menue-bereich");
+    const bereichOffen = {
+      name: "Bereich",
+      werte: [w(MONTAGE, 19, false), w(WARTUNG, 74, false)],
+    };
+    const alleSuchtreffer = [...nachStufe, ...ids.montage];
+    zeiten.push(
+      await wertUmschalten(
+        s,
+        WARTUNG,
+        zustand(alleSuchtreffer, bereichOffen, knoepfe(0, false)),
+        "P1 Bereich ab",
+      ),
+    );
+    await s.keyboard.press("Escape");
+    await alleZaehler(
+      s,
+      {
+        bereich: [w(MONTAGE, 19, false), w(WARTUNG, 74, false)],
+        schlagwort: [w(NORM, 56, false), w(PUMPE, 79, false), w(VENTIL, 14, false)],
+        vertraulichkeit: [w(intern, 42, false), w(vertraulich, 51, false)],
+        knoepfe: knoepfe(0, false),
+        adresse: { category: [], tag: [], confidentiality: [], q: SUCHWORT },
+      },
+      "P1 nach Bereich",
+    );
+    bericht.p1H4Menue = {
+      zeiten,
+      historie:
+        "R-0428 'entfernbare Pillen' – Nacharbeit 18 rot (0 Pillen), archiviert; H4-Menüort gemessen, Beurteilung beim Originalprüfer",
+    };
+  }, 600_000);
+
+  // ==============================================================================================
+  // S1 · NACHLADEN DURCH ECHTES ROLLEN — über das erste 200er-Fenster hinaus.
+  // ==============================================================================================
+  it("S1 — Mausrad lädt nach; Filterwechsel und Neuladen setzen das Fenster zurück", async (ctx) => {
+    if (!instanz || !seite) {
+      process.stderr.write(`${MELDUNG_KEINE_DATENBANK} ${skipGrund}\n`);
+      ctx.skip();
+      return;
+    }
+    const s = seite;
+    const alleSet = new Set(GRUPPEN.flatMap((g) => ids[g]));
+    const fenster = LIBRARY_RESULT_LIMIT;
+    await s.goto(`${instanz.basis}/bibliothek`, { waitUntil: "load" });
+    const leer = { zahl: GESAMT, ids: null, fenster };
+    await warte(s, LISTE_IST, `${K}: S1 — Bestand`, leer, FRIST);
+
+    const vor = await zeilenIds(s);
+    expect(new Set(vor).size, `${K}: S1 — eindeutige IDs vor dem Rollen`).toBe(fenster);
+    expect(
+      vor.every((id) => alleSet.has(id)),
+      `${K}: S1 — fremde ID vor dem Rollen`,
+    ).toBe(true);
+
+    const gerollt = await rollenUeberDerListe(s);
+    expect(gerollt, `${K}: S1 — die Liste hat sich nicht bewegt`).toBeGreaterThan(0);
+    await warte(s, FENSTER_GROESSER, `${K}: S1 — Nachladen nach dem Rollen`, fenster, FRIST);
+    const nach = await zeilenIds(s);
+    expect(new Set(nach).size, `${K}: S1 — doppelte IDs nach dem Rollen`).toBe(nach.length);
+    expect(
+      nach.every((id) => alleSet.has(id)),
+      `${K}: S1 — fremde ID nach dem Rollen`,
+    ).toBe(true);
+    expect(nach.length % fenster === 0 || nach.length === GESAMT, `${K}: S1 — Fensterstufe`).toBe(
+      true,
+    );
+    expect(nach.slice(0, fenster), `${K}: S1 — das erste Fenster bleibt vorne`).toEqual(vor);
+    const fuss = await s.evaluate<string>(
+      fn(`() => document.querySelector('[data-testid="bib-fuss"]').textContent`),
+    );
+    expect(Number(fuss.replace(/[^0-9]/g, "")), `${K}: S1 — Gesamtzahl im Fuss`).toBe(GESAMT);
+
+    // Filterwechsel: Bereich „Wartung" → Fenster zurück auf 200, nur Wartung-Kennungen.
+    const wartung = kategorieIds(WARTUNG);
+    const wartungSet = new Set(wartung);
+    await menueOeffnen(s, "bib-menue-bereich");
+    await tabBisPassend(s, IST_WERT, WARTUNG, `Wert „${WARTUNG}"`);
+    await s.keyboard.press("Enter");
+    const wartungFenster = { zahl: wartung.length, ids: null, fenster };
+    await warte(s, LISTE_IST, `${K}: S1 — Fensterrücksatz`, wartungFenster, FRIST);
+    await s.keyboard.press("Escape");
+    const gefiltert = await zeilenIds(s);
+    const nurWartung = gefiltert.every((id) => wartungSet.has(id));
+    expect(nurWartung, `${K}: S1 — fremde ID gefiltert`).toBe(true);
+    await rollenUeberDerListe(s);
+    await warte(s, FENSTER_GROESSER, `${K}: S1 — Nachladen gefiltert`, fenster, FRIST);
+    const gefiltertNach = await zeilenIds(s);
+    expect(
+      gefiltertNach.every((id) => wartungSet.has(id)),
+      `${K}: S1 — fremde ID gefiltert nach Rollen`,
+    ).toBe(true);
+    expect(new Set(gefiltertNach).size, `${K}: S1 — doppelte IDs gefiltert`).toBe(
+      gefiltertNach.length,
+    );
+
+    // Vollständiges Neuladen: wieder das erste Fenster, dieselbe Treffermenge.
+    const adresse = await s.evaluate<string>(fn("() => location.href"));
+    await s.goto(adresse, { waitUntil: "load" });
+    await warte(s, LISTE_IST, `${K}: S1 — Neuladen`, wartungFenster, FRIST);
+    const neu = await zeilenIds(s);
+    expect(
+      neu.every((id) => wartungSet.has(id)),
+      `${K}: S1 — fremde ID nach Neuladen`,
+    ).toBe(true);
+    bericht.nachladen = {
+      vor: vor.length,
+      nachRollen: nach.length,
+      gefiltert: { gesamt: wartung.length, nachRollen: gefiltertNach.length },
+      nachNeuladen: neu.length,
+    };
+  }, 600_000);
+
+  // ==============================================================================================
+  // N1 · DER STRUKTURELLE NULLTREFFER ÜBER DEN VORHANDENEN SICHTENWEG.
+  // ==============================================================================================
+  //
+  // Eine unbekannte Kategorie in der Adresse (Hauptfall, Schritt 2) ist ein ECHTER String und wird
+  // verworfen — sie ist NICHT `FACET_NO_MATCH_SELECTION`. Den strukturellen No-Match-Zustand erzeugt
+  // im Produkt allein `migrateSavedFacetSelection` (`lib/libraryFacets.ts`): aus einer Altsicht mit
+  // widersprüchlichem Rohfilter und Facettenwert derselben Dimension, oder aus einer gespeicherten
+  // `{noMatch:true}`-Auswahl. Beide Sichten werden hier im SPEICHERFORMAT des Produkts
+  // (`klarwerk.library.views.<Nutzerkennung>`) abgelegt — so, wie ein älterer Stand sie hinterlassen
+  // hat — und danach ausschliesslich über die Oberfläche geladen, neu geladen und aufgelöst.
+  it("N1 — gespeicherte widersprüchliche Sicht: 0 Treffer, Neuladen, Dimension lösen, kein Marker", async (ctx) => {
+    if (!instanz || !seite) {
+      process.stderr.write(`${MELDUNG_KEINE_DATENBANK} ${skipGrund}\n`);
+      ctx.skip();
+      return;
+    }
+    const s = seite;
+    const basis = instanz.basis;
+    const ALT = "K10 Altsicht widersprüchlich";
+    const GESPEICHERT = "K10 Altsicht noMatch";
+    const sichten = [
+      { name: ALT, state: { category: WARTUNG, facetSel: { category: [MONTAGE] } } },
+      { name: GESPEICHERT, state: { facetSel: { category: { noMatch: true } } } },
     ];
-    const rest = await s.evaluate<string[]>(fn(quelle), [entfernen, werteDerAuswahl]);
-    expect(rest, `${K}: nach dem Entfernen stehen noch Pillen`).toEqual([]);
-    const adresse = new URL(await s.evaluate<string>(fn("() => location.href")));
-    expect(adresse.searchParams.get("q"), `${K}: Suchwort bleibt stehen`).toBe(SUCHWORT);
-    expect(adresse.searchParams.has("category"), `${K}: Bereich noch in der Adresse`).toBe(false);
-    expect(adresse.searchParams.has("tag"), `${K}: Schlagwort noch in der Adresse`).toBe(false);
-    bericht.pillen = { gefunden: pillen, entfernen: zeiten };
-  }, 300_000);
+    await s.evaluate<void>(
+      fn("([schluessel, wert]) => { localStorage.setItem(schluessel, wert); }"),
+      [`klarwerk.library.views.${adminId}`, JSON.stringify(sichten)],
+    );
+    await s.goto(`${basis}/bibliothek`, { waitUntil: "load" });
+    const voll = { zahl: GESAMT, ids: null, fenster: LIBRARY_RESULT_LIMIT };
+    await warte(s, LISTE_IST, `${K}: N1 — Bestand`, voll, FRIST);
+    const sichtenName = i18n.t("lib.menue.sichten");
+    const IST_SICHT = `(a, name) => a.getAttribute("role") === "menuitemcheckbox"
+      && (a.textContent || "").replace(/✓/g, "").trim() === name`;
+    const sichtAnwenden = async (name: string, was: string): Promise<Messwert> => {
+      await menueOeffnen(s, "bib-liste-menue");
+      await untermenueOeffnen(s, sichtenName);
+      await tabBisPassend(s, IST_SICHT, name, `Sicht „${name}"`);
+      const nullTreffer = zustand([], null, knoepfe(0, true));
+      return messen(s, ZUSTAND_IST, nullTreffer, ENTER(s), was);
+    };
+    const MARKER = ["noMatch", "no-match", "__", i18n.t("facet.noMatch")];
+    const keinMarker = async (was: string): Promise<Wert[]> => {
+      await menueOeffnen(s, "bib-menue-bereich");
+      const bereich = await werte(s, "Bereich");
+      await s.keyboard.press("Escape");
+      for (const m of MARKER) {
+        expect(
+          bereich.some((v) => v.text.includes(m)),
+          `${K}: ${was} — Marker „${m}" als Wert`,
+        ).toBe(false);
+      }
+      const href = await s.evaluate<string>(fn("() => location.href"));
+      for (const m of MARKER) {
+        expect(decodeURIComponent(href).includes(m), `${K}: ${was} — Marker in der Adresse`).toBe(
+          false,
+        );
+      }
+      return bereich;
+    };
+    const bereichVoll = [...kategorienzahl(plan)].map(([k, n]) => w(k, n, false));
+
+    // 1 · Widersprüchliche Altsicht laden → 0 Treffer; Bereich zeigt alle echten Werte, keiner
+    //     angehakt; der Filter-Knopf meldet „· 1"; kein Marker in Menü oder Adresse.
+    const laden = await sichtAnwenden(ALT, "N1 Altsicht laden");
+    const bereichNull = await keinMarker("N1 Altsicht");
+    expect(bereichNull, `${K}: N1 — Bereich unter No-Match`).toEqual(soll(bereichVoll));
+    const adresse = new URL(await s.evaluate<string>(fn("() => location.href"))).searchParams;
+    expect(adresse.getAll("category"), `${K}: N1 — category in der Adresse`).toEqual([]);
+
+    // 2 · Vollständiges Neuladen derselben Adresse. Der No-Match-Zustand steht absichtlich nicht in
+    //     der Adresse (`writeFacetSelectionToParams`); gemessen und BERICHTET wird, was danach steht.
+    const href = await s.evaluate<string>(fn("() => location.href"));
+    await s.goto(href, { waitUntil: "load" });
+    await warte(
+      s,
+      `() => /\\d/.test(document.querySelector('[data-testid="bib-fuss"]')?.textContent || "")`,
+      `${K}: N1 — Listenfuss nach Neuladen`,
+      undefined,
+      FRIST,
+    );
+    const fussNeu = await s.evaluate<string>(
+      fn(`() => document.querySelector('[data-testid="bib-fuss"]').textContent`),
+    );
+    const nachNeuladen = Number(fussNeu.replace(/[^0-9]/g, ""));
+    if (nachNeuladen !== 0) {
+      process.stderr.write(
+        `${K} BEFUND (an Originalprüfer, keine Produktänderung): nach vollständigem Neuladen ist der strukturelle Nulltreffer der Sicht „${ALT}" fort — der Listenfuss zeigt ${nachNeuladen}. Ursache: libraryUrlFilters.ts writeFacetSelectionToParams schreibt No-Match bewusst nicht in die Adresse; die Sicht bleibt gespeichert und lässt sich neu anwenden.\n`,
+      );
+    }
+    await keinMarker("N1 nach Neuladen");
+
+    // 3 · Wiederanwenden über das Sichtenmenü → wieder 0. Steht der Nulltreffer nach dem Neuladen
+    //     noch da, ist er bereits erhalten; ein erneutes Anwenden misst dann nichts.
+    const wieder =
+      nachNeuladen === 0 ? null : await sichtAnwenden(ALT, "N1 Altsicht wieder anwenden");
+
+    // 4 · Dimension lösen im Menü: ein echter Wert ersetzt den Marker, zweites Enter öffnet sie.
+    await menueOeffnen(s, "bib-menue-bereich");
+    const wartung = kategorieIds(WARTUNG);
+    const mitWartung = bereichVoll.map((v) =>
+      v.text.startsWith(`${WARTUNG} · `) ? { ...v, haken: "true" } : v,
+    );
+    const ersetzt = await wertUmschalten(
+      s,
+      WARTUNG,
+      {
+        liste: { zahl: wartung.length, ids: null, fenster: LIBRARY_RESULT_LIMIT },
+        menue: { name: "Bereich", werte: soll(mitWartung) },
+        knoepfe: knoepfe(1, true),
+      },
+      "N1 Marker durch Wert ersetzt",
+    );
+    const offen = { name: "Bereich", werte: soll(bereichVoll) };
+    const geloest = await messen(
+      s,
+      ZUSTAND_IST,
+      { liste: voll, menue: offen, knoepfe: knoepfe(0, false) },
+      ENTER(s),
+      "N1 Dimension gelöst",
+    );
+    await s.keyboard.press("Escape");
+    await keinMarker("N1 gelöst");
+
+    // 5 · Gespeichertes {noMatch:true} → 0; „Alle zurücksetzen" → voller Bestand.
+    const gespeichert = await sichtAnwenden(GESPEICHERT, "N1 gespeichertes noMatch laden");
+    await keinMarker("N1 gespeichertes noMatch");
+    await menueOeffnen(s, "bib-menue-filter");
+    await tabBisZu(s, '[data-testid="bib-filter-reset"]', TAB_DECKEL, false);
+    const zurueck = await messen(
+      s,
+      ZUSTAND_IST,
+      { liste: voll, menue: null, knoepfe: knoepfe(0, false) },
+      ENTER(s),
+      "N1 Alle zurücksetzen",
+    );
+    await s.keyboard.press("Escape");
+
+    // H4-BEOBACHTUNG für den Originalprüfer: unter No-Match steht die Zahl am Menü „Filter", die
+    // betroffene Dimension „Bereich" zeigt dagegen weder Zahl noch Haken (facetSelectedValues des
+    // Markers ist leer). Das ist der heutige Produktstand; ob er R-0428 „keine versteckten
+    // Restfilter" genügt, wird hier nicht entschieden.
+    bericht.nulltreffer = {
+      zeiten: [laden, wieder, ersetzt, geloest, gespeichert, zurueck],
+      nachNeuladenListenfuss: nachNeuladen,
+      h4Beobachtung:
+        "No-Match: Filter-Knopf '· 1', Bereich-Knopf ohne Zahl und ohne Haken; Lösen nur über Wert wählen/abwählen oder 'Alle zurücksetzen'",
+    };
+  }, 600_000);
 });
