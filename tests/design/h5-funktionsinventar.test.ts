@@ -886,16 +886,26 @@ describe("JOB 3064 · H5 · das Funktionsinventar — jeder umgezogene Block hat
 
     // Der Link ist SICHTBAR BENANNT und fuehrt OHNE Demo-Parameter in die Bibliothek.
     const LINK = 'a[data-kopfband-punkt="bibliothek"]';
-    const link = await s.evaluate<{ href: string | null; text: string } | null>(
+    const link = await s.evaluate<{ href: string | null; text: string; klasse: string } | null>(
       fn(`(sel) => {
         const a = document.querySelector(sel);
-        return a ? { href: a.getAttribute('href'), text: (a.innerText || '').trim() } : null;
+        if (!a) return null;
+        return {
+          href: a.getAttribute('href'),
+          text: (a.innerText || '').trim(),
+          klasse: a.getAttribute('class') || '',
+        };
       }`),
       LINK,
     );
     expect(link, "kein Bibliothekslink im Kopfband").not.toBeNull();
     expect(link?.href).toBe("/bibliothek");
     expect(link?.text).toContain(t("nav.library"));
+    // Inventar PRO 211, Vertrag R-U3-3 (Nacharbeit 11): der dauerhafte Weg zur Bibliothek ist KEIN
+    // zweiter hervorgehobener Primärweg (BASIC 170 A2) — er trägt nicht `kw-cta-primary`.
+    expect(link?.klasse ?? "", "der Bibliotheksweg ist als Primaerweg gestaltet").not.toContain(
+      "kw-cta-primary",
+    );
     await s.click(LINK);
     await warte(
       `() => location.pathname === '/bibliothek' && location.search === ''`,
