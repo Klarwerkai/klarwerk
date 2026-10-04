@@ -903,12 +903,9 @@ export class SharePointGraphClient {
    * `keine-berechtigung`; eine LEERE Liste ist deshalb eine Aussage über das Ergebnis und nie eine
    * über die Rechte.
    */
-  async listeDateien(ordnerId?: string, maxSeiten?: number): Promise<SharePointListResult> {
+  async listeDateien(ordnerId?: string): Promise<SharePointListResult> {
     const erlaubteOrigin = this.erlaubteOrigin();
-    // `maxSeiten` setzt nur die Ordner-Inventur (`SharePointSourceAdapter.inventarisiereOrdner`):
-    // sie muss einen ganzen Kundenordner lesen und trägt dafür ihre EIGENE, grössere Kante. Die
-    // Auswahlliste bleibt bei `SHAREPOINT_MAX_PAGES`.
-    const maxPages = maxSeiten ?? this.config.maxPages ?? SHAREPOINT_MAX_PAGES;
+    const maxPages = this.config.maxPages ?? SHAREPOINT_MAX_PAGES;
     const items: GraphDriveItem[] = [];
     let url: string | null = this.ersteSeite(ordnerId);
     let seiten = 0;
@@ -929,6 +926,38 @@ export class SharePointGraphClient {
     // GEMELDET und nicht verschwiegen — eine unvollständige Liste, die sich für vollständig
     // ausgibt, wäre die teuerste Sorte Unwahrheit.
     return { items, truncated: url !== null };
+  }
+
+  /**
+   * R-0145/R-0190 — GENAU EINE Listenseite eines Ordners, samt Cursor auf die nächste.
+   *
+   * Der Baustein der fortsetzbaren Ordner-Inventur (`SharePointSourceAdapter.setzeInventurFort`):
+   * statt einer gedeckelten Gesamtliste gibt er den Graph-Cursor (`@odata.nextLink`) HERAUS, damit
+   * die Inventur ihn aufbewahren und in einem späteren Aufruf genau dort weiterlesen kann. Ohne
+   * `weiter` beginnt er mit der ersten Seite des Ordners. Der Cursor geht durch dieselbe
+   * Origin-Prüfung wie jeder andere Abruf dieses Clients; er stammt nur aus Graph-Antworten, nie
+   * vom Aufrufer der Route.
+   */
+  async listeOrdnerSeite(
+    ordnerId: string | undefined,
+    weiter: string | null,
+  ): Promise<{ items: GraphDriveItem[]; weiter: string | null }> {
+    const erlaubteOrigin = this.erlaubteOrigin();
+    const daten = (await this.holeJson(weiter ?? this.ersteSeite(ordnerId), erlaubteOrigin)) as {
+      value?: unknown;
+      "@odata.nextLink"?: unknown;
+    };
+    const items: GraphDriveItem[] = [];
+    for (const eintrag of Array.isArray(daten?.value) ? daten.value : []) {
+      if (eintrag && typeof eintrag === "object") {
+        items.push(eintrag as GraphDriveItem);
+      }
+    }
+    const naechste = daten?.["@odata.nextLink"];
+    return {
+      items,
+      weiter: typeof naechste === "string" && naechste.length > 0 ? naechste : null,
+    };
   }
 
   /**

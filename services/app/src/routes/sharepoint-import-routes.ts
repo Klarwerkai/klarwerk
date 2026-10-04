@@ -80,8 +80,11 @@ import {
 import {
   type SharePointFehlerlage,
   type SharePointInhaltsbefund,
+  type SharePointInventur,
   type SharePointSourceAdapter,
   createSharePointAdapterFromEnv,
+  inventurFertig,
+  neueInventur,
   sharepointFehlerlage,
 } from "../../../sharepoint";
 import type { Guards } from "../http";
@@ -383,6 +386,8 @@ function istOhneInhalt(art: SharePointInhaltsbefund): art is (typeof OHNE_INHALT
 
 export function sharepointImportRoutes(deps: SharePointImportRouteDeps): FastifyPluginAsync {
   const makeAdapter = deps.makeAdapter ?? (() => createSharePointAdapterFromEnv());
+  // R-0145/R-0190: die laufenden Losfolgen von Tür 3 — je Routen-Instanz, im Speicher (s. Tür 3).
+  const losfolgen = new Map<string, Losfolge>();
 
   return async (app) => {
     // ------------------------------------------------------------------------------------------
@@ -510,36 +515,42 @@ export function sharepointImportRoutes(deps: SharePointImportRouteDeps): Fastify
     // wusste niemand ausser dem Menschen, der sie gewählt hatte. Diese Tür schneidet den Ordner
     // selbst in Lose:
     //
-    //   INVENTUR   = jeder Aufruf liest den GANZEN Ordner: alle Listenseiten, alle Unterordner auf
-    //                allen Ebenen (`adapter.inventarisiereOrdner`). Ordner werden nie Kandidaten.
-    //   LOS        = die nächsten höchstens `SHAREPOINT_LOS_GROESSE` Dateien nach Kennung sortiert,
-    //                deren Kennung HINTER `fortsetzungAb` liegt (beim ersten Aufruf: ab Anfang).
-    //   HALT       = EIN Aufruf übernimmt GENAU EIN Los und endet. Das nächste Los läuft erst, wenn
-    //                jemand ausdrücklich mit der angebotenen `los.fortsetzungAb` fragt.
-    //   NACHWEIS   = jedes Los ist ein eigener Lauf (`importId`, Scope `…/ab:<Kennung>`). Ob es
-    //                vollständig ist, steht am Lauf (`COMPLETED` gegen `PARTIAL`/`FAILED`) und in
+    //   LOSFOLGE   = der erste Aufruf (ohne `fortsetzung`) legt eine Losfolge an. Ihre Kennung ist
+    //                die angebotene `los.fortsetzung`; jeder Folgeaufruf nennt sie.
+    //   INVENTUR   = die Losfolge trägt eine FORTSETZBARE Inventur des Ordners (`SharePointInventur`):
+    //                Graph-Cursor, noch zu lesende (Unter-)Ordner auf allen Ebenen, gefundene, noch
+    //                nicht zugeteilte Dateien. Ein Aufruf liest nur so viele Seiten, wie das nächste
+    //                Los braucht (höchstens `SHAREPOINT_INVENTUR_SEITEN_JE_AUFRUF`) — der Rest bleibt
+    //                im Stand. Es gibt KEINE Gesamtkante, hinter der Dateien unerreichbar würden.
+    //                Ordner werden nie Kandidaten.
+    //   LOS        = die nächsten höchstens `SHAREPOINT_LOS_GROESSE` gefundenen Dateien, in der
+    //                Folge, in der Graph sie geliefert hat. Ein Aufruf, der in seinem Seitenbudget
+    //                noch keine Datei fand (z. B. viele leere Unterordner), übernimmt nichts und
+    //                bietet die Fortsetzung trotzdem an.
+    //   HALT       = EIN Aufruf übernimmt HÖCHSTENS EIN Los und endet. Weiter geht es nur, wenn
+    //                jemand ausdrücklich mit der angebotenen `los.fortsetzung` fragt.
+    //   NACHWEIS   = jedes Los ist ein eigener Lauf (`importId`, Scope `…/losfolge:<id>/los:<n>`). Ob
+    //                es vollständig ist, steht am Lauf (`COMPLETED` gegen `PARTIAL`/`FAILED`) und in
     //                der Antwort (`los.vollstaendig`).
     //   KEIN MODELL = diese Routen kennen keinen Reasoner. Der Weg endet wie Tür 2 bei
     //                `library.createImportCandidates`; geprüft wird ohne Modell, angenommen erst
     //                von einem Menschen.
     //
-    // WARUM EINE FORTSETZUNGSKENNUNG UND KEINE LOSNUMMER (bens Befund F2): mit einer Losnummer
-    // schnitte jeder Aufruf die NEU gelesene Liste nach Versatz. Verschwindet zwischen zwei Losen
-    // eine Datei aus einem schon übernommenen Los, rückt alles nach vorn — und die erste Datei des
-    // nächsten Loses fällt still heraus. Die Fortsetzung „hinter dieser Kennung" hängt nicht am
-    // Versatz: jede Datei, die beim Aufruf noch da ist und hinter der Kennung liegt, kommt in einem
-    // der folgenden Lose an; alles davor wurde bereits angeboten.
+    // ÄNDERUNGEN DER QUELLE (bens Befund F2): ein Los ist die Folge der GELESENEN Dateien, kein
+    // Versatz in einer neu gelesenen Liste. Verschwindet zwischendurch eine Datei, rückt nichts nach;
+    // ist sie schon zugeteilt, erscheint sie im Los als `notFound` und das Los als `PARTIAL`.
+    // Scheitert ein ganzes Los (Zugang, Gegenstelle), gehen seine Dateien zurück in den Puffer und
+    // kommen mit dem nächsten Aufruf derselben Losfolge noch einmal — nichts fällt still heraus.
     //
-    // WAS „ABGESCHLOSSEN" HEISST: `los.ordnerAbgeschlossen` ist nur wahr, wenn hinter diesem Los
-    // keine Datei mehr liegt UND die Inventur vollständig war. Ob jedes einzelne Los vollständig war,
-    // sagen die Läufe — der Abschluss der Losfolge behauptet das nicht.
+    // WAS „ABGESCHLOSSEN" HEISST: `los.ordnerAbgeschlossen` ist erst wahr, wenn jede Seite jedes
+    // Ordners gelesen UND jede gefundene Datei einem Los zugeteilt ist. Dann gibt es keine
+    // Fortsetzung mehr. Ob jedes einzelne Los vollständig war, sagen die Läufe.
     //
-    // DIE GRENZEN, AUSDRÜCKLICH: die Inventur ist gedeckelt (`SHAREPOINT_INVENTAR_MAX_*`, s. Adapter);
-    // wird eine Kante erreicht, ist `los.inventar.vollstaendig` falsch und die Losfolge schliesst nie
-    // als „abgeschlossen". Eine Datei, die WÄHREND der Losfolge neu hinzukommt und deren Kennung vor
-    // der Fortsetzungskennung liegt, gehört nicht zu dieser Losfolge — eine neue Losfolge ab Anfang
-    // holt sie, ohne Bereits-Übernommenes doppelt einzureihen (Idempotenz von Tür 2).
-    app.post<{ Body: { folderId?: unknown; fortsetzungAb?: unknown } }>(
+    // DIE GRENZE, AUSDRÜCKLICH: die Losfolge lebt im Speicher DIESES App-Prozesses (`losfolgen`,
+    // mit Ablauf und Höchstzahl). Nach einem Neustart, nach Ablauf oder auf einer anderen Instanz ist
+    // die Fortsetzung unbekannt (409); eine neue Losfolge ab Anfang reiht Bereits-Übernommenes nicht
+    // doppelt ein (Idempotenz von Tür 2), kostet aber die Abrufe erneut.
+    app.post<{ Body: { folderId?: unknown; fortsetzung?: unknown } }>(
       "/api/admin/import/sharepoint/folder-apply",
       async (request, reply) => {
         const user = await deps.guards.requirePermission("users.manage", request, reply);
@@ -553,49 +564,80 @@ export function sharepointImportRoutes(deps: SharePointImportRouteDeps): Fastify
             .send({ error: "IMPORT_UNAVAILABLE", message: MELDUNG.IMPORT_UNAVAILABLE });
           return reply;
         }
-        const fortsetzungAb = leseFortsetzung(request.body?.fortsetzungAb);
-        if (fortsetzungAb === null) {
+        const fortsetzung = leseFortsetzung(request.body?.fortsetzung);
+        if (fortsetzung === null) {
           reply.code(400).send({
             error: "FORTSETZUNG_INVALID",
-            message: "Die Fortsetzung muss die angebotene Kennung aus dem vorigen Los sein.",
+            message: "Die Fortsetzung muss die angebotene Kennung der Losfolge sein.",
           });
           return reply;
         }
         const ordnerId = leseOrdnerId(request.body?.folderId);
-        let alle: string[];
-        let unterordner: number;
-        let inventurVollstaendig: boolean;
-        try {
-          // LESEN VOR JEDEM SCHREIBEFFEKT: scheitert schon die Inventur, entsteht kein Lauf — es
-          // wurde nichts übernommen, und die Antwort ist dieselbe Lage wie an Tür 1.
-          const inventar = await adapter.inventarisiereOrdner(ordnerId);
-          alle = inventar.dateien.map((datei) => datei.id).sort(vergleicheKennung);
-          unterordner = inventar.unterordner;
-          inventurVollstaendig = inventar.vollstaendig;
-        } catch (err) {
-          warne(request.log, "Ordnerinventur", err);
-          return sendeLage(reply, err);
+        const jetzt = Date.now();
+        raeumeLosfolgenAuf(losfolgen, jetzt);
+        let folge: Losfolge;
+        if (fortsetzung === undefined) {
+          machePlatzFuerLosfolge(losfolgen);
+          folge = {
+            id: randomUUID(),
+            driveId: adapter.driveId,
+            ordnerId,
+            zuletztBenutzt: jetzt,
+            inventur: neueInventur(ordnerId),
+            lose: 0,
+            inArbeit: false,
+          };
+          losfolgen.set(folge.id, folge);
+        } else {
+          const bekannt = losfolgen.get(fortsetzung);
+          if (!bekannt || bekannt.driveId !== adapter.driveId) {
+            reply.code(409).send({
+              error: "FORTSETZUNG_UNBEKANNT",
+              message:
+                "Diese Losfolge ist nicht (mehr) bekannt. Bitte neu beginnen — bereits Übernommenes wird nicht doppelt eingereiht.",
+            });
+            return reply;
+          }
+          if (ordnerId !== undefined && ordnerId !== bekannt.ordnerId) {
+            reply.code(400).send({
+              error: "FORTSETZUNG_ORDNER",
+              message: "Diese Losfolge gehört zu einem anderen Ordner.",
+            });
+            return reply;
+          }
+          if (bekannt.inArbeit) {
+            reply.code(409).send({
+              error: "FORTSETZUNG_BELEGT",
+              message: "Das vorige Los dieser Losfolge läuft noch.",
+            });
+            return reply;
+          }
+          folge = bekannt;
         }
-        const offen =
-          fortsetzungAb === undefined
-            ? alle
-            : alle.filter((id) => vergleicheKennung(id, fortsetzungAb) > 0);
-        const kennungen = offen.slice(0, SHAREPOINT_LOS_GROESSE);
-        const verbleibend = offen.length - kennungen.length;
-        const letzte = kennungen[kennungen.length - 1] ?? null;
-        const naechsteFortsetzung = verbleibend > 0 ? letzte : null;
-        const losAuskunft = (vollstaendig: boolean) => ({
-          kennungen,
-          vollstaendig,
-          fortsetzungAb: naechsteFortsetzung,
-          verbleibend,
-          inventar: { dateien: alle.length, unterordner, vollstaendig: inventurVollstaendig },
-          ordnerAbgeschlossen: naechsteFortsetzung === null && inventurVollstaendig,
-        });
-        if (kennungen.length === 0) {
-          // Nichts (mehr) zu tun — ein leerer Ordner oder eine Fortsetzung hinter der letzten
-          // Datei. Eine Auskunft, kein Fehler, und kein Lauf.
-          reply.code(200).send({
+        folge.inArbeit = true;
+        folge.zuletztBenutzt = jetzt;
+        try {
+          const { inventur } = folge;
+          try {
+            // LESEN VOR JEDEM SCHREIBEFFEKT: scheitert schon die Inventur, entsteht kein Lauf. Der
+            // Stand ist nur bis zur letzten erfolgreich gelesenen Seite fortgeschrieben; dieselbe
+            // Fortsetzung liest beim nächsten Aufruf genau dort weiter.
+            await adapter.setzeInventurFort(
+              inventur,
+              SHAREPOINT_LOS_GROESSE,
+              SHAREPOINT_INVENTUR_SEITEN_JE_AUFRUF,
+            );
+          } catch (err) {
+            warne(request.log, "Ordnerinventur", err);
+            if (folge.lose === 0 && inventur.dateien === 0) {
+              // Eine Losfolge, die noch nichts gelesen hat, wird nicht als Fortsetzung angeboten.
+              losfolgen.delete(folge.id);
+            }
+            return sendeLage(reply, err);
+          }
+          const kennungen = inventur.puffer.splice(0, SHAREPOINT_LOS_GROESSE);
+          let laufStatus: ImportRunStatus | null = null;
+          let bilanz: Record<string, unknown> = {
             imported: 0,
             alreadyQueued: 0,
             neuerStand: [],
@@ -603,53 +645,120 @@ export function sharepointImportRoutes(deps: SharePointImportRouteDeps): Fastify
             notFound: [],
             ohneInhalt: [],
             dateien: [],
-            los: losAuskunft(true),
+          };
+          if (kennungen.length > 0) {
+            folge.lose += 1;
+            const ordnerTeil = folge.ordnerId ?? "root";
+            const ausgang = await fuehreUebernahmeAus(
+              deps,
+              adapter,
+              kennungen,
+              user.id,
+              `drive:${folge.driveId}/folder:${ordnerTeil}/losfolge:${folge.id}/los:${folge.lose}`,
+              request.log,
+            );
+            if (ausgang.code !== 200) {
+              // Das ganze Los ist gescheitert: seine Dateien gehen zurück an den Anfang des
+              // Puffers und kommen mit der nächsten Fortsetzung noch einmal — nie still verloren.
+              // Was davon schon eingereiht war, wird dabei nicht doppelt eingereiht (Tür 2).
+              inventur.puffer.unshift(...kennungen);
+              reply.code(ausgang.code).send({ ...ausgang.body, fortsetzung: folge.id });
+              return reply;
+            }
+            laufStatus = ausgang.laufStatus;
+            bilanz = ausgang.body;
+          }
+          const abgeschlossen = inventurFertig(inventur) && inventur.puffer.length === 0;
+          if (abgeschlossen) {
+            losfolgen.delete(folge.id);
+          }
+          reply.code(200).send({
+            ...bilanz,
+            los: {
+              losfolge: folge.id,
+              nummer: kennungen.length > 0 ? folge.lose : null,
+              kennungen,
+              vollstaendig: laufStatus === null || laufStatus === "COMPLETED",
+              fortsetzung: abgeschlossen ? null : folge.id,
+              wartend: inventur.puffer.length,
+              inventar: {
+                dateien: inventur.dateien,
+                unterordner: inventur.unterordner,
+                vollstaendig: inventurFertig(inventur),
+              },
+              ordnerAbgeschlossen: abgeschlossen,
+            },
           });
           return reply;
+        } finally {
+          folge.inArbeit = false;
         }
-        const ausgang = await fuehreUebernahmeAus(
-          deps,
-          adapter,
-          kennungen,
-          user.id,
-          `drive:${adapter.driveId}/folder:${ordnerId ?? "root"}/ab:${fortsetzungAb ?? "anfang"}`,
-          request.log,
-        );
-        if (ausgang.code !== 200) {
-          reply.code(ausgang.code).send(ausgang.body);
-          return reply;
-        }
-        reply.code(200).send({
-          ...ausgang.body,
-          los: losAuskunft(ausgang.laufStatus === "COMPLETED"),
-        });
-        return reply;
       },
     );
   };
 }
 
-/** Höchstlänge einer Fortsetzungskennung — eine DriveItem-Kennung ist weit kürzer. */
-const MAX_FORTSETZUNG = 512;
+/**
+ * Listenseiten, die EIN Aufruf von Tür 3 höchstens liest. Das begrenzt die Arbeit eines Aufrufs,
+ * nicht die Inventur: was danach noch zu lesen ist, bleibt im Stand der Losfolge.
+ */
+export const SHAREPOINT_INVENTUR_SEITEN_JE_AUFRUF = 100;
+
+/** So lange bleibt eine unberührte Losfolge fortsetzbar. */
+const LOSFOLGE_LEBENSDAUER_MS = 24 * 60 * 60 * 1000;
+/** Höchstzahl gleichzeitig gehaltener Losfolgen; darüber weicht die älteste ruhende. */
+const MAX_LOSFOLGEN = 20;
 
 /**
- * Die Fortsetzung aus dem Rumpf: fehlt sie, beginnt die Losfolge am Anfang (`undefined`); eine
- * nicht leere Zeichenkette ist die Kennung, HINTER der das nächste Los beginnt; alles andere ist
- * ungültig (`null`). Sie ist ein reiner Lesezeiger in die Ordnerliste, keine Identität.
+ * Eine Losfolge: die fortsetzbare Übernahme EINES Ordners. Ihre Kennung ist eine frisch erzeugte
+ * Zufallskennung dieses Prozesses — sie bezeichnet die Losfolge und nichts sonst.
+ */
+interface Losfolge {
+  readonly id: string;
+  readonly driveId: string;
+  readonly ordnerId: string | undefined;
+  zuletztBenutzt: number;
+  readonly inventur: SharePointInventur;
+  lose: number;
+  inArbeit: boolean;
+}
+
+/** Abgelaufene Losfolgen entfernen. Laufende bleiben. */
+function raeumeLosfolgenAuf(losfolgen: Map<string, Losfolge>, jetzt: number): void {
+  for (const [id, folge] of losfolgen) {
+    if (!folge.inArbeit && jetzt - folge.zuletztBenutzt > LOSFOLGE_LEBENSDAUER_MS) {
+      losfolgen.delete(id);
+    }
+  }
+}
+
+/**
+ * Platz für EINE neue Losfolge: die am längsten angelegten ruhenden weichen zuerst (Einfügefolge der
+ * Karte). Nur beim Anlegen gerufen — ein Fortsetzungsaufruf verdrängt nie eine Losfolge.
+ */
+function machePlatzFuerLosfolge(losfolgen: Map<string, Losfolge>): void {
+  for (const [id, folge] of losfolgen) {
+    if (losfolgen.size < MAX_LOSFOLGEN) {
+      break;
+    }
+    if (!folge.inArbeit) {
+      losfolgen.delete(id);
+    }
+  }
+}
+
+/** Höchstlänge einer Fortsetzung — die angebotene Kennung ist eine UUID. */
+const MAX_FORTSETZUNG = 64;
+
+/**
+ * Die Fortsetzung aus dem Rumpf: fehlt sie, beginnt eine neue Losfolge (`undefined`); eine nicht
+ * leere Zeichenkette ist die angebotene Kennung der Losfolge; alles andere ist ungültig (`null`).
  */
 function leseFortsetzung(raw: unknown): string | undefined | null {
   if (raw === undefined || raw === null) {
     return undefined;
   }
   return typeof raw === "string" && raw.length > 0 && raw.length <= MAX_FORTSETZUNG ? raw : null;
-}
-
-/** Feste Reihenfolge nach Kennung — unabhängig davon, in welcher Folge Graph die Liste liefert. */
-function vergleicheKennung(a: string, b: string): number {
-  if (a === b) {
-    return 0;
-  }
-  return a < b ? -1 : 1;
 }
 
 /** Was eine Übernahme ergibt: die Antwort für die Leitung UND der Ausgang ihres Laufs. */

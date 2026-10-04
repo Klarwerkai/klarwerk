@@ -909,7 +909,7 @@ export const TABELLE: Zeile[] = [
     gruppe: "sharepointImportRoutes",
     methode: "POST",
     pfad: "/api/admin/import/sharepoint/folder-apply",
-    belegstelle: "services/app/src/routes/sharepoint-import-routes.ts:543",
+    belegstelle: "services/app/src/routes/sharepoint-import-routes.ts:554",
     tor: "users.manage",
     payload: {},
     erwartet: NUR_ADMIN,

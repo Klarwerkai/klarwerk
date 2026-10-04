@@ -30,17 +30,27 @@ deshalb Codestellen und Testdateien der Basisfassung.
 
 `POST /api/admin/import/sharepoint/folder-apply` (`services/app/src/routes/sharepoint-import-routes.ts`, Tür 3):
 
-- Rumpf `{ folderId?, fortsetzungAb? }`. Jeder Aufruf inventarisiert den ganzen Ordner
-  (`SharePointSourceAdapter.inventarisiereOrdner`): alle Listenseiten, alle Unterordner auf allen
-  Ebenen; Ordner werden nie Kandidaten. Die Dateien werden nach Kennung sortiert.
-- **Los:** die nächsten höchstens `SHAREPOINT_LOS_GROESSE` (= 50) Dateien hinter `fortsetzungAb`.
-  Die Fortsetzung hängt an der Kennung, nicht an einem Versatz: verschwindet zwischen zwei Losen
-  eine Datei, fällt keine weiterhin vorhandene Datei aus der Losfolge.
-- **Halt:** ein Aufruf übernimmt genau ein Los. Das nächste läuft nur auf ausdrückliche Anfrage
-  mit der angebotenen `los.fortsetzungAb`.
-- **Nachweis:** jedes Los ist ein eigener `ImportRun` mit Scope `drive:…/folder:…/ab:<Kennung>`;
-  `los.vollstaendig` entspricht `COMPLETED`. `los.ordnerAbgeschlossen` ist erst wahr, wenn hinter
-  dem Los nichts mehr liegt und die Inventur vollständig war.
+- Rumpf `{ folderId?, fortsetzung? }`. Der erste Aufruf legt eine **Losfolge** an; ihre Kennung
+  ist die angebotene `los.fortsetzung`.
+- **Fortsetzbare Inventur ohne Gesamtkante:** die Losfolge hält eine `SharePointInventur`
+  (`services/sharepoint/src/adapter.ts`): Graph-Cursor (`@odata.nextLink`) des gerade gelesenen
+  Ordners, die noch zu lesenden (Unter-)Ordner auf allen Ebenen, gesehene Kennungen und gefundene,
+  noch keinem Los zugeteilte Dateien. Ein Aufruf liest nur so viele Seiten, wie das nächste Los
+  braucht, höchstens `SHAREPOINT_INVENTUR_SEITEN_JE_AUFRUF` (= 100); der Rest bleibt im Stand.
+  Ordner werden nie Kandidaten.
+- **Los:** die nächsten höchstens `SHAREPOINT_LOS_GROESSE` (= 50) gefundenen Dateien in
+  Lieferfolge. Findet ein Aufruf in seinem Seitenbudget keine Datei (z. B. viele leere
+  Unterordner), übernimmt er nichts und bietet die Fortsetzung an.
+- **Halt:** ein Aufruf übernimmt höchstens ein Los. Weiter geht es nur mit der angebotenen
+  `los.fortsetzung`.
+- **Quellenänderung / Ausfall:** ein Los ist eine Folge gelesener Dateien, kein Versatz. Verschwindet
+  eine zugeteilte Datei, steht sie im Los als `notFound` (PARTIAL). Scheitert ein ganzes Los
+  (Zugang, Gegenstelle), gehen seine Dateien zurück in den Puffer und kommen mit der nächsten
+  Fortsetzung wieder.
+- **Nachweis:** jedes Los ist ein eigener `ImportRun` mit Scope
+  `drive:…/folder:…/losfolge:<id>/los:<n>`; `los.vollstaendig` entspricht `COMPLETED`.
+  `los.ordnerAbgeschlossen` ist erst wahr, wenn jede Seite jedes Ordners gelesen und jede gefundene
+  Datei zugeteilt ist; dann gibt es keine Fortsetzung mehr.
 - **Leseweg der Laufakte:** `GET /api/admin/import/runs/…` ist hinter jedem Importweg registriert,
   der Läufe schreibt (Confluence oder SharePoint), nicht mehr nur hinter Confluence (`build-app.ts`).
 - **Kein Modell:** die SharePoint-Routen haben keinen Reasoner; der Weg endet wie Tür 2 bei
@@ -48,8 +58,8 @@ deshalb Codestellen und Testdateien der Basisfassung.
 - Tür 2 und Tür 3 teilen einen Übernahmeweg (`fuehreUebernahmeAus`); Tür 2 ist im Verhalten unverändert.
 
 Test: `tests/sharepoint-onedrive-import/ordner-in-losen-am-draht.test.ts` (L1–L6, nach bens
-Befunden L7 Änderung der Ordnerliste, L8 elf Listenseiten, L9 Unterordner, L10 nur SharePoint;
-Netzprobe). `wiederholimport-am-draht.test.ts` W1b erwartet seitdem 200 statt 404.
+Befunden L7 Änderung der Ordnerliste, L8 elf Listenseiten, L9 Unterordner, L10 nur SharePoint,
+L11 1.001 Listenseiten in einem Ordner, L12 1.001 Ordner, L13 gescheitertes Los; Netzprobe). `wiederholimport-am-draht.test.ts` W1b erwartet seitdem 200 statt 404.
 
 ## Quellenwidersprüche
 
@@ -66,11 +76,11 @@ Netzprobe). `wiederholimport-am-draht.test.ts` W1b erwartet seitdem 200 statt 40
 
 - Kein gefahrener Microsoft-365/Graph-Lauf. Die Tests laufen gegen ein Vertrags-Double.
 - Tür 3 hat noch keine Fläche in der Oberfläche. Eine Bedienung durch Menschen ist nicht belegt.
-- Die Inventur ist gedeckelt (`SHAREPOINT_INVENTAR_MAX_SEITEN_JE_ORDNER` = 1000 Seiten je Ordner,
-  `SHAREPOINT_INVENTAR_MAX_ORDNER` = 1000 Ordner). Wird eine Kante erreicht, meldet
-  `los.inventar.vollstaendig: false`, und die Losfolge schliesst nie als abgeschlossen.
-- Jeder Losaufruf inventarisiert den ganzen Ordner neu: bei sehr grossen Ordnern kostet das
-  entsprechend viele Listenabrufe je Los.
-- Eine Datei, die während einer Losfolge neu hinzukommt und deren Kennung vor der Fortsetzung liegt,
-  gehört nicht zu dieser Losfolge. Eine neue Losfolge ab Anfang holt sie ohne Doppelbestand.
+- Die Losfolge lebt im Speicher des App-Prozesses (höchstens 20 gleichzeitig, Ablauf 24 h nach
+  der letzten Nutzung). Nach Neustart, Ablauf oder auf einer anderen Instanz ist die Fortsetzung
+  unbekannt (409 `FORTSETZUNG_UNBEKANNT`); eine neue Losfolge reiht Bereits-Übernommenes nicht
+  doppelt ein, liest den Ordner aber erneut.
+- Wird eine Datei auf einer schon gelesenen Listenseite nachträglich hinzugefügt, gehört sie nicht
+  zu dieser Losfolge; eine neue Losfolge holt sie ohne Doppelbestand. Wie Graph seine Seiten bei
+  gleichzeitigen Änderungen bildet, ist im Double nachgebildet, nicht gegen Microsoft 365 gemessen.
 - Ein lokaler Ordner (Dateisystem) und andere Quellsysteme sind nicht Teil dieses Wegs.

@@ -14,12 +14,13 @@
 //
 // DER GRAPH-VERTRAG ALS DOUBLE: `globalThis.fetch` wird für die Dauer dieser Datei ersetzt, wie in
 // den Nachbardateien. Das Double führt ein VERÄNDERLICHES Laufwerk (Ordner, Unterordner, Dateien)
-// und liefert Ordnerlisten in Seiten zu 50 mit `@odata.nextLink` — so, wie Graph es tut. Jeder
+// und liefert Ordnerlisten seitenweise mit `@odata.nextLink`. Der Cursor darin zeigt — wie der
+// `$skiptoken` von Graph — HINTER den zuletzt gelieferten Eintrag, nicht auf einen Versatz. Jeder
 // Aufruf an eine andere Adresse wird abgelehnt UND festgehalten: ein Dokument, das an ein externes
 // Modell ginge, stünde in `fremdeAufrufe`.
 //
-// Nachgearbeitet nach bens Befunden F1–F4 (L7–L10): Fortsetzung nach Änderung der Ordnerliste,
-// mehr als zehn Listenseiten, Unterordner auf allen Ebenen, Laufakte allein mit SharePoint.
+// Nachgearbeitet nach bens Befunden: F1–F4 (L7–L10) und die fortsetzbare Inventur ohne
+// Gesamtkante (L11: 1.001 Listenseiten in einem Ordner, L12: 1.001 Ordner, L13: gescheitertes Los).
 //
 // KEIN GEFAHRENER GRAPH-LAUF WIRD BEHAUPTET. Was hier läuft, ist der Vertrag, nicht Microsoft 365,
 // und keine Bedienung durch einen Menschen: die Tür hat (noch) keine Fläche in der Oberfläche.
@@ -51,7 +52,7 @@ const ADMIN = {
 
 const TUER = "/api/admin/import/sharepoint/folder-apply";
 const GRAPH = "https://graph.microsoft.test/";
-const SEITE = 50;
+const LOSFOLGE_SCOPE = /^drive:b!testbibliothek\/folder:root\/losfolge:[0-9a-f-]{36}\/los:(\d+)$/;
 
 const kennung = (n: number): string => `DOC-${String(n).padStart(3, "0")}`;
 const kennungen = (von: number, bis: number): string[] =>
@@ -63,17 +64,22 @@ const kennungen = (von: number, bis: number): string[] =>
 type Kind = { readonly id: string; readonly ordner?: true };
 /** Ordnerschlüssel ("root" oder Ordnerkennung) → Kinder in Lieferfolge. */
 const laufwerk = new Map<string, Kind[]>();
+/** Einträge je Listenseite (Graph: `$top`); L11 stellt ihn auf 1. */
+let seitenGroesse = 50;
 /** Dateien, die in der Liste stehen, deren gezielter Abruf aber 404 liefert (L4). */
 const abrufFehlt = new Set<string>();
+/** Dateien, deren gezielter Abruf mit 401 scheitert — eine Lage, die das ganze Los abbricht (L13). */
+const abrufGestoert = new Set<string>();
 
 function dateien(ids: readonly string[]): Kind[] {
   return ids.map((id) => ({ id }));
 }
 
-/** Der Standardbestand: 120 Dateien im Wurzelordner, UMGEKEHRT geliefert, dazu ein leerer Ordner. */
+/** Der Standardbestand: 120 Dateien im Wurzelordner, dazwischen ein leerer Unterordner. */
 function standardLaufwerk(): void {
   laufwerk.clear();
-  const wurzel = dateien([...kennungen(1, 120)].reverse());
+  seitenGroesse = 50;
+  const wurzel = dateien(kennungen(1, 120));
   wurzel.splice(7, 0, { id: "ARCHIV", ordner: true });
   laufwerk.set("root", wurzel);
   laufwerk.set("ARCHIV", []);
@@ -131,7 +137,11 @@ function antwort(body: unknown, status = 200): Response {
   } as unknown as Response;
 }
 
-/** Eine Ordnerliste in Seiten zu 50 — die Folgeseite kommt über `@odata.nextLink`. */
+/**
+ * Eine Ordnerliste, seitenweise. Der Cursor `nach` nennt den zuletzt gelieferten Eintrag; die
+ * Folgeseite beginnt dahinter. Ist er inzwischen verschwunden, beginnt sie von vorn — doppelt
+ * Geliefertes muss die Inventur dann selbst erkennen.
+ */
 function ordnerSeite(url: string, schluessel: string): Response {
   const kinder = laufwerk.get(schluessel);
   if (!kinder) {
@@ -139,11 +149,16 @@ function ordnerSeite(url: string, schluessel: string): Response {
   }
   listenAufrufe.push(url);
   const adresse = new URL(url);
-  const seite = Number(adresse.searchParams.get("seite") ?? "0");
-  const value = kinder.slice(seite * SEITE, (seite + 1) * SEITE).map(listenEintrag);
-  const weiter = (seite + 1) * SEITE < kinder.length;
-  adresse.searchParams.set("seite", String(seite + 1));
-  return antwort(weiter ? { value, "@odata.nextLink": adresse.toString() } : { value });
+  const nach = adresse.searchParams.get("nach");
+  const start = nach === null ? 0 : kinder.findIndex((k) => k.id === nach) + 1;
+  const seite = kinder.slice(start, start + seitenGroesse);
+  const value = seite.map(listenEintrag);
+  const letzte = seite[seite.length - 1];
+  if (!letzte || start + seitenGroesse >= kinder.length) {
+    return antwort({ value });
+  }
+  adresse.searchParams.set("nach", letzte.id);
+  return antwort({ value, "@odata.nextLink": adresse.toString() });
 }
 
 beforeAll(() => {
@@ -163,6 +178,9 @@ beforeAll(() => {
     }
     const treffer = /\/items\/([^/?]+)\?/.exec(url);
     const id = treffer ? decodeURIComponent(treffer[1] ?? "") : "";
+    if (abrufGestoert.has(id)) {
+      return antwort({ error: { code: "InvalidAuthenticationToken" } }, 401);
+    }
     if (istVorhandeneDatei(id) && !abrufFehlt.has(id)) {
       return antwort(driveItem(id));
     }
@@ -184,6 +202,7 @@ afterAll(() => {
 beforeEach(() => {
   standardLaufwerk();
   abrufFehlt.clear();
+  abrufGestoert.clear();
 });
 
 async function appMitAdmin() {
@@ -210,10 +229,12 @@ interface Losantwort {
   notFound: string[];
   importId?: string;
   los: {
+    losfolge: string;
+    nummer: number | null;
     kennungen: string[];
     vollstaendig: boolean;
-    fortsetzungAb: string | null;
-    verbleibend: number;
+    fortsetzung: string | null;
+    wartend: number;
     inventar: { dateien: number; unterordner: number; vollstaendig: boolean };
     ordnerAbgeschlossen: boolean;
   };
@@ -226,7 +247,7 @@ async function holeLos(app: App, headers: Headers, payload: unknown) {
 async function uebernimmLos(
   app: App,
   headers: Headers,
-  payload: { folderId?: string; fortsetzungAb?: string },
+  payload: { folderId?: string; fortsetzung?: string },
 ): Promise<Losantwort> {
   const res = await holeLos(app, headers, payload);
   expect(res.statusCode, res.body).toBe(200);
@@ -260,8 +281,9 @@ async function liesLauf(app: App, headers: Headers, importId: string | undefined
 }
 
 /**
- * Die angebotene Fortsetzung bis zum Ende bedienen — und nach JEDEM Aufruf am Bestand messen, dass
- * ohne Folgeaufruf nichts weiter entstanden ist (der Halt).
+ * NUR die angebotene Fortsetzung bis zum Ende bedienen — und nach JEDEM Aufruf am Bestand messen,
+ * dass ohne Folgeaufruf nichts weiter entstanden ist (der Halt) und kein Aufruf mehr als ein Los
+ * eingereiht hat. Ein Abschluss vor dem letzten Aufruf wäre ein Ende ohne nutzbare Fortsetzung.
  */
 async function bisZumEnde(
   app: App,
@@ -270,16 +292,16 @@ async function bisZumEnde(
   vorJedemFolgeaufruf?: (schritt: number) => void,
 ): Promise<Losantwort[]> {
   const antworten: Losantwort[] = [];
-  let fortsetzungAb: string | null | undefined;
+  let fortsetzung: string | null | undefined;
   let bisher = (await vorgaenge(app, headers)).length;
-  for (let schritt = 0; fortsetzungAb !== null; schritt++) {
-    expect(schritt, "die Losfolge endet").toBeLessThan(100);
+  for (let schritt = 0; fortsetzung !== null; schritt++) {
+    expect(schritt, "die Losfolge endet").toBeLessThan(200);
     if (schritt > 0) {
       vorJedemFolgeaufruf?.(schritt);
     }
     const ergebnis: Losantwort = await uebernimmLos(app, headers, {
       ...(folderId ? { folderId } : {}),
-      ...(fortsetzungAb ? { fortsetzungAb } : {}),
+      ...(fortsetzung ? { fortsetzung } : {}),
     });
     antworten.push(ergebnis);
     const jetzt = (await vorgaenge(app, headers)).length;
@@ -287,8 +309,17 @@ async function bisZumEnde(
       ergebnis.imported,
     );
     expect(ergebnis.los.kennungen.length).toBeLessThanOrEqual(SHAREPOINT_LOS_GROESSE);
+    expect(
+      ergebnis.los.ordnerAbgeschlossen,
+      "abgeschlossen heisst: keine Fortsetzung mehr — und umgekehrt",
+    ).toBe(ergebnis.los.fortsetzung === null);
+    if (ergebnis.los.ordnerAbgeschlossen) {
+      expect(ergebnis.los.inventar.vollstaendig, "kein Abschluss vor vollständiger Inventur").toBe(
+        true,
+      );
+    }
     bisher = jetzt;
-    fortsetzungAb = ergebnis.los.fortsetzungAb;
+    fortsetzung = ergebnis.los.fortsetzung;
   }
   return antworten;
 }
@@ -303,22 +334,22 @@ function genauEinmal(ist: string[], soll: string[]): void {
 // L1 — EIN LOS, DANN HALT.
 // ==================================================================================================
 describe("R-0145 · L1 — ein Aufruf übernimmt genau ein Los und hält dann an", () => {
-  it("L1 · der erste Aufruf bringt die ersten 50 Dateien nach Kennung — und keine einzige mehr", async () => {
+  it("L1 · der erste Aufruf bringt die ersten 50 Dateien — und keine einzige mehr", async () => {
     const { app, headers } = await appMitAdmin();
 
     const erstes = await uebernimmLos(app, headers, {});
     expect(SHAREPOINT_LOS_GROESSE).toBe(50);
-    expect(erstes.los.kennungen, "sortiert nach Kennung, nicht nach Lieferfolge").toEqual(
+    expect(erstes.los.kennungen, "in der Folge, in der Graph sie geliefert hat").toEqual(
       kennungen(1, 50),
     );
     expect(erstes.los.kennungen, "ein Ordner ist keine Datei").not.toContain("ARCHIV");
     expect(erstes.imported).toBe(50);
+    expect(erstes.los.nummer).toBe(1);
     expect(erstes.los.vollstaendig).toBe(true);
-    expect(erstes.los.fortsetzungAb, "die Fortsetzung wird angeboten, nicht gefahren").toBe(
-      kennung(50),
+    expect(erstes.los.fortsetzung, "die Fortsetzung wird angeboten, nicht gefahren").toBe(
+      erstes.los.losfolge,
     );
-    expect(erstes.los.verbleibend).toBe(70);
-    expect(erstes.los.inventar).toEqual({ dateien: 120, unterordner: 1, vollstaendig: true });
+    expect(erstes.los.inventar.vollstaendig, "nur gelesen, was das Los brauchte").toBe(false);
     expect(erstes.los.ordnerAbgeschlossen).toBe(false);
 
     // DER HALT, am Bestand gemessen: nach dem ersten Aufruf stehen 50 Vorgänge da, nicht 120.
@@ -326,7 +357,8 @@ describe("R-0145 · L1 — ein Aufruf übernimmt genau ein Los und hält dann an
 
     const lauf = await liesLauf(app, headers, erstes.importId);
     expect(lauf.status).toBe("COMPLETED");
-    expect(lauf.sourceScope).toBe("drive:b!testbibliothek/folder:root/ab:anfang");
+    expect(lauf.sourceScope).toMatch(LOSFOLGE_SCOPE);
+    expect(lauf.sourceScope).toContain(`losfolge:${erstes.los.losfolge}/los:1`);
     expect(lauf.counters).toEqual({
       itemsTotal: 50,
       itemsCreated: 50,
@@ -349,34 +381,42 @@ describe("R-0190 · L2 — ein ganzer Ordner kommt über die Lose vollständig a
 
     expect(antworten.map((a) => a.los.kennungen.length)).toEqual([50, 50, 20]);
     expect(antworten.map((a) => a.los.ordnerAbgeschlossen)).toEqual([false, false, true]);
+    expect(antworten.at(-1)?.los.inventar).toEqual({
+      dateien: 120,
+      unterordner: 1,
+      vollstaendig: true,
+    });
     expect(akten.map((a) => a.status)).toEqual(["COMPLETED", "COMPLETED", "COMPLETED"]);
-    expect(akten.map((a) => a.sourceScope)).toEqual([
-      "drive:b!testbibliothek/folder:root/ab:anfang",
-      `drive:b!testbibliothek/folder:root/ab:${kennung(50)}`,
-      `drive:b!testbibliothek/folder:root/ab:${kennung(100)}`,
-    ]);
+    const losfolge = antworten[0]?.los.losfolge;
+    expect(akten.map((a) => a.sourceScope)).toEqual(
+      [1, 2, 3].map((n) => expect.stringContaining(`losfolge:${losfolge}/los:${n}`)),
+    );
     genauEinmal(await vorgaenge(app, headers), kennungen(1, 120));
   });
 });
 
 // ==================================================================================================
-// L3 — WIEDERANLAUF NACH DEM HALT.
+// L3 — WIEDERANLAUF.
 // ==================================================================================================
-describe("R-0145 · L3 — dasselbe Los noch einmal ist gefahrlos", () => {
-  it("L3 · dieselbe Fortsetzung ein zweites Mal reiht nichts neu ein und bleibt vollständig", async () => {
+describe("R-0145 · L3 — ein Neubeginn nach dem Halt ist gefahrlos", () => {
+  it("L3 · eine neue Losfolge ab Anfang reiht nichts doppelt ein; eine beendete ist nicht fortsetzbar", async () => {
     const { app, headers } = await appMitAdmin();
-    await uebernimmLos(app, headers, {});
-    await uebernimmLos(app, headers, { fortsetzungAb: kennung(50) });
+    const erstes = await uebernimmLos(app, headers, {});
+    await uebernimmLos(app, headers, { fortsetzung: erstes.los.losfolge });
     expect((await vorgaenge(app, headers)).length).toBe(100);
 
-    const nochmal = await uebernimmLos(app, headers, { fortsetzungAb: kennung(50) });
-    expect(nochmal.imported, "dieselben Dateien, derselbe Stand: nichts Neues").toBe(0);
-    expect(nochmal.alreadyQueued).toBe(50);
-    expect(nochmal.los.kennungen, "dieselbe Fortsetzung trifft dieselben Dateien").toEqual(
-      kennungen(51, 100),
-    );
-    expect(nochmal.los.vollstaendig).toBe(true);
+    const neu = await uebernimmLos(app, headers, {});
+    expect(neu.los.losfolge, "eine neue Losfolge").not.toBe(erstes.los.losfolge);
+    expect(neu.imported, "dieselben Dateien, derselbe Stand: nichts Neues").toBe(0);
+    expect(neu.alreadyQueued).toBe(50);
+    expect(neu.los.vollstaendig).toBe(true);
     genauEinmal(await vorgaenge(app, headers), kennungen(1, 100));
+
+    const beendet = await bisZumEnde(app, headers);
+    const ende = await holeLos(app, headers, { fortsetzung: beendet.at(-1)?.los.losfolge });
+    expect(ende.statusCode, ende.body).toBe(409);
+    expect((ende.json() as { error: string }).error).toBe("FORTSETZUNG_UNBEKANNT");
+    genauEinmal(await vorgaenge(app, headers), kennungen(1, 120));
   });
 });
 
@@ -420,19 +460,20 @@ describe("R-0145 · L5 — kein KI-Aufruf je Objekt, kein Dokument an ein extern
 // L6 — EHRLICHE RÄNDER.
 // ==================================================================================================
 describe("R-0190 · L6 — Ränder der Ordnerübernahme", () => {
-  it("L6a · eine Fortsetzung hinter der letzten Datei ist eine Auskunft ohne Lauf", async () => {
+  it("L6a · eine unbekannte Fortsetzung ist ein 409 und schreibt nichts", async () => {
     const { app, headers } = await appMitAdmin();
-    const ende = await uebernimmLos(app, headers, { fortsetzungAb: "DOC-999" });
-    expect(ende.los.kennungen).toEqual([]);
-    expect(ende.los.ordnerAbgeschlossen).toBe(true);
-    expect(ende.importId, "nichts zu tun heisst: kein Lauf").toBeUndefined();
+    const res = await holeLos(app, headers, {
+      fortsetzung: "00000000-0000-4000-8000-000000000000",
+    });
+    expect(res.statusCode, res.body).toBe(409);
+    expect((res.json() as { error: string }).error).toBe("FORTSETZUNG_UNBEKANNT");
     expect(await vorgaenge(app, headers)).toEqual([]);
   });
 
   it("L6b · eine Fortsetzung, die keine Kennung ist, ist ein 400 und schreibt nichts", async () => {
     const { app, headers } = await appMitAdmin();
-    for (const fortsetzungAb of [1, "", "x".repeat(513)]) {
-      const res = await holeLos(app, headers, { fortsetzungAb });
+    for (const fortsetzung of [1, "", "x".repeat(65)]) {
+      const res = await holeLos(app, headers, { fortsetzung });
       expect(res.statusCode, res.body).toBe(400);
       expect((res.json() as { error: string }).error).toBe("FORTSETZUNG_INVALID");
     }
@@ -442,8 +483,10 @@ describe("R-0190 · L6 — Ränder der Ordnerübernahme", () => {
   it("L6c · ein wirklich leerer Ordner ist eine Auskunft ohne Lauf", async () => {
     const { app, headers } = await appMitAdmin();
     const leer = await uebernimmLos(app, headers, { folderId: "ARCHIV" });
+    expect(leer.los.kennungen).toEqual([]);
     expect(leer.los.inventar).toEqual({ dateien: 0, unterordner: 0, vollstaendig: true });
     expect(leer.los.ordnerAbgeschlossen).toBe(true);
+    expect(leer.los.fortsetzung).toBeNull();
     expect(leer.importId).toBeUndefined();
     expect(await vorgaenge(app, headers)).toEqual([]);
   });
@@ -460,6 +503,18 @@ describe("R-0190 · L6 — Ränder der Ordnerübernahme", () => {
     const akte = await liesLauf(app, headers, (res.json() as { importId?: string }).importId);
     expect(akte.sourceScope).toBe("drive:b!testbibliothek");
     expect(akte.status).toBe("COMPLETED");
+  });
+
+  it("L6e · eine Fortsetzung mit fremdem Ordner ist ein 400", async () => {
+    const { app, headers } = await appMitAdmin();
+    const erstes = await uebernimmLos(app, headers, {});
+    const res = await holeLos(app, headers, {
+      folderId: "ARCHIV",
+      fortsetzung: erstes.los.losfolge,
+    });
+    expect(res.statusCode, res.body).toBe(400);
+    expect((res.json() as { error: string }).error).toBe("FORTSETZUNG_ORDNER");
+    expect((await vorgaenge(app, headers)).length).toBe(50);
   });
 });
 
@@ -482,7 +537,6 @@ describe("R-0145 · L7 — Fortsetzung nach Änderung der Ordnerliste übersprin
       "das zweite Los beginnt bei DOC-051, nicht bei DOC-052",
     ).toBe(kennung(51));
     expect(antworten.map((a) => a.los.kennungen.length)).toEqual([50, 50, 20]);
-    expect(antworten[2]?.los.inventar.dateien, "die Inventur sieht den neuen Stand").toBe(119);
 
     const bestand = await vorgaenge(app, headers);
     expect(bestand).toContain(kennung(51));
@@ -498,24 +552,20 @@ describe("R-0145 · L7 — Fortsetzung nach Änderung der Ordnerliste übersprin
 // ==================================================================================================
 describe("R-0190 · L8 — ein Ordner über elf Listenseiten kommt vollständig an", () => {
   it("L8 · 550 Dateien auf elf verketteten Seiten: alle genau einmal, Abschluss erst ganz am Ende", async () => {
-    standardLaufwerk();
     laufwerk.set("root", dateien(kennungen(1, 550)));
     const { app, headers } = await appMitAdmin();
 
     listenAufrufe.length = 0;
-    const erstes = await uebernimmLos(app, headers, {});
-    expect(listenAufrufe.length, "die Inventur folgt allen elf Seiten").toBe(11);
-    expect(erstes.los.inventar).toEqual({ dateien: 550, unterordner: 0, vollstaendig: true });
-
-    const rest = await bisZumEnde(app, headers, undefined);
-    // `bisZumEnde` beginnt von vorn; das erste Los ist dann ein Wiederholaufruf.
-    expect(rest[0]?.imported).toBe(0);
-    expect(rest).toHaveLength(11);
-    expect(rest.map((a) => a.los.ordnerAbgeschlossen)).toEqual([
+    const antworten = await bisZumEnde(app, headers);
+    expect(listenAufrufe.length, "jede der elf Seiten wird genau einmal gelesen").toBe(11);
+    expect(antworten).toHaveLength(11);
+    expect(antworten.map((a) => a.los.ordnerAbgeschlossen)).toEqual([
       ...Array.from({ length: 10 }, () => false),
       true,
     ]);
-    expect(rest[10]?.los.kennungen, "die Dateien der elften Seite").toEqual(kennungen(501, 550));
+    expect(antworten[10]?.los.kennungen, "die Dateien der elften Seite").toEqual(
+      kennungen(501, 550),
+    );
     genauEinmal(await vorgaenge(app, headers), kennungen(1, 550));
   });
 });
@@ -576,7 +626,7 @@ describe("R-0145 · L10 — die Laufakte ist auch ohne Confluence-Schalter lesba
 
       const erstes = await uebernimmLos(app, headers, {});
       const akte = await liesLauf(app, headers, erstes.importId);
-      expect(akte.sourceScope).toBe("drive:b!testbibliothek/folder:root/ab:anfang");
+      expect(akte.sourceScope).toMatch(LOSFOLGE_SCOPE);
       expect(akte.status).toBe("COMPLETED");
       expect(akte.counters.itemsCreated).toBe(50);
 
@@ -597,10 +647,99 @@ describe("R-0145 · L10 — die Laufakte ist auch ohne Confluence-Schalter lesba
   });
 });
 
+// ==================================================================================================
+// L11 — KEINE SEITENKANTE: 1.001 LISTENSEITEN IN EINEM ORDNER.
+// ==================================================================================================
+describe("R-0190 · L11 — die Inventur geht über 1.000 Listenseiten eines Ordners hinaus", () => {
+  it("L11 · 1.001 Seiten zu je einer Datei: alle 1.001 Dateien genau einmal, auch die der letzten Seite", async () => {
+    seitenGroesse = 1;
+    const alle = Array.from({ length: 1001 }, (_, i) => `SEITE-${String(i + 1).padStart(4, "0")}`);
+    laufwerk.set("root", dateien(alle));
+    const { app, headers } = await appMitAdmin();
+
+    listenAufrufe.length = 0;
+    const antworten = await bisZumEnde(app, headers);
+    expect(listenAufrufe.length, "jede der 1.001 Seiten wird genau einmal gelesen").toBe(1001);
+    expect(antworten.at(-1)?.los.kennungen, "die Datei der letzten Seite").toContain("SEITE-1001");
+    expect(antworten.at(-1)?.los.inventar).toEqual({
+      dateien: 1001,
+      unterordner: 0,
+      vollstaendig: true,
+    });
+    expect(
+      antworten.slice(0, -1).every((a) => !a.los.ordnerAbgeschlossen),
+      "vor der letzten Seite meldet kein Aufruf den Abschluss",
+    ).toBe(true);
+    genauEinmal(await vorgaenge(app, headers), alle);
+  }, 120_000);
+});
+
+// ==================================================================================================
+// L12 — KEINE ORDNERKANTE: 1.001 ORDNER.
+// ==================================================================================================
+describe("R-0190 · L12 — die Inventur geht über 1.000 Ordner hinaus", () => {
+  it("L12 · ein Kundenordner mit 1.000 Unterordnern: die eine Datei im letzten kommt genau einmal an", async () => {
+    const unter = Array.from({ length: 1000 }, (_, i) => `U-${String(i + 1).padStart(4, "0")}`);
+    laufwerk.set(
+      "RIESE",
+      unter.map((id) => ({ id, ordner: true as const })),
+    );
+    for (const id of unter) {
+      laufwerk.set(id, []);
+    }
+    laufwerk.set("U-1000", [{ id: "R-LETZTE" }]);
+    const { app, headers } = await appMitAdmin();
+
+    const antworten = await bisZumEnde(app, headers, "RIESE");
+    expect(
+      antworten.some((a) => a.los.kennungen.length === 0 && a.los.fortsetzung !== null),
+      "unterwegs gibt es Aufrufe ohne Datei — sie enden mit nutzbarer Fortsetzung",
+    ).toBe(true);
+    expect(antworten.at(-1)?.los.inventar).toEqual({
+      dateien: 1,
+      unterordner: 1000,
+      vollstaendig: true,
+    });
+    const bestand = await vorgaenge(app, headers);
+    genauEinmal(bestand, ["R-LETZTE"]);
+    expect(bestand, "Ordner werden keine Vorgänge").not.toContain("U-1000");
+  }, 120_000);
+});
+
+// ==================================================================================================
+// L13 — EIN GANZES LOS SCHEITERT: SEINE DATEIEN GEHEN NICHT VERLOREN.
+// ==================================================================================================
+describe("R-0145 · L13 — nach einem gescheiterten Los kommt dasselbe Los mit der Fortsetzung wieder", () => {
+  it("L13 · der Zugang fällt mitten im zweiten Los aus — die Fortsetzung holt es nach, ohne Doppelbestand", async () => {
+    const { app, headers } = await appMitAdmin();
+    const erstes = await uebernimmLos(app, headers, {});
+
+    abrufGestoert.add(kennung(60));
+    const gestoert = await holeLos(app, headers, { fortsetzung: erstes.los.losfolge });
+    expect(gestoert.statusCode, gestoert.body).toBe(502);
+    expect((gestoert.json() as { fortsetzung?: string }).fortsetzung).toBe(erstes.los.losfolge);
+    expect(
+      (await vorgaenge(app, headers)).length,
+      "was vor dem Ausfall eingereiht war, steht da",
+    ).toBe(59);
+
+    abrufGestoert.clear();
+    const nachgeholt = await uebernimmLos(app, headers, { fortsetzung: erstes.los.losfolge });
+    expect(nachgeholt.los.kennungen, "dasselbe Los, nicht das nächste").toEqual(kennungen(51, 100));
+    expect(nachgeholt.imported + nachgeholt.alreadyQueued).toBe(50);
+    expect(nachgeholt.los.vollstaendig).toBe(true);
+
+    const rest = await uebernimmLos(app, headers, { fortsetzung: erstes.los.losfolge });
+    expect(rest.los.kennungen).toEqual(kennungen(101, 120));
+    expect(rest.los.ordnerAbgeschlossen).toBe(true);
+    genauEinmal(await vorgaenge(app, headers), kennungen(1, 120));
+  });
+});
+
 describe("R-0145 · NETZPROBE", () => {
   it("in dieser Datei ging kein Aufruf an eine fremde Adresse", () => {
     expect(fremdeAufrufe).toEqual([]);
     // Und sie ist nicht deshalb leer, weil nichts lief.
-    expect(graphAufrufe.length).toBeGreaterThan(550);
+    expect(graphAufrufe.length).toBeGreaterThan(1001);
   });
 });

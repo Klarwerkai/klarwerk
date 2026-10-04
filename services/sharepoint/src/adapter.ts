@@ -56,18 +56,48 @@ export interface SharePointDateiliste {
   readonly truncated: boolean;
 }
 
-/** Listenseiten, die die Ordner-Inventur JE ORDNER höchstens liest (bei 50 je Seite: 50.000). */
-export const SHAREPOINT_INVENTAR_MAX_SEITEN_JE_ORDNER = 1000;
-/** Ordner (der gewählte samt aller Unterordner), die eine Inventur höchstens liest. */
-export const SHAREPOINT_INVENTAR_MAX_ORDNER = 1000;
+/**
+ * R-0145/R-0190 — DER STAND EINER FORTSETZBAREN ORDNER-INVENTUR.
+ *
+ * Er hält genau das fest, was nötig ist, um später an derselben Stelle weiterzulesen: die Ordner,
+ * deren Liste noch (ganz oder teilweise) zu lesen ist, den Graph-Cursor der laufenden Ordnerliste,
+ * die schon gesehenen Datei- und Ordnerkennungen und die gefundenen, noch keinem Los zugeteilten
+ * Dateien. Es gibt KEINE Gesamtkante: ein Aufruf liest höchstens eine begrenzte Zahl Seiten, aber
+ * der Rest geht nicht verloren — er bleibt im Stand und wird beim nächsten Aufruf gelesen.
+ *
+ * Die Kennungen darin sind Graph-Kennungen der Quelle. Sie dienen nur als Lesezeiger und Dedup-
+ * Schlüssel dieser Inventur, nicht als Identität im Produkt.
+ */
+export interface SharePointInventur {
+  /** Noch zu lesende Ordner; der erste ist der gerade gelesene (`undefined` = Wurzel). */
+  readonly warteschlange: { readonly id: string | undefined }[];
+  /** Graph-Cursor der Folgeseite des ersten Ordners der Warteschlange — `null`: erste Seite. */
+  weiter: string | null;
+  readonly besuchteOrdner: Set<string>;
+  readonly gesehen: Set<string>;
+  /** Gefundene Dateien in Lieferfolge, die noch keinem Los zugeteilt sind. */
+  readonly puffer: string[];
+  /** Bisher gefundene Dateien bzw. Unterordner (alle Ebenen). */
+  dateien: number;
+  unterordner: number;
+}
 
-/** Das Ergebnis der Ordner-Inventur: alle Dateien auf allen Ebenen — oder ehrlich „nicht alle". */
-export interface SharePointOrdnerinventar {
-  readonly dateien: SharePointDatei[];
-  /** Wie viele Unterordner (alle Ebenen) gelesen wurden. */
-  readonly unterordner: number;
-  /** `false`, sobald eine Kante der Inventur erreicht wurde: es kann weitere Dateien geben. */
-  readonly vollstaendig: boolean;
+/** Eine neue Inventur über den gewählten Ordner (`undefined` = Wurzel der Bibliothek). */
+export function neueInventur(ordnerId?: string): SharePointInventur {
+  return {
+    warteschlange: [{ id: ordnerId }],
+    weiter: null,
+    besuchteOrdner: new Set(ordnerId ? [ordnerId] : []),
+    gesehen: new Set(),
+    puffer: [],
+    dateien: 0,
+    unterordner: 0,
+  };
+}
+
+/** Fertig heisst: jede Seite jedes Ordners ist gelesen. Über den Puffer sagt das nichts. */
+export function inventurFertig(inventur: SharePointInventur): boolean {
+  return inventur.warteschlange.length === 0;
 }
 
 export class SharePointSourceAdapter {
@@ -101,53 +131,49 @@ export class SharePointSourceAdapter {
   }
 
   /**
-   * R-0145/R-0190 — DIE INVENTUR EINES GANZEN KUNDENORDNERS: alle Dateien auf allen Ebenen.
+   * R-0145/R-0190 — DIE ORDNER-INVENTUR EIN STÜCK WEITERFÜHREN.
    *
-   * Anders als `listeDateien` (die Auswahlliste EINER Ebene, gedeckelt auf `SHAREPOINT_MAX_PAGES`)
-   * folgt sie jedem Listen-Cursor und steigt in jeden Unterordner ab. Ordner selbst werden nie
-   * Dateien; jede Datei steht genau einmal darin (Kennung als Schlüssel), auch wenn Graph sie
-   * doppelt liefert. Ein bereits besuchter Ordner wird nicht noch einmal gelesen.
+   * Liest Listenseiten — dem Graph-Cursor folgend, Unterordner auf allen Ebenen in die Warteschlange
+   * —, bis wenigstens `bisDateien` Dateien im Puffer liegen, die Inventur fertig ist oder
+   * `maxSeiten` Seiten in DIESEM Aufruf gelesen sind. Die letzte Kante begrenzt nur die Arbeit
+   * eines Aufrufs; was danach noch zu lesen ist, bleibt im Stand und wird beim nächsten gelesen.
    *
-   * SIE IST GEDECKELT, ABER NICHT STILL: je Ordner `SHAREPOINT_INVENTAR_MAX_SEITEN_JE_ORDNER`
-   * Listenseiten, insgesamt `SHAREPOINT_INVENTAR_MAX_ORDNER` Ordner. Wird eine Kante erreicht, ist
-   * `vollstaendig` falsch — die Inventur gibt sich dann nie für den ganzen Ordner aus.
+   * Ordner werden nie Dateien. Jede Datei kommt höchstens einmal in den Puffer, jeder Ordner wird
+   * höchstens einmal gelesen. Der Stand wird erst NACH einer erfolgreich gelesenen Seite fortgeschrieben:
+   * scheitert ein Abruf, liest der nächste Aufruf dieselbe Seite noch einmal.
    */
-  async inventarisiereOrdner(ordnerId?: string): Promise<SharePointOrdnerinventar> {
-    const warteschlange: { readonly id: string | undefined }[] = [{ id: ordnerId }];
-    const besucht = new Set<string>(ordnerId ? [ordnerId] : []);
-    const dateien = new Map<string, SharePointDatei>();
-    let unterordner = 0;
-    let vollstaendig = true;
-    for (let i = 0; i < warteschlange.length; i++) {
-      if (i >= SHAREPOINT_INVENTAR_MAX_ORDNER) {
-        vollstaendig = false;
-        break;
-      }
-      const ordner = warteschlange[i];
-      const { items, truncated } = await this.client.listeDateien(
-        ordner?.id,
-        SHAREPOINT_INVENTAR_MAX_SEITEN_JE_ORDNER,
-      );
-      if (truncated) {
-        vollstaendig = false;
-      }
-      for (const item of items) {
+  async setzeInventurFort(
+    inventur: SharePointInventur,
+    bisDateien: number,
+    maxSeiten: number,
+  ): Promise<void> {
+    let seiten = 0;
+    while (inventur.puffer.length < bisDateien && seiten < maxSeiten && !inventurFertig(inventur)) {
+      const ordner = inventur.warteschlange[0];
+      const seite = await this.client.listeOrdnerSeite(ordner?.id, inventur.weiter);
+      seiten += 1;
+      for (const item of seite.items) {
         const datei = zuDatei(item);
         if (datei) {
-          if (!dateien.has(datei.id)) {
-            dateien.set(datei.id, datei);
+          if (!inventur.gesehen.has(datei.id)) {
+            inventur.gesehen.add(datei.id);
+            inventur.puffer.push(datei.id);
+            inventur.dateien += 1;
           }
           continue;
         }
         const id = item.id?.trim();
-        if (item.folder !== undefined && id && !besucht.has(id)) {
-          besucht.add(id);
-          unterordner += 1;
-          warteschlange.push({ id });
+        if (item.folder !== undefined && id && !inventur.besuchteOrdner.has(id)) {
+          inventur.besuchteOrdner.add(id);
+          inventur.unterordner += 1;
+          inventur.warteschlange.push({ id });
         }
       }
+      inventur.weiter = seite.weiter;
+      if (seite.weiter === null) {
+        inventur.warteschlange.shift();
+      }
     }
-    return { dateien: [...dateien.values()], unterordner, vollstaendig };
   }
 
   /**
