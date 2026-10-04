@@ -165,6 +165,20 @@ class Buehne implements Seite {
       throw new Error(nichtGestellt("mouse.click"));
     },
   };
+  // FE-002 (26.09.2026): `Seite` von h6 führt seither auch `setViewportSize`, `keyboard` und
+  // `screenshot` (bestellt von `tests/fe002-kopfband/kopfband-fe002-chromium.test.ts`). Dieselbe
+  // Regel wie bei den vier Wegen darüber: genannt, nicht gestellt.
+  async setViewportSize(): Promise<void> {
+    throw new Error(nichtGestellt("setViewportSize"));
+  }
+  readonly keyboard = {
+    press: async (): Promise<void> => {
+      throw new Error(nichtGestellt("keyboard.press"));
+    },
+  };
+  async screenshot(): Promise<unknown> {
+    throw new Error(nichtGestellt("screenshot"));
+  }
 }
 
 /** Der Satz, den ein ungestellter Weg der Stellvertreterseite wirft — kein stilles `undefined`. */

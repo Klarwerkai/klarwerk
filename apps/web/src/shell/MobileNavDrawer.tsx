@@ -223,7 +223,7 @@ export function MobileNavDrawer({
             <X size={18} />
           </button>
           {/* JOB 3060 · H1: statt der Seitenleiste die Bausteine des Kopfbands und seiner Menüs. */}
-          <DrawerMenue onClose={onClose} />
+          <DrawerMenue onClose={onClose} rueckweg={() => triggerRef.current} />
         </dialog>
       </div>
     </>

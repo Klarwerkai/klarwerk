@@ -23,6 +23,8 @@ import type {
   BeziehungSetzenBody,
   BeziehungWiderrufBody,
   BusFactorEntry,
+  CategoryProfile,
+  CategoryProfileInput,
   Confidentiality,
   Conflict,
   ConflictSelfTestResult,
@@ -75,8 +77,10 @@ import type {
   LesevariantenUebersicht,
   LibraryImageSearchResponse,
   LiveWall,
+  ManagementProfiles,
   ManagementSnapshot,
   MediaAnalysis,
+  ModelRunAuswertungAntwort,
   ModelRunRecord,
   MyImpact,
   Neighborhood,
@@ -92,7 +96,10 @@ import type {
   ReasonerConfigStatus,
   ReasonerProbeResult,
   ReasonerStatus,
+  RetirementEntry,
+  RetirementHorizon,
   ReviewAction,
+  RiskHorizonView,
   Role,
   SicherungenAuskunft,
   Sichtmetrik,
@@ -205,9 +212,12 @@ export interface KoDiskussionsbeitrag extends KoComment {
 
 // PUT /api/kos/:id — ein Mutations-Endpunkt, per {action} verzweigt.
 export type KoAction =
-  | { action: "rate"; verdict: Verdict }
+  // R-0247: `duplicateAcknowledged` ist die ausdrückliche Bestätigung „offene Dublette gesehen".
+  // Sie wird NUR mitgeschickt, wenn sie gegeben wurde; ohne offene Dublette bleibt die Nutzlast
+  // unverändert.
+  | { action: "rate"; verdict: Verdict; duplicateAcknowledged?: true }
   // Pedi 05.07.: Admin-Override „als wahr kennzeichnen" — schließt die Validierung komplett ab.
-  | { action: "admin-validate" }
+  | { action: "admin-validate"; duplicateAcknowledged?: true }
   | { action: "assign"; userIds: string[] }
   // ================================================================================================
   // JOB 3667 R3 — `expectedVersion` AM REVISE: DER BEDINGTE SCHREIBZUGRIFF, VOM CLIENT AUS NUTZBAR.
@@ -1027,11 +1037,24 @@ export const endpoints = {
   // SCRUM-120 / FE-MGMT: Management-/Wissenskapital-Snapshot (read-only).
   management: {
     snapshot: () => api.get<ManagementSnapshot>("/management/snapshot"),
+    // R-1639 / R-2183 (Nacharbeit 3): Bereichsblick (eigene Bereiche) und Pflege seiner Eingänge.
+    riskHorizon: () => api.get<RiskHorizonView>("/management/risk-horizon"),
+    profiles: () => api.get<ManagementProfiles>("/management/profiles"),
+    setCategoryProfile: (body: CategoryProfileInput) =>
+      api.put<CategoryProfile>("/management/profiles/category", body),
+    setRetirement: (userId: string, horizonMonths: RetirementHorizon | null) =>
+      api.put<{ entry: RetirementEntry | null }>(
+        `/management/profiles/retirement/${encodeURIComponent(userId)}`,
+        { horizonMonths },
+      ),
   },
   // SCRUM-165: read-only Einsicht in jüngste ModelRuns (nur Metadaten).
   modelRuns: {
     recent: (limit?: number) =>
       api.get<ModelRunRecord[]>(`/model-runs${qs({ limit: limit?.toString() })}`),
+    // Aufnahme gesamt-ki-laufprotokoll (V9, R-2071): Auswertung eines Zeitraums.
+    auswertung: (von: string, bis: string) =>
+      api.get<ModelRunAuswertungAntwort>(`/model-runs/auswertung${qs({ von, bis })}`),
   },
   // SCRUM-169: KO-übergreifender read-only Evidence-Index (QM/Stufe 2; nur Metadaten).
   evidence: {
@@ -1220,6 +1243,9 @@ export const endpoints = {
   // „ausgeschaltet" melden können muss. Begründung ausführlich in import-access-routes.ts.
   importAccess: {
     confluence: () => api.get<ImportAccessStatus>("/import/confluence/zugang"),
+    // R-0134 / R-1005: der Betreiberschalter — genau ein Ja/Nein, die Antwort ist die neue Auskunft.
+    confluenceSchalter: (an: boolean) =>
+      api.put<ImportAccessStatus>("/import/confluence/schalter", { an }),
   },
   users: {
     list: () => api.get<PublicUser[]>("/users"),

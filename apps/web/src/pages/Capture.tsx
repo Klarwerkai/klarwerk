@@ -5208,6 +5208,7 @@ export function CaptureArbeitsraum({
   const sourceGateHint = sourceAttachHint(extPolicyStage, sourceForm.url);
 
   // SCRUM-375: wie viele erweiterte Felder schon Inhalt tragen — für das „X ausgefüllt"-Badge.
+  // R-0922: auch Vertraulichkeit, Prüfer und gesammelte Quellen liegen hinter dem Aufklapper.
   const advancedSummary = advancedFieldsSummary({
     category,
     asset,
@@ -5215,6 +5216,9 @@ export function CaptureArbeitsraum({
     tags,
     documentCount: docs.length,
     imageCount: images.length,
+    confidentialityDeclared: declaredConfidentiality !== undefined,
+    reviewerCount: reviewerIds.length,
+    sourceCount: pendingSources.length,
   });
 
   // SCRUM-248: ehrlicher Speicher-Check — was landet im KO, was fehlt noch? (nur echte Felder)
