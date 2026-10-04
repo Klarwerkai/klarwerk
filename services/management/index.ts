@@ -2,6 +2,27 @@
 export { ManagementService } from "./src/service";
 export type { ManagementDeps } from "./src/service";
 export { computeSnapshot, bandForScore } from "./src/metrics";
+// R-0751 / R-1639 / R-2183 (Nacharbeit 3): gepflegte Bereichsprofile und Ruhestandshorizonte.
+export {
+  ASSESSMENT_LEVELS,
+  InMemoryManagementProfileRepo,
+  MANAGEMENT_PROFILE_SCHEMA,
+  ManagementProfileError,
+  PgManagementProfileRepo,
+  RETIREMENT_HORIZONS,
+  normalizeCategoryProfile,
+  normalizeRetirementHorizon,
+  retirementDueAt,
+} from "./src/profiles";
+export type {
+  AssessmentLevel,
+  CategoryProfile,
+  ManagementProfileRepo,
+  RetirementEntry,
+  RetirementHorizon,
+} from "./src/profiles";
+export { riskHorizon } from "./src/horizon";
+export type { RiskHorizonArea, RiskHorizonBearer, RiskHorizonView } from "./src/horizon";
 export type {
   ManagementSnapshot,
   Overview,

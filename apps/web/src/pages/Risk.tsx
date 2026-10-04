@@ -15,7 +15,9 @@ import {
 import type { GapPriority } from "../api/types";
 import { useRole } from "../app/RoleContext";
 import { AiCheckBoardCaveat } from "../components/AiCheckCoverageHint";
+import { BereichsprofilPflege } from "../components/BereichsprofilPflege";
 import { HelpTip } from "../components/HelpTip";
+import { RisikoHorizont } from "../components/RisikoHorizont";
 import { Card, PageHeader, QueryState, SectionLabel } from "../components/ui";
 import { captureGapHref, gapPrivacyNoticeKey } from "../lib/captureFromGap";
 import { canSeeExpertise, contributorNamesFor, expertiseVisible } from "../lib/expertiseView";
@@ -259,6 +261,14 @@ export function Risk(): JSX.Element {
           }}
         </QueryState>
       </div>
+
+      {/* R-1639 / R-2183 (Nacharbeit 3): „mein Bereich" — Bus-Faktor 1, Ruhestand in 24/36 Monaten
+          und der Arbeitsvorrat bis zur Frist (components/RisikoHorizont). */}
+      <RisikoHorizont />
+
+      {/* Die Pflege der Eingänge dazu (Bereichsverantwortung, vier eingeschätzte Prioritätsfaktoren,
+          Ruhestandshorizonte) — nur die Admin-Rolle; der Server verlangt `users.manage`. */}
+      {role === "admin" ? <BereichsprofilPflege /> : null}
 
       {/* Consultant-System (Experten-Matching): Thema → Personen, die schon dazu beigetragen haben —
           als Hilfe „wen könnte man kurz um eine Einordnung bitten". Kein Ranking, keine Zahlen; die

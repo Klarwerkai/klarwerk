@@ -1821,6 +1821,55 @@ export interface MgmtPriority {
   flags: MgmtPriorityFlag[];
 }
 
+// R-0751 / R-1639 / R-2183 (Nacharbeit 3): gepflegte Bereichsprofile und Ruhestandshorizonte
+// (services/management/src/profiles.ts) und der daraus abgeleitete Bereichsblick (horizon.ts).
+export type AssessmentLevel = "niedrig" | "mittel" | "hoch";
+export type RetirementHorizon = 24 | 36;
+export interface CategoryProfile {
+  category: string;
+  managerId: string | null;
+  criticality: AssessmentLevel | null;
+  processProximity: AssessmentLevel | null;
+  repetition: AssessmentLevel | null;
+  damagePotential: AssessmentLevel | null;
+  updatedAt: string;
+  updatedBy: string;
+}
+export type CategoryProfileInput = Omit<CategoryProfile, "updatedAt" | "updatedBy">;
+export interface RetirementEntry {
+  userId: string;
+  horizonMonths: RetirementHorizon;
+  dueAt: string;
+  updatedAt: string;
+  updatedBy: string;
+}
+export interface ManagementProfiles {
+  categories: CategoryProfile[];
+  retirement: RetirementEntry[];
+}
+export interface RiskHorizonBearer {
+  userId: string;
+  horizonMonths: RetirementHorizon;
+  dueAt: string;
+  koCount: number;
+  openKoIds: string[];
+  soleBearer: boolean;
+  openGaps: number;
+}
+export interface RiskHorizonArea {
+  category: string;
+  managerId: string | null;
+  criticality: AssessmentLevel | null;
+  singleSource: boolean;
+  koCount: number;
+  bearers: RiskHorizonBearer[];
+}
+export interface RiskHorizonView {
+  generatedAt: string;
+  seesAll: boolean;
+  areas: RiskHorizonArea[];
+}
+
 export interface ManagementSnapshot {
   generatedAt: string;
   overview: {

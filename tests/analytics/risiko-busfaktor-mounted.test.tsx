@@ -64,6 +64,11 @@ vi.mock("../../apps/web/src/api/endpoints", () => {
       aiCheck: { coverageSummary: ok({ total: 6, incomplete: 0, unchecked: 0, noCoverage: 0 }) },
       // B4: der „Stimmt das noch?"-Merker nach einer Anlagenänderung liegt auf k2 (Betrieb).
       lifecycle: { pending: ok(["k2"]) },
+      // Nacharbeit 3: die Seite zieht den Bereichsblick und (Admin) die Pflege mit.
+      management: {
+        riskHorizon: ok({ generatedAt: "", seesAll: true, areas: [] }),
+        profiles: ok({ categories: [], retirement: [] }),
+      },
     },
   };
 });

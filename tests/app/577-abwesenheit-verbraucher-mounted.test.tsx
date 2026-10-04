@@ -91,6 +91,11 @@ vi.mock("../../apps/web/src/api/endpoints", () => {
       aiCheck: { coverageSummary: leer({ total: 0, checked: 0, failed: 0 }) },
       // `Risk` liest seit R-1639 (Nacharbeit 1) die Anlagenänderungs-Merker mit — dieselbe Lage.
       lifecycle: { pending: leer([]) },
+      // Nacharbeit 3: `Risk` zieht den Bereichsblick und (Admin) die Pflege der Bereichsprofile mit.
+      management: {
+        riskHorizon: leer({ generatedAt: "", seesAll: true, areas: [] }),
+        profiles: leer({ categories: [], retirement: [] }),
+      },
     },
   };
 });

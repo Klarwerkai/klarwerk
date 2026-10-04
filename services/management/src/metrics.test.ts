@@ -11,6 +11,7 @@ import {
   recommendations,
   statement,
 } from "./metrics";
+import type { CategoryProfile } from "./profiles";
 import type { BusFactorLike, MetricsInput } from "./types";
 
 const NOW = Date.parse("2026-06-26T00:00:00Z");
@@ -220,6 +221,60 @@ describe("R-0751 / FR-EXT-04: priorities — die neun Faktoren der Quelle (Nacha
     expect(faktor(nur, "busFactor")).toBeNull();
     expect(nur?.flags).not.toContain("busFactorOne");
     expect(nur?.knownFactors).toBe(3); // Alter, Quellenqualität, Schutzwert
+  });
+
+  it("P6 (Nacharbeit 3) · gepflegtes Bereichsprofil speist die vier übrigen Faktoren — alle neun zählen", () => {
+    const profil = (category: string, stufen: Partial<CategoryProfile>): CategoryProfile => ({
+      category,
+      managerId: null,
+      criticality: null,
+      processProximity: null,
+      repetition: null,
+      damagePotential: null,
+      updatedAt: "2026-06-26T00:00:00.000Z",
+      updatedBy: "admin",
+      ...stufen,
+    });
+    const [a1, b1] = priorities(
+      input({
+        kos: [
+          ko({
+            id: "A1",
+            category: "Anlage 1",
+            trust: 20,
+            sources: [],
+            createdAt: "2025-06-26",
+            confidentiality: "streng_vertraulich",
+          }),
+          ko({ id: "B1", category: "Anlage 2", trust: 90, sources: mitQuelle }),
+        ],
+        busFactor: [bus("Anlage 1", true), bus("Anlage 2", false, 3)],
+        openConflictKoIds: ["A1"],
+        categoryProfiles: [
+          profil("Anlage 1", {
+            criticality: "hoch",
+            processProximity: "mittel",
+            repetition: "hoch",
+            damagePotential: "niedrig",
+          }),
+          // Gegenprobe: nur eine Stufe gesetzt — die übrigen drei bleiben ohne Daten.
+          profil("Anlage 2", { criticality: "mittel" }),
+        ],
+      }),
+    );
+    expect(faktor(a1, "criticality")).toBe(100);
+    expect(faktor(a1, "processProximity")).toBe(50);
+    expect(faktor(a1, "repetition")).toBe(100);
+    expect(faktor(a1, "damagePotential")).toBe(0); // niedrig ist ein Wert, nicht „keine Daten"
+    expect(a1?.knownFactors).toBe(9);
+    // (100 + 100 + 50 + 50 + 90 + 100 + 100 + 0 + 100) / 9 = 76,7
+    expect(a1?.score).toBe(77);
+    expect(faktor(b1, "criticality")).toBe(50);
+    expect(faktor(b1, "processProximity")).toBeNull();
+    expect(faktor(b1, "repetition")).toBeNull();
+    expect(faktor(b1, "damagePotential")).toBeNull();
+    // Filter und Flags bleiben unberührt.
+    expect(a1?.flags).toEqual(["busFactorOne", "highProtection"]);
   });
 });
 

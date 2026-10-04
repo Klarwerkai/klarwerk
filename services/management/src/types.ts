@@ -1,6 +1,7 @@
 // SCRUM-120 / FE-MGMT: Management-/Wissenskapital-Kennzahlen. Stateless, keine Persistenz.
 // Alle Zahlen aus echten Bestandsdaten — keine Demo-/Beispielwerte, keine Bilanzbewertung.
 import type { KnowledgeObject } from "../../knowledge-object";
+import type { CategoryProfile } from "./profiles";
 
 // Plain-Data-Eingabe für die reinen Metrikfunktionen (DOM-frei, testbar).
 export interface BusFactorLike {
@@ -21,6 +22,10 @@ export interface MetricsInput {
   // Konflikt beteiligt sind (Paar-Regel wie /api/conflicts). Fehlt die Angabe, hat der Faktor
   // „Konfliktdichte" keine Eingangsdaten — er wird dann nicht geschätzt.
   openConflictKoIds?: readonly string[] | null;
+  // R-0751 (Nacharbeit 3): gepflegte Bereichsprofile (profiles.ts) — die Eingänge der Faktoren
+  // Kritikalität, Prozessnähe, Wiederholhäufigkeit, Schadenspotenzial. Ohne Profil oder ohne Stufe
+  // bleibt der jeweilige Faktor „keine Eingangsdaten".
+  categoryProfiles?: readonly CategoryProfile[] | null;
 }
 
 export type Band = "gut" | "mittel" | "kritisch";

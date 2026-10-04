@@ -2,6 +2,7 @@
 // bei leerem Bestand. Bewusst KEIN Re-Use der FE-Health-Formel (eigene, kapital-
 // spezifische Aggregate); minimaler Overlap der Rohquoten ist akzeptiert.
 import type { KnowledgeObject } from "../../knowledge-object";
+import { ASSESSMENT_VALUE, type AssessmentLevel } from "./profiles";
 import type {
   Band,
   CapitalScore,
@@ -167,13 +168,15 @@ export function maturity(input: MetricsInput, capScore: number): Maturity {
 // steht jeder Faktor der Quelle für sich (jeder 0–100, höher = dringender zu sichern):
 //
 //   busFactor        100 / Zahl der Urheber der Kategorie (Bus-Faktor 1 ⇒ 100)
-//   criticality      KEINE EINGANGSDATEN — am Wissensobjekt gibt es kein Kritikalitätsfeld
-//   processProximity KEINE EINGANGSDATEN — kein Prozessbezug am Wissensobjekt
+//   criticality      gepflegte Stufe im Bereichsprofil (Nacharbeit 3): niedrig 0, mittel 50, hoch 100
+//   processProximity gepflegte Stufe im Bereichsprofil (Nacharbeit 3)
 //   age              mittleres Alter seit `createdAt`, 730 Tage und älter ⇒ 100
 //   sourceQuality    Mittel aus (100 − mittleres Vertrauen) und Anteil Objekte ohne Quelle
 //   conflictDensity  Anteil Objekte an einem offenen sichtbaren Konflikt (fehlt die Angabe ⇒ keine Daten)
-//   repetition       KEINE EINGANGSDATEN — Lücken zählen ihre Häufigkeit, tragen aber keine Kategorie
-//   damagePotential  KEINE EINGANGSDATEN — kein Schadensfeld am Wissensobjekt
+//   repetition       gepflegte Stufe im Bereichsprofil (Nacharbeit 3) — Lücken zählen zwar ihre
+//                    Häufigkeit, tragen aber keine Kategorie; deshalb eingeschätzt, nicht abgeleitet
+//   damagePotential  gepflegte Stufe im Bereichsprofil (Nacharbeit 3)
+//   (Ohne Profil oder ohne gesetzte Stufe bleiben diese vier „keine Eingangsdaten".)
 //   protection       Schutzwert aus `confidentiality`: intern 0, vertraulich 50, streng vertraulich 100
 //                    (fehlende Stufe zählt wie „intern" — dieselbe Regel wie beim Zugriff)
 //
@@ -205,10 +208,14 @@ export function priorities(input: MetricsInput): CategoryPriority[] {
   const busByCat = new Map(input.busFactor.map((b) => [b.category, b]));
   const pendingSet = new Set(input.pendingRevalidation);
   const konflikte = input.openConflictKoIds ? new Set(input.openConflictKoIds) : null;
+  const profilByCat = new Map((input.categoryProfiles ?? []).map((p) => [p.category, p]));
+  const stufe = (s: AssessmentLevel | null | undefined): number | null =>
+    s ? ASSESSMENT_VALUE[s] : null;
 
   const rows: CategoryPriority[] = [];
   for (const [category, list] of cats) {
     const bus = busByCat.get(category);
+    const profil = profilByCat.get(category);
     const alterTage = mittel(
       list
         .map((k) => Date.parse(k.createdAt))
@@ -221,13 +228,13 @@ export function priorities(input: MetricsInput): CategoryPriority[] {
 
     const werte: Record<PriorityFactorKey, number | null> = {
       busFactor: bus ? clamp(100 / Math.max(1, bus.authorCount)) : null,
-      criticality: null,
-      processProximity: null,
+      criticality: stufe(profil?.criticality),
+      processProximity: stufe(profil?.processProximity),
       age: alterTage === null ? null : clamp((alterTage / ALTER_VOLL_TAGE) * 100),
       sourceQuality: clamp((100 - avgTrustOf(list) + ohneQuelle) / 2),
       conflictDensity: imKonflikt === null ? null : clamp(pct(imKonflikt, list.length)),
-      repetition: null,
-      damagePotential: null,
+      repetition: stufe(profil?.repetition),
+      damagePotential: stufe(profil?.damagePotential),
       protection: schutz === null ? null : clamp(schutz),
     };
     const factors = PRIORITY_FACTOR_KEYS.map((key) => ({ key, value: werte[key] }));
