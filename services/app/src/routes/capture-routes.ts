@@ -244,6 +244,13 @@ function docxDraftTooLargeErrorHandler(
   });
 }
 
+/**
+ * N11 (Pedi, Entscheidung 23 vom 05.09.2026): der Übernahme-Standard einer Word-Dokumentübernahme
+ * ohne ausdrückliche Einstufung — derselbe Wert wie im Import-Kern (`UEBERNAHME_STANDARD`,
+ * services/library-analytics). Gilt NUR für `POST /api/drafts/from-docx`.
+ */
+const WORD_UEBERNAHME_STANDARD = "intern" as const;
+
 /** Was das Panel schickt: die `.docx` als Base64 plus die Angaben, die es ohnehin kennt. */
 export interface DocxDraftRequest {
   /** Dateiname, für Titel und Formatprüfung. */
@@ -1307,8 +1314,15 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
             statement: kernaussageAusKlartext(reich.text) || titelVorschlag || "",
             bodyHtml,
             origin: "word_addin",
-            // R-0632: NUR die ausdrückliche Wahl aus dem Panel — ohne sie fehlt das Feld.
-            ...(isValidConfidentiality(confidentiality) ? { confidentiality } : {}),
+            // R-0632 / N11 (BEN, Nacharbeit 10): die ausdrückliche Wahl aus dem Panel gilt. OHNE Wahl
+            // gilt für diese ÜBERNAHME eines Word-Dokuments der Übernahme-Standard „intern" — Pedis
+            // jüngere Entscheidung 23 (05.09.2026) für Word-/Dateiübernahmen, gespeichert als echte
+            // Stufe und damit bis zum KI-Egress wirksam. ABGEGRENZT: das manuelle Erfassen (Blatt,
+            // Arbeitsraum, `POST /api/drafts`) behält seine Pflicht zur ausdrücklichen Wahl (Q3,
+            // N-0017/UX-05) — dort wird nichts vorbelegt.
+            confidentiality: isValidConfidentiality(confidentiality)
+              ? confidentiality
+              : WORD_UEBERNAHME_STANDARD,
             // JOB 512 (R5): die Zahl der Bilder in der QUELLDATEI, vor jedem Budgetabzug. Der
             // Client entscheidet damit fail-closed, ob etwas verloren ging.
             sourceImageCount: quellbilder,

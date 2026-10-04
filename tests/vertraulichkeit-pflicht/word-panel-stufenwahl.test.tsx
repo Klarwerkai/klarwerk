@@ -14,7 +14,8 @@
 //   · P1–P3: je Stufe ein Klick im Panel, dann der reguläre Weg „Ganzes Dokument übernehmen" →
 //     `POST /api/drafts/from-docx`. Der Entwurf wird über `GET /api/drafts/:id` zurückgelesen:
 //     exakt die gewählte Stufe und `origin: "word_addin"`.
-//   · P0 GEGENPROBE: ohne Klick reist KEINE Stufe — „nicht gewählt" ist keine Wahl.
+//   · P0: ohne Klick sendet das Panel KEINE Stufe; gespeichert wird der Übernahme-Standard
+//     „intern" (N11, BEN Nacharbeit 10).
 //   · H1/H2: eine gespeicherte Stufe eines Word-Entwurfs wird nur angehoben, nie gesenkt
 //     (`continueDraft`); H3 grenzt ab: ein Entwurf des Blatts ist davon nicht betroffen.
 //
@@ -251,12 +252,14 @@ describe("R-0632 · die drei Stufen im Panel, je ein Klick, bis zum gespeicherte
     });
   }
 
-  it("P0 · GEGENPROBE: ohne Klick reist keine Stufe — der Entwurf bleibt ohne Einstufung", async () => {
+  // BEN, Nacharbeit 10 (N11, jüngere Pedi-Entscheidung vom 05.09.): ohne Panelwahl speichert die
+  // Word-Übernahme den Übernahme-Standard „intern" — das Panel selbst sendet weiterhin keine Stufe.
+  it("P0 · ohne Klick sendet das Panel keine Stufe — der Server speichert den Übernahme-Standard intern", async () => {
     await ladeTaskpane();
     const aufruf = await dokumentEinreichen();
     expect(Object.keys(aufruf.body)).not.toContain("confidentiality");
     const gespeichert = await gespeicherterEntwurf(String(aufruf.antwort.id));
-    expect(Object.hasOwn(gespeichert, "confidentiality")).toBe(false);
+    expect(gespeichert.confidentiality).toBe("intern");
     expect(gespeichert.origin).toBe("word_addin");
   });
 

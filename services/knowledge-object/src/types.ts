@@ -568,6 +568,12 @@ export interface KnowledgeObject {
   // Quellsystem und wird nie als solche ausgegeben. Nur Serverpfade setzen das Feld; die
   // öffentlichen Schreibrouten verwerfen es. Additiv im JSONB, keine Migration, kein Backfill.
   dokumentHerkunft?: DokumentHerkunft;
+  // R-0632 (BEN, Nacharbeit 10): die Herabstufungssperre eines Word-Entwurfs reist beim Promote
+  // ins Wissensobjekt. Solange sie steht, wird die Stufe nur angehoben, NIE gesenkt — auch nicht
+  // von Prüfer oder Administrator (`setConfidentiality`, unabhängig von `mayDowngrade`). Nur der
+  // Entwurfs-Promote setzt sie (Marke `stufeNurAnheben` am Draft); die öffentlichen Schreibrouten
+  // verwerfen das Feld. Andere Wissensobjekte behalten die Regel aus SCRUM-509.
+  stufeNurAnheben?: true;
   // WP-SUBMIT-ASYNC (Pedis R3 21.07.): Status der HINTERGRUND-KI-Prüfung nach dem Einreichen —
   // additiv im JSONB, keine Migration; Altbestand ohne Feld = kein Prüf-Job. Die Ergebnis-Signale
   // (Konflikte/Überschneidungen) entstehen unverändert in ihren Services — aiCheck trägt nur den

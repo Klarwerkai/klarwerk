@@ -1327,6 +1327,8 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             importedVia: _ignoredImportedVia,
             // R-0169 (Nacharbeit 5): der Fassungsbezug der Dokumentakte entsteht nur serverseitig.
             dokumentHerkunft: _ignoredDokumentHerkunft,
+            // R-0632 (Nacharbeit 10): die Herabstufungssperre setzt allein der Entwurfs-Promote.
+            stufeNurAnheben: _ignoredStufeNurAnheben,
             ...input
           } = request.body;
           // ==========================================================================================
@@ -1624,6 +1626,8 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             origin: _ignoredOrigin,
             importedVia: _ignoredImportedVia,
             dokumentHerkunft: _ignoredDokumentHerkunft,
+            // R-0632 (Nacharbeit 10): die Herabstufungssperre setzt allein der Entwurfs-Promote.
+            stufeNurAnheben: _ignoredStufeNurAnheben,
             ...rest
           } = body.create ?? ({} as Omit<CreateKoInput, "author">);
           input = { ...rest, author: user.id } as CreateKoInput;

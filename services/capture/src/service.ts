@@ -1291,6 +1291,10 @@ export class CaptureService {
       // (nicht im Payload) und ist serverseitig gesetzt — hier wird nichts gelesen, was ein Client
       // geschrieben haben könnte.
       ...(draft.dokumentHerkunft ? { dokumentHerkunft: draft.dokumentHerkunft } : {}),
+      // R-0632 (BEN, Nacharbeit 10): die Herabstufungssperre endet NICHT am Entwurf. Sie reist —
+      // wie der Fassungsbezug darüber, vom Server gesetzt — ins Wissensobjekt; dort sperrt
+      // `setConfidentiality` jedes Senken, auch mit Prüfer-/Administratorrecht.
+      ...(unterliegtWordSperre(draft) ? { stufeNurAnheben: true as const } : {}),
       // ==========================================================================================
       // JOB 3934 — DIE BELEGSTELLEN REISEN MIT. Genau hier ging die Herkunft bis heute verloren.
       // ==========================================================================================
