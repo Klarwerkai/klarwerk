@@ -1,4 +1,4 @@
-import type { FastifyPluginAsync, FastifyReply } from "fastify";
+import type { FastifyPluginAsync } from "fastify";
 import {
   type ConflictService,
   type OverlapService,
@@ -7,14 +7,15 @@ import {
   trigramSimilarity,
 } from "../../../conflicts";
 import type { AiCheckBasis, KnowledgeObject, KoFilter, KoService } from "../../../knowledge-object";
-import type {
-  DublettenBefund,
-  DublettenPruefung,
-  ImportCandidate,
-  ImportItem,
-  KandidatDublettenbefund,
-  LibraryService,
-  ReviewAction,
+import {
+  type DublettenBefund,
+  type DublettenPruefung,
+  type ImportCandidate,
+  type ImportItem,
+  type KandidatDublettenbefund,
+  type LibraryService,
+  type ReviewAction,
+  ohneQuellRestriktionen,
 } from "../../../library-analytics";
 import { can } from "../../../rbac";
 import type { Reasoner } from "../../../reasoner";
@@ -32,7 +33,7 @@ import {
 } from "../ai-check-worker";
 import type { SemanticPrefilter } from "../duplicate-detection";
 import { schalterAn } from "../feature-flags";
-import { type Guards, sendError } from "../http";
+import { type Guards, type SessionUser, sendError } from "../http";
 import {
   darfSehen,
   sichtbareFuer,
@@ -102,6 +103,140 @@ function toImportCandidateDto(candidate: ImportCandidate): ImportCandidateDto {
     ...(candidate.reviewedAt !== undefined ? { reviewedAt: candidate.reviewedAt } : {}),
     ...(candidate.reviewedAction !== undefined ? { reviewedAction: candidate.reviewedAction } : {}),
     ...(candidate.auditPending !== undefined ? { auditPending: true } : {}),
+  };
+}
+
+// ================================================================================================
+// NACHARBEIT 3 (bens F3) — EINE TREFFERKENNUNG IST EINE AUSKUNFT ÜBER EIN OBJEKT.
+// ================================================================================================
+//
+// `dublettenbefund.treffer.koId` (und `koId` eines angenommenen Kandidaten) nennen ein Wissensobjekt.
+// Der Ankervergleich beim Einreihen läuft über den GANZEN Bestand — ohne diese Grenze gab die
+// Einreichungsantwort einem Experten die Kennung eines vertraulichen Objekts aus, das er nicht sehen
+// darf. Die Entscheidung ist dieselbe wie überall (`darfSehen`, am vollen Objekt). Wer `ko.validate`
+// hat, sieht jedes Objekt und braucht die Treffer zum Prüfen — für ihn bleibt die Antwort unverändert
+// (auch Papierkorb-Treffer, wie bisher).
+//
+// WAS AN DIE STELLE TRITT: ein unsichtbarer Treffer wird zu `pruefung_nicht_moeglich` — dem
+// vorhandenen Ausgang „für dich ist dazu keine Aussage möglich", den der Client bereits darstellt.
+// Eine Ersatzform mit leerem Treffer gäbe es im Vertrag nicht. Die ENTSCHEIDUNG des Annehmenden
+// hängt daran nicht: der Dienst liest den abgelegten Kandidaten, nie dieses DTO.
+async function kandidatenDtosFuer(
+  library: LibraryService,
+  user: SessionUser,
+  candidates: readonly ImportCandidate[],
+): Promise<ImportCandidateDto[]> {
+  const dtos = candidates.map(toImportCandidateDto);
+  if (can(user.role, "ko.validate")) {
+    return dtos;
+  }
+  const sichtbar = new Map<string, boolean>();
+  const pruefe = async (koId: string): Promise<boolean> => {
+    const bekannt = sichtbar.get(koId);
+    if (bekannt !== undefined) {
+      return bekannt;
+    }
+    const ko = await library.wissensobjektFuerSicht(koId);
+    const darf = ko !== undefined && darfSehen(user, ko);
+    sichtbar.set(koId, darf);
+    return darf;
+  };
+  const ergebnis: ImportCandidateDto[] = [];
+  for (const dto of dtos) {
+    const befund = dto.dublettenbefund;
+    const trefferKo =
+      befund && "treffer" in befund && befund.treffer.art === "wissensobjekt"
+        ? befund.treffer.koId
+        : undefined;
+    const trefferVerdeckt = trefferKo !== undefined && !(await pruefe(trefferKo));
+    const koVerdeckt = dto.koId !== null && !(await pruefe(dto.koId));
+    ergebnis.push({
+      ...dto,
+      ...(trefferVerdeckt
+        ? { dublettenbefund: { ergebnis: "pruefung_nicht_moeglich" as const } }
+        : {}),
+      ...(koVerdeckt ? { koId: null } : {}),
+    });
+  }
+  return ergebnis;
+}
+
+// ================================================================================================
+// R-0143 — DER DIREKTE IMPORTEINGANG FÜHRT IN DIE PRÜFWARTESCHLANGE, NICHT IN DEN BESTAND.
+// ================================================================================================
+//
+// `POST /api/library/import` rief bis hierher `LibraryService.importJson` und legte jeden nicht
+// doppelten Eintrag SOFORT als Wissensobjekt an — ohne Kandidat und ohne menschliche Entscheidung.
+// Ab hier reiht er genau wie `POST /api/library/import/candidates` Kandidaten ein (dieselbe
+// Dublettenregel, dieselbe Einreihstelle). Ein Wissensobjekt entsteht erst durch die berechtigte
+// Annahme (`PUT /api/library/import/candidates/:id`, Recht `ko.validate`).
+//
+// DIE ANTWORT bleibt in ihren Feldern lesbar, sagt aber die Wahrheit über den neuen Weg:
+//   · `imported` ist immer 0 — direkt angelegt wird nichts mehr.
+//   · `uebersprungen`/`skipped` nennen die Einträge, aus denen auch eine Annahme KEIN Objekt macht
+//     (Dublette `identisch`/`aehnlich` oder `pruefung_nicht_moeglich`), mit dem getroffenen Objekt
+//     bzw. — neu — dem getroffenen Kandidaten desselben Laufs (`kandidatId`, dann `koId: null`).
+//   · `eingereiht` und `kandidaten` nennen, was jetzt in der Warteschlange steht (auch die
+//     Dubletten: sie stehen dort mit ihrem Befund, wie auf dem Kandidatenweg).
+interface DirektimportUebersprungen {
+  titel: string;
+  grund: "identisch" | "aehnlich" | "pruefung_nicht_moeglich";
+  koId: string | null;
+  kandidatId?: string;
+  aehnlichkeit?: number;
+}
+
+interface DirektimportAntwort {
+  imported: 0;
+  skipped: number;
+  uebersprungen: DirektimportUebersprungen[];
+  eingereiht: number;
+  kandidaten: ImportCandidateDto[];
+}
+
+function uebersprungenAus(candidate: ImportCandidate): DirektimportUebersprungen | undefined {
+  const befund = candidate.dublettenbefund;
+  const titel = candidate.item.title;
+  if (befund?.ergebnis === "pruefung_nicht_moeglich") {
+    return { titel, grund: "pruefung_nicht_moeglich", koId: null };
+  }
+  if (befund?.ergebnis !== "identisch" && befund?.ergebnis !== "aehnlich") {
+    return undefined;
+  }
+  const treffer =
+    befund.treffer.art === "wissensobjekt"
+      ? { koId: befund.treffer.koId }
+      : { koId: null, kandidatId: befund.treffer.kandidatId };
+  return befund.ergebnis === "aehnlich"
+    ? { titel, grund: "aehnlich", ...treffer, aehnlichkeit: befund.aehnlichkeit }
+    : { titel, grund: "identisch", ...treffer };
+}
+
+// NACHARBEIT 3 (bens F3) × R-0143: `dtos` sind die an die Sichtbarkeit gebundenen DTOs derselben
+// Kandidaten in derselben Reihenfolge (`kandidatenDtosFuer`). Hat diese Grenze den Treffer eines
+// Kandidaten verdeckt, nennt auch `uebersprungen` dessen Kennung nicht — Grund und Titel bleiben,
+// damit die Antwort weiter sagt, WARUM aus dem Eintrag kein Objekt wird. Ohne `dtos` (Altaufrufer)
+// gilt die unveränderte Form.
+export function direktimportAntwort(
+  kandidaten: readonly ImportCandidate[],
+  dtos: readonly ImportCandidateDto[] = kandidaten.map(toImportCandidateDto),
+): DirektimportAntwort {
+  const uebersprungen = kandidaten
+    .map((kandidat, i) => {
+      const eintrag = uebersprungenAus(kandidat);
+      const verdeckt =
+        eintrag !== undefined &&
+        eintrag.koId !== null &&
+        dtos[i]?.dublettenbefund?.ergebnis === "pruefung_nicht_moeglich";
+      return verdeckt ? { ...eintrag, koId: null } : eintrag;
+    })
+    .filter((e): e is DirektimportUebersprungen => e !== undefined);
+  return {
+    imported: 0,
+    skipped: uebersprungen.length,
+    uebersprungen,
+    eingereiht: kandidaten.length,
+    kandidaten: [...dtos],
   };
 }
 
@@ -784,42 +919,36 @@ export function libraryRoutes(
       reply.code(200).send(await library.exportJson(opts));
     });
 
-    // ============================================================================================
-    // Lauf gesamt-import-adoption (Bens B3, R-0143) — ES GIBT NUR NOCH EINEN IMPORTWEG.
-    // ============================================================================================
-    //
-    // `POST /api/library/import` legte bis hier Wissensobjekte UNMITTELBAR an (`importJson`) und
-    // umging die Prüf-Warteschlange vollständig. R-0143 verlangt das Gegenteil: „erst wenn ein
-    // Mensch übernimmt, entsteht ein echtes Wissensobjekt". Die Adresse bleibt für bestehende
-    // Aufrufer erreichbar, tut aber jetzt GENAU DASSELBE wie `POST /api/library/import/candidates`:
-    // sie reiht Kandidaten ein (201, dieselbe DTO-Liste). Kein zweiter Vertrag, kein Sonderweg.
-    // Guard und Rumpfsignatur stehen an JEDER Route selbst (die Rechte- und Zugangsaudits lesen sie
-    // dort ab); gemeinsam ist nur der Einreiheschritt danach.
-    const kandidatenEinreihen = async (
-      items: readonly ImportItem[] | undefined,
-      userId: string,
-      reply: FastifyReply,
-    ): Promise<void> => {
-      try {
-        // WP-SHIP8-CLOSE-8 (bens GELB-2): auch frisch eingereihte Kandidaten laufen durchs DTO.
-        // JOB 3050: die Dublettenregel reist als Prädikat mit — der Dienst legt sie nicht aus.
-        const created = await library.createImportCandidates(
-          items ?? [],
-          userId,
-          pruefeReImportDublette,
-        );
-        reply.code(201).send(created.map(toImportCandidateDto));
-      } catch (error) {
-        sendError(reply, error);
-      }
-    };
+    // R-0143: DIE EINE Einreihstelle beider Importeingänge — dieselbe Dublettenregel (JOB 3050),
+    // derselbe Dienstweg. Der Wächter `tests/re-import-dubletten/port-aufrufer-waechter.test.ts`
+    // zählt genau diese eine Nennung für diese Datei.
+    // NACHARBEIT 2/5 (R-0139/R-0169): beide Eingänge nehmen EINGEREICHTE Einträge an — ihre
+    // Quellangaben bleiben bei der Annahme erhalten, Einträge ohne externalId bekommen eine interne
+    // Dokumentakte (Begründung an `DATEIWEG_VERMERK`, services/library-analytics).
+    const einreihen = (items: readonly ImportItem[], actor: string): Promise<ImportCandidate[]> =>
+      library.createImportCandidates(items, actor, pruefeReImportDublette, {
+        quellangabenEingereicht: true,
+      });
 
     app.post<{ Body: { items: ImportItem[] } }>("/api/library/import", async (request, reply) => {
       const user = await guards.requirePermission("ko.create", request, reply);
       if (!user) {
         return;
       }
-      await kandidatenEinreihen(request.body.items, user.id, reply);
+      try {
+        // R-0143 (s. `direktimportAntwort`): kein `importJson` mehr — der Eingang reiht Kandidaten
+        // ein, ein Wissensobjekt entsteht erst durch die berechtigte Annahme. Damit entfällt hier
+        // auch der direkte Re-Sync fremder Objekte (NACHARBEIT 2, `zielDarf`): fortgeschrieben wird
+        // nur noch über die Annahme mit `ko.validate`.
+        // package:confluence (K6): die Lese-Einschränkung ist eine Quellangabe, kein Rumpffeld.
+        const items = ohneQuellRestriktionen(request.body.items ?? []);
+        const kandidaten = await einreihen(items, user.id);
+        // NACHARBEIT 3 (bens F3): Trefferkennungen nur für sichtbare Ziele — auch hier.
+        const dtos = await kandidatenDtosFuer(library, user, kandidaten);
+        reply.code(200).send(direktimportAntwort(kandidaten, dtos));
+      } catch (error) {
+        sendError(reply, error);
+      }
     });
 
     // SCRUM-116: Import-/Source-Review-Kandidaten (JSON-Re-Import mit Review-Queue).
@@ -830,7 +959,21 @@ export function libraryRoutes(
         if (!user) {
           return;
         }
-        await kandidatenEinreihen(request.body.items, user.id, reply);
+        try {
+          // WP-SHIP8-CLOSE-8 (bens GELB-2): auch frisch eingereihte Kandidaten laufen durchs DTO.
+          // JOB 3050: DIESELBE Instanz der Dublettenregel wie `POST /api/library/import` oben —
+          // beide Importwege beantworten die Frage ab hier gleich.
+          // NACHARBEIT 2 (bens F1): diese Route ist der Dateiweg (Stufe2 → parseImportItems). Was
+          // ein Eintrag hier an Quellangaben mitbringt, bleibt bei der Übernahme erhalten — auch
+          // ohne eingeschalteten Quelladapter (`einreihen` setzt den Dateiweg-Vermerk).
+          // package:confluence (K6): nur der Quell-Adapter erzeugt `sourceRestrictions`.
+          const items = ohneQuellRestriktionen(request.body.items ?? []);
+          const created = await einreihen(items, user.id);
+          // NACHARBEIT 3 (bens F3): Trefferkennungen nur für sichtbare Ziele.
+          reply.code(201).send(await kandidatenDtosFuer(library, user, created));
+        } catch (error) {
+          sendError(reply, error);
+        }
       },
     );
 
@@ -849,7 +992,9 @@ export function libraryRoutes(
       await library.retryPendingReviewAudits();
       // WP-SHIP8-CLOSE-8 (bens GELB-2): NIE rohe Kandidatenobjekte auf den Draht — das DTO
       // hält Lease-/Claim-Felder und Beleg-Interna zurück (ko.read-Nutzer sehen nur Produktdaten).
-      reply.code(200).send((await library.listImportCandidates()).map(toImportCandidateDto));
+      // NACHARBEIT 3 (bens F3): dieselbe Sichtbarkeitsgrenze für die Kandidatenliste.
+      const kandidaten = await library.listImportCandidates();
+      reply.code(200).send(await kandidatenDtosFuer(library, user, kandidaten));
     });
 
     // WP-D-CLEAN (Pedis Entscheid: alle Testdaten löschen, auch Confluence und Jira): ZWEISTUFIGER

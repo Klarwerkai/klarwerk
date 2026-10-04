@@ -8,6 +8,7 @@ import type {
   KantenRichtung,
   KnowledgeObject,
   KnowledgeType,
+  KoSourceRestrictions,
   KoStatus,
 } from "../../knowledge-object";
 
@@ -38,6 +39,11 @@ export interface ImportItem {
   // Titel/Autor: sie sind an der Quelle EINMAL kanonisch dekodiert.
   sourcePath?: string[];
   sourceVersion?: number;
+  // package:confluence (K6): die konkrete Lese-Einschränkung der Quelle (Benutzer-/Gruppenkennungen
+  // der Quelle). Reist unverändert über den Kandidaten bis an den Herkunftsanker des
+  // Wissensobjekts (`buildSource`). Erzeuger ist allein ein Quell-Adapter; aus Client-Rümpfen wird
+  // das Feld verworfen (`ohneQuellRestriktionen` unten). KEINE Rechteabbildung — Begründung am Typ.
+  sourceRestrictions?: KoSourceRestrictions;
   url?: string;
   provider?: string;
   bodyHtml?: string;
@@ -53,6 +59,26 @@ export interface ImportItem {
   // (Explore/Select laufen ohne Kandidaten-Erzeugung direkt auf Mapper-Items). FEHLT der Marker, ist
   // es ECHTER Altbestand (gespeichert vor dieser Regel) → defensiver Anzeige-Decode. JSON-persistiert.
   textCodec?: "decoded";
+}
+
+/**
+ * package:confluence (K6): Einträge aus einem CLIENT-RUMPF (`POST /api/library/import`,
+ * `…/import/candidates`) ohne `sourceRestrictions`.
+ *
+ * Die Lese-Einschränkung ist eine Angabe der QUELLE und hat genau einen Erzeuger: den Quell-Adapter.
+ * Über die generischen Importwege kann jeder mit `ko.create` beliebige Einträge einreichen — ein dort
+ * mitgeschicktes Feld wäre eine Behauptung des Einreichers, die am Wissensobjekt wie eine
+ * Quellangabe aussähe. Es wird deshalb verworfen, nicht geprüft; alle übrigen Felder bleiben
+ * unberührt.
+ */
+export function ohneQuellRestriktionen(items: readonly ImportItem[]): ImportItem[] {
+  return items.map((item) => {
+    if (!item || typeof item !== "object" || !("sourceRestrictions" in item)) {
+      return item;
+    }
+    const { sourceRestrictions: _verworfen, ...rest } = item;
+    return rest;
+  });
 }
 
 // ================================================================================================
@@ -97,6 +123,21 @@ export type DublettenPruefung = (
   bestand: readonly KnowledgeObject[],
 ) => DublettenBefund;
 
+/** Warum ein Eintrag der Sicherung nicht in den Bestand ging. */
+export type UebersprungenGrund = "identisch" | "aehnlich" | "pruefung_nicht_moeglich";
+
+export interface UebersprungenerImport {
+  titel: string;
+  grund: UebersprungenGrund;
+  /**
+   * Das getroffene Wissensobjekt. `null` heisst ehrlich „es wurde keins ermittelt" — bei
+   * `pruefung_nicht_moeglich` gab es gar keine Entscheidung, nicht etwa keinen Treffer.
+   */
+  koId: string | null;
+  /** Nur bei `aehnlich`: der Wert, mit dem die Pruefung entschieden hat. */
+  aehnlichkeit?: number;
+}
+
 // ================================================================================================
 // JOB 3050 — DIESELBE FRAGE AM REVIEW-KANDIDATEN, UND DIE ANTWORT SAGT, WORAUF.
 // ================================================================================================
@@ -135,7 +176,7 @@ export type Dublettentreffer =
  * - `im_papierkorb` — JOB 3081, s. unten.
  * - `wiederverwendet` — JOB 3116, s. unten.
  *
- * Die Woerter sind bewusst die des frueheren `UebersprungenGrund` des entfallenen Direktimports (plus die Faelle, die es dort nicht geben
+ * Die Woerter sind bewusst die von `UebersprungenGrund` (plus die Faelle, die es dort nicht geben
  * kann): dieselbe Frage, dieselbe Sprache auf beiden Importwegen.
  *
  * ------------------------------------------------------------------------------------------------
@@ -192,6 +233,17 @@ export type KandidatDublettenbefund =
   | { readonly ergebnis: "nicht_gestellt" }
   | { readonly ergebnis: "im_papierkorb"; readonly treffer: Dublettentreffer }
   | { readonly ergebnis: "wiederverwendet"; readonly treffer: Dublettentreffer };
+
+export interface ImportResult {
+  imported: number;
+  skipped: number;
+  /**
+   * JOB 3023: die nackte Zahl konnte weder sagen, WARUM etwas uebersprungen wurde, noch worauf es
+   * getroffen ist. Rein ADDITIV — `imported`/`skipped` behalten Name und Bedeutung; `skipped` ist
+   * weiterhin „nicht eingespielt" und damit stets `uebersprungen.length`.
+   */
+  uebersprungen: UebersprungenerImport[];
+}
 
 // SCRUM-510: quell-agnostischer Import-Vertrag. Ein Adapter (Confluence = #1, Jira-TEST später = #2)
 // liest seine Quelle und liefert NORMALISIERTE ImportItems; der Import-Kern (createImportCandidates →

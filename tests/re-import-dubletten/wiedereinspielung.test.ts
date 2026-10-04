@@ -14,7 +14,7 @@
 // ueberspringen, um die es geht — er waere gruen, waehrend die Route weiter Zeichen vergleicht.
 //
 // Lauf gesamt-import-adoption (Bens B3, R-0143): `importJson()` ist entfallen; `POST
-// /api/library/import` reiht Kandidaten ein (201), erst die Annahme legt an. Jeder Fall misst darum
+// /api/library/import` reiht Kandidaten ein, erst die Annahme legt an. Jeder Fall misst darum
 // den GANZEN Weg: den Befund je Kandidat beim Einreihen, die Annahme ALLER Kandidaten (kein Objekt
 // fuer eine Dublette) und danach den Bestand.
 import { describe, expect, it } from "vitest";
@@ -89,7 +89,13 @@ function getroffenesKo(befund: KandidatDublettenbefund | undefined): string | un
     : undefined;
 }
 
-/** Der ganze Importweg: einreihen (201), dann JEDEN Kandidaten annehmen. */
+/**
+ * Der ganze Importweg: einreihen, dann JEDEN Kandidaten annehmen.
+ *
+ * Hauptstand-Integration (R-0143, Auftrag pruef-warteschlange): der Eingang antwortet mit 200 und
+ * `direktimportAntwort`; er legt selbst nichts an (`imported: 0`), die eingereihten Kandidaten
+ * stehen unter `kandidaten`.
+ */
 async function spieleEin(app: App, headers: Record<string, string>, items: unknown[]) {
   const res = await app.inject({
     method: "POST",
@@ -97,8 +103,10 @@ async function spieleEin(app: App, headers: Record<string, string>, items: unkno
     headers,
     payload: { items },
   });
-  expect(res.statusCode, res.body).toBe(201);
-  const kandidaten = res.json() as KandidatDto[];
+  expect(res.statusCode, res.body).toBe(200);
+  const antwort = res.json() as { imported: number; kandidaten: KandidatDto[] };
+  expect(antwort.imported, "Der Eingang legt selbst nichts an.").toBe(0);
+  const kandidaten = antwort.kandidaten;
   const angenommen: KandidatDto[] = [];
   for (const kandidat of kandidaten) {
     const entscheidung = await app.inject({

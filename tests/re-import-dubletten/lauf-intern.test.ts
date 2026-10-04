@@ -7,15 +7,21 @@
 // Eintrag zweimal in leicht abweichender Schreibweise enthaelt, legte ihn zweimal an. Der Bestand
 // war danach schon beim ERSTEN Einspielen doppelt.
 //
-// Lauf gesamt-import-adoption (Bens B3, R-0143): `POST /api/library/import` reiht nur noch
-// Kandidaten ein; erst die Annahme legt an. Derselbe Schutz wird darum zweimal gemessen: beim
-// Einreihen trifft der zweite Eintrag den Kandidaten DESSELBEN Laufs, und nach der Annahme beider
-// Kandidaten steht genau ein Objekt im Bestand.
+// Lauf gesamt-import-adoption: die Annahme stellt die Dublettenfrage am heutigen Bestand neu. Der
+// Fall misst darum zusätzlich den AUSGANG beider Annahmen — die zweite legt nichts an und nennt das
+// im selben Lauf erzeugte Objekt mit Kennung.
 import { describe, expect, it } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 import type { KandidatDublettenbefund } from "../../services/library-analytics";
 
 const ZUGANG = { name: "Admin", email: "laufintern@x.de", password: "secret123" };
+
+interface Uebersprungen {
+  titel: string;
+  grund: string;
+  koId: string | null;
+  aehnlichkeit?: number;
+}
 
 interface KandidatDto {
   id: string;
@@ -60,36 +66,45 @@ describe("JOB 3023 · B — der Vergleich laeuft auch gegen den eigenen Lauf", (
       },
     });
 
-    expect(res.statusCode, res.body).toBe(201);
-    const kandidaten = res.json() as KandidatDto[];
-    expect(kandidaten).toHaveLength(2);
-    expect(kandidaten[0]?.dublettenbefund?.ergebnis).toBe("keine");
+    expect(res.statusCode, res.body).toBe(200);
+    // R-0143 (bens F1): der direkte Eingang reiht ein und legt NICHTS direkt an. Die Dublettenfrage
+    // gegen den eigenen Lauf bleibt dieselbe — ihr Treffer ist jetzt der KANDIDAT des ersten
+    // Eintrags (ein Objekt gibt es vor der Annahme nicht), und die Annahme beider ergibt EIN Objekt.
+    const body = res.json() as {
+      imported: number;
+      skipped: number;
+      uebersprungen: (Uebersprungen & { kandidatId?: string })[];
+      kandidaten: { id: string }[];
+    };
+    expect(body.imported).toBe(0);
+    expect(body.skipped).toBe(1);
+    expect(body.uebersprungen).toHaveLength(1);
+    expect(body.uebersprungen[0]?.grund).toBe("aehnlich");
+    const [erster, zweiter] = body.kandidaten;
     expect(
-      kandidaten[1]?.dublettenbefund,
-      "Der zweite Eintrag trifft den Kandidaten DESSELBEN Laufs.",
-    ).toMatchObject({
-      ergebnis: "aehnlich",
-      treffer: { art: "kandidat", kandidatId: kandidaten[0]?.id },
-    });
+      [body.uebersprungen[0]?.koId, body.uebersprungen[0]?.kandidatId],
+      "Der Treffer ist der im selben Lauf eingereihte Kandidat.",
+    ).toEqual([null, erster?.id]);
+
+    const vorAnnahme = await app.inject({ method: "GET", url: "/api/kos", headers });
+    expect(vorAnnahme.json() as unknown[], "Vor der Annahme entsteht kein Objekt.").toHaveLength(0);
 
     const angenommen: KandidatDto[] = [];
-    for (const kandidat of kandidaten) {
-      const entscheidung = await app.inject({
+    for (const k of [erster, zweiter]) {
+      const annahme = await app.inject({
         method: "PUT",
-        url: `/api/library/import/candidates/${kandidat.id}`,
+        url: `/api/library/import/candidates/${k?.id}`,
         headers,
         payload: { action: "accept" },
       });
-      expect(entscheidung.statusCode, entscheidung.body).toBe(200);
-      angenommen.push(entscheidung.json() as KandidatDto);
+      expect(annahme.statusCode, annahme.body).toBe(200);
+      angenommen.push(annahme.json() as KandidatDto);
     }
-
     const liste = await app.inject({ method: "GET", url: "/api/kos", headers });
     const kos = liste.json() as { id: string }[];
-    expect(
-      kos,
-      "Aus zwei Schreibweisen derselben Sache wird genau ein Wissensobjekt.",
-    ).toHaveLength(1);
+    expect(kos, "Aus zwei Schreibweisen derselben Sache wird genau ein Wissensobjekt.").toHaveLength(
+      1,
+    );
     expect(angenommen[0]?.koId).toBe(kos[0]?.id);
     expect(angenommen[1]?.koId, "Die Annahme der Dublette legt nichts an.").toBeNull();
     expect(

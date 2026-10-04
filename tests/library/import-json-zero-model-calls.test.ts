@@ -249,8 +249,12 @@ async function setup() {
 type App = Awaited<ReturnType<typeof setup>>["app"];
 
 /**
- * Lauf gesamt-import-adoption: der ganze Importweg — einreihen (201) und JEDEN Kandidaten
- * annehmen. Liefert die Befunde vom Einreihen und die Kennungen der angelegten Objekte.
+ * Lauf gesamt-import-adoption: der ganze Importweg — einreihen und JEDEN Kandidaten annehmen.
+ * Liefert die Befunde vom Einreihen und die Kennungen der angelegten Objekte.
+ *
+ * Hauptstand-Integration (R-0143, Auftrag pruef-warteschlange): der Eingang antwortet mit 200 und
+ * `direktimportAntwort` — er reiht ein (`eingereiht`), legt selbst nichts an (`imported: 0`), und
+ * seine Kandidaten stehen unter `kandidaten`. Beides wird hier je Aufruf mitgepinnt.
  */
 async function importiereUndNimmAn(app: App, headers: Record<string, string>, items: unknown[]) {
   const res = await app.inject({
@@ -259,8 +263,21 @@ async function importiereUndNimmAn(app: App, headers: Record<string, string>, it
     headers,
     payload: { items },
   });
-  expect(res.statusCode, res.body).toBe(201);
-  const kandidaten = res.json() as { id: string; dublettenbefund?: { ergebnis: string } }[];
+  expect(res.statusCode, res.body).toBe(200);
+  const antwort = res.json() as {
+    imported: number;
+    eingereiht: number;
+    kandidaten: { id: string; dublettenbefund?: { ergebnis: string } }[];
+  };
+  // Beide Aufrufer reichen dublettenfreie Wellen ein — darum gilt hier auch main's Pin „nichts
+  // zurückgehalten" (`skipped: 0`, `uebersprungen: []`).
+  expect(antwort).toMatchObject({
+    imported: 0,
+    skipped: 0,
+    uebersprungen: [],
+    eingereiht: items.length,
+  });
+  const kandidaten = antwort.kandidaten;
   const koIds: (string | null)[] = [];
   for (const kandidat of kandidaten) {
     const entscheidung = await app.inject({

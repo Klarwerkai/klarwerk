@@ -157,6 +157,17 @@ const WIDERRUFENE_FREIGABEN: readonly string[] = [
   // Behandlung des Sitzungsverlusts; ihre Nachfolgerinnen stehen am Eintrag.
   "FREEZE-144/GIA2-R2-20261001/repo",
   "FREEZE-144/GIA2-R2-20261001/repo-pg",
+  // package:confluence (main c2aed83d, R-0134/K6): die beiden Freigaben
+  // `FREEZE-144/JOB3087-20260905/index` und `FREEZE-144/JOB4155R3-20260917/types` (oben schon
+  // widerrufen) autorisierten auch den Stand VOR `ohneQuellRestriktionen`/`sourceRestrictions`
+  // (types.ts) und deren Ausleitung (index.ts); ihre Nachfolgerinnen stehen am jeweiligen Eintrag.
+  //
+  // Hauptstand-Integration (Lauf gesamt-import-adoption:2): verbraucht. Diese zwei Freigaben
+  // autorisierten den Stand OHNE `importJson`-Antworttypen. `importJson` bleibt mit dem Hauptstand
+  // erhalten (Auftrag herkunft-identitaet); `index.ts` und `types.ts` sind wieder byte-gleich mit
+  // main 1147c026, und es gelten dessen Einträge.
+  "FREEZE-144/GIA-R2-20260930/index",
+  "FREEZE-144/GIA-R2-20260930/types",
 ];
 
 const ERWARTETE_ANZAHL = 6;
@@ -185,15 +196,19 @@ const FREEZE_MANIFEST: readonly FreezeEintrag[] = [
     // alte Name verschwindet, damit daraus kein zweiter Vergleichsweg entstehen kann. Sollhash
     // UND Freigabe sind in EINEM Änderungssatz neu gesetzt, die alte steht in
     // WIDERRUFENE_FREIGABEN.
-    // LAUF gesamt-import-adoption R2 · AUSGEWIESENE ÄNDERUNG (Bens B3, R-0143): die Ausleitungen
-    // `ImportResult`, `UebersprungenGrund` und `UebersprungenerImport` sind ENTFALLEN — sie waren
-    // die Antwort des Direktimports `importJson`, der Wissensobjekte an der Prüf-Warteschlange
-    // vorbei anlegte und ersatzlos abgelöst ist. Nichts ist hinzugekommen. Sollhash UND Freigabe
-    // sind in EINEM Änderungssatz neu gesetzt, die alte steht in WIDERRUFENE_FREIGABEN.
-    hash: "236e03df2989fcc0e47b0d73907f9781cf8ec4b2ae83a0b8ab0769b0a812a7ce",
+    // package:confluence (main c2aed83d) · AUSGEWIESENE ÄNDERUNG — NICHT AUS DIESEM AUFTRAG.
+    // `ohneQuellRestriktionen` wird ausgeleitet (Verwerfen eines client-gelieferten
+    // `sourceRestrictions` an den Importeingängen). Die Änderung kam mit main c2aed83d
+    // („Confluence-Import: Bedienung, Funktionsschalter, Bereichsauswahl und verständliche Fehler",
+    // 1.0.0-beta.1.667) in diesen Kandidaten; der Arbeitsbaum ist an dieser Datei identisch mit
+    // c2aed83d. Main hat das Manifest dabei NICHT nachgeführt — der Wächter wurde deshalb nach dem
+    // Merge rot. Sollhash und Freigabe sind hier in EINEM Änderungssatz nachgezogen, der Hash ist
+    // der in der Cloud-Prüfung des Kandidaten e60b19d9 gemessene (nacharbeit-11/gezielt.log). Wer
+    // die Freigabe zeichnet, bleibt die offene Ownerfrage aus § GRENZE — BEN prüft Diff und Hash.
+    hash: "c32706a1a792a39e209f90947850f1d207dc1c3428e263eeff57ff923c81175f",
     freigabe: {
-      id: "FREEZE-144/GIA-R2-20260930/index",
-      autorisiertHash: "236e03df2989fcc0e47b0d73907f9781cf8ec4b2ae83a0b8ab0769b0a812a7ce",
+      id: "FREEZE-144/MAIN-c2aed83d-20261004/index",
+      autorisiertHash: "c32706a1a792a39e209f90947850f1d207dc1c3428e263eeff57ff923c81175f",
     },
   },
   // JOB 3022 · AUSGEWIESENE ÄNDERUNG. `Graph` (types.ts:185-204) trägt seit dem Umbau von
@@ -276,15 +291,15 @@ const FREEZE_MANIFEST: readonly FreezeEintrag[] = [
     // `truncated`, `edgeLimit` und jeder Filter sind unverändert. Die Erweiterung ist additiv und
     // optional; ein Leser ohne sie liest die Antwort wie bisher. BEN prüft Typ, Diff und Hash.
     //
-    // LAUF gesamt-import-adoption R2 · AUSGEWIESENE ÄNDERUNG (Bens B3, R-0143) — NUR ENTFERNUNG:
-    // `ImportResult`, `UebersprungenerImport` und `UebersprungenGrund` sind gelöscht (Antworttypen
-    // des entfallenen Direktimports `importJson`), und ein Kommentarverweis auf `UebersprungenGrund`
-    // ist nachgeführt. `KandidatDublettenbefund`, `ImportCandidate`, `Graph` und alles Übrige sind
-    // unverändert. Sollhash UND Freigabe in EINEM Änderungssatz, die alte in WIDERRUFENE_FREIGABEN.
-    hash: "e9cfe02233c397c75ba8cf83a9af8df057c78473acb408f8c6db873e28423357",
+    // package:confluence (main c2aed83d) · AUSGEWIESENE ÄNDERUNG — NICHT AUS DIESEM AUFTRAG.
+    // `ImportItem` trägt das optionale Feld `sourceRestrictions` (Lese-Einschränkung der Quelle,
+    // Erzeuger allein der Quell-Adapter), und `ohneQuellRestriktionen` verwirft es an den
+    // Client-Eingängen. Herkunft, Messung und Grenze wie am Eintrag `index.ts` oben: identisch mit
+    // main c2aed83d, Hash aus der Cloud-Prüfung von e60b19d9, Manifest von main nicht nachgeführt.
+    hash: "09cf2bd105300441a52aa55724251f149d99c9f53ac30bf3e2a899d7f4d62574",
     freigabe: {
-      id: "FREEZE-144/GIA-R2-20260930/types",
-      autorisiertHash: "e9cfe02233c397c75ba8cf83a9af8df057c78473acb408f8c6db873e28423357",
+      id: "FREEZE-144/MAIN-c2aed83d-20261004/types",
+      autorisiertHash: "09cf2bd105300441a52aa55724251f149d99c9f53ac30bf3e2a899d7f4d62574",
     },
   },
   {

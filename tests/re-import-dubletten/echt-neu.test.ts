@@ -4,17 +4,22 @@
 //
 // Ohne diesen Fall waere „alles ueberspringen" gruen, und der Auftrag waere mit einer einzigen
 // `return { dublette: true }`-Zeile erfuellbar. Er laeuft ueber DIESELBE Route wie die
-// Dublettenfaelle.
+// Dublettenfaelle und misst zugleich, dass der Import als Ganzes mit 200 antwortet.
 //
-// Lauf gesamt-import-adoption (Bens B3, R-0143): `POST /api/library/import` legt nichts mehr
-// unmittelbar an, sondern reiht Kandidaten ein (201); erst die Annahme erzeugt das Objekt. Der Fall
-// misst darum den GANZEN Weg — Einreihen (Befund je Eintrag) und Annahme aller Kandidaten — und
-// zaehlt danach den Bestand, statt ein `imported` aus der Antwort zu lesen.
+// Lauf gesamt-import-adoption: zusätzlich gemessen wird der Befund je Kandidat (mit Kennung des
+// getroffenen Objekts) und der AUSGANG jeder Annahme — nur der neue Eintrag legt an.
 import { describe, expect, it } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 import type { KandidatDublettenbefund } from "../../services/library-analytics";
 
 const ZUGANG = { name: "Admin", email: "echtneu@x.de", password: "secret123" };
+
+interface Uebersprungen {
+  titel: string;
+  grund: string;
+  koId: string | null;
+  aehnlichkeit?: number;
+}
 
 interface KandidatDto {
   id: string;
@@ -72,29 +77,41 @@ describe("JOB 3023 · D — die Gegenprobe", () => {
       },
     });
 
-    expect(res.statusCode, res.body).toBe(201);
-    const kandidaten = res.json() as KandidatDto[];
-    expect(kandidaten).toHaveLength(2);
+    expect(res.statusCode, res.body).toBe(200);
+    // R-0143 (bens F1): der direkte Eingang reiht ein; der fachlich neue Eintrag kommt über die
+    // ANNAHME an, der ähnliche bleibt als Dublette markiert und legt auch angenommen nichts an.
+    const body = res.json() as {
+      imported: number;
+      skipped: number;
+      uebersprungen: Uebersprungen[];
+      kandidaten: KandidatDto[];
+    };
+    expect(body.imported, "Direkt angelegt wird nichts mehr.").toBe(0);
+    expect(body.skipped).toBe(1);
+    expect(body.uebersprungen.map((e) => e.titel)).toEqual(["VENTIL ENTLUEFTEN"]);
     expect(
-      kandidaten[0]?.dublettenbefund?.ergebnis,
+      body.kandidaten[0]?.dublettenbefund?.ergebnis,
       "Der fachlich neue Eintrag ist keine Dublette.",
     ).toBe("keine");
-    expect(kandidaten[1]?.dublettenbefund).toMatchObject({
+    expect(body.kandidaten[1]?.dublettenbefund).toMatchObject({
       ergebnis: "aehnlich",
       treffer: { art: "wissensobjekt", koId: bestandId },
     });
 
-    // Die Annahme ALLER Kandidaten: nur der neue legt ein Objekt an.
+    const vorAnnahme = await app.inject({ method: "GET", url: "/api/kos", headers });
+    expect((vorAnnahme.json() as { title: string }[]).map((ko) => ko.title)).toEqual([
+      "Ventil entlueften",
+    ]);
     const angenommen: KandidatDto[] = [];
-    for (const kandidat of kandidaten) {
-      const entscheidung = await app.inject({
+    for (const k of body.kandidaten) {
+      const annahme = await app.inject({
         method: "PUT",
-        url: `/api/library/import/candidates/${kandidat.id}`,
+        url: `/api/library/import/candidates/${k.id}`,
         headers,
         payload: { action: "accept" },
       });
-      expect(entscheidung.statusCode, entscheidung.body).toBe(200);
-      angenommen.push(entscheidung.json() as KandidatDto);
+      expect(annahme.statusCode, annahme.body).toBe(200);
+      angenommen.push(annahme.json() as KandidatDto);
     }
     expect(angenommen[0]?.koId, "Der fachlich neue Eintrag MUSS ankommen.").toBeTruthy();
     expect(angenommen[1]?.koId, "Der aehnliche Eintrag legt kein Objekt an.").toBeNull();

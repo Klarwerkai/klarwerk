@@ -4,7 +4,8 @@
 //
 // N1  Zwei überlappende Annahmen gleichen Inhalts (Promise.all) legten zwei Objekte an.
 // N2  Ohne Import-Schalter erkannte ein Wiederimport derselben externalId das gelöschte Objekt im
-//     Papierkorb nicht (`keine`), und die Annahme legte eine zweite Kennung an.
+//     Papierkorb nicht (`keine`), und die Annahme legte eine zweite Kennung an. (Seit dem
+//     Hauptstand laufen eingereichte Einträge mit `externalId` dabei über den Herkunftsanker.)
 // N3  Mit eingeschaltetem Import-Schalter startete JEDE Annahme die KI-Erkennung (R-0145).
 // N4  Der erfolgreiche Fehlerabschluss schrieb den bei der Annahme neu erhobenen Befund nicht mit.
 import { afterEach, describe, expect, it } from "vitest";
@@ -76,8 +77,12 @@ async function reiheEin(app: App, headers: Headers, items: unknown[]): Promise<K
     headers,
     payload: { items },
   });
-  expect(res.statusCode, res.body).toBe(201);
-  return res.json() as KandidatDto[];
+  // Hauptstand-Integration (R-0143, Auftrag pruef-warteschlange): der Eingang antwortet mit 200 und
+  // `direktimportAntwort`; die eingereihten Kandidaten stehen unter `kandidaten`.
+  expect(res.statusCode, res.body).toBe(200);
+  const antwort = res.json() as { imported: number; kandidaten: KandidatDto[] };
+  expect(antwort.imported, "Der Eingang legt selbst nichts an.").toBe(0);
+  return antwort.kandidaten;
 }
 
 async function nimmAn(
@@ -207,7 +212,11 @@ describe("N2 · ohne Import-Schalter kennt der Wiederimport das Objekt im Papier
     // … dann wird das Objekt gelöscht, und erst danach angenommen.
     await app.inject({ method: "DELETE", url: `/api/kos/${koId}`, headers });
     const angenommen = await nimmAn(app, headers, neu!.id);
-    expect(angenommen.koId).toBeNull();
+    // Hauptstand-Integration: eingereichte Einträge mit `externalId` laufen seit main (NACHARBEIT 2,
+    // Auftrag herkunft-identitaet, `DATEI_KANDIDATEN_WEG`) auch ohne Schalter über den
+    // Herkunftsanker. Dort gilt der Trash-Vertrag: die Annahme nennt die VORHANDENE, gelöschte
+    // Kennung (dieselbe Form wie `sperre-im-bestand.test.ts`, B3) — keine zweite Kennung.
+    expect(angenommen.koId).toBe(koId);
     expect(angenommen.dublettenbefund).toEqual({
       ergebnis: "im_papierkorb",
       treffer: { art: "wissensobjekt", koId },
@@ -230,7 +239,9 @@ describe("N2 · ohne Import-Schalter kennt der Wiederimport das Objekt im Papier
         statement: "Ein ganz anderer Inhalt aus derselben Quelle",
       },
     ]);
-    expect(anders?.dublettenbefund).toEqual({ ergebnis: "keine" });
+    // Hauptstand-Integration: über den Herkunftsanker (s. N2b) heisst eine Erstanlage
+    // `nicht_gestellt` (JOB 3116) — der Papierkorb meldet für diese andere Quelle nichts.
+    expect(anders?.dublettenbefund).toEqual({ ergebnis: "nicht_gestellt" });
     expect((await nimmAn(app, headers, anders!.id)).koId).toBeTruthy();
   });
 });

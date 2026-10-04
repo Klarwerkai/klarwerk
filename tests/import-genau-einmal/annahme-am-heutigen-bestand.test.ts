@@ -83,6 +83,15 @@ async function reiheEin(
   url = "/api/library/import/candidates",
 ): Promise<KandidatDto[]> {
   const res = await app.inject({ method: "POST", url, headers, payload: { items } });
+  if (url === "/api/library/import") {
+    // Hauptstand-Integration (R-0143, Auftrag pruef-warteschlange): der direkte Eingang antwortet
+    // mit 200 und `direktimportAntwort`; er legt selbst nichts an, die Kandidaten stehen unter
+    // `kandidaten`.
+    expect(res.statusCode, res.body).toBe(200);
+    const antwort = res.json() as { imported: number; kandidaten: KandidatDto[] };
+    expect(antwort.imported, "Der Eingang legt selbst nichts an.").toBe(0);
+    return antwort.kandidaten;
+  }
   expect(res.statusCode, res.body).toBe(201);
   return res.json() as KandidatDto[];
 }

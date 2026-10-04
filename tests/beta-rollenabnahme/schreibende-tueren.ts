@@ -933,6 +933,36 @@ export const SCHREIB_TABELLE: Schreibzeile[] = [
       },
     }),
   },
+  // R-0134 / R-1005: der Betreiberschalter des Confluence-Imports. Gemessen an frischer Bühne je
+  // Akteur, weil ein gelungenes Ausschalten die Confluence-Zeilen einer GEMEINSAMEN Bühne verstellen
+  // würde. Gelesen wird über den Leseweg der Zugangsauskunft — die Nachlesung belegt die Wirkung
+  // (vorher „an" als Vorgabe, nachher „aus"), nicht nur den Status.
+  {
+    gruppe: "importAccessRoutes",
+    methode: "PUT",
+    route: "/api/import/confluence/schalter",
+    belegstelle: "services/app/src/routes/import-access-routes.ts:89",
+    erfolg: [200],
+    tor: "users.manage",
+    erwartet: NUR_ADMIN,
+    ruesten: async (buehne) => ({
+      pfad: "/api/import/confluence/schalter",
+      payload: { an: false },
+      bestand: async () => {
+        const stand = await musterhaft(
+          buehne.app,
+          kopf(buehne, "admin"),
+          "GET",
+          "/api/import/confluence/zugang",
+        );
+        return (stand.json() as { betreiber?: { an?: boolean } }).betreiber?.an;
+      },
+      wirkung: {
+        beschreibung: "der Betreiberschalter des Confluence-Imports steht auf aus",
+        eingetreten: (bestand) => bestand === false,
+      },
+    }),
+  },
 
   // --- Entwürfe ---------------------------------------------------------------------------------
   {
@@ -1159,16 +1189,15 @@ export const SCHREIB_TABELLE: Schreibzeile[] = [
     gruppe: "libraryRoutes",
     methode: "POST",
     route: "/api/library/import",
-    belegstelle: "services/app/src/routes/library-routes.ts:768",
-    // Lauf gesamt-import-adoption (Bens B3, R-0143): der Direktweg legt kein Wissensobjekt mehr
-    // an, sondern reiht einen Kandidaten ein — gemessen wird darum die Warteschlange, wie bei
-    // `POST /api/library/import/candidates` darunter.
-    erfolg: [201],
+    belegstelle: "services/app/src/routes/library-routes.ts:731",
+    erfolg: [200],
     tor: "ko.create",
     erwartet: AB_EXPERTE,
     ruesten: async (buehne) => ({
       pfad: "/api/library/import",
       payload: { items: [{ ...IMPORT_EINTRAG }] },
+      // R-0143 (bens F1): der Eingang reiht seit der Nacharbeit in die Prüfwarteschlange ein und
+      // legt kein Wissensobjekt mehr an — seine Wirkung ist die Länge der Warteschlange.
       bestand: async () => {
         const liste = await musterhaft(
           buehne.app,
@@ -1184,7 +1213,7 @@ export const SCHREIB_TABELLE: Schreibzeile[] = [
     gruppe: "libraryRoutes",
     methode: "POST",
     route: "/api/library/import/candidates",
-    belegstelle: "services/app/src/routes/library-routes.ts:778",
+    belegstelle: "services/app/src/routes/library-routes.ts:749",
     erfolg: [201],
     tor: "ko.create",
     erwartet: AB_EXPERTE,
@@ -1206,7 +1235,7 @@ export const SCHREIB_TABELLE: Schreibzeile[] = [
     gruppe: "libraryRoutes",
     methode: "PUT",
     route: "/api/library/import/candidates/:id",
-    belegstelle: "services/app/src/routes/library-routes.ts:838",
+    belegstelle: "services/app/src/routes/library-routes.ts:821",
     erfolg: [200],
     tor: "ko.validate",
     erwartet: AB_CONTROLLER,

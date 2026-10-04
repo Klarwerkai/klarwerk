@@ -377,25 +377,42 @@ export async function koLesen(wer: Sitzung, koId: string): Promise<Record<string
   >;
 }
 
+export interface Importbefund {
+  imported: number;
+  skipped: number;
+  /** R-0143: was der Eingang in die Prüfwarteschlange eingereiht hat. */
+  kandidaten: Kandidat[];
+}
+
 /**
- * DER ZWEITE EINGANG, ohne Oberfläche: `POST /api/library/import`.
+ * DER ZWEITE WEG, ohne Oberfläche: `POST /api/library/import` (`library-routes.ts`).
  *
- * ER IST NICHT ERFUNDEN, sondern im Router gefunden — Auftrag § 5, Lieferung 1. Bis zum Lauf
- * gesamt-import-adoption (Bens B3, R-0143) legte er SOFORT an (`LibraryService.importJson`), ohne
- * Warteschlange und ohne Prüfkarte, und genau dort fiel der Volltext bis JOB 4293 serverseitig weg.
- * Seitdem reiht er dieselben Kandidaten ein wie `POST /api/library/import/candidates` (201,
- * dieselbe DTO-Liste); das Objekt entsteht erst beim Annehmen.
+ * ER IST NICHT ERFUNDEN, sondern im Router gefunden — Auftrag § 5, Lieferung 1. Bis zur Nacharbeit
+ * von R-0143 (bens F1) legte er SOFORT an, ohne Warteschlange. Seitdem reiht er Kandidaten ein wie
+ * der Kandidatenweg (`direktimportAntwort`); ein Objekt entsteht erst durch die Annahme.
  */
 export async function direktImportieren(
   wer: Sitzung,
   items: ImportItemInput[],
-): Promise<Kandidat[]> {
-  const liste = mussListe(
+): Promise<Importbefund> {
+  const roh = mussAntwort(
     "POST /api/library/import",
     await wer.sende("POST", "/api/library/import", { items }),
-    201,
+  ) as Record<string, unknown>;
+  expect(typeof roh.imported, `${JOB}: POST /api/library/import nennt kein imported.`).toBe(
+    "number",
   );
-  return liste.map((roh) => alsKandidat("POST /api/library/import", roh));
+  expect(
+    Array.isArray(roh.kandidaten),
+    `${JOB}: POST /api/library/import nennt keine kandidaten.`,
+  ).toBe(true);
+  return {
+    imported: roh.imported as number,
+    skipped: Number(roh.skipped ?? -1),
+    kandidaten: (roh.kandidaten as Record<string, unknown>[]).map((k) =>
+      alsKandidat("POST /api/library/import", k),
+    ),
+  };
 }
 
 /** Die Bibliotheks-Suche — hier nur als GRENZE: ihre Antwort trägt bewusst keinen Volltext. */

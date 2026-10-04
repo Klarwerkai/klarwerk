@@ -2,7 +2,7 @@ import { appendFileSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { inMemoryRepos } from "../../services/app/src/build-app";
+import { buildApp, inMemoryRepos } from "../../services/app/src/build-app";
 import {
   DevPersistJournalReplayError,
   type JournalEntry,
@@ -409,5 +409,147 @@ describe("W1/N6 · der benannte fail-closed Replayfehler", () => {
     );
     const services = await buildDevPersistServices(file);
     expect(await services.capture.listDrafts()).toHaveLength(1);
+  });
+});
+
+// ================================================================================================
+// R-0169 (Nacharbeit 8) — DIE DOKUMENTAKTE ÜBERLEBT DEN NEUSTART (DEV-JOURNAL).
+// ================================================================================================
+//
+// Über die REGULÄREN Routen (buildApp): je eine Akte aus dem Word-Weg (Entwurf → Promote) und aus
+// dem JSON-Dateiweg (Kandidat → Annahme). Danach eine vollständig neue Komposition aus DEMSELBEN
+// Journal: Akten, Fassungen samt Abdruck, Entwurfs- und Objektbezüge und v1-Schnappschüsse müssen
+// gleich sein. Dann eine zweite Word-Fassung unter derselben Kennung und ein weiterer Neustart.
+// WAS DAS BELEGT: den vorhandenen Journalweg — NICHT PostgreSQL und NICHT den Office-Host.
+describe("R-0169 · Dokumentakte im Dev-Journal: Neustart erhält Akten, Fassungen und Bezüge", () => {
+  type Herkunft = { dokumentId: string; fassung: number; fassungId: string };
+  type Dienste = Awaited<ReturnType<typeof buildDevPersistServices>>;
+  const ZUGANG = { name: "Akte", email: "akte@example.com", password: "geheim-12345" };
+
+  async function anmelden(app: ReturnType<typeof buildApp>) {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { email: ZUGANG.email, password: ZUGANG.password },
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    return { authorization: `Bearer ${(res.json() as { token: string }).token}` };
+  }
+
+  function wordEntwurf(aussage: string, dokumentId?: string) {
+    return {
+      title: "Wartungsanweisung aus Word",
+      statement: aussage,
+      bodyHtml: `<p>${aussage}</p>`,
+      type: "best_practice",
+      category: "Wartung",
+      confidentiality: "intern",
+      origin: "word_addin",
+      ...(dokumentId ? { dokumentId } : {}),
+    };
+  }
+
+  it("Word- und JSON-Akte: zwei Neustarts, beide Fassungen erhalten, die erste unverändert", async () => {
+    const file = tmpJournal();
+
+    // ---- Lauf 1 -------------------------------------------------------------------------------
+    const s1 = await buildDevPersistServices(file);
+    const app1 = buildApp(s1);
+    const registriert = await app1.inject({
+      method: "POST",
+      url: "/api/auth/register",
+      payload: ZUGANG,
+    });
+    expect(registriert.statusCode, registriert.body).toBeLessThan(300);
+    const auth1 = await anmelden(app1);
+
+    const word = await app1.inject({
+      method: "POST",
+      url: "/api/drafts",
+      headers: auth1,
+      payload: wordEntwurf("Word Fassung eins."),
+    });
+    expect(word.statusCode, word.body).toBe(201);
+    const hW = (word.json() as { dokumentHerkunft: Herkunft }).dokumentHerkunft;
+    const promote = await app1.inject({
+      method: "POST",
+      url: `/api/drafts/${(word.json() as { id: string }).id}/promote`,
+      headers: auth1,
+      payload: {},
+    });
+    expect(promote.statusCode, promote.body).toBe(201);
+    const koW = (promote.json() as { id: string }).id;
+
+    const kandidat = await app1.inject({
+      method: "POST",
+      url: "/api/library/import/candidates",
+      headers: auth1,
+      payload: {
+        items: [
+          {
+            title: "Akte aus JSON",
+            statement: "JSON Fassung eins.",
+            type: "technik",
+            category: "A",
+          },
+        ],
+      },
+    });
+    expect(kandidat.statusCode, kandidat.body).toBe(201);
+    const angenommen = await app1.inject({
+      method: "PUT",
+      url: `/api/library/import/candidates/${(kandidat.json() as { id: string }[])[0]?.id}`,
+      headers: auth1,
+      payload: { action: "accept" },
+    });
+    expect(angenommen.statusCode, angenommen.body).toBe(200);
+    const koJ = (angenommen.json() as { koId: string }).koId;
+    const hJ = (await s1.ko.get(koJ))?.dokumentHerkunft as Herkunft;
+    expect(hJ?.dokumentId).toBeTruthy();
+
+    const stand = async (s: Dienste) => ({
+      wordFassungen: await s.dokumente.fassungen(hW.dokumentId),
+      jsonFassungen: await s.dokumente.fassungen(hJ.dokumentId),
+      koW: (await s.ko.get(koW))?.dokumentHerkunft,
+      koJ: (await s.ko.get(koJ))?.dokumentHerkunft,
+      v1W: (await s.ko.versionsOf(koW)).find((v) => v.version === 1)?.snapshot.dokumentHerkunft,
+      v1J: (await s.ko.versionsOf(koJ)).find((v) => v.version === 1)?.snapshot.dokumentHerkunft,
+    });
+    const vorher = await stand(s1);
+    expect(vorher.koW).toEqual(hW);
+    expect(vorher.v1W).toEqual(hW);
+    expect(vorher.koJ).toEqual(hJ);
+    expect(vorher.v1J).toEqual(hJ);
+    expect(vorher.wordFassungen).toHaveLength(1);
+    expect(vorher.jsonFassungen).toHaveLength(1);
+
+    // ---- Lauf 2: vollständig neue Komposition aus demselben Journal ------------------------------
+    const s2 = await buildDevPersistServices(file);
+    expect(await stand(s2), "der Neustart hat Akte, Fassung oder Bezug verändert").toEqual(vorher);
+
+    const app2 = buildApp(s2);
+    const auth2 = await anmelden(app2);
+    const zweite = await app2.inject({
+      method: "POST",
+      url: "/api/drafts",
+      headers: auth2,
+      payload: wordEntwurf("Word Fassung zwei.", hW.dokumentId),
+    });
+    expect(zweite.statusCode, zweite.body).toBe(201);
+    const entwurf2 = zweite.json() as { id: string; dokumentHerkunft: Herkunft };
+    expect(entwurf2.dokumentHerkunft).toMatchObject({ dokumentId: hW.dokumentId, fassung: 2 });
+
+    // ---- Lauf 3 -------------------------------------------------------------------------------
+    const s3 = await buildDevPersistServices(file);
+    const wordFassungen = await s3.dokumente.fassungen(hW.dokumentId);
+    expect(wordFassungen.map((f) => f.fassung)).toEqual([1, 2]);
+    expect(wordFassungen[0], "die erste Fassung hat sich verändert").toEqual(
+      vorher.wordFassungen[0],
+    );
+    expect((await s3.capture.getDraft(entwurf2.id))?.dokumentHerkunft).toEqual(
+      entwurf2.dokumentHerkunft,
+    );
+    expect((await stand(s3)).koW).toEqual(hW);
+    expect((await stand(s3)).jsonFassungen).toEqual(vorher.jsonFassungen);
   });
 });

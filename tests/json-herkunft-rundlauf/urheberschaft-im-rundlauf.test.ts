@@ -18,17 +18,11 @@
 // `tests/json-volltext-nutzerweg/**` (JOB 4293) bzw. `tests/re-import-dubletten/**` und
 // `tests-smoke/ui-smoke.spec.ts` (L3). Drei Zusagen, drei Belege — keine wird aus einer anderen
 // abgeleitet.
-//
-// Lauf gesamt-import-adoption (Bens B3, R-0143): `importJson` ist entfallen. `POST
-// /api/library/import` reiht jetzt dieselben Kandidaten ein wie die Prüfwarteschlange; das Objekt
-// entsteht erst bei der Annahme. Der zweite Weg unten misst darum die Kette, die die Route heute
-// fährt — Einreihen UND Annahme mit derselben Dublettenregel (5. Parameter), wie
-// `library-routes.ts` sie verdrahtet.
 import { describe, expect, it } from "vitest";
 import { parseImportItems } from "../../apps/web/src/lib/importReview";
 import { InMemoryKoRepo, KoService } from "../../services/knowledge-object";
 import { LibraryService } from "../../services/library-analytics";
-import type { DublettenPruefung } from "../../services/library-analytics";
+import type { DublettenPruefung, ImportItem } from "../../services/library-analytics";
 
 /** Frische Zielinstanz: nichts im Bestand, also trifft auch nichts — die Prüfung darf nie treffen. */
 const OHNE_AEHNLICHKEIT: DublettenPruefung = () => ({ dublette: false });
@@ -79,27 +73,16 @@ async function perKandidat(datei: string) {
   return ziel.koService.get(angenommen.koId);
 }
 
-async function ueberDieImportRoute(datei: string) {
+async function direkt(datei: string) {
   const ziel = await instanz();
-  const kandidaten = await ziel.library.createImportCandidates(
-    parseImportItems(datei),
+  const ergebnis = await ziel.library.importJson(
+    parseImportItems(datei) as ImportItem[],
     ZIEL_REVIEWER,
     OHNE_AEHNLICHKEIT,
   );
-  expect(kandidaten, "der Import hat nichts eingereiht").toHaveLength(1);
-  for (const kandidat of kandidaten) {
-    // Die Annahme stellt die Dublettenfrage mit DERSELBEN Regel noch einmal — wie an der Route.
-    await ziel.library.reviewImportCandidate(
-      kandidat.id,
-      "accept",
-      ZIEL_REVIEWER,
-      undefined,
-      OHNE_AEHNLICHKEIT,
-    );
-  }
-  const bestand = await ziel.koService.list();
-  expect(bestand, "der Import hat nach der Annahme nichts angelegt").toHaveLength(1);
-  return bestand[0];
+  expect(ergebnis.imported, "der direkte Import hat nichts eingespielt").toBe(1);
+  const [ko] = await ziel.koService.list();
+  return ko;
 }
 
 describe("UX-20b-R · Urheberschaft im eigenen JSON-Rundlauf (R-0150/R-1731)", () => {
@@ -124,7 +107,7 @@ describe("UX-20b-R · Urheberschaft im eigenen JSON-Rundlauf (R-0150/R-1731)", (
 
   for (const [weg, anlegen] of [
     ["Prüfwarteschlange → Annehmen", perKandidat],
-    ["POST /api/library/import (Einreihen → Annehmen)", ueberDieImportRoute],
+    ["POST /api/library/import (importJson)", direkt],
   ] as const) {
     it(`${weg}: die Urheberin bleibt Wissensträgerin, der Handelnde des Ziels wird Autor`, async () => {
       const ko = await anlegen(

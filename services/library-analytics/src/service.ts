@@ -2,6 +2,12 @@ import { createHash, randomUUID } from "node:crypto";
 import type { AuditService } from "../../audit";
 import {
   type Confidentiality,
+  // NACHARBEIT 5 (R-0169): die interne Dokumentakte für Einträge ohne externalId.
+  DokumentError,
+  type DokumentHerkunft,
+  type DokumentaktenService,
+  // NACHARBEIT 2: die Wertmenge der Wissensarten — Vorprüfung vor der ersten Persistenz.
+  KNOWLEDGE_TYPES,
   // JOB 4155: die beiden geschlossenen Unions der kuratierten Beziehungen — importiert wie
   // `KnowledgeObject`, über dieselbe öffentliche `index.ts`. Keine neue Modulkante.
   type KantenArt,
@@ -14,6 +20,7 @@ import {
   type KoSichtbarkeitstrim,
   type KoSource,
   confidentialityRank,
+  gelieferteDokumentId,
   isConfidential,
   isValidConfidentiality,
   normalizeConfidentiality,
@@ -26,7 +33,9 @@ import { themenVon } from "../../wissensnetz";
 import {
   type CandidateRepo,
   type ClaimResolution,
+  type ExternalSourceRepo,
   InMemoryCandidateRepo,
+  MAX_SOURCE_VERSION,
   importProviderKey,
   isOpenReviewStatus,
 } from "./repo";
@@ -37,16 +46,19 @@ import {
   type DublettenPruefung,
   type Dublettentreffer,
   type ExpertiseEntry,
+  type ExternalSourceRecord,
   type Graph,
   type GraphEdge,
   type GraphKuratierteKante,
   type ImportCandidate,
   type ImportItem,
+  type ImportResult,
   type KandidatDublettenbefund,
   type KoSichtbar,
   LibraryError,
   type Neighborhood,
   type ReviewAction,
+  type UebersprungenerImport,
 } from "./types";
 
 // WP-BILD-1h (bens sammel15-ROT 2): harter Backfill-Deckel PRO SUCHANFRAGE. Eine nicht-matchende
@@ -272,16 +284,6 @@ function ankerSchluessel(
 // daneben waere eine neue Verhaltensregel; der Auftrag benennt nur das Signal um. Wer das dennoch
 // tut, bricht den Confluence-/Jira-Re-Sync still — `tests/papierkorb-befund/accept-bleibt-resync.
 // test.ts` (R3) misst es samt Gegenprobe.
-// Lauf gesamt-import-adoption (Bens B4): bringt ein Import-Eintrag eine eigene Herkunftsangabe
-// mit? Nur dann entsteht bei der Erstanlage ein Herkunftseintrag — nie ein erfundener.
-// Die URL zählt nur, wenn `safeSourceUrl` sie durchlässt (sonst würde sie ohnehin verworfen).
-function traegtHerkunft(item: ImportItem): boolean {
-  return (
-    Boolean(item.externalId?.trim()) ||
-    Boolean(item.provider?.trim()) ||
-    safeSourceUrl(item.url) !== null
-  );
-}
 
 // Der bei der Annahme neu erhobene Dublettenbefund (Bens B1/B2).
 type AnnahmeBefund = { duplicate: boolean; dublettenbefund: KandidatDublettenbefund };
@@ -488,6 +490,27 @@ export interface LibraryServiceDeps {
   // `ANNAHME_WARTEZEIT_MS`.
   annahmeWartezeitMs?: number;
   /**
+   * R-0169 (herkunft-identitaet) — DER SCHREIBWEG DER QUELLREVISIONEN.
+   *
+   * `ExternalSourceRecord` (types.ts, W2-A) war bis hierher ein Bestand ohne Schreiber: die
+   * Importlauf-Routen lasen ihn, kein Import legte ihn an. Ist der Port verdrahtet, schreibt jede
+   * übernommene Quellfassung (Erstanlage und Re-Sync mit höherer Version, an BEIDEN Importwegen)
+   * ihre unveränderliche Revision und bindet deren `sourceRecordId` an den Herkunfts-Anker des
+   * Wissensobjekts. OPTIONAL wie `candidates`: ohne Port bleibt es beim Anker allein — dann gibt es
+   * keine Revision, und der Anker trägt ehrlich keine `sourceRecordId`.
+   */
+  externalSources?: ExternalSourceRepo;
+  /**
+   * R-0169 (Nacharbeit 5) — DIE INTERNE DOKUMENTAKTE für Einträge OHNE `externalId`.
+   *
+   * Ist sie verdrahtet, bekommt jedes über den direkten Import oder den Dateiweg angelegte
+   * Wissensobjekt ohne externe Quellenkennung den Bezug auf eine festgeschriebene Fassung einer
+   * internen Akte (`dokumentHerkunft`). Die Akte entsteht neu, wenn der Eintrag keine `dokumentId`
+   * mitbringt; eine mitgebrachte muss hier vergeben worden sein. Einträge MIT `externalId` bleiben
+   * beim externen Revisionsweg — eine externe Kennung wird nie zur internen Identität.
+   */
+  dokumente?: DokumentaktenService;
+  /**
    * ================================================================================================
    * JOB 4155 (WG-LUECKEN) — DIE KURATIERTEN KANTEN IM GLOBALEN GRAPHEN.
    * ================================================================================================
@@ -569,6 +592,147 @@ function quellautorVon(item: ImportItemMitUrheberschaft): { originalAuthor?: str
   return quelle === undefined ? {} : { originalAuthor: quelle };
 }
 
+// ================================================================================================
+// R-0139 / R-0169 (herkunft-identitaet) — EIN ANKERWEG FÜR BEIDE IMPORTWEGE.
+// ================================================================================================
+//
+// Bis hierher legte allein der Kandidaten-Accept (`acceptToKo`) einen Herkunfts-Anker an. Der
+// direkte JSON-Import (`importJson`) verwarf `provider`, `externalId`, `sourceVersion` und `url`
+// vollständig — das Objekt trug danach nur die Wegkennzeichnung `importedVia`, aber nicht, WOHER
+// es stammt (bens Befund F1). Statt einer zweiten Ankerlogik läuft der direkte Import für Einträge
+// mit `externalId` jetzt durch DIESELBE Stelle; nur zwei Dinge unterscheiden die Wege:
+//
+//   · `importedVia` — welcher Weg am Objekt steht.
+//   · `ankerOhneSchalter` — der Kandidatenweg bleibt hinter `externalUpsert` (SCRUM-510, Bestand).
+//     Der direkte Import bringt seine Quellenangaben im eigenen Rumpf mit; sie wegzuwerfen, weil
+//     kein Quelladapter eingeschaltet ist, hiesse, eine gelieferte Herkunft still zu verlieren.
+//
+// `ausgang` meldet dem direkten Import, was geschah — er zählt `imported`/`uebersprungen` danach.
+//
+// NACHARBEIT 2 (bens F3): `verweigert` — der Anker trifft ein Objekt, das der Einreichende nicht
+// sehen oder nicht überarbeiten darf. Dann wird NICHTS angefasst und KEINE Kennung zurückgegeben.
+type AnkerAusgang = "angelegt" | "fortgeschrieben" | "unveraendert" | "papierkorb" | "verweigert";
+
+/**
+ * NACHARBEIT 2 (bens F3) — DIE RECHTE AM ZIELOBJEKT EINES ANKER-TREFFERS, ALS DATUM.
+ *
+ * Der Kandidaten-Accept braucht sie nicht: ihn darf nur `ko.validate` auslösen (library-routes.ts),
+ * und diese Rolle sieht jedes Objekt. Der DIREKTE Import verlangt dagegen nur `ko.create` — über
+ * eine mitgelieferte Quellkennung fände er sonst fremde vertrauliche oder freigegebene Objekte und
+ * überarbeitete sie. Die Entscheidung fällt deshalb in der Route (Sichtbarkeit `darfSehen`, dieselbe
+ * Freigaberegel wie `PUT /api/kos/:id` revise) und reist als Prädikat herein; dieses Modul legt
+ * keine Rolle aus. FEHLT es am direkten Weg, gilt kein Treffer als erlaubt (fail-closed).
+ */
+export type AnkerZielRecht = (ko: KnowledgeObject) => boolean;
+
+interface ImportWeg {
+  readonly importedVia: "import_candidate" | "library_import";
+  readonly ankerOhneSchalter: boolean;
+  readonly ausgang?: (art: AnkerAusgang) => void;
+  readonly zielDarf?: AnkerZielRecht;
+  // NACHARBEIT 3 (bens F1): ein eingereichter Quellverweis OHNE `externalId` (nur URL/Anbieter)
+  // bleibt als einfacher Verweis am Objekt — ohne Anker, ohne Revision, ohne erfundene Kennung.
+  // Nur für eingereichte Einträge; Adapterkandidaten bleiben beim Bestand (Test „Flag AUS").
+  readonly quellverweisOhneKennung?: boolean;
+  // NACHARBEIT 5 (R-0169): ein eingereichter Eintrag OHNE `externalId` bekommt eine interne
+  // Dokumentakte (eigene Identität, unveränderliche Fassung) — Dateiweg und direkter Import.
+  // Adapterkandidaten bleiben unberührt; sie bringen ihre externe Identität selbst mit.
+  readonly interneAkte?: boolean;
+}
+
+const KANDIDATEN_WEG: ImportWeg = { importedVia: "import_candidate", ankerOhneSchalter: false };
+
+// ================================================================================================
+// NACHARBEIT 2 (bens F1) — DER DATEIWEG ÜBER DIE PRÜFWARTESCHLANGE BEHÄLT SEINE QUELLANGABEN.
+// ================================================================================================
+//
+// Der JSON-Dateiimport der Oberfläche (Stufe2 → `parseImportItems` → `POST
+// /api/library/import/candidates`) bringt Quellangaben im eigenen Rumpf mit — wie der direkte
+// Import. Ohne eingeschalteten Quelladapter warf der Kandidatenweg sie bisher weg (SCRUM-510,
+// `externalUpsert`). Der Schalter bleibt für Adapterkandidaten genau so (Bestandstest „Flag AUS →
+// kein Anker"); nur Einträge, die über die Dateiroute eingereicht wurden, tragen diesen Vermerk.
+//
+// WARUM AM EINTRAG: der Kandidat wird eingereiht und erst SPÄTER angenommen — die Tatsache „kam
+// über den Dateiweg" muss die Ablage überleben. `ImportItem`/`ImportCandidate` stehen unter
+// Freeze-144; der Vermerk ist deshalb ein zusätzliches, als fremd gelesenes Feld des abgelegten
+// Eintrags (dieselbe Bauform wie `originalAuthor`, s. `quellautorVon`). Gesetzt wird er NUR in
+// `createImportCandidates` auf Anweisung des Aufrufers; ein vom Client mitgeschickter Wert wird
+// dort entfernt.
+const DATEIWEG_VERMERK = "quellangabenEingereicht";
+
+function kamUeberDateiweg(item: ImportItem): boolean {
+  return (
+    (item as ImportItem & { readonly [DATEIWEG_VERMERK]?: unknown })[DATEIWEG_VERMERK] === true
+  );
+}
+
+const DATEI_KANDIDATEN_WEG: ImportWeg = {
+  importedVia: "import_candidate",
+  ankerOhneSchalter: true,
+  quellverweisOhneKennung: true,
+  interneAkte: true,
+};
+
+/**
+ * R-0169 (Nacharbeit 5): die mitgebrachte INTERNE Dokumentkennung eines Eintrags. Wie
+ * `originalAuthor` ein als fremd gelesenes Feld (`ImportItem` steht unter Freeze-144). Gelesen wird
+ * sie nur für Einträge OHNE `externalId` — bei einer externen Quelle zählt deren Identität.
+ */
+function dokumentIdVon(item: ImportItem): string | undefined {
+  if (item.externalId?.trim()) {
+    return undefined;
+  }
+  return gelieferteDokumentId((item as ImportItem & { readonly dokumentId?: unknown }).dokumentId);
+}
+
+/**
+ * R-0169 (Nacharbeit 5): die Antwort des direkten Imports, um die Fassungen der internen Akten
+ * erweitert. Eigener Typ neben `ImportResult` (Freeze-144); das Feld fehlt ohne verdrahtete Akte.
+ */
+export type ImportResultMitAkten = ImportResult & {
+  dokumentFassungen?: { titel: string; koId: string; dokumentId: string; fassung: number }[];
+};
+
+/** Liefert der Eintrag einen verwertbaren Quellverweis (sichere URL oder Anbieter)? */
+function hatQuellverweis(item: ImportItem): boolean {
+  return Boolean(safeSourceUrl(item.url) || item.provider?.trim());
+}
+
+/**
+ * NACHARBEIT 2 (bens F2/F5) — ein Ankereintrag wird VOR der ersten Persistenz geprüft.
+ *
+ * Eine Quellfassung, die keine Revisionsidentität tragen kann (Bruchzahl, negativ, über
+ * `MAX_SOURCE_VERSION`), und eine unbekannte Wissensart werden abgewiesen, BEVOR eine Revision oder
+ * ein Objekt geschrieben wird. Bis hierher entstand bei ungültiger Fassung ein Objekt OHNE Revision,
+ * und bei ungültiger Art blieb eine Revision ohne Objekt zurück.
+ */
+function pruefeAnkerEintrag(item: ImportItem): void {
+  const fassung = item.sourceVersion;
+  if (
+    fassung !== undefined &&
+    (!Number.isInteger(fassung) || fassung < 0 || fassung > MAX_SOURCE_VERSION)
+  ) {
+    throw new LibraryError(
+      "BAD_REQUEST",
+      `Ungültige sourceVersion für „${item.externalId}" (erlaubt: ganzzahlig 0..${MAX_SOURCE_VERSION}).`,
+    );
+  }
+  if (!KNOWLEDGE_TYPES.includes(item.type)) {
+    throw new LibraryError("BAD_REQUEST", `Unbekannte Wissensart für „${item.externalId}".`);
+  }
+}
+
+/**
+ * R-0169: der Inhaltsabdruck einer übernommenen Quellfassung — über GENAU das, was aus ihr ins
+ * Wissensobjekt geht (Titel, Kernaussage, Volltext). Er bindet die Revision an ihre Aussage: wer die
+ * Aussage einer Objektfassung neben die Revision legt, kann prüfen, ob sie aus ihr stammt.
+ */
+export function quellinhaltAbdruck(item: ImportItem): string {
+  return createHash("sha256")
+    .update(JSON.stringify([item.title, item.statement, item.bodyHtml ?? null]))
+    .digest("hex");
+}
+
 export class LibraryService {
   private readonly koService: KoService;
   private readonly audit: AuditService | undefined;
@@ -582,6 +746,10 @@ export class LibraryService {
   // JOB 4155 (WG-LUECKEN): der Kantenbestand für `/api/graph`. `undefined` = nicht verdrahtet; die
   // Antwort trägt das Feld dann GAR NICHT (s. `LibraryServiceDeps.kanten`).
   private readonly kanten: KuratierteKantenLeser | undefined;
+  // R-0169: Schreibweg der Quellrevisionen; `undefined` = nicht verdrahtet (s. Deps).
+  private readonly externalSources: ExternalSourceRepo | undefined;
+  // R-0169 (Nacharbeit 5): die interne Dokumentakte; `undefined` = nicht verdrahtet (s. Deps).
+  private readonly dokumente: DokumentaktenService | undefined;
 
   constructor(deps: LibraryServiceDeps) {
     this.koService = deps.koService;
@@ -592,6 +760,57 @@ export class LibraryService {
     this.externalUpsert = deps.externalUpsert ?? false;
     this.annahmeWartezeitMs = deps.annahmeWartezeitMs ?? ANNAHME_WARTEZEIT_MS;
     this.kanten = deps.kanten;
+    this.externalSources = deps.externalSources;
+    this.dokumente = deps.dokumente;
+  }
+
+  /**
+   * R-0169 (Nacharbeit 5): prüft die mitgebrachte Dokumentkennung und Wissensart eines Eintrags,
+   * der eine interne Akte bekommen wird — VOR jedem Schreiben. Eine nicht hier vergebene Kennung
+   * weist die Anfrage ab (`DOKUMENT_UNBEKANNT`); eine ungültige Art ebenso, damit keine Fassung ohne
+   * Wissensobjekt zurückbleibt.
+   */
+  private async pruefeAktenEintrag(item: ImportItem): Promise<void> {
+    if (!this.dokumente) {
+      return;
+    }
+    const dokumentId = dokumentIdVon(item);
+    if (dokumentId !== undefined && !(await this.dokumente.bekannt(dokumentId))) {
+      throw new DokumentError(
+        "DOKUMENT_UNBEKANNT",
+        `Die Dokumentkennung von „${item.title}" wurde hier nicht vergeben.`,
+      );
+    }
+    if (!KNOWLEDGE_TYPES.includes(item.type)) {
+      throw new LibraryError("BAD_REQUEST", `Unbekannte Wissensart für „${item.title}".`);
+    }
+  }
+
+  /** R-0169 (Nacharbeit 5): schreibt die Fassung fest; `undefined`, wenn keine Akte verdrahtet ist. */
+  private async aktenFassung(
+    item: ImportItem,
+    weg: "library_import" | "import_candidate",
+    actor: string,
+  ): Promise<DokumentHerkunft | undefined> {
+    if (!this.dokumente) {
+      return undefined;
+    }
+    return this.dokumente.festschreiben({
+      dokumentId: dokumentIdVon(item),
+      inhalt: { title: item.title, statement: item.statement, bodyHtml: item.bodyHtml },
+      weg,
+      actor,
+    });
+  }
+
+  /**
+   * NACHARBEIT 3 (bens F3): das Wissensobjekt hinter einer Trefferkennung, damit die Route ihre
+   * Sichtbarkeitsentscheidung (`darfSehen`) am VOLLEN Objekt treffen kann, bevor sie eine Kennung
+   * ausgibt. Reiner Lesezugang; der Papierkorb bleibt ausgeblendet (`get`) — ein getrashtes Ziel
+   * ist für die Route damit „nicht vorhanden" und wird wie ein unsichtbares behandelt.
+   */
+  async wissensobjektFuerSicht(koId: string): Promise<KnowledgeObject | undefined> {
+    return this.koService.get(koId);
   }
 
   // SCRUM-515: die eine Stelle, an der eine rohe (untrusted) confidentiality in den Import-Kern eintritt.
@@ -655,6 +874,8 @@ export class LibraryService {
     rawItems: readonly ImportItem[],
     actor = "system",
     pruefeDublette?: DublettenPruefung,
+    // NACHARBEIT 2 (bens F1): nur die Dateiroute setzt das — Begründung an `DATEIWEG_VERMERK`.
+    opts: { quellangabenEingereicht?: boolean } = {},
   ): Promise<ImportCandidate[]> {
     // SCRUM-515: an der Ingest-Grenze runtime-validieren, BEVOR das Item in die Queue/den Bestand geht.
     // WP-IC-PAKET-1d (bens sammel9-ROT): ZENTRALE Codec-Erzeugungsregel. Dies ist DIE eine Stelle,
@@ -663,10 +884,32 @@ export class LibraryService {
     // Kandidat IST per Definition kanonischer Text: liefert ein Aufrufer rohe Entities, ist das SEIN
     // Text — hier wird nichts nachträglich dekodiert, nur markiert. Damit gilt wieder verlässlich:
     // Marker fehlt = echter Altbestand (gespeichert VOR dieser Regel).
-    const items = rawItems.map<ImportItem>((item) => ({
-      ...this.withSanitizedConfidentiality(item),
-      textCodec: "decoded",
-    }));
+    const items = rawItems.map<ImportItem>((item) => {
+      // NACHARBEIT 2: ein mitgeschickter Vermerk zählt nie — er entsteht nur hier, auf Anweisung.
+      const { [DATEIWEG_VERMERK]: _clientVermerk, ...ohneVermerk } = item as ImportItem &
+        Record<string, unknown>;
+      return {
+        ...this.withSanitizedConfidentiality(ohneVermerk as ImportItem),
+        textCodec: "decoded",
+        // NACHARBEIT 3 (bens F1): auch ein Eintrag mit Quellverweis ohne Kennung trägt den Vermerk.
+        // NACHARBEIT 5 (R-0169): und JEDER über den Dateiweg eingereichte Eintrag — auch einer ganz
+        // ohne Quellangaben bekommt bei der Annahme eine interne Dokumentakte.
+        ...(opts.quellangabenEingereicht ? { [DATEIWEG_VERMERK]: true } : {}),
+      };
+    });
+    // Ein Ankereintrag läuft durch den Ankerstrang: bei eingeschaltetem Quellstrang (Bestand) oder
+    // wenn er seine Quellangaben über den Dateiweg selbst mitbringt.
+    const ankerStrang = (item: ImportItem): boolean =>
+      Boolean(item.externalId) && (this.externalUpsert || kamUeberDateiweg(item));
+    // NACHARBEIT 2 (bens F5): ungültige Fassung oder Art eines Ankereintrags vor jeder Einreihung.
+    for (const item of items) {
+      if (ankerStrang(item)) {
+        pruefeAnkerEintrag(item);
+      } else if (kamUeberDateiweg(item)) {
+        // NACHARBEIT 5 (R-0169): mitgebrachte Dokumentkennung und Art VOR jeder Einreihung.
+        await this.pruefeAktenEintrag(item);
+      }
+    }
     const pruefung = erzwingeDublettenpruefung(pruefeDublette);
     const existing = await this.koService.list();
     // Pass 1: exakter Schlüssel → getroffener Partner. Der ERSTE Träger eines Schlüssels gewinnt,
@@ -719,7 +962,9 @@ export class LibraryService {
     // mit Upsert-Strang) liest die Warteschlange dafür nicht. Zwei GLEICHZEITIGE Uploads sehen sich
     // gegenseitig nicht; dafür bräuchte es einen Riegel in der Datenhaltung, den der Textweg (ohne
     // Anker) nicht hat.
-    const textfrageImLauf = items.some((item) => !(this.externalUpsert && item.externalId));
+    // Hauptstand-Integration: „Anker-Lauf" heisst seit NACHARBEIT 2 `ankerStrang` (Upsert-Strang
+    // ODER Dateiweg) — dieselbe Bedingung wie in der Schleife unten.
+    const textfrageImLauf = items.some((item) => !ankerStrang(item));
     for (const offen of textfrageImLauf ? await this.candidates.all() : []) {
       if (!isOpenReviewStatus(offen.status) || !kandidatErzeugtWissensobjekt(offen)) {
         continue;
@@ -774,9 +1019,12 @@ export class LibraryService {
     // Liste ist dagegen eine echte Auskunft: dann bleibt es exakt wie bisher `nicht_gestellt`.
     //
     // Lauf gesamt-import-adoption R3 (Bens N2): gelesen wird, sobald IRGENDEIN Eintrag eine
-    // `externalId` trägt — auch ohne Upsert-Strang, denn seither stellt auch der Textweg die
-    // Ankerfrage an den Papierkorb (`papierkorbBefundImTextweg`). Die Regeln (erster Träger
-    // gewinnt, `null` = nicht lesbar, höchstens EINE Lesung je Lauf) sind unverändert.
+    // `externalId` trägt — auch ausserhalb des Ankerstrangs (`ankerStrang`), denn seither stellt
+    // auch der Textweg die Ankerfrage an den Papierkorb (`papierkorbBefundImTextweg`). Das ist eine
+    // Obermenge von `items.some(ankerStrang)` (ein Ankerstrang-Eintrag trägt immer eine
+    // `externalId`). Die Regeln (der ERSTE Träger eines Ankers gewinnt — `aktiveAnkerVon`, dieselbe
+    // Determinismus-Regel wie bei `papierkorbAnker` und `exakt` —, `null` = nicht lesbar, höchstens
+    // EINE Lesung je Lauf) sind unverändert.
     const ankerImLauf = items.some((item) => item.externalId);
     const aktiveAnker = ankerImLauf ? aktiveAnkerVon(existing) : new Map<string, string>();
     // `null` heisst „nicht gelesen/nicht lesbar" und ist ausdruecklich NICHT dasselbe wie eine leere
@@ -811,7 +1059,7 @@ export class LibraryService {
       let duplicate: boolean;
       let dublettenbefund: KandidatDublettenbefund;
       // externalId-Dedup nur bei aktivem Upsert-Strang. Aus → Dublettenprüfung für ALLE Items.
-      if (this.externalUpsert && item.externalId) {
+      if (item.externalId && ankerStrang(item)) {
         // JOB 3081 R2: auch der Lauf-interne Dedup-Schluessel laeuft ueber `ankerSchluessel` —
         // er stellt DIESELBE Frage („dasselbe Quellobjekt?") und muss sie darum mit DERSELBEN
         // Gleichheit beantworten. Zuvor kollidierten hier ebenfalls zwei verschiedene Anker
@@ -872,10 +1120,9 @@ export class LibraryService {
         koId: null,
         createdAt: at,
       };
-      const inserted =
-        this.externalUpsert && item.externalId
-          ? await this.candidates.insertIfAbsent(candidate)
-          : await this.candidates.insert(candidate).then(() => true);
+      const inserted = ankerStrang(item)
+        ? await this.candidates.insertIfAbsent(candidate)
+        : await this.candidates.insert(candidate).then(() => true);
       if (!inserted) {
         // Nicht eingereiht (idempotenter No-op): dieser Kandidat existiert nicht. Er geht weder in
         // die Antwort noch in den Vergleich der folgenden Einträge — sonst wäre seine Id ein
@@ -1370,7 +1617,15 @@ export class LibraryService {
           // ungültiger Altwert im Re-Sync-Ranking auf „intern" normalisiert (fail-open) bzw. bei
           // der Erstanlage hart abgelehnt. Das bereinigte Item wird MIT persistiert.
           const item = this.withSanitizedConfidentiality(candidate.item);
-          const ausgang = await this.acceptToKo(item, actor, id, sperreGilt);
+          // NACHARBEIT 2 (bens F1, Hauptstand): über den Dateiweg eingereichte Quellangaben
+          // bleiben erhalten.
+          const ausgang = await this.acceptToKo(
+            item,
+            actor,
+            id,
+            kamUeberDateiweg(item) ? DATEI_KANDIDATEN_WEG : KANDIDATEN_WEG,
+            sperreGilt,
+          );
           createdKoId = ausgang.koId;
           // Bens B3: der Ausgang am Herkunftsanker ersetzt den Befund vom Einreihen. Der Textweg
           // hat seinen neuen Befund oben schon erhoben; dort kommt hier keiner zurück.
@@ -1857,9 +2112,13 @@ export class LibraryService {
   }
 
   // Läuft die Annahme dieses Kandidaten über den Herkunftsanker (dieselbe Bedingung wie
-  // `externalId` in `acceptToKo`)?
+  // `externalId` in `acceptToKo`: Upsert-Strang ODER über den Dateiweg eingereicht — Hauptstand,
+  // NACHARBEIT 2, `DATEI_KANDIDATEN_WEG.ankerOhneSchalter`)?
   private ankerWeg(candidate: ImportCandidate): boolean {
-    return Boolean(this.externalUpsert && candidate.item.externalId);
+    return (
+      Boolean(candidate.item.externalId) &&
+      (this.externalUpsert || kamUeberDateiweg(candidate.item))
+    );
   }
 
   // Stellt die Annahme dieses Kandidaten die Textfrage neu? Nein beim Anker-Strang (dort
@@ -1879,7 +2138,7 @@ export class LibraryService {
     candidate: ImportCandidate,
     pruefeDublette: DublettenPruefung | undefined,
   ): boolean {
-    return pruefeDublette !== undefined && !(this.externalUpsert && candidate.item.externalId);
+    return pruefeDublette !== undefined && !this.ankerWeg(candidate);
   }
 
   // Die Anker der Objekte im Papierkorb, erster Träger gewinnt. `null` heisst „nicht lesbar" und
@@ -1927,12 +2186,18 @@ export class LibraryService {
   //
   // Lauf :2 Runde 3 (Bens B4): `sperreGilt` wird UNMITTELBAR vor jeder Mutation gefragt (Anlage,
   // Vertraulichkeits-Upgrade, Revision). Ist die Annahme-Sperre inzwischen verloren, wirft sie, und
-  // es wird nichts geschrieben (Begründung am Kopf von `PgCandidateRepo.annahmeSperre`).
+  // es wird nichts geschrieben (Begründung am Kopf von `PgCandidateRepo.annahmeSperre`). Der
+  // direkte Import (`importJson`) läuft ohne Annahme-Sperre; dort gilt die Vorgabe „immer gültig".
+  //
+  // Hauptstand-Integration: `weg` (R-0139/R-0169, Auftrag herkunft-identitaet) und `sperreGilt`
+  // stehen nebeneinander; ein verweigerter Anker-Treffer am direkten Weg kommt als `koId: ""`.
   private async acceptToKo(
     item: ImportItem,
     actor: string,
-    candidateId: string | undefined,
-    sperreGilt: () => Promise<void>,
+    candidateId?: string,
+    // R-0139 / R-0169: welcher Importweg hier anlegt (Begründung an `ImportWeg`).
+    weg: ImportWeg = KANDIDATEN_WEG,
+    sperreGilt: () => Promise<void> = () => Promise.resolve(),
   ): Promise<{ koId: string; befund?: AnnahmeBefund }> {
     if (candidateId) {
       const stamped = await this.koService.findByImportCandidateId(candidateId);
@@ -1950,7 +2215,13 @@ export class LibraryService {
     // Anker kennt beide) — ein Jira-Item mit zufällig gleicher externalId wie eine Confluence-
     // pageId revidiert NIE das Confluence-KO. Anker ohne Provider (Altbestand) zählen wie
     // importProviderKey als Confluence (der einzige Adapter vor dem Provider-Schlüssel).
-    const externalId = this.externalUpsert ? item.externalId : undefined;
+    // R-0139: der direkte Import behält seine mitgelieferte Quelle auch ohne Quellschalter.
+    const externalId = this.externalUpsert || weg.ankerOhneSchalter ? item.externalId : undefined;
+    // NACHARBEIT 2 (bens F4/F5): VOR der ersten Persistenz — keine Revision ohne tragfähige Fassung
+    // und keine Revision, deren Objekt danach an einer ungültigen Wissensart scheitert.
+    if (externalId) {
+      pruefeAnkerEintrag(item);
+    }
     // JOB 3081 RUNDE 2 (bens ROT): DIESELBE Funktion, mit der die Kandidatenpruefung ihre Karten
     // schluesselt (`ankerSchluessel`, Begruendung dort). Vorher stand hier der Feldvergleich und
     // dort eine `@`-Verkettung — zwei Ausdruecke fuer dieselbe Gleichheit, von denen einer
@@ -1961,6 +2232,13 @@ export class LibraryService {
     const matchesAnchor = (s: { externalId?: string; provider?: string | null }): boolean =>
       ankerSchluessel(s.provider, s.externalId) === ankerSchluessel(item.provider, externalId);
     const anker = externalId ? await this.sucheAnkerKo(matchesAnchor) : undefined;
+    // NACHARBEIT 2 (bens F3): am direkten Weg entscheidet das Recht am Zielobjekt, BEVOR adoptiert,
+    // eine Kennung zurückgegeben, eingestuft oder überarbeitet wird. Ein getrashtes Ziel ist dort nie
+    // erlaubt — der Papierkorb gehört dem Admin, und seine Kennung wäre eine Existenzauskunft.
+    if (anker && weg.zielDarf && (anker.art !== "aktiv" || !weg.zielDarf(anker.ko))) {
+      weg.ausgang?.("verweigert");
+      return { koId: "" };
+    }
     if (anker?.art === "getrasht") {
       // ==========================================================================================
       // JOB 3081 — DER TRASH-VERTRAG: ADOPTIEREN, NICHT AUFERSTEHEN LASSEN.
@@ -1982,6 +2260,7 @@ export class LibraryService {
       // (`dublettenbefund: im_papierkorb`, s. `createImportCandidates`). Dieser Riegel greift
       // UNABHAENGIG davon — auch bei Altkandidaten ohne Befund, bei den Confluence-/Jira-Anker-
       // Wegen und bei der Recovery. Beide Linien ersetzen einander nicht.
+      weg.ausgang?.("papierkorb");
       return {
         koId: anker.koId,
         befund: {
@@ -2007,6 +2286,19 @@ export class LibraryService {
       if (existing.importCandidateId) {
         await this.koService.ensureCreatedSideEffects(existing);
       }
+      const current = existing.sources.find(matchesAnchor)?.sourceVersion ?? 0;
+      // ben-Review #3: Ohne explizite Version NICHT hochzählen (früher `current + 1` → jeder versions-
+      // lose Re-Import revidierte endlos). `?? current` heißt: „gleiche Version wie zuletzt" → No-op.
+      // Nur eine tatsächlich höhere (explizite) Version schreibt monoton fort — kein Downgrade.
+      const incoming = item.sourceVersion ?? current;
+      // R-0169: die neue Quellfassung wird VOR jeder Mutation am Objekt als eigene, unveränderliche
+      // Revision festgeschrieben; die vorige Revision bleibt unangetastet (der Repo-Vertrag kennt kein
+      // Update). Der Anker der neuen Objektfassung zeigt auf genau diese Revision.
+      // NACHARBEIT 3 (bens F4): VOR dem Einstufungs-Upgrade darunter. Stand die Revision nach ihm,
+      // hob ein Re-Sync, dessen Fassung dann am Inhaltskonflikt (CONFLICT) scheiterte, die Stufe
+      // trotzdem an — eine abgelehnte Übernahme hinterliess eine eigenständig persistierte Änderung.
+      const revision =
+        incoming > current ? await this.quellrevisionFestschreiben(item, incoming) : undefined;
       // SCRUM-509 R4: Re-Sync eines bestehenden KO aus externer Quelle darf die Vertraulichkeit nur
       // ANHEBEN, nie still niedrig halten. Fail-safe wie der Create-Import (R3): fehlt das Governance-
       // Signal (ImportItem.confidentiality, s. 511), gilt „vertraulich"; eine explizit HÖHERE
@@ -2029,17 +2321,12 @@ export class LibraryService {
         await this.koService.setConfidentiality(existing.id, target, actor);
       }
 
-      const current = existing.sources.find(matchesAnchor)?.sourceVersion ?? 0;
-      // ben-Review #3: Ohne explizite Version NICHT hochzählen (früher `current + 1` → jeder versions-
-      // lose Re-Import revidierte endlos). `?? current` heißt: „gleiche Version wie zuletzt" → No-op.
-      // Nur eine tatsächlich höhere (explizite) Version schreibt monoton fort — kein Downgrade.
-      const incoming = item.sourceVersion ?? current;
       if (incoming > current) {
         // bens F3: nur der Anker DESSELBEN Providers wird fortgeschrieben — ein gleichnamiger
         // Anker eines anderen Providers am selben KO bliebe unangetastet.
         const nextSources = [
           ...existing.sources.filter((s) => !matchesAnchor(s)),
-          this.buildSource(item, actor, incoming),
+          this.buildSource(item, actor, incoming, revision),
         ];
         // ==========================================================================================
         // AUFTRAG-mega82 BLOCK A — WER IMPORTIERT, HANDELT. WER IM IMPORT GENANNT WIRD, HANDELT NICHT.
@@ -2079,6 +2366,9 @@ export class LibraryService {
           },
           actor,
         );
+        weg.ausgang?.("fortgeschrieben");
+      } else {
+        weg.ausgang?.("unveraendert");
       }
       return {
         koId: existing.id,
@@ -2095,6 +2385,21 @@ export class LibraryService {
     // Erstanlage: die effektive Version wird IMMER gespeichert (auch ohne Item-Version → 1), damit ein
     // versionsloser Re-Import (current = 1, incoming = 1) sauber als No-op erkannt wird (Idempotenz).
     const firstVersion = item.sourceVersion ?? 1;
+    // R-0169: die erste Quellfassung als unveränderliche Revision, VOR dem Objekt — scheitert die
+    // Anlage danach, bleibt die Revision als Tatsache stehen und wird beim Wiederholen über ihre
+    // Revisionsidentität wiedergefunden (`insertIfAbsent` → `findByRevision`), nie verdoppelt.
+    const ersteRevision = externalId
+      ? await this.quellrevisionFestschreiben(item, firstVersion)
+      : undefined;
+    // NACHARBEIT 5 (R-0169): OHNE externe Kennung — und nur auf einem eingereichten Weg — die
+    // interne Dokumentakte. Art und mitgebrachte Kennung sind VOR der Fassung geprüft, damit keine
+    // Fassung ohne Objekt zurückbleibt; die Fassung steht VOR dem Objekt, damit das Objekt sie trägt.
+    let aktenHerkunft: DokumentHerkunft | undefined;
+    if (!externalId && weg.interneAkte) {
+      await this.pruefeAktenEintrag(item);
+      aktenHerkunft = await this.aktenFassung(item, weg.importedVia, actor);
+    }
+    // Bens B4: unmittelbar vor der Anlage (Revision und Akte sind über ihre Identität idempotent).
     await sperreGilt();
     let ko: KnowledgeObject;
     try {
@@ -2118,17 +2423,29 @@ export class LibraryService {
         // Freigabe aus Cloud/Export heraus.
         confidentiality: item.confidentiality ?? "vertraulich",
         ...(item.bodyHtml ? { bodyHtml: item.bodyHtml } : {}),
-        // Lauf gesamt-import-adoption (Bens B4; R-0139/R-0169/R-0180/FR-EXT-02): bis hier entstand
-        // der Herkunftseintrag NUR bei aktivem Upsert-Strang — ohne ihn verwarf die Annahme
-        // mitgelieferte provider/externalId/sourceVersion/url, und das Objekt trug `sources: []`.
-        // Jetzt bleibt JEDE mitgelieferte Herkunft am Objekt; der Upsert-Schalter entscheidet nur
-        // noch, ob ein späterer Import dasselbe Objekt fortschreibt (`externalId` oben), nicht
-        // mehr, ob die Quelle festgehalten wird. Ein Eintrag OHNE jede Herkunftsangabe bekommt
-        // keinen erfundenen Anker; importiert ist er über seinen Kandidaten-Stempel erkennbar.
-        ...(traegtHerkunft(item) ? { sources: [this.buildSource(item, actor, firstVersion)] } : {}),
+        // R-0180 (bens F2): die ORIGINALQUELLE haengt nicht mehr am Anker-Strang. Mit wirksamer
+        // externalId entsteht wie bisher der Herkunfts-Anker (Re-Sync-Schluessel) — seit R-0169
+        // samt festgeschriebener Quellrevision; OHNE sie bleibt eine mitgelieferte Quelle trotzdem
+        // am Objekt: im Dateiweg als Verweis aus URL/Anbieter (`quellverweis`, NACHARBEIT 3), sonst
+        // als sichere URL (`originalquelleOhneAnker`) — beide bewusst OHNE Anker-Felder.
+        ...(externalId
+          ? { sources: [this.buildSource(item, actor, firstVersion, ersteRevision)] }
+          : weg.quellverweisOhneKennung && hatQuellverweis(item)
+            ? { sources: [this.quellverweis(item, actor)] }
+            : this.originalquelleOhneAnker(item, actor)),
+        // R-0180/R-2108: das angenommene Objekt ist ALS IMPORTIERT gekennzeichnet — dasselbe Feld,
+        // das das Prüf-Board als Herkunft zeigt (`mitHerkunft`, services/validation). Es startet
+        // weiterhin ungeprüft (`buildCreatedKo`: status offen, trust 0) und steht damit auf dem
+        // Validierungs-Board (`ValidationService.board` liest status offen). Die Re-Sync-Revision
+        // eines bestehenden Objekts oben fasst die Herkunft bewusst nicht an.
+        origin: "import",
         // WP-SHIP8-CLOSE-3/4 (bens ROT-1): Kandidaten-Anker VOR dem Endstatus des Kandidaten —
         // Recovery und Insert-or-Adopt erkennen daran eine bereits gelungene Erstanlage.
         ...(candidateId ? { importCandidateId: candidateId } : {}),
+        // R-0139 / FR-EXT-02: als importiert gekennzeichnet (Begründung am Modell, types.ts).
+        importedVia: weg.importedVia,
+        // NACHARBEIT 5 (R-0169): aus welcher Fassung der internen Akte diese Aussage stammt.
+        ...(aktenHerkunft ? { dokumentHerkunft: aktenHerkunft } : {}),
       });
     } catch (err) {
       // WP-SHIP8-CLOSE-4 (bens ROT-1A/1B): KOLLISIONS-ADOPTION — existiert das KO mit diesem
@@ -2178,6 +2495,9 @@ export class LibraryService {
     } catch {
       throw new SperreNachAnlageVerloren(ko.id);
     }
+    // Die Adoption braucht einen Kandidatenstempel, kommt also nur am Kandidatenweg vor — dort ist
+    // `ausgang` nicht gesetzt; der direkte Import zählt wie auf dem Hauptstand jede Erstanlage.
+    weg.ausgang?.("angelegt");
     // Auf dem Anker-Weg heisst eine Erstanlage `nicht_gestellt` (JOB 3116) — auch dann, wenn beim
     // Einreihen noch ein aktiver Träger gemeldet war, der inzwischen ganz verschwunden ist.
     return externalId
@@ -2212,7 +2532,7 @@ export class LibraryService {
     pruefeDublette: DublettenPruefung | undefined,
   ): Promise<{ art: "aktiv" } | { art: "papierkorb"; koId: string } | undefined> {
     const item = candidate.item;
-    if (this.externalUpsert && item.externalId) {
+    if (this.ankerWeg(candidate) && item.externalId) {
       const schluessel = ankerSchluessel(item.provider, item.externalId);
       for (const ko of await this.koService.list()) {
         if (ko.id === eigeneKoId) {
@@ -2313,8 +2633,43 @@ export class LibraryService {
   // (die Confluence-Route setzt "Confluence"); externe Importquellen sind nie peer-validiert.
   // `effectiveVersion` (ben-Review #3): die tatsächlich geschriebene Version — IMMER gesetzt, damit der
   // Monotonie-Vergleich beim Re-Sync verlässlich ist (nie ein „versionsloser" Anker im Bestand).
-  private buildSource(item: ImportItem, actor: string, effectiveVersion: number): KoSource {
+  // R-0180 (bens F2): die Originalquelle eines Imports OHNE wirksame externe Kennung. Nur eine
+  // sichere URL (`safeSourceUrl`: absolut, http/https) wird übernommen — eine verworfene URL
+  // erzeugt KEINE Quelle (eine leere Quellenzeile wäre eine Herkunftsbehauptung ohne Inhalt).
+  // BEWUSST OHNE `externalId`/`sourceVersion`/`spaceKey`: diese Quelle ist kein Re-Sync-Anker.
+  // Die Anker-Suche (`matchesAnchor`, `aktiveAnker`, `trashedSourceAnchors`) liest nur Quellen mit
+  // externalId — der Upsert-Strang bleibt damit genau so, wie er bei ausgeschaltetem Schalter war.
+  private originalquelleOhneAnker(item: ImportItem, actor: string): { sources?: KoSource[] } {
+    const url = safeSourceUrl(item.url);
+    if (url === null) {
+      return {};
+    }
     return {
+      sources: [
+        {
+          id: this.genId(),
+          label: item.title,
+          url,
+          excerpt: null,
+          kind: "external",
+          peerValidated: false,
+          provider: item.provider ?? null,
+          author: item.author?.trim() ? item.author : actor,
+          at: new Date(this.now()).toISOString(),
+        },
+      ],
+    };
+  }
+
+  // R-0169: `sourceRecordId` = die festgeschriebene Quellrevision dieser Fassung (falls verdrahtet).
+  private buildSource(
+    item: ImportItem,
+    actor: string,
+    effectiveVersion: number,
+    sourceRecordId?: string,
+  ): KoSource {
+    return {
+      ...(sourceRecordId ? { sourceRecordId } : {}),
       id: this.genId(),
       label: item.title,
       // SCRUM-527 (WP2): importierte URL nur, wenn absolute http/https — sonst verworfen (kein Egress
@@ -2329,10 +2684,105 @@ export class LibraryService {
       ...(item.externalId ? { externalId: item.externalId } : {}),
       ...(item.sourceScope ? { spaceKey: item.sourceScope } : {}),
       sourceVersion: effectiveVersion,
+      // package:confluence (K6): die Lese-Einschränkung der Quelle zu DIESER Fassung — als Kopie,
+      // damit keine spätere Änderung am Kandidaten den gespeicherten Anker mitverändert. Erst-
+      // anlage und Re-Sync (neue Quellversion) laufen beide hierdurch; eine geänderte Einschränkung
+      // der Quelle wird also mit der neuen Version fortgeschrieben. Keine Rechteabbildung.
+      ...(item.sourceRestrictions
+        ? {
+            sourceRestrictions: {
+              users: [...item.sourceRestrictions.users],
+              groups: [...item.sourceRestrictions.groups],
+            },
+          }
+        : {}),
       // WP-RETEST7 R6: leerer Autor-String → ehrlicher Fallback auf den annehmenden Nutzer.
       author: item.author?.trim() ? item.author : actor,
       at: new Date(this.now()).toISOString(),
     };
+  }
+
+  // NACHARBEIT 3 (bens F1): der Quellverweis eines Eintrags OHNE `externalId` — dieselbe Form wie
+  // der Anker (`buildSource`), aber ohne Kennung, ohne Revision und mit einer Quellfassung NUR, wenn
+  // der Eintrag eine geliefert hat. `buildSource` setzt die Fassung für den Re-Sync-Vergleich immer;
+  // ohne Quellenidentität gibt es keinen Vergleich, und eine gesetzte 1 wäre eine erfundene Fassung.
+  private quellverweis(item: ImportItem, actor: string): KoSource {
+    const { sourceVersion: _immerGesetzt, ...verweis } = this.buildSource(item, actor, 0);
+    return item.sourceVersion === undefined
+      ? verweis
+      : { ...verweis, sourceVersion: item.sourceVersion };
+  }
+
+  // ==============================================================================================
+  // R-0169 (herkunft-identitaet) — DIE QUELLFASSUNG WIRD FESTGESCHRIEBEN, BEVOR SIE WIRKT.
+  // ==============================================================================================
+  //
+  // Schreibt die unveränderliche Revision (`ExternalSourceRecord`) dieser Quellfassung und gibt ihre
+  // `sourceRecordId` zurück. Die Dokumentidentität ist die Quellenidentität `sourceSystem +
+  // externalId`, die Fassung `sourceVersion` — dieselben zwei Identitäten, die types.ts (W2-A)
+  // festlegt.
+  //
+  // `sourceSystem` ist `importProviderKey(provider)`: GENAU die Normalisierung, mit der der
+  // Herkunfts-Anker seinen Re-Sync-Partner findet (`ankerSchluessel`). Eine zweite Lesart hier hätte
+  // zwei Antworten auf „welche Quelle?" erzeugt — eine am Anker, eine an der Revision.
+  //
+  // IDEMPOTENT: existiert die Revision schon (Wiederholung, zweiter Importweg mit derselben Fassung),
+  // bleibt die vorhandene Zeile unangetastet und ihre Kennung gilt. Fehler beim Schreiben werfen —
+  // der Import einer Fassung ohne ihre Revision wäre genau die Lücke, die hier geschlossen wird.
+  private async quellrevisionFestschreiben(
+    item: ImportItem,
+    sourceVersion: number,
+  ): Promise<string | undefined> {
+    if (!this.externalSources || !item.externalId?.trim()) {
+      return undefined;
+    }
+    // NACHARBEIT 2 (bens F5): eine Version, die die Revisionsidentität nicht tragen kann, wird
+    // ABGEWIESEN — nicht mehr still als Anker ohne Revision übernommen. Die Aufrufer prüfen das schon
+    // vor der ersten Persistenz (`pruefeAnkerEintrag`); diese Zeile ist die letzte Linie davor.
+    if (
+      !Number.isInteger(sourceVersion) ||
+      sourceVersion < 0 ||
+      sourceVersion > MAX_SOURCE_VERSION
+    ) {
+      throw new LibraryError("BAD_REQUEST", "Quellfassung ohne tragfähige sourceVersion.");
+    }
+    const sourceSystem = importProviderKey(item.provider);
+    const record: ExternalSourceRecord = {
+      sourceRecordId: this.genId(),
+      sourceSystem,
+      externalId: item.externalId,
+      sourceVersion,
+      url: safeSourceUrl(item.url),
+      title: item.title,
+      // Ehrlich `null`: der Import hält keinen eigenen Roh-/Renderinhalt der Quelle vor.
+      rawOrRenderedContentReference: null,
+      importedAt: new Date(this.now()).toISOString(),
+      contentHash: quellinhaltAbdruck(item),
+      sourceMetadata: {
+        ...(item.sourceScope ? { sourceScope: item.sourceScope } : {}),
+        ...(item.sourcePath ? { sourcePath: item.sourcePath } : {}),
+        ...(item.updatedAt ? { updatedAt: item.updatedAt } : {}),
+      },
+    };
+    if (await this.externalSources.insertIfAbsent(record)) {
+      return record.sourceRecordId;
+    }
+    const vorhanden = await this.externalSources.findByRevision(
+      sourceSystem,
+      item.externalId,
+      sourceVersion,
+    );
+    // NACHARBEIT 2 (bens F4): eine vorhandene Revision wird nur wiederverwendet, wenn sie DENSELBEN
+    // Inhalt festschreibt. Bis hierher wurde ihre Kennung ungeprüft übernommen — nach einem
+    // gescheiterten ersten Versuch mit Text A verwies ein Objekt mit Text B auf die Revision von A.
+    // Jetzt: Konflikt, abgewiesen VOR jeder Objektmutation; die vorhandene Revision bleibt, wie sie ist.
+    if (!vorhanden || vorhanden.contentHash !== record.contentHash) {
+      throw new LibraryError(
+        "CONFLICT",
+        `Quellfassung ${sourceVersion} von „${item.externalId}" ist bereits mit anderem Inhalt festgeschrieben.`,
+      );
+    }
+    return vorhanden.sourceRecordId;
   }
 
   // FR-LIB-01: Suche + Filter.
@@ -2578,12 +3028,261 @@ export class LibraryService {
     return `<!doctype html><html lang="de"><head><meta charset="utf-8"><title>KLARWERK Export</title><style>${style}</style></head><body><h1>KLARWERK — Wissensexport</h1>${note}${articles}${note}</body></html>`;
   }
 
-  // FR-LIB-02 (Import): hier stand bis zum Lauf gesamt-import-adoption `importJson` — ein zweiter
-  // Anlageweg, der Wissensobjekte UNMITTELBAR erzeugte und die Prüf-Warteschlange umging (Bens B3,
-  // R-0143: „erst wenn ein Mensch übernimmt, entsteht ein echtes Wissensobjekt"). Er ist entfallen;
-  // jeder Import läuft über `createImportCandidates` und die Annahme in `reviewImportCandidate`.
-  // Seine Regeln leben dort weiter: Dublettenprüfung per Port (JOB 3023/3050), Handelnder ist der
-  // Einreichende bzw. Annehmende (mega82), Volltext reist mit (JOB 4293).
+  // FR-LIB-02: Import per JSON ohne Duplikate.
+  //
+  // AUFTRAG-mega82 Block A: `actor` ist der EINREICHENDE Nutzer (library-routes.ts übergibt
+  // `user.id`) und damit der Handelnde dieses Imports — nicht mehr bloß ein „Vorgabe-Autor", der
+  // einspringt, wenn das Item keinen nennt.
+  //
+  // JOB 3023: die Vorgabe `"import"` ist entfallen. Sie stand vor dem neuen Pflicht-Port und wäre
+  // damit eine Vorgabe, die kein Aufrufer mehr auslassen KANN (`useDefaultParameterLast`) — eine
+  // Vorgabe, die nie greift, ist eine Behauptung ohne Fall. Alle Aufrufer nennen ihren Handelnden
+  // ohnehin ausdrücklich.
+  //
+  // ==============================================================================================
+  // JOB 3023 — DER RE-IMPORT PRUEFT AUF DUBLETTEN, STATT ZEICHEN ZU VERGLEICHEN.
+  // ==============================================================================================
+  //
+  // WAS FALSCH WAR: der Dublettentest war ein `seen.has()` auf `` `${title}|${statement}` ``. Ein
+  // Satzpunkt am Satzende, ein anderes Leerzeichen oder eine geaenderte Gross-/Kleinschreibung
+  // genuegte, damit derselbe Eintrag ein zweites Mal angelegt wurde; `conditions`, `measures`,
+  // `tags` und `category` gingen gar nicht ein.
+  //
+  // WAS JETZT GILT — ZWEI PAESSE, EINE REGEL:
+  //   1. Der `title|statement`-Schluessel bleibt als BILLIGER erster Pass fuer die exakte
+  //      Zeichengleichheit (`identisch`). Er kostet einen Map-Zugriff und faengt den haeufigsten
+  //      Fall — dieselbe Sicherung noch einmal eingespielt — ohne jede Rechnung ab. Er traegt
+  //      jetzt die getroffene `koId` mit, damit die Antwort auch hier sagen kann, WORAUF.
+  //   2. Alles darueber entscheidet die injizierte `DublettenPruefung` — die Regel, die das
+  //      Produkt bereits besitzt (`coreText` + `trigramSimilarity`), verdrahtet in der
+  //      Kompositionswurzel. Dieses Modul legt sie NICHT aus.
+  //
+  // GEGEN DEN BESTAND *UND* GEGEN DEN EIGENEN LAUF: `bestand` waechst um jedes erzeugte Objekt.
+  // Eine Sicherung, die dieselbe Sache zweimal enthaelt, erzeugt sie darum nicht zweimal.
+  //
+  // EHRLICHE KOSTENGRENZE: der zweite Pass rechnet je NICHT exakt getroffenem Eintrag gegen den
+  // ganzen Bestand (O(neu × bestand) Textvergleiche). Ein Deckel waere eine EIGENE Regel darueber,
+  // welche Kandidaten wegfallen duerfen — genau das zweite Gehirn, das dieser Auftrag ausschliesst.
+  // Die Wiedereinspielung, der haeufige Fall, laeuft ohnehin ueber Pass 1.
+  async importJson(
+    rawItems: readonly ImportItem[],
+    actor: string,
+    // PFLICHT, nicht optional (types.ts, DublettenPruefung): sonst duerfte ein zweiter Aufbau den
+    // Schutz typgueltig weglassen.
+    pruefeDublette: DublettenPruefung,
+    // NACHARBEIT 2 (bens F3): das Recht des Einreichenden an einem Anker-Treffer (s. `AnkerZielRecht`).
+    // Optional nur, weil Altaufrufer ohne Ankereinträge es nicht brauchen — FEHLT es, ist JEDER
+    // Anker-Treffer verweigert, nie erlaubt.
+    opts: { zielDarf?: AnkerZielRecht } = {},
+  ): Promise<ImportResultMitAkten> {
+    // SCRUM-515: an der Ingest-Grenze runtime-validieren (ungültig/unbekannt → vertraulich, nie intern).
+    const items = rawItems.map((item) => this.withSanitizedConfidentiality(item));
+    // NACHARBEIT 2 (bens F4/F5): ALLE Ankereinträge der Anfrage werden geprüft, bevor auch nur einer
+    // geschrieben wird — eine ungültige Fassung oder Art weist die ganze Anfrage ab (400), der
+    // Objekt- und Revisionsbestand bleibt unverändert.
+    for (const item of items) {
+      if (item.externalId?.trim()) {
+        pruefeAnkerEintrag(item);
+      } else {
+        // NACHARBEIT 5 (R-0169): Einträge ohne externe Kennung bekommen eine interne Akte —
+        // mitgebrachte Dokumentkennung und Art werden ebenfalls VOR jedem Schreiben geprüft.
+        await this.pruefeAktenEintrag(item);
+      }
+    }
+    // NACHARBEIT 5 (R-0169): je angelegtem Objekt die Fassung seiner Akte — die Antwort nennt sie,
+    // damit der Einreichende die von Klarwerk vergebene Kennung für die nächste Fassung kennt.
+    const dokumentFassungen: {
+      titel: string;
+      koId: string;
+      dokumentId: string;
+      fassung: number;
+    }[] = [];
+    const zielDarf: AnkerZielRecht = opts.zielDarf ?? (() => false);
+    const pruefung = erzwingeDublettenpruefung(pruefeDublette);
+    const existing = await this.koService.list();
+    // Pass 1: exakter Schluessel → getroffenes Objekt. Der ERSTE Träger eines Schluessels gewinnt,
+    // damit die genannte koId bei Altbestand-Dubletten deterministisch ist.
+    const exakt = new Map<string, string>();
+    for (const ko of existing) {
+      const key = `${ko.title}|${ko.statement}`;
+      if (!exakt.has(key)) {
+        exakt.set(key, ko.id);
+      }
+    }
+    const bestand: KnowledgeObject[] = [...existing];
+    const uebersprungen: UebersprungenerImport[] = [];
+    let imported = 0;
+    for (const item of items) {
+      const key = `${item.title}|${item.statement}`;
+      // ==========================================================================================
+      // R-0139 / R-0169 (bens Befunde F1/F2) — EINE MITGELIEFERTE QUELLE GEHT NICHT MEHR VERLOREN.
+      // ==========================================================================================
+      //
+      // Trägt der Eintrag eine Quellkennung, läuft er durch DENSELBEN Ankerweg wie der
+      // Kandidaten-Accept (`acceptToKo`, Begründung an `ImportWeg`): Erstanlage mit Herkunfts-Anker
+      // und festgeschriebener Quellrevision, bei höherer Quellfassung derselben Quelle Re-Sync in
+      // DASSELBE Objekt, bei gleicher/älterer Fassung nichts. Die Textdublettenfrage wird hier —
+      // wie im Ankerstrang der Kandidaten — nicht gestellt: dieselbe Quelle erkennt der Anker.
+      if (item.externalId?.trim()) {
+        const gemeldet: { art?: AnkerAusgang } = {};
+        const { koId } = await this.acceptToKo(item, actor, undefined, {
+          importedVia: "library_import",
+          ankerOhneSchalter: true,
+          ausgang: (art) => {
+            gemeldet.art = art;
+          },
+          zielDarf,
+        });
+        const ausgang = gemeldet.art;
+        if (ausgang === "verweigert") {
+          // NACHARBEIT 2 (bens F3): das Ziel ist für den Einreichenden nicht sichtbar, nicht
+          // überarbeitbar oder im Papierkorb. Nichts geschrieben, KEINE Kennung — dieselbe
+          // Antwortform wie eine nicht entscheidbare Prüfung, damit die Antwort kein Objekt verrät.
+          uebersprungen.push({ titel: item.title, grund: "pruefung_nicht_moeglich", koId: null });
+        } else if (ausgang === "angelegt") {
+          const erzeugt = await this.koService.get(koId);
+          if (erzeugt) {
+            exakt.set(key, erzeugt.id);
+            bestand.push(erzeugt);
+          }
+          imported += 1;
+        } else if (ausgang === "fortgeschrieben") {
+          // Eine neue Quellfassung WURDE eingespielt — als neue Fassung desselben Objekts.
+          imported += 1;
+        } else {
+          // Gleiche/ältere Fassung an einem Objekt, das der Einreichende sehen und überarbeiten
+          // darf: nichts geschrieben. `identisch` ist die vorhandene Antwortform für „diese Quelle
+          // ist schon da" (die Grundliste ist unter Freeze-144 und wird hier nicht erweitert);
+          // `koId` nennt das Objekt, an dem die Quelle hängt.
+          uebersprungen.push({ titel: item.title, grund: "identisch", koId });
+        }
+        continue;
+      }
+      const exakterTreffer = exakt.get(key);
+      if (exakterTreffer !== undefined) {
+        uebersprungen.push({ titel: item.title, grund: "identisch", koId: exakterTreffer });
+        continue;
+      }
+      // FAIL-CLOSED, ausgeschrieben: scheitert die Pruefung fuer EINEN Eintrag, wird er NICHT
+      // eingespielt, sondern als `pruefung_nicht_moeglich` uebersprungen. Eine unbemerkte Dublette
+      // im Bestand ist teurer als ein nicht eingespielter Eintrag, den der Einspielende in der
+      // Antwort sieht und erneut schicken kann. Und der Fehler bleibt LOKAL: er kippt nie den
+      // ganzen Import — die uebrigen Eintraege laufen weiter.
+      //
+      // RUNDE 2 (bens Befund 2): der AUFRUF allein im `try` genuegte nicht — eine Pruefung, die
+      // `null`/`undefined` zurueckgab, warf erst beim Auswerten und riss den ganzen Import mit
+      // (`TypeError: Cannot read properties of undefined (reading 'dublette')`).
+      //
+      // RUNDE 3 (bens Befund): auch das PRUEFEN im `try` genuegte nicht, solange danach WEITER auf
+      // das fremde Objekt zugegriffen wurde. Ein `dublette`-Getter, der beim ersten Lesen `false`
+      // liefert und beim zweiten wirft, kam durch die Pruefung und kippte dann doch den ganzen
+      // Import. Deshalb steht hier jetzt eine MATERIALISIERUNG: `materialisiereBefund` liest jede
+      // Eigenschaft genau einmal und gibt ein EIGENES Objekt zurueck. `befund` unten ist diese
+      // Kopie — das fremde Objekt wird nach dem `try` nie wieder angefasst.
+      let befund: DublettenBefund;
+      try {
+        const eigeneEntscheidung = materialisiereBefund(pruefung(item, bestand));
+        if (eigeneEntscheidung === null) {
+          uebersprungen.push({ titel: item.title, grund: "pruefung_nicht_moeglich", koId: null });
+          continue;
+        }
+        befund = eigeneEntscheidung;
+      } catch {
+        uebersprungen.push({ titel: item.title, grund: "pruefung_nicht_moeglich", koId: null });
+        continue;
+      }
+      if (befund.dublette) {
+        uebersprungen.push({
+          titel: item.title,
+          grund: "aehnlich",
+          koId: befund.koId,
+          aehnlichkeit: befund.aehnlichkeit,
+        });
+        continue;
+      }
+      // NACHARBEIT 5 (R-0169): die Fassung der internen Akte — nach der Dublettenfrage (ein nicht
+      // eingespielter Eintrag schreibt keine Fassung) und vor dem Objekt, das sie trägt.
+      const aktenHerkunft = await this.aktenFassung(item, "library_import", actor);
+      const erzeugt = await this.koService.create({
+        title: item.title,
+        statement: item.statement,
+        type: item.type,
+        category: item.category,
+        ...(aktenHerkunft ? { dokumentHerkunft: aktenHerkunft } : {}),
+        // AUFTRAG-mega82 Block A: DIESELBE ABBILDUNG WIE IM ACCEPT-PFAD (WP-SAMMEL21-FIX weiter
+        // oben) — und bis mega82 war sie hier die einzige, die fehlte.
+        //
+        // `ko.author` ist keine Anzeige, sondern eine RECHTEPOSITION, und zwar gleich vierfach:
+        // `darfSehen` öffnet ein vertrauliches Wissensobjekt für seinen Autor
+        // (app/src/sichtbarkeit.ts:76), `DELETE /api/kos/:id` erlaubt ihm das Löschen
+        // (app/src/routes/ko-routes.ts:1154), `KoService.create` trägt denselben String als Verfasser
+        // des v1-Schnappschusses und als Akteur des `ko.created`-Belegs ein
+        // (knowledge-object/src/service.ts:1254/1266), und die Rückgabe an den Autor legt ihm eine
+        // Aufgabe an (validation/src/service.ts:131).
+        //
+        // `POST /api/library/import` verlangt nur `ko.create` und steht — anders als der
+        // Kandidaten-Accept — NICHT hinter dem Import-Schalter. Ein frei gelieferter `item.author`
+        // besetzte damit alle vier Positionen mit einem Namen, den nie jemand geprüft hat.
+        // Der Handelnde ist der Einreichende; der Quellautor reist als `originalAuthor` weiter
+        // (Wissensträger — Anzeige und busFactor, keine Autorisierung).
+        author: actor,
+        ...quellautorVon(item),
+        tags: item.tags ?? [],
+        // SCRUM-509 R3: JSON-Import ist ein Bulk-Pfad → konservativ „vertraulich" bei fehlendem Signal.
+        confidentiality: item.confidentiality ?? "vertraulich",
+        // ==========================================================================================
+        // JOB 4293 — DER DIREKTE IMPORTWEG VERLOR DEN DOKUMENTTEXT, UND ZWAR ALS EINZIGER.
+        // ==========================================================================================
+        //
+        // `ImportItem` trägt `bodyHtml` (../types.ts), und der Kandidaten-Accept reicht ihn an
+        // BEIDEN Stellen durch — bei der Erstanlage (`acceptToKo`, `...(item.bodyHtml ? …)`) wie
+        // beim Re-Sync-`revise`. NUR hier, auf dem Weg `POST /api/library/import` → `importJson`,
+        // stand das Feld nicht in der Eingabe des `create`. Eine Sicherung, die über diesen Weg
+        // eingespielt wurde, kam also mit Titel, Kernaussage und Tags an — und ohne den Text, den
+        // sie transportieren sollte. Das war keine Regel, sondern eine Lücke: nichts im Bestand
+        // nennt einen Grund, warum derselbe Inhaltsvertrag hier weniger gelten sollte.
+        //
+        // DIESELBE SCHREIBWEISE WIE IM ACCEPT-PFAD, und aus demselben Grund: ein fehlender
+        // Volltext bleibt FEHLEND (kein `bodyHtml: undefined`, kein aus `statement` gebauter
+        // Ersatz). `KoService.create` sanitisiert ihn danach wie jeden anderen Rumpf
+        // (`cleanBody` → `sanitizeHtml`); dieser Weg öffnet also kein zweites, ungefiltertes Tor.
+        ...(item.bodyHtml ? { bodyHtml: item.bodyHtml } : {}),
+        // R-0139 / FR-EXT-02: bis hierher war ein so eingespieltes Objekt von einem frei erfassten
+        // nicht zu unterscheiden — es trug weder Kandidaten-Anker noch Quelle. Jetzt steht der Weg
+        // dauerhaft am Objekt (Begründung am Modell, knowledge-object/src/types.ts).
+        importedVia: "library_import",
+        // R-0139 (bens Befund F1): ein Eintrag OHNE Quellkennung, aber mit Quell-URL oder Anbieter,
+        // behält diese Angaben als Quellverweis (kein Re-Sync-Anker, keine Revision — ohne
+        // `externalId` gibt es keine Quellenidentität, und eine erfundene wäre schlimmer als keine).
+        ...(hatQuellverweis(item) ? { sources: [this.quellverweis(item, actor)] } : {}),
+      });
+      exakt.set(key, erzeugt.id);
+      bestand.push(erzeugt);
+      imported += 1;
+      if (aktenHerkunft) {
+        dokumentFassungen.push({
+          titel: item.title,
+          koId: erzeugt.id,
+          dokumentId: aktenHerkunft.dokumentId,
+          fassung: aktenHerkunft.fassung,
+        });
+      }
+    }
+    // `skipped` behaelt Name und Bedeutung: nicht eingespielt. Es ist die Laenge der Liste — beide
+    // Zahlen koennen nicht auseinanderlaufen.
+    const skipped = uebersprungen.length;
+    await this.audit?.record({
+      actor,
+      action: "library.import",
+      target: "library",
+      payload: { imported, skipped },
+    });
+    // NACHARBEIT 5 (R-0169): `dokumentFassungen` ist rein additiv (die Grundform `ImportResult`
+    // steht unter Freeze-144) und fehlt GANZ, wenn keine Akte verdrahtet ist.
+    return this.dokumente
+      ? { imported, skipped, uebersprungen, dokumentFassungen }
+      : { imported, skipped, uebersprungen };
+  }
 
   // FR-LIB-03: Bus-Faktor je Kategorie (Einzelquelle = nur ein Autor).
   //
