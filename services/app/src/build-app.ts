@@ -77,12 +77,16 @@ import {
   type AnweisungRepo,
   type AnweisungStandAufnahme,
   DeduplizierenderKantenBestand,
+  // R-0169 (Nacharbeit 5): die interne Dokumentakte (Word-Zusatz, JSON ohne externalId).
+  type DokumentaktenRepo,
+  DokumentaktenService,
   type EvidenceRepo,
   // JOB 4156 (WIKI-GESAMTANWEISUNG-ANSCHLUSS): der Anweisungsdienst und seine haltbare Ablage.
   // Beide sind seit diesem Auftrag über `services/knowledge-object/index.ts` erreichbar — genau
   // dieser fehlende Modulexport war der Grund, warum das seit JOB 4154 fertige Routen-Plugin an
   // keiner App angemeldet werden konnte (`routes/gesamtanweisung-routes.ts`, Kopf).
   GesamtanweisungDienst,
+  InMemoryDokumentaktenRepo,
   InMemoryEvidenceRepo,
   InMemoryKoRepo,
   InMemoryKoVersionRepo,
@@ -100,6 +104,7 @@ import {
   KoService,
   type KoVersionRepo,
   PgAnweisungRepo,
+  PgDokumentaktenRepo,
   PgEvidenceRepo,
   PgKantenRepo,
   PgKoRepo,
@@ -212,6 +217,13 @@ import {
   InMemoryBrandingSettingsRepo,
   PgBrandingSettingsRepo,
 } from "./branding-settings";
+// R-0134 / R-1005: der Betreiberschalter des Confluence-Imports — dieselbe Bauform wie die
+// Markenwahl (haltbar im Postgres-Betrieb, im Speicher ohne Datenbank).
+import {
+  type ConfluenceImportSchalterRepo,
+  InMemoryConfluenceImportSchalterRepo,
+  PgConfluenceImportSchalterRepo,
+} from "./confluence-import-schalter";
 import { type SemanticPrefilter, removeKoFromDuplicatePrefilter } from "./duplicate-detection";
 import { cappedEmbeddingProvider } from "./embed-concurrency";
 import type { FactoryReset } from "./factory-reset";
@@ -392,6 +404,12 @@ export interface AppServices {
    */
   brandingSettings: BrandingSettingsRepo;
   /**
+   * R-0134 / R-1005: der Betreiberschalter des Confluence-Imports — über die Oberfläche umlegbar,
+   * von jeder Confluence-Importroute je Anfrage durchgesetzt. Aus demselben Grund wie
+   * `brandingSettings` NICHT in `AppRepos`; im Postgres-Betrieb haltbar (`buildPgServices`).
+   */
+  confluenceImportSchalter: ConfluenceImportSchalterRepo;
+  /**
    * WIKI-BEARBEITUNGSRESERVIERUNG: die laufenden Bearbeitungshinweise („hier bearbeitet gerade
    * jemand"). Neben `kanten` und ausdrücklich NICHT in `AppRepos`, aus demselben Grund wie dort
    * (`MUTATING_METHODS` in `dev-persist.ts` ist ein vollständiger Record über `keyof AppRepos`) —
@@ -458,6 +476,8 @@ export interface AppServices {
   // Route fernhalten. `ImportAccessService` bekommt diese Ablage; die Route bekommt nur ihn.
   importRuns: ImportRunRepo;
   externalSources: ExternalSourceRepo;
+  // R-0169 (Nacharbeit 5): die interne Dokumentakte — Word-Weg und JSON ohne externalId.
+  dokumente: DokumentaktenService;
   mailer: Mailer;
   // Audit-P3 (SCRUM-397): Gelesen-Status der Glocke (öffentliche Modul-Schnittstelle).
   notificationSeen: NotificationSeenRepo;
@@ -512,6 +532,8 @@ export interface AppRepos {
   // Lauf angelegt werden — die Tabelle wurde migriert und blieb leer.
   importRuns: ImportRunRepo;
   externalSources: ExternalSourceRepo;
+  // R-0169 (Nacharbeit 5): die Fassungen der internen Dokumentakte (eigene Tabelle).
+  dokumente: DokumentaktenRepo;
   modelRuns: ModelRunRepo;
   // Audit-P3 (SCRUM-397): pro Nutzer bewusst als gesehen markierte Benachrichtigungs-IDs.
   notificationSeen: NotificationSeenRepo;
@@ -848,6 +870,8 @@ export function assembleServices(
     // `buildPgServices` (echter Pool); ohne Injektion die In-Memory-Ablage — derselbe Vertrag,
     // andere Haltbarkeit, beide werden getrennt geprüft.
     brandingSettings?: BrandingSettingsRepo;
+    // R-0134 / R-1005: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
+    confluenceImportSchalter?: ConfluenceImportSchalterRepo;
     // WIKI-BEARBEITUNGSRESERVIERUNG: gesetzt von `buildPgServices` (echter Pool); ohne Injektion
     // die Speicherfassung — dieselbe Regel, die Uhr des Prozesses statt der Datenbank.
     bearbeitungen?: BearbeitungsRepo;
@@ -1042,11 +1066,18 @@ export function assembleServices(
   // Beziehungsroute nicht kennt. Die Wahlregel selbst ist UNVERÄNDERT (Postgres, wenn injiziert,
   // sonst der DEDUPLIZIERENDE Speicherbestand — die Begründung steht unten an der Verwendung).
   const kantenBestand = opts.kanten ?? new DeduplizierenderKantenBestand();
+  // R-0169 (Nacharbeit 5): EINE Dokumentakte für Word-Weg und Bibliotheksimport.
+  const dokumente = new DokumentaktenService({ repo: repos.dokumente });
   const library = new LibraryService({
     koService: ko,
+    dokumente,
     audit,
     candidates: repos.candidates,
     externalUpsert: externalImportEnabled,
+    // R-0169 (herkunft-identitaet): DERSELBE Quellrevisionsbestand, den die Importlauf-Routen lesen
+    // (`importRunRoutes`, unten). Bis hierher las ihn das Produkt nur — geschrieben hat ihn kein
+    // Importweg. Jetzt legt jede übernommene Quellfassung ihre unveränderliche Revision an.
+    externalSources: repos.externalSources,
     // JOB 4155: die kuratierten Kanten für `/api/graph` — EINE Mengenabfrage über `alleAktiven`,
     // keine Abfrage je Knoten. Derselbe Bestand, den `kantenRoutes` und die Netzroute lesen.
     kanten: kantenBestand,
@@ -1106,6 +1137,9 @@ export function assembleServices(
       opts.anweisungen ?? new FluechtigeAnweisungsablage(process.env.KLARWERK_DEV_PERSIST === "1"),
     // JOB 3510/3578: die Markenwahl — Postgres, wenn injiziert, sonst im Speicher.
     brandingSettings: opts.brandingSettings ?? new InMemoryBrandingSettingsRepo(),
+    // R-0134 / R-1005: der Betreiberschalter — Postgres, wenn injiziert, sonst im Speicher.
+    confluenceImportSchalter:
+      opts.confluenceImportSchalter ?? new InMemoryConfluenceImportSchalterRepo(),
     // WIKI-BEARBEITUNGSRESERVIERUNG: die Bearbeitungshinweise — Postgres, wenn injiziert, sonst im
     // Speicher.
     bearbeitungen: opts.bearbeitungen ?? new InMemoryBearbeitungsRepo(),
@@ -1114,6 +1148,8 @@ export function assembleServices(
     zurufModell,
     importRuns: repos.importRuns,
     externalSources: repos.externalSources,
+    // R-0169 (Nacharbeit 5): DIESELBE Instanz, die oben in den `LibraryService` gereicht wurde.
+    dokumente,
     ko,
     auth: new AuthService({
       users: repos.users,
@@ -1349,6 +1385,7 @@ export function inMemoryRepos(): AppRepos {
     candidates: new InMemoryCandidateRepo(),
     importRuns: new InMemoryImportRunRepo(),
     externalSources: new InMemoryExternalSourceRepo(),
+    dokumente: new InMemoryDokumentaktenRepo(),
     modelRuns: new InMemoryModelRunRepo(),
     notificationSeen: new InMemoryNotificationSeenRepo(),
     assistPresets: new InMemoryAssistPresetRepo(),
@@ -1426,6 +1463,8 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // „haengend in QUEUED" nach jedem Neustart ununterscheidbar von „nie gestartet".
       importRuns: new PgImportRunRepo(pool),
       externalSources: new PgExternalSourceRepo(pool),
+      // R-0169 (Nacharbeit 5): die Fassungen der internen Dokumentakte (DOKUMENTAKTE_SCHEMA).
+      dokumente: new PgDokumentaktenRepo(pool),
       // SCRUM-164: ModelRun-Protokoll persistent (KI-Aufrufe nachvollziehbar).
       modelRuns: new PgModelRunRepo(pool),
       // Audit-P3 (SCRUM-397): Gelesen-Status der Glocke persistent.
@@ -1479,6 +1518,9 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // überlebt die vom Administrator gesetzte Firmen-CI Neustart und Deploy; ohne sie fiele
       // `assembleServices` auch im Postgres-Betrieb auf die flüchtige In-Memory-Ablage zurück.
       brandingSettings: new PgBrandingSettingsRepo(pool),
+      // R-0134 / R-1005: der Betreiberschalter überlebt Neustart und Deploy — sonst stünde ein
+      // ausgeschalteter Import nach dem nächsten Neustart still wieder auf „an".
+      confluenceImportSchalter: new PgConfluenceImportSchalterRepo(pool),
       // WIKI-BEARBEITUNGSRESERVIERUNG: die Bearbeitungshinweise liegen in DERSELBEN Datenbank. Nur
       // so sehen mehrere App-Prozesse derselben Instanz denselben Hinweis — und die Uhr, die über
       // Ablauf und Erneuerung entscheidet, ist die der Datenbank, nicht die eines Prozesses.
@@ -3199,8 +3241,17 @@ export function buildApp(
   // melden — und genau der ist einer der vier Zustaende aus Block D.
   // JOB-924 D6: Die Route bekommt den Dienst, nicht die Ablage. Die Ablage geht AUSSCHLIESSLICH
   // hier hinein — das ist die einzige Stelle, an der beide zusammenkommen.
+  // R-0134 / R-1005: derselbe Dienst trägt jetzt auch den Betreiberschalter (Auskunft UND Umlegen,
+  // mit Prüfprotokoll) — die Route kennt weiterhin nur ihn.
   app.register(
-    importAccessRoutes(guards, new ImportAccessService({ importRuns: services.importRuns })),
+    importAccessRoutes(
+      guards,
+      new ImportAccessService({
+        importRuns: services.importRuns,
+        betreiberSchalter: services.confluenceImportSchalter,
+        audit: services.audit,
+      }),
+    ),
   );
   app.register(adminRoutes(services, guards, opts.factoryReset)); // SCRUM-181: Demo-Seed; Pedi 05.07.: Werksreset
   // SCRUM-510 WP2: Admin-Trigger für den Confluence-Space-Import — NUR bei aktivem Import-Flag registriert
@@ -3217,10 +3268,17 @@ export function buildApp(
         reasoner: services.reasoner,
         // W2-A/148: der echte Lauf bekommt seine Identität VOR dem ersten Effekt.
         importRuns: services.importRuns,
+        // R-0134 / R-1005: der Betreiberschalter, je Anfrage durchgesetzt.
+        betreiberSchalter: services.confluenceImportSchalter,
       }),
     );
-    // W2-A/148: der Leseweg der Laufdomäne. Hinter demselben Schalter wie der Start — ein Lesepfad
-    // auf Läufe, die es ohne den Schalter gar nicht geben kann, wäre eine Route ins Leere.
+  }
+
+  // W2-A/148: der Leseweg der Laufdomäne. Er ist QUELLNEUTRAL und steht deshalb hinter JEDEM
+  // Importweg, der Läufe schreibt — nicht nur hinter Confluence. Bis R-0145 hing er allein am
+  // Confluence-Schalter: eine Instanz nur mit SharePoint gab eine `importId` heraus, hinter der eine
+  // 404 stand. Sind alle Importwege aus, gibt es keine Läufe und damit auch keinen Leseweg.
+  if (schalterAn("confluenceImport") || schalterAn("sharepointImport")) {
     app.register(
       importRunRoutes({
         importRuns: services.importRuns,

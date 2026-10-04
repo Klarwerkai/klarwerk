@@ -1224,6 +1224,9 @@ export const endpoints = {
   // „ausgeschaltet" melden können muss. Begründung ausführlich in import-access-routes.ts.
   importAccess: {
     confluence: () => api.get<ImportAccessStatus>("/import/confluence/zugang"),
+    // R-0134 / R-1005: der Betreiberschalter — genau ein Ja/Nein, die Antwort ist die neue Auskunft.
+    confluenceSchalter: (an: boolean) =>
+      api.put<ImportAccessStatus>("/import/confluence/schalter", { an }),
   },
   users: {
     list: () => api.get<PublicUser[]>("/users"),

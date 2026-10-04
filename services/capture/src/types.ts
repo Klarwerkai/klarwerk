@@ -1,4 +1,4 @@
-import type { Confidentiality, KnowledgeType } from "../../knowledge-object";
+import type { Confidentiality, DokumentHerkunft, KnowledgeType } from "../../knowledge-object";
 
 // Roh-Inhalt eines Entwurfs (wird später zu einem KO strukturiert/eingereicht).
 export interface DraftPayload {
@@ -129,6 +129,17 @@ export interface Draft {
    * wie bisher. Die anderen Aufrufer (Mobil, Offline-Queue, `from-docx`) hängen daran.
    */
   createOperation?: DraftCreateOperation;
+  /**
+   * R-0169 (herkunft-identitaet, Nacharbeit 5) — DIE FASSUNG DES WORD-DOKUMENTS, AUS DEM DIESER
+   * ENTWURF KAM.
+   *
+   * AM `Draft`, NICHT IM `DraftPayload` — aus demselben Grund wie `createOperation` darüber: der
+   * Payload ist, was der Client schreiben darf (Speichern, Fortsetzen). Der Fassungsbezug setzt
+   * ausschliesslich der Server beim Anlegen über den Word-Weg (capture-routes.ts); ein Client kann
+   * ihn über keinen Entwurfsweg setzen oder ändern. `toKoInput` reicht ihn ans Wissensobjekt durch.
+   * Additiv im JSONB, keine Migration.
+   */
+  dokumentHerkunft?: DokumentHerkunft;
   /**
    * JOB 3668 (Papierkorb) — GESETZT BEIM WEICHEN LÖSCHEN.
    *
