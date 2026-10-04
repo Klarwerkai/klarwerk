@@ -18,7 +18,12 @@ import { Client, type Pool } from "pg";
 import { describe, expect, it, vi } from "vitest";
 import type { ImportCandidate as WebImportCandidate } from "../../apps/web/src/api/types";
 import { candidateFindings } from "../../apps/web/src/lib/extConcept";
-import { InMemoryKoRepo, KoService } from "../../services/knowledge-object";
+import {
+  InMemoryKoRepo,
+  InMemoryKoVersionRepo,
+  KoService,
+  type KoVersionRepo,
+} from "../../services/knowledge-object";
 import {
   type CandidateRepo,
   type ClaimResolution,
@@ -118,7 +123,22 @@ async function aufbau(anker: boolean) {
     });
   };
   const ablage = verzoegerteAblage();
-  const ko = new KoService({ repo: ablage.repo });
+  // Nacharbeit 1: ein einmal scharf zu schaltender Snapshotfehler NACH dem Insert (Teilpersistenz,
+  // wie `sideEffectHarness` in tests/app/review-claim-recovery.test.ts).
+  const snapshotFehler = { einmal: false };
+  const versionen = new InMemoryKoVersionRepo();
+  const versions: KoVersionRepo = {
+    append: async (snapshot) => {
+      if (snapshotFehler.einmal) {
+        snapshotFehler.einmal = false;
+        throw new Error("SnapshotDown");
+      }
+      return versionen.append(snapshot);
+    },
+    listByKo: (koId) => versionen.listByKo(koId),
+    remove: (koId, version) => versionen.remove(koId, version),
+  };
+  const ko = new KoService({ repo: ablage.repo, versions });
   await ko.activateSearchProjectionV2();
   const aDienst = new LibraryService({
     koService: ko,
@@ -138,7 +158,36 @@ async function aufbau(anker: boolean) {
     confidentiality: "intern" as const,
     ...(anker ? { provider: "wiki", externalId: "quelle-42" } : {}),
   };
-  return { transport, aPool, ko, ablage, aDienst, bDienst, item, gemeinsam };
+  return { transport, aPool, ko, ablage, aDienst, bDienst, item, snapshotFehler };
+}
+
+/**
+ * Bens Ablauf bis unmittelbar vor As Fortsetzung: A hängt im Insert, B wartet nachweislich, As
+ * Sperrsitzung bricht ab, B legt an. Danach entscheidet der Fall, was vor `fortsetzen` geschieht.
+ */
+async function bisVorAsFortsetzung(anker: boolean) {
+  const welt = await aufbau(anker);
+  const { transport, aPool, ko, ablage, aDienst, bDienst, item } = welt;
+  const [a] = await aDienst.createImportCandidates(
+    [{ ...item, sourceVersion: 1 }],
+    "imp",
+    NIE_AEHNLICH,
+  );
+  const [b] = await bDienst.createImportCandidates(
+    [{ ...item, sourceVersion: 2 }],
+    "imp",
+    NIE_AEHNLICH,
+  );
+  const aLauf = aDienst.reviewImportCandidate(a!.id, "accept", "rev-a", undefined, NIE_AEHNLICH);
+  await ablage.bereit;
+  const bLauf = bDienst.reviewImportCandidate(b!.id, "accept", "rev-b", undefined, NIE_AEHNLICH);
+  await vi.waitFor(() => expect(transport.wartende()).toBe(1));
+  expect(await ko.list(), "Vor dem Sitzungsverlust wartet B tatsächlich.").toHaveLength(0);
+  aPool.abbrechen();
+  const rb = await bLauf;
+  expect(rb.koId).toBeTruthy();
+  expect(await ko.list()).toHaveLength(1);
+  return { ...welt, a: a!, b: b!, aLauf, rb };
 }
 
 describe("B4 · Sperrverlust nach der letzten Prüfung, vor dem echten Insert", () => {
@@ -225,6 +274,49 @@ describe("B4 · Sperrverlust nach der letzten Prüfung, vor dem echten Insert", 
       expect(ra.koId).toBe(kos[0]?.id);
       expect(ra.dublettenbefund).toEqual({ ergebnis: anker ? "nicht_gestellt" : "keine" });
       expect(candidateFindings(ra as unknown as WebImportCandidate).acceptedKo).toBe(true);
+    });
+
+    // Nacharbeit 1, Bens Befund zu service.ts:2129 — der Adoptionsweg nach Teilpersistenz.
+    it(`${weg} (Nacharbeit 1): As Insert gelingt, sein Snapshot wirft einmal → die Adoption geht durch die Nachprüfung, genau EINE Kennung`, async () => {
+      const { ko, ablage, a, aLauf, rb, snapshotFehler } = await bisVorAsFortsetzung(anker);
+      snapshotFehler.einmal = true;
+      ablage.fortsetzen();
+      const ra = await aLauf;
+      expect(snapshotFehler.einmal, "Vorbedingung: der Snapshotfehler hat ausgelöst.").toBe(false);
+
+      const kos = await ko.list();
+      expect(kos, "Auch die Adoption hinterlässt keine zweite Kennung.").toHaveLength(1);
+      expect(kos[0]?.id).toBe(rb.koId);
+      expect(await ko.findByImportCandidateId(a.id), "As Objekt ist entfernt.").toBeUndefined();
+      expect(ra.status).toBe("angenommen");
+      expect(ra.dublettenbefund).toEqual({
+        ergebnis: anker ? "wiederverwendet" : "identisch",
+        treffer: { art: "wissensobjekt", koId: rb.koId },
+      });
+    });
+
+    // Nacharbeit 1, Bens Befund zu service.ts:2179 — Bs Lückenobjekt liegt im Papierkorb.
+    it(`${weg} (Nacharbeit 1): Bs Objekt wird vor As Fortsetzung gelöscht → keine zweite Kennung, A nennt den Papierkorb mit Bs Kennung`, async () => {
+      const { ko, ablage, a, aLauf, rb } = await bisVorAsFortsetzung(anker);
+      await ko.delete(rb.koId as string, "rev-b");
+      expect(await ko.list()).toHaveLength(0);
+      ablage.fortsetzen();
+      const ra = await aLauf;
+
+      expect(await ko.list(), "A legt neben dem gelöschten Objekt nichts an.").toHaveLength(0);
+      expect(await ko.findByImportCandidateId(a.id), "As Objekt ist entfernt.").toBeUndefined();
+      expect((await ko.trashed()).map((t) => t.id)).toEqual([rb.koId]);
+      expect(ra.status).toBe("angenommen");
+      expect(ra.duplicate).toBe(true);
+      expect(ra.dublettenbefund).toEqual({
+        ergebnis: "im_papierkorb",
+        treffer: { art: "wissensobjekt", koId: rb.koId },
+      });
+      // Anker-Weg: der Trash-Vertrag nennt die getrashte Kennung; Textweg: nichts angenommen.
+      expect(ra.koId).toBe(anker ? rb.koId : null);
+      const f = candidateFindings(ra as unknown as WebImportCandidate);
+      expect(f.imPapierkorb).toEqual({ koId: rb.koId });
+      expect(f.acceptedKo).toBe(false);
     });
   }
 });

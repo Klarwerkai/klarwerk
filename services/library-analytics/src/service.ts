@@ -1396,7 +1396,9 @@ export class LibraryService {
         //     Erstanlage (wer in der Lücke lief, hat es gesehen und darauf verwiesen);
         //   · ein Mitbewerber → das EIGENE, eben angelegte Objekt wird endgültig entfernt (es ist
         //     die zweite Kennung), und die Annahme läuft noch einmal regulär: sie trifft dann den
-        //     Mitbewerber (Textweg: Dublette mit Kennung; Anker-Weg: Wiederverwendung).
+        //     Mitbewerber (Textweg: Dublette mit Kennung; Anker-Weg: Wiederverwendung);
+        //   · ein Mitbewerber im PAPIERKORB (Bs Objekt wurde vor As Fortsetzung gelöscht) →
+        //     ebenso entfernt; die Annahme nennt `im_papierkorb` mit dessen Kennung.
         // Ist die Sperre nicht zurückzugewinnen (z. B. die Datenbank weist ab), fällt dieselbe
         // Entscheidung ohne Sperre — laut protokolliert. Das ist schwächer als der gesperrte Weg,
         // aber besser als eine sicher stehende zweite Kennung.
@@ -1404,7 +1406,12 @@ export class LibraryService {
           eigeneKoId: string,
           sperreGilt: () => Promise<void>,
         ): Promise<ClaimResolution> => {
-          if (!(await this.mitbewerberNebenAnlage(candidate, eigeneKoId, pruefeDublette))) {
+          const mitbewerber = await this.mitbewerberNebenAnlage(
+            candidate,
+            eigeneKoId,
+            pruefeDublette,
+          );
+          if (mitbewerber === undefined) {
             const item = this.withSanitizedConfidentiality(candidate.item);
             if (this.ankerWeg(candidate)) {
               neuerBefund = { duplicate: false, dublettenbefund: { ergebnis: "nicht_gestellt" } };
@@ -1423,6 +1430,20 @@ export class LibraryService {
           process.stderr.write(
             `[KLARWERK] Annahme-Sperre nach der Anlage verloren, Mitbewerber vorhanden — eigenes Objekt entfernt (kandidat=${id}, ko=${eigeneKoId}).\n`,
           );
+          if (mitbewerber.art === "papierkorb" && !this.ankerWeg(candidate)) {
+            // Bens Befund zu Zeile 2179: der Lückenmitbewerber liegt im Papierkorb. Auf dem
+            // Anker-Weg nennt ihn `acceptToKo` selbst (Trash-Vertrag, unten über `annehmen`); auf
+            // dem Textweg wird der Befund hier gesetzt — derselbe wie bei der regulären Annahme
+            // gegen einen Papierkorb-Anker: nichts angelegt, Kennung des gelöschten Objekts.
+            neuerBefund = {
+              duplicate: true,
+              dublettenbefund: {
+                ergebnis: "im_papierkorb",
+                treffer: { art: "wissensobjekt", koId: mitbewerber.koId },
+              },
+            };
+            return { status: "angenommen", ...neuerBefund, ...reviewedStamp };
+          }
           return annehmen(sperreGilt);
         };
         try {
@@ -2117,19 +2138,24 @@ export class LibraryService {
       // WP-SHIP8-CLOSE-5 (bens ROT-1A): VOR der Adoption werden die create-Belege idempotent
       // nachgezogen (genau der Teilpersistenz-Fall: Insert durch, Snapshot/Audit fehlt) — wirft
       // der Nachzug, wirft die Adoption (fail-closed; der äußere Fehlerpfad lässt den Claim stehen).
-      if (candidateId) {
-        const raced = await this.koService.findByImportCandidateId(candidateId);
-        if (raced) {
-          await this.koService.ensureCreatedSideEffects(raced);
-          process.stderr.write(
-            `[KLARWERK] Import-Accept adoptiert bestehendes KO (kandidat=${candidateId}, fehler=${
-              err instanceof Error ? err.name : "unknown"
-            }).\n`,
-          );
-          return { koId: raced.id };
-        }
+      //
+      // Lauf :2 Nacharbeit 1 (Bens Befund zu Zeile 2129): die Adoption ist ebenfalls eine Anlage
+      // dieses Laufs und läuft darum NICHT mehr mit einem eigenen Rücksprung an der Nachprüfung
+      // vorbei. Sie übernimmt das Objekt als `ko` und fällt in dieselbe Nachprüfung unten — sonst
+      // meldete ein Insert, dessen Snapshot nach einem Sperrverlust warf, Erfolg neben Bs Objekt.
+      const raced = candidateId
+        ? await this.koService.findByImportCandidateId(candidateId)
+        : undefined;
+      if (!raced) {
+        throw err;
       }
-      throw err;
+      await this.koService.ensureCreatedSideEffects(raced);
+      process.stderr.write(
+        `[KLARWERK] Import-Accept adoptiert bestehendes KO (kandidat=${candidateId}, fehler=${
+          err instanceof Error ? err.name : "unknown"
+        }).\n`,
+      );
+      ko = raced;
     }
     // ============================================================================================
     // Lauf :2 Nacharbeit nach Runde 3 (Bens B4) — DIE NACHPRÜFUNG NACH DER ANLAGE.
@@ -2164,15 +2190,27 @@ export class LibraryService {
 
   // Bens B4: liegt — ausser dem eigenen Objekt `eigeneKoId` — ein ANDERES Wissensobjekt im
   // Bestand, das dieser Kandidat getroffen hätte? Dieselbe Frage wie bei der Annahme, nur mit dem
-  // eigenen Objekt ausgenommen: Anker-Weg über den Herkunftsanker (aktiv; ein Papierkorb-Träger
-  // ist kein Mitbewerber, er wurde vor dieser Anlage gelöscht), Textweg über `befundBeiAnnahme`
+  // eigenen Objekt ausgenommen: Anker-Weg über den Herkunftsanker, Textweg über `befundBeiAnnahme`
   // (das eigene Objekt trägt den Stempel dieses Kandidaten und ist dort schon ausgenommen).
-  // Ohne Port ist die Textfrage nicht stellbar — dann gilt „kein Mitbewerber erkennbar".
+  //
+  // Lauf :2 Nacharbeit 1 (Bens Befund zu Zeile 2179): AUCH DER PAPIERKORB. Wurde Bs in der
+  // Sperrlücke angelegtes Objekt gelöscht, bevor A fortsetzt, sah `list()` es nicht mehr, und A
+  // behielt eine zweite Kennung. Darum zählt ein gelöschter Mitbewerber jetzt ebenfalls — mit seiner
+  // Kennung, damit die Annahme den Papierkorbbefund nennen kann:
+  //   · Anker-Weg: `trashedSourceAnchors()` (derselbe Anker, aktiver Träger hat Vorrang);
+  //   · Textweg mit `externalId`: der Papierkorbbefund von `befundBeiAnnahme`;
+  //   · Textweg ohne Anker: ein ANDERER Kandidat mit wortgleichem Titel und Aussage, dessen
+  //     gestempeltes Objekt (`findByImportCandidateId`, sieht den Papierkorb) gelöscht ist. Inhalt
+  //     getrashter Objekte liest der Wissensobjekt-Dienst nicht aus; der Kandidatenstempel ist der
+  //     einzige Weg, den gelöschten Lückenmitbewerber ohne Modulgrenzübertritt zu finden — darum
+  //     gilt hier nur die wortgleiche Form, keine Ähnlichkeit.
+  // `pruefung_nicht_moeglich` belegt keinen Mitbewerber; ohne Port ist die Textfrage nicht
+  // stellbar. In beiden Fällen bleibt das eigene, bereits angelegte Objekt stehen.
   private async mitbewerberNebenAnlage(
     candidate: ImportCandidate,
     eigeneKoId: string,
     pruefeDublette: DublettenPruefung | undefined,
-  ): Promise<boolean> {
+  ): Promise<{ art: "aktiv" } | { art: "papierkorb"; koId: string } | undefined> {
     const item = candidate.item;
     if (this.externalUpsert && item.externalId) {
       const schluessel = ankerSchluessel(item.provider, item.externalId);
@@ -2183,17 +2221,45 @@ export class LibraryService {
         for (const quelle of ko.sources ?? []) {
           const ext = quelle.externalId;
           if (ext && ankerSchluessel(quelle.provider, ext) === schluessel) {
-            return true;
+            return { art: "aktiv" };
           }
         }
       }
-      return false;
+      for (const anker of await this.koService.trashedSourceAnchors()) {
+        if (
+          anker.koId !== eigeneKoId &&
+          ankerSchluessel(anker.provider, anker.externalId) === schluessel
+        ) {
+          return { art: "papierkorb", koId: anker.koId };
+        }
+      }
+      return undefined;
     }
     const befund = await this.befundBeiAnnahme(candidate, pruefeDublette);
-    // Ein Objekt im Papierkorb ist kein Mitbewerber im aktiven Bestand; `pruefung_nicht_moeglich`
-    // belegt keinen — in beiden Fällen bleibt das eigene, bereits angelegte Objekt stehen.
-    const ergebnis = befund?.dublettenbefund.ergebnis;
-    return ergebnis === "identisch" || ergebnis === "aehnlich";
+    const ergebnis = befund?.dublettenbefund;
+    if (ergebnis?.ergebnis === "identisch" || ergebnis?.ergebnis === "aehnlich") {
+      return { art: "aktiv" };
+    }
+    if (ergebnis?.ergebnis === "im_papierkorb" && ergebnis.treffer.art === "wissensobjekt") {
+      return { art: "papierkorb", koId: ergebnis.treffer.koId };
+    }
+    if (pruefeDublette === undefined) {
+      return undefined;
+    }
+    for (const anderer of await this.candidates.all()) {
+      if (
+        anderer.id === candidate.id ||
+        anderer.item.title !== item.title ||
+        anderer.item.statement !== item.statement
+      ) {
+        continue;
+      }
+      const gestempelt = await this.koService.findByImportCandidateId(anderer.id);
+      if (gestempelt?.deletedAt && gestempelt.id !== eigeneKoId) {
+        return { art: "papierkorb", koId: gestempelt.id };
+      }
+    }
+    return undefined;
   }
 
   // ==============================================================================================

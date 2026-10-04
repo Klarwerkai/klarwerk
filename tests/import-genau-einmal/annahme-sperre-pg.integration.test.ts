@@ -22,7 +22,9 @@
 //   S7 — Bens B4 (Nacharbeit nach Runde 3): A hat die LETZTE Prüfung bestanden und hängt im echten
 //        Insert der Ablage; DANN stirbt seine Sperrsitzung. B legt an; A setzt fort, legt an,
 //        erkennt den Verlust in der Nachprüfung, entscheidet unter neu erworbener Sperre (neue
-//        Verbindung aus Pool A) und entfernt sein eigenes Objekt → genau ein Objekt.
+//        Verbindung aus Pool A) und entfernt sein eigenes Objekt → genau ein Objekt. Nacharbeit 1:
+//        dasselbe, wenn Bs Objekt vor As Fortsetzung gelöscht wird → kein aktives Objekt, A nennt
+//        `im_papierkorb` mit Bs Kennung.
 //
 // Läuft NUR unter `test:integration` (Docker/Testcontainers oder eine per KLARWERK_PG_TEST_URL
 // angebotene lokale Testinstanz) — dieselbe Bauform wie `tests/q2d-leere-kennung/
@@ -375,11 +377,16 @@ describe("Bens B2 · Annahme-Sperre über zwei unabhängige Pools gegen echtes P
     });
   }
 
-  for (const anker of [false, true]) {
-    const weg = anker ? "Herkunftsanker" : "Textweg";
+  for (const [anker, geloescht] of [
+    [false, false],
+    [true, false],
+    [false, true],
+    [true, true],
+  ] as const) {
+    const weg = `${anker ? "Herkunftsanker" : "Textweg"}${geloescht ? ", Bs Objekt gelöscht" : ""}`;
     const quelle = anker ? { ...EINTRAG, provider: "wiki", externalId: "quelle-42" } : EINTRAG;
 
-    it(`S7 · ${weg} (Bens B4, Nacharbeit): Sperrsitzung stirbt NACH der letzten Prüfung, im Insert → ein Objekt`, async (ctx) => {
+    it(`S7 · ${weg} (Bens B4, Nacharbeit): Sperrsitzung stirbt NACH der letzten Prüfung, im Insert → keine zweite Kennung`, async (ctx) => {
       // Der ERSTE echte Insert der Ablage hält an — also nach `sperreGilt` vor `create`.
       let betreten: () => void = () => undefined;
       let fortsetzen: () => void = () => undefined;
@@ -434,17 +441,31 @@ describe("Bens B2 · Annahme-Sperre über zwei unabhängige Pools gegen echtes P
         NIE_AEHNLICH,
       );
       expect(rb.koId, "B bekommt die freigewordene Sperre und legt an.").toBeTruthy();
+      if (geloescht) {
+        // Nacharbeit 1 (Bens Befund zu service.ts:2179): Bs Lückenobjekt liegt im Papierkorb.
+        await inst.koService.delete(rb.koId as string, "rev-b");
+      }
 
       fortsetzen();
       const ra = await aLauf;
       const kos = await inst.koService.list();
-      expect(kos, "Keine zweite Kennung.").toHaveLength(1);
-      expect(kos[0]?.id).toBe(rb.koId);
+      const asObjekt = await inst.koService.findByImportCandidateId(a!.id);
+      expect(asObjekt, "As Objekt ist entfernt.").toBeUndefined();
       expect(ra.status).toBe("angenommen");
-      expect(ra.dublettenbefund).toEqual({
-        ergebnis: anker ? "wiederverwendet" : "identisch",
-        treffer: { art: "wissensobjekt", koId: rb.koId },
-      });
+      if (geloescht) {
+        expect(kos, "Keine zweite Kennung neben dem Papierkorb.").toHaveLength(0);
+        expect(ra.dublettenbefund).toEqual({
+          ergebnis: "im_papierkorb",
+          treffer: { art: "wissensobjekt", koId: rb.koId },
+        });
+      } else {
+        expect(kos, "Keine zweite Kennung.").toHaveLength(1);
+        expect(kos[0]?.id).toBe(rb.koId);
+        expect(ra.dublettenbefund).toEqual({
+          ergebnis: anker ? "wiederverwendet" : "identisch",
+          treffer: { art: "wissensobjekt", koId: rb.koId },
+        });
+      }
       expect(await gehalteneAnnahmeSperren(inst.poolB)).toBe(0);
     });
   }
