@@ -3,7 +3,7 @@
 // Domäne in die generischen Felder. Titel/Body → KO-Inhalt; Space+pageId+URL → Provenienz/Ursprung (für
 // Re-Sync-Idempotenz); Labels → Tags; Read-Restriktionen → Governance-Signal für die Vertraulichkeit.
 
-import type { Confidentiality, KnowledgeType } from "../../knowledge-object";
+import type { Confidentiality, KnowledgeType, KoSourceRestrictions } from "../../knowledge-object";
 import type { ImportItem } from "../../library-analytics";
 // JOB 2703 D2: die EINE Kuerzungsregel liegt in `structure` (D1: library-analytics, umgelegt).
 import { kernaussageAusHtml } from "../../structure";
@@ -48,6 +48,59 @@ export function isPageRestricted(page: ConfluencePage): boolean {
   const users = read?.user?.results ?? [];
   const groups = read?.group?.results ?? [];
   return users.length > 0 || groups.length > 0;
+}
+
+// ================================================================================================
+// package:confluence (K6) — WER DIE SEITE IN DER QUELLE LESEN DARF, NICHT NUR OB.
+// ================================================================================================
+//
+// `isPageRestricted` darüber verdichtet die Restriktionslisten auf Ja/Nein — für die Einstufung
+// (`confidentiality`) genügt das. Für die Nachvollziehbarkeit genügt es nicht: WELCHE Benutzer und
+// Gruppen die Quelle zulässt, ging bis hierher verloren, obwohl der Client beide Listen anfordert
+// (rest-client.ts, EXPAND `restrictions.read.restrictions.user/group`).
+//
+// ÜBERNOMMEN WIRD, WAS DIE QUELLE ALS KENNUNG LIEFERT — nichts wird erfunden oder umgedeutet:
+//   · Benutzer: `accountId` (Cloud); auf älteren Server-Instanzen `userKey`, sonst `username`.
+//   · Gruppen:  `name`, sonst `id`.
+// Ein Eintrag ohne eine dieser Kennungen wird nicht geraten, sondern ausgelassen; Doppelte fallen
+// weg, die Quell-Reihenfolge bleibt. Liefert die Quelle keine einzige Kennung (offene Seite oder
+// leere Listen), FEHLT das Ergebnis — kein leeres Objekt, das wie eine Angabe aussähe.
+//
+// KEINE RECHTEABBILDUNG: Diese Kennungen sind Herkunftsangaben am Quellenanker. Ob und wie sie auf
+// KLARWERK-Konten oder -Rollen wirken, entscheidet der gesonderte Rechteauftrag.
+function quellKennung(eintrag: unknown, felder: readonly string[]): string | undefined {
+  if (!eintrag || typeof eintrag !== "object") {
+    return undefined;
+  }
+  const werte = eintrag as Record<string, unknown>;
+  for (const feld of felder) {
+    const wert = werte[feld];
+    if (typeof wert === "string" && wert.trim().length > 0) {
+      return wert.trim();
+    }
+  }
+  return undefined;
+}
+
+function kennungenAus(liste: unknown[] | undefined, felder: readonly string[]): string[] {
+  const kennungen: string[] = [];
+  for (const eintrag of liste ?? []) {
+    const kennung = quellKennung(eintrag, felder);
+    if (kennung !== undefined && !kennungen.includes(kennung)) {
+      kennungen.push(kennung);
+    }
+  }
+  return kennungen;
+}
+
+export function confluenceReadRestrictions(page: ConfluencePage): KoSourceRestrictions | undefined {
+  const read = page.restrictions?.read?.restrictions;
+  const users = kennungenAus(read?.user?.results, ["accountId", "userKey", "username"]);
+  const groups = kennungenAus(read?.group?.results, ["name", "id"]);
+  if (users.length === 0 && groups.length === 0) {
+    return undefined;
+  }
+  return { users, groups };
 }
 
 // JOB 3089 (N11) — QUELL-GOVERNANCE → VERTRAULICHKEIT. ABLÖSUNG VON SCRUM-511.
@@ -262,6 +315,8 @@ export function mapConfluencePageToImportItem(
   // IC-1: Provenienz-Datum der letzten Version (Confluence version.when, ISO) → nur wenn vorhanden.
   const updatedAt = page.version?.when?.trim();
   const governance = confluenceGovernanceConfidentiality(page);
+  // package:confluence (K6): die konkreten Kennungen der Lese-Einschränkung — oder gar nichts.
+  const sourceRestrictions = confluenceReadRestrictions(page);
   // AUFTRAG-mega27 A2: die Elternkette (Wurzel zuerst, ohne die Seite selbst) — oder gar nichts.
   const sourcePath = confluenceSourcePath(page);
   // R-0549: wer lesen darf (nur bei restringierten Seiten). R-0163: die Anhänge aus dem Expand.
@@ -303,6 +358,7 @@ export function mapConfluencePageToImportItem(
     ...(attachments.length > 0 ? { sourceAttachments: attachments } : {}),
     ...(anhaengeBekannt ? {} : { sourceAttachmentsIncomplete: true }),
     ...(typeof page.version?.number === "number" ? { sourceVersion: page.version.number } : {}),
+    ...(sourceRestrictions ? { sourceRestrictions } : {}),
     ...(url ? { url } : {}),
     provider: "Confluence",
     ...(bodyHtml ? { bodyHtml } : {}),

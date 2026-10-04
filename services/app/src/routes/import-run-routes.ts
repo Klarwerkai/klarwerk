@@ -43,12 +43,13 @@
 import type { FastifyPluginAsync } from "fastify";
 import { AskError, type Gap, redactGapForViewer } from "../../../ask";
 import type { KoService } from "../../../knowledge-object";
-import type {
-  ExternalSourceRecord,
-  ExternalSourceRepo,
-  ImportRun,
-  ImportRunItemRef,
-  ImportRunRepo,
+import {
+  type ExternalSourceRecord,
+  type ExternalSourceRepo,
+  type ImportRun,
+  type ImportRunItemRef,
+  type ImportRunRepo,
+  importProviderKey,
 } from "../../../library-analytics";
 import { can } from "../../../rbac";
 import type { Guards } from "../http";
@@ -173,14 +174,6 @@ function elementNachAussen(ref: ImportRunItemRef, luecken: LueckenPaar = KEIN_LU
   };
 }
 
-/**
- * R-0142 (Lauf 5): die Lauf-Kennung, unter der eine Revision ZUERST aufgenommen wurde
- * (`library-analytics/src/laufbindung.ts`). Fail-closed: nur eine nichtleere Zeichenkette.
- */
-function laufDerRevision(satz: ExternalSourceRecord): string | null {
-  const id = satz.sourceMetadata.importId;
-  return typeof id === "string" && id.length > 0 ? id : null;
-}
 
 export function importRunRoutes(deps: ImportRunRoutesDeps): FastifyPluginAsync {
   const { importRuns, externalSources, guards } = deps;
@@ -340,9 +333,10 @@ export function importRunRoutes(deps: ImportRunRoutesDeps): FastifyPluginAsync {
     //   · Lauf unbekannt → `run: null`; keine Elementreferenz für dieses Objekt → `item: null`.
     // Lauf 5 R3 (Bens B11): der Lauf ist der der ANNAHME, die den Anker zuletzt geschrieben hat
     // (`importRunId` am Anker) — nicht der, der die Revision zuerst aufnahm. Die Revision ist die
-    // der Elementreferenz. Nur bei Ankern ohne Laufkennung (Altbestand) bleibt die Revision der
-    // einzige Hinweis, und dann steht der Ausgang nur, wenn jener Lauf eine Referenz auf genau
-    // dieses Objekt trägt.
+    // der Elementreferenz. Anker ohne Laufkennung (Altbestand, Importe ohne Lauf) tragen `run: null`
+    // — die Revision allein nennt keinen Lauf. Die Revision selbst kommt (Zusammenführung mit
+    // R-0169) zuerst aus `sourceRecordId` am Anker, sonst über die Revisionsidentität mit
+    // DEMSELBEN Schlüssel, mit dem sie geschrieben wird (`importProviderKey`).
     // Lücken: s. Kopf dieser Datei (`lueckenJeObjekt`).
     const koService = deps.koService;
     if (koService) {
@@ -362,15 +356,16 @@ export function importRunRoutes(deps: ImportRunRoutesDeps): FastifyPluginAsync {
             reply.code(404).send(nichtGefunden);
             return reply;
           }
-          const revision =
-            typeof anker.sourceVersion === "number"
+          const revision: ExternalSourceRecord | undefined = anker.sourceRecordId
+            ? await externalSources.findById(anker.sourceRecordId)
+            : typeof anker.sourceVersion === "number"
               ? await externalSources.findByRevision(
-                  anker.provider ?? "confluence",
+                  importProviderKey(anker.provider),
                   anker.externalId,
                   anker.sourceVersion,
                 )
               : undefined;
-          const importId = anker.importRunId ?? (revision ? laufDerRevision(revision) : null);
+          const importId = anker.importRunId ?? null;
           const run = importId ? await importRuns.findById(importId) : undefined;
           // Die jüngste Referenz dieses Laufs auf genau dieses Objekt.
           const ref = run

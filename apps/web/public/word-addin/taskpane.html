@@ -1474,6 +1474,88 @@
       return JSON.stringify({ title: title, statement: statement, bodyHtml: bodyHtml, category: category, origin: "word_addin" });
     }
 
+    // R-0169 (Nacharbeit 5) — Spiegel von wordAddin.ts (WORD_ADDIN_DOKUMENT_SETTING,
+    // mitDokumentkennung, dokumentkennungAusAntwort). Die von Klarwerk vergebene Dokumentkennung
+    // liegt in den Dokumenteinstellungen DIESES Word-Dokuments und reist mit der Datei. Fehlt die
+    // Einstellungs-Schnittstelle (aeltere Hosts, Testattrappen), bleibt alles wie vorher: kein
+    // Kennungsfeld, kein Fehler — der Server legt dann je Senden eine neue Akte an.
+    var WORD_ADDIN_DOKUMENT_SETTING = "klarwerkDokumentId";
+
+    // R-0169 (Nacharbeit 8) — DIE UNGESICHERTE KENNUNG. Die vom Server vergebene Kennung, solange
+    // NICHT nachgewiesen ist, dass sie im Word-Dokument gespeichert wurde (`saveAsync` mit Erfolg).
+    // Solange sie hier steht, ist die Identitaetsbindung UNVOLLSTAENDIG: das Panel meldet es
+    // (`sendDocIdUnsaved`), und jedes weitere Senden in dieser Sitzung traegt GENAU diese Kennung —
+    // es geht also nicht still ein neuer Dokumentimport ohne Kennung hinaus. Nach Schliessen und
+    // Wiederoeffnen ohne gespeicherte Kennung ist sie weg; genau deshalb wird der Fehlschlag gemeldet.
+    var dokumentkennungUngesichert = null;
+
+    function gespeicherteDokumentkennung() {
+      try {
+        var einstellungen = Office.context.document.settings;
+        if (einstellungen && typeof einstellungen.get === "function") {
+          var wert = einstellungen.get(WORD_ADDIN_DOKUMENT_SETTING);
+          if (typeof wert === "string" && wert.length > 0) { return wert; }
+        }
+      } catch (err) {
+        // keine Einstellungs-Schnittstelle — es zaehlt dann nur die ungesicherte Kennung unten.
+      }
+      return dokumentkennungUngesichert;
+    }
+
+    function meldeUngesicherteDokumentkennung() {
+      if (dokumentkennungUngesichert) { showSendStatus("warn", t("sendDocIdUnsaved")); }
+    }
+
+    function mitDokumentkennung(payload, dokumentId) {
+      if (typeof dokumentId !== "string" || dokumentId.replace(/^\s+|\s+$/g, "").length === 0) {
+        return payload;
+      }
+      var rumpf = JSON.parse(payload);
+      rumpf.dokumentId = dokumentId.replace(/^\s+|\s+$/g, "");
+      return JSON.stringify(rumpf);
+    }
+
+    function dokumentkennungAusAntwort(antwort) {
+      if (!antwort || typeof antwort !== "object") { return null; }
+      var herkunft = antwort.dokumentHerkunft;
+      if (!herkunft || typeof herkunft !== "object") { return null; }
+      var kennung = herkunft.dokumentId;
+      return typeof kennung === "string" && kennung.length > 0 ? kennung : null;
+    }
+
+    // Legt die vom Server vergebene Kennung im Dokument ab. NACHARBEIT 8 (bens F1): das Ergebnis
+    // von `saveAsync` wird AUSGEWERTET. Erst ein gemeldeter Erfolg macht die Bindung vollstaendig;
+    // ein Fehlschlag, eine fehlende Einstellungs-Schnittstelle oder ein synchroner Fehler lassen die
+    // Kennung als UNGESICHERT stehen (Wiederholungen tragen sie weiter) und werden gemeldet — der
+    // asynchrone Fehlschlag hier, die uebrigen am Ende des Sendewegs (`meldeUngesicherteDokumentkennung`).
+    function merkeDokumentkennung(antwort) {
+      var kennung = dokumentkennungAusAntwort(antwort);
+      if (!kennung) { return; }
+      dokumentkennungUngesichert = kennung;
+      try {
+        var einstellungen = Office.context.document.settings;
+        if (
+          !einstellungen ||
+          typeof einstellungen.set !== "function" ||
+          typeof einstellungen.saveAsync !== "function"
+        ) {
+          return;
+        }
+        einstellungen.set(WORD_ADDIN_DOKUMENT_SETTING, kennung);
+        var erfolg = Office.AsyncResultStatus ? Office.AsyncResultStatus.Succeeded : "succeeded";
+        einstellungen.saveAsync(function (ergebnis) {
+          if (ergebnis && ergebnis.status === erfolg) {
+            if (dokumentkennungUngesichert === kennung) { dokumentkennungUngesichert = null; }
+            return;
+          }
+          dokumentkennungUngesichert = kennung;
+          meldeUngesicherteDokumentkennung();
+        });
+      } catch (err) {
+        // Die Kennung bleibt ungesichert stehen und wird am Ende des Sendewegs gemeldet.
+      }
+    }
+
     // JOB 2613 D1 — Spiegel von wordAddin.ts#trimWordImagesToBudget. Groesstes Bild zuerst
     // weglassen, bis der Rest ins Budget passt; das GANZE img-Tag faellt, nicht nur seine Quelle
     // (ein img ohne src waere ein kaputtes Bildsymbol). Nur eingebettete data:-Bilder werden
@@ -2724,6 +2806,8 @@
         sendImagesMissingOne: "Word hat 1 Bild nicht herausgegeben — der Text ist vollständig.",
         sendImagesDropped: "{n} Bilder waren zu groß und fehlen im Entwurf.",
         sendImagesDroppedOne: "1 Bild war zu groß und fehlt im Entwurf.",
+        // R-0169 (Nacharbeit 8): die Dokumentkennung konnte nicht im Word-Dokument gespeichert werden.
+        sendDocIdUnsaved: "Entwurf angelegt, aber die Dokumentkennung ist nicht im Word-Dokument gespeichert — bitte das Dokument speichern und erneut senden, sonst gilt es später als neues Dokument.",
         sendImagesBoth: "{n} Bilder fehlen im Entwurf — {a} hat Word nicht herausgegeben, {b} waren zu groß.",
         // JOB 3438: die Bildbilanz des Dokument-Wegs. Der Server verkleinert seit JOB 3400 und sagt
         // in DERSELBEN Antwort, was er getan und was er gelassen hat; hier wird es lesbar. Einzahl
@@ -3176,6 +3260,7 @@
         sendImagesMissingOne: "Word did not release 1 image — the text is complete.",
         sendImagesDropped: "{n} images were too large and are missing from the draft.",
         sendImagesDroppedOne: "1 image was too large and is missing from the draft.",
+        sendDocIdUnsaved: "Draft created, but the document ID is not saved in the Word document — please save the document and send again, otherwise it will later count as a new document.",
         sendImagesBoth: "{n} images are missing from the draft — Word did not release {a}, {b} were too large.",
         // JOB 3438: the image balance of the document path (see the German block for the reasoning).
         sendImagesShrunkOne: "1 image was resized.",
@@ -3509,6 +3594,7 @@
         sendImagesMissingOne: "Word heeft 1 afbeelding niet vrijgegeven — de tekst is volledig.",
         sendImagesDropped: "{n} afbeeldingen waren te groot en ontbreken in het concept.",
         sendImagesDroppedOne: "1 afbeelding was te groot en ontbreekt in het concept.",
+        sendDocIdUnsaved: "Concept aangemaakt, maar de documentcode is niet in het Word-document opgeslagen — sla het document op en verstuur opnieuw, anders telt het later als nieuw document.",
         sendImagesBoth: "{n} afbeeldingen ontbreken in het concept — {a} heeft Word niet vrijgegeven, {b} waren te groot.",
         // JOB 3438: de afbeeldingsbalans van het documentpad (zie het Duitse blok voor de redenering).
         sendImagesShrunkOne: "1 afbeelding is verkleind.",
@@ -6031,6 +6117,8 @@
         // JOB 3594 K2b RUNDE 2: hier stand `showSendStatus("busy", t("sendBusy"))`. Der Satz steht
         // seit dieser Runde schon am Eingang von `sendeEntwurf` — ein zweites Setzen waere eine
         // zweite Stelle fuer denselben Zustand und koennte den ersten nur noch wiederholen.
+        // R-0169 (Nacharbeit 5): die im Dokument gespeicherte Kennung reist mit (falls vorhanden).
+        prepared.payload = mitDokumentkennung(prepared.payload, gespeicherteDokumentkennung());
         fetch("/api/drafts", {
           method: "POST",
           credentials: "include",
@@ -6050,6 +6138,9 @@
             return null;
           })
           .then(function (draft) {
+            // R-0169 (Nacharbeit 5): die vergebene Kennung im Dokument ablegen — auch wenn die
+            // Anzeige dieses Laufs inzwischen ueberholt ist, gehoert die Kennung zum Dokument.
+            if (draft) { merkeDokumentkennung(draft); }
             if (!draft || !sendeLaufAktuell(lauf)) { return; }
             hideSendStatus();
             // WP-KLARA-2 (Pedis Befund 1): der Link oeffnet den ENTWURF direkt — bestehendes
@@ -6061,6 +6152,8 @@
             // Block F), weggelassene (JOB 2613 D1) und nicht herausgegebene Bilder — EIN Satz, nur
             // im Fall, aus gezaehlten Zahlen. Runde 3: gebunden an die beim Senden gezeigte Markierung.
             zeigeEntwurfsErgebnis(link.href, bilderBilanz(prepared), gesendeteMarkierung);
+            // R-0169 (Nacharbeit 8): eine unvollstaendige Kennungsbindung bleibt sichtbar.
+            meldeUngesicherteDokumentkennung();
           })
           .catch(function (err) {
             if (!sendeLaufAktuell(lauf)) { return; }
@@ -6221,6 +6314,9 @@
       // capture-routes.ts); ohne ihn nimmt die Route wie bisher den Dateinamen.
       var titel = (titelWunsch || "").slice(0, WORD_ADDIN_TITLE_MAX).trim();
       if (titel.length > 0) { koerper.title = titel; }
+      // R-0169 (Nacharbeit 5): dieselbe Dokumentkennung wie im Auswahl-Weg.
+      var gespeicherteKennung = gespeicherteDokumentkennung();
+      if (gespeicherteKennung) { koerper.dokumentId = gespeicherteKennung; }
       var nutzlast = JSON.stringify(koerper);
       fetch("/api/drafts/from-docx", {
         method: "POST",
@@ -6237,12 +6333,14 @@
           return null;
         })
         .then(function (draft) {
+          if (draft) { merkeDokumentkennung(draft); }
           if (!draft || !sendeLaufAktuell(lauf)) { return; }
           hideSendStatus();
           // NIE mehr behaupten als angekommen ist, und nie weniger: `docxBilderBefund` liest die
           // Bildzahlen DIESER Antwort — Verlust, Verkleinerung, behaltene Originale und die echten
           // Ausfaelle — und ist die EINZIGE Stelle, die den Bilder-Satz dieses Wegs bildet.
           zeigeEntwurfsLink(draft.id, docxBilderBefund(draft), gesendeteMarkierung);
+          meldeUngesicherteDokumentkennung();
         })
         .catch(function (err) {
           if (!sendeLaufAktuell(lauf)) { return; }

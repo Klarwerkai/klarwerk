@@ -56,25 +56,41 @@ describe("JOB 3023 · B — der Vergleich laeuft auch gegen den eigenen Lauf", (
     });
 
     expect(res.statusCode, res.body).toBe(200);
+    // R-0143 (bens F1): der direkte Eingang reiht ein und legt NICHTS direkt an. Die Dublettenfrage
+    // gegen den eigenen Lauf bleibt dieselbe — ihr Treffer ist jetzt der KANDIDAT des ersten
+    // Eintrags (ein Objekt gibt es vor der Annahme nicht), und die Annahme beider ergibt EIN Objekt.
     const body = res.json() as {
       imported: number;
       skipped: number;
-      uebersprungen: Uebersprungen[];
+      uebersprungen: (Uebersprungen & { kandidatId?: string })[];
+      kandidaten: { id: string }[];
     };
-    expect(body.imported).toBe(1);
+    expect(body.imported).toBe(0);
     expect(body.skipped).toBe(1);
     expect(body.uebersprungen).toHaveLength(1);
     expect(body.uebersprungen[0]?.grund).toBe("aehnlich");
-
-    const liste = await app.inject({ method: "GET", url: "/api/kos", headers });
-    const kos = liste.json() as { id: string }[];
+    const [erster, zweiter] = body.kandidaten;
     expect(
-      kos,
+      [body.uebersprungen[0]?.koId, body.uebersprungen[0]?.kandidatId],
+      "Der Treffer ist der im selben Lauf eingereihte Kandidat.",
+    ).toEqual([null, erster?.id]);
+
+    const vorAnnahme = await app.inject({ method: "GET", url: "/api/kos", headers });
+    expect(vorAnnahme.json() as unknown[], "Vor der Annahme entsteht kein Objekt.").toHaveLength(0);
+
+    for (const k of [erster, zweiter]) {
+      const annahme = await app.inject({
+        method: "PUT",
+        url: `/api/library/import/candidates/${k?.id}`,
+        headers,
+        payload: { action: "accept" },
+      });
+      expect(annahme.statusCode, annahme.body).toBe(200);
+    }
+    const liste = await app.inject({ method: "GET", url: "/api/kos", headers });
+    expect(
+      liste.json() as unknown[],
       "Aus zwei Schreibweisen derselben Sache wird genau ein Wissensobjekt.",
     ).toHaveLength(1);
-    expect(
-      body.uebersprungen[0]?.koId,
-      "Der Treffer ist das im selben Lauf erzeugte Objekt — nicht `null`.",
-    ).toBe(kos[0]?.id);
   });
 });

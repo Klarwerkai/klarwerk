@@ -45,6 +45,11 @@ export interface ImportRunSummary {
   // die Station, die ein Mensch nach einem Importlauf liest — der Urteilspunkt „SERVERINTERN,
   // Verluststelle gefunden, Zielwirkung offen" schliesst sich erst hier.
   hierarchie?: NonNullable<CollectResult["hierarchie"]>;
+  // R-0159 (Befund F2): WARUM der Lauf vor dem letzten Cursor endete — Frist, Zeitbudget oder
+  // Größe, samt hostfreier Meldung aus dem Client. Bis hierher kam er bis `collectAll` und wurde
+  // HIER verworfen; der gespeicherte Lauf stand dann auf PARTIAL ohne Grund. Nur gesetzt, wenn der
+  // Adapter ihn geliefert hat; die bereits gelesenen Seiten bleiben davon unberührt.
+  abbruch?: NonNullable<CollectResult["abbruch"]>;
   perPage: { ref: string; status: ImportPageStatus; note?: string }[];
   // R-0162: der Löschabgleich dieses Laufs (s. `quellAbgleich`). Additiv.
   sourceSync?: SourceSyncSummary;
@@ -567,7 +572,13 @@ export function importStatusFor(
 }
 
 export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<ImportRunSummary> {
-  const { items, failed: collectFailed, truncated, hierarchie } = await deps.adapter.collectAll();
+  const {
+    items,
+    failed: collectFailed,
+    truncated,
+    hierarchie,
+    abbruch,
+  } = await deps.adapter.collectAll();
   const seen = await existingVersions(deps.koService);
   const pending = await pendingKeys(deps.library);
 
@@ -629,7 +640,7 @@ export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<I
       toQueue,
       deps.actor,
       undefined,
-      deps.importId ? { importId: deps.importId } : undefined,
+      deps.importId ? { lauf: { importId: deps.importId } } : {},
     );
     imported = persisted.length;
     // perPage ehrlich nachziehen: eingereihte, aber nicht persistierte Seiten → skipped (Parallelkonflikt).
@@ -673,6 +684,8 @@ export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<I
     truncated,
     // JOB 1042 D3: unveraendert durchgereicht — nur gesetzt, wenn der Adapter ihn geliefert hat.
     ...(hierarchie ? { hierarchie } : {}),
+    // R-0159 (F2): unverändert durchgereicht — nur gesetzt, wenn der Adapter ihn geliefert hat.
+    ...(abbruch ? { abbruch } : {}),
     perPage,
     ...(sourceSync ? { sourceSync } : {}),
   };

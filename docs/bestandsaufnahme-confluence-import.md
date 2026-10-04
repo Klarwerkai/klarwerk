@@ -322,6 +322,17 @@ Register-Urteil — eingeführt vom Supportkontakt-Auftrag und mit dem Hauptstan
 dieser Lieferung nicht berührt. Nicht hier repariert; aus der Auftragsauswahl genommen und als
 fremder Basisbefund benannt. Der globale Test bleibt rot, bis jener Auftrag sein Urteil nachträgt.
 
+**Nacharbeit 2 (Integration mit main `5f3e3a81`):** acht Konfliktdateien zusammengeführt, beide
+Seiten erhalten. Fachlich wichtig: main schreibt seit R-0169 die Quellrevision selbst bei der
+Annahme (`quellrevisionFestschreiben`, Schlüssel `importProviderKey`, Abdruck `quellinhaltAbdruck`,
+CONFLICT bei anderem Inhalt). Die Laufbindung (R-0142) schrieb sie bisher mit eigenem Schlüssel und
+Abdruck beim Einreihen — die spätere Annahme wäre daran gescheitert. Jetzt schreibt **ein** Weg:
+`bindeAnLauf` ruft `quellrevisionFestschreiben`; `halteQuellrevisionFest` ist entfernt. Der Anker
+trägt `sourceRecordId` (main) und `importRunId` (hier) nebeneinander; die Objekt-Route liest die
+Revision zuerst über `sourceRecordId`. `createImportCandidates` nimmt `quellangabenEingereicht`
+(main) und `lauf` (hier) im selben Optionsobjekt. Der Laufabschluss setzt den Leseabbruch-Code aus
+main vor `SOURCE_SYNC_INCOMPLETE`.
+
 ## Abgrenzung
 
 - SharePoint/OneDrive-Import (JOB 4086) ist ein eigener Adapter und eigener Auftrag.

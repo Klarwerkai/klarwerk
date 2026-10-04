@@ -19,9 +19,11 @@
 // Die Bindung ist eine INTERNE Angabe des Servers. Am JSON-Eingang wäre sie die Behauptung eines
 // Clients über einen fremden Lauf; `saeubereQuellangaben` entfernt sie deshalb immer, und nur
 // `createImportCandidates` setzt sie — nach der Säuberung.
-import { createHash } from "node:crypto";
-import type { ExternalSourceRepo } from "./repo";
-import type { ExternalSourceRecord, ImportItem, ImportItemOutcome } from "./types";
+//
+// Die Quellrevision schreibt seit der Zusammenführung mit R-0169 GENAU EIN Weg:
+// `LibraryService.quellrevisionFestschreiben` (Schlüssel `importProviderKey`, Inhaltsabdruck
+// `quellinhaltAbdruck`) — beim Einreihen (`bindeAnLauf`) wie bei der Annahme.
+import type { ImportItemOutcome } from "./types";
 
 /** Die Bindung eines Kandidaten an seinen Lauf. */
 export interface ImportLaufBindung {
@@ -56,57 +58,6 @@ export function leseLaufBindung(item: unknown): ImportLaufBindung | undefined {
     ordinal: b.ordinal,
     sourceRecordId: typeof b.sourceRecordId === "string" ? b.sourceRecordId : null,
   };
-}
-
-/**
- * Hält die Quellrevision dieses Items fest und gibt ihre Kennung zurück — die vorhandene, wenn
- * dieselbe Revision schon aufgenommen ist. `null` für Items ohne Quellidentität (kein `externalId`
- * oder keine Version): ohne Revisionsidentität gibt es keine Revision.
- *
- * `rawOrRenderedContentReference` bleibt `null` (= `NOT_CAPTURED`): der Volltext liegt am
- * Wissensobjekt (`bodyHtml`), einen eigenen Inhaltsspeicher je Revision gibt es nicht.
- * `sourceMetadata.importId` nennt den Lauf, der die Revision ZUERST aufgenommen hat.
- */
-export async function halteQuellrevisionFest(
-  repo: ExternalSourceRepo,
-  item: ImportItem,
-  importId: string,
-  genId: () => string,
-  importedAt: string,
-): Promise<string | null> {
-  const externalId = item.externalId;
-  const version = item.sourceVersion;
-  if (!externalId || typeof version !== "number" || !Number.isFinite(version)) {
-    return null;
-  }
-  const sourceSystem = item.provider ?? "confluence";
-  const vorhanden = await repo.findByRevision(sourceSystem, externalId, version);
-  if (vorhanden) {
-    return vorhanden.sourceRecordId;
-  }
-  const satz: ExternalSourceRecord = {
-    sourceRecordId: genId(),
-    sourceSystem,
-    externalId,
-    sourceVersion: version,
-    url: item.url ?? null,
-    title: item.title,
-    rawOrRenderedContentReference: null,
-    importedAt,
-    contentHash: createHash("sha256")
-      .update(`${item.title}\n${item.statement}\n${item.bodyHtml ?? ""}`)
-      .digest("hex"),
-    sourceMetadata: {
-      importId,
-      ...(item.sourceScope ? { sourceScope: item.sourceScope } : {}),
-      ...(item.sourcePath ? { sourcePath: [...item.sourcePath] } : {}),
-    },
-  };
-  if (await repo.insertIfAbsent(satz)) {
-    return satz.sourceRecordId;
-  }
-  // Nebenläufig angelegt: die vorhandene Zeile gilt.
-  return (await repo.findByRevision(sourceSystem, externalId, version))?.sourceRecordId ?? null;
 }
 
 /**

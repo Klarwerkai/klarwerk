@@ -6,6 +6,7 @@ import { CAPTURE_CREATE_OPERATION_SCHEMA, CAPTURE_SCHEMA } from "../../capture";
 import { CONFLICTS_SCHEMA, OVERLAP_SCHEMA, OVERLAP_SETTINGS_SCHEMA } from "../../conflicts";
 import { EXTERNAL_KNOWLEDGE_SCHEMA } from "../../external-search";
 import {
+  DOKUMENTAKTE_SCHEMA,
   GESAMTANWEISUNG_SCHEMA,
   KANTEN_SCHEMA,
   KO_CREATE_OPERATION_SCHEMA,
@@ -25,6 +26,7 @@ import {
   IMPORT_RUN_SCHEMA,
 } from "../../library-analytics";
 import { LIFECYCLE_SCHEMA } from "../../lifecycle";
+import { MANAGEMENT_PROFILE_SCHEMA } from "../../management";
 import { MODEL_RUNS_SCHEMA } from "../../model-runs";
 import { NOTIFICATION_SEEN_SCHEMA } from "../../notifications";
 import { OBJECTSTORE_SCHEMA } from "../../object-store";
@@ -44,6 +46,8 @@ import { VALIDATION_SCHEMA, VALIDATION_SETTINGS_SCHEMA } from "../../validation"
 // die Lesevarianten: ein danebenliegender, flüchtiger Datenraum, der das KO-Modell nicht berührt.
 import { KO_BEARBEITUNG_SCHEMA } from "./bearbeitungshinweis";
 import { BRANDING_SETTINGS_SCHEMA } from "./branding-settings";
+// R-0134 / R-1005: der Betreiberschalter des Confluence-Imports (umlegbar über die Oberfläche).
+import { CONFLUENCE_IMPORT_SCHALTER_SCHEMA } from "./confluence-import-schalter";
 // JOB 3326: die Lesevarianten (gekennzeichnete Leseübersetzungen). Sie wohnen im App-Root und nicht
 // im knowledge-object-Modul, weil sie das KO-Modell ausdrücklich NICHT umbauen: die Variante ist ein
 // eigener, danebenliegender Datenraum, den kein Lesepfad des Originals berührt.
@@ -214,6 +218,17 @@ export const schemas = [
   // und wiederholbar (CREATE TABLE IF NOT EXISTS), ohne Fremdschlüssel auf `import_runs` und ohne
   // Extension; sie steht am Ende, weil das die lesbare Ordnung ist.
   IMPORT_RUN_SOURCE_SYNC_SCHEMA,
+  // R-0169 (Nacharbeit 5): die Fassungen der internen Dokumentakte (`dokument_fassungen`). Additiv
+  // und wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS), ohne Fremdschlüssel und ohne Extension; am
+  // Ende, weil das die lesbare Ordnung ist.
+  DOKUMENTAKTE_SCHEMA,
+  // R-0134 / R-1005: die eine Zeile des Betreiberschalters für den Confluence-Import. Additiv und
+  // wiederholbar (CREATE TABLE IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed.
+  CONFLUENCE_IMPORT_SCHALTER_SCHEMA,
+  // R-0751 / R-1639 / R-2183 (Nacharbeit 3): Bereichsprofile (Verantwortung + vier eingeschätzte
+  // Prioritätsfaktoren) und Ruhestandshorizonte (24/36 Monate). Additiv und wiederholbar (CREATE
+  // TABLE IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed.
+  MANAGEMENT_PROFILE_SCHEMA,
 ];
 
 // Führt die DDL aller Module aus. Jedes Modul liefert seine eigenen Tabellen (Datenhoheit).
