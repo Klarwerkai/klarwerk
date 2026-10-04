@@ -107,6 +107,16 @@ let seite: Seite | null = null;
 let app: ReturnType<typeof buildApp> | null = null;
 let fehler: string | null = null;
 
+// R-0455 / R-0939 (Folgeauftrag gesamt-erstnutzerfuehrung-quellen, Nacharbeit 3): die Kennungen der
+// beiden angelegten Einträge — verglichen wird mit der Kennung, die der DIENST vergeben hat, nicht mit
+// einem Titel. Und die Sitzung, mit der der Browser gerade spricht: die Admin-Sitzung (Vorgabe) oder
+// die der zweiten, prüfenden Person (I12b). Gewechselt wird nur zwischen zwei ECHTEN Anmeldungen.
+let profilId = "";
+let halterungId = "";
+let tokenAdmin = "";
+let tokenPruefer = "";
+let tokenAktiv = "";
+
 /** In der Seite: sichtbarer Text (kein `textContent` — was hinter `hidden` liegt, zaehlt nicht). */
 const SICHTBAR = `(sel) => { const el = document.querySelector(sel); return el ? (el.innerText || '') : null; }`;
 const DA = "(sel) => !!document.querySelector(sel)";
@@ -164,13 +174,45 @@ describe("JOB 3064 · H5 · das Funktionsinventar — jeder umgezogene Block hat
         trust: 92,
         status: "validiert",
       });
-      await services.ko.create({
+      profilId = (ko as { id: string }).id;
+      const halterung = await services.ko.create({
         title: "Halterungen ohne waagerechte Oberseiten",
         statement: "Aus dem Projekt gelernt, noch nicht freigegeben.",
         type: "best_practice",
         category: "Allgemein",
         author: autorId,
       } as never);
+      halterungId = (halterung as { id: string }).id;
+      tokenAdmin = token;
+      tokenAktiv = token;
+
+      // I12 · die zweite Person, die FREMD prüft — angelegt vom Admin über denselben Weg wie in der
+      // Verwaltung (`POST /api/users`, Rolle „controller"), angemeldet mit ihrem eigenen Passwort.
+      const angelegt = await app.inject({
+        method: "POST",
+        url: "/api/users",
+        headers: { authorization: `Bearer ${token}` },
+        payload: {
+          name: "Prüfende Person",
+          email: "pruefende@job3064i.test",
+          role: "controller",
+          password: "pruefen-geheim-4711",
+        },
+      });
+      if (angelegt.statusCode !== 201) {
+        throw new Error(`zweite Person nicht angelegt: ${angelegt.statusCode} ${angelegt.body}`);
+      }
+      const prueferLogin = await app.inject({
+        method: "POST",
+        url: "/api/auth/login",
+        payload: { email: "pruefende@job3064i.test", password: "pruefen-geheim-4711" },
+      });
+      tokenPruefer = (prueferLogin.json() as { token: string }).token;
+      await app.inject({
+        method: "POST",
+        url: "/api/auth/notice",
+        headers: { authorization: `Bearer ${tokenPruefer}` },
+      });
 
       const require = createRequire(import.meta.url);
       const { chromium } = require("playwright") as {
@@ -193,7 +235,7 @@ describe("JOB 3064 · H5 · das Funktionsinventar — jeder umgezogene Block hat
           for (const [k, v] of Object.entries(req.headers())) {
             if (!["host", "origin", "referer", "cookie"].includes(k.toLowerCase())) kopf[k] = v;
           }
-          kopf.authorization = `Bearer ${token}`;
+          kopf.authorization = `Bearer ${tokenAktiv}`;
           const body = req.postData();
           const res = await a.inject({
             method: req.method() as "GET",
@@ -582,4 +624,345 @@ describe("JOB 3064 · H5 · das Funktionsinventar — jeder umgezogene Block hat
       expect(blattOffen, "das Blatt steht noch — keine Uebergabe").toBe(false);
     });
   }
+
+  // ==============================================================================================
+  // Gemeinsame Ableser fuer I11/I12 (Nacharbeit 3, Bens Pruefcode K1 und K3).
+  // ==============================================================================================
+  /** Klickt den ersten BETAETIGBAREN Knopf, dessen Text `text` enthaelt. */
+  const KLICK_TEXT = `(text) => {
+    const k = [...document.querySelectorAll('button')].find((b) =>
+      (b.textContent || '').replace(/\\s+/g, ' ').trim().includes(text)
+      && !b.disabled && b.getAttribute('aria-disabled') !== 'true');
+    if (!k) return false;
+    k.click();
+    return true;
+  }`;
+  /** Steht `satz` sichtbar auf der Seite? */
+  const SATZ_SICHTBAR = `(satz) => {
+    return (document.body.innerText || '').replace(/\\s+/g, ' ').includes(satz);
+  }`;
+  /** Die Kennungen der Trefferzeilen der Bibliothek, in Bildreihenfolge. */
+  const ZEILEN_IDS = `() => {
+    const zeilen = [...document.querySelectorAll('[data-testid="bib-zeile"]')];
+    return zeilen.map((z) => z.getAttribute('data-bib-id'));
+  }`;
+  /** Textinhalt eines Elements (nicht `innerText`: die Pille setzt ihr Wort per CSS in Versalien). */
+  const TEXTINHALT = `(sel) => {
+    const el = document.querySelector(sel);
+    return el ? (el.textContent || '').replace(/\\s+/g, ' ').trim() : null;
+  }`;
+
+  async function warte(quelle: string, arg: unknown, was: string, ms = 30_000): Promise<void> {
+    try {
+      await (seite as Seite).waitForFunction(fn(quelle), arg, { timeout: ms });
+    } catch (e) {
+      const text = (await (seite as Seite).evaluate<string>(fn(SICHTBAR), "body")) ?? "";
+      const grund = String(e).split("\n")[0];
+      const auszug = text.replace(/\s+/g, " ").slice(0, 600);
+      throw new Error(`${was} — nicht eingetreten (${grund}). Seite: ${auszug}`);
+    }
+  }
+
+  async function klickText(text: string, was: string): Promise<void> {
+    const ok = await (seite as Seite).evaluate<boolean>(fn(KLICK_TEXT), text);
+    expect(ok, `${was}: kein betaetigbarer Knopf «${text}»`).toBe(true);
+  }
+
+  /** Der Eintrag, wie ihn der DIENST fuehrt — die unabhaengige Gegenseite zur Flaeche. */
+  async function koVomDienst(id: string): Promise<{ title?: string; status?: string }> {
+    const a = app;
+    if (!a) {
+      throw new Error("App nicht gebaut");
+    }
+    const r = await a.inject({
+      method: "GET",
+      url: `/api/kos/${id}`,
+      headers: { authorization: `Bearer ${tokenAdmin}` },
+    });
+    expect(r.statusCode, `GET /api/kos/${id}: ${r.body.slice(0, 200)}`).toBe(200);
+    return r.json() as { title?: string; status?: string };
+  }
+
+  /** Wartet, bis die Trefferliste GENAU diese Kennungen zeigt (Menge; leer: samt Leersatz). */
+  const LISTE_IST = `([q, ids]) => {
+    const f = document.querySelector('[data-testid="bib-suche"]');
+    const zeilen = [...document.querySelectorAll('[data-testid="bib-zeile"]')];
+    const da = zeilen.map((z) => z.getAttribute('data-bib-id')).sort();
+    const leer = !!document.querySelector('[data-testid="bib-leer"]');
+    return !!f && f.value === q && JSON.stringify(da) === JSON.stringify([...ids].sort())
+      && (ids.length > 0 || leer);
+  }`;
+
+  /** Suchen und warten, bis genau die erwarteten Treffer dastehen; danach ausdruecklich ablesen. */
+  async function bibliothekSuchen(begriff: string, erwartet: readonly string[]): Promise<void> {
+    const s = seite as Seite;
+    await s.fill('[data-testid="bib-suche"]', begriff);
+    await listeIst(begriff, erwartet);
+  }
+
+  async function listeIst(begriff: string, erwartet: readonly string[]): Promise<void> {
+    const s = seite as Seite;
+    await warte(LISTE_IST, [begriff, erwartet], `Treffer zu «${begriff}» = ${erwartet.join(",")}`);
+    const da = await s.evaluate<string[]>(fn(ZEILEN_IDS));
+    expect([...da].sort()).toEqual([...erwartet].sort());
+  }
+
+  /** Eine Trefferzeile oeffnen und warten, bis die Leseflaeche DIESEN Eintrag zeigt. */
+  async function trefferOeffnen(id: string, titel: string): Promise<void> {
+    const s = seite as Seite;
+    await s.click(`[data-testid="bib-zeile"][data-bib-id="${id}"]`);
+    await warte(
+      `([id, titel]) => { const z = document.querySelector('[data-testid="bib-zeile"][data-bib-id="' + id + '"]'); const h = document.querySelector('[data-testid="bib-titel"]'); return !!z && z.getAttribute('aria-current') === 'true' && !!h && (h.textContent || '').trim() === titel && new URLSearchParams(location.search).get('eintrag') === id; }`,
+      [id, titel],
+      `Leseflaeche zeigt «${titel}» (${id})`,
+    );
+  }
+
+  /** Das Menue „Bereich" oeffnen, die Option `wert` umschalten und das Menue wieder schliessen. */
+  async function bereichUmschalten(wert: string): Promise<void> {
+    const s = seite as Seite;
+    const OPTION = '[role="menu"] [role="menuitemcheckbox"]';
+    await s.click('[data-testid="bib-menue-bereich"]');
+    await warte(DA, OPTION, "Bereichsmenue offen");
+    const geklickt = await s.evaluate<boolean>(
+      fn(`([sel, wert]) => {
+        const o = [...document.querySelectorAll(sel)].find((b) =>
+          (b.textContent || '').trim().startsWith(wert) && !b.disabled);
+        if (!o) return false;
+        o.click();
+        return true;
+      }`),
+      [OPTION, wert],
+    );
+    expect(geklickt, `Bereichsoption «${wert}» nicht waehlbar`).toBe(true);
+    await s.click('[data-testid="bib-menue-bereich"]');
+  }
+
+  // ==============================================================================================
+  // I11 · R-0455 (K1): FINDEN OHNE ERKLAERUNG — Start → sichtbar benannter Bibliothekslink → Suchraum
+  // und Ortszeile → Suche → der TATSAECHLICHE Treffer (Kennung UND Titel) → ausschliessender
+  // Bereichsfilter mit sichtbarem Zustand und Nulltreffer → Ruecknahme → derselbe Gegenstand.
+  // ==============================================================================================
+  it("I11 · R-0455: von /start ueber „Bibliothek“ finden — Suchraum, Treffer mit Kennung, Bereichsfilter und Ruecknahme", async () => {
+    expect(fehler).toBeNull();
+    const s = seite as Seite;
+    tokenAktiv = tokenAdmin;
+    await aufStart();
+
+    // Der Link ist SICHTBAR BENANNT und fuehrt OHNE Demo-Parameter in die Bibliothek.
+    const LINK = 'a[data-kopfband-punkt="bibliothek"]';
+    const link = await s.evaluate<{ href: string | null; text: string } | null>(
+      fn(`(sel) => {
+        const a = document.querySelector(sel);
+        return a ? { href: a.getAttribute('href'), text: (a.innerText || '').trim() } : null;
+      }`),
+      LINK,
+    );
+    expect(link, "kein Bibliothekslink im Kopfband").not.toBeNull();
+    expect(link?.href).toBe("/bibliothek");
+    expect(link?.text).toContain(t("nav.library"));
+    await s.click(LINK);
+    await warte(
+      `() => location.pathname === '/bibliothek' && location.search === ''`,
+      undefined,
+      "Adresse /bibliothek ohne Parameter",
+    );
+    await warte(DA, '[data-testid="bib-suche"]', "Suchfeld der Bibliothek");
+
+    // Suchraum und Ortszeile: der gewaehlte Bestand steht sichtbar UEBER dem Suchfeld.
+    const raum = await s.evaluate<{
+      raum: string | null;
+      alle: string | null;
+      meine: string | null;
+      ortVorFeld: boolean;
+      platzhalter: string | null;
+    }>(
+      fn(`() => {
+        const bar = document.querySelector('[data-testid="library-scope-bar"]');
+        const feld = document.querySelector('[data-testid="bib-suche"]');
+        const alle = document.querySelector('[data-testid="bib-scope-alle"]');
+        const meine = document.querySelector('[data-testid="bib-scope-meine"]');
+        return {
+          raum: bar ? bar.getAttribute('data-raum') : null,
+          alle: alle ? alle.getAttribute('aria-pressed') : null,
+          meine: meine ? meine.getAttribute('aria-pressed') : null,
+          ortVorFeld: !!bar && !!feld
+            && !!(bar.compareDocumentPosition(feld) & Node.DOCUMENT_POSITION_FOLLOWING),
+          platzhalter: feld ? feld.getAttribute('placeholder') : null,
+        };
+      }`),
+    );
+    expect(raum).toEqual({
+      raum: "alle",
+      alle: "true",
+      meine: "false",
+      ortVorFeld: true,
+      platzhalter: t("lib.searchLabel"),
+    });
+    const ortszeile = await s.evaluate<string>(fn(SICHTBAR), '[data-testid="library-scope-bar"]');
+    expect(ortszeile).toContain(t("lib.ownScope.alle"));
+    expect(ortszeile).toContain(t("lib.ownScope.meine"));
+
+    // Suchen und den TATSAECHLICHEN Treffer oeffnen — Kennung des Dienstes, nicht nur der Titel.
+    const PROFIL_TITEL = "Profile in Spritzzonen";
+    await bibliothekSuchen("Profile", [profilId]);
+    await trefferOeffnen(profilId, PROFIL_TITEL);
+    const pille = await s.evaluate<string | null>(fn(TEXTINHALT), '[data-testid="bib-pille"]');
+    expect(pille).toBe(t("status.validiert"));
+    const lesetext = await s.evaluate<string>(fn(SICHTBAR), '[data-testid="bib-text"]');
+    expect(lesetext).toContain("Spritzzonen zu vermeiden");
+    expect((await koVomDienst(profilId)).title).toBe(PROFIL_TITEL);
+
+    // Ausschliessender Bereichsfilter „Allgemein“ (dort steht nur „Halterungen …“). Die Suche wird
+    // vorher geleert, damit die Option waehlbar ist.
+    const MENUE_BEREICH = '[data-testid="bib-menue-bereich"]';
+    await bibliothekSuchen("", [profilId, halterungId]);
+    await bereichUmschalten("Allgemein");
+    // GEGENPROBE zur Kennung: im Filter steht der ANDERE Eintrag.
+    await listeIst("", [halterungId]);
+    await bibliothekSuchen("Profile", []);
+    const leersatz = await s.evaluate<string>(fn(SICHTBAR), '[data-testid="bib-leer"]');
+    expect(leersatz).toContain(t("lib.liste.leerSuche"));
+    // Der Filterzustand steht SICHTBAR am Menue („Bereich · 1“), nicht nur als Farbe.
+    const mitFilter = await s.evaluate<string>(fn(SICHTBAR), MENUE_BEREICH);
+    expect(mitFilter).toContain(`${t("lib.menue.bereich")} · 1`);
+
+    // Ruecknahme: derselbe Gegenstand erscheint wieder — dieselbe Kennung, derselbe Titel.
+    await bereichUmschalten("Allgemein");
+    await listeIst("Profile", [profilId]);
+    const ohneFilter = await s.evaluate<string>(fn(SICHTBAR), MENUE_BEREICH);
+    expect(ohneFilter.trim()).toBe(t("lib.menue.bereich"));
+    await trefferOeffnen(profilId, PROFIL_TITEL);
+  }, 180_000);
+
+  // ==============================================================================================
+  // I12 · R-0939 (K3): DIE KERNSCHLEIFE MIT EINEM GEGENSTAND — erfassen (Admin) → fremd pruefen
+  // (zweite Person, „controller“) → freigeben (Admin, „Als wahr kennzeichnen“) → wiederfinden.
+  // Jeder Uebergang laeuft ueber die regulaere Oberflaeche; der Dienst wird nur GELESEN
+  // (`koVomDienst`), nie als Abkuerzung beschrieben (kein `setValidationState`). Kein Modell noetig.
+  // Drei Faelle, damit ein Fehlschlag die Station nennt; was sie weitergeben, steht in `neuId`.
+  // ==============================================================================================
+  const SCHLEIFE_TITEL = "Kühlmittel der Schleifmaschine montags wechseln";
+  const SCHLEIFE_TEXT =
+    "Das Kühlmittel der Schleifmaschine wird jeden Montag vor Schichtbeginn gewechselt, sonst rostet die Spindel.";
+  let neuId = "";
+
+  /** Auf „Prüfen“ den Eintrag mit DIESEM Titel waehlen und warten, bis seine Karte steht. */
+  async function pruefkarteWaehlen(id: string): Promise<void> {
+    const s = seite as Seite;
+    await s.goto(`${ORIGIN}/validierung`, { waitUntil: "load", timeout: 60_000 });
+    await warte(
+      `(titel) => [...document.querySelectorAll('[data-testid="pruefen-warteschlange-eintrag"]')].some((b) => (b.textContent || '').trim() === titel)`,
+      SCHLEIFE_TITEL,
+      "der eingereichte Eintrag steht in der Pruef-Warteschlange",
+    );
+    await s.evaluate<boolean>(
+      fn(
+        `(titel) => { const b = [...document.querySelectorAll('[data-testid="pruefen-warteschlange-eintrag"]')].find((x) => (x.textContent || '').trim() === titel); if (!b) return false; b.click(); return true; }`,
+      ),
+      SCHLEIFE_TITEL,
+    );
+    // Die Karte muss DIESER Gegenstand sein: sie verlinkt seine Kennung.
+    await warte(
+      `(id) => !!document.querySelector('[data-testid="pruefen-karte"] a[href="/wissen/' + id + '"]')`,
+      id,
+      `die Pruefkarte zeigt den Eintrag ${id}`,
+    );
+  }
+
+  it("I12a · R-0939: erfassen — Titel, Text und Vertraulichkeitsstufe im Blatt, einreichen, Kennung festhalten", async () => {
+    expect(fehler).toBeNull();
+    const s = seite as Seite;
+    tokenAktiv = tokenAdmin;
+    await s.goto(`${ORIGIN}/erfassen`, { waitUntil: "load", timeout: 60_000 });
+    await warte(
+      `() => { const t = document.querySelector('[data-testid="blatt-titel"]'); return !!t && !t.disabled && !!document.querySelector('[data-testid="blatt-text"] [role="textbox"]'); }`,
+      undefined,
+      "das Blatt nimmt Eingaben an",
+    );
+    await s.fill('[data-testid="blatt-titel"]', SCHLEIFE_TITEL);
+    await s.fill('[data-testid="blatt-text"] [role="textbox"]', SCHLEIFE_TEXT);
+    // Die Pflichtangabe Vertraulichkeitsstufe (ohne sie bleibt „Einreichen“ wirkungslos).
+    await klickText(t("erfassen.werkzeug.vertraulichkeit"), "Werkzeug Vertraulichkeit");
+    await warte(SATZ_SICHTBAR, t("conf.level.intern"), "Stufenwahl steht");
+    await klickText(t("conf.level.intern"), "Stufe „intern“");
+    await s.click('[data-testid="blatt-einreichen"]');
+    await warte(
+      `() => { const l = document.querySelector('[data-testid="blatt-lage"]'); return !!l && !!l.querySelector('a[href^="/wissen/"]'); }`,
+      undefined,
+      "die Lagezeile nennt den eingereichten Eintrag",
+      60_000,
+    );
+    const lage = await s.evaluate<{ text: string; href: string | null; titel: string } | null>(
+      fn(`() => {
+        const l = document.querySelector('[data-testid="blatt-lage"]');
+        const a = l ? l.querySelector('a[href^="/wissen/"]') : null;
+        if (!l) return null;
+        return {
+          text: (l.textContent || '').trim(),
+          href: a ? a.getAttribute('href') : null,
+          titel: a ? (a.textContent || '').trim() : '',
+        };
+      }`),
+    );
+    expect(lage?.text).toContain(t("erfassen.eingereicht"));
+    expect(lage?.titel).toBe(SCHLEIFE_TITEL);
+    neuId = (lage?.href ?? "").slice("/wissen/".length);
+    expect(neuId.length, "keine Kennung des eingereichten Eintrags").toBeGreaterThan(0);
+    // Der Dienst fuehrt DENSELBEN Gegenstand — zur Pruefung offen.
+    const ko = await koVomDienst(neuId);
+    expect(ko.title).toBe(SCHLEIFE_TITEL);
+    expect(ko.status).toBe("offen");
+  }, 180_000);
+
+  it("I12b · R-0939: pruefen — die zweite Person stimmt auf „Prüfen“ zu, der Admin kennzeichnet als wahr", async () => {
+    expect(fehler).toBeNull();
+    expect(neuId, "I12a hat keine Kennung hinterlassen").not.toBe("");
+    const s = seite as Seite;
+    const FREIGEBEN = '[data-testid="pruefen-entscheidung-up"]';
+    const BETAETIGBAR = `(sel) => {
+      const b = document.querySelector(sel);
+      return !!b && !b.disabled && b.getAttribute('aria-disabled') !== 'true';
+    }`;
+
+    // Die Fremdpruefung, in der Sitzung der zweiten Person.
+    tokenAktiv = tokenPruefer;
+    await pruefkarteWaehlen(neuId);
+    // Solange die Hintergrundpruefung laeuft, ist die Karte reine Anzeige — gewartet wird auf den
+    // ZUSTAND „betaetigbar“, nicht auf eine Frist (`lib/validationAiGate.ts`).
+    await warte(BETAETIGBAR, FREIGEBEN, "Zustimmen ist betaetigbar", 120_000);
+    await s.click(FREIGEBEN);
+    await warte(SATZ_SICHTBAR, t("val.decisionSaved"), "Quittung der Fremdpruefung");
+
+    // Die Freigabe, in der Sitzung des Admins: „···“ → „Als wahr kennzeichnen“ → Rueckfrage → Ja.
+    tokenAktiv = tokenAdmin;
+    await pruefkarteWaehlen(neuId);
+    await warte(BETAETIGBAR, FREIGEBEN, "die Karte ist bedienbar", 120_000);
+    await s.click('[data-testid="pruefen-menue-karte"]');
+    await warte(DA, '[data-testid="pruefen-menue-panel-karte"]', "Kartenmenue offen");
+    await klickText(t("val.markTrue"), "Als wahr kennzeichnen");
+    await warte(SATZ_SICHTBAR, t("val.markTrueConfirm"), "Rueckfrage vor der Freigabe");
+    await klickText(t("val.markTrueYes"), "Freigabe bestaetigen");
+    await warte(SATZ_SICHTBAR, t("val.markTrueDone"), "Quittung der Freigabe");
+    expect((await koVomDienst(neuId)).status).toBe("validiert");
+  }, 300_000);
+
+  it("I12c · R-0939: wiederfinden — derselbe Gegenstand in der Bibliothek, mit seinem Text und dem Pruefstand", async () => {
+    expect(fehler).toBeNull();
+    expect(neuId, "I12a hat keine Kennung hinterlassen").not.toBe("");
+    const s = seite as Seite;
+    tokenAktiv = tokenAdmin;
+    await aufStart();
+    await s.click('a[data-kopfband-punkt="bibliothek"]');
+    await warte(DA, '[data-testid="bib-suche"]', "Suchfeld der Bibliothek");
+    // Gefunden ueber ein Wort aus dem Titel; verglichen wird mit der Kennung aus I12a.
+    await bibliothekSuchen("Kühlmittel", [neuId]);
+    await trefferOeffnen(neuId, SCHLEIFE_TITEL);
+    const lesetext = await s.evaluate<string>(fn(SICHTBAR), '[data-testid="bib-text"]');
+    expect(lesetext.replace(/\s+/g, " ")).toContain(SCHLEIFE_TEXT);
+    const pille = await s.evaluate<string | null>(fn(TEXTINHALT), '[data-testid="bib-pille"]');
+    expect(pille).toBe(t("status.validiert"));
+    // Der Pruefstand an der Flaeche ist der des Dienstes, nicht eine Behauptung der Oberflaeche.
+    expect((await koVomDienst(neuId)).status).toBe("validiert");
+  }, 180_000);
 });

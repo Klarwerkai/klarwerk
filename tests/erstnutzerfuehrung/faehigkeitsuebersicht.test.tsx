@@ -19,12 +19,29 @@
 //   F3  das Sichtfeld der Startseite bleibt unverändert (H5): vor dem Klick steht die Übersicht nicht da.
 //   F4  ein Klick auf einen Eintrag landet wirklich auf der Route.
 //   F5  EN und NL zeigen übersetzte Überschriften, keine Schlüssel.
+//   F6  KI-Status aus/an/Statusfehler/abgeschaltet × DE/EN/NL: der Satz zu „Fragen“ sagt die
+//       Antwort nur zu, wenn sie möglich ist; Rollenwege bleiben (Nacharbeit 3).
+//   F7  regulär schliessen, Start weiter bedienen, über das Menü wieder öffnen: Fähigkeiten,
+//       Reihenfolge und Grenzen stehen vollständig wieder da, ohne Zwangsdurchlauf.
 // NICHT belegt: dass ein Mensch ohne Schulung damit „ein umfassendes Bild" bekommt. Das zeigt erst
 // ein Nachtest mit Menschen.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const box = vi.hoisted(() => ({
   rolle: "controller" as "viewer" | "experte" | "controller" | "admin",
+  // Der öffentliche KI-Status (`/api/reasoner/status`), wie ihn der Server in jeder Lage liefert.
+  ki: "an" as "an" | "aus" | "abgeschaltet" | "fehler",
+}));
+
+const KI_STATUS = vi.hoisted(() => ({
+  an: { active: true, mode: "cloud", reachable: "active", tasks: { answer: true } },
+  aus: { active: false, mode: "deterministic", tasks: { answer: false } },
+  abgeschaltet: {
+    active: false,
+    mode: "deterministic",
+    tasks: { answer: false },
+    kiAbgeschaltet: true,
+  },
 }));
 
 vi.mock("../../apps/web/src/api/auth", () => ({
@@ -50,6 +67,14 @@ vi.mock("../../apps/web/src/api/endpoints", () => {
       notifications: { list: leer },
       admin: { demoStatus: vi.fn(async () => ({ present: false, count: 0 })) },
       analytics: { overview: vi.fn(async () => ({ total: 0, byStatus: {} })) },
+      reasoner: {
+        status: vi.fn(async () => {
+          if (box.ki === "fehler") {
+            throw new Error("Status nicht erreichbar");
+          }
+          return KI_STATUS[box.ki];
+        }),
+      },
     },
   };
 });
@@ -68,8 +93,11 @@ import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import { ALL_ITEMS, anzeigeNameKey, routePathAllows } from "../../apps/web/src/app/navigation";
 import i18n from "../../apps/web/src/i18n";
 import {
+  type AntwortLage,
   FAEHIGKEITEN,
   FAEHIGKEITS_SCHRITTE,
+  antwortLage,
+  faehigkeitTextKey,
   faehigkeitsSchrittKey,
 } from "../../apps/web/src/lib/faehigkeiten";
 import { Start } from "../../apps/web/src/pages/Start";
@@ -132,16 +160,28 @@ async function mount(): Promise<void> {
   await act(flush);
 }
 
-/** „…" → „Über KLARWERK", über die echten Knöpfe. */
-async function oeffneUeber(): Promise<void> {
+/** „…" → ein Menüpunkt (Vorgabe „Über KLARWERK"), über die echten Knöpfe. */
+async function oeffneUeber(punkt = "ueber"): Promise<void> {
   await act(async () => {
     container.querySelector<HTMLButtonElement>('[data-testid="h5-start-menu"]')?.click();
     await flush();
   });
   await act(async () => {
     container
-      .querySelector<HTMLButtonElement>('[data-testid="h5-start-menu-punkt-ueber"]')
+      .querySelector<HTMLButtonElement>(`[data-testid="h5-start-menu-punkt-${punkt}"]`)
       ?.click();
+    await flush();
+  });
+}
+
+/** Ein offenes Startblatt über seinen regulären Schließknopf im Kopf schliessen. */
+async function schliesseBlatt(punkt: string): Promise<void> {
+  const knopf = document.querySelector<HTMLButtonElement>(
+    `[data-testid="h5-start-blatt-${punkt}"] button[aria-label="${i18n.t("cmd.close")}"]`,
+  );
+  expect(knopf, `Schließknopf im Blatt „${punkt}“ fehlt`).not.toBeNull();
+  await act(async () => {
+    knopf?.click();
     await flush();
   });
 }
@@ -162,9 +202,25 @@ const eintrag = (id: string): HTMLElement | null =>
 
 const ort = (): string => container.querySelector("[data-ort]")?.textContent ?? "";
 
+const ANTWORT_LAGEN: readonly AntwortLage[] = [
+  "verfuegbar",
+  "ohneModell",
+  "abgeschaltet",
+  "unbekannt",
+];
+
+function fragenEintrag(): (typeof FAEHIGKEITEN)[number] {
+  const f = FAEHIGKEITEN.find((x) => x.id === "fragen");
+  if (!f) {
+    throw new Error("„Fragen“ fehlt in der Übersicht");
+  }
+  return f;
+}
+
 beforeEach(async () => {
   await i18n.changeLanguage("de");
   box.rolle = "controller";
+  box.ki = "an";
   window.localStorage.clear();
   qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 });
@@ -216,6 +272,8 @@ describe("R-1012 · F0 — die Tabelle nennt nur Vorhandenes", () => {
       "erstnutzer.faehigkeiten.zurHilfe",
       ...FAEHIGKEITS_SCHRITTE.map(faehigkeitsSchrittKey),
       ...FAEHIGKEITEN.flatMap((f) => [f.nameKey, f.textKey]),
+      // Die Sätze zu „Fragen“ je Antwortlage (Nacharbeit 3).
+      ...ANTWORT_LAGEN.map((lage) => faehigkeitTextKey(fragenEintrag(), lage)),
     ];
     for (const lng of SPRACHEN) {
       const t = i18n.getFixedT(lng);
@@ -362,6 +420,131 @@ describe("R-1012 · gemountet am echten Weg „…“ → „Über KLARWERK“",
       expect(text).toContain(i18n.getFixedT(lng)("erstnutzer.faehigkeiten.titel"));
       expect(text).not.toContain("erstnutzer.");
       expect(text).not.toContain(i18n.getFixedT("de")("erstnutzer.faehigkeiten.titel"));
+    });
+  }
+});
+
+// ================================================================================================
+// F6 · BENS BEFUND (Nacharbeit 3): KEINE ANTWORTZUSAGE, DIE DER BETRIEBSZUSTAND NICHT DECKT.
+// ================================================================================================
+// Der Satz zu „Fragen“ beschrieb die quellengebundene Antwort uneingeschränkt. Jetzt folgt er dem
+// öffentlichen Status — gemessen je Statuslage und Sprache am echten Menüweg, mit Rollenwegen.
+// GEGENPROBE: in der Lage „verfügbar“ steht die volle Zusage wirklich da — sonst bewiese ihr
+// Fehlen in den anderen Lagen nichts.
+describe("R-1012 · F6 — die Antwort wird nur zugesagt, wenn sie gerade möglich ist", () => {
+  it("F6a · die Ableitung aus dem öffentlichen Status, und nur „Fragen“ hängt daran", () => {
+    const an = { active: true, mode: "cloud", tasks: { answer: true } } as const;
+    const aus = { active: false, mode: "deterministic", tasks: { answer: false } } as const;
+    const unerreichbar = { ...an, reachable: "unreachable" } as const;
+    const abgeschaltet = { ...aus, kiAbgeschaltet: true } as const;
+    expect(antwortLage(undefined)).toBe("unbekannt");
+    expect(antwortLage(an)).toBe("verfuegbar");
+    expect(antwortLage(aus)).toBe("ohneModell");
+    expect(antwortLage(unerreichbar)).toBe("ohneModell");
+    expect(antwortLage(abgeschaltet)).toBe("abgeschaltet");
+    for (const f of FAEHIGKEITEN.filter((x) => x.id !== "fragen")) {
+      for (const lage of ANTWORT_LAGEN) {
+        expect(faehigkeitTextKey(f, lage)).toBe(f.textKey);
+      }
+    }
+    const fragenSaetze = ANTWORT_LAGEN.map((lage) => faehigkeitTextKey(fragenEintrag(), lage));
+    expect(new Set(fragenSaetze).size).toBe(ANTWORT_LAGEN.length);
+  });
+
+  const STATUSLAGEN = [
+    { ki: "aus", lage: "ohneModell" },
+    { ki: "an", lage: "verfuegbar" },
+    { ki: "fehler", lage: "unbekannt" },
+    { ki: "abgeschaltet", lage: "abgeschaltet" },
+  ] as const;
+
+  for (const { ki, lage } of STATUSLAGEN) {
+    for (const lng of SPRACHEN) {
+      it(`F6-${ki}-${lng} · der Satz zu „Fragen“ folgt der Lage „${lage}“; Rollenwege bleiben`, async () => {
+        box.rolle = "viewer";
+        box.ki = ki;
+        await i18n.changeLanguage(lng);
+        await mount();
+        await oeffneUeber();
+        const t = i18n.getFixedT(lng);
+        const zusage = t("erstnutzer.faehigkeiten.fragen");
+        const satz = t(faehigkeitTextKey(fragenEintrag(), lage));
+        expect(uebersicht().getAttribute("data-antwort-lage")).toBe(lage);
+        const fragen = eintrag("fragen");
+        expect(fragen?.textContent).toContain(satz);
+        if (lage === "verfuegbar") {
+          expect(fragen?.textContent, "Gegenprobe: die volle Zusage fehlt").toContain(zusage);
+        } else {
+          expect(satz).not.toBe(zusage);
+          expect(uebersicht().textContent, "uneingeschränkte Antwortzusage").not.toContain(zusage);
+        }
+        // Rollenwege unverändert: für viewer sind Fragen und Bibliothek Wege, Erfassen Auskunft.
+        expect(fragen?.tagName).toBe("A");
+        expect(fragen?.getAttribute("href")).toBe("/fragen");
+        expect(eintrag("bibliothek")?.tagName).toBe("A");
+        const erfassen = eintrag("erfassen");
+        expect(erfassen?.tagName).not.toBe("A");
+        expect(erfassen?.getAttribute("data-role-no-reach")).toBe("true");
+        expect(erfassen?.textContent).toContain(t("roleLink.noReach"));
+      });
+    }
+  }
+});
+
+// ================================================================================================
+// F7 · ÜBERSPRINGBAR UND WIEDERHOLBAR (Nacharbeit 3): schliessen über den regulären Knopf, die
+// Startseite weiter bedienen, über das Menü erneut öffnen — alles steht wieder vollständig da.
+// ================================================================================================
+function eintragsFolge(): string[] {
+  const els = uebersicht().querySelectorAll('[data-testid^="erstnutzer-faehigkeit-"]');
+  return [...els].map((el) =>
+    (el.getAttribute("data-testid") ?? "").replace("erstnutzer-faehigkeit-", ""),
+  );
+}
+
+describe("R-1012 · F7 — schliessen, weiter bedienen, wieder öffnen", () => {
+  for (const lng of SPRACHEN) {
+    it(`F7-${lng} · Fähigkeiten, Reihenfolge und Grenzen stehen nach dem Wiederöffnen vollständig da`, async () => {
+      await i18n.changeLanguage(lng);
+      await mount();
+      await oeffneUeber();
+      const t = i18n.getFixedT(lng);
+      const ersterBlick = { text: uebersicht().textContent ?? "", folge: eintragsFolge() };
+      expect(ersterBlick.folge).toEqual(FAEHIGKEITEN.map((f) => f.id));
+
+      // Schliessen über den regulären Knopf — keine Pflicht, die Übersicht durchzugehen.
+      await schliesseBlatt("ueber");
+      expect(document.querySelector('[data-testid="h5-start-blatt-ueber"]')).toBeNull();
+
+      // Die Startseite weiter bedienen: ein anderer Menüpunkt öffnet und schliesst, das Feld bleibt
+      // bedienbar.
+      await oeffneUeber("kreis");
+      const kreis = document.querySelector('[data-testid="h5-start-blatt-kreis"]');
+      expect(kreis?.textContent).toContain(t("cycle.title"));
+      await schliesseBlatt("kreis");
+      const feld = container.querySelector<HTMLInputElement>(
+        '[data-testid="page-start"] form input',
+      );
+      expect(feld, "das Startfeld fehlt").not.toBeNull();
+      expect(feld?.disabled).toBe(false);
+
+      // Erneut öffnen: derselbe vollständige Inhalt in derselben Reihenfolge.
+      await oeffneUeber();
+      expect(uebersicht().textContent).toBe(ersterBlick.text);
+      expect(eintragsFolge()).toEqual(ersterBlick.folge);
+      const schritte = [...uebersicht().querySelectorAll("h4")].map((h) => h.textContent);
+      expect(schritte).toEqual(FAEHIGKEITS_SCHRITTE.map((s) => t(faehigkeitsSchrittKey(s))));
+      for (const f of FAEHIGKEITEN) {
+        expect(eintrag(f.id)?.textContent).toContain(t(f.nameKey));
+      }
+      // Die Grenzen: Rollengrenze in der Einleitung, Antwortlage bei „Fragen“, Leitsatz im Blatt.
+      expect(uebersicht().textContent).toContain(t("erstnutzer.faehigkeiten.einleitung"));
+      expect(eintrag("fragen")?.textContent).toContain(t("erstnutzer.faehigkeiten.fragen"));
+      const blatt = document.querySelector('[data-testid="h5-start-blatt-ueber"]');
+      expect(blatt?.textContent).toContain(t("start.konsole.leitsatz"));
+      // Kein erzwungener Durchlauf: alles auf einmal, kein Schritt- oder Weiter-Knopf.
+      expect(uebersicht().querySelectorAll("button").length).toBe(0);
+      expect(uebersicht().querySelectorAll("[hidden]").length).toBe(0);
     });
   }
 });

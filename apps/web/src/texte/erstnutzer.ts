@@ -42,6 +42,12 @@ export default {
       "Wissen, das eine Auffrischung braucht oder dessen Umfeld sich geändert hat, erneut prüfen.",
     "erstnutzer.faehigkeiten.fragen":
       "Eine Frage stellen: die Antwort stützt sich nur auf euer eigenes Wissen und nennt ihre Quellen. Fehlt Wissen, steht das da.",
+    "erstnutzer.faehigkeiten.fragenOhneModell":
+      "Eine Frage stellen — Antworten gibt es erst, wenn ein KI-Modell nutzbar ist. Bis dahin findest du Wissen in der Bibliothek.",
+    "erstnutzer.faehigkeiten.fragenAbgeschaltet":
+      "Eine Frage stellen — die KI-Antwort ist derzeit von der Verwaltung abgeschaltet. Wissen findest du in der Bibliothek.",
+    "erstnutzer.faehigkeiten.fragenUnbekannt":
+      "Eine Frage stellen — ob gerade Antworten möglich sind, ist im Moment nicht bekannt. Wissen findest du in der Bibliothek.",
     "erstnutzer.faehigkeiten.bibliothek":
       "Den ganzen Bestand durchsuchen und jeden Eintrag mit Prüfstand und Herkunft lesen.",
     "erstnutzer.faehigkeiten.wissensnetz":
@@ -73,6 +79,12 @@ export default {
       "Review knowledge again that needs a refresh or whose surroundings have changed.",
     "erstnutzer.faehigkeiten.fragen":
       "Ask a question: the answer relies only on your own knowledge and names its sources. If knowledge is missing, it says so.",
+    "erstnutzer.faehigkeiten.fragenOhneModell":
+      "Ask a question — answers are only available once an AI model can be used. Until then, find knowledge in the library.",
+    "erstnutzer.faehigkeiten.fragenAbgeschaltet":
+      "Ask a question — AI answers are currently switched off by the administration. Find knowledge in the library.",
+    "erstnutzer.faehigkeiten.fragenUnbekannt":
+      "Ask a question — whether answers are possible right now is not known at the moment. Find knowledge in the library.",
     "erstnutzer.faehigkeiten.bibliothek":
       "Search the whole stock and read every entry with its review status and origin.",
     "erstnutzer.faehigkeiten.wissensnetz": "Pick a topic and see which entries belong to it.",
@@ -103,6 +115,12 @@ export default {
       "Kennis die een opfrissing nodig heeft of waarvan de omgeving is veranderd opnieuw beoordelen.",
     "erstnutzer.faehigkeiten.fragen":
       "Een vraag stellen: het antwoord steunt alleen op jullie eigen kennis en noemt zijn bronnen. Ontbreekt kennis, dan staat dat er.",
+    "erstnutzer.faehigkeiten.fragenOhneModell":
+      "Een vraag stellen — antwoorden zijn er pas als een AI-model bruikbaar is. Tot dan vind je kennis in de bibliotheek.",
+    "erstnutzer.faehigkeiten.fragenAbgeschaltet":
+      "Een vraag stellen — AI-antwoorden zijn momenteel door de beheerder uitgeschakeld. Kennis vind je in de bibliotheek.",
+    "erstnutzer.faehigkeiten.fragenUnbekannt":
+      "Een vraag stellen — of er nu antwoorden mogelijk zijn, is op dit moment niet bekend. Kennis vind je in de bibliotheek.",
     "erstnutzer.faehigkeiten.bibliothek":
       "De hele voorraad doorzoeken en elk item met beoordelingsstatus en herkomst lezen.",
     "erstnutzer.faehigkeiten.wissensnetz": "Een thema kiezen en zien welke items erbij horen.",

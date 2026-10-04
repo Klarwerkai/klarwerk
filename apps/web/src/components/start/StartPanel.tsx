@@ -6,11 +6,18 @@ import {
   useGapsSummary,
   useKos,
   useLiveWall,
+  useReasonerStatus,
 } from "../../api/hooks";
 import { useRole } from "../../app/RoleContext";
 import { DEMO_PILOT_PATH, captureDemoHref } from "../../lib/demoPilotPath";
 import { eigeneKollisionStart } from "../../lib/eigeneKollision";
-import { FAEHIGKEITEN, FAEHIGKEITS_SCHRITTE, faehigkeitsSchrittKey } from "../../lib/faehigkeiten";
+import {
+  FAEHIGKEITEN,
+  FAEHIGKEITS_SCHRITTE,
+  antwortLage,
+  faehigkeitTextKey,
+  faehigkeitsSchrittKey,
+} from "../../lib/faehigkeiten";
 import { knowledgeCapital } from "../../lib/funke";
 import { KNOWLEDGE_CYCLE } from "../../lib/knowledgeCycle";
 import { type KnowledgeGuidanceTone, knowledgeGuidance } from "../../lib/knowledgeGuidance";
@@ -89,6 +96,9 @@ export function StartPanelInhalt({ id }: { id: StartPanelId }): JSX.Element {
     useNetzOnline(),
   );
   const kollisionsWeg = kollision.weg;
+  // R-1012 · Bens Befund (Nacharbeit 3): der Satz zu „Fragen“ folgt der Antwortlage aus dem
+  // öffentlichen Status — dieselbe Quelle wie `/fragen` (`lib/faehigkeiten.ts`, dort begründet).
+  const antwort = antwortLage(useReasonerStatus().data);
   const stufe2Features = stufe2FeatureLabelKeys()
     .map((k) => t(k))
     .join(", ");
@@ -107,7 +117,11 @@ export function StartPanelInhalt({ id }: { id: StartPanelId }): JSX.Element {
           {t("start.purpose")}
         </p>
         <p className="text-[12px] leading-relaxed text-muted-2">{t("start.konsole.leitsatz")}</p>
-        <section data-testid="erstnutzer-faehigkeiten" className="border-t border-hairline pt-4">
+        <section
+          data-testid="erstnutzer-faehigkeiten"
+          data-antwort-lage={antwort}
+          className="border-t border-hairline pt-4"
+        >
           <h3 className="text-[14px] font-semibold text-ink">
             {t("erstnutzer.faehigkeiten.titel")}
           </h3>
@@ -137,7 +151,7 @@ export function StartPanelInhalt({ id }: { id: StartPanelId }): JSX.Element {
                             ) : null}
                           </span>
                           <span className="mt-1 block text-[12.5px] leading-relaxed text-muted">
-                            {t(faehigkeit.textKey)}
+                            {t(faehigkeitTextKey(faehigkeit, antwort))}
                           </span>
                         </span>
                       )}
