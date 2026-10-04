@@ -144,3 +144,49 @@ describe("R-1864 · Z — jede Zuordnung zeigt auf Vorhandenes", () => {
     }
   });
 });
+
+// Ben (Nacharbeit 3): Konzeptquelle samt Abschnitt 7 abgleichen und den Egress-Abgleich abschliessen.
+// Die Konzeptdatei selbst liegt ausserhalb des Arbeitsbaums und ist hier nicht lesbar; gepinnt wird,
+// dass jede Aussage des Egress-Abgleichs auf eine Stelle zeigt, die es im Bestand gibt, und dass
+// die offene Hardwarefrage (S6) nur so lange als offen dasteht, wie OFFEN.md sie offen fuehrt.
+describe("R-1864 · E — Egress-Abgleich nach Konzept §7", () => {
+  const dokument = lies(DOKUMENT);
+
+  it("E1: die Egress-Zeile ist abgeschlossen und unterscheidet Korrektur von Entscheidung", () => {
+    expect(dokument).not.toContain("Bewertung, die dieses Dokument nicht trifft");
+    expect(dokument).toContain("## Abgleich mit der Konzeptquelle");
+    expect(dokument).toContain("## Egress-Abgleich");
+    expect(dokument).toContain("schützt gegen **Egress, nicht gegen KI**");
+    expect(dokument).toContain("**Korrektur, keine Entscheidung.**");
+  });
+
+  it("E2: tiefer Zweig nur ohne Vertraulichkeit, Dokumenteinwilligung ueber ka4Freigabe", () => {
+    const route = lies("services/app/src/routes/check-text-routes.ts");
+    expect(route).toContain("const deepAllowed = wantDeep && !confidential;");
+    expect(route).toContain("(gebunden && !dokumentZustimmung)");
+    expect(route).toContain("await ka4Freigabe(");
+  });
+
+  it("E3: Zustimmung nur fuer extern, lokal ist intern, Satz vom 10.09. im Code", () => {
+    const policy = lies("services/reasoner/src/klara-policy.ts");
+    expect(policy).toContain('const externalConsentRequired = effectiveMode === "external";');
+    expect(policy).toMatch(/case "local":\s*return "internal";/);
+    expect(policy).toContain("Keine Freigabe, kein Egress");
+    expect(lies("services/reasoner/src/model-client.ts")).toContain(
+      "export function createLocalClientFromEnv(",
+    );
+    const app = lies("services/app/src/build-app.ts");
+    expect(app).toContain('if (flag !== "1" && flag !== "true") {');
+  });
+
+  it("E4: S6 heisst im Dokument offen, solange OFFEN.md sie als Entscheidung fuehrt", () => {
+    const kopf = "| S6 | ENTSCHEIDUNG | NACH-VORTEST | **Eine Maschine für ein hausinternes";
+    const s6Offen = lies(OFFEN)
+      .split("\n")
+      .some((z) => z.startsWith(kopf));
+    const dokumentSagtOffen = dokument.includes(
+      "steht auf `ENTSCHEIDUNG`/`NACH-VORTEST`. Hier wird **nichts** entschieden",
+    );
+    expect(dokumentSagtOffen).toBe(s6Offen);
+  });
+});
