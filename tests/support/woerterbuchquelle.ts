@@ -140,7 +140,7 @@ export function woerterbuchBlock(sprache: WoerterbuchSprache, datei: string): st
   const nach = woerterbuchNachspann(sprache);
   if (!datei.startsWith(vor) || !datei.endsWith(nach)) {
     throw new Error(
-      `${woerterbuchRelativ(sprache)}: Vor- oder Nachspann weicht ab — die Datei ist nicht mehr der reine verschobene Block`,
+      `${woerterbuchRelativ(sprache)}: Vorspann oder Nachspann weicht ab — die Datei ist nicht mehr der reine verschobene Block`,
     );
   }
   return datei.slice(vor.length, datei.length - nach.length);

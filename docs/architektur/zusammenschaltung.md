@@ -104,11 +104,13 @@ genau diesen Satz (`MUTATING_METHODS` in `dev-persist.ts` ist ein vollständiger
 | `conflictsRepo` | `InMemoryConflictRepo` | `PgConflictRepo` |
 | `overlapRepo` | `InMemoryOverlapRepo` | `PgOverlapRepo` |
 | `overlapSettings` | `InMemoryOverlapSettingsRepo` | `PgOverlapSettingsRepo` |
+| `managementProfiles` | `InMemoryManagementProfileRepo` | `PgManagementProfileRepo` |
 | `lifecycleRepo` | `InMemoryLifecycleRepo` | `PgLifecycleRepo` |
 | `objects` | `InMemoryObjectRepo` | `PgObjectRepo` |
 | `candidates` | `InMemoryCandidateRepo` | `PgCandidateRepo` |
 | `importRuns` | `InMemoryImportRunRepo` | `PgImportRunRepo` |
 | `externalSources` | `InMemoryExternalSourceRepo` | `PgExternalSourceRepo` |
+| `dokumente` | `InMemoryDokumentaktenRepo` | `PgDokumentaktenRepo` |
 | `modelRuns` | `InMemoryModelRunRepo` | `PgModelRunRepo` |
 | `notificationSeen` | `InMemoryNotificationSeenRepo` | `PgNotificationSeenRepo` |
 | `assistPresets` | `InMemoryAssistPresetRepo` | `PgAssistPresetRepo` |
@@ -133,6 +135,7 @@ im Postgres-Betrieb schon.
 | `kanten` | deduplizierender Speicherbestand | `PgKantenRepo` |
 | `anweisungen` | flüchtige Ablage, die mit aktiver Dev-Persistenz Schreibzugriffe ablehnt | `PgAnweisungRepo` |
 | `brandingSettings` | Speicherablage | `PgBrandingSettingsRepo` |
+| `confluenceImportSchalter` | `InMemoryConfluenceImportSchalterRepo` (Betreiberschalter des Confluence-Imports) | `PgConfluenceImportSchalterRepo` |
 | `bearbeitungen` | Speicherfassung mit Prozessuhr | `PgBearbeitungsRepo` |
 
 ## 5 Gemeinsame Klammern

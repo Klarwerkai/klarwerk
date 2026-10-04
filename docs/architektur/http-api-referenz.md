@@ -259,6 +259,7 @@ Ausnahme zu Abschnitt 2: Die Wächter dieses Moduls antworten bei fehlender Anme
 | `POST` | `/api/reasoner/duplicate-self-test` | `users.manage` | — | 200 Selbsttest Dublette | — |
 | `POST` | `/api/help/explain` | `ko.read` | Rumpf `{ question, snippets, locale? }` | 200 Hilfeantwort | 400 `BAD_REQUEST` |
 | `GET` | `/api/model-runs` | `ko.read` | Abfrage `limit?` | 200 Modellläufe (Kontext nur für Berechtigte) | — |
+| `GET` | `/api/model-runs/auswertung` | `ko.read` | Abfrage `von?`, `bis?` (ISO 8601; Vorgabe 30 Tage, höchstens 366) | 200 `{ auswertung, preisgrundlage }` — nur Summen und Zähler | 400 `BAD_REQUEST` |
 
 ### 3.7 Bibliothek, Import, Auswertung (`libraryRoutes`, `categoryRoutes`, `outputRoutes`, `managementRoutes`, `externalRoutes`, `lifecycleRoutes`, `notificationsRoutes`, `livewallRoutes`, `impactRoutes`, `gesamtanweisungRoutes`)
 
@@ -280,6 +281,10 @@ Ausnahme zu Abschnitt 2: Die Wächter dieses Moduls antworten bei fehlender Anme
 | `GET` | `/api/output/sources` | `ko.read` | — | 200 geeignete Quellen | — |
 | `POST` | `/api/output/generate` | `ko.read` | Rumpf `{ kind, koIds, audienceRole? }` | 200 Dokument | 400 `NO_SOURCES`, `NOT_VALIDATED`, `UNKNOWN_KO`, `UNKNOWN_KIND`, `CONFIDENTIAL` |
 | `GET` | `/api/management/snapshot` | `ko.read` | — | 200 Lagebild | — |
+| `GET` | `/api/management/risk-horizon` | `ko.read` (alle Bereiche nur mit `users.manage`) | — | 200 Bereichsblick mit Ruhestandshorizonten, sichtbarkeitsgefiltert | — |
+| `GET` | `/api/management/profiles` | `users.manage` | — | 200 `{ categories, retirement }` | — |
+| `PUT` | `/api/management/profiles/category` | `users.manage` | Rumpf: Bereichsprofil einer Kategorie | 200 gespeichertes Profil | Dienstfehler |
+| `PUT` | `/api/management/profiles/retirement/:userId` | `users.manage` | Rumpf `{ horizonMonths }` | 200 `{ entry }` | 404 `NOT_FOUND` (unbekanntes Konto); Dienstfehler |
 | `GET` | `/api/external/policy` | `ko.read` | — | 200 `{ stage }` | — |
 | `PUT` | `/api/external/policy` | `users.manage` | Rumpf `{ stage }` | 200 `{ stage }` | Dienstfehler |
 | `GET` | `/api/external/search` | `ko.read` | Abfrage `q?` | 200 Treffer | 403 `EXTERNAL_SEARCH_BLOCKED`; 501 `EXTERNAL_SEARCH_DISABLED` |
@@ -325,6 +330,7 @@ Ausnahme zu Abschnitt 2: Die Wächter dieses Moduls antworten bei fehlender Anme
 | `POST` | `/api/admin/factory-reset` | `users.manage` | Rumpf `{ password }` (erneute Bestätigung) | 200 `{ ok: true }`, danach endet der Prozess | 403 `FORBIDDEN` (nicht verfügbar); 401 `INVALID_PASSWORD` |
 | `GET` | `/api/admin/sicherungen` | `users.manage` | — | 200 `{ zustand, verzeichnis, gelesenUtc, sicherungen? }` | — |
 | `GET` | `/api/import/confluence/zugang` | `users.manage` | — | 200 Zugangszustand | — |
+| `PUT` | `/api/import/confluence/schalter` | `users.manage` | Rumpf `{ an: true \| false }` | 200 neuer Schalterstand | 400 `BAD_REQUEST`; 409 `IMPORT_NOT_RELEASED`; 503 `SWITCH_UNAVAILABLE` |
 | `GET` | `/api/import/sharepoint/zugang` | `users.manage` | — | 200 Zugangszustand | — |
 | `POST` | `/api/admin/import/confluence` | `users.manage` (Schalter `KLARWERK_CONFLUENCE_IMPORT`) | Rumpf `{ dryRun? }` | 200 Zusammenfassung bzw. 202 `{ importId, status: "QUEUED" }` | 503 `IMPORT_UNAVAILABLE`; 409 `IMPORT_ALREADY_RUNNING`; `IMPORT_FAILED` |
 | `POST` | `/api/admin/import/confluence/explore` | `users.manage` (Schalter wie oben) | — | 200 Erkundung | 503 `IMPORT_UNAVAILABLE`; `EXPLORE_FAILED` |
@@ -335,6 +341,7 @@ Ausnahme zu Abschnitt 2: Die Wächter dieses Moduls antworten bei fehlender Anme
 | `GET` | `/api/admin/import/runs/:importId/result` | `users.manage` (Schalter wie oben) | — | 200 Laufergebnis | 404 `NOT_FOUND` |
 | `GET` | `/api/admin/import/source-records/:sourceRecordId` | `users.manage` (Schalter wie oben) | — | 200 Quellsatz | 404 `NOT_FOUND` |
 | `POST` | `/api/admin/import/sharepoint/files` | `users.manage` (Schalter `KLARWERK_SHAREPOINT_IMPORT`) | Rumpf `{ folderId?, ids? }` | 200 `{ dateien, truncated, nurBefunde, befunde }` | 503 `IMPORT_UNAVAILABLE`; 400 `APPLY_TOO_MANY`; 403/404/502 `SHAREPOINT_*` |
+| `POST` | `/api/admin/import/sharepoint/folder-apply` | `users.manage` (Schalter `KLARWERK_SHAREPOINT_IMPORT`) | Rumpf `{ folderId?, fortsetzung? }` | 200 Übernahmebilanz eines Ordners (in Losen) | 503 `IMPORT_UNAVAILABLE`; 400 `FORTSETZUNG_INVALID`, `FORTSETZUNG_ORDNER`; 409 `FORTSETZUNG_UNBEKANNT`, `FORTSETZUNG_BELEGT` |
 | `POST` | `/api/admin/import/sharepoint/apply` | `users.manage` (Schalter wie oben) | Rumpf `{ ids }` | 200 Übernahmebilanz | 503 `IMPORT_UNAVAILABLE`; 400 `APPLY_EMPTY_SELECTION`, `APPLY_TOO_MANY` |
 
 ### 3.9 Älteres Klara-Add-in (`addinStaticRoutes`, Schalter `KLARWERK_ADDON_API`)
