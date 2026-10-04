@@ -358,23 +358,61 @@ async function ausDerTrefferliste(seite: Seite, id: string): Promise<void> {
   await warteAufFormular(seite, "Bibliothek");
 }
 
-const KARTE_DA = `(titel) => [...document.querySelectorAll('[data-testid="pruefen-karte"]')]
-  .some((k) => k.textContent.includes(titel))`;
+// NACHARBEIT 16 (eigene Prüfcode-Diagnose, Lauf g15): das Prüfboard zeichnet rechts genau EINE
+// Karte — die gewählte, sonst die erste der Warteschlange (`Validation.tsx`, `aktiv` aus `aktivId`
+// oder `visible[0]`). Die erste Fassung wartete gleich nach `/validierung` auf die Karte des
+// Board-Eintrags; gezeichnet war aber die des ersten Eintrags, und der Lauf lief in die Frist. Der
+// Mensch wählt den Eintrag zuerst links in der Warteschlange — genau das tut der Test jetzt, per
+// Tab und Enter, ohne Markierung und ohne Zustandseingriff. Erst wenn die AKTIVE Karte diesen Titel
+// und dessen Kennung trägt, geht es ins Kartenmenü.
 
-const KARTENMENUE = `(titel) => [...document.querySelectorAll('[data-testid="pruefen-karte"]')]
-  .filter((k) => k.textContent.includes(titel))
-  .map((k) => k.querySelector('[data-testid="pruefen-menue-karte"]'))
-  .filter((m) => !!m)`;
+const WARTESCHLANGE = '[data-testid="pruefen-warteschlange-eintrag"]';
+const AKTIVE_SPALTE = '[data-testid="pruefen-artikelspalte"]';
+const KARTENMENUE = `${AKTIVE_SPALTE} [data-testid="pruefen-menue-karte"]`;
+const PANEL_PUNKT = '[data-testid="pruefen-menue-panel-karte"] button';
+
+/** Tab, bis das aktive Element den Selektor erfüllt UND genau diesen sichtbaren Text trägt. */
+async function tabBisZuMitText(
+  seite: Seite,
+  selektor: string,
+  text: string,
+  vonVorn: boolean,
+): Promise<void> {
+  if (vonVorn) {
+    const zurueck = "() => { const a = document.activeElement; if (a && a.blur) a.blur(); }";
+    await seite.evaluate<void>(fn(zurueck));
+  }
+  const treffer = `([sel, t]) => {
+    const a = document.activeElement;
+    return !!a && a.matches(sel) && (a.textContent || "").trim() === t;
+  }`;
+  for (let schritt = 1; schritt <= TAB_DECKEL; schritt += 1) {
+    await seite.keyboard.press("Tab");
+    if (await seite.evaluate<boolean>(fn(treffer), [selektor, text])) {
+      return;
+    }
+  }
+  throw new Error(`${K5}: „${text}" (${selektor}) in ${TAB_DECKEL} Tabs nicht erreichbar`);
+}
+
+const IN_WARTESCHLANGE = `([sel, titel]) => [...document.querySelectorAll(sel)]
+  .some((k) => (k.textContent || "").trim() === titel)`;
+
+/** Die gewählte Zeile UND die gezeichnete Karte tragen diesen Titel und diese Kennung. */
+const AKTIV_GEWAEHLT = `([sel, spalte, titel, id]) => {
+  const zeile = [...document.querySelectorAll(sel)]
+    .find((k) => (k.textContent || "").trim() === titel);
+  if (!zeile || zeile.getAttribute("aria-current") !== "true") return false;
+  const karte = document.querySelector(spalte);
+  const link = karte && karte.querySelector('a[href="/wissen/' + id + '"]');
+  return !!link && (link.textContent || "").trim() === titel;
+}`;
 
 const PANEL_OFFEN = `() => !!document.querySelector('[data-testid="pruefen-menue-panel-karte"]')`;
 
-const PANEL_PUNKT = `(text) => [
-  ...document.querySelectorAll('[data-testid="pruefen-menue-panel-karte"] button'),
-].filter((b) => (b.textContent || "").trim() === text)`;
-
 const AUF_KENNUNG = `(id) => location.pathname === "/wissen/" + id`;
 
-/** Einstieg 2: die bestehende Prüfboard-Karte → Kartenmenü → „Bearbeiten". */
+/** Einstieg 2: Warteschlange → die bestehende Prüfboard-Karte → Kartenmenü → „Bearbeiten". */
 async function vomPruefboard(
   seite: Seite,
   basis: string,
@@ -382,13 +420,17 @@ async function vomPruefboard(
   id: string,
 ): Promise<void> {
   await seite.goto(`${basis}/validierung`, { waitUntil: "load" });
-  await warte(seite, KARTE_DA, `${K5}: Board-Karte „${titel}" steht da`, titel, 60_000);
-  await markiere(seite, KARTENMENUE, titel, "Kartenmenü der Board-Karte");
-  await markiertesAusloesen(seite, true);
+  const steht = `${K5}: „${titel}" steht in der Warteschlange`;
+  await warte(seite, IN_WARTESCHLANGE, steht, [WARTESCHLANGE, titel], 60_000);
+  await tabBisZuMitText(seite, WARTESCHLANGE, titel, true);
+  await seite.keyboard.press("Enter");
+  const aktiv = `${K5}: aktive Board-Karte trägt „${titel}" und Kennung ${id}`;
+  await warte(seite, AKTIV_GEWAEHLT, aktiv, [WARTESCHLANGE, AKTIVE_SPALTE, titel, id], 60_000);
+  await tabBisZu(seite, KARTENMENUE, TAB_DECKEL, true);
+  await seite.keyboard.press("Enter");
   await warte(seite, PANEL_OFFEN, `${K5}: Kartenmenü offen`);
-  const punkt = i18n.t("val.editKo");
-  await markiere(seite, PANEL_PUNKT, punkt, `Menüpunkt „${punkt}"`);
-  await markiertesAusloesen(seite, false);
+  await tabBisZuMitText(seite, PANEL_PUNKT, i18n.t("val.editKo"), false);
+  await seite.keyboard.press("Enter");
   await warte(seite, AUF_KENNUNG, `${K5}: Board führt auf dieselbe Kennung ${id}`, id, 60_000);
   await warteAufFormular(seite, "Prüfboard");
 }
