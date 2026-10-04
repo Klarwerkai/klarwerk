@@ -92,6 +92,7 @@ import { useReadiness } from "../../lib/useReadiness";
 import { TABLET_LESE_QUERY, useMediaQuery } from "../../shell/useMediaQuery";
 import { DemoBanner } from "../DemoBanner";
 import { RoleLink } from "../RoleLink";
+import { FacetActiveBar } from "../facets/FacetActiveBar";
 import { cx } from "../ui";
 import { AuffrischungHinweis } from "./AuffrischungHinweis";
 import { BibliothekLesen } from "./BibliothekLesen";
@@ -791,6 +792,22 @@ export function BibliothekFlaeche({
     // JOB 3877: Ein Klick ins Filtermenü ist eine eigene, geprüfte Wahl — sie löst den Befund der
     // Adresse ab. Was der Mensch jetzt gewählt hat, steht im Menü und zählt über `aktiveFilterZahl`.
     setVerworfeneEingrenzung([]);
+    setFacetSel(naechste);
+  };
+  // R-0428: die „0 Treffer"-Pille einer strukturell widersprüchlichen Auswahl ist KEIN Wert — ihr
+  // Entfernen löst die ganze Dimension (offen, kein Filter), genau wie in der Pillenleiste vorgesehen.
+  const onClearFacetGroup = (key: string): void => {
+    resetWindow();
+    const naechste: FacetSelection = {};
+    for (const [k, v] of Object.entries(wirksameAuswahl)) {
+      if (k !== key) {
+        naechste[k] = v;
+      }
+    }
+    if (urlSeed !== null) {
+      setUrlSeed(naechste);
+      return;
+    }
     setFacetSel(naechste);
   };
   const onResetFilters = (): void => {
@@ -1647,6 +1664,26 @@ export function BibliothekFlaeche({
             }
           }}
           ansicht={ansicht}
+          // R-0428 / R-0464 (K1/K10): JEDE aktive Auswahl als entfernbare Pille unter den Menüs —
+          // dieselbe Leiste, die die Importauswahl führt (`facets/FacetActiveBar.tsx`), mit derselben
+          // Auswahl, denselben Griffen und derselben Wertbeschriftung wie die Menüs. Ohne aktive
+          // Auswahl zeichnet sie nichts; die H4-Grundansicht bleibt damit unverändert.
+          aktiveAuswahl={
+            <FacetActiveBar
+              configs={LIBRARY_FILTER_CONFIGS}
+              selection={wirksameAuswahl}
+              onToggle={onToggleFacet}
+              onReset={onResetFilters}
+              onClearGroup={onClearFacetGroup}
+              labelForValue={facetValueLabel}
+              range={range}
+              onRangeChange={(naechster) => {
+                resetWindow();
+                setRange(naechster);
+              }}
+              rangeLabelKey="lib.facet.rangeLabel"
+            />
+          }
           markierung={
             auswahlModus
               ? {

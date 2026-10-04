@@ -31,12 +31,11 @@
 //      (`requestAnimationFrame`). Die reine API-Antwortzeit wird GETRENNT im Browser gemessen; die
 //      Entprellung der Sucheingabe (`LIBRARY_SEARCH_DEBOUNCE_MS`) wird ausgewiesen, nicht verrechnet.
 //
-// DER BEFUND ZUR PILLENLEISTE STEHT IN EINEM EIGENEN FALL (P1). Die heutige Bibliothek
-// (`BibliothekFlaeche.tsx`, H4) zeigt eine aktive Auswahl als angehakten, wieder abwählbaren
-// Menüpunkt und als Zahl am Menüknopf; die Pillenleiste `FacetActiveBar` ist nur in
-// `ImportSelect.tsx` eingebunden. P1 misst R-0428 wörtlich und wird rot, solange keine Pille da ist —
-// ohne den Messfall K1/K10 mitzureissen. Gebaut wird hier nichts: ob die Bibliothek wieder Pillen
-// bekommt, berührt die H4-Entscheidung „Menüs statt Wand" und ist keine Testfrage.
+// DIE PILLENLEISTE STEHT IN EINEM EIGENEN FALL (P1). Lauf g18 hat dort rot gemessen: die Bibliothek
+// zeigte aktive Werte nur als angehakte Menüpunkte, `FacetActiveBar` war allein in
+// `ImportSelect.tsx` eingebunden. Seit Nacharbeit 19 führt `BibliothekFlaeche.tsx` dieselbe Leiste
+// unter den Menüs (ohne aktive Auswahl zeichnet sie nichts). P1 zählt die Pillen und entfernt sie
+// einzeln per Tab und Enter.
 //
 // KEINE PRODUKTIVDATEN, KEIN NACHBAU: Wegwerf-Datenbank aus `platz.ts` (Name mit `test` und `4334`),
 // kein `route.fulfill`, keine In-Memory-Antwort. `inject` nur für das Admin-Konto.
@@ -149,8 +148,11 @@ function suchgruppe(
  * vorhandene Vertraulichkeitsregel unberührt, und kein Zähler hängt an einer Rechtefrage (K11).
  */
 function bauplan(adminId: string): Eintrag[] {
-  const vertraulich = "vertraulich" as CreateKoInput["confidentiality"];
-  const intern = "intern" as CreateKoInput["confidentiality"];
+  // `NonNullable`: das Feld ist in `CreateKoInput` optional, unter `exactOptionalPropertyTypes`
+  // darf der gesetzte Wert deshalb nicht `undefined` einschliessen.
+  type Stufe = NonNullable<CreateKoInput["confidentiality"]>;
+  const vertraulich: Stufe = "vertraulich";
+  const intern: Stufe = "intern";
   const plan: Eintrag[] = [
     ...suchgruppe(
       "ziel",
@@ -809,8 +811,13 @@ describe("K1/K10 · Bibliotheksfilter bei 10.001 Objekten (PG + Chromium, unver�
   }, 1_800_000);
 
   // ==============================================================================================
-  // P1 · R-0428 WÖRTLICH: ENTFERNBARE PILLEN JE AKTIVER AUSWAHL — gemessen, nicht gebaut.
+  // P1 · R-0428 WÖRTLICH: ENTFERNBARE PILLEN JE AKTIVER AUSWAHL.
   // ==============================================================================================
+  //
+  // NACHARBEIT 19: Lauf g18 hat hier rot gemessen (0 Pillen bei drei aktiven Auswahlen). Seitdem
+  // führt `BibliothekFlaeche.tsx` die vorhandene `FacetActiveBar` unter den Menüs. P1 zählt die
+  // Pillen und ENTFERNT sie dann einzeln per Tab und Enter — nach jeder Pille muss genau die
+  // Treffermenge zurückkehren, die die verbleibende Auswahl verlangt.
   it("P1 — entfernbare Filterpillen je aktiver Auswahl (R-0428) auf der Bibliotheksfläche", async (ctx) => {
     if (!seite || kombiAdresse === "") {
       process.stderr.write(`${MELDUNG_KEINE_DATENBANK} ${skipGrund}\n`);
@@ -821,15 +828,38 @@ describe("K1/K10 · Bibliotheksfilter bei 10.001 Objekten (PG + Chromium, unver�
     await s.goto(kombiAdresse, { waitUntil: "load" });
     await warte(s, LISTE_IST, `${K}: P1 — Kombination`, listensoll(ids.ziel), FRIST);
     const entfernen = i18n.t("facet.remove", { label: "" }).trim();
-    const werteDerAuswahl = [WARTUNG, NORM, i18n.t("conf.level.vertraulich")];
+    const vertraulich = i18n.t("conf.level.vertraulich");
+    const werteDerAuswahl = [WARTUNG, NORM, vertraulich];
     const quelle = `([wort, werte]) => [...document.querySelectorAll("button[aria-label]")]
       .map((b) => b.getAttribute("aria-label") || "")
       .filter((l) => l.endsWith(wort) && werte.some((w) => l.includes(w)))`;
     const pillen = await s.evaluate<string[]>(fn(quelle), [entfernen, werteDerAuswahl]);
     bericht.pillen = { gefunden: pillen };
-    expect(
-      pillen.length,
-      `${K}: PRODUKTBEFUND (offen, nicht gebaut) — die Bibliothek zeigt zu drei aktiven Auswahlen keine einzige entfernbare Pille. BibliothekFlaeche.tsx (H4) führt aktive Werte nur als angehakte Menüpunkte und als Zahl am Menüknopf; FacetActiveBar ist allein in ImportSelect.tsx eingebunden. Ob die Bibliothek wieder Pillen bekommt, berührt die H4-Entscheidung „Menüs statt Wand" und ist an die Nacharbeit/Aufsicht zu geben.`,
-    ).toBeGreaterThanOrEqual(3);
+    expect(pillen.length, `${K}: entfernbare Pillen zu drei aktiven Auswahlen`).toBe(3);
+
+    // Die Pille mit genau diesem Wert per Tab erreichen und mit Enter entfernen — gemessen.
+    const istPille = `(a, [wort, wert]) => a.tagName === "BUTTON"
+      && (a.getAttribute("aria-label") || "").endsWith(wort)
+      && (a.getAttribute("aria-label") || "").includes(wert)`;
+    const pilleEntfernen = async (wert: string, erwartet: readonly string[]) => {
+      await tabBisZu(s, '[data-testid="bib-suche"]', TAB_DECKEL, true);
+      await tabBisPassend(s, istPille, [entfernen, wert], `Pille „${wert}"`);
+      return messen(s, LISTE_IST, listensoll(erwartet), ENTER(s), `Pille „${wert}" entfernen`);
+    };
+    const schlagwortAb = [...ids.ziel, ...ids.ventil];
+    const vertraulichAb = [...ids.ziel, ...ids.wartung, ...ids.ventil];
+    const alleSuchtreffer = [...vertraulichAb, ...ids.montage];
+    const zeiten = [
+      await pilleEntfernen(NORM, schlagwortAb),
+      await pilleEntfernen(vertraulich, vertraulichAb),
+      await pilleEntfernen(WARTUNG, alleSuchtreffer),
+    ];
+    const rest = await s.evaluate<string[]>(fn(quelle), [entfernen, werteDerAuswahl]);
+    expect(rest, `${K}: nach dem Entfernen stehen noch Pillen`).toEqual([]);
+    const adresse = new URL(await s.evaluate<string>(fn("() => location.href")));
+    expect(adresse.searchParams.get("q"), `${K}: Suchwort bleibt stehen`).toBe(SUCHWORT);
+    expect(adresse.searchParams.has("category"), `${K}: Bereich noch in der Adresse`).toBe(false);
+    expect(adresse.searchParams.has("tag"), `${K}: Schlagwort noch in der Adresse`).toBe(false);
+    bericht.pillen = { gefunden: pillen, entfernen: zeiten };
   }, 300_000);
 });
