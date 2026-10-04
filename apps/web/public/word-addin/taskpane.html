@@ -1629,9 +1629,7 @@
     var WORD_ADDIN_ASK_MAX_CHARS = 2000;
     var WORD_ADDIN_ASK_TIMEOUT_MS = 15000;
 
-    // ============================================================================================
     // JOB 3019 (KA5) — DIE MARKIERUNG SCHAERFT DIE SUCHE, SIE VERDRAENGT DIE FRAGE NICHT MEHR.
-    // ============================================================================================
     //
     // BIS HIERHER GEWANN DIE MARKIERUNG. Wer eine Stelle markierte UND eine Frage tippte, bekam
     // eine Antwort auf die Markierung; der getippte Text war danach nirgends mehr — nicht im
@@ -1739,9 +1737,7 @@
     // ausgelieferte `performAsk` (nicht seinen TypeScript-Zwilling) laufen zu lassen.
     // KW-KA4-DOKUMENT-CONSENT-START
     //
-    // ============================================================================================
     // KA4 — DIE EINWILLIGUNG GILT JE DOKUMENT, UND SIE WIRD NIE HIER ENTSCHIEDEN.
-    // ============================================================================================
     //
     // Pedis Weiche (Werkstattbeschluss 18.08.2026): „Externe KI mit Dokumenttext: JA, aber nie
     // still. Je Dokument eine ausdrueckliche Einwilligung; Klara darf auch AKTIV fragen …
@@ -2299,9 +2295,7 @@
     }
     // KW-KLARA-AISTATE-END
 
-    // ============================================================================================
     // AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK A — Spiegel von wordAddin.ts#klaraTrustHead.
-    // ============================================================================================
     //
     // BEWUSST AUSSERHALB der mega75-Schnittmarken. Der Sammler von
     // tests/app/mega75-klara-ki-status.test.ts liest GENAU den Block zwischen KW-KLARA-AISTATE-*
@@ -2333,9 +2327,7 @@
     }
     // KW-KLARA-TRUSTHEAD-END
 
-    // ============================================================================================
     // AUFTRAG-W1-KLARA-KOPF-CONSENT-06 (BASIC-1) — DIE ANZEIGE-ABLEITUNG DES S4-VERTRAGS.
-    // ============================================================================================
     //
     // WAS SIE TUT: sie UEBERSETZT eine `KlaraSessionView`/`KlaraResolution` in Anzeige-Schluessel.
     // WAS SIE NICHT TUT: entscheiden. Modus, Anbieter, Modell, Abweichung, Consentbedarf und
@@ -2428,9 +2420,7 @@
       return KLARA_S4_CONSENT_STATES.indexOf(state) >= 0;
     }
 
-    // ============================================================================================
     // KW-S4-22 — DIE PAYLOAD-KLASSEN. AUSSCHLIESSLICH `effectivePayloadClasses`.
-    // ============================================================================================
     //
     // KW-S4-22 §2 ist eindeutig: „Fuer den Consentdialog massgeblich ist ausschliesslich
     // `effectivePayloadClasses`". Die frueher hier gelesenen Felder `payloadClass` und
@@ -2572,9 +2562,7 @@
         payloadClasses: klassen,
         payloadResolved: klassen !== null,
         blockedClasses: klaraS4BlockierteKlassen(r),
-        // ==========================================================================================
         // JOB 3079 R2 — DER EMPFAENGER DER ZUSTIMMUNG, VOR DEM KLICK (BEN-Korrekturpflicht 1).
-        // ==========================================================================================
         //
         // NICHT `r.provider`. Der beantwortet „was rechnet JETZT" und meldet vor der Zustimmung die
         // deterministischen Ersatzwerte — der Zustimmungssatz nannte deshalb woertlich „Klarwerk
@@ -2606,9 +2594,7 @@
     }
     // KW-KLARA-S4-END
 
-    // ============================================================================================
     // JOB 3079 · S4 — DER SATZ ÜBER DEN WEG DIESES FENSTERS.
-    // ============================================================================================
     //
     // WAS ER ERSETZT, und warum es ersetzt gehoerte. Bis zur Freischaltung des externen
     // Antwortwegs (`KLARA_EXTERNAL_EXECUTION_MIGRATED`, 05.09.2026) sagten alle fuenf `aiLage*`-
@@ -2680,9 +2666,7 @@
     }
     // KW-KLARA-WEG-END
 
-    // ============================================================================================
     // JOB 1077 — DIE FASSUNGSKETTE. VIER FUNKTIONEN, EINE FRAGE.
-    // ============================================================================================
     //
     // Sie stehen zwischen Schnittmarken — dieselbe Bauform wie KW-KLARA-ASK-FETCH-* und
     // KW-KLARA-S4-FETCH-*. Das Aufgabenfenster ist buildlos; ein Schnitt ist die einzige
@@ -3916,9 +3900,7 @@
       return officeReady && window.Office && Office.context && Office.context.document;
     }
 
-    // ============================================================================================
     // JOB 3057 K2 — DER ZUSTAND DER ERFASSEN-FLAECHE (Zielbild Erfassen.dc.html).
-    // ============================================================================================
     // `captureMarkierung` sind die Absaetze der aktuellen Word-Markierung (Text-Zugriff, gelesen
     // bei Office-Bereitschaft, bei jedem DocumentSelectionChanged und beim Wechsel auf den Reiter).
     // Aus ihr entstehen Kicker („MARKIERUNG · n ABSAETZE"), Absaetze, die Vorbelegung der Zeile
@@ -3964,9 +3946,7 @@
     var captureSendeLauf = null;
     var sendStatusUrl = null;
 
-    // ============================================================================================
     // JOB 3555 K2b — DER ZUSTAND DER BEREICH-ZEILE (Zielbild Erfassen.dc.html Z.39-45).
-    // ============================================================================================
     //
     // VIER LAGEN, und jede sagt genau das, was festgestellt ist:
     //   "laedt"  → „Wird geladen …", Auswahl gesperrt. KEINE Aussage ueber den Bestand.
@@ -4240,9 +4220,7 @@
     }
     // KW-KLARA-AISTATE-FETCH-END
 
-    // ============================================================================================
     // AUFTRAG-W1-KLARA-KOPF-CONSENT-06 (BASIC-1) — SITZUNG, STATUS UND ZUSTIMMUNG AM ECHTEN VERTRAG
-    // ============================================================================================
     //
     // Sieben Endpunkte, alle same-origin und mit derselben Sitzung wie /api/ask (KW-W1-S4-R2-
     // KOPF-FREEZE-17). Der Ablauf ist vorgeschrieben und NICHT umkehrbar:
@@ -4359,9 +4337,7 @@
         );
     }
 
-    // ============================================================================================
     // JOB 3056 Runde 4 (Codex Pflicht 3) — DIE EPOCHE: NACH DEM ABMELDEN GILT KEINE ALTE ANTWORT.
-    // ============================================================================================
     // Jeder sitzungsbezogene Abruf traegt die Epoche, in der er gestartet ist. `klaraS4Verwerfen`
     // (bestaetigter Logout, `abmelden`) zaehlt sie hoch — eine Antwort, die danach eintrifft,
     // gehoert der alten Sitzung und wird VERWORFEN (Fehler `veraltet`, von jedem Aufrufer
@@ -4459,9 +4435,7 @@
       renderKlaraS4();
     }
 
-    // ============================================================================================
     // AUFTRAG-37 (Preflight-36-Befunde G2 und G3) — WANN DIE ERSTE SITZUNG ENTSTEHEN DARF.
-    // ============================================================================================
     //
     // Bisher lief `klaraS4Start()` SYNCHRON am Skriptende. Zwei belegte Folgen:
     //
@@ -4595,9 +4569,7 @@
         .catch(function (err) { if (err && err.veraltet) { return; } klaraS4Riegel("s4ConsentFehler"); });
     }
 
-    // ============================================================================================
     // BEN-BEFUND 2 — DER RIEGEL. FAIL-SAFE HEISST: DEN ALTEN STAND VERWERFEN, NICHT UEBERDECKEN.
-    // ============================================================================================
     //
     // Ein gescheiterter Zustimmungs- oder Widerrufsaufruf laesst den Client in Ungewissheit: der
     // Server kann die Aenderung vollzogen haben oder nicht. In dieser Lage ist der zuletzt
@@ -4620,9 +4592,7 @@
       klaraS4Refresh("riegel");
     }
 
-    // ============================================================================================
     // BEN-BEFUND 4 — DER STATUSREFRESH. EIN ABGELAUFENER STAND DARF NICHT AKTUELL AUSSEHEN.
-    // ============================================================================================
     //
     // Bisher wurde der Status nach dem Sitzungsstart GENAU EINMAL gelesen. Lief die Auflösung ab,
     // wechselte die Policy oder wurde die Sitzung invalidiert, blieb der alte DOM stehen — die
@@ -4724,9 +4694,7 @@
       klaraS4Refresh(grund);
     }
 
-    // ============================================================================================
     // BEN-BEFUND 5 — DER DOKUMENT-REBIND AN DEN VORHANDENEN SERVERWEG.
-    // ============================================================================================
     //
     // Der Beschreiber wird bei JEDEM Refresh neu gebildet. Wechselt er von `unsaved` auf `saved` —
     // also traegt Word jetzt eine Adresse, wo vorher keine war —, ist das ein ANDERER
@@ -4765,9 +4733,7 @@
         .then(function () { klaraS4RebindLaeuft = false; });
     }
 
-    // ============================================================================================
     // BEN-BEFUND 3 — DIE SITZUNG WIRD BEIM SCHLIESSEN WIRKLICH GESCHLOSSEN.
-    // ============================================================================================
     //
     // `pagehide` ist der Lebenszyklus-Anker der Wahl — `unload` wird in modernen Engines beim
     // Zuruecklegen in den Cache uebersprungen. OB der Word-WebView `pagehide` beim Schliessen des
@@ -5257,9 +5223,7 @@
       rwZeichnen();
     }
 
-    // ============================================================================================
     // JOB 3555 K2b — DIE BEREICH-ZEILE: ZEICHNEN UND HOLEN.
-    // ============================================================================================
 
     /** Der Satz, der in der Zeile steht, solange nichts zu waehlen ist — je Lage genau einer. */
     function captureBereichSatz() {
@@ -5392,9 +5356,7 @@
         .catch(scheitern);
     }
 
-    // ============================================================================================
     // JOB 3092 · S6 (W6) — DIE DUBLETTENPRUEFUNG VOR DEM EINREICHEN.
-    // ============================================================================================
     //
     // W6 (OFFEN.md) lautete: „`POST /api/check-text` ist die Dublettenpruefung — und Klara benutzt
     // sie nirgends." Der WEG dorthin steht seit JOB 1621 (`w6DublettenAusCheckText`, Block
@@ -5622,9 +5584,7 @@
       return bilderSatz(prepared.usedHtml ? prepared.undeliveredImages : 0, prepared.droppedImages);
     }
 
-    // ============================================================================================
     // JOB 3438 — WAS MIT DEN BILDERN GESCHAH: DIE ANTWORT DER ROUTE WIRD LESBAR.
-    // ============================================================================================
     //
     // Seit JOB 3400 verkleinert der Server die Bilder eines .docx-Imports und nennt in DERSELBEN
     // Antwort `imagesShrunk`, `imagesKeptOriginal` und `imageSkipReasons`
@@ -6411,9 +6371,7 @@
       });
     }
 
-    // ============================================================================================
     // AUFTRAG-mega74 TEIL 2 — DIE BILDER ÜBER DIE OFFICE-SCHNITTSTELLE HOLEN.
-    // ============================================================================================
     //
     // ANFORDERUNGSSTUFE, an der Dokumentation belegt (learn.microsoft.com, Stand 17.06.2026):
     //   · Body.inlinePictures ......................... WordApi 1.1   ← der Dokument-Umfang
@@ -6687,9 +6645,7 @@
     // Antwortflaeche tritt zurueck) oder auf „Neue Frage" (leert). Die naechste Frage raeumt den
     // alten Stand ohnehin ab (resetAskResult). Kein Produktfeld ist Testhilfe: der Zwischenablage-
     // Smoke (tests-smoke/word-taskpane-kopieren.spec.ts) bringt seinen eigenen Einfuege-Empfaenger mit.
-    // ============================================================================================
     // JOB 3056 K1 — DIE ANSICHTEN: fragen | erfassen | einstellungen | hilfe (Pages-Art).
-    // ============================================================================================
     // EINE Zustandsquelle fuer Kopf und Flaechen. Der Kopf zeigt je Ansicht: Zurueck-Chevron
     // (Antwortzustand, Einstellungen, Hilfe), Titel, Umschalter (nur Fragen/Erfassen), Zahnrad
     // (nicht in Einstellungen/Hilfe). Der Chevron fuehrt immer eine Ebene zurueck: aus der Antwort
@@ -7009,9 +6965,7 @@
       renderAskFussnoten();
     }
 
-    // ============================================================================================
     // JOB 3092 · S6 (W5) — DIE HERKUNFT AN DER ANTWORT UND DER UNGEPRUEFT-SATZ.
-    // ============================================================================================
     //
     // PEDIS VERTRAUENSBOTSCHAFT (05.09., M2 Geschichte A/B): an jeder Antwort steht sichtbar, worauf
     // sie beruht — Titel, Pruefstand und Version je TRAGENDER Quelle, direkt unter dem Text, kein
@@ -7124,9 +7078,7 @@
       inLuecke.className = luecke ? "" : "hidden";
     }
 
-    // ============================================================================================
     // JOB 3366 · KI-FRAGMENT-SICHTBAR — DER SATZ AN EINER ABGESCHNITTENEN ANTWORT.
-    // ============================================================================================
     //
     // Bauform wie `renderAskUngeprueft` daneben, und aus demselben Grund: ein FESTES Element wird
     // gefuellt und ein-/ausgeblendet, gelesen wird `currentAskOutcome`. Damit nimmt der
@@ -7146,9 +7098,7 @@
       el.className = zeigen ? "" : "hidden";
     }
 
-    // ============================================================================================
     // JOB 3056 Runde 4 (Codex Pflicht 1) — DIE FUSSNOTENZIFFERN IM ANTWORTTEXT (Main.dc.html Z.28).
-    // ============================================================================================
     //
     // Hinter dem Antworttext stehen hochgestellte Ziffern, die auf die Chips „n · Titel" zeigen.
     // Der Antworttext bleibt das bearbeitbare Feld (mega35/36: EIN Feld, alle Ausgaenge — Einfuegen,
@@ -7222,9 +7172,7 @@
       halter.style.lineHeight = zeilenhoehe > 0 ? zeilenhoehe + "px" : "";
     }
 
-    // ============================================================================================
     // AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK B — EINE STELLE FUER DIE GANZE EVIDENZ.
-    // ============================================================================================
     //
     // Sie liest `currentAskOutcome` und ist deshalb auch nach einem SPRACHWECHSEL aufrufbar, ohne
     // dass die Antwort neu geholt werden muss. Drei Aussagen, sichtbar GETRENNT:
@@ -7785,9 +7733,7 @@
       document.getElementById("ask-copy-fallback-text").value = "";
     }
 
-    // ============================================================================================
     // AUFTRAG-mega36 BLOCK B1/B2 — DER NATIVE AUSGANG.
-    // ============================================================================================
     //
     // Das Antwortfeld traegt NUR den Antwortkoerper (mega35 A1). Ohne dieses Abfangen nimmt ein
     // natives Cmd+C/Strg+C, ein Kontextmenue-Kopieren oder ein Ausschneiden genau diesen Koerper —
@@ -8243,9 +8189,7 @@
     // begrenzte Office-Erkennung ein Ergebnis hat — durch ihren Rueckruf oder durch ihre Frist.
     klaraS4StartAnfordern();
 
-    // ============================================================================================
     // KW-KA1-TERMS-START — DAS DOKUMENT-BEGRIFFSBILD (JOB 1149 · D1, OFFEN.md KA1).
-    // ============================================================================================
     //
     // DIE ZUSAGE, woertlich: „das Panel haelt zu einem offenen Dokument eine Begriffsliste, ohne
     // dass ein Modellaufruf stattfindet". Gewonnen wird hausintern, aus dem ganzen Dokument, mit
@@ -8619,9 +8563,7 @@
     // KW-KA1-TERMS-END
 
     // KW-KA2-BESTAND-START
-    // ============================================================================================
     // JOB 1571 · D1 · KA2 — DER BESTANDSBLICK. „Gibt es dazu schon etwas?"
-    // ============================================================================================
     //
     // DER VERTRAG, woertlich aus dem Auftrag (Chef, 21.08. 00:47):
     //
@@ -8733,9 +8675,7 @@
         .catch(function () { return { treffer: [] }; });
     }
 
-    // ============================================================================================
     // JOB 1571 · D3 — REGEL A: DAS PANEL BESITZT DEN NAMEN. UNBEDINGT.
-    // ============================================================================================
     //
     // Hier stand eine BEDINGTE Zuweisung: gestellt wurde nur, wenn niemand den Vertrag schon
     // hielt. Die Begruendung war ehrlich und stand auch so da — der einzige andere Setzer war der
@@ -8761,9 +8701,7 @@
     // KW-KA2-BESTAND-END
 
     // KW-KA3-KARTEN-START
-    // ============================================================================================
     // JOB 1151 · KA3 — ANGEBOTSKARTEN STATT UNTERBRECHUNG.
-    // ============================================================================================
     //
     // Pedis Auflage, woertlich (werkstatt-klara-assistentin-beschlossen-20260818.md):
     // „Die Chefsekretaerin klopft an, sie platzt nicht herein." Die Abnahme aus OFFEN.md ist der
@@ -8844,9 +8782,7 @@
     var ka3Gebunden = false;
     var ka3Treffer = [];
 
-    // ============================================================================================
     // W6 (OFFEN.md) — DER WEG ZUR DUBLETTENPRUEFUNG. Aufruf, nicht Vertragsort.
-    // ============================================================================================
     //
     // W6 lautet: „`POST /api/check-text` ist die Dublettenpruefung — und Klara benutzt sie
     // nirgends." Gemessen auf diesem Stand: `check-text` hat in `apps/` NULL Treffer; niemand
@@ -9294,9 +9230,7 @@
     // KW-KA3-KARTEN-END
 
     // KW-M5-BILD-START
-    // ============================================================================================
     // JOB 3096 · M5 — „HAST DU EIN BILD DAZU?" DAS BILD AUS DEM BESTAND IM WORD-PANEL.
-    // ============================================================================================
     //
     // Pedi (05.09.2026, CODEX-POC-ENTSCHEIDUNG-1, Entscheidung 4): er markiert in Word
     // „Schraubverbindungen am Profil", klickt „Bild dazu?", Klara zeigt die Treffer aus dem Bestand
@@ -10025,9 +9959,7 @@
     // KW-M5-BILD-END
 
     // KW-KA6-SCHREIBEN-START
-    // ============================================================================================
     // JOB 1153 · KA6 STUFE 1 — DIE SCHREIBFLAECHE. VORSCHLAG STATT SCHREIBEN.
-    // ============================================================================================
     //
     // DIE DREI WOERTLICHEN ZUSAGEN aus `OFFEN.md` (KA6):
     //   · „das Ergebnis erscheint IMMER als Vorschlag im Panel und wird erst auf Klick eingefuegt"
@@ -10048,9 +9980,7 @@
     //   · Er unterbricht nicht: kein Popup, kein `focus()`, kein `scrollIntoView` — Pedis
     //     Anti-Aktionismus-Auflage gilt hier genauso wie in KA3.
     //
-    // ============================================================================================
     // DIE DRITTE HERKUNFTSKLASSE — UND WARUM SIE HIER ENTSTEHT UND NICHT IM SPIEGELMODUL.
-    // ============================================================================================
     //
     // `composeAnswerOutput` (wordAddin.ts) kennt zwei Klassen: „gesichert" und „ungeprueft". Beide
     // sind Aussagen ueber QUELLEN. Eine per Zuruf formulierte Passage ist keine von beiden — sie
@@ -10376,9 +10306,7 @@
         : composeOutputText(koerper);
     }
 
-    // ============================================================================================
     // JOB 1153 D3 · DER KOPIERKNOPF — VOM GESCHLOSSENEN AUSGANG ZUM OFFENEN UEBERNAHMEWEG.
-    // ============================================================================================
     //
     // WAS D2 HIER STEHEN HATTE, UND WARUM ES NICHT REICHTE:
     //   D2 hat den Kopierknopf bewusst zugelassen — gesperrt, weil `updateInsertState` (:3658)
@@ -10499,9 +10427,7 @@
             ka6Meldung("warn", t("ka6Fehler", { detail: outcome.detail || outcome.kind }));
             return;
           }
-          // ========================================================================================
           // JOB 1153 D2 · PFLICHT 2 — FAIL-CLOSED STATT RUECKFALL.
-          // ========================================================================================
           // Bis D1 stand hier `ka6KiFormuliert = outcome.aiGenerated === true;` — und ohne Signal
           // lief die Ausgabe still auf den Bestandsweg, also auf „gesichert"/„ungeprueft". BEN hat
           // das als unzulaessig benannt, und der Grund ist inhaltlich: Ein per Zuruf geholter Text
@@ -10582,9 +10508,7 @@
         var knopf = document.getElementById("lang-" + ka6Code);
         if (knopf) { knopf.addEventListener("click", ka6Neuzeichnen); }
       });
-      // ============================================================================================
       // WARUM HIER EIN WRAPPER STEHT UND KEIN TAKT.
-      // ============================================================================================
       // Die Ausfuehrbarkeit aendert sich asynchron: beim Sitzungsaufbau, beim Statusrefresh, beim
       // Riegel, beim Rebind. Alle diese Wege enden in `renderKlaraS4` — das ist die eine Stelle, an
       // der der neue Stand sichtbar wird. Der Wrapper haengt sich dort an, ruft das Original
@@ -10600,9 +10524,7 @@
         };
       }
 
-      // ==========================================================================================
       // JOB 1153 D2 · PFLICHT 3 (KA6 → Ask) — DER RUECKWEG.
-      // ==========================================================================================
       // `renderAskOutcome` ist die EINE Stelle, an der der Fragen-Weg das gemeinsame Feld befuellt
       // (taskpane.html:3902). Sobald er das tut, gehoert der Feldinhalt wieder ihm — und die
       // KA6-Herkunft muss weg sein, bevor irgendein Uebernahmeweg sie mitnehmen kann.
@@ -10625,9 +10547,7 @@
         };
       }
 
-      // ==========================================================================================
       // JOB 1153 D2 · PFLICHT 1 — DIE HERKUNFT ALS INVARIANTE ALLER UEBERNAHMEWEGE.
-      // ==========================================================================================
       //
       // DER BEFUND, gegen den hier gebaut wird — in D2 im Quelltext nachgeschlagen:
       //
@@ -10691,9 +10611,7 @@
         });
       }
 
-      // ==========================================================================================
       // JOB 1153 D3 · DER VIERTE WEG — DER RIEGEL, UND WER IHN ZURUECKNIMMT.
-      // ==========================================================================================
       // `updateInsertState` (:3650) ist die eine Stelle, an der der Kopierknopf seinen Zustand
       // bekommt. Derselbe Wrapper-Gedanke wie bei `renderKlaraS4` und `renderAskOutcome`: das
       // Original zuerst und unveraendert, danach der eigene Nachtrag.
@@ -10715,9 +10633,7 @@
         };
       }
 
-      // ==========================================================================================
       // EIN TEXT, EIN BAUER, ALLE WEGE — jetzt woertlich.
-      // ==========================================================================================
       // Dieser Wrapper stand schon in D2, und er hat dort die Herkunftszeile ein ZWEITES Mal
       // gebaut (`buildAnswerInsertText(koerper, t("ka6Herkunft"))`). Das war dieselbe Formel wie
       // in `ka6Ausgabetext`, aber eben eine zweite Fassung — genau die Kopie der Logik, die beim
@@ -10744,9 +10660,7 @@
     }
 
     // KW-KA6-MEMO-START
-    // ============================================================================================
     // JOB 3091 · M2 — DAS MEMO AUS DER QUELLE: Vorschlag mit Herkunft, Einfuegen erst nach Klick.
-    // ============================================================================================
     //
     // PEDIS WEG (Auftrag §1): Frage stellen → Klara zeigt die freigegebene Regel mit Quelle → Knopf
     // „Memo aus dieser Quelle" → ein ENTWURF mit Herkunftsblock (Quelle, Pruefstand, Version) und
@@ -11223,9 +11137,7 @@
     // KW-KA6-SCHREIBEN-END
 
     // KW-N1-BESTAND-START
-    // ============================================================================================
     // JOB 3093 · M3 — „HABEN WIR DAS SCHON?" DER BESTANDSWEG DES FRAGEN-REITERS (PRIORITAETEN N1 b).
-    // ============================================================================================
     //
     // Pedi (05.09.2026, CODEX-POC-ENTSCHEIDUNG-1): er oeffnet sein Dokument in Word und fragt, ob
     // wir das schon haben. Klara findet den vorhandenen Eintrag — auch den noch nicht validierten —
@@ -11555,9 +11467,7 @@
     // KW-N1-BESTAND-END
 
     // KW-KA7-KONFLIKT-START
-    // ============================================================================================
     // JOB 3094 · KA7 — „PASST DAS ZUR REGELUNG?" DER WIDERSPRUCHS-HINWEIS IM WORD-PANEL.
-    // ============================================================================================
     //
     // PEDIS FALL (05.09., CODEX-POC-ENTSCHEIDUNG-1): das Memo sagt „drei Tage", die freigegebene
     // Regelung „zwei Tage". Er markiert den Satz, klickt „Passt das zur Regelung?", und Klara zeigt
@@ -12487,9 +12397,7 @@
       if (aktuell.length === 0) { verbergen(); return; }
       var geprueft = befund ? captureAbsaetze(befund.text).join("\n") : "";
       if (!befund || geprueft.length === 0 || geprueft !== aktuell) {
-        // ==========================================================================================
         // RUNDE 3 (BEN R2, Korrekturpflicht 1) — DER PRUEFSTAND DIESES ENTWURFS, IN VIER WORTEN.
-        // ==========================================================================================
         // Runde 1 stellte hier einen ganzen Satz hin (72 Zeichen) — Pedis Textmesser fuer die
         // Erfassen-Flaeche wurde rot (JOB 3057 K2 §5.7: ausser Beschriftungen kein Satz, hoechstens
         // 40 Zeichen). Runde 2 versteckte die Aussage stattdessen, sobald die KI-Weiche zu war; das
@@ -12651,9 +12559,7 @@
     // KW-KA7-KONFLIKT-END
 
     // KW-WORDVERGLEICH-START
-    // ============================================================================================
     // JOB 3281 · WORD-VERGLEICH — DAS GANZE DOKUMENT, ABSATZ FUER ABSATZ, MIT FARBE UND BELEG.
-    // ============================================================================================
     //
     // PEDIS FALL (Auftrag §1): er oeffnet das Vergleichsdokument in Word und klickt „Dokument
     // pruefen". Klara geht Absatz fuer Absatz durch, faerbt IM DOKUMENT und listet im Panel je
@@ -13603,9 +13509,7 @@
     }
     // KW-WORDVERGLEICH-END
 
-    // ============================================================================================
     // KW-MARKE-START — DIE FIRMEN-CI DER VORFUEHRUNG (JOB 3512).
-    // ============================================================================================
     //
     // WOZU: Schaltet der Administrator in KLARWERK das Demo-Erscheinungsbild ein, traegt Klara im
     // Word dasselbe Logo und dieselben Hausfarben — ohne zweiten Schalter, ohne Neustart des

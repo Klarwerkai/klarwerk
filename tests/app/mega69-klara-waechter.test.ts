@@ -2611,8 +2611,12 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // `dokumentId` als EIN zusätzliches, optionales Feld in beiden Einreichrümpfen (`/api/drafts`,
     // `/api/drafts/from-docx`) — gelesen aus der im Dokument gespeicherten Kennung, nur wenn eine da
     // ist. Abrufziel, Manifest, CSP, Recht: unverändert. Der Konflikt zur Stufenwahl (R-0632) ist so
-    // aufgelöst, dass beide Felder mitreisen. OFFEN: der Hash des zusammengeführten Stands ist noch
-    // nicht gemessen (kein Hash-Werkzeug freigegeben) — der Wert unten ist der Stand vor diesem Merge.
+    // aufgelöst, dass beide Felder mitreisen. Gemessen auf Kandidat a9840417: 9aa99402…08ea13b1cc.
+    // NACHARBEIT 8 — DANACH ERNEUT GEÄNDERT, NUR KOMMENTAR: die 48 Abschnittsköpfe des Inline-Skripts
+    // sind auf ihre Titelzeile verdichtet (die reinen `// ====`-Trennlinien entfernt), damit das
+    // Skript wieder unter der Schranke von `schnittflaechen.test.ts` B3 liegt (12590 -> 12494).
+    // Kein Ausdruck, kein Abrufziel, keine Nutzlast, keine Blockmarke geändert; kein Sideload.
+    // OFFEN: der Hash DIESES Stands ist nicht gemessen (kein Hash-Werkzeug freigegeben).
     const PIN = "9549900a268b5c942beb729cf706753149ac618fe4be4c5fb4704275ed0a93f8";
     const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
     expect(

@@ -103,7 +103,15 @@ async function ueberKandidat(a: Aufbau, item: Record<string, unknown>): Promise<
   return koId as string;
 }
 
-/** Der direkte JSON-Import — ohne Warteschlange. Liefert die Kennung über den Titel. */
+/**
+ * Der JSON-Import über `POST /api/library/import`.
+ *
+ * NACHGEFÜHRT (Nacharbeit 8): seit R-0143 (main) legt dieser Eingang KEIN Wissensobjekt mehr direkt
+ * an — er reiht einen Kandidaten ein (`eingereiht`, `kandidaten[]`), und das Objekt entsteht erst
+ * durch die berechtigte Annahme. Gemessen wird deshalb genau dieser Produktweg: einreihen, regulär
+ * annehmen, zurücklesen. Die Zusage des Falls bleibt dieselbe — eine fehlende Stufe ergibt am
+ * entstandenen Objekt „intern", eine mitgelieferte bleibt.
+ */
 async function ueberJsonImport(a: Aufbau, item: Record<string, unknown>): Promise<string> {
   const res = await a.app.inject({
     method: "POST",
@@ -111,11 +119,21 @@ async function ueberJsonImport(a: Aufbau, item: Record<string, unknown>): Promis
     headers: a.headers,
     payload: { items: [item] },
   });
-  expect(res.statusCode, res.body).toBeLessThan(300);
-  expect((res.json() as { imported?: number }).imported, res.body).toBe(1);
-  const ko = (await a.services.ko.list()).find((k) => k.title === item.title);
-  expect(ko, `das importierte Objekt „${String(item.title)}“ fehlt im Bestand`).toBeDefined();
-  return ko?.id as string;
+  expect(res.statusCode, res.body).toBe(200);
+  const antwort = res.json() as { eingereiht?: number; kandidaten?: { id: string }[] };
+  expect(antwort.eingereiht, res.body).toBe(1);
+  const kandidatId = antwort.kandidaten?.[0]?.id;
+  expect(kandidatId, res.body).toBeTruthy();
+  const angenommen = await a.app.inject({
+    method: "PUT",
+    url: `/api/library/import/candidates/${kandidatId}`,
+    headers: a.headers,
+    payload: { action: "accept" },
+  });
+  expect(angenommen.statusCode, angenommen.body).toBe(200);
+  const koId = (angenommen.json() as { koId: string | null }).koId;
+  expect(koId, angenommen.body).toBeTruthy();
+  return koId as string;
 }
 
 /** Die Stufe, wie die Detailroute sie ausliefert — gelesen, nicht aus der Eingabe abgeleitet. */
