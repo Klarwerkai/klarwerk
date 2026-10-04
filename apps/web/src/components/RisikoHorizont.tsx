@@ -43,7 +43,13 @@ function Bereich({
   nameOf: ReturnType<typeof useAuthorName>;
 }): JSX.Element {
   const { t, i18n } = useTranslation();
-  const traeger = area.bearers.filter((b) => b.horizonMonths <= horizont);
+  // Nacharbeit 5 (ben F4): gefiltert wird nach der HEUTIGEN Zugehörigkeit (Frist gegen Bezugszeit,
+  // vom Server abgeleitet) — nicht nach der einmal gepflegten Klasse. Sonst bliebe ein mit 36
+  // Monaten gepflegter Eintrag auch dann aus dem 24-Monats-Blick, wenn die Frist nur noch 21
+  // Monate entfernt ist.
+  const traeger = area.bearers.filter(
+    (b) => b.currentHorizon !== null && b.currentHorizon <= horizont,
+  );
   return (
     <Card data-testid="horizont-bereich" data-kategorie={area.category} className="space-y-2">
       <div className="flex flex-wrap items-center gap-2">
@@ -85,7 +91,7 @@ function Bereich({
               <div className="font-semibold text-text">
                 {t("risk.horizon.bearer", {
                   name: nameOf(b.userId),
-                  months: b.horizonMonths,
+                  months: b.currentHorizon ?? b.horizonMonths,
                   due: datum(b.dueAt, i18n.language),
                 })}
               </div>

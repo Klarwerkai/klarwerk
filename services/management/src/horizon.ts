@@ -27,7 +27,13 @@ import type { BusFactorLike } from "./types";
 
 export interface RiskHorizonBearer {
   userId: string;
+  // Die bei der Pflege gewählte Klasse — bleibt als Herkunft erhalten, bestimmt den Filter NICHT.
   horizonMonths: RetirementHorizon;
+  // Nacharbeit 5 (ben F4): die HEUTIGE Zugehörigkeit, aus gespeicherter Frist und Bezugszeit
+  // abgeleitet: Frist innerhalb der nächsten 24 Monate ⇒ 24, innerhalb von 36 ⇒ 36, sonst null.
+  // Ein am 04.10.2026 mit 36 Monaten gepflegter Eintrag (Frist 04.10.2029) gehört am 04.01.2028
+  // in den 24-Monats-Blick. Eine verstrichene Frist bleibt im 24-Monats-Blick.
+  currentHorizon: RetirementHorizon | null;
   dueAt: string;
   koCount: number;
   openKoIds: string[];
@@ -58,6 +64,25 @@ export interface RiskHorizonInput {
   gaps: readonly { status: string; assignee?: string | null }[];
   viewer: { userId: string; seesAll: boolean };
   now: number;
+}
+
+/** `now` plus `monate` Kalendermonate (UTC) — dieselbe Rechnung wie `retirementDueAt`. */
+function plusMonate(now: number, monate: number): number {
+  const d = new Date(now);
+  d.setUTCMonth(d.getUTCMonth() + monate);
+  return d.getTime();
+}
+
+/** Liegt die gespeicherte Frist heute innerhalb der nächsten 24 bzw. 36 Monate? */
+export function currentHorizonOf(dueAt: string, now: number): RetirementHorizon | null {
+  const frist = Date.parse(dueAt);
+  if (Number.isNaN(frist)) {
+    return null;
+  }
+  if (frist <= plusMonate(now, 24)) {
+    return 24;
+  }
+  return frist <= plusMonate(now, 36) ? 36 : null;
 }
 
 export function riskHorizon(input: RiskHorizonInput): RiskHorizonView {
@@ -96,6 +121,7 @@ export function riskHorizon(input: RiskHorizonInput): RiskHorizonView {
       bearers.push({
         userId,
         horizonMonths: r.horizonMonths,
+        currentHorizon: currentHorizonOf(r.dueAt, input.now),
         dueAt: r.dueAt,
         koCount: eigene.length,
         openKoIds: eigene.filter((k) => k.status !== "validiert").map((k) => k.id),

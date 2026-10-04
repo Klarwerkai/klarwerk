@@ -17,6 +17,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const d = vi.hoisted(() => ({
   areas: [] as unknown[],
   seesAll: false,
+  // R3 (Nacharbeit 5): die vollständige Antwort aus der ECHTEN Ableitung `riskHorizon`.
+  antwort: null as unknown,
   setCategoryProfile: vi.fn(async (body: unknown) => body),
   setRetirement: vi.fn(async (_userId: string, _h: unknown) => ({ entry: null })),
 }));
@@ -24,11 +26,11 @@ const d = vi.hoisted(() => ({
 vi.mock("../../apps/web/src/api/endpoints", () => ({
   endpoints: {
     management: {
-      riskHorizon: vi.fn(async () => ({
-        generatedAt: "2026-10-04T00:00:00.000Z",
-        seesAll: d.seesAll,
-        areas: d.areas,
-      })),
+      riskHorizon: vi.fn(async () =>
+        d.antwort !== null
+          ? d.antwort
+          : { generatedAt: "2026-10-04T00:00:00.000Z", seesAll: d.seesAll, areas: d.areas },
+      ),
       profiles: vi.fn(async () => ({ categories: [], retirement: [] })),
       setCategoryProfile: d.setCategoryProfile,
       setRetirement: d.setRetirement,
@@ -55,6 +57,8 @@ import { endpoints } from "../../apps/web/src/api/endpoints";
 import { BereichsprofilPflege } from "../../apps/web/src/components/BereichsprofilPflege";
 import { RisikoHorizont } from "../../apps/web/src/components/RisikoHorizont";
 import i18n from "../../apps/web/src/i18n";
+import type { KnowledgeObject } from "../../services/knowledge-object";
+import { riskHorizon } from "../../services/management/src/horizon";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -114,6 +118,7 @@ const BEREICH = {
     {
       userId: "u-rosa",
       horizonMonths: 24,
+      currentHorizon: 24,
       // Mittags UTC: das angezeigte Kalenderdatum hängt so in keiner Zeitzone vom Versatz ab.
       dueAt: "2028-10-04T12:00:00.000Z",
       koCount: 2,
@@ -124,6 +129,7 @@ const BEREICH = {
     {
       userId: "u-tom",
       horizonMonths: 36,
+      currentHorizon: 36,
       dueAt: "2029-10-04T00:00:00.000Z",
       koCount: 1,
       openKoIds: [],
@@ -137,6 +143,7 @@ beforeEach(async () => {
   await i18n.changeLanguage("de");
   d.areas = [];
   d.seesAll = false;
+  d.antwort = null;
 });
 
 afterEach(async () => {
@@ -184,6 +191,75 @@ describe("Mein Bereich · Ruhestandshorizonte und Arbeitsvorrat (Nacharbeit 3)",
 
     await klicken(container.querySelector('[data-testid="horizont-filter"][data-monate="24"]'));
     expect(alle("horizont-traeger").map((t) => t.getAttribute("data-person"))).toEqual(["u-rosa"]);
+  });
+
+  // R3 (Nacharbeit 5, ben K7/K14 · F4): ZEITFORTSCHRITT. Derselbe unveränderte Eintrag — gepflegt
+  // mit 36 Monaten, Frist 04.10.2029 — durch die ECHTE Ableitung `riskHorizon` zu zwei fest
+  // vorgegebenen Bezugszeiten und in der ECHTEN Fläche gerendert. Am 04.10.2026 sind es 36 Monate
+  // bis zur Frist (nur im 36-Monats-Blick), am 04.01.2028 nur noch 21 (auch im 24-Monats-Blick).
+  const FRIST = "2029-10-04T00:00:00.000Z";
+  const antwortZu = (bezug: string) =>
+    JSON.parse(
+      JSON.stringify(
+        riskHorizon({
+          kos: [
+            { id: "k1", category: "Presse", originalAuthor: "u-rosa", status: "offen" },
+            { id: "k2", category: "Presse", originalAuthor: "u-rosa", status: "validiert" },
+          ] as KnowledgeObject[],
+          busFactor: [{ category: "Presse", koCount: 2, authorCount: 1, singleSource: true }],
+          profiles: [],
+          retirement: [
+            {
+              userId: "u-rosa",
+              horizonMonths: 36,
+              dueAt: FRIST,
+              updatedAt: "2026-10-04T00:00:00.000Z",
+              updatedBy: "u-admin",
+            },
+          ],
+          gaps: [{ status: "offen", assignee: "u-rosa" }],
+          viewer: { userId: "u-admin", seesAll: true },
+          now: Date.parse(bezug),
+        }),
+      ),
+    );
+  const filter = (monate: number) =>
+    container.querySelector(`[data-testid="horizont-filter"][data-monate="${monate}"]`);
+  const personen = () => alle("horizont-traeger").map((t) => t.getAttribute("data-person"));
+  const fristText = new Date(FRIST).toLocaleDateString("de", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+
+  it("R3a · Bezugszeit 04.10.2026: der 36-Monats-Eintrag steht im 36-, nicht im 24-Monats-Blick", async () => {
+    d.antwort = antwortZu("2026-10-04T00:00:00.000Z");
+    await mount(RisikoHorizont);
+
+    expect(personen(), "Standard 36 Monate").toEqual(["u-rosa"]);
+    await klicken(filter(24));
+    expect(personen(), "36 Monate bis zur Frist sind nicht „die nächsten 24“").toEqual([]);
+    expect(eins("horizont-keine-traeger")).not.toBeNull();
+  });
+
+  it("R3b · Bezugszeit 04.01.2028, derselbe Eintrag: im 24-Monats-Blick, mit Arbeitsvorrat und unveränderter Frist", async () => {
+    d.antwort = antwortZu("2028-01-04T00:00:00.000Z");
+    await mount(RisikoHorizont);
+
+    await klicken(filter(24));
+    expect(personen()).toEqual(["u-rosa"]);
+    const rosa = alle("horizont-traeger")[0];
+    expect(rosa?.textContent, "die gespeicherte Frist bleibt").toContain(fristText);
+    expect(rosa?.textContent).toContain(
+      i18n.t("risk.horizon.bearer", { name: "Rosa Beispiel", months: 24, due: fristText }),
+    );
+    expect(rosa?.querySelector('[data-testid="horizont-vorrat-einziger"]')).not.toBeNull();
+    expect(rosa?.querySelector('[data-testid="horizont-vorrat-offen"]')?.textContent).toBe(
+      i18n.t("risk.horizon.todo.openKos", { count: 1 }),
+    );
+    expect(rosa?.querySelector('[data-testid="horizont-vorrat-luecken"]')?.textContent).toBe(
+      i18n.t("risk.horizon.todo.openGaps", { count: 1 }),
+    );
   });
 
   it("R2 · ohne eigenen Bereich: der Leersatz für „kein Bereich zugeordnet“", async () => {

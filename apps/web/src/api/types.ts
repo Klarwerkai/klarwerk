@@ -1850,6 +1850,8 @@ export interface ManagementProfiles {
 export interface RiskHorizonBearer {
   userId: string;
   horizonMonths: RetirementHorizon;
+  // Nacharbeit 5: heutige Zugehörigkeit aus Frist und Bezugszeit (horizon.ts `currentHorizonOf`).
+  currentHorizon: RetirementHorizon | null;
   dueAt: string;
   koCount: number;
   openKoIds: string[];

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { KnowledgeObject } from "../../knowledge-object";
-import { type RiskHorizonInput, riskHorizon } from "./horizon";
+import { type RiskHorizonInput, currentHorizonOf, riskHorizon } from "./horizon";
 import {
   type CategoryProfile,
   ManagementProfileError,
@@ -111,6 +111,25 @@ describe("R-1639 / R-2183: Bereichsblick je Manager (Nacharbeit 3)", () => {
     expect(lack?.bearers.map((b) => b.userId)).toEqual(["rosa"]);
     const alle = riskHorizon({ ...BASIS, viewer: { userId: "admin", seesAll: true } });
     expect(alle.areas.map((a) => a.category)).toEqual(["Guss", "Lack", "Presse"]);
+  });
+
+  it("H6 (Nacharbeit 5) · die heutige Zugehörigkeit folgt der Frist, nicht der gepflegten Klasse", () => {
+    // Derselbe unveränderte 36-Monats-Eintrag (Frist 04.10.2029) zu zwei Bezugszeiten.
+    const zu = (bezug: string) =>
+      riskHorizon({ ...BASIS, retirement: [ruhestand("tom", 36)], now: Date.parse(bezug) })
+        .areas.find((a) => a.category === "Lack")
+        ?.bearers.find((b) => b.userId === "tom");
+    const heute = zu("2026-10-04T00:00:00Z");
+    expect(heute?.horizonMonths).toBe(36);
+    expect(heute?.currentHorizon).toBe(36);
+    const spaeter = zu("2028-01-04T00:00:00Z");
+    expect(spaeter?.horizonMonths, "die gepflegte Klasse bleibt erhalten").toBe(36);
+    expect(spaeter?.currentHorizon, "21 Monate bis zur Frist").toBe(24);
+    expect(spaeter?.dueAt, "die Frist bleibt unverändert").toBe("2029-10-04T00:00:00.000Z");
+    // Grenzen: genau 24 Monate gehören dazu; eine verstrichene Frist bleibt im 24-Monats-Blick.
+    expect(currentHorizonOf("2028-10-04T00:00:00.000Z", NOW)).toBe(24);
+    expect(currentHorizonOf("2026-01-01T00:00:00.000Z", NOW)).toBe(24);
+    expect(currentHorizonOf("2030-01-01T00:00:00.000Z", NOW)).toBeNull();
   });
 
   it("H5 · ohne zugeordneten Bereich ist der Blick leer, nicht der des ganzen Hauses", () => {
