@@ -562,6 +562,29 @@ const REGISTER: Record<string, Eintrag> = {
   "GET /api/analytics/busfactor": { urteil: "PRAEDIKAT", grund: "Block D — Kategoriezeilen." },
   "GET /api/analytics/impact": { urteil: "PRAEDIKAT", grund: "Block D — validatedTotal/Wochen." },
   "GET /api/management/snapshot": { urteil: "PRAEDIKAT", grund: "Block D — breitester Pfad." },
+  // R-1639 / R-2183 (Nacharbeit 3): der Bereichsblick zählt Objekte je Kategorie und nennt
+  // Kennungen offener Objekte — Grundmenge über `sichtbarkeitsfilterFuer`, wie der Snapshot.
+  "GET /api/management/risk-horizon": {
+    urteil: "PRAEDIKAT",
+    grund: "Nacharbeit 3 — Kategoriezeilen und Objektkennungen erst nach dem Trimm der Grundmenge.",
+  },
+  // Die Pflege der Bereichsprofile und Ruhestandshorizonte ist admin-gebunden; die Antworten tragen
+  // Kategorienamen, Konto-Kennungen, Stufen und Fristen — keinen Inhalt eines Wissensobjekts.
+  "GET /api/management/profiles": {
+    urteil: "KURATORENTOR",
+    recht: "users.manage",
+    grund: "Nacharbeit 3 — gepflegte Profile/Horizonte, nur mit users.manage.",
+  },
+  "PUT /api/management/profiles/category": {
+    urteil: "KURATORENTOR",
+    recht: "users.manage",
+    grund: "Nacharbeit 3 — Pflege eines Bereichsprofils, nur mit users.manage.",
+  },
+  "PUT /api/management/profiles/retirement/:userId": {
+    urteil: "KURATORENTOR",
+    recht: "users.manage",
+    grund: "Nacharbeit 3 — Pflege eines Ruhestandshorizonts, nur mit users.manage.",
+  },
   "GET /api/ai-check/coverage-summary": { urteil: "PRAEDIKAT", grund: "Block D — vier Zähler." },
   "GET /api/validation/overview": { urteil: "PRAEDIKAT", grund: "Block D — Personenzeilen." },
   "GET /api/validation/settings": { urteil: "KEIN_KO_INHALT", grund: "Einstellungen." },

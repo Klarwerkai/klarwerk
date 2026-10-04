@@ -134,7 +134,12 @@ import {
   LifecycleService,
   PgLifecycleRepo,
 } from "../../lifecycle";
-import { ManagementService } from "../../management";
+import {
+  InMemoryManagementProfileRepo,
+  type ManagementProfileRepo,
+  ManagementService,
+  PgManagementProfileRepo,
+} from "../../management";
 import { MediaAnalysisService, createCappedTranscriberFromEnv } from "../../media";
 import {
   InMemoryModelRunRepo,
@@ -525,6 +530,8 @@ export interface AppRepos {
   overlapRepo: OverlapRepo;
   // Pedi 04.07.: persistierte Anzeige-Schwelle der Duplikat-Erkennung (Admin-Einstellung).
   overlapSettings: OverlapSettingsRepo;
+  // R-0751 / R-1639 / R-2183 (Nacharbeit 3): Bereichsprofile und Ruhestandshorizonte.
+  managementProfiles: ManagementProfileRepo;
   lifecycleRepo: LifecycleRepo;
   objects: ObjectRepo;
   candidates: CandidateRepo;
@@ -1286,8 +1293,23 @@ export function assembleServices(
         }
         return zaehler;
       },
+      // R-0751 (Nacharbeit 1): dieselbe Paar-Regel, aber mit den beteiligten Kennungen — der
+      // Eingang des Prioritätsfaktors „Konfliktdichte" je Kategorie.
+      openConflictKoIds: async (opts) => {
+        const offen = await conflicts.unresolved();
+        const ids: string[] = [];
+        for (const fund of offen) {
+          const [a, b] = await Promise.all([ko.get(fund.koA), ko.get(fund.koB)]);
+          if (a && b && opts.sichtbar(a) && opts.sichtbar(b)) {
+            ids.push(a.id, b.id);
+          }
+        }
+        return ids;
+      },
       pendingRevalidation: () => lifecycle.pendingRevalidation(),
       busFactor: (opts) => library.busFactor(opts),
+      // R-0751 / R-1639 / R-2183 (Nacharbeit 3): gepflegte Bereichsprofile und Ruhestandshorizonte.
+      profiles: repos.managementProfiles,
     }),
     // SCRUM-118: externer Such-Proxy (Wikipedia) — optional via Env abschaltbar.
     externalSearch: createExternalSearchFromEnv(),
@@ -1380,6 +1402,7 @@ export function inMemoryRepos(): AppRepos {
     conflictsRepo: new InMemoryConflictRepo(),
     overlapRepo: new InMemoryOverlapRepo(),
     overlapSettings: new InMemoryOverlapSettingsRepo(),
+    managementProfiles: new InMemoryManagementProfileRepo(),
     lifecycleRepo: new InMemoryLifecycleRepo(),
     objects: new InMemoryObjectRepo(),
     candidates: new InMemoryCandidateRepo(),
@@ -1454,6 +1477,7 @@ export function buildPgServices(rohPool: Pool): AppServices {
       overlapRepo: new PgOverlapRepo(pool),
       // Pedi 04.07.: Anzeige-Schwelle persistent.
       overlapSettings: new PgOverlapSettingsRepo(pool),
+      managementProfiles: new PgManagementProfileRepo(pool),
       lifecycleRepo: new PgLifecycleRepo(pool),
       // SCRUM-155: Object-Store jetzt persistent (Attachment-/Evidence-Originale überleben Neustart).
       objects: new PgObjectRepo(pool),
@@ -3122,7 +3146,10 @@ export function buildApp(
   );
   app.register(categoryRoutes(services.ko, guards));
   app.register(outputRoutes(services.output, guards));
-  app.register(managementRoutes(services.management, guards));
+  // R-2183 (Nacharbeit 3): Ruhestandshorizonte nur an echten internen Konten.
+  const kontoGibtEs = async (id: string) =>
+    (await services.auth.listUsers()).some((u) => u.id === id);
+  app.register(managementRoutes(services.management, guards, kontoGibtEs));
   app.register(modelRunRoutes(services.modelRuns, guards));
   app.register(
     externalRoutes(

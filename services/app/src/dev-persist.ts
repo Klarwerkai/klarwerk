@@ -90,6 +90,9 @@ export const MUTATING_METHODS: Readonly<Record<keyof AppRepos, readonly string[]
   overlapRepo: ["insert", "update", "closeOpenForKo"],
   // Pedi 04.07.: eingestellte Anzeige-Schwelle überlebt den Neustart (letzter Set gewinnt).
   overlapSettings: ["set"],
+  // R-0751 / R-1639 / R-2183 (Nacharbeit 3): Bereichsprofile und Ruhestandshorizonte überleben den
+  // Neustart. Die args tragen den fertigen Datensatz (inkl. Zeitstempel/Frist) → Replay exakt.
+  managementProfiles: ["setCategoryProfile", "setRetirement", "removeRetirement"],
   lifecycleRepo: ["addCoupling", "markPending", "clearPending", "savePath", "setProgress"],
   objects: ["insert"],
   // SCRUM-510 (WP3): der atomar-idempotente Insert ist ebenfalls eine Mutation → muss journaliert werden,
