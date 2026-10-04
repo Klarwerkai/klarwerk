@@ -37,6 +37,7 @@ import {
   pendingCandidateVersions,
   runConfluenceImport,
 } from "../confluence-import";
+import type { ConfluenceImportSchalterRepo } from "../confluence-import-schalter";
 import type { Guards } from "../http";
 import { sanitizeLogText } from "../log-sanitize";
 
@@ -58,6 +59,9 @@ export interface ConfluenceImportRouteDeps {
   // nur den Import-Pfad prüfen — ohne sie bleibt es beim Verhalten vor 148. Die Kompositionswurzel
   // reicht sie IMMER durch; im Produkt ist der Zweig damit nie der alte.
   importRuns?: ImportRunRepo;
+  // R-0134 / R-1005: der Betreiberschalter, je Anfrage gelesen (`betreiberSperre`). Optional nur
+  // für direkte Testaufrufer; die Kompositionswurzel reicht ihn immer durch.
+  betreiberSchalter?: ConfluenceImportSchalterRepo;
 }
 
 // ================================================================================================
@@ -149,6 +153,50 @@ export function confluenceGrenze(
       ? err.message
       : "Confluence hat nicht rechtzeitig geantwortet (Zeitüberschreitung).";
   return { status: code === "CONFLUENCE_RESPONSE_TOO_LARGE" ? 502 : 504, error: code, message };
+}
+
+/**
+ * R-0159 (Befund F2): der Laufcode zu einem Abbruch eines FOLGEabrufs — dieselben drei Codes, die
+ * der Client beim ersten Abruf wirft (`ConfluenceRequestError.code`), damit ein Mensch für dieselbe
+ * Ursache denselben Code liest, gleich ob der erste oder der zwölfte Abruf zu langsam war.
+ */
+function abbruchCode(grund: NonNullable<ImportRunSummary["abbruch"]>["grund"]): string {
+  if (grund === "timeout") {
+    return "CONFLUENCE_TIMEOUT";
+  }
+  if (grund === "zu_gross") {
+    return "CONFLUENCE_RESPONSE_TOO_LARGE";
+  }
+  return "CONFLUENCE_BUDGET";
+}
+
+// ================================================================================================
+// R-0134 / R-1005 — DER BETREIBERSCHALTER WIRD HIER DURCHGESETZT, JE ANFRAGE.
+// ================================================================================================
+//
+// Steht der Betreiberschalter (confluence-import-schalter.ts) auf aus, antwortet JEDE Route dieser
+// Datei mit 409 `IMPORT_SWITCHED_OFF` — Start, Erkunden, Vorschau, Gruppieren, Übernehmen. Gelesen
+// wird je Anfrage, nicht beim Registrieren: das Umlegen wirkt ohne Neustart. Vor der Sperre steht
+// das Rechtetor (wer nichts darf, erfährt auch den Schalterstand nicht).
+//
+// Ohne verdrahteten Schalter (direkte Testaufrufer) gibt es keine Sperre — die Kompositionswurzel
+// reicht ihn immer mit.
+async function betreiberSperre(
+  deps: ConfluenceImportRouteDeps,
+  reply: FastifyReply,
+): Promise<boolean> {
+  if (!deps.betreiberSchalter) {
+    return false;
+  }
+  const stand = await deps.betreiberSchalter.lies();
+  if (stand.an) {
+    return false;
+  }
+  reply.code(409).send({
+    error: "IMPORT_SWITCHED_OFF",
+    message: "Der Confluence-Import ist vom Betreiber ausgeschaltet.",
+  });
+  return true;
 }
 
 // WP-SAMMEL20-FIX (bens Fix 3): Route-Schema der Auswahl — der Freitext-Satz ist gedeckelt (er
@@ -417,9 +465,20 @@ async function fuehreLaufAus(
       dryRun: false,
       actor,
     });
+    // R-0159 (Befund F2): scheiterte ein FOLGEabruf an Frist, Zeitbudget oder Größe, behält der Lauf
+    // die gelesenen Seiten (PARTIAL) — und trägt jetzt AUCH den Grund: eigener Code, hostfreie
+    // Meldung aus dem Client, zweite Linie `sanitizeImportFailureReason`. Bis hierher stand er auf
+    // PARTIAL mit `failureCode: null`, und niemand erfuhr, dass Confluence zu langsam war.
+    const abbruch = summary.abbruch;
     await beende({
       status: abschlussStatus(summary),
       completedAt: new Date().toISOString(),
+      ...(abbruch
+        ? {
+            failureCode: abbruchCode(abbruch.grund),
+            failureReason: sanitizeImportFailureReason(abbruch.meldung),
+          }
+        : {}),
       counters: {
         itemsTotal: summary.found,
         itemsCreated: summary.imported,
@@ -705,6 +764,9 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
         if (!user) {
           return reply;
         }
+        if (await betreiberSperre(deps, reply)) {
+          return reply;
+        }
         const adapter = makeAdapter();
         const dryRun = request.body?.dryRun === true;
 
@@ -774,6 +836,9 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
     app.post("/api/admin/import/confluence/explore", async (request, reply) => {
       const user = await deps.guards.requirePermission("users.manage", request, reply);
       if (!user) {
+        return reply;
+      }
+      if (await betreiberSperre(deps, reply)) {
         return reply;
       }
       const adapter = makeAdapter();
@@ -854,6 +919,9 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
     }>("/api/admin/import/confluence/select", async (request, reply) => {
       const user = await deps.guards.requirePermission("users.manage", request, reply);
       if (!user) {
+        return reply;
+      }
+      if (await betreiberSperre(deps, reply)) {
         return reply;
       }
       // WP-SAMMEL20-FIX (bens Fix 3): Route-Schema VOR jeder Arbeit — ehrlicher 400 statt
@@ -1036,6 +1104,9 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
         if (!user) {
           return reply;
         }
+        if (await betreiberSperre(deps, reply)) {
+          return reply;
+        }
         const adapter = makeAdapter();
         if (!adapter) {
           reply.code(503).send({
@@ -1162,6 +1233,9 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
       async (request, reply) => {
         const user = await deps.guards.requirePermission("users.manage", request, reply);
         if (!user) {
+          return reply;
+        }
+        if (await betreiberSperre(deps, reply)) {
           return reply;
         }
         const adapter = makeAdapter();

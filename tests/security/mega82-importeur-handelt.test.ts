@@ -326,7 +326,17 @@ describe("mega82 A — der Importeur handelt, nicht der Genannte", () => {
       },
     });
     expect(res.statusCode, res.body).toBe(200);
-    expect(res.json().imported).toBe(1);
+    // R-0143 (bens F1): der Eingang legt nichts mehr direkt an — er reiht ein. Das Objekt entsteht
+    // erst durch die Annahme des Berechtigten; dessen Kennung ist dann die Rechteposition.
+    const body = res.json() as { imported: number; kandidaten: { id: string }[] };
+    expect(body.imported).toBe(0);
+    const annahme = await app.inject({
+      method: "PUT",
+      url: `/api/library/import/candidates/${body.kandidaten[0]?.id}`,
+      headers: controller.auth,
+      payload: { action: "accept" },
+    });
+    expect(annahme.statusCode, annahme.body).toBe(200);
 
     const liste = await app.inject({ method: "GET", url: "/api/kos", headers: controller.auth });
     expect(liste.statusCode, liste.body).toBe(200);
@@ -339,7 +349,7 @@ describe("mega82 A — der Importeur handelt, nicht der Genannte", () => {
       ko?.author,
       `\`ko.author\` ist eine Rechteposition (darfSehen · Löschrecht · v1-Schnappschussautor).
       Hier steht ein frei gelieferter Name: ${ko?.author}`,
-    ).toBe(angreifer.id);
+    ).toBe(controller.id);
     expect(ko?.originalAuthor, "Der Quellautor reist als Metadatum weiter.").toBe(hochladender.id);
   });
 });

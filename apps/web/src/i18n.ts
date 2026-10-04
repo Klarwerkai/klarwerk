@@ -762,6 +762,8 @@ const de = {
   "ko.origin.studio": "Aus dem Studio",
   "ko.origin.expert": "Aus dem Expertenformular",
   "ko.origin.frontdoor": "Aus der Erfassung",
+  // R-0180/R-2108: aus der Import-Prüfwarteschlange von einem Menschen übernommen.
+  "ko.origin.import": "Importiert",
   // JOB 3027 · Station 4: die drei Lagen je Auskunft am Prüfbrett. „nicht eingestuft“ ist eine
   // Aussage über das OBJEKT, „nicht in dieser Antwort“ eine über die ANTWORT — wer beide zusammen-
   // wirft, muss raten (services/validation/src/board-herkunft.ts:10-18).
@@ -4601,6 +4603,18 @@ const de = {
   "imp.access.whereSet":
     "Diese Werte werden als Umgebungsvariablen auf dem Server gesetzt — nicht hier. Klarwerk zeigt nur, ob sie stehen, nie ihren Inhalt.",
   "imp.access.whoMay": "Ändern kann das, wer Zugang zum Server dieser Installation hat.",
+  // R-0134 / R-1005: der Betreiberschalter — eigener Zustand, eigener Knopf, eigene Fehler.
+  "imp.access.switchedOff.title": "Vom Betreiber ausgeschaltet",
+  "imp.access.switchedOff.body":
+    "Der Confluence-Import ist in dieser Installation freigegeben, aber ausgeschaltet. Solange das so ist, lehnt der Server jeden Import ab. Einschalten lässt er sich mit dem Knopf darunter.",
+  "imp.access.schalter.an": "Import einschalten",
+  "imp.access.schalter.aus": "Import ausschalten",
+  "imp.access.schalter.hinweis":
+    "Wirkt sofort und ohne Neustart. Zugangsdaten werden hier nicht eingegeben.",
+  "imp.access.schalter.nichtFreigegeben":
+    "Der Import ist in dieser Installation nicht freigegeben — der Schalter wirkt erst nach der Freigabe auf dem Server.",
+  "imp.access.schalter.fehler":
+    "Der Schalter konnte nicht umgelegt werden. Bitte erneut versuchen.",
   // JOB-924 D6: Der frühere Satz („wird nicht festgehalten") ist überholt — es WIRD festgehalten,
   // es gibt nur noch keinen erfolgreichen Lauf. Beide Sätze sind ausdrücklich rückblickend: der
   // Zeitpunkt sagt, dass es damals ging, nicht dass es jetzt geht. Das wüsste nur ein Aufruf, und
@@ -7117,6 +7131,32 @@ const de = {
     "Der Server hat einen Zustand gemeldet, den diese Version nicht kennt. Das Gezeigte ist deshalb nicht als abgeschlossen zu lesen.",
   "w2.run.failureCode": "Fehlercode",
   "w2.run.failureReason": "Grund",
+  // R-0134 / R-1005: warum der Start gesperrt ist — derselbe Zustand wie im Zugangskasten.
+  "w2.run.gesperrt.disabled":
+    "Der Confluence-Import ist in dieser Installation ausgeschaltet. Deshalb lässt sich hier kein Lauf starten. Eingeschaltet wird er auf dem Server (siehe Zugang oben).",
+  "w2.run.gesperrt.noCredentials":
+    "Der Confluence-Import ist eingeschaltet, aber die Zugangsdaten sind nicht vollständig oder nicht brauchbar. Erst wenn sie stehen, lässt sich ein Lauf starten (siehe Zugang oben).",
+  // R-0159: der Grund einer abgelehnten Startanfrage — aus Status und Code abgeleitet.
+  "w2.run.startFehler.zeitlimit":
+    "Confluence hat nicht rechtzeitig geantwortet (Zeitüberschreitung). Bitte später erneut versuchen.",
+  "w2.run.startFehler.nichtKonfiguriert":
+    "Der Import ist nicht startbereit: Die Zugangsdaten zu Confluence fehlen oder sind nicht brauchbar.",
+  "w2.run.startFehler.ausgeschaltet":
+    "Der Confluence-Import ist in dieser Installation ausgeschaltet — der Start ist nicht verfügbar.",
+  "w2.run.startFehler.keinRecht": "Für den Start eines Imports fehlt die Berechtigung.",
+  "w2.run.startFehler.betreiberAus":
+    "Der Confluence-Import ist vom Betreiber ausgeschaltet — einschalten lässt er sich oben im Bereich Zugang.",
+  "w2.run.gesperrt.switchedOff":
+    "Der Confluence-Import ist vom Betreiber ausgeschaltet. Einschalten lässt er sich oben im Bereich Zugang.",
+  // R-0159: die verständliche Erklärung neben einem eindeutigen Fehlercode eines Laufs.
+  "w2.run.failureText.CONFLUENCE_TIMEOUT":
+    "Confluence hat nicht rechtzeitig geantwortet (Zeitüberschreitung). Der Lauf wurde abgebrochen; ein erneuter Start ist möglich.",
+  "w2.run.failureText.CONFLUENCE_BUDGET":
+    "Das Zeitbudget für das Lesen des Bereichs war erschöpft. Der Bereich wurde nicht vollständig gelesen.",
+  "w2.run.failureText.CONFLUENCE_RESPONSE_TOO_LARGE":
+    "Eine Antwort von Confluence war zu groß und wurde nicht gelesen.",
+  "w2.run.failureText.IMPORT_UNAVAILABLE":
+    "Der Import war nicht startbereit: Die Zugangsdaten zu Confluence fehlen oder sind nicht brauchbar.",
   // Das ORIGINAL — der eine Block links. Er ist das Dokument, nicht das Wissen.
   "w2.source.heading": "Original",
   "w2.source.lead": "Das importierte Dokument in genau der Fassung, aus der das Wissen entstand.",
@@ -8012,6 +8052,8 @@ const en: typeof de = {
   "ko.origin.studio": "From the studio",
   "ko.origin.expert": "From the expert form",
   "ko.origin.frontdoor": "From the capture form",
+  // R-0180/R-2108: taken over from the import review queue by a person.
+  "ko.origin.import": "Imported",
   // JOB 3027 · Station 4: the three states per disclosure. „not classified" is a statement about the
   // OBJECT, „not in this response" one about the RESPONSE — merging them forces the reader to guess.
   "val.stufe.nichtEingestuft": "not classified",
@@ -10989,6 +11031,16 @@ const en: typeof de = {
   "imp.access.whereSet":
     "These values are set as environment variables on the server — not here. Klarwerk only shows whether they are set, never their content.",
   "imp.access.whoMay": "This can be changed by whoever has access to this installation's server.",
+  "imp.access.switchedOff.title": "Switched off by the operator",
+  "imp.access.switchedOff.body":
+    "The Confluence import is released in this installation but switched off. While it is off, the server rejects every import. Use the button below to switch it on.",
+  "imp.access.schalter.an": "Switch import on",
+  "imp.access.schalter.aus": "Switch import off",
+  "imp.access.schalter.hinweis":
+    "Takes effect immediately, without a restart. Credentials are not entered here.",
+  "imp.access.schalter.nichtFreigegeben":
+    "The import is not released in this installation — the switch only takes effect once it is released on the server.",
+  "imp.access.schalter.fehler": "The switch could not be changed. Please try again.",
   "imp.access.lastConnectedUnknown": "No successfully completed import has been recorded yet.",
   "imp.access.lastConnected":
     "Last successfully completed import: {{date}}. Whether it works now, this look back does not say.",
@@ -13018,6 +13070,29 @@ const en: typeof de = {
     "The server reported a state this build does not know. What you see must not be read as finished.",
   "w2.run.failureCode": "Error code",
   "w2.run.failureReason": "Reason",
+  "w2.run.gesperrt.disabled":
+    "The Confluence import is switched off in this installation, so no run can be started here. It is switched on on the server (see Access above).",
+  "w2.run.gesperrt.noCredentials":
+    "The Confluence import is switched on, but the credentials are incomplete or unusable. A run can only be started once they are in place (see Access above).",
+  "w2.run.startFehler.zeitlimit":
+    "Confluence did not respond in time (timeout). Please try again later.",
+  "w2.run.startFehler.nichtKonfiguriert":
+    "The import is not ready to start: the Confluence credentials are missing or unusable.",
+  "w2.run.startFehler.ausgeschaltet":
+    "The Confluence import is switched off in this installation — starting is not available.",
+  "w2.run.startFehler.keinRecht": "You do not have permission to start an import.",
+  "w2.run.startFehler.betreiberAus":
+    "The Confluence import has been switched off by the operator — switch it on above under Access.",
+  "w2.run.gesperrt.switchedOff":
+    "The Confluence import has been switched off by the operator. Switch it on above under Access.",
+  "w2.run.failureText.CONFLUENCE_TIMEOUT":
+    "Confluence did not respond in time (timeout). The run was stopped; you can start it again.",
+  "w2.run.failureText.CONFLUENCE_BUDGET":
+    "The time budget for reading the space ran out. The space was not read completely.",
+  "w2.run.failureText.CONFLUENCE_RESPONSE_TOO_LARGE":
+    "A response from Confluence was too large and was not read.",
+  "w2.run.failureText.IMPORT_UNAVAILABLE":
+    "The import was not ready to start: the Confluence credentials are missing or unusable.",
   "w2.source.heading": "Original",
   "w2.source.lead": "The imported document in exactly the revision the knowledge came from.",
   "w2.source.missing": "No original was delivered for this run.",
@@ -13723,6 +13798,8 @@ const nl: typeof de = {
   "ko.origin.studio": "Uit de studio",
   "ko.origin.expert": "Uit het expertformulier",
   "ko.origin.frontdoor": "Uit de vastlegging",
+  // R-0180/R-2108: door een mens uit de importcontrolewachtrij overgenomen.
+  "ko.origin.import": "Geïmporteerd",
   // JOB 3027 · Station 4: de drie standen per opgave. „niet ingedeeld“ zegt iets over het OBJECT,
   // „niet in dit antwoord“ iets over het ANTWOORD — wie ze samenvoegt, laat de lezer gokken.
   "val.stufe.nichtEingestuft": "niet ingedeeld",
@@ -16699,6 +16776,16 @@ const nl: typeof de = {
     "Deze waarden worden als omgevingsvariabelen op de server gezet — niet hier. Klarwerk laat alleen zien of ze er staan, nooit hun inhoud.",
   "imp.access.whoMay":
     "Dit kan worden gewijzigd door wie toegang heeft tot de server van deze installatie.",
+  "imp.access.switchedOff.title": "Door de beheerder uitgeschakeld",
+  "imp.access.switchedOff.body":
+    "De Confluence-import is in deze installatie vrijgegeven, maar uitgeschakeld. Zolang dat zo is, weigert de server elke import. Met de knop hieronder schakel je hem in.",
+  "imp.access.schalter.an": "Import inschakelen",
+  "imp.access.schalter.aus": "Import uitschakelen",
+  "imp.access.schalter.hinweis":
+    "Werkt direct en zonder herstart. Toegangsgegevens worden hier niet ingevoerd.",
+  "imp.access.schalter.nichtFreigegeben":
+    "De import is in deze installatie niet vrijgegeven — de schakelaar werkt pas na vrijgave op de server.",
+  "imp.access.schalter.fehler": "De schakelaar kon niet worden omgezet. Probeer het opnieuw.",
   "imp.access.lastConnectedUnknown": "Er is nog geen succesvol afgeronde import vastgelegd.",
   "imp.access.lastConnected":
     "Laatste succesvol afgeronde import: {{date}}. Of het nu werkt, zegt deze terugblik niet.",
@@ -18741,6 +18828,29 @@ const nl: typeof de = {
     "De server meldde een toestand die deze versie niet kent. Wat u ziet mag niet als afgerond worden gelezen.",
   "w2.run.failureCode": "Foutcode",
   "w2.run.failureReason": "Reden",
+  "w2.run.gesperrt.disabled":
+    "De Confluence-import is in deze installatie uitgeschakeld. Daarom kan hier geen uitvoering worden gestart. Inschakelen gebeurt op de server (zie Toegang hierboven).",
+  "w2.run.gesperrt.noCredentials":
+    "De Confluence-import is ingeschakeld, maar de toegangsgegevens zijn onvolledig of onbruikbaar. Pas als ze aanwezig zijn, kan een uitvoering worden gestart (zie Toegang hierboven).",
+  "w2.run.startFehler.zeitlimit":
+    "Confluence heeft niet op tijd geantwoord (time-out). Probeer het later opnieuw.",
+  "w2.run.startFehler.nichtKonfiguriert":
+    "De import is niet startklaar: de toegangsgegevens voor Confluence ontbreken of zijn onbruikbaar.",
+  "w2.run.startFehler.ausgeschaltet":
+    "De Confluence-import is in deze installatie uitgeschakeld — starten is niet beschikbaar.",
+  "w2.run.startFehler.keinRecht": "Je hebt geen recht om een import te starten.",
+  "w2.run.startFehler.betreiberAus":
+    "De Confluence-import is door de beheerder uitgeschakeld — inschakelen kan hierboven bij Toegang.",
+  "w2.run.gesperrt.switchedOff":
+    "De Confluence-import is door de beheerder uitgeschakeld. Inschakelen kan hierboven bij Toegang.",
+  "w2.run.failureText.CONFLUENCE_TIMEOUT":
+    "Confluence heeft niet op tijd geantwoord (time-out). De uitvoering is afgebroken; opnieuw starten is mogelijk.",
+  "w2.run.failureText.CONFLUENCE_BUDGET":
+    "Het tijdsbudget voor het lezen van de ruimte was op. De ruimte is niet volledig gelezen.",
+  "w2.run.failureText.CONFLUENCE_RESPONSE_TOO_LARGE":
+    "Een antwoord van Confluence was te groot en is niet gelezen.",
+  "w2.run.failureText.IMPORT_UNAVAILABLE":
+    "De import was niet startklaar: de toegangsgegevens voor Confluence ontbreken of zijn onbruikbaar.",
   "w2.source.heading": "Origineel",
   "w2.source.lead": "Het geïmporteerde document in precies de versie waaruit de kennis ontstond.",
   "w2.source.missing": "Voor deze uitvoering is geen origineel geleverd.",

@@ -160,6 +160,7 @@ export {
   IMPORT_FAILURE_REASON_MAX_CHARS,
   istImportItemOutcome,
   istImportRunStatus,
+  ohneQuellRestriktionen,
   pruefeGapBindung,
   pruefeInhaltsreferenzBindung,
   sanitizeImportFailureReason,
