@@ -16,6 +16,7 @@ import {
 import { type ChangeEvent, type DragEvent, useEffect, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate } from "react-router-dom";
+import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import {
   useAiCheckCoverageSummary,
@@ -24,6 +25,7 @@ import {
   useEvidenceIndex,
   useGaps,
   useGraph,
+  useImportAccessConfluence,
   useImportCandidates,
   useImportRun,
   useKos,
@@ -62,6 +64,7 @@ import { KoSummaryDisclosure } from "../components/KoSummaryDisclosure";
 import { LesevarianteHinweis } from "../components/LesevarianteHinweis";
 // JOB 3288: derselbe Allowlist-Renderweg wie die Bibliothek — kein zweiter HTML-Sink.
 import { SanitizedHtml } from "../components/SanitizedHtml";
+import { WissensPriorisierung } from "../components/WissensPriorisierung";
 // JOB 4153: Art und Richtung in Klartext kommen von DER Stelle, an der die Textdarstellung sie
 // auch nimmt — Bild und Liste dürfen dieselbe Kante nicht verschieden benennen.
 import { beziehungsartText, beziehungsrichtungKurz } from "../components/WissensbeziehungenBereich";
@@ -91,6 +94,14 @@ import { isNavigableNode, koDetailPath } from "../lib/graphNav";
 // WP-IC-PAKET-1 (Teil 1) + 1c (ROT-2): Altbestand-Anzeige — rohe Entities NUR dekodieren, wenn der
 // Decode-Marker fehlt (markierte Kandidaten sind kanonisch; kein Doppel-Dekodieren echter Literale).
 import { displayImportText } from "../lib/htmlEntities";
+// R-0134 / R-1005 / R-0159: derselbe Zugangszustand wie im Zugangskasten, dazu die Fehlertexte.
+import {
+  IMPORT_START_BETREIBER_AUS_TEXT,
+  IMPORT_START_GESPERRT_TEXT,
+  betreiberHatAusgeschaltet,
+  importAccessState,
+  importStartFehlerKey,
+} from "../lib/importAccessState";
 // AUFTRAG-mega9 Block E-1 (KW-E2E-005): eine Quelle für Statustext, Farbton und „ist offen".
 import {
   importCandidateStatusKey,
@@ -429,6 +440,12 @@ export function Output(): JSX.Element {
 // verbindliche Sperre. Der gesperrte Knopf hier ist die SICHTBARE: Wer nichts anklicken kann,
 // braucht keine Fehlermeldung zu lesen. Beide zusammen, weil eine Fläche, die den Klick zulässt
 // und danach einen Fehler zeigt, den Verwalter im Unklaren lässt, ob nun zwei Läufe laufen.
+//
+// R-0134 / R-1005: DER SCHALTER WIRKT AUCH HIER. Die Karte liest die Auskunft des Zugangskastens
+// darüber PASSIV (`useImportAccessConfluence(false)`: derselbe Schlüssel, aber kein eigener Abruf —
+// geholt wird sie dort, mit dessen Rollenbedingung). Steht der Import aus oder fehlen Zugangsdaten,
+// ist der Start gesperrt und die Karte sagt, warum. Ohne Auskunft (noch nicht geladen, kein Recht)
+// bleibt das bisherige Verhalten — die Sperre am Server gilt ohnehin.
 export function ImportRunPanel(): JSX.Element {
   const { t } = useTranslation();
   const { push } = useToast();
@@ -436,6 +453,18 @@ export function ImportRunPanel(): JSX.Element {
   const lauf = useImportRun(importId);
   // GELESEN, nie hergeleitet: der Zustand kommt vom Server, die Bedeutung aus dem View-Kern.
   const zustand = importRunStateView(lauf.data?.status);
+  const zugang = useImportAccessConfluence(false).data;
+  // Vom Betreiber ausgeschaltet ist ein EIGENER Grund (über die Oberfläche umlegbar, Zugangskasten
+  // darüber) — nicht derselbe Satz wie „in dieser Installation nicht freigegeben".
+  const betreiberAus = betreiberHatAusgeschaltet(zugang?.betreiber);
+  const quellZustand = zugang ? importAccessState(zugang) : null;
+  const zugangsZustand = betreiberAus ? "switched-off" : quellZustand;
+  let gesperrtKey: string | null = null;
+  if (betreiberAus) {
+    gesperrtKey = IMPORT_START_BETREIBER_AUS_TEXT;
+  } else if (quellZustand && quellZustand !== "ready") {
+    gesperrtKey = IMPORT_START_GESPERRT_TEXT[quellZustand];
+  }
   // JOB 2970 D2: Ein Startversuch waehrend eines laufenden Imports ist KEIN Fehlschlag.
   //
   // Der Server antwortet dann `409 IMPORT_ALREADY_RUNNING` und nennt im selben Koerper die
@@ -447,7 +476,12 @@ export function ImportRunPanel(): JSX.Element {
   const starten = useMutation({
     mutationFn: () => endpoints.admin.import.startRun(),
     onSuccess: (r) => setImportId(r.importId),
-    onError: () => push("error", t("state.error")),
+    // R-0159: der Grund in Worten statt „Fehler" — aus Status und Code, nie aus dem Wortlaut.
+    onError: (err) => {
+      const key =
+        err instanceof ApiError ? importStartFehlerKey(err.status, err.code) : "state.error";
+      push("error", t(key));
+    },
   });
   // Gesperrt, solange gestartet wird ODER ein bekannter Lauf noch unterwegs ist. `lauf.isPending`
   // gehört dazu: zwischen Start und erster Antwort ist der Zustand unbekannt, und „unbekannt" ist
@@ -461,12 +495,21 @@ export function ImportRunPanel(): JSX.Element {
         <Button
           variant="primary"
           data-testid="f0140-start"
-          disabled={laeuft}
+          disabled={laeuft || gesperrtKey !== null}
           onClick={() => starten.mutate()}
         >
           {t("w2.run.start")}
         </Button>
       </div>
+      {gesperrtKey ? (
+        <p
+          data-testid="f0140-gesperrt"
+          data-state={zugangsZustand ?? ""}
+          className="mt-2 text-[12.5px] text-muted"
+        >
+          {t(gesperrtKey)}
+        </p>
+      ) : null}
       <div className="mt-2">
         {/* JOB 3288 (Codex-Livebefund df052186): Hier stand „Kein Lauf gestartet." Pedi hatte
             gerade 36 Seiten selektiv importiert und las den Satz als Aussage über den BESTAND —
@@ -1525,23 +1568,14 @@ function CapitalDashboard({ snap }: { snap: ManagementSnapshot }): JSX.Element {
         )}
       </Card>
 
-      {/* FE-MGMT-09: Wissens-Priorisierung (9 Faktoren) */}
+      {/* FE-MGMT-09 / FR-EXT-04: Wissens-Priorisierung — die neun Faktoren der Quelle, gerankt,
+          mit Filtern, Flags und Faktor-Detail (Nacharbeit 1; components/WissensPriorisierung). */}
       <Card id={sectionAnchor("priorities")} className="scroll-mt-4">
         <SectionLabel>{t("mgmt.priorities")}</SectionLabel>
         {snap.priorities.length === 0 ? (
           <p className="mt-2 text-[12.5px] text-muted">{t("mgmt.empty")}</p>
         ) : (
-          <ul className="mt-2 space-y-1">
-            {snap.priorities.slice(0, 8).map((p) => (
-              <li key={p.category} className="flex items-center gap-2 text-[12.5px]">
-                <span className="min-w-0 flex-1 truncate text-text">{p.category}</span>
-                <div className="h-1.5 w-28 rounded-pill bg-page">
-                  <div className="h-1.5 rounded-pill bg-ink" style={{ width: `${p.score}%` }} />
-                </div>
-                <span className="w-8 text-right font-mono text-[11px] text-muted-2">{p.score}</span>
-              </li>
-            ))}
-          </ul>
+          <WissensPriorisierung priorities={snap.priorities} />
         )}
       </Card>
 

@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 // ================================================================================================
 // AUFTRAG-mega79 BLOCK B — DIE ANZEIGE WIRD AN DEN TATSAECHLICHEN ANTWORTWEG GEBUNDEN.
 // ================================================================================================
@@ -44,9 +42,10 @@ import {
   performAsk,
 } from "../../apps/web/src/lib/wordAddin";
 import { type AppServices, buildApp, buildServices } from "../../services/app/src/build-app";
+import { panelQuelleAus } from "../support/panelquelle";
 
 const TASKPANE = "apps/web/public/word-addin/taskpane.html";
-const HTML = readFileSync(resolve(process.cwd(), TASKPANE), "utf8");
+const HTML = panelQuelleAus(TASKPANE);
 
 const SPRACHEN = ["de", "en", "nl"] as const;
 type Sprache = (typeof SPRACHEN)[number];

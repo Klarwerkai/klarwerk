@@ -26,13 +26,12 @@
 // die an einer Zahl bzw. an einer Zuweisung im Panel haengen, wird einmal mit einem VERFAELSCHTEN
 // Skript gefahren. Misst der Fall wirklich das Panel, muss sich das Ergebnis dabei aendern. Das
 // Panel selbst wird nie veraendert — die Verfaelschung lebt nur im Speicher dieses Laufs.
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readRueckweg, splitTaskpane } from "../app/klara-panel-fixture";
+import { panelQuelleAus } from "../support/panelquelle";
 
 const TASKPANE = "apps/web/public/word-addin/taskpane.html";
-const HTML = readFileSync(resolve(process.cwd(), TASKPANE), "utf8");
+const HTML = panelQuelleAus(TASKPANE);
 const { markup: MARKUP, script: SKRIPT } = splitTaskpane(HTML);
 
 /**
