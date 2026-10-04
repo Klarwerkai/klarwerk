@@ -23,6 +23,8 @@ import type {
   BeziehungSetzenBody,
   BeziehungWiderrufBody,
   BusFactorEntry,
+  CategoryProfile,
+  CategoryProfileInput,
   Confidentiality,
   Conflict,
   ConflictSelfTestResult,
@@ -75,6 +77,7 @@ import type {
   LesevariantenUebersicht,
   LibraryImageSearchResponse,
   LiveWall,
+  ManagementProfiles,
   ManagementSnapshot,
   MediaAnalysis,
   ModelRunAuswertungAntwort,
@@ -93,7 +96,10 @@ import type {
   ReasonerConfigStatus,
   ReasonerProbeResult,
   ReasonerStatus,
+  RetirementEntry,
+  RetirementHorizon,
   ReviewAction,
+  RiskHorizonView,
   Role,
   SicherungenAuskunft,
   Sichtmetrik,
@@ -1028,6 +1034,16 @@ export const endpoints = {
   // SCRUM-120 / FE-MGMT: Management-/Wissenskapital-Snapshot (read-only).
   management: {
     snapshot: () => api.get<ManagementSnapshot>("/management/snapshot"),
+    // R-1639 / R-2183 (Nacharbeit 3): Bereichsblick (eigene Bereiche) und Pflege seiner Eingänge.
+    riskHorizon: () => api.get<RiskHorizonView>("/management/risk-horizon"),
+    profiles: () => api.get<ManagementProfiles>("/management/profiles"),
+    setCategoryProfile: (body: CategoryProfileInput) =>
+      api.put<CategoryProfile>("/management/profiles/category", body),
+    setRetirement: (userId: string, horizonMonths: RetirementHorizon | null) =>
+      api.put<{ entry: RetirementEntry | null }>(
+        `/management/profiles/retirement/${encodeURIComponent(userId)}`,
+        { horizonMonths },
+      ),
   },
   // SCRUM-165: read-only Einsicht in jüngste ModelRuns (nur Metadaten).
   modelRuns: {

@@ -26,6 +26,7 @@ import {
   IMPORT_RUN_SCHEMA,
 } from "../../library-analytics";
 import { LIFECYCLE_SCHEMA } from "../../lifecycle";
+import { MANAGEMENT_PROFILE_SCHEMA } from "../../management";
 import { MODEL_RUNS_SCHEMA } from "../../model-runs";
 import { NOTIFICATION_SEEN_SCHEMA } from "../../notifications";
 import { OBJECTSTORE_SCHEMA } from "../../object-store";
@@ -219,6 +220,10 @@ export const schemas = [
   // R-0134 / R-1005: die eine Zeile des Betreiberschalters für den Confluence-Import. Additiv und
   // wiederholbar (CREATE TABLE IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed.
   CONFLUENCE_IMPORT_SCHALTER_SCHEMA,
+  // R-0751 / R-1639 / R-2183 (Nacharbeit 3): Bereichsprofile (Verantwortung + vier eingeschätzte
+  // Prioritätsfaktoren) und Ruhestandshorizonte (24/36 Monate). Additiv und wiederholbar (CREATE
+  // TABLE IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed.
+  MANAGEMENT_PROFILE_SCHEMA,
 ];
 
 // Führt die DDL aller Module aus. Jedes Modul liefert seine eigenen Tabellen (Datenhoheit).
