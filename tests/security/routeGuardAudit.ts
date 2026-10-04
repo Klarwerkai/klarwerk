@@ -568,6 +568,14 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
     protection: "ko.read",
     zeilenrecht: ["sichtbarkeitsfilterFuer"],
   },
+  // R-1639 / R-2183 (Nacharbeit 3): Bereichsblick (Grundmenge getrimmt) und Pflege seiner Eingänge.
+  "GET /api/management/risk-horizon": {
+    protection: "ko.read",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
+  "GET /api/management/profiles": { protection: "users.manage" },
+  "PUT /api/management/profiles/category": { protection: "users.manage" },
+  "PUT /api/management/profiles/retirement/:userId": { protection: "users.manage" },
   "GET /api/model-runs": { protection: "ko.read" },
   // Aufnahme gesamt-ki-laufprotokoll: Zeitraum-Auswertung (nur Summen) — dieselbe Lesestufe.
   "GET /api/model-runs/auswertung": { protection: "ko.read" },

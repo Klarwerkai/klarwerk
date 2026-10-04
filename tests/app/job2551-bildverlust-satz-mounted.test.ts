@@ -58,10 +58,11 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { panelQuelleAus } from "../support/panelquelle";
 
 const WURZEL = resolve(__dirname, "..", "..");
 const TASKPANE = resolve(WURZEL, "apps/web/public/word-addin/taskpane.html");
-const HTML = readFileSync(TASKPANE, "utf8");
+const HTML = panelQuelleAus(TASKPANE);
 /**
  * JOB 3667 R8 (14.09.2026): das Fenster wird aus ZWEI Dateien ausgeliefert — `taskpane.html` laedt
  * `rueckweg.js` als klassisches Skript unmittelbar vor seinem Inline-Skript. Dieses jsdom laeuft

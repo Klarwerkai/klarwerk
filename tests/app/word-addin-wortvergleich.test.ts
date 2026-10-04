@@ -20,15 +20,15 @@
 //   V6  Kein Schluessel des Blocks traegt die Woerter, die die Wortliste der Word-Flaeche
 //       ausserhalb des Einstufungshinweises verbietet (mega35 B) — hier als eigener, frueher
 //       Anschlag, damit der Verstoss am Block auffaellt und nicht erst im Tor.
-import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { panelQuelleAus } from "../support/panelquelle";
 
 const WURZEL = join(__dirname, "..", "..");
 const TASKPANE = join(WURZEL, "apps", "web", "public", "word-addin", "taskpane.html");
 
 function quelle(): string {
-  return readFileSync(TASKPANE, "utf8");
+  return panelQuelleAus(TASKPANE);
 }
 
 /** Der Inhalt zwischen den beiden Marken — ohne sie ist jede Aussage darunter wertlos. */

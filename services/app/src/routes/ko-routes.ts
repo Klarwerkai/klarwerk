@@ -67,6 +67,7 @@ import { type Guards, type SessionUser, sendError } from "../http";
 import { type LesevariantenRepo, mitAenderungsauskunft } from "../lesevarianten";
 import type { AssignmentNotifier } from "../notify";
 import { darfSehen, sichtbareFuer, sqlSichtbarkeitFuer } from "../sichtbarkeit";
+import { dublettenTor } from "./validation-routes";
 
 // Knowledge-Object-API (§2.3). Mutationen laufen über EINEN Endpunkt
 // PUT /api/kos/:id, der per {action} an das passende Modul verzweigt — die
@@ -502,6 +503,12 @@ export const KO_AKTIONEN_MIT_TORURTEIL: Readonly<Record<string, Torurteil>> = ZI
 interface PutBody {
   action: string;
   verdict?: Verdict;
+  /**
+   * R-0247 — die ausdrückliche Bestätigung „offene Dublette gesehen" an `rate` (`up`) und
+   * `admin-validate`. `unknown`, weil sie aus dem Netz kommt: gilt nur, wenn sie genau `true` ist
+   * (`dublettenTor` in validation-routes.ts).
+   */
+  duplicateAcknowledged?: unknown;
   userIds?: string[];
   changes?: ReviseKoInput;
   /**
@@ -842,6 +849,10 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
   ): Promise<void> => {
     await guards.requireUser(request, reply);
   };
+
+  // R-0247: das Dublettentor der zwei Freigabewege — derselbe Sichtbarkeitszugang wie an
+  // `/api/duplicates` (build-app.ts, `koSichtbarkeit`).
+  const dublettenTorDeps = { overlaps, audit, kos: { get: (koId: string) => ko.get(koId) } };
 
   async function sichtbaresKoOder404(user: SessionUser, id: string, reply: FastifyReply) {
     const item = await ko.get(id);
@@ -2407,6 +2418,20 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             if (!body.verdict) {
               return badRequest("verdict fehlt.");
             }
+            // R-0247: nur die Zustimmung validiert — Rückfrage und Ablehnung fragen nichts.
+            if (
+              body.verdict === "up" &&
+              !(await dublettenTor(
+                dublettenTorDeps,
+                user,
+                id,
+                body.duplicateAcknowledged,
+                "rate",
+                reply,
+              ))
+            ) {
+              return;
+            }
             reply.code(200).send(await validation.rate(id, user.id, body.verdict));
             return;
           }
@@ -2425,6 +2450,18 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
           case "admin-validate": {
             const user = await guards.requirePermission("users.manage", request, reply);
             if (!user) {
+              return;
+            }
+            if (
+              !(await dublettenTor(
+                dublettenTorDeps,
+                user,
+                id,
+                body.duplicateAcknowledged,
+                "admin-validate",
+                reply,
+              ))
+            ) {
               return;
             }
             reply.code(200).send(await validation.adminValidate(id, user.id));

@@ -28,6 +28,7 @@ import { mapConfluencePageToImportItem } from "../../services/confluence/src/map
 import type { ConfluencePage } from "../../services/confluence/src/rest-client";
 import { KERNAUSSAGE_MAX, kernaussageAusKlartext } from "../../services/structure";
 import { type Bruecke, bruecke } from "../library/job2703-bruecke";
+import { panelQuelleAus } from "../support/panelquelle";
 import { type KlaraPanel, createKlaraPanel } from "./klara-panel-fixture";
 
 const OPTS = { baseUrl: "https://acme.atlassian.net/wiki", spaceKey: "K" };
@@ -204,10 +205,7 @@ describe("JOB 2703 · D3 · der ausgelieferte Add-in-Weg kuerzt nicht mehr — d
     const { readFile } = await import("node:fs/promises");
     const { join } = await import("node:path");
     const wurzel = join(__dirname, "..", "..");
-    const taskpane = await readFile(
-      join(wurzel, "apps/web/public/word-addin/taskpane.html"),
-      "utf8",
-    );
+    const taskpane = panelQuelleAus(join(wurzel, "apps/web/public/word-addin/taskpane.html"));
     const modul = await readFile(join(wurzel, "apps/web/src/lib/wordAddin.ts"), "utf8");
     expect(taskpane.match(/\.slice\(0, 500\)/g) ?? []).toHaveLength(0);
     expect(modul.match(/\.slice\(0, 500\)/g) ?? []).toHaveLength(0);
