@@ -51,6 +51,7 @@ import {
 import { act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
+import { endpoints } from "../../apps/web/src/api/endpoints";
 import { BereichsprofilPflege } from "../../apps/web/src/components/BereichsprofilPflege";
 import { RisikoHorizont } from "../../apps/web/src/components/RisikoHorizont";
 import i18n from "../../apps/web/src/i18n";
@@ -189,6 +190,9 @@ describe("Mein Bereich · Ruhestandshorizonte und Arbeitsvorrat (Nacharbeit 3)",
     await mount(RisikoHorizont);
     expect(eins("horizont-leer")?.textContent).toBe(i18n.t("risk.horizon.noOwnArea"));
     expect(alle("horizont-bereich")).toHaveLength(0);
+    // Nacharbeit 4: das Verzeichnis lädt mit der FLÄCHE, nicht erst mit der ersten Bereichskarte —
+    // sonst zeigte R1 nach Ankunft des Bereichsblicks „Autorenname wird geladen" statt des Namens.
+    expect(endpoints.directory.list).toHaveBeenCalled();
   });
 });
 

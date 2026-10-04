@@ -30,15 +30,19 @@ function datum(iso: string, locale: string): string {
     : d.toLocaleDateString(locale, { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
+// Nacharbeit 4: die Namensauflösung kommt von OBEN. Holte jede Karte sie selbst, begänne das
+// Verzeichnis erst zu laden, NACHDEM der Bereichsblick angekommen ist — eine zweite, nachgelagerte
+// Ladekette, in der die Karte „Autorenname wird geladen" statt des Namens zeigt.
 function Bereich({
   area,
   horizont,
+  nameOf,
 }: {
   area: RiskHorizonArea;
   horizont: RetirementHorizon;
+  nameOf: ReturnType<typeof useAuthorName>;
 }): JSX.Element {
   const { t, i18n } = useTranslation();
-  const nameOf = useAuthorName();
   const traeger = area.bearers.filter((b) => b.horizonMonths <= horizont);
   return (
     <Card data-testid="horizont-bereich" data-kategorie={area.category} className="space-y-2">
@@ -122,6 +126,8 @@ function Bereich({
 export function RisikoHorizont(): JSX.Element {
   const { t } = useTranslation();
   const sicht = useRiskHorizon();
+  // Nacharbeit 4: Verzeichnis und Bereichsblick laden GLEICHZEITIG ab dem Aufbau der Fläche.
+  const nameOf = useAuthorName();
   const [horizont, setHorizont] = useState<RetirementHorizon>(36);
   return (
     <div data-testid="risiko-horizont">
@@ -161,7 +167,7 @@ export function RisikoHorizont(): JSX.Element {
           ) : (
             <div className="grid gap-2 sm:grid-cols-2">
               {v.areas.map((a) => (
-                <Bereich key={a.category} area={a} horizont={horizont} />
+                <Bereich key={a.category} area={a} horizont={horizont} nameOf={nameOf} />
               ))}
             </div>
           )
