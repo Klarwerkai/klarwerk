@@ -1241,6 +1241,19 @@ export function assembleServices(
         }
         return zaehler;
       },
+      // R-0751 (Nacharbeit 1): dieselbe Paar-Regel, aber mit den beteiligten Kennungen — der
+      // Eingang des Prioritätsfaktors „Konfliktdichte" je Kategorie.
+      openConflictKoIds: async (opts) => {
+        const offen = await conflicts.unresolved();
+        const ids: string[] = [];
+        for (const fund of offen) {
+          const [a, b] = await Promise.all([ko.get(fund.koA), ko.get(fund.koB)]);
+          if (a && b && opts.sichtbar(a) && opts.sichtbar(b)) {
+            ids.push(a.id, b.id);
+          }
+        }
+        return ids;
+      },
       pendingRevalidation: () => lifecycle.pendingRevalidation(),
       busFactor: (opts) => library.busFactor(opts),
     }),

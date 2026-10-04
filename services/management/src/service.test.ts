@@ -74,4 +74,29 @@ describe("ManagementService (SCRUM-120)", () => {
     expect(Number.isNaN(snap.overview.avgTrust)).toBe(false);
     expect(snap.maturity.stage).toBe(0);
   });
+
+  it("R-0751 (Nacharbeit 1): Konfliktdichte aus dem Konflikt-Eingang, auf den sichtbaren Bestand geschnitten", async () => {
+    const repo = new InMemoryKoRepo();
+    for (const k of [ko({ id: "K1" }), ko({ id: "K2" }), ko({ id: "GEHEIM" })]) {
+      await repo.insert(k);
+    }
+    const svc = new ManagementService({
+      koService: new KoService({ repo }),
+      listGaps: async () => [],
+      countOpenConflicts: async () => 1,
+      // Der Eingang nennt auch ein unsichtbares Objekt — es darf nicht mitzählen.
+      openConflictKoIds: async () => ["K1", "GEHEIM"],
+      pendingRevalidation: async () => [],
+      busFactor: async () => [],
+      now: () => Date.parse("2026-06-26T00:00:00Z"),
+    });
+    const snap = await svc.snapshot({ sichtbar: (k) => k.id !== "GEHEIM" });
+    const dichte = snap.priorities[0]?.factors.find((f) => f.key === "conflictDensity");
+    expect(dichte?.value).toBe(50); // K1 von K1, K2
+
+    // Gegenprobe: ohne Konflikt-Eingang keine Schätzung.
+    const ohne = await makeService([ko({ id: "K1" })]);
+    const leer = (await ohne.snapshot({ sichtbar: () => true })).priorities[0];
+    expect(leer?.factors.find((f) => f.key === "conflictDensity")?.value).toBeNull();
+  });
 });

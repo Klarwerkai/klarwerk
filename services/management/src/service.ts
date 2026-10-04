@@ -11,6 +11,9 @@ export interface ManagementDeps {
   // beide es sind (dieselbe Paar-Regel wie das Konflikt-Board). Die Auflösung braucht den
   // KO-Bestand und bleibt deshalb beim Aufrufer — hier reist nur die Entscheidung hinein.
   countOpenConflicts: (opts: { sichtbar: (ko: KnowledgeObject) => boolean }) => Promise<number>;
+  // R-0751 (Nacharbeit 1): die beteiligten KO-Kennungen derselben sichtbaren offenen Konflikte —
+  // Eingang des Faktors „Konfliktdichte". Optional: fehlt der Weg, bleibt der Faktor ohne Daten.
+  openConflictKoIds?: (opts: { sichtbar: (ko: KnowledgeObject) => boolean }) => Promise<string[]>;
   pendingRevalidation: () => Promise<string[]>;
   // AUFTRAG-mega76 BLOCK D: der Bus-Faktor rechnet selbst über einer Grundmenge und braucht die
   // Sichtbarkeitsentscheidung deshalb DURCHGEREICHT — sonst hinge ein gefilterter Snapshot an
@@ -41,18 +44,21 @@ export class ManagementService {
   async snapshot(opts: {
     sichtbar: (ko: KnowledgeObject) => boolean;
   }): Promise<ManagementSnapshot> {
-    const [alle, gaps, openConflicts, pending, busFactor] = await Promise.all([
+    const [alle, gaps, openConflicts, pending, busFactor, konfliktKos] = await Promise.all([
       this.deps.koService.list({}),
       this.deps.listGaps(),
       this.deps.countOpenConflicts(opts),
       this.deps.pendingRevalidation(),
       this.deps.busFactor(opts),
+      this.deps.openConflictKoIds ? this.deps.openConflictKoIds(opts) : Promise.resolve(null),
     ]);
     const kos = alle.filter(opts.sichtbar);
     // Die Revalidierungsliste sind KO-Kennungen. Sie wird gegen den SICHTBAREN Bestand geschnitten
     // — ein unsichtbares Objekt darf auch nicht als Zahl in der Risikorechnung auftauchen.
     const sichtbareIds = new Set(kos.map((ko) => ko.id));
     const openGaps = gaps.filter((g) => g.status === "offen").length;
+    const konfliktIds =
+      konfliktKos === null ? null : konfliktKos.filter((id) => sichtbareIds.has(id));
     const body = computeSnapshot({
       kos,
       openGaps,
@@ -60,6 +66,7 @@ export class ManagementService {
       pendingRevalidation: pending.filter((id) => sichtbareIds.has(id)),
       busFactor,
       now: this.now(),
+      openConflictKoIds: konfliktIds,
     });
     return { generatedAt: new Date(this.now()).toISOString(), ...body };
   }

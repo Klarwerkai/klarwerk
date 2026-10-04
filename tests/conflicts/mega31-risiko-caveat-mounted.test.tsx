@@ -37,6 +37,8 @@ vi.mock("../../apps/web/src/api/endpoints", () => {
       directory: { list: ok([]) },
       analytics: { busfactor: ok([]), expertise: ok([]) },
       aiCheck: { coverageSummary: vi.fn(async () => summary.wert) },
+      // `Risk` liest seit R-1639 (Nacharbeit 1) die Anlagenänderungs-Merker mit.
+      lifecycle: { pending: ok([]) },
     },
   };
 });

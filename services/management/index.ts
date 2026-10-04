@@ -13,6 +13,8 @@ export type {
   Maturity,
   CategoryPriority,
   PriorityFactor,
+  PriorityFactorKey,
+  PriorityFlag,
   Recommendation,
   RecommendationSeverity,
   HouseFloor,

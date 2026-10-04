@@ -23,13 +23,14 @@ vi.mock("../../apps/web/src/api/auth", () => ({
 
 vi.mock("../../apps/web/src/api/endpoints", () => {
   const ok = <T,>(v: T) => vi.fn(async () => v);
-  const ko = (id: string, category: string, author: string, status: string) => ({
+  // `urheber` fehlt ⇒ Erfasser und Urheber sind dieselbe Person (die Gegenprobe zu B1b).
+  const ko = (id: string, category: string, author: string, status: string, urheber?: string) => ({
     id,
     title: id,
     statement: "s",
     category,
     author,
-    originalAuthor: author,
+    originalAuthor: urheber ?? author,
     status,
     trust: 70,
   });
@@ -38,14 +39,20 @@ vi.mock("../../apps/web/src/api/endpoints", () => {
     ko("k2", "Betrieb", "u2", "offen"),
     ko("k3", "Qualitaet", "u2", "validiert"),
     ko("k4", "Qualitaet", "u3", "validiert"),
+    // B1b (ben F1): zwei ERFASSER (u2, u3), aber EIN Urheber (u4) — übernommenes Wissen.
+    ko("k5", "Uebernahme", "u2", "validiert", "u4"),
+    ko("k6", "Uebernahme", "u3", "validiert", "u4"),
   ];
+  // So zählt der Server (library-analytics `busFactor`): nach `originalAuthor`.
   const bus = [
     { category: "Betrieb", koCount: 2, authorCount: 1, singleSource: true },
     { category: "Qualitaet", koCount: 2, authorCount: 2, singleSource: false },
+    { category: "Uebernahme", koCount: 2, authorCount: 1, singleSource: true },
   ];
   const personen = [
     { id: "u2", name: "Hanna Beispiel" },
     { id: "u3", name: "Jonas Beispiel" },
+    { id: "u4", name: "Rita Beispiel" },
   ];
   return {
     endpoints: {
@@ -54,7 +61,9 @@ vi.mock("../../apps/web/src/api/endpoints", () => {
       ko: { list: ok(kos) },
       directory: { list: ok(personen) },
       analytics: { busfactor: ok(bus), expertise: ok([]) },
-      aiCheck: { coverageSummary: ok({ total: 4, incomplete: 0, unchecked: 0, noCoverage: 0 }) },
+      aiCheck: { coverageSummary: ok({ total: 6, incomplete: 0, unchecked: 0, noCoverage: 0 }) },
+      // B4: der „Stimmt das noch?"-Merker nach einer Anlagenänderung liegt auf k2 (Betrieb).
+      lifecycle: { pending: ok(["k2"]) },
     },
   };
 });
@@ -126,6 +135,13 @@ function karte(kategorie: string): Element {
   return k;
 }
 
+/** Der Einzelquellenhinweis einer Karte: der Block, dessen Kopfzeile `risk.singleSource` ist. */
+function hinweis(kategorie: string): Element | undefined {
+  return [...karte(kategorie).querySelectorAll("div")].find(
+    (d) => d.firstElementChild?.textContent === i18n.t("risk.singleSource"),
+  );
+}
+
 beforeEach(async () => {
   await i18n.changeLanguage("de");
 });
@@ -151,6 +167,23 @@ describe("Risiko-Cockpit · Bus-Faktor je Gebiet an der echten Seite", () => {
     expect(qualitaet).not.toContain("Getragen von");
   });
 
+  it("B1b · Erfasser ≠ Urheber: der Hinweis nennt allein den Urheber, nach dem der Bus-Faktor zählt", async () => {
+    await mount();
+    const block = hinweis("Uebernahme");
+    expect(block, "Einzelquellenhinweis an „Uebernahme“ fehlt").toBeDefined();
+    const text = block?.textContent ?? "";
+
+    // Der Trägersatz trägt genau EINEN Namen — den Urheber u4 —, nicht die beiden Erfasser.
+    const traeger = [...(block?.querySelectorAll("p") ?? [])].map((p) => p.textContent);
+    expect(traeger).toContain(i18n.t("risk.bearer", { names: "Rita Beispiel" }));
+    expect(text).not.toContain("Hanna Beispiel");
+    expect(text).not.toContain("Jonas Beispiel");
+    // Gegenprobe: wo Erfasser und Urheber dieselbe Person sind, bleibt der bisherige Träger.
+    expect(hinweis("Betrieb")?.textContent).toContain(
+      i18n.t("risk.bearer", { names: "Hanna Beispiel" }),
+    );
+  });
+
   it("B2 · je Kategorie Menge, Prüfanteil und Stufe; der Klick führt zu den betroffenen Objekten", async () => {
     await mount();
     const betrieb = karte("Betrieb").textContent ?? "";
@@ -161,7 +194,7 @@ describe("Risiko-Cockpit · Bus-Faktor je Gebiet an der echten Seite", () => {
     expect(qualitaet).toContain(i18n.t("risk.level.gut"));
     expect(qualitaet).toContain("100%");
     for (const kategorie of ["Betrieb", "Qualitaet"]) {
-      const link = karte(kategorie).querySelector("a");
+      const link = karte(kategorie).querySelector('a[href^="/bibliothek"]');
       expect(link?.getAttribute("href")).toBe(`/bibliothek?category=${kategorie}`);
       expect(link?.textContent).toContain(i18n.t("risk.viewObjects"));
     }
@@ -174,5 +207,20 @@ describe("Risiko-Cockpit · Bus-Faktor je Gebiet an der echten Seite", () => {
     expect(text).toContain(i18n.t("risk.busfactor"));
     expect(text).toContain(i18n.t("risk.expertsCount", { count: 1 }));
     expect(text).toContain(i18n.t("risk.expertsCount", { count: 2 }));
+  });
+
+  it("B4 · Vergleich zum Werksdurchschnitt und Objekte, die eine Anlagenänderung veralten ließ (R-1639)", async () => {
+    await mount();
+    // Werksdurchschnitt: 5 von 6 sichtbaren Objekten validiert ⇒ 83 %.
+    const vergleich = (k: string) => karte(k).querySelector('[data-testid="risk-vs-plant"]');
+    expect(vergleich("Betrieb")?.textContent).toBe(i18n.t("risk.vsPlant.below", { avg: 83 }));
+    expect(vergleich("Qualitaet")?.textContent).toBe(i18n.t("risk.vsPlant.above", { avg: 83 }));
+
+    // Nur Betrieb trägt einen Merker (k2) — mit Weg zur bestehenden Prüfliste.
+    const veraltet = karte("Betrieb").querySelector('[data-testid="risk-stale-asset"]');
+    expect(veraltet?.textContent).toBe(i18n.t("risk.staleByAssetChange", { count: 1 }));
+    expect(veraltet?.getAttribute("href")).toBe("/lebenszyklus");
+    // Gegenprobe: ohne Merker keine Zeile, auch keine „0“.
+    expect(karte("Qualitaet").querySelector('[data-testid="risk-stale-asset"]')).toBeNull();
   });
 });

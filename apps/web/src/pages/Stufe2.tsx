@@ -61,6 +61,7 @@ import { KoSummaryDisclosure } from "../components/KoSummaryDisclosure";
 import { LesevarianteHinweis } from "../components/LesevarianteHinweis";
 // JOB 3288: derselbe Allowlist-Renderweg wie die Bibliothek — kein zweiter HTML-Sink.
 import { SanitizedHtml } from "../components/SanitizedHtml";
+import { WissensPriorisierung } from "../components/WissensPriorisierung";
 // JOB 4153: Art und Richtung in Klartext kommen von DER Stelle, an der die Textdarstellung sie
 // auch nimmt — Bild und Liste dürfen dieselbe Kante nicht verschieden benennen.
 import { beziehungsartText, beziehungsrichtungKurz } from "../components/WissensbeziehungenBereich";
@@ -1521,23 +1522,14 @@ function CapitalDashboard({ snap }: { snap: ManagementSnapshot }): JSX.Element {
         )}
       </Card>
 
-      {/* FE-MGMT-09: Wissens-Priorisierung (9 Faktoren) */}
+      {/* FE-MGMT-09 / FR-EXT-04: Wissens-Priorisierung — die neun Faktoren der Quelle, gerankt,
+          mit Filtern, Flags und Faktor-Detail (Nacharbeit 1; components/WissensPriorisierung). */}
       <Card id={sectionAnchor("priorities")} className="scroll-mt-4">
         <SectionLabel>{t("mgmt.priorities")}</SectionLabel>
         {snap.priorities.length === 0 ? (
           <p className="mt-2 text-[12.5px] text-muted">{t("mgmt.empty")}</p>
         ) : (
-          <ul className="mt-2 space-y-1">
-            {snap.priorities.slice(0, 8).map((p) => (
-              <li key={p.category} className="flex items-center gap-2 text-[12.5px]">
-                <span className="min-w-0 flex-1 truncate text-text">{p.category}</span>
-                <div className="h-1.5 w-28 rounded-pill bg-page">
-                  <div className="h-1.5 rounded-pill bg-ink" style={{ width: `${p.score}%` }} />
-                </div>
-                <span className="w-8 text-right font-mono text-[11px] text-muted-2">{p.score}</span>
-              </li>
-            ))}
-          </ul>
+          <WissensPriorisierung priorities={snap.priorities} />
         )}
       </Card>
 

@@ -89,6 +89,8 @@ vi.mock("../../apps/web/src/api/endpoints", () => {
       // Gegenstand dieses Tests, muss aber antworten — sonst reißt die Seite ab, bevor die
       // gemessene Fläche überhaupt gerendert wird.
       aiCheck: { coverageSummary: leer({ total: 0, checked: 0, failed: 0 }) },
+      // `Risk` liest seit R-1639 (Nacharbeit 1) die Anlagenänderungs-Merker mit — dieselbe Lage.
+      lifecycle: { pending: leer([]) },
     },
   };
 });

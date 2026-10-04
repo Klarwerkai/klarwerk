@@ -1686,6 +1686,27 @@ export interface MgmtScorePart {
   weight: number;
 }
 
+// R-0751 / FR-EXT-04 (Nacharbeit 1): die neun Faktoren der Quelle, wie der Server sie liefert
+// (services/management/src/types.ts). `value: null` = keine Eingangsdaten, nicht geschätzt.
+export type MgmtPriorityFactorKey =
+  | "busFactor"
+  | "criticality"
+  | "processProximity"
+  | "age"
+  | "sourceQuality"
+  | "conflictDensity"
+  | "repetition"
+  | "damagePotential"
+  | "protection";
+export type MgmtPriorityFlag = "busFactorOne" | "stale" | "highProtection";
+export interface MgmtPriority {
+  category: string;
+  score: number;
+  knownFactors: number;
+  factors: { key: MgmtPriorityFactorKey; value: number | null }[];
+  flags: MgmtPriorityFlag[];
+}
+
 export interface ManagementSnapshot {
   generatedAt: string;
   overview: {
@@ -1712,7 +1733,7 @@ export interface ManagementSnapshot {
     net: number;
   };
   maturity: { stage: number; stageKey: string; progressPct: number };
-  priorities: { category: string; score: number; factors: { key: string; value: number }[] }[];
+  priorities: MgmtPriority[];
   recommendations: { key: string; severity: "hoch" | "mittel"; count: number }[];
   house: { category: string; koCount: number; validatedRatio: number; fragile: boolean }[];
   pilot: { days: number; created: number; validated: number }[];
