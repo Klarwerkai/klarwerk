@@ -571,7 +571,13 @@ export function BibliothekFlaeche({
     // Zahl, und der Umschalter kennt damit auch den Konflikt: ein Eintrag mit rotem Punkt fiel
     // vorher unter „Freigegeben", weil diese Zeile als einzige die Konfliktliste nicht ansah.
     .filter((item) => passtZuSegment(auskunftFuer(item.ko).status, segment));
-  const sorted = sortLibrary(faceted, sortKey, (item) => item.ko);
+  // K16: die Risiko-Sortierung liest denselben angezeigten Zustand wie Punkt, Wort und Segment.
+  const sorted = sortLibrary(
+    faceted,
+    sortKey,
+    (item) => item.ko,
+    (item) => auskunftFuer(item.ko).status,
+  );
   const win = windowList(sorted, windowLimit);
 
   const resetWindow = (): void => setWindowLimit(LIBRARY_RESULT_LIMIT);

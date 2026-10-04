@@ -4342,7 +4342,7 @@ const de = {
   "lib.sort.trust": "Vertrauen (hoch→niedrig)",
   "lib.sort.recent": "Zuletzt geändert (neu→alt)",
   // R-1006: Reife (Zu prüfen → In Prüfung → Nutzbar), darin Vertrauen niedrig zuerst
-  // (`librarySort.ts`, `koRiskRank`).
+  // (`librarySort.ts`, `riskRankOf` über den angezeigten Zustand).
   "lib.sort.risk": "Risiko (unsicher zuerst)",
   "lib.groupBy.label": "Untergruppen",
   "lib.groupBy.none": "keine",

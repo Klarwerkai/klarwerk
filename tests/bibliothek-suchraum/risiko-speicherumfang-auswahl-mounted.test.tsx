@@ -15,6 +15,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { KnowledgeObject } from "../../apps/web/src/api/types";
 
 const session = vi.hoisted(() => ({ id: "u1" }));
+// BEN NACHARBEIT 5: Suchantwort, KO-Bestand (`useKos`, trägt die erhobene Zustandsauskunft) und
+// Konfliktliste getrennt steuerbar. `null` heißt: der Standardbestand `KOS` unten.
+const lage = vi.hoisted(() => ({
+  suche: null as unknown[] | null,
+  bestand: null as unknown[] | null,
+  konflikte: [] as unknown[],
+}));
 
 function ko(
   id: string,
@@ -73,9 +80,9 @@ vi.mock("../../apps/web/src/api/hooks", () => {
     refetch: async () => ({}),
   });
   return {
-    useKos: () => ok(KOS),
-    useLibrarySearch: () => ok(KOS),
-    useConflicts: () => ok([]),
+    useKos: () => ok(lage.bestand ?? KOS),
+    useLibrarySearch: () => ok(lage.suche ?? KOS),
+    useConflicts: () => ok(lage.konflikte),
     useDirectory: () => ok([]),
     useKo: () => ({ ...ok(undefined), isLoading: true }),
     useEigeneBefunde: () => ok([]),
@@ -104,7 +111,7 @@ import {
   LIBRARY_SORT_STORAGE_KEY,
   sortLibrary,
 } from "../../apps/web/src/lib/librarySort";
-import { menueOeffnen, waehleImMenue } from "../library/support/bib-flaeche";
+import { listenZaehler, menueOeffnen, waehleImMenue } from "../library/support/bib-flaeche";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 Element.prototype.scrollIntoView = () => {};
@@ -112,6 +119,8 @@ Element.prototype.scrollIntoView = () => {};
 
 let container: HTMLDivElement;
 let root: ReturnType<typeof createRoot> | null = null;
+// Dieselbe Fläche noch einmal zeichnen — nach einer Änderung an `lage` (Zustand, Konflikt).
+let neuZeichnen: () => void = () => {};
 
 function mount(entry = "/bibliothek"): void {
   container = document.createElement("div");
@@ -119,15 +128,21 @@ function mount(entry = "/bibliothek"): void {
   const neu = createRoot(container);
   root = neu;
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  act(() => {
-    neu.render(
-      createElement(
-        QueryClientProvider,
-        { client: qc },
-        createElement(MemoryRouter, { initialEntries: [entry] }, createElement(BibliothekFlaeche)),
-      ),
-    );
-  });
+  neuZeichnen = () =>
+    act(() => {
+      neu.render(
+        createElement(
+          QueryClientProvider,
+          { client: qc },
+          createElement(
+            MemoryRouter,
+            { initialEntries: [entry] },
+            createElement(BibliothekFlaeche),
+          ),
+        ),
+      );
+    });
+  neuZeichnen();
 }
 
 const zeilenIds = (): (string | null)[] =>
@@ -140,6 +155,9 @@ const ausserhalb = (): HTMLElement | null =>
 beforeEach(async () => {
   await i18n.changeLanguage("de");
   session.id = "u1";
+  lage.suche = null;
+  lage.bestand = null;
+  lage.konflikte = [];
   window.localStorage.clear();
 });
 afterEach(() => {
@@ -256,5 +274,106 @@ describe("K27 · geöffneter Beitrag ausserhalb der aktuellen Treffer", () => {
   it("A5 · KALIBRIERUNG: ohne ausdrückliche Wahl (Vorwahl) keine Markierung", () => {
     mount("/bibliothek?zustand=offen");
     expect(ausserhalb()).toBeNull();
+  });
+});
+
+// ================================================================================================
+// BEN NACHARBEIT 5 · K16 — RISIKO LIEST DEN ANGEZEIGTEN ZUSTAND, NICHT DEN ROHSTATUS DER SUCHE.
+// ================================================================================================
+// Beide Suchobjekte sind roh `validiert` ohne Zuweisung. A (Vertrauen 90) wird erst durch die
+// erhobene Auskunft aus `useKos` (`anzeigestatus: "revalidierung"`) bzw. durch einen offenen
+// Konflikt aus `useConflicts` unsicher; B (Vertrauen 20) bleibt freigegeben. Die Suchantwort steht
+// in der Reihenfolge B, A — die Relevanz-Ordnung ist damit von der Risiko-Ordnung verschieden.
+describe("K16 · Risiko-Sortierung mit erhobenem Zustand und Konfliktkenntnis", () => {
+  const A = ko("a", "Alpha Ventil", "validiert", 90);
+  const B = ko("b", "Beta Ventil", "validiert", 20);
+  const zeilenMeta = (id: string): string =>
+    container
+      .querySelector(`[data-testid="bib-zeile"][data-bib-id="${id}"] [data-bib-text="zeile-meta"]`)
+      ?.textContent?.trim() ?? "";
+  const risikoWaehlen = (): void =>
+    waehleImMenue(container, "bib-menue-filter", String(i18n.t("lib.sort.risk")));
+
+  it("R4 · erhobene Revalidierung stellt A vor B; aufgehoben gilt wieder Vertrauen niedrig zuerst", () => {
+    lage.suche = [B, A];
+    lage.bestand = [{ ...A, anzeigestatus: "revalidierung" }, B];
+    mount();
+    expect(zeilenIds()).toEqual(["b", "a"]);
+    risikoWaehlen();
+    expect(zeilenIds()).toEqual(["a", "b"]);
+    expect(zeilenMeta("a")).toContain(String(i18n.t("status.revalidierung")));
+    expect(zeilenMeta("b")).toContain(String(i18n.t("status.validiert")));
+
+    lage.bestand = [A, B];
+    neuZeichnen();
+    expect(zeilenMeta("a")).toContain(String(i18n.t("status.validiert")));
+    expect(zeilenIds(), "beide freigegeben: Vertrauen 20 vor 90").toEqual(["b", "a"]);
+  });
+
+  it("R5 · offener Konflikt an A stellt A vor B; gelöst gilt wieder Vertrauen niedrig zuerst", () => {
+    lage.suche = [B, A];
+    lage.bestand = [A, B];
+    lage.konflikte = [{ id: "c1", koA: "a", koB: "x", status: "offen", type: "fact" }];
+    mount();
+    risikoWaehlen();
+    expect(zeilenIds()).toEqual(["a", "b"]);
+    expect(zeilenMeta("a")).toContain(String(i18n.t("status.konflikt")));
+
+    lage.konflikte = [{ id: "c1", koA: "a", koB: "x", status: "geloest", type: "fact" }];
+    neuZeichnen();
+    expect(zeilenMeta("a")).toContain(String(i18n.t("status.validiert")));
+    expect(zeilenIds(), "Konflikt gelöst: Vertrauen 20 vor 90").toEqual(["b", "a"]);
+  });
+});
+
+// ================================================================================================
+// BEN NACHARBEIT 5 · K12 — DIE VERTRAULICHKEITSFACETTE WIRKT FÜR ALLE DREI STUFEN.
+// ================================================================================================
+// Drei sonst identische Objekte, je eine Stufe. Gewählt wird im echten Menü „Filter", Untermenü
+// „Vertraulichkeit"; geprüft werden Kennungen UND der Zähler im Listenfuß.
+describe("K12 · Vertraulichkeitsfilter im Bibliotheksmenü", () => {
+  const gleich = (id: string, stufe: string): KnowledgeObject =>
+    ko(id, "Ventil Wartung", "validiert", 50, {
+      confidentiality: stufe,
+    } as unknown as Partial<KnowledgeObject>);
+  const DREI = [
+    gleich("k-intern", "intern"),
+    gleich("k-vertraulich", "vertraulich"),
+    gleich("k-streng", "streng_vertraulich"),
+  ];
+  const ALLE = ["k-intern", "k-streng", "k-vertraulich"];
+  // Der Menüeintrag lautet „<Stufe> · <Zahl>"; mit dem Trenner ist der Anfang eindeutig.
+  const stufe = (wert: string): void =>
+    waehleImMenue(container, "bib-menue-filter", `${String(i18n.t(`conf.level.${wert}`))} · `);
+  const sortiert = (): (string | null)[] => [...zeilenIds()].sort();
+
+  it("V1 · jede Stufe einzeln: genau ihr Objekt, Zähler 1; abgewählt wieder alle drei", () => {
+    lage.suche = DREI;
+    lage.bestand = DREI;
+    mount();
+    expect(sortiert()).toEqual(ALLE);
+    expect(listenZaehler(container)).toBe(3);
+    for (const [wert, id] of [
+      ["intern", "k-intern"],
+      ["vertraulich", "k-vertraulich"],
+      ["streng_vertraulich", "k-streng"],
+    ] as const) {
+      stufe(wert);
+      expect(zeilenIds(), wert).toEqual([id]);
+      expect(listenZaehler(container), wert).toBe(1);
+      stufe(wert);
+      expect(sortiert(), `${wert} abgewählt`).toEqual(ALLE);
+      expect(listenZaehler(container), `${wert} abgewählt`).toBe(3);
+    }
+  });
+
+  it("V2 · zwei Stufen gemeinsam: die Vereinigungsmenge", () => {
+    lage.suche = DREI;
+    lage.bestand = DREI;
+    mount();
+    stufe("intern");
+    stufe("streng_vertraulich");
+    expect(sortiert()).toEqual(["k-intern", "k-streng"]);
+    expect(listenZaehler(container)).toBe(2);
   });
 });
