@@ -13,7 +13,8 @@
 // `tests/i18n-woerterbuch/i18n-vor-aufteilung.txt`. Seit der Integration von `main` (Nacharbeit 3)
 // ist das die Datei des integrierten Hauptstands `a2ff8da8` — dieselbe Datei samt der dort
 // hinzugekommenen Schlüssel und des R-0801-Nachladens (nachprüfbar ohne Test mit
-// `git hash-object` gegen `git rev-parse a2ff8da8:apps/web/src/i18n.ts`, Blob `42ab6f8b…`).
+// `git hash-object` gegen `git rev-parse a2ff8da8:apps/web/src/i18n.ts`, Blob `42ab6f8b…`). Seit
+// Nacharbeit 5 ist es die Datei von `main` 1147c026 (Blob `1dbd6f42…`, dazu R-0247).
 //
 // WOZU DAS ZUSAMMENFÜGEN: rund fünfzig bestehende Prüfstände lesen das Wörterbuch als TEXT (sie
 // suchen Schlüssel, Wortlaute und Verbote quer über alle drei Sprachen). Sie lesen ab hier

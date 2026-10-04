@@ -526,6 +526,11 @@ const nl: typeof de = {
   "val.doppel.satzMehrere":
     "Van dit item liggen {{n}} overlappende exemplaren in de voorraad — sterkste overlap: {{beziehung}}.",
   "val.doppel.vergleich": "Vergelijking openen",
+  // R-0247: uitdrukkelijke bevestiging vóór het valideren zolang er een open duplicaat is.
+  "val.doppel.bestaetigung.frage":
+    "Voor dit item ligt een open duplicaat. Bevestig dat u het hebt gezien voordat u valideert.",
+  "val.doppel.bestaetigung.ja": "Duplicaat gezien — toch valideren",
+  "val.doppel.bestaetigung.abbrechen": "Annuleren",
   "val.herkunft.label": "Vastlegroute",
   "val.herkunft.unbekannt": "Herkomst onbekend",
   "val.herkunft.auskunftFehlt": "Herkomst niet in dit antwoord",

@@ -137,6 +137,15 @@ treten auf `main` an der ungeschnittenen Datei genauso auf:
 | `klara-regressionsinventar.test.ts` K2/K5 | zwei auf `main` entstandene Prüfstände ohne Inventareintrag | nach Messung nachgeführt, K5 70 → 71 |
 | `mega69-klara-waechter.test.ts` Pin, `schnittflaechen.test.ts` B3, `word-addin-ask.test.ts` Teil 3, `riegel-haelt-den-dokumenttext.test.ts` R5d/R5e/R7b/R7f | fremd: auf `main` identisch rot (E2 grün = Fenster byte-gleich mit `main`; Dienste und Testlogik unverändert gegenüber `main` 5f3e3a81) | kein fremder Code geändert, keine Schranke und kein Pin angefasst; aus der Prüfauswahl dieses Auftrags genommen und dort begründet (`CLAUDE/PRUEFPLAN.json`) |
 
+## Nacharbeit 5 — Integration mit `main` 1147c026
+
+Gitkonflikt in `apps/web/src/i18n.ts`: `main` hat in allen drei Blöcken die R-0247-Schlüssel
+`val.doppel.bestaetigung.frage|ja|abbrechen` ergänzt (weiche Bestätigung vor dem Validieren bei
+offener Dublette). Sie stehen jetzt an derselben Stelle in `woerterbuch/{de,en,nl}.ts`; `i18n.ts`
+bleibt die geteilte Fassung. Die Bezugskopie `tests/i18n-woerterbuch/i18n-vor-aufteilung.txt` ist die
+ungeteilte Datei von `main` 1147c026 (Blob `1dbd6f42…`); die drei Blöcke der Sprachdateien sind
+gegen sie zeilen- und inhaltsgleich verglichen (Git-Diff ohne Abweichung), Beleg im Lauf: W1.
+
 **Beobachtung ohne Änderung:** `GET /api/support` (`services/app/src/routes/support-routes.ts`) ist
 registriert, steht aber weder in `TABELLE`, `SCHREIB_TABELLE` noch `NICHT_ABGENOMMEN` der
 Rollenabnahme. `tests/beta-rollenabnahme/jede-registrierte-route-ist-abgenommen.test.ts` E2 müsste

@@ -541,6 +541,11 @@ const en: typeof de = {
   "val.doppel.satzMehrere":
     "{{n}} overlapping copies of this entry exist in the stock — strongest overlap: {{beziehung}}.",
   "val.doppel.vergleich": "Open comparison",
+  // R-0247: explicit confirmation before validating while an open duplicate exists.
+  "val.doppel.bestaetigung.frage":
+    "There is an open duplicate for this entry. Please confirm that you have seen it before validating.",
+  "val.doppel.bestaetigung.ja": "Duplicate seen — validate anyway",
+  "val.doppel.bestaetigung.abbrechen": "Cancel",
   "val.herkunft.label": "Capture path",
   "val.herkunft.unbekannt": "Origin unknown",
   "val.herkunft.auskunftFehlt": "Origin not in this response",

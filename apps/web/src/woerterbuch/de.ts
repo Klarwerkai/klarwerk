@@ -783,6 +783,12 @@ const de = {
   "val.doppel.satzMehrere":
     "Zu diesem Eintrag liegen {{n}} überschneidende Exemplare im Bestand — stärkste Überschneidung: {{beziehung}}.",
   "val.doppel.vergleich": "Vergleich öffnen",
+  // R-0247 (Pedis Entscheidung 73b53301, weiche Sperre): die ausdrückliche Bestätigung vor dem
+  // Validieren, solange eine offene Dublette vorliegt. Keine Sperre, keine Auflösung der Dublette.
+  "val.doppel.bestaetigung.frage":
+    "Zu diesem Eintrag liegt eine offene Dublette vor. Bitte bestätigen Sie, dass Sie sie gesehen haben, bevor Sie validieren.",
+  "val.doppel.bestaetigung.ja": "Dublette gesehen — trotzdem validieren",
+  "val.doppel.bestaetigung.abbrechen": "Abbrechen",
   // Bewusst NICHT „Herkunft“: dieses Wort trägt auf derselben Seite schon der Demo-/Eigenes-Filter
   // (`lib.originLabel`). Zwei Sachen, ein Wort — genau die Verwechslung wird hier vermieden.
   "val.herkunft.label": "Erfassungsweg",

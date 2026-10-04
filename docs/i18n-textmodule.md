@@ -130,7 +130,7 @@ Tor und Browser prüfen also weiter gegen den VOLLEN Grundbestand.
 
 | Aussage | Prüfstand |
 | --- | --- |
-| Die vier Dateien ergeben Byte für Byte die frühere `i18n.ts` | `tests/i18n-woerterbuch/aufteilung-unveraendert.test.ts` W1 gegen `tests/i18n-woerterbuch/i18n-vor-aufteilung.txt` (unveränderte Kopie der ungeteilten Datei von `main` a2ff8da8, nachprüfbar mit `git hash-object` gegen `git rev-parse a2ff8da8:apps/web/src/i18n.ts`); Gegenproben W2 |
+| Die vier Dateien ergeben Byte für Byte die frühere `i18n.ts` | `tests/i18n-woerterbuch/aufteilung-unveraendert.test.ts` W1 gegen `tests/i18n-woerterbuch/i18n-vor-aufteilung.txt` (unveränderte Kopie der ungeteilten Datei von `main` 1147c026, nachprüfbar mit `git hash-object` gegen `git rev-parse 1147c026:apps/web/src/i18n.ts`); Gegenproben W2 |
 | i18next trägt jeden Schlüssel der drei Dateien mit genau ihrem Wert | dieselbe Datei, W3; dazu unverändert `tests/i18n-textmodule/bestand-unveraendert.test.ts` K1.1 |
 | Der Duplikatwächter sieht die drei Dateien samt Lesevariante | W4; `tests/i18n-textmodule/grundbestand.test.ts` |
 

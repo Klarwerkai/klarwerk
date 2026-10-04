@@ -212,9 +212,12 @@ export interface KoDiskussionsbeitrag extends KoComment {
 
 // PUT /api/kos/:id — ein Mutations-Endpunkt, per {action} verzweigt.
 export type KoAction =
-  | { action: "rate"; verdict: Verdict }
+  // R-0247: `duplicateAcknowledged` ist die ausdrückliche Bestätigung „offene Dublette gesehen".
+  // Sie wird NUR mitgeschickt, wenn sie gegeben wurde; ohne offene Dublette bleibt die Nutzlast
+  // unverändert.
+  | { action: "rate"; verdict: Verdict; duplicateAcknowledged?: true }
   // Pedi 05.07.: Admin-Override „als wahr kennzeichnen" — schließt die Validierung komplett ab.
-  | { action: "admin-validate" }
+  | { action: "admin-validate"; duplicateAcknowledged?: true }
   | { action: "assign"; userIds: string[] }
   // ================================================================================================
   // JOB 3667 R3 — `expectedVersion` AM REVISE: DER BEDINGTE SCHREIBZUGRIFF, VOM CLIENT AUS NUTZBAR.

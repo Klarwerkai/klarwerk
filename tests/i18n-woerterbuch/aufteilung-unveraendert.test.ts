@@ -12,7 +12,8 @@
 //           ist das die Datei von `main` a2ff8da8 — mit den dort neuen Schlüsseln und dem
 //           R-0801-Nachladen —, nachprüfbar mit
 //           `git hash-object tests/i18n-woerterbuch/i18n-vor-aufteilung.txt` gegen
-//           `git rev-parse a2ff8da8:apps/web/src/i18n.ts` (`42ab6f8b…`). Einziger Unterschied
+//           `git rev-parse 1147c026:apps/web/src/i18n.ts` (`1dbd6f42…`, Nacharbeit 5: dazu die
+//           R-0247-Schlüssel `val.doppel.bestaetigung.*`). Einziger Unterschied
 //           außer den Blöcken: ein Kommentarabsatz von R-0801, den das Zusammenfügen zurücksetzt
 //           (`R0801_ABSATZ_JETZT` in `tests/support/woerterbuchquelle.ts`).
 //   W3    — LAUFZEIT. Das initialisierte i18next trägt jeden Schlüssel der drei Dateien mit genau
