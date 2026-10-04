@@ -811,6 +811,29 @@ function auswertung(werte: readonly number[], grenzeMs: number) {
   };
 }
 
+/** N2 (Nacharbeit 23): der tatsächliche Zustand nach der SPA-Rückkehr — nur gelesen. */
+interface N2Ist {
+  adresse: string;
+  fuss: string;
+  zeilen: number;
+  bereich: string;
+  filter: string;
+  navigation: string;
+}
+
+const N2_IST = `() => {
+  const text = (id) =>
+    (document.querySelector('[data-testid="' + id + '"]')?.textContent || "").trim();
+  return {
+    adresse: location.pathname + location.search,
+    fuss: text("bib-fuss"),
+    zeilen: document.querySelectorAll('[data-testid="bib-zeile"]').length,
+    bereich: text("bib-menue-bereich"),
+    filter: text("bib-menue-filter"),
+    navigation: performance.getEntriesByType("navigation")[0]?.type ?? "(keine)",
+  };
+}`;
+
 // ================================================================================================
 // DIE FÄLLE
 // ================================================================================================
@@ -1571,5 +1594,133 @@ describe("K1/K10 · Bibliotheksfilter bei 10.001 Objekten (PG + Chromium, unver�
         "Navigationsart 'reload'; Altsicht und {noMatch:true} je 0 Treffer nach Neuladen; nach gezieltem Lösen bzw. Zurücksetzen voller Bestand nach Neuladen",
       h4: "No-Match: 'Bereich · 1' und 'Filter · 1'; im Menü Bereich ein Menüpunkt (role=menuitem) 'keine Treffer … entfernen', kein ankreuzbarer Wert, kein Marker in der Adresse",
     };
+  }, 600_000);
+
+  // ==============================================================================================
+  // N2 · ECHTE SPA-RÜCKKEHR NACH NOMATCH-RELOAD (Nacharbeit 23, eigene Reviewlücke, ungetestet).
+  // ==============================================================================================
+  //
+  // Weg: vorhandene gespeicherte strukturelle NoMatch-Sicht über das Sichtenmenü anwenden, echtes
+  // `reload()`, voller Kategorienbestand im Menü und weiterhin 0 Treffer. Dann OHNE Dokumentwechsel:
+  // per Tastatur auf den Logo-Link (Startseite), per LEERER Kopfband-Suche (Enter) zurück in die
+  // Bibliothek. `performance.timeOrigin` bleibt dabei gleich — das belegt, dass beide Wege echte
+  // SPA-Navigationen sind und kein Neuladen. Protokolliert werden Adresse, Listenfuss, Zeilen,
+  // Menüzahlen, Lösen-Punkt und Navigationsart; gefordert ist danach der volle Bestand (10.001),
+  // kein No-Match und keine Aktivzahl. Kein focus(), kein history-Eingriff, kein setState.
+  it("N2 — echte SPA-Rückkehr nach NoMatch-Reload: voller Bestand, kein NoMatch, keine Aktivzahl", async (ctx) => {
+    if (!instanz || !seite) {
+      process.stderr.write(`${MELDUNG_KEINE_DATENBANK} ${skipGrund}\n`);
+      ctx.skip();
+      return;
+    }
+    const s = seite;
+    const GESPEICHERT = "K10 Altsicht noMatch";
+    const LOESEN = "bib-nomatch-loesen-category";
+    const LOGO = 'a[aria-label="Klarwerk - zur Startseite"]';
+    const KOPFSUCHE = '[data-testid="kopfband-wissen-suchen"]';
+    const schluessel = `klarwerk.library.views.${adminId}`;
+
+    // 0 · Die Sicht ist im Speicherformat des Produkts vorhanden (aus N1); fehlt sie, weil N1 nicht
+    //     lief, wird sie genau so abgelegt wie dort.
+    const vorhanden = await s.evaluate<string | null>(
+      fn("(k) => localStorage.getItem(k)"),
+      schluessel,
+    );
+    const sichten: { name: string }[] = vorhanden === null ? [] : JSON.parse(vorhanden);
+    if (!sichten.some((v) => v.name === GESPEICHERT)) {
+      const sicht = { name: GESPEICHERT, state: { facetSel: { category: { noMatch: true } } } };
+      await s.evaluate<void>(fn("([k, wert]) => { localStorage.setItem(k, wert); }"), [
+        schluessel,
+        JSON.stringify([...sichten, sicht]),
+      ]);
+    }
+    await s.goto(`${instanz.basis}/bibliothek`, { waitUntil: "load" });
+    const voll = { zahl: GESAMT, fenster: LIBRARY_RESULT_LIMIT };
+    await warte(s, FENSTER_IST, `${K}: N2 — Bestand`, voll, FRIST);
+
+    // 1 · Sicht anwenden → 0 Treffer, „Bereich · 1", „Filter · 1".
+    const nullTreffer = zustand([], null, knoepfe(1, true));
+    await menueOeffnen(s, "bib-liste-menue");
+    await untermenueOeffnen(s, i18n.t("lib.menue.sichten"));
+    const IST_SICHT = `(a, name) => a.getAttribute("role") === "menuitemcheckbox"
+      && (a.textContent || "").replace(/✓/g, "").trim() === name`;
+    await tabBisPassend(s, IST_SICHT, GESPEICHERT, `Sicht „${GESPEICHERT}"`);
+    await s.keyboard.press("Enter");
+    await warte(s, ZUSTAND_IST, `${K}: N2 — Sicht angewendet, 0 Treffer`, nullTreffer, FRIST);
+
+    // 2 · Echtes Neuladen: Navigationsart „reload", voller Kategorienbestand im Menü, weiterhin 0.
+    await s.reload({ waitUntil: "load" });
+    const NAVIGATION = '() => performance.getEntriesByType("navigation")[0]?.type ?? "(keine)"';
+    expect(await s.evaluate<string>(fn(NAVIGATION)), `${K}: N2 — Navigationsart`).toBe("reload");
+    await warte(s, ZUSTAND_IST, `${K}: N2 — nach Neuladen 0 Treffer`, nullTreffer, FRIST);
+    const bereichVoll = soll([...kategorienzahl(plan)].map(([k, n]) => w(k, n, false)));
+    await menueOeffnen(s, "bib-menue-bereich");
+    await warte(
+      s,
+      `(soll) => JSON.stringify((${WERTE})("Bereich")) === soll`,
+      `${K}: N2 — voller Kategorienbestand nach Neuladen`,
+      JSON.stringify(bereichVoll),
+      FRIST,
+    );
+    const LOESEN_DA = `(id) => !!document.querySelector('[data-testid="' + id + '"]')`;
+    expect(await s.evaluate<boolean>(fn(LOESEN_DA), LOESEN), `${K}: N2 — Lösen-Punkt`).toBe(true);
+    await s.keyboard.press("Escape");
+    const nochNull = await s.evaluate<boolean>(fn(ZUSTAND_IST), nullTreffer);
+    expect(nochNull, `${K}: N2 — mit geladenem Bestand weiterhin 0`).toBe(true);
+    const ursprung = await s.evaluate<number>(fn("() => performance.timeOrigin"));
+
+    // 3 · Logo-Link per Tastatur → Startseite, ohne Dokumentwechsel.
+    await bedienelementErreichen(s, LOGO);
+    await s.keyboard.press("Enter");
+    const START = '() => location.pathname === "/start"';
+    await warte(s, START, `${K}: N2 — Startseite über den Logo-Link`, undefined, FRIST);
+    const ursprungStart = await s.evaluate<number>(fn("() => performance.timeOrigin"));
+
+    // 4 · Leere Kopfband-Suche (Enter) → Bibliothek, ohne Dokumentwechsel. Gewartet wird auf das
+    //     EINTREFFEN — voller Bestand ODER eine Zahl am Menü „Bereich" —, damit auch ein falscher
+    //     Zustand protokolliert und geprüft wird, statt nur in die Frist zu laufen.
+    await bedienelementErreichen(s, KOPFSUCHE);
+    const feld = await s.evaluate<string>(
+      fn("(sel) => document.querySelector(sel)?.value ?? '(fehlt)'"),
+      KOPFSUCHE,
+    );
+    expect(feld, `${K}: N2 — Kopfband-Suche leer`).toBe("");
+    await s.keyboard.press("Enter");
+    const ANKUNFT = `(soll) => {
+      if (location.pathname !== "/bibliothek") return false;
+      const fuss = document.querySelector('[data-testid="bib-fuss"]');
+      const zahl = fuss ? Number((fuss.textContent || "").replace(/[^0-9]/g, "")) : -1;
+      const knopf = document.querySelector('[data-testid="bib-menue-bereich"]');
+      return zahl === soll.zahl || (!!knopf && (knopf.textContent || "").trim() !== soll.bereich);
+    }`;
+    const ankunft = { zahl: GESAMT, bereich: i18n.t("lib.menue.bereich") };
+    await warte(s, ANKUNFT, `${K}: N2 — Bibliothek nach Kopfband-Suche`, ankunft, FRIST);
+    const ursprungBibliothek = await s.evaluate<number>(fn("() => performance.timeOrigin"));
+    await menueOeffnen(s, "bib-menue-bereich");
+    const loesenPunkt = await s.evaluate<boolean>(fn(LOESEN_DA), LOESEN);
+    await s.keyboard.press("Escape");
+    const ist = await s.evaluate<N2Ist>(fn(N2_IST));
+    const protokoll = {
+      ...ist,
+      loesenPunkt,
+      timeOrigin: { nachReload: ursprung, start: ursprungStart, bibliothek: ursprungBibliothek },
+    };
+    bericht.spaRueckkehr = protokoll;
+    process.stderr.write(`${K} N2-PROTOKOLL ${JSON.stringify(protokoll)}\n`);
+
+    // 5 · Soll gegen Ist.
+    expect(ursprungStart, `${K}: N2 — Logo-Link ohne Dokumentwechsel`).toBe(ursprung);
+    expect(ursprungBibliothek, `${K}: N2 — Kopfband-Suche ohne Dokumentwechsel`).toBe(ursprung);
+    expect(ist.adresse, `${K}: N2 — Adresse`).toBe("/bibliothek");
+    expect(Number(ist.fuss.replace(/[^0-9]/g, "")), `${K}: N2 — voller Bestand`).toBe(GESAMT);
+    expect(loesenPunkt, `${K}: N2 — kein NoMatch (Lösen-Punkt)`).toBe(false);
+    const ohneZahl = knoepfe(0, false);
+    const zahlen = { bereich: ist.bereich, filter: ist.filter };
+    const sollZahlen = {
+      bereich: ohneZahl["bib-menue-bereich"],
+      filter: ohneZahl["bib-menue-filter"],
+    };
+    expect(zahlen, `${K}: N2 — keine Aktivzahl`).toEqual(sollZahlen);
+    fensterPruefen(await zeilenIds(s), new Set(GRUPPEN.flatMap((g) => ids[g])), "N2 Fenster");
   }, 600_000);
 });
