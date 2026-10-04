@@ -345,6 +345,12 @@ const REGISTER: Record<string, Eintrag> = {
     recht: "ko.validate",
     grund: "Projektion entfernt actor/subject (model-runs-routes.ts:46).",
   },
+  // Aufnahme gesamt-ki-laufprotokoll: nur Zähler und Summen über Läufe (Aufgabe, Status, Token,
+  // Kosten) — kein Anfragender, kein Gegenstand, kein Fehlertext, kein Wissensobjekt.
+  "GET /api/model-runs/auswertung": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "nur Laufsummen je Aufgabe/Währung (model-runs-routes.ts:52-68).",
+  },
   "GET /api/analytics/expertise": {
     urteil: "KURATORENTOR",
     recht: "ko.assign",
@@ -389,6 +395,13 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "KURATORENTOR",
     recht: "users.manage",
     grund: "Zugangszustand, Admin.",
+  },
+  // R-0134 / R-1005: der Betreiberschalter. Nimmt genau ein Ja/Nein entgegen und antwortet mit
+  // derselben Zugangsauskunft wie der Leseweg darüber — kein Inhalt eines Wissensobjekts.
+  "PUT /api/import/confluence/schalter": {
+    urteil: "KURATORENTOR",
+    recht: "users.manage",
+    grund: "Betreiberschalter (Ja/Nein) + Zugangszustand, Admin.",
   },
   // JOB 4086: dieselbe Auskunft für SharePoint/OneDrive. Sie gibt Schalterzustand, die NAMEN der
   // Umgebungsvariablen und ja/nein je Variable aus — nie einen Wert, nie eine Maske mit Länge und
@@ -446,6 +459,13 @@ const REGISTER: Record<string, Eintrag> = {
   "GET /api/ai-status": { urteil: "KEIN_KO_INHALT", grund: "Modellzustand." },
   "GET /api/reasoner/status": { urteil: "KEIN_KO_INHALT", grund: "Modellzustand." },
   "GET /api/features": { urteil: "KEIN_KO_INHALT", grund: "Schalter als Ja/Nein." },
+  // R-1064: Supportweg der Installation — Zustand, geprüftes Ziel und Beschriftung aus zwei
+  // Betreiberwerten (support-routes.ts:119), kein Feld aus einem Wissensobjekt.
+  "GET /api/support": {
+    urteil: "KEIN_KO_INHALT",
+    grund:
+      "R-1064 — Supportkontakt der Instanz aus der Umgebung (support-routes.ts), kein Bestand.",
+  },
   // JOB 3510 · die Markenwahl. Beide Wege geben ausschließlich die Darstellungslage der Instanz
   // aus: Profilname, `aktiv`, Änderungszahl und — nur bei eingeschalteter Wahl — Markenname, zwei
   // Logofarben und der Pfad des mitgelieferten Logos (`branding-settings.ts`, BRANDING_PROFILE).
@@ -641,6 +661,9 @@ const REGISTER: Record<string, Eintrag> = {
     // Wissensobjekts aus — sie geben Namen, Adressen und Stände von QUELLDATEIEN aus.
     "POST /api/admin/import/sharepoint/files": "users.manage.",
     "POST /api/admin/import/sharepoint/apply": "users.manage.",
+    // R-0145/R-0190: `folder-apply` ist derselbe Übernahmeweg für ein Los eines Ordners — er gibt
+    // dieselben Quelldatei-Angaben aus wie `apply`, dazu die Kennungen des Loses.
+    "POST /api/admin/import/sharepoint/folder-apply": "users.manage.",
     "PUT /api/reasoner/config": "users.manage.",
     "PUT /api/reasoner/assist-presets": "users.manage.",
     "POST /api/reasoner/test": "users.manage.",

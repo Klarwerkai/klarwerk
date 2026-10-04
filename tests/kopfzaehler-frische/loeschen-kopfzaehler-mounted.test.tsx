@@ -449,8 +449,9 @@ describe.each([
 
 it("Alias-unabhängig: Löschweg entwertet Prüfen und die geteilte Aufgaben-Zählquelle", async () => {
   await start(1_000);
-  await click(container.querySelector('[data-testid="kopfband-zahnrad"]'));
-  await click(container.querySelector('[data-testid="zahnrad-weitere-bereiche"]'));
+  // FE-002: die weiteren Bereiche stehen seit dem 26.09.2026 unter dem beschrifteten Einstieg
+  // „Arbeitsbereiche" im Kopfband (vorher Zahnrad → „Bereiche"); die Liste ist dieselbe.
+  await click(container.querySelector('[data-testid="kopfband-arbeitsbereiche"]'));
   const aufgaben = (): Element | null =>
     container.querySelector('[data-testid="bereich-aufgaben"] .kw-menue-wert');
   expect(container.querySelector('[data-testid="bereich-aufgaben"]')).not.toBeNull();

@@ -41,7 +41,7 @@ import { PASSWORT, type Strecke, ersteinrichtung, starteStrecke } from "../gast-
 import { meldeAnMitTastatur, stelleFlaecheBereit } from "../gesamtanweisung-nutzerweg/weg";
 import {
   ARIA_STAND,
-  BEREICHE,
+  AUSLOESER,
   EINTRAG,
   FLAECHENSPRACHE,
   FLAECHE_STEHT_AUF,
@@ -51,13 +51,14 @@ import {
   type Menuebefund,
   SPRACHEN,
   type Sollwerte,
-  ZAHNRAD,
+  ZAHNRAD_MENUE,
+  arbeitsbereicheSagenOeffnenAn,
   escapeSchliesstUndGibtFokusZurueck,
   keinVersteckterTabstopp,
-  klappeBereicheAuf,
   menuetext,
   menuewegOhneMaus,
   nachbarpunkteBleibenErreichbar,
+  oeffneArbeitsbereiche,
   oeffneZahnrad,
   profilFuer,
   sollwerte,
@@ -126,31 +127,26 @@ async function angemeldetAufStart(
 }
 
 describe("JOB 4362 · der Menüweg zur Gesamtanweisung ohne Maus, im echten Chromium, in drei Sprachen", () => {
+  // FE-002 (26.09.2026): der Weg heisst „Arbeitsbereiche“ → „Gesamtanweisungen“ (vorher Zahnrad →
+  // „Bereiche“ → „Gesamtanweisungen“). Die Stationen und ihre Begründungen stehen in `weg.ts`.
   for (const sprache of SPRACHEN) {
-    it(`K1/K2/K3 (${sprache}) — ab /start per Tab und Enter: Zahnrad → „Bereiche" → „Gesamtanweisungen" → die Seite steht; Escape gibt den Fokus zurück`, async () => {
+    it(`K1/K2/K3 (${sprache}) — ab /start per Tab und Enter: „Arbeitsbereiche" → „Gesamtanweisungen" → die Seite steht; Escape gibt den Fokus zurück`, async () => {
       const { kontext, seite, soll } = await angemeldetAufStart(sprache);
       const { strecke: s } = zeug();
       try {
-        // ══ K2 · VOR DEM AUFKLAPPEN: kein versteckter Tab-Stopp. ════════════════════════════
-        //
-        // Zuerst, und auf einer frisch geladenen Seite: danach ist das Untermenü aufgeklappt,
-        // und die Frage „liegt er VORHER in der Reihe" wäre nicht mehr stellbar.
+        // ══ K2 · DER PUNKT LIEGT NICHT MEHR HINTER DEM ZAHNRAD. ═══════════════════════════════
         await oeffneZahnrad(seite, sprache);
         const vorher = await keinVersteckterTabstopp(seite, soll.eintrag, sprache);
         expect(
           vorher.imMenue.length,
-          `${MARKE}: der Gang durch das geschlossene Menü (${sprache}) hat zu wenige Halte gesehen`,
+          `${MARKE}: der Gang durch das Zahnrad-Menü (${sprache}) hat zu wenige Halte gesehen`,
         ).toBeGreaterThanOrEqual(3);
 
         // ══ K1 · DER GANZE WEG, auf einer frischen Seite — der Gang oben hat den Fokus verstellt.
         await seite.goto(`${s.basis}/start`, { waitUntil: "domcontentloaded" });
         const befund: Menuebefund = await menuewegOhneMaus(seite, soll, sprache);
-
-        // Jede Station wurde per Tab erreicht — eine Null wäre ein nie gegangener Weg, und die
-        // Stationen hätten vorher geworfen.
         for (const [was, schritte] of Object.entries({
-          zahnrad: befund.zahnrad,
-          bereiche: befund.bereiche,
+          arbeitsbereiche: befund.arbeitsbereiche,
           eintrag: befund.eintrag,
         })) {
           expect(
@@ -170,39 +166,44 @@ describe("JOB 4362 · der Menüweg zur Gesamtanweisung ohne Maus, im echten Chro
         ).toContain(soll.eintrag);
 
         // ══ K3 · ESCAPE — schliessen, Fokus sichtbar zurück, Nachbarn weiter erreichbar. ═════
-        //
-        // Auf der neuen Seite, nicht auf `/start`: so ist auch belegt, dass das Menü dort
-        // ebenso bedienbar ist, wo der Weg endet.
-        await oeffneZahnrad(seite, sprache);
+        await oeffneArbeitsbereiche(seite, sprache);
         await escapeSchliesstUndGibtFokusZurueck(seite, sprache);
 
+        // Die Nachbarn im Menü „Arbeitsbereiche“: der Schnellzugriff „Seite finden …“.
+        await oeffneArbeitsbereiche(seite, sprache);
+        const inBereichen = await nachbarpunkteBleibenErreichbar(
+          seite,
+          [
+            {
+              text: soll.schnellnavigation,
+              selektor: '[data-testid="arbeitsbereiche-seite-finden"]',
+            },
+          ],
+          sprache,
+        );
+        expect(Object.keys(inBereichen)).toEqual([soll.schnellnavigation]);
+        expect(await menuetext(seite)).toContain(soll.schnellnavigation);
+        await seite.keyboard.press("Escape");
+
+        // Die Nachbarn im Zahnrad-Menü („Einstellungen und Hilfe“): Seitenhilfe und Hilfe.
         await oeffneZahnrad(seite, sprache);
-        const nachbarn = await nachbarpunkteBleibenErreichbar(
+        const imZahnrad = await nachbarpunkteBleibenErreichbar(
           seite,
           [
             { text: soll.seitenhilfe, selektor: '[data-testid="zahnrad-seitenhilfe"]' },
-            { text: soll.bereiche, selektor: BEREICHE },
-            { text: soll.schnellnavigation, selektor: '[data-testid="zahnrad-schnellnavigation"]' },
             { text: soll.hilfe, selektor: '[data-testid="zahnrad-hilfe"]' },
           ],
           sprache,
         );
         expect(
-          Object.keys(nachbarn).sort(),
-          `${MARKE}: nicht alle Nachbarpunkte des Menüs waren in „${sprache}" erreichbar`,
-        ).toEqual([soll.seitenhilfe, soll.bereiche, soll.schnellnavigation, soll.hilfe].sort());
-
-        // Und das Menü trägt seine Punkte SICHTBAR — nicht nur im DOM.
-        const text = await menuetext(seite);
-        for (const erwartet of [
-          soll.seitenhilfe,
-          soll.bereiche,
-          soll.schnellnavigation,
-          soll.hilfe,
-        ]) {
+          Object.keys(imZahnrad).sort(),
+          `${MARKE}: nicht alle Nachbarpunkte des Zahnrad-Menüs waren in „${sprache}" erreichbar`,
+        ).toEqual([soll.seitenhilfe, soll.hilfe].sort());
+        const text = await menuetext(seite, ZAHNRAD_MENUE);
+        for (const erwartet of [soll.seitenhilfe, soll.hilfe]) {
           expect(
             text,
-            `${MARKE}: „${erwartet}" steht in „${sprache}" nicht sichtbar im Menü (sichtbar: ${text})`,
+            `${MARKE}: „${erwartet}" steht in „${sprache}" nicht sichtbar im Zahnrad-Menü (sichtbar: ${text})`,
           ).toContain(erwartet);
         }
       } finally {
@@ -211,46 +212,42 @@ describe("JOB 4362 · der Menüweg zur Gesamtanweisung ohne Maus, im echten Chro
     }, 600_000);
   }
 
-  it("K2b — nach Enter auf „Bereiche“ trägt das Untermenü aria-expanded=true, und erst DANN liegt der Punkt in der Tab-Reihenfolge", async () => {
+  it("K2b — erst nach Enter auf „Arbeitsbereiche“ sagt der Einstieg aria-expanded=true an und steht der Punkt im Dokument", async () => {
     const { kontext, seite, soll } = await angemeldetAufStart("de");
     try {
-      await oeffneZahnrad(seite, "de");
-      // VORHER: weder im Dokument noch als Tab-Halt im Menü.
-      const vorher = await keinVersteckterTabstopp(seite, soll.eintrag, "de");
-      expect(vorher.imDokument).toBe(false);
-      expect(vorher.treffer).toEqual([]);
+      // VORHER: der Einstieg ist zu, und der Punkt steht nicht im Dokument.
+      await warte(seite, IM_DOKUMENT, "das Kopfband mit „Arbeitsbereiche“", AUSLOESER, 45_000);
+      expect(await seite.evaluate<string>(fn(ARIA_STAND), AUSLOESER)).toBe("false");
+      expect(await seite.evaluate<boolean>(fn(IM_DOKUMENT), EINTRAG)).toBe(false);
 
-      // Der Gang oben hat den Fokus aus dem Menü getragen; der Tab-Weg beginnt deshalb wieder am
-      // Dokumentanfang (`vonVorn`) — sonst hinge seine Zählung an der Vorgeschichte des Gangs.
-      // Das MENÜ ist dabei unverändert offen: geschlossen hätte `mussSichtbarTragen` geworfen.
-      const schritte = await klappeBereicheAuf(seite, soll.bereiche, "de", 30_000, true);
+      const schritte = await oeffneArbeitsbereiche(seite, "de");
       expect(schritte, `${MARKE}: „${soll.bereiche}" wurde nicht per Tab erreicht`).toBeGreaterThan(
         0,
       );
+      await arbeitsbereicheSagenOeffnenAn(seite, soll.bereiche, "de");
 
-      // NACHHER: aria-expanded=true UND der Punkt steht im Dokument. Dass er danach auch in der
-      // TAB-REIHENFOLGE liegt, misst der Weg selbst (`waehleGesamtanweisungen` ertabbt ihn).
+      // NACHHER: aria-expanded=true UND der Punkt steht im Dokument.
       expect(
-        await seite.evaluate<string>(fn(ARIA_STAND), BEREICHE),
-        `${MARKE}: „${soll.bereiche}" sagt sein Aufklappen nicht an — für einen Bildschirmleser bliebe es zu`,
+        await seite.evaluate<string>(fn(ARIA_STAND), AUSLOESER),
+        `${MARKE}: „${soll.bereiche}" sagt sein Öffnen nicht an — für einen Bildschirmleser bliebe es zu`,
       ).toBe("true");
       expect(
         await seite.evaluate<boolean>(fn(IM_DOKUMENT), EINTRAG),
-        `${MARKE}: der Menüpunkt steht nach dem Aufklappen nicht im Dokument`,
+        `${MARKE}: der Menüpunkt steht nach dem Öffnen nicht im Dokument`,
       ).toBe(true);
     } finally {
       await kontext.close();
     }
   }, 600_000);
 
-  it("K3b — das Zahnrad selbst ist der erste Tab-Halt des Weges und trägt seinen sichtbaren Fokus", async () => {
+  it("K3b — „Arbeitsbereiche“ selbst ist der erste Tab-Halt des Weges und trägt seinen sichtbaren Fokus", async () => {
     const { kontext, seite } = await angemeldetAufStart("de");
     try {
-      // `oeffneZahnrad` misst beides: Tab-Erreichbarkeit UND sichtbaren Fokus, und öffnet dann.
-      const schritte = await oeffneZahnrad(seite, "de");
+      // `oeffneArbeitsbereiche` misst beides: Tab-Erreichbarkeit UND sichtbaren Fokus, und öffnet dann.
+      const schritte = await oeffneArbeitsbereiche(seite, "de");
       expect(
         schritte,
-        `${MARKE}: das Zahnrad ${ZAHNRAD} wurde nicht per Tab erreicht`,
+        `${MARKE}: „Arbeitsbereiche“ ${AUSLOESER} wurde nicht per Tab erreicht`,
       ).toBeGreaterThan(0);
       await escapeSchliesstUndGibtFokusZurueck(seite, "de");
     } finally {

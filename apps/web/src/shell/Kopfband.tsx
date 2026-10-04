@@ -1,12 +1,14 @@
 import { Menu, Search } from "lucide-react";
-import { type FormEvent, type Ref, useState } from "react";
+import { type FormEvent, type Ref, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useGuardedNavigate } from "../app/NavGuardContext";
 import { DemoKennzeichen } from "../auth/BrandPanel";
-import { KontoMenue } from "./KontoMenue";
+import { ArbeitsbereicheMenue } from "./ArbeitsbereicheMenue";
 import { KopfbandPunkte } from "./KopfbandPunkte";
 import { Logo } from "./Logo";
+import { MeldungenUndKonto } from "./MeldungenMenue";
 import { ZahnradMenue } from "./ZahnradMenue";
+import { useKopfbandStufe } from "./kopfbandStufe";
 import { useMediaQuery } from "./useMediaQuery";
 
 // ================================================================================================
@@ -116,6 +118,12 @@ import { useMediaQuery } from "./useMediaQuery";
 // Leseschwelle, soll das Kopfband nicht mitwandern.
 export const SCHMAL_GEHEZU_QUERY = "(min-width: 760px) and (max-width: 899px)";
 
+/**
+ * FE-002: die Laptop-Breite der breiten Bauform — unter 1280 px (`LOGO_BREITE_ZEILE_QUERY` in
+ * Logo.tsx beginnt dort) rücken die Blöcke auf 20 px zusammen. Nach unten grenzt `NARROW_QUERY`.
+ */
+const LAPTOP_QUERY = "(max-width: 1279px)";
+
 // ================================================================================================
 // JOB 3060 · H1 — DAS EINE KOPFBAND (Mockup design/klarwerk/Main.dc.html Z.17-34).
 // ================================================================================================
@@ -126,19 +134,42 @@ export const SCHMAL_GEHEZU_QUERY = "(min-width: 760px) and (max-width: 899px)";
 // hier als Klassen (Maße) und in styles/modern.css (Farben, unter dem modernen Thema); gemessen
 // werden sie an der gebauten Seite in tests/design/zielbild-h1-huelle.test.ts.
 //
-// Was NICHT mehr hier steht, hat einen benannten Ort (Auftrag 5a/5b): Mobil, Design, Meldungen und
-// Abmelden im Konto-Menü; Hilfe, Status, Rechtliches, Version, Seitenhilfe und Weitere Bereiche im
-// Zahnrad-Menü; Sprache auf /profil — und seit JOB 3323 ZUSÄTZLICH im Konto-Menü
-// (`components/SprachSchalter.tsx`), damit der Wechsel aus jeder laufenden Szene erreichbar ist.
-// Sichtbar wird er erst mit dem aufgeklappten Menü; der sichtbare Text der geschlossenen Leiste
-// bleibt deshalb unverändert. Der sichtbare Text dieser Leiste sind genau die Wörter
-// KLARWERK, Start, Fragen, Bibliothek, Erfassen, Meine Entwürfe, Prüfen, Gehe zu … ⌘K und der
-// Platzhalter Suchen
-// (tests/design/zielbild-h1-kein-erklaertext.test.ts).
+// Was NICHT mehr hier steht, hat einen benannten Ort (Auftrag 5a/5b): Mobil, Design und Abmelden im
+// Konto-Menü; Hilfe, Status, Rechtliches, Version und Seitenhilfe im Zahnrad-Menü; Sprache auf
+// /profil — und seit JOB 3323 ZUSÄTZLICH im Konto-Menü (`components/SprachSchalter.tsx`), damit der
+// Wechsel aus jeder laufenden Szene erreichbar ist.
 //
-// JOB 3525 fügt diesem Inventar KEIN Wort hinzu: das Wort „Menü" gehört zum Menü-Knopf, und den
-// gibt es erst unter 900 px — auf der breiten Ansicht, an der das Inventar gemessen wird, ändert
-// sich zeichengleich nichts.
+// ================================================================================================
+// FE-002 · VIER ZWECKE, VIER SICHTBARE WEGE (Pedi, 26.09.2026 — Umsetzungsvorschlag, noch nicht
+// menschlich abgenommen; Prüfpaket docs/belege/fe-002/PRUEFPAKET.md).
+// ================================================================================================
+//
+// Pedis Befund an /start (Adminansicht, .612): Arbeitsseiten lagen hinter dem Zahnrad, das
+// Suchfeld sagte sichtbar nur „Suchen", „Gehe zu …" erklärte seinen Zweck nicht, und Meldungen
+// waren erst im Kontomenü benannt. Die Leiste trägt deshalb jetzt, von links nach rechts:
+//   · die Punkte (Hauptnavigation, häufige Aufgaben — unverändert)
+//   · „Arbeitsbereiche ▾" — die Übersicht über alle weiteren Seiten (ArbeitsbereicheMenue.tsx),
+//     bisher „Zahnrad → Bereiche"
+//   · „Seite finden ⌘K" — der Schnellzugriff per Seitennamen, bisher „Gehe zu …"; dieselbe Palette
+//   · das Suchfeld mit dem sichtbaren Wort „Wissen suchen" — bisher nur im `aria-label`
+//   · das Zahnrad, jetzt benannt „Einstellungen und Hilfe" und NUR noch dafür
+//   · „Meldungen" mit Glocke und Zahl der ungelesenen (MeldungenMenue.tsx), bisher nur ein Punkt
+//     am Konto-Kreis
+//   · der Konto-Kreis — nur noch das Konto
+//
+// PLATZ: die Zeile war an ihren Laptop-Breiten schon ausgemessen voll (JOB 3641: 0,0 px frei bei
+// 1000 px). Zwei neue Griffe passen dort nur, wenn etwas nachgibt. Nachgeben darf NICHT ein Weg und
+// NICHT eine Benennung, sondern nur Doppeltes und Ausführliches: die rechte Gruppe misst im Browser,
+// ob sie passt, und stuft zurück (`kopfbandStufe.ts`, Regeln in index.css) — erst das Wort
+// „Meldungen", dann der Knopf „Seite finden ⌘K" (er steht immer auch unter „Arbeitsbereiche", und
+// ⌘K/Strg+K wirkt überall), zuletzt die Suche in kompakter Form mit weiterhin SICHTBAREM „Wissen
+// suchen". Gemessen, nicht geschätzt: Runde 2 nach Bens Linux-Befund (nl/1024 px/Firmen-CI).
+// Geprüft in `tests/fe002-kopfband/kopfband-fe002-chromium.test.ts`.
+//
+// DER MELDUNGSZUSTAND wohnt EINMAL für Meldungszugang UND Konto-Menü (`MeldungenUndKonto`): beide
+// zeigen dieselbe Zahl, und eine optimistische Markierung läuft nicht in zwei Kopien auseinander.
+// Er wohnt bewusst NICHT hier im Kopfband: jede Antwort des Meldungsabrufs zeichnete sonst die
+// ganze Leiste neu (gemessen: dreifache Dauer im Frischetest `h1-konto-punkt-frische-mounted`).
 //
 // Navigation läuft ausschließlich über den Ungespeichert-Wächter (`useGuardedNavigate`,
 // `GuardedLink` in den Bausteinen; mega39 B, shell-links-guarded.test.ts).
@@ -206,7 +237,23 @@ export function Kopfband({
   // Achse, um die es geht (umgebrochen wird nichts, `row-gap` wäre ohne Wirkung). BREIT ist das
   // Attribut `undefined`: die breite Ansicht trägt kein `style`, ihr DOM ist zeichengleich der
   // Bestand von JOB 3060 (Lieferung 3, Fälle F und B3).
-  const schmalerAbstand = narrow ? { columnGap: "20px" } : undefined;
+  //
+  // FE-002: die Zeile trägt zwei Griffe mehr („Arbeitsbereiche", „Meldungen"). Unter 1280 px wird
+  // der Platz dafür aus Fugen und Seitenpolster genommen, nicht aus einem Griff — gemessen mit und
+  // ohne Firmen-CI in `tests/fe002-kopfband/kopfband-fe002-chromium.test.ts`:
+  //   · schmal (< 900 px): Fugen 12 px, Seitenpolster 20 px — bei 390 px mit Firmen-CI stehen
+  //     Menü, Marke, Zahnrad, Glocke und Konto-Kreis sonst nicht nebeneinander.
+  //   · Laptop (900–1279 px): Fugen 16 px, Seitenpolster 16 px (wie der Inhalt schmal, `px-4`).
+  //   · ab 1280 px: unverändert der Bestand des Mockups (36 px, 32 px; Zielbild V12) — kein `style`.
+  const laptop = useMediaQuery(LAPTOP_QUERY);
+  const bandRef = useRef<HTMLElement>(null);
+  const gruppeRef = useRef<HTMLDivElement>(null);
+  useKopfbandStufe(bandRef, gruppeRef, narrow ? "schmal" : "breit");
+  const schmalerAbstand = narrow
+    ? { columnGap: "12px", paddingLeft: "20px", paddingRight: "20px" }
+    : laptop
+      ? { columnGap: "16px", paddingLeft: "16px", paddingRight: "16px" }
+      : undefined;
 
   return (
     // ============================================================================================
@@ -236,6 +283,7 @@ export function Kopfband({
     <>
       <DemoKennzeichen form="band" />
       <header
+        ref={bandRef}
         data-testid="kopfband"
         className="kw-kopfband flex h-[56px] shrink-0 items-center gap-9 bg-ink px-8 text-white"
         style={schmalerAbstand}
@@ -276,8 +324,16 @@ export function Kopfband({
           760–899 px „Meine Entwürfe" allein neben das Logo; Pedi hat am 11.09. genau das als
           Sonderstellung beanstandet. Die Navigation wohnt schmal vollständig hinter dem
           beschrifteten Menü-Knopf. Breit ändert sich nichts. */}
-        {narrow ? null : <KopfbandPunkte />}
-        <div className="ml-auto flex min-w-0 shrink items-center gap-4">
+        {narrow ? null : <KopfbandPunkte nachsatz={<ArbeitsbereicheMenue />} />}
+        {/* FE-002: `flex-1` — die Gruppe nimmt den RESTPLATZ der Zeile. Ob ihre Griffe darin passen,
+            misst `useKopfbandStufe` im Browser und setzt `data-stufe` (0–3); was eine Stufe
+            ausblendet, steht in index.css. `justify-end` hält die Gruppe rechts. */}
+        <div
+          ref={gruppeRef}
+          data-bauform={narrow ? "schmal" : "breit"}
+          data-stufe="0"
+          className="kw-kopfband-rechts ml-auto flex min-w-0 flex-1 items-center justify-end gap-1.5 min-[1280px]:gap-4"
+        >
           {/* ==========================================================================================
             JOB 3503 · TEIL 3b — „GEHE ZU …" STEHT OBEN, NICHT NUR HINTER DEM ZAHNRAD.
             ==========================================================================================
@@ -308,14 +364,21 @@ export function Kopfband({
             Zeile „Gehe zu …" steht unverändert im Zahnrad-Menü, das der Drawer mitträgt
             (`DrawerMenue.tsx`, `ZahnradEintraege`). Ein zweiter Bau entsteht dadurch nicht — es ist
             derselbe Knopf, nur eine Bedingung weiter. */}
+          {/* FE-002: „Gehe zu …" heißt jetzt „Seite finden" — dieselbe Palette, dasselbe Kürzel,
+            aber ein Name, der sagt, WAS gefunden wird (Seiten, nicht Wissen). In der breiten Bauform
+            (`data-bauform="breit"` an der Gruppe) tritt er zurück, wenn die Zeile eng wird
+            (Begründung oben, Block FE-002; Regel in index.css). Schmal (760–899 px) bleibt er, wie
+            JOB 3525 ihn gestellt hat. */}
           {nurMenue ? null : (
             <button
               type="button"
               data-testid="kopfband-gehezu"
+              aria-label={t("fe002.seiteFindenLabel")}
+              title={t("fe002.seiteFindenLabel")}
               onClick={() => window.dispatchEvent(new Event("open-command-palette"))}
-              className="flex shrink-0 items-center gap-2 rounded-[9px] border border-hairline/25 px-2.5 py-[6px] text-[13px] leading-normal text-hairline outline-none hover:border-hairline/50 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+              className="kw-kopfband-gehezu flex shrink-0 items-center gap-2 whitespace-nowrap rounded-[9px] border border-hairline/25 px-2.5 py-[6px] text-[13px] leading-normal text-hairline outline-none hover:border-hairline/50 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
             >
-              <span>{t("menue.schnellnavigation")}</span>
+              <span>{t("fe002.seiteFinden")}</span>
               {/* Kein neuer Textschlüssel: das Kürzel ist ein Zeichen, keine Übersetzung — genauso
                 steht es in der Zahnrad-Zeile (`ZahnradMenue.tsx`, `wert="⌘K"`). */}
               <span className="rounded-[5px] bg-hairline/15 px-1.5 py-px font-mono text-[10.5px] text-hairline">
@@ -324,31 +387,44 @@ export function Kopfband({
             </button>
           )}
           {/* E2E-017: auf schmalen Breiten entfällt das Suchfeld (die Suche bleibt über die
-            Bibliothek erreichbar); Zahnrad und Konto bleiben. */}
+            Bibliothek erreichbar); Zahnrad und Konto bleiben.
+            FE-002: das Feld sagt SICHTBAR, was es durchsucht — „Wissen suchen" statt „Suchen" —,
+            und der Name für Vorlesewerkzeuge ist dasselbe Wort (WCAG 2.5.3); der Zeigehinweis
+            nennt zusätzlich die Bibliothek als Ort. Es schrumpft bis 140 px, nicht darunter; wird es
+            enger, zeigt Stufe 3 die Lupe mit dem Wort „Wissen suchen" darunter (zweizeilig) — ein
+            Klick darauf öffnet die Wissenssuche der Bibliothek. */}
           {narrow ? null : (
             <form
               onSubmit={submitSearch}
-              className="kw-kopfband-suche flex w-[260px] min-w-0 items-center gap-2 rounded-[9px] bg-surface px-3 py-[7px] text-[13px] text-muted-2"
+              title={t("topbar.search")}
+              className="kw-kopfband-suche flex w-[260px] min-w-[140px] shrink items-center gap-2 rounded-[9px] bg-surface px-3 py-[7px] text-[13px] text-muted-2 focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-brand"
             >
               <button
                 type="submit"
-                aria-label={t("topbar.search")}
-                className="grid shrink-0 place-items-center text-muted-2 hover:text-text"
+                aria-label={t("fe002.wissenSuchen")}
+                className="flex shrink-0 items-center gap-1.5 text-muted-2 hover:text-text"
               >
                 <Search size={15} strokeWidth={1.8} aria-hidden="true" />
+                <span
+                  data-testid="kopfband-wissen-suchen-kurz"
+                  className="kw-kopfband-suche-kurz w-min text-left text-[11px] font-medium leading-[12px]"
+                >
+                  {t("fe002.wissenSuchen")}
+                </span>
               </button>
               <input
                 type="search"
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
-                placeholder={t("kopfband.suchen")}
-                aria-label={t("topbar.search")}
+                placeholder={t("fe002.wissenSuchen")}
+                aria-label={t("fe002.wissenSuchen")}
+                data-testid="kopfband-wissen-suchen"
                 className="w-full min-w-0 bg-transparent text-[13px] leading-normal text-text outline-none placeholder:text-muted-2"
               />
             </form>
           )}
           <ZahnradMenue />
-          <KontoMenue />
+          <MeldungenUndKonto />
         </div>
       </header>
     </>

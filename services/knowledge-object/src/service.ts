@@ -76,6 +76,7 @@ import {
   type KoSearchProjection,
   type KoSearchQuery,
   SEARCH_PROJECTION_VERSION,
+  bestandsgerechterKandidatendeckel,
   buildSearchProjection,
   classificationFromVersionSnapshot,
   reconstructedClassification,
@@ -425,6 +426,13 @@ export interface CreateKoInput {
   // setzt ihn; die öffentlichen Schreibrouten verwerfen das Feld wie `sources` (sonst könnte
   // ein Client die Crash-Recovery eines fremden Review-Claims kapern).
   importCandidateId?: string;
+  // R-0139 / FR-EXT-02: der Importweg (Begründung am Modell, types.ts). Nur die beiden Importwege
+  // setzen ihn; die öffentlichen Schreibrouten verwerfen das Feld wie `importCandidateId`.
+  importedVia?: KnowledgeObject["importedVia"];
+  // R-0169 (Nacharbeit 5): der Bezug auf die Fassung der internen Dokumentakte. Nur Serverpfade
+  // (Entwurfs-Promote aus dem Word-Zusatz, JSON-Import ohne externalId) setzen ihn; die
+  // öffentlichen Schreibrouten verwerfen das Feld wie `importedVia`.
+  dokumentHerkunft?: KnowledgeObject["dokumentHerkunft"];
   // JOB 557: das Eigentümer-Aggregat ab Erfassen — für SERVERPFADE (Import, Seed, interne Anlage),
   // die die Verantwortung schon kennen.
   //
@@ -2092,6 +2100,10 @@ export class KoService {
       // WP-SHIP8-CLOSE-3/4 (bens ROT-1): stabiler Kandidaten-Anker des Import-Accepts (DB-unique
       // erzwungen — der Insert eines zweiten KO desselben Kandidaten scheitert am Index/Guard).
       ...(input.importCandidateId ? { importCandidateId: input.importCandidateId } : {}),
+      // R-0139 / FR-EXT-02: der Importweg — dieselbe Bauform, kein stiller Default.
+      ...(input.importedVia ? { importedVia: input.importedVia } : {}),
+      // R-0169 (Nacharbeit 5): der Fassungsbezug — dieselbe Bauform, kein stiller Default.
+      ...(input.dokumentHerkunft ? { dokumentHerkunft: input.dokumentHerkunft } : {}),
       // JOB 557: das Eigentümer-Aggregat nur setzen, wenn der Aufrufer eines MITBRINGT — dieselbe
       // Bauform wie `confidentiality` und `origin` daneben. KEIN stiller Default auf den Autor: ein
       // Objekt ohne benannte Verantwortung bleibt ein Objekt ohne benannte Verantwortung, und genau
@@ -3817,9 +3829,9 @@ export class KoService {
   // `grep -rn "findCandidates(" --include='*.ts' . | grep -v node_modules | grep -v test` —
   // für alle drei ist die Fundstelle das richtige Maß, und alle drei erben die Angabe, weil sie
   // durch DIESE eine Methode gehen:
-  //   · KLARA (`services/ask/src/service.ts:560`, Deckel 50 je Fragebegriff): das Objekt, das den
-  //     Fragebegriff im Titel trägt, ist die Quelle, nach der Pedi fragt. Fällt es im Deckel weg,
-  //     meldet Klara eine Wissenslücke, obwohl das Wissen im Haus liegt.
+  //   · KLARA (`AskService.prefilterCandidates`, Deckel je Begriff ab 50, mit dem Bestand
+  //     wachsend): das Objekt mit dem Fragebegriff im Titel ist die Quelle, nach der Pedi fragt.
+  //     Fällt es im Deckel weg, meldet Klara eine Wissenslücke, obwohl das Wissen im Haus liegt.
   //   · TEXTPRÜFUNG (`services/app/src/check-text-detection.ts:232`, Deckel
   //     `DETECTION_CANDIDATE_CAP` = 20): eine Dublette ist ein Objekt zum SELBEN Thema. Ein
   //     Titeltreffer ist dafür das stärkere Signal als ein hoher Trust; was der Deckel wegwirft,
@@ -3846,6 +3858,7 @@ export class KoService {
     const hits = await this.findSearchHits({
       ...query,
       deckelauswahl: "trefferguete",
+      limit: await this.kandidatendeckel(query),
     });
     if (hits.length === 0) {
       return [];
@@ -3861,6 +3874,20 @@ export class KoService {
         .sort((a, b) => (rang.get(a.id) ?? 0) - (rang.get(b.id) ?? 0)),
       query.vorInhaltsabruf,
     );
+  }
+
+  // AUFNAHME 20260922 (R-0316): der Deckel dieser einen Kandidatenabfrage. Ohne Anforderung
+  // (`deckelWaechstMitBestand`) Zeichen für Zeichen das `limit` des Aufrufers — auch ein fehlendes.
+  // Mit Anforderung hebt die Bestandsgröße ihn an (Regel und Grenzen an
+  // `bestandsgerechterKandidatendeckel`). Gezählt wird die Metadatenprojektion: genau eine Zeile je
+  // Wissensobjekt, ein `COUNT(*)` ohne Inhalt. Getrashte Objekte zählen mit, bis sie endgelöscht
+  // sind — eine Überschätzung, die den Deckel nur weiter macht, nie enger.
+  private async kandidatendeckel(query: KoCandidateQuery): Promise<number> {
+    if (!query.deckelWaechstMitBestand || query.limit === undefined) {
+      return query.limit;
+    }
+    const bestand = await this.searchProjections.metadata.count();
+    return bestandsgerechterKandidatendeckel(query.limit, bestand);
   }
 
   // ---- SCRUM-422: Papierkorb -----------------------------------------------------------

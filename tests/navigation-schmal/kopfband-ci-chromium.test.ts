@@ -1034,7 +1034,9 @@ describe("JOB 3571 · CI3/CI4 · die zwei gesuchten Wege stehen auch mit Logo vo
           `${breite}px: „${t.name}“ ist beschnitten (${t.scrollBreite} > ${t.clientBreite})`,
         ).toBeLessThanOrEqual(t.clientBreite + 1);
       }
-      expect(m.geheZuText, `${breite}px: „Gehe zu …“ steht nicht im Kopfband`).toContain("Gehe zu");
+      expect(m.geheZuText, `${breite}px: „Gehe zu …“ steht nicht im Kopfband`).toContain(
+        "Seite finden",
+      ); // FE-002: vormals „Gehe zu …"
       expect(m.geheZuText, `${breite}px: das Kürzel fehlt`).toContain("⌘K");
       // Und der Menü-Knopf steht daneben — die Punkte bleiben über ihn erreichbar.
       expect(m.menueText, `${breite}px: der Menü-Knopf fehlt`).toBe("Menü");
