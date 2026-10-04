@@ -11,21 +11,32 @@
 // KEYCHAIN-artige Namen (z. B. KLARWERK_SKIP_KEYCHAIN) aber NICHT als Secret behandelt.
 const SECRET_ENV_NAME = /(?:^|_)(?:TOKEN|SECRET|PASSWORD|PASSWD|API_?KEY|KEY|CREDENTIALS?)(?:_|$)/i;
 
-export function sanitizeLogText(
+// Regel (1) von `sanitizeLogText`: Werte secret-benannter Env-Variablen hart ersetzen (exakter
+// Substring-Treffer). WP-E4 (ben, Abschlussoption 1): BEWUSST OHNE Mindestlänge — ein schwaches
+// (auch sehr kurzes) Secret bleibt ein Secret und darf nicht geloggt werden. Mögliche
+// Über-Redaction (ein Kurz-Wert trifft zufällig einen harmlosen Substring) wird dafür in Kauf
+// genommen; Flag-Werte wie "1"/"on" sind bereits durch den NAMENSfilter ausgeschlossen (DEV_PERSIST
+// & Co. sind keine Secret-Namen). Einzeln exportiert, weil die Trace-Ausnahme der Logsenke
+// (build-app.ts, Ben R3 B8) nur Regel (4) aussetzen darf — diese Regel gilt ausnahmslos.
+export function entferneGeheimeEnvWerte(
   text: string,
   env: Record<string, string | undefined> = process.env,
 ): string {
   let out = text;
-  // (1) Werte secret-benannter Env-Variablen hart ersetzen (exakter Substring-Treffer).
-  // WP-E4 (ben, Abschlussoption 1): BEWUSST OHNE Mindestlänge — ein schwaches (auch sehr kurzes)
-  // Secret bleibt ein Secret und darf nicht geloggt werden. Mögliche Über-Redaction (ein Kurz-Wert
-  // trifft zufällig einen harmlosen Substring) wird dafür in Kauf genommen; Flag-Werte wie "1"/"on"
-  // sind bereits durch den NAMENSfilter ausgeschlossen (DEV_PERSIST & Co. sind keine Secret-Namen).
   for (const [name, value] of Object.entries(env)) {
     if (value && SECRET_ENV_NAME.test(name)) {
       out = out.split(value).join("[redacted]");
     }
   }
+  return out;
+}
+
+export function sanitizeLogText(
+  text: string,
+  env: Record<string, string | undefined> = process.env,
+): string {
+  // (1) Werte secret-benannter Env-Variablen hart ersetzen (s. entferneGeheimeEnvWerte).
+  let out = entferneGeheimeEnvWerte(text, env);
   // (2) Authorization-Header-Werte generisch (Bearer <jwt/opaque>, Basic <base64>).
   out = out.replace(/\b(Bearer|Basic)\s+[A-Za-z0-9+/_=.-]{8,}/gi, "$1 [redacted]");
   // (3) Credential-tragende URLs: der userinfo-Teil (user:pass@host) fällt weg.

@@ -210,6 +210,9 @@ describe("JOB 3067 V4 · die Sichtmetrik wird ablesbar — ohne ein Urteil zu fa
 
   it("F1b · dieselbe Wortbindung in jeder Sprache, die i18n.ts fuehrt — de, en, nl", async () => {
     for (const [sprache, wort] of Object.entries(SICHTWORT)) {
+      // Erst den Baum der vorigen Sprache abbauen, dann wechseln (R-1565): ein Sprachwechsel unter
+      // einem stehenden Baum stoesst dessen Neuzeichnen AUSSERHALB von act an — die act-Warnungen.
+      abbauen();
       await i18n.changeLanguage(sprache);
       await mitAntwort({
         objekteGesamt: 12,

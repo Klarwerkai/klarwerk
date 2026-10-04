@@ -280,7 +280,7 @@ async function paletteMitEingabe(eingabe: string): Promise<Stand> {
   window.dispatchEvent(new Event("open-command-palette"));
   await beruhige(3);
   const feld = s.container.querySelector<HTMLInputElement>(
-    `input[aria-label="${t("cmd.suchfeld")}"]`,
+    `input[aria-label="${t("fe002.seiteFinden")}"]`,
   );
   if (!feld) {
     throw new Error("Die Liste „Gehe zu …“ hat kein benanntes Suchfeld.");

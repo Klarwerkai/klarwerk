@@ -264,109 +264,29 @@ const ALTBESTAND: ReadonlyMap<string, Altzeile> = new Map<string, Altzeile>([
   // `aufgaben-schmal` (−mouse) und `pruefen-schmal` (−locator, −getByTestId, −mouse). Alle drei
   // tragen weiter gesperrte Felder, also bleiben sie stehen. Was hier steht, ist damit wieder genau
   // die heutige Schuld und nicht die von gestern — V2 erzwingt das feldweise.
+  //
+  // FE-002 (HEADER TEIL 1, 26.09.2026) HAT NEUN DIESER ZEHN ZEILEN BEZAHLT, nicht umgangen: der
+  // Belegtest `tests/fe002-kopfband/kopfband-fe002-chromium.test.ts` braucht Breite, echte Tasten
+  // und den Bildbeleg und hat die Felder deshalb dort eingetragen, wo dieser Wächter sie verlangt —
+  // in `Seite` von h6 (`setViewportSize`, `keyboard` mit nur `press`, `screenshot`). V2 hat die
+  // neun Zeilen daraufhin als Karteileichen gemeldet; sie sind gelöscht:
+  // `job3337-palette-flaches-fenster`, `ux12b-einstellungen-schmal`, `wiederholen-tastatur`,
+  // `rueckweg-echte-route`, `rundweg-tastatur`, `kopfband-messung.ts`, `aufgaben-schmal`,
+  // `pruefen-schmal`, `rollenraster-schmal`. Ihre Eigeninterfaces und Casts stehen noch im Quelltext
+  // (fremde Zielpfade, nicht angefasst); sie sind jetzt keine Schuld mehr, nur Wiederholung.
+  // Übrig bleibt EINE Zeile mit EINEM Feld:
   [
     "tests/demo-firmen-ci-anmeldung/gast-buehne.ts",
     {
       buehne: "h6",
-      felder: ["setViewportSize", "reload"],
+      felder: ["reload"],
       grund:
         "Neu im Baum seit Runde 2, von Runde 3 nachgemessen. Keine Testdatei, sondern ein " +
-        "Bühnen-Helfer: `export interface GastSeite extends Seite` (:70) — Fenster verstellen und " +
-        "neu laden. Ihr eigener Kommentar (:63-69) nennt den Grund, aus dem sie NICHT aus Playwright " +
-        "typisiert: ein Typimport zählte im Torgraphen als weitere Startstelle. Genau diese Not " +
-        "räumt ein Eintrag in `Seite` von h6 ab, nicht ein zweiter eigener Typ.",
-    },
-  ],
-  [
-    "tests/design/job3337-palette-flaches-fenster-chromium.test.ts",
-    {
-      buehne: "h6",
-      felder: ["setViewportSize", "keyboard"],
-      grund:
-        "Das flache Fenster wird während der Messung verstellt und mit echten Tasten bedient; " +
-        "`h6-chromium.ts` reicht die rohe Playwright-Seite durch, ohne beides zu benennen (:37, :40).",
-    },
-  ],
-  [
-    "tests/einstellungen-schmal/ux12b-einstellungen-schmal-chromium.test.ts",
-    {
-      buehne: "h6",
-      felder: ["setViewportSize", "keyboard"],
-      grund:
-        "Dieselben zwei Felder wie an job3337, wortgleich abgeschrieben (:149, :153) — genau die " +
-        "doppelte Typarbeit, die JOB 3564 an h4 beendet hat.",
-    },
-  ],
-  [
-    "tests/ki-fehlerhilfe/wiederholen-tastatur-chromium.test.ts",
-    {
-      buehne: "h6",
-      felder: ["keyboard"],
-      grund: "Echte Tastenanschläge auf den Knopf „Erneut“ (:48) — `press`, sonst nichts.",
-    },
-  ],
-  [
-    "tests/m6-import-erklaerweg/rueckweg-echte-route-chromium.test.ts",
-    {
-      buehne: "h6",
-      felder: ["setViewportSize"],
-      grund:
-        "Die schmale Lage des Rückwegs (:27, `interface SeiteMitFenster extends Seite`). In der " +
-        "Akte von JOB 3564 nicht enthalten; von JOB 3609 nachgemessen.",
-    },
-  ],
-  [
-    "tests/m6-import-erklaerweg/rundweg-tastatur-chromium.test.ts",
-    {
-      buehne: "h6",
-      felder: ["setViewportSize", "keyboard"],
-      grund:
-        "Fenster verstellen und Tab drücken (:34). `goBack` stand bis JOB 3819 daneben und ist " +
-        "seither in `Seite` von h6 bezahlt; offen sind nur noch die zwei Felder, die auch fremde " +
-        "Zielpfaddateien nachreichen.",
-    },
-  ],
-  [
-    "tests/navigation-schmal/kopfband-messung.ts",
-    {
-      buehne: "h6",
-      felder: ["setViewportSize"],
-      grund:
-        "Keine Testdatei, sondern ein Messhelfer: er exportiert `SeiteMitViewport` (:24) und castet " +
-        "in `seiteRoh` (:106). Die zweite Schreibweise derselben Schuld, an h6 bis JOB 3609 ungesehen.",
-    },
-  ],
-  [
-    "tests/review26-aufgaben-schmal/aufgaben-schmal-chromium.test.ts",
-    {
-      buehne: "h6",
-      felder: ["setViewportSize"],
-      grund:
-        "`interface SeiteRoh extends Seite` (:72), das schmale Fenster. Die echte Maus stand bis " +
-        "JOB 3819 daneben und ist seither in `Seite` von h6 bezahlt; `setViewportSize` bleibt, " +
-        "weil es auch `gast-buehne.ts` und `kopfband-messung.ts` nachreichen.",
-    },
-  ],
-  [
-    "tests/review26-pruefen-schmal/pruefen-schmal-chromium.test.ts",
-    {
-      buehne: "h6",
-      felder: ["keyboard"],
-      grund:
-        "Echte Tastenanschläge auf der Prüffläche (:17, `interface BedienbareSeite extends " +
-        "Seite`). Die drei übrigen Felder der Bedienfläche — `locator`, `getByTestId` und `mouse` " +
-        "— stehen seit JOB 3819 in `Seite` von h6, samt dem Typ `Elementgriff`, der bis dahin " +
-        "hier deklariert war.",
-    },
-  ],
-  [
-    "tests/rollenvorschau-sperre/rollenraster-schmal-chromium.test.ts",
-    {
-      buehne: "h6",
-      felder: ["setViewportSize", "keyboard"],
-      grund:
-        "Zwei Fundstellen in EINER Datei (:379 Cast auf `SeiteMitViewport`, :396 Cast auf die " +
-        "Schnittmenge) — EINE Zeile hier, mit der Vereinigung der Felder.",
+        "Bühnen-Helfer: `export interface GastSeite extends Seite` (:70) — neu laden. " +
+        "`setViewportSize` stand bis FE-002 daneben und ist seither in `Seite` von h6 bezahlt. Ihr " +
+        "eigener Kommentar (:63-69) nennt den Grund, aus dem sie NICHT aus Playwright typisiert: ein " +
+        "Typimport zählte im Torgraphen als weitere Startstelle. Genau diese Not räumt ein Eintrag " +
+        "in `Seite` von h6 ab, nicht ein zweiter eigener Typ.",
     },
   ],
   // ---- Bühne h3 (JOB 3609; Runde 1 fand drei Dateien, Runde 3 misst zwei) -----------------------
@@ -483,7 +403,7 @@ const GRENZFAELLE: ReadonlyMap<string, Grenzzeile> = new Map<string, Grenzzeile>
     {
       buehne: "h6",
       art: "neudeklaration",
-      felder: ["setViewportSize"],
+      felder: [],
       verbraucher: ["tests/profil-schmal/ux13-profil-320.test.ts"],
       grund:
         "Sie holt aus h6 nur `BrowserFn`, `DIST`, `ORIGIN` und `fn` und deklariert ein EIGENES " +
@@ -493,7 +413,8 @@ const GRENZFAELLE: ReadonlyMap<string, Grenzzeile> = new Map<string, Grenzzeile>
         "sie wirklich bedient, kommt an V1 vorbei. Die Grenze gilt hier bewusst: h6 meldet ein FEST " +
         "VERDRAHTETES Konto an, an dem der Schaden von UX-13 unsichtbar wäre (:5-11). Abtragen liesse " +
         "sie sich nur mit einem Eintrag von `setViewportSize` in `Seite` von h6 — den JOB 3819 " +
-        "bewusst gelassen hat, weil er fremde Zielpfaddateien mitrisse.",
+        "bewusst gelassen hat, weil er fremde Zielpfaddateien mitrisse. FE-002 hat ihn eingetragen " +
+        "(die Kopfband-Messung braucht die Breite); seither kostet die Grenze hier nichts mehr.",
     },
   ],
 ]);
@@ -2187,15 +2108,17 @@ function kalibrierfaelle(): Kalibrierfall[] {
   // tut es heute (h4 + h6). Lässt sich dann nicht entscheiden, WELCHE Bühne hinter einem Cast steckt,
   // misst der Wächter gegen die SCHNITTMENGE der Feldmengen: bekannt ist nur, was BEIDE kennen.
   // Ohne diese zwei Fälle stünde dieser Zweig ungemessen im Code — und die bequeme Umkehrung (die
-  // VEREINIGUNG) fiele niemandem auf, obwohl sie `keyboard` aus h4 an h6 durchwinkte.
+  // VEREINIGUNG) fiele niemandem auf, obwohl sie `reload` aus h4 an h6 durchwinkte. (Bis FE-002
+  // stand hier `keyboard`; das kennt h6 seither selbst — die Probe braucht ein Feld, das WIRKLICH
+  // nur h4 kennt, sonst misst sie nichts.)
   const h4b = BUEHNEN[0];
   const h6b = BUEHNEN[1];
   if (h4b !== undefined && h6b !== undefined) {
     const kopf = `import type { ${h4b.seitentyp} as SeiteH4 } from "${importPfad(h4b)}";\nimport type { ${h6b.seitentyp} as SeiteH6 } from "${importPfad(h6b)}";\ndeclare function seite(): unknown;\n`;
     faelle.push({
-      name: "mehrdeutig · `keyboard` kennt nur h4 — an h6 ist es eine Aufweitung, also wird gemeldet",
-      quelle: `${kopf}async function probe(): Promise<void> { await (seite() as unknown as { keyboard: { press(t: string): Promise<void> } }).keyboard.press("Tab"); }`,
-      erwartet: ["keyboard"],
+      name: "mehrdeutig · `reload` kennt nur h4 — an h6 ist es eine Aufweitung, also wird gemeldet",
+      quelle: `${kopf}async function probe(): Promise<void> { await (seite() as unknown as { reload(): Promise<unknown> }).reload(); }`,
+      erwartet: ["reload"],
       buehne: "mehrdeutig (h4+h6)",
     });
     faelle.push({

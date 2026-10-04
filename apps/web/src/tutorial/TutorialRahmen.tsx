@@ -88,10 +88,13 @@ export function TutorialEinstieg(): JSX.Element | null {
   if (!definition) {
     return null;
   }
+  // FE-002: das Kopfband hält bis 1279 px 16 px Seitenpolster (`LAPTOP_QUERY` in
+  // `shell/Kopfband.tsx`), erst ab 1280 px 32 px. Die Leiste folgt derselben Grenze, damit der Knopf
+  // auch bei Laptopbreite bündig unter dem Schriftzug steht.
   return (
     <div
       data-testid="tutorial-leiste"
-      className="print-hide shrink-0 border-b border-hairline bg-surface px-4 py-1.5 min-[900px]:px-8"
+      className="print-hide shrink-0 border-b border-hairline bg-surface px-4 py-1.5 min-[1280px]:px-8"
     >
       <button
         ref={knopfRef}

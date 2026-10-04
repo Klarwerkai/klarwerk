@@ -249,7 +249,13 @@ describe("mega28 D: POST /api/library/import erzeugt NULL Modellaufrufe", () => 
     expect(res.statusCode).toBe(200);
     // JOB 3023: `uebersprungen` ist additiv hinzugekommen. Die leere Liste wird hier MITGEPRUEFT —
     // sie ist die zweite, unabhaengige Aussage derselben Vorbedingung: nichts wurde zurueckgehalten.
-    expect(res.json()).toEqual({ imported: 25, skipped: 0, uebersprungen: [] });
+    // R-0143 (bens F1): der Eingang reiht 25 Kandidaten ein und legt direkt nichts an.
+    expect(res.json()).toMatchObject({
+      imported: 0,
+      skipped: 0,
+      uebersprungen: [],
+      eingereiht: 25,
+    });
 
     // … und er hat NICHTS Teures angefasst.
     expect(model.calls).toBe(0);
@@ -260,14 +266,27 @@ describe("mega28 D: POST /api/library/import erzeugt NULL Modellaufrufe", () => 
   });
 
   it("auch ein ZWEITER Import in einen bereits gefüllten Bestand bleibt bei null (kein nachgeholter Lauf)", async () => {
-    const { app, headers, model, detection, queue } = await setup();
+    const { app, headers, model, detection, queue, services } = await setup();
 
-    await app.inject({
+    const erste = await app.inject({
       method: "POST",
       url: "/api/library/import",
       headers,
       payload: { items: importItems(25) },
     });
+    // R-0143 (bens F1): der Eingang reiht nur ein — der Bestand entsteht erst durch die Annahme.
+    // Damit die Vorbedingung „gefüllter Bestand" weiter gilt, werden die 25 Kandidaten hier
+    // angenommen (Import-Schalter aus: die Annahme stößt keine Erkennung an).
+    for (const k of (erste.json() as { kandidaten: { id: string }[] }).kandidaten) {
+      const annahme = await app.inject({
+        method: "PUT",
+        url: `/api/library/import/candidates/${k.id}`,
+        headers,
+        payload: { action: "accept" },
+      });
+      expect(annahme.statusCode, annahme.body).toBe(200);
+    }
+    expect(await services.ko.list(), "der Bestand ist nicht gefüllt").toHaveLength(25);
     // Der Bestand steht jetzt. Genau hier würde ein „nachgeholter" Lauf n−1 Urteile je Objekt kosten.
     const second = await app.inject({
       method: "POST",
@@ -285,7 +304,13 @@ describe("mega28 D: POST /api/library/import erzeugt NULL Modellaufrufe", () => 
     // hing die Aussage „auch in einen gefüllten Bestand hinein null Aufrufe" an geänderten Titeln:
     // wären die 25 Objekte als Duplikate abgewiesen worden, wäre die Null trivial richtig gewesen,
     // weil gar nichts angelegt wurde.
-    expect(second.json()).toEqual({ imported: 25, skipped: 0, uebersprungen: [] });
+    // R-0143 (bens F1): eingereiht statt angelegt — die Vorbedingung „keine Dublette" bleibt gepinnt.
+    expect(second.json()).toMatchObject({
+      imported: 0,
+      skipped: 0,
+      uebersprungen: [],
+      eingereiht: 25,
+    });
     expect(model.calls).toBe(0);
     expect(embedSpy.calls).toBe(0);
     expect(detection.conflicts).toBe(0);

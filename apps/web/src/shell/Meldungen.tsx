@@ -72,6 +72,13 @@ export interface MeldungenZustand {
   unreadCount: number;
   /** §9: nur nach einem frischen, nicht pausierten, erfolgreichen Abruf darf der Punkt stehen. */
   frisch: boolean;
+  /**
+   * FE-002: es liegt noch KEINE Antwort vor (erster Abruf läuft). Die leere Liste ist dann keine
+   * bestätigte Null und darf nicht als „Keine Meldungen" erscheinen.
+   */
+  laedt: boolean;
+  /** FE-002: der Abruf ist gescheitert — die Anzahl ungelesener Meldungen ist unbekannt. */
+  fehler: boolean;
   markRead: (id: string) => void;
   markAll: () => void;
   /** Öffnen der Liste ist Kenntnisnahme (Audit-P3): alles Sichtbare wird gesehen. */
@@ -197,6 +204,8 @@ export function useMeldungenZustand(): MeldungenZustand {
     isRead,
     unreadCount,
     frisch,
+    laedt: q.status === "pending",
+    fehler: q.status === "error",
     markRead: (id: string) => persistSeen([id]),
     markAll: () => persistSeen(ungelesene()),
     alleSichtbarenMarkieren: () => persistSeen(ungelesene()),
@@ -206,9 +215,8 @@ export function useMeldungenZustand(): MeldungenZustand {
 /** Die Zeile „Meldungen" im Konto-Menü — beim Aufklappen die Liste, Öffnen ist Kenntnisnahme. */
 export function Meldungen({ zustand }: { zustand: MeldungenZustand }): JSX.Element {
   const { t } = useTranslation();
-  const navigate = useGuardedNavigate();
   const [open, setOpen] = useState(false);
-  const { items, isRead, unreadCount, markRead, markAll, alleSichtbarenMarkieren } = zustand;
+  const { unreadCount, alleSichtbarenMarkieren } = zustand;
   // Audit-P3: Öffnen der Liste ist die bewusste Kenntnisnahme — alles Sichtbare wird gesehen.
   const toggleOpen = (): void => {
     if (!open) {
@@ -225,94 +233,128 @@ export function Meldungen({ zustand }: { zustand: MeldungenZustand }): JSX.Eleme
       onToggle={toggleOpen}
       testid="konto-meldungen"
     >
-      <div className="px-2.5 pt-1">
-        {unreadCount > 0 ? (
-          <button
-            type="button"
-            onClick={markAll}
-            className="mb-1 text-[11px] font-semibold text-ai hover:opacity-80"
-          >
-            {t("topbar.notifMarkAll")}
-          </button>
-        ) : null}
-        {items.length === 0 ? (
-          <p className="py-2 text-[13px] text-muted">{t("topbar.notificationsEmpty")}</p>
-        ) : (
-          <ul className="space-y-0.5">
-            {items.slice(0, 8).map((n) => {
-              const read = isRead(n);
-              const target = notificationTarget(n);
-              const openTarget = (): void => {
-                markRead(n.id);
-                setOpen(false);
-                if (target) {
-                  navigate(target);
-                }
-              };
-              return (
-                <li
-                  key={n.id}
-                  className={`flex items-start gap-2 rounded-btn px-1 py-1.5 ${
-                    read ? "opacity-50" : ""
-                  }`}
-                >
-                  <span
-                    className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${
-                      read
-                        ? "bg-hairline"
-                        : n.kind === "conflict"
-                          ? "bg-trust-crit-fill"
-                          : n.kind === "duplicate"
+      <MeldungenListe zustand={zustand} onGeoeffnet={() => setOpen(false)} />
+    </MenueAufklapp>
+  );
+}
+
+/**
+ * Die Liste selbst — im Konto-Menü (aufgeklappt) und im Meldungs-Menü des Kopfbands (FE-002).
+ *
+ * FE-002: eine leere Liste heisst nur dann „keine Meldungen", wenn der Abruf WIRKLICH geantwortet
+ * hat. Solange die erste Antwort fehlt oder der Abruf gescheitert ist, sagt die Liste genau das —
+ * eine unbekannte Zahl wird nicht als bestätigte Null ausgegeben.
+ */
+export function MeldungenListe({
+  zustand,
+  onGeoeffnet,
+}: {
+  zustand: MeldungenZustand;
+  /** Nach dem Öffnen einer Meldung: das umgebende Menü schließen. */
+  onGeoeffnet: () => void;
+}): JSX.Element {
+  const { t } = useTranslation();
+  const navigate = useGuardedNavigate();
+  const { items, isRead, unreadCount, markRead, markAll, laedt, fehler } = zustand;
+  const leer = laedt
+    ? t("fe002.meldungenLaden")
+    : fehler
+      ? t("fe002.meldungenFehler")
+      : t("topbar.notificationsEmpty");
+  return (
+    <div className="px-2.5 pt-1" data-testid="meldungen-liste">
+      {unreadCount > 0 ? (
+        <button
+          type="button"
+          onClick={markAll}
+          className="mb-1 text-[11px] font-semibold text-ai hover:opacity-80"
+        >
+          {t("topbar.notifMarkAll")}
+        </button>
+      ) : null}
+      {items.length === 0 ? (
+        <p className="py-2 text-[13px] text-muted" data-testid="meldungen-leer">
+          {leer}
+        </p>
+      ) : (
+        <ul className="space-y-0.5">
+          {items.slice(0, 8).map((n) => {
+            const read = isRead(n);
+            const target = notificationTarget(n);
+            const openTarget = (): void => {
+              markRead(n.id);
+              onGeoeffnet();
+              if (target) {
+                navigate(target);
+              }
+            };
+            return (
+              <li
+                key={n.id}
+                className={`flex items-start gap-2 rounded-btn px-1 py-1.5 ${
+                  read ? "opacity-50" : ""
+                }`}
+              >
+                <span
+                  className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${
+                    read
+                      ? "bg-hairline"
+                      : n.kind === "conflict"
+                        ? "bg-trust-crit-fill"
+                        : n.kind === "duplicate"
+                          ? "bg-ai"
+                          : n.kind === "assignment"
                             ? "bg-ai"
-                            : n.kind === "assignment"
-                              ? "bg-ai"
-                              : n.kind === "impact"
-                                ? "bg-trust-pos-fill"
-                                : "bg-trust-info-text"
-                    }`}
-                  />
+                            : n.kind === "impact"
+                              ? "bg-trust-pos-fill"
+                              : "bg-trust-info-text"
+                  }`}
+                />
+                {/* FE-002 K5: Kennung und Art, damit der Tastaturweg im Browser nachweist, WELCHE
+                    Meldung den Fokus hat und ausgeführt wird. */}
+                <button
+                  type="button"
+                  onClick={openTarget}
+                  data-testid="meldung-oeffnen"
+                  data-art={n.kind}
+                  className="min-w-0 flex-1 truncate rounded-[4px] text-left text-[13px] text-text outline-none hover:text-ai focus-visible:bg-hairline-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-brand"
+                  title={target ? t("topbar.notifOpen") : undefined}
+                >
+                  {/* SCRUM-363: ruhige „Dir ist Review-Arbeit zugewiesen"-Kennzeichnung. */}
+                  {n.kind === "assignment" ? (
+                    <span className="font-semibold text-ai">{t("topbar.notifAssignment")}: </span>
+                  ) : null}
+                  {/* PMO-FEA-0002: wertschätzende, unaufdringliche Wirkungs-Rückmeldung. */}
+                  {n.kind === "impact" ? (
+                    <span className="font-semibold text-trust-pos-text">
+                      {t("topbar.notifImpact")}:{" "}
+                    </span>
+                  ) : null}
+                  {/* Pedi 04.07.: Duplikat-Fund klar als solcher gekennzeichnet. */}
+                  {n.kind === "duplicate" ? (
+                    <span className="font-semibold text-ai">{t("topbar.notifDuplicate")}: </span>
+                  ) : null}
+                  {/* FUNKE-FIX3 P0 (bens Blocker B): redigierte Wissenslücke → neutrale
+                        Bezeichnung (DE/EN/NL), NIE ein Fragetext. */}
+                  {n.kind === "gap" && (n.redacted || !n.title)
+                    ? t("topbar.notifGapRedacted")
+                    : n.title}
+                </button>
+                {read ? null : (
                   <button
                     type="button"
-                    onClick={openTarget}
-                    className="min-w-0 flex-1 truncate text-left text-[13px] text-text hover:text-ai"
-                    title={target ? t("topbar.notifOpen") : undefined}
+                    onClick={() => markRead(n.id)}
+                    className="shrink-0 rounded-btn px-1 text-[11px] font-semibold text-muted-2 outline-none hover:text-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-brand"
+                    title={t("topbar.notifMarkRead")}
                   >
-                    {/* SCRUM-363: ruhige „Dir ist Review-Arbeit zugewiesen"-Kennzeichnung. */}
-                    {n.kind === "assignment" ? (
-                      <span className="font-semibold text-ai">{t("topbar.notifAssignment")}: </span>
-                    ) : null}
-                    {/* PMO-FEA-0002: wertschätzende, unaufdringliche Wirkungs-Rückmeldung. */}
-                    {n.kind === "impact" ? (
-                      <span className="font-semibold text-trust-pos-text">
-                        {t("topbar.notifImpact")}:{" "}
-                      </span>
-                    ) : null}
-                    {/* Pedi 04.07.: Duplikat-Fund klar als solcher gekennzeichnet. */}
-                    {n.kind === "duplicate" ? (
-                      <span className="font-semibold text-ai">{t("topbar.notifDuplicate")}: </span>
-                    ) : null}
-                    {/* FUNKE-FIX3 P0 (bens Blocker B): redigierte Wissenslücke → neutrale
-                        Bezeichnung (DE/EN/NL), NIE ein Fragetext. */}
-                    {n.kind === "gap" && (n.redacted || !n.title)
-                      ? t("topbar.notifGapRedacted")
-                      : n.title}
+                    ✓
                   </button>
-                  {read ? null : (
-                    <button
-                      type="button"
-                      onClick={() => markRead(n.id)}
-                      className="shrink-0 rounded-btn px-1 text-[11px] font-semibold text-muted-2 hover:text-text"
-                      title={t("topbar.notifMarkRead")}
-                    >
-                      ✓
-                    </button>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </div>
-    </MenueAufklapp>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
   );
 }

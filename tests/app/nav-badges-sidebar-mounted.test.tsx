@@ -136,8 +136,9 @@ async function click(el: Element | null | undefined): Promise<void> {
 
 /** Das Zahnrad-Menü öffnen und „Weitere Bereiche“ aufklappen — dort steht der Aufgaben-Zähler. */
 async function weitereBereicheOeffnen(): Promise<void> {
-  await click(container.querySelector('[data-testid="kopfband-zahnrad"]'));
-  await click(container.querySelector('[data-testid="zahnrad-weitere-bereiche"]'));
+  // FE-002: die weiteren Bereiche stehen seit dem 26.09.2026 unter dem beschrifteten Einstieg
+  // „Arbeitsbereiche" im Kopfband (vorher Zahnrad → „Bereiche"); die Liste ist dieselbe.
+  await click(container.querySelector('[data-testid="kopfband-arbeitsbereiche"]'));
 }
 
 /** Das Abzeichen einer Zeile, adressiert über seine übersetzte Bedeutung samt Zahl. */

@@ -5,6 +5,10 @@ import type { ModelRunRecord } from "./types";
 export interface ModelRunRepo {
   append(record: ModelRunRecord): Promise<void>;
   recent(limit?: number): Promise<ModelRunRecord[]>;
+  // Aufnahme gesamt-ki-laufprotokoll (R-2071/V9): Läufe mit Start in [von, bis), jüngste zuerst,
+  // höchstens `limit`. Optional, damit schlanke Test-Attrappen gültig bleiben; die Auswertung
+  // fällt ohne sie auf `recent` zurück (s. ModelRunService.auswertung).
+  zwischen?(von: string, bis: string, limit: number): Promise<ModelRunRecord[]>;
 }
 
 export class InMemoryModelRunRepo implements ModelRunRepo {
@@ -18,5 +22,12 @@ export class InMemoryModelRunRepo implements ModelRunRepo {
   recent(limit = 100): Promise<ModelRunRecord[]> {
     const sorted = [...this.items].sort((a, b) => b.startedAt.localeCompare(a.startedAt));
     return Promise.resolve(sorted.slice(0, Math.max(0, limit)));
+  }
+
+  zwischen(von: string, bis: string, limit: number): Promise<ModelRunRecord[]> {
+    const treffer = this.items
+      .filter((r) => r.startedAt >= von && r.startedAt < bis)
+      .sort((a, b) => b.startedAt.localeCompare(a.startedAt));
+    return Promise.resolve(treffer.slice(0, Math.max(0, limit)));
   }
 }

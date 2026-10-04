@@ -176,7 +176,7 @@ describe("JOB 3323 R2 · die Adresse setzt die Startsprache — gemessen am echt
 // echte Modul, frisch ausgewertet), dann wird die Vordertür damit aufgebaut — und geprüft wird die
 // SICHTBARE Oberfläche der Hülle zusammen mit dem geladenen Entwurf. Der Platzhalter des Suchfelds
 // ist dafür der ehrlichste Zeuge: er steht in allen drei Sprachen verschieden da
-// (`kopfband.suchen`: „Suchen" / „Search" / „Zoeken").
+// (FE-002: `fe002.wissenSuchen`: „Wissen suchen" / „Search knowledge" / „Kennis zoeken").
 describe("JOB 3323 R3 · der Eintritt öffnet den Entwurf IN DER SPRACHE DES LINKS", () => {
   /** Der sichtbare Platzhalter des Suchfelds im Kopfband — die Sprache, die man wirklich sieht. */
   function sichtbareSprache(c: HTMLElement): string | null {
@@ -206,7 +206,7 @@ describe("JOB 3323 R3 · der Eintritt öffnet den Entwurf IN DER SPRACHE DES LIN
     const c = await vordertuerOeffnen(SUCHE);
 
     // 2. Die Oberfläche ist WIRKLICH englisch — sichtbar, nicht nur `i18n.language`.
-    expect(sichtbareSprache(c), "die Hülle steht nicht auf Englisch").toBe("Search");
+    expect(sichtbareSprache(c), "die Hülle steht nicht auf Englisch").toBe("Search knowledge");
 
     // 3. Und im selben Aufbau steht der gespeicherte Entwurf: mit GENAU seiner Kennung geladen …
     expect(LADUNGEN, "der Entwurf wurde nicht mit seiner Kennung geladen").toEqual([DRAFT_ID]);
@@ -224,7 +224,7 @@ describe("JOB 3323 R3 · der Eintritt öffnet den Entwurf IN DER SPRACHE DES LIN
     expect(await startspracheDerApp()).toBe("de");
 
     const c = await vordertuerOeffnen(SUCHE);
-    expect(sichtbareSprache(c)).toBe("Suchen");
+    expect(sichtbareSprache(c)).toBe("Wissen suchen");
     expect(LADUNGEN).toEqual([DRAFT_ID]);
     expect(c.querySelector<HTMLInputElement>('[data-testid="blatt-titel"]')?.value).toBe(
       SERVER_ENTWURF.payload.title,
@@ -238,9 +238,9 @@ describe("JOB 3323 R3 · der Eintritt öffnet den Entwurf IN DER SPRACHE DES LIN
     expect(await startspracheDerApp()).toBe("de");
 
     const c = await vordertuerOeffnen(SUCHE);
-    expect(sichtbareSprache(c)).toBe("Suchen");
+    expect(sichtbareSprache(c)).toBe("Wissen suchen");
     expect(sichtbareSprache(c), "der Link hat die Oberfläche auf Niederländisch gezogen").not.toBe(
-      "Zoeken",
+      "Kennis zoeken",
     );
     expect(LADUNGEN).toEqual([DRAFT_ID]);
     expect(c.querySelector<HTMLInputElement>('[data-testid="blatt-titel"]')?.value).toBe(
@@ -257,7 +257,7 @@ describe("JOB 3323 R3 · der Eintritt öffnet den Entwurf IN DER SPRACHE DES LIN
     expect(await startspracheDerApp()).toBe("nl");
 
     const c = await vordertuerOeffnen(SUCHE);
-    expect(sichtbareSprache(c)).toBe("Zoeken");
+    expect(sichtbareSprache(c)).toBe("Kennis zoeken");
     expect(LADUNGEN).toEqual([DRAFT_ID]);
     expect(c.querySelector<HTMLInputElement>('[data-testid="blatt-titel"]')?.value).toBe(
       SERVER_ENTWURF.payload.title,
