@@ -282,8 +282,8 @@ describe("K27 · geöffneter Beitrag ausserhalb der aktuellen Treffer", () => {
 // ================================================================================================
 // Beide Suchobjekte sind roh `validiert` ohne Zuweisung. A (Vertrauen 90) wird erst durch die
 // erhobene Auskunft aus `useKos` (`anzeigestatus: "revalidierung"`) bzw. durch einen offenen
-// Konflikt aus `useConflicts` unsicher; B (Vertrauen 20) bleibt freigegeben. Die Suchantwort steht
-// in der Reihenfolge B, A — die Relevanz-Ordnung ist damit von der Risiko-Ordnung verschieden.
+// Konflikt aus `useConflicts` unsicher; B (Vertrauen 20) bleibt freigegeben. Nach Rohstatus allein
+// stünde B vor A — genau diese Umkehr ist der Beleg, dass die Sortierung die Auskunft liest.
 describe("K16 · Risiko-Sortierung mit erhobenem Zustand und Konfliktkenntnis", () => {
   const A = ko("a", "Alpha Ventil", "validiert", 90);
   const B = ko("b", "Beta Ventil", "validiert", 20);
@@ -295,10 +295,15 @@ describe("K16 · Risiko-Sortierung mit erhobenem Zustand und Konfliktkenntnis", 
     waehleImMenue(container, "bib-menue-filter", String(i18n.t("lib.sort.risk")));
 
   it("R4 · erhobene Revalidierung stellt A vor B; aufgehoben gilt wieder Vertrauen niedrig zuerst", () => {
+    // KALIBRIERUNG (Nacharbeit 6): nach dem ROHSTATUS allein sind beide freigegeben, also stünde
+    // B (Vertrauen 20) vor A (90). Dass A unten vorn steht, kann nur die erhobene Auskunft bewirken.
+    // Die Ordnung VOR der Sortierwahl prüft dieser Fall nicht: ohne Suchwort ordnet die Bibliothek
+    // selbst (`searchLibrary`), nicht in der Reihenfolge der Suchantwort — die frühere Zeile
+    // `expect(zeilenIds()).toEqual(["b", "a"])` beruhte auf dieser falschen Annahme.
+    expect(sortLibrary([B, A], "risk", (k) => k).map((k) => k.id)).toEqual(["b", "a"]);
     lage.suche = [B, A];
     lage.bestand = [{ ...A, anzeigestatus: "revalidierung" }, B];
     mount();
-    expect(zeilenIds()).toEqual(["b", "a"]);
     risikoWaehlen();
     expect(zeilenIds()).toEqual(["a", "b"]);
     expect(zeilenMeta("a")).toContain(String(i18n.t("status.revalidierung")));
