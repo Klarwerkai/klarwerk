@@ -16,6 +16,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const suche = vi.hoisted(() => ({
   fn: async (): Promise<unknown> => [],
+  // R-0149: Anhängen ist erst ab „search_attach" freigegeben; die D2-Fälle bleiben auf ihrer Stufe.
+  stufe: "search_on_click" as string,
 }));
 
 vi.mock("../../apps/web/src/api/auth", () => ({
@@ -26,17 +28,30 @@ vi.mock("../../apps/web/src/api/auth", () => ({
   },
 }));
 
+// R-0922: jsdom hat keine Canvas-Pipeline — das Thumbnail scheitert kontrolliert, der echte
+// Produktpfad (addImage) fällt aufs Original zurück. Dasselbe Muster wie navguard-unsavable-mounted.
+vi.mock("../../apps/web/src/lib/files", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../apps/web/src/lib/files")>();
+  return {
+    ...actual,
+    fileToThumbDataUrl: vi.fn(async () => {
+      throw new Error("no-canvas");
+    }),
+  };
+});
+
 vi.mock("../../apps/web/src/api/endpoints", () => {
   const ok = <T,>(v: T) => vi.fn(async () => v);
   return {
     endpoints: {
       validation: { settings: ok({ defaultNeededValidations: 3 }) },
       external: {
-        policy: vi.fn(async () => ({ stage: "search_on_click" })),
+        policy: vi.fn(async () => ({ stage: suche.stufe })),
         search: vi.fn(() => suche.fn()),
       },
       uploadLimits: { get: ok({ maxAttachments: 10, maxAttachmentBytes: 20_000_000 }) },
-      directory: { list: ok([]) },
+      // R-0922: eine wählbare Prüferin, damit „vollständig gefüllt" auch den Prüfervorschlag umfasst.
+      directory: { list: ok([{ id: "u2", name: "Rita Prüferin" }]) },
       gaps: { list: ok([]) },
       drafts: {
         list: ok([]),
@@ -68,6 +83,10 @@ import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
 import { RoleProvider } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
+import {
+  ADVANCED_FIELDS_KEYS,
+  ADVANCED_FIELDS_TOTAL,
+} from "../../apps/web/src/lib/captureAdvancedFields";
 import { CaptureArbeitsraum } from "../../apps/web/src/pages/Capture";
 import { EXTERNAL_SEARCH_MELDUNG } from "../../services/external-search/src/wikipedia";
 
@@ -211,6 +230,7 @@ function keinHostKeinDns(text: string): void {
 
 beforeEach(async () => {
   await i18n.changeLanguage("de");
+  suche.stufe = "search_on_click";
 });
 
 afterEach(() => {
@@ -301,5 +321,213 @@ describe("JOB 2683 D2 · Externe Suche im Erfassen, gemountet", () => {
     await act(flush);
     expect(pageText()).toContain("Sicherheitsventil");
     expect(pageText()).not.toContain(EXTERNAL_SEARCH_MELDUNG.unreachable);
+  });
+});
+
+// ================================================================================================
+// R-0149 · TREFFER WERDEN NIE AUTOMATISCH ANGEHÄNGT — NUR PER AUSDRÜCKLICHEM KLICK.
+// ================================================================================================
+// Gemessen an der Warteliste des Quellen-Panels: jeder Eintrag dort trägt den Entfernen-Knopf und
+// das Etikett „nicht validiert". Die Trefferliste trägt beides nicht. Solange niemand „Anhängen"
+// drückt, darf die Warteliste leer bleiben — auch nach einer zweiten Suche und nach Wartezeit.
+
+function wartelisteEintraege(): HTMLButtonElement[] {
+  return [
+    ...container.querySelectorAll<HTMLButtonElement>(
+      `button[title="${i18n.t("ko.sourceRemove")}"]`,
+    ),
+  ];
+}
+
+function anhaengenKnopfFuer(titel: string): HTMLButtonElement {
+  const treffer = [...container.querySelectorAll("li")].find(
+    (li) =>
+      (li.textContent ?? "").includes(titel) &&
+      [...li.querySelectorAll("button")].some(
+        (b) => (b.textContent ?? "").trim() === i18n.t("ext.attach"),
+      ),
+  );
+  const btn = [...(treffer?.querySelectorAll("button") ?? [])].find(
+    (b) => (b.textContent ?? "").trim() === i18n.t("ext.attach"),
+  );
+  if (!(btn instanceof HTMLButtonElement)) {
+    throw new Error(`Anhängen-Knopf für „${titel}“ nicht gefunden`);
+  }
+  return btn;
+}
+
+describe("R-0149 · Suchtreffer im Quellen-Panel werden nie automatisch angehängt", () => {
+  it("Treffer stehen sichtbar da, die Warteliste bleibt leer — erst der Klick auf „Anhängen“ übernimmt genau diesen Treffer", async () => {
+    suche.fn = async () => [
+      {
+        title: "Sicherheitsventil",
+        url: "https://de.wikipedia.org/wiki/Sicherheitsventil",
+        snippet: "Schützt vor Überdruck.",
+        provider: "Wikipedia",
+      },
+      {
+        title: "Überdruckventil",
+        url: "https://de.wikipedia.org/wiki/%C3%9Cberdruckventil",
+        snippet: "Begrenzt den Druck.",
+        provider: "Wikipedia",
+      },
+    ];
+    // Die Stufe, auf der Anhängen ERLAUBT ist: selbst dann geschieht es nicht von allein.
+    suche.stufe = "search_attach";
+    await mount();
+    await suchfeldOeffnen();
+    expect(wartelisteEintraege()).toHaveLength(0);
+
+    await suchen("Ventil");
+    await warteAufZustand(() => pageText().includes("Überdruckventil"));
+    // Kein stiller Nachlauf: auch nach Wartezeit hängt nichts in der Warteliste.
+    await warte(200);
+    await act(flush);
+    expect(pageText()).toContain("Sicherheitsventil");
+    expect(wartelisteEintraege()).toHaveLength(0);
+    expect(pageText()).not.toContain(i18n.t("ko.sourceUnvalidated"));
+
+    // Eine zweite Suche ersetzt die Treffer — angehängt wird auch dabei nichts.
+    await suchen("Druckventil");
+    await act(flush);
+    expect(wartelisteEintraege()).toHaveLength(0);
+
+    // Der ausdrückliche Klick übernimmt GENAU den einen Treffer.
+    await click(anhaengenKnopfFuer("Sicherheitsventil"));
+    const eintraege = wartelisteEintraege();
+    expect(eintraege).toHaveLength(1);
+    const eintrag = eintraege[0]?.closest("li");
+    expect(eintrag?.textContent ?? "").toContain("Sicherheitsventil");
+    expect(eintrag?.textContent ?? "").toContain(i18n.t("ko.sourceUnvalidated"));
+    expect(eintrag?.textContent ?? "").not.toContain("Überdruckventil");
+  });
+});
+
+// ================================================================================================
+// R-0922 · DER ZÄHLER DER ZUGEKLAPPTEN „ERWEITERTEN DETAILS" ZEIGT DEN TATSÄCHLICHEN STAND.
+// ================================================================================================
+// Gemessen am Kopf des Aufklappers, WÄHREND er zugeklappt ist (aria-expanded="false"): leer kein
+// Badge, teilweise gefüllt genau die gefüllte Anzahl, vollständig gefüllt alle Angaben — und
+// geleerte Angaben verschwinden wieder aus dem Zähler. Jede Angabe wird über ihr echtes Feld
+// gesetzt, nicht über Zustand von außen.
+
+function advancedKopf(): HTMLButtonElement {
+  const btn = [...container.querySelectorAll<HTMLButtonElement>("button[aria-expanded]")].find(
+    (b) => (b.textContent ?? "").includes(i18n.t(ADVANCED_FIELDS_KEYS.title)),
+  );
+  if (!btn) {
+    throw new Error("Kopf der erweiterten Details nicht gefunden");
+  }
+  return btn;
+}
+
+async function setzeAufgeklappt(offen: boolean): Promise<void> {
+  if ((advancedKopf().getAttribute("aria-expanded") === "true") !== offen) {
+    await click(advancedKopf());
+  }
+  expect(advancedKopf().getAttribute("aria-expanded")).toBe(String(offen));
+}
+
+function kopfText(): string {
+  return (advancedKopf().textContent ?? "").replace(/\s+/g, " ").trim();
+}
+
+function feldMitLabel(label: string): HTMLInputElement {
+  const el = [...container.querySelectorAll("label")]
+    .find((l) => (l.querySelector("span")?.textContent ?? "").trim() === label)
+    ?.querySelector("input");
+  if (!(el instanceof HTMLInputElement)) {
+    throw new Error(`Feld „${label}“ nicht gefunden`);
+  }
+  return el;
+}
+
+function dateiwahlIn(beschriftung: string): HTMLInputElement {
+  const el = [...container.querySelectorAll("label")]
+    .find((l) => (l.textContent ?? "").includes(beschriftung))
+    ?.querySelector('input[type="file"]');
+  if (!(el instanceof HTMLInputElement)) {
+    throw new Error(`Dateiauswahl „${beschriftung}“ nicht gefunden`);
+  }
+  return el;
+}
+
+async function waehleDateien(input: HTMLInputElement, files: File[]): Promise<void> {
+  Object.defineProperty(input, "files", { value: files, configurable: true });
+  await act(async () => {
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+    await flush();
+  });
+}
+
+async function enter(el: HTMLElement): Promise<void> {
+  await act(async () => {
+    el.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    await flush();
+  });
+}
+
+function knopfExakt(text: string): HTMLButtonElement {
+  const btn = [...container.querySelectorAll("button")].find(
+    (b) => (b.textContent ?? "").trim() === text,
+  );
+  if (!(btn instanceof HTMLButtonElement)) {
+    throw new Error(`Knopf „${text}“ nicht gefunden`);
+  }
+  return btn;
+}
+
+describe("R-0922 · Zähler der zugeklappten „Erweiterten Details“, gemountet", () => {
+  it("leer → kein Zähler; teilweise → genau die gefüllte Anzahl; vollständig → alle Angaben; geleert → zählt zurück", async () => {
+    await mount();
+
+    // LEER: zugeklappt, der Kopf trägt nur seinen Titel — kein „0 ausgefüllt", kein erfundener Wert.
+    await setzeAufgeklappt(false);
+    expect(kopfText()).toBe(i18n.t(ADVANCED_FIELDS_KEYS.title));
+
+    // TEILWEISE: Kategorie und ein Schlagwort, über die echten Felder.
+    await setzeAufgeklappt(true);
+    await change(feldMitLabel(i18n.t("capture.fCategory")), "Anlage 3");
+    const tagFeld = inputByPlaceholder(i18n.t("capture.tagPlaceholder"));
+    await change(tagFeld, "riemen");
+    await enter(tagFeld);
+    await setzeAufgeklappt(false);
+    expect(kopfText()).toContain(i18n.t(ADVANCED_FIELDS_KEYS.filled, { count: 2 }));
+
+    // VOLLSTÄNDIG: alle übrigen Angaben hinter dem Aufklapper.
+    await setzeAufgeklappt(true);
+    await change(feldMitLabel(i18n.t("capture.fAsset")), "Pumpe P7");
+    await change(inputByPlaceholder(i18n.t("capture.reviewers.defaultPlaceholder", { n: 3 })), "2");
+    const stufe = container.querySelector<HTMLSelectElement>(
+      'select[data-testid="capture-vertraulichkeit"]',
+    );
+    if (!stufe) throw new Error("Vertraulichkeitsauswahl nicht gefunden");
+    await change(stufe, "intern");
+    await click(knopfExakt("Rita Prüferin"));
+    await waehleDateien(dateiwahlIn(i18n.t("capture.documentsUpload")), [
+      new File(["video-bytes"], "maschine.mp4", { type: "video/mp4" }),
+    ]);
+    await waehleDateien(dateiwahlIn(i18n.t("capture.imagesUpload")), [
+      new File(["png-bytes"], "foto.png", { type: "image/png" }),
+    ]);
+    await change(inputByPlaceholder(i18n.t("ko.sourceLabel")), "DIN 8580");
+    await click(knopfExakt(i18n.t("ko.sourceAdd")));
+    // Gegenprobe, dass jede Angabe wirklich im Zustand angekommen ist.
+    expect(pageText()).toContain("maschine.mp4");
+    expect(container.querySelector('img[alt="foto.png"]')).not.toBeNull();
+    expect(wartelisteEintraege()).toHaveLength(1);
+    expect(knopfExakt("Rita Prüferin").getAttribute("aria-pressed")).toBe("true");
+    await setzeAufgeklappt(false);
+    expect(kopfText()).toContain(
+      i18n.t(ADVANCED_FIELDS_KEYS.filled, { count: ADVANCED_FIELDS_TOTAL }),
+    );
+
+    // GELEERT: eine Angabe wieder entfernt → der Zähler sinkt, er hält keinen alten Stand fest.
+    await setzeAufgeklappt(true);
+    await change(feldMitLabel(i18n.t("capture.fCategory")), "   ");
+    await setzeAufgeklappt(false);
+    expect(kopfText()).toContain(
+      i18n.t(ADVANCED_FIELDS_KEYS.filled, { count: ADVANCED_FIELDS_TOTAL - 1 }),
+    );
   });
 });
