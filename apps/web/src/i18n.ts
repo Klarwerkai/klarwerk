@@ -537,6 +537,7 @@ const de = {
   "audit.action.ko_detached": "Anhang entfernt",
   "audit.action.ko_author_transferred": "Autor übertragen",
   "audit.action.ko_category_changed": "Kategorie geändert",
+  "audit.action.ko_domain_changed": "Fachgebiet geändert",
   "audit.action.ko_commented": "Kommentiert",
   // JOB 4146: die zwei Vorgänge am Diskussionsfaden. Sie stehen in der Herkunftskette wie jeder
   // andere Beleg — und sie heissen dort ebenfalls „geklärt", nicht „freigegeben".
@@ -4338,6 +4339,8 @@ const de = {
   "facet.rangeContradictory":
     "Das Anfangsdatum liegt nach dem Enddatum — diese Kombination trifft nichts.",
   "lib.facet.confidentiality": "Vertraulichkeit",
+  // R-0431 / R-1728 / FR-LIB-01 (K2): das Fachgebiet als eigene Achse neben der Kategorie.
+  "lib.facet.domain": "Fachgebiet",
   // AUFTRAG-mega34 F: beim Filtern landet man staendig bei 1 — „1 Beiträge anzeigen".
   "lib.facet.showResults_one": "{{count}} Beitrag anzeigen",
   "lib.facet.showResults_other": "{{count}} Beiträge anzeigen",
@@ -7896,6 +7899,7 @@ const en: typeof de = {
   "audit.action.ko_detached": "Attachment removed",
   "audit.action.ko_author_transferred": "Author transferred",
   "audit.action.ko_category_changed": "Category changed",
+  "audit.action.ko_domain_changed": "Domain changed",
   "audit.action.ko_commented": "Commented",
   "audit.action.ko_comment_resolved": "Discussion resolved",
   "audit.action.ko_comment_reopened": "Discussion reopened",
@@ -10870,6 +10874,7 @@ const en: typeof de = {
   "facet.rangeContradictory":
     "The start date is after the end date — this combination matches nothing.",
   "lib.facet.confidentiality": "Confidentiality",
+  "lib.facet.domain": "Domain",
   "lib.facet.showResults_one": "Show {{count}} entry",
   "lib.facet.showResults_other": "Show {{count}} entries",
   "lib.facet.rangeLabel": "Last changed",
@@ -13671,6 +13676,7 @@ const nl: typeof de = {
   "audit.action.ko_detached": "Bijlage verwijderd",
   "audit.action.ko_author_transferred": "Auteur overgedragen",
   "audit.action.ko_category_changed": "Categorie gewijzigd",
+  "audit.action.ko_domain_changed": "Vakgebied gewijzigd",
   "audit.action.ko_commented": "Becommentarieerd",
   "audit.action.ko_comment_resolved": "Discussie opgelost",
   "audit.action.ko_comment_reopened": "Discussie heropend",
@@ -16631,6 +16637,7 @@ const nl: typeof de = {
   "facet.rangeContradictory":
     "De begindatum ligt na de einddatum — deze combinatie levert niets op.",
   "lib.facet.confidentiality": "Vertrouwelijkheid",
+  "lib.facet.domain": "Vakgebied",
   "lib.facet.showResults_one": "{{count}} bijdrage tonen",
   "lib.facet.showResults_other": "{{count}} bijdragen tonen",
   "lib.facet.rangeLabel": "Laatst gewijzigd",

@@ -395,6 +395,9 @@ export interface CreateKoInput {
   statement: string;
   type: KnowledgeType;
   category: string;
+  // R-0431 (K2): das Fachgebiet, unabhängig von der Kategorie (Begründung am Modell, types.ts).
+  // Leer oder fehlend = kein Fachgebiet angegeben; es wird nichts abgeleitet.
+  domain?: string | null;
   author: string;
   conditions?: string[];
   measures?: string[];
@@ -597,6 +600,14 @@ export interface DocumentAppendCommit {
   /** Die angelegten Belegstellen — vollständig, oder die Operation hätte geworfen. */
   sourceIds: string[];
   ko: KnowledgeObject;
+}
+
+// R-0431 (K2): die Normalform des Fachgebiets — Ränder weg, Innenleerraum zu einem Zeichen. Ein
+// leerer Wert ist KEIN Fachgebiet (`undefined`), keine leere Zeichenkette im Bestand. Die Längen-
+// grenze prüft die Route (ko-routes.ts, `case "domain"`), dort entsteht die 400-Antwort.
+function normalizeDomain(domain: string | null | undefined): string | undefined {
+  const wert = typeof domain === "string" ? domain.replace(/\s+/g, " ").trim() : "";
+  return wert.length > 0 ? wert : undefined;
 }
 
 // KW-STR / NFR-SEC-04: bodyHtml IMMER serverseitig sanitisieren; statement aus dem
@@ -2032,6 +2043,8 @@ export class KoService {
     // statement bleibt führend; falls leer, aus dem HTML-Body ableiten.
     const statement =
       input.statement.trim() || (bodyHtml ? htmlToPlainText(bodyHtml) : input.statement);
+    // R-0431 (K2): das Fachgebiet in Normalform — oder gar keins.
+    const domain = normalizeDomain(input.domain);
     const ko: KnowledgeObject = {
       id: this.genId(),
       title: input.title,
@@ -2047,6 +2060,9 @@ export class KoService {
       measures: input.measures ?? [],
       type: input.type,
       category: input.category,
+      // R-0431 (K2): nur speichern, wenn jemand ein Fachgebiet mitbringt — kein Leerwert, keine
+      // Ableitung aus der Kategorie.
+      ...(domain ? { domain } : {}),
       tags: input.tags ?? [],
       confidence: input.confidence ?? 0,
       trust: 0,
@@ -5472,6 +5488,37 @@ export class KoService {
       (ko) => ({ ...ko, tags }),
       opts,
     );
+  }
+
+  // R-0431 / R-1728 / FR-LIB-01 (K2): das Fachgebiet nachträglich setzen, ändern oder entfernen.
+  // Bauform wie `setConfidentiality` (per KO serialisiert, Beleg im Audit); die Rechte prüft die
+  // Route (wie `category`). BEWUSST NICHT über `mutateKoMetadata`: dessen Stempel und Suchprojektion
+  // gehören zur Einordnung aus Kategorie und Schlagwörtern (KW-ARCH-G27) — ein Fachgebiet dort
+  // einzuhängen, verschöbe den Bedingungsstempel der Einordnung, ohne dass sich an ihr etwas ändert.
+  // Ein leerer Wert ENTFERNT die Angabe (das Feld fehlt danach wieder); ein unveränderter Wert
+  // ändert das Objekt nicht und erzeugt keinen Beleg.
+  async setDomain(id: string, domain: string, actor: string): Promise<KnowledgeObject> {
+    const nachher = normalizeDomain(domain);
+    return this.mutateKo(id, (ko) => {
+      const vorher = normalizeDomain(ko.domain);
+      if (vorher === nachher) {
+        return { updated: ko, value: ko };
+      }
+      const { domain: _alt, ...ohne } = ko;
+      const updated: KnowledgeObject = nachher ? { ...ohne, domain: nachher } : ohne;
+      return {
+        updated,
+        value: updated,
+        audit: async () => {
+          await this.audit?.record({
+            actor,
+            action: "ko.domain-changed",
+            target: id,
+            payload: { vorher, nachher },
+          });
+        },
+      };
+    });
   }
 
   // SCRUM-358 / AG-14-SERVER-TRUST / VC-P1-1 / FR-VAL-01: serverseitige Konfliktwirkung.

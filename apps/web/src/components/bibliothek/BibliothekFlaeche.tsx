@@ -237,6 +237,9 @@ const BIB_ANSICHT_STORAGE_KEY = "klarwerk.library.ansicht";
 const LIBRARY_FILTER_CONFIGS: readonly FacetGroupConfig[] = [
   { key: "maturity", labelKey: "lib.facet.maturity" },
   { key: "category", labelKey: LIBRARY_FACET_LABEL_KEYS.category },
+  // R-0431 / R-1728 / FR-LIB-01 (K2): das Fachgebiet als eigene Achse. Über diese Liste reist es
+  // auch in die Adresse (`LIBRARY_FACET_PARAM_KEYS`) und in gemerkte Sichten (`facetSel`).
+  { key: "domain", labelKey: "lib.facet.domain" },
   { key: "tag", labelKey: "lib.facet.tag" },
   { key: "confidentiality", labelKey: "lib.facet.confidentiality" },
   { key: "author", labelKey: LIBRARY_FACET_LABEL_KEYS.author },
