@@ -1179,6 +1179,20 @@ describe("Nacharbeit 3 — Verweis ohne Kennung, Konflikt vor Einstufung, verdec
     );
     expect(revisionenNachher).toEqual(revisionenVorher);
 
+    // Der abgewiesene Kandidat B bleibt offen in der Warteschlange — und solange er offen ist, reiht
+    // die Warteschlange dieselbe Quellfassung (RESYNC-KONFLIKT, Fassung 2) idempotent NICHT erneut
+    // ein (SCRUM-510 WP3). Der reguläre Weg ist deshalb: B ablehnen, dann Text A einreichen.
+    const abgelehnt = await app.inject({
+      method: "PUT",
+      url: `/api/library/import/candidates/${kandidatB}`,
+      headers: controller.auth,
+      payload: { action: "reject" },
+    });
+    expect(abgelehnt.statusCode, abgelehnt.body).toBe(200);
+    expect(stand(await services.ko.get(ko.id)), "das Ablehnen hat das Objekt verändert").toEqual(
+      stand(vorher),
+    );
+
     // Positive Gegenprobe: der zur Revision passende Text A wird übernommen — samt Einstufung.
     const passend = await direktImportieren(app, importeur.auth, controller.auth, textA);
     expect(passend.koIds).toEqual([ko.id]);
