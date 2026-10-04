@@ -646,16 +646,34 @@ interface Maus {
   wheel(dx: number, dy: number): Promise<void>;
 }
 
+// NACHARBEIT 22 · DIAGNOSE S1 (Lauf unter HISTORIE/nacharbeit-21): `scrollTop` wurde UNMITTELBAR nach
+// `mouse.wheel` gelesen und war 0 („die Liste hat sich nicht bewegt"). Derselbe Schritt hatte in g19
+// bestanden. Chromium wendet das Rad-Rollen asynchron an; das Lesen ohne Warten war ein Wettlauf im
+// Test. Jetzt wird vorher festgestellt, dass der Mauspunkt wirklich IN der Trefferliste liegt
+// (`elementFromPoint`, nur gelesen), und nach dem Rad auf die tatsächliche Bewegung gewartet — mit
+// der unveränderten Frist; bleibt sie aus, scheitert der Fall mit Lage, Punkt und scrollTop.
 async function rollenUeberDerListe(s: Seite): Promise<number> {
   const maus = (s as unknown as { mouse: Maus }).mouse;
-  const lage = await s.evaluate<{ x: number; y: number }>(
+  const lage = await s.evaluate<{ x: number; y: number; top: number; imSpur: string }>(
     fn(`() => {
-      const r = document.querySelector('[data-testid="bib-spur"]').getBoundingClientRect();
-      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+      const spur = document.querySelector('[data-testid="bib-spur"]');
+      const r = spur.getBoundingClientRect();
+      const x = r.left + r.width / 2;
+      const y = r.top + Math.min(r.height, window.innerHeight - r.top) / 2;
+      const punkt = document.elementFromPoint(x, y);
+      const imSpur = punkt && spur.contains(punkt)
+        ? "ja"
+        : "nein: " + (punkt ? punkt.tagName + " " + (punkt.getAttribute("data-testid") || "") : "-");
+      return { x, y, top: spur.scrollTop, imSpur };
     }`),
   );
+  const punkt = `Mauspunkt (${lage.x}, ${lage.y})`;
+  expect(lage.imSpur, `${K}: ${punkt} liegt in der Trefferliste`).toBe("ja");
   await maus.move(lage.x, lage.y);
   await maus.wheel(0, 200_000);
+  const bewegt =
+    "(vorher) => document.querySelector('[data-testid=\"bib-spur\"]').scrollTop > vorher";
+  await warte(s, bewegt, `${K}: Trefferliste bewegt sich nach dem Mausrad`, lage.top, FRIST);
   return s.evaluate<number>(
     fn(`() => document.querySelector('[data-testid="bib-spur"]').scrollTop`),
   );
@@ -1412,8 +1430,21 @@ describe("K1/K10 · Bibliotheksfilter bei 10.001 Objekten (PG + Chromium, unver�
      * ankreuzbarer Wert) im Menü „Bereich", alle echten Werte mit vollen Zählern, keiner angehakt;
      * kein Marker als Wert und keiner in der Adresse; die Liste bleibt dabei leer.
      */
+    // NACHARBEIT 22 · DIAGNOSE N1 (Lauf unter HISTORIE/nacharbeit-21): nach `reload()` stand der
+    // Nulltreffer (Listenfuss 0, „Bereich · 1", Lösen-Punkt vorhanden — die Prüfung davor bestand),
+    // aber das Menü wurde gelesen, BEVOR der Bestand geladen war: Werte `[]`. Jetzt wird im offenen
+    // Menü auf die vollen Bereichszähler gewartet (unveränderte Frist) — sie gibt es erst mit dem
+    // Bestand. Erst DANACH zählt die erneut geprüfte leere Liste als erhaltener Nulltreffer.
+    const BEREICH_WERTE_IST = `(soll) => JSON.stringify((${WERTE})("Bereich")) === soll`;
     const nullImMenue = async (was: string): Promise<void> => {
       await menueOeffnen(s, "bib-menue-bereich");
+      await warte(
+        s,
+        BEREICH_WERTE_IST,
+        `${K}: ${was} — Bereichszähler aus dem Bestand geladen`,
+        JSON.stringify(soll(bereichVoll)),
+        FRIST,
+      );
       const bereich = await werte(s, "Bereich");
       const loesen = await s.evaluate<{ rolle: string; text: string } | null>(
         fn(LOESEN_IST),
