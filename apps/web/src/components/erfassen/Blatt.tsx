@@ -512,6 +512,9 @@ export function Blatt({
   const [diktatLaeuft, setDiktatLaeuft] = useState(false);
   // FR-CAP-03: das noch nicht Endgültige, sofort sichtbar — reine Anzeige, nie im Rumpf.
   const [diktatZwischen, setDiktatZwischen] = useState("");
+  // FR-CAP-03 / R-0925: ohne Spracherkennung (oder auf iOS) erklärt der Knopf auf Klick, warum —
+  // als sichtbarer Text, nicht nur im `title` eines gesperrten Knopfes (auf Touch unerreichbar).
+  const [diktatHinweisOffen, setDiktatHinweisOffen] = useState(false);
   const recRef = useRef<SpeechRec | null>(null);
   const diktatMoeglich = hasSpeechRecognition(window);
 
@@ -1683,6 +1686,11 @@ export function Blatt({
   // Absender bis hierher nicht.
   const diktatUmschalten = (): void => {
     setOffenesMenue(null);
+    if (!diktatMoeglich) {
+      // Kein Rekorder, kein Start — nur die Erklärung auf- und zuklappen.
+      setDiktatHinweisOffen((offen) => !offen);
+      return;
+    }
     if (diktatLaeuft) {
       // Der Mensch selbst hält an: hier wird NICHT getrennt, also NICHT `diktatVomBlattTrennen`.
       // Sein Abschlussergebnis gehört ihm und soll noch ankommen — das ist der Unterschied zu den
@@ -1692,6 +1700,10 @@ export function Blatt({
       recRef.current?.stop();
       return;
     }
+    // Die Vorschau gehört nur einer LAUFENDEN Sitzung. `recRef` zeigt nach dem Ende weiter auf sie
+    // (das Abschlussergebnis darf noch ankommen, s. N7) — ein verspätetes Zwischenergebnis fiele
+    // also durch den Identitätsriegel und tauchte beim nächsten Start als fremder Text wieder auf.
+    let sitzungZu = false;
     const rec = makeRec(
       (text) => {
         if (recRef.current !== rec) {
@@ -1700,6 +1712,7 @@ export function Blatt({
         setBodyHtml((prev) => diktatAnhaengen(prev, text));
       },
       (beendet) => {
+        sitzungZu = true;
         if (recRef.current !== beendet) {
           return;
         }
@@ -1708,8 +1721,8 @@ export function Blatt({
       },
       diktatSprache(i18n.language),
       (text) => {
-        // Derselbe Identitätsriegel: eine getrennte Sitzung malt nicht mehr in dieses Blatt.
-        if (recRef.current === rec) {
+        // Derselbe Identitätsriegel: eine getrennte oder beendete Sitzung malt nicht in dieses Blatt.
+        if (recRef.current === rec && !sitzungZu) {
           setDiktatZwischen(text);
         }
       },
@@ -1718,6 +1731,7 @@ export function Blatt({
       return;
     }
     recRef.current = rec;
+    setDiktatZwischen("");
     rec.start();
     setDiktatLaeuft(true);
   };
@@ -2259,16 +2273,11 @@ export function Blatt({
         data-testid="blatt-werkzeug-diktieren"
         // JOB 3141 (CAP-P1): dieselbe eine Regel. Diktiertes reist über `setBodyHtml` in den Rumpf —
         // es wäre der eine Eingabeweg, der die fehlende Schreibfläche umginge.
-        disabled={!diktatMoeglich || !blattNimmtAn}
-        title={
-          diktatMoeglich
-            ? blattNimmtAn
-              ? undefined
-              : t("erfassen.laden.nichtBereit")
-            : istIosGeraet(window)
-              ? `${t("capture.diktatUnsupported")} ${t("capture.diktatIosTastatur")}`
-              : t("capture.diktatUnsupported")
-        }
+        // Ohne Spracherkennung bleibt der Knopf bedienbar: sein Klick öffnet die Erklärung darunter.
+        disabled={!blattNimmtAn}
+        title={blattNimmtAn ? undefined : t("erfassen.laden.nichtBereit")}
+        aria-expanded={diktatMoeglich ? undefined : diktatHinweisOffen}
+        aria-controls={diktatMoeglich ? undefined : "blatt-diktat-na"}
         onClick={diktatUmschalten}
         className={`inline-flex items-center gap-1.5 text-[13px] ${
           !diktatMoeglich || !blattNimmtAn
@@ -2289,6 +2298,17 @@ export function Blatt({
         >
           {diktatZwischen}
         </span>
+      ) : null}
+      {!diktatMoeglich && diktatHinweisOffen ? (
+        // `<output>` trägt die Rolle `status` von Haus aus — eine höfliche Live-Region ohne `role`.
+        <output
+          id="blatt-diktat-na"
+          data-testid="blatt-diktat-na"
+          className="basis-full rounded-btn bg-trust-warn-bg px-2.5 py-2 text-[12px] text-trust-warn-text"
+        >
+          {t("capture.diktatUnsupported")}
+          {istIosGeraet(window) ? ` ${t("capture.diktatIosTastatur")}` : null}
+        </output>
       ) : null}
 
       <button
