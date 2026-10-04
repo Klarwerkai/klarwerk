@@ -333,7 +333,46 @@ function quellEintrag(fassung: number, aussage: string) {
   };
 }
 
-async function direktImportieren(app: App, wer: Auth, item: Record<string, unknown>) {
+// ================================================================================================
+// INTEGRATION MIT MAIN (R-0143) — DER DIREKTE EINGANG REIHT EIN, ANGELEGT WIRD ERST BEI DER ANNAHME.
+// ================================================================================================
+//
+// Seit R-0143 legt `POST /api/library/import` kein Wissensobjekt mehr an, sondern reiht Kandidaten
+// in die Prüfwarteschlange (`direktimportAntwort`). Die Gegenproben dieser Datei messen deshalb den
+// REGULÄREN Weg: einreichen über den direkten Eingang, annehmen über
+// `PUT /api/library/import/candidates/:id` durch eine Person mit `ko.validate`. Die handelnde Person
+// der Anlage ist damit die ANNEHMENDE (R-0505).
+interface Direktantwort {
+  imported: number;
+  skipped: number;
+  eingereiht: number;
+  uebersprungen: { titel: string; grund: string; koId: string | null }[];
+  kandidaten: { id: string; koId: string | null; dublettenbefund?: { ergebnis: string } }[];
+}
+
+/** Nimmt jeden eingereihten Kandidaten an; liefert je Kandidat die vermerkte Objektkennung. */
+async function alleAnnehmen(app: App, annehmer: Auth, antwort: Direktantwort) {
+  const koIds: (string | null)[] = [];
+  for (const kandidat of antwort.kandidaten) {
+    const res = await app.inject({
+      method: "PUT",
+      url: `/api/library/import/candidates/${kandidat.id}`,
+      headers: annehmer,
+      payload: { action: "accept" },
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    koIds.push((res.json() as { koId: string | null }).koId);
+  }
+  return koIds;
+}
+
+/** Einreichen über den direkten Eingang und annehmen — der reguläre Importweg bis zum Objekt. */
+async function direktImportieren(
+  app: App,
+  wer: Auth,
+  annehmer: Auth,
+  item: Record<string, unknown>,
+) {
   const res = await app.inject({
     method: "POST",
     url: "/api/library/import",
@@ -341,7 +380,9 @@ async function direktImportieren(app: App, wer: Auth, item: Record<string, unkno
     payload: { items: [item] },
   });
   expect(res.statusCode, res.body).toBe(200);
-  return res.json() as { imported: number; skipped: number };
+  const antwort = res.json() as Direktantwort;
+  expect(antwort.imported, "der direkte Eingang hat ohne Annahme angelegt").toBe(0);
+  return { antwort, koIds: await alleAnnehmen(app, annehmer, antwort) };
 }
 
 async function koMitQuelle(services: ReturnType<typeof buildServices>, externalId: string) {
@@ -355,32 +396,32 @@ async function koMitQuelle(services: ReturnType<typeof buildServices>, externalI
 }
 
 describe("am Draht — R-0505 Sichtbarkeit/Löschrecht, R-0139 keine behauptete Herkunft", () => {
-  it("der im Dokument Genannte sieht und löscht das vertrauliche Importobjekt nicht, der Importeur schon", async () => {
-    const { app, services, importeur, genannt } = await flaeche("r0505");
-    const res = await app.inject({
-      method: "POST",
-      url: "/api/library/import",
-      headers: importeur.auth,
-      payload: {
-        items: [
-          {
-            title: "Vertrauliche Anweisung aus Altdokument",
-            statement: "Im Dokument stand ein anderer Name.",
-            type: "best_practice",
-            category: "Anlage 5",
-            confidentiality: "vertraulich",
-            author: genannt.id,
-          },
-        ],
-      },
+  it("der im Dokument Genannte sieht und löscht das vertrauliche Importobjekt nicht, der Annehmende schon", async () => {
+    const { app, services, importeur, genannt, controller } = await flaeche("r0505");
+    // R-0143 (main): eingereicht vom Importeur, angelegt erst durch die Annahme des Controllers —
+    // die handelnde Person der Anlage ist der ANNEHMENDE, nie der im Dokument genannte Name.
+    const { koIds } = await direktImportieren(app, importeur.auth, controller.auth, {
+      title: "Vertrauliche Anweisung aus Altdokument",
+      statement: "Im Dokument stand ein anderer Name.",
+      type: "best_practice",
+      category: "Anlage 5",
+      confidentiality: "vertraulich",
+      author: genannt.id,
     });
-    expect(res.statusCode, res.body).toBe(200);
-    const ko = (await services.ko.list()).find(
-      (k) => k.title === "Vertrauliche Anweisung aus Altdokument",
-    );
-    expect(ko?.author).toBe(importeur.id);
-    expect(ko?.importedVia).toBe("library_import");
+    const ko = await services.ko.get(koIds[0] ?? "");
+    expect(ko?.author).toBe(controller.id);
+    expect(ko?.originalAuthor, "der genannte Name reist als Metadatum weiter").toBe(genannt.id);
+    expect(ko?.importedVia).toBe("import_candidate");
+    expect(ko?.origin).toBe("import");
     const id = ko?.id ?? "";
+
+    // Wer nur eingereicht hat, bekommt dadurch keine Rechte am vertraulichen Objekt.
+    const siehtEinreichender = await app.inject({
+      method: "GET",
+      url: `/api/kos/${id}`,
+      headers: importeur.auth,
+    });
+    expect(siehtEinreichender.statusCode).toBe(404);
 
     const siehtGenannt = await app.inject({
       method: "GET",
@@ -397,18 +438,18 @@ describe("am Draht — R-0505 Sichtbarkeit/Löschrecht, R-0139 keine behauptete 
     });
     expect(loeschtGenannt.statusCode, "der Genannte durfte löschen").toBe(404);
 
-    const siehtImporteur = await app.inject({
+    const siehtAnnehmender = await app.inject({
       method: "GET",
       url: `/api/kos/${id}`,
-      headers: importeur.auth,
+      headers: controller.auth,
     });
-    expect(siehtImporteur.statusCode, siehtImporteur.body).toBe(200);
-    const loeschtImporteur = await app.inject({
+    expect(siehtAnnehmender.statusCode, siehtAnnehmender.body).toBe(200);
+    const loeschtAnnehmender = await app.inject({
       method: "DELETE",
       url: `/api/kos/${id}`,
-      headers: importeur.auth,
+      headers: controller.auth,
     });
-    expect(loeschtImporteur.statusCode, loeschtImporteur.body).toBe(204);
+    expect(loeschtAnnehmender.statusCode, loeschtAnnehmender.body).toBe(204);
   });
 
   it("POST /api/kos verwirft behauptetes origin und importedVia", async () => {
@@ -490,15 +531,16 @@ async function pruefeZweiFassungen(
 
 describe("Nacharbeit 1 — Quelle, Quellfassung und Prüfboard am Draht", () => {
   it("K1 · direkter JSON-Import behält die mitgelieferte Quelle, auch nach einer regulären Revision", async () => {
-    const { app, services, admin, importeur } = await flaeche("n1k1");
-    const antwort = await direktImportieren(
+    const { app, services, admin, importeur, controller } = await flaeche("n1k1");
+    const { koIds } = await direktImportieren(
       app,
       importeur.auth,
+      controller.auth,
       quellEintrag(7, "Aussage aus Quellfassung 7."),
     );
-    expect(antwort.imported).toBe(1);
     const ko = await koMitQuelle(services, "SEITE-HERKUNFT");
-    expect((await services.ko.get(ko.id))?.importedVia).toBe("library_import");
+    expect(koIds).toEqual([ko.id]);
+    expect((await services.ko.get(ko.id))?.importedVia).toBe("import_candidate");
 
     type Quelle = {
       provider?: string | null;
@@ -534,7 +576,7 @@ describe("Nacharbeit 1 — Quelle, Quellfassung und Prüfboard am Draht", () => 
     });
     const belegeVorher = await services.ko.evidenceOf(ko.id);
     expect(belegeVorher.filter((b) => b.kind === "source")).toEqual([
-      expect.objectContaining({ url: QUELL_URL, createdBy: importeur.id, koVersion: 1 }),
+      expect.objectContaining({ url: QUELL_URL, createdBy: controller.id, koVersion: 1 }),
     ]);
 
     // Reguläre Inhaltsrevision über die Schreibroute.
@@ -569,14 +611,14 @@ describe("Nacharbeit 1 — Quelle, Quellfassung und Prüfboard am Draht", () => 
           b.kind === "source" &&
           b.koVersion === 1 &&
           b.url === QUELL_URL &&
-          b.createdBy === importeur.id,
+          b.createdBy === controller.id,
       ),
     ).toBe(true);
   });
 
   it("K1 · ohne Quellkennung bleibt eine mitgelieferte Quell-URL als Verweis erhalten — ohne erfundene Identität", async () => {
-    const { app, services, importeur } = await flaeche("n1k1b");
-    await direktImportieren(app, importeur.auth, {
+    const { app, services, importeur, controller } = await flaeche("n1k1b");
+    await direktImportieren(app, importeur.auth, controller.auth, {
       title: "Nur mit Verweis",
       statement: "Kein Quellsystem-Schlüssel mitgeliefert.",
       type: "technik",
@@ -623,11 +665,11 @@ describe("Nacharbeit 1 — Quelle, Quellfassung und Prüfboard am Draht", () => 
       await pruefeZweiFassungen(services, ersteVorher);
     }));
 
-  it("K2 · direkter JSON-Import: dieselbe Prüfung, zwei Aussagen, eine Quellenidentität", async () => {
-    const { app, services, importeur } = await flaeche("n1k2b");
+  it("K2 · direkter Eingang (eingereiht, angenommen): dieselbe Prüfung, zwei Aussagen, eine Quellenidentität", async () => {
+    const { app, services, importeur, controller } = await flaeche("n1k2b");
     const ersteFassung = quellEintrag(1, "Aussage der Quellfassung 1.");
-    const erste = await direktImportieren(app, importeur.auth, ersteFassung);
-    expect(erste.imported).toBe(1);
+    const erste = await direktImportieren(app, importeur.auth, controller.auth, ersteFassung);
+    expect(erste.koIds).toHaveLength(1);
     const ersteVorher = await services.externalSources.findByRevision(
       "Confluence",
       "SEITE-HERKUNFT",
@@ -636,27 +678,28 @@ describe("Nacharbeit 1 — Quelle, Quellfassung und Prüfboard am Draht", () => 
     const zweite = await direktImportieren(
       app,
       importeur.auth,
+      controller.auth,
       quellEintrag(2, "Aussage der Quellfassung 2."),
     );
-    expect(zweite, "die neue Quellfassung wurde nicht eingespielt").toMatchObject({
-      imported: 1,
-      skipped: 0,
-    });
+    expect(zweite.koIds, "die neue Quellfassung lief nicht in dasselbe Objekt").toEqual(
+      erste.koIds,
+    );
     await pruefeZweiFassungen(services, ersteVorher);
 
     // Eine ältere Fassung schreibt weder eine Revision noch eine Objektfassung.
     const aeltere = await direktImportieren(
       app,
       importeur.auth,
+      controller.auth,
       quellEintrag(1, "Abweichender Text unter alter Fassung."),
     );
-    expect(aeltere).toMatchObject({ imported: 0, skipped: 1 });
+    expect(aeltere.koIds).toEqual(erste.koIds);
     await pruefeZweiFassungen(services, ersteVorher);
   });
 
-  it("K4 · direkter JSON-Import steht ungeprüft auf dem tatsächlichen Prüfboard, mit Originalquelle", async () => {
-    const { app, services, importeur } = await flaeche("n1k4");
-    await direktImportieren(app, importeur.auth, {
+  it("K4 · direkter Eingang (eingereiht, angenommen) steht ungeprüft auf dem tatsächlichen Prüfboard, mit Originalquelle", async () => {
+    const { app, services, importeur, controller } = await flaeche("n1k4");
+    await direktImportieren(app, importeur.auth, controller.auth, {
       ...quellEintrag(3, "Ungeprüft aus der Quelle."),
       externalId: "SEITE-K4",
     });
@@ -669,7 +712,8 @@ describe("Nacharbeit 1 — Quelle, Quellfassung und Prüfboard am Draht", () => 
       status: "offen",
       trust: 0,
       version: 1,
-      importedVia: "library_import",
+      importedVia: "import_candidate",
+      origin: "import",
     });
     expect(zeile?.sources).toEqual([
       expect.objectContaining({
@@ -683,7 +727,7 @@ describe("Nacharbeit 1 — Quelle, Quellfassung und Prüfboard am Draht", () => 
     ]);
     const belege = await services.ko.evidenceOf(ko.id);
     expect(belege.filter((b) => b.kind === "source")).toEqual([
-      expect.objectContaining({ url: QUELL_URL, createdBy: importeur.id }),
+      expect.objectContaining({ url: QUELL_URL, createdBy: controller.id }),
     ]);
   });
 });
@@ -696,12 +740,6 @@ describe("Nacharbeit 1 — Quelle, Quellfassung und Prüfboard am Draht", () => 
 // K2:    keine Revision nach abgewiesenem Erstversuch, Inhaltskonflikt gegen eine vorhandene
 //        Revision, ungültige Quellfassungen werden abgewiesen statt ohne Revision übernommen.
 // K3:    der direkte Re-Sync erreicht weder fremde vertrauliche noch freigegebene Objekte.
-
-type ImportAntwort = {
-  imported: number;
-  skipped: number;
-  uebersprungen: { titel: string; grund: string; koId: string | null }[];
-};
 
 async function direktRoh(app: App, wer: Auth, item: Record<string, unknown>) {
   return app.inject({
@@ -823,7 +861,7 @@ describe("Nacharbeit 2 — Dateiparser, Fassungsbindung und Rechte am Draht", ()
   });
 
   it("K2 · abgewiesener Erstversuch hinterlässt keine Revision; die Wiederholung mit Text B wird an B gebunden", async () => {
-    const { app, services, importeur } = await flaeche("n2k2a");
+    const { app, services, importeur, controller } = await flaeche("n2k2a");
     const quelle = (aussage: string, type: string) => ({
       ...anker("RETRY-QUELLE", 1, aussage),
       type,
@@ -834,9 +872,8 @@ describe("Nacharbeit 2 — Dateiparser, Fassungsbindung und Rechte am Draht", ()
     expect((await services.ko.list()).some((k) => k.statement === "Text A")).toBe(false);
 
     const itemB = quelle("Text B", "best_practice");
-    const zweiter = await direktRoh(app, importeur.auth, itemB);
-    expect(zweiter.statusCode, zweiter.body).toBe(200);
-    expect((zweiter.json() as ImportAntwort).imported).toBe(1);
+    const zweiter = await direktImportieren(app, importeur.auth, controller.auth, itemB);
+    expect(zweiter.koIds).toHaveLength(1);
     const revisionen = await services.externalSources.listBySource("Confluence", "RETRY-QUELLE");
     expect(revisionen).toHaveLength(1);
     expect(revisionen[0]?.contentHash).toBe(quellinhaltAbdruck(itemB as unknown as ImportItem));
@@ -845,9 +882,8 @@ describe("Nacharbeit 2 — Dateiparser, Fassungsbindung und Rechte am Draht", ()
     expect(ko.sources[0]?.sourceRecordId).toBe(revisionen[0]?.sourceRecordId);
 
     // Positive Gegenprobe: die identische Wiederholung ist ein No-op, kein Fehler.
-    const dritter = await direktRoh(app, importeur.auth, itemB);
-    expect(dritter.statusCode, dritter.body).toBe(200);
-    expect(dritter.json()).toMatchObject({ imported: 0, skipped: 1 });
+    const dritter = await direktImportieren(app, importeur.auth, controller.auth, itemB);
+    expect(dritter.koIds.filter((id) => id !== null && id !== ko.id)).toEqual([]);
     expect(await services.externalSources.listBySource("Confluence", "RETRY-QUELLE")).toEqual(
       revisionen,
     );
@@ -891,7 +927,7 @@ describe("Nacharbeit 2 — Dateiparser, Fassungsbindung und Rechte am Draht", ()
   for (const fassung of [-1, 1.5, MAX_SOURCE_VERSION + 1]) {
     it(`K2 · ungültige Quellfassung ${fassung} wird mit 4xx abgewiesen, Bestand unverändert`, async () => {
       const marke = `n2k2v${String(fassung).replace(/\W/g, "")}`;
-      const { app, services, importeur } = await flaeche(marke);
+      const { app, services, importeur, controller } = await flaeche(marke);
       const kennung = `FASSUNG-${String(fassung).replace(/\W/g, "_")}`;
       const kosVorher = (await services.ko.list()).length;
       const res = await direktRoh(app, importeur.auth, anker(kennung, fassung, "Ungültig."));
@@ -901,9 +937,8 @@ describe("Nacharbeit 2 — Dateiparser, Fassungsbindung und Rechte am Draht", ()
       expect(await services.externalSources.listBySource("Confluence", kennung)).toEqual([]);
 
       // Gegenprobe: dieselbe Quelle mit gültiger Fassung 1 wird übernommen, mit auflösbarer Revision.
-      const gueltig = await direktRoh(app, importeur.auth, anker(kennung, 1, "Gültig."));
-      expect(gueltig.statusCode, gueltig.body).toBe(200);
-      expect((gueltig.json() as ImportAntwort).imported).toBe(1);
+      const gueltig = anker(kennung, 1, "Gültig.");
+      await direktImportieren(app, importeur.auth, controller.auth, gueltig);
       const ko = await koMitQuelle(services, kennung);
       const revisionsId = ko.sources[0]?.sourceRecordId ?? "";
       expect(await services.externalSources.findById(revisionsId)).toMatchObject({
@@ -913,15 +948,15 @@ describe("Nacharbeit 2 — Dateiparser, Fassungsbindung und Rechte am Draht", ()
     });
   }
 
-  it("K3 · der direkte Re-Sync erreicht kein fremdes vertrauliches Objekt — weder Kennung noch Änderung", async () => {
-    const { app, services, importeur, genannt } = await flaeche("n2k3a");
-    // A legt ein vertrauliches Objekt mit Quellanker an.
-    const anlage = await direktRoh(
+  it("K3 · der direkte Eingang erreicht kein fremdes vertrauliches Objekt — weder Kennung noch Änderung", async () => {
+    const { app, services, importeur, genannt, controller } = await flaeche("n2k3a");
+    // Ein vertrauliches Objekt mit Quellanker (eingereicht von A, angenommen vom Controller).
+    await direktImportieren(
       app,
       importeur.auth,
+      controller.auth,
       anker("SEITE-FREMD", 1, "Vertraulich bei A.", "vertraulich"),
     );
-    expect(anlage.statusCode, anlage.body).toBe(200);
     const ko = await koMitQuelle(services, "SEITE-FREMD");
     const vorher = await services.ko.get(ko.id);
     const sieht = await app.inject({
@@ -931,6 +966,8 @@ describe("Nacharbeit 2 — Dateiparser, Fassungsbindung und Rechte am Draht", ()
     });
     expect(sieht.statusCode, "VORBEDINGUNG: B sieht das Objekt nicht").toBe(404);
 
+    // R-0143 (main): B reiht nur ein — es entsteht nichts und es ändert sich nichts ohne Annahme;
+    // NACHARBEIT 3: und die Antwort nennt den unsichtbaren Treffer nicht.
     for (const fassung of [1, 2]) {
       const res = await direktRoh(
         app,
@@ -939,11 +976,11 @@ describe("Nacharbeit 2 — Dateiparser, Fassungsbindung und Rechte am Draht", ()
       );
       expect(res.statusCode, res.body).toBe(200);
       expect(res.body, "die Antwort nennt die fremde Kennung").not.toContain(ko.id);
-      expect(res.json()).toMatchObject({
-        imported: 0,
-        skipped: 1,
-        uebersprungen: [{ grund: "pruefung_nicht_moeglich", koId: null }],
-      });
+      const antwort = res.json() as Direktantwort;
+      expect(antwort.imported).toBe(0);
+      for (const kandidat of antwort.kandidaten) {
+        expect(kandidat.dublettenbefund).toEqual({ ergebnis: "pruefung_nicht_moeglich" });
+      }
     }
     const nachher = await services.ko.get(ko.id);
     expect({
@@ -963,20 +1000,24 @@ describe("Nacharbeit 2 — Dateiparser, Fassungsbindung und Rechte am Draht", ()
       "B schrieb eine Quellrevision",
     ).toEqual([1]);
 
-    // Positive Gegenprobe: A selbst darf seine Quelle fortschreiben.
-    const eigen = await direktRoh(
+    // Positive Gegenprobe: fortgeschrieben wird über die berechtigte Annahme (`ko.validate`).
+    await direktImportieren(
       app,
       importeur.auth,
-      anker("SEITE-FREMD", 2, "Von A fortgeschrieben.", "vertraulich"),
+      controller.auth,
+      anker("SEITE-FREMD", 3, "Über die Annahme fortgeschrieben.", "vertraulich"),
     );
-    expect(eigen.statusCode, eigen.body).toBe(200);
-    expect((eigen.json() as ImportAntwort).imported).toBe(1);
-    expect((await services.ko.get(ko.id))?.statement).toBe("Von A fortgeschrieben.");
+    expect((await services.ko.get(ko.id))?.statement).toBe("Über die Annahme fortgeschrieben.");
   });
 
   it("K3 · ein freigegebenes Objekt: revise verlangt einen Vorschlag, und der direkte Import umgeht das nicht", async () => {
-    const { app, services, admin, importeur, genannt } = await flaeche("n2k3b");
-    await direktRoh(app, importeur.auth, anker("SEITE-FREI", 1, "Freigegebener Stand."));
+    const { app, services, admin, importeur, genannt, controller } = await flaeche("n2k3b");
+    await direktImportieren(
+      app,
+      importeur.auth,
+      controller.auth,
+      anker("SEITE-FREI", 1, "Freigegebener Stand."),
+    );
     const ko = await koMitQuelle(services, "SEITE-FREI");
     await services.ko.setValidationState(ko.id, { trust: 80, status: "validiert" });
     const vorher = await services.ko.get(ko.id);
@@ -990,26 +1031,19 @@ describe("Nacharbeit 2 — Dateiparser, Fassungsbindung und Rechte am Draht", ()
     expect(revise.statusCode, revise.body).toBe(403);
     expect((revise.json() as { error: string }).error).toBe("PROPOSAL_REQUIRED");
 
+    // Der direkte Eingang reiht nur ein (R-0143) — der freigegebene Stand bleibt unberührt.
     const umweg = await direktRoh(app, genannt.auth, anker("SEITE-FREI", 2, "Über den Import."));
     expect(umweg.statusCode, umweg.body).toBe(200);
-    expect(umweg.json()).toMatchObject({
-      imported: 0,
-      uebersprungen: [{ grund: "pruefung_nicht_moeglich", koId: null }],
-    });
+    const umwegAntwort = umweg.json() as Direktantwort;
+    expect(umwegAntwort.imported).toBe(0);
     const nachher = await services.ko.get(ko.id);
     expect(nachher?.statement).toBe(vorher?.statement);
     expect(nachher?.version).toBe(vorher?.version);
     expect(nachher?.status).toBe("validiert");
 
-    // Positive Gegenprobe: wer freigeben darf (Admin), schreibt die neue Quellfassung fort.
-    const berechtigt = await direktRoh(
-      app,
-      admin.auth,
-      anker("SEITE-FREI", 2, "Vom Admin fortgeschrieben."),
-    );
-    expect(berechtigt.statusCode, berechtigt.body).toBe(200);
-    expect((berechtigt.json() as ImportAntwort).imported).toBe(1);
-    expect((await services.ko.get(ko.id))?.statement).toBe("Vom Admin fortgeschrieben.");
+    // Positive Gegenprobe: wer freigeben darf (Admin), nimmt die neue Quellfassung an.
+    await alleAnnehmen(app, admin.auth, umwegAntwort);
+    expect((await services.ko.get(ko.id))?.statement).toBe("Über den Import.");
   });
 });
 
@@ -1091,9 +1125,9 @@ describe("Nacharbeit 3 — Verweis ohne Kennung, Konflikt vor Einstufung, verdec
     }, false));
 
   it("K2 · Inhaltskonflikt beim Re-Sync: 409, und auch die höhere Einstufung wird nicht übernommen", async () => {
-    const { app, services, importeur } = await flaeche("n3k2");
-    const anlage = await direktRoh(app, importeur.auth, anker("RESYNC-KONFLIKT", 1, "Fassung 1."));
-    expect(anlage.statusCode, anlage.body).toBe(200);
+    const { app, services, importeur, controller } = await flaeche("n3k2");
+    const ersteFassung = anker("RESYNC-KONFLIKT", 1, "Fassung 1.");
+    await direktImportieren(app, importeur.auth, controller.auth, ersteFassung);
     const ko = await koMitQuelle(services, "RESYNC-KONFLIKT");
 
     // Fehlerausgangslage wie im Abbruchtest: Fassung 2 ist bereits mit Text A festgeschrieben.
@@ -1116,8 +1150,17 @@ describe("Nacharbeit 3 — Verweis ohne Kennung, Konflikt vor Einstufung, verdec
       "RESYNC-KONFLIKT",
     );
 
+    // R-0143 (main): eingereiht wird ohne Wirkung; der Konflikt fällt bei der Annahme.
     const textB = anker("RESYNC-KONFLIKT", 2, "Text B", "vertraulich");
-    const konflikt = await direktRoh(app, importeur.auth, textB);
+    const eingereicht = await direktRoh(app, importeur.auth, textB);
+    expect(eingereicht.statusCode, eingereicht.body).toBe(200);
+    const kandidatB = (eingereicht.json() as Direktantwort).kandidaten[0]?.id;
+    const konflikt = await app.inject({
+      method: "PUT",
+      url: `/api/library/import/candidates/${kandidatB}`,
+      headers: controller.auth,
+      payload: { action: "accept" },
+    });
     expect(konflikt.statusCode, konflikt.body).toBe(409);
     const nachher = await services.ko.get(ko.id);
     const stand = (k: typeof nachher) => ({
@@ -1137,9 +1180,8 @@ describe("Nacharbeit 3 — Verweis ohne Kennung, Konflikt vor Einstufung, verdec
     expect(revisionenNachher).toEqual(revisionenVorher);
 
     // Positive Gegenprobe: der zur Revision passende Text A wird übernommen — samt Einstufung.
-    const passend = await direktRoh(app, importeur.auth, textA);
-    expect(passend.statusCode, passend.body).toBe(200);
-    expect((passend.json() as ImportAntwort).imported).toBe(1);
+    const passend = await direktImportieren(app, importeur.auth, controller.auth, textA);
+    expect(passend.koIds).toEqual([ko.id]);
     const fortgeschrieben = await services.ko.get(ko.id);
     expect(fortgeschrieben?.statement).toBe("Text A");
     expect(fortgeschrieben?.confidentiality).toBe("vertraulich");
@@ -1149,12 +1191,12 @@ describe("Nacharbeit 3 — Verweis ohne Kennung, Konflikt vor Einstufung, verdec
   it("K3 · die Kandidatenantworten nennen die Kennung eines unsichtbaren Ziels nicht", () =>
     mitQuellimport(async () => {
       const { app, services, importeur, genannt, controller } = await flaeche("n3k3");
-      const anlage = await direktRoh(
+      await direktImportieren(
         app,
         importeur.auth,
+        controller.auth,
         anker("SEITE-VERDECKT", 1, "Vertraulich bei A.", "vertraulich"),
       );
-      expect(anlage.statusCode, anlage.body).toBe(200);
       const ko = await koMitQuelle(services, "SEITE-VERDECKT");
       const sieht = await app.inject({
         method: "GET",
@@ -1351,9 +1393,6 @@ describe("Nacharbeit 5 — Dokumentakte: Word-Zusatz", () => {
 });
 
 describe("Nacharbeit 5 — Dokumentakte: JSON ohne externalId", () => {
-  type Antwort = ImportAntwort & {
-    dokumentFassungen?: { titel: string; koId: string; dokumentId: string; fassung: number }[];
-  };
   const eintrag = (aussage: string, extra: Record<string, unknown> = {}) => ({
     title: `Akteneintrag ${aussage}`,
     statement: aussage,
@@ -1363,39 +1402,43 @@ describe("Nacharbeit 5 — Dokumentakte: JSON ohne externalId", () => {
     ...extra,
   });
 
-  it("R-0169 · direkter Import: neue Akte, nächste Fassung über die mitgebrachte Kennung, Aussage je Fassung", async () => {
-    const { app, services, importeur } = await flaeche("n5j1");
-    const erste = await direktRoh(app, importeur.auth, eintrag("Stand eins."));
-    expect(erste.statusCode, erste.body).toBe(200);
-    const [f1] = (erste.json() as Antwort).dokumentFassungen ?? [];
-    expect(f1?.dokumentId, "der Import nennt keine vergebene Kennung").toMatch(UUID_FORM);
-    expect(f1?.fassung).toBe(1);
-    const ko1 = await services.ko.get(f1?.koId ?? "");
-    expect(ko1?.dokumentHerkunft).toMatchObject({ dokumentId: f1?.dokumentId, fassung: 1 });
-    expect(ko1?.sources, "die interne Kennung wurde als externe Quelle ausgegeben").toEqual([]);
-
-    const zweite = await direktRoh(
+  it("R-0169 · direkter Eingang (eingereiht, angenommen): neue Akte, nächste Fassung über die mitgebrachte Kennung, Aussage je Fassung", async () => {
+    const { app, services, importeur, controller } = await flaeche("n5j1");
+    const erste = await direktImportieren(
       app,
       importeur.auth,
-      eintrag("Stand zwei.", { dokumentId: f1?.dokumentId }),
+      controller.auth,
+      eintrag("Stand eins."),
     );
-    expect(zweite.statusCode, zweite.body).toBe(200);
-    const [f2] = (zweite.json() as Antwort).dokumentFassungen ?? [];
-    expect(f2).toMatchObject({ dokumentId: f1?.dokumentId, fassung: 2 });
-    const ko2 = await services.ko.get(f2?.koId ?? "");
+    const ko1 = await services.ko.get(erste.koIds[0] ?? "");
+    const h1 = ko1?.dokumentHerkunft;
+    expect(h1?.dokumentId, "das angenommene Objekt trägt keine vergebene Kennung").toMatch(
+      UUID_FORM,
+    );
+    expect(h1?.fassung).toBe(1);
+    expect(ko1?.sources, "die interne Kennung wurde als externe Quelle ausgegeben").toEqual([]);
+
+    const zweite = await direktImportieren(
+      app,
+      importeur.auth,
+      controller.auth,
+      eintrag("Stand zwei.", { dokumentId: h1?.dokumentId }),
+    );
+    const ko2 = await services.ko.get(zweite.koIds[0] ?? "");
     expect(ko2?.statement).toBe("Stand zwei.");
-    expect(ko2?.dokumentHerkunft).toMatchObject({ dokumentId: f1?.dokumentId, fassung: 2 });
+    expect(ko2?.dokumentHerkunft).toMatchObject({ dokumentId: h1?.dokumentId, fassung: 2 });
     // Die erste Aussage bleibt ihrer Fassung zugeordnet.
-    expect((await services.ko.get(f1?.koId ?? ""))?.dokumentHerkunft?.fassung).toBe(1);
-    const fassungen = await services.dokumente.fassungen(f1?.dokumentId ?? "");
+    expect((await services.ko.get(ko1?.id ?? ""))?.dokumentHerkunft?.fassung).toBe(1);
+    // Festgeschrieben bei der ANNAHME — vom Annehmenden, auf dem Kandidatenweg.
+    const fassungen = await services.dokumente.fassungen(h1?.dokumentId ?? "");
     expect(fassungen.map((f) => [f.fassung, f.weg, f.festgeschriebenVon])).toEqual([
-      [1, "library_import", importeur.id],
-      [2, "library_import", importeur.id],
+      [1, "import_candidate", controller.id],
+      [2, "import_candidate", controller.id],
     ]);
   });
 
   it("R-0169 · unbekannte Kennung: 400, kein Objekt; externe Kennung wird nie zur internen", async () => {
-    const { app, services, importeur } = await flaeche("n5j2");
+    const { app, services, importeur, controller } = await flaeche("n5j2");
     const vorher = (await services.ko.list()).length;
     const res = await direktRoh(
       app,
@@ -1407,9 +1450,8 @@ describe("Nacharbeit 5 — Dokumentakte: JSON ohne externalId", () => {
     expect((await services.ko.list()).length).toBe(vorher);
 
     // Mit externer Kennung bleibt es beim externen Revisionsweg — keine interne Akte.
-    const extern = await direktRoh(app, importeur.auth, anker("SEITE-EXTERN-N5", 1, "Extern."));
-    expect(extern.statusCode, extern.body).toBe(200);
-    expect((extern.json() as Antwort).dokumentFassungen).toEqual([]);
+    const extern = anker("SEITE-EXTERN-N5", 1, "Extern.");
+    await direktImportieren(app, importeur.auth, controller.auth, extern);
     const ko = await koMitQuelle(services, "SEITE-EXTERN-N5");
     expect(ko).not.toHaveProperty("dokumentHerkunft");
   });

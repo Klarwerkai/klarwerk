@@ -762,6 +762,8 @@ const de = {
   "ko.origin.studio": "Aus dem Studio",
   "ko.origin.expert": "Aus dem Expertenformular",
   "ko.origin.frontdoor": "Aus der Erfassung",
+  // R-0180/R-2108: aus der Import-Prüfwarteschlange von einem Menschen übernommen.
+  "ko.origin.import": "Importiert",
   // JOB 3027 · Station 4: die drei Lagen je Auskunft am Prüfbrett. „nicht eingestuft“ ist eine
   // Aussage über das OBJEKT, „nicht in dieser Antwort“ eine über die ANTWORT — wer beide zusammen-
   // wirft, muss raten (services/validation/src/board-herkunft.ts:10-18).
@@ -8012,6 +8014,8 @@ const en: typeof de = {
   "ko.origin.studio": "From the studio",
   "ko.origin.expert": "From the expert form",
   "ko.origin.frontdoor": "From the capture form",
+  // R-0180/R-2108: taken over from the import review queue by a person.
+  "ko.origin.import": "Imported",
   // JOB 3027 · Station 4: the three states per disclosure. „not classified" is a statement about the
   // OBJECT, „not in this response" one about the RESPONSE — merging them forces the reader to guess.
   "val.stufe.nichtEingestuft": "not classified",
@@ -13723,6 +13727,8 @@ const nl: typeof de = {
   "ko.origin.studio": "Uit de studio",
   "ko.origin.expert": "Uit het expertformulier",
   "ko.origin.frontdoor": "Uit de vastlegging",
+  // R-0180/R-2108: door een mens uit de importcontrolewachtrij overgenomen.
+  "ko.origin.import": "Geïmporteerd",
   // JOB 3027 · Station 4: de drie standen per opgave. „niet ingedeeld“ zegt iets over het OBJECT,
   // „niet in dit antwoord“ iets over het ANTWOORD — wie ze samenvoegt, laat de lezer gokken.
   "val.stufe.nichtEingestuft": "niet ingedeeld",

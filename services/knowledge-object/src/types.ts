@@ -414,7 +414,13 @@ export interface KnowledgeObject {
   // zusaetzliches optionales Feld landet im Dokument; Altbestand hat den Schluessel schlicht nicht.
   // Kein DDL, kein Backfill. FEHLT das Feld, ist die Herkunft UNBEKANNT — das ist ehrlich und
   // heisst ausdruecklich nicht „ueber die Vordertuer erfasst".
-  origin?: "tell" | "studio" | "expert" | "frontdoor" | "word_addin";
+  //
+  // R-0180/R-2108: `import` ist die EINZIGE Ausnahme von „dieselbe Wertmenge wie am Entwurf". Den
+  // Wert setzt allein die menschliche Annahme eines Importkandidaten (`LibraryService.acceptToKo`,
+  // Erstanlage). Ein Entwurf kann ihn nicht tragen (`ERLAUBTE_HERKUNFT` in services/capture kennt
+  // ihn bewusst nicht), und die öffentlichen Schreibrouten verwerfen ihn (ko-routes.ts) — sonst
+  // könnte sich jedes Objekt als „importiert" ausgeben.
+  origin?: "tell" | "studio" | "expert" | "frontdoor" | "word_addin" | "import";
   // Pedi 05.07.: read-only Board-Anreicherung — Peer-Stimmen-Zähler (grün/gelb/rot) für die Anzeige
   // „X von Y grün" auf der Validierungsseite. Nur die Board-Sicht setzt es; sonst undefined.
   reviewVotes?: { up: number; warn: number; down: number };

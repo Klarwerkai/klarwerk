@@ -350,6 +350,19 @@ function sendMissingConfidentiality(reply: FastifyReply): void {
   });
 }
 
+// R-0180/R-2108: die Herkunft `import` kennzeichnet ein Objekt, das ein Mensch aus der
+// Import-Prüfwarteschlange übernommen hat (`LibraryService.acceptToKo`). Auf den öffentlichen
+// Schreibwegen (`POST /api/kos`, frischer Zweig des Dokumentwegs) wird sie verworfen wie
+// `sources` und `importCandidateId` — sonst könnte jeder mit `ko.create` ein Objekt als importiert
+// ausgeben. Die übrigen Herkunftswerte bleiben unverändert erhalten.
+export function ohneImportHerkunft<T extends { origin?: unknown }>(rumpf: T): T {
+  if (rumpf.origin !== "import") {
+    return rumpf;
+  }
+  const { origin: _verworfen, ...ohne } = rumpf;
+  return ohne as unknown as T;
+}
+
 interface KoQuery {
   type?: KnowledgeType;
   status?: KoStatus;
@@ -1299,6 +1312,10 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
           // keines von beiden nach; über diesen Spread hätte jeder mit `ko.create` ein Objekt als
           // „aus Word" oder „importiert" ausgeben können. Kein Client dieser Route sendet sie
           // (Capture.tsx `createPayload`).
+          // R-0180/R-2108: die Herkunft `import` ebenfalls verwerfen — sie gehört allein der
+          // menschlichen Annahme eines Importkandidaten (s. `ohneImportHerkunft`). Die Destrukturierung
+          // darunter verwirft `origin` VOLLSTÄNDIG — damit auch jedes `import`; `ohneImportHerkunft`
+          // auf einem Rumpf ohne `origin` wäre wirkungslos und steht deshalb hier nicht.
           const {
             reviewerIds,
             sources: _ignoredSources,
@@ -1592,6 +1609,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
           // Anker kommen NIE vom Client. Was an Quellen entsteht, entsteht unten aus den geprüften
           // Dokumenten — nicht aus diesem Feld.
           // R-0139 / FR-EXT-02: `origin` und `importedVia` aus demselben Grund wie an POST /api/kos.
+          // R-0180/R-2108: mit `origin` fällt hier auch jedes `import` (vgl. `ohneImportHerkunft`).
           const {
             sources: _ignoredSources,
             importCandidateId: _ignoredAnchor,
