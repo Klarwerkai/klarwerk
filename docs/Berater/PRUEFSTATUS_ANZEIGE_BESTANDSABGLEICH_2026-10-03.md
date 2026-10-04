@@ -72,6 +72,28 @@ Neue Tests dieser Runde liegen unter `tests/pruefstatus-anzeige/`, außerdem
 | **R-1613** Q6d Offline-Auskunft / veralteter leerer Cache; Q1c direkte Wiederholknöpfe | in diesem Auftrag geliefert (Teil Q6d/Q1c) | **Einzelbelege:** `tests/q6d-offline-auskunft/laden-schweigt-mounted.test.tsx`, `liste-sagt-offline-mounted.test.tsx`, `veralteter-leerer-cache-mounted.test.tsx`, `tests/q1c-nachladen/mehr-abschnitte-holen-nach.test.tsx` (alle jsdom). **Fehlender Beleg:** der Live-Gegenfall auf 1.110 im Browser. |
 | **R-1613, übrige Themen** | **nicht in diesem Auftrag; Zuordnung laut Quelle** | Laut `QUELLEN.json` (R-1613, Zustand `gelieferter_teilstand`, Folgejobs 3089/3099/3121/3244): **N11** Confluence-Übernahme intern → JOB 3089 (live 1.0.0-beta.1.107, Ben GRÜN, keine Bestandsmigration). **N11b** Modell-Aktionsinhalte/Egress → JOB 3244 (Runde 2 TEILWEISE; Ben/Live/Word offen). **Q6c** Offline-Suche → JOB 3099 (live 1.110). Telefon-Bibliothek → JOB 3121 (UX-14). **Ohne benannten Job oder Auftrag** in den Quellen: Quellrestriktionen/geänderte Quellversion, serverneustartfeste Persistenz (Wiederanlauf), Word-Kontext, Q3b Alias, Q3c direkte KO-API-Pflicht, ungültiger Altentwurf. Die Quelle sagt nur „bleiben getrennt“. Eine wirksame getrennte Beauftragung ist für diese Punkte **nicht belegt**; das ist ein Quellenbefund und keine Lieferung dieses Auftrags. |
 
+## C2 · Nacharbeit 2 auf Kandidat 696327ae (Ben-Befunde)
+
+- **R-0216, separat bekannter Konflikt:** `lib/conflictImpact.ts` → `conflictLimitedUsability`
+  begrenzte nur „nutzbar“. Ein auf offen/87 zurückgesetztes Objekt, dessen Konflikt nur die
+  Konfliktliste kennt (oberhalb des Listendeckels von 200 oder nach gescheiterter Erhebung), blieb
+  „Zu prüfen“. **Jetzt:** Ein wirksamer ungelöster Konflikt ergibt immer „In Prüfung“. Ohne
+  wirksamen Konflikt bleibt der Wert unverändert, auch bei gelöstem oder fremdem Konflikt.
+  Gegenproben: `r0216-in-pruefung.test.ts` (Ableitung sowie Fastify-Weg mit mehr als 200 Objekten,
+  bei dem `/api/kos` und `/api/conflicts` gemeinsam ausgewertet werden, mit konfliktfreier
+  Kontrolle).
+  **Bekannte Kollision:** `tests/app/conflict-impact.test.ts:105` schreibt das widerlegte Verhalten
+  fest und liegt außerhalb der freigegebenen Pfade. Dort ist eine Anpassung mit Pfadfreigabe nötig.
+- **Bens Original-Gegenprobe** `r0216-echter-konflikt-gegenprobe.test.ts` ist in den gezielten
+  Prüfaufruf aufgenommen (`CLAUDE/PRUEFPLAN.json`).
+- **R-0212, schmaler Bildschirm:** Neue Browsergegenprobe
+  `r0212-konflikt-schmal-chromium.test.ts`. Sie prüft die gebaute Bibliothek in Chromium bei
+  390 px: Liste, Detail und Rückweg, tatsächliche Sichtbarkeit und Überlagerung, mit
+  konfliktfreier Kontrolle. Ausführung durch den Prüfserver, ein Ergebnis gibt es erst danach.
+- **Offener Beleg R-1613:** unverändert. Für Quellrestriktionen/geänderte Quellversion,
+  Wiederanlaufpersistenz und Word gibt es keinen belegten Abschluss und keine belegte getrennte
+  Beauftragung (siehe C). Das ist eine Beleglücke, keine fehlende Implementierung in diesem Auftrag.
+
 ## D · Quellenwidersprüche
 
 - R-1511 nennt JOB 3011; geliefert wurde unter JOB 3027 Station 4 (Commit e296c75d).
@@ -81,11 +103,15 @@ Neue Tests dieser Runde liegen unter `tests/pruefstatus-anzeige/`, außerdem
 - R-0216 gegenüber R-0231: R-0231 setzt den Kern bei einem echten Wahrheitswiderspruch auf
   `offen` zurück. R-0216 verlangt trotzdem „in Prüfung“. Die Nutzbarkeit darf deshalb nicht am
   Kernstatus hängen. Das war die Ursache von BEN-07.
-- Bekannte Grenze (R-0216): Ein Objekt, dessen Konflikt nur die Konfliktliste der Fläche kennt,
-  nicht aber der Serverstatus, wird weiterhin nur aus „nutzbar“ auf „In Prüfung“ begrenzt
-  (`lib/conflictImpact.ts`, außerhalb der Zielpfade). Die Lesewege `/api/kos` und `/api/kos/:id`
-  liefern den Konflikt seit R-0212 selbst, also tritt diese Lage nur bei einer fehlgeschlagenen
-  Konflikterhebung auf (dann ausgewiesen `ungeprueft`).
+- Frühere Grenze (R-0216), in Nacharbeit 2 behoben: Ein Objekt, dessen Konflikt nur die
+  Konfliktliste kennt, wurde nur aus „nutzbar“ auf „In Prüfung“ begrenzt. Die frühere Aussage,
+  das trete nur bei gescheiterter Konflikterhebung auf, war unvollständig. Auch oberhalb des
+  Listendeckels von 200 erhebt `GET /api/kos` den Konflikt nicht (Ben). Siehe C2.
+- Verbleibende Grenze: Die Reife-Facette der Bibliothek (`lib/libraryFacets.ts` →
+  `libraryMaturity`) kennt die Konfliktliste nicht. Oberhalb des Deckels zählt sie ein
+  zurückgesetztes Objekt mit Konflikt weiter als „Zu prüfen“. Statuspunkt und -wort der Zeile
+  zeigen dort trotzdem „Konflikt“ (`anzeigestatusAus`). `libraryFacets.ts` liegt außerhalb der
+  freigegebenen Pfade und ist nicht geändert.
 - R-0208 „Prüfung ausstehend“ und „läuft“: Der gespeicherte Vermerk unterscheidet sie nicht. Die
   Unterscheidung stammt aus dem Speicher des Workers und ist nur am Prüfbrett erhoben. Ohne diese
   Auskunft bleibt der bisherige Satz „läuft“.
