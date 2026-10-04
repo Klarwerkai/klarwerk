@@ -56,6 +56,11 @@ export interface ImportRunSummary {
   // R-0162: false, wenn der Löschabgleich gar nicht lief — bei einem abgeschnittenen Lauf
   // (truncated) ist „fehlt in der Liste" kein Beleg für eine Löschung.
   removalChecked: boolean;
+  // R-0159 (Befund F2): WARUM der Lauf vor dem letzten Cursor endete — Frist, Zeitbudget oder
+  // Größe, samt hostfreier Meldung aus dem Client. Bis hierher kam er bis `collectAll` und wurde
+  // HIER verworfen; der gespeicherte Lauf stand dann auf PARTIAL ohne Grund. Nur gesetzt, wenn der
+  // Adapter ihn geliefert hat; die bereits gelesenen Seiten bleiben davon unberührt.
+  abbruch?: NonNullable<CollectResult["abbruch"]>;
   perPage: { ref: string; status: ImportPageStatus; note?: string }[];
 }
 
@@ -216,7 +221,13 @@ export function importStatusFor(
 }
 
 export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<ImportRunSummary> {
-  const { items, failed: collectFailed, truncated, hierarchie } = await deps.adapter.collectAll();
+  const {
+    items,
+    failed: collectFailed,
+    truncated,
+    hierarchie,
+    abbruch,
+  } = await deps.adapter.collectAll();
   const seen = await existingVersions(deps.koService);
   const pending = await pendingKeys(deps.library);
 
@@ -309,6 +320,8 @@ export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<I
     truncated,
     // JOB 1042 D3: unveraendert durchgereicht — nur gesetzt, wenn der Adapter ihn geliefert hat.
     ...(hierarchie ? { hierarchie } : {}),
+    // R-0159 (F2): unverändert durchgereicht — nur gesetzt, wenn der Adapter ihn geliefert hat.
+    ...(abbruch ? { abbruch } : {}),
     ...removal,
     perPage,
   };

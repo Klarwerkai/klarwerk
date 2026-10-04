@@ -1,9 +1,86 @@
-import type { FastifyPluginAsync } from "fastify";
+import type { FastifyPluginAsync, FastifyReply } from "fastify";
+import type { AuditService } from "../../../audit";
+import type { OverlapService } from "../../../conflicts";
 import type { AiCheck, KoService } from "../../../knowledge-object";
 import { type BoardFilter, type ValidationService, mitHerkunft } from "../../../validation";
 import { type AiCheckWorker, shouldReEnqueueAiCheck } from "../ai-check-worker";
-import { type Guards, sendError } from "../http";
-import { sichtbareFuer, sichtbarkeitsfilterFuer } from "../sichtbarkeit";
+import { type Guards, type SessionUser, sendError } from "../http";
+import {
+  type KoSichtbarkeitsZugang,
+  sichtbareFuer,
+  sichtbarePaare,
+  sichtbarkeitsfilterFuer,
+} from "../sichtbarkeit";
+
+// ================================================================================================
+// R-0247 — OFFENE DUBLETTE: WEICHE SPERRE AM SERVER (Pedis Entscheidung 73b53301).
+// ================================================================================================
+//
+// Liegt zu einem Wissensobjekt eine offene, unentschiedene Dublette vor (Status nicht
+// „geschlossen", versionsgebunden über `OverlapService.unresolved`), wird es nur validiert, wenn
+// der Aufruf das Bestätigungskennzeichen `duplicateAcknowledged: true` trägt. Ohne Kennzeichen:
+// 409 mit verständlicher Meldung, es wird nichts geschrieben. Mit Kennzeichen: die Bestätigung
+// steht VOR der Validierung im Audit (`ko.duplicate-acknowledged`, Person = `actor`, Zeit = `at`).
+//
+// Keine harte Sperre und keine Auflösung: die Dublette bleibt offen, wie sie ist. Gezählt werden
+// dieselben Paare, die `/api/duplicates` diesem Menschen zeigt (`sichtbarePaare`) — sonst verlangte
+// der Server die Bestätigung einer Dublette, die die Prüfkarte nie anzeigen darf.
+//
+// Verdrahtet im KO-Dispatcher (`ko-routes.ts`) an den zwei Freigabewegen der Prüfkarte:
+// `rate` mit `verdict: "up"` und `admin-validate`.
+export const DUBLETTE_BESTAETIGUNG_FEHLT = "DUPLICATE_ACK_REQUIRED";
+export const DUBLETTE_BESTAETIGT_AUDIT = "ko.duplicate-acknowledged";
+
+export interface DublettenTorDeps {
+  overlaps: Pick<OverlapService, "unresolved">;
+  kos: KoSichtbarkeitsZugang;
+  audit?: AuditService | undefined;
+}
+
+/**
+ * `true` = es darf validiert werden (keine offene Dublette, oder bestätigt UND festgehalten).
+ * `false` = die Antwort ist schon gesendet; der Aufrufer schreibt nichts.
+ */
+export async function dublettenTor(
+  deps: DublettenTorDeps,
+  user: SessionUser,
+  koId: string,
+  kennzeichen: unknown,
+  weg: "rate" | "admin-validate",
+  reply: FastifyReply,
+): Promise<boolean> {
+  const offen = (await deps.overlaps.unresolved()).filter(
+    (e) => e.status !== "geschlossen" && (e.koA === koId || e.koB === koId),
+  );
+  const sichtbar = await sichtbarePaare(user, offen, deps.kos);
+  if (sichtbar.length === 0) {
+    return true;
+  }
+  if (kennzeichen !== true) {
+    reply.code(409).send({
+      error: DUBLETTE_BESTAETIGUNG_FEHLT,
+      message:
+        "Zu diesem Wissensobjekt liegt eine offene Dublette vor. Bitte bestätigen Sie, dass Sie sie gesehen haben (duplicateAcknowledged: true). Es wurde nichts validiert.",
+    });
+    return false;
+  }
+  // Ohne Audit lässt sich die Bestätigung nicht festhalten — dann wird auch nicht validiert.
+  if (!deps.audit) {
+    reply.code(503).send({
+      error: "AUDIT_UNAVAILABLE",
+      message:
+        "Die Bestätigung der Dublette kann nicht im Audit festgehalten werden. Es wurde nichts validiert.",
+    });
+    return false;
+  }
+  await deps.audit.record({
+    actor: user.id,
+    action: DUBLETTE_BESTAETIGT_AUDIT,
+    target: koId,
+    payload: { overlapIds: sichtbar.map((e) => e.id), weg },
+  });
+  return true;
+}
 
 // WP-SUBMIT-ASYNC (Neustart-Robustheit, pragmatisch + ehrlich): der Prüf-Worker hält seine Queue
 // NUR im Speicher — nach einem Prozess-Neustart wäre ein pending-Job verloren. Beim Laden der
