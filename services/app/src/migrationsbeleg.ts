@@ -247,6 +247,10 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
   // nachgezählt: ein einziges `CREATE TABLE IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein
   // Fremdschlüssel, keine Extension. Ein zweiter Lauf ist folgenlos.
   { stufe: "CONFLUENCE_IMPORT_SCHALTER_SCHEMA", risiko: "ADDITIV" },
+  // R-0751 / R-1639 / R-2183 (Nacharbeit 3): Bereichsprofile und Ruhestandshorizonte. ADDITIV,
+  // nachgezählt: zwei `CREATE TABLE IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein
+  // Fremdschlüssel, keine Extension. Ein zweiter Lauf ist folgenlos.
+  { stufe: "MANAGEMENT_PROFILE_SCHEMA", risiko: "ADDITIV" },
 ];
 
 /**

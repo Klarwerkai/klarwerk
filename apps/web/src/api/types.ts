@@ -1806,6 +1806,78 @@ export interface MgmtScorePart {
   weight: number;
 }
 
+// R-0751 / FR-EXT-04 (Nacharbeit 1): die neun Faktoren der Quelle, wie der Server sie liefert
+// (services/management/src/types.ts). `value: null` = keine Eingangsdaten, nicht geschätzt.
+export type MgmtPriorityFactorKey =
+  | "busFactor"
+  | "criticality"
+  | "processProximity"
+  | "age"
+  | "sourceQuality"
+  | "conflictDensity"
+  | "repetition"
+  | "damagePotential"
+  | "protection";
+export type MgmtPriorityFlag = "busFactorOne" | "stale" | "highProtection";
+export interface MgmtPriority {
+  category: string;
+  score: number;
+  knownFactors: number;
+  factors: { key: MgmtPriorityFactorKey; value: number | null }[];
+  flags: MgmtPriorityFlag[];
+}
+
+// R-0751 / R-1639 / R-2183 (Nacharbeit 3): gepflegte Bereichsprofile und Ruhestandshorizonte
+// (services/management/src/profiles.ts) und der daraus abgeleitete Bereichsblick (horizon.ts).
+export type AssessmentLevel = "niedrig" | "mittel" | "hoch";
+export type RetirementHorizon = 24 | 36;
+export interface CategoryProfile {
+  category: string;
+  managerId: string | null;
+  criticality: AssessmentLevel | null;
+  processProximity: AssessmentLevel | null;
+  repetition: AssessmentLevel | null;
+  damagePotential: AssessmentLevel | null;
+  updatedAt: string;
+  updatedBy: string;
+}
+export type CategoryProfileInput = Omit<CategoryProfile, "updatedAt" | "updatedBy">;
+export interface RetirementEntry {
+  userId: string;
+  horizonMonths: RetirementHorizon;
+  dueAt: string;
+  updatedAt: string;
+  updatedBy: string;
+}
+export interface ManagementProfiles {
+  categories: CategoryProfile[];
+  retirement: RetirementEntry[];
+}
+export interface RiskHorizonBearer {
+  userId: string;
+  horizonMonths: RetirementHorizon;
+  // Nacharbeit 5: heutige Zugehörigkeit aus Frist und Bezugszeit (horizon.ts `currentHorizonOf`).
+  currentHorizon: RetirementHorizon | null;
+  dueAt: string;
+  koCount: number;
+  openKoIds: string[];
+  soleBearer: boolean;
+  openGaps: number;
+}
+export interface RiskHorizonArea {
+  category: string;
+  managerId: string | null;
+  criticality: AssessmentLevel | null;
+  singleSource: boolean;
+  koCount: number;
+  bearers: RiskHorizonBearer[];
+}
+export interface RiskHorizonView {
+  generatedAt: string;
+  seesAll: boolean;
+  areas: RiskHorizonArea[];
+}
+
 export interface ManagementSnapshot {
   generatedAt: string;
   overview: {
@@ -1832,7 +1904,7 @@ export interface ManagementSnapshot {
     net: number;
   };
   maturity: { stage: number; stageKey: string; progressPct: number };
-  priorities: { category: string; score: number; factors: { key: string; value: number }[] }[];
+  priorities: MgmtPriority[];
   recommendations: { key: string; severity: "hoch" | "mittel"; count: number }[];
   house: { category: string; koCount: number; validatedRatio: number; fragile: boolean }[];
   pilot: { days: number; created: number; validated: number }[];

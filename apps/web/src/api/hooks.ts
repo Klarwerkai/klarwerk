@@ -58,6 +58,19 @@ export const useManagementSnapshot = () =>
     queryKey: ["management", "snapshot"],
     queryFn: () => endpoints.management.snapshot(),
   });
+// R-1639 / R-2183 (Nacharbeit 3): „mein Bereich" mit Ruhestandshorizonten und Arbeitsvorrat.
+export const useRiskHorizon = () =>
+  useQuery({
+    queryKey: ["management", "risk-horizon"],
+    queryFn: () => endpoints.management.riskHorizon(),
+  });
+// Die gepflegten Eingänge — nur für die Pflegerolle angefragt (`users.manage`).
+export const useManagementProfiles = (enabled: boolean) =>
+  useQuery({
+    queryKey: ["management", "profiles"],
+    queryFn: () => endpoints.management.profiles(),
+    enabled,
+  });
 // SCRUM-165: read-only Einsicht in jüngste ModelRuns.
 export const useModelRuns = (limit?: number) =>
   useQuery({
