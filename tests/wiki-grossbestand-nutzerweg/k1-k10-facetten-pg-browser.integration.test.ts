@@ -1672,8 +1672,17 @@ describe("K1/K10 · Bibliotheksfilter bei 10.001 Objekten (PG + Chromium, unver�
     // 3 · Logo-Link per Tastatur → Startseite, ohne Dokumentwechsel.
     await bedienelementErreichen(s, LOGO);
     await s.keyboard.press("Enter");
-    const START = '() => location.pathname === "/start"';
-    await warte(s, START, `${K}: N2 — Startseite über den Logo-Link`, undefined, FRIST);
+    // Nacharbeit 25 (Lauf unter HISTORIE/nacharbeit-24): nur der PFAD war geprüft. Die Startseite
+    // wird nachgeladen (eigener Teil, `lazy`); bis dahin hält React 18 die bisherige Fläche verborgen
+    // und MONTIERT im Baum. Kam die Kopfband-Suche in diesem Fenster, fand der Router dieselbe
+    // Bibliotheksroute wieder vor, und die Fläche hat die Bibliothek nie verlassen. Angekommen ist
+    // die Startseite erst, wenn sie gerendert ist UND die Bibliotheksfläche nicht mehr im Dokument
+    // steht (verborgener Suspense-Inhalt bliebe im DOM) — nur gelesen.
+    const START = `() => location.pathname === "/start"
+      && !!document.querySelector('[data-testid="page-start"]')
+      && !document.querySelector('[data-testid="page-bibliothek"]')`;
+    const startWas = `${K}: N2 — Startseite gerendert, Bibliothek abgebaut`;
+    await warte(s, START, startWas, undefined, FRIST);
     const ursprungStart = await s.evaluate<number>(fn("() => performance.timeOrigin"));
 
     // 4 · Leere Kopfband-Suche (Enter) → Bibliothek, ohne Dokumentwechsel. Gewartet wird auf das
