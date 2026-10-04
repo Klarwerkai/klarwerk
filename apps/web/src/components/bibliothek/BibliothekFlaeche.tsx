@@ -94,7 +94,7 @@ import { RoleLink } from "../RoleLink";
 import { cx } from "../ui";
 import { AuffrischungHinweis } from "./AuffrischungHinweis";
 import { BibliothekLesen } from "./BibliothekLesen";
-import { type BibListenPosten, BibliothekListe } from "./BibliothekListe";
+import { BIB_ANSICHTEN, type BibListenPosten, BibliothekListe } from "./BibliothekListe";
 import { Menue, MenuePunkt, MenueTrenner, MenueUntermenue, MenueZeile } from "./Menue";
 import {
   BIB_SEGMENT_STANDARD,
@@ -224,6 +224,7 @@ const SCHMAL_ABFRAGE = `(max-width: ${SCHMAL_UNTER - 1}px)`;
 // Leseraum, der der Zweck dieses Bandes ist.
 const TABLET_LISTE_STORAGE_KEY = "klarwerk.library.tabletListe";
 const TABLET_LISTE_WAHL = ["offen", "zu"] as const;
+const BIB_ANSICHT_STORAGE_KEY = "klarwerk.library.ansicht";
 // DER LESERAUM: 600 px Textbreite bei der Grundschrift des Berichts (15,5 px, `BibliothekLesen.tsx`)
 // sind ≈ 75–78 Zeichen je Zeile — die obere Kante des lesbaren Bereichs (45–75 Zeichen, Bringhurst;
 // darüber verliert das Auge den Zeilenanfang). Die 720 px des Desktops (Vorlage
@@ -281,6 +282,12 @@ export function BibliothekFlaeche({
     TABLET_LISTE_WAHL,
     "zu",
   );
+  // R-1006 (K16): Darstellung der Treffer — kompakte Liste ist Vorgabe, Karten auf Wunsch. Gemerkt
+  // wie die Tablet-Vorliebe im Browser (eine Bedienvorliebe, kein Teil einer geteilten Adresse).
+  const [ansicht, setAnsicht] = usePersistentEnum(BIB_ANSICHT_STORAGE_KEY, BIB_ANSICHTEN, "liste");
+  // R-1006: Mehrfachauswahl von Zeilen — ein eigener Modus neben der EINEN geöffneten Zeile.
+  const [auswahlModus, setAuswahlModus] = useState(false);
+  const [markiert, setMarkiert] = useState<ReadonlySet<string>>(() => new Set());
   const { user } = useSession();
   const nameOf = useAuthorName();
   // JOB 3088 · Q1b: die Detailabfrage des gelesenen Eintrags wohnt in `BibliothekLesen`, nicht hier.
@@ -1288,6 +1295,30 @@ export function BibliothekFlaeche({
   const bereichGruppe = groups.find((g) => g.key === BEREICH_KEY);
   const bereichGewaehlt = facetSelectedValues(wirksameAuswahl[BEREICH_KEY]);
 
+  // R-1006: gezählt und angehakt wird nur, was gerade TREFFER ist (die volle gefilterte Menge, nicht
+  // nur das Fenster). Eine Markierung, die Suche oder Filter ausblenden, bleibt gemerkt, zählt aber
+  // nicht mit — sie kehrt zurück, sobald der Eintrag wieder Treffer ist.
+  const trefferIds = new Set(sorted.map((item) => item.ko.id));
+  const markiertTreffer: ReadonlySet<string> = new Set(
+    [...markiert].filter((id) => trefferIds.has(id)),
+  );
+  const markierungUmschalten = (id: string): void => {
+    setMarkiert((alt) => {
+      const neu = new Set(alt);
+      if (neu.has(id)) {
+        neu.delete(id);
+      } else {
+        neu.add(id);
+      }
+      return neu;
+    });
+  };
+  const auswahlModusUmschalten = (): void => {
+    // Beim Verlassen des Modus fällt die Auswahl weg — es gibt keine verborgene Markierung.
+    setMarkiert(new Set());
+    setAuswahlModus((an) => !an);
+  };
+
   // ================================================================================================
   // JOB 3063 R3/R6 · JOB 3121 — DER SATZ „STAND VON <ZEIT> · AUFFRISCHUNG FEHLGESCHLAGEN".
   // ================================================================================================
@@ -1523,6 +1554,16 @@ export function BibliothekFlaeche({
               setWindowLimit((n) => n + LIBRARY_RESULT_LIMIT);
             }
           }}
+          ansicht={ansicht}
+          markierung={
+            auswahlModus
+              ? {
+                  ids: markiertTreffer,
+                  onUmschalten: markierungUmschalten,
+                  onLeeren: () => setMarkiert(new Set()),
+                }
+              : null
+          }
           // R-0446 / R-1812: der Nulltreffer nennt den Bestand, in dem gesucht wurde — mit
           // demselben Wort wie die Ortszeile darüber. In der eigenen Ablage ist der Gesamtbestand
           // die plausibel gemeinte andere Suche; der Knopf schaltet nur den Bereich um, Suchwort und
@@ -1697,6 +1738,33 @@ export function BibliothekFlaeche({
                         </MenueZeile>
                       </MenueUntermenue>
                     ) : null}
+                    {/* R-1006 (K16): Darstellung und Mehrfachauswahl — Beschriftungen hinter dem
+                        Menü, kein neuer Erklärtext auf der Fläche (H4). */}
+                    <MenueUntermenue beschriftung={t("lib.ansicht.label")}>
+                      {BIB_ANSICHTEN.map((a) => (
+                        <MenuePunkt
+                          key={a}
+                          testId={`bib-ansicht-${a}`}
+                          haken={ansicht === a}
+                          onClick={() => {
+                            setAnsicht(a);
+                            schliessen();
+                          }}
+                        >
+                          {t(`lib.ansicht.${a}`)}
+                        </MenuePunkt>
+                      ))}
+                    </MenueUntermenue>
+                    <MenuePunkt
+                      testId="bib-auswahl-modus"
+                      haken={auswahlModus}
+                      onClick={() => {
+                        auswahlModusUmschalten();
+                        schliessen();
+                      }}
+                    >
+                      {t("lib.auswahl.modus")}
+                    </MenuePunkt>
                     <MenueTrenner />
                     <MenueUntermenue beschriftung={t("lib.export")}>
                       {EXPORT_FORMATS.map((fmt) => (

@@ -166,6 +166,23 @@ function ZeilenTitel({ zeile, gewaehlt }: { zeile: BibZeile; gewaehlt: boolean }
   );
 }
 
+// ================================================================================================
+// R-1006 (K16) — KOMPAKTE LISTE (STANDARD) ODER KARTEN, UND MEHRFACHAUSWAHL VON ZEILEN.
+// ================================================================================================
+// Beides ist eine Darstellung DERSELBEN Treffer: dieselben Posten, dieselbe Reihenfolge, derselbe
+// Zeilenknopf mit `data-testid="bib-zeile"` (fremder Code fokussiert und rollt ihn). Die Liste
+// bleibt Vorgabe; in der Liste ändert sich ohne Umschalten kein Pixel (H4-Zeilenmaße V10/V11).
+// Die Mehrfachauswahl ist ein eigener Zustand neben der EINEN geöffneten Zeile (`gewaehlt`) — ein
+// Häkchen öffnet nichts, und das Öffnen setzt kein Häkchen.
+export const BIB_ANSICHTEN = ["liste", "karten"] as const;
+export type BibAnsicht = (typeof BIB_ANSICHTEN)[number];
+
+export interface BibMarkierung {
+  readonly ids: ReadonlySet<string>;
+  readonly onUmschalten: (id: string) => void;
+  readonly onLeeren: () => void;
+}
+
 export function BibliothekListe({
   q,
   onQ,
@@ -187,6 +204,8 @@ export function BibliothekListe({
   leerAktion,
   leerRaum,
   lage,
+  ansicht = "liste",
+  markierung = null,
 }: {
   q: string;
   onQ: (wert: string) => void;
@@ -235,6 +254,10 @@ export function BibliothekListe({
   // JOB 3335: die Lage auf der Fläche — s. `LAGE_KLASSE` oben. Der Aufrufer weiss, welches Band
   // gilt; diese Datei weiss, wie breit sie darin ist.
   lage: BibListenLage;
+  // R-1006: Darstellung der Treffer (Vorgabe Liste) und — nur im Auswahlmodus gesetzt — die
+  // Mehrfachauswahl. Beide optional: ohne sie zeichnet die Liste exakt wie bisher.
+  ansicht?: BibAnsicht;
+  markierung?: BibMarkierung | null;
 }): JSX.Element {
   const { t } = useTranslation();
   const spur = useRef<HTMLDivElement | null>(null);
@@ -335,6 +358,28 @@ export function BibliothekListe({
           der in derselben Lage „–" zeigt. Ohne den Fall ist hier nichts. */}
       {hinweis ? <div className="px-4">{hinweis}</div> : null}
 
+      {/* R-1006: im Auswahlmodus sagt eine Zeile, wie viele Treffer markiert sind, und hebt die
+          Auswahl auf. Ohne Auswahlmodus steht hier nichts. */}
+      {markierung ? (
+        <div
+          data-testid="bib-auswahl-leiste"
+          className="flex items-center justify-between gap-2 border-b border-hairline-soft px-4 py-1.5 text-[12px] text-muted"
+        >
+          <span data-testid="bib-auswahl-anzahl">
+            {t("lib.auswahl.anzahl", { count: markierung.ids.size })}
+          </span>
+          <button
+            type="button"
+            data-testid="bib-auswahl-leeren"
+            disabled={markierung.ids.size === 0}
+            onClick={markierung.onLeeren}
+            className="rounded-btn px-1.5 py-0.5 font-semibold text-text hover:bg-hairline-soft disabled:opacity-45"
+          >
+            {t("lib.auswahl.leeren")}
+          </button>
+        </div>
+      ) : null}
+
       {/* JOB 3335: die Marke trägt die Rollspur nach aussen — die Fläche merkt sich beim Einklappen
           der Liste (Tablet) deren Rollstand und stellt ihn beim Ausklappen wieder her; dafür muss
           sie das rollende Element finden, ohne seine Klassen zu kennen. */}
@@ -342,7 +387,14 @@ export function BibliothekListe({
         ref={spur}
         onScroll={beiScroll}
         data-testid="bib-spur"
-        className="min-h-0 flex-1 overflow-y-auto"
+        data-ansicht={ansicht}
+        className={cx(
+          "min-h-0 flex-1 overflow-y-auto",
+          // Karten: ein Raster, das sich nach der Breite der Spur richtet (schmal eine Spalte).
+          ansicht === "karten"
+            ? "grid content-start gap-3 p-3 [grid-template-columns:repeat(auto-fill,minmax(220px,1fr))]"
+            : "",
+        )}
       >
         {/* Laden: keine Zeile, kein Text. Erst wenn etwas feststeht, steht hier etwas. */}
         {fehler ? (
@@ -468,11 +520,31 @@ export function BibliothekListe({
               key={p.id}
               data-testid="bib-zeilenblock"
               data-bib-id={p.id}
+              data-markiert={markierung ? String(markierung.ids.has(p.id)) : undefined}
               className={cx(
-                "border-b border-hairline-soft",
+                ansicht === "karten"
+                  ? "overflow-hidden rounded-card border border-hairline"
+                  : "border-b border-hairline-soft",
                 p.id === gewaehlt ? "bg-[#FDEADD]" : "hover:bg-hairline-soft",
+                // Im Auswahlmodus ein Raster: Häkchen links über beide Reihen, Zeilenknopf und
+                // Aufklapper rechts — ohne zusätzliche Hülle, die Liste ohne Auswahl bleibt DOM-gleich.
+                markierung ? "grid grid-cols-[auto_minmax(0,1fr)]" : "",
               )}
             >
+              {/* R-1006: das Häkchen ist ein eigenes Steuerelement NEBEN dem Zeilenknopf (kein
+                  Steuerelement im Knopf). Sein Name nennt den Titel, damit ein Screenreader weiß,
+                  WAS markiert wird. */}
+              {markierung ? (
+                <input
+                  type="checkbox"
+                  data-testid="bib-zeile-markieren"
+                  data-bib-id={p.id}
+                  checked={markierung.ids.has(p.id)}
+                  onChange={() => markierung.onUmschalten(p.id)}
+                  aria-label={t("lib.auswahl.zeile", { titel: p.titel })}
+                  className="row-span-2 ml-4 mt-[14px] h-4 w-4 shrink-0 accent-brand"
+                />
+              ) : null}
               <button
                 type="button"
                 data-testid="bib-zeile"
