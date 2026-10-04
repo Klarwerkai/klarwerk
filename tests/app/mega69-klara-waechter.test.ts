@@ -2605,7 +2605,14 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     //   · Abrufziel, Nutzlast, Manifest, CSP, Recht: unverändert — die Zeile LIEST nur eine
     //     Serverantwort und entscheidet, ob ihr KI-Vermerk gezeigt wird. Kein erneutes Sideload.
     // Der Wert ist im Prüflauf auf Kandidat 897ebc1a GEMESSEN (Zusicherung dieses Falls,
-    // „Received") und unverändert übernommen; `taskpane.html` ist seit dieser Messung unberührt.
+    // „Received") und unverändert übernommen.
+    // HAUPTSTAND ERNEUT INTEGRIERT (main 4c1746be, darin R-0169 „Importiertes Wissen mit dauerhafter
+    // Herkunft"): main hat `taskpane.html` geändert, ohne diesen Pin mitzuziehen. Mitgebracht ist
+    // `dokumentId` als EIN zusätzliches, optionales Feld in beiden Einreichrümpfen (`/api/drafts`,
+    // `/api/drafts/from-docx`) — gelesen aus der im Dokument gespeicherten Kennung, nur wenn eine da
+    // ist. Abrufziel, Manifest, CSP, Recht: unverändert. Der Konflikt zur Stufenwahl (R-0632) ist so
+    // aufgelöst, dass beide Felder mitreisen. OFFEN: der Hash des zusammengeführten Stands ist noch
+    // nicht gemessen (kein Hash-Werkzeug freigegeben) — der Wert unten ist der Stand vor diesem Merge.
     const PIN = "9549900a268b5c942beb729cf706753149ac618fe4be4c5fb4704275ed0a93f8";
     const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
     expect(

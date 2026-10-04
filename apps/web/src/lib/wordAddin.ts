@@ -1252,6 +1252,40 @@ export function draftPostPayload(title: string, statement: string, bodyHtml: str
   return JSON.stringify({ title, statement, bodyHtml, origin: "word_addin" });
 }
 
+// ================================================================================================
+// R-0169 (herkunft-identitaet, Nacharbeit 5) — DIE DOKUMENTKENNUNG LEBT IM WORD-DOKUMENT.
+// ================================================================================================
+//
+// Klarwerk vergibt beim ersten Senden eine interne Dokumentkennung (Antwort: `dokumentHerkunft`).
+// Das Panel legt sie in den Dokumenteinstellungen des Word-Dokuments ab
+// (`Office.context.document.settings`, Schlüssel unten) — sie reist also MIT der Datei und nicht mit
+// dem Rechner. Jedes weitere Senden aus demselben Dokument trägt sie mit; der Server schreibt dann
+// eine neue Fassung DERSELBEN Akte fest. Die Kennung wird nie aus Titel, Dateiname oder Inhalt
+// gebildet. Spiegel dieser Funktionen: `apps/web/public/word-addin/taskpane.html`.
+export const WORD_ADDIN_DOKUMENT_SETTING = "klarwerkDokumentId";
+
+/** Fügt dem fertigen Entwurfs-Rumpf die gespeicherte Kennung hinzu — ohne Kennung unverändert. */
+export function mitDokumentkennung(payload: string, dokumentId: string | null | undefined): string {
+  if (typeof dokumentId !== "string" || dokumentId.trim().length === 0) {
+    return payload;
+  }
+  const rumpf = JSON.parse(payload) as Record<string, unknown>;
+  return JSON.stringify({ ...rumpf, dokumentId: dokumentId.trim() });
+}
+
+/** Die vom Server vergebene Kennung aus der Antwort — `null`, wenn die Antwort keine trägt. */
+export function dokumentkennungAusAntwort(antwort: unknown): string | null {
+  if (!antwort || typeof antwort !== "object") {
+    return null;
+  }
+  const herkunft = (antwort as { dokumentHerkunft?: unknown }).dokumentHerkunft;
+  if (!herkunft || typeof herkunft !== "object") {
+    return null;
+  }
+  const kennung = (herkunft as { dokumentId?: unknown }).dokumentId;
+  return typeof kennung === "string" && kennung.length > 0 ? kennung : null;
+}
+
 export interface WordDraftRequest {
   // Finaler, bereits serialisierter POST-Body (genau der gemessene String wird gesendet).
   payload: string;

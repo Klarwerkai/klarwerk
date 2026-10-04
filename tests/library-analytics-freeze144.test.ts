@@ -140,6 +140,12 @@ const WIDERRUFENE_FREIGABEN: readonly string[] = [
   // autorisierte den `service.test.ts`-Stand, in dem ein Import ohne Stufe „vertraulich" ergab.
   // Sie darf den nachgeführten Inhalt nicht decken; ihre Nachfolgerin steht am Eintrag.
   "FREEZE-144/JOB3050-20260904/service-test",
+  // package:confluence (main c2aed83d, R-0134/K6): verbraucht. Diese beiden Freigaben autorisierten
+  // den Stand VOR `ohneQuellRestriktionen`/`sourceRestrictions` (types.ts) und deren Ausleitung
+  // (index.ts). Sie dürfen den neuen Inhalt nicht nachträglich decken; ihre Nachfolgerinnen stehen
+  // am jeweiligen Eintrag.
+  "FREEZE-144/JOB3087-20260905/index",
+  "FREEZE-144/JOB4155R3-20260917/types",
 ];
 
 const ERWARTETE_ANZAHL = 6;
@@ -168,10 +174,19 @@ const FREEZE_MANIFEST: readonly FreezeEintrag[] = [
     // alte Name verschwindet, damit daraus kein zweiter Vergleichsweg entstehen kann. Sollhash
     // UND Freigabe sind in EINEM Änderungssatz neu gesetzt, die alte steht in
     // WIDERRUFENE_FREIGABEN.
-    hash: "589ba5e4fe80e236d03adf3a856fd2f0e1418250a1747550867ad41df7d77cc1",
+    // package:confluence (main c2aed83d) · AUSGEWIESENE ÄNDERUNG — NICHT AUS DIESEM AUFTRAG.
+    // `ohneQuellRestriktionen` wird ausgeleitet (Verwerfen eines client-gelieferten
+    // `sourceRestrictions` an den Importeingängen). Die Änderung kam mit main c2aed83d
+    // („Confluence-Import: Bedienung, Funktionsschalter, Bereichsauswahl und verständliche Fehler",
+    // 1.0.0-beta.1.667) in diesen Kandidaten; der Arbeitsbaum ist an dieser Datei identisch mit
+    // c2aed83d. Main hat das Manifest dabei NICHT nachgeführt — der Wächter wurde deshalb nach dem
+    // Merge rot. Sollhash und Freigabe sind hier in EINEM Änderungssatz nachgezogen, der Hash ist
+    // der in der Cloud-Prüfung des Kandidaten e60b19d9 gemessene (nacharbeit-11/gezielt.log). Wer
+    // die Freigabe zeichnet, bleibt die offene Ownerfrage aus § GRENZE — BEN prüft Diff und Hash.
+    hash: "c32706a1a792a39e209f90947850f1d207dc1c3428e263eeff57ff923c81175f",
     freigabe: {
-      id: "FREEZE-144/JOB3087-20260905/index",
-      autorisiertHash: "589ba5e4fe80e236d03adf3a856fd2f0e1418250a1747550867ad41df7d77cc1",
+      id: "FREEZE-144/MAIN-c2aed83d-20261004/index",
+      autorisiertHash: "c32706a1a792a39e209f90947850f1d207dc1c3428e263eeff57ff923c81175f",
     },
   },
   // JOB 3022 · AUSGEWIESENE ÄNDERUNG. `Graph` (types.ts:185-204) trägt seit dem Umbau von
@@ -253,10 +268,16 @@ const FREEZE_MANIFEST: readonly FreezeEintrag[] = [
     // und sie betreffen ausschliesslich dieselbe Menge. `nodes`, `edges`, `totalEdges`,
     // `truncated`, `edgeLimit` und jeder Filter sind unverändert. Die Erweiterung ist additiv und
     // optional; ein Leser ohne sie liest die Antwort wie bisher. BEN prüft Typ, Diff und Hash.
-    hash: "8c36b02e6c305a7d492208f82fb375d672428a8cf18d41bd6263b58d7f7181f2",
+    //
+    // package:confluence (main c2aed83d) · AUSGEWIESENE ÄNDERUNG — NICHT AUS DIESEM AUFTRAG.
+    // `ImportItem` trägt das optionale Feld `sourceRestrictions` (Lese-Einschränkung der Quelle,
+    // Erzeuger allein der Quell-Adapter), und `ohneQuellRestriktionen` verwirft es an den
+    // Client-Eingängen. Herkunft, Messung und Grenze wie am Eintrag `index.ts` oben: identisch mit
+    // main c2aed83d, Hash aus der Cloud-Prüfung von e60b19d9, Manifest von main nicht nachgeführt.
+    hash: "09cf2bd105300441a52aa55724251f149d99c9f53ac30bf3e2a899d7f4d62574",
     freigabe: {
-      id: "FREEZE-144/JOB4155R3-20260917/types",
-      autorisiertHash: "8c36b02e6c305a7d492208f82fb375d672428a8cf18d41bd6263b58d7f7181f2",
+      id: "FREEZE-144/MAIN-c2aed83d-20261004/types",
+      autorisiertHash: "09cf2bd105300441a52aa55724251f149d99c9f53ac30bf3e2a899d7f4d62574",
     },
   },
   {

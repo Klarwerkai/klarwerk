@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import {
   type CreateKoInput,
+  type DokumentHerkunft,
   type KoSource,
   createOperationFingerprint,
   isConfidentialityDowngrade,
@@ -733,6 +734,31 @@ export class CaptureService {
     return { draft: ergebnis.bestehend, angelegt: false };
   }
 
+  /**
+   * R-0169 (Nacharbeit 5) — BINDET DEN ENTWURF AN DIE FASSUNG SEINES WORD-DOKUMENTS.
+   *
+   * Nur die Kompositionswurzel ruft das (Word-Weg in capture-routes.ts), und nur für einen Entwurf,
+   * den DIESER Aufruf gerade angelegt hat. Dasselbe CAS wie `continueDraft` (`updateWennStand`);
+   * der Payload bleibt unberührt, `updatedAt` wandert nicht — das Binden ist keine Bearbeitung.
+   * Ein bereits gebundener Entwurf wird nicht umgebunden.
+   */
+  async dokumentHerkunftBinden(id: string, herkunft: DokumentHerkunft): Promise<Draft> {
+    return this.withDraftLock(id, async () => {
+      const draft = await this.require(id);
+      if (draft.dokumentHerkunft) {
+        return draft;
+      }
+      const gebunden: Draft = { ...draft, dokumentHerkunft: herkunft };
+      if (!(await this.repo.updateWennStand(gebunden, draft.updatedAt))) {
+        throw new CaptureError(
+          "DRAFT_WRITE_CONTENDED",
+          "Der Entwurf wird gerade an anderer Stelle geschrieben — bitte noch einmal versuchen.",
+        );
+      }
+      return gebunden;
+    });
+  }
+
   // FR-CAP-06: jeder Schreibberechtigte sieht und nutzt den gemeinsamen Pool.
   listDrafts(): Promise<Draft[]> {
     return this.repo.list();
@@ -1261,6 +1287,10 @@ export class CaptureService {
       // VERWIRFT statt sie zu `frontdoor` oder `word_addin` zu normalisieren. Was hier ankommt, ist
       // entschieden; hier wird nichts nachgeprüft und nichts erfunden.
       ...(p.origin !== undefined ? { origin: p.origin } : {}),
+      // R-0169 (Nacharbeit 5): der Fassungsbezug des Word-Dokuments reist mit. Er liegt am Draft
+      // (nicht im Payload) und ist serverseitig gesetzt — hier wird nichts gelesen, was ein Client
+      // geschrieben haben könnte.
+      ...(draft.dokumentHerkunft ? { dokumentHerkunft: draft.dokumentHerkunft } : {}),
       // ==========================================================================================
       // JOB 3934 — DIE BELEGSTELLEN REISEN MIT. Genau hier ging die Herkunft bis heute verloren.
       // ==========================================================================================

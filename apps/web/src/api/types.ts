@@ -588,7 +588,9 @@ export interface KnowledgeObject {
   // JOB 3027 R2: `null` aus demselben Grund wie bei der Stufe darüber — die Board-Route sendet
   // `origin: ko.origin ?? null` (services/validation/src/board-herkunft.ts:128). Fehlend und `null`
   // heissen hier beide „unbekannt"; nur der Board-Vertrag trennt sie von „nicht in dieser Antwort".
-  origin?: "tell" | "studio" | "expert" | "frontdoor" | "word_addin" | null;
+  // R-0180/R-2108: `import` = aus der Import-Prüfwarteschlange von einem Menschen übernommen
+  // (nur am Wissensobjekt, nie am Entwurf — services/knowledge-object/src/types.ts).
+  origin?: "tell" | "studio" | "expert" | "frontdoor" | "word_addin" | "import" | null;
   // Pedi 05.07.: read-only Board-Anreicherung — Peer-Stimmen-Zähler (grün/gelb/rot) für „X von Y grün".
   reviewVotes?: { up: number; warn: number; down: number };
   // SCRUM-507 R2: Anzahl Bewertungen aus einer FRÜHEREN Revision — veraltet, zählen nicht mehr.
@@ -1478,6 +1480,17 @@ export interface ImportItemInput {
   // er wird NIE aus `statement` nachgebildet (`statement` ist seit JOB 2703 der Anriss, nicht der
   // Text). Rein additiv; kein bestehender Aufrufer muss etwas mitgeben.
   bodyHtml?: string;
+  // R-0139 / R-0169 (Nacharbeit 2, bens F1): DIE QUELLANGABEN EINER EINGEREICHTEN DATEI. Der Server
+  // führt dieselben Felder am `ImportItem` (services/library-analytics/src/types.ts) und legt daraus
+  // Herkunfts-Anker und Quellrevision an; fiel das hier weg, ging die Herkunft schon im Browser
+  // verloren. Alle optional — fehlen sie, fehlt die Herkunft ehrlich.
+  provider?: string;
+  externalId?: string;
+  sourceVersion?: number;
+  url?: string;
+  // R-0169 (Nacharbeit 5): die von Klarwerk vergebene INTERNE Dokumentkennung — die nächste
+  // Fassung derselben Dokumentakte. Getrennt von `externalId` (Kennung im Quellsystem).
+  dokumentId?: string;
   // WP-IC-PAKET-1c (ROT-2): Decode-Marker des Server-Kandidaten — "decoded" heisst: Textfelder sind
   // kanonisch dekodiert, die Queue-Karte dekodiert NICHT erneut; fehlt er (Altbestand), defensiv nach.
   textCodec?: "decoded";
@@ -2566,8 +2579,17 @@ export type FeatureFlags = Partial<Record<FeatureName, boolean>>;
 // eine AUSSAGE und kein Platzhalter: „es ist kein erfolgreicher Lauf belegt."
 export interface ImportAccessStatus {
   system: string;
-  /** Ist der Import eingeschaltet? Schalter aus ⇒ die Import-Routen existieren gar nicht. */
+  /**
+   * Ist der Import eingeschaltet? Freigegeben (Umgebung) UND vom Betreiber eingeschaltet — genau
+   * das, was die Import-Routen am Server durchsetzen.
+   */
   enabled: boolean;
+  /**
+   * R-0134 / R-1005: die zwei Teile von `enabled` (nur Confluence). `freigegeben` = Umgebung der
+   * Installation, `an` = Betreiberschalter (über `PUT /api/import/confluence/schalter` umlegbar).
+   * Fehlt, wenn der Server keinen Betreiberschalter kennt.
+   */
+  betreiber?: { freigegeben: boolean; an: boolean };
   /** Je Variable: benannt, und ob sie steht. Niemals ihr Wert. */
   credentials: { name: string; present: boolean }[];
   /** Kämen damit Zugangsdaten zustande? (Nicht: sind sie gültig — das wüsste nur ein Aufruf.) */

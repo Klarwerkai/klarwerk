@@ -6,6 +6,7 @@ import { CAPTURE_CREATE_OPERATION_SCHEMA, CAPTURE_SCHEMA } from "../../capture";
 import { CONFLICTS_SCHEMA, OVERLAP_SCHEMA, OVERLAP_SETTINGS_SCHEMA } from "../../conflicts";
 import { EXTERNAL_KNOWLEDGE_SCHEMA } from "../../external-search";
 import {
+  DOKUMENTAKTE_SCHEMA,
   GESAMTANWEISUNG_SCHEMA,
   KANTEN_SCHEMA,
   KO_CREATE_OPERATION_SCHEMA,
@@ -44,6 +45,8 @@ import { VALIDATION_SCHEMA, VALIDATION_SETTINGS_SCHEMA } from "../../validation"
 // die Lesevarianten: ein danebenliegender, flüchtiger Datenraum, der das KO-Modell nicht berührt.
 import { KO_BEARBEITUNG_SCHEMA } from "./bearbeitungshinweis";
 import { BRANDING_SETTINGS_SCHEMA } from "./branding-settings";
+// R-0134 / R-1005: der Betreiberschalter des Confluence-Imports (umlegbar über die Oberfläche).
+import { CONFLUENCE_IMPORT_SCHALTER_SCHEMA } from "./confluence-import-schalter";
 // JOB 3326: die Lesevarianten (gekennzeichnete Leseübersetzungen). Sie wohnen im App-Root und nicht
 // im knowledge-object-Modul, weil sie das KO-Modell ausdrücklich NICHT umbauen: die Variante ist ein
 // eigener, danebenliegender Datenraum, den kein Lesepfad des Originals berührt.
@@ -209,6 +212,13 @@ export const schemas = [
   // wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS), ohne Fremdschlüssel und ohne Extension; sie
   // steht am Ende, weil das die lesbare Ordnung ist.
   KO_BEARBEITUNG_SCHEMA,
+  // R-0169 (Nacharbeit 5): die Fassungen der internen Dokumentakte (`dokument_fassungen`). Additiv
+  // und wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS), ohne Fremdschlüssel und ohne Extension; am
+  // Ende, weil das die lesbare Ordnung ist.
+  DOKUMENTAKTE_SCHEMA,
+  // R-0134 / R-1005: die eine Zeile des Betreiberschalters für den Confluence-Import. Additiv und
+  // wiederholbar (CREATE TABLE IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed.
+  CONFLUENCE_IMPORT_SCHALTER_SCHEMA,
 ];
 
 // Führt die DDL aller Module aus. Jedes Modul liefert seine eigenen Tabellen (Datenhoheit).

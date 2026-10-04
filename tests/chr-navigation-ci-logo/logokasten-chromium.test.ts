@@ -1884,12 +1884,13 @@ function wortgruppe(m: Messung): Wortgruppe {
 // SIE WERDEN IN BEIDE RICHTUNGEN GEHALTEN: L12 wird auch dann rot, wenn ein Befund BEHOBEN ist —
 // dann ist die Aussage „hier trägt die Zeile nicht" nicht mehr wahr, und wer sie behoben hat, führt
 // den Pin nach. Dieselbe Bauart wie S4 in der Schwesterdatei.
-const SPRACH_BEFUND: ReadonlyMap<string, string> = new Map<string, string>([
-  [
-    "nl/900",
-    "BEFUND (gemessen 12.09.2026 in dieser Reihe): bei 900 px steht der Konto-Kreis auf NIEDERLÄNDISCH 41,5 px rechts ausserhalb des Fensters, und die Zeile verlangt 42 px mehr Platz als sie hat (scrollWidth 942 / clientWidth 900) — wo die deutsche Zeile 18,8 px Luft und 0 px Überschuss hat und die englische 32,0 px Luft. Die Ursache ist die längere Punktreihe (Gruppe Marke+Punkte de 563,9 px → nl 626,3 px), NICHT das Firmenlogo: bei 900 px sagt „LOGO_OHNE_PLATZ_QUERY“ gar keinen Logokasten zu (Fall L2), hier steht mit und ohne Firmen-CI dasselbe. Die Kante selbst ist der Bestand von JOB 3060 — bei 900 px beginnt die BREITE Bauform mit voller Punktreihe und Suchfeld und hat dort kaum Reserve; §10 dieses Auftrags lässt sie ausdrücklich unberührt, und eine Textänderung in `i18n.ts` wäre ein fremder Zielpfad. JOB 3587 hat denselben Befund OHNE Firmen-CI an einem früheren Stand gemessen (65 px Überschuss, 11.09.2026, `kopfband-schmal-chromium.test.ts`, `ZEILE_BEFUND` „nl/900“); dass es heute 42 px sind, liegt am Stand der Zeile und nicht an der CI — auch die deutsche Zeile hat hier inzwischen 18,8 px Luft statt 0",
-  ],
-]);
+// FE-002 (HEADER TEIL 1, 26.09.2026) HAT DEN EINZIGEN BEFUND BEHOBEN, und L12 hat es verlangt: „nl/900"
+// stand hier mit 42 px Überschuss (Konto-Kreis 41,5 px ausserhalb). Seit FE-002 gibt die rechte
+// Gruppe des Kopfbands unter 1024 px ihren Platz ab, statt überzulaufen — das Suchfeld tritt auf die
+// benannte Lupe zurück (`shell/Kopfband.tsx`, Block FE-002; `index.css`, `kw-kopfband-rechts`).
+// Gemessen in dieser Reihe: nl/900 mit Firmen-CI 0 px Überschuss, nichts ausserhalb. Der Eintrag
+// ist deshalb gelöscht; die Karte bleibt, damit ein NEUER Befund wieder einen Ort hat.
+const SPRACH_BEFUND: ReadonlyMap<string, string> = new Map<string, string>([]);
 
 /**
  * DIE GEMESSENE ANTWORT AUF DIE FRAGE DIESES JOBS: welche Sprache ist der bindende Fall?

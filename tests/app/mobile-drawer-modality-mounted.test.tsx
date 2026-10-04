@@ -191,7 +191,10 @@ describe("Block C: offener Drawer ist ECHT modal — Klara, Toast, Command Palet
       await flush();
     });
     const paletteInput = [...container.querySelectorAll<HTMLInputElement>("input")].find(
-      (i) => i.placeholder === i18n.t("cmd.placeholder"),
+      // FE-002: gesucht wird am benannten Griff der Palette (`data-cmd="suchfeld"`), nicht am
+      // Platzhalter — der heißt seitdem „Seite finden …", und ein Vergleich mit dem alten Text wäre
+      // still immer „nicht gefunden".
+      (i) => i.getAttribute("data-cmd") === "suchfeld",
     );
     expect(
       paletteInput,

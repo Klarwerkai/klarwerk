@@ -346,7 +346,7 @@ describe("JOB 3605 · N5 · „Gehe zu …“ bleibt auf dem Band ein Knopf", ()
       await montiere();
       const knopf = kopfband().querySelector<HTMLButtonElement>('[data-testid="kopfband-gehezu"]');
       expect(knopf, `${breite}px: „Gehe zu …“ ist mit verschwunden`).not.toBeNull();
-      expect(knopf?.textContent).toContain(i18n.t("menue.schnellnavigation"));
+      expect(knopf?.textContent).toContain(i18n.t("fe002.seiteFinden"));
       expect(knopf?.textContent, `${breite}px: das Kürzel fehlt`).toContain("⌘K");
       // Und er ist kein Navigationspunkt geworden, um die Lücke zu füllen.
       expect(knopf?.getAttribute("data-kopfband-punkt")).toBeNull();
