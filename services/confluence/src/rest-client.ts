@@ -140,6 +140,14 @@ export interface ConfluencePage {
 const EXPAND =
   "body.storage,version,metadata.labels,ancestors,restrictions.read.restrictions.user,restrictions.read.restrictions.group";
 
+// R-0162: das 404 des Einzelabrufs als eigener Wert — `undefined`/`null` kann auch aus einem
+// (fehlerhaften) 2xx-Body stammen und darf mit „nicht gefunden" nie verwechselt werden.
+const NICHT_GEFUNDEN: unique symbol = Symbol("confluence-nicht-gefunden");
+
+function istSeite(data: unknown): data is ConfluencePage {
+  return !!data && typeof data === "object" && typeof (data as { id?: unknown }).id === "string";
+}
+
 // R2a: erlaubt genau dann, wenn die URL https ist UND ihre Origin exakt der gepinnten Confluence-Origin
 // entspricht. Sonst Abbruch (kein Request). Rein & testbar.
 export function assertAllowedConfluenceUrl(url: string, allowedOrigin: string): void {
@@ -286,7 +294,7 @@ export class ConfluenceRestClient {
         throw this.redactedError("Confluence-Request fehlgeschlagen", err);
       }
       if (res.status === 404 && opts.nichtGefundenIstLeer) {
-        return undefined;
+        return NICHT_GEFUNDEN;
       }
       if (!res.ok) {
         // Nur der Status (eine Zahl) — strukturell token-frei.
@@ -317,12 +325,37 @@ export class ConfluenceRestClient {
    * wenn die Seite inzwischen nicht mehr existiert (404).
    */
   async getPageById(pageId: string): Promise<ConfluencePage | undefined> {
-    const url = `${this.baseUrl}/rest/api/content/${encodeURIComponent(pageId)}?expand=${encodeURIComponent(EXPAND)}`;
-    const data = await this.getJson(url, this.allowedOrigin(), { nichtGefundenIstLeer: true });
-    if (!data || typeof data !== "object" || typeof (data as { id?: unknown }).id !== "string") {
-      return undefined;
+    const data = await this.getJson(this.pageUrl(pageId), this.allowedOrigin(), {
+      nichtGefundenIstLeer: true,
+    });
+    return istSeite(data) ? data : undefined;
+  }
+
+  /**
+   * R-0162 (Abgleich): wie `getPageById`, aber OHNE die beiden Fälle zu vermischen, die dort beide
+   * `undefined` ergeben. NUR ein echtes 404 heißt `{ gefunden: false }`. Eine 2xx-Antwort ohne
+   * verwendbare Seite (`{}`, `null`, fehlende id) ist ein Protokollfehler und WIRFT — eine unklare
+   * Antwort darf nie als bestätigte Löschung gelesen werden.
+   */
+  async getPageStateById(
+    pageId: string,
+  ): Promise<{ gefunden: false } | { gefunden: true; page: ConfluencePage }> {
+    const data = await this.getJson(this.pageUrl(pageId), this.allowedOrigin(), {
+      nichtGefundenIstLeer: true,
+    });
+    if (data === NICHT_GEFUNDEN) {
+      return { gefunden: false };
     }
-    return data as ConfluencePage;
+    if (!istSeite(data)) {
+      const err = new Error("Confluence-Einzelantwort ohne gültige Seite");
+      err.name = "ConfluenceAntwortUngueltig";
+      throw err;
+    }
+    return { gefunden: true, page: data };
+  }
+
+  private pageUrl(pageId: string): string {
+    return `${this.baseUrl}/rest/api/content/${encodeURIComponent(pageId)}?expand=${encodeURIComponent(EXPAND)}`;
   }
 
   private firstUrl(): string {
