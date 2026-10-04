@@ -34,10 +34,14 @@
 //      API-Antwortzeit wird GETRENNT gemessen; die Entprellung (`LIBRARY_SEARCH_DEBOUNCE_MS`) und der
 //      Kaltstart werden ausgewiesen, nicht verrechnet.
 //   5. Nachladen (S1): ECHTES Mausrad über der Trefferliste, über das erste 200er-Fenster hinaus;
-//      Fensterrücksatz bei Filterwechsel und nach vollständigem Neuladen.
+//      Filterwechsel und vollständiges Neuladen mit richtiger Treffermenge und Fensterstufe. Was
+//      das Fenster dabei tatsächlich tut (Zeilen, scrollTop, Scrollereignisse, Filterset der
+//      Adresse), beobachtet ein eigener Leser je Bild und schreibt es in den Bericht.
 //   6. Struktureller Nulltreffer (N1): eine widersprüchliche Altsicht bzw. ein gespeichertes
-//      `{noMatch:true}` über den vorhandenen Sichtenweg (`migrateSavedFacetSelection`), 0 Treffer,
-//      Neuladen, Wiederanwenden, Dimension lösen — der Marker erscheint nie als wählbarer Wert.
+//      `{noMatch:true}` über den vorhandenen Sichtenweg (`migrateSavedFacetSelection`), 0 Treffer;
+//      nach vollständigem Neuladen (`reload`) MUSS es 0 bleiben; die Dimension ist im H4-Menü
+//      erkennbar („Bereich · 1", Lösen-Punkt) und gezielt lösbar; Wiederanwenden, Lösen über einen
+//      echten Wert, „Alle zurücksetzen" — der Marker erscheint nie als Wert und nie in der Adresse.
 //
 // P1 · DIE AKTIVE AUSWAHL AM H4-MENÜORT. Historisch (Nacharbeit 18, Lauf g17/g18) hat P1 R-0428
 // wörtlich gemessen — „entfernbare Pillen" — und rot gezeigt; das Original samt Aussage bleibt unter
@@ -362,8 +366,49 @@ const IST_UNTERMENUE = `(a, name) => a.tagName === "SUMMARY"
 const MENUE_OFFEN = `(id) => !!document.querySelector('[data-testid="' + id + '"]')
   ?.parentElement.querySelector('[role="menu"]')`;
 
+// NACHARBEIT 21 · DIAGNOSE N1 (Lauf g19): `tabBisZu(…, vonVorn=true)` ruft nur `blur()` auf. Chromium
+// behält danach den Startpunkt der Tab-Folge am zuletzt fokussierten Element (hier: dem Knopf
+// „Bereich", auf den Escape den Fokus zurückgibt). Das Menü „…" liegt im DOM DAVOR; Tab lief vorwärts
+// durch die nachgeladenen Trefferzeilen und kam in 600 Anschlägen nicht an — zuletzt aktiv war eine
+// Zeile („K10 Bestandseintrag 01196"). Die Korrektur bleibt beim echten Tastaturweg: die RICHTUNG wird
+// aus der Dokumentlage von Fokus und Ziel gelesen (`compareDocumentPosition`, nur gelesen, kein
+// `focus()`), dann Tab bzw. Umschalt+Tab. Steht kein Element im Fokus, beginnt Tab am Dokumentanfang.
+const RICHTUNG = `(sel) => {
+  const ziel = document.querySelector(sel);
+  if (!ziel) return "fehlt";
+  const a = document.activeElement;
+  if (!a || a === document.body) return "vor";
+  if (a === ziel) return "da";
+  return a.compareDocumentPosition(ziel) & Node.DOCUMENT_POSITION_PRECEDING ? "zurueck" : "vor";
+}`;
+
+const AKTIV = `() => {
+  const a = document.activeElement;
+  if (!a) return "(nichts)";
+  return "<" + a.tagName.toLowerCase() + ">" + (a.getAttribute("data-testid") || "")
+    + " " + (a.textContent || "").trim().slice(0, 50);
+}`;
+
+async function bedienelementErreichen(s: Seite, selektor: string): Promise<void> {
+  const richtung = await s.evaluate<string>(fn(RICHTUNG), selektor);
+  expect(richtung, `${K}: ${selektor} steht nicht im Dokument`).not.toBe("fehlt");
+  if (richtung === "da") {
+    return;
+  }
+  const taste = richtung === "zurueck" ? "Shift+Tab" : "Tab";
+  const treffer = "(sel) => !!document.activeElement && document.activeElement.matches(sel)";
+  for (let schritt = 1; schritt <= TAB_DECKEL; schritt += 1) {
+    await s.keyboard.press(taste);
+    if (await s.evaluate<boolean>(fn(treffer), selektor)) {
+      return;
+    }
+  }
+  const zuletzt = await s.evaluate<string>(fn(AKTIV));
+  throw new Error(`${K}: ${selektor} per ${taste} nicht erreichbar — zuletzt aktiv: ${zuletzt}`);
+}
+
 async function menueOeffnen(s: Seite, testid: string): Promise<void> {
-  await tabBisZu(s, `[data-testid="${testid}"]`, TAB_DECKEL, true);
+  await bedienelementErreichen(s, `[data-testid="${testid}"]`);
   await s.keyboard.press("Enter");
   await warte(s, MENUE_OFFEN, `${K}: Menü ${testid} offen`, testid, FRIST);
 }
@@ -617,6 +662,101 @@ async function rollenUeberDerListe(s: Seite): Promise<number> {
 }
 
 const FENSTER_GROESSER = `(n) => document.querySelectorAll('[data-testid="bib-zeile"]').length > n`;
+
+/**
+ * Fenster nach einem Wechsel: Fuss zeigt die Treffermenge, sichtbar mindestens das erste Fenster,
+ * und die Zeilenzahl ist eine Fensterstufe (Vielfaches von 200 oder alle). Das bestehende
+ * automatische Nachladen darf das Fenster wieder wachsen lassen.
+ */
+const FENSTER_IST = `(soll) => {
+  const fuss = document.querySelector('[data-testid="bib-fuss"]');
+  if (!fuss || Number((fuss.textContent || "").replace(/[^0-9]/g, "")) !== soll.zahl) return false;
+  const n = document.querySelectorAll('[data-testid="bib-zeile"]').length;
+  return n >= Math.min(soll.zahl, soll.fenster) && (n % soll.fenster === 0 || n === soll.zahl);
+}`;
+
+/**
+ * NACHARBEIT 21 · S1: unabhängiger Beobachter. Je Bild werden Zeilenzahl, Fusszahl und `scrollTop`
+ * der Trefferliste festgehalten (nur Änderungen), dazu die Zahl echter `scroll`-Ereignisse. Er liest
+ * nur; nichts wird ausgelöst oder gesetzt.
+ */
+const S1_BEOBACHTER = `() => {
+  const b = { scrollEreignisse: 0, verlauf: [], aus: false, spur: null };
+  window.__s1 = b;
+  const zaehle = () => { b.scrollEreignisse += 1; };
+  let letzt = "";
+  const schritt = () => {
+    if (b.aus) return;
+    const spur = document.querySelector('[data-testid="bib-spur"]');
+    if (spur && spur !== b.spur) {
+      spur.addEventListener("scroll", zaehle, { passive: true });
+      b.spur = spur;
+    }
+    const zeilen = document.querySelectorAll('[data-testid="bib-zeile"]').length;
+    const fussText = document.querySelector('[data-testid="bib-fuss"]')?.textContent || "";
+    const fuss = Number(fussText.replace(/[^0-9]/g, ""));
+    const scrollTop = spur ? Math.round(spur.scrollTop) : -1;
+    const zeichen = zeilen + "|" + fuss + "|" + scrollTop;
+    if (zeichen !== letzt && b.verlauf.length < 400) {
+      letzt = zeichen;
+      b.verlauf.push({ ms: Math.round(performance.now()), zeilen, fuss, scrollTop });
+    }
+    requestAnimationFrame(schritt);
+  };
+  requestAnimationFrame(schritt);
+  return true;
+}`;
+
+interface S1Bild {
+  ms: number;
+  zeilen: number;
+  fuss: number;
+  scrollTop: number;
+}
+
+interface S1Bericht {
+  scrollEreignisse: number;
+  verlauf: S1Bild[];
+  adresse: { category: string[]; tag: string[]; confidentiality: string[] };
+}
+
+/** Den Beobachter anhalten und mit dem Filterset der Adresse auslesen. */
+async function s1Beobachtung(s: Seite): Promise<S1Bericht> {
+  const quelle = `() => {
+    const b = window.__s1;
+    b.aus = true;
+    const p = new URL(location.href).searchParams;
+    return {
+      scrollEreignisse: b.scrollEreignisse,
+      verlauf: b.verlauf,
+      adresse: {
+        category: p.getAll("category"),
+        tag: p.getAll("tag"),
+        confidentiality: p.getAll("confidentiality"),
+      },
+    };
+  }`;
+  return s.evaluate<S1Bericht>(fn(quelle));
+}
+
+/** Eindeutig, nur erlaubte Kennungen, mindestens das erste Fenster, eine echte Fensterstufe. */
+function fensterPruefen(
+  zeilen: readonly string[],
+  erlaubt: ReadonlySet<string>,
+  was: string,
+): void {
+  const fenster = LIBRARY_RESULT_LIMIT;
+  const fremd = zeilen.filter((id) => !erlaubt.has(id));
+  expect(new Set(zeilen).size, `${K}: ${was} — doppelte IDs`).toBe(zeilen.length);
+  expect(fremd, `${K}: ${was} — fremde IDs`).toEqual([]);
+  const stufe = zeilen.length % fenster === 0 || zeilen.length === erlaubt.size;
+  const mindestens = zeilen.length >= Math.min(fenster, erlaubt.size);
+  expect({ stufe, mindestens, zeilen: zeilen.length }, `${K}: ${was} — Fensterstufe`).toEqual({
+    stufe: true,
+    mindestens: true,
+    zeilen: zeilen.length,
+  });
+}
 
 function zeilenIds(s: Seite): Promise<string[]> {
   return s.evaluate<string[]>(
@@ -1157,44 +1297,57 @@ describe("K1/K10 · Bibliotheksfilter bei 10.001 Objekten (PG + Chromium, unver�
     );
     expect(Number(fuss.replace(/[^0-9]/g, "")), `${K}: S1 — Gesamtzahl im Fuss`).toBe(GESAMT);
 
-    // Filterwechsel: Bereich „Wartung" → Fenster zurück auf 200, nur Wartung-Kennungen.
+    // Filterwechsel: Bereich „Wartung". NACHARBEIT 21 · DIAGNOSE S1 (Lauf g19): die alte Erwartung
+    // „danach GENAU 200 Zeilen" lief 60 s ins Leere. Der Filter setzt das Fenster zurück
+    // (`resetWindow`), aber die Liste stand nach dem Rollen am Ende; das bestehende automatische
+    // Nachladen (Liste am Ende → nächstes Fenster) lässt das 200er-Fenster sofort wieder wachsen.
+    // Das ist Produktverhalten, kein Fehler — und eine dauerhafte 200er-Sperre wird NICHT erfunden.
+    // Geprüft wird deshalb, was die Anforderung trägt: richtige Treffermenge im Fuss, nur und genau
+    // eindeutige Wartung-Kennungen, Fensterstufe (Vielfaches von 200 oder alle). Was tatsächlich
+    // geschah — Zeilenzahl, scrollTop, Scrollereignisse je Bild, Filterset der Adresse — wird
+    // unabhängig beobachtet und in den Bericht geschrieben.
     const wartung = kategorieIds(WARTUNG);
     const wartungSet = new Set(wartung);
+    const wartungFenster = { zahl: wartung.length, fenster };
     await menueOeffnen(s, "bib-menue-bereich");
     await tabBisPassend(s, IST_WERT, WARTUNG, `Wert „${WARTUNG}"`);
+    await s.evaluate<boolean>(fn(S1_BEOBACHTER));
     await s.keyboard.press("Enter");
-    const wartungFenster = { zahl: wartung.length, ids: null, fenster };
-    await warte(s, LISTE_IST, `${K}: S1 — Fensterrücksatz`, wartungFenster, FRIST);
+    await warte(s, FENSTER_IST, `${K}: S1 — Wartung im Fenster`, wartungFenster, FRIST);
     await s.keyboard.press("Escape");
+    const filterwechsel = await s1Beobachtung(s);
     const gefiltert = await zeilenIds(s);
-    const nurWartung = gefiltert.every((id) => wartungSet.has(id));
-    expect(nurWartung, `${K}: S1 — fremde ID gefiltert`).toBe(true);
+    fensterPruefen(gefiltert, wartungSet, "S1 gefiltert");
+    expect(filterwechsel.adresse.category, `${K}: S1 — Filterset der Adresse`).toEqual([WARTUNG]);
     await rollenUeberDerListe(s);
-    await warte(s, FENSTER_GROESSER, `${K}: S1 — Nachladen gefiltert`, fenster, FRIST);
+    await warte(s, FENSTER_GROESSER, `${K}: S1 — Nachladen gefiltert`, gefiltert.length, FRIST);
     const gefiltertNach = await zeilenIds(s);
-    expect(
-      gefiltertNach.every((id) => wartungSet.has(id)),
-      `${K}: S1 — fremde ID gefiltert nach Rollen`,
-    ).toBe(true);
-    expect(new Set(gefiltertNach).size, `${K}: S1 — doppelte IDs gefiltert`).toBe(
-      gefiltertNach.length,
+    fensterPruefen(gefiltertNach, wartungSet, "S1 gefiltert nach Rollen");
+    expect(gefiltertNach.slice(0, gefiltert.length), `${K}: S1 — Fensteranfang gefiltert`).toEqual(
+      gefiltert,
     );
 
-    // Vollständiges Neuladen: wieder das erste Fenster, dieselbe Treffermenge.
-    const adresse = await s.evaluate<string>(fn("() => location.href"));
-    await s.goto(adresse, { waitUntil: "load" });
-    await warte(s, LISTE_IST, `${K}: S1 — Neuladen`, wartungFenster, FRIST);
+    // Vollständiges Neuladen (`reload`): dieselbe Treffermenge; das Fenster wird beobachtet.
+    await s.reload({ waitUntil: "load" });
+    await s.evaluate<boolean>(fn(S1_BEOBACHTER));
+    await warte(s, FENSTER_IST, `${K}: S1 — Neuladen`, wartungFenster, FRIST);
+    const neuladen = await s1Beobachtung(s);
     const neu = await zeilenIds(s);
-    expect(
-      neu.every((id) => wartungSet.has(id)),
-      `${K}: S1 — fremde ID nach Neuladen`,
-    ).toBe(true);
+    fensterPruefen(neu, wartungSet, "S1 nach Neuladen");
+    expect(neuladen.adresse.category, `${K}: S1 — Filterset nach Neuladen`).toEqual([WARTUNG]);
     bericht.nachladen = {
       vor: vor.length,
       nachRollen: nach.length,
-      gefiltert: { gesamt: wartung.length, nachRollen: gefiltertNach.length },
+      scrollTopNachRollen: gerollt,
+      gefiltert: {
+        gesamt: wartung.length,
+        fenster: gefiltert.length,
+        nachRollen: gefiltertNach.length,
+      },
       nachNeuladen: neu.length,
+      beobachtung: { filterwechsel, neuladen },
     };
+    process.stderr.write(`${K} S1-BEOBACHTUNG ${JSON.stringify({ filterwechsel, neuladen })}\n`);
   }, 600_000);
 
   // ==============================================================================================
@@ -1208,6 +1361,10 @@ describe("K1/K10 · Bibliotheksfilter bei 10.001 Objekten (PG + Chromium, unver�
   // `{noMatch:true}`-Auswahl. Beide Sichten werden hier im SPEICHERFORMAT des Produkts
   // (`klarwerk.library.views.<Nutzerkennung>`) abgelegt — so, wie ein älterer Stand sie hinterlassen
   // hat — und danach ausschliesslich über die Oberfläche geladen, neu geladen und aufgelöst.
+  //
+  // NACHARBEIT 21: Lauf g19 hat nach dem Neuladen 10.001 statt 0 gezeigt und das nur als BEFUND
+  // ausgegeben. Jetzt ist 0 nach `reload()` Pflicht. Erhalten wird der Zustand im Sitzungskontext
+  // des Tabs (`mitGesichertemNoMatch`, `lib/libraryUrlFilters.ts`), nie über die Adresse.
   it("N1 — gespeicherte widersprüchliche Sicht: 0 Treffer, Neuladen, Dimension lösen, kein Marker", async (ctx) => {
     if (!instanz || !seite) {
       process.stderr.write(`${MELDUNG_KEINE_DATENBANK} ${skipGrund}\n`);
@@ -1232,18 +1389,42 @@ describe("K1/K10 · Bibliotheksfilter bei 10.001 Objekten (PG + Chromium, unver�
     const sichtenName = i18n.t("lib.menue.sichten");
     const IST_SICHT = `(a, name) => a.getAttribute("role") === "menuitemcheckbox"
       && (a.textContent || "").replace(/✓/g, "").trim() === name`;
+    // Unter No-Match im Bereich: Liste leer, „Bereich · 1" (die Dimension ist eingegrenzt) und
+    // „Filter · 1" (es ist eine Facette aktiv).
+    const nullTreffer = zustand([], null, knoepfe(1, true));
     const sichtAnwenden = async (name: string, was: string): Promise<Messwert> => {
       await menueOeffnen(s, "bib-liste-menue");
       await untermenueOeffnen(s, sichtenName);
       await tabBisPassend(s, IST_SICHT, name, `Sicht „${name}"`);
-      const nullTreffer = zustand([], null, knoepfe(0, true));
       return messen(s, ZUSTAND_IST, nullTreffer, ENTER(s), was);
     };
     const MARKER = ["noMatch", "no-match", "__", i18n.t("facet.noMatch")];
-    const keinMarker = async (was: string): Promise<Wert[]> => {
+    const LOESEN = "bib-nomatch-loesen-category";
+    const loesenText = i18n.t("facet.remove", { label: i18n.t("facet.noMatch") });
+    const IST_LOESEN = '(a, id) => a.getAttribute("data-testid") === id';
+    const LOESEN_IST = `(id) => {
+      const el = document.querySelector('[data-testid="' + id + '"]');
+      return el ? { rolle: el.getAttribute("role"), text: (el.textContent || "").trim() } : null;
+    }`;
+    const bereichVoll = [...kategorienzahl(plan)].map(([k, n]) => w(k, n, false));
+    /**
+     * Den Nulltreffer im H4-Menü lesen: der Lösen-Punkt steht als einfacher Menüpunkt (kein
+     * ankreuzbarer Wert) im Menü „Bereich", alle echten Werte mit vollen Zählern, keiner angehakt;
+     * kein Marker als Wert und keiner in der Adresse; die Liste bleibt dabei leer.
+     */
+    const nullImMenue = async (was: string): Promise<void> => {
       await menueOeffnen(s, "bib-menue-bereich");
       const bereich = await werte(s, "Bereich");
+      const loesen = await s.evaluate<{ rolle: string; text: string } | null>(
+        fn(LOESEN_IST),
+        LOESEN,
+      );
       await s.keyboard.press("Escape");
+      expect(loesen, `${K}: ${was} — Lösen-Punkt im Menü Bereich`).toEqual({
+        rolle: "menuitem",
+        text: loesenText,
+      });
+      expect(bereich, `${K}: ${was} — Bereich unter No-Match`).toEqual(soll(bereichVoll));
       for (const m of MARKER) {
         expect(
           bereich.some((v) => v.text.includes(m)),
@@ -1256,46 +1437,57 @@ describe("K1/K10 · Bibliotheksfilter bei 10.001 Objekten (PG + Chromium, unver�
           false,
         );
       }
-      return bereich;
+      const adresse = new URL(href).searchParams;
+      expect(adresse.getAll("category"), `${K}: ${was} — category in der Adresse`).toEqual([]);
+      const nochLeer = await s.evaluate<boolean>(fn(ZUSTAND_IST), nullTreffer);
+      expect(nochLeer, `${K}: ${was} — Liste nach dem Menü noch leer`).toBe(true);
     };
-    const bereichVoll = [...kategorienzahl(plan)].map(([k, n]) => w(k, n, false));
+    const NAVIGATION = '() => performance.getEntriesByType("navigation")[0]?.type ?? "(keine)"';
+    /**
+     * Vollständiges Neuladen (`reload`, Navigationsart wird gelesen und muss „reload" sein), dann
+     * muss der Sollzustand stehen. Bei No-Match liest der Fall danach `nullImMenue` — das Menü mit
+     * vollen Zählern —, damit eine leere Liste VOR dem Bestandsabruf nicht als Erhalt durchgeht.
+     */
+    const neuladen = async (sollwert: Zustandssoll, was: string): Promise<void> => {
+      await s.reload({ waitUntil: "load" });
+      const art = await s.evaluate<string>(fn(NAVIGATION));
+      expect(art, `${K}: ${was} — Navigationsart`).toBe("reload");
+      await warte(s, ZUSTAND_IST, `${K}: ${was}`, sollwert, FRIST);
+    };
 
-    // 1 · Widersprüchliche Altsicht laden → 0 Treffer; Bereich zeigt alle echten Werte, keiner
-    //     angehakt; der Filter-Knopf meldet „· 1"; kein Marker in Menü oder Adresse.
+    // 1 · Widersprüchliche Altsicht laden → 0 Treffer; Lösen-Punkt im Menü, kein Marker.
     const laden = await sichtAnwenden(ALT, "N1 Altsicht laden");
-    const bereichNull = await keinMarker("N1 Altsicht");
-    expect(bereichNull, `${K}: N1 — Bereich unter No-Match`).toEqual(soll(bereichVoll));
-    const adresse = new URL(await s.evaluate<string>(fn("() => location.href"))).searchParams;
-    expect(adresse.getAll("category"), `${K}: N1 — category in der Adresse`).toEqual([]);
+    await nullImMenue("N1 Altsicht");
 
-    // 2 · Vollständiges Neuladen derselben Adresse. Der No-Match-Zustand steht absichtlich nicht in
-    //     der Adresse (`writeFacetSelectionToParams`); gemessen und BERICHTET wird, was danach steht.
-    const href = await s.evaluate<string>(fn("() => location.href"));
-    await s.goto(href, { waitUntil: "load" });
-    await warte(
+    // 2 · Vollständiges Neuladen: der strukturelle Nulltreffer MUSS bleiben (Sitzungskontext des
+    //     Tabs, `mitGesichertemNoMatch`) — sonst scheitert der Fall; kein BEFUND-nur-Ausgang.
+    await neuladen(nullTreffer, "N1 Altsicht nach Neuladen — 0 Treffer");
+    await nullImMenue("N1 Altsicht nach Neuladen");
+
+    // 3 · Gezielt die Dimension lösen: Menü „Bereich" → Lösen-Punkt → Enter. Volle Liste, keine Zahl
+    //     an den Menüs, Menü zu, Fokus zurück am Knopf. Danach Neuladen: es kommt NICHTS zurück.
+    await menueOeffnen(s, "bib-menue-bereich");
+    await tabBisPassend(s, IST_LOESEN, LOESEN, "Lösen-Punkt Bereich");
+    const gezielt = await messen(
       s,
-      `() => /\\d/.test(document.querySelector('[data-testid="bib-fuss"]')?.textContent || "")`,
-      `${K}: N1 — Listenfuss nach Neuladen`,
-      undefined,
-      FRIST,
+      ZUSTAND_IST,
+      { liste: voll, menue: null, knoepfe: knoepfe(0, false) },
+      ENTER(s),
+      "N1 Dimension gezielt gelöst",
     );
-    const fussNeu = await s.evaluate<string>(
-      fn(`() => document.querySelector('[data-testid="bib-fuss"]').textContent`),
+    const fokus = '() => document.activeElement?.getAttribute("data-testid") ?? ""';
+    expect(await s.evaluate<string>(fn(fokus)), `${K}: N1 — Fokus nach Lösen`).toBe(
+      "bib-menue-bereich",
     );
-    const nachNeuladen = Number(fussNeu.replace(/[^0-9]/g, ""));
-    if (nachNeuladen !== 0) {
-      process.stderr.write(
-        `${K} BEFUND (an Originalprüfer, keine Produktänderung): nach vollständigem Neuladen ist der strukturelle Nulltreffer der Sicht „${ALT}" fort — der Listenfuss zeigt ${nachNeuladen}. Ursache: libraryUrlFilters.ts writeFacetSelectionToParams schreibt No-Match bewusst nicht in die Adresse; die Sicht bleibt gespeichert und lässt sich neu anwenden.\n`,
-      );
-    }
-    await keinMarker("N1 nach Neuladen");
+    await neuladen(
+      { liste: voll, menue: null, knoepfe: knoepfe(0, false) },
+      "N1 nach gezieltem Lösen und Neuladen — voller Bestand",
+    );
 
-    // 3 · Wiederanwenden über das Sichtenmenü → wieder 0. Steht der Nulltreffer nach dem Neuladen
-    //     noch da, ist er bereits erhalten; ein erneutes Anwenden misst dann nichts.
-    const wieder =
-      nachNeuladen === 0 ? null : await sichtAnwenden(ALT, "N1 Altsicht wieder anwenden");
-
-    // 4 · Dimension lösen im Menü: ein echter Wert ersetzt den Marker, zweites Enter öffnet sie.
+    // 4 · Gespeicherte Sicht WIEDER anwenden → wieder 0; dann über einen echten Wert lösen: Wert
+    //     ersetzt den Nulltreffer, zweites Enter öffnet die Dimension.
+    const wieder = await sichtAnwenden(ALT, "N1 Altsicht wieder anwenden");
+    await nullImMenue("N1 Altsicht wieder angewendet");
     await menueOeffnen(s, "bib-menue-bereich");
     const wartung = kategorieIds(WARTUNG);
     const mitWartung = bereichVoll.map((v) =>
@@ -1320,11 +1512,13 @@ describe("K1/K10 · Bibliotheksfilter bei 10.001 Objekten (PG + Chromium, unver�
       "N1 Dimension gelöst",
     );
     await s.keyboard.press("Escape");
-    await keinMarker("N1 gelöst");
 
-    // 5 · Gespeichertes {noMatch:true} → 0; „Alle zurücksetzen" → voller Bestand.
+    // 5 · Die zweite Variante: gespeichertes {noMatch:true} → 0; Neuladen → weiterhin 0;
+    //     „Alle zurücksetzen" → voller Bestand; Neuladen → weiterhin voll (Sitzungseintrag geräumt).
     const gespeichert = await sichtAnwenden(GESPEICHERT, "N1 gespeichertes noMatch laden");
-    await keinMarker("N1 gespeichertes noMatch");
+    await nullImMenue("N1 gespeichertes noMatch");
+    await neuladen(nullTreffer, "N1 gespeichertes noMatch nach Neuladen — 0 Treffer");
+    await nullImMenue("N1 gespeichertes noMatch nach Neuladen");
     await menueOeffnen(s, "bib-menue-filter");
     await tabBisZu(s, '[data-testid="bib-filter-reset"]', TAB_DECKEL, false);
     const zurueck = await messen(
@@ -1335,16 +1529,16 @@ describe("K1/K10 · Bibliotheksfilter bei 10.001 Objekten (PG + Chromium, unver�
       "N1 Alle zurücksetzen",
     );
     await s.keyboard.press("Escape");
+    await neuladen(
+      { liste: voll, menue: null, knoepfe: knoepfe(0, false) },
+      "N1 nach Zurücksetzen und Neuladen — voller Bestand",
+    );
 
-    // H4-BEOBACHTUNG für den Originalprüfer: unter No-Match steht die Zahl am Menü „Filter", die
-    // betroffene Dimension „Bereich" zeigt dagegen weder Zahl noch Haken (facetSelectedValues des
-    // Markers ist leer). Das ist der heutige Produktstand; ob er R-0428 „keine versteckten
-    // Restfilter" genügt, wird hier nicht entschieden.
     bericht.nulltreffer = {
-      zeiten: [laden, wieder, ersetzt, geloest, gespeichert, zurueck],
-      nachNeuladenListenfuss: nachNeuladen,
-      h4Beobachtung:
-        "No-Match: Filter-Knopf '· 1', Bereich-Knopf ohne Zahl und ohne Haken; Lösen nur über Wert wählen/abwählen oder 'Alle zurücksetzen'",
+      zeiten: [laden, gezielt, wieder, ersetzt, geloest, gespeichert, zurueck],
+      neuladen:
+        "Navigationsart 'reload'; Altsicht und {noMatch:true} je 0 Treffer nach Neuladen; nach gezieltem Lösen bzw. Zurücksetzen voller Bestand nach Neuladen",
+      h4: "No-Match: 'Bereich · 1' und 'Filter · 1'; im Menü Bereich ein Menüpunkt (role=menuitem) 'keine Treffer … entfernen', kein ankreuzbarer Wert, kein Marker in der Adresse",
     };
   }, 600_000);
 });

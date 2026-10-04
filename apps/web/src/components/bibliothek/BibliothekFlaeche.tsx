@@ -39,6 +39,7 @@ import {
   type FacetValues,
   applyFacetSelection,
   facetSelectedValues,
+  isFacetNoMatch,
   toggleFacetValue,
 } from "../../lib/facets";
 import { LIBRARY_RESULT_LIMIT, windowList } from "../../lib/libraryDisplay";
@@ -81,6 +82,8 @@ import {
   facetSelectionFromParams,
   facetSelectionNeedsKnownValues,
   knownFacetValues,
+  mitGesichertemNoMatch,
+  noMatchSitzungSchreiben,
   pruneFacetSelectionToKnownValues,
   serializeFacetSelection,
   writeFacetSelectionToParams,
@@ -338,6 +341,46 @@ function DeckelUmschalter({
   return null;
 }
 
+// K1 / R-0428 (Nacharbeit 21): Wurde dieses Dokument durch ein ECHTES Neuladen geöffnet? Nur dann
+// kommt der strukturelle Nulltreffer aus dem Sitzungskontext zurück — ein Link oder eine Navigation
+// in die Bibliothek bekommt ihn nicht. Ohne Navigationsauskunft (Testumgebung) gilt: kein Neuladen.
+function istNeuladen(): boolean {
+  try {
+    const eintraege = performance.getEntriesByType?.("navigation") ?? [];
+    return (eintraege[0] as PerformanceNavigationTiming | undefined)?.type === "reload";
+  } catch {
+    return false;
+  }
+}
+
+// K1 / R-0428 (Nacharbeit 21): die strukturell leere Dimension IM H4-MENÜ. Sie ist kein Wert und
+// erscheint deshalb nie als ankreuzbarer Menüwert — sondern als EIN beschrifteter Punkt, der genau
+// diese Dimension löst (Beschriftung aus den vorhandenen Texten `facet.remove`/`facet.noMatch`).
+// Danach verschwindet der Punkt; wie ein einfacher Eintrag schliesst er deshalb das Menü und gibt
+// den Fokus an den Menüknopf zurück, statt ihn am Seitenanfang fallen zu lassen.
+function NoMatchLoesen({
+  dimension,
+  onLoesen,
+  schliessen,
+}: {
+  dimension: string;
+  onLoesen: (dimension: string) => void;
+  schliessen: () => void;
+}): JSX.Element {
+  const { t } = useTranslation();
+  return (
+    <MenuePunkt
+      testId={`bib-nomatch-loesen-${dimension}`}
+      onClick={() => {
+        onLoesen(dimension);
+        schliessen();
+      }}
+    >
+      {t("facet.remove", { label: t("facet.noMatch") })}
+    </MenuePunkt>
+  );
+}
+
 export function BibliothekFlaeche({
   vorgewaehlt,
   beiWahl,
@@ -380,9 +423,26 @@ export function BibliothekFlaeche({
 
   const [q, setQ] = useState(params.get(SUCH_PARAM) ?? "");
   const [facetSel, setFacetSel] = useState<FacetSelection>({});
-  const [urlSeed, setUrlSeed] = useState<FacetSelection | null>(() =>
-    facetSelectionFromParams(params, LIBRARY_FACET_PARAM_KEYS),
-  );
+  // K1 / R-0428 (Nacharbeit 21): beim ECHTEN Neuladen derselben Adresse kommt ein vorher aktiver
+  // struktureller Nulltreffer aus dem Sitzungskontext zurück (`mitGesichertemNoMatch`). Die Adresse
+  // allein erzeugt ihn nie — die uxpol4-Grenze bleibt.
+  const [urlSeed, setUrlSeed] = useState<FacetSelection | null>(() => {
+    const ausAdresse = facetSelectionFromParams(params, LIBRARY_FACET_PARAM_KEYS);
+    if (!istNeuladen()) {
+      return ausAdresse;
+    }
+    try {
+      return mitGesichertemNoMatch(
+        ausAdresse,
+        window.sessionStorage,
+        user?.id ?? "anon",
+        params.toString(),
+        LIBRARY_FACET_PARAM_KEYS,
+      );
+    } catch {
+      return ausAdresse;
+    }
+  });
   // JOB 3877 · B7b: die Dimensionen, die die Wertprüfung des Keims VOLLSTÄNDIG verworfen hat. Das
   // ist KEIN zweiter Auswahlspeicher — nichts hiervon filtert je einen Eintrag. Es hält allein
   // fest, DASS eingegrenzt wurde, nachdem die Auswahl selbst die Information verloren hat
@@ -596,6 +656,17 @@ export function BibliothekFlaeche({
   // Sichten und Bedienzustand gehören zur Nutzerkennung. Beim Wechsel wird die alte Liste
   // schon vor dem Leseeffekt ausgeblendet; Name und Löschziel werden gemeinsam zurückgesetzt.
   const viewsUserId = user?.id ?? "anon";
+  // K1 / R-0428 (Nacharbeit 21): der strukturelle Nulltreffer wird in den Sitzungskontext dieses
+  // Tabs gespiegelt — zusammen mit der Adresse, unter der er galt. Ohne No-Match wird der Eintrag
+  // weggeräumt; ein gesperrter Speicher heisst nur „kein Erhalt beim Neuladen", nie ein Fehler.
+  const adresseJetzt = params.toString();
+  useEffect(() => {
+    try {
+      noMatchSitzungSchreiben(window.sessionStorage, viewsUserId, adresseJetzt, wirksameAuswahl);
+    } catch {
+      // gesperrter Sitzungsspeicher: kein Erhalt beim Neuladen, sonst unverändert
+    }
+  }, [viewsUserId, adresseJetzt, wirksameAuswahl]);
   const [viewStore, setViewStore] = useState<{ userId: string; views: LibrarySavedView[] }>({
     userId: viewsUserId,
     views: [],
@@ -791,6 +862,22 @@ export function BibliothekFlaeche({
     // JOB 3877: Ein Klick ins Filtermenü ist eine eigene, geprüfte Wahl — sie löst den Befund der
     // Adresse ab. Was der Mensch jetzt gewählt hat, steht im Menü und zählt über `aktiveFilterZahl`.
     setVerworfeneEingrenzung([]);
+    setFacetSel(naechste);
+  };
+  // K1 / R-0428 (Nacharbeit 21): genau EINE strukturell leere Dimension lösen — offen, kein Filter.
+  // Andere Dimensionen, Suchwort, Zeitraum und Umschalter bleiben unberührt.
+  const onNoMatchLoesen = (dimension: string): void => {
+    resetWindow();
+    const naechste: FacetSelection = {};
+    for (const [key, groupSelection] of Object.entries(wirksameAuswahl)) {
+      if (key !== dimension) {
+        naechste[key] = groupSelection;
+      }
+    }
+    if (urlSeed !== null) {
+      setUrlSeed(naechste);
+      return;
+    }
     setFacetSel(naechste);
   };
   const onResetFilters = (): void => {
@@ -1886,13 +1973,26 @@ export function BibliothekFlaeche({
             bereich: (
               <Menue
                 beschriftung={t("lib.menue.bereich")}
-                zusatz={bereichGewaehlt.length > 0 ? String(bereichGewaehlt.length) : undefined}
+                zusatz={
+                  bereichGewaehlt.length > 0
+                    ? String(bereichGewaehlt.length)
+                    : isFacetNoMatch(wirksameAuswahl[BEREICH_KEY])
+                      ? "1"
+                      : undefined
+                }
                 testId="bib-menue-bereich"
                 ausrichtung="rechts"
                 breite="w-[230px]"
               >
-                {() => (
+                {(schliessen) => (
                   <>
+                    {isFacetNoMatch(wirksameAuswahl[BEREICH_KEY]) ? (
+                      <NoMatchLoesen
+                        dimension={BEREICH_KEY}
+                        onLoesen={onNoMatchLoesen}
+                        schliessen={schliessen}
+                      />
+                    ) : null}
                     {bereichGruppe ? (
                       <DimensionsSuche
                         gruppe={bereichGruppe}
@@ -1928,7 +2028,7 @@ export function BibliothekFlaeche({
                 ausrichtung="rechts"
                 breite="w-[270px]"
               >
-                {() => (
+                {(schliessen) => (
                   <>
                     <MenueUntermenue beschriftung={t("lib.sort.label")}>
                       {LIBRARY_SORT_KEYS.map((key) => (
@@ -1972,8 +2072,21 @@ export function BibliothekFlaeche({
                           <MenueUntermenue
                             key={g.key}
                             beschriftung={t(g.labelKey)}
-                            zusatz={gewaehlteWerte.length > 0 ? String(gewaehlteWerte.length) : ""}
+                            zusatz={
+                              gewaehlteWerte.length > 0
+                                ? String(gewaehlteWerte.length)
+                                : isFacetNoMatch(wirksameAuswahl[g.key])
+                                  ? "1"
+                                  : ""
+                            }
                           >
+                            {isFacetNoMatch(wirksameAuswahl[g.key]) ? (
+                              <NoMatchLoesen
+                                dimension={g.key}
+                                onLoesen={onNoMatchLoesen}
+                                schliessen={schliessen}
+                              />
+                            ) : null}
                             <DimensionsSuche
                               gruppe={g}
                               beschriftung={t(g.labelKey)}
