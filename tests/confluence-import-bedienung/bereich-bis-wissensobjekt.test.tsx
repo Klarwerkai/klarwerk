@@ -27,6 +27,7 @@ import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
 import { ImportRunPanel } from "../../apps/web/src/pages/Stufe2";
 import { warteAufOffeneImportLaeufe } from "../../services/app/src/routes/confluence-import-routes";
+import type { ConfluencePage } from "../../services/confluence/src/rest-client";
 import {
   BASIS,
   type Buehne,
@@ -114,9 +115,9 @@ async function lies<T>(buehne: Buehne, url: string): Promise<T> {
   return res.json() as T;
 }
 
-beforeEach(async () => {
-  await i18n.changeLanguage("de");
-  b = await baueBuehne({ fetchFn: confluenceInstanz({ ergebnisseiten: BEREICH }).fetchFn });
+/** Bühne über DIESEM Bereich bauen und die Lauf-Karte einhängen. */
+async function montiere(ergebnisseiten: ConfluencePage[][]): Promise<Buehne> {
+  b = await baueBuehne({ fetchFn: confluenceInstanz({ ergebnisseiten }).fetchFn });
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -130,6 +131,11 @@ beforeEach(async () => {
       ),
     );
   });
+  return b;
+}
+
+beforeEach(async () => {
+  await i18n.changeLanguage("de");
 });
 
 afterEach(async () => {
@@ -146,7 +152,7 @@ afterEach(async () => {
 
 describe("R-0171 · ganzer Bereich aus der Anwendung → Kandidaten → Annahme → Wissensobjekte", () => {
   it("der ganze Weg, die vollständige Seitenmenge, Herkunft je Objekt — und keine Doppelung", async () => {
-    const buehne = b as Buehne;
+    const buehne = await montiere(BEREICH);
 
     // 1 · DER LAUF ÜBER DEN KNOPF — beide Ergebnisseiten gelesen, alle drei Seiten eingereiht.
     const erster = await bereichImportieren(buehne);
@@ -216,5 +222,141 @@ describe("R-0171 · ganzer Bereich aus der Anwendung → Kandidaten → Annahme 
     expect(zweiter.counters).toMatchObject({ itemsTotal: 3, itemsCreated: 0, itemsSkipped: 3 });
     expect(await lies<Kandidat[]>(buehne, "/api/library/import/candidates")).toHaveLength(3);
     expect(await lies<unknown[]>(buehne, "/api/kos")).toHaveLength(3);
+  });
+});
+
+// ================================================================================================
+// package:confluence (K6) — WER IN DER QUELLE LESEN DARF, BLEIBT AM QUELLENANKER NACHVOLLZIEHBAR.
+// ================================================================================================
+//
+// Bens Befund (nacharbeit-7): der Mapper verdichtete die Lese-Einschränkung auf Ja/Nein; welche
+// Benutzer und Gruppen die Quelle zulässt, ging verloren. Drei Seiten im selben Bereich, derselbe
+// Weg wie oben (Knopf → Adapter → Kandidat → reguläre Annahme → `GET /api/kos/:id`):
+//   · 201 — explizit LEERE Restriktionslisten  → offen, KEINE Einschränkung am Anker,
+//   · 202 — `user.results` mit accountId `quelle-u1`,
+//   · 203 — `group.results` mit name `quelle-hr`.
+// Die Einstufung (`confidentiality`) allein genügt NICHT — sie ist für 202 und 203 gleich und sagt
+// nicht, WER. Geprüft wird die konkrete Kennung am Anker der jeweiligen Seite. Keine Rollenabbildung:
+// die Kennungen bleiben Quellkennungen, kein KLARWERK-Konto, keine Rolle.
+type Restriktionen = { user?: { results?: unknown[] }; group?: { results?: unknown[] } };
+function mitRestriktionen(page: ConfluencePage, restriktionen: Restriktionen): ConfluencePage {
+  return { ...page, restrictions: { read: { restrictions: restriktionen } } };
+}
+
+const RECHTE_BEREICH = [
+  [
+    mitRestriktionen(seite("201", "Offene Anleitung", 1, "Für alle im Bereich."), {
+      user: { results: [] },
+      group: { results: [] },
+    }),
+    mitRestriktionen(seite("202", "Persönliche Notiz", 1, "Nur für eine Person."), {
+      user: { results: [{ type: "known", accountId: "quelle-u1", displayName: "Quelle U1" }] },
+      group: { results: [] },
+    }),
+    mitRestriktionen(seite("203", "Personalablage", 1, "Nur für die Personalgruppe."), {
+      user: { results: [] },
+      group: { results: [{ type: "group", name: "quelle-hr" }] },
+    }),
+  ],
+];
+
+interface KoQuelle {
+  provider?: string | null;
+  externalId?: string;
+  spaceKey?: string;
+  sourceRestrictions?: { users: string[]; groups: string[] };
+}
+
+describe("package:confluence · konkrete Quellrestriktionen am Quellenanker", () => {
+  it("Benutzer und Gruppe unterscheidbar am Anker, offene Seite ohne", async () => {
+    const buehne = await montiere(RECHTE_BEREICH);
+
+    const lauf = await bereichImportieren(buehne);
+    expect(lauf.status).toBe("COMPLETED");
+    expect(lauf.counters).toMatchObject({ itemsTotal: 3, itemsCreated: 3, itemsFailed: 0 });
+
+    // KANDIDAT: die Einschränkung reist bereits mit dem Prüfgegenstand — derselbe Wert wie später.
+    const offen = await lies<
+      Array<{
+        id: string;
+        item: { externalId?: string; sourceRestrictions?: unknown; confidentiality?: string };
+      }>
+    >(buehne, "/api/library/import/candidates");
+    const kandidat = (id: string) => offen.find((k) => k.item.externalId === id);
+    expect(offen.map((k) => k.item.externalId).sort()).toEqual(["201", "202", "203"]);
+    expect(kandidat("201")?.item).not.toHaveProperty("sourceRestrictions");
+    expect(kandidat("202")?.item.sourceRestrictions).toEqual({ users: ["quelle-u1"], groups: [] });
+    expect(kandidat("203")?.item.sourceRestrictions).toEqual({ users: [], groups: ["quelle-hr"] });
+
+    // REGULÄRE ANNAHME über die Prüfroute.
+    const koIds: Record<string, string> = {};
+    for (const k of offen) {
+      const res = await buehne.app.inject({
+        method: "PUT",
+        url: `/api/library/import/candidates/${k.id}`,
+        headers: buehne.kopf,
+        payload: { action: "accept" },
+      });
+      expect(res.statusCode, `Annahme ${k.item.externalId}: ${res.body}`).toBe(200);
+      const koId = (res.json() as { koId: string | null }).koId;
+      expect(koId, `Annahme ${k.item.externalId} ohne Wissensobjekt`).toBeTruthy();
+      koIds[k.item.externalId ?? ""] = koId ?? "";
+    }
+
+    // WISSENSOBJEKTE NEU GELESEN — die Einschränkung steht am Confluence-Anker DIESER Seite.
+    const anker = async (externalId: string) => {
+      const ko = await lies<{ confidentiality?: string; sources?: KoQuelle[] }>(
+        buehne,
+        `/api/kos/${koIds[externalId]}`,
+      );
+      const quelle = (ko.sources ?? []).find(
+        (s) => s.provider === "Confluence" && s.externalId === externalId,
+      );
+      expect(quelle, `Wissensobjekt ${externalId} ohne Confluence-Anker`).toBeTruthy();
+      expect(quelle?.spaceKey).toBe(SPACE);
+      return { ko, quelle };
+    };
+    const offeneSeite = await anker("201");
+    const person = await anker("202");
+    const gruppe = await anker("203");
+
+    // Die offene Seite trägt KEINE Einschränkung — auch kein leeres Objekt, das wie eine aussähe.
+    expect(offeneSeite.quelle).not.toHaveProperty("sourceRestrictions");
+    // Benutzer und Gruppe — konkret, je an ihrem eigenen Anker.
+    expect(person.quelle?.sourceRestrictions).toEqual({ users: ["quelle-u1"], groups: [] });
+    expect(gruppe.quelle?.sourceRestrictions).toEqual({ users: [], groups: ["quelle-hr"] });
+    // UNTERSCHEIDBAR, obwohl die Einstufung beider gleich ist: die Stufe allein trüge es nicht.
+    expect(person.ko.confidentiality).toBe(gruppe.ko.confidentiality);
+    expect(person.quelle?.sourceRestrictions).not.toEqual(gruppe.quelle?.sourceRestrictions);
+    // Keine erfundene Rollenabbildung: am Anker stehen genau die Quellkennungen, sonst nichts.
+    expect(Object.keys(person.quelle?.sourceRestrictions ?? {}).sort()).toEqual([
+      "groups",
+      "users",
+    ]);
+  });
+
+  it("Client-Restriktionen über den generischen Importweg werden verworfen", async () => {
+    const buehne = await montiere(RECHTE_BEREICH);
+    const res = await buehne.app.inject({
+      method: "POST",
+      url: "/api/library/import/candidates",
+      headers: buehne.kopf,
+      payload: {
+        items: [
+          {
+            title: "Behauptete Einschränkung",
+            statement: "Ein Client behauptet eine Quellrestriktion.",
+            type: "best_practice",
+            category: "Allgemein",
+            externalId: "client-1",
+            sourceRestrictions: { users: ["erfunden"], groups: ["erfunden"] },
+          },
+        ],
+      },
+    });
+    expect(res.statusCode, res.body).toBe(201);
+    const angelegt = res.json() as Array<{ item: Record<string, unknown> }>;
+    expect(angelegt).toHaveLength(1);
+    expect(angelegt[0]?.item).not.toHaveProperty("sourceRestrictions");
   });
 });

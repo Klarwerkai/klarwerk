@@ -7,14 +7,15 @@ import {
   trigramSimilarity,
 } from "../../../conflicts";
 import type { AiCheckBasis, KnowledgeObject, KoFilter, KoService } from "../../../knowledge-object";
-import type {
-  DublettenBefund,
-  DublettenPruefung,
-  ImportCandidate,
-  ImportItem,
-  KandidatDublettenbefund,
-  LibraryService,
-  ReviewAction,
+import {
+  type DublettenBefund,
+  type DublettenPruefung,
+  type ImportCandidate,
+  type ImportItem,
+  type KandidatDublettenbefund,
+  type LibraryService,
+  type ReviewAction,
+  ohneQuellRestriktionen,
 } from "../../../library-analytics";
 import { can } from "../../../rbac";
 import type { Reasoner } from "../../../reasoner";
@@ -791,11 +792,14 @@ export function libraryRoutes(
       }
       try {
         // JOB 3023: die Dublettenregel reist als Prädikat mit — der Dienst legt sie nicht aus.
-        reply
-          .code(200)
-          .send(
-            await library.importJson(request.body.items ?? [], user.id, pruefeReImportDublette),
-          );
+        reply.code(200).send(
+          await library.importJson(
+            // package:confluence (K6): die Lese-Einschränkung ist eine Quellangabe, kein Rumpffeld.
+            ohneQuellRestriktionen(request.body.items ?? []),
+            user.id,
+            pruefeReImportDublette,
+          ),
+        );
       } catch (error) {
         sendError(reply, error);
       }
@@ -814,7 +818,8 @@ export function libraryRoutes(
           // JOB 3050: DIESELBE Instanz der Dublettenregel wie `POST /api/library/import` oben —
           // beide Importwege beantworten die Frage ab hier gleich.
           const created = await library.createImportCandidates(
-            request.body.items ?? [],
+            // package:confluence (K6): nur der Quell-Adapter erzeugt `sourceRestrictions`.
+            ohneQuellRestriktionen(request.body.items ?? []),
             user.id,
             pruefeReImportDublette,
           );
