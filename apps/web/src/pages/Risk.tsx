@@ -10,11 +10,14 @@ import {
   useExpertise,
   useGaps,
   useKos,
+  useLifecyclePending,
 } from "../api/hooks";
 import type { GapPriority } from "../api/types";
 import { useRole } from "../app/RoleContext";
 import { AiCheckBoardCaveat } from "../components/AiCheckCoverageHint";
+import { BereichsprofilPflege } from "../components/BereichsprofilPflege";
 import { HelpTip } from "../components/HelpTip";
+import { RisikoHorizont } from "../components/RisikoHorizont";
 import { Card, PageHeader, QueryState, SectionLabel } from "../components/ui";
 import { captureGapHref, gapPrivacyNoticeKey } from "../lib/captureFromGap";
 import { canSeeExpertise, contributorNamesFor, expertiseVisible } from "../lib/expertiseView";
@@ -27,7 +30,7 @@ import {
   priorityTone,
   sortGapsByPriority,
 } from "../lib/gapPriority";
-import { type RiskLevel, domainRisk } from "../lib/knowledgeHealth";
+import { type RiskLevel, domainRisk, plantValidatedRatio } from "../lib/knowledgeHealth";
 import { buildRiskCockpit } from "../lib/riskCockpit";
 import { phaseLabelKey } from "../lib/taskAction";
 import { useAuthorName } from "../lib/useAuthorName";
@@ -50,6 +53,9 @@ export function Risk(): JSX.Element {
   const gaps = useGaps();
   const conflicts = useConflicts();
   const kos = useKos();
+  // R-1639 (Nacharbeit 1): die „Stimmt das noch?"-Merker — gesetzt allein durch gemeldete
+  // Anlagenänderungen. Ohne Antwort bleibt die Zahl je Kategorie unbekannt (null), nicht 0.
+  const pending = useLifecyclePending();
   const users = useDirectory();
   // Consultant-System (Experten-Matching): nur berechtigte Rollen fragen die Sicht überhaupt an; ist
   // das Flag serverseitig AUS, kommt 404 → keine Daten → nichts gerendert (exakt heutiges Verhalten).
@@ -151,7 +157,8 @@ export function Risk(): JSX.Element {
         </div>
         <QueryState query={kos} emptyText={t("risk.cockpitEmpty")}>
           {(items) => {
-            const rows = domainRisk(items, bus.data ?? []);
+            const rows = domainRisk(items, bus.data ?? [], pending.data ?? null);
+            const werk = plantValidatedRatio(items);
             if (rows.length === 0) {
               return (
                 <Card className="border-dashed text-center text-sm text-muted">
@@ -164,8 +171,14 @@ export function Risk(): JSX.Element {
                 {rows.map((r) => {
                   // Pedi 05.07.: „wer trägt das Wissen" sichtbar machen — die Personen hinter dieser
                   // Domäne (aus den echten KO-Autoren abgeleitet), damit ein Einzelquellen-Risiko konkret wird.
+                  // Nacharbeit 1 (ben F1): Träger ist die URHEBERSCHAFT `originalAuthor` — dieselbe
+                  // Regel, nach der der Bus-Faktor zählt (library-analytics `busFactor`). `author` ist
+                  // der Erfasser; nach einer Übernahme fremden Wissens nannte der Hinweis sonst den
+                  // Erfasser, oder bei zwei Erfassern zwei Träger trotz Einzelquelle.
                   const bearers = Array.from(
-                    new Set(items.filter((k) => k.category === r.category).map((k) => k.author)),
+                    new Set(
+                      items.filter((k) => k.category === r.category).map((k) => k.originalAuthor),
+                    ),
                   ).map(nameOf);
                   return (
                     <Card key={r.category} className="space-y-2">
@@ -194,6 +207,33 @@ export function Risk(): JSX.Element {
                           {t("risk.experts")}: <span className="text-text">{r.authorCount}</span>
                         </span>
                       </div>
+                      {/* R-1639 (Nacharbeit 1): „Wie ist meine Wissens-Abdeckung im Vergleich zum
+                          Werks-Durchschnitt?" — Prüfanteil dieser Kategorie gegen den ganzen
+                          sichtbaren Bestand. */}
+                      {werk === null ? null : (
+                        <p data-testid="risk-vs-plant" className="text-[11.5px] text-muted">
+                          {t(
+                            r.validatedRatio > werk
+                              ? "risk.vsPlant.above"
+                              : r.validatedRatio < werk
+                                ? "risk.vsPlant.below"
+                                : "risk.vsPlant.equal",
+                            { avg: werk },
+                          )}
+                        </p>
+                      )}
+                      {/* R-1639 (Nacharbeit 1): „Welche Objekte sind durch Anlagenänderungen
+                          veraltet?" — nur wenn die Merkerlage geladen ist UND etwas ansteht; der
+                          Weg führt zur bestehenden Prüfliste. */}
+                      {r.staleByAssetChange !== null && r.staleByAssetChange > 0 ? (
+                        <Link
+                          data-testid="risk-stale-asset"
+                          to="/lebenszyklus"
+                          className="block text-[11.5px] font-semibold text-trust-warn-text hover:underline"
+                        >
+                          {t("risk.staleByAssetChange", { count: r.staleByAssetChange })}
+                        </Link>
+                      ) : null}
                       {/* Pedi 05.07.: Einzelquellen-Risiko ausführlich erklären + WER es trägt. */}
                       {r.singleSource ? (
                         <div className="rounded-btn bg-trust-crit-bg px-2.5 py-2 text-[11.5px] text-trust-crit-text">
@@ -221,6 +261,14 @@ export function Risk(): JSX.Element {
           }}
         </QueryState>
       </div>
+
+      {/* R-1639 / R-2183 (Nacharbeit 3): „mein Bereich" — Bus-Faktor 1, Ruhestand in 24/36 Monaten
+          und der Arbeitsvorrat bis zur Frist (components/RisikoHorizont). */}
+      <RisikoHorizont />
+
+      {/* Die Pflege der Eingänge dazu (Bereichsverantwortung, vier eingeschätzte Prioritätsfaktoren,
+          Ruhestandshorizonte) — nur die Admin-Rolle; der Server verlangt `users.manage`. */}
+      {role === "admin" ? <BereichsprofilPflege /> : null}
 
       {/* Consultant-System (Experten-Matching): Thema → Personen, die schon dazu beigetragen haben —
           als Hilfe „wen könnte man kurz um eine Einordnung bitten". Kein Ranking, keine Zahlen; die
