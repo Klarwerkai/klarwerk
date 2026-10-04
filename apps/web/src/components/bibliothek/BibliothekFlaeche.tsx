@@ -23,6 +23,7 @@ import {
 import {
   EMPTY_FACET_RANGE,
   EMPTY_RAIL_UI,
+  type FacetRailGroupView,
   type FacetRailUiState,
   type FacetRange,
   facetRailGroups,
@@ -257,6 +258,57 @@ const LIBRARY_RANGE_TO_PARAM = "bis";
 // der Vorlage zuerst gegriffen wird. Im Filter-Menü steht er deshalb nicht ein zweites Mal.
 const BEREICH_KEY = "category";
 
+// ==================================================================================================
+// K21 / R-1809 (mega10 B1, H4 §5.6) — DIE SUCHE INNERHALB EINER ÜBERVOLLEN DIMENSION.
+// ==================================================================================================
+// Der Kern konnte es immer: `facetRailGroup` filtert die Werte einer Dimension nach `railUi.query`
+// (auf dem ANGEZEIGTEN Text, gewählte Werte bleiben stehen, bei Suche entfällt der Deckel) und
+// meldet `searchable`, sobald die Dimension mehr Werte hat als der Anzeige-Deckel. Seit H4 die
+// Schiene in Menüs gezogen hat, gab es nur keine Eingabestelle mehr — `railUi.query` wurde nie
+// geschrieben. Dieser Baustein ist genau diese Eingabestelle, sonst nichts: keine eigene Filterlogik,
+// Zähler, 0-Sperre, Auswahl, „Alle N", Adresse und gespeicherte Sichten bleiben, wie sie sind.
+// Wortlaut aus den vorhandenen Schlüsseln (`facet.search*`), dieselben wie im `FacetGroupField`.
+function DimensionsSuche({
+  gruppe,
+  beschriftung,
+  onSuche,
+}: {
+  gruppe: FacetRailGroupView;
+  beschriftung: string;
+  onSuche: (wert: string) => void;
+}): JSX.Element | null {
+  const { t } = useTranslation();
+  // Nur dort, wo es etwas zu suchen gibt — und solange gesucht wird, auch wenn die Suche die
+  // sichtbare Menge unter die Schwelle drückt (sonst verschwände das Feld unter dem Tippenden).
+  if (!gruppe.searchable && gruppe.query === "") {
+    return null;
+  }
+  const id = `bib-dimensionssuche-${gruppe.key}`;
+  return (
+    <MenueZeile>
+      <span className="flex min-w-0 flex-col gap-1">
+        <label htmlFor={id} className="sr-only">
+          {t("facet.searchLabel", { label: beschriftung })}
+        </label>
+        <input
+          id={id}
+          type="search"
+          data-testid={id}
+          value={gruppe.query}
+          onChange={(e) => onSuche(e.target.value)}
+          placeholder={t("facet.searchPlaceholder", { label: beschriftung })}
+          className="w-full min-w-0 rounded-input border border-hairline bg-surface px-2 py-1 text-[12.5px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand"
+        />
+        {gruppe.noSearchHit ? (
+          <span className="text-[11.5px] text-muted-2">
+            {t("facet.searchNoHit", { query: gruppe.query })}
+          </span>
+        ) : null}
+      </span>
+    </MenueZeile>
+  );
+}
+
 export function BibliothekFlaeche({
   vorgewaehlt,
   beiWahl,
@@ -311,6 +363,10 @@ export function BibliothekFlaeche({
     facetRangeFromParams(params, LIBRARY_RANGE_FROM_PARAM, LIBRARY_RANGE_TO_PARAM),
   );
   const [railUi, setRailUi] = useState<FacetRailUiState>(EMPTY_RAIL_UI);
+  // K21: die eine Schreibstelle der Dimensionssuche (`DimensionsSuche`, oben). Sie verengt nur die
+  // ANGEBOTENEN Werte einer Dimension, nie die Treffer — die ändert erst eine Auswahl.
+  const dimensionSuchen = (key: string, wert: string): void =>
+    setRailUi((p) => ({ ...p, query: { ...p.query, [key]: wert } }));
   const [windowLimit, setWindowLimit] = useState(LIBRARY_RESULT_LIMIT);
   const [groupBy, setGroupBy] = useState<LibraryGroupKey>("none");
   const [sortKey, setSortKey] = usePersistentEnum(
@@ -1804,6 +1860,13 @@ export function BibliothekFlaeche({
               >
                 {() => (
                   <>
+                    {bereichGruppe ? (
+                      <DimensionsSuche
+                        gruppe={bereichGruppe}
+                        beschriftung={t(bereichGruppe.labelKey)}
+                        onSuche={(wert) => dimensionSuchen(BEREICH_KEY, wert)}
+                      />
+                    ) : null}
                     {(bereichGruppe?.options ?? []).map((o) => (
                       <MenuePunkt
                         key={o.value}
@@ -1884,6 +1947,11 @@ export function BibliothekFlaeche({
                             beschriftung={t(g.labelKey)}
                             zusatz={gewaehlteWerte.length > 0 ? String(gewaehlteWerte.length) : ""}
                           >
+                            <DimensionsSuche
+                              gruppe={g}
+                              beschriftung={t(g.labelKey)}
+                              onSuche={(wert) => dimensionSuchen(g.key, wert)}
+                            />
                             {g.options.map((o) => (
                               <MenuePunkt
                                 key={o.value}
