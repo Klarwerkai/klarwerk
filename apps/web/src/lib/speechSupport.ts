@@ -30,7 +30,7 @@ export function istIosGeraet(win: unknown): boolean {
 // FR-CAP-03 („iOS friert nicht ein"): WebKit auf iOS meldet `webkitSpeechRecognition`, die Sitzung
 // bleibt dort aber hängen — der Knopf stünde da und das Feld fröre ein. Auf iOS gilt das Diktat im
 // Browser deshalb als NICHT verfügbar; die Flächen zeigen den ehrlichen Hinweis und verweisen auf
-// das Mikrofon der Bildschirmtastatur (`capture.diktatIosTastatur`), das in jedes Textfeld schreibt.
+// das Mikrofon der Bildschirmtastatur (`diktat.iosTastatur`, `texte/diktat.ts`), das in jedes Textfeld schreibt.
 export function hasSpeechRecognition(win: unknown): boolean {
   if (!win || typeof win !== "object") {
     return false;

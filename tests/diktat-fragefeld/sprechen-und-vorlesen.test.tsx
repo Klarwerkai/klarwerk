@@ -345,7 +345,7 @@ describe("I · iOS — kein einfrierendes Browser-Diktat, sondern der Weg über 
     await mehrOeffnen(container);
     const hinweis = document.querySelector('[data-testid="ask-diktat-na"]')?.textContent ?? "";
     expect(hinweis).toContain(i18n.t("ask.diktatUnsupported"));
-    expect(hinweis).toContain(i18n.t("capture.diktatIosTastatur"));
+    expect(hinweis).toContain(i18n.t("diktat.iosTastatur"));
     unmount();
   });
 
@@ -354,7 +354,7 @@ describe("I · iOS — kein einfrierendes Browser-Diktat, sondern der Weg über 
     await mehrOeffnen(container);
     const hinweis = document.querySelector('[data-testid="ask-diktat-na"]')?.textContent ?? "";
     expect(hinweis).toContain(i18n.t("ask.diktatUnsupported"));
-    expect(hinweis).not.toContain(i18n.t("capture.diktatIosTastatur"));
+    expect(hinweis).not.toContain(i18n.t("diktat.iosTastatur"));
     unmount();
   });
 });
@@ -373,7 +373,7 @@ describe("V · die Antwort des Systems wird auf Klick vorgelesen", () => {
     const knopf = container.querySelector<HTMLButtonElement>('[data-testid="ask-vorlesen"]');
     expect(knopf, "kein Vorlese-Knopf an der Antwort").toBeTruthy();
     expect(knopf?.getAttribute("type")).toBe("button");
-    expect(knopf?.textContent).toContain(i18n.t("ask.vorlesen"));
+    expect(knopf?.textContent).toContain(i18n.t("diktat.antwortVorlesen"));
     expect(knopf?.getAttribute("aria-pressed")).toBe("false");
 
     await act(async () => {
@@ -383,7 +383,7 @@ describe("V · die Antwort des Systems wird auf Klick vorgelesen", () => {
     expect(ausgabe.gesprochen).toHaveLength(1);
     expect(ausgabe.gesprochen[0]?.text).toBe("Ventil V4 wird jährlich geprüft.");
     expect(ausgabe.gesprochen[0]?.lang).toBe("de-DE");
-    expect(knopf?.textContent).toContain(i18n.t("ask.vorlesenStop"));
+    expect(knopf?.textContent).toContain(i18n.t("diktat.antwortVorlesenStop"));
     expect(knopf?.getAttribute("aria-pressed")).toBe("true");
 
     const abgebrochenVorher = ausgabe.abgebrochen;
@@ -395,7 +395,7 @@ describe("V · die Antwort des Systems wird auf Klick vorgelesen", () => {
       abgebrochenVorher,
     );
     expect(ausgabe.gesprochen, "der Stopp-Klick hat erneut gesprochen").toHaveLength(1);
-    expect(knopf?.textContent).toContain(i18n.t("ask.vorlesen"));
+    expect(knopf?.textContent).toContain(i18n.t("diktat.antwortVorlesen"));
     unmount();
   });
 
@@ -432,7 +432,7 @@ describe("V · die Antwort des Systems wird auf Klick vorgelesen", () => {
     expect(container.querySelector('[data-testid="ask-vorlesen"]')).toBeNull();
     await mehrOeffnen(container);
     expect(document.querySelector('[data-testid="ask-vorlesen-na"]')?.textContent).toBe(
-      i18n.t("ask.vorlesenUnsupported"),
+      i18n.t("diktat.antwortVorlesenNa"),
     );
     unmount();
   });
@@ -447,10 +447,10 @@ describe("V · die Antwort des Systems wird auf Klick vorgelesen", () => {
 describe("Wortlaut · alle neuen Schlüssel in de, en und nl", () => {
   it("nichtleer in allen drei Sprachen", () => {
     for (const key of [
-      "ask.vorlesen",
-      "ask.vorlesenStop",
-      "ask.vorlesenUnsupported",
-      "capture.diktatIosTastatur",
+      "diktat.antwortVorlesen",
+      "diktat.antwortVorlesenStop",
+      "diktat.antwortVorlesenNa",
+      "diktat.iosTastatur",
     ]) {
       for (const lng of ["de", "en", "nl"]) {
         expect(
@@ -459,7 +459,7 @@ describe("Wortlaut · alle neuen Schlüssel in de, en und nl", () => {
         ).toBeGreaterThan(0);
       }
     }
-    expect(String(i18n.getResource("de", "translation", "ask.vorlesenUnsupported"))).toMatch(
+    expect(String(i18n.getResource("de", "translation", "diktat.antwortVorlesenNa"))).toMatch(
       /nicht verfügbar/i,
     );
   });

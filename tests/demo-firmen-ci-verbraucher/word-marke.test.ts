@@ -88,9 +88,9 @@
 // geblieben, nur die Schreibweise nennt die Muster nicht mehr wörtlich.
 //
 // Der Gate-`tsc` läuft ohne DOM-lib; DOM-Zugriffe gehen über schmale Struktur-Typen.
-import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { panelQuelleAus } from "../support/panelquelle";
 
 const WURZEL = join(__dirname, "..", "..");
 const TASKPANE = join(WURZEL, "apps", "web", "public", "word-addin", "taskpane.html");
@@ -296,7 +296,7 @@ async function ladeFenster(folge: Folge): Promise<void> {
     fristen.push({ id, fn, ms });
     return id;
   });
-  const quelle = readFileSync(TASKPANE, "utf8");
+  const quelle = panelQuelleAus(TASKPANE);
   const skriptStart = quelle.lastIndexOf("<script>");
   const skriptEnde = quelle.lastIndexOf("</script>");
   expect(skriptStart, "Inline-Skript nicht gefunden").toBeGreaterThan(0);

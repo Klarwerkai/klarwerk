@@ -323,7 +323,7 @@ function MehrFlaechenInfo({
         >
           {t("ask.diktatUnsupported")}
           {/* FR-CAP-03: auf iPhone/iPad ist der Ausweg das Mikrofon der Bildschirmtastatur. */}
-          {istIosGeraet(window) ? ` ${t("capture.diktatIosTastatur")}` : null}
+          {istIosGeraet(window) ? ` ${t("diktat.iosTastatur")}` : null}
         </p>
       )}
       {/* R-1053: dieselbe Ehrlichkeit für die Sprachausgabe — ohne sie fehlt der Vorlese-Knopf. */}
@@ -332,7 +332,7 @@ function MehrFlaechenInfo({
           data-testid="ask-vorlesen-na"
           className="mb-3 rounded-btn bg-trust-warn-bg px-2.5 py-2 text-[12px] text-trust-warn-text"
         >
-          {t("ask.vorlesenUnsupported")}
+          {t("diktat.antwortVorlesenNa")}
         </p>
       )}
       {/* SCRUM-289 / D-034: warum Klarwerk kein generischer Chat ist — Titel, Fliesstext und
@@ -2186,7 +2186,9 @@ export function Ask(): JSX.Element {
                       className="inline-flex items-center gap-1.5 rounded-[10px] border border-hairline bg-surface px-5 py-2.5 text-[14px] text-text hover:bg-hairline-soft"
                     >
                       <Volume2 size={14} aria-hidden="true" />
-                      {vorlesen.liest ? t("ask.vorlesenStop") : t("ask.vorlesen")}
+                      {vorlesen.liest
+                        ? t("diktat.antwortVorlesenStop")
+                        : t("diktat.antwortVorlesen")}
                     </button>
                   ) : null}
                   <button

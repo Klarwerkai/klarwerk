@@ -2307,7 +2307,7 @@ export function Blatt({
           className="basis-full rounded-btn bg-trust-warn-bg px-2.5 py-2 text-[12px] text-trust-warn-text"
         >
           {t("capture.diktatUnsupported")}
-          {istIosGeraet(window) ? ` ${t("capture.diktatIosTastatur")}` : null}
+          {istIosGeraet(window) ? ` ${t("diktat.iosTastatur")}` : null}
         </output>
       ) : null}
 

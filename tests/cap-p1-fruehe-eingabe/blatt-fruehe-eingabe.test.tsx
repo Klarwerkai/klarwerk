@@ -1180,7 +1180,7 @@ describe("iOS im Erfassungsblatt: kein Rekorder, aber eine erreichbare Erklärun
       await mount("/erfassen");
       const text = await hinweisNachKlick();
       expect(text).toContain(i18n.t("capture.diktatUnsupported"));
-      expect(text).toContain(i18n.t("capture.diktatIosTastatur"));
+      expect(text).toContain(i18n.t("diktat.iosTastatur"));
     });
   }
 
@@ -1188,7 +1188,7 @@ describe("iOS im Erfassungsblatt: kein Rekorder, aber eine erreichbare Erklärun
     await mount("/erfassen");
     const text = await hinweisNachKlick();
     expect(text).toContain(i18n.t("capture.diktatUnsupported"));
-    expect(text).not.toContain(i18n.t("capture.diktatIosTastatur"));
+    expect(text).not.toContain(i18n.t("diktat.iosTastatur"));
   });
 
   it("I-B Kalibrierung: der Desktop-Mac MIT API startet wirklich einen Rekorder", async () => {

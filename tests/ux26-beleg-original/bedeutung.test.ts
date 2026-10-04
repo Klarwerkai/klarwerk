@@ -13,7 +13,6 @@
 //   B3  Die Frischeberechnung und ihre Schlüsselzuordnung sind unverändert: dieselben Eingaben
 //       ergeben dieselben Zustände, `evidenceFreshnessLabelKey` bleibt `ko.evFresh.<status>`. Die
 //       Schlüsselmenge des Moduls ist dieselbe wie vorher.
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { EvidenceRecord, KnowledgeObject } from "../../apps/web/src/api/types";
 import i18n from "../../apps/web/src/i18n";
@@ -21,6 +20,7 @@ import { analyzeEvidenceFreshness } from "../../apps/web/src/lib/evidenceFreshne
 import { evidenceFreshnessLabelKey } from "../../apps/web/src/lib/evidenceFreshnessView";
 import ux26 from "../../apps/web/src/texte/ux26";
 import { repoPfad } from "../support/repoPfad";
+import { woerterbuchQuelleAus } from "../support/woerterbuchquelle";
 import {
   type Aussage,
   SCHLUESSEL,
@@ -204,7 +204,7 @@ describe("UX-26 · B3 — Berechnung und Schlüsselmenge unverändert", () => {
     }
     // Umgezogen, nicht neu: der Zähler stand im Basisstand in allen drei Sprachen in `i18n.ts`
     // (s. `werte-vorher.json`), jetzt steht er AUSSCHLIESSLICH hier.
-    const quelle = readFileSync(repoPfad("apps/web/src/i18n.ts"), "utf8");
+    const quelle = woerterbuchQuelleAus(repoPfad("apps/web/src/i18n.ts"));
     expect(quelle.includes('"evFresh.summary.neutral":')).toBe(false);
     // Nicht bestellt, also nicht angefasst (JOB 3384 hat ihn ausdrücklich stehen lassen).
     expect(ux26.de["ko.evCons.allOk"]).toBe("Quellen, Anhänge und Evidence sind deckungsgleich.");

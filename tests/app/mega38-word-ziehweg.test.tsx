@@ -26,6 +26,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
+import { panelQuelleAus } from "../support/panelquelle";
 
 const TASKPANE = "apps/web/public/word-addin/taskpane.html";
 // JOB 3667 R8 (14.09.2026): das Fenster wird aus ZWEI Dateien ausgeliefert. Wer nur das
@@ -40,7 +41,7 @@ interface Laufzeit {
 }
 
 function taskpaneStarten(): Laufzeit {
-  const html = readFileSync(resolve(process.cwd(), TASKPANE), "utf8");
+  const html = panelQuelleAus(TASKPANE);
   const bodyStart = html.indexOf("<body>") + "<body>".length;
   const bodyEnd = html.indexOf("</body>");
   const body = html.slice(bodyStart, bodyEnd);
@@ -161,7 +162,7 @@ function ziehenFeuern(ziel: HTMLElement, daten?: unknown): Event {
 
 // Der Wartetext aus dem Quelltext — je Sprachblock genau einmal.
 function wartetexte(): string[] {
-  const html = readFileSync(resolve(process.cwd(), TASKPANE), "utf8");
+  const html = panelQuelleAus(TASKPANE);
   const treffer = html.match(/askCopyNativePending:\s*"((?:[^"\\]|\\.)*)"/g) ?? [];
   return treffer.map((t) => t.replace(/^askCopyNativePending:\s*"/, "").replace(/"$/, ""));
 }
