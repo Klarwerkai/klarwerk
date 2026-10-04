@@ -344,10 +344,26 @@ function DeckelUmschalter({
 // K1 / R-0428 (Nacharbeit 21): Wurde dieses Dokument durch ein ECHTES Neuladen geöffnet? Nur dann
 // kommt der strukturelle Nulltreffer aus dem Sitzungskontext zurück — ein Link oder eine Navigation
 // in die Bibliothek bekommt ihn nicht. Ohne Navigationsauskunft (Testumgebung) gilt: kein Neuladen.
-function istNeuladen(): boolean {
+//
+// Nacharbeit 24 (Lauf unter HISTORIE/nacharbeit-23, Fall N2): die Navigationsart gilt für das GANZE
+// Dokument. Nach einem Neuladen der Bibliothek, Logo-Link zur Startseite und leerer Kopfband-Suche
+// zurück (`timeOrigin` unverändert, also SPA) stand sie weiter auf „reload" — und der Nulltreffer
+// kam zurück (Listenfuss 0, „Bereich · 1"). Ein Neuladen gilt deshalb nur noch für die ERSTE
+// Montage der Fläche in diesem Dokument (`neuladenVerbraucht`, gesetzt nach der ersten Montage) und
+// nur, wenn das neu geladene Dokument die Bibliothek unter genau diesem Pfad war.
+let neuladenVerbraucht = false;
+
+function istNeuladenDieserFlaeche(): boolean {
+  if (neuladenVerbraucht) {
+    return false;
+  }
   try {
     const eintraege = performance.getEntriesByType?.("navigation") ?? [];
-    return (eintraege[0] as PerformanceNavigationTiming | undefined)?.type === "reload";
+    const eintrag = eintraege[0] as PerformanceNavigationTiming | undefined;
+    if (eintrag?.type !== "reload") {
+      return false;
+    }
+    return new URL(eintrag.name).pathname === window.location.pathname;
   } catch {
     return false;
   }
@@ -428,7 +444,7 @@ export function BibliothekFlaeche({
   // allein erzeugt ihn nie — die uxpol4-Grenze bleibt.
   const [urlSeed, setUrlSeed] = useState<FacetSelection | null>(() => {
     const ausAdresse = facetSelectionFromParams(params, LIBRARY_FACET_PARAM_KEYS);
-    if (!istNeuladen()) {
+    if (!istNeuladenDieserFlaeche()) {
       return ausAdresse;
     }
     try {
@@ -443,6 +459,12 @@ export function BibliothekFlaeche({
       return ausAdresse;
     }
   });
+  // Nacharbeit 24: das Neuladen ist nach der ersten Montage verbraucht. Gesetzt im Effekt, nicht im
+  // Initialisierer — der darf (StrictMode) doppelt laufen, ohne dass der zweite Lauf anders rechnet.
+  // Jede spätere Montage in diesem Dokument (SPA-Rückkehr) bekommt den Nulltreffer nicht mehr.
+  useEffect(() => {
+    neuladenVerbraucht = true;
+  }, []);
   // JOB 3877 · B7b: die Dimensionen, die die Wertprüfung des Keims VOLLSTÄNDIG verworfen hat. Das
   // ist KEIN zweiter Auswahlspeicher — nichts hiervon filtert je einen Eintrag. Es hält allein
   // fest, DASS eingegrenzt wurde, nachdem die Auswahl selbst die Information verloren hat
