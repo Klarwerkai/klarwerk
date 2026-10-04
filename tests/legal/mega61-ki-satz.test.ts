@@ -23,6 +23,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { panelQuelleAus } from "../support/panelquelle";
+import { woerterbuchQuelleAus } from "../support/woerterbuchquelle";
 
 const WURZEL = join(__dirname, "..", "..");
 const WEB = join("apps", "web", "src");
@@ -84,7 +85,7 @@ describe("mega61 E · der dauerhaft sichtbare Satz an jeder Modellfläche", () =
   });
 
   it("der Satz existiert als EIN Schlüssel in allen drei Sprachen", () => {
-    const i18n = readFileSync(join(WURZEL, WEB, "i18n.ts"), "utf8");
+    const i18n = woerterbuchQuelleAus(join(WURZEL, WEB, "i18n.ts"));
     const treffer = i18n.split("\n").filter((z) => z.includes(`"${SCHLUESSEL}"`));
     expect(treffer.length, "der Satz fehlt in einer der drei Sprachen").toBe(3);
   });

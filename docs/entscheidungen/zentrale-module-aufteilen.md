@@ -5,6 +5,10 @@ Programmversion `1.0.0-beta.1.657`. Lieferung dieses Laufs: der echte Drei-Datei
 Word-Aufgabenfensters (R-1611, P11). Alles andere ist hier mit seinem heutigen Stand und Beleg
 festgehalten, nicht neu gebaut.*
 
+*Nacharbeit 1 (Kandidat `69ac08a3`, Befunde der Prüfung): Wörterbuch nach Sprache aufgeteilt
+(I18N-AUFTEILUNG), Zusammenschaltungsvertrag geschrieben (R-1141, R-1148), HTTP-API-Referenz
+geschrieben (R-2076, NFR-MNT-02). Abschnitt „Nacharbeit 1" unten; die Tabelle ist nachgeführt.*
+
 **Prüfstatus dieses Dokuments:** In dieser Lieferung wurde kein Test, kein Build und kein Dienst
 gestartet. Jeder Beleg unten ist entweder eine **Quelleninspektion** (Datei und Stelle genannt) oder
 ein **Prüfstand, den der Cloud-Lauf ausführt** (Testdatei genannt). Eine Prüfung gilt erst mit dem
@@ -27,16 +31,16 @@ Umgestellt: alle Prüfstände, die Skript- oder Stilinhalte aus `taskpane.html` 
 
 | # | Kriterium | Stand | Beleg |
 | --- | --- | --- | --- |
-| K1 | R-1141 Zusammenschaltung als lesbarer Vertrag | **offen, nicht in dieser Lieferung** | Quelleninspektion: die Dienste werden an EINER Stelle verdrahtet (`services/app/src/build-app.ts`: `assembleServices`, `buildServices`, `buildPgServices`, `buildApp`; 3.226 Zeilen). Ein lesbarer Vertrag neben dem Code existiert nicht. |
-| K2 | R-1148 ein Auslieferungsstück, getrennte Module, gemeinsame DB-Klammern, Infrastruktur über Adapter | **im Bestand weitgehend vorhanden, nicht neu belegt** | Quelleninspektion: Module unter `services/<modul>/` mit öffentlicher `index.ts`; je Modul InMemory- und Pg-Ablage hinter einer Schnittstelle (Importe in `build-app.ts`); gemeinsame Klammer `withPgTx`/Rücknahme-Klammer (`docs/entscheidungen/dubletten-rueckzug.md`). Ob JEDE Infrastruktur über Adapter läuft, ist nicht geprüft. |
+| K1 | R-1141 Zusammenschaltung als lesbarer Vertrag | **geliefert (Nacharbeit 1)** | [`docs/architektur/zusammenschaltung.md`](../architektur/zusammenschaltung.md): die drei Kompositionen (`buildPgServices`, `buildDevPersistServices`, `buildServices`) in `assembleServices`, danach `buildApp`; 27 Module mit ihrer öffentlichen Schnittstelle; 27 Ablagen mit Speicher- und Postgres-Adapter; 8 Einhängestellen ausserhalb `AppRepos`; gemeinsame Klammern; Infrastrukturfabriken. Prüfstand `tests/architektur-vertrag/zusammenschaltung.test.ts` (Z1–Z3 gegen den Quelltext von `build-app.ts`/`dev-persist.ts`, Z4 Gegenproben). |
+| K2 | R-1148 ein Auslieferungsstück, getrennte Module, gemeinsame DB-Klammern, Infrastruktur über Adapter | **im Bestand vorhanden, jetzt als Inventar belegt (Nacharbeit 1)** | `zusammenschaltung.md` Abschnitt 7 ordnet jeden Teil von R-1148 dem Bestand zu (Abschnitte 3–6, vom Prüfstand K1 gehalten). Offen und dort benannt: die Architekturregel misst nur `services/`; ob jede Route ausschliesslich über Adapter auf Infrastruktur zugreift, ist nicht erhoben (bekannt: `GET /api/admin/sicherungen` liest ein Verzeichnis direkt). |
 | K3 | R-1304 Architekturdrift und Modulgrenzen messen | **im Bestand vorhanden** | Quelleninspektion: `.dependency-cruiser.cjs` (`no-circular`, `module-boundaries` = nur über `index.ts`, `no-orphans` als Warnung), gefahren in `tools/check` (Zeile „architecture") und `npm run arch`. Grenze: misst nur `services/`, nicht `apps/web` und nicht `tests/`. Eine eigene Architekturentscheidung als Dokument fehlt; die Regel steht im Kopf der Konfiguration. |
-| K4 | R-1337 ein Typname, zwei Definitionen | **ungeklärt** | Die Quelle nennt weder Typ noch Fundstelle und spricht in der Vergangenheit („war … mussten abgeglichen werden"). Eine Erhebung doppelter Typnamen wurde in dieser Lieferung nicht ausgeführt. |
-| K5 | R-1499 Sammeldateien, die fast jeder Auftrag anfasst | **für das Aufgabenfenster geliefert; Rest offen** | Geliefert: Markup, Stil und Skript des Fensters sind getrennte Dateien. Offen und gemessen: `apps/web/src/i18n.ts` 18.928 Zeilen, `services/app/src/build-app.ts` 3.226 Zeilen, `taskpane.js` 12.497 Zeilen. |
+| K4 | R-1337 ein Typname, zwei Definitionen | **offener Beleg, keine fehlende Umsetzung** | Die Quelle nennt weder Typ noch Fundstelle und spricht in der Vergangenheit („war … mussten abgeglichen werden"). Zuordnen lässt sich der Punkt erst mit `aufnahmepunkte-010.json` `$[127]`; diese Datei liegt diesem Auftrag nicht vor. Eine Erhebung doppelter Typnamen wurde nicht ausgeführt. |
+| K5 | R-1499 Sammeldateien, die fast jeder Auftrag anfasst | **Aufgabenfenster und Wörterbuch geliefert; Rest offen** | Geliefert: Markup, Stil und Skript des Fensters sind getrennte Dateien; `apps/web/src/i18n.ts` ist von 18.928 auf 71 Zeilen geschrumpft, die Wörterbücher stehen je Sprache in `apps/web/src/woerterbuch/` (K10). Offen und gemessen: `services/app/src/build-app.ts` 3.226 Zeilen (jetzt beschrieben, nicht aufgeteilt), `taskpane.js` 12.497 Zeilen, `woerterbuch/de.ts` 7.467 Zeilen. |
 | K6 | R-1514 Rest aus JOB 3014 | **teilweise; der Rest bleibt NICHT GEPRÜFT** | Der Hinweis „nach dem echten Schnitt trägt nur HTML den Fassungskopf" ist jetzt gemessen statt vermutet: `tests/klara-zerlegung/probeschnitt.test.ts` B4 (Kopf nur an HTML, Cachekennung `?v=<Fassung>` an beiden Verweisen, Server liefert unter jeder Kennung die aktuelle Datei). NICHT GEPRÜFT, und ohne Mensch mit Word nicht prüfbar: echtes Word-WebView, Sideload, echtes Office-CDN, visuelles Layout, UI-Smoke. Ein voller `tools/check`-Lauf wurde nicht gestartet. |
 | K7 | R-1611 Markup/Stil/Skript trennen, Funktion vorher und nachher belegen | **geliefert** | `tests/klara-zerlegung/schnitt-echt.test.ts` (E2: Git-Blob `95226f65…` des Basisstands; E3/E4 Gegenproben); `probeschnitt.test.ts` A1 (Schnitt = Textoperation), D2/D7 (vorher/nachher gleich, Word- und Nicht-Word-Zustand), D3–D6 (Gegenproben); `tests/app/mega69-klara-waechter.test.ts` (Inhalts-Pin unverändert). |
-| K8 | R-2076 modularer, getesteter Code; Coverage-Ziel + API-Doku | **teilweise im Bestand; API-Doku offen** | Quelleninspektion: Coverage-Ziel steht in `vitest.config.ts` (`thresholds: { lines: 80, functions: 80 }`); ob ein Tor es durchsetzt, ist nicht belegt. Eine API-Dokumentation der HTTP-Schnittstelle (z. B. OpenAPI) gibt es nicht; `Frontend-API-Abgleich.md` (Stand 24.06.2026) ist ein Abgleich, keine Referenz. Diese Lieferung dokumentiert nur die Testschnittstelle des Fensters (`aufgabenfenster-dateien.md`). |
+| K8 | R-2076 modularer, getesteter Code; Coverage-Ziel + API-Doku | **API-Doku geliefert (Nacharbeit 1); Coverage-Ziel vorhanden, nicht durchgesetzt** | [`docs/architektur/http-api-referenz.md`](../architektur/http-api-referenz.md): alle 200 registrierten Endpunkte (ohne `HEAD`-Spiegel) mit Methode, Pfad, Recht, Eingaben, Erfolg und Fehlern; dazu Anmeldung, Rollen, Add-in-Zugang und die allgemeinen Fehlerfälle. Prüfstand `tests/architektur-vertrag/http-api-referenz.test.ts` (A1–A3 gegen den Router der vollständigen App, A4 Gegenproben). Coverage-Ziel weiterverwendet: `vitest.config.ts` `thresholds: { lines: 80, functions: 80 }` (Abschnitt 4 der Referenz). Kein Paketskript fährt `--coverage`, und `@vitest/coverage-v8` ist nicht installiert — Installation ist in diesem Auftrag nicht erlaubt. |
 | K9 | P-I18N-TEXTMODULE Textmodule je Funktion | **früher geliefert (JOB 4367), nicht wiederholt** | `docs/i18n-textmodule.md`; `apps/web/src/texte/` (11 Module + `intern/`); `tests/i18n-textmodule/`; Plugin `textmodul-vertrag` in `apps/web/vite.config.ts`. |
-| K10 | I18N-AUFTEILUNG Wörterbuch nach Sprache/Bereich aufteilen, Wächter gegen Doppelschlüssel | **kurzfristig anders gelöst; dauerhaft offen** | Quelleninspektion: `biome.json` `files.maxSize` = 2 MiB global (JOB 3364), festgehalten in `tests/lesevariante/i18n-groessendeckel.test.ts`; Doppelschlüssel-Wächter über die Textmodule (JOB 4367). Die Aufteilung von `i18n.ts` selbst ist nicht gemacht. |
+| K10 | I18N-AUFTEILUNG Wörterbuch nach Sprache/Bereich aufteilen, Wächter gegen Doppelschlüssel | **geliefert (Nacharbeit 1)** | Aufgeteilt nach Sprache: `apps/web/src/woerterbuch/de.ts`, `en.ts`, `nl.ts`; jeder Block zeilengleich verschoben, kein Schlüssel und kein Wert geändert. Vorher/nachher: `tests/i18n-woerterbuch/aufteilung-unveraendert.test.ts` W1 (Byte für Byte gegen die unveränderte Kopie `tests/i18n-woerterbuch/i18n-vor-aufteilung.txt`), W2 Gegenproben, W3 Laufzeit (i18next trägt jeden Schlüssel mit seinem Wert), W5 Form; unverändert dazu `tests/i18n-textmodule/bestand-unveraendert.test.ts` K1.1. Duplikatwächter weiterverwendet: `basisQuellen` (`texte/intern/sammeln.ts`) folgt den Importen nach `woerterbuch/` und den Spreads (W4, `tests/i18n-textmodule/grundbestand.test.ts`). Beschreibung: `docs/i18n-textmodule.md`. Der globale Grössendeckel (JOB 3364) bleibt unverändert. |
 | K11 | P11 `taskpane.html` in lesbare Teile zerlegen, ohne Verhalten zu ändern | **Schritt 1 geliefert; weitere Teile offen** | wie K7. `taskpane.js` ist noch ein Block; der Schnittplan (`schnittflaechen.test.ts` C1) nennt die nächsten Stücke; B3 bewacht die Größe (Schranke 12.500 Zeilen, von der Inline-Grenze übernommen). |
 | K12 | NFR-MNT-02 (Wortlaut wie R-2076) | wie K8 | wie K8 |
 | K13 | Lieferstand, Abgrenzung, Widersprüche, fehlende Belege | dieses Dokument | — |
@@ -62,10 +66,11 @@ Umgestellt: alle Prüfstände, die Skript- oder Stilinhalte aus `taskpane.html` 
    Datei ist seit der Erhebung gewachsen.
 3. **Deckel für `i18n.ts`.** I18N-AUFTEILUNG verlangt kurzfristig einen Override **nur** für
    `i18n.ts`; umgesetzt ist (JOB 3364) eine globale Anhebung von `files.maxSize` auf 2 MiB, und der
-   Wächter verbietet ausdrücklich eine Ausnahme für `i18n.ts`. Dauerhaft verlangt die Quelle eine
-   Aufteilung nach Sprache oder Bereich; `docs/i18n-textmodule.md` hält dagegen fest, dass der
-   Bestand bewusst NICHT umgezogen wird („ein Massenumzug wäre ein Risiko ohne Nutzen"). Diese
-   Entscheidung ist jünger als die Quelle; eine Nutzerentscheidung dazu liegt nicht vor.
+   Wächter verbietet ausdrücklich eine Ausnahme für `i18n.ts`. Der kurzfristige Teil bleibt so,
+   wie er ist. Den dauerhaften Teil (Aufteilung nach Sprache oder Bereich) liefert Nacharbeit 1
+   nach Sprache. Der frühere Satz in `docs/i18n-textmodule.md`, der Bestand werde nicht umgezogen,
+   betraf den Umzug in Textmodule je Funktion; er ist dort ersetzt. Neue Texte kommen weiter in
+   Textmodule, nicht in die Sprachdateien.
 4. **R-2076 und NFR-MNT-02** tragen denselben Wortlaut; sie sind ein Anliegen.
 
 ## Fehlende Belege
@@ -74,5 +79,26 @@ Umgestellt: alle Prüfstände, die Skript- oder Stilinhalte aus `taskpane.html` 
   Urteil über das Fenster nach dem Schnitt. Das braucht einen Menschen mit Word und ist nicht ersetzt.
 - Kein in dieser Lieferung gestarteter Test- oder Buildlauf; die Belege oben gelten mit dem
   Cloud-Lauf.
-- K2, K3, K8: Quelleninspektion, kein Lauf.
-- K4: keine Erhebung.
+- K3: Quelleninspektion, kein Lauf.
+- K4 (R-1337): **offener Beleg** — ohne `aufnahmepunkte-010.json` `$[127]` nicht zuzuordnen. Das
+  ist keine fehlende Umsetzung, sondern eine fehlende Quelle.
+- K8/K12: Das Coverage-Ziel ist festgelegt, aber kein Lauf misst es (Anbieterpaket fehlt,
+  Installation nicht erlaubt).
+- K10: Der Bezugspunkt der Byte-Gleichheit ist eine Kopie der Datei vor der Aufteilung. Ihr
+  Git-Blob konnte in dieser Umgebung nicht berechnet werden; nachprüfbar ist er mit
+  `git hash-object` gegen `69ac08a3:apps/web/src/i18n.ts`.
+
+## Nacharbeit 1
+
+| Befund | Änderung | Dateien |
+| --- | --- | --- |
+| I18N-AUFTEILUNG: dauerhafte Aufteilung fehlte | Wörterbücher je Sprache, `i18n.ts` nur noch Importe und Start; Duplikatwächter folgt den neuen Dateien | `apps/web/src/woerterbuch/{de,en,nl}.ts`, `apps/web/src/i18n.ts`, `apps/web/src/texte/intern/sammeln.ts`, `apps/web/src/texte/intern/pruefung.ts` (Meldungstext), `docs/i18n-textmodule.md` |
+| | Belege und Testhilfe | `tests/i18n-woerterbuch/aufteilung-unveraendert.test.ts`, `tests/i18n-woerterbuch/i18n-vor-aufteilung.txt`, `tests/support/woerterbuchquelle.ts` |
+| | Prüfstände, die `i18n.ts` als Text lasen, lesen jetzt den zusammengefügten früheren Text (`woerterbuchQuelleAus`) — Aussage und Erwartung unverändert | 37 Testdateien unter `tests/` (Liste in `CLAUDE/PRUEFPLAN.json`, Suite `woerterbuch-leser-umgestellt`) |
+| R-1141: Vertrag fehlte | Zusammenschaltungsvertrag mit R-1148-Inventar | `docs/architektur/zusammenschaltung.md`, `tests/architektur-vertrag/zusammenschaltung.test.ts` |
+| R-2076/NFR-MNT-02: API-Doku fehlte | HTTP-API-Referenz, Coverage-Ziel zugeordnet | `docs/architektur/http-api-referenz.md`, `tests/architektur-vertrag/http-api-referenz.test.ts` |
+
+**Beobachtung ohne Änderung:** `GET /api/support` (`services/app/src/routes/support-routes.ts`) ist
+registriert, steht aber weder in `TABELLE`, `SCHREIB_TABELLE` noch `NICHT_ABGENOMMEN` der
+Rollenabnahme. `tests/beta-rollenabnahme/jede-registrierte-route-ist-abgenommen.test.ts` E2 müsste
+das melden. Nicht Teil der drei Befunde, deshalb nicht angefasst.
