@@ -66,14 +66,31 @@ describe("JOB 3023 · D — die Gegenprobe", () => {
     });
 
     expect(res.statusCode, res.body).toBe(200);
+    // R-0143 (bens F1): der direkte Eingang reiht ein; der fachlich neue Eintrag kommt über die
+    // ANNAHME an, der ähnliche bleibt als Dublette markiert und legt auch angenommen nichts an.
     const body = res.json() as {
       imported: number;
       skipped: number;
       uebersprungen: Uebersprungen[];
+      kandidaten: { id: string; item: { title: string } }[];
     };
-    expect(body.imported, "Der fachlich neue Eintrag MUSS ankommen.").toBe(1);
+    expect(body.imported, "Direkt angelegt wird nichts mehr.").toBe(0);
     expect(body.skipped).toBe(1);
     expect(body.uebersprungen.map((e) => e.titel)).toEqual(["VENTIL ENTLUEFTEN"]);
+
+    const vorAnnahme = await app.inject({ method: "GET", url: "/api/kos", headers });
+    expect((vorAnnahme.json() as { title: string }[]).map((ko) => ko.title)).toEqual([
+      "Ventil entlueften",
+    ]);
+    for (const k of body.kandidaten) {
+      const annahme = await app.inject({
+        method: "PUT",
+        url: `/api/library/import/candidates/${k.id}`,
+        headers,
+        payload: { action: "accept" },
+      });
+      expect(annahme.statusCode, annahme.body).toBe(200);
+    }
 
     const liste = await app.inject({ method: "GET", url: "/api/kos", headers });
     const titel = (liste.json() as { title: string }[]).map((ko) => ko.title).sort();

@@ -26,7 +26,6 @@
 // Route und ihre Flagentscheidung. In S3 und F8 steht dahinter der echte `AskService` mit echtem
 // Wissensbestand und einem mitschreibenden Modellanbieter an genau der Stelle, an der in Produktion
 // die Cloud steht.
-import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -53,6 +52,7 @@ import {
   resolveKlaraPolicy,
 } from "../../services/reasoner";
 import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
+import { panelQuelleAus } from "../support/panelquelle";
 
 const FRAGE = "Wie wird die Zylinderkopfdichtung XQ42 gewechselt?";
 
@@ -473,7 +473,7 @@ describe("JOB 3033 · KA4 · die vier Sperrgründe der Freischaltung", () => {
   // über den Weg dieses Fensters treffen, und der bedingte Satz muss für jeden Zustand in jeder
   // Sprache da sein.
   it("KA4-S4 · der Panelvertrag und der Schalter widersprechen sich nicht", () => {
-    const html = readFileSync(PANEL, "utf8");
+    const html = panelQuelleAus(PANEL);
     // GEMESSEN WIRD AN DEN WÖRTERBUCHWERTEN, nicht am Quelltext: ein Kommentar, der den alten
     // Satz zitiert (und genau das tut die Begründung im Panel), ist keine Aussage an den Menschen.
     const texte = [...html.matchAll(/^\s*[A-Za-z0-9_]+:\s*"((?:[^"\\]|\\.)*)",?\s*$/gm)].map(

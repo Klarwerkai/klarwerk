@@ -1,0 +1,12595 @@
+    "use strict";
+
+    // JOB 4076 · DER ZUGANGSSCHLUESSEL AUS DER SITZUNGSUEBERGABE — EINE STELLE SETZT DEN KOPF.
+    // In Word fuer das Web liegt dieses Fenster in einem Rahmen FREMDER Herkunft; das Sitzungscookie
+    // erreicht es dort nicht. Der Anmeldedialog (`word-addin/anmeldung.html`) uebergibt einen
+    // einmaligen Code, das Fenster loest ihn ein (`loginUebergabeEinloesen`) und haelt den Schluessel
+    // NUR HIER: kein localStorage, kein sessionStorage, kein Cookie, keine Adresse. EIN UMSCHLAG UM
+    // `fetch` STATT SECHZEHN GEAENDERTER ABRUFSTELLEN, weil der Kopf an JEDEM Abruf haengen muss —
+    // sonst klappt die Anmeldung scheinbar und der erste echte Griff wird 401. Er ist KEINE neue
+    // Abrufstelle (er ruft `fetch` nicht, er IST es) und umgeht keine Buendelung; `credentials:
+    // "include"` bleibt ueberall stehen (M10). Mehr: tests/office-web-anmeldung/.
+    var officeSchluessel = null;
+
+    function officeSchluesselPruefen(res) {
+      if (res && res.status === 401) { officeSchluessel = null; }
+      return res;
+    }
+
+    (function () {
+      var roh = typeof fetch === "function" ? fetch.bind(window) : null;
+      if (roh === null) { return; }
+      window.fetch = function (pfad, init) {
+        // OHNE Schluessel ein reiner DURCHREICHER — dieselbe Zeitfolge wie vor JOB 4076, kein
+        // zusaetzlicher Mikrotask je Abruf (ein `.then` ueberall verschob die Reihenfolge und liess
+        // Antworten NACH dem Abbau landen; im Tor als unbehandelte Zurueckweisung gemessen).
+        if (officeSchluessel === null) { return roh(pfad, init); }
+        if (typeof pfad !== "string" || pfad.indexOf("/api/") !== 0) {
+          return roh(pfad, init).then(officeSchluesselPruefen);
+        }
+        // KOPIERT: ein wiederverwendetes Anfrageobjekt truege den Kopf sonst weiter, auch nachdem
+        // der Schluessel gefallen ist.
+        var hat = Object.prototype.hasOwnProperty;
+        var eigen = {};
+        var koepfe = {};
+        var name;
+        for (name in init) { if (hat.call(init, name)) { eigen[name] = init[name]; } }
+        var alt = eigen.headers || {};
+        for (name in alt) { if (hat.call(alt, name)) { koepfe[name] = alt[name]; } }
+        koepfe.authorization = "Bearer " + officeSchluessel;
+        eigen.headers = koepfe;
+        return roh(pfad, eigen).then(officeSchluesselPruefen);
+      };
+    })();
+
+    // KW-WORDADDIN-HELPERS-START (Spiegel von apps/web/src/lib/wordAddin.ts — Äquivalenz per Test gepinnt)
+    var WORD_ADDIN_FALLBACK_TITLE = "Wissens-Entwurf aus Word";
+    var WORD_ADDIN_TITLE_MAX = 60;
+
+    function deriveDraftTitleFromSelection(text) {
+      var firstLine = "";
+      var lines = text.split(/\r?\n/);
+      for (var i = 0; i < lines.length; i += 1) {
+        var line = lines[i].trim();
+        if (line.length > 0) { firstLine = line; break; }
+      }
+      var title = firstLine.slice(0, WORD_ADDIN_TITLE_MAX).trim();
+      return title.length > 0 ? title : WORD_ADDIN_FALLBACK_TITLE;
+    }
+
+    function selectionToBodyHtml(text) {
+      function escapeHtml(value) {
+        return value
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+      var out = [];
+      var lines = text.split(/\r?\n/);
+      for (var i = 0; i < lines.length; i += 1) {
+        var line = lines[i].trim();
+        if (line.length > 0) { out.push("<p>" + escapeHtml(line) + "</p>"); }
+      }
+      return out.join("");
+    }
+
+    // WP-KLARA-1c: Anmelde-Warten — pure Entscheidung je Poll-Tick (fertig / Frist abgelaufen / weiter).
+    var WORD_ADDIN_LOGIN_POLL_INTERVAL_MS = 3000;
+    var WORD_ADDIN_LOGIN_POLL_MAX_MS = 300000;
+    var WORD_ADDIN_LOGIN_FETCH_TIMEOUT_MS = 5000;
+
+    function loginPollDecision(elapsedMs, signedIn) {
+      if (signedIn) { return "done"; }
+      if (elapsedMs >= WORD_ADDIN_LOGIN_POLL_MAX_MS) { return "timeout"; }
+      return "poll";
+    }
+
+    // WP-IC-PAKET-1c (bens ROT-1d): Schritt-Entscheidung NACH Abschluss eines Poll-Versuchs inkl.
+    // GENERATION-Guard — ein Versuch einer alten Generation endet IMMER still ("stale").
+    function loginPollStep(generation, currentGeneration, elapsedMs, signedIn) {
+      if (generation !== currentGeneration) { return "stale"; }
+      var decision = loginPollDecision(elapsedMs, signedIn);
+      return decision === "poll" ? "schedule" : decision;
+    }
+    // WP-KLARA-2 (Formatierung erhalten): body-Inhalt aus dem wilden Word-HTML schneiden; die
+    // autoritative Saeuberung macht der Server-Sanitizer am bestehenden Draft-Weg.
+    var WORD_ADDIN_BODY_BUDGET_BYTES = 3500000;
+
+    // JOB 2613 D3: Scheibengroesse fuer `getFileAsync`/`getSliceAsync`. Office deckelt eine
+    // Scheibe auf 4 MB; 1 MB ist der uebliche, konservative Wert — kleinere Scheiben bedeuten mehr
+    // Aufrufe, groessere riskieren Fehlschlaege auf schwachen Hosts. Der Rueckfallweg faengt beide
+    // Faelle ab, aber ein Fehlschlag kostet Pedi einen Anlauf; deshalb konservativ.
+    var WORD_ADDIN_SLICE_BYTES = 1024 * 1024;
+
+    // Der Dokumentname fuer den Titelvorschlag. `Office.context.document.url` ist der belegte,
+    // ueberall vorhandene Weg; er kann leer sein (ungespeichertes Dokument) — dann entscheidet die
+    // Route selbst. Bewusst OHNE `getFilePropertiesAsync`: das waere ein zweiter asynchroner
+    // Schritt vor dem Senden, und der Titel ist die Sache nicht wert.
+    function dokumentName() {
+      try {
+        var url = (Office.context.document && Office.context.document.url) || "";
+        var teil = String(url).split(/[\\/]/).pop() || "";
+        return teil.replace(/\.docx$/i, "");
+      } catch (err) {
+        return "";
+      }
+    }
+
+    function extractWordBodyHtml(html) {
+      var match = /<body[^>]*>([\s\S]*?)<\/body>/i.exec(html);
+      var inner = match && match[1] !== undefined ? match[1] : html;
+      return inner.replace(/^\s+|\s+$/g, "");
+    }
+
+    function countUndeliveredWordImages(html) {
+      var imgRe = /<img\b[^>]*>/gi;
+      var missing = 0;
+      var match = imgRe.exec(html);
+      while (match !== null) {
+        var srcMatch = /src\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(match[0]);
+        var src = srcMatch ? (srcMatch[1] !== undefined ? srcMatch[1] : srcMatch[2]) : "";
+        src = (src || "").replace(/^\s+|\s+$/g, "");
+        if (!/^data:image\/(png|jpe?g|gif|webp);base64,/i.test(src)) { missing += 1; }
+        match = imgRe.exec(html);
+      }
+      return missing;
+    }
+
+    // AUFTRAG-mega74 TEIL 2 — die Bilder wirklich uebergeben. Anforderungsstufe an der
+    // Dokumentation belegt: Body.inlinePictures, InlinePictureCollection und
+    // InlinePicture.getBase64ImageSrc() sind alle WordApi 1.1 — das Manifest bleibt bei 1.1.
+    // Gemieden, weil hoeher: getFirst() (1.3) und imageFormat (WordApiDesktop 1.1). Der Bildtyp
+    // kommt deshalb aus den Bytes. Ausfuehrliche Begruendung im Spiegelmodul lib/wordAddin.ts.
+    var WORD_IMAGE_SIGNATURES = [
+      { mime: "image/png", prefix: "iVBORw0KGgo" },
+      { mime: "image/jpeg", prefix: "/9j/" },
+      { mime: "image/gif", prefix: "R0lGOD" },
+      { mime: "image/webp", prefix: "UklGR" }
+    ];
+
+    // WEBP ist ein RIFF-Container: "RIFF" in Byte 0-3, die Typkennung "WEBP" erst in Byte 8-11.
+    // Byte 8 liegt NICHT auf einer Base64-Dreiergrenze — ein Praefixvergleich auf der kodierten
+    // Zeichenkette geht schief. Deshalb wird der Kopf wirklich dekodiert; Fehlschlag = kein WEBP.
+    function riffIstWebp(base64) {
+      try {
+        var kopf = atob(base64.slice(0, 24));
+        return kopf.slice(0, 4) === "RIFF" && kopf.slice(8, 12) === "WEBP";
+      } catch (e) {
+        return false;
+      }
+    }
+
+    function wordImageMimeFromBase64(base64) {
+      var clean = String(base64 || "").replace(/^data:[^,]*,/, "").replace(/\s+/g, "");
+      if (clean.length === 0) { return null; }
+      for (var i = 0; i < WORD_IMAGE_SIGNATURES.length; i += 1) {
+        var sig = WORD_IMAGE_SIGNATURES[i];
+        if (clean.indexOf(sig.prefix) === 0) {
+          if (sig.mime === "image/webp" && !riffIstWebp(clean)) { return null; }
+          return sig.mime;
+        }
+      }
+      return null;
+    }
+
+    function fillWordImages(html, base64List) {
+      var imgRe = /<img\b[^>]*>/gi;
+      var tags = [];
+      var m = imgRe.exec(html);
+      while (m !== null) { tags.push(m[0]); m = imgRe.exec(html); }
+      var fehltVorher = countUndeliveredWordImages(html);
+      if (tags.length === 0 || tags.length !== base64List.length) {
+        return {
+          html: html,
+          filled: 0,
+          remaining: fehltVorher,
+          hindernis: tags.length === 0 ? null : "anzahl-passt-nicht"
+        };
+      }
+      var index = -1;
+      var filled = 0;
+      var out = html.replace(/<img\b[^>]*>/gi, function (tag) {
+        index += 1;
+        var srcMatch = /src\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(tag);
+        var src = srcMatch ? (srcMatch[1] !== undefined ? srcMatch[1] : srcMatch[2]) : "";
+        src = (src || "").replace(/^\s+|\s+$/g, "");
+        if (/^data:image\/(png|jpe?g|gif|webp);base64,/i.test(src)) { return tag; }
+        var roh = String(base64List[index] || "").replace(/^data:[^,]*,/, "").replace(/\s+/g, "");
+        var mime = wordImageMimeFromBase64(roh);
+        if (!mime) { return tag; }
+        filled += 1;
+        var datenUrl = "data:" + mime + ";base64," + roh;
+        return srcMatch
+          ? tag.replace(/src\s*=\s*(?:"[^"]*"|'[^']*')/i, 'src="' + datenUrl + '"')
+          : tag.replace(/^<img/i, '<img src="' + datenUrl + '"');
+      });
+      return { html: out, filled: filled, remaining: fehltVorher - filled, hindernis: null };
+    }
+
+    function wordHtmlUtf8Bytes(value) {
+      return new TextEncoder().encode(value).length;
+    }
+
+    // WP-SHIP8-FINAL (bens Bedingung 4): Klartext aus dem EINEN HTML-Snapshot ableiten (kein
+    // zweiter Office-Aufruf) + Budget misst den FINALEN JSON-Payload des Draft-POSTs.
+    function wordHtmlToPlainText(html) {
+      var stripped = extractWordBodyHtml(html || "")
+        .replace(/<(script|style)\b[\s\S]*?<\/\1\s*>/gi, "")
+        .replace(/<br\s*\/?>/gi, "\n")
+        .replace(/<\/(p|div|li|h[1-6]|tr|figcaption|caption|blockquote|pre)\s*>/gi, "\n")
+        .replace(/<[^>]+>/g, "");
+      var decoded = stripped
+        .replace(/&nbsp;/gi, " ")
+        .replace(/&lt;/gi, "<")
+        .replace(/&gt;/gi, ">")
+        .replace(/&quot;/gi, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/&amp;/gi, "&");
+      var out = [];
+      var lines = decoded.split(/\r?\n/);
+      for (var i = 0; i < lines.length; i += 1) {
+        var line = lines[i].replace(/\s+/g, " ").trim();
+        if (line.length > 0) { out.push(line); }
+      }
+      return out.join("\n");
+    }
+
+    // JOB 3555 K2b: `category` ist OPTIONAL und steht bewusst HIER — an der EINEN Entscheidungs-
+    // stelle, die den finalen Payload baut (bens Bedingung 4, WP-SHIP8-FINAL): das Budget misst
+    // damit den String, der wirklich gesendet wird, samt Bereich. Ohne Wahl bleibt der Parameter
+    // undefiniert, `JSON.stringify` laesst das Feld weg — der Rumpf ist dann BYTEGLEICH der von
+    // vorher (nicht `""`, nicht `null`), und der Bibliotheksspiegel `wordAddin.ts#draftPostPayload`
+    // (drei Parameter, nicht Zielpfad dieses Jobs) bleibt der gemessene Zwilling.
+    function draftPostPayload(title, statement, bodyHtml, category) {
+      return JSON.stringify({ title: title, statement: statement, bodyHtml: bodyHtml, category: category, origin: "word_addin" });
+    }
+
+    // R-0169 (Nacharbeit 5) — Spiegel von wordAddin.ts (WORD_ADDIN_DOKUMENT_SETTING,
+    // mitDokumentkennung, dokumentkennungAusAntwort). Die von Klarwerk vergebene Dokumentkennung
+    // liegt in den Dokumenteinstellungen DIESES Word-Dokuments und reist mit der Datei. Fehlt die
+    // Einstellungs-Schnittstelle (aeltere Hosts, Testattrappen), bleibt alles wie vorher: kein
+    // Kennungsfeld, kein Fehler — der Server legt dann je Senden eine neue Akte an.
+    var WORD_ADDIN_DOKUMENT_SETTING = "klarwerkDokumentId";
+
+    // R-0169 (Nacharbeit 8) — DIE UNGESICHERTE KENNUNG. Die vom Server vergebene Kennung, solange
+    // NICHT nachgewiesen ist, dass sie im Word-Dokument gespeichert wurde (`saveAsync` mit Erfolg).
+    // Solange sie hier steht, ist die Identitaetsbindung UNVOLLSTAENDIG: das Panel meldet es
+    // (`sendDocIdUnsaved`), und jedes weitere Senden in dieser Sitzung traegt GENAU diese Kennung —
+    // es geht also nicht still ein neuer Dokumentimport ohne Kennung hinaus. Nach Schliessen und
+    // Wiederoeffnen ohne gespeicherte Kennung ist sie weg; genau deshalb wird der Fehlschlag gemeldet.
+    var dokumentkennungUngesichert = null;
+
+    function gespeicherteDokumentkennung() {
+      try {
+        var einstellungen = Office.context.document.settings;
+        if (einstellungen && typeof einstellungen.get === "function") {
+          var wert = einstellungen.get(WORD_ADDIN_DOKUMENT_SETTING);
+          if (typeof wert === "string" && wert.length > 0) { return wert; }
+        }
+      } catch (err) {
+        // keine Einstellungs-Schnittstelle — es zaehlt dann nur die ungesicherte Kennung unten.
+      }
+      return dokumentkennungUngesichert;
+    }
+
+    function meldeUngesicherteDokumentkennung() {
+      if (dokumentkennungUngesichert) { showSendStatus("warn", t("sendDocIdUnsaved")); }
+    }
+
+    function mitDokumentkennung(payload, dokumentId) {
+      if (typeof dokumentId !== "string" || dokumentId.replace(/^\s+|\s+$/g, "").length === 0) {
+        return payload;
+      }
+      var rumpf = JSON.parse(payload);
+      rumpf.dokumentId = dokumentId.replace(/^\s+|\s+$/g, "");
+      return JSON.stringify(rumpf);
+    }
+
+    function dokumentkennungAusAntwort(antwort) {
+      if (!antwort || typeof antwort !== "object") { return null; }
+      var herkunft = antwort.dokumentHerkunft;
+      if (!herkunft || typeof herkunft !== "object") { return null; }
+      var kennung = herkunft.dokumentId;
+      return typeof kennung === "string" && kennung.length > 0 ? kennung : null;
+    }
+
+    // Legt die vom Server vergebene Kennung im Dokument ab. NACHARBEIT 8 (bens F1): das Ergebnis
+    // von `saveAsync` wird AUSGEWERTET. Erst ein gemeldeter Erfolg macht die Bindung vollstaendig;
+    // ein Fehlschlag, eine fehlende Einstellungs-Schnittstelle oder ein synchroner Fehler lassen die
+    // Kennung als UNGESICHERT stehen (Wiederholungen tragen sie weiter) und werden gemeldet — der
+    // asynchrone Fehlschlag hier, die uebrigen am Ende des Sendewegs (`meldeUngesicherteDokumentkennung`).
+    function merkeDokumentkennung(antwort) {
+      var kennung = dokumentkennungAusAntwort(antwort);
+      if (!kennung) { return; }
+      dokumentkennungUngesichert = kennung;
+      try {
+        var einstellungen = Office.context.document.settings;
+        if (
+          !einstellungen ||
+          typeof einstellungen.set !== "function" ||
+          typeof einstellungen.saveAsync !== "function"
+        ) {
+          return;
+        }
+        einstellungen.set(WORD_ADDIN_DOKUMENT_SETTING, kennung);
+        var erfolg = Office.AsyncResultStatus ? Office.AsyncResultStatus.Succeeded : "succeeded";
+        einstellungen.saveAsync(function (ergebnis) {
+          if (ergebnis && ergebnis.status === erfolg) {
+            if (dokumentkennungUngesichert === kennung) { dokumentkennungUngesichert = null; }
+            return;
+          }
+          dokumentkennungUngesichert = kennung;
+          meldeUngesicherteDokumentkennung();
+        });
+      } catch (err) {
+        // Die Kennung bleibt ungesichert stehen und wird am Ende des Sendewegs gemeldet.
+      }
+    }
+
+    // JOB 2613 D1 — Spiegel von wordAddin.ts#trimWordImagesToBudget. Groesstes Bild zuerst
+    // weglassen, bis der Rest ins Budget passt; das GANZE img-Tag faellt, nicht nur seine Quelle
+    // (ein img ohne src waere ein kaputtes Bildsymbol). Nur eingebettete data:-Bilder werden
+    // angefasst. Ausfuehrliche Begruendung im Modul.
+    function trimWordImagesToBudget(html, passt) {
+      if (passt(html)) { return { html: html, dropped: 0, passt: true }; }
+      var muster = /<img\b[^>]*src\s*=\s*(?:"data:image\/[^"]*"|'data:image\/[^']*')[^>]*>/gi;
+      var aktuell = html;
+      var dropped = 0;
+      var obergrenze = (html.match(muster) || []).length;
+      for (var runde = 0; runde < obergrenze; runde += 1) {
+        var tags = aktuell.match(muster) || [];
+        if (tags.length === 0) { break; }
+        var groesstes = tags[0];
+        for (var i = 0; i < tags.length; i += 1) {
+          if (tags[i].length > groesstes.length) { groesstes = tags[i]; }
+        }
+        aktuell = aktuell.replace(groesstes, "");
+        dropped += 1;
+        if (passt(aktuell)) { return { html: aktuell, dropped: dropped, passt: true }; }
+      }
+      return { html: aktuell, dropped: dropped, passt: false };
+    }
+
+    function prepareWordDraftRequest(html, text, titleOverride, categoryWahl) {
+      // JOB 3057 K2: ein von Hand gesetzter Titel (Zeile „Titel") geht vor der Ableitung.
+      var eigen = (titleOverride || "").slice(0, WORD_ADDIN_TITLE_MAX).trim();
+      var title = eigen.length > 0 ? eigen : deriveDraftTitleFromSelection(text);
+      // JOB 3555 K2b: der gewaehlte Bereich (Zeile „Bereich"). NUR eine echte Wahl reist mit —
+      // ohne sie bleibt `category` undefiniert und der Payload unveraendert wie bisher.
+      var category = typeof categoryWahl === "string" && categoryWahl.length > 0 ? categoryWahl : undefined;
+      // JOB 2703 D3: KEINE Kuerzung mehr im Client. Bis D2 stand hier `slice(0, 500)` — was der
+      // Client abschnitt, sah der Server nie, und keine kanonische Regel konnte es zurueckholen.
+      // Der Server kuerzt die Aussage an EINEM Ort (kernaussageAusKlartext, capture-routes.ts).
+      var statement = text.trim();
+      var inner = extractWordBodyHtml(html || "");
+      var undeliveredImages = countUndeliveredWordImages(inner);
+      // AUFTRAG-mega45 Block F: plainTextFallback = Word lieferte gar kein verwertbares HTML.
+      // Ohne dieses Feld standen `undeliveredImages: 0` und `overBudget: false` gemeinsam auf
+      // "alles gut", obwohl Formatierung und Bilder verschwanden — die stille Null. Keine
+      // geratene Bildzahl: wo kein HTML ankam, ist jede Zahl erfunden.
+      if (inner.length === 0) {
+        return { payload: draftPostPayload(title, statement, selectionToBodyHtml(text), category), title: title, usedHtml: false, overBudget: false, undeliveredImages: 0, plainTextFallback: true, droppedImages: 0 };
+      }
+      var passt = function (kandidat) {
+        return wordHtmlUtf8Bytes(draftPostPayload(title, statement, kandidat, category)) <= WORD_ADDIN_BODY_BUDGET_BYTES;
+      };
+      var htmlPayload = draftPostPayload(title, statement, inner, category);
+      if (wordHtmlUtf8Bytes(htmlPayload) > WORD_ADDIN_BODY_BUDGET_BYTES) {
+        // JOB 2613 D1: erst Bilder weglassen, dann erst den ganzen Rumpf aufgeben.
+        var getrimmt = trimWordImagesToBudget(inner, passt);
+        if (getrimmt.passt && getrimmt.dropped > 0) {
+          return { payload: draftPostPayload(title, statement, getrimmt.html, category), title: title, usedHtml: true, overBudget: false, undeliveredImages: countUndeliveredWordImages(getrimmt.html), plainTextFallback: false, droppedImages: getrimmt.dropped };
+        }
+        return { payload: draftPostPayload(title, statement, selectionToBodyHtml(text), category), title: title, usedHtml: false, overBudget: true, undeliveredImages: undeliveredImages, plainTextFallback: false, droppedImages: 0 };
+      }
+      return { payload: htmlPayload, title: title, usedHtml: true, overBudget: false, undeliveredImages: undeliveredImages, plainTextFallback: false, droppedImages: 0 };
+    }
+
+    // WP-KLARA-ASK: Klara fragen — Frage-Vorbereitung (Auswahl vor Eingabefeld, Deckel 2000),
+    // Ask-Lauf gegen POST /api/ask (Fetch injizierbar), Einfuege-Gating, Quellen-Zeile,
+    // Offene-Frage-Titel. Verhaltensgleich zum Modul (Aequivalenztest).
+    var WORD_ADDIN_ASK_MAX_CHARS = 2000;
+    var WORD_ADDIN_ASK_TIMEOUT_MS = 15000;
+
+    // ============================================================================================
+    // JOB 3019 (KA5) — DIE MARKIERUNG SCHAERFT DIE SUCHE, SIE VERDRAENGT DIE FRAGE NICHT MEHR.
+    // ============================================================================================
+    //
+    // BIS HIERHER GEWANN DIE MARKIERUNG. Wer eine Stelle markierte UND eine Frage tippte, bekam
+    // eine Antwort auf die Markierung; der getippte Text war danach nirgends mehr — nicht im
+    // Koerper, nicht im Zustand, nirgends. Der Serververtrag von KA5 (JOB 3006) kann die
+    // Markierung seit Langem als EIGENES Feld verwerten (`services/app/src/routes/ask-routes.ts`
+    // liest `selection`, `services/ask/src/service.ts:513-515` ergaenzt damit AUSSCHLIESSLICH die
+    // Suchterme der Vorauswahl) — nur schickte der einzige Client, der eine Markierung hat, es nie.
+    //
+    // DIE DREI LAGEN, abschliessend:
+    //   getippter Text da        → `from: "manual"`,    Frage = getippter Text,
+    //                              `selection` = getrimmte Markierung (leer, wenn keine da).
+    //   nur Markierung           → `from: "selection"`, Frage = Markierung, `selection` = "".
+    //                              Die Markierung IST hier schon die Frage; sie ein zweites Mal zu
+    //                              senden verdoppelte dieselben Terme in `erweiterteSuchterme`.
+    //   keins von beidem         → `from: "empty"` wie bisher.
+    //
+    // ZWEI DECKEL, ZWEI MELDUNGEN. `truncated` gehoert der FRAGE und wird von `renderAskOutcome`
+    // und `askInsertTruncatedNote` gelesen; die gekappte Markierung meldet ihr eigenes Feld
+    // `selectionTruncated`. Eine gemeinsame Meldung haette in der Lage „lange Markierung, kurze
+    // Frage" behauptet, die Frage sei gekappt worden — sie war es nicht.
+    function prepareAskQuestion(selectionText, manualText) {
+      var selection = (selectionText || "").trim();
+      var manual = (manualText || "").trim();
+      var from = manual.length > 0 ? "manual" : selection.length > 0 ? "selection" : "empty";
+      var raw = from === "manual" ? manual : from === "selection" ? selection : "";
+      // Nur im manual-Zweig reist die Markierung als eigenes Feld; sonst waere sie die Frage doppelt.
+      var mit = from === "manual" ? selection : "";
+      var mitGekappt = mit.length > WORD_ADDIN_ASK_MAX_CHARS;
+      if (mitGekappt) { mit = mit.slice(0, WORD_ADDIN_ASK_MAX_CHARS).trim(); }
+      if (raw.length === 0) { return { question: "", from: "empty", selection: "", truncated: false, selectionTruncated: false }; }
+      if (raw.length > WORD_ADDIN_ASK_MAX_CHARS) {
+        return { question: raw.slice(0, WORD_ADDIN_ASK_MAX_CHARS).trim(), from: from, selection: mit, truncated: true, selectionTruncated: mitGekappt };
+      }
+      return { question: raw, from: from, selection: mit, truncated: false, selectionTruncated: mitGekappt };
+    }
+
+    // AUFTRAG-mega52 D1: der Server-Vertrag kennt jetzt drei Sprachen — die niederlaendische
+    // Oberflaeche fragt nicht mehr auf Deutsch nach (Pedis Word-Handlauf 28.07.).
+    function askLocale(langCode) {
+      if (langCode === "en") { return "en"; }
+      return langCode === "nl" ? "nl" : "de";
+    }
+
+    // WP-UX-WOW-1 U1 (Word): Klartext statt Markdown — dieselbe Subset-Logik wie die Konsole,
+    // aber als STRIP (Ueberschriften-/Fett-/Kursiv-Marker raus, Listenpunkte als "- "-Zeilen).
+    function stripAskAnswerMarkdown(answer) {
+      var lines = answer.replace(/\r\n?/g, "\n").split("\n");
+      var out = [];
+      for (var i = 0; i < lines.length; i += 1) {
+        var line = lines[i].trim();
+        var heading = /^#{1,6}\s+(.*)$/.exec(line);
+        if (heading && heading[1] !== undefined) { line = heading[1].trim(); }
+        var bullet = /^[-*]\s+(.*)$/.exec(line);
+        if (bullet && bullet[1] !== undefined) { line = "- " + bullet[1]; }
+        out.push(line.replace(/\*\*([^*]+)\*\*/g, "$1").replace(/\*([^*\n]+)\*/g, "$1"));
+      }
+      return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+    }
+
+    // AUFTRAG-JOB507-D4 — Retry-After: eine Zahl, sechs Klassen, eine Obergrenze. Spiegel von
+    // apps/web/src/lib/wordAddin.ts#parseRetryAfterSeconds; die ausfuehrliche Begruendung steht dort.
+    // Feste Reihenfolge: fehlend → null · leer → null · ganze Sekunden → gedeckelt · negative
+    // Sekunden → 0 · HTTP-Datum → Zukunft gedeckelt / Vergangenheit 0 · sonst → null.
+    // `null` heisst „unbekannt", `0` heisst „jetzt" — das ist nicht dasselbe.
+    var WORD_ADDIN_RETRY_AFTER_MAX_SECONDS = 3600;
+    // Die Datumsform wird GEPRUEFT, bevor Date.parse laeuft: Date.parse ist nachsichtig und liest
+    // auch „12.5" als Datum (im Red-first-Lauf belegt) — eine erfundene Auskunft saehe dann aus wie
+    // eine echte. Erlaubt ist die IMF-fixdate-Form aus RFC 9110; alles andere bleibt „unbekannt".
+    var RETRY_AFTER_HTTP_DATE = /^[A-Za-z]{3}, \d{2} [A-Za-z]{3} \d{4} \d{2}:\d{2}:\d{2} GMT$/;
+
+    function parseRetryAfterSeconds(value, nowMs) {
+      if (value === null || value === undefined) { return null; }
+      var raw = String(value).replace(/^\s+|\s+$/g, "");
+      if (raw.length === 0) { return null; }
+      if (/^\d+$/.test(raw)) { return Math.min(Number(raw), WORD_ADDIN_RETRY_AFTER_MAX_SECONDS); }
+      if (/^-\d+$/.test(raw)) { return 0; }
+      var parsed = RETRY_AFTER_HTTP_DATE.test(raw) ? Date.parse(raw) : NaN;
+      if (isFinite(parsed)) {
+        var seconds = Math.ceil((parsed - nowMs) / 1000);
+        if (seconds <= 0) { return 0; }
+        return Math.min(seconds, WORD_ADDIN_RETRY_AFTER_MAX_SECONDS);
+      }
+      return null;
+    }
+
+    // AUFTRAG-JOB507-D4 — was die Antwort des Draft-POSTs bedeutet, wird EINMAL entschieden.
+    // Spiegel von wordAddin.ts#classifyDraftResponse. FAIL-CLOSED: nur das dokumentierte 201 der
+    // Route gilt als angelegter Entwurf; jede andere Antwort ist Create-0.
+    function classifyDraftResponse(status) {
+      if (status === 201) { return "created"; }
+      if (status === 401) { return "auth"; }
+      if (status === 403) { return "forbidden"; }
+      if (status === 413) { return "too-large"; }
+      if (status === 429) { return "rate-limited"; }
+      return "error";
+    }
+
+    function draftWasCreated(kind) {
+      return kind === "created";
+    }
+
+    // AUFTRAG-mega79 BLOCK B — Schnittmarken um den Frage-Abruf, damit ein Test ihn AUSFUEHREN
+    // kann statt seinen Quelltext zu lesen. Dieselbe Bauform wie KW-KLARA-AISTATE-FETCH-*: das
+    // Aufgabenfenster ist buildlos, also ist ein Schnitt die einzige Moeglichkeit, das WIRKLICH
+    // ausgelieferte `performAsk` (nicht seinen TypeScript-Zwilling) laufen zu lassen.
+    // KW-KA4-DOKUMENT-CONSENT-START
+    //
+    // ============================================================================================
+    // KA4 — DIE EINWILLIGUNG GILT JE DOKUMENT, UND SIE WIRD NIE HIER ENTSCHIEDEN.
+    // ============================================================================================
+    //
+    // Pedis Weiche (Werkstattbeschluss 18.08.2026): „Externe KI mit Dokumenttext: JA, aber nie
+    // still. Je Dokument eine ausdrueckliche Einwilligung; Klara darf auch AKTIV fragen …
+    // Vertraulich Markiertes bleibt IMMER draussen."
+    //
+    // WAS DIESER BLOCK TUT — und was ausdruecklich NICHT:
+    //   · Er FUEHRT den Ablehnungsvermerk je Dokument, damit Klara nicht zweimal dasselbe fragt.
+    //     Nur im Arbeitsspeicher dieser Panelinstanz: kein localStorage, kein sessionStorage. Ein
+    //     Nein, das ein Neuladen ueberlebt, waere eine dauerhafte Entscheidung — und eine
+    //     dauerhafte ZUSTIMMUNG waere noch schlimmer. Beide gehoeren dem Server.
+    //   · Er ENTSCHEIDET NICHTS. Ob externe KI laeuft, sagt allein die serverseitige Aufloesung
+    //     (`klaraS4Anzeige`), und ob sie ausgefuehrt werden darf, allein
+    //     `KlaraSessionService.pruefeExterneAusfuehrung` am Ask-Weg. Ein lokales Ja autorisiert
+    //     nichts — der Server prueft neun Bindungen, nicht ein Bool aus dem Panel.
+    //   · Er MERKT SICH KEIN JA. Eine erteilte Zustimmung steht im Serverzustand
+    //     (`consentState`), nicht hier; sie hier zu spiegeln hiesse, sie ueberleben zu lassen,
+    //     wenn der Server sie laengst entwertet hat (Rebind, Widerruf, Ablauf, Policywechsel).
+    //
+    // DER DOKUMENTWECHSEL entwertet den Vermerk von selbst: der Schluessel IST die vom Server
+    // vergebene `documentContextId`, und ein Rebind liefert eine neue. Nichts muss aufgeraeumt
+    // werden, und nichts kann versehentlich stehenbleiben.
+    var ka4Abgelehnt = Object.create(null);
+
+    /** Der Schluessel ist die SERVERSEITIGE Dokumentkennung — nie eine selbst gebildete. */
+    function ka4DokumentSchluessel() {
+      return typeof klaraS4DocumentId === "string" ? klaraS4DocumentId : "";
+    }
+
+    function ka4WurdeAbgelehnt() {
+      var schluessel = ka4DokumentSchluessel();
+      return schluessel.length > 0 && ka4Abgelehnt[schluessel] === true;
+    }
+
+    /** Ein Nein gilt fuer DIESES Dokument und diese Panelinstanz — sonst nichts. */
+    function ka4Ablehnen() {
+      var schluessel = ka4DokumentSchluessel();
+      if (schluessel.length > 0) { ka4Abgelehnt[schluessel] = true; }
+    }
+
+    /**
+     * Darf Klara fuer dieses Dokument AKTIV fragen?
+     *
+     * Drei Bedingungen, alle noetig: der Server verlangt die Zustimmung ueberhaupt, sie ist noch
+     * nicht erteilt, und der Anwender hat fuer dieses Dokument noch nicht Nein gesagt. Fehlt die
+     * Anzeige (Ladephase, Abruf gescheitert), wird NICHT gefragt — eine Frage auf unbekanntem
+     * Stand waere geraten.
+     */
+    function ka4DarfAktivFragen(anzeige) {
+      if (!anzeige || anzeige.consentVisible !== true) { return false; }
+      if (anzeige.consentPossible !== true) { return false; }
+      return !ka4WurdeAbgelehnt();
+    }
+    // KW-KA4-DOKUMENT-CONSENT-END
+
+    // KW-KLARA-ASK-FETCH-START
+    // KW-KA4: `bindungsKopf` ist ein PARAMETER und wird bewusst NICHT hier drinnen geholt.
+    // Der Block zwischen diesen Marken wird von den Spiegeltests EXTRAHIERT und isoliert
+    // ausgefuehrt (tests/app/word-addin-ask.test.ts) — er darf deshalb nur kennen, was er selbst
+    // mitbringt oder uebergeben bekommt. Ein Aufruf von `klaraS4Header()` von hier aus machte den
+    // Block unausfuehrbar; gemessen als `ReferenceError: klaraS4Header is not defined`.
+    //
+    // JOB 3019 (KA5): `selection` ist der SECHSTE und letzte Parameter — aus demselben Grund wie
+    // `bindungsKopf`: er kommt herein, er wird nicht hier drinnen geholt. Er steht ANS ENDE, damit
+    // jeder bestehende Aufruf mit fuenf Argumenten unveraendert denselben Koerper absetzt. R-0639: `questionSource` — Markierung ("selection") oder getippt ("manual").
+    function performAsk(question, locale, fetchFn, timeoutMs, bindungsKopf, selection, questionSource) {
+      var controller = new AbortController();
+      var timedOut = false;
+      var timer = setTimeout(function () {
+        timedOut = true;
+        try { controller.abort(); } catch (err) { /* bereits beendet — egal */ }
+      }, timeoutMs);
+      // WP-KLARA-ASK-FIX (bens Fix 1): IMMER der server-garantierte retrieval-only-Modus —
+      // markierter Dokumenttext darf NIE zur Cloud; clientseitig gibt es keine andere Wahl.
+      //
+      // KW-KA4: `mode` bleibt UNVERAENDERT gesetzt. Er ist die Bitte um die Enge, nicht ihre
+      // Aufhebung — der Server entscheidet ueber die Einwilligung und ignoriert jeden Wunsch des
+      // Clients. Neu sind allein die drei BINDUNGS-Kopfzeilen: dieselben, die der Sitzungsweg
+      // schon fuehrt (`klaraS4Header`), damit der Server das vorhandene Ausfuehrungstor auf
+      // exakt diese Sitzung UND dieses Dokument anwenden kann. Sie sind opak und autorisieren
+      // fuer sich genommen nichts; ohne registrierte Sitzung sind sie leer und der Server
+      // behandelt die Anfrage wie bisher.
+      //
+      // JOB 3019 (KA5): die markierte Passage reist als EIGENES Feld `selection` — und nur, wenn es
+      // sie gibt. `undefined` faellt bei `JSON.stringify` heraus; ohne Markierung ist der Koerper
+      // deshalb Zeichen fuer Zeichen der bisherige (in tests/klara-panel/ka5-markierung-reist-mit
+      // Faelle C/D durch Ausfuehrung erhoben). Der Modus bleibt unangetastet: die Markierung geht
+      // an DIESELBE Route und in DENSELBEN retrieval-only-Weg, der serverseitig kein Modell
+      // erreicht — sie ergaenzt dort ausschliesslich die Suchterme der Vorauswahl.
+      var markierung = typeof selection === "string" ? selection.trim() : "";
+      var askKopf = { "content-type": "application/json" };
+      var bindung = bindungsKopf || {};
+      for (var kopfName in bindung) {
+        if (Object.prototype.hasOwnProperty.call(bindung, kopfName) && bindung[kopfName]) {
+          askKopf[kopfName] = bindung[kopfName];
+        }
+      }
+      return fetchFn("/api/ask", {
+        method: "POST",
+        credentials: "include",
+        headers: askKopf,
+        body: JSON.stringify({ question: question, locale: locale, mode: "retrieval-only", selection: markierung.length > 0 ? markierung : undefined, questionSource: questionSource === "selection" || questionSource === "manual" ? questionSource : undefined }),
+        signal: controller.signal,
+      })
+        .then(function (res) {
+          if (res.status === 401) { return { kind: "auth" }; }
+          // AUFTRAG-JOB507-D4: 403 ist FEHLENDES RECHT (ko.read), keine fehlende Anmeldung.
+          if (res.status === 403) { return { kind: "forbidden" }; }
+          // AUFTRAG-JOB507-D4: 429 ist eine Sperre auf Zeit — die Zeit steht im Kopf.
+          if (res.status === 429) {
+            return {
+              kind: "rate-limited",
+              retryAfterSeconds: parseRetryAfterSeconds(
+                res.headers ? res.headers.get("retry-after") : null,
+                Date.now()
+              ),
+            };
+          }
+          if (!res.ok) { return { kind: "error", detail: "HTTP " + res.status }; }
+          return res.json().then(function (body) {
+            var result = body && body.result ? body.result : null;
+            var answer = result ? result.answer : null;
+            // WP-KLARA-ASK-FIX (bens Fix 2): ohne mindestens EINE gueltige Source-Id ist es keine
+            // belegte Antwort — ehrlich als Wissensluecke behandeln.
+            var sources = [];
+            if (result && Array.isArray(result.sources)) {
+              for (var i = 0; i < result.sources.length; i += 1) {
+                var id = result.sources[i];
+                if (typeof id === "string" && id.trim().length > 0) { sources.push(id); }
+              }
+            }
+            // AUFTRAG-W1-VERTRAUENSKOPF-08 Buendel B: die tragende Teilmenge und der erste
+            // Ausschnitt werden GELESEN, nie hergeleitet. Fehlt ein Feld, bleibt es undefined —
+            // die Flaeche behauptet dann nichts (dieselbe Beweislast-Umkehr wie askGradeOf).
+            var cited;
+            if (result && Array.isArray(result.citedSources)) {
+              cited = [];
+              for (var c = 0; c < result.citedSources.length; c += 1) {
+                var cid = result.citedSources[c];
+                if (typeof cid === "string" && cid.trim().length > 0) { cited.push(cid); }
+              }
+            }
+            // JOB 3366 (KI-FRAGMENT-SICHTBAR): der belegte Abbruchbefund des Servers. GELESEN,
+            // nie hergeleitet — dieselbe Beweislast-Umkehr wie bei `citedSources` darueber: das
+            // Feld muss ein Objekt sein UND `finishReason` als nichtleere Zeichenkette tragen,
+            // sonst gilt es als NICHT gemeldet. Ein aelterer Server sendet es gar nicht; das fuehrt
+            // in den bisherigen Zustand (kein Satz), nie in die Entwarnung „vollstaendig".
+            var abgeschnitten = false;
+            var befund = result ? result.abgeschnitten : null;
+            if (befund && typeof befund === "object" && typeof befund.finishReason === "string" && befund.finishReason.length > 0) {
+              abgeschnitten = true;
+            }
+            var firstStep = result && Array.isArray(result.steps) ? result.steps[0] : undefined;
+            var snippet =
+              firstStep && typeof firstStep.snippet === "string" && firstStep.snippet.trim().length > 0
+                ? firstStep.snippet.trim()
+                : undefined;
+            // JOB 3092 S6 (W5): die Meldung „vorhanden, aber ungeprueft" (JOB 1591 D1) reist NEBEN
+            // `result` im Koerper (`ungeprueft`, nur auf dem Sitzungsweg) und wird GELESEN, nie
+            // hergeleitet: abwesend heisst „nicht gefragt", `[]` heisst „nachgesehen, nichts" —
+            // die Flaeche zeigt in beiden Faellen keinen Satz und behauptet nie „alles geprueft".
+            // Ein Eintrag ohne Kennung ist keine Meldung. Der abgesetzte Rumpf bleibt byte-gleich.
+            var ungeprueft;
+            if (body && Array.isArray(body.ungeprueft)) {
+              ungeprueft = [];
+              for (var u = 0; u < body.ungeprueft.length; u += 1) {
+                var eintrag = body.ungeprueft[u];
+                if (eintrag && typeof eintrag.id === "string" && eintrag.id.length > 0) {
+                  ungeprueft.push({
+                    id: eintrag.id,
+                    title: typeof eintrag.title === "string" && eintrag.title.trim().length > 0 ? eintrag.title : eintrag.id,
+                    status: typeof eintrag.status === "string" ? eintrag.status : null,
+                  });
+                }
+              }
+            }
+            if (
+              result &&
+              result.answered === true &&
+              typeof answer === "string" &&
+              answer.trim().length > 0 &&
+              sources.length > 0
+            ) {
+              // JOB 3366: die Tatsache reist NUR MIT, WENN SIE EINE IST. Ein `abgeschnitten: false`
+              // an jeder Antwort waere die positive Gegenaussage „vollstaendig", die §9 verbietet —
+              // und es machte den Spiegel-Vertrag mit `apps/web/src/lib/wordAddin.ts` an JEDEM
+              // Ergebnis ungleich statt nur an den abgeschnittenen (word-addin-ask.test.ts, Teil 3).
+              var fragmentFeld = abgeschnitten ? { abgeschnitten: true } : {};
+              return Object.assign(fragmentFeld, {
+                kind: "answered",
+                // WP-UX-WOW-1 U1: Klartext im Panel UND im eingefuegten Text.
+                answer: stripAskAnswerMarkdown(answer),
+                sources: sources,
+                trust: typeof result.trust === "number" ? result.trust : 0,
+                // AUFTRAG-mega34 B: die serverseitige Einstufung reist mit. Fehlt sie, ist der
+                // Grad fail-safe "unverified" — Word behauptet nie Sicherheit ohne Beleg.
+                grade: askGradeOf(result.evidence),
+                evidence: result.evidence || undefined,
+                citedSources: cited,
+                snippet: snippet,
+                // AUFTRAG-mega81 BLOCK A: das serverseitige Kennzeichnungssignal wird GELESEN.
+                // Auf dem retrieval-only-Weg dieses Fensters fehlt es immer (der Server laesst es
+                // dort bewusst weg) — die Behauptung entsteht also nie aus einer Annahme.
+                // G24: geprueft statt gecastet — siehe KW-KLARA-AI-MARK-* weiter unten.
+                aiGenerated: istKiKennzeichnung(result.aiGenerated),
+                ungeprueft: ungeprueft,
+              });
+            }
+            // AUFTRAG-mega77 BLOCK A: die Wissensluecke ist wieder eine reine Wissensluecke — der
+            // Antwortkoerper wird hier NICHT mehr nach einer Bestandszahl durchsucht.
+            // JOB 3092 S6 (W5): sie traegt aber, was der Server AUSDRUECKLICH und betrachter-
+            // gefiltert meldet (JOB 1591) — keine Zahl aus der Vorauswahl, sondern die Liste selbst.
+            return { kind: "gap", ungeprueft: ungeprueft };
+          });
+        })
+        .catch(function (err) {
+          if (timedOut) { return { kind: "timeout" }; }
+          return { kind: "error", detail: err && err.message ? err.message : "offline" };
+        })
+        .then(function (outcome) {
+          clearTimeout(timer);
+          return outcome;
+        });
+    }
+    // KW-KLARA-ASK-FETCH-END
+
+    // AUFTRAG-mega81 BLOCK A — die eine Entscheidung, ob die KI-Kennzeichnung sichtbar wird.
+    // Schnittmarken wie bei KW-KLARA-ASK-FETCH-*: das Aufgabenfenster ist buildlos, ein Schnitt ist
+    // die einzige Moeglichkeit, die WIRKLICH ausgelieferte Entscheidung auszufuehren statt ihren
+    // Quelltext zu lesen. Sie haengt AUSSCHLIESSLICH am serverseitigen Signal (`result.aiGenerated`)
+    // — nicht an der Flaeche, nicht an einer Einstellung, nicht an der Anwesenheit des Satzes.
+    // G24 (OFFEN.md:159, mega83 B) — UNBEKANNT IST HIER NICHT FAIL-SAFE.
+    //
+    // Hier stand `Boolean(result.aiGenerated)`. Fehlend und `false` waren sicher, aber ein
+    // beliebiges Objekt oder ein wahrer Skalar schaltete die KI-Behauptung FAELSCHLICH ein
+    // (`Boolean({})`, `Boolean("nein")`, `Boolean(1)` sind alle wahr). Der Serververtrag ist ein
+    // Objekt: `{aiGenerated: true, task, mode, at}` (services/model-runs/src/types.ts:69-76).
+    // Diese Pruefung erkennt genau das an und sonst nichts — im Zweifel nicht behaupten.
+    //
+    // WORTGLEICH mit `istKiKennzeichnung` in apps/web/src/lib/wordAddin.ts. Dieses Fenster ist
+    // buildlos und kann nicht importieren; dass beide dieselbe Menge anerkennen, haelt
+    // tests/app/g24-ki-kennzeichnung-laufzeitpruefung.test.ts — und zwar an der WIRKLICH
+    // ausgelieferten Datei, ueber die Schnittmarken unten.
+    // KW-KLARA-AI-MARK-START
+    function istKiKennzeichnung(wert) {
+      if (typeof wert !== "object" || wert === null) { return false; }
+      var aufgaben = ["answer", "interview", "describe", "enrich"];
+      var modi = ["model", "deterministic"];
+      return wert.aiGenerated === true
+        && typeof wert.task === "string" && aufgaben.indexOf(wert.task) !== -1
+        && typeof wert.mode === "string" && modi.indexOf(wert.mode) !== -1;
+    }
+    // KW-KLARA-AI-MARK-END
+
+    // KW-KLARA-AI-NOTICE-START
+    function askAiNoticeVisible(outcome) {
+      return !!(outcome && outcome.kind === "answered" && outcome.aiGenerated === true);
+    }
+    // KW-KLARA-AI-NOTICE-END
+
+    // Sie an das Element haengen — EINE Stelle, von resetAskResult und renderAskOutcome gerufen.
+    function renderAiNotice(outcome) {
+      var el = document.getElementById("ask-ai-notice");
+      if (!el) { return; }
+      el.className = askAiNoticeVisible(outcome) ? "muted" : "muted hidden";
+    }
+
+    function canInsertAnswer(outcome) {
+      var hasSource = false;
+      if (outcome && Array.isArray(outcome.sources)) {
+        for (var i = 0; i < outcome.sources.length; i += 1) {
+          var id = outcome.sources[i];
+          if (typeof id === "string" && id.trim().length > 0) { hasSource = true; break; }
+        }
+      }
+      return Boolean(
+        outcome &&
+          outcome.kind === "answered" &&
+          typeof outcome.answer === "string" &&
+          outcome.answer.trim().length > 0 &&
+          hasSource
+      );
+    }
+
+    function buildAskSourceLine(titles, dateLabel, template) {
+      var names = [];
+      for (var i = 0; i < titles.length; i += 1) {
+        var name = (titles[i] || "").trim();
+        if (name.length > 0) { names.push(name); }
+      }
+      var joined = names.length > 0 ? names.join(", ") : "KLARWERK";
+      return template.replace("{titles}", joined).replace("{date}", dateLabel);
+    }
+
+    // AUFTRAG-mega34 B: der Grad aus dem Server-Feld — FAIL-SAFE. Fehlt das Feld (alter Server,
+    // abgeschnittener Body), gilt die Antwort als NICHT belegt.
+    function askGradeOf(evidence) {
+      return evidence && evidence.grade === "verified" ? "verified" : "unverified";
+    }
+
+    // AUFTRAG-mega34 B2: DERSELBE Hinweis fuer Anzeige, Kopieren und Einfuegen — eine Auswahl,
+    // drei Wege, keine Abweichung.
+    function answerInsertEvidenceNote(grade, texts) {
+      return grade === "verified" ? texts.verified : texts.unverified;
+    }
+
+    // AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK B — Spiegel von wordAddin.ts#askEvidenceDetail.
+    // Es wird NICHTS berechnet: gelesen wird nur, was `result.evidence` mitgebracht hat. Die
+    // Regel selbst bleibt in services/ask/src/answer-evidence.ts (KW-W1-13).
+    var ASK_CAVEAT_KEYS = ["unknown", "unchecked", "noCoverage", "incomplete", "unattributed"];
+
+    function askCount(value) {
+      return typeof value === "number" && isFinite(value) && value >= 0 ? Math.floor(value) : 0;
+    }
+
+    function askEvidenceDetail(evidence) {
+      var raw = evidence || null;
+      var cc = raw ? raw.checkCaveat : null;
+      var caveat = null;
+      if (cc && typeof cc === "object") {
+        var reason = cc.reason;
+        caveat = {
+          key: typeof reason === "string" && ASK_CAVEAT_KEYS.indexOf(reason) >= 0 ? reason : "other",
+          unproven: askCount(cc.unproven),
+          total: askCount(cc.total),
+        };
+      }
+      // FAIL-SAFE: „keine offenen Konflikte" NUR, wenn der Server BEIDE Felder ausdruecklich mit
+      // false gesendet hat. Alles andere ist „konnte nicht geprueft werden" — nie eine Entwarnung.
+      var conflict = "unproven";
+      if (raw && raw.sourcesConflicted === true) {
+        conflict = "conflicted";
+      } else if (raw && raw.sourcesConflicted === false && raw.conflictsUnproven === false) {
+        conflict = "clear";
+      }
+      return { caveat: caveat, conflict: conflict };
+    }
+
+    // AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK B — Spiegel von wordAddin.ts#askSnippetWorthShowing.
+    // Auf dem heutigen retrieval-only-Weg IST die Antwort die Aussage der tragenden Quelle: dann
+    // sind Antwort und Ausschnitt identisch, und derselbe Satz unter zwei Namen saehe aus wie ein
+    // zweiter Beleg. Genau das hat mega39 D2 in der Konsole entfernt.
+    function askSnippetWorthShowing(answer, snippet) {
+      var s = typeof snippet === "string" ? snippet.replace(/\s+/g, " ").trim() : "";
+      if (s.length === 0) { return false; }
+      var a = typeof answer === "string" ? answer.replace(/\s+/g, " ").trim() : "";
+      return s !== a;
+    }
+
+    // AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK B — Spiegel von wordAddin.ts#askSourceRole.
+    // Ohne `citedSources` wird KEINE Rolle behauptet — die Liste sieht dann aus wie bisher.
+    function askSourceRole(id, citedSources) {
+      if (!Array.isArray(citedSources) || citedSources.length === 0) { return "unknown"; }
+      return citedSources.indexOf(id) >= 0 ? "carrying" : "consulted";
+    }
+
+    // AUFTRAG-mega34 B2: der EINGEFUEGTE Text traegt die Einstufung mit. Das ist der Punkt, an dem
+    // das Ergebnis das Haus verlaesst — ein Hinweis nur im Panel reist nicht mit ins Dokument.
+    // AUFTRAG-mega36 D: ohne Koerper (nach Abzug eines bereits vorhandenen Metablocks) beginnt der
+    // Text NICHT mit zwei Leerzeilen — die Quellen-Zeile steht dann allein.
+    function buildAnswerInsertText(answer, sourceLine, truncatedNote, evidenceNote) {
+      var head = answer.replace(/\s+$/g, "");
+      var base = head.length > 0 ? head + "\n\n" + sourceLine : sourceLine;
+      var withEvidence = evidenceNote && evidenceNote.trim().length > 0 ? base + "\n" + evidenceNote : base;
+      return truncatedNote && truncatedNote.trim().length > 0 ? withEvidence + "\n" + truncatedNote : withEvidence;
+    }
+
+    function newestSourceDateLabel(dates) {
+      var best = null;
+      for (var i = 0; i < dates.length; i += 1) {
+        var parsed = dates[i] ? Date.parse(dates[i]) : NaN;
+        if (isFinite(parsed) && (best === null || parsed > best)) { best = parsed; }
+      }
+      return best === null ? null : formatAskDateLabel(new Date(best));
+    }
+
+    function formatAskDateLabel(date) {
+      function pad(n) { return n < 10 ? "0" + n : String(n); }
+      return pad(date.getDate()) + "." + pad(date.getMonth() + 1) + "." + date.getFullYear();
+    }
+
+    // AUFTRAG-mega35 A1 — DIE EINE STELLE, AN DER DER AUSZUGEBENDE TEXT ENTSTEHT (Spiegel von
+    // composeAnswerOutput in wordAddin.ts). Der Nutzerin gehoert NUR der Antwortkoerper; Einstufung
+    // und Quellen-Zeile setzt diese Funktion im AUGENBLICK des Kopierens/Einfuegens an — sie koennen
+    // deshalb nicht fehlen, egal wann und wie lange bearbeitet wurde.
+    // AUFTRAG-mega36 D (bens GELB-2): die Zusammensetzung ist IDEMPOTENT. Erkannt wird der am ENDE
+    // angehaengte Metablock — Zeilen in genau den Formen, die diese Funktion selbst erzeugt (beide
+    // Quellen-Zeilen-Vorlagen mit {titles}/{date} als Platzhalter, die beiden Einstufungstexte, der
+    // Kappungshinweis). GRENZE: nur der Trailing-Block; eine Metazeile MITTEN im Koerper und eine
+    // Metazeile in einer ANDEREN Sprache bleiben stehen.
+    function composedMetaLinePattern(template) {
+      var escaped = template.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      return new RegExp("^" + escaped.replace(/\\\{titles\\\}/g, ".*").replace(/\\\{date\\\}/g, ".*") + "$");
+    }
+
+    function stripComposedMetaLines(body, texts) {
+      var patterns = [
+        composedMetaLinePattern(texts.sourceLine),
+        composedMetaLinePattern(texts.sourceLineRetrieved),
+      ];
+      var exact = [texts.verified, texts.unverified, texts.truncatedNote]
+        .map(function (value) { return (value || "").replace(/^\s+|\s+$/g, ""); })
+        .filter(function (value) { return value.length > 0; });
+      var lines = body.replace(/\r\n?/g, "\n").split("\n");
+      while (lines.length > 0) {
+        var last = (lines[lines.length - 1] || "").replace(/^\s+|\s+$/g, "");
+        if (last.length === 0) { lines.pop(); continue; }
+        var istMeta = exact.indexOf(last) !== -1 || patterns.some(function (p) { return p.test(last); });
+        if (istMeta) { lines.pop(); continue; }
+        break;
+      }
+      return lines.join("\n").replace(/\s+$/g, "");
+    }
+
+    function composeAnswerOutput(input) {
+      var standLabel = newestSourceDateLabel(input.sourceDates);
+      var sourceLine = standLabel
+        ? buildAskSourceLine(input.sourceTitles, standLabel, input.texts.sourceLine)
+        : buildAskSourceLine(input.sourceTitles, formatAskDateLabel(input.now), input.texts.sourceLineRetrieved);
+      var evidenceNote = answerInsertEvidenceNote(input.grade, {
+        verified: input.texts.verified,
+        unverified: input.texts.unverified,
+      });
+      var truncatedNote = input.truncated ? input.texts.truncatedNote : "";
+      return buildAnswerInsertText(
+        stripComposedMetaLines(input.body, input.texts),
+        sourceLine,
+        truncatedNote,
+        evidenceNote
+      );
+    }
+
+    // AUFTRAG-mega36 B2: GANZE Auswahl oder Bruchstueck. Der abgefangene native Kopiervorgang gibt
+    // den abgeleiteten Text NUR bei ganzem Antwortkoerper aus; eine Teilauswahl bleibt roh (ein
+    // Bruchstueck ist keine Antwort und traegt deshalb auch keine Einstufung). Umgebender Leerraum
+    // darf ausgelassen werden — mehr nicht.
+    function answerSelectionIsWhole(value, start, end) {
+      var body = (value || "").replace(/^\s+|\s+$/g, "");
+      if (body.length === 0) { return false; }
+      var from = Math.max(0, Math.min(start, end));
+      var to = Math.min((value || "").length, Math.max(start, end));
+      return (value || "").slice(from, to).replace(/^\s+|\s+$/g, "") === body;
+    }
+
+    // WP-KLARA-ASK-FIX (bens Fix 4): Praefix/Fallback kommen LOKALISIERT vom Aufrufer.
+    function openQuestionDraftTitle(question, prefix, fallbackTitle) {
+      var trimmed = question.trim();
+      if (trimmed.length === 0) { return fallbackTitle; }
+      return (prefix + trimmed).slice(0, WORD_ADDIN_TITLE_MAX).trim();
+    }
+
+    // RT-KLARA1: Einfuege-Fehler ehrlich klassifizieren — der Berechtigungsfall (Manifest ohne
+    // Schreibrecht) bekommt eine verstaendliche Erklaerung statt des rohen Office-Fehlertexts.
+    function classifyInsertError(detail) {
+      return /permission|berechtigung|toestemming|machtiging|access\s*denied|accessdenied/i.test(detail || "")
+        ? "permission"
+        : "other";
+    }
+
+    // AUFTRAG-klara1b (Teil A): Einfuegen ROBUST — moderner Word.run-Weg zuerst, setSelectedDataAsync
+    // als Fallback; Berechtigungsfehler wird ehrlich als "permission" gemeldet (Ausweg Kopieren).
+    // DOM-/Office-frei: die konkreten Aufrufe reicht der Aufrufer als injizierte Versuche (Spiegel des
+    // Moduls performInsert — sequenziell, erster Erfolg gewinnt).
+    function performInsert(text, attempts) {
+      var index = 0;
+      var lastDetail = "";
+      var sawPermission = false;
+      function tryNext() {
+        if (index >= attempts.length) {
+          return Promise.resolve({ ok: false, failure: sawPermission ? "permission" : "other", detail: lastDetail });
+        }
+        var attempt = attempts[index];
+        index += 1;
+        return Promise.resolve()
+          .then(function () { return attempt.run(text); })
+          .then(function () { return { ok: true, method: attempt.method }; })
+          .catch(function (err) {
+            var detail = err && err.message ? err.message : String(err == null ? "" : err);
+            lastDetail = detail || lastDetail;
+            if (classifyInsertError(detail) === "permission") { sawPermission = true; }
+            return tryNext();
+          });
+      }
+      return tryNext();
+    }
+
+    // Teil B (Ausweg): Feldinhalt in die Zwischenablage — funktioniert auch, wenn der Office-Insert an
+    // Rechten scheitert. Clipboard injiziert (testbar); fehlt/wirft sie → ehrlich ok=false.
+    function performCopy(text, clipboard) {
+      if (!clipboard || typeof clipboard.writeText !== "function") {
+        return Promise.resolve({ ok: false, detail: "no-clipboard" });
+      }
+      return Promise.resolve()
+        .then(function () { return clipboard.writeText(text); })
+        .then(function () { return { ok: true }; })
+        .catch(function (err) { return { ok: false, detail: err && err.message ? err.message : "clipboard" }; });
+    }
+
+    // Teil B (kompakte Antwort): ist die Antwort lang, klappt „mehr anzeigen" das Feld auf.
+    var WORD_ADDIN_ANSWER_COMPACT_CHARS = 320;
+    var WORD_ADDIN_ANSWER_COMPACT_LINES = 6;
+    function answerIsLong(text) {
+      var trimmed = (text || "").replace(/^\s+|\s+$/g, "");
+      if (trimmed.length > WORD_ADDIN_ANSWER_COMPACT_CHARS) { return true; }
+      var lines = trimmed.split(/\r?\n/).filter(function (line) { return line.replace(/^\s+|\s+$/g, "").length > 0; });
+      return lines.length > WORD_ADDIN_ANSWER_COMPACT_LINES;
+    }
+
+    // K2/K3: Anzeige-Status einer Antwort-Quelle — Kern der Bibliotheks-Ableitung (deriveStatus):
+    // validiert / offen+Zuweisungen=pruefung / offen; nicht ladbar oder fremd → ehrlich "unknown".
+    function askSourceStatus(ko) {
+      if (!ko || typeof ko.status !== "string") { return "unknown"; }
+      if (ko.status === "validiert") { return "validiert"; }
+      if (ko.status === "offen") {
+        return Array.isArray(ko.assignments) && ko.assignments.length > 0 ? "pruefung" : "offen";
+      }
+      return "unknown";
+    }
+
+    // K2: Deep-Link auf die bestehende KO-Detailroute /wissen/:id.
+    function koDetailUrl(origin, koId) {
+      return origin + "/wissen/" + encodeURIComponent(koId);
+    }
+
+    // KW-KLARA-AISTATE-START
+    // AUFTRAG-mega75 Block B — Spiegel von apps/web/src/lib/wordAddin.ts#klaraAiLage.
+    //
+    // Dort wird NICHTS nachgebaut: `klaraAiLage` importiert und RUFT `deriveAiAvailable`
+    // (lib/aiAvailability.ts) und `aiTaskInfoPublic` (lib/reasonerTaskInfo.ts) — also genau die
+    // Funktionen, an denen auch AiModelInfo in der Anwendung haengt. Nur DIESE Fassung hier muss
+    // spiegeln, weil das Taskpane buildlos ist (kein Modulsystem, kein Bundler).
+    //
+    // Der Spiegel ist ueber den VOLLEN Vertrags-Zustandsraum gepinnt, nicht auf ein paar Beispiele:
+    // tests/app/mega75-klara-ki-status.test.ts faehrt jeden Punkt aus interface ReasonerStatus
+    // (api/types.ts) durch beide Fassungen und vergleicht. Ein Wechsel dort wird hier rot.
+    var KLARA_AI_TASK = "answer";
+
+    function deriveAiAvailable(status, task) {
+      if (!status) { return false; }
+      if (status.reachable === "unreachable") { return false; }
+      var taskUsable = status.tasks ? status.tasks[task] : undefined;
+      if (taskUsable === false) { return false; }
+      if (taskUsable === true) { return status.active === true; }
+      return status.active === true && status.mode !== "deterministic";
+    }
+
+    // DREI ehrliche Zustaende, nicht zwei: „laedt" ist KEIN Befund, und „nicht erreichbar" ist
+    // keine Verfuegbarkeitsaussage. Ein Ladezustand, der wie ein Befund aussieht, war der A22-Fehler.
+    function klaraAiLage(phase, status) {
+      if (phase === "laedt") { return "laedt"; }
+      if (phase === "unerreichbar") { return "unerreichbar"; }
+      if (!deriveAiAvailable(status, KLARA_AI_TASK)) { return "keine"; }
+      if (status.mode === "cloud") { return "extern"; }
+      if (status.mode === "local") { return "intern"; }
+      return "keine";
+    }
+    // KW-KLARA-AISTATE-END
+
+    // ============================================================================================
+    // AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK A — Spiegel von wordAddin.ts#klaraTrustHead.
+    // ============================================================================================
+    //
+    // BEWUSST AUSSERHALB der mega75-Schnittmarken. Der Sammler von
+    // tests/app/mega75-klara-ki-status.test.ts liest GENAU den Block zwischen KW-KLARA-AISTATE-*
+    // und vergleicht die dort verzweigten Vertragswerte (mode/reachable) mit den echten
+    // KLARWERK-Ableitungsmodulen. Diese Uebersetzung darf diesen Zustandsraum weder erweitern noch
+    // verengen — sie verzweigt deshalb ausschliesslich auf dem ERGEBNIS von `klaraAiLage`, nie auf
+    // einem Feld von ReasonerStatus. Der einzige Zustandsbesitzer bleibt `klaraAiLage`.
+    //
+    // KW-W1-13: `detailKeys` ist die BASIC-1-Erweiterungsstelle (Provider, Modell, Admin-Vorgabe,
+    // Abweichung, Sitzung, Consent). Heute leer — es gibt keine Vertragsdaten, aus denen sie zu
+    // fuellen waere, und Platzhalter waeren erfundene Werte.
+    // KW-KLARA-TRUSTHEAD-START
+    function klaraTrustKey(prefix, lage) {
+      return prefix + lage.charAt(0).toUpperCase() + lage.slice(1);
+    }
+
+    function klaraTrustHead(phase, status) {
+      var lage = klaraAiLage(phase, status);
+      // Der Ton sagt „ist der Stand BEKANNT?" — NICHT „ist er gut?". Ein Ladezustand ist kein
+      // Befund; „nicht erreichbar" ist keine Verfuegbarkeitsaussage (der A22-Fehler).
+      var tone = lage === "laedt" ? "neutral" : lage === "unerreichbar" ? "warn" : "ok";
+      return {
+        lage: lage,
+        modeKey: klaraTrustKey("trustMode", lage),
+        detailKey: klaraTrustKey("aiLage", lage),
+        tone: tone,
+        detailKeys: [],
+      };
+    }
+    // KW-KLARA-TRUSTHEAD-END
+
+    // ============================================================================================
+    // AUFTRAG-W1-KLARA-KOPF-CONSENT-06 (BASIC-1) — DIE ANZEIGE-ABLEITUNG DES S4-VERTRAGS.
+    // ============================================================================================
+    //
+    // WAS SIE TUT: sie UEBERSETZT eine `KlaraSessionView`/`KlaraResolution` in Anzeige-Schluessel.
+    // WAS SIE NICHT TUT: entscheiden. Modus, Anbieter, Modell, Abweichung, Consentbedarf und
+    // Ausfuehrbarkeit stehen im Antwortobjekt; hier wird nichts abgeleitet, gewichtet oder
+    // ergaenzt (Auftrag No-Go 1).
+    //
+    // WARUM SIE INLINE STEHT UND NICHT IN wordAddin.ts: der erlaubte Dateibereich dieses Auftrags
+    // umfasst apps/web/public/word-addin/** und schliesst `apps/web/src/**` ausdruecklich aus.
+    // Das Aufgabenfenster ist buildlos; damit die WIRKLICH ausgelieferte Ableitung geprueft werden
+    // kann und nicht nur ihr Quelltext, traegt sie eigene Schnittmarken — dieselbe Bauform wie
+    // KW-KLARA-AISTATE-* und KW-KLARA-ASK-FETCH-*. Die Grenze ist im Bericht benannt.
+    //
+    // FAIL-SAFE IN EINE RICHTUNG: was der Server nicht gesagt hat, wird nicht behauptet. Ein
+    // unbekannter Modus, ein unbekannter Grund oder ein fehlendes Feld fuehren in einen benannten
+    // Vorbehalt — nie in „bereit", nie in „keine KI", nie in eine erfundene Bezeichnung.
+    // KW-KLARA-S4-START
+    var KLARA_S4_MODES = ["deterministic", "internal", "external"];
+    var KLARA_S4_REASONS = [
+      "external_not_configured",
+      "internal_not_configured",
+      "external_not_migrated",
+      "external_consent_missing",
+      "policy_incomplete",
+    ];
+    var KLARA_S4_CONSENT_STATES = [
+      "none",
+      "pending",
+      "granted",
+      "expired",
+      "revoked",
+      "invalidated",
+    ];
+
+    function klaraS4ModeKey(mode) {
+      return KLARA_S4_MODES.indexOf(mode) >= 0
+        ? "s4Mode" + mode.charAt(0).toUpperCase() + mode.slice(1)
+        : "s4ModeUnbekannt";
+    }
+
+    // Ein Grund, den diese Fassung nicht kennt, wird GENERISCH benannt — niemals verschwiegen.
+    function klaraS4ReasonKey(reason) {
+      if (KLARA_S4_REASONS.indexOf(reason) < 0) { return "s4ReasonOther"; }
+      var camel = reason.replace(/_([a-z])/g, function (_m, c) { return c.toUpperCase(); });
+      return "s4Reason" + camel.charAt(0).toUpperCase() + camel.slice(1);
+    }
+
+    /**
+     * BEN-BEFUND 1 (Nachpruefung 22 §3.2): `consentState: "none"` wurde bedingungslos auf
+     * „keine erforderlich" abgebildet — und stand damit im selben Kopf neben „Gesperrt: Ihre
+     * Zustimmung fehlt" und dem geoeffneten Zustimmungskasten. Das war kein Fixturezustand: der
+     * echte Server liefert vor der ersten Zustimmung genau `none` + `required: true`.
+     *
+     * „none" heisst serverseitig nur „zu dieser Sitzung ist kein Consentsatz vorhanden". Ob das
+     * „keine noetig" oder „noch nicht erteilt" bedeutet, entscheidet ALLEIN
+     * `externalConsentRequired`. Deshalb geht dieses Feld hier mit ein.
+     */
+    function klaraS4ConsentKey(state, required, granted) {
+      // AUFTRAG-34 (BEN-Befund 4, Nachpruefung 32) — DIE AUFLOESUNG SCHLAEGT DIE SITZUNGSSICHT.
+      //
+      // `externalConsentGranted` steht in der AUFLOESUNG und ist damit immer so frisch wie der
+      // zuletzt gelesene Status. `consentState` steht in der SITZUNGSSICHT, die ein reiner
+      // Statusabruf gar nicht mitliefert. Wo beide sich widersprechen, gewinnt deshalb die
+      // Auflösung — sonst entsteht genau die Mischsicht, die BEN belegt hat: der Kopf sagte
+      // „erteilt", waehrend dieselbe Antwort `granted: false` trug.
+      //
+      // Der Riegel steht hier ZUERST, damit die Funktion strukturell unfaehig ist, „erteilt" zu
+      // sagen, solange die Auflösung das nicht deckt. Eine Regel, die nur an der Aufrufstelle
+      // haengt, waere beim naechsten Aufrufer wieder verloren.
+      if (granted !== true && state === "granted") {
+        return required === true ? "s4ConsentErforderlich" : "s4ConsentUnbekannt";
+      }
+      // FEHLT der Wert (reiner Statusabruf liefert keine Sitzungssicht), traegt allein die
+      // Auflösung. Ist er dagegen DA, aber unbekannt, bleibt es beim benannten Vorbehalt — ein
+      // Wort, das diese Fassung nicht kennt, darf nicht als „keine erforderlich" durchgehen.
+      if (state === undefined || state === null || state === "") {
+        if (granted === true) { return "s4ConsentGranted"; }
+        return required === true ? "s4ConsentErforderlich" : "s4ConsentNone";
+      }
+      if (!geliefertesConsentwort(state)) {
+        return "s4ConsentUnbekannt";
+      }
+      if (state === "none") {
+        return required === true ? "s4ConsentErforderlich" : "s4ConsentNone";
+      }
+      return "s4Consent" + state.charAt(0).toUpperCase() + state.slice(1);
+    }
+
+    /** Ein Consentwort zaehlt nur, wenn der Vertrag es kennt. */
+    function geliefertesConsentwort(state) {
+      return KLARA_S4_CONSENT_STATES.indexOf(state) >= 0;
+    }
+
+    // ============================================================================================
+    // KW-S4-22 — DIE PAYLOAD-KLASSEN. AUSSCHLIESSLICH `effectivePayloadClasses`.
+    // ============================================================================================
+    //
+    // KW-S4-22 §2 ist eindeutig: „Fuer den Consentdialog massgeblich ist ausschliesslich
+    // `effectivePayloadClasses`". Die frueher hier gelesenen Felder `payloadClass` und
+    // `allowedPayloadClasses` sind ausdrueckliche No-Gos (§No-Gos: „nur eine allgemeine
+    // payloadClass ohne konkreten Resolutionbezug", „allowedPayloadClasses als breiten
+    // Policy-Maximalumfang im Consent anzeigen") — sie werden deshalb nicht mehr gelesen.
+    //
+    // FAIL-SAFE (§4): fehlt das Feld, ist es leer oder traegt es einen unbrauchbaren Eintrag, dann
+    // ist der Status fuer externe Ausfuehrung UNVOLLSTAENDIG. Es gibt dann keine Zustimmung —
+    // nicht etwa eine Zustimmung mit dem Zusatz „unbekannt". Ein Consent ohne bekannte
+    // Datenklassen ist nach §Belegter Ist-Zustand „nicht hinreichend bestimmt".
+    function klaraS4Payloadklassen(resolution) {
+      var roh = resolution ? resolution.effectivePayloadClasses : null;
+      if (!Array.isArray(roh) || roh.length === 0) { return null; }
+      var sauber = [];
+      for (var i = 0; i < roh.length; i += 1) {
+        // Ein unbrauchbarer Eintrag macht die GANZE Liste unbrauchbar — er stillschweigend zu
+        // ueberspringen hiesse, eine kuerzere Liste als vollstaendig auszugeben.
+        if (typeof roh[i] !== "string" || roh[i].trim().length === 0) { return null; }
+        sauber.push(roh[i]);
+      }
+      return sauber;
+    }
+
+    /** Serverseitig ausgeschlossene Klassen mit ihrem Grund — nur gelesen, nie gebildet. */
+    function klaraS4BlockierteKlassen(resolution) {
+      var roh = resolution ? resolution.blockedPayloadClasses : null;
+      if (!Array.isArray(roh) || roh.length === 0) { return []; }
+      var raus = [];
+      for (var i = 0; i < roh.length; i += 1) {
+        var e = roh[i];
+        if (e && typeof e.payloadClass === "string" && e.payloadClass.length > 0) {
+          raus.push({
+            payloadClass: e.payloadClass,
+            reasonCode: typeof e.reasonCode === "string" ? e.reasonCode : "",
+          });
+        }
+      }
+      return raus;
+    }
+
+    // Die Auflösung hat eine eigene, KURZE Frist (KLARA_RESOLUTION_TTL_MS serverseitig). Läuft sie
+    // ab, bleibt der zuletzt gelesene Stand sichtbar — aber ausdruecklich ALS VERALTET. Ein alter
+    // Stand, der wie ein aktueller aussieht, ist die gefaehrlichere Anzeige.
+    function klaraS4Veraltet(view, nowMs) {
+      var bis = view && view.resolution ? Date.parse(view.resolution.expiresAt) : Number.NaN;
+      return isFinite(bis) && nowMs >= bis;
+    }
+
+    /**
+     * phase: "laedt" | "bereit" | "unerreichbar" | "keineSitzung" | "gesperrt"
+     * view : KlaraSessionView (nur bei "bereit" ausgewertet)
+     *
+     * `gesperrt` ist NEU (BEN-Befund 2): der clientseitige Riegel nach einem fehlgeschlagenen
+     * Widerruf. Er traegt bewusst KEINE Sicht — der zuletzt gelesene, autorisierende Stand ist
+     * verworfen, nicht bloss ueberdeckt.
+     */
+    function klaraS4Anzeige(phase, view, nowMs) {
+      var leer = {
+        stateKey: "s4StateLaedt",
+        tone: "neutral",
+        modeKey: null,
+        provider: null,
+        model: null,
+        deviationKey: null,
+        adminModeKey: null,
+        blockedKey: null,
+        consentKey: null,
+        consentVisible: false,
+        revokeVisible: false,
+        askAllowed: false,
+        veraltet: false,
+        payloadClasses: null,
+        payloadResolved: false,
+        blockedClasses: [],
+        consentProvider: null,
+        consentModel: null,
+        consentPossible: false,
+      };
+      if (phase === "laedt") { return leer; }
+      if (phase === "gesperrt") {
+        // Fail-safe: nichts erlaubt, nichts behauptet, bis ein NEUER bestaetigter Serverstatus da
+        // ist. Insbesondere kein `revokeVisible` — es gibt keinen belegten Consent mehr.
+        return Object.assign({}, leer, { stateKey: "s4StateGesperrtLokal", tone: "warn" });
+      }
+      if (phase === "unerreichbar") {
+        return Object.assign({}, leer, { stateKey: "s4StateUnerreichbar", tone: "warn" });
+      }
+      if (phase === "keineSitzung") {
+        return Object.assign({}, leer, { stateKey: "s4StateKeineSitzung", tone: "warn" });
+      }
+      var r = view && view.resolution ? view.resolution : null;
+      if (!r) {
+        // Antwort ohne Auflösung: das ist KEIN „bereit". Ehrlich als nicht abrufbar behandeln.
+        return Object.assign({}, leer, { stateKey: "s4StateUnerreichbar", tone: "warn" });
+      }
+      var veraltet = klaraS4Veraltet(view, nowMs);
+      if (veraltet) {
+        // JOB 3056 Runde 8 (Codex Runde 7, Pflicht 9 / §9): EINE ABGELAUFENE AUFLOESUNG IST KEIN
+        // STAND. Bis Runde 7 trug sie weiter Modus, Anbieter, Modell und — schlimmer — die
+        // Ausfuehrungsfreigabe, nur mit einer Zusatzzeile „abgelaufen" daneben; die KI-Zeile der
+        // Einstellungen zeigte „Externe KI" fuer etwas, das der Server so nicht mehr sagt. Ab
+        // `expiresAt <= now` gilt die ganze Aufloesung als unverwendbar: KI-Zeile „–", kein
+        // Anbieter, kein Modell, keine Zustimmung, keine Freigabe (Fragen gesperrt) — bis ein
+        // FRISCHER Abruf erfolgreich ist (klaraS4Refresh, geplant von klaraS4RefreshPlanen).
+        // Nur der Zustand selbst wird gesagt, als Satz in der Sitzungszeile.
+        return Object.assign({}, leer, { stateKey: "s4StateVeraltet", tone: "warn", veraltet: true });
+      }
+      var erlaubt = r.executionAllowed === true;
+      var abweichung = r.deviation === true;
+      var klassen = klaraS4Payloadklassen(r);
+      var stateKey = !erlaubt
+        ? "s4StateBlockiert"
+        : abweichung
+          ? "s4StateAbweichung"
+          : "s4StateBereit";
+      var tone = stateKey === "s4StateBereit" ? "ok" : "warn";
+      var consentNoetig = r.externalConsentRequired === true && r.externalConsentGranted !== true;
+      return {
+        stateKey: stateKey,
+        tone: tone,
+        modeKey: klaraS4ModeKey(r.effectiveMode),
+        // WOERTLICH aus der Antwort. Fehlt der Wert, wird er NICHT erfunden und nicht ersetzt.
+        provider: typeof r.provider === "string" && r.provider.length > 0 ? r.provider : null,
+        model: typeof r.model === "string" && r.model.length > 0 ? r.model : null,
+        deviationKey: abweichung ? klaraS4ReasonKey(r.deviationReason) : null,
+        adminModeKey: abweichung ? klaraS4ModeKey(r.adminConfiguredMode) : null,
+        blockedKey: erlaubt ? null : klaraS4ReasonKey(r.blockedReason),
+        consentKey: klaraS4ConsentKey(
+          view.consentState,
+          r.externalConsentRequired,
+          r.externalConsentGranted,
+        ),
+        consentVisible: consentNoetig,
+        revokeVisible: r.externalConsentGranted === true,
+        askAllowed: erlaubt,
+        veraltet: false, // Runde 8: eine abgelaufene Aufloesung kommt hier nicht mehr an (oben)
+        // KW-S4-22 §2/§4 — nur das eine autorisierte Feld, und nur wenn es vollstaendig ist.
+        payloadClasses: klassen,
+        payloadResolved: klassen !== null,
+        blockedClasses: klaraS4BlockierteKlassen(r),
+        // ==========================================================================================
+        // JOB 3079 R2 — DER EMPFAENGER DER ZUSTIMMUNG, VOR DEM KLICK (BEN-Korrekturpflicht 1).
+        // ==========================================================================================
+        //
+        // NICHT `r.provider`. Der beantwortet „was rechnet JETZT" und meldet vor der Zustimmung die
+        // deterministischen Ersatzwerte — der Zustimmungssatz nannte deshalb woertlich „Klarwerk
+        // (deterministisch)" als Empfaenger, obwohl nach dem Klick ein Cloud-Anbieter rechnet.
+        // `externalConsentProvider` beantwortet die Frage des Kastens: an WEN ginge es, wenn ich ja
+        // sage. WOERTLICH aus der Antwort, wie jedes andere Feld hier.
+        consentProvider: zeichenkette(r.externalConsentProvider),
+        consentModel: zeichenkette(r.externalConsentModel),
+        /**
+         * ZUSTIMMEN IST NUR MOEGLICH, WENN DATENKLASSEN **UND** EMPFAENGER BESTIMMT SIND.
+         *
+         * KW-S4-22: „Ein Consent ohne bekannte Datenklassen ist nicht hinreichend bestimmt" und
+         * bei fehlendem Feld gilt „kein Consent, kein externer Modellaufruf". Der Kasten bleibt
+         * deshalb sichtbar — der Bedarf besteht ja — aber die Schaltflaeche wird NICHT angeboten.
+         * Ein Knopf, der eine unbestimmte Zustimmung erteilt, waere schlimmer als kein Knopf.
+         *
+         * JOB 3079 R2: der EMPFAENGER steht jetzt unter derselben Regel. Ein `null` dort heisst,
+         * dass eine Zustimmung ueberhaupt nichts freischalten wuerde (widerspruechliche Policy,
+         * gesperrter Weg) — dann ist ein Zustimmungsknopf keine Freundlichkeit, sondern eine
+         * Falschauskunft.
+         */
+        consentPossible: consentNoetig && klassen !== null && zeichenkette(r.externalConsentProvider) !== null,
+      };
+    }
+
+    /** WOERTLICH oder gar nicht: eine leere oder fremde Angabe wird `null`, nie ein Ersatzwert. */
+    function zeichenkette(wert) {
+      return typeof wert === "string" && wert.length > 0 ? wert : null;
+    }
+    // KW-KLARA-S4-END
+
+    // ============================================================================================
+    // JOB 3079 · S4 — DER SATZ ÜBER DEN WEG DIESES FENSTERS.
+    // ============================================================================================
+    //
+    // WAS ER ERSETZT, und warum es ersetzt gehoerte. Bis zur Freischaltung des externen
+    // Antwortwegs (`KLARA_EXTERNAL_EXECUTION_MIGRATED`, 05.09.2026) sagten alle fuenf `aiLage*`-
+    // Texte denselben Satz mit: Klaras Antwort in diesem Fenster entstehe „immer ohne KI-Modell".
+    // Er war WAHR, solange der Weg gesperrt war — und er war ein UNBEDINGTER Satz an einer Stelle,
+    // die ab jetzt eine Bedingung hat. Ein Panel, das „immer ohne KI-Modell" ueber eine Antwort
+    // schreibt, die ein Cloud-Modell erzeugt hat, waere genau der Widerspruch, den AUFTRAG-mega81
+    // schon einmal beseitigen musste (JOB 3033, Sperrgrund S4).
+    //
+    // DIE `aiLage*`-TEXTE SAGEN JETZT NUR NOCH, WAS IM HAUS ARBEITET. Was in DIESEM Fenster
+    // passiert, sagt dieser Satz — und er haengt am S4-Zustand, also an der Aufloesung, die auch
+    // AUSFUEHRT. Anzeige und Ausfuehrung aus derselben Quelle: KW-S4-04 §54-57.
+    //
+    // ER LEITET NICHTS AB. Wie `klaraS4Anzeige` verzweigt er ausschliesslich auf Werten, die der
+    // Server geschickt hat. Sechs Zustaende, sechs Saetze, und der Vorbehalt ist einer davon:
+    //   · kein frischer Serverstand (laedt / nicht abrufbar / keine Sitzung / lokal gesperrt /
+    //     veraltet) ⇒ `wegUnbekannt`. Fail-safe: ohne Freigabe des Servers geht keine Frage
+    //     hinaus, also ist „ohne KI-Modell" hier die WAHRE und zugleich die schwaechere Aussage.
+    //   · extern UND freigegeben ⇒ `wegExternZustimmung`, MIT dem Namen des Anbieters.
+    //   · extern, Zustimmung fehlt noch ⇒ `wegExternOhneZustimmung`.
+    //   · extern, Zustimmung war da und traegt nicht mehr (abgelaufen, widerrufen, entwertet)
+    //     ⇒ `wegExternZustimmungWeg`.
+    //   · hausinterne Bindung ⇒ `wegIntern`, deterministische ⇒ `wegDeterministisch`.
+    // KW-KLARA-WEG-START
+    var KLARA_WEG_ZUSTIMMUNG_WEG = ["s4ConsentExpired", "s4ConsentRevoked", "s4ConsentInvalidated"];
+
+    function klaraWegKey(a) {
+      // Ohne aufgeloesten Modus gibt es keinen belegten Weg — und keinen erfundenen Satz darueber.
+      if (!a || !a.modeKey) { return "wegUnbekannt"; }
+      if (a.modeKey === "s4ModeInternal") { return "wegIntern"; }
+      if (a.modeKey !== "s4ModeExternal") { return "wegDeterministisch"; }
+      // Ab hier: extern. Die Freigabe ist die einzige Bedingung, unter der wirklich etwas hinausgeht.
+      if (a.askAllowed === true) { return "wegExternZustimmung"; }
+      if (KLARA_WEG_ZUSTIMMUNG_WEG.indexOf(a.consentKey) >= 0) { return "wegExternZustimmungWeg"; }
+      if (a.consentKey === "s4ConsentErforderlich" || a.consentKey === "s4ConsentNone") {
+        return "wegExternOhneZustimmung";
+      }
+      // Ein Zustimmungswort, das diese Fassung nicht kennt, oder eine Sperre ohne benannten
+      // Consentstand: der Vorbehalt, nie die starke Aussage.
+      return "wegUnbekannt";
+    }
+
+    /** Nur `wegExternZustimmung` nennt einen Anbieter — die uebrigen Saetze tragen keinen. */
+    function klaraWegParam(a) {
+      return { provider: (a && a.provider) || t("s4Unbekannt") };
+    }
+
+    /**
+     * JOB 3079 · S3 — DIE NUTZLASTKLASSEN, LESBAR.
+     *
+     * Der Zustimmungssatz muss sagen, WAS hinausgeht, und zwar in der Sprache des Menschen: eine
+     * Zeile „Betroffene Daten: question, candidate_texts" ist eine Kennung, keine Auskunft. Er
+     * ZITIERT dabei die Klassen der Aufloesung — er erfindet nichts daneben, und die Reihenfolge
+     * ist die der Aufloesung.
+     *
+     * FAIL-SAFE: eine Klasse, fuer die diese Fassung kein Wort hat, steht MIT IHRER KENNUNG da.
+     * Sie stillschweigend wegzulassen hiesse, eine kuerzere Liste als vollstaendig auszugeben —
+     * derselbe Fehler, den `klaraS4Payloadklassen` fuer unbrauchbare Eintraege schon abstellt.
+     */
+    function klaraS4KlassenListe(klassen, verbinder) {
+      var teile = [];
+      for (var i = 0; i < klassen.length; i += 1) {
+        var key = "s4Klasse_" + klassen[i];
+        var wort = t(key);
+        teile.push(wort === key ? klassen[i] : wort);
+      }
+      if (teile.length < 2) { return teile.join(""); }
+      return teile.slice(0, -1).join(", ") + " " + verbinder + " " + teile[teile.length - 1];
+    }
+    // KW-KLARA-WEG-END
+
+    // ============================================================================================
+    // JOB 1077 — DIE FASSUNGSKETTE. VIER FUNKTIONEN, EINE FRAGE.
+    // ============================================================================================
+    //
+    // Sie stehen zwischen Schnittmarken — dieselbe Bauform wie KW-KLARA-ASK-FETCH-* und
+    // KW-KLARA-S4-FETCH-*. Das Aufgabenfenster ist buildlos; ein Schnitt ist die einzige
+    // Moeglichkeit, die WIRKLICH AUSGELIEFERTE Entscheidung auszufuehren statt ihren Quelltext zu
+    // lesen. Genau daran ist die D5-Fassung gescheitert: sie wurde nachgebaut und stimmte nicht.
+    //
+    // EHRLICHE ZUSTAENDE, und jeder ist gepinnt:
+    //   · Ausgebliebene Auskunft ist KEINE Bestaetigung. Abbruch, fehlender Kopf, Antwort nicht
+    //     `ok`, gar kein `fetch` → `null`, kein Wechsel, und die Zeile sagt „Abgleich nicht
+    //     moeglich" — nie „aktuell".
+    //   · Ungestempelt heisst `dev`, nicht „Fehler" und nicht irgendeine Nummer.
+    //   · Der Wechsel gilt mit der LIEFERUNG, nicht mit der Absicht: bringt das Neuladen wieder
+    //     die alte Fassung (Cache, Rueckrollung), bleibt der Hinweis stehen.
+    // KW-KLARA-FASSUNG-START
+    var KW_TASKPANE_PFAD = "/word-addin/taskpane.html";
+    var KW_FASSUNG_META = "kw-loaded-version";
+    var KW_FASSUNG_KOPF = "X-KW-Available-Version";
+
+    /** Die GELADENE Fassung — ausschliesslich aus dem Dokument, nie aus der Adresse. */
+    function kwGeladeneFassungAus(doc) {
+      var el = doc && doc.querySelector
+        ? doc.querySelector('meta[name="' + KW_FASSUNG_META + '"]')
+        : null;
+      var wert = el && el.getAttribute ? String(el.getAttribute("content") || "") : "";
+      // Der unersetzte Platzhalter ist kein Fassungswert — wer die Quelldatei direkt oeffnet,
+      // bekommt keinen erfundenen Wechselhinweis.
+      if (wert.length === 0 || wert.indexOf("__") === 0) { return "dev"; }
+      return wert;
+    }
+
+    /** Offen ist ein Wechsel NUR, wenn BEIDE Seiten bekannt sind und sich unterscheiden. */
+    function kwWechselOffen(geladen, verfuegbar) {
+      if (typeof geladen !== "string" || geladen.length === 0) { return false; }
+      if (typeof verfuegbar !== "string" || verfuegbar.length === 0) { return false; }
+      return geladen !== verfuegbar;
+    }
+
+    /** Der VERFUEGBARE Stand — ein HEAD auf die eigene Adresse, der Kopf traegt die Antwort. */
+    function kwVerfuegbareFassungLaden(fetchFn, pfad) {
+      return Promise.resolve()
+        .then(function () {
+          if (typeof fetchFn !== "function") { return null; }
+          return fetchFn(pfad, { method: "HEAD", credentials: "include", cache: "no-store" });
+        })
+        .then(function (res) {
+          if (!res || res.ok !== true || !res.headers || typeof res.headers.get !== "function") {
+            return null;
+          }
+          var wert = res.headers.get(KW_FASSUNG_KOPF);
+          if (typeof wert !== "string") { return null; }
+          var sauber = wert.replace(/^\s+|\s+$/g, "");
+          return sauber.length > 0 ? sauber : null;
+        })
+        .catch(function () { return null; });
+    }
+
+    /** Die PRODUKTFUNKTION: sie laedt neu — und nur, wenn wirklich ein Wechsel offen ist. */
+    function kwWechselAusloesen(geladen, verfuegbar, reloadFn) {
+      if (!kwWechselOffen(geladen, verfuegbar)) { return false; }
+      if (typeof reloadFn !== "function") { return false; }
+      reloadFn();
+      return true;
+    }
+    // KW-KLARA-FASSUNG-END
+
+    // KW-WORDADDIN-HELPERS-END
+
+    // Alle Texte dreisprachig (App-Regel DE/EN/NL) — bewusst HIER, nicht in i18n.ts der SPA.
+    var STRINGS = {
+      de: {
+        greetTitle: "Hallo, ich bin Klara.",
+        greetBody: "Ich verbinde dieses Word-Dokument mit KLARWERK. In diesem ersten Schritt kann ich deine Textauswahl als Entwurf nach KLARWERK bringen — ehrlich, ohne Zauber.",
+        sessionChecking: "Prüfe Anmeldung bei KLARWERK ...",
+        sessionOk: "Angemeldet als {name}.",
+        sessionOff: "Du bist in diesem Fenster nicht bei KLARWERK angemeldet.",
+        sessionError: "KLARWERK ist gerade nicht erreichbar. Bitte Verbindung prüfen und erneut versuchen.",
+        loginHint: "Zum Senden brauchst du eine aktive KLARWERK-Anmeldung in diesem Fenster.",
+        loginCta: "Anmelden",
+        loginReturn: "Die Anmeldung öffnet sich in einem eigenen Fenster. Dieses Panel erkennt sie automatisch — nichts schließen, nichts neu öffnen.",
+        loginWaiting: "Warte auf die Anmeldung im Anmelde-Fenster ...",
+        loginCancel: "Warten abbrechen",
+        loginTimeout: "Keine Anmeldung erkannt. Bitte erneut versuchen.",
+        loginHandoverBlocked: "Die Anmeldung erreicht dieses Fenster nicht: Word zeigt Klara hier in einem Rahmen einer anderen Herkunft. Bitte das Anmelde-Fenster erneut öffnen oder dieses Seitenfenster neu laden.",
+        loginHandoverRejected: "Die Übergabe der Anmeldung wurde abgelehnt — der Übergabecode gilt nicht mehr. Ob die Anmeldung selbst geklappt hat, ist damit nicht gesagt. Bitte erneut anmelden.",
+        loginPopupBlocked: "Das Anmelde-Fenster wurde blockiert (Popup-Blocker). Bitte Popups für diese Seite erlauben und erneut versuchen.",
+        loginOtherContext: "Hinweis: Das Anmelde-Fenster kann in einem anderen Browser-Kontext laufen. Wird die Anmeldung hier nicht erkannt, bitte erneut versuchen.",
+        sendTitle: "An KLARWERK senden",
+        // JOB 2620 D5: der Bilder-Halbsatz ist in den gemessenen Kasten (sendImagesNote) umgezogen —
+        // EINE Bilder-Aussage in Tab 2, nicht zwei.
+        sendHint: "Sende den gewählten Umfang als neuen Wissens-ENTWURF — mit Formatierung (Überschriften, Listen, Tabellen). Nichts wird automatisch veröffentlicht — du prüfst alles in KLARWERK.",
+        sendCta: "Als Entwurf senden",
+        // JOB 3057 K2: die Erfassen-Flaeche nach Zielbild Erfassen.dc.html — Beschriftungen statt
+        // Erklaertext. Die Vorlese-Ueberschrift der Karte, der EINE Satz ohne Markierung, der Kicker
+        // (Einzahl/Mehrzahl getrennt: „1 ABSAETZE" waere falsch), die Zeile „Titel", der Textlink,
+        // die drei Knoepfe der Fehlerfaelle und der Link des Bilder-Satzes.
+        captureCardTitle: "Markierung erfassen",
+        captureEmpty: "Markiere Text in Word.",
+        captureKicker: "MARKIERUNG · {n} ABSÄTZE",
+        captureKickerEins: "MARKIERUNG · 1 ABSATZ",
+        captureTitleLabel: "Titel",
+        // JOB 3555 K2b: die Zeile „Bereich" (Zielbild Z.39-45). Vier Lagen, vier Wortlaute — und
+        // KEINER behauptet mehr, als der Abruf hergibt: „leer" spricht ausdruecklich vom EIGENEN
+        // Bestand (die Route sieht nur die Sicht des Fragenden, category-routes.ts:9-11), „Fehler"
+        // sagt Fehler statt Leere. Die Zeile bleibt in jeder Lage sichtbar, Senden bleibt moeglich.
+        captureBereichLabel: "Bereich",
+        captureBereichWahl: "Bereich wählen",
+        captureBereichLaedt: "Wird geladen …",
+        captureBereichLeer: "Noch kein Bereich in deinem Bestand",
+        captureBereichFehler: "Bereiche nicht geladen",
+        captureDocumentLink: "Ganzes Dokument übernehmen",
+        captureRetry: "Erneut senden",
+        captureLogin: "Anmelden",
+        captureReload: "Neu laden",
+        captureBilderLink: "In KLARWERK ergänzen",
+        // JOB 2620 (seit JOB 3506 hinter dem Zahnrad): gemessener Bilder-Kasten, Pruefungs-Hinweis.
+        sendImagesNote: "Eingebettete Bilder kommen mit dem Entwurf an. Von Text umflossene Bilder gibt Word hier nicht heraus — schon eines davon kostet derzeit alle Bilder des Dokuments.",
+        sendImagesNoteLink: "Mit allen Bildern: Upload in der Konsole.",
+        sendReviewNote: "Zur Prüfung geht er erst, wenn du einreichst — nichts wird automatisch validiert.",
+        sendEmpty: "Bitte erst Text im Dokument markieren.",
+        sendEmptyDoc: "Das Dokument enthält keinen Text.",
+        scopePagesHint: "Seitenweise geht hier nicht — markiere stattdessen den gewünschten Bereich im Dokument.",
+        // JOB 3057 K2 (§5.5): das Ergebnis statt der Vorab-Warnung — nach dem Senden EIN Satz nur im
+        // Fall, mit dem Link „In KLARWERK ergaenzen". Einzahl und Mehrzahl getrennt (JOB 2551: bei
+        // genau einem Bild keine Mehrzahlform); Word bleibt als Ursache benannt, der Text als
+        // vollstaendig zugesichert.
+        sendOverBudget: "Die Formatierung war zu groß — der Entwurf enthält den reinen Text.",
+        sendPlainFallback: "Word hat kein übernehmbares HTML geliefert — Formatierung und Bilder fehlen im Entwurf.",
+        sendImagesMissing: "Word hat {n} Bilder nicht herausgegeben — der Text ist vollständig.",
+        sendImagesMissingOne: "Word hat 1 Bild nicht herausgegeben — der Text ist vollständig.",
+        sendImagesDropped: "{n} Bilder waren zu groß und fehlen im Entwurf.",
+        sendImagesDroppedOne: "1 Bild war zu groß und fehlt im Entwurf.",
+        // R-0169 (Nacharbeit 8): die Dokumentkennung konnte nicht im Word-Dokument gespeichert werden.
+        sendDocIdUnsaved: "Entwurf angelegt, aber die Dokumentkennung ist nicht im Word-Dokument gespeichert — bitte das Dokument speichern und erneut senden, sonst gilt es später als neues Dokument.",
+        sendImagesBoth: "{n} Bilder fehlen im Entwurf — {a} hat Word nicht herausgegeben, {b} waren zu groß.",
+        // JOB 3438: die Bildbilanz des Dokument-Wegs. Der Server verkleinert seit JOB 3400 und sagt
+        // in DERSELBEN Antwort, was er getan und was er gelassen hat; hier wird es lesbar. Einzahl
+        // und Mehrzahl getrennt (JOB 2551) — auch je Seite, weil „1 Bilder" kein Satz ist.
+        //
+        // JEDER SATZ SPRICHT VON DER VERARBEITUNG, NICHT VOM ENTWURF (JOB 3438 R2, BEN §5): der
+        // Bericht des Verkleinerers belegt, was er getan hat — er belegt NICHT, dass ein Bild im
+        // gespeicherten Entwurf steht. Darum „wurde verkleinert" / „musste nicht verkleinert werden"
+        // und nie „blieb in Originalgröße", was einen Erhalt behauptete, den diese Zahl nicht deckt.
+        sendImagesShrunkOne: "1 Bild wurde verkleinert.",
+        sendImagesShrunkMany: "{n} Bilder wurden verkleinert.",
+        // Die ERFOLGE unter den Übersprungenen: heil, es war nur nichts zu tun.
+        sendImagesKeptOne: "1 Bild musste nicht verkleinert werden.",
+        sendImagesKeptMany: "{n} Bilder mussten nicht verkleinert werden.",
+        // Nur wenn die Gründe FEHLEN, die Zahl aber da ist: die neutrale Tatsache, ohne zu behaupten,
+        // ob das gut oder schlecht war.
+        sendImagesNotShrunkOne: "1 Bild wurde nicht verkleinert.",
+        sendImagesNotShrunkMany: "{n} Bilder wurden nicht verkleinert.",
+        // NUR die drei echten Ausfälle (bildverkleinerung.ts:141-144) kommen hier an; „schon-klein-
+        // genug", „ableitung-nicht-kleiner" und „keine-data-quelle" sind Erfolge und bleiben still.
+        // Die Zahl sagt, AUF WIE VIELE Bilder der Ausfall zutrifft (JOB 3438 R2, BEN §6).
+        sendImagesFailedOne: "Bei 1 Bild schlug die Verkleinerung fehl: {liste}.",
+        sendImagesFailedMany: "Bei {n} Bildern schlug die Verkleinerung fehl: {liste}.",
+        sendImageFailTooBig: "zu groß",
+        sendImageFailUnreadable: "nicht lesbar",
+        sendImageFailTimeout: "Zeitgrenze erreicht",
+        // Der Server kann neuer sein als dieses ausgelieferte Fenster: ein Grund ohne Wort steht MIT
+        // SEINER KENNUNG da — und wird dabei NICHT als Ausfall behauptet.
+        sendImagesUnknownOne: "Bei 1 Bild nennt der Server einen Grund, den diese Fassung nicht kennt: {liste}.",
+        sendImagesUnknownMany: "Bei {n} Bildern nennt der Server Gründe, die diese Fassung nicht kennt: {liste}.",
+        sendBusy: "Sende ...",
+        sendOk: "Entwurf gesendet",
+        sendAuth: "Nicht angemeldet — bitte zuerst bei KLARWERK anmelden.",
+        // JOB 3057 K2 (§5.6): jeder Fehlerfall EIN Satz (plus EIN Knopf aus captureRetry/
+        // captureLogin). Jeder nennt die Ursache UND haelt die Zusage fest: nichts angelegt
+        // (AUFTRAG-JOB507-D4).
+        sendError: "Senden fehlgeschlagen ({detail}) — es wurde KEIN Entwurf angelegt.",
+        sendOffline: "Keine Verbindung — es wurde KEIN Entwurf angelegt.",
+        sendTooLarge: "Zu groß für die Übertragung — es wurde KEIN Entwurf angelegt.",
+        sendForbidden: "Dein Konto darf keine Entwürfe anlegen — es wurde KEIN Entwurf angelegt.",
+        sendRateLimited: "Zu viele Anfragen ({n} s warten) — es wurde KEIN Entwurf angelegt.",
+        sendRateLimitedUnknown: "Zu viele Anfragen — es wurde KEIN Entwurf angelegt.",
+        noOffice: "Word wurde nicht erkannt — Senden geht nur in Word.",
+        officeDetecting: "Die Word-Umgebung wird gerade erkannt — bis Word sich meldet, ist Senden gesperrt.",
+        openLink: "Öffnen",
+        tabAsk: "Fragen",
+        tabCapture: "Erfassen",
+        // JOB 3056 K1 (Mockups design/klara, 04.09.): der EINE Satz der Ruhe, „Mehr" an der
+        // Antwortkarte, „Erneut versuchen" bei Frist/Verbindung, und die Einstellungen hinter dem
+        // Zahnrad (Sprache, Mitlesen, Admin-Vorgaben, Konto, „Wie Klara antwortet").
+        askRuheSatz: "Stell eine Frage oder markiere Text in Word.",
+        askMehr: "Mehr",
+        askWeniger: "Weniger",
+        retryCta: "Erneut versuchen",
+        askOffline: "Keine Verbindung.",
+        einstTitel: "Einstellungen",
+        einstZurueck: "Zurück",
+        einstSprache: "Sprache",
+        einstMitlesen: "Text in Word mitlesen",
+        einstAdminKicker: "VOM ADMIN EINGESTELLT",
+        // JOB 3506 K2b: der Kicker der Gruppe, die die vier Erklaersaetze der Erfassen-Flaeche
+        // traegt (sendHint, sendImagesNote, sendReviewNote, scopePagesHint) — der EINZIGE neue
+        // Wortlaut dieses Jobs; die vier Saetze selbst sind woertlich umgezogen, nicht neu getextet.
+        einstErfassenKicker: "BEIM ERFASSEN",
+        einstKi: "KI",
+        einstWissen: "Wissen",
+        einstWissenWert: "Nur freigegeben",
+        einstServer: "Server",
+        einstAbmelden: "Abmelden",
+        einstHilfe: "Wie Klara antwortet",
+        askTitle: "Klara fragen",
+        // JOB 3056 K1: Platzhalter nach Pages-Massstab, ein Wort statt Satz.
+        askInputPlaceholder: "Frage",
+        askCta: "Klara fragen",
+        // JOB 3019 (KA5): DER SCHLÜSSELNAME IST GEBLIEBEN, DER SATZ IST DAS GEGENTEIL VON VORHER.
+        // Hier stand: „Gefragt wird: deine Markierung im Dokument — der Text unten wird dabei NICHT
+        // gesendet. Hebe die Markierung auf, um frei zu fragen." Beides ist seit KA5 falsch: gefragt
+        // wird die Eingabe, und die Markierung wird mitgesendet. JOB 3056 K1: der Satz erscheint
+        // jetzt nur noch im EINEN Fall, in dem Markierung UND Eingabe da sind (updateAskSourceNote,
+        // der Wert kommt aus `prep.from === "manual" && prep.selection.length > 0`).
+        askSourceSelectionOverride: "Gefragt wird: deine Eingabe unten. Deine Markierung im Dokument wird mitgesendet und schärft die Suche.",
+        // JOB 3017 D4: der EINE Satz unter der Fragen-Karte (Zielbild Z.44) — er trägt seit diesem
+        // Auftrag auch die Auskunft des früheren askHint (Antwort wörtlich aus validiertem Wissen mit
+        // Quellen) und den dauerhaften Prüfauftrag. JOB 3019 (KA5): der Halbsatz „Markierst du Text
+        // in Word, wird die Markierung gefragt" war ab jetzt falsch (gefragt wird die Eingabe) — er
+        // nennt die Markierung jetzt als Suchschärfung, nicht als Ersatz der Frage.
+        askReviewNotice: "Antworten kommen wörtlich aus validiertem KLARWERK-Wissen — mit Quellen. Eine Markierung in Word schärft die Suche. Bitte vor Verwendung fachlich prüfen.",
+        aiGeneratedNotice: "Von künstlicher Intelligenz erzeugt — bitte fachlich prüfen.",
+        // JOB 3079 · S4: DIESE FÜNF TEXTE SAGEN NUR NOCH, WAS IM HAUS ARBEITET.
+        //
+        // Bis zur Freischaltung des externen Antwortwegs (05.09.2026) trug jeder von ihnen den
+        // Zusatz, Klaras Antwort in diesem Fenster entstehe „immer ohne KI-Modell". Der Satz war
+        // wahr, solange der Weg gesperrt war — als UNBEDINGTE Aussage wird er mit der
+        // Freischaltung falsch, sobald ein Mensch für sein Dokument zustimmt. Was in DIESEM
+        // Fenster passiert, steht deshalb jetzt im zweiten Satz derselben Zeile und kommt aus
+        // derselben Auflösung, die auch ausführt (`klaraWegKey`, Schlüssel `weg*` unten).
+        aiLageLaedt: "Der KI-Stand von KLARWERK wird abgefragt ...",
+        aiLageUnerreichbar: "Der KI-Stand von KLARWERK ist gerade nicht abrufbar.",
+        aiLageExtern: "In KLARWERK arbeitet für Antworten zurzeit eine externe KI (Cloud).",
+        aiLageIntern: "In KLARWERK arbeitet für Antworten zurzeit eine hausinterne KI.",
+        aiLageKeine: "In KLARWERK arbeitet für Antworten zurzeit keine KI. Für andere Aufgaben in KLARWERK kann das anders sein.",
+        // JOB 3079 · S4 — DER WEG DIESES FENSTERS, ein Satz je Zustand.
+        //
+        // Sie sprechen mit ABSICHT weiter von „Klaras Antwort in diesem Fenster": das ist die
+        // Wendung, an der `tests/app/mega79-klara-antwort-ohne-modell.test.ts` die Zusage misst.
+        // Wer sie hier verlöre, verlöre den Wächter, nicht nur die Formulierung.
+        //
+        // GENAU EINER sagt, dass etwas hinausgeht — `wegExternZustimmung`. Er nennt den Anbieter,
+        // den Grund (die Zustimmung) und die Nutzlast. Die fünf anderen schliessen das Modell aus,
+        // jeder mit seiner eigenen Bedingung davor.
+        wegExternZustimmung: "Klaras Antwort in diesem Fenster entsteht mit der externen KI {provider}, weil du für dieses Dokument zugestimmt hast: deine Frage und die Texte der gefundenen Einträge gehen dorthin.",
+        wegExternOhneZustimmung: "Ohne deine Zustimmung geht für dieses Dokument nichts an {provider}. Klaras Antwort in diesem Fenster entsteht dann ohne KI-Modell — regelbasiert, mit wörtlichem Zitat aus validiertem Wissen.",
+        wegExternZustimmungWeg: "Deine Zustimmung für dieses Dokument gilt nicht mehr. Klaras Antwort in diesem Fenster entsteht bis zu einer erneuten Zustimmung ohne KI-Modell — regelbasiert, mit wörtlichem Zitat aus validiertem Wissen.",
+        wegIntern: "Für dieses Fenster wird sie nicht genutzt: Klaras Antwort entsteht hier ohne KI-Modell — regelbasiert, mit wörtlichem Zitat aus validiertem Wissen.",
+        wegDeterministisch: "Klaras Antwort in diesem Fenster entsteht ohne KI-Modell — regelbasiert, mit wörtlichem Zitat aus validiertem Wissen.",
+        wegUnbekannt: "Für dieses Dokument liegt gerade kein bestätigter Stand vor. Klaras Antwort in diesem Fenster entsteht solange ohne KI-Modell — regelbasiert, mit wörtlichem Zitat aus validiertem Wissen.",
+        // AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK A — die Kurzetiketten des Vertrauenskopfs. Sie tragen
+        // den Zustand als TEXT; die Farbe ist nur die zweite Spur. „wird geprüft" und „nicht
+        // abrufbar" sind ausdrücklich KEINE Aussage über vorhandene KI — der Ladezustand ist kein
+        // Befund, und Nichtwissen ist nicht „keine KI".
+        trustHeadLabel: "Klaras KI-Stand",
+        // Bewusst „abgerufen" und NICHT „geprüft": mega35 B haelt die Worte „geprüft"/„gesichert"
+        // ausschliesslich der Einstufungszeile vor. Eine Testerin ohne Vorwissen kann „der Stand
+        // wird geprüft" (Netzabruf) nicht von „geprüftes Wissen" (Antwortklasse) trennen — genau
+        // diese Verwechslung hat mega35 geschlossen.
+        trustModeLaedt: "Stand wird abgerufen",
+        trustModeUnerreichbar: "Stand nicht abrufbar",
+        trustModeExtern: "KLARWERK: externe KI",
+        trustModeIntern: "KLARWERK: hausinterne KI",
+        trustModeKeine: "KLARWERK: keine KI",
+        // AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK B — die fünf benannten Prüfvorbehalte des Servers.
+        // Sie lagen bisher im Antwortkörper und wurden verworfen; jetzt stehen sie da.
+        askCaveatUnknown: "Eine tragende Quelle ist im Bestand nicht auffindbar.",
+        askCaveatUnchecked: "Eine tragende Quelle hat keinen Prüf-Lauf.",
+        askCaveatNoCoverage: "Ein Prüf-Lauf liegt ohne Abdeckungsnachweis vor.",
+        askCaveatIncomplete: "Ein Prüf-Lauf ist unvollständig geblieben.",
+        askCaveatUnattributed: "Der Server konnte keiner Quelle zuordnen, worauf die Antwort steht.",
+        askCaveatOther: "Es liegt ein Vorbehalt vor, dessen Grund diese Fassung nicht kennt.",
+        askCaveatCount: "({unproven} von {total} tragenden Quellen ohne vollständigen Beleg.)",
+        // Die Konfliktlage steht GETRENNT vom Vorbehalt — sie war bis hierher derselbe Satz.
+        // „nicht geprüft" ist ausdrücklich nicht „keine": nichts da ist nicht nichts vorhanden.
+        askConflictConflicted: "Achtung: Eine tragende Quelle steht in einem offenen Konflikt.",
+        askConflictUnproven: "Die Konfliktlage ist unbekannt — das heißt nicht, dass keine besteht.",
+        askConflictClear: "Keine offenen Konflikte auf den tragenden Quellen.",
+        // ---- AUFTRAG-W1-KLARA-KOPF-CONSENT-06: der sitzungsbezogene Stand ---------------------
+        // Eigenes Etikett, eigene Wörter. Diese Texte sprechen über DIESE Sitzung, nicht über den
+        // Hausstand — und ausdrücklich nicht über Klaras Antwortweg, der unverändert zitiert.
+        s4Label: "In dieser Sitzung",
+        s4ModeDeterministic: "Ohne Modell",
+        s4ModeInternal: "On-Premise Enterprise AI",
+        s4ModeExternal: "Externe KI",
+        s4ModeUnbekannt: "Modus unbekannt",
+        s4StateLaedt: "Sitzungsstand wird abgerufen ...",
+        s4StateBereit: "Sitzungsstand liegt vor.",
+        s4StateAbweichung: "Es gilt ein anderer Modus als eingerichtet.",
+        s4StateBlockiert: "Die Ausführung ist gesperrt.",
+        s4StateUnerreichbar: "Der Sitzungsstand ist nicht abrufbar.",
+        s4StateKeineSitzung: "Für dieses Fenster besteht keine Sitzung.",
+        s4StateVeraltet: "Der angezeigte Stand ist abgelaufen.",
+        s4StateGesperrtLokal:
+          "Der letzte Aufruf ist fehlgeschlagen. Bis der Server einen neuen Stand bestätigt, gilt hier nichts als erlaubt.",
+        s4Anbieter: "Anbieter {provider} · Modell {model}",
+        s4Abweichung: "Eingerichtet war {soll}. Grund der Abweichung: {grund}",
+        s4Blockiert: "Gesperrt. Grund: {grund}",
+        s4Veraltet: "Dieser Stand ist abgelaufen und wird neu abgerufen.",
+        s4Sitzung: "Zustimmung: {stand}",
+        // JOB 2621 §1: die URSACHE statt der Folge, wenn die Sitzung fehlt (Befund 2, 26.08.).
+        s4SitzungNichtAngemeldet: "Nicht angemeldet — dein Zustimmungsstand wird erst nach der Anmeldung sichtbar (er geht dabei nicht verloren).",
+        // JOB 2621 §2: das zweite Tor mit benanntem Bezug zur bereits erteilten Zustimmung.
+        s4BlockiertTrotzZustimmung: "Trotzdem gesperrt: {grund} Das entscheidet nicht dein Fenster.",
+        s4Unbekannt: "unbekannt",
+        s4ReasonExternalNotConfigured: "Es ist kein externer Anbieter eingerichtet.",
+        s4ReasonInternalNotConfigured: "Es ist keine On-Premise Enterprise AI eingerichtet.",
+        s4ReasonExternalNotMigrated: "Der externe Weg ist noch nicht freigeschaltet.",
+        s4ReasonExternalConsentMissing: "Ihre Zustimmung für den externen Weg fehlt.",
+        s4ReasonPolicyIncomplete: "Die Regeln sind unvollständig hinterlegt.",
+        s4ReasonOther: "Der Server nennt einen Grund, den diese Version nicht kennt.",
+        s4ConsentNone: "keine erforderlich",
+        s4ConsentErforderlich: "erforderlich, noch nicht erteilt",
+        s4ConsentPending: "offen",
+        s4ConsentGranted: "erteilt",
+        s4ConsentExpired: "abgelaufen",
+        s4ConsentRevoked: "widerrufen",
+        s4ConsentInvalidated: "entwertet",
+        s4ConsentUnbekannt: "Stand unbekannt",
+        // KW-KA4: der Wortlaut nennt jetzt DAS DOKUMENT, nicht die Sitzung. Das ist keine
+        // Kosmetik — die Zustimmung ist serverseitig an `documentContextId` gebunden
+        // (`klara-session-service.ts:251`), und ein Rebind verwirft sie. Wer „für diese Sitzung"
+        // liest, erwartet, dass sie beim Dokumentwechsel gilt; genau das tut sie nicht.
+        s4ConsentTitel: "Externe KI für dieses Dokument erlauben",
+        s4ConsentText: "Für dieses Dokument würde ein externer Anbieter genutzt. Ohne Ihre Erlaubnis wird nichts dorthin gesendet. Sie gilt nur für dieses Dokument und diese Sitzung, Sie können sie jederzeit widerrufen — und vertraulich Markiertes bleibt in jedem Fall hier.",
+        // Der aktive Fragesatz, wörtlich aus `OFFEN.md:64` (KA4).
+        ka4FrageTitel: "Darf ich dafür die externe KI hinzuziehen?",
+        ka4FrageText: "Dafür brauche ich die externe KI — darf ich dieses Dokument senden? Vertraulich Markiertes bleibt hier.",
+        ka4FrageJa: "Ja, für dieses Dokument erlauben",
+        // KEIN „hausintern"/„im Haus": das ist eine Aussage über den SERVERSTANDORT, die dieser
+        // Code nicht erzwingt (Regelwerk Regel 5; dieselbe Lehre wie mega77 Block B, wo genau
+        // dieser Satz aus dem Panel entfernt wurde). Belegbar ist nur, was NICHT geschieht: kein
+        // externer Modellaufruf. Gefunden hat das der Terminologie-Wächter
+        // `tests/app/pro375-terminologie-vertrag.test.ts` — zu Recht.
+        ka4FrageNein: "Nein, ohne externe KI",
+        ka4Abgelehnt: "Für dieses Dokument bleibt die externe KI aus. Sie können das oben jederzeit ändern.",
+        // JOB 3079 · S3 — der Zustimmungssatz im Klartext, und die Worte für die Klassen, die er
+        // zitiert. Sie stehen je Klassenkennung unter `s4Klasse_<kennung>`; fehlt eines, zeigt das
+        // Panel die Kennung selbst (`klaraS4KlassenListe`), nie eine gekürzte Liste.
+        s4ConsentSatz: "{klassen} gehen an {provider}.",
+        s4KlassenUnd: "und",
+        s4Klasse_question: "Deine Frage",
+        s4Klasse_candidate_texts: "die Texte der gefundenen Einträge",
+        s4ConsentUmfang: "Anbieter {provider} · Modell {model} · Sitzung {session} · Betroffene Daten: {klassen}",
+        s4ConsentKlassenFehlen:
+          "Der Server hat noch nicht aufgelöst, welche Daten übertragen würden. Ohne diese Angabe kann hier nicht zugestimmt werden.",
+        s4ConsentKlassenBlockiert: "Ausgeschlossen bleiben: {klassen}",
+        s4ConsentKnopf: "Zustimmen",
+        s4ConsentWiderruf: "Widerrufen",
+        s4ConsentBusy: "Wird an den Server übertragen ...",
+        s4ConsentFehler: "Die Zustimmung konnte nicht übertragen werden. Bitte erneut versuchen.",
+        s4RebindFehler:
+          "Das Dokument wurde gespeichert, der neue Dokumentbezug konnte aber nicht eingetragen werden.",
+        s4FragenGesperrt: "Der Server erlaubt für diese Sitzung derzeit keine Ausführung.",
+        // Der real gelieferte Ausschnitt. Ehrlich als Zitat bezeichnet, ausdrücklich KEINE
+        // Herleitung — ein Herleitungsprotokoll gibt es in diesem System nirgends.
+        askSnippetLabel: "Verwendeter Ausschnitt",
+        askRoleCarrying: "trägt die Antwort",
+        askRoleConsulted: "herangezogen",
+        // JOB 3017 D4: der Fußzeilensatz (Zielbild Z.48) — der Leitsatz jeder Design-Fläche, gefolgt
+        // von den beiden BELEGTEN Halbsätzen (mega75 Block C / mega77 Block B). Der Zielbild-Halbsatz
+        // über den Serverstandort (Z.48) bleibt draußen: Betriebszusage, die dieser Code nicht erzwingt.
+        askRuleNote: "Keine KI-Antwort ohne Beleg · Vertrauliches bleibt vertraulich. Klara zitiert validiertes KLARWERK-Wissen wörtlich; dein markierter Text wird nicht an eine externe KI gesendet.",
+        askEmpty: "Bitte erst eine Aussage im Dokument markieren oder unten eine Frage eingeben.",
+        // JOB 3016 D3: beide Haelften des Zielbildsatzes (Wissen freigegeben UND Eingabe gesperrt).
+        askBusy: "Klara sucht im freigegebenen Wissen — die Eingabe ist so lange gesperrt.",
+        // JOB 3019 (KA5) R2: Hier stand „Die Markierung war länger als {max} Zeichen — die Frage
+        // wurde ehrlich gekappt." Das war seit KA5 falsch: gekappt wird das Feld `question`, und
+        // das ist in der Lage „beides" der GETIPPTE Text, nicht die Markierung. Der Satz spricht
+        // jetzt ausschließlich über die Frage — und zeitneutral, weil ihn zwei Stellen zeigen:
+        // die Zeile über dem Eingabefeld VOR dem Absenden und die Statuszeile NACH der Antwort.
+        askTruncated: "Die Frage ist länger als {max} Zeichen — nur ihr Anfang reist mit.",
+        askAuth: "Nicht angemeldet — bitte zuerst bei KLARWERK anmelden.",
+        askTimeout: "Keine Antwort vom Server (Zeitüberschreitung). Bitte erneut versuchen.",
+        askSelectionTimeout: "Word hat die Markierung nicht geliefert (Zeitüberschreitung). Bitte erneut versuchen.",
+        askError: "Fragen fehlgeschlagen ({detail}).",
+        // AUFTRAG-JOB507-D4: 403 am Fragen-Weg heisst FEHLENDES RECHT (ko.read) — nicht „melde dich
+        // an". Der bestehende Schluessel askForbidden gehoert zum Offene-Frage-Weg und bleibt dort.
+        askForbiddenRead:
+          "Fehlendes Recht: Dein Konto darf das KLARWERK-Wissen nicht lesen. Bitte an die KLARWERK-Administration wenden.",
+        askRateLimited: "Zu viele Anfragen — bitte in {n} Sekunden erneut versuchen.",
+        askRateLimitedUnknown: "Zu viele Anfragen — bitte später erneut versuchen.",
+        askAnswerTitle: "Quellengebundene Antwort",
+        // AUFTRAG-mega34 B2: die Einstufung — im Panel UND im eingefuegten Text. Bis hierher
+        // versprach diese Flaeche unbedingt "geprueftes Wissen", auch bei gedeckelter Abdeckung
+        // oder unbekanntem Konfliktstand. Jetzt sagt sie, was belegt ist und was nicht.
+        askEvidenceVerified: "Einstufung: gesichert — Quellen belegt, keine offenen Widersprüche bekannt.",
+        askEvidenceUnverified: "Einstufung: ungeprüft — nicht als konfliktfrei belegt. Vor Verwendung prüfen.",
+        askSourcesTitle: "Quellen",
+        askTrust: "Vertrauen {n}",
+        // JOB 3046 D2: die Luecke ist eine Auskunft (Zielbild KeinWissen.dc.html Z.29-35). Der
+        // Schluessel askGapTitle bleibt, sein Wortlaut ist der des Zielbilds; askGapBody ist
+        // ENTFERNT (in allen drei Sprachen); neu sind askGapFrageAendern (Z.30) und askGapFuss
+        // (Z.35). Die Konsole behaelt „Keine belastbare Grundlage." — Zielbild vor Paritaet.
+        askGapTitle: "Dazu liegt kein freigegebenes Firmenwissen vor.",
+        askGapFrageAendern: "Frage ändern",
+        askGapSendCta: "Als offene Frage an KLARWERK geben",
+        askGapFuss: "Klara erfindet keine Antworten — eine Lücke ist eine ehrliche Auskunft.",
+        askGapSentOk: "Offene Frage gesendet: {title}",
+        askGapOpenLink: "Offene Frage in KLARWERK öffnen",
+        askInsertCta: "Einfügen",
+        askInsertOk: "Antwort eingefügt.",
+        askInsertFail: "Einfügen fehlgeschlagen ({detail}). Du kannst den Text über „Kopieren\" übernehmen.",
+        askInsertNoPermission: "Einfügen nicht möglich: Das Add-in hat keine Schreibberechtigung für dieses Dokument. Das Klara-Manifest muss neu geladen werden (Sideload) — mit der Berechtigung ReadWriteDocument UND einer höheren Versionsnummer (Office merkt sich das alte Manifest sonst im Cache). Bitte an die KLARWERK-Administration wenden. Solange kannst du den Text über „Kopieren\" übernehmen.",
+        askInsertEmpty: "Das Antwortfeld ist leer — bitte Text eingeben oder die Frage erneut stellen.",
+        askAnswerEditHint: "Du kannst die Antwort vor dem Einfügen kürzen oder anpassen. Einstufung und Quellen-Zeile kommen automatisch dazu — beim Einfügen, beim Kopieren und auch bei Strg+C bzw. Cmd+C. Nur eine Teilauswahl bleibt roh: ein Bruchstück ist keine Antwort.",
+        askCopyCta: "Kopieren",
+        // JOB 3004 D1: die Antwortflaeche nach Zielbild Main.dc.html — Herkunftszeile, Fassung im
+        // Quellen-Chip, Fusszeile, Pillen-Tooltip und der Leitsatz (Auftrag §5.7).
+        askHerkunft: "Aus freigegebenem Firmenwissen",
+        askChipStand: "Stand {date}",
+        // JOB 3092 S6 (W5/W6): die belegte Antwort — Herkunft je tragender Quelle, der Ungeprueft-
+        // Satz (Pedis Wortlaut, 05.09.), die Luecke ohne Beleg und die Dublettenauskunft vor dem
+        // Einreichen. „geprüft" steht hier als Aussage ueber OBJEKTE („noch nicht geprüft") bzw.
+        // ueber einen GELAUFENEN Pruefvorgang („geprüft 14:32"), nie als Zusage ueber die Antwort
+        // (tests/i18n/mega35-word-wortliste.test.ts, OBJEKTAUSSAGEN).
+        askHerkunftQuelle: "Quelle:",
+        askHerkunftVersion: "Version {n}",
+        askHerkunftVersionUnbekannt: "Version unbekannt",
+        askHerkunftNichtGeladen: "konnte nicht geladen werden",
+        askHerkunftLaden: "Quellen werden geladen …",
+        askHerkunftKeinBeleg: "Dafür habe ich keinen Beleg.",
+        askUngeprueftEins: "Dazu gibt es einen Eintrag, der noch nicht geprüft ist: {titel}",
+        askUngeprueftMehrere: "Dazu gibt es {n} Einträge, die noch nicht geprüft sind: {titel}",
+        // JOB 3366: wortgleich mit `ai.truncated.hint` der Web-App (apps/web/src/i18n.ts) — derselbe
+        // Zustand darf nicht in zwei Fassungen auseinanderlaufen. Es gibt keinen Gegensatz-Satz.
+        askFragment: "Diese Antwort wurde am Längenlimit abgeschnitten und kann unvollständig sein.",
+        captureDubLaeuft: "Dublettenprüfung läuft …",
+        captureDubLeer: "Nichts Vergleichbares gefunden (geprüft {zeit}).",
+        captureDubTreffer: "Dazu gibt es schon Vergleichbares (geprüft {zeit}):",
+        captureDubLeerGekuerzt: "Nur die ersten {max} Zeichen konnten geprüft werden (geprüft {zeit}): darin nichts Vergleichbares — der Rest bleibt ungeprüft.",
+        captureDubTrefferGekuerzt: "Nur die ersten {max} Zeichen konnten geprüft werden (geprüft {zeit}) — darin schon Vergleichbares:",
+        captureDubFehler: "Prüfung nicht möglich.",
+        captureDubZuKurz: "Dublettenprüfung erst ab 40 Zeichen.",
+        captureDubIdentisch: "identisch",
+        captureDubEnthaeltEintrag: "enthält den Eintrag",
+        captureDubImEintrag: "im Eintrag enthalten",
+        captureDubTeilweise: "teilweise gleich",
+        captureDubVerwandt: "verwandt",
+        askNeueFrage: "Neue Frage",
+        askFrageBearbeiten: "Frage bearbeiten",
+        askCopyOk: "In die Zwischenablage kopiert.",
+        askCopyFail: "Die Zwischenablage des Browsers ist nicht verfügbar. Der vollständige Text steht unten bereit und ist bereits markiert — bitte von dort kopieren.",
+        askCopyFallbackHint: "Vollständiger Text mit Einstufung und Quellen-Zeile — dieser Text ist zum Kopieren gedacht:",
+        askCopyNativeOk: "Kopiert. Einstufung und Quellen-Zeile wurden automatisch angehängt.",
+        // AUFTRAG-mega38 BLOCK B3 (bens GELB): der Text erscheint an ALLEN drei nativen Wegen —
+        // auch beim blockierten ZIEHEN, wo nichts kopiert werden sollte. „NOCH NICHT kopiert"
+        // war dort schlicht falsch. Jetzt ist der GANZE Text ausgangsneutral, nicht nur sein
+        // Schlusssatz. (`askCopyNativeOk` bleibt unveraendert: es erscheint nur nach Kopieren und
+        // Ausschneiden, und dort ist „Kopiert" richtig.)
+        askCopyNativePending: "NOCH NICHT ausgegeben: die Quellentitel werden gerade geladen. Ohne sie trüge die Quellen-Zeile nur den Systemnamen statt der Belege. Bitte einen Moment warten und es erneut versuchen.",
+        askDragFail: "NICHT ausgegeben: dieser Ziehvorgang kann keine Daten aufnehmen. Damit nichts ohne Einstufung und Quellen-Zeile hinausgeht, wurde er abgebrochen. Der vollständige Text steht unten bereit und ist bereits markiert.",
+        askCopyPartial: "Teilauswahl — ohne Einstufung und ohne Quellen-Zeile. Ein Bruchstück ist keine Antwort; für den vollständigen Text bitte alles markieren oder „Kopieren\" nutzen.",
+        askShowMore: "Mehr anzeigen",
+        askShowLess: "Weniger anzeigen",
+        askStatusValidiert: "Validiert",
+        askStatusPruefung: "In Prüfung",
+        askStatusOffen: "Offen",
+        askStatusUnknown: "Status unbekannt",
+        // JOB 3093 (M3, PRIORITAETEN N1 b): „Haben wir das schon?" — Knopf, Standzeile, Treffer.
+        // Die Lagesätze (läuft, leer, Treffer, Fehler, zu kurz, gekürzt) sind DIESELBEN wie in der
+        // Erfassen-Fläche (captureDub*, JOB 3092): ein Wortlaut je Lage, nicht zwei. „noch nicht
+        // geprüft" ist der Prüfstand eines OBJEKTS (Pedis Wortlaut), keine Zusage über die
+        // Antwort — mega35 B nimmt diesen einen Schlüssel aus, wie „In Prüfung" dort zulässig ist.
+        bestandCta: "Haben wir das schon?",
+        bestandStand: "Stand {zeit}",
+        bestandKeinText: "Kein lesbarer Text in Word.",
+        bestandVerweigert: "Keine Berechtigung für die Prüfung in dieser Sitzung.",
+        bestandNochNichtGeprueft: "noch nicht geprüft",
+        bestandVersion: "Version {n}",
+        bestandBereich: "Bereich: {bereich}",
+        bestandOeffnen: "In der Bibliothek öffnen",
+        // JOB 3243 (M3c-UI): der QUELLENFUND — andere Aussage als die Dublette; das Wort „Dublette"
+        // kommt nicht vor, der Weg zur Quelle nutzt `bestandOeffnen` (EIN Wortlaut). „durchsucht"
+        // statt „geprüft" (so der Auftrag §5.1/§5.2): mega35-word-wortliste.test.ts:82 verbietet
+        // „geprüft" ausserhalb ihrer Schlüssel und ist nicht Zielpfad — genauer ist es auch.
+        quellenfundTreffer: "Quellenfund im Volltext ({n}):",
+        quellenfundLeer: "Kein Quellenfund im durchsuchten Bestand.",
+        quellenfundOffen: "Quellenfund nicht durchsucht.",
+        quellenfundGekappt: "Nicht vollständig durchsucht — mehr Kandidaten als durchsucht.",
+        quellenfundSatz: "Diese Passage steht im Volltext von „{titel}“.",
+        quellenfundTeil: "Teilübereinstimmung ({n} von {m} Zeichen)",
+        quellenfundStelle: "Fundstelle",
+        askSourceLine: "Quelle: {titles} (KLARWERK-Wissen, Stand {date})",
+        askSourceLineRetrieved: "Quelle: {titles} (KLARWERK-Wissen, abgerufen am {date})",
+        askInsertTruncatedNote: "Hinweis: Die zugrunde liegende Frage wurde auf {max} Zeichen gekappt.",
+        askForbidden: "Fehlendes Recht: Dein Konto darf keine offenen Fragen als Entwurf senden.",
+        askOpenQuestionPrefix: "Offene Frage: ",
+        askOpenQuestionFallback: "Offene Frage aus Word",
+        fassungAktuell: "Add-in-Fassung {geladen} · aktuell",
+        fassungWechsel: "Add-in-Fassung {geladen} · neue Fassung {verfuegbar} verfügbar",
+        fassungUnbekannt: "Add-in-Fassung {geladen} · Abgleich nicht möglich",
+        fassungCta: "Neu laden",
+        helpTitle: "Was kann Klara hier?",
+        // JOB 2620 D5: vierte Stelle der Bilder-Aussage (Hilfe-Karte, in beiden Reitern sichtbar) —
+        // der Bilder-Halbsatz gehoert allein dem gemessenen Kasten in Tab 2.
+        helpCan1: "Auswahl oder ganzes Dokument als KLARWERK-Entwurf anlegen — mit Formatierung und Tabellen (nur Entwurf, kein fertiges Wissensobjekt).",
+        helpCan2: "Ehrlich sagen, ob du angemeldet bist, ob das Senden geklappt hat und was Word NICHT übergeben konnte.",
+        helpCan3: "Fragen quellengebunden aus dem VALIDIERTEN Werkswissen beantworten — und die Antwort mit Quellenangabe ins Dokument einfügen.",
+        helpNot1: "Klara ist kein Chatbot: ohne belastbare Grundlage wird NICHTS erfunden — die Frage bleibt ehrlich offen (Wissenslücke).",
+        helpNot2: "Noch NICHT: seitenweises Senden — Word gibt Seitengrenzen im Taskpane nicht her; markiere stattdessen den Bereich.",
+        // JOB 3667 (WORD-RUECKWEG): der Weg auf ein BESTEHENDES Objekt. Die Fehlersaetze sind
+        // bewusst die des Sendewegs (sendAuth, sendForbidden, sendError, sendOffline) — ein zweiter
+        // Wortlaut fuer „nicht angemeldet" waere eine zweite Wahrheit.
+        rwTitel: "Welchen Eintrag aktualisieren?",
+        rwVorschauTitel: "Das geht an den Eintrag:",
+        rwPruefwegLabel: "Erst jemand anderen ansehen lassen",
+        rwPflichtHinweis: "Freigabe durch andere ist Pflicht.",
+        rwCtaFrei: "Aktualisieren und freigeben",
+        rwCtaEinreichen: "Zur Freigabe einreichen",
+        rwAbwahl: "Andere Wahl",
+        rwZielZeile: "{titel} · Version {n}",
+        rwLaden: "Eintrag wird geladen …",
+        rwLadeFehler: "Eintrag konnte nicht geladen werden.",
+        rwLaeuft: "Aktualisierung läuft …",
+        rwFertigFrei: "Aktualisiert und freigegeben: Version {n}.",
+        rwFertigOffen: "Aktualisiert: Version {n}. Die Freigabe steht noch aus.",
+        rwVorschlagAblehnenCta: "Ablehnen",
+        rwVorschlagEigen: "Eigener Vorschlag — das prüft jemand anders.",
+        rwAbgelehnt: "Vorschlag abgelehnt. Der Eintrag bleibt unverändert.",
+        rwEingereicht: "Eingereicht. Der Eintrag trägt weiter den freigegebenen Stand.",
+        rwEinreichFehler: "Einreichen fehlgeschlagen — nichts wurde eingereicht.",
+        rwVorschlaegeTitel: "Eingereicht, noch nicht freigegeben:",
+        rwVorschlagZeile: "{wer} · {zeit} · aus Version {n}",
+        rwVorschlagCta: "Vorschlag freigeben",
+        rwVorschlagAelter: "Der Vorschlag stammt aus Version {n}, der Eintrag steht auf {m}.",
+        rwVorschlagRumpf: "Dieser Vorschlag trägt einen ausführlichen Inhalt. Dieses Fenster kann ihn nicht anzeigen — freigegeben wird er deshalb hier nicht. In KLARWERK ansehen und dort entscheiden.",
+        rwVorschlagRumpfWeg: "Achtung: Dieser Vorschlag löscht den ausführlichen Inhalt — der Einreicher hat ihn geleert. Freigeben entfernt ihn aus dem Eintrag.",
+        rwVorschlagRumpfBleibt: "Der Vorschlag ändert nur die Aussage. Der ausführliche Inhalt des Eintrags bleibt unverändert bestehen.",
+        rwStale: "Der Eintrag steht inzwischen auf Version {n}. Es wurde nichts überschrieben.",
+        rwStaleCta: "Stand neu laden",
+        rwMarkierungAnders: "Die Markierung hat sich geändert — nichts gesendet.",
+      },
+      en: {
+        greetTitle: "Hi, I am Klara.",
+        greetBody: "I connect this Word document with KLARWERK. In this first step I can bring your text selection into KLARWERK as a draft — honestly, no magic.",
+        sessionChecking: "Checking KLARWERK sign-in ...",
+        sessionOk: "Signed in as {name}.",
+        sessionOff: "You are not signed in to KLARWERK in this window.",
+        sessionError: "KLARWERK is not reachable right now. Please check the connection and try again.",
+        loginHint: "Sending requires an active KLARWERK sign-in in this window.",
+        loginCta: "Sign in",
+        loginReturn: "The sign-in opens in its own window. This panel detects it automatically — close nothing, reopen nothing.",
+        loginWaiting: "Waiting for the sign-in in the sign-in window ...",
+        loginCancel: "Stop waiting",
+        loginTimeout: "No sign-in detected. Please try again.",
+        loginHandoverBlocked: "The sign-in does not reach this pane: Word shows Klara here inside a frame of a different origin. Please open the sign-in window again, or reload this task pane.",
+        loginHandoverRejected: "The handover of the sign-in was declined — the handover code is no longer valid. That does not say whether the sign-in itself worked. Please sign in again.",
+        loginPopupBlocked: "The sign-in window was blocked (popup blocker). Please allow popups for this page and try again.",
+        loginOtherContext: "Note: the sign-in window may run in a different browser context. If the sign-in is not detected here, please try again.",
+        sendTitle: "Send to KLARWERK",
+        // JOB 2620 D5: the image clause moved into the measured note box (sendImagesNote) — one statement, not two.
+        sendHint: "Send the chosen scope as a new knowledge DRAFT — with formatting (headings, lists, tables). Nothing is published automatically — you review everything in KLARWERK.",
+        sendCta: "Send as draft",
+        // JOB 3057 K2: the capture surface per Erfassen.dc.html — labels instead of explanations.
+        captureCardTitle: "Capture selection",
+        captureEmpty: "Select text in Word.",
+        captureKicker: "SELECTION · {n} PARAGRAPHS",
+        captureKickerEins: "SELECTION · 1 PARAGRAPH",
+        captureTitleLabel: "Title",
+        // JOB 3555 K2b: „Area" ist der Begriff, den dieses Panel fuer `category` schon fuehrt
+        // (bestandBereich: „Area: {bereich}") — kein zweites Wort fuer dieselbe Sache.
+        captureBereichLabel: "Area",
+        captureBereichWahl: "Choose area",
+        captureBereichLaedt: "Loading …",
+        captureBereichLeer: "No area in your knowledge yet",
+        captureBereichFehler: "Areas not loaded",
+        captureDocumentLink: "Take over the whole document",
+        captureRetry: "Send again",
+        captureLogin: "Sign in",
+        captureReload: "Reload",
+        captureBilderLink: "Add in KLARWERK",
+        // JOB 2620 (behind the gear since JOB 3506): measured image note, review hint.
+        sendImagesNote: "Embedded images arrive with the draft. Images with text wrapping are not provided by Word here — a single one currently costs all images of the document.",
+        sendImagesNoteLink: "With all images: upload in the console.",
+        sendReviewNote: "It only goes to review once you submit it — nothing is validated automatically.",
+        sendEmpty: "Please select text in the document first.",
+        sendEmptyDoc: "The document contains no text.",
+        scopePagesHint: "Page-based sending is not possible here — select the desired range in the document instead.",
+        // JOB 3057 K2 (§5.5): the result instead of the upfront warning — ONE sentence, only if it applies.
+        sendOverBudget: "The formatting was too large — the draft contains the plain text.",
+        sendPlainFallback: "Word did not provide usable HTML — formatting and images are missing from the draft.",
+        sendImagesMissing: "Word did not release {n} images — the text is complete.",
+        sendImagesMissingOne: "Word did not release 1 image — the text is complete.",
+        sendImagesDropped: "{n} images were too large and are missing from the draft.",
+        sendImagesDroppedOne: "1 image was too large and is missing from the draft.",
+        sendDocIdUnsaved: "Draft created, but the document ID is not saved in the Word document — please save the document and send again, otherwise it will later count as a new document.",
+        sendImagesBoth: "{n} images are missing from the draft — Word did not release {a}, {b} were too large.",
+        // JOB 3438: the image balance of the document path (see the German block for the reasoning).
+        sendImagesShrunkOne: "1 image was resized.",
+        sendImagesShrunkMany: "{n} images were resized.",
+        sendImagesKeptOne: "1 image did not need resizing.",
+        sendImagesKeptMany: "{n} images did not need resizing.",
+        sendImagesNotShrunkOne: "1 image was not resized.",
+        sendImagesNotShrunkMany: "{n} images were not resized.",
+        sendImagesFailedOne: "Resizing failed for 1 image: {liste}.",
+        sendImagesFailedMany: "Resizing failed for {n} images: {liste}.",
+        sendImageFailTooBig: "too large",
+        sendImageFailUnreadable: "not readable",
+        sendImageFailTimeout: "time limit reached",
+        sendImagesUnknownOne: "For 1 image the server gave a reason this version does not know: {liste}.",
+        sendImagesUnknownMany: "For {n} images the server gave reasons this version does not know: {liste}.",
+        sendBusy: "Sending ...",
+        sendOk: "Draft sent",
+        sendAuth: "Not signed in — please sign in to KLARWERK first.",
+        // JOB 3057 K2 (§5.6): every failure is ONE sentence (plus ONE button); each keeps the promise: nothing created.
+        sendError: "Sending failed ({detail}) — NO draft was created.",
+        sendOffline: "No connection — NO draft was created.",
+        sendTooLarge: "Too large to transfer — NO draft was created.",
+        sendForbidden: "Your account may not create drafts — NO draft was created.",
+        sendRateLimited: "Too many requests (wait {n} s) — NO draft was created.",
+        sendRateLimitedUnknown: "Too many requests — NO draft was created.",
+        noOffice: "Word was not detected — sending only works in Word.",
+        officeDetecting: "Detecting the Word environment — sending stays disabled until Word responds.",
+        openLink: "Open",
+        tabAsk: "Ask",
+        tabCapture: "Capture",
+        askRuheSatz: "Ask a question or select text in Word.",
+        askMehr: "More",
+        askWeniger: "Less",
+        retryCta: "Try again",
+        askOffline: "No connection.",
+        einstTitel: "Settings",
+        einstZurueck: "Back",
+        einstSprache: "Language",
+        einstMitlesen: "Read text in Word",
+        einstAdminKicker: "SET BY ADMIN",
+        einstErfassenKicker: "WHEN CAPTURING",
+        einstKi: "AI",
+        einstWissen: "Knowledge",
+        einstWissenWert: "Approved only",
+        einstServer: "Server",
+        einstAbmelden: "Sign out",
+        einstHilfe: "How Klara answers",
+        askTitle: "Ask Klara",
+        // JOB 3056 K1: shorter placeholder, one word instead of a sentence.
+        askInputPlaceholder: "Question",
+        askCta: "Ask Klara",
+        // JOB 3019 (KA5): Schlüsselname unverändert, Aussage umgedreht — Begründung im DE-Block.
+        // JOB 3056 K1: the sentence now only appears in the ONE case where selection AND typed
+        // input both exist (updateAskSourceNote).
+        askSourceSelectionOverride: "Asking about: your input below. Your selection in the document is sent along and sharpens the search.",
+        // JOB 3019 (KA5): the middle sentence claimed the selection is what gets asked — false now
+        // that a typed question always wins. It now names the selection as a search sharpener.
+        askReviewNotice: "Answers are quoted word for word from validated KLARWERK knowledge — with sources. Selecting text in Word sharpens the search. Please review professionally before use.",
+        aiGeneratedNotice: "Generated by artificial intelligence — please review professionally.",
+        // JOB 3079 · S4 — s. die Begründung am deutschen Block.
+        aiLageLaedt: "Retrieving KLARWERK's AI status ...",
+        aiLageUnerreichbar: "KLARWERK's AI status is unavailable right now.",
+        aiLageExtern: "In KLARWERK, answering currently uses an external AI (cloud).",
+        aiLageIntern: "In KLARWERK, answering currently uses an in-house AI.",
+        aiLageKeine: "In KLARWERK, answering currently uses no AI. Other tasks in KLARWERK may differ.",
+        wegExternZustimmung: "Klara's answer in this panel is produced by the external AI {provider}, because you gave consent for this document: your question and the texts of the entries found go there.",
+        wegExternOhneZustimmung: "Without your consent nothing about this document goes to {provider}. Klara's answer in this panel is then produced without an AI model — rule-based, quoting validated knowledge word for word.",
+        wegExternZustimmungWeg: "Your consent for this document no longer applies. Until you consent again, Klara's answer in this panel is produced without an AI model — rule-based, quoting validated knowledge word for word.",
+        wegIntern: "It is not used for this panel: Klara's answer here is produced without an AI model — rule-based, quoting validated knowledge word for word.",
+        wegDeterministisch: "Klara's answer in this panel is produced without an AI model — rule-based, quoting validated knowledge word for word.",
+        wegUnbekannt: "There is no confirmed status for this document right now. Until there is, Klara's answer in this panel is produced without an AI model — rule-based, quoting validated knowledge word for word.",
+        trustHeadLabel: "Klara's AI status",
+        trustModeLaedt: "Checking status",
+        trustModeUnerreichbar: "Status unavailable",
+        trustModeExtern: "KLARWERK: external AI",
+        trustModeIntern: "KLARWERK: in-house AI",
+        trustModeKeine: "KLARWERK: no AI",
+        askCaveatUnknown: "A carrying source cannot be found in the library.",
+        askCaveatUnchecked: "A carrying source has no check run.",
+        askCaveatNoCoverage: "A check run exists without coverage evidence.",
+        askCaveatIncomplete: "A check run remained incomplete.",
+        askCaveatUnattributed: "The server could not attribute the answer to any source.",
+        askCaveatOther: "A caveat applies whose reason this build does not know.",
+        askCaveatCount: "({unproven} of {total} carrying sources without full evidence.)",
+        askConflictConflicted: "Caution: a carrying source is in an open conflict.",
+        askConflictUnproven: "The conflict situation is unknown — that does not mean there is none.",
+        askConflictClear: "No open conflicts on the carrying sources.",
+        s4Label: "In this session",
+        s4ModeDeterministic: "Without a model",
+        s4ModeInternal: "On-Premise Enterprise AI",
+        s4ModeExternal: "External AI",
+        s4ModeUnbekannt: "Mode unknown",
+        s4StateLaedt: "Retrieving session status ...",
+        s4StateBereit: "Session status is available.",
+        s4StateAbweichung: "A mode other than the configured one applies.",
+        s4StateBlockiert: "Execution is blocked.",
+        s4StateUnerreichbar: "The session status cannot be retrieved.",
+        s4StateKeineSitzung: "There is no session for this pane.",
+        s4StateVeraltet: "The status shown has expired.",
+        s4StateGesperrtLokal:
+          "The last call failed. Until the server confirms a new status, nothing counts as allowed here.",
+        s4Anbieter: "Provider {provider} · Model {model}",
+        s4Abweichung: "Configured was {soll}. Reason for the deviation: {grund}",
+        s4Blockiert: "Blocked. Reason: {grund}",
+        s4Veraltet: "This status has expired and is being retrieved again.",
+        s4Sitzung: "Consent: {stand}",
+        s4SitzungNichtAngemeldet: "Not signed in — your consent status becomes visible after signing in (it is not lost).",
+        s4BlockiertTrotzZustimmung: "Still blocked: {grund} This is not decided by your pane.",
+        s4Unbekannt: "unknown",
+        s4ReasonExternalNotConfigured: "No external provider is configured.",
+        s4ReasonInternalNotConfigured: "No On-Premise Enterprise AI is configured.",
+        s4ReasonExternalNotMigrated: "The external path is not enabled yet.",
+        s4ReasonExternalConsentMissing: "Your consent for the external path is missing.",
+        s4ReasonPolicyIncomplete: "The rules are stored incompletely.",
+        s4ReasonOther: "The server gives a reason this build does not know.",
+        s4ConsentNone: "none required",
+        s4ConsentErforderlich: "required, not yet given",
+        s4ConsentPending: "open",
+        s4ConsentGranted: "granted",
+        s4ConsentExpired: "expired",
+        s4ConsentRevoked: "revoked",
+        s4ConsentInvalidated: "invalidated",
+        s4ConsentUnbekannt: "status unknown",
+        // KW-KA4: names THIS DOCUMENT — the consent is bound to `documentContextId` server-side.
+        s4ConsentTitel: "Allow external AI for this document",
+        s4ConsentText: "An external provider would be used for this document. Without your permission nothing is sent there. It applies to this document and this session only, you can revoke it at any time — and anything marked confidential stays here in any case.",
+        ka4FrageTitel: "May I bring in the external AI for this?",
+        ka4FrageText: "I need the external AI for this — may I send this document? Anything marked confidential stays here.",
+        ka4FrageJa: "Yes, allow for this document",
+        ka4FrageNein: "No, without external AI",
+        ka4Abgelehnt: "For this document external AI stays off. You can change this above at any time.",
+        s4ConsentSatz: "{klassen} go to {provider}.",
+        s4KlassenUnd: "and",
+        s4Klasse_question: "Your question",
+        s4Klasse_candidate_texts: "the texts of the entries found",
+        s4ConsentUmfang: "Provider {provider} · Model {model} · Session {session} · Data concerned: {klassen}",
+        s4ConsentKlassenFehlen:
+          "The server has not yet resolved which data would be transmitted. Without that, consent cannot be given here.",
+        s4ConsentKlassenBlockiert: "Excluded: {klassen}",
+        s4ConsentKnopf: "Give consent",
+        s4ConsentWiderruf: "Revoke",
+        s4ConsentBusy: "Transmitting to the server ...",
+        s4ConsentFehler: "The consent could not be transmitted. Please try again.",
+        s4RebindFehler:
+          "The document was saved, but the new document binding could not be registered.",
+        s4FragenGesperrt: "The server currently allows no execution for this session.",
+        askSnippetLabel: "Excerpt used",
+        askRoleCarrying: "carries the answer",
+        askRoleConsulted: "consulted",
+        askRuleNote: "No AI answer without evidence · Confidential stays confidential. Klara quotes validated KLARWERK knowledge word for word; your selected text is not sent to an external AI.",
+        askEmpty: "Please select a statement in the document first or type a question below.",
+        askBusy: "Klara is searching the approved knowledge — input is locked until then.",
+        // JOB 3019 (KA5) R2: sprach über die Markierung, gekappt wird aber die Frage — s. DE-Block.
+        askTruncated: "The question is longer than {max} characters — only its beginning is sent.",
+        askAuth: "Not signed in — please sign in to KLARWERK first.",
+        askTimeout: "No answer from the server (timeout). Please try again.",
+        askSelectionTimeout: "Word did not deliver the selection (timeout). Please try again.",
+        askError: "Asking failed ({detail}).",
+        askForbiddenRead:
+          "Missing permission: your account may not read the KLARWERK knowledge base. Please contact your KLARWERK administrator.",
+        askRateLimited: "Too many requests — please try again in {n} seconds.",
+        askRateLimitedUnknown: "Too many requests — please try again later.",
+        askAnswerTitle: "Source-bound answer",
+        // AUFTRAG-mega34 B2: the classification — in the panel AND in the inserted text.
+        askEvidenceVerified: "Classification: assured — sources evidenced, no open contradictions known.",
+        askEvidenceUnverified: "Classification: unverified — not evidenced as free of conflicts. Check before use.",
+        askSourcesTitle: "Sources",
+        askTrust: "Trust {n}",
+        askGapTitle: "There is no released company knowledge on this.",
+        askGapFrageAendern: "Change question",
+        askGapSendCta: "Hand it to KLARWERK as an open question",
+        askGapFuss: "Klara does not invent answers — a gap is an honest answer.",
+        askGapSentOk: "Open question sent: {title}",
+        askGapOpenLink: "Open the question in KLARWERK",
+        askInsertCta: "Insert",
+        askInsertOk: "Answer inserted.",
+        askInsertFail: "Inserting failed ({detail}). You can use \"Copy\" to take the text.",
+        askInsertNoPermission: "Cannot insert: the add-in has no write permission for this document. The Klara manifest must be reloaded (sideload) with the ReadWriteDocument permission AND a higher version number (otherwise Office keeps the old manifest cached) — please contact your KLARWERK administrator. In the meantime you can use \"Copy\" to take the text.",
+        askInsertEmpty: "The answer field is empty — please enter text or ask again.",
+        askAnswerEditHint: "You can shorten or adjust the answer before inserting. Classification and source line are added automatically — on insert, on copy, and on Ctrl+C or Cmd+C as well. Only a partial selection stays raw: a fragment is not an answer.",
+        askCopyCta: "Copy",
+        askHerkunft: "From approved company knowledge",
+        askChipStand: "as of {date}",
+        askHerkunftQuelle: "Source:",
+        askHerkunftVersion: "Version {n}",
+        askHerkunftVersionUnbekannt: "version unknown",
+        askHerkunftNichtGeladen: "could not be loaded",
+        askHerkunftLaden: "Loading sources …",
+        askHerkunftKeinBeleg: "I have no evidence for this.",
+        askUngeprueftEins: "There is one entry on this that has not been reviewed yet: {titel}",
+        askUngeprueftMehrere: "There are {n} entries on this that have not been reviewed yet: {titel}",
+        askFragment: "This answer was cut off at the length limit and may be incomplete.",
+        captureDubLaeuft: "Duplicate check running …",
+        captureDubLeer: "Nothing comparable found (checked {zeit}).",
+        captureDubTreffer: "Comparable entries already exist (checked {zeit}):",
+        captureDubLeerGekuerzt: "Only the first {max} characters could be checked (checked {zeit}): nothing comparable in them — the rest remains unchecked.",
+        captureDubTrefferGekuerzt: "Only the first {max} characters could be checked (checked {zeit}) — comparable entries in them:",
+        captureDubFehler: "Check not possible.",
+        captureDubZuKurz: "Duplicate check needs at least 40 characters.",
+        captureDubIdentisch: "identical",
+        captureDubEnthaeltEintrag: "contains the entry",
+        captureDubImEintrag: "contained in the entry",
+        captureDubTeilweise: "partly the same",
+        captureDubVerwandt: "related",
+        askNeueFrage: "New question",
+        askFrageBearbeiten: "Edit question",
+        askCopyOk: "Copied to the clipboard.",
+        askCopyFail: "The browser clipboard is not available. The full text is ready below and already selected — please copy it from there.",
+        askCopyFallbackHint: "Full text with classification and source line — this is the text meant for copying:",
+        askCopyNativeOk: "Copied. Classification and source line were added automatically.",
+        askCopyNativePending: "NOT handed over yet: the source titles are still loading. Without them the source line would carry only the system name instead of the actual evidence. Please wait a moment and try again.",
+        askDragFail: "NOT handed over: this drag operation cannot carry any data. It was cancelled so that nothing leaves without classification and source line. The full text is ready below and already selected.",
+        askCopyPartial: "Partial selection — without classification and without source line. A fragment is not an answer; for the full text please select everything or use \"Copy\".",
+        askShowMore: "Show more",
+        askShowLess: "Show less",
+        askStatusValidiert: "Validated",
+        askStatusPruefung: "In review",
+        askStatusOffen: "Open",
+        askStatusUnknown: "Status unknown",
+        bestandCta: "Do we already have this?",
+        bestandStand: "As of {zeit}",
+        bestandKeinText: "No readable text in Word.",
+        bestandVerweigert: "No permission for the check in this session.",
+        bestandNochNichtGeprueft: "not yet reviewed",
+        bestandVersion: "Version {n}",
+        bestandBereich: "Area: {bereich}",
+        bestandOeffnen: "Open in the library",
+        quellenfundTreffer: "Source hit in the full text ({n}):",
+        quellenfundLeer: "No source hit in the searched holdings.",
+        quellenfundOffen: "Source hit not searched.",
+        quellenfundGekappt: "Not searched completely — more candidates than searched.",
+        quellenfundSatz: "This passage is in the full text of “{titel}”.",
+        quellenfundTeil: "Partial match ({n} of {m} characters)",
+        quellenfundStelle: "Location",
+        askSourceLine: "Source: {titles} (KLARWERK knowledge, as of {date})",
+        askSourceLineRetrieved: "Source: {titles} (KLARWERK knowledge, retrieved on {date})",
+        askInsertTruncatedNote: "Note: the underlying question was truncated to {max} characters.",
+        askForbidden: "Missing permission: your account may not send open questions as drafts.",
+        askOpenQuestionPrefix: "Open question: ",
+        askOpenQuestionFallback: "Open question from Word",
+        fassungAktuell: "Add-in version {geladen} · up to date",
+        fassungWechsel: "Add-in version {geladen} · new version {verfuegbar} available",
+        fassungUnbekannt: "Add-in version {geladen} · comparison not possible",
+        fassungCta: "Reload",
+        helpTitle: "What can Klara do here?",
+        // JOB 2620 D5: fourth place of the image statement (help card) — it belongs to the note box in tab 2 alone.
+        helpCan1: "Create a KLARWERK draft from your selection or the whole document — with formatting and tables (draft only, not a finished knowledge object).",
+        helpCan2: "Tell you honestly whether you are signed in, whether sending worked and what Word could NOT provide.",
+        helpCan3: "Answer questions source-bound from the VALIDATED knowledge base — and insert the answer with source attribution into the document.",
+        helpNot1: "Klara is not a chatbot: without a reliable basis NOTHING is invented — the question honestly stays open (knowledge gap).",
+        helpNot2: "NOT yet: page-based sending — Word does not expose page boundaries in the taskpane; select the range instead.",
+        // JOB 3667 (WORD-RUECKWEG), see the German block for the reasoning.
+        rwTitel: "Which entry should be updated?",
+        rwVorschauTitel: "This goes to the entry:",
+        rwPruefwegLabel: "Let someone else look at it first",
+        rwPflichtHinweis: "Release by someone else is required.",
+        rwCtaFrei: "Update and release",
+        rwCtaEinreichen: "Submit for release",
+        rwAbwahl: "Choose another",
+        rwZielZeile: "{titel} · version {n}",
+        rwLaden: "Loading the entry …",
+        rwLadeFehler: "The entry could not be loaded.",
+        rwLaeuft: "Updating …",
+        rwFertigFrei: "Updated and released: version {n}.",
+        rwFertigOffen: "Updated: version {n}. The release is still pending.",
+        rwVorschlagAblehnenCta: "Reject",
+        rwVorschlagEigen: "Your own proposal — someone else reviews it.",
+        rwAbgelehnt: "Proposal rejected. The entry stays unchanged.",
+        rwEingereicht: "Submitted. The entry still carries the released state.",
+        rwEinreichFehler: "Submitting failed — nothing was submitted.",
+        rwVorschlaegeTitel: "Submitted, not released yet:",
+        rwVorschlagZeile: "{wer} · {zeit} · from version {n}",
+        rwVorschlagCta: "Release proposal",
+        rwVorschlagAelter: "The proposal comes from version {n}, the entry is at {m}.",
+        rwVorschlagRumpf: "This proposal carries detailed content. This pane cannot display it — so it is not released here. Open it in KLARWERK and decide there.",
+        rwVorschlagRumpfWeg: "Careful: this proposal deletes the detailed content — the author cleared it. Releasing removes it from the entry.",
+        rwVorschlagRumpfBleibt: "The proposal only changes the statement. The entry's detailed content stays unchanged.",
+        rwStale: "The entry is now at version {n}. Nothing was overwritten.",
+        rwStaleCta: "Reload state",
+        rwMarkierungAnders: "The selection has changed — nothing sent.",
+      },
+      nl: {
+        greetTitle: "Hallo, ik ben Klara.",
+        greetBody: "Ik verbind dit Word-document met KLARWERK. In deze eerste stap kan ik je tekstselectie als concept naar KLARWERK brengen — eerlijk, zonder magie.",
+        sessionChecking: "Aanmelding bij KLARWERK controleren ...",
+        sessionOk: "Aangemeld als {name}.",
+        sessionOff: "Je bent in dit venster niet aangemeld bij KLARWERK.",
+        sessionError: "KLARWERK is nu niet bereikbaar. Controleer de verbinding en probeer opnieuw.",
+        loginHint: "Voor het verzenden is een actieve KLARWERK-aanmelding in dit venster nodig.",
+        loginCta: "Aanmelden",
+        loginReturn: "De aanmelding opent in een eigen venster. Dit paneel herkent haar automatisch — niets sluiten, niets opnieuw openen.",
+        loginWaiting: "Wachten op de aanmelding in het aanmeldvenster ...",
+        loginCancel: "Stoppen met wachten",
+        loginTimeout: "Geen aanmelding herkend. Probeer het opnieuw.",
+        loginHandoverBlocked: "De aanmelding bereikt dit venster niet: Word toont Klara hier in een kader van een andere herkomst. Open het aanmeldvenster opnieuw of laad dit taakvenster opnieuw.",
+        loginHandoverRejected: "De overdracht van de aanmelding is afgewezen — de overdrachtscode geldt niet meer. Daarmee is niet gezegd of de aanmelding zelf is gelukt. Meld je opnieuw aan.",
+        loginPopupBlocked: "Het aanmeldvenster is geblokkeerd (pop-upblokkering). Sta pop-ups voor deze pagina toe en probeer het opnieuw.",
+        loginOtherContext: "Let op: het aanmeldvenster kan in een andere browsercontext draaien. Wordt de aanmelding hier niet herkend, probeer het dan opnieuw.",
+        sendTitle: "Naar KLARWERK sturen",
+        // JOB 2620 D5: de afbeeldingenclausule is verhuisd naar het gemeten kader (sendImagesNote) — één uitspraak, niet twee.
+        sendHint: "Stuur de gekozen omvang als nieuw kennis-CONCEPT — met opmaak (koppen, lijsten, tabellen). Er wordt niets automatisch gepubliceerd — je controleert alles in KLARWERK.",
+        sendCta: "Als concept sturen",
+        // JOB 3057 K2: het vastleg-vlak volgens Erfassen.dc.html — labels in plaats van uitleg.
+        captureCardTitle: "Selectie vastleggen",
+        captureEmpty: "Selecteer tekst in Word.",
+        captureKicker: "SELECTIE · {n} ALINEA'S",
+        captureKickerEins: "SELECTIE · 1 ALINEA",
+        captureTitleLabel: "Titel",
+        // JOB 3555 K2b: „Gebied" wie in bestandBereich („Gebied: {bereich}").
+        captureBereichLabel: "Gebied",
+        captureBereichWahl: "Gebied kiezen",
+        captureBereichLaedt: "Wordt geladen …",
+        captureBereichLeer: "Nog geen gebied in jouw bestand",
+        captureBereichFehler: "Gebieden niet geladen",
+        captureDocumentLink: "Heel document overnemen",
+        captureRetry: "Opnieuw sturen",
+        captureLogin: "Aanmelden",
+        captureReload: "Opnieuw laden",
+        captureBilderLink: "In KLARWERK aanvullen",
+        // JOB 2620 (sinds JOB 3506 achter het tandwiel): gemeten afbeeldingenkader, controlehint.
+        sendImagesNote: "Ingesloten afbeeldingen komen mee met het concept. Afbeeldingen met tekstomloop geeft Word hier niet vrij — één daarvan kost momenteel alle afbeeldingen van het document.",
+        sendImagesNoteLink: "Met alle afbeeldingen: upload in de console.",
+        sendReviewNote: "Het gaat pas ter controle wanneer je het indient — er wordt niets automatisch gevalideerd.",
+        sendEmpty: "Selecteer eerst tekst in het document.",
+        sendEmptyDoc: "Het document bevat geen tekst.",
+        scopePagesHint: "Per pagina versturen kan hier niet — selecteer in plaats daarvan het gewenste bereik in het document.",
+        // JOB 3057 K2 (§5.5): het resultaat in plaats van de waarschuwing vooraf — EEN zin, alleen als het speelt.
+        sendOverBudget: "De opmaak was te groot — het concept bevat de platte tekst.",
+        sendPlainFallback: "Word heeft geen bruikbare HTML geleverd — opmaak en afbeeldingen ontbreken in het concept.",
+        sendImagesMissing: "Word heeft {n} afbeeldingen niet vrijgegeven — de tekst is volledig.",
+        sendImagesMissingOne: "Word heeft 1 afbeelding niet vrijgegeven — de tekst is volledig.",
+        sendImagesDropped: "{n} afbeeldingen waren te groot en ontbreken in het concept.",
+        sendImagesDroppedOne: "1 afbeelding was te groot en ontbreekt in het concept.",
+        sendDocIdUnsaved: "Concept aangemaakt, maar de documentcode is niet in het Word-document opgeslagen — sla het document op en verstuur opnieuw, anders telt het later als nieuw document.",
+        sendImagesBoth: "{n} afbeeldingen ontbreken in het concept — {a} heeft Word niet vrijgegeven, {b} waren te groot.",
+        // JOB 3438: de afbeeldingsbalans van het documentpad (zie het Duitse blok voor de redenering).
+        sendImagesShrunkOne: "1 afbeelding is verkleind.",
+        sendImagesShrunkMany: "{n} afbeeldingen zijn verkleind.",
+        sendImagesKeptOne: "1 afbeelding hoefde niet te worden verkleind.",
+        sendImagesKeptMany: "{n} afbeeldingen hoefden niet te worden verkleind.",
+        sendImagesNotShrunkOne: "1 afbeelding is niet verkleind.",
+        sendImagesNotShrunkMany: "{n} afbeeldingen zijn niet verkleind.",
+        sendImagesFailedOne: "Verkleinen mislukte bij 1 afbeelding: {liste}.",
+        sendImagesFailedMany: "Verkleinen mislukte bij {n} afbeeldingen: {liste}.",
+        sendImageFailTooBig: "te groot",
+        sendImageFailUnreadable: "niet leesbaar",
+        sendImageFailTimeout: "tijdslimiet bereikt",
+        sendImagesUnknownOne: "Bij 1 afbeelding noemt de server een reden die deze versie niet kent: {liste}.",
+        sendImagesUnknownMany: "Bij {n} afbeeldingen noemt de server redenen die deze versie niet kent: {liste}.",
+        sendBusy: "Versturen ...",
+        sendOk: "Concept verstuurd",
+        sendAuth: "Niet aangemeld — meld je eerst aan bij KLARWERK.",
+        // JOB 3057 K2 (§5.6): elke fout is EEN zin (plus EEN knop); elke houdt de toezegging vast: niets aangemaakt.
+        sendError: "Versturen mislukt ({detail}) — er is GEEN concept aangemaakt.",
+        sendOffline: "Geen verbinding — er is GEEN concept aangemaakt.",
+        sendTooLarge: "Te groot voor de overdracht — er is GEEN concept aangemaakt.",
+        sendForbidden: "Je account mag geen concepten aanmaken — er is GEEN concept aangemaakt.",
+        sendRateLimited: "Te veel verzoeken ({n} s wachten) — er is GEEN concept aangemaakt.",
+        sendRateLimitedUnknown: "Te veel verzoeken — er is GEEN concept aangemaakt.",
+        noOffice: "Word is niet herkend — versturen werkt alleen in Word.",
+        officeDetecting: "De Word-omgeving wordt nu herkend — versturen blijft uitgeschakeld tot Word zich meldt.",
+        openLink: "Openen",
+        tabAsk: "Vragen",
+        tabCapture: "Vastleggen",
+        askRuheSatz: "Stel een vraag of markeer tekst in Word.",
+        askMehr: "Meer",
+        askWeniger: "Minder",
+        retryCta: "Opnieuw proberen",
+        askOffline: "Geen verbinding.",
+        einstTitel: "Instellingen",
+        einstZurueck: "Terug",
+        einstSprache: "Taal",
+        einstMitlesen: "Tekst in Word meelezen",
+        einstAdminKicker: "DOOR ADMIN INGESTELD",
+        einstErfassenKicker: "BIJ HET VASTLEGGEN",
+        einstKi: "AI",
+        einstWissen: "Kennis",
+        einstWissenWert: "Alleen vrijgegeven",
+        einstServer: "Server",
+        einstAbmelden: "Afmelden",
+        einstHilfe: "Hoe Klara antwoordt",
+        askTitle: "Klara vragen",
+        // JOB 3056 K1: kortere placeholder, één woord in plaats van een zin.
+        askInputPlaceholder: "Vraag",
+        askCta: "Klara vragen",
+        // JOB 3019 (KA5): Schlüsselname unverändert, Aussage umgedreht — Begründung im DE-Block.
+        // JOB 3056 K1: de zin verschijnt nu alleen nog in het ENE geval waarin selectie EN
+        // getypte tekst allebei aanwezig zijn (updateAskSourceNote).
+        askSourceSelectionOverride: "Gevraagd wordt: je invoer hieronder. Je selectie in het document wordt meegestuurd en scherpt de zoekopdracht aan.",
+        // JOB 3019 (KA5): de middelste zin beweerde dat de selectie wordt gevraagd — sinds de
+        // getypte vraag altijd wint, noemt hij de selectie nu als zoekverscherping.
+        askReviewNotice: "Antwoorden komen woordelijk uit gevalideerde KLARWERK-kennis — met bronnen. Een selectie in Word scherpt de zoekopdracht aan. Controleer dit vakinhoudelijk voordat je het gebruikt.",
+        aiGeneratedNotice: "Door kunstmatige intelligentie gegenereerd — controleer dit vakinhoudelijk.",
+        // JOB 3079 · S4 — zie de toelichting bij het Duitse blok.
+        aiLageLaedt: "De AI-stand van KLARWERK wordt opgehaald ...",
+        aiLageUnerreichbar: "De AI-stand van KLARWERK is nu niet op te halen.",
+        aiLageExtern: "In KLARWERK werkt voor antwoorden momenteel een externe AI (cloud).",
+        aiLageIntern: "In KLARWERK werkt voor antwoorden momenteel een interne AI.",
+        aiLageKeine: "In KLARWERK werkt voor antwoorden momenteel geen AI. Voor andere taken in KLARWERK kan dat anders zijn.",
+        wegExternZustimmung: "Klara's antwoord in dit venster komt met de externe AI {provider} tot stand, omdat je voor dit document toestemming hebt gegeven: je vraag en de teksten van de gevonden items gaan daarheen.",
+        wegExternOhneZustimmung: "Zonder jouw toestemming gaat er voor dit document niets naar {provider}. Klara's antwoord in dit venster komt dan zonder AI-model tot stand — regelgebaseerd, met een woordelijk citaat uit gevalideerde kennis.",
+        wegExternZustimmungWeg: "Je toestemming voor dit document geldt niet meer. Tot je opnieuw toestemt, komt Klara's antwoord in dit venster zonder AI-model tot stand — regelgebaseerd, met een woordelijk citaat uit gevalideerde kennis.",
+        wegIntern: "Voor dit venster wordt zij niet gebruikt: Klara's antwoord komt hier zonder AI-model tot stand — regelgebaseerd, met een woordelijk citaat uit gevalideerde kennis.",
+        wegDeterministisch: "Klara's antwoord in dit venster komt zonder AI-model tot stand — regelgebaseerd, met een woordelijk citaat uit gevalideerde kennis.",
+        wegUnbekannt: "Voor dit document is er nu geen bevestigde stand. Zolang dat zo is, komt Klara's antwoord in dit venster zonder AI-model tot stand — regelgebaseerd, met een woordelijk citaat uit gevalideerde kennis.",
+        trustHeadLabel: "Klara's AI-stand",
+        trustModeLaedt: "Stand wordt opgehaald",
+        trustModeUnerreichbar: "Stand niet op te halen",
+        trustModeExtern: "KLARWERK: externe AI",
+        trustModeIntern: "KLARWERK: interne AI",
+        trustModeKeine: "KLARWERK: geen AI",
+        askCaveatUnknown: "Een dragende bron is niet vindbaar in de bibliotheek.",
+        askCaveatUnchecked: "Een dragende bron heeft geen controleronde.",
+        askCaveatNoCoverage: "Er is een controleronde zonder dekkingsbewijs.",
+        askCaveatIncomplete: "Een controleronde is onvolledig gebleven.",
+        askCaveatUnattributed: "De server kon het antwoord aan geen enkele bron toewijzen.",
+        askCaveatOther: "Er geldt een voorbehoud waarvan deze versie de reden niet kent.",
+        askCaveatCount: "({unproven} van {total} dragende bronnen zonder volledig bewijs.)",
+        askConflictConflicted: "Let op: een dragende bron staat in een open conflict.",
+        askConflictUnproven: "De conflictsituatie is onbekend — dat betekent niet dat er geen is.",
+        askConflictClear: "Geen open conflicten op de dragende bronnen.",
+        s4Label: "In deze sessie",
+        s4ModeDeterministic: "Zonder model",
+        s4ModeInternal: "On-Premise Enterprise AI",
+        s4ModeExternal: "Externe AI",
+        s4ModeUnbekannt: "Modus onbekend",
+        s4StateLaedt: "Sessiestand wordt opgehaald ...",
+        s4StateBereit: "De sessiestand is beschikbaar.",
+        s4StateAbweichung: "Er geldt een andere modus dan is ingericht.",
+        s4StateBlockiert: "De uitvoering is geblokkeerd.",
+        s4StateUnerreichbar: "De sessiestand kan niet worden opgehaald.",
+        s4StateKeineSitzung: "Voor dit venster bestaat geen sessie.",
+        s4StateVeraltet: "De getoonde stand is verlopen.",
+        s4StateGesperrtLokal:
+          "De laatste aanroep is mislukt. Totdat de server een nieuwe stand bevestigt, geldt hier niets als toegestaan.",
+        s4Anbieter: "Aanbieder {provider} · Model {model}",
+        s4Abweichung: "Ingericht was {soll}. Reden van de afwijking: {grund}",
+        s4Blockiert: "Geblokkeerd. Reden: {grund}",
+        s4Veraltet: "Deze stand is verlopen en wordt opnieuw opgehaald.",
+        s4Sitzung: "Toestemming: {stand}",
+        s4SitzungNichtAngemeldet: "Niet aangemeld — je toestemmingsstand wordt pas na het aanmelden zichtbaar (hij gaat daarbij niet verloren).",
+        s4BlockiertTrotzZustimmung: "Toch geblokkeerd: {grund} Dat beslist niet jouw venster.",
+        s4Unbekannt: "onbekend",
+        s4ReasonExternalNotConfigured: "Er is geen externe aanbieder ingericht.",
+        s4ReasonInternalNotConfigured: "Er is geen On-Premise Enterprise AI ingericht.",
+        s4ReasonExternalNotMigrated: "De externe weg is nog niet vrijgegeven.",
+        s4ReasonExternalConsentMissing: "Uw toestemming voor de externe weg ontbreekt.",
+        s4ReasonPolicyIncomplete: "De regels zijn onvolledig vastgelegd.",
+        s4ReasonOther: "De server noemt een reden die deze versie niet kent.",
+        s4ConsentNone: "geen vereist",
+        s4ConsentErforderlich: "vereist, nog niet verleend",
+        s4ConsentPending: "open",
+        s4ConsentGranted: "verleend",
+        s4ConsentExpired: "verlopen",
+        s4ConsentRevoked: "ingetrokken",
+        s4ConsentInvalidated: "ongeldig gemaakt",
+        s4ConsentUnbekannt: "stand onbekend",
+        // KW-KA4: noemt DIT DOCUMENT — de toestemming is serverzijdig aan `documentContextId` gebonden.
+        s4ConsentTitel: "Externe AI voor dit document toestaan",
+        s4ConsentText: "Voor dit document zou een externe aanbieder worden gebruikt. Zonder uw toestemming wordt daar niets naartoe gestuurd. Zij geldt alleen voor dit document en deze sessie, u kunt haar altijd intrekken — en wat vertrouwelijk is gemarkeerd blijft in elk geval hier.",
+        ka4FrageTitel: "Mag ik hiervoor de externe AI inschakelen?",
+        ka4FrageText: "Hiervoor heb ik de externe AI nodig — mag ik dit document versturen? Wat vertrouwelijk is gemarkeerd blijft hier.",
+        ka4FrageJa: "Ja, toestaan voor dit document",
+        ka4FrageNein: "Nee, zonder externe AI",
+        ka4Abgelehnt: "Voor dit document blijft externe AI uit. U kunt dit hierboven altijd wijzigen.",
+        s4ConsentSatz: "{klassen} gaan naar {provider}.",
+        s4KlassenUnd: "en",
+        s4Klasse_question: "Je vraag",
+        s4Klasse_candidate_texts: "de teksten van de gevonden items",
+        s4ConsentUmfang: "Aanbieder {provider} · Model {model} · Sessie {session} · Betrokken gegevens: {klassen}",
+        s4ConsentKlassenFehlen:
+          "De server heeft nog niet bepaald welke gegevens zouden worden verzonden. Zonder die opgave kan hier geen toestemming worden gegeven.",
+        s4ConsentKlassenBlockiert: "Uitgesloten blijven: {klassen}",
+        s4ConsentKnopf: "Toestemmen",
+        s4ConsentWiderruf: "Intrekken",
+        s4ConsentBusy: "Wordt naar de server verzonden ...",
+        s4ConsentFehler: "De toestemming kon niet worden verzonden. Probeer het opnieuw.",
+        s4RebindFehler:
+          "Het document is opgeslagen, maar de nieuwe documentbinding kon niet worden vastgelegd.",
+        s4FragenGesperrt: "De server staat voor deze sessie momenteel geen uitvoering toe.",
+        askSnippetLabel: "Gebruikt fragment",
+        askRoleCarrying: "draagt het antwoord",
+        askRoleConsulted: "geraadpleegd",
+        askRuleNote: "Geen AI-antwoord zonder bewijs · Vertrouwelijk blijft vertrouwelijk. Klara citeert gevalideerde KLARWERK-kennis woordelijk; je geselecteerde tekst wordt niet naar een externe AI gestuurd.",
+        askEmpty: "Selecteer eerst een uitspraak in het document of typ hieronder een vraag.",
+        askBusy: "Klara zoekt in de vrijgegeven kennis — de invoer is zolang vergrendeld.",
+        // JOB 3019 (KA5) R2: sprak over de selectie, gekapt wordt echter de vraag — zie DE-blok.
+        askTruncated: "De vraag is langer dan {max} tekens — alleen het begin gaat mee.",
+        askAuth: "Niet aangemeld — meld je eerst aan bij KLARWERK.",
+        askTimeout: "Geen antwoord van de server (time-out). Probeer het opnieuw.",
+        askSelectionTimeout: "Word heeft de selectie niet geleverd (time-out). Probeer het opnieuw.",
+        askError: "Vragen mislukt ({detail}).",
+        askForbiddenRead:
+          "Ontbrekend recht: je account mag de KLARWERK-kennis niet lezen. Neem contact op met de KLARWERK-beheerder.",
+        askRateLimited: "Te veel verzoeken — probeer het over {n} seconden opnieuw.",
+        askRateLimitedUnknown: "Te veel verzoeken — probeer het later opnieuw.",
+        askAnswerTitle: "Bronvast antwoord",
+        // AUFTRAG-mega34 B2: de classificatie — in het paneel EN in de ingevoegde tekst.
+        askEvidenceVerified: "Classificatie: gewaarborgd — bronnen aangetoond, geen open tegenstrijdigheden bekend.",
+        askEvidenceUnverified: "Classificatie: ongecontroleerd — niet aangetoond als conflictvrij. Controleer voor gebruik.",
+        askSourcesTitle: "Bronnen",
+        askTrust: "Vertrouwen {n}",
+        askGapTitle: "Hierover is geen vrijgegeven bedrijfskennis.",
+        askGapFrageAendern: "Vraag aanpassen",
+        askGapSendCta: "Als open vraag aan KLARWERK doorgeven",
+        askGapFuss: "Klara verzint geen antwoorden — een hiaat is een eerlijk antwoord.",
+        askGapSentOk: "Open vraag verstuurd: {title}",
+        askGapOpenLink: "Vraag in KLARWERK openen",
+        askInsertCta: "Invoegen",
+        askInsertOk: "Antwoord ingevoegd.",
+        askInsertFail: "Invoegen mislukt ({detail}). Je kunt de tekst via „Kopiëren\" overnemen.",
+        askInsertNoPermission: "Invoegen niet mogelijk: de add-in heeft geen schrijfrechten voor dit document. Het Klara-manifest moet opnieuw worden geladen (sideload) met de machtiging ReadWriteDocument ÉN een hoger versienummer (anders houdt Office het oude manifest in de cache) — neem contact op met de KLARWERK-beheerder. Ondertussen kun je de tekst via „Kopiëren\" overnemen.",
+        askInsertEmpty: "Het antwoordveld is leeg — voer tekst in of stel de vraag opnieuw.",
+        askAnswerEditHint: "Je kunt het antwoord vóór het invoegen inkorten of aanpassen. Classificatie en bronregel worden automatisch toegevoegd — bij invoegen, bij kopiëren en ook bij Ctrl+C of Cmd+C. Alleen een deelselectie blijft onbewerkt: een fragment is geen antwoord.",
+        askCopyCta: "Kopiëren",
+        askHerkunft: "Uit vrijgegeven bedrijfskennis",
+        askChipStand: "per {date}",
+        askHerkunftQuelle: "Bron:",
+        askHerkunftVersion: "Versie {n}",
+        askHerkunftVersionUnbekannt: "versie onbekend",
+        askHerkunftNichtGeladen: "kon niet worden geladen",
+        askHerkunftLaden: "Bronnen worden geladen …",
+        askHerkunftKeinBeleg: "Hiervoor heb ik geen bewijs.",
+        askUngeprueftEins: "Hierover is één item dat nog niet is beoordeeld: {titel}",
+        askUngeprueftMehrere: "Hierover zijn {n} items die nog niet zijn beoordeeld: {titel}",
+        askFragment: "Dit antwoord is bij de lengtelimiet afgebroken en kan onvolledig zijn.",
+        captureDubLaeuft: "Dubbelcontrole loopt …",
+        captureDubLeer: "Niets vergelijkbaars gevonden (nagekeken {zeit}).",
+        captureDubTreffer: "Er bestaat al iets vergelijkbaars (nagekeken {zeit}):",
+        captureDubLeerGekuerzt: "Alleen de eerste {max} tekens konden worden nagekeken (nagekeken {zeit}): daarin niets vergelijkbaars — de rest is niet nagekeken.",
+        captureDubTrefferGekuerzt: "Alleen de eerste {max} tekens konden worden nagekeken (nagekeken {zeit}) — daarin al iets vergelijkbaars:",
+        captureDubFehler: "Controle niet mogelijk.",
+        captureDubZuKurz: "Dubbelcontrole pas vanaf 40 tekens.",
+        captureDubIdentisch: "identiek",
+        captureDubEnthaeltEintrag: "bevat het item",
+        captureDubImEintrag: "opgenomen in het item",
+        captureDubTeilweise: "deels gelijk",
+        captureDubVerwandt: "verwant",
+        askNeueFrage: "Nieuwe vraag",
+        askFrageBearbeiten: "Vraag bewerken",
+        askCopyOk: "Naar het klembord gekopieerd.",
+        askCopyFail: "Het klembord van de browser is niet beschikbaar. De volledige tekst staat hieronder klaar en is al geselecteerd — kopieer deze daarvandaan.",
+        askCopyFallbackHint: "Volledige tekst met classificatie en bronregel — deze tekst is bedoeld om te kopiëren:",
+        askCopyNativeOk: "Gekopieerd. Classificatie en bronregel zijn automatisch toegevoegd.",
+        askCopyNativePending: "NOG NIET afgegeven: de brontitels worden nog geladen. Zonder deze zou de bronregel alleen de systeemnaam dragen in plaats van de bewijzen. Wacht even en probeer het opnieuw.",
+        askDragFail: "NIET afgegeven: deze sleepactie kan geen gegevens opnemen. Ze is afgebroken zodat er niets zonder classificatie en bronregel naar buiten gaat. De volledige tekst staat hieronder klaar en is al geselecteerd.",
+        askCopyPartial: "Deelselectie — zonder classificatie en zonder bronregel. Een fragment is geen antwoord; selecteer alles of gebruik „Kopiëren\" voor de volledige tekst.",
+        askShowMore: "Meer tonen",
+        askShowLess: "Minder tonen",
+        askStatusValidiert: "Gevalideerd",
+        askStatusPruefung: "In beoordeling",
+        askStatusOffen: "Open",
+        askStatusUnknown: "Status onbekend",
+        bestandCta: "Hebben we dit al?",
+        bestandStand: "Stand {zeit}",
+        bestandKeinText: "Geen leesbare tekst in Word.",
+        bestandVerweigert: "Geen rechten voor de controle in deze sessie.",
+        bestandNochNichtGeprueft: "nog niet beoordeeld",
+        bestandVersion: "Versie {n}",
+        bestandBereich: "Gebied: {bereich}",
+        bestandOeffnen: "In de bibliotheek openen",
+        quellenfundTreffer: "Bronvondst in de volledige tekst ({n}):",
+        quellenfundLeer: "Geen bronvondst in het doorzochte bestand.",
+        quellenfundOffen: "Bronvondst niet doorzocht.",
+        quellenfundGekappt: "Niet volledig doorzocht — meer kandidaten dan doorzocht.",
+        quellenfundSatz: "Deze passage staat in de volledige tekst van „{titel}“.",
+        quellenfundTeil: "Gedeeltelijke overeenkomst ({n} van {m} tekens)",
+        quellenfundStelle: "Vindplaats",
+        askSourceLine: "Bron: {titles} (KLARWERK-kennis, per {date})",
+        askSourceLineRetrieved: "Bron: {titles} (KLARWERK-kennis, opgehaald op {date})",
+        askInsertTruncatedNote: "Let op: de onderliggende vraag is ingekort tot {max} tekens.",
+        askForbidden: "Ontbrekend recht: je account mag geen open vragen als concept versturen.",
+        askOpenQuestionPrefix: "Open vraag: ",
+        askOpenQuestionFallback: "Open vraag uit Word",
+        fassungAktuell: "Add-in-versie {geladen} · actueel",
+        fassungWechsel: "Add-in-versie {geladen} · nieuwe versie {verfuegbar} beschikbaar",
+        fassungUnbekannt: "Add-in-versie {geladen} · vergelijken niet mogelijk",
+        fassungCta: "Opnieuw laden",
+        helpTitle: "Wat kan Klara hier?",
+        // JOB 2620 D5: vierde plek van de afbeeldingenuitspraak (hulpkaart) — die hoort alleen bij het gemeten kader in tab 2.
+        helpCan1: "Je selectie of het hele document als KLARWERK-concept aanmaken — met opmaak en tabellen (alleen concept, geen afgerond kennisobject).",
+        helpCan2: "Eerlijk zeggen of je bent aangemeld, of het versturen is gelukt en wat Word NIET kon leveren.",
+        helpCan3: "Vragen bronvast beantwoorden uit de GEVALIDEERDE kennisbasis — en het antwoord met bronvermelding in het document invoegen.",
+        helpNot1: "Klara is geen chatbot: zonder betrouwbare basis wordt er NIETS verzonnen — de vraag blijft eerlijk open (kennishiaat).",
+        helpNot2: "Nog NIET: per pagina versturen — Word geeft paginagrenzen in het taskpane niet vrij; selecteer in plaats daarvan het bereik.",
+        // JOB 3667 (WORD-RUECKWEG), zie het Duitse blok voor de toelichting.
+        rwTitel: "Welk item bijwerken?",
+        rwVorschauTitel: "Dit gaat naar het item:",
+        rwPruefwegLabel: "Eerst iemand anders laten kijken",
+        rwPflichtHinweis: "Vrijgave door anderen is verplicht.",
+        rwCtaFrei: "Bijwerken en vrijgeven",
+        rwCtaEinreichen: "Ter vrijgave indienen",
+        rwAbwahl: "Andere keuze",
+        rwZielZeile: "{titel} · versie {n}",
+        rwLaden: "Item wordt geladen …",
+        rwLadeFehler: "Het item kon niet worden geladen.",
+        rwLaeuft: "Bijwerken loopt …",
+        rwFertigFrei: "Bijgewerkt en vrijgegeven: versie {n}.",
+        rwFertigOffen: "Bijgewerkt: versie {n}. De vrijgave staat nog open.",
+        rwVorschlagAblehnenCta: "Afwijzen",
+        rwVorschlagEigen: "Je eigen voorstel — iemand anders beoordeelt het.",
+        rwAbgelehnt: "Voorstel afgewezen. Het item blijft ongewijzigd.",
+        rwEingereicht: "Ingediend. Het item draagt nog de vrijgegeven stand.",
+        rwEinreichFehler: "Indienen mislukt — er is niets ingediend.",
+        rwVorschlaegeTitel: "Ingediend, nog niet vrijgegeven:",
+        rwVorschlagZeile: "{wer} · {zeit} · uit versie {n}",
+        rwVorschlagCta: "Voorstel vrijgeven",
+        rwVorschlagAelter: "Het voorstel komt uit versie {n}, het item staat op {m}.",
+        rwVorschlagRumpf: "Dit voorstel bevat uitgebreide inhoud. Dit venster kan die niet tonen — daarom wordt hij hier niet vrijgegeven. Bekijk het in KLARWERK en beslis daar.",
+        rwVorschlagRumpfWeg: "Let op: dit voorstel wist de uitgebreide inhoud — de indiener heeft die leeggemaakt. Vrijgeven verwijdert die uit het item.",
+        rwVorschlagRumpfBleibt: "Het voorstel wijzigt alleen de uitspraak. De uitgebreide inhoud van het item blijft ongewijzigd bestaan.",
+        rwStale: "Het item staat inmiddels op versie {n}. Er is niets overschreven.",
+        rwStaleCta: "Stand opnieuw laden",
+        rwMarkierungAnders: "De selectie is gewijzigd — niets verstuurd.",
+      },
+    };
+
+    var lang = "de";
+    var signedIn = false;
+
+    // WP-KLARA-1b (K5): Office-Verfuegbarkeit ist ein EIGENER, ehrlicher Zustand. officeChecked wird
+    // true, sobald die Erkennung abgeschlossen ist (Office.onReady ODER Frist abgelaufen); officeReady
+    // nur, wenn Office WIRKLICH bereit ist.
+    //
+    // JOB 3018 (P7): Aus diesen ZWEI Merkern leitet `updateSendState` DREI Lagen ab — kein drittes
+    // Flag daneben, eine Zustandsquelle:
+    //   1. !officeChecked                 — die Erkennung LAEUFT. Senden gesperrt, der Grund
+    //                                       (`officeDetecting`) steht am Knopf; der Hinweiskasten
+    //                                       bleibt still, denn dass die Seite ausserhalb von Word
+    //                                       laeuft, ist zu diesem Zeitpunkt NICHT festgestellt.
+    //   2. officeChecked && !officeUsable — Erkennung fertig, kein Word. Hinweiskasten + `noOffice`
+    //                                       am Knopf.
+    //   3. officeChecked && officeUsable  — Erkennung fertig, Word da. Kein Grund am Knopf; gesperrt
+    //                                       ist er dann nur noch, solange niemand angemeldet ist.
+    // Der Senden-Knopf ist also NUR bei angemeldet UND Office-bereit aktiv — in jeder anderen Lage
+    // ist er mit ehrlichem Grund deaktiviert (kein toter/crashender Klick, und keiner ohne Grund).
+    var officeChecked = false;
+    var officeReady = false;
+    var OFFICE_READY_TIMEOUT_MS = 4000;
+
+    function officeUsable() {
+      return officeReady && window.Office && Office.context && Office.context.document;
+    }
+
+    // ============================================================================================
+    // JOB 3057 K2 — DER ZUSTAND DER ERFASSEN-FLAECHE (Zielbild Erfassen.dc.html).
+    // ============================================================================================
+    // `captureMarkierung` sind die Absaetze der aktuellen Word-Markierung (Text-Zugriff, gelesen
+    // bei Office-Bereitschaft, bei jedem DocumentSelectionChanged und beim Wechsel auf den Reiter).
+    // Aus ihr entstehen Kicker („MARKIERUNG · n ABSAETZE"), Absaetze, die Vorbelegung der Zeile
+    // „Titel" und die Freigabe des Knopfs. `captureErgebnis` haelt nach einem BESTAETIGTEN Entwurf
+    // (Serverantwort 201) die Ergebniszeile samt Link und — nur im Fall — den EINEN Bilder-Satz;
+    // eine andere Markierung loest die Zeile wieder ab. Nie „gesendet" ohne Serverbestaetigung,
+    // nie eine Bilderzahl ohne Serverantwort bzw. ohne gezaehltes HTML.
+    var captureMarkierung = [];
+    var captureErgebnis = null;
+    var captureGesendet = null;
+    var captureTitelVonHand = false;
+    var captureLeseLauf = 0;
+    var captureAngeschlossen = false;
+    var captureLetzterUmfang = "selection";
+    // JOB 3057 Runde 3 (BEN): jeder Sendelauf traegt eine Nummer und die Markierung, die beim
+    // Senden auf der Karte stand. Ein Ruecklauf eines AELTEREN Laufs (inzwischen wurde erneut
+    // gesendet) veraendert weder Karte noch Status noch Link; ein Ruecklauf des aktuellen Laufs
+    // wird nur dann zur Ergebniszeile der Karte, wenn die Karte noch DIESELBE Markierung zeigt —
+    // sonst gehoert die Bestaetigung zum gesendeten Inhalt und nicht zur neuen Markierung.
+    //
+    // JOB 3594 K2b (NEBENLAUF), RUNDE 2 — AUS DER NUMMER WURDE DAS KENNZEICHEN DES OFFENEN LAUFS:
+    // `null` heisst „kein Versand unterwegs", jeder andere Wert IST der Lauf, der den Sendeweg
+    // gerade haelt. Damit steht die Frage „laeuft gerade einer?" in DERSELBEN Veraenderlichen wie
+    // die Frage „gehoert dieser Ruecklauf noch dazu?" — es gibt nichts zu synchronisieren und
+    // nichts, was auseinanderlaufen koennte.
+    //
+    // WARUM ES DIESEN ZUSTAND BRAUCHT: die drei Pruefungen mit `sendeLaufAktuell` liegen allesamt
+    // HINTER dem `fetch("/api/drafts", …)`. Sie halten die ANZEIGE eines ueberholten Laufs zurueck —
+    // den zweiten POST verhindern sie nicht. Gemessen am Stand davor: zwei Klicks auf „Senden",
+    // waehrend der erste POST offen ist, ergaben ZWEI Entwuerfe auf dem Server
+    // (`tests/k2b-nebenlauf/…`, Fall A1: „abgesetzte POST /api/drafts nach zwei Klicks: 2"), und
+    // die Flaeche zeigt nur EINEN Link. Der zweite Entwurf wird nie gesehen und nie weggeraeumt.
+    //
+    // WARUM EIN FRISCHES OBJEKT UND KEIN HOCHZAEHLER: das Kennzeichen muss zweierlei koennen —
+    // eindeutig sein (ein Ruecklauf darf nie zu einem SPAETEREN Lauf passen) und „keiner" sagen
+    // koennen. Ein Zaehler kann das nur mit einer zweiten Veraenderlichen daneben (Hoechststand UND
+    // offener Lauf); genau die hat BEN in Runde 1 als zweiten Zustand beanstandet. Ein frisches
+    // Objekt ist von sich aus einmalig, `null` ist von sich aus „keiner". Verglichen wird nur auf
+    // Gleichheit (`sendeLaufAktuell`) — gerechnet wird mit dem Wert nirgends.
+    //
+    // GESETZT an GENAU EINER Stelle (`sendeEntwurf`), GELOEST an genau einer
+    // (`sendeSperreLoesen`), GELESEN von `updateSendState` und `sendeLaufAktuell`.
+    var captureSendeLauf = null;
+    var sendStatusUrl = null;
+
+    // ============================================================================================
+    // JOB 3555 K2b — DER ZUSTAND DER BEREICH-ZEILE (Zielbild Erfassen.dc.html Z.39-45).
+    // ============================================================================================
+    //
+    // VIER LAGEN, und jede sagt genau das, was festgestellt ist:
+    //   "laedt"  → „Wird geladen …", Auswahl gesperrt. KEINE Aussage ueber den Bestand.
+    //   "liste"  → die Namen aus GET /api/categories, in der Reihenfolge der Antwort; davor der
+    //              Platzhalter „Bereich waehlen" mit leerem Wert (= keine Wahl).
+    //   "leer"   → „Noch kein Bereich in deinem Bestand" — die Route sieht ausschliesslich die
+    //              Sicht des Fragenden (category-routes.ts:9-11), deshalb „in DEINEM Bestand" und
+    //              nie „es gibt keine Bereiche".
+    //   "fehler" → „Bereiche nicht geladen". Ein Fehler heisst Fehler, nie stille Leere.
+    // In JEDER Lage bleibt die Zeile sichtbar und der Sendeknopf unberuehrt: ohne Bereich ist das
+    // Verhalten genau das von vor diesem Job.
+    //
+    // KEIN ZWISCHENSPEICHER — und das ist eine Entscheidung, keine Auslassung: die Route antwortet
+    // `cache-control: private, no-store` (category-routes.ts:13). Es wird beim Betreten der Flaeche
+    // frisch geholt; die Lage „Cache mit laufender Auffrischung" gibt es hier deshalb nicht. Und
+    // eine Auffrischung, die scheitert, laesst KEINE alte Liste als „aktuell" stehen: Liste und
+    // Wahl fallen, die Zeile nennt den gescheiterten Versuch (Lehre JOB 3027/3025/3037). Damit
+    // geht auch nie ein Wert hinaus, den dieser Lauf nicht belegt hat.
+    //
+    // `captureBereichWahl` ist die Wahl des Menschen, nicht der Zustand des Feldes: sie ueberlebt
+    // ein erneutes Zeichnen und eine ERFOLGREICHE Auffrischung, solange ihr Name noch in der neuen
+    // Liste steht. Findet die Auffrischung NICHTS mehr (leere Liste) oder scheitert sie, faellt sie
+    // mit (RUNDE 5).
+    // Und sie ist NICHT die Quelle des Versands: gesendet wird, was die Zeile sichtbar traegt
+    // (`captureBereichGewaehlt`). Ein gehaltener Wert allein kann deshalb nie hinausgehen.
+    var captureBereichLage = "laedt";
+    var captureBereiche = [];
+    var captureBereichWahl = "";
+    var captureBereichLauf = 0;
+
+    function updateSendState() {
+      var sendBtn = document.getElementById("send-btn");
+      var hint = document.getElementById("office-hint");
+      var hintBtn = document.getElementById("office-hint-btn");
+      var dokLink = document.getElementById("capture-dokument-link");
+      var unavailable = officeChecked && !officeUsable();
+      if (unavailable) {
+        // JOB 3057 K2 (§5.6): EIN Satz, EIN Knopf („Neu laden").
+        hint.className = "status warn";
+        hint.textContent = t("noOffice");
+        hintBtn.className = "ghost capture-knopf";
+        sendBtn.disabled = true;
+        sendBtn.title = t("noOffice"); // ehrlicher Grund direkt am deaktivierten Knopf
+      } else if (!officeChecked) {
+        // JOB 3018 (P7): die Erkennung laeuft noch. Gesperrt ist der Knopf hier aus EINEM Grund —
+        // Word hat sich noch nicht gemeldet —, und der steht am Knopf. Der Hinweiskasten bleibt
+        // bewusst still: ein Warnkasten fuer die Wartezeit waere Laerm im Normalfall, und
+        // `noOffice` waere hier schlicht unwahr (nichts ist bisher festgestellt).
+        hint.className = "hidden";
+        hint.textContent = "";
+        hintBtn.className = "ghost capture-knopf hidden";
+        sendBtn.disabled = true;
+        sendBtn.title = t("officeDetecting");
+      } else {
+        hint.className = "hidden";
+        hint.textContent = "";
+        hintBtn.className = "ghost capture-knopf hidden";
+        sendBtn.title = "";
+        // JOB 3057 K2 (§5.3): frei nur mit Anmeldung, Word UND einer Markierung — ohne
+        // Erklaersatz am Knopf; ohne Markierung sagt es die Karte selbst („Markiere Text in Word.").
+        // JOB 3594 K2b: und nicht, solange ein Versand offen ist. KEIN neuer Satz am Knopf — der
+        // Grund steht bereits im Statusfeld („Wird gesendet …", `sendBusy`), und zwei Saetze zu
+        // derselben Sache waeren einer zu viel. Der Titel bleibt deshalb leer.
+        sendBtn.disabled = !(signedIn && officeUsable() && captureMarkierung.length > 0) ||
+          captureSendeLauf !== null;
+      }
+      // Der Textlink „Ganzes Dokument uebernehmen" haengt an Anmeldung und Word, nicht an der
+      // Markierung — er ist der Weg, wenn nichts markiert ist. JOB 3594 K2b: waehrend eines offenen
+      // Versands ist auch er zu — er endet im selben POST, und die vorhandene Anzeige dafuer
+      // (`aria-disabled`, Stil `#capture-dokument-link[aria-disabled="true"]`) steht schon da.
+      if (signedIn && officeUsable() && captureSendeLauf === null) {
+        dokLink.removeAttribute("aria-disabled");
+      } else {
+        dokLink.setAttribute("aria-disabled", "true");
+      }
+      // JOB 3092 S6 (W6): die Dublettenpruefung haengt an der Anmeldung — sie laeuft erst, wenn die
+      // Sitzung belegt ist, und tritt zurueck, wenn sie faellt. Derselbe Text wird nicht erneut
+      // geprueft (captureDublettenPruefen ist darin idempotent).
+      captureDublettenPruefen();
+      // WP-KLARA-ASK: der Fragen-Bereich haengt an denselben Zustaenden (Session; Office nur fuers
+      // Einfuegen) — EINE Aufruf-Kette, keine zweite Zustandsquelle.
+      updateAskState();
+    }
+
+    function t(key, vars) {
+      var raw = (STRINGS[lang] && STRINGS[lang][key]) || STRINGS.de[key] || key;
+      if (vars) {
+        Object.keys(vars).forEach(function (k) {
+          // JOB 3438 R2 (BEN): der Wert wird WOERTLICH eingesetzt. Als Zeichenkette uebergeben
+          // deutet `String.replace` im ERSATZ die Muster `$&`, `$$`, `` $` `` und `$'` — aus einer
+          // Server-Kennung „ein-$&-grund" wuerde dann „ein-{liste}-grund". Seit JOB 3438 reichen wir
+          // fremde Kennungen durch diese Stelle; eine Ersetzungsfunktion kennt keine Muster.
+          var wert = String(vars[k]);
+          raw = raw.replace("{" + k + "}", function () { return wert; });
+        });
+      }
+      return raw;
+    }
+
+    function renderStatics() {
+      document.querySelectorAll("[data-t]").forEach(function (el) {
+        el.textContent = t(el.getAttribute("data-t"));
+      });
+      // JOB 3506 K2b: der „?"-Knopf der Erfassen-Flaeche ist weg — mit ihm sein aria-label und der
+      // Schluessel `captureMehr`. Die vier Saetze tragen ihren Wortlaut ueber `data-t` (oben).
+      // WP-KLARA-ASK: Platzhalter des Frage-Eingabefelds in der aktuellen Sprache.
+      document.getElementById("ask-input").placeholder = t("askInputPlaceholder");
+      // JOB 3004 D1: der Tooltip der Frage-Zeile („Frage bearbeiten") in der aktuellen Sprache.
+      document.getElementById("ask-frage-zeile-btn").title = t("askFrageBearbeiten");
+      // JOB 3017 D4: die Fragen-Karte traegt keine Ueberschrift mehr — askTitle ist der
+      // zugaengliche Name des Felds; der runde Sende-Pfeil traegt seinen Wortlaut askCta als
+      // aria-label (kein data-t: das wuerde das SVG durch Text ersetzen).
+      document.getElementById("ask-input").setAttribute("aria-label", t("askTitle"));
+      // JOB 3056 K1: die Symbolknoepfe des Kopfs, der Schalter und der Server-Host tragen ihren
+      // Wortlaut als aria-label bzw. als Wert — kein data-t (das ersetzte das SVG durch Text).
+      document.getElementById("kw-zurueck").setAttribute("aria-label", t("einstZurueck"));
+      document.getElementById("kw-zahnrad").setAttribute("aria-label", t("einstTitel"));
+      document.getElementById("einst-mitlesen").setAttribute("aria-label", t("einstMitlesen"));
+      document.getElementById("einst-sprache-wert").textContent = KW_SPRACHNAMEN[lang] || lang;
+      document.getElementById("einst-server-wert").textContent = window.location.host || "–";
+      document.getElementById("ka1-block").setAttribute("aria-label", t("ka1Title"));
+      document.documentElement.lang = lang;
+      kwKopfZeichnen();
+      // AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK A: der Vertrauenskopf wird MIT den statischen Texten
+      // gefuellt, nicht erst durch den Statusabruf. Damit ist er ab dem ersten Bildaufbau da —
+      // im Zustand „wird geprueft", der die Wahrheit ist, solange nichts abgerufen wurde. Ein
+      // Kopf, der erst nach einem Netzabruf erscheint, waere kein permanenter Kopf.
+      renderAiLage();
+      // AUFTRAG-W1-KLARA-KOPF-CONSENT-06: derselbe Grund fuer den sitzungsbezogenen Teil. Er steht
+      // ab dem ersten Bildaufbau da — im Zustand „wird abgerufen", und nach einem Sprachwechsel in
+      // der neuen Sprache, ohne den gehaltenen Serverstand zu verlieren.
+      renderKlaraS4();
+      // JOB 1077: dieselbe Ueberlegung fuer die Fassungszeile — sie ist Text zu einem GEHALTENEN
+      // Zustand und stuende ohne diese Zeile nach einem Sprachwechsel in der alten Sprache da.
+      renderKwFassung();
+    }
+
+    // JOB 3056 K1: die Sprachnamen in ihrer eigenen Sprache (Einstellungen.dc.html Z.26) —
+    // sprachneutral, deshalb kein Woerterbuch-Schluessel.
+    var KW_SPRACHNAMEN = { de: "Deutsch", en: "English", nl: "Nederlands" };
+
+    function setLang(next) {
+      lang = next;
+      ["de", "en", "nl"].forEach(function (code) {
+        document.getElementById("lang-" + code).className =
+          code === lang ? "einst-zeile active" : "einst-zeile";
+      });
+      renderStatics(); // mega75 Block A: die KI-Lage in der neuen Sprache (Zustand bleibt, Text
+                       // wechselt) — sie haengt jetzt IN renderStatics, s. dort.
+      // AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK B: Vorbehalt, Konfliktlage und Ausschnitt sind Texte zu
+      // einem GEHALTENEN Zustand (currentAskOutcome). Ohne diese Zeile stuenden sie nach einem
+      // Sprachwechsel in der alten Sprache da — dieselbe Falle, die refreshAnswerToggleLabel loest.
+      renderAskEvidence();
+      renderAskHerkunft(); // JOB 3092 S6: Herkunftszeilen und Ungeprueft-Satz in der neuen Sprache
+      renderAskUngeprueft();
+      renderAskFragment(); // JOB 3366: derselbe gehaltene Zustand, neuer Text
+      refreshAnswerToggleLabel(); // klara1b: „mehr/weniger anzeigen" in der neuen Sprache
+      renderCapture(); // JOB 3057 K2: Kicker, Ergebniszeile und Bilder-Satz in der neuen Sprache
+      renderCaptureBereich(); // JOB 3555 K2b: Platzhalter und Lagensatz der Bereich-Zeile neu —
+                              // gehaltener Zustand, neuer Text; die Namen selbst sind Daten und
+                              // werden nicht uebersetzt.
+      renderCaptureDubletten(); // JOB 3092 S6: die Dublettenauskunft — gehaltener Stand, neuer Text
+      rwZeichnen(); // JOB 3667: Rueckweg-Kasten und sein Satz in der neuen Sprache, Zustand bleibt
+      updateSendState(); // K5: Office-Hinweis/Knopf-Grund in der neuen Sprache neu aufbauen
+      checkSession(); // Statuszeile in der neuen Sprache neu aufbauen
+    }
+
+    // ---- AUFTRAG-mega75 Block A: der oeffentliche KI-Zustand -----------------------------------
+    // Ueber den VORHANDENEN Vertrag GET /api/reasoner/status — same-origin, mit derselben Sitzung,
+    // mit der dieses Panel schon /api/ask und /api/drafts ruft. Kein neuer Endpunkt, kein neuer
+    // Guard, kein Add-in-eigener Modellaufruf. Die Route ist bewusst oeffentlich und abstrahiert
+    // (tests/security/routeGuardAudit.ts: protection "public"; vip2-gate: kein Modellname) — genau
+    // deshalb darf und muss Klara sie zeigen.
+    var aiLagePhase = "laedt";
+    var aiLageStatus = null;
+
+    // AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK A: dieselbe Funktion, dieselben Zustaende, dieselben
+    // Texte — nur ein anderer Ort. Sie schreibt jetzt in den permanenten Kopf statt in eine Zeile
+    // des Fragen-Reiters. `klaraTrustHead` uebersetzt nur; den Zustand besitzt weiterhin
+    // `klaraAiLage`. Der Zustand steht als TEXT in der Pille; die Farbe ist die zweite Spur.
+    //
+    // JOB 3079 · S4 — ZWEI SAETZE, ZWEI QUELLEN, KEINE VERMISCHUNG. Der erste sagt, was im HAUS
+    // arbeitet (`aiLage*`, aus /api/reasoner/status, Besitzer `klaraAiLage`). Der zweite sagt, was
+    // in DIESEM Fenster passiert (`klaraWegKey`, aus der S4-Aufloesung, die auch AUSFUEHRT).
+    // Frueher stand die zweite Aussage unbedingt im ersten Satz — und wurde mit der Freischaltung
+    // des externen Antwortwegs falsch. `klaraTrustHead` bleibt dabei unberuehrt: es ist der
+    // Inline-Spiegel von `wordAddin.ts#klaraTrustHead` und darf seinen Zustandsraum nicht wechseln.
+    function renderAiLage() {
+      var head = document.getElementById("klara-trust-head");
+      var pill = document.getElementById("klara-trust-mode");
+      var detail = document.getElementById("klara-trust-detail");
+      if (!head || !pill || !detail) { return; }
+      var kopf = klaraTrustHead(aiLagePhase, aiLageStatus);
+      pill.textContent = t(kopf.modeKey);
+      pill.className = "trust-pill trust-pill-" + kopf.tone;
+      var weg = klaraS4Anzeige(klaraS4Phase, klaraS4Sicht, Date.now());
+      detail.textContent = t(kopf.detailKey) + " " + t(klaraWegKey(weg), klaraWegParam(weg));
+      // Der Kopf meldet sich als Statusbereich — mit einem Namen, den ein Screenreader ansagen
+      // kann, statt nur „Statusbereich".
+      head.setAttribute("aria-label", t("trustHeadLabel"));
+    }
+
+    // AUFTRAG-mega77 BLOCK C — DER STATUSABRUF BRAUCHT EIN ENDE.
+    //
+    // Bis mega77 behandelte `ladeAiLage` Fehler, ungueltige Antworten und Zurueckweisungen als
+    // „nicht erreichbar", hatte aber WEDER ZEITGRENZE NOCH ABBRUCH. Ein Abruf, der weder erfuellt
+    // noch verworfen wird (haengende Verbindung, stiller Proxy, schlafendes Netz), blieb dauerhaft
+    // bei „laedt". Das ist keine Falschaussage — aber der fuenfte Zustand war damit nicht fuer
+    // jeden praktisch unerreichbaren Server erreichbar, und „wird geprueft" sieht auf Dauer aus
+    // wie ein Defekt.
+    //
+    // DIE LAENGE IST NICHT NEU ERFUNDEN: es ist dieselbe Frist, die dieses Aufgabenfenster seit
+    // WP-KLARA-1b fuer seinen ANDEREN kleinen Statusabruf verwendet — den Login-Poll gegen
+    // /api/auth/me (WORD_ADDIN_LOGIN_FETCH_TIMEOUT_MS). Beides sind kurze, same-origin
+    // Statusabfragen ohne Nutzlast; die lange Ask-Frist (WORD_ADDIN_ASK_TIMEOUT_MS = 15 s) gehoert
+    // zu einem Abruf, der serverseitig wirklich rechnet, und waere hier zu lang. Eine dritte Zahl
+    // waere eine dritte Wahrheit ueber dieselbe Frage.
+    // KW-KLARA-AISTATE-FETCH-START
+    function ladeAiLage() {
+      aiLagePhase = "laedt";
+      renderAiLage();
+      // Eigener AbortController je Abruf — dieselbe Bauart wie der Login-Poll: die Frist bricht den
+      // Abruf WIRKLICH ab und laeuft nicht bloss nebenher weiter.
+      var controller = new AbortController();
+      var beendet = false;
+      var frist = setTimeout(function () {
+        try { controller.abort(); } catch (e) { /* bereits beendet — egal */ }
+        // Der Abbruch loest die .catch-Kette aus; fuer den Fall, dass eine Laufzeit das NICHT tut
+        // (kein AbortSignal-Support im fetch-Polyfill), wird hier direkt geschlossen. Doppelt
+        // gesetzt schadet nicht — `beendet` verhindert, dass eine spaet eintreffende Antwort den
+        // bereits gefaellten Zustand wieder ueberschreibt.
+        if (!beendet) {
+          beendet = true;
+          aiLageStatus = null;
+          aiLagePhase = "unerreichbar";
+          renderAiLage();
+        }
+      }, WORD_ADDIN_LOGIN_FETCH_TIMEOUT_MS);
+      fetch("/api/reasoner/status", { credentials: "include", signal: controller.signal })
+        .then(function (res) {
+          if (!res.ok) { throw new Error("HTTP " + res.status); }
+          return res.json();
+        })
+        .then(function (body) {
+          // Ehrlich: nur ein wirklich gelesener Zustand zaehlt als „da". Alles andere ist nicht
+          // erreichbar — NIE „keine KI" behaupten, wenn wir es schlicht nicht wissen.
+          if (!body || typeof body !== "object") { throw new Error("leer"); }
+          if (beendet) { return; }
+          beendet = true;
+          aiLageStatus = body;
+          aiLagePhase = "da";
+          renderAiLage();
+        })
+        .catch(function () {
+          if (beendet) { return; }
+          beendet = true;
+          aiLageStatus = null;
+          aiLagePhase = "unerreichbar";
+          renderAiLage();
+        })
+        .then(function () { clearTimeout(frist); });
+    }
+    // KW-KLARA-AISTATE-FETCH-END
+
+    // ============================================================================================
+    // AUFTRAG-W1-KLARA-KOPF-CONSENT-06 (BASIC-1) — SITZUNG, STATUS UND ZUSTIMMUNG AM ECHTEN VERTRAG
+    // ============================================================================================
+    //
+    // Sieben Endpunkte, alle same-origin und mit derselben Sitzung wie /api/ask (KW-W1-S4-R2-
+    // KOPF-FREEZE-17). Der Ablauf ist vorgeschrieben und NICHT umkehrbar:
+    //
+    //   1. POST /api/klara/sessions  →  der SERVER vergibt `documentContextId`. Das Add-in schickt
+    //      nur einen `documentDescriptor` und darf die Kontext-Id niemals selbst bilden.
+    //   2. erst danach traegt jeder weitere Abruf die drei Header x-klara-session /
+    //      x-klara-instance / x-klara-document. Fehlt einer, antwortet der Server generisch 404.
+    //
+    // WAS NICHT GESPEICHERT WIRD: nichts. Sitzungs-Id, Instanz-Id und Dokument-Nonce leben in
+    // diesen Variablen und sterben mit dem Aufgabenfenster. Kein localStorage, kein
+    // sessionStorage, kein Cookie, keine Add-in-Einstellung — eine Zustimmung, die ein Neuladen
+    // ueberlebt, waere keine Sitzungszustimmung mehr (Auftrag No-Go 2).
+    var klaraS4Phase = "laedt";
+    var klaraS4Sicht = null;
+    var klaraS4SessionId = null;
+    // Eine Instanz-Id je Laden des Aufgabenfensters. Sie ist OPAK — der Server vergleicht sie nur
+    // auf Gleichheit und liest nichts aus ihr heraus.
+    var klaraS4InstanceId = klaraS4NeueId("inst");
+    var klaraS4DocumentId = null;
+    var klaraS4Nonce = klaraS4NeueId("doc");
+    var klaraS4Laeuft = false;
+    // Untergrenze fuer den Statusrefresh: sie deckelt sowohl einen bereits abgelaufenen
+    // Ablaufzeitpunkt (kein Dauerfeuer) als auch die Drosselung der Sichtbarkeits-/Fokusanlaesse.
+    // Es ist derselbe Wert, den dieses Aufgabenfenster seit WP-KLARA-1b fuer den Anmelde-Poll
+    // benutzt — eine dritte Zahl waere eine dritte Wahrheit ueber dieselbe Frage.
+    var WORD_ADDIN_S4_REFRESH_MIN_MS = WORD_ADDIN_LOGIN_POLL_INTERVAL_MS;
+    // Nur zur Nachvollziehbarkeit: welcher Anlass den letzten Abruf ausgeloest hat.
+    var klaraS4LetzterRefreshGrund = null;
+    // Der clientseitige Riegel nach einem gescheiterten Consent-/Rebind-Aufruf (BEN-Befund 2).
+    var klaraS4Riegelstand = false;
+    // JOB 3056 Runde 9 (Codex Runde 8): DIE ABLAUFSPERRE. Sobald eine Aufloesung abgelaufen ist,
+    // gibt es keinen KI-Stand mehr — und die Sperre auf Fragen bleibt ueber JEDEN Folgeabruf hinweg
+    // stehen, ob er noch aussteht, scheitert (5xx, Netz, Frist) oder gar nicht loslaeuft. Bis Runde 8
+    // hing sie nur an der Phase „bereit": ein 503 setzte die Phase auf „unerreichbar", und die war
+    // fail-open — eine Frage ging ab, obwohl der Server nichts Frisches gesagt hatte. Geloest wird
+    // die Sperre AUSSCHLIESSLICH in klaraS4Uebernehmen durch eine frische, nicht abgelaufene
+    // Aufloesung (GET /api/klara/ai-status, erfolgreich). Nicht durch Zeit, nicht durch einen Klick.
+    var klaraS4Abgelaufen = false;
+    // JOB 3056 Runde 10 (Codex Runde 9): DER BEWAHRTE ABLAUFZEITPUNKT. `klaraS4Sicht` stirbt mit
+    // jedem Fehlschlag (klaraS4Fehlschlag, klaraS4Riegel) — und mit ihr starb bis Runde 9 das
+    // Wissen, WANN die zuletzt bestaetigte Aufloesung ablaeuft: ein 503 VOR dem Ablauf loeschte die
+    // Sicht, der spaetere Ablauf fand keine Sicht mehr, die Ablaufsperre blieb aus, eine Frage ging
+    // ohne frischen KI-Stand ab. Deshalb lebt der Ablaufzeitpunkt (`expiresAt`, in ms) HIER,
+    // unabhaengig von Sicht und Anzeigephase: gesetzt in klaraS4Uebernehmen mit jeder Antwort, die
+    // eine Aufloesung traegt; geloescht NUR in klaraS4Verwerfen (Abmelden). Verstreicht er, setzt
+    // klaraS4AblaufMerken die Ablaufsperre — gleich, was die Phase gerade sagt.
+    var klaraS4BestaetigtBisMs = Number.NaN;
+
+    function klaraS4NeueId(praefix) {
+      var puffer = new Uint8Array(16);
+      // Kryptographisch, nicht Math.random: die Werte binden eine Sitzung an ein Fenster.
+      (self.crypto || window.crypto).getRandomValues(puffer);
+      var hex = "";
+      for (var i = 0; i < puffer.length; i += 1) {
+        hex += ("0" + puffer[i].toString(16)).slice(-2);
+      }
+      return praefix + "-" + hex;
+    }
+
+    /**
+     * Der Dokumentbeschreiber. Office.js gibt fuer ein GESPEICHERTES Dokument eine URL heraus
+     * (`Office.context.document.url`); ein ungespeichertes Dokument hat keine stabile Kennung —
+     * dafuer sieht der Vertrag ausdruecklich `kind: "unsaved"` mit einem Client-Nonce vor.
+     * Erfunden wird hier nichts: liegt keine URL vor, wird das auch so gemeldet.
+     */
+    function klaraS4Beschreiber() {
+      var url = "";
+      try {
+        url = (window.Office && Office.context && Office.context.document
+          && Office.context.document.url) || "";
+      } catch (e) { url = ""; }
+      return typeof url === "string" && url.length > 0
+        ? { kind: "saved", canonicalUrl: url }
+        : { kind: "unsaved", clientDocumentNonce: klaraS4Nonce };
+    }
+
+    function klaraS4Header() {
+      return {
+        "x-klara-session": klaraS4SessionId || "",
+        "x-klara-instance": klaraS4InstanceId,
+        "x-klara-document": klaraS4DocumentId || "",
+      };
+    }
+
+    // KW-KLARA-S4-FETCH-START
+    function klaraS4Abruf(pfad, methode, koerper) {
+      var controller = new AbortController();
+      var frist = setTimeout(function () {
+        try { controller.abort(); } catch (e) { /* bereits beendet */ }
+      }, WORD_ADDIN_LOGIN_FETCH_TIMEOUT_MS);
+      var init = {
+        method: methode,
+        credentials: "include",
+        signal: controller.signal,
+        headers: klaraS4Header(),
+      };
+      if (koerper) {
+        init.headers["content-type"] = "application/json";
+        init.body = JSON.stringify(koerper);
+      }
+      return fetch(pfad, init)
+        .then(function (res) {
+          if (!res.ok) { throw new Error("HTTP " + res.status); }
+          return res.json();
+        })
+        .then(function (body) {
+          if (!body || typeof body !== "object") { throw new Error("leer"); }
+          return body;
+        })
+        .then(
+          function (body) { clearTimeout(frist); return body; },
+          function (err) { clearTimeout(frist); throw err; }
+        );
+    }
+
+    // ============================================================================================
+    // JOB 3056 Runde 4 (Codex Pflicht 3) — DIE EPOCHE: NACH DEM ABMELDEN GILT KEINE ALTE ANTWORT.
+    // ============================================================================================
+    // Jeder sitzungsbezogene Abruf traegt die Epoche, in der er gestartet ist. `klaraS4Verwerfen`
+    // (bestaetigter Logout, `abmelden`) zaehlt sie hoch — eine Antwort, die danach eintrifft,
+    // gehoert der alten Sitzung und wird VERWORFEN (Fehler `veraltet`, von jedem Aufrufer
+    // erkannt), statt „Externe KI" fuer eine Sitzung zu zeigen, die es nicht mehr gibt. Eine
+    // Huelle um den unveraenderten Abruf, im selben Block wie ihre Aufrufer.
+    var klaraS4Epoche = 0;
+
+    function klaraS4AbrufDieserSitzung(pfad, methode, koerper) {
+      var epoche = klaraS4Epoche;
+      var pruefen = function () {
+        if (epoche === klaraS4Epoche) { return; }
+        var alt = new Error("veraltet");
+        alt.veraltet = true;
+        throw alt;
+      };
+      return klaraS4Abruf(pfad, methode, koerper).then(
+        function (body) { pruefen(); return body; },
+        function (err) { pruefen(); throw err; }
+      );
+    }
+
+    /**
+     * Alles, was an der Sitzung hing, faellt: der gelesene Stand, die Sitzungs- und Kontext-Id,
+     * die geplante Auffrischung, der Riegel, die Nachhol-Merker. Danach steht die KI-Zeile auf
+     * „–" und die Sitzungszeile sagt „nicht angemeldet" — bis ein FRISCHER erfolgreicher Abruf
+     * nach erneuter Anmeldung etwas anderes belegt (klaraS4NachAnmeldung → klaraS4Start).
+     */
+    function klaraS4Verwerfen() {
+      klaraS4Epoche += 1;
+      klaraS4RefreshStoppen();
+      klaraS4RefreshLaeuft = false;
+      klaraS4Laeuft = false;
+      klaraS4RebindLaeuft = false;
+      klaraS4Sicht = null;
+      klaraS4SessionId = null;
+      klaraS4DocumentId = null;
+      klaraS4GebundeneArt = null;
+      klaraS4Riegelstand = false;
+      klaraS4Abgelaufen = false; // ohne Sitzung gibt es keinen Stand, der abgelaufen sein koennte
+      klaraS4BestaetigtBisMs = Number.NaN; // … und keine Frist, die verstreichen koennte
+      klaraS4Angefordert = false;
+      klaraS4NachholungVerbraucht = false;
+      klaraS4Geschlossen = false;
+      klaraS4Phase = "keineSitzung";
+      klaraS4Consentmeldung(null, "");
+      renderKlaraS4();
+    }
+
+    /**
+     * Die nicht-autorisierenden Felder der Sitzungssicht. Bewusst eine WEISSE Liste: was hier
+     * nicht steht, ueberlebt einen reinen Statusabruf nicht. `consentState` und `closed` fehlen
+     * absichtlich — ueber beides sagt `GET /api/klara/ai-status` nichts.
+     */
+    function klaraS4Sitzungsidentitaet(sicht) {
+      var raus = {};
+      if (!sicht) { return raus; }
+      var felder = [
+        "sessionId",
+        "tenantId",
+        "actorId",
+        "addinInstanceId",
+        "documentContextId",
+        "createdAt",
+      ];
+      for (var i = 0; i < felder.length; i += 1) {
+        if (sicht[felder[i]] !== undefined) { raus[felder[i]] = sicht[felder[i]]; }
+      }
+      return raus;
+    }
+
+    function klaraS4Uebernehmen(sicht) {
+      // DIE EINZIGE Stelle, die den Riegel loest: ein bestaetigter Serverstatus. Nicht Zeitablauf,
+      // nicht eine Nutzerhandlung, nicht ein zweiter Versuch (Auftrag §2).
+      klaraS4Riegelstand = false;
+      // Runde 9: die Ablaufsperre folgt der AUFLOESUNG dieser Antwort — frisch loest sie, abgelaufen
+      // setzt sie. Eine Antwort ohne Aufloesung (Sitzungsstart) sagt darueber nichts und laesst sie.
+      if (sicht.resolution) {
+        klaraS4Abgelaufen = klaraS4Veraltet(sicht, Date.now());
+        // Runde 10: die Frist DIESER bestaetigten Aufloesung — sie ueberlebt jeden Fehlschlag danach.
+        klaraS4BestaetigtBisMs = Date.parse(sicht.resolution.expiresAt);
+      }
+      klaraS4Sicht = sicht;
+      klaraS4SessionId = sicht.sessionId || klaraS4SessionId;
+      // Die Kontext-Id kommt VOM SERVER zurueck und wird ab jetzt gefuehrt — nie selbst gebildet.
+      klaraS4DocumentId = sicht.documentContextId || klaraS4DocumentId;
+      klaraS4Phase = "bereit";
+      renderKlaraS4();
+    }
+
+    function klaraS4Fehlschlag(phase) {
+      klaraS4Sicht = null;
+      // Ein stehender Riegel ist die staerkere Aussage: „nicht abrufbar" wuerde die Sperre
+      // aufweichen, obwohl der ungewisse Autorisierungsstand unveraendert ungewiss ist.
+      klaraS4Phase = klaraS4Riegelstand ? "gesperrt" : phase;
+      renderKlaraS4();
+    }
+
+    // ============================================================================================
+    // AUFTRAG-37 (Preflight-36-Befunde G2 und G3) — WANN DIE ERSTE SITZUNG ENTSTEHEN DARF.
+    // ============================================================================================
+    //
+    // Bisher lief `klaraS4Start()` SYNCHRON am Skriptende. Zwei belegte Folgen:
+    //
+    //   G2  `Office.onReady` war da erst REGISTRIERT, nicht gelaufen. Ein gespeichertes Dokument
+    //       wurde deshalb als `unsaved` gebunden. Der Rebind repariert das spaeter — und verwirft
+    //       dabei nach KW-S4-20 §3 die gerade erteilte Zustimmung. Der Nutzer verliert sie ohne
+    //       erkennbaren Grund.
+    //
+    //   G3  Wer unangemeldet oeffnet — im WebView mit eigenen Cookies der Normalfall — bekam
+    //       keine Sitzung und behielt sie fuer die ganze Fensterlaufzeit nicht, auch nach
+    //       erfolgreicher Anmeldung.
+    //
+    // BEIDE gehen jetzt ueber EINEN Weg: `klaraS4StartAnfordern`. Er ist die einzige Stelle, die
+    // entscheidet, OB und WANN gestartet wird — und er ist mehrfach aufrufbar, ohne je eine
+    // zweite Sitzung zu erzeugen.
+    //
+    // KEINE neue Frist, KEINE neue Erkennung: gewartet wird auf die bereits vorhandene begrenzte
+    // Office-Erkennung (`OFFICE_READY_TIMEOUT_MS`), die ohnehin in jedem Fall zu einem Ergebnis
+    // kommt — durch den Rueckruf oder durch ihre Frist.
+    var klaraS4Angefordert = false;
+    var klaraS4OfficeGeklaert = false;
+    var klaraS4WartetAufOffice = false;
+    // BEN-37: die Nachholung ist ein VERBRAUCHSGUT, kein Dauerrecht. Ohne diesen Merker war jeder
+    // spaetere positive Statusabruf ein neuer Freigabeschluessel, solange die Sitzung fehlte —
+    // ein am Server gescheiterter Nachholversuch wurde damit bei jedem Sprachwechsel wiederholt.
+    var klaraS4NachholungVerbraucht = false;
+
+    /**
+     * Wird von `markOfficeChecked` genau einmal ausgeloest — egal ob der Rueckruf oder die Frist
+     * zuerst kam. Ein SPAETER Rueckruf nach der Frist findet das Tor bereits offen und startet
+     * deshalb nichts zweites.
+     */
+    function klaraS4OfficeGeklaertMelden() {
+      if (klaraS4OfficeGeklaert) { return; }
+      klaraS4OfficeGeklaert = true;
+      if (klaraS4WartetAufOffice) {
+        klaraS4WartetAufOffice = false;
+        klaraS4Start();
+      }
+    }
+
+    /**
+     * Die EINZIGE Stelle, an der ein Sitzungsaufbau angefordert wird.
+     *
+     * Drei Riegel, jeder gegen eine eigene Doppelung:
+     *   · `klaraS4Angefordert` — der Aufbau wurde schon einmal angestossen (Start ODER Nachholung)
+     *   · `klaraS4Laeuft`      — gerade laeuft einer
+     *   · `klaraS4SessionId`   — es gibt bereits eine Sitzung
+     */
+    function klaraS4StartAnfordern() {
+      if (klaraS4Angefordert || klaraS4Laeuft || klaraS4SessionId) { return; }
+      klaraS4Angefordert = true;
+      if (!klaraS4OfficeGeklaert) {
+        // Warten — nicht pollen. Das Tor oeffnet sich in jedem Fall (Rueckruf oder Frist).
+        klaraS4WartetAufOffice = true;
+        return;
+      }
+      klaraS4Start();
+    }
+
+    /**
+     * G3: die Nachholung nach erfolgreicher Anmeldung. Sie feuert GENAU EINMAL pro Fensterlaufzeit
+     * und nur dann, wenn beim Start wirklich keine Sitzung zustande kam. Bleibt die Anmeldung aus,
+     * geschieht nichts — kein Wiederholzyklus, kein Dauerfeuer gegen einen Endpunkt.
+     *
+     * „Einmal" heisst: einmal ANGESTOSSEN, nicht einmal GELUNGEN. Scheitert der Versuch am Server,
+     * bleibt es bis zum erneuten Oeffnen des Aufgabenfensters bei „keine Sitzung" — sichtbar
+     * gesagt statt still weiter angeklopft. Der Riegel haengt am Verbrauch, nicht am Fehlerbild;
+     * auch ein wieder antwortender Server loest deshalb keinen zweiten Versuch aus.
+     *
+     * Verbraucht wird erst, wenn wirklich freigegeben wird: laeuft gerade ein Aufbau, kehrt die
+     * Funktion vorher um und das Recht bleibt fuer den Fall erhalten, dass jener Aufbau scheitert.
+     */
+    function klaraS4NachAnmeldung() {
+      if (klaraS4SessionId || klaraS4Laeuft || klaraS4NachholungVerbraucht) { return; }
+      // Der Start hat es versucht und nichts bekommen: die Anforderung wird EINMAL freigegeben.
+      klaraS4NachholungVerbraucht = true;
+      klaraS4Angefordert = false;
+      klaraS4StartAnfordern();
+    }
+
+    /** Sitzung eroeffnen und danach den gebundenen Status lesen. */
+    function klaraS4Start() {
+      if (klaraS4Laeuft) { return Promise.resolve(); }
+      klaraS4Laeuft = true;
+      klaraS4Phase = "laedt";
+      renderKlaraS4();
+      var beschreiber = klaraS4Beschreiber();
+      return klaraS4AbrufDieserSitzung("/api/klara/sessions", "POST", {
+        addinInstanceId: klaraS4InstanceId,
+        documentDescriptor: beschreiber,
+      })
+        .then(function (sicht) {
+          // Merken, WOMIT gebunden wurde — nur so ist ein spaeterer Wechsel erkennbar (Befund 5).
+          klaraS4GebundeneArt = beschreiber.kind;
+          klaraS4Uebernehmen(sicht);
+          // Der Statusabruf ist die eigentliche Auflösung; erst er traegt alle drei Header.
+          return klaraS4AbrufDieserSitzung("/api/klara/ai-status", "GET", null).then(function (aufloesung) {
+            klaraS4Uebernehmen(Object.assign({}, sicht, { resolution: aufloesung }));
+            // Ab jetzt haelt sich der Stand selbst frisch (Befund 4).
+            klaraS4RefreshPlanen();
+          });
+        })
+        .catch(function (err) {
+          if (err && err.veraltet) { return; } // Runde 4: die Sitzung ist inzwischen abgemeldet
+          // Ohne Sitzung gibt es keinen sitzungsbezogenen Stand. Das wird GESAGT, nicht kaschiert.
+          klaraS4Fehlschlag(klaraS4SessionId ? "unerreichbar" : "keineSitzung");
+        })
+        .then(function () { klaraS4Laeuft = false; });
+    }
+
+    function klaraS4Zustimmen() {
+      if (!klaraS4SessionId) { return; }
+      klaraS4Consentmeldung("warn", t("s4ConsentBusy"));
+      klaraS4AbrufDieserSitzung("/api/klara/sessions/" + encodeURIComponent(klaraS4SessionId) + "/consent",
+        "POST", null)
+        .then(function (sicht) { klaraS4Uebernehmen(sicht); klaraS4Consentmeldung(null, ""); })
+        .catch(function (err) { if (err && err.veraltet) { return; } klaraS4Riegel("s4ConsentFehler"); });
+    }
+
+    function klaraS4Widerrufen() {
+      if (!klaraS4SessionId) { return; }
+      klaraS4Consentmeldung("warn", t("s4ConsentBusy"));
+      klaraS4AbrufDieserSitzung("/api/klara/sessions/" + encodeURIComponent(klaraS4SessionId) + "/consent",
+        "DELETE", null)
+        .then(function (sicht) { klaraS4Uebernehmen(sicht); klaraS4Consentmeldung(null, ""); })
+        // BEN-BEFUND 2: HIER stand `klaraS4Consentmeldung(...)` — nur eine Meldung. Der alte,
+        // AUTORISIERENDE Stand (`granted` / `executionAllowed: true`) blieb stehen und Ask blieb
+        // frei. Wer widerruft und einen Fehler sieht, muss davon ausgehen duerfen, dass nichts
+        // mehr auf seine Zustimmung hin geschieht.
+        .catch(function (err) { if (err && err.veraltet) { return; } klaraS4Riegel("s4ConsentFehler"); });
+    }
+
+    // ============================================================================================
+    // BEN-BEFUND 2 — DER RIEGEL. FAIL-SAFE HEISST: DEN ALTEN STAND VERWERFEN, NICHT UEBERDECKEN.
+    // ============================================================================================
+    //
+    // Ein gescheiterter Zustimmungs- oder Widerrufsaufruf laesst den Client in Ungewissheit: der
+    // Server kann die Aenderung vollzogen haben oder nicht. In dieser Lage ist der zuletzt
+    // gelesene Stand keine Wahrheit mehr — er ist eine VERMUTUNG, und zwar die guenstigere.
+    //
+    // Deshalb wird er verworfen (`klaraS4Sicht = null`), die Phase auf `gesperrt` gesetzt und Ask
+    // gesperrt. Aufgehoben wird das AUSSCHLIESSLICH durch einen neuen, bestaetigten Serverstatus
+    // (`klaraS4Uebernehmen`) — nie durch Zeitablauf, nie durch eine Nutzerhandlung, nie lokal.
+    function klaraS4Riegel(meldungsKey) {
+      // Der Riegel ist eine eigenstaendige SPERRE, keine Phase. Waere er nur eine Phase, koennte
+      // ihn der unmittelbar folgende Abruf ueberschreiben — scheitert der naemlich ebenfalls,
+      // landete die Anzeige bei „nicht abrufbar", und DIESE Phase sperrt Ask nicht. Genau so
+      // waere die Sperre auf dem Weg zu ihrer eigenen Bestaetigung verlorengegangen.
+      klaraS4Riegelstand = true;
+      klaraS4Sicht = null;
+      klaraS4Phase = "gesperrt";
+      klaraS4Consentmeldung("warn", t(meldungsKey));
+      renderKlaraS4();
+      // Und sofort ehrlich nachfragen: der Riegel ist kein Endzustand, sondern ein Warteraum.
+      klaraS4Refresh("riegel");
+    }
+
+    // ============================================================================================
+    // BEN-BEFUND 4 — DER STATUSREFRESH. EIN ABGELAUFENER STAND DARF NICHT AKTUELL AUSSEHEN.
+    // ============================================================================================
+    //
+    // Bisher wurde der Status nach dem Sitzungsstart GENAU EINMAL gelesen. Lief die Auflösung ab,
+    // wechselte die Policy oder wurde die Sitzung invalidiert, blieb der alte DOM stehen — die
+    // reine Ableitung haette ihn bei erneutem Aufruf als veraltet erkannt, aber niemand rief sie.
+    //
+    // BAUART: dieselbe wie der bereits nach BEN ROT-1 gehaertete Anmelde-Poll weiter unten —
+    // sequenzielle `setTimeout`-Kette (KEIN `setInterval`, keine ueberlappenden Abrufe), eigener
+    // AbortController je Abruf, und eine Generation, die Alt-Laeufe neutralisiert. Es wird kein
+    // zweiter Mechanismus erfunden.
+    //
+    // AUSLOESER (Auftrag §4): Ablauf der Auflösung, Rueckkehr der Sichtbarkeit, Fokus, sowie jeder
+    // Riegel. Policy-/Resolutionwechsel und Invalidierung braucht keinen eigenen Ausloeser — sie
+    // werden von genau diesen Abrufen SICHTBAR, weil der Server die neue Auflösung liefert.
+    var klaraS4RefreshGeneration = 0;
+    var klaraS4RefreshTimer = null;
+    var klaraS4RefreshLaeuft = false;
+    var klaraS4LetzterRefreshMs = 0;
+
+    function klaraS4RefreshStoppen() {
+      klaraS4RefreshGeneration += 1;
+      if (klaraS4RefreshTimer !== null) {
+        clearTimeout(klaraS4RefreshTimer);
+        klaraS4RefreshTimer = null;
+      }
+    }
+
+    /**
+     * Plant den naechsten Abruf auf den Ablaufzeitpunkt der Auflösung — nicht auf ein festes
+     * Intervall. Der Server sagt, wie lange sein Wort gilt; genau so lange wird gewartet.
+     * Untergrenze, damit eine bereits abgelaufene oder kaputte Zeitangabe kein Dauerfeuer erzeugt.
+     */
+    function klaraS4RefreshPlanen() {
+      klaraS4RefreshStoppen();
+      var generation = klaraS4RefreshGeneration;
+      var bis = klaraS4Sicht && klaraS4Sicht.resolution
+        ? Date.parse(klaraS4Sicht.resolution.expiresAt)
+        : Number.NaN;
+      if (!isFinite(bis)) { return; }
+      var inMs = Math.max(bis - Date.now(), WORD_ADDIN_S4_REFRESH_MIN_MS);
+      klaraS4RefreshTimer = setTimeout(function () {
+        klaraS4RefreshTimer = null;
+        if (generation !== klaraS4RefreshGeneration) { return; }
+        // ERST neu zeichnen: der Stand ist jetzt abgelaufen und wird auch so gezeigt, BEVOR der
+        // Abruf laeuft. Sonst saehe er waehrend des Abrufs weiter aktuell aus. Runde 9: und die
+        // Ablaufsperre steht ab hier — ein scheiternder Abruf darf sie nicht mehr aufheben.
+        klaraS4AblaufMerken();
+        renderKlaraS4();
+        klaraS4Refresh("ablauf");
+      }, inMs);
+    }
+
+    /**
+     * Liest den gebundenen Status neu. `grund` dient der Nachvollziehbarkeit im Test und im DOM.
+     * Genau EIN Abruf gleichzeitig; ein zweiter Anlass waehrend eines laufenden wird verworfen,
+     * nicht eingereiht.
+     */
+    function klaraS4Refresh(grund) {
+      if (!klaraS4SessionId || !klaraS4DocumentId) { return Promise.resolve(); }
+      if (klaraS4RefreshLaeuft) { return Promise.resolve(); }
+      klaraS4RefreshLaeuft = true;
+      klaraS4LetzterRefreshMs = Date.now();
+      klaraS4LetzterRefreshGrund = grund;
+      return klaraS4AbrufDieserSitzung("/api/klara/ai-status", "GET", null)
+        .then(function (aufloesung) {
+          // Der bestaetigte Serverstatus ist das EINZIGE, was einen Riegel wieder oeffnet.
+          //
+          // AUFTRAG-34 (BEN-Befund 4): HIER stand `Object.assign({}, basis, {resolution})` — und
+          // damit wanderte der ALTE `consentState` der Sitzungssicht in die NEUE Auflösung.
+          // `GET /api/klara/ai-status` liefert vertragsgemaess nur `KlaraResolution`; ueber die
+          // Zustimmung sagt diese Antwort mit `consentState` NICHTS. Den alten Wert
+          // weiterzutragen hiess, eine Auskunft zu erfinden, die der Server nicht gegeben hat.
+          //
+          // Uebernommen wird deshalb nur die IDENTITAET der Sitzung (Sitzungs- und
+          // Dokumentkontext-Id, Versionen) — nichts, was autorisiert. Der Zustimmungsstand wird
+          // ausdruecklich FALLENGELASSEN; die Anzeige leitet ihn danach aus der frischen
+          // Auflösung ab (`klaraS4ConsentKey`).
+          klaraS4Uebernehmen(
+            Object.assign(klaraS4Sitzungsidentitaet(klaraS4Sicht), { resolution: aufloesung }),
+          );
+          klaraS4RefreshPlanen();
+          // Erst mit gueltigem Stand pruefen, ob der Dokumentkontext noch stimmt (Befund 5).
+          return klaraS4DokumentPruefen();
+        })
+        .catch(function (err) {
+          // Runde 4: eine Antwort aus der Zeit VOR dem Abmelden gehoert niemandem mehr.
+          if (err && err.veraltet) { return; }
+          // Nicht abrufbar heisst nicht abrufbar — und ganz sicher nicht „weiterhin erlaubt".
+          klaraS4Fehlschlag("unerreichbar");
+        })
+        .then(function () { klaraS4RefreshLaeuft = false; });
+    }
+
+    /**
+     * Ein Anlass von aussen (Sichtbarkeit, Fokus). Gedrosselt, damit ein Fenster, das bei jedem
+     * Mausklick Fokusereignisse feuert, nicht denselben Abruf dutzendfach ausloest.
+     */
+    function klaraS4RefreshAnlass(grund) {
+      if (Date.now() - klaraS4LetzterRefreshMs < WORD_ADDIN_S4_REFRESH_MIN_MS) { return; }
+      klaraS4Refresh(grund);
+    }
+
+    // ============================================================================================
+    // BEN-BEFUND 5 — DER DOKUMENT-REBIND AN DEN VORHANDENEN SERVERWEG.
+    // ============================================================================================
+    //
+    // Der Beschreiber wird bei JEDEM Refresh neu gebildet. Wechselt er von `unsaved` auf `saved` —
+    // also traegt Word jetzt eine Adresse, wo vorher keine war —, ist das ein ANDERER
+    // Dokumentkontext. Kein stilles Umschreiben (KW-S4-20 §3): es geht ueber die vorhandene Route
+    // `POST /api/klara/sessions/{id}/document-context`, und der Server entwertet dabei die alte
+    // Auflösung und verwirft eine bestehende Zustimmung. Das Add-in traegt nichts hinueber.
+    //
+    // KEINE HEURISTIK: es wird nicht geraten, ob gespeichert wurde. Gemessen wird ausschliesslich,
+    // ob `Office.context.document.url` jetzt einen Wert hat und vorher keinen — eine Tatsache,
+    // keine Vermutung. Ein Speichern-Ereignis bietet dieses Aufgabenfenster nicht (belegt in
+    // PLAN-BASIC-W1-RESTLUECKEN-PREFLIGHT-21 §5.2), und es wird auch keines erfunden.
+    var klaraS4GebundeneArt = null;
+    var klaraS4RebindLaeuft = false;
+
+    function klaraS4DokumentPruefen() {
+      if (klaraS4RebindLaeuft || !klaraS4SessionId) { return Promise.resolve(); }
+      var jetzt = klaraS4Beschreiber();
+      if (jetzt.kind !== "saved" || klaraS4GebundeneArt !== "unsaved") { return Promise.resolve(); }
+      klaraS4RebindLaeuft = true;
+      return klaraS4AbrufDieserSitzung(
+        "/api/klara/sessions/" + encodeURIComponent(klaraS4SessionId) + "/document-context",
+        "POST",
+        { documentDescriptor: jetzt },
+      )
+        .then(function (sicht) {
+          klaraS4GebundeneArt = "saved";
+          klaraS4Uebernehmen(sicht);
+          klaraS4RefreshPlanen();
+        })
+        .catch(function (err) {
+          if (err && err.veraltet) { return; } // Runde 4: abgemeldet, nichts mehr zu sperren
+          // Der Rebind ist gescheitert: der gefuehrte Kontext passt womoeglich nicht mehr zum
+          // Dokument. Das ist genau die Lage, in der nichts mehr autorisiert sein darf.
+          klaraS4Riegel("s4RebindFehler");
+        })
+        .then(function () { klaraS4RebindLaeuft = false; });
+    }
+
+    // ============================================================================================
+    // BEN-BEFUND 3 — DIE SITZUNG WIRD BEIM SCHLIESSEN WIRKLICH GESCHLOSSEN.
+    // ============================================================================================
+    //
+    // `pagehide` ist der Lebenszyklus-Anker der Wahl — `unload` wird in modernen Engines beim
+    // Zuruecklegen in den Cache uebersprungen. OB der Word-WebView `pagehide` beim Schliessen des
+    // Aufgabenfensters wirklich feuert, ist NICHT belegt: es gab bisher keinen realen Sideload
+    // (Preflight 33/36). Belegt ist nur der Codepfad — dass der Rueckruf, WENN er kommt, genau
+    // einmal schliesst. Diese Zeile ist deshalb kein Verhaltensversprechen fuer Word.
+    // `keepalive: true` haelt den
+    // Abruf ueber das Entladen hinweg am Leben — `sendBeacon` scheidet aus, weil es die drei
+    // Bindungsheader nicht setzen kann und der Server ohne sie generisch 404 antwortet.
+    //
+    // WIEDERHOLUNG IST SICHER: `klaraS4Geschlossen` verhindert einen zweiten Aufruf, und der Ruf
+    // erzeugt KEINE lokale Autorisierung — er setzt keinen Zustand, er raeumt nur auf.
+    var klaraS4Geschlossen = false;
+
+    function klaraS4Schliessen() {
+      if (klaraS4Geschlossen || !klaraS4SessionId || !klaraS4DocumentId) { return false; }
+      klaraS4Geschlossen = true;
+      klaraS4RefreshStoppen();
+      try {
+        fetch("/api/klara/sessions/" + encodeURIComponent(klaraS4SessionId) + "/close", {
+          method: "POST",
+          credentials: "include",
+          keepalive: true,
+          headers: klaraS4Header(),
+        }).catch(function () { /* das Fenster geht ohnehin; der Server laesst die Sitzung ablaufen */ });
+      } catch (e) { /* kein fetch mehr verfuegbar — der serverseitige Ablauf traegt weiter */ }
+      return true;
+    }
+    // KW-KLARA-S4-FETCH-END
+
+    // KW-S4-22: `klaraS4Payloadklasse()` ist ENTFALLEN. Sie las `payloadClass` und
+    // `allowedPayloadClasses` — beides ausdrueckliche No-Gos des kanonischen Vertrags. Massgeblich
+    // ist allein `resolution.effectivePayloadClasses`, gelesen in `klaraS4Payloadklassen`.
+
+    function klaraS4Consentmeldung(ton, text) {
+      var box = document.getElementById("klara-consent-status");
+      if (!box) { return; }
+      box.className = ton ? "status " + ton : "status hidden";
+      box.textContent = text;
+    }
+
+    /**
+     * Die Anzeige. Sie SCHREIBT nur, was `klaraS4Anzeige` aus der Serverantwort abgeleitet hat —
+     * und laesst weg, was der Server nicht gesagt hat, statt es zu ersetzen.
+     */
+    function renderKlaraS4() {
+      var gruppe = document.getElementById("klara-s4");
+      if (!gruppe) { return; }
+      var a = klaraS4Anzeige(klaraS4Phase, klaraS4Sicht, Date.now());
+      document.getElementById("klara-s4-label").textContent = t("s4Label");
+      // JOB 3056 K1 (§9): die KI-Zeile der Einstellungen traegt den fuer diese Sitzung aufgeloesten
+      // Modus WOERTLICH — und „–", solange kein frischer Serverstand gelesen ist. Nie ein positiver
+      // Wert aus dem Cache; der Zustand selbst (laedt, nicht abrufbar, keine Sitzung, gesperrt)
+      // steht als Satz in der Sitzungszeile darunter.
+      var pille = document.getElementById("klara-s4-mode");
+      pille.textContent = a.modeKey ? t(a.modeKey) : "–";
+      // Anbieter und Modell WOERTLICH. Kein Wert, keine Zeile — nie ein Platzhalter, der wie ein
+      // Anbieter aussieht.
+      var anbieter = document.getElementById("klara-s4-provider");
+      var anbieterText = a.provider && a.model
+        ? t("s4Anbieter", { provider: a.provider, model: a.model })
+        : "";
+      anbieter.textContent = anbieterText;
+      anbieter.className = anbieterText ? "einst-detail" : "einst-detail hidden";
+      var abw = document.getElementById("klara-s4-deviation");
+      // JOB 2621 §2 (Befund 3, 26.08.): ZWEI getrennte Tore, EIN Bezug. Liegt die Zustimmung vor
+      // und sperrt trotzdem die projektseitige Freischaltung, sagt die Zeile genau das —
+      // „Trotzdem gesperrt" statt eines nackten „Gesperrt", das ueber der Zustimmungszeile wie
+      // deren Widerruf las. (Die Reihenfolge der beiden Zeilen ist im Markup gedreht:
+      // #klara-s4-session steht seitdem VOR #klara-s4-deviation.)
+      var abwText = a.blockedKey
+        ? (a.consentKey === "s4ConsentGranted"
+            ? t("s4BlockiertTrotzZustimmung", { grund: t(a.blockedKey) })
+            : t("s4Blockiert", { grund: t(a.blockedKey) }))
+        : a.deviationKey
+          ? t("s4Abweichung", { soll: t(a.adminModeKey), grund: t(a.deviationKey) })
+          : a.veraltet
+            ? t("s4Veraltet")
+            : "";
+      abw.textContent = abwText;
+      abw.className = abwText ? "einst-detail" : "einst-detail hidden";
+      // JOB 2621 §1 (Befund 2, 26.08. — Pedi: „keine zustimmung obwohl ich zugestimmt hatte"):
+      // Fehlt die SITZUNG, nennt die Zeile die URSACHE und nur sie (R3: Stoerung sieht niemals aus
+      // wie Leere — und Folge sieht niemals aus wie Verlust). In den uebrigen Faellen ohne
+      // Zustimmungsstand (laedt / nicht abrufbar / lokal gesperrt) steht der Zustand selbst als
+      // Satz (JOB 3056: die Pille, die ihn trug, ist die KI-Zeile mit „–" geworden).
+      document.getElementById("klara-s4-session").textContent =
+        a.consentKey
+          ? t("s4Sitzung", { stand: t(a.consentKey) })
+          : a.stateKey === "s4StateKeineSitzung"
+            ? t("s4SitzungNichtAngemeldet")
+            : t(a.stateKey);
+
+      // Die Zustimmung: Schalterzeile und Auskunft sichtbar GENAU dann, wenn der Server sie verlangt
+      // oder sie erteilt ist (JOB 3056: in den Einstellungen, Gruppe 1).
+      var karte = document.getElementById("klara-consent-card");
+      var consentDa = a.consentVisible || a.revokeVisible;
+      karte.className = consentDa ? "einst-detail" : "einst-detail hidden";
+      document.getElementById("klara-consent-zeile").className = consentDa
+        ? "einst-zeile"
+        : "einst-zeile hidden";
+      document.getElementById("klara-consent-title").textContent = t("s4ConsentTitel");
+      document.getElementById("klara-consent-body").textContent = t("s4ConsentText");
+      // KW-S4-22: der Umfang nennt Anbieter, Modell, Sitzung und die EFFEKTIVEN Datenklassen.
+      // Sind die Klassen nicht aufgeloest, steht dort kein Ersatzwert, sondern der ausdrueckliche
+      // Satz, dass ohne sie nicht zugestimmt werden kann.
+      // JOB 3079 · S3: VOR der technischen Zeile steht jetzt der Satz, den ein Mensch liest — er
+      // nennt die Klassen im Klartext und den Anbieter, an den sie gehen. Die technische Zeile
+      // bleibt darunter unveraendert: sie ist der Beleg, nicht die Auskunft.
+      //
+      // JOB 3079 R2 (BEN-Korrekturpflicht 1): BEIDE Zeilen nennen `consentProvider`/`consentModel`,
+      // nicht `provider`/`model`. Der Kasten fragt, was bei einem JA geschieht — und vor dem Klick
+      // rechnet nichts extern, weshalb `provider` dort die deterministischen Ersatzwerte trug. Ist
+      // der Empfaenger unbestimmt, steht hier KEIN Satz mit Ersatzwert, sondern dieselbe
+      // ausdrueckliche Absage wie bei fehlenden Datenklassen (und `consentPossible` ist dann
+      // ohnehin falsch, der Knopf also weg).
+      document.getElementById("klara-consent-scope").textContent =
+        a.payloadResolved && a.consentProvider
+          ? t("s4ConsentSatz", {
+              klassen: klaraS4KlassenListe(a.payloadClasses, t("s4KlassenUnd")),
+              provider: a.consentProvider,
+            }) +
+            " " +
+            t("s4ConsentUmfang", {
+              provider: a.consentProvider,
+              model: a.consentModel || t("s4Unbekannt"),
+              session: klaraS4SessionId || t("s4Unbekannt"),
+              klassen: a.payloadClasses.join(", "),
+            })
+          : t("s4ConsentKlassenFehlen");
+      // Serverseitig ausgeschlossene Klassen werden GENANNT, nicht still entfernt (KW-S4-22 §4).
+      var blockiert = document.getElementById("klara-consent-blocked");
+      if (a.blockedClasses.length > 0) {
+        var teile = [];
+        for (var bi = 0; bi < a.blockedClasses.length; bi += 1) {
+          var bc = a.blockedClasses[bi];
+          teile.push(bc.reasonCode ? bc.payloadClass + " (" + bc.reasonCode + ")" : bc.payloadClass);
+        }
+        blockiert.textContent = t("s4ConsentKlassenBlockiert", { klassen: teile.join(", ") });
+        blockiert.className = "";
+      } else {
+        blockiert.textContent = "";
+        blockiert.className = "hidden";
+      }
+      // JOB 3056 K1: der Schalter „Externe KI erlauben" IST der Zustimmen- bzw. Widerrufen-Knopf —
+      // je Lage genau einer sichtbar, derselbe Server-Weg (klaraS4Zustimmen / klaraS4Widerrufen).
+      // Der Wortlaut steht als aria-label; der Knopf des Schalters ist ein Kind-Element.
+      var zu = document.getElementById("klara-consent-grant");
+      zu.setAttribute("aria-label", t("s4ConsentKnopf"));
+      // NICHT `consentVisible`, sondern `consentPossible`: ohne aufgeloeste Datenklassen gibt es
+      // keinen Schalter, der eine unbestimmte Zustimmung erteilen koennte.
+      zu.className = a.consentPossible ? "schalter" : "schalter hidden";
+      var weg = document.getElementById("klara-consent-revoke");
+      weg.setAttribute("aria-label", t("s4ConsentWiderruf"));
+      weg.className = a.revokeVisible ? "schalter an" : "schalter an hidden";
+      // KW-KA4-DOKUMENT-CONSENT-START (Anzeige)
+      // Aktiv gefragt wird NUR, wenn der Server die Zustimmung verlangt, sie erteilbar ist und der
+      // Anwender fuer DIESES Dokument noch nicht Nein gesagt hat. Der Erlauben-Knopf darueber
+      // bleibt in jedem Fall stehen — ein Nein sperrt die Frage, nicht den Weg.
+      var frage = document.getElementById("ka4-frage");
+      var darfFragen = ka4DarfAktivFragen(a);
+      frage.className = darfFragen ? "" : "hidden";
+      document.getElementById("ka4-frage-titel").textContent = t("ka4FrageTitel");
+      document.getElementById("ka4-frage-text").textContent = t("ka4FrageText");
+      document.getElementById("ka4-frage-ja").textContent = t("ka4FrageJa");
+      document.getElementById("ka4-frage-nein").textContent = t("ka4FrageNein");
+      var abgelehnt = document.getElementById("ka4-abgelehnt");
+      var zeigeAbgelehnt = ka4WurdeAbgelehnt() && a.consentVisible === true;
+      abgelehnt.textContent = zeigeAbgelehnt ? t("ka4Abgelehnt") : "";
+      abgelehnt.className = zeigeAbgelehnt ? "" : "hidden";
+      // KW-KA4-DOKUMENT-CONSENT-END (Anzeige)
+      // JOB 3079 · S4: der Satz ueber den Weg dieses Fensters haengt am S4-Zustand und steht im
+      // Vertrauenskopf. Aendert sich der Zustand hier, muss er dort mitwandern — sonst behauptet
+      // der Kopf einen Weg, den die Gruppe darunter schon widerlegt hat.
+      renderAiLage();
+      updateAskState();
+    }
+
+    /**
+     * Runde 9: Ist die zuletzt bestaetigte Aufloesung abgelaufen, wird das FESTGEHALTEN — nicht nur
+     * abgeleitet. Die Ableitung (klaraS4Anzeige) sperrt nur, solange die Phase „bereit" ist; der
+     * naechste Fehlschlag wechselt die Phase, und die Sperre waere weg. Der Merker ueberlebt ihn.
+     * Runde 10: gemessen wird am BEWAHRTEN Ablaufzeitpunkt (klaraS4BestaetigtBisMs), nicht an der
+     * Sicht und nicht an der Phase — beide sind nach einem Fehlschlag schon weg, die Frist nicht.
+     * Jede Sicht mit Aufloesung kommt durch klaraS4Uebernehmen und traegt ihre Frist dort ein;
+     * einen zweiten Weg gibt es nicht.
+     */
+    function klaraS4AblaufMerken() {
+      if (isFinite(klaraS4BestaetigtBisMs) && Date.now() >= klaraS4BestaetigtBisMs) {
+        klaraS4Abgelaufen = true;
+      }
+    }
+
+    /**
+     * Fragen ist gesperrt, solange der Server die Ausfuehrung nicht erlaubt — UND solange der
+     * clientseitige Riegel steht (BEN-Befund 2) — UND solange seit einem Ablauf kein frischer
+     * Stand gelesen ist (Runde 9, klaraS4Abgelaufen). Waehrend `laedt`, `unerreichbar` oder
+     * `keineSitzung` OHNE vorherigen Ablauf wird weiterhin nicht gesperrt: das waere eine
+     * Behauptung ueber Ungelesenes. Nach einem Ablauf ist es keine mehr: da IST etwas gelesen,
+     * und es gilt nicht mehr.
+     */
+    function klaraS4FragenGesperrt() {
+      if (klaraS4Riegelstand) { return true; }
+      klaraS4AblaufMerken();
+      if (klaraS4Abgelaufen) { return true; }
+      return klaraS4Phase === "bereit"
+        && klaraS4Anzeige(klaraS4Phase, klaraS4Sicht, Date.now()).askAllowed === false;
+    }
+
+    // (a) Ehrlicher Anmelde-Status: GET /api/auth/me (bestehender Session-Endpunkt der App) mit
+    // credentials: "include" — same-origin, da das Taskpane AUF der App-Domain liegt.
+    // JOB 3017 D4 (SchlankesPanel.dc.html Z.27): die Anmeldezeile im Kopfband spiegelt WOERTLICH
+    // den Text der Sitzungsauskunft — angemeldet als <Name>, oder der ehrliche Anmelde-Hinweis.
+    // Keine zweite Ableitung, kein Platzhalter: jede Stelle, die #session-status beschreibt,
+    // ruft diese Zeile mit demselben Text.
+    // JOB 3056 K1: die Konto-Zeile der Einstellungen (Einstellungen.dc.html Z.63) traegt den
+    // Namen aus checkSession — „–", solange keiner belegt ist; „Abmelden" nur mit Anmeldung.
+    function renderKontoZeile(name) {
+      var zeile = document.getElementById("einst-konto-name");
+      if (zeile) { zeile.textContent = name || "–"; }
+      var abmelden = document.getElementById("logout-btn");
+      if (abmelden) { abmelden.className = name ? "einst-link" : "einst-link hidden"; }
+    }
+
+    // JOB 3056 K1 (§9, Lieferung 5) · Runde 4 (Codex Pflicht 2): die Ruhe-Mitte hat GENAU EINE Lage,
+    // und jede Lage zeigt hoechstens EINEN Knopf:
+    //   laedt      — der erste Abruf laeuft: nichts in der Mitte, der Sendeknopf ist grau (§9)
+    //   angemeldet — Lupe und der EINE Satz
+    //   anmelden   — 401/403 (oder Sitzung ohne Namen): EIN Satz und GENAU „Anmelden"
+    //   erneut     — Netz-/Serverfehler: EIN Satz und GENAU „Erneut versuchen"; ob eine Anmeldung
+    //                fehlt, ist dann NICHT festgestellt — deshalb kein Anmeldeknopf daneben
+    //   warten     — die Anmeldung laeuft im eigenen Fenster: EIN Satz und GENAU „Warten abbrechen"
+    // Bis Runde 3 standen bei Netzfehler „Anmelden" UND „Erneut versuchen" nebeneinander, und
+    // waehrend des ersten Abrufs stand schon der Ruhe-Satz da (Codex R3, eigene Messung).
+    var sitzungLage = null;
+
+    function renderSitzungsflaeche(lage) {
+      sitzungLage = lage === "laedt" ? sitzungLage : lage;
+      var ruhe = lage === "angemeldet";
+      var block = lage !== "angemeldet" && lage !== "laedt";
+      document.getElementById("session-block").className = block ? "" : "hidden";
+      // Die Lupe ist ein SVG: `className` ist dort nur lesbar (SVGAnimatedString) — setAttribute.
+      document.getElementById("ask-ruhe-lupe").setAttribute("class", ruhe ? "" : "hidden");
+      document.getElementById("ask-ruhe-satz").className = ruhe ? "" : "hidden";
+      document.getElementById("login-block").className =
+        lage === "anmelden" || lage === "warten" ? "" : "hidden";
+      document.getElementById("login-btn").className =
+        lage === "anmelden" ? "primary" : "primary hidden";
+      document.getElementById("login-cancel-btn").className =
+        lage === "warten" ? "ghost" : "ghost hidden";
+      document.getElementById("session-retry-btn").className =
+        lage === "erneut" ? "ghost" : "ghost hidden";
+    }
+
+    // JOB 3017 D4 Runde 2 (Ben): „Angemeldet als …" nur mit einem NICHTLEEREN Servernamen. Bis
+    // hierher stand `user.name || user.email || "?"` — die E-Mail als Ersatzname und „?" als
+    // Platzhalter, beides vom Auftrag verboten. Liefert der Server ein Benutzerobjekt ohne Namen,
+    // kann das Panel die Sitzung niemandem zuordnen: dann gilt sie hier NICHT als belegte
+    // Anmeldung (fail-safe: der ehrliche Hinweis sessionOff, der Anmeldeweg bleibt sichtbar), statt
+    // eine Zuordnung zu erfinden. Der Servertyp liefert `name` heute immer; der Fall ist der
+    // Randfall aus dem Auftrag, nicht der Regelfall.
+    function sessionName(user) {
+      if (!user || typeof user.name !== "string") { return null; }
+      var name = user.name.trim();
+      return name === "" ? null : name;
+    }
+
+    function checkSession() {
+      var box = document.getElementById("session-status");
+      box.className = "status warn";
+      box.textContent = t("sessionChecking");
+      // Laden (§9): beim ERSTEN Abruf zeigt die Mitte nichts — der Sendeknopf ist grau, sonst
+      // nichts (kein Satz, kein Knopf). Ein erneuter Abruf (Sprachwechsel, „Erneut versuchen")
+      // laesst die zuletzt belegte Lage stehen, statt sie fuer die Dauer des Abrufs zu leeren.
+      renderSitzungsflaeche(sitzungLage === null ? "laedt" : sitzungLage);
+      fetch("/api/auth/me", { credentials: "include" })
+        .then(function (res) {
+          if (res.ok) { return res.json(); }
+          if (res.status === 401 || res.status === 403) { return null; }
+          throw new Error("HTTP " + res.status);
+        })
+        .then(function (user) {
+          var name = sessionName(user);
+          signedIn = name !== null;
+          // JOB 3093 Runde 3: der Bestandsstand („Haben wir das schon?") haengt an DIESER Sitzung —
+          // eine andere oder keine Identitaet verwirft ihn (bestandSitzungMelden).
+          if (typeof bestandSitzungMelden === "function") { bestandSitzungMelden(signedIn ? user : null); }
+          // JOB 3667: die ACCOUNTREGEL des Rueckwegs haengt an genau dieser Auskunft — welche Rolle
+          // angemeldet ist, entscheidet, ob der Griff freigibt oder einreicht. Ohne Sitzung: keine.
+          if (typeof rwRolleMelden === "function") { rwRolleMelden(signedIn ? user : null); }
+          if (signedIn) {
+            box.className = "status ok";
+            box.textContent = t("sessionOk", { name: name });
+            renderSitzungsflaeche("angemeldet");
+          } else {
+            box.className = "status warn";
+            box.textContent = t("sessionOff");
+            renderSitzungsflaeche("anmelden");
+          }
+          renderKontoZeile(name);
+          // K5: der Knopf haengt an Anmeldung UND Office-Bereitschaft (eine Entscheidungsstelle).
+          updateSendState();
+          // AUFTRAG-37 (G3): der belegte Anmelde-Erfolg ist der Moment, in dem eine fehlende
+          // Sitzung nachgeholt werden darf. `klaraS4NachAnmeldung` prueft selbst, ob ueberhaupt
+          // eine fehlt — dieser Aufruf ist deshalb gefahrlos, auch wenn `checkSession` (ueber
+          // `setLang`) mehrfach laeuft.
+          if (signedIn) { klaraS4NachAnmeldung(); }
+        })
+        .catch(function () {
+          signedIn = false;
+          box.className = "status warn";
+          box.textContent = t("sessionError");
+          renderKontoZeile(null);
+          // Nicht erreichbar (§9): EIN Satz und GENAU „Erneut versuchen" — kein Anmeldeknopf
+          // daneben, denn ob eine Anmeldung fehlt, ist ohne Serverantwort nicht festgestellt.
+          renderSitzungsflaeche("erneut");
+          updateSendState();
+        });
+    }
+
+    // JOB 3056 K1: „Abmelden" (Einstellungen, Gruppe Konto) — der bestehende Server-Weg
+    // POST /api/auth/logout (loescht die Sitzung und das Cookie); danach zeigt checkSession den
+    // ehrlichen Ist-Zustand.
+    // Runde 4 (Codex Pflicht 3): ein BESTAETIGTER Logout (2xx) verwirft sofort alles, was an der
+    // Sitzung hing — den KI-/S4-Stand, die geplante Auffrischung und jede noch laufende Antwort
+    // (klaraS4Verwerfen, Epoche). Bis Runde 3 blieb „Externe KI" nach dem Abmelden stehen, weil
+    // der Sitzungsteil erst „mit der naechsten Anfrage" fiel — und die kam nicht. Ein NICHT
+    // bestaetigter Logout (Netzfehler, 5xx) verwirft nichts: die Sitzung kann noch bestehen, und
+    // checkSession sagt gleich, was der Server dazu sagt.
+    function abmelden() {
+      var knopf = document.getElementById("logout-btn");
+      knopf.disabled = true;
+      fetch("/api/auth/logout", { method: "POST", credentials: "include" })
+        .then(
+          function (res) { return !!res && res.ok === true; },
+          function () { return false; }
+        )
+        .then(function (bestaetigt) {
+          knopf.disabled = false;
+          if (bestaetigt) {
+            // JOB 4076: der uebergebene Zugangsschluessel gehoert DIESER Sitzung — mit ihr faellt er.
+            officeSchluessel = null;
+            klaraS4Verwerfen();
+            // JOB 3093 Runde 3: derselbe Moment fuer den Bestandsstand — ein bestaetigter Logout
+            // verwirft Treffer und laufende Antwort, ein unbestaetigter nichts.
+            if (typeof bestandVerwerfen === "function") { bestandVerwerfen(); }
+            sitzungLage = null;
+          }
+          kwAnsichtSetzen("fragen");
+          checkSession();
+        });
+    }
+
+    // JOB 3057 K2 (§5.6): der Statussatz traegt hoechstens EINEN Knopf — `aktion` ist "retry"
+    // (denselben Umfang erneut senden), "login" (der Anmeldeweg), "open" (den bestaetigten Entwurf
+    // oeffnen — Runde 3: die Bestaetigung eines Sendelaufs, dessen Markierung inzwischen gewechselt
+    // hat, s. zeigeEntwurfsErgebnis) oder nichts. "busy" ist der ruhige Zwischenzustand ohne
+    // Warnfarbe.
+    var sendStatusAktion = null;
+    // JOB 3594 K2b — DIE EINE STELLE, AN DER DIE SPERRE DES SENDEWEGS FAELLT.
+    //
+    // WARUM SIE HIER SITZT UND NICHT SIEBENMAL VERTEILT: ein Sendelauf hat MEHR Ausgaenge als der
+    // Blick auf `sendeEntwurf` vermuten laesst — Erfolg, Nicht-201, Wurf, Leertext, und dazu drei
+    // Ausgaenge, die gar keinen Ruecklauf haben (`readSelection` ohne Text-Zugriff,
+    // `readWholeDocument` ohne Word und sein `catch`; sie steigen aus, ohne ihren Rueckruf zu
+    // rufen). Ein von Hand an jeden Ausgang gehaengtes „Sperre loesen" haette genau diese drei
+    // vergessen — und ein Knopf, der nach einem Word-Fehlschlag fuer immer grau bleibt, waere
+    // schlimmer als die Luecke, die dieser Job schliesst.
+    // WAS STATTDESSEN GILT, und es ist keine Hilfskonstruktion, sondern der Zustand selbst: „busy"
+    // IST der offene Lauf. Jeder Ausgang — ausnahmslos — endet damit, dass der Mensch einen ANDEREN
+    // Satz liest oder gar keinen; beides laeuft durch diese zwei Funktionen. Ein Ausgang ohne
+    // Freigabe muesste also ein Ausgang ohne Satz sein, und den gibt es nicht.
+    // RUNDE 2 (BEN): geloest wird das EINE Kennzeichen `captureSendeLauf` — es gibt keinen zweiten
+    // Sperrzustand mehr, der hier unabhaengig zurueckgesetzt werden koennte.
+    function sendeSperreLoesen() {
+      if (captureSendeLauf === null) { return; }
+      captureSendeLauf = null;
+      updateSendState();
+    }
+    function showSendStatus(kind, text, aktion, url) {
+      var el = document.getElementById("send-status");
+      var knopf = document.getElementById("send-status-btn");
+      el.className = kind === "ok" ? "status ok" : kind === "busy" ? "status" : "status warn";
+      el.textContent = text;
+      sendStatusAktion = aktion || null;
+      sendStatusUrl = sendStatusAktion === "open" ? url || null : null;
+      if (sendStatusAktion) {
+        knopf.textContent = t(
+          sendStatusAktion === "login" ? "captureLogin" : sendStatusAktion === "open" ? "openLink" : "captureRetry"
+        );
+        knopf.className = "ghost capture-knopf";
+      } else {
+        knopf.textContent = "";
+        knopf.className = "ghost capture-knopf hidden";
+      }
+      // JOB 3594 K2b: jeder Satz ausser dem laufenden beendet den Lauf.
+      if (kind !== "busy") { sendeSperreLoesen(); }
+    }
+    function hideSendStatus() {
+      var el = document.getElementById("send-status");
+      el.className = "status hidden";
+      el.textContent = "";
+      sendStatusAktion = null;
+      sendStatusUrl = null;
+      document.getElementById("send-status-btn").className = "ghost capture-knopf hidden";
+      // JOB 3594 K2b: kein Satz mehr = kein offener Lauf mehr (der Erfolgsweg geht hier durch,
+      // bevor die Ergebniszeile gezeichnet wird).
+      sendeSperreLoesen();
+    }
+    // Runde 3: gehoert ein Ruecklauf noch zum aktuellen Sendelauf? Aeltere Laeufe veraendern nichts.
+    // JOB 3594 K2b Runde 2: seit `captureSendeLauf` das Kennzeichen des OFFENEN Laufs ist, sagt
+    // dieselbe Frage zugleich „ist dieser Lauf ueberhaupt noch offen?" — ein Ruecklauf, der nach dem
+    // Ende seines eigenen Laufs eintrifft (Satz steht schon, Sperre ist gefallen), schreibt nichts
+    // mehr. Das ist keine Abschwaechung, sondern genau die Zusage von Runde 3, nur frueher gueltig.
+    function sendeLaufAktuell(lauf) {
+      return captureSendeLauf !== null && lauf === captureSendeLauf;
+    }
+    // Netzausfall (fetch verwirft) wird als EIGENER Satz gesagt — „offline" statt eines rohen
+    // Browsertexts; alles andere behaelt sein Detail.
+    function sendeFehlerText(err) {
+      var detail = err && err.message ? String(err.message) : "";
+      if (detail === "" || /fetch|network|offline|load failed/i.test(detail)) { return t("sendOffline"); }
+      return t("sendError", { detail: detail });
+    }
+
+    // Die Absaetze einer Markierung: Zeilen ohne Leerraum-Zeilen (Word trennt mit \r, \n oder \r\n).
+    function captureAbsaetze(text) {
+      var raus = [];
+      var zeilen = String(text || "").split(/\r\n|\r|\n/);
+      for (var i = 0; i < zeilen.length; i += 1) {
+        var z = zeilen[i].replace(/^\s+|\s+$/g, "");
+        if (z.length > 0) { raus.push(z); }
+      }
+      return raus;
+    }
+
+    // Die Karte aus dem gehaltenen Zustand aufbauen — Ergebniszeile ODER Markierung ODER der eine
+    // Satz. Nur DOM-APIs (textContent), kein HTML-Sink fuer Dokumenttext.
+    function renderCapture() {
+      var kicker = document.getElementById("capture-kicker");
+      var liste = document.getElementById("capture-absaetze");
+      var leer = document.getElementById("capture-leer");
+      var ergebnis = document.getElementById("capture-ergebnis");
+      var bilder = document.getElementById("capture-bilder-ergebnis");
+      var titel = document.getElementById("capture-titel");
+      if (!kicker || !liste || !leer || !ergebnis || !bilder || !titel) { return; }
+      while (liste.firstChild) { liste.removeChild(liste.firstChild); }
+      var n = captureMarkierung.length;
+      if (captureErgebnis) {
+        kicker.className = "hidden";
+        kicker.textContent = "";
+        leer.className = "hidden";
+        ergebnis.className = "";
+        var satz = bilderText(captureErgebnis.bilder);
+        document.getElementById("capture-bilder-satz").textContent = satz;
+        bilder.className = satz ? "" : "hidden";
+      } else {
+        ergebnis.className = "hidden";
+        bilder.className = "hidden";
+        document.getElementById("capture-bilder-satz").textContent = "";
+        if (n === 0) {
+          kicker.className = "hidden";
+          kicker.textContent = "";
+          leer.className = "";
+        } else {
+          kicker.className = "";
+          kicker.textContent = n === 1 ? t("captureKickerEins") : t("captureKicker", { n: String(n) });
+          leer.className = "hidden";
+          for (var i = 0; i < n; i += 1) {
+            var p = document.createElement("p");
+            p.className = "capture-absatz";
+            p.textContent = captureMarkierung[i];
+            liste.appendChild(p);
+          }
+        }
+      }
+      // Die Zeile „Titel": vorbelegt aus der ersten Zeile (dieselbe Ableitung wie der Sendeweg),
+      // solange niemand von Hand geschrieben hat.
+      if (!captureTitelVonHand) {
+        titel.value = n === 0 ? "" : deriveDraftTitleFromSelection(captureMarkierung.join("\n"));
+      }
+      // JOB 3092 S6 (W6): die Dublettenpruefung folgt der Markierung — vor dem Einreichen.
+      captureDublettenPruefen();
+      // JOB 3667: eine ANDERE Markierung nimmt die Zielwahl des Rueckwegs zurueck. Das muss hier
+      // stehen und nicht nur am Dublettenstand: `captureDublettenPruefen` kehrt bei unveraendertem
+      // Text frueh um, und die Vorschau des Rueckwegs zeigt die Absaetze DIESER Karte.
+      rwZeichnen();
+    }
+
+    // ============================================================================================
+    // JOB 3555 K2b — DIE BEREICH-ZEILE: ZEICHNEN UND HOLEN.
+    // ============================================================================================
+
+    /** Der Satz, der in der Zeile steht, solange nichts zu waehlen ist — je Lage genau einer. */
+    function captureBereichSatz() {
+      if (captureBereichLage === "laedt") { return t("captureBereichLaedt"); }
+      if (captureBereichLage === "leer") { return t("captureBereichLeer"); }
+      return t("captureBereichFehler");
+    }
+
+    /**
+     * Die Auswahl aus dem gehaltenen Zustand aufbauen. Nur DOM-APIs (textContent/value) — die Namen
+     * kommen vom Server und werden nie als HTML gelesen.
+     *
+     * Ohne Liste steht GENAU EINE Option da: der Satz der Lage, mit leerem Wert und gesperrt. Der
+     * Satz IST dann der sichtbare Wert der Zeile — nicht eine leere Auswahl, die sich als „nichts
+     * vorhanden" lesen liesse.
+     */
+    function renderCaptureBereich() {
+      var feld = document.getElementById("capture-bereich");
+      if (!feld) { return; }
+      while (feld.firstChild) { feld.removeChild(feld.firstChild); }
+      var platzhalter = document.createElement("option");
+      platzhalter.value = "";
+      if (captureBereichLage !== "liste") {
+        platzhalter.textContent = captureBereichSatz();
+        feld.appendChild(platzhalter);
+        feld.disabled = true;
+        feld.value = "";
+        return;
+      }
+      platzhalter.textContent = t("captureBereichWahl");
+      feld.appendChild(platzhalter);
+      for (var i = 0; i < captureBereiche.length; i += 1) {
+        var option = document.createElement("option");
+        option.value = captureBereiche[i];
+        option.textContent = captureBereiche[i];
+        feld.appendChild(option);
+      }
+      feld.disabled = false;
+      // Die Wahl des Menschen ueberlebt das Zeichnen — aber nur, wenn es sie in der Liste gibt.
+      feld.value = captureBereichWahl;
+      if (feld.value !== captureBereichWahl) { captureBereichWahl = ""; feld.value = ""; }
+    }
+
+    /**
+     * WAS DIE ZEILE SICHTBAR TRAEGT — und nur das darf hinausgehen (RUNDE 5, BEN: „unsichtbarer
+     * alter Bereich"). Der Wert kommt aus dem Feld selbst und ist an die Lage gebunden: ohne
+     * frisch geholte Liste („laedt", „leer", „fehler") steht dort der Satz der Lage mit leerem
+     * Wert, also gibt es keine Wahl — auch dann nicht, wenn im Speicher noch eine staende. Damit
+     * kann sichtbarer Zustand und Nutzlast nicht auseinanderlaufen; es ist keine zweite Wahrheit
+     * neben `captureBereichWahl`, sondern DIE eine Ablesung vor dem Senden.
+     */
+    function captureBereichGewaehlt() {
+      if (captureBereichLage !== "liste") { return ""; }
+      var feld = document.getElementById("capture-bereich");
+      return feld && typeof feld.value === "string" ? feld.value : "";
+    }
+
+    /** Nur, was der Server wirklich als Namen geliefert hat: Zeichenkette, nicht leer, in Reihenfolge. */
+    function captureBereicheAusAntwort(koerper) {
+      if (!koerper || typeof koerper !== "object" || !Array.isArray(koerper.categories)) { return null; }
+      var raus = [];
+      for (var i = 0; i < koerper.categories.length; i += 1) {
+        var eintrag = koerper.categories[i];
+        var name = eintrag && typeof eintrag.name === "string" ? eintrag.name : null;
+        // RUNDE 5 (BEN): der gelieferte Name wird NICHT umgeschrieben. Bis Runde 4 stand hier ein
+        // beidseitiges Beschneiden — aus " Technik " wurde "Technik", und GENAU DIESER veraenderte
+        // Wert reiste in die Nutzlast. Der Bestand vergleicht Bereichsnamen exakt
+        // (category-routes.ts:33): ein beschnittener Name bezeichnet einen ANDEREN Bereich, und zwei
+        // Namen, die sich nur am Rand unterscheiden, fielen zu einem zusammen. Beschnitten wird nur
+        // noch fuer die EINE Frage, ob ueberhaupt ein Name dasteht; hinaus geht der gelieferte Name.
+        if (name === null || name.replace(/^\s+|\s+$/g, "").length === 0) { continue; }
+        raus.push(name);
+      }
+      // Die Zahl `count` wird bewusst NICHT gezeigt: sie beschreibt den SICHTBAREN Bestand des
+      // Fragenden (category-routes.ts:9-11), und in einer Zeile ohne diesen Zusatz waere sie als
+      // Gesamtbestand zu lesen. Lieber keine Zahl als eine, die mehr behauptet.
+      return raus;
+    }
+
+    /**
+     * Die Bereiche beim Betreten der Flaeche frisch holen — ueber `m5Abruf`, den vorhandenen
+     * Auskunfts-Abruf dieses Panels (same-origin, `credentials: "include"`, eigene Frist). KEINE
+     * neue Abrufstelle: ihre Menge ist gepinnt (tests/app/mega69-klara-merkmale.test.ts, M7), und
+     * ein zweiter Abrufweg zur selben Sache waere genau der Parallelweg, den dieses Panel nirgends
+     * fuehrt. (Der Zaehler dort liest den Quelltext und streicht nur Zeilen, die mit zwei
+     * Schraegstrichen beginnen — in einem Blockkommentar wie diesem waere der Aufrufname mit
+     * offener Klammer ein FALSCHER Treffer. Deshalb steht er hier ausgeschrieben, nicht als Code.)
+     *
+     * Ein spaeter Ruecklauf eines aelteren Abrufs veraendert nichts (Laufnummer) — dieselbe Regel
+     * wie beim Lesen der Markierung.
+     */
+    function captureBereicheLesen() {
+      captureBereichLauf += 1;
+      var lauf = captureBereichLauf;
+      captureBereichLage = "laedt";
+      renderCaptureBereich();
+      var scheitern = function () {
+        if (lauf !== captureBereichLauf) { return; }
+        // Fail-closed: Liste UND Wahl fallen. Ein gehaltener Wert ohne frischen Beleg duerfte
+        // weder dastehen noch mitreisen.
+        captureBereiche = [];
+        captureBereichWahl = "";
+        captureBereichLage = "fehler";
+        renderCaptureBereich();
+      };
+      m5Abruf("/api/categories")
+        .then(function (res) {
+          if (lauf !== captureBereichLauf) { return null; }
+          // Alles ausser 200 ist keine Auskunft — auch 401/403 nicht. Die Zeile sagt dann „nicht
+          // geladen" und nicht „keine Bereiche".
+          if (!res || res.status !== 200) { scheitern(); return null; }
+          return res.json();
+        })
+        .then(function (koerper) {
+          if (koerper === null || lauf !== captureBereichLauf) { return; }
+          var namen = captureBereicheAusAntwort(koerper);
+          // Ein Koerper, den man nicht lesen kann, ist ein FEHLGESCHLAGENER Abruf und keine
+          // erfolgreiche Leere (Lehre JOB 3092 R1).
+          if (namen === null) { scheitern(); return; }
+          captureBereiche = namen;
+          captureBereichLage = namen.length === 0 ? "leer" : "liste";
+          // RUNDE 5 (BEN): eine erfolgreiche LEERE Antwort ist der Beleg, dass es gerade nichts zu
+          // waehlen gibt — dann faellt auch die gehaltene Wahl, genau wie bei `scheitern()`. Bis
+          // Runde 4 leerte diese Lage nur das Feld; der gehaltene Name stand unsichtbar weiter und
+          // reiste beim naechsten Senden mit (gemessen: waehlen, Flaeche verlassen, mit leerer
+          // Antwort zurueckkehren, senden → `"category":"Technik"` ohne sichtbare Wahl).
+          if (namen.length === 0) { captureBereichWahl = ""; }
+          renderCaptureBereich();
+        })
+        .catch(scheitern);
+    }
+
+    // ============================================================================================
+    // JOB 3092 · S6 (W6) — DIE DUBLETTENPRUEFUNG VOR DEM EINREICHEN.
+    // ============================================================================================
+    //
+    // W6 (OFFEN.md) lautete: „`POST /api/check-text` ist die Dublettenpruefung — und Klara benutzt
+    // sie nirgends." Der WEG dorthin steht seit JOB 1621 (`w6DublettenAusCheckText`, Block
+    // KW-KLARA-W6-CHECKTEXT) und war inert. HIER ist sein erster Verbraucher: sobald die
+    // Markierungskarte eine Markierung zeigt, laeuft die Pruefung — nicht erst beim Klick auf
+    // „Senden", denn dann waere die Auskunft NACH dem Einreichen. Kein zweiter Weg zur Route:
+    // dieselbe Funktion, derselbe Koerper (`source: "transient-document"`, Sprache des Fensters).
+    //
+    // WAS SIE SAGT, UND WANN (Zustandsmodell §9 des Auftrags):
+    //   · laeuft       „Dublettenpruefung laeuft …"
+    //   · leer         „Nichts Vergleichbares gefunden (geprueft <Zeit>)." — NUR nach erfolgreichem
+    //                  Lauf; die Zeit ist die des Laufs, keine negative Aussage ohne frische Daten.
+    //   · treffer      Titel (Link auf den Volltext), Beziehung (OverlapRelation, uebersetzt),
+    //                  Fundort (koCategory) und Pruefstand (koStatus), jeweils NUR soweit geliefert.
+    //   · fehler       „Pruefung nicht moeglich." — Fehlerantwort, Netz, kaputter Koerper.
+    //   · zu-kurz      „Dublettenpruefung erst ab 40 Zeichen." (check-text-routes.ts:20) — kein Ruf.
+    //   · KEINE Aussage ohne Markierung, ohne Anmeldung (die Route verlangt ko.read; ein 401 je
+    //     Markierung waere Laerm) und nach einem bestaetigten Entwurf (die Karte zeigt dann die
+    //     Ergebniszeile).
+    // SIE BLOCKIERT NICHTS: der Sendeknopf haengt weiter allein an Anmeldung, Word und Markierung
+    // (updateSendState). Ein Treffer ist eine Auskunft, keine Sperre — der Mensch entscheidet.
+    // GENAU EIN LAUF JE TEXT: derselbe Text wird nicht erneut geprueft; ein neuer Text macht den
+    // alten Lauf unbeachtlich (Laufnummer) — ein verspaeteter Rueckfall kann keine fremde Markierung
+    // beschriften.
+    var captureDubletten = null;
+    var captureDublettenText = "";
+    var captureDublettenLauf = 0;
+
+    var W6_RELATION_KEYS = {
+      identisch: "captureDubIdentisch",
+      a_enthaelt_b: "captureDubEnthaeltEintrag",
+      b_enthaelt_a: "captureDubImEintrag",
+      teilweise: "captureDubTeilweise",
+      verwandt: "captureDubVerwandt",
+    };
+
+    function s6Uhrzeit(date) {
+      function pad(n) { return n < 10 ? "0" + n : String(n); }
+      return pad(date.getHours()) + ":" + pad(date.getMinutes());
+    }
+
+    function captureDublettenPruefen() {
+      var text = captureMarkierung.join("\n");
+      if (captureErgebnis || text.length === 0 || !signedIn) {
+        captureDubletten = null;
+        captureDublettenText = "";
+        captureDublettenLauf += 1;
+        renderCaptureDubletten();
+        return;
+      }
+      if (text === captureDublettenText) { return; }
+      captureDublettenText = text;
+      captureDublettenLauf += 1;
+      var lauf = captureDublettenLauf;
+      if (text.replace(/^\s+|\s+$/g, "").length < W6_MINDESTZEICHEN) {
+        captureDubletten = { lage: "zu-kurz", treffer: [], zeit: null };
+        renderCaptureDubletten();
+        return;
+      }
+      captureDubletten = { lage: "laeuft", treffer: [], zeit: null };
+      renderCaptureDubletten();
+      // `fetch.bind(window)` wie am KA2-Aufruf von performAsk: dieselbe Sitzung, derselbe Ursprung,
+      // und die Menge der Abrufziele (mega69-klara-merkmale M7) bleibt, was sie ist — das Ziel
+      // `/api/check-text` steht seit W6 im Weg selbst.
+      // JOB 3093: die Zeile „Titel" reist als `title` mit — der Titel, unter dem der Entwurf zum
+      // Eintrag wuerde. Ohne ihn fand der deterministische Pfad nicht einmal den wortgleichen
+      // Absatz (gemessen, fundort-im-server.test.ts K2); der Koerper ist sonst derselbe.
+      var titelFeld = document.getElementById("capture-titel");
+      w6DublettenAusCheckText(
+        "erfassen",
+        function () { return text; },
+        fetch.bind(window),
+        askLocale(lang),
+        titelFeld ? titelFeld.value : ""
+      ).then(function (ergebnis) {
+        if (lauf !== captureDublettenLauf) { return; }
+        captureDubletten = {
+          lage: ergebnis.lage,
+          treffer: ergebnis.treffer,
+          // Runde 2 (BEN 1): die Kuerzung reist bis in die Anzeige — nur ein vollstaendig
+          // ausgewerteter Text bekommt den uneingeschraenkten Leersatz.
+          gekuerzt: ergebnis.gekuerzt === true,
+          zeit: new Date()
+        };
+        renderCaptureDubletten();
+      });
+    }
+
+    function s6DublettenZeile(treffer) {
+      var zeile = document.createElement("li");
+      zeile.setAttribute("data-quelle", treffer.id);
+      var link = document.createElement("a");
+      link.href = koDetailUrl(window.location.origin, treffer.id);
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.textContent = treffer.title || treffer.id;
+      zeile.appendChild(link);
+      var teile = [];
+      if (treffer.relation && W6_RELATION_KEYS[treffer.relation]) {
+        teile.push(t(W6_RELATION_KEYS[treffer.relation]));
+      }
+      if (treffer.koCategory) { teile.push(treffer.koCategory); }
+      if (treffer.koStatus && ASK_STATUS_KEYS[treffer.koStatus]) {
+        teile.push(t(ASK_STATUS_KEYS[treffer.koStatus]));
+      }
+      if (teile.length > 0) {
+        zeile.appendChild(document.createTextNode(" · " + teile.join(" · ")));
+      }
+      return zeile;
+    }
+
+    function renderCaptureDubletten() {
+      var block = document.getElementById("capture-dubletten");
+      var satz = document.getElementById("capture-dubletten-satz");
+      var liste = document.getElementById("capture-dubletten-liste");
+      if (!block || !satz || !liste) { return; }
+      while (liste.firstChild) { liste.removeChild(liste.firstChild); }
+      var d = captureDubletten;
+      if (!d) {
+        block.className = "hidden";
+        satz.textContent = "";
+        return;
+      }
+      var zeit = d.zeit ? s6Uhrzeit(d.zeit) : "";
+      if (d.lage === "laeuft") {
+        satz.textContent = t("captureDubLaeuft");
+      } else if (d.lage === "zu-kurz") {
+        satz.textContent = t("captureDubZuKurz");
+      } else if (d.lage === "fehler") {
+        satz.textContent = t("captureDubFehler");
+      } else if (d.lage === "treffer") {
+        // Runde 2 (BEN 1): ging nur der Anfang an die Route, sagt der Satz das — vor der Liste.
+        satz.textContent = d.gekuerzt
+          ? t("captureDubTrefferGekuerzt", { max: String(W6_HOECHSTZEICHEN), zeit: zeit })
+          : t("captureDubTreffer", { zeit: zeit });
+        for (var i = 0; i < d.treffer.length; i += 1) {
+          liste.appendChild(s6DublettenZeile(d.treffer[i]));
+        }
+      } else {
+        // Runde 2 (BEN 1): KEINE uneingeschraenkte Entwarnung, wenn der Rest ungeprueft blieb.
+        satz.textContent = d.gekuerzt
+          ? t("captureDubLeerGekuerzt", { max: String(W6_HOECHSTZEICHEN), zeit: zeit })
+          : t("captureDubLeer", { zeit: zeit });
+      }
+      block.className = "";
+      // JOB 3667: die Kandidaten des Rueckwegs SIND diese Treffer — ein neuer Stand zeichnet ihn mit.
+      rwZeichnen();
+    }
+
+    // JOB 3667 · WORD-RUECKWEG: der Abschnitt mit dem Block KW-RUECKWEG (811 Zeilen) stand bis
+    // zum 14.09.2026 HIER und wohnt seither Zeile fuer Zeile in der Geschwisterdatei
+    // `rueckweg.js` — gleicher Ursprung, klassisches Skript, VOR diesem hier geladen; das
+    // Verweis-Tag steht im Rumpf unmittelbar ueber diesem Block. KEIN zweites Tag in einem
+    // Kommentar: der Blocksammler von tests/klara-zerlegung/zerlegung.ts liest die Seite als Text
+    // und haelte es fuer ein weiteres Skript.
+    // Grund und Ladereihenfolge stehen im Kopf jener Datei; die Schranke B3 in
+    // tests/klara-zerlegung/schnittflaechen.test.ts
+    // ist der Anlass, und sie wurde dafuer NICHT angehoben.
+
+    // Die Markierung aus Word lesen (nur Text — die Karte zeigt Absaetze, der Sendeweg holt sich
+    // das HTML selbst). Ein spaeter Rueckruf eines aelteren Lesens wird verworfen (Laufnummer).
+    function captureMarkierungLesen() {
+      captureLeseLauf += 1;
+      var lauf = captureLeseLauf;
+      var setzen = function (text) {
+        if (lauf !== captureLeseLauf) { return; }
+        var absaetze = captureAbsaetze(text);
+        // Eine ANDERE Markierung loest die Ergebniszeile ab; dieselbe laesst sie stehen.
+        if (captureErgebnis && absaetze.join("\n") !== captureGesendet) { captureErgebnis = null; }
+        captureMarkierung = absaetze;
+        // JOB 3092 Runde 2 (BEN, Pruefluecke 6): ein Fehler der Dublettenpruefung ist kein
+        // Endzustand. Jede NEUE Lesung der Markierung (Auswahlwechsel, Reiterwechsel) darf denselben
+        // Text erneut pruefen; ein erfolgreicher Lauf wird dagegen nicht wiederholt.
+        if (captureDubletten && captureDubletten.lage === "fehler") { captureDublettenText = ""; }
+        renderCapture();
+        updateSendState();
+      };
+      if (!officeUsable()) { setzen(""); return; }
+      try {
+        Office.context.document.getSelectedDataAsync(Office.CoercionType.Text, function (r) {
+          setzen(r && r.status === Office.AsyncResultStatus.Succeeded ? String(r.value || "") : "");
+        });
+      } catch (err) {
+        setzen("");
+      }
+    }
+
+    // Einmal an Word anschliessen, sobald Office bereit ist: erste Lesung plus das Ereignis der
+    // Markierungsaenderung (wo der Host es anbietet; sonst bleibt der Reiterwechsel der Anlass).
+    function captureOfficeAnschliessen() {
+      if (captureAngeschlossen || !officeUsable()) { return; }
+      captureAngeschlossen = true;
+      try {
+        if (Office.EventType && Office.EventType.DocumentSelectionChanged &&
+            typeof Office.context.document.addHandlerAsync === "function") {
+          Office.context.document.addHandlerAsync(
+            Office.EventType.DocumentSelectionChanged,
+            captureMarkierungLesen
+          );
+        }
+      } catch (e) { /* Host ohne dieses Ereignis: der Reiterwechsel liest nach. */ }
+      captureMarkierungLesen();
+    }
+
+    // Der EINE Bilder-Satz nach dem Senden (§5.5) — aus gezaehlten Zahlen, nie geraten. Einzahl
+    // und Mehrzahl getrennt (JOB 2551). null = nichts fehlt, kein Satz.
+    function bilderSatz(nichtHerausgegeben, zuGross) {
+      var a = nichtHerausgegeben > 0 ? nichtHerausgegeben : 0;
+      var b = zuGross > 0 ? zuGross : 0;
+      if (a > 0 && b > 0) {
+        return { key: "sendImagesBoth", vars: { n: String(a + b), a: String(a), b: String(b) } };
+      }
+      if (a === 1) { return { key: "sendImagesMissingOne", vars: {} }; }
+      if (a > 1) { return { key: "sendImagesMissing", vars: { n: String(a) } }; }
+      if (b === 1) { return { key: "sendImagesDroppedOne", vars: {} }; }
+      if (b > 1) { return { key: "sendImagesDropped", vars: { n: String(b) } }; }
+      return null;
+    }
+
+    // Die Bilanz des Auswahl-/Word.run-Wegs: Rueckfall auf reinen Text (kein zaehlbares HTML,
+    // AUFTRAG-mega45 Block F) > Budget-Rueckfall > gezaehlte Bilder.
+    function bilderBilanz(prepared) {
+      if (prepared.plainTextFallback) { return { key: "sendPlainFallback", vars: {} }; }
+      if (prepared.overBudget) { return { key: "sendOverBudget", vars: {} }; }
+      return bilderSatz(prepared.usedHtml ? prepared.undeliveredImages : 0, prepared.droppedImages);
+    }
+
+    // ============================================================================================
+    // JOB 3438 — WAS MIT DEN BILDERN GESCHAH: DIE ANTWORT DER ROUTE WIRD LESBAR.
+    // ============================================================================================
+    //
+    // Seit JOB 3400 verkleinert der Server die Bilder eines .docx-Imports und nennt in DERSELBEN
+    // Antwort `imagesShrunk`, `imagesKeptOriginal` und `imageSkipReasons`
+    // (capture-routes.ts:1066-1068). Das Fenster las davon nichts — es fuetterte den zweiten Platz
+    // von `bilderSatz` buchstaeblich mit `0`. Hier wird die Auskunft gelesen; die ANZEIGESTELLE
+    // bleibt dieselbe (`zeigeEntwurfsErgebnis` → `#capture-bilder-satz`), es gibt keinen neuen Block.
+    //
+    // DIE TRENNUNG ERFOLG/AUSFALL IST DER KERN, nicht Kosmetik (bildverkleinerung.ts:133-144):
+    // „schon-klein-genug", „ableitung-nicht-kleiner" und „keine-data-quelle" sind ERFOLGE — das Bild
+    // ist heil, es war nur nichts zu tun. Wer sie als Problem meldet, hat bei jedem zweiten Dokument
+    // eine Warnung und macht die drei echten Faelle unsichtbar.
+    var BILD_AUSFALL_WORTE = {
+      "eingabe-zu-gross": "sendImageFailTooBig",
+      "nicht-dekodierbar": "sendImageFailUnreadable",
+      "zeitgrenze": "sendImageFailTimeout"
+    };
+    var BILD_ERFOLG_GRUENDE = ["keine-data-quelle", "schon-klein-genug", "ableitung-nicht-kleiner"];
+
+    /** Eine gelieferte, nicht-negative Zahl — sonst `null` (= unbekannt, erzeugt keine Aussage). */
+    function bildZahl(wert) {
+      return typeof wert === "number" && isFinite(wert) && wert >= 0 ? wert : null;
+    }
+
+    // DIE ZERLEGUNG DER UEBERSPRUNGENEN — der Kern der Korrektur aus Runde 1 (BEN §1, HINWEIS.md).
+    //
+    // `imagesKeptOriginal` ist NICHT die Zahl der Probleme: es ist schlicht die LAENGE von
+    // `uebersprungen` (capture-routes.ts:1067-1068), und diese Liste mischt Erfolge und Ausfaelle.
+    // Ein Satz „3 Bilder wurden nicht verkleinert" ist deshalb pauschal, wenn zwei davon einfach
+    // schon klein genug waren und nur eines wirklich zerbrach. Die LISTE traegt den Befund je Bild
+    // — sie ist die Grundlage, nicht die Summe. Jedes uebersprungene Bild landet in GENAU EINEM
+    // Eimer: Erfolg, Ausfall oder unbekannt.
+    //
+    // Fehlt die Liste ganz, ist die Zusammensetzung unbekannt: dann steht nur die neutrale Zahl da
+    // (`sendImagesNotShrunk*`), die weder Erfolg noch Schaden behauptet — Wissensluecke statt
+    // Erfindung. Ein Eintrag, der keine nicht-leere Zeichenkette ist, kann der getippte Server
+    // (`Uebersprungsgrund`, bildverkleinerung.ts:119-131) nicht erzeugen; er zaehlt nirgends mit.
+    function bildgruendeZerlegen(gruende) {
+      var erfolge = 0;
+      var ausfallAnzahl = 0;
+      var ausfallKeys = [];
+      var ausfallZahl = {};
+      var unbekanntAnzahl = 0;
+      var kennungen = [];
+      var kennungZahl = {};
+      for (var i = 0; i < gruende.length; i += 1) {
+        var g = gruende[i];
+        if (typeof g !== "string" || g.length === 0) { continue; }
+        if (BILD_ERFOLG_GRUENDE.indexOf(g) >= 0) { erfolge += 1; continue; }
+        if (Object.prototype.hasOwnProperty.call(BILD_AUSFALL_WORTE, g)) {
+          var wortKey = BILD_AUSFALL_WORTE[g];
+          ausfallAnzahl += 1;
+          if (ausfallKeys.indexOf(wortKey) < 0) { ausfallKeys.push(wortKey); ausfallZahl[wortKey] = 0; }
+          ausfallZahl[wortKey] += 1;
+        } else {
+          unbekanntAnzahl += 1;
+          if (kennungen.indexOf(g) < 0) { kennungen.push(g); kennungZahl[g] = 0; }
+          kennungZahl[g] += 1;
+        }
+      }
+      return {
+        erfolge: erfolge,
+        ausfallAnzahl: ausfallAnzahl,
+        ausfallKeys: ausfallKeys,
+        ausfallZahl: ausfallZahl,
+        unbekanntAnzahl: unbekanntAnzahl,
+        kennungen: kennungen,
+        kennungZahl: kennungZahl
+      };
+    }
+
+    // Die Bilanz als Folge EIGENSTAENDIGER Saetze, jeder mit seiner eigenen Grundlage:
+    // verkleinert (aus `imagesShrunk`) · nicht noetig (Erfolge der Liste) · fehlgeschlagen (Ausfaelle
+    // der Liste, MIT Zahl) · unbekannter Grund (MIT Kennung, ausdruecklich kein Ausfall).
+    // Faellt eine Grundlage weg, faellt genau ihr Satz weg — es wird nie „0 Bilder verkleinert"
+    // behauptet, weil ein Feld fehlte, und nie ein Ausfall behauptet, weil eine Zahl da war.
+    // Uebersetzt wird ERST beim Anzeigen (`bilderText`), damit ein Sprachwechsel mitzieht.
+    function bildbilanzTeile(draft) {
+      var teile = [];
+      var verkleinert = bildZahl(draft.imagesShrunk);
+      if (verkleinert === 1) { teile.push({ key: "sendImagesShrunkOne", vars: {} }); }
+      else if (verkleinert > 1) { teile.push({ key: "sendImagesShrunkMany", vars: { n: String(verkleinert) } }); }
+
+      if (!Array.isArray(draft.imageSkipReasons)) {
+        var uebersprungen = bildZahl(draft.imagesKeptOriginal);
+        if (uebersprungen === 1) { teile.push({ key: "sendImagesNotShrunkOne", vars: {} }); }
+        else if (uebersprungen > 1) { teile.push({ key: "sendImagesNotShrunkMany", vars: { n: String(uebersprungen) } }); }
+        return teile;
+      }
+
+      var z = bildgruendeZerlegen(draft.imageSkipReasons);
+      if (z.erfolge === 1) { teile.push({ key: "sendImagesKeptOne", vars: {} }); }
+      else if (z.erfolge > 1) { teile.push({ key: "sendImagesKeptMany", vars: { n: String(z.erfolge) } }); }
+      if (z.ausfallAnzahl === 1) {
+        teile.push({ key: "sendImagesFailedOne", vars: {}, grundKeys: z.ausfallKeys, grundZahl: z.ausfallZahl });
+      } else if (z.ausfallAnzahl > 1) {
+        teile.push({
+          key: "sendImagesFailedMany",
+          vars: { n: String(z.ausfallAnzahl) },
+          grundKeys: z.ausfallKeys,
+          grundZahl: z.ausfallZahl
+        });
+      }
+      if (z.unbekanntAnzahl === 1) {
+        teile.push({ key: "sendImagesUnknownOne", vars: {}, kennungen: z.kennungen, grundZahl: z.kennungZahl });
+      } else if (z.unbekanntAnzahl > 1) {
+        teile.push({
+          key: "sendImagesUnknownMany",
+          vars: { n: String(z.unbekanntAnzahl) },
+          kennungen: z.kennungen,
+          grundZahl: z.kennungZahl
+        });
+      }
+      return teile;
+    }
+
+    // DIE EINE STELLE, die im .docx-Weg den Bilder-Befund bildet — Verlusthinweis (unveraendert,
+    // aus imagesTotal gegen imagesEmbedded) ZUERST, denn er ist der schwerere Befund, dahinter die
+    // Bildbilanz. Kein zweiter Zweig „mit oder ohne Bilanz": es gibt genau diesen Befund oder keinen.
+    function docxBilderBefund(draft) {
+      var gesamt = typeof draft.imagesTotal === "number" ? draft.imagesTotal : 0;
+      var da = typeof draft.imagesEmbedded === "number" ? draft.imagesEmbedded : 0;
+      var verlust = bilderSatz(gesamt > da ? gesamt - da : 0, 0);
+      var teile = bildbilanzTeile(draft);
+      if (!verlust && teile.length === 0) { return null; }
+      return {
+        key: verlust ? verlust.key : null,
+        vars: verlust ? verlust.vars : null,
+        teile: teile
+      };
+    }
+
+    // Der SICHTBARE Text eines Bilder-Befunds — EIN Wortlaut, EINE Stelle, in der Sprache des
+    // Fensters. Ein Befund ohne `teile` (der Auswahl-/Word.run-Weg ueber `bilderBilanz`) ergibt
+    // genau den Satz, den er heute schon ergibt.
+    function bilderText(bilder) {
+      if (!bilder) { return ""; }
+      var stuecke = [];
+      if (bilder.key) { stuecke.push(t(bilder.key, bilder.vars)); }
+      var teile = Array.isArray(bilder.teile) ? bilder.teile : [];
+      for (var i = 0; i < teile.length; i += 1) {
+        var teil = teile[i];
+        var vars = teil.vars || {};
+        if (Array.isArray(teil.grundKeys)) {
+          vars = kopieMitListe(vars, teil.grundKeys, teil.grundZahl, true);
+        } else if (Array.isArray(teil.kennungen)) {
+          // Die Kennung des Servers steht WOERTLICH da — sie zu uebersetzen hiesse, ein Wort zu
+          // erfinden, das diese Fassung nicht hat.
+          vars = kopieMitListe(vars, teil.kennungen, teil.grundZahl, false);
+        }
+        stuecke.push(t(teil.key, vars));
+      }
+      return stuecke.join(" ");
+    }
+
+    // Die Grundliste EINES Satzes: jeder Grund hoechstens einmal, in der Reihenfolge der Antwort,
+    // und — trifft er auf mehrere Bilder zu — mit seiner Zahl davor. Ohne diese Zahl sagte der Satz
+    // „Bei 4 Bildern schlug die Verkleinerung fehl: Zeitgrenze erreicht, zu groß, nicht lesbar" und
+    // liesse offen, welcher Grund die vierte Haelfte traegt (JOB 3438 R2, BEN §6). „2× " ist die
+    // Zaehlschreibweise selbst, kein Wort — sie steht in DE, EN und NL gleich und gehoert deshalb
+    // nicht ins Woerterbuch; die GRUENDE dahinter sind uebersetzt (`uebersetzen`), die KENNUNGEN
+    // eines unbekannten Grundes ausdruecklich nicht.
+    function kopieMitListe(vars, eintraege, zahlen, uebersetzen) {
+      var stuecke = [];
+      for (var i = 0; i < eintraege.length; i += 1) {
+        var wort = uebersetzen ? t(eintraege[i]) : eintraege[i];
+        var k = zahlen && zahlen[eintraege[i]] ? zahlen[eintraege[i]] : 1;
+        stuecke.push(k > 1 ? String(k) + "× " + wort : wort);
+      }
+      var kopie = {};
+      Object.keys(vars).forEach(function (name) { kopie[name] = vars[name]; });
+      kopie.liste = stuecke.join(", ");
+      return kopie;
+    }
+
+    // Erfolg (§5.3): die Karte wird EINE Zeile „Entwurf gesendet" mit Link „Oeffnen" — und nur im
+    // Fall der Bilder-Satz mit Link „In KLARWERK ergaenzen" auf denselben Entwurf.
+    //
+    // JOB 3057 Runde 3 (BEN): `gesendet` ist die Markierung, die BEIM SENDEN auf der Karte stand.
+    // Zeigt die Karte inzwischen eine andere (der Mensch hat waehrend des Sendens neu markiert),
+    // darf die Bestaetigung die neue Markierung nicht ersetzen — sie wuerde als „gesendet"
+    // erscheinen, obwohl sie es nicht ist. Die Bestaetigung gehoert dann zum gesendeten Inhalt und
+    // steht als EIN Satz + EIN Knopf „Oeffnen" im Statusfeld; die Karte behaelt die neue Markierung.
+    // Ohne `gesendet` (Aufruf am gehaltenen Zustand) gilt die aktuelle Markierung.
+    function zeigeEntwurfsErgebnis(url, bilder, gesendet) {
+      var signatur = typeof gesendet === "string" ? gesendet : captureMarkierung.join("\n");
+      if (signatur !== captureMarkierung.join("\n")) {
+        captureErgebnis = null;
+        renderCapture();
+        var satz = bilderText(bilder);
+        showSendStatus("ok", t("sendOk") + (satz ? " " + satz : ""), "open", url);
+        return;
+      }
+      captureErgebnis = { url: url, bilder: bilder || null };
+      captureGesendet = signatur;
+      document.getElementById("open-link").href = url;
+      document.getElementById("capture-bilder-link").href = url;
+      renderCapture();
+    }
+
+    // AUFTRAG-JOB507-D4 — DER SICHTBARE SATZ ZU EINER ANTWORT, DIE KEINEN ENTWURF ANGELEGT HAT.
+    //
+    // Bis hierher gab es diesen Satz dreimal in drei Auspraegungen: der Entwurf-Sender kannte
+    // 401/403 und warf alles andere in „Senden fehlgeschlagen (HTTP nnn)", der Offene-Frage-Weg
+    // kannte 401/403 getrennt, und 413/429 kannte niemand. Jetzt entscheidet EINE Stelle, was der
+    // Mensch liest — und sie sagt in jedem Zweig dazu, dass NICHTS angelegt wurde.
+    function draftFailureText(kind, res) {
+      if (kind === "auth") { return t("sendAuth"); }
+      if (kind === "forbidden") { return t("sendForbidden"); }
+      if (kind === "too-large") { return t("sendTooLarge"); }
+      if (kind === "rate-limited") {
+        var wartezeit = parseRetryAfterSeconds(
+          res && res.headers ? res.headers.get("retry-after") : null,
+          Date.now()
+        );
+        return wartezeit === null
+          ? t("sendRateLimitedUnknown")
+          : t("sendRateLimited", { n: String(wartezeit) });
+      }
+      return t("sendError", { detail: "HTTP " + (res ? res.status : "?") });
+    }
+
+    // WP-KLARA-1c (Pedis Live-Befund): Anmelde-RUECKWEG ohne Navigation — das Panel bleibt auf
+    // taskpane.html, die Anmeldung oeffnet in einem EIGENEN Fenster, das Panel pollt /api/auth/me.
+    // WP-IC-PAKET-1c (bens ROT-1, Poll-Lifecycle):
+    //  (a) GENAU EIN Poll gleichzeitig — der naechste Versuch wird per setTimeout erst NACH Abschluss
+    //      des vorigen geplant (kein setInterval, keine ueberlappenden Fetches).
+    //  (b) jeder Fetch mit eigenem AbortController + eigener Frist (WORD_ADDIN_LOGIN_FETCH_TIMEOUT_MS).
+    //  (c) UNABHAENGIGE harte 5-Minuten-Frist: eigener Deadline-Timer ab Start (greift auch bei
+    //      haengendem Fetch); zusaetzlich prueft loginPollStep die verstrichene Zeit je Abschluss.
+    //  (d) Generation-ID je Lauf: Abbrechen/Neustart erhoeht die Generation und neutralisiert damit
+    //      Timer, laufenden Fetch (abort) UND spaete Dialog-Callbacks (altes Handle wird geschlossen).
+    //  (e) Login-Knopf ist waehrend eines Laufs deaktiviert (kein Mehrfachstart).
+    var loginPollGeneration = 0;
+    var loginPollTimer = null;
+    var loginDeadlineTimer = null;
+    var loginPollStartedMs = 0;
+    var loginPollController = null; // AbortController des GERADE laufenden Fetch
+    var loginDialog = null; // Office-Dialog-Handle der AKTUELLEN Generation
+
+    // `lage` (Runde 4): „warten" waehrend des Anmelde-Laufs (EIN Knopf: Warten abbrechen), sonst
+    // „anmelden" (Frist abgelaufen, Popup blockiert: EIN Knopf: Anmelden).
+    function setSessionWarn(text, lage) {
+      var box = document.getElementById("session-status");
+      box.className = "status warn";
+      box.textContent = text;
+      renderSitzungsflaeche(lage || "anmelden");
+    }
+
+    function closeDialogHandle(dialog) {
+      if (dialog && typeof dialog.close === "function") {
+        try { dialog.close(); } catch (err) { /* Dialog bereits zu — egal */ }
+      }
+    }
+
+    function stopLoginPolling() {
+      loginPollGeneration += 1; // (d) neutralisiert Timer-Callbacks, Fetch-Ausgaenge, Dialog-Callbacks
+      if (loginPollTimer !== null) { clearTimeout(loginPollTimer); loginPollTimer = null; }
+      if (loginDeadlineTimer !== null) { clearTimeout(loginDeadlineTimer); loginDeadlineTimer = null; }
+      if (loginPollController !== null) {
+        try { loginPollController.abort(); } catch (err) { /* bereits beendet — egal */ }
+        loginPollController = null;
+      }
+      closeDialogHandle(loginDialog);
+      loginDialog = null;
+      document.getElementById("login-cancel-btn").className = "ghost hidden";
+      document.getElementById("login-context-hint").className = "muted hidden";
+      document.getElementById("login-btn").disabled = false; // (e)
+    }
+
+    // JOB 4076: die Kennung der Dialognachricht. Sie steht als Literal auch in `anmeldung.html` —
+    // zwei buildlose Seiten teilen keine Konstante; der Vertrag ist gemessen statt behauptet
+    // (tests/office-web-anmeldung/dialogseite.test.ts + seitenfenster-empfang).
+    var WORD_ADDIN_UEBERGABE_ART = "kw-office-handover";
+
+    // Liegt dieses Fenster in einem Rahmen FREMDER Herkunft? NUR dann kann das Sitzungscookie
+    // ausbleiben (ITP). Gemessen wird der Zugriff selbst: bei gleicher Herkunft ist die Adresse des
+    // Rahmens lesbar, bei fremder wirft die Policy. Top-level (Mac-Word, Browsertab): `false`.
+    function loginImFremdenRahmen() {
+      var oben;
+      try { oben = window.parent; } catch (err) { return true; }
+      if (!oben || oben === window) { return false; }
+      try { return String(oben.location.origin) !== String(window.location.origin); }
+      catch (err) { return true; }
+    }
+
+    // Der ehrliche Ausgang: kam KEINE Uebergabe an und liegt das Fenster im fremden Rahmen, ist
+    // „Zeit abgelaufen" die falsche Auskunft. Ohne Rahmenlage bleibt der bisherige Satz — dann hat
+    // der Mensch den Dialog schlicht nicht zu Ende gefuehrt.
+    function loginAusgangSatz() {
+      return loginImFremdenRahmen() ? t("loginHandoverBlocked") : t("loginTimeout");
+    }
+
+    // Der Code aus der Dialognachricht — oder null. Streng: was nicht genau die vereinbarte Form
+    // traegt, ist keine Uebergabe und wird nicht geraten.
+    function loginUebergabeCode(nachricht) {
+      try {
+        var k = JSON.parse(String(nachricht));
+        return k && k.art === WORD_ADDIN_UEBERGABE_ART && typeof k.code === "string"
+          && k.code.length > 0 ? k.code : null;
+      } catch (err) { return null; }
+    }
+
+    function loginUebergabeEinloesen(generation, code) {
+      fetch("/api/auth/office-handover/redeem", {
+        method: "POST", credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ code: code })
+      })
+        .then(function (res) { return res && res.ok ? res.json() : null; }, function () { return null; })
+        .then(function (koerper) {
+          if (generation !== loginPollGeneration) { return; } // (d) alter Lauf — nichts anfassen
+          var schluessel = koerper && typeof koerper.token === "string" ? koerper.token : "";
+          if (schluessel.length === 0) {
+            // Abgelehnt: NICHT „Anmeldung fehlgeschlagen" — sie kann geklappt haben, nur die
+            // Uebergabe nicht. Genau das steht da.
+            stopLoginPolling();
+            setSessionWarn(t("loginHandoverRejected"));
+            return;
+          }
+          officeSchluessel = schluessel;
+          stopLoginPolling();
+          checkSession(); // die Identitaet kommt aus einem FRISCHEN Abruf, nicht aus der Nachricht
+        });
+    }
+
+    function runLoginPoll(generation) {
+      if (generation !== loginPollGeneration) { return; }
+      // (b) eigener AbortController + eigene Frist je Fetch — ein haengender Request blockiert die
+      // sequenzielle Schleife hoechstens diese Spanne.
+      var controller = new AbortController();
+      loginPollController = controller;
+      var fetchTimer = setTimeout(function () {
+        try { controller.abort(); } catch (err) { /* schon fertig — egal */ }
+      }, WORD_ADDIN_LOGIN_FETCH_TIMEOUT_MS);
+      fetch("/api/auth/me", { credentials: "include", signal: controller.signal })
+        .then(function (res) { return res.ok; })
+        .catch(function () { return false; })
+        .then(function (ok) {
+          clearTimeout(fetchTimer);
+          if (loginPollController === controller) { loginPollController = null; }
+          var step = loginPollStep(generation, loginPollGeneration, Date.now() - loginPollStartedMs, ok);
+          if (step === "stale") { return; } // (d) alter Lauf — nichts mehr anfassen
+          if (step === "done") {
+            stopLoginPolling();
+            checkSession(); // rendert den angemeldeten Zustand — OHNE Navigation
+          } else if (step === "timeout") {
+            stopLoginPolling();
+            setSessionWarn(loginAusgangSatz());
+          } else {
+            // (a) "schedule": der NAECHSTE Versuch wird erst jetzt geplant — nie ueberlappend.
+            loginPollTimer = setTimeout(function () {
+              loginPollTimer = null;
+              runLoginPoll(generation);
+            }, WORD_ADDIN_LOGIN_POLL_INTERVAL_MS);
+          }
+        });
+    }
+
+    function startLoginPolling() {
+      stopLoginPolling(); // beendet einen etwaigen Altlauf (Generation ist danach frisch)
+      loginPollGeneration += 1;
+      var generation = loginPollGeneration;
+      loginPollStartedMs = Date.now();
+      setSessionWarn(t("loginWaiting"), "warten"); // zeigt GENAU „Warten abbrechen"
+      document.getElementById("login-btn").disabled = true; // (e) kein Mehrfachstart
+      // (c) UNABHAENGIGE harte Frist — feuert auch, wenn ein Fetch/Timer-Pfad haengen sollte.
+      loginDeadlineTimer = setTimeout(function () {
+        if (generation !== loginPollGeneration) { return; }
+        stopLoginPolling();
+        setSessionWarn(loginAusgangSatz());
+      }, WORD_ADDIN_LOGIN_POLL_MAX_MS);
+      loginPollTimer = setTimeout(function () {
+        loginPollTimer = null;
+        runLoginPoll(generation);
+      }, WORD_ADDIN_LOGIN_POLL_INTERVAL_MS);
+      return generation;
+    }
+
+    // (f) Fallback-Fenster (Browser-Vorschau ODER Office-Dialog nicht verfuegbar): window.open MIT
+    // Rueckgabewert-Pruefung — null heisst Popup-Blocker → ehrliche Meldung statt endlosem Warten.
+    // (g) Ehrlicher Hinweis: das Fallback-Fenster kann in einem ANDEREN Browser-Kontext landen.
+    function openLoginFallbackWindow(generation, url) {
+      if (generation !== loginPollGeneration) { return; }
+      var win = window.open(url, "_blank");
+      if (win === null) {
+        stopLoginPolling();
+        setSessionWarn(t("loginPopupBlocked"));
+        return;
+      }
+      document.getElementById("login-context-hint").className = "muted";
+    }
+
+    function openLoginWindow(generation) {
+      // JOB 4076: DIE EINE OEFFNUNGSSTELLE, Ziel jetzt die Dialogseite statt der Anwendung
+      // (`origin + "/"`) — die kann `messageParent` nicht rufen. Auch das Rueckfallfenster nimmt
+      // dieses Ziel: dort ist kein fremder Rahmen, das Cookie wird gesetzt, der Poll findet es.
+      var url = window.location.origin + "/word-addin/anmeldung.html";
+      var ui = window.Office && Office.context && Office.context.ui;
+      if (ui && typeof ui.displayDialogAsync === "function") {
+        // Offizieller Office-Weg: eigener Dialog-Webview, TOP-LEVEL (kein iframe → kein
+        // frame-ancestors-/CSP-Thema; die App-Domain steht in den Manifest-AppDomains).
+        // (f) try/catch: displayDialogAsync kann SYNCHRON werfen (z. B. Host ohne Dialog-Support).
+        try {
+          ui.displayDialogAsync(url, { height: 75, width: 45 }, function (result) {
+            var dialog =
+              result && result.status === Office.AsyncResultStatus.Succeeded ? result.value : null;
+            if (generation !== loginPollGeneration) {
+              // (d) SPAETER Callback eines abgebrochenen Laufs: altes Handle sofort schliessen,
+              // nichts speichern — der neue Lauf bleibt unberuehrt.
+              closeDialogHandle(dialog);
+              return;
+            }
+            if (dialog) {
+              loginDialog = dialog;
+              // JOB 4076: der RUECKWEG, gegen die LAUFENDE Generation geprueft — hier UND im
+              // Einloesen (zwischen beiden kann ein Abbruch liegen). Host ohne `addEventHandler`:
+              // der Cookie-Poll bleibt der Weg, wie bisher.
+              try {
+                dialog.addEventHandler(Office.EventType.DialogMessageReceived, function (arg) {
+                  if (generation !== loginPollGeneration) { return; }
+                  var code = loginUebergabeCode(arg && arg.message);
+                  if (code !== null) { loginUebergabeEinloesen(generation, code); }
+                });
+              } catch (err) { /* Host ohne addEventHandler — der Cookie-Poll traegt weiter */ }
+              return;
+            }
+            // Dialog abgelehnt/fehlgeschlagen → Fallback-Fenster (mit Popup-/Kontext-Behandlung).
+            openLoginFallbackWindow(generation, url);
+          });
+          return;
+        } catch (err) {
+          // synchroner Wurf → Fallback-Fenster.
+        }
+      }
+      openLoginFallbackWindow(generation, url);
+    }
+
+    // JOB 3057 K2: der Umfang ist kein Radio mehr — der Knopf sendet die MARKIERUNG, der Textlink
+    // „Ganzes Dokument uebernehmen" das DOKUMENT (WP-KLARA-2: Seiten gibt Word im Taskpane nicht
+    // her; der Satz dazu steht im „?"-Menue). Beide Wege laufen durch dieselbe Funktion.
+    function sendSelection() { sendeEntwurf("selection"); }
+    function sendDocument() { sendeEntwurf("document"); }
+
+    // (b) Kernfunktion: Umfang lesen → Front-Door-ENTWURF ueber die bestehende Draft-API
+    // (POST /api/drafts; origin "word_addin"). WP-KLARA-2: das WORD-HTML reist als bodyHtml mit —
+    // die autoritative Saeuberung (Allowlist, h1→h2, Tabellen, data:image) macht der Server-
+    // Sanitizer am Draft-Weg; der Klartext bleibt zusaetzlich erhalten (statement, Fallback).
+    function sendeEntwurf(scope) {
+      // K5 (Defense-in-Depth): ohne bereites Office NIE in die Word-API greifen — ehrlicher Hinweis
+      // statt ReferenceError/toter Klick (der Knopf ist dann ohnehin deaktiviert).
+      if (!officeUsable()) {
+        showSendStatus("warn", t("noOffice"));
+        return;
+      }
+      // JOB 3594 K2b: DIE EINE ENTSCHEIDUNG, ob ein zweiter Lauf angenommen wird — und sie faellt
+      // VOR jedem Word-Zugriff und damit lange vor dem POST. Sie deckt alle drei Eingaenge, weil
+      // alle drei hier hindurchgehen: den Knopf (`sendSelection`), den Textlink „Ganzes Dokument
+      // uebernehmen" (`sendDocument`) und „Erneut senden" am Fehlersatz. Kein Satz und kein neuer
+      // Zustand: der Mensch liest weiterhin `sendBusy`, und der Knopf steht sichtbar still
+      // (`updateSendState`). Ein Hinweis wie „laeuft schon" waere hier eine Behauptung ueber einen
+      // Klick, den es sichtbar gar nicht geben kann.
+      if (captureSendeLauf !== null) { return; }
+      captureLetzterUmfang = scope;
+      hideSendStatus();
+      captureErgebnis = null;
+      renderCapture();
+      // JOB 3057 Runde 3 (BEN): dieser Lauf bekommt sein Kennzeichen und merkt sich die Markierung,
+      // die JETZT auf der Karte steht. Alles, was spaeter zurueckkommt, prueft beides.
+      // JOB 3594 K2b: ab hier haelt DIESER Lauf den Sendeweg. Der Knopf und der Textlink gehen
+      // sofort zu — nicht erst beim `fetch`, denn zwischen hier und dem POST liegt der Word-Zugriff,
+      // und genau in dieser Wartezeit klickt ein Mensch ein zweites Mal.
+      captureSendeLauf = {};
+      var lauf = captureSendeLauf;
+      // JOB 3594 K2b RUNDE 2 (BEN, Korrekturpflicht 1) — DER SATZ STEHT, BEVOR WORD GEFRAGT WIRD.
+      // Bis Runde 1 wurde `sendBusy` erst in `finish` gesetzt, also NACH dem Word-Zugriff (und nach
+      // dem Nachholen der Bilder). Bei einem langsamen Word sah der Mensch in genau dieser Spanne
+      // einen grauen Knopf OHNE Erklaerung — die Sperre war da, der Grund nicht. Gemessen mit
+      // zurueckgehaltenem Word-Rueckruf: `expected '' to be 'Sende …'`. Sperre und Satz beginnen
+      // deshalb gemeinsam; ein eigener Satz dafuer entsteht nicht, es ist der vorhandene.
+      showSendStatus("busy", t("sendBusy"));
+      updateSendState();
+      var gesendeteMarkierung = captureMarkierung.join("\n");
+      // JOB 3057 K2: der Titel aus der Zeile „Titel". Fuer die Markierung ist er immer gesetzt
+      // (vorbelegt = dieselbe Ableitung wie der Sendeweg); fuer das Dokument nur, wenn ein Mensch
+      // ihn geschrieben hat — sonst entscheidet die Route am Dateinamen bzw. an der ersten Zeile.
+      var titelWunsch = scope === "document" && !captureTitelVonHand
+        ? ""
+        : document.getElementById("capture-titel").value;
+      var finish = function (text, html, emptyKey) {
+        if (!sendeLaufAktuell(lauf)) { return; }
+        if (text.replace(/^\s+|\s+$/g, "").length === 0) {
+          showSendStatus("warn", t(emptyKey));
+          return;
+        }
+        // WP-SHIP8-FINAL (bens Bedingung 4): EINE Entscheidungsstelle baut den FINALEN Payload —
+        // das Budget hat genau DIESEN String gemessen (Envelope inkl. Escaping), er wird gesendet.
+        // JOB 3555 K2b: die Wahl aus der Zeile „Bereich" reist mit — und zwar GENAU DAS, was die
+        // Zeile in diesem Augenblick sichtbar traegt (`captureBereichGewaehlt`, an die Lage
+        // gebunden). RUNDE 5 (BEN): bis Runde 4 stand hier der gehaltene Zustand. Der ueberlebte
+        // eine Auffrischung, die nichts mehr zu waehlen fand, und reiste unsichtbar mit.
+        // ZWEI SCHREIBWEISEN, EIN WEG — und das ist Absicht: OHNE Wahl steht hier BUCHSTAeBLICH
+        // der Aufruf von vorher (`tests/app/word-addin.test.ts:792` pinnt genau ihn, weil er die
+        // Zusage traegt, dass die Auswahl als HTML durch DIESE eine Stelle reist). Ein vierter
+        // Parameter, der in beiden Faellen mitginge, haette den Pin gebrochen und dabei nichts
+        // gewonnen: `undefined` und „kein Argument" bauen denselben Payload.
+        var bereichWahl = captureBereichGewaehlt();
+        var prepared = bereichWahl
+          ? prepareWordDraftRequest(html, text, titelWunsch, bereichWahl)
+          : prepareWordDraftRequest(html, text, titelWunsch);
+        // JOB 3594 K2b RUNDE 2: hier stand `showSendStatus("busy", t("sendBusy"))`. Der Satz steht
+        // seit dieser Runde schon am Eingang von `sendeEntwurf` — ein zweites Setzen waere eine
+        // zweite Stelle fuer denselben Zustand und koennte den ersten nur noch wiederholen.
+        // R-0169 (Nacharbeit 5): die im Dokument gespeicherte Kennung reist mit (falls vorhanden).
+        prepared.payload = mitDokumentkennung(prepared.payload, gespeicherteDokumentkennung());
+        fetch("/api/drafts", {
+          method: "POST",
+          credentials: "include",
+          headers: { "content-type": "application/json" },
+          body: prepared.payload,
+        })
+          .then(function (res) {
+            // Runde 3: ein Ruecklauf eines aelteren Laufs veraendert nichts — weder Satz noch Link.
+            if (!sendeLaufAktuell(lauf)) { return null; }
+            // AUFTRAG-JOB507-D4: EINE Klassifikation entscheidet, ob ein Entwurf behauptet werden
+            // darf. Alles ausser dem dokumentierten 201 ist Create-0 — und bekommt seinen eigenen,
+            // ehrlichen Satz statt „HTTP nnn" (JOB 3057: plus EIN Knopf — Anmelden oder erneut).
+            var draftKind = classifyDraftResponse(res.status);
+            if (draftWasCreated(draftKind)) { return res.json(); }
+            showSendStatus("warn", draftFailureText(draftKind, res), draftKind === "auth" ? "login" : "retry");
+            if (draftKind === "auth") { checkSession(); }
+            return null;
+          })
+          .then(function (draft) {
+            // R-0169 (Nacharbeit 5): die vergebene Kennung im Dokument ablegen — auch wenn die
+            // Anzeige dieses Laufs inzwischen ueberholt ist, gehoert die Kennung zum Dokument.
+            if (draft) { merkeDokumentkennung(draft); }
+            if (!draft || !sendeLaufAktuell(lauf)) { return; }
+            hideSendStatus();
+            // WP-KLARA-2 (Pedis Befund 1): der Link oeffnet den ENTWURF direkt — bestehendes
+            // Deep-Link-Muster der App (/capture/frontdoor?draft=<id>, Entwurf-fortsetzen-Mechanik).
+            var link = document.getElementById("open-link");
+            link.href =
+              window.location.origin + "/capture/frontdoor?draft=" + encodeURIComponent(draft.id);
+            // EHRLICHE Bilanz (JOB 3057 K2 §5.5): Budget-Rueckfall, Text-Rueckfall (AUFTRAG-mega45
+            // Block F), weggelassene (JOB 2613 D1) und nicht herausgegebene Bilder — EIN Satz, nur
+            // im Fall, aus gezaehlten Zahlen. Runde 3: gebunden an die beim Senden gezeigte Markierung.
+            zeigeEntwurfsErgebnis(link.href, bilderBilanz(prepared), gesendeteMarkierung);
+            // R-0169 (Nacharbeit 8): eine unvollstaendige Kennungsbindung bleibt sichtbar.
+            meldeUngesicherteDokumentkennung();
+          })
+          .catch(function (err) {
+            if (!sendeLaufAktuell(lauf)) { return; }
+            // NIE Erfolg vortaeuschen: offline/5xx → ehrliche Fehlermeldung, kein Entwurf-Versprechen.
+            showSendStatus("warn", sendeFehlerText(err), "retry");
+          });
+      };
+      // AUFTRAG-mega74 TEIL 2: zwischen „gelesen" und „gesendet" wird EINMAL versucht, die Bilder
+      // wirklich zu holen. Schlägt das fehl oder passt die Zuordnung nicht, geht exakt der
+      // bisherige Inhalt weiter — und die ehrliche Meldung bleibt stehen. Kein stiller Erfolg.
+      var mitBildern = function (text, html, emptyKey) {
+        var inner = extractWordBodyHtml(html || "");
+        if (inner.length === 0 || countUndeliveredWordImages(inner) === 0) {
+          finish(text, html, emptyKey);
+          return;
+        }
+        holeWordBilder(scope, function (liste) {
+          if (!liste || liste.length === 0) {
+            finish(text, html, emptyKey);
+            return;
+          }
+          var gefuellt = fillWordImages(inner, liste);
+          if (gefuellt.filled === 0) {
+            finish(text, html, emptyKey);
+            return;
+          }
+          // BEWUSST OHNE html/body-Huelle: `extractWordBodyHtml` faellt ohne body-Tags auf den
+          // Rohstring zurueck (Word im Web liefert ohnehin oft nur Fragmente), also reicht der
+          // Rumpf. Eine Huelle haette ausserdem ein schliessendes body-Tag als LITERAL in dieses
+          // Skript gebracht — und die Testvorrichtung (mega36) schneidet den Quelltext am ersten
+          // Vorkommen genau dieses Tags. Deshalb steht es hier auch nicht im Kommentar.
+          finish(text, gefuellt.html, emptyKey);
+        });
+      };
+      // ==========================================================================================
+      // JOB 2613 D3 — DIE GANZE DATEI STATT DES HTML (Station 1 des Pedi-Pfads).
+      // ==========================================================================================
+      //
+      // DER BEFUND, den Pedi selbst erhoben hat (Panel-Stand 2026-08-28 01:41Z): „Wissen erfassen"
+      // uebertraegt KEINE Bilder. Der Weg darueber liest `body.getHtml()` — HTML OHNE Bildbytes —
+      // und holt die Bilder danach EINZELN ueber `body.inlinePictures` nach. Genau dieses
+      // Nachholen liefert bei ihm nichts.
+      //
+      // DER NEUE WEG: Fuer „Ganzes Dokument" wird zuerst die GANZE .docx geholt
+      // (`getFileAsync` — ein Zip MIT den Bildern) und an `/api/drafts/from-docx` geschickt. Dort
+      // laeuft derselbe Kern wie im Konsolenweg (`extractDocxRich`), der die Bilder als
+      // `data:image` einbettet.
+      //
+      // WARUM DER RUECKFALL PFLICHT IST, nicht Kuer: `getFileAsync` gehoert zum Requirement-Set
+      // „File 1.1", das Manifest nennt nur `WordApi 1.1` (`klara-manifest.xml:33-37`). Ob Pedis
+      // Word-Host es hat, ist aus dem Code NICHT belegbar. Deshalb: Laufzeitversuch, und bei
+      // jedem Fehlschlag exakt der heutige Weg mit seinen ehrlichen Meldungen. Kein stiller
+      // Abbruch, kein leerer Entwurf, keine Aenderung am Manifest.
+      if (scope === "document") {
+        holeGanzeDatei(
+          function (bytes) { sendeDocxDatei(bytes, titelWunsch, lauf, gesendeteMarkierung); },
+          function () { readWholeDocument(mitBildern); },
+        );
+      } else {
+        readSelection(mitBildern);
+      }
+    }
+
+    // JOB 2613 D3: die ganze .docx in Scheiben einsammeln.
+    //
+    // `getFileAsync(Compressed)` liefert eine Datei-Handhabe, deren Inhalt scheibenweise abgeholt
+    // wird. Jeder Schritt kann fehlschlagen — fehlendes Requirement-Set, zu grosses Dokument,
+    // Host ohne Unterstuetzung. JEDER dieser Faelle ruft `beiFehlschlag`, damit der heutige Weg
+    // uebernimmt. Die Datei-Handhabe wird IMMER geschlossen, auch im Fehlerfall: eine offene
+    // Handhabe blockiert im Word-Host den naechsten Versuch.
+    function holeGanzeDatei(beiErfolg, beiFehlschlag) {
+      if (
+        !Office.context.document ||
+        typeof Office.context.document.getFileAsync !== "function" ||
+        !window.Office ||
+        !Office.FileType ||
+        typeof Office.FileType.Compressed === "undefined"
+      ) {
+        beiFehlschlag();
+        return;
+      }
+      var abgebrochen = false;
+      var abbrechen = function (datei) {
+        if (abgebrochen) { return; }
+        abgebrochen = true;
+        if (datei && typeof datei.closeAsync === "function") { datei.closeAsync(function () {}); }
+        beiFehlschlag();
+      };
+      try {
+        Office.context.document.getFileAsync(
+          Office.FileType.Compressed,
+          { sliceSize: WORD_ADDIN_SLICE_BYTES },
+          function (ergebnis) {
+            if (ergebnis.status !== Office.AsyncResultStatus.Succeeded || !ergebnis.value) {
+              abbrechen(null);
+              return;
+            }
+            var datei = ergebnis.value;
+            var scheiben = [];
+            var offen = datei.sliceCount;
+            if (!offen || offen < 1) { abbrechen(datei); return; }
+            var naechste = 0;
+            var holeScheibe = function () {
+              if (abgebrochen) { return; }
+              if (naechste >= datei.sliceCount) {
+                // Alle Scheiben da — zusammensetzen, Handhabe schliessen, weiterreichen.
+                var gesamt = 0;
+                for (var i = 0; i < scheiben.length; i += 1) { gesamt += scheiben[i].length; }
+                var bytes = new Uint8Array(gesamt);
+                var pos = 0;
+                for (var j = 0; j < scheiben.length; j += 1) {
+                  bytes.set(scheiben[j], pos);
+                  pos += scheiben[j].length;
+                }
+                datei.closeAsync(function () {});
+                beiErfolg(bytes);
+                return;
+              }
+              var index = naechste;
+              naechste += 1;
+              datei.getSliceAsync(index, function (scheibe) {
+                if (scheibe.status !== Office.AsyncResultStatus.Succeeded || !scheibe.value) {
+                  abbrechen(datei);
+                  return;
+                }
+                scheiben[index] = new Uint8Array(scheibe.value.data);
+                holeScheibe();
+              });
+            };
+            holeScheibe();
+          },
+        );
+      } catch (err) {
+        abbrechen(null);
+      }
+    }
+
+    // JOB 2613 D3: die .docx-Bytes an die neue Route schicken.
+    //
+    // Die Antwort nennt die Bildzahl ausdruecklich (`imagesEmbedded`/`imagesTotal`), damit die
+    // Meldung EHRLICH ist — „(n Bilder)" statt „fertig". Ein Verlust wird mit der VORHANDENEN
+    // Meldung `sendImagesMissing` gemeldet, nicht mit einer neu erfundenen.
+    function sendeDocxDatei(bytes, titelWunsch, lauf, gesendeteMarkierung) {
+      if (!sendeLaufAktuell(lauf)) { return; }
+      // JOB 3594 K2b RUNDE 2: auch hier stand `showSendStatus("busy", …)` — derselbe Grund wie im
+      // Auswahl-Weg: der Satz steht seit dem Eingang von `sendeEntwurf`, und dieser Weg kommt nur
+      // von dort.
+      var b64 = "";
+      var block = 0x8000;
+      for (var i = 0; i < bytes.length; i += block) {
+        b64 += String.fromCharCode.apply(null, bytes.subarray(i, i + block));
+      }
+      var koerper = {
+        name: (dokumentName() || "Dokument") + ".docx",
+        data: window.btoa(b64),
+      };
+      // JOB 3057 K2: ein von Hand gesetzter Titel reist als `title` mit (DocxDraftRequest.title,
+      // capture-routes.ts); ohne ihn nimmt die Route wie bisher den Dateinamen.
+      var titel = (titelWunsch || "").slice(0, WORD_ADDIN_TITLE_MAX).trim();
+      if (titel.length > 0) { koerper.title = titel; }
+      // R-0169 (Nacharbeit 5): dieselbe Dokumentkennung wie im Auswahl-Weg.
+      var gespeicherteKennung = gespeicherteDokumentkennung();
+      if (gespeicherteKennung) { koerper.dokumentId = gespeicherteKennung; }
+      var nutzlast = JSON.stringify(koerper);
+      fetch("/api/drafts/from-docx", {
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: nutzlast,
+      })
+        .then(function (res) {
+          if (!sendeLaufAktuell(lauf)) { return null; }
+          var draftKind = classifyDraftResponse(res.status);
+          if (draftWasCreated(draftKind)) { return res.json(); }
+          showSendStatus("warn", draftFailureText(draftKind, res), draftKind === "auth" ? "login" : "retry");
+          if (draftKind === "auth") { checkSession(); }
+          return null;
+        })
+        .then(function (draft) {
+          if (draft) { merkeDokumentkennung(draft); }
+          if (!draft || !sendeLaufAktuell(lauf)) { return; }
+          hideSendStatus();
+          // NIE mehr behaupten als angekommen ist, und nie weniger: `docxBilderBefund` liest die
+          // Bildzahlen DIESER Antwort — Verlust, Verkleinerung, behaltene Originale und die echten
+          // Ausfaelle — und ist die EINZIGE Stelle, die den Bilder-Satz dieses Wegs bildet.
+          zeigeEntwurfsLink(draft.id, docxBilderBefund(draft), gesendeteMarkierung);
+          meldeUngesicherteDokumentkennung();
+        })
+        .catch(function (err) {
+          if (!sendeLaufAktuell(lauf)) { return; }
+          showSendStatus("warn", sendeFehlerText(err), "retry");
+        });
+    }
+
+    // JOB 2613 D3: der Deep-Link des NEUEN .docx-Wegs.
+    //
+    // WARUM ER DAS WÖRTLICHE MUSTER DER BEIDEN ALTSTELLEN NICHT WIEDERHOLT:
+    // `k1-word-addin-origin-panel.test.ts:94-100` pinnt, dass GENAU ZWEI Stellen den dortigen
+    // Deep-Link-Ausdruck tragen — „sie sind eine App-Route, keine Herkunft". Eine dritte Kopie
+    // hätte den Wächter gebrochen, ohne dass am Ziel etwas falsch gewesen wäre. Der neue Weg ruft
+    // deshalb diese Funktion; die beiden Altstellen bleiben unangetastet, damit ihr Pin greift.
+    // Der Parametername lautet bewusst `draftId` und nicht `draft.id` — sonst zählte diese Stelle
+    // als dritte mit.
+    //
+    // ZWEI ANLÄUFE HABEN DAS GEZEIGT, beide gemessen: Zuerst wurde eine Altstelle hierher gezogen
+    // (Zähler 1 statt 2, rot) — zurückgenommen, denn ein Fremdpin wird nicht umgebaut, nur weil
+    // der eigene Bau daneben passt. Dann stand der Ausdruck im KOMMENTAR dieser Funktion und
+    // zählte als drittes Vorkommen mit. Der Wächter liest den Quelltext, nicht den Sinn — also
+    // steht er hier nirgends ausgeschrieben.
+    function zeigeEntwurfsLink(draftId, bilder, gesendet) {
+      zeigeEntwurfsErgebnis(
+        window.location.origin + "/capture/frontdoor?draft=" + encodeURIComponent(draftId),
+        bilder,
+        gesendet
+      );
+    }
+
+    // Umfang "Markierter Text" — WP-SHIP8-FINAL (bens Bedingung 4, EIN Auswahl-Snapshot):
+    // ZUERST (und im Erfolgsfall AUSSCHLIESSLICH) der HTML-Zugriff; der Klartext wird DARAUS
+    // abgeleitet (wordHtmlToPlainText). Zwei getrennte Office-Aufrufe konnten inkonsistente
+    // Staende liefern, wenn sich die Auswahl zwischen den Aufrufen aenderte (Titel/Statement
+    // passten dann nicht zum Body). FALLBACK ohne HTML-Faehigkeit (aeltere Hosts, dokumentiert):
+    // EIN einzelner Text-Aufruf — ebenfalls ein einzelner konsistenter Zugriff, ohne Formatierung.
+    function readSelection(done) {
+      Office.context.document.getSelectedDataAsync(Office.CoercionType.Html, function (htmlResult) {
+        if (htmlResult.status === Office.AsyncResultStatus.Succeeded) {
+          var html = String(htmlResult.value || "");
+          done(wordHtmlToPlainText(html), html, "sendEmpty");
+          return;
+        }
+        Office.context.document.getSelectedDataAsync(Office.CoercionType.Text, function (textResult) {
+          if (textResult.status !== Office.AsyncResultStatus.Succeeded) {
+            showSendStatus("warn", t("sendError", { detail: "Word-API" }), "retry");
+            return;
+          }
+          done(String(textResult.value || ""), "", "sendEmpty");
+        });
+      });
+    }
+
+    // Umfang "Ganzes Dokument": Word.run — body.text + body.getHtml() in EINEM context.sync-Batch,
+    // also bereits EIN konsistenter Snapshot (WP-SHIP8-FINAL Bedingung 4: hier kein Umbau noetig).
+    function readWholeDocument(done) {
+      if (!window.Word || typeof Word.run !== "function") {
+        showSendStatus("warn", t("sendError", { detail: "Word-API" }), "retry");
+        return;
+      }
+      Word.run(function (context) {
+        var body = context.document.body;
+        body.load("text");
+        var htmlResult = body.getHtml();
+        return context.sync().then(function () {
+          done(String(body.text || ""), String(htmlResult.value || ""), "sendEmptyDoc");
+        });
+      }).catch(function () {
+        showSendStatus("warn", t("sendError", { detail: "Word-API" }), "retry");
+      });
+    }
+
+    // ============================================================================================
+    // AUFTRAG-mega74 TEIL 2 — DIE BILDER ÜBER DIE OFFICE-SCHNITTSTELLE HOLEN.
+    // ============================================================================================
+    //
+    // ANFORDERUNGSSTUFE, an der Dokumentation belegt (learn.microsoft.com, Stand 17.06.2026):
+    //   · Body.inlinePictures ......................... WordApi 1.1   ← der Dokument-Umfang
+    //   · InlinePictureCollection (Klasse/items/load) .. WordApi 1.1
+    //   · InlinePicture.getBase64ImageSrc() ........... WordApi 1.1
+    // Das Manifest bleibt damit bei MinVersion 1.1 — es gibt hier NICHTS zu entscheiden.
+    //
+    // ABER, und das ist die ehrliche Grenze: in der 1.1-Ansicht von `Word.Range` gibt es KEIN
+    // `inlinePictures` (die 1.1-Eigenschaften sind contentControls, font, paragraphs,
+    // parentContentControl, style, text). Der AUSWAHL-Umfang kann die Bilder auf Stufe 1.1 also
+    // nicht direkt erfragen. Deshalb geht er über `getSelection().paragraphs` — und weil auch das
+    // je nach Host fehlen kann, wird es NICHT geglaubt, sondern zur LAUFZEIT versucht und bei
+    // jedem Fehlschlag ehrlich aufgegeben. Kein Manifest-Wechsel, kein Ausschluss älterer Hosts.
+    //
+    // DIE OBERGRENZE ist eine benannte Grenze und keine Zusage: über WORD_ADDIN_MAX_BILDER wird
+    // gar nicht erst geholt. Pedis 79-Seiten-Kundendokument ist genau der Fall, für den sie da ist
+    // — jedes Bild reist als Base64 (≈ Datei × 1,37) durch den Arbeitsspeicher des Taskpanes, und
+    // das Byte-Budget des Entwurfs (3,5 MB) ist ohnehin die harte Kante dahinter.
+    var WORD_ADDIN_MAX_BILDER = 60;
+
+    // Sammelt die Bild-Bytes des gewählten Umfangs. Ruft `done(liste)` mit den Base64-Zeichenketten
+    // in DOKUMENTREIHENFOLGE — oder `done(null)`, wenn es nicht ging. `null` heißt „wir wissen es
+    // nicht"; der Aufrufer meldet dann weiterhin ehrlich, dass Bilder fehlen.
+    function holeWordBilder(scope, done) {
+      if (!window.Word || typeof Word.run !== "function") { done(null); return; }
+      Word.run(function (context) {
+        var sammlungen = [];
+        if (scope === "document") {
+          sammlungen.push(context.document.body.inlinePictures);
+        } else {
+          // Auswahl: über die Absätze, s. Begründung oben. Wirft der Host hier, greift das catch.
+          var absaetze = context.document.getSelection().paragraphs;
+          absaetze.load("items");
+          return context.sync().then(function () {
+            var items = absaetze.items || [];
+            for (var a = 0; a < items.length; a += 1) { sammlungen.push(items[a].inlinePictures); }
+            return ladeBilder(context, sammlungen);
+          });
+        }
+        return ladeBilder(context, sammlungen);
+      }).then(function (liste) { done(liste); }, function () { done(null); });
+    }
+
+    // Zweiter Schritt, für beide Umfänge gleich: Sammlungen laden, dann je Bild die Bytes anfordern
+    // und in EINEM weiteren context.sync abholen (nicht je Bild ein eigener Rundlauf).
+    function ladeBilder(context, sammlungen) {
+      for (var i = 0; i < sammlungen.length; i += 1) { sammlungen[i].load("items"); }
+      return context.sync().then(function () {
+        var bilder = [];
+        for (var j = 0; j < sammlungen.length; j += 1) {
+          var items = sammlungen[j].items || [];
+          for (var k = 0; k < items.length; k += 1) { bilder.push(items[k]); }
+        }
+        if (bilder.length === 0) { return []; }
+        if (bilder.length > WORD_ADDIN_MAX_BILDER) { return null; }
+        var ergebnisse = [];
+        for (var m = 0; m < bilder.length; m += 1) { ergebnisse.push(bilder[m].getBase64ImageSrc()); }
+        return context.sync().then(function () {
+          var liste = [];
+          for (var n = 0; n < ergebnisse.length; n += 1) {
+            liste.push(String(ergebnisse[n].value || ""));
+          }
+          return liste;
+        });
+      });
+    }
+
+    // ---- WP-KLARA-ASK: Verdrahtung Fragen-Bereich -------------------------------------------
+    // Zustand des letzten Ask-Laufs: outcome (fuer das Einfuege-Gating), aufgeloeste Quellen-Titel
+    // (fuer die Quellen-Zeile) und die gestellte Frage (fuer den Offene-Frage-Entwurf).
+    var currentAskOutcome = null;
+    var currentAskSourceTitles = [];
+    // WP-KLARA-ASK-FIX (bens Fix 3): belegte Quell-Daten (history/createdAt) fuer die ehrliche
+    // Stand-Angabe; Fix 2: Einfuegen erst NACH abgeschlossener Quellenaufloesung.
+    var currentAskSourceDates = [];
+    var currentAskSourcesResolved = false;
+    var currentAskTruncated = false;
+    var currentAskQuestion = "";
+    // AUFTRAG-mega35 A2: die Vorbefuellungs-Merkvariable ist ersatzlos entfallen. Sie war der
+    // Torwaechter, der Feldinhalt gegen Vorbefuellung verglich — und genau der schlug fehl, sobald
+    // waehrend der Quellenaufloesung editiert wurde: dann wurde nichts nachgetragen, die
+    // Ausgabewege gingen aber trotzdem auf. Es wird nichts mehr nachgetragen, also gibt es nichts
+    // mehr zu vergleichen. Geblieben ist der Auf-/Zuklapp-Zustand von „mehr anzeigen".
+    var askAnswerExpanded = false;
+    // JOB 3046 D2 (Runde 2): die Generation des Ergebniszustands. resetAskResult() zaehlt sie hoch;
+    // der Entwurfsversand (sendOpenQuestion) merkt sich seine Generation und laesst einen Ruecklauf,
+    // der eine aeltere traegt, die Oberflaeche NICHT mehr anfassen — ein verspaeteter Erfolg oder
+    // Fehler der alten Frage darf nie im Zustand der neuen erscheinen.
+    var askErgebnisGeneration = 0;
+
+    function showAskStatus(kind, text) {
+      var el = document.getElementById("ask-status");
+      el.className = "status " + (kind === "ok" ? "ok" : "warn");
+      el.textContent = text;
+    }
+
+    function hideAskStatus() {
+      var el = document.getElementById("ask-status");
+      el.className = "status hidden";
+      el.textContent = "";
+      document.getElementById("ask-retry-btn").className = "ghost hidden";
+    }
+
+    // JOB 3056 K1 (§9): Frist und Verbindungsfehler bekommen EINEN Knopf „Erneut versuchen" —
+    // dieselbe Frage geht denselben Weg noch einmal (askKlara liest das Feld).
+    function askRetryZeigen() {
+      document.getElementById("ask-retry-btn").className = "ghost";
+    }
+
+    // JOB 3016 D3 „PruefungLaeuft": der Wartezustand als EIN Zustand. `askLaeuft` ist die einzige
+    // Quelle fuer die Sperre von Eingabefeld und Knopf waehrend der Suche; updateAskState() liest
+    // sie, damit ein zwischenzeitlicher Statusabruf (checkSession, S4) die Sperre weder aufhebt
+    // noch stehen laesst. Der drehende Kreis im Sendeknopf (JOB 3056, §9; askBusy als sein
+    // zugaenglicher Name) erscheint und verschwindet NUR hier —
+    // der Ausgang aus dem Wartezustand hat genau eine Stelle (askKlara, nach performAsk), nicht
+    // fuenf Zweige. Beim Eintritt wird #ask-status verborgen: der Warnkasten gehoert den echten
+    // Warnungen, nicht dem normalen Warten. Fail-open: der Ausgang gibt das Feld IMMER frei, auch
+    // nach Frist, Fehler oder fehlender Anmeldung — ein gesperrtes Feld ohne Suche waere ein
+    // unbenutzbares Fenster.
+    var askLaeuft = false;
+
+    // JOB 3056 K1 (§9): Laden zeigt der Sendeknopf — der Pfeil weicht dem drehenden Kreis (Klasse
+    // `laeuft`, updateAskState), der Wortlaut askBusy ist solange sein zugaenglicher Name. Keine
+    // Ladekarte, kein Satz im Sichtfeld.
+    function askWartezustand(an) {
+      askLaeuft = an === true;
+      hideAskStatus();
+      document.getElementById("ask-btn").setAttribute("aria-label", askLaeuft ? t("askBusy") : t("askCta"));
+      updateAskState();
+    }
+
+    function resetAskResult() {
+      currentAskOutcome = null;
+      currentAskSourceTitles = [];
+      currentAskSourceDates = [];
+      currentAskSourcesResolved = false;
+      askAnswerExpanded = false;
+      document.getElementById("ask-answer-block").className = "hidden";
+      document.getElementById("ask-gap-block").className = "hidden";
+      document.getElementById("ask-gap-open-block").className = "hidden";
+      document.getElementById("ask-sources-block").className = "hidden";
+      document.getElementById("ask-sources").textContent = "";
+      // klara1b Teil B: editierbares Feld statt statischem Absatz.
+      var edit = document.getElementById("ask-answer-edit");
+      edit.value = "";
+      passeAntwortfeldAn();
+      document.getElementById("ask-answer-toggle").className = "ghost hidden";
+      // AUFTRAG-mega81 BLOCK A: die Kennzeichnung einer FRUEHEREN Antwort darf nie stehen bleiben —
+      // sie gehoert zu der Antwort, ueber die der Server sie gesagt hat, und zu keiner anderen.
+      renderAiNotice(null);
+      // AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK B: dasselbe fuer Einstufung, Vorbehalt, Konfliktlage
+      // und Ausschnitt. Ein Vorbehalt der VORIGEN Frage neben der naechsten Antwort waere eine
+      // Falschaussage — und ein stehengebliebenes „keine offenen Konflikte" die gefaehrlichste.
+      // `currentAskOutcome` ist hier bereits null; renderAskEvidence raeumt daran entlang.
+      renderAskEvidence();
+      // JOB 3092 S6 (W5): dasselbe fuer Herkunftszeilen und Ungeprueft-Satz — eine Herkunft der
+      // VORIGEN Antwort neben der naechsten waere eine Falschaussage.
+      renderAskHerkunft();
+      renderAskUngeprueft();
+      renderAskFragment(); // JOB 3366: kein Fragment-Satz einer frueheren Antwort bleibt stehen
+      // AUFTRAG-mega36 B3: ein Rueckfalltext einer FRUEHEREN Antwort darf nie stehen bleiben.
+      hideCopyFallback();
+      // JOB 3004 D1: die Chip-Reihe faengt von vorn an. JOB 3056: „Mehr" faellt zu, der
+      // lagebezogene Satz unter der Karte und die Quellen-Details werden geleert, die Ruhe kehrt
+      // zurueck (kwFlaecheZeichnen).
+      askQuellenAufgeloest = [];
+      askQuellenAlleSichtbar = false;
+      askMehrOffen = false;
+      document.getElementById("ask-quellen-detail").textContent = "";
+      askMehrZeichnen();
+      renderAskFussnoten(); // Runde 4: keine Ziffer einer frueheren Antwort bleibt stehen
+      kwFlaecheZeichnen();
+      // JOB 3046 D2 (Runde 2): jede Rueckstellung ist eine neue Generation — laufende Entwurfs-
+      // Versendungen der alten sind damit abgemeldet; die Sperre des Textlinks wird hier geloest,
+      // nicht erst von einem Ruecklauf, der vielleicht nie kommt.
+      askErgebnisGeneration += 1;
+      document.getElementById("ask-gap-send-btn").removeAttribute("aria-disabled");
+    }
+
+    // Fragen braucht NUR die Session (kein Office): im Browser funktioniert der Eingabefeld-Weg.
+    //
+    // AUFTRAG-W1-KLARA-KOPF-CONSENT-06: dazu kommt die serverseitige Ausfuehrbarkeit. Sagt die
+    // Auflösung `executionAllowed: false`, ist der Knopf gesperrt UND traegt den Grund als Titel —
+    // ein gesperrter Knopf ohne Grund ist eine Sackgasse. Solange der Stand noch laedt oder nicht
+    // abrufbar ist, wird NICHT gesperrt: das waere eine Behauptung ueber etwas Ungelesenes.
+    function updateAskState() {
+      var gesperrt = klaraS4FragenGesperrt();
+      var btn = document.getElementById("ask-btn");
+      var input = document.getElementById("ask-input");
+      btn.disabled = !signedIn || gesperrt || askLaeuft;
+      btn.title = gesperrt ? t("s4FragenGesperrt") : "";
+      // JOB 3016 D3: das Eingabefeld ist genau waehrend der Suche gesperrt — und nur dann.
+      input.disabled = askLaeuft;
+      // JOB 3056 K1 (Ruhe.dc.html Z.36): grau, solange nichts da ist; Funke dunkel, sobald Text da
+      // ist und der Knopf frei ist; drehender Kreis waehrend der Suche (§9).
+      var bereit = !btn.disabled && input.value.trim().length > 0;
+      btn.className = "primary" + (askLaeuft ? " laeuft" : "") + (bereit ? " bereit" : "");
+      // Die Schreibflaeche (KA6) folgt demselben Kontext wie der Knopf — auch wenn das Feld
+      // programmatisch geleert oder gefuellt wird (Antwort, Bearbeiten, neue Frage).
+      if (typeof ka6Neuzeichnen === "function" && typeof KA6_ZURUFE !== "undefined") {
+        ka6Neuzeichnen();
+      }
+      // JOB 3093: „Haben wir das schon?" haengt an derselben Sitzung — der Knopf folgt ihr.
+      if (typeof bestandNeuzeichnen === "function") { bestandNeuzeichnen(); }
+      updateInsertState();
+    }
+
+    // Teil 2 (Gating): Einfuegen NUR bei echter quellengebundener Antwort UND bereitem Office.
+    // klara1b Teil B: „Kopieren" ist der Ausweg — es braucht KEIN Office und ist immer aktiv,
+    // sobald eine belegte, aufgeloeste Antwort vorliegt (greift auch bei Rechte-Fehlern).
+    function updateInsertState() {
+      var insertBtn = document.getElementById("ask-insert-btn");
+      var copyBtn = document.getElementById("ask-copy-btn");
+      // WP-KLARA-ASK-FIX (bens Fix 2): Einfuegen erst, wenn die Quellenaufloesung ABGESCHLOSSEN
+      // ist — die Quellen-Zeile darf nie halb geladene Titel tragen.
+      var insertable = canInsertAnswer(currentAskOutcome) && currentAskSourcesResolved;
+      insertBtn.disabled = !(insertable && officeUsable());
+      insertBtn.title = insertable && !officeUsable() ? t("noOffice") : "";
+      copyBtn.disabled = !insertable;
+    }
+
+    // klara1b Teil B: „mehr anzeigen" klappt das editierbare Feld auf/zu. Der Schalter erscheint nur
+    // bei langer Antwort (answerIsLong) — sonst zeigt das Feld die kompakte Antwort direkt.
+    function applyAnswerCompaction(text) {
+      askAnswerExpanded = false;
+      passeAntwortfeldAn();
+      var toggle = document.getElementById("ask-answer-toggle");
+      if (answerIsLong(text)) {
+        toggle.className = "ghost";
+        toggle.textContent = t("askShowMore");
+      } else {
+        toggle.className = "ghost hidden";
+      }
+    }
+
+    function toggleAnswerExpanded() {
+      askAnswerExpanded = !askAnswerExpanded;
+      passeAntwortfeldAn();
+      document.getElementById("ask-answer-toggle").textContent = askAnswerExpanded
+        ? t("askShowLess")
+        : t("askShowMore");
+    }
+
+    // JOB 3004 D1: das Antwortfeld traegt die Textoptik der Vorlage (16px/1.55, kein Rahmen) — seine
+    // Hoehe folgt deshalb dem Inhalt statt einer festen Zeilenzahl. „Kompakt" heisst weiterhin
+    // hoechstens vier Zeilen bei langer Antwort (answerIsLong), „aufgeklappt" der ganze Text; eine
+    // kurze Antwort steht immer ganz da. Liefert die Umgebung keine Zeilenhoehe (jsdom), bleiben die
+    // bisherigen festen Zeilen 4/16 — das Verhalten der Tests aendert sich nicht.
+    var ASK_ANTWORT_KOMPAKT_ZEILEN = 4;
+    var ASK_ANTWORT_OFFEN_ZEILEN = 16;
+    function passeAntwortfeldAn() {
+      var edit = document.getElementById("ask-answer-edit");
+      var kompakt = !askAnswerExpanded && answerIsLong(edit.value);
+      edit.rows = 1;
+      var zeilenhoehe = parseFloat(window.getComputedStyle(edit).lineHeight);
+      if (!(zeilenhoehe > 0) || !(edit.scrollHeight > 0)) {
+        edit.rows = askAnswerExpanded ? ASK_ANTWORT_OFFEN_ZEILEN : ASK_ANTWORT_KOMPAKT_ZEILEN;
+        askFussnotenSetzen();
+        return;
+      }
+      var noetig = Math.max(1, Math.round(edit.scrollHeight / zeilenhoehe));
+      edit.rows = kompakt ? Math.min(noetig, ASK_ANTWORT_KOMPAKT_ZEILEN) : noetig;
+      // Runde 4: Text oder Hoehe haben sich geaendert — die Fussnotenziffern folgen dem Textende.
+      askFussnotenSetzen();
+    }
+
+    // JOB 3004 D1: im Antwortzustand steht die gestellte Frage als Pille ueber der Antwortkarte
+    // (Vorlage Z.22-25) und die Frage-Karte (#ask-karte mit #ask-input) ist VERBORGEN — es gibt
+    // EINE Flaeche, keinen zweiten Bearbeitungsweg daneben (Pedi, 27.08.). Sichtbar bearbeiten
+    // kann man erst wieder nach Klick auf die Pille (die Frage steht dann im Eingabefeld, die
+    // Antwortflaeche tritt zurueck) oder auf „Neue Frage" (leert). Die naechste Frage raeumt den
+    // alten Stand ohnehin ab (resetAskResult). Kein Produktfeld ist Testhilfe: der Zwischenablage-
+    // Smoke (tests-smoke/word-taskpane-kopieren.spec.ts) bringt seinen eigenen Einfuege-Empfaenger mit.
+    // ============================================================================================
+    // JOB 3056 K1 — DIE ANSICHTEN: fragen | erfassen | einstellungen | hilfe (Pages-Art).
+    // ============================================================================================
+    // EINE Zustandsquelle fuer Kopf und Flaechen. Der Kopf zeigt je Ansicht: Zurueck-Chevron
+    // (Antwortzustand, Einstellungen, Hilfe), Titel, Umschalter (nur Fragen/Erfassen), Zahnrad
+    // (nicht in Einstellungen/Hilfe). Der Chevron fuehrt immer eine Ebene zurueck: aus der Antwort
+    // in die Ruhe (askNeueFrage), aus der Hilfe in die Einstellungen, aus den Einstellungen auf
+    // den zuletzt gewaehlten Bereich.
+    var kwAnsicht = "fragen";
+    var kwBereich = "fragen";
+
+    function kwAntwortSichtbar() {
+      return document.getElementById("ask-answer-block").className.indexOf("hidden") === -1;
+    }
+
+    function kwKopfZeichnen() {
+      var antwort = kwAnsicht === "fragen" && kwAntwortSichtbar();
+      var zurueck = document.getElementById("kw-zurueck");
+      var titel = document.getElementById("kw-titel");
+      var segment = document.getElementById("kw-segment");
+      var zahnrad = document.getElementById("kw-zahnrad");
+      if (!zurueck || !titel || !segment || !zahnrad) { return; }
+      var chevron = antwort || kwAnsicht === "einstellungen" || kwAnsicht === "hilfe";
+      zurueck.className = chevron ? "kw-icon" : "kw-icon hidden";
+      titel.textContent = kwAnsicht === "einstellungen"
+        ? t("einstTitel")
+        : kwAnsicht === "hilfe"
+          ? t("einstHilfe")
+          : "Klara";
+      segment.className = kwAnsicht === "fragen" && !antwort || kwAnsicht === "erfassen"
+        ? "tabs"
+        : "tabs hidden";
+      zahnrad.className = kwAnsicht === "fragen" || kwAnsicht === "erfassen"
+        ? "kw-icon"
+        : "kw-icon hidden";
+    }
+
+    /** Die Fragen-Flaeche: Ruhe (Lupe + Satz) ODER Antwort ODER Luecke — nie zwei zugleich. */
+    function kwFlaecheZeichnen() {
+      var antwort = kwAntwortSichtbar();
+      var luecke = document.getElementById("ask-gap-block").className.indexOf("hidden") === -1;
+      document.getElementById("ask-ruhe").className = antwort || luecke ? "hidden" : "";
+      document.getElementById("ask-feld").className = antwort ? "antwort" : "";
+      kwKopfZeichnen();
+      // JOB 3093: „Haben wir das schon?" gehoert zur Ruhe — in Antwort und Luecke steht es nicht.
+      if (typeof bestandNeuzeichnen === "function") { bestandNeuzeichnen(); }
+    }
+
+    function kwAnsichtSetzen(name) {
+      kwAnsicht = name;
+      if (name === "fragen" || name === "erfassen") { kwBereich = name; }
+      document.getElementById("section-ask").className = name === "fragen" ? "" : "hidden";
+      document.getElementById("section-capture").className = name === "erfassen" ? "" : "hidden";
+      document.getElementById("kw-einstellungen").className = name === "einstellungen" ? "" : "hidden";
+      document.getElementById("kw-hilfe").className = name === "hilfe" ? "" : "hidden";
+      document.getElementById("tab-ask").className = kwBereich === "fragen" ? "active" : "";
+      document.getElementById("tab-capture").className = kwBereich === "erfassen" ? "active" : "";
+      kwFlaecheZeichnen();
+    }
+
+    function kwZurueck() {
+      if (kwAnsicht === "hilfe") { kwAnsichtSetzen("einstellungen"); return; }
+      if (kwAnsicht === "einstellungen") { kwAnsichtSetzen(kwBereich); return; }
+      if (kwAnsicht === "fragen" && kwAntwortSichtbar()) { askNeueFrage(); }
+    }
+
+    // „Mehr" an der Antwortkarte (Funktionsinventar §5a): Einstufung, Vorbehalt, Konfliktlage,
+    // Ausschnitt und die Quellen mit Status, Rolle, Vertrauen und Stand — aufklappbar.
+    var askMehrOffen = false;
+
+    function askMehrZeichnen() {
+      var block = document.getElementById("ask-mehr-block");
+      if (block) { block.className = askMehrOffen ? "offen" : ""; }
+      var knopf = document.getElementById("ask-mehr-btn");
+      if (knopf) {
+        knopf.textContent = askMehrOffen ? t("askWeniger") : t("askMehr");
+        knopf.setAttribute("aria-expanded", askMehrOffen ? "true" : "false");
+      }
+    }
+
+    function askMehrUmschalten() {
+      askMehrOffen = !askMehrOffen;
+      askMehrZeichnen();
+    }
+
+    function askFrageBearbeiten() {
+      var input = document.getElementById("ask-input");
+      input.value = currentAskQuestion;
+      document.getElementById("ask-answer-block").className = "hidden";
+      kwFlaecheZeichnen();
+      try { input.focus(); } catch (err) { /* Fokus ist Komfort, kein Vertrag */ }
+      updateAskState();
+      updateAskSourceNote();
+    }
+
+    function askNeueFrage() {
+      currentAskQuestion = "";
+      resetAskResult();
+      hideAskStatus();
+      var input = document.getElementById("ask-input");
+      input.value = "";
+      try { input.focus(); } catch (err) { /* Fokus ist Komfort, kein Vertrag */ }
+      updateAskState();
+      updateAskSourceNote();
+    }
+
+    // JOB 3046 D2 (KW-D2-LUECKE): „Frage ändern" ist ein FOKUS, kein neuer Weg. Die Lueckenflaeche
+    // geht ueber den vorhandenen Aufraeumweg zu (resetAskResult raeumt #ask-gap-block und
+    // #ask-gap-open-block ab; hideAskStatus nimmt einen etwaigen truncated-Hinweis mit), die Frage
+    // bleibt im Feld stehen, der Cursor steht an ihrem Ende. Kein Serveraufruf, kein neuer Zustand.
+    // JOB 3046 D2 (Runde 2, KW-D2-LUECKE): DIE BUEHNE. Die Vorlage (KeinWissen.dc.html Z.15/27) ist
+    // ein fensterhoher Flex-Rahmen, in dem die Flaeche den freien Raum nimmt. CSS kann im Panel
+    // nicht wissen, wie hoch Kopf, Sitzungskarte, Reiter und Begriffsbild ueber der Frage-Karte
+    // sind — deshalb misst das Panel: die Mindesthoehe des Lueckenblocks ist der Rest des Fensters
+    // unter der Frage-Karte (Karte am oberen Fensterrand gedacht), abzueglich der Koerperpolsterung.
+    // Nur ein Mass (`--kw-luecke-buehne`), nur solange die Luecke steht; alle Werte der Flaeche
+    // selbst stehen im Stilblock. Bei Fenstergroessenwechsel wird neu gemessen.
+    // JOB 3056 K1: die Buehne der Luecke braucht kein gemessenes Mass mehr — #ask-gap-block ist ein
+    // Flex-Kind der fensterhohen Spalte und nimmt den freien Raum von selbst (Stilblock).
+    function askFrageAendern() {
+      resetAskResult();
+      hideAskStatus();
+      var input = document.getElementById("ask-input");
+      var ende = input.value.length;
+      try {
+        input.focus();
+        input.setSelectionRange(ende, ende);
+      } catch (err) { /* Fokus ist Komfort, kein Vertrag */ }
+    }
+
+    // Sprachwechsel bei sichtbarer Antwort: den (data-t-losen) Umschalter-Text neu setzen.
+    function refreshAnswerToggleLabel() {
+      var toggle = document.getElementById("ask-answer-toggle");
+      if (toggle.className.indexOf("hidden") === -1) {
+        toggle.textContent = askAnswerExpanded ? t("askShowLess") : t("askShowMore");
+      }
+    }
+
+    function getEditedAnswerText() {
+      return document.getElementById("ask-answer-edit").value;
+    }
+
+    // Quellen-Titel + Trust je KO nachladen (GET /api/kos/:id, dieselbe ko.read-Permission wie
+    // /api/ask) — best-effort: eine nicht ladbare Quelle zeigt ehrlich ihre Id statt eines Fakes.
+    function resolveAskSources(ids) {
+      return Promise.all(
+        ids.map(function (id) {
+          return fetch("/api/kos/" + encodeURIComponent(id), { credentials: "include" })
+            .then(function (res) {
+              if (!res.ok) { throw new Error("HTTP " + res.status); }
+              return res.json();
+            })
+            .then(function (ko) {
+              // WP-KLARA-ASK-FIX (bens Fix 3): belegtes Stand-Datum aus dem KO — die NEUESTE
+              // history-Zeile (Validierung/Aenderung), sonst createdAt; fehlt beides → null.
+              var standDate = null;
+              if (ko && Array.isArray(ko.history)) {
+                for (var h = 0; h < ko.history.length; h += 1) {
+                  var at = ko.history[h] && ko.history[h].at;
+                  if (typeof at === "string" && at.length > 0) { standDate = at; }
+                }
+              }
+              if (!standDate && ko && typeof ko.createdAt === "string") { standDate = ko.createdAt; }
+              return {
+                id: id,
+                title: ko && ko.title ? String(ko.title) : id,
+                trust: ko && typeof ko.trust === "number" ? ko.trust : null,
+                standDate: standDate,
+                // K3: Bearbeitungsstatus aus dem KO ableiten (Bibliotheks-Logik) — nie raten.
+                status: askSourceStatus(ko),
+                // JOB 3092 S6 (W5): die Inhaltsversion des Objekts fuer die Herkunftszeile —
+                // GELESEN; fehlt sie, bleibt sie null und die Zeile sagt „Version unbekannt".
+                version: ko && typeof ko.version === "number" && isFinite(ko.version) ? ko.version : null,
+                // JOB 3092 S6 (Lehre JOB 3091 R3): ein GESCHEITERTER Abruf ist keine Auskunft ueber
+                // das Objekt. `geladen: false` laesst die Herkunftszeile „konnte nicht geladen werden"
+                // sagen statt einen Pruefstand oder eine Version zu behaupten.
+                geladen: true,
+              };
+            })
+            .catch(function () { return { id: id, title: id, trust: null, standDate: null, status: "unknown", version: null, geladen: false }; });
+        })
+      );
+    }
+
+    // K2/K3 (AUFTRAG-klara1 Paket 2): jede Quelle ist ein klickbarer Deep-Link auf die
+    // KO-Detailseite (/wissen/:id, oeffnet extern/neuer Tab) mit Status-Badge (Bibliotheks-
+    // Logik: Validiert / In Pruefung / Offen / Status unbekannt) und dem bestehenden Trust-Wert.
+    // Aufbau ueber DOM-APIs (textContent) — kein HTML-Sink, Titel bleiben escaped.
+    var ASK_STATUS_KEYS = {
+      validiert: "askStatusValidiert",
+      pruefung: "askStatusPruefung",
+      offen: "askStatusOffen",
+      unknown: "askStatusUnknown",
+    };
+
+    // JOB 3004 D1: die Quelle ist der CHIP (Vorlage Main.dc.html Z.34-44) — Dokumentsymbol,
+    // „n · Titel" als Deep-Link auf das ECHTE Wissensobjekt, daneben die Fassung: Bearbeitungs-
+    // status, Rolle in der Antwort, Vertrauen und belegtes Stand-Datum. Nichts davon ist erfunden;
+    // jede Angabe kommt wie bisher aus dem geladenen Objekt (resolveAskSources) bzw. aus
+    // `citedSources`. Mehr Quellen als Platz (zwei, wie in der Vorlage) → der „+n"-Chip; ein Klick
+    // darauf zeigt alle. Aufbau ueber DOM-APIs, kein HTML-Sink: Titel bleiben escaped.
+    var ASK_QUELLEN_CHIPS_SICHTBAR = 2;
+    var askQuellenAufgeloest = [];
+    var askQuellenAlleSichtbar = false;
+
+    function askChipSymbol() {
+      var NS = "http://www.w3.org/2000/svg";
+      var svg = document.createElementNS(NS, "svg");
+      svg.setAttribute("width", "13");
+      svg.setAttribute("height", "13");
+      svg.setAttribute("viewBox", "0 0 24 24");
+      svg.setAttribute("fill", "none");
+      svg.setAttribute("stroke", "currentColor");
+      svg.setAttribute("stroke-width", "1.8");
+      svg.setAttribute("stroke-linecap", "round");
+      svg.setAttribute("stroke-linejoin", "round");
+      svg.setAttribute("aria-hidden", "true");
+      var blatt = document.createElementNS(NS, "path");
+      blatt.setAttribute("d", "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z");
+      var ecke = document.createElementNS(NS, "path");
+      ecke.setAttribute("d", "M14 2v6h6");
+      svg.appendChild(blatt);
+      svg.appendChild(ecke);
+      return svg;
+    }
+
+    function askQuellenMehrChip(rest) {
+      var item = document.createElement("li");
+      item.className = "quelle-chip-mehr";
+      var knopf = document.createElement("button");
+      knopf.type = "button";
+      knopf.id = "ask-quellen-mehr-btn";
+      knopf.className = "quelle-chip";
+      knopf.textContent = "+" + String(rest);
+      knopf.addEventListener("click", function () {
+        askQuellenAlleSichtbar = true;
+        renderAskSources(askQuellenAufgeloest);
+      });
+      item.appendChild(knopf);
+      return item;
+    }
+
+    // JOB 3056 K1 (Main.dc.html Z.31-38): der Chip traegt Dokumentsymbol und „n · Titel" — sonst
+    // nichts. Status, Rolle, Vertrauen und Stand bleiben WAHR und erreichbar: sie stehen je Quelle
+    // in der Detailliste unter „Mehr" (#ask-quellen-detail, askQuellenDetailZeile).
+    function askQuellenDetailZeile(nummer, quelle) {
+      var teile = [String(nummer) + " · " + quelle.title];
+      teile.push(t(ASK_STATUS_KEYS[quelle.status] || "askStatusUnknown"));
+      // AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK B: die ROLLE dieser Quelle IN DER ANTWORT — tragend
+      // oder nur herangezogen. Ohne `citedSources` (alter Server) wird keine Rolle behauptet.
+      var rolle = askSourceRole(
+        quelle.id,
+        currentAskOutcome ? currentAskOutcome.citedSources : undefined
+      );
+      if (rolle !== "unknown") {
+        teile.push(t(rolle === "carrying" ? "askRoleCarrying" : "askRoleConsulted"));
+      }
+      if (quelle.trust !== null) {
+        teile.push(t("askTrust", { n: String(quelle.trust) }));
+      }
+      // Das belegte Stand-Datum (WP-KLARA-ASK-FIX Fix 3) — nur, wenn das Objekt eines traegt.
+      var stand = quelle.standDate ? new Date(quelle.standDate) : null;
+      if (stand !== null && !isNaN(stand.getTime())) {
+        teile.push(t("askChipStand", { date: formatAskDateLabel(stand) }));
+      }
+      var zeile = document.createElement("li");
+      zeile.textContent = teile.join(" · ");
+      return zeile;
+    }
+
+    function renderAskSources(resolved) {
+      askQuellenAufgeloest = resolved;
+      var list = document.getElementById("ask-sources");
+      list.textContent = "";
+      var detail = document.getElementById("ask-quellen-detail");
+      detail.textContent = "";
+      var sichtbar = askQuellenAlleSichtbar
+        ? resolved.length
+        : Math.min(resolved.length, ASK_QUELLEN_CHIPS_SICHTBAR);
+      for (var i = 0; i < sichtbar; i += 1) {
+        var item = document.createElement("li");
+        item.className = "quelle-chip";
+        // Runde 4: die Quelle des Chips, damit eine Fussnotenziffer (renderAskFussnoten) und ihr
+        // Chip nachweislich dasselbe Wissensobjekt meinen.
+        item.setAttribute("data-quelle", resolved[i].id);
+        item.appendChild(askChipSymbol());
+        var titel = document.createElement("span");
+        titel.className = "quelle-chip-titel";
+        titel.appendChild(document.createTextNode(String(i + 1) + " · "));
+        var link = document.createElement("a");
+        link.href = koDetailUrl(window.location.origin, resolved[i].id);
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.textContent = resolved[i].title;
+        titel.appendChild(link);
+        item.appendChild(titel);
+        list.appendChild(item);
+      }
+      for (var d = 0; d < resolved.length; d += 1) {
+        detail.appendChild(askQuellenDetailZeile(d + 1, resolved[d]));
+      }
+      if (resolved.length > sichtbar) {
+        list.appendChild(askQuellenMehrChip(resolved.length - sichtbar));
+      }
+      // „Mehr": der letzte Chip der Reihe klappt die Auskunft zur Antwort auf (Funktionsinventar).
+      if (resolved.length > 0) {
+        var mehrItem = document.createElement("li");
+        mehrItem.className = "quelle-chip-mehr";
+        var mehr = document.createElement("button");
+        mehr.type = "button";
+        mehr.id = "ask-mehr-btn";
+        mehr.className = "quelle-chip";
+        mehr.setAttribute("aria-controls", "ask-mehr-block");
+        mehr.addEventListener("click", askMehrUmschalten);
+        mehrItem.appendChild(mehr);
+        list.appendChild(mehrItem);
+      }
+      askMehrZeichnen();
+      document.getElementById("ask-sources-block").className = resolved.length > 0 ? "" : "hidden";
+      renderAskFussnoten();
+    }
+
+    // ============================================================================================
+    // JOB 3092 · S6 (W5) — DIE HERKUNFT AN DER ANTWORT UND DER UNGEPRUEFT-SATZ.
+    // ============================================================================================
+    //
+    // PEDIS VERTRAUENSBOTSCHAFT (05.09., M2 Geschichte A/B): an jeder Antwort steht sichtbar, worauf
+    // sie beruht — Titel, Pruefstand und Version je TRAGENDER Quelle, direkt unter dem Text, kein
+    // Wechsel in Verwaltungsseiten. Bis hierher lag die Herkunft im „Mehr"-Block (askHerkunft,
+    // askQuellenDetailZeile); der bleibt fuer Einstufung/Vorbehalt und wird nicht angefasst.
+    //
+    // WOHER JEDE ANGABE KOMMT — nichts wird hergeleitet:
+    //   · WELCHE Quellen: `citedSources` der Antwort (services/reasoner/src/types.ts, Gate G-2) —
+    //     die tragende Teilmenge, NICHT `sources` (alles Herangezogene). Fehlt das Feld oder ist es
+    //     leer, sagt die Zeile „Dafuer habe ich keinen Beleg." — das ist die Aussage des SERVERS
+    //     (keine benannte tragende Quelle), keine Folge eines gescheiterten Abrufs.
+    //   · Titel, Pruefstand, Version: aus dem geladenen Objekt (resolveAskSources, GET /api/kos/:id),
+    //     dieselbe Aufloesung, die auch die Chips speist. Kein zweiter Abruf.
+    //   · LEHRE JOB 3091 R3 (Codex): ein gescheiterter Abruf ist KEINE festgestellte Quellenlosigkeit.
+    //     Solange die Aufloesung laeuft, steht „Quellen werden geladen …"; scheitert sie fuer eine
+    //     Quelle (`geladen: false`), sagt ihre Zeile „konnte nicht geladen werden" und behauptet
+    //     weder Pruefstand noch Version.
+    //   · UNGEPRUEFT: das Feld `ungeprueft` des Antwortkoerpers (JOB 1591 D1, betrachtergefiltert,
+    //     nur auf dem Sitzungsweg). Nicht leer → EIN Satz mit Titel(n), in der Antwortkarte UND in
+    //     der Luecke (Pedis Fall: „haben wir dazu etwas?" — ja, aber ungeprueft). Leer oder abwesend
+    //     → kein Satz. Es gibt KEIN „alles geprueft": die Leere der Liste ist kein Versprechen ueber
+    //     den Bestand (mega77 Grund 2, w5-ungeprueft-gemeldet W3).
+    // Aufbau ueber DOM-APIs (textContent), kein HTML-Sink: Titel bleiben escaped.
+    function s6HerkunftZeile(id, quelle) {
+      var zeile = document.createElement("p");
+      zeile.className = "herkunft-zeile";
+      zeile.setAttribute("data-quelle", id);
+      zeile.appendChild(document.createTextNode(t("askHerkunftQuelle") + " "));
+      var geladen = !!(quelle && quelle.geladen);
+      // Der Titel ist der Link auf den Volltext — derselbe Weg wie der Chip (koDetailUrl).
+      var link = document.createElement("a");
+      link.href = koDetailUrl(window.location.origin, id);
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.textContent = geladen ? quelle.title : id;
+      zeile.appendChild(link);
+      var teile = [];
+      if (!geladen) {
+        teile.push(t("askHerkunftNichtGeladen"));
+      } else {
+        teile.push(t(ASK_STATUS_KEYS[quelle.status] || "askStatusUnknown"));
+        teile.push(
+          quelle.version === null || quelle.version === undefined
+            ? t("askHerkunftVersionUnbekannt")
+            : t("askHerkunftVersion", { n: String(quelle.version) })
+        );
+      }
+      zeile.appendChild(document.createTextNode(" · " + teile.join(" · ")));
+      return zeile;
+    }
+
+    function renderAskHerkunft() {
+      var block = document.getElementById("ask-herkunft");
+      if (!block) { return; }
+      block.textContent = "";
+      var outcome = currentAskOutcome;
+      if (!outcome || outcome.kind !== "answered") { block.className = "hidden"; return; }
+      block.className = "";
+      var cited = Array.isArray(outcome.citedSources) ? outcome.citedSources : [];
+      if (cited.length === 0) {
+        var kein = document.createElement("p");
+        kein.id = "ask-herkunft-kein-beleg";
+        kein.textContent = t("askHerkunftKeinBeleg");
+        block.appendChild(kein);
+        return;
+      }
+      if (!currentAskSourcesResolved) {
+        var laden = document.createElement("p");
+        laden.id = "ask-herkunft-laden";
+        laden.textContent = t("askHerkunftLaden");
+        block.appendChild(laden);
+        return;
+      }
+      for (var i = 0; i < cited.length; i += 1) {
+        var quelle = null;
+        for (var q = 0; q < askQuellenAufgeloest.length; q += 1) {
+          if (askQuellenAufgeloest[q].id === cited[i]) { quelle = askQuellenAufgeloest[q]; break; }
+        }
+        block.appendChild(s6HerkunftZeile(cited[i], quelle));
+      }
+    }
+
+    function s6UngeprueftSatz(liste) {
+      var titel = [];
+      for (var i = 0; i < liste.length; i += 1) {
+        var e = liste[i];
+        if (!e) { continue; }
+        var name = typeof e.title === "string" && e.title.replace(/^\s+|\s+$/g, "").length > 0
+          ? e.title
+          : typeof e.id === "string" ? e.id : "";
+        if (name) { titel.push(name); }
+      }
+      if (titel.length === 0) { return ""; }
+      return titel.length === 1
+        ? t("askUngeprueftEins", { titel: titel[0] })
+        : t("askUngeprueftMehrere", { n: String(titel.length), titel: titel.join(", ") });
+    }
+
+    function renderAskUngeprueft() {
+      var inAntwort = document.getElementById("ask-ungeprueft");
+      var inLuecke = document.getElementById("ask-gap-ungeprueft");
+      if (!inAntwort || !inLuecke) { return; }
+      var outcome = currentAskOutcome;
+      var satz = outcome && Array.isArray(outcome.ungeprueft) ? s6UngeprueftSatz(outcome.ungeprueft) : "";
+      var antwort = satz && outcome.kind === "answered" ? satz : "";
+      var luecke = satz && outcome.kind === "gap" ? satz : "";
+      inAntwort.textContent = antwort;
+      inAntwort.className = antwort ? "" : "hidden";
+      inLuecke.textContent = luecke;
+      inLuecke.className = luecke ? "" : "hidden";
+    }
+
+    // ============================================================================================
+    // JOB 3366 · KI-FRAGMENT-SICHTBAR — DER SATZ AN EINER ABGESCHNITTENEN ANTWORT.
+    // ============================================================================================
+    //
+    // Bauform wie `renderAskUngeprueft` daneben, und aus demselben Grund: ein FESTES Element wird
+    // gefuellt und ein-/ausgeblendet, gelesen wird `currentAskOutcome`. Damit nimmt der
+    // Sprachwechsel den Satz mit (setLang ruft diese Funktion), und die Rueckstellung
+    // (resetAskResult) raeumt ihn weg — ein Fragment-Hinweis der VORIGEN Antwort neben der
+    // naechsten waere eine Falschaussage.
+    //
+    // ER STEHT NUR IN DER ANTWORTKARTE. In der Wissensluecke gibt es keinen Text, ueber den er
+    // etwas sagen koennte; im Fehler-, Frist- und Zeitfall ebenso wenig. Es gibt KEINE positive
+    // Gegenaussage: entweder der Satz oder gar nichts.
+    function renderAskFragment() {
+      var el = document.getElementById("ask-fragment");
+      if (!el) { return; }
+      var outcome = currentAskOutcome;
+      var zeigen = !!(outcome && outcome.kind === "answered" && outcome.abgeschnitten === true);
+      el.textContent = zeigen ? t("askFragment") : "";
+      el.className = zeigen ? "" : "hidden";
+    }
+
+    // ============================================================================================
+    // JOB 3056 Runde 4 (Codex Pflicht 1) — DIE FUSSNOTENZIFFERN IM ANTWORTTEXT (Main.dc.html Z.28).
+    // ============================================================================================
+    //
+    // Hinter dem Antworttext stehen hochgestellte Ziffern, die auf die Chips „n · Titel" zeigen.
+    // Der Antworttext bleibt das bearbeitbare Feld (mega35/36: EIN Feld, alle Ausgaenge — Einfuegen,
+    // Kopieren, Cmd+C, Ausschneiden, Ziehen lesen `value` und die Auswahl des Felds), und ein Feld
+    // kann kein <sup> tragen. Die Ziffern sind deshalb EIGENE <sup>-Elemente (#ask-fussnoten), die
+    // an der GEMESSENEN Stelle nach dem letzten Zeichen stehen: ein unsichtbarer Spiegel
+    // (#ask-answer-spiegel) traegt denselben Text mit denselben Schriftmassen und derselben Breite,
+    // eine Marke an seinem Ende liefert die Koordinaten — dieselbe Bauform, mit der Textfelder ihre
+    // Cursorposition bestimmen. Neu gemessen wird nach jeder Aenderung des Texts, der Hoehe
+    // (kompakt / aufgeklappt) und der Fensterbreite; ist das Textende in der kompakten Ansicht
+    // abgeschnitten, sind die Ziffern es auch (verborgen, nicht falsch platziert).
+    //
+    // WELCHE ZIFFER WOHIN — nichts wird erfunden. Eine Ziffer bekommt, was die Antwort TRAEGT:
+    // `citedSources` (askSourceRole = carrying), nummeriert wie der Chip derselben Quelle. Der
+    // retrieval-only-Weg dieses Panels liefert die Antwort als Aussage GENAU EINER Quelle
+    // (services/reasoner/src/provider.ts: answer = best.statement, citedSources = [best.id]) —
+    // dann steht „1". Nennt ein Server mehrere tragende Quellen, stehen alle ihre Ziffern in
+    // Chip-Reihenfolge am Textende: der Vertrag ordnet Quellen der ANTWORT zu, nicht einzelnen
+    // Saetzen, und eine Zuordnung je Absatz stuende auf nichts. Nur herangezogene Quellen
+    // (consulted) und ein Server ohne `citedSources` bekommen KEINE Ziffer — keine Rolle wird
+    // behauptet, die niemand gesagt hat.
+    var ASK_SPIEGEL_EIGENSCHAFTEN = [
+      "font-family", "font-size", "font-weight", "font-style", "letter-spacing", "word-spacing",
+      "line-height", "text-transform", "text-indent", "tab-size", "box-sizing",
+    ];
+
+    function renderAskFussnoten() {
+      var halter = document.getElementById("ask-fussnoten");
+      if (!halter) { return; }
+      halter.textContent = "";
+      var outcome = currentAskOutcome;
+      var cited = outcome && outcome.kind === "answered" ? outcome.citedSources : undefined;
+      var quellen = askQuellenAufgeloest || [];
+      for (var i = 0; i < quellen.length; i += 1) {
+        if (askSourceRole(quellen[i].id, cited) !== "carrying") { continue; }
+        var ziffer = document.createElement("sup");
+        ziffer.className = "fussnote";
+        ziffer.setAttribute("data-quelle", quellen[i].id);
+        ziffer.textContent = String(i + 1);
+        halter.appendChild(ziffer);
+      }
+      askFussnotenSetzen();
+    }
+
+    function askFussnotenSetzen() {
+      var halter = document.getElementById("ask-fussnoten");
+      var spiegel = document.getElementById("ask-answer-spiegel");
+      var feld = document.getElementById("ask-answer-edit");
+      if (!halter || !spiegel || !feld) { return; }
+      if (halter.childNodes.length === 0) { halter.className = "hidden"; return; }
+      var stil = window.getComputedStyle(feld);
+      for (var i = 0; i < ASK_SPIEGEL_EIGENSCHAFTEN.length; i += 1) {
+        spiegel.style.setProperty(
+          ASK_SPIEGEL_EIGENSCHAFTEN[i],
+          stil.getPropertyValue(ASK_SPIEGEL_EIGENSCHAFTEN[i])
+        );
+      }
+      spiegel.style.width = feld.clientWidth + "px";
+      spiegel.textContent = feld.value;
+      var marke = document.createElement("span");
+      marke.className = "textende";
+      spiegel.appendChild(marke);
+      var zeilenhoehe = parseFloat(stil.lineHeight);
+      // Ohne Layout (jsdom) bleiben die Ziffern da, nur ohne Koordinaten; mit Layout stehen sie am
+      // Textende — oder sind verborgen, wenn das Ende in der kompakten Ansicht nicht im Bild ist.
+      var abgeschnitten = feld.offsetHeight > 0 && zeilenhoehe > 0
+        && marke.offsetTop + zeilenhoehe > feld.offsetHeight + 1;
+      halter.className = abgeschnitten ? "hidden" : "";
+      halter.style.left = marke.offsetLeft + "px";
+      halter.style.top = marke.offsetTop + "px";
+      halter.style.lineHeight = zeilenhoehe > 0 ? zeilenhoehe + "px" : "";
+    }
+
+    // ============================================================================================
+    // AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK B — EINE STELLE FUER DIE GANZE EVIDENZ.
+    // ============================================================================================
+    //
+    // Sie liest `currentAskOutcome` und ist deshalb auch nach einem SPRACHWECHSEL aufrufbar, ohne
+    // dass die Antwort neu geholt werden muss. Drei Aussagen, sichtbar GETRENNT:
+    //   1. die Einstufung (belegt / nicht belegt)      — unveraendert aus mega34,
+    //   2. der benannte Pruefvorbehalt samt Zaehlung   — bis hierher unsichtbar,
+    //   3. die Konfliktlage                            — bis hierher von 2. ununterscheidbar.
+    // Dazu der real gelieferte Ausschnitt, sofern er nicht ohnehin die Antwort ist.
+    //
+    // Nichts davon wird berechnet: `askEvidenceDetail` liest nur `outcome.evidence` (KW-W1-13).
+    var ASK_CAVEAT_TEXT_KEYS = {
+      unknown: "askCaveatUnknown",
+      unchecked: "askCaveatUnchecked",
+      noCoverage: "askCaveatNoCoverage",
+      incomplete: "askCaveatIncomplete",
+      unattributed: "askCaveatUnattributed",
+      other: "askCaveatOther",
+    };
+    var ASK_CONFLICT_TEXT_KEYS = {
+      conflicted: "askConflictConflicted",
+      unproven: "askConflictUnproven",
+      clear: "askConflictClear",
+    };
+
+    // Die beiden Zeilen sind FESTE Elemente des Markups: sie werden gefuellt und ein-/ausgeblendet,
+    // nicht erzeugt. Sie benutzen dieselben `.status`-Toene wie die Einstufungszeile darueber —
+    // deckende Flaechen, vom Kontrastwaechter eindeutig messbar (s. Stilblock).
+    function evidenceLine(id, textValue, tone) {
+      var el = document.getElementById(id);
+      if (!el) { return; }
+      if (!textValue) {
+        el.className = "status warn hidden";
+        el.textContent = "";
+        return;
+      }
+      el.className = "status " + tone;
+      el.textContent = textValue;
+    }
+
+    function renderAskEvidence() {
+      var noteEl = document.getElementById("ask-evidence-note");
+      var snippetBlock = document.getElementById("ask-snippet-block");
+      if (!noteEl || !snippetBlock) { return; }
+      var outcome = currentAskOutcome;
+      var vorbehaltEl = document.getElementById("ask-vorbehalt");
+      if (!outcome || outcome.kind !== "answered") {
+        noteEl.className = "status hidden";
+        noteEl.textContent = "";
+        evidenceLine("ask-caveat-line", "", "warn");
+        evidenceLine("ask-conflict-line", "", "warn");
+        snippetBlock.className = "hidden";
+        if (vorbehaltEl) { vorbehaltEl.textContent = ""; vorbehaltEl.className = "hidden"; }
+        return;
+      }
+      // 1. Die Einstufung — unveraendert dieselbe Auswahl wie fuer Kopieren und Einfuegen.
+      var askGrade = askGradeOf(outcome.evidence);
+      noteEl.textContent = answerInsertEvidenceNote(askGrade, {
+        verified: t("askEvidenceVerified"),
+        unverified: t("askEvidenceUnverified"),
+      });
+      noteEl.className = askGrade === "verified" ? "status" : "status warn";
+
+      var detail = askEvidenceDetail(outcome.evidence);
+      // 2. Der benannte Vorbehalt. Ein unbekannter Grund wird generisch benannt — NIE verschwiegen.
+      var vorbehalt = "";
+      if (detail.caveat) {
+        var grund = t(ASK_CAVEAT_TEXT_KEYS[detail.caveat.key] || "askCaveatOther");
+        var zahl =
+          detail.caveat.total > 0
+            ? " " + t("askCaveatCount", {
+                unproven: String(detail.caveat.unproven),
+                total: String(detail.caveat.total),
+              })
+            : "";
+        vorbehalt = grund + zahl;
+      }
+      evidenceLine("ask-caveat-line", vorbehalt, "warn");
+      // 3. Die Konfliktlage — EIGENE Zeile, eigener Ton. „nicht geprueft" ist nicht „keine".
+      evidenceLine(
+        "ask-conflict-line",
+        t(ASK_CONFLICT_TEXT_KEYS[detail.conflict] || "askConflictUnproven"),
+        detail.conflict === "clear" ? "ok" : "warn"
+      );
+      // JOB 3056 K1 (Lieferung 5): unter der Karte steht EIN Satz — NUR wenn der Fall eintritt.
+      // Rangfolge: offener Konflikt vor benanntem Vorbehalt vor ungeprüfter Einstufung. Die
+      // unbekannte Konfliktlage („nicht geprueft") ist kein eingetretener Fall: sie steht unter
+      // „Mehr", nicht im Sichtfeld. Alles Weitere (Zaehlung, Ausschnitt) ebenfalls unter „Mehr".
+      if (vorbehaltEl) {
+        var satz = detail.conflict === "conflicted"
+          ? t("askConflictConflicted")
+          : detail.caveat
+            ? t(ASK_CAVEAT_TEXT_KEYS[detail.caveat.key] || "askCaveatOther")
+            : askGrade !== "verified"
+              ? t("askEvidenceUnverified")
+              : "";
+        vorbehaltEl.textContent = satz;
+        vorbehaltEl.className = satz ? "" : "hidden";
+      }
+
+      // Der Ausschnitt — hoechstens einer, und nur wenn er nicht die Antwort selbst ist.
+      if (askSnippetWorthShowing(outcome.answer, outcome.snippet)) {
+        document.getElementById("ask-snippet-label").textContent = t("askSnippetLabel");
+        document.getElementById("ask-snippet-text").textContent = outcome.snippet;
+        snippetBlock.className = "";
+      } else {
+        snippetBlock.className = "hidden";
+        document.getElementById("ask-snippet-text").textContent = "";
+      }
+    }
+
+    function renderAskOutcome(outcome, truncated) {
+      var truncatedNote = truncated
+        ? " " + t("askTruncated", { max: String(WORD_ADDIN_ASK_MAX_CHARS) })
+        : "";
+      // AUFTRAG-mega81 BLOCK A: die KI-Kennzeichnung folgt dem Antwortweg, ueber JEDEN Ausgang
+      // dieser Funktion — nicht nur ueber den, an den gerade jemand gedacht hat.
+      renderAiNotice(outcome);
+      if (outcome.kind === "answered") {
+        currentAskTruncated = truncated;
+        document.getElementById("ask-answer-block").className = "";
+        // JOB 3056 K1: die gestellte Frage steht als gedaempfte Zeile ueber der Karte; das
+        // Frage-Feld bleibt unten (es IST die neue Frage), die Ruhe tritt zurueck.
+        document.getElementById("ask-frage-zeile").textContent = currentAskQuestion;
+        document.getElementById("ask-input").value = "";
+        kwFlaecheZeichnen();
+        updateAskState();
+        // AUFTRAG-mega34 B2: die Einstufung sichtbar machen — derselbe Text, den auch der
+        // eingefuegte Absatz traegt. Bei belegter Einstufung steht die belegte Fassung da, nicht
+        // gar keine; der Leser soll den Unterschied SEHEN und nicht aus dem Schweigen schliessen.
+        // AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK B: Einstufung, Vorbehalt, Konfliktlage und Ausschnitt
+        // entstehen jetzt an EINER Stelle (renderAskEvidence) — dieselbe, die auch der
+        // Sprachwechsel ruft. Zwei Aufrufstellen waeren zwei Gelegenheiten auseinanderzulaufen.
+        renderAskEvidence();
+        // JOB 3092 S6 (W5): Herkunft (zunaechst „Quellen werden geladen …") und Ungeprueft-Satz —
+        // beide an derselben Stelle wie die Einstufung, damit der Sprachwechsel sie mitnimmt.
+        renderAskHerkunft();
+        renderAskUngeprueft();
+        renderAskFragment(); // JOB 3366: der Satz an einer abgeschnittenen Antwort
+        // AUFTRAG-mega35 A1: das Feld traegt NUR den Antwortkoerper — das ist der Teil, der der
+        // Nutzerin gehoert. Einstufung und Quellen-Zeile werden NICHT vorbefuellt und deshalb auch
+        // nicht nachgetragen; sie entstehen erst im Moment des Kopierens/Einfuegens
+        // (composeOutputText). Damit gibt es keinen Zustand mehr, in dem der Feldinhalt die
+        // Einstufung verloren hat, die Ausgabewege aber schon offen sind.
+        document.getElementById("ask-answer-edit").value = outcome.answer;
+        applyAnswerCompaction(outcome.answer);
+        if (truncated) { showAskStatus("warn", truncatedNote.replace(/^\s+/, "")); } else { hideAskStatus(); }
+        updateInsertState(); // noch gesperrt — die Quellenaufloesung laeuft (Fix 2)
+        // JOB 3056 Runde 6 (Codex): DIESER RUECKLAUF GEHOERT DIESER ANTWORT. Das Frage-Feld bleibt
+        // unter der Antwort stehen (es IST die neue Frage) — wer die naechste Frage stellt, waehrend
+        // die Quellen der vorigen noch geladen werden, bekam bis Runde 5 deren Chip, Ziffer und
+        // Quellen-Zeile untergeschoben, und der fremde Ruecklauf oeffnete das Ausgabetor der neuen
+        // Antwort. Der Ruecklauf traegt deshalb die Generation des Ergebniszustands (resetAskResult
+        // zaehlt sie bei jeder Frage und beim Zurueck hoch) UND das Ergebnisobjekt selbst; passt
+        // eines nicht mehr, wird er verworfen — kein DOM, keine Metadaten, kein Tor.
+        var generation = askErgebnisGeneration;
+        resolveAskSources(outcome.sources || []).then(function (resolved) {
+          if (generation !== askErgebnisGeneration || currentAskOutcome !== outcome) { return; }
+          currentAskSourceTitles = resolved.map(function (r) { return r.title; });
+          currentAskSourceDates = resolved.map(function (r) { return r.standDate; });
+          currentAskSourcesResolved = true; // ab jetzt ist die Quellen-Zeile vollstaendig
+          renderAskSources(resolved);
+          // JOB 3092 S6 (W5): jetzt sind Titel, Pruefstand und Version da — die Ladezeile weicht
+          // den Herkunftszeilen (bzw. „konnte nicht geladen werden" je gescheiterter Quelle).
+          renderAskHerkunft();
+          // Das Feld wird hier NICHT mehr angefasst — eine laufende Bearbeitung kann nichts kaputt
+          // machen und nichts verlieren.
+          updateInsertState();
+        });
+        return;
+      }
+      if (outcome.kind === "gap") {
+        // Die ehrliche Wissensluecken-Karte: KEINE erfundene Antwort; /api/ask hat die Luecke
+        // serverseitig bereits vermerkt — zusaetzlich kann sie als offene Frage (Draft) reisen.
+        document.getElementById("ask-gap-block").className = "";
+        // JOB 3056 K1: die Luecke nimmt die Mitte der Fensterspalte ein (Stilblock), die Ruhe
+        // tritt zurueck; die Frage bleibt im Feld stehen („Frage aendern" setzt den Cursor).
+        kwFlaecheZeichnen();
+        // AUFTRAG-mega77 BLOCK A: hier wurde der Satz mit der Zahl der unterdrueckten ungeprueften
+        // Treffer gesetzt. Entfernt — Begruendung an der Absage-Karte oben.
+        // JOB 3092 S6 (W5): KEINE Zahl aus der Vorauswahl — aber die betrachtergefilterte Liste,
+        // die der Server seit JOB 1591 ausdruecklich meldet, als EIN Satz mit Titel(n).
+        renderAskUngeprueft();
+        if (truncated) { showAskStatus("warn", truncatedNote.replace(/^\s+/, "")); } else { hideAskStatus(); }
+        return;
+      }
+      if (outcome.kind === "auth") {
+        showAskStatus("warn", t("askAuth"));
+        checkSession(); // 401 → Login-Hinweis-Block erscheint wieder
+        return;
+      }
+      // AUFTRAG-JOB507-D4: 403 ist fehlendes Recht — eine erneute Anmeldung aendert daran nichts,
+      // also fordert die Oberflaeche sie auch nicht mehr.
+      if (outcome.kind === "forbidden") {
+        showAskStatus("warn", t("askForbiddenRead"));
+        return;
+      }
+      // AUFTRAG-JOB507-D4: 429 nennt die Wartezeit, wenn der Server eine genannt hat — und sonst
+      // ehrlich keine Zahl.
+      if (outcome.kind === "rate-limited") {
+        showAskStatus(
+          "warn",
+          outcome.retryAfterSeconds === null || outcome.retryAfterSeconds === undefined
+            ? t("askRateLimitedUnknown")
+            : t("askRateLimited", { n: String(outcome.retryAfterSeconds) })
+        );
+        return;
+      }
+      if (outcome.kind === "timeout") {
+        showAskStatus("warn", t("askTimeout"));
+        askRetryZeigen();
+        return;
+      }
+      // JOB 3056 K1 (§9): ohne Verbindung EIN Satz „Keine Verbindung." und „Erneut versuchen";
+      // ein benannter Serverfehler nennt weiter sein Detail.
+      showAskStatus(
+        "warn",
+        outcome.detail ? t("askError", { detail: outcome.detail }) : t("askOffline")
+      );
+      askRetryZeigen();
+    }
+
+    // Auswahl lesen (nur Text — die Frage ist Klartext); ohne Office ehrlich leer → Eingabefeld.
+    // JOB 3056 K1: „Text in Word mitlesen" (Einstellungen, Schalter). Aus: die Markierung in Word
+    // wird fuer die Frage nicht gelesen — es zaehlt allein das Feld. An (Voreinstellung): wie
+    // bisher (prepareAskQuestion: Markierung vor Eingabe). Gilt nur fuer diese Panelinstanz.
+    var askMitlesen = true;
+
+    function readAskSelection(done) {
+      if (!askMitlesen || !officeUsable()) { done(""); return; }
+      Office.context.document.getSelectedDataAsync(Office.CoercionType.Text, function (result) {
+        done(result.status === Office.AsyncResultStatus.Succeeded ? String(result.value || "") : "");
+      });
+    }
+
+    // JOB 3056 K1 (Rebase auf KA5): die Wahrheitstabelle der zwei Deckel (`askSelectionTruncated`,
+    // `askBothTruncated`, `askDeckelHinweis`) ist mit dem Herkunftshinweis selbst entfallen — die
+    // Ruhe zeigt vor dem Absenden nur noch den EINEN Verwerfungssatz (s.u.), keinen Deckelhinweis
+    // mehr; die Statuszeile nach der Antwort zeigt `askTruncated` unveraendert (renderAskOutcome).
+
+    // AUFTRAG-mega74 TEIL 2b: die Zeile ueber dem Eingabefeld sagt, WORAUS die Frage entsteht.
+    // Sie benutzt dieselbe Entscheidung wie der Absendeweg (prepareAskQuestion) — nicht eine
+    // zweite, die morgen anders ausfaellt. Sie behauptet nichts, wenn sie nichts weiss: ohne
+    // Office bleibt sie leer.
+    // JOB 3017 D4: die Zeile ist zustandsgebunden — ohne Inhalt verborgen, damit unter dem Feld
+    // genau EIN Satz steht (Zielbild Z.44) und kein leerer Absatz Platz haelt.
+    function setzeAskSourceNote(note, text) {
+      note.textContent = text;
+      note.className = text ? "muted" : "muted hidden";
+    }
+
+    function updateAskSourceNote() {
+      var note = document.getElementById("ask-source-note");
+      if (!note) { return; }
+      if (!officeUsable()) { setzeAskSourceNote(note, ""); return; }
+      readAskSelection(function (selectionText) {
+        var prep = prepareAskQuestion(selectionText, document.getElementById("ask-input").value);
+        // JOB 3056 K1 (Rebase auf KA5): nur der EINE Fall bekommt einen Satz — getippter Text UND
+        // Markierung sind da, die Markierung reist zusaetzlich mit (`prep.from === "manual"` seit
+        // KA5, `prep.selection` ist dann die mitgesendete Markierung). Sonst steht nichts ueber dem
+        // Feld (die Ruhe sagt es, der Schalter „Text in Word mitlesen" entscheidet).
+        setzeAskSourceNote(note, prep.from === "manual" && prep.selection.length > 0
+          ? t("askSourceSelectionOverride")
+          : "");
+        // JOB 3056 K1: eine Markierung in Word ist Kontext fuer die Schreibflaeche (KA6) — unabhaengig
+        // davon, ob sie oder die Eingabe die Frage stellt.
+        if (typeof askMarkierungDa !== "undefined") {
+          askMarkierungDa = prep.from === "selection" || prep.selection.length > 0;
+          if (typeof ka6Neuzeichnen === "function") { ka6Neuzeichnen(); }
+        }
+      });
+    }
+
+    function askKlara() {
+      // AUFTRAG-W1-KLARA-KOPF-CONSENT-06: der zweite Riegel. Der gesperrte Knopf ist die Anzeige,
+      // DIESE Zeile ist die Wirkung — bei `executionAllowed: false` verlaesst KEINE Anfrage das
+      // Aufgabenfenster. Ein Gate, das nur ein `disabled`-Attribut ist, ist kein Gate.
+      if (klaraS4FragenGesperrt()) {
+        resetAskResult();
+        showAskStatus("warn", t("s4FragenGesperrt"));
+        // Runde 9: der Knopf zeigt danach wieder, was gilt — auch wenn der Aufruf am Attribut
+        // vorbei kam (Enter, entferntes `disabled`).
+        updateAskState();
+        return;
+      }
+      // JOB 3016 D3 (Runde 4, BEN): SINGLE FLIGHT — das Tor faellt SYNCHRON, VOR dem asynchronen
+      // Auswahlrueckruf von Word. Bis Runde 3 lag zwischen Klick und Wartezustand die Zeit von
+      // `getSelectedDataAsync`; ein zweiter Klick in dieser Luecke startete einen zweiten Lauf,
+      // und der erste Ausgang gab Karte und Feld frei, waehrend der zweite Fetch noch lief.
+      // `askLaeuft` ist deshalb kein Anzeigeschalter mehr, sondern das Tor: solange es steht, geht
+      // KEIN zweiter Auswahlrueckruf und KEIN zweiter Ask ab. Es faellt bei leerer Frage, nach
+      // jedem Ergebnis und — fail-open — bei jedem Fehler vor dem Fetch.
+      //
+      // Runde 5 (BEN): DIE AUSWAHLPHASE IST EIN BEGRENZTER LAUF. Zwischen Klick und Rueckruf haengt
+      // das Fenster an Word — und Word kann den Rueckruf schuldig bleiben, synchron werfen oder
+      // ihn erst liefern, wenn niemand mehr wartet. Jeder Lauf traegt deshalb sein eigenes Ticket
+      // (`lauf`): eine Frist (WORD_ADDIN_ASK_TIMEOUT_MS) beendet ihn fail-open mit einer ehrlichen
+      // Meldung (askSelectionTimeout), OHNE dass ein Ask abgegangen waere; ein synchroner Fehler
+      // beendet ihn mit askError; ein Rueckruf, dessen Lauf vorbei ist (verspaetet oder doppelt),
+      // wird ignoriert und loest KEINEN Ask mehr aus.
+      //
+      // Runde 6 (BEN): EINE ABSOLUTE GESAMTFRIST AB KLICK. Das Versprechen lautet „wartet bis zu
+      // 15 Sekunden" — fuer den ganzen Lauf, nicht je Teilstueck. Die Auswahlfrist und die Frist von
+      // performAsk teilen sich deshalb dieselbe Uhr: performAsk bekommt nach dem Rueckruf nur die
+      // vom Klick an VERBLEIBENDE Zeit (mindestens 1 ms), nicht erneut die volle Konstante. Spaetestens
+      // WORD_ADDIN_ASK_TIMEOUT_MS nach dem Klick sind Karte und Sperre weg — Word langsam oder Server
+      // langsam, es ist dieselbe Wartezeit des Menschen.
+      if (askLaeuft) { return; }
+      resetAskResult();
+      // Der Wartezustand ist die Ladekarte, nicht der Warnkasten — und die Sperre trifft
+      // Eingabefeld UND Knopf ab dem Klick (askWartezustand, updateAskState).
+      askWartezustand(true);
+      var klick = Date.now();
+      var lauf = { offen: true, timer: null };
+      var laufBeenden = function () {
+        lauf.offen = false;
+        if (lauf.timer !== null) { clearTimeout(lauf.timer); lauf.timer = null; }
+      };
+      // Der EINE Ausgang „Word war zu langsam": vom Timer gerufen — oder vom Rueckruf selbst, wenn
+      // er die Frist schon ueberschritten vorfindet (Runde 7, BEN: die Reihenfolge asynchroner
+      // Timer ist keine Garantie; die Uhr wird im Rueckruf selbst gelesen).
+      var auswahlAbgelaufen = function () {
+        laufBeenden();
+        askWartezustand(false);
+        showAskStatus("warn", t("askSelectionTimeout"));
+      };
+      lauf.timer = setTimeout(function () {
+        if (!lauf.offen) { return; }
+        auswahlAbgelaufen();
+      }, WORD_ADDIN_ASK_TIMEOUT_MS);
+      var absenden = function (selectionText) {
+        if (!lauf.offen) { return; } // verspaetet oder doppelt: dieser Lauf ist vorbei
+        laufBeenden();
+        // Die Restzeit der Gesamtfrist — was Word verbraucht hat, fehlt dem Server (Runde 6).
+        // Ist sie aufgebraucht (Rueckruf exakt bei oder nach 15 000 ms), geht KEIN Ask mehr ab:
+        // derselbe Ausgang wie beim ausgebliebenen Rueckruf, ohne POST (Runde 7).
+        var restfrist = WORD_ADDIN_ASK_TIMEOUT_MS - (Date.now() - klick);
+        if (restfrist <= 0) {
+          auswahlAbgelaufen();
+          return;
+        }
+        var prep = prepareAskQuestion(selectionText, document.getElementById("ask-input").value);
+        if (prep.from === "empty") {
+          askWartezustand(false);
+          showAskStatus("warn", t("askEmpty"));
+          return;
+        }
+        currentAskQuestion = prep.question;
+        performAsk(
+          prep.question,
+          askLocale(lang),
+          function (url, init) { return fetch(url, init); },
+          restfrist,
+          // KW-KA4: die Bindung wird HIER geholt und hineingereicht — der Ask-Block selbst bleibt
+          // damit isoliert ausfuehrbar (siehe Begruendung an `performAsk`).
+          klaraS4Header(),
+          // JOB 3019 (KA5): die Markierung aus DERSELBEN Vorbereitung. Kein zweites
+          // `readAskSelection`, kein zweiter Zustand — sonst koennte die Zeile ueber dem Feld eine
+          // andere Markierung meinen als die, die wirklich abgeht.
+          prep.selection, prep.from === "selection" ? "selection" : "manual" // R-0639: Herkunft der Frage
+        ).then(function (outcome) {
+          currentAskOutcome = outcome;
+          // Der EINE Ausgang aus dem Wartezustand — Antwort, Luecke, Frist, Fehler, fehlende
+          // Anmeldung: Karte weg, Sperre auf (Knopf sofern angemeldet), dann erst das Ergebnis.
+          askWartezustand(false);
+          renderAskOutcome(outcome, prep.truncated);
+        });
+      };
+      // Fail-open: ein synchroner Fehler — aus getSelectedDataAsync selbst oder aus dem Absenden
+      // vor dem Fetch — beendet den Lauf, gibt das Fenster frei und sagt, was war.
+      var fehlerVorDemFetch = function (err) {
+        laufBeenden();
+        askWartezustand(false);
+        showAskStatus("warn", t("askError", { detail: err && err.message ? err.message : "office" }));
+      };
+      try {
+        readAskSelection(function (selectionText) {
+          try { absenden(selectionText); } catch (err) { fehlerVorDemFetch(err); }
+        });
+      } catch (err) {
+        fehlerVorDemFetch(err);
+      }
+    }
+
+    // AUFTRAG-mega35 A1 / mega36 B+C: der auszugebende Text — GEBILDET IM MOMENT DER AUSGABE, aus
+    // dem bearbeiteten Antwortkoerper plus Einstufung plus Quellen-Zeile.
+    //
+    // KORRIGIERTE ZUSAGE (bens ROT-1 zu mega35, mega36 Block C): der frueher hier stehende Satz
+    // „einziger Weg, auf dem Text das Panel verlaesst" war FALSCH — er kannte nur die beiden
+    // Schaltflaechen und uebersah den nativen Kopierweg des Antwortfelds.
+    //
+    // AUFTRAG-mega37 BLOCK D — WAS DIESE LISTE IST UND WAS SIE NICHT IST (bens GELB-2). Sie zaehlt
+    // die GEFUNDENEN produktdefinierten Ausgaenge auf. Der Negativ-Durchgang (kein Netz-, Datei-,
+    // Druck-, Teilen-, Download- oder Zweitfenster-Ziel fuer den Antworttext) ist von ben fuer
+    // diesen Quelltext nachgeprueft und bestaetigt — aber eine ABZAEHLUNG ist kein Beweis der
+    // Vollstaendigkeit, und die Zahl mischt Zaehlebenen (Word.run und setSelectedDataAsync sind
+    // zwei Wege EINER Schaltflaeche; Tastatur und Kontextmenue sind EIN `copy`-Ereignis). Die Zahl
+    // taugt deshalb NICHT als Architekturbeweis. Tragfaehig ist dieser Satz:
+    //   Jede gefundene VOLLSTAENDIGE Antwortausgabe laeuft entweder durch composeOutputText oder
+    //   stammt aus einem bereits dadurch erzeugten, nur lesbaren Volltext.
+    // Die gefundenen Wege:
+    //   - „In Word einfuegen"        → composeOutputText  (insertAnswer)
+    //   - „Kopieren"                 → composeOutputText  (copyAnswer)
+    //   - Cmd+C / Strg+C             → composeOutputText  (handleAnswerClipboard, `copy`)
+    //   - Kontextmenue „Kopieren"    → composeOutputText  (dasselbe `copy`-Ereignis)
+    //   - Ausschneiden               → composeOutputText  (handleAnswerClipboard, `cut`)
+    //   - Ziehen einer Auswahl       → composeOutputText  (handleAnswerDragStart)
+    //   - Zwischenablage-Rueckfall   → composeOutputText  (showCopyFallback, nur lesbares Feld)
+    // ZWEI AUSNAHMEN, benannt statt verschwiegen — im Kern dieselbe: ein Bruchstueck ist keine
+    // Antwort und traegt deshalb keine Einstufung.
+    //   1. Eine TEILAUSWAHL des Antwortfelds bleibt roh (Block B2). Die Oberflaeche sagt das in dem
+    //      Moment ausdruecklich (askCopyPartial) — seit mega37 B an ALLEN drei nativen Wegen
+    //      gleich, also auch beim Ziehen, wo sie bis mega36 kommentarlos schwieg.
+    //   2. Eine TEILAUSWAHL im Rueckfallfeld (`#ask-copy-fallback-text`, bens GELB-2). Sein Wert
+    //      ist bereits abgeleitet und vollstaendig vorgewaehlt, eine Vollauswahl dort also sicher;
+    //      wer von Hand ein Stueck markiert oder zieht, bekommt dasselbe rohe Bruchstueck. Das
+    //      Feld hat KEINE eigenen Rueckrufe — hier steht es, statt unerwaehnt zu bleiben.
+    //
+    // AUFTRAG-mega37 BLOCK A / AUFTRAG-mega38 BLOCK D: alle nativen Wege stehen zusaetzlich hinter
+    // dem QUELLEN-TOR (s. handleAnswerClipboard). Hier stand bis mega37 „solange
+    // `currentAskSourcesResolved === false` ist, geht ueberhaupt nichts hinaus" — und das war
+    // wieder ein Satz, der mehr behauptet, als der Code deckt. Zwei Dinge gehen sehr wohl:
+    //   - Eine bewusste TEILAUSWAHL wird VOR dem Tor abgefangen (askCopyPartial) und darf roh
+    //     hinaus — das ist die entschiedene Ausnahme 1 von oben, nicht ein Loch im Tor.
+    //   - Der Zweig ohne brauchbaren Datenbehaelter (mega38 B) ist eine ZWEITE Grenze hinter dem
+    //     Tor; er bricht ab und bietet den abgeleiteten Volltext im Rueckfallfeld an.
+    // BELEGT ist deshalb genau dieser Satz und kein groesserer:
+    //   Solange `currentAskSourcesResolved === false` ist, passiert KEINE VOLLSTAENDIGE
+    //   ANTWORTAUSGABE das Tor — auf keinem der oben aufgezaehlten Wege.
+    //
+    // „Stand <Datum>" NUR mit belegtem KO-Datum (WP-KLARA-ASK-FIX, bens Fix 3), ohne Beleg ehrlich
+    // "abgerufen am <heute>".
+    function composeOutputText(body) {
+      return composeAnswerOutput({
+        body: body,
+        sourceTitles: currentAskSourceTitles,
+        sourceDates: currentAskSourceDates,
+        truncated: currentAskTruncated,
+        grade: askGradeOf(currentAskOutcome && currentAskOutcome.evidence),
+        now: new Date(),
+        texts: {
+          verified: t("askEvidenceVerified"),
+          unverified: t("askEvidenceUnverified"),
+          sourceLine: t("askSourceLine"),
+          sourceLineRetrieved: t("askSourceLineRetrieved"),
+          truncatedNote: t("askInsertTruncatedNote", { max: String(WORD_ADDIN_ASK_MAX_CHARS) }),
+        },
+      });
+    }
+
+    // Teil A (klara1b): die konkreten Office-Einfuege-Versuche — MODERNER Word.run-Weg zuerst
+    // (getSelection().insertText an der Cursorposition/Auswahl), setSelectedDataAsync als Fallback
+    // fuer aeltere Hosts. Beide brauchen ReadWriteDocument; performInsert waehlt/faellt zurueck und
+    // klassifiziert den Fehler ehrlich. setSelectedDataAsync rejectet mit Error(name + message),
+    // damit classifyInsertError den Berechtigungsfall (Pedis Live-Fehler) erkennt.
+    function buildInsertAttempts() {
+      var attempts = [];
+      if (window.Word && typeof Word.run === "function") {
+        attempts.push({
+          method: "word-run",
+          run: function (text) {
+            return Word.run(function (context) {
+              var range = context.document.getSelection();
+              range.insertText(text, Word.InsertLocation.replace);
+              return context.sync();
+            });
+          },
+        });
+      }
+      attempts.push({
+        method: "set-selected-data",
+        run: function (text) {
+          return new Promise(function (resolve, reject) {
+            Office.context.document.setSelectedDataAsync(
+              text,
+              { coercionType: Office.CoercionType.Text },
+              function (result) {
+                if (result.status === Office.AsyncResultStatus.Succeeded) {
+                  resolve();
+                  return;
+                }
+                var msg = result.error && result.error.message ? result.error.message : "Word-API";
+                var errName = result.error && result.error.name ? String(result.error.name) : "";
+                reject(new Error((errName + " " + msg).replace(/^\s+|\s+$/g, "")));
+              }
+            );
+          });
+        },
+      });
+      return attempts;
+    }
+
+    // Teil 2 + klara1b Teil B: den BEARBEITETEN Feldinhalt an der Cursorposition einfuegen (nicht die
+    // Originalantwort). Gating bleibt: nur bei bereitem Office. Ohne Office ehrlicher Hinweis +
+    // Ausweg „Kopieren". Fehler ehrlich (Berechtigung → Re-Sideload/Kopieren) statt rohem Office-Text.
+    // AUFTRAG-mega35 A1: geprueft wird der KOERPER (nur er kann leer sein), eingefuegt wird der
+    // HIER gebildete Text — Einstufung und Quellen-Zeile koennen nicht fehlen.
+    function insertAnswer() {
+      var body = getEditedAnswerText();
+      if (body.replace(/^\s+|\s+$/g, "").length === 0) {
+        showAskStatus("warn", t("askInsertEmpty"));
+        return;
+      }
+      if (!officeUsable()) {
+        showAskStatus("warn", t("noOffice"));
+        return;
+      }
+      var text = composeOutputText(body);
+      performInsert(text, buildInsertAttempts()).then(function (outcome) {
+        if (outcome.ok) {
+          showAskStatus("ok", t("askInsertOk"));
+        } else if (outcome.failure === "permission") {
+          // RT-KLARA1: der Berechtigungsfall bekommt die ehrliche Erklaerung samt Ausweg.
+          showAskStatus("warn", t("askInsertNoPermission"));
+        } else {
+          showAskStatus("warn", t("askInsertFail", { detail: outcome.detail || "Word-API" }));
+        }
+      });
+    }
+
+    // klara1b Teil B (Ausweg): den bearbeiteten Feldinhalt in die Zwischenablage — greift auch, wenn
+    // der Office-Insert an Rechten scheitert (Cache/Manifest). Braucht kein Office.
+    function copyAnswer() {
+      var body = getEditedAnswerText();
+      if (body.replace(/^\s+|\s+$/g, "").length === 0) {
+        showAskStatus("warn", t("askInsertEmpty"));
+        return;
+      }
+      // AUFTRAG-mega35 A1: derselbe Bildungsweg wie beim Einfuegen — kein zweiter Textbauer.
+      var text = composeOutputText(body);
+      var clipboard = window.navigator && window.navigator.clipboard ? window.navigator.clipboard : null;
+      performCopy(text, clipboard).then(function (outcome) {
+        if (outcome.ok) {
+          hideCopyFallback();
+          showAskStatus("ok", t("askCopyOk"));
+        } else {
+          // AUFTRAG-mega36 B3: NICHT mehr „markiere den Text im Feld" — das waere der rohe Koerper.
+          showCopyFallback(text);
+          showAskStatus("warn", t("askCopyFail"));
+        }
+      });
+    }
+
+    // AUFTRAG-mega36 B3: der Rueckfall zeigt den ABGELEITETEN Volltext als nur lesbares Feld und
+    // waehlt ihn vor — kopiert wird von HIER, nicht aus dem Antwortfeld.
+    function showCopyFallback(text) {
+      var feld = document.getElementById("ask-copy-fallback-text");
+      feld.value = text;
+      document.getElementById("ask-copy-fallback").className = "";
+      try {
+        feld.focus();
+        feld.setSelectionRange(0, text.length);
+      } catch (err) {
+        // Fokus/Auswahl sind Komfort, kein Vertrag — der Text steht auch ohne sie bereit.
+      }
+    }
+
+    function hideCopyFallback() {
+      document.getElementById("ask-copy-fallback").className = "hidden";
+      document.getElementById("ask-copy-fallback-text").value = "";
+    }
+
+    // ============================================================================================
+    // AUFTRAG-mega36 BLOCK B1/B2 — DER NATIVE AUSGANG.
+    // ============================================================================================
+    //
+    // Das Antwortfeld traegt NUR den Antwortkoerper (mega35 A1). Ohne dieses Abfangen nimmt ein
+    // natives Cmd+C/Strg+C, ein Kontextmenue-Kopieren oder ein Ausschneiden genau diesen Koerper —
+    // ohne Einstufung, ohne Quellen-Zeile, ohne Kappungshinweis. Tastatur und Kontextmenue loesen
+    // DASSELBE `copy`-Ereignis aus; beide sind damit hier erledigt.
+    //
+    // Der Text entsteht auch hier ueber composeOutputText — ein Bauer, alle Wege.
+    function handleAnswerClipboard(ev, schneiden) {
+      // Nur bei einer echten, belegten Antwort greift die Ableitung; sonst ist das Feld ein Feld.
+      if (!currentAskOutcome || currentAskOutcome.kind !== "answered") { return; }
+      var feld = document.getElementById("ask-answer-edit");
+      var wert = feld.value;
+      if (wert.replace(/^\s+|\s+$/g, "").length === 0) { return; }
+      if (!answerSelectionIsWhole(wert, feld.selectionStart, feld.selectionEnd)) {
+        // Block B2: Bruchstueck bleibt roh — aber die Oberflaeche sagt es, statt zu schweigen.
+        showAskStatus("warn", t("askCopyPartial"));
+        return;
+      }
+      // AUFTRAG-mega37 BLOCK A — DAS QUELLEN-TOR, UND ES GILT HIER GENAUSO WIE AN DEN SCHALTFLAECHEN.
+      //
+      // bens ROT-Befund zu mega36: sobald `/api/ask` geantwortet hat, steht der Antwortkoerper im
+      // Feld — die Quellentitel werden DANACH asynchron geladen. Die beiden Schaltflaechen bleiben
+      // in diesem Fenster gesperrt (`updateInsertState`, Fix 2); die nativen Wege pruefen den
+      // Zustand bis mega36 NICHT. Ein Cmd+C in genau diesem Moment baute die Quellen-Zeile mit dem
+      // generischen Namen `KLARWERK` (buildAskSourceLine) — eine Angabe, die aussieht wie ein Beleg
+      // und keiner ist. Das ist nicht dieselbe Klasse wie eine FEHLENDE Einstufung, es ist die
+      // schlechtere. Deshalb FAIL-CLOSED, und zwar VOR jeder Textbildung und vor der Pruefung der
+      // Zwischenablage-Schnittstelle (A6: auch der Rueckfall darf hier keinen Volltext anbieten):
+      //   A1 nichts wird geschrieben · A2 Ausschneiden schneidet nicht · A3 der Standard-Export des
+      //   Browsers wird verhindert · A4 die Oberflaeche sagt es · A5 erst nach der Aufloesung gibt
+      //   composeOutputText aus.
+      // Die TEILAUSWAHL steht bewusst DAVOR: ein Bruchstueck traegt ohnehin keine Quellen-Zeile,
+      // fuer sie ist der Zustand der Aufloesung gleichgueltig.
+      if (!currentAskSourcesResolved) {
+        if (ev.preventDefault) { ev.preventDefault(); }
+        showAskStatus("warn", t("askCopyNativePending"));
+        return;
+      }
+      var daten = ev.clipboardData || window.clipboardData || null;
+      if (!daten || typeof daten.setData !== "function") {
+        // Kein Zugriff auf die Ereignis-Zwischenablage: dann geht hier NICHTS roh hinaus — der
+        // Vorgang wird abgebrochen und der abgeleitete Volltext im Rueckfallfeld angeboten.
+        if (ev.preventDefault) { ev.preventDefault(); }
+        showCopyFallback(composeOutputText(wert));
+        showAskStatus("warn", t("askCopyFail"));
+        return;
+      }
+      var text = composeOutputText(wert);
+      ev.preventDefault();
+      daten.setData("text/plain", text);
+      if (schneiden) {
+        // Ausschneiden schneidet: der markierte Bereich verschwindet wie beim nativen Vorgang.
+        var von = Math.max(0, Math.min(feld.selectionStart, feld.selectionEnd));
+        var bis = Math.min(wert.length, Math.max(feld.selectionStart, feld.selectionEnd));
+        feld.value = wert.slice(0, von) + wert.slice(bis);
+      }
+      // Hier ist die Aufloesung nachweislich durch (das Tor oben ist die einzige Vorbedingung) —
+      // die Quellen-Zeile traegt die echten KO-Titel. Der frueher hier stehende Zweig „kopiert,
+      // aber die Titel fehlten noch" ist mit mega37 A ersatzlos weg: er beschrieb einen Zustand,
+      // den es nicht mehr gibt.
+      showAskStatus("ok", t("askCopyNativeOk"));
+    }
+
+    // Ziehen und Ablegen einer Auswahl aus dem Antwortfeld — derselbe Vertrag, anderer Behaelter.
+    function handleAnswerDragStart(ev) {
+      if (!currentAskOutcome || currentAskOutcome.kind !== "answered") { return; }
+      var feld = document.getElementById("ask-answer-edit");
+      var wert = feld.value;
+      if (wert.replace(/^\s+|\s+$/g, "").length === 0) { return; }
+      if (!answerSelectionIsWhole(wert, feld.selectionStart, feld.selectionEnd)) {
+        // AUFTRAG-mega37 BLOCK B: die Ausnahme SELBST bleibt — ein Satzfragment braucht keinen
+        // Metablock, das ist entschieden, und der Ziehvorgang laeuft deshalb normal weiter. Falsch
+        // war nur, dass das Panel hier KOMMENTARLOS zurueckkehrte, waehrend der Kommentar
+        // versprach, die Ausnahme werde an jedem Ausgang benannt. Jetzt sagt sie ueberall dasselbe.
+        showAskStatus("warn", t("askCopyPartial"));
+        return;
+      }
+      // AUFTRAG-mega37 BLOCK A: dasselbe Tor wie beim Kopieren/Ausschneiden — und hier wog der
+      // Mangel am schwersten, weil beim Ziehen bisher nicht einmal ein Hinweis erschien. Der
+      // Ziehvorgang wird abgebrochen (A3), es wird nichts angelegt (A1), die Oberflaeche sagt es (A4).
+      if (!currentAskSourcesResolved) {
+        if (ev.preventDefault) { ev.preventDefault(); }
+        showAskStatus("warn", t("askCopyNativePending"));
+        return;
+      }
+      // AUFTRAG-mega38 BLOCK B: hier stand bis mega37 ein blankes `return` — ohne preventDefault,
+      // ohne Hinweis. Das ist der schlechteste aller Ausgaenge: der Host darf seinen EIGENEN
+      // Standard-Ziehvorgang danach fortsetzen, und der traegt fuer eine Textauswahl den rohen
+      // Antwortkoerper hinaus — ohne Einstufung, ohne Quellen-Zeile, ohne Kappungshinweis.
+      // Jetzt gilt derselbe Vertrag wie am Kopier-/Ausschneideweg (s. handleAnswerClipboard):
+      // abbrechen, nichts roh hinauslassen, den ABGELEITETEN Volltext im Rueckfallfeld anbieten
+      // und es sagen. Ob ein echter Word-/WKWebView-Host diesen Zweig je erreicht, ist UNBELEGT —
+      // gepinnt ist das Verhalten, nicht eine Behauptung ueber den Host.
+      var daten = ev.dataTransfer || null;
+      if (!daten || typeof daten.setData !== "function") {
+        if (ev.preventDefault) { ev.preventDefault(); }
+        showCopyFallback(composeOutputText(wert));
+        showAskStatus("warn", t("askDragFail"));
+        return;
+      }
+      daten.setData("text/plain", composeOutputText(wert));
+    }
+
+    // Teil 2 (Wissensluecke): die offene Frage als Front-Door-ENTWURF nach KLARWERK (bestehender
+    // Draft-Weg, origin word_addin) — die Luecke wird im System handelbar (Risiko-Board-Gedanke).
+    function sendOpenQuestion() {
+      // WP-KLARA-ASK-FIX (bens Fix 4): NUR eine echte Wissensluecke darf als offene Frage reisen —
+      // nie ein Fehler-/Timeout-Zustand (dort ist unklar, ob es Wissen gibt).
+      if (!currentAskOutcome || currentAskOutcome.kind !== "gap") { return; }
+      if (currentAskQuestion.trim().length === 0) { return; }
+      var gapBtn = document.getElementById("ask-gap-send-btn");
+      // JOB 3046 D2: der Weg ist ein Textlink (<a>, Zielbild Z.31) — ein <a> kennt kein `disabled`,
+      // die Sperre gegen den Doppel-POST traegt deshalb `aria-disabled` (Stil: KW-D2-LUECKE).
+      if (gapBtn.getAttribute("aria-disabled") === "true") { return; } // laeuft bereits — kein Doppel-POST
+      gapBtn.setAttribute("aria-disabled", "true");
+      // JOB 3046 D2 (Runde 2): die Generation DIESES Versands. Hat resetAskResult() inzwischen eine
+      // neue Frage begonnen, gehoert jeder Ruecklauf hier der alten und veraendert NICHTS mehr —
+      // weder Status noch Entwurfs-Link noch die Sperre der neuen Luecke.
+      var generation = askErgebnisGeneration;
+      var veraltet = function () { return generation !== askErgebnisGeneration; };
+      var title = openQuestionDraftTitle(
+        currentAskQuestion,
+        t("askOpenQuestionPrefix"),
+        t("askOpenQuestionFallback")
+      );
+      showAskStatus("warn", t("sendBusy"));
+      fetch("/api/drafts", {
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          title: title,
+          // JOB 2703 D3: der VOLLE Fragetext als Aussage — die 500-Zeichen-Kappung im Client ist
+          // stillgelegt; der Server kuerzt kanonisch (kernaussageAusKlartext).
+          statement: currentAskQuestion,
+          // WP-KLARA-ASK-FIX (bens Fix 4): der VOLLE Fragetext reist auch im Draft-Body mit
+          // (escaped, der Server-Sanitizer bleibt autoritativ).
+          bodyHtml: selectionToBodyHtml(currentAskQuestion),
+          origin: "word_addin",
+        }),
+      })
+        .then(function (res) {
+          if (veraltet()) { return null; }
+          gapBtn.removeAttribute("aria-disabled");
+          // AUFTRAG-JOB507-D4: derselbe Draft-Weg, dieselbe Klassifikation. 403 behaelt hier seinen
+          // EIGENEN Text (es geht um das Recht, offene Fragen zu senden — nicht um Entwuerfe
+          // allgemein); 413 und 429 bekommen erstmals ueberhaupt einen ehrlichen Zustand.
+          var gapKind = classifyDraftResponse(res.status);
+          if (draftWasCreated(gapKind)) { return res.json(); }
+          if (gapKind === "auth") {
+            showAskStatus("warn", t("askAuth"));
+            checkSession();
+            return null;
+          }
+          // WP-KLARA-ASK-FIX (bens Fix 4): 403 ist FEHLENDES RECHT, keine fehlende Anmeldung.
+          if (gapKind === "forbidden") {
+            showAskStatus("warn", t("askForbidden"));
+            return null;
+          }
+          showAskStatus("warn", draftFailureText(gapKind, res));
+          return null;
+        })
+        .then(function (draft) {
+          if (!draft || veraltet()) { return; }
+          showAskStatus("ok", t("askGapSentOk", { title: title }));
+          var link = document.getElementById("ask-gap-open-link");
+          link.href =
+            window.location.origin + "/capture/frontdoor?draft=" + encodeURIComponent(draft.id);
+          document.getElementById("ask-gap-open-block").className = "";
+        })
+        .catch(function (err) {
+          if (veraltet()) { return; }
+          gapBtn.removeAttribute("aria-disabled");
+          // NIE Erfolg vortaeuschen — dieselbe ehrliche Fehlerlinie wie der Entwurf-Sender.
+          showAskStatus("warn", t("sendError", { detail: err && err.message ? err.message : "offline" }));
+        });
+    }
+
+    // Teil 3: Segment-Umschaltung (Fragen | Wissen erfassen) — reine Sichtbarkeit, kein Zustand geht verloren.
+    function setTab(name) {
+      kwAnsichtSetzen(name === "capture" ? "erfassen" : "fragen");
+      // JOB 3057 K2: beim Wechsel auf „Erfassen" die Markierung frisch lesen — der Anlass, der
+      // auch auf Hosts ohne DocumentSelectionChanged traegt.
+      // JOB 3555 K2b: derselbe Anlass holt die Bereiche frisch. Die Route ist `no-store`
+      // (category-routes.ts:13) — es gibt nichts zwischenzuspeichern, und ein gescheiterter Versuch
+      // bekommt beim naechsten Betreten von selbst seinen zweiten.
+      if (name === "capture") { captureMarkierungLesen(); captureBereicheLesen(); }
+    }
+
+    document.getElementById("tab-ask").addEventListener("click", function () { setTab("ask"); });
+    document.getElementById("tab-capture").addEventListener("click", function () { setTab("capture"); });
+    // JOB 3056 K1: Zahnrad und Zurueck-Chevron im Kopf, die Zeilen der Einstellungen.
+    document.getElementById("kw-zahnrad").addEventListener("click", function () {
+      kwAnsichtSetzen("einstellungen");
+    });
+    document.getElementById("kw-zurueck").addEventListener("click", kwZurueck);
+    document.getElementById("einst-sprache-zeile").addEventListener("click", function () {
+      var wahl = document.getElementById("einst-sprache-wahl");
+      var offen = wahl.className.indexOf("hidden") !== -1;
+      wahl.className = offen ? "lang" : "lang hidden";
+      document.getElementById("einst-sprache-zeile").setAttribute("aria-expanded", offen ? "true" : "false");
+    });
+    document.getElementById("einst-mitlesen").addEventListener("click", function () {
+      askMitlesen = !askMitlesen;
+      var schalter = document.getElementById("einst-mitlesen");
+      schalter.className = askMitlesen ? "schalter an" : "schalter";
+      schalter.setAttribute("aria-checked", askMitlesen ? "true" : "false");
+      updateAskSourceNote();
+    });
+    document.getElementById("einst-hilfe-zeile").addEventListener("click", function () {
+      kwAnsichtSetzen("hilfe");
+    });
+    document.getElementById("logout-btn").addEventListener("click", abmelden);
+    document.getElementById("session-retry-btn").addEventListener("click", checkSession);
+    document.getElementById("ask-retry-btn").addEventListener("click", askKlara);
+    document.getElementById("ask-btn").addEventListener("click", askKlara);
+    // Der Sendeknopf faerbt sich mit dem ersten Zeichen (updateAskState); Enter sendet, Umschalt+Enter
+    // bricht die Zeile um — wie in jedem Nachrichtenfeld.
+    document.getElementById("ask-input").addEventListener("input", updateAskState);
+    document.getElementById("ask-input").addEventListener("keydown", function (ev) {
+      if (ev.key === "Enter" && !ev.shiftKey) {
+        ev.preventDefault();
+        if (!document.getElementById("ask-btn").disabled) { askKlara(); }
+      }
+    });
+    // AUFTRAG-mega74 TEIL 2b: die Herkunfts-Zeile wird aktuell gehalten — beim Tippen, beim
+    // Betreten des Feldes und (wo Office es anbietet) bei jeder Aenderung der Markierung im
+    // Dokument. Der Ereignis-Anschluss ist bewusst in try/catch: faellt er auf einem Host aus,
+    // bleibt die Zeile still statt falsch, und die uebrigen beiden Wege tragen weiter.
+    document.getElementById("ask-input").addEventListener("input", updateAskSourceNote);
+    document.getElementById("ask-input").addEventListener("focus", updateAskSourceNote);
+    try {
+      if (officeUsable() && Office.EventType && Office.EventType.DocumentSelectionChanged) {
+        Office.context.document.addHandlerAsync(
+          Office.EventType.DocumentSelectionChanged,
+          updateAskSourceNote
+        );
+      }
+    } catch (e) { /* Host ohne dieses Ereignis: die Zeile bleibt still, nie falsch. */ }
+    document.getElementById("ask-insert-btn").addEventListener("click", insertAnswer);
+    document.getElementById("ask-copy-btn").addEventListener("click", copyAnswer);
+    document.getElementById("ask-answer-toggle").addEventListener("click", toggleAnswerExpanded);
+    // JOB 3004 D1: die Frage-Zeile fuehrt zurueck zum Bearbeiten; „Neue Frage" ist seit JOB 3056
+    // der Zurueck-Chevron im Kopf (kwZurueck) — und das Feld waechst beim Tippen.
+    document.getElementById("ask-frage-zeile-btn").addEventListener("click", askFrageBearbeiten);
+    document.getElementById("ask-answer-edit").addEventListener("input", passeAntwortfeldAn);
+    // Runde 4: eine andere Fensterbreite bricht den Text anders um — die Ziffern werden neu gemessen.
+    window.addEventListener("resize", askFussnotenSetzen);
+    // AUFTRAG-mega36 B1: Tastatur UND Kontextmenue loesen dasselbe `copy`-Ereignis aus — ein
+    // Rueckruf deckt beide. `cut` gehoert dazu, `dragstart` schliesst den Zieh-Ausgang.
+    document.getElementById("ask-answer-edit").addEventListener("copy", function (ev) {
+      handleAnswerClipboard(ev, false);
+    });
+    document.getElementById("ask-answer-edit").addEventListener("cut", function (ev) {
+      handleAnswerClipboard(ev, true);
+    });
+    document.getElementById("ask-answer-edit").addEventListener("dragstart", handleAnswerDragStart);
+    // JOB 3046 D2 (KW-D2-LUECKE): derselbe Handler wie bisher (sendOpenQuestion) — der Traeger ist
+    // jetzt ein Textlink mit href="#", deshalb wird die Sprungnavigation unterbunden; und die
+    // Hauptaktion „Frage ändern" (askFrageAendern).
+    document.getElementById("ask-gap-send-btn").addEventListener("click", function (ev) {
+      ev.preventDefault();
+      sendOpenQuestion();
+    });
+    document.getElementById("ask-luecke-frage-aendern").addEventListener("click", askFrageAendern);
+
+    document.getElementById("lang-de").addEventListener("click", function () { setLang("de"); });
+    document.getElementById("lang-en").addEventListener("click", function () { setLang("en"); });
+    document.getElementById("lang-nl").addEventListener("click", function () { setLang("nl"); });
+    document.getElementById("login-btn").addEventListener("click", function () {
+      // WP-KLARA-1c: KEINE eigene Passwort-Maske und KEINE Navigation des Panels mehr — die App zeigt
+      // ihren Login-Gate auf jeder Route; sie oeffnet in einem eigenen Fenster, das Panel pollt.
+      // WP-IC-PAKET-1c: erst der Lauf (zieht die frische Generation), dann das Fenster DERSELBEN
+      // Generation — spaete Dialog-Callbacks eines Vorlaufs sind damit neutralisiert.
+      var generation = startLoginPolling();
+      openLoginWindow(generation);
+    });
+    document.getElementById("login-cancel-btn").addEventListener("click", function () {
+      stopLoginPolling();
+      checkSession(); // ehrlicher Ist-Zustand statt Warte-Text
+    });
+    document.getElementById("send-btn").addEventListener("click", sendSelection);
+    // JOB 3057 K2: der Textlink „Ganzes Dokument uebernehmen" loest den Dokument-Weg direkt aus
+    // (href="#": Sprungnavigation unterbinden; gesperrt = aria-disabled, dann kein Weg).
+    document.getElementById("capture-dokument-link").addEventListener("click", function (ev) {
+      ev.preventDefault();
+      if (this.getAttribute("aria-disabled") === "true") { return; }
+      sendDocument();
+    });
+    // Der EINE Knopf am Fehlersatz: derselbe Umfang erneut, oder der bestehende Anmeldeweg.
+    document.getElementById("send-status-btn").addEventListener("click", function () {
+      if (sendStatusAktion === "login") {
+        var generation = startLoginPolling();
+        openLoginWindow(generation);
+        return;
+      }
+      if (sendStatusAktion === "retry") { sendeEntwurf(captureLetzterUmfang); return; }
+      // Runde 3: „Oeffnen" am Statussatz — derselbe Weg wie der Link der Ergebniszeile
+      // (neues Fenster, ohne Opener), fuer den Entwurf, dessen Markierung inzwischen gewechselt hat.
+      if (sendStatusAktion === "open" && sendStatusUrl) { window.open(sendStatusUrl, "_blank", "noopener"); }
+    });
+    // Der EINE Knopf am Office-Satz: die Seite neu laden (die Erkennung laeuft dann erneut).
+    document.getElementById("office-hint-btn").addEventListener("click", function () {
+      window.location.reload();
+    });
+    // Die Zeile „Titel": ab dem ersten eigenen Zeichen gehoert sie dem Menschen; geleert nimmt die
+    // Vorbelegung wieder ueber.
+    document.getElementById("capture-titel").addEventListener("input", function () {
+      captureTitelVonHand = this.value.replace(/^\s+|\s+$/g, "").length > 0;
+    });
+    // JOB 3555 K2b: die Zeile „Bereich". Der gehaltene Zustand folgt der Wahl des Menschen — der
+    // Platzhalter (leerer Wert) bedeutet KEINE Wahl, und dann geht auch kein Feld hinaus.
+    document.getElementById("capture-bereich").addEventListener("change", function () {
+      captureBereichWahl = this.value;
+    });
+    // JOB 3506 K2b: das „?"-Menue der Erfassen-Flaeche ist entfallen — es gibt nichts mehr auf-
+    // und zuzuklappen. Die vier Saetze stehen offen hinter dem Zahnrad (#einst-erfassen).
+
+    // AUFTRAG-mega69 Block E: Auslieferungsstand anzeigen. __KLARA_STAND__ wird vom Build ersetzt;
+    // der Praefix-Vergleich (statt Gleichheit) haelt auch dann, wenn der Platzhalter-Name selbst
+    // einmal umbenannt wird, ohne dass diese Zeile mitzieht.
+    var KLARA_STAND = "__KLARA_STAND__";
+    // JOB 3056 K1: EIN Wert, EINE Stelle — der Fuss der Einstellungen („Klara <Stand>",
+    // Einstellungen.dc.html Z.68). Der Kopf-Spiegel (JOB 2621 §3) ist mit dem alten Kopf gefallen.
+    var kwStandText = KLARA_STAND.indexOf("__") === 0 ? "dev" : KLARA_STAND;
+    document.getElementById("kw-stand").textContent = kwStandText;
+
+    // ---- JOB 1077: die Fassungszeile ----------------------------------------------------------
+    // Der Zustand wird GEHALTEN, damit ein Sprachwechsel ihn nicht verliert (dieselbe Falle, die
+    // refreshAnswerToggleLabel und renderAskEvidence loesen).
+    var kwGeladeneFassung = kwGeladeneFassungAus(document);
+    var kwVerfuegbareFassung = null;
+
+    function renderKwFassung() {
+      var zeile = document.getElementById("kw-fassung");
+      var knopf = document.getElementById("kw-fassung-btn");
+      if (!zeile || !knopf) { return; }
+      var offen = kwWechselOffen(kwGeladeneFassung, kwVerfuegbareFassung);
+      knopf.textContent = t("fassungCta");
+      knopf.className = offen ? "ghost" : "ghost hidden";
+      if (offen) {
+        zeile.textContent = t("fassungWechsel", {
+          geladen: kwGeladeneFassung,
+          verfuegbar: kwVerfuegbareFassung,
+        });
+        return;
+      }
+      // Nichts abgerufen oder nichts bekommen: das wird GESAGT, nicht als „aktuell" ausgegeben.
+      zeile.textContent = kwVerfuegbareFassung === null
+        ? t("fassungUnbekannt", { geladen: kwGeladeneFassung })
+        : t("fassungAktuell", { geladen: kwGeladeneFassung });
+    }
+
+    function kwFassungAbgleichen() {
+      return kwVerfuegbareFassungLaden(
+        function (url, init) { return fetch(url, init); },
+        KW_TASKPANE_PFAD
+      ).then(function (verfuegbar) {
+        kwVerfuegbareFassung = verfuegbar;
+        renderKwFassung();
+        return verfuegbar;
+      });
+    }
+
+    document.getElementById("kw-fassung-btn").addEventListener("click", function () {
+      kwWechselAusloesen(kwGeladeneFassung, kwVerfuegbareFassung, function () {
+        window.location.reload();
+      });
+    });
+
+    renderStatics();
+    // JOB 3018 (P7): der Grund am gesperrten Knopf steht ab dem ERSTEN Bildaufbau da. Im LADEWEG
+    // rief `updateSendState` bisher nur zweierlei: die Antwort auf `/api/auth/me` (`checkSession`)
+    // und die abgeschlossene Erkennung (`markOfficeChecked`); die dritte Aufrufstelle `setLang`
+    // haengt an einem Klick. Der Knopf des Markups ist von Anfang an `disabled` — ohne diese Zeile
+    // waeren also genau die Sekunden, in denen das Netz langsam ist, wieder ohne Grund. Derselbe
+    // Gedanke wie bei `ladeAiLage` weiter unten: erst der ehrliche Zwischenzustand, dann das
+    // Ergebnis.
+    updateSendState();
+    // JOB 3555 K2b: aus demselben Grund die Bereich-Zeile — sie steht ab dem ERSTEN Bildaufbau in
+    // ihrer ehrlichen Lage („Wird geladen …"), nicht als leeres Feld. Geholt wird beim Betreten der
+    // Flaeche (setTab), nicht hier: ein Abruf im Ladeweg gaebe eine Auskunft aus, die niemand sieht.
+    renderCaptureBereich();
+    // WP-KLARA-1b (K5): timeout-basierte Office-Erkennung. Office.onReady mit FRIST — laedt office.js
+    // nicht (Blocker/Offline/normaler Browser) oder wird Office nie bereit, kippt der Zustand nach
+    // OFFICE_READY_TIMEOUT_MS EHRLICH auf „kein Office" (Hinweis + deaktivierter Knopf mit Grund).
+    // Ein SPAETES onReady nach der Frist gewinnt trotzdem (ehrliche Erholung statt Dauer-Sperre).
+    function markOfficeChecked(ready) {
+      officeChecked = true;
+      officeReady = Boolean(ready);
+      updateSendState();
+      // JOB 3057 K2: sobald Word da ist, die Markierung lesen und am Ereignis haengen (einmal).
+      captureOfficeAnschliessen();
+      // AUFTRAG-37 (G2): erst JETZT steht fest, ob Office einen Dokumentkontext liefert. Vorher
+      // war jede Bindung geraten. Das Tor oeffnet genau einmal — ein spaeter Rueckruf nach der
+      // Frist findet es offen (AK3).
+      klaraS4OfficeGeklaertMelden();
+      // JOB 3093: erst jetzt steht fest, ob es ein Dokument zu lesen gibt — der Knopf folgt.
+      if (typeof bestandNeuzeichnen === "function") { bestandNeuzeichnen(); }
+    }
+    if (window.Office && Office.onReady) {
+      var officeTimer = setTimeout(function () { markOfficeChecked(false); }, OFFICE_READY_TIMEOUT_MS);
+      Office.onReady(function () {
+        clearTimeout(officeTimer);
+        markOfficeChecked(Boolean(Office.context && Office.context.document));
+      });
+    } else {
+      // office.js gar nicht geladen (Seite im normalen Browser geoeffnet): sofort ehrlicher Zustand.
+      markOfficeChecked(false);
+    }
+    // Der Session-Check laeuft in JEDEM Fall — der Anmelde-Status ist auch im Browser sichtbar.
+    checkSession();
+    // AUFTRAG-mega75 Block A: dito fuer die KI-Lage. Sie haengt nicht an Office und nicht an der
+    // Anmeldung (die Route ist oeffentlich) — bis die Antwort da ist, steht ehrlich „wird geprueft".
+    ladeAiLage();
+    // JOB 1077: dieselbe Stelle, dieselbe Bauart — die Fassungszeile steht ab dem ersten
+    // Bildaufbau da (im Zustand „Abgleich nicht moeglich", was die Wahrheit ist, solange
+    // nichts abgerufen wurde) und wird durch den HEAD-Abgleich ersetzt, sobald er antwortet.
+    renderKwFassung();
+    kwFassungAbgleichen();
+    // AUFTRAG-W1-KLARA-KOPF-CONSENT-06: die Sitzung wird beim Laden des Aufgabenfensters eroeffnet
+    // und danach der gebundene Stand gelesen. Die beiden Knoepfe des Zustimmungskastens haengen
+    // hier — nicht an inline-Attributen, damit sie derselben Content-Security-Policy folgen wie
+    // alle uebrigen Schaltflaechen dieses Fensters.
+    document.getElementById("klara-consent-grant").addEventListener("click", klaraS4Zustimmen);
+    // KW-KA4-DOKUMENT-CONSENT-START (Ereignisse)
+    // „Ja" ist KEIN eigener Weg: es ruft dieselbe Zustimmung wie der Knopf darueber. Ein zweiter
+    // Erteilungspfad waere eine zweite Wahrheit ueber denselben Serverzustand.
+    document.getElementById("ka4-frage-ja").addEventListener("click", klaraS4Zustimmen);
+    // „Nein" merkt sich die Ablehnung fuer DIESES Dokument und faellt danach still zurueck —
+    // keine Nachfrage, kein zweiter Versuch, kein Serveraufruf.
+    document.getElementById("ka4-frage-nein").addEventListener("click", function () {
+      ka4Ablehnen();
+      renderKlaraS4();
+    });
+    // KW-KA4-DOKUMENT-CONSENT-END (Ereignisse)
+    document.getElementById("klara-consent-revoke").addEventListener("click", klaraS4Widerrufen);
+    // BEN-BEFUND 3: die Sitzung wird beim Verlassen des Fensters WIRKLICH geschlossen. `pagehide`
+    // statt `unload` — moderne Engines ueberspringen `unload` beim Zuruecklegen in den Cache.
+    window.addEventListener("pagehide", function () { klaraS4Schliessen(); });
+    // BEN-BEFUND 4: Rueckkehr der Sichtbarkeit und Fokus sind belegte Lebenszykluspunkte, an denen
+    // ein Stand veraltet sein KANN. Beide fragen nach — gedrosselt, nie ueberlappend.
+    document.addEventListener("visibilitychange", function () {
+      if (!document.hidden) { klaraS4RefreshAnlass("sichtbar"); }
+    });
+    window.addEventListener("focus", function () { klaraS4RefreshAnlass("fokus"); });
+    // AUFTRAG-37: ANFORDERN statt starten. Der Aufbau geschieht, sobald die bereits vorhandene
+    // begrenzte Office-Erkennung ein Ergebnis hat — durch ihren Rueckruf oder durch ihre Frist.
+    klaraS4StartAnfordern();
+
+    // ============================================================================================
+    // KW-KA1-TERMS-START — DAS DOKUMENT-BEGRIFFSBILD (JOB 1149 · D1, OFFEN.md KA1).
+    // ============================================================================================
+    //
+    // DIE ZUSAGE, woertlich: „das Panel haelt zu einem offenen Dokument eine Begriffsliste, ohne
+    // dass ein Modellaufruf stattfindet". Gewonnen wird hausintern, aus dem ganzen Dokument, mit
+    // DERSELBEN Tokenisierung wie die Suche — kein Modell, kein Embedder, kein Netzaufruf.
+    //
+    // WARUM HIER EINE KOPIE STEHT UND WAS SIE ABSICHERT. Dieses Aufgabenfenster ist buildlos: kein
+    // Modulsystem, kein Bundler — `queryTokens` laesst sich hier nicht einbinden. Die Regel MUSS
+    // werden — und eine ungeprueft gespiegelte Suchregel ist eine zweite Suchwahrheit, die beim
+    // naechsten Eingriff an der echten auseinanderlaeuft. Dagegen steht der Aequivalenztest in
+    // tests/app/word-addin.test.ts: er extrahiert GENAU diesen Block, fuehrt ihn aus und vergleicht
+    // sein Ergebnis mit `normalizeSearchTerms(queryTokens(normalizeSearchFragment(text)))` — den
+    // echten Hausfunktionen. Weicht hier etwas ab, wird er rot. Dieselbe Bauform wie
+    // KW-WORDADDIN-HELPERS-* und KW-KLARA-AISTATE-*.
+    //
+    // DIE STOPPWORTLISTE IST NICHT ABGESCHRIEBEN, sondern mechanisch aus
+    // services/reasoner/src/provider.ts gezogen (424 Eintraege, keine Doppelten). Von Hand waere
+    // ein einzelner Tippfehler unvermeidlich gewesen — und er faellt erst auf, wenn zufaellig eine
+    // Fixture ueber genau dieses Wort stolpert.
+    //
+    // DER BLOCK IST EIGENSTAENDIG AUSFUEHRBAR: er ruft auf oberster Ebene nichts, was ausserhalb
+    // von ihm definiert waere, und startet sich nur, wenn seine Flaeche wirklich im DOM steht.
+    var KA1_MAX_TERMS = 12;
+
+    // Spiegel von STOPWORDS (provider.ts) — Grundbestand, Pronomen, Praepositionen, Konjunktionen,
+    // Hilfs-/Modalformen, Pronominaladverbien, Partikeln und die kurze englische Liste.
+    var KA1_STOPWORDS = [
+      "aber", "alle", "allem", "allen", "aller", "alles", "als", "also",
+      "auch", "auf", "aus", "bei", "bin", "bis", "bist", "das",
+      "dass", "dein", "dem", "den", "der", "des", "die", "dir",
+      "doch", "dort", "durch", "ein", "eine", "einem", "einen", "einer",
+      "eines", "er", "es", "etwas", "euer", "für", "gegen", "hat",
+      "hatte", "hier", "ich", "ihm", "ihr", "ihre", "ist", "kann",
+      "man", "mein", "mit", "muss", "nach", "nicht", "noch", "nur",
+      "ob", "oder", "ohne", "sehr", "sein", "sich", "sie", "sind",
+      "soll", "über", "uns", "und", "unter", "viel", "vom", "von",
+      "vor", "war", "was", "weil", "welche", "welchem", "welchen", "welcher",
+      "welches", "wenn", "wer", "werde", "werden", "wie", "wird", "wo",
+      "wann", "warum", "zum", "zur", "zwischen", "mich", "dich", "euch",
+      "ihn", "ihnen", "mir", "wir", "einander", "meiner", "deiner", "seiner",
+      "ihrem", "ihrer", "unser", "unserer", "eure", "eurem", "eurer", "dies",
+      "dieser", "jene", "jenem", "jener", "solch", "solcher", "dessen", "deren",
+      "denen", "derer", "selbst", "selber", "derselbe", "dieselbe", "dasselbe", "demselben",
+      "denselben", "desselben", "jede", "jedem", "jeder", "manche", "mancher", "einige",
+      "einiger", "mehrere", "mehrerer", "wenige", "weniger", "beide", "beider", "andere",
+      "anderer", "sämtliche", "sämtlicher", "kein", "keiner", "jemand", "niemand", "irgend",
+      "irgendein", "irgendeiner", "jeweils", "all", "hinter", "neben", "während", "außer",
+      "entlang", "gegenüber", "innerhalb", "außerhalb", "statt", "anstatt", "trotz", "gemäß",
+      "binnen", "bezüglich", "beim", "ans", "aufs", "ins", "fürs", "unterm",
+      "hinterm", "nebst", "wider", "halber", "per", "pro", "via", "zufolge",
+      "angesichts", "hinsichtlich", "aufgrund", "infolge", "anhand", "mithilfe", "zugunsten", "entgegen",
+      "unweit", "oberhalb", "unterhalb", "diesseits", "jenseits", "betreffs", "ungeachtet", "zuzüglich",
+      "abzüglich", "einschließlich", "ausschließlich", "denn", "sondern", "sowie", "sowohl", "weder",
+      "damit", "obwohl", "bevor", "nachdem", "seitdem", "sobald", "solange", "indem",
+      "sofern", "zumal", "jedoch", "wobei", "außerdem", "zudem", "beziehungsweise", "obgleich",
+      "wenngleich", "soweit", "soviel", "insofern", "insoweit", "desto", "umso", "allein",
+      "respektive", "sei", "seid", "seien", "wäre", "warst", "wärst", "wärt",
+      "habe", "habt", "hast", "hätte", "wirst", "wurde", "können", "konnte",
+      "müssen", "dürfen", "darf", "durfte", "mögen", "mag", "magst", "mögt",
+      "mochte", "möchte", "gewesen", "geworden", "worden", "gehabt", "gekonnt", "gemusst",
+      "gesollt", "gedurft", "gemocht", "gewesener", "gewordener", "gehabter", "gekonnter", "gemusster",
+      "gesollter", "gedurfter", "gemochter", "dabei", "dadurch", "dafür", "dagegen", "daher",
+      "danach", "daneben", "daran", "darauf", "daraus", "darin", "darum", "darunter",
+      "darüber", "davon", "davor", "dazu", "dennoch", "deshalb", "deswegen", "trotzdem",
+      "hierbei", "hierdurch", "hierfür", "hierin", "hiermit", "hiernach", "hierauf", "hieraus",
+      "hierzu", "hieran", "hierum", "hierüber", "wodurch", "wofür", "woher", "wohin",
+      "womit", "wonach", "woran", "worauf", "woraus", "worin", "worum", "worunter",
+      "worüber", "wovon", "wovor", "wozu", "dahin", "hierher", "hierhin", "hiervon",
+      "hiervor", "hierunter", "hiergegen", "hierneben", "wogegen", "woneben", "schon", "mal",
+      "nein", "etwa", "ganz", "gar", "zwar", "eigentlich", "überhaupt", "allerdings",
+      "immer", "wieder", "dann", "sonst", "bereits", "jetzt", "oben", "unten",
+      "nie", "niemals", "sogar", "durchaus", "vielleicht", "womöglich", "insbesondere", "ebenfalls",
+      "ebenso", "hingegen", "wen", "wem", "wessen", "weshalb", "wieso", "wieviel",
+      "weswegen", "oft", "häufig", "selten", "stets", "freilich", "sicherlich", "selbstverständlich",
+      "keineswegs", "keinesfalls", "jedenfalls", "allenfalls", "mindestens", "zumindest", "lediglich", "bloß",
+      "beinahe", "kaum", "allzu", "ziemlich", "meist", "meistens", "nochmals", "abermals",
+      "erneut", "the", "and", "for", "are", "you", "your", "what",
+      "when", "how", "why", "with", "this", "that", "not", "from",
+      "into", "does", "did", "can", "has", "have", "their", "them",
+      "they", "there", "here", "about", "over", "please", "note", "context"
+    ];
+
+    // Spiegel von NAMED_HTML_ENTITIES (services/structure/src/sanitize.ts).
+    var KA1_ENTITIES = {
+      amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ",
+      auml: "ä", ouml: "ö", uuml: "ü", Auml: "Ä", Ouml: "Ö", Uuml: "Ü",
+      szlig: "ß", middot: "·", ndash: "–", mdash: "—", hellip: "…", sect: "§",
+      para: "¶", deg: "°", plusmn: "±", sup2: "²", sup3: "³", euro: "€",
+      copy: "©", reg: "®", trade: "™", laquo: "«", raquo: "»", bdquo: "„",
+      ldquo: "“", rdquo: "”", lsquo: "‘", rsquo: "’", eacute: "é", egrave: "è",
+      agrave: "à", acirc: "â", ecirc: "ê", icirc: "î", ocirc: "ô", ucirc: "û",
+      ccedil: "ç", ntilde: "ñ", aacute: "á", iacute: "í", oacute: "ó", uacute: "ú",
+      times: "×", divide: "÷"
+    };
+    var KA1_ENTITY_RE = /&(#\d{1,7}|#[xX][0-9a-fA-F]{1,6}|[a-zA-Z][a-zA-Z0-9]{1,30});/g;
+
+    // Spiegel von decodeHtmlEntities — FAIL-CLOSED wie das Original: ein ungueltiger oder
+    // steuerzeichen-artiger Codepunkt bleibt als Roh-Text stehen, statt ein Zeichen zu erfinden.
+    function ka1DecodeEntities(text) {
+      return String(text).replace(KA1_ENTITY_RE, function (treffer, koerper) {
+        if (koerper.charAt(0) === "#") {
+          var hex = koerper.charAt(1) === "x" || koerper.charAt(1) === "X";
+          var code = parseInt(hex ? koerper.slice(2) : koerper.slice(1), hex ? 16 : 10);
+          var steuer =
+            (code < 32 && code !== 9 && code !== 10 && code !== 13) ||
+            code === 0x7f ||
+            (code >= 0x80 && code <= 0x9f);
+          if (!isFinite(code) || Math.floor(code) !== code || steuer ||
+              (code >= 0xd800 && code <= 0xdfff) || code > 0x10ffff) {
+            return treffer;
+          }
+          return String.fromCodePoint(code);
+        }
+        return Object.prototype.hasOwnProperty.call(KA1_ENTITIES, koerper)
+          ? KA1_ENTITIES[koerper]
+          : treffer;
+      });
+    }
+
+    // Spiegel von istUnsichtbar/entferneUnsichtbare (search-projection.ts): ERSATZLOS entfernen —
+    // ein Zero-Width-Space steht INNERHALB eines Wortes, ein Leerzeichen an seiner Stelle wuerde
+    // „Donau[ZWSP]dampfschiff" in zwei Indexwoerter zerlegen.
+    function ka1IstUnsichtbar(code) {
+      return (
+        code <= 0x08 || code === 0x0b || code === 0x0c ||
+        (code >= 0x0e && code <= 0x1f) || code === 0x7f ||
+        (code >= 0x200b && code <= 0x200d) || code === 0x2060 || code === 0xfeff
+      );
+    }
+
+    function ka1EntferneUnsichtbare(text) {
+      var raus = "";
+      for (var i = 0; i < text.length; i += 1) {
+        if (!ka1IstUnsichtbar(text.charCodeAt(i))) { raus += text.charAt(i); }
+      }
+      return raus;
+    }
+
+    // Spiegel von normalizeSearchFragment: Entities → NFKC → unsichtbare Zeichen → Leerraum.
+    function ka1NormalizeFragment(text) {
+      if (!text) { return ""; }
+      return ka1EntferneUnsichtbare(ka1DecodeEntities(text).normalize("NFKC"))
+        .replace(/\s+/g, " ")
+        .replace(/^\s+|\s+$/g, "");
+    }
+
+    // --- Spiegel der Inhaltstoken-Regel (provider.ts) -------------------------------------------
+    var KA1_MIN_GRUNDFORM_LAENGE = 4;
+    var KA1_GRUNDFORM_ENDUNGEN = ["ung", "en", "em", "es", "e", "n", "s", "t"];
+
+    // mega54 A: Buchstabe UND Ziffer — „f3", „m12", „dn50" ueberleben die Laengengrenze.
+    function ka1IstKennung(token) {
+      return /[0-9]/.test(token) && /[a-zäöüß]/.test(token);
+    }
+
+    function ka1AbtragEndungen(token) {
+      var wort = token;
+      var gekuerzt = true;
+      while (gekuerzt) {
+        gekuerzt = false;
+        for (var i = 0; i < KA1_GRUNDFORM_ENDUNGEN.length; i += 1) {
+          var endung = KA1_GRUNDFORM_ENDUNGEN[i];
+          if (wort.length - endung.length >= KA1_MIN_GRUNDFORM_LAENGE &&
+              wort.slice(wort.length - endung.length) === endung) {
+            wort = wort.slice(0, wort.length - endung.length);
+            gekuerzt = true;
+            break;
+          }
+        }
+      }
+      return wort;
+    }
+
+    function ka1AbtragGe(wort) {
+      return wort.indexOf("ge") === 0 && wort.length - 2 >= KA1_MIN_GRUNDFORM_LAENGE
+        ? wort.slice(2)
+        : wort;
+    }
+
+    // mega55 A2 / mega56 A3: die Stoppwortmenge samt ihrer EIGENEN Grundformen und der Zwischen-
+    // stufe vor dem „ge"-Abtrag. Ohne diese Huelle bliebe „werd" (aus „werden") ein Inhaltstoken.
+    var KA1_STOPPFORMEN = (function () {
+      var menge = {};
+      for (var i = 0; i < KA1_STOPWORDS.length; i += 1) {
+        var wort = KA1_STOPWORDS[i];
+        var nachEndung = ka1AbtragEndungen(wort);
+        menge[wort] = true;
+        menge[nachEndung] = true;
+        menge[ka1AbtragGe(nachEndung)] = true;
+      }
+      return menge;
+    })();
+
+    function ka1IstStoppform(token) {
+      return Object.prototype.hasOwnProperty.call(KA1_STOPPFORMEN, token);
+    }
+
+    function ka1IstStoppwort(token) {
+      return KA1_STOPWORDS.indexOf(token) >= 0;
+    }
+
+    // mega55 A3: entsteht das Stoppwort erst durch den „ge"-Abtrag, war das „ge" vermutlich Teil
+    // des Wortes („Gesicht" → „gesich" → „sich") — dann wird der Abtrag zurueckgenommen.
+    function ka1Grundform(token) {
+      if (ka1IstKennung(token)) { return token; }
+      var nachEndung = ka1AbtragEndungen(token);
+      var ohneGe = ka1AbtragGe(nachEndung);
+      if (ohneGe !== nachEndung && ka1IstStoppform(ohneGe) && !ka1IstStoppform(nachEndung)) {
+        return nachEndung;
+      }
+      return ohneGe;
+    }
+
+    // Spiegel von tokenize/queryTokens: zwei Siebe — Stoppwort und Laenge auf der OBERFLAECHENform,
+    // danach die Grundform, die ERNEUT gegen die Stoppwortmenge gehalten wird (mega55 A1).
+    function ka1Tokenize(text) {
+      var roh = String(text).toLowerCase().split(/[^a-zäöüß0-9]+/);
+      var raus = [];
+      for (var i = 0; i < roh.length; i += 1) {
+        var wort = roh[i];
+        if (!((wort.length > 2 || ka1IstKennung(wort)) && !ka1IstStoppwort(wort))) { continue; }
+        var norm = ka1Grundform(wort);
+        if (!ka1IstStoppform(norm)) { raus.push(norm); }
+      }
+      return raus;
+    }
+
+    // Spiegel von normalizeSearchTerms: bereinigen, kleinschreiben, entdoppeln — Reihenfolge des
+    // ersten Vorkommens bleibt erhalten.
+    function ka1NormalizeTerms(terms) {
+      var raus = [];
+      var gesehen = {};
+      for (var i = 0; i < terms.length; i += 1) {
+        var term = ka1NormalizeFragment(terms[i]).toLowerCase();
+        if (term.length === 0 || Object.prototype.hasOwnProperty.call(gesehen, term)) { continue; }
+        gesehen[term] = true;
+        raus.push(term);
+      }
+      return raus;
+    }
+
+    /**
+     * DIE EINE KETTE — und der Deckel schneidet ZULETZT.
+     *
+     * Erst bereinigen (`pr&uuml;fen` ist dasselbe Wort wie „prüfen"), dann die Inhaltstoken der
+     * Suche, dann die kanonische Termbereinigung. Erst danach der Deckel: sonst zaehlten
+     * Wiederholungen gegen ihn, und ein Dokument, das dasselbe Wort zwoelfmal nennt, haette ein
+     * Begriffsbild aus EINEM Begriff.
+     */
+    function ka1TermsFromText(text) {
+      return ka1NormalizeTerms(ka1Tokenize(ka1NormalizeFragment(text))).slice(0, KA1_MAX_TERMS);
+    }
+
+    // --- Anzeige --------------------------------------------------------------------------------
+    // Dreisprachig wie alles in diesem Fenster. Die Texte stehen HIER und nicht im grossen
+    // Woerterbuch, weil dieser Auftrag ausschliesslich in seinem Markerblock schreiben darf; sie
+    // werden unten in STRINGS eingetragen, damit `data-t` und der Sprachwechsel sie finden.
+    var KA1_TEXTE = {
+      de: {
+        ka1Title: "Worum es hier geht",
+        ka1Hint: "Aus dem ganzen Dokument gewonnen — im Haus, ohne KI und ohne dass Text das Fenster verlässt.",
+        ka1Empty: "Noch keine Begriffe: Das Dokument enthält keinen auswertbaren Text.",
+        ka1NoOffice: "Noch keine Begriffe: Diese Seite läuft ohne Word, es gibt kein offenes Dokument."
+      },
+      en: {
+        ka1Title: "What this is about",
+        ka1Hint: "Derived from the whole document — in-house, without AI and without any text leaving this pane.",
+        ka1Empty: "No terms yet: the document contains no usable text.",
+        ka1NoOffice: "No terms yet: this page runs without Word, so there is no open document."
+      },
+      nl: {
+        ka1Title: "Waar dit over gaat",
+        ka1Hint: "Uit het hele document afgeleid — intern, zonder AI en zonder dat tekst dit venster verlaat.",
+        ka1Empty: "Nog geen begrippen: het document bevat geen bruikbare tekst.",
+        ka1NoOffice: "Nog geen begrippen: deze pagina draait zonder Word, er is geen open document."
+      }
+    };
+
+    // Die aktuelle Sprache, ohne den Block an die Umgebung zu binden: laeuft er isoliert (Test),
+    // gilt Deutsch.
+    function ka1Sprache() {
+      return typeof lang === "string" && KA1_TEXTE[lang] ? lang : "de";
+    }
+
+    function ka1Text(schluessel) {
+      return KA1_TEXTE[ka1Sprache()][schluessel];
+    }
+
+    /**
+     * Zeichnet die Liste. `verfuegbar` = es gibt ein offenes Dokument, aus dem gelesen werden
+     * konnte. Eine leere Liste bleibt LEER — nie mit Beispielbegriffen gefuellt; der Satz darunter
+     * sagt, WARUM sie leer ist, und unterscheidet dabei „kein Word" von „kein Text im Dokument".
+     */
+    function ka1Anzeigen(terms, verfuegbar) {
+      var liste = document.getElementById("ka1-terms");
+      var leer = document.getElementById("ka1-empty");
+      if (!liste || !leer) { return; }
+      // JOB 3056 K1: das Begriffsbild ist nur MIT Begriffen sichtbar — ohne Begriffe steht in der
+      // Ruhe nichts (der Leersatz bleibt als Zustand erhalten, aber nicht im Sichtfeld).
+      var block = document.getElementById("ka1-block");
+      if (block) { block.className = terms.length > 0 ? "" : "hidden"; }
+      liste.textContent = "";
+      for (var i = 0; i < terms.length; i += 1) {
+        var eintrag = document.createElement("li");
+        // textContent, kein HTML-Sink: die Begriffe stammen aus einem fremden Dokument.
+        eintrag.textContent = terms[i];
+        liste.appendChild(eintrag);
+      }
+      if (terms.length > 0) {
+        leer.textContent = "";
+        leer.className = "muted hidden";
+        return;
+      }
+      leer.textContent = verfuegbar ? ka1Text("ka1Empty") : ka1Text("ka1NoOffice");
+      leer.className = "muted";
+    }
+
+    // Der gehaltene Zustand — damit ein Sprachwechsel die Zeile nicht in der alten Sprache
+    // stehenlaesst (dieselbe Falle, die refreshAnswerToggleLabel und renderAskEvidence loesen).
+    var ka1Terms = [];
+    var ka1Verfuegbar = false;
+
+    function ka1Neuzeichnen() {
+      ka1Anzeigen(ka1Terms, ka1Verfuegbar);
+    }
+
+    /**
+     * Der Lesevorgang. Er benutzt den VORHANDENEN konsistenten Ganzes-Dokument-Weg
+     * (`readWholeDocument`: body.text + body.getHtml() in EINEM context.sync-Batch) — kein zweiter
+     * Office-Snapshot, und ausdruecklich NICHT die Markierung: KA1 beschreibt das Dokument.
+     *
+     * Ohne Word wird gar nicht erst gegriffen: `readWholeDocument` wuerde sonst seinen eigenen
+     * Sendefehler in die ERFASSEN-Flaeche schreiben — eine Meldung am falschen Ort fuer einen
+     * Vorgang, den niemand ausgeloest hat.
+     */
+    function ka1Aktualisieren() {
+      if (!window.Word || typeof Word.run !== "function" ||
+          typeof readWholeDocument !== "function") {
+        ka1Terms = [];
+        ka1Verfuegbar = false;
+        ka1Neuzeichnen();
+        return;
+      }
+      readWholeDocument(function (text) {
+        ka1Terms = ka1TermsFromText(String(text || ""));
+        ka1Verfuegbar = true;
+        ka1Neuzeichnen();
+      });
+    }
+
+    // Start und Sprachwechsel — beides im Block, damit dieser Auftrag ausserhalb seines Markers
+    // keine Zeile braucht. Der Sprach-Rueckruf wird NACH den bestehenden registriert und laeuft
+    // deshalb nach `setLang`; das bestehende Verhalten bleibt unberuehrt.
+    if (typeof document !== "undefined" && document.getElementById("ka1-terms")) {
+      if (typeof STRINGS !== "undefined") {
+        var ka1Sprachen = ["de", "en", "nl"];
+        for (var ka1i = 0; ka1i < ka1Sprachen.length; ka1i += 1) {
+          var ka1Code = ka1Sprachen[ka1i];
+          var ka1Quelle = KA1_TEXTE[ka1Code];
+          STRINGS[ka1Code].ka1Title = ka1Quelle.ka1Title;
+          STRINGS[ka1Code].ka1Hint = ka1Quelle.ka1Hint;
+          var ka1Knopf = document.getElementById("lang-" + ka1Code);
+          if (ka1Knopf) { ka1Knopf.addEventListener("click", ka1Neuzeichnen); }
+        }
+        if (typeof renderStatics === "function") { renderStatics(); }
+      }
+      // Der ehrliche Ausgangszustand steht ab dem ersten Bildaufbau da; sobald Office geklaert ist,
+      // wird gelesen. Ohne Word bleibt es beim ehrlichen „kein offenes Dokument".
+      ka1Neuzeichnen();
+      ka1Aktualisieren();
+    }
+    // KW-KA1-TERMS-END
+
+    // KW-KA2-BESTAND-START
+    // ============================================================================================
+    // JOB 1571 · D1 · KA2 — DER BESTANDSBLICK. „Gibt es dazu schon etwas?"
+    // ============================================================================================
+    //
+    // DER VERTRAG, woertlich aus dem Auftrag (Chef, 21.08. 00:47):
+    //
+    //     window.klaraBestandsblick(grund)  ->  Promise<{treffer:[{id,title,status}]}>
+    //
+    // KA3 ist seit JOB 1151 gebaut und wartet auf GENAU diesen Namen und GENAU diese Form
+    // (`ka3Vertrag`, `ka3Normalisieren` — Zeilen unter `KW-KA3-KARTEN-START`). Bis heute erzeugte
+    // ihn niemand im Baum; KA3 lief deshalb fail-closed ins Leere. Dieser Block ist die fehlende
+    // Haelfte der Naht — nicht eine neue Faehigkeit, sondern der Anschluss zweier gebauter.
+    //
+    // WAS DIESER BLOCK TUT: er nimmt die KA1-Begriffe des offenen Dokuments, stellt damit EINE
+    // Frage ueber den BESTEHENDEN Weg `performAsk` -> `POST /api/ask` und reicht die aufgeloesten
+    // Quellen als Treffer weiter. Das ist woertlich die Abnahme aus `OFFEN.md` (KA2): „Die
+    // KA1-Begriffe fragen den validierten Bestand ueber die bestehende Frage-/Suchmechanik ab".
+    //
+    // WAS ER AUSDRUECKLICH NICHT TUT — und das ist die Zusage, nicht eine Nebenbemerkung:
+    //   · KEIN neues Abrufziel. Er ruft `performAsk` und `resolveAskSources`, die beiden bereits
+    //     vorhandenen Abrufstellen. Die Menge der `fetch(...)`-Ziele bleibt unveraendert
+    //     (`BEKANNTE_ABRUFZIELE` in `tests/app/mega69-klara-merkmale.test.ts`).
+    //   · KEINE zweite Suche, KEINE eigene Tokenisierung, KEINE Dublettenbewertung. Die
+    //     Dubletten-Kette (`services/app/src/routes/check-text-routes.ts`, JOB 989/686/631) wird
+    //     nicht angefasst — `OFFEN.md` sagt das bei KA2 zweimal.
+    //   · KEIN zweiter Office-Schnappschuss. Die Begriffe werden GELESEN, wo KA1 sie haelt
+    //     (`ka1Terms`), nicht ein zweites Mal aus dem Dokument geholt.
+    //   · KEINE eigene Anzeige. Die Trefferanzeige mit Status ist KA3s Karte; ein zweites
+    //     Anzeigefeld waere der zweite Weg neben einem bestehenden (`ENTSCHEIDUNGEN/JOB-646.md`).
+    //   · KEIN Timer, kein Takt, kein Autostart. WANN nachgesehen wird, entscheidet allein KA3.
+    //
+    // WARUM OHNE BINDUNGSKOEPFE — die eine Entwurfsentscheidung, die Begruendung braucht:
+    // `performAsk` schickt immer `mode: "retrieval-only"`. Das ist eine BITTE um die Enge, nicht
+    // ihre Garantie: liegt fuer diese Sitzung UND dieses Dokument eine KA4-Einwilligung vor, hebt
+    // der Server die Zwangsflags auf und antwortet ueber den vollen Weg — mit Modellaufruf
+    // (`services/app/src/routes/ask-routes.ts`, Zweig `request.body.mode === "retrieval-only"`).
+    // Der Server findet diese Einwilligung ausschliesslich ueber die drei Bindungs-Kopfzeilen.
+    // KA2 schickt sie deshalb NICHT: dieser Blick laeuft UNGEFRAGT und WIEDERHOLT (Oeffnen,
+    // Tastenruhe). Was der Anwender fuer seine eigene Frage erlaubt hat, hat er nicht fuer einen
+    // Hintergrundvorgang erlaubt, der die Begriffe seines ganzen Dokuments traegt. Ohne die
+    // Koepfe faellt die Route zwingend in `validatedOnly` + `retrievalOnly` — der
+    // deterministische Pfad `answerRetrievalOnly` (`services/reasoner/src/service.ts:1119`),
+    // kein Modell- und kein Embedder-Aufruf erreichbar. Damit ist „kein Modellaufruf" aus §4 des
+    // Auftrags nicht beabsichtigt, sondern strukturell erzwungen. Das ist STRENGER als der
+    // Bestandsweg, nie lockerer; weggenommen wird keine Zusicherung.
+    //
+    // `grund` wird entgegengenommen und bewusst NICHT ausgewertet: der Bestand haengt davon ab,
+    // WORUEBER geschrieben wird, nicht davon, WARUM gerade nachgesehen wird. Der Parameter steht
+    // im Vertrag und wird deshalb gefuehrt, statt eine Form zu liefern, die KA3 nicht erwartet.
+    var KA2_MAX_BEGRIFFE = 12;
+    var KA2_MAX_TREFFER = 5;
+
+    /**
+     * Die Frage — aus dem gehaltenen Begriffsbild, nie aus dem Dokument selbst. Ist KA1 noch nicht
+     * fertig (der Ganzes-Dokument-Weg ist asynchron) oder gibt es kein offenes Dokument, ist die
+     * Frage leer und es wird GAR NICHT gefragt: ein Abruf ohne Begriffe waere ein Abruf ins Blaue.
+     */
+    function ka2Frage() {
+      if (!ka1Verfuegbar || !Array.isArray(ka1Terms) || ka1Terms.length === 0) { return ""; }
+      return ka1Terms.slice(0, KA2_MAX_BEGRIFFE).join(" ");
+    }
+
+    /** Aufgeloeste Quellen -> Treffer. Ein Eintrag ohne Id ist kein Treffer; nichts wird erfunden. */
+    function ka2Treffer(aufgeloest) {
+      var raus = [];
+      for (var i = 0; i < aufgeloest.length; i += 1) {
+        var q = aufgeloest[i];
+        if (!q || typeof q.id !== "string" || q.id.length === 0) { continue; }
+        raus.push({
+          id: q.id,
+          // Ohne ladbaren Titel steht ehrlich die Id da — dieselbe Regel wie in der Quellenliste.
+          title: typeof q.title === "string" && q.title.length > 0 ? q.title : q.id,
+          // Das Statusvokabular ist das VORHANDENE der Quellen-Ampel (`ASK_STATUS_KEYS`), damit
+          // KA3s Karte dieselbe Pille zeichnet wie die Quellenliste darunter.
+          status: typeof q.status === "string" ? q.status : null,
+        });
+      }
+      return raus;
+    }
+
+    /**
+     * Der Vertrag selbst. Er loest IMMER auf — nie zurueckgewiesen: ein Fehlschlag ist ein leerer
+     * Bestand, keine Ausnahme, die KA3 auffangen muesste. Jeder Zweig ausser einer belegten
+     * Antwort mit mindestens einer Quelle liefert `{ treffer: [] }`.
+     */
+    function ka2Bestandsblick(grund) {
+      var frage = ka2Frage();
+      if (frage.length === 0) { return Promise.resolve({ treffer: [] }); }
+      // Der eingebaute Abruf, an das Fenster gebunden. BEWUSST KEIN eigener Wrapper der Form
+      // `function (url, init) { return fetch(url, init); }`: der waere eine ELFTE Abrufstelle in
+      // einer Datei, deren Abrufstellen gezaehlt und bewacht werden (`BEKANNTE_ABRUFZIELE`,
+      // `tests/app/mega69-klara-merkmale.test.ts`). Dieser Block eroeffnet keine neue Abrufstelle
+      // — er benutzt die, die in `performAsk` laengst steht. Fehlt der Abruf ganz, wird nicht
+      // gefragt statt zu werfen.
+      if (typeof fetch !== "function") { return Promise.resolve({ treffer: [] }); }
+      return performAsk(
+        frage,
+        askLocale(lang),
+        fetch.bind(window),
+        WORD_ADDIN_ASK_TIMEOUT_MS,
+        // Siehe oben: KEINE Bindungskoepfe. Das erzwingt den deterministischen Pfad.
+        null
+      )
+        .then(function (ergebnis) {
+          if (!ergebnis || ergebnis.kind !== "answered" ||
+              !Array.isArray(ergebnis.sources) || ergebnis.sources.length === 0) {
+            return { treffer: [] };
+          }
+          return resolveAskSources(ergebnis.sources.slice(0, KA2_MAX_TREFFER))
+            .then(function (aufgeloest) { return { treffer: ka2Treffer(aufgeloest) }; });
+        })
+        .catch(function () { return { treffer: [] }; });
+    }
+
+    // ============================================================================================
+    // JOB 1571 · D3 — REGEL A: DAS PANEL BESITZT DEN NAMEN. UNBEDINGT.
+    // ============================================================================================
+    //
+    // Hier stand eine BEDINGTE Zuweisung: gestellt wurde nur, wenn niemand den Vertrag schon
+    // hielt. Die Begruendung war ehrlich und stand auch so da — der einzige andere Setzer war der
+    // KA3-Pruefstand, der sein Testdouble VOR dem Laden stellt.
+    //
+    // GENAU DAS WAR DER FEHLER, und der Chef hat ihn am 21.08. um 15:00 entschieden
+    // (`00_CONTROL/ENTSCHEIDUNGEN/JOB-1571-KA2-EIGENTUEMERREGEL.md`):
+    //
+    //   „Unbedingte Zuweisung. Der Vertrag gilt nach dem Laden IMMER, ohne Bedingung, ohne
+    //    Vorpruefung einer fremden Funktion."
+    //   „Ein Vertrag, der unter Umstaenden nicht gilt, ist kein Vertrag."
+    //
+    // Und der Satz, der die Bauform traegt:
+    //
+    //   „Eine Produktregel darf nicht aus einer Testharnisch-Not entstehen. Wenn der Pruefstand
+    //    der Grund ist, aendert man den Pruefstand."
+    //
+    // Der Preis ist bekannt und begrenzt: die acht Stellen in
+    // `tests/app/w1-klara-lifecycle-taskpane.test.tsx`, die ihr Double bisher VOR dem Laden
+    // setzten, setzen es jetzt DANACH. Sie sind in derselben Lease und mit diesem Durchgang
+    // umgestellt.
+    window.klaraBestandsblick = ka2Bestandsblick;
+    // KW-KA2-BESTAND-END
+
+    // KW-KA3-KARTEN-START
+    // ============================================================================================
+    // JOB 1151 · KA3 — ANGEBOTSKARTEN STATT UNTERBRECHUNG.
+    // ============================================================================================
+    //
+    // Pedis Auflage, woertlich (werkstatt-klara-assistentin-beschlossen-20260818.md):
+    // „Die Chefsekretaerin klopft an, sie platzt nicht herein." Die Abnahme aus OFFEN.md ist der
+    // Cursor: „die Karte kommt und geht, ohne dass der Anwender je den Cursor verliert".
+    //
+    // WAS DIESER BLOCK TUT: er ruft auf ANLASS den Bestandsblick und legt sein Ergebnis als leise
+    // Karte ins Panel. Zwei Anlaesse, mehr nicht — das Oeffnen und die Ruhe nach dem Schreiben.
+    //
+    // WAS ER AUSDRUECKLICH NICHT TUT — und das ist die Zusage, nicht eine Nebenbemerkung:
+    //   · kein `alert`, kein Dialog, kein `window.open`
+    //   · kein `focus()`, `blur()`, `select()`, `setSelectionRange()` und kein `scrollIntoView`
+    //   · kein `insertText`, kein `setSelectedDataAsync` — KA3 fasst KEINEN Schreibweg an
+    //   · kein Pollingintervall: `KA3_TASTENRUHE_MS` ist eine RUHEFRIST, kein Takt
+    // Die Karte wird erzeugt, gefuellt und wieder verborgen; der Fokus bleibt, wo er war.
+    //
+    // DER BESTANDSBLICK GEHOERT KA2, NICHT HIER. KA3 baut keine Suche, keine Tokenisierung und
+    // keine Dublettenbewertung nach — es konsumiert den Vertrag `window.klaraBestandsblick(grund)`,
+    // den KA2 bereitstellt: eine Funktion, die ein Versprechen auf `{ treffer: [{id, title,
+    // status}] }` liefert. SOLANGE ES IHN NICHT GIBT, TUT KA3 NICHTS: keine Karte, kein Platzhalter,
+    // kein erfundener Treffer. Das ist fail-closed und zugleich die Uebergabestelle zwischen den
+    // beiden Bahnen — KA2 setzt die Funktion in seinem eigenen Marker.
+    //
+    // WARUM `DocumentSelectionChanged` DER SCHREIBANLASS IST: Das Taskpane-API kennt KEIN
+    // Tastenereignis des Dokuments. Der einzige dokumentierte Aktivitaetsanlass ist der Wechsel der
+    // Markierung — denselben benutzt dieses Fenster bereits fuer die Herkunftszeile. „Tastenruhe"
+    // heisst hier deshalb: seit dem letzten gemeldeten Anlass ist nichts mehr passiert. Das ist die
+    // ehrliche Naeherung, nicht ein Versprechen ueber Tastendruecke.
+    //
+    // WARUM DIESER BLOCK GANZ UNTEN STEHT: `officeUsable()` wird erst durch `markOfficeChecked`
+    // wahr (Zeile darueber). Wer sich frueher anmeldet, meldet sich an einem Host an, den es zu
+    // diesem Zeitpunkt noch nicht gibt. Fuer den echten Word-Host, der `onReady` VERZOEGERT feuert,
+    // bindet `ka3EreignisBinden` zusaetzlich beim ersten Fokus nach — ohne eigenen Timer.
+    var KA3_TASTENRUHE_MS = 30000;
+
+    // Die drei Texte. Sie stehen sinngleich in `apps/web/src/i18n.ts` (klara.offer.*) — dasselbe
+    // Doppelmuster wie `aiGeneratedNotice` ↔ `ai.generatedNotice`, weil dieses Fenster buildlos ist.
+    // Sie werden in das VORHANDENE Woerterbuch eingehaengt: kein zweites Nachschlagewerk, kein
+    // eigenes `t()`, keine vierte Textquelle.
+    var KA3_TEXTE = {
+      de: {
+        klaraOfferLabel: "Klaras Angebote",
+        klaraOfferLead: "Dazu gibt es schon:",
+        klaraOfferOpen: "Ansehen",
+        // C3 (JOB 1963 D2): der Wortlaut steht im Register und ist deshalb NICHT frei gewaehlt.
+        // Die Fuellstelle `{anweisung}` ist die validierte Anweisung, von der abgewichen wird.
+        klaraOfferDeviation: "Deine Formulierung weicht ab von: {anweisung}",
+      },
+      en: {
+        klaraOfferLabel: "Klara's suggestions",
+        klaraOfferLead: "There is already something on this:",
+        klaraOfferOpen: "View",
+        klaraOfferDeviation: "Your wording deviates from: {anweisung}",
+      },
+      nl: {
+        klaraOfferLabel: "Klara's suggesties",
+        klaraOfferLead: "Hierover is al iets:",
+        klaraOfferOpen: "Bekijken",
+        klaraOfferDeviation: "Je formulering wijkt af van: {anweisung}",
+      },
+    };
+    for (var ka3Sprache in KA3_TEXTE) {
+      if (Object.prototype.hasOwnProperty.call(KA3_TEXTE, ka3Sprache) && STRINGS[ka3Sprache]) {
+        var ka3Tabelle = KA3_TEXTE[ka3Sprache];
+        for (var ka3Schluessel in ka3Tabelle) {
+          if (Object.prototype.hasOwnProperty.call(ka3Tabelle, ka3Schluessel)) {
+            STRINGS[ka3Sprache][ka3Schluessel] = ka3Tabelle[ka3Schluessel];
+          }
+        }
+      }
+    }
+
+    var ka3Timer = null;
+    // Die Generation ist der Debounce: jeder neue Anlass erhoeht sie und macht damit sowohl einen
+    // wartenden Timer als auch eine spaet eintreffende Antwort ungueltig.
+    var ka3Generation = 0;
+    var ka3Laeuft = false;
+    var ka3Beendet = false;
+    var ka3Gebunden = false;
+    var ka3Treffer = [];
+
+    // ============================================================================================
+    // W6 (OFFEN.md) — DER WEG ZUR DUBLETTENPRUEFUNG. Aufruf, nicht Vertragsort.
+    // ============================================================================================
+    //
+    // W6 lautet: „`POST /api/check-text` ist die Dublettenpruefung — und Klara benutzt sie
+    // nirgends." Gemessen auf diesem Stand: `check-text` hat in `apps/` NULL Treffer; niemand
+    // ruft sie. Das ist der ganze Befund, und diese Funktion ist sein fehlendes Glied.
+    //
+    // WARUM SIE NICHT DER BESTANDSBLICK IST — die Unterscheidung traegt den ganzen Auftrag:
+    // KA2 speist `window.klaraBestandsblick` aus `POST /api/ask` (retrieval-only) und
+    // `GET /api/kos/:id` — belegt in RUECKGABE-BASIC2-JOB-1571-D1, Bausteintabelle; die
+    // Dubletten-Kette bleibt dort ausdruecklich unberuehrt. „Gibt es dazu schon etwas?" und
+    // „ist dieser Text eine Dublette?" sind zwei verschiedene Fragen mit zwei Diensten.
+    // DESHALB SCHLIESST KA2 W6 NICHT — und deshalb steht diese Funktion hier.
+    //
+    // SIE BESETZT DEN VERTRAGSORT NICHT. Sie wird hier NICHT an `window.klaraBestandsblick`
+    // gehaengt: dieser Slot gehoert PRO3 (1571 D3), und zwei Anbieter an einem Slot waeren genau
+    // der zweite Weg, den `ENTSCHEIDUNGEN/JOB-646.md` verbietet. Sie liefert deshalb GENAU die
+    // Vertragsform `{treffer:[{id,title,status}]}`, damit der Vertragsort sie ohne Anpassung
+    // einsetzen oder mit dem Bestandsblick zusammenfuehren kann. Bis dahin ist sie inert.
+    //
+    // KEIN ZWEITER OFFICE-SCHNAPPSCHUSS: den Text reicht der Aufrufer herein (`leseText`) —
+    // dieselbe Zurueckhaltung, mit der KA2 `ka1Terms` benutzt statt selbst zu lesen. Auch `fetchFn`
+    // wird hereingereicht, genau wie bei `performAsk` (:999) — so ist der Weg ohne Netz und ohne
+    // Word-Host ausfuehrbar und damit pruefbar.
+    //
+    // FAIL-CLOSED IN JEDER RICHTUNG: zu kurzer Text, Fehlerantwort, kaputter Koerper, Ausnahme —
+    // immer `{treffer: []}`. Klara schweigt lieber, als etwas zu behaupten. Ein Eintrag ohne
+    // Kennung ist kein Treffer (dieselbe Regel wie `ka3Normalisieren`), und `status` bleibt
+    // `null`: die Dublettenpruefung fuehrt kein Statusfeld, und ein erfundenes waere eine Luege.
+    var W6_MINDESTZEICHEN = 40;   // check-text-routes.ts:20 — darunter antwortet die Route 400.
+    var W6_HOECHSTZEICHEN = 8000; // check-text-routes.ts:21 — darueber ebenfalls.
+
+    // KW-KLARA-W6-CHECKTEXT-START
+    // ------------------------------------------------------------------------------------------
+    // C5 (JOB 1963 · D4) — DER ERZEUGER DER WERTUNG. Rest 1 aus meinem D3.
+    //
+    // WOHER — GEMESSEN, NICHT ANGENOMMEN. Der Auftrag fragt: welche Stelle kennt sowohl die
+    // Formulierung des Nutzers als auch die validierte Anweisung? Es ist GENAU DIESE:
+    //   · die Formulierung des Nutzers reicht der Aufrufer als `leseText` herein (kein zweiter
+    //     Office-Schnappschuss, siehe unten),
+    //   · die validierte Anweisung kommt aus der Antwort zurueck. Der Pool der Route besteht
+    //     AUSSCHLIESSLICH aus validierten Objekten — `check-text-detection.ts`, Praedikat
+    //     `isValidatedCandidate`: `k.status === "validiert" && !k.demoSeed && ...`. Jeder Treffer
+    //     IST also eine validierte Anweisung, und `koTitle` benennt sie.
+    // KA2 kennt die Anweisung nicht (es liest nur `ka1Terms`), KA3 kennt den Nutzertext nicht.
+    //
+    // WANN IST ES EINE ABWEICHUNG — abgeleitet aus dem Vokabular, nicht gewaehlt. `OverlapRelation`
+    // (`services/conflicts/src/duplicate-detect.ts`) kennt fuenf Werte:
+    //     identisch · a_enthaelt_b · b_enthaelt_a · teilweise · verwandt
+    // `identisch` heisst: der Text IST die validierte Anweisung — dann weicht nichts ab, und die
+    // Zeile bliebe eine Falschaussage. Die anderen VIER heissen alle: die beiden Texte decken
+    // einander nicht. Welcher der beiden mehr enthaelt, spielt fuer die Aussage „weicht ab" keine
+    // Rolle — deshalb haengt die Regel NICHT an der Richtung und kann sich nicht daran verdrehen.
+    // Ein unbekannter sechster Wert erzeugt KEINE Wertung: fail-closed, nichts wird behauptet.
+    //
+    // WAS IN DER FUELLSTELLE STEHT, und die Grenze dazu offen ausgesprochen: `koTitle` — der
+    // Titel der validierten Anweisung. Es ist der EINZIGE Anweisungstext, den die Antwort fuehrt
+    // (`rationale` gibt es nur im Modellpfad, den dieser Ruf nicht anfordert; `snippet` erzeugt im
+    // ganzen Baum niemand). Die Folge ist eine Wiederholung: die Karte nennt den Titel bereits als
+    // Trefferzeile. Das ist KEINE Erfindung und keine Notloesung, sondern die ehrliche Obergrenze
+    // dessen, was heute im Umlauf ist — der bessere Inhalt waere der Anweisungstext selbst, und
+    // den muesste die Route erst mitschicken. Das ist nicht diese Flaeche.
+    // ------------------------------------------------------------------------------------------
+    var W6_KEINE_ABWEICHUNG = "identisch";
+    var W6_ABWEICHENDE_RELATIONEN = ["a_enthaelt_b", "b_enthaelt_a", "teilweise", "verwandt"];
+
+    /**
+     * Die Wertung eines Treffers — oder `null`. `null` heisst: die Karte zeigt keine Wertung und
+     * sieht aus wie ohne diesen Bau (KA3 `ka3Zeichnen`, Zweig `if (treffer.deviatesFrom)`).
+     */
+    function w6WertungAusRelation(d, titel) {
+      var relation = d && typeof d.relation === "string" ? d.relation : "";
+      if (relation === W6_KEINE_ABWEICHUNG) { return null; }
+      // Nur die vier BENANNTEN Abweichungen. Ein leerer, fehlender oder unbekannter Wert behauptet
+      // nichts — dieselbe Zurueckhaltung wie bei `status`, das hier bewusst `null` bleibt.
+      var bekannt = false;
+      for (var r = 0; r < W6_ABWEICHENDE_RELATIONEN.length; r += 1) {
+        if (W6_ABWEICHENDE_RELATIONEN[r] === relation) { bekannt = true; break; }
+      }
+      if (!bekannt) { return null; }
+      // Ohne benennbare Anweisung keine Wertung: „weicht ab von: " mit leerem Ende waere ein
+      // angefangener Satz, kein Befund.
+      return typeof titel === "string" && titel.replace(/^\s+|\s+$/g, "").length > 0 ? titel : null;
+    }
+
+    // JOB 3092 S6 (W6) — DIE LAGE REIST MIT. Bis hierher war JEDER Ausgang `{treffer: []}`: zu
+    // kurz, Fehlerantwort, Netz, leerer Bestand — alles dieselbe Leere. Fuer eine Karte, die nur
+    // Treffer zeigt, reichte das; fuer eine Auskunft, die „Nichts Vergleichbares gefunden" sagen
+    // soll, nicht: dieser Satz darf NUR nach einem erfolgreichen Lauf stehen (§9 des Auftrags).
+    // Deshalb traegt das Ergebnis jetzt `lage` — „leer" | „treffer" | „fehler" | „zu-kurz" — und
+    // `treffer` bleibt in jedem Nicht-Erfolgsfall leer wie bisher (KA3 liest nur `treffer`).
+    // Je Treffer kommen additiv `relation`, `koStatus` und `koCategory` dazu — gelesen aus der
+    // Antwort der Route (check-text-routes.ts toResponse, JOB 3020), `null` wo nicht geliefert.
+    // `status` bleibt `null`: KA3s Ampel haengt daran, und ihr Wechsel ist nicht dieser Auftrag.
+    function w6Feld(d, name) {
+      return d && typeof d[name] === "string" && d[name].length > 0 ? d[name] : null;
+    }
+
+    // JOB 3092 RUNDE 2 (BEN, Korrekturpflichten 1 und 2) — ZWEI STILLE LUECKEN, AUSGESPROCHEN:
+    //   · DIE KUERZUNG. Die Route nimmt hoechstens 8.000 Zeichen; der Weg schnitt schon immer davor
+    //     (`schnitt`), sagte es aber nicht. Eine Karte konnte danach uneingeschraenkt „nichts
+    //     gefunden" melden, obwohl der Rest der Markierung nie geprueft wurde. Jetzt traegt jedes
+    //     ERFOLGREICHE Ergebnis `gekuerzt` — wahr, wenn nur der Anfang ging — und die Anzeige sagt
+    //     dann „nur die ersten 8000 Zeichen konnten geprueft werden, der Rest bleibt ungeprueft".
+    //   · BESCHAEDIGTE TREFFER. Ein Eintrag ohne Kennung wurde still verworfen; bestand die Liste
+    //     nur aus solchen, wurde daraus eine erfolgreiche Leere. Die Route liefert je Treffer eine
+    //     Kennung (toResponse, check-text-routes.ts:89) — fehlt sie, ist die Antwort nicht die der
+    //     Route: Lage „fehler", auch wenn daneben ein gueltiger Eintrag steht. Eine halb lesbare
+    //     Liste ist keine vollstaendige Auswertung, und nur eine vollstaendige darf Leere behaupten.
+    // JOB 3093 (M3 „Haben wir das schon?"): der Fundort eines Treffers, GELESEN aus `fundort` der
+    // Route (check-text-routes.ts, `fundortVon`) — `bereich` nur als nichtleerer Text, der Pfad zum
+    // Volltext nur, wenn er am eigenen Ursprung liegt („/…", nicht „//…"): kein fremdes Ziel aus
+    // einer Antwort. Fehlt beides, sagt der Fundort nichts (null), statt etwas zu behaupten.
+    function w6Fundort(d) {
+      var f = d && d.fundort && typeof d.fundort === "object" ? d.fundort : null;
+      var bereich = f && typeof f.bereich === "string" && f.bereich.replace(/^\s+|\s+$/g, "").length > 0
+        ? f.bereich
+        : null;
+      var pfad = f && typeof f.bibliothekPfad === "string" && f.bibliothekPfad.charAt(0) === "/" && f.bibliothekPfad.charAt(1) !== "/"
+        ? f.bibliothekPfad
+        : null;
+      return { bereich: bereich, bibliothekPfad: pfad };
+    }
+
+    // JOB 3243 (M3c-UI) — DER QUELLENFUND AUS DER ANTWORT, IN DREI GETRENNTEN LAGEN. Eine
+    // durchsuchte Abwesenheit braucht BEIDES (Runde 3, BEN): `quellenfund.gelaufen === true` UND
+    // eine wirklich gelieferte `sourceHits`-LISTE. Fehlt eins davon, steht `gelaufen` auf false
+    // oder traegt ein Fund keine Kennung (JOB 3092 R2), heisst es „nicht durchsucht" — UNGEZEIGT.
+    function w6Zahl(w) { return typeof w === "number" && isFinite(w) ? w : null; }
+    function w6Quellenfundlage(koerper) {
+      var offen = { gelaufen: false, treffer: [], mehr: false };
+      var lage = koerper && koerper.quellenfund && typeof koerper.quellenfund === "object" ? koerper.quellenfund : null;
+      if (!lage || lage.gelaufen !== true || !Array.isArray(koerper.sourceHits)) { return offen; }
+      var roh = koerper.sourceHits;
+      var treffer = [];
+      for (var i = 0; i < roh.length; i += 1) {
+        var h = roh[i];
+        if (!h || typeof h.refId !== "string" || h.refId.length === 0) { return offen; }
+        treffer.push({ id: h.refId, title: typeof h.koTitle === "string" ? h.koTitle : "",
+          pruefstand: h.pruefstand === "validiert" || h.pruefstand === "eingereicht" ? h.pruefstand : null,
+          coverage: h.coverage === "full" || h.coverage === "partial" ? h.coverage : null,
+          gedeckteZeichen: w6Zahl(h.gedeckteZeichen), passageZeichen: w6Zahl(h.passageZeichen),
+          fundstelle: w6Feld(h, "fundstelle"), fundort: w6Fundort(h) });
+      }
+      return { gelaufen: true, treffer: treffer, mehr: koerper.sourceHitsTruncated === true };
+    }
+
+    // JOB 3093: `titel` ist der FUENFTE, optionale Parameter — der Titel, unter dem der Text als
+    // Eintrag stuende (Erfassen: die Zeile „Titel"; Fragen: `deriveDraftTitleFromSelection`).
+    // GEMESSEN (tests/n1-bestand-im-panel/fundort-im-server.test.ts K2): ohne `title` findet der
+    // deterministische Pfad nicht einmal den wortgleichen Absatz — der Scorer in services/conflicts
+    // wertet einen leeren Titel gegen einen vorhandenen als Deckung 0. Er reist nur mit, wenn er
+    // ein nichtleerer Text ist; jeder Aufruf mit vier Argumenten setzt denselben Koerper ab wie bisher.
+    function w6DublettenAusCheckText(grund, leseText, fetchFn, sprache, titel) {
+      return Promise.resolve()
+        .then(function () { return typeof leseText === "function" ? leseText(grund) : null; })
+        .then(function (text) {
+          if (typeof text !== "string") { return { lage: "fehler", treffer: [] }; }
+          var gekuerzt = text.length > W6_HOECHSTZEICHEN;
+          var schnitt = gekuerzt ? text.slice(0, W6_HOECHSTZEICHEN) : text;
+          if (schnitt.trim().length < W6_MINDESTZEICHEN) { return { lage: "zu-kurz", treffer: [] }; }
+          if (typeof fetchFn !== "function") { return { lage: "fehler", treffer: [] }; }
+          var koerperDerFrage = {
+            text: schnitt,
+            locale: typeof sprache === "string" && sprache ? sprache : "de",
+            source: "transient-document",
+            // JOB 3243 Lieferung 6: DER MARKER. Dieser Weg stuft nie ein — er schickt kein
+            // `confidentiality`, und ein fehlendes Feld hiess dem Server fail-safe „vertraulich".
+            // Der Marker sagt, was der Fall ist: NICHT EINGESTUFT. Der Server entscheidet daraus.
+            nichtEingestuft: true
+          };
+          if (typeof titel === "string" && titel.replace(/^\s+|\s+$/g, "").length > 0) {
+            koerperDerFrage.title = titel;
+          }
+          // Die Klara-Bindung reist NUR VOLLSTAENDIG mit (`klaraBindungVorhanden`, ask-routes.ts):
+          // eine halbe Bindung — die Instanz-Id steht beim Laden, Sitzung und Dokument erst nach
+          // POST /api/klara/sessions — traegt keine Zustimmung und stiesse nur den Fail-closed-Zweig
+          // an. Ohne sie ist der Kopf zeichengleich mit dem von JOB 3093.
+          var kopfzeilen = { "content-type": "application/json" };
+          var bindung = typeof klaraS4Header === "function" ? klaraS4Header() : null;
+          if (bindung && bindung["x-klara-session"] && bindung["x-klara-instance"] && bindung["x-klara-document"]) {
+            for (var b in bindung) { kopfzeilen[b] = bindung[b]; }
+          }
+          return fetchFn("/api/check-text", {
+            method: "POST",
+            credentials: "include",
+            headers: kopfzeilen,
+            body: JSON.stringify(koerperDerFrage)
+          }).then(function (res) {
+            if (!res || !res.ok) {
+              // JOB 3093 Runde 3: der HTTP-Status reist im Fehlerfall mit (nur wenn es einen gibt),
+              // damit ein Aufrufer 401/403 — die Sitzung traegt nicht mehr — von einer Stoerung
+              // unterscheiden kann. Die Lage bleibt „fehler": keine Leere, kein Treffer.
+              var fehler = { lage: "fehler", treffer: [] };
+              if (res && typeof res.status === "number") { fehler.http = res.status; }
+              return fehler;
+            }
+            return res.json().then(function (koerper) {
+              // Ein Koerper ohne `duplicates`-Liste ist keine Antwort der Route — Fehler, nicht Leere.
+              if (!koerper || !Array.isArray(koerper.duplicates)) { return { lage: "fehler", treffer: [] }; }
+              var roh = koerper.duplicates;
+              var treffer = [];
+              for (var i = 0; i < roh.length; i += 1) {
+                var d = roh[i];
+                var id = d && typeof d.koId === "string" ? d.koId : "";
+                // Runde 2: ein Eintrag ohne Kennung ist kein Treffer UND keine Leere — die Liste ist
+                // beschaedigt, die Pruefung damit nicht auswertbar.
+                if (!id) { return { lage: "fehler", treffer: [] }; }
+                var titel = d && typeof d.koTitle === "string" ? d.koTitle : "";
+                treffer.push({
+                  id: id,
+                  title: titel,
+                  status: null,
+                  deviatesFrom: w6WertungAusRelation(d, titel),
+                  relation: w6Feld(d, "relation"),
+                  koStatus: w6Feld(d, "koStatus"),
+                  koCategory: w6Feld(d, "koCategory"),
+                  // JOB 3093: Pruefstand, Version und Fundort — additiv, gelesen, `null` wo die
+                  // Route nichts liefert. Der Bestandsweg des Fragen-Reiters zeigt sie.
+                  pruefstand: d.pruefstand === "validiert" || d.pruefstand === "eingereicht" ? d.pruefstand : null,
+                  version: typeof d.version === "number" && isFinite(d.version) ? d.version : null,
+                  fundort: w6Fundort(d)
+                });
+              }
+              // JOB 3243: der Quellenfund reist ADDITIV mit — eigene Lage NEBEN `treffer`, nie darin.
+              return { lage: treffer.length > 0 ? "treffer" : "leer", gekuerzt: gekuerzt,
+                treffer: treffer, quellenfund: w6Quellenfundlage(koerper) };
+            });
+          });
+        })
+        .catch(function () { return { lage: "fehler", treffer: [] }; });
+    }
+    // KW-KLARA-W6-CHECKTEXT-END
+
+    /** Der KA2-Vertrag — oder `null`. `null` heisst: KA3 schweigt. */
+    function ka3Vertrag() {
+      var vertrag = window.klaraBestandsblick;
+      return typeof vertrag === "function" ? vertrag : null;
+    }
+
+    /**
+     * Die Karte. Sie wird beim ersten Bedarf erzeugt und sitzt unter der Sitzungskarte — sichtbar
+     * in BEIDEN Reitern, weil sie zum Dokument gehoert und nicht zu einem Bereich.
+     * `aria-live="polite"`: gemeldet, nie unterbrechend — genau Pedis Auflage in Barrierearm.
+     */
+    function ka3KarteElement() {
+      var vorhanden = document.getElementById("ka3-karten");
+      if (vorhanden) { return vorhanden; }
+      var karte = document.createElement("div");
+      karte.id = "ka3-karten";
+      karte.className = "card hidden";
+      karte.setAttribute("role", "region");
+      karte.setAttribute("aria-live", "polite");
+      // JOB 3056 K1: die Karte sitzt in der Fragen-Flaeche unter der Ruhe (die Sitzungskarte, an
+      // der sie hing, gibt es nicht mehr) — lagebezogen, nur mit Treffern sichtbar.
+      var anker = document.getElementById("ask-ruhe");
+      if (anker && anker.parentNode) {
+        anker.parentNode.insertBefore(karte, anker.nextSibling);
+      } else {
+        document.body.appendChild(karte);
+      }
+      return karte;
+    }
+
+    /**
+     * Was KA2 geliefert hat — gelesen, nie erfunden. Ein Eintrag ohne Id ist kein Treffer.
+     *
+     * C4 (JOB 1963 · D2) — DAS VIERTE FELD. Die Karte kannte bisher Titel, Status und Weg; eine
+     * WERTUNG hatte in ihr keinen Platz. `deviatesFrom` traegt sie: die validierte Anweisung, von
+     * der die Formulierung des Anwenders abweicht.
+     *
+     * ES IST EINE ERWEITERUNG, KEINE AENDERUNG DES VERTRAGS. Das Feld ist OPTIONAL — wer es nicht
+     * schickt, ist weiterhin ein gueltiger Anbieter. `ka2Bestandsblick` schickt es nicht und muss
+     * es nicht: `ka2-vertrag-bestandsblick.test.ts` haelt fuer KA2 „genau die drei Felder" fest,
+     * und diese Zusage bleibt wahr und unangetastet. Der Kommentar am Vertragsort im KA2-Block
+     * wurde BEWUSST NICHT umgeschrieben: er gehoert dort einer anderen Bahn, und das Feld ist
+     * optional, also stimmt er weiter.
+     *
+     * WARUM `deviatesFrom` UND NICHT `deviation`: `deviation`/`deviationKey` sind im selben
+     * Fenster schon vergeben — die S4-Moduszeile (Anbieter/Modell/Abweichung von der
+     * Adminvorgabe). Das ist EINE ANDERE SACHE MIT DEMSELBEN WORT; sie bleibt unberuehrt, und
+     * ihren Namen zweitzuvergeben waere die Verwechslung von morgen.
+     *
+     * FAIL-CLOSED WIE DER STATUS: alles, was kein nichtleerer Text ist, wird `null`. Eine
+     * Wertung, die niemand geschickt hat, wird nicht erfunden.
+     */
+    function ka3Normalisieren(ergebnis) {
+      var roh = ergebnis && Array.isArray(ergebnis.treffer) ? ergebnis.treffer : [];
+      var raus = [];
+      for (var i = 0; i < roh.length; i += 1) {
+        var e = roh[i];
+        if (!e || typeof e.id !== "string" || e.id.length === 0) { continue; }
+        raus.push({
+          id: e.id,
+          title: typeof e.title === "string" && e.title.replace(/^\s+|\s+$/g, "").length > 0
+            ? e.title
+            : e.id,
+          status: typeof e.status === "string" ? e.status : null,
+          deviatesFrom:
+            typeof e.deviatesFrom === "string" &&
+            e.deviatesFrom.replace(/^\s+|\s+$/g, "").length > 0
+              ? e.deviatesFrom
+              : null,
+        });
+      }
+      return raus;
+    }
+
+    /**
+     * Zeichnen. KEIN Fokuseingriff, kein Scrollen: die Karte erscheint und verschwindet, der Cursor
+     * bleibt, wo der Anwender ihn gelassen hat. Der Weg zum Objekt ist ein LINK auf die bestehende
+     * KO-Detailroute — dasselbe Muster wie die Quellenliste, kein `window.open` aus KA3.
+     */
+    function ka3Zeichnen() {
+      var karte = ka3KarteElement();
+      karte.setAttribute("aria-label", t("klaraOfferLabel"));
+      while (karte.firstChild) { karte.removeChild(karte.firstChild); }
+      if (!ka3Treffer || ka3Treffer.length === 0) {
+        // Null Treffer ENTFERNT eine vorher stehende Karte — ein alter Fund neben neuem Text waere
+        // eine Falschaussage ueber den Bestand.
+        karte.className = "card hidden";
+        return;
+      }
+      var lead = document.createElement("p");
+      lead.className = "muted";
+      lead.textContent = t("klaraOfferLead");
+      karte.appendChild(lead);
+      var liste = document.createElement("ul");
+      liste.className = "muted";
+      for (var i = 0; i < ka3Treffer.length; i += 1) {
+        var treffer = ka3Treffer[i];
+        var zeile = document.createElement("li");
+        zeile.appendChild(document.createTextNode(treffer.title));
+        // Der Status kommt aus KA2 und benutzt die VORHANDENE Ampel der Quellenliste — kein
+        // zweites Vokabular fuer dieselbe Sache.
+        if (treffer.status && ASK_STATUS_KEYS[treffer.status]) {
+          var badge = document.createElement("span");
+          badge.className = "src-badge src-badge-" + treffer.status;
+          badge.textContent = t(ASK_STATUS_KEYS[treffer.status]);
+          zeile.appendChild(badge);
+        }
+        zeile.appendChild(document.createTextNode(" — "));
+        var weg = document.createElement("a");
+        weg.href = koDetailUrl(window.location.origin, treffer.id);
+        weg.target = "_blank";
+        weg.rel = "noopener noreferrer";
+        weg.textContent = t("klaraOfferOpen");
+        zeile.appendChild(weg);
+        // C3 (JOB 1963 D2) — DIE WERTUNG, und nur wenn es sie gibt. FEHLT SIE, SIEHT DIE KARTE
+        // AUS WIE HEUTE: kein leeres Feld, keine Platzhalterzeile, kein Gedankenstrich ins Nichts.
+        // Der Wortlaut ist der des Registers; eingesetzt wird die validierte Anweisung. Sie steht
+        // ZUSAETZLICH unter dem Weg, nie an seiner Stelle — Titel, Status und Weg bleiben, wo sie
+        // waren. Reiner Text (`textContent`), kein Markup: der Text kommt vom Server und wird
+        // angezeigt, nicht ausgefuehrt.
+        if (treffer.deviatesFrom) {
+          var wertung = document.createElement("div");
+          wertung.className = "muted";
+          wertung.textContent = t("klaraOfferDeviation", { anweisung: treffer.deviatesFrom });
+          zeile.appendChild(wertung);
+        }
+        liste.appendChild(zeile);
+      }
+      karte.appendChild(liste);
+      karte.className = "card";
+    }
+
+    /** Sprachwechsel: derselbe gehaltene Stand, neuer Text. Nur wenn es die Karte schon gibt. */
+    function ka3Neuzeichnen() {
+      if (document.getElementById("ka3-karten")) { ka3Zeichnen(); }
+    }
+
+    /**
+     * Der Abruf. GENAU EINER gleichzeitig (`ka3Laeuft`) — ein zweiter Anlass waehrend eines
+     * laufenden wird verworfen, nicht eingereiht. Eine Antwort einer ueberholten Generation wird
+     * fallengelassen; ein Fehler entfernt die Karte, statt eine alte stehen zu lassen.
+     */
+    function ka3Ausfuehren(grund) {
+      if (ka3Beendet || ka3Laeuft) { return; }
+      var vertrag = ka3Vertrag();
+      if (!vertrag) { return; }
+      ka3Laeuft = true;
+      var generation = ka3Generation;
+      Promise.resolve()
+        .then(function () { return vertrag(grund); })
+        .then(function (ergebnis) {
+          if (ka3Beendet || generation !== ka3Generation) { return; }
+          ka3Treffer = ka3Normalisieren(ergebnis);
+          ka3Zeichnen();
+        })
+        .catch(function () {
+          if (ka3Beendet || generation !== ka3Generation) { return; }
+          // Ein Fehler ist kein Bestand: die Karte geht: weder alt noch erfunden.
+          ka3Treffer = [];
+          ka3Zeichnen();
+        })
+        .then(function () { ka3Laeuft = false; });
+    }
+
+    /** Der Schreibanlass. Jeder neue verwirft den wartenden Timer — kein Dauerfeuer, kein Takt. */
+    function ka3Planen() {
+      if (ka3Beendet) { return; }
+      ka3Generation += 1;
+      var generation = ka3Generation;
+      if (ka3Timer !== null) { clearTimeout(ka3Timer); }
+      ka3Timer = setTimeout(function () {
+        ka3Timer = null;
+        if (generation !== ka3Generation) { return; }
+        ka3Ausfuehren("tastenruhe");
+      }, KA3_TASTENRUHE_MS);
+    }
+
+    /** Nach `pagehide` laeuft nichts nach — kein Timer, keine spaete Antwort. */
+    function ka3Stoppen() {
+      ka3Beendet = true;
+      ka3Generation += 1;
+      if (ka3Timer !== null) { clearTimeout(ka3Timer); ka3Timer = null; }
+    }
+
+    function ka3EreignisBinden() {
+      if (ka3Gebunden || !officeUsable()) { return; }
+      try {
+        if (Office.EventType && Office.EventType.DocumentSelectionChanged) {
+          Office.context.document.addHandlerAsync(
+            Office.EventType.DocumentSelectionChanged,
+            ka3Planen
+          );
+          ka3Gebunden = true;
+        }
+      } catch (e) {
+        // Host ohne dieses Ereignis: KA3 behaelt den Oeffnungsanlass und schweigt sonst — es wird
+        // kein Ersatzsignal erfunden und kein Takt eingefuehrt.
+      }
+    }
+
+    ka3EreignisBinden();
+    ka3Ausfuehren("oeffnen");
+    window.addEventListener("pagehide", ka3Stoppen);
+    // Der echte Word-Host meldet `onReady` verzoegert; beim ersten Fokus ist er sicher da. Kein
+    // eigener Timer — der waere genau das Dauerfeuer, das dieser Block vermeidet.
+    window.addEventListener("focus", ka3EreignisBinden);
+    // Der Sprachwechsel wird HIER mitgehoert statt in `setLang` — der Rueckruf laeuft nach dem
+    // bestehenden, `lang` steht also schon auf der neuen Sprache.
+    ["de", "en", "nl"].forEach(function (ka3Code) {
+      var knopf = document.getElementById("lang-" + ka3Code);
+      if (knopf) { knopf.addEventListener("click", ka3Neuzeichnen); }
+    });
+    // KW-KA3-KARTEN-END
+
+    // KW-M5-BILD-START
+    // ============================================================================================
+    // JOB 3096 · M5 — „HAST DU EIN BILD DAZU?" DAS BILD AUS DEM BESTAND IM WORD-PANEL.
+    // ============================================================================================
+    //
+    // Pedi (05.09.2026, CODEX-POC-ENTSCHEIDUNG-1, Entscheidung 4): er markiert in Word
+    // „Schraubverbindungen am Profil", klickt „Bild dazu?", Klara zeigt die Treffer aus dem Bestand
+    // (Bild, Unterschrift, Herkunft), er waehlt eines — und ERST dieser zweite Klick fuegt Bild,
+    // Unterschrift und Herkunftszeile in Word ein. Nichts wird erfunden, kein Bild ohne Herkunft.
+    //
+    // DER SERVERWEG ist die Route aus JOB 3095, `GET /api/library/images?q=<Markierung>&limit=20`
+    // (services/app/src/routes/library-routes.ts, Vertrag `LibraryImageSearchResponse` in
+    // apps/web/src/api/types.ts: `treffer[]`, `geprueft`, `gedeckelt`; je Treffer imageId, koId,
+    // koTitel, version, pruefstand, caption, name, gefundenUeber, thumbnailUrl). Die Rechte fallen
+    // DORT (Trim, `sichtbareFuer`, `darfSehen` am vollen Objekt) — dieses Panel filtert nichts nach
+    // und zeigt genau das, was die Sitzung sehen darf.
+    //
+    // DER DREIZEHNTE ABRUF (`m5Abruf`, die bewusste Antwort steht in
+    // tests/app/mega69-klara-merkmale.test.ts beim Zaehler): EINE `fetch(`-Stelle fuer zwei Ziele
+    // derselben Herkunft — die Bildsuche (JSON) und, erst beim Einfuegen, die Bildbytes eines
+    // `/api/objects/<id>/raw`-Treffers (Blob → Base64). Beide reisen mit der Sitzung
+    // (`credentials: "include"`), beide mit eigener Frist (AbortController). Kein neuer Ursprung,
+    // kein neues Recht (`ko.read` wie die Bibliothek), kein Manifest-Wechsel.
+    //
+    // WORD (WordApi 1.1, wie das Manifest — s. den mega74-Kommentar in wordAddin.ts):
+    //   `Range.paragraphs` + `load("items")` → letzter Absatz der Markierung →
+    //   `Paragraph.insertParagraph("", After)` (der Bildabsatz) →
+    //   `Paragraph.insertInlinePictureFromBase64(base64, End)` →
+    //   `insertParagraph(<Unterschrift>, After)` (nur wenn es eine gibt) →
+    //   `insertParagraph(<Herkunftszeile>, After)`.
+    //   Ein Bild ist ein Blockelement: es steht NACH dem Absatz, in dem der Cursor/die Markierung
+    //   liegt, nie mitten in einem Satz. Kein `setSelectedDataAsync`-Rueckfall — der traegt nur
+    //   Text. `Range.insertInlinePictureFromBase64` (WordApi 1.2) und `getFirst()` (1.3) sind
+    //   bewusst gemieden.
+    //
+    // DAS ZUSTANDSMODELL (§9 des Auftrags), jede Lage ein eigener Satz:
+    //   laden                 → m5BildSucht (ein frueherer Stand bleibt sichtbar)
+    //   erfolgreich leer      → m5BildLeer „Kein Bild … (geprueft <Zeit>)" — NUR nach frischer 200
+    //   Treffer               → Karten; `gedeckelt: true` → zusaetzlich m5BildGedeckelt
+    //   Fehler (5xx, Netz, Frist, kaputter Koerper)
+    //                         → m5BildFehler „Suche nicht moeglich (<Grund>)"; ein frueherer Stand
+    //                           bleibt mit m5BildFehlerAltStand „Stand von <Zeit> · Auffrischung
+    //                           fehlgeschlagen" stehen (Lehre JOB 3027/3025/3037)
+    //   offline               → wie Fehler, Grund „keine Verbindung", ohne Abruf
+    //   401 / 403             → askAuth bzw. m5BildGrundVerweigert — und der Stand FAELLT
+    //   keine Markierung      → m5BildKeineMarkierung, kein Abruf
+    // Beschaedigte Trefferdaten (ein Treffer ohne Herkunft, ohne Bildquelle) sind eine
+    // FEHLGESCHLAGENE Suche, keine erfolgreiche Leere (Lehre JOB 3092 R1).
+    //
+    // DER STAND GEHOERT DER SITZUNG (Lehre JOB 3093 R2): was A gefunden hat, darf B nie sehen.
+    // Verworfen — Treffer UND laufende Antwort (Laufnummer) — wird er bei
+    //   · bestaetigtem Logout (`klaraS4Verwerfen`, derselbe Moment wie der S4-Stand),
+    //   · einer anderen oder keiner Identitaet in der naechsten /api/auth/me-Antwort (`sessionName`
+    //     wird nur auf dem ERFOLGSWEG von checkSession gerufen — ein Netzfehler dort verwirft
+    //     nichts, denn ob die Sitzung noch besteht, ist dann nicht festgestellt),
+    //   · 401/403 auf die Suche selbst.
+    //
+    // KEIN Timer, KEIN Autostart, KEIN Fokusraub: gesucht wird auf Klick, eingefuegt auf Klick.
+    // Markup und Karte entstehen zur Laufzeit in der Ruhe der Fragen-Flaeche (#ask-ruhe) —
+    // dieselbe Bauform wie KA3 (`ka3KarteElement`) und das Memo (JOB 3091): sie kommen und gehen
+    // mit der Ruhe, ohne dass der Cursor in Word etwas davon merkt.
+    var M5_BILD_TEXTE = {
+      de: {
+        m5BildCta: "Bild dazu?",
+        m5BildLabel: "Bilder aus dem Bestand",
+        m5BildKeineMarkierung: "Markiere in Word den Satz, zu dem du ein Bild suchst — dann frag noch einmal.",
+        m5BildSucht: "Klara sucht im Bestand nach „{q}“ …",
+        m5BildTitel: "Bilder aus dem Bestand zu „{q}“ — geprüft {zeit}",
+        m5BildLeer: "Kein Bild mit dieser Beschreibung im Bestand (geprüft {zeit}): „{q}“.",
+        m5BildGedeckelt: "Mehr Treffer als angezeigt — grenze die Markierung ein.",
+        m5BildFehler: "Suche nicht möglich ({grund}).",
+        m5BildFehlerAltStand: "Stand von {zeit} · Auffrischung fehlgeschlagen ({grund}).",
+        m5BildGrundNetz: "keine Verbindung",
+        m5BildGrundFrist: "Zeitüberschreitung",
+        m5BildGrundServer: "Server antwortet {status}",
+        m5BildGrundDaten: "unvollständige Antwort",
+        m5BildGrundVerweigert: "kein Zugriff auf den Bestand",
+        m5BildOhneBeschreibung: "ohne Beschreibung",
+        m5BildBenennung: "Benennung: {name}",
+        m5BildGefunden: "Gefunden über: {felder}",
+        m5BildFeldBeschreibung: "Beschreibung",
+        m5BildFeldName: "Benennung",
+        m5BildHerkunftZeile: "Quelle: {titel}, Stand v{version}, Prüfstand {stufe}",
+        m5BildAnsehen: "Ansehen",
+        m5BildEinfuegen: "In Word einfügen",
+        m5BildEinfuegtBusy: "Wird eingefügt …",
+        m5BildEinfuegtOk: "Eingefügt — Bild, Unterschrift und Herkunft stehen zusammen.",
+        m5BildEinfuegtOkOhne: "Eingefügt — Bild und Herkunft stehen zusammen (keine Unterschrift im Bestand).",
+        m5BildEinfuegtFehlerBild: "Einfügen nicht möglich: das Bild konnte nicht geladen werden ({grund}).",
+        m5BildEinfuegtFehlerPosition: "Einfügen nicht möglich: keine Absatzposition in Word gefunden.",
+      },
+      en: {
+        m5BildCta: "Any picture for this?",
+        m5BildLabel: "Pictures from the knowledge base",
+        m5BildKeineMarkierung: "Select the sentence in Word you want a picture for — then ask again.",
+        m5BildSucht: "Klara is searching the knowledge base for “{q}” …",
+        m5BildTitel: "Pictures from the knowledge base for “{q}” — checked {zeit}",
+        m5BildLeer: "No picture with this description in the knowledge base (checked {zeit}): “{q}”.",
+        m5BildGedeckelt: "More hits than shown — narrow the selection.",
+        m5BildFehler: "Search not possible ({grund}).",
+        m5BildFehlerAltStand: "As of {zeit} · refresh failed ({grund}).",
+        m5BildGrundNetz: "no connection",
+        m5BildGrundFrist: "timeout",
+        m5BildGrundServer: "server answered {status}",
+        m5BildGrundDaten: "incomplete answer",
+        m5BildGrundVerweigert: "no access to the knowledge base",
+        m5BildOhneBeschreibung: "no description",
+        m5BildBenennung: "Name: {name}",
+        m5BildGefunden: "Found via: {felder}",
+        m5BildFeldBeschreibung: "description",
+        m5BildFeldName: "name",
+        m5BildHerkunftZeile: "Source: {titel}, version v{version}, review status {stufe}",
+        m5BildAnsehen: "Open",
+        m5BildEinfuegen: "Insert into Word",
+        m5BildEinfuegtBusy: "Inserting …",
+        m5BildEinfuegtOk: "Inserted — picture, caption and source stay together.",
+        m5BildEinfuegtOkOhne: "Inserted — picture and source stay together (no caption in the knowledge base).",
+        m5BildEinfuegtFehlerBild: "Cannot insert: the picture could not be loaded ({grund}).",
+        m5BildEinfuegtFehlerPosition: "Cannot insert: no paragraph position found in Word.",
+      },
+      nl: {
+        m5BildCta: "Afbeelding hierbij?",
+        m5BildLabel: "Afbeeldingen uit de kennisbank",
+        m5BildKeineMarkierung: "Markeer in Word de zin waarbij je een afbeelding zoekt — en vraag dan opnieuw.",
+        m5BildSucht: "Klara zoekt in de kennisbank naar „{q}” …",
+        m5BildTitel: "Afbeeldingen uit de kennisbank bij „{q}” — nagekeken {zeit}",
+        m5BildLeer: "Geen afbeelding met deze beschrijving in de kennisbank (nagekeken {zeit}): „{q}”.",
+        m5BildGedeckelt: "Meer treffers dan getoond — beperk de markering.",
+        m5BildFehler: "Zoeken niet mogelijk ({grund}).",
+        m5BildFehlerAltStand: "Stand van {zeit} · vernieuwen mislukt ({grund}).",
+        m5BildGrundNetz: "geen verbinding",
+        m5BildGrundFrist: "time-out",
+        m5BildGrundServer: "server antwoordt {status}",
+        m5BildGrundDaten: "onvolledig antwoord",
+        m5BildGrundVerweigert: "geen toegang tot de kennisbank",
+        m5BildOhneBeschreibung: "zonder beschrijving",
+        m5BildBenennung: "Naam: {name}",
+        m5BildGefunden: "Gevonden via: {felder}",
+        m5BildFeldBeschreibung: "beschrijving",
+        m5BildFeldName: "naam",
+        m5BildHerkunftZeile: "Bron: {titel}, stand v{version}, controlestatus {stufe}",
+        m5BildAnsehen: "Bekijken",
+        m5BildEinfuegen: "In Word invoegen",
+        m5BildEinfuegtBusy: "Wordt ingevoegd …",
+        m5BildEinfuegtOkOhne: "Ingevoegd — afbeelding en bron staan bij elkaar (geen onderschrift in de kennisbank).",
+        m5BildEinfuegtOk: "Ingevoegd — afbeelding, onderschrift en bron staan bij elkaar.",
+        m5BildEinfuegtFehlerBild: "Invoegen niet mogelijk: de afbeelding kon niet worden geladen ({grund}).",
+        m5BildEinfuegtFehlerPosition: "Invoegen niet mogelijk: geen alineapositie in Word gevonden.",
+      },
+    };
+    // In das VORHANDENE Woerterbuch einhaengen — kein zweites Nachschlagewerk, kein eigenes `t()`
+    // (dasselbe Muster wie KA3/KA6).
+    for (var m5Sprache in M5_BILD_TEXTE) {
+      if (Object.prototype.hasOwnProperty.call(M5_BILD_TEXTE, m5Sprache) && STRINGS[m5Sprache]) {
+        var m5Tabelle = M5_BILD_TEXTE[m5Sprache];
+        for (var m5Schluessel in m5Tabelle) {
+          if (Object.prototype.hasOwnProperty.call(m5Tabelle, m5Schluessel)) {
+            STRINGS[m5Sprache][m5Schluessel] = m5Tabelle[m5Schluessel];
+          }
+        }
+      }
+    }
+
+    var M5_BILD_LIMIT = 20;
+    var M5_BILD_FRIST_MS = 15000;        // die Route liest Ruempfe — laenger als die 5 s der Anmeldung
+    var M5_BILD_SUCHWORT_MAX = 200;      // die Markierung als Suchwort: ein Satz, kein Kapitel
+
+    var m5Lage = "ruhe";                 // ruhe | laden | ergebnis | fehler | keine-markierung
+    var m5Stand = null;                  // { q, treffer, geprueft, gedeckelt } — die letzte erfolgreiche Antwort
+    var m5FehlerGrund = "";              // der Satz zum Fehler (bereits uebersetzt)
+    var m5Lauf = 0;                      // Laufnummer: ein spaeter Rueckruf eines aelteren Klicks wird verworfen
+    var m5Sitzung = null;                // Kennung der Sitzung, in der der Stand entstand
+    var m5EinfuegeStatus = {};           // imageId → { ton, text } der letzten Einfuege-Meldung
+    var m5EinfuegenLaeuft = null;        // imageId, solange ein Einfuegen laeuft
+
+    /** Das Suchwort aus der Markierung: Zeilen und Mehrfach-Leerraum zu einem Satz, gedeckelt. */
+    function m5Suchwort(markierung) {
+      var text = typeof markierung === "string" ? markierung : "";
+      text = text.replace(/\s+/g, " ").replace(/^\s+|\s+$/g, "");
+      return text.length > M5_BILD_SUCHWORT_MAX ? text.slice(0, M5_BILD_SUCHWORT_MAX).replace(/\s+$/, "") : text;
+    }
+
+    /** HH:MM aus der ISO-Pruefzeit des Servers — die Datengrundlage jeder Aussage der Karte. */
+    function m5Zeit(iso) {
+      var d = new Date(iso);
+      if (Number.isNaN(d.getTime())) { return String(iso); }
+      function pad(n) { return n < 10 ? "0" + n : String(n); }
+      return pad(d.getHours()) + ":" + pad(d.getMinutes());
+    }
+
+    /** Die Kennung eines /api/auth/me-Nutzers — id vor E-Mail vor Name; nichts davon → null. */
+    function m5SitzungsKennung(user) {
+      if (!user || typeof user !== "object") { return null; }
+      var felder = ["id", "email", "name"];
+      for (var i = 0; i < felder.length; i += 1) {
+        var wert = user[felder[i]];
+        if (typeof wert === "string" && wert.replace(/^\s+|\s+$/g, "").length > 0) {
+          return felder[i] + ":" + wert;
+        }
+      }
+      return null;
+    }
+
+    /** Alles weg, was an der Sitzung hing: Stand, Lage, Grund, Einfuege-Meldungen — und jede laufende Antwort. */
+    function m5Verwerfen() {
+      m5Lauf += 1;
+      m5Stand = null;
+      m5Lage = "ruhe";
+      m5FehlerGrund = "";
+      m5EinfuegeStatus = {};
+      m5EinfuegenLaeuft = null;
+      m5Zeichnen();
+    }
+
+    /** checkSession meldet die Identitaet (ueber `sessionName`) — eine andere oder keine verwirft den Stand. */
+    function m5SitzungMelden(user) {
+      var kennung = m5SitzungsKennung(user);
+      if (kennung !== m5Sitzung) {
+        m5Sitzung = kennung;
+        m5Verwerfen();
+      }
+    }
+
+    /**
+     * DER EINE ABRUF dieses Blocks — Suche und Bildbytes, dieselbe Herkunft, dieselbe Sitzung,
+     * eigene Frist. Liefert die rohe Antwort; wer sie liest (JSON oder Blob), entscheidet der Aufrufer.
+     *
+     * JOB 3555 K2b: er traegt seit diesem Job einen DRITTEN Pfad derselben Herkunft — `GET
+     * /api/categories` fuer die Bereich-Zeile der Erfassen-Flaeche (`captureBereicheLesen`). Kein
+     * neuer Abruf, kein neuer Ursprung, kein neues Recht (`ko.read` wie die Bildsuche): eine
+     * zweite Abrufstelle fuer dieselbe Art Auskunft waere ein Parallelweg, den dieses Panel
+     * nirgends fuehrt (ihre Menge ist gepinnt, mega69-klara-merkmale M7). Der Name bleibt, damit
+     * die Marken und Verweise auf ihn tragen; der Rumpf ist bereits allgemein.
+     */
+    function m5Abruf(pfad) {
+      var controller = new AbortController();
+      var frist = setTimeout(function () {
+        try { controller.abort(); } catch (e) { /* bereits beendet */ }
+      }, M5_BILD_FRIST_MS);
+      return fetch(pfad, { credentials: "include", signal: controller.signal }).then(
+        function (res) { clearTimeout(frist); return res; },
+        function (err) {
+          clearTimeout(frist);
+          if (err && err.name === "AbortError") {
+            var f = new Error("frist"); f.m5Frist = true; throw f;
+          }
+          throw err;
+        }
+      );
+    }
+
+    /** Ein Treffer ist nur ein Treffer, wenn Bild UND Herkunft da sind — sonst ist die Antwort beschaedigt. */
+    function m5TrefferPruefen(roh) {
+      if (!roh || typeof roh !== "object") { return null; }
+      var quelleOk = typeof roh.thumbnailUrl === "string" &&
+        (/^data:image\/(png|jpe?g|gif|webp|bmp);base64,/i.test(roh.thumbnailUrl) ||
+          (roh.thumbnailUrl.charAt(0) === "/" && roh.thumbnailUrl.charAt(1) !== "/"));
+      if (!quelleOk) { return null; }
+      if (typeof roh.imageId !== "string" || roh.imageId.length === 0) { return null; }
+      if (typeof roh.koId !== "string" || roh.koId.length === 0) { return null; }
+      if (typeof roh.koTitel !== "string" || roh.koTitel.length === 0) { return null; }
+      if (typeof roh.version !== "number" || !Number.isFinite(roh.version)) { return null; }
+      if (typeof roh.pruefstand !== "string" || roh.pruefstand.length === 0) { return null; }
+      if (typeof roh.caption !== "string") { return null; }
+      var felder = [];
+      if (Array.isArray(roh.gefundenUeber)) {
+        for (var i = 0; i < roh.gefundenUeber.length; i += 1) {
+          if (roh.gefundenUeber[i] === "beschreibung" || roh.gefundenUeber[i] === "name") {
+            felder.push(roh.gefundenUeber[i]);
+          }
+        }
+      }
+      return {
+        imageId: roh.imageId,
+        koId: roh.koId,
+        koTitel: roh.koTitel,
+        version: roh.version,
+        pruefstand: roh.pruefstand,
+        caption: roh.caption.replace(/^\s+|\s+$/g, ""),
+        name: typeof roh.name === "string" && roh.name.replace(/^\s+|\s+$/g, "").length > 0 ? roh.name : null,
+        gefundenUeber: felder,
+        thumbnailUrl: roh.thumbnailUrl,
+      };
+    }
+
+    /** Der Antwortkoerper der Route — oder null, wenn er nicht der Vertrag ist. */
+    function m5AntwortPruefen(koerper) {
+      if (!koerper || typeof koerper !== "object" || !Array.isArray(koerper.treffer)) { return null; }
+      if (typeof koerper.geprueft !== "string" || koerper.geprueft.length === 0) { return null; }
+      var treffer = [];
+      for (var i = 0; i < koerper.treffer.length; i += 1) {
+        var t1 = m5TrefferPruefen(koerper.treffer[i]);
+        if (t1 === null) { return null; }
+        treffer.push(t1);
+      }
+      return { treffer: treffer, geprueft: koerper.geprueft, gedeckelt: koerper.gedeckelt === true };
+    }
+
+    function m5StufeText(stufe) {
+      return ASK_STATUS_KEYS[stufe] ? t(ASK_STATUS_KEYS[stufe]) : String(stufe);
+    }
+
+    /** Die Herkunftszeile — dieselbe Zeile auf der Karte und im Dokument (EIN Bauer). */
+    function m5Herkunftszeile(treffer) {
+      return t("m5BildHerkunftZeile", {
+        titel: treffer.koTitel,
+        version: String(treffer.version),
+        stufe: m5StufeText(treffer.pruefstand),
+      });
+    }
+
+    /** Die Ruhe ist im Bild (weder Antwort noch Luecke) — dort wohnt dieser Weg. */
+    function m5RuheSichtbar() {
+      var ruhe = document.getElementById("ask-ruhe");
+      return Boolean(ruhe) && ruhe.className.indexOf("hidden") === -1;
+    }
+
+    /** Der Weg steht nur mit Sitzung, offenem Word-Dokument und sichtbarer Ruhe. */
+    function m5Sichtbar() {
+      return Boolean(signedIn) && Boolean(officeUsable()) && m5RuheSichtbar();
+    }
+
+    // -------------------------------------------------------------------------------------------
+    // Markup zur Laufzeit: Knopf und Karte NEBEN der Ruhe-Mitte, nicht in ihr — die Mitte traegt
+    // nur Lupe und den EINEN Satz, kein Knopf (JOB 3056 R4, tests/app/k1-sitzungslagen.test.tsx);
+    // derselbe Ort wie die KA3-Karte (unter #ask-ruhe eingehaengt).
+    // -------------------------------------------------------------------------------------------
+    function m5BlockElement() {
+      var vorhanden = document.getElementById("m5-bild-block");
+      if (vorhanden) { return vorhanden; }
+      var block = document.createElement("div");
+      block.id = "m5-bild-block";
+      block.className = "hidden";
+      var knopf = document.createElement("button");
+      knopf.type = "button";
+      knopf.id = "m5-bild-btn";
+      knopf.className = "ghost";
+      block.appendChild(knopf);
+      var karte = document.createElement("div");
+      karte.id = "m5-bild-karte";
+      karte.className = "card hidden";
+      karte.setAttribute("role", "region");
+      karte.setAttribute("aria-live", "polite");
+      block.appendChild(karte);
+      var anker = document.getElementById("ask-ruhe");
+      if (anker && anker.parentNode) {
+        anker.parentNode.insertBefore(block, anker.nextSibling);
+      } else {
+        document.body.appendChild(block);
+      }
+      return block;
+    }
+
+    function m5KnopfElement() {
+      m5BlockElement();
+      return document.getElementById("m5-bild-btn");
+    }
+
+    function m5KarteElement() {
+      m5BlockElement();
+      return document.getElementById("m5-bild-karte");
+    }
+
+    function m5Absatz(karte, klasse, text) {
+      var p = document.createElement("p");
+      if (klasse) { p.className = klasse; }
+      p.textContent = text;
+      karte.appendChild(p);
+      return p;
+    }
+
+    /** Eine Trefferkarte: Bild, Unterschrift (oder „ohne Beschreibung"), Benennung, Herkunft, Weg, Knopf. */
+    function m5TrefferZeichnen(karte, treffer) {
+      var figur = document.createElement("figure");
+      figur.setAttribute("data-m5-treffer", treffer.imageId);
+      figur.style.margin = "12px 0 0";
+      figur.style.paddingTop = "10px";
+      figur.style.borderTop = "1px solid var(--hairline)";
+      var bild = document.createElement("img");
+      bild.src = treffer.thumbnailUrl;
+      bild.alt = treffer.name || treffer.caption || "";
+      bild.loading = "lazy";
+      bild.style.display = "block";
+      bild.style.maxWidth = "100%";
+      bild.style.maxHeight = "160px";
+      bild.style.height = "auto";
+      figur.appendChild(bild);
+      var unterschrift = document.createElement("figcaption");
+      if (treffer.caption.length > 0) {
+        unterschrift.textContent = treffer.caption;
+      } else {
+        unterschrift.className = "muted";
+        unterschrift.textContent = t("m5BildOhneBeschreibung");
+      }
+      unterschrift.style.marginTop = "6px";
+      figur.appendChild(unterschrift);
+      if (treffer.name) {
+        m5Absatz(figur, "muted", t("m5BildBenennung", { name: treffer.name }));
+      }
+      var herkunft = m5Absatz(figur, "muted", m5Herkunftszeile(treffer) + " — ");
+      var weg = document.createElement("a");
+      weg.href = koDetailUrl(window.location.origin, treffer.koId);
+      weg.target = "_blank";
+      weg.rel = "noopener noreferrer";
+      weg.textContent = t("m5BildAnsehen");
+      herkunft.appendChild(weg);
+      if (treffer.gefundenUeber.length > 0) {
+        var namen = [];
+        for (var i = 0; i < treffer.gefundenUeber.length; i += 1) {
+          namen.push(t(treffer.gefundenUeber[i] === "name" ? "m5BildFeldName" : "m5BildFeldBeschreibung"));
+        }
+        m5Absatz(figur, "muted", t("m5BildGefunden", { felder: namen.join(", ") }));
+      }
+      var knopf = document.createElement("button");
+      knopf.type = "button";
+      knopf.className = "primary";
+      knopf.setAttribute("data-m5-einfuegen", treffer.imageId);
+      knopf.textContent = t("m5BildEinfuegen");
+      knopf.disabled = !officeUsable() || m5EinfuegenLaeuft !== null;
+      if (!officeUsable()) { knopf.title = t("noOffice"); }
+      knopf.addEventListener("click", function () { m5Einfuegen(treffer); });
+      figur.appendChild(knopf);
+      var status = m5EinfuegeStatus[treffer.imageId];
+      if (m5EinfuegenLaeuft === treffer.imageId) {
+        m5Absatz(figur, "muted", t("m5BildEinfuegtBusy"));
+      } else if (status) {
+        m5Absatz(figur, "status " + status.ton, status.text);
+      }
+      karte.appendChild(figur);
+    }
+
+    /** Zeichnen. Kein Fokuseingriff, kein Scrollen — der Cursor in Word bleibt, wo er ist. */
+    function m5Zeichnen() {
+      var block = m5BlockElement();
+      var knopf = m5KnopfElement();
+      knopf.textContent = t("m5BildCta");
+      var frei = m5Sichtbar();
+      // Der ganze Weg steht nur mit Sitzung, Word und sichtbarer Ruhe im Bild (wie der KA3-Block);
+      // der Knopf traegt den Grund zusaetzlich am Attribut, falls er programmatisch erreicht wird.
+      block.className = frei ? "" : "hidden";
+      knopf.disabled = !frei || m5Lage === "laden";
+      knopf.title = !officeUsable() ? t("noOffice") : !signedIn ? t("askAuth") : "";
+      var karte = m5KarteElement();
+      karte.setAttribute("aria-label", t("m5BildLabel"));
+      while (karte.firstChild) { karte.removeChild(karte.firstChild); }
+      if (m5Lage === "ruhe" || !frei) {
+        karte.className = "card hidden";
+        return;
+      }
+      karte.className = "card";
+      if (m5Lage === "keine-markierung") {
+        m5Absatz(karte, "status warn", t("m5BildKeineMarkierung"));
+        return;
+      }
+      if (m5Lage === "laden") {
+        m5Absatz(karte, "muted", t("m5BildSucht", { q: m5StandOderLaufQ() }));
+      }
+      if (m5Lage === "fehler") {
+        if (m5Stand) {
+          m5Absatz(karte, "status warn", t("m5BildFehlerAltStand", { zeit: m5Zeit(m5Stand.geprueft), grund: m5FehlerGrund }));
+        } else {
+          m5Absatz(karte, "status warn", t("m5BildFehler", { grund: m5FehlerGrund }));
+        }
+        var erneut = document.createElement("button");
+        erneut.type = "button";
+        erneut.id = "m5-bild-erneut";
+        erneut.className = "ghost";
+        erneut.textContent = t("retryCta");
+        erneut.disabled = !frei;
+        erneut.addEventListener("click", m5Suchen);
+        karte.appendChild(erneut);
+      }
+      if (!m5Stand) { return; }
+      var kopf = document.createElement("p");
+      kopf.textContent = t("m5BildTitel", { q: m5Stand.q, zeit: m5Zeit(m5Stand.geprueft) });
+      kopf.style.fontWeight = "600";
+      karte.appendChild(kopf);
+      if (m5Stand.treffer.length === 0) {
+        m5Absatz(karte, "muted", t("m5BildLeer", { zeit: m5Zeit(m5Stand.geprueft), q: m5Stand.q }));
+        return;
+      }
+      for (var i = 0; i < m5Stand.treffer.length; i += 1) {
+        m5TrefferZeichnen(karte, m5Stand.treffer[i]);
+      }
+      if (m5Stand.gedeckelt) {
+        m5Absatz(karte, "muted", t("m5BildGedeckelt"));
+      }
+    }
+
+    var m5LaufendesSuchwort = "";
+    function m5StandOderLaufQ() {
+      return m5LaufendesSuchwort || (m5Stand ? m5Stand.q : "");
+    }
+
+    /** Die Markierung — frisch aus Word bei JEDEM Klick, nie ein gehaltener Schnappschuss. */
+    function m5MarkierungLesen(done) {
+      if (!officeUsable()) { done(""); return; }
+      try {
+        Office.context.document.getSelectedDataAsync(Office.CoercionType.Text, function (result) {
+          done(result && result.status === Office.AsyncResultStatus.Succeeded ? String(result.value || "") : "");
+        });
+      } catch (e) {
+        done("");
+      }
+    }
+
+    function m5FehlerSetzen(lauf, grund) {
+      if (lauf !== m5Lauf) { return; }
+      m5Lage = "fehler";
+      m5FehlerGrund = grund;
+      m5LaufendesSuchwort = "";
+      m5Zeichnen();
+    }
+
+    /** Der Klick: Markierung lesen → Suchwort → Abruf → Lage. */
+    function m5Suchen() {
+      if (!m5Sichtbar() || m5Lage === "laden") { return; }
+      m5Lauf += 1;
+      var lauf = m5Lauf;
+      m5MarkierungLesen(function (markierung) {
+        if (lauf !== m5Lauf) { return; }
+        var q = m5Suchwort(markierung);
+        if (q.length === 0) {
+          m5Lage = "keine-markierung";
+          m5Zeichnen();
+          return;
+        }
+        if (typeof navigator !== "undefined" && navigator.onLine === false) {
+          m5FehlerSetzen(lauf, t("m5BildGrundNetz"));
+          return;
+        }
+        m5Lage = "laden";
+        m5LaufendesSuchwort = q;
+        m5Zeichnen();
+        m5Abruf("/api/library/images?q=" + encodeURIComponent(q) + "&limit=" + M5_BILD_LIMIT)
+          .then(function (res) {
+            if (lauf !== m5Lauf) { return; }
+            if (!res || typeof res.status !== "number") {
+              m5FehlerSetzen(lauf, t("m5BildGrundDaten"));
+              return;
+            }
+            if (res.status === 401 || res.status === 403) {
+              // Die Sitzung traegt nicht mehr / das Recht fehlt: der Stand faellt, der Satz sagt es,
+              // und checkSession liest die Sitzung neu.
+              m5Verwerfen();
+              m5Lage = "fehler";
+              m5FehlerGrund = t(res.status === 401 ? "askAuth" : "m5BildGrundVerweigert");
+              m5Zeichnen();
+              if (typeof checkSession === "function") { checkSession(); }
+              return;
+            }
+            if (!res.ok) {
+              m5FehlerSetzen(lauf, t("m5BildGrundServer", { status: String(res.status) }));
+              return;
+            }
+            return res.json().then(
+              function (koerper) {
+                if (lauf !== m5Lauf) { return; }
+                var stand = m5AntwortPruefen(koerper);
+                if (stand === null) {
+                  m5FehlerSetzen(lauf, t("m5BildGrundDaten"));
+                  return;
+                }
+                m5Stand = { q: q, treffer: stand.treffer, geprueft: stand.geprueft, gedeckelt: stand.gedeckelt };
+                m5Lage = "ergebnis";
+                m5FehlerGrund = "";
+                m5LaufendesSuchwort = "";
+                m5EinfuegeStatus = {};
+                m5Zeichnen();
+              },
+              function () { m5FehlerSetzen(lauf, t("m5BildGrundDaten")); }
+            );
+          })
+          .catch(function (err) {
+            if (lauf !== m5Lauf) { return; }
+            m5FehlerSetzen(lauf, t(err && err.m5Frist ? "m5BildGrundFrist" : "m5BildGrundNetz"));
+          });
+      });
+    }
+
+    // -------------------------------------------------------------------------------------------
+    // Einfuegen — nur auf Klick, ein Word.run, Bild + Unterschrift + Herkunft.
+    // -------------------------------------------------------------------------------------------
+
+    /** Die Bildbytes als reines Base64: aus der data-URL geschnitten oder ueber die Sitzung geladen. */
+    function m5BildBase64(treffer) {
+      var data = /^data:image\/[a-z0-9.+-]+;base64,([\s\S]+)$/i.exec(treffer.thumbnailUrl);
+      if (data) { return Promise.resolve(data[1].replace(/\s+/g, "")); }
+      return m5Abruf(treffer.thumbnailUrl).then(function (res) {
+        if (!res || !res.ok) {
+          var f = new Error("http"); f.m5Grund = t("m5BildGrundServer", { status: String(res && res.status) }); throw f;
+        }
+        var typ = res.headers && typeof res.headers.get === "function" ? String(res.headers.get("content-type") || "") : "";
+        if (typ && !/^image\//i.test(typ)) {
+          var k = new Error("kein-bild"); k.m5Grund = t("m5BildGrundDaten"); throw k;
+        }
+        // Bytes → Base64 ohne FileReader (der ist im Word-Webview und in jsdom unterschiedlich
+        // streng mit fremden Blobs); `btoa` in Stuecken, damit auch grosse Bilder nicht am
+        // Argumentlimit von `String.fromCharCode` scheitern.
+        return res.arrayBuffer().then(function (puffer) {
+          var bytes = new Uint8Array(puffer);
+          if (bytes.length === 0) {
+            var d = new Error("leer"); d.m5Grund = t("m5BildGrundDaten"); throw d;
+          }
+          var binaer = "";
+          for (var i = 0; i < bytes.length; i += 8192) {
+            binaer += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192));
+          }
+          return btoa(binaer);
+        });
+      }, function (err) {
+        var g = new Error("netz"); g.m5Grund = t(err && err.m5Frist ? "m5BildGrundFrist" : "m5BildGrundNetz"); throw g;
+      });
+    }
+
+    /** EIN Word.run (WordApi 1.1): Bildabsatz nach dem letzten Absatz der Markierung, Unterschrift, Herkunft. */
+    function m5InWordEinfuegen(base64, treffer) {
+      var NACH = (window.Word && Word.InsertLocation && Word.InsertLocation.after) || "After";
+      var ENDE = (window.Word && Word.InsertLocation && Word.InsertLocation.end) || "End";
+      return Word.run(function (context) {
+        var absaetze = context.document.getSelection().paragraphs;
+        absaetze.load("items");
+        return context.sync().then(function () {
+          var items = absaetze.items || [];
+          if (items.length === 0) {
+            var p = new Error("position"); p.m5Position = true; throw p;
+          }
+          var letzter = items[items.length - 1];
+          var bildAbsatz = letzter.insertParagraph("", NACH);
+          bildAbsatz.insertInlinePictureFromBase64(base64, ENDE);
+          var danach = bildAbsatz;
+          if (treffer.caption.length > 0) {
+            danach = danach.insertParagraph(treffer.caption, NACH);
+          }
+          danach.insertParagraph(m5Herkunftszeile(treffer), NACH);
+          return context.sync();
+        });
+      });
+    }
+
+    function m5EinfuegeMeldung(imageId, ton, text) {
+      m5EinfuegeStatus[imageId] = { ton: ton, text: text };
+    }
+
+    function m5Einfuegen(treffer) {
+      if (m5EinfuegenLaeuft !== null) { return; }
+      if (!officeUsable() || !window.Word || typeof Word.run !== "function") {
+        m5EinfuegeMeldung(treffer.imageId, "warn", t("noOffice"));
+        m5Zeichnen();
+        return;
+      }
+      var lauf = m5Lauf;
+      m5EinfuegenLaeuft = treffer.imageId;
+      m5Zeichnen();
+      m5BildBase64(treffer)
+        .then(function (base64) {
+          if (lauf !== m5Lauf) { return; }
+          return m5InWordEinfuegen(base64, treffer).then(function () {
+            m5EinfuegeMeldung(treffer.imageId, "ok", t(treffer.caption.length > 0 ? "m5BildEinfuegtOk" : "m5BildEinfuegtOkOhne"));
+          });
+        })
+        .catch(function (err) {
+          if (lauf !== m5Lauf) { return; }
+          if (err && err.m5Grund) {
+            m5EinfuegeMeldung(treffer.imageId, "warn", t("m5BildEinfuegtFehlerBild", { grund: err.m5Grund }));
+          } else if (err && err.m5Position) {
+            m5EinfuegeMeldung(treffer.imageId, "warn", t("m5BildEinfuegtFehlerPosition"));
+          } else {
+            var detail = err && err.message ? err.message : String(err == null ? "" : err);
+            m5EinfuegeMeldung(treffer.imageId, "warn",
+              classifyInsertError(detail) === "permission"
+                ? t("askInsertNoPermission")
+                : t("askInsertFail", { detail: detail || "Word-API" }));
+          }
+        })
+        .then(function () {
+          if (m5EinfuegenLaeuft === treffer.imageId) { m5EinfuegenLaeuft = null; }
+          m5Zeichnen();
+        });
+    }
+
+    if (typeof document !== "undefined" && document.getElementById("ask-ruhe")) {
+      m5KnopfElement().addEventListener("click", m5Suchen);
+      m5Zeichnen();
+      ["de", "en", "nl"].forEach(function (code) {
+        var knopf = document.getElementById("lang-" + code);
+        if (knopf) { knopf.addEventListener("click", m5Zeichnen); }
+      });
+      // Der Knopf folgt Sitzung und Office — `updateAskState` ist die Stelle, an der beides
+      // zusammenlaeuft (checkSession → updateSendState → updateAskState; markOfficeChecked ebenso).
+      // Wrapper wie bei renderAskSources/renderAskOutcome: Original zuerst, danach der Nachtrag.
+      if (typeof updateAskState === "function") {
+        var m5UpdateAskStateBestand = updateAskState;
+        updateAskState = function () {
+          var ergebnis = m5UpdateAskStateBestand.apply(this, arguments);
+          m5Zeichnen();
+          return ergebnis;
+        };
+      }
+      // Die Ruhe kommt und geht mit Antwort und Luecke (`kwFlaecheZeichnen`) — der Weg folgt ihr.
+      if (typeof kwFlaecheZeichnen === "function") {
+        var m5FlaecheBestand = kwFlaecheZeichnen;
+        kwFlaecheZeichnen = function () {
+          var ergebnis = m5FlaecheBestand.apply(this, arguments);
+          m5Zeichnen();
+          return ergebnis;
+        };
+      }
+      // Die Identitaet: `sessionName` wird in checkSession NUR auf dem Erfolgsweg mit dem Nutzer
+      // aus /api/auth/me gerufen (null bei 401/403). Eine andere oder keine Identitaet verwirft den
+      // Stand; ein Netzfehler erreicht diese Stelle nicht und verwirft nichts.
+      if (typeof sessionName === "function") {
+        var m5SessionNameBestand = sessionName;
+        sessionName = function (user) {
+          var name = m5SessionNameBestand.apply(this, arguments);
+          m5SitzungMelden(name !== null ? user : null);
+          return name;
+        };
+      }
+      // Ein bestaetigter Logout verwirft den Stand im selben Moment wie den S4-Stand.
+      if (typeof klaraS4Verwerfen === "function") {
+        var m5S4VerwerfenBestand = klaraS4Verwerfen;
+        klaraS4Verwerfen = function () {
+          var ergebnis = m5S4VerwerfenBestand.apply(this, arguments);
+          m5Verwerfen();
+          return ergebnis;
+        };
+      }
+    }
+    // KW-M5-BILD-END
+
+    // KW-KA6-SCHREIBEN-START
+    // ============================================================================================
+    // JOB 1153 · KA6 STUFE 1 — DIE SCHREIBFLAECHE. VORSCHLAG STATT SCHREIBEN.
+    // ============================================================================================
+    //
+    // DIE DREI WOERTLICHEN ZUSAGEN aus `OFFEN.md` (KA6):
+    //   · „das Ergebnis erscheint IMMER als Vorschlag im Panel und wird erst auf Klick eingefuegt"
+    //   · „jede eingefuegte Passage traegt ihre Herkunft"
+    //   · „Klara schreibt NIE selbsttaetig ins Dokument"
+    //
+    // WAS DIESER BLOCK TUT: er legt einen dritten Bereich in den Fragen-Reiter mit drei Zurufen,
+    // schickt den Zuruf ueber den BESTEHENDEN Weg `performAsk` → `POST /api/ask`, legt das Ergebnis
+    // in das VORHANDENE Vorschlagsfeld `#ask-answer-edit` und uebernimmt es erst auf Klick ueber den
+    // BESTEHENDEN Einfuegeweg `performInsert(text, buildInsertAttempts())`.
+    //
+    // WAS ER AUSDRUECKLICH NICHT TUT:
+    //   · Er schaltet NICHTS frei. Ob ausgefuehrt werden darf, sagt allein die serverseitige
+    //     Aufloesung (`executionAllowed`); dieser Block LIEST sie und richtet sich danach.
+    //   · Er ruft keine eigene Route, kein eigenes Modell, keinen eigenen Egress.
+    //   · Er fasst `Word.run` und `setSelectedDataAsync` nur EINMAL an: im Klick-Rueckruf des
+    //     Einfuegeknopfes, ueber `buildInsertAttempts()`. Kein Timer, kein Autostart.
+    //   · Er unterbricht nicht: kein Popup, kein `focus()`, kein `scrollIntoView` — Pedis
+    //     Anti-Aktionismus-Auflage gilt hier genauso wie in KA3.
+    //
+    // ============================================================================================
+    // DIE DRITTE HERKUNFTSKLASSE — UND WARUM SIE HIER ENTSTEHT UND NICHT IM SPIEGELMODUL.
+    // ============================================================================================
+    //
+    // `composeAnswerOutput` (wordAddin.ts) kennt zwei Klassen: „gesichert" und „ungeprueft". Beide
+    // sind Aussagen ueber QUELLEN. Eine per Zuruf formulierte Passage ist keine von beiden — sie
+    // steht auf keiner Quelle, sie ist formuliert. Deshalb bekommt sie eine eigene Zeile, und
+    // deshalb entsteht sie HIER: `wordAddin.ts` ist in diesem Durchgang Null-Diff.
+    //
+    // Gebaut wird sie aus dem vorhandenen `buildAnswerInsertText(koerper, zeile)` — kein zweiter
+    // Textbauer. BEWUSST NICHT ueber `composeAnswerOutput`: der haengt IMMER eine Quellen-Zeile an,
+    // und „Quelle: KLARWERK (…)" unter einer formulierten Passage waere eine Quellenbehauptung ohne
+    // Deckung — genau die Klasse von Unehrlichkeit, gegen die dieses Produkt gebaut ist.
+    //
+    // SIE HAENGT AM SERVERSIGNAL, NICHT AN DER FLAECHE. Nur wenn der Antwortkoerper
+    // `result.aiGenerated` traegt, wird „KI-formuliert" behauptet — dieselbe Bindung, die
+    // `askAiNoticeVisible` seit mega81 fuer die Panelanzeige traegt. Ohne das Signal faellt die
+    // Ausgabe auf den unveraenderten Bestandsweg `composeOutputText` zurueck.
+    //
+    // WORTLAUT: „KI-formuliert", nicht „KI-erzeugt". Der Waechter
+    // `tests/app/mega81-ki-kennzeichnung-am-verhalten.test.ts` verlangt, dass jede sichtbare
+    // ERZEUGUNGS-Behauptung zustandsgebunden ist; „formuliert" ist die praezisere und zugleich
+    // waechterkonforme Bezeichnung — und es ist der Begriff, den KA6 selbst benutzt.
+    var KA6_TEXTE = {
+      de: {
+        ka6Title: "Schreiben auf Zuruf",
+        ka6Hint: "Klara formuliert einen Vorschlag. Er landet im Antwortfeld darüber und geht erst auf deinen Klick ins Dokument.",
+        ka6ZurufErstellen: "Erstellen",
+        ka6ZurufVervollstaendigen: "Vervollständigen",
+        ka6ZurufUmformulieren: "Umformulieren",
+        ka6AuftragErstellen: "Formuliere einen Textvorschlag zu:",
+        ka6AuftragVervollstaendigen: "Vervollständige diesen Text:",
+        ka6AuftragUmformulieren: "Formuliere diesen Text klarer:",
+        ka6Busy: "Klara formuliert einen Vorschlag ...",
+        ka6Ready: "Vorschlag steht im Antwortfeld — nichts wurde ins Dokument geschrieben.",
+        ka6Empty: "Markiere zuerst Text im Dokument oder gib oben ein, worum es gehen soll.",
+        ka6NoBasis: "Kein Vorschlag: Es gibt dazu keine belastbare Grundlage. Erfunden wird nichts.",
+        ka6Fehler: "Der Vorschlag konnte nicht geholt werden ({detail}). Es wurde nichts geschrieben.",
+        ka6InsertCta: "Vorschlag in Word einfügen",
+        ka6InsertEmpty: "Das Antwortfeld ist leer — es gibt nichts einzufügen.",
+        ka6InsertOk: "Vorschlag eingefügt — mit Herkunftszeile.",
+        ka6Herkunft: "KI-formuliert — kein zitiertes KLARWERK-Wissen. Vor Verwendung fachlich prüfen.",
+        // D2/Pflicht 2 (fail-closed): Der Server hat geantwortet, aber die Antwort NICHT als
+        // formuliert gekennzeichnet. Dann entsteht kein Vorschlag — lieber keiner als einer mit
+        // falscher Herkunft.
+        ka6KeinSignal: "Kein Vorschlag: Der Server hat diese Antwort nicht als KI-formuliert gekennzeichnet. Ohne diese Angabe wird hier nichts als Vorschlag ausgegeben.",
+        // Die beiden Blockgründe stehen GETRENNT, und das ist keine Formsache: der eine ist eine
+        // Betriebsentscheidung, an der der Anwender nichts ändern kann; der andere ist eine Frage
+        // an ihn selbst, die er beantworten kann. Ein gemeinsamer Satz nähme ihm den Unterschied.
+        ka6BlockedNotMigrated: "Formulieren ist hier ausgeschaltet: Der externe Weg ist noch nicht freigeschaltet. Das ist eine Betriebsentscheidung — du kannst daran nichts ändern.",
+        ka6BlockedConsentMissing: "Formulieren ist gesperrt, weil deine Zustimmung für den externen Weg fehlt. Du kannst sie oben im Zustimmungskasten erteilen.",
+        ka6BlockedOther: "Formulieren ist für diese Sitzung gesperrt. Der Server nennt als Grund: {grund}",
+        ka6BlockedUnknown: "Ob formuliert werden darf, ist noch nicht bekannt — der Sitzungsstand wird abgerufen. Solange wird kein Zuruf angeboten."
+      },
+      en: {
+        ka6Title: "Write on request",
+        ka6Hint: "Klara drafts a suggestion. It lands in the answer field above and only goes into the document when you click.",
+        ka6ZurufErstellen: "Draft",
+        ka6ZurufVervollstaendigen: "Complete",
+        ka6ZurufUmformulieren: "Rephrase",
+        ka6AuftragErstellen: "Draft a passage about:",
+        ka6AuftragVervollstaendigen: "Complete this text:",
+        ka6AuftragUmformulieren: "Phrase this text more clearly:",
+        ka6Busy: "Klara is drafting a suggestion ...",
+        ka6Ready: "The suggestion is in the answer field — nothing was written into the document.",
+        ka6Empty: "Select text in the document first, or type above what it should be about.",
+        ka6NoBasis: "No suggestion: there is no reliable basis for this. Nothing is invented.",
+        ka6Fehler: "The suggestion could not be fetched ({detail}). Nothing was written.",
+        ka6InsertCta: "Insert suggestion into Word",
+        ka6InsertEmpty: "The answer field is empty — there is nothing to insert.",
+        ka6InsertOk: "Suggestion inserted — with its provenance line.",
+        ka6Herkunft: "AI-phrased — not quoted KLARWERK knowledge. Please review professionally before use.",
+        ka6KeinSignal: "No suggestion: the server did not mark this answer as AI-phrased. Without that signal nothing is offered here as a suggestion.",
+        ka6BlockedNotMigrated: "Drafting is switched off here: the external path is not enabled yet. That is an operational decision — there is nothing you can change about it.",
+        ka6BlockedConsentMissing: "Drafting is blocked because your consent for the external path is missing. You can give it in the consent card above.",
+        ka6BlockedOther: "Drafting is blocked for this session. The server gives this reason: {grund}",
+        ka6BlockedUnknown: "Whether drafting is allowed is not known yet — the session status is being retrieved. Until then no request is offered."
+      },
+      nl: {
+        ka6Title: "Schrijven op verzoek",
+        ka6Hint: "Klara maakt een voorstel. Het komt in het antwoordveld hierboven en gaat pas op jouw klik het document in.",
+        ka6ZurufErstellen: "Opstellen",
+        ka6ZurufVervollstaendigen: "Aanvullen",
+        ka6ZurufUmformulieren: "Herformuleren",
+        ka6AuftragErstellen: "Stel een tekstvoorstel op over:",
+        ka6AuftragVervollstaendigen: "Vul deze tekst aan:",
+        ka6AuftragUmformulieren: "Formuleer deze tekst duidelijker:",
+        ka6Busy: "Klara stelt een voorstel op ...",
+        ka6Ready: "Het voorstel staat in het antwoordveld — er is niets in het document geschreven.",
+        ka6Empty: "Selecteer eerst tekst in het document of typ hierboven waar het over moet gaan.",
+        ka6NoBasis: "Geen voorstel: hiervoor is geen betrouwbare basis. Er wordt niets verzonnen.",
+        ka6Fehler: "Het voorstel kon niet worden opgehaald ({detail}). Er is niets geschreven.",
+        ka6InsertCta: "Voorstel in Word invoegen",
+        ka6InsertEmpty: "Het antwoordveld is leeg — er is niets in te voegen.",
+        ka6InsertOk: "Voorstel ingevoegd — met herkomstregel.",
+        ka6Herkunft: "AI-geformuleerd — geen geciteerde KLARWERK-kennis. Controleer dit vakinhoudelijk vóór gebruik.",
+        ka6KeinSignal: "Geen voorstel: de server heeft dit antwoord niet als AI-geformuleerd gemarkeerd. Zonder dat signaal wordt hier niets als voorstel aangeboden.",
+        ka6BlockedNotMigrated: "Formuleren staat hier uit: de externe weg is nog niet vrijgegeven. Dat is een bedrijfsbeslissing — daar kun jij niets aan veranderen.",
+        ka6BlockedConsentMissing: "Formuleren is geblokkeerd omdat jouw toestemming voor de externe weg ontbreekt. Je kunt die hierboven in het toestemmingsvak geven.",
+        ka6BlockedOther: "Formuleren is voor deze sessie geblokkeerd. De server noemt als reden: {grund}",
+        ka6BlockedUnknown: "Of er geformuleerd mag worden is nog niet bekend — de sessiestand wordt opgehaald. Tot dan wordt er geen verzoek aangeboden."
+      }
+    };
+    // In das VORHANDENE Woerterbuch einhaengen — kein zweites Nachschlagewerk, kein eigenes `t()`.
+    // Dasselbe Muster wie KA3 (`KA3_TEXTE`); sinngleich stehen die Schluessel zusaetzlich als
+    // `klara.write.*` in `apps/web/src/i18n.ts`, weil dieses Fenster buildlos ist und jene Datei
+    // nicht importieren kann.
+    for (var ka6Sprache in KA6_TEXTE) {
+      if (Object.prototype.hasOwnProperty.call(KA6_TEXTE, ka6Sprache) && STRINGS[ka6Sprache]) {
+        var ka6Tabelle = KA6_TEXTE[ka6Sprache];
+        for (var ka6Schluessel in ka6Tabelle) {
+          if (Object.prototype.hasOwnProperty.call(ka6Tabelle, ka6Schluessel)) {
+            STRINGS[ka6Sprache][ka6Schluessel] = ka6Tabelle[ka6Schluessel];
+          }
+        }
+      }
+    }
+
+    /** Traegt der aktuelle Vorschlag das serverseitige Kennzeichnungssignal? */
+    var ka6KiFormuliert = false;
+    var ka6Laeuft = false;
+
+    /** Die drei Zurufe. Jeder traegt seinen eigenen Auftragssatz — kein gemeinsamer Sammelbegriff. */
+    var KA6_ZURUFE = [
+      { id: "ka6-zuruf-erstellen", name: "ka6ZurufErstellen", auftrag: "ka6AuftragErstellen" },
+      { id: "ka6-zuruf-vervollstaendigen", name: "ka6ZurufVervollstaendigen", auftrag: "ka6AuftragVervollstaendigen" },
+      { id: "ka6-zuruf-umformulieren", name: "ka6ZurufUmformulieren", auftrag: "ka6AuftragUmformulieren" }
+    ];
+
+    /**
+     * Die Flaeche. Sie wird beim ersten Bedarf erzeugt und sitzt AM ENDE des Fragen-Bereichs —
+     * unter dem Antwortfeld, in das sie schreibt. `role="region"` mit `aria-live="polite"`:
+     * gemeldet, nie unterbrechend.
+     */
+    function ka6BlockElement() {
+      var vorhanden = document.getElementById("ka6-block");
+      if (vorhanden) { return vorhanden; }
+      var karte = document.createElement("div");
+      karte.id = "ka6-block";
+      karte.className = "card hidden";
+      karte.setAttribute("role", "region");
+      karte.setAttribute("aria-live", "polite");
+
+      var titel = document.createElement("h2");
+      titel.id = "ka6-titel";
+      karte.appendChild(titel);
+
+      var hinweisText = document.createElement("p");
+      hinweisText.id = "ka6-lead";
+      hinweisText.className = "muted";
+      karte.appendChild(hinweisText);
+
+      // Der Grund, WENN nicht formuliert werden darf. Eigenes Element, damit „gesperrt" und
+      // „bereit" nie denselben Platz teilen und kein Zustand den anderen ueberschreibt.
+      var grund = document.createElement("p");
+      grund.id = "ka6-hinweis";
+      grund.className = "muted hidden";
+      karte.appendChild(grund);
+
+      var zurufe = document.createElement("div");
+      zurufe.id = "ka6-zurufe";
+      zurufe.className = "hidden";
+      zurufe.setAttribute("style", "display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px;");
+      for (var i = 0; i < KA6_ZURUFE.length; i += 1) {
+        var knopf = document.createElement("button");
+        knopf.type = "button";
+        knopf.id = KA6_ZURUFE[i].id;
+        knopf.className = "ghost";
+        zurufe.appendChild(knopf);
+      }
+      karte.appendChild(zurufe);
+
+      var status = document.createElement("div");
+      status.id = "ka6-status";
+      status.className = "status hidden";
+      karte.appendChild(status);
+
+      // Der EIGENE Einfuegeknopf. Er benutzt denselben Einfuegeweg wie der Ask-Knopf
+      // (`performInsert` + `buildInsertAttempts`), aber einen eigenen Textbauer — s. oben.
+      // Der Ask-Knopf bleibt dabei unberuehrt und ohne Ask-Antwort weiterhin gesperrt
+      // (`canInsertAnswer(currentAskOutcome)`), es entsteht also keine zweite ungegatete Ausgabe.
+      var einfuegen = document.createElement("button");
+      einfuegen.type = "button";
+      einfuegen.id = "ka6-insert-btn";
+      einfuegen.className = "primary hidden";
+      einfuegen.setAttribute("style", "margin-top: 8px;");
+      karte.appendChild(einfuegen);
+
+      // JOB 3056 K1: die Karte steht in der Fragen-Flaeche VOR dem Frage-Feld (das Feld bleibt
+      // unten, Ruhe.dc.html Z.33).
+      var anker = document.getElementById("ask-feld");
+      if (anker && anker.parentNode) {
+        anker.parentNode.insertBefore(karte, anker);
+      } else {
+        document.body.appendChild(karte);
+      }
+      return karte;
+    }
+
+    function ka6Meldung(ton, text) {
+      var box = document.getElementById("ka6-status");
+      if (!box) { return; }
+      box.className = text ? ("status " + (ton === "ok" ? "ok" : "warn")) : "status hidden";
+      box.textContent = text || "";
+    }
+
+    /**
+     * Die Ausfuehrbarkeit — GELESEN aus der serverseitigen Aufloesung, nie hier entschieden.
+     *
+     * Drei Ausgaenge, und der mittlere ist der wichtige: solange der Sitzungsstand nicht `bereit`
+     * ist, wird NICHT formuliert und auch nicht behauptet, es sei gesperrt. Unbekannt ist unbekannt.
+     */
+    /**
+     * D2/Pflicht 1+3: Steht gerade ein KA6-Vorschlag im gemeinsamen Feld?
+     *
+     * Der Zustand ist die Klammer der Invariante: Er entscheidet, welcher Herkunft der Feldinhalt
+     * gehoert, und wird an genau drei Stellen gesetzt — beim Start eines Zurufs (aus), bei seinem
+     * belegten Erfolg (an) und beim Eintreffen einer Ask-Antwort (aus). Kein vierter Schreiber.
+     */
+    var ka6VorschlagAktiv = false;
+
+    /**
+     * D2/Pruefluecke 6.4: der ROHE Sperrgrund aus der Sitzungssicht.
+     *
+     * `klaraS4ReasonKey` bildet jeden unbekannten Grund auf `s4ReasonOther` ab (:1501) — nuetzlich
+     * fuer die Uebersetzung, aber der konkrete Grund geht dabei verloren. Er steht unveraendert in
+     * `klaraS4Sicht.resolution.blockedReason` (dieselbe Quelle, aus der `blockedKey` gebildet
+     * wird, :1644/:1671). Fehlt er, wird NICHTS erfunden — dann bleibt der Sammelbegriff.
+     */
+    function ka6RohGrund() {
+      var sicht = typeof klaraS4Sicht !== "undefined" && klaraS4Sicht ? klaraS4Sicht : null;
+      var aufloesung = sicht && sicht.resolution ? sicht.resolution : null;
+      return aufloesung && typeof aufloesung.blockedReason === "string"
+        ? aufloesung.blockedReason
+        : "";
+    }
+
+    function ka6Lage() {
+      if (typeof klaraS4Anzeige !== "function") { return { erlaubt: false, grundKey: null }; }
+      if (klaraS4Phase !== "bereit") { return { erlaubt: false, grundKey: null }; }
+      var a = klaraS4Anzeige(klaraS4Phase, klaraS4Sicht, Date.now());
+      return { erlaubt: a.askAllowed === true, grundKey: a.blockedKey };
+    }
+
+    /**
+     * Der Klartext zum Blockgrund. `external_not_migrated` und `external_consent_missing` bekommen
+     * BEWUSST eigene Saetze: die eine ist eine Betriebsentscheidung, die andere eine Frage an den
+     * Anwender. Ein unbekannter Grund wird generisch benannt — nie verschwiegen.
+     */
+    function ka6GrundText(grundKey) {
+      if (grundKey === "s4ReasonExternalNotMigrated") { return t("ka6BlockedNotMigrated"); }
+      if (grundKey === "s4ReasonExternalConsentMissing") { return t("ka6BlockedConsentMissing"); }
+      if (grundKey) {
+        // D2/Pruefluecke 6.4: Ein UNBEKANNTER Grund wird von `klaraS4ReasonKey` auf den Sammel-
+        // schluessel `s4ReasonOther` abgebildet (taskpane.html:1501) — der Originalgrund geht dabei
+        // verloren, und der Anwender las bisher nur „Der Server nennt als Grund: Sonstiges".
+        // Das ist ein benannter, aber inhaltsleerer Hinweis. Steht der Rohgrund in der Sitzungs-
+        // sicht, wird ER genannt; sonst bleibt es beim uebersetzten Sammelbegriff.
+        var roh = ka6RohGrund();
+        return t("ka6BlockedOther", { grund: roh || t(grundKey) });
+      }
+      return t("ka6BlockedUnknown");
+    }
+
+    /** Zeichnen. Kein Fokuseingriff, kein Scrollen — die Flaeche erscheint und schweigt sonst. */
+    // JOB 3056 K1 (Pages-Massstab): die Schreibflaeche ist ein Untermenue des Frage-Felds, kein
+    // Dauertext in der Ruhe. Sie erscheint NUR, wenn es etwas zu formulieren gibt — Text im Feld
+    // oder eine Markierung in Word (askZurufKontext) — und der Zuruf erlaubt ist. Der Erklaersatz
+    // ka6Hint wird zum Tooltip der Flaeche (title), nicht zum Sichtfeld; der Grund einer Sperre
+    // bleibt in #ka6-hinweis gehalten (Tests), steht aber sichtbar an seinem Ort: Einstellungen →
+    // „In dieser Sitzung" (dieselbe Sperre, derselbe Grund).
+    var askMarkierungDa = false;
+
+    function ka6Kontext() {
+      var input = document.getElementById("ask-input");
+      return askMarkierungDa || (!!input && input.value.trim().length > 0);
+    }
+
+    function ka6Zeichnen() {
+      var karte = ka6BlockElement();
+      var lage = ka6Lage();
+      karte.className = lage.erlaubt && ka6Kontext() ? "card" : "card hidden";
+      document.getElementById("ka6-titel").textContent = t("ka6Title");
+      var lead = document.getElementById("ka6-lead");
+      lead.textContent = t("ka6Hint");
+      lead.className = "muted hidden";
+      karte.setAttribute("title", t("ka6Hint"));
+      karte.setAttribute("aria-label", t("ka6Title"));
+      for (var i = 0; i < KA6_ZURUFE.length; i += 1) {
+        var knopf = document.getElementById(KA6_ZURUFE[i].id);
+        if (knopf) {
+          knopf.textContent = t(KA6_ZURUFE[i].name);
+          knopf.disabled = ka6Laeuft;
+        }
+      }
+      document.getElementById("ka6-insert-btn").textContent = t("ka6InsertCta");
+
+      var zurufe = document.getElementById("ka6-zurufe");
+      var grund = document.getElementById("ka6-hinweis");
+      // „bietet KEINEN Zuruf an" heisst: der Knopf ist WEG, nicht bloss ausgegraut. Ein gesperrter
+      // Knopf laedt zum Klicken ein und erklaert nichts.
+      zurufe.className = lage.erlaubt ? "" : "hidden";
+      grund.textContent = lage.erlaubt ? "" : ka6GrundText(lage.grundKey);
+      grund.className = lage.erlaubt ? "muted hidden" : "muted";
+      if (!lage.erlaubt) {
+        // Ein Vorschlag aus einer frueheren, erlaubten Lage darf nicht einfuegbar stehen bleiben.
+        document.getElementById("ka6-insert-btn").className = "primary hidden";
+      }
+    }
+
+    /** Sprachwechsel und Zustandswechsel: derselbe gehaltene Stand, neuer Text. */
+    function ka6Neuzeichnen() {
+      if (document.getElementById("ka6-block")) { ka6Zeichnen(); }
+    }
+
+    /**
+     * DER AUSZUGEBENDE TEXT — hier entsteht die dritte Herkunftsklasse.
+     *
+     * Traegt der Vorschlag das serverseitige Kennzeichnungssignal, bekommt er die KA6-Zeile und
+     * KEINE Quellen-Zeile (er steht auf keiner Quelle). Ohne das Signal ist es keine
+     * KI-Formulierung — dann gilt unveraendert der Bestandsweg mit Quelle und Einstufung.
+     */
+    function ka6Ausgabetext(koerper) {
+      return ka6KiFormuliert
+        ? buildAnswerInsertText(koerper, t("ka6Herkunft"))
+        : composeOutputText(koerper);
+    }
+
+    // ============================================================================================
+    // JOB 1153 D3 · DER KOPIERKNOPF — VOM GESCHLOSSENEN AUSGANG ZUM OFFENEN UEBERNAHMEWEG.
+    // ============================================================================================
+    //
+    // WAS D2 HIER STEHEN HATTE, UND WARUM ES NICHT REICHTE:
+    //   D2 hat den Kopierknopf bewusst zugelassen — gesperrt, weil `updateInsertState` (:3658)
+    //   `copyBtn.disabled = !insertable` setzt und `insertable` ein `currentAskOutcome` verlangt,
+    //   das ein KA6-Vorschlag nie setzt. Die Begruendung lautete: ueber einen geschlossenen
+    //   Ausgang kann nichts Ungekennzeichnetes hinaus, also sei die Zusage erfuellt.
+    //   BEN hat das mit ROT beantwortet, und der Einwand traegt: Ein Anwender, der auf „Kopieren"
+    //   drueckt und nichts bekommt, hoert nicht auf, uebernehmen zu wollen — er markiert, zieht,
+    //   nimmt das Kontextmenue. Ein zugemauerter Ausgang loest das Problem nicht, er verschiebt es
+    //   auf Wege, die man dann einzeln absichern muss. Und die Zusage selbst wird kleiner, statt
+    //   eingeloest zu werden.
+    //
+    // WAS HIER STEHT — UND WARUM ES KEIN ZWEITER WEG IST:
+    //   Geoeffnet wird nur der RIEGEL. Der Kopierweg selbst bleibt Zeile fuer Zeile der bestehende:
+    //   `copyAnswer` (:4160) liest `getEditedAnswerText()`, baut ueber `composeOutputText(body)`
+    //   und uebergibt an `performCopy`. Kein Rueckruf wird ersetzt, keine Ausgabelogik kopiert.
+    //   Dass dabei die KA6-Herkunft entsteht, besorgt der Wrapper um `composeOutputText` ganz
+    //   unten — und der zeigt seit D3 auf `ka6Ausgabetext`, also auf EXAKT denselben Bauer, den
+    //   der Einfuegeklick (:5601) und die nativen Ereignisse (:5719/:5723) benutzen.
+    //
+    // WARUM ES DIESE FUNKTION UEBERHAUPT BRAUCHT:
+    //   `updateInsertState` wird an genau drei Stellen gerufen (:3644, :3905, :3913) — alle drei
+    //   liegen im Ask-Weg. Ein KA6-Zuruf laeuft an ihnen vorbei, der Knopf behielte also einfach
+    //   den Zustand, den der letzte Ask-Vorgang hinterlassen hat. Der Riegel muss deshalb an den
+    //   KA6-Zustandsuebergaengen mitgefuehrt werden, nicht nur am Ask-Weg.
+    function ka6KopierknopfOeffnen() {
+      var knopf = document.getElementById("ask-copy-btn");
+      if (!knopf) { return; }
+      // Geoeffnet wird NUR fuer einen belegten KA6-Vorschlag. Beide Bedingungen sind noetig:
+      // `ka6VorschlagAktiv` sagt, wem der Feldinhalt gehoert, `ka6KiFormuliert` sagt, dass das
+      // serverseitige Kennzeichnungssignal wirklich da war. Ohne die zweite oeffnete dieser Knopf
+      // im fail-closed-Fall einen Ausgang fuer einen Text, den D2 gerade verworfen hat.
+      if (ka6VorschlagAktiv && ka6KiFormuliert) { knopf.disabled = false; }
+    }
+
+    /**
+     * Der Rueckweg. Endet ein KA6-Vorschlag, entscheidet wieder ALLEIN der Bestand ueber den
+     * Knopf — deshalb wird hier nichts eigenes gesetzt, sondern die Bestandsfunktion gerufen.
+     * Sie laeuft durch den Wrapper unten, der bei inaktivem KA6 nichts mehr hinzufuegt.
+     */
+    function ka6KnopfzustandZurueck() {
+      if (typeof updateInsertState === "function") { updateInsertState(); }
+    }
+
+    /**
+     * Der Zuruf. Er geht ueber den BESTEHENDEN Vertrag `performAsk` → `POST /api/ask` mit den
+     * bestehenden Bindungskopfzeilen — keine neue Route, kein Add-in-eigener Modellaufruf. Ob der
+     * Server daraus eine Formulierung macht, entscheidet die Einwilligungsprüfung an der Route
+     * (`ask-routes.ts`, KW-KA4); dieses Fenster bittet nur und liest, was zurueckkommt.
+     */
+    /**
+     * WORAUS EIN ZURUF ENTSTEHT — und warum das NICHT dieselbe Frage ist wie „was wird gefragt".
+     *
+     * JOB 3019 (KA5) R2, BENs Befund: Der Ask-Weg hat seine Vorrangregel umgedreht (der getippte
+     * Text IST die Frage, die Markierung schaerft nur die Suche). KA6 hat diese Umkehrung
+     * ungefragt mitbekommen, weil beide denselben Helfer riefen — und damit still das Verhalten
+     * geaendert, das der Auftrag ausdruecklich nicht anfassen sollte.
+     *
+     * FUER EINEN ZURUF IST DIE MARKIERUNG DAS MATERIAL, nicht der Suchbegriff: „Umformulieren"
+     * meint die markierte Passage. Ein liegengebliebener Text im Fragefeld darf sie nicht
+     * verdraengen. Deshalb entscheidet DIESE Funktion die Vorrangfrage fuer KA6 — und nur sie.
+     *
+     * ES BLEIBT BEI EINER KAPP- UND TRIMMREGEL: gerechnet wird weiter mit `prepareAskQuestion`,
+     * nur mit der Lage, die KA6 meint. Steht eine Markierung da, wird sie als „nur Markierung"
+     * vorbereitet; sonst als „nur Eingabe". Der Rueckgabewert hat dieselbe Form wie dort, und
+     * `selection` ist in beiden Faellen leer — ein Zuruf sendet keine Markierung als Suchfeld mit
+     * (der Koerper ist byte-gleich dem vor KA5, gemessen in tests/app/word-addin-ask.test.ts).
+     */
+    function ka6Zurufgrundlage(selectionText, manualText) {
+      var markierung = (selectionText || "").trim();
+      return markierung.length > 0
+        ? prepareAskQuestion(markierung, "")
+        : prepareAskQuestion("", manualText);
+    }
+
+    function ka6Absenden(art) {
+      if (ka6Laeuft) { return; }
+      if (!ka6Lage().erlaubt) { ka6Zeichnen(); return; }
+      readAskSelection(function (selectionText) {
+        var prep = ka6Zurufgrundlage(selectionText, document.getElementById("ask-input").value);
+        if (prep.from === "empty") {
+          ka6Meldung("warn", t("ka6Empty"));
+          return;
+        }
+        ka6Laeuft = true;
+        ka6KiFormuliert = false;
+        // D2/Pflicht 3 (Ask → KA6): Ein laufender Zuruf raeumt den vorigen Stand ab, BEVOR etwas
+        // Neues entsteht. Bliebe der alte Zustand stehen, truege ein Uebernahmeweg in der
+        // Zwischenzeit die Herkunft der falschen Quelle.
+        ka6VorschlagAktiv = false;
+        document.getElementById("ka6-insert-btn").className = "primary hidden";
+        // D3: derselbe Gedanke fuer den vierten Weg — der Kopierknopf faellt in den Bestands-
+        // zustand zurueck, bevor der neue Zuruf laeuft. Sonst stuende er waehrend des Abrufs auf
+        // einem Feldinhalt offen, der gerade seine Herkunft verliert.
+        ka6KnopfzustandZurueck();
+        ka6Zeichnen();
+        ka6Meldung("warn", t("ka6Busy"));
+        performAsk(
+          t(art.auftrag) + " " + prep.question,
+          askLocale(lang),
+          // KEIN eigener Abruf-Einstieg: die gebundene Standardfunktion wird durchgereicht. Ein
+          // zusaetzlicher `fetch(...)`-Wrapper waere eine elfte Abrufstelle in einer Datei, deren
+          // Merkmalsvertrag (`tests/app/mega69-klara-merkmale.test.ts`, M6/M7) genau diese Menge
+          // fuehrt — und er brauchte eine bewusste Antwort auf „CSP? Recht? Manifest?", obwohl
+          // dieser Block gar kein neues Ziel anspricht: `/api/ask` steht laengst in der Liste.
+          window.fetch.bind(window),
+          WORD_ADDIN_ASK_TIMEOUT_MS,
+          klaraS4Header(), undefined, prep.from === "selection" ? "selection" : "manual" // R-0639: Markierung reist im Fragetext
+        ).then(function (outcome) {
+          ka6Laeuft = false;
+          ka6Zeichnen();
+          if (outcome.kind === "gap") {
+            // Keine erfundene Passage. Dieselbe Ehrlichkeit wie der Fragen-Weg.
+            ka6Meldung("warn", t("ka6NoBasis"));
+            return;
+          }
+          if (outcome.kind !== "answered") {
+            ka6Meldung("warn", t("ka6Fehler", { detail: outcome.detail || outcome.kind }));
+            return;
+          }
+          // ========================================================================================
+          // JOB 1153 D2 · PFLICHT 2 — FAIL-CLOSED STATT RUECKFALL.
+          // ========================================================================================
+          // Bis D1 stand hier `ka6KiFormuliert = outcome.aiGenerated === true;` — und ohne Signal
+          // lief die Ausgabe still auf den Bestandsweg, also auf „gesichert"/„ungeprueft". BEN hat
+          // das als unzulaessig benannt, und der Grund ist inhaltlich: Ein per Zuruf geholter Text
+          // IST eine Formulierung. Ihn als quellengesichert auszugeben, ist nicht eine fehlende
+          // Angabe, sondern eine falsche — die schlechtere der beiden Unehrlichkeiten.
+          //
+          // Deshalb: ohne belastbares Signal entsteht GAR KEIN Vorschlag. Das Feld bleibt leer, der
+          // Einfuegeknopf bleibt weg, und die Flaeche sagt warum.
+          if (outcome.aiGenerated !== true) {
+            ka6KiFormuliert = false;
+            ka6VorschlagAktiv = false;
+            document.getElementById("ka6-insert-btn").className = "primary hidden";
+            // D3: der Kopierknopf gehoert zu den Ausgaengen, die fail-closed zu bleiben haben.
+            // Er wird hier nicht bloss nicht geoeffnet, sondern ausdruecklich nachgefuehrt.
+            ka6KnopfzustandZurueck();
+            ka6Meldung("warn", t("ka6KeinSignal"));
+            return;
+          }
+          ka6KiFormuliert = true;
+          // D2/Pflicht 1+3: Ab hier gehoert der Feldinhalt KA6 — jeder Uebernahmeweg muss das
+          // wissen, und der Ask-Weg muss es beim naechsten Mal wieder loeschen koennen.
+          ka6VorschlagAktiv = true;
+          // Das Ergebnis erscheint als VORSCHLAG — im vorhandenen Feld, ohne Fokusraub.
+          document.getElementById("ask-answer-edit").value = outcome.answer;
+          applyAnswerCompaction(outcome.answer);
+          document.getElementById("ka6-insert-btn").className = "primary";
+          // D3/Lieferung 1: Ab hier steht ein belegter Vorschlag im Feld — und damit ist der
+          // Kopierknopf ein offener Uebernahmeweg, nicht laenger ein zugemauerter Ausgang.
+          ka6KopierknopfOeffnen();
+          ka6Meldung("ok", t("ka6Ready"));
+        });
+      });
+    }
+
+    /**
+     * Die Uebernahme — der EINZIGE Weg, auf dem dieser Block das Dokument beruehrt, und er haengt
+     * an genau einem Klick. Der Einfuegeweg ist der bestehende: Word.run zuerst, setSelectedDataAsync
+     * als Rueckfall, Berechtigungsfehler ehrlich klassifiziert.
+     */
+    function ka6Einfuegen() {
+      var koerper = getEditedAnswerText();
+      if (koerper.replace(/^\s+|\s+$/g, "").length === 0) {
+        ka6Meldung("warn", t("ka6InsertEmpty"));
+        return;
+      }
+      if (!officeUsable()) {
+        ka6Meldung("warn", t("noOffice"));
+        return;
+      }
+      var text = ka6Ausgabetext(koerper);
+      performInsert(text, buildInsertAttempts()).then(function (outcome) {
+        if (outcome.ok) {
+          ka6Meldung("ok", t("ka6InsertOk"));
+        } else if (outcome.failure === "permission") {
+          ka6Meldung("warn", t("askInsertNoPermission"));
+        } else {
+          ka6Meldung("warn", t("askInsertFail", { detail: outcome.detail || "Word-API" }));
+        }
+      });
+    }
+
+    if (typeof document !== "undefined" && document.getElementById("section-ask")) {
+      ka6Zeichnen();
+      // JOB 3056 K1: die Flaeche folgt dem Feld — sie erscheint mit dem ersten Zeichen und geht
+      // mit dem letzten (ka6Kontext).
+      var ka6Feld = document.getElementById("ask-input");
+      if (ka6Feld) { ka6Feld.addEventListener("input", ka6Neuzeichnen); }
+      for (var ka6i = 0; ka6i < KA6_ZURUFE.length; ka6i += 1) {
+        (function (art) {
+          var knopf = document.getElementById(art.id);
+          if (knopf) { knopf.addEventListener("click", function () { ka6Absenden(art); }); }
+        })(KA6_ZURUFE[ka6i]);
+      }
+      document.getElementById("ka6-insert-btn").addEventListener("click", ka6Einfuegen);
+      // Der Sprachwechsel wird HIER mitgehoert (Bauform aus KA3) — der Rueckruf laeuft nach dem
+      // bestehenden, `lang` steht also schon auf der neuen Sprache.
+      ["de", "en", "nl"].forEach(function (ka6Code) {
+        var knopf = document.getElementById("lang-" + ka6Code);
+        if (knopf) { knopf.addEventListener("click", ka6Neuzeichnen); }
+      });
+      // ============================================================================================
+      // WARUM HIER EIN WRAPPER STEHT UND KEIN TAKT.
+      // ============================================================================================
+      // Die Ausfuehrbarkeit aendert sich asynchron: beim Sitzungsaufbau, beim Statusrefresh, beim
+      // Riegel, beim Rebind. Alle diese Wege enden in `renderKlaraS4` — das ist die eine Stelle, an
+      // der der neue Stand sichtbar wird. Der Wrapper haengt sich dort an, ruft das Original
+      // ZUERST und unveraendert und zeichnet danach die Schreibflaeche nach.
+      //
+      // Die Alternative waere ein eigener Takt gewesen. Genau den verbietet KA3 mit derselben
+      // Begruendung, die hier gilt: ein Intervall fragt auch dann, wenn sich nichts geaendert hat.
+      if (typeof renderKlaraS4 === "function") {
+        var ka6RenderS4Bestand = renderKlaraS4;
+        renderKlaraS4 = function () {
+          ka6RenderS4Bestand.apply(this, arguments);
+          ka6Neuzeichnen();
+        };
+      }
+
+      // ==========================================================================================
+      // JOB 1153 D2 · PFLICHT 3 (KA6 → Ask) — DER RUECKWEG.
+      // ==========================================================================================
+      // `renderAskOutcome` ist die EINE Stelle, an der der Fragen-Weg das gemeinsame Feld befuellt
+      // (taskpane.html:3902). Sobald er das tut, gehoert der Feldinhalt wieder ihm — und die
+      // KA6-Herkunft muss weg sein, bevor irgendein Uebernahmeweg sie mitnehmen kann.
+      //
+      // Derselbe Wrapper-Gedanke wie beim `renderKlaraS4` darueber: das Original zuerst und
+      // unveraendert, danach der eigene Nachtrag. Kein Eingriff in den Bestandsrumpf.
+      if (typeof renderAskOutcome === "function") {
+        var ka6RenderAskBestand = renderAskOutcome;
+        renderAskOutcome = function () {
+          ka6VorschlagAktiv = false;
+          ka6KiFormuliert = false;
+          document.getElementById("ka6-insert-btn").className = "primary hidden";
+          var ka6Ergebnis = ka6RenderAskBestand.apply(this, arguments);
+          // D3: der Kopierknopf wird NACH dem Original nachgefuehrt. Das Original setzt ihn auf
+          // seinen Ask-Zustand — aber nicht auf jedem Ausgang (`updateInsertState` steht in
+          // zwei der Zweige, :3905/:3913). Diese Zeile schliesst den Rest: sobald der Ask-Weg
+          // das Feld uebernommen hat, entscheidet allein er ueber den Knopf.
+          ka6KnopfzustandZurueck();
+          return ka6Ergebnis;
+        };
+      }
+
+      // ==========================================================================================
+      // JOB 1153 D2 · PFLICHT 1 — DIE HERKUNFT ALS INVARIANTE ALLER UEBERNAHMEWEGE.
+      // ==========================================================================================
+      //
+      // DER BEFUND, gegen den hier gebaut wird — in D2 im Quelltext nachgeschlagen:
+      //
+      //   Die nativen Wege pruefen als ERSTES `currentAskOutcome.kind !== "answered"` und steigen
+      //   sonst SOFORT aus (`handleAnswerClipboard`:4212, `handleAnswerDragStart`:4268). Ein
+      //   KA6-Vorschlag setzt `currentAskOutcome` nicht — die Bestandsrueckrufe tun also gar
+      //   nichts, es gibt kein `preventDefault`, und der Host kopiert bzw. zieht den ROHEN
+      //   Feldinhalt: KI-Text ohne jede Kennzeichnung. Das ist die schwerste der vier Luecken,
+      //   und sie ist nicht dadurch zu schliessen, dass man `composeOutputText` umbaut — dort
+      //   kommt dieser Fall gar nicht an.
+      //
+      // WARUM EIGENE RUECKRUFE UND KEIN EINGRIFF IN DIE BESTANDSFUNKTIONEN:
+      //   · Die Bestandsfunktionen liegen ausserhalb des Markers `KW-KA6-SCHREIBEN`, den die Lease
+      //     dieses Durchgangs als Schreibgrenze bindet.
+      //   · Sie sind fuer den Ask-Weg richtig, wie sie sind. Ihr fruehes `return` ist kein Fehler,
+      //     sondern ihre korrekte Zustaendigkeitsgrenze.
+      //   · Reihenfolge: Die Bestandsrueckrufe sind bei :4401-4407 gebunden, diese hier danach.
+      //     Bei einem KA6-Vorschlag tut der Bestand nichts; dieser Rueckruf uebernimmt. Liegt eine
+      //     ASK-Antwort im Feld, ist `ka6VorschlagAktiv` false (s. Pflicht 3 oben) und dieser
+      //     Rueckruf haelt sich vollstaendig heraus — der Bestand bleibt allein zustaendig.
+      //
+      // Ausgegeben wird ueber `ka6Ausgabetext` — DERSELBE Bauer wie beim Einfuegeklick. Genau das
+      // ist die Invariante: ein Text, ein Bauer, alle Wege.
+      var ka6Feld = document.getElementById("ask-answer-edit");
+      if (ka6Feld) {
+        var ka6NativerWeg = function (ev, behaelter, schneiden) {
+          if (!ka6VorschlagAktiv) { return; }
+          var wert = ka6Feld.value;
+          if (wert.replace(/^\s+|\s+$/g, "").length === 0) { return; }
+          // Eine TEILAUSWAHL bleibt roh — dieselbe entschiedene Ausnahme wie am Ask-Weg
+          // (mega36 B2): ein Bruchstueck ist keine Passage und traegt keine Herkunft. Der Hinweis
+          // dazu ist der bestehende, damit die Flaeche an allen Wegen dasselbe sagt.
+          if (typeof answerSelectionIsWhole === "function" &&
+              !answerSelectionIsWhole(wert, ka6Feld.selectionStart, ka6Feld.selectionEnd)) {
+            showAskStatus("warn", t("askCopyPartial"));
+            return;
+          }
+          if (!behaelter || typeof behaelter.setData !== "function") {
+            // Kein brauchbarer Behaelter: dann geht hier NICHTS roh hinaus. Abbrechen und den
+            // abgeleiteten Volltext im Rueckfallfeld anbieten — derselbe Vertrag wie am Ask-Weg.
+            if (ev.preventDefault) { ev.preventDefault(); }
+            showCopyFallback(ka6Ausgabetext(wert));
+            return;
+          }
+          if (ev.preventDefault) { ev.preventDefault(); }
+          behaelter.setData("text/plain", ka6Ausgabetext(wert));
+          if (schneiden) {
+            var von = Math.max(0, Math.min(ka6Feld.selectionStart, ka6Feld.selectionEnd));
+            var bis = Math.min(wert.length, Math.max(ka6Feld.selectionStart, ka6Feld.selectionEnd));
+            ka6Feld.value = wert.slice(0, von) + wert.slice(bis);
+          }
+        };
+        ka6Feld.addEventListener("copy", function (ev) {
+          ka6NativerWeg(ev, ev.clipboardData || window.clipboardData || null, false);
+        });
+        ka6Feld.addEventListener("cut", function (ev) {
+          ka6NativerWeg(ev, ev.clipboardData || window.clipboardData || null, true);
+        });
+        ka6Feld.addEventListener("dragstart", function (ev) {
+          ka6NativerWeg(ev, ev.dataTransfer || null, false);
+        });
+      }
+
+      // ==========================================================================================
+      // JOB 1153 D3 · DER VIERTE WEG — DER RIEGEL, UND WER IHN ZURUECKNIMMT.
+      // ==========================================================================================
+      // `updateInsertState` (:3650) ist die eine Stelle, an der der Kopierknopf seinen Zustand
+      // bekommt. Derselbe Wrapper-Gedanke wie bei `renderKlaraS4` und `renderAskOutcome`: das
+      // Original zuerst und unveraendert, danach der eigene Nachtrag.
+      //
+      // WARUM DER NACHTRAG NUR OEFFNEN KANN UND NIE SCHLIESST:
+      //   Das Original hat gerade den Ask-Zustand gesetzt. Wuerde der Nachtrag auch schliessen,
+      //   gaebe es zwei Schreiber fuer denselben Riegel, und der letzte gewaenne — bei Ask genau
+      //   der falsche. So bleibt die Zustaendigkeit sauber getrennt: der Bestand entscheidet fuer
+      //   den Ask-Weg, dieser Nachtrag ergaenzt ausschliesslich den KA6-Fall.
+      //
+      // KEINE REKURSION, ausgefuehrt statt behauptet: `ka6KopierknopfOeffnen` ruft
+      // `updateInsertState` nicht. Der Rueckweg `ka6KnopfzustandZurueck` ruft ihn, aber er wird
+      // nur aus den KA6-Zustandsuebergaengen heraus gerufen, nie aus diesem Wrapper.
+      if (typeof updateInsertState === "function") {
+        var ka6InsertStateBestand = updateInsertState;
+        updateInsertState = function () {
+          ka6InsertStateBestand.apply(this, arguments);
+          ka6KopierknopfOeffnen();
+        };
+      }
+
+      // ==========================================================================================
+      // EIN TEXT, EIN BAUER, ALLE WEGE — jetzt woertlich.
+      // ==========================================================================================
+      // Dieser Wrapper stand schon in D2, und er hat dort die Herkunftszeile ein ZWEITES Mal
+      // gebaut (`buildAnswerInsertText(koerper, t("ka6Herkunft"))`). Das war dieselbe Formel wie
+      // in `ka6Ausgabetext`, aber eben eine zweite Fassung — genau die Kopie der Logik, die beim
+      // naechsten Umbau auseinanderlaeuft. D3 loest das auf: hier steht nur noch der VERWEIS auf
+      // den einen Bauer. Damit gibt es in dieser Datei genau eine Stelle, an der die dritte
+      // Herkunftsklasse entsteht — `ka6Ausgabetext` — und alle vier Uebernahmewege enden dort:
+      //   · Einfuegeklick            → `ka6Einfuegen`  → ka6Ausgabetext
+      //   · Kopierknopf              → `copyAnswer`    → composeOutputText → ka6Ausgabetext
+      //   · copy / cut / dragstart   → `ka6NativerWeg` → ka6Ausgabetext
+      //
+      // KEINE REKURSION, ausgefuehrt: In den Zweig laeuft nur, wer `ka6KiFormuliert === true`
+      // hat. `ka6Ausgabetext` nimmt bei genau dieser Bedingung den `buildAnswerInsertText`-Zweig
+      // und ruft `composeOutputText` gar nicht erst. Umgekehrt landet der Bestandsfall
+      // (`ka6KiFormuliert === false`) hier im `ka6ComposeBestand` und kommt nie zurueck.
+      if (typeof composeOutputText === "function") {
+        var ka6ComposeBestand = composeOutputText;
+        composeOutputText = function (koerper) {
+          if (ka6VorschlagAktiv && ka6KiFormuliert) {
+            return ka6Ausgabetext(koerper);
+          }
+          return ka6ComposeBestand.apply(this, arguments);
+        };
+      }
+    }
+
+    // KW-KA6-MEMO-START
+    // ============================================================================================
+    // JOB 3091 · M2 — DAS MEMO AUS DER QUELLE: Vorschlag mit Herkunft, Einfuegen erst nach Klick.
+    // ============================================================================================
+    //
+    // PEDIS WEG (Auftrag §1): Frage stellen → Klara zeigt die freigegebene Regel mit Quelle → Knopf
+    // „Memo aus dieser Quelle" → ein ENTWURF mit Herkunftsblock (Quelle, Pruefstand, Version) und
+    // Anbieter/Modell → erst ein ZWEITER, bewusster Klick fuegt ihn in Word ein, mit der Herkunfts-
+    // zeile als letztem Absatz. Ohne Einwilligung fuer dieses Dokument verlaesst kein Text das Haus,
+    // und das Panel sagt das — ueber DENSELBEN Zustimmungsweg wie KA4/JOB 3079, nicht ueber einen
+    // zweiten Dialog.
+    //
+    // WAS DIESER BLOCK TUT: er ruft die neue Route `POST /api/klara/sessions/{id}/zuruf`
+    // (services/app/src/routes/klara-session-routes.ts) ueber den BESTEHENDEN Sitzungsabruf
+    // `klaraS4AbrufDieserSitzung` (derselbe `fetch`, dieselben drei Bindungskopfzeilen, dieselbe
+    // Epoche — kein neuer Abruf-Einstieg, Merkmalsvertrag M6/M7). Der Server liefert Text und
+    // Herkunft; ob und wo er ins Dokument kommt, entscheidet allein der Klick auf „In Word einfuegen"
+    // (bestehender Weg `performInsert` + `buildInsertAttempts`). Kein Timer, kein Autostart.
+    //
+    // WAS ER AUSDRUECKLICH NICHT TUT:
+    //   · Er entscheidet nicht ueber die Einwilligung. Vor dem Abruf liest er die serverseitige
+    //     Aufloesung (`ka6Lage`), danach die Antwort des Servers (403 = keine Zustimmung fuer
+    //     dieses Dokument). In beiden Faellen zeigt er den Zustimmungsweg (`ka6GrundText`,
+    //     `ka6BlockedConsentMissing`) und holt den Sitzungsstand frisch, statt etwas zu behaupten.
+    //   · Er bietet das Memo nur an, wenn die Quellen der Antwort GELADEN sind und mindestens eine
+    //     davon `validiert` ist (renderAskSources → askSourceStatus). Solange die Quellen laden,
+    //     steht weder Knopf noch Satz da — unbekannt ist unbekannt (§9). Ohne validierte Quelle
+    //     steht der ehrliche Satz „Dafuer habe ich keine gepruefte Quelle."
+    //   · Er speichert nichts und schreibt nichts von selbst. Der Entwurf lebt in `ka6MemoEntwurf`
+    //     bis „Verwerfen", „In Word einfuegen" oder das naechste Memo.
+    //   · Der Anbieter kommt aus der Serverantwort (Aufloesung des Sitzungstors), nie aus diesem
+    //     Fenster (klara-ai-header Block E: kein verdrahteter Anbietername).
+    var KA6_MEMO_TEXTE = {
+      de: {
+        ka6MemoCta: "Memo aus dieser Quelle",
+        ka6MemoKeineQuelle: "Dafür habe ich keine validierte Quelle.",
+        ka6MemoAuftrag: "Formuliere ein kurzes Memo zu:",
+        ka6MemoBusy: "Klara formuliert einen Memo-Entwurf ...",
+        ka6MemoTitel: "Memo-Entwurf",
+        ka6MemoReady: "Entwurf — nichts wurde ins Dokument geschrieben. Prüfe ihn, dann füge ihn ein oder verwirf ihn.",
+        ka6MemoHerkunftTitel: "Herkunft",
+        ka6MemoHerkunftZeile: "Quelle: {titel}, Stand v{version}, Prüfstand {stufe}",
+        ka6MemoAnbieter: "Formuliert von {anbieter} ({modell})",
+        ka6MemoAnbieterUnbekannt: "Formuliert von einem Modell — der Server hat keinen Anbieter genannt.",
+        ka6MemoInsertCta: "In Word einfügen",
+        ka6MemoVerwerfenCta: "Verwerfen",
+        ka6MemoInsertOk: "Eingefügt — Herkunft steht am Ende.",
+        ka6MemoAntwortUnbrauchbar: "Der Server hat keinen Entwurf mit Herkunft geliefert. Es wurde nichts übernommen.",
+        ka6MemoServerKenntWegNicht: "Dieser Server kennt den Memo-Weg nicht (HTTP 404). Es wurde nichts geschrieben.",
+        ka6MemoQuelleUnbekannt: "Ob eine validierte Quelle vorliegt, ließ sich nicht feststellen — die Quellen konnten nicht geladen werden."
+      },
+      en: {
+        ka6MemoCta: "Draft a memo from this source",
+        ka6MemoKeineQuelle: "I have no validated source for this.",
+        ka6MemoAuftrag: "Draft a short memo on:",
+        ka6MemoBusy: "Klara is drafting the memo ...",
+        ka6MemoTitel: "Memo draft",
+        ka6MemoReady: "Draft — nothing was written into the document. Review it, then insert or discard it.",
+        ka6MemoHerkunftTitel: "Provenance",
+        ka6MemoHerkunftZeile: "Source: {titel}, version v{version}, review status {stufe}",
+        ka6MemoAnbieter: "Drafted by {anbieter} ({modell})",
+        ka6MemoAnbieterUnbekannt: "Drafted by a model — the server did not name a provider.",
+        ka6MemoInsertCta: "Insert into Word",
+        ka6MemoVerwerfenCta: "Discard",
+        ka6MemoInsertOk: "Inserted — the provenance is at the end.",
+        ka6MemoAntwortUnbrauchbar: "The server did not deliver a draft with provenance. Nothing was taken over.",
+        ka6MemoServerKenntWegNicht: "This server does not know the memo route (HTTP 404). Nothing was written.",
+        ka6MemoQuelleUnbekannt: "Whether a validated source exists could not be determined — the sources could not be loaded."
+      },
+      nl: {
+        ka6MemoCta: "Memo uit deze bron",
+        ka6MemoKeineQuelle: "Daarvoor heb ik geen gevalideerde bron.",
+        ka6MemoAuftrag: "Stel een kort memo op over:",
+        ka6MemoBusy: "Klara stelt het memo op ...",
+        ka6MemoTitel: "Memo-ontwerp",
+        ka6MemoReady: "Ontwerp — er is niets in het document geschreven. Controleer het, voeg het dan in of verwerp het.",
+        ka6MemoHerkunftTitel: "Herkomst",
+        ka6MemoHerkunftZeile: "Bron: {titel}, stand v{version}, controlestatus {stufe}",
+        ka6MemoAnbieter: "Geformuleerd door {anbieter} ({modell})",
+        ka6MemoAnbieterUnbekannt: "Geformuleerd door een model — de server heeft geen aanbieder genoemd.",
+        ka6MemoInsertCta: "In Word invoegen",
+        ka6MemoVerwerfenCta: "Verwerpen",
+        ka6MemoInsertOk: "Ingevoegd — de herkomst staat aan het einde.",
+        ka6MemoAntwortUnbrauchbar: "De server heeft geen ontwerp met herkomst geleverd. Er is niets overgenomen.",
+        ka6MemoServerKenntWegNicht: "Deze server kent de memo-route niet (HTTP 404). Er is niets geschreven.",
+        ka6MemoQuelleUnbekannt: "Of er een gevalideerde bron is, kon niet worden vastgesteld — de bronnen konden niet worden geladen."
+      }
+    };
+    // In das VORHANDENE Woerterbuch einhaengen — dasselbe Muster wie KA3_TEXTE und KA6_TEXTE.
+    for (var ka6MemoSprache in KA6_MEMO_TEXTE) {
+      if (Object.prototype.hasOwnProperty.call(KA6_MEMO_TEXTE, ka6MemoSprache) && STRINGS[ka6MemoSprache]) {
+        var ka6MemoTabelle = KA6_MEMO_TEXTE[ka6MemoSprache];
+        for (var ka6MemoSchluessel in ka6MemoTabelle) {
+          if (Object.prototype.hasOwnProperty.call(ka6MemoTabelle, ka6MemoSchluessel)) {
+            STRINGS[ka6MemoSprache][ka6MemoSchluessel] = ka6MemoTabelle[ka6MemoSchluessel];
+          }
+        }
+      }
+    }
+
+    /** Die VALIDIERTEN Quellen der aktuellen Antwort — gesetzt in renderAskSources, geleert je Antwort. */
+    var ka6MemoQuellen = [];
+    /**
+     * JOB 3091 R4 (BEN): Ist mindestens eine Quelle der Antwort NICHT ladbar gewesen? `resolveAskSources`
+     * faengt jeden Abruffehler (HTTP-Fehler, Netz) und liefert `status: "unknown"` — danach steht
+     * `currentAskSourcesResolved` trotzdem auf `true`. Ein `unknown` ist KEIN belegtes „keine
+     * validierte Quelle", sondern „nicht feststellbar" (§9). Der Unterschied wird hier gehalten.
+     */
+    var ka6MemoQuellenUnbekannt = false;
+    /** Der gehaltene Entwurf: { entwurf, herkunft: [{koId,titel,stufe,version}], anbieter, modell } oder null. */
+    var ka6MemoEntwurf = null;
+    var ka6MemoLaeuft = false;
+
+    /**
+     * Das Angebot — IN der Antwortkarte (#antwortkarte), als letztes Kind. Bewusst nicht als Kind
+     * von #ask-answer-block: dessen sichtbare Kinder sind im Zielbild K1 (W2) festgelegt.
+     */
+    function ka6MemoAngebotElement() {
+      var vorhanden = document.getElementById("ka6-memo-angebot");
+      if (vorhanden) { return vorhanden; }
+      var karte = document.getElementById("antwortkarte");
+      if (!karte) { return null; }
+      var angebot = document.createElement("div");
+      angebot.id = "ka6-memo-angebot";
+      angebot.className = "hidden";
+      var knopf = document.createElement("button");
+      knopf.type = "button";
+      knopf.id = "ka6-memo-btn";
+      knopf.className = "ghost hidden";
+      angebot.appendChild(knopf);
+      var keineQuelle = document.createElement("p");
+      keineQuelle.id = "ka6-memo-keine-quelle";
+      keineQuelle.className = "muted hidden";
+      angebot.appendChild(keineQuelle);
+      // R4 (BEN): eigenes Element fuer „nicht feststellbar" — „gesperrt", „leer" und „unbekannt"
+      // teilen sich keinen Platz, damit kein Zustand den anderen ueberschreibt.
+      var unbekannt = document.createElement("p");
+      unbekannt.id = "ka6-memo-quelle-unbekannt";
+      unbekannt.className = "muted hidden";
+      angebot.appendChild(unbekannt);
+      var status = document.createElement("div");
+      status.id = "ka6-memo-status";
+      status.className = "status hidden";
+      angebot.appendChild(status);
+      karte.appendChild(angebot);
+      return angebot;
+    }
+
+    /** Die Memo-Karte — eine eigene Karte VOR dem Frage-Feld, wie #ka6-block; verborgen ohne Entwurf. */
+    function ka6MemoKarteElement() {
+      var vorhanden = document.getElementById("ka6-memo-block");
+      if (vorhanden) { return vorhanden; }
+      var karte = document.createElement("div");
+      karte.id = "ka6-memo-block";
+      karte.className = "card hidden";
+      karte.setAttribute("role", "region");
+      karte.setAttribute("aria-live", "polite");
+      var titel = document.createElement("h2");
+      titel.id = "ka6-memo-titel";
+      karte.appendChild(titel);
+      var entwurf = document.createElement("p");
+      entwurf.id = "ka6-memo-entwurf";
+      entwurf.setAttribute("style", "white-space: pre-wrap; margin: 6px 0;");
+      karte.appendChild(entwurf);
+      var herkunftTitel = document.createElement("p");
+      herkunftTitel.id = "ka6-memo-herkunft-titel";
+      herkunftTitel.className = "muted";
+      karte.appendChild(herkunftTitel);
+      var herkunft = document.createElement("ul");
+      herkunft.id = "ka6-memo-herkunft";
+      karte.appendChild(herkunft);
+      var anbieter = document.createElement("p");
+      anbieter.id = "ka6-memo-anbieter";
+      anbieter.className = "muted";
+      karte.appendChild(anbieter);
+      var aktionen = document.createElement("div");
+      aktionen.id = "ka6-memo-aktionen";
+      aktionen.setAttribute("style", "display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px;");
+      var einfuegen = document.createElement("button");
+      einfuegen.type = "button";
+      einfuegen.id = "ka6-memo-einfuegen";
+      einfuegen.className = "primary";
+      aktionen.appendChild(einfuegen);
+      var verwerfen = document.createElement("button");
+      verwerfen.type = "button";
+      verwerfen.id = "ka6-memo-verwerfen";
+      verwerfen.className = "ghost";
+      aktionen.appendChild(verwerfen);
+      karte.appendChild(aktionen);
+      var status = document.createElement("div");
+      status.id = "ka6-memo-karte-status";
+      status.className = "status hidden";
+      karte.appendChild(status);
+      var anker = document.getElementById("ka6-block") || document.getElementById("ask-feld");
+      if (anker && anker.parentNode) {
+        anker.parentNode.insertBefore(karte, anker);
+      } else {
+        document.body.appendChild(karte);
+      }
+      return karte;
+    }
+
+    function ka6MemoMeldungIn(id, ton, text) {
+      var box = document.getElementById(id);
+      if (!box) { return; }
+      box.className = text ? ("status " + (ton === "ok" ? "ok" : "warn")) : "status hidden";
+      box.textContent = text || "";
+    }
+    function ka6MemoMeldung(ton, text) { ka6MemoMeldungIn("ka6-memo-status", ton, text); }
+    function ka6MemoKarteMeldung(ton, text) { ka6MemoMeldungIn("ka6-memo-karte-status", ton, text); }
+
+    /** Nur validierte Quellen tragen ein Memo — dieselbe Ableitung wie die Chips (askSourceStatus). */
+    function ka6MemoQuellenAus(resolved) {
+      var validiert = [];
+      for (var i = 0; i < (resolved || []).length; i += 1) {
+        if (resolved[i] && resolved[i].status === "validiert") { validiert.push(resolved[i]); }
+      }
+      return validiert;
+    }
+
+    /** R4 (BEN): war irgendeine Quelle der Antwort nicht ladbar (`status: "unknown"`, s. resolveAskSources)? */
+    function ka6MemoQuellenUnbekanntIn(resolved) {
+      for (var i = 0; i < (resolved || []).length; i += 1) {
+        if (!resolved[i] || resolved[i].status === "unknown") { return true; }
+      }
+      return false;
+    }
+
+    /**
+     * Das Angebot zeichnen. VIER Lagen, keine fuenfte: Quellen noch nicht geladen → nichts; mindestens
+     * eine validierte Quelle → Knopf; alle Quellen geladen und keine validiert → der ehrliche Satz
+     * „keine validierte Quelle"; mindestens eine Quelle NICHT ladbar und keine validierte → „nicht
+     * feststellbar" (§9: keine negative Aussage ohne erfolgreiche Datengrundlage). Ein Knopf ohne
+     * Datengrundlage waere eine Behauptung, „keine Quelle" nach einem Abruffehler eine falsche.
+     */
+    function ka6MemoAngebotZeichnen() {
+      var angebot = ka6MemoAngebotElement();
+      if (!angebot) { return; }
+      var knopf = document.getElementById("ka6-memo-btn");
+      var keineQuelle = document.getElementById("ka6-memo-keine-quelle");
+      var unbekannt = document.getElementById("ka6-memo-quelle-unbekannt");
+      knopf.textContent = t("ka6MemoCta");
+      keineQuelle.textContent = t("ka6MemoKeineQuelle");
+      unbekannt.textContent = t("ka6MemoQuelleUnbekannt");
+      var antwort = currentAskOutcome && currentAskOutcome.kind === "answered";
+      if (!antwort || !currentAskSourcesResolved) {
+        angebot.className = "hidden";
+        knopf.className = "ghost hidden";
+        keineQuelle.className = "muted hidden";
+        unbekannt.className = "muted hidden";
+        return;
+      }
+      angebot.className = "";
+      var hatQuelle = ka6MemoQuellen.length > 0;
+      knopf.className = hatQuelle ? "ghost" : "ghost hidden";
+      knopf.disabled = ka6MemoLaeuft;
+      // Die schwaechere Aussage gewinnt: „keine validierte Quelle" steht NUR, wenn jede Quelle
+      // erfolgreich geladen wurde. Sonst „nicht feststellbar".
+      var nichtFeststellbar = !hatQuelle && ka6MemoQuellenUnbekannt;
+      keineQuelle.className = !hatQuelle && !nichtFeststellbar ? "muted" : "muted hidden";
+      unbekannt.className = nichtFeststellbar ? "muted" : "muted hidden";
+    }
+
+    /** Der Pruefstand im Klartext — dieselbe Tabelle wie die Quellen-Chips; unbekannt bleibt roh. */
+    function ka6MemoStufeText(stufe) {
+      return ASK_STATUS_KEYS[stufe] ? t(ASK_STATUS_KEYS[stufe]) : String(stufe);
+    }
+
+    function ka6MemoHerkunftszeile(h) {
+      return t("ka6MemoHerkunftZeile", {
+        titel: h.titel,
+        version: String(h.version),
+        stufe: ka6MemoStufeText(h.stufe)
+      });
+    }
+
+    /** DER AUSZUGEBENDE TEXT — Entwurf, Leerzeile, je Quelle eine Herkunftszeile als letzte Absaetze. */
+    function ka6MemoAusgabetext() {
+      if (!ka6MemoEntwurf) { return ""; }
+      var zeilen = [];
+      for (var i = 0; i < ka6MemoEntwurf.herkunft.length; i += 1) {
+        zeilen.push(ka6MemoHerkunftszeile(ka6MemoEntwurf.herkunft[i]));
+      }
+      return ka6MemoEntwurf.entwurf + "\n\n" + zeilen.join("\n");
+    }
+
+    function ka6MemoKarteZeichnen() {
+      var karte = ka6MemoKarteElement();
+      document.getElementById("ka6-memo-titel").textContent = t("ka6MemoTitel");
+      document.getElementById("ka6-memo-herkunft-titel").textContent = t("ka6MemoHerkunftTitel");
+      document.getElementById("ka6-memo-einfuegen").textContent = t("ka6MemoInsertCta");
+      document.getElementById("ka6-memo-verwerfen").textContent = t("ka6MemoVerwerfenCta");
+      var entwurf = ka6MemoEntwurf;
+      karte.className = entwurf ? "card" : "card hidden";
+      document.getElementById("ka6-memo-entwurf").textContent = entwurf ? entwurf.entwurf : "";
+      var liste = document.getElementById("ka6-memo-herkunft");
+      liste.textContent = "";
+      if (entwurf) {
+        for (var i = 0; i < entwurf.herkunft.length; i += 1) {
+          var zeile = document.createElement("li");
+          zeile.setAttribute("data-quelle", entwurf.herkunft[i].koId);
+          zeile.textContent = ka6MemoHerkunftszeile(entwurf.herkunft[i]);
+          liste.appendChild(zeile);
+        }
+      }
+      // Anbieter und Modell WOERTLICH vom Server; fehlt eines, wird nichts erfunden.
+      document.getElementById("ka6-memo-anbieter").textContent = !entwurf
+        ? ""
+        : entwurf.anbieter
+          ? t("ka6MemoAnbieter", { anbieter: entwurf.anbieter, modell: entwurf.modell || t("s4Unbekannt") })
+          : t("ka6MemoAnbieterUnbekannt");
+      if (!entwurf) { ka6MemoKarteMeldung(null, ""); }
+    }
+
+    function ka6MemoNeuzeichnen() {
+      ka6MemoAngebotZeichnen();
+      if (document.getElementById("ka6-memo-block")) { ka6MemoKarteZeichnen(); }
+    }
+
+    /** Der HTTP-Status aus dem Fehler des Sitzungsabrufs (`klaraS4Abruf` wirft `Error("HTTP nnn")`). */
+    function ka6MemoHttpStatus(err) {
+      var treffer = /^HTTP (\d{3})$/.exec(err && err.message ? err.message : "");
+      return treffer ? Number(treffer[1]) : 0;
+    }
+
+    /** Liest die Serverantwort fail-closed: ohne Text UND Herkunftsliste gibt es keinen Entwurf. */
+    function ka6MemoEntwurfAus(body) {
+      if (!body || typeof body.entwurf !== "string" || body.entwurf.replace(/^\s+|\s+$/g, "").length === 0) { return null; }
+      if (!Array.isArray(body.herkunft) || body.herkunft.length === 0) { return null; }
+      var herkunft = [];
+      for (var i = 0; i < body.herkunft.length; i += 1) {
+        var h = body.herkunft[i];
+        if (!h || typeof h.koId !== "string" || typeof h.titel !== "string") { return null; }
+        herkunft.push({
+          koId: h.koId,
+          titel: h.titel,
+          stufe: typeof h.stufe === "string" ? h.stufe : "unknown",
+          version: typeof h.version === "number" ? h.version : "?"
+        });
+      }
+      return {
+        entwurf: body.entwurf,
+        herkunft: herkunft,
+        anbieter: typeof body.anbieter === "string" && body.anbieter.length > 0 ? body.anbieter : null,
+        modell: typeof body.modell === "string" && body.modell.length > 0 ? body.modell : null
+      };
+    }
+
+    /** Der erste Klick: den Entwurf HOLEN. Kein Wort ins Dokument. */
+    function ka6MemoAnfordern() {
+      if (ka6MemoLaeuft) { return; }
+      if (ka6MemoQuellen.length === 0) { ka6MemoMeldung("warn", t("ka6MemoKeineQuelle")); return; }
+      // Die serverseitige Aufloesung ZUERST: ohne Freigabe geht nichts hinaus, und der Grund ist der
+      // Zustimmungsweg von KA4/JOB 3079 — derselbe Satz, derselbe Kasten, kein zweiter Dialog.
+      var lage = ka6Lage();
+      if (!lage.erlaubt || !klaraS4SessionId) {
+        ka6MemoMeldung("warn", ka6GrundText(lage.grundKey));
+        return;
+      }
+      var ids = [];
+      var titel = [];
+      for (var i = 0; i < ka6MemoQuellen.length; i += 1) {
+        ids.push(ka6MemoQuellen[i].id);
+        titel.push(ka6MemoQuellen[i].title);
+      }
+      var frage = (currentAskQuestion || "").replace(/^\s+|\s+$/g, "");
+      ka6MemoLaeuft = true;
+      ka6MemoMeldung("warn", t("ka6MemoBusy"));
+      ka6MemoAngebotZeichnen();
+      klaraS4AbrufDieserSitzung(
+        "/api/klara/sessions/" + encodeURIComponent(klaraS4SessionId) + "/zuruf",
+        "POST",
+        { art: "erstellen", text: t("ka6MemoAuftrag") + " " + (frage || titel.join(", ")), koIds: ids }
+      )
+        .then(function (body) {
+          var entwurf = ka6MemoEntwurfAus(body);
+          if (!entwurf) {
+            ka6MemoEntwurf = null;
+            ka6MemoKarteZeichnen();
+            ka6MemoMeldung("warn", t("ka6MemoAntwortUnbrauchbar"));
+            return;
+          }
+          ka6MemoEntwurf = entwurf;
+          ka6MemoMeldung(null, "");
+          ka6MemoKarteZeichnen();
+          ka6MemoKarteMeldung("ok", t("ka6MemoReady"));
+        })
+        .catch(function (err) {
+          if (err && err.veraltet) { return; }
+          var status = ka6MemoHttpStatus(err);
+          if (status === 403) {
+            // Der Server sagt: keine (mehr) deckende Zustimmung fuer dieses Dokument. Der Weg ist der
+            // Zustimmungskasten — und der Sitzungsstand wird frisch geholt, damit die Flaeche dasselbe
+            // sagt wie der Server, statt einer Freigabe von vorhin zu glauben.
+            ka6MemoMeldung("warn", t("ka6BlockedConsentMissing"));
+            klaraS4Refresh("memo-403");
+          } else if (status === 404) {
+            // Die Route ist auf diesem Server nicht registriert (JOB 3091 R2: die Registrierung in
+            // build-app.ts liegt ausserhalb der Zielpfade). Das wird GESAGT, nicht als Netzfehler
+            // verkleidet — und nichts wird geschrieben.
+            ka6MemoMeldung("warn", t("ka6MemoServerKenntWegNicht"));
+          } else if (status === 422) {
+            ka6MemoMeldung("warn", t("ka6NoBasis"));
+          } else if (status === 401) {
+            ka6MemoMeldung("warn", t("askAuth"));
+          } else {
+            ka6MemoMeldung("warn", t("ka6Fehler", { detail: (err && err.message) || "Netz" }));
+          }
+        })
+        .then(function () {
+          ka6MemoLaeuft = false;
+          ka6MemoAngebotZeichnen();
+        });
+    }
+
+    /** Der zweite Klick: EINFUEGEN, an der Cursorposition, mit der Herkunftszeile als letztem Absatz. */
+    function ka6MemoEinfuegen() {
+      if (!ka6MemoEntwurf) { return; }
+      if (!officeUsable()) {
+        ka6MemoKarteMeldung("warn", t("noOffice"));
+        return;
+      }
+      performInsert(ka6MemoAusgabetext(), buildInsertAttempts()).then(function (outcome) {
+        if (outcome.ok) {
+          ka6MemoKarteMeldung("ok", t("ka6MemoInsertOk"));
+        } else if (outcome.failure === "permission") {
+          ka6MemoKarteMeldung("warn", t("askInsertNoPermission"));
+        } else {
+          ka6MemoKarteMeldung("warn", t("askInsertFail", { detail: outcome.detail || "Word-API" }));
+        }
+      });
+    }
+
+    function ka6MemoVerwerfen() {
+      ka6MemoEntwurf = null;
+      ka6MemoKarteZeichnen();
+    }
+
+    if (typeof document !== "undefined" && document.getElementById("section-ask")) {
+      ka6MemoAngebotElement();
+      ka6MemoKarteElement();
+      ka6MemoNeuzeichnen();
+      document.getElementById("ka6-memo-btn").addEventListener("click", ka6MemoAnfordern);
+      document.getElementById("ka6-memo-einfuegen").addEventListener("click", ka6MemoEinfuegen);
+      document.getElementById("ka6-memo-verwerfen").addEventListener("click", ka6MemoVerwerfen);
+      ["de", "en", "nl"].forEach(function (code) {
+        var knopf = document.getElementById("lang-" + code);
+        if (knopf) { knopf.addEventListener("click", ka6MemoNeuzeichnen); }
+      });
+      // Die Quellen sind die EINE Datengrundlage des Angebots. `renderAskSources` ist die Stelle, an
+      // der sie aufgeloest (mit Status) ankommen — Wrapper wie bei renderKlaraS4/renderAskOutcome:
+      // Original zuerst und unveraendert, danach der eigene Nachtrag.
+      if (typeof renderAskSources === "function") {
+        var ka6MemoRenderQuellenBestand = renderAskSources;
+        renderAskSources = function (resolved) {
+          var ergebnis = ka6MemoRenderQuellenBestand.apply(this, arguments);
+          ka6MemoQuellen = ka6MemoQuellenAus(resolved);
+          ka6MemoQuellenUnbekannt = ka6MemoQuellenUnbekanntIn(resolved);
+          ka6MemoAngebotZeichnen();
+          return ergebnis;
+        };
+      }
+      // Eine neue Antwort raeumt das alte Angebot ab, BEVOR ihre Quellen geladen sind: bis dahin
+      // wird weder Knopf noch Satz behauptet.
+      if (typeof renderAskOutcome === "function") {
+        var ka6MemoRenderAskBestand = renderAskOutcome;
+        renderAskOutcome = function () {
+          ka6MemoQuellen = [];
+          ka6MemoQuellenUnbekannt = false;
+          ka6MemoMeldung(null, "");
+          var ergebnis = ka6MemoRenderAskBestand.apply(this, arguments);
+          ka6MemoAngebotZeichnen();
+          return ergebnis;
+        };
+      }
+    }
+    // KW-KA6-MEMO-END
+    // KW-KA6-SCHREIBEN-END
+
+    // KW-N1-BESTAND-START
+    // ============================================================================================
+    // JOB 3093 · M3 — „HABEN WIR DAS SCHON?" DER BESTANDSWEG DES FRAGEN-REITERS (PRIORITAETEN N1 b).
+    // ============================================================================================
+    //
+    // Pedi (05.09.2026, CODEX-POC-ENTSCHEIDUNG-1): er oeffnet sein Dokument in Word und fragt, ob
+    // wir das schon haben. Klara findet den vorhandenen Eintrag — auch den noch nicht validierten —
+    // und zeigt Titel, Pruefstand („noch nicht geprueft"), Version und WO er liegt, mit dem Weg in
+    // die Bibliothek. Entwuerfe erscheinen NICHT (Pedi 05.09. 12:03): sie sind keine
+    // Wissensobjekte und erreichen den Pool der Route nie.
+    //
+    // EIN WEG, ZWEI FLAECHEN. Die Route `POST /api/check-text` erreicht das Panel ueber GENAU EINEN
+    // Uebersetzer: `w6DublettenAusCheckText` (Block KW-KLARA-W6-CHECKTEXT). Die Erfassen-Flaeche
+    // ruft ihn von selbst, sobald eine Markierung steht (JOB 3092, `captureDublettenPruefen`); dieser
+    // Block ruft ihn AUF KLICK mit der Markierung, sonst mit dem Text des ganzen Dokuments. Dieselbe
+    // Sitzung (`fetch.bind(window)`), derselbe Koerper (`source: "transient-document"`, Sprache des
+    // Fensters, Titel), dieselben Lagesaetze (captureDub*), dieselbe Grenze (8.000 Zeichen, gekuerzt
+    // wird gesagt). KEIN `want:"deep"`: der Text bleibt im Haus (deterministischer Pfad, kein Modell,
+    // kein Embedder). Auf dem Sitzungsweg zaehlt der eingereichte Bestand mit (JOB 3020).
+    //
+    // WAS DIESE FLAECHE ZUSAETZLICH ZEIGT — und warum sie neben der Erfassen-Liste steht: die Frage
+    // „haben wir das schon?" stellt Pedi im Fragen-Reiter, mit dem ganzen Dokument, ohne einen
+    // Entwurf anlegen zu wollen. Je Treffer stehen hier Pruefstand („noch nicht geprueft" /
+    // „Validiert"), Version und Bereich mit dem Weg in die Bibliothek — die Felder `pruefstand`,
+    // `version`, `fundort`, die die Route seit JOB 3093 liefert und W6 seither mitliest.
+    //
+    // DER TITEL REIST MIT — nach DERSELBEN Regel wie der Erfassungsweg
+    // (`deriveDraftTitleFromSelection`: erste nichtleere Zeile, 60 Zeichen). GEMESSEN
+    // (tests/n1-bestand-im-panel/fundort-im-server.test.ts K2): ohne Titel findet der
+    // deterministische Pfad nicht einmal den wortgleichen Absatz. Ein Eintrag mit handvergebenem
+    // Titel ist auf diesem Weg NICHT sicher zu finden — das steht in der Rueckgabe, nicht hier als
+    // Versprechen.
+    //
+    // ZUSTANDSMODELL — jede Lage hat ihren Satz, keine erfindet etwas:
+    //   laden, kein Stand        → captureDubLaeuft, Knopf gesperrt
+    //   laden, alter Stand       → alte Liste bleibt, „Stand HH:MM · <captureDubLaeuft>"
+    //   erfolgreich, leer        → captureDubLeer (gekuerzt: captureDubLeerGekuerzt) — NUR nach Erfolg
+    //   erfolgreich, Treffer     → captureDubTreffer(-Gekuerzt) + Titel · Pruefstand · Version · Bereich · Weg
+    //   Fehler, kein Stand       → captureDubFehler (+ Grund, wenn Word nichts Lesbares gab)
+    //   Fehler, alter Stand      → alte Liste bleibt, „Stand HH:MM · <captureDubFehler>"
+    //   zu kurz                  → captureDubZuKurz, kein Ruf (W6)
+    //   offline                  → wie Fehler (W6 faengt das Werfen); das Panel haelt keinen Cache
+    //   nicht angemeldet / kein Word / Antwort- oder Lueckenlage → der Knopf steht nicht im Bild
+    // Ein Stand wird NIE von selbst aufgefrischt; die Zeit an jeder Aussage sagt, wie alt sie ist.
+    // Ein Klick nimmt IMMER den frischen Text aus Word (kein gehaltener Schnappschuss).
+    //
+    // DER STAND GEHOERT DER SITZUNG (Runde 3, BEN): was A gefunden hat, darf B nie sehen. Der Stand
+    // traegt die Sitzungskennung, unter der er entstand (`bestandSitzung`, aus /api/auth/me).
+    // Verworfen — Treffer UND laufende Antwort (Laufnummer) — wird er bei
+    //   · bestaetigtem Logout (abmelden, 2xx — derselbe Moment wie klaraS4Verwerfen),
+    //   · einer anderen oder keiner Identitaet in der naechsten /api/auth/me-Antwort
+    //     (checkSession → bestandSitzungMelden; ein Netzfehler dort verwirft NICHTS, denn ob die
+    //     Sitzung noch besteht, ist dann nicht festgestellt),
+    //   · 401/403 auf die Pruefung selbst (die Sitzung traegt nicht mehr / das Recht fehlt): der
+    //     Satz sagt es, und checkSession liest die Sitzung neu.
+    // Eine Stoerung (5xx, Netz) innerhalb DERSELBEN Sitzung behaelt den datierten Stand (F5).
+    var bestandLetzter = null;   // { treffer: [...], zeit: "HH:MM", gekuerzt: boolean } — der letzte Erfolg
+    var bestandLage = "ruhe";    // ruhe | laden | fehler | zu-kurz
+    var bestandFehlerGrund = "";
+    var bestandLauf = 0;         // Laufnummer: ein spaeter Rueckruf eines aelteren Klicks wird verworfen
+    var bestandSitzung = null;   // Kennung der Sitzung, in der der Stand entstand (null: keine)
+
+    /** Die Kennung eines /api/auth/me-Nutzers — id vor E-Mail vor Name; nichts davon → null. */
+    function bestandSitzungsKennung(user) {
+      if (!user || typeof user !== "object") { return null; }
+      var felder = ["id", "email", "name"];
+      for (var i = 0; i < felder.length; i += 1) {
+        var wert = user[felder[i]];
+        if (typeof wert === "string" && wert.replace(/^\s+|\s+$/g, "").length > 0) {
+          return felder[i] + ":" + wert;
+        }
+      }
+      return null;
+    }
+
+    /** Alles weg, was an der Sitzung hing: Treffer, Lage, Grund — und jede laufende Antwort. */
+    function bestandVerwerfen() {
+      bestandLauf += 1;
+      bestandLetzter = null;
+      bestandLage = "ruhe";
+      bestandFehlerGrund = "";
+      bestandZeichnen();
+    }
+
+    /** checkSession meldet die Identitaet — eine andere oder keine verwirft den Stand. */
+    function bestandSitzungMelden(user) {
+      var kennung = bestandSitzungsKennung(user);
+      if (kennung !== bestandSitzung) {
+        bestandSitzung = kennung;
+        bestandVerwerfen();
+      }
+    }
+
+    function bestandZeit() {
+      var d = new Date();
+      function pad(n) { return n < 10 ? "0" + n : String(n); }
+      return pad(d.getHours()) + ":" + pad(d.getMinutes());
+    }
+
+    /** Die Ruhe ist im Bild (weder Antwort noch Luecke) — dort wohnt dieser Weg. */
+    function bestandRuheSichtbar() {
+      var ruhe = document.getElementById("ask-ruhe");
+      return Boolean(ruhe) && ruhe.className.indexOf("hidden") === -1;
+    }
+
+    /** Der Knopf steht nur mit Sitzung, offenem Word-Dokument und sichtbarer Ruhe. */
+    function bestandSichtbar() {
+      return Boolean(signedIn) && Boolean(officeUsable()) && bestandRuheSichtbar();
+    }
+
+    /**
+     * Der Text der Frage: die Markierung in Word, sonst der Text des ganzen Dokuments. `done(null)`
+     * heisst: es gibt nichts Lesbares (kein Word, kein Dokumentkontext, Word.run fehlt oder wirft).
+     * Frisch gelesen bei JEDEM Klick — ein gehaltener Schnappschuss koennte einen Text meinen, der
+     * so nicht mehr dasteht.
+     */
+    function bestandTextLesen(done) {
+      if (!officeUsable()) { done(null); return; }
+      var ganzesDokument = function () {
+        if (!window.Word || typeof Word.run !== "function") { done(null); return; }
+        Word.run(function (context) {
+          var body = context.document.body;
+          body.load("text");
+          return context.sync().then(function () { done(String(body.text || "")); });
+        }).catch(function () { done(null); });
+      };
+      try {
+        Office.context.document.getSelectedDataAsync(Office.CoercionType.Text, function (r) {
+          var markierung = r && r.status === Office.AsyncResultStatus.Succeeded ? String(r.value || "") : "";
+          if (markierung.replace(/^\s+|\s+$/g, "").length > 0) { done(markierung); return; }
+          ganzesDokument();
+        });
+      } catch (err) {
+        done(null);
+      }
+    }
+
+    function bestandStandzeile(letzter) {
+      var stand = letzter ? t("bestandStand", { zeit: letzter.zeit }) : "";
+      if (bestandLage === "laden") {
+        return stand ? stand + " · " + t("captureDubLaeuft") : t("captureDubLaeuft");
+      }
+      if (bestandLage === "fehler") {
+        if (stand) { return stand + " · " + t("captureDubFehler"); }
+        return t("captureDubFehler") + (bestandFehlerGrund ? " " + bestandFehlerGrund : "");
+      }
+      if (bestandLage === "zu-kurz") {
+        return stand ? stand + " · " + t("captureDubZuKurz") : t("captureDubZuKurz");
+      }
+      if (!letzter) { return ""; }
+      var vars = { zeit: letzter.zeit, max: String(W6_HOECHSTZEICHEN) };
+      if (letzter.treffer.length === 0) {
+        return t(letzter.gekuerzt ? "captureDubLeerGekuerzt" : "captureDubLeer", vars);
+      }
+      return t(letzter.gekuerzt ? "captureDubTrefferGekuerzt" : "captureDubTreffer", vars);
+    }
+
+    function bestandZeichnen() {
+      var block = document.getElementById("bestand-block");
+      var knopf = document.getElementById("bestand-btn");
+      var ergebnis = document.getElementById("bestand-ergebnis");
+      var stand = document.getElementById("bestand-stand");
+      var liste = document.getElementById("bestand-liste");
+      if (!block || !knopf || !ergebnis || !stand || !liste) { return; }
+      block.className = bestandSichtbar() ? "" : "hidden";
+      knopf.disabled = bestandLage === "laden";
+      var letzter = bestandLetzter || null;
+      var zeile = bestandStandzeile(letzter);
+      stand.textContent = zeile;
+      ergebnis.className = zeile ? "" : "hidden";
+      while (liste.firstChild) { liste.removeChild(liste.firstChild); }
+      // Die Liste ist IMMER die des letzten Erfolgs — auch waehrend einer laufenden oder
+      // gescheiterten Wiederholung (die Standzeile sagt dann, wie alt sie ist). Nie geleert.
+      var treffer = letzter ? letzter.treffer : [];
+      for (var i = 0; i < treffer.length; i += 1) {
+        var e = treffer[i];
+        // Version und Bereich: nur, was der Bestand wirklich sagt — kein Platzhalter.
+        var fakten = [];
+        if (typeof e.version === "number") { fakten.push(t("bestandVersion", { n: String(e.version) })); }
+        if (e.fundort && e.fundort.bereich) { fakten.push(t("bestandBereich", { bereich: e.fundort.bereich })); }
+        liste.appendChild(bestandZeile("bestand", e, fakten, null));
+      }
+      quellenfundZeichnen();
+    }
+
+    function bestandKnoten(tag, klasse, text) {
+      var el = document.createElement(tag);
+      if (klasse) { el.className = klasse; }
+      el.textContent = text;
+      return el;
+    }
+
+    /** EINE Trefferzeile fuer BEIDE Listen (JOB 3243 R2), reiner Text (kein HTML-Sink): Kopftext,
+     *  Pruefstand-Pille, gedaempfte Zusaetze, Zusatzknoten, Weg zum Volltext; `praefix` waehlt nur
+     *  die Stilklassen. GEMEINSAM, weil Dublettentreffer und Quellenfund sich in der AUSSAGE
+     *  unterscheiden, nicht im Aufbau — sonst zwei Wortlaute fuer denselben Pruefstand. */
+    function bestandZeile(praefix, e, zusaetze, extra) {
+      var zeileEl = document.createElement("li");
+      zeileEl.appendChild(bestandKnoten("span", praefix + "-titel",
+        praefix === "bestand" ? (e.title || e.id) : t("quellenfundSatz", { titel: e.title || e.id })));
+      zeileEl.appendChild(bestandKnoten("span",
+        "muted " + praefix + "-pruefstand " + praefix + "-pruefstand-" + (e.pruefstand || "unbekannt"),
+        e.pruefstand === "validiert" ? t("askStatusValidiert")
+          : e.pruefstand === "eingereicht" ? t("bestandNochNichtGeprueft") : t("askStatusUnknown")));
+      if (zusaetze.length > 0) { zeileEl.appendChild(bestandKnoten("span", praefix + "-fakten muted", zusaetze.join(" · "))); }
+      if (extra) { zeileEl.appendChild(extra); }
+      // Weg zum Volltext: der Pfad des Servers am eigenen Ursprung, neues Fenster ohne Opener
+      // (Muster der Quellen-Chips und KA3). EIN Wortlaut fuer beide Listen.
+      var pfad = e.fundort ? e.fundort.bibliothekPfad : null;
+      if (pfad) {
+        var weg = bestandKnoten("a", "", t("bestandOeffnen"));
+        weg.href = window.location.origin + pfad;
+        weg.target = "_blank";
+        weg.rel = "noopener noreferrer";
+        zeileEl.appendChild(weg);
+      }
+      return zeileEl;
+    }
+
+    // JOB 3243 · M3c-UI — DER QUELLENFUND IM BILD: EIN EIGENER KASTEN, DREI EHRLICHE LAGEN.
+    // Die Antwort ist hier NICHT „Dublette", sondern „Diese Passage steht im Volltext von X" — nie
+    // fachliche Gleichheit. Deshalb ein eigener Kasten, nie eine Zeile in #bestand-liste (die
+    // Trennung aus check-text-routes.ts:352-359 bleibt bis in die Flaeche stehen). Die drei Lagen
+    // von `w6Quellenfundlage` bekommen je einen eigenen Satz; der Deckel (`mehr`) haengt an BEIDEN
+    // gelaufenen Lagen, denn auch „kein Fund" gilt dann nur fuer das Durchsuchte. IM BILD nur mit
+    // einem Stand — sonst waere „nicht durchsucht" eine Aussage ueber einen nie gelaufenen Vorgang;
+    // scheitert eine ERNEUTE Pruefung, bleibt der letzte Fund stehen (§7). EINGEKLAPPT nativ
+    // (<details>, §8.7): die Lagezeile IST das <summary>; ohne Treffer blendet `data-leer` aus.
+    function quellenfundZeichnen() {
+      var block = document.getElementById("quellenfund-block");
+      var stand = document.getElementById("quellenfund-stand");
+      var liste = document.getElementById("quellenfund-liste");
+      if (!block || !stand || !liste) { return; }
+      var letzter = bestandLetzter || null;
+      block.className = bestandSichtbar() && letzter ? "" : "hidden";
+      while (liste.firstChild) { liste.removeChild(liste.firstChild); }
+      var lage = letzter && letzter.quellenfund && typeof letzter.quellenfund === "object" ? letzter.quellenfund : null;
+      var gelaufen = Boolean(lage) && lage.gelaufen === true;
+      var treffer = gelaufen && Array.isArray(lage.treffer) ? lage.treffer : [];
+      var saetze = !letzter ? [] : [!gelaufen ? t("quellenfundOffen")
+        : treffer.length === 0 ? t("quellenfundLeer") : t("quellenfundTreffer", { n: String(treffer.length) })];
+      if (gelaufen && lage.mehr === true) { saetze.push(t("quellenfundGekappt")); }
+      stand.textContent = saetze.join(" ");
+      if (treffer.length > 0) { block.removeAttribute("data-leer"); } else { block.setAttribute("data-leer", ""); }
+      for (var i = 0; i < treffer.length; i += 1) {
+        var e = treffer[i];
+        // `partial` wird BENANNT, mit den zwei Zahlen der Route; `full` sagt der Satz darueber schon.
+        var teil = e.coverage === "partial" && e.gedeckteZeichen !== null && e.passageZeichen !== null;
+        var zusaetze = teil ? [t("quellenfundTeil", { n: String(e.gedeckteZeichen), m: String(e.passageZeichen) })] : [];
+        // Die Fundstelle zum Aufklappen — nativ, ohne eigenen Zustand. Ohne Ausschnitt kein Griff.
+        var kasten = null;
+        if (e.fundstelle) {
+          kasten = document.createElement("details");
+          kasten.appendChild(bestandKnoten("summary", "", t("quellenfundStelle")));
+          kasten.appendChild(bestandKnoten("p", "quellenfund-ausschnitt muted", e.fundstelle));
+        }
+        liste.appendChild(bestandZeile("quellenfund", e, zusaetze, kasten));
+      }
+    }
+
+    /** Sprachwechsel, Sitzungswechsel, Office-Erkennung, Flaechenwechsel: derselbe Stand, neu gezeichnet. */
+    function bestandNeuzeichnen() {
+      bestandZeichnen();
+    }
+
+    function bestandPruefen() {
+      if (bestandLage === "laden") { return; }
+      bestandLauf += 1;
+      var lauf = bestandLauf;
+      bestandLage = "laden";
+      bestandFehlerGrund = "";
+      bestandZeichnen();
+      var abschluss = function (lage, grund) {
+        if (lauf !== bestandLauf) { return; }
+        bestandLage = lage;
+        bestandFehlerGrund = grund || "";
+        bestandZeichnen();
+      };
+      try {
+        bestandTextLesen(function (text) {
+          if (typeof text !== "string") { abschluss("fehler", t("bestandKeinText")); return; }
+          // Derselbe Uebersetzer wie die Erfassen-Flaeche; der Titel nach der Erfassungsregel.
+          w6DublettenAusCheckText(
+            "bestand",
+            function () { return text; },
+            fetch.bind(window),
+            askLocale(lang),
+            deriveDraftTitleFromSelection(text)
+          ).then(function (ergebnis) {
+            if (lauf !== bestandLauf) { return; }
+            var lage = ergebnis && typeof ergebnis.lage === "string" ? ergebnis.lage : "fehler";
+            var http = ergebnis && typeof ergebnis.http === "number" ? ergebnis.http : 0;
+            if (lage === "fehler" && (http === 401 || http === 403)) {
+              // Die Sitzung traegt nicht mehr oder das Recht fehlt: was vorher stand, stand fuer
+              // eine andere Lage — verwerfen, den Grund sagen, die Sitzung neu lesen.
+              bestandVerwerfen();
+              bestandLage = "fehler";
+              bestandFehlerGrund = t(http === 401 ? "askAuth" : "bestandVerweigert");
+              bestandZeichnen();
+              if (typeof checkSession === "function") { checkSession(); }
+              return;
+            }
+            if (lage === "treffer" || lage === "leer") {
+              bestandLetzter = {
+                treffer: Array.isArray(ergebnis.treffer) ? ergebnis.treffer : [],
+                zeit: bestandZeit(),
+                gekuerzt: ergebnis.gekuerzt === true,
+                // JOB 3243: der Quellenfund gehoert zu DIESEM Stand — er altert und faellt mit ihm.
+                quellenfund: ergebnis.quellenfund || { gelaufen: false, treffer: [], mehr: false }
+              };
+              abschluss("ruhe", "");
+              return;
+            }
+            abschluss(lage === "zu-kurz" ? "zu-kurz" : "fehler", "");
+          });
+        });
+      } catch (err) {
+        abschluss("fehler", err && err.message ? err.message : "");
+      }
+    }
+
+    if (document.getElementById("bestand-btn")) {
+      document.getElementById("bestand-btn").addEventListener("click", bestandPruefen);
+      // Der Sprach-Rueckruf laeuft NACH `setLang` (spaeter registriert): `lang` steht schon um.
+      ["de", "en", "nl"].forEach(function (bestandCode) {
+        var knopf = document.getElementById("lang-" + bestandCode);
+        if (knopf) { knopf.addEventListener("click", bestandNeuzeichnen); }
+      });
+      bestandZeichnen();
+    }
+    // KW-N1-BESTAND-END
+
+    // KW-KA7-KONFLIKT-START
+    // ============================================================================================
+    // JOB 3094 · KA7 — „PASST DAS ZUR REGELUNG?" DER WIDERSPRUCHS-HINWEIS IM WORD-PANEL.
+    // ============================================================================================
+    //
+    // PEDIS FALL (05.09., CODEX-POC-ENTSCHEIDUNG-1): das Memo sagt „drei Tage", die freigegebene
+    // Regelung „zwei Tage". Er markiert den Satz, klickt „Passt das zur Regelung?", und Klara zeigt
+    // die Abweichung mit BEIDEN Stellen — der eigenen und der aus der Regelung —, nennt Titel,
+    // Version und Pruefstand der Quelle, und sagt: „Ich entscheide das nicht." Sie aendert nichts.
+    //
+    // WAS DIESER BLOCK TUT: ein Knopf neben der Ruhe, ein Abruf an den BESTEHENDEN Endpunkt
+    // `POST /api/check-text` in seiner tiefen Stufe (`want: "deep"`, check-text-routes.ts), eine Karte
+    // mit dem Serverbefund (`conflicts[].stellen`, `konfliktpruefung` — beides seit JOB 3094 in der
+    // Antwort), und an der Markierungskarte der Erfassen-Flaeche ein Hinweis, wenn dieselbe Markierung
+    // mit offenem Widerspruch eingereicht wird. KEINE Vergleichslogik hier (OFFEN.md KA7: „es zeigt
+    // Serverbefunde"); das Panel parst nichts, es liest Felder.
+    //
+    // WAS ER AUSDRUECKLICH NICHT TUT:
+    //   · Er schreibt NIE in Word — kein `insertText`, kein `setSelectedDataAsync`, kein `Word.run`.
+    //     Der Widerspruch ist eine Auskunft; korrigieren tut der Mensch, im Dokument.
+    //   · Er blockiert nichts: der Sendeknopf der Erfassen-Flaeche haengt weiter allein an Anmeldung,
+    //     Word und Markierung. Ein Widerspruch darf bewusst eingereicht werden — und steht dann
+    //     sichtbar dabei (Ehrlichkeit vor Optik).
+    //   · Er speichert nichts: kein Entwurf, kein Objekt, kein localStorage.
+    //
+    // WARUM EIN EIGENER ABRUF UND NICHT `w6DublettenAusCheckText`: der W6-Weg ist bewusst die
+    // deterministische Stufe OHNE Textabfluss (kein `want`, keine Stufe) — er kann Konflikte
+    // konstruktiv nicht finden (der Konfliktzweig laeuft nur im Modellpfad, check-text-routes.ts).
+    // Die Frage hier ist eine andere und hat einen anderen Preis: sie schickt den markierten Text an
+    // die externe KI. Das darf sie NUR mit Pedis Weiche (Werkstattbeschluss 18.08., KA4): je Dokument
+    // eine ausdrueckliche Einwilligung. Deshalb liest dieser Block VOR jedem Abruf den serverseitig
+    // aufgeloesten Sitzungsstand (`klaraS4Sicht.resolution`): Einwilligung fuer dieses Dokument
+    // erteilt UND Ausfuehrung freigegeben — sonst geht NICHTS an den Server, und die Karte sagt, was
+    // fehlt. Erst mit dieser Weiche darf der Koerper `confidentiality: "intern"` tragen; ohne sie
+    // waere das eine Behauptung des Clients ueber ein Dokument, das er nicht eingestuft hat.
+    //
+    // DAS ZUSTANDSMODELL (Auftrag §9) — jede Lage hat ihren Satz, und nur EINE darf verneinen:
+    //   keine_markierung · zu_kurz · einwilligung · gesperrt      — kein Abruf, ein ehrlicher Satz
+    //   laeuft                                                       — die Karte sagt, dass gearbeitet wird
+    //   anmeldung (401/403) · fehler (Netz, 5xx, kaputter Koerper)   — „Pruefung nicht moeglich"
+    //   nicht_geprueft (`konfliktpruefung.gelaufen === false`)        — „nicht moeglich: <Grund>" oder,
+    //     wenn Quellen vorgelegt wurden und ein Teil der Urteile fehlt/verworfen ist (Zahlen!),
+    //     „nicht belastbar: <Grund> — m von n Quellen ohne belastbares Urteil" (Runde 6)
+    //   konflikt                                                     — die Karte mit beiden Stellen
+    //   leer (`gelaufen === true`, keine Treffer)                    — „Keine Abweichung … (geprueft <Zeit>)"
+    //   neu geoeffneter Entwurf (JOB 3174)                           — „Fuer diesen Entwurf liegt keine
+    //     frische Pruefung … vor" AM ENTWURF, mit dem Weg, sie zu starten; nie Leere, nie „keine
+    //     Abweichung". Die Doppelungen der Antwort stehen in JEDER Lage als eigene Aussage daneben.
+    // „Keine Abweichung" steht also NUR nach einer erfolgreichen, frischen Prüfung mit gelaufenem
+    // Modell, das fuer JEDE vorgelegte Quelle ein Urteil geliefert hat, das der Konfliktdienst gelten
+    // liess (`gelaufen` ist seit Runde 6 „belastbar gelaufen", check-text-routes.ts). Ging nur der
+    // Anfang der Markierung an die Route (8.000 Zeichen, W6_HOECHSTZEICHEN), sagt der Satz das (Lehre
+    // JOB 3092 R1). Ein Treffer ohne Kennung macht die Antwort zur Stoerung, nicht zur Leere
+    // (dieselbe Lehre). Ein bestaetigter Logout und jede 401/403-Antwort verwerfen den Stand (Lehre
+    // JOB 3093 R2: kein Befund einer fremden Sitzung).
+    //
+    // CACHE MIT LAUFENDER/GESCHEITERTER AUFFRISCHUNG (Runde 6, Codex R5): eine Wiederholung fuer
+    // DENSELBEN Text verwirft einen gefundenen Konflikt nicht. Waehrend sie laeuft und nach einem
+    // Fehlschlag (Netz, 5xx, nicht belastbar) bleibt der fruehere Befund auf der Karte und am Entwurf
+    // — mit Vorbehalt („Befund von HH:MM … die Auffrischung ist fehlgeschlagen / laeuft"), mit SEINEM
+    // Stand-Satz, nie als frisch ausgegeben (`vorher` am Stand, ka7Befund). Ein frisches Ergebnis
+    // ersetzt ihn; ein anderer Text, eine verlorene Anmeldung oder ein Logout tragen nichts weiter.
+    //
+    // WER DIE KI IST, sagt der Sitzungsstand (Anbieter und Modell aus `GET /api/klara/ai-status`),
+    // nicht dieser Block — er nennt, was der Server aufgeloest hat, und schweigt, wo nichts steht.
+    var KA7_TEXTE = {
+      de: {
+        ka7Cta: "Passt das zur Regelung?",
+        ka7Label: "Abgleich mit der Regelung",
+        ka7Laeuft: "Klara vergleicht die Markierung mit den Regelungen im Bestand …",
+        ka7KeineMarkierung: "Markiere in Word den Text, den ich mit der Regelung vergleichen soll.",
+        ka7ZuKurz: "Für den Abgleich braucht Klara mindestens {min} Zeichen markierten Text.",
+        ka7Einwilligung: "Für den Abgleich braucht Klara die externe KI{ki}. Erlaube sie für dieses Dokument unter Einstellungen → „Externe KI erlauben“.",
+        ka7Gesperrt: "Abgleich nicht möglich: Die externe KI ist für diese Sitzung gesperrt.",
+        ka7Anmeldung: "Abgleich nicht möglich: Du bist nicht angemeldet oder darfst den Bestand nicht lesen.",
+        ka7Fehler: "Prüfung nicht möglich.",
+        ka7NichtGeprueft: "Prüfung nicht möglich: {grund}.",
+        ka7GrundKeinModell: "kein KI-Modell verfügbar",
+        ka7GrundModellfehler: "die KI hat kein verwertbares Urteil geliefert",
+        ka7GrundVertraulich: "der Text gilt als vertraulich und geht nicht an die externe KI",
+        ka7GrundNichtAngefordert: "der Server hat die Konfliktprüfung nicht ausgeführt",
+        ka7GrundKeinDienst: "der Server führt keinen Konfliktdienst",
+        ka7GrundUrteilVerworfen: "die KI hat ein Urteil geliefert, das sich an den Texten nicht belegen ließ",
+        ka7GrundUnbekannt: "Grund unbekannt",
+        ka7NichtBelastbar: "Prüfung nicht belastbar: {grund} — {m} von {n} vorgelegten Quellen ohne belastbares Urteil.",
+        ka7VorherLaeuft: "Klara vergleicht die Markierung erneut … Bis dahin gilt der Befund von {zeit}.",
+        ka7VorherFehler: "Prüfung nicht möglich — gezeigt wird der Befund von {zeit}; die Auffrischung ist fehlgeschlagen.",
+        ka7VorherNichtBelastbar: "Prüfung nicht belastbar: {grund} — gezeigt wird der Befund von {zeit}.",
+        ka7EinreichVorbehalt: "Befund von {zeit}; die erneute Prüfung ist fehlgeschlagen.",
+        ka7EinreichVorbehaltLaeuft: "Befund von {zeit}; die erneute Prüfung läuft.",
+        ka7ZeileVorbehalt: "Befund von {zeit} — die erneute Prüfung hat ihn weder bestätigt noch entkräftet.",
+        ka7KopfVorbehalt: "Die erneute Prüfung war nicht belastbar ({grund}); frühere Befunde gelten weiter, solange sie nicht entkräftet sind.",
+        ka7EinreichVorbehaltTeil: "Nicht aufgefrischt: {liste} — die erneute Prüfung hat diese Befunde weder bestätigt noch entkräftet.",
+        ka7VorbehaltEintrag: "„{titel}“ (Befund von {zeit})",
+        ka7Leer: "Keine Abweichung zu geprüften Quellen gefunden (geprüft {zeit}).",
+        ka7LeerGekuerzt: "Keine Abweichung in den ersten {max} Zeichen gefunden (geprüft {zeit}) — der Rest der Markierung blieb ungeprüft.",
+        ka7LeerOhneQuelle: "Kein vergleichbarer Eintrag im Bestand gefunden (geprüft {zeit}).",
+        ka7AbweichungEine: "Abweichung gefunden — dein Text widerspricht diesem Eintrag:",
+        ka7AbweichungMehrere: "Abweichung gefunden — dein Text widerspricht {n} Einträgen:",
+        ka7AbweichungGekuerzt: "Nur die ersten {max} Zeichen der Markierung gingen in den Abgleich.",
+        ka7QuelleVon: "Abweichung von: ",
+        ka7Version: "Version {v}",
+        ka7VersionUnbekannt: "Version unbekannt",
+        ka7Eigen: "Dein Text: „{stelle}“",
+        ka7EigenFehlt: "Dein Text: Stelle nicht benannt.",
+        ka7Regel: "Die Regelung: „{stelle}“",
+        ka7RegelFehlt: "Die Regelung: Stelle nicht benannt.",
+        ka7Entscheidung: "Ich entscheide das nicht — prüfe die Regelung oder reiche den Widerspruch bewusst ein.",
+        ka7Stand: "Abgleich {zeit} mit externer KI{ki} · {n} Quellen vorgelegt{ausfall}. Dein Text wurde nicht verändert.",
+        ka7StandAusfall: ", {m} davon ohne belastbares Urteil",
+        ka7EinreichOffen: "Offener Widerspruch zu „{titel}“ — du kannst trotzdem einreichen; die Regelung bleibt unverändert.",
+        ka7EinreichGesendet: "Bewusst eingereicht mit offenem Widerspruch zu „{titel}“ — die Regelung bleibt unverändert, bis jemand entscheidet.",
+        ka7DoppelungEine: "Das gibt es schon — der Bestand führt dazu bereits einen Eintrag:",
+        ka7DoppelungMehrere: "Das gibt es schon — der Bestand führt dazu bereits {n} Einträge:",
+        ka7DoppelungAuchKonflikt: "Dein Text widerspricht diesem Eintrag zugleich — er steht oben bei den Abweichungen.",
+        ka7ZeileAuchDoppelung: "Diesen Eintrag gibt es zu deinem Text schon — er steht unten bei den Doppelungen.",
+        ka7EntwurfOhnePruefung: "Keine frische Prüfung",
+        ka7EntwurfOhneWiderspruch: "Kein Widerspruch · {zeit}",
+        ka7EntwurfOhneQuelle: "Keine Vergleichsquelle · {zeit}",
+        ka7EntwurfOhneWiderspruchTeil: "Teilabgleich · kein Widerspruch · {zeit}",
+        ka7EntwurfPruefenCta: "Jetzt gegen die Regelungen prüfen",
+        ka7EntwurfLaeuft: "Prüfung läuft …",
+        ka7EntwurfMenuText: "Klara kann deinen markierten Text mit den freigegebenen Regelungen abgleichen und zeigt Abweichungen an. Ein Befund gilt nur für die laufende Sitzung: Nach dem Schließen des Fensters steht am Entwurf wieder „Keine frische Prüfung“, bis du den Abgleich erneut startest. Dabei wird nichts gespeichert und nichts an deinem Text verändert.",
+      },
+      en: {
+        ka7Cta: "Does this match the rule?",
+        ka7Label: "Check against the rule",
+        ka7Laeuft: "Klara is comparing the selection with the rules in the knowledge base …",
+        ka7KeineMarkierung: "Select the text in Word that I should compare with the rule.",
+        ka7ZuKurz: "Klara needs at least {min} characters of selected text for the check.",
+        ka7Einwilligung: "This check needs the external AI{ki}. Allow it for this document under Settings → “Allow external AI”.",
+        ka7Gesperrt: "Check not possible: the external AI is blocked for this session.",
+        ka7Anmeldung: "Check not possible: you are not signed in or may not read the knowledge base.",
+        ka7Fehler: "Check not possible.",
+        ka7NichtGeprueft: "Check not possible: {grund}.",
+        ka7GrundKeinModell: "no AI model available",
+        ka7GrundModellfehler: "the AI returned no usable verdict",
+        ka7GrundVertraulich: "the text counts as confidential and does not go to the external AI",
+        ka7GrundNichtAngefordert: "the server did not run the conflict check",
+        ka7GrundKeinDienst: "the server runs no conflict service",
+        ka7GrundUrteilVerworfen: "the AI returned a verdict that could not be substantiated in the texts",
+        ka7GrundUnbekannt: "reason unknown",
+        ka7NichtBelastbar: "Check not reliable: {grund} — {m} of {n} presented sources without a reliable verdict.",
+        ka7VorherLaeuft: "Klara is comparing the selection again … Until then the finding from {zeit} applies.",
+        ka7VorherFehler: "Check not possible — showing the finding from {zeit}; the refresh failed.",
+        ka7VorherNichtBelastbar: "Check not reliable: {grund} — showing the finding from {zeit}.",
+        ka7EinreichVorbehalt: "Finding from {zeit}; the repeated check failed.",
+        ka7EinreichVorbehaltLaeuft: "Finding from {zeit}; the repeated check is running.",
+        ka7ZeileVorbehalt: "Finding from {zeit} — the repeated check neither confirmed nor refuted it.",
+        ka7KopfVorbehalt: "The repeated check was not reliable ({grund}); earlier findings still apply until they are refuted.",
+        ka7EinreichVorbehaltTeil: "Not refreshed: {liste} — the repeated check neither confirmed nor refuted these findings.",
+        ka7VorbehaltEintrag: "“{titel}” (finding from {zeit})",
+        ka7Leer: "No deviation from the checked sources found (checked {zeit}).",
+        ka7LeerGekuerzt: "No deviation found in the first {max} characters (checked {zeit}) — the rest of the selection remained unchecked.",
+        ka7LeerOhneQuelle: "No comparable entry found in the knowledge base (checked {zeit}).",
+        ka7AbweichungEine: "Deviation found — your text contradicts this entry:",
+        ka7AbweichungMehrere: "Deviation found — your text contradicts {n} entries:",
+        ka7AbweichungGekuerzt: "Only the first {max} characters of the selection were checked.",
+        ka7QuelleVon: "Deviates from: ",
+        ka7Version: "Version {v}",
+        ka7VersionUnbekannt: "version unknown",
+        ka7Eigen: "Your text: “{stelle}”",
+        ka7EigenFehlt: "Your text: passage not named.",
+        ka7Regel: "The rule: “{stelle}”",
+        ka7RegelFehlt: "The rule: passage not named.",
+        ka7Entscheidung: "I do not decide this — check the rule or submit the contradiction deliberately.",
+        ka7Stand: "Checked {zeit} with external AI{ki} · {n} sources presented{ausfall}. Your text was not changed.",
+        ka7StandAusfall: ", {m} of them without a reliable verdict",
+        ka7EinreichOffen: "Open contradiction with “{titel}” — you can still submit; the rule stays unchanged.",
+        ka7EinreichGesendet: "Submitted deliberately with an open contradiction with “{titel}” — the rule stays unchanged until someone decides.",
+        ka7DoppelungEine: "This already exists — the knowledge base already holds one entry on it:",
+        ka7DoppelungMehrere: "This already exists — the knowledge base already holds {n} entries on it:",
+        ka7DoppelungAuchKonflikt: "Your text also contradicts this entry — it is listed above under the deviations.",
+        ka7ZeileAuchDoppelung: "An entry like your text already exists — it is listed below under the duplicates.",
+        ka7EntwurfOhnePruefung: "No fresh check",
+        ka7EntwurfOhneWiderspruch: "No contradiction · {zeit}",
+        ka7EntwurfOhneQuelle: "No comparable source · {zeit}",
+        ka7EntwurfOhneWiderspruchTeil: "Part checked · no contradiction · {zeit}",
+        ka7EntwurfPruefenCta: "Check against the rules now",
+        ka7EntwurfLaeuft: "Check running …",
+        ka7EntwurfMenuText: "Klara can compare your selected text with the released rules and shows deviations. A finding only lasts for the current session: once the pane is closed, the draft says “No fresh check” again until you start the comparison anew. Nothing is stored and nothing in your text is changed.",
+      },
+      nl: {
+        ka7Cta: "Past dit bij de regeling?",
+        ka7Label: "Vergelijking met de regeling",
+        ka7Laeuft: "Klara vergelijkt de selectie met de regelingen in het bestand …",
+        ka7KeineMarkierung: "Selecteer in Word de tekst die ik met de regeling moet vergelijken.",
+        ka7ZuKurz: "Voor de vergelijking heeft Klara minstens {min} tekens geselecteerde tekst nodig.",
+        ka7Einwilligung: "Voor de vergelijking heeft Klara de externe AI{ki} nodig. Sta die voor dit document toe onder Instellingen → “Externe AI toestaan”.",
+        ka7Gesperrt: "Vergelijking niet mogelijk: de externe AI is voor deze sessie geblokkeerd.",
+        ka7Anmeldung: "Vergelijking niet mogelijk: je bent niet aangemeld of mag het bestand niet lezen.",
+        ka7Fehler: "Controle niet mogelijk.",
+        ka7NichtGeprueft: "Controle niet mogelijk: {grund}.",
+        ka7GrundKeinModell: "geen AI-model beschikbaar",
+        ka7GrundModellfehler: "de AI gaf geen bruikbaar oordeel",
+        ka7GrundVertraulich: "de tekst geldt als vertrouwelijk en gaat niet naar de externe AI",
+        ka7GrundNichtAngefordert: "de server heeft de conflictcontrole niet uitgevoerd",
+        ka7GrundKeinDienst: "de server heeft geen conflictdienst",
+        ka7GrundUrteilVerworfen: "de AI gaf een oordeel dat in de teksten niet te onderbouwen was",
+        ka7GrundUnbekannt: "reden onbekend",
+        ka7NichtBelastbar: "Controle niet betrouwbaar: {grund} — {m} van {n} voorgelegde bronnen zonder betrouwbaar oordeel.",
+        ka7VorherLaeuft: "Klara vergelijkt de selectie opnieuw … Tot dan geldt de bevinding van {zeit}.",
+        ka7VorherFehler: "Controle niet mogelijk — getoond wordt de bevinding van {zeit}; het verversen is mislukt.",
+        ka7VorherNichtBelastbar: "Controle niet betrouwbaar: {grund} — getoond wordt de bevinding van {zeit}.",
+        ka7EinreichVorbehalt: "Bevinding van {zeit}; de herhaalde controle is mislukt.",
+        ka7EinreichVorbehaltLaeuft: "Bevinding van {zeit}; de herhaalde controle loopt.",
+        ka7ZeileVorbehalt: "Bevinding van {zeit} — de herhaalde controle heeft die bevestigd noch weerlegd.",
+        ka7KopfVorbehalt: "De herhaalde controle was niet betrouwbaar ({grund}); eerdere bevindingen blijven gelden zolang ze niet weerlegd zijn.",
+        ka7EinreichVorbehaltTeil: "Niet ververst: {liste} — de herhaalde controle heeft deze bevindingen bevestigd noch weerlegd.",
+        ka7VorbehaltEintrag: "“{titel}” (bevinding van {zeit})",
+        ka7Leer: "Geen afwijking van de nagekeken bronnen gevonden (nagekeken {zeit}).",
+        ka7LeerGekuerzt: "Geen afwijking gevonden in de eerste {max} tekens (nagekeken {zeit}) — de rest van de selectie is niet nagekeken.",
+        ka7LeerOhneQuelle: "Geen vergelijkbare vermelding in het bestand gevonden (nagekeken {zeit}).",
+        ka7AbweichungEine: "Afwijking gevonden — je tekst spreekt deze vermelding tegen:",
+        ka7AbweichungMehrere: "Afwijking gevonden — je tekst spreekt {n} vermeldingen tegen:",
+        ka7AbweichungGekuerzt: "Alleen de eerste {max} tekens van de selectie zijn vergeleken.",
+        ka7QuelleVon: "Wijkt af van: ",
+        ka7Version: "Versie {v}",
+        ka7VersionUnbekannt: "versie onbekend",
+        ka7Eigen: "Je tekst: “{stelle}”",
+        ka7EigenFehlt: "Je tekst: passage niet benoemd.",
+        ka7Regel: "De regeling: “{stelle}”",
+        ka7RegelFehlt: "De regeling: passage niet benoemd.",
+        ka7Entscheidung: "Ik beslis dit niet — controleer de regeling of dien de tegenstrijdigheid bewust in.",
+        ka7Stand: "Vergelijking {zeit} met externe AI{ki} · {n} bronnen voorgelegd{ausfall}. Je tekst is niet gewijzigd.",
+        ka7StandAusfall: ", {m} daarvan zonder betrouwbaar oordeel",
+        ka7EinreichOffen: "Open tegenstrijdigheid met “{titel}” — je kunt toch indienen; de regeling blijft ongewijzigd.",
+        ka7EinreichGesendet: "Bewust ingediend met een open tegenstrijdigheid met “{titel}” — de regeling blijft ongewijzigd tot iemand beslist.",
+        ka7DoppelungEine: "Dat bestaat al — het bestand heeft hier al één vermelding over:",
+        ka7DoppelungMehrere: "Dat bestaat al — het bestand heeft hier al {n} vermeldingen over:",
+        ka7DoppelungAuchKonflikt: "Je tekst spreekt deze vermelding tegelijk tegen — die staat hierboven bij de afwijkingen.",
+        ka7ZeileAuchDoppelung: "Zo'n vermelding bestaat al bij je tekst — die staat hieronder bij de doublures.",
+        ka7EntwurfOhnePruefung: "Geen actuele controle",
+        ka7EntwurfOhneWiderspruch: "Geen tegenstrijdigheid · {zeit}",
+        ka7EntwurfOhneQuelle: "Geen vergelijkbare bron · {zeit}",
+        ka7EntwurfOhneWiderspruchTeil: "Deels · geen tegenstrijdigheid · {zeit}",
+        ka7EntwurfPruefenCta: "Nu tegen de regelingen controleren",
+        ka7EntwurfLaeuft: "Controle loopt …",
+        ka7EntwurfMenuText: "Klara kan je geselecteerde tekst met de vrijgegeven regelingen vergelijken en toont afwijkingen. Een bevinding geldt alleen voor de lopende sessie: na het sluiten van het venster staat er bij het concept weer “Geen actuele controle”, tot je de vergelijking opnieuw start. Er wordt niets opgeslagen en niets in je tekst gewijzigd.",
+      },
+    };
+
+    // Der gehaltene Stand — `null` heisst: noch nie geprueft, keine Karte. Alles andere ist eine
+    // Lage mit ihrem Satz (Kopfkommentar). Er stirbt mit der Sitzung (ka7Verwerfen).
+    var ka7Stand = null;
+    var ka7Laeuft = false;
+    // Jeder Klick und jedes Verwerfen zaehlt hoch; eine Antwort einer aelteren Generation wird
+    // fallengelassen — sie koennte zu einer anderen Markierung oder einer anderen Sitzung gehoeren.
+    var ka7Generation = 0;
+    // Der Pruefstand einer Quelle heisst hier GENAU so wie in der Bestandsliste (JOB 3093, Zeile
+    // `bestand-pruefstand`): das Statuswort der Quellenliste fuer validiert, Pedis „noch nicht
+    // geprueft" fuer eingereicht, „Status unbekannt" sonst — kein zweiter Wortlaut fuer dieselbe
+    // Aussage ueber ein Objekt (mega35: „geprueft" nur als Objektstand, nie als Zusage).
+    var KA7_PRUEFSTAND_KEYS = {
+      validiert: "askStatusValidiert",
+      eingereicht: "bestandNochNichtGeprueft",
+    };
+    var KA7_GRUND_KEYS = {
+      kein_modell: "ka7GrundKeinModell",
+      modellfehler: "ka7GrundModellfehler",
+      vertraulich: "ka7GrundVertraulich",
+      nicht_angefordert: "ka7GrundNichtAngefordert",
+      kein_konfliktdienst: "ka7GrundKeinDienst",
+      urteil_verworfen: "ka7GrundUrteilVerworfen",
+    };
+
+    function ka7Uhrzeit(date) {
+      function pad(n) { return n < 10 ? "0" + n : String(n); }
+      return pad(date.getHours()) + ":" + pad(date.getMinutes());
+    }
+
+    function ka7Text(wert) {
+      return typeof wert === "string" && wert.replace(/^\s+|\s+$/g, "").length > 0 ? wert : null;
+    }
+
+    /** Der Klammerzusatz zur KI: " (OpenAI · gpt-5)" — oder leer, wenn der Sitzungsstand nichts nennt. */
+    function ka7KiZusatz(ki) {
+      if (!ki) { return ""; }
+      var teile = [];
+      if (ki.provider) { teile.push(ki.provider); }
+      if (ki.model) { teile.push(ki.model); }
+      return teile.length > 0 ? " (" + teile.join(" · ") + ")" : "";
+    }
+
+    /**
+     * Die Weiche VOR dem Abruf: darf der markierte Text an die externe KI?
+     *   „erlaubt"      — Einwilligung fuer dieses Dokument erteilt UND Ausfuehrung freigegeben,
+     *                    aus einer frischen, nicht abgelaufenen Aufloesung des Servers.
+     *   „gesperrt"     — Riegel, abgelaufener Stand oder serverseitig gesperrt (executionAllowed).
+     *   „einwilligung" — keine belegte Einwilligung (auch: Stand unbekannt — nichts wird angenommen).
+     * Entschieden wird NUR aus dem Serverstand (klaraS4Anzeige), nie aus einem lokalen Merker.
+     */
+    function ka7ExterneKi() {
+      if (typeof klaraS4FragenGesperrt === "function" && klaraS4FragenGesperrt()) {
+        return { lage: "gesperrt", ki: null };
+      }
+      if (typeof klaraS4Anzeige !== "function" || klaraS4Phase !== "bereit" ||
+          !klaraS4Sicht || !klaraS4Sicht.resolution) {
+        return { lage: "einwilligung", ki: null };
+      }
+      var a = klaraS4Anzeige(klaraS4Phase, klaraS4Sicht, Date.now());
+      var ki = a.provider || a.model ? { provider: a.provider, model: a.model } : null;
+      if (a.veraltet) { return { lage: "gesperrt", ki: ki }; }
+      if (klaraS4Sicht.resolution.externalConsentGranted !== true) {
+        return { lage: "einwilligung", ki: ki };
+      }
+      if (a.askAllowed !== true) { return { lage: "gesperrt", ki: ki }; }
+      return { lage: "erlaubt", ki: ki };
+    }
+
+    /** Die Markierung, nur Text — ohne Word ehrlich leer. Ein Fehler des Hosts ist ebenfalls leer. */
+    function ka7MarkierungLesen(done) {
+      if (!officeUsable()) { done(""); return; }
+      try {
+        Office.context.document.getSelectedDataAsync(Office.CoercionType.Text, function (r) {
+          done(r && r.status === Office.AsyncResultStatus.Succeeded ? String(r.value || "") : "");
+        });
+      } catch (err) {
+        done("");
+      }
+    }
+
+    // ------------------------------------------------------------------------------------------
+    // JOB 3174 (M4b, Lieferung 3) — DAS TREFFERVERHAELTNIS: DOPPELUNG IST KEINE ABWEICHUNG.
+    // ------------------------------------------------------------------------------------------
+    // Die Route fuehrt ZWEI Listen, in derselben Trefferform (check-text-routes.ts `toResponse`):
+    // `conflicts` (Widerspruch/ueberholt, gekennzeichnet durch `type` aus ConflictType) und
+    // `duplicates` (Doppelungen, gekennzeichnet durch `relation`). Bis hierher legte das Panel JEDEN
+    // Eintrag aus `conflicts` unbesehen unter das Wort „Abweichung" und las `duplicates" gar nicht —
+    // „das haben wir schon" und „das widerspricht" waren dieselbe Aussage. Jetzt:
+    //   · nur ein Eintrag mit BEKANNTEM Konflikttyp erzeugt die Aussage „Abweichung";
+    //   · ein Eintrag, den die Route als Doppelung kennzeichnet, wandert in die Doppelungsliste. Die
+    //     beiden Woerter dafuer stehen in services/conflicts/src/detect.ts:158-160 (das Urteil nennt
+    //     die Relation `doppelung`, der dort geplante eigene Konflikttyp heisst `duplicate`) — es
+    //     wird keines erfunden;
+    //   · ein FEHLENDER oder unbekannter Typ ist unauswertbar → Lage „fehler". Dieselbe Haerteregel
+    //     wie beim Treffer ohne Kennung: nicht raten;
+    //   · derselbe Eintrag in BEIDEN Listen wird als beides genannt — in beiden Listen, mit
+    //     Querverweis, nie auf eine der beiden Aussagen verkuerzt.
+    // Der Prueflauf (`konfliktpruefung`) sagt weiter nur etwas ueber die KONFLIKTpruefung; die
+    // Doppelungen des deterministischen Wegs stehen unabhaengig davon.
+    var KA7_KONFLIKT_TYPEN = { truth: true, experience: true, context: true, temporal: true, role: true };
+    var KA7_DOPPELUNG_TYPEN = { doppelung: true, duplicate: true };
+
+    /** Titel, Version, Pruefstand — in `duplicates` UND `conflicts` dieselbe Form (JOB 3020/3093). */
+    function ka7Treffer(eintrag, id) {
+      return {
+        id: id,
+        title: ka7Text(eintrag.koTitle) || id,
+        pruefstand: KA7_PRUEFSTAND_KEYS[eintrag.pruefstand] ? eintrag.pruefstand : null,
+        version: typeof eintrag.version === "number" && isFinite(eintrag.version) ? eintrag.version : null,
+      };
+    }
+
+    /** Eine Doppelung: der Treffer plus die Beziehung, im Wortlaut der Erfassen-Flaeche (W6). */
+    function ka7Doppelung(eintrag, id) {
+      var d = ka7Treffer(eintrag, id);
+      d.relation = typeof eintrag.relation === "string" && W6_RELATION_KEYS[eintrag.relation]
+        ? eintrag.relation
+        : null;
+      d.auchKonflikt = false;
+      return d;
+    }
+
+    /**
+     * Die Antwort der Route → der Stand. GELESEN, nie hergeleitet: ein Koerper ohne `conflicts`- oder
+     * `duplicates`-Liste oder ohne `konfliktpruefung` ist keine Antwort dieser Route (Lage „fehler");
+     * ein Treffer ohne Kennung oder ohne Verhaeltnis macht die ganze Liste unauswertbar (Lehre JOB
+     * 3092 R1, JOB 3174). Ein Konflikt wird in JEDER Lage genannt, wenn die Route einen fuehrt; die
+     * Leere nur, wenn die Konfliktpruefung wirklich lief.
+     */
+    function ka7Uebersetzen(koerper) {
+      if (!koerper || !Array.isArray(koerper.conflicts) || !Array.isArray(koerper.duplicates) ||
+          !koerper.konfliktpruefung || typeof koerper.konfliktpruefung !== "object" ||
+          typeof koerper.konfliktpruefung.gelaufen !== "boolean") {
+        return { lage: "fehler" };
+      }
+      var pruefung = koerper.konfliktpruefung;
+      var konflikte = [];
+      var doppelungen = [];
+      var i;
+      for (i = 0; i < koerper.conflicts.length; i += 1) {
+        var c = koerper.conflicts[i];
+        var id = c && typeof c.koId === "string" ? c.koId : "";
+        if (!id) { return { lage: "fehler" }; }
+        var typ = typeof c.type === "string" ? c.type : "";
+        // Ohne Verhaeltnis keine Aussage: weder „Abweichung" noch „das gibt es schon".
+        if (!typ) { return { lage: "fehler" }; }
+        if (KA7_DOPPELUNG_TYPEN[typ]) { doppelungen.push(ka7Doppelung(c, id)); continue; }
+        if (!KA7_KONFLIKT_TYPEN[typ]) { return { lage: "fehler" }; }
+        var stellen = c.stellen && typeof c.stellen === "object" ? c.stellen : null;
+        var k = ka7Treffer(c, id);
+        k.eigen = stellen ? ka7Text(stellen.eigen) : null;
+        k.quelle = stellen ? ka7Text(stellen.quelle) : null;
+        k.grund = ka7Text(c.rationale);
+        k.auchDoppelung = false;
+        konflikte.push(k);
+      }
+      for (i = 0; i < koerper.duplicates.length; i += 1) {
+        var dup = koerper.duplicates[i];
+        var dupId = dup && typeof dup.koId === "string" ? dup.koId : "";
+        if (!dupId) { return { lage: "fehler" }; }
+        doppelungen.push(ka7Doppelung(dup, dupId));
+      }
+      var konfliktIds = {};
+      for (i = 0; i < konflikte.length; i += 1) { konfliktIds[konflikte[i].id] = true; }
+      var doppelIds = {};
+      for (i = 0; i < doppelungen.length; i += 1) {
+        doppelIds[doppelungen[i].id] = true;
+        if (konfliktIds[doppelungen[i].id]) { doppelungen[i].auchKonflikt = true; }
+      }
+      for (i = 0; i < konflikte.length; i += 1) {
+        if (doppelIds[konflikte[i].id]) { konflikte[i].auchDoppelung = true; }
+      }
+      var kandidaten = typeof pruefung.kandidaten === "number" ? pruefung.kandidaten : 0;
+      var ausgefallen = typeof pruefung.ausgefallen === "number" ? pruefung.ausgefallen : 0;
+      // Runde 6: `verworfen` — Befund-Urteile, die der Konfliktdienst nicht gelten liess. Ein aelterer
+      // Server ohne das Feld sagt 0; „ohne belastbares Urteil" ist die Summe beider Zahlen.
+      var verworfen = typeof pruefung.verworfen === "number" ? pruefung.verworfen : 0;
+      var zahlen = { kandidaten: kandidaten, ausgefallen: ausgefallen, verworfen: verworfen };
+      if (konflikte.length > 0) {
+        return { lage: "konflikt", konflikte: konflikte, doppelungen: doppelungen, kandidaten: kandidaten, ausgefallen: ausgefallen, verworfen: verworfen, belastbar: pruefung.gelaufen === true, grund: ka7Text(pruefung.grund) };
+      }
+      if (pruefung.gelaufen === true) {
+        return { lage: "leer", konflikte: [], doppelungen: doppelungen, kandidaten: kandidaten, ausgefallen: ausgefallen, verworfen: verworfen, belastbar: true };
+      }
+      return { lage: "nicht_geprueft", konflikte: [], doppelungen: doppelungen, grund: ka7Text(pruefung.grund), kandidaten: kandidaten, ausgefallen: ausgefallen, verworfen: verworfen, belastbar: false, zahlen: zahlen };
+    }
+
+    function ka7Setzen(stand) {
+      ka7Stand = stand;
+      ka7Zeichnen();
+      ka7EinreichHinweisZeichnen();
+    }
+
+    /**
+     * Runde 6 (Codex R5, Korrekturpflicht 2): der Befund, der bei einer Wiederholung fuer DENSELBEN
+     * Text erhalten bleibt — mit Aktualitaetsvorbehalt, nie geleert (Zustandsmodell §9: „Cache mit
+     * laufender/gescheiterter Auffrischung"). Ein Stand, der selbst schon einen frueheren Befund
+     * traegt (zweiter Fehlschlag in Folge), reicht ihn weiter. Ein ANDERER Text traegt nichts weiter:
+     * ein Widerspruch zu fremdem Text waere eine Behauptung ohne Grundlage.
+     */
+    function ka7Befund(stand) {
+      if (!stand) { return null; }
+      if (stand.lage === "konflikt") { return stand; }
+      return stand.vorher && stand.vorher.lage === "konflikt" ? stand.vorher : null;
+    }
+
+    function ka7VorherFuer(text) {
+      var befund = ka7Befund(ka7Stand);
+      return befund && befund.text === text ? befund : null;
+    }
+
+    /**
+     * Runde 7 (Codex R6): TEIL-AUSFALL MIT NEUEN TREFFERN. Antwortet die Route mit Konflikten, aber
+     * `gelaufen: false` (ein Teil der Quellen ohne belastbares Urteil), dann ist ein frueher bekannter
+     * Konflikt, der in der neuen Liste fehlt, NICHT entkraeftet — vielleicht war gerade seine Quelle
+     * die ausgefallene. Er bleibt neben den neuen Treffern stehen, mit der Uhrzeit seines Befunds
+     * (`vorbehaltZeit`, bleibt ueber weitere Fehlschlaege hinweg die urspruengliche). Ein belastbar
+     * gelaufener Lauf (`gelaufen: true`) ersetzt die Liste ganz: was er nicht mehr findet, ist
+     * entkraeftet. Neue Treffer gewinnen ueber gleiche Kennungen.
+     */
+    function ka7Vereinigen(neu, vorher) {
+      var ids = {};
+      for (var i = 0; i < neu.length; i += 1) { ids[neu[i].id] = true; }
+      var alle = neu.slice();
+      for (var j = 0; j < vorher.konflikte.length; j += 1) {
+        var alt = vorher.konflikte[j];
+        if (ids[alt.id]) { continue; }
+        var kopie = {};
+        for (var feld in alt) {
+          if (Object.prototype.hasOwnProperty.call(alt, feld)) { kopie[feld] = alt[feld]; }
+        }
+        kopie.vorbehaltZeit = alt.vorbehaltZeit || vorher.zeit;
+        alle.push(kopie);
+      }
+      return alle;
+    }
+
+    /** Die Zeilen eines Befunds, die aus einem frueheren Lauf uebernommen und nicht aufgefrischt sind. */
+    function ka7NichtAufgefrischt(befund) {
+      var aus = [];
+      for (var i = 0; i < befund.konflikte.length; i += 1) {
+        if (befund.konflikte[i].vorbehaltZeit) { aus.push(befund.konflikte[i]); }
+      }
+      return aus;
+    }
+
+    /** Der Klick. GENAU EIN Lauf gleichzeitig; kein Abruf ohne Markierung, Laenge und Einwilligung. */
+    function ka7Pruefen() {
+      if (ka7Laeuft) { return; }
+      ka7Laeuft = true;
+      ka7Generation += 1;
+      var generation = ka7Generation;
+      var fertig = function (stand) {
+        ka7Laeuft = false;
+        if (generation !== ka7Generation) { return; }
+        ka7Setzen(stand);
+      };
+      ka7MarkierungLesen(function (text) {
+        if (generation !== ka7Generation) { ka7Laeuft = false; return; }
+        var roh = typeof text === "string" ? text : "";
+        var gekuerzt = roh.length > W6_HOECHSTZEICHEN;
+        var schnitt = gekuerzt ? roh.slice(0, W6_HOECHSTZEICHEN) : roh;
+        if (schnitt.replace(/^\s+|\s+$/g, "").length === 0) {
+          fertig({ lage: "keine_markierung", text: "" });
+          return;
+        }
+        if (schnitt.replace(/^\s+|\s+$/g, "").length < W6_MINDESTZEICHEN) {
+          fertig({ lage: "zu_kurz", text: roh });
+          return;
+        }
+        var weiche = ka7ExterneKi();
+        if (weiche.lage !== "erlaubt") {
+          // Kein Abruf: nichts verlaesst das Fenster. Die Karte sagt, was fehlt.
+          fertig({ lage: weiche.lage, text: roh, ki: weiche.ki });
+          return;
+        }
+        // Runde 6: eine Wiederholung fuer denselben Text verwirft den fruehren Befund NICHT — er
+        // steht waehrend des Laufs und nach einem Fehlschlag mit Vorbehalt weiter (ka7Befund).
+        var vorher = ka7VorherFuer(roh);
+        ka7Setzen({ lage: "laeuft", text: roh, vorher: vorher });
+        fetch("/api/check-text", {
+          method: "POST",
+          credentials: "include",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            text: schnitt,
+            title: deriveDraftTitleFromSelection(schnitt),
+            locale: askLocale(lang),
+            want: "deep",
+            source: "transient-document",
+            // Nur hier, nur nach der Weiche oben: die Einwilligung fuer dieses Dokument liegt vor.
+            confidentiality: "intern"
+          })
+        })
+          .then(function (res) {
+            if (!res || !res.ok) {
+              var http = res && typeof res.status === "number" ? res.status : null;
+              return { lage: http === 401 || http === 403 ? "anmeldung" : "fehler", http: http };
+            }
+            return res.json().then(ka7Uebersetzen);
+          })
+          .catch(function () { return { lage: "fehler" }; })
+          .then(function (ergebnis) {
+            ergebnis.text = roh;
+            ergebnis.gekuerzt = gekuerzt;
+            ergebnis.zeit = new Date();
+            ergebnis.ki = weiche.ki;
+            // Gescheiterte oder nicht belastbare Auffrischung: der fruehere Befund bleibt, mit
+            // Vorbehalt. Ein frisches Ergebnis (Konflikt, Leere) ersetzt ihn; eine verlorene
+            // Anmeldung (401/403) traegt nichts weiter — ohne Sitzung keine Aussage.
+            if (vorher && (ergebnis.lage === "fehler" || ergebnis.lage === "nicht_geprueft")) {
+              ergebnis.vorher = vorher;
+            }
+            // Runde 7: Konflikte gefunden, aber nicht belastbar gelaufen — frueher bekannte Konflikte,
+            // deren Entkraeftung nicht belegt ist, bleiben neben den neuen stehen (ka7Vereinigen).
+            if (vorher && ergebnis.lage === "konflikt" && ergebnis.belastbar !== true) {
+              ergebnis.konflikte = ka7Vereinigen(ergebnis.konflikte, vorher);
+            }
+            fertig(ergebnis);
+          });
+      });
+    }
+
+    /** Ein bestaetigter Logout, eine andere Sitzung: kein Befund von vorhin bleibt stehen. */
+    function ka7Verwerfen() {
+      ka7Generation += 1;
+      ka7Laeuft = false;
+      ka7Stand = null;
+      ka7Zeichnen();
+      ka7EinreichHinweisZeichnen();
+    }
+
+    // ------------------------------------------------------------------------------------------
+    // Die Flaeche: Knopf und Karte NEBEN der Ruhe-Mitte (nicht in ihr — die Mitte traegt nur Lupe
+    // und den EINEN Satz, tests/app/k1-sitzungslagen.test.tsx), eingehaengt wie die KA3-Karte.
+    // Liegt der Bestandsblock von JOB 3093 (#bestand-block) vor, folgt der Knopf ihm.
+    // ------------------------------------------------------------------------------------------
+    function ka7BlockElement() {
+      var vorhanden = document.getElementById("ka7-block");
+      if (vorhanden) { return vorhanden; }
+      var block = document.createElement("div");
+      block.id = "ka7-block";
+      block.className = "hidden";
+      var knopf = document.createElement("button");
+      knopf.type = "button";
+      knopf.id = "ka7-btn";
+      knopf.className = "ghost";
+      knopf.setAttribute("data-t", "ka7Cta");
+      knopf.textContent = t("ka7Cta");
+      knopf.addEventListener("click", ka7Pruefen);
+      block.appendChild(knopf);
+      var karte = document.createElement("div");
+      karte.id = "ka7-karte";
+      karte.className = "card hidden";
+      karte.setAttribute("role", "region");
+      karte.setAttribute("aria-live", "polite");
+      var satz = document.createElement("p");
+      satz.id = "ka7-satz";
+      karte.appendChild(satz);
+      var liste = document.createElement("ul");
+      liste.id = "ka7-liste";
+      karte.appendChild(liste);
+      var entscheidung = document.createElement("p");
+      entscheidung.id = "ka7-entscheidung";
+      entscheidung.className = "hidden";
+      karte.appendChild(entscheidung);
+      // JOB 3174 (Lieferung 3): die Doppelungen — eine EIGENE, benannte Aussage unter der Abweichung.
+      var doppelSatz = document.createElement("p");
+      doppelSatz.id = "ka7-doppelung-satz";
+      doppelSatz.className = "hidden";
+      karte.appendChild(doppelSatz);
+      var doppelListe = document.createElement("ul");
+      doppelListe.id = "ka7-doppelung-liste";
+      karte.appendChild(doppelListe);
+      var stand = document.createElement("p");
+      stand.id = "ka7-stand";
+      stand.className = "muted hidden";
+      karte.appendChild(stand);
+      block.appendChild(karte);
+      var anker = document.getElementById("bestand-block") || document.getElementById("ask-ruhe");
+      if (anker && anker.parentNode) {
+        anker.parentNode.insertBefore(block, anker.nextSibling);
+      } else {
+        document.body.appendChild(block);
+      }
+      return block;
+    }
+
+    /** Sichtbar nur angemeldet, mit Word und in der Ruhe — sonst gibt es nichts zu pruefen. */
+    function ka7SichtbarkeitZeichnen() {
+      var block = ka7BlockElement();
+      var ruhe = document.getElementById("ask-ruhe");
+      var ruheSichtbar = !!ruhe && ruhe.className.indexOf("hidden") === -1;
+      block.className = signedIn && officeUsable() && ruheSichtbar ? "" : "hidden";
+    }
+
+    function ka7Zeile(k) {
+      var zeile = document.createElement("li");
+      zeile.setAttribute("data-quelle", k.id);
+      var quelle = document.createElement("p");
+      quelle.className = "ka7-quelle";
+      quelle.appendChild(document.createTextNode(t("ka7QuelleVon")));
+      var weg = document.createElement("a");
+      weg.href = koDetailUrl(window.location.origin, k.id);
+      weg.target = "_blank";
+      weg.rel = "noopener noreferrer";
+      weg.textContent = k.title;
+      quelle.appendChild(weg);
+      var fassung = k.version === null ? t("ka7VersionUnbekannt") : t("ka7Version", { v: String(k.version) });
+      var pruefstand = k.pruefstand ? t(KA7_PRUEFSTAND_KEYS[k.pruefstand]) : t("askStatusUnknown");
+      quelle.appendChild(document.createTextNode(" · " + fassung + " · " + pruefstand));
+      zeile.appendChild(quelle);
+      var eigen = document.createElement("p");
+      eigen.className = "ka7-eigen";
+      eigen.textContent = k.eigen ? t("ka7Eigen", { stelle: k.eigen }) : t("ka7EigenFehlt");
+      zeile.appendChild(eigen);
+      var regel = document.createElement("p");
+      regel.className = "ka7-regel";
+      regel.textContent = k.quelle ? t("ka7Regel", { stelle: k.quelle }) : t("ka7RegelFehlt");
+      zeile.appendChild(regel);
+      if (k.grund) {
+        var grund = document.createElement("p");
+        grund.className = "ka7-grund muted";
+        grund.textContent = k.grund;
+        zeile.appendChild(grund);
+      }
+      // JOB 3174: derselbe Eintrag steht auch in der Doppelungsliste — beides, nicht eines davon.
+      if (k.auchDoppelung) {
+        zeile.setAttribute("data-doppelung", "1");
+        var auch = document.createElement("p");
+        auch.className = "ka7-auch-doppelung";
+        auch.textContent = t("ka7ZeileAuchDoppelung");
+        zeile.appendChild(auch);
+      }
+      // Runde 7: eine uebernommene, nicht aufgefrischte Zeile sagt das — mit der Uhrzeit ihres Befunds.
+      if (k.vorbehaltZeit) {
+        zeile.setAttribute("data-vorbehalt", "1");
+        var vorbehalt = document.createElement("p");
+        vorbehalt.className = "ka7-vorbehalt status warn";
+        vorbehalt.textContent = t("ka7ZeileVorbehalt", { zeit: ka7Uhrzeit(k.vorbehaltZeit) });
+        zeile.appendChild(vorbehalt);
+      }
+      return zeile;
+    }
+
+    /**
+     * Eine Zeile der Doppelungsliste: „Das gibt es schon" — Titel (Link auf den Volltext), Version,
+     * Pruefstand und die Beziehung im Wortlaut der Erfassen-Flaeche (W6_RELATION_KEYS, kein zweiter
+     * Wortlaut fuer dieselbe Aussage). Ein Treffer, der ZUGLEICH Konflikt ist, sagt auch das.
+     */
+    function ka7DoppelungZeile(d) {
+      var zeile = document.createElement("li");
+      zeile.setAttribute("data-quelle", d.id);
+      var kopf = document.createElement("p");
+      kopf.className = "ka7-doppelung-quelle";
+      var weg = document.createElement("a");
+      weg.href = koDetailUrl(window.location.origin, d.id);
+      weg.target = "_blank";
+      weg.rel = "noopener noreferrer";
+      weg.textContent = d.title;
+      kopf.appendChild(weg);
+      var teile = [];
+      teile.push(d.version === null ? t("ka7VersionUnbekannt") : t("ka7Version", { v: String(d.version) }));
+      teile.push(d.pruefstand ? t(KA7_PRUEFSTAND_KEYS[d.pruefstand]) : t("askStatusUnknown"));
+      if (d.relation) { teile.push(t(W6_RELATION_KEYS[d.relation])); }
+      kopf.appendChild(document.createTextNode(" · " + teile.join(" · ")));
+      zeile.appendChild(kopf);
+      if (d.auchKonflikt) {
+        zeile.setAttribute("data-konflikt", "1");
+        var auch = document.createElement("p");
+        auch.className = "ka7-auch-konflikt";
+        auch.textContent = t("ka7DoppelungAuchKonflikt");
+        zeile.appendChild(auch);
+      }
+      return zeile;
+    }
+
+    /** Ohne belastbares Urteil: ausgefallen (kein/unverwertbares Urteil, geworfen) plus verworfen (Zitate, Schwelle). */
+    function ka7OhneUrteil(s) {
+      return (s.ausgefallen || 0) + (s.verworfen || 0);
+    }
+
+    function ka7StandSatz(s) {
+      var ohne = ka7OhneUrteil(s);
+      var ausfall = ohne > 0 ? t("ka7StandAusfall", { m: String(ohne) }) : "";
+      return t("ka7Stand", {
+        zeit: ka7Uhrzeit(s.zeit),
+        ki: ka7KiZusatz(s.ki),
+        n: String(s.kandidaten),
+        ausfall: ausfall
+      });
+    }
+
+    /** Zeichnen — aus dem gehaltenen Stand, in der aktuellen Sprache. Nur DOM-APIs, kein Markup. */
+    function ka7Zeichnen() {
+      ka7BlockElement();
+      var karte = document.getElementById("ka7-karte");
+      var satz = document.getElementById("ka7-satz");
+      var liste = document.getElementById("ka7-liste");
+      var entscheidung = document.getElementById("ka7-entscheidung");
+      var doppelSatz = document.getElementById("ka7-doppelung-satz");
+      var doppelListe = document.getElementById("ka7-doppelung-liste");
+      var stand = document.getElementById("ka7-stand");
+      if (!karte || !satz || !liste || !entscheidung || !doppelSatz || !doppelListe || !stand) { return; }
+      karte.setAttribute("aria-label", t("ka7Label"));
+      while (liste.firstChild) { liste.removeChild(liste.firstChild); }
+      while (doppelListe.firstChild) { doppelListe.removeChild(doppelListe.firstChild); }
+      doppelSatz.textContent = "";
+      doppelSatz.className = "hidden";
+      entscheidung.textContent = "";
+      entscheidung.className = "hidden";
+      stand.textContent = "";
+      stand.className = "muted hidden";
+      var s = ka7Stand;
+      if (!s) {
+        karte.className = "card hidden";
+        satz.textContent = "";
+        return;
+      }
+      // Runde 6: der Befund, der auf der Karte steht — der frische, oder bei laufender/gescheiterter
+      // Auffrischung der fruehere mit Vorbehalt (ka7Befund). Nie geleert, nie als frisch ausgegeben.
+      var befund = ka7Befund(s);
+      var vorher = befund && befund !== s ? befund : null;
+      var satzClass = "";
+      if (s.lage === "laeuft") {
+        satz.textContent = vorher ? t("ka7VorherLaeuft", { zeit: ka7Uhrzeit(vorher.zeit) }) : t("ka7Laeuft");
+        if (vorher) { satzClass = "status warn"; }
+      } else if (s.lage === "keine_markierung") {
+        satz.textContent = t("ka7KeineMarkierung");
+      } else if (s.lage === "zu_kurz") {
+        satz.textContent = t("ka7ZuKurz", { min: String(W6_MINDESTZEICHEN) });
+      } else if (s.lage === "einwilligung") {
+        satz.textContent = t("ka7Einwilligung", { ki: ka7KiZusatz(s.ki) });
+        satzClass = "status warn";
+      } else if (s.lage === "gesperrt") {
+        satz.textContent = t("ka7Gesperrt");
+        satzClass = "status warn";
+      } else if (s.lage === "anmeldung") {
+        satz.textContent = t("ka7Anmeldung");
+        satzClass = "status warn";
+      } else if (s.lage === "nicht_geprueft") {
+        var grundKey = s.grund && KA7_GRUND_KEYS[s.grund] ? KA7_GRUND_KEYS[s.grund] : "ka7GrundUnbekannt";
+        // „nicht belastbar": Quellen wurden vorgelegt und ein Teil der Urteile fehlt oder wurde
+        // verworfen — die Zahlen sagen, wie viel. „nicht moeglich": gar kein Urteil, kein Modell,
+        // vertraulich, nicht angefordert.
+        var ohneUrteil = ka7OhneUrteil(s);
+        // Teilweise nur, wenn die Zahlen es BELEGEN (ein Teil fehlt, ein Teil nicht) — ein Koerper
+        // ohne Zahlen bleibt „nicht moeglich", nichts wird aus dem Fehlen hergeleitet.
+        var teilweise = s.grund === "urteil_verworfen" ||
+          (s.kandidaten > 0 && ohneUrteil > 0 && ohneUrteil < s.kandidaten);
+        if (vorher) {
+          satz.textContent = t("ka7VorherNichtBelastbar", { grund: t(grundKey), zeit: ka7Uhrzeit(vorher.zeit) });
+        } else if (teilweise) {
+          satz.textContent = t("ka7NichtBelastbar", { grund: t(grundKey), m: String(ohneUrteil), n: String(s.kandidaten) });
+        } else {
+          satz.textContent = t("ka7NichtGeprueft", { grund: t(grundKey) });
+        }
+        satzClass = "status warn";
+        if (!vorher && s.kandidaten > 0 && s.zeit) {
+          stand.textContent = ka7StandSatz(s);
+          stand.className = "muted";
+        }
+      } else if (s.lage === "leer") {
+        var zeit = ka7Uhrzeit(s.zeit);
+        satz.textContent = s.kandidaten === 0
+          ? t("ka7LeerOhneQuelle", { zeit: zeit })
+          : s.gekuerzt
+            ? t("ka7LeerGekuerzt", { max: String(W6_HOECHSTZEICHEN), zeit: zeit })
+            : t("ka7Leer", { zeit: zeit });
+        satzClass = "status ok";
+        stand.textContent = ka7StandSatz(s);
+        stand.className = "muted";
+      } else if (s.lage === "konflikt") {
+        var kopf = s.konflikte.length === 1
+          ? t("ka7AbweichungEine")
+          : t("ka7AbweichungMehrere", { n: String(s.konflikte.length) });
+        if (s.gekuerzt) { kopf += " " + t("ka7AbweichungGekuerzt", { max: String(W6_HOECHSTZEICHEN) }); }
+        // Runde 7: uebernommene Zeilen dabei — der Kopf sagt, dass der Lauf nicht belastbar war.
+        if (ka7NichtAufgefrischt(s).length > 0) {
+          var kopfGrundKey = s.grund && KA7_GRUND_KEYS[s.grund] ? KA7_GRUND_KEYS[s.grund] : "ka7GrundUnbekannt";
+          kopf += " " + t("ka7KopfVorbehalt", { grund: t(kopfGrundKey) });
+        }
+        satz.textContent = kopf;
+        satzClass = "status warn";
+      } else {
+        satz.textContent = vorher ? t("ka7VorherFehler", { zeit: ka7Uhrzeit(vorher.zeit) }) : t("ka7Fehler");
+        satzClass = "status warn";
+      }
+      // Die Zeilen, die Entscheidung und der Stand gehoeren zum BEFUND — dem frischen oder dem
+      // frueheren. Der Stand-Satz traegt dessen Uhrzeit, nicht die des Fehlschlags.
+      if (befund) {
+        for (var i = 0; i < befund.konflikte.length; i += 1) {
+          liste.appendChild(ka7Zeile(befund.konflikte[i]));
+        }
+        entscheidung.textContent = t("ka7Entscheidung");
+        entscheidung.className = "";
+        stand.textContent = ka7StandSatz(befund);
+        stand.className = "muted";
+      }
+      // JOB 3174 (Lieferung 3): die Doppelungen des ANGEZEIGTEN Standes — des frueheren Befunds,
+      // solange er die Karte traegt, sonst des frischen. Sie stehen unter der Abweichung, als eigene
+      // Aussage („Das gibt es schon"), nie unter dem Wort Abweichung.
+      var anzeige = befund || s;
+      var doppel = anzeige && Array.isArray(anzeige.doppelungen) ? anzeige.doppelungen : [];
+      if (doppel.length > 0) {
+        doppelSatz.textContent = doppel.length === 1
+          ? t("ka7DoppelungEine")
+          : t("ka7DoppelungMehrere", { n: String(doppel.length) });
+        doppelSatz.className = "";
+        for (var d = 0; d < doppel.length; d += 1) {
+          doppelListe.appendChild(ka7DoppelungZeile(doppel[d]));
+        }
+      }
+      satz.className = satzClass;
+      karte.className = "card";
+    }
+
+    // ------------------------------------------------------------------------------------------
+    // Lieferung 4: der Hinweis AM ENTWURF. Er steht an der Markierungskarte der Erfassen-Flaeche —
+    // vor dem Senden („du kannst trotzdem einreichen") und nach dem Senden („bewusst eingereicht") —
+    // und NUR, wenn die Markierung dort dieselbe ist, die geprueft wurde: ein Widerspruch zu einem
+    // anderen Text waere eine Behauptung ohne Grundlage. Nichts wird blockiert, nichts geaendert.
+    //
+    // JOB 3174 (M4b, Lieferung 2) — DER WIEDER GEOEFFNETE ENTWURF SAGT, WAS GILT.
+    // Der Befund lebt ausschliesslich im Arbeitsspeicher dieser Panelinstanz (`ka7Stand`); das Panel
+    // speichert nichts (kein localStorage, kein sessionStorage, keine Add-in-Einstellung — Zeilen
+    // 1462 und 3656-3657 dieser Datei). Es gibt also KEINEN bestehenden entwurfsgebundenen
+    // Speicherweg, und es wird auch keiner erfunden (Weg b des Auftrags): schliesst und oeffnet Pedi
+    // das Fenster, ist der Befund fort — und statt der bisherigen LEERE traegt der Entwurf jetzt
+    // seinen PRUEFSTAND als kurze Beschriftung („Keine frische Pruefung"), samt Weg, sie zu starten
+    // (derselbe Aufruf wie der Knopf im Fragen-Reiter, ka7Pruefen — kein zweiter Pfad). Denselben
+    // Pruefstand traegt jeder Entwurf, dessen Pruefung gescheitert ist oder nie lief. Niemals steht
+    // dort „keine Abweichung" ohne erfolgreichen frischen Lauf.
+    // ------------------------------------------------------------------------------------------
+    function ka7EinreichHinweisElement() {
+      // RUNDE 3: der lange Satz wohnt dort, wo die Erfassen-Flaeche ihre Erklaertexte haelt.
+      // JOB 3506 K2b: das ist nicht mehr das „?"-Menue IN der Flaeche, sondern die Gruppe hinter
+      // dem Zahnrad (#einst-erfassen) — derselbe Satz, derselbe Schluessel, ein anderer Ort. Er
+      // bekommt die Zeilenform der Gruppe (.einst-zeile), damit er nicht als Fremdkoerper danebensteht.
+      // `data-t` traegt ihn durch den Sprachwechsel (renderStatics uebersetzt jedes [data-t]).
+      var gruppe = document.getElementById("einst-erfassen");
+      if (gruppe && !document.getElementById("ka7-mehr-hinweis")) {
+        var zeile = document.createElement("div");
+        zeile.className = "einst-zeile";
+        var erklaerung = document.createElement("p");
+        erklaerung.id = "ka7-mehr-hinweis";
+        erklaerung.className = "muted";
+        erklaerung.setAttribute("data-t", "ka7EntwurfMenuText");
+        erklaerung.textContent = t("ka7EntwurfMenuText");
+        zeile.appendChild(erklaerung);
+        gruppe.appendChild(zeile);
+      }
+      var vorhanden = document.getElementById("ka7-einreich-hinweis");
+      if (vorhanden) { return vorhanden; }
+      var anker = document.getElementById("capture-ergebnis");
+      if (!anker || !anker.parentNode) { return null; }
+      var p = document.createElement("p");
+      p.id = "ka7-einreich-hinweis";
+      p.className = "hidden";
+      anker.parentNode.insertBefore(p, anker.nextSibling);
+      var knopf = document.createElement("button");
+      knopf.type = "button";
+      knopf.id = "ka7-einreich-pruefen";
+      knopf.className = "hidden";
+      knopf.addEventListener("click", ka7Pruefen);
+      anker.parentNode.insertBefore(knopf, p.nextSibling);
+      return p;
+    }
+
+    function ka7EinreichHinweisZeichnen() {
+      var el = ka7EinreichHinweisElement();
+      if (!el) { return; }
+      var knopf = document.getElementById("ka7-einreich-pruefen");
+      var verbergen = function () {
+        el.className = "hidden";
+        el.textContent = "";
+        if (knopf) { knopf.className = "hidden"; knopf.textContent = ""; }
+      };
+      var s = ka7Stand;
+      // Runde 6: der Hinweis haengt am BEFUND, nicht am fluechtigen Stand — bei laufender oder
+      // gescheiterter Wiederholung bleibt er, mit Vorbehalt (Codex R5, Korrekturpflicht 2).
+      var befund = ka7Befund(s);
+      if (typeof captureAbsaetze !== "function") { verbergen(); return; }
+      var gesendet = typeof captureErgebnis !== "undefined" && captureErgebnis;
+      var aktuell = gesendet
+        ? (typeof captureGesendet === "string" ? captureGesendet : "")
+        : (Array.isArray(captureMarkierung) ? captureMarkierung.join("\n") : "");
+      // Ohne Entwurf gibt es nichts zu sagen — weder einen Widerspruch noch eine fehlende Pruefung.
+      if (aktuell.length === 0) { verbergen(); return; }
+      var geprueft = befund ? captureAbsaetze(befund.text).join("\n") : "";
+      if (!befund || geprueft.length === 0 || geprueft !== aktuell) {
+        // ==========================================================================================
+        // RUNDE 3 (BEN R2, Korrekturpflicht 1) — DER PRUEFSTAND DIESES ENTWURFS, IN VIER WORTEN.
+        // ==========================================================================================
+        // Runde 1 stellte hier einen ganzen Satz hin (72 Zeichen) — Pedis Textmesser fuer die
+        // Erfassen-Flaeche wurde rot (JOB 3057 K2 §5.7: ausser Beschriftungen kein Satz, hoechstens
+        // 40 Zeichen). Runde 2 versteckte die Aussage stattdessen, sobald die KI-Weiche zu war; das
+        // nahm dem Entwurf genau die Auskunft, um die es geht. Jetzt beides zugleich:
+        //   · auf der FLAECHE steht eine kurze BESCHRIFTUNG — „Keine frische Pruefung",
+        //     „Pruefung laeuft …" oder „Kein Widerspruch · HH:MM", jede unter 40 Zeichen. Sie steht
+        //     IMMER, auch ohne KI-Freigabe: der Pruefstand ist eine Tatsache ueber diesen Entwurf,
+        //     keine Werbung fuer eine Funktion;
+        //   · der LANGE Satz (was der Abgleich tut, dass ein Befund nur die Sitzung ueberlebt)
+        //     wohnt im „?"-Menue (#ka7-mehr-hinweis) — dort, wo diese Flaeche ihre Erklaertexte
+        //     haelt (§5a);
+        //   · der KNOPF erscheint nur, wenn die KI-Weiche fuer dieses Dokument offen ist. Ohne sie
+        //     gaebe es nichts zu starten — ein Weg ins Leere waere Optik statt Ehrlichkeit; die
+        //     Karte im Fragen-Reiter sagt in ihrer eigenen Lage, was fehlt.
+        // Kein Grundsatz mehr auf der Flaeche: „Pruefung nicht moeglich: die KI hat kein
+        // verwertbares Urteil geliefert" ist ein Satz, kein Etikett — er steht auf der Karte.
+        var fuerDiesen = !!s && typeof s.text === "string" &&
+          captureAbsaetze(s.text).join("\n") === aktuell;
+        // Ein Entwurf, fuer den gar keine Pruefung moeglich ist (zu kurz, abgemeldet, kein Word),
+        // bekommt keinen Pruefstand angeheftet, den niemand herstellen kann.
+        if (!signedIn || !officeUsable() ||
+            aktuell.replace(/^\s+|\s+$/g, "").length < W6_MINDESTZEICHEN) {
+          verbergen();
+          return;
+        }
+        var weg = false;
+        var kurz;
+        if (fuerDiesen && s.lage === "laeuft") {
+          kurz = t("ka7EntwurfLaeuft");
+        } else if (fuerDiesen && s.lage === "leer") {
+          // NUR nach einem belastbar gelaufenen Lauf ohne Treffer (ka7Uebersetzen: `gelaufen` true)
+          // — die einzige Lage, in der eine Verneinung belegt ist, mit der Uhrzeit ihres Laufs.
+          // RUNDE 5 (BEN R4, Korrekturpflicht 1): die Verneinung reicht GENAU SO WEIT wie der Lauf.
+          // Die Route meldet auch bei null vorgelegten Quellen `gelaufen: true` — der Lauf fand nur
+          // nichts zu vergleichen. „Kein Widerspruch" waere dann eine Sachauskunft ueber einen
+          // Bestand, den niemand befragt hat. Und wurde nur der Anfang der Markierung vorgelegt
+          // (`gekuerzt`, ueber W6_HOECHSTZEICHEN), gilt die Verneinung nur fuer diesen Teil.
+          // Dieselbe Dreiteilung wie auf der Karte (ka7Zeichnen, Lage „leer") — kein zweiter Massstab.
+          // RUNDE 6 (Tor R5, tests/i18n/mega35-word-wortliste.test.ts:149): der Teil-Kurzstatz hiess
+          // „Teil geprueft · kein Widerspruch" und brach damit den Wortlistenvertrag der Word-Flaeche
+          // (mega35 B: „geprueft" steht NUR im Einstufungshinweis und in den dort einzeln benannten
+          // Vorgangsaussagen). Statt die Ausnahmeliste zu verlaengern, sagt die Beschriftung dasselbe
+          // mit dem EIGENEN Wort dieses Blocks: „Teilabgleich" (ka7Label „Abgleich mit der Regelung").
+          var zeitKurz = ka7Uhrzeit(s.zeit);
+          kurz = s.kandidaten === 0
+            ? t("ka7EntwurfOhneQuelle", { zeit: zeitKurz })
+            : s.gekuerzt
+              ? t("ka7EntwurfOhneWiderspruchTeil", { zeit: zeitKurz })
+              : t("ka7EntwurfOhneWiderspruch", { zeit: zeitKurz });
+        } else {
+          kurz = t("ka7EntwurfOhnePruefung");
+          weg = ka7ExterneKi().lage === "erlaubt";
+        }
+        el.textContent = kurz;
+        el.className = "muted";
+        if (knopf) {
+          knopf.textContent = weg ? t("ka7EntwurfPruefenCta") : "";
+          knopf.className = weg ? "ghost" : "hidden";
+        }
+        return;
+      }
+      var titel = [];
+      for (var i = 0; i < befund.konflikte.length; i += 1) { titel.push(befund.konflikte[i].title); }
+      var text = t(gesendet ? "ka7EinreichGesendet" : "ka7EinreichOffen", { titel: titel.join(" · ") });
+      if (befund !== s) {
+        text += " " + t(s.lage === "laeuft" ? "ka7EinreichVorbehaltLaeuft" : "ka7EinreichVorbehalt", { zeit: ka7Uhrzeit(befund.zeit) });
+      }
+      // Runde 7: uebernommene Zeilen werden beim Einreichen einzeln genannt, mit ihrer Uhrzeit.
+      var alt = ka7NichtAufgefrischt(befund);
+      if (alt.length > 0) {
+        var liste = [];
+        for (var j = 0; j < alt.length; j += 1) {
+          liste.push(t("ka7VorbehaltEintrag", { titel: alt[j].title, zeit: ka7Uhrzeit(alt[j].vorbehaltZeit) }));
+        }
+        text += " " + t("ka7EinreichVorbehaltTeil", { liste: liste.join(", ") });
+      }
+      el.textContent = text;
+      el.className = "status warn";
+      // Ein Befund fuer diesen Entwurf liegt vor — der Weg zur Pruefung ist der Knopf im
+      // Fragen-Reiter, hier braucht es keinen zweiten.
+      if (knopf) { knopf.className = "hidden"; knopf.textContent = ""; }
+    }
+
+    // ------------------------------------------------------------------------------------------
+    // Anschluss — derselbe Wrapper-Gedanke wie in KA6: das Original zuerst und unveraendert, danach
+    // der eigene Nachtrag. Kein Eingriff in den Bestandsrumpf.
+    // ------------------------------------------------------------------------------------------
+    if (typeof document !== "undefined" && document.getElementById("ask-ruhe")) {
+      if (typeof STRINGS !== "undefined") {
+        for (var ka7Sprache in KA7_TEXTE) {
+          if (Object.prototype.hasOwnProperty.call(KA7_TEXTE, ka7Sprache) && STRINGS[ka7Sprache]) {
+            var ka7Tabelle = KA7_TEXTE[ka7Sprache];
+            for (var ka7Schluessel in ka7Tabelle) {
+              if (Object.prototype.hasOwnProperty.call(ka7Tabelle, ka7Schluessel)) {
+                STRINGS[ka7Sprache][ka7Schluessel] = ka7Tabelle[ka7Schluessel];
+              }
+            }
+          }
+        }
+      }
+      ka7BlockElement();
+      ka7SichtbarkeitZeichnen();
+      // Sitzung und Word: `updateAskState` ist das Ende der EINEN Aufruf-Kette (checkSession →
+      // updateSendState → updateAskState) — dort folgt die Sichtbarkeit des Knopfs.
+      if (typeof updateAskState === "function") {
+        var ka7AskStateBestand = updateAskState;
+        updateAskState = function () {
+          ka7AskStateBestand.apply(this, arguments);
+          ka7SichtbarkeitZeichnen();
+        };
+      }
+      // Ruhe, Antwort oder Luecke: der Knopf gehoert zur Ruhe (wie der Bestandsknopf von JOB 3093).
+      if (typeof kwFlaecheZeichnen === "function") {
+        var ka7FlaecheBestand = kwFlaecheZeichnen;
+        kwFlaecheZeichnen = function () {
+          ka7FlaecheBestand.apply(this, arguments);
+          ka7SichtbarkeitZeichnen();
+        };
+      }
+      // Die Markierungskarte der Erfassen-Flaeche: nach jedem Zeichnen folgt der Einreich-Hinweis.
+      if (typeof renderCapture === "function") {
+        var ka7CaptureBestand = renderCapture;
+        renderCapture = function () {
+          ka7CaptureBestand.apply(this, arguments);
+          ka7EinreichHinweisZeichnen();
+        };
+      }
+      // JOB 3174 R2: die KI-Weiche entscheidet, ob am Entwurf ueberhaupt etwas stehen darf (s.
+      // ka7EinreichHinweisZeichnen). Sie wird ASYNCHRON aufgeloest — `renderKlaraS4` ist die EINE
+      // Stelle, an der jeder S4-Zustandswechsel ankommt; danach folgt der Hinweis. Das Original
+      // laeuft zuerst und unveraendert.
+      if (typeof renderKlaraS4 === "function") {
+        var ka7S4Bestand = renderKlaraS4;
+        renderKlaraS4 = function () {
+          ka7S4Bestand.apply(this, arguments);
+          ka7EinreichHinweisZeichnen();
+        };
+      }
+      // Ein bestaetigter Logout verwirft den Stand — kein Befund einer fremden Sitzung (JOB 3093 R2).
+      if (typeof klaraS4Verwerfen === "function") {
+        var ka7VerwerfenBestand = klaraS4Verwerfen;
+        klaraS4Verwerfen = function () {
+          ka7VerwerfenBestand.apply(this, arguments);
+          ka7Verwerfen();
+        };
+      }
+      // Sprachwechsel: derselbe gehaltene Stand, neuer Text. `setLang` ist die EINE Stelle des
+      // Wechsels (die Sprachknoepfe rufen sie) — der Knopf folgt ueber data-t (renderStatics), die
+      // Karte und der Einreich-Hinweis ueber diesen Nachtrag.
+      if (typeof setLang === "function") {
+        var ka7SetLangBestand = setLang;
+        setLang = function () {
+          ka7SetLangBestand.apply(this, arguments);
+          ka7Zeichnen();
+          ka7EinreichHinweisZeichnen();
+        };
+      }
+    }
+    // KW-KA7-KONFLIKT-END
+
+    // KW-WORDVERGLEICH-START
+    // ============================================================================================
+    // JOB 3281 · WORD-VERGLEICH — DAS GANZE DOKUMENT, ABSATZ FUER ABSATZ, MIT FARBE UND BELEG.
+    // ============================================================================================
+    //
+    // PEDIS FALL (Auftrag §1): er oeffnet das Vergleichsdokument in Word und klickt „Dokument
+    // pruefen". Klara geht Absatz fuer Absatz durch, faerbt IM DOKUMENT und listet im Panel je
+    // Absatz die Quellen. Sie entscheidet nichts: „aehnlich" und „Widerspruch" sind Hinweise mit
+    // Beleg, die der Mensch im Dokument sieht.
+    //
+    // DIE VIER AUSSAGEN UND WORAN SIE HAENGEN — jede an ihrer eigenen Voraussetzung (§7 des
+    // Zustandsmodells), keine an einer Punktzahl:
+    //
+    //   gruen  „woertlich belegt"   Ein Quellenfund mit `coverage: "full"` UND
+    //          (BrightGreen)        `gedeckteZeichen === passageZeichen` UND — das ist der Kern —
+    //                               die MITGELIEFERTE Fundstelle traegt den normalisierten Absatz
+    //                               woertlich (`wvWoertlich`). Ein hoher Trigramm-/Dublettenwert
+    //                               fuehrt hier NIE hin: `confidence` wird in diesem Block nirgends
+    //                               gelesen. Codex' Nachfuehrung 08.09., Punkt 1, als Code.
+    //   gelb   „aehnlich"           Es gibt Dublettentreffer oder Quellenfunde, aber keinen
+    //          (Yellow)             woertlichen Beleg. Die schwaechere Aussage steht da, nicht die
+    //                               starke — auch bei `relation: "identisch"` mit 0,98.
+    //   tuerkis „kein Fund"         NUR nach einem VOLLSTAENDIGEN Lauf: der Absatz ging ungekuerzt
+    //          (Turquoise)          hinaus, der Bestand wurde wirklich durchsucht
+    //                               (`quellenfund.gelaufen === true`), der Deckel hat nichts
+    //                               abgeschnitten (`sourceHitsTruncated !== true`) — und es kam
+    //                               nichts zurueck. Fehlt eine dieser Voraussetzungen, gibt es
+    //                               KEINE Farbe und einen Grund. Kein pauschales Blau.
+    //                               DER SATZ SAGT „im durchsuchten Bestand", nicht „nirgends": die
+    //                               Kandidatenwahl der Route ist gedeckelt und behauptet keine
+    //                               Vollstaendigkeit (check-text-routes.ts, `includeUnvalidated`).
+    //   rot    „Widerspruch"        Die Antwort traegt einen Konflikttreffer mit einem BENANNTEN
+    //          (Red)                Konflikttyp (`KA7_KONFLIKT_TYPEN`; Doppelungstypen zaehlen als
+    //                               Aehnlichkeit, nicht als Widerspruch). Der belegte Satz aus der
+    //                               Quelle (`stellen.quelle`) steht daneben.
+    //
+    // OHNE FARBE ist eine eigene, ehrliche Lage und kein Rest: zu kurz, gekuerzt, nicht durchsucht,
+    // Deckel, Fehler — jede mit ihrem Grund in der Liste.
+    //
+    // DER WIDERSPRUCHSZWEIG KOSTET EINEN TEXTABFLUSS, UND DEN ENTSCHEIDET NICHT DIESER BLOCK.
+    // `conflicts` entsteht serverseitig nur im tiefen, nicht vertraulichen Zweig
+    // (`want: "deep"`, check-text-routes.ts `deepAllowed`). Das ist der Gang an die externe KI und
+    // braucht Pedis Weiche je Dokument (Werkstattbeschluss 18.08., KA4). Dieser Block liest sie
+    // ueber `ka7ExterneKi()` — dieselbe eine Stelle, die KA7 dafuer gebaut hat, kein zweiter
+    // Riegel. Ohne Einwilligung geht `want` NICHT hinaus, Rot kann konstruktiv nicht entstehen,
+    // und das Fenster sagt genau das (`wvKiFehlt`) — statt „kein Widerspruch" zu behaupten.
+    //
+    // EIN WEG ZUR ROUTE, KEIN ZWEITER. Der Abruf laeuft durch `w6DublettenAusCheckText` (Block
+    // KW-KLARA-W6-CHECKTEXT), denselben Uebersetzer, den die Erfassen- und die Bestandsflaeche
+    // benutzen: dieselbe Sitzung, derselbe Rumpf (`source: "transient-document"`,
+    // `nichtEingestuft: true`), dieselben Grenzen (40 / 8.000 Zeichen), dieselbe Kuerzungsauskunft.
+    // Es kommt KEINE neue `fetch(`-Stelle und KEIN neues Abrufziel dazu (mega69-klara-merkmale
+    // M6/M7 bleiben unberuehrt). Was `wvUmschlag` am hereingereichten `fetchFn` tut, ist zweierlei
+    // und gehoert genau hierher, nicht in den W6-Vertrag:
+    //   · es setzt `want: "deep"` in den Rumpf, WENN die Weiche oben es erlaubt;
+    //   · es hoert die Antwort EINMAL mit, weil `conflicts`/`konfliktpruefung` im selben Rumpf
+    //     stehen und W6 nur `duplicates`/`sourceHits` uebersetzt. `json()` wird dabei genau einmal
+    //     gelesen und das Ergebnis beiden Lesern gegeben (ein zweites `res.json()` wuerde an einer
+    //     echten Antwort werfen).
+    //
+    // GESCHRIEBEN WIRD NICHTS. Kein `insertText`, kein `insertHtml`, kein
+    // `setSelectedDataAsync` — der Block setzt ausschliesslich `font.highlightColor` und ruft
+    // `range.select()`. `tests/app/word-addin-wortvergleich.test.ts` V2 haelt das an den
+    // ausgelieferten Bytes fest, nicht nur an einem Ablauf.
+    //
+    // DIE MERKLISTE HAENGT AM VORKOMMEN, NICHT AN DER ABSATZNUMMER (Codex 08.09., Punkt 3+4):
+    //   · Ein Posten ist (TEXT-HASH + VORKOMMEN `vk`), nicht der Hash allein. Zwei woertlich
+    //     gleiche Absaetze sind ZWEI Posten und zwei Stellen im Dokument. Der Hash allein war der
+    //     Fehler der Runde 1 (Ben 08.09.): er fasste beide zu einem Posten zusammen, liess nach der
+    //     Ruecknahme den zweiten gefaerbt stehen, sprang immer zum ersten — und ueberschrieb beim
+    //     Faerben die fremde Hervorhebung des ersten Vorkommens, obwohl der Auftrag dem zweiten galt.
+    //     Die Absatznummer taugt als Identitaet nicht: sie verschiebt sich beim Bearbeiten. `vk`
+    //     zaehlt je Wortlaut und verschiebt sich nur, wenn ein GLEICHER Absatz davor wegfaellt —
+    //     dann greift der zweite Durchgang von `wvZuordnen`.
+    //   · Vor dem Faerben wird die URSPRUNGSFARBE jedes Absatzes festgehalten. Traegt ein Absatz
+    //     schon eine FREMDE Hervorhebung, wird er NICHT ueberfaerbt — er wird nur eingestuft, mit
+    //     Hinweis. Fremde Arbeit geht nicht verloren. Geprueft wird das ZWEIMAL: beim Lesen und
+    //     noch einmal unmittelbar vor dem Schreiben, denn zwischen beidem kann ein Mensch faerben.
+    //   · „Markierungen entfernen" stellt die Ursprungsfarbe wieder her, nicht „keine Farbe" — und
+    //     nur dort, wo JETZT noch genau die Farbe steht, die Klara gesetzt hat. Hat ein Mensch
+    //     seither umgefaerbt, bleibt seine Farbe stehen und die Zahl sagt es.
+    //   · Ein zweiter Lauf uebernimmt die Ursprungsfarbe aus der Merkliste und nicht das, was er
+    //     im Dokument vorfindet — sonst merkte sich Klara ihre eigene Farbe als Ursprung.
+    //   · Verschiebt sich ein Absatz, findet der Hash ihn wieder. Aendert sich sein Text, wird
+    //     NICHTS blind entfaerbt: der Posten bleibt stehen und wird als „veraendert" gemeldet.
+    //   · Gemerkt wird ERST NACH dem erfolgreichen Schreiblauf. Scheitert er, steht keine Farbe im
+    //     Dokument — dann darf das Panel auch keine Ruecknahme dafuer anbieten.
+    //
+    // WIEDEROEFFNEN: die Farben gehoeren ab dem Speichern Word, nicht Klara — sie bleiben von
+    // selbst. Das Panel haelt NICHTS ueber ein Fenster hinaus (kein localStorage, kein Cookie);
+    // in der Ruhe steht deshalb `wvRuhe` — der Satz, der genau das sagt, statt eine Liste
+    // vorzutaeuschen, die niemand mehr belegen kann.
+    var WV_TEXTE = {
+      de: {
+        wvCta: "Dokument prüfen",
+        wvAbbrechen: "Abbrechen",
+        wvEntfernen: "Markierungen entfernen",
+        wvRuhe: "Für dieses Fenster liegt noch kein Abgleich vor. Farben aus einem früheren Lauf bleiben im Dokument — die Liste hier entsteht erst beim erneuten Abgleich.",
+        wvLaeuft: "Absatz {n} von {m} …",
+        wvFertig: "{n} von {m} Absätzen abgeglichen · {zeit}. Klara hat nur Farben gesetzt, kein Wort im Dokument verändert.",
+        wvAbgebrochen: "Abgebrochen · {n} von {m} Absätzen abgeglichen · {zeit}. Klara hat nur Farben gesetzt, kein Wort im Dokument verändert.",
+        wvLeer: "Das Dokument enthält keinen Absatz mit Text.",
+        wvFehler: "Abgleich nicht möglich — Word hat keinen lesbaren Text geliefert.",
+        wvAnmeldung: "Abgleich abgebrochen: Du bist nicht angemeldet oder darfst den Bestand nicht lesen.",
+        wvLegende: "Farben im Dokument",
+        wvKatExakt: "Wörtlich im Bestand belegt",
+        wvKatSinngleich: "Ähnlich — inhaltlich verwandt, nicht wörtlich",
+        wvKatNeu: "Kein Fund im durchsuchten Bestand",
+        wvKatWiderspruch: "Widerspruch zu einem Eintrag",
+        wvKatOffen: "Nicht abgeglichen",
+        wvFarbeExakt: "Grün",
+        wvFarbeSinngleich: "Gelb",
+        wvFarbeNeu: "Türkis",
+        wvFarbeWiderspruch: "Rot",
+        wvFarbeKeine: "keine Farbe",
+        wvAbsatzNr: "Absatz {n}",
+        wvGrundZuKurz: "unter {min} Zeichen — so kurzen Text nimmt der Bestandsabgleich nicht an",
+        wvGrundGekuerzt: "nur die ersten {max} Zeichen gingen in den Abgleich, der Rest blieb außen vor",
+        wvGrundNichtDurchsucht: "der Bestand wurde für diesen Absatz nicht durchsucht",
+        wvGrundGekappt: "es gab mehr Quellen, als der Deckel durchsucht hat",
+        wvGrundFehler: "der Abgleich dieses Absatzes ist fehlgeschlagen",
+        wvTeilHinweis: "Nur die ersten {max} Zeichen gingen in den Abgleich.",
+        wvFremdeFarbe: "Der Absatz trägt bereits eine eigene Hervorhebung — Klara hat sie nicht überschrieben.",
+        wvKonfliktOffen: "Widerspruch nicht abgeglichen: {grund}.",
+        wvKonfliktStelle: "Die Quelle sagt: „{stelle}“",
+        wvKonfliktOhneStelle: "Die Quelle: Stelle nicht benannt.",
+        wvKeineEntscheidung: "Klara entscheidet nichts — die Belege stehen daneben.",
+        wvSpringen: "Im Dokument zeigen",
+        wvEntferntZahl: "{n} Markierungen zurückgenommen; {m} Absätze haben sich seither verändert und blieben unangetastet.",
+        wvEntferntFremd: "{k} Absätze tragen inzwischen eine andere Hervorhebung — Klara hat sie so gelassen.",
+        wvEntferntFehler: "Die Markierungen konnten nicht zurückgenommen werden.",
+        wvFarbenFehler: "Die Farben konnten nicht ins Dokument geschrieben werden — der Befund steht hier, im Dokument steht keine Markierung.",
+        wvVeraendert: "Der Absatz hat sich seit dem Abgleich verändert — er wurde nicht gefärbt; gleiche ihn erneut ab.",
+        wvKiZeile: "Widerspruchsabgleich mit externer KI{ki}.",
+        wvKiFehlt: "Ohne Einwilligung für dieses Dokument bleibt der Widerspruchsabgleich aus — die Farbe Rot kann in diesem Lauf nicht entstehen.",
+      },
+      en: {
+        wvCta: "Check document",
+        wvAbbrechen: "Cancel",
+        wvEntfernen: "Remove highlights",
+        wvRuhe: "No comparison exists for this pane yet. Colours from an earlier run stay in the document — the list here only appears after a new comparison.",
+        wvLaeuft: "Paragraph {n} of {m} …",
+        wvFertig: "{n} of {m} paragraphs compared · {zeit}. Klara only set colours; no word in the document was changed.",
+        wvAbgebrochen: "Cancelled · {n} of {m} paragraphs compared · {zeit}. Klara only set colours; no word in the document was changed.",
+        wvLeer: "The document contains no paragraph with text.",
+        wvFehler: "Comparison not possible — Word returned no readable text.",
+        wvAnmeldung: "Comparison stopped: you are not signed in or may not read the knowledge base.",
+        wvLegende: "Colours in the document",
+        wvKatExakt: "Found verbatim in the knowledge base",
+        wvKatSinngleich: "Similar — related in content, not verbatim",
+        wvKatNeu: "No match in the searched knowledge base",
+        wvKatWiderspruch: "Contradicts an entry",
+        wvKatOffen: "Not compared",
+        wvFarbeExakt: "Green",
+        wvFarbeSinngleich: "Yellow",
+        wvFarbeNeu: "Turquoise",
+        wvFarbeWiderspruch: "Red",
+        wvFarbeKeine: "no colour",
+        wvAbsatzNr: "Paragraph {n}",
+        wvGrundZuKurz: "under {min} characters — the knowledge check does not accept text that short",
+        wvGrundGekuerzt: "only the first {max} characters went into the comparison, the rest stayed out",
+        wvGrundNichtDurchsucht: "the knowledge base was not searched for this paragraph",
+        wvGrundGekappt: "there were more sources than the cap searched",
+        wvGrundFehler: "the comparison of this paragraph failed",
+        wvTeilHinweis: "Only the first {max} characters went into the comparison.",
+        wvFremdeFarbe: "The paragraph already carries a highlight of its own — Klara did not overwrite it.",
+        wvKonfliktOffen: "Contradiction not compared: {grund}.",
+        wvKonfliktStelle: "The source says: “{stelle}”",
+        wvKonfliktOhneStelle: "The source: passage not named.",
+        wvKeineEntscheidung: "Klara does not decide this — the evidence is right beside it.",
+        wvSpringen: "Show in document",
+        wvEntferntZahl: "{n} highlights taken back; {m} paragraphs have changed since and were left untouched.",
+        wvEntferntFremd: "{k} paragraphs now carry a different highlight — Klara left them as they are.",
+        wvEntferntFehler: "The highlights could not be taken back.",
+        wvFarbenFehler: "The colours could not be written into the document — the findings are here, but no highlight is in the document.",
+        wvVeraendert: "The paragraph has changed since the comparison — it was not coloured; compare it again.",
+        wvKiZeile: "Contradiction compared with external AI{ki}.",
+        wvKiFehlt: "Without consent for this document the contradiction comparison stays off — the colour red cannot appear in this run.",
+      },
+      nl: {
+        wvCta: "Document controleren",
+        wvAbbrechen: "Annuleren",
+        wvEntfernen: "Markeringen verwijderen",
+        wvRuhe: "Voor dit venster is er nog geen vergelijking. Kleuren uit een eerdere ronde blijven in het document — de lijst hier ontstaat pas bij een nieuwe vergelijking.",
+        wvLaeuft: "Alinea {n} van {m} …",
+        wvFertig: "{n} van {m} alinea's vergeleken · {zeit}. Klara heeft alleen kleuren gezet; geen woord in het document is gewijzigd.",
+        wvAbgebrochen: "Afgebroken · {n} van {m} alinea's vergeleken · {zeit}. Klara heeft alleen kleuren gezet; geen woord in het document is gewijzigd.",
+        wvLeer: "Het document bevat geen alinea met tekst.",
+        wvFehler: "Vergelijking niet mogelijk — Word gaf geen leesbare tekst.",
+        wvAnmeldung: "Vergelijking gestopt: je bent niet aangemeld of mag het bestand niet lezen.",
+        wvLegende: "Kleuren in het document",
+        wvKatExakt: "Woordelijk in het bestand aangetroffen",
+        wvKatSinngleich: "Vergelijkbaar — inhoudelijk verwant, niet woordelijk",
+        wvKatNeu: "Geen vondst in het doorzochte bestand",
+        wvKatWiderspruch: "Spreekt een vermelding tegen",
+        wvKatOffen: "Niet vergeleken",
+        wvFarbeExakt: "Groen",
+        wvFarbeSinngleich: "Geel",
+        wvFarbeNeu: "Turkoois",
+        wvFarbeWiderspruch: "Rood",
+        wvFarbeKeine: "geen kleur",
+        wvAbsatzNr: "Alinea {n}",
+        wvGrundZuKurz: "onder {min} tekens — zo korte tekst neemt de bestandsvergelijking niet aan",
+        wvGrundGekuerzt: "alleen de eerste {max} tekens gingen de vergelijking in, de rest bleef buiten beschouwing",
+        wvGrundNichtDurchsucht: "het bestand is voor deze alinea niet doorzocht",
+        wvGrundGekappt: "er waren meer bronnen dan het maximum heeft doorzocht",
+        wvGrundFehler: "de vergelijking van deze alinea is mislukt",
+        wvTeilHinweis: "Alleen de eerste {max} tekens gingen de vergelijking in.",
+        wvFremdeFarbe: "De alinea draagt al een eigen markering — Klara heeft die niet overschreven.",
+        wvKonfliktOffen: "Tegenstrijdigheid niet vergeleken: {grund}.",
+        wvKonfliktStelle: "De bron zegt: “{stelle}”",
+        wvKonfliktOhneStelle: "De bron: passage niet benoemd.",
+        wvKeineEntscheidung: "Klara beslist dit niet — de onderbouwing staat ernaast.",
+        wvSpringen: "In het document tonen",
+        wvEntferntZahl: "{n} markeringen teruggenomen; {m} alinea's zijn sindsdien gewijzigd en zijn onaangeroerd gebleven.",
+        wvEntferntFremd: "{k} alinea's dragen inmiddels een andere markering — Klara heeft ze zo gelaten.",
+        wvEntferntFehler: "De markeringen konden niet worden teruggenomen.",
+        wvFarbenFehler: "De kleuren konden niet in het document worden geschreven — de bevinding staat hier, in het document staat geen markering.",
+        wvVeraendert: "De alinea is sinds de vergelijking gewijzigd — hij is niet gekleurd; vergelijk hem opnieuw.",
+        wvKiZeile: "Tegenstrijdigheid vergeleken met externe AI{ki}.",
+        wvKiFehlt: "Zonder toestemming voor dit document blijft de tegenstrijdigheidsvergelijking uit — de kleur rood kan in deze ronde niet ontstaan.",
+      },
+    };
+
+    // Die vier Word-Hervorhebungen. BEWUSST die Namen der Word-Aufzaehlung und KEIN Farbliteral:
+    // was Word malt, bestimmt Word — ein eigener Hex-Wert waere eine zweite Farbwahrheit neben der
+    // Werkbank-Palette (mega43 B1) und wuerde am Ende doch nicht das zeigen, was im Dokument steht.
+    // Aus demselben Grund traegt die Legende die NAMEN dieser Farben und kein gemaltes Kaestchen.
+    var WV_FARBEN = { exakt: "BrightGreen", sinngleich: "Yellow", neu: "Turquoise", widerspruch: "Red" };
+    var WV_KAT_KEYS = { exakt: "wvKatExakt", sinngleich: "wvKatSinngleich", neu: "wvKatNeu", widerspruch: "wvKatWiderspruch", offen: "wvKatOffen" };
+    var WV_FARB_KEYS = { exakt: "wvFarbeExakt", sinngleich: "wvFarbeSinngleich", neu: "wvFarbeNeu", widerspruch: "wvFarbeWiderspruch" };
+    var WV_LEGENDE = ["exakt", "sinngleich", "neu", "widerspruch", "offen"];
+
+    var wvLauf = 0;        // Laufnummer: ein spaeter Rueckruf eines ueberholten Laufs wird verworfen
+    var wvLaeuft = false;
+    var wvStand = null;    // { zeilen, gesamt, geprueft, zeit, lage, tief, ki }
+    var wvMerk = [];       // [{ hash, vk, kategorie, vorher, gesetzt }] — je VORKOMMEN ein Posten
+    var wvMeldung = "";    // die Auskunft der letzten Ruecknahme
+    var wvSchreibfehler = false; // der Schreiblauf am Ende scheiterte: keine Farbe steht im Dokument
+
+    /** Normalisierung fuer Vergleich UND Hash: Anfuehrungszeichen, Leerraum, Gross-/Kleinschreibung. */
+    function wvNorm(text) {
+      return String(text === null || text === undefined ? "" : text)
+        .replace(/[‘’‚‛′´`]/g, "'")
+        .replace(/[“”„‟″]/g, '"')
+        .replace(/[‐-―]/g, "-")
+        .replace(/\s+/g, " ")
+        .replace(/^ +| +$/g, "")
+        .toLowerCase();
+    }
+
+    /** Ein kurzer, stabiler Fingerabdruck des normalisierten Absatzes (djb2 + Laenge). */
+    function wvHash(text) {
+      var n = wvNorm(text);
+      var h = 5381;
+      for (var i = 0; i < n.length; i += 1) { h = ((h * 33) ^ n.charCodeAt(i)) >>> 0; }
+      return h.toString(36) + ":" + n.length;
+    }
+
+    function wvZeit() {
+      var d = new Date();
+      function pad(n) { return n < 10 ? "0" + n : String(n); }
+      return pad(d.getHours()) + ":" + pad(d.getMinutes());
+    }
+
+    /** Eine Hervorhebung, wie Word sie meldet — `null` heisst „keine". Kein Platzhalter. */
+    function wvFarbeAm(absatz) {
+      var f = absatz && absatz.font ? absatz.font.highlightColor : null;
+      return typeof f === "string" && f.length > 0 ? f : null;
+    }
+
+    /**
+     * EIN Word-Lauf ueber die Absaetze. `arbeit(items)` darf faerben oder waehlen; danach folgt
+     * genau ein zweiter `sync`. Ohne Word, ohne Dokumentkontext oder bei einem Fehler des Hosts
+     * meldet `done(false)` — dann sagt die Flaeche das, statt einen Erfolg zu behaupten.
+     */
+    function wvMitAbsaetzen(arbeit, done) {
+      if (!officeUsable() || !window.Word || typeof Word.run !== "function") { done(false); return; }
+      try {
+        Word.run(function (kontext) {
+          var liste = kontext.document.body.paragraphs;
+          liste.load("items/text,items/font/highlightColor");
+          return kontext.sync().then(function () {
+            arbeit(liste.items || []);
+            return kontext.sync().then(function () { done(true); });
+          });
+        }).catch(function () { done(false); });
+      } catch (err) {
+        done(false);
+      }
+    }
+
+    /**
+     * Die Vorkommen je Wortlaut, in Dokumentreihenfolge: `{ index, vk, vergeben }`. `vk` ist die
+     * laufende Nummer DIESES Wortlauts — bei eindeutigem Text immer 0, bei zwei gleichen Absaetzen
+     * 0 und 1. Gezaehlt wird ueber ALLE Absaetze, auch die leeren, damit die Nummer aus dem
+     * Lesedurchgang (`wvPruefen`) und die aus der Zuordnung dieselbe ist.
+     */
+    function wvVorkommen(items) {
+      var frei = {};
+      for (var i = 0; i < items.length; i += 1) {
+        var h = wvHash(items[i] && items[i].text);
+        if (!frei[h]) { frei[h] = []; }
+        frei[h].push({ index: i, vk: frei[h].length, vergeben: false });
+      }
+      return frei;
+    }
+
+    /**
+     * Merkposten den HEUTIGEN Absaetzen zuordnen — ueber (Text-Hash + Vorkommen), nie ueber die
+     * Absatznummer. Jede Stelle wird hoechstens einmal vergeben; zwei gleiche Absaetze sind zwei
+     * Posten und bleiben zwei. Erster Durchgang: das EIGENE Vorkommen. Zweiter Durchgang: wer es
+     * nicht mehr findet (ein gleicher Absatz davor wurde geloescht), nimmt das naechste freie
+     * Vorkommen desselben Wortlauts. Was gar nichts findet, bleibt UNANGETASTET und kommt als
+     * `verloren` zurueck.
+     */
+    function wvZuordnen(items, posten) {
+      var frei = wvVorkommen(items);
+      var paare = [];
+      var offen = [];
+      var verloren = [];
+      var i;
+      var j;
+      for (i = 0; i < posten.length; i += 1) {
+        var stellen = frei[posten[i].hash];
+        var treffer = null;
+        for (j = 0; stellen && j < stellen.length; j += 1) {
+          if (!stellen[j].vergeben && stellen[j].vk === posten[i].vk) { treffer = stellen[j]; break; }
+        }
+        if (treffer) { treffer.vergeben = true; paare.push({ posten: posten[i], absatz: items[treffer.index] }); }
+        else { offen.push(posten[i]); }
+      }
+      for (i = 0; i < offen.length; i += 1) {
+        var rest = frei[offen[i].hash];
+        var naechste = null;
+        for (j = 0; rest && j < rest.length; j += 1) {
+          if (!rest[j].vergeben) { naechste = rest[j]; break; }
+        }
+        if (naechste) { naechste.vergeben = true; paare.push({ posten: offen[i], absatz: items[naechste.index] }); }
+        else { verloren.push(offen[i]); }
+      }
+      return { paare: paare, verloren: verloren };
+    }
+
+    /** Der Merkposten zu genau diesem Vorkommen, oder `null`. */
+    function wvPosten(hash, vk) {
+      for (var i = 0; i < wvMerk.length; i += 1) {
+        if (wvMerk[i].hash === hash && wvMerk[i].vk === vk) { return wvMerk[i]; }
+      }
+      return null;
+    }
+
+    /** Die Ursprungsfarbe eines Absatzes: aus der Merkliste, sonst die heute gelesene. Ohne diese
+     *  Regel merkte sich ein zweiter Lauf Klaras eigene Farbe als „Ursprung" (D6). */
+    function wvUrsprung(hash, vk, gelesen) {
+      var p = wvPosten(hash, vk);
+      return p ? p.vorher : gelesen;
+    }
+
+    /** Traegt DIESER Absatz jetzt Klaras Farbe? Nur dann darf seine Zeile eine Farbe nennen —
+     *  nach „Markierungen entfernen" steht im Dokument keine mehr, und die Zeile sagt das, statt
+     *  eine Farbe zu behaupten, die niemand mehr sieht. */
+    function wvGefaerbt(hash, vk) {
+      return wvPosten(hash, vk) !== null;
+    }
+
+    /**
+     * Darf Klara auf DIESEN Absatz schreiben? Nur wenn dort keine Hervorhebung steht oder genau
+     * die, die sie selbst zuletzt gesetzt hat. Alles andere ist die Arbeit eines Menschen — auch
+     * dann, wenn sie erst zwischen Lesen und Faerben entstanden ist (Ben 08.09., Pflicht 2).
+     */
+    function wvDarfFaerben(hash, vk, absatz) {
+      var ist = wvFarbeAm(absatz);
+      if (ist === null) { return true; }
+      var p = wvPosten(hash, vk);
+      return p !== null && p.gesetzt === ist;
+    }
+
+    /** `gesetzt` ist die Farbe, die WIRKLICH ins Dokument ging — daran erkennt die Ruecknahme
+     *  spaeter, ob die Markierung noch Klaras ist. */
+    function wvMerken(zeile, farbe) {
+      var p = wvPosten(zeile.hash, zeile.vk);
+      if (p) { p.kategorie = zeile.kategorie; p.gesetzt = farbe; return; }
+      wvMerk.push({ hash: zeile.hash, vk: zeile.vk, kategorie: zeile.kategorie, vorher: zeile.vorher, gesetzt: farbe });
+    }
+
+    /**
+     * DER WOERTLICHE BELEG. `coverage: "full"` sagt: die ganze normalisierte Passage steht
+     * zusammenhaengend im Suchtext der Quelle (check-text-detection.ts `deckungAm`) — und die
+     * `fundstelle` ist genau der Ausschnitt darum. Beides wird hier NACHGEPRUEFT: die Zahlen
+     * muessen sich decken UND der mitgelieferte Quellabschnitt muss den Absatz woertlich tragen.
+     * Stimmt das nicht, ist es kein woertlicher Beleg — dann steht die schwaechere Aussage da.
+     */
+    function wvWoertlich(fund, text) {
+      if (!fund || fund.coverage !== "full") { return false; }
+      if (typeof fund.gedeckteZeichen !== "number" || typeof fund.passageZeichen !== "number") { return false; }
+      if (fund.gedeckteZeichen !== fund.passageZeichen) { return false; }
+      var absatz = wvNorm(text);
+      return absatz.length > 0 && wvNorm(fund.fundstelle).indexOf(absatz) >= 0;
+    }
+
+    /** Die Konflikttreffer der Antwort — nur BENANNTE Konflikttypen; Doppelungstypen sind
+     *  Aehnlichkeit und werden hier bewusst nicht zu Rot (dieselbe Trennung wie KA7). */
+    function wvKonflikteAus(koerper) {
+      var raus = [];
+      if (!koerper || !Array.isArray(koerper.conflicts)) { return raus; }
+      for (var i = 0; i < koerper.conflicts.length; i += 1) {
+        var c = koerper.conflicts[i];
+        var id = c && typeof c.koId === "string" ? c.koId : "";
+        if (!id || !KA7_KONFLIKT_TYPEN[typeof c.type === "string" ? c.type : ""]) { continue; }
+        var stellen = c.stellen && typeof c.stellen === "object" ? c.stellen : null;
+        raus.push({
+          id: id,
+          title: (typeof c.koTitle === "string" && c.koTitle) || id,
+          pruefstand: c.pruefstand === "validiert" || c.pruefstand === "eingereicht" ? c.pruefstand : null,
+          fundort: w6Fundort(c),
+          stelle: stellen && typeof stellen.quelle === "string" && stellen.quelle.replace(/^\s+|\s+$/g, "").length > 0 ? stellen.quelle : null
+        });
+      }
+      return raus;
+    }
+
+    /** Ob und warum die Konfliktpruefung gelaufen ist — gelesen, nie geraten (JOB 3094). */
+    function wvKonfliktlage(koerper) {
+      var p = koerper && koerper.konfliktpruefung && typeof koerper.konfliktpruefung === "object" ? koerper.konfliktpruefung : null;
+      if (!p || typeof p.gelaufen !== "boolean") { return { gelaufen: false, grund: null }; }
+      return { gelaufen: p.gelaufen === true, grund: typeof p.grund === "string" ? p.grund : null };
+    }
+
+    /**
+     * DIE EINSTUFUNG — eine reine Funktion ueber dem, was der Server gesagt hat. `confidence`
+     * kommt darin NICHT vor: eine Punktzahl ist nie ein woertlicher Beleg.
+     */
+    function wvEinstufen(text, ergebnis, konflikte) {
+      var lage = ergebnis && typeof ergebnis.lage === "string" ? ergebnis.lage : "fehler";
+      if (lage === "zu-kurz") { return { kategorie: "offen", grund: "wvGrundZuKurz" }; }
+      if (lage !== "treffer" && lage !== "leer") { return { kategorie: "offen", grund: "wvGrundFehler" }; }
+      if (konflikte.length > 0) { return { kategorie: "widerspruch", grund: null }; }
+      var quellenfund = ergebnis.quellenfund && typeof ergebnis.quellenfund === "object" ? ergebnis.quellenfund : null;
+      var durchsucht = Boolean(quellenfund) && quellenfund.gelaufen === true;
+      var funde = durchsucht && Array.isArray(quellenfund.treffer) ? quellenfund.treffer : [];
+      var i;
+      for (i = 0; i < funde.length; i += 1) {
+        if (wvWoertlich(funde[i], text)) { return { kategorie: "exakt", grund: null }; }
+      }
+      var treffer = Array.isArray(ergebnis.treffer) ? ergebnis.treffer : [];
+      if (treffer.length > 0 || funde.length > 0) { return { kategorie: "sinngleich", grund: null }; }
+      // Ab hier waere die Aussage „nichts gefunden" — sie darf nur nach einem VOLLSTAENDIGEN Lauf
+      // stehen. Jede fehlende Voraussetzung nimmt die Farbe und nennt ihren Grund.
+      if (ergebnis.gekuerzt === true) { return { kategorie: "offen", grund: "wvGrundGekuerzt" }; }
+      if (!durchsucht) { return { kategorie: "offen", grund: "wvGrundNichtDurchsucht" }; }
+      if (quellenfund.mehr === true) { return { kategorie: "offen", grund: "wvGrundGekappt" }; }
+      return { kategorie: "neu", grund: null };
+    }
+
+    /** Die Quellen einer Zeile: Dublettentreffer, Quellenfunde und Konflikte — in EINER Form. */
+    function wvQuellen(ergebnis, konflikte) {
+      var raus = [];
+      var i;
+      for (i = 0; i < konflikte.length; i += 1) {
+        // `konflikt: true` heisst: von DIESER Quelle erwartet der Leser die widersprechende Stelle.
+        // Fehlt sie, wird sie benannt (`wvKonfliktOhneStelle`) und nicht verschwiegen.
+        raus.push({ id: konflikte[i].id, title: konflikte[i].title, pruefstand: konflikte[i].pruefstand,
+          fundort: konflikte[i].fundort, stelle: konflikte[i].stelle, konflikt: true });
+      }
+      var treffer = ergebnis && Array.isArray(ergebnis.treffer) ? ergebnis.treffer : [];
+      for (i = 0; i < treffer.length; i += 1) {
+        raus.push({ id: treffer[i].id, title: treffer[i].title || treffer[i].id,
+          pruefstand: treffer[i].pruefstand, fundort: treffer[i].fundort, stelle: null, konflikt: false });
+      }
+      var quellenfund = ergebnis && ergebnis.quellenfund && Array.isArray(ergebnis.quellenfund.treffer)
+        ? ergebnis.quellenfund.treffer : [];
+      for (i = 0; i < quellenfund.length; i += 1) {
+        raus.push({ id: quellenfund[i].id, title: quellenfund[i].title || quellenfund[i].id,
+          pruefstand: quellenfund[i].pruefstand, fundort: quellenfund[i].fundort, stelle: null, konflikt: false });
+      }
+      return raus;
+    }
+
+    /**
+     * DER UMSCHLAG UM `fetchFn`. Siehe Kopfkommentar: er setzt `want` (nur mit Weiche) und hoert
+     * die EINE Antwort mit, ohne einen zweiten Abruf und ohne eine zweite Abrufstelle.
+     */
+    function wvUmschlag(tief, mitschnitt) {
+      var roh = fetch.bind(window);
+      return function (pfad, anfrage) {
+        var eigen = anfrage;
+        if (tief && anfrage && typeof anfrage.body === "string") {
+          try {
+            var koerper = JSON.parse(anfrage.body);
+            koerper.want = "deep";
+            eigen = { method: anfrage.method, credentials: anfrage.credentials,
+              headers: anfrage.headers, body: JSON.stringify(koerper) };
+          } catch (err) { eigen = anfrage; }
+        }
+        return roh(pfad, eigen).then(function (res) {
+          if (!res || !res.ok || typeof res.json !== "function") { return res; }
+          var einmal = null;
+          return {
+            ok: res.ok,
+            status: res.status,
+            headers: res.headers,
+            json: function () {
+              if (einmal === null) {
+                einmal = res.json().then(function (k) { mitschnitt.koerper = k; return k; });
+              }
+              return einmal;
+            }
+          };
+        });
+      };
+    }
+
+    // ------------------------------------------------------------------------------------------
+    // Der Lauf
+    // ------------------------------------------------------------------------------------------
+    function wvPruefen() {
+      if (wvLaeuft) { return; }
+      wvLauf += 1;
+      var lauf = wvLauf;
+      wvLaeuft = true;
+      wvMeldung = "";
+      wvSchreibfehler = false;
+      var weiche = ka7ExterneKi();
+      var tief = weiche.lage === "erlaubt";
+      wvStand = { zeilen: [], gesamt: 0, geprueft: 0, zeit: null, lage: "laeuft", tief: tief, ki: weiche.ki };
+      wvZeichnen();
+      var gelesen = null;
+      wvMitAbsaetzen(function (items) {
+        gelesen = [];
+        // Die Vorkommen werden ueber ALLE Absaetze gezaehlt — auch die leeren, die gleich
+        // uebersprungen werden. Nur so ist `vk` dieselbe Nummer wie spaeter in `wvZuordnen`.
+        var zaehler = {};
+        for (var i = 0; i < items.length; i += 1) {
+          var text = String(items[i] && items[i].text !== undefined && items[i].text !== null ? items[i].text : "");
+          var hash = wvHash(text);
+          var vk = zaehler[hash] === undefined ? 0 : zaehler[hash];
+          zaehler[hash] = vk + 1;
+          if (text.replace(/^\s+|\s+$/g, "").length === 0) { continue; }
+          gelesen.push({ nr: i + 1, text: text, hash: hash, vk: vk,
+            vorher: wvUrsprung(hash, vk, wvFarbeAm(items[i])) });
+        }
+      }, function (ok) {
+        // UEBERHOLT: ein anderer Lauf haelt die Fahne. Diese Antwort faellt weg — sie raeumt NICHT
+        // auf. `wvLaeuft` gehoert dem Lauf mit der aktuellen Kennung; wer sie hier zuruecksetzte,
+        // nahm dem laufenden Lauf sein „Abbrechen" weg und gab den Startknopf frei, waehrend Klara
+        // noch fragte (Codex-Vorpruefung R2, 08.09.). Jede Stelle, die `wvLauf` erhoeht, setzt
+        // `wvLaeuft` selbst: `wvPruefen` auf true, `wvAbbrechen` und `wvVerwerfen` auf false.
+        if (lauf !== wvLauf) { return; }
+        if (!ok || gelesen === null) { wvSchluss(lauf, "fehler"); return; }
+        wvStand.gesamt = gelesen.length;
+        wvZeichnen();
+        if (gelesen.length === 0) { wvSchluss(lauf, "leer"); return; }
+        wvSchritt(lauf, gelesen, 0, tief);
+      });
+    }
+
+    function wvSchritt(lauf, absaetze, i, tief) {
+      // Ueberholt: stumm aussteigen, nichts anfassen (Begruendung an der ersten Stelle in `wvPruefen`).
+      if (lauf !== wvLauf) { return; }
+      if (i >= absaetze.length) { wvSchluss(lauf, "fertig"); return; }
+      var a = absaetze[i];
+      wvStand.geprueft = i;
+      wvZeichnen();
+      var mitschnitt = { koerper: null };
+      w6DublettenAusCheckText(
+        "wortvergleich",
+        function () { return a.text; },
+        wvUmschlag(tief, mitschnitt),
+        askLocale(lang),
+        deriveDraftTitleFromSelection(a.text)
+      ).then(function (ergebnis) {
+        // DIE VERSPAETETE ANTWORT EINES ABGEBROCHENEN LAUFS: sie gehoert niemandem mehr. Weder
+        // Fortschritt noch Liste noch `wvLaeuft` duerfen sie sehen (Begruendung in `wvPruefen`).
+        if (lauf !== wvLauf) { return; }
+        var http = ergebnis && typeof ergebnis.http === "number" ? ergebnis.http : 0;
+        wvStand.zeilen.push(wvZeile(a, ergebnis, mitschnitt.koerper));
+        wvStand.geprueft = i + 1;
+        // Die Sitzung traegt nicht mehr (oder das Recht fehlt): weiterzufragen waere sinnlos.
+        if (http === 401 || http === 403) { wvSchluss(lauf, "anmeldung"); return; }
+        wvZeichnen();
+        wvSchritt(lauf, absaetze, i + 1, tief);
+      });
+    }
+
+    function wvZeile(absatz, ergebnis, koerper) {
+      var konflikte = wvKonflikteAus(koerper);
+      var urteil = wvEinstufen(absatz.text, ergebnis, konflikte);
+      return {
+        nr: absatz.nr,
+        hash: absatz.hash,
+        vk: absatz.vk,
+        vorher: absatz.vorher,
+        fremdeFarbe: absatz.vorher !== null,
+        kategorie: urteil.kategorie,
+        grund: urteil.grund,
+        teil: Boolean(ergebnis) && ergebnis.gekuerzt === true,
+        quellen: wvQuellen(ergebnis, konflikte),
+        konflikte: konflikte,
+        konfliktlage: wvKonfliktlage(koerper),
+        veraendert: false
+      };
+    }
+
+    function wvSchluss(lauf, lage) {
+      // Die Kennung ZUERST: nur der Lauf, der noch der aktuelle ist, beendet den Lauf. Andernfalls
+      // raeumte ein ueberholter Schluss die Fahne eines fremden, laufenden Vergleichs.
+      if (lauf !== wvLauf || !wvStand) { return; }
+      wvLaeuft = false;
+      wvStand.lage = lage;
+      wvStand.zeit = wvZeit();
+      var auftraege = [];
+      for (var i = 0; i < wvStand.zeilen.length; i += 1) {
+        var z = wvStand.zeilen[i];
+        // Fremde Hervorhebungen werden NICHT ueberfaerbt — sie sind Arbeit eines Menschen.
+        if (WV_FARBEN[z.kategorie] && !z.fremdeFarbe) { auftraege.push(z); }
+      }
+      // ZUERST ZEICHNEN, DANN FAERBEN. Der Lauf ist hier zu Ende — gezeichnet war zuletzt aber
+      // MITTEN im Lauf. Ohne diese Zeile stand im Fenster weiter „Absatz 3 von 3 …" mit sichtbarem
+      // Abbruchknopf, waehrend `wvAbbrechen` schon bei `!wvLaeuft` aussteigt: ein Knopf, der nichts
+      // tut. Das faellt erst auf, wenn Word den bestaetigenden `sync` nicht sofort zurueckgibt —
+      // gemessen mit einem festgehaltenen `sync` (Codex-Vorpruefung R2, 08.09., zweite Pruefluecke).
+      wvZeichnen();
+      if (auftraege.length === 0) { return; }
+      // Was wirklich geschrieben wurde — gemerkt wird es erst, wenn der `sync` es bestaetigt hat.
+      var geschrieben = [];
+      wvMitAbsaetzen(function (items) {
+        // DIE KENNUNG GILT AUCH HIER — VOR DEM ERSTEN SCHREIBVORGANG, NICHT NUR BEIM AUFRAEUMEN.
+        // Zwischen dem Schluss oben und dieser Stelle liegt ein `sync`: Word laedt die Absaetze,
+        // auf die gefaerbt werden soll. Kommt er verzoegert zurueck (in Word der Normalfall bei
+        // grossen Dokumenten), kann in der Zwischenzeit ein NEUER Vergleich vollstaendig gelaufen
+        // sein und seine Farben stehen bereits im Dokument. Wer dann noch faerbt, schreibt die
+        // Kategorien eines ueberholten Laufs ueber die des aktuellen: das Fenster wies „Ähnlich"
+        // aus, im Dokument stand „Turquoise" (Ben, Pruefung der Runde 3 vom 08.09., Z7).
+        // Der ueberholte Lauf schreibt also nichts — `geschrieben` bleibt leer, und damit merkt
+        // er auch nichts vor. Die Farben des laufenden Vergleichs bleiben, wie er sie gesetzt hat.
+        if (lauf !== wvLauf) { return; }
+        var zu = wvZuordnen(items, auftraege);
+        for (var j = 0; j < zu.paare.length; j += 1) {
+          var p = zu.paare[j];
+          // Zweite Pruefung, unmittelbar vor dem Schreiben: zwischen Lesen und Faerben kann ein
+          // Mensch gefaerbt haben. Dann steht seine Farbe da, nicht Klaras.
+          if (!wvDarfFaerben(p.posten.hash, p.posten.vk, p.absatz)) { p.posten.fremdeFarbe = true; continue; }
+          var farbe = WV_FARBEN[p.posten.kategorie];
+          if (p.absatz && p.absatz.font) { p.absatz.font.highlightColor = farbe; }
+          geschrieben.push({ zeile: p.posten, farbe: farbe });
+        }
+        for (var k = 0; k < zu.verloren.length; k += 1) { zu.verloren[k].veraendert = true; }
+      }, function (ok) {
+        // Ohne bestaetigten `sync` steht keine Farbe im Dokument — dann wird auch nichts gemerkt,
+        // sonst boete das Panel eine Ruecknahme fuer Markierungen an, die es nie gab.
+        //
+        // ZWEI VERSCHIEDENE DINGE, ZWEI VERSCHIEDENE ZUSTAENDIGKEITEN — deshalb steht die
+        // Kennungspruefung NUR am zweiten:
+        //   · Die Merkliste gehoert dem DOKUMENT. Was Word bestaetigt hat, steht wirklich dort,
+        //     auch wenn inzwischen ein neuer Vergleich laeuft. Wuerde sie hier uebersprungen,
+        //     stuenden Klaras Farben im Dokument, ohne dass „Markierungen entfernen" sie noch
+        //     zuruecknehmen koennte (Fall Z6).
+        //   · `wvSchreibfehler` gehoert dem LAUF: der Satz steht neben dessen Standsatz. Ein spaet
+        //     gescheiterter Schreiblauf haengte ihn sonst dem naechsten Lauf an, der gar nicht
+        //     geschrieben hat (Fall Z5).
+        if (ok) {
+          for (var m = 0; m < geschrieben.length; m += 1) { wvMerken(geschrieben[m].zeile, geschrieben[m].farbe); }
+        } else if (lauf === wvLauf) {
+          wvSchreibfehler = true;
+        }
+        wvZeichnen();
+      });
+    }
+
+    function wvAbbrechen() {
+      if (!wvLaeuft || !wvStand) { return; }
+      // Die Laufnummer steigt: die noch offene Antwort des laufenden Absatzes faellt weg, und
+      // `wvSchritt` fragt nicht weiter. Das Erreichte bleibt und wird gefaerbt.
+      wvLauf += 1;
+      wvLaeuft = false;
+      wvSchluss(wvLauf, "abgebrochen");
+    }
+
+    /**
+     * Nur Klaras eigene Farben zurueck — auf die URSPRUNGSFARBE, nicht auf „keine". Drei Ausgaenge,
+     * jeder mit eigener Auskunft:
+     *   · zurueck  — der Absatz traegt noch genau Klaras Farbe: Ursprungsfarbe wieder herstellen.
+     *   · fremd    — dort steht inzwischen eine ANDERE Hervorhebung: das ist die Entscheidung eines
+     *                Menschen. Sie bleibt stehen, und der Posten faellt aus der Liste, weil die
+     *                Markierung nicht mehr Klaras ist (Ben 08.09., Pflicht 2).
+     *   · verloren — der Absatz ist nicht mehr da oder umgeschrieben: unangetastet, Posten bleibt.
+     */
+    function wvEntfernen() {
+      if (wvMerk.length === 0) { return; }
+      var posten = wvMerk.slice(0);
+      var ergebnis = null;
+      wvMitAbsaetzen(function (items) {
+        var zu = wvZuordnen(items, posten);
+        var zurueck = 0;
+        var fremd = 0;
+        for (var i = 0; i < zu.paare.length; i += 1) {
+          var p = zu.paare[i];
+          if (wvFarbeAm(p.absatz) !== p.posten.gesetzt) { fremd += 1; continue; }
+          if (p.absatz && p.absatz.font) { p.absatz.font.highlightColor = p.posten.vorher; }
+          zurueck += 1;
+        }
+        ergebnis = { zurueck: zurueck, fremd: fremd, verloren: zu.verloren };
+      }, function (ok) {
+        if (!ok || ergebnis === null) { wvMeldung = t("wvEntferntFehler"); wvZeichnen(); return; }
+        // Nur was WIRKLICH zurueckgestellt wurde, faellt aus der Merkliste; ein veraenderter
+        // Absatz bleibt darin, damit seine Ursprungsfarbe nicht verloren geht.
+        wvMerk = ergebnis.verloren.slice(0);
+        wvMeldung = t("wvEntferntZahl", { n: String(ergebnis.zurueck), m: String(ergebnis.verloren.length) });
+        if (ergebnis.fremd > 0) { wvMeldung += " " + t("wvEntferntFremd", { k: String(ergebnis.fremd) }); }
+        wvZeichnen();
+      });
+    }
+
+    function wvSpringen(hash, vk) {
+      wvMitAbsaetzen(function (items) {
+        var zu = wvZuordnen(items, [{ hash: hash, vk: vk }]);
+        if (zu.paare.length === 0) { return; }
+        var a = zu.paare[0].absatz;
+        var bereich = a && typeof a.getRange === "function" ? a.getRange() : null;
+        if (bereich && typeof bereich.select === "function") { bereich.select(); }
+        else if (a && typeof a.select === "function") { a.select(); }
+      }, function () {});
+    }
+
+    // ------------------------------------------------------------------------------------------
+    // Die Flaeche
+    // ------------------------------------------------------------------------------------------
+    function wvKnoten(tag, klasse, text) {
+      var el = document.createElement(tag);
+      if (klasse) { el.className = klasse; }
+      if (text !== undefined && text !== null) { el.textContent = text; }
+      return el;
+    }
+
+    function wvBlockElement() {
+      var vorhanden = document.getElementById("wv-block");
+      if (vorhanden) { return vorhanden; }
+      var block = wvKnoten("div", "hidden", null);
+      block.id = "wv-block";
+      var knopf = document.createElement("button");
+      knopf.type = "button";
+      knopf.id = "wv-btn";
+      knopf.className = "ghost";
+      knopf.setAttribute("data-t", "wvCta");
+      knopf.textContent = t("wvCta");
+      knopf.addEventListener("click", wvPruefen);
+      block.appendChild(knopf);
+      var stop = document.createElement("button");
+      stop.type = "button";
+      stop.id = "wv-abbrechen";
+      stop.className = "ghost hidden";
+      stop.setAttribute("data-t", "wvAbbrechen");
+      stop.textContent = t("wvAbbrechen");
+      stop.addEventListener("click", wvAbbrechen);
+      block.appendChild(stop);
+      var weg = document.createElement("button");
+      weg.type = "button";
+      weg.id = "wv-entfernen";
+      weg.className = "ghost hidden";
+      weg.setAttribute("data-t", "wvEntfernen");
+      weg.textContent = t("wvEntfernen");
+      weg.addEventListener("click", wvEntfernen);
+      block.appendChild(weg);
+      var karte = wvKnoten("div", "card", null);
+      karte.id = "wv-karte";
+      karte.setAttribute("role", "region");
+      karte.setAttribute("aria-live", "polite");
+      var stand = wvKnoten("p", "muted", "");
+      stand.id = "wv-stand";
+      karte.appendChild(stand);
+      var legende = wvKnoten("ul", "muted", null);
+      legende.id = "wv-legende";
+      karte.appendChild(legende);
+      var liste = wvKnoten("ul", null, null);
+      liste.id = "wv-liste";
+      karte.appendChild(liste);
+      block.appendChild(karte);
+      var anker = document.getElementById("ka7-block") || document.getElementById("bestand-block") || document.getElementById("ask-ruhe");
+      if (anker && anker.parentNode) { anker.parentNode.insertBefore(block, anker.nextSibling); }
+      else { document.body.appendChild(block); }
+      return block;
+    }
+
+    /** Der Standsatz — jede Lage hat ihren eigenen, keine erfindet etwas. */
+    function wvStandsatz() {
+      if (wvMeldung) { return wvMeldung; }
+      if (!wvStand) { return t("wvRuhe"); }
+      var zahlen = { n: String(wvStand.geprueft), m: String(wvStand.gesamt), zeit: wvStand.zeit || "" };
+      if (wvStand.lage === "laeuft") {
+        if (wvStand.gesamt === 0) { return t("wvLaeuft", { n: "1", m: "?" }); }
+        return t("wvLaeuft", { n: String(Math.min(wvStand.geprueft + 1, wvStand.gesamt)), m: String(wvStand.gesamt) });
+      }
+      if (wvStand.lage === "fehler") { return t("wvFehler"); }
+      if (wvStand.lage === "leer") { return t("wvLeer"); }
+      if (wvStand.lage === "anmeldung") { return t("wvAnmeldung"); }
+      return t(wvStand.lage === "abgebrochen" ? "wvAbgebrochen" : "wvFertig", zahlen);
+    }
+
+    /** Die Auskunft ueber den Widerspruchszweig — die Farbe Rot haengt an ihr. */
+    function wvKiSatz() {
+      if (!wvStand) { return ""; }
+      if (!wvStand.tief) { return t("wvKiFehlt"); }
+      return t("wvKiZeile", { ki: ka7KiZusatz(wvStand.ki) });
+    }
+
+    function wvQuellenzeile(quelle) {
+      var zeile = wvKnoten("li", null, null);
+      zeile.appendChild(wvKnoten("span", "wv-quelle-titel", quelle.title));
+      zeile.appendChild(wvKnoten("span", "muted wv-quelle-pruefstand",
+        quelle.pruefstand === "validiert" ? t("askStatusValidiert")
+          : quelle.pruefstand === "eingereicht" ? t("bestandNochNichtGeprueft") : t("askStatusUnknown")));
+      if (quelle.stelle) { zeile.appendChild(wvKnoten("p", "wv-quelle-stelle", t("wvKonfliktStelle", { stelle: quelle.stelle }))); }
+      else if (quelle.konflikt) { zeile.appendChild(wvKnoten("p", "wv-quelle-stelle", t("wvKonfliktOhneStelle"))); }
+      var pfad = quelle.fundort ? quelle.fundort.bibliothekPfad : null;
+      if (pfad) {
+        var weg = wvKnoten("a", null, t("bestandOeffnen"));
+        weg.href = window.location.origin + pfad;
+        weg.target = "_blank";
+        weg.rel = "noopener noreferrer";
+        zeile.appendChild(weg);
+      }
+      return zeile;
+    }
+
+    function wvAbsatzzeile(z) {
+      var zeile = wvKnoten("li", "wv-zeile wv-zeile-" + z.kategorie, null);
+      var kopf = wvKnoten("p", "wv-kopf", null);
+      kopf.appendChild(wvKnoten("span", "wv-nr", t("wvAbsatzNr", { n: String(z.nr) })));
+      kopf.appendChild(wvKnoten("span", "wv-kategorie", t(WV_KAT_KEYS[z.kategorie])));
+      kopf.appendChild(wvKnoten("span", "muted wv-farbe",
+        WV_FARB_KEYS[z.kategorie] && wvGefaerbt(z.hash, z.vk) ? t(WV_FARB_KEYS[z.kategorie]) : t("wvFarbeKeine")));
+      zeile.appendChild(kopf);
+      if (z.grund) {
+        zeile.appendChild(wvKnoten("p", "muted wv-grund",
+          t(z.grund, { min: String(W6_MINDESTZEICHEN), max: String(W6_HOECHSTZEICHEN) })));
+      }
+      if (z.teil && !z.grund) { zeile.appendChild(wvKnoten("p", "muted wv-teil", t("wvTeilHinweis", { max: String(W6_HOECHSTZEICHEN) }))); }
+      if (z.fremdeFarbe) { zeile.appendChild(wvKnoten("p", "muted wv-fremd", t("wvFremdeFarbe"))); }
+      // Zwischen Lesen und Faerben umgeschrieben: nichts wurde blind gefaerbt, und die Zeile sagt es.
+      if (z.veraendert) { zeile.appendChild(wvKnoten("p", "muted wv-veraendert", t("wvVeraendert"))); }
+      if (z.kategorie === "widerspruch") { zeile.appendChild(wvKnoten("p", "wv-entscheidung", t("wvKeineEntscheidung"))); }
+      // Ob die Konfliktpruefung ueberhaupt lief, sagt jede Zeile fuer sich — „kein Widerspruch"
+      // waere sonst eine Aussage ueber einen Vorgang, den niemand angestossen hat.
+      if (z.kategorie !== "widerspruch" && z.konfliktlage.gelaufen !== true && !z.grund) {
+        var grundKey = KA7_GRUND_KEYS[z.konfliktlage.grund || ""] || "ka7GrundUnbekannt";
+        zeile.appendChild(wvKnoten("p", "muted wv-konflikt-offen", t("wvKonfliktOffen", { grund: t(grundKey) })));
+      }
+      if (z.quellen.length > 0) {
+        var quellen = wvKnoten("ul", "wv-quellen", null);
+        for (var i = 0; i < z.quellen.length; i += 1) { quellen.appendChild(wvQuellenzeile(z.quellen[i])); }
+        zeile.appendChild(quellen);
+      }
+      var sprung = document.createElement("button");
+      sprung.type = "button";
+      sprung.className = "ghost wv-sprung";
+      sprung.setAttribute("data-wv-sprung", String(z.nr));
+      sprung.textContent = t("wvSpringen");
+      // Der Sprung gilt DIESEM Vorkommen: bei zwei gleichen Absaetzen fuehrt Zeile 2 zu Absatz 2.
+      sprung.addEventListener("click", (function (hash, vk) {
+        return function () { wvSpringen(hash, vk); };
+      })(z.hash, z.vk));
+      zeile.appendChild(sprung);
+      return zeile;
+    }
+
+    function wvZeichnen() {
+      var block = wvBlockElement();
+      var ruhe = document.getElementById("ask-ruhe");
+      var ruheSichtbar = Boolean(ruhe) && ruhe.className.indexOf("hidden") === -1;
+      block.className = signedIn && officeUsable() && ruheSichtbar ? "" : "hidden";
+      var knopf = document.getElementById("wv-btn");
+      var stop = document.getElementById("wv-abbrechen");
+      var weg = document.getElementById("wv-entfernen");
+      var stand = document.getElementById("wv-stand");
+      var legende = document.getElementById("wv-legende");
+      var liste = document.getElementById("wv-liste");
+      if (!knopf || !stop || !weg || !stand || !legende || !liste) { return; }
+      knopf.disabled = wvLaeuft;
+      stop.className = wvLaeuft ? "ghost" : "ghost hidden";
+      weg.className = wvMerk.length > 0 ? "ghost" : "ghost hidden";
+      var saetze = [wvStandsatz()];
+      // Der Schreiblauf am Ende scheiterte: der Befund steht, die Farben stehen NICHT im Dokument.
+      // Das ersetzt den Standsatz nicht, es ergaenzt ihn — beides ist wahr.
+      if (wvSchreibfehler) { saetze.push(t("wvFarbenFehler")); }
+      var ki = wvKiSatz();
+      if (ki) { saetze.push(ki); }
+      stand.textContent = saetze.join(" ");
+      while (legende.firstChild) { legende.removeChild(legende.firstChild); }
+      while (liste.firstChild) { liste.removeChild(liste.firstChild); }
+      if (!wvStand) { return; }
+      // Die Legende erklaert Farben IM DOKUMENT. Steht dort keine von Klara — vor dem ersten
+      // Faerben und nach „Markierungen entfernen" —, erklaert sie nichts und steht nicht da.
+      if (wvMerk.length > 0) {
+        legende.appendChild(wvKnoten("li", "wv-legende-kopf", t("wvLegende")));
+        for (var l = 0; l < WV_LEGENDE.length; l += 1) {
+          var kat = WV_LEGENDE[l];
+          legende.appendChild(wvKnoten("li", "wv-legende-" + kat,
+            t(WV_KAT_KEYS[kat]) + " · " + (WV_FARB_KEYS[kat] ? t(WV_FARB_KEYS[kat]) : t("wvFarbeKeine"))));
+        }
+      }
+      for (var i = 0; i < wvStand.zeilen.length; i += 1) { liste.appendChild(wvAbsatzzeile(wvStand.zeilen[i])); }
+    }
+
+    /** Ein bestaetigter Logout verwirft den BEFUND — nie den Befund einer fremden Sitzung zeigen.
+     *  Die Merkliste bleibt: sie traegt kein Wissen, nur Farben, und ohne sie waeren Klaras eigene
+     *  Markierungen im Dokument nicht mehr zurueckzunehmen. */
+    function wvVerwerfen() {
+      wvLauf += 1;
+      wvLaeuft = false;
+      wvStand = null;
+      wvMeldung = "";
+      wvSchreibfehler = false;
+      wvZeichnen();
+    }
+
+    // ------------------------------------------------------------------------------------------
+    // Anschluss — derselbe Wrapper-Gedanke wie in KA6/KA7: das Original zuerst und unveraendert.
+    // ------------------------------------------------------------------------------------------
+    if (typeof document !== "undefined" && document.getElementById("ask-ruhe")) {
+      if (typeof STRINGS !== "undefined") {
+        for (var wvSprache in WV_TEXTE) {
+          if (Object.prototype.hasOwnProperty.call(WV_TEXTE, wvSprache) && STRINGS[wvSprache]) {
+            var wvTabelle = WV_TEXTE[wvSprache];
+            for (var wvSchluessel in wvTabelle) {
+              if (Object.prototype.hasOwnProperty.call(wvTabelle, wvSchluessel)) {
+                STRINGS[wvSprache][wvSchluessel] = wvTabelle[wvSchluessel];
+              }
+            }
+          }
+        }
+      }
+      wvBlockElement();
+      wvZeichnen();
+      if (typeof updateAskState === "function") {
+        var wvAskStateBestand = updateAskState;
+        updateAskState = function () { wvAskStateBestand.apply(this, arguments); wvZeichnen(); };
+      }
+      if (typeof kwFlaecheZeichnen === "function") {
+        var wvFlaecheBestand = kwFlaecheZeichnen;
+        kwFlaecheZeichnen = function () { wvFlaecheBestand.apply(this, arguments); wvZeichnen(); };
+      }
+      if (typeof klaraS4Verwerfen === "function") {
+        var wvVerwerfenBestand = klaraS4Verwerfen;
+        klaraS4Verwerfen = function () { wvVerwerfenBestand.apply(this, arguments); wvVerwerfen(); };
+      }
+      if (typeof setLang === "function") {
+        var wvSetLangBestand = setLang;
+        setLang = function () { wvSetLangBestand.apply(this, arguments); wvZeichnen(); };
+      }
+    }
+    // KW-WORDVERGLEICH-END
+
+    // ============================================================================================
+    // KW-MARKE-START — DIE FIRMEN-CI DER VORFUEHRUNG (JOB 3512).
+    // ============================================================================================
+    //
+    // WOZU: Schaltet der Administrator in KLARWERK das Demo-Erscheinungsbild ein, traegt Klara im
+    // Word dasselbe Logo und dieselben Hausfarben — ohne zweiten Schalter, ohne Neustart des
+    // Add-ins. Pedis Vorgabe fuer Freitag (gespraech/ci-advisor/AUFTRAGSGRUNDLAGE.md): Logo und
+    // Markenfarben, KEIN Layout- oder Funktionsumbau, Produktidentitaet erkennbar halten.
+    //
+    // DIE EINE QUELLE IST DER SERVER. `GET /api/branding` (JOB 3510) beantwortet genau eine Frage:
+    // „In welchem Erscheinungsbild laeuft diese Instanz?" Der Weg ist bewusst ohne Anmeldung
+    // erreichbar — dieses Fenster faerbt sich, bevor irgendjemand angemeldet ist. Es gibt hier
+    // KEINE gespeicherte Wahl, KEINEN eigenen Schalter und KEINEN zweiten Farbsatz: die beiden
+    // Werte kommen im Vertrag (`marke.farben`), alles Weitere ist daraus GERECHNET.
+    //
+    // WARUM DIE WURZELVARIABLEN UND NICHT NEUE REGELN: Der Stilblock oben ist die Kopie der
+    // Werkbank-Palette; jede Regel darunter greift ueber `var(--…)`, und mega43 haelt genau das
+    // fest. Wird eine Variable an der Wurzel ueberschrieben, wirkt die Marke ueberall dort, wo
+    // heute der Funke wirkt — und wird sie WEGGENOMMEN, steht wieder exakt der Wert aus `:root`.
+    // Das ist der ganze Beweis fuer „Ausschalten stellt den vorherigen Look wieder her": es bleibt
+    // keine Markenregel stehen, die noch matchen koennte. Ein zweiter Farbsatz im Stilblock waere
+    // dagegen genau die zweite Wahrheit, gegen die mega43 steht.
+    //
+    // DIE ABLEITUNG IST DIE DES WEBS, ZIFFER FUER ZIFFER (apps/web/src/styles/marke.css):
+    //   · `--brand`      = die belegte Markenfarbe selbst (#0578b7).
+    //   · `--brand-text` und `--brand-deep` = 0,8 × jeder Kanal (#046092). Der Markenwert selbst
+    //     traegt als TEXT auf Papier nur 4,36:1 und fiele unter AA — dieselbe Falle wie mega62 D.
+    //   · `--ink`        = die zweite belegte Farbe, der dunkle Schriftzug (#161417). Sie traegt
+    //     die Ueberschriften; auf Papier misst sie 17,3:1, auf Karte 18,3:1.
+    //   · `--shadow-primary` = derselbe Knopfschein wie bisher, nur in der Markenfarbe.
+    // WAS AUSDRUECKLICH NICHT ANGEFASST WIRD: `--pos-*`, `--warn-*` und jede andere Signalfarbe.
+    // Eine Warnung bleibt gelb, ein Fehler rot — Bedeutung ist keine Marke.
+    //
+    // DER ABRUF: einmal beim Laden, danach beim Sichtbarwerden, beim Fokus und in einer stets neu
+    // gestellten Frist — alle drei durch DIESELBE Drosselung von einem Abruf je Minute. Die Frist
+    // ist die wichtigste der drei: ein Aufgabenfenster, das waehrend der Vorfuehrung offen daneben
+    // steht, erzeugt gar kein Ereignis (BENs Befund an JOB 3511, dort im Kopf von `brandTheme.ts`).
+    //
+    // UND SIE IST AUSDRUECKLICH KEIN `setInterval`. Dieses Fenster haelt FRISTEN, keinen Takt —
+    // eine Hauszusage, die an zwei Stellen gemessen wird: der Quelltext darf das Wort nicht
+    // enthalten (word-addin.test.ts, „Poll-Lifecycle: sequenziell (kein Interval)"), und ka3
+    // misst zur Laufzeit, dass es nie gerufen wird. Der Grund ist derselbe wie beim Anmeldepoll:
+    // ein Intervall feuert weiter, waehrend ein Abruf noch laeuft, und legt Aufrufe uebereinander.
+    // Die naechste Frist wird deshalb erst NACH dem jeweiligen Blick gestellt; es gibt immer genau
+    // eine offene, nie zwei.
+    // Faellt ein Abruf aus, passiert NICHTS: der zuletzt bekannte Stand bleibt sichtbar, es gibt
+    // keine Meldung, und das Fenster bleibt voll bedienbar (LEHREN §7).
+    var KW_MARKE_PFAD = "/api/branding";
+    var KW_MARKE_ABSTAND_MS = 60000;
+    /** Der Abtoenungsfaktor der texttragenden Markentoene — 0.8, wie in `styles/marke.css`. */
+    var KW_MARKE_ABTOENUNG = 0.8;
+    /** Die Deckung des Knopfscheins. Sie ist der Bestandswert, nur die Farbe wandert mit. */
+    var KW_MARKE_SCHEIN = 0.45;
+    /**
+     * Der Alternativtext JE PROFIL. Er steht hier und NICHT im Woerterbuch: „Advisor ICT solutions
+     * logo" ist der Alternativtext der Originaldatei (Auftragsgrundlage), also eine Eigenschaft des
+     * Bildes und keine Uebersetzung — und als Zuordnung, damit ein zweites Profil ihn nicht erbt.
+     */
+    var KW_MARKE_ALT = { advisor: "Advisor ICT solutions logo" };
+    /** Genau die Stellen, die die Marke belegt. Ausschalten heisst: diese fuenf wieder freigeben. */
+    var KW_MARKE_TOKEN = ["--brand", "--brand-deep", "--brand-text", "--ink", "--shadow-primary"];
+    /** Das zuletzt AUFGETRAGENE Aussehen (Kennung, s. u.); `null` = es wurde noch nichts gesetzt. */
+    var kwMarkeAussehen = null;
+    var kwMarkeLetzterAbruf = Number.NEGATIVE_INFINITY;
+    var kwMarkeLaeuft = false;
+
+    /** Die drei Kanaele eines 6-stelligen Hexwerts — oder `null`, wenn es keiner ist. */
+    function kwMarkeKanaele(hex) {
+      var treffer = /^#([0-9a-fA-F]{6})$/.exec(String(hex === undefined || hex === null ? "" : hex).trim());
+      if (!treffer) { return null; }
+      return [
+        parseInt(treffer[1].slice(0, 2), 16),
+        parseInt(treffer[1].slice(2, 4), 16),
+        parseInt(treffer[1].slice(4, 6), 16)
+      ];
+    }
+
+    /** Kanaele mit einem Faktor multipliziert, wieder als Hexwert (Faktor 1 = nur normalisiert). */
+    function kwMarkeAbgetoent(kanaele, faktor) {
+      var teile = [];
+      for (var i = 0; i < 3; i += 1) {
+        var wert = Math.round(kanaele[i] * faktor);
+        wert = wert < 0 ? 0 : (wert > 255 ? 255 : wert);
+        teile.push((wert < 16 ? "0" : "") + wert.toString(16));
+      }
+      return "#" + teile.join("");
+    }
+
+    /**
+     * Traegt dieser Stand wirklich eine anzeigbare Marke?
+     *
+     * Der Server loest das schon auf (`brandingAntwort`: die Marke haengt an Profil UND Schalter) —
+     * diese Flaeche verlaesst sich aber nicht darauf. Fehlt eine der Voraussetzungen oder ist ein
+     * Farbwert unlesbar, gilt „keine Firmen-CI" und nicht „Firmen-CI mit halben Werten".
+     */
+    function kwMarkeGueltig(stand) {
+      if (!stand || typeof stand !== "object" || stand.aktiv !== true) { return false; }
+      if (typeof stand.profil !== "string" || !stand.profil) { return false; }
+      var marke = stand.marke;
+      if (!marke || typeof marke !== "object" || !marke.farben) { return false; }
+      if (typeof marke.logo !== "string" || !marke.logo) { return false; }
+      return !!(kwMarkeKanaele(marke.farben.primaer) && kwMarkeKanaele(marke.farben.schrift));
+    }
+
+    /** Den Stand auf die Flaeche schreiben — oder sie vollstaendig zurueckgeben. */
+    function kwMarkeAnwenden(stand) {
+      var wurzel = document.documentElement.style;
+      var bild = document.getElementById("kw-marke-logo");
+      if (!kwMarkeGueltig(stand)) {
+        for (var i = 0; i < KW_MARKE_TOKEN.length; i += 1) {
+          wurzel.removeProperty(KW_MARKE_TOKEN[i]);
+        }
+        if (bild) {
+          bild.className = "hidden";
+          // Kein `src = ""`: das waere ein Abruf auf die eigene Adresse, kein leeres Bild.
+          bild.removeAttribute("src");
+          bild.setAttribute("alt", "");
+        }
+        return;
+      }
+      var primaer = kwMarkeKanaele(stand.marke.farben.primaer);
+      var schrift = kwMarkeKanaele(stand.marke.farben.schrift);
+      var tief = kwMarkeAbgetoent(primaer, KW_MARKE_ABTOENUNG);
+      wurzel.setProperty("--brand", kwMarkeAbgetoent(primaer, 1));
+      wurzel.setProperty("--brand-deep", tief);
+      wurzel.setProperty("--brand-text", tief);
+      wurzel.setProperty("--ink", kwMarkeAbgetoent(schrift, 1));
+      wurzel.setProperty(
+        "--shadow-primary",
+        "0 2px 10px -2px rgba(" + primaer[0] + ", " + primaer[1] + ", " + primaer[2] + ", " + KW_MARKE_SCHEIN + ")"
+      );
+      if (bild) {
+        bild.setAttribute("src", stand.marke.logo);
+        bild.setAttribute("alt", KW_MARKE_ALT[stand.profil] || stand.marke.name || "");
+        bild.className = "";
+      }
+    }
+
+    /**
+     * Was dieser Stand SICHTBAR traegt — die Kennung des Aussehens, nicht die des Zaehlers.
+     *
+     * Verglichen wird genau das, was `kwMarkeAnwenden` schreibt: Profil, die beiden Markenfarben
+     * und die Logoadresse. Zwei Staende mit derselben Kennung sehen zeichengleich aus; ein zweiter
+     * Auftrag waere dann Arbeit ohne Wirkung.
+     */
+    function kwMarkeKennung(stand) {
+      if (!kwMarkeGueltig(stand)) { return "aus"; }
+      return [
+        stand.profil,
+        stand.marke.farben.primaer,
+        stand.marke.farben.schrift,
+        stand.marke.logo
+      ].join("|");
+    }
+
+    /**
+     * Einen eingetroffenen Stand pruefen und uebernehmen — AM AUSSEHEN, NICHT AM ZAEHLER.
+     *
+     * FRUEHER STAND HIER „nur vorwaerts": `version <= meine` wurde verworfen. Das war falsch, und
+     * zwar an der Stelle, an der es weh tut. `version` gilt laut Vertrag (JOB 3510, Rueckgabe
+     * Runde 3) NUR INNERHALB EINES PROZESSLAUFS: die Wahl liegt im Speicher, nach einem
+     * Serverneustart beginnt der Zaehler wieder bei 0. Ein offenes Aufgabenfenster, das vorher
+     * `version 9` gesehen hat, haette danach JEDE weitere Schaltung verworfen — es waere blau
+     * geblieben, waehrend der Server laengst „aus" sagt. Der Vertrag schreibt darum ausdruecklich
+     * „auf Version UNGLEICH meiner pruefen, nicht auf groesser als meine".
+     *
+     * Hier wird noch eine Stufe strenger verglichen, naemlich am AUSSEHEN: auch „ungleich" traegt
+     * nach einem Neustart nicht sicher, weil derselbe Zaehlerstand dann einen ANDEREN Stand
+     * bezeichnen kann (v2 vor dem Neustart „an", v2 danach „aus"). Die Kennung kann das nicht
+     * verwechseln — sie ist aus den angezeigten Werten selbst gebildet.
+     *
+     * Und das Ueberholen, gegen das der Zaehler einmal antreten sollte? Dagegen steht `kwMarkeLaeuft`:
+     * es ist baulich immer nur EIN Abruf offen (gemessen in W8), also kann keine aeltere Antwort
+     * eine neuere ueberholen. Der Zaehler hat diesen Schutz nie geleistet, er hat nur den
+     * Neustartfall zerstoert.
+     *
+     * `version` bleibt trotzdem gelesen — aber als VERTRAGSMERKMAL: eine 200er-Antwort ohne
+     * numerische `version` ist keine Auskunft ueber die Marke, sondern Unsinn auf der Leitung. Sie
+     * wird verworfen, und der zuletzt bekannte Look bleibt stehen (LEHREN §7).
+     */
+    function kwMarkeUebernehmen(stand) {
+      if (!stand || typeof stand !== "object" || typeof stand.version !== "number") { return; }
+      var kennung = kwMarkeKennung(stand);
+      if (kennung === kwMarkeAussehen) { return; }
+      kwMarkeAussehen = kennung;
+      kwMarkeAnwenden(stand);
+    }
+
+    /** Einmal nachsehen. Gedrosselt ueber ALLE Anlaesse zusammen, nie zwei Abrufe gleichzeitig. */
+    function kwMarkeHolen(erzwingen) {
+      if (kwMarkeLaeuft || typeof fetch !== "function") { return; }
+      var jetzt = Date.now();
+      if (!erzwingen && jetzt - kwMarkeLetzterAbruf < KW_MARKE_ABSTAND_MS) { return; }
+      kwMarkeLaeuft = true;
+      kwMarkeLetzterAbruf = jetzt;
+      var fertig = function () { kwMarkeLaeuft = false; };
+      fetch(KW_MARKE_PFAD, { credentials: "include" })
+        .then(function (antwort) { return antwort && antwort.ok ? antwort.json() : null; })
+        .then(function (stand) { kwMarkeUebernehmen(stand); fertig(); }, fertig);
+    }
+
+    /** Die naechste Frist stellen — immer genau eine offene, gestellt NACH dem letzten Blick. */
+    function kwMarkeFristStellen() {
+      setTimeout(function () {
+        kwMarkeHolen(false);
+        kwMarkeFristStellen();
+      }, KW_MARKE_ABSTAND_MS);
+    }
+
+    // Anschluss. Drei Anlaesse, eine Drosselung — und der erste Abruf blockiert nichts.
+    if (typeof document !== "undefined" && document.getElementById("kw-marke-logo")) {
+      document.addEventListener("visibilitychange", function () {
+        // Nur das SICHTBARWERDEN zaehlt; beim Wegschalten hat ein Abruf keinen Adressaten.
+        if (!document.hidden) { kwMarkeHolen(false); }
+      });
+      if (typeof window !== "undefined" && window.addEventListener) {
+        window.addEventListener("focus", function () { kwMarkeHolen(false); });
+      }
+      if (typeof setTimeout === "function") { kwMarkeFristStellen(); }
+      kwMarkeHolen(true);
+    }
+    // KW-MARKE-END

@@ -29,12 +29,11 @@
 // `services/app/src/trash-sweep-scheduler.ts` von `Timeout` auf `number` um. Eine Testdatei darf
 // den Typenstand des Produktcodes nicht verschieben. Deshalb: genau die Handvoll Fensterteile,
 // die hier wirklich angefasst werden, lokal beschrieben — mehr nicht.
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { panelQuelleAus } from "../support/panelquelle";
 
 const TASKPANE = "apps/web/public/word-addin/taskpane.html";
-const HTML = readFileSync(resolve(process.cwd(), TASKPANE), "utf8");
+const HTML = panelQuelleAus(TASKPANE);
 
 /** Die Form, auf die KA3 den Vertrag normalisiert (`ka3Normalisieren`). */
 interface Treffer {

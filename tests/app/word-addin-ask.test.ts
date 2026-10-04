@@ -54,6 +54,7 @@ import {
 // G24 (JOB 1610): die Fixture baut den Serververtrag nicht mehr NACH, sie BENUTZT ihn. Siehe
 // `ka6AskKoerper` — der Grund steht dort.
 import { aiGeneratedMark } from "../../services/model-runs";
+import { panelQuelleAus } from "../support/panelquelle";
 
 const TASKPANE = "apps/web/public/word-addin/taskpane.html";
 // JOB 3667 R8 (14.09.2026): das Fenster wird aus ZWEI Dateien ausgeliefert. Wer nur das
@@ -62,6 +63,11 @@ const TASKPANE = "apps/web/public/word-addin/taskpane.html";
 const RUECKWEG = "apps/web/public/word-addin/rueckweg.js";
 
 function read(rel: string): string {
+  // Das Aufgabenfenster liegt seit dem Drei-Datei-Schnitt (R-1611) in drei Dateien; gelesen wird es
+  // als EIN Dokument, so wie vorher.
+  if (rel === TASKPANE) {
+    return panelQuelleAus(rel);
+  }
   return readFileSync(resolve(process.cwd(), rel), "utf8");
 }
 
