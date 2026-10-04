@@ -1097,9 +1097,16 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
             user.id,
             vorgangsId,
           );
-          // R-0169 (Nacharbeit 5): nur ein NEU angelegter Word-Entwurf wird an eine Fassung gebunden.
+          // R-0169 (Nacharbeit 5): ein Word-Entwurf wird an eine Fassung gebunden.
+          // NACHARBEIT 8 (bens F2): nicht mehr nur beim NEU angelegten Entwurf. Scheiterte das
+          // Festschreiben oder Binden nach der Anlage, stand der Entwurf ohne Bezug im Bestand — und
+          // die Wiederholung desselben Vorgangs (`angelegt === false`) gab ihn mit 200 zurück, als
+          // wäre alles erledigt. Jetzt vervollständigt die Wiederholung die fehlende Bindung; ein
+          // bereits gebundener Entwurf wird unverändert wiederverwendet (`dokumentHerkunftBinden`
+          // bindet nie um). Erfolg meldet die Route erst, wenn der Entwurf den Bezug trägt — scheitert
+          // das Binden erneut, antwortet sie mit dem Fehler statt mit dem ungebundenen Entwurf.
           const antwort =
-            ausWord && angelegt
+            ausWord && !draft.dokumentHerkunft
               ? await anWordDokumentBinden({ capture, dokumente }, draft, dokumentId, user.id)
               : draft;
           reply.code(angelegt ? 201 : 200).send(antwort);

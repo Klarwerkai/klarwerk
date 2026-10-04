@@ -1531,3 +1531,86 @@ describe("Nacharbeit 5 — Dokumentakte: JSON ohne externalId", () => {
     expect(await dokumente.bekannt("kein-uuid")).toBe(false);
   });
 });
+
+// ================================================================================================
+// NACHARBEIT 8 (bens F2) — DIE WIEDERHOLUNG EINES WORD-VORGANGS NACH GESCHEITERTER FASSUNGSBINDUNG.
+// ================================================================================================
+
+describe("Nacharbeit 8 — Word-Vorgang: fehlgeschlagene Fassungsbindung wird bei der Wiederholung vervollständigt", () => {
+  it("R-0169 · erster Versuch scheitert nach der Anlage, die Wiederholung bindet, weitere Wiederholungen ändern nichts", async () => {
+    const { app, services, importeur } = await flaeche("n8w1");
+    const dienst = services.dokumente;
+    const echt = dienst.festschreiben.bind(dienst);
+    let ausfallen = true;
+    dienst.festschreiben = async (eingabe: Parameters<typeof echt>[0]) => {
+      if (ausfallen) {
+        ausfallen = false;
+        throw new Error("Testausfall der Dokumentakte");
+      }
+      return echt(eingabe);
+    };
+    const senden = () =>
+      app.inject({
+        method: "POST",
+        url: "/api/drafts",
+        headers: importeur.auth,
+        payload: {
+          title: "Wartungsanweisung aus Word",
+          statement: "Vorgang mit Ausfall.",
+          bodyHtml: "<p>Vorgang mit Ausfall.</p>",
+          type: "best_practice",
+          category: "Wartung",
+          confidentiality: "intern",
+          origin: "word_addin",
+          operationId: "word-vorgang-n8",
+        },
+      });
+
+    // 1. Der Entwurf entsteht, das Festschreiben scheitert — KEIN Erfolg wird gemeldet.
+    const erster = await senden();
+    expect(erster.statusCode, erster.body).toBeGreaterThanOrEqual(500);
+    const angelegt = (await services.capture.listDrafts()).filter(
+      (d) => d.createOperation?.id === "word-vorgang-n8",
+    );
+    expect(angelegt, "der Vorgang hat keinen Entwurf hinterlassen").toHaveLength(1);
+    expect(angelegt[0]?.dokumentHerkunft).toBeUndefined();
+
+    // 2. Dieselbe Anfrage noch einmal: derselbe Entwurf, jetzt MIT auflösbarem Fassungsbezug.
+    const zweiter = await senden();
+    expect(zweiter.statusCode, zweiter.body).toBe(200);
+    const entwurf = zweiter.json() as { id: string; dokumentHerkunft?: Herkunft };
+    expect(entwurf.id).toBe(angelegt[0]?.id);
+    const herkunft = entwurf.dokumentHerkunft;
+    expect(herkunft, "die Wiederholung lieferte den ungebundenen Entwurf").toBeDefined();
+    expect(await services.dokumente.fassungById(herkunft?.fassungId ?? "")).toMatchObject({
+      dokumentId: herkunft?.dokumentId,
+      fassung: 1,
+      weg: "word_addin",
+    });
+    expect((await services.capture.getDraft(entwurf.id))?.dokumentHerkunft).toEqual(herkunft);
+
+    // 3. Weitere Wiederholungen: dieselbe Bindung, keine zusätzliche Akte oder Fassung.
+    const dritter = await senden();
+    expect(dritter.statusCode, dritter.body).toBe(200);
+    expect((dritter.json() as { dokumentHerkunft?: Herkunft }).dokumentHerkunft).toEqual(herkunft);
+    expect(await services.dokumente.fassungen(herkunft?.dokumentId ?? "")).toHaveLength(1);
+    expect(
+      (await services.capture.listDrafts()).filter(
+        (d) => d.createOperation?.id === "word-vorgang-n8",
+      ),
+    ).toHaveLength(1);
+
+    // 4. Promote: Wissensobjekt und v1-Schnappschuss tragen genau diesen Bezug.
+    const eingereicht = await app.inject({
+      method: "POST",
+      url: `/api/drafts/${entwurf.id}/promote`,
+      headers: importeur.auth,
+      payload: {},
+    });
+    expect(eingereicht.statusCode, eingereicht.body).toBe(201);
+    const koId = (eingereicht.json() as { id: string }).id;
+    expect((await services.ko.get(koId))?.dokumentHerkunft).toEqual(herkunft);
+    const [v1] = await services.ko.versionsOf(koId);
+    expect(v1?.snapshot.dokumentHerkunft).toEqual(herkunft);
+  });
+});
