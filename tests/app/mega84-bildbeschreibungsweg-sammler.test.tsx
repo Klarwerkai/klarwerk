@@ -2074,8 +2074,16 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // gezählt) und Attribute dazu. Sie kam mit dem eingemischten Hauptstand; welches Bauteil es ist,
     // ist an diesem Arbeitsbaum ohne Git-Verlauf nicht namentlich bestimmt. `anbieter` 1 und
     // `traeger` 2 sind in derselben Meldung unverändert.
+    //
+    // Folgeauftrag gesamt-erstnutzerfuehrung-quellen, Nacharbeit 10 (R-0928/R-1675): 437 → 438.
+    // GENAU EIN Bauteil kommt dazu:
+    //     + `Einstieg` (`pages/Einstieg.tsx`) — die kurze thematische Einstiegsansicht
+    // Es zeigt kein Bild, trägt keinen `documentTitle` und kein `CAPTION_AI_TEXT`; `anbieter` 1 und
+    // `traeger` 2 bleiben. EHRLICH GESAGT: diese 438 ist GERECHNET (437 + 1), nicht gemessen — der
+    // Arbeitsbaum dieses Auftrags führt keine Tests aus. Weicht der Prüflauf ab, nennt die Meldung
+    // oben die gemessene Zahl, und DIE gehört hier hin.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 437,
+      komponenten: 438,
       anbieter: 1,
       traeger: 2,
     });

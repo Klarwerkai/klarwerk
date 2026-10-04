@@ -63,6 +63,7 @@ import {
   routePathAllows,
 } from "../../apps/web/src/app/navigation";
 import { DEMO_PILOT_PATH, captureDemoHref } from "../../apps/web/src/lib/demoPilotPath";
+import { EINSTIEGE } from "../../apps/web/src/lib/einstiege";
 import { FAEHIGKEITEN } from "../../apps/web/src/lib/faehigkeiten";
 import { KNOWLEDGE_CYCLE } from "../../apps/web/src/lib/knowledgeCycle";
 import { knowledgeGuidance } from "../../apps/web/src/lib/knowledgeGuidance";
@@ -191,6 +192,9 @@ const AUSDRUCK_HERKUNFT: { muster: RegExp; herkunft: string }[] = [
   // „Über KLARWERK" trägt die Fähigkeitsübersicht. Ihre Ziele sind die Pfade der Navigationspunkte
   // (`lib/faehigkeiten.ts` liest sie aus `ALL_ITEMS`) und stehen unten in `ZIELE`.
   { muster: /^faehigkeit\.to$/, herkunft: "lib/faehigkeiten.ts · FAEHIGKEITEN" },
+  // R-0928 / R-1675 (Nacharbeit 10) NACHGEZOGEN: der benannte Weg zu den vier Einstiegsansichten
+  // (`lib/einstiege.ts`, Route `/einstieg/:thema` ohne Rollen-Gate). Die Ziele stehen unten in `ZIELE`.
+  { muster: /^einstieg\.pfad$/, herkunft: "lib/einstiege.ts · EINSTIEGE" },
 ];
 
 // Alle `to=`-Vorkommen: `to="…"` (Literal) und `to={…}` (Ausdruck).
@@ -241,6 +245,7 @@ const ZIELE: { ziel: string; herkunft: string }[] = [
   ...Object.entries(CTA_QUEUE).map(([r, c]) => ({ ziel: c.to, herkunft: `CTA_QUEUE/${r}` })),
   { ziel: captureDemoHref(), herkunft: "captureDemoHref" },
   ...FAEHIGKEITEN.map((f) => ({ ziel: f.to, herkunft: `FAEHIGKEITEN/${f.id}` })),
+  ...EINSTIEGE.map((e) => ({ ziel: e.pfad, herkunft: `EINSTIEGE/${e.thema}` })),
   ...vorkommen
     .filter((v) => v.literal !== null)
     .map((v) => ({ ziel: v.literal as string, herkunft: "Literal in Start.tsx" })),

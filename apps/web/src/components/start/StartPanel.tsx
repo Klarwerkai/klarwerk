@@ -11,6 +11,7 @@ import {
 import { useRole } from "../../app/RoleContext";
 import { DEMO_PILOT_PATH, captureDemoHref } from "../../lib/demoPilotPath";
 import { eigeneKollisionStart } from "../../lib/eigeneKollision";
+import { EINSTIEGE } from "../../lib/einstiege";
 import {
   FAEHIGKEITEN,
   FAEHIGKEITS_SCHRITTE,
@@ -174,6 +175,34 @@ export function StartPanelInhalt({ id }: { id: StartPanelId }): JSX.Element {
             </RoleLink>
           </div>
         </section>
+        {/* R-0928 / R-1675 (Nacharbeit 10): der BENANNTE Weg zu den vier kurzen thematischen
+            Einstiegen (`pages/Einstieg.tsx`). Bewusst neben und nicht in der Übersicht darüber: die
+            Übersicht führt direkt in die Vollfunktionen, diese vier Wege führen erst in die kurze
+            Einstiegsansicht. Keine Kachel auf `/start` — der Ort bleibt dieses Blatt (H5). */}
+        <nav
+          data-testid="erstnutzer-einstiege"
+          aria-label={t("erstnutzer.einstiege.titel")}
+          className="border-t border-hairline pt-4"
+        >
+          <h3 className="text-[14px] font-semibold text-ink">{t("erstnutzer.einstiege.titel")}</h3>
+          <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">
+            {t("erstnutzer.einstiege.einleitung")}
+          </p>
+          <ul className="mt-2 grid grid-cols-2 gap-2">
+            {EINSTIEGE.map((einstieg) => (
+              <li key={einstieg.thema}>
+                <RoleLink
+                  to={einstieg.pfad}
+                  testId={`erstnutzer-einstieg-${einstieg.thema}`}
+                  className="block rounded-card border border-hairline bg-surface px-3 py-2 text-[13px] font-semibold text-ink"
+                  hoverClassName="hover:border-ink/30"
+                >
+                  {() => t(einstieg.faehigkeit.nameKey)}
+                </RoleLink>
+              </li>
+            ))}
+          </ul>
+        </nav>
       </div>
     );
   }

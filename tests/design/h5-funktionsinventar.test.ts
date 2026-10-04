@@ -29,6 +29,7 @@ import {
   type StartPanelId,
 } from "../../apps/web/src/components/start/startPunkte";
 import i18n from "../../apps/web/src/i18n";
+import { EINSTIEGE } from "../../apps/web/src/lib/einstiege";
 import { FAEHIGKEITEN } from "../../apps/web/src/lib/faehigkeiten";
 import { knowledgeGuidance } from "../../apps/web/src/lib/knowledgeGuidance";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
@@ -628,6 +629,59 @@ describe("JOB 3064 · H5 · das Funktionsinventar — jeder umgezogene Block hat
       // Das Blatt ist zu: die Zielseite steht, nicht mehr die Startseite mit offenem Blatt.
       const blattOffen = await s.evaluate<boolean>(fn(DA), '[data-testid="h5-start-blatt-ueber"]');
       expect(blattOffen, "das Blatt steht noch — keine Uebergabe").toBe(false);
+    });
+  }
+
+  // ==============================================================================================
+  // I13 · R-0928 / R-1675 (Nacharbeit 10): DIE VIER KURZEN THEMATISCHEN EINSTIEGE.
+  // ==============================================================================================
+  // Je Thema neu von /start: „…“ → „Über KLARWERK“ → benannter Einstieg → `/einstieg/<thema>`
+  // (sichtbar: Name, Zweck, erster Schritt) → „Weiter zu …“ → Zieladresse UND bedienbares Element der
+  // Vollfunktion (dieselben Anker wie I10). Das Testkonto erreicht alle vier Ziele (I9 kalibriert).
+  for (const e of EINSTIEGE) {
+    it(`I13-${e.thema} · /start → „Über KLARWERK“ → Einstieg ${e.pfad} → Übergabe an ${e.faehigkeit.to}`, async () => {
+      expect(fehler).toBeNull();
+      const s = seite as Seite;
+      tokenAktiv = tokenAdmin;
+      const u = UEBERGABEN.find((x) => x.id === e.faehigkeit.id);
+      expect(u, `kein Zielanker fuer ${e.faehigkeit.id}`).toBeDefined();
+      const anker = (u as Uebergabe).anker;
+
+      await aufStart();
+      await menueAuf();
+      await s.click('[data-testid="h5-start-menu-punkt-ueber"]');
+      const EINSTIEGE_IM_BLATT = '[data-testid="erstnutzer-einstiege"]';
+      await s.waitForFunction(fn(DA), EINSTIEGE_IM_BLATT, { timeout: 10_000 });
+      const liste = await s.evaluate<string>(fn(SICHTBAR), EINSTIEGE_IM_BLATT);
+      expect(liste).toContain(t("erstnutzer.einstiege.titel"));
+      await s.click(`[data-testid="erstnutzer-einstieg-${e.thema}"]`);
+      await s.waitForFunction(fn("(p) => location.pathname === p"), e.pfad, { timeout: 30_000 });
+      await s.waitForFunction(fn(DA), '[data-testid="einstieg"]', { timeout: 30_000 });
+      // Der KI-Status kommt nach dem ersten Bild an; verglichen wird erst danach.
+      await s.waitForFunction(
+        fn(`() => {
+          const a = document.querySelector('[data-testid="einstieg"]');
+          return !!a && a.getAttribute('data-antwort-lage') === 'verfuegbar';
+        }`),
+        undefined,
+        { timeout: 30_000 },
+      );
+
+      const ansicht = await s.evaluate<string>(fn(SICHTBAR), '[data-testid="einstieg"]');
+      expect(ansicht, "Name fehlt").toContain(t(e.faehigkeit.nameKey));
+      expect(ansicht, "erster Schritt fehlt").toContain(t(e.ersterSchrittKey));
+      // Das Testkonto spielt einen nutzbaren KI-Status vor (s. Route oben): Zweck = volle Fassung.
+      expect(ansicht, "Zweck fehlt").toContain(t(e.faehigkeit.textKey));
+      const blattOffen = await s.evaluate<boolean>(fn(DA), '[data-testid="h5-start-blatt-ueber"]');
+      expect(blattOffen, "das Blatt steht noch — keine eigene Ansicht").toBe(false);
+
+      await s.click('[data-testid="einstieg-weiter"]');
+      const ziel = e.faehigkeit.to;
+      await s.waitForFunction(fn("(p) => location.pathname === p"), ziel, { timeout: 30_000 });
+      await s.waitForFunction(fn(DA), anker, { timeout: 30_000 });
+      const lage = await s.evaluate<Lage>(fn(BEDIENBAR), anker);
+      expect(lage?.sichtbar, `${ziel}: Anker unsichtbar`).toBe(true);
+      expect(lage?.gesperrt, `${ziel}: Anker gesperrt`).toBe(false);
     });
   }
 

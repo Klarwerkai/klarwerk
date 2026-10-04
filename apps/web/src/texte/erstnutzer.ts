@@ -55,6 +55,25 @@ export default {
     "erstnutzer.faehigkeiten.hilfe":
       "Jede Seite erklärt sich im Zahnrad unter „{{seitenhilfe}}“. Den ersten Weg Schritt für Schritt zeigt die Hilfe.",
     "erstnutzer.faehigkeiten.zurHilfe": "Zur Hilfe",
+    "erstnutzer.einstiege.titel": "Kurz erklärt: vier Einstiege",
+    "erstnutzer.einstiege.einleitung":
+      "Je eine kurze Seite zu einer Aufgabe: wofür, womit du anfängst, dann weiter in den Bereich.",
+    "erstnutzer.einstieg.kicker": "Einstieg",
+    "erstnutzer.einstieg.wozu": "Wofür",
+    "erstnutzer.einstieg.anfangen": "So fängst du an",
+    "erstnutzer.einstieg.weiter": "Weiter zu „{{name}}“",
+    "erstnutzer.einstieg.ohneRolle":
+      "Mit deiner Rolle kannst du „{{name}}“ nicht öffnen. Die Rolle vergibt die Verwaltung.",
+    "erstnutzer.einstieg.weitere": "Weitere Einstiege",
+    "erstnutzer.einstieg.zurStartseite": "Zur Startseite",
+    "erstnutzer.einstieg.erfassen.ersterSchritt":
+      "Gib oben einen Titel ein und schreib darunter in eigenen Worten auf, was du weißt. Danach sicherst du den Entwurf oder reichst ihn zur Prüfung ein.",
+    "erstnutzer.einstieg.pruefen.ersterSchritt":
+      "Wähle einen Eintrag aus der Warteschlange, lies ihn und gib deine Entscheidung ab.",
+    "erstnutzer.einstieg.fragen.ersterSchritt":
+      "Schreib deine Frage in das Feld, so wie du sie einer Kollegin oder einem Kollegen stellen würdest.",
+    "erstnutzer.einstieg.bibliothek.ersterSchritt":
+      "Gib oben ein Stichwort ein und öffne einen Treffer, um ihn mit Prüfstand und Herkunft zu lesen.",
   },
   en: {
     "erstnutzer.palette.anderesWort": "Try a different page name.",
@@ -91,6 +110,25 @@ export default {
     "erstnutzer.faehigkeiten.hilfe":
       "Every page explains itself in the gear menu under “{{seitenhilfe}}”. Help shows the first path step by step.",
     "erstnutzer.faehigkeiten.zurHilfe": "Go to Help",
+    "erstnutzer.einstiege.titel": "In brief: four starting points",
+    "erstnutzer.einstiege.einleitung":
+      "One short page per task: what it is for, how to begin, then on to the area.",
+    "erstnutzer.einstieg.kicker": "Starting point",
+    "erstnutzer.einstieg.wozu": "What it is for",
+    "erstnutzer.einstieg.anfangen": "How to begin",
+    "erstnutzer.einstieg.weiter": "Continue to “{{name}}”",
+    "erstnutzer.einstieg.ohneRolle":
+      "Your role cannot open “{{name}}”. Roles are assigned by the administration.",
+    "erstnutzer.einstieg.weitere": "Other starting points",
+    "erstnutzer.einstieg.zurStartseite": "To the start page",
+    "erstnutzer.einstieg.erfassen.ersterSchritt":
+      "Enter a title at the top and write below, in your own words, what you know. Then save the draft or submit it for review.",
+    "erstnutzer.einstieg.pruefen.ersterSchritt":
+      "Pick an entry from the queue, read it and record your decision.",
+    "erstnutzer.einstieg.fragen.ersterSchritt":
+      "Type your question into the field, the way you would ask a colleague.",
+    "erstnutzer.einstieg.bibliothek.ersterSchritt":
+      "Enter a keyword at the top and open a result to read it with its review status and origin.",
   },
   nl: {
     "erstnutzer.palette.anderesWort": "Probeer een andere paginanaam.",
@@ -127,5 +165,24 @@ export default {
     "erstnutzer.faehigkeiten.hilfe":
       "Elke pagina legt zichzelf uit in het tandwielmenu onder „{{seitenhilfe}}”. De eerste weg stap voor stap staat in Help.",
     "erstnutzer.faehigkeiten.zurHilfe": "Naar Help",
+    "erstnutzer.einstiege.titel": "Kort uitgelegd: vier startpunten",
+    "erstnutzer.einstiege.einleitung":
+      "Per taak één korte pagina: waarvoor, hoe je begint, dan verder naar het onderdeel.",
+    "erstnutzer.einstieg.kicker": "Startpunt",
+    "erstnutzer.einstieg.wozu": "Waarvoor",
+    "erstnutzer.einstieg.anfangen": "Zo begin je",
+    "erstnutzer.einstieg.weiter": "Verder naar „{{name}}”",
+    "erstnutzer.einstieg.ohneRolle":
+      "Met jouw rol kun je „{{name}}” niet openen. Rollen worden door de beheerder toegekend.",
+    "erstnutzer.einstieg.weitere": "Andere startpunten",
+    "erstnutzer.einstieg.zurStartseite": "Naar de startpagina",
+    "erstnutzer.einstieg.erfassen.ersterSchritt":
+      "Vul bovenaan een titel in en schrijf daaronder in eigen woorden op wat je weet. Daarna sla je het concept op of dien je het ter beoordeling in.",
+    "erstnutzer.einstieg.pruefen.ersterSchritt":
+      "Kies een item uit de wachtrij, lees het en leg je beslissing vast.",
+    "erstnutzer.einstieg.fragen.ersterSchritt":
+      "Typ je vraag in het veld, zoals je die aan een collega zou stellen.",
+    "erstnutzer.einstieg.bibliothek.ersterSchritt":
+      "Vul bovenaan een trefwoord in en open een resultaat om het met beoordelingsstatus en herkomst te lezen.",
   },
 } satisfies Textmodul;
