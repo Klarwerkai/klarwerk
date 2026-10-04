@@ -2,6 +2,10 @@ import { createHash, randomUUID } from "node:crypto";
 import type { AuditService } from "../../audit";
 import {
   type Confidentiality,
+  // NACHARBEIT 5 (R-0169): die interne Dokumentakte für Einträge ohne externalId.
+  DokumentError,
+  type DokumentHerkunft,
+  type DokumentaktenService,
   // NACHARBEIT 2: die Wertmenge der Wissensarten — Vorprüfung vor der ersten Persistenz.
   KNOWLEDGE_TYPES,
   // JOB 4155: die beiden geschlossenen Unions der kuratierten Beziehungen — importiert wie
@@ -16,6 +20,7 @@ import {
   type KoSichtbarkeitstrim,
   type KoSource,
   confidentialityRank,
+  gelieferteDokumentId,
   isConfidential,
   isValidConfidentiality,
   normalizeConfidentiality,
@@ -383,6 +388,16 @@ export interface LibraryServiceDeps {
    */
   externalSources?: ExternalSourceRepo;
   /**
+   * R-0169 (Nacharbeit 5) — DIE INTERNE DOKUMENTAKTE für Einträge OHNE `externalId`.
+   *
+   * Ist sie verdrahtet, bekommt jedes über den direkten Import oder den Dateiweg angelegte
+   * Wissensobjekt ohne externe Quellenkennung den Bezug auf eine festgeschriebene Fassung einer
+   * internen Akte (`dokumentHerkunft`). Die Akte entsteht neu, wenn der Eintrag keine `dokumentId`
+   * mitbringt; eine mitgebrachte muss hier vergeben worden sein. Einträge MIT `externalId` bleiben
+   * beim externen Revisionsweg — eine externe Kennung wird nie zur internen Identität.
+   */
+  dokumente?: DokumentaktenService;
+  /**
    * ================================================================================================
    * JOB 4155 (WG-LUECKEN) — DIE KURATIERTEN KANTEN IM GLOBALEN GRAPHEN.
    * ================================================================================================
@@ -506,6 +521,10 @@ interface ImportWeg {
   // bleibt als einfacher Verweis am Objekt — ohne Anker, ohne Revision, ohne erfundene Kennung.
   // Nur für eingereichte Einträge; Adapterkandidaten bleiben beim Bestand (Test „Flag AUS").
   readonly quellverweisOhneKennung?: boolean;
+  // NACHARBEIT 5 (R-0169): ein eingereichter Eintrag OHNE `externalId` bekommt eine interne
+  // Dokumentakte (eigene Identität, unveränderliche Fassung) — Dateiweg und direkter Import.
+  // Adapterkandidaten bleiben unberührt; sie bringen ihre externe Identität selbst mit.
+  readonly interneAkte?: boolean;
 }
 
 const KANDIDATEN_WEG: ImportWeg = { importedVia: "import_candidate", ankerOhneSchalter: false };
@@ -538,6 +557,27 @@ const DATEI_KANDIDATEN_WEG: ImportWeg = {
   importedVia: "import_candidate",
   ankerOhneSchalter: true,
   quellverweisOhneKennung: true,
+  interneAkte: true,
+};
+
+/**
+ * R-0169 (Nacharbeit 5): die mitgebrachte INTERNE Dokumentkennung eines Eintrags. Wie
+ * `originalAuthor` ein als fremd gelesenes Feld (`ImportItem` steht unter Freeze-144). Gelesen wird
+ * sie nur für Einträge OHNE `externalId` — bei einer externen Quelle zählt deren Identität.
+ */
+function dokumentIdVon(item: ImportItem): string | undefined {
+  if (item.externalId?.trim()) {
+    return undefined;
+  }
+  return gelieferteDokumentId((item as ImportItem & { readonly dokumentId?: unknown }).dokumentId);
+}
+
+/**
+ * R-0169 (Nacharbeit 5): die Antwort des direkten Imports, um die Fassungen der internen Akten
+ * erweitert. Eigener Typ neben `ImportResult` (Freeze-144); das Feld fehlt ohne verdrahtete Akte.
+ */
+export type ImportResultMitAkten = ImportResult & {
+  dokumentFassungen?: { titel: string; koId: string; dokumentId: string; fassung: number }[];
 };
 
 /** Liefert der Eintrag einen verwertbaren Quellverweis (sichere URL oder Anbieter)? */
@@ -594,6 +634,8 @@ export class LibraryService {
   private readonly kanten: KuratierteKantenLeser | undefined;
   // R-0169: Schreibweg der Quellrevisionen; `undefined` = nicht verdrahtet (s. Deps).
   private readonly externalSources: ExternalSourceRepo | undefined;
+  // R-0169 (Nacharbeit 5): die interne Dokumentakte; `undefined` = nicht verdrahtet (s. Deps).
+  private readonly dokumente: DokumentaktenService | undefined;
 
   constructor(deps: LibraryServiceDeps) {
     this.koService = deps.koService;
@@ -604,6 +646,46 @@ export class LibraryService {
     this.externalUpsert = deps.externalUpsert ?? false;
     this.kanten = deps.kanten;
     this.externalSources = deps.externalSources;
+    this.dokumente = deps.dokumente;
+  }
+
+  /**
+   * R-0169 (Nacharbeit 5): prüft die mitgebrachte Dokumentkennung und Wissensart eines Eintrags,
+   * der eine interne Akte bekommen wird — VOR jedem Schreiben. Eine nicht hier vergebene Kennung
+   * weist die Anfrage ab (`DOKUMENT_UNBEKANNT`); eine ungültige Art ebenso, damit keine Fassung ohne
+   * Wissensobjekt zurückbleibt.
+   */
+  private async pruefeAktenEintrag(item: ImportItem): Promise<void> {
+    if (!this.dokumente) {
+      return;
+    }
+    const dokumentId = dokumentIdVon(item);
+    if (dokumentId !== undefined && !(await this.dokumente.bekannt(dokumentId))) {
+      throw new DokumentError(
+        "DOKUMENT_UNBEKANNT",
+        `Die Dokumentkennung von „${item.title}" wurde hier nicht vergeben.`,
+      );
+    }
+    if (!KNOWLEDGE_TYPES.includes(item.type)) {
+      throw new LibraryError("BAD_REQUEST", `Unbekannte Wissensart für „${item.title}".`);
+    }
+  }
+
+  /** R-0169 (Nacharbeit 5): schreibt die Fassung fest; `undefined`, wenn keine Akte verdrahtet ist. */
+  private async aktenFassung(
+    item: ImportItem,
+    weg: "library_import" | "import_candidate",
+    actor: string,
+  ): Promise<DokumentHerkunft | undefined> {
+    if (!this.dokumente) {
+      return undefined;
+    }
+    return this.dokumente.festschreiben({
+      dokumentId: dokumentIdVon(item),
+      inhalt: { title: item.title, statement: item.statement, bodyHtml: item.bodyHtml },
+      weg,
+      actor,
+    });
   }
 
   /**
@@ -695,9 +777,9 @@ export class LibraryService {
         ...this.withSanitizedConfidentiality(ohneVermerk as ImportItem),
         textCodec: "decoded",
         // NACHARBEIT 3 (bens F1): auch ein Eintrag mit Quellverweis ohne Kennung trägt den Vermerk.
-        ...(opts.quellangabenEingereicht && (item.externalId || hatQuellverweis(item))
-          ? { [DATEIWEG_VERMERK]: true }
-          : {}),
+        // NACHARBEIT 5 (R-0169): und JEDER über den Dateiweg eingereichte Eintrag — auch einer ganz
+        // ohne Quellangaben bekommt bei der Annahme eine interne Dokumentakte.
+        ...(opts.quellangabenEingereicht ? { [DATEIWEG_VERMERK]: true } : {}),
       };
     });
     // Ein Ankereintrag läuft durch den Ankerstrang: bei eingeschaltetem Quellstrang (Bestand) oder
@@ -708,6 +790,9 @@ export class LibraryService {
     for (const item of items) {
       if (ankerStrang(item)) {
         pruefeAnkerEintrag(item);
+      } else if (kamUeberDateiweg(item)) {
+        // NACHARBEIT 5 (R-0169): mitgebrachte Dokumentkennung und Art VOR jeder Einreihung.
+        await this.pruefeAktenEintrag(item);
       }
     }
     const pruefung = erzwingeDublettenpruefung(pruefeDublette);
@@ -1854,6 +1939,14 @@ export class LibraryService {
     const ersteRevision = externalId
       ? await this.quellrevisionFestschreiben(item, firstVersion)
       : undefined;
+    // NACHARBEIT 5 (R-0169): OHNE externe Kennung — und nur auf einem eingereichten Weg — die
+    // interne Dokumentakte. Art und mitgebrachte Kennung sind VOR der Fassung geprüft, damit keine
+    // Fassung ohne Objekt zurückbleibt; die Fassung steht VOR dem Objekt, damit das Objekt sie trägt.
+    let aktenHerkunft: DokumentHerkunft | undefined;
+    if (!externalId && weg.interneAkte) {
+      await this.pruefeAktenEintrag(item);
+      aktenHerkunft = await this.aktenFassung(item, weg.importedVia, actor);
+    }
     try {
       const ko = await this.koService.create({
         title: item.title,
@@ -1885,6 +1978,8 @@ export class LibraryService {
         ...(candidateId ? { importCandidateId: candidateId } : {}),
         // R-0139 / FR-EXT-02: als importiert gekennzeichnet (Begründung am Modell, types.ts).
         importedVia: weg.importedVia,
+        // NACHARBEIT 5 (R-0169): aus welcher Fassung der internen Akte diese Aussage stammt.
+        ...(aktenHerkunft ? { dokumentHerkunft: aktenHerkunft } : {}),
       });
       weg.ausgang?.("angelegt");
       return ko.id;
@@ -2364,7 +2459,7 @@ export class LibraryService {
     // Optional nur, weil Altaufrufer ohne Ankereinträge es nicht brauchen — FEHLT es, ist JEDER
     // Anker-Treffer verweigert, nie erlaubt.
     opts: { zielDarf?: AnkerZielRecht } = {},
-  ): Promise<ImportResult> {
+  ): Promise<ImportResultMitAkten> {
     // SCRUM-515: an der Ingest-Grenze runtime-validieren (ungültig/unbekannt → vertraulich, nie intern).
     const items = rawItems.map((item) => this.withSanitizedConfidentiality(item));
     // NACHARBEIT 2 (bens F4/F5): ALLE Ankereinträge der Anfrage werden geprüft, bevor auch nur einer
@@ -2373,8 +2468,20 @@ export class LibraryService {
     for (const item of items) {
       if (item.externalId?.trim()) {
         pruefeAnkerEintrag(item);
+      } else {
+        // NACHARBEIT 5 (R-0169): Einträge ohne externe Kennung bekommen eine interne Akte —
+        // mitgebrachte Dokumentkennung und Art werden ebenfalls VOR jedem Schreiben geprüft.
+        await this.pruefeAktenEintrag(item);
       }
     }
+    // NACHARBEIT 5 (R-0169): je angelegtem Objekt die Fassung seiner Akte — die Antwort nennt sie,
+    // damit der Einreichende die von Klarwerk vergebene Kennung für die nächste Fassung kennt.
+    const dokumentFassungen: {
+      titel: string;
+      koId: string;
+      dokumentId: string;
+      fassung: number;
+    }[] = [];
     const zielDarf: AnkerZielRecht = opts.zielDarf ?? (() => false);
     const pruefung = erzwingeDublettenpruefung(pruefeDublette);
     const existing = await this.koService.list();
@@ -2478,11 +2585,15 @@ export class LibraryService {
         });
         continue;
       }
+      // NACHARBEIT 5 (R-0169): die Fassung der internen Akte — nach der Dublettenfrage (ein nicht
+      // eingespielter Eintrag schreibt keine Fassung) und vor dem Objekt, das sie trägt.
+      const aktenHerkunft = await this.aktenFassung(item, "library_import", actor);
       const erzeugt = await this.koService.create({
         title: item.title,
         statement: item.statement,
         type: item.type,
         category: item.category,
+        ...(aktenHerkunft ? { dokumentHerkunft: aktenHerkunft } : {}),
         // AUFTRAG-mega82 Block A: DIESELBE ABBILDUNG WIE IM ACCEPT-PFAD (WP-SAMMEL21-FIX weiter
         // oben) — und bis mega82 war sie hier die einzige, die fehlte.
         //
@@ -2533,6 +2644,14 @@ export class LibraryService {
       exakt.set(key, erzeugt.id);
       bestand.push(erzeugt);
       imported += 1;
+      if (aktenHerkunft) {
+        dokumentFassungen.push({
+          titel: item.title,
+          koId: erzeugt.id,
+          dokumentId: aktenHerkunft.dokumentId,
+          fassung: aktenHerkunft.fassung,
+        });
+      }
     }
     // `skipped` behaelt Name und Bedeutung: nicht eingespielt. Es ist die Laenge der Liste — beide
     // Zahlen koennen nicht auseinanderlaufen.
@@ -2543,7 +2662,11 @@ export class LibraryService {
       target: "library",
       payload: { imported, skipped },
     });
-    return { imported, skipped, uebersprungen };
+    // NACHARBEIT 5 (R-0169): `dokumentFassungen` ist rein additiv (die Grundform `ImportResult`
+    // steht unter Freeze-144) und fehlt GANZ, wenn keine Akte verdrahtet ist.
+    return this.dokumente
+      ? { imported, skipped, uebersprungen, dokumentFassungen }
+      : { imported, skipped, uebersprungen };
   }
 
   // FR-LIB-03: Bus-Faktor je Kategorie (Einzelquelle = nur ein Autor).

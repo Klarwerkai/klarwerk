@@ -1474,6 +1474,57 @@
       return JSON.stringify({ title: title, statement: statement, bodyHtml: bodyHtml, category: category, origin: "word_addin" });
     }
 
+    // R-0169 (Nacharbeit 5) — Spiegel von wordAddin.ts (WORD_ADDIN_DOKUMENT_SETTING,
+    // mitDokumentkennung, dokumentkennungAusAntwort). Die von Klarwerk vergebene Dokumentkennung
+    // liegt in den Dokumenteinstellungen DIESES Word-Dokuments und reist mit der Datei. Fehlt die
+    // Einstellungs-Schnittstelle (aeltere Hosts, Testattrappen), bleibt alles wie vorher: kein
+    // Kennungsfeld, kein Fehler — der Server legt dann je Senden eine neue Akte an.
+    var WORD_ADDIN_DOKUMENT_SETTING = "klarwerkDokumentId";
+
+    function gespeicherteDokumentkennung() {
+      try {
+        var einstellungen = Office.context.document.settings;
+        if (!einstellungen || typeof einstellungen.get !== "function") { return null; }
+        var wert = einstellungen.get(WORD_ADDIN_DOKUMENT_SETTING);
+        return typeof wert === "string" && wert.length > 0 ? wert : null;
+      } catch (err) {
+        return null;
+      }
+    }
+
+    function mitDokumentkennung(payload, dokumentId) {
+      if (typeof dokumentId !== "string" || dokumentId.replace(/^\s+|\s+$/g, "").length === 0) {
+        return payload;
+      }
+      var rumpf = JSON.parse(payload);
+      rumpf.dokumentId = dokumentId.replace(/^\s+|\s+$/g, "");
+      return JSON.stringify(rumpf);
+    }
+
+    function dokumentkennungAusAntwort(antwort) {
+      if (!antwort || typeof antwort !== "object") { return null; }
+      var herkunft = antwort.dokumentHerkunft;
+      if (!herkunft || typeof herkunft !== "object") { return null; }
+      var kennung = herkunft.dokumentId;
+      return typeof kennung === "string" && kennung.length > 0 ? kennung : null;
+    }
+
+    // Legt die vom Server vergebene Kennung im Dokument ab. Bewusst ohne Rueckmeldung an die
+    // Flaeche: der Entwurf IST angelegt; scheitert nur das Merken, sendet das naechste Senden ohne
+    // Kennung, und der Server legt ehrlich eine neue Akte an statt eine Fassung zu erfinden.
+    function merkeDokumentkennung(antwort) {
+      var kennung = dokumentkennungAusAntwort(antwort);
+      if (!kennung) { return; }
+      try {
+        var einstellungen = Office.context.document.settings;
+        if (!einstellungen || typeof einstellungen.set !== "function") { return; }
+        einstellungen.set(WORD_ADDIN_DOKUMENT_SETTING, kennung);
+        if (typeof einstellungen.saveAsync === "function") { einstellungen.saveAsync(function () {}); }
+      } catch (err) {
+        // siehe Kopf: kein erfundener Erfolg, kein Abbruch des gelungenen Entwurfs.
+      }
+    }
+
     // JOB 2613 D1 — Spiegel von wordAddin.ts#trimWordImagesToBudget. Groesstes Bild zuerst
     // weglassen, bis der Rest ins Budget passt; das GANZE img-Tag faellt, nicht nur seine Quelle
     // (ein img ohne src waere ein kaputtes Bildsymbol). Nur eingebettete data:-Bilder werden
@@ -6031,6 +6082,8 @@
         // JOB 3594 K2b RUNDE 2: hier stand `showSendStatus("busy", t("sendBusy"))`. Der Satz steht
         // seit dieser Runde schon am Eingang von `sendeEntwurf` — ein zweites Setzen waere eine
         // zweite Stelle fuer denselben Zustand und koennte den ersten nur noch wiederholen.
+        // R-0169 (Nacharbeit 5): die im Dokument gespeicherte Kennung reist mit (falls vorhanden).
+        prepared.payload = mitDokumentkennung(prepared.payload, gespeicherteDokumentkennung());
         fetch("/api/drafts", {
           method: "POST",
           credentials: "include",
@@ -6050,6 +6103,9 @@
             return null;
           })
           .then(function (draft) {
+            // R-0169 (Nacharbeit 5): die vergebene Kennung im Dokument ablegen — auch wenn die
+            // Anzeige dieses Laufs inzwischen ueberholt ist, gehoert die Kennung zum Dokument.
+            if (draft) { merkeDokumentkennung(draft); }
             if (!draft || !sendeLaufAktuell(lauf)) { return; }
             hideSendStatus();
             // WP-KLARA-2 (Pedis Befund 1): der Link oeffnet den ENTWURF direkt — bestehendes
@@ -6221,6 +6277,9 @@
       // capture-routes.ts); ohne ihn nimmt die Route wie bisher den Dateinamen.
       var titel = (titelWunsch || "").slice(0, WORD_ADDIN_TITLE_MAX).trim();
       if (titel.length > 0) { koerper.title = titel; }
+      // R-0169 (Nacharbeit 5): dieselbe Dokumentkennung wie im Auswahl-Weg.
+      var gespeicherteKennung = gespeicherteDokumentkennung();
+      if (gespeicherteKennung) { koerper.dokumentId = gespeicherteKennung; }
       var nutzlast = JSON.stringify(koerper);
       fetch("/api/drafts/from-docx", {
         method: "POST",
@@ -6237,6 +6296,7 @@
           return null;
         })
         .then(function (draft) {
+          if (draft) { merkeDokumentkennung(draft); }
           if (!draft || !sendeLaufAktuell(lauf)) { return; }
           hideSendStatus();
           // NIE mehr behaupten als angekommen ist, und nie weniger: `docxBilderBefund` liest die

@@ -66,6 +66,11 @@ const QUELL_CHECKS: Record<string, (value: unknown) => boolean> = {
   externalId: (value) => fehltOderLeer(value) || gefuellt(value),
   sourceVersion: istQuellfassung,
   url: (value) => fehltOderLeer(value) || istQuellUrl(value),
+  // R-0169 (Nacharbeit 5): die INTERNE Dokumentkennung, die Klarwerk beim ersten Import vergeben
+  // hat (Importantwort `dokumentFassungen`, Objekt `dokumentHerkunft`). Mitgebracht wird die
+  // nächste Fassung derselben Akte. Ob sie hier vergeben wurde, entscheidet der Server — der Parser
+  // prüft nur die Form; eine externe `externalId` ist etwas anderes und bleibt getrennt.
+  dokumentId: (value) => fehltOderLeer(value) || gefuellt(value),
 };
 
 export const IMPORT_JSON_FORMAT = {
@@ -200,6 +205,9 @@ export function parseImportItems(text: string): ImportItemInput[] {
     }
     if (gefuellt(o.url)) {
       item.url = o.url.trim();
+    }
+    if (gefuellt(o.dokumentId)) {
+      item.dokumentId = o.dokumentId.trim();
     }
     return item;
   });

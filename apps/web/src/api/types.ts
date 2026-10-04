@@ -1480,6 +1480,9 @@ export interface ImportItemInput {
   externalId?: string;
   sourceVersion?: number;
   url?: string;
+  // R-0169 (Nacharbeit 5): die von Klarwerk vergebene INTERNE Dokumentkennung — die nächste
+  // Fassung derselben Dokumentakte. Getrennt von `externalId` (Kennung im Quellsystem).
+  dokumentId?: string;
   // WP-IC-PAKET-1c (ROT-2): Decode-Marker des Server-Kandidaten — "decoded" heisst: Textfelder sind
   // kanonisch dekodiert, die Queue-Karte dekodiert NICHT erneut; fehlt er (Altbestand), defensiv nach.
   textCodec?: "decoded";

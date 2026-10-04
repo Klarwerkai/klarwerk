@@ -24,9 +24,12 @@
 // Re-Sync-Angriff über die Kandidatenroute (tests/security/mega82-importeur-handelt.test.ts).
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ImportParseError, parseImportItems } from "../../apps/web/src/lib/importReview";
+import { dokumentkennungAusAntwort, mitDokumentkennung } from "../../apps/web/src/lib/wordAddin";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 import { AuditService, InMemoryAuditRepo } from "../../services/audit";
 import {
+  DokumentaktenService,
+  InMemoryDokumentaktenRepo,
   InMemoryEvidenceRepo,
   InMemoryKoRepo,
   InMemoryKoVersionRepo,
@@ -1196,4 +1199,279 @@ describe("Nacharbeit 3 — Verweis ohne Kennung, Konflikt vor Einstufung, verdec
         treffer: { art: "wissensobjekt", koId: ko.id },
       });
     }, false));
+});
+
+// ================================================================================================
+// NACHARBEIT 5 (bens Befund zu R-0169) — INTERNE DOKUMENTIDENTITÄT FÜR WORD UND JSON OHNE KENNUNG.
+// ================================================================================================
+//
+// Gemessen wird der SERVERWEG, den der Word-Zusatz und der JSON-Import tatsächlich gehen
+// (POST /api/drafts mit origin word_addin, POST /api/drafts/:id/promote, POST /api/library/import,
+// Dateiweg über die Kandidatenroute). Was hier NICHT gemessen werden kann: dass Word selbst die
+// Kennung in den Dokumenteinstellungen behält (Office-Host) — das bleibt eine Prüfung am echten
+// Word-Dokument. Die Ablage- und Lesehelfer des Panels sind unten als reine Funktionen geprüft.
+
+const UUID_FORM = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+type Herkunft = { dokumentId: string; fassung: number; fassungId: string };
+
+async function wordSenden(app: App, wer: Auth, aussage: string, dokumentId?: string) {
+  return app.inject({
+    method: "POST",
+    url: "/api/drafts",
+    headers: wer,
+    payload: {
+      title: "Wartungsanweisung aus Word",
+      statement: aussage,
+      bodyHtml: `<p>${aussage}</p>`,
+      type: "best_practice",
+      category: "Wartung",
+      confidentiality: "intern",
+      origin: "word_addin",
+      ...(dokumentId ? { dokumentId } : {}),
+    },
+  });
+}
+
+describe("Nacharbeit 5 — Dokumentakte: Word-Zusatz", () => {
+  it("R-0169 · erstes Senden vergibt eine Kennung, jedes weitere eine neue unveränderliche Fassung derselben Akte", async () => {
+    const { app, services, importeur } = await flaeche("n5w1");
+    const erstes = await wordSenden(app, importeur.auth, "Fassung eins aus dem Dokument.");
+    expect(erstes.statusCode, erstes.body).toBe(201);
+    const h1 = (erstes.json() as { dokumentHerkunft?: Herkunft }).dokumentHerkunft;
+    expect(h1?.dokumentId, "der Word-Entwurf trägt keine Dokumentkennung").toMatch(UUID_FORM);
+    expect(h1?.fassung).toBe(1);
+    // Die Kennung ist keine Ableitung des Inhalts: derselbe Text aus einem ANDEREN Dokument
+    // (ohne mitgebrachte Kennung) ist eine andere Akte.
+    const fremd = await wordSenden(app, importeur.auth, "Fassung eins aus dem Dokument.");
+    const hFremd = (fremd.json() as { dokumentHerkunft?: Herkunft }).dokumentHerkunft;
+    expect(hFremd?.dokumentId).not.toBe(h1?.dokumentId);
+
+    const dokumentId = h1?.dokumentId ?? "";
+    const fassung1Vorher = await services.dokumente.fassungById(h1?.fassungId ?? "");
+    expect(fassung1Vorher).toMatchObject({
+      dokumentId,
+      fassung: 1,
+      weg: "word_addin",
+      festgeschriebenVon: importeur.id,
+    });
+
+    const zweites = await wordSenden(app, importeur.auth, "Überarbeitete Fassung.", dokumentId);
+    expect(zweites.statusCode, zweites.body).toBe(201);
+    const h2 = (zweites.json() as { dokumentHerkunft?: Herkunft }).dokumentHerkunft;
+    expect(h2).toMatchObject({ dokumentId, fassung: 2 });
+    expect(h2?.fassungId).not.toBe(h1?.fassungId);
+
+    // Derselbe Stand noch einmal ist keine neue Fassung.
+    const drittes = await wordSenden(app, importeur.auth, "Überarbeitete Fassung.", dokumentId);
+    expect((drittes.json() as { dokumentHerkunft?: Herkunft }).dokumentHerkunft).toMatchObject({
+      dokumentId,
+      fassung: 2,
+    });
+
+    const fassungen = await services.dokumente.fassungen(dokumentId);
+    expect(fassungen.map((f) => f.fassung)).toEqual([1, 2]);
+    expect(fassungen[0], "die erste Fassung hat sich verändert").toEqual(fassung1Vorher);
+  });
+
+  it("R-0169 · eine hier nicht vergebene Kennung wird abgewiesen — weder übernommen noch neu angelegt", async () => {
+    const { app, services, importeur } = await flaeche("n5w2");
+    const vorher = (await services.capture.listDrafts()).length;
+    const fremdeKennung = "0d6f3a52-1c2b-4e7a-9f10-123456789abc";
+    const res = await wordSenden(app, importeur.auth, "Mit erfundener Kennung.", fremdeKennung);
+    expect(res.statusCode, res.body).toBe(400);
+    expect((res.json() as { error: string }).error).toBe("DOKUMENT_UNBEKANNT");
+    expect((await services.capture.listDrafts()).length, "es entstand trotzdem ein Entwurf").toBe(
+      vorher,
+    );
+    expect(await services.dokumente.fassungen(fremdeKennung)).toEqual([]);
+  });
+
+  it("R-0169 · das eingereichte Wissensobjekt nennt die Fassung, aus der seine Aussage stammt", async () => {
+    const { app, services, importeur } = await flaeche("n5w3");
+    const erstes = await wordSenden(app, importeur.auth, "Erste Fassung.");
+    const dokumentId = (erstes.json() as { dokumentHerkunft: Herkunft }).dokumentHerkunft
+      .dokumentId;
+    const zweites = await wordSenden(app, importeur.auth, "Zweite Fassung.", dokumentId);
+    const entwurf = zweites.json() as { id: string; dokumentHerkunft: Herkunft };
+
+    const eingereicht = await app.inject({
+      method: "POST",
+      url: `/api/drafts/${entwurf.id}/promote`,
+      headers: importeur.auth,
+      payload: {},
+    });
+    expect(eingereicht.statusCode, eingereicht.body).toBe(201);
+    const koId = (eingereicht.json() as { id: string }).id;
+    const ko = await services.ko.get(koId);
+    expect(ko?.dokumentHerkunft).toEqual(entwurf.dokumentHerkunft);
+    expect(ko?.origin).toBe("word_addin");
+    const [v1] = await services.ko.versionsOf(koId);
+    expect(v1?.snapshot.statement).toBe("Zweite Fassung.");
+    expect(v1?.snapshot.dokumentHerkunft).toMatchObject({ dokumentId, fassung: 2 });
+  });
+
+  it("R-0169 · die öffentlichen Schreibwege setzen keinen Fassungsbezug", async () => {
+    const { app, services, importeur } = await flaeche("n5w4");
+    const angelegt = await wordSenden(app, importeur.auth, "Echte Fassung.");
+    const echt = (angelegt.json() as { dokumentHerkunft: Herkunft }).dokumentHerkunft;
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/kos",
+      headers: importeur.auth,
+      payload: {
+        title: "Frei erfasst",
+        statement: "Behauptet eine Dokumentfassung.",
+        type: "best_practice",
+        category: "Anlage 1",
+        confidentiality: "intern",
+        dokumentHerkunft: echt,
+      },
+    });
+    expect(res.statusCode, res.body).toBe(201);
+    expect(await services.ko.get((res.json() as { id: string }).id)).not.toHaveProperty(
+      "dokumentHerkunft",
+    );
+  });
+
+  it("Panel-Helfer: Kennung nur mitschicken, wenn vorhanden; nur eine Serverkennung zurücklesen", () => {
+    const rumpf = JSON.stringify({ title: "t", statement: "s", origin: "word_addin" });
+    expect(mitDokumentkennung(rumpf, null)).toBe(rumpf);
+    expect(mitDokumentkennung(rumpf, "  ")).toBe(rumpf);
+    expect(JSON.parse(mitDokumentkennung(rumpf, "abc"))).toEqual({
+      title: "t",
+      statement: "s",
+      origin: "word_addin",
+      dokumentId: "abc",
+    });
+    expect(dokumentkennungAusAntwort({ id: "d", dokumentHerkunft: { dokumentId: "k" } })).toBe("k");
+    expect(dokumentkennungAusAntwort({ id: "d" })).toBeNull();
+    expect(dokumentkennungAusAntwort(null)).toBeNull();
+  });
+});
+
+describe("Nacharbeit 5 — Dokumentakte: JSON ohne externalId", () => {
+  type Antwort = ImportAntwort & {
+    dokumentFassungen?: { titel: string; koId: string; dokumentId: string; fassung: number }[];
+  };
+  const eintrag = (aussage: string, extra: Record<string, unknown> = {}) => ({
+    title: `Akteneintrag ${aussage}`,
+    statement: aussage,
+    type: "technik",
+    category: "Wartung",
+    confidentiality: "intern",
+    ...extra,
+  });
+
+  it("R-0169 · direkter Import: neue Akte, nächste Fassung über die mitgebrachte Kennung, Aussage je Fassung", async () => {
+    const { app, services, importeur } = await flaeche("n5j1");
+    const erste = await direktRoh(app, importeur.auth, eintrag("Stand eins."));
+    expect(erste.statusCode, erste.body).toBe(200);
+    const [f1] = (erste.json() as Antwort).dokumentFassungen ?? [];
+    expect(f1?.dokumentId, "der Import nennt keine vergebene Kennung").toMatch(UUID_FORM);
+    expect(f1?.fassung).toBe(1);
+    const ko1 = await services.ko.get(f1?.koId ?? "");
+    expect(ko1?.dokumentHerkunft).toMatchObject({ dokumentId: f1?.dokumentId, fassung: 1 });
+    expect(ko1?.sources, "die interne Kennung wurde als externe Quelle ausgegeben").toEqual([]);
+
+    const zweite = await direktRoh(
+      app,
+      importeur.auth,
+      eintrag("Stand zwei.", { dokumentId: f1?.dokumentId }),
+    );
+    expect(zweite.statusCode, zweite.body).toBe(200);
+    const [f2] = (zweite.json() as Antwort).dokumentFassungen ?? [];
+    expect(f2).toMatchObject({ dokumentId: f1?.dokumentId, fassung: 2 });
+    const ko2 = await services.ko.get(f2?.koId ?? "");
+    expect(ko2?.statement).toBe("Stand zwei.");
+    expect(ko2?.dokumentHerkunft).toMatchObject({ dokumentId: f1?.dokumentId, fassung: 2 });
+    // Die erste Aussage bleibt ihrer Fassung zugeordnet.
+    expect((await services.ko.get(f1?.koId ?? ""))?.dokumentHerkunft?.fassung).toBe(1);
+    const fassungen = await services.dokumente.fassungen(f1?.dokumentId ?? "");
+    expect(fassungen.map((f) => [f.fassung, f.weg, f.festgeschriebenVon])).toEqual([
+      [1, "library_import", importeur.id],
+      [2, "library_import", importeur.id],
+    ]);
+  });
+
+  it("R-0169 · unbekannte Kennung: 400, kein Objekt; externe Kennung wird nie zur internen", async () => {
+    const { app, services, importeur } = await flaeche("n5j2");
+    const vorher = (await services.ko.list()).length;
+    const res = await direktRoh(
+      app,
+      importeur.auth,
+      eintrag("Fremd.", { dokumentId: "11111111-2222-4333-8444-555555555555" }),
+    );
+    expect(res.statusCode, res.body).toBe(400);
+    expect((res.json() as { error: string }).error).toBe("DOKUMENT_UNBEKANNT");
+    expect((await services.ko.list()).length).toBe(vorher);
+
+    // Mit externer Kennung bleibt es beim externen Revisionsweg — keine interne Akte.
+    const extern = await direktRoh(app, importeur.auth, anker("SEITE-EXTERN-N5", 1, "Extern."));
+    expect(extern.statusCode, extern.body).toBe(200);
+    expect((extern.json() as Antwort).dokumentFassungen).toEqual([]);
+    const ko = await koMitQuelle(services, "SEITE-EXTERN-N5");
+    expect(ko).not.toHaveProperty("dokumentHerkunft");
+  });
+
+  it("R-0169 · Dateiweg: parseImportItems → Kandidat → Annahme legt die Akte an; die Datei mit Kennung schreibt Fassung 2", () =>
+    mitQuellimport(async () => {
+      const { app, services, importeur, controller } = await flaeche("n5j3");
+      const annehmen = async (items: unknown[]) => {
+        const res = await kandidatEinreichen(app, importeur.auth, items);
+        const kandidatId = (res.json() as { id: string }[])[0]?.id;
+        const angenommen = await app.inject({
+          method: "PUT",
+          url: `/api/library/import/candidates/${kandidatId}`,
+          headers: controller.auth,
+          payload: { action: "accept" },
+        });
+        expect(angenommen.statusCode, angenommen.body).toBe(200);
+        return services.ko.get((angenommen.json() as { koId: string }).koId);
+      };
+      const ko1 = await annehmen(parseImportItems(JSON.stringify([eintrag("Datei Stand eins.")])));
+      const h1 = ko1?.dokumentHerkunft;
+      expect(h1?.dokumentId).toMatch(UUID_FORM);
+      expect(h1?.fassung).toBe(1);
+      expect(await services.dokumente.fassungById(h1?.fassungId ?? "")).toMatchObject({
+        weg: "import_candidate",
+        festgeschriebenVon: controller.id,
+      });
+
+      const datei2 = JSON.stringify([eintrag("Datei Stand zwei.", { dokumentId: h1?.dokumentId })]);
+      const items2 = parseImportItems(datei2);
+      expect(items2[0]?.dokumentId).toBe(h1?.dokumentId);
+      const ko2 = await annehmen(items2);
+      expect(ko2?.dokumentHerkunft).toMatchObject({ dokumentId: h1?.dokumentId, fassung: 2 });
+
+      // Eine nicht vergebene Kennung kommt gar nicht erst in die Warteschlange.
+      const fremd = await app.inject({
+        method: "POST",
+        url: "/api/library/import/candidates",
+        headers: importeur.auth,
+        payload: {
+          items: [eintrag("Fremd.", { dokumentId: "11111111-2222-4333-8444-555555555555" })],
+        },
+      });
+      expect(fremd.statusCode, fremd.body).toBe(400);
+    }, false));
+
+  it("DokumentaktenService · eine mitgebrachte Kennung muss hier vergeben sein", async () => {
+    const dokumente = new DokumentaktenService({ repo: new InMemoryDokumentaktenRepo() });
+    await expect(
+      dokumente.festschreiben({
+        dokumentId: "11111111-2222-4333-8444-555555555555",
+        inhalt: { title: "t", statement: "s" },
+        weg: "library_import",
+        actor: "u1",
+      }),
+    ).rejects.toMatchObject({ code: "DOKUMENT_UNBEKANNT" });
+    const neu = await dokumente.festschreiben({
+      inhalt: { title: "t", statement: "s" },
+      weg: "library_import",
+      actor: "u1",
+    });
+    expect(await dokumente.bekannt(neu.dokumentId)).toBe(true);
+    expect(await dokumente.bekannt("kein-uuid")).toBe(false);
+  });
 });

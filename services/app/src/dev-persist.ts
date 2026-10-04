@@ -48,6 +48,8 @@ export const MUTATING_METHODS: Readonly<Record<keyof AppRepos, readonly string[]
   // gestarteter Lauf danach spurlos, und genau das sollte 148 beenden.
   importRuns: ["insertIfAbsent", "advance", "appendItemRefs"],
   externalSources: ["insertIfAbsent"],
+  // R-0169 (Nacharbeit 5): die Fassungen der Dokumentakte überleben den Dev-Neustart.
+  dokumente: ["insertFassung"],
   // SCRUM-504: der atomare Bootstrap-Claim ist eine Mutation (fügt den Admin ein) → muss journaliert
   // werden, sonst überlebt der erste Admin den Dev-Neustart nicht. In Dev (sequenziell) genau einmal mit
   // Erfolg gerufen; Replay auf die leere Instanz beansprucht den Slot identisch.

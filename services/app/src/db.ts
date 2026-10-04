@@ -6,6 +6,7 @@ import { CAPTURE_CREATE_OPERATION_SCHEMA, CAPTURE_SCHEMA } from "../../capture";
 import { CONFLICTS_SCHEMA, OVERLAP_SCHEMA, OVERLAP_SETTINGS_SCHEMA } from "../../conflicts";
 import { EXTERNAL_KNOWLEDGE_SCHEMA } from "../../external-search";
 import {
+  DOKUMENTAKTE_SCHEMA,
   GESAMTANWEISUNG_SCHEMA,
   KANTEN_SCHEMA,
   KO_CREATE_OPERATION_SCHEMA,
@@ -209,6 +210,10 @@ export const schemas = [
   // wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS), ohne Fremdschlüssel und ohne Extension; sie
   // steht am Ende, weil das die lesbare Ordnung ist.
   KO_BEARBEITUNG_SCHEMA,
+  // R-0169 (Nacharbeit 5): die Fassungen der internen Dokumentakte (`dokument_fassungen`). Additiv
+  // und wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS), ohne Fremdschlüssel und ohne Extension; am
+  // Ende, weil das die lesbare Ordnung ist.
+  DOKUMENTAKTE_SCHEMA,
 ];
 
 // Führt die DDL aller Module aus. Jedes Modul liefert seine eigenen Tabellen (Datenhoheit).

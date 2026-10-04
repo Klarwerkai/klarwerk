@@ -1306,6 +1306,8 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             ownership: _ignoredOwnership,
             origin: _ignoredOrigin,
             importedVia: _ignoredImportedVia,
+            // R-0169 (Nacharbeit 5): der Fassungsbezug der Dokumentakte entsteht nur serverseitig.
+            dokumentHerkunft: _ignoredDokumentHerkunft,
             ...input
           } = request.body;
           // ==========================================================================================
@@ -1595,6 +1597,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             importCandidateId: _ignoredAnchor,
             origin: _ignoredOrigin,
             importedVia: _ignoredImportedVia,
+            dokumentHerkunft: _ignoredDokumentHerkunft,
             ...rest
           } = body.create ?? ({} as Omit<CreateKoInput, "author">);
           input = { ...rest, author: user.id } as CreateKoInput;

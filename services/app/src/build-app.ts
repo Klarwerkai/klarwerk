@@ -77,12 +77,16 @@ import {
   type AnweisungRepo,
   type AnweisungStandAufnahme,
   DeduplizierenderKantenBestand,
+  // R-0169 (Nacharbeit 5): die interne Dokumentakte (Word-Zusatz, JSON ohne externalId).
+  type DokumentaktenRepo,
+  DokumentaktenService,
   type EvidenceRepo,
   // JOB 4156 (WIKI-GESAMTANWEISUNG-ANSCHLUSS): der Anweisungsdienst und seine haltbare Ablage.
   // Beide sind seit diesem Auftrag über `services/knowledge-object/index.ts` erreichbar — genau
   // dieser fehlende Modulexport war der Grund, warum das seit JOB 4154 fertige Routen-Plugin an
   // keiner App angemeldet werden konnte (`routes/gesamtanweisung-routes.ts`, Kopf).
   GesamtanweisungDienst,
+  InMemoryDokumentaktenRepo,
   InMemoryEvidenceRepo,
   InMemoryKoRepo,
   InMemoryKoVersionRepo,
@@ -100,6 +104,7 @@ import {
   KoService,
   type KoVersionRepo,
   PgAnweisungRepo,
+  PgDokumentaktenRepo,
   PgEvidenceRepo,
   PgKantenRepo,
   PgKoRepo,
@@ -458,6 +463,8 @@ export interface AppServices {
   // Route fernhalten. `ImportAccessService` bekommt diese Ablage; die Route bekommt nur ihn.
   importRuns: ImportRunRepo;
   externalSources: ExternalSourceRepo;
+  // R-0169 (Nacharbeit 5): die interne Dokumentakte — Word-Weg und JSON ohne externalId.
+  dokumente: DokumentaktenService;
   mailer: Mailer;
   // Audit-P3 (SCRUM-397): Gelesen-Status der Glocke (öffentliche Modul-Schnittstelle).
   notificationSeen: NotificationSeenRepo;
@@ -512,6 +519,8 @@ export interface AppRepos {
   // Lauf angelegt werden — die Tabelle wurde migriert und blieb leer.
   importRuns: ImportRunRepo;
   externalSources: ExternalSourceRepo;
+  // R-0169 (Nacharbeit 5): die Fassungen der internen Dokumentakte (eigene Tabelle).
+  dokumente: DokumentaktenRepo;
   modelRuns: ModelRunRepo;
   // Audit-P3 (SCRUM-397): pro Nutzer bewusst als gesehen markierte Benachrichtigungs-IDs.
   notificationSeen: NotificationSeenRepo;
@@ -1042,8 +1051,11 @@ export function assembleServices(
   // Beziehungsroute nicht kennt. Die Wahlregel selbst ist UNVERÄNDERT (Postgres, wenn injiziert,
   // sonst der DEDUPLIZIERENDE Speicherbestand — die Begründung steht unten an der Verwendung).
   const kantenBestand = opts.kanten ?? new DeduplizierenderKantenBestand();
+  // R-0169 (Nacharbeit 5): EINE Dokumentakte für Word-Weg und Bibliotheksimport.
+  const dokumente = new DokumentaktenService({ repo: repos.dokumente });
   const library = new LibraryService({
     koService: ko,
+    dokumente,
     audit,
     candidates: repos.candidates,
     externalUpsert: externalImportEnabled,
@@ -1118,6 +1130,8 @@ export function assembleServices(
     zurufModell,
     importRuns: repos.importRuns,
     externalSources: repos.externalSources,
+    // R-0169 (Nacharbeit 5): DIESELBE Instanz, die oben in den `LibraryService` gereicht wurde.
+    dokumente,
     ko,
     auth: new AuthService({
       users: repos.users,
@@ -1353,6 +1367,7 @@ export function inMemoryRepos(): AppRepos {
     candidates: new InMemoryCandidateRepo(),
     importRuns: new InMemoryImportRunRepo(),
     externalSources: new InMemoryExternalSourceRepo(),
+    dokumente: new InMemoryDokumentaktenRepo(),
     modelRuns: new InMemoryModelRunRepo(),
     notificationSeen: new InMemoryNotificationSeenRepo(),
     assistPresets: new InMemoryAssistPresetRepo(),
@@ -1430,6 +1445,8 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // „haengend in QUEUED" nach jedem Neustart ununterscheidbar von „nie gestartet".
       importRuns: new PgImportRunRepo(pool),
       externalSources: new PgExternalSourceRepo(pool),
+      // R-0169 (Nacharbeit 5): die Fassungen der internen Dokumentakte (DOKUMENTAKTE_SCHEMA).
+      dokumente: new PgDokumentaktenRepo(pool),
       // SCRUM-164: ModelRun-Protokoll persistent (KI-Aufrufe nachvollziehbar).
       modelRuns: new PgModelRunRepo(pool),
       // Audit-P3 (SCRUM-397): Gelesen-Status der Glocke persistent.

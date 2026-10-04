@@ -92,6 +92,9 @@ describe("UX-20b-R · eigener Export in einen gefüllten Bestand zusammenführen
       "externalId",
       "sourceVersion",
       "url",
+      // Nacharbeit 5 (R-0169): die mitgebrachte INTERNE Dokumentkennung, wenn die Datei sie trägt.
+      // Der eigene Export trägt sie nicht auf oberster Ebene (sie steht dort in `dokumentHerkunft`).
+      "dokumentId",
     ]);
     for (const item of parseImportItems(datei)) {
       const fremd = Object.keys(item).filter((k) => !erlaubt.has(k));

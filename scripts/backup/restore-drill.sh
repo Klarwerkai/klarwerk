@@ -334,6 +334,7 @@ PFLICHTTABELLEN=(
   gesamtanweisung_bausteine
   gesamtanweisung_staende
   ko_bearbeitungen
+  dokument_fassungen
 )
 FEHLENDE_TABELLEN=()
 for tabelle in "${PFLICHTTABELLEN[@]}"; do
