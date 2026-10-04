@@ -309,6 +309,35 @@ function DimensionsSuche({
   );
 }
 
+// K21 / mega10 B1 („Alle N zeigen / Weniger zeigen"): beide Richtungen des Anzeige-Deckels. Bis
+// hierher gab es nur das Aufklappen; danach war `hiddenCount` null und der Punkt verschwand — die
+// begrenzte Darstellung kam nicht wieder. Der Gegenpunkt steht genau dann da, wenn die Dimension
+// aufgeklappt ist. Wortlaut aus den vorhandenen Schlüsseln `facet.showAll` / `facet.showLess`.
+function DeckelUmschalter({
+  gruppe,
+  onUmschalten,
+}: {
+  gruppe: FacetRailGroupView;
+  onUmschalten: (alle: boolean) => void;
+}): JSX.Element | null {
+  const { t } = useTranslation();
+  if (gruppe.hiddenCount > 0) {
+    return (
+      <MenuePunkt testId={`bib-deckel-alle-${gruppe.key}`} onClick={() => onUmschalten(true)}>
+        {t("facet.showAll", { n: gruppe.totalCount })}
+      </MenuePunkt>
+    );
+  }
+  if (gruppe.showAll) {
+    return (
+      <MenuePunkt testId={`bib-deckel-weniger-${gruppe.key}`} onClick={() => onUmschalten(false)}>
+        {t("facet.showLess")}
+      </MenuePunkt>
+    );
+  }
+  return null;
+}
+
 export function BibliothekFlaeche({
   vorgewaehlt,
   beiWahl,
@@ -367,6 +396,10 @@ export function BibliothekFlaeche({
   // ANGEBOTENEN Werte einer Dimension, nie die Treffer — die ändert erst eine Auswahl.
   const dimensionSuchen = (key: string, wert: string): void =>
     setRailUi((p) => ({ ...p, query: { ...p.query, [key]: wert } }));
+  // K21 (mega10 B1): Deckel einer Dimension auf- UND wieder zuklappen. Berührt nur `showAll` dieser
+  // Dimension — Auswahl und Suchtext bleiben; gewählte Werte hält der Kern ohnehin sichtbar.
+  const deckelUmschalten = (key: string, alle: boolean): void =>
+    setRailUi((p) => ({ ...p, showAll: { ...p.showAll, [key]: alle } }));
   const [windowLimit, setWindowLimit] = useState(LIBRARY_RESULT_LIMIT);
   const [groupBy, setGroupBy] = useState<LibraryGroupKey>("none");
   const [sortKey, setSortKey] = usePersistentEnum(
@@ -1877,17 +1910,11 @@ export function BibliothekFlaeche({
                         {`${facetValueLabel(BEREICH_KEY, o.value)} · ${o.count}`}
                       </MenuePunkt>
                     ))}
-                    {bereichGruppe && bereichGruppe.hiddenCount > 0 ? (
-                      <MenuePunkt
-                        onClick={() =>
-                          setRailUi((p) => ({
-                            ...p,
-                            showAll: { ...p.showAll, [BEREICH_KEY]: true },
-                          }))
-                        }
-                      >
-                        {t("facet.showAll", { n: bereichGruppe.totalCount })}
-                      </MenuePunkt>
+                    {bereichGruppe ? (
+                      <DeckelUmschalter
+                        gruppe={bereichGruppe}
+                        onUmschalten={(alle) => deckelUmschalten(BEREICH_KEY, alle)}
+                      />
                     ) : null}
                   </>
                 )}
@@ -1962,18 +1989,10 @@ export function BibliothekFlaeche({
                                 {`${facetValueLabel(g.key, o.value)} · ${o.count}`}
                               </MenuePunkt>
                             ))}
-                            {g.hiddenCount > 0 ? (
-                              <MenuePunkt
-                                onClick={() =>
-                                  setRailUi((p) => ({
-                                    ...p,
-                                    showAll: { ...p.showAll, [g.key]: true },
-                                  }))
-                                }
-                              >
-                                {t("facet.showAll", { n: g.totalCount })}
-                              </MenuePunkt>
-                            ) : null}
+                            <DeckelUmschalter
+                              gruppe={g}
+                              onUmschalten={(alle) => deckelUmschalten(g.key, alle)}
+                            />
                           </MenueUntermenue>
                         );
                       })}
