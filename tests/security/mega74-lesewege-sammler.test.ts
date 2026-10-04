@@ -459,11 +459,12 @@ const REGISTER: Record<string, Eintrag> = {
   "GET /api/ai-status": { urteil: "KEIN_KO_INHALT", grund: "Modellzustand." },
   "GET /api/reasoner/status": { urteil: "KEIN_KO_INHALT", grund: "Modellzustand." },
   "GET /api/features": { urteil: "KEIN_KO_INHALT", grund: "Schalter als Ja/Nein." },
-  // Der Supportkontakt der Installation: Zustand, Adresse und Bezeichnung aus der Umgebung
-  // (`support-routes.ts`, `supportKontaktAusUmgebung`) — kein Feld stammt aus einem Wissensobjekt.
+  // R-1064: Supportweg der Installation — Zustand, geprüftes Ziel und Beschriftung aus zwei
+  // Betreiberwerten (support-routes.ts:119), kein Feld aus einem Wissensobjekt.
   "GET /api/support": {
     urteil: "KEIN_KO_INHALT",
-    grund: "Supportkontakt aus der Umgebung (support-routes.ts:150), kein Bestand.",
+    grund:
+      "R-1064 — Supportkontakt der Instanz aus der Umgebung (support-routes.ts), kein Bestand.",
   },
   // JOB 3510 · die Markenwahl. Beide Wege geben ausschließlich die Darstellungslage der Instanz
   // aus: Profilname, `aktiv`, Änderungszahl und — nur bei eingeschalteter Wahl — Markenname, zwei
@@ -660,6 +661,9 @@ const REGISTER: Record<string, Eintrag> = {
     // Wissensobjekts aus — sie geben Namen, Adressen und Stände von QUELLDATEIEN aus.
     "POST /api/admin/import/sharepoint/files": "users.manage.",
     "POST /api/admin/import/sharepoint/apply": "users.manage.",
+    // R-0145/R-0190: `folder-apply` ist derselbe Übernahmeweg für ein Los eines Ordners — er gibt
+    // dieselben Quelldatei-Angaben aus wie `apply`, dazu die Kennungen des Loses.
+    "POST /api/admin/import/sharepoint/folder-apply": "users.manage.",
     "PUT /api/reasoner/config": "users.manage.",
     "PUT /api/reasoner/assist-presets": "users.manage.",
     "POST /api/reasoner/test": "users.manage.",

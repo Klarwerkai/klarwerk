@@ -854,9 +854,8 @@ export const TABELLE: Zeile[] = [
     tor: "requireUser",
     erwartet: ANGEMELDET,
   },
-  // Der Supportkontakt der Installation (1.0.0-beta.1.654). Er war registriert, stand aber in
-  // keiner Zeile — W2/E2 haben das gemeldet. Rein lesend, `requireUser`: jede angemeldete Rolle
-  // bekommt dieselbe Auskunft (Adresse/Bezeichnung aus der Umgebung), der Unangemeldete nicht.
+  // R-1064: der Supportweg der Installation. Jede angemeldete Rolle braucht ihn (Hilfeseite
+  // `minRole: "viewer"`), deshalb bewusst kein Recht über die Anmeldung hinaus.
   {
     gruppe: "supportRoutes",
     methode: "GET",
@@ -901,6 +900,16 @@ export const TABELLE: Zeile[] = [
     methode: "POST",
     pfad: "/api/admin/import/sharepoint/apply",
     belegstelle: "services/app/src/routes/sharepoint-import-routes.ts:229",
+    tor: "users.manage",
+    payload: {},
+    erwartet: NUR_ADMIN,
+  },
+  // R-0145/R-0190: die Ordnerübernahme in Losen. Ohne Zugangsdaten ebenso ein 503 vor jedem Effekt.
+  {
+    gruppe: "sharepointImportRoutes",
+    methode: "POST",
+    pfad: "/api/admin/import/sharepoint/folder-apply",
+    belegstelle: "services/app/src/routes/sharepoint-import-routes.ts:554",
     tor: "users.manage",
     payload: {},
     erwartet: NUR_ADMIN,

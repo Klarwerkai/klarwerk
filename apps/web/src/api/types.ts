@@ -582,7 +582,9 @@ export interface KnowledgeObject {
   // JOB 3027 R2: `null` aus demselben Grund wie bei der Stufe darüber — die Board-Route sendet
   // `origin: ko.origin ?? null` (services/validation/src/board-herkunft.ts:128). Fehlend und `null`
   // heissen hier beide „unbekannt"; nur der Board-Vertrag trennt sie von „nicht in dieser Antwort".
-  origin?: "tell" | "studio" | "expert" | "frontdoor" | "word_addin" | null;
+  // R-0180/R-2108: `import` = aus der Import-Prüfwarteschlange von einem Menschen übernommen
+  // (nur am Wissensobjekt, nie am Entwurf — services/knowledge-object/src/types.ts).
+  origin?: "tell" | "studio" | "expert" | "frontdoor" | "word_addin" | "import" | null;
   // Pedi 05.07.: read-only Board-Anreicherung — Peer-Stimmen-Zähler (grün/gelb/rot) für „X von Y grün".
   reviewVotes?: { up: number; warn: number; down: number };
   // SCRUM-507 R2: Anzahl Bewertungen aus einer FRÜHEREN Revision — veraltet, zählen nicht mehr.

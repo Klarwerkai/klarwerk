@@ -1196,7 +1196,17 @@ export const SCHREIB_TABELLE: Schreibzeile[] = [
     ruesten: async (buehne) => ({
       pfad: "/api/library/import",
       payload: { items: [{ ...IMPORT_EINTRAG }] },
-      bestand: () => zaehleKos(buehne),
+      // R-0143 (bens F1): der Eingang reiht seit der Nacharbeit in die Prüfwarteschlange ein und
+      // legt kein Wissensobjekt mehr an — seine Wirkung ist die Länge der Warteschlange.
+      bestand: async () => {
+        const liste = await musterhaft(
+          buehne.app,
+          kopf(buehne, "admin"),
+          "GET",
+          "/api/library/import/candidates",
+        );
+        return (liste.json() as unknown[]).length;
+      },
     }),
   },
   {
