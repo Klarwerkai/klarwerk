@@ -157,27 +157,34 @@ const ROLLEN = `(anteil) => {
 /** Bringt ein Element in die Mitte seiner Rollfläche — der Weg eines Menschen dorthin. */
 const ZEIGEN = `(id) => { document.getElementById(id).scrollIntoView({ block: "center" }); return true; }`;
 
-let browser: Browser;
+// EIN BROWSER JE FENSTERGRÖSSE. Gestartet wird mit `--single-process` (dieselben Schalter wie die
+// geteilte Messstrecke `tests/design/h1-chromium.ts`, die je Lauf genau eine Seite öffnet). In
+// diesem Modus endet der Browserprozess mit seiner letzten Seite: der erste Prüflauf (Cloud,
+// Kandidat a8a3efb1) bestand 320×560 und scheiterte danach an `browser.newPage` mit „Target page,
+// context or browser has been closed" — der geteilte Browser war mit der geschlossenen ersten Seite
+// beendet. Jede Fenstergröße bekommt deshalb ihren eigenen Start und ihr eigenes Ende.
+type Chromium = { launch(o: Record<string, unknown>): Promise<Browser> };
+let chromium: Chromium;
+let browser: Browser | null = null;
 let chromiumVersion = "";
 
-beforeAll(async () => {
+beforeAll(() => {
   const require = createRequire(import.meta.url);
-  const { chromium } = require("playwright") as {
-    chromium: { launch(o: Record<string, unknown>): Promise<Browser> };
-  };
-  browser = await chromium.launch({
-    headless: true,
-    args: ["--no-sandbox", "--disable-gpu", "--single-process", "--no-zygote"],
-  });
-  chromiumVersion = browser.version();
-}, 120_000);
+  chromium = (require("playwright") as { chromium: Chromium }).chromium;
+});
 
 afterAll(async () => {
   await browser?.close();
 });
 
 async function leiste(breite: number, hoehe: number): Promise<Seite> {
-  const seite = await browser.newPage({ viewport: { width: breite, height: hoehe } });
+  const eigener = await chromium.launch({
+    headless: true,
+    args: ["--no-sandbox", "--disable-gpu", "--single-process", "--no-zygote"],
+  });
+  browser = eigener;
+  chromiumVersion = eigener.version();
+  const seite = await eigener.newPage({ viewport: { width: breite, height: hoehe } });
   await seite.route(`${ORIGIN}/**`, async (route) => {
     const pfad = new URL(route.request().url()).pathname.replace(/^\/+/, "") || "panel.html";
     const datei = resolve(PAKET, pfad);
@@ -289,7 +296,9 @@ describe("Schmale Leiste mit langer Vorschau — Speichern bleibt sichtbar und e
         expect(gespeichert, "der Klick auf Speichern kam nicht an").toHaveLength(1);
         expect(gespeichert[0]?.captureId).toBe("leiste-lang-1");
       } finally {
-        await seite.close();
+        await seite.close().catch(() => {});
+        await browser?.close();
+        browser = null;
       }
     }, 120_000);
   }
