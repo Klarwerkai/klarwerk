@@ -6,15 +6,16 @@ import {
   coreText,
   trigramSimilarity,
 } from "../../../conflicts";
-import type { KnowledgeObject, KoFilter, KoService } from "../../../knowledge-object";
-import type {
-  DublettenBefund,
-  DublettenPruefung,
-  ImportCandidate,
-  ImportItem,
-  KandidatDublettenbefund,
-  LibraryService,
-  ReviewAction,
+import type { AiCheckBasis, KnowledgeObject, KoFilter, KoService } from "../../../knowledge-object";
+import {
+  type DublettenBefund,
+  type DublettenPruefung,
+  type ImportCandidate,
+  type ImportItem,
+  type KandidatDublettenbefund,
+  type LibraryService,
+  type ReviewAction,
+  ohneQuellRestriktionen,
 } from "../../../library-analytics";
 import { can } from "../../../rbac";
 import type { Reasoner } from "../../../reasoner";
@@ -32,7 +33,7 @@ import {
 } from "../ai-check-worker";
 import type { SemanticPrefilter } from "../duplicate-detection";
 import { schalterAn } from "../feature-flags";
-import { type Guards, sendError } from "../http";
+import { type Guards, type SessionUser, sendError } from "../http";
 import {
   darfSehen,
   sichtbareFuer,
@@ -105,6 +106,140 @@ function toImportCandidateDto(candidate: ImportCandidate): ImportCandidateDto {
   };
 }
 
+// ================================================================================================
+// NACHARBEIT 3 (bens F3) — EINE TREFFERKENNUNG IST EINE AUSKUNFT ÜBER EIN OBJEKT.
+// ================================================================================================
+//
+// `dublettenbefund.treffer.koId` (und `koId` eines angenommenen Kandidaten) nennen ein Wissensobjekt.
+// Der Ankervergleich beim Einreihen läuft über den GANZEN Bestand — ohne diese Grenze gab die
+// Einreichungsantwort einem Experten die Kennung eines vertraulichen Objekts aus, das er nicht sehen
+// darf. Die Entscheidung ist dieselbe wie überall (`darfSehen`, am vollen Objekt). Wer `ko.validate`
+// hat, sieht jedes Objekt und braucht die Treffer zum Prüfen — für ihn bleibt die Antwort unverändert
+// (auch Papierkorb-Treffer, wie bisher).
+//
+// WAS AN DIE STELLE TRITT: ein unsichtbarer Treffer wird zu `pruefung_nicht_moeglich` — dem
+// vorhandenen Ausgang „für dich ist dazu keine Aussage möglich", den der Client bereits darstellt.
+// Eine Ersatzform mit leerem Treffer gäbe es im Vertrag nicht. Die ENTSCHEIDUNG des Annehmenden
+// hängt daran nicht: der Dienst liest den abgelegten Kandidaten, nie dieses DTO.
+async function kandidatenDtosFuer(
+  library: LibraryService,
+  user: SessionUser,
+  candidates: readonly ImportCandidate[],
+): Promise<ImportCandidateDto[]> {
+  const dtos = candidates.map(toImportCandidateDto);
+  if (can(user.role, "ko.validate")) {
+    return dtos;
+  }
+  const sichtbar = new Map<string, boolean>();
+  const pruefe = async (koId: string): Promise<boolean> => {
+    const bekannt = sichtbar.get(koId);
+    if (bekannt !== undefined) {
+      return bekannt;
+    }
+    const ko = await library.wissensobjektFuerSicht(koId);
+    const darf = ko !== undefined && darfSehen(user, ko);
+    sichtbar.set(koId, darf);
+    return darf;
+  };
+  const ergebnis: ImportCandidateDto[] = [];
+  for (const dto of dtos) {
+    const befund = dto.dublettenbefund;
+    const trefferKo =
+      befund && "treffer" in befund && befund.treffer.art === "wissensobjekt"
+        ? befund.treffer.koId
+        : undefined;
+    const trefferVerdeckt = trefferKo !== undefined && !(await pruefe(trefferKo));
+    const koVerdeckt = dto.koId !== null && !(await pruefe(dto.koId));
+    ergebnis.push({
+      ...dto,
+      ...(trefferVerdeckt
+        ? { dublettenbefund: { ergebnis: "pruefung_nicht_moeglich" as const } }
+        : {}),
+      ...(koVerdeckt ? { koId: null } : {}),
+    });
+  }
+  return ergebnis;
+}
+
+// ================================================================================================
+// R-0143 — DER DIREKTE IMPORTEINGANG FÜHRT IN DIE PRÜFWARTESCHLANGE, NICHT IN DEN BESTAND.
+// ================================================================================================
+//
+// `POST /api/library/import` rief bis hierher `LibraryService.importJson` und legte jeden nicht
+// doppelten Eintrag SOFORT als Wissensobjekt an — ohne Kandidat und ohne menschliche Entscheidung.
+// Ab hier reiht er genau wie `POST /api/library/import/candidates` Kandidaten ein (dieselbe
+// Dublettenregel, dieselbe Einreihstelle). Ein Wissensobjekt entsteht erst durch die berechtigte
+// Annahme (`PUT /api/library/import/candidates/:id`, Recht `ko.validate`).
+//
+// DIE ANTWORT bleibt in ihren Feldern lesbar, sagt aber die Wahrheit über den neuen Weg:
+//   · `imported` ist immer 0 — direkt angelegt wird nichts mehr.
+//   · `uebersprungen`/`skipped` nennen die Einträge, aus denen auch eine Annahme KEIN Objekt macht
+//     (Dublette `identisch`/`aehnlich` oder `pruefung_nicht_moeglich`), mit dem getroffenen Objekt
+//     bzw. — neu — dem getroffenen Kandidaten desselben Laufs (`kandidatId`, dann `koId: null`).
+//   · `eingereiht` und `kandidaten` nennen, was jetzt in der Warteschlange steht (auch die
+//     Dubletten: sie stehen dort mit ihrem Befund, wie auf dem Kandidatenweg).
+interface DirektimportUebersprungen {
+  titel: string;
+  grund: "identisch" | "aehnlich" | "pruefung_nicht_moeglich";
+  koId: string | null;
+  kandidatId?: string;
+  aehnlichkeit?: number;
+}
+
+interface DirektimportAntwort {
+  imported: 0;
+  skipped: number;
+  uebersprungen: DirektimportUebersprungen[];
+  eingereiht: number;
+  kandidaten: ImportCandidateDto[];
+}
+
+function uebersprungenAus(candidate: ImportCandidate): DirektimportUebersprungen | undefined {
+  const befund = candidate.dublettenbefund;
+  const titel = candidate.item.title;
+  if (befund?.ergebnis === "pruefung_nicht_moeglich") {
+    return { titel, grund: "pruefung_nicht_moeglich", koId: null };
+  }
+  if (befund?.ergebnis !== "identisch" && befund?.ergebnis !== "aehnlich") {
+    return undefined;
+  }
+  const treffer =
+    befund.treffer.art === "wissensobjekt"
+      ? { koId: befund.treffer.koId }
+      : { koId: null, kandidatId: befund.treffer.kandidatId };
+  return befund.ergebnis === "aehnlich"
+    ? { titel, grund: "aehnlich", ...treffer, aehnlichkeit: befund.aehnlichkeit }
+    : { titel, grund: "identisch", ...treffer };
+}
+
+// NACHARBEIT 3 (bens F3) × R-0143: `dtos` sind die an die Sichtbarkeit gebundenen DTOs derselben
+// Kandidaten in derselben Reihenfolge (`kandidatenDtosFuer`). Hat diese Grenze den Treffer eines
+// Kandidaten verdeckt, nennt auch `uebersprungen` dessen Kennung nicht — Grund und Titel bleiben,
+// damit die Antwort weiter sagt, WARUM aus dem Eintrag kein Objekt wird. Ohne `dtos` (Altaufrufer)
+// gilt die unveränderte Form.
+export function direktimportAntwort(
+  kandidaten: readonly ImportCandidate[],
+  dtos: readonly ImportCandidateDto[] = kandidaten.map(toImportCandidateDto),
+): DirektimportAntwort {
+  const uebersprungen = kandidaten
+    .map((kandidat, i) => {
+      const eintrag = uebersprungenAus(kandidat);
+      const verdeckt =
+        eintrag !== undefined &&
+        eintrag.koId !== null &&
+        dtos[i]?.dublettenbefund?.ergebnis === "pruefung_nicht_moeglich";
+      return verdeckt ? { ...eintrag, koId: null } : eintrag;
+    })
+    .filter((e): e is DirektimportUebersprungen => e !== undefined);
+  return {
+    imported: 0,
+    skipped: uebersprungen.length,
+    uebersprungen,
+    eingereiht: kandidaten.length,
+    kandidaten: [...dtos],
+  };
+}
+
 // ben-Review #6: schmale, immer sichtbare Log-Linie für best-effort-Erkennung am Import-Accept-Pfad
 // (Fastify läuft ohne eigenen Logger) — analog defaultLog des dup-prefilters. Bewusst kein Werfen.
 function importDetectionLog(msg: string, err: unknown): void {
@@ -142,13 +277,20 @@ async function recordImportAcceptAiCheck(
   ko: KoService,
   koId: string,
   outcome: AiCheckRunOutcome,
+  // AUFNAHME 20260922: die Basis beim LAUFSTART — eine Änderung während des Laufs macht den
+  // Nachweis sichtbar überholt statt scheinbar aktuell.
+  basis: AiCheckBasis | undefined,
 ): Promise<void> {
   try {
-    await ko.recordAiCheckOutcome(koId, {
-      ok: outcome.ok,
-      ...(outcome.fallbackReason ? { fallbackReason: outcome.fallbackReason } : {}),
-      ...(outcome.coverage ? { coverage: outcome.coverage } : {}),
-    });
+    await ko.recordAiCheckOutcome(
+      koId,
+      {
+        ok: outcome.ok,
+        ...(outcome.fallbackReason ? { fallbackReason: outcome.fallbackReason } : {}),
+        ...(outcome.coverage ? { coverage: outcome.coverage } : {}),
+      },
+      basis,
+    );
   } catch (err) {
     importDetectionLog(`aiCheck-Vermerk für KO ${koId} fehlgeschlagen`, err);
   }
@@ -434,7 +576,7 @@ const BILD_KENNUNG_RE = /^[\w-]{1,64}$/;
  * verbleibende Fußnote hat hier die Beschreibung `""` (Runde 2: es bleibt ein Bild, das über
  * seine Benennung gefunden werden kann).
  */
-function bilderEinerFigur(figur: string): Bestandsbild[] {
+function bilderEinerFigurMitPaarung(figur: string): { bild: Bestandsbild; gepaart: boolean }[] {
   const bilder: { id: string; src: string; name: string | null }[] = [];
   const imgRe = /<img\b[^>]*>/gi;
   let m: RegExpExecArray | null;
@@ -454,14 +596,18 @@ function bilderEinerFigur(figur: string): Bestandsbild[] {
     return [];
   }
   const fussnoten: { id: string | null; text: string }[] = [];
+  // Kennungen ALLER Fußnoten dieser figure, auch der leeren: ein Bild mit eigener (leerer) Fußnote
+  // gilt als gepaart — dieselbe Auskunft wie `captionForImage` im Editor.
+  const alleKennungen: (string | null)[] = [];
   const capRe = /<figcaption\b[^>]*>[\s\S]*?<\/figcaption>/gi;
   // biome-ignore lint/suspicious/noAssignInExpressions: Standard-Regex-Iteration.
   while ((m = capRe.exec(figur)) !== null) {
+    const oeffner = m[0].slice(0, m[0].indexOf(">") + 1);
+    alleKennungen.push(attributWert(oeffner, "data-image-id"));
     const [text] = imageCaptionTexts(m[0]);
     if (text === undefined) {
       continue;
     }
-    const oeffner = m[0].slice(0, m[0].indexOf(">") + 1);
     fussnoten.push({ id: attributWert(oeffner, "data-image-id"), text });
   }
   const belegt = fussnoten.map(() => false);
@@ -483,12 +629,40 @@ function bilderEinerFigur(figur: string): Bestandsbild[] {
       texte[i] = fussnoten[k]?.text ?? null;
     }
   });
-  return bilder.map((bild, i) => ({
-    imageId: bild.id,
-    src: bild.src,
-    caption: texte[i] ?? "",
-    name: bild.name,
-  }));
+  // Gepaart wie in `paare`/`captionForImage`: über die Kennung, sonst eine unmarkierte Fußnote der
+  // Reihe nach — hier über ALLE Fußnoten gezählt, auch die leeren.
+  let freieUnmarkierte = alleKennungen.filter((k) => k === null || k === "").length;
+  return bilder.map((bild, i) => {
+    let gepaart = alleKennungen.includes(bild.id);
+    if (!gepaart && freieUnmarkierte > 0) {
+      freieUnmarkierte -= 1;
+      gepaart = true;
+    }
+    return {
+      bild: { imageId: bild.id, src: bild.src, caption: texte[i] ?? "", name: bild.name },
+      gepaart,
+    };
+  });
+}
+
+/**
+ * AUFNAHME 20260922 (Runde 2, Bens Befund B2): Fußnoten AUSSERHALB jeder figure mit ihrer
+ * Kennung. Der Server-Sanitizer lässt einer losen Fußnote seit dieser Runde ihre Kennung; sie ist
+ * die Beschreibung des Bildes, dessen Kennung sie trägt — dieselbe enge Regel wie Galerie
+ * (`extractBodyImages`) und Editor (`captionForImage`): nur für ein Bild ohne eigene Fußnote, nur
+ * bei genau einer losen Fußnote und genau einem Bild mit dieser Kennung.
+ */
+function loseFussnoten(aussen: string): { id: string | null; text: string }[] {
+  const aus: { id: string | null; text: string }[] = [];
+  const capRe = /<figcaption\b[^>]*>[\s\S]*?<\/figcaption>/gi;
+  let m: RegExpExecArray | null;
+  // biome-ignore lint/suspicious/noAssignInExpressions: Standard-Regex-Iteration.
+  while ((m = capRe.exec(aussen)) !== null) {
+    const oeffner = m[0].slice(0, m[0].indexOf(">") + 1);
+    const [text] = imageCaptionTexts(m[0]);
+    aus.push({ id: attributWert(oeffner, "data-image-id"), text: text ?? "" });
+  }
+  return aus;
 }
 
 /**
@@ -500,7 +674,9 @@ function bestandsbilderAusRumpf(bodyHtml: string | null | undefined): Bestandsbi
   if (!bodyHtml || bodyHtml.indexOf("<figure") < 0) {
     return [];
   }
-  const out: Bestandsbild[] = [];
+  const out: { bild: Bestandsbild; gepaart: boolean }[] = [];
+  const aussen: string[] = [];
+  let aussenAb = 0;
   const marken = /<figure\b|<\/figure\s*>/gi;
   let tiefe = 0;
   let start = -1;
@@ -510,22 +686,37 @@ function bestandsbilderAusRumpf(bodyHtml: string | null | undefined): Bestandsbi
     if (m[0].startsWith("</")) {
       tiefe = Math.max(0, tiefe - 1);
       if (tiefe === 0 && start >= 0) {
-        out.push(...bilderEinerFigur(bodyHtml.slice(start, marken.lastIndex)));
+        out.push(...bilderEinerFigurMitPaarung(bodyHtml.slice(start, marken.lastIndex)));
         start = -1;
+        aussenAb = marken.lastIndex;
       }
       continue;
     }
     if (tiefe === 0) {
       start = m.index;
+      aussen.push(bodyHtml.slice(aussenAb, m.index));
     }
     tiefe += 1;
   }
   if (start >= 0) {
     // Unbalanciertes Markup (ein `</figure>` fehlt): was noch offen ist, wird ausgeliefert statt
     // still verworfen.
-    out.push(...bilderEinerFigur(bodyHtml.slice(start)));
+    out.push(...bilderEinerFigurMitPaarung(bodyHtml.slice(start)));
+  } else {
+    aussen.push(bodyHtml.slice(aussenAb));
   }
-  return out;
+  const lose = loseFussnoten(aussen.join(""));
+  return out.map(({ bild, gepaart }) => {
+    if (gepaart) {
+      return bild;
+    }
+    const passende = lose.filter((f) => f.id === bild.imageId);
+    const gleicheBilder = out.filter((b) => b.bild.imageId === bild.imageId);
+    if (passende.length === 1 && gleicheBilder.length === 1) {
+      return { ...bild, caption: passende[0]?.text ?? "" };
+    }
+    return bild;
+  });
 }
 
 // Bibliothek & Analytics (§2.3/§2.4 / FR-LIB, FR-ANA).
@@ -728,18 +919,33 @@ export function libraryRoutes(
       reply.code(200).send(await library.exportJson(opts));
     });
 
+    // R-0143: DIE EINE Einreihstelle beider Importeingänge — dieselbe Dublettenregel (JOB 3050),
+    // derselbe Dienstweg. Der Wächter `tests/re-import-dubletten/port-aufrufer-waechter.test.ts`
+    // zählt genau diese eine Nennung für diese Datei.
+    // NACHARBEIT 2/5 (R-0139/R-0169): beide Eingänge nehmen EINGEREICHTE Einträge an — ihre
+    // Quellangaben bleiben bei der Annahme erhalten, Einträge ohne externalId bekommen eine interne
+    // Dokumentakte (Begründung an `DATEIWEG_VERMERK`, services/library-analytics).
+    const einreihen = (items: readonly ImportItem[], actor: string): Promise<ImportCandidate[]> =>
+      library.createImportCandidates(items, actor, pruefeReImportDublette, {
+        quellangabenEingereicht: true,
+      });
+
     app.post<{ Body: { items: ImportItem[] } }>("/api/library/import", async (request, reply) => {
       const user = await guards.requirePermission("ko.create", request, reply);
       if (!user) {
         return;
       }
       try {
-        // JOB 3023: die Dublettenregel reist als Prädikat mit — der Dienst legt sie nicht aus.
-        reply
-          .code(200)
-          .send(
-            await library.importJson(request.body.items ?? [], user.id, pruefeReImportDublette),
-          );
+        // R-0143 (s. `direktimportAntwort`): kein `importJson` mehr — der Eingang reiht Kandidaten
+        // ein, ein Wissensobjekt entsteht erst durch die berechtigte Annahme. Damit entfällt hier
+        // auch der direkte Re-Sync fremder Objekte (NACHARBEIT 2, `zielDarf`): fortgeschrieben wird
+        // nur noch über die Annahme mit `ko.validate`.
+        // package:confluence (K6): die Lese-Einschränkung ist eine Quellangabe, kein Rumpffeld.
+        const items = ohneQuellRestriktionen(request.body.items ?? []);
+        const kandidaten = await einreihen(items, user.id);
+        // NACHARBEIT 3 (bens F3): Trefferkennungen nur für sichtbare Ziele — auch hier.
+        const dtos = await kandidatenDtosFuer(library, user, kandidaten);
+        reply.code(200).send(direktimportAntwort(kandidaten, dtos));
       } catch (error) {
         sendError(reply, error);
       }
@@ -757,12 +963,14 @@ export function libraryRoutes(
           // WP-SHIP8-CLOSE-8 (bens GELB-2): auch frisch eingereihte Kandidaten laufen durchs DTO.
           // JOB 3050: DIESELBE Instanz der Dublettenregel wie `POST /api/library/import` oben —
           // beide Importwege beantworten die Frage ab hier gleich.
-          const created = await library.createImportCandidates(
-            request.body.items ?? [],
-            user.id,
-            pruefeReImportDublette,
-          );
-          reply.code(201).send(created.map(toImportCandidateDto));
+          // NACHARBEIT 2 (bens F1): diese Route ist der Dateiweg (Stufe2 → parseImportItems). Was
+          // ein Eintrag hier an Quellangaben mitbringt, bleibt bei der Übernahme erhalten — auch
+          // ohne eingeschalteten Quelladapter (`einreihen` setzt den Dateiweg-Vermerk).
+          // package:confluence (K6): nur der Quell-Adapter erzeugt `sourceRestrictions`.
+          const items = ohneQuellRestriktionen(request.body.items ?? []);
+          const created = await einreihen(items, user.id);
+          // NACHARBEIT 3 (bens F3): Trefferkennungen nur für sichtbare Ziele.
+          reply.code(201).send(await kandidatenDtosFuer(library, user, created));
         } catch (error) {
           sendError(reply, error);
         }
@@ -778,13 +986,18 @@ export function libraryRoutes(
       // Laden der Queue — dasselbe dokumentierte Muster wie der aiCheck-Lazy-Re-Enqueue am
       // Board-Load (kein Cron): eine abgelaufene Lease wird VOLLENDET (KO mit opId-Stempel
       // existiert) oder sicher auf 'neu' zurückgegeben, bevor die Liste antwortet.
-      await library.recoverStaleReviewClaims();
+      // Lauf gesamt-import-adoption:2, Nacharbeit 5 (Bens Befund): DIESELBE Dublettenregel wie bei
+      // Einreihen und Annahme — die Recovery prüft vor einer vertagten Vollendung, ob neben dem
+      // gestempelten Objekt ein Mitbewerber (auch in anderer Schreibweise) steht.
+      await library.recoverStaleReviewClaims(pruefeReImportDublette);
       // WP-SHIP8-CLOSE-6 (bens ROT-3b): schwebende Review-Aktionsbelege (auditPending) werden
       // am selben Lazy-Punkt exactly-once nachgezogen.
       await library.retryPendingReviewAudits();
       // WP-SHIP8-CLOSE-8 (bens GELB-2): NIE rohe Kandidatenobjekte auf den Draht — das DTO
       // hält Lease-/Claim-Felder und Beleg-Interna zurück (ko.read-Nutzer sehen nur Produktdaten).
-      reply.code(200).send((await library.listImportCandidates()).map(toImportCandidateDto));
+      // NACHARBEIT 3 (bens F3): dieselbe Sichtbarkeitsgrenze für die Kandidatenliste.
+      const kandidaten = await library.listImportCandidates();
+      reply.code(200).send(await kandidatenDtosFuer(library, user, kandidaten));
     });
 
     // WP-D-CLEAN (Pedis Entscheid: alle Testdaten löschen, auch Confluence und Jira): ZWEISTUFIGER
@@ -818,66 +1031,93 @@ export function libraryRoutes(
       },
     );
 
-    app.put<{ Params: { id: string }; Body: { action: ReviewAction; note?: string } }>(
-      "/api/library/import/candidates/:id",
-      async (request, reply) => {
-        const user = await guards.requirePermission("ko.validate", request, reply);
-        if (!user) {
-          return;
-        }
-        // SCRUM-470 (ben-Review #2): Review-Aktion an der Route auf die Whitelist prüfen. Der Service
-        // behandelt alles außer "reject"/"info" als Accept — ein Tippfehler wie {action:"foo"} würde
-        // sonst still ein KO anlegen/revidieren. Ungültige Aktion → 400, kein KO-Write.
-        if (!REVIEW_ACTIONS.includes(request.body.action)) {
-          reply.code(400).send({
-            error: "BAD_REQUEST",
-            message: "Ungültige Review-Aktion (accept/reject/info).",
-          });
-          return;
-        }
-        try {
-          const result = await library.reviewImportCandidate(
-            request.params.id,
-            request.body.action,
-            user.id,
-            request.body.note,
+    app.put<{
+      Params: { id: string };
+      Body: { action: ReviewAction; note?: string; kiPruefung?: boolean };
+    }>("/api/library/import/candidates/:id", async (request, reply) => {
+      const user = await guards.requirePermission("ko.validate", request, reply);
+      if (!user) {
+        return;
+      }
+      // SCRUM-470 (ben-Review #2): Review-Aktion an der Route auf die Whitelist prüfen. Der Service
+      // behandelt alles außer "reject"/"info" als Accept — ein Tippfehler wie {action:"foo"} würde
+      // sonst still ein KO anlegen/revidieren. Ungültige Aktion → 400, kein KO-Write.
+      if (!REVIEW_ACTIONS.includes(request.body.action)) {
+        reply.code(400).send({
+          error: "BAD_REQUEST",
+          message: "Ungültige Review-Aktion (accept/reject/info).",
+        });
+        return;
+      }
+      try {
+        const result = await library.reviewImportCandidate(
+          request.params.id,
+          request.body.action,
+          user.id,
+          request.body.note,
+          // Lauf gesamt-import-adoption (Bens B1/B2): die Annahme stellt die Dublettenfrage am
+          // heutigen Bestand noch einmal — mit DERSELBEN Instanz der Regel wie das Einreihen.
+          pruefeReImportDublette,
+        );
+        // SCRUM-470 (S6): ein akzeptierter Import-Kandidat wird — wie ein promoteter Entwurf im
+        // Einreiche-Pfad — auf Widerspruch/Duplikat geprüft. Hinter dem Import-Flag (Default AUS).
+        // detect*ForKo sind selbst fehlertolerant (schlucken Fehler intern) → der Accept kann daran
+        // nie scheitern. VOR send(), damit das Ergebnis deterministisch sichtbar ist (analog Promote).
+        //
+        // ========================================================================================
+        // Lauf gesamt-import-adoption R3 (Bens N3, R-0145) — KEIN MODELLAUFRUF, DER NICHT BESTELLT IST.
+        // ========================================================================================
+        //
+        // Seit B3 führt JEDER Import über diese Annahme. Mit eingeschaltetem Import-Schalter
+        // startete sie für jedes übernommene Objekt die KI-Erkennung — genau das, was R-0145
+        // ausschliesst: „ohne dass für jedes Objekt ein KI-Aufruf läuft … schliesst aus, dass
+        // Dokumente ungefragt an ein externes Modell gehen". Die Erkennung läuft darum nur noch,
+        // wenn der Prüfer sie für DIESE Annahme ausdrücklich anfordert (`kiPruefung: true`).
+        // Ohne die Anforderung trägt das Objekt keinen Prüfvermerk und wird auch später nicht
+        // von selbst geprüft (`shouldReEnqueueAiCheck` greift nur bei vorhandenem Vermerk).
+        if (
+          detection &&
+          confluenceImportEnabled() &&
+          result.koId &&
+          request.body.kiPruefung === true
+        ) {
+          // AUFTRAG-mega29 A1: DERSELBE Lauf wie im Hintergrund-Worker — kein zweiter Aufbau der
+          // Erkennungskette und keine zweite Auslegung, wann ein Lauf „vollständig" war. Der
+          // Runner ist selbst best-effort (die detect*-Kerne schlucken ihre Fehler und melden sie
+          // über den Ausgang), der Accept kann daran also weiterhin nie scheitern.
+          // AUFTRAG-mega31 BLOCK D (bens GELB-1): DIESELBE Frist wie im Hintergrund-Worker
+          // (runWithTimeout/AI_CHECK_JOB_TIMEOUT_MS), nicht eine zweite. Vorher wartete die Route
+          // unbegrenzt synchron auf den Runner: ein Provider, der nie antwortet, blockierte sie
+          // ohne Statusabschluss. Nach Fristablauf gewinnt `failed/timeout`; ein spät doch noch
+          // eintreffender Ausgang wird verworfen (runWithTimeout settlet genau EINMAL), sodass
+          // der Statusschreib unten eindeutig und einmalig bleibt.
+          // AUFNAHME 20260922 (bens Befund Runde 2): die VOLLSTÄNDIGE Basis — Objekt UND Bestand —
+          // wird VOR dem Lauf erfasst und unverändert an den Abschluss übergeben. Eine Änderung an
+          // einer Vergleichsquelle während des Urteils lässt den Nachweis damit überholt stehen.
+          const startStand = await detection.ko.get(result.koId);
+          const startBasis = startStand
+            ? await detection.ko.aktuellePruefbasis(startStand)
+            : undefined;
+          const outcome = await runWithTimeout(
+            createAiCheckRunner({
+              ko: detection.ko,
+              conflicts: detection.conflicts,
+              overlaps: detection.overlaps,
+              overlapSettings: detection.overlapSettings,
+              reasoner: detection.reasoner,
+              semanticPrefilter: detection.semanticPrefilter,
+            })(result.koId),
+            AI_CHECK_JOB_TIMEOUT_MS,
           );
-          // SCRUM-470 (S6): ein akzeptierter Import-Kandidat wird — wie ein promoteter Entwurf im
-          // Einreiche-Pfad — auf Widerspruch/Duplikat geprüft. Hinter dem Import-Flag (Default AUS).
-          // detect*ForKo sind selbst fehlertolerant (schlucken Fehler intern) → der Accept kann daran
-          // nie scheitern. VOR send(), damit das Ergebnis deterministisch sichtbar ist (analog Promote).
-          if (detection && confluenceImportEnabled() && result.koId) {
-            // AUFTRAG-mega29 A1: DERSELBE Lauf wie im Hintergrund-Worker — kein zweiter Aufbau der
-            // Erkennungskette und keine zweite Auslegung, wann ein Lauf „vollständig" war. Der
-            // Runner ist selbst best-effort (die detect*-Kerne schlucken ihre Fehler und melden sie
-            // über den Ausgang), der Accept kann daran also weiterhin nie scheitern.
-            // AUFTRAG-mega31 BLOCK D (bens GELB-1): DIESELBE Frist wie im Hintergrund-Worker
-            // (runWithTimeout/AI_CHECK_JOB_TIMEOUT_MS), nicht eine zweite. Vorher wartete die Route
-            // unbegrenzt synchron auf den Runner: ein Provider, der nie antwortet, blockierte sie
-            // ohne Statusabschluss. Nach Fristablauf gewinnt `failed/timeout`; ein spät doch noch
-            // eintreffender Ausgang wird verworfen (runWithTimeout settlet genau EINMAL), sodass
-            // der Statusschreib unten eindeutig und einmalig bleibt.
-            const outcome = await runWithTimeout(
-              createAiCheckRunner({
-                ko: detection.ko,
-                conflicts: detection.conflicts,
-                overlaps: detection.overlaps,
-                overlapSettings: detection.overlapSettings,
-                reasoner: detection.reasoner,
-                semanticPrefilter: detection.semanticPrefilter,
-              })(result.koId),
-              AI_CHECK_JOB_TIMEOUT_MS,
-            );
-            await recordImportAcceptAiCheck(detection.ko, result.koId, outcome);
-          }
-          // WP-SHIP8-CLOSE-8 (bens GELB-2): dieselbe DTO-Grenze wie am Queue-Load — die Antwort
-          // der Review-Aktion trägt keine Claim-/Beleg-Interna (auditPending nur als Boolean).
-          reply.code(200).send(toImportCandidateDto(result));
-        } catch (error) {
-          sendError(reply, error);
+          await recordImportAcceptAiCheck(detection.ko, result.koId, outcome, startBasis);
         }
-      },
-    );
+        // WP-SHIP8-CLOSE-8 (bens GELB-2): dieselbe DTO-Grenze wie am Queue-Load — die Antwort
+        // der Review-Aktion trägt keine Claim-/Beleg-Interna (auditPending nur als Boolean).
+        reply.code(200).send(toImportCandidateDto(result));
+      } catch (error) {
+        sendError(reply, error);
+      }
+    });
 
     app.get("/api/analytics", async (request, reply) => {
       const user = await guards.requirePermission("ko.read", request, reply);

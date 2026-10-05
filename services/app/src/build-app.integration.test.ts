@@ -1,6 +1,7 @@
 import { Pool } from "pg";
 import { GenericContainer, type StartedTestContainer, Wait } from "testcontainers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { stelleTrigrammErweiterungSicher } from "../../../tests/office-pg-abnahme/rueckweg-erwartung";
 import { guardedLocalPgTestUrl } from "../../db-tx";
 import { buildApp, buildPgServices } from "./build-app";
 import { createPool, migrate } from "./db";
@@ -98,7 +99,14 @@ describe("Persistenz: App gegen echtes Postgres", () => {
         //
         // Die Trigramm-Erweiterung gehört nach `public`: `KO_SCHEMA` legt sie mit `IF NOT EXISTS`
         // an, und das landet sonst im Wegwerfschema und verschwindet mit ihm.
-        await verwaltung.query("CREATE EXTENSION IF NOT EXISTS pg_trgm");
+        //
+        // AUFNAHME pg-start-audit-konkurrenz: über den EINEN konkurrenzfesten Weg aus JOB 4321.
+        // Hier stand bis dahin ein blankes `CREATE EXTENSION IF NOT EXISTS pg_trgm` — BENs
+        // Prüflücke aus JOB 4321 Runde 3 („initialisiert weiterhin ungesichert"). Auf einer
+        // frischen Instanz scheitert es, wenn eine andere Datei die Erweiterung gleichzeitig anlegt
+        // (`pg_extension_name_index`). Dass diese Datei den Schutzpfad wirklich durchläuft, misst
+        // `tests/pg-erstaufbau-konkurrenz/erstaufbau-konkurrenz.integration.test.ts` (E1).
+        await stelleTrigrammErweiterungSicher(verwaltung);
         await verwaltung.query(`DROP SCHEMA IF EXISTS ${EIGENES_SCHEMA} CASCADE`);
         await verwaltung.query(`CREATE SCHEMA ${EIGENES_SCHEMA}`);
         pool = new Pool({

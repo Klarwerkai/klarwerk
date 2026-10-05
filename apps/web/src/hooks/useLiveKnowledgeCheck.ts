@@ -1,12 +1,19 @@
 import { useEffect, useState } from "react";
 import { type ReasonerProvenance, endpoints } from "../api/endpoints";
-import type { KnowledgeCheckResult } from "../api/types";
-import { mapKnowledgeCheck } from "../components/capture/intake/useLiveKnowledgeCheck";
+import type { KnowledgeCheckCoverage, KnowledgeCheckResult } from "../api/types";
+import {
+  mapKnowledgeCheck,
+  pruefumfangVon,
+} from "../components/capture/intake/useLiveKnowledgeCheck";
 import { INTAKE_MIN_LENGTH, type LiveVerdict } from "../lib/intakeSimilarity";
 
 interface LiveCheckState {
   checkStatus: KnowledgeCheckResult["status"] | "idle" | "checking";
   verdict: LiveVerdict;
+  // AUFNAHME 20260922 · VORSCHAU-REICHWEITE: der Umfang der LETZTEN Antwort zu genau dieser Frage —
+  // `null`, solange keine vorliegt (idle, checking, Transportfehler). Er steht neben dem Verdict,
+  // weil auch ein „pending" eine gelaufene Ähnlichkeitsvorschau hat, deren Umfang die Fläche nennt.
+  pruefumfang: KnowledgeCheckCoverage | null;
 }
 
 // JOB 3556: Die Herkunft gehört zur FRAGE, nicht nur zur Antwort — derselbe Text mit einer anderen
@@ -59,6 +66,7 @@ export function useLiveKnowledgeCheck(
     schluessel: "\n\n",
     checkStatus: "idle",
     verdict: { status: "idle" },
+    pruefumfang: null,
   });
 
   // `herkunft` ist bei jedem Rendern ein NEUES Objekt (`draftProvenance(...)`); als Abhängigkeit
@@ -68,10 +76,15 @@ export function useLiveKnowledgeCheck(
   // biome-ignore lint/correctness/useExhaustiveDependencies: Begründung eine Zeile höher.
   useEffect(() => {
     if (clean.length < INTAKE_MIN_LENGTH) {
-      setState({ schluessel, checkStatus: "idle", verdict: { status: "idle" } });
+      setState({ schluessel, checkStatus: "idle", verdict: { status: "idle" }, pruefumfang: null });
       return;
     }
-    setState({ schluessel, checkStatus: "checking", verdict: { status: "checking" } });
+    setState({
+      schluessel,
+      checkStatus: "checking",
+      verdict: { status: "checking" },
+      pruefumfang: null,
+    });
     let cancelled = false;
     const handle = setTimeout(async () => {
       try {
@@ -83,10 +96,15 @@ export function useLiveKnowledgeCheck(
         const verdict = mapKnowledgeCheck(
           checkStatus === "done" ? result : { ...result, conflicts: [] },
         );
-        setState({ schluessel, checkStatus, verdict });
+        setState({ schluessel, checkStatus, verdict, pruefumfang: pruefumfangVon(result) });
       } catch {
         if (!cancelled) {
-          setState({ schluessel, checkStatus: "failed", verdict: { status: "unavailable" } });
+          setState({
+            schluessel,
+            checkStatus: "failed",
+            verdict: { status: "unavailable" },
+            pruefumfang: null,
+          });
         }
       }
     }, debounceMs);
@@ -100,7 +118,7 @@ export function useLiveKnowledgeCheck(
   // nicht mehr.
   if (state.schluessel !== schluessel) {
     const status = clean.length < INTAKE_MIN_LENGTH ? "idle" : "checking";
-    return { checkStatus: status, verdict: { status } };
+    return { checkStatus: status, verdict: { status }, pruefumfang: null };
   }
   return state;
 }

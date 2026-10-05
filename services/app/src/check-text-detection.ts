@@ -185,6 +185,53 @@ export interface CheckTextResult {
    *  zählen hier nie mit — sonst wäre die Zahl eine Existenzauskunft über sie. */
   sourceHitsTruncated?: boolean;
   quellenfund?: Quellenfundlage;
+  /** R-0249: auf welchem Weg der Kerntext-Pool entstand und wie groß er WIRKLICH war. Optional
+   *  aus demselben Grund wie die Quellenfund-Felder; `checkText` setzt es immer. */
+  kandidatenwahl?: Kandidatenwahl;
+}
+
+// ==================================================================================================
+// R-0249 (Pedis Entscheidung c84793cc) — DIE BEDEUTUNGSSUCHE ERGÄNZT, SIE ERSETZT NICHT.
+// ==================================================================================================
+//
+// Bis hierher ersetzten im Deep-Weg die 20 nächsten Vektortreffer die lexikalische Kandidatenwahl:
+// ein wortnaher Bestandseintrag, den der Vektorspeicher nicht unter seine 20 nahm, wurde gar nicht
+// erst geprüft. Jetzt ist die geprüfte Menge die VEREINIGUNG beider Wege, ohne Dubletten.
+//
+//   · `lexikalisch`           — Stufe 1 ohne Judge, oder kein Prefilter verdrahtet.
+//   · `lexikalischer_rueckfall` — Prefilter aktiv, aber Speicher leer, kein zulässiger Treffer
+//                               oder Embedding-/Store-Fehler. Kapazitätsfehler werfen weiter (503).
+//   · `vereinigung`           — Prefilter trug: Textkandidaten ∪ zulässige Vektortreffer.
+//
+// `geprueft` ist die Zahl der Einträge, die nach Poolregel wirklich in den Pool gingen — nicht der
+// Deckel und nicht die Summe der Rohtreffer. Der Deckungssatz nennt genau diese Zahl.
+export type KandidatenWeg = "lexikalisch" | "lexikalischer_rueckfall" | "vereinigung";
+
+export interface Kandidatenwahl {
+  weg: KandidatenWeg;
+  geprueft: number;
+  deckungssatz: string;
+}
+
+function deckungssatzVon(weg: KandidatenWeg, geprueft: number, locale: "de" | "en"): string {
+  if (locale === "en") {
+    const anzahl = `${geprueft} ${geprueft === 1 ? "entry" : "entries"}`;
+    if (weg === "vereinigung") {
+      return `Checked against ${anzahl}: text search and meaning search combined.`;
+    }
+    if (weg === "lexikalischer_rueckfall") {
+      return `Checked against ${anzahl} from text search only; meaning search contributed nothing.`;
+    }
+    return `Checked against ${anzahl} from text search.`;
+  }
+  const anzahl = `${geprueft} ${geprueft === 1 ? "Eintrag" : "Einträge"}`;
+  if (weg === "vereinigung") {
+    return `Geprüft gegen ${anzahl} aus Textsuche und Bedeutungssuche zusammen.`;
+  }
+  if (weg === "lexikalischer_rueckfall") {
+    return `Geprüft gegen ${anzahl} nur aus der Textsuche; die Bedeutungssuche trug nichts bei.`;
+  }
+  return `Geprüft gegen ${anzahl} aus der Textsuche.`;
 }
 
 export interface CheckTextDeps {
@@ -268,17 +315,38 @@ function toHitOrigin(ko: KnowledgeObject): CheckTextHitOrigin {
 interface SelectedPool {
   pool: DetectSubject[];
   origins: Map<string, CheckTextHitOrigin>;
+  weg: KandidatenWeg;
 }
 
-function toSelectedPool(kos: KnowledgeObject[]): SelectedPool {
+function toSelectedPool(kos: KnowledgeObject[], weg: KandidatenWeg): SelectedPool {
   return {
     pool: kos.map(toDetectSubject),
     origins: new Map(kos.map((k) => [k.id, toHitOrigin(k)])),
+    weg,
   };
 }
 
+// R-0249: Vereinigung ohne Dubletten. Die Textkandidaten stehen vorn (ihre Reihenfolge bleibt die
+// der Source-Query), die Vektortreffer kommen dahinter, sofern ihre ID noch nicht dasteht. Ein
+// Eintrag aus beiden Mengen steht damit genau einmal im Pool — und wird genau einmal beurteilt.
+function vereinige(
+  lexikalisch: KnowledgeObject[],
+  semantisch: KnowledgeObject[],
+): KnowledgeObject[] {
+  const gesehen = new Set<string>();
+  const ergebnis: KnowledgeObject[] = [];
+  for (const k of [...lexikalisch, ...semantisch]) {
+    if (!gesehen.has(k.id)) {
+      gesehen.add(k.id);
+      ergebnis.push(k);
+    }
+  }
+  return ergebnis;
+}
+
 // Pool = der ERLAUBTE Bestand. Der Orchestrator lädt NIE den Gesamtbestand: kein ko.list()-all, sondern
-// entweder die semantischen topK-Treffer per ID oder die gedeckelte lexikalische Source-Query. Ob die
+// die gedeckelte lexikalische Source-Query und (Deep-Weg, R-0249) dazu die semantischen topK-Treffer
+// per ID. Ob die
 // QUELLE selbst hart auf topK deckelt, ist Sache des Repos: aktuell deckelt nur PgKoRepo quell-seitig
 // (SQL LIMIT); der In-Memory-Dev-Adapter scort seinen kleinen Bestand voll und schneidet erst danach
 // (s. repo.ts).
@@ -318,12 +386,18 @@ function istPoolKandidat(k: KnowledgeObject, subjectRefId: string, deps: CheckTe
   );
 }
 
+// R-0249: im Deep-Weg mit tragendem Prefilter ist der Pool die VEREINIGUNG aus lexikalischen
+// Kandidaten und Vektortreffern (s. `vereinige`). Die Poolregel `istPoolKandidat` läuft auf JEDEM
+// Eintrag beider Mengen, bevor vereinigt wird — die Vereinigung erweitert die Reichweite über den
+// Abrufweg, nie über Rechte. An den Embedder geht weiterhin nur der Kerntext des Gegenstands; die
+// Bestandseinträge werden über gespeicherte Vektoren gefunden, ihr Text wird hier nicht eingebettet.
 async function selectPool(subject: DetectSubject, deps: CheckTextDeps): Promise<SelectedPool> {
   const isPoolCandidate = (k: KnowledgeObject): boolean => istPoolKandidat(k, subject.refId, deps);
 
   const hasJudge = deps.duplicateJudge !== undefined || deps.conflictJudge !== undefined;
   const prefilter = deps.semanticPrefilter;
   if (hasJudge && prefilter) {
+    let narrowed: KnowledgeObject[] = [];
     try {
       const { vectors, embeddingVersion } = await prefilter.embedder.embed([coreText(subject)]);
       const query = vectors[0];
@@ -336,12 +410,9 @@ async function selectPool(subject: DetectSubject, deps: CheckTextDeps): Promise<
         );
         // Fix 2: bounded fetch — nur die topK Treffer per ID laden, NIE der Gesamtbestand.
         const fetched = await Promise.all(hits.map((h) => deps.ko.get(h.id)));
-        const narrowed = fetched.filter(
+        narrowed = fetched.filter(
           (k): k is KnowledgeObject => k !== undefined && isPoolCandidate(k),
         );
-        if (narrowed.length > 0) {
-          return toSelectedPool(narrowed);
-        }
       }
     } catch (err) {
       // SCRUM-498 B2: Embed-Backpressure (Cap voll/Timeout) NICHT still zu lexikalischem Fallback
@@ -353,16 +424,31 @@ async function selectPool(subject: DetectSubject, deps: CheckTextDeps): Promise<
       }
       // Echte Embedding-/Store-Fehler → lexikalischer, source-gedeckelter Fallback (unten).
     }
+    // Die Textkandidaten werden AUSSERHALB des Netzes geholt: ein Fehler der Source-Query ist kein
+    // Embedding-Fehler und darf nicht in einen zweiten Versuch derselben Query umgedeutet werden.
+    const lexikalisch = await lexikalischeKandidaten(subject, deps);
+    if (narrowed.length > 0) {
+      return toSelectedPool(vereinige(lexikalisch, narrowed), "vereinigung");
+    }
+    return toSelectedPool(lexikalisch, "lexikalischer_rueckfall");
   }
 
-  // Lexikalischer Pfad / Fallback: gedeckelte Candidate-Query an der Datenquelle (hartes topK VOR
-  // Scoring) — kein ko.list()-all-then-filter. Ohne Inhaltstoken (nur Stoppwörter) kein Kandidat.
+  return toSelectedPool(await lexikalischeKandidaten(subject, deps), "lexikalisch");
+}
+
+// Lexikalischer Pfad: gedeckelte Candidate-Query an der Datenquelle (hartes topK VOR Scoring) —
+// kein ko.list()-all-then-filter. Ohne Inhaltstoken (nur Stoppwörter) kein Kandidat. Die Poolregel
+// läuft hier, bevor die Menge irgendwohin weitergereicht wird.
+async function lexikalischeKandidaten(
+  subject: DetectSubject,
+  deps: CheckTextDeps,
+): Promise<KnowledgeObject[]> {
   const terms = queryTokens(coreText(subject));
   if (terms.length === 0) {
-    return { pool: [], origins: new Map() };
+    return [];
   }
   const candidates = await deps.ko.findCandidates({ terms, limit: RETRIEVAL_TOP_K });
-  return toSelectedPool(candidates.filter(isPoolCandidate));
+  return candidates.filter((k) => istPoolKandidat(k, subject.refId, deps));
 }
 
 // ================================================================================================
@@ -668,9 +754,14 @@ export async function checkText(
   // unten. Genau darin liegt der Fall, um den es geht: die Passage steht im Volltext, der Kerntext
   // des Bestandsobjekts trägt sie nicht — der Dublettenpool bleibt leer, der Quellenfund nicht.
   const quellen = await quellenfundLauf(input, subject, deps);
-  const { pool, origins } = await selectPool(subject, deps);
+  const { pool, origins, weg } = await selectPool(subject, deps);
+  const kandidatenwahl: Kandidatenwahl = {
+    weg,
+    geprueft: pool.length,
+    deckungssatz: deckungssatzVon(weg, pool.length, input.locale ?? "de"),
+  };
   if (pool.length === 0) {
-    return { duplicates: [], conflicts: [], ...quellen };
+    return { duplicates: [], conflicts: [], ...quellen, kandidatenwahl };
   }
   const assessOptions =
     deps.minConfidence !== undefined ? { minConfidence: deps.minConfidence } : {};
@@ -688,5 +779,6 @@ export async function checkText(
     duplicates: withOrigin(duplicates, origins),
     conflicts: withOrigin(conflicts, origins),
     ...quellen,
+    kandidatenwahl,
   };
 }

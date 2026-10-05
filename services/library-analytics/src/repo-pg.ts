@@ -1,11 +1,14 @@
 import type { Pool } from "pg";
 import {
+  AnnahmeKette,
   type CandidateRepo,
   type ClaimResolution,
   type ExternalSourceRepo,
   type ImportCandidateRemoval,
   type ImportRunFortschritt,
   type ImportRunRepo,
+  annahmeSperreBelegt,
+  annahmeSperreVerloren,
   externalSourceSystemKey,
   pruefeImportRun,
   pruefeImportRunItemRef,
@@ -220,8 +223,128 @@ interface CandidateRow {
   data: ImportCandidate;
 }
 
+// Lauf gesamt-import-adoption:2 (Bens R3-1): der Schlüssel der Annahme-Sperre (Begründung am Kopf
+// von `AnnahmeKette`, repo.ts). Advisory-Sperren teilen einen datenbankweiten Zahlenraum ohne
+// Namen; diese Zahl ist hier einmal vergeben (vgl. `SPERRSCHLUESSEL_BESTANDSRESET`, db-tx).
+const SPERRSCHLUESSEL_IMPORT_ANNAHME = 3087000001;
+
+// TRANSAKTIONSGEBUNDEN: die Sperre fällt beim Transaktionsende serverseitig — auch wenn der Prozess
+// mitten in der Annahme stirbt; ein toter Prozess kann nichts mehr anlegen.
+const SQL_ANNAHME_SPERRE = `SELECT pg_advisory_xact_lock(${SPERRSCHLUESSEL_IMPORT_ANNAHME})`;
+
+// Postgres meldet eine abgelaufene `lock_timeout` als `lock_not_available`.
+const LOCK_NOT_AVAILABLE = "55P03";
+
+// Lauf :2 Runde 2 (Bens B1): DIE SPERRE WIRD NIE GEBROCHEN, solange ihr Halter lebt (Kopf von
+// `AnnahmeKette`, repo.ts). Während der Schritt auf ANDEREN Verbindungen arbeitet, ist diese
+// Sperr-Transaktion „idle in transaction". Eine serverweit oder für die Rolle gesetzte
+// `idle_in_transaction_session_timeout` beendete dann die Sitzung, die Sperre fiele, und der
+// fortgesetzte Halter legte neben dem Nächsten an — genau Bens B1. Darum wird sie für DIESE
+// Transaktion ausdrücklich abgeschaltet. Begrenzt wird stattdessen das WARTEN (`lock_timeout`):
+// wer die Sperre nicht bekommt, bekommt `CONFLICT`, nie ein zweites Objekt.
+function sqlSperrVorbereitung(wartezeitMs: number): string[] {
+  return [
+    "SET LOCAL idle_in_transaction_session_timeout = 0",
+    `SET LOCAL lock_timeout = ${Math.max(1, Math.trunc(wartezeitMs))}`,
+  ];
+}
+
 export class PgCandidateRepo implements CandidateRepo {
+  private readonly annahmen = new AnnahmeKette();
+
   constructor(private readonly pool: Pool) {}
+
+  // Die Sperr-Transaktion trägt NUR die Sperre: der Schritt schreibt über seine eigenen
+  // Verbindungen (Wissensobjekt-Dienst). Die Wartezeit gilt EINMAL für beide Stufen: was in der
+  // Prozess-Kette verstrichen ist, fehlt der Datenbank-Wartezeit.
+  //
+  // ==============================================================================================
+  // Lauf :2 Runde 3 (Bens B4) — DER VERLUST DER SPERRSITZUNG IST KEIN PROZESSENDE.
+  // ==============================================================================================
+  //
+  // WAS FEHLTE. (a) Auf dem ausgeliehenen Sperr-Client hing kein `error`-Listener: ein
+  // Verbindungsfehler während des Schritts kam als Ereignis, nicht als abgelehnte Promise, und
+  // verliess den Ereignishandler unbehandelt. (b) Verliert die Sitzung ihre Verbindung, gibt der
+  // Server die Sperre frei — der PROZESS lebt aber weiter, und sein Schritt hätte ungeprüft
+  // angelegt, während ein anderer die Sperre schon hält. Runde 2 hatte das mit „ein toter Prozess
+  // legt nichts mehr an" gleichgesetzt; das gilt nur für den Prozess, nicht für seine Sitzung.
+  //
+  // DIE ANTWORT. (a) Der Listener hängt für die ganze Ausleihe am Client und hält nur fest, DASS
+  // die Sitzung verloren ist. (b) Der Schritt fragt `sperreGilt` UNMITTELBAR vor jeder Mutation:
+  // war ein Fehler gemeldet, oder kommt `SELECT 1` über DIESELBE Sitzung nicht zurück, wirft sie
+  // CONFLICT, und es wird nichts geschrieben. Die Verbindung wird danach verworfen (nie in den
+  // Pool zurück).
+  //
+  // EHRLICHE GRENZE. Zwischen der letzten Frage und der Mutation liegt ein Fenster von einem
+  // Aufruf. Reisst GENAU DORT die Sitzung ab UND legt ein anderer Prozess in derselben Spanne an,
+  // entstehen zwei Objekte. Schliessen liesse sich das nur in der Wissensobjekt-Ablage selbst (ein
+  // Riegel, den die Anlage atomar prüft) — ausserhalb dieses Moduls. Geht die Sitzung erst NACH der
+  // letzten Mutation verloren, steht die Wirkung bereits fest; das Ergebnis wird dann zurückgegeben
+  // und der Verlust laut protokolliert.
+  annahmeSperre<T>(
+    wartezeitMs: number,
+    schritt: (sperreGilt: () => Promise<void>) => Promise<T>,
+  ): Promise<T> {
+    const frist = Date.now() + wartezeitMs;
+    return this.annahmen.nacheinander(wartezeitMs, async () => {
+      const client = await this.pool.connect();
+      let verloren = false;
+      const beiFehler = (): void => {
+        verloren = true;
+      };
+      client.on("error", beiFehler);
+      const zurueckgeben = (): void => {
+        client.removeListener("error", beiFehler);
+        client.release(verloren);
+      };
+      const abschliessen = (anweisung: "COMMIT" | "ROLLBACK") =>
+        client.query(anweisung).catch(() => {
+          verloren = true;
+        });
+      try {
+        await client.query("BEGIN");
+        for (const anweisung of sqlSperrVorbereitung(frist - Date.now())) {
+          await client.query(anweisung);
+        }
+        await client.query(SQL_ANNAHME_SPERRE);
+      } catch (fehler) {
+        // Ohne Sperre läuft der Schritt nicht — sonst wäre der Ausschluss nur behauptet.
+        await abschliessen("ROLLBACK");
+        zurueckgeben();
+        if ((fehler as { code?: unknown }).code === LOCK_NOT_AVAILABLE) {
+          throw annahmeSperreBelegt();
+        }
+        throw fehler;
+      }
+      const sperreGilt = async (): Promise<void> => {
+        if (!verloren) {
+          try {
+            await client.query("SELECT 1");
+          } catch {
+            verloren = true;
+          }
+        }
+        if (verloren) {
+          throw annahmeSperreVerloren();
+        }
+      };
+      try {
+        const ergebnis = await schritt(sperreGilt);
+        await abschliessen("COMMIT");
+        if (verloren) {
+          process.stderr.write(
+            "[KLARWERK] Annahme-Sperre: Sitzung nach der letzten Mutation verloren — die Wirkung stand bereits fest, Ergebnis wird zurückgegeben.\n",
+          );
+        }
+        return ergebnis;
+      } catch (fehler) {
+        await abschliessen("ROLLBACK");
+        throw fehler;
+      } finally {
+        zurueckgeben();
+      }
+    });
+  }
 
   async insert(candidate: ImportCandidate): Promise<void> {
     await this.pool.query("INSERT INTO import_candidates(id,data) VALUES($1,$2)", [
@@ -301,6 +424,12 @@ export class PgCandidateRepo implements CandidateRepo {
     }
     if (next.item !== undefined) {
       patch.item = next.item;
+    }
+    if (next.duplicate !== undefined) {
+      patch.duplicate = next.duplicate;
+    }
+    if (next.dublettenbefund !== undefined) {
+      patch.dublettenbefund = next.dublettenbefund;
     }
     // WP-SHIP8-CLOSE-6 (bens ROT-3a): Wer/Wann der Entscheidung reist im selben jsonb-Patch.
     if (next.reviewedBy !== undefined) {

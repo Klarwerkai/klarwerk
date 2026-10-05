@@ -275,11 +275,27 @@ export async function fokusMussSichtbarSein(seite: Seite, was: string): Promise<
  * `textContent` steht nur noch dort, wo es die Zeichen EINES Textknotens meint (ein Textknoten hat
  * keinen anderen Text), und ist selbst kein Beleg: Beleg ist die Messung an genau dieser Stelle.
  */
-const SICHT_HILFEN = `
+export const SICHT_HILFEN = `
   const normal = (t) => String(t || "").replace(/\\s+/g, " ").trim();
   const durchsichtigeFarbe = (s) => {
-    const farbe = String(s.color || "").replace(/\\s/g, "");
-    return farbe === "transparent" || farbe.endsWith(",0)");
+    // Durchsichtig ist nur eine Farbe, deren ALPHA 0 ist — nicht jede, die auf „,0)“ endet: das
+    // traf auch deckendes rgb(138, 90, 0) mit Blauanteil 0 (Ben, Lauf 5 Runde 1, BEN-05).
+    const farbe = String(s.color || "").trim().toLowerCase();
+    if (farbe === "transparent") return true;
+    const auf = farbe.indexOf("(");
+    const zu = farbe.lastIndexOf(")");
+    if (auf < 0 || zu < auf) return false;
+    const innen = farbe.slice(auf + 1, zu);
+    let alpha;
+    if (innen.includes("/")) {
+      alpha = innen.slice(innen.lastIndexOf("/") + 1).trim();
+    } else {
+      const teile = innen.split(",");
+      if (teile.length === 4) alpha = teile[3].trim();
+    }
+    if (alpha === undefined || alpha === "") return false;
+    const wert = alpha.endsWith("%") ? Number.parseFloat(alpha) / 100 : Number.parseFloat(alpha);
+    return wert === 0;
   };
   const inhaltUnterdrueckt = (el, bis) => {
     let lauf = el;
@@ -563,9 +579,8 @@ export async function meldeAnMitTastatur(
 }
 
 export interface Menuebefund {
-  /** Tab-Anschläge bis zum Zahnrad, bis „Bereiche" und bis zum Menüpunkt. */
-  zahnrad: number;
-  bereiche: number;
+  /** Tab-Anschläge bis „Arbeitsbereiche“ (FE-002; bis dahin bis zum Zahnrad) und bis zum Menüpunkt. */
+  arbeitsbereiche: number;
   eintrag: number;
   /** Der SICHTBARE Text des offenen Menüs, gelesen unmittelbar vor dem Enter auf dem Menüpunkt. */
   menuetext: string;
@@ -574,7 +589,11 @@ export interface Menuebefund {
 }
 
 /**
- * DER MENÜWEG, OHNE MAUS: Zahnrad → Bereiche → Gesamtanweisungen.
+ * DER MENÜWEG, OHNE MAUS: Arbeitsbereiche → Gesamtanweisungen.
+ *
+ * FE-002 (26.09.2026): bis hierher Zahnrad → „Bereiche“ (Untermenü aufklappen) → Gesamtanweisungen.
+ * Seither stehen die weiteren Bereiche offen unter dem beschrifteten Einstieg „Arbeitsbereiche“ im
+ * Kopfband; die Zusage des Aufklappens (`aria-expanded=true`) trägt jetzt dieser Einstieg selbst.
  *
  * Die Sollwerte kommen als Parameter aus dem Sprachkatalog (`tests/support/i18nBestand.ts`) und
  * werden nicht abgeschrieben. Die Fläche muss bereits eine angemeldete Seite mit Kopfband zeigen;
@@ -587,61 +606,55 @@ export async function menuewegOhneMaus(
   sollEintrag: string,
   sprache: string,
 ): Promise<Menuebefund> {
+  const ausloeser = '[data-testid="kopfband-arbeitsbereiche"]';
+  const flaeche = '[data-testid="arbeitsbereiche-menue"]';
   await warte(
     seite,
-    `() => !!document.querySelector('[data-testid="kopfband-zahnrad"]')`,
-    `das Kopfband mit dem Zahnrad (${sprache})`,
+    `() => !!document.querySelector('${ausloeser}')`,
+    `das Kopfband mit „Arbeitsbereiche“ (${sprache})`,
     undefined,
     45_000,
   );
 
-  // ── 1. Das Zahnrad: kein Text, nur ein `aria-label` — deshalb über den Selektor. ──────────────
-  const zahnrad = await tabUndEnter(
+  // ── 1. „Arbeitsbereiche“: Beschriftung prüfen, dann per Tab und Enter öffnen. ─────────────────
+  await mussSichtbarTragen(
     seite,
-    '[data-testid="kopfband-zahnrad"]',
-    `Zahnrad (${sprache})`,
+    ausloeser,
+    sollBereiche,
+    `der Einstieg heisst in „${sprache}" nicht „${sollBereiche}"`,
+  );
+  const arbeitsbereiche = await tabUndEnter(
+    seite,
+    ausloeser,
+    `„${sollBereiche}" (${sprache})`,
     250,
     true,
   );
   await warte(
     seite,
-    `() => !!document.querySelector('[data-testid="zahnrad-menue"]')`,
-    `das geöffnete Zahnrad-Menü (${sprache})`,
+    `() => !!document.querySelector('${flaeche}')`,
+    `das geöffnete Menü „${sollBereiche}" (${sprache})`,
   );
-  // Der Fokus muss WIRKLICH im Menü stehen — sonst führte der Tab-Weg unten an ihm vorbei, und die
-  // Zahlen darunter sagten etwas über die Seite statt über das Menü.
+  // Der Fokus muss WIRKLICH im Menü stehen — sonst führte der Tab-Weg unten an ihm vorbei.
   await warte(
     seite,
-    `() => { const f = document.querySelector('[data-testid="zahnrad-menue"]');
+    `() => { const f = document.querySelector('${flaeche}');
       return !!f && !!document.activeElement && f.contains(document.activeElement); }`,
-    `der Fokus steht nach dem Öffnen IM Zahnrad-Menü (${sprache})`,
+    `der Fokus steht nach dem Öffnen IM Menü „${sollBereiche}" (${sprache})`,
   );
 
-  // ── 2. „Bereiche" aufklappen. Beschriftung zuerst prüfen, dann bedienen. ──────────────────────
-  await mussSichtbarTragen(
-    seite,
-    '[data-testid="zahnrad-weitere-bereiche"]',
-    sollBereiche,
-    `das Untermenü heisst in „${sprache}" nicht „${sollBereiche}"`,
-  );
-  const bereiche = await tabUndEnter(
-    seite,
-    '[data-testid="zahnrad-weitere-bereiche"]',
-    `Untermenü „${sollBereiche}" (${sprache})`,
-    80,
-    false,
-  );
+  // ── 2. Der Einstieg SAGT sein Öffnen an. ──────────────────────────────────────────────────────
   await warte(
     seite,
-    `() => document.querySelector('[data-testid="zahnrad-weitere-bereiche"]')?.getAttribute("aria-expanded") === "true"`,
-    `das aufgeklappte Untermenü „${sollBereiche}" (${sprache})`,
+    `() => document.querySelector('${ausloeser}')?.getAttribute("aria-expanded") === "true"`,
+    `der geöffnete Einstieg „${sollBereiche}" sagt es an (${sprache})`,
   );
 
   // ── 3. Der Menüpunkt: erst DA und SICHTBAR und richtig beschriftet, dann bedient. ─────────────
   await warte(
     seite,
     `() => !!document.querySelector('[data-testid="bereich-gesamtanweisungen"]')`,
-    `der Menüpunkt „${sollEintrag}" im aufgeklappten Untermenü (${sprache})`,
+    `der Menüpunkt „${sollEintrag}" im geöffneten Menü (${sprache})`,
   );
   const eintragstext = await mussSichtbarTragen(
     seite,
@@ -657,7 +670,7 @@ export async function menuewegOhneMaus(
   expect(href, `${MARKE}: der Menüpunkt zeigt nicht auf /gesamtanweisungen (${sprache})`).toBe(
     "/gesamtanweisungen",
   );
-  const menuetext = (await sichtbefund(seite, '[data-testid="zahnrad-menue"]')).text;
+  const menuetext = (await sichtbefund(seite, flaeche)).text;
   const eintrag = await tabBisBeschriftungUndEnter(
     seite,
     sollEintrag,
@@ -674,7 +687,7 @@ export async function menuewegOhneMaus(
     undefined,
     45_000,
   );
-  return { zahnrad, bereiche, eintrag, menuetext, eintragstext };
+  return { arbeitsbereiche, eintrag, menuetext, eintragstext };
 }
 
 /** Eine Anweisung anlegen — Titel getippt, Knopf per Tab und Enter. Gibt die Kennung zurück. */
@@ -699,7 +712,30 @@ export async function anweisungAnlegen(seite: Seite, titel: string): Promise<str
   return kennung;
 }
 
-/** Eine vorhandene Fassung als Baustein aufnehmen — alle drei Felder getippt, Knopf per Enter. */
+/**
+ * FE-001 · Der Titel eines Eintrags, wie ihn ein Mensch kennt — am Draht nachgesehen, mit der
+ * Sitzung DIESES Browsers. Die Fläche verlangt keine Kennung mehr; gesucht wird nach dem Titel.
+ */
+const TITEL_AM_DRAHT = `(id) => fetch("/api/kos/" + encodeURIComponent(id), { credentials: "include" })
+  .then((r) => (r.ok ? r.json() : null))
+  .then((k) => (k && typeof k.title === "string" ? k.title : ""))`;
+
+/** Die Kennung des gerade fokussierten Elements — für den Gang durch die Fassungs-Radiogruppe. */
+const AKTIVE_ID = '() => (document.activeElement && document.activeElement.id) || ""';
+
+/**
+ * Eine vorhandene Fassung als Baustein aufnehmen — FE-001: über die MENSCHLICHE Auswahl.
+ *
+ * Bis FE-001 wurden hier Eintragskennung, Fassungsnummer und Nachweis in drei Felder getippt. Die
+ * Fläche fragt keine Kennung mehr ab. Der Weg ist jetzt der eines Menschen, und er bleibt
+ * VOLLSTÄNDIG per Tastatur: Titel ins Suchfeld tippen → Enter → per Tab auf den Treffer → Enter →
+ * per Tab in die Fassungs-Radiogruppe → Pfeiltasten bis zur gewünschten Fassung → (optional) den
+ * Aufklapper „Für Fachleute" öffnen und den Nachweis tippen → per Tab auf „als Abschnitt aufnehmen"
+ * → Enter. Jede Station misst den sichtbaren Fokus (`tabUndEnter`/`tippeAb`).
+ *
+ * DIE SIGNATUR BLEIBT, damit die Strecken, die diesen Helfer rufen, unverändert dieselbe Bindung
+ * (Eintrag, Fassung, Nachweis) herstellen und in der Datenbank nachprüfen können.
+ */
 export async function bausteinAufnehmen(
   seite: Seite,
   koId: string,
@@ -707,13 +743,85 @@ export async function bausteinAufnehmen(
   nachweis: string,
   erwarteteZahl: number,
 ): Promise<void> {
-  await tippeAb(seite, "#ga-aufnahme-koid", koId, "Eintrag (Aufnahme)", 250, true);
-  await tippeAb(seite, "#ga-aufnahme-fassung", String(fassung), "Fassung (Aufnahme)", 20, false);
-  await tippeAb(seite, "#ga-aufnahme-nachweis", nachweis, "Nachweis (Aufnahme)", 20, false);
+  const titel = await seite.evaluate<string>(fn(TITEL_AM_DRAHT), koId);
+  expect(titel.length, `${MARKE}: der Eintrag ${koId} hat am Draht keinen Titel`).toBeGreaterThan(
+    0,
+  );
+
+  // Das Suchfeld behält nach einer Aufnahme seinen Begriff (man sucht oft Verwandtes weiter).
+  // Der neue Titel ERSETZT ihn deshalb: markieren, dann tippen — wie ein Mensch es tut.
+  await tippeAb(seite, "#ga-aufnahme-suche", "", "Suchfeld (Aufnahme)", 250, true);
+  await seite.evaluate<void>(
+    fn(
+      '() => { const e = document.activeElement; if (e && typeof e.select === "function") e.select(); }',
+    ),
+  );
+  await seite.keyboard.type(titel);
+  await seite.keyboard.press("Enter");
+  const treffer = `[data-testid="ga-aufnahme-treffer-eintrag"][data-ko="${koId}"]`;
+  await warte(
+    seite,
+    "(s) => !!document.querySelector(s)",
+    `der Suchtreffer „${titel}"`,
+    treffer,
+    45_000,
+  );
+  await tabUndEnter(seite, treffer, `Suchtreffer „${titel}"`, 40, false);
+
+  const ziel = `ga-aufnahme-fassung-${fassung}`;
+  await warte(
+    seite,
+    "(id) => !!document.getElementById(id)",
+    `die Fassung ${fassung} zur Auswahl`,
+    ziel,
+    45_000,
+  );
+  // In die Radiogruppe: Tab landet auf ihrem ersten Knopf (keiner ist vorausgewählt), die
+  // Pfeiltasten wandern und wählen — so, wie ein Mensch eine Radiogruppe bedient.
+  await tippeAb(
+    seite,
+    'input[name="ga-aufnahme-fassung"]',
+    "",
+    "Fassungsauswahl (Aufnahme)",
+    20,
+    false,
+  );
+  await seite.keyboard.press("Space");
+  for (let schritt = 0; schritt < 40; schritt += 1) {
+    if ((await seite.evaluate<string>(fn(AKTIVE_ID))) === ziel) {
+      break;
+    }
+    await seite.keyboard.press("ArrowDown");
+  }
+  expect(
+    await seite.evaluate<boolean>(
+      fn("(id) => { const e = document.getElementById(id); return !!e && e.checked; }"),
+      ziel,
+    ),
+    `${MARKE}: die Fassung ${fassung} liess sich per Tastatur nicht wählen`,
+  ).toBe(true);
+
+  if (nachweis.length > 0) {
+    // Der Aufklapper behält seinen Zustand über eine Aufnahme hinweg. Er wird nur geöffnet, wenn er
+    // zu ist — ein zweites Enter schlösse ihn, und das Feld wäre nicht mehr per Tab erreichbar.
+    const offen = await seite.evaluate<boolean>(
+      fn(`() => !!document.querySelector('[data-testid="ga-aufnahme-bestaetigen"] details')?.open`),
+    );
+    if (!offen) {
+      await tabUndEnter(
+        seite,
+        '[data-testid="ga-aufnahme-bestaetigen"] summary',
+        "Aufklapper „Für Fachleute“",
+        20,
+        false,
+      );
+    }
+    await tippeAb(seite, "#ga-aufnahme-nachweis", nachweis, "Nachweis (Aufnahme)", 20, false);
+  }
   await tabUndEnter(
     seite,
-    '[data-testid="ga-aufnahme"] button[type="submit"]',
-    "Absendeknopf der Bausteinaufnahme",
+    '[data-testid="ga-aufnahme-knopf"]',
+    "Knopf „als Abschnitt aufnehmen“",
     20,
     false,
   );

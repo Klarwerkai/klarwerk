@@ -18,6 +18,16 @@ export class ModelCapacityError extends Error {
   }
 }
 
+// D5 (KI aus): der Administrator hat die KI abgeschaltet, WÄHREND ein Lauf auf seinen Modellaufruf
+// wartete. Wie `ModelCapacityError` KEIN Provider-Fehler: die Kette weicht nicht auf das nächste Glied
+// aus, sondern reicht ihn durch (`Reasoner.runTask`); der Frageweg macht daraus `KI_ABGESCHALTET`.
+export class KiAbgeschaltetFehler extends Error {
+  constructor() {
+    super("Der Administrator hat die KI abgeschaltet — der Modellaufruf findet nicht statt.");
+    this.name = "KiAbgeschaltetFehler";
+  }
+}
+
 // SCRUM-502 Schicht 2 (Sicherheitsnetz): der Cloud-Modell-Client verweigert vertrauliche Inhalte
 // per Konstruktion. Das eigentliche Egress-Routing liegt im Reasoner (vertraulich → Cloud aus der
 // Kette); dieser Wächter am Chokepoint stellt sicher, dass selbst ein künftiger, das Routing
@@ -210,11 +220,23 @@ export interface ModellVerbrauch {
 export interface ModellAufrufSpur {
   gerufen: boolean;
   /**
+   * Ben Lauf 3 R1 N1: wie viele Modellaufrufe in diesem Lauf WIRKLICH ausgeführt wurden. `gerufen`
+   * allein verdeckt, dass von drei Aufrufen einer keinen Verbrauch gemeldet hat; erst der
+   * Vergleich mit `verbrauch.gemeldeteAufrufe` zeigt die Lücke. Fehlt, solange kein Aufruf lief.
+   */
+  aufrufe?: number;
+  /**
    * FEHLT, solange kein Aufruf dieses Laufs einen brauchbaren Verbrauch genannt hat. Das ist nicht
    * dasselbe wie `0`: `undefined` heißt „unbekannt", `0` wäre ein Messwert (s. `ModelRunVerbrauch`
    * in `services/model-runs/src/types.ts`).
    */
   verbrauch?: ModellVerbrauch;
+  /**
+   * D5 (KI aus): vom Lauf gesetzt, am Chokepoint gerufen — INNERHALB des Slot-Rahmens, also nach
+   * jedem Warten auf einen freien Slot und unmittelbar vor der Übertragung. Wirft sie, geht nichts
+   * hinaus. Fehlt sie, ändert sich nichts.
+   */
+  vorUebertragung?: () => void;
 }
 
 // DIE EINZIGE STELLE, DIE ZWEI VERBRÄUCHE ZU EINEM ADDIERT. `runTask` braucht sie über die
@@ -315,7 +337,9 @@ export function mitModellAufrufSpur<T>(spur: ModellAufrufSpur, fn: () => Promise
 function vermerkeModellAufruf(): void {
   const spur = modellAufrufSpur.getStore();
   if (spur) {
+    spur.vorUebertragung?.();
     spur.gerufen = true;
+    spur.aufrufe = (spur.aufrufe ?? 0) + 1;
   }
 }
 

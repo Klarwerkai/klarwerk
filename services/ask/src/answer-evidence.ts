@@ -64,7 +64,10 @@ export function answerCheckState(ko: KnowledgeObject | undefined): AnswerCheckSt
   if (!aiCheck) {
     return "unchecked";
   }
-  if (aiCheck.status !== "done") {
+  // AUFNAHME 20260922 · Prüfbasis-Aktualität: ein ÜBERHOLTER Nachweis (aus der gespeicherten
+  // Basisbindung abgeleitet, knowledge-object/src/pruefbasis.ts) belegt den jetzigen Stand nicht —
+  // dieselbe Rangfolge wie askView.ts und aiCheckCoverageSummary.
+  if (aiCheck.status !== "done" || aiCheck.ueberholt) {
     return "incomplete";
   }
   if (!aiCheck.coverage) {

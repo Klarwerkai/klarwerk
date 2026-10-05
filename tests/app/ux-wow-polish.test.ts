@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import type { KnowledgeObject } from "../../apps/web/src/api/types";
 import { fragenHref } from "../../apps/web/src/components/bibliothek/fragen";
 import i18n from "../../apps/web/src/i18n";
+import { woerterbuchQuelleAus } from "../support/woerterbuchquelle";
 
 function read(rel: string): string {
   return readFileSync(resolve(process.cwd(), rel), "utf8");
@@ -52,11 +53,16 @@ describe("WP-UX-WOW-1 U5: Fragen-Knopf stellt eine echte Frage und sendet direkt
     const lesen = read("apps/web/src/components/bibliothek/BibliothekLesen.tsx");
     expect(lesen).toContain("fragenHref(ko.id, suchtext.trim() || ko.title, ko.confidentiality)");
     // Ask-Eingabe: einzeiliges input IN einem form mit type=submit → Enter sendet nativ.
+    // FE-003: das Formular ist der gemeinsame Baustein `FrageFeld` (echte Seite UND Tutorial). Die
+    // Seite bindet ihn ein und reicht ihr Absenden hinein; das `<form>` selbst steht im Baustein.
     const ask = read("apps/web/src/pages/Ask.tsx");
-    expect(ask).toContain("<form");
+    expect(ask).toContain("<FrageFeld");
+    expect(ask).toContain("submitAsk(q);");
+    const feld = read("apps/web/src/components/fragen/FrageFeld.tsx");
+    expect(feld).toContain("<form");
     // PAKET 1 (D-AISTATE): der Submit-Button ist jetzt mehrzeilig (disabled/title für Modell-Zustand) —
     // der Submit-Typ im Form bleibt die geprüfte Wahrheit (Enter sendet nativ).
-    expect(ask).toContain('type="submit"');
+    expect(feld).toContain('type="submit"');
   });
 });
 
@@ -133,7 +139,7 @@ describe("WP-UX-WOW-1 U7: echte Umlaute in Nutzertexten", () => {
     // in `i18n.ts` (das Blatt selbst ruft nur Schlüssel auf).
     expect(capture).not.toContain("Entwuerfe");
     expect(capture).not.toContain("naechsten Oeffnen");
-    const woerter = read("apps/web/src/i18n.ts");
+    const woerter = woerterbuchQuelleAus("apps/web/src/i18n.ts");
     expect(woerter).toContain('"erfassen.mehr.entwuerfe": "Entwürfe"');
     expect(woerter).toContain('"erfassen.mehr.anhaenge": "Anhänge"');
     expect(woerter).not.toContain('"Entwuerfe"');

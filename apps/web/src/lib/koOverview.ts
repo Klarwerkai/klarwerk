@@ -24,7 +24,17 @@ export interface KoOverview {
   nextAction: KoNextAction;
 }
 
+// PRÜFSTATUS-ANZEIGE (R-0216/R-0212): `konflikt` kommt seither auch vom Server an (der Lesepfad
+// erhebt ihn). Ein Objekt mit offenem Widerspruch heißt „In Prüfung" — UNABHÄNGIG vom Kernstatus.
+//
+// Ben R3, BEN-07: der echte Wahrheitswiderspruch setzt ein validiertes Objekt serverseitig auf
+// `offen` zurück (R-0231: validiert/99 → offen/87, Anzeigestatus `konflikt`). Die frühere Regel
+// „in Prüfung nur bei Kern validiert" lieferte deshalb genau im realen Fall „Zu prüfen". Der Kern
+// wird hier nicht mehr gefragt; der Widerspruch selbst ist die Prüfung, die läuft.
 function usabilityOf(status: DisplayStatus): KoUsability {
+  if (status === "konflikt") {
+    return "in-review";
+  }
   if (status === "validiert") {
     return "ready";
   }

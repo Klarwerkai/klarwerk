@@ -9,6 +9,8 @@ it("persistierter aiCheck hat exakt die bestehende Drahtform", async () => {
   const f = await fixture([new ModelHttpError("HTTP 429", 429)]);
   const requestedAt = "2026-09-10T08:00:00.000Z";
   await f.services.ko.markAiCheckPending(f.subject.id, requestedAt);
+  // AUFNAHME 20260922: die Basis beim Laufstart — genau sie wird gespeichert.
+  const startBasis = await f.services.ko.aktuellePruefbasis(f.subject);
   const worker = createAiCheckWorker({ ko: f.services.ko, run: f.run, log: () => {} });
   worker.enqueue(f.subject.id, f.subject.version);
   await worker.idle();
@@ -29,6 +31,10 @@ it("persistierter aiCheck hat exakt die bestehende Drahtform", async () => {
       capped: false,
       aborted: false,
     },
+    // AUFNAHME 20260922 · Prüfbasis-Aktualität: das EINE neue Feld ist beauftragt — die
+    // gespeicherte Basisbindung (zwei Fingerabdrücke, kein Inhalt). Sie ist genau die Basis beim
+    // Laufstart; interne Abdeckungsgründe bleiben weiterhin draußen.
+    basis: startBasis,
   };
   expect(aiCheck).toEqual(expected);
   const app = buildApp(f.services);

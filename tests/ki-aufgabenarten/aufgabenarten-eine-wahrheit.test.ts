@@ -27,7 +27,7 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { REASONER_TASKS } from "../../apps/web/src/api/types";
+import { MODEL_RUN_TASKS, REASONER_TASKS } from "../../apps/web/src/api/types";
 import type { ModelRunRecord, ModelRunTask } from "../../apps/web/src/api/types";
 import { istBekannteAufgabenart, summarizeModelRuns } from "../../apps/web/src/lib/modelRuns";
 
@@ -88,19 +88,23 @@ function traegtNaN(wert: unknown): boolean {
 
 // ══ R3 · DER WÄCHTER GEGEN DIE RÜCKKEHR DER ZWEITEN LISTE ═══════════════════════════════════════
 describe("JOB 3069 · R3 — Server und Oberfläche führen dieselben Aufgabenarten", () => {
-  it("R3a · der Server trägt acht Arten, und der Quelltext ist lesbar", () => {
+  // Aufnahme gesamt-ki-laufprotokoll (Ben R1 B2): der Server protokolliert seither ZWÖLF Arten —
+  // die acht Zuordnungsaufgaben plus `enrich`, `conflict`, `duplicate`, `probe`. Gebunden wird
+  // deshalb `MODEL_RUN_TASKS` (Laufarten), nicht mehr `REASONER_TASKS` (Zuordnungsaufgaben); die
+  // acht Zuordnungsaufgaben stehen unverändert vorne in derselben Reihenfolge (R3i).
+  it("R3a · der Server trägt zwölf Laufarten, und der Quelltext ist lesbar", () => {
     // Ohne diesen Fall wäre ein leeres Leseergebnis (verschobene Datei, geänderte Schreibweise)
     // ein still bestandener Wächter: `[] === []`.
-    expect(serverAufgaben(), "die Aufgaben-Union des Servers ist nicht lesbar").toHaveLength(8);
+    expect(serverAufgaben(), "die Aufgaben-Union des Servers ist nicht lesbar").toHaveLength(12);
   });
 
   it("R3b · die Liste der Oberfläche ist Wert für Wert und in derselben Reihenfolge die des Servers", () => {
-    expect([...REASONER_TASKS]).toEqual(serverAufgaben());
+    expect([...MODEL_RUN_TASKS]).toEqual(serverAufgaben());
   });
 
   it("R3c · jede Art einzeln benannt — beide Richtungen", () => {
     // Schlüsselweise statt pauschal: fehlt eine, nennt die Meldung genau sie.
-    const client = [...REASONER_TASKS] as string[];
+    const client = [...MODEL_RUN_TASKS] as string[];
     for (const art of serverAufgaben()) {
       expect(`${art} in der Oberfläche=${client.includes(art)}`).toBe(
         `${art} in der Oberfläche=true`,
@@ -112,11 +116,21 @@ describe("JOB 3069 · R3 — Server und Oberfläche führen dieselben Aufgabenar
     }
   });
 
+  it("R3i · die acht Zuordnungsaufgaben stehen vorne, unverändert und in derselben Reihenfolge", () => {
+    expect(MODEL_RUN_TASKS.slice(0, REASONER_TASKS.length)).toEqual([...REASONER_TASKS]);
+    expect(MODEL_RUN_TASKS.slice(REASONER_TASKS.length)).toEqual([
+      "enrich",
+      "conflict",
+      "duplicate",
+      "probe",
+    ]);
+  });
+
   it("R3d · GEGENPROBE — eine Art nur im Server, eine Art nur in der Oberfläche: beides rot", () => {
     // Genau die zwei Mutationen, die der Wächter fangen soll, im Test selbst gefahren.
     const nurServer = serverAufgaben().filter((a) => a !== "group");
-    expect(() => expect([...REASONER_TASKS]).toEqual(nurServer)).toThrow();
-    const nurClient = [...REASONER_TASKS, "zusammenfassen"];
+    expect(() => expect([...MODEL_RUN_TASKS]).toEqual(nurServer)).toThrow();
+    const nurClient = [...MODEL_RUN_TASKS, "zusammenfassen"];
     expect(() => expect(nurClient).toEqual(serverAufgaben())).toThrow();
   });
 
@@ -200,10 +214,11 @@ describe("JOB 3069 · R3 — Server und Oberfläche führen dieselben Aufgabenar
 // ══ R1 · DIE ZÄHLUNG KENNT ALLE ACHT ════════════════════════════════════════════════════════════
 describe("JOB 3069 · R1 — summarizeModelRuns zählt alle acht Arten", () => {
   it("R1a · je ein Lauf der acht Arten ⇒ acht Zähler mit 1, total 8, kein NaN", () => {
-    const s = summarizeModelRuns(REASONER_TASKS.map((task, i) => lauf({ id: `r${i}`, task })));
-    expect(s.total).toBe(8);
-    expect(Object.keys(s.byTask).sort()).toEqual([...REASONER_TASKS].sort());
-    for (const art of REASONER_TASKS) {
+    // Aufnahme gesamt-ki-laufprotokoll: über alle zwölf Laufarten (MODEL_RUN_TASKS).
+    const s = summarizeModelRuns(MODEL_RUN_TASKS.map((task, i) => lauf({ id: `r${i}`, task })));
+    expect(s.total).toBe(MODEL_RUN_TASKS.length);
+    expect(Object.keys(s.byTask).sort()).toEqual([...MODEL_RUN_TASKS].sort());
+    for (const art of MODEL_RUN_TASKS) {
       expect(`${art}=${s.byTask[art]}`).toBe(`${art}=1`);
     }
     expect(traegtNaN(s), "kein Wert der Zusammenfassung darf NaN sein").toBe(false);
@@ -226,7 +241,7 @@ describe("JOB 3069 · R1 — summarizeModelRuns zählt alle acht Arten", () => {
 
   it("R1c · leere Liste ⇒ acht Nullzähler, nicht fünf", () => {
     const s = summarizeModelRuns([]);
-    expect(Object.keys(s.byTask).sort()).toEqual([...REASONER_TASKS].sort());
+    expect(Object.keys(s.byTask).sort()).toEqual([...MODEL_RUN_TASKS].sort());
     expect(Object.values(s.byTask).every((n) => n === 0)).toBe(true);
     expect(s.total).toBe(0);
     expect(s.unbekannteArten).toBe(0);
@@ -240,7 +255,7 @@ describe("JOB 3069 · R4 — eine unbekannte Aufgabenart wird gezählt, nicht zu
   it("R4a · kein Absturz, kein NaN, kein neuer Schlüssel in byTask", () => {
     const s = summarizeModelRuns([lauf({ id: "a", task: fremd })]);
     expect(traegtNaN(s)).toBe(false);
-    expect(Object.keys(s.byTask).sort()).toEqual([...REASONER_TASKS].sort());
+    expect(Object.keys(s.byTask).sort()).toEqual([...MODEL_RUN_TASKS].sort());
     expect(Object.keys(s.byTask)).not.toContain("zusammenfassen");
   });
 

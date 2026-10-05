@@ -64,11 +64,27 @@ let browser: Browser | undefined;
 let adminApi: Sitzung;
 const bremse: Bremse = neueBremse();
 const mutation: Mutation = neueMutation();
+const leseBremse = { koId: "", aufrufe: 0 };
 
 beforeAll(async () => {
   stelleFlaecheBereit();
   browser = await starteChromium();
-  strecke = await starteStrecke(mitFlaecheBremseMutation(bremse, mutation));
+  const flaeche = mitFlaecheBremseMutation(bremse, mutation);
+  strecke = await starteStrecke({
+    vorListen: async (app) => {
+      app.addHook("onRequest", async (request) => {
+        if (
+          leseBremse.koId &&
+          request.method === "GET" &&
+          request.url.split("?")[0] === `/api/kos/${leseBremse.koId}`
+        ) {
+          leseBremse.aufrufe += 1;
+          await new Promise((fertig) => setTimeout(fertig, 1500));
+        }
+      });
+      await flaeche.vorListen(app);
+    },
+  });
   adminApi = (await ersteinrichtung(strecke, ADMIN)).sitzung;
 }, 900_000);
 
@@ -115,6 +131,21 @@ async function fahre(titel: string, fassungen: readonly Fassungstext[]): Promise
 }
 
 describe("JOB 4263 K · die Kalibrierung des Abnahmeweges", () => {
+  it("K5 — die sichtbare Liste ersetzt nicht den verzögert geladenen Inhalt im frischen Profil", async () => {
+    const { browser: b, strecke: s } = zeug();
+    const titel = "Getrennte Ladezeiten von Liste und Leseansicht (JOB 4263)";
+    const koId = await legeFassungenAn(adminApi, titel, [FASSUNG_ALT]);
+    leseBremse.koId = koId;
+    leseBremse.aufrufe = 0;
+    try {
+      const text = await liesImFrischenProfil(b, s.basis, ADMIN, koId, titel);
+      expect(leseBremse.aufrufe, "die Detailantwort wurde nicht verzögert").toBeGreaterThan(0);
+      expect(text, "nur die Liste wurde gelesen, der Bericht fehlt").toContain(BERICHT_ALT);
+    } finally {
+      leseBremse.koId = "";
+    }
+  }, 120_000);
+
   it("K1 — OHNE Mutation läuft derselbe Weg durch: die Rückholung findet statt und trägt den richtigen Inhalt", async () => {
     mutation.art = "keine";
     const koId = await fahre("Kalibrierung ungestört (JOB 4263)", [FASSUNG_ALT, FASSUNG_NEU]);

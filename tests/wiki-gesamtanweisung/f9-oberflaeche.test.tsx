@@ -25,6 +25,14 @@
 // letzte Fall zählt nach, dass jede bedienbare Stelle ein natürlich fokussierbares Element ist —
 // kein `div` mit Klickhörer, kein `tabindex="-1"`.
 //
+// FE-001 · DIE AUFNAHME GEHT JETZT ÜBER EINE MENSCHLICHE AUSWAHL: Suchbegriff → Treffer → Fassung
+// → „als Abschnitt aufnehmen". Die Fläche ruft dafür zwei LESENDE Türen, die nicht zum
+// Anweisungs-Plugin gehören (`GET /api/library/search`, `GET /api/kos/:id/versions`), dazu das
+// Namensverzeichnis. Sie stehen hier als kleine Doppel über DENSELBEN Einträgen, die auch der Dienst
+// kennt — die Rechte- und Fassungsentscheidung beim Aufnehmen bleibt die ECHTE der Route. Ein
+// Eintrag, den nur die Suche kennt (`ko-verborgen`), prüft, dass eine Absage des Servers sichtbar
+// wird und die Auswahl stehen bleibt.
+//
 // GEGENPROBE: In `GesamtanweisungSeite.tsx` das Aufnehmen an einen KI-Aufruf hängen (etwa
 // `await endpoints.assist.run(...)` vor `aufnehmen.mutateAsync`). Dann wird der Fall in
 // `f6-ohne-ki.test.ts` („keine der neuen Dateien berührt eine KI-Fläche") rot und nennt die Datei;
@@ -56,7 +64,52 @@ const EINTRAEGE = [
   ]),
 ];
 
+/**
+ * Ein Eintrag, den die SUCHE zeigt, den der Anweisungsdienst aber nicht kennt — so, als wäre er
+ * zwischen Suche und Aufnehmen entzogen worden. Der Dienst lehnt dann fail-closed mit 403 ab.
+ */
+const NUR_IN_DER_SUCHE = { id: "ko-verborgen", title: "Verborgener Schritt", version: 1 };
+
 const NUTZER: SessionUser = { id: "anna", role: "controller" };
+
+/**
+ * FE-001 · Die lesenden Nachbartüren als Doppel — über denselben Einträgen wie der Dienst.
+ *
+ * Suche: Titel enthält den Begriff (ohne Gross/Klein). Fassungen: die gespeicherten Sätze. Namen:
+ * „anna" hat einen Namen im Verzeichnis, damit die Fläche ihn statt der Kennung zeigen kann.
+ */
+async function nachbartueren(instanz: FastifyInstance): Promise<void> {
+  const alle = [
+    ...EINTRAEGE.map((e) => ({ id: e.id, title: e.title, version: e.version })),
+    NUR_IN_DER_SUCHE,
+  ];
+  instanz.get<{ Querystring: { q?: string } }>("/api/library/search", async (request) => {
+    const begriff = (request.query.q ?? "").toLowerCase();
+    return alle
+      .filter((e) => e.title.toLowerCase().includes(begriff))
+      .map((e) => ({ ...e, statement: `Kurzfassung: ${e.title}` }));
+  });
+  instanz.get<{ Params: { id: string } }>("/api/kos/:id/versions", async (request, reply) => {
+    const bekannt = EINTRAEGE.find((e) => e.id === request.params.id);
+    if (bekannt) {
+      return bekannt.fassungen.map((f) => ({ ...f, koId: bekannt.id, note: "" }));
+    }
+    if (request.params.id === NUR_IN_DER_SUCHE.id) {
+      return [
+        {
+          koId: NUR_IN_DER_SUCHE.id,
+          version: 1,
+          at: "2026-09-01T09:00:00.000Z",
+          author: "anna",
+          note: "",
+          snapshot: { title: NUR_IN_DER_SUCHE.title, statement: "", version: 1 },
+        },
+      ];
+    }
+    reply.code(404).send({ error: "NOT_FOUND", message: "gibt es nicht" });
+  });
+  instanz.get("/api/directory", async () => [{ id: "anna", name: "Anna Beispiel" }]);
+}
 
 const guards: Guards = {
   async requireUser() {
@@ -133,16 +186,25 @@ async function warteBis(bedingung: () => boolean, was: string): Promise<void> {
   expect(bedingung(), `Die Fläche hat nie erreicht: ${was}`).toBe(true);
 }
 
-function feld(name: string): HTMLInputElement {
-  const treffer = container.querySelector<HTMLInputElement>(`[name="${name}"]`);
+function feld(name: string): HTMLInputElement | HTMLTextAreaElement {
+  const treffer = container.querySelector<HTMLInputElement | HTMLTextAreaElement>(
+    `[name="${name}"]`,
+  );
   expect(treffer, `Feld ${name} fehlt`).not.toBeNull();
-  return treffer as HTMLInputElement;
+  return treffer as HTMLInputElement | HTMLTextAreaElement;
 }
 
 /** Ein Wert so setzen, wie ein Mensch tippt — React hört auf den nativen Setter plus Ereignis. */
-function tippe(element: HTMLInputElement | HTMLSelectElement, wert: string): void {
+function tippe(
+  element: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement,
+  wert: string,
+): void {
   const proto =
-    element instanceof HTMLSelectElement ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
+    element instanceof HTMLSelectElement
+      ? HTMLSelectElement.prototype
+      : element instanceof HTMLTextAreaElement
+        ? HTMLTextAreaElement.prototype
+        : HTMLInputElement.prototype;
   const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
   setter?.call(element, wert);
   element.dispatchEvent(new Event("input", { bubbles: true }));
@@ -155,6 +217,50 @@ function knopfMit(text: string): HTMLButtonElement {
   );
   expect(treffer, `Knopf „${text}" fehlt`).toBeTruthy();
   return treffer as HTMLButtonElement;
+}
+
+/** Ein Formular abschicken — der Enter-Weg, nicht ein Zeigegerät. */
+async function sende(form: Element | null | undefined): Promise<void> {
+  expect(form, "Formular fehlt").toBeTruthy();
+  await act(async () => {
+    form?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+  });
+}
+
+/**
+ * FE-001 · Einen Eintrag über seinen TITEL finden, eine Fassung bewusst wählen und aufnehmen.
+ * Keine Kennung wird getippt — die Fläche kennt sie aus dem Treffer.
+ */
+async function nimmAuf(begriff: string, koId: string, fassung: number): Promise<void> {
+  await act(async () => {
+    tippe(feld("suche"), begriff);
+  });
+  await sende(container.querySelector('[data-testid="ga-aufnahme-suche-form"]'));
+  const treffer = () =>
+    container.querySelector<HTMLButtonElement>(
+      `[data-testid="ga-aufnahme-treffer-eintrag"][data-ko="${koId}"]`,
+    );
+  await warteBis(() => treffer() !== null, `der Treffer zu „${begriff}"`);
+  await act(async () => {
+    treffer()?.click();
+  });
+  const radio = () => container.querySelector<HTMLInputElement>(`#ga-aufnahme-fassung-${fassung}`);
+  await warteBis(() => radio() !== null, `die Fassung ${fassung} zur Auswahl`);
+  // Noch KEINE Fassung gewählt: der Knopf ist gesperrt und sagt, warum.
+  expect(
+    container.querySelector<HTMLButtonElement>('[data-testid="ga-aufnahme-knopf"]')?.disabled,
+  ).toBe(true);
+  expect(container.querySelector('[data-testid="ga-aufnahme-sperre"]')?.textContent).toContain(
+    "Fassung",
+  );
+  await act(async () => {
+    radio()?.click();
+  });
+  await warteBis(
+    () => container.querySelector('[data-testid="ga-aufnahme-vorschau"]') !== null,
+    "die Vorschau der gewählten Fassung",
+  );
+  await sende(container.querySelector('[data-testid="ga-aufnahme-bestaetigen"]'));
 }
 
 async function anweisungAnlegen(): Promise<string> {
@@ -175,6 +281,7 @@ beforeEach(async () => {
   });
   app = Fastify();
   await app.register(gesamtanweisungRoutes, { dienst, guards });
+  await nachbartueren(app);
   await app.ready();
   echtesFetch = globalThis.fetch;
   globalThis.fetch = bruecke(app);
@@ -214,35 +321,46 @@ describe("JOB 4154 · der ganze Weg in der Oberfläche", () => {
     await montiere(id);
 
     // LEER — der Satz des Auftrags, und keine Vollständigkeitsbehauptung.
-    expect(container.textContent).toContain("Diese Anweisung hat noch keine Bausteine.");
+    expect(container.textContent).toContain("Diese Arbeitsanleitung hat noch keine Abschnitte.");
     expect(container.textContent).not.toContain("vollständig");
 
-    // AUFNEHMEN — zwei Fassungen, über das Formular, per Enter-Weg (submit), nicht per Zeigegerät.
+    // VERGLEICH OHNE ZWEI STÄNDE (FE-001) — ein Hinweis statt eines grundlosen „Lädt …".
+    const vergleichsflaeche = () =>
+      container.querySelector('[data-testid="ga-vergleich"]')?.textContent ?? "";
+    expect(container.querySelector('[data-testid="ga-vergleich-zu-wenige"]')).not.toBeNull();
+    expect(vergleichsflaeche()).not.toContain("Lädt");
+
+    // WORUM GEHT ES (FE-001) — Zweck über die Kopfbearbeitung, bestätigt vom Server.
+    await act(async () => {
+      tippe(feld("zweck"), "Neue Leute fahren die Anlage sicher an");
+    });
+    await sende(feld("zweck").closest("form"));
+    await warteBis(
+      () =>
+        (
+          container.querySelector('[data-testid="ga-lesestand-dokument"]')?.textContent ?? ""
+        ).includes("Neue Leute fahren die Anlage sicher an"),
+      "den gespeicherten Zweck in der Lesefassung",
+    );
+
+    // AUFNEHMEN — zwei Fassungen, über Titel gefunden und bewusst gewählt; keine Kennung getippt.
     const zeilen = () => [...container.querySelectorAll("[data-baustein]")];
     let erwartet = 0;
-    for (const [koId, fassung] of [
-      ["ko-a", "1"],
-      ["ko-b", "1"],
-    ]) {
+    for (const [begriff, koId] of [
+      ["entlüften", "ko-a"],
+      ["Ventil", "ko-b"],
+    ] as const) {
       erwartet += 1;
-      await act(async () => {
-        tippe(feld("koId"), koId as string);
-        tippe(feld("koVersion"), fassung as string);
-      });
-      await act(async () => {
-        // Über das FELD zum Formular, nicht über `querySelector("form")`: sobald ein Baustein in
-        // der Liste steht, trägt dessen Voraussetzungszeile ein eigenes Formular — und das steht
-        // im DOM VOR der Aufnahme. (Genau daran ist dieser Fall beim ersten Lauf gescheitert.)
-        feld("koId")
-          .closest("form")
-          ?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
-      });
+      await nimmAuf(begriff, koId, 1);
       await warteBis(() => zeilen().length === erwartet, `${erwartet} Bausteine in der Liste`);
     }
 
     expect(zeilen()).toHaveLength(2);
-    // Die Eingabefelder sind nach dem bestätigten Erfolg wieder leer.
-    expect(feld("koId").value).toBe("");
+    // Nach bestätigtem Erfolg ist die Auswahl zurückgesetzt und die Bestätigung steht da.
+    expect(container.querySelector('[data-testid="ga-aufnahme-nichts-gewaehlt"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="ga-aufnahme-erfolg"]')?.textContent).toContain(
+      "Ventil öffnen",
+    );
 
     // LESEN — Herkunft je Baustein, aus der GEBUNDENEN Fassung.
     expect(container.textContent).toContain("Gebundene Fassung 1");
@@ -251,6 +369,9 @@ describe("JOB 4154 · der ganze Weg in der Oberfläche", () => {
     expect(container.textContent).toContain("Abbildungen: Schema");
     // Und der Lückenvermerk steht sichtbar da.
     expect(container.textContent).toContain("Prüfanbindung: noch nicht angebunden");
+    // FE-001: der Name aus dem Verzeichnis statt der Kennung, und keine rohe ISO-Zeit im Lesefluss.
+    expect(container.textContent).toContain("Anna Beispiel");
+    expect(container.textContent).not.toMatch(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/);
 
     // ORDNEN — der erste Baustein wandert nach unten.
     const vorher = zeilen().map((z) => z.getAttribute("data-baustein"));
@@ -307,7 +428,32 @@ describe("JOB 4154 · der ganze Weg in der Oberfläche", () => {
     expect(container.textContent).toContain("Nicht bestimmbare Befunde: 0");
     // Und nirgends steht ein Wort, das mehr behauptet als „unverändert".
     expect(container.textContent).not.toContain("geprüft");
-    expect(container.textContent).not.toContain("freigegeben");
+    // Prüfstatus-Anzeige (Pedi 28.09.2026, Ergänzung 3): der Entwurf sagt jetzt AUSDRÜCKLICH
+    // „nicht freigegeben". Diese Verneinung ist erlaubt — jede andere Nennung, auch das Standwort
+    // „Freigegeben", wäre eine Freigabebehauptung und bleibt verboten.
+    const ohneVerneinung = (container.textContent ?? "").replaceAll("nicht freigegeben", "");
+    expect(container.textContent).toContain("nicht freigegeben");
+    expect(ohneVerneinung).not.toContain("freigegeben");
+    expect(ohneVerneinung).not.toContain("Freigegeben");
+
+    // FE-001 R2 (E8) — UNGESPEICHERTE KOPFANGABEN SPERREN DAS VORLEGEN, mit sichtbarem Grund.
+    const vorlegeKnopf = () =>
+      container.querySelector<HTMLButtonElement>('[data-testid="ga-entscheidung-vorlegen"]');
+    expect(vorlegeKnopf()?.disabled).toBe(false);
+    await act(async () => {
+      tippe(feld("zweck"), "Noch nicht gespeichert");
+    });
+    expect(vorlegeKnopf()?.disabled, "ungespeicherte Angaben dürfen nicht vorgelegt werden").toBe(
+      true,
+    );
+    expect(
+      container.querySelector('[data-testid="ga-entscheidung-grund"]')?.textContent ?? "",
+    ).toContain("noch nicht gespeicherte Änderungen");
+    await sende(feld("zweck").closest("form"));
+    await warteBis(
+      () => vorlegeKnopf()?.disabled === false,
+      "die aufgehobene Sperre nach Speichern",
+    );
 
     // VORLEGEN — ein menschlicher Schritt, kein abgeleiteter.
     expect(container.querySelector('[data-testid="ga-entscheidung-stand"]')?.textContent).toBe(
@@ -324,7 +470,8 @@ describe("JOB 4154 · der ganze Weg in der Oberfläche", () => {
     await act(async () => {
       knopfMit("Annehmen").click();
     });
-    await warteBis(() => standzeile() === "Entschieden", "den Stand „Entschieden“");
+    // Prüfstatus-Anzeige (Pedi 28.09.2026): der angenommene Stand heißt sichtbar „Freigegeben".
+    await warteBis(() => standzeile() === "Freigegeben", "den Stand „Freigegeben“");
   });
 
   it("jede bedienbare Stelle ist mit der Tastatur erreichbar", async () => {
@@ -347,10 +494,19 @@ describe("JOB 4154 · der ganze Weg in der Oberfläche", () => {
 
     // Jedes Eingabefeld hat eine verbundene Beschriftung — sonst wäre es per Tastatur erreichbar,
     // aber nicht benennbar.
-    for (const eingabe of container.querySelectorAll("input, select")) {
+    // FE-001 R2 (E9): nicht nur „es gibt ein label[for]", sondern die WIRKSAME Zuordnung — die
+    // Beschriftung muss genau dieses Feld benennen, und keine Kennung darf doppelt vorkommen.
+    const kennungen = [...container.querySelectorAll("[id]")].map((e) => e.id);
+    expect(
+      kennungen.filter((k, i) => kennungen.indexOf(k) !== i),
+      "doppelte Kennungen im Dokument",
+    ).toEqual([]);
+    for (const eingabe of container.querySelectorAll("input, select, textarea")) {
       const id2 = eingabe.getAttribute("id");
       expect(id2, eingabe.outerHTML).toBeTruthy();
-      expect(container.querySelector(`label[for="${id2}"]`), id2 ?? "").not.toBeNull();
+      const label = container.querySelector<HTMLLabelElement>(`label[for="${id2}"]`);
+      expect(label, id2 ?? "").not.toBeNull();
+      expect(label?.control, `${id2}: die Beschriftung benennt ein anderes Element`).toBe(eingabe);
     }
   });
 
@@ -358,29 +514,23 @@ describe("JOB 4154 · der ganze Weg in der Oberfläche", () => {
     const id = await anweisungAnlegen();
     await montiere(id);
 
-    // Ein Eintrag, den es nicht gibt: der Server lehnt mit 403 ab (fail-closed an der Quelle).
-    await act(async () => {
-      tippe(feld("koId"), "ko-gibt-es-nicht");
-      tippe(feld("koVersion"), "1");
-    });
-    await act(async () => {
-      feld("koId")
-        .closest("form")
-        ?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
-    });
+    // Ein Eintrag, den die Suche zeigt, der Dienst aber nicht kennt: der Server lehnt mit 403 ab
+    // (fail-closed an der Quelle) — die Fläche erweitert keine Rechte aus ihrer eigenen Annahme.
+    await nimmAuf("Verborgener", NUR_IN_DER_SUCHE.id, 1);
     await warteBis(
       () =>
         (container.textContent ?? "").includes(
-          "Teile dieser Anweisung sind für Sie nicht zugänglich.",
+          "Teile dieser Arbeitsanleitung sind für dich nicht zugänglich.",
         ),
       "die Ablehnungsmeldung",
     );
 
-    // Die Eingabe steht noch da — nichts gilt als gespeichert.
-    expect(feld("koId").value).toBe("ko-gibt-es-nicht");
+    // Die Auswahl steht noch da — nichts gilt als gespeichert, der nächste Versuch ist erreichbar.
+    expect(container.querySelector<HTMLInputElement>("#ga-aufnahme-fassung-1")?.checked).toBe(true);
+    expect(
+      container.querySelector<HTMLButtonElement>('[data-testid="ga-aufnahme-knopf"]')?.disabled,
+    ).toBe(false);
+    expect(container.querySelector('[data-testid="ga-aufnahme-erfolg"]')).toBeNull();
     expect(container.querySelectorAll("[data-baustein]")).toHaveLength(0);
-    expect(container.textContent).toContain(
-      "Teile dieser Anweisung sind für Sie nicht zugänglich.",
-    );
   });
 });

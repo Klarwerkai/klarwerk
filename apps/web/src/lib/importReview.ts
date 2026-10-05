@@ -19,6 +19,60 @@ const FIELD_CHECKS = {
   type: (value: unknown) => isString(value) && TYPES.includes(value as KnowledgeType),
 };
 
+// ================================================================================================
+// R-0139 / R-0169 (Nacharbeit 2, bens F1) — DIE OPTIONALEN QUELLANGABEN EINER DATEI.
+// ================================================================================================
+//
+// Ein Eintrag darf seine Herkunft mitbringen: Anbieter, Kennung im Quellsystem, Quellfassung und
+// Quell-URL. Bis hierher fielen sie in diesem Parser weg, und der Server sah sie nie. KEINE
+// Pflichtfelder — `FIELD_CHECKS`, die Mindestvorlage und ihr Format bleiben unverändert. Fehlt ein
+// Feld, ist es ehrlich „nicht geliefert"; ist es geliefert und unbrauchbar, wird der Eintrag mit
+// dem Feldnamen abgelehnt (gleiche Meldung wie bei den Pflichtfeldern), statt still zu fallen.
+//
+// Die Grenzen sind die des Servers: Quellfassung ganzzahlig 0..999 999 999 (`MAX_SOURCE_VERSION`,
+// services/library-analytics/src/repo.ts — hier abgeschrieben, weil der Webbau `services/` nicht
+// einbindet), Quell-URL absolut http/https (`safeSourceUrl`, knowledge-object/src/source-url.ts).
+const MAX_QUELLFASSUNG = 999_999_999;
+
+const gefuellt = (value: unknown): value is string =>
+  typeof value === "string" && value.trim().length > 0;
+
+const fehltOderLeer = (value: unknown): boolean =>
+  value === undefined || value === null || (typeof value === "string" && value.trim() === "");
+
+function istQuellUrl(value: unknown): boolean {
+  if (!gefuellt(value)) {
+    return false;
+  }
+  try {
+    const url = new URL(value.trim());
+    return url.protocol === "https:" || url.protocol === "http:";
+  } catch {
+    return false;
+  }
+}
+
+function istQuellfassung(value: unknown): boolean {
+  if (value === undefined || value === null) {
+    return true;
+  }
+  return (
+    typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= MAX_QUELLFASSUNG
+  );
+}
+
+const QUELL_CHECKS: Record<string, (value: unknown) => boolean> = {
+  provider: (value) => fehltOderLeer(value) || gefuellt(value),
+  externalId: (value) => fehltOderLeer(value) || gefuellt(value),
+  sourceVersion: istQuellfassung,
+  url: (value) => fehltOderLeer(value) || istQuellUrl(value),
+  // R-0169 (Nacharbeit 5): die INTERNE Dokumentkennung, die Klarwerk beim ersten Import vergeben
+  // hat (Importantwort `dokumentFassungen`, Objekt `dokumentHerkunft`). Mitgebracht wird die
+  // nächste Fassung derselben Akte. Ob sie hier vergeben wurde, entscheidet der Server — der Parser
+  // prüft nur die Form; eine externe `externalId` ist etwas anderes und bleibt getrennt.
+  dokumentId: (value) => fehltOderLeer(value) || gefuellt(value),
+};
+
 export const IMPORT_JSON_FORMAT = {
   requiredFields: Object.keys(FIELD_CHECKS),
   types: TYPES,
@@ -86,6 +140,12 @@ export function parseImportItems(text: string): ImportItemInput[] {
     const fields = Object.entries(FIELD_CHECKS)
       .filter(([field, accepts]) => !accepts(o[field]))
       .map(([field]) => field);
+    // R-0139 / R-0169 (Nacharbeit 2, bens F1): gelieferte Quellangaben werden GEPRÜFT, nicht still
+    // verworfen und nicht still repariert — dieselbe Haltung wie bei den Pflichtfeldern oben.
+    const quellFehler = Object.entries(QUELL_CHECKS)
+      .filter(([field, accepts]) => !accepts(o[field]))
+      .map(([field]) => field);
+    fields.push(...quellFehler);
     if (fields.length > 0) {
       throw new ImportParseError(`item-${i}-fields`, "fields", i, fields);
     }
@@ -101,6 +161,12 @@ export function parseImportItems(text: string): ImportItemInput[] {
     }
     if (typeof o.author === "string") {
       item.author = o.author;
+    }
+    // UX-20b-R (Bens Befund R-0150/R-1731): die Urheberin reist mit. Ein eigener Export trägt sie
+    // als `originalAuthor`; fiel das Feld hier weg, machte der Server den früheren `author` (den
+    // Reviewer der Quellinstanz) zum Wissensträger. Nur nicht-leerer Text — wie beim Volltext unten.
+    if (typeof o.originalAuthor === "string" && o.originalAuthor.trim().length > 0) {
+      item.originalAuthor = o.originalAuthor;
     }
     // ==========================================================================================
     // JOB 4293 — DER VOLLTEXT REIST MIT, ODER ER FEHLT EHRLICH.
@@ -125,6 +191,23 @@ export function parseImportItems(text: string): ImportItemInput[] {
     // einen leeren Kasten aufzuklappen, statt die Grenze zu benennen.
     if (typeof o.bodyHtml === "string" && o.bodyHtml.trim().length > 0) {
       item.bodyHtml = o.bodyHtml;
+    }
+    // R-0139 / R-0169 (Nacharbeit 2): die geprüften Quellangaben reisen mit. Leerer Text zählt als
+    // nicht geliefert (wie beim Volltext); `QUELL_CHECKS` oben hat Form und Wertebereich geprüft.
+    if (gefuellt(o.provider)) {
+      item.provider = o.provider.trim();
+    }
+    if (gefuellt(o.externalId)) {
+      item.externalId = o.externalId.trim();
+    }
+    if (typeof o.sourceVersion === "number") {
+      item.sourceVersion = o.sourceVersion;
+    }
+    if (gefuellt(o.url)) {
+      item.url = o.url.trim();
+    }
+    if (gefuellt(o.dokumentId)) {
+      item.dokumentId = o.dokumentId.trim();
     }
     return item;
   });

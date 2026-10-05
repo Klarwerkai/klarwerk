@@ -15,7 +15,8 @@
 //
 //   W1  Bereich wählen  → Entwurf, erneutes Öffnen und Wissensobjekt tragen ihn.
 //   W2  `?demo=stage1`  → Demo-Banner da; ohne Abfrage nicht.
-//   W3  Live-Befund     → der Chip zeigt „neu“, „Ähnlich“, „Könnte widersprechen“; `pending` und
+//   W3  Live-Befund     → der Chip zeigt „Vorschau“ (leer, mit Umfang), „Ähnlich“, „Könnte
+//                         widersprechen“ (Aufnahme 20260922: kein „neu“ mehr); `pending` und
 //                         `unavailable` bleiben still und stehen im Menü … → „Status“.
 //   W4  Quelle          → die Zeile im Status nennt die erfassende Person.
 //   W5  Fehler          → EIN Satz und „Erneut versuchen“; der Knopf wiederholt WIRKLICH.
@@ -265,10 +266,30 @@ describe.runIf(mockupDa)("JOB 3062 · H3 · R6 · Wirkungsnachweise am gebauten 
       }
     }
 
-    it("W3a · „done“ ohne Fund → der Chip sagt „Das ist neu“", async () => {
+    // AUFNAHME 20260922 · VORSCHAU-REICHWEITE — W3a ANGEPASST, WEIL DIE ANFORDERUNG ES VERLANGT.
+    // Hier stand „„done“ ohne Fund → der Chip sagt „Das ist neu“". Der Server vergleicht höchstens
+    // eine begrenzte Vorauswahl (CANDIDATE_LIMIT); Kriterium 1 der Aufnahme verbietet bei begrenzter
+    // oder unbekannter Abdeckung genau diese bestandweite Aussage. Gemessen wird jetzt die leere
+    // VORSCHAU mit ihrem belegten Umfang — und dass der alte Satz fehlt. W3a2 deckt die Antwort ohne
+    // Umfangsangabe ab: sie ist „Umfang unbekannt", keine Vollprüfung.
+    it("W3a · „done“ ohne Fund → der Chip sagt „Vorschau“ mit belegtem Umfang, nie „Das ist neu“", async () => {
+      const r = await chipLage({
+        status: "done",
+        similar: [],
+        conflicts: [],
+        coverage: { kind: "candidates", checked: 40, limit: 40, limitReached: true },
+      });
+      expect(r.lage).toBe("empty");
+      expect(r.text).toContain("Vorschau");
+      expect(r.text).toContain("40 Einträge verglichen, Grenze erreicht");
+      expect(r.text).not.toContain("Das ist neu");
+    }, 180_000);
+
+    it("W3a2 · „done“ ohne Fund und ohne Umfangsangabe → „Umfang unbekannt“, nie „Das ist neu“", async () => {
       const r = await chipLage({ status: "done", similar: [], conflicts: [] });
-      expect(r.lage).toBe("new");
-      expect(r.text).toContain("Das ist neu");
+      expect(r.lage).toBe("empty");
+      expect(r.text).toContain("Umfang unbekannt");
+      expect(r.text).not.toContain("Das ist neu");
     }, 180_000);
 
     it("W3b · ein ähnliches Objekt → der Chip nennt es beim Titel", async () => {

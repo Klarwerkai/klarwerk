@@ -26,6 +26,7 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { woerterbuchQuelleAus } from "../support/woerterbuchquelle";
 
 const WURZEL = join(__dirname, "..", "..");
 const WEB = join("apps", "web", "src");
@@ -49,6 +50,13 @@ const AUSNAHMEN: Record<string, string> = {
     "Die Vorrichtung SELBST — sie definiert den Haken, an dem dieser Sammler hängt, und ist keine " +
     "Fläche. Sie rendert nichts und hat keinen Auslöser; ein Hinweis stünde hier an einer Stelle, " +
     "die niemand sieht.",
+  [join(WEB, "tutorial", "fragen", "FragenDemo.tsx")]:
+    "FE-003: die VORFÜHRUNG der Fragenfläche. Sie zeigt die KI-Kennzeichnung an einer erfundenen " +
+    "Beispielantwort und fragt den Modellstand nur ab, um ehrlich zu sagen, ob die ECHTE Frage " +
+    "gerade möglich ist — ausgelöst wird hier nichts, und sie importiert keinen API-Client " +
+    "(`tests/fe003-tutorial-fragen/aenderungsprobe-mounted.test.tsx`). Ein Kostenhinweis stünde " +
+    "an einem Knopf, der nichts kostet, und wäre selbst irreführend. Der echte Auslöser — das " +
+    "Feld auf `pages/Ask.tsx`, zu dem „Eigene Frage stellen“ führt — trägt den Hinweis.",
   // KEINE Ausnahme für components/AiGeneratedNotice.tsx: Die Datei DEFINIERT den Träger, rendert
   // ihn aber nicht — der Sammler sieht sie deshalb gar nicht erst als Fläche. Ein Eintrag hier
   // wäre eine Ausnahme ohne Fall, und der Fall unten („wird noch gebraucht") würde ihn rot melden.
@@ -107,7 +115,7 @@ describe("mega62 F · der Kostenhinweis an jeder Auslösestelle", () => {
   });
 
   it("der Hinweis existiert als EIN Schlüssel in allen drei Sprachen", () => {
-    const i18n = readFileSync(join(WURZEL, WEB, "i18n.ts"), "utf8");
+    const i18n = woerterbuchQuelleAus(join(WURZEL, WEB, "i18n.ts"));
     const treffer = i18n.split("\n").filter((z) => z.includes(`"${SCHLUESSEL}"`));
     expect(treffer.length, "der Hinweis fehlt in einer der drei Sprachen").toBe(3);
   });
@@ -180,7 +188,7 @@ describe("mega62 F · der Kostenhinweis an jeder Auslösestelle", () => {
   it("der Wortlaut nennt in jeder Sprache wirklich die Kosten", () => {
     // Ein Halbsatz, der alles Mögliche sagt, nur nicht, dass es Geld kostet, wäre kein Hinweis.
     // Dieselbe Kalibrierung wie in tests/ask/mega61-kostenhinweis.test.ts.
-    const i18n = readFileSync(join(WURZEL, WEB, "i18n.ts"), "utf8");
+    const i18n = woerterbuchQuelleAus(join(WURZEL, WEB, "i18n.ts"));
     const zeilen = i18n.split("\n").filter((z) => z.includes(`"${SCHLUESSEL}"`));
     const stamm = ["kostenpflichtig", "chargeable", "betaalde"];
     for (const [i, wort] of stamm.entries()) {

@@ -56,7 +56,14 @@ export interface Gap {
 
 // FUNKE-FIX P0 (bens ROT-1): FORBIDDEN — ein „Danke" ohne gültigen, dieses KO belegenden
 // Antwort-Receipt (unbelegte/fremd gewählte KO-ID) → 403 (sendError-Mapping).
-export type AskErrorCode = "NOT_FOUND" | "CONFIRM_REQUIRED" | "BAD_REQUEST" | "FORBIDDEN";
+// D5: `KI_ABGESCHALTET` — der Administrator hat den KI-Frageweg abgeschaltet (Begründung an
+// `AskServiceDeps.kiSperre`). Kein Rechtefehler und keine Störung, sondern ein Betriebszustand.
+export type AskErrorCode =
+  | "NOT_FOUND"
+  | "CONFIRM_REQUIRED"
+  | "BAD_REQUEST"
+  | "FORBIDDEN"
+  | "KI_ABGESCHALTET";
 
 export class AskError extends Error {
   readonly code: AskErrorCode;

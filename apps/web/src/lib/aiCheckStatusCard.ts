@@ -279,6 +279,8 @@ export type AiCheckCardState =
   | { kind: "running" }
   | { kind: "done" }
   | { kind: "failed"; reasonKey: string }
+  // AUFNAHME 20260922: der abgeschlossene Nachweis gilt für eine frühere Basis (Server-Ableitung).
+  | { kind: "outdated" }
   // Kein Prüf-Job vermerkt (Altbestand / Deployment ohne Worker): NICHTS behaupten —
   // weder „läuft" noch ein stilles Grün.
   | { kind: "none" };
@@ -290,6 +292,11 @@ export function aiCheckCardState(
 ): AiCheckCardState {
   if (!aiCheck) {
     return { kind: "none" };
+  }
+  // AUFNAHME 20260922 · Prüfbasis-Aktualität: überholt geht vor done UND failed — beide gälten für
+  // einen Stand, den es nicht mehr gibt.
+  if (aiCheck.ueberholt && aiCheck.status !== "pending") {
+    return { kind: "outdated" };
   }
   if (aiCheck.status === "failed") {
     return {
@@ -306,4 +313,68 @@ export function aiCheckCardState(
 // Weiter pollen NUR solange der echte Status offen ist — done/failed/none beenden das Polling.
 export function aiCheckPollAgain(aiCheck: KnowledgeObject["aiCheck"] | null | undefined): boolean {
   return aiCheck?.status === "pending";
+}
+
+// ================================================================================================
+// PRÜFSTATUS-ANZEIGE (R-0208) · DIE SICHTBAREN ZUSTÄNDE DER KI-PRÜFUNG — EINE ABLEITUNG.
+// ================================================================================================
+//
+// Ein Eintrag kann von der KI geprüft sein, ohne freigegeben zu sein. Damit das nicht verwechselt
+// wird, zeigt die Prüfseite den Zustand der Prüfung als eigenes Kennzeichen — und das Wort
+// „validiert" kommt darin nicht vor. Die Zustände entstehen ausschließlich aus dem Vermerk und der
+// Leseauskunft des Prüfbretts (`laeuft`, `konfliktGefunden`):
+//
+//   ausstehend        eingereiht, der Worker bearbeitet ihn (noch) nicht      laeuft === false
+//   laeuft            der Worker bearbeitet ihn gerade                         pending, sonst
+//   geprueft          abgeschlossen, vollständig, kein Konflikt bekannt        done
+//   konflikt          abgeschlossen, offener automatisch erkannter Konflikt    konfliktGefunden
+//   unsicher          abgeschlossen, aber nur teilweise geprüft               Abdeckung lückenhaft
+//   nicht_verfuegbar  kein Modell / Datenschutz / Anmeldung / nicht erreichbar failed + Ursache
+//   fehlgeschlagen    jeder andere Abbruch                                     failed
+//   ueberholt         der Nachweis gilt einem früheren Stand                   ueberholt (vorrangig)
+//
+// OHNE AUSKUNFT, OB ER LÄUFT (`laeuft` fehlt, z. B. außerhalb des Bretts), bleibt ein
+// eingereihter Job beim bisherigen Satz „läuft" — so steht es seit WP-SUBMIT-ASYNC im Produkt.
+// Ein fehlender Konfliktbefund macht aus „geprüft" kein „konfliktfrei": das Kennzeichen sagt nur,
+// dass die Prüfung abgeschlossen ist.
+export type KiPruefzustand =
+  | "ausstehend"
+  | "laeuft"
+  | "geprueft"
+  | "konflikt"
+  | "unsicher"
+  | "nicht_verfuegbar"
+  | "fehlgeschlagen"
+  | "ueberholt";
+
+/** Die Ursachen, bei denen die KI für diese Prüfung gar nicht zur Verfügung stand. */
+const KI_NICHT_VERFUEGBAR: ReadonlySet<string> = new Set([
+  "no-model",
+  "confidential",
+  "privacy-no-cloud",
+  "auth",
+  "unreachable",
+]);
+
+export function kiPruefzustand(
+  aiCheck: KnowledgeObject["aiCheck"] | null | undefined,
+): KiPruefzustand | null {
+  if (!aiCheck) {
+    return null;
+  }
+  if (aiCheck.ueberholt && aiCheck.status !== "pending") {
+    return "ueberholt";
+  }
+  if (aiCheck.status === "pending") {
+    return aiCheck.laeuft === false ? "ausstehend" : "laeuft";
+  }
+  if (aiCheck.status === "done") {
+    if (aiCheck.konfliktGefunden === true) {
+      return "konflikt";
+    }
+    return aiCheckCoverageNote(aiCheck.coverage) ? "unsicher" : "geprueft";
+  }
+  return KI_NICHT_VERFUEGBAR.has(aiCheck.fallbackReason ?? "")
+    ? "nicht_verfuegbar"
+    : "fehlgeschlagen";
 }

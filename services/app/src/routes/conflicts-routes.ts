@@ -65,7 +65,9 @@ function lageAus(aiCheck: AiCheck | undefined): DeckungsLage {
   if (!aiCheck) {
     return "kein_lauf";
   }
-  if (aiCheck.status !== "done") {
+  // AUFNAHME 20260922 · Prüfbasis-Aktualität: ein überholter Nachweis belegt den jetzigen Stand
+  // nicht — dieselbe Rangfolge wie aiCheckCoverageSummary (Driftwächter F8).
+  if (aiCheck.status !== "done" || aiCheck.ueberholt) {
     return "unvollstaendig";
   }
   if (!aiCheck.coverage) {

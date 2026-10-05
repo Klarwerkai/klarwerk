@@ -14,11 +14,13 @@ import {
 import {
   type AnswerResult,
   DEFAULT_TOP_K,
+  KiAbgeschaltetFehler,
   type KnowledgeRef,
   type Reasoner,
   type ReasonerLocale,
   type Relevanztext,
   type ZuordnungsPaar,
+  decktAlleFragebegriffe,
   queryTokens,
   waehleKandidaten,
 } from "../../reasoner";
@@ -342,7 +344,47 @@ export interface AskServiceDeps {
    * frisch und wird hier angewandt.
    */
   answerSnapshots?: AnswerSnapshotRepo;
+  /**
+   * D5: die administrative KI-Abschaltung des Fragewegs — gelesen bei JEDEM Schritt, nie gemerkt.
+   *
+   * Die Kompositionswurzel bindet sie an `Reasoner.kiAbschaltung()` (gespeicherte Adminwahl
+   * `deterministic` für `answer`). Ist sie gesetzt und meldet `abgeschaltet`, endet eine Frage mit
+   * `AskError("KI_ABGESCHALTET")` — und zwar VOR dem nächsten Schritt, der Kundeninhalt liest
+   * (Vorauswahl, Suchprojektion) oder an den Antwortweg übergibt. Eine schon laufende Frage, die
+   * zwischen zwei Schritten auf die Abschaltung trifft, wird dort angehalten; sie holt nichts nach.
+   *
+   * Der deterministische Antwortweg ist ausdrücklich eingeschlossen: auch er liest und verarbeitet
+   * Kundeninhalt im Namen des Assistenten. Menschliche Lesewege (Bibliothek, Original) laufen nicht
+   * über diesen Dienst und bleiben unberührt.
+   *
+   * OPTIONAL aus demselben Grund wie `answerSnapshots`: fremde Aufbauten (Tests) bleiben
+   * unverändert. Die eine Kompositionswurzel (`build-app.ts`) setzt sie immer.
+   */
+  kiSperre?: AskKiSperre;
 }
+
+/** D5: die schmale Sicht auf den Abschaltzustand — mehr braucht der Frageweg nicht zu kennen. */
+export interface AskKiSperre {
+  abgeschaltet(): boolean;
+  /**
+   * Die Abschalt-Epoche (`Reasoner.kiAbschaltStand`): sie steigt mit JEDER gespeicherten Abschaltung.
+   * Eine Frage hält sie zu Beginn fest; weicht sie später ab, wurde während der Frage abgeschaltet —
+   * dann bleibt die Frage entwertet, auch wenn inzwischen wieder eingeschaltet ist.
+   */
+  stand(): number;
+}
+
+/**
+ * D5: die benannten Schritte, vor denen die Sperre erneut gelesen wird. Sie stehen im Fehlertext
+ * (nicht im Antwortkörper), damit ein Protokoll zeigt, WO eine laufende Frage angehalten wurde.
+ */
+type AskKiSchritt =
+  | "diensteinstieg"
+  | "vorauswahl"
+  | "suchprojektion"
+  | "antwortweg"
+  | "ergebnis"
+  | "auslieferung";
 
 export interface AskResult {
   // WP-RETEST7 R5: + captionSources — Quellen, deren Treffer NUR über die Bild-Fußnoten zustande
@@ -543,6 +585,8 @@ export class AskService {
   private readonly withTx: WithTx | undefined;
   /** W3-C1: der Beleg-Schreibweg. `undefined` heisst: dieser Aufbau schreibt keine Snapshots. */
   private readonly answerSnapshots: AnswerSnapshotRepo | undefined;
+  /** D5: die administrative KI-Abschaltung (s. `AskServiceDeps.kiSperre`). */
+  private readonly kiSperre: AskKiSperre | undefined;
   // FUNKE-FIX2 P0 (bens ROT-1, Blocker 1): serialisiert die gekoppelten „Danke"-Schreibvorgänge (die
   // Audit-Kette ist per Konstruktion ein Single-Writer — ihre seq/prevHash bilden eine Totalordnung).
   // Ohne diese Serialisierung würden zwei gleichzeitige Danke VERSCHIEDENER Nutzer (verschiedene
@@ -563,6 +607,82 @@ export class AskService {
     this.receiptSecret = deps.receiptSecret ?? randomBytes(32);
     this.withTx = deps.withTx;
     this.answerSnapshots = deps.answerSnapshots;
+    this.kiSperre = deps.kiSperre;
+  }
+
+  /**
+   * D5: vor jedem Schritt, der Kundeninhalt liest oder an den Antwortweg übergibt, die Abschaltung
+   * FRISCH lesen. Wirft `KI_ABGESCHALTET`; der Schritt findet dann nicht statt.
+   */
+  private pruefeKiSperre(schritt: AskKiSchritt, beginn: number | undefined): void {
+    const sperre = this.kiSperre;
+    if (!sperre) {
+      return;
+    }
+    // Zwei Bedingungen, beide nötig: JETZT abgeschaltet — oder SEIT BEGINN dieser Frage abgeschaltet
+    // worden (Epoche verschoben), auch wenn inzwischen wieder eingeschaltet ist. Die zweite ist Bens
+    // Befund aus Runde 2: eine angehaltene alte Frage las nach Aus- und Wiedereinschalten weiter.
+    if (sperre.abgeschaltet() || (beginn !== undefined && sperre.stand() !== beginn)) {
+      throw new AskError(
+        "KI_ABGESCHALTET",
+        `Der Administrator hat die KI abgeschaltet — die Frage wurde vor dem Schritt „${schritt}" angehalten.`,
+      );
+    }
+  }
+
+  /**
+   * D5: die Abschalt-Epoche, die ein Aufrufer beim Beginn einer Frage festhält (`AskKiSperre.stand`).
+   * `undefined`, wenn dieser Aufbau keine Sperre trägt.
+   */
+  kiStand(): number | undefined {
+    return this.kiSperre?.stand();
+  }
+
+  /**
+   * D5 (Lauf 5 Runde 2, Bens B1): für die Route — nach ihrem letzten Warten VOR dem Dienst (Anmeldung,
+   * Klara-Einwilligung) gegen die beim EINGANG der Anfrage festgehaltene Epoche. Unmittelbar danach,
+   * ohne `await` dazwischen, ruft die Route `ask`; dessen eigene Epoche ist damit dieselbe.
+   */
+  kiSperreVorFrage(beginn: number | undefined): void {
+    this.pruefeKiSperre("diensteinstieg", beginn);
+  }
+
+  /**
+   * D5: für die Route — nach der Antwort und VOR dem Nachlesen der Quellobjekte für die Einstufung
+   * (`evidenceFor`, ask-routes.ts). Wirft `KI_ABGESCHALTET` wie jeder andere Prüfpunkt.
+   */
+  kiSperreVorAuslieferung(beginn: number | undefined): void {
+    this.pruefeKiSperre("auslieferung", beginn);
+  }
+
+  /**
+   * D5: die Suchprojektion eines Kandidaten — mit Sperre vor BEIDEN Lesevorgängen, die darin
+   * stecken (Objekt, dann Projektion; `KoService.searchProjectionUnterKiSperre`). Ohne Sperre
+   * (fremde Aufbauten) unverändert `searchProjectionOf`.
+   */
+  private suchprojektion(id: string, schritt: AskKiSchritt, beginn: number | undefined) {
+    return this.kiSperre
+      ? this.koService.searchProjectionUnterKiSperre(id, () => this.pruefeKiSperre(schritt, beginn))
+      : this.koService.searchProjectionOf(id);
+  }
+
+  /**
+   * D5: der Antwortweg prüft die Abschaltung selbst noch einmal — unmittelbar vor der Übertragung
+   * an ein Modell, nach jedem Warten auf einen freien Modellplatz (`Reasoner.runTask`). Scheitert
+   * er daran, ist das dieselbe Abschaltung und wird dieselbe Auskunft.
+   */
+  private async mitUebertragungssperre<T>(lauf: () => Promise<T>): Promise<T> {
+    try {
+      return await lauf();
+    } catch (fehler) {
+      if (fehler instanceof KiAbgeschaltetFehler) {
+        throw new AskError(
+          "KI_ABGESCHALTET",
+          "Der Administrator hat die KI abgeschaltet — die Frage wurde vor der Übertragung an das Modell angehalten.",
+        );
+      }
+      throw fehler;
+    }
   }
 
   // FUNKE-FIX2 P0 (bens ROT-1, Blocker 1): serialisiert fn hinter der `helpfulChain` (ein Vorgänger-
@@ -583,14 +703,27 @@ export class AskService {
   //
   // Die Sicherheitsgrenzen bleiben unberührt: `validatedOnly` und `dropConfidential` greifen
   // unverändert NACH dieser Vorauswahl, ebenso die Endauswahl `selectCandidates` (Top-K).
-  private async prefilterCandidates(terms: readonly string[]): Promise<KnowledgeObject[]> {
+  private async prefilterCandidates(
+    terms: readonly string[],
+    kiBeginn: number | undefined,
+  ): Promise<KnowledgeObject[]> {
     const genutzteTerme = terms.slice(0, ASK_PREFILTER_MAX_TERMS);
     if (genutzteTerme.length === 0) {
       return [];
     }
     const trefferlisten = await Promise.all(
       genutzteTerme.map((term) =>
-        this.koService.findCandidates({ terms: [term], limit: ASK_PREFILTER_TERM_LIMIT }),
+        this.koService.findCandidates({
+          terms: [term],
+          limit: ASK_PREFILTER_TERM_LIMIT,
+          // AUFNAHME 20260922 (R-0316): der Deckel je Begriff wächst mit dem Bestand (Regel an
+          // `bestandsgerechterKandidatendeckel`). Bis 5.000 Objekte bleibt er bei 50.
+          deckelWaechstMitBestand: true,
+          // D5: die Sperre reist mit bis vor jedes Lesen in Suche und Nachladen (s. KoService).
+          ...(this.kiSperre
+            ? { vorInhaltsabruf: () => this.pruefeKiSperre("vorauswahl", kiBeginn) }
+            : {}),
+        }),
       ),
     );
     const gesammelt = new Map<
@@ -608,9 +741,17 @@ export class AskService {
         gesammelt.set(kandidat.id, { ko: kandidat, termTreffer: 1, besterRang: rang });
       });
     }
+    // AUFNAHME 20260922 (R-0316): eine vollständige Einzelliste wird von der Vereinigung nie
+    // gekürzt. Ist der Deckel je Begriff über 200 gewachsen, stünde die Kürzung sonst wieder in
+    // der Ausgabeordnung (validiert ↓, Trust ↓) — und nähme genau den Titeltreffer mit niedrigem
+    // Trust weg, den die Güteauswahl im Deckel eben hereingeholt hat.
+    const gesamtDeckel = Math.max(
+      ASK_CANDIDATE_PREFILTER_LIMIT,
+      ...trefferlisten.map((liste) => liste.length),
+    );
     return [...gesammelt.values()]
       .sort((a, b) => b.termTreffer - a.termTreffer || a.besterRang - b.besterRang)
-      .slice(0, ASK_CANDIDATE_PREFILTER_LIMIT)
+      .slice(0, gesamtDeckel)
       .map((eintrag) => eintrag.ko);
   }
 
@@ -664,8 +805,17 @@ export class AskService {
        * Vorauswahl. Ohne das Feld ist der Ablauf Zeile für Zeile der bisherige.
        */
       selection?: string;
+      /**
+       * F-0295 / R-0639: die Route hat die EIGENE Deckungsprüfung des Dokumenttexts bestanden
+       * (`dokumenttextFreigabe` in `services/app/src/routes/ask-routes.ts`). Nur dann — und nur auf
+       * dem Modellweg, nie mit `retrievalOnly` — geht `selection` als benannter Dokumenttext an
+       * `Reasoner.answer`. Kein Rumpffeld: gesetzt wird es ausschliesslich von der Route.
+       */
+      dokumenttextFreigegeben?: boolean;
     },
   ): Promise<AskResult> {
+    // D5: die Abschalt-Epoche beim Beginn DIESER Frage — jede Prüfung unten vergleicht mit ihr.
+    const kiBeginn = this.kiSperre?.stand();
     // JOB 541 D4: Die Absicht wird EINMAL aufgeloest, gleich hier — und danach getrennt gefuehrt:
     //   `aufrufer`  ist der Vertrag und die EINZIGE Quelle des Eigentums.
     //   `actorId`   ist die Beschriftung fuer Protokoll, Beleg und Wissensluecke.
@@ -713,7 +863,9 @@ export class AskService {
     const eingabeterme = erweiterteSuchterme(frageterme, opts?.selection);
     const relevanz = zugeordneteSuchterme(eingabeterme);
     const suchterme = [...eingabeterme, ...relevanz.flatMap((paar) => [...paar.ergaenzt])];
-    const prefilteredRaw = await this.prefilterCandidates(suchterme);
+    // D5: bis hierher wurde nur die Frage selbst zerlegt — ab der nächsten Zeile wird Bestand gelesen.
+    this.pruefeKiSperre("vorauswahl", kiBeginn);
+    const prefilteredRaw = await this.prefilterCandidates(suchterme, kiBeginn);
     // SCRUM-490 D2: Der Add-on-Principal (ask.validated) darf nie aus unvalidierten Inhalten antworten
     // — hier fallen alle nicht-„validiert"en Kandidaten weg, bevor der Reasoner sie sieht.
     // SCRUM-502: vertrauliche KOs gehen NIE in einen externen Kontext — hier upstream entfernt, damit sie
@@ -747,6 +899,8 @@ export class AskService {
             .map((ko) => ({ id: ko.id, title: ko.title, status: ko.status })),
         }
       : {};
+    // D5: die Suchprojektion trägt den Dokumenttext — ein weiterer inhaltlesender Schritt.
+    this.pruefeKiSperre("suchprojektion", kiBeginn);
     const refs: KnowledgeRef[] = await Promise.all(
       prefiltered.map(async (ko) => {
         // JOB 2614 D3 (G27-Anschluss, JOB 1565 Weg A): der DOKUMENTTEXT reist in die Refs — aus der
@@ -758,7 +912,7 @@ export class AskService {
         // `body_text`. Sichtbarkeitsregeln unverändert: dropConfidential/validatedOnly liefen
         // bereits davor, und die Projektion einer hier noch enthaltenen Quelle ist dieselbe
         // Wahrheit, die auch der Kandidatenweg (`findCandidates`) gelesen hat.
-        const projektion = await this.koService.searchProjectionOf(ko.id);
+        const projektion = await this.suchprojektion(ko.id, "suchprojektion", kiBeginn);
         return {
           id: ko.id,
           title: ko.title,
@@ -786,7 +940,30 @@ export class AskService {
     // trifft, überlebt damit beide oder keines, aber nie nur das erste.
     // JOB 3353: `waehleKandidaten` IST `selectCandidates` plus die Zwillingsregel — dieselbe
     // Funktion, die Tor 2 ruft (Begründung und Grenzen dort, `reasoner/src/provider-model.ts`).
-    const candidates = waehleKandidaten(question, refs, DEFAULT_TOP_K, relevanz);
+    // R-0473 (K8): MEHRERE BEGRIFFE MÜSSEN ALLE VORKOMMEN. Die Vorauswahl bleibt term-weise ODER
+    // (sonst fände der Deckel nichts mehr), aber eine Quelle, der ein gebundener Fragebegriff fehlt,
+    // erreicht weder Tor 1 noch Tor 2. Eine deklarierte Entsprechung zählt als derselbe Begriff.
+    // Welche Begriffe gebunden sind und warum nicht jedes Token: `undVerknuepfteFragebegriffe`.
+    // Gebunden wird nur die FRAGE — die Markierung ergänzt die Suche, sie verschärft sie nicht.
+    // Geprüft wird auf DENSELBEN Feldern, die die Suche trifft — Kategorie und Tags eingeschlossen,
+    // die `KnowledgeRef` nicht führt; sie kommen deshalb aus `prefiltered`.
+    const ordnung = new Map<string, string[]>(
+      prefiltered.map((ko): [string, string[]] => [ko.id, [ko.category, ...(ko.tags ?? [])]]),
+    );
+    const vollstaendig = refs.filter((ref) =>
+      decktAlleFragebegriffe(
+        question,
+        [
+          ref.title,
+          ref.statement,
+          ...(ref.captionTexts ?? []),
+          ref.bodyText ?? "",
+          ...(ordnung.get(ref.id) ?? []),
+        ].join(" "),
+        relevanz,
+      ),
+    );
+    const candidates = waehleKandidaten(question, vollstaendig, DEFAULT_TOP_K, relevanz);
     // SCRUM-490 R2 (B1): Add-on-Pfad → RETRIEVAL-ONLY (kein Modell-/Embedder-Egress des Dokumenttexts).
     // Sonst der übliche Reasoner-Weg (Session-Pfad unverändert).
     // AUFTRAG-mega61 BLOCK G — DAS ZWEITE NETZ, AUS DEM KONTEXT ABGELEITET.
@@ -802,25 +979,39 @@ export class AskService {
     // Auf `prefilteredRaw` abzuleiten wäre falsch: dann würde eine Frage, die zufällig ein
     // vertrauliches Objekt streift, ihre Antwort verlieren, obwohl das Objekt längst entfernt ist.
     const kontextVertraulich = prefiltered.some((ko) => isConfidential(ko.confidentiality));
-    const rawResult = opts?.retrievalOnly
-      ? // JOB 3049: TOR 2, Weg des Add-ins — derselbe Relevanztext wie an Tor 1. Ohne ihn hier
-        // wäre genau der Klara-Weg der eine, der die Zusage nicht einlöst.
-        await this.reasoner.answerRetrievalOnly(question, candidates, locale, relevanz)
-      : await this.reasoner.answer(
-          question,
-          candidates,
-          locale,
-          kontextVertraulich,
-          {
-            // mega61 Block G: der Handelnde am Protokolleintrag. Kein Gegenstand — bei einer Antwort
-            // ist er eine Trefferliste und kein einzelnes Objekt (dieselbe Begründung, die in
-            // reasoner-routes.ts schon steht).
-            actor: actorId,
-          },
-          // JOB 3049: TOR 2, üblicher Weg. Der Relevanztext geht an die Kandidatenauswahl des
-          // Providers — NICHT in den Modellprompt; der baut unverändert auf `question` auf.
-          relevanz,
-        );
+    // F-0295 / R-0639: der markierte Dokumenttext — nur mit bestandener eigener Deckungsprüfung.
+    const dokumenttext =
+      opts?.dokumenttextFreigegeben === true && opts.selection?.trim()
+        ? opts.selection.trim()
+        : undefined;
+    // D5: die gelesenen Kandidaten gehen gleich an den Antwortweg (Modell oder deterministischer
+    // Ersatz). Wurde inzwischen abgeschaltet, verlassen sie diesen Dienst nicht.
+    this.pruefeKiSperre("antwortweg", kiBeginn);
+    const rawResult = await this.mitUebertragungssperre(() =>
+      opts?.retrievalOnly
+        ? // JOB 3049: TOR 2, Weg des Add-ins — derselbe Relevanztext wie an Tor 1. Ohne ihn hier
+          // wäre genau der Klara-Weg der eine, der die Zusage nicht einlöst.
+          this.reasoner.answerRetrievalOnly(question, candidates, locale, relevanz)
+        : this.reasoner.answer(
+            question,
+            candidates,
+            locale,
+            kontextVertraulich,
+            {
+              // mega61 Block G: der Handelnde am Protokolleintrag. Kein Gegenstand — bei einer
+              // Antwort ist er eine Trefferliste und kein einzelnes Objekt (dieselbe Begründung,
+              // die in reasoner-routes.ts schon steht).
+              actor: actorId,
+            },
+            // JOB 3049: TOR 2, üblicher Weg. Der Relevanztext geht an die Kandidatenauswahl des
+            // Providers — NICHT in den Modellprompt; der baut unverändert auf `question` auf.
+            relevanz,
+            dokumenttext,
+          ),
+    );
+    // D5: danach werden Beleg, Wissenslücke und (in der Route) die Quellobjekte der Einstufung
+    // geschrieben bzw. gelesen. Ist inzwischen abgeschaltet, wird nichts davon mehr ausgeliefert.
+    this.pruefeKiSperre("ergebnis", kiBeginn);
     // SCRUM-490 R2 (A2): Quellenpflicht — ein „Treffer" ohne echte Quelle ist KEIN belegter Treffer.
     // answered=true mit leeren sources → als ehrliche Leer-Antwort behandeln (nie eine Quelle vortäuschen).
     // mega52 A3: wird der Treffer hier zur ehrlichen Leer-Antwort herabgestuft, fällt auch die
@@ -875,7 +1066,7 @@ export class AskService {
                 dropConfidential(prefilteredRaw)
                   .filter((ko) => verschlossenSicht(ko))
                   .map(async (ko) => {
-                    const projektion = await this.koService.searchProjectionOf(ko.id);
+                    const projektion = await this.suchprojektion(ko.id, "ergebnis", kiBeginn);
                     return {
                       id: ko.id,
                       title: ko.title,
@@ -908,7 +1099,9 @@ export class AskService {
     // W3-C1 (Auftrag 76): der Beleg entsteht GENAU HIER — nach der Antwort, aus derselben
     // Ausfuehrung, vor jeder Verzweigung. So traegt jeder der drei Rueckgabewege dieselbe
     // Identitaet, und keiner kann sie stillschweigend verlieren.
-    const answerId = await this.schreibeAntwortbeleg(result, prefiltered, aufrufer);
+    // D5: nach dem Warten auf die Volltext-Blicke oben — vor dem Beleg, der die Antwort ablegt.
+    this.pruefeKiSperre("ergebnis", kiBeginn);
+    const answerId = await this.schreibeAntwortbeleg(result, prefiltered, aufrufer, kiBeginn);
     // FR-ANA-02 / SCRUM-361: Telemetrie nachvollziehbar + ehrlich — Prefilter-/Kandidatengröße,
     // Top-K und der Retrieval-Modus (kein Inhaltstext, keine Frage im Audit).
     await this.audit?.record({
@@ -949,7 +1142,11 @@ export class AskService {
       // GAP-SPRACHHERKUNFT: `locale` steuert schon die Antwortsprache des Reasoners und liegt hier
       // ohnehin vor — es ging bisher nur verloren. Mitgegeben, damit die Oberfläche einen
       // fremdsprachigen Lückentitel erklären kann, statt ihn wie einen Fehler aussehen zu lassen.
-      const gap = await this.createGap(question, actorId, opts?.demoSeed, locale);
+      // D5: nach Beleg und Protokoll — vor der Lückensuche, die den Lückenbestand liest.
+      this.pruefeKiSperre("ergebnis", kiBeginn);
+      const gap = await this.createGap(question, actorId, opts?.demoSeed, locale, () =>
+        this.pruefeKiSperre("ergebnis", kiBeginn),
+      );
       return { result, answerId, gap, receipt, ...ungeprueftFeld, ...verschlossenFeld };
     }
     return { result, answerId, gap: null, receipt, ...ungeprueftFeld, ...verschlossenFeld };
@@ -983,6 +1180,7 @@ export class AskService {
     // JOB 541 D4: Hier kam bis D3 eine Zeichenkette an, und der Schreibweg entschied SELBST, ob sie
     // ein Konto meint. Jetzt kommt die Entscheidung fertig an — der Schreibweg trifft sie nicht mehr.
     aufrufer: AskCaller,
+    kiBeginn: number | undefined,
   ): Promise<string | null> {
     const repo = this.answerSnapshots;
     if (!repo) {
@@ -1107,8 +1305,18 @@ export class AskService {
         // nichts mehr — sie schreibt nieder.
         owner: aufrufer,
       });
-      await repo.appendSnapshot(snapshot);
-    } catch {
+      // D5 (Runde 3, Bens Befund): zwischen den beiden Schreibaufrufen liegt ein Warten. Wurde
+      // inzwischen abgeschaltet, wird der Beleg nicht fortgeschrieben.
+      this.pruefeKiSperre("ergebnis", kiBeginn);
+      // D5 (Lauf 3 Runde 2, Bens Befund): die Sperre reist in die Ablage — in PostgreSQL liegen
+      // darin vier Anweisungen mit Wartepunkten dazwischen.
+      await repo.appendSnapshot(snapshot, () => this.pruefeKiSperre("ergebnis", kiBeginn));
+    } catch (fehler) {
+      // Die Abschaltung ist KEIN Ablagefehler: sie wird durchgereicht, nicht zu „kein Beleg"
+      // verschluckt — sonst ginge die Antwort trotz Abschaltung hinaus.
+      if (fehler instanceof AskError && fehler.code === "KI_ABGESCHALTET") {
+        throw fehler;
+      }
       return null;
     }
     return answerId;
@@ -1240,6 +1448,8 @@ export class AskService {
     createdBy: string,
     demoSeed?: boolean,
     locale?: ReasonerLocale,
+    // D5: die Sperre des Fragewegs — bis vor jede Anweisung der Lückenablage (`insertOrIncrement`).
+    vorInhaltsabruf?: () => void,
   ): Promise<Gap> {
     // JOB 1111 / D-032: der Vergleichsschlüssel entsteht HIER, aus demselben Text, der gespeichert
     // wird — nicht aus dem Rohtext. So können Text und Schlüssel niemals auseinanderlaufen.
@@ -1272,8 +1482,12 @@ export class AskService {
     // Eine Ablage ohne diesen Weg führt nicht zusammen und legt wie bisher an. Das betrifft keine
     // Betriebsablage, sondern nur speicherlose Testattrappen (Begründung am Interface in `repo.ts`).
     const { gap: gespeichert, created } = this.gaps.insertOrIncrement
-      ? await this.gaps.insertOrIncrement(gap)
-      : await this.gaps.insert(gap).then(() => ({ gap, created: true }));
+      ? await this.gaps.insertOrIncrement(gap, vorInhaltsabruf)
+      : await (async () => {
+          vorInhaltsabruf?.();
+          await this.gaps.insert(gap);
+          return { gap, created: true };
+        })();
     if (created) {
       await this.audit?.record({ actor: "system", action: "gap.created", target: gespeichert.id });
     }

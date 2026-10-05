@@ -425,7 +425,7 @@ describe("JOB 4323 · Kalibrierung: zehn Verstellungen, die den Nachweis rot mac
   async function deutscherMenueweg(seite: Seite): Promise<void> {
     await menuewegOhneMaus(
       seite,
-      sprachbestand("de")["menue.weitereBereiche"] ?? "",
+      sprachbestand("de")["fe002.arbeitsbereiche"] ?? "",
       sprachbestand("de")["ga.bereich.titel"] ?? "",
       "de",
     );
@@ -515,7 +515,7 @@ describe("JOB 4323 · Kalibrierung: zehn Verstellungen, die den Nachweis rot mac
       );
       await menuewegOhneMaus(
         profil.seite,
-        sprachbestand("en")["menue.weitereBereiche"] ?? "",
+        sprachbestand("en")["fe002.arbeitsbereiche"] ?? "",
         sprachbestand("en")["ga.bereich.titel"] ?? "",
         "en",
       );

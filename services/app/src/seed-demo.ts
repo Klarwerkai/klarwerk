@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import type { AskService } from "../../ask";
+import { AskError, type AskService } from "../../ask";
 import type { AuthService } from "../../auth";
 import {
   type ConflictService,
@@ -718,8 +718,17 @@ async function buildDemoContent(
   // echte Wissenslücke statt Antwort; danach Priorität wie bisher auf „hoch". ---
   // demoSeed:true markiert die erzeugte Lücke mit stabiler Herkunft → der Purge entfernt sie gezielt
   // über das Flag (kein fragiler Frage-Präfix-Abgleich mehr).
-  const asked = await ask.ask(t.gapQuestion, adminId, "de", { demoSeed: true });
-  if (asked.gap) {
+  // D5: hat der Administrator die KI abgeschaltet, stellt auch das Beispielpaket keine Frage —
+  // die Beispiel-Wissenslücke entfällt dann, der übrige Bestand wird wie immer angelegt.
+  const asked = await ask
+    .ask(t.gapQuestion, adminId, "de", { demoSeed: true })
+    .catch((fehler: unknown) => {
+      if (fehler instanceof AskError && fehler.code === "KI_ABGESCHALTET") {
+        return null;
+      }
+      throw fehler;
+    });
+  if (asked?.gap) {
     await ask.setGapPriority(asked.gap.id, "hoch");
   }
 

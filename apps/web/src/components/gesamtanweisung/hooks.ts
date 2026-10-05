@@ -13,7 +13,7 @@
 // Oberfläche würde dann grundlos scheitern, obwohl sie den neuen Stand längst hätte holen können.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { endpoints } from "../../api/endpoints";
-import type { Anweisung } from "../../api/types";
+import type { Anweisung, AnweisungKopfEingabe } from "../../api/types";
 
 /** Der Schlüsselstamm dieses Bereichs. Eine Stelle, damit kein Aufruf danebengreift. */
 export function anweisungSchluessel(id: string): readonly unknown[] {
@@ -171,11 +171,22 @@ function useAnweisungsMutation<TEingabe>(
   });
 }
 
-// KEIN `useKopfAendern`: Titel, Zweck, Geltungsbereich und Voraussetzungen der Anweisung werden in
-// DIESER Lieferung beim Anlegen gesetzt; ihre Bearbeitung steht nicht in den Pflichtlieferungen
-// (Auftrag 5.5 nennt Aufnahme, Reihenfolge/Voraussetzungen, Lesestand, Vergleich, Vorlage). Der
-// Endpunkt `updateKopf` ist im Drahtkatalog vorhanden und getestet (F8) — ein Hook ohne Bedienung
-// wäre genau der Baustein, der gebaut wird und nie gerufen (`tests/capture/aufrufer-waechter`).
+/**
+ * FE-001 · Titel, Zweck, Geltungsbereich und Voraussetzungen der Anleitung ändern.
+ *
+ * Bis FE-001 stand hier ausdrücklich KEIN solcher Hook, weil es keine Bedienung dafür gab. Die gibt
+ * es jetzt (`KopfBearbeitung.tsx`): ein neuer Mensch soll den Zweck vor den Abschnitten beschreiben
+ * können. Gerufen wird der vorhandene Endpunkt `updateKopf` — bedingt auf die gelesene Version wie
+ * jeder andere Schreibweg dieses Bereichs, kein eigener Weg daneben.
+ */
+export function useKopfAendern(id: string | null) {
+  return useAnweisungsMutation(
+    id,
+    ({ version, kopf }: { version: number; kopf: AnweisungKopfEingabe }) =>
+      endpoints.gesamtanweisung.updateKopf(id ?? "", version, kopf),
+  );
+}
+
 export function useBausteinAufnehmen(id: string | null) {
   return useAnweisungsMutation(
     id,
@@ -217,6 +228,22 @@ export function useVoraussetzungSetzen(id: string | null) {
 export function useVorlegen(id: string | null) {
   return useAnweisungsMutation(id, ({ version }: { version: number }) =>
     endpoints.gesamtanweisung.vorlegen(id ?? "", version),
+  );
+}
+
+/**
+ * QUELLENÄNDERUNGEN · die neuere Fassung eines Abschnitts bewusst übernehmen. Derselbe Weg wie jede
+ * andere Mutation: bedingt auf die gelesene Version, danach Lesestand und Bestand neu.
+ */
+export function useFassungUebernehmen(id: string | null) {
+  return useAnweisungsMutation(
+    id,
+    ({
+      version,
+      bausteinId,
+      aufVersion,
+    }: { version: number; bausteinId: string; aufVersion: number }) =>
+      endpoints.gesamtanweisung.uebernehmen(id ?? "", version, bausteinId, aufVersion),
   );
 }
 

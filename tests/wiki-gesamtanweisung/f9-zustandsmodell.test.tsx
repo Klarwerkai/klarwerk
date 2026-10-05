@@ -106,7 +106,7 @@ describe("F9 · das Zustandsmodell — je Aussage ein Fall", () => {
     );
     expect(lage.art).toBe("leer");
     const markup = lesestandMarkup(lage, leer);
-    expect(markup).toContain("Diese Anweisung hat noch keine Bausteine.");
+    expect(markup).toContain("Diese Arbeitsanleitung hat noch keine Abschnitte.");
     expect(markup).not.toContain("vollständig");
     expect(markup).not.toContain("unverändert");
     expect(markup).not.toContain("geprüft");
@@ -198,6 +198,7 @@ describe("F9 · das Zustandsmodell — je Aussage ein Fall", () => {
         stand: "vorgelegt",
         sperre,
         darfEntscheiden: true,
+        darfVorlegen: true,
         vorlegen: () => {},
         entscheiden: () => {},
         fehlerSatz: null,
@@ -230,8 +231,8 @@ describe("F9 · das Zustandsmodell — je Aussage ein Fall", () => {
       lesestandLeer,
     );
     const markup = lesestandMarkup(lage, beschnitten);
-    expect(markup).toContain("Teile dieser Anweisung sind für Sie nicht zugänglich.");
-    expect(markup).toContain("Nicht zugängliche Bausteine: 2");
+    expect(markup).toContain("Teile dieser Arbeitsanleitung sind für dich nicht zugänglich.");
+    expect(markup).toContain("Nicht zugängliche Abschnitte: 2");
     expect(markup).not.toContain("vollständig");
   });
 

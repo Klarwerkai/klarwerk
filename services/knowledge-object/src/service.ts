@@ -52,6 +52,14 @@ import type { KoMetadataProjectionResult } from "./metadata-projection-repo";
 // JOB 557: das kanonische Eigentümer-Aggregat. Regeln, Rückfallentscheidung und Grenzen stehen in
 // ownership.ts — hier wird nur angewendet, nichts nachgebaut.
 import { normalizeOwnership, ownershipOf, sameOwnership, withRole } from "./ownership";
+// AUFNAHME 20260922: die Basisbindung des Prüfnachweises (Regel und Begründung dort).
+import {
+  bestandsStempelVon,
+  brauchtPruefstand,
+  istWissensobjekt,
+  mitPruefstand,
+  pruefbasisVon,
+} from "./pruefbasis";
 import type {
   EvidenceRepo,
   KoCandidateQuery,
@@ -68,6 +76,7 @@ import {
   type KoSearchProjection,
   type KoSearchQuery,
   SEARCH_PROJECTION_VERSION,
+  bestandsgerechterKandidatendeckel,
   buildSearchProjection,
   classificationFromVersionSnapshot,
   reconstructedClassification,
@@ -88,6 +97,7 @@ import { confirmedSourceAnchor } from "./source-anchor";
 // SCRUM-527 (WP2): Quell-URL-Allowlist an der Persistenzgrenze (nur absolute http/https).
 import { safeSourceUrl, sanitizeSources } from "./source-url";
 import {
+  type AiCheckBasis,
   type AiCheckCoverage,
   type AiCheckCoverageSummary,
   type Confidentiality,
@@ -305,6 +315,12 @@ export interface KoServiceDeps {
   onPurge?: (koId: string, actor: string) => Promise<void>;
   // SCRUM-523 P.3 (WP-A2): optionale echte DB-Transaktion für purgeKo (repo.delete + audit.record).
   withTx?: WithTx;
+  // Auftrag gesamt-dubletten-rueckzug (Runde 2, Bens BEN-R3-1): die Klammer des Rücknahme-Wegs
+  // (Rückzug und Wiederherstellen, `imRuecknahmeVorgang`), wenn es KEINE Datenbank-Transaktion gibt
+  // — InMemory und Dev-Journal. Die Kompositionswurzel baut sie aus Vorher-Abbildern und
+  // zurückgehaltenen Journalzeilen (services/app/src/speicher-vorgang.ts): scheitert ein Schritt,
+  // steht danach alles wie vorher. Nur für diesen Weg; `purgeKo` bleibt bei `withTx`.
+  ruecknahmeKlammer?: WithTx;
   // ============================================================================================
   // JOB 1104 (Scheibe S0-TX, aus JOB 1045 D4 §2.2) — DER ZWEITE, TRANSAKTIONSGEBUNDENE HAKEN.
   // ============================================================================================
@@ -410,6 +426,13 @@ export interface CreateKoInput {
   // setzt ihn; die öffentlichen Schreibrouten verwerfen das Feld wie `sources` (sonst könnte
   // ein Client die Crash-Recovery eines fremden Review-Claims kapern).
   importCandidateId?: string;
+  // R-0139 / FR-EXT-02: der Importweg (Begründung am Modell, types.ts). Nur die beiden Importwege
+  // setzen ihn; die öffentlichen Schreibrouten verwerfen das Feld wie `importCandidateId`.
+  importedVia?: KnowledgeObject["importedVia"];
+  // R-0169 (Nacharbeit 5): der Bezug auf die Fassung der internen Dokumentakte. Nur Serverpfade
+  // (Entwurfs-Promote aus dem Word-Zusatz, JSON-Import ohne externalId) setzen ihn; die
+  // öffentlichen Schreibrouten verwerfen das Feld wie `importedVia`.
+  dokumentHerkunft?: KnowledgeObject["dokumentHerkunft"];
   // JOB 557: das Eigentümer-Aggregat ab Erfassen — für SERVERPFADE (Import, Seed, interne Anlage),
   // die die Verantwortung schon kennen.
   //
@@ -691,6 +714,7 @@ export class KoService {
   private onPurgeTx: PurgeTxCleanup | undefined;
   // SCRUM-523 P.3 (WP-A2): s. Typ-Kommentar an WithTx oben.
   private readonly withTx: WithTx | undefined;
+  private readonly ruecknahmeKlammer: WithTx | undefined;
   // JOB 3071 R3: Frist und Fehlerkanal der Rücknahme-Vorablesung (s. KoServiceDeps).
   private readonly ruecknahmeFrist: number;
   private readonly onError: (context: string, error: unknown) => void;
@@ -711,6 +735,7 @@ export class KoService {
     this.onPurge = deps.onPurge;
     this.onPurgeTx = deps.onPurgeTx;
     this.withTx = deps.withTx;
+    this.ruecknahmeKlammer = deps.withTx ?? deps.ruecknahmeKlammer;
     this.now = deps.now ?? (() => Date.now());
     this.genId = deps.genId ?? (() => randomUUID());
     // Eine Frist, die keine ist (0, negativ, NaN, Infinity), wäre die stillschweigende Abschaltung
@@ -771,13 +796,14 @@ export class KoService {
       audit?: () => Promise<void>;
     },
   ): Promise<T> {
-    return this.withKoLock(id, async () => {
+    const value = await this.withKoLock(id, async () => {
       const ko = await this.require(id);
       const { updated, value, audit } = apply(ko);
       await audit?.();
       await this.repo.update(updated);
       return value;
     });
+    return this.lesefassungWert(value);
   }
 
   // SCRUM-507 R3: transaktionaler MEHRSCHRITT-Mutationspfad (persist + Snapshot + Audit + Status als EINE
@@ -826,6 +852,19 @@ export class KoService {
       snapshot?: { author: string; note: string };
       // JOB 2704 D1: der Audit-Schritt bekommt den Transaktionskontext, damit `audit.record(…, tx)`
       // auf demselben Client läuft wie die drei Schreiber davor. Ohne withTx ist er undefined.
+      audit?: (tx?: TxContext) => Promise<void>;
+    },
+  ): Promise<T> {
+    // AUFNAHME 20260922: das zurückgegebene Objekt trägt die Lesefassung des Prüfnachweises.
+    return this.lesefassungWert(await this.mutateKoTxRoh(id, build));
+  }
+
+  private async mutateKoTxRoh<T>(
+    id: string,
+    build: (ko: KnowledgeObject) => {
+      updated: KnowledgeObject;
+      value: T;
+      snapshot?: { author: string; note: string };
       audit?: (tx?: TxContext) => Promise<void>;
     },
   ): Promise<T> {
@@ -2061,6 +2100,10 @@ export class KoService {
       // WP-SHIP8-CLOSE-3/4 (bens ROT-1): stabiler Kandidaten-Anker des Import-Accepts (DB-unique
       // erzwungen — der Insert eines zweiten KO desselben Kandidaten scheitert am Index/Guard).
       ...(input.importCandidateId ? { importCandidateId: input.importCandidateId } : {}),
+      // R-0139 / FR-EXT-02: der Importweg — dieselbe Bauform, kein stiller Default.
+      ...(input.importedVia ? { importedVia: input.importedVia } : {}),
+      // R-0169 (Nacharbeit 5): der Fassungsbezug — dieselbe Bauform, kein stiller Default.
+      ...(input.dokumentHerkunft ? { dokumentHerkunft: input.dokumentHerkunft } : {}),
       // JOB 557: das Eigentümer-Aggregat nur setzen, wenn der Aufrufer eines MITBRINGT — dieselbe
       // Bauform wie `confidentiality` und `origin` daneben. KEIN stiller Default auf den Autor: ein
       // Objekt ohne benannte Verantwortung bleibt ein Objekt ohne benannte Verantwortung, und genau
@@ -2121,11 +2164,14 @@ export class KoService {
           "Vorgang ohne Eigentümer — die Erstanlage braucht den authentifizierten Anfragenden.",
         );
       }
-      return this.withKoLock(`create-op:${createOperationId}`, () =>
-        this.createLocked(input, createOperationId, {
-          actor,
-          fingerprint: operation.fingerprint,
-        }),
+      // Eine Wiederholung liefert das BESTEHENDE Objekt — samt Lesefassung seines Nachweises.
+      return this.lesefassung(
+        await this.withKoLock(`create-op:${createOperationId}`, () =>
+          this.createLocked(input, createOperationId, {
+            actor,
+            fingerprint: operation.fingerprint,
+          }),
+        ),
       );
     }
     return this.createPlain(input);
@@ -2341,8 +2387,10 @@ export class KoService {
     // Prozess nicht beide „noch nicht da" lesen und beide inserten. Prozessübergreifend fängt das
     // der Unique-Index — der zweite Insert kollidiert und wird unten ADOPTIERT statt dupliziert;
     // die prozessübergreifende SERIALISIERUNG selbst bleibt Nach-VIP-2 und ist hier nicht nötig.
-    return this.withKoLock(`create-op:${createOperationId}`, () =>
-      this.createWithDocumentsLocked(input, documents, anchorIds, createOperationId, requester),
+    return this.lesefassung(
+      await this.withKoLock(`create-op:${createOperationId}`, () =>
+        this.createWithDocumentsLocked(input, documents, anchorIds, createOperationId, requester),
+      ),
     );
   }
 
@@ -2746,10 +2794,11 @@ export class KoService {
     requester: CreateOperationRequester,
   ): Promise<KnowledgeObject | null> {
     const createOperationId = normalizeCreateOperationId(operationId);
-    return this.withKoLock(
+    const ko = await this.withKoLock(
       `create-op:${createOperationId}`,
       async () => (await this.adoptCreatedKo(createOperationId, requester)) ?? null,
     );
+    return ko ? this.lesefassung(ko) : null;
   }
 
   /**
@@ -2812,9 +2861,12 @@ export class KoService {
    * dort ist unverändert (failed + Ursache, Version gebunden, damit der bestehende Wiederhol-Weg
    * greift).
    */
+  // AUFNAHME 20260922: `basis` ist die Basis, unter der der (synchrone) Lauf gestartet ist. Fehlt sie,
+  // wird der jetzige Stand gebunden — derselbe Zeitpunkt, an dem auch `koVersion` gelesen wird.
   async recordAiCheckOutcome(
     id: string,
     outcome: { ok: boolean; fallbackReason?: string; coverage?: AiCheckCoverage },
+    basis?: AiCheckBasis,
   ): Promise<boolean> {
     const ko = await this.repo.findById(id);
     if (!ko || ko.deletedAt) {
@@ -2828,6 +2880,7 @@ export class KoService {
       ...(outcome.fallbackReason ? { fallbackReason: outcome.fallbackReason } : {}),
       ...(outcome.coverage ? { coverage: outcome.coverage } : {}),
       koVersion: ko.version,
+      basis: basis ?? (await this.aktuellePruefbasis(ko)),
     });
   }
 
@@ -3141,7 +3194,7 @@ export class KoService {
     if (ergebnis.geschrieben) {
       await this.audit?.record({ actor: author, action: "ko.commented", target: id });
     }
-    return ergebnis.ko;
+    return this.lesefassung(ergebnis.ko);
   }
 
   // ==============================================================================================
@@ -3233,7 +3286,8 @@ export class KoService {
       });
     }
     await this.audit?.record({ actor: author, action: "ko.attached", target: id });
-    return updated;
+    // AUFNAHME 20260922 (bens Befund Runde 2): die Antwort trägt dieselbe Lesefassung wie ein Reload.
+    return this.lesefassung(updated);
   }
 
   async removeAttachment(
@@ -3248,7 +3302,7 @@ export class KoService {
     };
     await this.repo.update(updated);
     await this.audit?.record({ actor, action: "ko.detached", target: id });
-    return updated;
+    return this.lesefassung(updated);
   }
 
   // SCRUM-129 / FR-KO-07: externe Quelle anfügen. Externe Quellen sind NIE peer-validiert.
@@ -3321,7 +3375,8 @@ export class KoService {
       createdAt: source.at,
     });
     await this.audit?.record({ actor: author, action: "ko.source-added", target: id });
-    return updated;
+    // AUFNAHME 20260922 (bens Befund Runde 2): die Antwort trägt dieselbe Lesefassung wie ein Reload.
+    return this.lesefassung(updated);
   }
 
   async removeSource(id: string, sourceId: string, actor: string): Promise<KnowledgeObject> {
@@ -3332,13 +3387,102 @@ export class KoService {
     };
     await this.repo.update(updated);
     await this.audit?.record({ actor, action: "ko.source-removed", target: id });
-    return updated;
+    return this.lesefassung(updated);
   }
 
   // SCRUM-422: getrashte KOs wirken überall gelöscht — get/list/findCandidates blenden sie aus.
-  async get(id: string): Promise<KnowledgeObject | undefined> {
+  // ==============================================================================================
+  // AUFNAHME 20260922 · PRÜFBASIS-AKTUALITÄT — Bestandsstempel und Lesefassung (pruefbasis.ts).
+  // ==============================================================================================
+  //
+  // Der Bestandsstempel (Vergleichsquellen samt Auswahlkontext) braucht den ganzen aktiven Bestand.
+  // Er wird deshalb am SCHREIBSTAND der Ablage gemerkt (JOB 2706 D1, `anhangSchreibstand`): solange
+  // der Stand gleich ist, hat niemand etwas am Bestand geschrieben, und der gemerkte Stempel gilt.
+  // Der Stand wird VOR dem Lesen des Bestands gelesen — ein Schreiben dazwischen erhöht ihn, und der
+  // nächste Leser rechnet neu. Die Prüf-Vermerke selbst (`setAiCheck`/`resolveAiCheck`) erhöhen
+  // den Stand nicht und gehen nicht in den Stempel ein. Ohne Schreibstand (fremde Ablage) wird
+  // jedes Mal gerechnet.
+  private bestandsMerker: { stand: string; stempel: string } | undefined;
+
+  //
+  // D5 (KI aus): `vorInhaltsabruf` ist die Sperre des Klara-Fragewegs (s. `findCandidates`, `get`).
+  // Der Stempel liest nach dem Objekt noch den Schreibstand und womöglich den GANZEN Bestand — beides
+  // nach einem Warten. Die Sperre steht deshalb vor beiden Lesevorgängen; ohne sie wie bisher.
+  async pruefbestandStempel(vorInhaltsabruf?: () => void): Promise<string> {
+    vorInhaltsabruf?.();
+    const stand = await this.repo.anhangSchreibstand?.();
+    if (stand !== undefined && this.bestandsMerker?.stand === stand) {
+      return this.bestandsMerker.stempel;
+    }
+    vorInhaltsabruf?.();
+    const stempel = bestandsStempelVon(await this.repo.list({}));
+    if (stand !== undefined) {
+      this.bestandsMerker = { stand, stempel };
+    }
+    return stempel;
+  }
+
+  /** Die Prüfbasis dieses Objekts gegen den jetzigen Bestand — die Bindung eines neuen Laufs. */
+  async aktuellePruefbasis(ko: KnowledgeObject): Promise<AiCheckBasis> {
+    return pruefbasisVon(ko, await this.pruefbestandStempel());
+  }
+
+  private async lesefassung(
+    ko: KnowledgeObject,
+    vorInhaltsabruf?: () => void,
+  ): Promise<KnowledgeObject> {
+    return brauchtPruefstand(ko)
+      ? mitPruefstand(ko, await this.pruefbestandStempel(vorInhaltsabruf))
+      : ko;
+  }
+
+  private async lesefassungen(
+    kos: KnowledgeObject[],
+    vorInhaltsabruf?: () => void,
+  ): Promise<KnowledgeObject[]> {
+    if (!kos.some(brauchtPruefstand)) {
+      return kos;
+    }
+    const stempel = await this.pruefbestandStempel(vorInhaltsabruf);
+    return kos.map((ko) => mitPruefstand(ko, stempel));
+  }
+
+  // Rückgabewerte der Mutationspfade: ist der Wert ein Wissensobjekt mit Prüfnachweis, bekommt er
+  // dieselbe Lesefassung wie `get` — sonst bliebe er genau hier scheinbar aktuell.
+  // AUFNAHME 20260922 (bens Befund Runde 2): auch Ergebnisse der Form `{ ko, … }`
+  // (Vorschlagsentscheid, Dokumentübernahme) — dort stand das Objekt sonst ungeprüft in der Antwort.
+  private async lesefassungWert<T>(value: T): Promise<T> {
+    if (istWissensobjekt(value)) {
+      return (await this.lesefassung(value)) as unknown as T;
+    }
+    if (value !== null && typeof value === "object" && "ko" in value) {
+      const ko = (value as { ko: unknown }).ko;
+      if (istWissensobjekt(ko)) {
+        return { ...value, ko: await this.lesefassung(ko) };
+      }
+    }
+    return value;
+  }
+
+  // AUFNAHME 20260922 · Prüfbasis-Aktualität: get/list liefern die LESEFASSUNG des Prüfnachweises —
+  // `aiCheck.ueberholt` ist aus der gespeicherten Basisbindung abgeleitet (pruefbasis.ts). Anzeige,
+  // Neuladen, Abruf und Worker lesen damit dieselbe gespeicherte Bindung.
+  // D5 (KI aus): `vorInhaltsabruf` nur vom Klara-Frageweg (ask-routes.ts `evidenceFor`) — vor dem
+  // Objekt und vor den Lesevorgängen der Lesefassung. Ohne ihn unverändert.
+  async get(id: string, vorInhaltsabruf?: () => void): Promise<KnowledgeObject | undefined> {
+    vorInhaltsabruf?.();
     const ko = await this.repo.findById(id);
-    return ko && !ko.deletedAt ? ko : undefined;
+    return ko && !ko.deletedAt ? this.lesefassung(ko, vorInhaltsabruf) : undefined;
+  }
+
+  // D5 (KI aus): die aktuelle Fassung eines (nicht getrashten) Objekts — die Versions-Autorität der
+  // Befund-Dienste (build-app.ts `koVersion`). Dieselbe Antwort wie `get(id)?.version`, aber ohne
+  // Lesefassung: die ändert nur den Prüfnachweis, nie die Fassung, und läse dafür den Schreibstand
+  // und womöglich den ganzen Bestand — ein Lesen, das der Frageweg nach seiner Sperre nicht haben
+  // darf (`ConflictService.unresolved(vorObjektabruf)` sperrt nur vor diesem einen Objektabruf).
+  async aktuelleFassungVon(id: string): Promise<number | undefined> {
+    const ko = await this.repo.findById(id);
+    return ko && !ko.deletedAt ? ko.version : undefined;
   }
 
   // ==============================================================================================
@@ -3383,7 +3527,7 @@ export class KoService {
   // KEIN DEFAULT — siehe KoRepo.list: vier Aufrufer dieses Repos brauchen die getrashten Zeilen
   // zwingend. Nur die normale Listenroute übergibt den Trim.
   async list(filter: KoFilter = {}, trim?: KoSichtbarkeitstrim): Promise<KnowledgeObject[]> {
-    return (await this.repo.list(filter, trim)).filter((k) => !k.deletedAt);
+    return this.lesefassungen((await this.repo.list(filter, trim)).filter((k) => !k.deletedAt));
   }
 
   /**
@@ -3425,7 +3569,9 @@ export class KoService {
       //    `failed` ist immer unvollständig, ohne Ausnahme und unabhängig davon, welche Merker die
       //    Abdeckung trägt (bens ROT-2: ein gescheiterter Lauf mit makellosem Protokoll galt als
       //    vollständig). `pending` ist nicht abgeschlossen und damit erst recht nicht vollständig.
-      if (aiCheck.status !== "done") {
+      // AUFNAHME 20260922: ein ÜBERHOLTER Nachweis gilt für eine frühere Basis — für die jetzige ist
+      // er nicht belegt, gleich wie vollständig sein Protokoll damals war.
+      if (aiCheck.status !== "done" || aiCheck.ueberholt) {
         incomplete += 1;
         continue;
       }
@@ -3462,7 +3608,8 @@ export class KoService {
   // lief ohne WHERE, die neue Abfrage filtert nur auf die Kennung — Papierkorb inklusive, wie es
   // der Recovery-Vertrag verlangt.
   async findByImportCandidateId(candidateId: string): Promise<KnowledgeObject | undefined> {
-    return this.repo.findByImportCandidateId(candidateId);
+    const ko = await this.repo.findByImportCandidateId(candidateId);
+    return ko ? this.lesefassung(ko) : undefined;
   }
 
   // WP-BILD-1g (bens sammel14-ROT): Suchpfad-Sicht OHNE bodyHtml — die Bibliotheks-Suche arbeitet
@@ -3479,7 +3626,9 @@ export class KoService {
     filter: KoFilter = {},
     trim?: KoSichtbarkeitstrim,
   ): Promise<KnowledgeObject[]> {
-    return (await this.repo.listForSearch(filter, trim)).filter((k) => !k.deletedAt);
+    return this.lesefassungen(
+      (await this.repo.listForSearch(filter, trim)).filter((k) => !k.deletedAt),
+    );
   }
 
   // WP-BILD-1g/1h: EINMALIGER Legacy-Backfill des abgeleiteten captionTexts-Suchfelds. Lädt das
@@ -3606,15 +3755,21 @@ export class KoService {
       status: "pending",
       requestedAt: requestedAt ?? new Date(this.now()).toISOString(),
       koVersion: ko.version,
+      // AUFNAHME 20260922: die Basis, für die dieser Lauf angefordert ist (pruefbasis.ts).
+      basis: await this.aktuellePruefbasis(ko),
     });
   }
 
   // AUFTRAG-mega28 A2: die Abdeckung des Laufs (gedeckelt/übersprungen/abgebrochen) reist mit dem
   // Abschluss mit — additiv, der bedingte Feld-Patch bleibt unverändert schmal.
+  // AUFNAHME 20260922: `basis` ist die Basis, unter der der Lauf GESTARTET ist (der Worker liest sie
+  // beim Start). Der Nachweis wird an sie gebunden — hat sich das Objekt seitdem geändert, liest
+  // jeder Leser ihn als überholt (mitPruefstand), nie als aktuell.
   async resolveAiCheck(
     id: string,
     outcome: { ok: boolean; fallbackReason?: string; coverage?: AiCheckCoverage },
     expectedKoVersion?: number,
+    basis?: AiCheckBasis,
   ): Promise<boolean> {
     return this.repo.resolveAiCheck(
       id,
@@ -3623,6 +3778,7 @@ export class KoService {
         finishedAt: new Date(this.now()).toISOString(),
         ...(outcome.fallbackReason ? { fallbackReason: outcome.fallbackReason } : {}),
         ...(outcome.coverage ? { coverage: outcome.coverage } : {}),
+        ...(basis ? { basis } : {}),
       },
       expectedKoVersion,
     );
@@ -3673,9 +3829,9 @@ export class KoService {
   // `grep -rn "findCandidates(" --include='*.ts' . | grep -v node_modules | grep -v test` —
   // für alle drei ist die Fundstelle das richtige Maß, und alle drei erben die Angabe, weil sie
   // durch DIESE eine Methode gehen:
-  //   · KLARA (`services/ask/src/service.ts:560`, Deckel 50 je Fragebegriff): das Objekt, das den
-  //     Fragebegriff im Titel trägt, ist die Quelle, nach der Pedi fragt. Fällt es im Deckel weg,
-  //     meldet Klara eine Wissenslücke, obwohl das Wissen im Haus liegt.
+  //   · KLARA (`AskService.prefilterCandidates`, Deckel je Begriff ab 50, mit dem Bestand
+  //     wachsend): das Objekt mit dem Fragebegriff im Titel ist die Quelle, nach der Pedi fragt.
+  //     Fällt es im Deckel weg, meldet Klara eine Wissenslücke, obwohl das Wissen im Haus liegt.
   //   · TEXTPRÜFUNG (`services/app/src/check-text-detection.ts:232`, Deckel
   //     `DETECTION_CANDIDATE_CAP` = 20): eine Dublette ist ein Objekt zum SELBEN Thema. Ein
   //     Titeltreffer ist dafür das stärkere Signal als ein hoher Trust; was der Deckel wegwirft,
@@ -3700,18 +3856,38 @@ export class KoService {
     // freigegebene Instanz ist vollständig projiziert. Ist sie es nicht, wirft die Suche — sie
     // liefert keine von der Reihenfolge abhängige Teilmenge.
     const hits = await this.findSearchHits({
-      terms: query.terms,
-      limit: query.limit,
+      ...query,
       deckelauswahl: "trefferguete",
+      limit: await this.kandidatendeckel(query),
     });
     if (hits.length === 0) {
       return [];
     }
     const rang = new Map(hits.map((hit, index) => [hit.koId, index]));
+    query.vorInhaltsabruf?.();
     const kos = await this.repo.listByIds(hits.map((hit) => hit.koId));
-    return kos
-      .filter((ko) => !ko.deletedAt)
-      .sort((a, b) => (rang.get(a.id) ?? 0) - (rang.get(b.id) ?? 0));
+    // AUFNAHME 20260922: auch der Suchkandidat trägt die Lesefassung des Prüfnachweises.
+    // D5: deren Stempel liest nach `listByIds` weiter — die Sperre reist mit (s. `pruefbestandStempel`).
+    return this.lesefassungen(
+      kos
+        .filter((ko) => !ko.deletedAt)
+        .sort((a, b) => (rang.get(a.id) ?? 0) - (rang.get(b.id) ?? 0)),
+      query.vorInhaltsabruf,
+    );
+  }
+
+  // AUFNAHME 20260922 (R-0316): der Deckel dieser einen Kandidatenabfrage. Ohne Anforderung
+  // (`deckelWaechstMitBestand`) Zeichen für Zeichen das `limit` des Aufrufers — auch ein fehlendes.
+  // Mit Anforderung hebt die Bestandsgröße ihn an (Regel und Grenzen an
+  // `bestandsgerechterKandidatendeckel`). Gezählt wird die Metadatenprojektion: genau eine Zeile je
+  // Wissensobjekt, ein `COUNT(*)` ohne Inhalt. Getrashte Objekte zählen mit, bis sie endgelöscht
+  // sind — eine Überschätzung, die den Deckel nur weiter macht, nie enger.
+  private async kandidatendeckel(query: KoCandidateQuery): Promise<number> {
+    if (!query.deckelWaechstMitBestand || query.limit === undefined) {
+      return query.limit;
+    }
+    const bestand = await this.searchProjections.metadata.count();
+    return bestandsgerechterKandidatendeckel(query.limit, bestand);
   }
 
   // ---- SCRUM-422: Papierkorb -----------------------------------------------------------
@@ -3967,9 +4143,18 @@ export class KoService {
       throw new KoError("NOT_FOUND", "Wissensobjekt nicht im Papierkorb.");
     }
     const { deletedAt: _at, deletedBy: _by, ...restored } = ko;
-    await this.repo.update(restored as KnowledgeObject);
-    await this.audit?.record({ actor, action: "ko.restored", target: id });
-    return restored as KnowledgeObject;
+    // Auftrag gesamt-dubletten-rueckzug: das Zurückholen läuft über denselben benannten Weg wie
+    // der Rückzug (`imRuecknahmeVorgang` am Klassenende) — Schreiben und Beleg in EINER Transaktion.
+    // Entscheidung Pedi (entscheidung:43017d60): das Wiederherstellen stellt NUR den eigenen Beitrag
+    // wieder her. Es trägt deshalb keinen Aufräumbeitrag: ein durch den Rückzug geschlossener
+    // Dublettenbefund bleibt geschlossen (keine Wiederöffnung), die Gegenseite bleibt unangetastet.
+    await this.imRuecknahmeVorgang(restored as KnowledgeObject, {
+      actor,
+      action: "ko.restored",
+      payload: {},
+      beitrag: undefined,
+    });
+    return this.lesefassung(restored as KnowledgeObject);
   }
 
   // Sofortige Endlöschung EINES Papierkorb-Eintrags (Admin-Entscheidung).
@@ -4795,6 +4980,13 @@ export class KoService {
     // Formprüfung der Kennung ZUERST und mit demselben Vertrag wie der Vollzug: eine ungültige
     // Kennung ist ein ehrlicher Formfehler, kein „nicht gefunden".
     const key = normalizeAppendOperationId(operationId);
+    return this.lesefassungWert(await this.lookupDocumentAppendRoh(id, key));
+  }
+
+  private async lookupDocumentAppendRoh(
+    id: string,
+    key: string,
+  ): Promise<DocumentAppendCommit | null> {
     return this.withKoLock(id, async () => {
       const current = await this.require(id);
       const known = (current.appendOps ?? []).find((op) => op.id === key);
@@ -4854,7 +5046,8 @@ export class KoService {
       throw new KoError("INVALID_SOURCE", "Quellen-Label fehlt.");
     }
 
-    return this.withKoLock(id, async () => {
+    // AUFNAHME 20260922: das Commit-Ergebnis trägt die Lesefassung seines Objekts.
+    const commit = await this.withKoLock(id, async () => {
       const before = await this.require(id);
 
       // ---- IDEMPOTENZ ----------------------------------------------------------------------
@@ -5071,6 +5264,7 @@ export class KoService {
         throw err;
       }
     });
+    return this.lesefassungWert(commit);
   }
 
   // ==============================================================================================
@@ -5121,6 +5315,17 @@ export class KoService {
     beleg: { action: string; grund: string },
     apply: (ko: KnowledgeObject) => KnowledgeObject,
     opts: EinordnungsBedingung = {},
+  ): Promise<KnowledgeObject> {
+    // AUFNAHME 20260922: das zurückgegebene Objekt trägt die Lesefassung des Prüfnachweises.
+    return this.lesefassung(await this.mutateKoMetadataRoh(id, actor, beleg, apply, opts));
+  }
+
+  private async mutateKoMetadataRoh(
+    id: string,
+    actor: string,
+    beleg: { action: string; grund: string },
+    apply: (ko: KnowledgeObject) => KnowledgeObject,
+    opts: EinordnungsBedingung,
   ): Promise<KnowledgeObject> {
     return this.withKoLock(id, async () => {
       const before = await this.require(id);
@@ -5308,7 +5513,7 @@ export class KoService {
     state: { trust: number; status: KoStatus },
     opts: { expectedVersion?: number } = {},
   ): Promise<KnowledgeObject> {
-    return this.withKoLock(id, async () => {
+    const ergebnis = await this.withKoLock(id, async () => {
       const ko = await this.require(id);
       if (opts.expectedVersion !== undefined && ko.version !== opts.expectedVersion) {
         return ko; // Version hat sich geändert (Revise) → Bewertung galt der Vorversion, nicht schreiben.
@@ -5317,6 +5522,7 @@ export class KoService {
       await this.repo.update(updated);
       return updated;
     });
+    return this.lesefassung(ergebnis);
   }
 
   // ==============================================================================================
@@ -5340,6 +5546,14 @@ export class KoService {
     id: string,
     ref: { auditSeq: number; auditHash: string },
     opts: { expectedVersion?: number } = {},
+  ): Promise<KnowledgeObject> {
+    return this.lesefassung(await this.setValidationDecisionRefRoh(id, ref, opts));
+  }
+
+  private async setValidationDecisionRefRoh(
+    id: string,
+    ref: { auditSeq: number; auditHash: string },
+    opts: { expectedVersion?: number },
   ): Promise<KnowledgeObject> {
     return this.withKoLock(id, async () => {
       const ko = await this.require(id);
@@ -5425,8 +5639,129 @@ export class KoService {
       return;
     }
     const at = new Date(this.now()).toISOString();
-    await this.repo.update({ ...ko, deletedAt: at, deletedBy: actor });
-    await this.audit?.record({ actor, action: "ko.deleted", target: id, payload: { trash: true } });
+    // Auftrag gesamt-dubletten-rueckzug: der weiche Weg räumt seine Befunde IN seiner Transaktion
+    // auf (s. `imRuecknahmeVorgang`). Die eigene Rücknahme ist dasselbe Prädikat wie in
+    // `eigeneRuecknahmeVon` — der Löscher ist der Autor —, hier aber VOR dem Schreiben bekannt:
+    // Löscher ist `actor`, Autor steht am schon geladenen Objekt. Kein Lesegang, kein Port.
+    const zurueckgezogenVon = actor.length > 0 && ko.author === actor ? actor : null;
+    const hook = this.onRuecknahmeTx;
+    await this.imRuecknahmeVorgang(
+      { ...ko, deletedAt: at, deletedBy: actor },
+      {
+        actor,
+        action: "ko.deleted",
+        payload: { trash: true },
+        beitrag: hook ? (tx) => hook(id, actor, tx, { zurueckgezogenVon }) : undefined,
+      },
+    );
+  }
+
+  // ==============================================================================================
+  // Auftrag gesamt-dubletten-rueckzug (R-1540/R-1547) — DER EINE AUFRÄUMWEG DES RÜCKZUGS.
+  // ==============================================================================================
+  //
+  // Bis hierher schrieb der weiche Weg `deletedAt` und seinen Beleg, und die ROUTE schloss danach
+  // Konflikte und Überschneidungen (ko-routes.ts, Nachlauf nach `ko.delete`). Scheiterte der
+  // Nachlauf, lag der Beitrag im Papierkorb und sein Dublettenbefund stand offen daneben. Jetzt
+  // gibt es für BEIDE Richtungen (Rückzug und Wiederherstellen) genau einen Weg, hier im Dienst,
+  // nach dem Muster der Endlöschung (`purgeKo` + `PurgeTxCleanup`). Nur der Rückzug trägt einen
+  // Aufräumbeitrag; das Wiederherstellen öffnet nichts wieder (Entscheidung Pedi 43017d60):
+  //
+  //   MIT withTx   Aufräumen, Schreiben des Beitrags und sein Beleg auf DEMSELBEN TxContext —
+  //                alles oder nichts. Wirft einer der drei (auch der CAS in `repo.update`),
+  //                rollt withPgTx alles zurück: Beitrag unverändert, Befund unverändert, kein Beleg.
+  //   OHNE withTx  (InMemory, Dev-Journal) cleanup-first, dann Schreiben, dann Beleg —
+  //                ausdrücklich OHNE Atomaritätszusage, wie der Fallback von `purgeKo`.
+  //
+  // Der Haken ist EINER (`setRuecknahmeTxCleanup`), verdrahtet in der Kompositionswurzel neben
+  // `setPurgeTxCleanup`. Für ihn gilt derselbe Vertrag wie für `PurgeTxCleanup`: nur Schreiber, die
+  // den tx auf ihren Pg-Client auflösen, keine Schleifen über Einzelobjekte, kein Netz.
+  private onRuecknahmeTx: RuecknahmeTxCleanup | undefined;
+
+  setRuecknahmeTxCleanup(hook: RuecknahmeTxCleanup): void {
+    this.onRuecknahmeTx = hook;
+  }
+
+  // Auftrag gesamt-dubletten-rueckzug (Q7) — DIE SICHTBARKEITSFAKTEN EINES BEITRAGS IM PAPIERKORB.
+  // Genau die zwei Felder, die `darfSehen` braucht (Autor, Stufe), und NUR für ein getrashtes
+  // Objekt — für jedes andere `undefined`. Kein Titel, kein Inhalt. Vierte Stelle, die den
+  // Papierkorb absichtlich sieht (neben `trashed`, `restore`, `eigeneRuecknahmeVon`); einziger
+  // Aufrufer ist der Grabstein eines zurückgezogenen Dublettenbefunds (overlap-routes.ts), der
+  // damit prüft, ob der Betrachter die zurückgezogene Seite sehen durfte. Endgelöscht → nichts.
+  async papierkorbFakten(
+    id: string,
+  ): Promise<{ author: string; confidentiality: KnowledgeObject["confidentiality"] } | undefined> {
+    const ko = await this.repo.findById(id);
+    return ko?.deletedAt ? { author: ko.author, confidentiality: ko.confidentiality } : undefined;
+  }
+
+  private async imRuecknahmeVorgang(
+    neu: KnowledgeObject,
+    vorgang: {
+      actor: string;
+      action: "ko.deleted" | "ko.restored";
+      payload: Record<string, unknown>;
+      beitrag: RuecknahmeBeitrag | undefined;
+    },
+  ): Promise<void> {
+    const { actor, action, payload, beitrag } = vorgang;
+    const beleg = (zusatz: Record<string, unknown>) => {
+      const gesamt = { ...payload, ...zusatz };
+      return {
+        actor,
+        action,
+        target: neu.id,
+        ...(Object.keys(gesamt).length > 0 ? { payload: gesamt } : {}),
+      };
+    };
+    const audit = this.audit;
+    // Mit Datenbank ist die Klammer `withTx` (withPgTx); ohne die Rücknahme-Klammer der
+    // Kompositionswurzel (Vorher-Abbilder + zurückgehaltene Journalzeilen). Beide: alles oder nichts.
+    const klammer = this.ruecknahmeKlammer;
+    if (klammer && audit) {
+      await klammer(async (tx) => {
+        const zusatz = (await beitrag?.(tx)) ?? {};
+        await this.repo.update(neu, tx);
+        await audit.record(beleg(zusatz), tx);
+      });
+      return;
+    }
+    // Nur ein KoService, den jemand OHNE Kompositionswurzel und ohne Klammer baut (Einzeltests
+    // des Moduls, Test-Doubles ohne Rückstellung), fällt hierher: ohne Atomaritätszusage.
+    const zusatz = (await beitrag?.(undefined)) ?? {};
+    await this.repo.update(neu);
+    await audit?.record(beleg(zusatz));
+  }
+
+  // ==============================================================================================
+  // D5 (KI AUS) — DER FRAGEWEG PRÜFT DIE ABSCHALTUNG VOR JEDEM LESEN, NICHT NUR VOR JEDEM DIENST.
+  // ==============================================================================================
+  //
+  // Der Befund, an dem das gemessen wurde (ben, Runde 1): eine Frage, deren Suche gerade lief, als
+  // der Administrator die KI abschaltete, las danach noch die Kandidaten — `findCandidates` holt
+  // nach `await findSearchHits` die Objekte mit `repo.listByIds`, und dazwischen fragte niemand.
+  // Die Sperre (`vorInhaltsabruf`, vom Frageweg gesetzt) steht deshalb nach JEDEM Warten und vor
+  // JEDEM Lesen:
+  //   · `findCandidates` reicht sie über `...query` an die Suche weiter (die Speicher rufen sie vor
+  //     ihrer Inhaltsabfrage) und ruft sie selbst vor `listByIds`. Das Ausbreiten ersetzt die zwei
+  //     Zeilen `terms`/`limit` — es trägt dieselben zwei Felder und die Sperre, und es verschiebt
+  //     keine der Zeilen, auf die von aussen gezeigt wird (s. `ReviseMitHerkunft` am Dateiende).
+  //   · `searchProjectionUnterKiSperre` hier unten: dasselbe Lesen wie `searchProjectionOf(id)`
+  //     (Objekt, dann seine aktive Projektion), mit der Sperre vor BEIDEN Schritten. Ein eigener
+  //     Name statt eines Parameters an `searchProjectionOf`, weil deren Signatur umbrechen und damit
+  //     `findSearchHits` (`:1809`) verschieben würde.
+  // Ohne Sperre (Bibliothek, Prüfwege) verhält sich alles Zeichen für Zeichen wie vorher.
+  async searchProjectionUnterKiSperre(
+    id: string,
+    vorInhaltsabruf: () => void,
+  ): Promise<KoSearchProjection | undefined> {
+    vorInhaltsabruf();
+    const ko = await this.repo.findById(id);
+    if (!ko) {
+      return undefined;
+    }
+    vorInhaltsabruf();
+    return this.searchProjections.find(ko.id, ko.version);
   }
 
   private async require(id: string): Promise<KnowledgeObject> {
@@ -5531,3 +5866,30 @@ type EinordnungsBedingung = {
 // OHNE `trim` ist das Verhalten zeichengleich dem bisherigen (Altvertrag, wie ihn `search` in
 // library-analytics führt); mit `trim` ist das Ergebnis eine TEILmenge davon. Die Autorisierung
 // bleibt an der Route (G-SHADOW) — hier entsteht kein zweiter, weiterer Weg an den Text.
+
+// ==================================================================================================
+// Auftrag gesamt-dubletten-rueckzug — DER HAKEN DES RÜCKZUGS.
+// ==================================================================================================
+//
+// Am Dateiende aus demselben Grund wie `ReviseMitHerkunft` darüber (Wegweiser auf feste Zeilen
+// weiter oben). Ein Beitrag zum Beleg, geschrieben IN der Transaktion auf dem gereichten tx.
+type RuecknahmeBeitrag = (tx: TxContext | undefined) => Promise<Record<string, unknown>>;
+
+/**
+ * Der eine Aufräumhaken des weichen Löschens (KoService.delete).
+ *
+ * Läuft IN der Transaktion des weichen Löschens. `ruecknahme.zurueckgezogenVon` trägt die Kennung,
+ * wenn der Löscher der Autor ist, sonst `null` — vom Dienst vorab bestimmt, damit im
+ * Transaktionskörper keine Pool-Lesung nötig ist (Vertrag wie `PurgeTxCleanup`).
+ *
+ * Das Wiederherstellen (KoService.restore) fährt über denselben Weg `imRuecknahmeVorgang`, aber
+ * ohne diesen Haken: nach Pedis Entscheidung (entscheidung:43017d60) stellt es nur den eigenen
+ * Beitrag wieder her; geschlossene Befunde bleiben geschlossen, die Gegenseite bleibt unangetastet.
+ * Die frühere Wiederöffnung (Lauf 1/2, `releaseTrashedSide`) ist deshalb nicht Teil dieses Wegs.
+ */
+type RuecknahmeTxCleanup = (
+  koId: string,
+  actor: string,
+  tx: TxContext | undefined,
+  ruecknahme: { zurueckgezogenVon: string | null },
+) => Promise<Record<string, unknown>>;

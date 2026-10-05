@@ -2,15 +2,21 @@
 // JOB 3023 — FAIL-CLOSED: WAS NICHT GEPRUEFT WERDEN KANN, WIRD NICHT EINGESPIELT.
 // ================================================================================================
 //
-// Die Begruendung steht an der Stelle selbst (`service.ts`, importJson): eine unbemerkte Dublette
-// im Bestand ist teurer als ein nicht eingespielter Eintrag, den der Einspielende in der Antwort
-// sieht. Und: ein Fehler der Pruefung darf den GANZEN Import nie kippen — die uebrigen Eintraege
-// laufen weiter.
+// Die Begruendung steht an der Stelle selbst (`service.ts`, `kandidatDublettenbefund`): eine
+// unbemerkte Dublette im Bestand ist teurer als ein nicht eingespielter Eintrag, den der
+// Einspielende am Kandidaten sieht. Und: ein Fehler der Pruefung darf den GANZEN Import nie kippen
+// — die uebrigen Eintraege laufen weiter.
+//
+// Lauf gesamt-import-adoption (Bens B3): der Direktimport `importJson`, an dem diese Faelle
+// entstanden sind, ist entfallen. Dieselben Zusagen gelten jetzt am einzigen Importweg: Einreihen
+// (`createImportCandidates`) und Annahme (`reviewImportCandidate`, die seit Bens B1/B2 den Port
+// am heutigen Bestand ein zweites Mal fragt). „Eingespielt" heisst hier: nach der Annahme ist ein
+// Wissensobjekt da.
 //
 // WARUM HIER DER DIENST UND NICHT DIE ROUTE: der Ausfall der Pruefung ist genau der Fall, den die
 // Kompositionswurzel nicht herstellen kann (sie verdrahtet die funktionierende Pruefung). Der
 // Vertrag, der hier gemessen wird, gehoert dem Dienst: er nimmt den Port entgegen und entscheidet,
-// was bei dessen Ausfall geschieht. Die 200er-Antwort der Route ueber demselben Weg misst
+// was bei dessen Ausfall geschieht. Die Antwort der Route ueber demselben Weg misst
 // `echt-neu.test.ts`.
 import { describe, expect, it } from "vitest";
 import { InMemoryKoRepo, KoService } from "../../services/knowledge-object";
@@ -19,6 +25,7 @@ import type {
   DublettenBefund,
   DublettenPruefung,
   ImportItem,
+  KandidatDublettenbefund,
 } from "../../services/library-analytics";
 
 const ITEMS: ImportItem[] = [
@@ -42,16 +49,61 @@ async function aufbau() {
   return { koService, library: new LibraryService({ koService }) };
 }
 
+interface Uebersprungen {
+  titel: string;
+  grund: KandidatDublettenbefund["ergebnis"];
+  koId: string | null;
+  aehnlichkeit?: number;
+}
+
+/**
+ * Der ganze Importweg mit EINER Pruefung: einreihen, jeden Kandidaten annehmen. Zurueck kommt,
+ * was die fruehere Antwort des Direktimports sagte — wie viele angelegt wurden und welche Eintraege
+ * mit welchem Befund nicht.
+ */
+async function spieleEin(
+  library: LibraryService,
+  pruefung: DublettenPruefung,
+): Promise<{ imported: number; uebersprungen: Uebersprungen[] }> {
+  const kandidaten = await library.createImportCandidates(ITEMS, "importeur", pruefung);
+  let imported = 0;
+  const uebersprungen: Uebersprungen[] = [];
+  for (const kandidat of kandidaten) {
+    const r = await library.reviewImportCandidate(
+      kandidat.id,
+      "accept",
+      "controller",
+      undefined,
+      pruefung,
+    );
+    if (r.koId) {
+      imported += 1;
+      continue;
+    }
+    const befund = r.dublettenbefund;
+    uebersprungen.push({
+      titel: r.item.title,
+      grund: befund?.ergebnis ?? "pruefung_nicht_moeglich",
+      koId:
+        befund && "treffer" in befund && befund.treffer.art === "wissensobjekt"
+          ? befund.treffer.koId
+          : null,
+      ...(befund?.ergebnis === "aehnlich" ? { aehnlichkeit: befund.aehnlichkeit } : {}),
+    });
+  }
+  return { imported, uebersprungen };
+}
+
 describe("JOB 3023 · C — die Pruefung faellt aus", () => {
   it("C1 · eine werfende Pruefung → `pruefung_nicht_moeglich`, kein neues Objekt, kein Abbruch", async () => {
     const { koService, library } = await aufbau();
 
-    const res = await library.importJson(ITEMS, "importeur", () => {
+    const res = await spieleEin(library, () => {
       throw new Error("Pruefung nicht verfuegbar");
     });
 
     expect(res.imported).toBe(0);
-    expect(res.skipped).toBe(2);
+    expect(res.uebersprungen).toHaveLength(2);
     expect(res.uebersprungen.map((e) => e.grund)).toEqual([
       "pruefung_nicht_moeglich",
       "pruefung_nicht_moeglich",
@@ -70,7 +122,7 @@ describe("JOB 3023 · C — die Pruefung faellt aus", () => {
   it("C2 · der Ausfall gilt je Eintrag — die uebrigen laufen weiter", async () => {
     const { koService, library } = await aufbau();
 
-    const res = await library.importJson(ITEMS, "importeur", (item) => {
+    const res = await spieleEin(library, (item) => {
       if (item.title === "Kessel reinigen") {
         throw new Error("Pruefung nicht verfuegbar");
       }
@@ -78,7 +130,7 @@ describe("JOB 3023 · C — die Pruefung faellt aus", () => {
     });
 
     expect(res.imported).toBe(1);
-    expect(res.skipped).toBe(1);
+    expect(res.uebersprungen).toHaveLength(1);
     expect(res.uebersprungen).toEqual([
       { titel: "Kessel reinigen", grund: "pruefung_nicht_moeglich", koId: null },
     ]);
@@ -92,7 +144,7 @@ describe("JOB 3023 · C — die Pruefung faellt aus", () => {
     // getroffenes Objekt nennt. Ein wohlwollendes „dann eben importieren" waere die unbemerkte
     // Dublette, gegen die dieser Auftrag steht.
     const kaputt = { dublette: true } as unknown as DublettenBefund;
-    const res = await library.importJson(ITEMS, "importeur", () => kaputt);
+    const res = await spieleEin(library, () => kaputt);
 
     expect(res.imported).toBe(0);
     expect(res.uebersprungen.map((e) => e.grund)).toEqual([
@@ -122,14 +174,10 @@ describe("JOB 3023 · C — die Pruefung faellt aus", () => {
     async (_name, rueckgabe) => {
       const { koService, library } = await aufbau();
 
-      const res = await library.importJson(
-        ITEMS,
-        "importeur",
-        (() => rueckgabe) as unknown as DublettenPruefung,
-      );
+      const res = await spieleEin(library, (() => rueckgabe) as unknown as DublettenPruefung);
 
       expect(res.imported).toBe(0);
-      expect(res.skipped).toBe(2);
+      expect(res.uebersprungen).toHaveLength(2);
       expect(res.uebersprungen.map((e) => e.grund)).toEqual([
         "pruefung_nicht_moeglich",
         "pruefung_nicht_moeglich",
@@ -142,7 +190,7 @@ describe("JOB 3023 · C — die Pruefung faellt aus", () => {
   it("C6 · eine stumme Rueckgabe gilt JE EINTRAG — die uebrigen laufen weiter", async () => {
     const { koService, library } = await aufbau();
 
-    const res = await library.importJson(ITEMS, "importeur", ((item: ImportItem) =>
+    const res = await spieleEin(library, ((item: ImportItem) =>
       item.title === "Kessel reinigen"
         ? undefined
         : { dublette: false }) as unknown as DublettenPruefung);
@@ -168,7 +216,7 @@ describe("JOB 3023 · C — die Pruefung faellt aus", () => {
       },
     }) as DublettenBefund;
 
-    const res = await library.importJson(ITEMS, "importeur", (item) =>
+    const res = await spieleEin(library, (item) =>
       item.title === "Kessel reinigen" ? boshaft : { dublette: false },
     );
 
@@ -190,6 +238,9 @@ describe("JOB 3023 · C — die Pruefung faellt aus", () => {
   // Die Faelle hier bauen genau diesen Getter — und pruefen zusaetzlich die Ursache statt nur die
   // Wirkung: der Zaehler belegt, dass jede Eigenschaft GENAU EINMAL gelesen wird. Ein zweiter
   // Zugriff kann dann weder werfen noch seine Meinung aendern.
+  //
+  // Lauf gesamt-import-adoption: Einreihen UND Annahme fragen den Port — jeder Aufruf bekommt darum
+  // sein EIGENES tueckisches Objekt, und die Zusage gilt je Objekt: jede Eigenschaft genau einmal.
 
   /** Ein Befund, dessen Eigenschaften beim ersten Lesen antworten und danach werfen. */
   function tueckischerBefund(werte: Record<string, unknown>) {
@@ -213,11 +264,15 @@ describe("JOB 3023 · C — die Pruefung faellt aus", () => {
 
   it("C8 · ein Getter, der die erste Auswertung passiert und danach wirft, kippt den Import NICHT", async () => {
     const { koService, library } = await aufbau();
-    const { objekt, gelesen } = tueckischerBefund({ dublette: false });
-
-    const res = await library.importJson(ITEMS, "importeur", (item) =>
-      item.title === "Kessel reinigen" ? objekt : { dublette: false },
-    );
+    const lesungen: Record<string, number>[] = [];
+    const res = await spieleEin(library, (item) => {
+      if (item.title !== "Kessel reinigen") {
+        return { dublette: false };
+      }
+      const { objekt, gelesen } = tueckischerBefund({ dublette: false });
+      lesungen.push(gelesen);
+      return objekt;
+    });
 
     expect(
       res.imported,
@@ -228,23 +283,28 @@ describe("JOB 3023 · C — die Pruefung faellt aus", () => {
       "Kessel reinigen",
       "Leitung spuelen",
     ]);
+    expect(lesungen, "Einreihen und Annahme fragen je einmal.").toHaveLength(2);
     expect(
-      gelesen.dublette,
-      "DIE URSACHE: `dublette` wird genau EINMAL gelesen — es gibt keinen zweiten Zugriff.",
-    ).toBe(1);
+      lesungen.map((g) => g.dublette),
+      "DIE URSACHE: `dublette` wird je Befund genau EINMAL gelesen — es gibt keinen zweiten Zugriff.",
+    ).toEqual([1, 1]);
   });
 
   it("C9 · auch ein Duplikatbefund wird genau einmal gelesen und aus der eigenen Kopie beantwortet", async () => {
     const { koService, library } = await aufbau();
-    const { objekt, gelesen } = tueckischerBefund({
-      dublette: true,
-      koId: "ko-vorhanden",
-      aehnlichkeit: 0.93,
+    const lesungen: Record<string, number>[] = [];
+    const res = await spieleEin(library, (item) => {
+      if (item.title !== "Kessel reinigen") {
+        return { dublette: false };
+      }
+      const { objekt, gelesen } = tueckischerBefund({
+        dublette: true,
+        koId: "ko-vorhanden",
+        aehnlichkeit: 0.93,
+      });
+      lesungen.push(gelesen);
+      return objekt;
     });
-
-    const res = await library.importJson(ITEMS, "importeur", (item) =>
-      item.title === "Kessel reinigen" ? objekt : { dublette: false },
-    );
 
     expect(res.imported).toBe(1);
     expect(
@@ -256,15 +316,16 @@ describe("JOB 3023 · C — die Pruefung faellt aus", () => {
     expect((await koService.list()).map((ko) => ko.title)).toEqual(["Leitung spuelen"]);
     // Alle drei Eigenschaften: genau ein Lesevorgang. Die Antwort oben stammt also nachweislich
     // NICHT aus einem zweiten Zugriff auf das fremde Objekt.
-    expect(gelesen.dublette).toBe(1);
-    expect(gelesen.koId).toBe(1);
-    expect(gelesen.aehnlichkeit).toBe(1);
+    expect(lesungen).toHaveLength(2);
+    for (const gelesen of lesungen) {
+      expect(gelesen).toEqual({ dublette: 1, koId: 1, aehnlichkeit: 1 });
+    }
   });
 
   it("C4 · gar keine Pruefung (Aufrufer unterhalb des Compilers) → nichts wird eingespielt", async () => {
     const { koService, library } = await aufbau();
 
-    const res = await library.importJson(ITEMS, "importeur", undefined as never);
+    const res = await spieleEin(library, undefined as never);
 
     expect(
       res.imported,

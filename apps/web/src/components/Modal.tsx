@@ -64,6 +64,12 @@ export function Modal({
   // Die gereichte Grenze hat Vorrang: wer sie ausdrücklich bekommt, hängt außerhalb des Kontexts.
   const ausKontext = useModalBoundaryOptional();
   const grenze = gereichteGrenze ?? ausKontext;
+  // NUR `enter` als Abhängigkeit, nicht das Kontext-OBJEKT (Bauform `Seitenblatt.tsx`): das Objekt
+  // wechselt mit `locked`, und das setzt gerade unser eigenes `enter()`. Hinge der Effekt am Objekt,
+  // liefe er je Öffnung zweimal — im nachgereichten Rendern Fokus zurück auf den Auslöser und
+  // wieder auf den ersten Knopf, und ein inzwischen ins Feld gesetzter Fokus war weg (mega87,
+  // Tastaturweg; `tests/mega87-tastaturweg/modal-meldet-sich-einmal-an-mounted.test.tsx`).
+  const anmelden = grenze?.enter;
   const panelRef = useRef<HTMLDivElement | null>(null);
   const ausloeserRef = useRef<HTMLElement | null>(null);
 
@@ -85,7 +91,7 @@ export function Modal({
     // Fokusbewegung, die niemand ausgelöst hat.
     const aktiv = document.activeElement;
     ausloeserRef.current = aktiv instanceof HTMLElement && aktiv !== document.body ? aktiv : null;
-    const abmelden = grenze?.enter({
+    const abmelden = anmelden?.({
       panel: () => panelRef.current,
       trigger: () => ausloeserRef.current,
     });
@@ -99,7 +105,7 @@ export function Modal({
       abmelden?.();
       ausloeserRef.current = null;
     };
-  }, [open, grenze]);
+  }, [open, anmelden]);
 
   if (!open) {
     return null;

@@ -20,6 +20,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { type AnswerExportInput, buildAnswerMarkdown } from "../../apps/web/src/lib/answerExport";
+import { woerterbuchQuelleAus } from "../support/woerterbuchquelle";
 
 const WURZEL = join(__dirname, "..", "..");
 
@@ -189,15 +190,24 @@ describe("mega62 E2 · der Export unterscheidet tragende von konsultierten Quell
     // Der Vertrag kann das Feld nur tragen; FÜLLEN muss es die Fragenfläche. Bis mega61 tat sie
     // das nicht, und genau daran ist es gescheitert.
     const ask = readFileSync(join(WURZEL, "apps/web/src/pages/Ask.tsx"), "utf8");
-    expect(ask).toContain("attributionLabel:");
-    expect(ask).toContain("ask.attribution.carrying.badge");
-    expect(ask).toContain("ask.attribution.consulted.badge");
+    expect(ask).toContain("attributionLabel: t(VERWENDUNG_BADGE[");
+    // FE-003: die Wortliste `VERWENDUNG_BADGE` steht seit dem Tutorial „Fragen“ bei den gemeinsamen
+    // Plaketten — die Fläche importiert sie von dort und füllt damit den Export.
+    expect(ask).toMatch(
+      /import \{[^}]*\bVERWENDUNG_BADGE\b[^}]*\} from "\.\.\/components\/fragen\/Quellenplaketten"/,
+    );
+    const plaketten = readFileSync(
+      join(WURZEL, "apps/web/src/components/fragen/Quellenplaketten.tsx"),
+      "utf8",
+    );
+    expect(plaketten).toContain("ask.attribution.carrying.badge");
+    expect(plaketten).toContain("ask.attribution.consulted.badge");
   });
 });
 
 describe("mega62 E · die Kennzeichnung gibt es in allen drei Sprachen", () => {
   it("ai.exportNotice und ai.task.answer stehen je dreimal", () => {
-    const i18n = readFileSync(join(WURZEL, "apps/web/src/i18n.ts"), "utf8");
+    const i18n = woerterbuchQuelleAus(join(WURZEL, "apps/web/src/i18n.ts"));
     for (const schluessel of ["ai.exportNotice", "ai.task.answer"]) {
       const treffer = i18n.split("\n").filter((z) => z.includes(`"${schluessel}"`));
       expect(treffer.length, `${schluessel} fehlt in einer Sprache`).toBe(3);

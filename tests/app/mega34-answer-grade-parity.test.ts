@@ -30,7 +30,8 @@
 // der Server nicht hat. Über die gemeinsamen Eingaben müssen beide dasselbe sagen.
 import { describe, expect, it } from "vitest";
 import { answerGrade } from "../../apps/web/src/lib/answerGrade";
-import { answerEvidence } from "../../services/ask";
+import { answerCheckState as webZustand } from "../../apps/web/src/lib/askView";
+import { answerEvidence, answerCheckState as serverZustand } from "../../services/ask";
 import type { KnowledgeObject } from "../../services/knowledge-object";
 
 const PROVEN = {
@@ -164,5 +165,45 @@ describe("mega34 B1b · Server-Regel und Oberflächen-Spiegel sagen dasselbe", (
     expect(answerGrade({ ...belegt, conflictsUnproven: true })).toBe("unverified");
     // Und ohne Antwort ist es weder das eine noch das andere.
     expect(answerGrade({ ...belegt, answered: false })).toBe("gap");
+  });
+
+  // AUFNAHME 20260922 · Prüfbasis-Aktualität (bens Befund Runde 1): die Zustandsregel JE QUELLE war
+  // auf beiden Seiten eine eigene Funktion — und nur die Oberfläche kannte `ueberholt`. Die Tafel
+  // oben misst den Grad über `sourcesCheckUnproven`, nie die Ableitung aus dem Nachweis selbst.
+  // Hier stehen beide Zustandsfunktionen über dieselben Nachweise nebeneinander, einschließlich des
+  // überholten Nachweises mit makellosem Protokoll.
+  it("Zustand je Quelle: Server und Oberfläche lesen denselben Nachweis gleich — auch überholt", () => {
+    const nachweise: [string, KnowledgeObject["aiCheck"]][] = [
+      ["kein Nachweis", undefined],
+      ["belegt", { status: "done", requestedAt: "x", coverage: PROVEN }],
+      ["gedeckelt", { status: "done", requestedAt: "x", coverage: CAPPED }],
+      ["ohne Protokoll", { status: "done", requestedAt: "x" }],
+      ["laufend", { status: "pending", requestedAt: "x" }],
+      ["gescheitert", { status: "failed", requestedAt: "x", coverage: PROVEN }],
+      ["überholt, belegt", { status: "done", requestedAt: "x", coverage: PROVEN, ueberholt: true }],
+      ["überholt, ohne Protokoll", { status: "done", requestedAt: "x", ueberholt: true }],
+    ];
+    for (const [name, aiCheck] of nachweise) {
+      const quelle = { ...ko("k1", undefined), aiCheck } as KnowledgeObject;
+      expect(serverZustand(quelle), name).toBe(webZustand(quelle as never));
+    }
+    const ueberholt = {
+      ...ko("k1", undefined),
+      aiCheck: { status: "done", requestedAt: "x", coverage: PROVEN, ueberholt: true },
+    } as KnowledgeObject;
+    expect(serverZustand(ueberholt)).toBe("incomplete");
+    const evidenz = answerEvidence({
+      answer: {
+        answered: true,
+        knowledgeClass: "gesichert",
+        sources: ["k1"],
+        citedSources: ["k1"],
+      },
+      sourceKos: new Map([["k1", ueberholt]]),
+      openConflicts: [],
+    });
+    expect(evidenz.grade).toBe("unverified");
+    expect(evidenz.knowledgeClass).toBe("ungeprueft");
+    expect(evidenz.checkCaveat).toEqual({ reason: "incomplete", unproven: 1, total: 1 });
   });
 });
