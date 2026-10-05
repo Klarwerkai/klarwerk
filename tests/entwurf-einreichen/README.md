@@ -192,6 +192,17 @@ Konflikt zusammengeführt. Sie trägt beide Seiten: unseren `chelp.saveDraftHelp
 * **Offen:** `bestand-vorher.json` trägt noch die Prüfsummen von `main`. Neu berechnen mit der
   Regel von K1.0 (Anzahl unverändert 4437). Bis dahin ist K1.0 rot.
 
+**Nacharbeit 6/7:**
+
+* `kein-geister-entwurf.test.ts`: Der Ersatz-Prüfjob bekommt `laeuft` (neue Pflichtmethode von
+  `AiCheckWorker`, R-0208).
+* `bestand-vorher.json`: Die Prüfsumme für `de` ist der im Linux-Lauf gemessene Wert
+  (`087437f1…f17c`, aus der Diff-Zeile „Received“). `en` und `nl` sind noch nicht gemessen.
+* `bestand-unveraendert.test.ts` K1.0: Der Prüfsummenvergleich nutzt `expect.soft`. Damit nennt ein
+  Lauf alle drei Ist-Summen.
+* `tests/i18n-woerterbuch/i18n-vor-aufteilung.txt`: Die Referenzkopie für W1 trägt dieselben
+  Textänderungen wie die Wörterbücher, also zwei Schlüssel in drei Sprachen und die Kommentare.
+
 **Herkunft.** Lauf `:1` lieferte `2ea90959` (geprüft am Ship-Commit `2525f3d5`, `1.0.0-beta.1.616`).
 Er ist **nicht** in den Basisstand übernommen. Lauf `:2` trägt seine Änderungen wieder ein und
 behebt die drei fachlichen Ben-Befunde aus Runde 1 (Beleg `96239dc4-…`):
