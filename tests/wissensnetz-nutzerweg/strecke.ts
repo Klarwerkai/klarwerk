@@ -586,6 +586,35 @@ export interface Lauf {
   readonly mutation?: Mutation;
   /** Ein Namenszusatz fuer die Wegwerfdatenbank — jeder Lauf bekommt seine eigene. */
   readonly kennung: string;
+  /**
+   * ALT-500 (additiv, ohne Aufruferzwang): Zusatz fuer BEIDE Serverprozesse — Prozess 1 und den
+   * nach SIGTERM gestarteten Prozess 2 —, z. B. die Treiberdiagnose
+   * `tests/wissensbeziehungen-browser-rechte/pg-fehlerdiagnose-vorladen.ts`. Ohne Angabe starten
+   * beide wie bisher.
+   */
+  readonly serverZusatz?: { importe?: readonly string[]; env?: Readonly<Record<string, string>> };
+  /**
+   * ALT-500: der Ablauf des Originalstands 715dd3abb — `/graph` bleibt WAEHREND der Anlagen in (f)
+   * offen. Dort fehlte der Wechsel nach `about:blank`, und genau dort antwortete die dritte Anlage
+   * mit 500. Ohne Angabe verlaesst die Strecke die Seite wie bisher.
+   */
+  readonly graphOffenBeiAnlage?: boolean;
+  /**
+   * ALT-500: wird nach JEDER Anlage in (f) gerufen, VOR deren Pruefung auf 201 — solange die
+   * Wegwerfdatenbank noch steht. Ein 500 laesst sich so am Bestand diagnostizieren, bevor die
+   * Strecke wirft und ihr `finally` die Datenbank entfernt.
+   */
+  readonly nachAnlage?: (pool: Pool, anlage: Anlage) => Promise<void>;
+}
+
+/** Eine Anlage aus (f), wie `Lauf.nachAnlage` sie sieht. */
+export interface Anlage {
+  readonly nr: string;
+  readonly status: number;
+  readonly text: string;
+  /** Uhrzeit (ms) vor dem Senden und nach der Antwort — das Fenster fuer die Treiberdiagnose. */
+  readonly von: number;
+  readonly bis: number;
 }
 
 /**
@@ -631,7 +660,8 @@ export async function fahreStrecke(umgebung: Umgebung, lauf: Lauf): Promise<Prot
     const fassung = await pool.query<{ version: string }>("SELECT version() AS version");
     p.pgFassung = (fassung.rows[0]?.version ?? "unbekannt").split(" ").slice(0, 2).join(" ");
 
-    instanz = await starteKlarwerk({ datenbankUrl, was: "Prozess 1" });
+    const serverZusatz = lauf.serverZusatz ? { zusatz: lauf.serverZusatz } : {};
+    instanz = await starteKlarwerk({ datenbankUrl, was: "Prozess 1", ...serverZusatz });
     server.basis = instanz.basis;
     p.pid1 = instanz.pid;
     p.port1 = new URL(instanz.basis).port;
@@ -1094,7 +1124,11 @@ export async function fahreStrecke(umgebung: Umgebung, lauf: Lauf): Promise<Prot
       if (lauf.mutation?.vorNeustart) {
         await lauf.mutation.vorNeustart(pool, bestand);
       }
-      instanz = await starteKlarwerk({ datenbankUrl, was: "Prozess 2 auf derselben Datenbank" });
+      instanz = await starteKlarwerk({
+        datenbankUrl,
+        was: "Prozess 2 auf derselben Datenbank",
+        ...serverZusatz,
+      });
       server.basis = instanz.basis;
       p.pid2 = instanz.pid;
       p.port2 = new URL(instanz.basis).port;
@@ -1168,13 +1202,20 @@ export async function fahreStrecke(umgebung: Umgebung, lauf: Lauf): Promise<Prot
       // NACHFOLGE (GRAPH-BROWSER-RECHTE): diesen Ablauf faehrt jetzt mit interner Treiberdiagnose
       // `tests/wissensbeziehungen-browser-rechte/tastatur-schmal-rechte-pg.integration.test.ts`
       // (ALT-500-AUSLÖSER); die dort diagnostizierte Ursache reproduziert der Fall ALT-500 minimal.
-      await seite.goto("about:blank", { waitUntil: "domcontentloaded" });
+      //
+      // ORIGINALABLAUF (aufnahme:20260922:graph-browser-rechte-alt500): der ALT-500-AUSLÖSER fuhr
+      // weder (b)–(e) noch den Prozessneustart. `graphOffenBeiAnlage` faehrt deshalb DIESE Strecke
+      // so, wie 715dd3abb sie fuhr — `/graph` bleibt offen (`alt500-originalstrecke-pg`).
+      if (!lauf.graphOffenBeiAnlage) {
+        await seite.goto("about:blank", { waitUntil: "domcontentloaded" });
+      }
 
       // 101 Eintraege ueber den ECHTEN Weg (POST /api/kos) — mit je EIGENEM Schlagwort, damit
       // keine abgeleiteten Schlagwortkanten entstehen, die hier niemand gemessen hat.
       const zusatz: string[] = [];
       for (let i = 0; i < SOLL.zusatzKos; i += 1) {
         const nr = String(i).padStart(4, "0");
+        const von = Date.now();
         const angelegt = await sende(server.basis, "POST", "/api/kos", token, {
           title: `Grenzobjekt ${nr}`,
           statement: `Belegsatz des Grenzobjekts ${nr} fuer die Lesegrenze.`,
@@ -1182,6 +1223,13 @@ export async function fahreStrecke(umgebung: Umgebung, lauf: Lauf): Promise<Prot
           category: "Betrieb",
           confidentiality: "intern",
           tags: [`j4328-grenze-${nr}`],
+        });
+        await lauf.nachAnlage?.(pool, {
+          nr,
+          status: angelegt.status,
+          text: angelegt.text.slice(0, 200),
+          von,
+          bis: Date.now(),
         });
         expect(angelegt.status, `Grenzobjekt ${nr}: ${angelegt.text.slice(0, 200)}`).toBe(201);
         zusatz.push((angelegt.json as { id: string }).id);
