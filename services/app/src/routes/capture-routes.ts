@@ -21,10 +21,12 @@ import {
   validateDraftPayloadShape,
 } from "../../../capture";
 import {
+  type DokumentaktenService,
   type KoService,
   alsMenge,
   alsSchreibpatch,
   createOperationFingerprint,
+  gelieferteDokumentId,
 } from "../../../knowledge-object";
 // JOB 2703 D2: DIE EINE Kuerzungsregel fuer die Kernaussage — dieselbe Funktion wie im
 // Confluence-Mapper (services/confluence/src/mapper.ts). Der Server kuerzt; der Client nicht mehr.
@@ -38,12 +40,29 @@ import { type Guards, type SessionUser, sendError } from "../http";
 // ausdrücklich DOM- UND paketfrei gehalten, damit der Browser denselben Kern nutzen kann.
 import { bildVerkleinerung, bildausfaelleVermerken } from "../import/bildverkleinerung";
 import type { AssignmentNotifier } from "../notify";
+import { entwurfSichtbarFuer } from "../sichtbarkeit";
 
 // AUFTRAG-mega19 Block B: EXPORTIERT, damit die Composition-Root den Entwurfs-Zugang der
 // Dokumentübernahme (ko-routes, `DraftPromotionSource`) aus DERSELBEN Regel bildet. Zwei
 // Auffassungen davon, wer einen Entwurf sehen darf, wären eine zu viel.
+//
+// AUFNAHME gesamt-entwurf-einreichen · Entscheidung Pedi `debbb8e8` („Beides", Standardfall): ein
+// Entwurf ist PRIVAT — er liegt am Server und ist NUR für seine Autorin sichtbar, auf allen ihren
+// Geräten. Bis Lauf :3 sahen Administratoren jeden lebenden Entwurf samt Inhalt (Ben Runde 1, B1).
+// Die Rolle öffnet deshalb keinen fremden Entwurf mehr. Das bewusste Freigeben in einen gemeinsamen
+// Pool (R-2099, FR-CAP-06) ist ein eigener Auftrag und würde HIER eine zweite, ausdrückliche
+// Bedingung ergänzen — keine Rollenausnahme. (tests/entwurf-einreichen/entwurf-ist-privat.test.ts)
+//
+// DIE EINZIGE AUSNAHME IST KEIN FREMDER ENTWURF: Altbestand OHNE `originalAuthor` (vor WP-RETEST7
+// angelegt, `tests/app/ko-author-paths.test.ts`) gehört niemandem. Er ist niemandes privater
+// Entwurf, und ohne diese Zeile käme ihn keiner mehr fortsetzen, einreichen oder löschen. Nur die
+// Verwaltung erreicht ihn — wie bisher.
+//
+// Lauf :3 Runde 3 (Ben B1-R): die Regel selbst steht in `sichtbarkeit.ts` (`entwurfSichtbarFuer`),
+// weil der Anhang-Leseweg (`GET /api/objects/:id/raw`) dieselbe braucht. Diese Funktion bleibt der
+// Name, unter dem die Entwurfsrouten und die Composition-Root sie rufen.
 export function canSeeDraft(user: SessionUser, draft: Draft): boolean {
-  return user.role === "admin" || draft.originalAuthor === user.id;
+  return entwurfSichtbarFuer(user, draft);
 }
 
 // ================================================================================================
@@ -104,10 +123,7 @@ function imPapierkorb(draft: Draft): boolean {
  * EINZEL-Zugriff läuft über `findById`, und das gibt einen getrashten Entwurf gar nicht heraus.
  */
 function visibleDraftsFor(user: SessionUser, drafts: Draft[]): Draft[] {
-  const lebende = drafts.filter((draft) => !imPapierkorb(draft));
-  return user.role === "admin"
-    ? lebende
-    : lebende.filter((draft) => draft.originalAuthor === user.id);
+  return drafts.filter((draft) => !imPapierkorb(draft) && canSeeDraft(user, draft));
 }
 
 /**
@@ -248,6 +264,8 @@ export interface DocxDraftRequest {
   data: string;
   /** Titelvorschlag des Panels; ohne ihn wird der Dateiname genommen. */
   title?: string;
+  /** R-0169 (Nacharbeit 5): die im Word-Dokument gespeicherte Dokumentkennung, falls vorhanden. */
+  dokumentId?: string;
 }
 
 // Der Bildzähler zählt EINZELNE eingebettete Bilder — `data:image/…;base64,` je `<img>`. Er zählt
@@ -698,7 +716,14 @@ const DRAFT_BODY_TOO_LARGE_MESSAGE =
 // KEIN ZWEITES RECHTESYSTEM: Es ersetzt keine einzige Prüfung. `requirePermission("ko.create")`
 // entscheidet unverändert, WER schreiben darf; `expectedOwner` entscheidet nur, ob der Absender
 // noch derselbe ist, für den er die Nutzlast zusammengestellt hat.
-export type DraftCreateRequest = DraftPayload & { operationId?: string; expectedOwner?: string };
+// R-0169 (Nacharbeit 5): `dokumentId` ist wie `operationId` TRANSPORT — die Kennung, die der
+// Word-Zusatz nach dem ersten Senden im Dokument gespeichert hat. Sie wird vor der Gestaltprüfung
+// abgetrennt und geht nie in den Payload.
+export type DraftCreateRequest = DraftPayload & {
+  operationId?: string;
+  expectedOwner?: string;
+  dokumentId?: string;
+};
 
 /**
  * JOB 4249 R6: Der Aufruf war für ein anderes Konto gedacht als das, mit dem er ankommt — es wurde
@@ -770,6 +795,67 @@ export interface CaptureRoutesDeps {
    * Im Betrieb bleibt es `DOCX_GRENZEN_VORGABE`.
    */
   docxGrenzen?: DocxGrenzen | undefined;
+  /**
+   * R-0169 (Nacharbeit 5): die interne Dokumentakte. Ist sie verdrahtet, bekommt jeder über den
+   * Word-Zusatz angelegte Entwurf den Bezug auf eine festgeschriebene Fassung seines Dokuments.
+   * Optional wie die Abhängigkeiten darüber; ohne sie bleibt der Word-Weg exakt wie vorher.
+   */
+  dokumente?: DokumentaktenService | undefined;
+}
+
+// ================================================================================================
+// R-0169 (herkunft-identitaet, Nacharbeit 5) — DER WORD-ZUSATZ BEKOMMT EINE DOKUMENTIDENTITÄT.
+// ================================================================================================
+//
+// DER ABLAUF. Der Zusatz sendet beim ersten Mal KEINE Kennung: die Akte entsteht hier, Klarwerk
+// vergibt die `dokumentId`, und die Antwort trägt sie im Entwurf (`dokumentHerkunft`). Der Zusatz
+// speichert sie IM Word-Dokument (Office-Dokumenteinstellungen, taskpane.html) und schickt sie bei
+// jedem weiteren Senden mit — so bleibt ein überarbeitetes Dokument dieselbe Akte, und jeder Stand
+// wird eine neue, unveränderliche Fassung.
+//
+// ZWEI TORE, beide VOR jeder Schreibwirkung bzw. nur für einen NEU angelegten Entwurf:
+//   1. Eine mitgebrachte Kennung, die hier nicht vergeben wurde, weist die Anfrage ab (400
+//      `DOKUMENT_UNBEKANNT`) — es entsteht weder Entwurf noch Akte. Sie wird nicht übernommen.
+//   2. Festgeschrieben und gebunden wird nur, wenn DIESER Aufruf den Entwurf angelegt hat. Eine
+//      Wiederholung desselben Vorgangs (`operationId`) liefert den schon gebundenen Entwurf.
+async function unbekannteDokumentkennung(
+  dokumente: DokumentaktenService | undefined,
+  dokumentId: string | undefined,
+): Promise<boolean> {
+  if (dokumente === undefined || dokumentId === undefined) {
+    return false;
+  }
+  return !(await dokumente.bekannt(dokumentId));
+}
+
+function sendeUnbekannteDokumentkennung(reply: FastifyReply): void {
+  reply.code(400).send({
+    error: "DOKUMENT_UNBEKANNT",
+    message:
+      "Diese Dokumentkennung wurde hier nicht vergeben — sie wird weder übernommen noch neu angelegt.",
+  });
+}
+
+async function anWordDokumentBinden(
+  deps: { capture: CaptureService; dokumente?: DokumentaktenService | undefined },
+  draft: Draft,
+  dokumentId: string | undefined,
+  actor: string,
+): Promise<Draft> {
+  if (!deps.dokumente) {
+    return draft;
+  }
+  const herkunft = await deps.dokumente.festschreiben({
+    dokumentId,
+    inhalt: {
+      title: draft.payload.title,
+      statement: draft.payload.statement,
+      bodyHtml: draft.payload.bodyHtml,
+    },
+    weg: "word_addin",
+    actor,
+  });
+  return deps.capture.dokumentHerkunftBinden(draft.id, herkunft);
 }
 
 // ================================================================================================
@@ -807,6 +893,8 @@ function antwortBeiVeraltetemStand(reply: FastifyReply, error: unknown): boolean
 
 export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyPluginAsync {
   const { capture, ko, validation, notifyAssignment, semanticPrefilter, aiCheckWorker } = deps;
+  // R-0169 (Nacharbeit 5): die interne Dokumentakte des Word-Wegs (optional, s. Deps).
+  const dokumente = deps.dokumente;
   // JOB 2671 D2: EINE Entscheidung, beim Aufbau getroffen — nicht bei jeder Anfrage neu.
   const docxUmwandeln = deps.docxUmwandlung ?? extractDocxRich;
   const docxUmwandlungTimeoutMs = deps.docxUmwandlungTimeoutMs ?? DOCX_UMWANDLUNG_TIMEOUT_MS;
@@ -901,7 +989,9 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
       // läuft deshalb durch DIESELBE Ankerprüfung wie die Einzelroute — sonst stünde „kein
       // Body-Resume ohne Anker" im Code und griffe in der Anwendung nie.
       // JOB 2696 (R2-33): Die Eingrenzung geschieht jetzt IN DER ABLAGE, nicht erst hier. Ein
-      // Nicht-Admin bekommt nur noch seine eigenen Entwuerfe geladen; ein Admin unveraendert alle.
+      // Nicht-Admin bekommt nur noch seine eigenen Entwuerfe geladen. Ein Admin lädt weiter alle,
+      // weil nur er herrenlosen Altbestand erreicht (`canSeeDraft`); fremde private Entwürfe nimmt
+      // seit Entscheidung `debbb8e8` auch für ihn `visibleDraftsFor` heraus.
       //
       // `visibleDraftsFor` BLEIBT STEHEN, und das ist Absicht: Es ist und bleibt die Stelle, die
       // entscheidet, wer welchen Entwurf sieht. Die Vorfilterung ist eine Ersparnis, keine zweite
@@ -955,6 +1045,8 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
         const {
           operationId: rohSchluessel,
           expectedOwner: rohEigentuemer,
+          // R-0169 (Nacharbeit 5): Transport wie `operationId`, nie Payload.
+          dokumentId: rohDokumentId,
           ...nutzlast
         } = request.body ?? {};
         const gestalt = validateDraftPayloadShape(nutzlast);
@@ -999,6 +1091,14 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
           typeof rohSchluessel === "string" && rohSchluessel.trim().length > 0
             ? rohSchluessel
             : undefined;
+        // R-0169 (Nacharbeit 5): nur der Word-Weg trägt eine Dokumentidentität. Ein anderer Weg mit
+        // mitgeschickter Kennung bleibt, was er war — die Kennung wird dort nicht beachtet.
+        const ausWord = gestalt.payload.origin === "word_addin";
+        const dokumentId = ausWord ? gelieferteDokumentId(rohDokumentId) : undefined;
+        if (ausWord && (await unbekannteDokumentkennung(dokumente, dokumentId))) {
+          sendeUnbekannteDokumentkennung(reply);
+          return;
+        }
         try {
           // JOB 2697: DIE ROUTE ÜBERSETZT NUR. Sie trifft keine eigene Entscheidung über
           // Wiederholung oder Konflikt und führt kein eigenes Register — der Dienst hat
@@ -1013,7 +1113,19 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
             user.id,
             vorgangsId,
           );
-          reply.code(angelegt ? 201 : 200).send(draft);
+          // R-0169 (Nacharbeit 5): ein Word-Entwurf wird an eine Fassung gebunden.
+          // NACHARBEIT 8 (bens F2): nicht mehr nur beim NEU angelegten Entwurf. Scheiterte das
+          // Festschreiben oder Binden nach der Anlage, stand der Entwurf ohne Bezug im Bestand — und
+          // die Wiederholung desselben Vorgangs (`angelegt === false`) gab ihn mit 200 zurück, als
+          // wäre alles erledigt. Jetzt vervollständigt die Wiederholung die fehlende Bindung; ein
+          // bereits gebundener Entwurf wird unverändert wiederverwendet (`dokumentHerkunftBinden`
+          // bindet nie um). Erfolg meldet die Route erst, wenn der Entwurf den Bezug trägt — scheitert
+          // das Binden erneut, antwortet sie mit dem Fehler statt mit dem ungebundenen Entwurf.
+          const antwort =
+            ausWord && !draft.dokumentHerkunft
+              ? await anWordDokumentBinden({ capture, dokumente }, draft, dokumentId, user.id)
+              : draft;
+          reply.code(angelegt ? 201 : 200).send(antwort);
         } catch (error) {
           sendError(reply, error);
         }
@@ -1051,11 +1163,22 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
         if (!user) {
           return;
         }
-        const { name, data, title } = request.body ?? ({} as DocxDraftRequest);
+        const {
+          name,
+          data,
+          title,
+          dokumentId: rohDokumentId,
+        } = request.body ?? ({} as DocxDraftRequest);
         if (typeof data !== "string" || data.length === 0) {
           reply
             .code(400)
             .send({ error: "BAD_REQUEST", message: "Es wurden keine Dokumentbytes uebergeben." });
+          return;
+        }
+        // R-0169 (Nacharbeit 5): dasselbe Tor wie an POST /api/drafts — vor jeder Umwandlung.
+        const dokumentId = gelieferteDokumentId(rohDokumentId);
+        if (await unbekannteDokumentkennung(dokumente, dokumentId)) {
+          sendeUnbekannteDokumentkennung(reply);
           return;
         }
         // Nur `.docx`. Das alte Binärformat `.doc` liest mammoth nicht — eine ehrliche Absage ist
@@ -1186,7 +1309,14 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
             // Client entscheidet damit fail-closed, ob etwas verloren ging.
             sourceImageCount: quellbilder,
           };
-          const draft = await capture.createDraft(payload, user.id);
+          // R-0169 (Nacharbeit 5): der neu angelegte Entwurf wird an die Fassung seines
+          // Word-Dokuments gebunden (Akte neu, wenn das Dokument noch keine Kennung trägt).
+          const draft = await anWordDokumentBinden(
+            { capture, dokumente },
+            await capture.createDraft(payload, user.id),
+            dokumentId,
+            user.id,
+          );
           // JOB 2912 D1 — DIE BILANZ WIRD AUF DEM STAND GEZOGEN, DER WIRKLICH GESPEICHERT WURDE.
           //
           // GEMESSEN, nicht gelesen: `createDraft` säubert `bodyHtml` mit dem Allowlist-Sanitizer
@@ -1381,7 +1511,8 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
       }
       try {
         // Die Eingrenzung geschieht IN DER ABLAGE (JOB 2696s Lehre) — ein Nicht-Admin bekommt
-        // fremde Entwürfe gar nicht erst geladen. `canSeeDraft` bleibt trotzdem die Stelle, die
+        // fremde Entwürfe gar nicht erst geladen; beim Admin nimmt `canSeeDraft` sie heraus
+        // (Entscheidung `debbb8e8`, nur herrenloser Altbestand bleibt ihm). `canSeeDraft` bleibt trotzdem die Stelle, die
         // entscheidet: liefe beides je auseinander, fängt der Filter hier es ab. Eine
         // Sichtbarkeitsregel durch eine Ersparnis zu ersetzen wäre der falsche Handel.
         const geloescht = await capture.listTrashedDrafts(
@@ -1551,6 +1682,68 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
         if (!user) {
           return;
         }
+        // Die Nacharbeiten NACH dem Verbrauch des Entwurfs — EINE Stelle für den ersten Lauf und
+        // für jede Wiederholung desselben Vorgangs (Nachschlag unten).
+        //
+        // AUFNAHME gesamt-entwurf-einreichen (Ben Runde 2, F1): JEDER SCHRITT LIEST ZUERST SEINE
+        // EIGENE WIRKUNG. Bricht ein Lauf an irgendeiner Stelle ab — beim Verbrauch, bei der
+        // Zuweisung, beim Prüf-Vermerk —, antwortet er 500, und die Wiederholung holt genau das
+        // nach, was im Bestand fehlt: keine Zuweisung für einen genannten Prüfer → zuweisen; eine
+        // Zuweisung, deren Benachrichtigung noch aussteht → benachrichtigen; kein Prüf-Vermerk → vermerken und einreihen; Vermerk `pending`, aber
+        // nicht in der Warteschlange → einreihen. Was schon wirkt, läuft kein zweites Mal. Damit
+        // gilt ein Vorgang erst dann als erfolgreich (200/201), wenn alle Folgen im Bestand stehen.
+        const nacharbeiten = async (koId: string, reviewerIds: string[] | undefined) => {
+          const stand = await ko.get(koId);
+          if (!stand) {
+            // Das Objekt ist inzwischen fort (Papierkorb): nichts mehr nachzuholen.
+            return undefined;
+          }
+          const reviewers = [...new Set(reviewerIds ?? [])].filter((id) => id !== user.id);
+          // Ben Lauf :3 Runde 1 (B2): „Zuweisung vorhanden" beweist nicht, dass die Prüferin
+          // benachrichtigt ist. Jede Zuweisung dieses Wegs trägt deshalb ihren eigenen
+          // Benachrichtigungsstand und wird EINZELN benachrichtigt und abgehakt. Scheitert die
+          // zweite Zuweisung, holt die Wiederholung die Benachrichtigung der ersten nach; scheitert
+          // ein Versand, bleibt genau diese Zuweisung „ausstehend". Bleibt nur: Versand gelungen,
+          // Abhaken gescheitert → die Wiederholung schickt diese eine Mail ein zweites Mal (lieber
+          // doppelt als nie).
+          //
+          // ALTBESTAND (Ben Lauf :3 Runde 2, B2-R): eine Zuweisung ohne Benachrichtigungsstand
+          // stammt aus dem früheren Ablauf. Dort galt fest: zuweisen → benachrichtigen → Prüf-
+          // Vermerk. Steht der Vermerk (`stand.aiCheck`, gelesen VOR diesem Lauf), ist der frühere
+          // Lauf über die Benachrichtigung hinausgekommen; fehlt er, brach er davor ab, und die
+          // feldlose Zuweisung gilt als noch zu benachrichtigen.
+          if (reviewers.length > 0) {
+            await validation.zuweisenBeimEinreichen(koId, reviewers, user.id);
+            for (const prueferin of await validation.nochZuBenachrichtigen(koId, reviewers, {
+              altbestandBenachrichtigt: stand.aiCheck !== undefined,
+            })) {
+              await notifyAssignment?.(koId, [prueferin]);
+              await validation.benachrichtigungErledigt(koId, prueferin);
+            }
+          }
+          // WP-SUBMIT-ASYNC (Pedis R3, 21.07.): wie beim direkten Einreichen — kein synchroner
+          // detect*-Lauf mehr vor der Antwort; nur der Prüf-Job wird vermerkt und der Worker
+          // arbeitet ihn danach ab (dieselben Erkennungs-Pfade, Status im Board sichtbar).
+          // Wie in ko-routes: die Antwort trägt den Vermerk ehrlich mit (aiCheck pending);
+          // Nachlesen VOR dem enqueue → deterministischer Job-Start in der Antwort.
+          if (!aiCheckWorker) {
+            return undefined;
+          }
+          if (stand.aiCheck) {
+            // Schon vermerkt. Steht er noch aus und liegt nicht in der Warteschlange, brach der
+            // frühere Lauf zwischen Vermerk und Einreihen ab — dann (und nur dann) einreihen.
+            if (stand.aiCheck.status === "pending" && !aiCheckWorker.has(koId)) {
+              aiCheckWorker.enqueue(koId, stand.aiCheck.koVersion);
+            }
+            return reviewers.length > 0 ? ((await ko.get(koId)) ?? stand) : stand;
+          }
+          await ko.markAiCheckPending(koId);
+          const vermerkt = await ko.get(koId);
+          // WP-SHIP8-CLOSE-2 (bens F3): Zielversion des frischen Vermerks synchron mitgeben —
+          // die Overflow-Eviction schließt hart versionsgebunden ab (kein unversionierter Write).
+          aiCheckWorker.enqueue(koId, vermerkt?.aiCheck?.koVersion);
+          return vermerkt;
+        };
         try {
           const body = request.body ?? {};
           const operationId = typeof body.operationId === "string" ? body.operationId.trim() : "";
@@ -1577,9 +1770,21 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
               fingerprint,
             });
             if (replay) {
-              // 200 statt 201: derselbe Vorgang, aber das Objekt entsteht NICHT jetzt. Keine
-              // Folgeschritte — sie liefen beim ersten Mal.
-              reply.code(200).send(replay);
+              // AUFNAHME gesamt-entwurf-einreichen (R-0036, R-0058) — KEIN GEISTER-ENTWURF UND
+              // KEIN OBJEKT OHNE PRÜFUNG. Anlage, Verbrauch und Nacharbeiten sind getrennte
+              // Schritte in verschiedenen Modulen; brach der erste Lauf nach der Anlage ab, stand
+              // das Objekt womöglich neben seinem Entwurf, ohne Prüfer und ohne Prüf-Job. Die
+              // Wiederholung DESSELBEN Vorgangs holt jeden fehlenden Schritt nach — jeder prüft
+              // seine eigene Wirkung (`nacharbeiten`), der Verbrauch greift bei einem schon
+              // entfernten Entwurf ins Leere, die Ablage ist ein Upsert. Nach einem vollständigen
+              // ersten Lauf bewirkt die Wiederholung deshalb nichts. Der Abdruck enthält `draftId`,
+              // ein fremder Entwurf wird also nie getroffen.
+              // (tests/entwurf-einreichen/kein-geister-entwurf.test.ts)
+              await capture.entwurfVerbraucht(request.params.id);
+              const nachgeholt = await nacharbeiten(replay.id, body.reviewerIds);
+              // 200 statt 201: derselbe Vorgang, aber das Objekt entsteht NICHT jetzt.
+              reply.code(200).send(nachgeholt ?? replay);
+              await indexKoForDuplicatePrefilter(replay, semanticPrefilter);
               return;
             }
           }
@@ -1636,24 +1841,7 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
           // `deleteDraft` (weich). Es sind zwei verschiedene Vorgänge, die nur zufällig beide
           // dazu führen, dass der Entwurf aus der Liste verschwindet.
           await capture.entwurfVerbraucht(request.params.id);
-          const reviewers = [...new Set(body.reviewerIds ?? [])].filter((id) => id !== user.id);
-          if (reviewers.length > 0) {
-            await validation.assign(created.id, reviewers, user.id);
-            await notifyAssignment?.(created.id, reviewers);
-          }
-          // WP-SUBMIT-ASYNC (Pedis R3, 21.07.): wie beim direkten Einreichen — kein synchroner
-          // detect*-Lauf mehr vor der Antwort; nur der Prüf-Job wird vermerkt und der Worker
-          // arbeitet ihn danach ab (dieselben Erkennungs-Pfade, Status im Board sichtbar).
-          // Wie in ko-routes: die 201-Antwort trägt den Vermerk ehrlich mit (aiCheck pending);
-          // Nachlesen VOR dem enqueue → deterministischer Job-Start in der Antwort.
-          let submitted = created;
-          if (aiCheckWorker) {
-            await ko.markAiCheckPending(created.id);
-            submitted = (await ko.get(created.id)) ?? created;
-            // WP-SHIP8-CLOSE-2 (bens F3): Zielversion des frischen Vermerks synchron mitgeben —
-            // die Overflow-Eviction schließt hart versionsgebunden ab (kein unversionierter Write).
-            aiCheckWorker.enqueue(created.id, submitted.aiCheck?.koVersion);
-          }
+          const submitted = (await nacharbeiten(created.id, body.reviewerIds)) ?? created;
           reply.code(201).send(submitted);
           // Weg 3 (B6): Einbettung + Ablage NACH der Antwort — der Nutzer wartet nie darauf. Flag aus
           // = No-op; Fehler brechen den (bereits gesendeten) Submit nie. await nur zur deterministischen

@@ -71,11 +71,19 @@ export function conflictImpact(koId: string, conflicts: readonly Conflict[]): Co
   };
 }
 
-// Zentrale Nutzbarkeits-Begrenzung: „ready" (validiert) → „in-review" (Review nötig), wenn ein
-// ungelöster Konflikt wirkt. Offene/in-Prüfung-Zustände sind ohnehin nicht „ready" und bleiben.
-// Kein wirksamer Konflikt → unverändert (gelöste Konflikte blockieren also nicht weiter).
+// Zentrale Nutzbarkeits-Begrenzung: wirkt ein ungelöster Konflikt, heißt das Objekt „in-review"
+// (R-0216: „in Prüfung" — in Detail, Bibliothek und Antworten gleichermaßen).
+// Kein wirksamer Konflikt → unverändert (gelöste Konflikte blockieren also nicht weiter; ein
+// offenes Objekt ohne Konflikt bleibt „needs-work").
+//
+// PRÜFSTATUS-ANZEIGE (Ben, BEN-07 Nachtrag): bis hierher begrenzte die Regel NUR „ready". Ein echter
+// Wahrheitswiderspruch setzt den Kern aber auf `offen` zurück (R-0231: validiert/99 → offen/87),
+// die Basis ist dann „needs-work" — und der separat bekannte Konflikt blieb wirkungslos. Das trifft
+// genau die Lage, in der der Server den Konfliktstatus NICHT mitliefert (Listendeckel von 200,
+// `ko-routes.ts`; gescheiterte Konflikterhebung). Der Konflikt entscheidet deshalb unabhängig von
+// der Basis.
 export function conflictLimitedUsability(base: KoUsability, impact: ConflictImpact): KoUsability {
-  return impact.limited && base === "ready" ? "in-review" : base;
+  return impact.limited ? "in-review" : base;
 }
 
 // Bequemer Direkthelfer für Konsumenten mit KO + Konfliktliste: liefert die effektive, ehrliche

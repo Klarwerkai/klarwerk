@@ -9,6 +9,8 @@
 //
 // GEMESSEN AM 04.09.2026 (JOB 3062 · H3, `pages/Capture.tsx`): **14 Traeger** — vorher 19.
 // D1 und D2 hatten 19 gemessen; die Zahl ist hier nicht fortgeschrieben, sondern neu erhoben.
+// NACHTRAG (Aufnahme gesamt-entwurf-einreichen, Lauf :3): **13** — `capture.draftScope.noteAdmin`
+// ist mit Entscheidung `debbb8e8` (Entwürfe privat) von der Fläche genommen; es bleiben 2 UEBERSETZT.
 //
 //   3 UEBERSETZT — sie werden POSITIV abgenommen: gemountet, je Sprache, gegen den Katalogtext
 //     genau dieser Sprache (Block K).
@@ -104,7 +106,6 @@ const CAPTURE_PFAD = resolve(__dirname, "../../apps/web/src/pages/Capture.tsx");
 
 /** Die uebersetzten Traeger, die es HEUTE noch gibt — positiv abzunehmen. */
 const UEBERSETZT: ReadonlyArray<{ ort: string; key: string; was: string }> = [
-  { ort: "Capture.tsx:3830", key: "capture.draftScope.noteAdmin", was: "Entwurfsliste (Admin)" },
   { ort: "Capture.tsx:3831", key: "capture.draftScope.note", was: "Entwurfsliste (Nutzer)" },
   { ort: "Capture.tsx:3838", key: "capture.draftScope.toLibrary", was: "Link in die Bibliothek" },
 ];
@@ -122,23 +123,21 @@ const UEBERSETZT: ReadonlyArray<{ ort: string; key: string; was: string }> = [
  * Die KATALOGEINTRAEGE bleiben bestehen — §5a verlangt ausdruecklich, dass Textschluessel nicht
  * geloescht werden. Ungenutzt ist nicht dasselbe wie entfernt.
  */
-const VORLAUF: ReadonlyArray<{ ort: string; key: string; was: string }> = [];
+//
+// AUFNAHME gesamt-entwurf-einreichen (Lauf :3): `capture.draftScope.noteAdmin` („Admin-Ansicht:
+// alle") ist von der Fläche genommen. Seit Entscheidung Pedi `debbb8e8` sind Entwürfe privat — auch
+// die Admin-Ansicht sieht nur die eigenen, der Satz wäre unwahr. `Capture.tsx` zeigt für jede Rolle
+// `capture.draftScope.note`. Der Katalogeintrag bleibt (s. o.).
+const VORLAUF: ReadonlyArray<{ ort: string; key: string; was: string }> = [
+  { ort: "Capture.tsx:3830", key: "capture.draftScope.noteAdmin", was: "Entwurfsliste (Admin)" },
+];
 
 /**
- * Die Teilmenge, die sich fuer DIESEN Nutzer wirklich rendern laesst.
- *
- * `capture.draftScope.noteAdmin` und `capture.draftScope.note` sind die beiden ROLLENZWEIGE EINER
- * Stelle (`Capture.tsx:3991-3993`: `user?.role === "admin" ? … : …`). Der hier gemockte Nutzer ist
- * `editor`, also erscheint nur der zweite. Beide gemountet abzunehmen hiesse, den Rollen-Mock
- * mitten in der Datei umzuhaengen — dafuer waere ein zweites Modul-Mock noetig, und der Gewinn
- * waere gering: Beide Schluessel werden von K1 gegen alle drei Kataloge geprueft, und E1/E2 belegen,
- * dass die Kataloge wirklich verschieden sind. Was hier zusaetzlich gemessen wird, ist das
- * RENDERN — und dafuer genuegt der Zweig, den dieser Nutzer sieht. Das steht hier, statt still
- * einen Traeger zu ueberspringen.
+ * Die Teilmenge, die sich fuer DIESEN Nutzer wirklich rendern laesst. Bis Lauf :3 der Aufnahme
+ * gesamt-entwurf-einreichen war das nicht jeder Traeger (`noteAdmin` war der Admin-Zweig); seit
+ * `debbb8e8` gibt es keinen Rollenzweig mehr, und jeder uebersetzte Traeger rendert fuer jeden.
  */
-const SICHTBAR_FUER_DIESEN_NUTZER = UEBERSETZT.filter(
-  (z) => z.key !== "capture.draftScope.noteAdmin",
-);
+const SICHTBAR_FUER_DIESEN_NUTZER = UEBERSETZT;
 
 /**
  * ================================================================================================
@@ -321,13 +320,15 @@ beforeEach(async () => {
 // BLOCK I — DAS INVENTAR IST GESCHLOSSEN UND VOLLSTAENDIG BESCHRIFTET
 // ================================================================================================
 describe("JOB 1154 D2 · D-030 Block I: das Inventar", () => {
-  it("I1 · es fuehrt genau die 14 heute gemessenen Traeger", () => {
+  it("I1 · es fuehrt genau die 13 heute gemessenen Traeger", () => {
     // Die Zahl war 19 und ist 14: drei uebersetzte Traeger stehen noch auf der Flaeche, elf
     // Literale werden nur noch als Rueckfallwaechter gefuehrt, und fuenf frueher uebersetzte
     // Traeger sind mit JOB 3062 · H3 ersatzlos von der Flaeche genommen (Begruendung je Zeile
     // oben bei `VORLAUF`). Eine Zahl, die stehen bleibt, waehrend die Flaeche sich aendert, ist
     // keine Messung mehr, sondern ein Erbstueck.
-    expect(UEBERSETZT.length + FRUEHER_HART.length).toBe(14);
+    // Aufnahme gesamt-entwurf-einreichen (Lauf :3): 13 — `noteAdmin` ist mit `debbb8e8` von der
+    // Flaeche genommen und steht bei `VORLAUF`.
+    expect(UEBERSETZT.length + FRUEHER_HART.length).toBe(13);
   });
 
   it("I2 · keine Zeile ohne Ort, keine Zeile ohne Gegenstand", () => {

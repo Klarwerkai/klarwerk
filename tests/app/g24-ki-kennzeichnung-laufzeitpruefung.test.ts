@@ -23,9 +23,10 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { istKiKennzeichnung } from "../../apps/web/src/lib/wordAddin";
 import { KI_ERZEUGENDE_AUFGABEN, aiGeneratedMark } from "../../services/model-runs";
+import { panelQuelleAus } from "../support/panelquelle";
 
 const TASKPANE = "apps/web/public/word-addin/taskpane.html";
-const HTML = readFileSync(resolve(process.cwd(), TASKPANE), "utf8");
+const HTML = panelQuelleAus(TASKPANE);
 
 const M_START = "// KW-KLARA-AI-MARK-START";
 const M_END = "// KW-KLARA-AI-MARK-END";

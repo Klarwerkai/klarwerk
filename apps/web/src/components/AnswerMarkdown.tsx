@@ -15,6 +15,9 @@ function Inline({ parts }: { parts: AnswerInlinePart[] }): JSX.Element {
         ) : part.kind === "italic" ? (
           // biome-ignore lint/suspicious/noArrayIndexKey: statische, nicht umsortierte Segmentliste.
           <em key={i}>{part.text}</em>
+        ) : part.kind === "strike" ? (
+          // biome-ignore lint/suspicious/noArrayIndexKey: statische, nicht umsortierte Segmentliste.
+          <s key={i}>{part.text}</s>
         ) : (
           // biome-ignore lint/suspicious/noArrayIndexKey: statische, nicht umsortierte Segmentliste.
           <span key={i}>{part.text}</span>

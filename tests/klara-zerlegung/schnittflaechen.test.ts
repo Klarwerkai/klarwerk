@@ -2,19 +2,18 @@
 // JOB 3014 · LIEFERUNG 1 + 7 — DIE GROBSTRUKTUR AN DER AUSGELIEFERTEN SEITE, UND DER SCHNITTPLAN.
 // ================================================================================================
 //
-// P11 („das Word-Add-in in lesbare Teile zerlegen, ohne Verhalten zu ändern") ist bis heute eine
-// Absicht ohne Maß. Dieser Fall gibt ihr eines: er holt die Seite über die ECHTE
-// Produktionsverdrahtung (`registerWebStatic` gegen ein Temp-`dist`, `app.inject` auf
-// `KLARA_TASKPANE_PFAD`) — nicht aus der Quelldatei — und zählt nach, wie sich die 375 KB auf
-// Markup, Stil und Skript verteilen.
+// P11 („das Word-Add-in in lesbare Teile zerlegen, ohne Verhalten zu ändern") war bis AUFNAHME
+// 20260922 (zentrale-module-aufteilen, R-1611) eine Absicht mit Maß, aber ohne Schnitt. Dieser Fall
+// holt das Fenster über die ECHTE Produktionsverdrahtung (`registerWebStatic` gegen ein Temp-`dist`,
+// `app.inject`) — nicht aus der Quelldatei — und zählt nach, wie es sich auf Markup, Stil und
+// Skript verteilt. Seit R-1611 sind das DREI ausgelieferte Dateien.
 //
 // WARUM AUS DER LIEFERUNG UND NICHT AUS DER QUELLE: zwischen beiden liegt `stempleFassung`. Eine
 // Zerlegung muss an dem tragen, was der Server SENDET; alles andere misst eine Datei, die so nie
 // beim Anwender ankommt.
 //
-// KEINE ZEILENNUMMERN: an derselben Datei arbeiten JOB 3004/3010/3012/3013. Gemessen wird
-// strukturell — Zahlen, Anteile, Namen. Wo eine Zahl steht, steht sie als Schranke mit Luft nach
-// beiden Seiten, nicht als Pin.
+// KEINE ZEILENNUMMERN: an derselben Datei arbeiten viele Aufträge. Gemessen wird strukturell —
+// Zahlen, Anteile, Namen. Wo eine Zahl steht, steht sie als Schranke, nicht als Pin.
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -27,12 +26,17 @@ import {
 } from "../../services/app/src/web-static";
 import {
   type Block,
+  CSS_DATEI,
+  JS_DATEI,
+  MARKE_DATEI,
+  RUECKWEG_DATEI,
   bloeckeVon,
   bytes,
-  inhaltVon,
+  echterSchnitt,
   inline,
   markenBaum,
   markenVon,
+  rueckwegQuelle,
   tabelle,
   taskpaneQuelle,
   zeilen,
@@ -47,7 +51,7 @@ afterAll(() => {
   }
 });
 
-/** Ein `dist`-Abbild wie aus `vite build` — mit der WIRKLICHEN Paneldatei, nicht mit einer Attrappe. */
+/** Ein `dist`-Abbild wie aus `vite build` — mit den WIRKLICHEN Paneldateien, nicht mit Attrappen. */
 function distMit(dateien: Record<string, string>): string {
   const dir = mkdtempSync(join(tmpdir(), "kw-zerlegung-"));
   aufraeumen.push(dir);
@@ -59,21 +63,44 @@ function distMit(dateien: Record<string, string>): string {
   return dir;
 }
 
-/** Die Seite, wie der Server sie WIRKLICH sendet. */
-async function ausgelieferteSeite(): Promise<string> {
-  const app = Fastify();
-  await registerWebStatic(app, distMit({ "taskpane.html": taskpaneQuelle() }), FASSUNG);
-  const res = await app.inject({ method: "GET", url: KLARA_TASKPANE_PFAD });
-  expect(res.statusCode).toBe(200);
-  return res.body;
+interface Lieferung {
+  seite: string;
+  stil: string;
+  skript: string;
 }
 
-let seite = "";
+/** Was der Server WIRKLICH sendet: die gestempelte Seite und die zwei Geschwisterdateien. */
+async function ausgelieferteDateien(): Promise<Lieferung> {
+  const schnitt = echterSchnitt();
+  const app = Fastify();
+  await registerWebStatic(
+    app,
+    distMit({
+      "taskpane.html": schnitt.html,
+      [CSS_DATEI]: schnitt.css,
+      [JS_DATEI]: schnitt.js,
+      [RUECKWEG_DATEI]: rueckwegQuelle(),
+    }),
+    FASSUNG,
+  );
+  const hole = async (url: string): Promise<string> => {
+    const res = await app.inject({ method: "GET", url });
+    expect(res.statusCode, url).toBe(200);
+    return res.body;
+  };
+  return {
+    seite: await hole(KLARA_TASKPANE_PFAD),
+    stil: await hole(`/word-addin/${CSS_DATEI}?v=${FASSUNG}`),
+    skript: await hole(`/word-addin/${JS_DATEI}?v=${FASSUNG}`),
+  };
+}
+
+let lieferung: Lieferung = { seite: "", stil: "", skript: "" };
 let bloecke: Block[] = [];
 
 beforeAll(async () => {
-  seite = await ausgelieferteSeite();
-  bloecke = bloeckeVon(seite);
+  lieferung = await ausgelieferteDateien();
+  bloecke = bloeckeVon(lieferung.seite);
 });
 
 // ------------------------------------------------------------------------------------------------
@@ -81,11 +108,12 @@ beforeAll(async () => {
 // ------------------------------------------------------------------------------------------------
 
 describe("JOB 3014 · A — die Messung hat überhaupt etwas in der Hand", () => {
-  it("A1 · die ausgelieferte Seite ist größer als 100 KB und trägt keinen Platzhalter mehr", () => {
+  it("A1 · die Lieferung ist größer als 100 KB, und die Seite trägt keinen Platzhalter mehr", () => {
     // Ein Vergleich an einer leeren oder halben Lieferung wäre grün und misste nichts.
-    expect(bytes(seite)).toBeGreaterThan(100_000);
-    expect(seite).not.toContain(KLARA_FASSUNG_PLATZHALTER);
-    expect(seite).toContain(`content="${FASSUNG}"`);
+    const gesamt = bytes(lieferung.seite) + bytes(lieferung.stil) + bytes(lieferung.skript);
+    expect(gesamt).toBeGreaterThan(100_000);
+    expect(lieferung.seite).not.toContain(KLARA_FASSUNG_PLATZHALTER);
+    expect(lieferung.seite).toContain(`content="${FASSUNG}"`);
   });
 
   it("A2 · der Blocksammler findet Blöcke, und sie liegen in Dokumentreihenfolge", () => {
@@ -97,161 +125,101 @@ describe("JOB 3014 · A — die Messung hat überhaupt etwas in der Hand", () =>
 });
 
 // ------------------------------------------------------------------------------------------------
-// B — die Schnittflächen: was die Seite an Inline-Flächen hat und wie groß sie sind.
+// B — die Schnittflächen: was die Seite an Inline-Flächen hat und wie groß die Dateien sind.
 // ------------------------------------------------------------------------------------------------
 
 describe("JOB 3014 · B — die Grobstruktur der ausgelieferten Seite", () => {
-  it("B1 · genau EIN Inline-Stil, EIN Inline-Skript, EINE fremde und EINE eigene Quelle", () => {
-    const stile = inline(bloecke, "style");
-    const skripte = inline(bloecke, "script");
+  it("B1 · KEIN Inline-Stil, KEIN Inline-Skript; EINE fremde und ZWEI eigene Skriptquellen, EIN Stilblatt", () => {
+    expect(inline(bloecke, "style")).toHaveLength(0);
+    expect(inline(bloecke, "script")).toHaveLength(0);
     const extern = bloecke.filter((b) => b.extern !== null).map((b) => b.extern);
-    expect(stile).toHaveLength(1);
-    expect(skripte).toHaveLength(1);
     // Office.js vom Microsoft-CDN — die einzige FREMDE Ressource, und genau sie steht in der
     // Ersatz-CSP (`security-headers.ts`, `script-src`). Ein zweiter fremder Eintrag hier wäre eine
     // Erweiterung der Angriffsfläche und muss auffallen.
     //
-    // JOB 3667 (14.09.2026): dazu kommt EINE eigene Quelle. Der Block KW-RUECKWEG (811 Zeilen)
-    // wohnt seither in `rueckweg.js` — nicht aus Geschmack, sondern weil B3 unten sonst reißt und
-    // die Schranke NICHT angehoben werden durfte. Für die Angriffsfläche ändert das nichts:
-    // relative Adresse, gleicher Ursprung, von `script-src 'self'` schon gedeckt; die Cachekennung
-    // ist derselbe Fassungsplatzhalter, den der Server auch ins Meta stempelt (`stempleFassung`),
-    // also genau die Zahl des Manifests. Ein Eintrag ohne diese zwei Eigenschaften — fremder
-    // Ursprung oder absolute Adresse — fällt hier weiterhin auf.
+    // JOB 3667 (14.09.2026): dazu kam `rueckweg.js` (Block KW-RUECKWEG). R-1611: dazu kommt
+    // `taskpane.js`, das frühere Inline-Skript, an genau seiner Stelle. Beide relativ, gleicher
+    // Ursprung, von `script-src 'self'` gedeckt; die Cachekennung ist derselbe Fassungsplatzhalter,
+    // den der Server ins Meta stempelt (`stempleFassung`), also die Zahl des Manifests.
+    //
+    // ZERLEGUNGSAUFTRAG BESTANDSBLICK: eine DRITTE eigene Quelle mit denselben zwei Eigenschaften.
+    // Der Block KW-MARKE (das Ende des Skripts) wohnt in `marke.js`, geladen UNMITTELBAR NACH
+    // `taskpane.js` — er läuft also an derselben Stelle wie vorher. Anlass ist B3 unten: die
+    // Schranke an `taskpane.js` wird nicht angehoben.
     expect(extern).toEqual([
       "https://appsforoffice.microsoft.com/lib/1/hosted/office.js",
-      `rueckweg.js?v=${FASSUNG}`,
+      `${RUECKWEG_DATEI}?v=${FASSUNG}`,
+      `${JS_DATEI}?v=${FASSUNG}`,
+      `${MARKE_DATEI}?v=${FASSUNG}`,
     ]);
+    const stilblaetter = [
+      ...lieferung.seite.matchAll(/<link\s+rel="stylesheet"\s+href="([^"]+)"/g),
+    ].map((m) => m[1]);
+    expect(stilblaetter).toEqual([`${CSS_DATEI}?v=${FASSUNG}`]);
   });
 
-  it("B2 · die Verteilung: das Skript trägt den weit überwiegenden Teil der Seite", () => {
-    const stil = inhaltVon(seite, inline(bloecke, "style")[0] as Block);
-    const skript = inhaltVon(seite, inline(bloecke, "script")[0] as Block);
-    const markup = bytes(seite) - bytes(stil) - bytes(skript);
+  it("B2 · die Verteilung: das Skript trägt den weit überwiegenden Teil des Fensters", () => {
+    const { seite, stil, skript } = lieferung;
+    const gesamt = bytes(seite) + bytes(stil) + bytes(skript);
+    const zeile = (name: string, text: string): string[] => [
+      name,
+      String(zeilen(text)),
+      String(bytes(text)),
+      anteil(bytes(text), gesamt),
+    ];
 
     console.log(
-      `\nJOB 3014 · Schnittflächen der AUSGELIEFERTEN Seite (${KLARA_TASKPANE_PFAD}):\n${tabelle(
-        ["Fläche", "Zeilen", "Bytes", "Anteil"],
+      `\nR-1611 · Schnittflächen der AUSGELIEFERTEN Dateien (${KLARA_TASKPANE_PFAD} + 2):\n${tabelle(
+        ["Datei", "Zeilen", "Bytes", "Anteil"],
         [
-          [
-            "Markup (Rest)",
-            String(zeilen(seite) - zeilen(stil) - zeilen(skript) + 2),
-            String(markup),
-            anteil(markup, bytes(seite)),
-          ],
-          [
-            "Inline-Stil (1x)",
-            String(zeilen(stil)),
-            String(bytes(stil)),
-            anteil(bytes(stil), bytes(seite)),
-          ],
-          [
-            "Inline-Skript (1x)",
-            String(zeilen(skript)),
-            String(bytes(skript)),
-            anteil(bytes(skript), bytes(seite)),
-          ],
-          ["Seite gesamt", String(zeilen(seite)), String(bytes(seite)), "100.0%"],
+          zeile("taskpane.html", seite),
+          zeile("taskpane.css", stil),
+          zeile("taskpane.js", skript),
+          ["gesamt", "", String(gesamt), "100.0%"],
         ],
-      )}\nExterne Quellen: ${bloecke
+      )}\nExterne Quellen der Seite: ${bloecke
         .filter((b) => b.extern !== null)
         .map((b) => b.extern)
         .join(", ")}\n`,
     );
 
-    // Der tragende Befund, als Schranke statt als Pin: das Skript ist die Seite. Wer sie lesbar
-    // machen will, muss DORT schneiden — Markup und Stil zu trennen löst das Problem nicht.
-    expect(bytes(skript) / bytes(seite)).toBeGreaterThan(0.8);
-    expect(bytes(stil) / bytes(seite)).toBeLessThan(0.1);
-    expect(markup).toBeGreaterThan(10_000);
+    // Der tragende Befund, als Schranke statt als Pin: das Skript ist das Fenster. Der Schnitt
+    // Markup/Stil/Skript (Schritt 1 des Schnittplans) ist gemacht; wer das Fenster weiter lesbar
+    // machen will, muss jetzt IN `taskpane.js` schneiden (Schritt 2).
+    expect(bytes(skript) / gesamt).toBeGreaterThan(0.8);
+    expect(bytes(stil) / gesamt).toBeLessThan(0.1);
+    expect(bytes(seite)).toBeGreaterThan(10_000);
   });
 
   // ==============================================================================================
-  // B3 — DIE BEWACHTE LÜCKE (Auftrag §6, gleiche Bauform wie JOB 3005).
+  // B3 — DIE BEWACHTE LÜCKE: DAS SOLL IST FÜR DIE SEITE EINGELÖST, FÜR DAS SKRIPT NICHT.
   // ==============================================================================================
   //
-  // SOLL: „Kein Inline-Skript der ausgelieferten Seite ist größer als 500 Zeilen." So stand dieser
-  // Fall zuerst hier, und so war er ROT — wörtlich:
+  // SOLL (JOB 3014): „Kein Inline-Skript der ausgelieferten Seite ist größer als 500 Zeilen." Bis
+  // R-1611 war dieser Fall auf den GEMESSENEN Zustand gedreht (ein Inline-Skript mit zuletzt 12380
+  // Zeilen) und sollte ROT werden, sobald jemand schneidet — mit der Pflicht, hier das Soll
+  // einzusetzen. Das ist geschehen: die Seite trägt KEIN Inline-Skript mehr.
   //
-  //     AssertionError: expected 5805 to be less than or equal to 500
+  // WAS DAMIT NICHT ERLEDIGT IST, und deshalb steht hier weiter eine Schranke: das Skript ist als
+  // Ganzes in `taskpane.js` gewandert, nicht in Teile zerlegt. Die Obergrenze von 12500 Zeilen, die
+  // bisher am Inline-Skript hing (Anheben verboten seit JOB 3667), hängt deshalb ab hier an
+  // `taskpane.js` — der Schnitt darf kein Freibrief zum Weiterwachsen sein. Schritt 2 des
+  // Schnittplans (C1) bleibt offen.
   //
-  // IST: EIN Inline-Skript mit 5805 Zeilen, 88.0 % der gesendeten Bytes.
-  // ABWEICHUNG: Faktor 11,6 gegenüber dem Soll; die Grenze ist nicht knapp verfehlt, sondern gar
-  // nicht angelegt — es gibt keinen zweiten Skriptblock, zwischen dem geschnitten wäre.
-  //
-  // Der Fall dreht sich deshalb auf den GEMESSENEN Zustand und bewacht die Lücke, statt sie zu
-  // verstecken: solange sie besteht, ist er grün und nennt sie in seiner Beschreibung. In dem
-  // Moment, in dem jemand P11 wirklich baut, wird er ROT — und das ist sein Zweck: der Erste, der
-  // schneidet, muss diese Stelle sehen und das Soll hier einsetzen.
-  it("B3 · GELÜCKT: das eine Inline-Skript ist vielfach größer als die 500-Zeilen-Grenze des Solls", () => {
-    const skripte = inline(bloecke, "script");
-    expect(skripte).toHaveLength(1);
-    const zeilenzahl = zeilen(inhaltVon(seite, skripte[0] as Block));
-    // Nach unten: die Lücke besteht noch (wird rot, sobald geschnitten ist — dann Soll einsetzen).
-    expect(
-      zeilenzahl,
-      "Das Inline-Skript ist unter 3000 Zeilen — wurde P11 gebaut? Dann gilt hier wieder das " +
-        "SOLL: kein Inline-Skript über 500 Zeilen.",
-    ).toBeGreaterThan(3000);
-    // Nach oben: Luft für die parallel laufenden Aufträge an derselben Datei, aber kein Blankoscheck.
-    // JOB 3094 (KA7, 06.09.2026): der Konfliktkarten-Block (ein Skriptblock, KW-KA7-KONFLIKT) hob die
-    // Zeilenzahl auf 9217 — die Schranke 9000 fiel wörtlich („expected 9217 to be less than 9000“).
-    // Sie rückt um EINEN Block (500 Zeilen, das Soll je Skript) nach oben, nicht weiter; die Lücke
-    // bleibt bewacht, der nächste Block an derselben Datei muss diese Stelle wieder sehen.
-    // JOB 3096 (M5 „Bild dazu?", 07.09.2026): der Bildblock (ein Skriptblock, KW-M5-BILD, 723 Zeilen
-    // samt Wörterbuch in drei Sprachen und Word-Einfügeweg) hob die Zeilenzahl der ZUSAMMENGEFÜHRTEN
-    // Datei (nach dem Rebase auf die 3091–3094-Kette) auf 10114 — die Schranke 9500 fiel wörtlich
-    // im Tor („expected 10114 to be less than 9500“). Sie rückt um ZWEI Soll-Blöcke (2 × 500) auf
-    // 10500, weil der eine Block größer als ein Soll-Block ist; nicht weiter, kein Blankoscheck —
-    // die Lücke bleibt bewacht, und P11 (der Schnitt) wird mit jedem Block dringlicher.
-    // JOB 3281 (WORD-VERGLEICH, 08.09.2026): der Vergleichsblock (ein Skriptblock,
-    // KW-WORDVERGLEICH, 790 Zeilen samt Wörterbuch in drei Sprachen, Einstufung, Word-Farbweg und
-    // Merkliste) hob die Zeilenzahl auf 11285 — die Schranke 10500 fiel wörtlich
-    // („expected 11285 to be less than 10500“; Endstand dieser Runde: 11304, nach zwei späteren
-    // Ehrlichkeitskorrekturen an Legende, Farbnamen und dem Satz zum veränderten Absatz). Sie rückt
-    // nach DERSELBEN Regel, die JOB 3096 hier
-    // angewandt hat, um ZWEI Soll-Blöcke (2 × 500) auf 11500: der eine Block ist größer als ein
-    // Soll-Block, und zwei Blöcke sind die kleinste Stufe, die ihn trägt. Nicht weiter, kein
-    // Blankoscheck. DIE LÜCKE IST DAMIT NICHT KLEINER GEWORDEN, SONDERN GRÖSSER — das ist der
-    // ehrliche Befund dieser Runde: JOB 3227 (P11, der Schnitt) wartet, und dieser Auftrag hing
-    // ausdrücklich an ihm (`wartet_auf: [3227]`). Er lag beim Bau dieser Runde noch nicht auf
-    // `main` (gemessen: `main` trägt dieselbe taskpane.html wie der Basisstand), also entstand der
-    // Block im ungeschnittenen Fenster. Wer nach dem Schnitt hier vorbeikommt, findet in
-    // KW-WORDVERGLEICH einen Block, der als eigene Datei sofort abtrennbar ist: er hängt nur an
-    // `w6DublettenAusCheckText`, `ka7ExterneKi`, `t`/`STRINGS`, `officeUsable` und `signedIn`.
-    // JOB 3438 (BILDVERKLEINERUNG-SICHTBAR, 09.09.2026): die Bildbilanz des Dokument-Wegs (Lesung
-    // der drei Antwortfelder, Trennung Erfolg/Ausfall, 13 Wörterbuch-Schlüssel in drei Sprachen)
-    // hob die Zeilenzahl auf 11652 — die Schranke 11500 fiel wörtlich („expected 11652 to be less
-    // than 11500"). Sie rückt um EINEN Soll-Block (500) auf 12000, nach der Regel von JOB 3094:
-    // der Zuwachs (rund 200 Zeilen) ist KLEINER als ein Soll-Block, also ist ein Block die
-    // kleinste Stufe, die ihn trägt. Nicht weiter, kein Blankoscheck. Die Lücke ist wieder
-    // gewachsen — JOB 3227 (P11, der Schnitt) wartet weiter.
-    // JOB 3555 (K2b-BEREICH-ZEILE, 11.09.2026): die Bereich-Zeile der Erfassen-Fläche (Zustand,
-    // Zeichnen, Abruf über die vorhandene Abrufstelle, fünf Wörterbuch-Schlüssel in drei Sprachen)
-    // hob die Zeilenzahl auf 12158 — die Schranke 12000 fiel wörtlich im Tor („expected 12158 to be
-    // less than 12000"). Gemessen am Basisstand 4ba7377: dort stand das Skript zwischen Zeile 1167
-    // und 13123, in derselben Zählweise also bei 11957 — der Zuwachs dieses Jobs ist 201 Zeilen.
-    // Er ist KLEINER als ein Soll-Block, deshalb rückt
-    // die Schranke nach derselben Regel wie in JOB 3094/3438 um EINEN Soll-Block (500) auf 12500 —
-    // nicht weiter, kein Blankoscheck. Die Lücke ist damit wieder gewachsen: dieser Job hat nichts
-    // geschnitten, er hat angebaut, und JOB 3227 (P11) wartet unverändert.
-    // JOB 3667 (WORD-RÜCKWEG, 14.09.2026): ZUM ERSTEN MAL RÜCKT DIESE SCHRANKE NICHT. Der Rückweg
-    // aus Word hatte sie mit 13182 gerissen („expected 13182 to be less than 12500"), und die
-    // Steuerung hat das Anheben ausdrücklich verboten. Gemessen wurde zuerst das Kürzen: der eigene
-    // Anbau ist 911 Zeilen, ohne JEDEN Kommentar und JEDE Leerzeile des Blocks blieben 12974 — die
-    // Grenze war mit Kürzen nicht erreichbar, nur mit dem Löschen gelieferter Funktion. Also der
-    // andere Weg: der Abschnitt KW-RUECKWEG (811 Zeilen) ist Zeile für Zeile nach
-    // `apps/web/public/word-addin/rueckweg.js` gewandert, das `taskpane.html` als klassisches
-    // Skript unmittelbar vor dem Inline-Skript lädt (B1 oben sieht die zweite Quelle). Der erste
-    // Schnitt an dieser Datei ist damit gemacht — ein kleiner, aber ein echter: das Inline-Skript
-    // ist von 13182 auf 12380 gefallen, die Schranke steht unverändert auf 12500. WER ALS NÄCHSTER
-    // ANBAUT, hat wieder rund 120 Zeilen Luft und danach dieselbe Wahl wie dieser Job: schneiden
-    // oder melden. P11 (JOB 3227) ist damit NICHT erledigt — die Seite trägt weiterhin 12380 Zeilen
-    // in EINEM Block; erledigt ist nur, dass ein Anbau sie nicht weiter hat wachsen lassen.
-    // Aufnahme 20260922 (gesamt-bestandsblick, Pedi-Entscheidung 4080cacc, Option A): der
-    // Bestandsblick-Anbau hob das Skript auf 12551 („expected 12551 to be less than 12500"). Die
-    // Schranke bleibt; der reine Kommentarkopf von KW-WORDVERGLEICH (91 Zeilen) steht jetzt
-    // wortgleich in `docs/word-addin/word-vergleich-kopf.md`, am Code ist nichts geändert.
+  // ZERLEGUNGSAUFTRAG BESTANDSBLICK: DIE SCHRANKE RÜCKT WIEDER NICHT. Der Bestandsblick-Kandidat
+  // riss sie mit 12551 Zeilen (Vollcheck pa-1790499744-198b9217); `taskpane.js` stand nach R-1611
+  // bei 12595 Zeilen. Geschnitten wurde nach der Regel von JOB 3667: der Abschnitt KW-MARKE (222
+  // Zeilen, geschlossen, von keiner Zeile ausserhalb gerufen) ist Zeile für Zeile nach `marke.js`
+  // gewandert (B1 oben sieht die Quelle) — der erste Schnitt von Schritt 2. Mit der
+  // Bestandsblick-Lesekoordination steht `taskpane.js` danach bei rund 12420 Zeilen.
+  it("B3 · SOLL eingelöst: kein Inline-Skript; die Wachstumsschranke hängt jetzt an taskpane.js", () => {
+    const zuGross = inline(bloecke, "script").filter(
+      (b) => zeilen(lieferung.seite.slice(b.inhaltVon, b.inhaltBis)) > SOLL_ZEILEN_JE_SKRIPT,
+    );
+    expect(zuGross).toEqual([]);
+    const zeilenzahl = zeilen(lieferung.skript);
+    // Kalibrierung: das Skript ist wirklich angekommen (sonst wäre die Schranke trivial grün).
+    expect(zeilenzahl).toBeGreaterThan(3000);
     expect(zeilenzahl).toBeLessThan(12500);
     expect(SOLL_ZEILEN_JE_SKRIPT).toBe(500);
   });
@@ -270,9 +238,11 @@ function anteil(teil: number, ganz: number): string {
 
 describe("JOB 3014 · C — der Schnittplan", () => {
   it("C1 · die Empfehlung steht in der Ausgabe und leitet sich aus den Messungen ab", () => {
-    const skript = inhaltVon(seite, inline(bloecke, "script")[0] as Block);
-    const stil = inhaltVon(seite, inline(bloecke, "style")[0] as Block);
-    const skelett = markenBaum(markenVon(seite, bloecke));
+    // Das Marken-Skelett wird am Fenster als EINEM Dokument erhoben (`taskpaneQuelle()`): nur dort
+    // ist jede Marke ihrem Bereich (Markup / Stil / Skript) zuzuordnen.
+    const ganz = taskpaneQuelle();
+    const ganzBloecke = bloeckeVon(ganz);
+    const skelett = markenBaum(markenVon(ganz, ganzBloecke));
     const verstreut = [...skelett.vorkommen.entries()].filter(([, n]) => n > 1);
     const obersteImSkript = skelett.spannen.filter((s) => s.bereich === "skript" && s.tiefe === 0);
     // Was an EINEM Ort steht, ist heute schneidbar. Was verstreut ist, gehört in Schritt 3.
@@ -289,22 +259,20 @@ describe("JOB 3014 · C — der Schnittplan", () => {
         "",
         "JOB 3014 · SCHNITTPLAN für apps/web/public/word-addin/taskpane.html",
         "==================================================================",
-        `Ausgangslage: ${zeilen(seite)} Zeilen gesamt, davon ${zeilen(skript)} im EINEN Inline-Skript`,
-        `(${anteil(bytes(skript), bytes(seite))} der Bytes) und ${zeilen(stil)} im EINEN Inline-Stil.`,
+        `Stand: Seite ${zeilen(lieferung.seite)} Zeilen, taskpane.css ${zeilen(lieferung.stil)} Zeilen,`,
+        `taskpane.js ${zeilen(lieferung.skript)} Zeilen (${anteil(bytes(lieferung.skript), bytes(ganz))} des Fensters).`,
         "",
-        "1. ZUERST STIL UND SKRIPT AUS DER SEITE LÖSEN (taskpane.css / taskpane.js).",
-        "   Das ist der mechanische Schnitt aus `probeschnitt.test.ts`: reine Textoperation, kein",
-        "   Modulsystem nötig, keine Reihenfolgeänderung (klassische Skripte laufen in",
-        `   Dokumentreihenfolge). Er löst in EINEM Schritt ${anteil(bytes(skript) + bytes(stil), bytes(seite))} der Datei heraus und`,
-        "   lässt eine Seite von rund 400 Zeilen reinem Markup zurück. Größter Hebel, kleinstes Risiko.",
-        "   VORAUSSETZUNG, gemessen in `probeschnitt.test.ts` C: die Geschwisterdateien fallen NICHT",
-        "   in `WORD_ADDIN_CSP_PATHS` und der Fassungsstempel greift nur auf der HTML-Antwort.",
+        "1. ERLEDIGT (R-1611): STIL UND SKRIPT AUS DER SEITE GELÖST (taskpane.css / taskpane.js).",
+        "   Reine Textoperation, Verhalten vorher/nachher in `probeschnitt.test.ts` D belegt, Bytes in",
+        "   `schnitt-echt.test.ts` gegen den Basisstand.",
         "",
-        "2. DANN DIE EINTEILIGEN MARKENSPANNEN DES SKRIPTS EINZELN HERAUSLÖSEN, größte zuerst —",
+        "2. OFFEN: DIE EINTEILIGEN MARKENSPANNEN VON taskpane.js EINZELN HERAUSLÖSEN, größte zuerst —",
         "   jede steht heute schon an EINEM Ort, ohne Elternmarke, als zusammenhängendes Stück:",
         geschlossen,
-        "   Jede dieser Spannen kann eine eigene Datei werden, sobald 1. steht. Reihenfolge nach",
-        "   Größe, weil jeder Schritt dieselbe Prüfung braucht und der größte am meisten spart.",
+        "   VORSICHT: ein klassisches Skript in MEHRERE Dateien zu teilen, ist keine reine",
+        "   Textoperation mehr. Funktionsdeklarationen werden nur innerhalb EINES Skripts",
+        "   vorgezogen, und die Strikt-Direktive gilt je Datei. Jeder Teil braucht deshalb",
+        "   seinen eigenen Verhaltensabgleich wie `probeschnitt.test.ts` D2.",
         "",
         "3. ERST NACH ENTFLECHTUNG: die verstreuten Anliegen.",
         ...(verstreut.length === 0
@@ -316,24 +284,15 @@ describe("JOB 3014 · C — der Schnittplan", () => {
                 .join(" + ");
               return `   · ${name} macht an ${n} Orten je ein eigenes Paar auf (${orte}). Ein Schnitt entlang dieser Marke erzeugt heute Bruchstücke, kein Modul.`;
             })),
-        "   Diese Anliegen müssen VOR ihrem Schnitt an EINEN Ort zusammengezogen werden — sonst",
-        "   entsteht pro Anliegen eine Datei mit drei Löchern im Rest.",
         "",
         "4. DIE MITFAHRER NACHFÜHREN. Wer schneidet, führt die in `schnitt-pins.test.ts` gepinnten",
-        "   Testdateien mit. Sie greifen auf vier Weisen zu: über das Pfadliteral, über einen aus",
-        "   Segmenten gebauten Pfad, über die KW-Marken und über die Panel-Fixture.",
-        "",
-        "ZUERST DAS GRÖSSTE STÜCK: Schritt 1. Er ist mechanisch, umkehrbar und in",
-        "`probeschnitt.test.ts` D am Verhalten belegt — beide Fassungen laufen dort als vollständige",
-        "Serverantwort in je einem eigenen jsdom-Fenster an, mit nachgeladener taskpane.js/-css und",
-        "derselben bereiten Office-Attrappe; vier Gegenproben (fehlendes JS, fehlendes CSS,",
-        "Inline/Extern-Sonde, veränderte Office-Bindung) belegen, dass der Vergleich wirklich beißt.",
+        "   Testdateien mit. Seit R-1611 lesen sie das Fenster über `tests/support/panelquelle.ts`.",
         "",
       ].join("\n"),
     );
 
     // Kalibrierung: eine leere Empfehlung wäre grün und sagte nichts.
     expect(obersteImSkript.length).toBeGreaterThan(3);
-    expect(bytes(skript) + bytes(stil)).toBeGreaterThan(bytes(seite) * 0.8);
+    expect(bytes(lieferung.skript) + bytes(lieferung.stil)).toBeGreaterThan(bytes(ganz) * 0.8);
   });
 });

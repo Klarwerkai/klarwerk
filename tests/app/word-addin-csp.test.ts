@@ -18,6 +18,7 @@ import {
   isWordAddinCspPath,
   registerSecurityHeaders,
 } from "../../services/app/src/security-headers";
+import { panelQuelleAus } from "../support/panelquelle";
 
 type App = ReturnType<typeof buildApp>;
 
@@ -169,7 +170,13 @@ describe("WP-KLARA-1b K1: isWordAddinCspPath — exakter Vergleich, fail-closed"
 // ausgelieferte CSP. Er behauptet nichts ueber Hosts, er zaehlt nach.
 const TASKPANE_FILE = "apps/web/public/word-addin/taskpane.html";
 
+/** Das Fenster als EIN Dokument (seit R-1611 aus taskpane.html/.css/.js zusammengefügt). */
 function taskpaneSource(): string {
+  return panelQuelleAus(TASKPANE_FILE);
+}
+
+/** Die ausgelieferte HTML-Datei selbst — ihre Verweise sind das, was der Browser nachlädt. */
+function ausgelieferteSeite(): string {
   return readFileSync(resolve(process.cwd(), TASKPANE_FILE), "utf8");
 }
 
@@ -204,7 +211,8 @@ describe("AUFTRAG-JOB507-D4: CSP und Panelverhalten sind konsistent", () => {
 
   it("die einzige FREMDE Ressource ist office.js — und genau sie steht in script-src", () => {
     const html = taskpaneSource();
-    const externeScripts = [...html.matchAll(/<script\s+src="([^"]+)"/g)].map((m) => m[1] ?? "");
+    const seite = ausgelieferteSeite();
+    const externeScripts = [...seite.matchAll(/<script\s+src="([^"]+)"/g)].map((m) => m[1] ?? "");
     // JOB 3667 R8 (14.09.2026): seit dem Schnitt steht eine ZWEITE Quelle hier — der Abschnitt
     // KW-RUECKWEG wohnt in `rueckweg.js` (Grund: die bewachte Groessengrenze des Inline-Skripts,
     // `tests/klara-zerlegung/schnittflaechen.test.ts` B3, die NICHT angehoben werden durfte).
@@ -212,17 +220,31 @@ describe("AUFTRAG-JOB507-D4: CSP und Panelverhalten sind konsistent", () => {
     // getrennt: FREMD bleibt office.js allein, und nur dafuer steht ein Fremd-Ursprung in der CSP.
     // Jede weitere Quelle muss RELATIV und damit gleichherkuenftig sein — `script-src 'self'`
     // deckt sie ohne neue Erlaubnis. Ein absoluter oder protokollrelativer Eintrag faellt hier auf.
+    // R-1611 (Drei-Datei-Schnitt): eine DRITTE relative Quelle — `taskpane.js`, das frühere
+    // Inline-Skript, an genau seiner Stelle. Dazu EIN relatives Stilblatt `taskpane.css`.
+    // Zerlegungsauftrag Bestandsblick: eine VIERTE nach derselben Regel — der Block KW-MARKE wohnt
+    // in `marke.js` (relativ, gleichherkuenftig), unmittelbar nach `taskpane.js`.
     expect(externeScripts).toEqual([
       "https://appsforoffice.microsoft.com/lib/1/hosted/office.js",
       "rueckweg.js?v=__KW_FASSUNG__",
+      "taskpane.js?v=__KW_FASSUNG__",
+      "marke.js?v=__KW_FASSUNG__",
     ]);
-    const fremde = externeScripts.filter((s) => /^[a-z]+:|^\/\//.test(s));
+    const stilblaetter = [...seite.matchAll(/<link\s+rel="stylesheet"\s+href="([^"]+)"/g)].map(
+      (m) => m[1] ?? "",
+    );
+    expect(stilblaetter).toEqual(["taskpane.css?v=__KW_FASSUNG__"]);
+    const fremde = [...externeScripts, ...stilblaetter].filter((s) => /^[a-z]+:|^\/\//.test(s));
     expect(fremde).toEqual(["https://appsforoffice.microsoft.com/lib/1/hosted/office.js"]);
     expect(WORD_ADDIN_CSP).toContain(
       "script-src 'self' 'unsafe-inline' https://appsforoffice.microsoft.com",
     );
-    // Inline-Skript und Inline-Styles der buildlosen Seite brauchen 'unsafe-inline' — belegt statt behauptet.
-    expect(html).toContain("<script>");
+    // Die ausgelieferte HTML-Datei trägt seit dem Schnitt KEIN Inline-Skript mehr — gemessen, nicht
+    // behauptet. 'unsafe-inline' in script-src bleibt trotzdem stehen: dieselbe CSP gilt auch für
+    // `anmeldung.html`, und eine CSP-Änderung ist kein Teil eines verhaltensgleichen Schnitts.
+    expect(seite).not.toContain("<script>");
+    // Inline-Styles (`style="…"`-Attribute im Markup) brauchen 'unsafe-inline' in style-src.
+    expect(seite).toMatch(/\sstyle="/);
     expect(WORD_ADDIN_CSP).toContain("style-src 'self' 'unsafe-inline'");
     // Die eingesetzten Word-Bilder reisen als data:-URL (fillWordImages) → img-src muss data: tragen.
     expect(html).toContain('"data:" + mime + ";base64," + roh');

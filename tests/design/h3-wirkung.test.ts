@@ -15,7 +15,8 @@
 //
 //   W1  Bereich wählen  → Entwurf, erneutes Öffnen und Wissensobjekt tragen ihn.
 //   W2  `?demo=stage1`  → Demo-Banner da; ohne Abfrage nicht.
-//   W3  Live-Befund     → der Chip zeigt „neu“, „Ähnlich“, „Könnte widersprechen“; `pending` und
+//   W3  Live-Befund     → der Chip zeigt „Vorschau“ (leer, mit Umfang), „Ähnlich“, „Könnte
+//                         widersprechen“ (Aufnahme 20260922: kein „neu“ mehr); `pending` und
 //                         `unavailable` bleiben still und stehen im Menü … → „Status“.
 //   W4  Quelle          → die Zeile im Status nennt die erfassende Person.
 //   W5  Fehler          → EIN Satz und „Erneut versuchen“; der Knopf wiederholt WIRKLICH.
@@ -24,8 +25,8 @@
 // `zielbild-validierung.test.ts` und die drei H3-Messungen daneben. Wo eine Antwort im hermetischen
 // Betrieb gar nicht entstehen kann, wird sie ausdrücklich gescriptet und das steht am Fall dabei
 // (W3; die Begründung im Kopf von `h3-blatt-buehne.ts`).
-import { existsSync } from "node:fs";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import einstieg from "../../apps/web/src/texte/einstieg";
 import * as appModul from "../../services/app/src/build-app";
 import {
   DeterministicProvider,
@@ -34,9 +35,7 @@ import {
   Reasoner,
   cappedModelClient,
 } from "../../services/reasoner";
-import { type Buehne, MOCKUP, ORIGIN, buehneAufbauen, fn } from "./h3-blatt-buehne";
-
-const mockupDa = existsSync(MOCKUP);
+import { type Buehne, ORIGIN, buehneAufbauen, fn } from "./h3-blatt-buehne";
 
 /** Der Bereich, den W1 wählt — er liegt als Kategorie des angelegten Bestands wirklich im Menü. */
 const BEREICH = "Konstruktion";
@@ -84,7 +83,7 @@ const TEXT_VON = `(sel) => {
 
 interface Entwurf {
   id: string;
-  payload: { category?: string; title?: string };
+  payload: { category?: string; title?: string; bodyHtml?: string | null };
 }
 interface Ko {
   id: string;
@@ -92,7 +91,10 @@ interface Ko {
   category: string;
 }
 
-describe.runIf(mockupDa)("JOB 3062 · H3 · R6 · Wirkungsnachweise am gebauten Blatt", () => {
+// Aufnahme `gesamt-erfassung-einstieg:layout`: Die Wirkungsnachweise lesen keinen Sollwert aus dem
+// Mockup, hingen aber an dessen Vorhandensein und übersprangen sich so auf dem Linux-Prüfweg. Sie
+// laufen jetzt immer; fehlt `apps/web/dist`, meldet die Bühne das in `fehler`.
+describe("JOB 3062 · H3 · R6 · Wirkungsnachweise am gebauten Blatt", () => {
   // ==============================================================================================
   // W1 — DER BEREICH KOMMT AN. (bens Korrekturpflicht 1)
   // ==============================================================================================
@@ -265,10 +267,30 @@ describe.runIf(mockupDa)("JOB 3062 · H3 · R6 · Wirkungsnachweise am gebauten 
       }
     }
 
-    it("W3a · „done“ ohne Fund → der Chip sagt „Das ist neu“", async () => {
+    // AUFNAHME 20260922 · VORSCHAU-REICHWEITE — W3a ANGEPASST, WEIL DIE ANFORDERUNG ES VERLANGT.
+    // Hier stand „„done“ ohne Fund → der Chip sagt „Das ist neu“". Der Server vergleicht höchstens
+    // eine begrenzte Vorauswahl (CANDIDATE_LIMIT); Kriterium 1 der Aufnahme verbietet bei begrenzter
+    // oder unbekannter Abdeckung genau diese bestandweite Aussage. Gemessen wird jetzt die leere
+    // VORSCHAU mit ihrem belegten Umfang — und dass der alte Satz fehlt. W3a2 deckt die Antwort ohne
+    // Umfangsangabe ab: sie ist „Umfang unbekannt", keine Vollprüfung.
+    it("W3a · „done“ ohne Fund → der Chip sagt „Vorschau“ mit belegtem Umfang, nie „Das ist neu“", async () => {
+      const r = await chipLage({
+        status: "done",
+        similar: [],
+        conflicts: [],
+        coverage: { kind: "candidates", checked: 40, limit: 40, limitReached: true },
+      });
+      expect(r.lage).toBe("empty");
+      expect(r.text).toContain("Vorschau");
+      expect(r.text).toContain("40 Einträge verglichen, Grenze erreicht");
+      expect(r.text).not.toContain("Das ist neu");
+    }, 180_000);
+
+    it("W3a2 · „done“ ohne Fund und ohne Umfangsangabe → „Umfang unbekannt“, nie „Das ist neu“", async () => {
       const r = await chipLage({ status: "done", similar: [], conflicts: [] });
-      expect(r.lage).toBe("new");
-      expect(r.text).toContain("Das ist neu");
+      expect(r.lage).toBe("empty");
+      expect(r.text).toContain("Umfang unbekannt");
+      expect(r.text).not.toContain("Das ist neu");
     }, 180_000);
 
     it("W3b · ein ähnliches Objekt → der Chip nennt es beim Titel", async () => {
@@ -717,10 +739,332 @@ describe.runIf(mockupDa)("JOB 3062 · H3 · R6 · Wirkungsnachweise am gebauten 
       expect(r.antworten?.[1]?.body.text).toBeUndefined();
     }, 180_000);
   });
-});
 
-describe.runIf(!mockupDa)("JOB 3062 · H3 · R6 · Wirkungsnachweise übersprungen", () => {
-  it("meldet das fehlende Mockup, statt eine Prüfung vorzutäuschen", () => {
-    expect(existsSync(MOCKUP), `Mockup nicht lesbar: ${MOCKUP}`).toBe(false);
+  // ==============================================================================================
+  // W8/W9 — DIE ÜBRIGEN WECHSEL-RÜCKFRAGEN IM ECHTEN CHROMIUM (Aufnahme
+  // `gesamt-erfassung-einstieg:layout`, Nacharbeit 2, Bens Befunde zu K2).
+  // ==============================================================================================
+  //
+  // `sichernFrage` und `ohneSichernFrage` misst `h3-wechsel-rueckfragen.test.ts` R0–R3. Hier stehen
+  // die zwei Rückfragen, die bis dahin nur gemountet belegt waren (`formular-und-titel-mounted`
+  // N8–N9c, B4–B4d):
+  //   W8  `nachtragFrage` — während die Speicherung des Formularwechsels läuft, wird nachgetragen.
+  //       Der ECHTE Speicherrequest wird dafür nur festgehalten (`route.fallback()` danach, also
+  //       derselbe Weg zur echten Fastify-App), nicht ersetzt.
+  //   W9  `vorschlagOffen` — ein offener KI-Vorschlag sperrt den Wechsel mit genau einer Meldung.
+  //       Das Modell ist der lokale Test-ModelClient aus W7, kein externes Modell.
+  // GRENZE: gemessen werden Art, vollständiger Text und Wirkung des nativen Dialogs, nicht sein
+  // Pixelbild — das kopflose Chromium zeichnet ihn nicht.
+
+  const SICHERN_FRAGE = einstieg.de["einstieg.formular.sichernFrage"];
+  const NACHTRAG_FRAGE = einstieg.de["einstieg.formular.nachtragFrage"];
+  const VORSCHLAG_OFFEN = einstieg.de["einstieg.formular.vorschlagOffen"];
+  /** Sichtbare Beschriftungen — wörtlich aus `apps/web/src/i18n.ts`, DE-Block. */
+  const FORMULAR_WEG = "Formular (Experten)"; // erfassen.weg.formular
+  const FORMULAR_TITEL = "Kernaussage"; // capture.fTitle
+  const VERWERFEN = "Vorschlag verwerfen"; // fd.discardProposal
+  const NACHTRAG = "Nachtrag Ventil V2";
+
+  interface Dialog {
+    type(): string;
+    message(): string;
+    accept(): Promise<void>;
+    dismiss(): Promise<void>;
+  }
+  type Antwort = "ok" | "abbrechen";
+
+  /** Jeder `confirm`/`alert` der Seite: Art und vollständiger Text; beantwortet der Reihe nach. */
+  function dialogeMitschneiden(b: Buehne, antworten: Antwort[]): { art: string; text: string }[] {
+    const liste: { art: string; text: string }[] = [];
+    b.seite.on("dialog", (roh: unknown) => {
+      const d = roh as Dialog;
+      // Die Verlassen-Wache beim Abbau ist nicht Gegenstand dieser Fälle.
+      if (d.type() === "beforeunload") {
+        void d.accept();
+        return;
+      }
+      liste.push({ art: d.type(), text: d.message() });
+      void ((antworten.shift() ?? "abbrechen") === "ok" ? d.accept() : d.dismiss());
+    });
+    return liste;
+  }
+
+  interface Speicherwache {
+    /** Solange `true`, wird jeder Schreibrequest an `/api/drafts` festgehalten. */
+    halten: boolean;
+    festgehalten: (() => void)[];
+    schreibvorgaenge: number;
+  }
+
+  /** Zählt jeden Schreibrequest an `/api/drafts[/:id]` und hält ihn auf Wunsch fest. */
+  async function speicherwache(b: Buehne): Promise<Speicherwache> {
+    const w: Speicherwache = { halten: false, festgehalten: [], schreibvorgaenge: 0 };
+    await b.seite.route(`${ORIGIN}/api/drafts**`, async (route) => {
+      const req = route.request();
+      const pfad = new URL(req.url()).pathname;
+      if (["POST", "PUT"].includes(req.method()) && /^\/api\/drafts(\/[^/]+)?$/.test(pfad)) {
+        w.schreibvorgaenge += 1;
+        if (w.halten) {
+          await new Promise<void>((weiter) => w.festgehalten.push(weiter));
+        }
+      }
+      await route.fallback();
+    });
+    return w;
+  }
+
+  async function bis(bedingung: () => boolean, ms = 8000): Promise<boolean> {
+    for (let i = 0; i < ms / 100 && !bedingung(); i++) {
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    return bedingung();
+  }
+
+  /** In der Seite: steht das Expertenformular (Feld „Kernaussage")? Wartet bis zu fünf Sekunden. */
+  const FORMULAR_OFFEN = `async (beschriftung) => {
+    for (let i = 0; i < 50; i++) {
+      const da = [...document.querySelectorAll('label span')]
+        .some((s) => (s.textContent || '').trim() === beschriftung);
+      if (da) return true;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    return false;
+  }`;
+
+  const SICHTBARER_TEXT = `(sel) => {
+    const el = document.querySelector(sel);
+    return el ? (el.innerText || '').replace(/\\s+/g, ' ').trim() : null;
+  }`;
+
+  describe("W8 · nachtragFrage: Nachtrag während der Speicherung des Formularwechsels", () => {
+    /** Bis zur zweiten Rückfrage: schreiben, Datei → Formular, sichern festhalten, nachtragen, freigeben. */
+    async function bisZurNachtragFrage(
+      antworten: Antwort[],
+      nachtragen: boolean,
+    ): Promise<{ b: Buehne; dialoge: { art: string; text: string }[]; w: Speicherwache }> {
+      const b = await buehneAufbauen("/erfassen");
+      expect(b.fehler, "Bühne nicht aufgebaut").toBeNull();
+      const dialoge = dialogeMitschneiden(b, antworten);
+      const w = await speicherwache(b);
+      expect(await b.seite.evaluate<string>(fn(SCHREIBEN), SATZ)).toContain("Dosierwert");
+      w.halten = true;
+      expect(
+        await b.seite.evaluate<boolean>(fn(MENUE_WAEHLEN), ["blatt-werkzeug-datei", FORMULAR_WEG]),
+        "„Formular (Experten)“ steht nicht im Menü „Datei“",
+      ).toBe(true);
+      expect(
+        await bis(() => w.festgehalten.length === 1),
+        "kein Speicherrequest festgehalten",
+      ).toBe(true);
+      expect(dialoge).toEqual([{ art: "confirm", text: SICHERN_FRAGE }]);
+      // Solange die Anfrage läuft, öffnet kein Formular.
+      expect(
+        await b.seite.evaluate<string | null>(
+          fn(SICHTBARER_TEXT),
+          '[data-testid="blatt-arbeitsraum"]',
+        ),
+      ).toBeNull();
+      if (nachtragen) {
+        expect(await b.seite.evaluate<string>(fn(SCHREIBEN), `${SATZ} ${NACHTRAG}`)).toContain(
+          NACHTRAG,
+        );
+      }
+      w.halten = false;
+      for (const weiter of w.festgehalten.splice(0)) {
+        weiter();
+      }
+      return { b, dialoge, w };
+    }
+
+    it("W8a · Abbrechen: genau nachtragFrage mit vollständigem Text; Nachtrag und Blatt bleiben, gesichert ist der zugestimmte Stand", async () => {
+      const { b, dialoge, w } = await bisZurNachtragFrage(["ok", "abbrechen"], true);
+      try {
+        expect(await bis(() => dialoge.length >= 2), "keine zweite Rückfrage").toBe(true);
+        expect(dialoge).toEqual([
+          { art: "confirm", text: SICHERN_FRAGE },
+          { art: "confirm", text: NACHTRAG_FRAGE },
+        ]);
+        expect(await b.seite.evaluate<boolean>(fn(FORMULAR_OFFEN), FORMULAR_TITEL)).toBe(false);
+        expect(dialoge, "eine weitere Rückfrage kam hinterher").toHaveLength(2);
+        expect(w.schreibvorgaenge, "nach dem Abbrechen wurde trotzdem gesichert").toBe(1);
+        expect(
+          await b.seite.evaluate<string>(
+            fn(TEXT_VON),
+            '[data-testid="blatt-text"] [role="textbox"]',
+          ),
+        ).toContain(NACHTRAG);
+        const entwuerfe = await b.frage<Entwurf[]>("GET", "/api/drafts");
+        expect(entwuerfe).toHaveLength(1);
+        expect(entwuerfe[0]?.payload.bodyHtml ?? "").toContain("Dosierwert");
+        expect(entwuerfe[0]?.payload.bodyHtml ?? "").not.toContain(NACHTRAG);
+        expect(b.seitenfehler, "pageerror").toEqual([]);
+      } finally {
+        await b.schliessen();
+      }
+    }, 180_000);
+
+    it("W8b · Bestätigen: der Nachtrag wird über den regulären Speicherweg gesichert, das Formular zeigt ihn", async () => {
+      const { b, dialoge, w } = await bisZurNachtragFrage(["ok", "ok"], true);
+      try {
+        expect(await bis(() => dialoge.length >= 2), "keine zweite Rückfrage").toBe(true);
+        expect(dialoge).toEqual([
+          { art: "confirm", text: SICHERN_FRAGE },
+          { art: "confirm", text: NACHTRAG_FRAGE },
+        ]);
+        expect(await b.seite.evaluate<boolean>(fn(FORMULAR_OFFEN), FORMULAR_TITEL)).toBe(true);
+        expect(w.schreibvorgaenge, "genau zwei Speicherungen: Stand und Nachtrag").toBe(2);
+        const entwuerfe = await b.frage<Entwurf[]>("GET", "/api/drafts");
+        expect(entwuerfe, "der Nachtrag legte einen zweiten Entwurf an").toHaveLength(1);
+        expect(entwuerfe[0]?.payload.bodyHtml ?? "").toContain(NACHTRAG);
+        // Das Formular zeigt DIESEN Stand: das Blatt ist abgebaut, der Text steht im Arbeitsraum.
+        let arbeitsraum: string | null = null;
+        for (let i = 0; i < 50 && !(arbeitsraum ?? "").includes(NACHTRAG); i++) {
+          arbeitsraum = await b.seite.evaluate<string | null>(
+            fn(SICHTBARER_TEXT),
+            '[data-testid="blatt-arbeitsraum"]',
+          );
+          await new Promise((r) => setTimeout(r, 100));
+        }
+        expect(arbeitsraum, "das Formular zeigt den Nachtrag nicht").toContain(NACHTRAG);
+        expect(dialoge, "eine weitere Rückfrage kam hinterher").toHaveLength(2);
+        expect(b.seitenfehler, "pageerror").toEqual([]);
+      } finally {
+        await b.schliessen();
+      }
+    }, 180_000);
+
+    it("W8c · Kalibrierung: festgehalten OHNE Nachtrag — keine zweite Rückfrage, das Formular öffnet", async () => {
+      const { b, dialoge, w } = await bisZurNachtragFrage(["ok"], false);
+      try {
+        expect(await b.seite.evaluate<boolean>(fn(FORMULAR_OFFEN), FORMULAR_TITEL)).toBe(true);
+        expect(dialoge).toEqual([{ art: "confirm", text: SICHERN_FRAGE }]);
+        expect(w.schreibvorgaenge).toBe(1);
+      } finally {
+        await b.schliessen();
+      }
+    }, 180_000);
+  });
+
+  describe("W9 · vorschlagOffen: offener KI-Vorschlag sperrt den Formularwechsel", () => {
+    it("W9 · genau ein alert mit vollständigem Text, kein Speichern, kein Wechsel; nach Verwerfen öffnet derselbe Weg ohne Meldung", async () => {
+      const vorschlag =
+        "Nach dem Schichtwechsel an Linie L4 zehn Minuten warten, dann den Dosierwert anpassen.";
+      const complete = vi.fn<ModelClient["complete"]>().mockResolvedValue(vorschlag);
+      // Derselbe Aufbau wie W7 (`kiFehlerfall`): nur die Modellantwort ist vorgegeben.
+      const services = appModul.buildServices();
+      services.reasoner = new Reasoner(
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        new ModelProvider(
+          cappedModelClient(
+            {
+              name: "local:w9-test",
+              model: "w9-test",
+              complete: (...args) =>
+                args[1] === "ping" ? Promise.resolve("OK") : complete(...args),
+            },
+            { rejectsConfidential: false },
+          ),
+        ),
+      );
+      await services.reasoner.setTaskConfig({
+        global: "deterministic",
+        perTask: { assist: "local" },
+      });
+      const aufbau = vi.spyOn(appModul, "buildServices").mockReturnValueOnce(services);
+      const b = await buehneAufbauen("/erfassen");
+      try {
+        expect(b.fehler, "Bühne nicht aufgebaut").toBeNull();
+        const dialoge = dialogeMitschneiden(b, []);
+        const w = await speicherwache(b);
+        expect(await b.seite.evaluate<string>(fn(SCHREIBEN), SATZ)).toContain("Dosierwert");
+        expect(
+          await b.seite.evaluate<boolean>(fn(MENUE_WAEHLEN), [
+            "blatt-werkzeug-vertraulichkeit",
+            "Öffentlich-intern",
+          ]),
+        ).toBe(true);
+        expect(
+          await b.seite.evaluate<boolean>(fn(KLICKEN), [
+            '[data-testid="blatt-entwurf-sichern"]',
+            1500,
+          ]),
+        ).toBe(true);
+        expect((await b.frage<Entwurf[]>("GET", "/api/drafts")).length, "nicht gesichert").toBe(1);
+
+        expect(
+          await b.seite.evaluate<boolean>(fn(MENUE_WAEHLEN), ["blatt-werkzeug-ki", "Klarer"]),
+          "„Klarer“ steht nicht im KI-Menü",
+        ).toBe(true);
+        const vorschlagDa = `async () => {
+          for (let i = 0; i < 60; i++) {
+            if (document.querySelector('[data-testid="blatt-ki-vorschlag"]')) return true;
+            await new Promise((r) => setTimeout(r, 100));
+          }
+          return false;
+        }`;
+        expect(await b.seite.evaluate<boolean>(fn(vorschlagDa)), "kein offener Vorschlag").toBe(
+          true,
+        );
+        expect(
+          await b.seite.evaluate<string>(fn(TEXT_VON), '[data-testid="blatt-ki-vorschlag"]'),
+        ).toContain(vorschlag);
+        const schreibenVorher = w.schreibvorgaenge;
+
+        // Datei → Formular bei offenem Vorschlag.
+        expect(
+          await b.seite.evaluate<boolean>(fn(MENUE_WAEHLEN), [
+            "blatt-werkzeug-datei",
+            FORMULAR_WEG,
+          ]),
+        ).toBe(true);
+        expect(await bis(() => dialoge.length >= 1), "keine Meldung").toBe(true);
+        expect(await b.seite.evaluate<boolean>(fn(FORMULAR_OFFEN), FORMULAR_TITEL)).toBe(false);
+        expect(dialoge).toEqual([{ art: "alert", text: VORSCHLAG_OFFEN }]);
+        expect(w.schreibvorgaenge, "die Meldung hat trotzdem gesichert").toBe(schreibenVorher);
+        expect(
+          await b.seite.evaluate<string>(fn(TEXT_VON), '[data-testid="blatt-ki-vorschlag"]'),
+          "der Vorschlag ist weg",
+        ).toContain(vorschlag);
+        expect(
+          await b.seite.evaluate<string>(
+            fn(TEXT_VON),
+            '[data-testid="blatt-text"] [role="textbox"]',
+          ),
+          "das Blatt hat sich verändert",
+        ).toBe(SATZ);
+
+        // Verwerfen — danach öffnet derselbe Weg ohne Meldung und ohne Speichern.
+        const verworfen = await b.seite.evaluate<boolean>(
+          fn(`async (wort) => {
+            const karte = document.querySelector('[data-testid="blatt-ki-vorschlag"]');
+            const knopf = karte && [...karte.querySelectorAll('button')]
+              .find((k) => (k.textContent || '').replace(/\\s+/g, ' ').trim() === wort);
+            if (!knopf) return false;
+            knopf.click();
+            await new Promise((r) => setTimeout(r, 400));
+            return document.querySelector('[data-testid="blatt-ki-vorschlag"]') === null;
+          }`),
+          VERWERFEN,
+        );
+        expect(verworfen, "„Vorschlag verwerfen“ fehlt oder wirkt nicht").toBe(true);
+        expect(
+          await b.seite.evaluate<boolean>(fn(MENUE_WAEHLEN), [
+            "blatt-werkzeug-datei",
+            FORMULAR_WEG,
+          ]),
+        ).toBe(true);
+        expect(await b.seite.evaluate<boolean>(fn(FORMULAR_OFFEN), FORMULAR_TITEL)).toBe(true);
+        expect(dialoge, "nach dem Verwerfen kam erneut eine Meldung").toHaveLength(1);
+        expect(w.schreibvorgaenge).toBe(schreibenVorher);
+        expect(complete).toHaveBeenCalled();
+        expect(b.seitenfehler, "pageerror").toEqual([]);
+      } finally {
+        aufbau.mockRestore();
+        await b.schliessen();
+      }
+    }, 180_000);
   });
 });

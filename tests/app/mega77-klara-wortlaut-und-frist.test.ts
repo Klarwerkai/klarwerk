@@ -7,12 +7,11 @@
 // drei Sprachen oder einen leeren Text, ist er rot) und pinnt für Block C VERHALTEN statt Namen:
 // der Statusabruf-Block wird aus der Datei geschnitten und WIRKLICH AUSGEFÜHRT, gegen ein fetch,
 // das nie antwortet.
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { panelQuelleAus } from "../support/panelquelle";
 
 const TASKPANE = "apps/web/public/word-addin/taskpane.html";
-const HTML = readFileSync(resolve(process.cwd(), TASKPANE), "utf8");
+const HTML = panelQuelleAus(TASKPANE);
 
 const SPRACHEN = ["de", "en", "nl"] as const;
 type Sprache = (typeof SPRACHEN)[number];

@@ -28,7 +28,7 @@ export interface SpeechRec {
 }
 interface SpeechResultEvent {
   resultIndex: number;
-  results: ArrayLike<ArrayLike<{ transcript: string }>>;
+  results: ArrayLike<ArrayLike<{ transcript: string }> & { isFinal?: boolean }>;
 }
 type SpeechCtor = new () => SpeechRec;
 
@@ -99,11 +99,17 @@ export function diktatSprache(sprache: string): string {
  *
  * Kann der Browser keine Spracherkennung, gibt es `null` und keinen Rekorder — die Fläche zeigt
  * dann den ehrlichen Hinweis statt eines toten Knopfes.
+ *
+ * FR-CAP-03 („Diktat zeigt Text live"): Wer `zwischen` mitgibt, bekommt die noch nicht endgültigen
+ * Erkennungen sofort zu sehen (`interimResults`). In `append` landet weiterhin NUR Endgültiges —
+ * der Zwischenstand ist reine Anzeige und wird beim nächsten Endergebnis und beim Ende geleert, er
+ * schreibt nie ins Feld. Ohne `zwischen` bleibt alles wie vorher.
  */
 export function makeRec(
   append: (text: string) => void,
   onDone: (beendet: SpeechRec) => void,
   lang: string,
+  zwischen?: (text: string) => void,
 ): SpeechRec | null {
   const Ctor = speechCtor();
   if (!Ctor) {
@@ -112,15 +118,28 @@ export function makeRec(
   const rec = new Ctor();
   rec.lang = lang;
   rec.continuous = true;
-  rec.interimResults = false;
+  rec.interimResults = zwischen !== undefined;
   rec.onresult = (e) => {
     let text = "";
+    let vorlaeufig = "";
     for (let i = e.resultIndex; i < e.results.length; i++) {
-      text += e.results[i]?.[0]?.transcript ?? "";
+      const ergebnis = e.results[i];
+      // Ohne `interimResults` ist jedes Ergebnis endgültig; nur ein ausdrückliches `false` ist es nicht.
+      if (ergebnis?.isFinal === false) {
+        vorlaeufig += ergebnis[0]?.transcript ?? "";
+      } else {
+        text += ergebnis?.[0]?.transcript ?? "";
+      }
     }
-    append(text);
+    if (text) {
+      append(text);
+    }
+    zwischen?.(vorlaeufig);
   };
-  const beenden = (): void => onDone(rec);
+  const beenden = (): void => {
+    zwischen?.("");
+    onDone(rec);
+  };
   rec.onend = beenden;
   rec.onerror = beenden;
   return rec;

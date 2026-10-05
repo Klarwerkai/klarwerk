@@ -42,6 +42,10 @@ vi.mock("../../apps/web/src/api/endpoints", () => {
       notifications: { list: vi.fn(async () => []) },
       admin: { demoStatus: vi.fn(async () => ({ present: false, count: 0 })) },
       analytics: { overview: vi.fn(async () => ({ total: 0, byStatus: {} })) },
+      // R-1012 (Folgeauftrag gesamt-erstnutzerfuehrung-quellen): die Menüblätter lesen den
+      // öffentlichen KI-Status für die Fähigkeitsübersicht. Er antwortet hier sofort; der
+      // Gegenstand dieser Datei bleibt die Kollisionsauskunft.
+      reasoner: { status: vi.fn(async () => ({ active: false, mode: "deterministic" })) },
     },
   };
 });

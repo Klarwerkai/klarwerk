@@ -152,7 +152,7 @@ export function pruefeTextmodule(
       // (6) Der Altname wurde aus `i18n.ts` nicht entfernt — dann gewänne das Modul still.
       if (basisSchluessel.has(schluessel)) {
         fehler.push(
-          `${pfad}: Schlüssel "${schluessel}" steht noch im Grundbestand (apps/web/src/i18n.ts) — dort entfernen, nicht daneben legen.`,
+          `${pfad}: Schlüssel "${schluessel}" steht noch im Grundbestand (apps/web/src/woerterbuch/ bzw. i18n.ts) — dort entfernen, nicht daneben legen.`,
         );
       }
     }

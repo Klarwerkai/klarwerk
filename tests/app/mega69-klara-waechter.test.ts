@@ -46,6 +46,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { panelQuelleAus } from "../support/panelquelle";
 
 const WURZEL = join(__dirname, "..", "..");
 const TASKPANE = join(WURZEL, "apps", "web", "public", "word-addin", "taskpane.html");
@@ -59,8 +60,9 @@ const RUECKWEG = join(WURZEL, "apps", "web", "public", "word-addin", "rueckweg.j
  */
 const ANMELDUNG = join(WURZEL, "apps", "web", "public", "word-addin", "anmeldung.html");
 
+/** Das Fenster als EIN Dokument — seit R-1611 aus `taskpane.html`/`.css`/`.js` zusammengefügt. */
 function quelle(): string {
-  return readFileSync(TASKPANE, "utf8");
+  return panelQuelleAus(TASKPANE);
 }
 
 /** Die deutschen OBERFLÄCHENTEXTE — Werte des STRINGS.de-Objekts, zeilenweise erhoben. */
@@ -159,9 +161,13 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     expect(src).toContain('var KLARA_STAND = "__KLARA_STAND__"');
     expect(src).toContain('id="kw-stand"');
     // … und der Build ersetzt ihn (eine Stelle, keine Handpflege).
+    // Die Plugin-Fabrik wohnt seit deploy-health-commit (R-1028) in src/lib/klaraStand.ts, damit
+    // ein Test sie statisch importieren kann; vite.config.ts trägt sie ein.
     const vite = readFileSync(join(WURZEL, "apps", "web", "vite.config.ts"), "utf8");
-    expect(vite).toContain('name: "klara-stand"');
-    expect(vite).toContain('replaceAll("__KLARA_STAND__"');
+    expect(vite).toMatch(/plugins: \[[^\]]*\bklaraStand\(\)/);
+    const fabrik = readFileSync(join(WURZEL, "apps", "web", "src", "lib", "klaraStand.ts"), "utf8");
+    expect(fabrik).toContain('name: "klara-stand"');
+    expect(fabrik).toContain('replaceAll("__KLARA_STAND__"');
   });
 
   it("INHALTS-PIN: eine Änderung an taskpane.html wird rot, bevor sie still ausgeliefert wird", () => {
@@ -2553,22 +2559,78 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     //                Mac-Word und im Browsertab (kein Schluessel) ist die Reihenfolge damit exakt
     //                die von vor JOB 4076.
     // GEMESSEN: s. RUECKGABE dieser Runde.
-    // ============================================================================================
-    // AUFNAHME 20260922 · GESAMT-BESTANDSBLICK (Runde 2, Bens Befunde 1+2) — der Pin wandert.
-    // Geaendert: `readWholeDocument` nimmt einen optionalen zweiten Rueckruf `fehlschlag` (ohne ihn
-    // byteweise das alte Verhalten); `ka1Aktualisieren` liefert ein Versprechen und fuehrt eine
-    // Lesegeneration (`ka1Stand`, `ka1Aktuell`); `ka3Ausfuehren` wartet vor dem Vertrag auf das
-    // Begriffsbild des aktuellen Dokuments. Auslieferungsfolgen: KEIN Manifestwrite, KEINE neue
-    // Office-API (derselbe `Word.run`-Weg), KEIN neues Abrufziel, KEINE geaenderte CSP, KEINE neue
-    // Nutzlast. Neu ist allein, dass nach der Schreibruhe das Dokument erneut gelesen wird.
-    // Wirkungsnachweis: tests/app/ka3-bestandsblick-aktueller-stand.test.tsx.
-    // Nacharbeit (Pedi-Entscheidung 4080cacc, Option A) — der Pin wandert noch einmal, am Code
-    // aendert sich nichts: der reine Kommentarkopf von KW-WORDVERGLEICH (91 Zeilen) steht jetzt
-    // wortgleich in docs/word-addin/word-vergleich-kopf.md, damit das Inline-Skript unter der
-    // Schranke von tests/klara-zerlegung/schnittflaechen.test.ts B3 bleibt. Auslieferungsfolgen:
-    // keine — nur Kommentarzeilen fallen weg.
-    const PIN = "c6908a0f265cf708674ea149ae3a1265c8c40e811b5781bd9a10bfc5e3934b1e";
-    const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
+    // AUFTRAG deploy-health-commit (R-1028): Auslieferungsfolgen geprüft, bevor der Pin wanderte.
+    // Geändert sind AUSSCHLIESSLICH die drei Wörterbuch-Schlüssel der Fassungszeile je Sprache
+    // (`fassungAktuell`, `fassungWechsel`, `fassungUnbekannt`): „Stand/Build {geladen}" heißt jetzt
+    // „Add-in-Fassung/Add-in version/Add-in-versie {geladen}", weil die Manifestnummer keine
+    // Programmversion ist und neben „Klara <Stand>" keinen zweiten Stand behaupten darf. KEIN
+    // Manifest, KEIN Endpunkt, KEIN Recht, kein Abruf, keine Nutzlast; kein erneutes Sideload.
+    // AUFNAHME 20260922 · GESAMT-KLARA-EXTERN (R-0639, Bens Befund B1, 01.10.2026) — PIN BEWUSST
+    // AKTUALISIERT (575580b0… -> 53da1b30…). Auslieferungsfolgen, jede geprüft, bevor der Pin wanderte:
+    //   · Abrufziel: KEINES neu. `performAsk` ruft weiter nur `POST /api/ask`; er nimmt einen siebten,
+    //                optionalen Parameter `questionSource`.
+    //   · Nutzlast:  EIN Feld mehr, und nur, wenn die Frage aus der Word-Markierung stammt
+    //                (`askKlara` bei leerem Eingabefeld, `ka6Absenden` über einer Markierung):
+    //                `questionSource: "selection"`. Sonst fällt es bei `JSON.stringify` heraus, der
+    //                Körper ist dann Zeichen für Zeichen der bisherige. Das Feld kann den Weg nur
+    //                ENGER machen: der Server verlangt dafür die Dokumenttext-Prüfung (`ask-routes.ts`).
+    //   · Manifest, CSP, Recht: unverändert. Kein erneutes Sideload.
+    //   · Alter Server: ignoriert das unbekannte Feld (`additionalProperties` erlaubt) — Verhalten
+    //                wie vor diesem Auftrag.
+    // GEMESSEN: `tests/klara-dokumenttext/riegel-haelt-den-dokumenttext.test.ts` R5 führt beide
+    // Einstiege unverändert aus.
+    // RUNDE 3 desselben Auftrags (Bens Befund B1, Runde 2) — PIN ERNEUT BEWUSST AKTUALISIERT
+    // (53da1b30… -> 6e5284ce…). Einzige Änderung: `askKlara` und `ka6Absenden` melden eine GETIPPTE
+    // Frage jetzt ausdrücklich als `questionSource: "manual"` (der Server zählt bei Klara-Bindung
+    // „fehlt" als Dokumenttext). Abrufziel, Manifest, CSP, Recht unverändert; kein Sideload.
+    // LAUF 2, RUNDE 2 (02.10.2026) — PIN ERNEUT (6e5284ce… -> 5fbf5f64…). NUR UMBRUCH UND KOMMENTAR:
+    // die R-0639-Argumente stehen auf den bestehenden Zeilen, damit das Inline-Skript unter der
+    // Schranke von `schnittflaechen.test.ts` B3 bleibt (Server: „expected 12510 to be less than
+    // 12500"). Kein Ausdruck, kein Abrufziel, keine Nutzlast geändert; kein Sideload.
+    // AUFNAHME 20260922 · ZENTRALE-MODULE-AUFTEILEN (R-1611, P11) — DER PIN BLEIBT, WAS ER WAR.
+    // Das Fenster liegt jetzt in DREI Dateien (`taskpane.html`, `taskpane.css`, `taskpane.js`);
+    // gehasht wird deshalb das wieder zusammengefügte Dokument (`panelQuelleAus`). Dass der Pin
+    // NICHT wandern musste, ist der Beleg: kein Zeichen von Markup, Stil oder Skript hat sich
+    // geändert, nur die Ablage. Jede künftige Änderung an einer der drei Dateien macht ihn rot.
+    // Auslieferungsfolgen des Schnitts: ZWEI Abrufe mehr beim Öffnen (beide gleicher Ursprung,
+    // `script-src 'self'`/`style-src 'self'` der Dokument-CSP decken sie), dieselbe Cachekennung
+    // `?v=__KW_FASSUNG__` wie `rueckweg.js`; Abrufziel, Manifest, Recht, Nutzlast unverändert;
+    // kein erneutes Sideload.
+    // AUFNAHME m365-anmeldung (Lauf 1 am 25.09.2026, nach dem Schnitt in `taskpane.js` übertragen)
+    // — DER PIN MUSS DESHALB WANDERN (5fbf5f64… -> Hash des zusammengefügten Dokuments mit dieser
+    // Änderung; bei der Konfliktlösung am 05.10.2026 nicht berechenbar, s. Rückgabe).
+    // Abgelehntes Anmelde-Fenster im Rahmen fremder Herkunft: sofort `loginDialogDeclined` statt Rückfallfenster und fünf Minuten Warten
+    // (gemessen: tests/office-web-anmeldung/seitenfenster-abgelehnter-dialog.test.tsx).
+    //   · Abrufziel: keines neu. · CSP, Recht, Manifest: unverändert.
+    //   · Nutzlast: unverändert. · Sideload: keiner nötig. · Mac-Word/Browsertab: unverändert
+    //     (ohne Rahmenlage bleibt das Rückfallfenster der Weg, Gegenprobe A3).
+    // ZERLEGUNGSAUFTRAG BESTANDSBLICK (aufnahme:20260922:gesamt-bestandsblick:zerlegung-aufraeumen),
+    // NACH DER INTEGRATION MIT R-1611. Zwei Änderungen, und nur EINE bewegt diesen Pin:
+    //   (1) Der Abschnitt KW-MARKE (das Ende des Skripts) wohnt in einer vierten Datei
+    //       `marke.js`, geladen als klassisches Skript UNMITTELBAR NACH `taskpane.js` — er läuft
+    //       also an derselben Stelle. Grund: `schnittflaechen.test.ts` B3 (taskpane.js < 12500
+    //       Zeilen; vorher 12595). `panelQuelleAus` setzt ihn beim Zusammenfügen wieder ans Ende
+    //       des Skripts; das zusammengefügte Dokument ändert sich dadurch um KEIN Byte (gemessen:
+    //       Git-Blob-Vergleich, `schnitt-echt.test.ts` E2).
+    //       Auslieferungsfolgen: EIN Abruf mehr beim Öffnen (gleicher Ursprung, `script-src 'self'`),
+    //       dieselbe Cachekennung; Abrufziel (17, `/api/branding` jetzt in `marke.js`), Manifest,
+    //       Recht, Nutzlast unverändert; kein Sideload. Ein alter Server ohne die Datei liefert 404 —
+    //       das Fenster bleibt bedienbar, nur ohne Firmen-CI.
+    //   (2) Die Bestandsblick-Lesekoordination aus 67d5e6fd in `taskpane.js` —
+    //       `readWholeDocument(done, fehlschlag)`, `ka1Generation`/`ka1Stand`/`ka1Aktuell` und das
+    //       Warten bzw. Neulesen vor dem Vertragsaufruf in `ka3Ausfuehren`. KEIN neues Abrufziel,
+    //       keine Nutzlaständerung ausser den Begriffen des aktuellen Dokuments, ein zusätzlicher
+    //       LESENDER `Word.run` nach der Schreibruhe (kein Schreibweg, gemessen in w1 KA3);
+    //       Manifest/CSP/Recht unverändert, kein Sideload. DIESE Änderung bewegt den Pin.
+    // NACHARBEIT 7: PIN BEWUSST AKTUALISIERT (5fbf5f64… -> fe3cc513…), gemessen am Kandidaten
+    // 787b3e41 — das war das Dokument OHNE die m365-Anmeldeänderung.
+    // NACHARBEIT 12 (Integration mit `main` 93c25f5a): JETZT TRÄGT DAS DOKUMENT BEIDE Änderungen
+    // (m365-Anmeldung UND Bestandsblick); Git-Blob `90936dcc…`, s. `tests/support/panelquelle.ts`.
+    // NACHARBEIT 13: PIN BEWUSST AKTUALISIERT (fe3cc513… -> 66ba98c4…). Der Wert ist GEMESSEN, nicht
+    // geschätzt: dieser Fall meldete ihn am Kandidaten 2dc7cbb7 im Prüflauf (`Received:
+    // "66ba98c4…f74f76e5"`, funktion-erhalten-jsdom); die vier Dateien sind seither unverändert.
+    const PIN = "66ba98c4cbaa5cb24a6fe2ae79fe74c56c784c1927dcff9ee7975f98f74f76e5";
+    const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(
       ist,
       "taskpane.html wurde geändert — Auslieferungsfolgen bewusst prüfen (Kommentar oben), dann den Pin aktualisieren.",
@@ -2764,7 +2826,18 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     //                  bisher geladen, nur endlich auch ABGEWARTET.
     //   · Sideload:    KEIN erneutes Sideload — die Datei wird wie jede andere unter `public/` neu
     //                  ausgeliefert.
-    const PIN = "4ae060ee0a4b832ce0c8d93ba1cb1fa9b9b83bd1d2076429208b84603cddf7e2";
+    // AUFNAHME m365-anmeldung RUNDE 2 (25.09.2026) — PIN BEWUSST AKTUALISIERT (4ae060ee… -> d30a829d…).
+    // Bens Befund (R-0355-Restfall SSO): der SSO-Start traegt jetzt die EINE Zielkennung
+    // (`/api/auth/oidc/start?ziel=word-addin`); der Rueckruf der Anwendung schickt das Fenster auf
+    // diese Seite zurueck, und sie uebergibt von selbst. Gemessen:
+    // tests/office-web-anmeldung/sso-rueckweg-zur-dialogseite.test.ts.
+    //   · Abrufziel: keines neu (derselbe SSO-Start, eine Query). · CSP, Recht, Manifest: unveraendert.
+    //   · OIDC-Einrichtung (`redirect_uri`): unveraendert. · Sideload: keiner noetig.
+    // AUFNAHME m365-anmeldung RUNDE 3 (25.09.2026) — PIN BEWUSST AKTUALISIERT (d30a829d… -> f63ac6bc…).
+    // Bens Befund: der sichtbare SSO-Hinweis sagte noch „Fenster schliessen, erneut druecken" —
+    // jetzt in drei Sprachen der automatische Rückweg (gemessen: dialogseite.test.ts S4b4b).
+    //   · Nur Texte; Abrufziele, CSP, Recht, Manifest unveraendert. · Sideload: keiner noetig.
+    const PIN = "f63ac6bc72ed1219f758c7a2d16d929f69d2faef9a1ca0f9c93478490f7c13d9";
     const ist = createHash("sha256").update(readFileSync(ANMELDUNG)).digest("hex");
     expect(
       ist,

@@ -30,6 +30,12 @@ import type { AnweisungLesestand, BausteinLesestand } from "../../apps/web/src/a
 import { LesestandAnsicht } from "../../apps/web/src/components/gesamtanweisung/LesestandAnsicht";
 import type { Anzeigelage } from "../../apps/web/src/components/gesamtanweisung/zustand";
 import "../../apps/web/src/i18n";
+import { formatKoTimestamp } from "../../apps/web/src/lib/koDates";
+
+// FE-001: die Standzeile nennt den Zeitpunkt LESBAR (wie die Hauptseiten), nie als ISO-Zeichenkette.
+// Der Sollwert kommt aus derselben Formatierung und nicht abgeschrieben — sonst hinge der Fall an der
+// Zeitzone der Prüfmaschine.
+const LESBARE_ZEIT = formatKoTimestamp("2026-09-15T10:00:00.000Z", "de");
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -181,7 +187,7 @@ describe("JOB 4233 · der Bausteintext auf der Fläche", () => {
     expect(fehler.textContent).not.toContain("Erst absperren.");
 
     const leer = await zeichne({ art: "leer" }, lesestand([]));
-    expect(leer.textContent).toContain("Diese Anweisung hat noch keine Bausteine.");
+    expect(leer.textContent).toContain("Diese Arbeitsanleitung hat noch keine Abschnitte.");
     expect(leer.querySelector('[data-testid="ga-lesestand-text"]')).toBeNull();
   });
 
@@ -208,8 +214,9 @@ describe("JOB 4233 · der Bausteintext auf der Fläche", () => {
     expect(container.querySelector('[data-testid="ga-lesestand-gliederung"]')).not.toBeNull();
     // Die Standzeile nennt den Zeitpunkt, auf den sich der Text bezieht — und dass aufgefrischt wird.
     expect(container.querySelector('[data-testid="ga-lesestand-zeit"]')?.textContent).toBe(
-      "Stand von 2026-09-15T10:00:00.000Z · wird aufgefrischt",
+      `Stand von ${LESBARE_ZEIT} · wird aufgefrischt`,
     );
+    expect(container.textContent).not.toContain("2026-09-15T10:00:00.000Z");
     expect(container.textContent).not.toContain("Auffrischung fehlgeschlagen");
   });
 
@@ -226,10 +233,10 @@ describe("JOB 4233 · der Bausteintext auf der Fläche", () => {
     expect(container.querySelector('[data-testid="ga-lesestand-gliederung"]')).not.toBeNull();
     // Und der Fehler ist trotzdem sichtbar — der Stand wird nicht als aktuell ausgegeben.
     expect(container.querySelector('[data-testid="ga-lesestand-zeit"]')?.textContent).toBe(
-      "Stand von 2026-09-15T10:00:00.000Z · Auffrischung fehlgeschlagen",
+      `Stand von ${LESBARE_ZEIT} · Auffrischung fehlgeschlagen`,
     );
     expect(container.querySelector('p[role="alert"]')?.textContent).toBe(
-      "Die Anweisung konnte nicht geladen werden.",
+      "Die Arbeitsanleitung konnte nicht geladen werden. Lade die Seite neu oder versuche es später erneut.",
     );
     expect(container.textContent).not.toContain("aktuell");
   });
@@ -244,7 +251,7 @@ describe("JOB 4233 · der Bausteintext auf der Fläche", () => {
       "Erst absperren.",
     );
     expect(container.querySelector('p[role="alert"]')?.textContent).toBe(
-      "Keine Verbindung. Ihre Eingaben bleiben erhalten; gespeichert ist nichts.",
+      "Keine Verbindung. Deine Eingaben bleiben erhalten; gespeichert ist nichts.",
     );
     expect(container.querySelector('[data-testid="ga-lesestand-zeit"]')?.textContent).toContain(
       "Stand von",
@@ -266,7 +273,9 @@ describe("JOB 4233 · der Bausteintext auf der Fläche", () => {
     );
     expect(
       container.querySelector('[data-testid="ga-lesestand-unvollstaendig"]')?.textContent,
-    ).toBe("Teile dieser Anweisung sind für Sie nicht zugänglich. Nicht zugängliche Bausteine: 2");
+    ).toBe(
+      "Teile dieser Arbeitsanleitung sind für dich nicht zugänglich. Nicht zugängliche Abschnitte: 2",
+    );
     // Genau EIN Textbereich und EINE Gliederung — für den verborgenen entsteht keine leere Hülle.
     expect(container.querySelectorAll('[data-testid="ga-lesestand-text"]')).toHaveLength(1);
     expect(container.querySelectorAll('[data-testid="ga-lesestand-baustein"]')).toHaveLength(1);

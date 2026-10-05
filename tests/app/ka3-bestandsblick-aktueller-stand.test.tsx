@@ -18,9 +18,12 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { panelQuelleAus } from "../support/panelquelle";
 
 const TASKPANE = "apps/web/public/word-addin/taskpane.html";
-const HTML = readFileSync(resolve(process.cwd(), TASKPANE), "utf8");
+// Das Fenster liegt in mehreren Dateien (R-1611: taskpane.html/.css/.js; dazu marke.js). Gelesen
+// wird es als EIN Dokument — `panelQuelleAus` setzt Stil, Skript und den Markenblock an ihre Stellen.
+const HTML = panelQuelleAus(TASKPANE);
 const RUECKWEG_QUELLE = readFileSync(
   resolve(process.cwd(), "apps/web/public/word-addin/rueckweg.js"),
   "utf8",

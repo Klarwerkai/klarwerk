@@ -352,6 +352,117 @@ describe("checkKnowledge", () => {
       conflicts: conflicts(),
       judge: spyJudge(null).judge,
     });
-    expect(res).toEqual({ status: "failed", similar: [], conflicts: [] });
+    // AUFNAHME 20260922 · VORSCHAU-REICHWEITE: die Antwort trägt ihren Umfang AUSDRÜCKLICH, auch
+    // den unbekannten (Umfang Punkt 1 der Aufnahme) — deshalb steht er in dieser Gesamterwartung.
+    expect(res).toEqual({
+      status: "failed",
+      similar: [],
+      conflicts: [],
+      coverage: { kind: "unknown" },
+    });
+  });
+});
+
+// ================================================================================================
+// AUFNAHME 20260922 · VORSCHAU-REICHWEITE — die Antwort meldet, wie weit sie geschaut hat.
+// ================================================================================================
+describe("checkKnowledge · Prüfumfang (Vorschau-Reichweite)", () => {
+  const ENTWURF_R = "Bei Kaltstart die Vorwärmung aktivieren nicht vergessen.";
+  const fremd = (i: number) =>
+    ko({ id: `f${String(i).padStart(2, "0")}`, title: `Kaffeeküche ${i}`, statement: "Milch." });
+
+  // Der Fake hält den Deckel wie die echte Vorauswahl: er liefert höchstens `limit` Objekte und
+  // hält fest, welchen Deckel der Check verlangt hat.
+  function deckelnderKo(bestand: KnowledgeObject[]): { ko: KoService; limits: number[] } {
+    const limits: number[] = [];
+    return {
+      limits,
+      ko: {
+        findCandidates: async (q: { limit: number }) => {
+          limits.push(q.limit);
+          return bestand.slice(0, q.limit);
+        },
+      } as unknown as KoService,
+    };
+  }
+
+  it("R1 · Deckel erreicht: 40 verglichen, Grenze erreicht — ein passender Eintrag auf Rang 41 fehlt", async () => {
+    const passend = ko({ id: "passt", title: "Kaltstart", statement: ENTWURF_R });
+    const { ko: deps, limits } = deckelnderKo([
+      ...Array.from({ length: 40 }, (_, i) => fremd(i)),
+      passend,
+    ]);
+    const res = await checkKnowledge(ENTWURF_R, { ko: deps, conflicts: conflicts() });
+    expect(limits).toEqual([40]);
+    expect(res.similar).toEqual([]);
+    expect(res.coverage).toEqual({
+      kind: "candidates",
+      checked: 40,
+      limit: 40,
+      limitReached: true,
+    });
+  });
+
+  it("R2 · Gegenprobe: liegt der Eintrag im Umfang, erscheint der Treffer", async () => {
+    const passend = ko({ id: "passt", title: "Kaltstart", statement: ENTWURF_R });
+    const { ko: deps } = deckelnderKo([...Array.from({ length: 39 }, (_, i) => fremd(i)), passend]);
+    const res = await checkKnowledge(ENTWURF_R, { ko: deps, conflicts: conflicts() });
+    expect(res.similar.map((s) => s.id)).toEqual(["passt"]);
+    expect(res.coverage).toEqual({
+      kind: "candidates",
+      checked: 40,
+      limit: 40,
+      limitReached: true,
+    });
+  });
+
+  it("R3 · unter dem Deckel: Zahl der verglichenen Kandidaten, Grenze nicht erreicht", async () => {
+    const res = await checkKnowledge(ENTWURF_R, {
+      ko: fakeKo([fremd(1), fremd(2), fremd(3)]),
+      conflicts: conflicts(),
+    });
+    expect(res.status).toBe("pending");
+    expect(res.coverage).toEqual({
+      kind: "candidates",
+      checked: 3,
+      limit: 40,
+      limitReached: false,
+    });
+  });
+
+  it("R4 · verglichen zählt nach dropConfidential; die Grenze misst die Vorauswahl", async () => {
+    const bestand = Array.from({ length: 40 }, (_, i) =>
+      i < 2 ? ko({ ...fremd(i), confidentiality: "vertraulich" }) : fremd(i),
+    );
+    const res = await checkKnowledge(ENTWURF_R, {
+      ko: deckelnderKo(bestand).ko,
+      conflicts: conflicts(),
+    });
+    expect(res.coverage).toEqual({
+      kind: "candidates",
+      checked: 38,
+      limit: 40,
+      limitReached: true,
+    });
+  });
+
+  it("R5 · mit Judge ('done') trägt die Antwort denselben Umfang", async () => {
+    const res = await checkKnowledge(ENTWURF_R, {
+      ko: fakeKo([fremd(1)]),
+      conflicts: conflicts(),
+      judge: spyJudge(null).judge,
+    });
+    expect(res.status).toBe("done");
+    expect(res.coverage).toEqual({
+      kind: "candidates",
+      checked: 1,
+      limit: 40,
+      limitReached: false,
+    });
+  });
+
+  it("R6 · zu kurzer Text: nichts geprüft → Umfang ausdrücklich unbekannt", async () => {
+    const res = await checkKnowledge("kurz", { ko: fakeKo([fremd(1)]), conflicts: conflicts() });
+    expect(res.coverage).toEqual({ kind: "unknown" });
   });
 });

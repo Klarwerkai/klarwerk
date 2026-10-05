@@ -185,6 +185,12 @@ export interface AiCheckWorker {
   // ist die Eviction FAIL-CLOSED (kein Status-Write, s. enqueueInternal).
   enqueue(koId: string, expectedKoVersion?: number): void;
   has(koId: string): boolean;
+  /**
+   * PRÜFSTATUS-ANZEIGE (R-0208): läuft der Job für dieses Objekt GERADE (nicht nur eingereiht)?
+   * Reine Leseauskunft aus dem Speicher des Workers — die Prüfseite unterscheidet damit „Prüfung
+   * ausstehend" von „läuft". Nach einem Neustart ist nichts laufend; das ist dann auch wahr.
+   */
+  laeuft(koId: string): boolean;
   queuedCount(): number;
   // Für Tests: aufgelöst, sobald Queue leer und kein Job mehr läuft.
   idle(): Promise<void>;
@@ -481,6 +487,9 @@ export function createAiCheckWorker(deps: AiCheckWorkerDeps): AiCheckWorker {
     },
     has(koId: string): boolean {
       return queuedIds.has(koId) || runningIds.has(koId);
+    },
+    laeuft(koId: string): boolean {
+      return runningIds.has(koId);
     },
     queuedCount(): number {
       return queue.length + active;

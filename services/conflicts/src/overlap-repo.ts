@@ -113,6 +113,17 @@ export class InMemoryOverlapRepo implements OverlapRepo {
     return Promise.resolve();
   }
 
+  // Auftrag gesamt-dubletten-rueckzug (Runde 2, BEN-R3-1): Rückstellung eines gescheiterten
+  // Vorgangs ohne Datenbank — der Eintrag steht danach exakt wie vorher. Einziger Aufrufer: die
+  // Rücknahme-Klammer (services/app/src/speicher-vorgang.ts); in PostgreSQL übernimmt das ROLLBACK.
+  zuruecksetzen(id: string, vorher: OverlapEntry | undefined): void {
+    if (vorher) {
+      this.entries.set(id, vorher);
+    } else {
+      this.entries.delete(id);
+    }
+  }
+
   // Fachlich identisch zur Pg-Anweisung: dasselbe Prädikat (koA ODER koB, Status ≠ "geschlossen"),
   // dasselbe Aufmischen des Patch, dieselbe Rückgabe der geschlossenen Einträge. Der ganze Schritt
   // liegt synchron im selben Makrotask — kein await-Spalt zwischen Auswahl und Schreiben.

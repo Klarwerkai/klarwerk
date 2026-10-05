@@ -1,12 +1,13 @@
 // Teil B (Pedis Befund): die Bildergalerie schon im ENTWURF sichtbar — nicht erst in der
 // Leseansicht. DIESELBE BodyImageGallery (ben-abgenommen inkl. Modal/Fokus), abgeleitet aus dem
 // AKTUELLEN Editor-bodyHtml; gegen Render-Last debounced (300 ms — derselbe Hook wie die Suche).
-// Kein Duplikat, keine neue Persistenz: ohne verankertes Bild rendert die Galerie selbst nichts.
+// Kein Duplikat, keine neue Persistenz: ohne verankertes Bild rendert die Galerie nichts Sichtbares
+// (seit Lauf 5 nur einen unsichtbaren Anker für den Bildklick des Editors, siehe `nimmtBildklickAn`).
 import { useTranslation } from "react-i18next";
 import { bildverlust } from "../lib/bildverlust";
 import { extractBodyImages } from "../lib/bodyImages";
 import { LIBRARY_SEARCH_DEBOUNCE_MS, useDebouncedValue } from "../lib/useDebouncedValue";
-import { BodyImageGallery } from "./BodyImageGallery";
+import { type BildbeschreibungsBitte, BodyImageGallery } from "./BodyImageGallery";
 
 // AUFTRAG-mega69 Block A: `onEditCaption` reicht den Weg zum Bildbeschreibungs-Formular durch —
 // im Entwurf ist der Editor immer da, die Galerie darunter bekommt damit denselben Einstieg.
@@ -23,7 +24,7 @@ export function DraftBodyGallery({
   bodyHtml: string;
   // JOB 2084 (I50-3): reicht die Occurrence der Galerie unverändert durch (Begründung bei
   // `BodyImageGallery`).
-  onEditCaption?: ((imageId: string, src: string, index: number) => void) | undefined;
+  onEditCaption?: BildbeschreibungsBitte | undefined;
   quellBildzahl?: number | null | undefined;
 }): JSX.Element | null {
   const { t } = useTranslation();
@@ -62,7 +63,8 @@ export function DraftBodyGallery({
           {t("ko.galleryLoss", { n: verlust.fehlend, m: verlust.quelle })}
         </output>
       ) : null}
-      <BodyImageGallery bodyHtml={debounced} onEditCaption={onEditCaption} />
+      {/* Lauf 5 (R3-2): die Entwurfsgalerie steht immer neben einem Editor. */}
+      <BodyImageGallery bodyHtml={debounced} onEditCaption={onEditCaption} nimmtBildklickAn />
     </>
   );
 }

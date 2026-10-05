@@ -18,10 +18,10 @@
 // AUSDRÜCKLICH NICHT GEPRÜFT: der Kontoname, den Fall (a) des Auftrags im 401/403-Fall zeigt. Er
 // steht nicht in einem i18n-Wert, sondern kommt als Einsetzung `{{konto}}` aus
 // `apps/web/src/lib/kiTestBefund.ts`.
-import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { alleSprachbestaende } from "../support/i18nBestand";
+import { woerterbuchQuelleAus } from "../support/woerterbuchquelle";
 
 const I18N_DATEI = join(__dirname, "../../apps/web/src/i18n.ts");
 
@@ -94,7 +94,7 @@ describe("JOB 3420 · Fall 6 — kein Kontoname in einem sichtbaren adm.ai-Text"
   it("B · KALIBRIERUNG: im Rohtext der Datei kommt der Kontoname vor — der Wert-Wächter sieht ihn zu Recht nicht", () => {
     // Ein Wächter über den Dateitext wäre allein hierdurch rot. Genau das ist der Grund, warum
     // Fall A die Werte liest. Fällt diese Zusage, misst Fall A womöglich einen leeren Bestand.
-    const roh = readFileSync(I18N_DATEI, "utf8");
+    const roh = woerterbuchQuelleAus(I18N_DATEI);
     expect(roh).toContain("ANTHROPIC_API_KEY");
   });
 

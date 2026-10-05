@@ -54,6 +54,7 @@ import {
   groupRowsTree,
   groupsCollapsedByDefault,
   languageCounts,
+  ordnerOhneEigeneZeile,
   previewFacetValues,
   rowsAllChecked,
   selectionSummary,
@@ -891,6 +892,12 @@ export function ImportSelect({
   // RT5a (nacht24): ECHTER Subfolder-Baum — im Sprach-Modus bekommen Sprach-Ordner Themen-
   // Unterordner (auf-/zuklappbar), sobald die Sprache ≥2 Themen hergibt; sonst wie bisher.
   const groups = groupRowsTree(rows, groupMode);
+  // R-0991 (K3): Ordner, deren Elternseite in der GANZEN Vorschau fehlt (nicht nur in der gerade
+  // gefilterten Sicht) — sonst sähe der Ordner aus wie eine mitimportierte Seite (JOB 931 `B2`).
+  const ordnerOhneSeite =
+    groupMode === "folder"
+      ? ordnerOhneEigeneZeile(entries.map((entry, index) => ({ entry, index }))).map((o) => o.pfad)
+      : [];
   const summary = selectionSummary(checkedRows);
   // F1: Bulk-Aktionen (Alle wählen, Gruppen-Checkbox) UND die Haken-Anzeige arbeiten auf DERSELBEN
   // bulk-wählbaren Teilmenge — bereits importierte/vorgemerkte Zeilen fasst kein Bulk-Setzer an.
@@ -1467,6 +1474,11 @@ export function ImportSelect({
                     }
                     countLabel={(n) => t("imp.select.groupCount", { n })}
                     renderRow={renderRow}
+                    ohneSeite={{
+                      pfade: ordnerOhneSeite,
+                      marke: t("importordner.ohneSeite"),
+                      hinweis: t("importordner.ohneSeiteHinweis"),
+                    }}
                   />
                 )}
               </fieldset>

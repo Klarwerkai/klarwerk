@@ -63,6 +63,11 @@ const WURZEL = resolve(process.cwd());
 const PANEL_DATEI = join(WURZEL, "apps/web/public/word-addin/taskpane.html");
 /** JOB 3667: die zweite Skriptdatei derselben Auslieferung (Block KW-RUECKWEG). */
 const RUECKWEG_DATEI = join(WURZEL, "apps/web/public/word-addin/rueckweg.js");
+/** R-1611: Skript und Stil des Fensters, seit dem Drei-Datei-Schnitt eigene Dateien. */
+const PANEL_JS_DATEI = join(WURZEL, "apps/web/public/word-addin/taskpane.js");
+const PANEL_CSS_DATEI = join(WURZEL, "apps/web/public/word-addin/taskpane.css");
+/** Zerlegungsauftrag Bestandsblick: der Block KW-MARKE, geladen unmittelbar nach taskpane.js. */
+const MARKE_DATEI = join(WURZEL, "apps/web/public/word-addin/marke.js");
 const ZIELBILD =
   "/Users/peterkohnert/Documents/Projekt_klarwerk/DESIGN_ZIELBILD_20260827/KeinWissen.dc.html";
 const ORIGIN = "http://klarwerk.test";
@@ -552,6 +557,23 @@ describe.runIf(zielbildDa)(
               status: 200,
               body: req.method() === "HEAD" ? "" : readFileSync(RUECKWEG_DATEI),
               contentType: "application/javascript; charset=utf-8",
+            });
+            return;
+          }
+          // R-1611 (Drei-Datei-Schnitt): Stil und Skript des Fensters sind eigene Dateien derselben
+          // Auslieferung — aus der Quelle, damit hier die GESCHNITTENE Seite laeuft wie beim Anwender.
+          // Zerlegungsauftrag Bestandsblick: ebenso `marke.js` (Block KW-MARKE).
+          const geschwister: Record<string, [string, string]> = {
+            "/word-addin/taskpane.js": [PANEL_JS_DATEI, "application/javascript; charset=utf-8"],
+            "/word-addin/taskpane.css": [PANEL_CSS_DATEI, "text/css; charset=utf-8"],
+            "/word-addin/marke.js": [MARKE_DATEI, "application/javascript; charset=utf-8"],
+          };
+          const teil = geschwister[url.pathname];
+          if (teil !== undefined) {
+            await route.fulfill({
+              status: 200,
+              body: req.method() === "HEAD" ? "" : readFileSync(teil[0]),
+              contentType: teil[1],
             });
             return;
           }

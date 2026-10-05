@@ -36,9 +36,38 @@ import {
 //   6  ESCAPE GIBT DEN FOKUS ZURÜCK (Runde 2, Codex-Befund 1). Vorher schloss Escape die Fläche und
 //      der Fokus fiel auf `<body>` — wer mit der Tastatur arbeitet, stand danach nirgends.
 //
+// FE-002 (Pedi, 26.09.2026) — ZWEI WEITERE SCHRITTE, und wieder keine neue Palette:
+//   7  KEINE ROUTE MEHR IN DER ZEILE. Pedis Befund: „‚Gehe zu …' öffnet … eine Auswahl mit 46 Zielen
+//      und technischen Pfaden wie `/validierung`." Die Zeile trägt jetzt nur Name und Gruppe/Ort;
+//      der Pfad bleibt als Marke am Knopf (`data-cmd-pfad`) für Messungen, gesehen wird er nicht.
+//      Gesucht wird unverändert über alle Namen desselben Ziels (`trefferFuer`).
+//   8  DAS FELD HEISST „SEITE FINDEN" — sichtbar im Platzhalter und als Name —, und eine Zeile
+//      darunter sagt, dass Inhalte über „Wissen suchen" gefunden werden. So sind die beiden Suchen
+//      auch HIER auseinanderzuhalten, nicht nur im Kopfband.
+//
 // WAS SICH AUSDRÜCKLICH NICHT ÄNDERT: ⌘K/Strg+K, Escape, die Modalgrenze, und `canSee` als die EINE
 // Sichtbarkeitsregel. Mehr Ziele heißt nicht mehr Rechte — die Verwaltungsziele hängen sämtlich
 // daran, dass die Rolle `/admin` überhaupt sieht (`direktzugangZiele`).
+/**
+ * Nutzlast von `open-command-palette`. `nachModalgrenze`: der Auslöser schließt im selben Zug eine
+ * modale Fläche (Drawer) — die Palette öffnet, sobald die Grenze frei ist, statt abzuweisen.
+ * `rueckweg`: wohin der Fokus beim Schließen der Palette geht, wenn der Auslöser selbst dann nicht
+ * mehr steht (die Drawer-Zeile) — der Auslöser der geschlossenen Fläche („Menü").
+ */
+export interface PaletteAnfrage {
+  nachModalgrenze?: boolean;
+  rueckweg?: (() => HTMLElement | null) | undefined;
+}
+
+/** Eine Öffnungsanfrage, die auf die Freigabe der Modalgrenze wartet. */
+interface Vormerkung {
+  seit: number;
+  rueckweg: (() => HTMLElement | null) | undefined;
+}
+
+/** Wie lange eine vorgemerkte Öffnung auf die Freigabe der Grenze wartet. */
+const VORMERKUNG_MS = 2000;
+
 export function CommandPalette(): JSX.Element | null {
   const { t } = useTranslation();
   // AUFTRAG-mega11 Block B-2: dieselbe geschützte Grenze wie Sidebar/Topbar/Logo.
@@ -65,6 +94,11 @@ export function CommandPalette(): JSX.Element | null {
   const ausloeserRef = useRef<HTMLElement | null>(null);
   /** Der offene Zustand für den Fenster-Zuhörer, der ihn außerhalb von React braucht. */
   const offenRef = useRef(false);
+  /** Öffnungsanfrage, die auf die Freigabe der Modalgrenze wartet (FE-002). */
+  const vormerkungRef = useRef<Vormerkung | null>(null);
+  /** Der Sperrzustand des letzten Renderns — für Rückrufe außerhalb eines Effekts (FE-002). */
+  const modalOffenRef = useRef(modalOffen);
+  modalOffenRef.current = modalOffen;
 
   // JOB 3105 · UX-08: BESCHRIFTET wird mit dem Namen, den die anderen Flächen zeigen; GESUCHT wird
   // über alle Namen desselben Ziels — der angezeigte plus der bisherige. Beides wohnt seit JOB 3337
@@ -90,6 +124,7 @@ export function CommandPalette(): JSX.Element | null {
   //
   // `filtered` bleibt die Vorstufe (Suche), ist aber ab hier für die Bedienung nicht mehr zuständig.
   const sichtbareReihenfolge = useMemo(() => gruppen.flatMap((g) => g.ziele), [gruppen]);
+  const fragenErreichbar = ziele.some((z) => z.path === "/fragen");
 
   useEffect(() => {
     offenRef.current = open;
@@ -100,6 +135,32 @@ export function CommandPalette(): JSX.Element | null {
     const aktiv = document.activeElement;
     ausloeserRef.current = aktiv instanceof HTMLElement ? aktiv : null;
   }, []);
+
+  // Die vorgemerkte Öffnung (s. `onCustom`). Sie greift erst, wenn die Grenze FREI ist. Der Rückweg
+  // wird dabei NICHT aus `document.activeElement` gelesen: unter Last stand dort im Tor-Volllauf
+  // (Prüfauftrag pa-1790494556-7615eb59, C7 Runde 1) noch `BODY` — die Drawer-Zeile war schon
+  // abgebaut, der Fokus noch nicht auf „Menü" — und Escape ließ den Fokus im Leeren. Die Anfrage
+  // nennt ihren Rückweg deshalb selbst; nur ohne ihn gilt weiter das fokussierte Element. Eine
+  // Vormerkung, die nicht binnen `VORMERKUNG_MS` eingelöst wird, verfällt — die Palette erscheint
+  // nie verspätet nach einem ganz anderen, später geschlossenen Dialog.
+  // Gelesen wird der zuletzt GERENDERTE Sperrzustand (`modalOffenRef`), nicht der eines Effekts.
+  const loeseVormerkungEin = useCallback((): void => {
+    const vormerkung = vormerkungRef.current;
+    if (modalOffenRef.current || vormerkung === null) {
+      return;
+    }
+    vormerkungRef.current = null;
+    if (Date.now() - vormerkung.seit > VORMERKUNG_MS) {
+      return;
+    }
+    const rueckweg = vormerkung.rueckweg?.() ?? null;
+    if (rueckweg) {
+      ausloeserRef.current = rueckweg;
+    } else {
+      merkeAusloeser();
+    }
+    setOpen(true);
+  }, [merkeAusloeser]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -118,7 +179,24 @@ export function CommandPalette(): JSX.Element | null {
         setOpen(false);
       }
     };
-    const onCustom = (): void => {
+    const onCustom = (e: Event): void => {
+      // FE-002 (Ben, Lauf 2 Runde 1): „Seite finden" im schmalen Drawer schließt den Drawer und
+      // ruft die Palette im SELBEN Klick — die Grenze ist dann noch gesperrt, und das Ereignis
+      // verfiel. Wer ausdrücklich `nachModalgrenze` sagt, wird deshalb IMMER vorgemerkt und erst
+      // eingelöst, wenn die Grenze frei ist (`loeseVormerkungEin`). Nicht nur bei `modalOffen`:
+      // dieser Zuhörer trägt den Zustand seines letzten Effekts, und der kann dem gerade
+      // geöffneten Drawer hinterherhinken — gemessen in Lauf 2 R3 (lokales Chromium, C7 Runde 5:
+      // Ereignis mit `modal=false` bei offenem Drawer, Palette sofort offen, die Drawer-Zeile als
+      // Rückweg gemerkt, beim Schließen abgebaut → Fokus auf BODY). Alle anderen Anfragen
+      // bleiben, wie sie waren: bei offener Grenze abgewiesen, sonst sofort geöffnet.
+      const anfrage = (e as CustomEvent<PaletteAnfrage | null>).detail;
+      if (anfrage?.nachModalgrenze) {
+        vormerkungRef.current = { seit: Date.now(), rueckweg: anfrage.rueckweg };
+        // Nach dem nächsten Bildaufbau ist das Schließen der auslösenden Fläche verarbeitet; ist
+        // die Grenze dann frei, wird eingelöst — sonst beim Wechsel der Sperre (Effekt unten).
+        window.requestAnimationFrame(() => loeseVormerkungEin());
+        return;
+      }
       if (modalOffen) {
         return;
       }
@@ -131,7 +209,14 @@ export function CommandPalette(): JSX.Element | null {
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("open-command-palette", onCustom);
     };
-  }, [modalOffen, merkeAusloeser]);
+  }, [modalOffen, merkeAusloeser, loeseVormerkungEin]);
+
+  // Die vorgemerkte Öffnung (s. `onCustom`) — eingelöst beim Wechsel der Sperre.
+  useEffect(() => {
+    if (!modalOffen) {
+      loeseVormerkungEin();
+    }
+  }, [modalOffen, loeseVormerkungEin]);
 
   useEffect(() => {
     if (open) {
@@ -223,11 +308,6 @@ export function CommandPalette(): JSX.Element | null {
               {it.kontext}
             </span>
           </span>
-          {it.route === undefined ? null : (
-            <span data-cmd-route className="shrink-0 pt-0.5 font-mono text-[11px] opacity-90">
-              {it.route}
-            </span>
-          )}
         </button>
       </li>
     );
@@ -283,7 +363,7 @@ export function CommandPalette(): JSX.Element | null {
           // Codex' Befund: „Der Suchkasten trägt im gelesenen Code nur einen Platzhalter, keine
           // eigene zugängliche Beschriftung." Ein Platzhalter verschwindet beim Tippen — ein Name
           // bleibt, auch für Vorlesewerkzeuge.
-          aria-label={t("cmd.suchfeld")}
+          aria-label={t("fe002.seiteFinden")}
           onChange={(e) => {
             setQ(e.target.value);
             setActive(0);
@@ -301,10 +381,13 @@ export function CommandPalette(): JSX.Element | null {
               const it = sichtbareReihenfolge[active];
               if (it) {
                 go(it.path);
+              } else if (fragenErreichbar && q.trim()) {
+                // Kein Ziel da: Enter tut, was der Nulltreffer anbietet (R-0474).
+                go(`/fragen?q=${encodeURIComponent(q.trim())}`);
               }
             }
           }}
-          placeholder={t("cmd.placeholder")}
+          placeholder={`${t("fe002.seiteFindenMenue")} (⌘K)`}
           // `shrink-0`: Suchfeld und Trefferzahl behalten ihre Höhe, wenn der Kasten eng wird —
           // schrumpfen soll die LISTE (sie kann scrollen), nicht das Feld, in das man tippt.
           className="w-full shrink-0 border-b border-hairline bg-transparent px-4 py-3 text-sm outline-none"
@@ -320,12 +403,37 @@ export function CommandPalette(): JSX.Element | null {
               Reihenfolge, an der irgendwann wieder etwas auseinanderläuft. */}
           {t("cmd.treffer", { count: sichtbareReihenfolge.length })}
         </div>
+        {/* FE-002: bewusst AUSSERHALB der Live-Region — der Satz ändert sich nie und soll nicht bei
+            jedem Tastendruck mit der Trefferzahl erneut vorgelesen werden. */}
+        <p
+          data-cmd="hinweis"
+          className="shrink-0 border-b border-hairline px-4 py-1.5 text-[11.5px] text-muted-2"
+        >
+          {t("fe002.paletteHinweis")}
+        </p>
         {/* `min-h-0` ist der Schalter, ohne den nichts von alledem wirkt: ein Flex-Kind hat von
             Haus aus `min-height: auto` und weigert sich dann, unter seinen Inhalt zu schrumpfen —
             der Kasten hielte seine Obergrenze ein, die Liste liefe trotzdem darüber hinaus. */}
         <ul ref={listeRef} className="max-h-80 min-h-0 overflow-y-auto p-1.5">
           {sichtbareReihenfolge.length === 0 ? (
-            <li className="px-3 py-2 text-[13px] text-muted">{t("cmd.empty")}</li>
+            // R-0474: der Nulltreffer sagt, was jetzt geht. Die Eingabe als Frage wird nur
+            // angeboten, wenn „Fragen" unter den Zielen DIESER Rolle steht — dieselbe Liste, aus der
+            // die Palette sonst liest, keine zweite Rechtefrage.
+            <li data-cmd="nulltreffer" className="px-3 py-2 text-[13px] text-muted">
+              {t("cmd.empty")}{" "}
+              {fragenErreichbar && q.trim() ? (
+                <button
+                  type="button"
+                  data-cmd="als-frage"
+                  onClick={() => go(`/fragen?q=${encodeURIComponent(q.trim())}`)}
+                  className="font-semibold text-ai hover:opacity-80"
+                >
+                  {t("erstnutzer.palette.alsFrage", { q: q.trim() })}
+                </button>
+              ) : (
+                t("erstnutzer.palette.anderesWort")
+              )}
+            </li>
           ) : (
             gruppen.map((g) => (
               <li key={g.gruppe.id}>

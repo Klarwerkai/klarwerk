@@ -10,47 +10,89 @@ import {
 import { type AuditRepo, auditFilterTrifft } from "./repo";
 import type { AuditEntry, AuditFilter, AuditInput } from "./types";
 
+// R-0613 (Rest „ein externer Anker und ein Export fehlen"): die ganze Kette als Datei. Der Kopf
+// (`head`: letzte Sequenz + ihr Hash) ist der Wert, den ein Betreiber AUSSERHALB der Datenbank
+// ablegen kann — ein später neu gebildeter Kettenverlauf ergibt dort einen anderen Kopf. Das
+// Produkt verankert den Kopf nicht selbst; es liefert ihn nur so aus, dass man es kann.
+export interface AuditChainExport {
+  format: "klarwerk-audit-export";
+  formatVersion: 1;
+  exportedAt: string;
+  count: number;
+  head: { seq: number; hash: string } | null;
+  inspection: ChainInspection;
+  entries: AuditEntry[];
+}
+
 export interface AuditServiceDeps {
   repo: AuditRepo;
   now?: () => number;
+  // Auftrag gesamt-dubletten-rueckzug (Runde 3, Bens BEN-R3-3): `record`/`recordOnce` sind zwei
+  // Schritte (`last`, dann `append`). Ohne Datenbank, wo kein Primärschlüssel `seq` doppelte
+  // Kettenglieder abweist, reicht die Kompositionswurzel hier eine Sperre, unter der beide Schritte
+  // ungeteilt laufen — und die ein offener Rücknahme-Vorgang (services/app/src/speicher-vorgang.ts)
+  // für seine ganze Dauer hält. Ein Aufruf MIT dem Kontext dieses Vorgangs läuft ohne Warten
+  // hindurch (die Sperre entscheidet das am `tx`). Ohne Angabe unverändert.
+  kettenSperre?: <T>(tx: TxContext | undefined, fn: () => Promise<T>) => Promise<T>;
 }
 
 export class AuditService {
   private readonly repo: AuditRepo;
   private readonly now: () => number;
+  private readonly kettenSperre: <T>(tx: TxContext | undefined, fn: () => Promise<T>) => Promise<T>;
 
   constructor(deps: AuditServiceDeps) {
     this.repo = deps.repo;
     this.now = deps.now ?? (() => Date.now());
+    this.kettenSperre = deps.kettenSperre ?? ((_tx, fn) => fn());
   }
 
   // FR-AUD-01: jede relevante Aktion erzeugt einen Eintrag (wer/was/wann).
   // SCRUM-523 P.3 (WP-A2): optionaler, opaker TxContext (services/db-tx) — additiv, abwärtskompatibel.
-  // Reicht ihn an last()/append() durch, damit BEIDE auf demselben Pg-Client laufen wie ein vom
+  // Reicht ihn an die Ablage (`appendNext`, sonst last()/append()) durch, damit sie auf demselben Pg-Client laufen wie ein vom
   // Aufrufer parallel geschriebener anderer Store (z. B. KoService.purgeKo: repo.delete + audit.record
   // in EINER echten Transaktion). Ohne tx unverändertes Verhalten.
-  async record(input: AuditInput, tx?: TxContext): Promise<AuditEntry> {
-    const last = await this.repo.last(tx);
-    const seq = last ? last.seq + 1 : 1;
-    const prevHash = last ? last.hash : GENESIS;
-    // JOB 498 D8: NEUE EINTRÄGE SIND V2 — und `hashVersion` steht IM `partial`, also VOR der
-    // Hashbildung und vor `Object.freeze`. Nachträglich ginge es gar nicht: `InMemoryAuditRepo.append`
-    // friert den Eintrag ein, und `service.test.ts` nagelt das mit `Object.isFrozen` fest. Ein
-    // später gesetztes Feld läge außerdem neben dem Hash statt in ihm — genau die Lücke, die V2
-    // schließt.
+  //
+  // Zusammenführung (gesamt-auditprotokoll mit gesamt-dubletten-rueckzug): beide Absicherungen
+  // gelten. Die `kettenSperre` der Kompositionswurzel (nur ohne Datenbank, gehalten von einem offenen
+  // Rücknahme-Vorgang) umschließt den Schritt; darin hängt die Ablage über `appendNext` an.
+  record(input: AuditInput, tx?: TxContext): Promise<AuditEntry> {
+    return this.kettenSperre(tx, () => this.recordUngeteilt(input, tx));
+  }
+
+  private async recordUngeteilt(input: AuditInput, tx?: TxContext): Promise<AuditEntry> {
+    // Aufnahme gesamt-auditprotokoll (Lauf 3): Vorgänger lesen und Anhängen als EIN Schritt der
+    // Ablage (`appendNext`), damit zwei gleichzeitige Schreiber nie denselben Vorgänger sehen.
+    if (this.repo.appendNext) {
+      const { entry } = await this.repo.appendNext((last) => this.baue(last, input), tx);
+      return entry;
+    }
+    const entry = this.baue(await this.repo.last(tx), input);
+    await this.repo.append(entry, tx);
+    return entry;
+  }
+
+  // Der nächste Ketteneintrag nach `last`.
+  //
+  // JOB 498 D8: NEUE EINTRÄGE SIND V2 — und `hashVersion` steht IM `partial`, also VOR der
+  // Hashbildung und vor `Object.freeze`. Nachträglich ginge es gar nicht: `InMemoryAuditRepo.append`
+  // friert den Eintrag ein, und `service.test.ts` nagelt das mit `Object.isFrozen` fest. Ein
+  // später gesetztes Feld läge außerdem neben dem Hash statt in ihm — genau die Lücke, die V2
+  // schließt. Die `eventId` geht NICHT in den Hash ein (s. `types.ts`); das Exactly-once-Verhalten
+  // hängt an ihr, nicht am Hash.
+  private baue(last: AuditEntry | undefined, input: AuditInput, eventId?: string): AuditEntry {
     const partial: Omit<AuditEntry, "hash"> = {
-      seq,
+      seq: last ? last.seq + 1 : 1,
       at: new Date(this.now()).toISOString(),
       actor: input.actor,
       action: input.action,
       target: input.target,
       payload: input.payload ?? {},
-      prevHash,
+      prevHash: last ? last.hash : GENESIS,
+      ...(eventId ? { eventId } : {}),
       hashVersion: AUDIT_HASH_VERSION_V2,
     };
-    const entry: AuditEntry = { ...partial, hash: hashEntryV2(partial) };
-    await this.repo.append(entry, tx);
-    return entry;
+    return { ...partial, hash: hashEntryV2(partial) };
   }
 
   // WP-SHIP8-CLOSE-6 (bens ROT-1): EXACTLY-ONCE-Beleg über eine stabile Event-Id (z. B.
@@ -60,24 +102,20 @@ export class AuditService {
   // Read sahen, erzeugen exakt EINEN Eintrag. true = DIESER Aufruf hat geschrieben; false =
   // der Beleg existierte bereits (kein Fehler). Wird nicht geschrieben, bleibt die berechnete
   // seq unbenutzt — der nächste record() liest last() frisch, die Kette bleibt lückenlos.
-  async recordOnce(eventId: string, input: AuditInput, tx?: TxContext): Promise<boolean> {
-    const last = await this.repo.last(tx);
-    const seq = last ? last.seq + 1 : 1;
-    const prevHash = last ? last.hash : GENESIS;
-    const partial: Omit<AuditEntry, "hash"> = {
-      seq,
-      at: new Date(this.now()).toISOString(),
-      actor: input.actor,
-      action: input.action,
-      target: input.target,
-      payload: input.payload ?? {},
-      prevHash,
-      eventId,
-      // Wie in `record`: die Version steht vor der Hashbildung im Eintrag. Das
-      // Exactly-once-Verhalten bleibt davon unberührt — es hängt an `eventId`, nicht am Hash.
-      hashVersion: AUDIT_HASH_VERSION_V2,
-    };
-    return this.repo.appendOnce({ ...partial, hash: hashEntryV2(partial) }, tx);
+  recordOnce(eventId: string, input: AuditInput, tx?: TxContext): Promise<boolean> {
+    return this.kettenSperre(tx, () => this.recordOnceUngeteilt(eventId, input, tx));
+  }
+
+  private async recordOnceUngeteilt(
+    eventId: string,
+    input: AuditInput,
+    tx?: TxContext,
+  ): Promise<boolean> {
+    if (this.repo.appendNext) {
+      const { written } = await this.repo.appendNext((last) => this.baue(last, input, eventId), tx);
+      return written;
+    }
+    return this.repo.appendOnce(this.baue(await this.repo.last(tx), input, eventId), tx);
   }
 
   // JOB 2698 D1 (Review-Befund R2-32): NUR DIESE LESEFUNKTION ist angefasst — die Sequenzlogik
@@ -109,6 +147,12 @@ export class AuditService {
     return (await this.list(filter)).length > 0;
   }
 
+  // Aufnahme gesamt-auditprotokoll (Runde 3): die Sequenz des jüngsten Eintrags (0 = leer) — damit
+  // ein Aufrufer nach einem Ausfall benennen kann, welche Einträge sein Schritt schon angehängt hatte.
+  async kopfSeq(): Promise<number> {
+    return (await this.repo.last())?.seq ?? 0;
+  }
+
   // FR-AUD-02: Integrität der Kette prüfbar.
   async verify(): Promise<boolean> {
     return verifyChain(await this.repo.all());
@@ -123,5 +167,31 @@ export class AuditService {
   // `verify()` (und damit jeder Altaufrufer) bleibt unverändert.
   async verifyReport(): Promise<ChainInspection> {
     return inspectChain(await this.repo.all());
+  }
+
+  // R-0613: Export der Kette samt Prüfbericht und Kopf. EIN Lesedurchlauf — Bericht, Kopf und
+  // Einträge beschreiben dieselbe Menge. Der Export selbst wird danach als `audit.exported`
+  // angehängt (wer hat die Kette wann mit welchem Kopf mitgenommen); dieser Eintrag liegt HINTER
+  // dem exportierten Kopf und ist deshalb nicht Teil der Datei.
+  async exportChain(actor: string): Promise<AuditChainExport> {
+    const entries = await this.repo.all();
+    const last = entries.at(-1);
+    const head = last ? { seq: last.seq, hash: last.hash } : null;
+    const result: AuditChainExport = {
+      format: "klarwerk-audit-export",
+      formatVersion: 1,
+      exportedAt: new Date(this.now()).toISOString(),
+      count: entries.length,
+      head,
+      inspection: inspectChain(entries),
+      entries,
+    };
+    await this.record({
+      actor,
+      action: "audit.exported",
+      target: "audit",
+      payload: { count: entries.length, headSeq: head?.seq ?? 0, headHash: head?.hash ?? GENESIS },
+    });
+    return result;
   }
 }

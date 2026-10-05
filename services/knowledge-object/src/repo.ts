@@ -75,6 +75,12 @@ export interface KoSichtbarkeitstrim {
 export interface KoCandidateQuery {
   terms: readonly string[];
   limit: number;
+  /**
+   * AUFNAHME 20260922 (R-0316): `limit` ist dann der GRUNDdeckel; `KoService.findCandidates` hebt
+   * ihn nach der Bestandsgröße an (`bestandsgerechterKandidatendeckel`). Ohne Angabe gilt `limit`
+   * unverändert — Textprüfung und Wissensprüfung melden ihren Deckel als Prüfumfang.
+   */
+  deckelWaechstMitBestand?: boolean;
   /** D5 (KI aus): s. `KoSearchQuery.vorInhaltsabruf` — reist mit in die Suche und vor `listByIds`. */
   vorInhaltsabruf?: () => void;
 }
@@ -113,7 +119,10 @@ export interface KoRepo {
    * Kandidaten-Speicher der Abrufstelle fragt so fuer alle Bilder einer Seite auf einmal.
    */
   listAnhangTraegerFuer?(objectIds: readonly string[]): Promise<KnowledgeObject[]>;
-  insert(ko: KnowledgeObject): Promise<void>;
+  // Aufnahme gesamt-auditprotokoll (Lauf 3): optionaler TxContext wie bei `update`/`delete` — die
+  // Erstanlage schreibt Objekt, Fassung, Suchprojektion, Belegkette und `ko.created` in EINER
+  // Transaktion (`KoService.schreibeErstanlage`). Ohne tx wie bisher.
+  insert(ko: KnowledgeObject, tx?: TxContext): Promise<void>;
   findById(id: string): Promise<KnowledgeObject | undefined>;
   // AUFTRAG-mega20 Block A: GEZIELTER Nachschlag der Erzeugungs-Operationskennung. Bewusst eine
   // eigene Repo-Methode und kein `list({}).find(...)` wie beim Kandidaten-Anker: dieser Nachschlag
@@ -241,7 +250,7 @@ export interface KoRepo {
   // die Projektion der AKTIVEN KO-Version. Was hier steht, ist ein Test-/Bibliotheksweg.
   //
   // WER AN DER KANDIDATENWAHL ETWAS ÄNDERN WILL, ÄNDERT ES DORT — und muss nicht suchen:
-  // `services/knowledge-object/src/service.ts:3827-3856` ist der Rumpf, `service.ts:3838` der
+  // `services/knowledge-object/src/service.ts:4232-4262` ist der Rumpf, `service.ts:4243` der
   // Aufruf von `findSearchHits`. Das ist der EINE Wegweiser mit Datei und Zeile; die Marken in
   // `repo-pg.ts` verweisen hierher, statt eine zweite Wahrheit zu führen.
   //
@@ -353,7 +362,7 @@ export class InMemoryKoRepo implements KoRepo {
     return Promise.resolve(this.schreibstand.stand());
   }
 
-  insert(ko: KnowledgeObject): Promise<void> {
+  insert(ko: KnowledgeObject, _tx?: TxContext): Promise<void> {
     // WP-SHIP8-CLOSE-4 (bens ROT-1B): Spiegel des partiellen Pg-Unique-Index
     // kos_import_candidate_uq — höchstens EIN KO je Import-Kandidat, INKLUSIVE Papierkorb
     // (getrashte KOs halten ihren Anker; der ROT-1C-Vertrag adoptiert sie statt neu anzulegen).
@@ -453,6 +462,21 @@ export class InMemoryKoRepo implements KoRepo {
     this.items.set(ko.id, { ...ko, rowVersion: expected + 1 });
     this.schreibstand.geaendert();
     return Promise.resolve();
+  }
+
+  // Auftrag gesamt-dubletten-rueckzug (Runde 2, Bens BEN-R3-1): Rückstellung eines Vorgangs ohne
+  // Datenbank. Setzt die Zeile EXAKT auf ihr Vorher-Abbild (einschliesslich `rowVersion`) bzw.
+  // entfernt sie, wenn es keines gab — ohne CAS, denn es nimmt nur den eigenen, eben geschriebenen
+  // Schritt eines gescheiterten Vorgangs zurück. Einziger Aufrufer: die Rücknahme-Klammer der
+  // Kompositionswurzel (services/app/src/speicher-vorgang.ts). Keine Schnittstellenmethode: in
+  // PostgreSQL übernimmt das ROLLBACK.
+  zuruecksetzen(id: string, vorher: KnowledgeObject | undefined): void {
+    if (vorher) {
+      this.items.set(id, vorher);
+    } else {
+      this.items.delete(id);
+    }
+    this.schreibstand.geaendert();
   }
 
   // SCRUM-523 P.3 (WP-A3): konsistent zu PgKoRepo.delete — 0 gelöschte Zeilen (KO bereits weg,
@@ -683,7 +707,8 @@ export class InMemoryKoVersionRepo implements KoVersionRepo {
 // SCRUM-160: Evidence-Records separat vom KO-JSON. Append-only; vorhandene Evidence-ID wird
 // nicht überschrieben. Damit bleiben Quellen-/Anhang-Nachweise stabil referenzierbar.
 export interface EvidenceRepo {
-  append(record: EvidenceRecord): Promise<void>;
+  // Aufnahme gesamt-auditprotokoll (Lauf 3): optionaler TxContext — s. `KoRepo.insert`.
+  append(record: EvidenceRecord, tx?: TxContext): Promise<void>;
   listByKo(koId: string): Promise<EvidenceRecord[]>;
   // SCRUM-169: KO-übergreifende, read-only Sicht (jüngste zuerst) für den QM-Evidence-Index.
   recent(limit: number): Promise<EvidenceRecord[]>;
@@ -695,7 +720,7 @@ export class InMemoryEvidenceRepo implements EvidenceRepo {
   // JOB 2706 D1: derselbe Schreibstand wie die KO-Ablage desselben Bestands (s. `Schreibstand`).
   constructor(private readonly schreibstand: Schreibstand = new Schreibstand()) {}
 
-  append(record: EvidenceRecord): Promise<void> {
+  append(record: EvidenceRecord, _tx?: TxContext): Promise<void> {
     if (!this.items.has(record.id)) {
       this.items.set(record.id, record);
       this.schreibstand.geaendert();

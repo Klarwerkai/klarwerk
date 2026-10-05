@@ -93,6 +93,7 @@ import {
   starteChromium,
   warte,
 } from "../gast-nutzerweg/browserweg";
+import { SICHT_RUECKFALL } from "../support/sichtRueckfall";
 import {
   ADMIN,
   type Abdruck,
@@ -182,13 +183,21 @@ const ART_SCHLUESSEL: Record<string, string> = {
 // Dass diese Messung wirklich greift, ist nicht behauptet, sondern KALIBRIERT: D3 blendet Satz,
 // Herkunft und die Verknuepfungszeile des Wissensnetzes gezielt aus und verlangt konkrete
 // Sichtbarkeitsfehler; danach stellt ein Neuladen die Flaeche her und derselbe Vergleich ist gruen.
+//
+// Der Rückfall ohne `checkVisibility` misst seit dem Auftrag GRAPH-BROWSER-RECHTE die ganze
+// Vorfahrenkette samt Verdeckung (`tests/support/sichtRueckfall.ts`) — vorher sah er nur das
+// Element selbst und damit keinen durchsichtigen Vorfahren. Kann er die Verdeckung nicht messen,
+// WIRFT `sichtbarOhneCheck` mit „SICHTMESSUNG NICHT MOEGLICH" statt still zu urteilen.
 const SICHTBARKEIT = `
+  ${SICHT_RUECKFALL}
   const sichtbar = (e) => {
     if (!e) return false;
     if (typeof e.checkVisibility === "function") {
       if (!e.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true, contentVisibilityAuto: true })) {
         return false;
       }
+    } else if (!sichtbarOhneCheck(e)) {
+      return false;
     }
     const r = e.getBoundingClientRect();
     const s = getComputedStyle(e);
@@ -199,6 +208,22 @@ const SICHTBARKEIT = `
     const e = wurzel ? wurzel.querySelector(waehler) : null;
     return { da: !!e, text: e ? sauber(e.textContent) : "", sichtbar: sichtbar(e) };
   };`;
+
+/**
+ * DIE URHEBERZEILE, GEZIELT — nicht mehr als „Nachbar des Herkunftsetiketts".
+ *
+ * Sie traegt kein eigenes Testkennzeichen. Bis JOB 4356 („Wissensbeziehungen zeigen ihren Status")
+ * war sie das span direkt nach `wb-herkunft`; seitdem steht dort `wb-status`
+ * (`WissensbeziehungenBereich.tsx`, Fusszeile: Herkunft · Status · Urheber · Zeitpunkt · Link), und
+ * der alte Waehler `[data-testid="wb-herkunft"] + span` las „Status: gilt" als Urheber.
+ *
+ * Dieser Waehler trifft das ERSTE span OHNE eigenes Testkennzeichen hinter dem Herkunftsetikett:
+ * gekennzeichnete Etiketten (Herkunft, Status) fallen heraus, die Zeitzeile auch, weil vor ihr
+ * schon ein solches span steht. Genau EIN Treffer je Kachel — fuer das Lesen UND fuer die
+ * Kalibrierung D3, die mit `querySelectorAll` ausblendet und sonst die Zeitzeile mitnaehme.
+ */
+const URHEBER_WAEHLER =
+  '[data-testid="wb-herkunft"] ~ span:not([data-testid]):not(span:not([data-testid]) ~ span)';
 
 const BEZIEHUNGSBEREICH = `() => {
 ${SICHTBARKEIT}
@@ -225,9 +250,9 @@ ${SICHTBARKEIT}
       satz: feld(li, "p:first-of-type"),
       herkunft: feld(li, '[data-testid="wb-herkunft"]'),
       fassung: feld(li, '[data-testid="wb-fassung"]'),
-      // Die Urheberzeile traegt kein eigenes Testkennzeichen; sie ist das erste span der
-      // Fusszeile NACH dem Herkunftsetikett (WissensbeziehungenBereich.tsx:622-624).
-      urheber: feld(li, '[data-testid="wb-herkunft"] + span'),
+      // Die Urheberzeile traegt kein eigenes Testkennzeichen — gezielt ueber URHEBER_WAEHLER
+      // (Begruendung dort; seit JOB 4356 steht wb-status zwischen Herkunft und Urheber).
+      urheber: feld(li, '${URHEBER_WAEHLER}'),
       // GERENDERT, nicht im Baum: ein ausgeblendetes Feld kommt in innerText nicht vor.
       text: sauber(li.innerText),
       sichtbar: sichtbar(li),
@@ -1112,12 +1137,7 @@ describe("JOB 4305 · Wissensbeziehungen nach dem Produkt-Restore im echten Brow
           "visibility",
           "das Herkunftsetikett der Kachel",
         ],
-        [
-          "die Urheberzeile",
-          '[data-testid="wb-herkunft"] + span',
-          "visibility",
-          "die Urheberzeile der Kachel",
-        ],
+        ["die Urheberzeile", URHEBER_WAEHLER, "visibility", "die Urheberzeile der Kachel"],
         [
           "der Fassungsvermerk",
           '[data-testid="wb-fassung"]',

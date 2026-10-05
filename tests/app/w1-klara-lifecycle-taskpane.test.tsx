@@ -20,9 +20,10 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { panelQuelleAus } from "../support/panelquelle";
 
 const TASKPANE = "apps/web/public/word-addin/taskpane.html";
-const HTML = readFileSync(resolve(process.cwd(), TASKPANE), "utf8");
+const HTML = panelQuelleAus(TASKPANE);
 // JOB 3667 R8 (14.09.2026): das Fenster wird aus ZWEI Dateien ausgeliefert. Wer nur das
 // Inline-Skript ausfuehrt, laesst `rwZeichnen` fehlen — `renderCapture` bricht dann mit
 // ReferenceError, und der Fall misst ein Fenster, das es so nicht gibt.

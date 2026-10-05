@@ -11,9 +11,10 @@ import {
   type ConfluenceMapOptions,
   confluenceAhnenBefund,
   confluenceAncestorIds,
+  confluenceAnhangsFelder,
   mapConfluencePageToImportItem,
 } from "./mapper";
-import type { ConfluenceAbbruch, ConfluencePage } from "./rest-client";
+import type { ConfluenceAbbruch, ConfluenceAttachment, ConfluencePage } from "./rest-client";
 import {
   ConfluenceRestClient,
   type ConfluenceRestConfig,
@@ -132,6 +133,10 @@ export function hierarchieBefund(pages: readonly ConfluencePage[]): ConfluenceHi
   };
 }
 
+// R-0162 (Nacharbeit 2): die Confluence-Inhaltszustände, die eine Seite aus dem Space nehmen.
+// Nur sie lösen eine Entfernung aus; alles andere außer `current` ist eine offene Gegenprobe.
+const GELOESCHTE_STATUS: ReadonlySet<string> = new Set(["trashed", "archived", "deleted"]);
+
 export class ConfluenceSourceAdapter implements SourceAdapter {
   readonly source = "Confluence";
 
@@ -181,9 +186,90 @@ export class ConfluenceSourceAdapter implements SourceAdapter {
    * Prozessspeicher); wer anwendet, laedt die Seite hier je Id nach. `undefined` = die Seite gibt
    * es nicht mehr — der Aufrufer weist das ehrlich aus, statt still den Auszug zu importieren.
    */
+  //
+  // R-0163: HIER kommen die Anhänge dazu — beim Anwenden je Seite, nicht in der Erkundung (dort
+  // wären es bis zu 25.000 zusätzliche Requests für einen Überblick). Scheitert das Lesen der
+  // Anhangsliste, wird die Seite trotzdem geliefert, aber mit `attachmentsIncomplete` — der Text
+  // geht nicht verloren, und niemand liest „keine Anhänge", wo nur nicht gelesen wurde.
   async fetchItem(externalId: string): Promise<ImportItem | undefined> {
     const page = await this.client.getPageById(externalId);
-    return page ? mapConfluencePageToImportItem(page, this.mapOpts) : undefined;
+    if (!page) {
+      return undefined;
+    }
+    let anhaenge: { attachments: ConfluenceAttachment[]; unvollstaendig: boolean };
+    try {
+      const gelesen = await this.client.listAttachments(page.id);
+      anhaenge = { attachments: gelesen.attachments, unvollstaendig: gelesen.truncated };
+    } catch {
+      anhaenge = { attachments: [], unvollstaendig: true };
+    }
+    return mapConfluencePageToImportItem(page, this.mapOpts, anhaenge);
+  }
+
+  /**
+   * R-0163 (Ben, Nacharbeit 2): der SCHREIBENDE Bereichsimport (`runConfluenceImport`) reiht die
+   * Items aus `collectAll` ein — die tragen keine Anhangsliste, weil die Erkundung bewusst ohne
+   * Anhangsabrufe läuft. Bevor ein solches Item in die Review-Queue geht, holt diese Methode die
+   * Anhangsliste seiner Seite nach und setzt dieselben Felder wie `fetchItem`
+   * (`confluenceAnhangsFelder`). Scheitert das Lesen, geht das Item mit `attachmentsIncomplete`
+   * weiter — der Text geht nicht verloren, und niemand liest „keine Anhänge".
+   */
+  async withAttachments(item: ImportItem): Promise<ImportItem> {
+    const pageId = item.externalId?.trim();
+    if (!pageId) {
+      return item;
+    }
+    let anhaenge: { attachments: ConfluenceAttachment[]; unvollstaendig: boolean };
+    try {
+      const gelesen = await this.client.listAttachments(pageId);
+      anhaenge = { attachments: gelesen.attachments, unvollstaendig: gelesen.truncated };
+    } catch {
+      anhaenge = { attachments: [], unvollstaendig: true };
+    }
+    return { ...item, ...confluenceAnhangsFelder(anhaenge) };
+  }
+
+  /**
+   * R-0163: die Rohbytes EINES Anhangs über seinen quellinternen Abrufweg (`abruf` am Import-
+   * Anhang). Origin-Pin, Frist, Größenkante und Weiterleitungsregel liegen im Client.
+   */
+  async fetchAttachment(abruf: string): Promise<{ bytes: Buffer; mime?: string }> {
+    return this.client.downloadAttachment(abruf);
+  }
+
+  /**
+   * R-0162 (Abgleich): der Quell-Container, den dieser Adapter liest — derselbe Wert, den der Mapper
+   * als `sourceScope` an jedes Item schreibt. Der Abgleich zieht Löschungen nur für Anker DIESES
+   * Containers nach; ein Anker aus einem anderen Space ist mit diesem Lauf nicht beurteilbar.
+   */
+  get sourceScope(): string {
+    return this.mapOpts.spaceKey;
+  }
+
+  /**
+   * R-0162 (Abgleich): die GEGENPROBE vor jedem Nachziehen einer Löschung. Dass eine Seite in der
+   * Liste fehlt, reicht nicht — erst wenn die Quelle sie auch je Id nicht mehr liefert (404) oder
+   * sie einen AUSDRÜCKLICH unterstützten Lösch-/Archivzustand trägt (GELOESCHTE_STATUS), gilt sie
+   * als gelöscht. `current` oder ein fehlendes Statusfeld heißt: die Seite existiert. Jeder andere
+   * Statuswert (null, Zahl, unbekannter String) ist eine unklare Antwort und WIRFT — ebenso Netz-
+   * und Serverfehler und eine 2xx-Antwort ohne gültige Seite (getPageStateById). Der Aufrufer
+   * verbucht das als „nicht prüfbar" und ändert nichts.
+   */
+  async isGoneAtSource(externalId: string): Promise<boolean> {
+    const zustand = await this.client.getPageStateById(externalId);
+    if (!zustand.gefunden) {
+      return true;
+    }
+    const status: unknown = zustand.page.status;
+    if (status === undefined || status === "current") {
+      return false;
+    }
+    if (typeof status === "string" && GELOESCHTE_STATUS.has(status)) {
+      return true;
+    }
+    const err = new Error("Confluence-Einzelantwort mit unbekanntem Seitenstatus");
+    err.name = "ConfluenceStatusUnbekannt";
+    throw err;
   }
 }
 
