@@ -239,6 +239,18 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
   // nachgezählt: ein `CREATE TABLE IF NOT EXISTS` und ein `CREATE INDEX IF NOT EXISTS`, kein
   // RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine Extension. Ein zweiter Lauf ist folgenlos.
   { stufe: "KO_BEARBEITUNG_SCHEMA", risiko: "ADDITIV" },
+  // R-0169 (Nacharbeit 5): die Fassungen der internen Dokumentakte. ADDITIV, nachgezählt: ein
+  // `CREATE TABLE IF NOT EXISTS` (mit Unique-Schlüssel) und ein `CREATE INDEX IF NOT EXISTS`, kein
+  // RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine Extension. Ein zweiter Lauf ist folgenlos.
+  { stufe: "DOKUMENTAKTE_SCHEMA", risiko: "ADDITIV" },
+  // R-0134 / R-1005: die eine Zeile des Betreiberschalters für den Confluence-Import. ADDITIV,
+  // nachgezählt: ein einziges `CREATE TABLE IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein
+  // Fremdschlüssel, keine Extension. Ein zweiter Lauf ist folgenlos.
+  { stufe: "CONFLUENCE_IMPORT_SCHALTER_SCHEMA", risiko: "ADDITIV" },
+  // R-0751 / R-1639 / R-2183 (Nacharbeit 3): Bereichsprofile und Ruhestandshorizonte. ADDITIV,
+  // nachgezählt: zwei `CREATE TABLE IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein
+  // Fremdschlüssel, keine Extension. Ein zweiter Lauf ist folgenlos.
+  { stufe: "MANAGEMENT_PROFILE_SCHEMA", risiko: "ADDITIV" },
 ];
 
 /**

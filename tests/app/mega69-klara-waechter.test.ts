@@ -46,6 +46,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { panelQuelleAus } from "../support/panelquelle";
 
 const WURZEL = join(__dirname, "..", "..");
 const TASKPANE = join(WURZEL, "apps", "web", "public", "word-addin", "taskpane.html");
@@ -59,8 +60,9 @@ const RUECKWEG = join(WURZEL, "apps", "web", "public", "word-addin", "rueckweg.j
  */
 const ANMELDUNG = join(WURZEL, "apps", "web", "public", "word-addin", "anmeldung.html");
 
+/** Das Fenster als EIN Dokument — seit R-1611 aus `taskpane.html`/`.css`/`.js` zusammengefügt. */
 function quelle(): string {
-  return readFileSync(TASKPANE, "utf8");
+  return panelQuelleAus(TASKPANE);
 }
 
 /** Die deutschen OBERFLÄCHENTEXTE — Werte des STRINGS.de-Objekts, zeilenweise erhoben. */
@@ -2585,8 +2587,25 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // die R-0639-Argumente stehen auf den bestehenden Zeilen, damit das Inline-Skript unter der
     // Schranke von `schnittflaechen.test.ts` B3 bleibt (Server: „expected 12510 to be less than
     // 12500"). Kein Ausdruck, kein Abrufziel, keine Nutzlast geändert; kein Sideload.
+    // AUFNAHME 20260922 · ZENTRALE-MODULE-AUFTEILEN (R-1611, P11) — DER PIN BLEIBT, WAS ER WAR.
+    // Das Fenster liegt jetzt in DREI Dateien (`taskpane.html`, `taskpane.css`, `taskpane.js`);
+    // gehasht wird deshalb das wieder zusammengefügte Dokument (`panelQuelleAus`). Dass der Pin
+    // NICHT wandern musste, ist der Beleg: kein Zeichen von Markup, Stil oder Skript hat sich
+    // geändert, nur die Ablage. Jede künftige Änderung an einer der drei Dateien macht ihn rot.
+    // Auslieferungsfolgen des Schnitts: ZWEI Abrufe mehr beim Öffnen (beide gleicher Ursprung,
+    // `script-src 'self'`/`style-src 'self'` der Dokument-CSP decken sie), dieselbe Cachekennung
+    // `?v=__KW_FASSUNG__` wie `rueckweg.js`; Abrufziel, Manifest, Recht, Nutzlast unverändert;
+    // kein erneutes Sideload.
+    // AUFNAHME m365-anmeldung (Lauf 1 am 25.09.2026, nach dem Schnitt in `taskpane.js` übertragen)
+    // — DER PIN MUSS DESHALB WANDERN (5fbf5f64… -> Hash des zusammengefügten Dokuments mit dieser
+    // Änderung; bei der Konfliktlösung am 05.10.2026 nicht berechenbar, s. Rückgabe).
+    // Abgelehntes Anmelde-Fenster im Rahmen fremder Herkunft: sofort `loginDialogDeclined` statt Rückfallfenster und fünf Minuten Warten
+    // (gemessen: tests/office-web-anmeldung/seitenfenster-abgelehnter-dialog.test.tsx).
+    //   · Abrufziel: keines neu. · CSP, Recht, Manifest: unverändert.
+    //   · Nutzlast: unverändert. · Sideload: keiner nötig. · Mac-Word/Browsertab: unverändert
+    //     (ohne Rahmenlage bleibt das Rückfallfenster der Weg, Gegenprobe A3).
     const PIN = "5fbf5f64546beb67d70799bb8d18bcf6d2adcc631d79e0b404658867baeb0978";
-    const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
+    const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(
       ist,
       "taskpane.html wurde geändert — Auslieferungsfolgen bewusst prüfen (Kommentar oben), dann den Pin aktualisieren.",
@@ -2782,7 +2801,18 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     //                  bisher geladen, nur endlich auch ABGEWARTET.
     //   · Sideload:    KEIN erneutes Sideload — die Datei wird wie jede andere unter `public/` neu
     //                  ausgeliefert.
-    const PIN = "4ae060ee0a4b832ce0c8d93ba1cb1fa9b9b83bd1d2076429208b84603cddf7e2";
+    // AUFNAHME m365-anmeldung RUNDE 2 (25.09.2026) — PIN BEWUSST AKTUALISIERT (4ae060ee… -> d30a829d…).
+    // Bens Befund (R-0355-Restfall SSO): der SSO-Start traegt jetzt die EINE Zielkennung
+    // (`/api/auth/oidc/start?ziel=word-addin`); der Rueckruf der Anwendung schickt das Fenster auf
+    // diese Seite zurueck, und sie uebergibt von selbst. Gemessen:
+    // tests/office-web-anmeldung/sso-rueckweg-zur-dialogseite.test.ts.
+    //   · Abrufziel: keines neu (derselbe SSO-Start, eine Query). · CSP, Recht, Manifest: unveraendert.
+    //   · OIDC-Einrichtung (`redirect_uri`): unveraendert. · Sideload: keiner noetig.
+    // AUFNAHME m365-anmeldung RUNDE 3 (25.09.2026) — PIN BEWUSST AKTUALISIERT (d30a829d… -> f63ac6bc…).
+    // Bens Befund: der sichtbare SSO-Hinweis sagte noch „Fenster schliessen, erneut druecken" —
+    // jetzt in drei Sprachen der automatische Rückweg (gemessen: dialogseite.test.ts S4b4b).
+    //   · Nur Texte; Abrufziele, CSP, Recht, Manifest unveraendert. · Sideload: keiner noetig.
+    const PIN = "f63ac6bc72ed1219f758c7a2d16d929f69d2faef9a1ca0f9c93478490f7c13d9";
     const ist = createHash("sha256").update(readFileSync(ANMELDUNG)).digest("hex");
     expect(
       ist,

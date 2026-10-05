@@ -127,6 +127,15 @@ export interface GesamtanweisungDienstPort {
     entscheidung: "angenommen" | "abgelehnt",
     sichtbar: AnweisungSichtbar,
   ): Promise<unknown>;
+  /** QUELLENÄNDERUNGEN · die neuere Fassung eines Abschnitts bewusst übernehmen. */
+  fassungUebernehmen(
+    id: string,
+    version: number,
+    bausteinId: string,
+    aufVersion: number,
+    nachweisHash: string | null,
+    sichtbar: AnweisungSichtbar,
+  ): Promise<unknown>;
 }
 
 export interface GesamtanweisungRoutesOptions {
@@ -551,4 +560,44 @@ export const gesamtanweisungRoutes: FastifyPluginAsync<GesamtanweisungRoutesOpti
       antworteMitFehler(reply, error);
     }
   });
+
+  // ================================================================================================
+  // QUELLENÄNDERUNGEN (aufnahme:20260928) · DIE ZWÖLFTE TÜR: EINE NEUERE FASSUNG BEWUSST ÜBERNEHMEN.
+  // ================================================================================================
+  //
+  // `ko.create` wie jeder andere Schreibweg an der Anleitung. Eine entschiedene Anleitung wird durch
+  // die Übernahme wieder zum Entwurf (`mitUebernommenerFassung`); entscheiden darf danach wieder nur
+  // `ko.validate`. Am Ende registriert, damit die Belegstellen darüber stehen bleiben.
+  app.post<{ Params: { id: string; bausteinId: string } }>(
+    "/api/gesamtanweisungen/:id/bausteine/:bausteinId/uebernehmen",
+    async (request, reply) => {
+      const user = await guards.requirePermission("ko.create", request, reply);
+      if (!user) {
+        return;
+      }
+      const body = koerper(request);
+      const stand = version(body.version);
+      const aufVersion = version(body.aufVersion);
+      if (stand === null || aufVersion === null) {
+        reply.code(400).send({ error: "VALIDATION", message: "Neue Fassung oder Stand fehlen." });
+        return;
+      }
+      try {
+        reply
+          .code(200)
+          .send(
+            await dienst.fassungUebernehmen(
+              request.params.id,
+              stand,
+              request.params.bausteinId,
+              aufVersion,
+              text(body.nachweisHash) ?? null,
+              sichtbarFuer(user),
+            ),
+          );
+      } catch (error) {
+        antworteMitFehler(reply, error);
+      }
+    },
+  );
 };

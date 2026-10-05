@@ -1,7 +1,14 @@
+import type { TxContext } from "../../db-tx";
 import type { Assignment, Rating } from "./types";
 
 export interface RatingRepo {
-  upsert(rating: Rating): Promise<void>; // eine Bewertung je (KO, Nutzer)
+  upsert(rating: Rating, tx?: TxContext): Promise<void>; // eine Bewertung je (KO, Nutzer)
+  /**
+   * Aufnahme gesamt-auditprotokoll (Lauf 3, Runde 2): nimmt eine Bewertung zurück — nur für die
+   * Rücknahme im Weg OHNE Transaktion (`ValidationService.rate`), wenn der Entscheidungsbeleg
+   * ausfällt. OPTIONAL, damit handgeschriebene Test-Doubles nicht brechen.
+   */
+  remove?(koId: string, userId: string): Promise<void>;
   listByKo(koId: string): Promise<Rating[]>;
   /**
    * JOB 3043: die Bewertungen MEHRERER Objekte in EINER Abfrage.
@@ -20,17 +27,33 @@ export interface RatingRepo {
 }
 
 export interface AssignmentRepo {
-  create(assignment: Assignment): Promise<void>;
-  find(koId: string, userId: string): Promise<Assignment | undefined>;
-  update(assignment: Assignment): Promise<void>;
+  // Aufnahme gesamt-auditprotokoll (Lauf 3, Runde 2): optionaler TxContext wie bei den Bewertungen.
+  create(assignment: Assignment, tx?: TxContext): Promise<void>;
+  // Lauf 5 (BEN-R3-B1): mit `tx` liest `find` den Stand IN der Transaktion — die Rückgabe an die
+  // verantwortliche Person muss eine dort eben erledigte Zuweisung sehen, nicht den alten Stand.
+  find(koId: string, userId: string, tx?: TxContext): Promise<Assignment | undefined>;
+  update(assignment: Assignment, tx?: TxContext): Promise<void>;
+  /** Runde 3: nur für die Rücknahme ohne Transaktion (s. `RatingRepo.remove`). OPTIONAL. */
+  remove?(koId: string, userId: string): Promise<void>;
   all(): Promise<Assignment[]>;
+  /**
+   * PRÜFSTATUS-ANZEIGE (R-1524): die Zuweisungen GENAU dieser Objekte — gezielt statt Vollscan.
+   * Die Prüfstandswege (`pruefstandFuer`, `pruefstaendeFuer`) brauchen nur ihre Objekte; das
+   * Prüfbrett braucht weiterhin alle offenen und bleibt bei `all()`. Leere Eingabe → leere Antwort.
+   */
+  listByKos(koIds: readonly string[]): Promise<Assignment[]>;
 }
 
 export class InMemoryRatingRepo implements RatingRepo {
   private readonly ratings = new Map<string, Rating>();
 
-  upsert(rating: Rating): Promise<void> {
+  upsert(rating: Rating, _tx?: TxContext): Promise<void> {
     this.ratings.set(`${rating.koId}:${rating.userId}`, rating);
+    return Promise.resolve();
+  }
+
+  remove(koId: string, userId: string): Promise<void> {
+    this.ratings.delete(`${koId}:${userId}`);
     return Promise.resolve();
   }
 
@@ -50,21 +73,31 @@ export class InMemoryRatingRepo implements RatingRepo {
 export class InMemoryAssignmentRepo implements AssignmentRepo {
   private readonly assignments = new Map<string, Assignment>();
 
-  create(assignment: Assignment): Promise<void> {
+  create(assignment: Assignment, _tx?: TxContext): Promise<void> {
     this.assignments.set(`${assignment.koId}:${assignment.userId}`, assignment);
     return Promise.resolve();
   }
 
-  find(koId: string, userId: string): Promise<Assignment | undefined> {
+  find(koId: string, userId: string, _tx?: TxContext): Promise<Assignment | undefined> {
     return Promise.resolve(this.assignments.get(`${koId}:${userId}`));
   }
 
-  update(assignment: Assignment): Promise<void> {
+  update(assignment: Assignment, _tx?: TxContext): Promise<void> {
     this.assignments.set(`${assignment.koId}:${assignment.userId}`, assignment);
+    return Promise.resolve();
+  }
+
+  remove(koId: string, userId: string): Promise<void> {
+    this.assignments.delete(`${koId}:${userId}`);
     return Promise.resolve();
   }
 
   all(): Promise<Assignment[]> {
     return Promise.resolve([...this.assignments.values()]);
+  }
+
+  listByKos(koIds: readonly string[]): Promise<Assignment[]> {
+    const ids = new Set(koIds);
+    return Promise.resolve([...this.assignments.values()].filter((a) => ids.has(a.koId)));
   }
 }

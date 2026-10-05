@@ -74,6 +74,18 @@ export type {
 // SCRUM-491: lexikalischer Deckungs-Score — für den gedeckelten lexikalischen Fallback der Pool-Auswahl
 // im App-Orchestrator (kein neues Gehirn: derselbe Score, den die Erkennung selbst nutzt).
 export { lexicalOverlapScore } from "./src/duplicate-detect";
+// R-0194: lokal berechnete Ähnlichkeitsprüfsumme als vierte Kandidatenquelle (kein Textabfluss).
+export {
+  type CandidateSource,
+  type SimilarityChecksum,
+  CHECKSUM_CANDIDATE_CAP,
+  CHECKSUM_LEXICAL_MARGIN,
+  CHECKSUM_MIN_SIMILARITY,
+  SimilarityChecksumIndex,
+  checksumSimilarity,
+  selectChecksumCandidates,
+  similarityChecksum,
+} from "./src/similarity-checksum";
 // AUFTRAG-mega28 A2/A3 (Pedi 26.07.): der Ergebnis-Vertrag der Deckelung — wie viele Kandidaten
 // standen zur Wahl, wie viele wurden geprüft, wurde gedeckelt/übersprungen/abgebrochen. Der App-Root
 // stellt das Protokoll, die Läufe schreiben es fort, die Oberfläche liest es.

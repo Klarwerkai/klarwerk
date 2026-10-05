@@ -41,8 +41,10 @@ export const authApi = {
   // FR-AUTH-07: SSO-Start liegt als GET-Redirect auf dem Server (Full-Page-Navigation).
   ssoStartUrl: "/api/auth/oidc/start",
   // FR-AUTH-07: Callback — Code+State gegen Session tauschen (PKCE serverseitig).
-  oidc: (code: string, state: string): Promise<{ user: SessionUser }> =>
-    api.post<{ user: SessionUser }>("/auth/oidc", { code, state }),
+  // Aufnahme m365-anmeldung: `weiter` nennt der Server nur, wenn der Anmeldedialog des Word-Add-ins
+  // das SSO gestartet hat — dann geht es zurück auf die Dialogseite (s. `ssoWeiterziel`).
+  oidc: (code: string, state: string): Promise<{ user: SessionUser; weiter?: unknown }> =>
+    api.post<{ user: SessionUser; weiter?: unknown }>("/auth/oidc", { code, state }),
   // Self-Service: angemeldeter Nutzer ändert sein eigenes Passwort (altes Passwort nötig).
   changePassword: (oldPassword: string, newPassword: string): Promise<void> =>
     api.post<void>("/auth/password", { oldPassword, newPassword }),

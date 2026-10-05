@@ -7,6 +7,7 @@ import {
   compareHeadline,
   overallFromOverlap,
 } from "../../apps/web/src/lib/duplicateCompare";
+import { woerterbuchQuelleAus } from "../support/woerterbuchquelle";
 
 const ko = (id: string, overrides: Partial<KnowledgeObject> = {}): KnowledgeObject =>
   ({
@@ -134,7 +135,7 @@ describe("KW-DUP-02: read-only duplicate comparison", () => {
       expect(section.metrics.note).toMatch(/^dcmp\.note\./);
     }
     // Die DE-Werte der Keys stehen gepinnt in i18n.ts (ehrliche Rahmung „vorläufige Feldheuristik").
-    const i18nSource = readFileSync("apps/web/src/i18n.ts", "utf8");
+    const i18nSource = woerterbuchQuelleAus("apps/web/src/i18n.ts");
     expect(i18nSource).toContain('"dcmp.reason.identical": "Die Werte sind identisch."');
     expect(i18nSource).toContain(
       '"dcmp.note.heuristic": "Vorläufige Feldheuristik; keine fachliche Wahrheit."',

@@ -35,11 +35,11 @@
 // Das ist KEIN Produktfehler: fremde Hervorhebungen ueberleben nachweislich (D1, D2, D8). Falsch
 // war nur die Behauptung. D7 misst deshalb den TATSAECHLICH geschriebenen Wert, D8 die Kette, aus
 // der er folgt, und D9/D10 halten beide Bausteine im Quelltext fest.
-import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { FakeReplyInit, KlaraPanel } from "../app/klara-panel-fixture";
 import { TASKPANE_PATH, reply, splitTaskpane } from "../app/klara-panel-fixture";
+import { panelQuelleAus } from "../support/panelquelle";
 import { type WordBuehne, createWordBuehne, starteMitWord } from "./word-buehne";
 
 const A =
@@ -175,7 +175,8 @@ function wertWort(wert: string | null | undefined): string {
 // kleiner Zustandsautomat ueber Zeichenketten, regulaere Ausdruecke und Kommentare; D10 misst an
 // beiden Fallen nach, dass er sie nicht verwechselt.
 
-const TASKPANE_QUELLE = readFileSync(resolve(process.cwd(), TASKPANE_PATH), "utf8");
+// R-1611: das Fenster liegt in drei Dateien; gelesen wird es als EIN Dokument (`panelQuelleAus`).
+const TASKPANE_QUELLE = panelQuelleAus(resolve(process.cwd(), TASKPANE_PATH));
 const TASKPANE_SKRIPT = splitTaskpane(TASKPANE_QUELLE).script;
 const SKRIPT_ANFANG = TASKPANE_QUELLE.indexOf(TASKPANE_SKRIPT);
 

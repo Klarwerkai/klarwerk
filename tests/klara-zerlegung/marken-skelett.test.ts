@@ -17,6 +17,11 @@
 //
 // KEINE ZEILENNUMMERN IN ZUSICHERUNGEN: an derselben Datei arbeiten JOB 3004/3010/3012/3013.
 // Zeilennummern erscheinen ausschließlich in der gedruckten Tabelle, als Lesehilfe.
+//
+// SEIT R-1611 (Drei-Datei-Schnitt): gemessen wird das Fenster als EIN Dokument (`taskpaneQuelle()`
+// fügt `taskpane.html`/`.css`/`.js` an ihren Stellen zusammen, byte-gleich zum Basisstand), über
+// dieselbe Stempelroute ausgeliefert. Nur so bleibt jede Marke ihrem Bereich zuzuordnen — Markup,
+// Stil oder Skript —, und genau diese Zuordnung ist die Aussage dieser Datei.
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

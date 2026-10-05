@@ -118,10 +118,13 @@ const AntwortKlasse = (
 ).Response;
 
 function inhaltstypFuer(pfad: string): string {
-  if (pfad.endsWith(".css")) {
+  // Die Cachekennung (`?v=…`) gehört nicht zum Dateinamen — seit dem echten Schnitt (R-1611) tragen
+  // `taskpane.css` und `taskpane.js` sie genauso wie `rueckweg.js`.
+  const datei = pfad.split(/[?#]/, 1)[0] ?? pfad;
+  if (datei.endsWith(".css")) {
     return "text/css";
   }
-  if (pfad.endsWith(".js")) {
+  if (datei.endsWith(".js")) {
     return "text/javascript";
   }
   return "text/html";

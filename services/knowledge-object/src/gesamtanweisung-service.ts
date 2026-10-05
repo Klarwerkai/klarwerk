@@ -19,10 +19,14 @@
 // laufen vollständig ohne KI (Startvertrag: „Ohne KI bleiben Erstellen, Lesen, manuelle
 // Auswirkungsbewertung und berechtigter Workflow möglich").
 //
-// Sie erzeugt KEINE Gesamtfreigabe aus Bausteinmarkierungen. `stand` ändert sich ausschliesslich
-// in `vorlegen` und `entscheiden` — an keiner anderen Stelle dieser Datei.
+// Sie erzeugt KEINE Gesamtfreigabe aus Bausteinmarkierungen. `stand` wird ausschliesslich in
+// `vorlegen` und `entscheiden` VORWÄRTS gesetzt. Die einzige weitere Stelle ist
+// `mitUebernommenerFassung` (Quellenänderungen), und sie setzt ihn ZURÜCK auf `entwurf`: eine
+// geänderte Fassung erbt keine frühere Freigabe.
 import { htmlToPlainText, searchImageNames } from "../../structure";
 import {
+  type Aenderungspruefung,
+  type Aenderungspruefungslauf,
   type Aktualisierungsvorschlag,
   type Anweisung,
   type AnweisungLesestand,
@@ -42,7 +46,11 @@ import {
   type Fassungslagen,
   INHALT_UNBEKANNT,
   type KoFassungslage,
+  type Momentaufnahme,
   PRUEFANBINDUNG_OFFEN,
+  type PruefErgebnis,
+  UEBERWACHUNG_NICHT_EINGERICHTET,
+  type UebernommeneAenderung,
   type VergleichsBefund,
   anweisungFehler,
   erzwingeSichtbar,
@@ -302,6 +310,47 @@ export function mitGeaenderterVoraussetzung(
   return fortgeschrieben(anweisung, { bausteine }, jetzt);
 }
 
+/**
+ * QUELLENÄNDERUNGEN · Eine neuere Fassung BEWUSST übernehmen.
+ *
+ * Das ist der einzige Weg, auf dem sich die gebundene Fassung eines vorhandenen Abschnitts ändert —
+ * ausgelöst von einem Menschen, für genau einen Abschnitt. Nichts daran geschieht von selbst.
+ *
+ * DREI ZUSAGEN:
+ *   · Es entsteht ein NEUER Anleitungsstand (`version + 1`), und der Dienst hält ihn wie jeden
+ *     anderen als Prüfstand fest. Die früheren Stände bleiben unberührt in der Historie.
+ *   · Eine ENTSCHIEDENE Anleitung darf hier — anders als bei `nurAenderbar` — weiterbearbeitet
+ *     werden, denn genau dafür gibt es den Aktualisierungsvorschlag. Sie wird dabei aber zum
+ *     `entwurf`: die frühere Entscheidung galt der bisherigen Fassung und wird nicht auf die neue
+ *     übertragen. Vorlegen (`ko.create`) und Entscheiden (`ko.validate`) folgen wieder der
+ *     bestehenden Kontoregel.
+ *   · Nur VORWÄRTS: eine ältere oder dieselbe Fassung ist keine Übernahme.
+ *
+ * Der Nachweis der neuen Fassung kommt vom Aufrufer oder fehlt (`null`). Der alte wird NICHT
+ * weitergetragen — er belegt eine andere Fassung.
+ */
+export function mitUebernommenerFassung(
+  anweisung: Anweisung,
+  version: number,
+  bausteinId: string,
+  aufVersion: number,
+  nachweisHash: string | null,
+  jetzt: string,
+): Anweisung {
+  pruefeVersion(anweisung, version);
+  const baustein = anweisung.bausteine.find((b) => b.id === bausteinId);
+  if (!baustein) {
+    throw anweisungFehler("NOT_FOUND", "Diesen Baustein gibt es in der Anweisung nicht.");
+  }
+  if (!Number.isInteger(aufVersion) || aufVersion <= baustein.koVersion) {
+    throw anweisungFehler("INVALID", "Übernommen werden kann nur eine neuere Fassung.");
+  }
+  const bausteine = anweisung.bausteine.map((b) =>
+    b.id === bausteinId ? { ...b, koVersion: aufVersion, nachweisHash } : b,
+  );
+  return fortgeschrieben(anweisung, { bausteine, stand: "entwurf" }, jetzt);
+}
+
 // ================================================================================================
 // DER LESESTAND — HERKUNFT JE BAUSTEIN, KEINE STILLE ERSETZUNG, KEINE SCHEINBARE VOLLSTÄNDIGKEIT
 // ================================================================================================
@@ -322,11 +371,16 @@ export function mitGeaenderterVoraussetzung(
  *
  * 3. KEINE FREIGABE AUS BAUSTEINEN (F5). `stand` wird hier DURCHGEREICHT, nicht abgeleitet. Kein
  *    Status eines gebundenen Eintrags hat Einfluss darauf — auch nicht, wenn alle validiert sind.
+ *
+ * QUELLENÄNDERUNGEN: die Änderungsprüfung entsteht HIER aus genau den Aktualisierungsvorschlägen
+ * oben — es gibt keine zweite Frischeregel. `lauf` trägt, was nur der Dienst wissen kann (Zeitpunkt,
+ * Lesefehler, Historie); ohne ihn bleibt der Zeitpunkt unbekannt und die Historie `null`.
  */
 export function lesestand(
   anweisung: Anweisung,
   fassungen: Fassungslagen,
   sichtbar: AnweisungSichtbar | undefined,
+  lauf?: Aenderungspruefungslauf,
 ): AnweisungLesestand {
   const darf = erzwingeSichtbar(sichtbar);
   const bausteine: BausteinLesestand[] = [];
@@ -364,8 +418,10 @@ export function lesestand(
       aktuelleKoVersion: lage.aktuelleVersion,
       aktualisierungsvorschlag: aktualisierung,
       inhalt: gebunden ? gebunden.inhalt : INHALT_UNBEKANNT,
+      momentaufnahmen: gebunden?.momentaufnahmen ?? null,
     });
   }
+  const sichtbareIds = new Set(bausteine.map((b) => b.id));
   return {
     id: anweisung.id,
     titel: anweisung.titel,
@@ -381,6 +437,45 @@ export function lesestand(
     unvollstaendig: verborgen > 0,
     verborgeneBausteine: verborgen,
     pruefanbindung: PRUEFANBINDUNG_OFFEN,
+    aenderungspruefung: aenderungspruefungAus(bausteine, verborgen, lauf),
+    // Nur was zu einem SICHTBAREN Abschnitt gehört — sonst verriete die Historie einen verborgenen.
+    uebernommeneAenderungen: lauf?.uebernommen
+      ? lauf.uebernommen.filter((u) => sichtbareIds.has(u.bausteinId))
+      : null,
+  };
+}
+
+/**
+ * Das Ergebnis der Änderungsprüfung — die Reihenfolge der Zweige IST die Regel.
+ *
+ * Ein Lesefehler geht vor allem anderen: eine Prüfung, die eine Quelle nicht lesen konnte, darf
+ * nichts über deren Aktualität sagen. Danach der verborgene Abschnitt: was der Betrachter nicht sehen
+ * darf, kann ihm nicht als „aktuell" gemeldet werden. Erst wenn beides ausgeschlossen ist, zählen die
+ * Aktualisierungsvorschläge.
+ */
+function aenderungspruefungAus(
+  bausteine: readonly BausteinLesestand[],
+  verborgen: number,
+  lauf: Aenderungspruefungslauf | undefined,
+): Aenderungspruefung {
+  const gefunden = bausteine.filter((b) => b.aktualisierungsvorschlag !== null).length;
+  const fehlgeschlagen = lauf?.fehlgeschlageneQuellen ?? 0;
+  const ergebnis: PruefErgebnis =
+    fehlgeschlagen > 0
+      ? "fehlgeschlagen"
+      : verborgen > 0 || bausteine.some((b) => b.aktuelleKoVersion === null)
+        ? "unvollstaendig"
+        : gefunden > 0
+          ? "aenderungen_gefunden"
+          : bausteine.length === 0
+            ? "keine_quellen"
+            : "aktuell";
+  return {
+    pruefzeitpunkt: lauf?.pruefzeitpunkt ?? null,
+    ergebnis,
+    gefundeneAenderungen: gefunden,
+    fehlgeschlageneQuellen: fehlgeschlagen,
+    ueberwachung: UEBERWACHUNG_NICHT_EINGERICHTET,
   };
 }
 
@@ -741,6 +836,65 @@ export interface AnweisungKoFakten {
   readonly confidentiality?: Confidentiality | null | undefined;
   readonly quellrechte?: AnweisungQuellrechte | null | undefined;
   readonly bodyHtml?: string | null | undefined;
+  /** Die Belegstellen — strukturell `KoSource` (`types.ts`); gelesen werden nur diese drei Felder. */
+  readonly sources?: readonly AnweisungBelegstelle[] | null | undefined;
+  /** Die hochgeladenen Anhänge — strukturell `KoAttachment` (`types.ts`); nur drei Felder gelesen. */
+  readonly attachments?: readonly AnweisungAnhang[] | null | undefined;
+}
+
+export interface AnweisungBelegstelle {
+  readonly label?: string | null | undefined;
+  readonly objectId?: string | null | undefined;
+  readonly at?: string | null | undefined;
+}
+
+export interface AnweisungAnhang {
+  readonly name?: string | null | undefined;
+  readonly objectId?: string | null | undefined;
+  readonly at?: string | null | undefined;
+}
+
+function textOderNull(wert: string | null | undefined): string | null {
+  return typeof wert === "string" && wert.length > 0 ? wert : null;
+}
+
+/**
+ * Die hochgeladenen Dateien einer Fassung — jede GENAU EINMAL.
+ *
+ * ZWEI WEGE FÜHREN ZU EINER HOCHGELADENEN DATEI, und beide zählen (BEN, Nacharbeit 3, F2):
+ *   · der Anhang selbst (`attachments`, Upload über `ko.addAttachment`) — auch OHNE Belegstelle;
+ *   · eine Belegstelle mit bestätigter Anhangskennung (`sources[].objectId`).
+ * Verweist eine Belegstelle auf einen vorhandenen Anhang derselben Fassung, ist das DIESELBE Datei:
+ * sie erscheint einmal, unter dem Dateinamen des Anhangs. Eine Belegstelle, deren Anhang in der
+ * Fassung nicht (mehr) steht, bleibt mit ihrer Bezeichnung stehen.
+ *
+ * `null` nur, wenn die Fassung WEDER Anhangs- NOCH Belegliste trägt — dann ist es unbekannt, nicht
+ * „keine".
+ */
+function momentaufnahmenAus(fakten: AnweisungKoFakten): readonly Momentaufnahme[] | null {
+  const anhaenge = Array.isArray(fakten.attachments) ? fakten.attachments : null;
+  const belege = Array.isArray(fakten.sources) ? fakten.sources : null;
+  if (anhaenge === null && belege === null) {
+    return null;
+  }
+  const dateien: Momentaufnahme[] = [];
+  const gesehen = new Set<string>();
+  for (const anhang of anhaenge ?? []) {
+    dateien.push({ bezeichnung: anhang.name ?? "", erfasstAm: textOderNull(anhang.at) });
+    const kennung = textOderNull(anhang.objectId);
+    if (kennung !== null) {
+      gesehen.add(kennung);
+    }
+  }
+  for (const beleg of belege ?? []) {
+    const kennung = textOderNull(beleg.objectId);
+    if (kennung === null || gesehen.has(kennung)) {
+      continue;
+    }
+    gesehen.add(kennung);
+    dateien.push({ bezeichnung: beleg.label ?? "", erfasstAm: textOderNull(beleg.at) });
+  }
+  return dateien;
 }
 
 /** Ein Fassungssatz — strukturell erfüllt von `KoVersionSnapshot` (`types.ts:457`). */
@@ -767,22 +921,38 @@ export interface AnweisungKoLeser {
  *
  * KEIN AUSWEICHEN AUF DIE HEUTIGE FASSUNG (F2): `gebunden` kommt ausschliesslich aus dem
  * Fassungssatz zur GEBUNDENEN Nummer. Gibt es ihn nicht, bleibt `gebunden: null`.
+ *
+ * QUELLENÄNDERUNGEN: `fehler` sammelt die Einträge, deren Abruf GESCHEITERT ist (nicht: die es nicht
+ * gibt). Ohne diese Menge sähe ein Ausfall für die Änderungsprüfung aus wie „nichts Neues".
  */
 export async function fassungslagenFuer(
   bausteine: readonly Pick<Baustein, "koId" | "koVersion">[],
   ko: AnweisungKoLeser,
+  fehler?: Set<string>,
 ): Promise<Fassungslagen> {
   const lagen = new Map<string, KoFassungslage>();
   const eintraege = new Map<string, AnweisungKoFakten | undefined>();
   for (const koId of new Set(bausteine.map((b) => b.koId))) {
-    eintraege.set(koId, await ko.get(koId).catch(() => undefined));
+    eintraege.set(
+      koId,
+      await ko.get(koId).catch(() => {
+        fehler?.add(koId);
+        return undefined;
+      }),
+    );
   }
   const fassungen = new Map<string, readonly AnweisungFassungssatz[]>();
   for (const [koId, eintrag] of eintraege) {
     if (!eintrag) {
       continue;
     }
-    fassungen.set(koId, await ko.versionsOf(koId).catch(() => []));
+    fassungen.set(
+      koId,
+      await ko.versionsOf(koId).catch(() => {
+        fehler?.add(koId);
+        return [];
+      }),
+    );
   }
   for (const baustein of bausteine) {
     const eintrag = eintraege.get(baustein.koId);
@@ -810,6 +980,7 @@ export async function fassungslagenFuer(
             // JOB 4233: der Rumpf DIESES Fassungssatzes, unverändert. Nicht `eintrag.bodyHtml` —
             // das wäre die heutige Fassung und damit genau die stille Ersetzung aus F2.
             rumpfHtml: typeof satz.snapshot.bodyHtml === "string" ? satz.snapshot.bodyHtml : null,
+            momentaufnahmen: momentaufnahmenAus(satz.snapshot),
           }
         : null,
     };
@@ -951,9 +1122,67 @@ export class GesamtanweisungDienst {
     return anweisung;
   }
 
+  /**
+   * Lesen — und dabei nach neueren Quellenfassungen sehen (QUELLENÄNDERUNGEN).
+   *
+   * Die Prüfung ist DIESER Abruf: Zeitpunkt ist der Augenblick des Lesens, Lesefehler kommen aus
+   * `fassungslagenFuer`, die übernommenen Änderungen aus der Historie. Eine eigene Ablage dafür gibt
+   * es nicht, und eine automatische Überwachung auch nicht.
+   */
   async lesen(id: string, sichtbar: AnweisungSichtbar | undefined): Promise<AnweisungLesestand> {
-    const { anweisung, lagen } = await this.geladen(id, sichtbar, false);
-    return lesestand(anweisung, lagen, sichtbar);
+    const anweisung = await this.deps.repo.get(id);
+    if (!anweisung) {
+      throw anweisungFehler("NOT_FOUND", "Diese Anweisung gibt es nicht.");
+    }
+    const fehler = new Set<string>();
+    const lagen = await fassungslagenFuer(anweisung.bausteine, this.deps.ko, fehler);
+    return lesestand(anweisung, lagen, sichtbar, {
+      pruefzeitpunkt: this.deps.jetzt(),
+      fehlgeschlageneQuellen: fehler.size,
+      uebernommen: await this.uebernahmenAusHistorie(id),
+    });
+  }
+
+  /**
+   * Die bewusst übernommenen Fassungswechsel — abgelesen aus aufeinanderfolgenden Prüfständen.
+   *
+   * Die gebundene Fassung eines VORHANDENEN Abschnitts ändert sich nur über `fassungUebernehmen`.
+   * Ein Fassungswechsel derselben Abschnittskennung zwischen zwei Ständen IST deshalb eine
+   * Übernahme — ohne ein zweites Protokoll daneben.
+   *
+   * Fehlt ein Stand oder scheitert ein Abruf, ist die Historie UNBEKANNT (`null`), nicht leer.
+   */
+  private async uebernahmenAusHistorie(
+    id: string,
+  ): Promise<readonly UebernommeneAenderung[] | null> {
+    try {
+      const versionen = [...(await this.deps.repo.staende(id))].sort((a, b) => a - b);
+      const gefunden: UebernommeneAenderung[] = [];
+      let vorher: AnweisungStandAufnahme | undefined;
+      for (const nummer of versionen) {
+        const stand = await this.deps.repo.standLesen(id, nummer);
+        if (!stand) {
+          return null;
+        }
+        const alt = new Map((vorher?.bausteine ?? []).map((b) => [b.id, b]));
+        for (const b of stand.bausteine) {
+          const a = alt.get(b.id);
+          if (a && a.koId === b.koId && b.koVersion > a.koVersion) {
+            gefunden.push({
+              bausteinId: b.id,
+              vonFassung: a.koVersion,
+              aufFassung: b.koVersion,
+              anweisungVersion: stand.version,
+              uebernommenAm: stand.aufgenommenAm,
+            });
+          }
+        }
+        vorher = stand;
+      }
+      return gefunden;
+    } catch {
+      return null;
+    }
   }
 
   /**
@@ -1118,6 +1347,47 @@ export class GesamtanweisungDienst {
       text,
       this.deps.jetzt(),
     );
+    return this.schreiben(neu, anweisung.version, lagen);
+  }
+
+  /**
+   * QUELLENÄNDERUNGEN · Die neuere Fassung EINES Abschnitts bewusst übernehmen.
+   *
+   * Dieselben zwei Prüfungen in derselben Reihenfolge wie `bausteinAufnehmen` — erst Sichtbarkeit,
+   * dann Beleg —, denn eine Übernahme bindet eine Fassung genauso neu wie eine Aufnahme. Wer den
+   * Eintrag nicht sehen darf, erfährt nichts über seine Fassungen.
+   */
+  async fassungUebernehmen(
+    id: string,
+    version: number,
+    bausteinId: string,
+    aufVersion: number,
+    nachweisHash: string | null,
+    sichtbar: AnweisungSichtbar | undefined,
+  ): Promise<Anweisung> {
+    const { anweisung } = await this.geladen(id, sichtbar, true);
+    const baustein = anweisung.bausteine.find((b) => b.id === bausteinId);
+    if (!baustein) {
+      throw anweisungFehler("NOT_FOUND", "Diesen Baustein gibt es in der Anweisung nicht.");
+    }
+    const kandidat = { koId: baustein.koId, koVersion: aufVersion };
+    const kandidatLagen = await fassungslagenFuer([kandidat], this.deps.ko);
+    const lage = kandidatLagen.get(fassungsSchluessel(kandidat.koId, kandidat.koVersion));
+    if (!lage || !erzwingeSichtbar(sichtbar)(lage)) {
+      throw anweisungFehler("FORBIDDEN", "Diese Fassung kann nicht übernommen werden.");
+    }
+    if (lage.gebunden === null) {
+      throw anweisungFehler("INVALID", await fassungUnbekanntSatz(kandidat.koId, this.deps.ko));
+    }
+    const neu = mitUebernommenerFassung(
+      anweisung,
+      version,
+      bausteinId,
+      aufVersion,
+      nachweisHash,
+      this.deps.jetzt(),
+    );
+    const lagen = await fassungslagenFuer(neu.bausteine, this.deps.ko);
     return this.schreiben(neu, anweisung.version, lagen);
   }
 

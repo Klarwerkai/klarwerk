@@ -398,8 +398,10 @@ describe("JOB 3063 · H4 · Funktionsinventar — jede Funktion an ihrem neuen O
 
   for (const [name, treffer] of [
     ["Bearbeiten", "Bearbeiten"],
-    ["Validieren", "Validieren"],
-    ["Bedingt", "Bedingt"],
+    // PRÜFSTATUS-ANZEIGE (N-0078): die positive Einzelbewertung heißt „Positiv bewerten" (sie
+    // validiert nicht allein), die gelbe Entscheidung heißt wie auf der Prüfseite „Rückfrage".
+    ["Positiv bewerten", "Positiv bewerten"],
+    ["Rückfrage", "Rückfrage"],
     ["Ablehnen", "Ablehnen"],
     ["Re-Validierung starten", "Re-Validierung starten"],
     ["Löschen", "Wissensobjekt löschen"],
@@ -701,8 +703,8 @@ describe("JOB 3063 · H4 · Funktionsinventar — jede Funktion an ihrem neuen O
     { fall: "F10", teil: "Liste", wo: "eintraege", wort: "HTML (Druck/PDF)", art: "gleich" },
     { fall: "F11", teil: "Liste", wo: "alles", wort: "Re-Import", art: "enthaelt" },
     { fall: "F14", teil: "Eintrag", wo: "alles", wort: "Bearbeiten", art: "gleich" },
-    { fall: "F14", teil: "Eintrag", wo: "alles", wort: "Validieren", art: "gleich" },
-    { fall: "F14", teil: "Eintrag", wo: "alles", wort: "Bedingt", art: "gleich" },
+    { fall: "F14", teil: "Eintrag", wo: "alles", wort: "Positiv bewerten", art: "gleich" },
+    { fall: "F14", teil: "Eintrag", wo: "alles", wort: "Rückfrage", art: "gleich" },
     { fall: "F14", teil: "Eintrag", wo: "alles", wort: "Ablehnen", art: "gleich" },
     { fall: "F14", teil: "Eintrag", wo: "alles", wort: "Re-Validierung starten", art: "gleich" },
     { fall: "F14", teil: "Eintrag", wo: "alles", wort: "Wissensobjekt löschen", art: "gleich" },

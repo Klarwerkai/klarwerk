@@ -37,7 +37,27 @@ interface KandidatDto {
   duplicate: boolean;
   status: string;
   koId: string | null;
-  dublettenbefund?: { ergebnis: string; treffer?: { art: string; koId?: string } };
+  dublettenbefund?: {
+    ergebnis: string;
+    treffer?: { art: string; koId?: string; kandidatId?: string };
+  };
+}
+
+/**
+ * Der zweite Aufruf trifft den noch OFFENEN Kandidaten des ersten (R-0116): Dublette, und der
+ * Befund nennt dessen Kennung — nicht „keine" und nicht ein erfundenes Wissensobjekt.
+ */
+function expectDubletteDesErsten(
+  erste: { json: () => unknown },
+  kandidat: KandidatDto | undefined,
+): void {
+  const [ersterKandidat] = erste.json() as KandidatDto[];
+  expect(kandidat?.duplicate).toBe(true);
+  expect(kandidat?.dublettenbefund?.ergebnis).toBe("identisch");
+  expect(kandidat?.dublettenbefund?.treffer).toEqual({
+    art: "kandidat",
+    kandidatId: ersterKandidat?.id,
+  });
 }
 
 async function angemeldeteApp() {
@@ -93,11 +113,15 @@ describe("JOB 3424 · Q2d — der zweite Import ohne externe Kennung", () => {
   // ==============================================================================================
   //
   // GEMESSEN (06.09., vor jeder Änderung dieses Jobs, In-Memory-Warteschlange): 201 und 201 — kein
-  // 500. Der zweite Kandidat trägt `dublettenbefund: keine`, und DAS IST DIE WAHRHEIT dieses
-  // Zustands: der erste Aufruf hat nur einen Eintrag in die REVIEW-WARTESCHLANGE gestellt, kein
-  // Wissensobjekt. Es gibt also nichts, worauf er Dublette sein könnte. Der Fall L1b darunter zeigt
-  // denselben zweiten Aufruf, nachdem der erste wirklich angenommen wurde — dort steht „identisch".
-  it('L1 · externalId "": beide Aufrufe 201, kein 500, ehrlicher Befund "keine"', async () => {
+  // 500. Der zweite Kandidat trug damals `dublettenbefund: keine`, weil der Vergleich die offene
+  // Warteschlange nicht kannte.
+  //
+  // R-0116 (Lauf gesamt-import-adoption): der Vergleich sieht jetzt auch die OFFENEN Kandidaten
+  // früherer Uploads. Die ehrliche Auskunft des zweiten Aufrufs ist darum „identisch" MIT der
+  // Kennung des wartenden ersten Kandidaten — genau der Befund „Dublette/Kennung", den Q2d
+  // verlangt. Der Fall L1b darunter zeigt denselben Aufruf nach der Annahme: dort nennt der
+  // Befund das Wissensobjekt.
+  it('L1 · externalId "": beide Aufrufe 201, kein 500, Befund "identisch" mit Kandidatenkennung', async () => {
     const { erste, zweite } = await zweimal({ ...BASIS, externalId: "" });
 
     expect(erste.statusCode, erste.body).toBe(201);
@@ -109,11 +133,7 @@ describe("JOB 3424 · Q2d — der zweite Import ohne externe Kennung", () => {
 
     const [kandidat] = zweite.json() as KandidatDto[];
     expect(kandidat, "Der zweite Aufruf reiht wirklich einen Kandidaten ein.").toBeDefined();
-    expect(kandidat?.duplicate).toBe(false);
-    expect(
-      kandidat?.dublettenbefund?.ergebnis,
-      "Ohne Wissensobjekt im Bestand ist die ehrliche Auskunft: kein Treffer — nicht Dublette.",
-    ).toBe("keine");
+    expectDubletteDesErsten(erste, kandidat);
   });
 
   // ==============================================================================================
@@ -155,18 +175,14 @@ describe("JOB 3424 · Q2d — der zweite Import ohne externe Kennung", () => {
     const { erste, zweite } = await zweimal({ ...BASIS, externalId: null });
     expect(erste.statusCode, erste.body).toBe(201);
     expect(zweite.statusCode, zweite.body).toBe(201);
-    const [kandidat] = zweite.json() as KandidatDto[];
-    expect(kandidat?.duplicate).toBe(false);
-    expect(kandidat?.dublettenbefund?.ergebnis).toBe("keine");
+    expectDubletteDesErsten(erste, (zweite.json() as KandidatDto[])[0]);
   });
 
   it("L3 · eine FEHLENDE externalId verhält sich Zeichen für Zeichen wie die leere Zeichenkette", async () => {
     const { erste, zweite } = await zweimal({ ...BASIS });
     expect(erste.statusCode, erste.body).toBe(201);
     expect(zweite.statusCode, zweite.body).toBe(201);
-    const [kandidat] = zweite.json() as KandidatDto[];
-    expect(kandidat?.duplicate).toBe(false);
-    expect(kandidat?.dublettenbefund?.ergebnis).toBe("keine");
+    expectDubletteDesErsten(erste, (zweite.json() as KandidatDto[])[0]);
   });
 
   // ==============================================================================================
@@ -197,7 +213,7 @@ describe("JOB 3424 · Q2d — der zweite Import ohne externe Kennung", () => {
       expect(erste.statusCode, erste.body).toBe(201);
       expect(zweite.statusCode, zweite.body).not.toBe(500);
       expect(zweite.statusCode, zweite.body).toBe(201);
-      expect((zweite.json() as KandidatDto[])[0]?.dublettenbefund?.ergebnis).toBe("keine");
+      expectDubletteDesErsten(erste, (zweite.json() as KandidatDto[])[0]);
     } finally {
       if (gesetzt !== undefined) {
         process.env.KLARWERK_CONFLUENCE_IMPORT = gesetzt;

@@ -137,6 +137,16 @@ R-0020 gilt unverändert für **Speichern UND Einreichen**, auch bei verlorener 
   Erklärung „war bereits gespeichert" (R-0156) gibt es nicht — die Wiederholung meldet den
   normalen Speichererfolg.
 
+## 29.09.2026 — Auditprotokoll: Änderung und Beleg gemeinsam oder gar nicht (Lauf 3)
+
+- Audit-Kette: Vorgänger lesen und anhängen als ein Schritt (`AuditRepo.appendNext`; PostgreSQL unter
+  `pg_advisory_xact_lock`, auch zwischen Instanzen). Erfassen, Ändern und Validieren eines
+  Wissensobjekts schreiben Objekt und Auditeintrag mit `withTx` in einer Transaktion; ohne sie mit
+  Rücknahme und `ko.change-rolled-back`. Löst WP-SHIP8-CLOSE-5 ab.
+- Export der Kette (`GET /api/audit/export`), `library.export`, `ko.revalidated`, Objektkette.
+- Details, Belege, Grenzen: `docs/entscheidungen/gesamt-auditprotokoll.md`. PostgreSQL-Integration
+  (`tests/audit-gesamt/*.integration.test.ts`) auf dem Prüfserver noch zu fahren.
+
 ## 29.09.2026 — Bildidentität: die Kennung kommt vom Bild (Aufnahme gesamt-bildidentitaet, Lauf 3)
 
 - Server-Sanitizer (`anchorFigures`) und Editor (`ensureImageAnchors`) überschreiben keine
