@@ -2702,8 +2702,11 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // die gültige Aktivierung gebunden (`ka3AbsatzRunde`, `gilt()` in `ka3Ausfuehren` vor Serverabruf
     // und Anzeige). Weniger Abrufe, kein neues Abrufziel, keine neue Nutzlast, CSP/Recht/Manifest
     // unverändert, kein Sideload. Der SHA-256 war ohne Hash-Werkzeug nicht messbar; der Blob ist
-    // gemessen (`fd19fe43…`, `tests/support/panelquelle.ts`). Nachzuführen aus dem `Received`.
-    const PIN = "a4461e3983454c04eca17afa93d93248f8ef4facb12d41b06c2c580a3e24e017";
+    // gemessen (`fd19fe43…`, `tests/support/panelquelle.ts`).
+    // NACHARBEIT 7: PIN BEWUSST AKTUALISIERT (a4461e39… -> 9effe6a0…). Der Wert ist im Prüflauf zu
+    // Kandidat b4415199 GEMESSEN („Received") und unverändert übernommen; die vier Panel-Dateien sind
+    // seit dieser Messung unberührt (`git diff b4415199 -- apps/web/public/word-addin/` leer).
+    const PIN = "9effe6a0246e0bf489fa23e0925de4061729f00adab9824511666b7eb9f2b731";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(
       ist,
