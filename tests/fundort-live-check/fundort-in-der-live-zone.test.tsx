@@ -186,6 +186,7 @@ describe("JOB 3045 · Fundort in der Live-Zone", () => {
     expect(text()).toContain("Arbeitssicherheit");
     // Weder der Standardwert „Offen" noch irgendein anderes Zustandswort.
     expect(text()).not.toContain("Offen");
+    expect(text()).not.toContain("noch nicht geprüft");
     expect(text()).not.toContain("Validiert");
   });
 
@@ -205,6 +206,7 @@ describe("JOB 3045 · Fundort in der Live-Zone", () => {
     expect(text()).not.toContain("—");
     expect(text()).not.toContain("unbekannt");
     expect(text()).not.toContain("Offen");
+    expect(text()).not.toContain("noch nicht geprüft");
     expect(text()).not.toContain("Validiert");
     // Der Treffer selbst bleibt vollständig sichtbar: nur der ORT fehlt, nicht der Fund.
     expect(text()).toContain("Not-Aus vor Wartung");
@@ -225,7 +227,8 @@ describe("JOB 3045 · Fundort in der Live-Zone", () => {
     await render(createElement(LiveReactionZone, { verdict }));
     expect(fundortZeile()).not.toBeNull();
     expect(text()).toContain("Verwaltung");
-    expect(text()).toContain("Offen");
+    // P-M3b (BEN-3): Prüfstand-Wortlaut der Trefferlisten, derselbe wie im Word-Panel.
+    expect(text()).toContain("noch nicht geprüft");
     expect(text()).toContain("könnte widersprechen");
   });
 
@@ -272,7 +275,10 @@ describe("JOB 3045 · Fundort in der Live-Zone", () => {
       createElement(Sonde, { text: "Vor jeder Wartung den Hauptschalter.", debounceMs: 300 }),
     );
     await warten(20);
-    expect(text()).toContain("Prüfe gegen euren Wissensstand");
+    // AUFNAHME 20260922 · VORSCHAU-REICHWEITE: der Laufzustand heisst jetzt „Vorschau läuft" statt
+    // „Prüfe gegen euren Wissensstand" (Kriterium 2: der Vorgang ist eine Vorschau). Gemessen wird
+    // hier unverändert nur, DASS der Laufzustand steht und der alte Fundort weg ist.
+    expect(text()).toContain("Vorschau läuft");
     expect(fundortZeile()).toBeNull();
     expect(text()).not.toContain("Verwaltung");
 
@@ -319,9 +325,9 @@ describe("JOB 3045 · Fundort in der Live-Zone", () => {
   // war ja, dass Label und Zustand je für sich richtig waren und nur zusammen falsch.
   it("G · Kategorie null, Zustand belegt: der Zustand steht da, aber NIE als Ort — de/en/nl", async () => {
     const erwartet: { lng: "de" | "en" | "nl"; label: string; wort: string }[] = [
-      { lng: "de", label: "Liegt in:", wort: "Offen" },
-      { lng: "en", label: "Sits in:", wort: "Open" },
-      { lng: "nl", label: "Staat in:", wort: "Open" },
+      { lng: "de", label: "Liegt in:", wort: "noch nicht geprüft" },
+      { lng: "en", label: "Sits in:", wort: "not yet reviewed" },
+      { lng: "nl", label: "Staat in:", wort: "nog niet beoordeeld" },
     ];
     for (const f of erwartet) {
       await spracheSetzen(f.lng);
@@ -360,7 +366,7 @@ describe("JOB 3045 · Fundort in der Live-Zone", () => {
         zustand: null,
         zeile: "Liegt in:Arbeitssicherheit",
       },
-      { name: "nur Zustand", kategorie: null, zustand: "offen", zeile: "Offen" },
+      { name: "nur Zustand", kategorie: null, zustand: "offen", zeile: "noch nicht geprüft" },
       { name: "nichts belegt", kategorie: null, zustand: null, zeile: null },
     ];
     for (const f of faelle) {

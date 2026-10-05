@@ -40,8 +40,8 @@ export interface KnowledgeRef {
   // nimmt entgegen, was die Projektion ohnehin gerechnet hat.
   //
   // WER WIE VIEL DAVON MITGIBT, IST NICHT HIER ENTSCHIEDEN — und das ist Absicht. Der Aufrufer
-  // baut bis zu `ASK_CANDIDATE_PREFILTER_LIMIT` (200) Refs je Frage; bei voller Ausschöpfung des
-  // Projektionsdeckels wären das 200 × 200.000 = 40 Mio. Zeichen, die je Frage tokenisiert würden.
+  // baut bis zu `ASK_CANDIDATE_PREFILTER_LIMIT` (200) Refs je Frage, ab 20.000 Objekten mit dem
+  // Bestand bis 500 (Aufnahme 20260922); voll ausgeschöpft also bis 500 × 200.000 Zeichen je Frage.
   // Dieses Feld erfindet deshalb KEINE eigene Grenze: eine neu erfundene Zahl wäre exakt derselbe
   // Fehler wie die 500 aus `wordAddin.ts:925`, nur mit einer größeren Ziffer. Die Menge gehört zum
   // Aufrufer, wo sie messbar ist; fehlt das Feld, matcht der Altbestand wie bisher.
@@ -231,6 +231,9 @@ export interface EnrichResult {
   text: string;
   provider: string;
   demo: boolean;
+  // Entscheidung Pedi 8398db9e (KI-VO Art. 50): ein angereicherter Text ist KI-erzeugt und trägt
+  // die Kennzeichnung — nur, wenn wirklich Text entstand (der leere Rückfall trägt sie nicht).
+  aiGenerated?: AiGeneratedMark;
 }
 
 export interface ExtractResult {
@@ -357,6 +360,31 @@ export interface ReasonerCloudAnbieterStatus {
 export type ReasonerPolicySource = "env" | "db" | "default";
 
 // ================================================================================================
+// D5 · DIE ADMINISTRATIVE KI-ABSCHALTUNG DES FRAGEWEGS — EIN BENANNTER ZUSTAND, KEIN NEUER SCHALTER.
+// ================================================================================================
+//
+// Der Zustand ist der schon bestehende Adminweg: `PUT /api/reasoner/config` mit der Wahl
+// `deterministic` für die Aufgabe `answer` (global oder je Aufgabe), gespeichert in der Tabelle
+// `reasoner_policy` und beim Start wieder geladen (`loadPersistedPolicy`). Neu ist allein, dass er
+// hier einen Namen bekommt und der Frageweg ihn als Sperre liest.
+//
+// DREI LAGEN SIND AUSDRÜCKLICH KEINE ABSCHALTUNG, obwohl auch in ihnen kein Modell rechnet:
+//   · die fehlende Freigabe für öffentliche KI (`kiFreigabe`) — sie sperrt nur den Cloudweg;
+//   · eine Modellstörung oder ein nicht eingerichtetes Modell — die Kette fällt dann auf den
+//     deterministischen Ersatz, ohne dass jemand etwas abgeschaltet hat;
+//   · der Ladefehler beim Start (`LOAD_FAILURE_FALLBACK_POLICY`) und die Deploy-Vorgabe über
+//     `KLARWERK_REASONER_POLICY` — beide stehen nicht in der gespeicherten Adminwahl.
+// Nur die GESPEICHERTE Adminwahl (`policySource === "db"`) schaltet ab.
+export interface ReasonerKiAbschaltung {
+  /** `true` genau dann, wenn die gespeicherte Adminwahl für `answer` `deterministic` ist. */
+  readonly abgeschaltet: boolean;
+  /** Die wirksame Wahl für die Aufgabe `answer`. */
+  readonly wahl: ReasonerAktiveWahl;
+  /** Woher die wirksame Policy stammt. */
+  readonly quelle: ReasonerPolicySource;
+}
+
+// ================================================================================================
 // JOB 3549 · DIE ADMINFREIGABE FÜR ÖFFENTLICHE KI — ZWEI SCHALTER, GETRENNT, NIE VORGEGEBEN.
 // ================================================================================================
 //
@@ -445,6 +473,8 @@ export interface ReasonerConfigStatus {
   // SCRUM-525 P.5 (WP-C): Herkunft der aktiven Policy — die Admin-UI zeigt bei "env" einen Sperrhinweis
   // (Änderung nur per Deploy/ENV), statt ein PUT zu erlauben, das serverseitig ohnehin 409 liefert.
   policySource: ReasonerPolicySource;
+  // D5: der benannte Abschaltzustand des Fragewegs — abgeleitet, nicht zusätzlich gespeichert.
+  kiAbschaltung: ReasonerKiAbschaltung;
 }
 
 // SCRUM-492: strukturierte Kollisionsfelder eines Widerspruchs — je Seite eine knappe Kernaussage

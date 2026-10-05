@@ -34,6 +34,17 @@ async function zahnradOeffnen(): Promise<void> {
   await seite().click('[data-testid="kopfband-zahnrad"]');
   await warteBis(seite(), `() => document.querySelector('[data-testid="zahnrad-menue"]') !== null`);
 }
+/**
+ * FE-002 (26.09.2026): öffnet „Arbeitsbereiche" im Kopfband — dort stehen seitdem die weiteren
+ * Bereiche (vorher Zahnrad → „Bereiche") und die Zeile „Seite finden …".
+ */
+async function arbeitsbereicheOeffnen(): Promise<void> {
+  await seite().click('[data-testid="kopfband-arbeitsbereiche"]');
+  await warteBis(
+    seite(),
+    `() => document.querySelector('[data-testid="arbeitsbereiche-menue"]') !== null`,
+  );
+}
 /** Öffnet das Konto-Menü und wartet, bis seine Fläche steht. */
 async function kontoOeffnen(): Promise<void> {
   await seite().click('[data-testid="kopfband-konto"]');
@@ -149,10 +160,16 @@ const INVENTAR: Zeile[] = [
     heute: "„Gehe zu …“ nur im Zahnrad-Menü (ZahnradMenue.tsx, Zeile schnellnavigation)",
     ort: "Kopfband-Knopf „Gehe zu … ⌘K“ → dieselbe Befehlspalette",
     pruefen: async () => {
-      const feld = `input[aria-label="${t("cmd.suchfeld")}"]`;
+      const feld = `input[aria-label="${t("fe002.seiteFinden")}"]`;
       const knopf = 'header [data-testid="kopfband-gehezu"]';
+      // FE-002: der breite Knopf tritt zurück, wenn die rechte Gruppe unter 420 px fällt — bei
+      // 1280 px ist das mit dem Zähler an „Prüfen" (dieser Bestand hat zwei offene Prüfungen) der
+      // Fall; der Weg steht dann unter „Arbeitsbereiche" (Zeile K-cmdk) und über ⌘K. Den sichtbaren
+      // Knopf misst dieser Fall deshalb bei 1440 px. Gemessen: tests/fe002-kopfband/.
+      await seite().setViewportSize({ width: 1440, height: 800 });
       const text = (await sichtbarerText(knopf)) ?? "";
-      expect(text).toContain(t("menue.schnellnavigation"));
+      // FE-002: der Knopf heißt „Seite finden" (vormals „Gehe zu …") — dieselbe Palette.
+      expect(text).toContain(t("fe002.seiteFinden"));
       expect(text, "die Tastenkombination ist am Knopf nicht erkennbar").toContain("⌘K");
       // Zu: der Klick öffnet.
       await warteBis(seite(), "(s) => document.querySelector(s) === null", feld);
@@ -165,28 +182,29 @@ const INVENTAR: Zeile[] = [
       await warteBis(seite(), "(s) => document.querySelector(s) !== null", feld);
       await seite().keyboard.press("Escape");
       await warteBis(seite(), "(s) => document.querySelector(s) === null", feld);
+      await seite().setViewportSize({ width: 1280, height: 800 });
     },
   },
   {
     kennung: "K-cmdk",
     heute: "⌘K-Chip im Suchfeld (Topbar.tsx:588-595)",
-    ort: "Tastenkürzel ⌘K bleibt + Zahnrad-Zeile „Gehe zu …“",
+    ort: "Tastenkürzel ⌘K bleibt + Zeile „Seite finden …“ unter „Arbeitsbereiche“ (FE-002, vormals Zahnrad-Zeile „Gehe zu …“)",
     pruefen: async () => {
       // JOB 3337: gesucht wird über den ZUGÄNGLICHEN NAMEN des Feldes, nicht über ein Bruchstück
       // seines Platzhalters. Der Platzhalter hieß bis hierher „Zu Seite springen …" und wurde in
       // diesem Auftrag zu „Gehe zu … (⌘K)"; ein `placeholder*="springen"` hätte diese Messung ohne
       // eigenes Verschulden in eine Zeitüberschreitung laufen lassen. Der Name (`cmd.suchfeld`) ist
       // ohnehin die belastbarere Marke: er ist der, den ein Vorlesewerkzeug ausgibt.
-      const feld = `input[aria-label="${t("cmd.suchfeld")}"]`;
+      const feld = `input[aria-label="${t("fe002.seiteFinden")}"]`;
       await seite().keyboard.press("Control+k");
       await warteBis(seite(), "(s) => document.querySelector(s) !== null", feld);
       await seite().keyboard.press("Escape");
       await warteBis(seite(), "(s) => document.querySelector(s) === null", feld);
-      await zahnradOeffnen();
-      expect(await sichtbarerText('[data-testid="zahnrad-schnellnavigation"]')).toContain(
-        t("menue.schnellnavigation"),
+      await arbeitsbereicheOeffnen();
+      expect(await sichtbarerText('[data-testid="arbeitsbereiche-seite-finden"]')).toContain(
+        t("fe002.seiteFinden"),
       );
-      await seite().click('[data-testid="zahnrad-schnellnavigation"]');
+      await seite().click('[data-testid="arbeitsbereiche-seite-finden"]');
       await warteBis(seite(), "(s) => document.querySelector(s) !== null", feld);
       await seite().keyboard.press("Escape");
     },
@@ -302,9 +320,14 @@ const INVENTAR: Zeile[] = [
           t("kopfband.erfassen"),
           t("mob.drafts"),
           t("kopfband.pruefen"),
-          // JOB 3503 Teil 3b: der sichtbare Einstieg in die Befehlspalette, mit seinem Kürzel.
-          t("menue.schnellnavigation"),
+          // JOB 3503 Teil 3b: der sichtbare Einstieg in die Befehlspalette, mit seinem Kürzel —
+          // seit FE-002 „Seite finden"; dazu der beschriftete Einstieg „Arbeitsbereiche" und das
+          // Wort „Meldungen" (das bei 1280 px per Container-Abfrage zurücktritt, aber zum Inventar
+          // gehört).
+          t("fe002.arbeitsbereiche"),
+          t("fe002.seiteFinden"),
           "⌘K",
+          t("fe002.meldungen"),
         ].flatMap((n) => n.split(/\s+/)),
       );
       for (const rolle of ["viewer", "experte", "controller"]) {
@@ -352,8 +375,10 @@ const INVENTAR: Zeile[] = [
         // JOB 3503 Teil 3b: der Knopf „Gehe zu …" kommt dazu — benannt, damit er nicht als
         // namenloses `button` im Band auftaucht.
         expect(band.knoepfe.sort()).toEqual([
+          "kopfband-arbeitsbereiche",
           "kopfband-gehezu",
           "kopfband-konto",
+          "kopfband-meldungen",
           "kopfband-zahnrad",
           "submit",
         ]);
@@ -464,10 +489,9 @@ const INVENTAR: Zeile[] = [
   ...BEREICHE.map<Zeile>(([id, pfad, labelKey]) => ({
     kennung: `Z-bereich-${id}`,
     heute: `Nav-Punkt ${id} (navigation.ts NAV_GROUPS)`,
-    ort: "Zahnrad-Menü „Weitere Bereiche“",
+    ort: "Kopfband „Arbeitsbereiche“ (FE-002, vormals Zahnrad-Menü „Weitere Bereiche“)",
     pruefen: async () => {
-      await zahnradOeffnen();
-      await aufklappen("zahnrad-weitere-bereiche");
+      await arbeitsbereicheOeffnen();
       const sel = `[data-testid="bereich-${id}"]`;
       expect(await sichtbarerText(sel)).toMatch(
         new RegExp(`^${t(labelKey).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`),
@@ -478,10 +502,9 @@ const INVENTAR: Zeile[] = [
   {
     kennung: "Z-bereich-zaehler",
     heute: "Nav-Badges der übrigen Punkte (Sidebar.tsx:23-151)",
-    ort: "Zahl neben dem Eintrag in „Weitere Bereiche“ (Aufgaben zählt das Board mit)",
+    ort: "Zahl neben dem Eintrag unter „Arbeitsbereiche“ (Aufgaben zählt das Board mit)",
     pruefen: async () => {
-      await zahnradOeffnen();
-      await aufklappen("zahnrad-weitere-bereiche");
+      await arbeitsbereicheOeffnen();
       const zahl = await sichtbarerText('[data-testid="bereich-aufgaben"] .kw-menue-wert');
       expect(Number(zahl)).toBeGreaterThanOrEqual(boardZahl);
     },
@@ -644,7 +667,7 @@ const INVENTAR: Zeile[] = [
   {
     kennung: "D-drawer",
     heute: "Drawer ≤ 899 px mit Sidebar (AppShell.tsx:83, MobileNavDrawer.tsx:225)",
-    ort: "Drawer zeigt Kopfband-Punkte, „Weitere Bereiche“, Zahnrad- und Konto-Einträge",
+    ort: "Drawer zeigt Kopfband-Punkte, „Arbeitsbereiche“, Zahnrad- und Konto-Einträge",
     pruefen: async () => {
       await seite().setViewportSize({ width: 390, height: 844 });
       await oeffne(seite(), "/start");
@@ -660,9 +683,10 @@ const INVENTAR: Zeile[] = [
         // unerreichbar, und die Zusage „eigener sichtbarer Menüpunkt" gälte nur am Schreibtisch.
         t("mob.drafts"),
         t("kopfband.pruefen"),
-        t("menue.weitereBereiche"),
+        // FE-002: die weiteren Bereiche stehen unter „Arbeitsbereiche" samt „Seite finden …".
+        t("fe002.arbeitsbereiche"),
         t("menue.seitenhilfe"),
-        t("menue.schnellnavigation"),
+        t("fe002.seiteFinden"),
         t("nav.help"),
         t("topbar.notifications"),
         t("topbar.mobile"),
@@ -681,7 +705,14 @@ describe("JOB 3060 · H1 · das Funktionsinventar — jede Zeile der Tabelle heu
   beforeAll(async () => {
     try {
       await i18n.changeLanguage("de");
-      s = await strecke({ email: "pedi@job3060-inventar.test", stufe2: true });
+      // Das Inventar liest keinen Wert aus `Main.dc.html` (kein `zielStil`/`zielProp`/`ZIELBILD`),
+      // es misst nur Bedienwege in der gebauten App. Die Mockup-Vorbedingung gilt für Hülle und
+      // Erklärtext, nicht hier. `apps/web/dist` bleibt Pflicht (FE-002, Nacharbeit 3).
+      s = await strecke({
+        email: "pedi@job3060-inventar.test",
+        stufe2: true,
+        zielbildPflicht: false,
+      });
       for (const title of [
         "Halterungen ohne waagerechte Oberseiten",
         "Profile: Ablaufbohrung 8 mm",

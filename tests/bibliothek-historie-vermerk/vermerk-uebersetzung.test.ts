@@ -148,21 +148,21 @@ const DIENST_VERMERKE = [
     // von `:3715` ein (Begründung dort bei `pruefeHerkunft`), deshalb bleiben die drei „erstellt"-
     // Fundstellen und ihre Nachbarn stehen, wo sie standen. Gemessen mit
     // `grep -n '"erstellt"' services/knowledge-object/src/service.ts`, nicht fortgeschrieben.
-    fundstellen: [2100, 2229],
+    fundstellen: [2108, 2237],
   },
   {
     wort: "erstellt (Dokumentinhalt übernommen)",
     schluessel: "ko.historyNote.createdFromDocument",
     en: "created (document content adopted)",
     nl: "aangemaakt (documentinhoud overgenomen)",
-    fundstellen: [2476],
+    fundstellen: [2484],
   },
   {
     wort: "erstellt (nachgezogen)",
     schluessel: "ko.historyNote.createdBackfilled",
     en: "created (backfilled)",
     nl: "aangemaakt (nagetrokken)",
-    fundstellen: [2890],
+    fundstellen: [2898],
   },
   {
     wort: "überarbeitet",
@@ -195,14 +195,19 @@ const DIENST_VERMERKE = [
     // Mutationspfade, Bestandsstempel/Lesefassung vor `get`, die gebundene Basis in
     // `recordAiCheckOutcome`/`markAiCheckPending`/`resolveAiCheck` und die Lesefassung der Suchwege.
     // Wortlaute und Zahl der Vermerke UNVERÄNDERT.
-    fundstellen: [4447, 4564, 4660, 4849],
+    // D5 (KI aus, Lauf 3): NEU GEMESSEN, alle Fundstellen um 29 Zeilen verschoben — die Sperre des
+    // Fragewegs in Bestandsstempel/Lesefassung/`get`, `aktuelleFassungVon` und `findCandidates`.
+    // Dubletten-Rückzug (BEN-R5-5): NEU GEMESSEN (`grep -n`), alle Fundstellen um 8 Zeilen (vor
+    // `restore`) bzw. 17 Zeilen (danach) verschoben — die Rücknahme-Klammer in Deps/Feld/Konstruktor
+    // und der gemeinsame Weg in `restore`. Wortlaute und Zahl der Vermerke UNVERÄNDERT.
+    fundstellen: [4493, 4610, 4706, 4895],
   },
   {
     wort: "überarbeitet (Dokumentinhalt übernommen)",
     schluessel: "ko.historyNote.revisedFromDocument",
     en: "revised (document content adopted)",
     nl: "herzien (documentinhoud overgenomen)",
-    fundstellen: [5080, 5098],
+    fundstellen: [5126, 5144],
   },
 ] as const;
 

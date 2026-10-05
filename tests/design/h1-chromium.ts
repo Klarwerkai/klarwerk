@@ -168,8 +168,16 @@ export async function strecke(opts: {
   theme?: "modern" | "classic";
   viewport?: { width: number; height: number };
   hinweisQuittieren?: boolean;
+  /**
+   * Vorgabe `true`: ohne lesbares Mockup bricht die Strecke ab, denn wer Sollwerte daraus liest,
+   * darf ohne sie nichts Grünes melden. Nur ein Aufrufer, der KEINEN Wert aus dem Mockup liest
+   * (das Funktionsinventar misst Bedienwege in der gebauten App), darf `false` setzen. Er hängt dann
+   * nicht an einer Datei, die er gar nicht braucht und die dem Linux-Prüfstand nicht vorliegt
+   * (FE-002, Nacharbeit 2/3; vgl. tests/tor-inventar/tor-bestand-vollstaendig.test.ts:318-320).
+   */
+  zielbildPflicht?: boolean;
 }): Promise<Strecke> {
-  if (!existsSync(ZIELBILD)) {
+  if (opts.zielbildPflicht !== false && !existsSync(ZIELBILD)) {
     throw new Error(`Zielbild nicht lesbar: ${ZIELBILD}`);
   }
   if (!existsSync(join(DIST, "index.html"))) {

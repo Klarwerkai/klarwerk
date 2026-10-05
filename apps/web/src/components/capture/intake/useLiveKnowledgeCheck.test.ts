@@ -26,8 +26,34 @@ describe("mapKnowledgeCheck", () => {
     expect(v.status).not.toBe("new");
   });
 
-  it("done + nichts gefunden → 'new' (ehrlich geprüft, nichts existiert)", () => {
-    expect(mapKnowledgeCheck(empty({ status: "done" })).status).toBe("new");
+  // AUFNAHME 20260922 · VORSCHAU-REICHWEITE — ANGEPASST, WEIL DIE ANFORDERUNG ES VERLANGT.
+  // Hier stand „done + nichts gefunden → 'new' (ehrlich geprüft, nichts existiert)". Der Server prüft
+  // höchstens eine begrenzte Vorauswahl; „nichts existiert" ist damit nicht belegt (Kriterium 1).
+  // Die Abbildung liefert jetzt die leere Vorschau MIT dem Umfang, den die Antwort trägt.
+  it("done + nichts gefunden → 'empty' mit dem gemeldeten Umfang, nie 'new'", () => {
+    const umfang = { kind: "candidates", checked: 40, limit: 40, limitReached: true } as const;
+    expect(mapKnowledgeCheck(empty({ status: "done", coverage: umfang }))).toEqual({
+      status: "empty",
+      coverage: umfang,
+    });
+  });
+
+  it("done ohne Umfangsangabe → 'empty' mit ausdrücklich unbekanntem Umfang", () => {
+    expect(mapKnowledgeCheck(empty({ status: "done" }))).toEqual({
+      status: "empty",
+      coverage: { kind: "unknown" },
+    });
+  });
+
+  it("eine unvollständige Umfangsangabe wird nicht ergänzt, sondern gilt als unbekannt", () => {
+    const kaputt = {
+      kind: "candidates",
+      checked: 40,
+    } as unknown as KnowledgeCheckResult["coverage"];
+    expect(mapKnowledgeCheck(empty({ status: "done", coverage: kaputt }))).toEqual({
+      status: "empty",
+      coverage: { kind: "unknown" },
+    });
   });
 
   it("conflicts haben Vorrang (auch bei pending)", () => {

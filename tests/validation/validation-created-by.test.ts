@@ -5,9 +5,10 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { woerterbuchQuelleAus } from "../support/woerterbuchquelle";
 
 const src = readFileSync(resolve(process.cwd(), "apps/web/src/pages/Validation.tsx"), "utf8");
-const i18n = readFileSync(resolve(process.cwd(), "apps/web/src/i18n.ts"), "utf8");
+const i18n = woerterbuchQuelleAus(resolve(process.cwd(), "apps/web/src/i18n.ts"));
 
 describe("WP-BILD-1f: Ersteller auf den Validierungs-Karten", () => {
   it("die Karte zeigt den Ersteller aus dem KO-Vertrag (author → Verzeichnis-Name) neben dem Datum", () => {

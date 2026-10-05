@@ -1,0 +1,158 @@
+#!/usr/bin/env bash
+# ==================================================================================================
+# tools/fe003-vorschau — die Vorschau für die menschliche FE-003-Probe (Tutorial „Fragen“).
+# ==================================================================================================
+#
+# Startet GENAU den ausgecheckten Kandidaten als lokale Vorschau und belegt die Zuordnung. Jede
+# Zusage wird GEPRÜFT, auch wenn schon eine Instanz läuft (`start` auf eine laufende Instanz und
+# `status` prüfen dasselbe wie ein frischer Start); jede verletzte Zusage endet mit Exit ≠ 0:
+#   · Arbeitsbaum sauber (auch keine unversionierten Dateien) — sonst liefe etwas anderes als der
+#     genannte Commit;
+#   · `/health` antwortet, ist gültiges JSON und meldet genau `git rev-parse HEAD` und die Version
+#     aus `package.json` — eine Instanz eines anderen Stands wird abgelehnt, nicht wiederverwendet;
+#   · `/fragen` liefert die Oberfläche aus;
+#   · KI aus: der Server startet mit LEERER Umgebung plus einer kurzen Liste harmloser Variablen
+#     (`env -i`) — Zugangsdaten eines Cloud-Anbieters aus der Aufrufer-Shell erreichen ihn nicht;
+#     der Schlüsselbund bleibt zu, kein lokales Modell, kein externer Suchdienst. Geprüft wird das
+#     über `/api/reasoner/status`: `active` muss `false` und `reachable` `none` sein.
+# Keine globale KI-Konfiguration wird verändert; die Vorschau läuft In-Memory ohne Datenbank.
+#
+# Aufruf:  tools/fe003-vorschau [start|status|stop]   (Port: KLARWERK_VORSCHAU_PORT, Vorgabe 3123)
+# Danach:  http://127.0.0.1:<port>/ öffnen, beim ersten Aufruf Ersteinrichtung (erstes Konto wird
+#          Admin), dann /fragen. Schritte: docs/qm/FE-003-TUTORIAL-FRAGEN-PRUEFPAKET.md.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+PORT="${KLARWERK_VORSCHAU_PORT:-3123}"
+URL="http://127.0.0.1:${PORT}"
+RUN_DIR=".local/run"
+LOG_DIR=".local/logs"
+PID_FILE="${RUN_DIR}/fe003-vorschau-${PORT}.pid"
+LOG_FILE="${LOG_DIR}/fe003-vorschau-${PORT}.log"
+
+fehler() {
+  echo "FE-003-Vorschau ABGELEHNT: $*" >&2
+  exit 1
+}
+
+laeuft() {
+  [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null
+}
+
+arbeitsbaum_sauber() {
+  [ -z "$(git status --porcelain)" ] ||
+    fehler "der Arbeitsbaum hat nicht festgehaltene Änderungen — die Vorschau wäre keinem Commit zuzuordnen."
+}
+
+# Liest ein Feld aus einer JSON-Antwort. Scheitert der Abruf, ist die Antwort kein JSON oder fehlt
+# das Feld, endet das mit Exit ≠ 0 — nie mit einem leeren Wert.
+json_feld() {
+  local pfad="$1" feld="$2" roh
+  roh="$(curl -fsS -m 3 "${URL}${pfad}")" || return 1
+  printf '%s' "$roh" | node -e '
+    let s = "";
+    process.stdin.on("data", (d) => { s += d; });
+    process.stdin.on("end", () => {
+      let h;
+      try { h = JSON.parse(s); } catch { process.exit(1); }
+      const v = h?.[process.argv[1]];
+      if (v === undefined || v === null || v === "") process.exit(1);
+      process.stdout.write(String(v));
+    });
+  ' "$feld"
+}
+
+# Die Zusagen an einer LAUFENDEN Instanz. Gemeinsam für `status` und für `start` (frisch wie
+# wiederverwendet).
+zusagen_pruefen() {
+  local commit version gemeldet_commit gemeldet_version aktiv erreichbar
+  commit="$(git rev-parse HEAD)"
+  version="$(node -p 'require("./package.json").version')"
+  gemeldet_commit="$(json_feld /health commit)" ||
+    fehler "${URL}/health antwortet nicht mit gültigem JSON samt \`commit\`."
+  gemeldet_version="$(json_feld /health version)" ||
+    fehler "${URL}/health antwortet nicht mit gültigem JSON samt \`version\`."
+  if [ "$gemeldet_commit" != "$commit" ] || [ "$gemeldet_version" != "$version" ]; then
+    fehler "die laufende Instanz meldet commit=${gemeldet_commit} version=${gemeldet_version}, ausgecheckt ist ${commit} / ${version}. Erst \`tools/fe003-vorschau stop\`, dann neu starten."
+  fi
+  aktiv="$(json_feld /api/reasoner/status active)" ||
+    fehler "${URL}/api/reasoner/status antwortet nicht mit gültigem JSON samt \`active\`."
+  erreichbar="$(json_feld /api/reasoner/status reachable)" ||
+    fehler "${URL}/api/reasoner/status antwortet nicht mit gültigem JSON samt \`reachable\`."
+  if [ "$aktiv" != "false" ] || [ "$erreichbar" != "none" ]; then
+    fehler "die Vorschau hat ein Modell (active=${aktiv}, reachable=${erreichbar}) — zugesagt ist KI aus."
+  fi
+  curl -fsS -m 3 "${URL}/fragen" | grep -q '<div id="root"' ||
+    fehler "${URL}/fragen liefert die Oberfläche nicht aus."
+  echo "FE-003-Vorschau: ${URL}/fragen"
+  echo "  /health commit:  ${gemeldet_commit} (= git rev-parse HEAD)"
+  echo "  /health version: ${gemeldet_version} (= package.json)"
+  echo "  KI: active=${aktiv}, reachable=${erreichbar}"
+  echo "  PID $(cat "$PID_FILE"), Protokoll ${LOG_FILE}"
+}
+
+status() {
+  laeuft || fehler "keine laufende Vorschau auf Port ${PORT}."
+  arbeitsbaum_sauber
+  zusagen_pruefen
+}
+
+stop() {
+  if laeuft; then
+    local pid
+    pid="$(cat "$PID_FILE")"
+    pkill -TERM -P "$pid" 2>/dev/null || true
+    kill -TERM "$pid" 2>/dev/null || true
+    echo "FE-003-Vorschau beendet (Port ${PORT})."
+  fi
+  rm -f "$PID_FILE"
+}
+
+start() {
+  arbeitsbaum_sauber
+  if laeuft; then
+    zusagen_pruefen
+    return 0
+  fi
+  local commit
+  commit="$(git rev-parse HEAD)"
+  mkdir -p "$RUN_DIR" "$LOG_DIR"
+  echo "Baue die Oberfläche aus ${commit} …"
+  (cd apps/web && npx vite build >/dev/null)
+  echo "Starte die Vorschau auf Port ${PORT} (In-Memory, ohne Modell, ohne externes Netz) …"
+  env -i \
+    PATH="$PATH" \
+    HOME="$HOME" \
+    TMPDIR="${TMPDIR:-/tmp}" \
+    LANG="${LANG:-C.UTF-8}" \
+    PORT="$PORT" \
+    KLARWERK_BUILD_COMMIT="$commit" \
+    KLARWERK_SKIP_KEYCHAIN=1 \
+    KLARWERK_LOCAL_LLM_URL="" \
+    KLARWERK_LOCAL_LLM_MODEL="" \
+    EXTERNAL_SEARCH=off \
+    nohup node_modules/.bin/tsx services/app/src/server.ts >"$LOG_FILE" 2>&1 &
+  echo $! >"$PID_FILE"
+  local i
+  for i in $(seq 1 60); do
+    if curl -fsS -m 2 "${URL}/health" >/dev/null 2>&1; then
+      break
+    fi
+    laeuft || fehler "der Server ist beim Start beendet worden — siehe ${LOG_FILE}."
+    sleep 1
+  done
+  if ! (zusagen_pruefen); then
+    stop
+    exit 1
+  fi
+}
+
+case "${1:-start}" in
+  start) start ;;
+  status) status ;;
+  stop) stop ;;
+  *)
+    echo "Aufruf: tools/fe003-vorschau [start|status|stop]" >&2
+    exit 2
+    ;;
+esac

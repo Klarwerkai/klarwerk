@@ -568,7 +568,17 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
     protection: "ko.read",
     zeilenrecht: ["sichtbarkeitsfilterFuer"],
   },
+  // R-1639 / R-2183 (Nacharbeit 3): Bereichsblick (Grundmenge getrimmt) und Pflege seiner Eingänge.
+  "GET /api/management/risk-horizon": {
+    protection: "ko.read",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
+  "GET /api/management/profiles": { protection: "users.manage" },
+  "PUT /api/management/profiles/category": { protection: "users.manage" },
+  "PUT /api/management/profiles/retirement/:userId": { protection: "users.manage" },
   "GET /api/model-runs": { protection: "ko.read" },
+  // Aufnahme gesamt-ki-laufprotokoll: Zeitraum-Auswertung (nur Summen) — dieselbe Lesestufe.
+  "GET /api/model-runs/auswertung": { protection: "ko.read" },
   "GET /api/external/search": { protection: "ko.read" },
   // Der Feed wird über den lokalen Helfer `loadFeed` gebaut; dessen RUMPF ruft beide Prädikate
   // (notifications-routes.ts:116) — nachgeprüft, nicht dem Helfernamen geglaubt.
@@ -646,6 +656,12 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // gibt, sonst rendert die Oberfläche für sie tote Knöpfe).
   "GET /api/features": { protection: "auth" },
 
+  // --- Supportweg dieser Installation (support-routes.ts, R-1064) ---
+  // Rein lesend: der vom Betreiber festgelegte, serverseitig geprüfte Kontakt für die Hilfeseite.
+  // Angemeldete Nutzung genügt (requireUser) — dieselbe Tür wie /api/features; die Hilfe steht
+  // jeder Rolle offen, ein Adminrecht würde den Supportweg genau vor Betrachterinnen verstecken.
+  "GET /api/support": { protection: "auth" },
+
   // --- Erscheinungsbild der Instanz (branding-routes.ts, JOB 3510) ---
   // Die Markenwahl ist Darstellungslage, kein Bestand: ein Profilname, zwei Logofarben, ein
   // Logopfad und eine Änderungszahl. Sie ist BEWUSST weiter offen als `/api/features` darüber, und
@@ -669,6 +685,9 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // den Zustand „ausgeschaltet" melden können, und hinter dem Schalter gäbe es nur einen 404,
   // ununterscheidbar von „kaputt".
   "GET /api/import/confluence/zugang": { protection: "users.manage" },
+  // R-0134 / R-1005: der Betreiberschalter — nimmt genau ein Ja/Nein entgegen (keine Zugangsdaten),
+  // dasselbe Recht wie jede Confluence-Importroute. Liegt wie die Auskunft VOR dem Schalter.
+  "PUT /api/import/confluence/schalter": { protection: "users.manage" },
   // JOB 4086: dieselbe Auskunft für SharePoint/OneDrive, dieselbe Tür und derselbe Grund, warum
   // sie VOR ihrem Schalter steht — sie muss „ausgeschaltet" melden können.
   "GET /api/import/sharepoint/zugang": { protection: "users.manage" },
@@ -678,6 +697,9 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // `apply` stellt die gewählten Dateien in die Review-Queue — nie ein Wissensobjekt.
   "POST /api/admin/import/sharepoint/files": { protection: "users.manage" },
   "POST /api/admin/import/sharepoint/apply": { protection: "users.manage" },
+  // R-0145/R-0190: die dritte Tür — einen ganzen Ordner in Losen übernehmen, ein Los je Aufruf.
+  // Derselbe Übernahmeweg wie `apply`, also dieselbe Schranke.
+  "POST /api/admin/import/sharepoint/folder-apply": { protection: "users.manage" },
 
   // --- Admin (admin-routes.ts) ---
   // AUFTRAG-mega14 Block H (SCRUM-437): LESENDER Demodaten-Stand für die Bereitschafts-Zeile.
@@ -761,6 +783,12 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   },
   "POST /api/gesamtanweisungen/:id/entscheiden": {
     protection: "ko.validate",
+    zeilenrecht: ["darfSehen"],
+  },
+  // QUELLENÄNDERUNGEN (aufnahme:20260928): bewusste Übernahme einer neueren Fassung. Dieselbe Lage
+  // wie die Aufnahme — darfSehen am Bestand UND an der neu gebundenen Fassung.
+  "POST /api/gesamtanweisungen/:id/bausteine/:bausteinId/uebernehmen": {
+    protection: "ko.create",
     zeilenrecht: ["darfSehen"],
   },
 };

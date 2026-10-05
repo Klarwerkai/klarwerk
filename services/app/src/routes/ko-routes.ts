@@ -66,7 +66,8 @@ import { type SemanticPrefilter, indexKoForDuplicatePrefilter } from "../duplica
 import { type Guards, type SessionUser, sendError } from "../http";
 import { type LesevariantenRepo, mitAenderungsauskunft } from "../lesevarianten";
 import type { AssignmentNotifier } from "../notify";
-import { darfSehen, sichtbareFuer, sqlSichtbarkeitFuer } from "../sichtbarkeit";
+import { darfSehen, sichtbareFuer, sichtbarePaare, sqlSichtbarkeitFuer } from "../sichtbarkeit";
+import { dublettenTor } from "./validation-routes";
 
 // Knowledge-Object-API (§2.3). Mutationen laufen über EINEN Endpunkt
 // PUT /api/kos/:id, der per {action} an das passende Modul verzweigt — die
@@ -350,6 +351,19 @@ function sendMissingConfidentiality(reply: FastifyReply): void {
   });
 }
 
+// R-0180/R-2108: die Herkunft `import` kennzeichnet ein Objekt, das ein Mensch aus der
+// Import-Prüfwarteschlange übernommen hat (`LibraryService.acceptToKo`). Auf den öffentlichen
+// Schreibwegen (`POST /api/kos`, frischer Zweig des Dokumentwegs) wird sie verworfen wie
+// `sources` und `importCandidateId` — sonst könnte jeder mit `ko.create` ein Objekt als importiert
+// ausgeben. Die übrigen Herkunftswerte bleiben unverändert erhalten.
+export function ohneImportHerkunft<T extends { origin?: unknown }>(rumpf: T): T {
+  if (rumpf.origin !== "import") {
+    return rumpf;
+  }
+  const { origin: _verworfen, ...ohne } = rumpf;
+  return ohne as unknown as T;
+}
+
 interface KoQuery {
   type?: KnowledgeType;
   status?: KoStatus;
@@ -482,6 +496,12 @@ export const KO_AKTIONEN_MIT_TORURTEIL: Readonly<Record<string, Torurteil>> = ZI
 interface PutBody {
   action: string;
   verdict?: Verdict;
+  /**
+   * R-0247 — die ausdrückliche Bestätigung „offene Dublette gesehen" an `rate` (`up`) und
+   * `admin-validate`. `unknown`, weil sie aus dem Netz kommt: gilt nur, wenn sie genau `true` ist
+   * (`dublettenTor` in validation-routes.ts).
+   */
+  duplicateAcknowledged?: unknown;
   userIds?: string[];
   changes?: ReviseKoInput;
   /**
@@ -660,12 +680,14 @@ function erwarteteKoVersion(roh: unknown): number | undefined | "unlesbar" {
  */
 const ANZEIGESTATUS_UNGEPRUEFT_GRUND = {
   /**
-   * JOB 3002 baut den Konfliktweg gerade um (`services/conflicts/**`, `conflicts-routes.ts`), und
-   * `ConflictService` bietet ohnehin keine Abfrage je Objekt, sondern nur `unresolved()` ueber den
-   * ganzen Bestand.
+   * PRÜFSTATUS-ANZEIGE (R-0212): BEIDE LESEROUTEN ERHEBEN DEN KONFLIKT JETZT — bis hierher stand
+   * hier die Enthaltung („der Konfliktweg wird umgebaut, JOB 3002"), und der Widerspruch hielt nur
+   * in der Oberflaeche, nicht ueber die Schnittstelle. Erhoben wird ueber `conflicts.unresolved()`
+   * (eine Abfrage je Antwort) und dieselbe Paarregel wie `GET /api/conflicts` (`sichtbarePaare`).
+   * Diese Zeile steht deshalb nur noch da, wenn GENAU DIESE Abfrage fehlgeschlagen ist.
    */
   konflikt:
-    "Der Konfliktweg wird derzeit umgebaut (JOB 3002); dieser Lesepfad fragt ihn nicht ab. Ob dieses Objekt in einem Konflikt steht, ist hier nicht erhoben.",
+    "Ob dieses Objekt in einem offenen Konflikt steht, ist hier nicht erhoben: die Abfrage der offenen Konflikte ist fehlgeschlagen.",
   /**
    * JOB 3054: DIESER GRUND IST SEITHER EIN FEHLERGRUND, KEIN NORMALFALL.
    *
@@ -821,6 +843,10 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
     await guards.requireUser(request, reply);
   };
 
+  // R-0247: das Dublettentor der zwei Freigabewege — derselbe Sichtbarkeitszugang wie an
+  // `/api/duplicates` (build-app.ts, `koSichtbarkeit`).
+  const dublettenTorDeps = { overlaps, audit, kos: { get: (koId: string) => ko.get(koId) } };
+
   async function sichtbaresKoOder404(user: SessionUser, id: string, reply: FastifyReply) {
     const item = await ko.get(id);
     if (!item || !darfSehen(user, item)) {
@@ -864,8 +890,10 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
   // DER LESEPFAD BRAUCHT VOM LEBENSZYKLUS GENAU EINE FRAGE, und er nimmt sie in der Form entgegen,
   // in der er sie stellen darf. `RevalidierungMerkerLeser` traegt nur `revalidierungAnstehtFuer`;
   // `pendingRevalidation()` — der selbstheilende, SCHREIBENDE Arbeitsbereichsweg (SCRUM-420) — ist
-  // von hier aus nicht erreichbar. Die Zusage „ein Lesepfad schreibt nicht" haelt damit der
-  // Compiler und nicht eine Sichtpruefung; gemessen wird sie zusaetzlich in R-4.
+  // UEBER DIESEN ALIAS nicht erreichbar. Das ist eine Begrenzung, keine Garantie des Compilers: das
+  // volle `lifecycle` bleibt in diesem Closure fuer die Mutationsrouten erreichbar. Die Zusage „ein
+  // Lesepfad schreibt nicht" belegt deshalb der Laufzeitfall R-4
+  // (`tests/anzeigestatus-revalidierung/revalidierung-wird-erhoben.test.ts`).
   const merkerLeser: RevalidierungMerkerLeser = lifecycle;
 
   /**
@@ -897,13 +925,51 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
    * waren — eine Antwort, die weniger weiss, als der Server nachgesehen hat. Gepinnt in R-6a/R-6b.
    */
   async function anzeigestatusEingaengeFuer(
+    user: SessionUser,
     item: KnowledgeObject,
   ): Promise<AnzeigestatusEingaenge> {
-    const [ausPruefstand, revalidierungFuer] = await Promise.all([
+    const [ausPruefstand, revalidierungFuer, konfliktFuer] = await Promise.all([
       pruefstandEingaengeFuer(item),
       revalidierungJeEintrag([item.id]),
+      konfliktJeEintrag(user, [item.id]),
     ]);
-    return { ...ausPruefstand, revalidierung: revalidierungFuer(item.id) };
+    return {
+      ...ausPruefstand,
+      revalidierung: revalidierungFuer(item.id),
+      konflikt: konfliktFuer(item.id),
+    };
+  }
+
+  /**
+   * PRÜFSTATUS-ANZEIGE (R-0212) · DER VIERTE EINGANG: STEHT DAS OBJEKT IN EINEM OFFENEN KONFLIKT?
+   *
+   * EINE Abfrage fuer die ganze Menge (`unresolved()`), dann dieselbe Paarregel wie die
+   * Konfliktliste: ein Konflikt zaehlt nur, wenn der Leser BEIDE Seiten sehen darf. Sonst waere
+   * schon „Konflikt" am eigenen Objekt eine Auskunft ueber ein Objekt, das er nicht sehen darf.
+   * Gefragt wird gegen den Bestand und nicht gegen die gelieferte Teilmenge — ein Listenfilter
+   * aendert die Konfliktlage eines Objekts nicht.
+   *
+   * FAIL-CLOSED, ABER NICHT STILL: scheitert die Abfrage, wird daraus kein `false`, sondern der
+   * benannte Grund. Ein `false` heisst „nachgesehen, kein sichtbarer offener Konflikt".
+   */
+  async function konfliktJeEintrag(
+    user: SessionUser,
+    koIds: readonly string[],
+  ): Promise<(koId: string) => Erhoben<boolean>> {
+    try {
+      const ids = new Set(koIds);
+      const relevant = (await conflicts.unresolved()).filter(
+        (c) => ids.has(c.koA) || ids.has(c.koB),
+      );
+      const betroffen = new Set<string>();
+      for (const c of await sichtbarePaare(user, relevant, ko)) {
+        betroffen.add(c.koA);
+        betroffen.add(c.koB);
+      }
+      return (koId) => ({ wert: betroffen.has(koId) });
+    } catch {
+      return () => ({ ungeprueft: ANZEIGESTATUS_UNGEPRUEFT_GRUND.konflikt });
+    }
   }
 
   /** Die zwei Eingaenge aus der Pruefstandslage — fail-closed mit ihrem eigenen Grund (Fall J). */
@@ -939,13 +1005,13 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
   // auch im Deckel- und im Fehlerfall, und kein Aufrufer muss aus einem fehlenden Karteneintrag
   // etwas schliessen. Was nicht erhoben wurde, sagt es mit Grund.
   async function anzeigestatusEingaengeJeEintrag(
+    user: SessionUser,
     sichtbare: readonly KnowledgeObject[],
   ): Promise<(item: KnowledgeObject) => AnzeigestatusEingaenge> {
     if (sichtbare.length > ANZEIGESTATUS_LISTE_DECKEL) {
       const deckel = anzeigestatusDeckelGrund(sichtbare.length);
-      // Alle vier Eingaenge tragen den Deckel. Bei `konflikt` steht er NEBEN dem bestehenden Grund,
-      // nicht an seiner Stelle: dieser Eingang wird auch unterhalb des Deckels nicht erhoben, und
-      // ein alleiniger Deckelgrund liesse das Gegenteil vermuten.
+      // Alle vier Eingaenge tragen den Deckel — seit R-0212 auch `konflikt` ALLEIN: unterhalb des
+      // Deckels wird er erhoben, der Deckel ist der einzige Grund, aus dem er hier fehlt.
       //
       // JOB 3054: `revalidierung` traegt seither den Deckelgrund ALLEIN — wie `zuweisungen` und
       // `bewertungen`. Unterhalb des Deckels wird er erhoben; der Deckel ist der einzige Grund,
@@ -953,18 +1019,26 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
       const ueberDeckel: AnzeigestatusEingaenge = {
         zuweisungen: { ungeprueft: deckel },
         bewertungen: { ungeprueft: deckel },
-        konflikt: { ungeprueft: `${ANZEIGESTATUS_UNGEPRUEFT_GRUND.konflikt} ${deckel}` },
+        konflikt: { ungeprueft: deckel },
         revalidierung: { ungeprueft: deckel },
       };
       return () => ueberDeckel;
     }
     // JOB 3054: zwei Erhebungen, nebenlaeufig und einzeln fallend — dieselbe Trennung wie am
     // Detailpfad. Die Merkerabfrage kommt fuer die GANZE sichtbare Menge, nicht je Eintrag (R-5).
-    const [ausPruefstand, revalidierungFuer] = await Promise.all([
+    const [ausPruefstand, revalidierungFuer, konfliktFuer] = await Promise.all([
       pruefstaendeJeEintrag(sichtbare),
       revalidierungJeEintrag(sichtbare.map((item) => item.id)),
+      konfliktJeEintrag(
+        user,
+        sichtbare.map((item) => item.id),
+      ),
     ]);
-    return (item) => ({ ...ausPruefstand(item), revalidierung: revalidierungFuer(item.id) });
+    return (item) => ({
+      ...ausPruefstand(item),
+      revalidierung: revalidierungFuer(item.id),
+      konflikt: konfliktFuer(item.id),
+    });
   }
 
   /** Die zwei Eingaenge aus der Pruefstandslage, fuer die ganze Menge in zwei Abfragen (L3). */
@@ -1099,7 +1173,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
       // wird ausschliesslich die sichtbare Menge, und nur ihre Kennungen gehen an die
       // Pruefstandsabfrage. Ein Prueflauf ueber ein unsichtbares Objekt waere eine Existenzauskunft
       // ueber den Umweg der Kosten (gepinnt in L6).
-      const eingaengeFuer = await anzeigestatusEingaengeJeEintrag(sichtbare);
+      const eingaengeFuer = await anzeigestatusEingaengeJeEintrag(user, sichtbare);
       reply.code(200).send(
         sichtbare.map((item) => ({
           ...item,
@@ -1188,7 +1262,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
       reply.code(200).send({
         ...item,
         ...discloseConfidentiality(item.confidentiality),
-        ...discloseDisplayStatus(item, await anzeigestatusEingaengeFuer(item)),
+        ...discloseDisplayStatus(item, await anzeigestatusEingaengeFuer(user, item)),
         ...(einordnung
           ? {
               category: einordnung.category,
@@ -1293,11 +1367,25 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
           // gewesen — und wer ein Objekt anlegt, könnte damit die Nacharbeit eines fremden
           // Menschen erklären. Serverwerte werden hier nicht aus ungeprüftem Clientspread geerbt;
           // der autorisierte Weg ist die Aktion `ownership` (Recht `ko.validate`) weiter unten.
+          // R-0139 / FR-EXT-02: `origin` und `importedVia` ebenfalls verwerfen. Beide sind
+          // HERKUNFTSAUSSAGEN — `origin` prüft allein der Entwurfsweg (`normalizeOriginIn`,
+          // services/capture), `importedVia` setzen allein die Importwege. `KoService.create` prüft
+          // keines von beiden nach; über diesen Spread hätte jeder mit `ko.create` ein Objekt als
+          // „aus Word" oder „importiert" ausgeben können. Kein Client dieser Route sendet sie
+          // (Capture.tsx `createPayload`).
+          // R-0180/R-2108: die Herkunft `import` ebenfalls verwerfen — sie gehört allein der
+          // menschlichen Annahme eines Importkandidaten (s. `ohneImportHerkunft`). Die Destrukturierung
+          // darunter verwirft `origin` VOLLSTÄNDIG — damit auch jedes `import`; `ohneImportHerkunft`
+          // auf einem Rumpf ohne `origin` wäre wirkungslos und steht deshalb hier nicht.
           const {
             reviewerIds,
             sources: _ignoredSources,
             importCandidateId: _ignoredAnchor,
             ownership: _ignoredOwnership,
+            origin: _ignoredOrigin,
+            importedVia: _ignoredImportedVia,
+            // R-0169 (Nacharbeit 5): der Fassungsbezug der Dokumentakte entsteht nur serverseitig.
+            dokumentHerkunft: _ignoredDokumentHerkunft,
             ...input
           } = request.body;
           // ==========================================================================================
@@ -1581,9 +1669,14 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
           // Dieselbe Verwerfung wie POST /api/kos: Herkunfts-/Vertrauensanker und der Kandidaten-
           // Anker kommen NIE vom Client. Was an Quellen entsteht, entsteht unten aus den geprüften
           // Dokumenten — nicht aus diesem Feld.
+          // R-0139 / FR-EXT-02: `origin` und `importedVia` aus demselben Grund wie an POST /api/kos.
+          // R-0180/R-2108: mit `origin` fällt hier auch jedes `import` (vgl. `ohneImportHerkunft`).
           const {
             sources: _ignoredSources,
             importCandidateId: _ignoredAnchor,
+            origin: _ignoredOrigin,
+            importedVia: _ignoredImportedVia,
+            dokumentHerkunft: _ignoredDokumentHerkunft,
             ...rest
           } = body.create ?? ({} as Omit<CreateKoInput, "author">);
           input = { ...rest, author: user.id } as CreateKoInput;
@@ -2046,35 +2139,17 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
         return;
       }
       // ==========================================================================================
-      // JOB 3066 (bens Korrekturpflicht 1 zu R3) — DER NACHLAUF LÄUFT NUR NACH EINEM WEICHEN LÖSCHEN.
+      // Auftrag gesamt-dubletten-rueckzug (R-1547) — KEIN NACHLAUF MEHR IN DER ROUTE.
       // ==========================================================================================
       //
-      // `ko.delete` hat ZWEI Ausgänge (knowledge-object/src/service.ts:3919-3927): für ein
-      // Demo-Seed-Objekt kippt es intern in die harte Endlöschung `purgeKo`, sonst wandert das
-      // Objekt in den Papierkorb. Die Endlöschung räumt selbst auf, und zwar im
-      // transaktionsgebundenen Haken der Kompositionswurzel (build-app.ts, setPurgeTxCleanup).
-      // Lief der Nachlauf hier trotzdem, rief JEDER Aufräumdienst zweimal — der zweite Ruf fand
-      // zwar nichts Offenes mehr, aber „wirkungslos" ist keine Ablösung: es gab zwei Wege, auf
-      // denen eine Löschung Befunde schliesst, und nur einer von ihnen war an die Transaktion
-      // gebunden. Jetzt gibt es genau einen je Ausgang.
-      //
-      // WORAN DER AUSGANG ERKANNT WIRD: an `demoSeed` des bereits geladenen Zielobjekts — es ist
-      // der einzige Hart-Auslöser, den dieser Aufruf treffen kann (die Route übergibt weder
-      // `hard` noch `forceTrash`), und es ist unveränderlich („nur der Seed setzt das; nie über
-      // die öffentliche Route", service.ts:276). Kein zusätzlicher Lesegang, kein Ratespiel.
-      //
-      // DASS DIESE BEDINGUNG DIESELBE IST wie die im KoService, ist kein Vertrauen, sondern eine
-      // Wache: `tests/aufraeumen-atomar/nachlauf-nur-nach-weichem-loeschen.test.ts` liest den
-      // Chokepoint und wird rot, sobald sich dort der Hart-Auslöser ändert.
-      const endgeloescht = target.demoSeed === true;
+      // Hier schlossen bis JOB 3066/3071 `conflicts.onKoRemoved` und `overlaps.onKoRemoved` die
+      // Befunde NACH `ko.delete` — also nach dem schon geschriebenen weichen Löschen und ausserhalb
+      // jeder Transaktion. Beide Ausgänge von `ko.delete` räumen jetzt selbst auf, jeder in seiner
+      // Transaktion: die Endlöschung über `setPurgeTxCleanup`, der Papierkorb über
+      // `setRuecknahmeTxCleanup` (build-app.ts). Die Route löscht nur noch; einen zweiten
+      // Schliessweg daneben gibt es nicht.
       try {
         await ko.delete(request.params.id, user.id);
-        if (!endgeloescht) {
-          // Konzept 04.07. (Stufe 1): offene Konflikte dieses KO geordnet beenden (kein Geist).
-          await conflicts.onKoRemoved(request.params.id, user.id);
-          // Pedi 04.07.: dasselbe für offene Überschneidungen (kein Duplikat-Geist nach Löschen).
-          await overlaps.onKoRemoved(request.params.id, user.id);
-        }
         reply.code(204).send();
       } catch (error) {
         sendError(reply, error);
@@ -2384,6 +2459,20 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             if (!body.verdict) {
               return badRequest("verdict fehlt.");
             }
+            // R-0247: nur die Zustimmung validiert — Rückfrage und Ablehnung fragen nichts.
+            if (
+              body.verdict === "up" &&
+              !(await dublettenTor(
+                dublettenTorDeps,
+                user,
+                id,
+                body.duplicateAcknowledged,
+                "rate",
+                reply,
+              ))
+            ) {
+              return;
+            }
             reply.code(200).send(await validation.rate(id, user.id, body.verdict));
             return;
           }
@@ -2402,6 +2491,18 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
           case "admin-validate": {
             const user = await guards.requirePermission("users.manage", request, reply);
             if (!user) {
+              return;
+            }
+            if (
+              !(await dublettenTor(
+                dublettenTorDeps,
+                user,
+                id,
+                body.duplicateAcknowledged,
+                "admin-validate",
+                reply,
+              ))
+            ) {
               return;
             }
             reply.code(200).send(await validation.adminValidate(id, user.id));

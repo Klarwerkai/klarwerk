@@ -173,7 +173,16 @@ export interface KnowledgeCheckResult {
     koStatus: KoStatus | null;
     koCategory: string | null;
   }[];
+  // AUFNAHME 20260922 · VORSCHAU-REICHWEITE: der belegte Prüfumfang (Vertrag bei
+  // `KnowledgeCheckCoverage` in services/app/src/knowledge-check.ts). Hier OPTIONAL, weil eine
+  // Antwort ohne das Feld (älterer Server) vorkommen kann — sie gilt dann als „Umfang unbekannt",
+  // nie als vollständige Prüfung.
+  coverage?: KnowledgeCheckCoverage;
 }
+
+export type KnowledgeCheckCoverage =
+  | { kind: "candidates"; checked: number; limit: number; limitReached: boolean }
+  | { kind: "unknown" };
 
 export interface MediaAnalysis {
   objectId: string;
@@ -227,7 +236,11 @@ export interface KoVersionSnapshot {
 // Begründung bei `REASONER_TASKS`, :1360-1366). Der Typ bleibt ein Spiegel; die Bindung an das
 // Original leistet `tests/ki-aufgabenarten/aufgabenarten-eine-wahrheit.test.ts` (R3), der rot
 // wird, sobald eine Seite wandert — in beide Richtungen.
-export type ModelRunTask = ReasonerTask;
+//
+// Aufnahme gesamt-ki-laufprotokoll (Ben R1 B2): das Protokoll kennt seither vier Arten MEHR als die
+// KI-Zuordnung (`enrich`, `conflict`, `duplicate`, `probe`). Die Liste der Laufarten ist deshalb
+// `MODEL_RUN_TASKS` (bei `REASONER_TASKS` unten) — die acht Zuordnungsaufgaben plus diese vier.
+export type ModelRunTask = (typeof MODEL_RUN_TASKS)[number];
 export type ModelRunStatus = "success" | "error";
 
 // JOB 3074: der Tokenverbrauch eines Laufs, so wie die Modell-API ihn selbst gemeldet hat.
@@ -239,13 +252,106 @@ export type ModelRunStatus = "success" | "error";
 // deckungsgleich BLEIBEN, prüft der Compiler in `tests/ki-lauf-verbrauch/eine-wahrheit.test.ts` —
 // dieselbe Bauform, mit der JOB 3069 die Aufgabenarten gebunden hat.
 //
-// KEIN PREIS: hier stehen Token, keine Kosten. Die Preisliste je Modell ist Pedis Entscheid und eine
-// eigene Scheibe; ohne sie zeigt die Oberfläche keine Kostenzahl — sie erfindet keine.
+// KEIN PREIS HIER: hier stehen Token. Die Kosten sind ein eigener Nachweis (`ModelRunKosten` unten,
+// Aufnahme gesamt-ki-laufprotokoll) und entstehen nur aus der Preisliste des Betreibers; ohne sie
+// zeigt die Oberfläche keine Kostenzahl — sie erfindet keine.
 export interface ModelRunVerbrauch {
   eingabeToken: number;
   ausgabeToken: number;
   /** Zahl der Modellaufrufe dieses Laufs, die einen Verbrauch gemeldet haben — die Grundmenge. */
   gemeldeteAufrufe: number;
+}
+
+// Aufnahme gesamt-ki-laufprotokoll (V9, Ben R1 B3): Kosten eines Laufs aus Verbrauch × Preisliste
+// des Betreibers, mit Preisstand. Spiegel von `ModelRunKosten` in `services/model-runs/src/types.ts`.
+// FEHLT, wenn keine Preisliste oder kein Preis für das Modell hinterlegt ist — dann steht nichts da.
+export interface ModelRunKosten {
+  betrag: number;
+  waehrung: string;
+  preisstand: string;
+}
+
+// Aufnahme gesamt-ki-laufprotokoll (Ben R1 B4): Art und Anzahl des Erzeugten, nie der Inhalt.
+export type ModelRunErzeugnisArt =
+  | "vorschlag"
+  | "text"
+  | "frage"
+  | "antwort"
+  | "punkt"
+  | "beschreibung"
+  | "gruppe"
+  | "kriterien"
+  | "urteil";
+
+export interface ModelRunErzeugnis {
+  art: ModelRunErzeugnisArt;
+  anzahl: number;
+}
+
+// Ben R2 B3/B5: Versuche (je Modell eigener Verbrauch, eigener Span) und Trace eines Laufs.
+// Spiegel von `ModelRunVersuch`/`ModelRunTrace` in `services/model-runs/src/types.ts`.
+export interface ModelRunVersuch {
+  provider: string;
+  model?: string;
+  startedAt: string;
+  dauerMs: number;
+  ausgang: "erfolg" | "fehler";
+  verbrauch?: ModelRunVerbrauch;
+  aufrufe?: number;
+  spanId: string;
+}
+
+export interface ModelRunTrace {
+  traceId: string;
+  spanId: string;
+  parentSpanId?: string;
+  requestId?: string;
+}
+
+// Aufnahme gesamt-ki-laufprotokoll (V9, R-2071): Antwort von `GET /api/model-runs/auswertung`.
+export interface ModelRunAufgabenWerte {
+  laeufe: number;
+  fehler: number;
+  eingabeToken: number;
+  ausgabeToken: number;
+}
+
+export interface ModelRunKostensumme {
+  waehrung: string;
+  betrag: number;
+  laeufe: number;
+}
+
+export interface ModelRunAuswertung {
+  von: string;
+  bis: string;
+  laeufe: number;
+  erfolg: number;
+  fehler: number;
+  rueckfall: number;
+  demo: number;
+  jeAufgabe: Record<string, ModelRunAufgabenWerte>;
+  dauerSummeMs: number;
+  dauerGezaehlt: number;
+  eingabeToken: number;
+  ausgabeToken: number;
+  verbrauchGezaehlt: number;
+  kosten: ModelRunKostensumme[];
+  verbrauchOhneKosten: number;
+  gekappt: boolean;
+}
+
+export interface ModelRunPreisgrundlage {
+  hinterlegt: boolean;
+  waehrung?: string;
+  preisstand?: string;
+  modelle?: number;
+  fehler?: string;
+}
+
+export interface ModelRunAuswertungAntwort {
+  auswertung: ModelRunAuswertung;
+  preisgrundlage: ModelRunPreisgrundlage;
 }
 
 export interface ModelRunRecord {
@@ -263,6 +369,10 @@ export interface ModelRunRecord {
   // JOB 3074: FEHLT, wenn keine Modell-API in diesem Lauf einen Verbrauch genannt hat. Das Fehlen
   // ist eine Aussage und wird nie zu `0` geglättet — die Fläche schreibt dann nichts hin.
   verbrauch?: ModelRunVerbrauch;
+  kosten?: ModelRunKosten;
+  erzeugt?: ModelRunErzeugnis;
+  versuche?: ModelRunVersuch[];
+  trace?: ModelRunTrace;
 }
 
 export type EvidenceKind = "source" | "attachment";
@@ -472,11 +582,16 @@ export interface KnowledgeObject {
   // JOB 3027 R2: `null` aus demselben Grund wie bei der Stufe darüber — die Board-Route sendet
   // `origin: ko.origin ?? null` (services/validation/src/board-herkunft.ts:128). Fehlend und `null`
   // heissen hier beide „unbekannt"; nur der Board-Vertrag trennt sie von „nicht in dieser Antwort".
-  origin?: "tell" | "studio" | "expert" | "frontdoor" | "word_addin" | null;
+  // R-0180/R-2108: `import` = aus der Import-Prüfwarteschlange von einem Menschen übernommen
+  // (nur am Wissensobjekt, nie am Entwurf — services/knowledge-object/src/types.ts).
+  origin?: "tell" | "studio" | "expert" | "frontdoor" | "word_addin" | "import" | null;
   // Pedi 05.07.: read-only Board-Anreicherung — Peer-Stimmen-Zähler (grün/gelb/rot) für „X von Y grün".
   reviewVotes?: { up: number; warn: number; down: number };
   // SCRUM-507 R2: Anzahl Bewertungen aus einer FRÜHEREN Revision — veraltet, zählen nicht mehr.
   staleVotes?: number;
+  // PRÜFSTATUS-ANZEIGE (N-0054): Spiegel von `services/knowledge-object/src/types.ts` — der Verweis
+  // auf die Validierungsentscheidung. Steht er da, hat ein Mensch fachlich entschieden.
+  validationDecisionRef?: { auditSeq: number; auditHash: string };
   asset: string | null;
   createdAt: string;
   history: HistoryEntry[];
@@ -508,6 +623,13 @@ export interface KnowledgeObject {
     // gilt für einen früheren Stand von Inhalt, Quellen, Einordnung oder Vertraulichkeit — er ist
     // nicht aktuell, gleich was Status und Abdeckung sagen.
     ueberholt?: boolean;
+    // PRÜFSTATUS-ANZEIGE (R-0208) · NUR LESEFASSUNG DES PRÜFBRETTS, nie gespeichert. `laeuft`
+    // (nur bei pending): der Worker bearbeitet den Job gerade — sonst ist er bloß ausstehend.
+    // `konfliktGefunden` (nur bei done): zu DIESEM Objekt als Subjekt steht ein offener, automatisch
+    // erkannter Konflikt, dessen Gegenseite der Leser sehen darf. Fehlt das Feld, ist es nicht
+    // erhoben — es heißt dann weder „kein Konflikt" noch „läuft nicht".
+    laeuft?: boolean;
+    konfliktGefunden?: boolean;
   };
 }
 
@@ -1362,6 +1484,17 @@ export interface ImportItemInput {
   // er wird NIE aus `statement` nachgebildet (`statement` ist seit JOB 2703 der Anriss, nicht der
   // Text). Rein additiv; kein bestehender Aufrufer muss etwas mitgeben.
   bodyHtml?: string;
+  // R-0139 / R-0169 (Nacharbeit 2, bens F1): DIE QUELLANGABEN EINER EINGEREICHTEN DATEI. Der Server
+  // führt dieselben Felder am `ImportItem` (services/library-analytics/src/types.ts) und legt daraus
+  // Herkunfts-Anker und Quellrevision an; fiel das hier weg, ging die Herkunft schon im Browser
+  // verloren. Alle optional — fehlen sie, fehlt die Herkunft ehrlich.
+  provider?: string;
+  externalId?: string;
+  sourceVersion?: number;
+  url?: string;
+  // R-0169 (Nacharbeit 5): die von Klarwerk vergebene INTERNE Dokumentkennung — die nächste
+  // Fassung derselben Dokumentakte. Getrennt von `externalId` (Kennung im Quellsystem).
+  dokumentId?: string;
   // WP-IC-PAKET-1c (ROT-2): Decode-Marker des Server-Kandidaten — "decoded" heisst: Textfelder sind
   // kanonisch dekodiert, die Queue-Karte dekodiert NICHT erneut; fehlt er (Altbestand), defensiv nach.
   textCodec?: "decoded";
@@ -1677,6 +1810,78 @@ export interface MgmtScorePart {
   weight: number;
 }
 
+// R-0751 / FR-EXT-04 (Nacharbeit 1): die neun Faktoren der Quelle, wie der Server sie liefert
+// (services/management/src/types.ts). `value: null` = keine Eingangsdaten, nicht geschätzt.
+export type MgmtPriorityFactorKey =
+  | "busFactor"
+  | "criticality"
+  | "processProximity"
+  | "age"
+  | "sourceQuality"
+  | "conflictDensity"
+  | "repetition"
+  | "damagePotential"
+  | "protection";
+export type MgmtPriorityFlag = "busFactorOne" | "stale" | "highProtection";
+export interface MgmtPriority {
+  category: string;
+  score: number;
+  knownFactors: number;
+  factors: { key: MgmtPriorityFactorKey; value: number | null }[];
+  flags: MgmtPriorityFlag[];
+}
+
+// R-0751 / R-1639 / R-2183 (Nacharbeit 3): gepflegte Bereichsprofile und Ruhestandshorizonte
+// (services/management/src/profiles.ts) und der daraus abgeleitete Bereichsblick (horizon.ts).
+export type AssessmentLevel = "niedrig" | "mittel" | "hoch";
+export type RetirementHorizon = 24 | 36;
+export interface CategoryProfile {
+  category: string;
+  managerId: string | null;
+  criticality: AssessmentLevel | null;
+  processProximity: AssessmentLevel | null;
+  repetition: AssessmentLevel | null;
+  damagePotential: AssessmentLevel | null;
+  updatedAt: string;
+  updatedBy: string;
+}
+export type CategoryProfileInput = Omit<CategoryProfile, "updatedAt" | "updatedBy">;
+export interface RetirementEntry {
+  userId: string;
+  horizonMonths: RetirementHorizon;
+  dueAt: string;
+  updatedAt: string;
+  updatedBy: string;
+}
+export interface ManagementProfiles {
+  categories: CategoryProfile[];
+  retirement: RetirementEntry[];
+}
+export interface RiskHorizonBearer {
+  userId: string;
+  horizonMonths: RetirementHorizon;
+  // Nacharbeit 5: heutige Zugehörigkeit aus Frist und Bezugszeit (horizon.ts `currentHorizonOf`).
+  currentHorizon: RetirementHorizon | null;
+  dueAt: string;
+  koCount: number;
+  openKoIds: string[];
+  soleBearer: boolean;
+  openGaps: number;
+}
+export interface RiskHorizonArea {
+  category: string;
+  managerId: string | null;
+  criticality: AssessmentLevel | null;
+  singleSource: boolean;
+  koCount: number;
+  bearers: RiskHorizonBearer[];
+}
+export interface RiskHorizonView {
+  generatedAt: string;
+  seesAll: boolean;
+  areas: RiskHorizonArea[];
+}
+
 export interface ManagementSnapshot {
   generatedAt: string;
   overview: {
@@ -1703,7 +1908,7 @@ export interface ManagementSnapshot {
     net: number;
   };
   maturity: { stage: number; stageKey: string; progressPct: number };
-  priorities: { category: string; score: number; factors: { key: string; value: number }[] }[];
+  priorities: MgmtPriority[];
   recommendations: { key: string; severity: "hoch" | "mittel"; count: number }[];
   house: { category: string; koCount: number; validatedRatio: number; fragile: boolean }[];
   pilot: { days: number; created: number; validated: number }[];
@@ -2145,6 +2350,10 @@ export interface ReasonerStatus {
   // Oberfläche nichts.
   // JOB 615 D7: dieselbe geschlossene, partielle Form wie `tasks` — aus demselben Grund.
   billable?: Partial<Record<ReasonerTask, boolean>>;
+  // D5: der Administrator hat den KI-Frageweg abgeschaltet (gespeicherte Adminwahl). Getrennt von
+  // `tasks`/`reachable`, die auch bei einer Störung `false` werden — die Fläche sagt die beiden
+  // Lagen verschieden. Fehlt es (alter Server), behauptet die Oberfläche keine Abschaltung.
+  kiAbgeschaltet?: boolean;
 }
 
 // SCRUM-166: read-only Provider-/Model-Konfiguration (nur Metadaten, keine Secrets).
@@ -2176,6 +2385,18 @@ export const REASONER_TASKS = [
 
 // Abgeleitet, nicht abgeschrieben — die Union kann nicht mehr hinter der Liste zurückbleiben.
 export type ReasonerTask = (typeof REASONER_TASKS)[number];
+
+// Aufnahme gesamt-ki-laufprotokoll (Ben R1 B2): die Laufarten des Protokolls — die acht Aufgaben der
+// KI-Zuordnung plus die vier Modellwege, die über die globale Wahl laufen. Spiegel der Union
+// `ModelRunTask` in `services/model-runs/src/types.ts`; gebunden durch
+// `tests/ki-aufgabenarten/aufgabenarten-eine-wahrheit.test.ts`.
+export const MODEL_RUN_TASKS = [
+  ...REASONER_TASKS,
+  "enrich",
+  "conflict",
+  "duplicate",
+  "probe",
+] as const;
 
 // JOB 3134 (KI-WAHL): die beiden externen Anbieter sind eigene Auswahlwerte. Dieselbe Liste wie
 // `services/reasoner/src/types.ts` (`REASONER_CLOUD_ANBIETER`) — hier gehalten und nicht importiert,
@@ -2434,8 +2655,17 @@ export type FeatureFlags = Partial<Record<FeatureName, boolean>>;
 // eine AUSSAGE und kein Platzhalter: „es ist kein erfolgreicher Lauf belegt."
 export interface ImportAccessStatus {
   system: string;
-  /** Ist der Import eingeschaltet? Schalter aus ⇒ die Import-Routen existieren gar nicht. */
+  /**
+   * Ist der Import eingeschaltet? Freigegeben (Umgebung) UND vom Betreiber eingeschaltet — genau
+   * das, was die Import-Routen am Server durchsetzen.
+   */
   enabled: boolean;
+  /**
+   * R-0134 / R-1005: die zwei Teile von `enabled` (nur Confluence). `freigegeben` = Umgebung der
+   * Installation, `an` = Betreiberschalter (über `PUT /api/import/confluence/schalter` umlegbar).
+   * Fehlt, wenn der Server keinen Betreiberschalter kennt.
+   */
+  betreiber?: { freigegeben: boolean; an: boolean };
   /** Je Variable: benannt, und ob sie steht. Niemals ihr Wert. */
   credentials: { name: string; present: boolean }[];
   /** Kämen damit Zugangsdaten zustande? (Nicht: sind sie gültig — das wüsste nur ein Aufruf.) */
@@ -2570,6 +2800,47 @@ export interface BausteinLesestand {
   /** Steht DANEBEN, ersetzt nie. `null` = es gibt keine neuere Fassung. */
   aktualisierungsvorschlag: { aufVersion: number } | null;
   inhalt: BausteinInhalt;
+  /**
+   * QUELLENÄNDERUNGEN · hochgeladene Dateien der gebundenen Fassung — Momentaufnahmen.
+   * `null` und ein fehlendes Feld heissen UNBEKANNT, `[]` heisst „keine".
+   */
+  momentaufnahmen?: Momentaufnahme[] | null;
+}
+
+/** Eine hochgeladene Datei: Stand des Hochladens, ohne Verbindung zum Original. */
+export interface Momentaufnahme {
+  bezeichnung: string;
+  erfasstAm: string | null;
+}
+
+/**
+ * QUELLENÄNDERUNGEN · das Ergebnis der letzten Änderungsprüfung (Server: `PruefErgebnis`).
+ * Nur `aktuell` darf als „aktuell" gezeigt werden — `fehlgeschlagen` und `unvollstaendig` nie.
+ */
+export type PruefErgebnis =
+  | "aktuell"
+  | "aenderungen_gefunden"
+  | "fehlgeschlagen"
+  | "unvollstaendig"
+  | "keine_quellen";
+
+export interface Aenderungspruefung {
+  /** Wann nach neueren Fassungen gesehen wurde. `null` = unbekannt. */
+  pruefzeitpunkt: string | null;
+  ergebnis: PruefErgebnis;
+  gefundeneAenderungen: number;
+  fehlgeschlageneQuellen: number;
+  /** Eine automatische Überwachung ist nicht eingerichtet — der Server sagt es selbst. */
+  ueberwachung: "nicht_eingerichtet";
+}
+
+/** Ein bewusst übernommener Fassungswechsel (aus der Historie der Anleitung). */
+export interface UebernommeneAenderung {
+  bausteinId: string;
+  vonFassung: number;
+  aufFassung: number;
+  anweisungVersion: number;
+  uebernommenAm: string;
 }
 
 export interface AnweisungLesestand {
@@ -2589,6 +2860,13 @@ export interface AnweisungLesestand {
   verborgeneBausteine: number;
   /** Der Lückenvermerk vom Server — die Fläche erfindet keinen grünen Haken. */
   pruefanbindung: "nicht_angebunden";
+  /**
+   * QUELLENÄNDERUNGEN · optional, weil ältere Antworten sie nicht tragen. Fehlt sie, zeigt die Fläche
+   * GAR KEINE Prüfaussage — schon gar nicht „aktuell".
+   */
+  aenderungspruefung?: Aenderungspruefung;
+  /** `null` = Historie nicht lesbar (unbekannt), `[]` = keine Übernahme. */
+  uebernommeneAenderungen?: UebernommeneAenderung[] | null;
 }
 
 export interface VergleichsBefund {

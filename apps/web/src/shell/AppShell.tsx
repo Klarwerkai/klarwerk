@@ -18,6 +18,9 @@ import { KlaraAssistant } from "../components/KlaraAssistant";
 // nur die shell-lose Route /mobile trägt ihn weiterhin im Fluss.
 import { LegalFooter } from "../legal/LegalPages";
 import { NoticeBanner } from "../legal/NoticeBanner";
+// FE-003: das Seitentutorial — Knopf unter dem Kopfband, Bereich oben in `<main>`. Beide rendern
+// nur auf Seiten mit ausgearbeitetem Tutorial (heute allein /fragen), sonst nichts.
+import { TutorialEinstieg, TutorialFlaeche, TutorialProvider } from "../tutorial/TutorialRahmen";
 import { CommandPalette } from "./CommandPalette";
 import { Kopfband } from "./Kopfband";
 import { MobileNavDrawer } from "./MobileNavDrawer";
@@ -43,6 +46,12 @@ import { NARROW_QUERY, useMediaQuery } from "./useMediaQuery";
 // Die SEITENHILFE (SeitenhilfeProvider) umfasst Kopfband UND Inhalt: die `HelpTip`s der Seite
 // melden sich dort an, das Zahnrad-Menü liest sie. Sie liegt außerhalb der Modalgrenze, weil sie
 // keinen DOM-Anker braucht.
+//
+// FE-003 · DAS SEITENTUTORIAL (TutorialProvider) umfasst ebenfalls Kopfband-Leiste und Inhalt. Der
+// Knopf „Tutorial“ steht in einer eigenen Leiste direkt unter dem Kopfband (links, unter dem
+// Schriftzug), der aufgeklappte Bereich OBEN in `<main>` VOR dem Seiteninhalt. Beide Stellen sind
+// immer im Baum (sie geben ohne Tutorial `null` zurück) — so behält der Seiteninhalt seine Stelle
+// und wird beim Öffnen/Schliessen nie neu montiert: Frage, Antwort und Eingaben bleiben stehen.
 export function AppShell({ children }: { children: ReactNode }): JSX.Element {
   const location = useLocation();
   const narrow = useMediaQuery(NARROW_QUERY);
@@ -81,80 +90,90 @@ export function AppShell({ children }: { children: ReactNode }): JSX.Element {
   if (narrow) {
     return (
       <SeitenhilfeProvider>
-        <div className="flex h-full flex-col">
-          {/* AUFTRAG-mega3 Block C (bens Sammel-Review 3, Auflage F) → AUFTRAG-mega48 Block A: die
+        <TutorialProvider>
+          <div className="flex h-full flex-col">
+            {/* AUFTRAG-mega3 Block C (bens Sammel-Review 3, Auflage F) → AUFTRAG-mega48 Block A: die
               Grenze umfasst weiterhin AUSNAHMSLOS ALLE Nicht-Modalflächen — Kopfband, Inhalt UND die
               Geschwister Command Palette, Toasts und Klara. Sie gilt für JEDE modale Fläche (Drawer
               UND Filterblatt, über den Kontext statt über einen Prop), und sie besteht aus mehreren
               angemeldeten BEREICHEN statt aus einem Container. Das ist nötig, weil `<main>` selbst
               der Portal-Anker ist: läge der Seiteninhalt nicht in einem eigenen Bereich, müsste man
               `<main>` sperren — und das Filterblatt läge wieder im gesperrten Teilbaum. */}
-          <ModalBoundaryProvider hostRef={mainRef}>
-            <NavGuardModalBoundaryBridge />
-            <div className="flex min-h-0 flex-1 flex-col">
-              <ModalRegion>
-                <Kopfband
-                  narrow
-                  onOpenMenu={() => setDrawerOpen(true)}
-                  menuButtonRef={hamburgerRef}
-                />
-              </ModalRegion>
-              <main ref={mainRef} className="flex-1 overflow-y-auto px-4 py-5">
-                <ModalRegion>{children}</ModalRegion>
-              </main>
-              {/* AUFTRAG-mega61 Block B: der Hinweis liegt als GESCHWISTER der Inhaltsfläche, nicht
+            <ModalBoundaryProvider hostRef={mainRef}>
+              <NavGuardModalBoundaryBridge />
+              <div className="flex min-h-0 flex-1 flex-col">
+                <ModalRegion>
+                  <Kopfband
+                    narrow
+                    onOpenMenu={() => setDrawerOpen(true)}
+                    menuButtonRef={hamburgerRef}
+                  />
+                  <TutorialEinstieg />
+                </ModalRegion>
+                <main ref={mainRef} className="flex-1 overflow-y-auto px-4 py-5">
+                  <ModalRegion>
+                    <TutorialFlaeche />
+                    {children}
+                  </ModalRegion>
+                </main>
+                {/* AUFTRAG-mega61 Block B: der Hinweis liegt als GESCHWISTER der Inhaltsfläche, nicht
                   darüber. Er nimmt echten Layout-Platz und verdeckt deshalb kein Bedienelement. */}
-              <ModalRegion>
-                <NoticeBanner />
-              </ModalRegion>
-              <ModalRegion>
-                <CommandPalette />
-                <ToastViewport />
-                <KlaraAssistant />
-              </ModalRegion>
-            </div>
-            <MobileNavDrawer
-              open={drawerOpen}
-              onClose={() => setDrawerOpen(false)}
-              triggerRef={hamburgerRef}
-            />
-          </ModalBoundaryProvider>
-        </div>
+                <ModalRegion>
+                  <NoticeBanner />
+                </ModalRegion>
+                <ModalRegion>
+                  <CommandPalette />
+                  <ToastViewport />
+                  <KlaraAssistant />
+                </ModalRegion>
+              </div>
+              <MobileNavDrawer
+                open={drawerOpen}
+                onClose={() => setDrawerOpen(false)}
+                triggerRef={hamburgerRef}
+              />
+            </ModalBoundaryProvider>
+          </div>
+        </TutorialProvider>
       </SeitenhilfeProvider>
     );
   }
 
   return (
     <SeitenhilfeProvider>
-      <div className="flex h-full flex-col">
-        {/* Dieselbe Grenze auf breiten Geräten — die Bauform ist EINE, sonst entstünde beim
+      <TutorialProvider>
+        <div className="flex h-full flex-col">
+          {/* Dieselbe Grenze auf breiten Geräten — die Bauform ist EINE, sonst entstünde beim
             nächsten Overlay wieder ein zweiter, halber Weg. */}
-        <ModalBoundaryProvider hostRef={mainRef}>
-          <NavGuardModalBoundaryBridge />
-          <div className="flex min-h-0 flex-1 flex-col">
-            <ModalRegion>
-              <Kopfband />
-            </ModalRegion>
-            {/* `<main>` nimmt die volle Breite, der Inhaltskasten ebenso — die Mockup-Seiten setzen
+          <ModalBoundaryProvider hostRef={mainRef}>
+            <NavGuardModalBoundaryBridge />
+            <div className="flex min-h-0 flex-1 flex-col">
+              <ModalRegion>
+                <Kopfband />
+                <TutorialEinstieg />
+              </ModalRegion>
+              {/* `<main>` nimmt die volle Breite, der Inhaltskasten ebenso — die Mockup-Seiten setzen
                 ihre Breiten selbst (Bibliothek 380 + 720, Wissensnetz 880 + Leiste); ein Deckel von
                 1040 px nahm ihnen 60 px (Runde 8). `h-full` am Kasten, damit Seiten mit `min-h-full`
                 (Start: die Konsole füllt den ersten Bildschirm) ihre Bezugshöhe behalten. */}
-            <main ref={mainRef} className="flex-1 overflow-y-auto px-9 py-7">
+              <main ref={mainRef} className="flex-1 overflow-y-auto px-9 py-7">
+                <ModalRegion>
+                  <TutorialFlaeche />
+                  <div className="kw-inhalt h-full w-full">{children}</div>
+                </ModalRegion>
+              </main>
               <ModalRegion>
-                <div className="kw-inhalt h-full w-full">{children}</div>
+                <NoticeBanner />
               </ModalRegion>
-            </main>
+            </div>
             <ModalRegion>
-              <NoticeBanner />
+              <CommandPalette />
+              <ToastViewport />
+              <KlaraAssistant />
             </ModalRegion>
-          </div>
-          <ModalRegion>
-            <CommandPalette />
-            <ToastViewport />
-            <KlaraAssistant />
-          </ModalRegion>
-        </ModalBoundaryProvider>
-      </div>
+          </ModalBoundaryProvider>
+        </div>
+      </TutorialProvider>
     </SeitenhilfeProvider>
   );
 }

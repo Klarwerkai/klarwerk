@@ -7,9 +7,9 @@
 // Arme (damit der GIN auf `attachments` greifen kann) und für MEHRERE Kennungen auf einmal.
 //
 // Ein echtes Postgres gibt es im schnellen Tor nicht; die Mengengleichheit der SQL-Arme gegen die
-// Node-Prädikate steht in tests/ko/job2685-anhang-traeger.integration.test.ts (Docker). Dieser Test
-// hält fest, WAS gesendet wird — Text, Parameter, Index-DDL — und dass der alte Weg für die anderen
-// Aufrufer unverändert weiter existiert.
+// Node-Prädikate steht in tests/ko/job2685-anhang-traeger.integration.test.ts
+// (Datenbank über tests/ko/pg-pruefplatz.ts). Dieser Test hält fest, WAS gesendet wird — Text,
+// Parameter, Index-DDL — und dass der alte Weg für die anderen Aufrufer unverändert weiter existiert.
 import type { Pool } from "pg";
 import { describe, expect, it, vi } from "vitest";
 import { klassifiziereStufe } from "../../services/app/src/migrationsbeleg";

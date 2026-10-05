@@ -765,6 +765,10 @@ export class InMemoryKoSearchProjectionRepo implements KoSearchProjectionRepo {
     // Bestandsliste durchsetzt (`InMemoryKoRepo.listForSearch`, repo.ts) — kein zweiter Filter,
     // keine zweite Auslegung. `trifftZu` liest das volle gespeicherte Objekt (Papierkorb, Stufe,
     // Autor), nicht die Projektion.
+    //
+    // D5 (KI aus): vor JEDEM der beiden Lesevorgänge dieses Adapters, jeweils nach dem Warten davor
+    // (`KoSearchQuery.vorInhaltsabruf`).
+    query.vorInhaltsabruf?.();
     const kos = new Map((await this.kos.listForSearch({}, trim)).map((ko) => [ko.id, ko]));
     const aktiv = [...this.items.values()].filter((projection) => {
       const ko = kos.get(projection.koId);
@@ -779,6 +783,7 @@ export class InMemoryKoSearchProjectionRepo implements KoSearchProjectionRepo {
       );
     });
     // Ein Nachschlag für die ganze Kandidatenmenge statt einer je Zeile (Spiegel des SQL-JOINs).
+    query.vorInhaltsabruf?.();
     const metadaten = new Map<string, KoMetadataProjection>(
       (await this.metadata.findMany(aktiv.map((p) => p.koId))).map((m) => [m.koId, m]),
     );

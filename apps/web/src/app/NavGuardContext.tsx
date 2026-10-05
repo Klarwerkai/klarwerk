@@ -77,6 +77,16 @@ export interface DirtyGuard {
   // `WACHE_FLAECHE`; für eine Seite mit nur einer Wache (`pages/Mobile.tsx:481`) ändert sich damit
   // nichts, und ihre `setGuard`-Signatur bleibt unberührt. Begründung am Verzeichnis unten.
   reihe?: number;
+  // AUFNAHME erfassen-verwerfen (N-0061): DIE BEARBEITUNG ENDET MIT DER ENTSCHEIDUNG, NICHT MIT DEM
+  // SEITENWECHSEL. Gerufen, sobald der Mensch im Dialog „Verwerfen und wechseln" gewählt hat oder
+  // „Entwurf speichern und wechseln" gelungen ist — unmittelbar VOR dem Wechsel, bei JEDER
+  // angemeldeten Wache. Der Grund: führt das Ziel auf DIESELBE Route (Hauptnavigation „Erfassen" von
+  // `/erfassen?draft=<id>` nach `/erfassen`), bleibt die Seite eingehängt; ohne diesen Rückruf fiel
+  // nur `?draft=` weg, und der verworfene (oder gerade gesicherte) Stand stand weiter im Editor
+  // (gemessen: `tests/erfassen-verwerfen-gesamtfehler/`, Fall N1). Die Wache räumt hier NUR ihren
+  // eigenen Zustand; die Adresse gehört dem Wechsel, der gleich folgt (ein eigenes `replace` hier
+  // verschöbe beim Zurück-Weg den History-Anker des Pop-Wächters). Fehlt die Angabe, geschieht nichts.
+  abschliessen?: () => void;
 }
 
 /** Die äussere Wache einer Fläche — sie speichert zuerst. Vorgabe für Anmelder ohne Angabe. */
@@ -541,10 +551,19 @@ export function NavGuardProvider({ children }: { children: ReactNode }): JSX.Ele
   // das `saveAndGo` unten setzt und in `finally` zurücknimmt — kein zweites Flag, kein Ref daneben.
   // `runPending` selbst bleibt bewusst ungesperrt: der Erfolgsweg von `saveAndGo` läuft durch
   // dieselbe Funktion, und zwar BEVOR `finally` `saving` löscht.
+  // AUFNAHME erfassen-verwerfen (N-0061): die Entscheidung ist gefallen — jede Wache beendet ihre
+  // Bearbeitung, BEVOR gewechselt wird (Begründung an `DirtyGuard.abschliessen`).
+  const bearbeitungBeenden = (): void => {
+    for (const wache of wachenVonAussen(wachenRef.current)) {
+      wache.abschliessen?.();
+    }
+  };
+
   const discardAndGo = (): void => {
     if (saving) {
       return;
     }
+    bearbeitungBeenden();
     runPending();
   };
 
@@ -567,6 +586,7 @@ export function NavGuardProvider({ children }: { children: ReactNode }): JSX.Ele
         }
         await wache.save();
       }
+      bearbeitungBeenden();
       runPending();
     } catch (e) {
       // Speichern fehlgeschlagen: Dialog offen lassen, nicht wechseln, damit nichts verloren geht.

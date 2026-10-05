@@ -111,11 +111,16 @@ Secrets). Paul liefert Repo-Bausteine (Dockerfile, dieses Runbook) und hilft bei
 ## 4. Betrieb (Kurzform)
 
 - **Update (Ein-Klick):** `scripts/deploy/klarwerk-live-update.command` — stößt den Coolify-Deploy
-  per API an (Token im Schlüsselbund `KLARWERK-LiveUpdate`; Einrichtung im Skript-Kopf).
+  per API an (Token im Schlüsselbund `KLARWERK-LiveUpdate`; Einrichtung im Skript-Kopf). Aufruf mit
+  dem vollen erwarteten Commit (`$(git rev-parse HEAD)`); Exit 0 nur, wenn das Deployment `finished` ist
+  und Coolify-Deployment und `/health` (gesund) GENAU diesen vollen Commit nennen; Exit 1 = Ausfall,
+  Exit 2 = nicht geliefert bzw. Teilnachweis.
   Reihenfolge IMMER: Runner grün → Commit → Sync (Push) → Live-Update.
 - **Update (manuell):** Pedi pusht → in Coolify „Redeploy" (oder Auto-Deploy per Webhook aktivieren —
   bewusst NICHT eingeschaltet, damit Pedi entscheidet, wann Externe einen neuen Stand sehen).
 - **Rollback:** Coolify → vorheriges Deployment redeployen.
+- **Welcher Stand läuft:** `/health.commit` gegen den gepushten Commit vergleichen; Belege und
+  offener Nachprüfweg in `docs/operations/deploy-health-commit-abgleich.md`.
 
 > **Unbestätigt (U6) · Auto-Deploy per Webhook ist in Coolify aktivierbar.**
 > **Vorbehalt:** durch Ops/Pedi zu bestätigen — das ist eine Möglichkeit der Plattform, kein eingeschalteter Zustand.

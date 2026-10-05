@@ -31,6 +31,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { panelQuelleAus } from "../support/panelquelle";
 import { harness, read } from "./harness";
 import { type Knoten, mount, schliesseFenster } from "./panel-dom";
 
@@ -41,7 +42,9 @@ const WORKER = read("worker.js");
 const MANIFEST = JSON.parse(read("manifest.json"));
 const INDEX_CSS = readFileSync(resolve("apps/web/src/index.css"), "utf8");
 const TAILWIND = readFileSync(resolve("apps/web/tailwind.config.ts"), "utf8");
-const TASKPANE = readFileSync(resolve("apps/web/public/word-addin/taskpane.html"), "utf8");
+// R-1611: Klaras Stilregeln stehen seit dem Drei-Datei-Schnitt in `taskpane.css`; verglichen wird
+// gegen das zusammengefügte Fenster, damit keine Regel aus dem Vergleich fällt.
+const TASKPANE = panelQuelleAus(resolve("apps/web/public/word-addin/taskpane.html"));
 
 /**
  * Quelltext ohne Kommentare. Ein Verbot („kein `setOptions`") gilt dem AUFRUF, nicht der Prosa:

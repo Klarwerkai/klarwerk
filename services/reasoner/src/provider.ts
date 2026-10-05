@@ -1,3 +1,4 @@
+import { FACHKOMPOSITA, type Fachkompositum } from "./fachkomposita";
 import type {
   AnswerResult,
   AssistResult,
@@ -119,12 +120,15 @@ export interface ReasonerProvider {
   // wird ausschließlich an die Kandidatenauswahl weitergegeben; `question` bleibt unverändert die
   // Frage, und kein Provider mischt ein ergänztes Wort in Prompt, Antworttext oder Quellenliste.
   // Fehlt er, verhält sich jeder Provider Zeichen für Zeichen wie vorher.
+  // F-0295 / R-0639: `dokumenttext` — die markierte Passage, NUR nach bestandener eigener
+  // Deckungsprüfung. Sie ist Kontext der Frage, keine Quelle; der deterministische Weg ignoriert sie.
   answer(
     question: string,
     context: readonly KnowledgeRef[],
     locale?: ReasonerLocale,
     confidential?: boolean,
     relevanz?: Relevanztext,
+    dokumenttext?: string,
   ): Promise<AnswerResult>;
   // FR-RSN-03: Text sprachlich präzisieren (ohne Inhalt zu erfinden).
   // SCRUM-312: optionale, frei-/aktionsbasierte Anweisung (z. B. „klarer", „strukturieren").
@@ -1285,7 +1289,9 @@ interface Ueberschneidung {
 // weiterhin NICHT — die Frage liefert nur die zwei Terme „farb" und „firmenwag", und „farb" ist in
 // „pflichtfarb" nur ein Kompositumtreffer, der Substanzwert bleibt bei eins. Die Recall-Schuld S5 ist
 // damit nicht beglichen, sondern präziser beschrieben. Die dazu passende Lösung — eine begrenzte und
-// getestete Domänenrelation echter Fachkomposita — steht im Register und kommt nach dem Vortest.
+// getestete Domänenrelation echter Fachkomposita — ist seit R-0461 gebaut: `./fachkomposita.ts`,
+// angewandt in `trifftAlsFachkompositum` unten. Nur dort gelistete Paare tragen; alles andere bleibt
+// bei der Regel dieses Blocks.
 const MIN_KOMPOSITUM_TEIL = MIN_GRUNDFORM_LAENGE;
 const FUGEN_S = "s";
 
@@ -1314,6 +1320,59 @@ function trifftAlsKompositum(wort: string, ziel: readonly string[]): boolean {
   return false;
 }
 
+// ------------------------------------------------------------------------------------------------
+// R-0461 / R-1943 (S5b) — DIE DEKLARIERTE DOMÄNENRELATION, DER WEG NACH mega60 A.
+// ------------------------------------------------------------------------------------------------
+//
+// Die Liste steht in `./fachkomposita.ts` und ist dort ohne Programmierarbeit pflegbar. Hier wird sie
+// EINMAL in die Grundform derselben Zerlegung umgerechnet (`tokenize`), damit Beugung und
+// Großschreibung in der Liste keine Rolle spielen. Ein Eintrag wirkt nur, wenn beide Seiten genau ein
+// Token ergeben UND das Grundwort an einer belegbaren Kompositumgrenze im Kompositum steht — sonst
+// ist er kein echtes Kompositum dieses Grundworts und wird fail-closed übergangen. Die Relation hebt
+// also ausschließlich einen Treffer, den `trifftAlsKompositum` ohnehin als suchbar erkennt, auf
+// tragend; sie erfindet keinen neuen.
+//
+// Index: Frage-Grundwort → die Quell-Komposita, die es tragen. Nur diese Richtung.
+export function fachkompositaIndex(
+  liste: readonly Fachkompositum[] = FACHKOMPOSITA,
+): ReadonlyMap<string, ReadonlySet<string>> {
+  const index = new Map<string, Set<string>>();
+  for (const eintrag of liste) {
+    const [kompositum, ...restK] = tokenize(eintrag.kompositum);
+    const [grundwort, ...restG] = tokenize(eintrag.grundwort);
+    if (
+      kompositum === undefined ||
+      grundwort === undefined ||
+      restK.length > 0 ||
+      restG.length > 0 ||
+      !trifftAlsWortteil(grundwort, kompositum)
+    ) {
+      continue;
+    }
+    const vorhanden = index.get(grundwort) ?? new Set<string>();
+    vorhanden.add(kompositum);
+    index.set(grundwort, vorhanden);
+  }
+  return index;
+}
+
+// Einmal gebaut, beim ersten Gebrauch — `tokenize` hängt an Konstanten weiter oben in dieser Datei.
+let fachkompositaIndexCache: ReadonlyMap<string, ReadonlySet<string>> | undefined;
+function deklarierteKomposita(): ReadonlyMap<string, ReadonlySet<string>> {
+  fachkompositaIndexCache ??= fachkompositaIndex();
+  return fachkompositaIndexCache;
+}
+
+// Trägt das Frage-Grundwort über ein DEKLARIERTES Fachkompositum der Quelle?
+function trifftAlsFachkompositum(wort: string, ziel: ReadonlySet<string>): boolean {
+  for (const kompositum of deklarierteKomposita().get(wort) ?? []) {
+    if (ziel.has(kompositum)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function ueberschneidung(
   a: readonly string[],
   b: readonly string[],
@@ -1330,6 +1389,10 @@ function ueberschneidung(
   const exakt = new Set<string>();
   for (const word of a) {
     if (ziel.has(word)) {
+      gemeinsam.add(word);
+      exakt.add(word);
+    } else if (trifftAlsFachkompositum(word, ziel)) {
+      // R-0461: deklariertes Fachkompositum („farb" → „pflichtfarb") — suchbar UND tragend.
       gemeinsam.add(word);
       exakt.add(word);
     } else if (trifftAlsKompositum(word, b)) {
@@ -1383,6 +1446,102 @@ function ueberschneidung(
 // Funktion ohne Seiteneffekt; kein Quelleninhalt wird verändert.
 export function queryTokens(text: string): string[] {
   return tokenize(text);
+}
+
+// ================================================================================================
+// R-0473 (K8) — MEHRERE WÖRTER MÜSSEN ALLE VORKOMMEN.
+// ================================================================================================
+//
+// DER BEFUND (ben, Nacharbeit 1, F1): Die Vorauswahl vereinigt Einzelterm-Treffer, und das
+// Antworttor verlangt nur `MIN_ANSWER_SUBSTANCE` (2) gemeinsame Inhaltstoken. „Ventil F3
+// Temperatur" konnte deshalb aus einer Quelle beantwortet werden, die nur „Ventil F3" kennt.
+//
+// WELCHE FRAGEBEGRIFFE GEBUNDEN SIND — Nacharbeit 3 (ben): UNABHÄNGIG VON SCHREIBUNG UND POSITION.
+// Die Regel aus Nacharbeit 1 (nur Kennungen und großgeschriebene Wörter außerhalb des Satzanfangs)
+// liess „temperatur" in „ventil f3 temperatur" und „Temperatur Ventil F3" ungebunden; die Quelle
+// „Ventil F3" kam durch. Sie ist ersetzt. Gebunden ist jetzt JEDES Inhaltstoken der einen Zerlegung,
+// gleich wie geschrieben und wo es steht. Ausgenommen ist nur, was nachweislich keinen Sachbezug
+// trägt, und zwar ausdrücklich benannt statt pauschal:
+//   · Stoppwörter und Kurzwörter — die Zerlegung entfernt sie ohnehin;
+//   · die mehrdeutigen Funktionsformen aus mega57 („würd", „woll" …), solange sie nicht als
+//     Nominalisierung im Satz stehen — dieselbe Regel wie für die Substanz;
+//   · das FRAGEGERÜST (`FRAGEGERUEST` unten): Verben, mit denen man nach einer Sache FRAGT, ohne sie
+//     zu benennen („Wo FINDE ich …", „Was GILT für …", „Wo STEHT …"). Ohne diese Ausnahme wäre
+//     „Wo finde ich die Urlaubsregelungen im Handbuch?" gegen „Die Urlaubszeiten stehen im Handbuch."
+//     eine Wissenslücke (N2 Z1) — die Quelle sagt nicht „finden".
+//
+// WANN EIN BEGRIFF VORKOMMT: nach DEMSELBEN Treffervertrag wie die Suche selbst — die Grundform als
+// Teilzeichenkette des durchsuchbaren Texts (`effective-search-document.ts`, `lower.includes`, in
+// SQL als ILIKE). Eine DEKLARIERTE Entsprechung (Relevanztext) gilt als derselbe Begriff in anderer
+// Form: „Urlaubsregelung" kommt in einer Quelle vor, die „Urlaubszeiten" führt. Ein deklariertes
+// Fachkompositum ist über die Teilzeichenkette ohnehin erfasst („farb" in „Pflichtfarbe").
+//
+// WAS DAS NICHT ÄNDERT: Vorkommen ist nicht Tragen. Die Mindestsubstanz, die Trennung
+// suchbar/tragend und die Fachkomposita-Liste entscheiden danach unverändert über die Antwort.
+//
+// KEINE EIGENE ZERLEGUNG (Prüfbefund Nacharbeit 2, `mega54-eine-zerlegung-sammler`): Die Begriffe
+// sind eine Auswahl aus DER EINEN Zerlegung `tokenize` — dieselben Token in derselben Grundform.
+//
+// DAS FRAGEGERÜST — eine begrenzte, deklarierte Liste in Oberflächenformen; die Grundform rechnet
+// dieselbe Zerlegung aus. Jeder Eintrag ist an einem gemessenen Fall belegt; wer ergänzt, braucht
+// einen solchen Fall, keine Meinung. Ein Sachverb gehört NICHT hierher („prüfen", „wechseln",
+// „anlegen" benennen, was getan wird, und bleiben gebunden).
+const FRAGEGERUEST: readonly string[] = [
+  // „Wo finde ich die Urlaubsregelungen im Handbuch?" (N2 Z1)
+  "finde",
+  "findet",
+  "finden",
+  // „Welche Temperatur gilt für das Ventil F3?" (K8-Gegenprobe), „Welcher Schutz gilt …" (N-3)
+  "gilt",
+  "gelten",
+  // „Wo steht etwas zum Dienstwagen?" (N2 F2b)
+  "steht",
+  "stehen",
+  // „Was tun bei Überdruck am Ventil?" (reasoner-eval)
+  "tun",
+  "tut",
+  // „Was gibt es zu …?"
+  "gibt",
+  "geben",
+  // „Was sagt der Betrieb zum Ventil?" (mega59-komposita)
+  "sagt",
+  "sagen",
+];
+
+let fragegeruestCache: ReadonlySet<string> | undefined;
+function fragegeruest(): ReadonlySet<string> {
+  fragegeruestCache ??= new Set(FRAGEGERUEST.flatMap((form) => tokenize(form)));
+  return fragegeruestCache;
+}
+
+export function undVerknuepfteFragebegriffe(question: string): string[] {
+  const nominal = new Set<string>();
+  const gebunden = tokenize(question, nominal).filter(
+    (token) => !fragegeruest().has(token) && (istSubstanztragend(token) || nominal.has(token)),
+  );
+  return [...new Set(gebunden)];
+}
+
+/**
+ * Kommen ALLE gebundenen Fragebegriffe (oder ihre deklarierte Entsprechung) im durchsuchbaren Text
+ * vor? `durchsuchbar` sind dieselben Felder, die die Suche trifft — Titel, Aussage, Fußnoten,
+ * Dokumenttext, Kategorie und Tags; der Aufrufer setzt sie zusammen, weil `KnowledgeRef` Kategorie
+ * und Tags nicht führt.
+ */
+export function decktAlleFragebegriffe(
+  question: string,
+  durchsuchbar: string,
+  relevanz: Relevanztext = [],
+): boolean {
+  const text = durchsuchbar.toLowerCase();
+  return undVerknuepfteFragebegriffe(question).every(
+    (begriff) =>
+      text.includes(begriff) ||
+      relevanz.some(
+        (paar) =>
+          paar.getippt.includes(begriff) && paar.ergaenzt.some((term) => text.includes(term)),
+      ),
+  );
 }
 
 // WP-RETEST7 R5: der durchsuchbare Text eines Refs — Titel + Aussage + (falls vorhanden) die

@@ -13,6 +13,7 @@ import { confluenceImportRoutes } from "../../services/app/src/routes/confluence
 import type { ConfluenceSourceAdapter } from "../../services/confluence";
 import type { ImportItem } from "../../services/library-analytics";
 import { TOP_AUTHORS, TOP_TOPICS, summarizeImportItems } from "../../services/library-analytics";
+import { woerterbuchQuelleAus } from "../support/woerterbuchquelle";
 
 function item(overrides: Partial<ImportItem> & { title: string }): ImportItem {
   return {
@@ -186,7 +187,7 @@ describe("WP-SAMMEL20-FIX (Fix 6b): Client — ehrliche Top-N-von-X-Anzeige", ()
       "utf8",
     );
     expect(select).toContain("imp.select.aiUnavailable");
-    const i18n = readFileSync(resolve(process.cwd(), "apps/web/src/i18n.ts"), "utf8");
+    const i18n = woerterbuchQuelleAus(resolve(process.cwd(), "apps/web/src/i18n.ts"));
     for (const key of [
       "imp.explore.failedPages",
       "imp.explore.topOf",

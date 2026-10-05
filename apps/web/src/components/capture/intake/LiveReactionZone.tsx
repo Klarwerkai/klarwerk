@@ -2,6 +2,7 @@ import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import type { KoStatus } from "../../../api/types";
 import type { LiveVerdict } from "../../../lib/intakeSimilarity";
+import { umfangErklaerung } from "../../../lib/vorschauUmfang";
 import { StatusPill } from "../../trust/StatusPill";
 
 // JOB 3045: DIE FUNDORTZEILE — wo der Treffer liegt (Kategorie) und wie er dasteht (Zustand).
@@ -21,9 +22,18 @@ import { StatusPill } from "../../trust/StatusPill";
 // EIN Stück: fällt die Kategorie weg, fällt das Label mit. Der Zustand steht dann allein als
 // `StatusPill` da — die im Produkt übliche, selbsterklärende Darstellung eines Zustands.
 //
-// Der Zustand wird von der BESTEHENDEN `StatusPill` beschriftet (sie übersetzt über
-// `t("status.<wert>")`). Kein zweiter Statuswortschatz, keine eigene Ableitung — der rohe `KoStatus`
-// reist bis hierher. Die Kategorie ist ein roher Bestandswert und wird unübersetzt gezeigt.
+// Der Zustand steht in der BESTEHENDEN `StatusPill` (Farbe je Zustand); der rohe `KoStatus` reist
+// bis hierher, abgeleitet wird nichts. Die Kategorie ist ein roher Bestandswert, unübersetzt.
+//
+// P-M3b (Runde 2, BEN-3) — DAS WORT IST DAS DER TREFFERLISTE, NICHT DAS DES STATUSFELDS. Web und
+// Word-Panel zeigen denselben Prüfstand: „Validiert“ und „noch nicht geprüft“ (Pedi 05.09., M3
+// „Haben wir das schon?“; im Panel `askStatusValidiert`/`bestandNochNichtGeprueft`). Das allgemeine
+// „Offen“ der StatusPill sagte hier dasselbe mit einem anderen Wort. Geprüft gegen EINE Tabelle:
+// tests/erfassungs-konfliktpruefung/pruefstand-wortlaut.test.tsx.
+const PRUEFSTAND_KEY: Record<KoStatus, string> = {
+  offen: "intake.live.pruefstand.offen",
+  validiert: "intake.live.pruefstand.validiert",
+};
 function Fundort({
   koStatus,
   koCategory,
@@ -46,14 +56,16 @@ function Fundort({
           <span className="font-medium">{koCategory}</span>
         </>
       )}
-      {koStatus === null ? null : <StatusPill status={koStatus} />}
+      {koStatus === null ? null : (
+        <StatusPill status={koStatus} label={t(PRUEFSTAND_KEY[koStatus])} />
+      )}
     </div>
   );
 }
 
 // SCRUM-527 (WP2-Design): die „Das System denkt mit"-Zone — die Hauptattraktion, kein grauer Spinner.
 // Sie reagiert sichtbar/lebendig auf den Entwurfstext: idle (hört zu), checking (ehrlicher Lauf-Zustand
-// mit pulsierenden Punkten), new / similar / conflict. never block, only show honest status. Reine
+// mit pulsierenden Punkten), empty / similar / conflict. never block, only show honest status. Reine
 // Präsentation: der Verdict kommt vom gekapselten Hook (useLiveKnowledgeCheck) bzw. im Test gemockt.
 //
 // JOB 3556 (LIVE-CHECK-VERDRAHTUNG A) — DIESE ZONE SPRICHT NICHT MEHR ÜBER DEN PRÜFSTATUS.
@@ -63,6 +75,11 @@ function Fundort({
 // entfernt, und der TYP hält es fest: was diese Zone nicht mehr darstellen kann, kann ihr auch
 // niemand mehr übergeben. Ein unerreichbarer Zweig wäre sonst genau die Leiche, die beim nächsten
 // Umbau wieder mitgepflegt wird.
+//
+// AUFNAHME 20260922 · VORSCHAU-REICHWEITE — KEINE BESTANDWEITE NEUHEIT MEHR. Hier stand „Das ist
+// neu — dazu gibt es noch nichts. Du bist die erste Person." Belegt war das nie: der Server
+// vergleicht höchstens eine begrenzte Vorauswahl. Lauf und leeres Ergebnis heissen jetzt „Vorschau",
+// und das leere Ergebnis nennt genau den Umfang, den die Antwort trägt (`umfangErklaerung`).
 export function LiveReactionZone({
   verdict,
 }: {
@@ -79,15 +96,19 @@ export function LiveReactionZone({
           <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-ai [animation-delay:150ms]" />
           <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-ai [animation-delay:300ms]" />
         </span>
-        <span>{t("intake.live.checking")}</span>
+        <span>{t("vorschau.laeuft")}</span>
       </div>
     );
   }
 
-  if (verdict.status === "new") {
+  if (verdict.status === "empty") {
     return (
-      <div className="rounded-card border border-trust-pos-fill/30 bg-trust-pos-bg px-4 py-3 text-[13px] font-medium text-trust-pos-text">
-        {t("intake.live.new")}
+      <div
+        data-testid="live-vorschau-leer"
+        data-umfang={verdict.coverage.kind}
+        className="rounded-card border border-hairline bg-surface px-4 py-3 text-[13px] text-text"
+      >
+        {umfangErklaerung(t, verdict.coverage)}
       </div>
     );
   }

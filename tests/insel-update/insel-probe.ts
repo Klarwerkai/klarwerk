@@ -14,9 +14,9 @@
 //   FREMD  Einzelne FREMDBINARIES über einen PATH-Vorsatz (`fremdbinaerAttrappe`): `launchctl` (gibt
 //          es auf dem Linux-Prüfstand nicht, und die echten Dienste eines Macs darf ein Testlauf nie
 //          anfassen), `date` (nur so lässt sich „zwei Läufe in DERSELBEN Sekunde" erzwingen statt
-//          erhoffen), `pg_dump` (sonst bräuchte jede Sicherungsprobe eine echte Datenbank und
-//          liefe im Tor nie mit) und das dazu passende `pg_restore --list` (sonst hinge das Ergebnis
-//          daran, ob der Rechner PostgreSQL-Werkzeuge hat). Keines davon gehört zu Klarwerk; der
+//          erhoffen) und `pg_dump` (sonst bräuchte jede Sicherungsprobe eine echte Datenbank und
+//          liefe im Tor nie mit) samt dem passenden `pg_restore` (sonst entschiede die Umgebung,
+//          ob der Probe-Dump als Archiv gelesen wird). Keines davon gehört zu Klarwerk; der
 //          geprüfte Weg bleibt echt.
 //
 // DER VERTRAGSTEXT WIRD HIER AUSGESCHRIEBEN und nicht aus `schema-vertrag.mjs` geholt. Eine Probe,
@@ -287,32 +287,74 @@ if [ -z "$ZIEL" ]; then
   echo "pg_dump-Attrappe: kein --file uebergeben" >&2
   exit 1
 fi
-printf '%s' "\${KLARWERK_PROBE_DUMPINHALT:-PROBE-DUMP}" > "$ZIEL"
+printf '%s' "\${KLARWERK_PROBE_DUMPINHALT-PROBE-DUMP}" > "$ZIEL"
 `;
 
 /**
- * Die zur `pg_dump`-Attrappe passende `pg_restore`-Attrappe — nur die Leseprüfung `--list <datei>`.
+ * Die `pg_restore`-Attrappe, die zur `pg_dump`-Attrappe GEHÖRT — beide oder keine.
  *
- * WARUM ES SIE GIBT (Lauf b3-sicherung-wiederherstellung:2, Torbefund R2): `backup.sh` liest jeden
- * Dump vor der Veröffentlichung mit `pg_restore --list`, WENN `pg_restore` auf dem PATH liegt, sonst
- * mit der Ersatzprüfung. Die `pg_dump`-Attrappe schreibt Text, kein Archiv. Auf einem Rechner ohne
- * PostgreSQL-Werkzeuge lief deshalb die Ersatzprüfung und S1/S2 waren grün; auf dem Linux-Tor mit
- * echtem `pg_restore` lehnte dieses den Text zu Recht ab („input file does not appear to be a valid
- * archive"), und S1/S2 waren rot — die Vorrichtung hing an der Werkzeugausstattung des Rechners.
- * Mit dieser Attrappe misst die Vorrichtung überall denselben Weg (`pg_restore`-Zweig). Die
- * Leseprüfung von `backup.sh` bleibt unverändert: eine LEERE Datei ist auch hier unlesbar.
+ * DER BEFUND (Tor-Selbstprüfung 26.09., g4/g8): Mit nur `pg_dump` als Attrappe entschied die
+ * Umgebung, welche Leseprüfung `backup.sh` fuhr. Ohne `pg_restore` auf dem Rechner lief die
+ * Ersatzprüfung und der Test war grün; lag das echte `pg_restore` in `/usr/bin`, las es den
+ * Klartext-Dump als Archiv („input file does not appear to be a valid archive") und der Test war
+ * rot. Derselbe Commit, zwei Ergebnisse. Mit dieser Attrappe vor dem PATH fährt `backup.sh` ÜBERALL
+ * seinen `pg_restore`-Zweig — unverändert — und liest mit einem Leser, der das Probenformat kennt.
+ *
+ * KEIN PAUSCHALES EXIT 0. Sie prüft, was das echte `pg_restore --list` an dieser Stelle prüft:
+ *   - der AUFRUF ist genau `--list <datei>` (jede andere Form ist ein Fehler, Exit 2);
+ *   - die DATEI existiert, ist regulär und lesbar;
+ *   - der INHALT wird VOLLSTÄNDIG gelesen: Der Exit-Status von `cat` wird ausgewertet, bevor ein
+ *     anderer Befehl ihn überschreiben kann (`cat && printf x`, nicht `cat; printf x` — dort verdeckte
+ *     `printf` einen Abbruch, Ben an e7a1d080/ab851092), und die Zahl der gelesenen Bytes muss genau
+ *     der Dateigrösse (`wc -c`) entsprechen. Ein abgebrochenes Lesen ist ein Fehler, auch wenn das
+ *     gelesene Anfangsstück für sich gültig wäre (`pg-restore-leser.test.ts`);
+ *   - der INHALT ist genau der Probe-Dump (`KLARWERK_PROBE_DUMPINHALT`,
+ *     sonst `PROBE-DUMP` — dieselbe Regel wie beim Schreiben). Leer heisst „too short", jeder
+ *     andere Inhalt „not a valid archive" — Exit 1, wie beim echten Werkzeug.
+ * Jeder Aufruf wird in `KLARWERK_PROBE_LESEPROTOKOLL` festgehalten, damit ein Test belegen kann,
+ * DASS gelesen wurde und WELCHE Datei.
  */
 export const PG_RESTORE_ATTRAPPE = `#!/usr/bin/env bash
-if [ "\${1:-}" = "--list" ] && [ -n "\${2:-}" ]; then
-  if [ -s "$2" ] && cat "$2" >/dev/null; then
-    echo "; Archiv-Inhaltsverzeichnis (pg_restore-Attrappe)"
-    exit 0
-  fi
-  echo "pg_restore: error: input file is too short (Attrappe)" >&2
+if [ "\${1:-}" = "--version" ]; then
+  echo "pg_restore (PostgreSQL) 16.0 (Attrappe)"
+  exit 0
+fi
+if [ -n "\${KLARWERK_PROBE_LESEPROTOKOLL:-}" ]; then
+  printf '%s\\n' "$*" >> "$KLARWERK_PROBE_LESEPROTOKOLL"
+fi
+if [ $# -ne 2 ] || [ "$1" != "--list" ]; then
+  echo "pg_restore-Attrappe: unerwarteter Aufruf: $*" >&2
+  exit 2
+fi
+DATEI="$2"
+if [ ! -f "$DATEI" ] || [ ! -r "$DATEI" ]; then
+  echo "pg_restore: error: could not open input file \\"$DATEI\\"" >&2
   exit 1
 fi
-echo "pg_restore-Attrappe: nur --list <datei> ist nachgebildet, nicht: $*" >&2
-exit 1
+export LC_ALL=C
+if ! GELESEN=$(cat -- "$DATEI" && printf x); then
+  echo "pg_restore: error: could not read input file \\"$DATEI\\" (Lesefehler)" >&2
+  exit 1
+fi
+GELESEN="\${GELESEN%x}"
+if ! GROESSE=$(wc -c < "$DATEI"); then
+  echo "pg_restore: error: could not stat input file \\"$DATEI\\" (Lesefehler)" >&2
+  exit 1
+fi
+GROESSE=$((GROESSE))
+if [ "\${#GELESEN}" -ne "$GROESSE" ]; then
+  echo "pg_restore: error: could not read input file \\"$DATEI\\": read \${#GELESEN} of $GROESSE bytes (Lesefehler)" >&2
+  exit 1
+fi
+if [ -z "$GELESEN" ]; then
+  echo "pg_restore: error: input file is too short (read 0, expected 5)" >&2
+  exit 1
+fi
+if [ "$GELESEN" != "\${KLARWERK_PROBE_DUMPINHALT-PROBE-DUMP}" ]; then
+  echo "pg_restore: error: input file does not appear to be a valid archive" >&2
+  exit 1
+fi
+printf ';\\n; Archive created by pg_dump-Attrappe\\n;\\n'
 `;
 
 export interface Insel {

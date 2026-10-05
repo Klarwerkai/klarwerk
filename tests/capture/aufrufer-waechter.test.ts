@@ -1296,6 +1296,9 @@ const BEWUSST_WEB: readonly Ausnahme[] = [
     schluessel: "apps/web/src/test/render.tsx::makeSource",
     grund: "Dieselbe Bauart und derselbe Grund wie `makeKo`.",
   },
+  // HIER STAND `imageResize.ts::imageWidthPercent` UND IST GESTRICHEN — von A3 erzwungen. Die
+  // Breitenanzeige der Bildleiste (`RichTextEditor.tsx`, `bildgroesse-gezogen`) liest die Zahl
+  // seither über diesen Export statt per Zeichenkettenersetzung am Attribut.
   // HIER STAND `GesamtanweisungSeite` (JOB 4154) UND IST MIT JOB 4156 GESTRICHEN — ebenfalls
   // selbstauslaufend und ebenfalls von A3 erzwungen. Ihr Aufrufer ist jetzt
   // `apps/web/src/components/gesamtanweisung/GesamtanweisungBereich.tsx`, und der haengt ueber

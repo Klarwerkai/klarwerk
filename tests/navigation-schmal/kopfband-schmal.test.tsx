@@ -317,9 +317,10 @@ describe("JOB 3525 · B · schmal (390 px): der Weg geht über den beschrifteten
     const entwuerfe = auf?.querySelector('a[href="/entwuerfe"]');
     expect(entwuerfe, "„Meine Entwürfe“ steht nicht im Drawer").not.toBeNull();
     expect(entwuerfe?.textContent).toContain(i18n.t("mob.drafts"));
-    const geheZu = auf?.querySelector('[data-testid="zahnrad-schnellnavigation"]');
+    // FE-002: die Zeile steht im Drawer unter „Arbeitsbereiche" und heißt „Seite finden …".
+    const geheZu = auf?.querySelector('[data-testid="arbeitsbereiche-seite-finden"]');
     expect(geheZu, "„Gehe zu …“ steht nicht im Drawer").not.toBeNull();
-    expect(geheZu?.textContent).toContain(i18n.t("menue.schnellnavigation"));
+    expect(geheZu?.textContent).toContain(i18n.t("fe002.seiteFinden"));
   });
 
   it("höchstens zwei Wege: Knopf, Zeile — dazwischen liegt nichts", async () => {
@@ -366,7 +367,7 @@ describe("JOB 3525 · C · Tablet-Band (768 px): „Gehe zu …“ steht OBEN, d
     await montiere();
     const knopf = geheZuOben();
     expect(knopf, "„Gehe zu …“ steht auf 768 px nicht oben").not.toBeNull();
-    expect(knopf?.textContent).toContain(i18n.t("menue.schnellnavigation"));
+    expect(knopf?.textContent).toContain(i18n.t("fe002.seiteFinden"));
     expect(knopf?.textContent, "das Kürzel fehlt am Knopf").toContain("⌘K");
   });
 
@@ -436,7 +437,7 @@ describe("JOB 3525 · D · dieselben Zusagen auf Englisch", () => {
     setzeBreite(768);
     await montiere();
     expect(punkteOben()).toEqual([]);
-    expect(geheZuOben()?.textContent).toContain("Go to …");
+    expect(geheZuOben()?.textContent).toContain("Find page");
     expect(menueKnopf()?.textContent?.trim()).toBe("Menu");
     const knopf = menueKnopf();
     if (knopf) {

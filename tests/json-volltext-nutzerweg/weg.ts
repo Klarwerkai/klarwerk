@@ -380,15 +380,16 @@ export async function koLesen(wer: Sitzung, koId: string): Promise<Record<string
 export interface Importbefund {
   imported: number;
   skipped: number;
+  /** R-0143: was der Eingang in die Prüfwarteschlange eingereiht hat. */
+  kandidaten: Kandidat[];
 }
 
 /**
- * DER ZWEITE WEG, ohne Oberfläche: `POST /api/library/import` (`library-routes.ts:731` →
- * `LibraryService.importJson`, `services/library-analytics/src/service.ts:2000`).
+ * DER ZWEITE WEG, ohne Oberfläche: `POST /api/library/import` (`library-routes.ts`).
  *
- * ER IST NICHT ERFUNDEN, sondern im Router gefunden — Auftrag § 5, Lieferung 1. Er ist auch nicht
- * derselbe wie der Kandidatenweg: er legt SOFORT an, ohne Warteschlange und ohne Prüfkarte, und
- * genau dort (und nur dort) fiel der Volltext bis zu diesem Auftrag serverseitig weg.
+ * ER IST NICHT ERFUNDEN, sondern im Router gefunden — Auftrag § 5, Lieferung 1. Bis zur Nacharbeit
+ * von R-0143 (bens F1) legte er SOFORT an, ohne Warteschlange. Seitdem reiht er Kandidaten ein wie
+ * der Kandidatenweg (`direktimportAntwort`); ein Objekt entsteht erst durch die Annahme.
  */
 export async function direktImportieren(
   wer: Sitzung,
@@ -401,7 +402,17 @@ export async function direktImportieren(
   expect(typeof roh.imported, `${JOB}: POST /api/library/import nennt kein imported.`).toBe(
     "number",
   );
-  return { imported: roh.imported as number, skipped: Number(roh.skipped ?? -1) };
+  expect(
+    Array.isArray(roh.kandidaten),
+    `${JOB}: POST /api/library/import nennt keine kandidaten.`,
+  ).toBe(true);
+  return {
+    imported: roh.imported as number,
+    skipped: Number(roh.skipped ?? -1),
+    kandidaten: (roh.kandidaten as Record<string, unknown>[]).map((k) =>
+      alsKandidat("POST /api/library/import", k),
+    ),
+  };
 }
 
 /** Die Bibliotheks-Suche — hier nur als GRENZE: ihre Antwort trägt bewusst keinen Volltext. */

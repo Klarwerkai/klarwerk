@@ -369,10 +369,44 @@ describe("Live-Prüfung im gemounteten Editor", () => {
     await gespeichertesBlatt();
     expect(chip()?.getAttribute("data-lage")).toBe("similar");
   });
-  it("Darstellungsvertrag (Stub, kein Teil-A-Beleg): nur done ohne Treffer zeigt neu", async () => {
+  // AUFNAHME 20260922 · VORSCHAU-REICHWEITE — ANGEPASST, WEIL DIE ANFORDERUNG ES VERLANGT: hier
+  // stand „nur done ohne Treffer zeigt neu" (`data-lage="new"`). Kriterium 1 der Aufnahme verbietet
+  // bei begrenzter oder unbekannter Abdeckung jede bestandweite Neuheitsaussage; der Chip heisst
+  // jetzt „Vorschau" und nennt nur den Umfang, den die Antwort trägt.
+  it("Darstellungsvertrag (Stub, kein Teil-A-Beleg): done ohne Treffer zeigt die leere Vorschau", async () => {
+    box.antwort = {
+      status: "done",
+      similar: [],
+      conflicts: [],
+      coverage: { kind: "candidates", checked: 40, limit: 40, limitReached: true },
+    };
+    await gespeichertesBlatt();
+    expect(chip()?.getAttribute("data-lage")).toBe("empty");
+    expect(chip()?.textContent).toContain("Vorschau");
+    expect(chip()?.textContent).toContain("40 Einträge verglichen, Grenze erreicht");
+    expect(container.textContent).not.toContain(i18n.t("erfassen.live.neu"));
+    expect(container.textContent).not.toContain(i18n.t("intake.live.new"));
+  });
+  it("Darstellungsvertrag (Stub): done ohne Treffer und ohne Umfang → Umfang unbekannt", async () => {
     box.antwort = { status: "done", similar: [], conflicts: [] };
     await gespeichertesBlatt();
-    expect(chip()?.getAttribute("data-lage")).toBe("new");
+    expect(chip()?.getAttribute("data-lage")).toBe("empty");
+    expect(chip()?.textContent).toContain("Umfang unbekannt");
+    expect(container.textContent).not.toContain(i18n.t("erfassen.live.neu"));
+  });
+  it("Darstellungsvertrag (Stub): pending ohne Treffer → eigene Vorschauzeile, Konfliktsatz unverändert", async () => {
+    box.antwort = {
+      status: "pending",
+      similar: [],
+      conflicts: [],
+      coverage: { kind: "candidates", checked: 3, limit: 40, limitReached: false },
+    };
+    await gespeichertesBlatt();
+    expect(chip()).toBeNull();
+    expect(hinweis()?.textContent).toBe("Auf Widerspruch noch nicht geprüft.");
+    expect(container.querySelector('[data-testid="blatt-live-vorschau"]')?.textContent).toBe(
+      "Vorschau ohne ähnlichen Treffer (3 Einträge verglichen).",
+    );
   });
 });
 
@@ -432,7 +466,8 @@ async function pruefeAehnlichenFundort(): Promise<void> {
   });
   const fundort = chip()?.querySelector('[data-testid="live-fundort"]');
   expect(fundort?.textContent).toContain("Anlage");
-  expect(fundort?.textContent).toContain(i18n.t("status.offen"));
+  // P-M3b (BEN-3): der Prüfstand steht im Wortlaut der Trefferlisten, derselbe wie im Word-Panel.
+  expect(fundort?.textContent).toContain(i18n.t("intake.live.pruefstand.offen"));
   expect(chip()?.querySelector("a")?.getAttribute("href")).toBe("/wissen/kc");
   expect(chip()?.querySelector("a")?.textContent).toBe("Kaltstart Vorwärmung");
 }

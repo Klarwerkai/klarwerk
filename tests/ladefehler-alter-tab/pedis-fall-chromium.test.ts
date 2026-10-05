@@ -267,21 +267,13 @@ beforeAll(async () => {
       { timeout: 30_000 },
     );
 
-    // DER ECHTE BEDIENWEG, DREI KLICKS: Zahnrad öffnen, „Weitere Bereiche" aufklappen, „Duplikate"
-    // anklicken. Der mittlere Klick ist kein Schnörkel — `WeitereBereicheZeilen` steckt in einem
-    // `MenueAufklapp`, der ZUGEKLAPPT beginnt (`shell/ZahnradMenue.tsx:95`, `:143-150`), und ohne
-    // ihn gibt es die Zeile im Baum gar nicht. Genau daran lief Lauf e57ec13f in eine 30-s-Sperre.
-    schritt = "Zahnrad anklicken";
-    await seite.click('[data-testid="kopfband-zahnrad"]');
-    schritt = "warten auf den Aufklapp „Weitere Bereiche“";
-    await seite.waitForFunction(
-      `document.querySelector('[data-testid="zahnrad-weitere-bereiche"]') !== null`,
-      undefined,
-      { timeout: 30_000 },
-    );
-    schritt = "„Weitere Bereiche“ aufklappen";
-    await seite.click('[data-testid="zahnrad-weitere-bereiche"]');
-    schritt = "warten auf die Zeile „Duplikate“ im Zahnrad-Menü";
+    // DER ECHTE BEDIENWEG, ZWEI KLICKS: „Arbeitsbereiche" öffnen, „Duplikate" anklicken. Bis FE-002
+    // (26.09.2026) waren es drei — Zahnrad, „Weitere Bereiche" aufklappen, „Duplikate"; seither
+    // stehen die weiteren Bereiche offen unter dem beschrifteten Einstieg im Kopfband
+    // (`shell/ArbeitsbereicheMenue.tsx`). Der Weg führt zu derselben Zeile derselben Liste.
+    schritt = "„Arbeitsbereiche“ anklicken";
+    await seite.click('[data-testid="kopfband-arbeitsbereiche"]');
+    schritt = "warten auf die Zeile „Duplikate“ unter „Arbeitsbereiche“";
     await seite.waitForFunction(
       `document.querySelector('[data-testid="bereich-duplikate"]') !== null`,
       undefined,
