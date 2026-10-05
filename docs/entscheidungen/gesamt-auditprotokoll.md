@@ -44,6 +44,12 @@ ALGORITHMUS von `41fad46c` (Audit: `last` + `append`/`appendOnce` ohne Sperre; E
 eigener Transaktion, danach `ko.created`) auf PostgreSQL gegen dieselben Auslöser und erwartet die
 gemeldeten Fehler (`23505:audit_pkey`, Objekt ohne `ko.created`). Ein Checkout der alten Fassung
 selbst sieht der Prüfweg nicht vor; das ist dort benannt.
+Nachtrag Nacharbeit 6: `tests/audit-gesamt/vorher-nachher.integration.test.ts` lädt den PRODUKTCODE
+von `41fad46c` zur Laufzeit (`git archive` aus dem Prüfbaum, Kennung im Lauf ausgegeben) und führt
+an ihm und am Kandidaten DIESELBEN Sollprüfungen aus (Anlage gegen offenen Fremdschreiber; Datenbank
+weist `ko.created` ab). Erwartet: an `41fad46c` fachlich verletzt, am Kandidaten keine Verletzung.
+Die gemeldeten Lauf-2-Fassungen `758e76c1`/`d3c1bc09` sind von keinem Branch erreichbar; den Exportweg
+von beleg:6818bd52 gibt es in `41fad46c` nicht. Die Rot-Kalibrierung oben gilt seither als ergänzend.
 
 **Prüfstand (lokal, macOS, an dieser Fassung):** `npx tsc --noEmit` (Wurzel, Web) grün;
 `depcruise` ohne Verstoß; Biome-Lint der 45 geänderten Dateien grün; `vitest` (mit

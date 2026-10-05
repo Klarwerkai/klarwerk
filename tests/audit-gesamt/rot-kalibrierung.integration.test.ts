@@ -1,5 +1,9 @@
 // Aufnahme gesamt-auditprotokoll · ROT-KALIBRIERUNG AUF POSTGRESQL (Ben, Nacharbeit 4).
 //
+// ERGÄNZEND, NICHT DER VORHER-NACHWEIS (Nacharbeit 6): Diese Datei führt einen NACHGEBILDETEN Altweg
+// am Kandidaten aus. Den Lauf gegen den tatsächlichen Produktstand vor der Behebung führt
+// `vorher-nachher.integration.test.ts` (Produktcode von `41fad46c`, dieselben Sollprüfungen).
+//
 // Die Kriterien zu beleg:6818bd52 und beleg:1ea197ac verlangen Tests, die VOR der Behebung
 // fehlschlagen und danach bestehen — auf dem PostgreSQL-Weg. Die grünen Fälle stehen in
 // `kette-und-beleg-atomar.integration.test.ts`. Diese Datei zeigt den ROTEN Ausgang derselben
