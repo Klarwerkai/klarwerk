@@ -1808,6 +1808,11 @@ export const ERLAUBTE_FEHLERTYPEN: ReadonlySet<string> = new Set([
   // Kennung, kein Host; die Meldung enthält allein die Statuszahl.
   "ConfluenceStatusError",
   "DevPersistJournalReplayError",
+  // R-0163 / K3 (Ben, Nacharbeit 15): der Fachfehler der Dokumentakte
+  // (`services/knowledge-object/src/dokumentakte.ts`, R-0169). ENTSCHEIDUNG: der Name darf ins
+  // Protokoll — er trägt nur seinen Klassennamen; Meldung und Stack bleiben wie bei allen
+  // unterdrückt.
+  "DokumentError",
   // JOB 2684 D7: der Standkonflikt aus 2684 (capture/src/service.ts). Der Name sagt nur „veralteter
   // Stand" — kein Nutzertext, keine Kennung; der Meldungstext bleibt wie bei allen unterdrückt.
   "DraftStaleError",
@@ -1823,6 +1828,10 @@ export const ERLAUBTE_FEHLERTYPEN: ReadonlySet<string> = new Set([
   "KoError",
   "LibraryError",
   "LifecycleError",
+  // R-0163 / K3 (Ben, Nacharbeit 15): der Fehler eines ungültigen Management-Profils
+  // (`services/management/src/profiles.ts`). ENTSCHEIDUNG: der Name darf ins Protokoll — nur der
+  // Klassenname, keine Profilwerte.
+  "ManagementProfileError",
   "MediaAnalysisError",
   "ModelCapacityError",
   "ModelEmptyResponseError",
@@ -1901,6 +1910,11 @@ export const ERLAUBTE_FEHLERCODES: ReadonlySet<string> = new Set([
   "CREATE_REPAIR_REQUIRED",
   "CREATE_ROLLBACK_FAILED",
   "DEV_PERSIST_JOURNAL_REPLAY_FAILED",
+  // R-0163 / K3 (Ben, Nacharbeit 15): die zwei festen Codes von `DokumentError`
+  // (`services/knowledge-object/src/dokumentakte.ts`). Sie nennen den Zweig („Akte unbekannt",
+  // „Akte im Konflikt"), keine Dokumentkennung und keinen Nutzertext.
+  "DOKUMENT_KONFLIKT",
+  "DOKUMENT_UNBEKANNT",
   "DOWNGRADE_FORBIDDEN",
   "DRAFT_STALE", // JOB 2684 D7: 409 an PUT/Promote/Dokumentweg — geht ohnehin als Antwortcode an Clients.
   // JOB 2684 D7: der zweite Code desselben Stands (2684 D3) — Compare-and-Swap nach CAS_VERSUCHE
@@ -1926,6 +1940,9 @@ export const ERLAUBTE_FEHLERCODES: ReadonlySet<string> = new Set([
   "INVALID_CONFIDENTIALITY",
   "INVALID_CREDENTIALS",
   "INVALID_DEFAULT",
+  // R-0163 / K3 (Ben, Nacharbeit 15): der feste Code von `ManagementProfileError`
+  // (`services/management/src/profiles.ts`) — ohne Profilwerte.
+  "INVALID_MANAGEMENT_PROFILE",
   "INVALID_NEEDED",
   "INVALID_OPERATION_ID",
   "INVALID_OWNERSHIP",
