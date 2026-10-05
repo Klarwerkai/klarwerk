@@ -3016,7 +3016,11 @@ export function buildApp(
     ),
   );
   app.register(
-    validationRoutes(services.validation, guards, { ko: services.ko, worker: aiCheckWorker }),
+    validationRoutes(services.validation, guards, {
+      ko: services.ko,
+      worker: aiCheckWorker,
+      conflicts: services.conflicts,
+    }),
   );
   // AUFTRAG-mega74 BLOCK D (G5): der EINE Zugang, über den die Nebenwege die Sichtbarkeit ihrer
   // beteiligten Wissensobjekte erfragen. Hier gebaut, damit alle drei dieselbe Quelle benutzen.

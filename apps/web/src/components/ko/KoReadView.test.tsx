@@ -104,6 +104,8 @@ describe("KoReadView — VIP-Sichtvertrag", () => {
     await setLanguage("nl");
     const nl = renderMarkup(<KoReadView ko={fullKo()} />);
     expect(nl).toContain("Bewijs");
-    expect(nl).toContain("84 % zeker");
+    // UX-27: auch NL verspricht keine Wahrheit mehr (Bestandsabgleich Prüfstatus-Anzeige).
+    expect(nl).toContain("Beoordelingsstand: 84 %");
+    expect(nl).not.toContain("zeker");
   });
 });
