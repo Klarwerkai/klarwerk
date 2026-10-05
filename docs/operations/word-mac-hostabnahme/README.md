@@ -48,6 +48,19 @@ schwärzen).
 | M9 | Anmelde-Fenster offen lassen, 5 Minuten nichts tun | „Keine Anmeldung erkannt. Bitte erneut versuchen.", Knopf frei | |
 | M10 | Word beenden und neu starten, Klara öffnen | Anmeldung verständlich (angemeldet oder Knopf) | |
 
+## Sollvergleich nach Speichern, Schließen, Wiederöffnen (Kriterium 3, nur Word für Mac)
+
+Ablauf und Bedeutung: `docs/operations/word-host-gesamtweg.md`, Abschnitt 2. Das Sollpaket steht
+vor dem Lauf fest (`node tools/word-host-wiederoeffnen.ts sollpaket mac abnahme/`); ein Ergebnis aus
+Word für das Web zählt hier nicht. Ergebnis = die Ausgabe des Vergleichs, wörtlich.
+
+| # | Schritt | Soll | Ergebnis |
+| --- | --- | --- | --- |
+| MS1 | `pruefdokument-mac.docx` in Word für Mac öffnen, Änderungssatz aus `soll-mac.json` als letzten Absatz eintippen, „Ganzes Dokument übernehmen“ | Entwurf angelegt, Kennung notiert | |
+| MS2 | Speichern, Word beenden (Cmd+Q), Dokument wieder öffnen, als `wiedergeoeffnet-mac.docx` sichern | Datei liegt vor | |
+| MS3 | `node tools/word-host-wiederoeffnen.ts vergleiche-docx soll-mac.json wiedergeoeffnet-mac.docx` | „✓ gleich dem Soll“ | |
+| MS4 | `GET /api/drafts/<id>` als `entwurf-mac.json`, dann `node tools/word-host-wiederoeffnen.ts vergleiche-objekt soll-mac.json entwurf-mac.json <id>` | „✓ gleich dem Soll“ (bei „offen“: `vergleiche-bild`) | |
+
 ## Ergebnis dieses Belegs
 
-**Offen.** Bis M1–M10 ausgefüllt sind, ist Word für Mac nicht getrennt nachgewiesen.
+**Offen.** Bis M1–M10 und MS1–MS4 ausgefüllt sind, ist Word für Mac nicht getrennt nachgewiesen.

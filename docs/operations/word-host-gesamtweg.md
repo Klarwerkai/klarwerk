@@ -27,6 +27,9 @@ Liefercommit, ist die Herkunft offen und es gibt **keine** belegte Abnahme diese
 
 ### Ablauf (der Fall „20 Schritte auf 10 verkürzen“)
 
+0. **Vor dem Lauf** den Solltext der verkürzten Anleitung als `soll-anleitung.txt` schreiben —
+   eine Zeile je Schritt, so wie er nach der Rückgabe in KLARWERK stehen soll. Diese Datei ist der
+   unabhängige Sollinhalt; sie entsteht nicht aus dem Panel und nicht aus KLARWERK.
 1. Frisches Chrome-Profil, Chrome-Version notieren (`chrome://version`).
 2. In Klarwerk als `admin` anmelden. Eine bestehende Anleitung wählen; Objektkennung, Fassung und
    Status notieren (`GET /api/kos/<id>` im selben Profil: `id`, `version`, `status`).
@@ -40,8 +43,16 @@ Liefercommit, ist die Herkunft offen und es gibt **keine** belegte Abnahme diese
 7. In Klarwerk `GET /api/kos/<id>` erneut lesen: dieselbe `id`, `version` = `m`,
    `status` = `validiert`. `GET /api/kos/<id>/versions` enthält weiter die Ausgangsfassung.
 8. In der Bibliothek nach dem Titel suchen: es ist **kein** zweites Objekt dazugekommen.
-9. Word-Dokument speichern, schließen und wieder öffnen; die Anleitung in Klarwerk neu öffnen und
-   die neue Fassung lesen. Bildschirmfotos.
+9. Word-Dokument speichern, schließen und wieder öffnen; die Anleitung in Klarwerk neu öffnen,
+   `GET /api/kos/<id>` als `ko-nach-wiederoeffnen.json` speichern und vergleichen:
+
+   ```
+   node tools/word-host-wiederoeffnen.ts vergleiche-anleitung soll-anleitung.txt ko-nach-wiederoeffnen.json <id> <m>
+   ```
+
+   Erwartet: „✓ gleich dem Soll“ — dieselbe `id`, Fassung `m`, Status `validiert`, jede Zeile des
+   Solltexts in Reihenfolge. Jeder Befund ist ein Verlust und wird so festgehalten. Ausgabe und
+   Bildschirmfotos gehören zum Beleg; `neueFassungWiederGeoeffnet` ist nur bei „gleich“ `true`.
 
 Gibt Word Bilder nicht mit oder kürzt das Panel die Ladung, nennt der Erfolgssatz das; das gehört
 mit ins Bildschirmfoto. Steht statt des Erfolgs „Der Eintrag steht inzwischen auf Version …“, hat
@@ -95,7 +106,58 @@ Dokumentadresse des Testmandanten im Beleg. Beides gilt: die Adresse steht als T
 `dokumentUrl` (Mandantenhost und Pfad, ohne Freigabe- oder Anmeldeschlüssel), die Bilder bleiben
 geschwärzt.
 
-## 2 · Der übrige Hostteil — getrennte Protokolle
+## 2 · Speichern, Schließen, Wiederöffnen gegen feste Sollwerte (Kriterium 3) — je Host getrennt
+
+Ein Bildschirmfoto zeigt nicht, ob ein Bild still ausgetauscht, eine Tabellenzelle verloren oder
+eine Bildunterschrift dem falschen Bild zugeordnet wurde. Deshalb läuft je Host ein eigener
+Vergleich gegen ein Sollpaket, das **vor** dem Lauf feststeht: Überschrift, Absätze, fetter Text,
+Tabelle, zwei Rasterbilder mit Byte- und Bildpunkt-Prüfsumme (die Prüfbilder aus
+`tests/rueckweg-bilder-nutzerweg/pruefbilder.ts`), die Unterschrift je Bild und ein Änderungssatz,
+der den Host nennt. Ein Ergebnis aus Word für Mac besteht deshalb den Web-Vergleich nicht.
+
+1. Prüfdokument und Sollpaket erzeugen — je Host einmal:
+
+   ```
+   node tools/word-host-wiederoeffnen.ts sollpaket web abnahme/
+   node tools/word-host-wiederoeffnen.ts sollpaket mac abnahme/
+   ```
+
+   Das ergibt `pruefdokument-web.docx`/`soll-web.json` und `pruefdokument-mac.docx`/`soll-mac.json`.
+2. Das Prüfdokument im jeweiligen Host öffnen (Web: in OneDrive/SharePoint des Testmandanten
+   hochladen; Mac: in Word für Mac öffnen). Am Ende genau den Änderungssatz aus dem Sollpaket
+   (`aenderung`) als letzten Absatz eintippen.
+3. In Klara unter „Erfassen“ „Ganzes Dokument übernehmen“ → Entwurf. Kennung des Entwurfs
+   notieren.
+4. Speichern, Word bzw. das Browserfenster **schließen**, das Dokument **wieder öffnen**, dann eine
+   Kopie als DOCX herunterladen bzw. sichern (`wiedergeoeffnet-web.docx` / `-mac.docx`).
+5. Den Entwurf in KLARWERK als JSON sichern (`GET /api/drafts/<id>` → `entwurf-web.json` /
+   `-mac.json`).
+6. Vergleichen:
+
+   ```
+   node tools/word-host-wiederoeffnen.ts vergleiche-docx soll-web.json wiedergeoeffnet-web.docx
+   node tools/word-host-wiederoeffnen.ts vergleiche-objekt soll-web.json entwurf-web.json <id>
+   ```
+
+   (Mac entsprechend mit `soll-mac.json`.) Liegt ein Bild im Entwurf nur als Adresse vor, meldet
+   der Vergleich das als **offen**; dann das Bild herunterladen und mit
+   `vergleiche-bild soll-web.json <nr> <bild.png>` prüfen.
+
+Was verglichen wird:
+
+| Teil | DOCX nach Wiederöffnen | KLARWERK-Eintrag |
+|---|---|---|
+| Inhalt | alle Absätze in Reihenfolge, Änderungssatz genau einmal, Tabelle zellgenau, Fettdruck | alle Absätze und Tabellenzellen im Text |
+| Rasterbilder | Anzahl; je Bild Byte- **oder** Bildpunkt-Prüfsumme gleich | Anzahl; je Bild Prüfsumme (oder `vergleiche-bild`) |
+| Zuordnung | auf Bild k folgt dessen Unterschrift | Unterschriften in Bildreihenfolge |
+| Quelle | — | Herkunft `word_addin`, Dokumentkennung vorhanden, erwartete Kennung |
+
+Ein neu verpacktes PNG mit denselben Bildpunkten gilt als erhalten; ein anderes Format (etwa JPEG)
+oder ein einziger anderer Bildpunkt nicht. EMF/WMF sind kein unterstütztes Rasterformat und nicht
+Teil des Sollpakets. Die Vergleiche bedienen Word nicht; sie ersetzen die Bedienung im Host nicht,
+sie machen ihr Ergebnis prüfbar.
+
+## 3 · Der übrige Hostteil — getrennte Protokolle
 
 Anmeldung, Sitzung, Lesen, Fragen, Quellen, Einfügen, Speichern/Wiederöffnen und Rückweg im echten
 Host stehen in den vorhandenen Protokollen, je Host getrennt:

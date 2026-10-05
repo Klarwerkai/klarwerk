@@ -52,7 +52,7 @@ Mandantennamen schwärzen).
 | W9 | Quelle öffnen aus der Antwort | Quelle öffnet sich | |
 | W10 | Antwort in Word einfügen | Text steht im Dokument | |
 | W11 | Auswahl als Entwurf senden | „Entwurf angelegt" + Link | |
-| W12 | Dokument speichern, schließen, wieder öffnen, Klara öffnen | Seitenfenster „nicht angemeldet" oder angemeldet; nach **Anmelden** ist der Entwurf aus W11 in der Anwendung da | |
+| W12 | Dokument speichern, schließen, wieder öffnen, Klara öffnen | Seitenfenster „nicht angemeldet" oder angemeldet; nach **Anmelden** ist der Entwurf aus W11 in der Anwendung da; Inhalt, Bilder, Zuordnung und Quelle gegen das Sollpaket: Schritte WS1–WS4 unten | |
 | W13 | Rückweg (JOB 3667): geänderten Absatz zurück an dasselbe Wissensobjekt | Vorschlag/Version am selben Objekt | |
 | W14 | Rückfrage „neues Fenster anzeigen" einmal ignorieren | sofort „Das Anmelde-Fenster ließ sich nicht öffnen …", Knopf frei | |
 | W15 | Seitenfenster neu laden | „nicht angemeldet"; **Anmelden** übergibt ohne Formular | |
@@ -61,8 +61,21 @@ Mandantennamen schwärzen).
 | W18 | Zurück zum ersten Konto | Entwurf aus W11 unverändert | |
 | W19 | Anmelde-Fenster öffnen und 5 Minuten nichts tun | Abbruch mit verständlichem Satz, Knopf frei | |
 
+## Sollvergleich nach dem Wiederöffnen (Kriterium 3, nur Word für das Web)
+
+Ablauf und Bedeutung: `docs/operations/word-host-gesamtweg.md`, Abschnitt 2. Das Sollpaket steht
+vor dem Lauf fest (`node tools/word-host-wiederoeffnen.ts sollpaket web abnahme/`); ein Ergebnis aus
+Word für Mac zählt hier nicht. Ergebnis = die Ausgabe des Vergleichs, wörtlich.
+
+| # | Schritt | Soll | Ergebnis |
+| --- | --- | --- | --- |
+| WS1 | `pruefdokument-web.docx` in OneDrive/SharePoint öffnen, Änderungssatz aus `soll-web.json` als letzten Absatz eintippen, „Ganzes Dokument übernehmen“ | Entwurf angelegt, Kennung notiert | |
+| WS2 | Speichern, Browserfenster schließen, Dokument wieder öffnen, Kopie als `wiedergeoeffnet-web.docx` herunterladen | Datei liegt vor | |
+| WS3 | `node tools/word-host-wiederoeffnen.ts vergleiche-docx soll-web.json wiedergeoeffnet-web.docx` | „✓ gleich dem Soll“ | |
+| WS4 | `GET /api/drafts/<id>` als `entwurf-web.json`, dann `node tools/word-host-wiederoeffnen.ts vergleiche-objekt soll-web.json entwurf-web.json <id>` | „✓ gleich dem Soll“ (bei „offen“: `vergleiche-bild`) | |
+
 ## Ergebnis dieses Belegs
 
-**Offen.** Bis Zeilen W1–W19 ausgefüllt sind, ist TEST-A10 und der Realbeleg für
+**Offen.** Bis Zeilen W1–W19 und WS1–WS4 ausgefüllt sind, ist TEST-A10 und der Realbeleg für
 OFFICE-WEB-ANMELDUNG nicht erbracht. Was ohne Microsoft-Konto gemessen ist, steht in
 `docs/word-addin/ABNAHME-M365.md`, Abschnitt „Zustände".
