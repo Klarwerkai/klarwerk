@@ -272,6 +272,45 @@ describe("worker.js — konkurrierende Erfassungen verschwinden nicht still", ()
     expect(view.el("skipped-captures").hidden).toBe(true);
     expect(h.data.skippedCaptures).toBe(0);
   });
+
+  it("W1c · A liest noch, B und C kommen dazu: B wird an der Nachfrage von C verdrängt — und genannt, nicht still gelöscht", async () => {
+    // Bens zweite Reihenfolge (Nacharbeit 3): A hängt im Lesen der Seite, B und C landen im Merker
+    // [B, C] — dort wird nichts verdrängt. Erst beim Abarbeiten wird B wartende Seite und gleich
+    // danach von C überschrieben.
+    const lesen = schranke();
+    const h = harness(
+      async () => {
+        throw new Error("kein Netz");
+      },
+      {},
+      { leseHalt: lesen.warte },
+    );
+    const laeuftA = h.capture();
+    await runde();
+    expect(h.spuren, "A hätte jetzt im Lesen der Seite hängen müssen").toContain(
+      "scripting.executeScript",
+    );
+    const mittlere = { id: 7, url: "https://example.test/mittlere-seite", title: "Mittlere Seite" };
+    const letzte = { id: 7, url: "https://example.test/letzte-seite", title: "Letzte Seite" };
+    await h.listeners.action?.(mittlere);
+    await h.listeners.action?.(letzte);
+    expect(h.data.work, "A war noch gar nicht fertig").toBeUndefined();
+
+    lesen.frei();
+    await laeuftA;
+    await runde();
+    await runde();
+
+    const zustand = (await h.send({ type: "state" })) as Ansicht;
+    expect(zustand.selection?.url, "A ist verschwunden").toBe(h.selected.url);
+    expect(zustand.pendingCapture).toBe(true);
+    expect(zustand.pendingSource).toEqual({ url: letzte.url, title: letzte.title });
+    expect(zustand.skippedCaptures, "B wurde an der Nachfrage still überschrieben").toBe(1);
+
+    const view = await mount({ an: h, auswahl: false });
+    expect(view.el("skipped-captures").hidden, "kein sichtbarer Hinweis auf B").toBe(false);
+    expect(view.el("skipped-count").textContent).toBe("1");
+  });
 });
 
 type Ansicht = View & {

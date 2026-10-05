@@ -51,7 +51,16 @@ export function verfahren(options: RequestInit | undefined): "GET" | "POST" | "P
 
 type Selected = { text: string; url: string; title: string; variants?: Variants };
 
-export function harness(fetcher: typeof fetch, data: Record<string, unknown> = {}) {
+/**
+ * @param optionen.leseHalt Chrome-Erfassen-Einfügen (Nacharbeit 3): das Lesen der Seite
+ * (`scripting.executeScript`) hält an, bis dieses Versprechen erfüllt ist — so läuft eine Erfassung
+ * nachweislich NOCH, während weitere eintreffen. Ohne Angabe antwortet die Seite sofort wie bisher.
+ */
+export function harness(
+  fetcher: typeof fetch,
+  data: Record<string, unknown> = {},
+  optionen: { leseHalt?: Promise<unknown> } = {},
+) {
   const listeners: Record<string, Listener> = {};
   const event = (key: string) => ({
     addListener: (fn: Listener) => {
@@ -135,6 +144,7 @@ export function harness(fetcher: typeof fetch, data: Record<string, unknown> = {
       executeScript: async (options: unknown) => {
         spuren.push("scripting.executeScript");
         expect(options).toEqual({ target: { tabId: 7 }, files: ["selection.js"] });
+        if (optionen.leseHalt) await optionen.leseHalt;
         return [
           {
             result: structuredClone({

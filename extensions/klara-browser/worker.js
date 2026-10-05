@@ -1453,6 +1453,22 @@
               }
             : {}),
         };
+        // BEN (Nacharbeit 3): DIESELBE VERDRÄNGUNG AN DER NACHFRAGE. Läuft A schon und kommen B und C
+        // währenddessen, landet erst B als wartende Seite hier und wird gleich danach von C
+        // überschrieben — B war noch unbeantwortet und wäre ohne Hinweis weg. Eine noch offene
+        // wartende Seite, die von einer ANDEREN ersetzt wird, zählt deshalb genauso wie eine im
+        // Merker verdrängte Erfassung. Dieselbe Seite noch einmal ist kein Verlust.
+        const vorher = /** @type {Zustand} */ (state);
+        const neueSeite = wartend.pendingSource?.url;
+        if (
+          neueSeite !== undefined &&
+          vorher.pendingCapture === true &&
+          vorher.pendingSource &&
+          vorher.pendingSource.url !== neueSeite
+        ) {
+          uebergangen = Math.max(uebergangen, vorher.skippedCaptures ?? 0) + 1;
+          wartend.skippedCaptures = uebergangen;
+        }
         await merke(wartend);
         return;
       }
