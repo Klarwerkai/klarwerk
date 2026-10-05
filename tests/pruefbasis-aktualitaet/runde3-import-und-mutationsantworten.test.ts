@@ -8,6 +8,10 @@
 //      unverändert zurückgaben) umgingen die Lesefassung: die Mutationsantwort sagte „aktuell",
 //      der Reload „überholt". Gemessen wird Gleichheit von Antwort und Reload — am Dienst und über
 //      HTTP mit derselben Anzeigefunktion wie in der Oberfläche.
+// Lauf gesamt-import-adoption R3 (Bens N3, R-0145): die KI-Erkennung am Import-Accept läuft nur
+// noch, wenn der Prüfer sie für die Annahme ausdrücklich anfordert (`kiPruefung: true`). Diese
+// Datei misst genau diese Erkennung und fordert sie darum an jeder Annahme an; dass OHNE die
+// Anforderung kein Modellaufruf geschieht, misst `tests/import-genau-einmal/nachbarn.test.ts`.
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { aiCheckCardState } from "../../apps/web/src/lib/aiCheckStatusCard";
 import { type AppServices, buildApp, buildServices } from "../../services/app/src/build-app";
@@ -107,7 +111,7 @@ async function importAnnehmen(
     method: "PUT",
     url: `/api/library/import/candidates/${angelegt.json()[0].id}`,
     headers,
-    payload: { action: "accept" },
+    payload: { action: "accept", kiPruefung: true },
   });
   expect(angenommen.statusCode).toBe(200);
   expect(angenommen.json().status).toBe("angenommen");

@@ -23,6 +23,7 @@ import {
 } from "../../services/app/src/ai-check-worker";
 import { type AppServices, buildApp, buildServices } from "../../services/app/src/build-app";
 import type { ConflictJudgeOutcome, DuplicateJudgeOutcome } from "../../services/reasoner";
+import { woerterbuchQuelleAus } from "../support/woerterbuchquelle";
 
 type Reasoner = AppServices["reasoner"];
 
@@ -315,6 +316,7 @@ describe("WP-SUBMIT-ASYNC (f): Lazy-Re-Enqueue beim Board-Load (Neustart-Ausglei
           enqueued.push(koId);
         },
         has: () => false,
+        laeuft: () => false,
         queuedCount: () => 0,
         idle: async () => {},
       },
@@ -455,7 +457,7 @@ describe("WP-SUBMIT-ASYNC (h): Quelltext-Pins — Submit-Pfad ohne synchrones de
   });
 
   it("i18n: Hinweis- und Badge-Schluessel existieren in DE, EN und NL (je genau einmal)", () => {
-    const i18n = read("apps/web/src/i18n.ts");
+    const i18n = woerterbuchQuelleAus("apps/web/src/i18n.ts");
     // WP-SHIP9-S1 (Pedis B3): der statische capture.aiCheckBackground-Satz ist durch die drei
     // ECHTEN Status-Texte der Bestätigungs-Karte ersetzt (läuft/abgeschlossen/fehlgeschlagen).
     for (const key of [

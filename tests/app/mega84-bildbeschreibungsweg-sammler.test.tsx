@@ -2048,8 +2048,57 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // `SanitizedHtml` — dasselbe Bauteil wie bisher im Lesestand, kein neuer Bildweg.
     // DIE +7 IST GEMESSEN: im eigenen Lauf 405 → 412 (Cloud-Lauf pa-1790434819-46fe6fb5); nach der
     // Zusammenführung mit FE-003 (423) am zusammengeführten Arbeitsbaum erneut gemessen: 430.
+    //
+    // Aufnahme gesamt-ki-laufprotokoll (V9, R-2071): 430 → 431. GENAU EIN Bauteil kommt dazu:
+    //     + `ModelRunAuswertungCard` (`pages/Stufe2.tsx`) — die KI-Auswertung eines Zeitraums
+    // Gemessen: der Sammler meldete „expected { komponenten: 431, … } to deeply equal
+    // { komponenten: 430, … }". `anbieter` 1 und `traeger` 2 bleiben: die Karte zeigt kein Bild,
+    // keinen `documentTitle` und kein `CAPTION_AI_TEXT`.
+    //
+    // FE-002 (HEADER TEIL 1 · FUNKTIONEN FINDEN): 431 → 436 (zusammengeführt nach dem KI-Laufprotokoll
+    // darüber). Es sind GENAU FÜNF Bauteile der Kopfbandhülle, in anderen Dateien als die darüber:
+    //     + `ArbeitsbereicheEintraege`, `ArbeitsbereicheMenue` (`shell/ArbeitsbereicheMenue.tsx`)
+    //     + `MeldungenMenue`, `MeldungenUndKonto` (`shell/MeldungenMenue.tsx`)
+    //     + `MeldungenListe` (`shell/Meldungen.tsx`, aus `Meldungen` herausgelöst)
+    // Keines enthält `CAPTION_AI_TEXT`, ein `documentTitle`-Prop oder ein `<img` — Menüs,
+    // Glocke und Meldungsliste, kein Bildweg. `anbieter` 1 und `traeger` 2 bleiben unverändert.
+    // Die spätere Lagekorrektur `useImFenster` (`shell/Menue.tsx`) ist ein Hook, kein Bauteil.
+    // GEMESSEN war die FE-002-Stufe auf dem Stand vor dem KI-Laufprotokoll: 430 → 435 (Serverlauf
+    // `header-gezielt` am Kandidaten a3116cac, Sammler grün).
+    //
+    // DIE 437 IST GEMESSEN, nicht gerechnet: am zusammengeführten Kandidaten c5560a74 meldete der
+    // Sammler wörtlich „gemessen: 437 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 536
+    // Quelldateien … expected { komponenten: 437, … } to deeply equal { komponenten: 436, … }".
+    // Gerechnet waren 431 + 5 = 436. Die eine Komponente mehr stammt NICHT aus FE-002: seit der
+    // Messung 435 kamen dort nur ein Hook (`useImFenster`, kleingeschrieben, vom Sammler nicht
+    // gezählt) und Attribute dazu. Sie kam mit dem eingemischten Hauptstand; welches Bauteil es ist,
+    // ist an diesem Arbeitsbaum ohne Git-Verlauf nicht namentlich bestimmt. `anbieter` 1 und
+    // `traeger` 2 sind in derselben Meldung unverändert.
+    //
+    // PRÜFSTATUS-ANZEIGE (Pedi 28.09.2026, Ergänzung 3): GENAU EIN Bauteil zusätzlich:
+    //     + `FreigabeStatus` (`components/gesamtanweisung/EntscheidungsVorlage.tsx`) — der eine
+    //       Statusblock für Übersicht und Detailansicht der Arbeitsanleitungen.
+    // Kein Bild, kein `CAPTION_AI_TEXT`, kein `documentTitle`: `anbieter` 1 und `traeger` 2 bleiben.
+    // Auf dem eigenen Stand GEMESSEN: 430 → 431 („gemessen: 431 Komponenten · 1 Anbieter · 2 Traeger
+    // · Grundmenge 527 Quelldateien"). Nach der Zusammenführung mit dem Hauptstand (437) waren
+    // 437 + 1 = 438 nur GERECHNET.
+    //
+    // DIE 444 IST GEMESSEN, nicht gerechnet: am zusammengeführten Kandidaten 4be0477f meldete der
+    // Sammler wörtlich „gemessen: 444 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 546
+    // Quelldateien … expected { komponenten: 444, … } to deeply equal { komponenten: 438, … }".
+    // Die sechs Komponenten über 438 kamen mit dem erneut eingemischten Hauptstand (Grundmenge
+    // 536 → 546 Quelldateien); die Prüfstatus-Anzeige fügt seit `FreigabeStatus` kein Bauteil
+    // hinzu. Welche es sind, ist an diesem Arbeitsbaum ohne Git-Verlauf nicht namentlich bestimmt.
+    // `anbieter` 1 und `traeger` 2 sind in derselben Meldung unverändert.
+    //
+    // DIE 447 IST GEMESSEN, nicht gerechnet: am Kandidaten 903b2a22 meldete der Sammler wörtlich
+    // „gemessen: 447 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 549 Quelldateien … expected
+    // { komponenten: 447, … } to deeply equal { komponenten: 444, … }". Die Nacharbeit zwischen
+    // 4be0477f und 903b2a22 änderte im Produktcode nichts (nur Test-Gegenprobe und Sollwert); die
+    // drei Komponenten mehr kamen mit dem Hauptstand (Grundmenge 546 → 549). Welche es sind, ist
+    // auch hier ohne Git-Verlauf nicht namentlich bestimmt. `anbieter` 1 und `traeger` 2 bleiben.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 430,
+      komponenten: 447,
       anbieter: 1,
       traeger: 2,
     });

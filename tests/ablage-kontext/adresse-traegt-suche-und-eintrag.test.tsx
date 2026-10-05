@@ -645,3 +645,38 @@ describe("JOB 3104 · A7 — wer selbst löscht, bekommt den Fehlersatz nicht", 
     expect(lesetext()).not.toContain(KLARTEXT.lesenFehler);
   });
 });
+
+// ------------------------------------------------------------------------------------------------
+// N-0074 (K27, BEN NACHARBEIT 5) — GEÖFFNET, DANN WEGGESUCHT: DER BEITRAG BLEIBT UND IST MARKIERT.
+// ------------------------------------------------------------------------------------------------
+// Der dokumentierte Ablauf: einen sichtbaren Beitrag über seine Zeile öffnen, dann im regulären
+// Suchfeld ein Wort eingeben, das in keinem Objekt steht. Die Suche filtert hier wirklich (der
+// Teilmock schneidet wie `GET /api/library/search`), der Detailabruf ist echt geladen.
+describe("N-0074 · Nulltreffer nach Texteingabe bei geöffnetem Beitrag", () => {
+  const KEIN_WORT = "zzzkeinobjektenthaeltdas";
+  const markierung = (): Element | null =>
+    container.querySelector('[data-testid="bib-lesen-ausserhalb"]');
+
+  it("Z1 · null Treffer, Wahl und Lesetext bleiben, Markierung steht; Suchtext gelöscht → wieder Treffer", async () => {
+    await montiere();
+    klickeZeile(ZWEITER.id);
+    await ruhe();
+    expect(adressWert(EINTRAG_PARAM)).toBe(ZWEITER.id);
+    expect(leseTitel(container)).toBe(ZWEITER.title);
+    expect(markierung(), "als Treffer geöffnet: keine Markierung").toBeNull();
+
+    suche(container, KEIN_WORT);
+    await entprellungAbwarten();
+    expect(netz.suche, "die Suche lief wirklich mit dem Wort").toContain(KEIN_WORT);
+    expect(zeilenTitel(container), "null Treffer").toEqual([]);
+    expect(adressWert(EINTRAG_PARAM), "die Wahl bleibt").toBe(ZWEITER.id);
+    expect(leseTitel(container), "der Lesetext bleibt").toBe(ZWEITER.title);
+    expect(markierung()?.textContent).toBe(de("lib.lesen.ausserhalbTreffer"));
+
+    suche(container, "");
+    await entprellungAbwarten();
+    expect(zeilenTitel(container)).toContain(ZWEITER.title);
+    expect(gewaehlteId(container)).toBe(ZWEITER.id);
+    expect(markierung(), "wieder Treffer: Markierung weg").toBeNull();
+  });
+});

@@ -17,7 +17,12 @@
 //   • `?category=X` (einwertig) bleibt damit unverändert gültig — die bestehenden Deep-Links aus
 //     „Risiko & Lücken" funktionieren weiter.
 import { DEMO_FILTER_PARAM, readDemoKnowledgeFilter } from "./demoKnowledge";
-import { type FacetSelection, type FacetValues, isFacetNoMatch } from "./facets";
+import {
+  FACET_NO_MATCH_SELECTION,
+  type FacetSelection,
+  type FacetValues,
+  isFacetNoMatch,
+} from "./facets";
 
 // Fremde Parameter, die die Seite für anderes benutzt und die dieser Helfer NIE anfassen darf.
 const RESERVED_PARAMS = new Set(["q"]);
@@ -257,4 +262,90 @@ export function droppedFacetDimensions(
     }
   }
   return dropped;
+}
+
+// ── K1 / R-0428 (Nacharbeit 21): DER STRUKTURELLE NULLTREFFER ÜBERSTEHT DAS NEULADEN ─────────────
+//
+// GEMESSEN (Lauf g19, K1/K10-Suite, Fall N1): eine gespeicherte Sicht mit widersprüchlicher
+// Altkombination ergibt über `migrateSavedFacetSelection` den strukturellen No-Match — und nach einem
+// vollständigen Neuladen derselben Adresse standen wieder alle 10.001 Einträge da. Der Grund steht
+// oben: `writeFacetSelectionToParams` schreibt No-Match bewusst NICHT in die Adresse (uxpol4).
+//
+// DIESE GRENZE BLEIBT. Kein Query-Wert, kein Magic-String, kein Marker in der Adresse: eine Adresse
+// allein kann den Zustand weiterhin NICHT erzeugen. Erhalten wird er stattdessen im strukturellen
+// Sitzungskontext DIESES Tabs (`sessionStorage`, je Nutzerkennung): die Fläche schreibt dort, WELCHE
+// Dimensionen gerade strukturell leer sind, zusammen mit der Adresse, unter der das galt. Gelesen wird
+// nur beim echten Neuladen und nur, wenn die Adresse unverändert ist — ein anderer Link, ein anderer
+// Nutzer oder ein anderer Tab bekommt den Zustand nie. Gespeichert werden ausschliesslich bekannte
+// Facettenschlüssel, nie Werte.
+const NO_MATCH_SITZUNG = "klarwerk.library.nomatch.";
+
+type SitzungsSpeicher = Pick<Storage, "getItem" | "setItem" | "removeItem">;
+
+/** Die Dimensionen, die gerade im strukturellen No-Match stehen (sortiert). */
+function noMatchDimensionen(selection: FacetSelection): string[] {
+  return Object.entries(selection)
+    .filter(([, groupSelection]) => isFacetNoMatch(groupSelection))
+    .map(([key]) => key)
+    .sort();
+}
+
+/** Spiegelt den strukturellen No-Match in den Sitzungskontext — oder räumt ihn weg. */
+export function noMatchSitzungSchreiben(
+  storage: SitzungsSpeicher,
+  userId: string,
+  adresse: string,
+  selection: FacetSelection,
+): void {
+  const schluessel = `${NO_MATCH_SITZUNG}${userId || "anon"}`;
+  const dimensionen = noMatchDimensionen(selection);
+  if (dimensionen.length === 0) {
+    storage.removeItem(schluessel);
+    return;
+  }
+  storage.setItem(schluessel, JSON.stringify({ adresse, dimensionen }));
+}
+
+/**
+ * Ergänzt eine aus der Adresse gelesene Auswahl beim Neuladen um den gespiegelten No-Match.
+ *
+ * Nur bekannte Facettenschlüssel, nur ohne echten Wert in derselben Dimension (ein echter Wert aus der
+ * Adresse geht vor), nur bei gleicher Adresse. Ein kaputter oder fremder Eintrag wirkt nicht.
+ */
+export function mitGesichertemNoMatch(
+  selection: FacetSelection,
+  storage: Pick<Storage, "getItem">,
+  userId: string,
+  adresse: string,
+  facetKeys: readonly string[],
+): FacetSelection {
+  let eintrag: unknown;
+  try {
+    eintrag = JSON.parse(storage.getItem(`${NO_MATCH_SITZUNG}${userId || "anon"}`) ?? "null");
+  } catch {
+    return selection;
+  }
+  if (!eintrag || typeof eintrag !== "object") {
+    return selection;
+  }
+  const { adresse: gespeichert, dimensionen } = eintrag as {
+    adresse?: unknown;
+    dimensionen?: unknown;
+  };
+  if (gespeichert !== adresse || !Array.isArray(dimensionen)) {
+    return selection;
+  }
+  const erlaubt = new Set(facetKeys);
+  const out: FacetSelection = { ...selection };
+  for (const key of dimensionen) {
+    if (typeof key !== "string" || !erlaubt.has(key) || RESERVED_PARAMS.has(key)) {
+      continue;
+    }
+    const vorhanden = out[key];
+    if (vorhanden !== undefined && !isFacetNoMatch(vorhanden) && vorhanden.length > 0) {
+      continue;
+    }
+    out[key] = FACET_NO_MATCH_SELECTION;
+  }
+  return out;
 }

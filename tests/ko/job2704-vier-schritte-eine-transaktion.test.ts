@@ -235,6 +235,11 @@ async function angelegt(h: ReturnType<typeof aufbau>) {
   expect((await h.versionsInner.listByKo(erstellt.id)).map((v) => v.version)).toEqual([1]);
   expect((await h.projectionsInner.listByKo(erstellt.id)).map((p) => p.koVersion)).toEqual([1]);
   h.rufe.update = 0;
+  // Aufnahme gesamt-auditprotokoll (Lauf 3): die Erstanlage läuft mit `withTx` selbst in einer
+  // Transaktion (`KoService.schreibeErstanlage`). Gemessen wird hier nur die Revision danach — die
+  // Zähler beginnen deshalb nach der Anlage bei null.
+  Object.assign(h.attrappe.zaehler, { begonnen: 0, committet: 0, verworfen: 0 });
+  h.attrappe.gesehen.length = 0;
   return erstellt;
 }
 

@@ -48,13 +48,20 @@ export const MUTATING_METHODS: Readonly<Record<keyof AppRepos, readonly string[]
   // gestarteter Lauf danach spurlos, und genau das sollte 148 beenden.
   importRuns: ["insertIfAbsent", "advance", "appendItemRefs"],
   externalSources: ["insertIfAbsent"],
+  // R-0169 (Nacharbeit 5): die Fassungen der Dokumentakte überleben den Dev-Neustart.
+  dokumente: ["insertFassung"],
   // SCRUM-504: der atomare Bootstrap-Claim ist eine Mutation (fügt den Admin ein) → muss journaliert
   // werden, sonst überlebt der erste Admin den Dev-Neustart nicht. In Dev (sequenziell) genau einmal mit
   // Erfolg gerufen; Replay auf die leere Instanz beansprucht den Slot identisch.
   users: ["insert", "update", "delete", "tryClaimBootstrapAdmin"],
   sessions: ["create", "delete", "deleteByUser"],
   resetTokens: ["create", "delete"],
-  drafts: ["insert", "update", "delete"],
+  // R-0169 (Nacharbeit 8, bens Befund zum Neustartrundlauf): `insertIfOperationAbsent` (Anlage mit
+  // Vorgangskennung, der Word-Weg) und `updateWennStand` (Fortsetzen und das Binden der
+  // Dokumentfassung, `CaptureService.dokumentHerkunftBinden`) sind Mutationen. Ohne sie verlor ein
+  // Dev-Neustart den Entwurf bzw. seinen Fassungsbezug. Das Replay ist deterministisch: beide tragen
+  // ihre Bedingung in den Argumenten, und in derselben Reihenfolge trifft sie denselben Stand.
+  drafts: ["insert", "update", "delete", "insertIfOperationAbsent", "updateWennStand"],
   gaps: ["insert", "update", "delete"],
   // SCRUM-507 R2: die Bewertung (inkl. koVersion) wird per upsert journaled; die Invalidierung ist
   // versionsgebunden (keine separate Löschung), daher kein weiterer Mutator nötig.
@@ -83,6 +90,9 @@ export const MUTATING_METHODS: Readonly<Record<keyof AppRepos, readonly string[]
   overlapRepo: ["insert", "update", "closeOpenForKo"],
   // Pedi 04.07.: eingestellte Anzeige-Schwelle überlebt den Neustart (letzter Set gewinnt).
   overlapSettings: ["set"],
+  // R-0751 / R-1639 / R-2183 (Nacharbeit 3): Bereichsprofile und Ruhestandshorizonte überleben den
+  // Neustart. Die args tragen den fertigen Datensatz (inkl. Zeitstempel/Frist) → Replay exakt.
+  managementProfiles: ["setCategoryProfile", "setRetirement", "removeRetirement"],
   lifecycleRepo: ["addCoupling", "markPending", "clearPending", "savePath", "setProgress"],
   objects: ["insert"],
   // SCRUM-510 (WP3): der atomar-idempotente Insert ist ebenfalls eine Mutation → muss journaliert werden,
@@ -394,6 +404,13 @@ function journaled<T extends object>(
   const mutators = MUTATING_METHODS[name];
   return new Proxy(repo, {
     get(target, prop, receiver) {
+      // Aufnahme gesamt-auditprotokoll: `appendNext` schreibt in der Ablage an `append`/`appendOnce`
+      // vorbei und landete so nicht im Journal — nach einem Neustart fehlte der Eintrag. Die
+      // journalierte Ablage bietet ihn nicht an; der Audit-Dienst nimmt `last` + `append`/`appendOnce`
+      // (ungeteilt unter der `kettenSperre` der Speicher-Klammer, services/app/src/speicher-vorgang.ts).
+      if (name === "auditRepo" && prop === "appendNext") {
+        return undefined;
+      }
       const value = Reflect.get(target, prop, receiver);
       if (typeof value !== "function") {
         return value;

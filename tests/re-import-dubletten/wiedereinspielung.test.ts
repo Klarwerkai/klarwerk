@@ -12,8 +12,14 @@
 // als PORT in den Dienst und wird in der Kompositionswurzel (`library-routes.ts`) aus `coreText` +
 // `trigramSimilarity` gebaut. Ein Diensttest mit selbstgebauter Pruefung wuerde genau die Naht
 // ueberspringen, um die es geht — er waere gruen, waehrend die Route weiter Zeichen vergleicht.
+//
+// Lauf gesamt-import-adoption (Bens B3, R-0143): `importJson()` ist entfallen; `POST
+// /api/library/import` reiht Kandidaten ein, erst die Annahme legt an. Jeder Fall misst darum
+// den GANZEN Weg: den Befund je Kandidat beim Einreihen, die Annahme ALLER Kandidaten (kein Objekt
+// fuer eine Dublette) und danach den Bestand.
 import { describe, expect, it } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
+import type { KandidatDublettenbefund } from "../../services/library-analytics";
 
 const ZUGANG = { name: "Admin", email: "reimport@x.de", password: "secret123" };
 
@@ -68,11 +74,51 @@ const REICHES_KO = {
   ],
 };
 
-interface Uebersprungen {
-  titel: string;
-  grund: string;
+interface KandidatDto {
+  id: string;
   koId: string | null;
-  aehnlichkeit?: number;
+  dublettenbefund?: KandidatDublettenbefund;
+}
+
+type App = ReturnType<typeof buildApp>;
+
+/** Treffer-Kennung eines Befunds, wenn er auf ein Wissensobjekt zeigt — sonst `undefined`. */
+function getroffenesKo(befund: KandidatDublettenbefund | undefined): string | undefined {
+  return befund && "treffer" in befund && befund.treffer.art === "wissensobjekt"
+    ? befund.treffer.koId
+    : undefined;
+}
+
+/**
+ * Der ganze Importweg: einreihen, dann JEDEN Kandidaten annehmen.
+ *
+ * Hauptstand-Integration (R-0143, Auftrag pruef-warteschlange): der Eingang antwortet mit 200 und
+ * `direktimportAntwort`; er legt selbst nichts an (`imported: 0`), die eingereihten Kandidaten
+ * stehen unter `kandidaten`.
+ */
+async function spieleEin(app: App, headers: Record<string, string>, items: unknown[]) {
+  const res = await app.inject({
+    method: "POST",
+    url: "/api/library/import",
+    headers,
+    payload: { items },
+  });
+  expect(res.statusCode, res.body).toBe(200);
+  const antwort = res.json() as { imported: number; kandidaten: KandidatDto[] };
+  expect(antwort.imported, "Der Eingang legt selbst nichts an.").toBe(0);
+  const kandidaten = antwort.kandidaten;
+  const angenommen: KandidatDto[] = [];
+  for (const kandidat of kandidaten) {
+    const entscheidung = await app.inject({
+      method: "PUT",
+      url: `/api/library/import/candidates/${kandidat.id}`,
+      headers,
+      payload: { action: "accept" },
+    });
+    expect(entscheidung.statusCode, entscheidung.body).toBe(200);
+    angenommen.push(entscheidung.json() as KandidatDto);
+  }
+  return { kandidaten, angenommen };
 }
 
 async function bestueckteApp() {
@@ -137,36 +183,26 @@ describe("JOB 3023 · A — die eingespielte Sicherung erzeugt keine Dubletten",
   it("A1 · Satzpunkt und Gross-/Kleinschreibung erzeugen keinen zweiten Eintrag", async () => {
     const { app, headers, koIds } = await bestueckteApp();
 
-    const res = await app.inject({
-      method: "POST",
-      url: "/api/library/import",
-      headers,
-      payload: { items: leichtVeraenderteSicherung() },
-    });
+    const { kandidaten, angenommen } = await spieleEin(app, headers, leichtVeraenderteSicherung());
 
-    expect(res.statusCode, res.body).toBe(200);
-    const body = res.json() as {
-      imported: number;
-      skipped: number;
-      uebersprungen: Uebersprungen[];
-    };
     expect(
-      body.imported,
+      angenommen.map((k) => k.koId),
       "Eine wieder eingespielte Sicherung darf keinen einzigen neuen Eintrag erzeugen.",
-    ).toBe(0);
-    expect(body.skipped).toBe(2);
-    expect(body.uebersprungen).toHaveLength(2);
-    for (const eintrag of body.uebersprungen) {
-      expect(eintrag.grund).toBe("aehnlich");
+    ).toEqual([null, null]);
+    expect(kandidaten).toHaveLength(2);
+    for (const kandidat of kandidaten) {
+      const befund = kandidat.dublettenbefund;
+      expect(befund?.ergebnis).toBe("aehnlich");
       expect(
         koIds,
         "Die Antwort muss sagen, AUF WELCHES Wissensobjekt der Eintrag getroffen ist.",
-      ).toContain(eintrag.koId);
-      expect(eintrag.aehnlichkeit).toBeGreaterThanOrEqual(0.85);
-      expect(eintrag.aehnlichkeit).toBeLessThanOrEqual(1);
+      ).toContain(getroffenesKo(befund));
+      const aehnlichkeit = befund?.ergebnis === "aehnlich" ? befund.aehnlichkeit : undefined;
+      expect(aehnlichkeit).toBeGreaterThanOrEqual(0.85);
+      expect(aehnlichkeit).toBeLessThanOrEqual(1);
     }
     // Jeder Bestandseintrag wurde genau einmal getroffen — nicht zweimal derselbe.
-    expect(new Set(body.uebersprungen.map((e) => e.koId)).size).toBe(2);
+    expect(new Set(kandidaten.map((k) => getroffenesKo(k.dublettenbefund))).size).toBe(2);
 
     const liste = await app.inject({ method: "GET", url: "/api/kos", headers });
     expect(liste.statusCode, liste.body).toBe(200);
@@ -179,22 +215,15 @@ describe("JOB 3023 · A — die eingespielte Sicherung erzeugt keine Dubletten",
   it("A2 · die woertlich gleiche Sicherung heisst weiterhin `identisch` und nennt das Objekt", async () => {
     const { app, headers, koIds } = await bestueckteApp();
 
-    const res = await app.inject({
-      method: "POST",
-      url: "/api/library/import",
-      headers,
-      payload: { items: BESTAND },
-    });
+    const { kandidaten, angenommen } = await spieleEin(app, headers, BESTAND);
 
-    expect(res.statusCode, res.body).toBe(200);
-    const body = res.json() as {
-      imported: number;
-      skipped: number;
-      uebersprungen: Uebersprungen[];
-    };
-    expect(body.imported).toBe(0);
-    expect(body.uebersprungen.map((e) => e.grund)).toEqual(["identisch", "identisch"]);
-    expect(body.uebersprungen.map((e) => e.koId).sort()).toEqual([...koIds].sort());
+    expect(angenommen.map((k) => k.koId)).toEqual([null, null]);
+    expect(kandidaten.map((k) => k.dublettenbefund?.ergebnis)).toEqual(["identisch", "identisch"]);
+    expect(kandidaten.map((k) => getroffenesKo(k.dublettenbefund)).sort()).toEqual(
+      [...koIds].sort(),
+    );
+    const liste = await app.inject({ method: "GET", url: "/api/kos", headers });
+    expect((liste.json() as unknown[]).length).toBe(2);
   });
 
   // ==============================================================================================
@@ -229,36 +258,26 @@ describe("JOB 3023 · A — die eingespielte Sicherung erzeugt keine Dubletten",
     expect(angelegt.json().measures, "Der Bestand traegt drei Massnahmen.").toHaveLength(3);
 
     // Die Sicherung: nur Titel und Aussage, Schreibweise und Schlusszeichen geaendert.
-    const res = await app.inject({
-      method: "POST",
-      url: "/api/library/import",
-      headers,
-      payload: {
-        items: [
-          {
-            title: REICHES_KO.title.toUpperCase(),
-            statement: `${REICHES_KO.statement}.`,
-            type: REICHES_KO.type,
-            category: REICHES_KO.category,
-          },
-        ],
+    const { kandidaten, angenommen } = await spieleEin(app, headers, [
+      {
+        title: REICHES_KO.title.toUpperCase(),
+        statement: `${REICHES_KO.statement}.`,
+        type: REICHES_KO.type,
+        category: REICHES_KO.category,
       },
-    });
+    ]);
 
-    expect(res.statusCode, res.body).toBe(200);
-    const body = res.json() as {
-      imported: number;
-      skipped: number;
-      uebersprungen: Uebersprungen[];
-    };
     expect(
-      body.imported,
+      angenommen.map((k) => k.koId),
       "Ein gepflegtes Objekt darf durch seine eigene Sicherung nicht verdoppelt werden.",
-    ).toBe(0);
-    expect(body.uebersprungen).toHaveLength(1);
-    expect(body.uebersprungen[0]?.grund).toBe("aehnlich");
-    expect(body.uebersprungen[0]?.koId, "Die Antwort nennt das getroffene Objekt.").toBe(koId);
-    expect(body.uebersprungen[0]?.aehnlichkeit).toBeGreaterThanOrEqual(0.85);
+    ).toEqual([null]);
+    expect(kandidaten).toHaveLength(1);
+    const befund = kandidaten[0]?.dublettenbefund;
+    expect(befund?.ergebnis).toBe("aehnlich");
+    expect(getroffenesKo(befund), "Die Antwort nennt das getroffene Objekt.").toBe(koId);
+    expect(
+      befund?.ergebnis === "aehnlich" ? befund.aehnlichkeit : undefined,
+    ).toBeGreaterThanOrEqual(0.85);
 
     const liste = await app.inject({ method: "GET", url: "/api/kos", headers });
     expect(

@@ -40,9 +40,10 @@ import {
 //          wird HIER NICHT wiederholt (er gehört der Grossbestand-Suite); gemessen wird der
 //          gleichzeitige START zweier Instanzen auf frischer Datenbank (E2).
 //      3 · Audit: `AuditService.record`/`recordOnce` lesen `last.seq` und schreiben `seq + 1`
-//          ohne Serialisierung (`services/audit/src/service.ts`). Keine spätere Lieferung hat das
-//          angefasst. E3 reproduziert es deterministisch und misst den vorhandenen Schutzpfad
-//          `recordOnce` (Ereigniskennung) an genau der Stelle, für die er gebaut ist.
+//          ohne Serialisierung (`services/audit/src/service.ts`). E3 hat es deterministisch
+//          reproduziert; behoben in der Aufnahme gesamt-auditprotokoll (Lauf 3) über die
+//          Kettensperre in `PgAuditRepo.appendNext`. E3 misst seither das Warten an der Sperre und
+//          den vorhandenen Schutzpfad `recordOnce` (Ereigniskennung) an genau seiner Stelle.
 //
 // WARUM EINE EIGENE, WEGWERFBARE DATENBANK JE FALL. Der Wettlauf entsteht NUR beim Erstaufbau;
 // auf der geteilten Instanz des Integrationslaufs trägt `pg_extension` die Erweiterung längst.
@@ -680,24 +681,21 @@ describe("Aufnahme pg-start-audit-konkurrenz · paralleler Erstaufbau auf frisch
       // meldet ehrlich `false`, wirft nicht.
       expect(og.b).toMatchObject({ ok: true });
       expect(og.bWert).toBe(false);
-      // REPRODUZIERTER REST (JOB 4271 Befund 3), NICHT BEHOBEN: verschiedene Handlungen, gleiche
-      // berechnete `seq` → B fällt an `audit_pkey`. `record` und `recordOnce` teilen dieselbe
-      // unserialisierte Folge `last()` → `seq + 1` (`services/audit/src/service.ts`). Passende
-      // Behebung: die Folge serialisieren (z. B. `pg_advisory_xact_lock` in `PgAuditRepo` vor
-      // `last()`, im selben Client wie das INSERT) oder die `seq` aus der Datenbank vergeben.
+      // BEHOBEN (Aufnahme gesamt-auditprotokoll, Lauf 3): bis dahin fiel B hier an `audit_pkey`
+      // (23505) — `record` und `recordOnce` teilten die unserialisierte Folge `last()` → `seq + 1`.
+      // Jetzt liegen Vorgänger-Lesen und INSERT unter der transaktionsgebundenen Kettensperre
+      // (`PgAuditRepo.appendNext`, `pg_advisory_xact_lock`); B wartet dort, bis A festschreibt, und
+      // hängt danach an den festgeschriebenen Vorgänger an. `wartend` oben zeigt das Warten.
       for (const u of [rr, ov]) {
-        expect(u.b, JSON.stringify(u.b)).toMatchObject({
-          ok: false,
-          code: "23505",
-          constraint: "audit_pkey",
-        });
+        expect(u.b, JSON.stringify(u.b)).toMatchObject({ ok: true });
       }
-      // Eindeutig erfasst: lückenlose Folge, jede Kennung einmal, Kette intakt — ein verlorener
-      // Schreiber hinterlässt keinen halben Eintrag.
+      // Eindeutig erfasst: lückenlose Folge, jede Kennung einmal, Kette intakt.
       expect(zeilen.rows).toEqual([
         { seq: 1, event_id: null },
-        { seq: 2, event_id: "e3:gleich" },
-        { seq: 3, event_id: "e3:k2" },
+        { seq: 2, event_id: null },
+        { seq: 3, event_id: "e3:gleich" },
+        { seq: 4, event_id: "e3:k2" },
+        { seq: 5, event_id: "e3:k3" },
       ]);
       expect(bericht.ketteIntakt).toBe(true);
 
@@ -737,7 +735,7 @@ describe("Aufnahme pg-start-audit-konkurrenz · paralleler Erstaufbau auf frisch
 
         // (4) DIE ANLAGE ÜBER DIE APP gegen einen offenen Fremdschreiber — deterministisch, was
         //     JOB 4271 nur im freien Lauf sah. A hält einen Protokolleintrag offen, B legt über
-        //     `POST /api/kos` an; B wartet am Primärschlüssel, A schreibt fest.
+        //     `POST /api/kos` an; B wartet an der Kettensperre, A schreibt fest.
         const vorher = await koCreatedJe();
         let anlage: { statusCode: number; body: string } | undefined;
         let anlageWartend = 0;
@@ -768,16 +766,14 @@ describe("Aufnahme pg-start-audit-konkurrenz · paralleler Erstaufbau auf frisch
           koCreatedDerNeuen: neu.map((id) => nachher.get(id)),
         };
         expect(anlageWartend).toBeGreaterThanOrEqual(1);
-        // REPRODUZIERTER REST, NICHT BEHOBEN — und das ist der WIDERSPRÜCHLICHE STAND, den der
-        // Nutzen dieser Aufnahme ausschliessen will: der Nutzer bekommt 500, das Wissensobjekt
-        // steht trotzdem in `kos`, und sein `ko.created`-Beleg fehlt. Der Nachzug
-        // `ensureCreatedSideEffects` wird nur aus den Import-/Dokumentwegen gerufen
-        // (`services/library-analytics/src/service.ts`), nicht aus `POST /api/kos` — der Stand
-        // heilt nicht von selbst. Landet die Behebung aus (3), kippt dieser Block zu „201 und
-        // genau ein Beleg" und ist so umzuschreiben.
-        expect(anlage?.statusCode, JSON.stringify(anlage)).toBe(500);
+        // BEHOBEN (Aufnahme gesamt-auditprotokoll, Lauf 3) — hier stand bis dahin der
+        // WIDERSPRÜCHLICHE STAND: 500 für den Nutzer, das Wissensobjekt trotzdem in `kos`, ohne
+        // `ko.created`. Jetzt wartet die Anlage an der Kettensperre, und Objekt, Fassung, Projektion
+        // und `ko.created` werden in EINER Transaktion festgeschrieben (`KoService.schreibeErstanlage`):
+        // „201 und genau ein Beleg", wie dieser Block es für die Behebung angekündigt hatte.
+        expect(anlage?.statusCode, JSON.stringify(anlage)).toBe(201);
         expect(neu).toHaveLength(1);
-        expect(neu.map((id) => nachher.get(id))).toEqual([0]);
+        expect(neu.map((id) => nachher.get(id))).toEqual([1]);
         expect(await auditA.verify()).toBe(true);
 
         // (5) Frei, ohne Choreografie: sechs Anlagen über zwei App-Instanzen (der Fall aus 4271).
@@ -805,6 +801,10 @@ describe("Aufnahme pg-start-audit-konkurrenz · paralleler Erstaufbau auf frisch
         for (const id of bestaetigt) {
           expect(stand.get(id), `bestätigte Anlage ${id}`).toBe(1);
         }
+        // Lauf 3: kein Objekt ohne Beleg, auch nicht aus einer abgewiesenen Anlage — und keine
+        // Abweisung mehr am Primärschlüssel.
+        expect(bericht.frei).toMatchObject({ koOhneBeleg: 0 });
+        expect(antworten.map((r) => r.statusCode)).toEqual(Array(6).fill(201));
         expect(await auditA.verify()).toBe(true);
       } finally {
         await appA.close().catch(() => undefined);

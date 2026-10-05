@@ -13,8 +13,11 @@ const IMPORT_RUN_TAKT_MS = 2000;
 
 // Lese-Hooks (TanStack Query) gegen die Modul-Endpunkte. Mutationen werden je
 // Screen mit useMutation gebaut (mit Invalidierung der passenden Keys).
-export const useKos = (f?: KoFilter) =>
-  useQuery({ queryKey: ["kos", f], queryFn: () => endpoints.ko.list(f) });
+// K1 / NFR-PERF-01 (Nacharbeit 28): `enabled` kam ADDITIV hinzu, wie bei `useLibrarySearch` unten
+// (JOB 4153), und ist standardmässig `true` — jeder bestehende Aufrufer verhält sich wie vorher. Die
+// Bibliotheksfläche holt den ganzen Bestand damit erst, nachdem ihre Suche geantwortet hat.
+export const useKos = (f?: KoFilter, enabled = true) =>
+  useQuery({ queryKey: ["kos", f], queryFn: () => endpoints.ko.list(f), enabled });
 // JOB 4153: `enabled` kam ADDITIV hinzu und ist standardmässig `true` — jeder bestehende Aufrufer
 // verhält sich Zeichen für Zeichen wie vorher. Die Zielauswahl der Wissensbeziehungen braucht ihn:
 // ohne ihn liefe bei JEDEM Öffnen eines Eintrags eine Suche mit leerem Begriff los und holte den
@@ -58,11 +61,30 @@ export const useManagementSnapshot = () =>
     queryKey: ["management", "snapshot"],
     queryFn: () => endpoints.management.snapshot(),
   });
+// R-1639 / R-2183 (Nacharbeit 3): „mein Bereich" mit Ruhestandshorizonten und Arbeitsvorrat.
+export const useRiskHorizon = () =>
+  useQuery({
+    queryKey: ["management", "risk-horizon"],
+    queryFn: () => endpoints.management.riskHorizon(),
+  });
+// Die gepflegten Eingänge — nur für die Pflegerolle angefragt (`users.manage`).
+export const useManagementProfiles = (enabled: boolean) =>
+  useQuery({
+    queryKey: ["management", "profiles"],
+    queryFn: () => endpoints.management.profiles(),
+    enabled,
+  });
 // SCRUM-165: read-only Einsicht in jüngste ModelRuns.
 export const useModelRuns = (limit?: number) =>
   useQuery({
     queryKey: ["model-runs", limit],
     queryFn: () => endpoints.modelRuns.recent(limit),
+  });
+// Aufnahme gesamt-ki-laufprotokoll (V9, R-2071): Auswertung eines Zeitraums für die KI-Übersicht.
+export const useModelRunAuswertung = (von: string, bis: string) =>
+  useQuery({
+    queryKey: ["model-runs", "auswertung", von, bis],
+    queryFn: () => endpoints.modelRuns.auswertung(von, bis),
   });
 // SCRUM-169: KO-übergreifender read-only Evidence-Index (QM/Stufe 2).
 export const useEvidenceIndex = (limit?: number) =>

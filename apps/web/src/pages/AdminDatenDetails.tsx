@@ -554,7 +554,7 @@ export function DemodatenDetail({ onZurueck }: { onZurueck: () => void }): JSX.E
           </FeatureGate>
           {demoLadenAus ? (
             <p data-testid="demo-laden-aus" className="text-[12.5px] text-muted-2">
-              {t("adm.seedAus")}
+              {t("demodaten.ladenAus")}
             </p>
           ) : null}
         </div>

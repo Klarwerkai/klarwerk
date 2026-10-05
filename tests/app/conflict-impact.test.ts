@@ -96,14 +96,19 @@ describe("SCRUM-357: conflictImpact — Wirkung aus der Konfliktliste", () => {
 });
 
 describe("SCRUM-357: conflictLimitedUsability — ehrliche Begrenzung ohne Fake-Wahrheit", () => {
-  it("ready → in-review bei wirksamem Konflikt; sonst unverändert", () => {
+  it("ready/needs-work → in-review bei wirksamem Konflikt; sonst unverändert", () => {
     const limited = conflictImpact("ko-1", [conflict()]);
     const none = conflictImpact("ko-1", []);
     expect(conflictLimitedUsability("ready", limited)).toBe("in-review");
     expect(conflictLimitedUsability("ready", none)).toBe("ready");
-    // bereits offene/in-Prüfung-KOs sind ohnehin nicht ready und bleiben.
-    expect(conflictLimitedUsability("needs-work", limited)).toBe("needs-work");
+    // PRÜFSTATUS-ANZEIGE (R-0216, BEN-07): JEDER wirksame Konflikt heißt „In Prüfung" — auch für
+    // ein offenes Objekt (R-0231: validiert/99 → Konflikt → offen/87). Früher blieb es „needs-work"
+    // und erschien in Detail, Bibliothek und Antwort als „Zu prüfen" statt „In Prüfung".
+    expect(conflictLimitedUsability("needs-work", limited)).toBe("in-review");
     expect(conflictLimitedUsability("in-review", limited)).toBe("in-review");
+    // Kontrolle: ohne wirksamen Konflikt bleibt jede Stufe unverändert.
+    expect(conflictLimitedUsability("needs-work", none)).toBe("needs-work");
+    expect(conflictLimitedUsability("in-review", none)).toBe("in-review");
   });
 
   it("effectiveUsability: validiertes KO wirkt mit offenem Konflikt NICHT mehr ready", () => {

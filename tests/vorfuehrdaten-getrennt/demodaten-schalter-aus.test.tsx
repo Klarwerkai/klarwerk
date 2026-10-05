@@ -145,7 +145,7 @@ describe("R-0913 · Demodatenkarte: ausgeschaltet ist ein sichtbarer Zustand", (
   it("S1 · bestätigt aus: Aus-Zeile, kein Ladeknopf, keine Ladehilfe", async () => {
     d.features = { data: { features: { demodaten: false } }, isLoading: false, isError: false };
     await karte();
-    expect(ausZeile()?.textContent).toBe(i18n.t("adm.seedAus"));
+    expect(ausZeile()?.textContent).toBe(i18n.t("demodaten.ladenAus"));
     expect(ladeknopf(), "der Ladeknopf steht trotz „aus“ da").toBeUndefined();
     expect(await hilfetext()).not.toContain(i18n.t("adm.seedHint"));
     expect(d.demoSeed).not.toHaveBeenCalled();
@@ -202,9 +202,9 @@ describe("R-0913 · Demodatenkarte: ausgeschaltet ist ein sichtbarer Zustand", (
   });
 
   it("S6 · die Aus-Zeile ist in DE, EN und NL übersetzt", () => {
-    const texte = ["de", "en", "nl"].map((lng) => i18n.getFixedT(lng)("adm.seedAus"));
+    const texte = ["de", "en", "nl"].map((lng) => i18n.getFixedT(lng)("demodaten.ladenAus"));
     for (const text of texte) {
-      expect(text).not.toBe("adm.seedAus");
+      expect(text).not.toBe("demodaten.ladenAus");
       expect(text.length).toBeGreaterThan(0);
     }
     expect(new Set(texte).size, "eine Sprache fiel auf eine andere zurück").toBe(3);

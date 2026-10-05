@@ -173,6 +173,40 @@ export default {
       "Eine Benachrichtigung ist hier nicht angebunden – sag der entscheidenden Person bei Bedarf selbst Bescheid.",
     "fe001.entscheidung.pruefungOffen":
       "Eine automatische fachliche Prüfung ist noch nicht angebunden. Über die Anleitung entscheiden allein Menschen.",
+    "fe001.status.fassung": "Stand {{nummer}}",
+    "fe001.status.naechsterSchritt": "Nächster Schritt:",
+    "fe001.sperre.keinErfassungsrecht":
+      "Nur lesen: Ändern und Vorlegen können Personen, die Wissen erfassen dürfen.",
+    "fe001.status.bedeutung.entwurf":
+      "Gespeichert, aber noch nicht zur Entscheidung vorgelegt – nicht freigegeben.",
+    "fe001.status.bedeutung.vorgelegt":
+      "Zur Entscheidung vorgelegt, aber noch nicht freigegeben. Vorgelegt heißt eingereicht – über diese Vorlage ist noch nicht entschieden.",
+    "fe001.status.bedeutung.entschieden":
+      "Freigegeben: Eine Person mit Prüfrecht hat diese Fassung angenommen. Sie gilt und wird nicht mehr geändert.",
+    "fe001.status.bedeutung.abgelehnt":
+      "Abgelehnt – nicht freigegeben. Eine Person mit Prüfrecht hat die vorgelegte Fassung nicht angenommen.",
+    "fe001.status.pruefung.freigegeben":
+      "Freigegeben wurde Stand {{nummer}} am {{zeit}}. Wer freigegeben hat, wird bisher nicht festgehalten.",
+    "fe001.status.pruefung.abgelehnt":
+      "Wer abgelehnt hat und wann, wird bisher nicht festgehalten.",
+    "fe001.status.schritt.vorlegen":
+      "Lesefassung prüfen und die Anleitung mit „Vorlegen“ zur Entscheidung einreichen.",
+    "fe001.status.schritt.abschnitteFehlen":
+      "Abschnitte aus vorhandenem Wissen hinzufügen – ohne Abschnitte kann die Anleitung nicht vorgelegt werden.",
+    "fe001.status.schritt.ueberarbeiten":
+      "Anleitung überarbeiten und mit „Vorlegen“ erneut zur Entscheidung einreichen.",
+    "fe001.status.schritt.nurLesen":
+      "Du kannst die Anleitung lesen. Vorlegen und überarbeiten können Personen, die Wissen erfassen dürfen.",
+    "fe001.status.schritt.unvollstaendigVorlegen":
+      "Vorlegen ist für dich nicht möglich, weil du nicht alle Abschnitte siehst. Wende dich an die Person, die die Anleitung angelegt hat.",
+    "fe001.status.schritt.warten":
+      "Für dich ist nichts zu tun: Die Anleitung wartet auf die Entscheidung einer Person mit Prüfrecht (Controller oder Administrator). Eine Benachrichtigung ist nicht angebunden.",
+    "fe001.status.schritt.entscheiden":
+      "Du hast das Prüfrecht und kannst selbst entscheiden: Anleitung lesen, dann „Annehmen“ oder „Ablehnen“.",
+    "fe001.status.schritt.unvollstaendigEntscheiden":
+      "Entscheiden ist für dich nicht möglich, weil du nicht alle Abschnitte siehst. Entscheiden kann nur, wer die ganze Anleitung lesen darf.",
+    "fe001.status.schritt.gilt":
+      "Nichts mehr zu tun: Die Anleitung gilt in dieser Fassung und wird nicht mehr geändert. Für Änderungen braucht es eine neue Arbeitsanleitung.",
     "fe001.hilfe.uebersichtTitel": "Arbeitsanleitungen – Übersicht",
     "fe001.hilfe.uebersicht":
       "Hier siehst du die Arbeitsanleitungen, die du lesen darfst, und legst neue an. Eine Arbeitsanleitung stellst du aus vorhandenem Wissen zusammen: Titel eingeben, „Neue Arbeitsanleitung erstellen“ wählen, danach Zweck beschreiben und Abschnitte hinzufügen. Ein Klick auf einen Titel öffnet die Anleitung. Dafür wird keine KI gebraucht.",
@@ -325,6 +359,38 @@ export default {
       "No notification is connected here – let the deciding person know yourself if needed.",
     "fe001.entscheidung.pruefungOffen":
       "An automatic expert review is not connected yet. Only people decide on the instruction.",
+    "fe001.status.fassung": "State {{nummer}}",
+    "fe001.sperre.keinErfassungsrecht":
+      "Read only: people who may capture knowledge can change and submit it.",
+    "fe001.status.naechsterSchritt": "Next step:",
+    "fe001.status.bedeutung.entwurf": "Saved, but not yet submitted for decision – not approved.",
+    "fe001.status.bedeutung.vorgelegt":
+      "Submitted for decision, but not approved yet. Submitted means handed in – this submission has not been decided yet.",
+    "fe001.status.bedeutung.entschieden":
+      "Approved: a person with review rights accepted this version. It applies and is no longer changed.",
+    "fe001.status.bedeutung.abgelehnt":
+      "Rejected – not approved. A person with review rights did not accept the submitted version.",
+    "fe001.status.pruefung.freigegeben":
+      "State {{nummer}} was approved on {{zeit}}. Who approved it is not recorded so far.",
+    "fe001.status.pruefung.abgelehnt": "Who rejected it and when is not recorded so far.",
+    "fe001.status.schritt.vorlegen":
+      "Check the reading version and hand in the instruction for decision with “Submit”.",
+    "fe001.status.schritt.abschnitteFehlen":
+      "Add sections from existing knowledge – without sections the instruction cannot be submitted.",
+    "fe001.status.schritt.ueberarbeiten":
+      "Revise the instruction and hand it in again for decision with “Submit”.",
+    "fe001.status.schritt.nurLesen":
+      "You can read the instruction. People who may capture knowledge can submit and revise it.",
+    "fe001.status.schritt.unvollstaendigVorlegen":
+      "You cannot submit because you do not see all sections. Contact the person who created the instruction.",
+    "fe001.status.schritt.warten":
+      "Nothing to do for you: the instruction is waiting for a decision by a person with review rights (Controller or Administrator). No notification is connected.",
+    "fe001.status.schritt.entscheiden":
+      "You have review rights and can decide yourself: read the instruction, then “Accept” or “Reject”.",
+    "fe001.status.schritt.unvollstaendigEntscheiden":
+      "You cannot decide because you do not see all sections. Only someone who may read the whole instruction can decide.",
+    "fe001.status.schritt.gilt":
+      "Nothing left to do: the instruction applies in this version and is no longer changed. Changes need a new work instruction.",
     "fe001.hilfe.uebersichtTitel": "Work instructions – overview",
     "fe001.hilfe.uebersicht":
       "Here you see the work instructions you may read and create new ones. You assemble a work instruction from existing knowledge: enter a title, choose “Create new work instruction”, then describe the purpose and add sections. Clicking a title opens the instruction. No AI is needed for this.",
@@ -483,6 +549,40 @@ export default {
       "Een melding is hier niet aangesloten – laat het de beslissende persoon zo nodig zelf weten.",
     "fe001.entscheidung.pruefungOffen":
       "Een automatische inhoudelijke controle is nog niet aangesloten. Alleen mensen beslissen over de instructie.",
+    "fe001.status.fassung": "Stand {{nummer}}",
+    "fe001.status.naechsterSchritt": "Volgende stap:",
+    "fe001.sperre.keinErfassungsrecht":
+      "Alleen lezen: wijzigen en voorleggen kunnen personen die kennis mogen vastleggen.",
+    "fe001.status.bedeutung.entwurf":
+      "Opgeslagen, maar nog niet ter beslissing voorgelegd – niet goedgekeurd.",
+    "fe001.status.bedeutung.vorgelegt":
+      "Ter beslissing voorgelegd, maar nog niet goedgekeurd. Voorgelegd betekent ingediend – over deze indiening is nog niet beslist.",
+    "fe001.status.bedeutung.entschieden":
+      "Goedgekeurd: een persoon met beoordelingsrecht heeft deze versie aangenomen. Ze geldt en wordt niet meer gewijzigd.",
+    "fe001.status.bedeutung.abgelehnt":
+      "Afgewezen – niet goedgekeurd. Een persoon met beoordelingsrecht heeft de voorgelegde versie niet aangenomen.",
+    "fe001.status.pruefung.freigegeben":
+      "Stand {{nummer}} is goedgekeurd op {{zeit}}. Wie heeft goedgekeurd, wordt tot nu toe niet vastgelegd.",
+    "fe001.status.pruefung.abgelehnt":
+      "Wie heeft afgewezen en wanneer, wordt tot nu toe niet vastgelegd.",
+    "fe001.status.schritt.vorlegen":
+      "Leesversie controleren en de instructie met „Voorleggen” ter beslissing indienen.",
+    "fe001.status.schritt.abschnitteFehlen":
+      "Onderdelen uit bestaande kennis toevoegen – zonder onderdelen kan de instructie niet worden voorgelegd.",
+    "fe001.status.schritt.ueberarbeiten":
+      "Instructie herzien en met „Voorleggen” opnieuw ter beslissing indienen.",
+    "fe001.status.schritt.nurLesen":
+      "Je kunt de instructie lezen. Voorleggen en herzien kunnen personen die kennis mogen vastleggen.",
+    "fe001.status.schritt.unvollstaendigVorlegen":
+      "Voorleggen is voor jou niet mogelijk, omdat je niet alle onderdelen ziet. Neem contact op met de persoon die de instructie heeft gemaakt.",
+    "fe001.status.schritt.warten":
+      "Voor jou is er niets te doen: de instructie wacht op de beslissing van een persoon met beoordelingsrecht (Controller of Administrator). Een melding is niet aangesloten.",
+    "fe001.status.schritt.entscheiden":
+      "Je hebt beoordelingsrecht en kunt zelf beslissen: instructie lezen, dan „Aannemen” of „Afwijzen”.",
+    "fe001.status.schritt.unvollstaendigEntscheiden":
+      "Beslissen is voor jou niet mogelijk, omdat je niet alle onderdelen ziet. Alleen wie de hele instructie mag lezen, kan beslissen.",
+    "fe001.status.schritt.gilt":
+      "Niets meer te doen: de instructie geldt in deze versie en wordt niet meer gewijzigd. Voor wijzigingen is een nieuwe werkinstructie nodig.",
     "fe001.hilfe.uebersichtTitel": "Werkinstructies – overzicht",
     "fe001.hilfe.uebersicht":
       "Hier zie je de werkinstructies die je mag lezen en maak je nieuwe. Een werkinstructie stel je samen uit bestaande kennis: titel invullen, „Nieuwe werkinstructie maken” kiezen, daarna het doel beschrijven en onderdelen toevoegen. Een klik op een titel opent de instructie. Hiervoor is geen AI nodig.",

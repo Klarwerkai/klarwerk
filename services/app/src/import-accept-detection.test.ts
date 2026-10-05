@@ -1,3 +1,7 @@
+// Lauf gesamt-import-adoption R3 (Bens N3, R-0145): die KI-Erkennung am Import-Accept läuft nur
+// noch, wenn der Prüfer sie für die Annahme ausdrücklich anfordert (`kiPruefung: true`). Diese
+// Datei misst genau diese Erkennung und fordert sie darum an jeder Annahme an; dass OHNE die
+// Anforderung kein Modellaufruf geschieht, misst `tests/import-genau-einmal/nachbarn.test.ts`.
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 // JOB 3050: die beiden Kennzahlen, an denen der Überschneidungsfall unten hängt — hier NUR gemessen
 // (die Schwellen selbst liegen unverändert in `conflicts` bzw. der Kompositionswurzel).
@@ -116,7 +120,7 @@ async function acceptImportedCandidate(
     method: "PUT",
     url: `/api/library/import/candidates/${candidate.id}`,
     headers,
-    payload: { action: "accept" },
+    payload: { action: "accept", kiPruefung: true },
   });
   expect(accepted.statusCode).toBe(200);
   // Der Kandidat wird ordentlich angenommen — der Konflikt blockiert das Annehmen NIE.
@@ -231,7 +235,7 @@ describe("SCRUM-470 (S6): Erkennung am Import-Accept-Pfad (HTTP end-to-end)", ()
       method: "PUT",
       url: `/api/library/import/candidates/${cand.json()[0].id}`,
       headers,
-      payload: { action: "accept" },
+      payload: { action: "accept", kiPruefung: true },
     });
     expect(accepted.json().status).toBe("angenommen");
     expect(accepted.json().koId).toBeTruthy();

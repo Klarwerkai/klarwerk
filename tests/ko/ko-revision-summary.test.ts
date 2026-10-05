@@ -89,8 +89,11 @@ describe("SCRUM-325: koRevisionSummary", () => {
     });
     expect(s.changedCount).toBe(3);
     expect(s.items.map((i) => i.id)).toEqual<KoRevisionItemId[]>(["statement", "tags", "type"]);
+    // R-0432 (K3): Schlagwörter tragen einen eigenen Schlüssel (der alte steht im Textschnappschuss).
     for (const item of s.items) {
-      expect(item.labelKey).toBe(`ko.revision.field.${item.id}`);
+      expect(item.labelKey).toBe(
+        item.id === "tags" ? "ko.revision.field.schlagwoerter" : `ko.revision.field.${item.id}`,
+      );
     }
   });
 

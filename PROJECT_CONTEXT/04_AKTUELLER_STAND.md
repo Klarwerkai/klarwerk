@@ -7,6 +7,30 @@
 > `PROJECT_CONTEXT/13_ASSISTENT_ZWISCHENBERICHT.md` (Rohstand: `docs/boss-assistant/`).
 > Live-Version dort bestätigt: **v1.0.0-beta.1.4**.
 
+## 01.10.2026 — Aufnahme „KI-Laufprotokoll“ (Runde 1 + Nacharbeit Runden 2 und 3)
+
+- Abgleich aller zugeordneten Anliegen (R-0612 … V9, MR-SELECT-1) mit Fassungen und Belegen:
+  `tests/ki-lauf-protokoll/README.md`. MR-SELECT-1 ist seit JOB 3127 (1.0.0-beta.1.140) geliefert,
+  der Tokenverbrauch seit JOB 3074 (1.0.0-beta.1.88).
+- Neu im Laufprotokoll:
+  - Ein Lauf, der an `ModelCapacityError` endet, schreibt jetzt einen Datensatz.
+  - `error` ist inhaltsfrei: Meldungen nur von einer Erlaubnisliste, sonst nur Typ und Klasse.
+  - Vier weitere Laufarten: `enrich`, `conflict`, `duplicate`, `probe`.
+  - `kosten` aus Verbrauch × Preisliste, mit Preisstand.
+  - `erzeugt` mit Art und Anzahl des Erzeugten.
+  - Strukturierte Logzeile `ki_lauf`.
+- Neu in der Oberfläche: Die KI-Übersicht zeigt Kosten und Erzeugtes je Lauf. Dazu kommt die Karte
+  „KI-Auswertung (Zeitraum)“ (7/30/90 Tage, Kosten je Währung) über `GET /api/model-runs/auswertung`.
+- **Preise setzt der Betreiber** über `KLARWERK_KI_PREISLISTE` (JSON, im Startvertrag). Der Code
+  liefert keine Preise mit. **Entscheidung Pedi offen:** welche Preise, Währung und Stand.
+- Runde 3 (Bens R2-Befunde):
+  - HTTP-Fehler ohne Anbietertext im Protokoll.
+  - `versuche` je Lauf (Modell, Verbrauch, Span); Kosten je Versuch zum Preis seines Modells.
+  - Tracing nach W3C Trace Context (`trace` am Lauf, Kennungen in der Logzeile).
+  - Die Auswertungskarte behandelt Offline und gescheiterte Auffrischung.
+- Offen: Export an einen Trace-/Metrik-Sammler, Verknüpfung erzeugter Gegenstände mit späteren
+  Entwürfen/KOs, Anzeige des Fehlergrunds. Nicht geprüft: echte Modell-API, PostgreSQL, Browser.
+
 ## 01.10.2026 — Erstnutzer-Hürden U2/U3 im Browser (Revision 9)
 
 - Neue Playwright-Sonde `tests-smoke/erstnutzer-u2-u3-browser.spec.ts`: U2 (Suchraum der Bibliothek
@@ -112,6 +136,16 @@ R-0020 gilt unverändert für **Speichern UND Einreichen**, auch bei verlorener 
   Nutzlastwechsel ohne Benutzerhandlung nicht bekannt, aber nicht ausgeschlossen. Eine sichtbare
   Erklärung „war bereits gespeichert" (R-0156) gibt es nicht — die Wiederholung meldet den
   normalen Speichererfolg.
+
+## 29.09.2026 — Auditprotokoll: Änderung und Beleg gemeinsam oder gar nicht (Lauf 3)
+
+- Audit-Kette: Vorgänger lesen und anhängen als ein Schritt (`AuditRepo.appendNext`; PostgreSQL unter
+  `pg_advisory_xact_lock`, auch zwischen Instanzen). Erfassen, Ändern und Validieren eines
+  Wissensobjekts schreiben Objekt und Auditeintrag mit `withTx` in einer Transaktion; ohne sie mit
+  Rücknahme und `ko.change-rolled-back`. Löst WP-SHIP8-CLOSE-5 ab.
+- Export der Kette (`GET /api/audit/export`), `library.export`, `ko.revalidated`, Objektkette.
+- Details, Belege, Grenzen: `docs/entscheidungen/gesamt-auditprotokoll.md`. PostgreSQL-Integration
+  (`tests/audit-gesamt/*.integration.test.ts`) auf dem Prüfserver noch zu fahren.
 
 ## 29.09.2026 — Bildidentität: die Kennung kommt vom Bild (Aufnahme gesamt-bildidentitaet, Lauf 3)
 

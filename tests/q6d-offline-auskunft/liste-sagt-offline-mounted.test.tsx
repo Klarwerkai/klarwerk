@@ -89,6 +89,9 @@ function Wirt({ pausiert }: { pausiert: boolean }): JSX.Element {
     gesamt: null,
     onNachladen: () => {},
     leerAktion: null,
+    // R-0446: die Ortsangabe unter „Nichts gefunden." — dieser Wirt misst den Offline-Zweig, nicht
+    // den Suchraum (der hat seinen Wächter in `tests/bibliothek-suchraum/`).
+    leerRaum: null,
     lage: "spalte" as const,
   });
 }
