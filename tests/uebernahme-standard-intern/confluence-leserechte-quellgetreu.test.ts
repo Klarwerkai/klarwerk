@@ -13,8 +13,12 @@
 //   N1–N3  derselbe Schutz beim Nachladen je ID (`fetchItem`, der Anwendungsweg der Übernahme).
 //   Q1–Q3  geänderte Quellversion: eine nachträglich beschränkte Seite hebt das Objekt an, eine
 //          aufgehobene Beschränkung macht es wieder intern, eine menschliche Einstufung bleibt.
+//   Q4–Q6  Nacharbeit 3: menschliche Einstufung als Vermerk (F5); veraltete Kandidaten setzen
+//          neuere Rechte nicht zurück — über die Version und bei reiner Rechteänderung (F4).
 //   G1     die Gruppierung: ein offener Bestand sperrt sie nicht, ein vererbt beschränkter schon.
 //   L1–L4  der reguläre Leseweg mit angemeldeten Konten (Nacharbeit 2, Bens Befunde F1/F2).
+//   L5–L8  Nacharbeit 3: Space, Gruppen, Konten ohne Mailadresse, unbekannte Space-Rechte (F1),
+//          der annehmende Autor ohne Quellrecht (F2, in L1), der Gesamtanweisungsweg (F3).
 //
 // Fixture-Fetch, kein Netz, kein Token einer echten Instanz.
 import { describe, expect, it } from "vitest";
@@ -63,8 +67,23 @@ function antwort(status: number, body: unknown): Response {
   } as unknown as Response;
 }
 
+/**
+ * Die Rechte außerhalb der Seite (Nacharbeit 3). `space: null` = das Dienstkonto darf die
+ * Space-Berechtigungen nicht lesen (404). Ohne Angabe ist der Space ANONYM lesbar — dann gilt nur,
+ * was Seite und Vorfahren beschränken (die Bedeutung aller Fälle vor Nacharbeit 3).
+ */
+interface FixtureRechte {
+  space?: { users?: unknown[]; groups?: unknown[] } | null;
+  gruppen?: Record<string, unknown[]>;
+  kontoEmails?: Record<string, string>;
+}
+
 /** Space-Listing liefert `liste`; `/content/<id>` liefert die Seite aus `einzeln` oder 404. */
-function fixture(liste: ConfluencePage[], einzeln: ConfluencePage[] = liste) {
+function fixture(
+  liste: ConfluencePage[],
+  einzeln: ConfluencePage[] = liste,
+  rechte: FixtureRechte = {},
+) {
   const abgerufen: string[] = [];
   const fetchFn = (async (url: string | URL | Request) => {
     const u = new URL(String(url));
@@ -74,6 +93,31 @@ function fixture(liste: ConfluencePage[], einzeln: ConfluencePage[] = liste) {
       abgerufen.push(id);
       const s = einzeln.find((p) => p.id === id);
       return s ? antwort(200, s) : antwort(404, {});
+    }
+    if (u.pathname.endsWith("/rest/api/space/K")) {
+      if (rechte.space === null) {
+        return antwort(404, {});
+      }
+      return antwort(200, {
+        key: "K",
+        permissions: [
+          {
+            operation: { operation: "read", targetType: "space" },
+            anonymousAccess: rechte.space === undefined,
+            subjects: {
+              user: { results: rechte.space?.users ?? [] },
+              group: { results: rechte.space?.groups ?? [] },
+            },
+          },
+        ],
+      });
+    }
+    if (u.pathname.endsWith("/rest/api/group/member")) {
+      return antwort(200, { results: rechte.gruppen?.[u.searchParams.get("name") ?? ""] ?? [] });
+    }
+    if (u.pathname.endsWith("/rest/api/user/email")) {
+      const email = rechte.kontoEmails?.[u.searchParams.get("accountId") ?? ""];
+      return email ? antwort(200, { email }) : antwort(404, {});
     }
     return antwort(200, { results: liste });
   }) as unknown as typeof fetch;
@@ -220,7 +264,8 @@ describe("R-0182/R-0649 · geänderte Quellversion", () => {
     expect(kos).toHaveLength(1);
     expect(kos[0]?.sources.find((s) => s.externalId === "8")?.sourceVersion).toBe(2);
     expect(kos[0]?.confidentiality).toBe("intern");
-    expect(kos[0]?.quellrechte).toEqual({ stufe: "intern" });
+    expect(kos[0]?.quellrechte).toMatchObject({ stufe: "intern", version: 2 });
+    expect(Object.hasOwn(kos[0]?.quellrechte ?? {}, "leser")).toBe(false);
   });
 
   it("Q3 · Schutz bleibt: eine MENSCHLICHE Höherstufung überlebt die aufgehobene Quellbeschränkung", async () => {
@@ -240,6 +285,101 @@ describe("R-0182/R-0649 · geänderte Quellversion", () => {
     const [c2] = await library.createImportCandidates(v2.items, "importeur");
     await library.reviewImportCandidate(c2!.id, "accept", "reviewerin");
     expect((await koService.get(r1.koId!))?.confidentiality).toBe("streng_vertraulich");
+  });
+
+  // Nacharbeit 3 (Ben, Befund F5): die menschliche Entscheidung ist ein VERMERK, keine abweichende
+  // Stufe. Setzt ein Mensch am Ende genau den Quellwert, bleibt es seine Entscheidung.
+  it("Q4 · vertraulich (Quelle) → Mensch streng → Mensch vertraulich → Quelle intern: bleibt vertraulich", async () => {
+    const koService = new KoService({ repo: new InMemoryKoRepo() });
+    const library = new LibraryService({ koService, externalUpsert: true });
+    const v1 = await fixture([
+      seite("10", [], { group: [{ name: "qs" }] }, 1),
+    ]).adapter.collectAll();
+    const [c1] = await library.createImportCandidates(v1.items, "importeur");
+    const r1 = await library.reviewImportCandidate(c1!.id, "accept", "reviewerin");
+    expect((await koService.get(r1.koId!))?.confidentiality).toBe("vertraulich");
+    await koService.setConfidentiality(r1.koId!, "streng_vertraulich", "anna");
+    await koService.setConfidentiality(r1.koId!, "vertraulich", "anna", { mayDowngrade: true });
+    expect((await koService.get(r1.koId!))?.einstufungMenschlich).toMatchObject({
+      stufe: "vertraulich",
+      von: "anna",
+    });
+
+    const offen: ConfluencePage = {
+      ...seite("10", [], { user: [], group: [] }, 2),
+      body: { storage: { value: "<p>Inhalt 10, Stand 2.</p>" } },
+    };
+    const v2 = await fixture([offen]).adapter.collectAll();
+    const [c2] = await library.createImportCandidates(v2.items, "importeur");
+    await library.reviewImportCandidate(c2!.id, "accept", "reviewerin");
+    const objekt = await koService.get(r1.koId!);
+    expect(objekt?.confidentiality).toBe("vertraulich");
+    // Der Inhalt folgt der Quelle trotzdem — nur die Einstufung gehört dem Menschen.
+    expect(objekt?.statement).toContain("Stand 2");
+  });
+
+  // Nacharbeit 3 (Ben, Befund F4): ein veralteter, noch offener Kandidat darf neuere Rechte nicht
+  // zurücksetzen — weder über die Seitenversion noch bei einer reinen Rechteänderung.
+  it("Q5 · v1-Kandidat zurückgehalten, eingeschränkte v2 angenommen, danach v1 angenommen: v2 bleibt", async () => {
+    const koService = new KoService({ repo: new InMemoryKoRepo() });
+    const library = new LibraryService({
+      koService,
+      externalUpsert: true,
+      quellLeserAufloesen: async (emails) => emails.map((e) => `konto:${e}`),
+    });
+    const offenV1 = seite("11", [], undefined, 1);
+    const v1 = await fixture([offenV1]).adapter.collectAll();
+    const [alt] = await library.createImportCandidates(v1.items, "importeur");
+
+    const zuV2: ConfluencePage = {
+      ...seite("11", [], { user: [{ accountId: "a", email: "lea@example.com" }] }, 2),
+      body: { storage: { value: "<p>Inhalt 11, Stand 2.</p>" } },
+    };
+    const v2 = await fixture([zuV2]).adapter.collectAll();
+    const [neu] = await library.createImportCandidates(v2.items, "importeur");
+    const rNeu = await library.reviewImportCandidate(neu!.id, "accept", "reviewerin");
+    const rAlt = await library.reviewImportCandidate(alt!.id, "accept", "reviewerin");
+    expect(rAlt.koId).toBe(rNeu.koId);
+
+    const objekt = await koService.get(rNeu.koId!);
+    expect(objekt?.confidentiality).toBe("vertraulich");
+    expect(objekt?.quellrechte).toMatchObject({ leser: ["konto:lea@example.com"], version: 2 });
+    expect(objekt?.sources.find((s) => s.externalId === "11")?.sourceVersion).toBe(2);
+    expect(objekt?.statement).toContain("Stand 2");
+  });
+
+  it("Q6 · reine Rechteänderung ohne neue Seitenversion: die frühere Beobachtung setzt nichts zurück", async () => {
+    const koService = new KoService({ repo: new InMemoryKoRepo() });
+    const library = new LibraryService({
+      koService,
+      externalUpsert: true,
+      quellLeserAufloesen: async (emails) => emails.map((e) => `konto:${e}`),
+    });
+    // Dieselbe Version 3 — zuerst offen beobachtet, später beschränkt (Confluence zählt bei einer
+    // Rechteänderung die Seitenversion nicht hoch).
+    const frueh = await fixture([seite("12", [], undefined, 3)]).adapter.collectAll();
+    const [frueherKandidat] = await library.createImportCandidates(frueh.items, "importeur");
+    await new Promise((r) => setTimeout(r, 15));
+    const zu = seite("12", [], { user: [{ accountId: "a", email: "lea@example.com" }] }, 3);
+    const spaet = await fixture([zu]).adapter.collectAll();
+    // Dieselbe Version stünde in derselben Warteschlange nur EINMAL offen. Der zweite Lauf hat
+    // deshalb seine eigene Warteschlange — über DENSELBEN Wissensbestand (zwei Importläufe).
+    const zweiterLauf = new LibraryService({
+      koService,
+      externalUpsert: true,
+      quellLeserAufloesen: async (emails) => emails.map((e) => `konto:${e}`),
+    });
+    const [spaeterKandidat] = await zweiterLauf.createImportCandidates(spaet.items, "importeur");
+    const rSpaet = await zweiterLauf.reviewImportCandidate(
+      spaeterKandidat!.id,
+      "accept",
+      "reviewerin",
+    );
+    await library.reviewImportCandidate(frueherKandidat!.id, "accept", "reviewerin");
+
+    const objekt = await koService.get(rSpaet.koId!);
+    expect(objekt?.confidentiality).toBe("vertraulich");
+    expect(objekt?.quellrechte?.leser).toEqual(["konto:lea@example.com"]);
   });
 });
 
@@ -292,10 +432,29 @@ async function appMitKonten() {
     app,
     services,
     adminId,
+    admin: { id: adminId, headers: adminHeaders },
     lea: await konto("Lea", "lea@example.com", "viewer"),
     carl: await konto("Carl", "carl@example.com", "controller"),
     otto: await konto("Otto", "otto@example.com", "viewer"),
+    // Nacharbeit 3: eine Expertin MIT Quellrecht — sie darf eine Gesamtanweisung anlegen.
+    eva: await konto("Eva", "eva@example.com", "experte"),
   };
+}
+
+/** Import und Annahme durch den Admin (die annehmende, dritte Identität). */
+async function uebernimmAlsAdmin(
+  k: Awaited<ReturnType<typeof appMitKonten>>,
+  pages: ConfluencePage[],
+  rechte: FixtureRechte = {},
+): Promise<Map<string, string>> {
+  const { items } = await fixture(pages, pages, rechte).adapter.collectAll();
+  const kandidaten = await k.services.library.createImportCandidates(items, k.adminId);
+  const koIds = new Map<string, string>();
+  for (const c of kandidaten) {
+    const r = await k.services.library.reviewImportCandidate(c.id, "accept", k.adminId);
+    koIds.set(c.item.externalId ?? "", r.koId ?? "");
+  }
+  return koIds;
 }
 
 async function liest(
@@ -319,10 +478,11 @@ describe("R-0549 · wer in Confluence lesen darf, liest in Klara — und sonst n
     const [kandidat] = await k.services.library.createImportCandidates(items, k.adminId);
     const r = await k.services.library.reviewImportCandidate(kandidat!.id, "accept", k.adminId);
     const koId = r.koId!;
-    expect((await k.services.ko.get(koId))?.quellrechte).toEqual({
+    expect((await k.services.ko.get(koId))?.quellrechte).toMatchObject({
       stufe: "vertraulich",
       leser: [k.lea.id],
     });
+    expect((await k.services.ko.get(koId))?.author).toBe(k.adminId);
 
     const lea = await liest(k.app, k.lea.headers, koId);
     expect(lea.einzeln.statusCode).toBe(200);
@@ -337,6 +497,13 @@ describe("R-0549 · wer in Confluence lesen darf, liest in Klara — und sonst n
     const otto = await liest(k.app, k.otto.headers, koId);
     expect(otto.einzeln.statusCode).toBe(404);
     expect(otto.inListe).toBe(false);
+
+    // Nacharbeit 3 (Ben, Befund F2): der ANNEHMENDE Admin ist Autor, aber in Confluence nicht
+    // berechtigt — die Annahme verschafft ihm keinen Lesezugriff.
+    const admin = await liest(k.app, k.admin.headers, koId);
+    expect(admin.einzeln.statusCode).toBe(404);
+    expect(admin.einzeln.body).not.toContain("Inhalt 900");
+    expect(admin.inListe).toBe(false);
   });
 
   it("L2 · vererbt: Elternseite nur für Lea UND Carl, Kind nur für Lea → nur Lea liest das Kind", async () => {
@@ -422,6 +589,115 @@ describe("R-0549 · wer in Confluence lesen darf, liest in Klara — und sonst n
     expect(antwort.body).not.toContain("quellrechte");
     const [gespeichert] = await k.services.library.listImportCandidates();
     expect(Object.hasOwn(gespeichert?.item ?? {}, "quellrechte")).toBe(false);
+  });
+
+  // ------------------------------------------------------------------------------------------------
+  // Nacharbeit 3 (Ben, Befund F1): Space, Gruppen und Konten ohne mitgelieferte Mailadresse.
+  // ------------------------------------------------------------------------------------------------
+
+  it("L5 · eingeschränkter Space: seitenoffene Seite nur für Space-Leser — Gruppe und Konto ohne Mail aufgelöst", async () => {
+    const k = await appMitKonten();
+    const koIds = await uebernimmAlsAdmin(k, [seite("940", [])], {
+      // Space lesbar für Lea (Benutzer mit Mail) und die Gruppe „team" — deren einziges Mitglied
+      // Carl kommt OHNE Mailadresse; sie wird über `/rest/api/user/email` nachgefragt.
+      space: {
+        users: [{ accountId: "acc-lea", email: "lea@example.com" }],
+        groups: [{ name: "team" }],
+      },
+      gruppen: { team: [{ accountId: "acc-carl" }] },
+      kontoEmails: { "acc-carl": "carl@example.com" },
+    });
+    const koId = koIds.get("940") ?? "";
+    const objekt = await k.services.ko.get(koId);
+    // R-2197 bleibt: die Seite selbst ist offen, also nicht vertraulich.
+    expect(objekt?.confidentiality).toBe("intern");
+    expect([...(objekt?.quellrechte?.leser ?? [])].sort()).toEqual([k.carl.id, k.lea.id].sort());
+
+    expect((await liest(k.app, k.lea.headers, koId)).einzeln.statusCode).toBe(200);
+    expect((await liest(k.app, k.carl.headers, koId)).einzeln.statusCode).toBe(200);
+    const otto = await liest(k.app, k.otto.headers, koId);
+    expect(otto.einzeln.statusCode).toBe(404);
+    expect(otto.inListe).toBe(false);
+    expect((await liest(k.app, k.admin.headers, koId)).einzeln.statusCode).toBe(404);
+  });
+
+  it("L6 · Gruppenrestriktion an der Seite: die Mitglieder lesen, Nichtmitglieder nicht", async () => {
+    const k = await appMitKonten();
+    const koIds = await uebernimmAlsAdmin(k, [seite("950", [], { group: [{ name: "hr" }] })], {
+      gruppen: { hr: [{ accountId: "acc-otto", email: "otto@example.com" }] },
+    });
+    const koId = koIds.get("950") ?? "";
+    expect((await liest(k.app, k.otto.headers, koId)).einzeln.statusCode).toBe(200);
+    expect((await liest(k.app, k.lea.headers, koId)).einzeln.statusCode).toBe(404);
+    expect((await liest(k.app, k.carl.headers, koId)).einzeln.statusCode).toBe(404);
+  });
+
+  it("L7 · Space-Rechte nicht nachsehbar: unbekannt ist keine Freigabe — niemand liest", async () => {
+    const k = await appMitKonten();
+    const koIds = await uebernimmAlsAdmin(k, [seite("960", [])], { space: null });
+    const koId = koIds.get("960") ?? "";
+    expect((await k.services.ko.get(koId))?.quellrechte?.leser).toEqual([]);
+    for (const wer of [k.lea, k.carl, k.otto, k.eva, k.admin]) {
+      const ergebnis = await liest(k.app, wer.headers, koId);
+      expect(ergebnis.einzeln.statusCode).toBe(404);
+      expect(ergebnis.inListe).toBe(false);
+    }
+  });
+
+  // ------------------------------------------------------------------------------------------------
+  // Nacharbeit 3 (Ben, Befund F3): dieselbe Seite über den Gesamtanweisungsweg.
+  // ------------------------------------------------------------------------------------------------
+
+  it("L8 · Gesamtanweisung: Quellberechtigte lesen den Baustein, der ausgeschlossene Controller weder Titel noch Inhalt", async () => {
+    const k = await appMitKonten();
+    const koIds = await uebernimmAlsAdmin(k, [
+      seite("970", [], {
+        user: [
+          { accountId: "acc-lea", email: "lea@example.com" },
+          { accountId: "acc-eva", email: "eva@example.com" },
+        ],
+      }),
+    ]);
+    const koId = koIds.get("970") ?? "";
+    // Gegenprobe am KO-Weg: dieselbe Lage wie unten.
+    expect((await liest(k.app, k.lea.headers, koId)).einzeln.statusCode).toBe(200);
+    expect((await liest(k.app, k.carl.headers, koId)).einzeln.statusCode).toBe(404);
+
+    // Eva (Expertin, quellberechtigt) legt die Anweisung an und bindet Fassung 1.
+    const angelegt = await k.app.inject({
+      method: "POST",
+      url: "/api/gesamtanweisungen",
+      headers: k.eva.headers,
+      payload: { titel: "Anweisung Quellrechte" },
+    });
+    expect(angelegt.statusCode, angelegt.body).toBe(201);
+    const { id, version } = angelegt.json() as { id: string; version: number };
+    const gebunden = await k.app.inject({
+      method: "POST",
+      url: `/api/gesamtanweisungen/${id}/bausteine`,
+      headers: k.eva.headers,
+      payload: { version, koId, koVersion: 1 },
+    });
+    expect(gebunden.statusCode, gebunden.body).toBe(200);
+
+    const alsLea = await k.app.inject({
+      method: "GET",
+      url: `/api/gesamtanweisungen/${id}`,
+      headers: k.lea.headers,
+    });
+    expect(alsLea.statusCode, alsLea.body).toBe(200);
+    expect(alsLea.body).toContain("Seite 970");
+    expect(alsLea.body).toContain("Inhalt 970");
+
+    const alsCarl = await k.app.inject({
+      method: "GET",
+      url: `/api/gesamtanweisungen/${id}`,
+      headers: k.carl.headers,
+    });
+    expect(alsCarl.statusCode, alsCarl.body).toBe(200);
+    expect(alsCarl.body).not.toContain("Seite 970");
+    expect(alsCarl.body).not.toContain("Inhalt 970");
+    expect((alsCarl.json() as { verborgeneBausteine: number }).verborgeneBausteine).toBe(1);
   });
 });
 

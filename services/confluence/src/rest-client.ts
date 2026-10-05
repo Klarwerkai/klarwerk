@@ -133,6 +133,30 @@ export interface ConfluencePage {
   };
 }
 
+/**
+ * confluence-import-rechte (Nacharbeit 3): das Leserecht eines Space, wie Confluence es liefert.
+ * `users`/`groups` sind die rohen Subjekte (Benutzer mit `accountId`/ggf. `email`, Gruppen mit
+ * `name`); aufgelöst werden sie im Adapter.
+ */
+export interface ConfluenceSpaceLeserechte {
+  anonym: boolean;
+  users: unknown[];
+  groups: unknown[];
+}
+
+interface SpacePermissionRoh {
+  operation?: { operation?: unknown; targetType?: unknown };
+  anonymousAccess?: unknown;
+  subjects?: { user?: { results?: unknown }; group?: { results?: unknown } };
+}
+
+/** Höchstens so viele Seiten à 200 Mitglieder je Gruppe — darüber gilt die Gruppe als unvollständig. */
+const CONFLUENCE_MAX_GRUPPENSEITEN = 50;
+
+function arrayOder(wert: unknown): unknown[] {
+  return Array.isArray(wert) ? wert : [];
+}
+
 // AUFTRAG-mega27 A1: `ancestors` kommt MINIMAL dazu — ohne jeden Unter-Expand. Die Elternkette ist
 // die einzige Quelle einer echten Ordnerstruktur; sie verließ Confluence bisher nie, deshalb konnte
 // die Auswahl nur abgeleitete Merkmale (Sprache/Thema) bündeln. Paginierung und der Abbruch mit
@@ -323,6 +347,106 @@ export class ConfluenceRestClient {
       return undefined;
     }
     return data as ConfluencePage;
+  }
+
+  // ==============================================================================================
+  // AUFNAHME 20260922 · confluence-import-rechte (Ben, Nacharbeit 3, Befund F1) — DIE RECHTE, DIE
+  // DIE SEITE NICHT SELBST TRÄGT: Space-Leserecht, Gruppenmitglieder, Mailadresse je Konto.
+  // ==============================================================================================
+  //
+  // Alle drei laufen über DENSELBEN Netzweg (`getJson`: Origin-Pin, Frist, Größengrenze,
+  // `redirect:error`, Redaction). Und alle drei sind FAIL-CLOSED in dieselbe Richtung: was nicht
+  // gelesen werden kann (fehlendes Recht des Dienstkontos, 404, Frist, Abbruch), ergibt „unbekannt"
+  // bzw. weniger Leser — nie eine allgemeine Freigabe. Der Aufrufer (`adapter.ts`) entscheidet, was
+  // „unbekannt" heisst; hier wird nichts geraten.
+
+  /**
+   * Das Leserecht des konfigurierten Space (`expand=permissions`, Operation `read` auf `space`).
+   * `undefined` = nicht nachsehbar (das Dienstkonto darf die Berechtigungen nicht lesen, oder die
+   * Antwort trägt keine Leseangabe).
+   */
+  async getSpaceLeserechte(): Promise<ConfluenceSpaceLeserechte | undefined> {
+    const url = `${this.baseUrl}/rest/api/space/${encodeURIComponent(this.config.spaceKey)}?expand=permissions`;
+    let data: unknown;
+    try {
+      data = await this.getJson(url, this.allowedOrigin(), { nichtGefundenIstLeer: true });
+    } catch {
+      return undefined;
+    }
+    const permissions = (data as { permissions?: unknown } | undefined)?.permissions;
+    if (!Array.isArray(permissions)) {
+      return undefined;
+    }
+    let lesend = false;
+    let anonym = false;
+    const users: unknown[] = [];
+    const groups: unknown[] = [];
+    for (const eintrag of permissions as SpacePermissionRoh[]) {
+      const op = eintrag?.operation;
+      if (op?.operation !== "read" || op?.targetType !== "space") {
+        continue;
+      }
+      lesend = true;
+      if (eintrag.anonymousAccess === true) {
+        anonym = true;
+      }
+      users.push(...arrayOder(eintrag.subjects?.user?.results));
+      groups.push(...arrayOder(eintrag.subjects?.group?.results));
+    }
+    return lesend ? { anonym, users, groups } : undefined;
+  }
+
+  /**
+   * Die Mitglieder einer Gruppe, seitenweise. Bricht ein Abruf ab, bleibt es bei den bis dahin
+   * gelesenen — weniger Leser, nie mehr. `vollstaendig` sagt, ob das Ende erreicht wurde.
+   */
+  async getGruppenmitglieder(name: string): Promise<{ users: unknown[]; vollstaendig: boolean }> {
+    const users: unknown[] = [];
+    const limit = 200;
+    for (let seite = 0; seite < CONFLUENCE_MAX_GRUPPENSEITEN; seite += 1) {
+      const params = new URLSearchParams({
+        name,
+        start: String(seite * limit),
+        limit: String(limit),
+      });
+      let data: unknown;
+      try {
+        data = await this.getJson(
+          `${this.baseUrl}/rest/api/group/member?${params.toString()}`,
+          this.allowedOrigin(),
+          { nichtGefundenIstLeer: true },
+        );
+      } catch {
+        return { users, vollstaendig: false };
+      }
+      const results = (data as { results?: unknown } | undefined)?.results;
+      if (!Array.isArray(results)) {
+        return { users, vollstaendig: false };
+      }
+      users.push(...results);
+      if (results.length < limit) {
+        return { users, vollstaendig: true };
+      }
+    }
+    return { users, vollstaendig: false };
+  }
+
+  /**
+   * Die Mailadresse eines Kontos, wenn Atlassian sie dem Dienstkonto herausgibt
+   * (`/rest/api/user/email`). Sonst `undefined` — das Konto bleibt dann ohne Klara-Zuordnung.
+   */
+  async getKontoEmail(accountId: string): Promise<string | undefined> {
+    const url = `${this.baseUrl}/rest/api/user/email?${new URLSearchParams({ accountId }).toString()}`;
+    let data: unknown;
+    try {
+      data = await this.getJson(url, this.allowedOrigin(), { nichtGefundenIstLeer: true });
+    } catch {
+      return undefined;
+    }
+    const email = (data as { email?: unknown } | undefined)?.email;
+    return typeof email === "string" && email.trim().length > 0
+      ? email.trim().toLowerCase()
+      : undefined;
   }
 
   private firstUrl(): string {

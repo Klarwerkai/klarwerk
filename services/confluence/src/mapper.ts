@@ -68,19 +68,40 @@ export function isPageRestricted(page: ConfluencePage): boolean {
 // ausdrücklich nennt. Confluence verlangt das Durchkommen durch alle Ebenen; die Schnittmenge ist
 // genau das. Die Zuordnung auf Klara-Konten fällt im Import-Kern (Mailadresse = Konto).
 //
-// GRENZEN, ausdrücklich und fail-closed: (1) GRUPPEN kann Klara nicht auflösen — es gibt dort kein
-// Gruppenmodell. Wer nur über eine Gruppe lesen darf, bekommt in Klara KEIN Leserecht. (2) Ein
-// Benutzer ohne sichtbare Mailadresse (Atlassian-Datenschutzeinstellung) ist nicht zuordenbar.
-// (3) Ein nicht nachsehbarer Vorfahr macht die Leserliste leer. In diesen drei Fällen sieht das
-// Objekt in Klara weniger, nie mehr. (4) OFFEN UND NICHT FAIL-CLOSED: Space-Berechtigungen werden
-// nicht erhoben. Eine seitenoffene Seite in einem Space, den nicht alle lesen dürfen, wird „intern"
-// — in Klara also für mehr Menschen sichtbar als in Confluence.
+// NACHARBEIT 3 (Ben, Befund F1) — SPACE, GRUPPEN, KONTEN OHNE SICHTBARE MAILADRESSE. Die
+// effektiven Leser sind die Schnittmenge aus dem Leserecht des SPACE und jeder beschränkten Ebene.
+// Jede Ebene wird im Adapter VOLL aufgelöst (`ConfluenceRechtekontext`): genannte Benutzer,
+// Mitglieder genannter Gruppen (über Confluence, Klara braucht dafür kein Gruppenmodell) und für
+// Konten ohne mitgelieferte Mailadresse die Adresse aus `/rest/api/user/email`.
+//
+// UNBEKANNT IST NIE „ALLE": Ist das Space-Leserecht nicht nachsehbar, bekommt die Seite eine LEERE
+// Leserliste — sie ist in Klara für niemanden lesbar, bis die Rechte lesbar sind. Nur ein ANONYM
+// lesbarer Space trägt keine Space-Grenze. Die Vertraulichkeitsstufe hängt weiter allein an
+// Seite und Vorfahren (R-2197): eine seitenoffene Seite bleibt „intern", nur ihr Leserkreis ist
+// der des Space.
+//
+// VERBLEIBENDE GRENZEN, alle fail-closed (weniger Leser, nie mehr): ein Konto, dessen Mailadresse
+// Atlassian auch auf Nachfrage nicht herausgibt, und ein Confluence-Konto ohne Klara-Konto mit
+// derselben Adresse bekommen kein Leserecht; eine Gruppe mit mehr als 10.000 Mitgliedern oder ein
+// abgebrochener Mitgliederabruf liefert nur die gelesenen.
 
-/** Die Leseeinschränkung EINER Ebene (Seite oder Vorfahr), wie die Quelle sie liefert. */
+/** Die Leseeinschränkung EINER Ebene (Space, Seite oder Vorfahr). */
 export interface ConfluenceLeseEbene {
   beschraenkt: boolean;
-  /** Kleingeschriebene Mailadressen der ausdrücklich genannten Benutzer. */
+  /** Kleingeschriebene Mailadressen der Leser dieser Ebene. */
   emails: string[];
+}
+
+/**
+ * Was der Adapter über die Rechte außerhalb der Seite nachgesehen hat.
+ *  · `space`: das Leserecht des Space; `undefined` = nicht nachsehbar (→ niemand).
+ *  · `eigene`: die VOLL aufgelöste eigene Ebene der Seite (Benutzer und Gruppenmitglieder).
+ *  · `beobachtetAm`: wann diese Rechte nachgesehen wurden (Aktualitätsschutz beim Abgleich).
+ */
+export interface ConfluenceRechtekontext {
+  space: ConfluenceLeseEbene | undefined;
+  eigene?: ConfluenceLeseEbene;
+  beobachtetAm?: string;
 }
 
 /**
@@ -89,7 +110,7 @@ export interface ConfluenceLeseEbene {
  */
 export type ConfluenceAhnenBeschraenkung = (ancestorId: string) => ConfluenceLeseEbene | undefined;
 
-/** Die eigene Ebene einer Seite. */
+/** Die eigene Ebene einer Seite, NUR aus dem, was die Seite selbst mitliefert (ohne Auflösung). */
 export function confluenceLeseEbene(page: ConfluencePage): ConfluenceLeseEbene {
   const users = page.restrictions?.read?.restrictions?.user?.results ?? [];
   const emails = users
@@ -106,8 +127,9 @@ export function confluenceLeseEbene(page: ConfluencePage): ConfluenceLeseEbene {
 function beschraenkteEbenen(
   page: ConfluencePage,
   ahnen?: ConfluenceAhnenBeschraenkung,
+  eigeneAufgeloest?: ConfluenceLeseEbene,
 ): ConfluenceLeseEbene[] | undefined {
-  const eigene = confluenceLeseEbene(page);
+  const eigene = eigeneAufgeloest ?? confluenceLeseEbene(page);
   const ebenen = eigene.beschraenkt ? [eigene] : [];
   if (!ahnen || !Array.isArray(page.ancestors)) {
     return ebenen;
@@ -135,17 +157,24 @@ export function isPageEffectivelyRestricted(
 }
 
 /**
- * Die Leser einer beschränkten Seite (Schnittmenge über alle beschränkten Ebenen), oder
- * `undefined` für eine Seite, die die Quelle nicht beschränkt. Eine unbekannte Ebene ergibt `[]`.
+ * Die Leser der Seite (Schnittmenge über Space und alle beschränkten Ebenen), oder `undefined`,
+ * wenn KEINE Ebene beschränkt (Space anonym lesbar, Seite und Vorfahren offen). Eine unbekannte
+ * Ebene — auch ein nicht nachsehbarer Space — ergibt `[]`. Ohne `kontext` (reine
+ * Einzelseiten-Sicht, nur in Tests) zählt allein die Seite selbst.
  */
 export function confluenceQuellLeser(
   page: ConfluencePage,
   ahnen?: ConfluenceAhnenBeschraenkung,
+  kontext?: ConfluenceRechtekontext,
 ): string[] | undefined {
-  const ebenen = beschraenkteEbenen(page, ahnen);
-  if (ebenen === undefined) {
+  if (kontext && kontext.space === undefined) {
     return [];
   }
+  const seitenEbenen = beschraenkteEbenen(page, ahnen, kontext?.eigene);
+  if (seitenEbenen === undefined) {
+    return [];
+  }
+  const ebenen = kontext?.space?.beschraenkt ? [kontext.space, ...seitenEbenen] : seitenEbenen;
   const [erste, ...weitere] = ebenen;
   if (!erste) {
     return undefined;
@@ -163,11 +192,13 @@ export function confluenceGovernanceConfidentiality(
 /**
  * Die Quellrechte am Import-Eintrag. `ImportItem` selbst ist eingefroren (Freeze-144,
  * library-analytics/src/types.ts); das Feld reist wie `originalAuthor` als zusätzliches, im
- * Import-Kern geprüftes Feld mit. `emails` ist genau dann gesetzt, wenn die Quelle beschränkt.
+ * Import-Kern geprüftes Feld mit. `emails` ist genau dann gesetzt, wenn die Quelle beschränkt
+ * (Space, Seite oder Vorfahr). `beobachtetAm`: wann der Adapter die Rechte nachgesehen hat.
  */
 export interface ConfluenceQuellrechte {
   stufe: Confidentiality;
   emails?: string[];
+  beobachtetAm?: string;
 }
 export type ConfluenceImportItem = ImportItem & { quellrechte: ConfluenceQuellrechte };
 
@@ -272,6 +303,7 @@ export function mapConfluencePageToImportItem(
   page: ConfluencePage,
   opts: ConfluenceMapOptions,
   ahnen?: ConfluenceAhnenBeschraenkung,
+  kontext?: ConfluenceRechtekontext,
 ): ConfluenceImportItem {
   const bodyHtml = confluenceStorageToHtml(page.body?.storage?.value ?? "");
   // JOB 2703 D1 (Review R2-3): hier stand `htmlToPlainText(bodyHtml)` — der GESAMTE Klartext der
@@ -293,7 +325,7 @@ export function mapConfluencePageToImportItem(
   // IC-1: Provenienz-Datum der letzten Version (Confluence version.when, ISO) → nur wenn vorhanden.
   const updatedAt = page.version?.when?.trim();
   const governance = confluenceGovernanceConfidentiality(page, ahnen);
-  const leser = confluenceQuellLeser(page, ahnen);
+  const leser = confluenceQuellLeser(page, ahnen, kontext);
   // AUFTRAG-mega27 A2: die Elternkette (Wurzel zuerst, ohne die Seite selbst) — oder gar nichts.
   const sourcePath = confluenceSourcePath(page);
 
@@ -311,7 +343,11 @@ export function mapConfluencePageToImportItem(
     // fehlendes Feld hiesse „diese Quelle weiss es nicht", und das ist seit Entscheidung 23 falsch.
     confidentiality: governance,
     // AUFNAHME 20260922 · confluence-import-rechte: Stufe UND Leser der Quelle (s. oben).
-    quellrechte: { stufe: governance, ...(leser !== undefined ? { emails: leser } : {}) },
+    quellrechte: {
+      stufe: governance,
+      ...(leser !== undefined ? { emails: leser } : {}),
+      ...(kontext?.beobachtetAm ? { beobachtetAm: kontext.beobachtetAm } : {}),
+    },
     // SCRUM-510 R2b: quellneutrale Provenienz — externalId = Confluence-pageId (Re-Sync-Anker),
     // sourceScope = Confluence-Space. Der Import-Kern kennt nur diese neutralen Begriffe.
     externalId: page.id,

@@ -345,18 +345,29 @@ export interface KoAppendOp {
 /**
  * Die Leserechte, wie die Quelle sie beim letzten Abgleich geliefert hat.
  *
- * `stufe` ist die Vertraulichkeit, die die QUELLE ergab. Steht das Objekt noch auf genau dieser
- * Stufe, hat seither kein Mensch eingestuft — dann darf ein späterer Abgleich ihr folgen, auch nach
- * unten. Weicht die Objektstufe ab, gehört sie dem Menschen und wird nur noch angehoben.
+ * `stufe` ist die Vertraulichkeit, die die QUELLE zuletzt ergab. Ob das Objekt ihr folgt, entscheidet
+ * NICHT die Wertgleichheit, sondern `KnowledgeObject.einstufungMenschlich` (Nacharbeit 3).
  *
- * `leser` ist GESETZT, wenn die Quelle das Lesen beschränkt: genau diese Klara-Konten (Kennungen)
- * sehen das Objekt, dazu der annehmende Autor — sonst niemand, auch kein `ko.validate`-Inhaber.
- * Eine leere Liste heisst „in Klara kein Konto zuordenbar". FEHLT `leser`, beschränkt die Quelle
- * nicht.
+ * `leser` ist GESETZT, wenn die Quelle das Lesen beschränkt (Space, Seite oder Vorfahr): genau diese
+ * Klara-Konten (Kennungen) sehen das Objekt — sonst niemand, auch kein `ko.validate`-Inhaber und
+ * nicht der annehmende Autor. Eine leere Liste heisst „in Klara kein Konto zuordenbar". FEHLT
+ * `leser`, beschränkt die Quelle nicht (Space anonym lesbar, Seite offen).
+ *
+ * `version`/`beobachtetAm`: der Quellstand, zu dem diese Rechte gelten. Ein älterer Stand
+ * überschreibt einen neueren nicht (`setQuellrechte`).
  */
 export interface KoQuellrechte {
   stufe: Confidentiality;
   leser?: string[];
+  version?: number;
+  beobachtetAm?: string;
+}
+
+/** Eine ausdrücklich von einem Menschen gesetzte Vertraulichkeitsstufe (`setConfidentiality`). */
+export interface KoEinstufungMenschlich {
+  stufe: Confidentiality;
+  von: string;
+  am: string;
 }
 
 export interface KnowledgeObject {
@@ -405,6 +416,10 @@ export interface KnowledgeObject {
   // `setQuellrechte`); keine öffentliche Schreibroute reicht sie durch. FEHLT das Feld, gilt die
   // Sichtbarkeitsregel wie bisher. Optional im JSONB-Dokument, keine Migration.
   quellrechte?: KoQuellrechte;
+  // confluence-import-rechte (Nacharbeit 3): die letzte MENSCHLICHE Einstufung. Gesetzt von
+  // `setConfidentiality` (nicht vom Import). Ist sie da, folgt die Stufe der Quelle nicht mehr nach
+  // unten. Optional im JSONB-Dokument; Altbestand hat sie nicht.
+  einstufungMenschlich?: KoEinstufungMenschlich;
   // ============================================================================================
   // JOB 679 / D2 (K1.2, Weg A) — WO DAS WISSEN HERKOMMT, UND WARUM ES HIER STEHT.
   // ============================================================================================

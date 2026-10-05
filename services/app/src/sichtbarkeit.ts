@@ -69,22 +69,23 @@ export interface SichtbarkeitsFakten {
  * danach nicht mehr öffnen — der Alltagsweg „ich schreibe etwas Sensibles auf" ginge zu.
  *
  * AUFNAHME 20260922 · confluence-import-rechte (R-0549) — QUELLLESER VOR STUFE. Trägt das Objekt
- * eine Leserliste aus der Quelle, entscheidet NUR sie (plus der annehmende Autor): wer in Confluence
- * lesen darf, liest in Klara, sonst niemand — auch kein `ko.validate`-Inhaber. Eine leere Liste
- * heisst „kein Klara-Konto zuordenbar", nicht „offen". Ohne Liste gilt die Regel oben unverändert.
+ * eine Leserliste aus der Quelle, entscheidet NUR sie: wer in Confluence lesen darf, liest in Klara,
+ * sonst niemand — kein `ko.validate`-Inhaber und auch NICHT der annehmende Autor (Ben, Nacharbeit 3:
+ * ein Import über das Dienstkonto verschafft dem Reviewer sonst Zugriff, den die Quelle ihm
+ * verweigert). Eine leere Liste heisst „kein Klara-Konto zuordenbar", nicht „offen". Ohne Liste gilt
+ * die Regel oben unverändert.
  *
- * GRENZE: Projektionen, die `quellrechte` nicht mittragen, fallen auf die Stufenregel zurück. Ein
- * quellbeschränktes Objekt ist immer zugleich vertraulich; dort sehen es dann `ko.validate` und der
- * Autor — nie ein gewöhnlicher Leser ohne Quellrecht.
+ * PFLICHT FÜR JEDE PROJEKTION: wer Sichtbarkeitsfakten verkürzt weiterreicht, muss `quellrechte`
+ * mitnehmen (Gesamtanweisung, Papierkorb). Ohne sie fiele das Objekt auf die Stufenregel zurück.
  */
 export function darfSehen(user: SessionUser, ko: SichtbarkeitsFakten): boolean {
+  const leser = ko.quellrechte?.leser;
+  if (Array.isArray(leser)) {
+    return user.id.length > 0 && leser.includes(user.id);
+  }
   // Leerer/fehlender Autor ist KEINE Autorschaft — sonst wäre ein Altobjekt ohne Autorfeld für
   // jeden sichtbar, dessen Kennung ebenfalls leer ist.
   const istAutor = typeof ko.author === "string" && ko.author.length > 0 && ko.author === user.id;
-  const leser = ko.quellrechte?.leser;
-  if (Array.isArray(leser)) {
-    return istAutor || (user.id.length > 0 && leser.includes(user.id));
-  }
   if (!isConfidential(ko.confidentiality)) {
     return true;
   }
@@ -209,8 +210,9 @@ export function sqlSichtbarkeitFuer(user: SessionUser): SqlSichtbarkeitstrim {
       //     der im JSON keine Zeichenfolge ist (`typeof ko.author === "string"`; `->>` macht aus
       //     der Zahl 4359 den Text '4359' — BEN 4359 Befund B1).
       //   · AUFNAHME 20260922 (R-0549): trägt die Zeile eine Leserliste aus der Quelle, gilt NUR
-      //     sie plus der Autor — wörtlich der erste Zweig von `darfSehen`. Dieselbe Kennung `autor`
-      //     ist auch der Betrachter; ein leerer Betrachter steht in keiner Liste (normalisiert).
+      //     sie — wörtlich der erste Zweig von `darfSehen`, OHNE Autorausnahme (Nacharbeit 3).
+      //     Dieselbe Kennung `autor` ist auch der Betrachter; ein leerer Betrachter steht in keiner
+      //     Liste (normalisiert).
       const istAutor =
         `(COALESCE(${spaltenTraeger}.author_key, '') <> ''` +
         ` AND jsonb_typeof(${spaltenTraeger}.data->'author') = 'string'` +
@@ -219,7 +221,7 @@ export function sqlSichtbarkeitFuer(user: SessionUser): SqlSichtbarkeitstrim {
       return (
         `((${spaltenTraeger}.deleted_at_key IS NULL OR ${sqlDeletedAtLeer(spaltenTraeger)})` +
         ` AND (CASE WHEN jsonb_typeof(${leser}) = 'array'` +
-        ` THEN (${istAutor} OR (${autor}::text <> '' AND ${leser} @> jsonb_build_array(${autor}::text)))` +
+        ` THEN (${autor}::text <> '' AND ${leser} @> jsonb_build_array(${autor}::text))` +
         ` ELSE (${spaltenTraeger}.confidentiality_key = 'intern'` +
         ` OR ${rolle}::boolean` +
         ` OR ${istAutor}) END))`

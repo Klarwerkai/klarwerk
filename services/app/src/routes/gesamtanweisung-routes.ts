@@ -51,6 +51,9 @@ import { darfSehen } from "../sichtbarkeit";
 export interface AnweisungSichtbarkeitsFakten {
   readonly confidentiality?: Confidentiality | null | undefined;
   readonly author?: string | null | undefined;
+  // confluence-import-rechte: die Quellleser — ohne sie fiele ein quellbeschränkter Eintrag auf die
+  // Stufenregel zurück, und ein ausgeschlossener Controller läse ihn über die Anweisung.
+  readonly quellrechte?: { readonly leser?: readonly string[] | undefined } | null | undefined;
 }
 
 export type AnweisungSichtbar = (fakten: AnweisungSichtbarkeitsFakten) => boolean;
@@ -255,6 +258,7 @@ function sichtbarFuer(user: SessionUser): AnweisungSichtbar {
     darfSehen(user, {
       confidentiality: fakten.confidentiality ?? null,
       author: fakten.author ?? null,
+      quellrechte: fakten.quellrechte ?? null,
     });
 }
 

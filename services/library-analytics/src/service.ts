@@ -412,6 +412,10 @@ export interface LibraryServiceDeps {
 interface EintragsQuellrechte {
   stufe: Confidentiality;
   emails?: string[];
+  // Nacharbeit 3 (Befund F4): der Quellstand, zu dem diese Rechte gelten — die Seitenversion des
+  // Eintrags und der Zeitpunkt, an dem der Adapter die Rechte nachgesehen hat.
+  version?: number;
+  beobachtetAm?: string;
 }
 
 function quellrechteVon(item: ImportItem): EintragsQuellrechte | undefined {
@@ -419,12 +423,22 @@ function quellrechteVon(item: ImportItem): EintragsQuellrechte | undefined {
   if (roh === null || typeof roh !== "object") {
     return undefined;
   }
-  const { stufe, emails } = roh as { stufe?: unknown; emails?: unknown };
+  const { stufe, emails, beobachtetAm } = roh as {
+    stufe?: unknown;
+    emails?: unknown;
+    beobachtetAm?: unknown;
+  };
   if (!isValidConfidentiality(stufe)) {
     return undefined;
   }
+  const stand = {
+    ...(typeof item.sourceVersion === "number" ? { version: item.sourceVersion } : {}),
+    ...(typeof beobachtetAm === "string" && !Number.isNaN(Date.parse(beobachtetAm))
+      ? { beobachtetAm }
+      : {}),
+  };
   if (emails === undefined) {
-    return { stufe };
+    return { stufe, ...stand };
   }
   if (!Array.isArray(emails)) {
     return undefined;
@@ -432,6 +446,7 @@ function quellrechteVon(item: ImportItem): EintragsQuellrechte | undefined {
   return {
     stufe,
     emails: emails.filter((e): e is string => typeof e === "string" && e.trim().length > 0),
+    ...stand,
   };
 }
 
@@ -531,14 +546,18 @@ export class LibraryService {
     if (!quelle) {
       return undefined;
     }
+    const stand = {
+      ...(quelle.version !== undefined ? { version: quelle.version } : {}),
+      ...(quelle.beobachtetAm !== undefined ? { beobachtetAm: quelle.beobachtetAm } : {}),
+    };
     if (quelle.emails === undefined) {
-      return { stufe: quelle.stufe };
+      return { stufe: quelle.stufe, ...stand };
     }
     const leser =
       quelle.emails.length > 0 && this.quellLeserAufloesen
         ? await this.quellLeserAufloesen(quelle.emails)
         : [];
-    return { stufe: quelle.stufe, leser };
+    return { stufe: quelle.stufe, leser, ...stand };
   }
 
   // SCRUM-515: die eine Stelle, an der eine rohe (untrusted) confidentiality in den Import-Kern eintritt.
@@ -1667,7 +1686,7 @@ export class LibraryService {
         // Der Wert steht im Prüfprotokoll dieses Upgrades; ein aus dem Rumpf gelieferter Name
         // machte dort einen Ungeprüften zum Handelnden. Begründung in voller Länge an der revise()
         // weiter unten — es ist dieselbe Regel, und beide Stellen tragen sie gemeinsam.
-        await this.koService.setConfidentiality(existing.id, target, actor);
+        await this.koService.setConfidentiality(existing.id, target, actor, { durchImport: true });
       }
 
       const current = existing.sources.find(matchesAnchor)?.sourceVersion ?? 0;

@@ -28,6 +28,7 @@ import {
   type AnweisungLesestand,
   type AnweisungListe,
   type AnweisungListeneintrag,
+  type AnweisungQuellrechte,
   type AnweisungRepo,
   type AnweisungSichtbar,
   type AnweisungStand,
@@ -738,6 +739,7 @@ export interface AnweisungKoFakten {
   readonly author: string;
   readonly category: string;
   readonly confidentiality?: Confidentiality | null | undefined;
+  readonly quellrechte?: AnweisungQuellrechte | null | undefined;
   readonly bodyHtml?: string | null | undefined;
 }
 
@@ -792,6 +794,9 @@ export async function fassungslagenFuer(
       koId: baustein.koId,
       confidentiality: eintrag.confidentiality ?? null,
       author: eintrag.author,
+      // confluence-import-rechte (Ben, Nacharbeit 3): die AKTUELLEN Quellleser reisen mit — ohne
+      // sie läse ein ausgeschlossener Controller die gebundene Fassung über die Anweisung.
+      quellrechte: eintrag.quellrechte ?? null,
       aktuelleVersion: eintrag.version,
       gebunden: satz
         ? {
