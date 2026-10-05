@@ -58,6 +58,27 @@ Die Person sieht nur die Seite und beantwortet in eigenen Worten:
 | Was ist mein erster Schritt? | | |
 | Was bedeutet der Status dieser Anleitung, und was ist mein nächster Schritt? (Ergänzung 3) | | |
 
+**Statusfrage (Ergänzung 3) – menschliche Bedienprobe.** Sie gehört zum Folgeauftrag
+`aufnahme:20260922:gesamt-pruefstatus-anzeige:menschliche-bedienprobe` und wird nach der technischen
+Lieferung von Pedi oder einer von Pedi benannten Person geleitet. Ein Testlauf, Ben oder Codex ersetzt
+sie nicht. Damit die Person einen Status sieht, ohne vorher durch den Beispielablauf geführt zu werden:
+
+1. Die Prüfleitung legt in der Wegwerf-Instanz eine vorgelegte Anleitung an – entweder mit dem
+   vollständigen Belegablauf `node scripts/fe001/arbeitsanleitungen-belege.mjs http://127.0.0.1:3187`
+   (endet mit „Start im Homeoffice“ im Stand „Vorgelegt“) oder von Hand nach Abschnitt 4.
+2. Die Testperson hat das Erstellen **nicht** gesehen und bekommt keine Erklärung zu Status, Rollen
+   oder Freigabe. Sie öffnet die Übersicht `/gesamtanweisungen` und danach die Anleitung.
+3. Frage wörtlich: „Was bedeutet der Status dieser Anleitung, und was ist dein nächster Schritt?“
+   Die Antwort wird möglichst wörtlich notiert, ohne Nachhelfen.
+4. Verstanden heißt: Die Person sagt sinngemäß, dass die Anleitung zur Entscheidung vorliegt und
+   **noch nicht freigegeben** ist, und nennt einen zu ihrem Konto passenden nächsten Schritt (z. B.
+   auf die Entscheidung warten bzw. entscheiden, wenn sie es darf). Verwechselt sie „Vorgelegt“ mit
+   „Freigegeben“ oder eine automatische Prüfung mit einer menschlichen Freigabe, gilt die Frage als
+   **nicht verstanden**.
+
+Bis das Ergebnis in Abschnitt 7 eingetragen ist, bleibt dieses Kriterium **offen**; es blockiert keine
+technische Abnahme (Pedi-Entscheidung 03.10.2026).
+
 ## 4 · Beispielablauf (zum Mitgehen, gern nur mit Tastatur)
 
 1. Titel „Start im Homeoffice“ eingeben → „Neue Arbeitsanleitung erstellen“.
@@ -198,3 +219,6 @@ Vorlegen-Knopf mehr, und Ändern ist mit sichtbarem Grund gesperrt – passend z
 - Datum / Person(en): …
 - Ergebnis: erfüllt / offen / Nacharbeit
 - Befunde: …
+- Statusfrage (Ergänzung 3): Probe geleitet von (Pedi / benannte Person): … · Testperson
+  unvorbereitet (ja/nein): … · Rolle des Testkontos: … · gezeigter Stand: … · Antwort wörtlich: … ·
+  verstanden (ja/teilweise/nein): … — **Stand: noch nicht durchgeführt.**
