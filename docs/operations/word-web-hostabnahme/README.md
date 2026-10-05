@@ -4,7 +4,9 @@
 > `c38f2d71`, 1.0.0-beta.1.608) — noch immer ohne Lauf. Gemeinsamer Teil (Stammdaten, Zustimmung,
 > Zustände, Zuordnung der Anliegen): `docs/word-addin/ABNAHME-M365.md`. Installationsweg:
 > `docs/word-addin/SIDELOAD-CHROME.md`. Der Mac-Weg ist getrennt:
-> `docs/operations/word-mac-hostabnahme/README.md`.
+> `docs/operations/word-mac-hostabnahme/README.md`. Rückgabe einer Anleitung als neue Fassung
+> desselben Objekts mit Rolle admin (Ergänzung 4, belegpflichtig zu W13):
+> `docs/operations/word-host-gesamtweg.md`.
 
 ## Stand dieses Belegs
 
