@@ -311,6 +311,45 @@ describe("worker.js — konkurrierende Erfassungen verschwinden nicht still", ()
     expect(view.el("skipped-captures").hidden, "kein sichtbarer Hinweis auf B").toBe(false);
     expect(view.el("skipped-count").textContent).toBe("1");
   });
+
+  it("W1c · dieselbe Adresse aus zwei Tabs: B wird trotzdem gezählt — gleiche URL ist kein Nachweis desselben Vorgangs", async () => {
+    // Bens Minimalablauf (Nacharbeit 4): A hängt im Lesen, B und C kommen aus VERSCHIEDENEN Tabs mit
+    // GLEICHER Adresse. Bis hierher verglich die Zählbedingung nur die URL — B verschwand still.
+    const lesen = schranke();
+    const h = harness(
+      async () => {
+        throw new Error("kein Netz");
+      },
+      {},
+      { leseHalt: lesen.warte },
+    );
+    const laeuftA = h.capture();
+    await runde();
+    expect(h.spuren, "A hätte jetzt im Lesen der Seite hängen müssen").toContain(
+      "scripting.executeScript",
+    );
+    const adresse = "https://example.test/gleiche-seite";
+    const ausTabB = { id: 8, url: adresse, title: "Gleiche Seite (Tab B)" };
+    const ausTabC = { id: 9, url: adresse, title: "Gleiche Seite (Tab C)" };
+    await h.listeners.action?.(ausTabB);
+    await h.listeners.action?.(ausTabC);
+
+    lesen.frei();
+    await laeuftA;
+    await runde();
+    await runde();
+
+    const zustand = (await h.send({ type: "state" })) as Ansicht;
+    expect(zustand.selection?.url, "A ist verschwunden").toBe(h.selected.url);
+    expect(zustand.pendingCapture).toBe(true);
+    expect(zustand.pendingSource).toEqual({ url: adresse, title: ausTabC.title });
+    expect((h.data.pendingTab as { id?: number } | undefined)?.id, "nicht C wartet").toBe(9);
+    expect(zustand.skippedCaptures, "B aus dem anderen Tab wurde still überschrieben").toBe(1);
+
+    const view = await mount({ an: h, auswahl: false });
+    expect(view.el("skipped-captures").hidden, "kein sichtbarer Hinweis auf B").toBe(false);
+    expect(view.el("skipped-count").textContent).toBe("1");
+  });
 });
 
 type Ansicht = View & {

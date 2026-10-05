@@ -1457,15 +1457,15 @@
         // währenddessen, landet erst B als wartende Seite hier und wird gleich danach von C
         // überschrieben — B war noch unbeantwortet und wäre ohne Hinweis weg. Eine noch offene
         // wartende Seite, die von einer ANDEREN ersetzt wird, zählt deshalb genauso wie eine im
-        // Merker verdrängte Erfassung. Dieselbe Seite noch einmal ist kein Verlust.
+        // Merker verdrängte Erfassung.
+        //
+        // BEN (Nacharbeit 4): UND ZWAR UNABHÄNGIG VON DER ADRESSE. Bis hierher galt „dieselbe URL ist
+        // kein Verlust" — aber zwei Tabs mit derselben Adresse (oder derselbe Tab mit einer neuen
+        // Markierung) können verschiedenen Inhalt tragen. Die wartende Erfassung ist ein VORGANG,
+        // keine Adresse; die Seite wird hier gar nicht gelesen, ihr Inhalt ist also unbekannt. Jede
+        // noch unbeantwortete wartende Erfassung, die durch eine neue ersetzt wird, zählt deshalb.
         const vorher = /** @type {Zustand} */ (state);
-        const neueSeite = wartend.pendingSource?.url;
-        if (
-          neueSeite !== undefined &&
-          vorher.pendingCapture === true &&
-          vorher.pendingSource &&
-          vorher.pendingSource.url !== neueSeite
-        ) {
+        if (wartend.pendingSource && vorher.pendingCapture === true && vorher.pendingSource) {
           uebergangen = Math.max(uebergangen, vorher.skippedCaptures ?? 0) + 1;
           wartend.skippedCaptures = uebergangen;
         }
