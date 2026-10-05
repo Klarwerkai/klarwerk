@@ -191,6 +191,25 @@ describe("Berater-Konzept Duplikate 04.07. (Stufe D1): Erkennungskern", () => {
     expect(verifiedAspects(zahlVerdict, "10 Sekunden warten.", "10 Sekunden.")).toEqual([]);
   });
 
+  it("R-1117 BEN-1: Doppelprime 'Cut to 5″.' belegt keinen Aspekt zu 'Cut to 5′.'", () => {
+    const coreA = "Zuschnitt\nCut to 5′.";
+    const coreB = "Cut to 5′.";
+    const beideFalsch = { beschreibung: "Maß", zitatA: "Cut to 5″.", zitatB: "Cut to 5″." };
+    const nurAFalsch = { beschreibung: "Maß", zitatA: "Cut to 5″.", zitatB: "Cut to 5′." };
+    const nurBFalsch = { beschreibung: "Maß", zitatA: "Cut to 5′.", zitatB: "Cut to 5″." };
+    const echt = { beschreibung: "Maß", zitatA: "Cut to 5′.", zitatB: "Cut to 5′." };
+    const alle = verdict({ aspects: [beideFalsch, nurAFalsch, nurBFalsch, echt] });
+    expect(verifiedAspects(alle, coreA, coreB)).toEqual([echt]);
+    const unbelegt = verdict({ aspects: [beideFalsch, nurAFalsch, nurBFalsch] });
+    expect(verifiedAspects(unbelegt, coreA, coreB)).toEqual([]);
+    const d = decideFromOverlapVerdict(unbelegt, coreA, coreB);
+    expect(d.create).toBe(false);
+    expect(d.reason).toBe("no_verified_aspect");
+    const kontrolle = decideFromOverlapVerdict(verdict({ aspects: [echt] }), coreA, coreB);
+    expect(kontrolle.create).toBe(true);
+    expect(kontrolle.aspects).toEqual([echt]);
+  });
+
   it("verwandt → kein automatischer Eintrag (related_only)", () => {
     const d = decideFromOverlapVerdict(verdict({ beziehung: "verwandt" }), "x", "y");
     expect(d.create).toBe(false);
