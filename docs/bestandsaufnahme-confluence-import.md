@@ -360,6 +360,19 @@ bestätigten Löschung ein AKTIVES, nur vermerktes Objekt erwarten (z. B. `runde
 `abgleich.test.ts`), widersprechen mains maßgeblicher Papierkorb-Regel aus R-0162 (ausgegliedert) und
 können rot werden; sie sind dann dem Abgleich-Auftrag zuzuordnen, nicht hier umzudeuten.
 
+**Nacharbeit 5 (Integration mit main `52b0f80e`):** sieben Konfliktdateien, beide Seiten erhalten.
+main bringt die Lieferung des ausgegliederten Anhangs-Auftrags (R-0163): Anhangsliste je Seite
+(`listAttachments`, Rückgabe `truncated`), Dateiinhalte (`downloadAttachment`, `fetchAttachment`,
+Übernahme in den Objektspeicher über `anhaenge` am `LibraryService`), Item-Felder
+`attachments`/`attachmentsIncomplete`. Die Herkunftsangaben dieser Lieferung (Anhänge als Quellen am
+Objekt, `sourceAttachments`/`sourceAttachmentsIncomplete`) bleiben daneben bestehen; die Felder
+überschneiden sich nicht. Gleich benannt war nur die Client-Methode: meine strenge Liste (wirft bei
+unbrauchbarer Antwort, Bens A1) heißt jetzt `listAttachmentsStreng`. `fetchItem` liefert beide
+Angaben. Der Laufabschluss nennt mains Anhangslücke und den Quellabgleich dieser Lieferung unter
+demselben Code `SOURCE_SYNC_INCOMPLETE` (eine Konstante); der Leseabbruch geht vor. Grenze: zwei
+Anhangsmodelle für dieselbe Seite sind eine Doppelung, die der Anhangs-Auftrag auflösen sollte — sie
+hier zu entscheiden, wäre eine Produktentscheidung jenseits dieses Auftrags.
+
 ## Abgrenzung
 
 - SharePoint/OneDrive-Import (JOB 4086) ist ein eigener Adapter und eigener Auftrag.

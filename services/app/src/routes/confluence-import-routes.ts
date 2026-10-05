@@ -338,6 +338,14 @@ function abschlussStatus(summary: ImportRunSummary): ImportRunStatus {
 }
 
 /**
+ * R-0163: der Laufcode eines unvollständigen Anhangsabgleichs. Er steht in
+ * `ERLAUBTE_FEHLERCODES` (build-app.ts), damit er im Protokoll nicht als `UNBEKANNT` erscheint.
+ * ZUSAMMENFÜHRUNG (Nacharbeit 5): derselbe Code, den der Quellabgleich dieser Lieferung seit
+ * Lauf 3 setzt (`abgleichGrund`) — eine Konstante für beide.
+ */
+const SOURCE_SYNC_INCOMPLETE = "SOURCE_SYNC_INCOMPLETE";
+
+/**
  * R-0162 (Runde 3): ein Lauf, dessen Löschabgleich nicht stattfand oder Seiten mit unbekanntem
  * Zustand zurückliess, hat seinen Auftrag nicht ganz erfüllt — er heisst `PARTIAL`, nicht
  * `COMPLETED`. Vorher endete genau dieser Fall mit `COMPLETED` und ohne jede Spur.
@@ -393,7 +401,7 @@ function abgleichGrund(summary: ImportRunSummary): { code: string; reason: strin
     return null;
   }
   return {
-    code: "SOURCE_SYNC_INCOMPLETE",
+    code: SOURCE_SYNC_INCOMPLETE,
     reason: [
       sync.checked
         ? sync.unchecked.length > 0
@@ -572,17 +580,56 @@ async function fuehreLaufAus(
     // Zusammenführung mit R-0162: ein Leseabbruch macht den Lauf `truncated`, `abgleichGrund` ist
     // dann ohnehin `null` — der Abbruch hat Vorrang, sonst gilt der Abgleichsgrund.
     const abbruch = summary.abbruch;
+    // R-0163 (Bens Befund 3): ein unvollständiger Anhangsabgleich macht den Lauf über `failed`
+    // bereits PARTIAL; der Grund steht zusätzlich am gespeicherten Lauf — lesbar über
+    // `GET /api/admin/import/runs/:importId`, auch nach einem Neustart, nicht nur in der Antwort.
+    const anhangsLuecken = summary.anhangsabgleich?.unvollstaendigeSeiten.length ?? 0;
+    if (anhangsLuecken > 0) {
+      // Dieselbe Warnzeile wie die übrigen Laufstörungen — mit dem Laufcode statt eines Textes,
+      // ohne Seitenkennung und ohne Dateinamen.
+      wurzelWarn(log).call(
+        log,
+        { stelle: `Lauf (${importId})`, code: SOURCE_SYNC_INCOMPLETE, seiten: anhangsLuecken },
+        "confluence-import: Anhangsabgleich unvollständig",
+      );
+    }
+    // EIN Feld, ZWEI mögliche Lücken: der Lesungsabbruch (R-0159) geht im Code vor — dann ist der
+    // Bereich gar nicht vollständig gelesen. Der Grundtext verschweigt die andere Lücke nicht.
+    const anhangsGrund =
+      anhangsLuecken > 0
+        ? `Anhangsabgleich unvollständig für ${anhangsLuecken} Seite(n); vorhandene Anhänge bleiben erhalten.`
+        : null;
+    const laufluecke = abbruch
+      ? {
+          failureCode: abbruchCode(abbruch.grund),
+          failureReason: sanitizeImportFailureReason(
+            anhangsGrund ? `${abbruch.meldung} ${anhangsGrund}` : abbruch.meldung,
+          ),
+        }
+      : anhangsGrund
+        ? {
+            failureCode: SOURCE_SYNC_INCOMPLETE,
+            failureReason: sanitizeImportFailureReason(anhangsGrund),
+          }
+        : null;
+    // ZUSAMMENFÜHRUNG (Nacharbeit 5): der Quellabgleich dieser Lieferung (`abgleichGrund`, derselbe
+    // Code SOURCE_SYNC_INCOMPLETE) tritt neben mains Anhangslücke. Der Leseabbruch geht weiter vor;
+    // ohne ihn nennt der Grundtext beide Lücken, keine verschweigt die andere.
+    const lueckeMitAbgleich = abbruch
+      ? laufluecke
+      : laufluecke && grund
+        ? {
+            failureCode: SOURCE_SYNC_INCOMPLETE,
+            failureReason: sanitizeImportFailureReason(`${anhangsGrund ?? ""} ${grund.reason}`.trim()),
+          }
+        : (laufluecke ??
+          (grund
+            ? { failureCode: grund.code, failureReason: sanitizeImportFailureReason(grund.reason) }
+            : null));
     await beende({
       status: abschlussStatus(summary),
       completedAt: new Date().toISOString(),
-      ...(abbruch
-        ? {
-            failureCode: abbruchCode(abbruch.grund),
-            failureReason: sanitizeImportFailureReason(abbruch.meldung),
-          }
-        : grund
-          ? { failureCode: grund.code, failureReason: sanitizeImportFailureReason(grund.reason) }
-          : {}),
+      ...(lueckeMitAbgleich ?? {}),
       counters: {
         itemsTotal: summary.found,
         itemsCreated: summary.imported,

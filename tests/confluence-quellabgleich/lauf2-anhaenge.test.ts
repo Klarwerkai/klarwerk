@@ -133,7 +133,9 @@ describe("A1 · eine unbrauchbare Anhangsantwort entfernt keine bestehende Anhan
     it(`${name}: der Client wirft ConfluenceUnusableResponseError oder einen Fehler`, async () => {
       const q = quelle();
       q.anhangsAntwort.set("P-1", r);
-      const aufruf = q.client.listAttachments("P-1");
+      // Nacharbeit 5: die strenge Liste dieser Lieferung heißt seit der Zusammenführung mit mains
+      // R-0163 (`listAttachments`, Dateiinhalte) `listAttachmentsStreng` — Prüfung unverändert.
+      const aufruf = q.client.listAttachmentsStreng("P-1");
       if (r.status === 200) {
         await expect(aufruf).rejects.toBeInstanceOf(ConfluenceUnusableResponseError);
       } else {

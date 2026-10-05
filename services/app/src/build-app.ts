@@ -56,6 +56,7 @@ import {
   PgOverlapRepo,
   PgOverlapSettingsRepo,
 } from "../../conflicts";
+import { createConfluenceAdapterFromEnv } from "../../confluence";
 // SCRUM-523 P.3 (WP-A2): gemeinsamer Transaktions-Kernel — nur die Kompositionswurzel bindet withPgTx
 // an den echten, mit PgKoRepo/PgAuditRepo geteilten Pool (s. buildPgServices unten).
 import { gatedPool, withPgTx } from "../../db-tx";
@@ -222,6 +223,7 @@ import {
   InMemoryBrandingSettingsRepo,
   PgBrandingSettingsRepo,
 } from "./branding-settings";
+import { confluenceAnhangsUebernahme } from "./confluence-anhaenge";
 // R-0134 / R-1005: der Betreiberschalter des Confluence-Imports — dieselbe Bauform wie die
 // Markenwahl (haltbar im Postgres-Betrieb, im Speicher ohne Datenbank).
 import {
@@ -1082,6 +1084,14 @@ export function assembleServices(
   // Beziehungsroute nicht kennt. Die Wahlregel selbst ist UNVERÄNDERT (Postgres, wenn injiziert,
   // sonst der DEDUPLIZIERENDE Speicherbestand — die Begründung steht unten an der Verwendung).
   const kantenBestand = opts.kanten ?? new DeduplizierenderKantenBestand();
+  // AUFTRAG-mega20 Block C/D: EINE ObjectStore-Instanz für die Composition-Root. Bis mega19 wurde
+  // sie zweimal gebaut (einmal für die Routen, einmal für die Medien-Analyse); solange der Store
+  // nur las und schrieb, war das folgenlos. Mit `list`/`delete` und der Lebenszyklus-Zuordnung ist
+  // es das nicht mehr — zwei Instanzen wären zwei Orte, an denen jemand künftig einen Cache oder
+  // eine Sperre einbaut, ohne die andere zu kennen. Ein Repo, ein Store.
+  // R-0163: eine Stufe früher gebaut, weil der Anhangsweg des `LibraryService` ihn braucht —
+  // dieselbe Instanz, kein zweiter Store.
+  const objects = new ObjectStore({ repo: repos.objects });
   // R-0169 (Nacharbeit 5): EINE Dokumentakte für Word-Weg und Bibliotheksimport.
   const dokumente = new DokumentaktenService({ repo: repos.dokumente });
   const library = new LibraryService({
@@ -1101,14 +1111,21 @@ export function assembleServices(
     // Elementreferenz in DIESELBE Laufdomäne, die `importRunRoutes` liest. Die Quellrevisionen
     // (`externalSources`) reichen R-0169 und R-0142 gemeinsam — EIN Eintrag oben.
     importRuns: repos.importRuns,
+    // R-0163: Anhänge und Bilder einer angenommenen Confluence-Seite — nur hinter demselben
+    // Schalter wie der Import selbst; der Adapter entsteht je Annahme aus derselben Factory wie in
+    // den Importrouten (Token bleibt in der Client-Closure).
+    ...(schalterAn("confluenceImport")
+      ? {
+          anhaenge: confluenceAnhangsUebernahme({
+            ko,
+            objects,
+            uploadLimits: repos.uploadLimits,
+            makeAdapter: () => createConfluenceAdapterFromEnv(),
+          }),
+        }
+      : {}),
   });
   const lifecycle = new LifecycleService({ koService: ko, repo: repos.lifecycleRepo });
-  // AUFTRAG-mega20 Block C/D: EINE ObjectStore-Instanz für die Composition-Root. Bis mega19 wurde
-  // sie zweimal gebaut (einmal für die Routen, einmal für die Medien-Analyse); solange der Store
-  // nur las und schrieb, war das folgenlos. Mit `list`/`delete` und der Lebenszyklus-Zuordnung ist
-  // es das nicht mehr — zwei Instanzen wären zwei Orte, an denen jemand künftig einen Cache oder
-  // eine Sperre einbaut, ohne die andere zu kennen. Ein Repo, ein Store.
-  const objects = new ObjectStore({ repo: repos.objects });
 
   // ==============================================================================================
   // JOB 2009 · D2 — HIER WIRD DIE SICHTBARKEITSNAHT DES WISSENSNETZES GESCHLOSSEN (H3, Weg D).
@@ -1800,10 +1817,22 @@ export const ERLAUBTE_FEHLERTYPEN: ReadonlySet<string> = new Set([
   // JOB 2702 D1: aus JOB 2683 (Confluence-Zeitgrenzen, services/confluence/src/rest-client.ts:75) —
   // eingebaut nach 2661, vom Waechter unten als fehlend gemeldet, Entscheidung des Kopfs: Eintrag.
   "ConfluenceRequestError",
+  // R-0163: der Nicht-2xx-Status des Confluence-Clients (services/confluence/src/rest-client.ts),
+  // seit dem Anhangsabruf eine eigene Klasse, damit der Fristweg ihn unverändert durchreicht. Er
+  // setzt `name` nicht und trägt zur Laufzeit „Error"; steht er dennoch hier, ist das die
+  // Entscheidung: sein Name sagt nur „Confluence antwortete mit einem Fehlerstatus" — keine
+  // Kennung, kein Host; die Meldung enthält allein die Statuszahl.
+  "ConfluenceStatusError",
   // R-0162 (Confluence-Gesamtimport, Runde 3): 2xx-Antwort ohne brauchbare Seiten-Id — Zustand
-  // unbekannt. Fester Satz ohne Host und ohne Quellinhalt.
+  // unbekannt. Fester Satz ohne Host und ohne Quellinhalt. Seit der Zusammenführung wirft ihn die
+  // strenge Anhangsliste dieser Lieferung (`listAttachmentsStreng`).
   "ConfluenceUnusableResponseError",
   "DevPersistJournalReplayError",
+  // R-0163 / K3 (Ben, Nacharbeit 15): der Fachfehler der Dokumentakte
+  // (`services/knowledge-object/src/dokumentakte.ts`, R-0169). ENTSCHEIDUNG: der Name darf ins
+  // Protokoll — er trägt nur seinen Klassennamen; Meldung und Stack bleiben wie bei allen
+  // unterdrückt.
+  "DokumentError",
   // JOB 2684 D7: der Standkonflikt aus 2684 (capture/src/service.ts). Der Name sagt nur „veralteter
   // Stand" — kein Nutzertext, keine Kennung; der Meldungstext bleibt wie bei allen unterdrückt.
   "DraftStaleError",
@@ -1819,6 +1848,10 @@ export const ERLAUBTE_FEHLERTYPEN: ReadonlySet<string> = new Set([
   "KoError",
   "LibraryError",
   "LifecycleError",
+  // R-0163 / K3 (Ben, Nacharbeit 15): der Fehler eines ungültigen Management-Profils
+  // (`services/management/src/profiles.ts`). ENTSCHEIDUNG: der Name darf ins Protokoll — nur der
+  // Klassenname, keine Profilwerte.
+  "ManagementProfileError",
   "MediaAnalysisError",
   "ModelCapacityError",
   "ModelEmptyResponseError",
@@ -1899,6 +1932,11 @@ export const ERLAUBTE_FEHLERCODES: ReadonlySet<string> = new Set([
   "CREATE_REPAIR_REQUIRED",
   "CREATE_ROLLBACK_FAILED",
   "DEV_PERSIST_JOURNAL_REPLAY_FAILED",
+  // R-0163 / K3 (Ben, Nacharbeit 15): die zwei festen Codes von `DokumentError`
+  // (`services/knowledge-object/src/dokumentakte.ts`). Sie nennen den Zweig („Akte unbekannt",
+  // „Akte im Konflikt"), keine Dokumentkennung und keinen Nutzertext.
+  "DOKUMENT_KONFLIKT",
+  "DOKUMENT_UNBEKANNT",
   "DOWNGRADE_FORBIDDEN",
   "DRAFT_STALE", // JOB 2684 D7: 409 an PUT/Promote/Dokumentweg — geht ohnehin als Antwortcode an Clients.
   // JOB 2684 D7: der zweite Code desselben Stands (2684 D3) — Compare-and-Swap nach CAS_VERSUCHE
@@ -1924,6 +1962,9 @@ export const ERLAUBTE_FEHLERCODES: ReadonlySet<string> = new Set([
   "INVALID_CONFIDENTIALITY",
   "INVALID_CREDENTIALS",
   "INVALID_DEFAULT",
+  // R-0163 / K3 (Ben, Nacharbeit 15): der feste Code von `ManagementProfileError`
+  // (`services/management/src/profiles.ts`) — ohne Profilwerte.
+  "INVALID_MANAGEMENT_PROFILE",
   "INVALID_NEEDED",
   "INVALID_OPERATION_ID",
   "INVALID_OWNERSHIP",
@@ -1992,6 +2033,10 @@ export const ERLAUBTE_FEHLERCODES: ReadonlySet<string> = new Set([
   // `PARTIAL` ist, weil sein Löschabgleich unvollständig blieb (confluence-import-routes.ts,
   // `abgleichGrund`). ENTSCHEIDUNG: darf ins Protokoll — fester Name ohne Kennung und ohne
   // Quellinhalt; er sagt, welcher Zweig lief.
+  // R-0163 (Bens Befund 3, beleg:2def0ac2): der Laufcode eines unvollständigen Anhangsabgleichs
+  // (`routes/confluence-import-routes.ts`, `SOURCE_SYNC_INCOMPLETE`) — am gespeicherten Lauf als
+  // `failureCode` und in der Warnzeile des Laufs. ENTSCHEIDUNG: darf ins Protokoll. Er trägt keine
+  // Seitenkennung und keinen Dateinamen, nur die Auskunft „Anhänge nicht vollständig abgeglichen".
   "SOURCE_SYNC_INCOMPLETE",
   "STALE_WRITE",
   "UNKNOWN_ART",

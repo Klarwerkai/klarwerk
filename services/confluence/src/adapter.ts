@@ -6,15 +6,16 @@
 // R2a (Encapsulation): nach außen (Paket-index) ist NUR createConfluenceAdapterFromEnv erreichbar — der
 // Roh-Client, seine token-tragende Config und der env-Resolver bleiben modul-intern.
 
-import type { SourceAdapter } from "../../library-analytics";
+import type { ImportItem, SourceAdapter } from "../../library-analytics";
 import {
   type ConfluenceImportItem,
   type ConfluenceMapOptions,
   confluenceAhnenBefund,
   confluenceAncestorIds,
+  confluenceAnhangsFelder,
   mapConfluencePageToImportItem,
 } from "./mapper";
-import type { ConfluenceAbbruch, ConfluencePage } from "./rest-client";
+import type { ConfluenceAbbruch, ConfluenceAttachment, ConfluencePage } from "./rest-client";
 import {
   ConfluenceRestClient,
   type ConfluenceRestConfig,
@@ -190,12 +191,28 @@ export class ConfluenceSourceAdapter implements SourceAdapter {
    * Prozessspeicher); wer anwendet, laedt die Seite hier je Id nach. `undefined` = die Seite gibt
    * es nicht mehr — der Aufrufer weist das ehrlich aus, statt still den Auszug zu importieren.
    */
+  //
+  // R-0163: HIER kommen die Anhänge dazu — beim Anwenden je Seite, nicht in der Erkundung (dort
+  // wären es bis zu 25.000 zusätzliche Requests für einen Überblick). Scheitert das Lesen der
+  // Anhangsliste, wird die Seite trotzdem geliefert, aber mit `attachmentsIncomplete` — der Text
+  // geht nicht verloren, und niemand liest „keine Anhänge", wo nur nicht gelesen wurde.
+  //
+  // ZUSAMMENFÜHRUNG (Nacharbeit 5): das Item trägt BEIDE Anhangsangaben — die Herkunftsangaben
+  // dieser Lieferung (`sourceAttachments`, über `mitAllenAnhaengen`) und die Dateiinhalts-Liste aus
+  // mains R-0163 (`attachments`, über `listAttachments`). Ihre Felder sind getrennt.
   async fetchItem(externalId: string): Promise<ConfluenceImportItem | undefined> {
     const page = await this.client.getPageById(externalId);
     if (!page) {
       return undefined;
     }
-    return mapConfluencePageToImportItem(await this.mitAllenAnhaengen(page), this.mapOpts);
+    let anhaenge: { attachments: ConfluenceAttachment[]; unvollstaendig: boolean };
+    try {
+      const gelesen = await this.client.listAttachments(page.id);
+      anhaenge = { attachments: gelesen.attachments, unvollstaendig: gelesen.truncated };
+    } catch {
+      anhaenge = { attachments: [], unvollstaendig: true };
+    }
+    return mapConfluencePageToImportItem(await this.mitAllenAnhaengen(page), this.mapOpts, anhaenge);
   }
 
   /**
@@ -212,7 +229,7 @@ export class ConfluenceSourceAdapter implements SourceAdapter {
       return page;
     }
     try {
-      const { attachments, complete } = await this.client.listAttachments(page.id);
+      const { attachments, complete } = await this.client.listAttachmentsStreng(page.id);
       return {
         ...page,
         children: {
@@ -225,6 +242,37 @@ export class ConfluenceSourceAdapter implements SourceAdapter {
     } catch {
       return page;
     }
+  }
+
+  /**
+   * R-0163 (Ben, Nacharbeit 2): der SCHREIBENDE Bereichsimport (`runConfluenceImport`) reiht die
+   * Items aus `collectAll` ein — die tragen keine Anhangsliste, weil die Erkundung bewusst ohne
+   * Anhangsabrufe läuft. Bevor ein solches Item in die Review-Queue geht, holt diese Methode die
+   * Anhangsliste seiner Seite nach und setzt dieselben Felder wie `fetchItem`
+   * (`confluenceAnhangsFelder`). Scheitert das Lesen, geht das Item mit `attachmentsIncomplete`
+   * weiter — der Text geht nicht verloren, und niemand liest „keine Anhänge".
+   */
+  async withAttachments(item: ImportItem): Promise<ImportItem> {
+    const pageId = item.externalId?.trim();
+    if (!pageId) {
+      return item;
+    }
+    let anhaenge: { attachments: ConfluenceAttachment[]; unvollstaendig: boolean };
+    try {
+      const gelesen = await this.client.listAttachments(pageId);
+      anhaenge = { attachments: gelesen.attachments, unvollstaendig: gelesen.truncated };
+    } catch {
+      anhaenge = { attachments: [], unvollstaendig: true };
+    }
+    return { ...item, ...confluenceAnhangsFelder(anhaenge) };
+  }
+
+  /**
+   * R-0163: die Rohbytes EINES Anhangs über seinen quellinternen Abrufweg (`abruf` am Import-
+   * Anhang). Origin-Pin, Frist, Größenkante und Weiterleitungsregel liegen im Client.
+   */
+  async fetchAttachment(abruf: string): Promise<{ bytes: Buffer; mime?: string }> {
+    return this.client.downloadAttachment(abruf);
   }
 
   /**
