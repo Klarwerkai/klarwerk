@@ -365,4 +365,31 @@ describe("R-0427 · Bestandsblick beim Absatzwechsel — erst nach bewusstem Ja"
     expect(absatzLesungen).toBe(lesungenNachJa);
     expect(fragen).toEqual([]);
   });
+
+  it("B5 · Ausschalten WÄHREND der verzögerten Neulesung: kein Serverabruf, keine neue Karte", async () => {
+    // Bens Befund (Nacharbeit 6): der Absatzwechsel ist erkannt, `ka3Ausfuehren` wartet auf die
+    // Dokumentlesung — und genau dann nimmt der Mensch sein Ja zurück.
+    await geoeffnet();
+    absatzSchalter().click();
+    await zeitVergehtUm(KURZ);
+    fragen = [];
+    const karteVorher = document.getElementById("ka3-karten")?.innerHTML ?? "";
+    const lesungenVorher = lesungen;
+
+    dokument = NEU;
+    absatzIndex = 1;
+    markierungGeaendert();
+    // Die Absatzlage ist gelesen (eine Lesung), die Neulesung des Dokuments hat begonnen (zweite
+    // Lesung) und wartet noch auf ihr verzögertes `context.sync`.
+    await zeitVergehtUm(SYNC_MS + 5);
+    expect(lesungen, "Kalibrierung: die Neulesung läuft noch nicht").toBe(lesungenVorher + 2);
+    expect(fragen, "Kalibrierung: gefragt wurde schon vor dem Ende der Lesung").toEqual([]);
+
+    absatzSchalter().click();
+    expect(absatzSchalter().getAttribute("aria-checked")).toBe("false");
+    await zeitVergehtUm(KURZ);
+
+    expect(fragen, "nach dem Ausschalten wurde der Server doch gefragt").toEqual([]);
+    expect(document.getElementById("ka3-karten")?.innerHTML ?? "").toBe(karteVorher);
+  });
 });

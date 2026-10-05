@@ -115,8 +115,11 @@ const MARKE_KOPF_ENDE = '"use strict";\n';
  * GEMESSEN beim Auflösen: das genau nach `fuegePanelZusammen` aus den vier Dateien zusammengesetzte
  * Dokument hat den Blob `eb344beb…` (`git diff --no-index --full-index`); dasselbe Verfahren ergibt
  * an den vier Dateien von `main` a6c9c5d9 wörtlich deren Wert `b3f3846c…`.
+ * Nacharbeit 6 (Bens Befund): der Absatzwechselabruf ist an die gültige Aktivierung gebunden
+ * (`ka3AbsatzRunde`, Prüfung `gilt()` in `ka3Ausfuehren` vor Serverabruf und Anzeige), zeilenneutral.
+ * GEMESSEN mit demselben Verfahren: `fd19fe43…`; am unveränderten Kandidaten 22bad536 `eb344beb…`.
  */
-export const PANEL_VOR_SCHNITT_BLOB = "eb344bebd7e450241a741b8220eceab0bb68a043";
+export const PANEL_VOR_SCHNITT_BLOB = "fd19fe43f291313184ee70a3d50761db33a0baa7";
 
 export interface PanelTeile {
   html: string;

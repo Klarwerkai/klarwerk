@@ -8065,6 +8065,8 @@
       if (!vertrag) { return; }
       ka3Laeuft = true;
       var generation = ka3Generation;
+      var runde = grund === "absatzwechsel" ? ka3AbsatzRunde : null; // R-0427: am gueltigen Ja
+      var gilt = function () { return !ka3Beendet && (runde === null || (ka3AbsatzAn && runde === ka3AbsatzRunde)); };
       // Aufnahme 20260922 (Bens Befunde 1+2): der Bestandsblick fragt mit dem Begriffsbild des
       // AKTUELLEN Dokuments. Beim Oeffnen wird auf die laufende Startlesung gewartet (sonst fragt
       // KA2 mit leeren Begriffen und schweigt); nach der Schreibruhe liest KA1 das Dokument neu,
@@ -8077,16 +8079,16 @@
           return ka1Aktuell();
         })
         .then(function () {
-          if (ka3Beendet) { return { treffer: [] }; }
+          if (!gilt()) { return { treffer: [] }; }
           return vertrag(grund);
         })
         .then(function (ergebnis) {
-          if (ka3Beendet || generation !== ka3Generation) { return; }
+          if (!gilt() || generation !== ka3Generation) { return; }
           ka3Treffer = ka3Normalisieren(ergebnis);
           ka3Zeichnen();
         })
         .catch(function () {
-          if (ka3Beendet || generation !== ka3Generation) { return; }
+          if (!gilt() || generation !== ka3Generation) { return; }
           // Ein Fehler ist kein Bestand: die Karte geht: weder alt noch erfunden.
           ka3Treffer = [];
           ka3Zeichnen();
@@ -8108,12 +8110,10 @@
       ka3AbsatzPruefen();
     }
 
-    // R-0427 — BESTANDSBLICK BEIM ABSATZWECHSEL, NUR NACH BEWUSSTEM JA. `#einst-absatzblick` steht
-    // AUS; erst sein Klick schaltet ein (nur dieses Fenster, nichts gespeichert, zuruecknehmbar).
-    // Gelesen wird je Anlass nur die Absatzzahl bis zur Markierung (kein Text); wechselt sie, laeuft
-    // derselbe Bestandsblick wie nach der Schreibruhe. Kein Fokus, kein Schreibweg. Host ohne diese
-    // Lesart (WordApi 1.3 `expandTo`): der Weg schweigt — kein Ersatzsignal, kein Takt.
-    var ka3AbsatzAn = false;
+    // R-0427 — BESTANDSBLICK BEIM ABSATZWECHSEL NUR NACH BEWUSSTEM JA (Schalter, nur dieses Fenster).
+    // Gelesen wird nur die Absatzzahl bis zur Markierung; jeder Klick beginnt eine neue `ka3AbsatzRunde`,
+    // ein laufender Abruf gilt nur in seiner Runde. Ohne WordApi 1.3 `expandTo` schweigt der Weg.
+    var ka3AbsatzAn = false, ka3AbsatzRunde = 0;
     var ka3Absatz = null;
     var ka3AbsatzSchalter = document.getElementById("einst-absatzblick");
 
@@ -8142,7 +8142,7 @@
     if (ka3AbsatzSchalter) {
       ka3AbsatzSchalter.addEventListener("click", function () {
         ka3AbsatzAn = !ka3AbsatzAn;
-        ka3Absatz = null;
+        ka3Absatz = null; ka3AbsatzRunde += 1; // ein laufender Absatzwechselabruf verliert seine Geltung
         ka3AbsatzSchalter.className = ka3AbsatzAn ? "schalter an" : "schalter";
         ka3AbsatzSchalter.setAttribute("aria-checked", ka3AbsatzAn ? "true" : "false");
         ka3AbsatzPruefen(); // merkt nur den Ausgangsabsatz; gefragt wird erst beim naechsten Wechsel
