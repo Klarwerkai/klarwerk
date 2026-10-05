@@ -109,8 +109,11 @@ const MARKE_KOPF_ENDE = '"use strict";\n';
  * Warnung zur Dokumentkennung (verzögertes `saveAsync`). Der Bezugspunkt MUSS deshalb wandern; ohne
  * zugelassenes Hash-Werkzeug ist er hier nicht berechenbar. E2 meldet ihn im Prüflauf als
  * „Received"; er wird danach gemessen übernommen.
+ * NACHARBEIT 5: GEMESSEN im Prüflauf zu Kandidat 6dc92d9b (`0548d086…`, „Received" von E2,
+ * HISTORIE/nacharbeit-5/PRUEFUNG/panel-auslieferung-pins.log) und unverändert übernommen; die
+ * Panel-Dateien sind seit dieser Messung unberührt.
  */
-export const PANEL_VOR_SCHNITT_BLOB = "b3f3846c1ba8163aa575dd97dcca383467d7239b";
+export const PANEL_VOR_SCHNITT_BLOB = "0548d0868b70123eca4f16a4a3a3cdab59f6fe5d";
 
 export interface PanelTeile {
   html: string;
