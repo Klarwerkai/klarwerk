@@ -850,36 +850,53 @@ describe("JOB 3266 R2 · der Zugang zu den eigenen Entwürfen im echten Chromium
     // `removeAttribute`, ein Weg für beide), und zurück kommen beide Schnappschüsse je Zeile. Die
     // Zusage ist dieselbe — nachher === vorher, für jede Zeile —, nur dass ein Rot jetzt die
     // Abweichung im Bericht nennt.
+    //
+    // NACHARBEIT 6 — DER DIFF HAT DIE URSACHE GENANNT (Lauf zu a393fef0): `class` kam exakt zurück,
+    // `style` stand vorher auf `null` und nachher auf `""`. Wer `el.style.…` beschreibt, legt in
+    // Chromium eine Inline-Stil-Deklaration an; nach `removeAttribute('style')` meldet das Attribut
+    // dann `""` statt `null`. Die Probe fasst `style` deshalb GAR NICHT mehr an: die drei Regeln der
+    // alten Kürzung kommen über ein eigenes `<style>`-Element, das nur Knoten mit der Marke
+    // `data-l2k-alte-kuerzung` trifft; dazu die Klasse `truncate` wie im alten Bau. Zurückgenommen
+    // werden Marke, Klasse und `<style>`-Element; die Zusage bleibt unverändert streng —
+    // `class`, `style` UND die Marke je Zeile nachher === vorher, und das `<style>`-Element ist fort.
     const quelle = `() => {
       const traeger = [...document.querySelectorAll('[data-testid="page-entwuerfe"] [data-testid="entwurfsliste-eintrag-titel"]')].map((t) => t.parentElement);
-      const schnappschuss = () => traeger.map((k) => ({ klasse: k.getAttribute('class'), stil: k.getAttribute('style') }));
-      const zuruecksetzen = (k, name, wert) => { if (wert === null) { k.removeAttribute(name); } else { k.setAttribute(name, wert); } };
+      const schnappschuss = () => traeger.map((k) => ({ klasse: k.getAttribute('class'), stil: k.getAttribute('style'), marke: k.getAttribute('data-l2k-alte-kuerzung') }));
       const vorher = schnappschuss();
+      const regel = document.createElement('style');
+      regel.id = 'l2k-alte-kuerzung';
+      regel.textContent = '[data-l2k-alte-kuerzung] { white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important; }';
       let mass = null;
       try {
+        document.head.appendChild(regel);
         for (const k of traeger) {
+          k.setAttribute('data-l2k-alte-kuerzung', '');
           k.classList.add('truncate');
-          k.style.whiteSpace = 'nowrap';
-          k.style.overflow = 'hidden';
-          k.style.textOverflow = 'ellipsis';
         }
         mass = (${TITELMASSE_SEITE})();
       } finally {
         traeger.forEach((k, i) => {
-          zuruecksetzen(k, 'class', vorher[i].klasse);
-          zuruecksetzen(k, 'style', vorher[i].stil);
+          k.removeAttribute('data-l2k-alte-kuerzung');
+          if (vorher[i].klasse === null) { k.removeAttribute('class'); } else { k.setAttribute('class', vorher[i].klasse); }
         });
+        regel.remove();
       }
-      return { mass: mass, vorher: vorher, nachher: schnappschuss() };
+      return { mass: mass, vorher: vorher, nachher: schnappschuss(), regelFort: document.getElementById('l2k-alte-kuerzung') === null };
     }`;
-    type Schnappschuss = { klasse: string | null; stil: string | null }[];
-    type Probe = { mass: Titelmass[]; vorher: Schnappschuss; nachher: Schnappschuss };
+    type Schnappschuss = { klasse: string | null; stil: string | null; marke: string | null }[];
+    type Probe = {
+      mass: Titelmass[];
+      vorher: Schnappschuss;
+      nachher: Schnappschuss;
+      regelFort: boolean;
+    };
     const k = await s.evaluate<Probe>(fn(quelle));
     expect(k.vorher, "L2K: keine Zeilenträger gefunden").toHaveLength(3);
     expect(
       k.nachher,
       "L2K: die Rücknahme im `finally` hat den alten Zustand nicht hergestellt",
     ).toEqual(k.vorher);
+    expect(k.regelFort, "L2K: die Stilregel der alten Kürzung steht noch im Dokument").toBe(true);
     // Die Ursache steht benannt in der Messung: Auslassungspunkte und ein Text, der breiter ist als
     // seine Fläche — bei den beiden langen Titeln mindestens.
     const gekuerzt = k.mass.filter(
