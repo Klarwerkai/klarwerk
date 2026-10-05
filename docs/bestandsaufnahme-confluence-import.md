@@ -333,6 +333,14 @@ Revision zuerst über `sourceRecordId`. `createImportCandidates` nimmt `quellang
 (main) und `lauf` (hier) im selben Optionsobjekt. Der Laufabschluss setzt den Leseabbruch-Code aus
 main vor `SOURCE_SYNC_INCOMPLETE`.
 
+**Nacharbeit 3 (Prüflauf Kandidat `eff67eaa`):** Eigene Befunde behoben — `IMPORT_RUN_SOURCE_SYNC_SCHEMA`
+steht nach der Zusammenführung wieder am Ende von `schemas` (`db.ts`) und des Migrationsbelegs
+(`quellabgleich-ablage.test.ts` verlangt das wörtlich); eine überzählige Leerzeile in
+`import-run-routes.ts` (Biome) entfernt. Fremde Basisbefunde aus main `5f3e3a81`, hier nicht
+repariert und aus der Auftragsauswahl genommen: Drilltabellen von `MANAGEMENT_PROFILE_SCHEMA`
+(`tabellensatz.test.ts`), fehlendes `zeilenrecht` der unveränderten Bibliotheks-Importrouten (`g10`),
+`DokumentError`/`ManagementProfileError` und drei Codes auf den Loglisten (`build-app.test.ts`).
+
 ## Abgrenzung
 
 - SharePoint/OneDrive-Import (JOB 4086) ist ein eigener Adapter und eigener Auftrag.

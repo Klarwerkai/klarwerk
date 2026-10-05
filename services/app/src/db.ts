@@ -214,10 +214,6 @@ export const schemas = [
   // wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS), ohne Fremdschlüssel und ohne Extension; sie
   // steht am Ende, weil das die lesbare Ordnung ist.
   KO_BEARBEITUNG_SCHEMA,
-  // R-0162 (Confluence-Gesamtimport): das dauerhafte Quellabgleichsergebnis je Importlauf. Additiv
-  // und wiederholbar (CREATE TABLE IF NOT EXISTS), ohne Fremdschlüssel auf `import_runs` und ohne
-  // Extension; sie steht am Ende, weil das die lesbare Ordnung ist.
-  IMPORT_RUN_SOURCE_SYNC_SCHEMA,
   // R-0169 (Nacharbeit 5): die Fassungen der internen Dokumentakte (`dokument_fassungen`). Additiv
   // und wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS), ohne Fremdschlüssel und ohne Extension; am
   // Ende, weil das die lesbare Ordnung ist.
@@ -229,6 +225,11 @@ export const schemas = [
   // Prioritätsfaktoren) und Ruhestandshorizonte (24/36 Monate). Additiv und wiederholbar (CREATE
   // TABLE IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed.
   MANAGEMENT_PROFILE_SCHEMA,
+  // R-0162 (Confluence-Gesamtimport): das dauerhafte Quellabgleichsergebnis je Importlauf. Additiv
+  // und wiederholbar (CREATE TABLE IF NOT EXISTS), ohne Fremdschlüssel auf `import_runs` und ohne
+  // Extension; sie steht am Ende, weil das die lesbare Ordnung ist (keine Abhängigkeit zu den
+  // Stufen davor — die Reihenfolge nach der Zusammenführung mit main ist frei).
+  IMPORT_RUN_SOURCE_SYNC_SCHEMA,
 ];
 
 // Führt die DDL aller Module aus. Jedes Modul liefert seine eigenen Tabellen (Datenhoheit).
