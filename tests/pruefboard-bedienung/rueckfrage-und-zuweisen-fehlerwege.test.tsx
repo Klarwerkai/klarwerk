@@ -294,6 +294,84 @@ describe("W1 · Ablehnung mit Widerspruch", () => {
     ]);
   });
 
+  /** Ablehnung mit gewähltem Gegenüber „Presse 8 bar“ und Art „truth“ absenden. */
+  async function ablehnenMitWiderspruch(): Promise<void> {
+    (endpoints.library.search as unknown as Fn).mockResolvedValue([
+      zeile({ id: "k9", title: "Presse 8 bar" }),
+    ] as never);
+    brett = await mounteBrett({ zeilen: [zeile({ id: "k1", title: "Selbst" })] });
+    await klick(finde(brett.container, ABLEHNEN));
+    await tippen(brett.container, "Widerspricht dem 8-bar-Eintrag");
+    await tippeSuche("Presse");
+    await klick(finde(brett.container, '[data-testid="pruefen-widerspruch-treffer"]'));
+    await waehlen(
+      finde(brett.container, '[data-testid="pruefen-widerspruch-art"]') as HTMLSelectElement,
+      "truth",
+    );
+    await klick(knopfMitText(brett.container, de("val.feedback.submit")));
+  }
+
+  const WIDERSPRUCH = {
+    koB: "k9",
+    type: "truth",
+    description: "Widerspricht dem 8-bar-Eintrag",
+  };
+  const letzte = () => {
+    const folge = putFolge();
+    return folge[folge.length - 1];
+  };
+
+  // Nacharbeit 7 (Ben): Begründung gespeichert, Bewertung gescheitert, Abbrechen, Wiederöffnen —
+  // Gegenüber und Art kehren mit der Begründung zurück, und die Wiederholung trägt sie.
+  it("Teilerfolg, Abbrechen, Wiederöffnen: der gewählte Widerspruch bleibt und wird wieder geschickt", async () => {
+    antworten((b) => {
+      if (b.action === "rate") throw new ApiError(500, "server_error", "kaputt");
+    });
+    await ablehnenMitWiderspruch();
+    expect(finde(brett.container, TEILERFOLG)?.textContent).toBe(
+      de("pruefboard.begruendungGespeichert"),
+    );
+    await klick(knopfMitText(brett.container, de("val.feedback.cancel")));
+    await klick(finde(brett.container, ABLEHNEN));
+
+    const ziel = finde(brett.container, '[data-testid="pruefen-widerspruch-ziel"]');
+    expect(ziel?.textContent).toBe("Presse 8 bar");
+    const art = finde(brett.container, '[data-testid="pruefen-widerspruch-art"]');
+    expect((art as HTMLSelectElement | null)?.value).toBe("truth");
+
+    antworten(() => undefined);
+    await klick(knopfMitText(brett.container, de("pruefboard.bewertungSenden")));
+    expect(putFolge().filter((p) => p.action === "comment")).toHaveLength(1);
+    expect(letzte()).toEqual({
+      action: "rate",
+      verdict: "down",
+      widerspruch: WIDERSPRUCH,
+    });
+  });
+
+  // Nacharbeit 7 (Ben): die Ablehnung steht, nur der Konfliktvorschlag nicht — die Fläche sagt
+  // genau das (nicht „Bewertung nicht gespeichert“) und schickt den Vorschlag erneut.
+  it("Server meldet KONFLIKTVORSCHLAG_OFFEN: eigener Satz, eigener Knopf, Wiederholung mit Widerspruch", async () => {
+    antworten((b) => {
+      if (b.action === "rate") {
+        throw new ApiError(500, "KONFLIKTVORSCHLAG_OFFEN", "Vorschlag fehlt.");
+      }
+    });
+    await ablehnenMitWiderspruch();
+    expect(finde(brett.container, TEILERFOLG)?.textContent).toBe(
+      de("pruefboard.konfliktvorschlagOffen"),
+    );
+
+    antworten(() => undefined);
+    await klick(knopfMitText(brett.container, de("pruefboard.konfliktvorschlagSenden")));
+    expect(putFolge().filter((p) => p.action === "comment")).toHaveLength(1);
+    expect(letzte()).toEqual({
+      action: "rate",
+      verdict: "down",
+      widerspruch: WIDERSPRUCH,
+    });
+  });
+
   it("ohne Gegenüber bleibt die Ablehnung, wie sie war; die Rückfrage kennt keinen Widerspruch", async () => {
     brett = await mounteBrett({ zeilen: [zeile()] });
     await klick(finde(brett.container, RUECKFRAGE));

@@ -652,6 +652,9 @@ const KONFLIKTARTEN: readonly ConflictType[] = [
   "role",
 ];
 
+/** R-0238 · Nacharbeit 7: die Bewertung steht, der Konfliktvorschlag nicht (Teilerfolg). */
+const KONFLIKTVORSCHLAG_OFFEN = "KONFLIKTVORSCHLAG_OFFEN";
+
 /**
  * R-0238 — DIE LESART DER WIDERSPRECHENDEN ABLEHNUNG (UI/UX-Brief Screen 5: „widersprechende
  * Ablehnung → Konfliktvorschlag").
@@ -914,8 +917,22 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
    * validiert→offen, Trust konservativ gesenkt). markTruthConflictReview ist idempotent/No-op für
    * offene/fehlende KOs.
    */
-  async function konfliktAnlegen(input: ConflictInput, userId: string) {
-    const created = await conflicts.create(input, userId);
+  async function konfliktAnlegen(input: ConflictInput, userId: string, wiederverwenden = false) {
+    // R-0238 · Nacharbeit 7: der Konfliktvorschlag der widersprechenden Ablehnung ist IDEMPOTENT.
+    // Scheiterte ein früherer Versuch NACH dem Anlegen (etwa an der Wahrheitskonflikt-Folge),
+    // findet die Wiederholung denselben offenen Vorschlag derselben Person — gleiches Paar, gleiche
+    // Art — und legt keinen zweiten an. Die Folgeschritte laufen dann erneut (sie sind idempotent).
+    const vorhanden = wiederverwenden
+      ? (await conflicts.unresolved()).find(
+          (c) =>
+            c.origin === "manual" &&
+            c.createdBy === userId &&
+            c.type === input.type &&
+            ((c.koA === input.koA && c.koB === input.koB) ||
+              (c.koA === input.koB && c.koB === input.koA)),
+        )
+      : undefined;
+    const created = vorhanden ?? (await conflicts.create(input, userId));
     if (created.type === "truth") {
       await ko.markTruthConflictReview(created.koA, userId);
       await ko.markTruthConflictReview(created.koB, userId);
@@ -2568,9 +2585,30 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
               return;
             }
             // Derselbe Anlageweg wie `action: "conflict"` unten (manuell, Status „offen", der
-            // Ablehnende als `createdBy`) samt derselben Wahrheitskonflikt-Folge.
-            const konfliktvorschlag = await konfliktAnlegen({ koA: id, ...widerspruch }, user.id);
-            reply.code(200).send({ ...entscheidung, konfliktvorschlag });
+            // Ablehnende als `createdBy`) samt derselben Wahrheitskonflikt-Folge — hier aber
+            // wiederverwendend (Nacharbeit 7).
+            //
+            // DER TEILERFOLG WIRD GESAGT, NICHT VERSCHWIEGEN: die Bewertung steht an dieser Stelle
+            // schon (Upsert je Person und Fassung, eine Wiederholung zählt nicht doppelt). Scheitert
+            // jetzt der Vorschlag, antwortet die Route mit `bewertungGespeichert: true` — sonst
+            // behauptete die Oberfläche „Bewertung nicht gespeichert". Die Wiederholung desselben
+            // Aufrufs bewertet idempotent und legt den Vorschlag an, ohne einen zweiten zu erzeugen.
+            try {
+              const konfliktvorschlag = await konfliktAnlegen(
+                { koA: id, ...widerspruch },
+                user.id,
+                true,
+              );
+              reply.code(200).send({ ...entscheidung, konfliktvorschlag });
+            } catch (error) {
+              request.log.error({ err: error, koId: id }, "Konfliktvorschlag nicht angelegt");
+              reply.code(500).send({
+                error: KONFLIKTVORSCHLAG_OFFEN,
+                message:
+                  "Die Ablehnung ist gespeichert, der Konfliktvorschlag nicht. Erneut senden legt ihn an, ohne die Ablehnung doppelt zu zählen.",
+                bewertungGespeichert: true,
+              });
+            }
             return;
           }
           case "assign": {

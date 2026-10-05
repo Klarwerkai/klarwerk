@@ -27,6 +27,9 @@ export default {
     "pruefboard.begruendungGespeichert":
       "Die Begründung ist gespeichert, die Bewertung nicht. Erneut senden schickt nur die Bewertung.",
     "pruefboard.bewertungSenden": "Bewertung erneut senden",
+    "pruefboard.konfliktvorschlagOffen":
+      "Begründung und Ablehnung sind gespeichert, der Konfliktvorschlag nicht. Erneut senden legt nur den Vorschlag an.",
+    "pruefboard.konfliktvorschlagSenden": "Konfliktvorschlag erneut senden",
     "pruefboard.konfliktAnzahl": "{{n}} offene Konflikte",
     "pruefboard.konfliktZurSeite": "Zu den Konflikten",
     "pruefboard.konfliktMarke": "Offener Konflikt",
@@ -54,6 +57,7 @@ export default {
       "nicht geschickt — offene Dublette, bitte einzeln bestätigen",
     "pruefboard.stapel.art.stufeFehlt": "nicht geschickt — keine Stufe, bitte einzeln einstufen",
     "pruefboard.stapel.art.bereitsZugewiesen": "war bereits zugewiesen",
+    "pruefboard.stapel.art.entfallen": "nicht geschickt — steht nicht mehr in der Liste",
     "pruefboard.stapel.art.fehler": "fehlgeschlagen: {{meldung}}",
     "pruefboard.widerspruch.titel": "Widerspricht einem anderen Beitrag? (optional)",
     "pruefboard.widerspruch.suche": "Beitrag suchen …",
@@ -69,6 +73,9 @@ export default {
     "pruefboard.begruendungGespeichert":
       "The reason is saved, the rating is not. Sending again submits only the rating.",
     "pruefboard.bewertungSenden": "Send rating again",
+    "pruefboard.konfliktvorschlagOffen":
+      "The reason and the rejection are saved, the conflict proposal is not. Sending again creates only the proposal.",
+    "pruefboard.konfliktvorschlagSenden": "Send conflict proposal again",
     "pruefboard.konfliktAnzahl": "{{n}} open conflicts",
     "pruefboard.konfliktZurSeite": "Go to conflicts",
     "pruefboard.konfliktMarke": "Open conflict",
@@ -93,6 +100,7 @@ export default {
     "pruefboard.stapel.art.dubletteOffen": "not sent — open duplicate, please confirm individually",
     "pruefboard.stapel.art.stufeFehlt": "not sent — no level, please classify individually",
     "pruefboard.stapel.art.bereitsZugewiesen": "was already assigned",
+    "pruefboard.stapel.art.entfallen": "not sent — no longer in the list",
     "pruefboard.stapel.art.fehler": "failed: {{meldung}}",
     "pruefboard.widerspruch.titel": "Contradicts another item? (optional)",
     "pruefboard.widerspruch.suche": "Search item …",
@@ -108,6 +116,9 @@ export default {
     "pruefboard.begruendungGespeichert":
       "De onderbouwing is opgeslagen, de beoordeling niet. Opnieuw versturen verstuurt alleen de beoordeling.",
     "pruefboard.bewertungSenden": "Beoordeling opnieuw versturen",
+    "pruefboard.konfliktvorschlagOffen":
+      "Onderbouwing en afwijzing zijn opgeslagen, het conflictvoorstel niet. Opnieuw versturen maakt alleen het voorstel aan.",
+    "pruefboard.konfliktvorschlagSenden": "Conflictvoorstel opnieuw versturen",
     "pruefboard.konfliktAnzahl": "{{n}} openstaande conflicten",
     "pruefboard.konfliktZurSeite": "Naar de conflicten",
     "pruefboard.konfliktMarke": "Openstaand conflict",
@@ -135,6 +146,7 @@ export default {
       "niet verstuurd — openstaand duplicaat, a.u.b. afzonderlijk bevestigen",
     "pruefboard.stapel.art.stufeFehlt": "niet verstuurd — geen niveau, a.u.b. afzonderlijk indelen",
     "pruefboard.stapel.art.bereitsZugewiesen": "was al toegewezen",
+    "pruefboard.stapel.art.entfallen": "niet verstuurd — staat niet meer in de lijst",
     "pruefboard.stapel.art.fehler": "mislukt: {{meldung}}",
     "pruefboard.widerspruch.titel": "In tegenspraak met een andere bijdrage? (optioneel)",
     "pruefboard.widerspruch.suche": "Bijdrage zoeken …",

@@ -43,6 +43,7 @@ import {
   flush,
   klick,
   mounteBrett,
+  neuerBoardStand,
   paar,
   zeile,
 } from "../validierung-stufe/kulisse";
@@ -271,6 +272,89 @@ describe("S5 · die Stapel-Leiste gibt es erst ab Controller", () => {
 // Die Gegenprobe zu den Geometrieverträgen in `tests/design/job2935-validierung-fussband.test.ts`
 // (Block L): die Stapel-Leiste steht NICHT in der Listenspalte, sondern im Kopf — über der
 // Warteschlange liegt kein zusätzlicher Kasten, der die Liste unter den Anfang der Karte schiebt.
+// Nacharbeit 7 (Ben): der Stapel prüft jedes Objekt VOR SEINEM Aufruf am jetzigen Stand. Der
+// Aufruf für A wartet; währenddessen meldet ein neuer Boardstand B als „KI-Prüfung läuft“ bzw.
+// ohne B. Danach darf für B nichts geschickt werden.
+describe("S7 · Zustandswechsel während des Laufs", () => {
+  /** Der Aufruf für A wartet, bis der Test ihn freigibt; alle anderen antworten sofort. */
+  function aWartet(): { freigeben: () => void } {
+    const halter: { freigeben: () => void } = { freigeben: () => undefined };
+    const antwort = (id: string): Promise<unknown> => {
+      if (id !== "kA") {
+        return Promise.resolve({});
+      }
+      return new Promise((r) => {
+        halter.freigeben = () => r({});
+      });
+    };
+    (endpoints.ko.act as unknown as Fn).mockImplementation(antwort as never);
+    return halter;
+  }
+
+  async function laufMitWechsel(nachher: ReturnType<typeof zeile>[]): Promise<void> {
+    const halter = aWartet();
+    await oeffneStapel();
+    await klick(finde(brett.container, ALLE));
+    await klick(finde(brett.container, BESTAETIGEN));
+    // A wartet noch auf den Server; jetzt kommt ein neuer Boardstand herein.
+    await neuerBoardStand(brett, nachher);
+    await act(async () => {
+      halter.freigeben();
+    });
+    await flush();
+    await flush();
+  }
+
+  it("B wird während des Aufrufs für A gesperrt → B wird nicht geschickt", async () => {
+    brett = await mounteBrett({
+      zeilen: [
+        zeile({ id: "kA", title: "A frei", ...EINGESTUFT }),
+        zeile({ id: "kB", title: "B frei", ...EINGESTUFT }),
+      ],
+    });
+    await laufMitWechsel([
+      zeile({ id: "kA", title: "A frei", ...EINGESTUFT }),
+      laufend("kB", "B frei"),
+    ]);
+
+    expect(aufrufe()).toEqual([["kA", { action: "rate", verdict: "up" }]]);
+    expect(ergebnis()).toEqual({ "A frei": "bestaetigt", "B frei": "gesperrt" });
+  });
+
+  it("B fällt während des Aufrufs für A aus der Liste → B wird nicht geschickt", async () => {
+    brett = await mounteBrett({
+      zeilen: [
+        zeile({ id: "kA", title: "A frei", ...EINGESTUFT }),
+        zeile({ id: "kB", title: "B frei", ...EINGESTUFT }),
+      ],
+    });
+    await laufMitWechsel([zeile({ id: "kA", title: "A frei", ...EINGESTUFT })]);
+
+    expect(aufrufe()).toEqual([["kA", { action: "rate", verdict: "up" }]]);
+    expect(ergebnis()).toEqual({ "A frei": "bestaetigt", "B frei": "entfallen" });
+  });
+});
+
+// Nacharbeit 7 (Ben): nach der letzten erfolgreichen Bestätigung ist die Warteschlange leer — das
+// Ergebnis je Objekt muss trotzdem erreichbar bleiben.
+describe("S8 · das Ergebnis bleibt bei leerer Warteschlange", () => {
+  it("die letzte Bestätigung leert die Liste, die Quittung je Objekt steht weiter da", async () => {
+    brett = await mounteBrett({ zeilen: [zeile({ id: "kA", title: "A frei", ...EINGESTUFT })] });
+    // Nach der Bestätigung liefert das Board nichts mehr — der Eintrag ist validiert.
+    (endpoints.validation.board as unknown as Fn).mockResolvedValue([] as never);
+    await oeffneStapel();
+    await klick(finde(brett.container, ALLE));
+    await klick(finde(brett.container, BESTAETIGEN));
+    await flush();
+    await flush();
+
+    const EINTRAG = '[data-testid="pruefen-warteschlange-eintrag"]';
+    expect(brett.container.querySelectorAll(EINTRAG)).toHaveLength(0);
+    expect(finde(brett.container, '[data-testid="pruefen-menue-stapel"]')).not.toBeNull();
+    expect(ergebnis()).toEqual({ "A frei": "bestaetigt" });
+  });
+});
+
 describe("S6 · die Stapel-Leiste kostet die Liste keinen Platz", () => {
   it("ohne Auswahlmodus trägt die Liste keine Kästchen; „Auswahl beenden“ nimmt sie samt Auswahl weg", async () => {
     brett = await mounteBrett({ zeilen: vierZeilen() });

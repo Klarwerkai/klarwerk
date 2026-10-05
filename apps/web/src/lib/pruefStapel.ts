@@ -17,6 +17,10 @@
 //
 // Zuweisen läuft über denselben Weg wie das Auswahlfeld der Karte (`assign`), mit derselben Sperre
 // während einer laufenden Prüfung.
+//
+// NACHARBEIT 7: geprüft wird VOR JEDEM einzelnen Aufruf am JETZIGEN Stand des Objekts, nicht am
+// Stand beim Start des Stapels. Wird B während des Aufrufs für A als „KI-Prüfung läuft" gemeldet
+// oder fällt aus der Liste, wird B nicht geschickt — wie bei der Einzelentscheidung.
 
 export type StapelArt =
   | "bestaetigt"
@@ -25,6 +29,8 @@ export type StapelArt =
   | "dubletteOffen"
   | "stufeFehlt"
   | "bereitsZugewiesen"
+  /** Nacharbeit 7: der Eintrag ist während des Laufs aus der Warteschlange gefallen. */
+  | "entfallen"
   | "fehler";
 
 export interface StapelErgebnis {
@@ -71,7 +77,18 @@ export function zuweisenVorpruefung(
   return null;
 }
 
-/** Erledigt ist nur, was wirklich am Server ankam — alles andere bleibt in der Auswahl. */
+/**
+ * Erledigt ist nur, was wirklich am Server ankam — alles andere bleibt in der Auswahl. Ein
+ * entfallener Eintrag steht nicht mehr in der Liste; ihn ausgewählt zu lassen hiesse, eine
+ * unsichtbare Auswahl zu behalten.
+ */
+const VERLAESST_AUSWAHL: ReadonlySet<StapelArt> = new Set<StapelArt>([
+  "bestaetigt",
+  "zugewiesen",
+  "bereitsZugewiesen",
+  "entfallen",
+]);
+
 export function bleibtAusgewaehlt(art: StapelArt): boolean {
-  return art !== "bestaetigt" && art !== "zugewiesen" && art !== "bereitsZugewiesen";
+  return !VERLAESST_AUSWAHL.has(art);
 }

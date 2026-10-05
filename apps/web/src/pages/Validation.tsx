@@ -55,7 +55,7 @@ import {
   useReasonerStatus,
   useValidationBoard,
 } from "../api/hooks";
-import type { Confidentiality, ConflictType, KnowledgeObject } from "../api/types";
+import type { Confidentiality, ConflictType, KnowledgeObject, OverlapEntry } from "../api/types";
 import { useSession } from "../app/AuthContext";
 import { useRole } from "../app/RoleContext";
 import { useToast } from "../app/ToastContext";
@@ -235,10 +235,30 @@ function vorgangSchluessel(id: string, verdict: FeedbackVerdict): string {
   return `${id}|${verdict}`;
 }
 
-function ohneKarte(
-  vorgaenge: Readonly<Record<string, string>>,
+/** R-0238 · Nacharbeit 7: die Bewertung steht am Server, nur der Konfliktvorschlag fehlt. */
+const KONFLIKTVORSCHLAG_OFFEN = "KONFLIKTVORSCHLAG_OFFEN";
+
+/** R-0246 · Nacharbeit 7: der Stand, an dem der Stapel jedes Objekt vor seinem Aufruf prüft. */
+interface StapelStand {
+  visible: PruefZeile[];
+  duplikate: OverlapEntry[] | undefined;
+  aiModelActive: boolean;
+}
+
+/** Ein unterbrochener Rückfrage-/Ablehnungsvorgang: was davon schon am Server liegt. */
+interface GespeicherterVorgang {
+  /** Die bestätigte Begründung. */
+  text: string;
+  /** Der gewählte Widerspruch — er kehrt beim Wiederöffnen zurück. */
+  widerspruch?: { koB: string; type: ConflictType; titel: string } | undefined;
+  /** Wahr, wenn auch die Bewertung steht und nur der Konfliktvorschlag fehlt. */
+  bewertungGespeichert: boolean;
+}
+
+function ohneKarte<T>(
+  vorgaenge: Readonly<Record<string, T>>,
   id: string,
-): Readonly<Record<string, string>> {
+): Readonly<Record<string, T>> {
   const weg = new Set([vorgangSchluessel(id, "warn"), vorgangSchluessel(id, "down")]);
   return Object.fromEntries(
     Object.entries(vorgaenge).filter(([schluessel]) => !weg.has(schluessel)),
@@ -662,11 +682,19 @@ export function Validation(): JSX.Element {
   // Runde 1 hielt genau einen Platz; der Teilerfolg auf Karte B überschrieb den noch offenen von
   // Karte A, und A schrieb ihre Begründung danach ein zweites Mal. Der Schlüssel ist
   // `vorgangSchluessel(id, verdict)`.
+  //
+  // NACHARBEIT 7 · DER VORGANG TRÄGT AUCH SEINEN WIDERSPRUCH. Gespeichert wurde bisher nur der Text;
+  // beim Wiederöffnen fehlten Gegenüber und Art, und „Bewertung erneut senden" schickte eine
+  // gewöhnliche Ablehnung ohne den gewählten Konfliktvorschlag. `bewertungGespeichert` hält den
+  // zweiten Teilerfolg fest: die Ablehnung steht, nur der Vorschlag fehlt (Server-Code
+  // `KONFLIKTVORSCHLAG_OFFEN`).
   const [begruendungenGespeichert, setBegruendungenGespeichert] = useState<
-    Readonly<Record<string, string>>
+    Readonly<Record<string, GespeicherterVorgang>>
   >({});
-  const gespeicherteBegruendung = (id: string, verdict: FeedbackVerdict): string | undefined =>
-    begruendungenGespeichert[vorgangSchluessel(id, verdict)];
+  const gespeicherteBegruendung = (
+    id: string,
+    verdict: FeedbackVerdict,
+  ): GespeicherterVorgang | undefined => begruendungenGespeichert[vorgangSchluessel(id, verdict)];
 
   // R-0238 · DIE WIDERSPRECHENDE ABLEHNUNG (UI/UX-Brief Screen 5: „widersprechende Ablehnung →
   // Konfliktvorschlag"). Optional und nur an der Ablehnung: das Gegenüber wird über die vorhandene
@@ -703,6 +731,8 @@ export function Validation(): JSX.Element {
       text: string;
       nurBewertung: boolean;
       widerspruch?: { koB: string; type: ConflictType; description: string };
+      /** Nur für das Wiederöffnen: der Titel des Gegenübers, wie die Fläche ihn zeigte. */
+      widerspruchTitel?: string;
     }) => {
       if (!nurBewertung) {
         try {
@@ -739,9 +769,22 @@ export function Validation(): JSX.Element {
     },
     onError: (e, vars) => {
       if (e instanceof BegruendungFehler && e.begruendungGespeichert) {
+        const ursache = e.ursache;
+        const vorgang: GespeicherterVorgang = {
+          text: vars.text,
+          widerspruch: vars.widerspruch
+            ? {
+                koB: vars.widerspruch.koB,
+                type: vars.widerspruch.type,
+                titel: vars.widerspruchTitel ?? vars.widerspruch.koB,
+              }
+            : undefined,
+          bewertungGespeichert:
+            ursache instanceof ApiError && ursache.code === KONFLIKTVORSCHLAG_OFFEN,
+        };
         setBegruendungenGespeichert((alt) => ({
           ...alt,
-          [vorgangSchluessel(vars.id, vars.verdict)]: vars.text,
+          [vorgangSchluessel(vars.id, vars.verdict)]: vorgang,
         }));
       }
     },
@@ -750,9 +793,14 @@ export function Validation(): JSX.Element {
   const openFeedback = (id: string, verdict: FeedbackVerdict): void => {
     setFeedback({ id, verdict });
     // Liegt die Begründung zu genau diesem Vorgang schon am Server, steht sie wieder da — sie wird
-    // nicht ein zweites Mal geschrieben.
-    setFeedbackText(gespeicherteBegruendung(id, verdict) ?? "");
+    // nicht ein zweites Mal geschrieben. Mit ihr kehrt ein gewählter Widerspruch zurück.
+    const vorgang = gespeicherteBegruendung(id, verdict);
+    setFeedbackText(vorgang?.text ?? "");
     widerspruchZuruecksetzen();
+    if (vorgang?.widerspruch) {
+      setWiderspruchZiel({ id: vorgang.widerspruch.koB, title: vorgang.widerspruch.titel });
+      setWiderspruchArt(vorgang.widerspruch.type);
+    }
     reviewWithFeedback.reset();
   };
 
@@ -915,6 +963,14 @@ export function Validation(): JSX.Element {
     setStapelAuswahl(alleGewaehlt ? new Set() : new Set(visible.map((k) => k.id)));
   }
 
+  // Nacharbeit 7: der jeweils letzte gezeichnete Stand — Liste, Dublettenlage, Modell. Der Stapel
+  // liest ihn VOR JEDEM einzelnen Aufruf; ein Stand, der beim Start festgehalten wurde, sähe eine
+  // inzwischen laufende KI-Prüfung nicht. Nachgeführt nach jedem Zeichenlauf (wie `aktivRef`).
+  const stapelStandRef = useRef<StapelStand>({ visible, duplikate: duplikate.data, aiModelActive });
+  useEffect(() => {
+    stapelStandRef.current = { visible, duplikate: duplikate.data, aiModelActive };
+  });
+
   function stapelFehler(k: PruefZeile, e: unknown): StapelErgebnis {
     const meldung = e instanceof ApiError ? e.message : t("state.error");
     return { id: k.id, title: k.title, art: "fehler", meldung };
@@ -926,14 +982,23 @@ export function Validation(): JSX.Element {
    * Auswahl; was nicht geschickt wurde oder scheiterte, bleibt ausgewählt.
    */
   async function stapelAusfuehren(
-    schritt: (k: PruefZeile) => Promise<StapelErgebnis>,
+    schritt: (k: PruefZeile, stand: StapelStand) => Promise<StapelErgebnis>,
   ): Promise<void> {
-    const ziele = stapel;
+    // Festgehalten wird nur, WELCHE Einträge gewählt waren — nicht ihr Stand (Nacharbeit 7).
+    const ziele = stapel.map((k) => ({ id: k.id, title: k.title }));
     setStapelLaeuft(true);
     setStapelErgebnisse(null);
     const ergebnisse: StapelErgebnis[] = [];
-    for (const k of ziele) {
-      ergebnisse.push(await schritt(k));
+    for (const ziel of ziele) {
+      // VOR JEDEM Aufruf der jetzige Stand: was während des vorigen Aufrufs gesperrt wurde oder
+      // aus der Liste fiel, wird nicht mehr geschickt.
+      const stand = stapelStandRef.current;
+      const k = stand.visible.find((z) => z.id === ziel.id);
+      if (!k) {
+        ergebnisse.push({ id: ziel.id, title: ziel.title, art: "entfallen" });
+        continue;
+      }
+      ergebnisse.push(await schritt(k, stand));
     }
     setStapelErgebnisse(ergebnisse);
     setStapelAuswahl((alt) => {
@@ -953,10 +1018,10 @@ export function Validation(): JSX.Element {
   // Sperren davor. Eine offene Dublette oder eine fehlende Stufe wird NICHT im Stapel entschieden:
   // das Objekt wird nicht geschickt und bleibt für die Einzelentscheidung an seiner Karte stehen.
   const stapelBestaetigen = (): Promise<void> =>
-    stapelAusfuehren(async (k) => {
+    stapelAusfuehren(async (k, stand) => {
       const vorab = bestaetigenVorpruefung({
-        gesperrt: validationAiGate(k.aiCheck, aiModelActive).locked,
-        dubletteOffen: brauchtDublettenBestaetigung(k.id, duplikate.data),
+        gesperrt: validationAiGate(k.aiCheck, stand.aiModelActive).locked,
+        dubletteOffen: brauchtDublettenBestaetigung(k.id, stand.duplikate),
         stufeFehlt: brauchtStufenfrage(k.auskunft.stufe.lage),
       });
       if (vorab) {
@@ -976,9 +1041,9 @@ export function Validation(): JSX.Element {
 
   // Gesammelt zuweisen = je Objekt derselbe `assign` wie das Auswahlfeld der Karte.
   const stapelZuweisen = (userId: string): Promise<void> =>
-    stapelAusfuehren(async (k) => {
+    stapelAusfuehren(async (k, stand) => {
       const vorab = zuweisenVorpruefung(
-        { gesperrt: validationAiGate(k.aiCheck, aiModelActive).locked },
+        { gesperrt: validationAiGate(k.aiCheck, stand.aiModelActive).locked },
         k.assignments ?? [],
         userId,
       );
@@ -1407,8 +1472,13 @@ export function Validation(): JSX.Element {
   // L: Liste und Karte beginnen auf gleicher Höhe, die Liste behält ihren Platz). Das Menüblatt
   // liegt über der Fläche und nimmt der Spalte nichts. Der Zähler am geschlossenen Menü nennt die
   // Anzahl der ausgewählten Einträge.
+  //
+  // Nacharbeit 7: das Menü bleibt auch bei LEERER Warteschlange stehen, solange ein Lauf läuft oder
+  // ein Ergebnis vorliegt — sonst nahm die letzte erfolgreiche Bestätigung die Rückmeldung je
+  // Objekt mit: das Board lud neu, die Liste war leer, das Menü samt Ergebnis verschwand.
+  const stapelSichtbar = visible.length > 0 || stapelLaeuft || stapelErgebnisse !== null;
   const stapelMenue =
-    darfStapel && visible.length > 0 ? (
+    darfStapel && stapelSichtbar ? (
       <PruefenMenue
         kennung="stapel"
         beschriftung={t("pruefboard.stapel.menue")}
@@ -1918,8 +1988,11 @@ export function Validation(): JSX.Element {
     // `withOpenAssignments`) — „zugewiesen" allein sagte nicht, an wen.
     const zugewiesen = k.assignments ?? [];
     // Rückfrage/Ablehnung: liegt die Begründung dieses Vorgangs schon am Server?
-    const begruendungLiegt =
-      feedback?.id === k.id && gespeicherteBegruendung(k.id, feedback.verdict) !== undefined;
+    const vorgang =
+      feedback?.id === k.id ? gespeicherteBegruendung(k.id, feedback.verdict) : undefined;
+    const begruendungLiegt = vorgang !== undefined;
+    // Nacharbeit 7: auch die Ablehnung steht schon — es fehlt nur der Konfliktvorschlag.
+    const bewertungLiegt = vorgang?.bewertungGespeichert === true;
 
     return (
       // Der Flächen-Klick ist reiner MAUS-Komfort. Die Karte bekommt ausdrücklich KEINE
@@ -2587,7 +2660,9 @@ export function Validation(): JSX.Element {
                   data-testid="pruefen-begruendung-teilerfolg"
                   className="mt-2 rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text"
                 >
-                  {t("pruefboard.begruendungGespeichert")}
+                  {bewertungLiegt
+                    ? t("pruefboard.konfliktvorschlagOffen")
+                    : t("pruefboard.begruendungGespeichert")}
                 </div>
               ) : reviewWithFeedback.isError ? (
                 <div
@@ -2631,12 +2706,17 @@ export function Validation(): JSX.Element {
                               type: widerspruchArt,
                               description: feedbackText.trim(),
                             },
+                            widerspruchTitel: widerspruchZiel.title,
                           }
                         : {}),
                     })
                   }
                 >
-                  {begruendungLiegt ? t("pruefboard.bewertungSenden") : t("val.feedback.submit")}
+                  {bewertungLiegt
+                    ? t("pruefboard.konfliktvorschlagSenden")
+                    : begruendungLiegt
+                      ? t("pruefboard.bewertungSenden")
+                      : t("val.feedback.submit")}
                 </Button>
               </div>
             </div>
