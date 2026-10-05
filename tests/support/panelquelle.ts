@@ -105,6 +105,10 @@ const MARKE_KOPF_ENDE = '"use strict";\n';
  * weiteres Mal gemessen übernommen werden.
  * NACHARBEIT 15: GEMESSEN im Prüflauf zu Kandidat 124645e8 (`b3f3846c…`, „Received" von E2) und
  * unverändert übernommen; die vier Panel-Dateien sind seit dieser Messung unberührt.
+ * WORD-HOST-GESAMTWEG (Nacharbeit 4, Realhostbeleg 06.10.2026): `taskpane.js` ändert sich an der
+ * Warnung zur Dokumentkennung (verzögertes `saveAsync`). Der Bezugspunkt MUSS deshalb wandern; ohne
+ * zugelassenes Hash-Werkzeug ist er hier nicht berechenbar. E2 meldet ihn im Prüflauf als
+ * „Received"; er wird danach gemessen übernommen.
  */
 export const PANEL_VOR_SCHNITT_BLOB = "b3f3846c1ba8163aa575dd97dcca383467d7239b";
 

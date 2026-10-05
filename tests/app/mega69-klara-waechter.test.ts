@@ -2684,6 +2684,14 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // NACHARBEIT 15: PIN BEWUSST AKTUALISIERT (637602b1… -> 29062e17…). Der Wert ist im Prüflauf zu
     // Kandidat 124645e8 GEMESSEN („Received") und unverändert übernommen; die vier Panel-Dateien sind
     // seit dieser Messung unberührt (geprüft mit `git diff 124645e8 -- apps/web/public/word-addin/`).
+    // WORD-HOST-GESAMTWEG (Realhostbeleg 06.10.2026, Nacharbeit 4): `taskpane.js` ändert sich an
+    // der Dokumentkennung — `dokumentkennungAusstehend`/`kennungWarnungFuer`: eine noch laufende
+    // `saveAsync`-Speicherung warnt nicht, ein später Erfolg nimmt NUR die Warnung seiner Kennung
+    // zurück, ein Fehlschlag warnt weiter; `showSendStatus`/`hideSendStatus` setzen die Marke zurück.
+    // Auslieferungsfolgen: kein neues Abrufziel, keine Nutzlast-, CSP-, Rechte- oder
+    // Manifeständerung, kein neuer Wörterbuchschlüssel, kein Sideload. DER PIN MUSS WANDERN; ohne
+    // zugelassenes Hash-Werkzeug ist er hier nicht berechenbar — der Prüflauf meldet den Ist-Wert
+    // als „Received", er wird danach gemessen übernommen (dasselbe Verfahren wie Nacharbeit 15).
     const PIN = "29062e179bedebd2e48aeaed93ad335ac4cf740ae09fb2af587d655673c3753c";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(

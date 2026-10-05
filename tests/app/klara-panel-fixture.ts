@@ -198,6 +198,15 @@ export interface FakeDokumentEinstellungen {
   speichernScheitert?: boolean;
   /** Vom Test übergebenes Ziel: hier landet, was `saveAsync` dauerhaft gemacht hat. */
   gespeichert?: Record<string, unknown>;
+  /**
+   * Word-Host-Gesamtweg (Realhostbeleg 06.10.2026): echtes Word antwortet auf `saveAsync` SPÄTER
+   * als der Sendeweg endet. Gesetzt, ruft die Attrappe den Rückruf NICHT sofort, sondern legt ihn
+   * in `ausstehend` ab; der Test löst ihn selbst aus. Ob Erfolg oder Fehler, entscheidet
+   * `speichernScheitert` zum Zeitpunkt des Auslösens.
+   */
+  verzoegert?: boolean;
+  /** Bei `verzoegert`: die noch nicht beantworteten `saveAsync`-Aufrufe, in Aufrufreihenfolge. */
+  ausstehend?: Array<() => void>;
 }
 
 function buildFakeOffice(
@@ -238,14 +247,25 @@ function buildFakeOffice(
         arbeitskopie[name] = wert;
       },
       saveAsync: (callback: (r: { status: string; error?: { message: string } }) => void): void => {
-        if (einstellungen.speichernScheitert) {
-          callback({ status: asyncStatus.Failed, error: { message: "Speichern fehlgeschlagen" } });
+        const antworten = (): void => {
+          if (einstellungen.speichernScheitert) {
+            callback({
+              status: asyncStatus.Failed,
+              error: { message: "Speichern fehlgeschlagen" },
+            });
+            return;
+          }
+          if (einstellungen.gespeichert) {
+            Object.assign(einstellungen.gespeichert, arbeitskopie);
+          }
+          callback({ status: asyncStatus.Succeeded });
+        };
+        if (einstellungen.verzoegert) {
+          einstellungen.ausstehend ??= [];
+          einstellungen.ausstehend.push(antworten);
           return;
         }
-        if (einstellungen.gespeichert) {
-          Object.assign(einstellungen.gespeichert, arbeitskopie);
-        }
-        callback({ status: asyncStatus.Succeeded });
+        antworten();
       },
     };
   }

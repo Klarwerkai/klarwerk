@@ -261,6 +261,19 @@
     // Wiederoeffnen ohne gespeicherte Kennung ist sie weg; genau deshalb wird der Fehlschlag gemeldet.
     var dokumentkennungUngesichert = null;
 
+    // WORD-HOST-GESAMTWEG (Realhostbeleg 06.10.2026) — AUSSTEHEND IST KEIN FEHLER.
+    // In Word antwortet `saveAsync` SPAETER als der Sendeweg endet. Bis hierher stand die Warnung
+    // `sendDocIdUnsaved` deshalb schon da, waehrend die Speicherung noch lief — und der spaetere
+    // Erfolg loeschte nur die Kennung, nicht die Warnung: der Mensch las „erneut senden", obwohl
+    // `klarwerkDokumentId` im Dokument stand. Drei Lagen, drei Wirkungen:
+    //   · ausstehend  — keine Warnung; das Ergebnis meldet der Ruecklauf selbst,
+    //   · Erfolg      — eine noch sichtbare Warnung GENAU DIESER Kennung wird zurueckgenommen,
+    //                   eine inzwischen neuere Meldung eines anderen Vorgangs bleibt stehen,
+    //   · Fehlschlag  — die Warnung erscheint (auch ueber einer neueren Meldung: ein echter
+    //                   Speicherfehler muss sichtbar sein).
+    var dokumentkennungAusstehend = null;  // Kennung, deren `saveAsync` noch nicht geantwortet hat
+    var kennungWarnungFuer = null;         // Kennung, deren Warnung GERADE im Sendesatz steht
+
     function gespeicherteDokumentkennung() {
       try {
         var einstellungen = Office.context.document.settings;
@@ -275,7 +288,10 @@
     }
 
     function meldeUngesicherteDokumentkennung() {
-      if (dokumentkennungUngesichert) { showSendStatus("warn", t("sendDocIdUnsaved")); }
+      if (!dokumentkennungUngesichert) { return; }
+      if (dokumentkennungAusstehend === dokumentkennungUngesichert) { return; }
+      showSendStatus("warn", t("sendDocIdUnsaved"));
+      kennungWarnungFuer = dokumentkennungUngesichert;
     }
 
     function mitDokumentkennung(payload, dokumentId) {
@@ -315,16 +331,22 @@
         }
         einstellungen.set(WORD_ADDIN_DOKUMENT_SETTING, kennung);
         var erfolg = Office.AsyncResultStatus ? Office.AsyncResultStatus.Succeeded : "succeeded";
+        dokumentkennungAusstehend = kennung;
         einstellungen.saveAsync(function (ergebnis) {
+          if (dokumentkennungAusstehend === kennung) { dokumentkennungAusstehend = null; }
           if (ergebnis && ergebnis.status === erfolg) {
             if (dokumentkennungUngesichert === kennung) { dokumentkennungUngesichert = null; }
+            // NUR die eigene, noch sichtbare Warnung zuruecknehmen — nichts anderes anfassen.
+            if (kennungWarnungFuer === kennung) { hideSendStatus(); }
             return;
           }
           dokumentkennungUngesichert = kennung;
           meldeUngesicherteDokumentkennung();
         });
       } catch (err) {
-        // Die Kennung bleibt ungesichert stehen und wird am Ende des Sendewegs gemeldet.
+        // Die Kennung bleibt ungesichert stehen und wird am Ende des Sendewegs gemeldet — ein
+        // synchroner Fehler ist kein Ausstehen.
+        if (dokumentkennungAusstehend === kennung) { dokumentkennungAusstehend = null; }
       }
     }
 
@@ -3922,6 +3944,9 @@
       updateSendState();
     }
     function showSendStatus(kind, text, aktion, url) {
+      // Jede Meldung ersetzt eine stehende Kennungswarnung; `meldeUngesicherteDokumentkennung`
+      // setzt die Marke danach fuer ihre eigene wieder.
+      kennungWarnungFuer = null;
       var el = document.getElementById("send-status");
       var knopf = document.getElementById("send-status-btn");
       el.className = kind === "ok" ? "status ok" : kind === "busy" ? "status" : "status warn";
@@ -3941,6 +3966,7 @@
       if (kind !== "busy") { sendeSperreLoesen(); }
     }
     function hideSendStatus() {
+      kennungWarnungFuer = null;
       var el = document.getElementById("send-status");
       el.className = "status hidden";
       el.textContent = "";
