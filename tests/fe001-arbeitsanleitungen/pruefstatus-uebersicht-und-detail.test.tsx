@@ -547,9 +547,7 @@ describe("D · Übernahme einer neueren Quellfassung nur, wer schreiben darf", (
         uebernahmeKnopf()?.click();
       });
       await warteBis(() => uebernahmen().length > 0, "Übernahme angefragt");
-      expect(uebernahmen()).toEqual([
-        "POST /api/gesamtanweisungen/a-1/bausteine/b-1/uebernehmen",
-      ]);
+      expect(uebernahmen()).toEqual(["POST /api/gesamtanweisungen/a-1/bausteine/b-1/uebernehmen"]);
     });
   }
 });
