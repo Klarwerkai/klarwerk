@@ -28,6 +28,7 @@ import {
 import {
   EMPTY_FACET_RANGE,
   EMPTY_RAIL_UI,
+  type FacetRailGroupView,
   type FacetRailUiState,
   type FacetRange,
   facetRailGroups,
@@ -40,9 +41,9 @@ import {
 } from "../../lib/facetRail";
 import {
   type FacetSelection,
-  type FacetValues,
   applyFacetSelection,
   facetSelectedValues,
+  isFacetNoMatch,
   toggleFacetValue,
 } from "../../lib/facets";
 import { LIBRARY_RESULT_LIMIT, windowList } from "../../lib/libraryDisplay";
@@ -85,6 +86,8 @@ import {
   facetSelectionFromParams,
   facetSelectionNeedsKnownValues,
   knownFacetValues,
+  mitGesichertemNoMatch,
+  noMatchSitzungSchreiben,
   pruneFacetSelectionToKnownValues,
   serializeFacetSelection,
   writeFacetSelectionToParams,
@@ -99,7 +102,7 @@ import { RoleLink } from "../RoleLink";
 import { cx } from "../ui";
 import { AuffrischungHinweis } from "./AuffrischungHinweis";
 import { BibliothekLesen } from "./BibliothekLesen";
-import { type BibListenPosten, BibliothekListe } from "./BibliothekListe";
+import { BIB_ANSICHTEN, type BibListenPosten, BibliothekListe } from "./BibliothekListe";
 import { Menue, MenuePunkt, MenueTrenner, MenueUntermenue, MenueZeile } from "./Menue";
 import {
   BIB_SEGMENT_STANDARD,
@@ -229,6 +232,7 @@ const SCHMAL_ABFRAGE = `(max-width: ${SCHMAL_UNTER - 1}px)`;
 // Leseraum, der der Zweck dieses Bandes ist.
 const TABLET_LISTE_STORAGE_KEY = "klarwerk.library.tabletListe";
 const TABLET_LISTE_WAHL = ["offen", "zu"] as const;
+const BIB_ANSICHT_STORAGE_KEY = "klarwerk.library.ansicht";
 // DER LESERAUM: 600 px Textbreite bei der Grundschrift des Berichts (15,5 px, `BibliothekLesen.tsx`)
 // sind ≈ 75–78 Zeichen je Zeile — die obere Kante des lesbaren Bereichs (45–75 Zeichen, Bringhurst;
 // darüber verliert das Auge den Zeilenanfang). Die 720 px des Desktops (Vorlage
@@ -241,6 +245,9 @@ const TABLET_LISTE_WAHL = ["offen", "zu"] as const;
 const LIBRARY_FILTER_CONFIGS: readonly FacetGroupConfig[] = [
   { key: "maturity", labelKey: "lib.facet.maturity" },
   { key: "category", labelKey: LIBRARY_FACET_LABEL_KEYS.category },
+  // R-0431 / R-1728 / FR-LIB-01 (K2): das Fachgebiet als eigene Achse. Über diese Liste reist es
+  // auch in die Adresse (`LIBRARY_FACET_PARAM_KEYS`) und in gemerkte Sichten (`facetSel`).
+  { key: "domain", labelKey: "lib.facet.domain" },
   { key: "tag", labelKey: "lib.facet.tag" },
   { key: "confidentiality", labelKey: "lib.facet.confidentiality" },
   { key: "author", labelKey: LIBRARY_FACET_LABEL_KEYS.author },
@@ -257,6 +264,142 @@ const LIBRARY_RANGE_TO_PARAM = "bis";
 // Der Bereich („Abteilung/Kategorie") bekommt ein EIGENES Menü — er ist die Dimension, nach der in
 // der Vorlage zuerst gegriffen wird. Im Filter-Menü steht er deshalb nicht ein zweites Mal.
 const BEREICH_KEY = "category";
+
+// ==================================================================================================
+// K21 / R-1809 (mega10 B1, H4 §5.6) — DIE SUCHE INNERHALB EINER ÜBERVOLLEN DIMENSION.
+// ==================================================================================================
+// Der Kern konnte es immer: `facetRailGroup` filtert die Werte einer Dimension nach `railUi.query`
+// (auf dem ANGEZEIGTEN Text, gewählte Werte bleiben stehen, bei Suche entfällt der Deckel) und
+// meldet `searchable`, sobald die Dimension mehr Werte hat als der Anzeige-Deckel. Seit H4 die
+// Schiene in Menüs gezogen hat, gab es nur keine Eingabestelle mehr — `railUi.query` wurde nie
+// geschrieben. Dieser Baustein ist genau diese Eingabestelle, sonst nichts: keine eigene Filterlogik,
+// Zähler, 0-Sperre, Auswahl, „Alle N", Adresse und gespeicherte Sichten bleiben, wie sie sind.
+// Wortlaut aus den vorhandenen Schlüsseln (`facet.search*`), dieselben wie im `FacetGroupField`.
+function DimensionsSuche({
+  gruppe,
+  beschriftung,
+  onSuche,
+}: {
+  gruppe: FacetRailGroupView;
+  beschriftung: string;
+  onSuche: (wert: string) => void;
+}): JSX.Element | null {
+  const { t } = useTranslation();
+  // Nur dort, wo es etwas zu suchen gibt — und solange gesucht wird, auch wenn die Suche die
+  // sichtbare Menge unter die Schwelle drückt (sonst verschwände das Feld unter dem Tippenden).
+  if (!gruppe.searchable && gruppe.query === "") {
+    return null;
+  }
+  const id = `bib-dimensionssuche-${gruppe.key}`;
+  return (
+    <MenueZeile>
+      <span className="flex min-w-0 flex-col gap-1">
+        <label htmlFor={id} className="sr-only">
+          {t("facet.searchLabel", { label: beschriftung })}
+        </label>
+        <input
+          id={id}
+          type="search"
+          data-testid={id}
+          value={gruppe.query}
+          onChange={(e) => onSuche(e.target.value)}
+          placeholder={t("facet.searchPlaceholder", { label: beschriftung })}
+          className="w-full min-w-0 rounded-input border border-hairline bg-surface px-2 py-1 text-[12.5px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand"
+        />
+        {gruppe.noSearchHit ? (
+          <span className="text-[11.5px] text-muted-2">
+            {t("facet.searchNoHit", { query: gruppe.query })}
+          </span>
+        ) : null}
+      </span>
+    </MenueZeile>
+  );
+}
+
+// K21 / mega10 B1 („Alle N zeigen / Weniger zeigen"): beide Richtungen des Anzeige-Deckels. Bis
+// hierher gab es nur das Aufklappen; danach war `hiddenCount` null und der Punkt verschwand — die
+// begrenzte Darstellung kam nicht wieder. Der Gegenpunkt steht genau dann da, wenn die Dimension
+// aufgeklappt ist. Wortlaut aus den vorhandenen Schlüsseln `facet.showAll` / `facet.showLess`.
+function DeckelUmschalter({
+  gruppe,
+  onUmschalten,
+}: {
+  gruppe: FacetRailGroupView;
+  onUmschalten: (alle: boolean) => void;
+}): JSX.Element | null {
+  const { t } = useTranslation();
+  if (gruppe.hiddenCount > 0) {
+    return (
+      <MenuePunkt testId={`bib-deckel-alle-${gruppe.key}`} onClick={() => onUmschalten(true)}>
+        {t("facet.showAll", { n: gruppe.totalCount })}
+      </MenuePunkt>
+    );
+  }
+  if (gruppe.showAll) {
+    return (
+      <MenuePunkt testId={`bib-deckel-weniger-${gruppe.key}`} onClick={() => onUmschalten(false)}>
+        {t("facet.showLess")}
+      </MenuePunkt>
+    );
+  }
+  return null;
+}
+
+// K1 / R-0428 (Nacharbeit 21): Wurde dieses Dokument durch ein ECHTES Neuladen geöffnet? Nur dann
+// kommt der strukturelle Nulltreffer aus dem Sitzungskontext zurück — ein Link oder eine Navigation
+// in die Bibliothek bekommt ihn nicht. Ohne Navigationsauskunft (Testumgebung) gilt: kein Neuladen.
+//
+// Nacharbeit 24 (Lauf unter HISTORIE/nacharbeit-23, Fall N2): die Navigationsart gilt für das GANZE
+// Dokument. Nach einem Neuladen der Bibliothek, Logo-Link zur Startseite und leerer Kopfband-Suche
+// zurück (`timeOrigin` unverändert, also SPA) stand sie weiter auf „reload" — und der Nulltreffer
+// kam zurück (Listenfuss 0, „Bereich · 1"). Ein Neuladen gilt deshalb nur noch für die ERSTE
+// Montage der Fläche in diesem Dokument (`neuladenVerbraucht`, gesetzt nach der ersten Montage) und
+// nur, wenn das neu geladene Dokument die Bibliothek unter genau diesem Pfad war.
+let neuladenVerbraucht = false;
+
+function istNeuladenDieserFlaeche(): boolean {
+  if (neuladenVerbraucht) {
+    return false;
+  }
+  try {
+    const eintraege = performance.getEntriesByType?.("navigation") ?? [];
+    const eintrag = eintraege[0] as PerformanceNavigationTiming | undefined;
+    if (eintrag?.type !== "reload") {
+      return false;
+    }
+    return new URL(eintrag.name).pathname === window.location.pathname;
+  } catch {
+    return false;
+  }
+}
+
+// K1 / R-0428 (Nacharbeit 21): die strukturell leere Dimension IM H4-MENÜ. Sie ist kein Wert und
+// erscheint deshalb nie als ankreuzbarer Menüwert — sondern als EIN beschrifteter Punkt, der genau
+// diese Dimension löst (Beschriftung aus den vorhandenen Texten `facet.remove`/`facet.noMatch`).
+// Danach verschwindet der Punkt; wie ein einfacher Eintrag schliesst er deshalb das Menü und gibt
+// den Fokus an den Menüknopf zurück, statt ihn am Seitenanfang fallen zu lassen.
+function NoMatchLoesen({
+  dimension,
+  onLoesen,
+  schliessen,
+}: {
+  dimension: string;
+  onLoesen: (dimension: string) => void;
+  schliessen: () => void;
+}): JSX.Element {
+  const { t } = useTranslation();
+  return (
+    <MenuePunkt
+      testId={`bib-nomatch-loesen-${dimension}`}
+      onClick={() => {
+        onLoesen(dimension);
+        schliessen();
+      }}
+    >
+      {t("facet.remove", { label: t("facet.noMatch") })}
+    </MenuePunkt>
+  );
+}
 
 export function BibliothekFlaeche({
   vorgewaehlt,
@@ -286,6 +429,12 @@ export function BibliothekFlaeche({
     TABLET_LISTE_WAHL,
     "zu",
   );
+  // R-1006 (K16): Darstellung der Treffer — kompakte Liste ist Vorgabe, Karten auf Wunsch. Gemerkt
+  // wie die Tablet-Vorliebe im Browser (eine Bedienvorliebe, kein Teil einer geteilten Adresse).
+  const [ansicht, setAnsicht] = usePersistentEnum(BIB_ANSICHT_STORAGE_KEY, BIB_ANSICHTEN, "liste");
+  // R-1006: Mehrfachauswahl von Zeilen — ein eigener Modus neben der EINEN geöffneten Zeile.
+  const [auswahlModus, setAuswahlModus] = useState(false);
+  const [markiert, setMarkiert] = useState<ReadonlySet<string>>(() => new Set());
   const { user } = useSession();
   const nameOf = useAuthorName();
   // JOB 3088 · Q1b: die Detailabfrage des gelesenen Eintrags wohnt in `BibliothekLesen`, nicht hier.
@@ -294,9 +443,32 @@ export function BibliothekFlaeche({
 
   const [q, setQ] = useState(params.get(SUCH_PARAM) ?? "");
   const [facetSel, setFacetSel] = useState<FacetSelection>({});
-  const [urlSeed, setUrlSeed] = useState<FacetSelection | null>(() =>
-    facetSelectionFromParams(params, LIBRARY_FACET_PARAM_KEYS),
-  );
+  // K1 / R-0428 (Nacharbeit 21): beim ECHTEN Neuladen derselben Adresse kommt ein vorher aktiver
+  // struktureller Nulltreffer aus dem Sitzungskontext zurück (`mitGesichertemNoMatch`). Die Adresse
+  // allein erzeugt ihn nie — die uxpol4-Grenze bleibt.
+  const [urlSeed, setUrlSeed] = useState<FacetSelection | null>(() => {
+    const ausAdresse = facetSelectionFromParams(params, LIBRARY_FACET_PARAM_KEYS);
+    if (!istNeuladenDieserFlaeche()) {
+      return ausAdresse;
+    }
+    try {
+      return mitGesichertemNoMatch(
+        ausAdresse,
+        window.sessionStorage,
+        user?.id ?? "anon",
+        params.toString(),
+        LIBRARY_FACET_PARAM_KEYS,
+      );
+    } catch {
+      return ausAdresse;
+    }
+  });
+  // Nacharbeit 24: das Neuladen ist nach der ersten Montage verbraucht. Gesetzt im Effekt, nicht im
+  // Initialisierer — der darf (StrictMode) doppelt laufen, ohne dass der zweite Lauf anders rechnet.
+  // Jede spätere Montage in diesem Dokument (SPA-Rückkehr) bekommt den Nulltreffer nicht mehr.
+  useEffect(() => {
+    neuladenVerbraucht = true;
+  }, []);
   // JOB 3877 · B7b: die Dimensionen, die die Wertprüfung des Keims VOLLSTÄNDIG verworfen hat. Das
   // ist KEIN zweiter Auswahlspeicher — nichts hiervon filtert je einen Eintrag. Es hält allein
   // fest, DASS eingegrenzt wurde, nachdem die Auswahl selbst die Information verloren hat
@@ -306,6 +478,14 @@ export function BibliothekFlaeche({
     facetRangeFromParams(params, LIBRARY_RANGE_FROM_PARAM, LIBRARY_RANGE_TO_PARAM),
   );
   const [railUi, setRailUi] = useState<FacetRailUiState>(EMPTY_RAIL_UI);
+  // K21: die eine Schreibstelle der Dimensionssuche (`DimensionsSuche`, oben). Sie verengt nur die
+  // ANGEBOTENEN Werte einer Dimension, nie die Treffer — die ändert erst eine Auswahl.
+  const dimensionSuchen = (key: string, wert: string): void =>
+    setRailUi((p) => ({ ...p, query: { ...p.query, [key]: wert } }));
+  // K21 (mega10 B1): Deckel einer Dimension auf- UND wieder zuklappen. Berührt nur `showAll` dieser
+  // Dimension — Auswahl und Suchtext bleiben; gewählte Werte hält der Kern ohnehin sichtbar.
+  const deckelUmschalten = (key: string, alle: boolean): void =>
+    setRailUi((p) => ({ ...p, showAll: { ...p.showAll, [key]: alle } }));
   const [windowLimit, setWindowLimit] = useState(LIBRARY_RESULT_LIMIT);
   const [groupBy, setGroupBy] = useState<LibraryGroupKey>("none");
   const [sortKey, setSortKey] = usePersistentEnum(
@@ -366,7 +546,31 @@ export function BibliothekFlaeche({
     );
   }, [facetSel, range, setParams, urlSeed]);
 
-  const all = useKos();
+  const conflicts = useConflicts();
+  const debouncedQ = useDebouncedValue(q, LIBRARY_SEARCH_DEBOUNCE_MS);
+  const query = useLibrarySearch(buildLibraryQuery({ ...EMPTY_LIBRARY_FILTER, q: debouncedQ }));
+  const trimmedQ = q.trim();
+  // Eine Auswahl ohne zu prüfenden Wert braucht gar keinen Bestand — sie darf nicht warten (sonst
+  // wartete JEDER Besuch der Bibliothek auf den Bestandsabruf, auch ohne Filter in der Adresse).
+  const keimBrauchtBestand = urlSeed !== null && facetSelectionNeedsKnownValues(urlSeed);
+  // K1 / NFR-PERF-01 (Nacharbeit 28, Lauf HISTORIE/nacharbeit-28): die Erstanzeige bei 10.001
+  // Objekten lag bei 1.075 ms. Die Ladekette zeigt WO: `/api/library/search` (6,8 MB, allein ~75 ms)
+  // lief von 449 bis 923 ms, weil im selben Augenblick dieser Abruf des GANZEN Bestands
+  // (`/api/kos`, 19,3 MB) auf denselben Server ging — die Liste wartete auf eine Antwort, die sie für
+  // die Erstanzeige nicht braucht. Der Bestand dient hier (1) der Wertprüfung eines Adresskeims und
+  // (2) der erhobenen Zustandsauskunft (`auskunftFuer`), die ohne ihn ausdrücklich auf das
+  // Suchobjekt zurückfällt (s. unten, „OHNE `all.data`"). Er wird deshalb ERST abgerufen, wenn die
+  // Suche geantwortet hat (oder gescheitert ist) — sofort dagegen, wenn ein Adresskeim auf ihn
+  // wartet, denn dort hält die Liste ohnehin an (JOB 3115, unverändert). Einmal freigegeben, bleibt
+  // er es für diese Montage: ein neuer Suchbegriff schaltet ihn nicht wieder ab.
+  const sucheBeantwortet = query.data !== undefined || query.isError;
+  const [bestandFreigegeben, setBestandFreigegeben] = useState(sucheBeantwortet);
+  useEffect(() => {
+    if (sucheBeantwortet) {
+      setBestandFreigegeben(true);
+    }
+  }, [sucheBeantwortet]);
+  const all = useKos(undefined, bestandFreigegeben || sucheBeantwortet || keimBrauchtBestand);
   // ================================================================================================
   // JOB 3115 · UX-02b — DIE WERTPRÜFUNG WARTET AUF EINEN BESTÄTIGTEN BESTAND, NICHT AUF IRGENDEINEN.
   // ================================================================================================
@@ -405,9 +609,6 @@ export function BibliothekFlaeche({
     all.data !== undefined &&
     !all.isFetching &&
     (!all.isStale || all.dataUpdatedAt > standBeimMontieren.current);
-  // Eine Auswahl ohne zu prüfenden Wert braucht gar keinen Bestand — sie darf nicht warten (sonst
-  // wartete JEDER Besuch der Bibliothek auf den Bestandsabruf, auch ohne Filter in der Adresse).
-  const keimBrauchtBestand = urlSeed !== null && facetSelectionNeedsKnownValues(urlSeed);
 
   // ================================================================================================
   // PRÜFSTATUS-ANZEIGE (R-0216, Ben Nacharbeit 5) · DIE FILTERPRÜFUNG KENNT DIESELBE REIFE WIE DER FILTER.
@@ -423,7 +624,7 @@ export function BibliothekFlaeche({
   // der Konfliktabruf, fehlt die Auskunft dauerhaft: dann wird die Reife-Auswahl NICHT gegen einen
   // Bestand ohne Konfliktkenntnis geprüft, sondern bleibt stehen (eine gültige Wahl wird nicht aus
   // Unwissen verworfen). Andere Dimensionen werden wie bisher geprüft.
-  const conflicts = useConflicts();
+  // (`conflicts` steht seit K1/NFR-PERF-01, Nacharbeit 28, bereits oben vor dem Bestandsabruf.)
   const konflikteBeimMontieren = useRef(conflicts.dataUpdatedAt);
   const konflikteBestaetigt =
     conflicts.data !== undefined &&
@@ -481,10 +682,6 @@ export function BibliothekFlaeche({
   // volle Liste zu machen wäre die zu starke Aussage (dieselbe Begründung, mit der `origin` in
   // `libraryUrlFilters.ts` von der Prüfung ausgenommen ist).
   const wirksameAuswahl = urlSeed ?? facetSel;
-
-  const debouncedQ = useDebouncedValue(q, LIBRARY_SEARCH_DEBOUNCE_MS);
-  const query = useLibrarySearch(buildLibraryQuery({ ...EMPTY_LIBRARY_FILTER, q: debouncedQ }));
-  const trimmedQ = q.trim();
 
   // PRÜFSTATUS-ANZEIGE (R-0216): die Reife (Zähler UND Filter) kennt die Konfliktliste — dieselbe
   // konfliktbegrenzte Nutzbarkeit wie Detail und Antwort. Solange die Liste fehlt, gilt die bisherige
@@ -546,6 +743,17 @@ export function BibliothekFlaeche({
   // Sichten und Bedienzustand gehören zur Nutzerkennung. Beim Wechsel wird die alte Liste
   // schon vor dem Leseeffekt ausgeblendet; Name und Löschziel werden gemeinsam zurückgesetzt.
   const viewsUserId = user?.id ?? "anon";
+  // K1 / R-0428 (Nacharbeit 21): der strukturelle Nulltreffer wird in den Sitzungskontext dieses
+  // Tabs gespiegelt — zusammen mit der Adresse, unter der er galt. Ohne No-Match wird der Eintrag
+  // weggeräumt; ein gesperrter Speicher heisst nur „kein Erhalt beim Neuladen", nie ein Fehler.
+  const adresseJetzt = params.toString();
+  useEffect(() => {
+    try {
+      noMatchSitzungSchreiben(window.sessionStorage, viewsUserId, adresseJetzt, wirksameAuswahl);
+    } catch {
+      // gesperrter Sitzungsspeicher: kein Erhalt beim Neuladen, sonst unverändert
+    }
+  }, [viewsUserId, adresseJetzt, wirksameAuswahl]);
   const [viewStore, setViewStore] = useState<{ userId: string; views: LibrarySavedView[] }>({
     userId: viewsUserId,
     views: [],
@@ -601,10 +809,20 @@ export function BibliothekFlaeche({
     }
   };
 
-  const koItems = applyLibraryScope(query.data ?? [], scope, user?.id);
-  const ranked = searchLibrary(koItems, trimmedQ);
-  const valuesOf = (item: { ko: { id: string } }): FacetValues => facetBase.get(item.ko.id) ?? {};
-  const facetItems = ranked.map(valuesOf);
+  // K1 / NFR-PERF-01 (Nacharbeit 27, Lauf HISTORIE/nacharbeit-27): die Erstanzeige bei 10.001
+  // Objekten lag bei 1.124 ms (Grenze < 1.000 ms); Dokument und Skripte standen nach 43 ms, die
+  // Suchroute antwortet in ~75 ms — der Rest ist Rechnen IM BROWSER über den ganzen Bestand. Bis
+  // hierher lief die ganze Kette (Rang, Facettenzähler, Filter, Sortierung) bei JEDEM Aufbau neu,
+  // auch wenn nur `all.data`, die Konfliktliste oder ein Bedienzustand nebenan nachkam. Jetzt hängt
+  // jede Stufe nur an dem, was sie wirklich liest; Ergebnis, Reihenfolge und Zähler bleiben gleich.
+  const ranked = useMemo(
+    () => searchLibrary(applyLibraryScope(query.data ?? [], scope, user?.id), trimmedQ),
+    [query.data, scope, user?.id, trimmedQ],
+  );
+  const facetItems = useMemo(
+    () => ranked.map((item) => facetBase.get(item.ko.id) ?? {}),
+    [ranked, facetBase],
+  );
   const groups = facetRailGroups(
     facetItems,
     LIBRARY_FILTER_CONFIGS,
@@ -613,14 +831,35 @@ export function BibliothekFlaeche({
     facetValueLabel,
     LIBRARY_FACET_DEPENDENCIES,
   );
-  const faceted = applyFacetSelection(ranked, valuesOf, wirksameAuswahl)
-    .filter((item) => matchesFacetRange(koChangedMs(item.ko), range))
-    // Der Umschalter wirkt wie jede andere Wahl: UND, auf demselben Anzeigestatus, den auch Punkt
-    // und Pille zeigen — keine zweite Statusrechnung. Seit JOB 3072 ist das die vom Server erhobene
-    // Zahl, und der Umschalter kennt damit auch den Konflikt: ein Eintrag mit rotem Punkt fiel
-    // vorher unter „Freigegeben", weil diese Zeile als einzige die Konfliktliste nicht ansah.
-    .filter((item) => passtZuSegment(auskunftFuer(item.ko).status, segment));
-  const sorted = sortLibrary(faceted, sortKey, (item) => item.ko);
+  const faceted = useMemo(
+    () =>
+      applyFacetSelection(ranked, (item) => facetBase.get(item.ko.id) ?? {}, wirksameAuswahl)
+        .filter((item) => matchesFacetRange(koChangedMs(item.ko), range))
+        // Der Umschalter wirkt wie jede andere Wahl: UND, auf demselben Anzeigestatus, den auch
+        // Punkt und Pille zeigen — keine zweite Statusrechnung. Seit JOB 3072 ist das die vom
+        // Server erhobene Zahl, und der Umschalter kennt damit auch den Konflikt: ein Eintrag mit
+        // rotem Punkt fiel vorher unter „Freigegeben", weil diese Zeile als einzige die
+        // Konfliktliste nicht ansah. Im Standard „Alle" lässt `passtZuSegment` jeden Eintrag durch —
+        // dort wird der Anzeigestatus deshalb nicht für den ganzen Bestand vorab gerechnet, sondern
+        // nur für die gezeigten Zeilen (je Objekt gemerkt in `auskunftFuer`).
+        .filter(
+          (item) =>
+            segment === BIB_SEGMENT_STANDARD ||
+            passtZuSegment(auskunftFuer(item.ko).status, segment),
+        ),
+    [ranked, facetBase, wirksameAuswahl, range, segment, auskunftFuer],
+  );
+  // K16: die Risiko-Sortierung liest denselben angezeigten Zustand wie Punkt, Wort und Segment.
+  const sorted = useMemo(
+    () =>
+      sortLibrary(
+        faceted,
+        sortKey,
+        (item) => item.ko,
+        (item) => auskunftFuer(item.ko).status,
+      ),
+    [faceted, sortKey, auskunftFuer],
+  );
   const win = windowList(sorted, windowLimit);
 
   const resetWindow = (): void => setWindowLimit(LIBRARY_RESULT_LIMIT);
@@ -735,6 +974,22 @@ export function BibliothekFlaeche({
     // JOB 3877: Ein Klick ins Filtermenü ist eine eigene, geprüfte Wahl — sie löst den Befund der
     // Adresse ab. Was der Mensch jetzt gewählt hat, steht im Menü und zählt über `aktiveFilterZahl`.
     setVerworfeneEingrenzung([]);
+    setFacetSel(naechste);
+  };
+  // K1 / R-0428 (Nacharbeit 21): genau EINE strukturell leere Dimension lösen — offen, kein Filter.
+  // Andere Dimensionen, Suchwort, Zeitraum und Umschalter bleiben unberührt.
+  const onNoMatchLoesen = (dimension: string): void => {
+    resetWindow();
+    const naechste: FacetSelection = {};
+    for (const [key, groupSelection] of Object.entries(wirksameAuswahl)) {
+      if (key !== dimension) {
+        naechste[key] = groupSelection;
+      }
+    }
+    if (urlSeed !== null) {
+      setUrlSeed(naechste);
+      return;
+    }
     setFacetSel(naechste);
   };
   const onResetFilters = (): void => {
@@ -993,6 +1248,17 @@ export function BibliothekFlaeche({
   const einspaltig = schmal || tablet;
   const vorwahl = einspaltig ? null : (sichtbareIds[0] ?? null);
   const gewaehltEffektiv = gewaehlt ?? vorwahl;
+  // N-0074 (K27): die AUSDRÜCKLICHE Wahl bleibt stehen (N-0006, oben) — aber die Lesefläche sagt
+  // jetzt, wenn Suche, Facetten, Zeitraum, Umschalter oder Bereich sie aus der Treffermenge
+  // ausschliessen. Geprüft wird gegen die VOLLE gefilterte Menge (`sorted`), nicht gegen das
+  // sichtbare Fenster: ein Eintrag hinter „Mehr laden" ist ein Treffer. Nur bei frischem Abruf
+  // und geprüfter Auswahl — sonst wäre „nicht dabei" eine Aussage ohne Grundlage. Die Vorwahl
+  // (`vorwahl`) ist per Bau immer ein Treffer und braucht die Prüfung nicht.
+  const auswahlAusserhalbTreffer =
+    gewaehlt !== null &&
+    frisch &&
+    !keimBrauchtBestand &&
+    !sorted.some((item) => item.ko.id === gewaehlt);
   // ================================================================================================
   // JOB 3121 · UX-14 — WELCHE FLÄCHE DIE BREITE TRÄGT. EINE BEDINGUNG, ZWEIMAL GELESEN.
   // ================================================================================================
@@ -1320,6 +1586,30 @@ export function BibliothekFlaeche({
   const bereichGruppe = groups.find((g) => g.key === BEREICH_KEY);
   const bereichGewaehlt = facetSelectedValues(wirksameAuswahl[BEREICH_KEY]);
 
+  // R-1006: gezählt und angehakt wird nur, was gerade TREFFER ist (die volle gefilterte Menge, nicht
+  // nur das Fenster). Eine Markierung, die Suche oder Filter ausblenden, bleibt gemerkt, zählt aber
+  // nicht mit — sie kehrt zurück, sobald der Eintrag wieder Treffer ist.
+  const trefferIds = new Set(sorted.map((item) => item.ko.id));
+  const markiertTreffer: ReadonlySet<string> = new Set(
+    [...markiert].filter((id) => trefferIds.has(id)),
+  );
+  const markierungUmschalten = (id: string): void => {
+    setMarkiert((alt) => {
+      const neu = new Set(alt);
+      if (neu.has(id)) {
+        neu.delete(id);
+      } else {
+        neu.add(id);
+      }
+      return neu;
+    });
+  };
+  const auswahlModusUmschalten = (): void => {
+    // Beim Verlassen des Modus fällt die Auswahl weg — es gibt keine verborgene Markierung.
+    setMarkiert(new Set());
+    setAuswahlModus((an) => !an);
+  };
+
   // ================================================================================================
   // JOB 3063 R3/R6 · JOB 3121 — DER SATZ „STAND VON <ZEIT> · AUFFRISCHUNG FEHLGESCHLAGEN".
   // ================================================================================================
@@ -1555,6 +1845,39 @@ export function BibliothekFlaeche({
               setWindowLimit((n) => n + LIBRARY_RESULT_LIMIT);
             }
           }}
+          ansicht={ansicht}
+          markierung={
+            auswahlModus
+              ? {
+                  ids: markiertTreffer,
+                  onUmschalten: markierungUmschalten,
+                  onLeeren: () => setMarkiert(new Set()),
+                }
+              : null
+          }
+          // R-0446 / R-1812: der Nulltreffer nennt den Bestand, in dem gesucht wurde — mit
+          // demselben Wort wie die Ortszeile darüber. In der eigenen Ablage ist der Gesamtbestand
+          // die plausibel gemeinte andere Suche; der Knopf schaltet nur den Bereich um, Suchwort und
+          // Filter bleiben stehen. Umgekehrt gibt es keinen Weg: „Alle Inhalte" enthält die Ablage.
+          leerRaum={
+            <>
+              <span>
+                {t("lib.liste.leerRaum", {
+                  raum: t(scope === "meine" ? "lib.ownScope.meine" : "lib.ownScope.alle"),
+                })}
+              </span>
+              {scope === "meine" ? (
+                <button
+                  type="button"
+                  data-testid="bib-leer-anderer-raum"
+                  onClick={() => setScope("alle")}
+                  className="rounded-btn border border-hairline px-2.5 py-1 text-[12.5px] font-semibold text-text hover:bg-hairline-soft"
+                >
+                  {t("lib.liste.leerAndererRaum", { raum: t("lib.ownScope.alle") })}
+                </button>
+              ) : null}
+            </>
+          }
           leerAktion={
             <RoleLink
               // Beta Own-Knowledge Work Queue v0: unter der Linse „Eigenes Wissen" führt der Knopf
@@ -1658,6 +1981,7 @@ export function BibliothekFlaeche({
                             <button
                               type="button"
                               data-testid="bib-sicht-speichern"
+                              aria-describedby="bib-sicht-speichern-umfang"
                               // JOB 3115: ein UNGEPRÜFTER Wert aus der Adresse erreicht keine
                               // gespeicherte Sicht. Damit bleibt die Grenze aus mega11 Block C
                               // (`lib/libraryUrlFilters.ts`) unverschoben, obwohl der Filter aus der
@@ -1684,10 +2008,54 @@ export function BibliothekFlaeche({
                             >
                               {t("lib.views.remember")}
                             </button>
+                            {/* N-0060 (K26): der zugesicherte Speicherumfang steht DORT, wo
+                                gespeichert wird — nicht nur im getrennten Untermenü „Sichten".
+                                Kurzfassung derselben Zusage wie `lib.views.storageHint`, mit
+                                derselben Anmeldungsangabe. */}
+                            <span
+                              id="bib-sicht-speichern-umfang"
+                              data-testid="bib-sicht-speichern-umfang"
+                              className="block text-[12px] leading-snug text-muted whitespace-normal [overflow-wrap:anywhere]"
+                            >
+                              {t("lib.views.saveScope", {
+                                ownership: t(
+                                  viewsUserId === "anon"
+                                    ? "lib.views.ownershipAnon"
+                                    : "lib.views.ownershipSignedIn",
+                                ),
+                              })}
+                            </span>
                           </span>
                         </MenueZeile>
                       </MenueUntermenue>
                     ) : null}
+                    {/* R-1006 (K16): Darstellung und Mehrfachauswahl — Beschriftungen hinter dem
+                        Menü, kein neuer Erklärtext auf der Fläche (H4). */}
+                    <MenueUntermenue beschriftung={t("lib.ansicht.label")}>
+                      {BIB_ANSICHTEN.map((a) => (
+                        <MenuePunkt
+                          key={a}
+                          testId={`bib-ansicht-${a}`}
+                          haken={ansicht === a}
+                          onClick={() => {
+                            setAnsicht(a);
+                            schliessen();
+                          }}
+                        >
+                          {t(`lib.ansicht.${a}`)}
+                        </MenuePunkt>
+                      ))}
+                    </MenueUntermenue>
+                    <MenuePunkt
+                      testId="bib-auswahl-modus"
+                      haken={auswahlModus}
+                      onClick={() => {
+                        auswahlModusUmschalten();
+                        schliessen();
+                      }}
+                    >
+                      {t("lib.auswahl.modus")}
+                    </MenuePunkt>
                     <MenueTrenner />
                     <MenueUntermenue beschriftung={t("lib.export")}>
                       {EXPORT_FORMATS.map((fmt) => (
@@ -1717,13 +2085,33 @@ export function BibliothekFlaeche({
             bereich: (
               <Menue
                 beschriftung={t("lib.menue.bereich")}
-                zusatz={bereichGewaehlt.length > 0 ? String(bereichGewaehlt.length) : undefined}
+                zusatz={
+                  bereichGewaehlt.length > 0
+                    ? String(bereichGewaehlt.length)
+                    : isFacetNoMatch(wirksameAuswahl[BEREICH_KEY])
+                      ? "1"
+                      : undefined
+                }
                 testId="bib-menue-bereich"
                 ausrichtung="rechts"
                 breite="w-[230px]"
               >
-                {() => (
+                {(schliessen) => (
                   <>
+                    {isFacetNoMatch(wirksameAuswahl[BEREICH_KEY]) ? (
+                      <NoMatchLoesen
+                        dimension={BEREICH_KEY}
+                        onLoesen={onNoMatchLoesen}
+                        schliessen={schliessen}
+                      />
+                    ) : null}
+                    {bereichGruppe ? (
+                      <DimensionsSuche
+                        gruppe={bereichGruppe}
+                        beschriftung={t(bereichGruppe.labelKey)}
+                        onSuche={(wert) => dimensionSuchen(BEREICH_KEY, wert)}
+                      />
+                    ) : null}
                     {(bereichGruppe?.options ?? []).map((o) => (
                       <MenuePunkt
                         key={o.value}
@@ -1734,17 +2122,11 @@ export function BibliothekFlaeche({
                         {`${facetValueLabel(BEREICH_KEY, o.value)} · ${o.count}`}
                       </MenuePunkt>
                     ))}
-                    {bereichGruppe && bereichGruppe.hiddenCount > 0 ? (
-                      <MenuePunkt
-                        onClick={() =>
-                          setRailUi((p) => ({
-                            ...p,
-                            showAll: { ...p.showAll, [BEREICH_KEY]: true },
-                          }))
-                        }
-                      >
-                        {t("facet.showAll", { n: bereichGruppe.totalCount })}
-                      </MenuePunkt>
+                    {bereichGruppe ? (
+                      <DeckelUmschalter
+                        gruppe={bereichGruppe}
+                        onUmschalten={(alle) => deckelUmschalten(BEREICH_KEY, alle)}
+                      />
                     ) : null}
                   </>
                 )}
@@ -1758,7 +2140,7 @@ export function BibliothekFlaeche({
                 ausrichtung="rechts"
                 breite="w-[270px]"
               >
-                {() => (
+                {(schliessen) => (
                   <>
                     <MenueUntermenue beschriftung={t("lib.sort.label")}>
                       {LIBRARY_SORT_KEYS.map((key) => (
@@ -1802,8 +2184,26 @@ export function BibliothekFlaeche({
                           <MenueUntermenue
                             key={g.key}
                             beschriftung={t(g.labelKey)}
-                            zusatz={gewaehlteWerte.length > 0 ? String(gewaehlteWerte.length) : ""}
+                            zusatz={
+                              gewaehlteWerte.length > 0
+                                ? String(gewaehlteWerte.length)
+                                : isFacetNoMatch(wirksameAuswahl[g.key])
+                                  ? "1"
+                                  : ""
+                            }
                           >
+                            {isFacetNoMatch(wirksameAuswahl[g.key]) ? (
+                              <NoMatchLoesen
+                                dimension={g.key}
+                                onLoesen={onNoMatchLoesen}
+                                schliessen={schliessen}
+                              />
+                            ) : null}
+                            <DimensionsSuche
+                              gruppe={g}
+                              beschriftung={t(g.labelKey)}
+                              onSuche={(wert) => dimensionSuchen(g.key, wert)}
+                            />
                             {g.options.map((o) => (
                               <MenuePunkt
                                 key={o.value}
@@ -1814,18 +2214,10 @@ export function BibliothekFlaeche({
                                 {`${facetValueLabel(g.key, o.value)} · ${o.count}`}
                               </MenuePunkt>
                             ))}
-                            {g.hiddenCount > 0 ? (
-                              <MenuePunkt
-                                onClick={() =>
-                                  setRailUi((p) => ({
-                                    ...p,
-                                    showAll: { ...p.showAll, [g.key]: true },
-                                  }))
-                                }
-                              >
-                                {t("facet.showAll", { n: g.totalCount })}
-                              </MenuePunkt>
-                            ) : null}
+                            <DeckelUmschalter
+                              gruppe={g}
+                              onUmschalten={(alle) => deckelUmschalten(g.key, alle)}
+                            />
                           </MenueUntermenue>
                         );
                       })}
@@ -1960,6 +2352,16 @@ export function BibliothekFlaeche({
             {zeigeListe ? null : hinweisKnoten}
             {/* SCRUM-291: Demo-/Pilotpfad bleibt auf der Zielseite wiedererkennbar (nur ?demo=stage1). */}
             {isDemoContext(params) ? <DemoBanner surface="library" /> : null}
+            {/* N-0074: der geöffnete Beitrag steht nicht (mehr) unter den aktuellen Treffern. */}
+            {gewaehltEffektiv && auswahlAusserhalbTreffer ? (
+              // Ein natives <output> trägt die Rolle „status" selbst (lint/a11y/useSemanticElements).
+              <output
+                data-testid="bib-lesen-ausserhalb"
+                className="mx-4 mt-3 block rounded-btn border border-hairline bg-page px-3 py-2 text-[12.5px] leading-relaxed text-muted"
+              >
+                {t("lib.lesen.ausserhalbTreffer")}
+              </output>
+            ) : null}
             {gewaehltEffektiv ? (
               <BibliothekLesen
                 key={gewaehltEffektiv}

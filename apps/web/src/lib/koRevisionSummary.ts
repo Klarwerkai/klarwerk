@@ -94,6 +94,12 @@ function setChanged(
 }
 
 export function koRevisionItemLabelKey(id: KoRevisionItemId): string {
+  // R-0432 (K3): das Feld heißt in der Änderungsübersicht „Schlagwörter", nicht „Tags". Eigener
+  // Schlüssel statt geändertem Wert — `ko.revision.field.tags` steht im eingefrorenen
+  // Textschnappschuss (tests/i18n-textmodule, mit Prüfsumme) und bleibt dort unverändert.
+  if (id === "tags") {
+    return "ko.revision.field.schlagwoerter";
+  }
   return `ko.revision.field.${id}`;
 }
 
