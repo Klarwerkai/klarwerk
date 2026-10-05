@@ -2010,6 +2010,59 @@ const AUSWAHL_IST = `() => ({
 const AUSWAHL_ANZAHL = `(soll) =>
   (document.querySelector('[data-testid="bib-auswahl-anzahl"]')?.textContent || "").trim() === soll`;
 
+/** Ein Bestandteil des `onReady`-Pfads, einzeln gemessen. */
+interface StartSchritt {
+  ms: number;
+  ergebnis?: unknown;
+  fehler?: string;
+}
+
+async function messeSchritt(lauf: () => Promise<unknown>): Promise<StartSchritt> {
+  const t0 = Date.now();
+  try {
+    const ergebnis = await lauf();
+    return { ms: Date.now() - t0, ergebnis };
+  } catch (fehler) {
+    const meldung = fehler instanceof Error ? fehler.message : String(fehler);
+    return { ms: Date.now() - t0, fehler: meldung };
+  }
+}
+
+/**
+ * Nacharbeit 31: die Bestandteile des `onReady`-Pfads aus `services/app/src/build-app.ts`, rein
+ * lesend und nacheinander gemessen — Zustand der Suchprojektion (vorher/nachher, weil die
+ * abgebrochene Startarbeit im Hintergrund weiterlaufen kann), die volle Integritätsprüfung, die
+ * der Start bei `V2_ACTIVE` fährt, und das Laden des ganzen Bestands für den Startbericht.
+ */
+async function startDiagnoseK16(dienste: ReturnType<typeof buildPgServices>) {
+  const zustand = async () => {
+    const c = await dienste.ko.searchProjectionControl();
+    return {
+      projectionState: c.projectionState,
+      activeGeneration: c.activeGeneration,
+      buildGeneration: c.buildGeneration,
+    };
+  };
+  const zustandVorher = await messeSchritt(zustand);
+  const integritaet = await messeSchritt(async () => {
+    const r = await dienste.ko.searchProjectionReadiness();
+    return { alle: r.alle, befunde: r.befunde.slice(0, 5) };
+  });
+  const startbericht = await messeSchritt(async () => ({
+    anzahl: (await dienste.ko.listForSearch({})).length,
+  }));
+  const zustandNachher = await messeSchritt(zustand);
+  return {
+    zustandVorher,
+    integritaetspruefungSearchProjectionReadiness: integritaet,
+    startberichtListForSearch: startbericht,
+    zustandNachher,
+    fastifyPluginTimeoutMs: 10_000,
+    hinweis:
+      "nach dem Abbruch gemessen; die abgebrochene Startarbeit kann parallel weiterlaufen und die Zeiten erhöhen",
+  };
+}
+
 describe("K16 · 100.000 Objekte (PG + Chromium, derselbe Produktweg, eigener Bestand)", () => {
   let dbK16: Wegwerfdatenbank | undefined;
   let instanzK16: Instanz | undefined;
@@ -2049,11 +2102,22 @@ describe("K16 · 100.000 Objekte (PG + Chromium, derselbe Produktweg, eigener Be
     try {
       instanzK16 = await instanzStarten(dbK16.pool);
     } catch (fehler) {
+      // Nacharbeit 31 (Lauf HISTORIE/nacharbeit-31): „A callback for 'onReady' hook timed out" nach
+      // 10.050 ms. Die 10 s sind Fastifys Vorgabe `pluginTimeout` — `buildApp` setzt sie nicht, sie
+      // gilt auch für `onReady`. Aus dem Abbruch allein folgt nicht, WELCHE Arbeit zu lang ist. Der
+      // `onReady`-Pfad (`build-app.ts`) tut zweierlei: `stelleSuchprojektionBereit` (Zustand lesen,
+      // bei `V2_ACTIVE` die volle Integritätsprüfung `searchProjectionReadiness`) und danach den
+      // Startbericht (`ermittleBestand` über `listForSearch({})` — der GANZE Bestand, nur gezählt).
+      // Beide werden hier NACH dem Abbruch einzeln und rein lesend gegen dieselbe Datenbank
+      // gemessen und in den Bericht geschrieben. Keine Frist wird erhöht, kein Fall übersprungen:
+      // der Fall bleibt rot und nennt die Zahlen. Hinweis: Fastify bricht nur das Warten ab, nicht
+      // die Arbeit — die Startarbeit kann während dieser Messung im Hintergrund noch laufen.
       const grund = fehler instanceof Error ? fehler.message : String(fehler);
       berichtK16.kaltstart = { ms: Date.now() - tStart, fehler: grund };
+      berichtK16.startdiagnose = await startDiagnoseK16(dienste);
       schreibeBericht(`k16-${dbK16.name}.json`, berichtK16);
       throw new Error(
-        `${K16} PRODUKTBEFUND: die App startet auf ${GESAMT_K16} Objekten nicht bereit (nach ${Date.now() - tStart} ms, ohne Voraktivierung): ${grund}`,
+        `${K16} STARTBEFUND: die App wird auf ${GESAMT_K16} Objekten nicht bereit (nach ${Date.now() - tStart} ms, ohne Voraktivierung): ${grund} — Bestandteile des onReady-Pfads: ${JSON.stringify(berichtK16.startdiagnose)}`,
       );
     }
     berichtK16.kaltstart = { ms: Date.now() - tStart, voraktivierung: "keine" };
