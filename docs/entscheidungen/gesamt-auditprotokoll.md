@@ -39,6 +39,11 @@ von `service.ts` für den Exportweg; für BEN-B1 der Validierungsdienst aus Rund
 nach Beleg-Ausfall); an dieser Fassung grün. **Die PostgreSQL-Integrationsfälle konnten hier nicht
 laufen** (keine Datenbank- oder Containerstarts auf dem Produktions-Mac); fehlendes Prüfmittel:
 `integration-postgres`. Die Kalibrierung dort (rot an `41fad46c`) ist damit ebenfalls offen.
+Nachtrag Lauf 5 (Nacharbeit 4): `tests/audit-gesamt/rot-kalibrierung.integration.test.ts` fährt den
+ALGORITHMUS von `41fad46c` (Audit: `last` + `append`/`appendOnce` ohne Sperre; Erstanlage: Objekt in
+eigener Transaktion, danach `ko.created`) auf PostgreSQL gegen dieselben Auslöser und erwartet die
+gemeldeten Fehler (`23505:audit_pkey`, Objekt ohne `ko.created`). Ein Checkout der alten Fassung
+selbst sieht der Prüfweg nicht vor; das ist dort benannt.
 
 **Prüfstand (lokal, macOS, an dieser Fassung):** `npx tsc --noEmit` (Wurzel, Web) grün;
 `depcruise` ohne Verstoß; Biome-Lint der 45 geänderten Dateien grün; `vitest` (mit
