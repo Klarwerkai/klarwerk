@@ -102,9 +102,10 @@ describe("JOB 3023 · B — der Vergleich laeuft auch gegen den eigenen Lauf", (
     }
     const liste = await app.inject({ method: "GET", url: "/api/kos", headers });
     const kos = liste.json() as { id: string }[];
-    expect(kos, "Aus zwei Schreibweisen derselben Sache wird genau ein Wissensobjekt.").toHaveLength(
-      1,
-    );
+    expect(
+      kos,
+      "Aus zwei Schreibweisen derselben Sache wird genau ein Wissensobjekt.",
+    ).toHaveLength(1);
     expect(angenommen[0]?.koId).toBe(kos[0]?.id);
     expect(angenommen[1]?.koId, "Die Annahme der Dublette legt nichts an.").toBeNull();
     expect(

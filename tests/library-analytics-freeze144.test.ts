@@ -144,7 +144,10 @@ const WIDERRUFENE_FREIGABEN: readonly string[] = [
   "FREEZE-144/JOB4155R3-20260917/types",
   "FREEZE-144/JOB3424-20260909/repo",
   "FREEZE-144/JOB3424-20260909/repo-pg",
-  "FREEZE-144/JOB3050-20260904/service-test",
+  // NACHARBEIT 3: `FREEZE-144/JOB3050-20260904/service-test` stand hier; `service.test.ts` ist
+  // wieder byte-gleich mit dem von ihr autorisierten Inhalt (Begründung am Eintrag). An ihrer Stelle
+  // ist die R2-Freigabe dieser Datei verbraucht.
+  "FREEZE-144/GIA-R2-20260930/service-test",
   // LAUF gesamt-import-adoption:2 (Bens R3-1): verbraucht. Diese zwei Freigaben autorisierten den
   // Stand OHNE die Annahme-Sperre im Kandidatenbestand; ihre Nachfolgerinnen stehen am Eintrag.
   "FREEZE-144/GIA-R2-20260930/repo",
@@ -412,10 +415,17 @@ const FREEZE_MANIFEST: readonly FreezeEintrag[] = [
     // mitgelieferte Herkunft bleibt am Objekt (B4), der Schalter entscheidet nur noch über das
     // Fortschreiben. Sollhash UND Freigabe in EINEM Änderungssatz, die alte in
     // WIDERRUFENE_FREIGABEN.
-    hash: "ce923d42eb5f13ec64eef4ea65eade1e4a2d9f61821897129f313842222be7c9",
+    //
+    // LAUF gesamt-import-adoption:2, NACHARBEIT 3 · AUSGEWIESENE RÜCKNAHME: die R2-Änderung oben ist
+    // ZURÜCKGENOMMEN. Mit der Hauptstand-Integration bleibt `importJson` erhalten, und die
+    // Herkunftsfrage ohne Schalter hat der Auftrag herkunft-identitaet auf main entschieden
+    // (Adapterkandidat ohne Schalter: kein Anker). Die Datei ist wieder BYTE-GLEICH mit main
+    // 1147c026 — genau der Inhalt, den die Freigabe JOB3050 autorisiert hat. Sie gilt darum wieder
+    // (aus WIDERRUFENE_FREIGABEN genommen); die R2-Freigabe ist dafür widerrufen.
+    hash: "1b0779a403ddede006ff78a6289d94016fdb50b4bc40c3fd246a644ed94d49f9",
     freigabe: {
-      id: "FREEZE-144/GIA-R2-20260930/service-test",
-      autorisiertHash: "ce923d42eb5f13ec64eef4ea65eade1e4a2d9f61821897129f313842222be7c9",
+      id: "FREEZE-144/JOB3050-20260904/service-test",
+      autorisiertHash: "1b0779a403ddede006ff78a6289d94016fdb50b4bc40c3fd246a644ed94d49f9",
     },
   },
   {

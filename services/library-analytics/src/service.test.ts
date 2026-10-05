@@ -24,9 +24,8 @@ import type {
   SourceAdapter,
 } from "./types";
 
-// JOB 3023: die Dublettenregel reist als Port in den Dienst (types.ts, DublettenPruefung) — der
-// Dienst legt sie nicht selbst aus. Lauf gesamt-import-adoption: der Direktimport `importJson` ist
-// entfallen (Bens B3, R-0143); seine Fälle unten laufen jetzt über Kandidat + Annahme.
+// JOB 3023: `importJson` nimmt die Dublettenregel seit diesem Auftrag als PFLICHT-Port entgegen
+// (types.ts, DublettenPruefung) — der Dienst legt sie nicht mehr selbst aus.
 //
 // JOB 3050: DIESELBE Prüfung dient jetzt auch `createImportCandidates`. Fehlt dort der Port, gilt
 // jeder Eintrag fail-closed als NICHT PRÜFBAR und ein `accept` legt kein Wissensobjekt an — die
@@ -241,41 +240,30 @@ describe("LibraryService", () => {
         category: "Anlage 3",
       },
     ];
-    // Lauf gesamt-import-adoption (Bens B3): der Import reiht ein, erst die Annahme legt an.
-    const kandidaten = await ctx.library.createImportCandidates(items, "import", OHNE_AEHNLICHKEIT);
-    // JOB 3023: der Befund sagt WARUM und WORAUF — hier trifft der erste, exakte Pass.
-    expect(kandidaten.map((k) => k.dublettenbefund)).toEqual([
-      {
-        ergebnis: "identisch",
-        treffer: {
-          art: "wissensobjekt",
+    const result = await ctx.library.importJson(items, "import", OHNE_AEHNLICHKEIT);
+    expect(result).toEqual({
+      imported: 1,
+      skipped: 1,
+      // JOB 3023: die Antwort sagt jetzt WARUM und WORAUF — hier trifft der erste, exakte Pass.
+      uebersprungen: [
+        {
+          titel: "Ventil schließen",
+          grund: "identisch",
           koId: (await ctx.koService.list()).find((k) => k.title === "Ventil schließen")?.id,
         },
-      },
-      { ergebnis: "keine" },
-    ]);
-    expect(await ctx.koService.list(), "Einreihen legt nichts an.").toHaveLength(2);
-    for (const k of kandidaten) {
-      await ctx.library.reviewImportCandidate(
-        k.id,
-        "accept",
-        "controller",
-        undefined,
-        OHNE_AEHNLICHKEIT,
-      );
-    }
+      ],
+    });
     expect(await ctx.koService.list()).toHaveLength(3);
   });
 
   // SCRUM-509 R3: Import ist ein Bulk-Pfad → konservativ. Fehlt die Stufe, gilt „vertraulich"
   // (NICHT still intern) — importierter Fremdinhalt bleibt aus Cloud/Export heraus, bis freigegeben.
   it("SCRUM-509 R3: JSON-Import ohne Stufe → vertraulich (nicht intern)", async () => {
-    const [kandidat] = await ctx.library.createImportCandidates(
+    await ctx.library.importJson(
       [{ title: "Fremd", statement: "Importiert.", type: "best_practice", category: "Anlage 9" }],
       "import",
       OHNE_AEHNLICHKEIT,
     );
-    await ctx.library.reviewImportCandidate(kandidat!.id, "accept", "controller");
     const imported = (await ctx.koService.list()).find((k) => k.title === "Fremd");
     expect(imported?.confidentiality).toBe("vertraulich");
   });
@@ -493,14 +481,10 @@ describe("LibraryService", () => {
     );
     expect(cands.map((c) => c.duplicate)).toEqual([false, false]); // pageId-Dedup greift NICHT
 
-    // Accept legt ein KO an, ohne pageId-Upsert. Lauf gesamt-import-adoption (Bens B4): die
-    // mitgelieferte Herkunft bleibt trotzdem am Objekt — der Schalter entscheidet nur noch über
-    // das Fortschreiben, nicht mehr darüber, ob die Quelle festgehalten wird.
+    // Accept legt ein KO OHNE Herkunfts-Anker an (kein pageId-Upsert).
     const r = await library.reviewImportCandidate(cands[0]!.id, "accept");
     const ko = (await koService.list()).find((k) => k.id === r.koId)!;
-    expect(ko.sources).toEqual([
-      expect.objectContaining({ provider: "Confluence", externalId: "PX", sourceVersion: 1 }),
-    ]);
+    expect(ko.sources).toEqual([]);
 
     // Re-Accept desselben pageId-Items → NEUES KO (kein Upsert/Re-Sync), da pageId ignoriert wird.
     const [again] = await library.createImportCandidates(
@@ -585,17 +569,17 @@ describe("LibraryService", () => {
 });
 
 describe("LibraryService — Audit (FR-AUD-01)", () => {
-  it("protokolliert das Einreihen des Imports", async () => {
+  it("protokolliert den Import", async () => {
     const audit = new AuditService({ repo: new InMemoryAuditRepo() });
     const koService = new KoService({ repo: new InMemoryKoRepo() });
     await koService.activateSearchProjectionV2();
     const library = new LibraryService({ koService, audit });
-    await library.createImportCandidates(
+    await library.importJson(
       [{ title: "X", statement: "Y", type: "lernkurve", category: "A" }],
       "importer",
       OHNE_AEHNLICHKEIT,
     );
-    const entries = await audit.list({ action: "import.candidates-created" });
+    const entries = await audit.list({ action: "library.import" });
     expect(entries).toHaveLength(1);
     expect(entries[0]?.actor).toBe("importer");
   });
@@ -807,7 +791,7 @@ describe("SCRUM-515: Import-Vertraulichkeit runtime-validiert (nie intern aus Fr
     expect(ko.confidentiality).toBe("vertraulich"); // restriktiv gezogen, NIE intern
   });
 
-  it("unbekannter confidentiality-TYP (Zahl) im Payload → KO vertraulich (nie intern)", async () => {
+  it("importJson: unbekannter confidentiality-Typ im Payload → KO vertraulich (nie intern)", async () => {
     const koService = new KoService({ repo: new InMemoryKoRepo() });
     await koService.activateSearchProjectionV2();
     const library = new LibraryService({ koService });
@@ -818,9 +802,8 @@ describe("SCRUM-515: Import-Vertraulichkeit runtime-validiert (nie intern aus Fr
       category: "X",
       confidentiality: 999,
     } as unknown as ImportItem;
-    const [c] = await library.createImportCandidates([poisoned], "importer", OHNE_AEHNLICHKEIT);
-    const r = await library.reviewImportCandidate(c!.id, "accept", "importer");
-    expect(r.koId).toBeTruthy();
+    const res = await library.importJson([poisoned], "importer", OHNE_AEHNLICHKEIT);
+    expect(res.imported).toBe(1);
     const ko = (await koService.list()).find((k) => k.title === "Fremd B")!;
     expect(ko.confidentiality).toBe("vertraulich");
   });
