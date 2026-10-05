@@ -521,6 +521,9 @@ export interface KnowledgeObject {
   measures: string[];
   type: KnowledgeType;
   category: string;
+  // R-0431 / R-1728 / FR-LIB-01 (K2): das Fachgebiet, unabhängig von der Kategorie (Spiegel von
+  // services/knowledge-object/src/types.ts). Fehlt = kein Fachgebiet angegeben, nichts abgeleitet.
+  domain?: string;
   tags: string[];
   confidence: number;
   trust: number;
@@ -589,6 +592,9 @@ export interface KnowledgeObject {
   reviewVotes?: { up: number; warn: number; down: number };
   // SCRUM-507 R2: Anzahl Bewertungen aus einer FRÜHEREN Revision — veraltet, zählen nicht mehr.
   staleVotes?: number;
+  // PRÜFSTATUS-ANZEIGE (N-0054): Spiegel von `services/knowledge-object/src/types.ts` — der Verweis
+  // auf die Validierungsentscheidung. Steht er da, hat ein Mensch fachlich entschieden.
+  validationDecisionRef?: { auditSeq: number; auditHash: string };
   asset: string | null;
   createdAt: string;
   history: HistoryEntry[];
@@ -620,6 +626,13 @@ export interface KnowledgeObject {
     // gilt für einen früheren Stand von Inhalt, Quellen, Einordnung oder Vertraulichkeit — er ist
     // nicht aktuell, gleich was Status und Abdeckung sagen.
     ueberholt?: boolean;
+    // PRÜFSTATUS-ANZEIGE (R-0208) · NUR LESEFASSUNG DES PRÜFBRETTS, nie gespeichert. `laeuft`
+    // (nur bei pending): der Worker bearbeitet den Job gerade — sonst ist er bloß ausstehend.
+    // `konfliktGefunden` (nur bei done): zu DIESEM Objekt als Subjekt steht ein offener, automatisch
+    // erkannter Konflikt, dessen Gegenseite der Leser sehen darf. Fehlt das Feld, ist es nicht
+    // erhoben — es heißt dann weder „kein Konflikt" noch „läuft nicht".
+    laeuft?: boolean;
+    konfliktGefunden?: boolean;
   };
 }
 
@@ -727,6 +740,18 @@ export interface AuditVerifyReport {
   firstDeviation?: { seq: number; at: string; action: string; kind: ChainDeviationKind };
 }
 
+// Aufnahme gesamt-auditprotokoll (R-0613): Export der Kette (GET /api/audit/export). Spiegelt
+// `AuditChainExport` aus services/audit/src/service.ts. `head` ist der Wert zum Ablegen außerhalb.
+export interface AuditChainExport {
+  format: "klarwerk-audit-export";
+  formatVersion: 1;
+  exportedAt: string;
+  count: number;
+  head: { seq: number; hash: string } | null;
+  inspection: AuditVerifyReport;
+  entries: AuditEntry[];
+}
+
 // SCRUM-422: Papierkorb-Zeile (Admin) — nur Metadaten.
 export interface TrashedKo {
   id: string;
@@ -826,7 +851,12 @@ export interface OverlapDetector {
   // die Anzeige führt dann konsistent über die Textdeckung (siehe overlapDetectorInfo.isModelFinding).
   confidence?: number;
   rationale?: string;
+  // R-0194: Herkunft des Kandidaten (Spiegel von services/conflicts OverlapDetector).
+  candidateSources?: CandidateSource[];
+  checksumSimilarity?: number;
 }
+
+export type CandidateSource = "metadaten" | "text" | "pruefsumme" | "abschnitt";
 
 export interface OverlapResolution {
   reason: OverlapResolutionReason;

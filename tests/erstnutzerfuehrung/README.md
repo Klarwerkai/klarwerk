@@ -4,6 +4,160 @@ Auftrag `aufnahme:20260922:gesamt-erstnutzerfuehrung`: Aufgabenrevision 2, Lauf 
 Stand der Fassung **1.0.0-beta.1.632** (Basis `8f0ec01c`), abgeglichen am 29.09.2026. Fortgesetzt in
 Aufgabenrevision 9, Lauf 3, Runde 1 (01.10.2026, Basis `21ee1ef0`); siehe „Lauf 3“ unten.
 
+## Folgeauftrag `…-quellen` (Option B, Revision 4): Zuordnung und Umsetzung
+
+Auftrag `aufnahme:20260922:gesamt-erstnutzerfuehrung-quellen`, Basis `2042438a`, 03.10.2026. Hier
+geht es um die fünf Zielzustände, die Pedi mit `entscheidung:622a6ae6` (Option B) aus dem
+Ursprungsauftrag ausgelagert hat. Die Zeilen weiter unten (Lauf 1) bleiben als älterer Abgleich
+stehen. **Quellenlage:** Die Auftragsquelle enthält zu R-0455, R-0928, R-0939, R-1012 und R-1675 nur
+den Kurzwortlaut und Verweise auf die Quellenpakete (`aufnahmepunkte-004.json` `$[68]`,
+`aufnahmepunkte-008.json` `$[21]`, `$[32]`, `$[105]`, `aufnahmepunkte-021.json` `$[10]`). Den
+Originalwortlaut dieser Pakete gibt es weder in der Auftragsquelle noch im Repository. Die Zuordnung
+unten stützt sich daher auf Repository, Git-Historie und `OFFEN.md`.
+
+| Zielzustand | Stand heute | Beleg |
+|---|---|---|
+| **R-0455** Erstbesucher findet ohne Erklärung, wonach er sucht (Inventar, Anschlusspaket, Rotvertrag, Klarheitsvertrag, Ownerpaket) | **Nacharbeit 11: Inventar, Rotvertrag und Ownerpaket zugeordnet** · Anschlusspaket, Klarheitsvertrag **weiter nicht auffindbar** · technische Wege belegt, Menschenprobe offen | Abgleich der aufgefundenen Unterlagen: Abschnitt „R-0455 · Abgleich mit Inventar PRO 211 und Ownerpaket JOB 855“ direkt unter dieser Tabelle. Die folgende Spalte ist der ältere Stand (Repository-Suche) und bleibt als Herkunft stehen: Gesucht wurde in Repository und `git log --all` (Nachrichten), auch nach Schreibvarianten. **Ownerpaket, Klarheitsvertrag:** kein Treffer. **Rotvertrag:** nur als allgemeiner Prüfbegriff des Hauses (z. B. `tests/capture/frontdoor-bedeutung-mounted.test.tsx:28`), kein Erstbesucher-Artefakt. **Anschlusspaket:** nur `dbe0e182` (JOB 4156, „Anschlusspaket WIKI-GESAMTANWEISUNG-ANSCHLUSS“), das ist ein anderes Thema. **Inventar:** Es gibt die Funktionsinventare `tests/design/h1…h6-funktionsinventar.test.ts`. Ob eines davon das genannte Inventar ist, lässt sich nicht belegen. **Abgeleitetes Kriterium:** (a) Jede Funktion, die von der Startfläche verschwunden ist, hat einen benannten, bedienbaren Ort (`tests/design/h5-funktionsinventar.test.ts`, Chromium). (b) Die Startfläche trägt keinen Erklärtext über 40 Zeichen (`tests/design/zielbild-h5-kein-erklaertext.test.ts`). (c) **Neu:** Ein Blatt nennt alle Kernbereiche mit Namen, Zweck und Weg (R-1012 unten). Ob ein Mensch damit „ohne Erklärung findet“, belegt erst ein Nachtest mit Menschen. |
+| **R-0928** Kurze thematische Einstiegsseiten (Erfassen, Validieren, Fragen, Bibliothek) → volle Konsole | **Nacharbeit 10: gebaut** — vier Einstiegsansichten `/einstieg/{erfassen,pruefen,fragen,bibliothek}` (`pages/Einstieg.tsx`, `lib/einstiege.ts`), je Zweck, erster Schritt und Übergabe an die Vollfunktion, benannt im Blatt „Über KLARWERK“; Tests `einstiege.test.tsx` E0–E4, Chromium I13. Menschliche Orientierung offen. (Vorher: eigene Einstiegsseiten offen, Teilersatz geliefert.) | Eigene Seiten gab es nie. `routes.tsx` hat keine Einstiegsroute, und unter `apps/web/src/pages` gibt es keine Missionsseite (Stand `bf9fcf1c` bestätigt). Seit diesem Auftrag führt das Blatt „Über KLARWERK“ zu allen vier Themen, je mit einem Satz und einem Weg in die volle Funktion (`lib/faehigkeiten.ts`, Test F0c/F1/F4). Das ist **keine** eigene Seite je Thema. Ein Neubau ist ohne Entscheidung nicht erfolgt (Frage 1 unten). |
+| **R-1675** „Missions“-Einstiegsseiten → Vollfunktion (**optional** laut Quelle) | **geliefert, dann abgelöst** (Kachelform) | Geliefert in `9be7466b` (26.06., `lib/missions.ts`, Kacheln auf Start). Zurückgenommen mit mega38 G2 (Pedi 27.07.: „eine zweite Navigation in Kachelform“) und gelöscht in `5150cd5a` (28.07.). Beide Commits sind in der Historie geprüft. Die Ablösung bleibt wirksam. Nichts wurde zurückgebaut oder neu gebaut. |
+| **R-0939** Kernschleife erfassen → prüfen → finden, erhoben und priorisiert | **Nachweis fehlte** · Erhebung **hier geliefert** (s. u.) | Im Repository gab es keine Dokumentation der Erhebung oder Priorisierung. Deshalb ist die Erhebung unten das Ergebnis dieses Auftrags. Die Übersicht ordnet die Bereiche in genau dieser Schleife (F0b). |
+| **R-1012** Einstiegsfläche: umfassendes Bild, was das System kann | **zugeordnet** (`OFFEN.md:123` U4 / SCRUM-474) · **geliefert** als Fähigkeitsübersicht im Blatt „Über KLARWERK“ | Das Blatt hat jetzt unter dem Zwecksatz den Abschnitt „Was KLARWERK kann“: drei Schritte, acht Bereiche, je Name, Satz und Weg, dazu der Weg zur Hilfe. Der Ort ist das „…“-Menü und nicht das Sichtfeld. So bleiben H5 (Pedi 04.09., ≤ 40 Zeichen Erklärtext) und mega38 G2 (keine Kacheln auf der Fläche) unberührt. Namen und Ziele kommen aus `app/navigation.ts`, es gibt kein zweites Register. Bereiche außerhalb der Rolle bleiben als Auskunft stehen (`RoleLink`). Test: `faehigkeitsuebersicht.test.tsx` F0–F5. Der Startziel-Sammler `tests/app/mega51-startziele-erreichbar-sammler.test.ts` ist nachgeführt (`/duplikate` als Lage für viewer/experte). |
+
+### R-0455 · Abgleich mit Inventar PRO 211 und Ownerpaket JOB 855 (Nacharbeit 11)
+
+**Herkunft.** Das Register führt R-0455 als Sammelklammer über die Einzelbefunde Ortszeile,
+sichtbarer Suchraum und Filterzustand (`QUELLEN-ERGAENZUNG.json`, R-0455: `notiz`/`qualification`),
+mit der Herkunft `03_AUFTRAEGE/planung/PLAN-PRO-DEMO-UX-V1-U3-WISSEN-FINDEN-READONLY-INVENTAR-211.md`
+und dem Altstand „GEBAUT, Einbau nicht belegt: JOB 855 D1 BEN8 GRUEN (15.08., Ownerpaket), kein
+Commit im Produkt-Repo gefunden, Ordner pro_pausiert. Planungskette PRO 204/206/211/213/218/222/235/241
+und BASIC 170/173/226/251“ (`FUNKTIONSREGISTER.json:10695`).
+
+**Wie gelesen.** Beide Unterlagen liegen außerhalb des Arbeitsbaums
+(`/Users/peterkohnert/Documents/Projekt_klarwerk/03_AUFTRAEGE/…`); der direkte Lesezugriff ist
+diesem Auftrag technisch gesperrt. Gelesen wurde der Wortlaut, den Bens Prüfung in Nacharbeit 3
+ausgegeben hat (`HISTORIE/nacharbeit-3/BEN/STREAM.jsonl`, Zeilen 18 und 22): PRO 211 **vollständig**,
+von JOB 855 **nur die Gliederung** (Bens Suche `^#|\.md|Rotvertrag|Klarheits|Anschluss|Inventar`)
+und das Urteil `BEN8-PRUEFUNG-JOB-855-D1.md`. **Nacharbeit 16:** Bens Prüfung hat inzwischen den
+**Volltext** von JOB 855 und PRO 206 Zeilen 45–205 (darin §§2.1–2.3, 3.1, 3.2) ausgegeben
+(`HISTORIE/nacharbeit-16/BEN/STREAM.jsonl`, Zeilen 17 und 20); der Abgleich unten stützt sich darauf.
+
+| Artefakt | Zuordnung | Inhalt (soweit belegt) |
+|---|---|---|
+| **Inventar** | `03_AUFTRAEGE/planung/PLAN-PRO-DEMO-UX-V1-U3-WISSEN-FINDEN-READONLY-INVENTAR-211.md` (PRO 211, 03.08.2026) | Read-only-Inventar zu U3 „Wissen finden“, nichts implementiert. Befund: alle Wege von `/start` nach `/bibliothek` lagen im einklappbaren Orientierungsblock; ab dem zweiten Besuch war die Bibliothek von der Startseite aus **gar nicht gerendert**. Vorgeschlagener Schnitt: ein dauerhafter, ruhiger Zweitweg (`RoleLink` auf `/bibliothek`) plus Text DE/EN/NL. Drei Ownerentscheidungen offen (Wortwahl, Platzierung, i18n-Schlüssel; `SYNC_0066`). |
+| **Rotvertrag** | PRO 211 §1 („Daraus folgt der nicht-vakuume Rotvertrag“) und §5 (Verträge R-U3-1 … R-U3-5) | R-U3-1: im eingeklappten Zustand ein Weg nach `/bibliothek` · R-U3-2: auch ohne `?demo=` · R-U3-3: kein zweiter Primärweg (`kw-cta-primary`, BASIC 170 A2) · R-U3-4: Rolle ohne Recht → Lage statt Link · R-U3-5: Text in DE/EN/NL. |
+| **Ownerpaket** | `_relay/kopf/outbox/RUECKGABE-PRO3-JOB-855-D1-U3-WISSEN-FINDEN-OWNERPAKET.md` (JOB 855 D1, Revalidierung von PRO 206), Urteil BEN8 GRÜN (15.08.2026) | Gliederung: Gegenstand/Betriebsfall/Nicht-Ziele · Zitate als Messungen · Ownerfrage 3 „beide Optionen heute noch frei“ · Abweichungen vom Plan · Zielvertrag/Fälle/Kandidaten · Risiken/Entscheidungen/Empfehlung. BEN8: Abschluss `ENTSCHEIDUNG_NOETIG`, **drei Ownerfragen offen**, kein Produktwrite; Prüfkandidaten für einen späteren Write: sichtbarer Text am zielführenden Knoten, Negativtest gegen Plaketten-Treffer, Kontexttest ohne `?demo=stage1`, keine Aufnahme in `startCtas.ts`, i18n-Duplikatprüfung. **Volltext (Nacharbeit 16):** Betriebsfall (§1) — eine Person soll auf der Startseite einen Weg zu **ihrem eigenen**, gerade erfassten Wissen finden. Die Lücke, wörtlich: „Nicht ‚das Wort fehlt‘. Sondern: das Wort trägt keinen Weg, und die zwei Wege tragen andere Worte.“ (Plakette „Wissen finden“ ohne Ziel; Wege „Gesichert“ und „2 · Wissen ansehen“). §3: `nav.library` ist eine **ausgeschlossene Scheinoption** (nach PRO 206 §2.3: „‚Bibliothek‘ — ein Substantiv, keine Handlung“), ebenso `demo.proof.find`; wählbar sind nur `start.findKnowledge` (neu) oder `capture.savedViewLibrary`. §5: Zielvertrag `R1′` prüft „den **sichtbaren Text am DOM-Knoten, der das Ziel trägt**“, ein Vertrag, der nur das Ziel `/bibliothek` sucht, wäre vakuum-grün; `R2′` ohne Demo-Parameter. §6: Empfehlungen W-B (eigenen Beitrag benennen), P-B (dauerhaft sichtbar, ruhiger Zweitweg), S-A (eigener Schlüssel) — **ausdrücklich keine Entscheidung**. |
+| **Anschlusspaket** | **nicht auffindbar** | Weder PRO 211 noch die JOB-855-Gliederung nennen es; Bens Suche nach `Anschluss` in JOB 855 fand keine Zeile. Die Register-Planungskette (PRO 204/206/213/218/222/235/241, BASIC 170/173/226/251) liegt nicht vor. Einziger Namenstreffer im Repository bleibt `dbe0e182` (anderes Thema). |
+| **Klarheitsvertrag** | **nicht auffindbar** | Kein Treffer in PRO 211; Bens Suche nach `Klarheits` in JOB 855 fand keine Zeile. Nahe liegt der in PRO 211 erwähnte Benennungsvertrag aus PRO 204 §3.2 (`R1′`/`R2′`, „hängt an der Benennung“) — das ist eine Vermutung, kein Beleg. |
+
+**Abgleich gegen den heutigen Kandidaten.** Die alte Freigabe (BEN8 GRÜN) galt einer Bestandsanalyse
+und ist **kein** heutiger Funktionsnachweis; gemessen wird am Kandidaten:
+
+| Anforderung aus PRO 211 / JOB 855 | Heute | Gegenprobe |
+|---|---|---|
+| R-U3-1 dauerhafter Weg von `/start` zur Bibliothek, auch nach dem Erstbesuch | Der Einklappblock ist seit JOB 3064 H5 weg; der Weg steht dauerhaft im Kopfband (`shell/KopfbandPunkte.tsx`, `data-kopfband-punkt="bibliothek"`, JOB 3060 H1) | I11 (Chromium): Kopfbandlink auf `/start`, `href="/bibliothek"`, Klick landet auf der Bibliothek. I11 läuft nach mehreren früheren `/start`-Besuchen derselben Sitzung, also nicht im Erstbesuch. **Belegt ist damit nur der WEG, nicht die verlangte Benennung** — siehe „Abgleich am zielführenden Knoten“ unten |
+| R-U3-2 ohne `?demo=` | erfüllt | I11: Adresse `/bibliothek` mit leerem `location.search` |
+| R-U3-3 kein zweiter Primärweg | erfüllt | **neu in I11:** der Link trägt nicht `kw-cta-primary` |
+| R-U3-4 Rolle ohne Recht → Lage | `/bibliothek` ist `viewer`, also für jede Rolle ein Weg | E2/F2/F6 (jsdom): Bibliothek bleibt für viewer ein Link |
+| R-U3-5 Text DE/EN/NL | `nav.library` in drei Sprachen | F0d (jsdom) |
+| Register-Qualifikation: Ortszeile, sichtbarer Suchraum, Filterzustand | Ortszeile `library-scope-bar` über dem Suchfeld, Bereichsmenü mit sichtbarem Zähler | I11 (Ortszeile, Suchraum, Treffer mit Kennung, Filter `Bereich · 1`, Rücknahme), I11b (beide Bereiche wählbar, auch nach trefferloser Suche) |
+| JOB 855: benannter Weg zum eigenen erfassten Wissen | Teilweise: „Meine Entwürfe“ auf `/start` (JOB 3266) für Entwürfe; Ortszeile „Meine Ablage“/„Alle Inhalte“ in der Bibliothek (JOB 381, Pedis Entscheidung zur Reihenfolge) für eigene Objekte | `tests/d1-meine-entwuerfe/`; die Ortszeile prüft I11 nur auf Anzeige, nicht auf das Umschalten nach „Meine Ablage“ |
+
+**Abgleich am zielführenden Knoten (JOB 855 §§1, 3, 5; PRO 206 §§2.3, 3.1, 3.2), Nacharbeit 16.** Die
+Zeile R-U3-1 oben belegt nur, dass ein **Weg** von `/start` zur Bibliothek dauerhaft existiert — das ist
+genau der Vertrag, den JOB 855 §5 als vakuum-grün bezeichnet. Gemessen am tatsächlich verlangten
+**sichtbaren Handlungshinweis am Knoten, der das Ziel trägt**, steht der heutige Kandidat so:
+
+| Knoten heute | Sichtbarer Text am Knoten | Ziel | Gegen JOB 855 / PRO 206 |
+|---|---|---|---|
+| Kopfband `data-kopfband-punkt="bibliothek"` (dauerhaft, jede Seite) | „Bibliothek“ (`nav.library`) | `/bibliothek` | **Nicht erfüllt.** Genau die ausgeschlossene Scheinoption („Substantiv, keine Handlung“, PRO 206 §2.3); benennt das eigene Wissen nicht. |
+| Blatt „Über KLARWERK“ → Übersicht, Eintrag „Bibliothek“ | Name „Bibliothek“ + Satz „Den ganzen Bestand durchsuchen …“ | `/bibliothek` | **Nicht erfüllt.** Handlung beschrieben, aber für den ganzen Bestand, nicht für den eigenen Beitrag; hinter „…“, also nicht dauerhaft sichtbar (P-B). |
+| Einstieg `/einstieg/bibliothek` → „Weiter zu „Bibliothek““ | Handlungswort + Bereichsname | `/bibliothek` | **Nicht erfüllt** im Sinn von W-B: kein Bezug zum eigenen Beitrag; zwei Klicks hinter dem Blatt. |
+| `/start` → „Meine Entwürfe“ (JOB 3266) | „Meine Entwürfe“ (`fd.saved.toDrafts`) | `/erfassen?entwuerfe=1` | **Teilweise:** benennt Eigenes und ist dauerhaft sichtbar, führt aber zu **Entwürfen**, nicht zum eingereichten bzw. geprüften eigenen Wissen. |
+| Erfolgsfläche nach dem Erfassen (`lib/captureSuccess.ts:36`) | „In der Bibliothek ansehen (eigenes Wissen)“ (`capture.savedViewLibrary`, Option S-B) | Bibliothek | **Nur an der Erfassungsfläche**, nicht auf der Startseite — der Betriebsfall ist ausdrücklich die Startseite. |
+| Bibliothek → Ortszeile „Meine Ablage“ (JOB 381) | „Meine Ablage“ | eigene Objekte (Umschalter, kein Weg von Start) | **Teilweise:** benennt das Eigene, aber erst NACH dem Betreten der Bibliothek über das Substantiv. |
+| Plakette „Wissen finden“ (`demo.proof.find`) | „Wissen finden“, ohne Ziel | — | **Abgelöst als Gefahr:** seit JOB 3064 H5 steht sie nur noch im Menüblatt `demo` hinter „…“ (`components/start/StartPanel.tsx`, `PROOF_CHAIN`), nicht mehr auf der Startfläche; die Dopplung aus W-A tritt auf `/start` nicht mehr auf. |
+
+**Ergebnis:** Der Betriebsfall „auf der Startseite einen Weg zu **seinem eigenen** erfassten Wissen
+finden, mit sichtbarem Handlungshinweis am zielführenden Knoten“ ist **nicht erfüllt** und **nicht
+belegt abgelöst**. Die Bausteine dafür existieren (Ortszeile „Meine Ablage“, Text
+`capture.savedViewLibrary`), aber kein dauerhaft sichtbarer Knoten von `/start` trägt sie.
+
+**Quellenwiderspruch.** PRO 206/JOB 855 (August 2026) verlangen einen zusätzlichen, dauerhaft
+sichtbaren Startweg mit Handlungswort; Pedis jüngere Startseitenentscheidung (JOB 3064 H5, 04.09.:
+auf `/start` nur Frage, Feld, „FÜR DICH“, „ZULETZT“, Erklärung hinter „…“; Kopfband nach Zielbild
+`Main.dc.html` mit Bereichsnamen, JOB 3060 H1) hat den Ort und die Benennung seither anders geordnet.
+Ob H5/H1 die drei Ownerfragen bewusst abgelöst haben, belegt keine Unterlage. Dieser Auftrag baut
+deshalb **nichts** auf `/start` und wählt keine Option.
+
+**Frage an Pedi (Frage 4 unten).** Die frühere Schreibfreigabe und die Reihenfolgebindung aus PRO 206
+§4 (BEN 203, A2-Rotkorrektur) werden **nicht** als heutiges Abnahmetor übernommen; der BEN-194-Nachtest
+(PRO 206 §3.2, Wegprotokoll `WP`) ist eine Menschenprobe und bleibt offen.
+
+**Verbleibende Anforderungen und Grenzen:**
+1. Der **benannte Startweg zum eigenen Wissen** (Betriebsfall JOB 855 §1) ist offen; Entscheidung bei Pedi (Frage 4). Die **drei Ownerfragen** (Wortlaut W-A/W-B, Platzierung P-A/P-B, Schlüssel S-A/S-B) sind weiterhin unbeantwortet; dieser Auftrag trifft sie nicht.
+2. Der Volltext von JOB 855 ist abgeglichen; weitere Verträge über `R1′`–`R4′` hinaus enthält er nicht. `R4′` (gemeinsame zugängliche Gruppenbenennung) ist laut PRO 206 §3.1 vor einem Write neu zu messen.
+3. **Anschlusspaket** und **Klarheitsvertrag** bleiben nicht auffindbar: auch der Volltext von JOB 855 und PRO 206 Zeilen 45–205 nennen sie nicht. Der Benennungsvertrag `R1′` (PRO 204 §3.2) bleibt die naheliegende, aber unbelegte Zuordnung für „sichtbarer Klarheitsvertrag“.
+4. Dass ein Mensch ohne Erklärung findet, was er sucht, ist nicht nachgewiesen (Menschenprobe offen, vgl. BEN-194-Nachtest).
+
+### R-0939 · Erhebung der Kernschleife (Stand `2042438a`, am Code)
+
+Der Weg in Schritten, mit dem Übergang, der im Code existiert:
+
+| Nr. | Übergang | Im Code | Lage |
+|---|---|---|---|
+| S1 | Start → Finden | Feld „Was möchtest du wissen?“ → `/fragen?q=…&ask=1` (`pages/Start.tsx:113`) | geschlossen |
+| S2 | Start (leerer Bestand) → Erfassen | Zeile „Noch kein Wissen im Bestand — das erste erfassen“ → `/erfassen` (`pages/Start.tsx:331-349`) | geschlossen |
+| S3 | Finden ohne Treffer → Erfassen | Bibliothek „Nichts gefunden.“ + „Erfassen“ (`BibliothekListe.tsx`) · Fragen ohne Modell: Bibliothek/Erfassen (`components/fragen/Antwortbausteine.tsx:78-87`) · Palette/Hilfe → Fragen (Lauf 1) | geschlossen; für „viewer“ ist Erfassen Auskunft statt Weg (Rolle) |
+| S4 | Erfassen → Prüfen | Nach dem Einreichen: „Eingereicht“ + Objektlink + „Validierung öffnen“ (`components/erfassen/Blatt.tsx:3444-3454`) | für Experten **Auskunft, kein Weg** (`/validierung` verlangt „controller“) |
+| S5 | Prüfen → zurück an die Autorin | Rückgabe erscheint als Aufgabe „Nacharbeit“ in „Meine Aufgaben“ (`lib/taskFilters.ts:13`, `task.returned`) | geschlossen für die Rückgabe |
+| S6 | Prüfen → Finden | Prüfseite öffnet das Objekt (`pages/Validation.tsx:1337`, `:1469`) | geschlossen |
+| S7 | Freigabe → Autorin erfährt es | `NotificationKind` kennt nur `conflict`, `duplicate`, `gap`, `assignment`, `impact` (`api/types.ts:2500`) | **Abbruchstelle**: keine eigene Meldung bei Freigabe |
+
+**Priorisierung (Vorschlag dieses Auftrags, Begründung je Punkt):**
+
+1. **S7 – Freigabe kommt bei der Autorin nicht an (hoch).** Hier fällt der Mensch aus der Schleife.
+   Wer erfasst, erfährt nicht, dass sein Wissen jetzt gefunden werden kann. Behebung wäre eine neue
+   Meldungsart, also eine neue Funktion, und die schließt U4 aus („keine neue Funktion“). **Nicht
+   gebaut**, Frage 2 an Pedi.
+2. **S4 – „Validierung öffnen“ ist für Experten kein Weg (mittel).** Das ist bewusst so (mega70 B,
+   Rollenrecht) und kein Fehler. Der Mensch sieht aber keinen nächsten Schritt außer „Neuer
+   Eintrag“. Nicht geändert, weil das die Rechtelogik berührt (U4-Grenze).
+3. **S3 – Nulltreffer für „viewer“ (niedrig).** Der Weg „Erfassen“ erscheint als Auskunft. Das ist
+   rollenrichtig, und „Fragen“ bleibt als Alternative.
+4. **S1, S2, S5, S6 – geschlossen.** Kein Handlungsbedarf aus dieser Erhebung.
+
+**Grenze der Erhebung:** Sie liest den Code. Gemessene Abbruchquoten echter Nutzer gibt es nicht.
+Dafür fehlen Nutzungsdaten oder ein Nachtest mit Menschen.
+
+### Fragen an Pedi (mit Optionen)
+
+1. **R-0928 – eigene thematische Einstiegsseiten?** (A) Das Blatt „Über KLARWERK“ mit Übersicht
+   genügt, R-0928 gilt damit als erfüllt. (B) Je Thema eine kurze eigene Seite unter neuer Route,
+   was gegen mega38 G2 und H5 abzuwägen wäre. (C) R-0928 als durch mega38 G2 abgelöst schließen.
+   Ohne Entscheidung bleibt R-0928 **offen**.
+2. **R-0939/S7 – Meldung bei Freigabe an die Autorin?** (A) Neue Meldungsart „freigegeben“ in „FÜR
+   DICH“/Glocke, als eigener Auftrag, weil es eine neue Funktion ist. (B) Bewusst nicht. Dann bleibt
+   S7 als bekannte Abbruchstelle stehen.
+3. **R-0455 – die fünf Artefakte.** Sie sind im Repository nicht auffindbar. (A) Pedi oder die
+   Ursprungsquelle (`aufnahmepunkte-004.json` `$[68]`) nennt ihren Ablageort, dann wird nachgeführt.
+   (B) Das oben abgeleitete Kriterium (a)–(c) ersetzt sie. (C) R-0455 bleibt offen bis zum
+   Nachtest mit Menschen. *(Stand Nacharbeit 11/16: Inventar, Rotvertrag und Ownerpaket sind
+   zugeordnet; offen bleiben Anschlusspaket und Klarheitsvertrag.)*
+4. **R-0455 / JOB 855 – Startweg zum eigenen Wissen (Quellenwiderspruch PRO 206 ↔ H5/H1).** Das
+   Ownerpaket verlangt auf der Startseite einen dauerhaft sichtbaren Weg mit Handlungswort zum
+   **eigenen** erfassten Wissen; „Bibliothek“ ist dort als Handlungshinweis ausgeschlossen. Heute
+   führt dauerhaft nur der Kopfbandpunkt „Bibliothek“ dorthin.
+   (A) **H5/H1 haben die Ownerfragen abgelöst:** Kopfband „Bibliothek“ plus Ortszeile „Meine
+   Ablage“ in der Bibliothek genügen; R-0455 wird insoweit als abgelöst geschlossen.
+   (B) **Ownerpaket umsetzen, H5-verträglich:** ein ruhiger, dauerhaft sichtbarer Zweitweg auf
+   `/start` mit eigenem Wortlaut (z. B. „Mein Wissen wiederfinden“, W-B) und eigenem Textschlüssel
+   (S-A), Ziel Bibliothek mit voreingestellter „Meine Ablage“; dazu Pedis Entscheidung zur Zeile
+   unter dem Feld (neben „Meine Entwürfe“) und zum Wortlaut.
+   (C) **Wiederverwenden statt neu benennen:** derselbe Zweitweg mit dem vorhandenen Text
+   „In der Bibliothek ansehen (eigenes Wissen)“ (S-B), ohne neuen Schlüssel.
+   (D) **Erst messen:** der BEN-194-Nachtest (Wegprotokoll `WP`) entscheidet empirisch, ob
+   Menschen den Weg zum eigenen Wissen ohne Hinweis finden; bis dahin bleibt der Punkt offen.
+
 ## Lauf 3 (Revision 9): U2 und U3 im Browser, Abgrenzung Option B
 
 - **R-1507 / R-1609 gebaut:** `tests-smoke/erstnutzer-u2-u3-browser.spec.ts` misst die Hürden U2 und

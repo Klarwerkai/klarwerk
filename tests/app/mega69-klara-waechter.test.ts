@@ -2596,6 +2596,14 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // `script-src 'self'`/`style-src 'self'` der Dokument-CSP decken sie), dieselbe Cachekennung
     // `?v=__KW_FASSUNG__` wie `rueckweg.js`; Abrufziel, Manifest, Recht, Nutzlast unverändert;
     // kein erneutes Sideload.
+    // AUFNAHME m365-anmeldung (Lauf 1 am 25.09.2026, nach dem Schnitt in `taskpane.js` übertragen)
+    // — DER PIN MUSS DESHALB WANDERN (5fbf5f64… -> Hash des zusammengefügten Dokuments mit dieser
+    // Änderung; bei der Konfliktlösung am 05.10.2026 nicht berechenbar, s. Rückgabe).
+    // Abgelehntes Anmelde-Fenster im Rahmen fremder Herkunft: sofort `loginDialogDeclined` statt Rückfallfenster und fünf Minuten Warten
+    // (gemessen: tests/office-web-anmeldung/seitenfenster-abgelehnter-dialog.test.tsx).
+    //   · Abrufziel: keines neu. · CSP, Recht, Manifest: unverändert.
+    //   · Nutzlast: unverändert. · Sideload: keiner nötig. · Mac-Word/Browsertab: unverändert
+    //     (ohne Rahmenlage bleibt das Rückfallfenster der Weg, Gegenprobe A3).
     const PIN = "5fbf5f64546beb67d70799bb8d18bcf6d2adcc631d79e0b404658867baeb0978";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(
@@ -2793,7 +2801,18 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     //                  bisher geladen, nur endlich auch ABGEWARTET.
     //   · Sideload:    KEIN erneutes Sideload — die Datei wird wie jede andere unter `public/` neu
     //                  ausgeliefert.
-    const PIN = "4ae060ee0a4b832ce0c8d93ba1cb1fa9b9b83bd1d2076429208b84603cddf7e2";
+    // AUFNAHME m365-anmeldung RUNDE 2 (25.09.2026) — PIN BEWUSST AKTUALISIERT (4ae060ee… -> d30a829d…).
+    // Bens Befund (R-0355-Restfall SSO): der SSO-Start traegt jetzt die EINE Zielkennung
+    // (`/api/auth/oidc/start?ziel=word-addin`); der Rueckruf der Anwendung schickt das Fenster auf
+    // diese Seite zurueck, und sie uebergibt von selbst. Gemessen:
+    // tests/office-web-anmeldung/sso-rueckweg-zur-dialogseite.test.ts.
+    //   · Abrufziel: keines neu (derselbe SSO-Start, eine Query). · CSP, Recht, Manifest: unveraendert.
+    //   · OIDC-Einrichtung (`redirect_uri`): unveraendert. · Sideload: keiner noetig.
+    // AUFNAHME m365-anmeldung RUNDE 3 (25.09.2026) — PIN BEWUSST AKTUALISIERT (d30a829d… -> f63ac6bc…).
+    // Bens Befund: der sichtbare SSO-Hinweis sagte noch „Fenster schliessen, erneut druecken" —
+    // jetzt in drei Sprachen der automatische Rückweg (gemessen: dialogseite.test.ts S4b4b).
+    //   · Nur Texte; Abrufziele, CSP, Recht, Manifest unveraendert. · Sideload: keiner noetig.
+    const PIN = "f63ac6bc72ed1219f758c7a2d16d929f69d2faef9a1ca0f9c93478490f7c13d9";
     const ist = createHash("sha256").update(readFileSync(ANMELDUNG)).digest("hex");
     expect(
       ist,

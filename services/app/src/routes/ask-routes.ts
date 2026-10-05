@@ -769,7 +769,9 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
             reply.code(400).send({ error: "BAD_REQUEST", message: "Ungültige Priorität." });
             return;
           }
-          reply.code(200).send(await ask.setGapPriority(request.params.id, request.body.priority));
+          reply
+            .code(200)
+            .send(await ask.setGapPriority(request.params.id, request.body.priority, user.id));
           return;
         }
         // Close akzeptiert sowohl { close:true } als auch { action:"close" } (FE-Kopplung).

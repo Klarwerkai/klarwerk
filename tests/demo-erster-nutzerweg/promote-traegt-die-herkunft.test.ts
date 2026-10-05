@@ -160,22 +160,22 @@ async function buehne() {
 // ================================================================================================
 //
 // H12 und H13 brauchen einen Zustand, den der gesunde Weg nicht herstellt: das Wissensobjekt steht
-// im Bestand, und eine Zeile SEINER Belegkette fehlt. Genau den hinterlässt `finishCreated`, wenn
-// nach dem Insert etwas wirft — der Ablauf ist dort bewusst untransaktional (WP-SHIP8-CLOSE-5), und
-// genau dafür gibt es den idempotenten Nachzug `ensureCreatedSideEffects`. BEN hat diesen Fall in
-// Runde 2 gemessen; hier steht er dauerhaft.
+// im Bestand, und eine Zeile SEINER Belegkette fehlt. Bis zur Aufnahme gesamt-auditprotokoll
+// (Lauf 3) hinterließ ihn `finishCreated`, wenn nach dem Insert etwas warf (WP-SHIP8-CLOSE-5);
+// seitdem nimmt `finishCreated` die Anlage in diesem Fall zurück (H12b). Der Zustand bleibt als
+// ALTBESTAND möglich, und dafür gibt es den idempotenten Nachzug `ensureCreatedSideEffects`.
 //
 // HERGESTELLT AN DER STELLE, AN DER ER ECHT ENTSTEHT: der Belegablage. Verdrahtet wird über
 // dieselben öffentlichen Repos wie in `buildServices` (`inMemoryRepos` + `assembleServices`) — kein
 // Griff in Service-Interna, kein Nachbau des Dienstes.
 //
 // ZWEI ARTEN VON STÖRUNG, und beide braucht es wirklich:
-//   · `werfen` — die Ablage bricht. Das ist der echte Teilpersistenz-Fall des EINREICHWEGS (H12):
-//     das Objekt bleibt, der Vorgang scheitert.
-//   · `verschlucken` — die Zeile kommt nicht an, ohne Wurf. Für den DOKUMENTWEG (H13) ist das der
-//     einzig gangbare Weg: er nimmt bei JEDEM Fehler das ganze Objekt zurück (Rücknahmeklammer in
-//     `createWithDocumentsLocked`), und dann gäbe es nichts mehr nachzuziehen. Was hier gemessen
-//     wird, ist deshalb nicht der Wurf, sondern der ZUSTAND danach: Objekt da, Zeile fehlt.
+//   · `werfen` — die Ablage bricht. Beide Erstanlagewege nehmen dann das ganze Objekt zurück
+//     (Rücknahmeklammer in `createWithDocumentsLocked` und seit Lauf 3 in `finishCreated`):
+//     H12b misst, dass nichts übrig bleibt.
+//   · `verschlucken` — die Zeile kommt nicht an, ohne Wurf. Damit entsteht der Altbestand-Zustand
+//     für H12 und H13: gemessen wird nicht der Wurf, sondern der ZUSTAND danach — Objekt da, Zeile
+//     fehlt.
 type Belegstoerung = (record: Belegzeile) => "durchlassen" | "verschlucken" | "werfen";
 
 async function buehneMitBelegstoerung(stoerung: Belegstoerung) {
@@ -1350,12 +1350,12 @@ describe("JOB 3934 · der Promote trägt die Herkunft des Entwurfs ans Wissensob
   // doppelt. Hier steht die andere Hälfte derselben Zusage, und ohne sie wäre die erste wertlos:
   // ein Nachzug, der gar nichts schreibt, wäre trivial doppelfrei und nutzlos. Gemessen wird der
   // Zustand, für den es ihn gibt — das Objekt ist im Bestand, seine Belegzeile fehlt.
-  it("H12 · bricht die Belegablage beim Einreichen, zieht der Nachzug GENAU die fehlende Zeile nach", async () => {
+  it("H12 · fehlt beim Einreichen eine Belegzeile (Altbestand), zieht der Nachzug GENAU die fehlende Zeile nach", async () => {
     let gestoerteKennung: string | null = null;
     const { app, kopf, services } = await buehneMitBelegstoerung((record) => {
       if (record.kind === "source" && gestoerteKennung === null) {
         gestoerteKennung = record.koId;
-        return "werfen";
+        return "verschlucken";
       }
       return "durchlassen";
     });
@@ -1379,8 +1379,8 @@ describe("JOB 3934 · der Promote trägt die Herkunft des Entwurfs ans Wissensob
         stand,
         "4137luck-0000-4000-8000-000000000001",
       );
-      // DER BRUCH IST ECHT: der Vorgang scheitert, und zwar NICHT still.
-      expect(befoerdert.statusCode, befoerdert.body).not.toBe(201);
+      // Die Zeile ging verloren, ohne dass die Ablage warf — der Vorgang selbst ist gelungen.
+      expect(befoerdert.statusCode, befoerdert.body).toBe(201);
       const kennung = gestoerteKennung;
       if (!kennung) {
         throw new Error("Testaufbau: die Belegablage wurde gar nicht erst gerufen");
@@ -1409,6 +1409,50 @@ describe("JOB 3934 · der Promote trägt die Herkunft des Entwurfs ans Wissensob
         await belegkette(app, kopf, kennung),
         "WENN DIESE ZEILE ROT IST, schreibt der zweite Nachzug die eben nachgezogene Zeile noch einmal.",
       ).toEqual(geschlossen);
+    } finally {
+      await app.close();
+    }
+  }, 120_000);
+
+  // H12b · Aufnahme gesamt-auditprotokoll (Lauf 3): BRICHT die Belegablage beim Einreichen,
+  // bleibt KEIN Wissensobjekt zurück — insbesondere keines ohne `ko.created`.
+  it("H12b · bricht die Belegablage beim Einreichen, nimmt die Erstanlage das Objekt zurück — kein Objekt ohne Erfassungsbeleg", async () => {
+    let gestoerteKennung: string | null = null;
+    const { app, kopf, services } = await buehneMitBelegstoerung((record) => {
+      if (record.kind === "source" && gestoerteKennung === null) {
+        gestoerteKennung = record.koId;
+        return "werfen";
+      }
+      return "durchlassen";
+    });
+    try {
+      const entwurfId = await entwurfAusDocx(app, kopf);
+      const objektId = await originalSichern(app, kopf, entwurfId);
+      const stand = {
+        ...PFLICHT,
+        pendingSources: [
+          { label: "sample.docx", excerpt: QUELLSATZ, anchorKey: "anker-1", objectId: objektId },
+        ],
+        anchorDocuments: [
+          { key: "anker-1", objectId: objektId, name: "sample.docx", mime: DOCX_MIME },
+        ],
+      };
+      await speichernUndKalibrieren(app, kopf, entwurfId, stand, objektId);
+      const befoerdert = await einreichen(
+        app,
+        kopf,
+        entwurfId,
+        stand,
+        "4137luck-0000-4000-8000-00000000012b",
+      );
+      expect(befoerdert.statusCode, befoerdert.body).not.toBe(201);
+      const kennung = gestoerteKennung;
+      if (!kennung) {
+        throw new Error("Testaufbau: die Belegablage wurde gar nicht erst gerufen");
+      }
+      expect(await services.ko.get(kennung)).toBeUndefined();
+      expect(await services.audit.list({ action: "ko.created", target: kennung })).toEqual([]);
+      expect((await services.audit.verifyReport()).ok).toBe(true);
     } finally {
       await app.close();
     }

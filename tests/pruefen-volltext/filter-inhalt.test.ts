@@ -93,8 +93,9 @@ describe("JOB 3290 A/K · was der Prüfen-Volltextfilter heute leistet (und nie 
   it("K1 · KALIBRIERUNG: DIESELBE Marke trifft, sobald sie in der Kernaussage steht", () => {
     // Der Gegenpol zu A1 unten: gleiches Objekt, gleiche Zeichenfolge, nur ein anderes Feld.
     // Damit ist bewiesen, dass die Marke suchbar IST und A1 nicht an ihr scheitert.
+    // Bis zur Behebung (Aufnahme 20260922 · Prüfboard-Bedienung) stand hier zusätzlich der Befund
+    // als Tatsache: `suche(markeNurImInhalt, MARKE)` war `false`. Seitdem gilt A1 unten.
     expect(suche(ko({ statement: `Eine Aussage mit ${MARKE}.` }), MARKE)).toBe(true);
-    expect(suche(markeNurImInhalt, MARKE)).toBe(false); // der Befund, hier als Tatsache festgehalten
   });
 
   it("K2 · KALIBRIERUNG: der Filter unterscheidet überhaupt — Treffer und Nicht-Treffer", () => {
@@ -148,33 +149,32 @@ describe("JOB 3290 A/K · was der Prüfen-Volltextfilter heute leistet (und nie 
 });
 
 // ------------------------------------------------------------------------------------------------
-// A — DER SOLLVERTRAG. Jeder Fall behauptet das Ziel und schlägt heute kausal fehl.
+// A — DER SOLLVERTRAG. Bis zur Behebung standen alle fünf Fälle als `it.fails`; mit der Behebung in
+// `validationFilters.ts` (Aufnahme 20260922 · Prüfboard-Bedienung, N-0072) sind sie auf `it`
+// umgestellt, wie diese Datei es oben vorschreibt.
 // ------------------------------------------------------------------------------------------------
 describe("JOB 3290 A/S · SOLLVERTRAG: der Filter durchsucht auch den ausführlichen Inhalt", () => {
-  it.fails("A1 · die Marke steht NUR im ausführlichen Inhalt und wird gefunden", () => {
+  it("A1 · die Marke steht NUR im ausführlichen Inhalt und wird gefunden", () => {
     // Codex' Fall, wörtlich. Voraussetzung ausserhalb dieses Fehlschlags: K1 oben.
     expect(suche(markeNurImInhalt, MARKE)).toBe(true);
   });
 
-  it.fails("A2 · die Marke in der Bildbeschreibung trifft (figcaption im Inhalt)", () => {
+  it("A2 · die Marke in der Bildbeschreibung trifft (figcaption im Inhalt)", () => {
     const objekt = ko({
       bodyHtml: `<figure><img src="/api/objects/o1/raw" alt="Ventil"><figcaption>Ventil V2 ${MARKE}</figcaption></figure>`,
     });
     expect(suche(objekt, MARKE)).toBe(true);
   });
 
-  it.fails(
-    "A3 · die Bildbeschreibung trifft auch, wenn die Route sie OHNE bodyHtml liefert",
-    () => {
-      // Der Suchweg der Bibliothek liefert `captionTexts` und lässt `bodyHtml` weg
-      // (`services/knowledge-object/src/repo.ts:473-493`). Ein Prüfbrett-Objekt aus einem solchen Weg
-      // darf die Fußnote nicht verlieren — dieselbe Rückfallregel wie in `librarySearch.ts:172`.
-      const objekt = ko({ bodyHtml: null, captionTexts: [`Ventil V2 ${MARKE}`] });
-      expect(suche(objekt, MARKE)).toBe(true);
-    },
-  );
+  it("A3 · die Bildbeschreibung trifft auch, wenn die Route sie OHNE bodyHtml liefert", () => {
+    // Der Suchweg der Bibliothek liefert `captionTexts` und lässt `bodyHtml` weg
+    // (`services/knowledge-object/src/repo.ts:473-493`). Ein Prüfbrett-Objekt aus einem solchen Weg
+    // darf die Fußnote nicht verlieren — dieselbe Rückfallregel wie in `librarySearch.ts:172`.
+    const objekt = ko({ bodyHtml: null, captionTexts: [`Ventil V2 ${MARKE}`] });
+    expect(suche(objekt, MARKE)).toBe(true);
+  });
 
-  it.fails("A4 · sichtbarer Klartext bleibt suchbar, auch über Auszeichnung hinweg", () => {
+  it("A4 · sichtbarer Klartext bleibt suchbar, auch über Auszeichnung hinweg", () => {
     // Der Suchvertrag, den `htmlToPlainText` mitbringt und den die Behebung erben MUSS: `<em>`
     // verschwindet spurlos, eine Absatzgrenze wird zu GENAU EINEM Leerzeichen. Das Artefakt der
     // alten, naiven Reduktion („V2 ,") ist dabei ausdrücklich KEIN Treffer.
@@ -184,15 +184,10 @@ describe("JOB 3290 A/S · SOLLVERTRAG: der Filter durchsucht auch den ausführli
     expect(suche(objekt, "V2 ,")).toBe(false);
   });
 
-  it.fails(
-    "A5 · ANTI-VAKUUM des Sollvertrags: eine Marke, die nirgends steht, trifft NICHT",
-    () => {
-      // Dieser Fall schlägt heute aus dem GEGENTEILIGEN Grund fehl wie A1: die erste Erwartung
-      // (Nicht-Treffer) gilt schon jetzt, die zweite (Treffer im Inhalt) nicht. Er ist der Schutz
-      // davor, den Filter später einfach auf „trifft immer" zu stellen — dann bliebe A1 grün, dieser
-      // Fall aber würde als bestanden gemeldet und die Umstellung auf `it` fiele auf.
-      expect(suche(ko({ bodyHtml: "<p>Ein Absatz ohne jede Marke.</p>" }), MARKE)).toBe(false);
-      expect(suche(ko({ bodyHtml: `<p>${MARKE}</p>` }), MARKE)).toBe(true);
-    },
-  );
+  it("A5 · ANTI-VAKUUM des Sollvertrags: eine Marke, die nirgends steht, trifft NICHT", () => {
+    // Der Schutz davor, den Filter einfach auf „trifft immer" zu stellen: der Nicht-Treffer muss
+    // ebenso gelten wie der Treffer im Inhalt.
+    expect(suche(ko({ bodyHtml: "<p>Ein Absatz ohne jede Marke.</p>" }), MARKE)).toBe(false);
+    expect(suche(ko({ bodyHtml: `<p>${MARKE}</p>` }), MARKE)).toBe(true);
+  });
 });

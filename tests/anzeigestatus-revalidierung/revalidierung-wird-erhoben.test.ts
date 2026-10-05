@@ -156,6 +156,8 @@ interface Zaehler {
   /** Die zwei Abfragen aus JOB 3043, damit die neue Zusage die alte nicht verdeckt. */
   listByKos: number;
   all: number;
+  /** PRÜFSTATUS-ANZEIGE (R-1524): die gezielte Zuweisungsabfrage statt `all`. */
+  zuweisungenJeKos: number;
   /** Die Kennungsfelder, die wirklich an die Merkerabfrage gehen. */
   gereicht: string[][];
 }
@@ -167,6 +169,7 @@ function zaehlerUm(repos: AppRepos): Zaehler {
     clearPending: 0,
     listByKos: 0,
     all: 0,
+    zuweisungenJeKos: 0,
     gereicht: [],
   };
   const echtFuer = repos.lifecycleRepo.pendingFor.bind(repos.lifecycleRepo);
@@ -194,6 +197,12 @@ function zaehlerUm(repos: AppRepos): Zaehler {
   repos.assignments.all = () => {
     zaehler.all += 1;
     return echtAlle();
+  };
+  // PRÜFSTATUS-ANZEIGE (R-1524): die gezielte Zuweisungsabfrage, die den Vollscan ersetzt.
+  const echtGezielt = repos.assignments.listByKos.bind(repos.assignments);
+  repos.assignments.listByKos = (koIds) => {
+    zaehler.zuweisungenJeKos += 1;
+    return echtGezielt(koIds);
   };
   return zaehler;
 }
@@ -251,9 +260,10 @@ describe("JOB 3054 · die Re-Validierung wird an beiden Leserouten erhoben, schr
       // KEIN RESTGRUND: „geprueft" und ein Enthaltungsgrund im selben Atemzug waeren zwei Aussagen
       // ueber denselben Eingang. Der Schluessel ist weg, nicht leer.
       expect(Object.keys(h.ungeprueft)).not.toContain("revalidierung");
-      // `konflikt` bleibt unveraendert ungeprueft — dieser Auftrag hat ihn ausdruecklich nicht.
-      expect(h.konflikt).toBe("ungeprueft");
-      expect(String(h.ungeprueft.konflikt).length).toBeGreaterThan(20);
+      // PRÜFSTATUS-ANZEIGE (R-0212): `konflikt` wird seither ebenfalls erhoben — ohne offenen
+      // Konflikt `geprueft`, ohne Restgrund.
+      expect(h.konflikt).toBe("geprueft");
+      expect(Object.keys(h.ungeprueft)).not.toContain("konflikt");
     }
   });
 
@@ -313,7 +323,9 @@ describe("JOB 3054 · die Re-Validierung wird an beiden Leserouten erhoben, schr
     expect(beiEinem.pendingFor).toBe(1);
     // Die Kosten aus JOB 3043 bleiben, wie sie waren — die neue Abfrage tritt NEBEN sie.
     expect(beiFuenfzig.listByKos).toBe(1);
-    expect(beiFuenfzig.all).toBe(1);
+    // PRÜFSTATUS-ANZEIGE (R-1524): die Zuweisungen kommen gezielt, kein Vollscan mehr.
+    expect(beiFuenfzig.all).toBe(0);
+    expect(beiFuenfzig.zuweisungenJeKos).toBe(1);
     // Und gefragt wird genau nach der sichtbaren Menge, nicht nach dem ganzen Bestand.
     expect(beiFuenfzig.gereicht).toHaveLength(1);
     expect(beiFuenfzig.gereicht[0]).toHaveLength(50);

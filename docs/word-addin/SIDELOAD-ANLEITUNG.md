@@ -66,6 +66,11 @@ in jeder Word-Mac-Version zuverlässig an — bei Pedi erschien Klara dort NICHT
   erkennt sie automatisch. Bricht das Warten nach 5 Minuten ab, einfach erneut klicken.
 - **Senden schlägt fehl (offline/Fehlermeldung):** Klara täuscht nie Erfolg vor — Meldung lesen;
   meist fehlt Netz oder die Anmeldung ist abgelaufen (erneut anmelden, nochmal senden).
+- **Abmelden und Konto wechseln:** im Klara-Panel Einstellungen → Konto → **Abmelden**, danach
+  **Bei KLARWERK anmelden** und im Anmelde-Fenster das andere Konto eintragen. Bereits angelegte
+  Entwürfe bleiben im Konto, mit dem sie gesendet wurden.
+- **Abnahme mit einem Microsoft-365-Testkonto:** Stammdaten, Ablauf und Zustände zum Abhaken stehen
+  in `ABNAHME-M365.md` (Abschnitt 3 für Word für Mac).
 - **Hinweis Domain:** `app.klarwerk.ai` leitet serverseitig auf `klarwerk.ai` um — das ist normal
   und im Manifest berücksichtigt (beide Domains freigegeben).
 - **Add-in wieder entfernen:** Weg A: Datei aus dem wef-Ordner löschen, Word neu starten.

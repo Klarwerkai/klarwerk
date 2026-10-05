@@ -1,4 +1,5 @@
 import type { Pool } from "pg";
+import { type Queryable, type TxContext, pgQueryable, poolQueryable } from "../../db-tx";
 import type { AssignmentRepo, RatingRepo } from "./repo";
 import type { Assignment, Rating } from "./types";
 
@@ -24,14 +25,25 @@ interface AssignmentRow {
   data: Assignment;
 }
 
+// Aufnahme gesamt-auditprotokoll (Lauf 3, Runde 2): mit `tx` laufen die Schreibwege auf dem
+// Transaktionsclient der Validierung (`KoService.setValidationStateMitBeleg`) — Bewertung,
+// Zuweisungsstatus, Validierungszustand und Entscheidungsbeleg committen gemeinsam oder gar nicht.
+function ziel(pool: Pool, tx?: TxContext): Queryable {
+  return tx ? pgQueryable(tx) : poolQueryable(pool);
+}
+
 export class PgRatingRepo implements RatingRepo {
   constructor(private readonly pool: Pool) {}
 
-  async upsert(rating: Rating): Promise<void> {
-    await this.pool.query(
+  async upsert(rating: Rating, tx?: TxContext): Promise<void> {
+    await ziel(this.pool, tx).query(
       "INSERT INTO ratings(ko_id,user_id,data) VALUES($1,$2,$3) ON CONFLICT (ko_id,user_id) DO UPDATE SET data=excluded.data",
       [rating.koId, rating.userId, JSON.stringify(rating)],
     );
+  }
+
+  async remove(koId: string, userId: string): Promise<void> {
+    await this.pool.query("DELETE FROM ratings WHERE ko_id=$1 AND user_id=$2", [koId, userId]);
   }
 
   async listByKo(koId: string): Promise<Rating[]> {
@@ -61,31 +73,47 @@ export class PgRatingRepo implements RatingRepo {
 export class PgAssignmentRepo implements AssignmentRepo {
   constructor(private readonly pool: Pool) {}
 
-  async create(assignment: Assignment): Promise<void> {
-    await this.pool.query(
+  async create(assignment: Assignment, tx?: TxContext): Promise<void> {
+    await ziel(this.pool, tx).query(
       "INSERT INTO assignments(ko_id,user_id,data) VALUES($1,$2,$3) ON CONFLICT (ko_id,user_id) DO UPDATE SET data=excluded.data",
       [assignment.koId, assignment.userId, JSON.stringify(assignment)],
     );
   }
 
-  async find(koId: string, userId: string): Promise<Assignment | undefined> {
-    const res = await this.pool.query<AssignmentRow>(
+  async find(koId: string, userId: string, tx?: TxContext): Promise<Assignment | undefined> {
+    const res = await ziel(this.pool, tx).query<AssignmentRow>(
       "SELECT data FROM assignments WHERE ko_id=$1 AND user_id=$2",
       [koId, userId],
     );
     return res.rows[0]?.data;
   }
 
-  async update(assignment: Assignment): Promise<void> {
-    await this.pool.query("UPDATE assignments SET data=$3 WHERE ko_id=$1 AND user_id=$2", [
-      assignment.koId,
-      assignment.userId,
-      JSON.stringify(assignment),
-    ]);
+  async update(assignment: Assignment, tx?: TxContext): Promise<void> {
+    await ziel(this.pool, tx).query(
+      "UPDATE assignments SET data=$3 WHERE ko_id=$1 AND user_id=$2",
+      [assignment.koId, assignment.userId, JSON.stringify(assignment)],
+    );
+  }
+
+  async remove(koId: string, userId: string): Promise<void> {
+    await this.pool.query("DELETE FROM assignments WHERE ko_id=$1 AND user_id=$2", [koId, userId]);
   }
 
   async all(): Promise<Assignment[]> {
     const res = await this.pool.query<AssignmentRow>("SELECT data FROM assignments");
+    return res.rows.map((row) => row.data);
+  }
+
+  // PRÜFSTATUS-ANZEIGE (R-1524): gezielt über die Schlüsselspalte `ko_id` (Teil des Primärschlüssels
+  // `(ko_id,user_id)`, s. `create`) statt des Vollscans von `all()`. Leere Eingabe fragt nicht.
+  async listByKos(koIds: readonly string[]): Promise<Assignment[]> {
+    if (koIds.length === 0) {
+      return [];
+    }
+    const res = await this.pool.query<AssignmentRow>(
+      "SELECT data FROM assignments WHERE ko_id = ANY($1)",
+      [[...koIds]],
+    );
     return res.rows.map((row) => row.data);
   }
 }

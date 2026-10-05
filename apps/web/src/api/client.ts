@@ -7,12 +7,23 @@ import { gespeicherteSprache } from "../lib/sprachwahl";
 export class ApiError extends Error {
   readonly code: string;
   readonly status: number;
+  /**
+   * R-0238 · Nacharbeit 8: die übrigen Felder der Fehlerantwort (etwa `bewerteteFassung` eines
+   * Teilerfolgs). Additiv — wer sie nicht braucht, sieht keinen Unterschied.
+   */
+  readonly details: Readonly<Record<string, unknown>>;
 
-  constructor(status: number, code: string, message: string) {
+  constructor(
+    status: number,
+    code: string,
+    message: string,
+    details: Readonly<Record<string, unknown>> = {},
+  ) {
     super(message);
     this.name = "ApiError";
     this.code = code;
     this.status = status;
+    this.details = details;
   }
 }
 
@@ -40,6 +51,7 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
       res.status,
       obj.error ? String(obj.error) : "ERROR",
       obj.message ? String(obj.message) : res.statusText,
+      typeof data === "object" && data !== null ? (data as Record<string, unknown>) : {},
     );
   }
 
