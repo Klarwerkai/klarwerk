@@ -58,11 +58,30 @@ export const useManagementSnapshot = () =>
     queryKey: ["management", "snapshot"],
     queryFn: () => endpoints.management.snapshot(),
   });
+// R-1639 / R-2183 (Nacharbeit 3): „mein Bereich" mit Ruhestandshorizonten und Arbeitsvorrat.
+export const useRiskHorizon = () =>
+  useQuery({
+    queryKey: ["management", "risk-horizon"],
+    queryFn: () => endpoints.management.riskHorizon(),
+  });
+// Die gepflegten Eingänge — nur für die Pflegerolle angefragt (`users.manage`).
+export const useManagementProfiles = (enabled: boolean) =>
+  useQuery({
+    queryKey: ["management", "profiles"],
+    queryFn: () => endpoints.management.profiles(),
+    enabled,
+  });
 // SCRUM-165: read-only Einsicht in jüngste ModelRuns.
 export const useModelRuns = (limit?: number) =>
   useQuery({
     queryKey: ["model-runs", limit],
     queryFn: () => endpoints.modelRuns.recent(limit),
+  });
+// Aufnahme gesamt-ki-laufprotokoll (V9, R-2071): Auswertung eines Zeitraums für die KI-Übersicht.
+export const useModelRunAuswertung = (von: string, bis: string) =>
+  useQuery({
+    queryKey: ["model-runs", "auswertung", von, bis],
+    queryFn: () => endpoints.modelRuns.auswertung(von, bis),
   });
 // SCRUM-169: KO-übergreifender read-only Evidence-Index (QM/Stufe 2).
 export const useEvidenceIndex = (limit?: number) =>

@@ -236,7 +236,9 @@ describe("JOB 3525 · B · die gesuchten Wege stehen da, wo der Auftrag sie verl
       ).toEqual([]);
       expect(m.entwuerfeText, `${breite}px: „Meine Entwürfe“ wird oben noch gezeichnet`).toBe("");
       // GEZEICHNET, nicht nur im Baum: `innerText` ist leer, wenn der Browser nichts malt.
-      expect(m.geheZuText, `${breite}px: „Gehe zu …“ steht nicht im Kopfband`).toContain("Gehe zu");
+      expect(m.geheZuText, `${breite}px: „Gehe zu …“ steht nicht im Kopfband`).toContain(
+        "Seite finden",
+      ); // FE-002: vormals „Gehe zu …"
       expect(m.geheZuText, `${breite}px: das Kürzel fehlt`).toContain("⌘K");
       // Und der Menü-Knopf steht daneben — die Punkte bleiben über ihn erreichbar. DASS sie es
       // wirklich sind, misst `kein-sonderpunkt-schmal.test.tsx` (N2/N3); hier geht es um die Zeile.
@@ -388,6 +390,57 @@ const VERGLEICH_BEFUND: ReadonlyMap<string, string> = new Map<string, string>([
   [
     "nl/1280",
     "BEFUND (gemessen 11.09.2026): 54 px weniger freier Raum als auf Deutsch (70,8 → 16,8 px) — die längere niederländische Punktreihe. Die Zeile trägt: kein Überlauf, nichts angeschnitten",
+  ],
+  // FE-002 (HEADER TEIL 1): die rechte Gruppe nimmt seit dem 26.09.2026 den Restplatz und passt
+  // sich an (Suchfeld wächst oder tritt auf die Lupe zurück, „Seite finden" tritt bei Enge zurück).
+  // „Freier Raum" misst damit die grösste Lücke einer ANPASSENDEN Zeile, nicht mehr die Reserve einer
+  // starren — ein Vergleich gegen Deutsch sagt dort weniger als früher. Die Zusage, auf die es
+  // ankommt, steht unverändert in S1 und in `tests/fe002-kopfband/kopfband-fe002-chromium.test.ts`
+  // (kein Überlauf, nichts ausserhalb, keine Überlappung — in de, en und nl). Die Abweichungen sind
+  // gemessen und hier gepinnt, damit sie nicht still verschwinden:
+  [
+    "en/390",
+    "FE-002 Runde 2 (gemessen 27.09.2026 an diesem Arbeitsbaum, ohne Firmen-CI): de 92,9 px → en 63,7 px freier Raum, Überschuss beide 0 px. Seit Runde 2 misst die Zeile selbst, ob das Wort neben der Glocke Platz hat (`shell/kopfbandStufe.ts`), und zeigt es auch schmal; „Notifications“ ist länger als „Meldungen“. Die Zeile trägt",
+  ],
+  [
+    "en/600",
+    "FE-002 Runde 2 (gemessen 27.09.2026 an diesem Arbeitsbaum, ohne Firmen-CI): de 202,9 px → en 193,8 px freier Raum, Überschuss beide 0 px. Dieselbe Ursache wie en/390 („Notifications“); die Zeile trägt",
+  ],
+  [
+    "en/1000",
+    "FE-002 Runde 2 (gemessen 27.09.2026 an diesem Arbeitsbaum, ohne Firmen-CI): de 114,3 px → en 85,9 px freier Raum, Überschuss beide 0 px. Die Stufen der rechten Gruppe fallen je Sprache verschieden (kürzere englische Punkte lassen „Search knowledge“ als Feld stehen); die Zeile trägt",
+  ],
+  [
+    "nl/390",
+    "FE-002 Runde 2 (gemessen 27.09.2026 an diesem Arbeitsbaum, ohne Firmen-CI): de 92,9 px → nl 88,7 px freier Raum, Überschuss beide 0 px. Dieselbe Ursache wie en/390 („Meldingen“); die Zeile trägt",
+  ],
+  [
+    "en/900",
+    "FE-002 (gemessen 26.09.2026 an diesem Arbeitsbaum, ohne Firmen-CI): de 174,1 px → en 85,9 px freier Raum, Überschuss beide 0 px. Kein Nachteil der englischen Zeile, sondern die anpassende rechte Gruppe von FE-002: auf Deutsch reicht der Platz bei 900 px nicht für das Suchfeld, es tritt auf die benannte Lupe zurück und lässt eine grosse Lücke; die kürzere englische Punktreihe lässt dem Feld „Search knowledge“ Platz, und das Feld füllt ihn. Die Zeile trägt in beiden Sprachen",
+  ],
+  [
+    "en/1280",
+    "FE-002 (gemessen 26.09.2026 an diesem Arbeitsbaum, ohne Firmen-CI): de 148,3 px → en 137,5 px freier Raum, Überschuss beide 0 px. „Find page“ und das Suchfeld teilen sich den Rest der Zeile anders als auf Deutsch (die rechte Gruppe nimmt seit FE-002 den Restplatz); die Zeile trägt",
+  ],
+  [
+    "nl/760",
+    "FE-002 (gemessen 26.09.2026 an diesem Arbeitsbaum, ohne Firmen-CI): de 303,6 px → nl 291,8 px freier Raum, Überschuss beide 0 px. Der Knopf „Pagina vinden ⌘K“ ist rund 12 px breiter als „Seite finden ⌘K“; die Zeile trägt mit fast 300 px Luft",
+  ],
+  [
+    "nl/768",
+    "FE-002 (gemessen 26.09.2026 an diesem Arbeitsbaum, ohne Firmen-CI): de 311,6 px → nl 299,8 px freier Raum, Überschuss beide 0 px. Dieselbe Ursache wie nl/760 („Pagina vinden“); die Zeile trägt",
+  ],
+  [
+    "nl/800",
+    "FE-002 (gemessen 26.09.2026 an diesem Arbeitsbaum, ohne Firmen-CI): de 272,8 px → nl 265,1 px freier Raum, Überschuss beide 0 px. Dieselbe Ursache wie nl/760; die Zeile trägt",
+  ],
+  [
+    "nl/899",
+    "FE-002 (gemessen 26.09.2026 an diesem Arbeitsbaum, ohne Firmen-CI): de 371,8 px → nl 364,1 px freier Raum, Überschuss beide 0 px. Dieselbe Ursache wie nl/760; die Zeile trägt",
+  ],
+  [
+    "nl/1000",
+    "FE-002 (gemessen 26.09.2026 an diesem Arbeitsbaum, ohne Firmen-CI): de 114,3 px → nl 105,2 px freier Raum, Überschuss beide 0 px. Die längere niederländische Punktreihe und „Werkgebieden“; die rechte Gruppe gibt nach (Suchfeld als Lupe), die Zeile trägt",
   ],
 ]);
 
@@ -662,10 +715,9 @@ describe("JOB 3587 · S · die schmale Kopfbandzeile in de, en und nl", () => {
   // Kasten der Zeile den Unterschied trägt — mit seiner Breite auf Deutsch, in der anderen Sprache
   // und der Differenz.
   //
-  // DIESER FALL WIRD AUCH ROT, WENN JEMAND DEN BEFUND BEHEBT, und das ist Absicht: dann ist die
-  // Aussage „hier ist die fremdsprachige Zeile schlechter dran" nicht mehr wahr, und wer sie behoben
-  // hat, führt den Pin nach. Dieselbe Bauart wie CI5 in der Schwesterdatei; ein Befund, den niemand
-  // nachführen muss, verschwindet stillschweigend aus dem Gedächtnis.
+  // BIS FE-002 RUNDE 3 WURDE DIESER FALL AUCH ROT, WENN JEMAND DEN BEFUND BEHOB. Seit die Zeile
+  // ihre Stufe selbst misst, schwankt die Luft je Maschine; zugesichert wird seither, dass die
+  // Zeile in der Sprache nicht überläuft (Begründung am Fall selbst).
   for (const [schluessel, grund] of VERGLEICH_BEFUND) {
     const [spracheRoh, breiteRoh] = schluessel.split("/");
     const sprache = spracheRoh as Sprache;
@@ -691,10 +743,18 @@ describe("JOB 3587 · S · die schmale Kopfbandzeile in de, en und nl", () => {
       console.log(
         `${KENNUNG_SPRACHEN} · S4 · ${schluessel}px · ${grund} · je Kasten: ${kaesten.join(" · ")}`,
       );
+      // FE-002 RUNDE 3 (Bens Linux-Lauf): seit FE-002 misst die Zeile selbst, ob ihre Griffe passen,
+      // und stuft zurück (`shell/kopfbandStufe.ts`). Wie viel Luft am Ende je Sprache bleibt, hängt
+      // damit an Stufe und Schriftmassen der Maschine — auf Linux war „nl" teils GRÖSSER als „de"
+      // (de 120,0 → 164,8 px), auf dem Mac kleiner. Die alte Erwartung „der Nachteil ist noch
+      // messbar" behauptete damit etwas über die Maschine, nicht über das Produkt. Sie ist durch die
+      // Regressionserwartung ersetzt, auf die es ankommt: die fremdsprachige Zeile läuft NICHT über
+      // — weder absolut noch mehr als die deutsche. Die Kästen werden weiter ausgemessen (oben).
       expect(
-        raumF < raumDe - 1 || ueberF > ueberDe + 1,
-        `${schluessel}px: der Befund ist nicht mehr messbar (freier Raum de ${raumDe.toFixed(1)} px → ${raumF.toFixed(1)} px, Überschuss de ${ueberDe} px → ${ueberF} px) — er ist behoben, dieser Pin gehört nachgeführt`,
-      ).toBe(true);
+        ueberF,
+        `${schluessel}px: die Zeile läuft in „${sprache}“ über (Überschuss ${ueberF} px, de ${ueberDe} px; freier Raum de ${raumDe.toFixed(1)} → ${raumF.toFixed(1)} px)`,
+      ).toBeLessThanOrEqual(Math.max(0, ueberDe) + 1);
+      expect(ueberF, `${schluessel}px: Überschuss in „${sprache}“`).toBeLessThanOrEqual(0);
     });
   }
 });

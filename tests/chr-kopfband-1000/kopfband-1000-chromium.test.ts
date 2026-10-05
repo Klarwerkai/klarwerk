@@ -83,7 +83,8 @@
 // GEZEICHNETEN Zähler an dieser Breite ebenfalls passt — dafür müsste das Board gefüllt sein, und
 // sein Bestand gehört nicht diesem Auftrag.
 //
-// Zusätzlich wird die Zeile als ÜBERSETZT nachgewiesen (der Knopf trägt „Gehe zu …", nicht seinen
+// Zusätzlich wird die Zeile als ÜBERSETZT nachgewiesen (der Knopf trägt „Seite finden" — FE-002,
+// vormals „Gehe zu …" —, nicht seinen
 // Schlüssel): eine noch nicht geladene Sprachfassung ist die zweite Art, zu früh zu messen.
 //
 // ------------------------------------------------------------------------------------------------
@@ -712,9 +713,10 @@ describe("JOB 3641 · K1 · bei 1000 px mit Firmen-CI steht das Kopfband restlos
     protokolliere("K1", BREITE, m, dok, logo);
 
     // Die Zeile ist wirklich fertig: sie trägt ihre übersetzten Wörter, nicht ihre Schlüssel.
-    expect(m.geheZuText, `${BREITE}px: „Gehe zu …" steht nicht gezeichnet im Kopfband`).toContain(
-      "Gehe zu",
-    );
+    expect(
+      m.geheZuText,
+      `${BREITE}px: „Seite finden" (FE-002, vormals „Gehe zu …") steht nicht übersetzt im Kopfband`,
+    ).toContain("Seite finden");
     expect(
       m.punkte.length,
       `${BREITE}px: die breite Bauform zeichnet gar keine Punkte`,

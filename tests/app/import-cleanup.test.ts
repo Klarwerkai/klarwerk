@@ -2,7 +2,6 @@
 // Admin-Aufräumweg. Vorschau zählt korrekt und verändert NICHTS; confirm löscht GENAU den Umfang
 // (Queue komplett leer, Import-KOs mit Confluence-/Jira-Provenienz in den PAPIERKORB, KOs ohne
 // Import-Provenienz bleiben unangetastet); Audit-Eintrag mit Zählern; users.manage-Guard.
-import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { IMPORT_CLEANUP_TEXT } from "../../apps/web/src/lib/importCleanup";
@@ -10,6 +9,7 @@ import { buildApp, buildServices } from "../../services/app/src/build-app";
 import type { KoSource } from "../../services/knowledge-object";
 import { InMemoryCandidateRepo } from "../../services/library-analytics";
 import { PgCandidateRepo } from "../../services/library-analytics";
+import { woerterbuchQuelleAus } from "../support/woerterbuchquelle";
 
 // JOB 3050: der Kandidatenweg nimmt die Dublettenregel als Port entgegen; fehlt er, gilt jeder
 // Eintrag fail-closed als nicht prüfbar. Die Fälle dieser Datei messen das Aufräumen (Zielmenge,
@@ -969,7 +969,7 @@ describe("WP-D-CLEAN: POST /api/admin/import/cleanup", () => {
   });
 
   it("die Aufräum-Copy existiert in DE, EN und NL", () => {
-    const i18n = readFileSync(resolve(process.cwd(), "apps/web/src/i18n.ts"), "utf8");
+    const i18n = woerterbuchQuelleAus(resolve(process.cwd(), "apps/web/src/i18n.ts"));
     for (const key of Object.values(IMPORT_CLEANUP_TEXT)) {
       expect(`${key}:${i18n.split(`"${key}":`).length - 1}`).toBe(`${key}:3`);
     }

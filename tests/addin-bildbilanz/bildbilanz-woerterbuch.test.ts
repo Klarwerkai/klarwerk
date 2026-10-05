@@ -22,12 +22,11 @@
 //
 // Diese Datei schliesst die Luecke NICHT allgemein (das waere ein eigener Auftrag) — sie bindet die
 // Schluessel DIESER Runde an alle drei Sprachen und misst dabei am ausgelieferten Quelltext.
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { panelQuelleAus } from "../support/panelquelle";
 
 const TASKPANE = "apps/web/public/word-addin/taskpane.html";
-const HTML = readFileSync(resolve(process.cwd(), TASKPANE), "utf8");
+const HTML = panelQuelleAus(TASKPANE);
 
 /** Die Sprachen, die das Panel-Woerterbuch fuehrt — aus der Datei erhoben, nicht abgeschrieben. */
 const SPRACHEN = ["de", "en", "nl"];

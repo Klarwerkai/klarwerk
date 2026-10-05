@@ -169,11 +169,14 @@ const FARB_FRAGE = "Welche Farbe müssen Firmenwagen haben?";
 const KO_CAR_BLAU = ref("koCarBlau", "Firmenwagen: Pflichtfarbe Blau ist vorgeschrieben.");
 
 describe("JOB 913 · Mega59-Erhalt — die Grenzen, die eine Domaenenrelation nicht entwerten darf", () => {
-  it("der nicht deklarierte Farb-/Fahrzeugfall bleibt negativ (mega59-komposita :86)", () => {
-    // Genau der Fall, den O-1 spaeter umdrehen KANN — heute und bis dahin bleibt er leer. Wird er
-    // ohne Deklaration positiv, ist die Regel wieder zu weit geraten (der mega60-A-Befund).
-    expect(rankCandidates(FARB_FRAGE, [KO_CAR_BLAU])).toEqual([]);
-    expect(keywordSelect(FARB_FRAGE, [KO_CAR_BLAU])).toEqual([]);
+  it("der Farb-/Fahrzeugfall dreht sich um — weil Pflichtfarbe/Farbe jetzt DEKLARIERT ist", () => {
+    // Hier stand „bleibt negativ, bis ein Paar deklariert ist". R-0461 hat genau dieses Paar in
+    // `services/reasoner/src/fachkomposita.ts` deklariert; der Fall ist damit der eine, der sich
+    // umdreht. Dass die Regel NICHT zu weit geraten ist, halten N-3/N-4 oben (Arbeitsschutz/Schutz
+    // bleibt nicht tragend) und `tests/suche-zuordnung/fachkomposita-liste.test.ts`
+    // (Widerstand/Stand bleibt nicht tragend, Gegenrichtung trägt nicht).
+    expect(rankCandidates(FARB_FRAGE, [KO_CAR_BLAU]).map((x) => x.ref.id)).toEqual(["koCarBlau"]);
+    expect(keywordSelect(FARB_FRAGE, [KO_CAR_BLAU]).map((x) => x.id)).toEqual(["koCarBlau"]);
   });
 
   it('die Fixture stellt den Fall her: „farb" steckt nur im Kompositum (mega59-komposita :67)', () => {

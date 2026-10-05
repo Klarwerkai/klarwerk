@@ -189,7 +189,7 @@ describe("N-0011 / N-0024 · die Volltitelliste am Graphen", () => {
     await filtere("Erfassen Langtext");
     expect(ids()).toEqual(["n11"]);
     expect(marke("graph-objektliste-anzahl")?.textContent).toBe(
-      i18n.t("graph.liste.anzahl", { count: 1, gesamt: KNOTEN.length }),
+      i18n.t("wissensgraph.liste.anzahl", { count: 1, gesamt: KNOTEN.length }),
     );
     await filtere("");
     expect(ids()).toEqual(ausgang);
@@ -237,7 +237,7 @@ describe("N-0011 / N-0024 · die Volltitelliste am Graphen", () => {
     await mount();
     await filtere("Kontrollobjekt");
     expect(ids()).toEqual([]);
-    expect(marke("graph-objektliste-leer")?.textContent).toBe(i18n.t("graph.liste.keinTreffer"));
+    expect(marke("graph-objektliste-leer")?.textContent).toBe(i18n.t("wissensgraph.liste.keinTreffer"));
     expect(container.textContent ?? "").not.toContain(KONTROLLE.title);
   });
 

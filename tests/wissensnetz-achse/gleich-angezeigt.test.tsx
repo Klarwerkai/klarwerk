@@ -231,7 +231,7 @@ describe("Kriterium 2 · gerendert — verschiedene Namen sichtbar, gespeicherte
 
     // Der Hinweis steht und erklaert die Marke.
     expect(marke("netz-schreibweisen-hinweis")?.textContent).toBe(
-      i18n.t("wissensnetz.schreibweisen.hinweis", { marke: LEERRAUM_MARKE }),
+      i18n.t("wissensgraph.schreibweisen.hinweis", { marke: LEERRAUM_MARKE }),
     );
 
     // KNOTEN: Identitaet gespeichert, Name im Bild und im aria-label verschieden.

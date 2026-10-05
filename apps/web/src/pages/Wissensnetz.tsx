@@ -1739,7 +1739,7 @@ function Inhalt({ metrik, hinweis }: { metrik: Sichtmetrik; hinweis: string | nu
   const schreibweisen =
     anzeige.size > 0 ? (
       <p data-testid="netz-schreibweisen-hinweis" className="text-micro text-muted">
-        {t("wissensnetz.schreibweisen.hinweis", { marke: LEERRAUM_MARKE })}
+        {t("wissensgraph.schreibweisen.hinweis", { marke: LEERRAUM_MARKE })}
       </p>
     ) : null;
   // Ehrlich statt leer: eine Karte ohne Knoten ist kein leerer Bestand, sondern ein Bestand ohne

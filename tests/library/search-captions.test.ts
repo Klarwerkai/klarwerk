@@ -16,6 +16,7 @@ import {
   LEGACY_IMAGE_CAPTION_PLACEHOLDERS as SERVER_PLACEHOLDERS,
   imageCaptionTexts,
 } from "../../services/library-analytics";
+import { woerterbuchQuelleAus } from "../support/woerterbuchquelle";
 
 const FIGURE = (caption: string): string =>
   `<p>Einleitung.</p><figure><img src="/api/objects/x/raw" alt="Bild"><figcaption data-image-id="kw-img-1">${caption}</figcaption></figure>`;
@@ -168,7 +169,7 @@ describe("WP-BILD-1e: Fundstellen-Kennzeichnung in der Bildbeschreibung (Client-
   });
 
   it("der Match-Grund ist in DE, EN und NL beschriftet (lib.match.caption)", () => {
-    const i18n = readFileSync(resolve(process.cwd(), "apps/web/src/i18n.ts"), "utf8");
+    const i18n = woerterbuchQuelleAus(resolve(process.cwd(), "apps/web/src/i18n.ts"));
     expect(i18n.split('"lib.match.caption":').length - 1).toBe(3);
   });
 });

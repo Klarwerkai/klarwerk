@@ -1,5 +1,11 @@
-import { REASONER_TASKS } from "../api/types";
-import type { ModelRunRecord, ModelRunTask, ModelRunVerbrauch } from "../api/types";
+import { MODEL_RUN_TASKS } from "../api/types";
+import type {
+  ModelRunErzeugnis,
+  ModelRunKosten,
+  ModelRunRecord,
+  ModelRunTask,
+  ModelRunVerbrauch,
+} from "../api/types";
 
 // SCRUM-165: DOM-freie Auswertung der ModelRun-Records (nur Metadaten). Keine Prompt-/
 // Antworttexte; rein abgeleitete Zähler/Tones für die kompakte Stufe-2-Sicht.
@@ -60,6 +66,54 @@ export function formatiereTokenzahl(anzahl: number): string {
   return String(anzahl);
 }
 
+// Aufnahme gesamt-ki-laufprotokoll (V9): DIE EINZIGE STELLE, DIE ENTSCHEIDET, OB EIN LAUF BRAUCHBARE
+// KOSTEN TRÄGT. Wie beim Verbrauch: `null` heißt „keine Kosten bekannt" (keine Preisliste, kein
+// Preis für dieses Modell, kein Verbrauch) — nie `0`.
+export function modelRunKosten(record: Pick<ModelRunRecord, "kosten">): ModelRunKosten | null {
+  const k = record.kosten;
+  if (!k || typeof k !== "object") {
+    return null;
+  }
+  return typeof k.betrag === "number" &&
+    Number.isFinite(k.betrag) &&
+    k.betrag >= 0 &&
+    typeof k.waehrung === "string" &&
+    k.waehrung.length > 0 &&
+    typeof k.preisstand === "string"
+    ? k
+    : null;
+}
+
+// Die EINE Darstellung eines Betrags: vier Nachkommastellen (ein Lauf kostet oft Bruchteile eines
+// Cents) und die Währung des Betreibers — ohne `toLocaleString`, aus demselben Grund wie die Dauer.
+export function formatiereKosten(betrag: number, waehrung: string): string {
+  return `${betrag.toFixed(4)} ${waehrung}`;
+}
+
+const ERZEUGNIS_ARTEN: ReadonlySet<string> = new Set([
+  "vorschlag",
+  "text",
+  "frage",
+  "antwort",
+  "punkt",
+  "beschreibung",
+  "gruppe",
+  "kriterien",
+  "urteil",
+]);
+
+// Aufnahme gesamt-ki-laufprotokoll (B4): Art und Anzahl des Erzeugten — nur bekannte Arten mit
+// positiver ganzer Anzahl; alles andere ergibt `null` (die Fläche schreibt dann nichts).
+export function modelRunErzeugnis(
+  record: Pick<ModelRunRecord, "erzeugt">,
+): ModelRunErzeugnis | null {
+  const e = record.erzeugt;
+  if (!e || typeof e !== "object") {
+    return null;
+  }
+  return ERZEUGNIS_ARTEN.has(e.art) && Number.isSafeInteger(e.anzahl) && e.anzahl > 0 ? e : null;
+}
+
 // JOB 3044: DIE EINZIGE STELLE, DIE AUS DEN ZWEI ZEITSTEMPELN EINE DAUER MACHT.
 //
 // `null` heißt „aus diesem Paar lässt sich keine Dauer ableiten" und ist streng von `0`
@@ -91,7 +145,8 @@ export function formatiereDauer(ms: number): string {
 // aber TypeScript prüft keine Serverantwort — ein neuerer Server (oder ein Altdatensatz) kann hier
 // ein Wort einliefern, das die Oberfläche nicht führt. Diese Wache trennt die acht von allem
 // anderen, und die Zählung wie die Fläche fragen SIE, nicht jeweils sich selbst.
-const BEKANNTE_AUFGABENARTEN: ReadonlySet<string> = new Set<string>(REASONER_TASKS);
+// Aufnahme gesamt-ki-laufprotokoll: über `MODEL_RUN_TASKS` (acht Zuordnungsaufgaben + vier Modellwege).
+const BEKANNTE_AUFGABENARTEN: ReadonlySet<string> = new Set<string>(MODEL_RUN_TASKS);
 
 export function istBekannteAufgabenart(task: string): task is ModelRunTask {
   return BEKANNTE_AUFGABENARTEN.has(task);
@@ -103,7 +158,7 @@ export function istBekannteAufgabenart(task: string): task is ModelRunTask {
  * fünf Schlüsseln, und `byTask[r.task] += 1` ergab für `extract`/`describe`/`group` `NaN`.
  */
 function leereAufgabenzaehlung(): Record<ModelRunTask, number> {
-  return Object.fromEntries(REASONER_TASKS.map((task) => [task, 0])) as Record<
+  return Object.fromEntries(MODEL_RUN_TASKS.map((task) => [task, 0])) as Record<
     ModelRunTask,
     number
   >;

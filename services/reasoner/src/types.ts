@@ -231,6 +231,9 @@ export interface EnrichResult {
   text: string;
   provider: string;
   demo: boolean;
+  // Entscheidung Pedi 8398db9e (KI-VO Art. 50): ein angereicherter Text ist KI-erzeugt und trägt
+  // die Kennzeichnung — nur, wenn wirklich Text entstand (der leere Rückfall trägt sie nicht).
+  aiGenerated?: AiGeneratedMark;
 }
 
 export interface ExtractResult {

@@ -289,7 +289,7 @@ async function setzeFeld(id: string, wert: string): Promise<void> {
 }
 
 const quote = (was: string, anzahl: number, nenner: number): string =>
-  i18n.t("graph.qb.quote", { was: i18n.t(`graph.qb.${was}`), anzahl, nenner });
+  i18n.t("wissensgraph.qb.quote", { was: i18n.t(`wissensgraph.qb.${was}`), anzahl, nenner });
 
 beforeEach(async () => {
   d.dublettenFehler = false;
@@ -309,7 +309,7 @@ describe("R-0744 · der Qualitätsblick ist zu wählen, jede Zahl trägt ihren N
     await mount();
     const schalter = marke("graph-qb-schalter");
     expect(schalter?.getAttribute("aria-pressed")).toBe("false");
-    expect(schalter?.textContent).toBe(i18n.t("graph.qb.an"));
+    expect(schalter?.textContent).toBe(i18n.t("wissensgraph.qb.an"));
     expect(marke("graph-qb-inhalt")).toBeNull();
     expect(d.duplicates).not.toHaveBeenCalled();
     expect(d.pending).not.toHaveBeenCalled();
@@ -331,7 +331,7 @@ describe("R-0744 · der Qualitätsblick ist zu wählen, jede Zahl trägt ihren N
     const ms = Date.parse(JUENGSTER_IM_GRAPHEN);
     const tage = Math.floor((Date.now() - ms) / (24 * 60 * 60 * 1000));
     expect(marke("graph-qb-alter")?.textContent).toBe(
-      i18n.t("graph.qb.alter", {
+      i18n.t("wissensgraph.qb.alter", {
         datum: new Date(JUENGSTER_IM_GRAPHEN).toLocaleDateString("de"),
         count: tage,
       }),
@@ -346,7 +346,7 @@ describe("R-0744 · der Qualitätsblick ist zu wählen, jede Zahl trägt ihren N
     await mount();
     await klick(marke("graph-qb-schalter"));
     expect(marke("graph-qb-dubletten")?.textContent).toBe(
-      i18n.t("graph.qb.nichtErhoben", { was: i18n.t("graph.qb.dubletten") }),
+      i18n.t("wissensgraph.qb.nichtErhoben", { was: i18n.t("wissensgraph.qb.dubletten") }),
     );
     expect(marke("graph-qb-dubletten")?.textContent ?? "").not.toMatch(/\b0\b/);
     expect(marke("graph-qb-konflikte")?.textContent).toBe(quote("konflikte", 2, 5));
@@ -358,7 +358,7 @@ describe("R-0744 · der Qualitätsblick ist zu wählen, jede Zahl trägt ihren N
     await klick(marke("graph-qb-schalter"));
     expect(marke("graph-qb-veraltet")?.getAttribute("data-zustand")).toBe("laedt");
     expect(marke("graph-qb-veraltet")?.textContent).toBe(
-      i18n.t("graph.qb.laedt", { was: i18n.t("graph.qb.veraltet") }),
+      i18n.t("wissensgraph.qb.laedt", { was: i18n.t("wissensgraph.qb.veraltet") }),
     );
     expect(marke("graph-qb-luecken")?.getAttribute("data-zustand")).toBe("erhoben");
   });
@@ -405,18 +405,18 @@ describe("R-0744 · Kopfkennzahlen, Filterleiste, Suche und Detailfenster — re
     expect(fenster?.getAttribute("data-id")).toBe("n2");
     expect(marke("graph-detail-titel")?.textContent).toBe("Pumpe P3 schmieren");
     expect(marke("graph-detail-status")?.textContent).toBe(
-      i18n.t("graph.detail.status", { status: i18n.t("graph.legendValidated") }),
+      i18n.t("wissensgraph.detail.status", { status: i18n.t("graph.legendValidated") }),
     );
     expect(marke("graph-detail-konflikte")?.textContent).toBe(
-      i18n.t("graph.detail.konflikte", { count: 0 }),
+      i18n.t("wissensgraph.detail.konflikte", { count: 0 }),
     );
     const verbindungen = [
       ...(marke("graph-detail-verbindungen")?.querySelectorAll("li") ?? []),
     ].map((l) => l.textContent);
     expect(verbindungen).toContain(
-      i18n.t("graph.detail.verbindung", {
+      i18n.t("wissensgraph.detail.verbindung", {
         title: "Pumpe P2 schmieren",
-        grund: i18n.t("graph.detail.grundSchlagwort", { via: "pumpe" }),
+        grund: i18n.t("wissensgraph.detail.grundSchlagwort", { via: "pumpe" }),
       }),
     );
     expect(verbindungen.some((v) => (v ?? "").startsWith("Ventil X schliessen — "))).toBe(true);
@@ -430,7 +430,7 @@ describe("R-0744 · Kopfkennzahlen, Filterleiste, Suche und Detailfenster — re
     await klick(container.querySelector('[data-id="n1"] [data-testid="graph-objekt-details"]'));
     expect(marke("graph-detail")?.getAttribute("data-id")).toBe("n1");
     expect(marke("graph-detail-konflikte")?.textContent).toBe(
-      i18n.t("graph.detail.konflikte", { count: 1 }),
+      i18n.t("wissensgraph.detail.konflikte", { count: 1 }),
     );
     await klick(marke("graph-detail-schliessen"));
     expect(marke("graph-detail")).toBeNull();
@@ -448,7 +448,7 @@ describe("R-0744 · Kopfkennzahlen, Filterleiste, Suche und Detailfenster — re
     await oeffneN1();
     const zeile = (): HTMLElement | null => marke("graph-detail-konflikte");
     expect(zeile()?.getAttribute("data-zustand")).toBe("laedt");
-    expect(zeile()?.textContent).toBe(i18n.t("graph.detail.konflikteLaedt"));
+    expect(zeile()?.textContent).toBe(i18n.t("wissensgraph.detail.konflikteLaedt"));
     expect(zeile()?.textContent ?? "").not.toMatch(/\d/);
     // DANACH scheitert dieselbe Abfrage — es gibt keinen Cache, aus dem eine Zahl käme.
     await act(async () => {
@@ -457,7 +457,7 @@ describe("R-0744 · Kopfkennzahlen, Filterleiste, Suche und Detailfenster — re
     });
     await act(flush);
     expect(zeile()?.getAttribute("data-zustand")).toBe("nicht-erhoben");
-    expect(zeile()?.textContent).toBe(i18n.t("graph.detail.konflikteNichtErhoben"));
+    expect(zeile()?.textContent).toBe(i18n.t("wissensgraph.detail.konflikteNichtErhoben"));
     expect(zeile()?.textContent ?? "").not.toMatch(/\d/);
   });
 
@@ -467,7 +467,7 @@ describe("R-0744 · Kopfkennzahlen, Filterleiste, Suche und Detailfenster — re
     await oeffneN1();
     expect(marke("graph-detail-konflikte")?.getAttribute("data-zustand")).toBe("nicht-erhoben");
     expect(marke("graph-detail-konflikte")?.textContent).toBe(
-      i18n.t("graph.detail.konflikteNichtErhoben"),
+      i18n.t("wissensgraph.detail.konflikteNichtErhoben"),
     );
   });
 
@@ -477,14 +477,14 @@ describe("R-0744 · Kopfkennzahlen, Filterleiste, Suche und Detailfenster — re
     await oeffneN1();
     expect(marke("graph-detail-konflikte")?.getAttribute("data-zustand")).toBe("erhoben");
     expect(marke("graph-detail-konflikte")?.textContent).toBe(
-      i18n.t("graph.detail.konflikte", { count: 0 }),
+      i18n.t("wissensgraph.detail.konflikte", { count: 0 }),
     );
     abbauen();
     d.konflikte = "einer";
     await mount();
     await oeffneN1();
     expect(marke("graph-detail-konflikte")?.textContent).toBe(
-      i18n.t("graph.detail.konflikte", { count: 1 }),
+      i18n.t("wissensgraph.detail.konflikte", { count: 1 }),
     );
   });
 
@@ -506,7 +506,7 @@ describe("R-1983 · die kuratierte Sicht „So arbeitet Klarwerk“ — nur gese
     expect(marke("graph-sicht-schalter")?.getAttribute("aria-expanded")).toBe("true");
     const inhalt = marke("graph-sicht-inhalt");
     for (const k of ["schritt1", "schritt2", "schritt3"]) {
-      expect(inhalt?.textContent).toContain(i18n.t(`graph.sicht.${k}`));
+      expect(inhalt?.textContent).toContain(i18n.t(`wissensgraph.sicht.${k}`));
     }
     const zeilen = [...container.querySelectorAll('[data-testid="graph-sicht-beziehung"]')];
     // Nur die GESETZTE Beziehung — die Schlagwortnähe n1–n2 („pumpe“) steht hier nicht.
@@ -530,7 +530,7 @@ describe("R-1983 · die kuratierte Sicht „So arbeitet Klarwerk“ — nur gese
     await mount();
     await klick(marke("graph-sicht-schalter"));
     expect(marke("graph-sicht-nicht-geliefert")?.textContent).toBe(
-      i18n.t("graph.sicht.nichtGeliefert"),
+      i18n.t("wissensgraph.sicht.nichtGeliefert"),
     );
     expect(marke("graph-sicht-leer")).toBeNull();
     expect(marke("graph-sicht-beziehungen")).toBeNull();
@@ -540,7 +540,7 @@ describe("R-1983 · die kuratierte Sicht „So arbeitet Klarwerk“ — nur gese
     d.kuratiert = "leer";
     await mount();
     await klick(marke("graph-sicht-schalter"));
-    expect(marke("graph-sicht-leer")?.textContent).toBe(i18n.t("graph.sicht.leer"));
+    expect(marke("graph-sicht-leer")?.textContent).toBe(i18n.t("wissensgraph.sicht.leer"));
     expect(marke("graph-sicht-nicht-geliefert")).toBeNull();
   });
 
@@ -549,7 +549,7 @@ describe("R-1983 · die kuratierte Sicht „So arbeitet Klarwerk“ — nur gese
     await mount();
     await klick(marke("graph-sicht-schalter"));
     expect(marke("graph-sicht-gekuerzt")?.textContent).toBe(
-      i18n.t("graph.sicht.gekuerzt", { geladen: 1, gesamt: 7 }),
+      i18n.t("wissensgraph.sicht.gekuerzt", { geladen: 1, gesamt: 7 }),
     );
   });
 });

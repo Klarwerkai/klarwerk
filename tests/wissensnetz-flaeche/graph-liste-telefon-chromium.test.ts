@@ -325,13 +325,13 @@ describe("N-0024 / R-0744 · die Volltitelliste am Graphen auf dem Telefon — e
     console.info(`Nacharbeit 4 · GL · Qualitaetsblick ${JSON.stringify(qb)}`);
     // Kein Objekt traegt ein Schlagwort: 28 von 28 ohne Thema — eine Zahl, die feststeht.
     expect(qb.luecken).toBe(
-      t("graph.qb.quote", { was: t("graph.qb.luecken"), anzahl: 28, nenner: 28 }),
+      t("wissensgraph.qb.quote", { was: t("wissensgraph.qb.luecken"), anzahl: 28, nenner: 28 }),
     );
     for (const k of ["konflikte", "veraltet", "dubletten"]) {
       expect(qb[k], `${k}: Nenner 28 oder ehrlich „nicht erhoben“`).toMatch(
         / von 28$|nicht erhoben$/,
       );
     }
-    expect(qb.alter).not.toBe(t("graph.qb.alterUnbekannt"));
+    expect(qb.alter).not.toBe(t("wissensgraph.qb.alterUnbekannt"));
   }, 180_000);
 });

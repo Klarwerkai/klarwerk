@@ -66,6 +66,10 @@ const STATUS_BY_CODE: Record<string, number> = {
   // die Anfrage ist wohlgeformt und der Aufrufer hat nichts falsch gemacht — es ist ein Konflikt
   // mit einem bereits abgeschlossenen Vorgang, und der Weg zurück ist ein NEUER Vorgang.
   IDEMPOTENCY_PAYLOAD_MISMATCH: 409,
+  // R-0169 (Dokumentakte): zwei gleichzeitige Schreiber wollten dieselbe Fassungsnummer — ein
+  // Konflikt mit einem parallelen Vorgang, kein Fehler des Aufrufers. `DOKUMENT_UNBEKANNT` bleibt
+  // beim Standard 400: die mitgebrachte Kennung ist hier nicht vergeben.
+  DOKUMENT_KONFLIKT: 409,
   // AUFTRAG-mega21 Block A: der Vorgang steht auf `repair_required`. Auch das ist ein Konflikt mit
   // einem Zustand, nicht ein Serverfehler dieser Anfrage — der Aufrufer bekommt eine wahre
   // Auskunft samt Objektkennung und keinen nichtssagenden 500.

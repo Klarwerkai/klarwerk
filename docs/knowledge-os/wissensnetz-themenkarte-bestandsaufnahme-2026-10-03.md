@@ -33,7 +33,9 @@ Menge ein Klick trifft.
   Seitenleistentitel, Themenzeilen samt Zusammen-Satz und „Alle Themen“.
 - **Die Identität bleibt unverändert.** `data-thema`, die Auswahl, `themenHref` und der
   Suchparameter der Seitenleiste tragen weiter den gespeicherten Wert.
-- Ein Hinweissatz (`wissensnetz.schreibweisen.hinweis`, de/en/nl in `apps/web/src/i18n.ts`) erklärt
+- Ein Hinweissatz (`wissensgraph.schreibweisen.hinweis`, de/en/nl im Textmodul
+  `apps/web/src/texte/wissensgraph.ts`; bis Nacharbeit 7 `wissensnetz.schreibweisen.hinweis` in
+  `i18n.ts`) erklärt
   die Marke und erscheint nur, wenn markiert wurde.
 - Ein Name ohne Doppelgänger bleibt wie bisher. L14 in `tests/wissensnetz-leseweg/leseweg.test.tsx`
   (getrimmte Zeile) gilt weiter.
@@ -52,7 +54,10 @@ für geliefert.
   - Der Sprung ist derselbe wie am Knoten (`koDetailPath`, nur wenn `isNavigableNode`), per Klick,
     Enter oder Leertaste. Ein Objekt, das der Bestand nicht kennt, steht als Text ohne Link da.
   - Was die Graphantwort nicht trägt, erscheint dort nicht.
-- Texte `graph.liste.*` in de/en/nl (`apps/web/src/i18n.ts`).
+- Texte `wissensgraph.liste.*` in de/en/nl (`apps/web/src/texte/wissensgraph.ts`). Mit der
+  Integration in `main` (Nacharbeit 7, I18N-AUFTEILUNG) sind alle Texte dieses Auftrags dorthin
+  gezogen, mit wörtlich gleichen Werten und dem Modulpräfix `wissensgraph.`; vorher hießen sie
+  `graph.liste.*`, `graph.detail.*`, `graph.qb.*` und `graph.sicht.*`.
 - Gegenprobe: `tests/wissensnetz-flaeche/graph-listenweg.test.tsx` (V1–V6, jsdom, 28-Knoten-Bestand
   aus `tests/wissensgraph-lesbarkeit/bestand.ts`).
 - Browsergegenprobe, Fall GL: `tests/wissensnetz-flaeche/graph-liste-telefon-chromium.test.ts`.
