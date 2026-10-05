@@ -84,13 +84,11 @@ async function tastatur(seite: Uhrseite, selektor: string): Promise<void> {
   await seite.keyboard.press("Enter");
 }
 
+// FE-002: die weiteren Bereiche stehen seit dem 26.09.2026 unter dem beschrifteten Einstieg
+// „Arbeitsbereiche" im Kopfband (`shell/ArbeitsbereicheMenue.tsx`), nicht mehr hinter dem Zahnrad.
+// Die Liste ist dieselbe (`WeitereBereicheZeilen`), also auch derselbe Zählerort `bereich-aufgaben`.
 async function weitereBereicheMitTastatur(seite: Uhrseite): Promise<void> {
-  await tastatur(seite, '[data-testid="kopfband-zahnrad"]');
-  await warteBis(
-    seite,
-    `() => document.querySelector('[data-testid="zahnrad-weitere-bereiche"]') !== null`,
-  );
-  await tastatur(seite, '[data-testid="zahnrad-weitere-bereiche"]');
+  await tastatur(seite, '[data-testid="kopfband-arbeitsbereiche"]');
   await warteBis(
     seite,
     `() => document.querySelector('[data-testid="bereich-aufgaben"]') !== null`,
