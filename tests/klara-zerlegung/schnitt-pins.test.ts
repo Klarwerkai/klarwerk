@@ -223,6 +223,11 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   "tests/app/w1-klara-vertrauenskopf.test.ts": "pfad,marken,panelquelle",
   "tests/app/w6-dublettenweg-checktext.test.ts": "pfad,marken,panelquelle",
   "tests/app/word-addin-ask.test.ts": "pfad,rueckweg,marken,panelquelle",
+  // Word-Host-Gesamtweg (Nacharbeit 6/7, Realhostbeleg 06.10.2026): die Gegenproben zum
+  // Auswahlzugriff (W1–W9) fahren das ganze Fenster über `createKlaraPanel`. In Nacharbeit 6 standen
+  // sie in `word-addin-ask.test.ts` (dort GEMESSEN grün, Kandidat 26e86268); umgezogen, weil jene
+  // Datei einen fremden, unveränderten Quelltext-Pin rot trägt. Griff abgelesen, nicht gemessen.
+  "tests/app/word-addin-auswahlzugriff.test.ts": "fixture",
   "tests/app/word-addin-csp.test.ts": "pfad,panelquelle",
   "tests/app/word-addin-taskpane-cache.test.ts": "pfad",
   "tests/app/word-addin-taskpane-version-contract.test.ts": "zusammengesetzt,marken,panelquelle",
@@ -583,6 +588,10 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   // nicht gepinnt` mit genau diesem Pfad. Sie las `taskpane.html` direkt und liest seither über
   // `panelQuelleAus` — daher der Griff `panelquelle` (abgelesen, nicht gemessen).
   "tests/r1864-w9-zuordnung/w9-quelle-und-zuordnung.test.ts": "pfad,marken,panelquelle",
+  // Word-Host-Gesamtweg (Nacharbeit 3): die Gegenprobe am Draht zum COOP-Kopf der Dialogseite nennt
+  // das Taskpane-Pfadliteral als Gegenpfad — Griff `pfad`. GEMESSEN, NICHT GESETZT: der Prüflauf
+  // am Kandidaten 26e86268 meldete A2 `neu im Baum, aber nicht gepinnt` mit genau diesem Pfad.
+  "tests/office-web-anmeldung/dialog-opener-kopf.test.ts": "pfad",
 };
 
 // ------------------------------------------------------------------------------------------------

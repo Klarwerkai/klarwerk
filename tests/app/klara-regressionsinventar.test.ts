@@ -534,6 +534,17 @@ const INVENTAR: readonly string[] = [
   // Seitenfenster (verständlicher Satz, Wiederanmeldung im Panel, Arbeit geht weiter) — fährt
   // `taskpane.html` über die Fixture. K2 hat sie gemeldet, das Inventar nimmt sie nicht still auf.
   "tests/office-web-anmeldung/sitzungsablauf-im-seitenfenster.test.tsx",
+  // Word-Host-Gesamtweg (Nacharbeit 3, Realhostbeleg 05.10.2026): der COOP-Kopf der Dialogseite am
+  // echten Fastify-Draht — nennt das Taskpane als Gegenpfad, deshalb von der Achse `taskpane`
+  // gefunden; kein „klara" im Pfad, K5 unverändert. Abgelesen am Achsenmuster, nicht gemessen: der
+  // Prüflauf am Kandidaten 26e86268 hat dieses Inventar nicht gefahren, wohl aber `schnitt-pins` A2
+  // mit genau diesem Pfad gemeldet.
+  "tests/office-web-anmeldung/dialog-opener-kopf.test.ts",
+  // Word-Host-Gesamtweg (Nacharbeit 7, Realhostbeleg 06.10.2026): der Auswahlzugriff des Fragenwegs
+  // (`Word.run` zuerst, mit Frist) am ganzen Fenster über `createKlaraPanel` — von der Achse
+  // `komponente` gefunden (Typ `KlaraPanel`); kein „klara" im Pfad, K5 unverändert. Abgelesen am
+  // Achsenmuster, nicht gemessen.
+  "tests/app/word-addin-auswahlzugriff.test.ts",
   // JOB 4085 (OFFICE-PG-ABNAHME): die Abnahme des Word-Rueckwegs gegen eine ECHTE `.docx` durch den
   // produktiven Extraktor — die Word-Auswahl geht durch das ausgelieferte Aufgabenfenster an die
   // echte Route, gemessen wird am zurueckgelesenen Wissensobjekt. Von der Achse `taskpane`
@@ -1284,6 +1295,12 @@ const INVENTAR: readonly string[] = [
   // GESETZT: der Prüflauf am Kandidaten 95636768 meldete K2 `neu im Baum, aber nicht im gepinnten
   // Inventar` mit genau diesem Pfad.
   "tests/capture/aufrufer-waechter.test.ts",
+  // Word-Host-Gesamtweg (Nacharbeit 8): `word-panel-stufenwahl.test.tsx` (R-0632, Stufenwahl im
+  // Word-Panel) stammt aus dem Bestand, nicht aus diesem Auftrag, und ist unverändert — sie fährt
+  // das Fenster und nennt `taskpane`, Achse `taskpane`; kein „klara" im Pfad, K5 bleibt bei 71.
+  // GEMESSEN, NICHT GESETZT: der Prüflauf am Kandidaten e48905fd meldete K2 `neu im Baum, aber
+  // nicht im gepinnten Inventar` mit genau diesem Pfad; erst danach wurde diese Zeile angefasst.
+  "tests/vertraulichkeit-pflicht/word-panel-stufenwahl.test.tsx",
 ];
 
 // ------------------------------------------------------------------------------------------------

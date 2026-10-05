@@ -105,8 +105,21 @@ const MARKE_KOPF_ENDE = '"use strict";\n';
  * weiteres Mal gemessen übernommen werden.
  * NACHARBEIT 15: GEMESSEN im Prüflauf zu Kandidat 124645e8 (`b3f3846c…`, „Received" von E2) und
  * unverändert übernommen; die vier Panel-Dateien sind seit dieser Messung unberührt.
+ * WORD-HOST-GESAMTWEG (Nacharbeit 4, Realhostbeleg 06.10.2026): `taskpane.js` ändert sich an der
+ * Warnung zur Dokumentkennung (verzögertes `saveAsync`). Der Bezugspunkt MUSS deshalb wandern; ohne
+ * zugelassenes Hash-Werkzeug ist er hier nicht berechenbar. E2 meldet ihn im Prüflauf als
+ * „Received"; er wird danach gemessen übernommen.
+ * NACHARBEIT 5: GEMESSEN im Prüflauf zu Kandidat 6dc92d9b (`0548d086…`, „Received" von E2,
+ * HISTORIE/nacharbeit-5/PRUEFUNG/panel-auslieferung-pins.log) und unverändert übernommen; die
+ * Panel-Dateien sind seit dieser Messung unberührt.
+ * NACHARBEIT 6: `taskpane.js` ändert sich am Auswahlzugriff des Fragenwegs (`Word.run` zuerst, mit
+ * Frist). Der Bezugspunkt MUSS wandern; E2 meldet ihn im Prüflauf als „Received", er wird danach
+ * gemessen übernommen.
+ * NACHARBEIT 7: GEMESSEN im Prüflauf zu Kandidat 26e86268 (`87cb70fe…`, „Received" von E2,
+ * HISTORIE/nacharbeit-7/PRUEFUNG/panel-auslieferung-pins.log) und unverändert übernommen; die
+ * Panel-Dateien sind seit dieser Messung unberührt.
  */
-export const PANEL_VOR_SCHNITT_BLOB = "b3f3846c1ba8163aa575dd97dcca383467d7239b";
+export const PANEL_VOR_SCHNITT_BLOB = "87cb70fe49e2fc85891a0f1683e2659698a566ed";
 
 export interface PanelTeile {
   html: string;

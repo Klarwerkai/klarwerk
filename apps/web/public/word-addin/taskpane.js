@@ -261,6 +261,12 @@
     // Wiederoeffnen ohne gespeicherte Kennung ist sie weg; genau deshalb wird der Fehlschlag gemeldet.
     var dokumentkennungUngesichert = null;
 
+    // WORD-HOST-GESAMTWEG (Realhostbeleg 06.10.2026): `saveAsync` antwortet spaeter als der Sendeweg.
+    // Ausstehend: keine Warnung. Erfolg: nur die noch sichtbare Warnung DIESER Kennung faellt, neuere
+    // Meldungen bleiben. Fehlschlag: Warnung, auch ueber einer neueren Meldung.
+    var dokumentkennungAusstehend = null;  // Kennung, deren `saveAsync` noch nicht geantwortet hat
+    var kennungWarnungFuer = null;         // Kennung, deren Warnung GERADE im Sendesatz steht
+
     function gespeicherteDokumentkennung() {
       try {
         var einstellungen = Office.context.document.settings;
@@ -275,7 +281,10 @@
     }
 
     function meldeUngesicherteDokumentkennung() {
-      if (dokumentkennungUngesichert) { showSendStatus("warn", t("sendDocIdUnsaved")); }
+      if (!dokumentkennungUngesichert) { return; }
+      if (dokumentkennungAusstehend === dokumentkennungUngesichert) { return; }
+      showSendStatus("warn", t("sendDocIdUnsaved"));
+      kennungWarnungFuer = dokumentkennungUngesichert;
     }
 
     function mitDokumentkennung(payload, dokumentId) {
@@ -315,16 +324,22 @@
         }
         einstellungen.set(WORD_ADDIN_DOKUMENT_SETTING, kennung);
         var erfolg = Office.AsyncResultStatus ? Office.AsyncResultStatus.Succeeded : "succeeded";
+        dokumentkennungAusstehend = kennung;
         einstellungen.saveAsync(function (ergebnis) {
+          if (dokumentkennungAusstehend === kennung) { dokumentkennungAusstehend = null; }
           if (ergebnis && ergebnis.status === erfolg) {
             if (dokumentkennungUngesichert === kennung) { dokumentkennungUngesichert = null; }
+            // NUR die eigene, noch sichtbare Warnung zuruecknehmen — nichts anderes anfassen.
+            if (kennungWarnungFuer === kennung) { hideSendStatus(); }
             return;
           }
           dokumentkennungUngesichert = kennung;
           meldeUngesicherteDokumentkennung();
         });
       } catch (err) {
-        // Die Kennung bleibt ungesichert stehen und wird am Ende des Sendewegs gemeldet.
+        // Die Kennung bleibt ungesichert stehen und wird am Ende des Sendewegs gemeldet — ein
+        // synchroner Fehler ist kein Ausstehen.
+        if (dokumentkennungAusstehend === kennung) { dokumentkennungAusstehend = null; }
       }
     }
 
@@ -3922,6 +3937,9 @@
       updateSendState();
     }
     function showSendStatus(kind, text, aktion, url) {
+      // Jede Meldung ersetzt eine stehende Kennungswarnung; `meldeUngesicherteDokumentkennung`
+      // setzt die Marke danach fuer ihre eigene wieder.
+      kennungWarnungFuer = null;
       var el = document.getElementById("send-status");
       var knopf = document.getElementById("send-status-btn");
       el.className = kind === "ok" ? "status ok" : kind === "busy" ? "status" : "status warn";
@@ -3941,6 +3959,7 @@
       if (kind !== "busy") { sendeSperreLoesen(); }
     }
     function hideSendStatus() {
+      kennungWarnungFuer = null;
       var el = document.getElementById("send-status");
       el.className = "status hidden";
       el.textContent = "";
@@ -6251,11 +6270,37 @@
     // bisher (prepareAskQuestion: Markierung vor Eingabe). Gilt nur fuer diese Panelinstanz.
     var askMitlesen = true;
 
-    function readAskSelection(done) {
+    // WORD-HOST-GESAMTWEG (Realhost 06.10.2026: `getSelectedDataAsync` schwieg in Word im Web). Der
+    // Absendeweg liest zuerst `Word.run` → `getSelection().text` mit Frist, sonst den alten Weg; `done` hoechstens einmal.
+    var WORD_ADDIN_AUSWAHL_FRIST_MS = 4000;
+
+    function readAskSelection(done, wordZuerst, fehler) {
       if (!askMitlesen || !officeUsable()) { done(""); return; }
-      Office.context.document.getSelectedDataAsync(Office.CoercionType.Text, function (result) {
-        done(result.status === Office.AsyncResultStatus.Succeeded ? String(result.value || "") : "");
-      });
+      var ueberOffice = function () {
+        Office.context.document.getSelectedDataAsync(Office.CoercionType.Text, function (result) {
+          done(result.status === Office.AsyncResultStatus.Succeeded ? String(result.value || "") : "");
+        });
+      };
+      if (wordZuerst !== true || !window.Word || typeof Word.run !== "function") { ueberOffice(); return; }
+      var erledigt = false;
+      var einmal = function (text) {
+        if (erledigt) { return; }
+        erledigt = true; clearTimeout(uhr);
+        if (typeof text === "string") { done(text.replace(/\r\n?/g, "\n")); return; }
+        try { ueberOffice(); } catch (err) { if (fehler) { fehler(err); } }
+      };
+      var uhr = setTimeout(function () { einmal(null); }, WORD_ADDIN_AUSWAHL_FRIST_MS);
+      try {
+        var lauf = Word.run(function (context) {
+          var auswahl = context.document.getSelection();
+          auswahl.load("text");
+          return context.sync().then(function () { return auswahl.text; });
+        });
+        if (!lauf || typeof lauf.then !== "function") { einmal(null); return; }
+        lauf.then(function (text) { einmal(typeof text === "string" ? text : null); }, function () { einmal(null); });
+      } catch (err) {
+        einmal(null);
+      }
     }
 
     // JOB 3056 K1 (Rebase auf KA5): die Wahrheitstabelle der zwei Deckel (`askSelectionTruncated`,
@@ -6401,7 +6446,7 @@
       try {
         readAskSelection(function (selectionText) {
           try { absenden(selectionText); } catch (err) { fehlerVorDemFetch(err); }
-        });
+        }, true, fehlerVorDemFetch);
       } catch (err) {
         fehlerVorDemFetch(err);
       }

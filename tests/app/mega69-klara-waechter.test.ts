@@ -2684,7 +2684,28 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // NACHARBEIT 15: PIN BEWUSST AKTUALISIERT (637602b1… -> 29062e17…). Der Wert ist im Prüflauf zu
     // Kandidat 124645e8 GEMESSEN („Received") und unverändert übernommen; die vier Panel-Dateien sind
     // seit dieser Messung unberührt (geprüft mit `git diff 124645e8 -- apps/web/public/word-addin/`).
-    const PIN = "29062e179bedebd2e48aeaed93ad335ac4cf740ae09fb2af587d655673c3753c";
+    // WORD-HOST-GESAMTWEG (Realhostbeleg 06.10.2026, Nacharbeit 4): `taskpane.js` ändert sich an
+    // der Dokumentkennung — `dokumentkennungAusstehend`/`kennungWarnungFuer`: eine noch laufende
+    // `saveAsync`-Speicherung warnt nicht, ein später Erfolg nimmt NUR die Warnung seiner Kennung
+    // zurück, ein Fehlschlag warnt weiter; `showSendStatus`/`hideSendStatus` setzen die Marke zurück.
+    // Auslieferungsfolgen: kein neues Abrufziel, keine Nutzlast-, CSP-, Rechte- oder
+    // Manifeständerung, kein neuer Wörterbuchschlüssel, kein Sideload. DER PIN MUSS WANDERN; ohne
+    // zugelassenes Hash-Werkzeug ist er hier nicht berechenbar — der Prüflauf meldet den Ist-Wert
+    // als „Received", er wird danach gemessen übernommen (dasselbe Verfahren wie Nacharbeit 15).
+    // NACHARBEIT 5: PIN BEWUSST AKTUALISIERT (29062e17… -> d36121d2…). Der Wert ist im Prüflauf zu
+    // Kandidat 6dc92d9b GEMESSEN („Received", HISTORIE/nacharbeit-5/PRUEFUNG/panel-auslieferung-
+    // pins.log) und unverändert übernommen; die Panel-Dateien sind seit dieser Messung unberührt.
+    // NACHARBEIT 6 (Realhostbeleg 06.10.2026, Word im Web: `getSelectedDataAsync` schwieg):
+    // `readAskSelection` liest im Absendeweg zuerst über `Word.run` → `getSelection().text` mit
+    // eigener Frist (`WORD_ADDIN_AUSWAHL_FRIST_MS`), sonst den bisherigen Weg; `done` höchstens
+    // einmal. Dazu zwei verdichtete Kommentare. Auslieferungsfolgen: kein neues Abrufziel, keine
+    // Nutzlast-, CSP-, Rechte- oder Manifeständerung (WordApi 1.1 bleibt), kein neuer
+    // Wörterbuchschlüssel, kein Sideload. DER PIN MUSS WANDERN; der Prüflauf meldet den Ist-Wert
+    // als „Received", er wird danach gemessen übernommen.
+    // NACHARBEIT 7: PIN BEWUSST AKTUALISIERT (d36121d2… -> 5f2efde9…). Im Prüflauf zu Kandidat
+    // 26e86268 GEMESSEN („Received", HISTORIE/nacharbeit-7/PRUEFUNG/panel-auslieferung-pins.log) und
+    // unverändert übernommen; die Panel-Dateien sind seit dieser Messung unberührt.
+    const PIN = "5f2efde93a6a41dac7448116aaebcee945c34e2de6d01b38958cfdb4c923a2f2";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(
       ist,
