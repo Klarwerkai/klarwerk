@@ -11,9 +11,10 @@ import {
   type ConfluenceMapOptions,
   confluenceAhnenBefund,
   confluenceAncestorIds,
+  confluenceAnhangsFelder,
   mapConfluencePageToImportItem,
 } from "./mapper";
-import type { ConfluenceAbbruch, ConfluencePage } from "./rest-client";
+import type { ConfluenceAbbruch, ConfluenceAttachment, ConfluencePage } from "./rest-client";
 import {
   ConfluenceRestClient,
   type ConfluenceRestConfig,
@@ -185,9 +186,55 @@ export class ConfluenceSourceAdapter implements SourceAdapter {
    * Prozessspeicher); wer anwendet, laedt die Seite hier je Id nach. `undefined` = die Seite gibt
    * es nicht mehr — der Aufrufer weist das ehrlich aus, statt still den Auszug zu importieren.
    */
+  //
+  // R-0163: HIER kommen die Anhänge dazu — beim Anwenden je Seite, nicht in der Erkundung (dort
+  // wären es bis zu 25.000 zusätzliche Requests für einen Überblick). Scheitert das Lesen der
+  // Anhangsliste, wird die Seite trotzdem geliefert, aber mit `attachmentsIncomplete` — der Text
+  // geht nicht verloren, und niemand liest „keine Anhänge", wo nur nicht gelesen wurde.
   async fetchItem(externalId: string): Promise<ImportItem | undefined> {
     const page = await this.client.getPageById(externalId);
-    return page ? mapConfluencePageToImportItem(page, this.mapOpts) : undefined;
+    if (!page) {
+      return undefined;
+    }
+    let anhaenge: { attachments: ConfluenceAttachment[]; unvollstaendig: boolean };
+    try {
+      const gelesen = await this.client.listAttachments(page.id);
+      anhaenge = { attachments: gelesen.attachments, unvollstaendig: gelesen.truncated };
+    } catch {
+      anhaenge = { attachments: [], unvollstaendig: true };
+    }
+    return mapConfluencePageToImportItem(page, this.mapOpts, anhaenge);
+  }
+
+  /**
+   * R-0163 (Ben, Nacharbeit 2): der SCHREIBENDE Bereichsimport (`runConfluenceImport`) reiht die
+   * Items aus `collectAll` ein — die tragen keine Anhangsliste, weil die Erkundung bewusst ohne
+   * Anhangsabrufe läuft. Bevor ein solches Item in die Review-Queue geht, holt diese Methode die
+   * Anhangsliste seiner Seite nach und setzt dieselben Felder wie `fetchItem`
+   * (`confluenceAnhangsFelder`). Scheitert das Lesen, geht das Item mit `attachmentsIncomplete`
+   * weiter — der Text geht nicht verloren, und niemand liest „keine Anhänge".
+   */
+  async withAttachments(item: ImportItem): Promise<ImportItem> {
+    const pageId = item.externalId?.trim();
+    if (!pageId) {
+      return item;
+    }
+    let anhaenge: { attachments: ConfluenceAttachment[]; unvollstaendig: boolean };
+    try {
+      const gelesen = await this.client.listAttachments(pageId);
+      anhaenge = { attachments: gelesen.attachments, unvollstaendig: gelesen.truncated };
+    } catch {
+      anhaenge = { attachments: [], unvollstaendig: true };
+    }
+    return { ...item, ...confluenceAnhangsFelder(anhaenge) };
+  }
+
+  /**
+   * R-0163: die Rohbytes EINES Anhangs über seinen quellinternen Abrufweg (`abruf` am Import-
+   * Anhang). Origin-Pin, Frist, Größenkante und Weiterleitungsregel liegen im Client.
+   */
+  async fetchAttachment(abruf: string): Promise<{ bytes: Buffer; mime?: string }> {
+    return this.client.downloadAttachment(abruf);
   }
 
   /**

@@ -119,6 +119,9 @@ abgedeckt sein.)
 | GET/POST | `/api/drafts` · `/api/drafts/:id` (DELETE) | Entwürfe (gemeinsamer Pool, Autor bewahrt) |
 | GET/POST | `/api/gaps` · `/api/gaps/:id` (DELETE) | Wissenslücken |
 | GET | `/api/audit` | Audit-Log |
+| GET | `/api/audit/verify` | Integritätsprüfung der Hash-Kette (Bericht mit Ursache) |
+| GET | `/api/audit/export` | Export der Kette mit Prüfbericht und Kopf (Nr. + Hash) zur Ablage außerhalb; selbst als `audit.exported` protokolliert |
+| GET | `/api/audit/ko/:koId/findings` | Kennungen aller Konflikte und Überschneidungen eines Wissensobjekts (offen und abgeschlossen) für dessen Kette im Protokoll |
 
 ### 2.5 Reasoner
 | Methode | Pfad | Zweck |

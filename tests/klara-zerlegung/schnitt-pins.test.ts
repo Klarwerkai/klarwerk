@@ -481,6 +481,10 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   "tests/office-web-anmeldung/uebergabe-keine-auskunft.test.ts": "pfad",
   "tests/office-web-anmeldung/uebergabe-ohne-cookie.test.ts": "pfad",
   "tests/office-web-anmeldung/uebergabe-vertrag.test.ts": "pfad",
+  // Aufnahme m365-anmeldung Runde 2 (25.09.2026, R-0355-Restfall SSO): liest die ausgelieferte
+  // Dialogseite (`word-addin/anmeldung.html`) und prüft ihren SSO-Start — Griff `pfad`. A2 hat sie
+  // gemeldet („neu im Baum, aber nicht gepinnt"), erst danach wurde diese Zeile angefasst.
+  "tests/office-web-anmeldung/sso-rueckweg-zur-dialogseite.test.ts": "pfad",
   // JOB 3667 WORD-RÜCKWEG (14.09.2026): der Rückweg aus Word auf DASSELBE Wissensobjekt wohnt im
   // Inline-Skript von `taskpane.html` (Block KW-RUECKWEG). Drei seiner Prüfstände greifen die Datei
   // an, mit drei verschiedenen Griffen — GEMESSEN an denselben Mustern, die dieser Fall benutzt,

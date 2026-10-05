@@ -105,7 +105,17 @@ export function buildFacetGroups(
     // AUFTRAG-uxpol2 (bens Blocker 1.1): die Auswahl je Gruppe ist eine Wertemenge → `selected` prüft
     // Zugehörigkeit (includes), nicht mehr Gleichheit. Mehrere gewählte Werte einer Gruppe (ODER).
     const selected = facetSelectedValues(selection[key]);
-    const all: FacetOptionView[] = (universe[key] ?? []).map((value) => {
+    // GEWÄHLT HEISST ABWÄHLBAR — auch wenn der Wert in DIESER Menge nicht vorkommt. Das Universum
+    // entsteht aus den übergebenen Elementen; engt eine Suche sie so ein, dass kein Element den
+    // gewählten Wert trägt, fiel er bis hierher aus dem Universum und damit aus dem Menü — die
+    // Zusage „die gewählte Option wird IMMER gezeigt“ (oben) griff ins Leere, und der Filter liess
+    // sich dort nicht mehr zurücknehmen. Gemessen in der Bibliothek (Folgeauftrag gesamt-
+    // erstnutzerfuehrung-quellen, I11 in `tests/design/h5-funktionsinventar.test.ts`): Bereich
+    // gewählt, Suche ohne Treffer, im Menü stand nur noch der ANDERE Bereich. Der Wert steht jetzt
+    // mit seinem ehrlichen Zähler (0) da, gewählt und nicht gesperrt.
+    const universum = universe[key] ?? [];
+    const werte = [...universum, ...selected.filter((value) => !universum.includes(value))];
+    const all: FacetOptionView[] = werte.map((value) => {
       const count = counts.get(value) ?? 0;
       const isSelected = selected.includes(value);
       return {

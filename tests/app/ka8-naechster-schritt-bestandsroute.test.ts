@@ -211,13 +211,19 @@ describe("JOB 1494 D2 · KA8 — das Recht greift wirklich", () => {
     expect((fremd.json() as { error: string }).error).toBe("FORBIDDEN");
   });
 
-  it("die Verwaltung sieht denselben fremden Entwurf — die andere Haelfte derselben Regel", async () => {
+  // Entscheidung Pedi `debbb8e8` (Aufnahme gesamt-entwurf-einreichen, Lauf :3): Entwürfe sind
+  // privat. Bis dahin sah die Verwaltung hier denselben fremden Entwurf (200). Die andere Hälfte
+  // derselben Regel ist jetzt: auch der Admin bekommt den fremden nicht, seinen eigenen aber schon.
+  it("auch die Verwaltung bekommt den fremden Entwurf nicht — den eigenen schon", async () => {
     const { app, admin, experte } = await echterAufbau();
-    const id = await entwurfAnlegen(app, experte, "Admin sieht mit");
+    const fremd = await entwurfAnlegen(app, experte, "Admin sieht nicht mit");
+    const eigen = await entwurfAnlegen(app, admin, "Admins eigener");
 
-    const alsAdmin = await app.inject({ method: "GET", url: PFAD(id), headers: admin });
+    const alsAdminFremd = await app.inject({ method: "GET", url: PFAD(fremd), headers: admin });
+    const alsAdminEigen = await app.inject({ method: "GET", url: PFAD(eigen), headers: admin });
 
-    expect(alsAdmin.statusCode, alsAdmin.body).toBe(200);
+    expect(alsAdminFremd.statusCode, alsAdminFremd.body).toBe(403);
+    expect(alsAdminEigen.statusCode, alsAdminEigen.body).toBe(200);
   });
 
   it("ohne Anmeldung 401 — und existierend bleibt von erfunden ununterscheidbar", async () => {

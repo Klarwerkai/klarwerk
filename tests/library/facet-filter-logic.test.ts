@@ -82,6 +82,21 @@ describe("buildFacetGroups: Kontext-Zähler + Ausgrauen", () => {
     expect(a).toMatchObject({ selected: true, disabled: false });
   });
 
+  it("die gewählte Option bleibt auch dann sichtbar und abwählbar, wenn KEIN Element sie trägt", () => {
+    // Folgeauftrag gesamt-erstnutzerfuehrung-quellen, Nacharbeit 8: eine Suche engt die Menge auf
+    // „A“ ein, gewählt ist „B“. Bis hierher fiel „B“ aus dem Universum und damit aus dem Menü.
+    const nurA = ITEMS.filter((i) => (i.category ?? []).includes("A"));
+    const cat = group(nurA, { category: ["B"] }, "category");
+    const b = cat.options.find((o) => o.value === "B");
+    expect(b, "die gewählte Option fehlt im Menü").toBeDefined();
+    expect(b).toMatchObject({ selected: true, disabled: false, count: 0 });
+    // Gewählt steht vorn; der vorhandene Wert bleibt mit seinem Zähler daneben.
+    expect(cat.options.map((o) => o.value)).toEqual(["B", "A"]);
+    // GEGENPROBE: ohne Auswahl entsteht KEIN erfundener Wert.
+    const ohne = group(nurA, {}, "category");
+    expect(ohne.options.map((o) => o.value)).toEqual(["A"]);
+  });
+
   it("MEHRFACHAUSWAHL (bens Blocker 1.1): ODER innerhalb der Gruppe — beide gewählten Werte sind selected", () => {
     // category = {A, B} → beide selected; die eigene Facette bleibt beim Zählen ausgeklammert,
     // also zeigen die Zähler weiter die volle Bestandshäufigkeit (A:2, B:1).

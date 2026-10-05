@@ -40,6 +40,21 @@ export interface ImportRunSummary {
   // die Station, die ein Mensch nach einem Importlauf liest — der Urteilspunkt „SERVERINTERN,
   // Verluststelle gefunden, Zielwirkung offen" schliesst sich erst hier.
   hierarchie?: NonNullable<CollectResult["hierarchie"]>;
+  // R-0163 (Bens Befunde 1–3): der Anhangsabgleich der BEREITS IMPORTIERTEN Seiten unveränderter
+  // Version. Nur bei einem schreibenden Lauf gesetzt, und nur, wenn eine Seite Anhangsdaten trug.
+  // Eine Seite, deren Abgleich nicht vollständig gelang (Fehler oder unvollständige Liste), steht
+  // in `unvollstaendigeSeiten`, zählt in `failed` und macht den Lauf damit unvollständig.
+  anhangsabgleich?: {
+    seiten: number;
+    uebernommen: number;
+    ersetzt: number;
+    nachgezogen: number;
+    fehlgeschlagen: number;
+    // Nacharbeit 7: übernommene Anhänge mit noch fehlendem Beleg / in diesem Lauf nachgetragene.
+    belegOffen: number;
+    belegNachgetragen: number;
+    unvollstaendigeSeiten: string[];
+  };
   // R-0162 (Abgleich): in der Quelle gelöschte Seiten, deren Wissensobjekt in den Papierkorb
   // gelegt wurde (bei dryRun: gelegt WÜRDE). Wiederherstellbar über den Papierkorb.
   removed: number;
@@ -240,6 +255,10 @@ export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<I
   // eingereiht werden (die Quelle kann dieselbe Seite doppelt liefern; seen/pending kennen die gerade erst
   // in diesem Lauf eingereihten Items noch nicht). Der DB-UNIQUE-Index ist der atomare Backstop dahinter.
   const queuedKeys = new Set<string>();
+  // R-0163: bereits importierte Seiten unveränderter Version — sie gehen nicht in die Queue, ihre
+  // Anhänge werden aber abgeglichen (s. unten). Offene Kandidaten gehören nicht dazu: deren Anhänge
+  // kommen mit der Annahme.
+  const abzugleichen: { item: ImportItem; perPageIdx: number }[] = [];
   for (const item of items) {
     const ref = item.externalId ?? item.title;
     const version = item.sourceVersion ?? 1;
@@ -259,6 +278,9 @@ export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<I
     // offener Kandidat für exakt diese Version eingereiht ist. Eine HÖHERE Version → erneut einreihen
     // (der acceptToKo-Upsert übernimmt beim Annehmen den Re-Sync, R4).
     if ((already !== undefined && already >= version) || isPending) {
+      if (!isPending) {
+        abzugleichen.push({ item, perPageIdx: perPage.length });
+      }
       perPage.push({ ref, status: "skipped", note: "unverändert (idempotent)" });
       continue;
     }
@@ -279,6 +301,18 @@ export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<I
   // eingereihte Seite NICHT persistiert → sie zählt NICHT als importiert (nie mehr toQueue.length blind).
   let imported = toQueue.length;
   if (!deps.dryRun && toQueue.length > 0) {
+    // R-0163 (Ben, Nacharbeit 2): `collectAll` liefert die Seiten OHNE Anhangsliste — so bleibt die
+    // Erkundung ohne Anhangsabrufe. Was hier wirklich eingereiht wird, bekommt seine Anhänge vorher,
+    // je Seite nacheinander; sonst endete die Annahme ohne Anhang und ohne Anhangsaudit. Ein
+    // Adapter ohne `withAttachments` (Fixture-Doppel) reiht unverändert ein. `dryRun` liest nichts nach.
+    if (typeof deps.adapter.withAttachments === "function") {
+      for (let i = 0; i < toQueue.length; i++) {
+        const item = toQueue[i];
+        if (item) {
+          toQueue[i] = await deps.adapter.withAttachments(item);
+        }
+      }
+    }
     const persisted = await deps.library.createImportCandidates(toQueue, deps.actor);
     imported = persisted.length;
     // perPage ehrlich nachziehen: eingereihte, aber nicht persistierte Seiten → skipped (Parallelkonflikt).
@@ -294,6 +328,83 @@ export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<I
         }
       }
     }
+  }
+
+  // ==============================================================================================
+  // R-0163 — DER ANHANGSABGLEICH BEREITS IMPORTIERTER SEITEN (Bens Befunde 1–3).
+  // ==============================================================================================
+  //
+  // Eine Seite gleicher Version geht nicht erneut in die Queue — ihre Anhänge können sich trotzdem
+  // geändert haben: ein neuer Anhang, eine neue Anhangsversion, oder nur ein neuer Abrufweg. Hier
+  // wird je solcher Seite die Anhangsliste gelesen und am lebenden Wissensobjekt abgeglichen
+  // (`LibraryService.gleicheAnhaengeFuerAnkerAb`). Nichts wird entfernt. Gelingt der Abgleich nicht
+  // vollständig (Speicher-/Downloadfehler, unvollständige Liste), wird die Seite mit Grund als
+  // `failed` geführt — der Lauf ist dann unvollständig und sagt es, statt „unverändert" zu melden.
+  // `dryRun` liest nichts nach; ein Adapter ohne `withAttachments` (Fixture-Doppel) gleicht nicht ab.
+  let anhangsabgleich: ImportRunSummary["anhangsabgleich"];
+  let abgleichUnvollstaendig = 0;
+  if (
+    !deps.dryRun &&
+    abzugleichen.length > 0 &&
+    typeof deps.adapter.withAttachments === "function" &&
+    typeof deps.library.gleicheAnhaengeFuerAnkerAb === "function"
+  ) {
+    const bilanz: NonNullable<ImportRunSummary["anhangsabgleich"]> = {
+      seiten: 0,
+      uebernommen: 0,
+      ersetzt: 0,
+      nachgezogen: 0,
+      fehlgeschlagen: 0,
+      belegOffen: 0,
+      belegNachgetragen: 0,
+      unvollstaendigeSeiten: [],
+    };
+    for (const { item, perPageIdx } of abzugleichen) {
+      const entry = perPage[perPageIdx];
+      let abgleich: Awaited<ReturnType<LibraryService["gleicheAnhaengeFuerAnkerAb"]>> | null;
+      try {
+        const mitAnhaengen = await deps.adapter.withAttachments(item);
+        abgleich = await deps.library.gleicheAnhaengeFuerAnkerAb(mitAnhaengen, deps.actor);
+      } catch {
+        abgleich = null; // der Abgleich selbst ist gescheitert — die Seite ist nicht abgeglichen
+      }
+      if (abgleich === undefined) {
+        continue; // keine Anhangsdaten oder kein lebendes Wissensobjekt — nichts abzugleichen
+      }
+      bilanz.seiten += 1;
+      if (abgleich) {
+        bilanz.uebernommen += abgleich.uebernommen;
+        bilanz.ersetzt += abgleich.ersetzt;
+        bilanz.nachgezogen += abgleich.nachgezogen;
+        bilanz.fehlgeschlagen += abgleich.fehlgeschlagen;
+        bilanz.belegOffen += abgleich.belegOffen;
+        bilanz.belegNachgetragen += abgleich.belegNachgetragen;
+      }
+      if (
+        abgleich === null ||
+        abgleich.fehlgeschlagen > 0 ||
+        abgleich.belegOffen > 0 ||
+        abgleich.listeUnvollstaendig
+      ) {
+        abgleichUnvollstaendig += 1;
+        bilanz.unvollstaendigeSeiten.push(item.externalId ?? item.title);
+        if (entry) {
+          entry.status = "failed";
+          entry.note = anhangsNotiz(abgleich);
+        }
+        continue;
+      }
+      const geaendert =
+        abgleich.uebernommen + abgleich.ersetzt + abgleich.nachgezogen + abgleich.belegNachgetragen;
+      if (entry && geaendert > 0) {
+        const belegZusatz =
+          abgleich.belegNachgetragen > 0
+            ? `, ${abgleich.belegNachgetragen} Beleg(e) nachgetragen`
+            : "";
+        entry.note = `Anhänge abgeglichen: ${abgleich.uebernommen} neu, ${abgleich.ersetzt} ersetzt, ${abgleich.nachgezogen} Abrufweg nachgezogen${belegZusatz}`;
+      }
+    }
+    anhangsabgleich = bilanz;
   }
 
   // R-0162: Änderungen laufen oben über die höhere sourceVersion (neuer Kandidat → Re-Sync beim
@@ -315,16 +426,41 @@ export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<I
     found: items.length,
     imported,
     // Alles Gesehene, das NICHT (real) importiert wurde: In-Run-/Idempotenz-Skips + Parallelkonflikte.
-    skipped: items.length - imported,
-    failed: collectFailed.length,
+    // R-0163: eine Seite mit unvollständigem Anhangsabgleich zählt nicht mehr als übersprungen,
+    // sondern als gescheitert.
+    skipped: items.length - imported - abgleichUnvollstaendig,
+    failed: collectFailed.length + abgleichUnvollstaendig,
     truncated,
     // JOB 1042 D3: unveraendert durchgereicht — nur gesetzt, wenn der Adapter ihn geliefert hat.
     ...(hierarchie ? { hierarchie } : {}),
+    ...(anhangsabgleich ? { anhangsabgleich } : {}),
     // R-0159 (F2): unverändert durchgereicht — nur gesetzt, wenn der Adapter ihn geliefert hat.
     ...(abbruch ? { abbruch } : {}),
     ...removal,
     perPage,
   };
+}
+
+// R-0163: der verständliche Grund einer unvollständig abgeglichenen Seite — ohne Dateinamen und
+// ohne Adresse, nur Zahlen und die Zusage, dass der Bestand bleibt.
+function anhangsNotiz(
+  abgleich: Awaited<ReturnType<LibraryService["gleicheAnhaengeFuerAnkerAb"]>> | null,
+): string {
+  if (!abgleich) {
+    return "Anhangsabgleich gescheitert — vorhandene Anhänge bleiben unverändert erhalten";
+  }
+  const teile: string[] = [];
+  if (abgleich.fehlgeschlagen > 0) {
+    teile.push(`${abgleich.fehlgeschlagen} Anhang/Anhänge nicht übernommen`);
+  }
+  if (abgleich.belegOffen > 0) {
+    // Nacharbeit 7: der Anhang IST übernommen — nur sein Beleg fehlt noch und wird nachgetragen.
+    teile.push(`${abgleich.belegOffen} Beleg(e) zu übernommenen Anhängen offen`);
+  }
+  if (abgleich.listeUnvollstaendig) {
+    teile.push("Anhangsliste der Quelle unvollständig");
+  }
+  return `Anhangsabgleich unvollständig (${teile.join(", ")}) — vorhandene Anhänge bleiben erhalten`;
 }
 
 // ---- R-0162: LÖSCHUNGEN DER QUELLE BEIM NÄCHSTEN ABGLEICH NACHZIEHEN ----

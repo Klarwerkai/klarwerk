@@ -550,8 +550,14 @@ export function CaptureArbeitsraum({
   const { role } = useRole();
   const { push } = useToast();
   const authorName = user?.name ?? user?.email ?? "—";
-  const draftScopeLabel =
-    user?.role === "admin" ? "Admin-Ansicht: alle Entwürfe" : "Meine Entwürfe";
+  // AUFNAHME gesamt-entwurf-einreichen · Entscheidung Pedi `debbb8e8`: Entwürfe sind PRIVAT. Der
+  // Server gibt jeder Rolle, auch Administratoren, nur die EIGENEN Entwürfe (`canSeeDraft` in
+  // services/app/src/routes/capture-routes.ts). Die Mehr-Ersteller-Sicht der Liste (Ersteller-Filter,
+  // Reichweiten-Plakette, „Admin-Ansicht: alle") hätte hier nichts mehr zu unterscheiden und
+  // behauptete eine Reichweite, die es nicht gibt. Sie bleibt in `CaptureDraftList` für den eigenen
+  // Auftrag zum gemeinsamen Pool (R-2099) stehen und ist hier aus (`isAdmin={false}` an der
+  // Liste, immer der Satz `capture.draftScope.note`).
+  const draftScopeLabel = "Meine Entwürfe";
   // AUFTRAG-mega12 Block A (bens SB-2): `navigate` bleibt für die beiden ZUSTANDS-Räumungen auf
   // derselben Route (`/erfassen` mit `state: null`) — die verlassen die Seite nicht und dürfen NICHT
   // fragen. Jeder Weg, der die Erfassungsseite wirklich VERLÄSST, läuft über `guardedNavigate` bzw.
@@ -5663,17 +5669,13 @@ export function CaptureArbeitsraum({
             das Feld mit auf) — eine Auskunft über eine Suche, die es gerade nicht gibt, wäre
             wieder eine Behauptung.
 
-            Die Admin-Ansicht sieht ALLE Entwürfe: sie bekommt den eigenen, wahren Satz statt
-            einer Aussage über „deine" Entwürfe. Der Gegenweg läuft über GuardedLink, weil er
+            Seit `debbb8e8` sieht jede Rolle nur ihre eigenen Entwürfe; der Satz über „deine"
+            Entwürfe ist deshalb für alle wahr. Der Gegenweg läuft über GuardedLink, weil er
             /erfassen wirklich verlässt und ungespeicherte Eingaben sonst still verlören;
             `/bibliothek` ist ab Betrachter offen und braucht kein Rollentor. */}
         {draftsOpen && (drafts.data?.length ?? 0) > 0 ? (
           <div className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-1 px-1 text-[12px] leading-relaxed text-muted">
-            <span>
-              {user?.role === "admin"
-                ? t("capture.draftScope.noteAdmin")
-                : t("capture.draftScope.note")}
-            </span>
+            <span>{t("capture.draftScope.note")}</span>
             <GuardedLink
               to="/bibliothek"
               data-testid="draft-scope-to-library"
@@ -5688,7 +5690,7 @@ export function CaptureArbeitsraum({
           Sortierung leben dort (pro Browser gemerkt). Rendert sich selbst nur bei ≥ 1 Entwurf. */}
         <CaptureDraftList
           drafts={drafts.data ?? []}
-          isAdmin={user?.role === "admin"}
+          isAdmin={false}
           directory={directory.data ?? []}
           open={draftsOpen}
           onToggleOpen={() => setDraftsOpen((open) => !open)}

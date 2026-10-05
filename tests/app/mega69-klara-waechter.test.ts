@@ -2596,6 +2596,14 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // `script-src 'self'`/`style-src 'self'` der Dokument-CSP decken sie), dieselbe Cachekennung
     // `?v=__KW_FASSUNG__` wie `rueckweg.js`; Abrufziel, Manifest, Recht, Nutzlast unverändert;
     // kein erneutes Sideload.
+    // AUFNAHME m365-anmeldung (Lauf 1 am 25.09.2026, nach dem Schnitt in `taskpane.js` übertragen)
+    // — DER PIN MUSS DESHALB WANDERN (5fbf5f64… -> Hash des zusammengefügten Dokuments mit dieser
+    // Änderung; bei der Konfliktlösung am 05.10.2026 nicht berechenbar, s. Rückgabe).
+    // Abgelehntes Anmelde-Fenster im Rahmen fremder Herkunft: sofort `loginDialogDeclined` statt Rückfallfenster und fünf Minuten Warten
+    // (gemessen: tests/office-web-anmeldung/seitenfenster-abgelehnter-dialog.test.tsx).
+    //   · Abrufziel: keines neu. · CSP, Recht, Manifest: unverändert.
+    //   · Nutzlast: unverändert. · Sideload: keiner nötig. · Mac-Word/Browsertab: unverändert
+    //     (ohne Rahmenlage bleibt das Rückfallfenster der Weg, Gegenprobe A3).
     // ZERLEGUNGSAUFTRAG BESTANDSBLICK (aufnahme:20260922:gesamt-bestandsblick:zerlegung-aufraeumen),
     // NACH DER INTEGRATION MIT R-1611. Zwei Änderungen, und nur EINE bewegt diesen Pin:
     //   (1) Der Abschnitt KW-MARKE (das Ende des Skripts) wohnt in einer vierten Datei
@@ -2603,7 +2611,7 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     //       also an derselben Stelle. Grund: `schnittflaechen.test.ts` B3 (taskpane.js < 12500
     //       Zeilen; vorher 12595). `panelQuelleAus` setzt ihn beim Zusammenfügen wieder ans Ende
     //       des Skripts; das zusammengefügte Dokument ändert sich dadurch um KEIN Byte (gemessen:
-    //       Git-Blob-Vergleich gegen die Datei von a2ff8da8, `schnitt-echt.test.ts` E2).
+    //       Git-Blob-Vergleich, `schnitt-echt.test.ts` E2).
     //       Auslieferungsfolgen: EIN Abruf mehr beim Öffnen (gleicher Ursprung, `script-src 'self'`),
     //       dieselbe Cachekennung; Abrufziel (17, `/api/branding` jetzt in `marke.js`), Manifest,
     //       Recht, Nutzlast unverändert; kein Sideload. Ein alter Server ohne die Datei liefert 404 —
@@ -2614,9 +2622,14 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     //       keine Nutzlaständerung ausser den Begriffen des aktuellen Dokuments, ein zusätzlicher
     //       LESENDER `Word.run` nach der Schreibruhe (kein Schreibweg, gemessen in w1 KA3);
     //       Manifest/CSP/Recht unverändert, kein Sideload. DIESE Änderung bewegt den Pin.
-    // NACHARBEIT 7: PIN BEWUSST AKTUALISIERT (5fbf5f64… -> fe3cc513…). Der Wert ist GEMESSEN, nicht
-    // geschätzt: dieser Fall meldete ihn am Kandidaten 787b3e41 im Prüflauf (`Received:
-    // "fe3cc513…ff821656"`, funktion-erhalten-jsdom); die drei Dateien sind seither unverändert.
+    // NACHARBEIT 7: PIN BEWUSST AKTUALISIERT (5fbf5f64… -> fe3cc513…), gemessen am Kandidaten
+    // 787b3e41 — das war das Dokument OHNE die m365-Anmeldeänderung.
+    // NACHARBEIT 12 (Integration mit `main` 93c25f5a): JETZT TRÄGT DAS DOKUMENT BEIDE Änderungen
+    // (m365-Anmeldung UND Bestandsblick). Der Git-Blob ist gemessen (`90936dcc…`, s.
+    // `tests/support/panelquelle.ts`), der SHA-256 dieses Pins NICHT — in dieser Sitzung war kein
+    // SHA-256-Werkzeug freigegeben, und ein geschätzter Wert wäre ein falscher Pin. OFFEN: dieser
+    // Fall meldet den Ist-Wert im nächsten Lauf; erst danach darf der Pin wandern. Weder `fe3cc513…`
+    // noch `5fbf5f64…` ist der Wert des zusammengeführten Dokuments.
     const PIN = "fe3cc513021c2f2b5e4ef1b0f9376480634c24d18db9b37fbdf725c4ff821656";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(
@@ -2814,7 +2827,18 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     //                  bisher geladen, nur endlich auch ABGEWARTET.
     //   · Sideload:    KEIN erneutes Sideload — die Datei wird wie jede andere unter `public/` neu
     //                  ausgeliefert.
-    const PIN = "4ae060ee0a4b832ce0c8d93ba1cb1fa9b9b83bd1d2076429208b84603cddf7e2";
+    // AUFNAHME m365-anmeldung RUNDE 2 (25.09.2026) — PIN BEWUSST AKTUALISIERT (4ae060ee… -> d30a829d…).
+    // Bens Befund (R-0355-Restfall SSO): der SSO-Start traegt jetzt die EINE Zielkennung
+    // (`/api/auth/oidc/start?ziel=word-addin`); der Rueckruf der Anwendung schickt das Fenster auf
+    // diese Seite zurueck, und sie uebergibt von selbst. Gemessen:
+    // tests/office-web-anmeldung/sso-rueckweg-zur-dialogseite.test.ts.
+    //   · Abrufziel: keines neu (derselbe SSO-Start, eine Query). · CSP, Recht, Manifest: unveraendert.
+    //   · OIDC-Einrichtung (`redirect_uri`): unveraendert. · Sideload: keiner noetig.
+    // AUFNAHME m365-anmeldung RUNDE 3 (25.09.2026) — PIN BEWUSST AKTUALISIERT (d30a829d… -> f63ac6bc…).
+    // Bens Befund: der sichtbare SSO-Hinweis sagte noch „Fenster schliessen, erneut druecken" —
+    // jetzt in drei Sprachen der automatische Rückweg (gemessen: dialogseite.test.ts S4b4b).
+    //   · Nur Texte; Abrufziele, CSP, Recht, Manifest unveraendert. · Sideload: keiner noetig.
+    const PIN = "f63ac6bc72ed1219f758c7a2d16d929f69d2faef9a1ca0f9c93478490f7c13d9";
     const ist = createHash("sha256").update(readFileSync(ANMELDUNG)).digest("hex");
     expect(
       ist,

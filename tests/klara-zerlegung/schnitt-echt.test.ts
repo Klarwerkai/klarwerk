@@ -11,7 +11,9 @@
 // Git-Blob-Kennung der ungeschnittenen Datei. Das war der Basisstand `3b79c5d1`; seit der
 // Integration mit `main` ist es die Datei von `main` a2ff8da8 (R-0169 hat dort das Inline-Skript
 // weitergebaut, die Änderung steht jetzt in `taskpane.js`). Nachprüfbar ohne diesen Test mit
-// `git rev-parse a2ff8da8:apps/web/public/word-addin/taskpane.html`.
+// `git rev-parse a2ff8da8:apps/web/public/word-addin/taskpane.html`. Seit der Aufnahme
+// m365-anmeldung steht zusätzlich deren Anmeldeänderung in `taskpane.js`; der Bezugswert ist
+// dadurch `3c755f63…` — Herleitung und Abgrenzung am Wert in `tests/support/panelquelle.ts`.
 //
 // Das Verhalten (vorher gegen nachher, je ein eigenes jsdom-Fenster) misst `probeschnitt.test.ts`.
 import { describe, expect, it } from "vitest";

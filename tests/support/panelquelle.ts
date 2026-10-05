@@ -69,18 +69,29 @@ const MARKE_KOPF_ENDE = '"use strict";\n';
  * Bis zur Integration mit `main` war das der Basisstand `3b79c5d1` (`95226f6582e5…`). Auf `main`
  * (a2ff8da8) hat R-0169 das Inline-Skript weitergebaut (Dokumentkennung, KI-Aufgabe `enrich`) — in
  * der ungeschnittenen Datei. Diese Änderung ist Zeile für Zeile in `taskpane.js` übernommen; der
- * Bezugspunkt ist deshalb jetzt die Datei von `main`. Nachprüfbar ohne Test mit
- * `git rev-parse a2ff8da8:apps/web/public/word-addin/taskpane.html`.
+ * Bezugspunkt war deshalb die Datei von `main` (`7d5a6234…`, nachprüfbar mit
+ * `git rev-parse a2ff8da8:apps/web/public/word-addin/taskpane.html`).
  *
- * Zerlegungsauftrag Bestandsblick: dieselbe Regel wie bei R-0169 — eine fachliche Aenderung am
- * Skript verschiebt den Bezugspunkt. Hinzugekommen ist GENAU die Bestandsblick-Lesekoordination
- * aus 67d5e6fd (drei Stellen: `readWholeDocument(done, fehlschlag)`, `ka1Stand`/`ka1Aktuell`, das
- * Warten bzw. Neulesen in `ka3Ausfuehren`). Die Auslagerung von KW-MARKE nach `marke.js` aendert
- * am zusammengefuegten Dokument kein Byte. Nachpruefbar ohne Test: die Datei von a2ff8da8 (Kennung
- * `7d5a6234…`) mit genau diesen drei Stellen ergibt `98610ad5…`; `git diff --no-index` zwischen
- * beiden zeigt nichts sonst.
+ * Aufnahme m365-anmeldung (Integration mit `main`, 05.10.2026): die Anmeldeänderung aus Lauf 1
+ * (abgelehntes Anmelde-Fenster im fremden Rahmen → `loginDialogDeclined`, drei Texte DE/EN/NL,
+ * gekürzte Kommentare am Anmelde-Poll) war in der ungeschnittenen Datei gebaut und ist Zeile für
+ * Zeile in `taskpane.js` übertragen. Das zusammengefügte Dokument ist damit die Datei von `main`
+ * PLUS genau diese Änderung; ihr Blob ist `3c755f63…` (lesend nach `fuegePanelZusammen` ermittelt
+ * am geprüften Kandidaten 7b78946e). Eine ungeschnittene Datei mit diesem Inhalt liegt in keinem
+ * Commit — die Abweichung zu `7d5a6234…` ist ausschließlich `git diff ebfe7718 --
+ * apps/web/public/word-addin/taskpane.js`. E3 (ein Zeichen mehr → rot) bleibt die Gegenprobe.
+ *
+ * Zerlegungsauftrag Bestandsblick (Integration mit `main` 93c25f5a): dieselbe Regel — eine
+ * fachliche Aenderung am Skript verschiebt den Bezugspunkt. Hinzugekommen ist GENAU die
+ * Bestandsblick-Lesekoordination aus 67d5e6fd (drei Stellen: `readWholeDocument(done, fehlschlag)`,
+ * `ka1Stand`/`ka1Aktuell`, das Warten bzw. Neulesen in `ka3Ausfuehren`). Die Auslagerung von
+ * KW-MARKE nach `marke.js` aendert am zusammengefuegten Dokument kein Byte. Gemessen mit
+ * `git diff --no-index --full-index`: das aus den vier Dateien zusammengefuegte Dokument hat den
+ * Blob `90936dcc…`; `taskpane.js` plus Abschnitt aus `marke.js` weicht von `main`s `taskpane.js`
+ * nur in diesen drei Stellen ab (+60/-8), `taskpane.html` nur im Verweis auf `marke.js`,
+ * `taskpane.css` gar nicht.
  */
-export const PANEL_VOR_SCHNITT_BLOB = "98610ad5c564f089d718916560a7860895e035bb";
+export const PANEL_VOR_SCHNITT_BLOB = "90936dcc8daea18c0d82cb9902964e6e6900c667";
 
 export interface PanelTeile {
   html: string;
