@@ -46,7 +46,13 @@ import { useTranslation } from "react-i18next";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
-import { useDirectory, useDuplicates, useReasonerStatus, useValidationBoard } from "../api/hooks";
+import {
+  useConflicts,
+  useDirectory,
+  useDuplicates,
+  useReasonerStatus,
+  useValidationBoard,
+} from "../api/hooks";
 import type { Confidentiality, KnowledgeObject } from "../api/types";
 import { useSession } from "../app/AuthContext";
 import { useRole } from "../app/RoleContext";
@@ -77,6 +83,7 @@ import { Button, cx } from "../components/ui";
 import { aiModelUsable } from "../lib/aiAvailability";
 import { AI_CHECK_POLL_MS } from "../lib/aiCheckStatusCard";
 import { type PruefZeile, boardZeilen, stufenFacetLabelKey } from "../lib/boardAuskunft";
+import type { ConflictImpact } from "../lib/conflictImpact";
 import {
   DEMO_KNOWLEDGE_FILTERS,
   type DemoKnowledgeFilter,
@@ -97,6 +104,7 @@ import {
 import { koAuthorParts } from "../lib/koAuthor";
 import { formatKoTimestamp } from "../lib/koDates";
 import { quellennachweis, sourceBadgeKey } from "../lib/koSource";
+import { pruefKonfliktLage } from "../lib/pruefKonflikt";
 import {
   REVIEW_DECISIONS,
   type ReviewVerdict,
@@ -236,6 +244,10 @@ export function Validation(): JSX.Element {
   // teilt beide Leser denselben Eintrag. Scheitert er, bleibt `data` `undefined` und es entsteht
   // KEINE Aussage; scheitert eine AUFFRISCHUNG, bleibt der zuletzt geholte Stand stehen.
   const duplikate = useDuplicates();
+  // §8.2 / Pedis Entscheidung vom 03.10.2026: die Konfliktlage je Karte. Derselbe Eintrag
+  // `["conflicts"]`, den der Reiterkopf für seinen Zähler zieht — kein zweiter Netzabruf, aber ein
+  // EIGENER Lade- und Fehlerzustand an der Karte (`pruefKonfliktLage`).
+  const konflikte = useConflicts();
   const { user } = useSession();
   const aiModelActive = aiModelUsable(useReasonerStatus().data);
   const qc = useQueryClient();
@@ -838,6 +850,7 @@ export function Validation(): JSX.Element {
   });
 
   const listeSteht = visible.length > 0;
+  const laeuftKey = aiModelActive ? "val.aiCheck.pendingAi" : "val.aiCheck.pending";
   useEffect(() => {
     const ul = listeSteht ? warteschlangeRef.current : null;
     if (!ul) {
@@ -925,7 +938,7 @@ export function Validation(): JSX.Element {
         <input
           value={filter.search}
           onChange={(e) => setFilter((f) => ({ ...f, search: e.target.value }))}
-          placeholder={t("val.filter")}
+          placeholder={t("pruefboard.volltextFiltern")}
           className="h-9 w-full rounded-input border border-hairline bg-surface px-3 text-[12.5px] outline-none focus:border-ink/30"
         />
         <select
@@ -1269,6 +1282,9 @@ export function Validation(): JSX.Element {
             >
               {visible.map((k) => {
                 const ist = aktiv?.id === k.id;
+                // R-0213: eine laufende Prüfung ist schon in der LISTE erkennbar, nicht erst an der
+                // Karte. Dasselbe Prädikat wie die Sperre der Karte (`validationAiGate`).
+                const laeuft = validationAiGate(k.aiCheck, aiModelActive).locked;
                 return (
                   <li key={k.id} data-testid="validation-row">
                     <button
@@ -1295,9 +1311,30 @@ export function Validation(): JSX.Element {
                         ist
                           ? "border-hairline bg-surface font-semibold text-text"
                           : "border-transparent text-muted hover:bg-hairline-soft",
+                        laeuft ? "opacity-60" : "",
                       )}
                     >
                       <span data-text="titel">{k.title}</span>
+                      {laeuft ? (
+                        <Lock
+                          size={12}
+                          role="img"
+                          data-testid="pruefen-warteschlange-laeuft"
+                          aria-label={t(laeuftKey)}
+                          className="ml-1.5 inline-block align-middle text-muted"
+                        />
+                      ) : null}
+                      {/* §8.2: betroffene Einträge sind schon in der Liste erkennbar. Ein Punkt
+                          mit Namen statt eines Wortes — der Titel bleibt der Text des Eintrags. */}
+                      {pruefKonfliktLage(k.id, konflikte).art === "betroffen" ? (
+                        <span
+                          role="img"
+                          data-testid="pruefen-warteschlange-konflikt"
+                          aria-label={t("pruefboard.konfliktMarke")}
+                          title={t("pruefboard.konfliktMarke")}
+                          className="ml-1.5 inline-block h-[7px] w-[7px] rounded-full bg-trust-warn-fill align-middle"
+                        />
+                      ) : null}
                     </button>
                   </li>
                 );
@@ -1389,6 +1426,14 @@ export function Validation(): JSX.Element {
     // `minRole: "controller"` (`navigation.ts:204`).
     const doppel = doppelhinweis(k.id, duplikate.data);
     const darfVergleichen = role === "admin" || role === "controller";
+    // Die Konfliktseite trägt dieselbe Schwelle (`navigation.ts:274`, minRole controller).
+    const konfliktLage = pruefKonfliktLage(k.id, konflikte);
+    const konfliktNichtFrisch = "nichtFrisch" in konfliktLage && konfliktLage.nichtFrisch;
+    const konfliktTitel = (w: ConflictImpact): string => {
+      const titel = t(w.hasTruth ? "conflict.impact.truthTitle" : "conflict.impact.title");
+      const n = w.unresolvedCount;
+      return n > 1 ? `${titel} · ${t("pruefboard.konfliktAnzahl", { n })}` : titel;
+    };
     const punkte = Array.from({ length: Math.max(sig.needed, 1) }, (_, i) => i);
     const quittung = quittungOffen && lastDecision ? reviewOutcome(lastDecision.verdict) : null;
     // Die OFFENEN Zuweisungen (die Board-Route reicht nur offene durch, ValidationService
@@ -1846,6 +1891,70 @@ export function Validation(): JSX.Element {
                   {t("val.doppel.vergleich")} <span aria-hidden="true">→</span>
                 </Link>
               ) : null}
+            </p>
+          ) : null}
+
+          {/* ---- §8.2: die Konfliktlage DIESER Karte (Pedi, 03.10.2026) -------------------- */}
+          {/* Vier Lagen aus `pruefKonfliktLage`. Ohne Antwort entsteht KEINE Aussage über
+              Konflikte, nur der Ladesatz oder der Fehlersatz mit „Erneut laden". „Keiner" bleibt
+              still — dieselbe Entwarnungsregel wie beim Paarhinweis darüber. */}
+          {konfliktLage.art === "laedt" ? (
+            <p
+              data-testid="pruefen-konflikt-laedt"
+              data-text="text"
+              aria-busy="true"
+              className="text-[12px] text-muted"
+            >
+              {t("pruefboard.konfliktLaedt")}
+            </p>
+          ) : null}
+          {konfliktLage.art === "fehler" ? (
+            <div
+              data-testid="pruefen-konflikt-fehler"
+              className="flex flex-wrap items-center gap-2 text-[12px] text-muted"
+            >
+              <span data-text="text">{t("pruefboard.konfliktFehler")}</span>
+              <button
+                type="button"
+                data-text="knopf"
+                data-testid="pruefen-konflikt-neu-laden"
+                onClick={() => void qc.invalidateQueries({ queryKey: ["conflicts"] })}
+                className="rounded-[9px] border border-hairline bg-surface px-3 py-1 text-[12px] font-semibold text-text hover:bg-hairline-soft"
+              >
+                {t("pruefen.reload")}
+              </button>
+            </div>
+          ) : null}
+          {konfliktLage.art === "betroffen" ? (
+            <div
+              data-testid="pruefen-konflikthinweis"
+              data-schwere={konfliktLage.wirkung.hasTruth ? "truth" : "limited"}
+              className="rounded-[10px] border border-trust-warn-fill/60 bg-page px-3 py-2 text-[12.5px] text-trust-warn-text"
+            >
+              <p data-text="text" className="font-semibold">
+                {konfliktTitel(konfliktLage.wirkung)}
+              </p>
+              {/* Kein Erklärsatz darunter: die Prüffläche trägt keine Vorbehaltstexte (Design
+                  „Prüfen", R-1577). Wer mehr wissen will, geht zur Konfliktseite. */}
+              {darfVergleichen ? (
+                <Link
+                  to="/konflikte"
+                  data-testid="pruefen-konflikt-link"
+                  data-text="knopf"
+                  className="mt-1 inline-block font-semibold underline-offset-4 hover:underline"
+                >
+                  {t("pruefboard.konfliktZurSeite")} <span aria-hidden="true">→</span>
+                </Link>
+              ) : null}
+            </div>
+          ) : null}
+          {konfliktNichtFrisch ? (
+            <p
+              data-testid="pruefen-konflikt-nicht-frisch"
+              data-text="text"
+              className="text-[11.5px] text-muted"
+            >
+              {t("pruefboard.konfliktNichtFrisch")}
             </p>
           ) : null}
         </div>

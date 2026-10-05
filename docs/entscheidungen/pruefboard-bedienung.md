@@ -29,8 +29,14 @@ nicht mitgegeben. Andere Aufnahme-Läufe vom 20260922 haben sie im Auftrag erhal
   Entscheidungen oder Erledigungsbelege, und auch keinen Admin-Hinweis. Damit ist der Stand
   unverändert. Die Einzelzuordnung kann erst entstehen, wenn die Steuerung die Punkte bereitstellt.
   Eine Produktänderung folgt daraus nicht.
+- **Nacharbeit 05.10.2026 (Kandidat `6b62ba41`):** Die Quelle liegt jetzt vor —
+  `QUELLEN.json` des Auftrags `auftrag-61673cc1aec0e670d076`, Abschnitt `original_points`, 35
+  Aufnahmepunkte aus `gespraech/auftragsaufnahme-01a0c779-20260922/gesamtbestand/…`. Dazu Pedis
+  Entscheidung vom 03.10.2026 zur Konfliktmarkierung (`entscheidung:ebf707cb`). Die
+  Einzelzuordnung steht unten im Abschnitt **„Einzelzuordnung je Aufnahmepunkt“**. Die
+  Abschnitte bis dorthin bleiben als historischer Stand der Runden 1–3 stehen.
 
-## Kurzbild (§8.2 und Kriterien)
+## Kurzbild (§8.2 und Kriterien) — historischer Stand der Runden 1–3
 
 | Anliegen | Stand bei `972c469b` | Urteil |
 | --- | --- | --- |
@@ -124,18 +130,137 @@ Prüflauf.
 
 ## Offene Entscheidungen
 
-1. **Konfliktkennzeichnung an der Karte (§8.2).** Ein `KnowledgeObject` trägt kein Konfliktfeld.
-   Die Konfliktlage lebt in `useConflicts`. Sie an die Karte zu holen, hängt dem Board eine zweite
-   Lade- und Fehlerquelle an. Das wurde schon in mega45 als Umbau gemeldet und angehalten
-   (`apps/web/src/lib/validationFacets.ts:12-17`). Zu entscheiden ist: Markierung je Karte aus
-   `useConflicts` (mit eigenem Fehlerzustand) oder Verbleib beim Reiterzähler.
-2. **Zuordnung je Aufnahmepunkt.** Sie folgt, sobald die verknüpften Punkte vorliegen (siehe
-   Quellenlage).
+1. ~~**Konfliktkennzeichnung an der Karte (§8.2).**~~ **Entschieden** von Pedi am 03.10.2026
+   (`entscheidung:ebf707cb`): „Markierung an jeder betroffenen Karte, mit eigenem Lade- und
+   Fehlerzustand für die Konfliktdaten." Umgesetzt in der Nacharbeit vom 05.10.2026, siehe unten.
+2. ~~**Zuordnung je Aufnahmepunkt.**~~ Die Punkte liegen vor; die Zuordnung steht unten.
+3. **Stapel-Bearbeitung (R-0246)** — neu, siehe Einzelzuordnung.
+4. **Indexstatus (R-0237)** — neu, siehe Einzelzuordnung.
 
 ## Quellenwidersprüche
 
 1. §8.2 nennt einen **Domänen**-Filter. Das KO hat kein Domänenfeld. Das Board filtert, wie die
    Bibliothek, nach **Wissensart** (`lib.facet.type`). Ob „Domäne“ die Wissensart meint, sagt die
-   Quelle nicht.
+   Quelle nicht. Betrifft R-0198, R-1705, R-2153 und SOLL:FR-VAL-04.
 2. §8.3 verlangt echte E-Mail-/Push-Zustellung von Zuweisungen. Heute gibt es nur In-App
    (`notifyAssignment`, FR-VAL-07). Das gehört nicht zu diesem Board-Auftrag und bleibt unverändert.
+3. **P-PRUEFEN-VOLLTEXT** trägt in der Quelle „erledigt 14.09.2026 — JOB 3290 ist LIVE“. Der
+   Produktbaum widerspricht: JOB 3290 hat beide Hälften nur **gemessen**. Der Zielzustand stand als
+   `it.fails` in `tests/pruefen-volltext/filter-inhalt.test.ts`, `pruefen-brett-gemountet.test.tsx`
+   und `audit-akteur.test.ts`; die Dateiköpfe sagen selbst „misst den Mangel und behebt ihn nicht“.
+   Die Erledigungsaussage der Quelle galt also der Messung, nicht der Behebung. Behoben in der
+   Nacharbeit vom 05.10.2026 (Abschnitt 4 unten).
+4. **R-1069** beschreibt eine Aktionszeile mit Stift und Papierkorb **auf jeder Karte**. Seit JOB 3061
+   (Pedi 04.09.2026: „so irreführend und so unübersichtlich“) liegen Bearbeiten und Löschen im
+   „···“-Menü der Karte. Die jüngere Entscheidung geht vor; die Funktion ist erhalten.
+5. **R-0251 / R-0255** (Kartenetiketten, fünf statt acht) sind durch dieselbe jüngere Entscheidung
+   überholt: die Karte trägt eine Pille und eine Metazeile, alles Weitere steht im „Mehr“.
+
+## Nacharbeit 05.10.2026 — Kandidat `6b62ba41`
+
+### 3. Konfliktmarkierung je Karte (§8.2, Pedis Entscheidung vom 03.10.2026)
+
+- `apps/web/src/lib/pruefKonflikt.ts` (neu): `pruefKonfliktLage(koId, abruf)` mit vier Lagen —
+  `laedt`, `fehler`, `keiner`, `betroffen` — plus `nichtFrisch` bei gescheiterter Auffrischung.
+  Betroffen heißt: dieselbe Regel wie Bibliothek, Detail und Ask (`conflictImpact`, ungelöster
+  Konflikt nennt das Objekt als A oder B).
+- `apps/web/src/pages/Validation.tsx`:
+  - An der Karte: Markierung mit `conflict.impact.title` bzw. `.truthTitle`, ab zwei Konflikten mit
+    Anzahl, dazu „Zu den Konflikten →“ nur für Rollen mit Zugang zur Konfliktseite
+    (`navigation.ts:274`, minRole controller). Kein Erklärsatz (Design „Prüfen“, R-1577: keine
+    Vorbehaltstexte).
+  - Eigener Ladezustand („Konfliktdaten werden geladen …“) und eigener Fehlerzustand (Satz +
+    „Erneut laden“), beide ohne jede Aussage über Konflikte. Keine Entwarnung bei „keiner“.
+  - Gescheiterte Auffrischung: Markierung bleibt, darunter „Konfliktstand nicht aktuell …“.
+  - In der Warteschlange: ein benannter Punkt am betroffenen Eintrag (`aria-label`, Text des
+    Eintrags bleibt der Titel).
+  - Die Konfliktlage sperrt keine Prüfentscheidung — das verlangt keine Quelle.
+- Abruf: derselbe Eintrag `["conflicts"]`, den der Reiterkopf schon zieht; kein zusätzlicher
+  Netzabruf.
+- Texte: `apps/web/src/texte/pruefboard.ts` (DE/EN/NL).
+- Belege: `tests/pruefboard-bedienung/konfliktlage-regel.test.ts` (Regel),
+  `tests/pruefboard-bedienung/konfliktmarkierung-mounted.test.tsx` (gemountete Fläche, Lagen
+  K1–K7).
+
+### 4. Volltextfilter durchsucht den ausführlichen Inhalt; Audit nennt den Handelnden
+
+- `apps/web/src/lib/validationFilters.ts`: der Heuhaufen enthält jetzt den Klartext aus `bodyHtml`
+  (`htmlToPlainText`, dieselbe Reduktion wie die Entwurfsliste) und, wenn ein Weg kein `bodyHtml`
+  liefert, die `captionTexts` (Rückfallregel wie `librarySearch.ts:172`). N-0072,
+  P-PRUEFEN-VOLLTEXT Hälfte 1.
+- Beschriftung: das Feld trägt wieder „Volltext filtern …“ über den neuen Schlüssel
+  `pruefboard.volltextFiltern`. `val.filter` bleibt unverändert stehen, weil der Umzugsnachweis
+  `tests/i18n-textmodule/bestand-unveraendert.test.ts` seinen Wert samt Prüfsumme festhält. In
+  `i18n.ts` ist nur ein Kommentar dazu ergänzt, kein Wert geändert. Rest: `val.filter` ist damit
+  ungenutzt; entfernen lässt er sich erst mit einem neu erzeugten Schnappschuss
+  (`tests/i18n-textmodule/bestand-erzeugen.ts`).
+- `services/ask/src/service.ts` / `services/app/src/routes/ask-routes.ts`: `gap.priority-changed`
+  trägt den angemeldeten Nutzer; ohne Aufrufer (Demo-Seed) bleibt es `system` — über die
+  vorhandene Regel `aufruferAus`. P-PRUEFEN-VOLLTEXT Hälfte 2.
+- Die Sollverträge von JOB 3290 sind wie dort vorgeschrieben von `it.fails` auf `it` umgestellt;
+  die Fälle, die den Befund als Tatsache festhielten (filter-inhalt K1 zweite Zeile,
+  pruefen-brett-gemountet C3, audit-akteur K3), sind entfallen. C4 bindet die Beschriftung weiter an
+  das Verhalten, jetzt am Schlüssel des Felds.
+- Die Tests, die das Suchfeld über seinen Platzhalter finden, ziehen mit:
+  `tests/pruefen-listennavigation/pfeiltasten.test.tsx`, `tests/app/mega47-persoenlicher-leerzustand.test.tsx`,
+  `tests/review26-pruefen-schmal/pruefen-schmal-auswahl.test.tsx`.
+
+### 5. Laufende Prüfung in der Liste erkennbar (R-0213)
+
+Der Warteschlangeneintrag einer Karte mit laufender Prüfung ist gedämpft und trägt ein Schloss mit
+Namen (`val.aiCheck.pending` / `.pendingAi`). Dasselbe Prädikat wie die Sperre der Karte
+(`validationAiGate`). Beleg: `konfliktmarkierung-mounted.test.tsx`, Abschnitt R-0213.
+
+### Prüfstand dieser Nacharbeit
+
+In dieser Sitzung wurden **keine Tests ausgeführt** (Auftragsvorgabe: Cloud führt Tests und
+`tools/build` aus). Alle Aussagen über das Verhalten sind Quelleninspektion; der Prüfplan steht in
+`CLAUDE/PRUEFPLAN.json` des Auftrags. Auch Biome lief nicht; die Formatierung ist von Hand an
+`biome.json` (Zeilenbreite 100) ausgerichtet und wird erst durch `tools/lint` belegt.
+
+## Einzelzuordnung je Aufnahmepunkt
+
+Stand: Kandidat `6b62ba41` plus Nacharbeit vom 05.10.2026. „Geliefert“ heißt: im Code vorhanden
+und mit dem genannten Test belegbar; es ist **keine** menschliche oder Design-Abnahme. Wo die Quelle
+eine solche Abnahme verlangt, steht sie als offen da.
+
+| Punkt | Originalanforderung (gekürzt) | Ergebnis | Beleg / verbleibende Entscheidung |
+| --- | --- | --- | --- |
+| R-0198 | Status, Volltext, Domäne, Kategorie, Schlagworte, „mir zugewiesen“ kombinierbar | geliefert; Volltext seit 05.10. inkl. Inhalt | `tests/pruefen-volltext/filter-inhalt.test.ts` (K5 AND, A1–A5), `services/validation/src/service.test.ts` (FR-VAL-04). Domäne: Widerspruch 1 |
+| R-0202 | Protokoll unterscheidet Rückgabe an Verantwortlichen und an Autor | geliefert | `ko.returned-to-owner` / `ko.returned-to-author` (`services/validation/src/service.ts:440-476`); `services/validation/src/rueckgabe-eigentuemer.test.ts`, `tests/validation/return-and-revalidate.test.ts` |
+| R-0213 | laufende Prüfung in der Liste erkennbar, nicht doppelt bearbeitbar | geliefert (Liste seit 05.10.) | Sperre: `tests/validation/ai-gate-lock-followstate-mounted.test.tsx`; Liste: `konfliktmarkierung-mounted.test.tsx` (R-0213) |
+| R-0214 | Löschen in der Prüferliste verschwindet wirklich, Liste schlüssig | geliefert | `tests/wissensobjekt-loeschen/zweites-loeschen-mounted.test.tsx`, `rueckfrage-im-blick-mounted.test.tsx` |
+| R-0219 | Posteingang nur offene Objekte | geliefert | `services/validation/src/service.test.ts` („FR-VAL-03“) |
+| R-0226 | Validierungsseite auf das Zielbild; drei Entscheidungen, zwei mit Begründungspflicht; Stufe im Bestand | im Code geliefert (JOB 3061, 3112) | `tests/validierung-stufe/*`, `tests/validation/validation-feedback.test.ts`; Design-Lead-Abnahme mit Vorher/Nachher **offen (menschlich)** |
+| R-0237 | Indexstatus sichtbar, zunächst nur Anzeige | **nicht gebaut** | Quelle: KW-AI-INDEX-02 „vorbereitet, nicht freigegeben“. Entscheidung offen: soll eine Anzeige ohne Indexlogik gebaut werden? Ohne Datenquelle wäre jede Anzeige eine Behauptung |
+| R-0238 | Kommentarpflicht bei bedingt/abgelehnt, nicht bei Bestätigung | geliefert | `isFeedbackSubmittable`; `tests/validation/validation-feedback.test.ts`, `rueckfrage-und-zuweisen-fehlerwege.test.tsx`. Der Zusatz „widersprechende Ablehnung erzeugt Konfliktvorschlag“ (Qualifikation) ist **nicht geprüft** |
+| R-0242 | Revisions-Schleife: Rückgabe mit Kommentaren, Überarbeitung, Neueinreichung | geliefert | `tests/validation/return-and-revalidate.test.ts`, `tests/validation/rework-flow-e2e.test.ts`, `tests/ko/review-rework-context.test.ts` |
+| R-0246 | Stapel-Bearbeitung: mehrere auswählen, gesammelt bestätigen/zuweisen | **nicht gebaut** | Entscheidung offen (Pedi): Ein gesammeltes Bestätigen stünde gegen die Stufenfrage je Freigabe (K2, „keine ungefragte Freigabe“) und gegen das Zielbild „Liste links, eine Karte rechts“ (JOB 3061). Möglich wäre ein reines Sammel-Zuweisen |
+| R-0251 | Etiketten der Validierungskarte klar, ohne Doppelung (JOB 1100) | überholt durch JOB 3061 | `tests/app/validation-card-labels-mounted.test.tsx`; Widerspruch 5 |
+| R-0255 | fünf statt acht Abzeichen, ohne Angabe zu verlieren (D-033) | überholt durch JOB 3061 | Funktionsinventar „Mehr“ (`Validation.tsx` Kopfkommentar); Browser: `tests/design/h2-funktionsinventar.test.ts`; Widerspruch 5 |
+| R-0262 | Fehlerfall beim Freigeben sichtbar quittiert | geliefert | `tests/validierung-stufe/stufenfrage-fehler-keine-freigabe.test.tsx`, `stufenfrage-teilerfolg.test.tsx`, `apps/web/src/pages/Validation.quittung.test.tsx` |
+| R-0977 | Karte als Ganzes anklickbar, Details eingeklappt | geliefert | `tests/validation/validation-card.test.ts` (`cardClickOpens`); „Mehr“ als `<details>` |
+| R-0992 | Validierungsseite ohne kaputtes Layout (Station 4); Freigeben als gefüllter grüner Knopf | im Code geliefert (JOB 3061/3812) | Fußband `pruefen-entscheidung-up` (`bg-trust-pos-fill`, Häkchen); Browser: `tests/design/job2935-validierung-fussband.test.ts`; Vorher/Nachher und Design-Lead-Abnahme **offen (menschlich)** |
+| R-1069 | Bearbeiten und Löschen im Board; ohne Berechtigung unsichtbar | geliefert in jüngerer Form | im „···“-Menü (Widerspruch 4); die Seite verlangt `controller` (`navigation.ts:264`), Löschen zusätzlich `darfLoeschen`; `tests/wissensobjekt-loeschen/*` |
+| R-1081 | Pflicht-Begründung bei Rückfrage/Ablehnung, landet als Kommentar | geliefert | `tests/validation/validation-feedback.test.ts`, `tests/pruefboard-bedienung/rueckfrage-und-zuweisen-fehlerwege.test.tsx` |
+| R-1082 | Prüf-Fokus neu gegen überarbeitet | geliefert | `tests/validation/validation-review-context.test.ts`, `validation-board-focus.test.ts` |
+| R-1083 | Prüf-Führung „Was prüfe ich jetzt?“ | geliefert | im „?“-Menü; `tests/validation/review-guidance.test.ts` |
+| R-1559 | H2 Prüfen nach Pages-Maßstab (JOB 3061) | geliefert, live belegt laut Quelle | nicht neu bestellt |
+| R-1577 | Design Prüfen: vier Reiter, Konflikt/Duplikat als Kartenpaar, keine Vorbehaltstexte | im Code, nicht abgenommen | Design-Abnahme **offen (menschlich)**; die neue Konfliktmarkierung hält die Regel „keine Vorbehaltstexte“ ein |
+| R-1704 | Board: Arbeitsliste offener Objekte (FE-VAL-01) | geliefert | wie R-0219 |
+| R-1705 | Filter Status, Domäne, Kategorie, Tags, Zuweisung (FE-VAL-02) | geliefert | wie R-0198; Domäne: Widerspruch 1 |
+| R-1709 | Revisions-Schleife mit Kommentaren (FE-VAL-06) | geliefert | wie R-0242 |
+| R-2152 | Board zeigt nur offene KOs (FR-VAL-03) | geliefert | wie R-0219 |
+| R-2153 | Board-Filter (FR-VAL-04) | geliefert | wie R-0198 |
+| N-0072 | Volltextfilter findet ausführlichen Inhalt nicht | **behoben 05.10.** | `filter-inhalt.test.ts` A1–A5, `pruefen-brett-gemountet.test.tsx` S1/C4 |
+| P-PRUEFEN-LISTENNAVIGATION | links durch die Liste, rechts der Artikel; Rad und Pfeile, nur an der Liste | geliefert (JOB 3504/3593/3625/3812) | `tests/pruefen-listennavigation/*`; Browser: Block L in `job2935-validierung-fussband.test.ts` |
+| P-PRUEFEN-VOLLTEXT | Volltext ohne Inhalt; Audit `gap.priority-changed` unter „system“ | **behoben 05.10.** (beide Hälften) | `filter-inhalt.test.ts`, `pruefen-brett-gemountet.test.tsx`, `audit-akteur.test.ts` (B1–B3, K4 bleibt „system“); Widerspruch 3 |
+| TEST-A05 | Validieren, freigeben und revidieren (Gesamtprüfung 14.09.) | im Code belegt, Gesamtweg offen | Freigabe/Rückfrage/Ablehnen gemountet: `tests/pruefseite/entscheidungswege-mounted.test.tsx`. Laut Quelle „sichtbar, aber nicht ausgeführt; KI-Prüfung ohne Modell gescheitert“ — ein menschlicher Durchlauf mit verfügbarem Modell ist **offen (externe Voraussetzung)** |
+| priority:PRUEFEN-LISTENNAVIGATION | dieselbe Anforderung wie P-PRUEFEN-LISTENNAVIGATION | geliefert | wie dort |
+| priority:PRUEFEN-VOLLTEXT | dieselbe Anforderung wie P-PRUEFEN-VOLLTEXT | behoben 05.10. | wie dort |
+| package:listen | Pfeiltasten/Mausrad, Auswahl sichtbar, Textfelder und Scrollen bleiben bedienbar | geliefert | `tests/pruefen-listennavigation/pfeiltasten.test.tsx` (inkl. „Pfeiltasten in einem Textfeld bewegen die Auswahl NICHT“), `mausrad.test.tsx`, `rollbereich-lagen.test.tsx` |
+| SOLL:FR-VAL-03 | nur offene KOs, validierte in der Bibliothek | geliefert | wie R-0219 |
+| SOLL:FR-VAL-04 | Board-Filter, alle kombinierbar | geliefert | wie R-0198 |
+
+Die Browser-Belege in dieser Tabelle wurden in dieser Sitzung nicht wiederholt; der Prüfplan nennt,
+welche davon der Cloudlauf an diesem Kandidaten fährt.

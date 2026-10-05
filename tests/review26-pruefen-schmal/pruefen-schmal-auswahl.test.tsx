@@ -202,7 +202,9 @@ describe("JOB 3464 · bewusste Auswahl", () => {
     expect(karte().textContent).toContain("frisch");
     expect(springen).not.toHaveBeenCalled();
     await klick(element('[data-testid="pruefen-menue-filter"]'));
-    const input = element<HTMLInputElement>(`input[placeholder="${i18n.t("val.filter")}"]`);
+    const input = element<HTMLInputElement>(
+      `input[placeholder="${i18n.t("pruefboard.volltextFiltern")}"]`,
+    );
     act(() => {
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(
         input,

@@ -1379,13 +1379,22 @@ export class AskService {
   }
 
   // SCRUM-115 / FE-RISK-02: Priorität einer Wissenslücke setzen.
-  async setGapPriority(id: string, priority: GapPriority): Promise<Gap> {
+  //
+  // P-PRUEFEN-VOLLTEXT / JOB 3290 B: der Handelnde kommt vom AUFRUFER. Bis hierher stand im
+  // Protokoll fest „system", auch wenn ein Mensch über `PUT /api/gaps/:id` geändert hatte, und der
+  // Filter auf das eigene Konto fand die eigene Änderung nicht. Ohne Aufrufer (Demo-Seed) bleibt
+  // es Systemausführung — dieselbe Regel `aufruferAus` wie an `ask()`, kein Wortvergleich.
+  async setGapPriority(id: string, priority: GapPriority, actor?: string): Promise<Gap> {
     if (!isGapPriority(priority)) {
       throw new AskError("BAD_REQUEST", "Ungültige Priorität.");
     }
     const gap = await this.require(id);
     const saved = await this.save({ ...gap, priority });
-    await this.audit?.record({ actor: "system", action: "gap.priority-changed", target: id });
+    await this.audit?.record({
+      actor: aufruferBeschriftung(aufruferAus(actor)),
+      action: "gap.priority-changed",
+      target: id,
+    });
     return saved;
   }
 
