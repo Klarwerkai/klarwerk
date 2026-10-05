@@ -13,6 +13,7 @@ import {
   mergeSlideImageInfo,
   slideImageId,
 } from "../../apps/web/src/lib/slideImages";
+import { woerterbuchQuelleAus } from "../support/woerterbuchquelle";
 
 const PNG = (payload: string): string => `data:image/png;base64,${payload}`;
 
@@ -69,7 +70,7 @@ describe("WP-D11: Folien-figures (pure)", () => {
   });
 
   it("die Folien-Copy existiert in DE, EN und NL", () => {
-    const i18n = readFileSync(resolve(process.cwd(), "apps/web/src/i18n.ts"), "utf8");
+    const i18n = woerterbuchQuelleAus(resolve(process.cwd(), "apps/web/src/i18n.ts"));
     for (const key of Object.values(SLIDE_IMAGES_TEXT)) {
       expect(`${key}:${i18n.split(`"${key}":`).length - 1}`).toBe(`${key}:3`);
     }

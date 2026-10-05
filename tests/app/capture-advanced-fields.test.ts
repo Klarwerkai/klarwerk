@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import i18n from "../../apps/web/src/i18n";
 import {
   ADVANCED_FIELDS_KEYS,
+  ADVANCED_FIELDS_TOTAL,
   advancedFieldsSummary,
 } from "../../apps/web/src/lib/captureAdvancedFields";
 
@@ -29,9 +30,20 @@ describe("SCRUM-375: captureAdvancedFields", () => {
     expect(advancedFieldsSummary({ tags: ["riemen"] }).filledCount).toBe(1);
     expect(advancedFieldsSummary({ documentCount: 1 }).filledCount).toBe(1);
     expect(advancedFieldsSummary({ imageCount: 3 }).filledCount).toBe(1);
+    // R-0922: auch was sonst hinter dem Aufklapper liegt, zählt — sonst verschweigt der Kopf es.
+    expect(advancedFieldsSummary({ confidentialityDeclared: true }).filledCount).toBe(1);
+    expect(advancedFieldsSummary({ reviewerCount: 2 }).filledCount).toBe(1);
+    expect(advancedFieldsSummary({ sourceCount: 4 }).filledCount).toBe(1);
   });
 
-  it("alle Felder gefüllt → filledCount 6, hasAny true", () => {
+  it("R-0922: nicht gewählte Vertraulichkeit, keine Prüfer, keine Quellen zählen NICHT", () => {
+    expect(
+      advancedFieldsSummary({ confidentialityDeclared: false, reviewerCount: 0, sourceCount: 0 }),
+    ).toEqual({ filledCount: 0, hasAny: false });
+  });
+
+  it("alle Felder gefüllt → filledCount = ADVANCED_FIELDS_TOTAL, hasAny true", () => {
+    expect(ADVANCED_FIELDS_TOTAL).toBe(9);
     expect(
       advancedFieldsSummary({
         category: "A",
@@ -40,8 +52,11 @@ describe("SCRUM-375: captureAdvancedFields", () => {
         tags: ["t"],
         documentCount: 1,
         imageCount: 1,
+        confidentialityDeclared: true,
+        reviewerCount: 1,
+        sourceCount: 1,
       }),
-    ).toEqual({ filledCount: 6, hasAny: true });
+    ).toEqual({ filledCount: ADVANCED_FIELDS_TOTAL, hasAny: true });
   });
 
   it("defensiv: reiner Whitespace / leere Tags zählen NICHT", () => {

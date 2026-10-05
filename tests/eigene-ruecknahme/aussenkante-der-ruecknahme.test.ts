@@ -43,34 +43,36 @@ describe("JOB 3071 · §7.4: die gemessene Aussenkante der Rücknahme", () => {
     expect(meiner[0]?.payload).toMatchObject({ koId: a });
   });
 
-  // GEMESSENER BEFUND, NICHT BEHOBEN (Auftrag §7.4): `GET /api/duplicates/:id` liefert den
-  // geschlossenen Befund nach dem Rückzug NICHT mehr aus. Der Grund liegt nicht am Befund, sondern
-  // an der Sichtbarkeitsregel davor: `paarSichtbar` (services/app/src/routes/overlap-routes.ts:125)
-  // verlangt Sichtbarkeit BEIDER Seiten, und die zurückgezogene Seite liegt im Papierkorb — für
-  // jeden Sichtweg also „nicht vorhanden". Die Route antwortet 404, und zwar bewusst ununterscheid-
-  // bar von „gibt es nicht" (mega74 D / JOB 1125 Pflicht 3).
-  //
-  // Das ist der Zustand VOR diesem Auftrag und wird hier nicht angefasst: die Regel zu lockern wäre
-  // eine Sichtbarkeitsentscheidung mit eigener Begründungslast und liegt ausserhalb der Zielpfade.
-  // Der Befund gehört in die nächste Scheibe; dieser Fall hält ihn fest, damit er nicht wieder
-  // verloren geht — und wird rot, sobald jemand die Kante öffnet, ohne es zu benennen.
-  it("GET /api/duplicates/:id trägt sie NICHT — die zurückgezogene Seite ist im Papierkorb", async () => {
-    const { app, admin, eintrag } = await zurueckgezogeneLage();
+  // GEMESSENER BEFUND AUS JOB 3071 (§7.4), SEIT DEM AUFTRAG GESAMT-DUBLETTEN-RÜCKZUG BEHOBEN (Q7,
+  // R-1569 „bekannte 404-Grenze"): `GET /api/duplicates/:id` lieferte den geschlossenen Befund nach
+  // dem Rückzug nicht mehr aus, weil `paarSichtbar` die zurückgezogene Seite im Papierkorb nicht
+  // fand. Jetzt löst die Route für einen `withdrawn_own`-Abschluss die zurückgezogene Seite über
+  // den Papierkorb auf (`paarSichtbarMitPapierkorb`) — dieselbe Regel `darfSehen`, nicht gelockert.
+  // Ausgeliefert wird der Grabstein: Grund, Urheber, Zeit, sonst nichts (keine Kennungen der
+  // Objekte, keine Zitate, kein Vermerk). Die Kante ist damit BENANNT geöffnet.
+  it("GET /api/duplicates/:id trägt sie als Grabstein — Grund, Urheber, Zeit, sonst nichts", async () => {
+    const { app, admin, autorin, eintrag, services } = await zurueckgezogeneLage();
     const res = await app.inject({
       method: "GET",
       url: `/api/duplicates/${eintrag.id}`,
       headers: admin.headers,
     });
-    expect(res.statusCode).toBe(404);
-    expect(res.json()).toMatchObject({ error: "NOT_FOUND" });
+    expect(res.statusCode).toBe(200);
+    const gespeichert = await services.overlaps.get(eintrag.id);
+    expect(res.json()).toEqual({
+      id: eintrag.id,
+      status: "geschlossen",
+      resolution: { reason: "withdrawn_own", by: autorin.id, at: gespeichert?.resolution?.at },
+    });
   });
 
-  // DIE FOLGE DAVON, GEMESSEN STATT ERSCHLOSSEN: auch die Liste trägt den neuen Grund nicht — sie
+  // DIE LISTE BLEIBT UNVERÄNDERT: sie trägt den neuen Grund nicht — sie
   // liefert ausschliesslich OFFENE Befunde (`overlaps.unresolved()`, overlap-routes.ts:54), und ein
-  // zurückgezogener ist geschlossen. Die Oberfläche (apps/web, §10: Scheibe 4) kann `withdrawn_own`
-  // heute also gar nicht erreichen; ihr fehlender Übersetzungsschlüssel ist unerreichbar, nicht
-  // kaputt. Wird eine der beiden Kanten geöffnet, wird dieser Fall rot — und dann gehört die
-  // Beschriftung in denselben Schritt.
+  // zurückgezogener ist geschlossen. Die Detailkante oben ist geöffnet, hat in apps/web aber
+  // keinen Leser (`endpoints.duplicates.get` wird von keiner Fläche gerufen) — `withdrawn_own`
+  // erreicht die Oberfläche also weiterhin nicht, ihr fehlender Übersetzungsschlüssel ist
+  // unerreichbar, nicht kaputt. Öffnet jemand die Liste für Geschlossenes oder baut eine Fläche
+  // auf die Detailkante, gehört die Beschriftung in denselben Schritt.
   it("GET /api/duplicates trägt sie ebenfalls nicht — die Liste zeigt nur Offenes", async () => {
     const { app, admin, eintrag } = await zurueckgezogeneLage();
     const res = await app.inject({ method: "GET", url: "/api/duplicates", headers: admin.headers });

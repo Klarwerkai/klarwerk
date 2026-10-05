@@ -3,6 +3,7 @@ import { type Queryable, type TxContext, pgQueryable } from "../../db-tx";
 import type { KoMetadataProjectionRepo } from "./metadata-projection-repo";
 import { PgKoMetadataProjectionRepo } from "./metadata-projection-repo-pg";
 import type { KoSichtbarkeitstrim } from "./repo";
+import { sqlDeletedAtLeer } from "./repo-pg";
 import {
   DECKELAUSWAHL_VORGABE,
   type KoSearchHit,
@@ -356,11 +357,15 @@ function ausZeile(row: ProjectionRow): KoSearchProjection {
   };
 }
 
+// „Nicht im Papierkorb" für die `kos`-Zeile `k` — der SQL-Spiegel von `!ko.deletedAt`, das der
+// Speicheradapter an jeder dieser Stellen prüft. Die Schlüsselexistenz allein verbarg Altzeilen mit
+// `deletedAt: null` oder `""` (AUFNAHME 20260922, BEN 4359 Befund B2; `sqlDeletedAtLeer`).
+const K_LEBT = `(NOT (k.data ? 'deletedAt') OR ${sqlDeletedAtLeer("k")})`;
+
 // Der Ausdruck der AKTIVEN Version: die Projektionszeile, deren ko_version der aktuellen Version
 // des Wissensobjekts entspricht. Alt-Zeilen ohne `version` im JSON gelten als Version 1 (dasselbe
 // Zugeständnis, das der Rest des Moduls für Altbestand macht).
-const AKTIVE_VERSION =
-  "k.id = p.ko_id AND COALESCE((k.data->>'version')::int, 1) = p.ko_version AND NOT (k.data ? 'deletedAt')";
+const AKTIVE_VERSION = `k.id = p.ko_id AND COALESCE((k.data->>'version')::int, 1) = p.ko_version AND ${K_LEBT}`;
 
 // ================================================================================================
 // JOB 2689 D1 (Befund R2-37) — EIN PROZENTZEICHEN HOLT DEN GANZEN BESTAND.
@@ -550,7 +555,7 @@ export class PgKoSearchProjectionRepo implements KoSearchProjectionRepo {
       `SELECT k.id FROM kos k
          LEFT JOIN ko_search_projections p
            ON p.ko_id = k.id AND p.ko_version = COALESCE((k.data->>'version')::int, 1)
-        WHERE NOT (k.data ? 'deletedAt')
+        WHERE ${K_LEBT}
           AND (p.ko_id IS NULL OR p.projection_version <> $1 OR p.generation IS DISTINCT FROM $2)
         LIMIT 1`,
       [SEARCH_PROJECTION_VERSION, generation],
@@ -804,7 +809,7 @@ export class PgKoSearchProjectionRepo implements KoSearchProjectionRepo {
          LEFT JOIN ko_search_projections p
            ON p.ko_id = k.id AND p.ko_version = COALESCE((k.data->>'version')::int, 1)
          LEFT JOIN ko_metadata_projections md ON md.ko_id = k.id
-        WHERE NOT (k.data ? 'deletedAt')
+        WHERE ${K_LEBT}
           AND (p.ko_id IS NULL OR p.projection_version <> $2 OR md.ko_id IS NULL)
         LIMIT $1`,
       [cap, SEARCH_PROJECTION_VERSION],
@@ -904,14 +909,14 @@ export class PgKoSearchProjectionRepo implements KoSearchProjectionRepo {
          LEFT JOIN ko_search_projections p
            ON p.ko_id = k.id AND p.ko_version = COALESCE((k.data->>'version')::int, 1)
          LEFT JOIN ko_metadata_projections md ON md.ko_id = k.id
-        WHERE NOT (k.data ? 'deletedAt')`,
+        WHERE ${K_LEBT}`,
     );
     const fassungen = await this.pool.query<{ projection_version: number; n: string }>(
       `SELECT p.projection_version, COUNT(*)::text AS n
          FROM kos k
          JOIN ko_search_projections p
            ON p.ko_id = k.id AND p.ko_version = COALESCE((k.data->>'version')::int, 1)
-        WHERE NOT (k.data ? 'deletedAt')
+        WHERE ${K_LEBT}
         GROUP BY p.projection_version
         ORDER BY p.projection_version`,
     );
@@ -959,7 +964,7 @@ export class PgKoSearchProjectionRepo implements KoSearchProjectionRepo {
                     (k.id IS NOT NULL AND COALESCE((k.data->>'version')::int, 1) = p.ko_version)
                       AS lebt
                FROM ko_search_projections p
-               LEFT JOIN kos k ON k.id = p.ko_id AND NOT (k.data ? 'deletedAt')
+               LEFT JOIN kos k ON k.id = p.ko_id AND ${K_LEBT}
               WHERE p.ko_id=$1 AND p.ko_version=$2`,
             [koId, koVersion],
           );

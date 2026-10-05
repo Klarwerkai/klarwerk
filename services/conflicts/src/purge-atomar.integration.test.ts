@@ -1,6 +1,7 @@
 import { Pool } from "pg";
 import { GenericContainer, type StartedTestContainer, Wait } from "testcontainers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { stelleTrigrammErweiterungSicher } from "../../../tests/office-pg-abnahme/rueckweg-erwartung";
 import {
   AUDIT_EVENT_ID_SCHEMA,
   AUDIT_HASH_VERSION_SCHEMA,
@@ -126,6 +127,10 @@ describe("JOB 3066: Endlöschung und Befund-Aufräumung committen/rollbacken gem
     // scheitert im Aufbau: es schreibt seinen Beleg über `appendOnce`
     // (services/audit/src/repo-pg.ts:148-167), das beide Spalten benennt. Ein Test, der auf einem
     // Schema läuft, das es im Betrieb nicht gibt, beweist nichts.
+    // Auftrag gesamt-dubletten-rueckzug (Lauf 2): die Trigramm-Erweiterung unter derselben Sperre
+    // wie die übrigen Dateien des parallelen Integrationslaufs anlegen — sonst bricht `KO_SCHEMA`
+    // hier mit `pg_extension_name_index` ab, wenn eine Nachbardatei sie im selben Augenblick anlegt.
+    await stelleTrigrammErweiterungSicher(p);
     await p.query(KO_SCHEMA);
     await p.query(KO_IMPORT_ANCHOR_SCHEMA);
     await p.query(KO_CREATE_OPERATION_SCHEMA);

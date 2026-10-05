@@ -87,10 +87,15 @@ export async function detectDuplicatesForKo(
     // VERENGEN des Pools genutzt: er dürfte die deterministische Deckungsprüfung nie beschneiden und
     // für vertrauliche Subjekte nie den Embedder anfragen. Die Indizierung (indexKoForDuplicatePrefilter)
     // bleibt für andere Pfade bestehen; die VIP-Bestandsgröße trägt die Voll-Pool-Prüfung locker.
+    // R-0194: derselbe Pool speist die Ähnlichkeitsprüfsumme in detectForSubject — Demo-Seed und
+    // das Objekt selbst bleiben ihr damit ebenso fern wie dem Trigramm-Rang.
     const pool = (await deps.ko.list())
       .filter((k) => k.id !== koId && !k.demoSeed)
       .map(toDetectSubject);
     if (pool.length === 0) {
+      // R-0194 (bens Befund zu K3): auch ohne Vergleichspartner ist das eine Anlage bzw. Änderung —
+      // die lokale Prüfsumme des (nicht-Demo-)Subjekts wird gepflegt. Kein Vergleich, kein Modell.
+      deps.overlaps.checksums.upsert(subjectSubject);
       return coverage;
     }
     const minConfidence =

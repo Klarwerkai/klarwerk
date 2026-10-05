@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import { ArbeitsbereicheEintraege } from "./ArbeitsbereicheMenue";
 import { KontoEintraege } from "./KontoMenue";
 import { KopfbandPunkteListe } from "./KopfbandPunkte";
 import { useMeldungenZustand } from "./Meldungen";
@@ -13,7 +14,18 @@ import { ZahnradEintraege } from "./ZahnradMenue";
 // Bausteine wie das Kopfband und seine Menüs: die fünf Punkte, die Einträge des Zahnrad-Menüs
 // (mit „Weitere Bereiche" und ⌘K) und die des Konto-Menüs. Ein Bau, drei Orte — was auf dem
 // Desktop erreichbar ist, ist es auch auf dem Telefon.
-export function DrawerMenue({ onClose }: { onClose: () => void }): JSX.Element {
+//
+// FE-002: die Abschnitte tragen dieselben Namen wie ihre Griffe im breiten Kopfband —
+// Hauptnavigation, Arbeitsbereiche (mit „Seite finden … ⌘K"), Einstellungen und Hilfe, Konto.
+// Die weiteren Seiten stehen hier offen, nicht mehr eingeklappt unter „Bereiche".
+export function DrawerMenue({
+  onClose,
+  rueckweg,
+}: {
+  onClose: () => void;
+  /** Der Auslöser des Drawers — Rückweg des Fokus nach „Seite finden" (FE-002). */
+  rueckweg?: (() => HTMLElement | null) | undefined;
+}): JSX.Element {
   const { t } = useTranslation();
   const meldungen = useMeldungenZustand();
   return (
@@ -25,8 +37,11 @@ export function DrawerMenue({ onClose }: { onClose: () => void }): JSX.Element {
       <MenueKopf>{t("kopfband.navigation")}</MenueKopf>
       <KopfbandPunkteListe />
       <MenueTrenner />
-      <MenueKopf>{t("kopfband.menue")}</MenueKopf>
-      <ZahnradEintraege onNavigiert={onClose} />
+      <MenueKopf>{t("fe002.arbeitsbereiche")}</MenueKopf>
+      <ArbeitsbereicheEintraege onSchnellzugriff={onClose} rueckweg={rueckweg} />
+      <MenueTrenner />
+      <MenueKopf>{t("fe002.einstellungen")}</MenueKopf>
+      <ZahnradEintraege />
       <MenueTrenner />
       <MenueKopf>{t("kopfband.konto")}</MenueKopf>
       <KontoEintraege meldungen={meldungen} onNavigiert={onClose} />

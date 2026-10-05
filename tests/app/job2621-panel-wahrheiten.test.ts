@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 // @vitest-environment jsdom
 // ================================================================================================
@@ -10,6 +9,7 @@ import { resolve } from "node:path";
 // Inline-Skript laeuft; kein Zwilling, keine Kopie). Machart wie heute mehrfach getragen:
 // je Befund ein Fall, einzeln behauptet, mit Gegenprobe/Kalibrierung daneben.
 import { afterEach, describe, expect, it } from "vitest";
+import { panelQuelleAus } from "../support/panelquelle";
 import { type KlaraPanel, createKlaraPanel, reply, splitTaskpane } from "./klara-panel-fixture";
 
 let panel: KlaraPanel | null = null;
@@ -115,10 +115,7 @@ describe("JOB 2621 · Befund 3 — erst die Zustimmung, dann das andere Tor mit 
     expect(sperrzeile).toContain("entscheidet nicht dein Fenster");
     // (2) Die REIHENFOLGE im ausgelieferten Markup: Zustimmungszeile VOR Sperrzeile — gemessen an
     //     der Datei, nicht behauptet.
-    const html = readFileSync(
-      resolve(process.cwd(), "apps/web/public/word-addin/taskpane.html"),
-      "utf8",
-    );
+    const html = panelQuelleAus(resolve(process.cwd(), "apps/web/public/word-addin/taskpane.html"));
     const { markup } = splitTaskpane(html);
     const posSession = markup.indexOf('id="klara-s4-session"');
     const posDeviation = markup.indexOf('id="klara-s4-deviation"');
@@ -164,10 +161,7 @@ describe("JOB 2621 · Befund 1 — der Stand steht dort, wo gesucht wird, aus EI
     expect(panel.text("#kw-stand-zeile").replace(/\s+/g, " ").trim()).toBe("Klara dev");
     // GENAU EINE Stelle: der Kopf-Spiegel ist weg, kein zweites Element traegt den Stand.
     expect(panel.q("#kw-stand-kopf")).toBeNull();
-    const html = readFileSync(
-      resolve(process.cwd(), "apps/web/public/word-addin/taskpane.html"),
-      "utf8",
-    );
+    const html = panelQuelleAus(resolve(process.cwd(), "apps/web/public/word-addin/taskpane.html"));
     const { markup } = splitTaskpane(html);
     expect(markup.split('id="kw-stand"').length - 1).toBe(1);
     // Die Stelle liegt in den Einstellungen (hinter dem Zahnrad), nicht im Kopf und nicht in

@@ -8,13 +8,12 @@
 // Ein Test ueberschreibt je Fall den Router (`bedienen`), sonst nichts. Die Lebenszyklus-Zuhoerer
 // (focus, pagehide, visibilitychange) werden mitgeschrieben und nach jedem Fall entfernt — jsdom
 // teilt EIN `window` ueber alle Faelle einer Datei (dieselbe Lehre wie im Lebenszyklus-Test).
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { expect } from "vitest";
+import { panelQuelleAus } from "../support/panelquelle";
 import { readRueckweg } from "./klara-panel-fixture";
 
 export const TASKPANE = "apps/web/public/word-addin/taskpane.html";
-export const HTML = readFileSync(resolve(process.cwd(), TASKPANE), "utf8");
+export const HTML = panelQuelleAus(TASKPANE);
 
 export interface Aufruf {
   url: string;

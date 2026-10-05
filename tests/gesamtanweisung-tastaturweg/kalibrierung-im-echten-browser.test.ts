@@ -59,15 +59,14 @@ import {
 import { PASSWORT, type Strecke, ersteinrichtung, starteStrecke } from "../gast-nutzerweg/strecke";
 import { meldeAnMitTastatur, stelleFlaecheBereit } from "../gesamtanweisung-nutzerweg/weg";
 import {
-  BEREICHE,
+  AUSLOESER,
   EINTRAG,
   HAUPTUEBERSCHRIFT,
   MARKE,
   type Sollwerte,
-  ZAHNRAD,
-  klappeBereicheAuf,
+  arbeitsbereicheSagenOeffnenAn,
   menuewegOhneMaus,
-  oeffneZahnrad,
+  oeffneArbeitsbereiche,
   profilFuer,
   seiteMussStehen,
   sollwerte,
@@ -225,8 +224,8 @@ describe("JOB 4362 · K4 Kalibrierung: vier Verstellungen, die den Tastaturnachw
       // ── OHNE VERSTELLUNG WÄRE HIER NICHTS ZU SEHEN: erst die beiden ersten Stationen fahren,
       //    damit der Punkt überhaupt entsteht. Sie sind von V1 nicht berührt.
       await seite.evaluate<boolean>(fn(AUS_DER_TABREIHE), EINTRAG);
-      await oeffneZahnrad(seite, "de", KURZ);
-      await klappeBereicheAuf(seite, soll.bereiche, "de", KURZ);
+      await oeffneArbeitsbereiche(seite, "de", KURZ);
+      await arbeitsbereicheSagenOeffnenAn(seite, soll.bereiche, "de", KURZ);
       // Der Punkt STEHT da, ist SICHTBAR und zeigt auf die richtige Adresse — er ist nur nicht
       // mehr ertabbar. Genau das ist die Fehlerklasse „geht, aber nur mit der Maus".
       await expect(waehleGesamtanweisungen(seite, soll.eintrag, "de", KURZ)).rejects.toThrow(
@@ -252,10 +251,11 @@ describe("JOB 4362 · K4 Kalibrierung: vier Verstellungen, die den Tastaturnachw
     const { kontext, seite, soll, neuLaden } = await buehne();
     try {
       await seite.evaluate<boolean>(fn(FOKUSRING_AUS));
-      // DAS ZAHNRAD IST WEITER ERTABBAR — nur SICHTBAR ist der Fokus nicht mehr. Ein Nachweis,
+      // „ARBEITSBEREICHE“ IST WEITER ERTABBAR (FE-002; vorher das Zahnrad) — nur SICHTBAR ist
+      // der Fokus nicht mehr. Ein Nachweis,
       // der bloss die Erreichbarkeit misst, bliebe hier grün und liesse einen Menschen im
       // Dunkeln tasten (Hauslehre 9: DOM-Anwesenheit ist kein Sehen).
-      await expect(oeffneZahnrad(seite, "de", KURZ)).rejects.toThrow(
+      await expect(oeffneArbeitsbereiche(seite, "de", KURZ)).rejects.toThrow(
         /zeigt keinen sichtbaren Fokus/,
       );
 
@@ -266,22 +266,22 @@ describe("JOB 4362 · K4 Kalibrierung: vier Verstellungen, die den Tastaturnachw
       ).toBe(true);
       await neuLaden();
       const befund = await menuewegOhneMaus(seite, soll, "de");
-      expect(befund.zahnrad).toBeGreaterThan(0);
+      expect(befund.arbeitsbereiche).toBeGreaterThan(0);
       expect(befund.seite.ueberschrift).toContain(soll.eintrag);
     } finally {
       await kontext.close();
     }
   }, 600_000);
 
-  it("V3 — sagt das Untermenü sein Aufklappen nicht an, scheitert Station 2 am fehlenden aria-expanded; nach Rücknahme trägt derselbe Weg", async () => {
+  it("V3 — sagt „Arbeitsbereiche“ sein Öffnen nicht an, scheitert Station 2 am fehlenden aria-expanded; nach Rücknahme trägt derselbe Weg", async () => {
     const { kontext, seite, soll, neuLaden } = await buehne();
     try {
-      await seite.evaluate<boolean>(fn(ARIA_STUMM), BEREICHE);
-      await oeffneZahnrad(seite, "de", KURZ);
-      // Das Untermenü klappt sichtbar auf — es sagt es nur nicht an. Für einen Bildschirmleser
-      // bliebe es zu, und genau diese Zusage misst Station 2.
-      await expect(klappeBereicheAuf(seite, soll.bereiche, "de", KURZ)).rejects.toThrow(
-        /aufgeklappte Untermenü/,
+      await seite.evaluate<boolean>(fn(ARIA_STUMM), AUSLOESER);
+      await oeffneArbeitsbereiche(seite, "de", KURZ);
+      // Das Menü geht sichtbar auf — der Einstieg sagt es nur nicht an. Für einen Bildschirmleser
+      // bliebe es zu, und genau diese Zusage misst Station 2 (FE-002; vorher am Untermenü).
+      await expect(arbeitsbereicheSagenOeffnenAn(seite, soll.bereiche, "de", KURZ)).rejects.toThrow(
+        /geöffnete Einstieg/,
       );
 
       // ── RÜCKNAHME ──────────────────────────────────────────────────────────────────────────
@@ -289,12 +289,12 @@ describe("JOB 4362 · K4 Kalibrierung: vier Verstellungen, die den Tastaturnachw
       // nächste Aufbau der Fläche schreibt ihn aus dem Zustand zurück. Deshalb wird neu geladen
       // und DANACH gemessen — die Behauptung „grün" hängt am vollen Weg, nicht am Attribut.
       expect(
-        await seite.evaluate<string>(fn(ARIA_ZURUECK), BEREICHE),
+        await seite.evaluate<string>(fn(ARIA_ZURUECK), AUSLOESER),
         `${MARKE}: die Verstellung war gar nicht angebracht — dann misst dieser Fall nichts`,
       ).toBe("false");
       await neuLaden();
       const befund = await menuewegOhneMaus(seite, soll, "de");
-      expect(befund.bereiche).toBeGreaterThan(0);
+      expect(befund.arbeitsbereiche).toBeGreaterThan(0);
       expect(befund.seite.ueberschrift).toContain(soll.eintrag);
     } finally {
       await kontext.close();
@@ -307,8 +307,8 @@ describe("JOB 4362 · K4 Kalibrierung: vier Verstellungen, die den Tastaturnachw
       await seite.evaluate<boolean>(fn(UEBERSCHRIFT_AUS), HAUPTUEBERSCHRIFT);
       // Die Stationen 1 bis 3 sind von dieser Verstellung nicht berührt — sie MÜSSEN durchlaufen,
       // sonst käme das Rot unten von der falschen Stelle.
-      await oeffneZahnrad(seite, "de", KURZ);
-      await klappeBereicheAuf(seite, soll.bereiche, "de", KURZ);
+      await oeffneArbeitsbereiche(seite, "de", KURZ);
+      await arbeitsbereicheSagenOeffnenAn(seite, soll.bereiche, "de", KURZ);
       await waehleGesamtanweisungen(seite, soll.eintrag, "de", KURZ);
       // DIE ADRESSE STIMMT, die Überschrift steht im Dokument — und wird nicht gezeichnet. Das Rot
       // muss AUS DEM WARTEN kommen und die fehlende gezeichnete Überschrift benennen; eine Meldung
@@ -330,15 +330,14 @@ describe("JOB 4362 · K4 Kalibrierung: vier Verstellungen, die den Tastaturnachw
     }
   }, 600_000);
 
-  it("V5 — der Zeuge: ohne jede Verstellung trägt der Weg, und das Zahnrad ist ertabbar", async () => {
+  it("V5 — der Zeuge: ohne jede Verstellung trägt der Weg, und „Arbeitsbereiche“ ist ertabbar", async () => {
     const { kontext, seite, soll } = await buehne();
     try {
       const befund = await menuewegOhneMaus(seite, soll, "de");
       expect(
-        befund.zahnrad,
-        `${MARKE}: das Zahnrad ${ZAHNRAD} wurde ohne Verstellung nicht per Tab erreicht`,
+        befund.arbeitsbereiche,
+        `${MARKE}: „Arbeitsbereiche“ ${AUSLOESER} wurde ohne Verstellung nicht per Tab erreicht`,
       ).toBeGreaterThan(0);
-      expect(befund.bereiche).toBeGreaterThan(0);
       expect(befund.eintrag).toBeGreaterThan(0);
       expect(befund.seite.ueberschrift).toContain(soll.eintrag);
     } finally {

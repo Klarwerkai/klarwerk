@@ -1,3 +1,4 @@
+import type { TxContext } from "../../db-tx";
 import type { LearningPath } from "./types";
 
 // Modul-interner Speicher für Anlagenkopplungen, Re-Validierungs-Marker, Lernpfade & Fortschritt.
@@ -7,7 +8,12 @@ export interface LifecycleRepo {
   // FR-LIF-01 / Audit B1 (02.07.2026): Rück-Richtung fürs KO-Detail — welche Anlagen sind gekoppelt?
   couplingsForKo(koId: string): Promise<string[]>;
   markPending(koId: string): Promise<void>;
-  clearPending(koId: string): Promise<void>;
+  /**
+   * Entfernt den Merker und sagt, ob einer da war. Aufnahme gesamt-auditprotokoll (Lauf 2): mit `tx`
+   * läuft das Löschen auf dem Transaktionsclient der Revision (`LifecycleService.confirmStillValid`)
+   * — Merker, Fassung und `ko.revalidated` committen oder verschwinden gemeinsam.
+   */
+  clearPending(koId: string, tx?: TxContext): Promise<boolean>;
   pending(): Promise<string[]>;
   /**
    * JOB 3054: die Merkerlage EINER BEKANNTEN MENGE von Objekten — schreibfrei und in EINER Abfrage.
@@ -64,9 +70,8 @@ export class InMemoryLifecycleRepo implements LifecycleRepo {
     return Promise.resolve();
   }
 
-  clearPending(koId: string): Promise<void> {
-    this.pendingSet.delete(koId);
-    return Promise.resolve();
+  clearPending(koId: string): Promise<boolean> {
+    return Promise.resolve(this.pendingSet.delete(koId));
   }
 
   pending(): Promise<string[]> {

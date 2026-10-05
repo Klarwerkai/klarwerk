@@ -1,9 +1,10 @@
-import { ArrowRight, ExternalLink, Lock } from "lucide-react";
+import { ArrowRight, ExternalLink, Lock, Mail } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
+import { useSupportKontakt } from "../api/support";
 import { useRole } from "../app/RoleContext";
-import type { Role } from "../app/navigation";
+import { type Role, routePathAllows } from "../app/navigation";
 import { UploadLimitsHint } from "../components/UploadLimitsHint";
 import { Card, PageHeader } from "../components/ui";
 import { HELP_TOPICS, type HelpSearchItem, filterHelpTopics } from "../lib/helpTopics";
@@ -87,6 +88,9 @@ export function Help(): JSX.Element {
   const schritte: readonly PilotSchritt[] = pilotSchritte(rolle);
   const offeneSchritte = schritte.filter((schritt) => schritt.zugang === "offen").length;
   const [q, setQ] = useState("");
+  // R-1064: der Supportweg dieser Installation (`api/support.ts`). Hängt an einem Abruf — die Seite
+  // tut es nicht: jede Lage ausser „eingerichtet" ist ein Satz, kein leerer Platz.
+  const support = useSupportKontakt();
   // Die Lieferung kennt DE und EN; alles andere (nl) fällt auf DE — wie `fallbackLng` in i18n.ts.
   const isoLng = isoHelpSprache(i18n.language);
 
@@ -117,6 +121,90 @@ export function Help(): JSX.Element {
     <div className="mx-auto max-w-3xl">
       <PageHeader kicker={t("help.kicker")} title={t("nav.help")} pageKey="hilfe" />
       <p className="-mt-3 mb-4 text-sm text-muted">{t("help.intro")}</p>
+      {/* R-1064: DER SUPPORTWEG DIESER INSTALLATION. Er wird vom Betreiber festgelegt
+          (KLARWERK_SUPPORT_URL / KLARWERK_SUPPORT_LABEL, geprüft in `support-routes.ts`) — die
+          Seite erfindet keinen. Ein Link steht NUR im Zustand „eingerichtet", und dann mit
+          sichtbarem Ziel; jede andere Lage sagt in einem Satz, was ist. Nicht durchsuchbar (fester
+          Orientierungspunkt wie die zwei Karten darunter), die Suche bleibt unberührt.
+          KEIN EIGENES BAUTEIL und KEINE bedingte Klasse — dieselben zwei Wächter wie bei der
+          Einstiegsführung unten (`mega84` Bauteilauflage, `mega47` Klassenbindungen): jede Lage
+          ist ein eigener Zweig mit wörtlicher Klassenkette. */}
+      <Card
+        data-testid="hilfe-support"
+        data-support-zustand={support.zustand}
+        className="mb-5 border-dashed"
+      >
+        <h2 className="text-[14px] font-semibold text-ink">{t("help.support.title")}</h2>
+        {support.zustand === "eingerichtet" ? (
+          <div className="mt-1">
+            <p className="text-[12.5px] leading-relaxed text-muted">
+              {t("help.support.configured")}
+            </p>
+            {support.art === "https" ? (
+              <a
+                href={support.ziel}
+                target="_blank"
+                rel="noopener noreferrer"
+                data-testid="hilfe-support-link"
+                className="mt-1.5 inline-flex flex-wrap items-baseline gap-1 text-[13px] font-semibold text-ai hover:underline"
+              >
+                <ExternalLink size={12} aria-hidden="true" className="self-center" />
+                <span>{support.bezeichnung ?? t("help.support.linkDefault")}</span>
+                <span className="font-mono text-[10px] font-normal text-muted-2">
+                  ({t("help.support.newTab")})
+                </span>
+              </a>
+            ) : (
+              <a
+                href={support.ziel}
+                data-testid="hilfe-support-link"
+                className="mt-1.5 inline-flex flex-wrap items-baseline gap-1 text-[13px] font-semibold text-ai hover:underline"
+              >
+                <Mail size={12} aria-hidden="true" className="self-center" />
+                <span>{support.bezeichnung ?? t("help.support.mailDefault")}</span>
+              </a>
+            )}
+            <p
+              data-testid="hilfe-support-ziel"
+              className="mt-0.5 break-all font-mono text-[11px] text-muted-2"
+            >
+              {support.anzeige}
+            </p>
+          </div>
+        ) : null}
+        {support.zustand === "nicht_eingerichtet" ? (
+          <p
+            data-testid="hilfe-support-hinweis"
+            className="mt-1 text-[12.5px] leading-relaxed text-muted"
+          >
+            {t("help.support.notConfigured")}
+          </p>
+        ) : null}
+        {support.zustand === "ungueltig" ? (
+          <p
+            data-testid="hilfe-support-hinweis"
+            className="mt-1 text-[12.5px] leading-relaxed text-muted"
+          >
+            {t("help.support.invalid")}
+          </p>
+        ) : null}
+        {support.zustand === "fehler" ? (
+          <p
+            data-testid="hilfe-support-hinweis"
+            className="mt-1 text-[12.5px] leading-relaxed text-muted"
+          >
+            {t("help.support.loadError")}
+          </p>
+        ) : null}
+        {support.zustand === "laedt" ? (
+          <p
+            data-testid="hilfe-support-hinweis"
+            className="mt-1 text-[12.5px] leading-relaxed text-muted-2"
+          >
+            {t("help.support.loading")}
+          </p>
+        ) : null}
+      </Card>
       {/* SCRUM-305: kompakte Einstiegsführung für den ersten Nutzerlauf — ehrlich, Stage-1, nicht
           durchsuchbar (fixer Orientierungspunkt), stört die normale Hilfe-Suche nicht.
           JOB 4022: jeder Schritt sagt jetzt, ob er für die lesende Rolle begehbar ist. */}
@@ -218,7 +306,27 @@ export function Help(): JSX.Element {
         className="mb-5 h-10 w-full rounded-input border border-hairline bg-surface px-3 text-sm outline-none focus:border-ink/30"
       />
       {visible.length === 0 ? (
-        <Card className="border-dashed text-center text-sm text-muted">{t("help.noResults")}</Card>
+        // R-0474: unter dem Satz steht der nächste Schritt. Die Frage an das Wissen nur, wenn die
+        // Rolle aus einer Sitzung stammt UND der Router sie auf `/fragen` lässt — dieselbe
+        // Zurückhaltung wie die Einstiegsführung oben (JOB 4358).
+        <Card
+          data-testid="hilfe-nulltreffer"
+          className="border-dashed text-center text-sm text-muted"
+        >
+          <p>{t("help.noResults")}</p>
+          {rolle !== null && routePathAllows("/fragen", rolle) && q.trim() ? (
+            <Link
+              to={`/fragen?q=${encodeURIComponent(q.trim())}`}
+              data-testid="hilfe-als-frage"
+              className="mt-1.5 inline-flex items-center gap-1 font-semibold text-ai hover:opacity-80"
+            >
+              {t("erstnutzer.hilfe.alsFrage", { q: q.trim() })}
+              <ArrowRight size={12} />
+            </Link>
+          ) : (
+            <p className="mt-1">{t("erstnutzer.hilfe.anderesWort")}</p>
+          )}
+        </Card>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2">
           {visible.map((topic) => {

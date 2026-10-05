@@ -18,6 +18,20 @@ export function buildValidationFeedback(verdict: FeedbackVerdict, text: string):
   return `${feedbackPrefix(verdict)}: ${trimmed}`;
 }
 
+// Aufnahme 20260922 · Prüfboard-Bedienung: Rückfrage und Ablehnung sind ZWEI Aufrufe (Kommentar,
+// dann Bewertung) und haben damit drei Ausgänge. Der Fehler trägt, ob die Begründung VOR ihm schon
+// am Server angekommen ist — sonst meldete die Fläche „nicht gespeichert", und der zweite Versuch
+// legte dieselbe Begründung ein zweites Mal an.
+export class BegruendungFehler extends Error {
+  constructor(
+    readonly begruendungGespeichert: boolean,
+    readonly ursache: unknown,
+  ) {
+    super(begruendungGespeichert ? "rating-failed" : "comment-failed");
+    this.name = "BegruendungFehler";
+  }
+}
+
 // UI-Guard: ist der eingegebene Text absendbar?
 export function isFeedbackSubmittable(text: string): boolean {
   return text.trim().length > 0;

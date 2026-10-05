@@ -117,7 +117,7 @@ describe("JOB 3504 · Pfeiltasten in der Warteschlange", () => {
     brett = await mounteBrett(TITEL);
     await klick(brett.container.querySelector('[data-testid="pruefen-menue-filter"]'));
     const feld = brett.container.querySelector<HTMLInputElement>(
-      `input[placeholder="${i18n.t("val.filter")}"]`,
+      `input[placeholder="${i18n.t("pruefboard.volltextFiltern")}"]`,
     );
     expect(feld, "das Suchfeld des Filter-Menüs steht").not.toBeNull();
     (feld as HTMLInputElement).focus();

@@ -199,8 +199,16 @@ describe("JOB 3060 · H1 · Rollen-Vorschau: das Kopfband bleibt bei seinem Inve
     "Prüfen",
     // JOB 3503 · Teil 3b: der sichtbare Einstieg in die vorhandene Befehlspalette, mit seinem
     // Kürzel. Zwei Blätter, weil Name und Kürzel zwei `<span>` sind.
-    "Gehe zu …",
+    // FE-002 (26.09.2026): „Gehe zu …" heißt „Seite finden"; dazu kommen die beschrifteten Einstiege
+    // „Arbeitsbereiche" und „Meldungen" (das Wort am Meldungszugang tritt im Browser bei Platznot
+    // per Container-Abfrage zurück — jsdom zeichnet ohne CSS, das Blatt steht hier also immer).
+    "Arbeitsbereiche",
+    "Seite finden",
     "⌘K",
+    "Meldungen",
+    // FE-002 Runde 2: die Kurzbeschriftung der Suche (Stufe 3, `kopfbandStufe.ts`) — im Browser nur
+    // sichtbar, wenn das Feld keinen Platz hat; jsdom zeichnet ohne CSS, das Blatt steht hier immer.
+    "Wissen suchen",
   ];
 
   it("als Admin ohne Vorschau: genau das Inventar (Zähler und Initialen ausgenommen), keine Pille", async () => {
@@ -232,8 +240,10 @@ describe("JOB 3060 · H1 · Rollen-Vorschau: das Kopfband bleibt bei seinem Inve
       );
       // JOB 3503 Teil 3b: „Gehe zu …" kommt als benannter Knopf dazu — auch in JEDER Vorschaurolle.
       expect(knoepfe.sort()).toEqual([
+        "kopfband-arbeitsbereiche",
         "kopfband-gehezu",
         "kopfband-konto",
+        "kopfband-meldungen",
         "kopfband-zahnrad",
         "submit",
       ]);

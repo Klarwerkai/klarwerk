@@ -350,24 +350,20 @@ describe("JOB 4309 A8 · die Gesamtanweisung auf einer frisch migrierten Datenba
 
         // ══ (a) ÜBER DAS MENÜ — keine getippte Adresse. ════════════════════════════════════════
         await seite.goto(`${strecke.basis}/start`, { waitUntil: "domcontentloaded" });
+        // FE-002 (26.09.2026): die weiteren Bereiche stehen offen unter „Arbeitsbereiche“ im
+        // Kopfband (bis dahin Zahnrad → „Weitere Bereiche“ aufklappen).
         await warte(
           seite,
-          `() => !!document.querySelector('[data-testid="kopfband-zahnrad"]')`,
-          "das Kopfband mit dem Zahnrad",
+          `() => !!document.querySelector('[data-testid="kopfband-arbeitsbereiche"]')`,
+          "das Kopfband mit „Arbeitsbereiche“",
           undefined,
           45_000,
         );
-        await seite.click('[data-testid="kopfband-zahnrad"]');
+        await seite.click('[data-testid="kopfband-arbeitsbereiche"]');
         await warte(
           seite,
-          `() => !!document.querySelector('[data-testid="zahnrad-menue"]')`,
-          "das geöffnete Zahnrad-Menü",
-        );
-        await seite.click('[data-testid="zahnrad-weitere-bereiche"]');
-        await warte(
-          seite,
-          `() => document.querySelector('[data-testid="zahnrad-weitere-bereiche"]')?.getAttribute("aria-expanded") === "true"`,
-          "das aufgeklappte Untermenü „Weitere Bereiche“",
+          `() => document.querySelector('[data-testid="kopfband-arbeitsbereiche"]')?.getAttribute("aria-expanded") === "true" && !!document.querySelector('[data-testid="arbeitsbereiche-menue"]')`,
+          "das geöffnete Menü „Arbeitsbereiche“",
         );
         // ERST DER EINTRAG, DANN DER KLICK: wäre der Punkt nicht da, sagte die Meldung „kein
         // Menüpunkt" statt „Klick ging ins Leere".
@@ -379,13 +375,15 @@ describe("JOB 4309 A8 · die Gesamtanweisung auf einer frisch migrierten Datenba
         );
         expect(
           menuezeile,
-          "im Zahnrad-Menü steht kein Punkt „Gesamtanweisungen“ — die Seite wäre nur über eine getippte Adresse erreichbar",
+          "unter „Arbeitsbereiche“ steht kein Punkt „Gesamtanweisungen“ — die Seite wäre nur über eine getippte Adresse erreichbar",
         ).not.toBeNull();
         expect((menuezeile as { href: string }).href).toBe("/gesamtanweisungen");
         expect(
           (menuezeile as { text: string }).text,
           "der Menüpunkt trägt keinen Namen in Anwendersprache",
-        ).toContain("Gesamtanweisungen");
+          // FE-001: nutzerseitig heisst der Bereich „Arbeitsanleitungen" (Schlüssel `ga.bereich.titel`);
+          // Route und Kennung bleiben `gesamtanweisungen`.
+        ).toContain("Arbeitsanleitungen");
         await seite.click('[data-testid="bereich-gesamtanweisungen"]');
         await warte(
           seite,
@@ -425,10 +423,42 @@ describe("JOB 4309 A8 · die Gesamtanweisung auf einer frisch migrierten Datenba
           [koEins, fassungEins, NACHWEIS_EINS],
           [koZwei, fassungZwei, NACHWEIS_ZWEI],
         ] as const) {
-          await tippeIn(seite, "#ga-aufnahme-koid", koId);
-          await tippeIn(seite, "#ga-aufnahme-fassung", String(fassung));
+          // FE-001: keine getippte Kennung mehr — über die menschliche Auswahl. Dieser Auftrag
+          // misst die Bedienbarkeit nicht (das tut `gesamtanweisung-nutzerweg`), deshalb hier der
+          // kurze Weg über Klicks: Titel suchen → Treffer → Fassung → Nachweis → aufnehmen.
+          const titel = koId === koEins ? KO_EINS : KO_ZWEI;
+          await tippeIn(seite, "#ga-aufnahme-suche", titel);
+          await seite.click('[data-testid="ga-aufnahme-suche-form"] button[type="submit"]');
+          const treffer = `[data-testid="ga-aufnahme-treffer-eintrag"][data-ko="${koId}"]`;
+          await warte(
+            seite,
+            "(s) => !!document.querySelector(s)",
+            `Treffer ${titel}`,
+            treffer,
+            45_000,
+          );
+          await seite.click(treffer);
+          const radio = `#ga-aufnahme-fassung-${fassung}`;
+          await warte(
+            seite,
+            "(s) => !!document.querySelector(s)",
+            `Fassung ${fassung}`,
+            radio,
+            45_000,
+          );
+          await seite.click(radio);
+          // Der Aufklapper „Für Fachleute" behält seinen Zustand über eine Aufnahme hinweg — nur
+          // öffnen, wenn er zu ist; ein zweiter Klick schlösse ihn wieder.
+          const offen = await seite.evaluate<boolean>(
+            fn(
+              `() => !!document.querySelector('[data-testid="ga-aufnahme-bestaetigen"] details')?.open`,
+            ),
+          );
+          if (!offen) {
+            await seite.click('[data-testid="ga-aufnahme-bestaetigen"] summary');
+          }
           await tippeIn(seite, "#ga-aufnahme-nachweis", nachweis);
-          await seite.click('[data-testid="ga-aufnahme"] button[type="submit"]');
+          await seite.click('[data-testid="ga-aufnahme-knopf"]');
           await warte(
             seite,
             `(n) => document.querySelectorAll('[data-testid="ga-lesestand-baustein"]').length === n`,
@@ -633,7 +663,7 @@ describe("JOB 4309 A8 · die Gesamtanweisung auf einer frisch migrierten Datenba
         await seite.click('[data-testid="ga-entscheidung-annehmen"]');
         await warte(
           seite,
-          `() => (document.querySelector('[data-testid="ga-entscheidung-stand"]')?.textContent || "").includes("Entschieden")`,
+          `() => (document.querySelector('[data-testid="ga-entscheidung-stand"]')?.textContent || "").includes("Freigegeben")`,
           "die entschiedene Anweisung",
           undefined,
           45_000,
@@ -687,7 +717,7 @@ describe("JOB 4309 A8 · die Gesamtanweisung auf einer frisch migrierten Datenba
         ).toEqual(folgeNachOrdnen);
         const text = await nachNeustart.seite.evaluate<string>(fn(LIES_TEXT));
         expect(text, "der Titel ist nach dem Neustart weg").toContain(ANWEISUNGSTITEL);
-        expect(text, "die Entscheidung ist nach dem Neustart weg").toContain("Entschieden");
+        expect(text, "die Entscheidung ist nach dem Neustart weg").toContain("Freigegeben");
         expect(
           text,
           "der Lückenvermerk überlebt den Neustart nicht — er wäre dann eine Anzeigelaune",

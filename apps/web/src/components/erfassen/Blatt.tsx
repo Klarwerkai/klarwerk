@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { ReactNode } from "react";
+import type { ReactNode, RefObject } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useSearchParams } from "react-router-dom";
@@ -49,6 +49,7 @@ import {
 } from "../../lib/createOperation";
 import { isDemoContext } from "../../lib/demoPilotPath";
 import { CLEARED_DRAFT_BODY_HTML } from "../../lib/draftBody";
+import { erfassenFehlersatz } from "../../lib/erfassenFehlersatz";
 import { dominantCategory, pickExampleKo } from "../../lib/intakeExample";
 import { INTAKE_STARTERS, type IntakeStarter } from "../../lib/intakeStarters";
 import { deriveIntakeSuggestion } from "../../lib/intakeSuggestion";
@@ -58,9 +59,10 @@ import { toReasonerLocale } from "../../lib/reasonerLocale";
 import { draftProvenance } from "../../lib/reasonerProvenance";
 import { isEmptyHtml } from "../../lib/richText";
 import { type SpeechRec, diktatSprache, makeRec } from "../../lib/speechDictation";
-import { hasSpeechRecognition } from "../../lib/speechSupport";
+import { hasSpeechRecognition, istIosGeraet } from "../../lib/speechSupport";
 import type { TitelMitQuelle } from "../../lib/titelRangfolge";
 import { useAiBillable } from "../../lib/useAiBillable";
+import { umfangKurz } from "../../lib/vorschauUmfang";
 import { AiAssistInstructions } from "../AiAssistBox";
 import { AiCostHint } from "../AiCostHint";
 import { AiGeneratedNotice } from "../AiGeneratedNotice";
@@ -165,13 +167,6 @@ type LetzteAktion =
   | { art: "laden" | "speichern" | "einreichen" | "struktur" }
   | { art: "assist"; aktion: AssistRequest };
 
-function fehlerMeldung(err: unknown, rueckfall: string): string {
-  if (err instanceof ApiError) {
-    return err.message;
-  }
-  return err instanceof Error ? err.message : rueckfall;
-}
-
 // ================================================================================================
 // JOB 3353 · B — DIE GESPERRTE CLOUD IST KEIN „irgendwas ist schiefgegangen".
 // ================================================================================================
@@ -270,7 +265,11 @@ export function Blatt({
 }): JSX.Element {
   const { i18n, t } = useTranslation();
   const { user } = useSession();
-  const strukturKostet = useAiBillable(["structure", "assist"]);
+  // Auftrag anzeige-kosten (R-0952): JE AUFGABE, nicht als Paar. Die Mehrfachform sagte „ja",
+  // sobald EINE der beiden kostet — lief dann die andere (lokal/deterministisch), stand der
+  // Kostensatz über einem Klick, der nichts kostet. Unten wird jede Auskunft an IHREN Lauf gebunden.
+  const strukturKostet = useAiBillable("structure");
+  const assistKostet = useAiBillable("assist");
   const { push } = useToast();
   const qc = useQueryClient();
   const { setGuard } = useNavGuard();
@@ -282,6 +281,28 @@ export function Blatt({
   const [bodyHtml, setBodyHtml] = useState(() =>
     startText?.trim() ? diktatAnhaengen("", startText) : "",
   );
+  // N-0064 (Auftrag gesamt-entwurf-datenerhalt) — DER GANZE TITEL STEHT AM FELD. Das Titelfeld ist
+  // einzeilig; ein langer Titel lief rechts aus dem Blick, und was gespeichert würde, war nicht mehr
+  // zu lesen. Läuft er WIRKLICH über (gemessen am Feld, nicht an einer Zeichenzahl), steht er direkt
+  // darunter vollständig und umbrochen. Ein kurzer Titel bekommt keine zweite Zeile.
+  const titelFeldRef = useRef<HTMLInputElement | null>(null);
+  const [titelUeberlaeuft, setTitelUeberlaeuft] = useState(false);
+  useEffect(() => {
+    const feld = titelFeldRef.current;
+    if (!feld) {
+      return;
+    }
+    const messen = (): void =>
+      setTitelUeberlaeuft(title.trim().length > 0 && feld.scrollWidth > feld.clientWidth + 1);
+    messen();
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", messen);
+      return () => window.removeEventListener("resize", messen);
+    }
+    const beobachter = new ResizeObserver(messen);
+    beobachter.observe(feld);
+    return () => beobachter.disconnect();
+  }, [title]);
   const [kategorie, setKategorie] = useState("");
   const [confidentiality, setConfidentiality] = useState<Confidentiality>("intern");
   // JOB 504 D2 (übernommen): der ROHE Herkunftswert — `undefined` heisst „der fortgesetzte Entwurf
@@ -457,6 +478,15 @@ export function Blatt({
   const [submittedKo, setSubmittedKo] = useState<Pick<KnowledgeObject, "id" | "title"> | null>(
     null,
   );
+  // Aufnahme `gesamt-erfassung-einstieg` (R-0084): Nach dem Einreichen springt der Blick auf die
+  // Erfolgszeile, statt auf dem gerade leer geräumten Blatt stehen zu bleiben. Fokus statt nur
+  // Bildlauf: Tastatur und Screenreader landen damit auf „Eingereicht: …" und ihren drei Wegen.
+  const erfolgRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (submittedKo) {
+      erfolgRef.current?.focus();
+    }
+  }, [submittedKo]);
   const [submitValidation, setSubmitValidation] = useState(false);
   const [restartOffer, setRestartOffer] = useState<string | null>(null);
   // JOB 3062 R6 (Auftrag §9): welche Handlung zuletzt versucht wurde — sie und keine andere
@@ -480,9 +510,15 @@ export function Blatt({
     imageId: string;
     src: string;
     index: number;
+    koerper?: string | undefined;
     nonce: number;
   } | null>(null);
   const [diktatLaeuft, setDiktatLaeuft] = useState(false);
+  // FR-CAP-03: das noch nicht Endgültige, sofort sichtbar — reine Anzeige, nie im Rumpf.
+  const [diktatZwischen, setDiktatZwischen] = useState("");
+  // FR-CAP-03 / R-0925: ohne Spracherkennung (oder auf iOS) erklärt der Knopf auf Klick, warum —
+  // als sichtbarer Text, nicht nur im `title` eines gesperrten Knopfes (auf Touch unerreichbar).
+  const [diktatHinweisOffen, setDiktatHinweisOffen] = useState(false);
   const recRef = useRef<SpeechRec | null>(null);
   const diktatMoeglich = hasSpeechRecognition(window);
 
@@ -623,7 +659,7 @@ export function Blatt({
         : draftProvenance(declaredConfidentiality, undefined, activeDraftId ?? undefined),
     [declaredConfidentiality, activeDraftId],
   );
-  const { verdict, checkStatus } = useLiveKnowledgeCheck(
+  const { verdict, checkStatus, pruefumfang } = useLiveKnowledgeCheck(
     liveText,
     livePruefHerkunft,
     gespeicherterStand,
@@ -638,6 +674,13 @@ export function Blatt({
           nl: "Nog niet op tegenstrijdigheid gecontroleerd.",
         }[toReasonerLocale(i18n.language)]
       : t("intake.live.unavailable");
+  // AUFNAHME 20260922 · VORSCHAU-REICHWEITE: auch ohne Konfliktprüfung ist die Ähnlichkeitsvorschau
+  // gelaufen. Blieb sie leer, sagt das Blatt das mit ihrem belegten Umfang — in einer EIGENEN Zeile,
+  // damit der Satz über die Konfliktprüfung unverändert für sich steht.
+  const liveVorschauSatz =
+    checkStatus === "pending" && verdict.status === "pending" && pruefumfang !== null
+      ? t("vorschau.ohneTreffer", { umfang: umfangKurz(t, pruefumfang) })
+      : null;
 
   // Die Bereiche kommen aus dem BESTAND, nicht aus einer erfundenen Liste: was es im Haus gibt,
   // steht zur Wahl. Fehlt der Bestand noch, sagt das Menü das (Zustandsmodell §9), statt eine
@@ -815,6 +858,7 @@ export function Blatt({
     }
     recRef.current = null;
     setDiktatLaeuft(false);
+    setDiktatZwischen("");
     getrennt.stop();
   }, []);
 
@@ -1079,6 +1123,14 @@ export function Blatt({
     },
   });
 
+  // Aufnahme `gesamt-erfassung-einstieg` (Bens Befund BEN-1, N-0068): Der Arbeitsraum, der nach
+  // einem erfolgreichen Sichern zu öffnen ist — gesetzt von `formularOeffnen`, wenn der Mensch dort
+  // „erst sichern, dann im Formular weiter" gewählt hat. Ein Fehler beim Sichern räumt ihn ab: dann
+  // bleibt das Blatt mit seinem Fehlersatz stehen, statt in einen älteren Stand zu wechseln.
+  const nachSichernOeffnenRef = useRef<ArbeitsraumModus | null>(null);
+  // Der Arbeitsraum, der nach einem ERFOLGREICHEN vorgeschalteten Sichern zur Entscheidung ansteht
+  // (s. Effekt `formularNachSichern` bei `formularOeffnen`).
+  const [formularNachSichern, setFormularNachSichern] = useState<ArbeitsraumModus | null>(null);
   const save = useMutation({
     mutationFn: () => {
       if (activeDraftId) {
@@ -1194,9 +1246,20 @@ export function Blatt({
           draft.payload?.title?.trim() ||
           deriveFrontDoorTitle(abgesendet.title, abgesendet.bodyHtml, fallbackTitle),
       });
+      // BEN-1: Die Kennung steht jetzt in `?draft=`. Geöffnet wird hier aber NICHT: dieser
+      // Rückruf kennt nur den ABGESENDETEN Stand. Das Titelfeld und die Schreibfläche bleiben
+      // während des Sicherns bedienbar (Runde 3, Bens Gegenprobe: ein Nachtrag im Titel während der
+      // laufenden Anfrage fehlte danach wortlos im Formular). Entschieden wird deshalb im Effekt
+      // `formularNachSichern` unten, nach dem Ende der Speicherung und mit dem AKTUELLEN Blatt.
+      const nachSichern = nachSichernOeffnenRef.current;
+      if (nachSichern) {
+        nachSichernOeffnenRef.current = null;
+        setFormularNachSichern(nachSichern);
+      }
     },
     onError: (e) => {
       saveRequestedRef.current = false;
+      nachSichernOeffnenRef.current = null;
       // JOB 2697: den Schlüssel NUR fallen lassen, wenn der Server EINDEUTIG geantwortet hat.
       if (createOperationIsSettled(e instanceof ApiError ? e.status : undefined)) {
         saveOperationRef.current = null;
@@ -1209,7 +1272,7 @@ export function Blatt({
       setRestartOffer(
         e instanceof ApiError && createConflictOffersRestart(e.status, e.code) ? e.message : null,
       );
-      setErr(fehlerMeldung(e, t("fd.errSaveFailed")));
+      setErr(erfassenFehlersatz(e, t, t("fd.errSaveFailed")));
     },
   });
 
@@ -1290,7 +1353,7 @@ export function Blatt({
         setErr(null);
         return;
       }
-      setErr(fehlerMeldung(e, t("fd.errSaveFailed")));
+      setErr(erfassenFehlersatz(e, t, t("fd.errSaveFailed")));
     },
   });
 
@@ -1429,13 +1492,16 @@ export function Blatt({
   // AUFTRAG-mega9 Block B: das ehrliche Dirty-Prädikat — Abweichung des TATSÄCHLICHEN Inhalts vom
   // gesicherten Stand plus ein offener KI-Vorschlag. Bewusst nicht „ist gesetzt": das bloße Öffnen
   // eines gespeicherten Entwurfs ist keine ungespeicherte Änderung.
-  const istSchmutzig =
+  // Aufnahme `gesamt-erfassung-einstieg` (BEN-4): der INHALTSTEIL steht für sich, denn nur er lässt
+  // sich durch Sichern beheben. Ein offener KI-Vorschlag bleibt nach jedem Sichern offen — wer ihn
+  // als „durch Sichern behebbar" las, fragte und sicherte endlos (`formularOeffnen`).
+  const inhaltWeichtAb =
     title !== savedStateRef.current.title ||
     bodyHtml !== savedStateRef.current.bodyHtml ||
     confidentiality !== savedStateRef.current.confidentiality ||
     // JOB 3062 R6 (bens Befund 1): eine geänderte Bereichswahl IST eine ungespeicherte Änderung.
-    kategorie !== savedStateRef.current.kategorie ||
-    hasPendingProposal;
+    kategorie !== savedStateRef.current.kategorie;
+  const istSchmutzig = inhaltWeichtAb || hasPendingProposal;
 
   // JOB 3106 (UX-01): die Bestätigungszeile steht, SOLANGE das Blatt dem gesicherten Stand
   // entspricht. Sie hängt bewusst am vorhandenen Dirty-Prädikat und nicht an einem zweiten
@@ -1624,6 +1690,11 @@ export function Blatt({
   // Absender bis hierher nicht.
   const diktatUmschalten = (): void => {
     setOffenesMenue(null);
+    if (!diktatMoeglich) {
+      // Kein Rekorder, kein Start — nur die Erklärung auf- und zuklappen.
+      setDiktatHinweisOffen((offen) => !offen);
+      return;
+    }
     if (diktatLaeuft) {
       // Der Mensch selbst hält an: hier wird NICHT getrennt, also NICHT `diktatVomBlattTrennen`.
       // Sein Abschlussergebnis gehört ihm und soll noch ankommen — das ist der Unterschied zu den
@@ -1633,6 +1704,10 @@ export function Blatt({
       recRef.current?.stop();
       return;
     }
+    // Die Vorschau gehört nur einer LAUFENDEN Sitzung. `recRef` zeigt nach dem Ende weiter auf sie
+    // (das Abschlussergebnis darf noch ankommen, s. N7) — ein verspätetes Zwischenergebnis fiele
+    // also durch den Identitätsriegel und tauchte beim nächsten Start als fremder Text wieder auf.
+    let sitzungZu = false;
     const rec = makeRec(
       (text) => {
         if (recRef.current !== rec) {
@@ -1641,17 +1716,26 @@ export function Blatt({
         setBodyHtml((prev) => diktatAnhaengen(prev, text));
       },
       (beendet) => {
+        sitzungZu = true;
         if (recRef.current !== beendet) {
           return;
         }
         setDiktatLaeuft(false);
+        setDiktatZwischen("");
       },
       diktatSprache(i18n.language),
+      (text) => {
+        // Derselbe Identitätsriegel: eine getrennte oder beendete Sitzung malt nicht in dieses Blatt.
+        if (recRef.current === rec && !sitzungZu) {
+          setDiktatZwischen(text);
+        }
+      },
     );
     if (!rec) {
       return;
     }
     recRef.current = rec;
+    setDiktatZwischen("");
     rec.start();
     setDiktatLaeuft(true);
   };
@@ -1716,6 +1800,15 @@ export function Blatt({
     // Diktatsitzung dieselbe Trennung wie im Ladeeffekt, und zwar VOR dem Adresswechsel.
     diktatVomBlattTrennen();
     setAnsicht("blatt");
+    // LAUF 6 (erfassen-doppelklick, bens B6): NENNT DIE ADRESSE DIESEN ENTWURF SCHON, ÄNDERT SICH AN
+    // IHR NICHTS — und der Ladeeffekt liefe nicht. Genau so kam der Arbeitsraum zurück, nachdem er
+    // den geöffneten Entwurf aktualisiert hatte: das Blatt zeigte weiter seinen Stand von vor dem
+    // Speichern (alter Titel), obwohl der Server längst den neuen trug. Ein neuer Laderunde-Zähler
+    // holt den gespeicherten Stand; derselbe Weg wie „Neu laden" nach einem Standkonflikt.
+    if (resumeDraftId === entwurfId) {
+      setReloadNonce((n) => n + 1);
+      return;
+    }
     setSearchParams({ draft: entwurfId }, { replace: true });
   };
 
@@ -1783,7 +1876,7 @@ export function Blatt({
       // §4b.5: Der Eintrag bleibt stehen — gelöscht ist nur, was der Server bestätigt hat. Die
       // Rückfrage geht zu, damit die Zeile wieder bedienbar ist; die Störung steht im Hinweis.
       setLoeschFrageId(null);
-      push("error", fehlerMeldung(e, t("state.error")));
+      push("error", erfassenFehlersatz(e, t, t("state.error")));
     },
   });
 
@@ -1843,6 +1936,96 @@ export function Blatt({
     setOffenesMenue(null);
     setAnsicht(modus);
   }, []);
+
+  // ==============================================================================================
+  // Aufnahme `gesamt-erfassung-einstieg` (Bens Befund BEN-1, N-0068) — DAS FORMULAR ÜBERNIMMT DEN
+  // STAND DES BLATTES ODER SAGT, DASS ES DAS NICHT TUT.
+  // ==============================================================================================
+  //
+  // Der Arbeitsraum liest den Entwurf aus `?draft=` beim SERVER (`Capture.tsx`, Ladeeffekt des
+  // Expertenwegs). Ungesicherte Änderungen auf dem Blatt kennt er nicht: Ben hat gemessen, dass
+  // nach „Datei → Formular" wortlos der ältere Titel bzw. ein leeres Formular erschien.
+  //
+  // Jetzt, wenn das Blatt vom gesicherten Stand abweicht (`istSchmutzig`, dasselbe Prädikat wie die
+  // Verlassen-Wache):
+  //   · lässt es sich sichern → Rückfrage „sichern und im Formular weiter?"; Ja sichert über den
+  //     EINEN Speicherweg (`requestSave`) und öffnet das Formular erst nach der Serverbestätigung;
+  //     Nein lässt alles, wie es ist (man bleibt auf dem Blatt).
+  //   · lässt es sich gerade nicht sichern → Rückfrage, die den Wechsel zum gesicherten Stand
+  //     ausdrücklich nennt. Das Blatt bleibt dabei montiert und unverändert (`arbeitsraumSchliessen`).
+  // Ist das Blatt nicht verändert, zeigt das Formular ohnehin denselben Stand — keine Rückfrage.
+  //
+  // BEN-4 (Lauf 3): EIN OFFENER KI-VORSCHLAG IST KEIN NACHTRAG. Das Formular kennt ihn nicht, und
+  // Sichern beseitigt ihn nicht (er ist nicht Teil des Entwurfs). Früher galt er als „ungesichert",
+  // also fragte das Blatt, sicherte ohne neue Eingabe, fand ihn danach noch offen und fragte erneut —
+  // ohne Ende, und das Formular öffnete nie. Jetzt steht GENAU EINE erklärende Meldung: erst
+  // übernehmen oder verwerfen. Es wird nichts gesichert, nichts gewechselt; Vorschlag und Blatt
+  // bleiben, wie sie sind.
+  const vorschlagZuerstKlaeren = (): void => {
+    setOffenesMenue(null);
+    window.alert(t("einstieg.formular.vorschlagOffen"));
+  };
+  const formularOeffnen = (): void => {
+    if (!istSchmutzig) {
+      arbeitsraumOeffnen("formular");
+      return;
+    }
+    if (hasPendingProposal) {
+      vorschlagZuerstKlaeren();
+      return;
+    }
+    setOffenesMenue(null);
+    if (canSave) {
+      if (window.confirm(t("einstieg.formular.sichernFrage"))) {
+        nachSichernOeffnenRef.current = "formular";
+        requestSave();
+      }
+      return;
+    }
+    if (window.confirm(t("einstieg.formular.ohneSichernFrage"))) {
+      arbeitsraumOeffnen("formular");
+    }
+  };
+
+  // Runde 3 (Bens Befund BEN-1, Rest): DIE ENTSCHEIDUNG NACH DEM VORGESCHALTETEN SICHERN.
+  //
+  // Erst wenn die Speicherung wirklich zu Ende ist (`save.isPending` false) und mit dem Blatt, wie
+  // es JETZT ist: `savedStateRef` trägt seit `onSuccess` den abgesendeten Stand, `istSchmutzig`
+  // sagt also genau, ob während der Anfrage weitergeschrieben wurde.
+  //   · nichts nachgetragen → das Formular öffnet und lädt genau diesen gesicherten Stand;
+  //   · nachgetragen → das Formular kennt den Nachtrag nicht. Statt wortlos zu wechseln, fragt das
+  //     Blatt erneut und nennt den Grund; Ja sichert auch den Nachtrag und führt über denselben Weg
+  //     hierher zurück, Nein lässt alles auf dem Blatt.
+  // BEN-4: gemessen wird der Nachtrag am INHALT (`inhaltWeichtAb`), nicht an `istSchmutzig` — ein
+  // offener KI-Vorschlag ist kein Nachtrag und durch erneutes Sichern nicht zu beheben. Ist einer
+  // offen (etwa weil eine schon laufende Strukturierung während des Sicherns eintraf), steht
+  // dieselbe eine Meldung wie in `formularOeffnen`, und es bleibt beim Blatt.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: entschieden wird genau einmal je Wunsch, mit dem Stand dieses Bildaufbaus
+  useEffect(() => {
+    if (!formularNachSichern || save.isPending) {
+      return;
+    }
+    const modus = formularNachSichern;
+    setFormularNachSichern(null);
+    if (hasPendingProposal) {
+      vorschlagZuerstKlaeren();
+      return;
+    }
+    if (!inhaltWeichtAb) {
+      arbeitsraumOeffnen(modus);
+      return;
+    }
+    if (canSave) {
+      if (window.confirm(t("einstieg.formular.nachtragFrage"))) {
+        nachSichernOeffnenRef.current = modus;
+        requestSave();
+      }
+      return;
+    }
+    if (window.confirm(t("einstieg.formular.ohneSichernFrage"))) {
+      arbeitsraumOeffnen(modus);
+    }
+  }, [formularNachSichern, save.isPending]);
 
   // JOB 3282 (EDITOR-R26): der Rückweg zum Schreibfeld, wenn der Arbeitsraum abgebrochen wurde.
   // Er fasst den Blattinhalt NICHT an: Titel, Rumpf und Entwurfskennung leben in diesem Bauteil,
@@ -2094,14 +2277,11 @@ export function Blatt({
         data-testid="blatt-werkzeug-diktieren"
         // JOB 3141 (CAP-P1): dieselbe eine Regel. Diktiertes reist über `setBodyHtml` in den Rumpf —
         // es wäre der eine Eingabeweg, der die fehlende Schreibfläche umginge.
-        disabled={!diktatMoeglich || !blattNimmtAn}
-        title={
-          diktatMoeglich
-            ? blattNimmtAn
-              ? undefined
-              : t("erfassen.laden.nichtBereit")
-            : t("capture.diktatUnsupported")
-        }
+        // Ohne Spracherkennung bleibt der Knopf bedienbar: sein Klick öffnet die Erklärung darunter.
+        disabled={!blattNimmtAn}
+        title={blattNimmtAn ? undefined : t("erfassen.laden.nichtBereit")}
+        aria-expanded={diktatMoeglich ? undefined : diktatHinweisOffen}
+        aria-controls={diktatMoeglich ? undefined : "blatt-diktat-na"}
         onClick={diktatUmschalten}
         className={`inline-flex items-center gap-1.5 text-[13px] ${
           !diktatMoeglich || !blattNimmtAn
@@ -2114,6 +2294,26 @@ export function Blatt({
         <SymbolMikrofon />
         {t("erfassen.werkzeug.diktieren")}
       </button>
+      {diktatLaeuft && diktatZwischen ? (
+        <span
+          data-testid="blatt-diktat-zwischen"
+          aria-live="polite"
+          className="max-w-[16rem] truncate text-[13px] italic text-muted-2"
+        >
+          {diktatZwischen}
+        </span>
+      ) : null}
+      {!diktatMoeglich && diktatHinweisOffen ? (
+        // `<output>` trägt die Rolle `status` von Haus aus — eine höfliche Live-Region ohne `role`.
+        <output
+          id="blatt-diktat-na"
+          data-testid="blatt-diktat-na"
+          className="basis-full rounded-btn bg-trust-warn-bg px-2.5 py-2 text-[12px] text-trust-warn-text"
+        >
+          {t("capture.diktatUnsupported")}
+          {istIosGeraet(window) ? ` ${t("diktat.iosTastatur")}` : null}
+        </output>
+      ) : null}
 
       <button
         type="button"
@@ -2142,7 +2342,12 @@ export function Blatt({
         {/* Die drei Wege kommen aus `./wege.ts` und stehen hier nicht ein zweites Mal: ein neuer
             Erzählweg erscheint ohne Nacharbeit im Menü. */}
         {BLATT_WEGE.map((weg) => (
-          <MenueEintrag key={weg} onClick={() => arbeitsraumOeffnen(weg as ArbeitsraumModus)}>
+          <MenueEintrag
+            key={weg}
+            onClick={() =>
+              weg === "formular" ? formularOeffnen() : arbeitsraumOeffnen(weg as ArbeitsraumModus)
+            }
+          >
             {t(blattWegLabelKey(weg))}
           </MenueEintrag>
         ))}
@@ -2480,7 +2685,7 @@ export function Blatt({
                       einen zweiten Uploadweg zu bauen. */}
                   <button
                     type="button"
-                    onClick={() => arbeitsraumOeffnen("formular")}
+                    onClick={formularOeffnen}
                     className="mt-1 block w-full rounded-[7px] px-2 py-1.5 text-left text-[13px] font-semibold text-text hover:bg-hairline-soft"
                   >
                     {t("erfassen.anhaenge.verwalten")}
@@ -2710,6 +2915,7 @@ export function Blatt({
         >
           <div className="relative">
             <input
+              ref={titelFeldRef}
               data-testid="blatt-titel"
               value={title}
               // JOB 3141 (CAP-P1): DIESELBE Ablesung wie die Schreibfläche darunter. Hier stand
@@ -2732,6 +2938,17 @@ export function Blatt({
               aria-label={t("erfassen.platzhalter.titel")}
               className="w-full bg-transparent text-[28px] font-[650] leading-tight tracking-[-0.3px] text-text outline-none placeholder:text-muted-2/60"
             />
+            {/* N-0064: die vollständige Titelanzeige, nur bei echtem Überlauf (Messung oben). Für
+                Hilfstechnik verborgen — das Feld selbst trägt den ganzen Wert schon. */}
+            {titelUeberlaeuft ? (
+              <p
+                data-testid="blatt-titel-voll"
+                aria-hidden="true"
+                className="mt-1 whitespace-pre-wrap break-words text-[15px] font-[550] leading-snug text-muted"
+              >
+                {title}
+              </p>
+            ) : null}
             {/* §5: Die vier Starter-Chips leben im Titel-Menü des LEEREN Blattes — und seit R6 auch
                 der Titelvorschlag, der bis dahin als gerahmte Karte über dem Schreibfeld stand. */}
             {offenesMenue === "titel" && titelMenueHatEtwas ? (
@@ -2843,11 +3060,12 @@ export function Blatt({
           {/* Die Galerie steht UNTER dem Text im Blatt (§5.2). */}
           <DraftBodyGallery
             bodyHtml={bodyHtml}
-            onEditCaption={(imageId, src, index) =>
+            onEditCaption={(imageId, src, index, koerper) =>
               setCaptionRequest((prev) => ({
                 imageId,
                 src,
                 index,
+                koerper,
                 nonce: (prev?.nonce ?? 0) + 1,
               }))
             }
@@ -2872,7 +3090,15 @@ export function Blatt({
               {liveAusfallSatz}
             </output>
           ) : null}
-          {verdict.status === "new" ||
+          {liveVorschauSatz === null ? null : (
+            <output data-testid="blatt-live-vorschau" className="block text-[12px] text-muted">
+              {liveVorschauSatz}
+            </output>
+          )}
+          {/* AUFNAHME 20260922 · VORSCHAU-REICHWEITE: der Chip heisst „Vorschau" und behauptet nichts
+              über den ganzen Bestand. Ohne Treffer nennt er nur den belegten Umfang — hier stand
+              „Das ist neu". */}
+          {verdict.status === "empty" ||
           verdict.status === "similar" ||
           verdict.status === "conflict" ? (
             <div data-testid="blatt-live-chip" data-lage={verdict.status} className="w-fit">
@@ -2882,12 +3108,15 @@ export function Blatt({
                 onClick={() => setLiveOffen((v) => !v)}
                 className="inline-flex w-fit items-center gap-1.5 rounded-[999px] border border-hairline bg-page px-2.5 py-1 text-[12px] text-muted hover:text-text"
               >
+                <span className="font-semibold uppercase text-[10.5px]">{t("vorschau.name")}</span>
                 {verdict.status === "conflict"
                   ? t("erfassen.live.widerspruch")
                   : verdict.status === "similar"
                     ? t("erfassen.live.aehnlich")
-                    : t("erfassen.live.neu")}
-                {verdict.status === "new" ? null : (
+                    : t("vorschau.keinTreffer")}
+                {verdict.status === "empty" ? (
+                  <span>· {umfangKurz(t, verdict.coverage)}</span>
+                ) : (
                   <span className="font-medium">{verdict.match.title}</span>
                 )}
               </button>
@@ -3055,12 +3284,25 @@ export function Blatt({
               lang vergessen — die Links der Erfolgszeile („Objekt ansehen", „Validierung öffnen")
               nahmen keinen Klick mehr an, und `demo-ux-v1-capture-frontdoor.spec.ts` (Fall 4) lief
               genau deshalb in den Zeitablauf. Gemessen, nicht überlegt. */}
+          {/* Aufnahme `gesamt-erfassung-einstieg` (R-0084): Was jeder der beiden Knöpfe FOLGT,
+              steht an ihm selbst — als Beschreibung für Screenreader (`aria-describedby`) und als
+              Hinweis beim Überfahren (`title`). Kein Absatz auf der Fläche: das Zielbild H3 hat
+              den Erklärtext bewusst entfernt (`zielbild-h3-kein-erklaertext.test.ts`). Die Form
+              unterscheidet die beiden weiterhin ohne Lesen: umrandet gegen gefüllt. */}
+          <span id="blatt-folge-entwurf" hidden>
+            {t("einstieg.knopf.entwurf")}
+          </span>
+          <span id="blatt-folge-einreichen" hidden>
+            {t("einstieg.knopf.einreichen")}
+          </span>
           <div className="pointer-events-auto flex gap-2">
             <button
               type="button"
               data-testid="blatt-entwurf-sichern"
               disabled={!canSave}
               onClick={requestSave}
+              aria-describedby="blatt-folge-entwurf"
+              title={t("einstieg.knopf.entwurf")}
               className="rounded-[10px] border border-hairline bg-surface px-5 py-2.5 text-[14px] text-text disabled:opacity-50"
             >
               {t("erfassen.entwurfSichern")}
@@ -3070,6 +3312,8 @@ export function Blatt({
               data-testid="blatt-einreichen"
               disabled={busy}
               onClick={requestSubmit}
+              aria-describedby="blatt-folge-einreichen"
+              title={t("einstieg.knopf.einreichen")}
               className="rounded-[10px] bg-[#C2500A] px-5 py-2.5 text-[14px] font-semibold text-white disabled:opacity-50"
             >
               {t("erfassen.einreichen")}
@@ -3116,7 +3360,7 @@ export function Blatt({
           <BlattLage
             fehler={blattFehler}
             erfolg={submittedKo}
-            kostet={strukturKostet && (structure.isPending || assist.isPending)}
+            kostet={(strukturKostet && structure.isPending) || (assistKostet && assist.isPending)}
             uebernommen={structureAccepted || assistAccepted}
             rumpfZurueckgehalten={rumpfZurueckgehalten}
             keptRichBody={structureKeptRichBody}
@@ -3147,6 +3391,7 @@ export function Blatt({
                 : null
             }
             aufNeuerEintrag={submittedKo ? resetForNewEntry : null}
+            erfolgRef={erfolgRef}
             // JOB 3062 R7: Der Knopf UNTER den Knöpfen wiederholt nur BLATTWEGE. Wäre er auch für
             // die KI zuständig, könnte er nach einem KI-Lauf und einem späteren Speicherfehler die
             // falsche Handlung auslösen — genau der Fehler, den ben an R6 beschrieben hat. Der
@@ -3196,6 +3441,7 @@ function BlattLage({
   aufNeuerVorgang,
   aufNeuerEintrag,
   aufWiederholen,
+  erfolgRef,
 }: {
   fehler: string | null;
   erfolg: Pick<KnowledgeObject, "id" | "title"> | null;
@@ -3213,6 +3459,8 @@ function BlattLage({
   aufNeuerEintrag: (() => void) | null;
   /** §9: der Wiederholweg jedes Fehlers — auch dessen, für den es keinen eigenen Rückweg gibt. */
   aufWiederholen: (() => void) | null;
+  /** R-0084: Nach dem Einreichen springt der Blick auf diese Zeile (Fokus, s. `Blatt`). */
+  erfolgRef: RefObject<HTMLDivElement>;
 }): JSX.Element | null {
   const { t } = useTranslation();
   if (erfolg) {
@@ -3232,7 +3480,12 @@ function BlattLage({
     // an der Stelle auf; die „eine Zeile" wäre dann genau bei der Rolle, die den Weg NICHT gehen
     // darf, zwei Zeilen gewesen. `inline-flex` an beiden Fassungen hält sie in der Zeile.
     return (
-      <div data-testid="blatt-lage" className="pointer-events-auto text-[13px] text-trust-pos-text">
+      <div
+        ref={erfolgRef}
+        data-testid="blatt-lage"
+        tabIndex={-1}
+        className="pointer-events-auto text-[13px] text-trust-pos-text"
+      >
         {t("erfassen.eingereicht")}{" "}
         <Link className="font-semibold underline" to={`/wissen/${erfolg.id}`}>
           {erfolg.title}
@@ -3298,7 +3551,7 @@ function BlattLage({
     // mega62: der Kostenhinweis kommt aus SEINER Komponente, nicht aus einem zweiten `t()`-Aufruf.
     // Ein abgeschriebener Wortlaut wäre eine zweite Wahrheit über dieselben Kosten — und der
     // Sammler, der jede Auslösestelle prüft, sähe diese Fläche gar nicht.
-    // `billable` ist hier definitionsgemäß wahr: `kostet` IST `useAiBillable([...]) && läuft`.
+    // `billable` ist hier definitionsgemäß wahr: `kostet` IST „die LAUFENDE Aufgabe ist billable".
     return (
       <p data-testid="blatt-lage" className="pointer-events-auto text-[13px] text-muted">
         <AiCostHint billable />

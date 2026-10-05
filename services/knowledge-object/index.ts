@@ -83,6 +83,8 @@ export {
   // an einem eigens benannten Pin (T-M-3, services/app/src/db.migrate.test.ts).
   KO_SICHTBARKEIT_SCHEMA,
   KO_VERSIONS_SCHEMA,
+  // AUFNAHME 20260922 (B2): der Papierkorb-Ausdruck für den SQL-Trim in services/app.
+  sqlDeletedAtLeer,
 } from "./src/repo-pg";
 // ================================================================================================
 // G27 — DER GEMEINSAME SUCHVERTRAG (revisionsgebundene Search Projection)
@@ -327,6 +329,24 @@ export type {
   AnweisungStandAufnahme,
 } from "./src/gesamtanweisung-types";
 export { KoError, KNOWLEDGE_TYPES, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS } from "./src/types";
+// R-0169 (herkunft-identitaet): die interne Dokumentakte — eigene Identität und unveränderliche
+// Fassungen für Importe ohne externe Quellenkennung (Word-Zusatz, JSON ohne externalId).
+export {
+  DOKUMENTAKTE_SCHEMA,
+  DokumentError,
+  DokumentaktenService,
+  InMemoryDokumentaktenRepo,
+  PgDokumentaktenRepo,
+  dokumentInhaltsAbdruck,
+  gelieferteDokumentId,
+} from "./src/dokumentakte";
+export type {
+  DokumentFassung,
+  DokumentHerkunft,
+  DokumentInhalt,
+  DokumentWeg,
+  DokumentaktenRepo,
+} from "./src/dokumentakte";
 // AUFNAHME 20260922 · Prüfbasis-Aktualität: die EINE Regel, wann ein Prüfnachweis überholt ist.
 export { gleichePruefbasis, pruefbasisVon } from "./src/pruefbasis";
 // SCRUM-421: einstellbare Upload-Grenzen (persistiert).
@@ -400,6 +420,8 @@ export type {
   HistoryEntry,
   KoComment,
   KoAttachment,
+  // R-0163: die Quellidentität eines übernommenen Anhangs.
+  KoAnhangsquelle,
   // AUFTRAG-mega18 Block A-1: das Vorgangsgedächtnis der Verbund-Operation (am Objekt persistiert).
   KoAppendOp,
   // AUFTRAG-mega20 Block A: der Reparaturvermerk einer gescheiterten Rücknahme.
@@ -409,6 +431,7 @@ export type {
   KoCreateOperationState,
   KoSource,
   KoSourceKind,
+  KoSourceRestrictions,
   KoVersionSnapshot,
   KoErrorCode,
   // SCRUM-422: Papierkorb-Zeile (Admin-Ansicht).

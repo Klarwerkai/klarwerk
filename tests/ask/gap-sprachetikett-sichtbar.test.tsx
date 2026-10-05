@@ -62,6 +62,9 @@ vi.mock("../../apps/web/src/api/hooks", () => {
     useBusFactor: () => ok([]),
     useExpertise: () => ok([]),
     useAiCheckCoverageSummary: () => ok(null),
+    // R-1639 / R-2183 (Nacharbeit 3): Risk.tsx zieht den Bereichsblick und (nur Admin) die Pflege.
+    useRiskHorizon: () => ok({ generatedAt: "", seesAll: false, areas: [] }),
+    useManagementProfiles: () => ok({ categories: [], retirement: [] }),
   };
 });
 vi.mock("../../apps/web/src/app/AuthContext", () => ({

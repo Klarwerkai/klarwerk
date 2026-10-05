@@ -67,6 +67,7 @@ export interface KnowledgeCheckResult {
   status: "done" | "pending" | "failed";
   similar: KnowledgeCheckSimilar[];
   conflicts: KnowledgeCheckConflict[];
+  coverage: KnowledgeCheckCoverage; // der belegte Prüfumfang — Vertrag am Dateiende
 }
 
 // Der Konflikt-Judge-Callback (modul-rein): zwei Kerntexte → Verdikt. Signatur-kompatibel mit
@@ -280,14 +281,14 @@ const CANDIDATE_LIMIT = 40;
 // FUNDSTELLEN — der Wächter schlägt jede dieser Zeilen nach; ausserhalb dieser Liste steht in
 // diesem Block bewusst KEIN Datei-Zeilen-Verweis, damit keine zweite, ungeprüfte Wahrheit entsteht:
 //   · AUFRUF findCandidates — services/app/src/knowledge-check.ts:389
-//   · RUMPF findCandidates — services/knowledge-object/src/service.ts:3827-3856
-//   · AUFRUF findSearchHits — services/knowledge-object/src/service.ts:3838
-//   · RUMPF findSearchHits — services/knowledge-object/src/service.ts:1832-1834
-//   · RUMPF findActive — services/knowledge-object/src/search-projection-repo.ts:708-807
-//   · RUMPF normalizeSearchTerms — services/knowledge-object/src/search-projection.ts:967-979
-//   · RUMPF expandSearchTerms — services/knowledge-object/src/search-projection.ts:1107-1127
+//   · RUMPF findCandidates — services/knowledge-object/src/service.ts:4232-4262
+//   · AUFRUF findSearchHits — services/knowledge-object/src/service.ts:4243
+//   · RUMPF findSearchHits — services/knowledge-object/src/service.ts:1995-1997
+//   · RUMPF findActive — services/knowledge-object/src/search-projection-repo.ts:726-837
+//   · RUMPF normalizeSearchTerms — services/knowledge-object/src/search-projection.ts:973-985
+//   · RUMPF expandSearchTerms — services/knowledge-object/src/search-projection.ts:1148-1168
 //   · RUMPF matchEffectiveSearchDocument — services/knowledge-object/src/effective-search-document.ts:116-148
-//   · RUMPF koCandidateScore — services/knowledge-object/src/repo.ts:282-291
+//   · RUMPF koCandidateScore — services/knowledge-object/src/repo.ts:293-302
 //
 // WARUM DIE LÄNGE UND NICHT DIE STELLE — AN DIESER KETTE GEMESSEN (Fall S1 im Messstand-Test).
 // `findActive` bereinigt die Wortliste (`normalizeSearchTerms`), ergänzt sie um deklarierte
@@ -377,17 +378,20 @@ export async function checkKnowledge(
   if (clean.length < 12) {
     // G-2-EHRLICHKEIT (ben-Check V2): zu kurzer Text wurde NICHT auf Widerspruch geprüft → ehrlich
     // "pending" (die UI zeigt „noch nicht geprüft"), NICHT "done" (das die UI fälschlich als „neu"
-    // deutet). Kein Egress-Aspekt — es lief nur kein Judge.
-    return { status: "pending", similar: [], conflicts: [] };
+    // deutet). Kein Egress-Aspekt — es lief nur kein Judge. Geprüft wurde nichts: Umfang unbekannt.
+    return { status: "pending", similar: [], conflicts: [], coverage: UMFANG_UNBEKANNT };
   }
   try {
     // 1) Kandidaten lexikalisch vorfiltern (begrenzt) — kein Voll-Pool-Scan. dropConfidential hält
     //    vertrauliche KOs aus dem Ergebnis UND aus dem Modell-Pool (kein Egress ihres Kerntexts). Demo-
     //    KOs bleiben DRIN: im Live-Check sind sie regulärer Bestand (der Check persistiert nichts), sonst
     //    fände die Ähnlichkeitssuche im Demo-/Testbetrieb nichts.
+    const roh = await deps.ko.findCandidates({ terms: terms(clean), limit: CANDIDATE_LIMIT });
     const candidates = dropConfidential(
-      await deps.ko.findCandidates({ terms: terms(clean), limit: CANDIDATE_LIMIT }),
+      // Vorschau-Reichweite: die Grenze misst `roh` (die Vorauswahl), die Zahl `candidates`.
+      roh,
     );
+    const coverage = pruefumfang(roh.length, candidates.length);
 
     // JOB 3298: der Dokumenttext der Kandidaten, aus der Suchprojektion, je Kandidat auf den Auszug
     // geschnitten. FEHLSCHLÄGE SIND STILL UND FOLGENLOS: liefert die Projektion nichts (Altbestand
@@ -453,7 +457,7 @@ export async function checkKnowledge(
     //    verfügbar). Sonst ehrlich „pending" (nicht geprüft), conflicts = [] — KEIN Cloud-/Modell-Egress
     //    von Freitext. Der Dry-Run (assessAgainstPool) persistiert nichts.
     if (!deps.judge) {
-      return { status: "pending", similar, conflicts: [] };
+      return { status: "pending", similar, conflicts: [], coverage };
     }
     const pool = candidates.map((k) =>
       koToSubject(k, auszuege.get(k.id) ?? "", naehe.get(k.id)?.traegt ?? false),
@@ -471,9 +475,42 @@ export async function checkKnowledge(
       reason: d.rationale ?? "",
       ...(origins.get(d.koId) ?? { koStatus: null, koCategory: null }),
     }));
-    return { status: "done", similar, conflicts };
+    return { status: "done", similar, conflicts, coverage };
   } catch {
-    // never block: ehrlicher Fehlerstatus, keine Interna.
-    return { status: "failed", similar: [], conflicts: [] };
+    // never block: ehrlicher Fehlerstatus, keine Interna. Was geprüft wurde, ist nicht belegt.
+    return { status: "failed", similar: [], conflicts: [], coverage: UMFANG_UNBEKANNT };
   }
+}
+
+// ================================================================================================
+// AUFNAHME 20260922 · VORSCHAU-REICHWEITE — DIE ANTWORT SAGT, WIE WEIT SIE GESCHAUT HAT.
+// ================================================================================================
+//
+// DER BEFUND (Fall 6 der Aufnahme). Dieser Check vergleicht den Entwurf nie mit dem ganzen Bestand:
+// die Vorauswahl `findCandidates` liefert höchstens CANDIDATE_LIMIT Objekte, und nur sie werden
+// verglichen. Ein leeres Ergebnis hiess trotzdem bis hierher an der Oberfläche „Das ist neu — dazu
+// gibt es noch nichts". Ein passender Eintrag auf Rang 41 war damit „nicht vorhanden".
+//
+// DER VERTRAG. Jede Antwort trägt ihren Prüfumfang AUSDRÜCKLICH, auch wenn er unbekannt ist:
+//   · `candidates` — die Vorauswahl ist gelaufen. `checked` ist die Zahl der Kandidaten, die
+//     wirklich verglichen wurden (nach `dropConfidential`), `limit` der Deckel, `limitReached`
+//     sagt, ob die Vorauswahl ihn gefüllt hat — dann kann hinter dem Deckel weiterer passender
+//     Bestand liegen, der nicht angesehen wurde. Auch ohne erreichte Grenze ist das KEIN Abgleich
+//     mit dem ganzen Bestand: verglichen wurde nur, was die Suchwörter vorausgewählt haben.
+//   · `unknown` — es ist nichts belegt: zu kurzer Text (nichts lief) oder ein Fehler (was bis
+//     dahin lief, ist nicht gesichert). Kein Platzhalterwert, keine geschätzte Zahl.
+// Die Zahlen kommen aus den Listen, die dieser Check ohnehin hält — es wird nichts nachgezählt.
+export type KnowledgeCheckCoverage =
+  | { kind: "candidates"; checked: number; limit: number; limitReached: boolean }
+  | { kind: "unknown" };
+
+const UMFANG_UNBEKANNT: KnowledgeCheckCoverage = { kind: "unknown" };
+
+function pruefumfang(vorausgewaehlt: number, verglichen: number): KnowledgeCheckCoverage {
+  return {
+    kind: "candidates",
+    checked: verglichen,
+    limit: CANDIDATE_LIMIT,
+    limitReached: vorausgewaehlt >= CANDIDATE_LIMIT,
+  };
 }

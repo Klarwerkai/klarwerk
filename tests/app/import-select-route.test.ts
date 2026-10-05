@@ -19,6 +19,7 @@ import type { ConfluenceSourceAdapter } from "../../services/confluence";
 import { type ImportItem, promptRequiresConfidential } from "../../services/library-analytics";
 import { ModelProvider, Reasoner } from "../../services/reasoner";
 import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
+import { woerterbuchQuelleAus } from "../support/woerterbuchquelle";
 
 // WP-VIP2-GATE (bens P0-1, endgueltig): Spy am EMBEDDER-Chokepoint. Das Modul services/embedding
 // wird gewrappt: jeder von createEmbeddingProviderFromEnv gebaute Provider zaehlt seine embed()-
@@ -511,7 +512,7 @@ describe("WP-VIP2-GATE-2 Fix 1: Prompt-Eigenprovenienz (Pflicht-Einstufung + heb
     expect(src).toContain("useState(true)"); // Vorgabe: Ja/unsicher (fail-safe)
     expect(src).toContain("promptConfidential,");
     expect(src).toContain('t("imp.select.promptConfidentialLabel")');
-    const i18n = readFileSync(resolve(process.cwd(), "apps/web/src/i18n.ts"), "utf8");
+    const i18n = woerterbuchQuelleAus(resolve(process.cwd(), "apps/web/src/i18n.ts"));
     for (const key of [
       "imp.select.promptConfidentialLabel",
       "imp.select.promptConfidentialYes",

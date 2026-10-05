@@ -226,6 +226,21 @@ CREATE INDEX IF NOT EXISTS idx_kos_sichtbarkeit
   WHERE deleted_at_key IS NULL;
 `;
 
+// AUFNAHME 20260922 (BEN 4359, Befund B2) — DER PAPIERKORB IN SQL WIE `!ko.deletedAt`.
+//
+// Die Referenz überall im Speicher ist `!ko.deletedAt`: ein Objekt liegt nur dann im Papierkorb,
+// wenn `deletedAt` einen WAHREN Wert trägt. Ein fehlender Schlüssel ist dafür nicht die einzige
+// Form des „lebt" — auch eine Altzeile mit `deletedAt: null` oder `deletedAt: ""` lebt dort. Die
+// SQL-Prüfungen `NOT (data ? 'deletedAt')` (Schlüsselexistenz) und `deleted_at_key IS NULL` (`''`
+// ist nicht NULL) verbargen genau diese Altzeilen und zählten sie still weg.
+//
+// Dieser Ausdruck nennt die JSON-Werte, die JavaScript als falsch wertet (null, "", false, 0);
+// jsonb vergleicht Zahlen numerisch, `0.0` fällt also mit darunter. Er ERGÄNZT die bestehende
+// Prüfung per `OR` und ersetzt sie nicht — ein ISO-Zeitpunkt bleibt im Papierkorb.
+export function sqlDeletedAtLeer(traeger: string): string {
+  return `${traeger}.data->'deletedAt' IN ('null'::jsonb, '""'::jsonb, 'false'::jsonb, '0'::jsonb)`;
+}
+
 // SCRUM-159: unveränderliche KO-Version-Snapshots. PK (ko_id, version) + ON CONFLICT DO NOTHING
 // garantieren, dass eine einmal geschriebene Version nie überschrieben wird.
 export const KO_VERSIONS_SCHEMA = `
@@ -297,7 +312,8 @@ interface DataRow {
 //
 // Der Beleg der Gleichheit des URTEILS an allen Faellen, die sichtbarkeit.ts unterscheidet, liegt in
 // tests/app/job2685-traegersuche-gleichheit.test.ts; der Beleg mit Mengengleichheit gegen ein
-// echtes Postgres in tests/ko/job2685-anhang-traeger.integration.test.ts (Docker).
+// echtes Postgres in tests/ko/job2685-anhang-traeger.integration.test.ts
+// (PG-Prüfplatz tests/ko/pg-pruefplatz.ts: KLARWERK_PG_TEST_URL, sonst Testcontainer, sonst rot).
 export const KO_ANHANG_TRAEGER_SQL = `SELECT data FROM kos WHERE id IN (
   SELECT id FROM kos WHERE data->'attachments' @> ANY($1::jsonb[])
   UNION SELECT id FROM kos WHERE data->>'bodyHtml' LIKE ANY($2::text[])
@@ -335,21 +351,26 @@ function isUniqueViolation(err: unknown, constraint: string): boolean {
 export class PgKoRepo implements KoRepo {
   constructor(private readonly pool: Pool) {}
 
-  async insert(ko: KnowledgeObject): Promise<void> {
+  async insert(ko: KnowledgeObject, tx?: TxContext): Promise<void> {
+    // JOB 2706 D1: Schreiben und Schreibstand in EINER Transaktion — gemeinsam sichtbar mit dem
+    // Commit (s. KO_SCHREIBSTAND_TABELLE_DDL). Aufnahme gesamt-auditprotokoll (Lauf 3): mit `tx` in
+    // der Transaktion des Aufrufers (Erstanlage samt Belegen), sonst in einer eigenen.
+    const lauf = async (q: Queryable): Promise<void> => {
+      await q.query("INSERT INTO kos(id,type,status,category,data) VALUES($1,$2,$3,$4,$5)", [
+        ko.id,
+        ko.type,
+        ko.status,
+        ko.category,
+        JSON.stringify(ko),
+      ]);
+      await q.query(KO_SCHREIBSTAND_ERHOEHEN_SQL);
+    };
     try {
-      // JOB 2706 D1: Schreiben und Schreibstand in EINER Transaktion — gemeinsam sichtbar mit dem
-      // Commit (s. KO_SCHREIBSTAND_TABELLE_DDL).
-      await withPgTx(this.pool, async (tx) => {
-        const q = pgQueryable(tx);
-        await q.query("INSERT INTO kos(id,type,status,category,data) VALUES($1,$2,$3,$4,$5)", [
-          ko.id,
-          ko.type,
-          ko.status,
-          ko.category,
-          JSON.stringify(ko),
-        ]);
-        await q.query(KO_SCHREIBSTAND_ERHOEHEN_SQL);
-      });
+      if (tx) {
+        await lauf(pgQueryable(tx));
+      } else {
+        await withPgTx(this.pool, (eigene) => lauf(pgQueryable(eigene)));
+      }
     } catch (err) {
       // AUFTRAG-mega20 Block A: die Unique-Kollision des ERZEUGUNGS-Ankers wird in einen
       // Domänenfehler übersetzt — und NUR sie. Ohne diese Übersetzung käme beim Aufrufer ein roher
@@ -847,10 +868,10 @@ interface EvidenceRow {
 export class PgEvidenceRepo implements EvidenceRepo {
   constructor(private readonly pool: Pool) {}
 
-  async append(record: EvidenceRecord): Promise<void> {
+  async append(record: EvidenceRecord, tx?: TxContext): Promise<void> {
     // JOB 2706 D1: Schreiben und Schreibstand in EINER Transaktion (s. repo-pg.ts Kopf).
-    await withPgTx(this.pool, async (tx) => {
-      const q = pgQueryable(tx);
+    // Aufnahme gesamt-auditprotokoll (Lauf 3): mit `tx` in der Transaktion des Aufrufers.
+    const lauf = async (q: Queryable): Promise<void> => {
       await q.query(
         `INSERT INTO ko_evidence(id,ko_id,ko_version,kind,data,created_at)
        VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT (id) DO NOTHING`,
@@ -864,7 +885,12 @@ export class PgEvidenceRepo implements EvidenceRepo {
         ],
       );
       await q.query(KO_SCHREIBSTAND_ERHOEHEN_SQL);
-    });
+    };
+    if (tx) {
+      await lauf(pgQueryable(tx));
+      return;
+    }
+    await withPgTx(this.pool, (eigene) => lauf(pgQueryable(eigene)));
   }
 
   async listByKo(koId: string): Promise<EvidenceRecord[]> {

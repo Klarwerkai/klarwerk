@@ -1,4 +1,5 @@
 import type { Pool } from "pg";
+import { type TxContext, pgQueryable, poolQueryable } from "../../db-tx";
 import type { LifecycleRepo } from "./repo";
 import type { LearningPath } from "./types";
 
@@ -57,8 +58,10 @@ export class PgLifecycleRepo implements LifecycleRepo {
     );
   }
 
-  async clearPending(koId: string): Promise<void> {
-    await this.pool.query("DELETE FROM lifecycle_pending WHERE ko_id=$1", [koId]);
+  async clearPending(koId: string, tx?: TxContext): Promise<boolean> {
+    const q = tx ? pgQueryable(tx) : poolQueryable(this.pool);
+    const res = await q.query("DELETE FROM lifecycle_pending WHERE ko_id=$1", [koId]);
+    return (res.rowCount ?? 0) > 0;
   }
 
   async pending(): Promise<string[]> {
