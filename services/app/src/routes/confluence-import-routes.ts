@@ -620,7 +620,9 @@ async function fuehreLaufAus(
       : laufluecke && grund
         ? {
             failureCode: SOURCE_SYNC_INCOMPLETE,
-            failureReason: sanitizeImportFailureReason(`${anhangsGrund ?? ""} ${grund.reason}`.trim()),
+            failureReason: sanitizeImportFailureReason(
+              `${anhangsGrund ?? ""} ${grund.reason}`.trim(),
+            ),
           }
         : (laufluecke ??
           (grund

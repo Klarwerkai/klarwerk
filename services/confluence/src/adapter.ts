@@ -212,7 +212,11 @@ export class ConfluenceSourceAdapter implements SourceAdapter {
     } catch {
       anhaenge = { attachments: [], unvollstaendig: true };
     }
-    return mapConfluencePageToImportItem(await this.mitAllenAnhaengen(page), this.mapOpts, anhaenge);
+    return mapConfluencePageToImportItem(
+      await this.mitAllenAnhaengen(page),
+      this.mapOpts,
+      anhaenge,
+    );
   }
 
   /**

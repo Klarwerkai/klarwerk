@@ -152,7 +152,8 @@ export default {
       "Knowledge gaps: the link is determined via the answer search, and AI is currently switched off — so no gap is claimed or ruled out here.",
     "ko.importResult.gapsRule":
       "Counted are open gaps whose question leads the answer search to this knowledge.",
-    "ko.importResult.gapsScope": "Checked were the {{geprueft}} most recent of {{offen}} open gaps.",
+    "ko.importResult.gapsScope":
+      "Checked were the {{geprueft}} most recent of {{offen}} open gaps.",
     "ko.importResult.gapRedacted": "Gap (question text not released)",
     "ko.importResult.gaps": "Knowledge gaps for this knowledge: {{anzahl}}",
     "ko.source.removedInOrigin":

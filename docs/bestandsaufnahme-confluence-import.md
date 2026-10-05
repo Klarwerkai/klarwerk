@@ -373,6 +373,15 @@ demselben Code `SOURCE_SYNC_INCOMPLETE` (eine Konstante); der Leseabbruch geht v
 Anhangsmodelle für dieselbe Seite sind eine Doppelung, die der Anhangs-Auftrag auflösen sollte — sie
 hier zu entscheiden, wäre eine Produktentscheidung jenseits dieses Auftrags.
 
+**Nacharbeit 6 (Prüflauf Kandidat `d6a774cf`):** (a) `ConfluenceAttachment` war nach der
+Zusammenführung zweimal deklariert (Pflicht- gegen optionale Felder, TS2687/TS2717) — mains
+Deklaration gilt, meine ist entfernt; die Laufzeitprüfung `istAnhangsliste` bleibt. (b) mains
+R-0162-Test G6/G7 sah jede unklare Seite zweimal abgefragt: der Quellabgleich dieser Lieferung fragte
+nach `reconcileRemovals` erneut. Jetzt merkt sich der Lauf die Antworten (`quellAuskunft`), und der
+Quellabgleich übernimmt sie. (c) Biome: drei Zeilenumbrüche. (d) `runde3.test.ts` (N1, N2, N4) prüft
+die frühere vorläufige Löschregel dieser Lieferung und ist seit der Integration von R-0162 überholt —
+aus der Auftragsauswahl genommen, global unverändert.
+
 ## Abgrenzung
 
 - SharePoint/OneDrive-Import (JOB 4086) ist ein eigener Adapter und eigener Auftrag.

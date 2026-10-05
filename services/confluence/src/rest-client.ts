@@ -266,15 +266,6 @@ export interface ConfluencePage {
   };
 }
 
-/** R-0163: ein Anhang, wie `/rest/api/content/{id}/child/attachment` ihn liefert. */
-export interface ConfluenceAttachment {
-  id?: string;
-  title?: string;
-  metadata?: { mediaType?: string };
-  extensions?: { mediaType?: string; fileSize?: number };
-  _links?: { download?: string };
-}
-
 // AUFTRAG-mega27 A1: `ancestors` kommt MINIMAL dazu — ohne jeden Unter-Expand. Die Elternkette ist
 // die einzige Quelle einer echten Ordnerstruktur; sie verließ Confluence bisher nie, deshalb konnte
 // die Auswahl nur abgeleitete Merkmale (Sprache/Thema) bündeln. Paginierung und der Abbruch mit

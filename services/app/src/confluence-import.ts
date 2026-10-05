@@ -355,11 +355,20 @@ function anhangsSignatur(
   return JSON.stringify([externalId.trim(), name.trim(), mime ?? null, size ?? null, url]);
 }
 
+/**
+ * Nacharbeit 6: die Antwort der Quelle auf die Einzelnachfrage zu EINER Seite in diesem Lauf —
+ * `geloescht`/`vorhanden` aus `isGoneAtSource`, `unklar`, wenn die Nachfrage warf. Je Quell-Id.
+ */
+type QuellAntwort = "geloescht" | "vorhanden" | "unklar";
+type QuellAuskunft = Map<string, QuellAntwort>;
+
 async function quellAbgleich(
   deps: ConfluenceImportDeps,
   gesehen: ReadonlySet<string>,
   vollstaendig: boolean,
   nachgezogen: Nachzug,
+  // Nacharbeit 6: die Antworten, die der R-0162-Abgleich in DIESEM Lauf schon erfragt hat.
+  schonErfragt: ReadonlyMap<string, QuellAntwort> = new Map(),
 ): Promise<SourceSyncSummary | undefined> {
   // Runde 3: ein Adapter ohne Einzelnachfrage oder ohne Bereich (Attrappen, künftige Quellen)
   // kann GAR NICHT abgleichen — dieser Weg trägt dann keinen Abgleich, statt einen
@@ -423,17 +432,28 @@ async function quellAbgleich(
   const at = new Date().toISOString();
   let nachfragen = 0;
   for (const [externalId, { provider, koIds }] of fehlend) {
-    if (nachfragen >= MAX_LOESCHPRUEFUNGEN) {
-      summary.unchecked.push(externalId);
-      continue;
-    }
-    nachfragen += 1;
+    // Nacharbeit 6: hat der R-0162-Abgleich dieselbe Seite in diesem Lauf schon erfragt, gilt
+    // seine Antwort — eine zweite Einzelnachfrage hätte nur dieselbe Antwort mit doppelter Last.
+    const schon = schonErfragt.get(externalId);
     let nochDa: boolean;
-    try {
-      nochDa = !(await adapter.isGoneAtSource(externalId));
-    } catch {
-      summary.unchecked.push(externalId);
-      continue;
+    if (schon !== undefined) {
+      if (schon === "unklar") {
+        summary.unchecked.push(externalId);
+        continue;
+      }
+      nochDa = schon === "vorhanden";
+    } else {
+      if (nachfragen >= MAX_LOESCHPRUEFUNGEN) {
+        summary.unchecked.push(externalId);
+        continue;
+      }
+      nachfragen += 1;
+      try {
+        nochDa = !(await adapter.isGoneAtSource(externalId));
+      } catch {
+        summary.unchecked.push(externalId);
+        continue;
+      }
     }
     if (nochDa) {
       summary.outsideScope.push(externalId);
@@ -804,6 +824,9 @@ export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<I
   // R-0162: Änderungen laufen oben über die höhere sourceVersion (neuer Kandidat → Re-Sync beim
   // Annehmen). Löschungen zieht der folgende Abgleich nach — nur bei VOLLSTÄNDIG gelesenem Space
   // und nur mit bekanntem Space: ohne ihn wäre jeder fremde oder scopelose Anker ein „Fehlender".
+  // Nacharbeit 6: was dieser Abgleich je Seite bei der Quelle erfragt hat, merkt sich
+  // `quellAuskunft` — der Quellabgleich danach fragt dieselbe Seite nicht ein zweites Mal.
+  const quellAuskunft: QuellAuskunft = new Map();
   const removal =
     truncated || !deps.adapter.sourceScope
       ? {
@@ -813,7 +836,7 @@ export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<I
           removalOpen: 0,
           removalChecked: false,
         }
-      : await reconcileRemovals(deps, items, collectFailed, perPage);
+      : await reconcileRemovals(deps, items, collectFailed, perPage, quellAuskunft);
 
   // ZUSAMMENFÜHRUNG (Nacharbeit 4): die maßgebliche Reaktion auf eine bestätigte Löschung ist die
   // des Abgleich-Auftrags oben (Papierkorb, solange das Objekt keine weitere Quelle trägt). DANACH
@@ -834,6 +857,7 @@ export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<I
         .map((i) => i.externalId)
         .filter((id): id is string => !!id),
     },
+    quellAuskunft,
   );
 
   return {
@@ -900,6 +924,8 @@ async function reconcileRemovals(
   items: readonly ImportItem[],
   collectFailed: CollectResult["failed"],
   perPage: ImportRunSummary["perPage"],
+  // Nacharbeit 6: nimmt je erfragter Seite die Antwort auf (s. `QuellAuskunft`).
+  quellAuskunft?: QuellAuskunft,
 ): Promise<{
   removed: number;
   removalKept: number;
@@ -978,7 +1004,9 @@ async function reconcileRemovals(
     let gone: boolean;
     try {
       gone = await deps.adapter.isGoneAtSource(entry.externalId);
+      quellAuskunft?.set(entry.externalId, gone ? "geloescht" : "vorhanden");
     } catch (err) {
+      quellAuskunft?.set(entry.externalId, "unklar");
       removalOpen += 1;
       perPage.push({
         ref: entry.externalId,
