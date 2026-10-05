@@ -13,8 +13,11 @@ const IMPORT_RUN_TAKT_MS = 2000;
 
 // Lese-Hooks (TanStack Query) gegen die Modul-Endpunkte. Mutationen werden je
 // Screen mit useMutation gebaut (mit Invalidierung der passenden Keys).
-export const useKos = (f?: KoFilter) =>
-  useQuery({ queryKey: ["kos", f], queryFn: () => endpoints.ko.list(f) });
+// K1 / NFR-PERF-01 (Nacharbeit 28): `enabled` kam ADDITIV hinzu, wie bei `useLibrarySearch` unten
+// (JOB 4153), und ist standardmässig `true` — jeder bestehende Aufrufer verhält sich wie vorher. Die
+// Bibliotheksfläche holt den ganzen Bestand damit erst, nachdem ihre Suche geantwortet hat.
+export const useKos = (f?: KoFilter, enabled = true) =>
+  useQuery({ queryKey: ["kos", f], queryFn: () => endpoints.ko.list(f), enabled });
 // JOB 4153: `enabled` kam ADDITIV hinzu und ist standardmässig `true` — jeder bestehende Aufrufer
 // verhält sich Zeichen für Zeichen wie vorher. Die Zielauswahl der Wissensbeziehungen braucht ihn:
 // ohne ihn liefe bei JEDEM Öffnen eines Eintrags eine Suche mit leerem Begriff los und holte den

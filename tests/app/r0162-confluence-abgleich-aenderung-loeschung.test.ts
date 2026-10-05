@@ -49,6 +49,12 @@ function adapterFuer(quelle: Quelle, spaceKey = "K") {
   const einzelabrufe: string[] = [];
   const fetchFn = (async (url: string | URL | Request) => {
     const u = new URL(String(url));
+    // R-0163: der Importeur liest je Seite auch die Anhangsliste. Diese Quelle führt keine
+    // Anhänge — sie antwortet darauf wie Confluence mit einer leeren Liste und nicht mit dem
+    // Space-Listing (das wären Seiten ohne Abrufweg, also eine unbrauchbare Anhangsliste).
+    if (u.pathname.endsWith("/child/attachment")) {
+      return antwort(200, { results: [] });
+    }
     const treffer = /\/rest\/api\/content\/([^/]+)$/.exec(u.pathname);
     if (!treffer) {
       return antwort(200, { results: quelle.liste });

@@ -3121,9 +3121,9 @@ const de = {
   "ko.body.readBlocksChip": "strukturierter Inhalt",
   "ko.conditions": "Bedingungen",
   "ko.measures": "Maßnahme",
-  "ko.validate": "Validieren",
+  "ko.validate": "Positiv bewerten",
   "ko.stillValid": "Noch gültig",
-  "ko.conditional": "Bedingt",
+  "ko.conditional": "Rückfrage",
   "ko.reject": "Ablehnen",
   "ko.edit": "Bearbeiten",
   // JOB 3063 · H4 — die dreizehn Abschnitte hinter der Zeile „Mehr". Nur Titel: die Erklärsätze
@@ -3808,6 +3808,9 @@ const de = {
   // Meinung: `tests/pruefen-volltext/pruefen-brett-gemountet.test.tsx` (C4) misst zuerst, ob der
   // Filter den Inhalt findet, und leitet daraus ab, was hier stehen MUSS. Wird der Inhalt eines
   // Tages durchsucht, wird dieser Fall rot und verlangt die Rückkehr zu „Volltext filtern …".
+  // NACHTRAG Aufnahme 20260922 · Prüfboard-Bedienung (N-0072): der Inhalt WIRD jetzt durchsucht.
+  // Das Feld trägt seitdem `pruefboard.volltextFiltern` (apps/web/src/texte/pruefboard.ts). Dieser
+  // Wert bleibt unverändert stehen, weil der Umzugsnachweis (tests/i18n-textmodule) ihn festhält.
   "val.filter": "Filtern (ohne ausführlichen Inhalt) …",
   "val.filterAllTypes": "Alle Wissensarten",
   "val.filterAllCategories": "Alle Kategorien",
@@ -3900,7 +3903,7 @@ const de = {
   // nicht. Der Text behauptet KEINE Ursache — er sagt nur, dass die Vollständigkeit unbelegt ist.
   "val.aiCheck.coverage.unproven":
     "Dieser Lauf ist nicht als vollständig belegt: das Protokoll weist {{completed}} abgeschlossene Vergleiche bei {{available}} möglichen Nachbarn aus. Ohne Fund heißt das nicht „frei von Konflikten und Duplikaten“.",
-  "val.feedback.condTitle": "Bedingt – Begründung für den Autor (Pflicht)",
+  "val.feedback.condTitle": "Rückfrage – Begründung für den Autor (Pflicht)",
   "val.feedback.rejTitle": "Ablehnung – Begründung für den Autor (Pflicht)",
   "val.feedback.placeholder": "Was muss überarbeitet werden? …",
   "val.feedback.submit": "Absenden",
@@ -7510,7 +7513,7 @@ const de = {
     "Prüfanbindung: noch nicht angebunden – eine automatische fachliche Prüfung dieser Anleitung findet nicht statt.",
   "ga.stand.entwurf": "Entwurf",
   "ga.stand.vorgelegt": "Vorgelegt",
-  "ga.stand.entschieden": "Entschieden",
+  "ga.stand.entschieden": "Freigegeben",
   "ga.stand.abgelehnt": "Abgelehnt",
   "ga.bausteine": "Abschnitte",
   "ga.baustein.fassung": "Gebundene Fassung {{version}}",

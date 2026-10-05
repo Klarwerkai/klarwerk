@@ -26,7 +26,7 @@
 // `anzeigelage` den Fall „Daten UND Fehler" ausdrücklich und macht daraus keinen Fehlerzustand
 // ohne Inhalt.
 
-import type { AnweisungLesestand } from "../../api/types";
+import type { AnweisungLesestand, AnweisungStand } from "../../api/types";
 
 export type Anzeigelage =
   | { readonly art: "laden" }
@@ -181,4 +181,96 @@ export function mengenSchluessel(werte: readonly string[] | null): {
     return { schluessel: "ga.baustein.keine", werte: null };
   }
   return { schluessel: "", werte: werte.join(", ") };
+}
+
+// ==================================================================================================
+// PRÜFSTATUS-ANZEIGE (Pedi 28.09.2026, Ergänzung 3) · WAS BEDEUTET DER STAND, UND WAS KANN ICH TUN?
+// ==================================================================================================
+//
+// Übersicht und Detailansicht zeigen DENSELBEN Status derselben Fassung — deshalb entsteht er hier
+// EINMAL aus denselben Feldern (Stand, Version, Abschnittszahl, Rechte) und nicht zweimal in zwei
+// Bauteilen. Es gibt keine neue Freigaberegel: die Sätze lesen nur ab, was der Server schon erzwingt
+// (`alsVorgelegt`, `alsEntschieden`, `nurAenderbar`; Rechte `ko.create` und `ko.validate`). Eine
+// zweite Person wird nirgends verlangt, weil keine Kontoregel sie vorsieht.
+//
+// WAS NICHT FESTGEHALTEN IST, WIRD NICHT ERFUNDEN: der Server speichert bei einer Entscheidung nicht,
+// WER entschieden hat. Die Prüfangaben sagen das ausdrücklich. Zeitpunkt und Fassung einer FREIGABE
+// sind dagegen belegt: eine freigegebene Anleitung nimmt keinen Schreibzugriff mehr an
+// (`nurAenderbar`), also ist ihr `geaendertAm` der Augenblick der Freigabe und ihre `version` die
+// freigegebene Fassung. Nach einer Ablehnung darf weiter geändert werden — dort ist `geaendertAm`
+// nicht mehr der Zeitpunkt der Ablehnung und wird deshalb auch nicht als solcher gezeigt.
+
+export interface Freigaberechte {
+  /** `ko.create` — vorlegen und überarbeiten. */
+  readonly darfVorlegen: boolean;
+  /** `ko.validate` — annehmen oder ablehnen. */
+  readonly darfEntscheiden: boolean;
+}
+
+export interface Freigabeeingabe {
+  readonly stand: AnweisungStand;
+  readonly version: number;
+  readonly geaendertAm: string;
+  /** Alle Abschnitte, sichtbare UND verborgene — eine leere Anleitung kann nicht vorgelegt werden. */
+  readonly abschnitte: number;
+  /** Sieht der Betrachter nicht alle Abschnitte, kann er weder vorlegen noch entscheiden. */
+  readonly unvollstaendig: boolean;
+}
+
+export interface Freigabeanzeige {
+  /** Das kurze Standwort (`ga.stand.*`). */
+  readonly wort: string;
+  /** Was der Stand bedeutet — insbesondere: freigegeben oder nicht. */
+  readonly bedeutung: string;
+  /** Der nächste Schritt DIESES Betrachters, nach seinen Rechten. */
+  readonly naechsterSchritt: string;
+  /** Nur bei einer dokumentierten Entscheidung; sonst `null`. */
+  readonly pruefung: {
+    readonly schluessel: string;
+    /** `null` = nicht festgehalten — die Anzeige sagt das, statt eine Zeit zu zeigen. */
+    readonly am: string | null;
+  } | null;
+}
+
+function naechsterSchritt(eingabe: Freigabeeingabe, rechte: Freigaberechte): string {
+  switch (eingabe.stand) {
+    case "entschieden":
+      return "fe001.status.schritt.gilt";
+    case "vorgelegt":
+      if (!rechte.darfEntscheiden) {
+        return "fe001.status.schritt.warten";
+      }
+      return eingabe.unvollstaendig
+        ? "fe001.status.schritt.unvollstaendigEntscheiden"
+        : "fe001.status.schritt.entscheiden";
+    default:
+      if (!rechte.darfVorlegen) {
+        return "fe001.status.schritt.nurLesen";
+      }
+      if (eingabe.unvollstaendig) {
+        return "fe001.status.schritt.unvollstaendigVorlegen";
+      }
+      if (eingabe.abschnitte === 0) {
+        return "fe001.status.schritt.abschnitteFehlen";
+      }
+      return eingabe.stand === "abgelehnt"
+        ? "fe001.status.schritt.ueberarbeiten"
+        : "fe001.status.schritt.vorlegen";
+  }
+}
+
+/** Status, Bedeutung, nächster Schritt und Prüfangaben — für Übersicht UND Detail. */
+export function freigabeanzeige(eingabe: Freigabeeingabe, rechte: Freigaberechte): Freigabeanzeige {
+  const pruefung =
+    eingabe.stand === "entschieden"
+      ? { schluessel: "fe001.status.pruefung.freigegeben", am: eingabe.geaendertAm }
+      : eingabe.stand === "abgelehnt"
+        ? { schluessel: "fe001.status.pruefung.abgelehnt", am: null }
+        : null;
+  return {
+    wort: `ga.stand.${eingabe.stand}`,
+    bedeutung: `fe001.status.bedeutung.${eingabe.stand}`,
+    naechsterSchritt: naechsterSchritt(eingabe, rechte),
+    pruefung,
+  };
 }

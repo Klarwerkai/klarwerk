@@ -5,6 +5,7 @@ import {
   coreText,
   decideFromVerdict,
   pairKey,
+  quoteFound,
   quotesVerbatim,
   relationToType,
   selectCandidates,
@@ -101,6 +102,39 @@ describe("Berater-Konzept 04.07. (Stufe 2): Erkennungskern", () => {
     const decision = decideFromVerdict(bad, coreText(koBlau), coreText(koRot));
     expect(decision.create).toBe(false);
     expect(decision.reason).toBe("hallucination");
+  });
+
+  it("R-1117: sinnverändernde Abweichung vom Zitat → hallucination", () => {
+    const core = "Druck\nSet pressure to 5 bar.";
+    for (const zitat of ["1.5", "15", ".5 bar", ",5", "-5", "+5", "5%", "5.0", "to .5"]) {
+      expect(quoteFound(zitat, core), zitat).toBe(false);
+      const decision = decideFromVerdict(verdict({ zitat_a: zitat }), core, coreText(koRot));
+      expect(decision.reason, zitat).toBe("hallucination");
+    }
+    expect(quoteFound("1,5 bar", "Set pressure to 1–5 bar.")).toBe(false);
+    expect(quoteFound("-8 °C", "Lagern bei 8 °C.")).toBe(false);
+    expect(quoteFound("8 °C", "Lagern bei -8 °C.")).toBe(false);
+    expect(quoteFound("beträgt 1", "Der Druck beträgt 15 bar.")).toBe(false);
+    expect(quoteFound("beträgt 1", "Der Druck beträgt 1–5 bar.")).toBe(false);
+    expect(quoteFound("beträgt 1", "Der Druck beträgt 1.5 bar.")).toBe(false);
+    expect(quoteFound("Cut to 5″.", "Cut to 5′.")).toBe(false);
+    expect(quoteFound("bar", "Das Fass (barrel) ist leer.")).toBe(false);
+    expect(quoteFound("", core)).toBe(false);
+    expect(quoteFound("„ “", core)).toBe(false);
+  });
+
+  it("R-1117: echte Zitate bleiben belegt (Kontrollfall, Typografie, freistehender Rand)", () => {
+    const core = "Druck\nSet pressure to 5 bar.";
+    expect(quoteFound("5 bar", core)).toBe(true);
+    const decision = decideFromVerdict(verdict({ zitat_a: "5 bar" }), core, coreText(koRot));
+    expect(decision.create).toBe(true);
+    expect(quoteFound("„Set pressure to 5 bar.“", core)).toBe(true);
+    expect(quoteFound('"5 bar"', core)).toBe(true);
+    expect(quoteFound("… to 5 bar", core)).toBe(true);
+    expect(quoteFound('Schalter "Notaus" drücken', "Den Schalter „Notaus“ drücken.")).toBe(true);
+    expect(quoteFound("Druck - nicht", "Druck – nicht Temperatur – prüfen.")).toBe(true);
+    expect(quoteFound("Warten... dann", "Warten… dann 5 bar.")).toBe(true);
+    expect(quoteFound("Cut to 5′.", "Cut to 5′.")).toBe(true);
   });
 
   it("Unter der Schwelle (confidence < 0.7) → kein Konflikt", () => {

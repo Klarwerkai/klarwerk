@@ -90,6 +90,13 @@ export interface AiCheck {
   // NUR LESEFASSUNG, nie gespeichert: bei jedem Lesen aus `basis` gegen das jetzige Objekt
   // abgeleitet (mitPruefstand). true = der abgeschlossene Nachweis gilt für eine frühere Basis.
   ueberholt?: boolean;
+  // PRÜFSTATUS-ANZEIGE (R-0208) · NUR LESEFASSUNG DES PRÜFBRETTS, nie gespeichert. `laeuft`
+  // (nur bei pending): der Worker bearbeitet den Job gerade — sonst ist er bloß ausstehend.
+  // `konfliktGefunden` (nur bei done): zu DIESEM Objekt als Subjekt steht ein offener, automatisch
+  // erkannter Konflikt, dessen Gegenseite der Leser sehen darf. Fehlt das Feld, ist es nicht
+  // erhoben — es heißt dann weder „kein Konflikt" noch „läuft nicht".
+  laeuft?: boolean;
+  konfliktGefunden?: boolean;
 }
 
 // Fingerabdrücke der Prüfbasis (s. pruefbasis.ts): quelle = Fassung + Quellen + Anhänge;
@@ -279,6 +286,22 @@ export interface KoAttachment {
   size?: number; // Originalgröße im Object-Store
   author: string;
   at: string;
+  // R-0163: Herkunft eines aus einer Quelle übernommenen Anhangs. Additiv, JSON-persistiert →
+  // keine Migration; Anhänge ohne das Feld (von Hand hochgeladen, Altbestand) bleiben gültig.
+  quelle?: KoAnhangsquelle;
+}
+
+/**
+ * R-0163: die Quellidentität eines übernommenen Anhangs. `externalId` ist die Kennung des
+ * Anhangs IN der Quelle (Confluence: attachment id) — an ihr wird beim nächsten Abgleich
+ * zugeordnet, nicht am Dateinamen. `abruf` ist der zuletzt gesehene Abrufweg; ändert die Quelle
+ * ihn, wird er hier nachgezogen.
+ */
+export interface KoAnhangsquelle {
+  provider: string;
+  externalId: string;
+  abruf: string;
+  sourceVersion?: number;
 }
 
 // Obergrenzen für den Pilot (kleine Thumbnails, JSONB bleibt handhabbar).
@@ -404,6 +427,20 @@ export interface KnowledgeObject {
   measures: string[];
   type: KnowledgeType;
   category: string;
+  // ============================================================================================
+  // R-0431 / R-1728 / FR-LIB-01 (K2, K20, K28) — DAS FACHGEBIET, UNABHÄNGIG VON DER KATEGORIE.
+  // ============================================================================================
+  //
+  // Die Originalanforderungen nennen Domäne/Fachgebiet als EIGENE Filterachse neben Kategorie,
+  // Art, Status und Schlagwort. Bis hierher gab es dafür kein Datenfeld — die Erfassung führte
+  // „Domäne / Kategorie" als ein Feld (`category`). Dieses Feld trägt das Fachgebiet als eigene
+  // Angabe, frei benannt wie die Kategorie.
+  //
+  // OPTIONAL UND OHNE MIGRATION: das KO liegt als Voll-JSONB (`kos.data`, repo-pg.ts). FEHLT das
+  // Feld, ist KEIN Fachgebiet angegeben — es wird bewusst NICHT aus Kategorie, Titel oder Inhalt
+  // abgeleitet oder nachgetragen; der Altbestand erscheint in der Facette als „ohne Wert".
+  // Gesetzt wird es beim Anlegen (`CreateKoInput.domain`) oder nachträglich über `setDomain`.
+  domain?: string;
   tags: string[];
   confidence: number;
   trust: number;

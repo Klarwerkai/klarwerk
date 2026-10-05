@@ -56,6 +56,28 @@ Die Person sieht nur die Seite und beantwortet in eigenen Worten:
 | Was bringe ich mit? | | |
 | Was erhalte ich? | | |
 | Was ist mein erster Schritt? | | |
+| Was bedeutet der Status dieser Anleitung, und was ist mein nächster Schritt? (Ergänzung 3) | | |
+
+**Statusfrage (Ergänzung 3) – menschliche Bedienprobe.** Sie gehört zum Folgeauftrag
+`aufnahme:20260922:gesamt-pruefstatus-anzeige:menschliche-bedienprobe` und wird nach der technischen
+Lieferung von Pedi oder einer von Pedi benannten Person geleitet. Ein Testlauf, Ben oder Codex ersetzt
+sie nicht. Damit die Person einen Status sieht, ohne vorher durch den Beispielablauf geführt zu werden:
+
+1. Die Prüfleitung legt in der Wegwerf-Instanz eine vorgelegte Anleitung an – entweder mit dem
+   vollständigen Belegablauf `node scripts/fe001/arbeitsanleitungen-belege.mjs http://127.0.0.1:3187`
+   (endet mit „Start im Homeoffice“ im Stand „Vorgelegt“) oder von Hand nach Abschnitt 4.
+2. Die Testperson hat das Erstellen **nicht** gesehen und bekommt keine Erklärung zu Status, Rollen
+   oder Freigabe. Sie öffnet die Übersicht `/gesamtanweisungen` und danach die Anleitung.
+3. Frage wörtlich: „Was bedeutet der Status dieser Anleitung, und was ist dein nächster Schritt?“
+   Die Antwort wird möglichst wörtlich notiert, ohne Nachhelfen.
+4. Verstanden heißt: Die Person sagt sinngemäß, dass die Anleitung zur Entscheidung vorliegt und
+   **noch nicht freigegeben** ist, und nennt einen zu ihrem Konto passenden nächsten Schritt (z. B.
+   auf die Entscheidung warten bzw. entscheiden, wenn sie es darf). Verwechselt sie „Vorgelegt“ mit
+   „Freigegeben“ oder eine automatische Prüfung mit einer menschlichen Freigabe, gilt die Frage als
+   **nicht verstanden**.
+
+Bis das Ergebnis in Abschnitt 7 eingetragen ist, bleibt dieses Kriterium **offen**; es blockiert keine
+technische Abnahme (Pedi-Entscheidung 03.10.2026).
 
 ## 4 · Beispielablauf (zum Mitgehen, gern nur mit Tastatur)
 
@@ -167,10 +189,26 @@ galt vorher fälschlich als unsichtbar. Abgesichert in
 Diese Bilder belegen den Kandidaten in einer Testumgebung, nicht den auf klarwerk.ai ausgelieferten
 Stand; ausgeliefert ist er erst nach Ben-Prüfung, grünem Tor und Ship.
 
+**Nachtrag Prüfstatus-Anzeige (Pedi 28.09.2026, Ergänzung 3).** Übersicht und Detailansicht zeigen
+jetzt denselben Statusblock (`FreigabeStatus`, abgeleitet in `zustand.ts` → `freigabeanzeige`):
+Standwort, „Stand N“, Bedeutung, Prüfangaben und „Nächster Schritt“ nach den Rechten des Betrachters.
+Der angenommene Stand heißt sichtbar „Freigegeben“ (bisher „Entschieden“); „Vorgelegt“ sagt
+ausdrücklich „noch nicht freigegeben“. Bei einer Freigabe stehen Stand und Zeitpunkt da; **wer**
+freigegeben oder abgelehnt hat, speichert der Server bisher nicht – das steht so auf der Seite. Eine
+zweite Person wird nicht vorausgesetzt (es gibt keine solche Kontoregel). Geprüft in
+`tests/fe001-arbeitsanleitungen/pruefstatus-uebersicht-und-detail.test.tsx`. Zusatzfrage für die
+Probe unten: „Was bedeutet der Status dieser Anleitung, und was ist dein nächster Schritt?“
+Runde 2 (Ben-Befund BEN-01): Wer kein Erfassungsrecht hat (Rolle Viewer), bekommt keinen
+Vorlegen-Knopf mehr, und Ändern ist mit sichtbarem Grund gesperrt – passend zur Serverregel
+`ko.create`. Der Abgleich der älteren Kriterien des Auftrags steht in
+`docs/Berater/PRUEFSTATUS_ANZEIGE_BESTANDSABGLEICH_2026-10-03.md`.
+
 ## 6 · Bekannte Grenzen
 
 - Eine automatische fachliche Prüfung ist nicht angebunden (wird so angezeigt).
 - Beim Vorlegen wird niemand benachrichtigt (wird so angezeigt).
+- Wer freigegeben oder abgelehnt hat, wird nicht gespeichert; ebenso der Zeitpunkt einer Ablehnung
+  (wird so angezeigt). Das festzuhalten wäre eine Server- und Datenbankänderung.
 - Der optionale „Inhaltsnachweis“ bleibt ein Feld für Fachleute. Ohne ihn steht am Abschnitt
   „Zu dieser Fassung liegt kein Nachweis vor.“, und der Vergleich stützt sich auf die erfassten
   Inhaltsmerkmale statt auf einen gleichen Nachweis. Ob dieser Satz für neue Nutzer störend wirkt,
@@ -181,3 +219,6 @@ Stand; ausgeliefert ist er erst nach Ben-Prüfung, grünem Tor und Ship.
 - Datum / Person(en): …
 - Ergebnis: erfüllt / offen / Nacharbeit
 - Befunde: …
+- Statusfrage (Ergänzung 3): Probe geleitet von (Pedi / benannte Person): … · Testperson
+  unvorbereitet (ja/nein): … · Rolle des Testkontos: … · gezeigter Stand: … · Antwort wörtlich: … ·
+  verstanden (ja/teilweise/nein): … — **Stand: noch nicht durchgeführt.**

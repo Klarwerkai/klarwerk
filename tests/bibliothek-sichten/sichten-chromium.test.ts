@@ -252,4 +252,95 @@ describe("P04 · Name und Eingabe bei 360/1440 px (Chromium)", () => {
     }
     expect(stand.seitenfehler).toEqual([]);
   }, 60_000);
+
+  // ==============================================================================================
+  // R-0972 (K13, BEN NACHARBEIT 11) — EIN ECHTES NEULADEN STELLT DENSELBEN BEREICH WIEDER HER.
+  // ==============================================================================================
+  // Gebaute Seite, echte Fastify-Dienste, angemeldete H4-Prüfdaten. Der Bereich wird über den
+  // ECHTEN Schalter gewählt (Tastatur), nicht über eine vorab gebaute Adresse. Danach lädt
+  // `page.goto` genau die Adresse, die die Seite selbst geschrieben hat, als neues Dokument
+  // (`waitUntil: "load"`) — kein Router-Remount. Gemessen werden aktiver Bereich und Kennungen.
+  it("K13 · Meine Ablage und Alle Inhalte überstehen ein vollständiges Neuladen", async () => {
+    const page = stand.seite;
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.evaluate<void>(fn(`(key) => localStorage.setItem(key, 'de')`), SPRACHE_STORAGE_KEY);
+
+    /** Wartet, bis die Liste einen frischen Stand zeigt (Zähler statt „–"), und liest ihn. */
+    const liesStand = async (): Promise<{ raum: string; gedrueckt: string; ids: string[] }> => {
+      await page.waitForFunction(
+        fn(`() => {
+        const fuss = document.querySelector('[data-testid="bib-fuss"]');
+        return !!fuss && /\\d/.test(fuss.textContent) &&
+          !!document.querySelector('[data-testid="bib-zeile"]');
+      }`),
+      );
+      return page.evaluate<{ raum: string; gedrueckt: string; ids: string[] }>(
+        fn(`() => {
+        const bar = document.querySelector('[data-testid="library-scope-bar"]');
+        const raum = bar ? bar.getAttribute('data-raum') : '';
+        const knopf = document.querySelector('[data-testid="bib-scope-' + raum + '"]');
+        return { raum, gedrueckt: knopf ? knopf.getAttribute('aria-pressed') : '',
+          ids: [...document.querySelectorAll('[data-testid="bib-zeile"]')]
+            .map(el => el.dataset.bibId).sort() };
+      }`),
+      );
+    };
+    /** Die Adresse, die die Seite gerade selbst führt — gelesen im Dokument. */
+    const adresse = (): Promise<string> => page.evaluate<string>(fn("() => location.href"));
+    const wartenAufRaum = async (raum: string): Promise<void> => {
+      await page.waitForFunction(
+        fn(`(raum) => document.querySelector('[data-testid="library-scope-bar"]')
+          ?.getAttribute('data-raum') === raum`),
+        raum,
+      );
+    };
+
+    // 1 · Standard: Alle Inhalte, ohne Bereichsparameter.
+    await page.goto(`${ORIGIN}/bibliothek`, { waitUntil: "load" });
+    const standard = await liesStand();
+    expect(standard.raum).toBe("alle");
+    expect(standard.gedrueckt).toBe("true");
+    expect(new URL(await adresse()).searchParams.has("raum")).toBe(false);
+
+    // 2 · Über den echten Schalter: Meine Ablage. Die Seite schreibt die Adresse selbst.
+    await enter('[data-testid="bib-scope-meine"]');
+    await wartenAufRaum("meine");
+    const meineVorher = await liesStand();
+    const meineAdresse = await adresse();
+    expect(meineVorher.raum).toBe("meine");
+    expect(meineVorher.gedrueckt).toBe("true");
+    expect(meineVorher.ids).toContain(stand.koId);
+    expect(new URL(meineAdresse).searchParams.get("raum")).toBe("meine");
+
+    // 3 · Vollständiges Neuladen genau dieser Adresse → derselbe Bereich, dieselben Treffer.
+    await page.goto(meineAdresse, { waitUntil: "load" });
+    const meineNachher = await liesStand();
+    expect(meineNachher.raum, "Bereich nach Neuladen").toBe("meine");
+    expect(meineNachher.gedrueckt).toBe("true");
+    expect(meineNachher.ids, "Treffer nach Neuladen").toEqual(meineVorher.ids);
+
+    // 4 · Zurück über den echten Schalter: Alle Inhalte — und dieselbe Gegenprobe.
+    await enter('[data-testid="bib-scope-alle"]');
+    await wartenAufRaum("alle");
+    const alleVorher = await liesStand();
+    const alleAdresse = await adresse();
+    expect(alleVorher.raum).toBe("alle");
+    expect(alleVorher.gedrueckt).toBe("true");
+    for (const id of meineVorher.ids) {
+      expect(alleVorher.ids, "die eigene Ablage ist Teil aller Inhalte").toContain(id);
+    }
+    await page.goto(alleAdresse, { waitUntil: "load" });
+    const alleNachher = await liesStand();
+    expect(alleNachher.raum, "Bereich nach Neuladen").toBe("alle");
+    expect(alleNachher.gedrueckt).toBe("true");
+    expect(alleNachher.ids, "Treffer nach Neuladen").toEqual(alleVorher.ids);
+
+    console.info(
+      `K13 Neuladen: ${JSON.stringify({
+        meine: { adresse: meineAdresse, n: meineNachher.ids.length },
+        alle: { adresse: alleAdresse, n: alleNachher.ids.length },
+      })}`,
+    );
+    expect(stand.seitenfehler).toEqual([]);
+  }, 60_000);
 });
