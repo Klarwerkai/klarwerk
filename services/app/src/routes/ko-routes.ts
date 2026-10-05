@@ -3,6 +3,7 @@ import type { AuditService } from "../../../audit";
 import type {
   ConflictInput,
   ConflictService,
+  ConflictType,
   OverlapService,
   OverlapSettingsRepo,
 } from "../../../conflicts";
@@ -569,6 +570,13 @@ interface PutBody {
   category?: string;
   tags?: string[];
   conflict?: ConflictInput;
+  /**
+   * R-0238 — DIE WIDERSPRECHENDE ABLEHNUNG. Nur an `rate` mit `verdict: "down"`: das Objekt, dem
+   * dieser Beitrag widerspricht, und die Art des Widerspruchs. Dann legt derselbe Aufruf einen
+   * Konfliktvorschlag (manueller Konflikt, Status „offen") zwischen beiden an. `unknown`, weil die
+   * Form aus dem Netz kommt und erst `widerspruchAus` sie prüft.
+   */
+  widerspruch?: unknown;
   conflictId?: string;
   decision?: string;
   newAuthor?: string;
@@ -625,6 +633,49 @@ interface PutBody {
     // im selben Vorgang schon committet). Mit `changes` revidiert sie den Inhalt gleich mit.
     changes?: { bodyHtml?: string; statement?: string; title?: string };
   };
+}
+
+const KONFLIKTARTEN: readonly ConflictType[] = [
+  "truth",
+  "experience",
+  "context",
+  "temporal",
+  "role",
+];
+
+/**
+ * R-0238 — DIE LESART DER WIDERSPRECHENDEN ABLEHNUNG (UI/UX-Brief Screen 5: „widersprechende
+ * Ablehnung → Konfliktvorschlag").
+ *
+ * Ein Konflikt verbindet in diesem Produkt immer ZWEI Wissensobjekte. Eine Ablehnung „widerspricht"
+ * deshalb einem benannten anderen Objekt; ohne dieses Gegenüber entsteht kein Vorschlag. Die Art
+ * wählt der ablehnende Mensch — sie wird hier nicht geraten. `null` = kein Widerspruch angegeben;
+ * eine Zeichenkette = die Formfehlermeldung (400).
+ */
+function widerspruchAus(
+  roh: unknown,
+  koId: string,
+): { koB: string; type: ConflictType; description: string } | null | string {
+  if (roh === undefined || roh === null) {
+    return null;
+  }
+  if (typeof roh !== "object") {
+    return "widerspruch muss ein Objekt { koB, type, description? } sein.";
+  }
+  const { koB, type, description } = roh as Record<string, unknown>;
+  if (typeof koB !== "string" || koB.trim().length === 0) {
+    return "widerspruch.koB fehlt.";
+  }
+  if (koB === koId) {
+    return "Ein Wissensobjekt kann sich nicht selbst widersprechen.";
+  }
+  if (typeof type !== "string" || !KONFLIKTARTEN.includes(type as ConflictType)) {
+    return `widerspruch.type muss eines von ${KONFLIKTARTEN.join(", ")} sein.`;
+  }
+  if (description !== undefined && typeof description !== "string") {
+    return "widerspruch.description muss Text sein.";
+  }
+  return { koB, type: type as ConflictType, description: description ?? "" };
 }
 
 /**
@@ -846,6 +897,22 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
   // R-0247: das Dublettentor der zwei Freigabewege — derselbe Sichtbarkeitszugang wie an
   // `/api/duplicates` (build-app.ts, `koSichtbarkeit`).
   const dublettenTorDeps = { overlaps, audit, kos: { get: (koId: string) => ko.get(koId) } };
+
+  /**
+   * Der EINE manuelle Anlageweg eines Konflikts — für `action: "conflict"` und für die
+   * widersprechende Ablehnung (R-0238). SCRUM-358 / AG-14-SERVER-TRUST: ein offener
+   * WAHRHEITSKONFLIKT holt betroffene VALIDIERTE Bezugs-KOs serverseitig zurück in Review (Status
+   * validiert→offen, Trust konservativ gesenkt). markTruthConflictReview ist idempotent/No-op für
+   * offene/fehlende KOs.
+   */
+  async function konfliktAnlegen(input: ConflictInput, userId: string) {
+    const created = await conflicts.create(input, userId);
+    if (created.type === "truth") {
+      await ko.markTruthConflictReview(created.koA, userId);
+      await ko.markTruthConflictReview(created.koB, userId);
+    }
+    return created;
+  }
 
   async function sichtbaresKoOder404(user: SessionUser, id: string, reply: FastifyReply) {
     const item = await ko.get(id);
@@ -2459,6 +2526,19 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             if (!body.verdict) {
               return badRequest("verdict fehlt.");
             }
+            // R-0238: ein Widerspruch gehört NUR zur Ablehnung, und er wird VOR der Bewertung
+            // vollständig geprüft (Form, Gegenüber sichtbar) — sonst stünde eine Bewertung, deren
+            // angekündigter Konfliktvorschlag nie entstehen konnte.
+            const widerspruch = widerspruchAus(body.widerspruch, id);
+            if (typeof widerspruch === "string") {
+              return badRequest(widerspruch);
+            }
+            if (widerspruch && body.verdict !== "down") {
+              return badRequest("widerspruch gilt nur für die Ablehnung (verdict: down).");
+            }
+            if (widerspruch && !(await sichtbaresKoOder404(user, widerspruch.koB, reply))) {
+              return;
+            }
             // R-0247: nur die Zustimmung validiert — Rückfrage und Ablehnung fragen nichts.
             if (
               body.verdict === "up" &&
@@ -2473,7 +2553,15 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             ) {
               return;
             }
-            reply.code(200).send(await validation.rate(id, user.id, body.verdict));
+            const entscheidung = await validation.rate(id, user.id, body.verdict);
+            if (!widerspruch) {
+              reply.code(200).send(entscheidung);
+              return;
+            }
+            // Derselbe Anlageweg wie `action: "conflict"` unten (manuell, Status „offen", der
+            // Ablehnende als `createdBy`) samt derselben Wahrheitskonflikt-Folge.
+            const konfliktvorschlag = await konfliktAnlegen({ koA: id, ...widerspruch }, user.id);
+            reply.code(200).send({ ...entscheidung, konfliktvorschlag });
             return;
           }
           case "assign": {
@@ -3292,15 +3380,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             if (!body.conflict) {
               return badRequest("conflict fehlt.");
             }
-            const created = await conflicts.create(body.conflict, user.id);
-            // SCRUM-358 / AG-14-SERVER-TRUST: ein offener WAHRHEITSKONFLIKT holt betroffene VALIDIERTE
-            // Bezugs-KOs serverseitig zurück in Review (Status validiert→offen, Trust konservativ
-            // gesenkt). markTruthConflictReview ist idempotent/No-op für offene/fehlende KOs.
-            if (created.type === "truth") {
-              await ko.markTruthConflictReview(created.koA, user.id);
-              await ko.markTruthConflictReview(created.koB, user.id);
-            }
-            reply.code(201).send(created);
+            reply.code(201).send(await konfliktAnlegen(body.conflict, user.id));
             return;
           }
           case "resolve-conflict": {

@@ -238,6 +238,77 @@ describe("R3 · unterbrochene Rückfragen über mehrere Karten", () => {
   });
 });
 
+// R-0238 · DIE WIDERSPRECHENDE ABLEHNUNG an der Fläche. Der Serverweg samt Gegenfällen steht in
+// `tests/validation/rework-flow-e2e.test.ts`; hier wird gemessen, dass die Fläche ihn bedient.
+describe("W1 · Ablehnung mit Widerspruch", () => {
+  const SUCHE = '[data-testid="pruefen-widerspruch-suche"]';
+  async function tippeSuche(text: string): Promise<void> {
+    const feld = finde(brett.container, SUCHE) as HTMLInputElement | null;
+    expect(feld, "das Suchfeld des Widerspruchs fehlt").toBeTruthy();
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+      setter?.call(feld, text);
+      feld?.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await flush();
+    await flush();
+  }
+
+  it("Gegenüber gesucht, Art gewählt → die Bewertung trägt den Widerspruch", async () => {
+    (endpoints.library.search as unknown as Fn).mockResolvedValue([
+      zeile({ id: "k1", title: "Selbst" }),
+      zeile({ id: "k9", title: "Presse 8 bar" }),
+    ] as never);
+    brett = await mounteBrett({ zeilen: [zeile({ id: "k1", title: "Selbst" })] });
+    await klick(finde(brett.container, ABLEHNEN));
+    await tippen(brett.container, "Widerspricht dem 8-bar-Eintrag");
+    await tippeSuche("Presse");
+
+    // Das Objekt selbst steht nie in den Treffern.
+    const treffer = [
+      ...brett.container.querySelectorAll('[data-testid="pruefen-widerspruch-treffer"]'),
+    ];
+    expect(treffer.map((x) => x.textContent)).toEqual(["Presse 8 bar"]);
+    await klick(treffer[0]);
+
+    // Ohne Art bleibt „Absenden" gesperrt — die Art wird nicht geraten.
+    const absenden = knopfMitText(brett.container, de("val.feedback.submit")) as HTMLButtonElement;
+    expect(absenden.disabled).toBe(true);
+    await waehlen(
+      finde(brett.container, '[data-testid="pruefen-widerspruch-art"]') as HTMLSelectElement,
+      "truth",
+    );
+    expect(absenden.disabled).toBe(false);
+    await klick(absenden);
+
+    expect(putFolge()).toEqual([
+      {
+        action: "comment",
+        text: "Validierungsfeedback (Ablehnung): Widerspricht dem 8-bar-Eintrag",
+      },
+      {
+        action: "rate",
+        verdict: "down",
+        widerspruch: { koB: "k9", type: "truth", description: "Widerspricht dem 8-bar-Eintrag" },
+      },
+    ]);
+  });
+
+  it("ohne Gegenüber bleibt die Ablehnung, wie sie war; die Rückfrage kennt keinen Widerspruch", async () => {
+    brett = await mounteBrett({ zeilen: [zeile()] });
+    await klick(finde(brett.container, RUECKFRAGE));
+    expect(finde(brett.container, '[data-testid="pruefen-widerspruch"]')).toBeNull();
+    await klick(knopfMitText(brett.container, de("val.feedback.cancel")));
+
+    await klick(finde(brett.container, ABLEHNEN));
+    expect(finde(brett.container, '[data-testid="pruefen-widerspruch"]')).not.toBeNull();
+    await tippen(brett.container, "Quelle fehlt");
+    await klick(knopfMitText(brett.container, de("val.feedback.submit")));
+    expect(putFolge()[1]).toEqual({ action: "rate", verdict: "down" });
+    expect(endpoints.library.search as unknown as Fn).not.toHaveBeenCalled();
+  });
+});
+
 describe("R2 · scheitert schon die Begründung, wird nichts als gespeichert gemeldet", () => {
   it("alte Meldung, kein Teilerfolg, und die Wiederholung schickt beides", async () => {
     antworten((b) => {

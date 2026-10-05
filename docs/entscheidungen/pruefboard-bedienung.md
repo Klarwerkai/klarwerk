@@ -134,7 +134,7 @@ Prüflauf.
    (`entscheidung:ebf707cb`): „Markierung an jeder betroffenen Karte, mit eigenem Lade- und
    Fehlerzustand für die Konfliktdaten." Umgesetzt in der Nacharbeit vom 05.10.2026, siehe unten.
 2. ~~**Zuordnung je Aufnahmepunkt.**~~ Die Punkte liegen vor; die Zuordnung steht unten.
-3. **Stapel-Bearbeitung (R-0246)** — neu, siehe Einzelzuordnung.
+3. ~~**Stapel-Bearbeitung (R-0246)**~~ — gebaut in Nacharbeit 4, siehe Einzelzuordnung.
 4. **Indexstatus (R-0237)** — neu, siehe Einzelzuordnung.
 
 ## Quellenwidersprüche
@@ -246,9 +246,9 @@ eine solche Abnahme verlangt, steht sie als offen da.
 | R-0219 | Posteingang nur offene Objekte | geliefert | `services/validation/src/service.test.ts` („FR-VAL-03“) |
 | R-0226 | Validierungsseite auf das Zielbild; drei Entscheidungen, zwei mit Begründungspflicht; Stufe im Bestand | im Code geliefert (JOB 3061, 3112) | `tests/validierung-stufe/*`, `tests/validation/validation-feedback.test.ts`; Design-Lead-Abnahme mit Vorher/Nachher **offen (menschlich)** |
 | R-0237 | Indexstatus sichtbar, zunächst nur Anzeige | **nicht gebaut** | Quelle: KW-AI-INDEX-02 „vorbereitet, nicht freigegeben“. Entscheidung offen: soll eine Anzeige ohne Indexlogik gebaut werden? Ohne Datenquelle wäre jede Anzeige eine Behauptung |
-| R-0238 | Kommentarpflicht bei bedingt/abgelehnt, nicht bei Bestätigung | geliefert | `isFeedbackSubmittable`; `tests/validation/validation-feedback.test.ts`, `rueckfrage-und-zuweisen-fehlerwege.test.tsx`. Der Zusatz „widersprechende Ablehnung erzeugt Konfliktvorschlag“ (Qualifikation) ist **nicht geprüft** |
+| R-0238 | Kommentarpflicht bei bedingt/abgelehnt, nicht bei Bestätigung; laut Qualifikation „widersprechende Ablehnung erzeugt Konfliktvorschlag“ | geliefert; Konfliktvorschlag **gebaut in Nacharbeit 4** | Kommentarpflicht: `isFeedbackSubmittable`, `tests/validation/validation-feedback.test.ts`. Konfliktvorschlag: `rate` mit `verdict: "down"` und `widerspruch { koB, type, description }` legt im selben Aufruf einen manuellen Konflikt („offen“, `createdBy` = Ablehnende) an; ungültige Angaben werden vor der Bewertung abgewiesen. Belege: `tests/validation/rework-flow-e2e.test.ts` (HTTP), `rueckfrage-und-zuweisen-fehlerwege.test.tsx` W1 (Fläche) |
 | R-0242 | Revisions-Schleife: Rückgabe mit Kommentaren, Überarbeitung, Neueinreichung | geliefert | `tests/validation/return-and-revalidate.test.ts`, `tests/validation/rework-flow-e2e.test.ts`, `tests/ko/review-rework-context.test.ts` |
-| R-0246 | Stapel-Bearbeitung: mehrere auswählen, gesammelt bestätigen/zuweisen | **nicht gebaut** | Entscheidung offen (Pedi): Ein gesammeltes Bestätigen stünde gegen die Stufenfrage je Freigabe (K2, „keine ungefragte Freigabe“) und gegen das Zielbild „Liste links, eine Karte rechts“ (JOB 3061). Möglich wäre ein reines Sammel-Zuweisen |
+| R-0246 | Stapel-Bearbeitung: mehrere auswählen, gesammelt bestätigen/zuweisen | **gebaut in Nacharbeit 4** | Kästchen je Eintrag, „Alle auswählen“, ab Controller. Bestätigen je Objekt mit denselben Sperren wie die Einzelfreigabe: laufende KI-Prüfung, offene Dublette und fehlende Stufe werden nicht geschickt, sondern mit Grund gemeldet und bleiben ausgewählt; Zuweisen über `assign`. Ergebnis je Objekt aus der Serverantwort. Regel: `apps/web/src/lib/pruefStapel.ts`; Beleg: `tests/pruefboard-bedienung/stapel-bearbeitung-mounted.test.tsx` S1–S5. Die frühere Einordnung „nicht gebaut, Entscheidung offen“ war keine belegte Nutzerentscheidung (Ben, Nacharbeit 4) |
 | R-0251 | Etiketten der Validierungskarte klar, ohne Doppelung (JOB 1100) | überholt durch JOB 3061 | `tests/app/validation-card-labels-mounted.test.tsx`; Widerspruch 5 |
 | R-0255 | fünf statt acht Abzeichen, ohne Angabe zu verlieren (D-033) | überholt durch JOB 3061 | Funktionsinventar „Mehr“ (`Validation.tsx` Kopfkommentar); Browser: `tests/design/h2-funktionsinventar.test.ts`; Widerspruch 5 |
 | R-0262 | Fehlerfall beim Freigeben sichtbar quittiert | geliefert | `tests/validierung-stufe/stufenfrage-fehler-keine-freigabe.test.tsx`, `stufenfrage-teilerfolg.test.tsx`, `apps/web/src/pages/Validation.quittung.test.tsx` |

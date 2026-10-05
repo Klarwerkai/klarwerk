@@ -143,4 +143,138 @@ describe("SCRUM-334: Review-Nacharbeitsfluss E2E (HTTP + FE-Helfer)", () => {
     // 8) Ehrlichkeit: das frische KO (Version 1) bleibt „neu" — der Fokus trennt neu vs. überarbeitet.
     expect(validationReviewContext({ version: 1 }).kind).toBe("new");
   });
+
+  // ==============================================================================================
+  // R-0238 · WIDERSPRECHENDE ABLEHNUNG → KONFLIKTVORSCHLAG (UI/UX-Brief Screen 5).
+  // ==============================================================================================
+  //
+  // Eine Ablehnung, die einem benannten anderen Objekt widerspricht, legt im SELBEN Aufruf einen
+  // Konfliktvorschlag an: manueller Konflikt zwischen beiden, Status „offen", die Ablehnende als
+  // `createdBy`. Gemessen über die echten Routen `PUT /api/kos/:id` und `GET /api/conflicts`.
+  async function zweiObjekte() {
+    const app = buildApp(buildServices());
+    await app.inject({
+      method: "POST",
+      url: "/api/auth/register",
+      payload: { name: "Admin", email: "a@x.de", password: "secret123" },
+    });
+    const admin = await login(app, "a@x.de", "secret123");
+    const seed = await app.inject({
+      method: "POST",
+      url: "/api/admin/demo-seed",
+      headers: admin.headers,
+    });
+    const carla = await login(
+      app,
+      "carla@demo.klarwerk",
+      demoKennwort(seed, "carla@demo.klarwerk"),
+    );
+    const anlegen = async (title: string, statement: string) => {
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/kos",
+        headers: admin.headers,
+        payload: {
+          confidentiality: "intern",
+          title,
+          statement,
+          type: "best_practice",
+          category: "Anlage 1",
+          neededValidations: 2,
+        },
+      });
+      expect(res.statusCode).toBe(201);
+      return res.json().id as string;
+    };
+    const a = await anlegen("Presse P2 Druck 6 bar", "Die Presse P2 läuft mit 6 bar.");
+    const b = await anlegen("Presse P2 Druck 8 bar", "Die Presse P2 läuft mit 8 bar.");
+    return { app, admin, carla, a, b };
+  }
+
+  async function konflikteZwischen(
+    app: App,
+    headers: Record<string, string>,
+    a: string,
+    b: string,
+  ) {
+    const res = await app.inject({ method: "GET", url: "/api/conflicts", headers });
+    expect(res.statusCode).toBe(200);
+    return (res.json() as Array<Record<string, unknown>>).filter(
+      (c) => (c.koA === a && c.koB === b) || (c.koA === b && c.koB === a),
+    );
+  }
+
+  async function stimmenVon(app: App, headers: Record<string, string>, id: string) {
+    const res = await app.inject({ method: "GET", url: "/api/validation/board", headers });
+    expect(res.statusCode).toBe(200);
+    const zeile = (res.json() as Array<{ id: string; reviewVotes?: { down: number } }>).find(
+      (k) => k.id === id,
+    );
+    return zeile?.reviewVotes?.down ?? 0;
+  }
+
+  it("R-0238: die widersprechende Ablehnung legt einen Konfliktvorschlag an", async () => {
+    const { app, admin, carla, a, b } = await zweiObjekte();
+    expect(await konflikteZwischen(app, admin.headers, a, b)).toEqual([]);
+
+    const rated = await app.inject({
+      method: "PUT",
+      url: `/api/kos/${a}`,
+      headers: carla.headers,
+      payload: {
+        action: "rate",
+        verdict: "down",
+        widerspruch: { koB: b, type: "truth", description: "Widerspricht dem 8-bar-Eintrag." },
+      },
+    });
+    expect(rated.statusCode).toBe(200);
+    expect(rated.json().konfliktvorschlag).toMatchObject({ koA: a, koB: b, status: "offen" });
+
+    const konflikte = await konflikteZwischen(app, admin.headers, a, b);
+    expect(konflikte).toHaveLength(1);
+    expect(konflikte[0]).toMatchObject({
+      type: "truth",
+      status: "offen",
+      origin: "manual",
+      createdBy: carla.id,
+    });
+    // Die Ablehnung selbst ist gezählt — der Vorschlag ersetzt sie nicht.
+    expect(await stimmenVon(app, admin.headers, a)).toBe(1);
+  });
+
+  it("R-0238: eine Ablehnung OHNE Widerspruch legt keinen Konflikt an", async () => {
+    const { app, admin, carla, a, b } = await zweiObjekte();
+    const rated = await app.inject({
+      method: "PUT",
+      url: `/api/kos/${a}`,
+      headers: carla.headers,
+      payload: { action: "rate", verdict: "down" },
+    });
+    expect(rated.statusCode).toBe(200);
+    expect(rated.json().konfliktvorschlag).toBeUndefined();
+    expect(await konflikteZwischen(app, admin.headers, a, b)).toEqual([]);
+  });
+
+  it("R-0238: ungültige Widersprüche werden VOR der Bewertung abgewiesen — nichts wird gezählt", async () => {
+    const { app, admin, carla, a, b } = await zweiObjekte();
+    const fremd = { koB: "gibt-es-nicht", type: "truth" };
+    const faelle: Array<[string, Record<string, unknown>, number]> = [
+      ["an der Zustimmung", { verdict: "up", widerspruch: { koB: b, type: "truth" } }, 400],
+      ["gegen sich selbst", { verdict: "down", widerspruch: { koB: a, type: "truth" } }, 400],
+      ["ohne Art", { verdict: "down", widerspruch: { koB: b } }, 400],
+      ["unbekannte Art", { verdict: "down", widerspruch: { koB: b, type: "raten" } }, 400],
+      ["unbekanntes Gegenüber", { verdict: "down", widerspruch: fremd }, 404],
+    ];
+    for (const [name, payload, status] of faelle) {
+      const res = await app.inject({
+        method: "PUT",
+        url: `/api/kos/${a}`,
+        headers: carla.headers,
+        payload: { action: "rate", ...payload },
+      });
+      expect(res.statusCode, name).toBe(status);
+    }
+    expect(await konflikteZwischen(app, admin.headers, a, b)).toEqual([]);
+    expect(await stimmenVon(app, admin.headers, a)).toBe(0);
+  });
 });
