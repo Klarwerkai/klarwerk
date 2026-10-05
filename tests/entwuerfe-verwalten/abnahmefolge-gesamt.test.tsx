@@ -174,9 +174,19 @@ const flush = async (): Promise<void> => {
   }
 };
 
+// PFAD UND ABFRAGETEIL GETRENNT (Nacharbeit 10, Wächter tests/adresse-ist-kein-pfad): Hier stand
+// EIN Knoten mit `${pathname}${search}`, und die Folge stellte ihn gegen reine Pfade — damit
+// behauptete jeder Routenvergleich stillschweigend auch „kein Abfrageteil". Jetzt trägt ein Knoten
+// den Pfad und einer den Abfrageteil; `routenPfad()` prüft die Route, `adresse()` gibt beide Teile
+// getrennt — die Bauform aus Eigenprobe VII des Wächters.
 function Adresse(): JSX.Element {
   const ort = useLocation();
-  return createElement("span", { "data-testid": "adresse" }, `${ort.pathname}${ort.search}`);
+  return createElement(
+    "span",
+    null,
+    createElement("span", { "data-testid": "ort-pfad" }, ort.pathname),
+    createElement("span", { "data-testid": "ort-abfrage" }, ort.search),
+  );
 }
 
 async function montiere(pfad: string): Promise<void> {
@@ -232,8 +242,21 @@ function abbauen(): void {
   }
 }
 
-function adresse(): string {
-  return container.querySelector('[data-testid="adresse"]')?.textContent ?? "";
+/** Die Route — und nichts sonst. Trägt der Pfadknoten ein `?`, ist die Sonde kaputt: Abbruch. */
+function routenPfad(): string {
+  const wert = container.querySelector('[data-testid="ort-pfad"]')?.textContent ?? "";
+  if (wert.includes("?")) {
+    throw new Error(`der Pfadknoten trägt einen Abfrageteil: ${wert}`);
+  }
+  return wert;
+}
+
+/** Pfad UND Abfrageteil, getrennt — für Aussagen über die ganze Adresse (z. B. `?draft=`). */
+function adresse(): { pfad: string; abfrage: string } {
+  return {
+    pfad: routenPfad(),
+    abfrage: container.querySelector('[data-testid="ort-abfrage"]')?.textContent ?? "",
+  };
 }
 
 /** Auf ein Element WARTEN (die Seiten werden nachgeladen); nach der Frist ist der Fall rot. */
@@ -483,9 +506,9 @@ describe("P-ENTWUERFE-VERWALTEN · die Abnahmefolge am Stück", () => {
 
         // 1 · NORMAL ZUR LISTE: von der Startseite über den Kopfband-Punkt.
         await montiere("/start");
-        expect(adresse()).toBe("/start");
+        expect(routenPfad()).toBe("/start");
         await druecke(kopfbandEntwuerfe());
-        expect(adresse()).toBe("/entwuerfe");
+        expect(routenPfad()).toBe("/entwuerfe");
         await warteAuf(testid("page-entwuerfe"));
         await flush();
 
@@ -512,7 +535,7 @@ describe("P-ENTWUERFE-VERWALTEN · die Abnahmefolge am Stück", () => {
 
         // 4 · ÖFFNEN — genau diesen Entwurf.
         await druecke(fortsetzenKnopf(ziel));
-        expect(adresse()).toBe(`/erfassen?draft=${ziel}`);
+        expect(adresse()).toEqual({ pfad: "/erfassen", abfrage: `?draft=${ziel}` });
         const titelfeld = await warteAuf<HTMLInputElement>(testid("blatt-titel"));
         await flush();
         expect(titelfeld.value).toBe(ZIEL.title);
@@ -527,15 +550,16 @@ describe("P-ENTWUERFE-VERWALTEN · die Abnahmefolge am Stück", () => {
         await druecke(kopfbandEntwuerfe());
         expect(document.querySelectorAll("[data-navguard-dialog]")).toHaveLength(1);
         expect(document.body.textContent).toContain(i18n.t("nav.guard.title"));
-        expect(adresse(), "ohne Antwort darf der Wechsel nicht geschehen").toBe(
-          `/erfassen?draft=${ziel}`,
-        );
+        expect(adresse(), "ohne Antwort darf der Wechsel nicht geschehen").toEqual({
+          pfad: "/erfassen",
+          abfrage: `?draft=${ziel}`,
+        });
         // „Verwerfen" (ungesicherte Änderung) und „Löschen" (gespeicherter Entwurf) sind zwei
         // Wörter — sie dürfen sich nicht verwechseln lassen.
         expect(i18n.t("nav.guard.discard")).not.toBe(i18n.t("capture.discardDraftYes"));
         await druecke(wacheKnopf(i18n.t("nav.guard.discard")));
         expect(document.querySelectorAll("[data-navguard-dialog]")).toHaveLength(0);
-        expect(adresse()).toBe("/entwuerfe");
+        expect(routenPfad()).toBe("/entwuerfe");
         await warteAuf(testid("page-entwuerfe"));
         await flush();
 
@@ -552,7 +576,7 @@ describe("P-ENTWUERFE-VERWALTEN · die Abnahmefolge am Stück", () => {
         // Zurück zur Liste: das Blatt ist sauber, also fragt die Wache NICHT.
         await druecke(kopfbandEntwuerfe());
         expect(document.querySelectorAll("[data-navguard-dialog]")).toHaveLength(0);
-        expect(adresse()).toBe("/entwuerfe");
+        expect(routenPfad()).toBe("/entwuerfe");
         await warteAuf(testid("page-entwuerfe"));
         await flush();
 
