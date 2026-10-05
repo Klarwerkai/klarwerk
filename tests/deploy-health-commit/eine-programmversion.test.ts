@@ -10,6 +10,12 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { klaraStand, klaraStandText } from "../../apps/web/src/lib/klaraStand";
 import { APP_VERSION } from "../../apps/web/src/version";
+import {
+  PANEL_CSS_DATEI,
+  PANEL_JS_DATEI,
+  panelQuelleAus,
+  panelTeile,
+} from "../support/panelquelle";
 
 const WURZEL = join(import.meta.dirname, "..", "..");
 const TASKPANE = join(WURZEL, "apps", "web", "public", "word-addin", "taskpane.html");
@@ -31,23 +37,33 @@ describe("R-1028 · eine Programmversion für Word-Panel und Web-Konsole", () =>
   });
 
   it("das echte Build-Plugin stempelt APP_VERSION ins gebaute Word-Panel", () => {
+    // R-1611: das Panel wird als DREI Dateien gebaut, wie `vite build` sie aus public/ kopiert.
+    // Der Platzhalter der Anzeige (`var KLARA_STAND`) steht im Skript, also in `taskpane.js`.
     tmp = mkdtempSync(join(tmpdir(), "klara-stand-"));
     mkdirSync(join(tmp, "dist", "word-addin"), { recursive: true });
+    const teile = panelTeile();
     const ziel = join(tmp, "dist", "word-addin", "taskpane.html");
-    writeFileSync(ziel, readFileSync(TASKPANE, "utf8"));
+    const zielJs = join(tmp, "dist", "word-addin", PANEL_JS_DATEI);
+    writeFileSync(ziel, teile.html);
+    writeFileSync(join(tmp, "dist", "word-addin", PANEL_CSS_DATEI), teile.css);
+    writeFileSync(zielJs, teile.js);
+    // Kalibrierung: vor dem Stempeln trägt das Skript den Platzhalter wirklich.
+    expect(teile.js).toContain('var KLARA_STAND = "__KLARA_STAND__"');
 
     const plugin = klaraStand();
     plugin.configResolved({ root: tmp, build: { outDir: "dist" } });
     plugin.closeBundle();
 
     const gebaut = readFileSync(ziel, "utf8");
+    const gebautJs = readFileSync(zielJs, "utf8");
     expect(gebaut).not.toContain("__KLARA_STAND__");
-    const stand = gebaut.match(/var KLARA_STAND = "([^"]*)"/)?.[1] ?? "";
+    expect(gebautJs).not.toContain("__KLARA_STAND__");
+    const stand = gebautJs.match(/var KLARA_STAND = "([^"]*)"/)?.[1] ?? "";
     expect(stand.startsWith(`${APP_VERSION} · `)).toBe(true);
   });
 
   it("die Add-in-Fassungszeile behauptet keinen zweiten Programmstand", () => {
-    const src = readFileSync(TASKPANE, "utf8");
+    const src = panelQuelleAus(TASKPANE);
     const zeilen = [...src.matchAll(/fassung(?:Aktuell|Wechsel|Unbekannt): "([^"]*)"/g)].map(
       (m) => m[1] ?? "",
     );

@@ -691,6 +691,13 @@ export function checkTextRoutes(deps: CheckTextRouteDeps, guards: Guards): Fasti
               : "Vertrauliche Inhalte werden nur deterministisch geprüft — keine Cloud-KI, kein Embedder.",
           );
         }
+        // R-0249: im freigegebenen tiefen Zweig sagt der Deckungssatz des Kerns, auf welchem Weg
+        // (Vereinigung oder lexikalischer Rückfall) und gegen WIE VIELE Einträge tatsächlich geprüft
+        // wurde. Er läuft über `note`, den Kanal, den das Panel schon zeigt; die übrigen Hinweise
+        // bleiben daneben stehen. Stufe 1 und der vertrauliche Rückfall bleiben unverändert.
+        if (deepAllowed && result.kandidatenwahl !== undefined) {
+          hinweise.push(result.kandidatenwahl.deckungssatz);
+        }
         if (includeUnvalidated) {
           // KEIN „gegen den GESAMTEN Bestand": die Kandidatenwahl ist gedeckelt
           // (DETECTION_CANDIDATE_CAP) — dieser Satz sagt deshalb nur, WELCHE ZUSTÄNDE mitzählen,

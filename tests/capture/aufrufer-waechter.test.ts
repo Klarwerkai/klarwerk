@@ -1296,16 +1296,9 @@ const BEWUSST_WEB: readonly Ausnahme[] = [
     schluessel: "apps/web/src/test/render.tsx::makeSource",
     grund: "Dieselbe Bauart und derselbe Grund wie `makeKo`.",
   },
-  {
-    schluessel: "apps/web/src/lib/imageResize.ts::imageWidthPercent",
-    grund:
-      "Seit b4e6d86b (R-0014, gezogene Bildbreite) ohne Produktaufrufer, am Code geprueft: der " +
-      "Editor fuehrt die Breite ausschliesslich in Attributform („62.5%“) — `RichTextEditor.tsx` " +
-      "liest sie mit `normalizeImageWidth` und schreibt sie mit `formatImageWidth`; einen " +
-      "Zahlenwert braucht kein Produktweg. Gelesen wird der Export nur in " +
-      "`tests/bildgroesse/resize.test.ts` als Pruefhilfe der Kanonform. Ein erfundener " +
-      "Produktaufruf waere hier der Fehler; entfaellt die Pruefhilfe, ist der Export zu streichen.",
-  },
+  // HIER STAND `imageResize.ts::imageWidthPercent` UND IST GESTRICHEN — von A3 erzwungen. Die
+  // Breitenanzeige der Bildleiste (`RichTextEditor.tsx`, `bildgroesse-gezogen`) liest die Zahl
+  // seither über diesen Export statt per Zeichenkettenersetzung am Attribut.
   {
     schluessel: "apps/web/src/lib/captureAdvancedFields.ts::ADVANCED_FIELDS_TOTAL",
     grund:

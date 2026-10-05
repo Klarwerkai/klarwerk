@@ -231,6 +231,22 @@ export function useVorlegen(id: string | null) {
   );
 }
 
+/**
+ * QUELLENÄNDERUNGEN · die neuere Fassung eines Abschnitts bewusst übernehmen. Derselbe Weg wie jede
+ * andere Mutation: bedingt auf die gelesene Version, danach Lesestand und Bestand neu.
+ */
+export function useFassungUebernehmen(id: string | null) {
+  return useAnweisungsMutation(
+    id,
+    ({
+      version,
+      bausteinId,
+      aufVersion,
+    }: { version: number; bausteinId: string; aufVersion: number }) =>
+      endpoints.gesamtanweisung.uebernehmen(id ?? "", version, bausteinId, aufVersion),
+  );
+}
+
 export function useEntscheiden(id: string | null) {
   return useAnweisungsMutation(
     id,

@@ -17,6 +17,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
+import { panelQuelleAus } from "../support/panelquelle";
 
 export const WURZEL = resolve(process.cwd());
 export const TASKPANE = resolve(WURZEL, "apps/web/public/word-addin/taskpane.html");
@@ -30,7 +31,13 @@ export const RUECKWEG_PFAD = "/word-addin/rueckweg.js";
 const OFFICE_JS = "https://appsforoffice.microsoft.com/lib/1/hosted/office.js";
 export const NAME = "Pedi";
 
-export const HTML = readFileSync(TASKPANE, "utf8");
+/**
+ * R-1611 (Drei-Datei-Schnitt): das Fenster liegt in `taskpane.html`/`.css`/`.js`. Die Bühne liefert
+ * es als EIN Dokument aus (Stil und Skript wieder an ihren Stellen), weil ihre Kalibrierungen das
+ * Dokument im Speicher verfälschen (`Plan.html`). Dass die geschnittene Auslieferung sich gleich
+ * verhält, misst `tests/klara-zerlegung/probeschnitt.test.ts` (D2) — in jsdom, nicht in Chromium.
+ */
+export const HTML = panelQuelleAus(TASKPANE);
 export const RUECKWEG = readFileSync(RUECKWEG_DATEI, "utf8");
 export const zielbildDa = existsSync(ZIELBILD);
 export const ZIEL = zielbildDa ? readFileSync(ZIELBILD, "utf8") : "";

@@ -929,6 +929,38 @@ export class SharePointGraphClient {
   }
 
   /**
+   * R-0145/R-0190 — GENAU EINE Listenseite eines Ordners, samt Cursor auf die nächste.
+   *
+   * Der Baustein der fortsetzbaren Ordner-Inventur (`SharePointSourceAdapter.setzeInventurFort`):
+   * statt einer gedeckelten Gesamtliste gibt er den Graph-Cursor (`@odata.nextLink`) HERAUS, damit
+   * die Inventur ihn aufbewahren und in einem späteren Aufruf genau dort weiterlesen kann. Ohne
+   * `weiter` beginnt er mit der ersten Seite des Ordners. Der Cursor geht durch dieselbe
+   * Origin-Prüfung wie jeder andere Abruf dieses Clients; er stammt nur aus Graph-Antworten, nie
+   * vom Aufrufer der Route.
+   */
+  async listeOrdnerSeite(
+    ordnerId: string | undefined,
+    weiter: string | null,
+  ): Promise<{ items: GraphDriveItem[]; weiter: string | null }> {
+    const erlaubteOrigin = this.erlaubteOrigin();
+    const daten = (await this.holeJson(weiter ?? this.ersteSeite(ordnerId), erlaubteOrigin)) as {
+      value?: unknown;
+      "@odata.nextLink"?: unknown;
+    };
+    const items: GraphDriveItem[] = [];
+    for (const eintrag of Array.isArray(daten?.value) ? daten.value : []) {
+      if (eintrag && typeof eintrag === "object") {
+        items.push(eintrag as GraphDriveItem);
+      }
+    }
+    const naechste = daten?.["@odata.nextLink"];
+    return {
+      items,
+      weiter: typeof naechste === "string" && naechste.length > 0 ? naechste : null,
+    };
+  }
+
+  /**
    * EINE Datei samt ihrer Merkmale. `undefined` gibt es hier NICHT: ein 404 ist beim gezielten
    * Abruf einer benannten Datei eine eigene Lage (`nicht-gefunden`) und keine leere Antwort — der
    * Aufrufer soll ihn dem Menschen als Satz zeigen, nicht als stilles Nichts.
