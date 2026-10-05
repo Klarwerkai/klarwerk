@@ -222,10 +222,13 @@ describe("AUFTRAG-JOB507-D4: CSP und Panelverhalten sind konsistent", () => {
     // deckt sie ohne neue Erlaubnis. Ein absoluter oder protokollrelativer Eintrag faellt hier auf.
     // R-1611 (Drei-Datei-Schnitt): eine DRITTE relative Quelle — `taskpane.js`, das frühere
     // Inline-Skript, an genau seiner Stelle. Dazu EIN relatives Stilblatt `taskpane.css`.
+    // Zerlegungsauftrag Bestandsblick: eine VIERTE nach derselben Regel — der Block KW-MARKE wohnt
+    // in `marke.js` (relativ, gleichherkuenftig), unmittelbar nach `taskpane.js`.
     expect(externeScripts).toEqual([
       "https://appsforoffice.microsoft.com/lib/1/hosted/office.js",
       "rueckweg.js?v=__KW_FASSUNG__",
       "taskpane.js?v=__KW_FASSUNG__",
+      "marke.js?v=__KW_FASSUNG__",
     ]);
     const stilblaetter = [...seite.matchAll(/<link\s+rel="stylesheet"\s+href="([^"]+)"/g)].map(
       (m) => m[1] ?? "",

@@ -308,6 +308,12 @@ interface DateiEingelesen {
 }
 type Meldung = string | DateiEingelesen;
 
+/** Eine Ablehnung des Import-Wegs mit laufender Nummer — die jüngste gewinnt (R-0120). */
+interface ImportAblehnung {
+  text: string;
+  nr: number;
+}
+
 /**
  * Der sichtbare Satz einer Meldung. Für den Befund „Datei eingelesen" wird er HIER gebildet — aus
  * der aktuell gewählten Importart und der aktuellen Sprache, bei jedem Rendern neu. Das ist die
@@ -1096,7 +1102,20 @@ export function CaptureArbeitsraum({
   // dieser Fläche, die anderswo landet, war genau die Lücke.
   //
   // `err` bleibt unberührt und trägt weiterhin alles andere (Speichern, Anhänge, KI-Wege).
-  const [fileImportMeldung, setFileImportMeldung] = useState<string | null>(null);
+  //
+  // NACHARBEIT 2 (R-0120): JEDE Ablehnung trägt eine laufende Nummer. Die Region zeigt die zeitlich
+  // jüngste Ursache — ohne Nummer wäre eine zweite, wortgleiche Ablehnung (zweimal „zu groß") nach
+  // einem Kachelhinweis keine Änderung, und der ältere Hinweis bliebe vor ihr stehen.
+  const [fileImportMeldung, setFileImportMeldungZustand] = useState<ImportAblehnung | null>(null);
+  const fileImportMeldungNrRef = useRef(0);
+  const setFileImportMeldung = (text: string | null): void => {
+    if (text === null) {
+      setFileImportMeldungZustand(null);
+      return;
+    }
+    fileImportMeldungNrRef.current += 1;
+    setFileImportMeldungZustand({ text, nr: fileImportMeldungNrRef.current });
+  };
   // WP-D11 (Pedis Entscheid): Folien zusätzlich als Bilder übernehmen (Server-Konvertierung).
   // Der Toggle gilt für den NÄCHSTEN Import; der Fortschrittstext ist ehrlich (kein Fake-Prozent).
   const [slidesAsImages, setSlidesAsImages] = useState(false);
@@ -1709,8 +1728,11 @@ export function CaptureArbeitsraum({
         ganzdokumentOffenRef.current = null;
       }
       if (error instanceof DraftPayloadTooLargeError) {
-        setErr(t(CAPTURE_FILE_TEXT.tooLargeForImport));
-        push("error", t(CAPTURE_FILE_TEXT.tooLargeForImport));
+        // R-0120: der Größenabbruch ist eine Ablehnung DIESES Import-Wegs und gehört in dieselbe,
+        // dauerhaft montierte Live-Region wie die übrigen (`fileImportMeldung`, oben). Bis hierher
+        // stand er im stummen Fehlerkasten UND als erst beim Ereignis eingehängter Toast — zweimal
+        // sichtbar und auf keinem verlässlich angesagten Weg. Datei und Eingabe bleiben unberührt.
+        setFileImportMeldung(t(CAPTURE_FILE_TEXT.tooLargeForImport));
         return;
       }
       fail(error);
@@ -6020,7 +6042,8 @@ export function CaptureArbeitsraum({
                     Dateiauswahl (Begründung bei `fileImportMeldung`, oben). */}
                   <CaptureFileImport
                     onExtractFile={(e) => void onExtractFile(e)}
-                    importMeldung={fileImportMeldung}
+                    importMeldung={fileImportMeldung?.text ?? null}
+                    importMeldungNr={fileImportMeldung?.nr}
                   />
                   <div className="flex flex-wrap items-center gap-2">
                     <Button

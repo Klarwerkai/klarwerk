@@ -28,6 +28,7 @@ import {
   type Block,
   CSS_DATEI,
   JS_DATEI,
+  MARKE_DATEI,
   RUECKWEG_DATEI,
   bloeckeVon,
   bytes,
@@ -140,10 +141,16 @@ describe("JOB 3014 · B — die Grobstruktur der ausgelieferten Seite", () => {
     // `taskpane.js`, das frühere Inline-Skript, an genau seiner Stelle. Beide relativ, gleicher
     // Ursprung, von `script-src 'self'` gedeckt; die Cachekennung ist derselbe Fassungsplatzhalter,
     // den der Server ins Meta stempelt (`stempleFassung`), also die Zahl des Manifests.
+    //
+    // ZERLEGUNGSAUFTRAG BESTANDSBLICK: eine DRITTE eigene Quelle mit denselben zwei Eigenschaften.
+    // Der Block KW-MARKE (das Ende des Skripts) wohnt in `marke.js`, geladen UNMITTELBAR NACH
+    // `taskpane.js` — er läuft also an derselben Stelle wie vorher. Anlass ist B3 unten: die
+    // Schranke an `taskpane.js` wird nicht angehoben.
     expect(extern).toEqual([
       "https://appsforoffice.microsoft.com/lib/1/hosted/office.js",
       `${RUECKWEG_DATEI}?v=${FASSUNG}`,
       `${JS_DATEI}?v=${FASSUNG}`,
+      `${MARKE_DATEI}?v=${FASSUNG}`,
     ]);
     const stilblaetter = [
       ...lieferung.seite.matchAll(/<link\s+rel="stylesheet"\s+href="([^"]+)"/g),
@@ -198,6 +205,13 @@ describe("JOB 3014 · B — die Grobstruktur der ausgelieferten Seite", () => {
   // bisher am Inline-Skript hing (Anheben verboten seit JOB 3667), hängt deshalb ab hier an
   // `taskpane.js` — der Schnitt darf kein Freibrief zum Weiterwachsen sein. Schritt 2 des
   // Schnittplans (C1) bleibt offen.
+  //
+  // ZERLEGUNGSAUFTRAG BESTANDSBLICK: DIE SCHRANKE RÜCKT WIEDER NICHT. Der Bestandsblick-Kandidat
+  // riss sie mit 12551 Zeilen (Vollcheck pa-1790499744-198b9217); `taskpane.js` stand nach R-1611
+  // bei 12595 Zeilen. Geschnitten wurde nach der Regel von JOB 3667: der Abschnitt KW-MARKE (222
+  // Zeilen, geschlossen, von keiner Zeile ausserhalb gerufen) ist Zeile für Zeile nach `marke.js`
+  // gewandert (B1 oben sieht die Quelle) — der erste Schnitt von Schritt 2. Mit der
+  // Bestandsblick-Lesekoordination steht `taskpane.js` danach bei rund 12420 Zeilen.
   it("B3 · SOLL eingelöst: kein Inline-Skript; die Wachstumsschranke hängt jetzt an taskpane.js", () => {
     const zuGross = inline(bloecke, "script").filter(
       (b) => zeilen(lieferung.seite.slice(b.inhaltVon, b.inhaltBis)) > SOLL_ZEILEN_JE_SKRIPT,

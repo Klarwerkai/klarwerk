@@ -2604,7 +2604,32 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     //   · Abrufziel: keines neu. · CSP, Recht, Manifest: unverändert.
     //   · Nutzlast: unverändert. · Sideload: keiner nötig. · Mac-Word/Browsertab: unverändert
     //     (ohne Rahmenlage bleibt das Rückfallfenster der Weg, Gegenprobe A3).
-    const PIN = "5fbf5f64546beb67d70799bb8d18bcf6d2adcc631d79e0b404658867baeb0978";
+    // ZERLEGUNGSAUFTRAG BESTANDSBLICK (aufnahme:20260922:gesamt-bestandsblick:zerlegung-aufraeumen),
+    // NACH DER INTEGRATION MIT R-1611. Zwei Änderungen, und nur EINE bewegt diesen Pin:
+    //   (1) Der Abschnitt KW-MARKE (das Ende des Skripts) wohnt in einer vierten Datei
+    //       `marke.js`, geladen als klassisches Skript UNMITTELBAR NACH `taskpane.js` — er läuft
+    //       also an derselben Stelle. Grund: `schnittflaechen.test.ts` B3 (taskpane.js < 12500
+    //       Zeilen; vorher 12595). `panelQuelleAus` setzt ihn beim Zusammenfügen wieder ans Ende
+    //       des Skripts; das zusammengefügte Dokument ändert sich dadurch um KEIN Byte (gemessen:
+    //       Git-Blob-Vergleich, `schnitt-echt.test.ts` E2).
+    //       Auslieferungsfolgen: EIN Abruf mehr beim Öffnen (gleicher Ursprung, `script-src 'self'`),
+    //       dieselbe Cachekennung; Abrufziel (17, `/api/branding` jetzt in `marke.js`), Manifest,
+    //       Recht, Nutzlast unverändert; kein Sideload. Ein alter Server ohne die Datei liefert 404 —
+    //       das Fenster bleibt bedienbar, nur ohne Firmen-CI.
+    //   (2) Die Bestandsblick-Lesekoordination aus 67d5e6fd in `taskpane.js` —
+    //       `readWholeDocument(done, fehlschlag)`, `ka1Generation`/`ka1Stand`/`ka1Aktuell` und das
+    //       Warten bzw. Neulesen vor dem Vertragsaufruf in `ka3Ausfuehren`. KEIN neues Abrufziel,
+    //       keine Nutzlaständerung ausser den Begriffen des aktuellen Dokuments, ein zusätzlicher
+    //       LESENDER `Word.run` nach der Schreibruhe (kein Schreibweg, gemessen in w1 KA3);
+    //       Manifest/CSP/Recht unverändert, kein Sideload. DIESE Änderung bewegt den Pin.
+    // NACHARBEIT 7: PIN BEWUSST AKTUALISIERT (5fbf5f64… -> fe3cc513…), gemessen am Kandidaten
+    // 787b3e41 — das war das Dokument OHNE die m365-Anmeldeänderung.
+    // NACHARBEIT 12 (Integration mit `main` 93c25f5a): JETZT TRÄGT DAS DOKUMENT BEIDE Änderungen
+    // (m365-Anmeldung UND Bestandsblick); Git-Blob `90936dcc…`, s. `tests/support/panelquelle.ts`.
+    // NACHARBEIT 13: PIN BEWUSST AKTUALISIERT (fe3cc513… -> 66ba98c4…). Der Wert ist GEMESSEN, nicht
+    // geschätzt: dieser Fall meldete ihn am Kandidaten 2dc7cbb7 im Prüflauf (`Received:
+    // "66ba98c4…f74f76e5"`, funktion-erhalten-jsdom); die vier Dateien sind seither unverändert.
+    const PIN = "66ba98c4cbaa5cb24a6fe2ae79fe74c56c784c1927dcff9ee7975f98f74f76e5";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(
       ist,
