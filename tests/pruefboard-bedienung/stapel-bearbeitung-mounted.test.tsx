@@ -55,6 +55,7 @@ const LAEUFT = { status: "pending", requestedAt: "2026-10-01T00:00:00.000Z" } as
 
 const KAESTCHEN = '[data-testid="pruefen-stapel-waehlen"]';
 const ALLE = '[data-testid="pruefen-stapel-alle"]';
+const MODUS = '[data-testid="pruefen-stapel-modus"]';
 const BESTAETIGEN = '[data-testid="pruefen-stapel-bestaetigen"]';
 const ZUWEISEN = '[data-testid="pruefen-stapel-zuweisen"]';
 const ERGEBNIS = '[data-testid="pruefen-stapel-ergebnis"]';
@@ -133,16 +134,19 @@ afterEach(() => brett?.abbauen());
 describe("S1 · Mehrfachauswahl", () => {
   it("Kästchen je Eintrag, Anzahl, und die aktive Karte bleibt, wo sie ist", async () => {
     brett = await mounteBrett({ zeilen: vierZeilen() });
+    // Ohne Auswahlmodus stehen keine Kästchen in der Liste (Geometrie wie vorher, L19).
+    expect(kaestchen()).toHaveLength(0);
+    await oeffneStapel();
+    await klick(finde(brett.container, MODUS));
     expect(kaestchen()).toHaveLength(4);
     expect(finde(brett.container, BESTAETIGEN)).toBeNull();
 
     await klick(kaestchen()[1]);
     await klick(kaestchen()[3]);
 
-    // Schon am GESCHLOSSENEN Menü steht, wie viele ausgewählt sind.
+    // Der Zähler am Menüknopf nennt die Anzahl — er steht auch am geschlossenen Menü.
     const zaehler = finde(brett.container, '[data-testid="pruefen-menue-stapel-zaehler"]');
     expect(zaehler?.textContent).toBe("2");
-    await oeffneStapel();
     const anzahl = finde(brett.container, '[data-testid="pruefen-stapel-anzahl"]');
     expect(anzahl?.textContent).toBe(de("pruefboard.stapel.anzahl").replace("{{n}}", "2"));
     // Das Kästchen wählt für den Stapel, es öffnet keine Karte: rechts steht weiter „A frei".
@@ -268,6 +272,17 @@ describe("S5 · die Stapel-Leiste gibt es erst ab Controller", () => {
 // (Block L): die Stapel-Leiste steht NICHT in der Listenspalte, sondern im Kopf — über der
 // Warteschlange liegt kein zusätzlicher Kasten, der die Liste unter den Anfang der Karte schiebt.
 describe("S6 · die Stapel-Leiste kostet die Liste keinen Platz", () => {
+  it("ohne Auswahlmodus trägt die Liste keine Kästchen; „Auswahl beenden“ nimmt sie samt Auswahl weg", async () => {
+    brett = await mounteBrett({ zeilen: vierZeilen() });
+    expect(kaestchen()).toHaveLength(0);
+    await oeffneStapel();
+    await klick(finde(brett.container, ALLE));
+    expect(kaestchen().every((k) => k.checked)).toBe(true);
+    await klick(finde(brett.container, MODUS));
+    expect(kaestchen()).toHaveLength(0);
+    expect(finde(brett.container, '[data-testid="pruefen-menue-stapel-zaehler"]')).toBeNull();
+  });
+
   it("die Leiste wohnt im Kopfmenü; in der Listenspalte steht vor der Warteschlange nichts von ihr", async () => {
     brett = await mounteBrett({ zeilen: vierZeilen() });
     await oeffneStapel();

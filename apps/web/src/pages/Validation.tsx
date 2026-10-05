@@ -790,6 +790,11 @@ export function Validation(): JSX.Element {
   const [stapelAuswahl, setStapelAuswahl] = useState<ReadonlySet<string>>(() => new Set());
   const [stapelLaeuft, setStapelLaeuft] = useState(false);
   const [stapelErgebnisse, setStapelErgebnisse] = useState<StapelErgebnis[] | null>(null);
+  // Nacharbeit 6: die Kästchen stehen nur im AUSWAHLMODUS da (eingeschaltet im Menü „Stapel“
+  // oder solange etwas ausgewählt ist). Dauernd sichtbar kosteten sie jedem Titel rund 20 px
+  // Breite; ein Titel brach dann eine Zeile tiefer um, und die Auswahl rutschte bei 1280×420 aus
+  // der Liste (`job2935-validierung-fussband.test.ts` L19). Ohne Modus ist die Liste wie vorher.
+  const [stapelModus, setStapelModus] = useState(false);
 
   // JOB 3112 · V3: die eigene Mutation `adminValidate` ist ENTFALLEN — „Als wahr kennzeichnen"
   // läuft über denselben `freigabe`-Ausgang wie das Fußband, samt Stufenfrage davor. Der Zustand
@@ -882,6 +887,17 @@ export function Validation(): JSX.Element {
   // aktiven Karte: das Kästchen wählt für den Stapel, der Eintrag selbst öffnet die Karte.
   const stapel = visible.filter((k) => stapelAuswahl.has(k.id));
   const alleGewaehlt = visible.length > 0 && stapel.length === visible.length;
+  const kaestchenSichtbar = darfStapel && (stapelModus || stapel.length > 0);
+
+  /** Modus aus heisst auch: nichts mehr ausgewählt — sonst bliebe eine unsichtbare Auswahl. */
+  function modusUmschalten(): void {
+    if (kaestchenSichtbar) {
+      setStapelModus(false);
+      setStapelAuswahl(new Set());
+      return;
+    }
+    setStapelModus(true);
+  }
 
   function stapelUmschalten(id: string): void {
     setStapelAuswahl((alt) => {
@@ -1555,7 +1571,7 @@ export function Validation(): JSX.Element {
                 return (
                   <li key={k.id} data-testid="validation-row" className="flex items-center gap-1.5">
                     {/* R-0246: das Kästchen wählt für den Stapel; es öffnet keine Karte. */}
-                    {darfStapel ? (
+                    {kaestchenSichtbar ? (
                       <input
                         type="checkbox"
                         data-testid="pruefen-stapel-waehlen"
@@ -1696,6 +1712,17 @@ export function Validation(): JSX.Element {
         data-testid="pruefen-stapel"
         className="flex flex-col gap-1.5 px-2.5 py-2 text-[12px] text-muted"
       >
+        <button
+          type="button"
+          data-text="knopf"
+          data-testid="pruefen-stapel-modus"
+          aria-pressed={kaestchenSichtbar}
+          disabled={stapelLaeuft}
+          onClick={modusUmschalten}
+          className="self-start text-[12px] font-semibold text-text underline-offset-4 hover:underline disabled:opacity-50"
+        >
+          {kaestchenSichtbar ? t("pruefboard.stapel.modusAus") : t("pruefboard.stapel.modusAn")}
+        </button>
         <label className="flex items-center gap-1.5">
           <input
             type="checkbox"
