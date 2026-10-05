@@ -7,6 +7,9 @@
 > „Was hier NICHT belegt ist" steht, ist offen und wird hier nicht schöngeredet.
 >
 > Für **Word für Mac** gilt weiterhin die eigene Anleitung: `SIDELOAD-ANLEITUNG.md`.
+>
+> Für die Abnahme mit einem Microsoft-365-Testkonto (Stammdaten, Ablauf, Zustände, was belegt ist
+> und was nicht): `ABNAHME-M365.md`.
 
 ## Voraussetzungen
 
@@ -51,10 +54,13 @@ Microsoft-365-Administrator ist ein anderer Weg und hier nicht beschrieben.
 5. Danach steht im Seitenfenster der eigene Name, und Klara ist benutzbar. Das Anmelde-Fenster
    schließt sich von selbst.
 
-**Nach SSO braucht es einen zweiten Druck auf »Anmelden«.** Der Rücksprung des Anmeldedienstes
-landet in der Anwendung, nicht auf der Dialogseite; danach gilt das Cookie im Dialog, und der
-zweite Druck übergibt ohne Formular. Das ist keine Bequemlichkeit, sondern der ehrliche Stand: ein
-Rücksprung direkt auf die Dialogseite wäre eine Änderung an der SSO-Einrichtung des Servers.
+**Nach SSO geht es von selbst weiter.** Der Rücksprung des Anmeldedienstes landet wie immer kurz in
+der Anwendung; die schickt das Anmelde-Fenster danach auf die Dialogseite zurück, und die übergibt
+die Anmeldung an Klara — kein zweiter Druck auf **Anmelden**. Die SSO-Einrichtung des Servers
+(Rücksprungadresse) ist dafür unverändert; zurückgeschickt wird nur auf genau diese eine Seite und
+nur, wenn das SSO im Anmelde-Fenster gestartet wurde (seit der Aufnahme `m365-anmeldung`, Runde 2).
+Scheitert das SSO selbst, zeigt das Anmelde-Fenster die Meldung der Anwendung; dann das Fenster
+schließen und in Klara erneut auf **Anmelden** drücken.
 
 **Klappt die Übergabe nicht, steht der Grund da.** Klara schreibt dann, dass die Anmeldung dieses
 Fenster nicht erreicht — nicht mehr „Zeit abgelaufen", und ausdrücklich ohne den Rat, irgendwelche
@@ -113,5 +119,19 @@ sie hergibt.
   drücken. Bleibt es dabei, bitte melden, was genau dort stand. Dieser Satz ersetzt seit JOB 4076
   eine ältere Zusage („Klara erkennt die Anmeldung von selbst"), die im Rahmen fremder Herkunft
   nicht stimmte und die niemand dort gemessen hatte.
+- **„Das Anmelde-Fenster ließ sich nicht öffnen …":** Word hat das Anmelde-Fenster nicht
+  zugelassen (Rückfrage ignoriert) oder der Browser hat es verhindert. Erneut auf **Anmelden**
+  drücken und die Rückfrage von Word, ob ein neues Fenster angezeigt werden darf, zulassen. Klara
+  wartet in diesem Fall nicht mehr fünf Minuten: ein Ersatzfenster könnte die Anmeldung in dieses
+  Seitenfenster nicht bringen.
+- **Mitten in der Arbeit „Nicht angemeldet":** die Sitzung ist abgelaufen oder wurde beendet. Auf
+  **Anmelden** drücken und danach erneut senden. Ein Entwurf, für den Klara „Entwurf angelegt"
+  gezeigt hat, bleibt erhalten; was nicht gesendet wurde, steht weiter im Dokument.
+- **Nach dem Neuladen des Seitenfensters nicht mehr angemeldet:** so gebaut — der Zugang liegt nur
+  im Arbeitsspeicher. Einmal **Anmelden**; ist das Anmelde-Fenster noch angemeldet, geht es ohne
+  Formular.
+- **Abmelden und Konto wechseln:** im Seitenfenster Einstellungen → Konto → **Abmelden**. Das
+  beendet auch die Anmeldung im Anmelde-Fenster; der nächste Druck auf **Anmelden** zeigt das
+  Formular, dort das andere Konto eintragen.
 - **Klara meldet einen Fehler:** Die Meldung gilt. Klara täuscht keinen Erfolg vor; ein nicht
   angelegter Entwurf wird als nicht angelegt gemeldet.
