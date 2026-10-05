@@ -56,6 +56,7 @@ Die Person sieht nur die Seite und beantwortet in eigenen Worten:
 | Was bringe ich mit? | | |
 | Was erhalte ich? | | |
 | Was ist mein erster Schritt? | | |
+| Was bedeutet der Status dieser Anleitung, und was ist mein nächster Schritt? (Ergänzung 3) | | |
 
 ## 4 · Beispielablauf (zum Mitgehen, gern nur mit Tastatur)
 
@@ -167,10 +168,26 @@ galt vorher fälschlich als unsichtbar. Abgesichert in
 Diese Bilder belegen den Kandidaten in einer Testumgebung, nicht den auf klarwerk.ai ausgelieferten
 Stand; ausgeliefert ist er erst nach Ben-Prüfung, grünem Tor und Ship.
 
+**Nachtrag Prüfstatus-Anzeige (Pedi 28.09.2026, Ergänzung 3).** Übersicht und Detailansicht zeigen
+jetzt denselben Statusblock (`FreigabeStatus`, abgeleitet in `zustand.ts` → `freigabeanzeige`):
+Standwort, „Stand N“, Bedeutung, Prüfangaben und „Nächster Schritt“ nach den Rechten des Betrachters.
+Der angenommene Stand heißt sichtbar „Freigegeben“ (bisher „Entschieden“); „Vorgelegt“ sagt
+ausdrücklich „noch nicht freigegeben“. Bei einer Freigabe stehen Stand und Zeitpunkt da; **wer**
+freigegeben oder abgelehnt hat, speichert der Server bisher nicht – das steht so auf der Seite. Eine
+zweite Person wird nicht vorausgesetzt (es gibt keine solche Kontoregel). Geprüft in
+`tests/fe001-arbeitsanleitungen/pruefstatus-uebersicht-und-detail.test.tsx`. Zusatzfrage für die
+Probe unten: „Was bedeutet der Status dieser Anleitung, und was ist dein nächster Schritt?“
+Runde 2 (Ben-Befund BEN-01): Wer kein Erfassungsrecht hat (Rolle Viewer), bekommt keinen
+Vorlegen-Knopf mehr, und Ändern ist mit sichtbarem Grund gesperrt – passend zur Serverregel
+`ko.create`. Der Abgleich der älteren Kriterien des Auftrags steht in
+`docs/Berater/PRUEFSTATUS_ANZEIGE_BESTANDSABGLEICH_2026-10-03.md`.
+
 ## 6 · Bekannte Grenzen
 
 - Eine automatische fachliche Prüfung ist nicht angebunden (wird so angezeigt).
 - Beim Vorlegen wird niemand benachrichtigt (wird so angezeigt).
+- Wer freigegeben oder abgelehnt hat, wird nicht gespeichert; ebenso der Zeitpunkt einer Ablehnung
+  (wird so angezeigt). Das festzuhalten wäre eine Server- und Datenbankänderung.
 - Der optionale „Inhaltsnachweis“ bleibt ein Feld für Fachleute. Ohne ihn steht am Abschnitt
   „Zu dieser Fassung liegt kein Nachweis vor.“, und der Vergleich stützt sich auf die erfassten
   Inhaltsmerkmale statt auf einen gleichen Nachweis. Ob dieser Satz für neue Nutzer störend wirkt,
