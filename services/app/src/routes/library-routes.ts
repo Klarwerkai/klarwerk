@@ -986,7 +986,10 @@ export function libraryRoutes(
       // Laden der Queue — dasselbe dokumentierte Muster wie der aiCheck-Lazy-Re-Enqueue am
       // Board-Load (kein Cron): eine abgelaufene Lease wird VOLLENDET (KO mit opId-Stempel
       // existiert) oder sicher auf 'neu' zurückgegeben, bevor die Liste antwortet.
-      await library.recoverStaleReviewClaims();
+      // Lauf gesamt-import-adoption:2, Nacharbeit 5 (Bens Befund): DIESELBE Dublettenregel wie bei
+      // Einreihen und Annahme — die Recovery prüft vor einer vertagten Vollendung, ob neben dem
+      // gestempelten Objekt ein Mitbewerber (auch in anderer Schreibweise) steht.
+      await library.recoverStaleReviewClaims(pruefeReImportDublette);
       // WP-SHIP8-CLOSE-6 (bens ROT-3b): schwebende Review-Aktionsbelege (auditPending) werden
       // am selben Lazy-Punkt exactly-once nachgezogen.
       await library.retryPendingReviewAudits();

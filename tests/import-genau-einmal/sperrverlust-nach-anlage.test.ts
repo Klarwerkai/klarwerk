@@ -36,6 +36,27 @@ import {
 
 const NIE_AEHNLICH: DublettenPruefung = () => ({ dublette: false });
 
+/**
+ * Nacharbeit 5: eine Dublettenregel, die — wie die Produktregel der Route
+ * (`pruefeReImportDublette`, gemessen in `tests/re-import-dubletten/wiedereinspielung.test.ts`)
+ * — über Groß-/Kleinschreibung und Satzzeichen hinwegsieht. Sie ist hier ein Testport, weil die
+ * Produktregel dateiintern in `library-routes.ts` liegt; gemessen wird, dass die Recovery
+ * DIESELBE Regel wie die Annahme benutzt, nicht deren Schwelle.
+ */
+const OHNE_SCHREIBWEISE: DublettenPruefung = (item, bestand) => {
+  for (const ko of bestand) {
+    if (kern(ko.title) === kern(item.title) && kern(ko.statement) === kern(item.statement)) {
+      return { dublette: true, koId: ko.id, aehnlichkeit: 0.9 };
+    }
+  }
+  return { dublette: false };
+};
+
+function kern(text: string): string {
+  const klein = text.toLowerCase();
+  return klein.replace(/[^\p{L}\p{N} ]/gu, "").trim();
+}
+
 /** Bens Sperrtransport: ein Halter, eine Warteschlange, Freigabe bei COMMIT/ROLLBACK/Abbruch. */
 function sperrtransport() {
   let halter: string | null = null;
@@ -181,22 +202,27 @@ async function aufbau(anker: boolean) {
  * Bens Ablauf bis unmittelbar vor As Fortsetzung: A hängt im Insert, B wartet nachweislich, As
  * Sperrsitzung bricht ab, B legt an. Danach entscheidet der Fall, was vor `fortsetzen` geschieht.
  */
-async function bisVorAsFortsetzung(anker: boolean) {
+async function bisVorAsFortsetzung(
+  anker: boolean,
+  // Nacharbeit 5: die Dublettenregel beider Annahmen und eine andere Schreibweise für B.
+  pruefung: DublettenPruefung = NIE_AEHNLICH,
+  bSchreibweise: { title?: string; statement?: string } = {},
+) {
   const welt = await aufbau(anker);
   const { transport, aPool, ko, ablage, aDienst, bDienst, item } = welt;
   const [a] = await aDienst.createImportCandidates(
     [{ ...item, sourceVersion: 1 }],
     "imp",
-    NIE_AEHNLICH,
+    pruefung,
   );
   const [b] = await bDienst.createImportCandidates(
-    [{ ...item, sourceVersion: 2 }],
+    [{ ...item, ...bSchreibweise, sourceVersion: 2 }],
     "imp",
-    NIE_AEHNLICH,
+    pruefung,
   );
-  const aLauf = aDienst.reviewImportCandidate(a!.id, "accept", "rev-a", undefined, NIE_AEHNLICH);
+  const aLauf = aDienst.reviewImportCandidate(a!.id, "accept", "rev-a", undefined, pruefung);
   await ablage.bereit;
-  const bLauf = bDienst.reviewImportCandidate(b!.id, "accept", "rev-b", undefined, NIE_AEHNLICH);
+  const bLauf = bDienst.reviewImportCandidate(b!.id, "accept", "rev-b", undefined, pruefung);
   await vi.waitFor(() => expect(transport.wartende()).toBe(1));
   expect(await ko.list(), "Vor dem Sitzungsverlust wartet B tatsächlich.").toHaveLength(0);
   aPool.abbrechen();
@@ -369,6 +395,51 @@ describe("B4 · Sperrverlust nach der letzten Prüfung, vor dem echten Insert", 
       );
       expect(erneut.dublettenbefund).toEqual({
         ergebnis: anker ? "wiederverwendet" : "identisch",
+        treffer: { art: "wissensobjekt", koId: rb.koId },
+      });
+      expect(await ko.list()).toHaveLength(1);
+    });
+
+    // Nacharbeit 5, Bens Befund zu service.ts:2036 — die Recovery mit DERSELBEN Dublettenregel.
+    it(`${weg} (Nacharbeit 5): B in anderer Schreibweise (Satzzeichen, Groß-/Kleinschreibung) → die Recovery erkennt es mit der Annahme-Regel, genau EINE Kennung`, async () => {
+      const welt = await bisVorAsFortsetzung(anker, OHNE_SCHREIBWEISE, {
+        title: "FILTERWECHSEL",
+        statement: "die Filterkerze beim Oelwechsel tauschen!",
+      });
+      const { ko, ablage, a, aLauf, rb, snapshotFehler, uhr, bDienst, kandidaten } = welt;
+      snapshotFehler.rest = 3;
+      ablage.fortsetzen();
+      await expect(aLauf).rejects.toThrow();
+      expect((await kandidaten.findById(a.id))?.status).toBe("in_bearbeitung");
+      const vorher = await ko.list();
+      expect(vorher, "Vor der Recovery stehen noch beide Objekte.").toHaveLength(2);
+      expect(
+        vorher.map((k) => k.title).sort(),
+        "Vorbedingung: die beiden Objekte sind NICHT wortgleich.",
+      ).toEqual(["FILTERWECHSEL", "Filterwechsel"]);
+
+      uhr.ms += REVIEW_CLAIM_LEASE_MS + 1;
+      expect(await bDienst.recoverStaleReviewClaims(OHNE_SCHREIBWEISE)).toEqual({
+        completed: 0,
+        released: 1,
+      });
+      const kos = await ko.list();
+      expect(kos, "Nach der Recovery bleibt nur eine Kennung.").toHaveLength(1);
+      expect(kos[0]?.id).toBe(rb.koId);
+      expect(await ko.findByImportCandidateId(a.id), "As Objekt ist entfernt.").toBeUndefined();
+      expect((await kandidaten.findById(a.id))?.status, "Claim zurück, nicht vollendet.").toBe(
+        "neu",
+      );
+
+      const erneut = await bDienst.reviewImportCandidate(
+        a.id,
+        "accept",
+        "rev-a",
+        undefined,
+        OHNE_SCHREIBWEISE,
+      );
+      expect(erneut.dublettenbefund).toMatchObject({
+        ergebnis: anker ? "wiederverwendet" : "aehnlich",
         treffer: { art: "wissensobjekt", koId: rb.koId },
       });
       expect(await ko.list()).toHaveLength(1);

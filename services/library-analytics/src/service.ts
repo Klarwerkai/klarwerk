@@ -1975,7 +1975,15 @@ export class LibraryService {
   //    Freigabe (der Kandidaten-CAS wäre nicht fence-bar) — lauter Log, Kandidat bleibt stehen.
   // Beide Wege laufen über den opId-CAS (resolveClaim) — eine PARALLEL noch laufende Operation
   // oder eine zweite Replika-Recovery kann nie überschrieben werden (0 Zeilen = No-op).
-  async recoverStaleReviewClaims(): Promise<{ completed: number; released: number }> {
+  //
+  // Nacharbeit 5 (Bens Befund zu Zeile 2036): `pruefeDublette` ist DIESELBE Dublettenregel wie bei
+  // der regulären Annahme (die Route reicht `pruefeReImportDublette` durch). Mit ihr erkennt die
+  // Prüfung vor einer vertagten Vollendung auch einen Mitbewerber in anderer Schreibweise
+  // (Satzzeichen, Groß-/Kleinschreibung), nicht nur einen wortgleichen. Ohne sie (Altaufrufer)
+  // bleibt es bei der exakten Form.
+  async recoverStaleReviewClaims(
+    pruefeDublette?: DublettenPruefung,
+  ): Promise<{ completed: number; released: number }> {
     const nowMs = this.now();
     const stale = (await this.candidates.all()).filter(
       (c) => c.status === "in_bearbeitung" && reviewClaimLeaseExpired(c.claimedAt, nowMs),
@@ -2028,12 +2036,16 @@ export class LibraryService {
         // Kennung entfernt und der Claim auf `neu` zurückgegeben — die nächste Annahme entscheidet
         // dann regulär und nennt den Mitbewerber. Ohne Sperre bleibt der Claim stehen (nächster
         // Lauf). Ein getrashtes Stempel-Objekt fällt weiter unter den Trash-Vertrag oben.
-        // Die Recovery kennt den Dublettenport nicht; die Textfrage stellt sie darum nur in der
-        // exakten Form (Pass 1 derselben Regel, s. `mitbewerberNebenAnlage`).
+        // Die Textfrage stellt sie mit DERSELBEN Dublettenregel wie die Annahme (`pruefeDublette`,
+        // Nacharbeit 5); nur ohne Regel fällt sie auf die exakte Form zurück.
         if (!stamped.deletedAt) {
           const eigeneKoId = stamped.id;
           const raeume = async (gilt: () => Promise<void>): Promise<boolean> => {
-            const mitbewerber = await this.mitbewerberNebenAnlage(candidate, eigeneKoId, undefined);
+            const mitbewerber = await this.mitbewerberNebenAnlage(
+              candidate,
+              eigeneKoId,
+              pruefeDublette,
+            );
             if (mitbewerber === undefined) {
               return false;
             }
