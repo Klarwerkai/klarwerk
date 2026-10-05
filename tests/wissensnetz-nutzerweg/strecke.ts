@@ -1206,6 +1206,13 @@ export async function fahreStrecke(umgebung: Umgebung, lauf: Lauf): Promise<Prot
       // ORIGINALABLAUF (aufnahme:20260922:graph-browser-rechte-alt500): der ALT-500-AUSLÖSER fuhr
       // weder (b)–(e) noch den Prozessneustart. `graphOffenBeiAnlage` faehrt deshalb DIESE Strecke
       // so, wie 715dd3abb sie fuhr — `/graph` bleibt offen (`alt500-originalstrecke-pg`).
+      //
+      // GEMESSEN am Kandidaten 9a6bedbc (Nacharbeit 1): dort trug der 500 intern `23505 audit_pkey`
+      // am Beleg `ko.created` der Anlage, zweiter Schreiber `overlap.auto-created`
+      // (`services/conflicts/src/overlap-service.ts`). Im selben Lauf bekam auch DIESER Standardweg
+      // mit `about:blank` einen 500 (Grenzobjekt 0065) — ohne Treiberdiagnose, also nicht
+      // zugeordnet. Die offene Seite ist damit keine belegte Bedingung. Die Reparatur der
+      // Pruefprotokoll-Folge ist Nichtziel des ALT-500-Auftrags (eigene Entscheidung Pedis).
       if (!lauf.graphOffenBeiAnlage) {
         await seite.goto("about:blank", { waitUntil: "domcontentloaded" });
       }
