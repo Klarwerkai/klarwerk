@@ -50,8 +50,11 @@ function mitDatenbank(url: string, name: string): string {
 }
 
 /** Jede Methode am Prototyp, eingeordnet. Schreibend heißt: kann eine Zeile in `audit` erzeugen. */
+// Seit der Zusammenführung mit dem Dubletten-Rückzug laufen `record`/`recordOnce` unter der
+// `kettenSperre`; ihr Rumpf steht in je einer privaten Methode — beide hängen nur an (`appendNext`
+// bzw. `last` + `append`/`appendOnce`) und werden von den Fällen zu `record`/`recordOnce` geprüft.
 const AUDIT_SERVICE_METHODEN = {
-  schreibend: ["record", "recordOnce", "exportChain"],
+  schreibend: ["record", "recordUngeteilt", "recordOnce", "recordOnceUngeteilt", "exportChain"],
   lesend: ["list", "exists", "kopfSeq", "verify", "verifyReport", "baue"],
 };
 const PG_AUDIT_REPO_METHODEN = {

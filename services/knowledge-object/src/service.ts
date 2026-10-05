@@ -76,6 +76,7 @@ import {
   type KoSearchProjection,
   type KoSearchQuery,
   SEARCH_PROJECTION_VERSION,
+  bestandsgerechterKandidatendeckel,
   buildSearchProjection,
   classificationFromVersionSnapshot,
   reconstructedClassification,
@@ -321,6 +322,12 @@ export interface KoServiceDeps {
   onPurge?: (koId: string, actor: string) => Promise<void>;
   // SCRUM-523 P.3 (WP-A2): optionale echte DB-Transaktion für purgeKo (repo.delete + audit.record).
   withTx?: WithTx;
+  // Auftrag gesamt-dubletten-rueckzug (Runde 2, Bens BEN-R3-1): die Klammer des Rücknahme-Wegs
+  // (Rückzug und Wiederherstellen, `imRuecknahmeVorgang`), wenn es KEINE Datenbank-Transaktion gibt
+  // — InMemory und Dev-Journal. Die Kompositionswurzel baut sie aus Vorher-Abbildern und
+  // zurückgehaltenen Journalzeilen (services/app/src/speicher-vorgang.ts): scheitert ein Schritt,
+  // steht danach alles wie vorher. Nur für diesen Weg; `purgeKo` bleibt bei `withTx`.
+  ruecknahmeKlammer?: WithTx;
   // ============================================================================================
   // JOB 1104 (Scheibe S0-TX, aus JOB 1045 D4 §2.2) — DER ZWEITE, TRANSAKTIONSGEBUNDENE HAKEN.
   // ============================================================================================
@@ -426,6 +433,13 @@ export interface CreateKoInput {
   // setzt ihn; die öffentlichen Schreibrouten verwerfen das Feld wie `sources` (sonst könnte
   // ein Client die Crash-Recovery eines fremden Review-Claims kapern).
   importCandidateId?: string;
+  // R-0139 / FR-EXT-02: der Importweg (Begründung am Modell, types.ts). Nur die beiden Importwege
+  // setzen ihn; die öffentlichen Schreibrouten verwerfen das Feld wie `importCandidateId`.
+  importedVia?: KnowledgeObject["importedVia"];
+  // R-0169 (Nacharbeit 5): der Bezug auf die Fassung der internen Dokumentakte. Nur Serverpfade
+  // (Entwurfs-Promote aus dem Word-Zusatz, JSON-Import ohne externalId) setzen ihn; die
+  // öffentlichen Schreibrouten verwerfen das Feld wie `importedVia`.
+  dokumentHerkunft?: KnowledgeObject["dokumentHerkunft"];
   // JOB 557: das Eigentümer-Aggregat ab Erfassen — für SERVERPFADE (Import, Seed, interne Anlage),
   // die die Verantwortung schon kennen.
   //
@@ -707,6 +721,7 @@ export class KoService {
   private onPurgeTx: PurgeTxCleanup | undefined;
   // SCRUM-523 P.3 (WP-A2): s. Typ-Kommentar an WithTx oben.
   private readonly withTx: WithTx | undefined;
+  private readonly ruecknahmeKlammer: WithTx | undefined;
   // JOB 3071 R3: Frist und Fehlerkanal der Rücknahme-Vorablesung (s. KoServiceDeps).
   private readonly ruecknahmeFrist: number;
   private readonly onError: (context: string, error: unknown) => void;
@@ -727,6 +742,7 @@ export class KoService {
     this.onPurge = deps.onPurge;
     this.onPurgeTx = deps.onPurgeTx;
     this.withTx = deps.withTx;
+    this.ruecknahmeKlammer = deps.withTx ?? deps.ruecknahmeKlammer;
     this.now = deps.now ?? (() => Date.now());
     this.genId = deps.genId ?? (() => randomUUID());
     // Eine Frist, die keine ist (0, negativ, NaN, Infinity), wäre die stillschweigende Abschaltung
@@ -2195,6 +2211,10 @@ export class KoService {
       // WP-SHIP8-CLOSE-3/4 (bens ROT-1): stabiler Kandidaten-Anker des Import-Accepts (DB-unique
       // erzwungen — der Insert eines zweiten KO desselben Kandidaten scheitert am Index/Guard).
       ...(input.importCandidateId ? { importCandidateId: input.importCandidateId } : {}),
+      // R-0139 / FR-EXT-02: der Importweg — dieselbe Bauform, kein stiller Default.
+      ...(input.importedVia ? { importedVia: input.importedVia } : {}),
+      // R-0169 (Nacharbeit 5): der Fassungsbezug — dieselbe Bauform, kein stiller Default.
+      ...(input.dokumentHerkunft ? { dokumentHerkunft: input.dokumentHerkunft } : {}),
       // JOB 557: das Eigentümer-Aggregat nur setzen, wenn der Aufrufer eines MITBRINGT — dieselbe
       // Bauform wie `confidentiality` und `origin` daneben. KEIN stiller Default auf den Autor: ein
       // Objekt ohne benannte Verantwortung bleibt ein Objekt ohne benannte Verantwortung, und genau
@@ -4038,9 +4058,9 @@ export class KoService {
   // `grep -rn "findCandidates(" --include='*.ts' . | grep -v node_modules | grep -v test` —
   // für alle drei ist die Fundstelle das richtige Maß, und alle drei erben die Angabe, weil sie
   // durch DIESE eine Methode gehen:
-  //   · KLARA (`services/ask/src/service.ts:560`, Deckel 50 je Fragebegriff): das Objekt, das den
-  //     Fragebegriff im Titel trägt, ist die Quelle, nach der Pedi fragt. Fällt es im Deckel weg,
-  //     meldet Klara eine Wissenslücke, obwohl das Wissen im Haus liegt.
+  //   · KLARA (`AskService.prefilterCandidates`, Deckel je Begriff ab 50, mit dem Bestand
+  //     wachsend): das Objekt mit dem Fragebegriff im Titel ist die Quelle, nach der Pedi fragt.
+  //     Fällt es im Deckel weg, meldet Klara eine Wissenslücke, obwohl das Wissen im Haus liegt.
   //   · TEXTPRÜFUNG (`services/app/src/check-text-detection.ts:232`, Deckel
   //     `DETECTION_CANDIDATE_CAP` = 20): eine Dublette ist ein Objekt zum SELBEN Thema. Ein
   //     Titeltreffer ist dafür das stärkere Signal als ein hoher Trust; was der Deckel wegwirft,
@@ -4067,6 +4087,7 @@ export class KoService {
     const hits = await this.findSearchHits({
       ...query,
       deckelauswahl: "trefferguete",
+      limit: await this.kandidatendeckel(query),
     });
     if (hits.length === 0) {
       return [];
@@ -4082,6 +4103,20 @@ export class KoService {
         .sort((a, b) => (rang.get(a.id) ?? 0) - (rang.get(b.id) ?? 0)),
       query.vorInhaltsabruf,
     );
+  }
+
+  // AUFNAHME 20260922 (R-0316): der Deckel dieser einen Kandidatenabfrage. Ohne Anforderung
+  // (`deckelWaechstMitBestand`) Zeichen für Zeichen das `limit` des Aufrufers — auch ein fehlendes.
+  // Mit Anforderung hebt die Bestandsgröße ihn an (Regel und Grenzen an
+  // `bestandsgerechterKandidatendeckel`). Gezählt wird die Metadatenprojektion: genau eine Zeile je
+  // Wissensobjekt, ein `COUNT(*)` ohne Inhalt. Getrashte Objekte zählen mit, bis sie endgelöscht
+  // sind — eine Überschätzung, die den Deckel nur weiter macht, nie enger.
+  private async kandidatendeckel(query: KoCandidateQuery): Promise<number> {
+    if (!query.deckelWaechstMitBestand || query.limit === undefined) {
+      return query.limit;
+    }
+    const bestand = await this.searchProjections.metadata.count();
+    return bestandsgerechterKandidatendeckel(query.limit, bestand);
   }
 
   // ---- SCRUM-422: Papierkorb -----------------------------------------------------------
@@ -4337,13 +4372,18 @@ export class KoService {
       throw new KoError("NOT_FOUND", "Wissensobjekt nicht im Papierkorb.");
     }
     const { deletedAt: _at, deletedBy: _by, ...restored } = ko;
-    await this.schreibeMitBeleg(
-      (tx) => this.repo.update(restored as KnowledgeObject, tx),
-      async (tx) => {
-        await this.audit?.record({ actor, action: "ko.restored", target: id }, tx);
-      },
-      () => this.rollbackKo(ko),
-    );
+    // Auftrag gesamt-dubletten-rueckzug: das Zurückholen läuft über denselben benannten Weg wie
+    // der Rückzug (`imRuecknahmeVorgang` am Klassenende) — Schreiben und Beleg in EINER Transaktion.
+    // Entscheidung Pedi (entscheidung:43017d60): das Wiederherstellen stellt NUR den eigenen Beitrag
+    // wieder her. Es trägt deshalb keinen Aufräumbeitrag: ein durch den Rückzug geschlossener
+    // Dublettenbefund bleibt geschlossen (keine Wiederöffnung), die Gegenseite bleibt unangetastet.
+    await this.imRuecknahmeVorgang(restored as KnowledgeObject, {
+      actor,
+      action: "ko.restored",
+      payload: {},
+      beitrag: undefined,
+      vorher: ko,
+    });
     return this.lesefassung(restored as KnowledgeObject);
   }
 
@@ -6040,15 +6080,108 @@ export class KoService {
       return;
     }
     const at = new Date(this.now()).toISOString();
-    await this.schreibeMitBeleg(
-      (tx) => this.repo.update({ ...ko, deletedAt: at, deletedBy: actor }, tx),
-      async (tx) => {
-        await this.audit?.record(
-          { actor, action: "ko.deleted", target: id, payload: { trash: true } },
-          tx,
-        );
+    // Auftrag gesamt-dubletten-rueckzug: der weiche Weg räumt seine Befunde IN seiner Transaktion
+    // auf (s. `imRuecknahmeVorgang`). Die eigene Rücknahme ist dasselbe Prädikat wie in
+    // `eigeneRuecknahmeVon` — der Löscher ist der Autor —, hier aber VOR dem Schreiben bekannt:
+    // Löscher ist `actor`, Autor steht am schon geladenen Objekt. Kein Lesegang, kein Port.
+    const zurueckgezogenVon = actor.length > 0 && ko.author === actor ? actor : null;
+    const hook = this.onRuecknahmeTx;
+    await this.imRuecknahmeVorgang(
+      { ...ko, deletedAt: at, deletedBy: actor },
+      {
+        actor,
+        action: "ko.deleted",
+        payload: { trash: true },
+        beitrag: hook ? (tx) => hook(id, actor, tx, { zurueckgezogenVon }) : undefined,
+        vorher: ko,
       },
-      () => this.rollbackKo(ko),
+    );
+  }
+
+  // ==============================================================================================
+  // Auftrag gesamt-dubletten-rueckzug (R-1540/R-1547) — DER EINE AUFRÄUMWEG DES RÜCKZUGS.
+  // ==============================================================================================
+  //
+  // Bis hierher schrieb der weiche Weg `deletedAt` und seinen Beleg, und die ROUTE schloss danach
+  // Konflikte und Überschneidungen (ko-routes.ts, Nachlauf nach `ko.delete`). Scheiterte der
+  // Nachlauf, lag der Beitrag im Papierkorb und sein Dublettenbefund stand offen daneben. Jetzt
+  // gibt es für BEIDE Richtungen (Rückzug und Wiederherstellen) genau einen Weg, hier im Dienst,
+  // nach dem Muster der Endlöschung (`purgeKo` + `PurgeTxCleanup`). Nur der Rückzug trägt einen
+  // Aufräumbeitrag; das Wiederherstellen öffnet nichts wieder (Entscheidung Pedi 43017d60):
+  //
+  //   MIT withTx   Aufräumen, Schreiben des Beitrags und sein Beleg auf DEMSELBEN TxContext —
+  //                alles oder nichts. Wirft einer der drei (auch der CAS in `repo.update`),
+  //                rollt withPgTx alles zurück: Beitrag unverändert, Befund unverändert, kein Beleg.
+  //   OHNE withTx  (InMemory, Dev-Journal) cleanup-first, dann Schreiben, dann Beleg —
+  //                ausdrücklich OHNE Atomaritätszusage, wie der Fallback von `purgeKo`.
+  //
+  // Der Haken ist EINER (`setRuecknahmeTxCleanup`), verdrahtet in der Kompositionswurzel neben
+  // `setPurgeTxCleanup`. Für ihn gilt derselbe Vertrag wie für `PurgeTxCleanup`: nur Schreiber, die
+  // den tx auf ihren Pg-Client auflösen, keine Schleifen über Einzelobjekte, kein Netz.
+  private onRuecknahmeTx: RuecknahmeTxCleanup | undefined;
+
+  setRuecknahmeTxCleanup(hook: RuecknahmeTxCleanup): void {
+    this.onRuecknahmeTx = hook;
+  }
+
+  // Auftrag gesamt-dubletten-rueckzug (Q7) — DIE SICHTBARKEITSFAKTEN EINES BEITRAGS IM PAPIERKORB.
+  // Genau die zwei Felder, die `darfSehen` braucht (Autor, Stufe), und NUR für ein getrashtes
+  // Objekt — für jedes andere `undefined`. Kein Titel, kein Inhalt. Vierte Stelle, die den
+  // Papierkorb absichtlich sieht (neben `trashed`, `restore`, `eigeneRuecknahmeVon`); einziger
+  // Aufrufer ist der Grabstein eines zurückgezogenen Dublettenbefunds (overlap-routes.ts), der
+  // damit prüft, ob der Betrachter die zurückgezogene Seite sehen durfte. Endgelöscht → nichts.
+  async papierkorbFakten(
+    id: string,
+  ): Promise<{ author: string; confidentiality: KnowledgeObject["confidentiality"] } | undefined> {
+    const ko = await this.repo.findById(id);
+    return ko?.deletedAt ? { author: ko.author, confidentiality: ko.confidentiality } : undefined;
+  }
+
+  private async imRuecknahmeVorgang(
+    neu: KnowledgeObject,
+    vorgang: {
+      actor: string;
+      action: "ko.deleted" | "ko.restored";
+      payload: Record<string, unknown>;
+      beitrag: RuecknahmeBeitrag | undefined;
+      // Der Stand vor dem Schreiben — für die Rücknahme im Weg ohne Klammer (unten).
+      vorher: KnowledgeObject;
+    },
+  ): Promise<void> {
+    const { actor, action, payload, beitrag, vorher } = vorgang;
+    const beleg = (zusatz: Record<string, unknown>) => {
+      const gesamt = { ...payload, ...zusatz };
+      return {
+        actor,
+        action,
+        target: neu.id,
+        ...(Object.keys(gesamt).length > 0 ? { payload: gesamt } : {}),
+      };
+    };
+    const audit = this.audit;
+    // Mit Datenbank ist die Klammer `withTx` (withPgTx); ohne die Rücknahme-Klammer der
+    // Kompositionswurzel (Vorher-Abbilder + zurückgehaltene Journalzeilen). Beide: alles oder nichts.
+    const klammer = this.ruecknahmeKlammer;
+    if (klammer && audit) {
+      await klammer(async (tx) => {
+        const zusatz = (await beitrag?.(tx)) ?? {};
+        await this.repo.update(neu, tx);
+        await audit.record(beleg(zusatz), tx);
+      });
+      return;
+    }
+    // Nur ein KoService, den jemand OHNE Kompositionswurzel und ohne Klammer baut (Einzeltests
+    // des Moduls, Test-Doubles ohne Rückstellung), fällt hierher: ohne Atomaritätszusage für den
+    // Aufräumbeitrag. Änderung und Beleg bleiben aber gemeinsam oder gar nicht (Aufnahme
+    // gesamt-auditprotokoll, `schreibeMitBeleg`): scheitert der Beleg, wird die Änderung
+    // zurückgenommen; scheitert die Änderung, entsteht kein Beleg.
+    const zusatz = (await beitrag?.(undefined)) ?? {};
+    await this.schreibeMitBeleg(
+      (tx) => this.repo.update(neu, tx),
+      async (tx) => {
+        await audit?.record(beleg(zusatz), tx);
+      },
+      () => this.rollbackKo(vorher),
     );
   }
 
@@ -6185,3 +6318,30 @@ type EinordnungsBedingung = {
 // OHNE `trim` ist das Verhalten zeichengleich dem bisherigen (Altvertrag, wie ihn `search` in
 // library-analytics führt); mit `trim` ist das Ergebnis eine TEILmenge davon. Die Autorisierung
 // bleibt an der Route (G-SHADOW) — hier entsteht kein zweiter, weiterer Weg an den Text.
+
+// ==================================================================================================
+// Auftrag gesamt-dubletten-rueckzug — DER HAKEN DES RÜCKZUGS.
+// ==================================================================================================
+//
+// Am Dateiende aus demselben Grund wie `ReviseMitHerkunft` darüber (Wegweiser auf feste Zeilen
+// weiter oben). Ein Beitrag zum Beleg, geschrieben IN der Transaktion auf dem gereichten tx.
+type RuecknahmeBeitrag = (tx: TxContext | undefined) => Promise<Record<string, unknown>>;
+
+/**
+ * Der eine Aufräumhaken des weichen Löschens (KoService.delete).
+ *
+ * Läuft IN der Transaktion des weichen Löschens. `ruecknahme.zurueckgezogenVon` trägt die Kennung,
+ * wenn der Löscher der Autor ist, sonst `null` — vom Dienst vorab bestimmt, damit im
+ * Transaktionskörper keine Pool-Lesung nötig ist (Vertrag wie `PurgeTxCleanup`).
+ *
+ * Das Wiederherstellen (KoService.restore) fährt über denselben Weg `imRuecknahmeVorgang`, aber
+ * ohne diesen Haken: nach Pedis Entscheidung (entscheidung:43017d60) stellt es nur den eigenen
+ * Beitrag wieder her; geschlossene Befunde bleiben geschlossen, die Gegenseite bleibt unangetastet.
+ * Die frühere Wiederöffnung (Lauf 1/2, `releaseTrashedSide`) ist deshalb nicht Teil dieses Wegs.
+ */
+type RuecknahmeTxCleanup = (
+  koId: string,
+  actor: string,
+  tx: TxContext | undefined,
+  ruecknahme: { zurueckgezogenVon: string | null },
+) => Promise<Record<string, unknown>>;

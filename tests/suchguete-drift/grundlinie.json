@@ -1,0 +1,17 @@
+{
+  "anliegen": "R-1101 Drift-Testset für die Suchgüte",
+  "fassung": "1.0.0-beta.1.657",
+  "festgelegt": "2026-10-03",
+  "regel": "Feste Grundlinie, keine gleitende: jede Abweichung in eine Richtung ist ein Befund. Änderungen nur bewusst und mit Begründung im Commit.",
+  "faelle": {
+    "klara": 12,
+    "bibliothek": 8
+  },
+  "werte": {
+    "klara.trefferAn1": 1,
+    "klara.stoererfrei": 1,
+    "klara.offeneGrenzen": 2,
+    "bibliothek.vollstaendigkeit": 1,
+    "bibliothek.reinheit": 1
+  }
+}

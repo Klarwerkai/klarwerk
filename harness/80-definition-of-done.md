@@ -1,13 +1,12 @@
-# 80 — Definition of Done
+# 80 — Wann ein Auftrag geliefert ist
 
-Ein Stück Arbeit gilt als fertig, wenn **alle** Punkte erfüllt sind:
+Ein Auftrag ist geliefert, wenn:
 
-- [ ] `tools/build` grün
-- [ ] `tools/lint` grün (Biome)
-- [ ] Architekturregeln grün (dependency-cruiser)
-- [ ] `tools/test` grün — alle Akzeptanzkriterien der Spec als Tests vorhanden und grün
-- [ ] Dokumentation aktualisiert (`/docs`, Logbuch in Notion)
-- [ ] Keine Secrets im Code, keine offenen TODOs
-- [ ] Bei sensiblen Aktionen: menschliche Freigabe eingeholt
+1. Die beauftragten Kriterien erfüllt sind und die passenden Prüfungen für die endgültige Fassung vorliegen.
+2. Ben diese Fassung unabhängig geprüft und keine offenen behebungsbedürftigen Befunde für den Auftragsumfang zurückgelassen hat.
+3. Genau die geprüfte Fassung committet, gepusht und über den regulären Weg veröffentlicht wurde.
+4. Die Livefassung und der Auftragsabschluss mit den tatsächlichen Lieferbelegen bestätigt sind.
 
-`tools/check` führt Build + Lint + Architektur + Tests in einem Lauf aus. Nur grün = lieferbar.
+Reine Lieferkriterien wie die veröffentlichte Versionsnummer können erst nach dem Deploy belegt werden. Funktionales Verhalten wird vorher geprüft. Eine ausdrücklich erforderliche menschliche Bedienprobe bleibt eine echte Bedienprobe.
+
+Vorhandene Teilumfänge werden abgegrenzt, offene unabhängige Fehler sichtbar dokumentiert und notwendige Bedienhinweise aktualisiert. Keine zusätzliche Notion-Pflicht, pauschale Gesamtsuite oder erneute menschliche Freigabe nach bereits erteiltem Auftrag. Geheimnisse, Rechte und Datentrennung bleiben geschützt.

@@ -46,6 +46,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { panelQuelleAus } from "../support/panelquelle";
 
 const WURZEL = join(__dirname, "..", "..");
 const TASKPANE = join(WURZEL, "apps", "web", "public", "word-addin", "taskpane.html");
@@ -59,8 +60,9 @@ const RUECKWEG = join(WURZEL, "apps", "web", "public", "word-addin", "rueckweg.j
  */
 const ANMELDUNG = join(WURZEL, "apps", "web", "public", "word-addin", "anmeldung.html");
 
+/** Das Fenster als EIN Dokument — seit R-1611 aus `taskpane.html`/`.css`/`.js` zusammengefügt. */
 function quelle(): string {
-  return readFileSync(TASKPANE, "utf8");
+  return panelQuelleAus(TASKPANE);
 }
 
 /** Die deutschen OBERFLÄCHENTEXTE — Werte des STRINGS.de-Objekts, zeilenweise erhoben. */
@@ -2563,8 +2565,39 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // „Add-in-Fassung/Add-in version/Add-in-versie {geladen}", weil die Manifestnummer keine
     // Programmversion ist und neben „Klara <Stand>" keinen zweiten Stand behaupten darf. KEIN
     // Manifest, KEIN Endpunkt, KEIN Recht, kein Abruf, keine Nutzlast; kein erneutes Sideload.
-    const PIN = "575580b0215f68d2db2f982cb5efce3701449092ceec321d8a35d45abe3dade8";
-    const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
+    // AUFNAHME 20260922 · GESAMT-KLARA-EXTERN (R-0639, Bens Befund B1, 01.10.2026) — PIN BEWUSST
+    // AKTUALISIERT (575580b0… -> 53da1b30…). Auslieferungsfolgen, jede geprüft, bevor der Pin wanderte:
+    //   · Abrufziel: KEINES neu. `performAsk` ruft weiter nur `POST /api/ask`; er nimmt einen siebten,
+    //                optionalen Parameter `questionSource`.
+    //   · Nutzlast:  EIN Feld mehr, und nur, wenn die Frage aus der Word-Markierung stammt
+    //                (`askKlara` bei leerem Eingabefeld, `ka6Absenden` über einer Markierung):
+    //                `questionSource: "selection"`. Sonst fällt es bei `JSON.stringify` heraus, der
+    //                Körper ist dann Zeichen für Zeichen der bisherige. Das Feld kann den Weg nur
+    //                ENGER machen: der Server verlangt dafür die Dokumenttext-Prüfung (`ask-routes.ts`).
+    //   · Manifest, CSP, Recht: unverändert. Kein erneutes Sideload.
+    //   · Alter Server: ignoriert das unbekannte Feld (`additionalProperties` erlaubt) — Verhalten
+    //                wie vor diesem Auftrag.
+    // GEMESSEN: `tests/klara-dokumenttext/riegel-haelt-den-dokumenttext.test.ts` R5 führt beide
+    // Einstiege unverändert aus.
+    // RUNDE 3 desselben Auftrags (Bens Befund B1, Runde 2) — PIN ERNEUT BEWUSST AKTUALISIERT
+    // (53da1b30… -> 6e5284ce…). Einzige Änderung: `askKlara` und `ka6Absenden` melden eine GETIPPTE
+    // Frage jetzt ausdrücklich als `questionSource: "manual"` (der Server zählt bei Klara-Bindung
+    // „fehlt" als Dokumenttext). Abrufziel, Manifest, CSP, Recht unverändert; kein Sideload.
+    // LAUF 2, RUNDE 2 (02.10.2026) — PIN ERNEUT (6e5284ce… -> 5fbf5f64…). NUR UMBRUCH UND KOMMENTAR:
+    // die R-0639-Argumente stehen auf den bestehenden Zeilen, damit das Inline-Skript unter der
+    // Schranke von `schnittflaechen.test.ts` B3 bleibt (Server: „expected 12510 to be less than
+    // 12500"). Kein Ausdruck, kein Abrufziel, keine Nutzlast geändert; kein Sideload.
+    // AUFNAHME 20260922 · ZENTRALE-MODULE-AUFTEILEN (R-1611, P11) — DER PIN BLEIBT, WAS ER WAR.
+    // Das Fenster liegt jetzt in DREI Dateien (`taskpane.html`, `taskpane.css`, `taskpane.js`);
+    // gehasht wird deshalb das wieder zusammengefügte Dokument (`panelQuelleAus`). Dass der Pin
+    // NICHT wandern musste, ist der Beleg: kein Zeichen von Markup, Stil oder Skript hat sich
+    // geändert, nur die Ablage. Jede künftige Änderung an einer der drei Dateien macht ihn rot.
+    // Auslieferungsfolgen des Schnitts: ZWEI Abrufe mehr beim Öffnen (beide gleicher Ursprung,
+    // `script-src 'self'`/`style-src 'self'` der Dokument-CSP decken sie), dieselbe Cachekennung
+    // `?v=__KW_FASSUNG__` wie `rueckweg.js`; Abrufziel, Manifest, Recht, Nutzlast unverändert;
+    // kein erneutes Sideload.
+    const PIN = "5fbf5f64546beb67d70799bb8d18bcf6d2adcc631d79e0b404658867baeb0978";
+    const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(
       ist,
       "taskpane.html wurde geändert — Auslieferungsfolgen bewusst prüfen (Kommentar oben), dann den Pin aktualisieren.",

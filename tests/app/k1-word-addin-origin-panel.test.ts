@@ -22,12 +22,13 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { panelQuelleAus } from "../support/panelquelle";
 
 const WURZEL = join(__dirname, "..", "..");
 const TASKPANE = join(WURZEL, "apps", "web", "public", "word-addin", "taskpane.html");
 const WORDADDIN_LIB = join(WURZEL, "apps", "web", "src", "lib", "wordAddin.ts");
 
-const panel = (): string => readFileSync(TASKPANE, "utf8");
+const panel = (): string => panelQuelleAus(TASKPANE);
 const spiegel = (): string => readFileSync(WORDADDIN_LIB, "utf8");
 
 // Zählt Vorkommen einer festen Zeichenfolge — bewusst kein Regex: die gesuchten Formen enthalten

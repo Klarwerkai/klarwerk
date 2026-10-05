@@ -66,6 +66,10 @@ const STATUS_BY_CODE: Record<string, number> = {
   // die Anfrage ist wohlgeformt und der Aufrufer hat nichts falsch gemacht — es ist ein Konflikt
   // mit einem bereits abgeschlossenen Vorgang, und der Weg zurück ist ein NEUER Vorgang.
   IDEMPOTENCY_PAYLOAD_MISMATCH: 409,
+  // R-0169 (Dokumentakte): zwei gleichzeitige Schreiber wollten dieselbe Fassungsnummer — ein
+  // Konflikt mit einem parallelen Vorgang, kein Fehler des Aufrufers. `DOKUMENT_UNBEKANNT` bleibt
+  // beim Standard 400: die mitgebrachte Kennung ist hier nicht vergeben.
+  DOKUMENT_KONFLIKT: 409,
   // AUFTRAG-mega21 Block A: der Vorgang steht auf `repair_required`. Auch das ist ein Konflikt mit
   // einem Zustand, nicht ein Serverfehler dieser Anfrage — der Aufrufer bekommt eine wahre
   // Auskunft samt Objektkennung und keinen nichtssagenden 500.
@@ -100,6 +104,12 @@ const STATUS_BY_CODE: Record<string, number> = {
   // ANDEREN Weg, auf dem der Fehler nach aussen geht; er ist die Absicherung gegen die stille 400,
   // nicht die Ablösung des Sonderzweigs.
   STAND_VERALTET: 409,
+  // Auftrag gesamt-dubletten-rueckzug (Lauf 5, Runde 3, BEN-R5-3): der Datenträger des Dev-Journals
+  // ist weder lesbar noch beschreibbar, der Ausgang eines Rückzugs/einer Wiederherstellung ungewiss
+  // (dev-persist.ts, `JournalAusgangUngewiss`). Kein Eingabefehler des Aufrufers → 503, nicht der
+  // Auffangwert 400. Der Code bleibt sichtbar, damit der Aufrufer „ungewiss" von „gescheitert"
+  // unterscheiden kann; die Meldung ist ein fester Satz ohne Ursache, Pfad oder Kennung.
+  JOURNAL_AUSGANG_UNGEWISS: 503,
 };
 
 // G27 R1 (KW-ARCH-G27-HTTP-MASKIERUNG-07 §1): Fehlercodes, die REIN INTERN sind — technische

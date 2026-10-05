@@ -273,6 +273,8 @@ export function PrivacyContent(): JSX.Element {
         {/* AUFTRAG-mega63 Block D: der Merker aus Block A. Ein Browser-Token, der im Produkt
             existiert, aber nicht in dieser Aufzählung steht, macht sie unvollständig. */}
         <p>{t("legal.privacy.s4.p7")}</p>
+        {/* Ergänzung 1 (Pedi 28.09.2026): der Arbeitsstand der Fragenseite im Browser. */}
+        <p>{t("legal.privacy.s4.p8")}</p>
       </Section>
 
       <Section title={t("legal.privacy.s5.title")}>

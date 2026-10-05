@@ -15,6 +15,9 @@ export {
   type SharePointInhaltsprobe,
   createSharePointAdapterFromEnv,
 } from "./src/adapter";
+// R-0145/R-0190: der Stand einer fortsetzbaren Ordner-Inventur. Er trägt Ordner-/Dateikennungen
+// und einen Graph-Cursor, kein Zugangsmerkmal; gelesen wird er nur über den Adapter.
+export { type SharePointInventur, inventurFertig, neueInventur } from "./src/adapter";
 // JOB 4232: die Befunde über den INHALT einer Datei — reine Auskunft, wie die vier Fehlerlagen.
 // Sie tragen strukturell kein Geheimnis: `text` trägt den Text der Datei, die der Aufrufer selbst
 // angefordert hat, und die übrigen vier sind Wörter. Der Downloadweg selbst (`pruefeDownloadUrl`,

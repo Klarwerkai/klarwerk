@@ -153,8 +153,9 @@ async function click(el: Element | null | undefined): Promise<void> {
 
 /** Das Zahnrad-Menü öffnen und „Weitere Bereiche" aufklappen — der dritte Anzeigeort. */
 async function weitereBereicheOeffnen(): Promise<void> {
-  await click(container.querySelector('[data-testid="kopfband-zahnrad"]'));
-  await click(container.querySelector('[data-testid="zahnrad-weitere-bereiche"]'));
+  // FE-002: die weiteren Bereiche stehen seit dem 26.09.2026 unter dem beschrifteten Einstieg
+  // „Arbeitsbereiche" im Kopfband (vorher Zahnrad → „Bereiche"); die Liste ist dieselbe.
+  await click(container.querySelector('[data-testid="kopfband-arbeitsbereiche"]'));
 }
 
 const kopfbandZaehler = (): Element | null =>
@@ -238,7 +239,10 @@ describe("JOB 3113 H1b: die Zahl im Kopfband verschwindet, wenn sie niemand mehr
     expect(byAria(i18n.t("nav.badge.error"))).toBeNull();
     expect(byAria(i18n.t("nav.badge.loading"))).toBeNull();
     expect(container.querySelector(".kw-kopfband-punkte")?.textContent).not.toContain("!");
-    expect(container.querySelector(".kw-kopfband-punkte [title]")).toBeNull();
+    // FE-002: in derselben Navigation steht jetzt auch „Arbeitsbereiche" samt seiner (hier offenen)
+    // Fläche mit eigenen Zeigehinweisen — gemeint sind die PUNKTE und ihre Zähler.
+    expect(container.querySelector(".kw-kopfband-punkte [data-kopfband-punkt][title]")).toBeNull();
+    expect(container.querySelector(".kw-kopfband-punkte [data-kopfband-punkt] [title]")).toBeNull();
 
     // … der Punkt „Prüfen" selbst steht unverändert da (Text, Ziel, Fokusweg).
     expect(kopfbandPunkt()).not.toBeNull();
