@@ -1295,6 +1295,12 @@ const INVENTAR: readonly string[] = [
   // GESETZT: der Prüflauf am Kandidaten 95636768 meldete K2 `neu im Baum, aber nicht im gepinnten
   // Inventar` mit genau diesem Pfad.
   "tests/capture/aufrufer-waechter.test.ts",
+  // Word-Host-Gesamtweg (Nacharbeit 8): `word-panel-stufenwahl.test.tsx` (R-0632, Stufenwahl im
+  // Word-Panel) stammt aus dem Bestand, nicht aus diesem Auftrag, und ist unverändert — sie fährt
+  // das Fenster und nennt `taskpane`, Achse `taskpane`; kein „klara" im Pfad, K5 bleibt bei 71.
+  // GEMESSEN, NICHT GESETZT: der Prüflauf am Kandidaten e48905fd meldete K2 `neu im Baum, aber
+  // nicht im gepinnten Inventar` mit genau diesem Pfad; erst danach wurde diese Zeile angefasst.
+  "tests/vertraulichkeit-pflicht/word-panel-stufenwahl.test.tsx",
 ];
 
 // ------------------------------------------------------------------------------------------------
