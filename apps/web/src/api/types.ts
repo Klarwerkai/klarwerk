@@ -839,7 +839,12 @@ export interface OverlapDetector {
   // die Anzeige führt dann konsistent über die Textdeckung (siehe overlapDetectorInfo.isModelFinding).
   confidence?: number;
   rationale?: string;
+  // R-0194: Herkunft des Kandidaten (Spiegel von services/conflicts OverlapDetector).
+  candidateSources?: CandidateSource[];
+  checksumSimilarity?: number;
 }
+
+export type CandidateSource = "metadaten" | "text" | "pruefsumme" | "abschnitt";
 
 export interface OverlapResolution {
   reason: OverlapResolutionReason;
