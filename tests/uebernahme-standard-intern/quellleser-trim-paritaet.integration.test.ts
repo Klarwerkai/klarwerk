@@ -521,3 +521,160 @@ describe("K4/K5 · Import, Annahme und Versionsabgleich überstehen den Neustart
     }
   }, 300_000);
 });
+
+// ==================================================================================================
+// U1–U3 · DER KANDIDATEN-RECHTEABGLEICH GEGEN ECHTES POSTGRES, MIT KONTROLLIERTEN ÜBERSCHNEIDUNGEN.
+// ==================================================================================================
+//
+// Nacharbeit 8 (Ben, Befund F2): der Abgleich schrieb einen offenen Kandidaten als Ganzes zurück
+// (`update`, ohne Bedingung). Ein Review-Claim oder eine abgeschlossene Annahme dazwischen wurde
+// dadurch auf `neu` zurückgesetzt; zwei überlappende Abgleiche konnten die neuere Beobachtung durch
+// die ältere ersetzen. Gemessen wird an der echten Ablage (`PgCandidateRepo` über
+// `buildPgServices`): `claim`/`resolveClaim` der Review-Aktion von Hand, dazwischen der Abgleich.
+
+/** Eine Beobachtung derselben Seite und Version — mit eigenem Zeitpunkt, kurz nach der vorigen. */
+async function beobachtung(id: string, version: number, leserEmails?: string[]) {
+  await new Promise((weiter) => setTimeout(weiter, 15));
+  const { items } = await adapterFuer([
+    confluenceSeite(id, version, `Inhalt ${id}.`, leserEmails),
+  ]).collectAll();
+  const item = items[0];
+  expect(item, `Beobachtung ${id}`).toBeDefined();
+  return item!;
+}
+
+type KandidatMitRechten = {
+  status: string;
+  koId: string | null;
+  opId?: string | null;
+  item: { quellrechte?: { emails?: string[]; beobachtetAm?: string } };
+};
+
+describe("K1 · Kandidaten-Rechteabgleich: atomar gegen Claim, Abschluss und zweiten Abgleich", () => {
+  let container: StartedTestContainer;
+  let url: string;
+
+  beforeAll(async () => {
+    container = await new GenericContainer("postgres:16-alpine")
+      .withEnvironment({ POSTGRES_PASSWORD: "test", POSTGRES_DB: "klarwerk_test" })
+      .withExposedPorts(5432)
+      .withWaitStrategy(Wait.forLogMessage(/database system is ready to accept connections/, 2))
+      .start();
+    url = `postgresql://postgres:test@${container.getHost()}:${container.getMappedPort(5432)}/klarwerk_test`;
+    const pool = createPool(url);
+    try {
+      await migrate(pool);
+    } finally {
+      await pool.end();
+    }
+  });
+
+  afterAll(async () => {
+    await container?.stop();
+  });
+
+  async function dienste() {
+    process.env.KLARWERK_CONFLUENCE_IMPORT = "1";
+    const pool = createPool(url);
+    return { pool, d: buildPgServices(pool) };
+  }
+
+  async function lies(d: ReturnType<typeof buildPgServices>, id: string) {
+    return (await d.candidates.findById(id)) as unknown as KandidatMitRechten | undefined;
+  }
+
+  it("U1 · ein Review-Claim dazwischen bleibt, und seine Annahme auch", async () => {
+    const { pool, d } = await dienste();
+    try {
+      const [k] = await d.library.createImportCandidates([await beobachtung("810", 1)], "admin");
+      expect(k).toBeDefined();
+      // Die Review-Aktion claimt — und hält den Claim, während der Abgleich kommt.
+      const geclaimt = await d.candidates.claim(
+        k!.id,
+        "op-review-u1",
+        new Date().toISOString(),
+        "reviewerin",
+        "accept",
+      );
+      expect(geclaimt?.status).toBe("in_bearbeitung");
+
+      const neuer = await beobachtung("810", 1, ["lea@example.com"]);
+      await expect(d.library.gleicheQuellrechteFuerAnkerAb(neuer, "admin")).rejects.toThrow();
+      const waehrend = await lies(d, k!.id);
+      expect(waehrend?.status).toBe("in_bearbeitung");
+      expect(waehrend?.opId).toBe("op-review-u1");
+      expect(waehrend?.item.quellrechte?.emails).toBeUndefined();
+
+      // Die Review-Aktion schließt ab — ihr Abschluss ist nicht verloren gegangen.
+      const abgeschlossen = await d.candidates.resolveClaim(k!.id, "op-review-u1", {
+        status: "abgelehnt",
+        reviewedBy: "reviewerin",
+      });
+      expect(abgeschlossen?.status).toBe("abgelehnt");
+
+      // Ein Abgleich NACH dem Abschluss fasst den Kandidaten nicht an.
+      const danach = await d.library.gleicheQuellrechteFuerAnkerAb(
+        await beobachtung("810", 1, ["otto@example.com"]),
+        "admin",
+      );
+      expect(danach.kandidaten).toBe(0);
+      const ende = await lies(d, k!.id);
+      expect(ende?.status).toBe("abgelehnt");
+      expect(ende?.item.quellrechte?.emails).toBeUndefined();
+    } finally {
+      await pool.end();
+    }
+  }, 60_000);
+
+  it("U2 · Abgleich mitten in einer laufenden Annahme: die Annahme setzt sich durch, nichts fällt auf neu zurück", async () => {
+    const { pool, d } = await dienste();
+    try {
+      const [k] = await d.library.createImportCandidates([await beobachtung("811", 1)], "admin");
+      await d.candidates.claim(k!.id, "op-review-u2", new Date().toISOString(), "rev", "accept");
+      const neuer = await beobachtung("811", 1, ["lea@example.com"]);
+      // Der Abgleich wartet auf den fremden Claim; die Review-Aktion schließt währenddessen ab.
+      const abgleich = d.library.gleicheQuellrechteFuerAnkerAb(neuer, "admin");
+      await new Promise((weiter) => setTimeout(weiter, 60));
+      await d.candidates.resolveClaim(k!.id, "op-review-u2", {
+        status: "angenommen",
+        koId: "ko-u2",
+        reviewedBy: "rev",
+      });
+      const ergebnis = await abgleich;
+      expect(ergebnis.kandidaten).toBe(0);
+      const ende = await lies(d, k!.id);
+      expect(ende?.status).toBe("angenommen");
+      expect(ende?.koId).toBe("ko-u2");
+    } finally {
+      await pool.end();
+    }
+  }, 60_000);
+
+  it("U3 · zwei überlappende Abgleiche: die neuere Beobachtung gewinnt, in beiden Reihenfolgen", async () => {
+    const { pool, d } = await dienste();
+    try {
+      const [k] = await d.library.createImportCandidates([await beobachtung("812", 1)], "admin");
+      // Ältere (t2: Lea) und neuere (t3: Otto) Beobachtung — die NEUERE kommt zuerst an.
+      const t2 = await beobachtung("812", 1, ["lea@example.com"]);
+      const t3 = await beobachtung("812", 1, ["otto@example.com"]);
+      expect((await d.library.gleicheQuellrechteFuerAnkerAb(t3, "admin")).kandidaten).toBe(1);
+      expect((await d.library.gleicheQuellrechteFuerAnkerAb(t2, "admin")).kandidaten).toBe(0);
+      expect((await lies(d, k!.id))?.item.quellrechte?.emails).toEqual(["otto@example.com"]);
+
+      // GLEICHZEITIG: zwei frische Beobachtungen, beide gestartet, bevor eine fertig ist.
+      const t4 = await beobachtung("812", 1, ["lea@example.com"]);
+      const t5 = await beobachtung("812", 1, ["eva@example.com"]);
+      await Promise.all([
+        d.library.gleicheQuellrechteFuerAnkerAb(t5, "admin"),
+        d.library.gleicheQuellrechteFuerAnkerAb(t4, "admin"),
+      ]);
+      const ende = await lies(d, k!.id);
+      expect(ende?.status).toBe("neu");
+      // Kein liegengebliebener Claim (fehlend oder null — beides heißt „kein Claim").
+      expect(ende?.opId ?? undefined).toBeUndefined();
+      expect(ende?.item.quellrechte?.emails).toEqual(["eva@example.com"]);
+    } finally {
+      await pool.end();
+    }
+  }, 60_000);
+});

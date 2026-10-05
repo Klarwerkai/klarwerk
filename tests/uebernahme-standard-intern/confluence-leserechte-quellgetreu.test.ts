@@ -873,6 +873,60 @@ describe("R-0549 · der Bereichsabgleich zieht Leserechte auch bei unveränderte
     expect((await liest(k.app, k.lea.headers, koId)).einzeln.statusCode).toBe(200);
   });
 
+  // Nacharbeit 8 (Ben, Befund F1): zwei ÜBERLAPPENDE Abgleiche derselben Seitenversion. Bei t1 ist
+  // die Seite auf Lea beschränkt (gespeichert), ein Lauf beobachtet bei t2 „offen" und hängt, ein
+  // späterer Lauf bestätigt bei t3 wieder Lea — gleiche Lage. Danach setzt der t2-Lauf fort.
+  it("B3 · verzögerter älterer Abgleich (t2 offen) nach bestätigtem t3 (Lea): die Beschränkung bleibt", async () => {
+    const k = await appMitKonten();
+    const nurLea = { user: [{ accountId: "acc-lea", email: "lea@example.com" }] };
+    // t1 — übernommen, auf Lea beschränkt.
+    await bereichsabgleich(k, [seite("982", [], nurLea, 3)]);
+    const r = await k.services.library.reviewImportCandidate(
+      (await kandidatFuer(k, "982")).id,
+      "accept",
+      k.adminId,
+    );
+    const koId = r.koId!;
+    // t2 — ein Lauf beobachtet die Seite OFFEN, wendet aber noch nichts an (er hängt).
+    await new Promise((fertig) => setTimeout(fertig, 15));
+    const t2 = (await fixture([seite("982", [], undefined, 3)]).adapter.collectAll()).items[0];
+    // t3 — ein späterer Lauf bestätigt wieder Lea: gleiche Lage, nur der Zeitpunkt ist neu.
+    await new Promise((fertig) => setTimeout(fertig, 15));
+    await bereichsabgleich(k, [seite("982", [], nurLea, 3)]);
+    // Der bestätigte Zeitpunkt steht am Objekt — auch ohne Änderung der Lage.
+    const nachT3 = (await k.services.ko.get(koId))?.quellrechte;
+    const t2Rechte = (t2 as { quellrechte?: { beobachtetAm?: string } }).quellrechte;
+    expect(Date.parse(nachT3?.beobachtetAm ?? "")).toBeGreaterThan(
+      Date.parse(t2Rechte?.beobachtetAm ?? ""),
+    );
+    // Jetzt setzt der hängende t2-Lauf fort.
+    await k.services.library.gleicheQuellrechteFuerAnkerAb(t2!, k.adminId);
+
+    const objekt = await k.services.ko.get(koId);
+    expect(objekt?.quellrechte?.leser).toEqual([k.lea.id]);
+    expect(objekt?.confidentiality).toBe("vertraulich");
+    const otto = await liest(k.app, k.otto.headers, koId);
+    expect(otto.einzeln.statusCode).toBe(404);
+    expect(otto.inListe).toBe(false);
+    expect((await liest(k.app, k.lea.headers, koId)).einzeln.statusCode).toBe(200);
+  });
+
+  it("B3-Gegenprobe · ohne bestätigenden t3-Lauf gibt dieselbe t2-Beobachtung die Seite frei", async () => {
+    const k = await appMitKonten();
+    const nurLea = { user: [{ accountId: "acc-lea", email: "lea@example.com" }] };
+    await bereichsabgleich(k, [seite("983", [], nurLea, 3)]);
+    const r = await k.services.library.reviewImportCandidate(
+      (await kandidatFuer(k, "983")).id,
+      "accept",
+      k.adminId,
+    );
+    await new Promise((fertig) => setTimeout(fertig, 15));
+    const t2 = (await fixture([seite("983", [], undefined, 3)]).adapter.collectAll()).items[0];
+    await k.services.library.gleicheQuellrechteFuerAnkerAb(t2!, k.adminId);
+    // Die Messung in B3 ist damit nicht vakuös: t2 allein HÄTTE freigegeben.
+    expect((await liest(k.app, k.otto.headers, r.koId!)).einzeln.statusCode).toBe(200);
+  });
+
   it("B2 · ein offener Kandidat derselben Version verdrängt die neuere Rechtebeobachtung nicht", async () => {
     const k = await appMitKonten();
     await bereichsabgleich(k, [seite("981", [], undefined, 2)]);

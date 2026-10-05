@@ -453,6 +453,13 @@ export const REVIEW_CLAIM_LEASE_MS = 10 * 60_000;
 // der wartende Claim läuft dabei nie ab.
 const ANNAHME_WARTEZEIT_MS = 30_000;
 
+// confluence-import-rechte (Nacharbeit 8, F2): der Rechteabgleich eines Kandidaten nimmt denselben
+// Claim wie eine Review-Aktion. Hält ihn gerade jemand anderes, wird bis zu so oft so lange
+// gewartet — eine Review-Aktion dauert Sekundenbruchteile; bleibt der Claim länger fremd, scheitert
+// der Abgleich sichtbar (CONFLICT), statt den Kandidaten an der Aktion vorbei zu schreiben.
+const KANDIDAT_RECHTE_VERSUCHE = 10;
+const KANDIDAT_RECHTE_WARTEZEIT_MS = 50;
+
 // Lease abgelaufen? Ein unlesbares/fehlendes claimedAt zählt defensiv als abgelaufen (Muster
 // shouldReEnqueueAiCheck: lieber einmal zu viel recovern als still liegen lassen — die Recovery
 // selbst ist per opId-CAS gegen laufende Operationen abgesichert).
@@ -705,25 +712,9 @@ interface EintragsQuellrechte {
   leserUnvollstaendig?: true;
 }
 
-/**
- * Nacharbeit 6 (Befund F2): tragen gespeicherte und frisch erhobene Rechte dieselbe Lage (Stufe,
- * Leserkreis, Vollständigkeit)? Dann schreibt der Bereichsabgleich nichts — kein Objekt-Write und
- * kein Prüfprotokolleintrag je unveränderter Seite und Lauf.
- */
-function gleicheQuellLage(gespeichert: KoQuellrechte | undefined, neu: KoQuellrechte): boolean {
-  if (!gespeichert || gespeichert.stufe !== neu.stufe) {
-    return false;
-  }
-  if (Boolean(gespeichert.leserUnvollstaendig) !== Boolean(neu.leserUnvollstaendig)) {
-    return false;
-  }
-  if (gespeichert.leser === undefined || neu.leser === undefined) {
-    return gespeichert.leser === neu.leser;
-  }
-  const alt = [...gespeichert.leser].sort();
-  const jetzt = [...neu.leser].sort();
-  return alt.length === jetzt.length && alt.every((id, i) => id === jetzt[i]);
-}
+// Nacharbeit 8 (Befund F1): die frühere Vorabprüfung `gleicheQuellLage` stand hier und übersprang
+// bei gleicher Lage den Objekt-Write ganz — damit blieb der ältere Beobachtungszeitpunkt stehen.
+// Die Entscheidung fällt jetzt allein unter der Objektsperre (`KoService.setQuellrechte`).
 
 function quellrechteVon(item: ImportItem): EintragsQuellrechte | undefined {
   const roh = (item as ImportItem & { readonly quellrechte?: unknown }).quellrechte;
@@ -2473,8 +2464,19 @@ export class LibraryService {
    *      Objekt-Lock (ältere Version oder frühere Beobachtung ändern nichts);
    *   2. an OFFENEN Kandidaten (`neu`) derselben Quelle und Version: ihr Eintrag trägt danach die
    *      neuere Beobachtung, damit eine spätere Annahme sie nicht verdrängt.
-   * Ein Objekt im Papierkorb und ein Kandidat in Bearbeitung werden nicht angefasst. Bleibt die
-   * Lage gleich, wird nichts geschrieben.
+   * Ein Objekt im Papierkorb und ein abgeschlossener Kandidat werden nicht angefasst.
+   *
+   * Nacharbeit 8 (Ben, Befunde F1/F2) — GLEICHLAUF:
+   *   · Das Objekt entscheidet ALLEIN unter seiner Sperre (`setQuellrechte`): Aktualitätsvergleich
+   *     und Fortschreiben in einem Schritt, auch bei gleicher Lage (dann nur der Zeitpunkt). Eine
+   *     Vorabprüfung hier außerhalb der Sperre gibt es nicht mehr.
+   *   · Ein Kandidat wird nie mehr als Ganzes zurückgeschrieben. Der Abgleich nimmt ihn über DENSELBEN
+   *     atomaren Claim wie eine Review-Aktion (`claim`: nur aus `neu`), prüft den Zeitpunkt am frisch
+   *     geclaimten Stand und gibt ihn über `resolveClaim` mit `status: neu` und den neuen Rechten
+   *     zurück. Eine Annahme, die dazwischenkommt, bekommt den Claim nicht — und ein Kandidat, den
+   *     eine Review-Aktion hält oder abgeschlossen hat, wird nicht angefasst.
+   *   · Kandidaten zuerst, dann das Objekt: wird ein Kandidat während des Wartens angenommen, findet
+   *     der Objektschritt danach das neue Objekt.
    */
   async gleicheQuellrechteFuerAnkerAb(
     item: ImportItem,
@@ -2486,42 +2488,83 @@ export class LibraryService {
       return { objekt: false, kandidaten: 0 };
     }
     const gesucht = ankerSchluessel(item.provider, externalId);
+    let kandidaten = 0;
+    const roh = (item as ImportItem & { readonly quellrechte?: unknown }).quellrechte;
+    for (const kandidat of await this.candidates.all()) {
+      if (
+        !isOpenReviewStatus(kandidat.status) ||
+        ankerSchluessel(kandidat.item.provider, kandidat.item.externalId) !== gesucht ||
+        kandidat.item.sourceVersion !== item.sourceVersion
+      ) {
+        continue;
+      }
+      if (await this.kandidatRechteNachziehen(kandidat.id, quelle, roh)) {
+        kandidaten += 1;
+      }
+    }
     let objekt = false;
     const anker = await this.sucheAnkerKo(
       (s) => ankerSchluessel(s.provider, s.externalId) === gesucht,
     );
     if (anker?.art === "aktiv") {
       const rechte = await this.objektQuellrechte(item);
-      if (rechte && !gleicheQuellLage(anker.ko.quellrechte, rechte)) {
+      if (rechte) {
         await this.koService.setQuellrechte(anker.ko.id, rechte, actor);
         objekt = true;
       }
     }
-    let kandidaten = 0;
-    const roh = (item as ImportItem & { readonly quellrechte?: unknown }).quellrechte;
-    for (const kandidat of await this.candidates.all()) {
-      if (
-        kandidat.status !== "neu" ||
-        ankerSchluessel(kandidat.item.provider, kandidat.item.externalId) !== gesucht ||
-        kandidat.item.sourceVersion !== item.sourceVersion
-      ) {
-        continue;
-      }
-      const alt = quellrechteVon(kandidat.item);
-      if (
-        alt?.beobachtetAm !== undefined &&
-        quelle.beobachtetAm !== undefined &&
-        Date.parse(alt.beobachtetAm) >= Date.parse(quelle.beobachtetAm)
-      ) {
-        continue;
-      }
-      await this.candidates.update({
-        ...kandidat,
-        item: { ...kandidat.item, confidentiality: quelle.stufe, quellrechte: roh } as ImportItem,
-      });
-      kandidaten += 1;
-    }
     return { objekt, kandidaten };
+  }
+
+  /**
+   * Nacharbeit 8 (Befund F2): die Rechte EINES offenen Kandidaten atomar nachziehen — über
+   * `claim`/`resolveClaim`, die beiden bedingten Schreibwege der Ablage (Pg: UPDATE … WHERE
+   * status='neu' bzw. WHERE status='in_bearbeitung' AND opId=…). Hält gerade eine andere Operation
+   * den Claim (Review-Aktion, zweiter Abgleich), wird kurz gewartet und neu versucht; ist der
+   * Kandidat danach abgeschlossen oder verschwunden, bleibt er unangetastet. Bleibt er über alle
+   * Versuche in fremder Bearbeitung, scheitert der Abgleich ehrlich (`CONFLICT`) — der
+   * Bereichsimport führt die Seite dann als nicht abgeglichen.
+   */
+  private async kandidatRechteNachziehen(
+    id: string,
+    quelle: EintragsQuellrechte,
+    roh: unknown,
+  ): Promise<boolean> {
+    for (let versuch = 0; versuch < KANDIDAT_RECHTE_VERSUCHE; versuch += 1) {
+      const opId = `quellrechte:${randomUUID()}`;
+      const gehalten = await this.candidates.claim(id, opId, new Date(this.now()).toISOString());
+      if (gehalten) {
+        const alt = quellrechteVon(gehalten.item);
+        const aelterOderGleich =
+          alt?.beobachtetAm !== undefined &&
+          quelle.beobachtetAm !== undefined &&
+          Date.parse(alt.beobachtetAm) >= Date.parse(quelle.beobachtetAm);
+        const item = aelterOderGleich
+          ? undefined
+          : ({ ...gehalten.item, confidentiality: quelle.stufe, quellrechte: roh } as ImportItem);
+        const zurueck = await this.candidates.resolveClaim(
+          id,
+          opId,
+          item ? { status: "neu", item } : { status: "neu" },
+        );
+        if (!zurueck) {
+          throw new LibraryError(
+            "CONFLICT",
+            "Importkandidat: Claim des Rechteabgleichs verloren — Leserechte nicht nachgezogen.",
+          );
+        }
+        return item !== undefined;
+      }
+      const jetzt = await this.candidates.findById(id);
+      if (!jetzt || !isOpenReviewStatus(jetzt.status)) {
+        return false; // abgeschlossen oder entfernt — nicht anfassen
+      }
+      await new Promise((weiter) => setTimeout(weiter, KANDIDAT_RECHTE_WARTEZEIT_MS));
+    }
+    throw new LibraryError(
+      "CONFLICT",
+      "Importkandidat ist in Bearbeitung — Leserechte nicht nachgezogen.",
+    );
   }
 
   /**

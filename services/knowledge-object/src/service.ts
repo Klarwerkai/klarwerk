@@ -174,6 +174,25 @@ export function normalizeQuellrechte(raw: unknown): KoQuellrechte | undefined {
 }
 
 /**
+ * Nacharbeit 8: tragen gespeicherte und eingehende Rechte dieselbe LAGE (Stufe, Leserkreis,
+ * Vollständigkeit)? Der Quellstand (`version`/`beobachtetAm`) gehört ausdrücklich nicht dazu.
+ */
+function gleicheQuellLage(gespeichert: KoQuellrechte | undefined, neu: KoQuellrechte): boolean {
+  if (!gespeichert || gespeichert.stufe !== neu.stufe) {
+    return false;
+  }
+  if (Boolean(gespeichert.leserUnvollstaendig) !== Boolean(neu.leserUnvollstaendig)) {
+    return false;
+  }
+  if (gespeichert.leser === undefined || neu.leser === undefined) {
+    return gespeichert.leser === neu.leser;
+  }
+  const alt = [...gespeichert.leser].sort();
+  const jetzt = [...neu.leser].sort();
+  return alt.length === jetzt.length && alt.every((id, i) => id === jetzt[i]);
+}
+
+/**
  * confluence-import-rechte (Nacharbeit 3, Befund F4): sind die EINGEHENDEN Rechte älter als die
  * gespeicherten? Ältere Quellversion ODER frühere Beobachtung — beides nur, wenn beide Seiten die
  * Angabe tragen. Gleichstand ist nicht veraltet (der spätere Accept desselben Stands gewinnt).
@@ -3380,6 +3399,15 @@ export class KoService {
           : next.stufe;
       const quellrechte: KoQuellrechte = { ...next };
       const updated: KnowledgeObject = { ...ko, confidentiality: level, quellrechte };
+      // Nacharbeit 8 (Ben, Befund F1): BLEIBT DIE LAGE GLEICH (Stufe, Leser, Vollständigkeit), wird
+      // trotzdem der neueste bestätigte Quellstand (`version`/`beobachtetAm`) fortgeschrieben — hier,
+      // unter derselben Objektsperre wie der Aktualitätsvergleich darüber. Sonst bliebe der ältere
+      // Zeitpunkt stehen, und ein verzögerter Abgleich mit einer FRÜHEREN Beobachtung (z. B. „offen")
+      // gälte als neuer und hebe eine eben bestätigte Beschränkung auf. Kein Protokolleintrag: es hat
+      // sich nichts an Rechten geändert, nur ihre Bestätigung.
+      if (level === previous && gleicheQuellLage(ko.quellrechte, next)) {
+        return { updated, value: updated };
+      }
       return {
         updated,
         value: updated,
