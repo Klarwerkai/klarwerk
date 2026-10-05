@@ -69,7 +69,13 @@ export function classifyProvenanceConfidential(
     }
     // Backstop hebt nur: ein gespeichert-vertrauliches KO (via koId) macht auch als "intern"
     // deklarierten Text vertraulich; ein internes/unbekanntes KO senkt nie eine Deklaration.
-    return isConfidential(declared) || isConfidential(backstop.level ?? null);
+    // Hier ist `declared` eine gültige Stufe (sonst griffe `ohneEinstufung`); die Einengung steht
+    // ausdrücklich, weil der Funktionsaufruf sie für den Compiler nicht trägt.
+    const stufe: Confidentiality | null =
+      declared === "intern" || declared === "vertraulich" || declared === "streng_vertraulich"
+        ? declared
+        : null;
+    return isConfidential(stufe) || isConfidential(backstop.level ?? null);
   }
   // source:"ko"/plain/fehlend/ungültig → loser/kein Anker → fail-safe vertraulich.
   return true;
