@@ -103,4 +103,17 @@ export class PgAssignmentRepo implements AssignmentRepo {
     const res = await this.pool.query<AssignmentRow>("SELECT data FROM assignments");
     return res.rows.map((row) => row.data);
   }
+
+  // PRÜFSTATUS-ANZEIGE (R-1524): gezielt über die Schlüsselspalte `ko_id` (Teil des Primärschlüssels
+  // `(ko_id,user_id)`, s. `create`) statt des Vollscans von `all()`. Leere Eingabe fragt nicht.
+  async listByKos(koIds: readonly string[]): Promise<Assignment[]> {
+    if (koIds.length === 0) {
+      return [];
+    }
+    const res = await this.pool.query<AssignmentRow>(
+      "SELECT data FROM assignments WHERE ko_id = ANY($1)",
+      [[...koIds]],
+    );
+    return res.rows.map((row) => row.data);
+  }
 }

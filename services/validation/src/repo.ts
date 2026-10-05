@@ -36,6 +36,12 @@ export interface AssignmentRepo {
   /** Runde 3: nur für die Rücknahme ohne Transaktion (s. `RatingRepo.remove`). OPTIONAL. */
   remove?(koId: string, userId: string): Promise<void>;
   all(): Promise<Assignment[]>;
+  /**
+   * PRÜFSTATUS-ANZEIGE (R-1524): die Zuweisungen GENAU dieser Objekte — gezielt statt Vollscan.
+   * Die Prüfstandswege (`pruefstandFuer`, `pruefstaendeFuer`) brauchen nur ihre Objekte; das
+   * Prüfbrett braucht weiterhin alle offenen und bleibt bei `all()`. Leere Eingabe → leere Antwort.
+   */
+  listByKos(koIds: readonly string[]): Promise<Assignment[]>;
 }
 
 export class InMemoryRatingRepo implements RatingRepo {
@@ -88,5 +94,10 @@ export class InMemoryAssignmentRepo implements AssignmentRepo {
 
   all(): Promise<Assignment[]> {
     return Promise.resolve([...this.assignments.values()]);
+  }
+
+  listByKos(koIds: readonly string[]): Promise<Assignment[]> {
+    const ids = new Set(koIds);
+    return Promise.resolve([...this.assignments.values()].filter((a) => ids.has(a.koId)));
   }
 }

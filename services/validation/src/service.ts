@@ -590,23 +590,23 @@ export class ValidationService {
    * `koService.get` waere ein Lesevorgang fuer eine Zahl, die schon in der Hand ist. WELCHE Stimmen
    * damit zaehlen, entscheidet weiterhin dieses Modul (`stimmenAus`) und nicht der Aufrufer.
    *
-   * GRENZE, ausdruecklich benannt: die offenen Zuweisungen kommen ueber `AssignmentRepo.all()` —
-   * EIN Zugriff, kein N+1, aber kein Index je Objekt. Ein `listByKo` am `AssignmentRepo` waere die
-   * gezieltere Form; es beruehrt `repo.ts`/`repo-pg.ts` und steht in der Rueckgabe als Rest.
+   * PRÜFSTATUS-ANZEIGE (R-1524): die offenen Zuweisungen kommen seither GEZIELT ueber
+   * `AssignmentRepo.listByKos([koId])` — nicht mehr ueber den Vollscan `all()`, der hier bis dahin
+   * als benannte Grenze stand.
    *
    * JOB 3043: die ABLEITUNG steht seither in `pruefstandAus` und wird mit `pruefstaendeFuer`
    * geteilt. Die ZUSAGE dieser Methode ist unveraendert: GENAU EINE Bewertungsabfrage je Aufruf,
    * gezielt auf dieses Objekt (`ko-routes-anzeigestatus.test.ts`, Fall K, `toBe(1)`).
    */
   async pruefstandFuer(koId: string, koVersion: number): Promise<KoPruefstand> {
-    const [alle, bewertungen] = await Promise.all([
-      this.assignments.all(),
+    const [zuweisungen, bewertungen] = await Promise.all([
+      this.assignments.listByKos([koId]),
       this.ratings.listByKo(koId),
     ]);
     return pruefstandAus(
       koId,
       koVersion,
-      offeneZuweisungenJeKo(alle),
+      offeneZuweisungenJeKo(zuweisungen),
       bewertungenJeKo(bewertungen),
     );
   }
@@ -618,7 +618,7 @@ export class ValidationService {
    * wie der Detailabruf, aber fuer JEDEN Eintrag. `pruefstandFuer` je Zeile kostete 2·N Abfragen,
    * davon N Vollscans der Zuweisungstabelle — genau der Aufwand, wegen dessen `PRIORITAETEN.md` N4
    * die Liste aus JOB 3024 ausgeklammert hat („N+1 ohne Deckel"). Diese Methode macht `2`, egal wie
-   * viele Objekte kommen: `assignments.all()` und `ratings.listByKos(ids)`, nebenlaeufig.
+   * viele Objekte kommen: `assignments.listByKos(ids)` und `ratings.listByKos(ids)`, nebenlaeufig.
    *
    * EINE LEERE EINGABE MACHT NULL ABFRAGEN. Eine leere Liste ist ein Ergebnis, keine Frage.
    *
@@ -638,11 +638,12 @@ export class ValidationService {
     if (ids.length === 0) {
       return staende;
     }
-    const [alle, bewertungen] = await Promise.all([
-      this.assignments.all(),
+    // PRÜFSTATUS-ANZEIGE (R-1524): gezielt die Zuweisungen dieser Objekte, kein Vollscan mehr.
+    const [zuweisungen, bewertungen] = await Promise.all([
+      this.assignments.listByKos(ids),
       this.ratings.listByKos(ids),
     ]);
-    const offeneJeKo = offeneZuweisungenJeKo(alle);
+    const offeneJeKo = offeneZuweisungenJeKo(zuweisungen);
     const stimmenJeKo = bewertungenJeKo(bewertungen);
     for (const ko of kos) {
       if (!staende.has(ko.id)) {

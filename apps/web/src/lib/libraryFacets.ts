@@ -6,8 +6,9 @@
 // Map-/Array-Operationen (lib/facets).
 // Dazu: GESPEICHERTE SICHTEN — benannt, LOKAL je Nutzer (localStorage, wie die Board-Checkboxen;
 // bewusst KEIN Server-Speicher — ehrlich dokumentiert: die Sicht lebt nur in diesem Browser).
-import type { KnowledgeObject } from "../api/types";
+import type { Conflict, KnowledgeObject } from "../api/types";
 import { confidentialityOf } from "./confidentiality";
+import { conflictImpact, conflictLimitedUsability } from "./conflictImpact";
 import { isDemoKnowledge } from "./demoKnowledge";
 import { deriveStatus } from "./displayStatus";
 import {
@@ -95,13 +96,27 @@ export function libraryFacetValues(ko: KnowledgeObject, nowMs: number): FacetVal
 // Inhaltlich unverändert (die sechs Bestands-Facetten PLUS Art/Tags/Herkunft/Reife) — ergänzt um
 // `confidentiality` (Block C stellt die Vertraulichkeit in die Schiene; das Feld liegt am KO,
 // `confidentialityOf` glättet den fehlenden Wert ehrlich auf „intern“).
-export function libraryFilterValues(ko: KnowledgeObject, nowMs: number): FacetValues {
+//
+// PRÜFSTATUS-ANZEIGE (R-0216, Ben Nacharbeit 3): `konflikte` ist die Konfliktliste der Fläche
+// (`useConflicts`). Mit ihr nimmt die REIFE dieselbe konfliktbegrenzte Nutzbarkeit wie Detail und
+// Antwort (`conflictLimitedUsability`): ein Objekt mit wirksamem ungelöstem Konflikt gehört zu
+// „In Prüfung“ — auch dann, wenn der Server den Konflikt nicht mitliefert (Listendeckel) und der
+// Kern nach R-0231 auf `offen` zurückgesetzt ist. Ohne Liste (Aufrufer ohne Konfliktkenntnis)
+// bleibt die Ableitung wie bisher.
+export function libraryFilterValues(
+  ko: KnowledgeObject,
+  nowMs: number,
+  konflikte?: readonly Conflict[],
+): FacetValues {
+  const reife = libraryMaturity(ko).usability;
   return {
     ...libraryFacetValues(ko, nowMs),
     type: [ko.type],
     tag: ko.tags ?? [],
     origin: [isDemoKnowledge(ko) ? "demo" : "non-demo"],
-    maturity: [libraryMaturity(ko).usability],
+    maturity: [
+      konflikte ? conflictLimitedUsability(reife, conflictImpact(ko.id, konflikte)) : reife,
+    ],
     confidentiality: [confidentialityOf(ko.confidentiality)],
   };
 }
