@@ -1267,6 +1267,14 @@ const INVENTAR: readonly string[] = [
   // Achse `taskpane`; „klara" steht nicht im Pfad, K5 bleibt bei 71. GEMESSEN, NICHT GESETZT: der
   // Prüflauf am Kandidaten cd1073c0 meldete K2 mit genau diesem Pfad.
   "tests/r1864-w9-zuordnung/w9-quelle-und-zuordnung.test.ts",
+  // Folgeauftrag gesamt-erstnutzerfuehrung-quellen, Nacharbeit 15 (Integration mit main): der
+  // Aufrufer-Wächter der Erfassung nennt seit `22d6b201` („Suchraum und kombinierbare Facetten …",
+  // über main eingemischt) das statische Panel `apps/web/public/word-addin/taskpane.html` (`:1318`)
+  // — Achse `taskpane`. Sachlich keine Klara-Regression, gepinnt, weil die Achse hier nicht still
+  // verengt wird. Kein „klara" im Pfad: fällt in `verfehlt`, K5 bleibt bei 71. GEMESSEN, NICHT
+  // GESETZT: der Prüflauf am Kandidaten 95636768 meldete K2 `neu im Baum, aber nicht im gepinnten
+  // Inventar` mit genau diesem Pfad.
+  "tests/capture/aufrufer-waechter.test.ts",
 ];
 
 // ------------------------------------------------------------------------------------------------

@@ -2107,8 +2107,16 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // `WissensPriorisierung` — + 1 `Einstieg`). Diese sechs stecken in den 447 von main schon drin.
     // EHRLICH GESAGT: die 448 ist bei der Konfliktauflösung GERECHNET (447 + 1), nicht gemessen;
     // weicht der Prüflauf ab, nennt die Meldung oben die gemessene Zahl, und DIE gehört hier hin.
+    //
+    // Nacharbeit 15: GEMESSEN 451. Am Kandidaten 95636768 meldete der Sammler wörtlich „gemessen:
+    // 451 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 559 Quelldateien … expected
+    // { komponenten: 451, … } to deeply equal { komponenten: 448, … }". Dieser Auftrag trägt genau
+    // EIN Bauteil (`Einstieg`) und zwei Quelldateien (`pages/Einstieg.tsx`, `lib/einstiege.ts`) bei;
+    // die drei Komponenten über 448 kamen mit dem erneut eingemischten Hauptstand (Grundmenge
+    // 549 → 559, davon 2 aus diesem Auftrag). Welche es sind, ist ohne Git-Verlauf an diesem
+    // Arbeitsbaum nicht namentlich bestimmt. `anbieter` 1 und `traeger` 2 sind unverändert.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 448,
+      komponenten: 451,
       anbieter: 1,
       traeger: 2,
     });
