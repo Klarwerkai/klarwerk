@@ -3,7 +3,6 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { endpoints } from "../api/endpoints";
 import { useDirectory, useDrafts } from "../api/hooks";
-import { useSession } from "../app/AuthContext";
 import { GuardedLink, useGuardedNavigate } from "../app/NavGuardContext";
 import { useToast } from "../app/ToastContext";
 import { CaptureDraftList } from "../components/CaptureDraftList";
@@ -55,7 +54,6 @@ import { HelpTip } from "../components/HelpTip";
 // dieselbe Störung.
 export function MeineEntwuerfe(): JSX.Element {
   const { t } = useTranslation();
-  const { user } = useSession();
   const { push } = useToast();
   const qc = useQueryClient();
   const navigate = useGuardedNavigate();
@@ -63,7 +61,13 @@ export function MeineEntwuerfe(): JSX.Element {
   const directory = useDirectory();
   const [confirmDiscardId, setConfirmDiscardId] = useState<string | null>(null);
 
-  const isAdmin = user?.role === "admin";
+  // AUFNAHME gesamt-entwurf-einreichen · Entscheidung Pedi `debbb8e8`: Entwürfe sind PRIVAT. Der
+  // Server gibt jeder Rolle, auch Administratoren, nur die EIGENEN Entwürfe (`canSeeDraft` in
+  // services/app/src/routes/capture-routes.ts). Die Mehr-Ersteller-Sicht der Liste (Ersteller-Filter,
+  // Reichweiten-Plakette, „Admin-Ansicht: alle") hätte hier nichts mehr zu unterscheiden und
+  // behauptete eine Reichweite, die es nicht gibt. Sie bleibt in `CaptureDraftList` für den eigenen
+  // Auftrag zum gemeinsamen Pool (R-2099) stehen und ist hier aus (`isAdmin={false}` an der
+  // Liste, immer der Satz `capture.draftScope.note`).
   const bestand = drafts.data ?? [];
 
   // ================================================================================================
@@ -191,14 +195,14 @@ export function MeineEntwuerfe(): JSX.Element {
       <HelpTip title={t("seitenhilfe.entwuerfe.title")} body={t("seitenhilfe.entwuerfe.body")} />
 
       {/* Der wahre Suchraum, bevor gesucht wird — dieselben zwei Sätze wie im Arbeitsraum
-          (AUFTRAG-BASIC-u2): die Admin-Ansicht bekommt ihren eigenen, statt einer Behauptung über
-          „deine" Entwürfe. Daneben der Weg dorthin, wo validiertes Wissen steht. */}
+          (AUFTRAG-BASIC-u2). Seit `debbb8e8` sieht jede Rolle nur ihre eigenen Entwürfe, der Satz
+          über „deine" Entwürfe gilt deshalb für alle. Daneben der Weg dorthin, wo validiertes Wissen steht. */}
       {bestand.length > 0 ? (
         <div
           data-testid="entwuerfe-suchraum"
           className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] leading-relaxed text-muted"
         >
-          <span>{isAdmin ? t("capture.draftScope.noteAdmin") : t("capture.draftScope.note")}</span>
+          <span>{t("capture.draftScope.note")}</span>
           <GuardedLink
             to="/bibliothek"
             data-testid="entwuerfe-zur-bibliothek"
@@ -249,13 +253,11 @@ export function MeineEntwuerfe(): JSX.Element {
       <CaptureDraftList
         variant="seite"
         drafts={bestand}
-        isAdmin={isAdmin}
+        isAdmin={false}
         directory={directory.data ?? []}
-        // Die Reichweiten-Plakette ist eine ADMIN-Auskunft (mega38 J4) und erscheint nur dort. Sie
-        // trägt hier den vorhandenen, dreisprachigen Namen der Reichweite („Alle Ersteller") — der
-        // Arbeitsraum schreibt an dieser Stelle eine fest verdrahtete deutsche Zeichenkette
-        // (`Capture.tsx`, „Admin-Ansicht: alle Entwürfe"); die abzuschreiben hiesse, einen
-        // unübersetzten Text zu vermehren. Den vollen Satz trägt ohnehin der Suchraum-Hinweis oben.
+        // Die Reichweiten-Plakette ist aus (s. oben, `debbb8e8`); bekäme die Liste wieder mehrere
+        // Ersteller (Pool, R-2099), stünde sie da. Sie trüge dann den vorhandenen, dreisprachigen
+        // Namen der Reichweite („Alle Ersteller") statt einer fest verdrahteten deutschen Zeichenkette.
         scopeLabel={t("capture.draftAuthorAll")}
         // Diese Seite kennt weder einen gerade gespeicherten noch einen offenen Entwurf — beides ist
         // Zustand des Editors. Hier `null` zu übergeben ist die ehrliche Auskunft, nicht eine Lücke.

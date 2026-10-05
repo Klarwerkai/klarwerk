@@ -926,10 +926,15 @@ describe("JOB 3768 · D · die Rückfrage vor dem Löschen sagt, was wirklich ge
 // 3741 R1, 3670 R1 — alle drei aus diesem Grund rot). Die Fälle unten messen deshalb jede
 // Beschriftung, die der Text nennt, an der gemounteten Seite — und den Rollenvorbehalt an der
 // Rolle, für die er gilt.
-const ADMIN_VORBEHALT = {
-  de: "Als Administrator",
-  en: "As an administrator",
-  nl: "Als beheerder",
+//
+// AUFNAHME gesamt-entwurf-einreichen (Lauf :3) · Entscheidung Pedi `debbb8e8`: Entwürfe sind PRIVAT.
+// Bis dahin sah ein Administrator hier die Entwürfe aller Ersteller samt Auswahl „Alle Ersteller",
+// und die Hilfe trug dafür einen Rollenvorbehalt. Beides ist fort: jede Rolle sieht nur die
+// eigenen, es gibt keine Ersteller-Auswahl, und die Hilfe sagt genau das — auch dem Administrator.
+const PRIVAT_ZUSAGE = {
+  de: "Hier stehen nur deine eigenen Entwürfe: Sie sind privat, niemand sonst sieht sie, auch kein Administrator.",
+  en: "Only your own drafts stand here: they are private, nobody else sees them, not even an administrator.",
+  nl: "Hier staan alleen je eigen concepten: ze zijn privé, niemand anders ziet ze, ook geen beheerder.",
 } as const;
 
 /** Die Anführungszeichen, in denen die Hilfetexte dieser Sprache eine Beschriftung zitieren. */
@@ -942,7 +947,7 @@ function zitiert(sprache: (typeof SPRACHEN)[number], schluessel: string): string
 }
 
 describe("JOB 3768 · E · die Zusage der Entwurfs-Hilfe und die Fläche im selben Lauf", () => {
-  it("E1 · MIT einer Zeile als ADMIN: Fortsetzen, Ersteller-Auswahl und Papierkorb stehen wirklich da", async () => {
+  it("E1 · MIT einer Zeile als ADMIN: Fortsetzen und Papierkorb stehen wirklich da — eine Ersteller-Auswahl nicht", async () => {
     sitzung.rolle = "admin";
     bestand.entwuerfe = [EIN_ENTWURF];
     await mount(SEITEN[4]);
@@ -951,11 +956,17 @@ describe("JOB 3768 · E · die Zusage der Entwurfs-Hilfe und die Fläche im selb
     const fortsetzen = container.querySelector('[data-entwurf-fortsetzen="e-1"]');
     expect(fortsetzen).not.toBeNull();
     expect(normal(fortsetzen?.textContent ?? "")).toContain(ressource("de", "capture.resume"));
-    const ersteller = container.querySelector('[data-testid="entwurfsliste-ersteller"]');
-    expect(ersteller, "der Ersteller-Filter fehlt für den Admin").not.toBeNull();
-    expect(normal(ersteller?.textContent ?? "")).toContain(
-      ressource("de", "capture.draftAuthorAll"),
+    // debbb8e8: auch der Admin sieht nur die eigenen Entwürfe — eine Ersteller-Auswahl hätte nichts
+    // zu unterscheiden und behauptete eine Reichweite, die es nicht gibt.
+    expect(
+      container.querySelector('[data-testid="entwurfsliste-ersteller"]'),
+      "die Ersteller-Auswahl ist zurück — Entwürfe sind privat (debbb8e8)",
+    ).toBeNull();
+    const suchraumAdmin = normal(
+      container.querySelector('[data-testid="entwuerfe-suchraum"]')?.textContent ?? "",
     );
+    expect(suchraumAdmin).toContain(normal(ressource("de", "capture.draftScope.note")));
+    expect(suchraumAdmin).not.toContain(normal(ressource("de", "capture.draftScope.noteAdmin")));
     expect(container.querySelector('[data-testid="entwurfsliste-suche"]')).not.toBeNull();
     expect(container.querySelector('[data-testid="entwuerfe-papierkorb"]')).not.toBeNull();
 
@@ -963,7 +974,6 @@ describe("JOB 3768 · E · die Zusage der Entwurfs-Hilfe und die Fläche im selb
     const zusage = normal(ressource("de", "seitenhilfe.entwuerfe.body"));
     for (const schluessel of [
       "capture.resume",
-      "capture.draftAuthorAll",
       "adm.trash.title",
       "adm.trash.restore",
       "adm.trash.purge",
@@ -972,6 +982,9 @@ describe("JOB 3768 · E · die Zusage der Entwurfs-Hilfe und die Fläche im selb
         zitiert("de", schluessel),
       );
     }
+    // Sie verspricht keine Auswahl, die es nicht gibt, und sagt dem Admin, dass er nur die eigenen sieht.
+    expect(zusage).not.toContain(zitiert("de", "capture.draftAuthorAll"));
+    expect(zusage).toContain(normal(PRIVAT_ZUSAGE.de));
     // Und sie steht auch wirklich im Zahnrad dieser Seite.
     expect(await seitenhilfe()).toContain(zusage);
   });
@@ -989,7 +1002,7 @@ describe("JOB 3768 · E · die Zusage der Entwurfs-Hilfe und die Fläche im selb
     expect(zusage).not.toContain(normal(ressource("de", "erfassen.entwuerfe.keine")));
   });
 
-  it("E3 · dieselbe Zeile als EXPERTIN: die Ersteller-Auswahl gibt es nicht — und die Hilfe sagt es vorher", async () => {
+  it("E3 · dieselbe Zeile als EXPERTIN: dieselbe Fläche wie beim Admin — und die Hilfe sagt, dass Entwürfe privat sind", async () => {
     sitzung.rolle = "experte";
     bestand.entwuerfe = [EIN_ENTWURF];
     await mount(SEITEN[4]);
@@ -1004,23 +1017,23 @@ describe("JOB 3768 · E · die Zusage der Entwurfs-Hilfe und die Fläche im selb
     );
     expect(suchraum).toContain(normal(ressource("de", "capture.draftScope.note")));
     expect(suchraum).not.toContain(normal(ressource("de", "capture.draftScope.noteAdmin")));
-    // GEGENPROBE zur Rolle steht in E1: dort ist derselbe Filter da.
-    // Die ZUSAGE hängt die Auswahl ausdrücklich an die Admin-Rolle, statt sie allen zu versprechen.
+    // Seit debbb8e8 gibt es keinen Rollenunterschied mehr (E1 misst dasselbe für den Admin).
     const zusage = normal(ressource("de", "seitenhilfe.entwuerfe.body"));
-    expect(zusage).toContain(ADMIN_VORBEHALT.de);
-    expect(zusage.indexOf(ADMIN_VORBEHALT.de)).toBeLessThan(
-      zusage.indexOf(zitiert("de", "capture.draftAuthorAll")),
-    );
-    expect(await seitenhilfe()).toContain(ADMIN_VORBEHALT.de);
+    expect(zusage).toContain(normal(PRIVAT_ZUSAGE.de));
+    expect(await seitenhilfe()).toContain(normal(PRIVAT_ZUSAGE.de));
   });
 
-  it("E4 · in allen drei Sprachen trägt die Zusage den Rollenvorbehalt und die echten Beschriftungen", () => {
+  it("E4 · in allen drei Sprachen sagt die Zusage „privat“ und trägt die echten Beschriftungen", () => {
     for (const sprache of SPRACHEN) {
       const zusage = normal(ressource(sprache, "seitenhilfe.entwuerfe.body"));
-      expect(zusage, `${sprache}: der Rollenvorbehalt fehlt`).toContain(ADMIN_VORBEHALT[sprache]);
+      expect(zusage, `${sprache}: die Privat-Zusage fehlt`).toContain(
+        normal(PRIVAT_ZUSAGE[sprache]),
+      );
+      expect(zusage, `${sprache}: die Hilfe verspricht die Ersteller-Auswahl`).not.toContain(
+        zitiert(sprache, "capture.draftAuthorAll"),
+      );
       for (const schluessel of [
         "capture.resume",
-        "capture.draftAuthorAll",
         "lib.liste.erfassen",
         "adm.trash.title",
         "adm.trash.restore",

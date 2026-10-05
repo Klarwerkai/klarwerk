@@ -125,10 +125,15 @@ describe("JOB 4367 · K1 — der Umzug hat keinen Text verändert und keinen ver
         namen.length,
         `${sprache}: werte-vorher.json trägt ${namen.length} Schlüssel, bestand-vorher.json nennt ${kopf.sprachen[sprache]?.anzahl}`,
       ).toBe(kopf.sprachen[sprache]?.anzahl);
-      expect(
-        summe,
-        `${sprache}: werte-vorher.json passt nicht zur eingecheckten Prüfsumme — die beiden Dateien stammen aus verschiedenen Läufen`,
-      ).toBe(kopf.sprachen[sprache]?.sha256);
+      // `soft`: eine abweichende Summe macht den Fall weiterhin rot, bricht aber nicht nach der
+      // ersten Sprache ab — so nennt EIN Lauf die Ist-Summen aller drei Sprachen (Diff-Zeile
+      // „Received"), statt je Lauf nur eine (AUFNAHME gesamt-entwurf-einreichen, Nacharbeit 7).
+      expect
+        .soft(
+          summe,
+          `${sprache}: werte-vorher.json passt nicht zur eingecheckten Prüfsumme — die beiden Dateien stammen aus verschiedenen Läufen`,
+        )
+        .toBe(kopf.sprachen[sprache]?.sha256);
     }
   });
 
