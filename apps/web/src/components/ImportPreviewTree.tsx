@@ -26,12 +26,15 @@ function FolderSummary({
   open,
   checkState,
   onToggleGroup,
+  ohneSeite,
 }: {
   label: string;
   count: string;
   open: boolean;
   checkState: GroupCheckState;
   onToggleGroup: () => void;
+  /** R-0991: Marke und Erklärung, wenn die Seite dieses Ordners nicht in der Vorschau liegt. */
+  ohneSeite?: { marke: string; hinweis: string } | null;
 }): JSX.Element {
   return (
     <summary className="flex cursor-pointer list-none items-center gap-2 p-2">
@@ -54,6 +57,15 @@ function FolderSummary({
         className="h-4 w-4 shrink-0"
       />
       <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-text">{label}</span>
+      {ohneSeite ? (
+        <span
+          data-testid="ordner-ohne-seite"
+          title={ohneSeite.hinweis}
+          className="shrink-0 rounded-pill bg-trust-warn-bg px-2 py-0.5 text-[10.5px] font-semibold text-trust-warn-text"
+        >
+          {ohneSeite.marke}
+        </span>
+      ) : null}
       <span className="shrink-0 text-[11px] text-muted-2">{count}</span>
     </summary>
   );
@@ -67,6 +79,24 @@ interface TreeCallbacks {
   labelOf: (group: PreviewTreeGroup) => string;
   countLabel: (n: number) => string;
   renderRow: (row: PreviewRow) => JSX.Element;
+  ohneSeite: OrdnerOhneSeite | undefined;
+}
+
+/**
+ * R-0991 (K3) — DER ORDNER, DESSEN SEITE NICHT MITKOMMT.
+ *
+ * `pfade` sind die Wertpfade (Wurzel zuerst) aus `lib/importSelectView.ts::ordnerOhneEigeneZeile`.
+ * Der Baum vergleicht sie mit dem Wertpfad jedes Ordnerknotens und setzt bei Gleichheit die Marke.
+ * Er rechnet selbst nichts aus — welcher Ordner betroffen ist, entscheidet allein die Funktion.
+ */
+interface OrdnerOhneSeite {
+  pfade: readonly (readonly string[])[];
+  marke: string;
+  hinweis: string;
+}
+
+function gleicherPfad(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((wert, i) => wert === b[i]);
 }
 
 // A5: EIN Ordner-Knoten — und für jeden Unterordner wieder derselbe Knoten. Der Schlüssel wächst
@@ -78,14 +108,22 @@ function FolderNode({
   depth,
   siblingCount,
   cb,
+  elternPfad,
 }: {
   group: PreviewTreeGroup;
   prefix: string;
   depth: number;
   siblingCount: number;
   cb: TreeCallbacks;
+  /** Die Werte der Elternknoten, Wurzel zuerst — derselbe Pfad wie in `ordnerOhneEigeneZeile`. */
+  elternPfad: readonly string[];
 }): JSX.Element {
   const nodeKey = prefix ? `${prefix}/${group.key}` : group.key;
+  const pfad = [...elternPfad, group.value];
+  const vorgabe = cb.ohneSeite;
+  const ohneSeite = vorgabe?.pfade.some((p) => gleicherPfad(p, pfad))
+    ? { marke: vorgabe.marke, hinweis: vorgabe.hinweis }
+    : null;
   const open = cb.isOpen(nodeKey, siblingCount);
   const children = group.children ?? [];
   // Zeilen, die DIREKT an diesem Knoten hängen. Ohne `ownRows` (Sprach-/Themen-Baum) gilt das
@@ -105,6 +143,7 @@ function FolderNode({
         open={open}
         checkState={cb.checkStateOf(group.rows)}
         onToggleGroup={() => cb.onToggleGroup(group.rows)}
+        ohneSeite={ohneSeite}
       />
       {children.length > 0 ? (
         // ECHTE Unterordner — je eigener Auf/Zu-Zustand, eigene Tri-State-Checkbox, eingerückt.
@@ -117,6 +156,7 @@ function FolderNode({
               depth={depth + 1}
               siblingCount={children.length}
               cb={cb}
+              elternPfad={pfad}
             />
           ))}
         </div>
@@ -137,6 +177,7 @@ export function ImportPreviewTree({
   labelOf,
   countLabel,
   renderRow,
+  ohneSeite,
 }: {
   groups: readonly PreviewTreeGroup[];
   // A5: der Einklapp-Standard hängt an der Zahl der GESCHWISTER auf DIESER Ebene (s. Begründung an
@@ -148,6 +189,8 @@ export function ImportPreviewTree({
   labelOf: (group: PreviewTreeGroup) => string;
   countLabel: (n: number) => string;
   renderRow: (row: PreviewRow) => JSX.Element;
+  /** R-0991: nur im Ordner-Modus gesetzt; ohne Angabe trägt kein Ordner eine Marke. */
+  ohneSeite?: OrdnerOhneSeite;
 }): JSX.Element {
   const cb: TreeCallbacks = {
     isOpen,
@@ -157,6 +200,7 @@ export function ImportPreviewTree({
     labelOf,
     countLabel,
     renderRow,
+    ohneSeite,
   };
   return (
     <div className="mt-1.5 space-y-1.5 border-t border-hairline pt-2">
@@ -168,6 +212,7 @@ export function ImportPreviewTree({
           depth={0}
           siblingCount={groups.length}
           cb={cb}
+          elternPfad={[]}
         />
       ))}
     </div>

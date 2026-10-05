@@ -31,7 +31,7 @@
 //   · EINE HANDGESCHRIEBENE LISTE. Der Fall V leitet die Vollzähligkeit aus dem Quelltext der sechs
 //     Seiten ab, statt sie zu behaupten: jede `queryFn:` und jeder Haken aus `../api/hooks` braucht
 //     einen Fall hier. Die nächste neue Quelle macht V rot, bevor sie ungemessen live geht.
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import i18n from "../../apps/web/src/i18n";
@@ -818,6 +818,8 @@ interface InhaltLage {
   lang?: string;
   /** Der Titel der Detailkarte (`null` auf der Kontenfläche, die keine Karte ist). */
   titel?: string | null;
+  /** Nacharbeit 10: der Titel ist ein DATENWERT (Name des Kontos), kein Katalogtext. */
+  titelDaten?: boolean;
   fragmente: string[];
   hilfeKnoepfe: number;
   hilfen: number;
@@ -908,13 +910,20 @@ function stehtDa(idx: Sprachindex, k: string, fragmente: string[]): boolean {
  * (5 Fragmente, 2 Katalogtexte), und `flaeche-nutzer` war allein die Nutzerliste. Jetzt verlangt
  * jede DETAILKARTE ihre zwei festen Katalogtexte namentlich — ihren Titel und „Zurück" in DIESER
  * Sprache —, und die Kontenfläche wird als ganze Themenspalte gelesen und braucht weiter drei.
+ *
+ * Nacharbeit 10: Die Nutzerkarte trägt als Titel den NAMEN des Kontos — ein Datenwert, der in keiner
+ * Sprache Katalogtext ist. Für sie gilt statt des Titels: „Zurück" und mindestens drei Katalogtexte.
  */
 function kalibrierung(karte: string, l: InhaltLage, sprache: string): string[] {
   const idx = sprachindex(sprache);
   const befunde: string[] = [];
   const katalog = [...new Set(l.fragmente)].filter((f) => schluessel(idx, f, true).length > 0);
   if (typeof l.titel === "string") {
-    if (schluessel(idx, l.titel, false).length === 0) {
+    if (l.titelDaten === true) {
+      if (katalog.length < 3) {
+        befunde.push(`${karte}: nur ${katalog.length} Katalogtexte neben dem Datentitel`);
+      }
+    } else if (schluessel(idx, l.titel, false).length === 0) {
       befunde.push(`${karte}: Kartentitel „${l.titel}“ ist kein ${sprache}-Katalogtext`);
     }
     if (!stehtDa(idx, "einst.zurueck", l.fragmente)) {
@@ -1643,18 +1652,84 @@ describe("JOB 3065 H6 R3 · Endpunkt-Matrix der Detailkarten — 503 am gebauten
   // 8, Befund 3 — siehe `INHALT_LIES`). Deutsch wird zuerst gelesen und ist der Vergleichsstand.
   const inhalte = new Map<string, Map<string, InhaltLage>>();
 
-  /** Jede Karte der Matrix genau einmal, samt Profil — Reiter in der Sprache dieses Laufs. */
-  function inhaltsOrte(): { ort: Quelle; seitenPfad: string }[] {
-    const orte = new Map<string, { ort: Quelle; seitenPfad: string }>();
-    for (const q of matrixAdmin()) {
-      if (!orte.has(q.behaelter)) {
-        orte.set(q.behaelter, { ort: q, seitenPfad: "/admin" });
+  interface InhaltsOrt {
+    reiter: string;
+    zeile: string;
+    behaelter: string;
+    seitenPfad: string;
+    titelDaten?: boolean;
+  }
+
+  /**
+   * Nacharbeit 10 (BEN, K6/K7): die Detailkarten OHNE eigene Abfragequelle. Sie standen bis hierher
+   * nicht im Sprachinventar, weil es nur aus der Endpunkt-Matrix gebildet wurde. Die Zugänge sind
+   * dieselben wie in `h6-funktionsinventar.test.ts` (§5a 1, 6, 8, 21, 26); dazu die Rollenkarte
+   * hinter den Rollenzeilen der Kontenfläche. Nutzeranlage und Passwortkarte werden nur geöffnet,
+   * nichts wird gespeichert. Welche Karten es gibt, sagt der Fall `S-inhalt-V` aus dem Quelltext.
+   */
+  function zusatzOrte(): InhaltsOrt[] {
+    return [
+      {
+        reiter: t("adm.sec.konten"),
+        zeile: '[data-testid="flaeche-nutzer"] button[data-einst="zeile"]',
+        behaelter: "detail-nutzer",
+        seitenPfad: "/admin",
+        titelDaten: true,
+      },
+      {
+        reiter: t("adm.sec.konten"),
+        zeile: '[data-testid="knopf-nutzer-hinzufuegen"]',
+        behaelter: "detail-nutzer-neu",
+        seitenPfad: "/admin",
+      },
+      {
+        reiter: t("adm.sec.konten"),
+        zeile: '[data-testid="zeile-ansicht-rolle"]',
+        behaelter: "detail-ansicht-rolle",
+        seitenPfad: "/admin",
+      },
+      {
+        reiter: t("adm.sec.konten"),
+        zeile: '[data-testid="zeile-rolle-experte"]',
+        behaelter: "detail-rolle",
+        seitenPfad: "/admin",
+      },
+      {
+        reiter: t("adm.sec.sicherheit"),
+        zeile: '[data-testid="zeile-datenschutz"]',
+        behaelter: "detail-datenschutz",
+        seitenPfad: "/admin",
+      },
+      {
+        reiter: "",
+        zeile: '[data-testid="zeile-passwort"]',
+        behaelter: "detail-passwort",
+        seitenPfad: "/profil",
+      },
+    ];
+  }
+
+  /** Jede Detailkarte genau einmal, samt Profil — Reiter in der Sprache dieses Laufs. */
+  function inhaltsOrte(): InhaltsOrt[] {
+    const orte = new Map<string, InhaltsOrt>();
+    const nimm = (o: InhaltsOrt): void => {
+      if (!orte.has(o.behaelter)) {
+        orte.set(o.behaelter, o);
       }
+    };
+    for (const q of matrixAdmin()) {
+      nimm({ reiter: q.reiter, zeile: q.zeile, behaelter: q.behaelter, seitenPfad: "/admin" });
+    }
+    for (const o of zusatzOrte()) {
+      nimm(o);
     }
     for (const q of matrixProfil()) {
-      orte.set(q.behaelter, { ort: q, seitenPfad: "/profil" });
+      nimm({ reiter: q.reiter, zeile: q.zeile, behaelter: q.behaelter, seitenPfad: "/profil" });
     }
-    return [...orte.values()];
+    // Erst alle Orte der Verwaltung, dann die des Profils: je Seite genau ein Neuaufbau.
+    return [...orte.values()].sort(
+      (a, b) => Number(a.seitenPfad === "/profil") - Number(b.seitenPfad === "/profil"),
+    );
   }
 
   async function liesInhalte(sprache: string): Promise<Map<string, InhaltLage>> {
@@ -1664,10 +1739,10 @@ describe("JOB 3065 H6 R3 · Endpunkt-Matrix der Detailkarten — 503 am gebauten
     s.stoerung = null;
     const gelesen = new Map<string, InhaltLage>();
     let geladen = "";
-    for (const { ort, seitenPfad } of inhaltsOrte()) {
-      if (seitenPfad !== geladen) {
-        await neuLaden(seitenPfad, '[data-einst="seite"]');
-        geladen = seitenPfad;
+    for (const ort of inhaltsOrte()) {
+      if (ort.seitenPfad !== geladen) {
+        await neuLaden(ort.seitenPfad, '[data-einst="seite"]');
+        geladen = ort.seitenPfad;
       }
       // Ein Ort ohne Zeile ist eine Fläche, keine Karte: dann die ganze Themenspalte lesen.
       const l = await seite.evaluate<InhaltLage>(fn(INHALT_LIES), [
@@ -1678,7 +1753,7 @@ describe("JOB 3065 H6 R3 · Endpunkt-Matrix der Detailkarten — 503 am gebauten
       ]);
       expect(l.fehler, `${sprache} · ${ort.behaelter}: ${l.fehler}`).toBeNull();
       expect(l.lang, `${sprache} · ${ort.behaelter}: <html lang>`).toBe(sprache);
-      gelesen.set(ort.behaelter, l);
+      gelesen.set(ort.behaelter, { ...l, titelDaten: ort.titelDaten === true });
     }
     return gelesen;
   }
@@ -1865,6 +1940,33 @@ describe("JOB 3065 H6 R3 · Endpunkt-Matrix der Detailkarten — 503 am gebauten
 
     console.info(
       `JOB 3065 H6 R4 · Vollzähligkeit: ${gefunden.length} Quellen in ${SEITEN.length} Seiten → ${abgerufen.size} Endpunkte → ${inMatrix.size} Matrix-Pfade`,
+    );
+  });
+
+  // Nacharbeit 10 (BEN, K6/K7): die Kartenmenge der Sprachfälle wird nicht behauptet, sondern gegen
+  // das Detailinventar des Quelltexts abgeglichen — jede `Detailkarte` der Verwaltung und des Profils
+  // (`testId="detail-…"`), unabhängig davon, ob sie eine eigene Abfragequelle hat.
+  it("S-inhalt-V · das Sprachinventar deckt jede Detailkarte von Verwaltung und Profil", () => {
+    const seitenDir = join(WURZEL, "apps/web/src/pages");
+    const dateien = readdirSync(seitenDir).filter(
+      (d) => (d.startsWith("Admin") && d.endsWith(".tsx")) || d === "Profile.tsx",
+    );
+    const karten = new Set<string>();
+    for (const d of dateien) {
+      const text = readFileSync(join(seitenDir, d), "utf8");
+      for (const m of text.matchAll(/testId="(detail-[a-z0-9-]+)"/g)) {
+        karten.add(m[1] ?? "");
+      }
+    }
+    // Kalibrierung: der Griff findet die bekannten Karten überhaupt.
+    expect(karten.size, `Detailkarten im Quelltext: ${[...karten].join(" · ")}`).toBeGreaterThan(
+      15,
+    );
+    const imInventar = new Set(inhaltsOrte().map((o) => o.behaelter));
+    const fehlt = [...karten].filter((k) => !imInventar.has(k)).sort();
+    expect(fehlt, `Detailkarte ohne Sprachfall: ${fehlt.join(" · ")}`).toEqual([]);
+    console.info(
+      `Nacharbeit 10 · Sprachinventar: ${karten.size} Detailkarten aus ${dateien.length} Seiten`,
     );
   });
 
