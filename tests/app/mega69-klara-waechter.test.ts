@@ -2629,6 +2629,15 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // NACHARBEIT 13: PIN BEWUSST AKTUALISIERT (fe3cc513… -> 66ba98c4…). Der Wert ist GEMESSEN, nicht
     // geschätzt: dieser Fall meldete ihn am Kandidaten 2dc7cbb7 im Prüflauf (`Received:
     // "66ba98c4…f74f76e5"`, funktion-erhalten-jsdom); die vier Dateien sind seither unverändert.
+    // AUFNAHME 20260922 · GESAMT-BESTANDSBLICK (R-0427, Ben Nacharbeit 3) — DER PIN MUSS WANDERN.
+    // Neu: Einstellungszeile `#einst-absatzblick` (Schalter, AUS bis zum bewussten Ja, nur für dieses
+    // Fenster) und `ka3AbsatzPruefen` in `taskpane.js`: nach dem Ja liest ein `Word.run` je
+    // Markierungsanlass nur die ZAHL der Absätze bis zur Markierung (kein Text) und ruft bei einem
+    // Wechsel denselben Bestandsblick wie nach der Schreibruhe. Auslieferungsfolgen: kein neues
+    // Abrufziel, keine neue Nutzlast, CSP/Recht/Manifest unverändert, kein Sideload; Office-API
+    // `Range.expandTo` (WordApi 1.3) — fehlt sie, schweigt der Weg. Der neue Wert war in der
+    // Bausitzung nicht messbar (kein SHA-256-Werkzeug); Blob des Dokuments `0f733b04…`
+    // (`tests/support/panelquelle.ts`). Nachzuführen aus dem `Received` des nächsten Prüflaufs.
     const PIN = "66ba98c4cbaa5cb24a6fe2ae79fe74c56c784c1927dcff9ee7975f98f74f76e5";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(

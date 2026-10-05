@@ -52,6 +52,9 @@ let lesungen = 0;
 let leseFehler = false;
 let fragen: string[] = [];
 let officeHandler: Array<{ typ: string; fn: () => void }> = [];
+/** R-0427: in welchem Absatz die Markierung steht (0-basiert) — und wie oft das gelesen wurde. */
+let absatzIndex = 0;
+let absatzLesungen = 0;
 
 function antwort(koerper: unknown, status = 200): unknown {
   return {
@@ -85,9 +88,23 @@ function wordEinbauen(): void {
     run: (fn: (ctx: unknown) => unknown) => {
       lesungen += 1;
       const text = dokument;
-      const body = { text, load: () => undefined, getHtml: () => ({ value: `<p>${text}</p>` }) };
+      // R-0427: die Absaetze vom Dokumentanfang bis zur Markierung — eine Sammlung ohne Text, deren
+      // Laenge beim `load` aus der aktuellen Absatzlage entsteht (wie Word sie beim sync fuellt).
+      const absaetze = {
+        items: [] as unknown[],
+        load: () => {
+          absatzLesungen += 1;
+          absaetze.items = Array.from({ length: absatzIndex + 1 }, () => ({}));
+        },
+      };
+      const body = {
+        text,
+        load: () => undefined,
+        getHtml: () => ({ value: `<p>${text}</p>` }),
+        getRange: () => ({ expandTo: () => ({ paragraphs: absaetze }) }),
+      };
       const context = {
-        document: { body },
+        document: { body, getSelection: () => ({ getRange: () => ({}) }) },
         sync: () =>
           new Promise<void>((fertig, fehler) =>
             setTimeout(() => (leseFehler ? fehler(new Error("Word-API")) : fertig()), SYNC_MS),
@@ -170,6 +187,8 @@ beforeEach(() => {
   leseFehler = false;
   fragen = [];
   officeHandler = [];
+  absatzIndex = 0;
+  absatzLesungen = 0;
   (window as unknown as { fetch: unknown }).fetch = fetchAttrappe;
   (window as unknown as { klaraBestandsblick?: unknown }).klaraBestandsblick = undefined;
 });
@@ -250,5 +269,100 @@ describe("Aufnahme 20260922 · der Bestandsblick fragt mit dem aktuellen Dokumen
       .klaraBestandsblick;
     await vertrag("tastenruhe");
     expect(lesungen).toBe(lesungenVorher);
+  });
+});
+
+// ================================================================================================
+// R-0427 — BESTANDSBLICK BEIM ABSATZWECHSEL, NUR NACH BEWUSSTEM JA (Bens Befund, Nacharbeit 3).
+// ================================================================================================
+// Derselbe ganze Ablauf wie oben (echtes Fensterskript, KA1→KA3→KA2), dazu die Absatzlage der
+// Markierung. Gemessen wird jeweils VOR Ablauf der Schreibruhe — ein Abruf in diesem Fenster kann
+// also nur vom Absatzwechselweg kommen, nicht vom Ruhefristweg.
+const KURZ = SYNC_MS * 4 + 200;
+
+function absatzSchalter(): HTMLElement {
+  const schalter = document.getElementById("einst-absatzblick");
+  expect(schalter, "der Schalter #einst-absatzblick fehlt im Markup").not.toBeNull();
+  return schalter as HTMLElement;
+}
+
+function cursorFeld(): HTMLElement {
+  const feld = document.querySelector("textarea, input[type='text'], input:not([type])");
+  expect(feld, "kein fokussierbares Eingabefeld im Markup").not.toBeNull();
+  return feld as HTMLElement;
+}
+
+describe("R-0427 · Bestandsblick beim Absatzwechsel — erst nach bewusstem Ja", () => {
+  it("B1 · ohne Ja: der Schalter steht aus, ein Absatzwechsel liest nichts und fragt nichts", async () => {
+    await geoeffnet();
+    expect(absatzSchalter().getAttribute("aria-checked")).toBe("false");
+    // Beschriftet in der Sprache des Fensters — kein roher Schlüssel, Zeile und Schalter gleich.
+    const zeile = document.getElementById("einst-absatzblick-text")?.textContent ?? "";
+    expect(zeile.length).toBeGreaterThan(10);
+    expect(zeile).not.toBe("einstAbsatzblick");
+    expect(absatzSchalter().getAttribute("aria-label")).toBe(zeile);
+    fragen = [];
+
+    dokument = NEU;
+    absatzIndex = 3;
+    markierungGeaendert();
+    await zeitVergehtUm(KURZ);
+
+    expect(absatzLesungen, "ohne Zustimmung wurde die Absatzlage gelesen").toBe(0);
+    expect(fragen, "ohne Zustimmung wurde beim Absatzwechsel gefragt").toEqual([]);
+  });
+
+  it("B2 · nach Ja: der Absatzwechsel ruft den Bestandsblick sofort — mit dem aktuellen Dokument, ohne Fokusraub", async () => {
+    await geoeffnet();
+    absatzSchalter().click();
+    expect(absatzSchalter().getAttribute("aria-checked")).toBe("true");
+    await zeitVergehtUm(KURZ);
+    // Das Ja merkt sich nur den Ausgangsabsatz — es fragt nicht selbst.
+    expect(absatzLesungen).toBe(1);
+    fragen = [];
+
+    const feld = cursorFeld();
+    feld.focus();
+    expect(document.activeElement).toBe(feld);
+    dokument = NEU;
+    absatzIndex = 1;
+    markierungGeaendert();
+    await zeitVergehtUm(KURZ);
+
+    expect(fragen.length, "der Absatzwechsel hat keinen Bestandsblick ausgelöst").toBe(1);
+    expect(fragen[0]).toContain("reisekost");
+    expect(karteSichtbar()).toBe(true);
+    expect(document.activeElement, "der Absatzwechselweg hat den Fokus bewegt").toBe(feld);
+  });
+
+  it("B3 · nach Ja, aber im selben Absatz: kein Abruf vor der Schreibruhe", async () => {
+    await geoeffnet();
+    absatzSchalter().click();
+    await zeitVergehtUm(KURZ);
+    fragen = [];
+
+    dokument = NEU;
+    markierungGeaendert();
+    await zeitVergehtUm(KURZ);
+
+    expect(absatzLesungen, "die Absatzlage wurde nach dem Ja nicht gelesen").toBe(2);
+    expect(fragen).toEqual([]);
+  });
+
+  it("B4 · das Ja ist zurücknehmbar: wieder aus, und der Absatzwechsel bleibt stumm", async () => {
+    await geoeffnet();
+    absatzSchalter().click();
+    await zeitVergehtUm(KURZ);
+    absatzSchalter().click();
+    expect(absatzSchalter().getAttribute("aria-checked")).toBe("false");
+    const lesungenNachJa = absatzLesungen;
+    fragen = [];
+
+    absatzIndex = 2;
+    markierungGeaendert();
+    await zeitVergehtUm(KURZ);
+
+    expect(absatzLesungen).toBe(lesungenNachJa);
+    expect(fragen).toEqual([]);
   });
 });

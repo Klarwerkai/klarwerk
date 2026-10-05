@@ -90,8 +90,17 @@ const MARKE_KOPF_ENDE = '"use strict";\n';
  * Blob `90936dcc…`; `taskpane.js` plus Abschnitt aus `marke.js` weicht von `main`s `taskpane.js`
  * nur in diesen drei Stellen ab (+60/-8), `taskpane.html` nur im Verweis auf `marke.js`,
  * `taskpane.css` gar nicht.
+ *
+ * Aufnahme 20260922 · gesamt-bestandsblick (R-0427, Bens Befund Nacharbeit 3): dieselbe Regel.
+ * Hinzugekommen ist GENAU der Absatzwechselweg nach bewusstem Ja — in `taskpane.html` die
+ * Einstellungszeile `#einst-absatzblick` (5 Zeilen), in `taskpane.js` drei Texte DE/EN/NL in
+ * `KA3_TEXTE`, der Aufruf `ka3AbsatzPruefen()` in `ka3Planen`, die Beschriftung in
+ * `ka3Neuzeichnen` und der Block `ka3AbsatzPruefen`/Schalter (+60/-0 am zusammengefügten
+ * Dokument). Gemessen: das genau nach `fuegePanelZusammen` aus den vier Dateien zusammengesetzte
+ * Dokument hat den Blob `0f733b04…` (`git diff --no-index --full-index`); dasselbe Verfahren
+ * ergibt am unveränderten Stand `8e0ee5cc` wörtlich den alten Wert `90936dcc…`.
  */
-export const PANEL_VOR_SCHNITT_BLOB = "90936dcc8daea18c0d82cb9902964e6e6900c667";
+export const PANEL_VOR_SCHNITT_BLOB = "0f733b04c68b1823b51e41001d9ac8efac82db23";
 
 export interface PanelTeile {
   html: string;

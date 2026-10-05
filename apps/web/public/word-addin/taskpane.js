@@ -7617,18 +7617,21 @@
         // C3 (JOB 1963 D2): der Wortlaut steht im Register und ist deshalb NICHT frei gewaehlt.
         // Die Fuellstelle `{anweisung}` ist die validierte Anweisung, von der abgewichen wird.
         klaraOfferDeviation: "Deine Formulierung weicht ab von: {anweisung}",
+        einstAbsatzblick: "Beim Absatzwechsel nachsehen, ob es das schon gibt",
       },
       en: {
         klaraOfferLabel: "Klara's suggestions",
         klaraOfferLead: "There is already something on this:",
         klaraOfferOpen: "View",
         klaraOfferDeviation: "Your wording deviates from: {anweisung}",
+        einstAbsatzblick: "When I start a new paragraph, check whether this already exists",
       },
       nl: {
         klaraOfferLabel: "Klara's suggesties",
         klaraOfferLead: "Hierover is al iets:",
         klaraOfferOpen: "Bekijken",
         klaraOfferDeviation: "Je formulering wijkt af van: {anweisung}",
+        einstAbsatzblick: "Bij een nieuwe alinea kijken of dit al bestaat",
       },
     };
     for (var ka3Sprache in KA3_TEXTE) {
@@ -8020,6 +8023,7 @@
 
     /** Sprachwechsel: derselbe gehaltene Stand, neuer Text. Nur wenn es die Karte schon gibt. */
     function ka3Neuzeichnen() {
+      ka3AbsatzBeschriften();
       if (document.getElementById("ka3-karten")) { ka3Zeichnen(); }
     }
 
@@ -8074,7 +8078,58 @@
         if (generation !== ka3Generation) { return; }
         ka3Ausfuehren("tastenruhe");
       }, KA3_TASTENRUHE_MS);
+      ka3AbsatzPruefen();
     }
+
+    // R-0427 — BESTANDSBLICK BEIM ABSATZWECHSEL, NUR NACH BEWUSSTEM JA. Der Schalter
+    // `#einst-absatzblick` steht AUS; erst sein Klick schaltet den Weg ein, und das gilt nur fuer
+    // dieses Fenster (nichts gespeichert, derselbe Schalter nimmt es zurueck). Gelesen wird je Anlass
+    // nur, im WIEVIELTEN Absatz die Markierung beginnt (Absatzzahl bis dorthin, kein Text); wechselt
+    // er, laeuft derselbe Bestandsblick wie nach der Schreibruhe. Kein Fokus, kein Schreibweg.
+    var ka3AbsatzAn = false;
+    var ka3Absatz = null;
+
+    function ka3AbsatzPruefen() {
+      if (!ka3AbsatzAn || ka3Beendet || !window.Word || typeof Word.run !== "function") { return; }
+      Promise.resolve()
+        .then(function () {
+          return Word.run(function (context) {
+            var dok = context.document;
+            var davor = dok.body.getRange("Start").expandTo(dok.getSelection().getRange("Start"));
+            var absaetze = davor.paragraphs;
+            absaetze.load("items/alignment");
+            return context.sync().then(function () {
+              var vorher = ka3Absatz;
+              ka3Absatz = absaetze.items.length;
+              if (ka3AbsatzAn && vorher !== null && vorher !== ka3Absatz) {
+                ka3Ausfuehren("absatzwechsel");
+              }
+            });
+          });
+        })
+        // Host ohne diese Lesart: der Weg schweigt — kein Ersatzsignal, kein Takt.
+        .catch(function () { ka3Absatz = null; });
+    }
+
+    var ka3AbsatzSchalter = document.getElementById("einst-absatzblick");
+
+    function ka3AbsatzBeschriften() {
+      if (!ka3AbsatzSchalter) { return; }
+      document.getElementById("einst-absatzblick-text").textContent = t("einstAbsatzblick");
+      ka3AbsatzSchalter.setAttribute("aria-label", t("einstAbsatzblick"));
+    }
+
+    if (ka3AbsatzSchalter) {
+      ka3AbsatzSchalter.addEventListener("click", function () {
+        ka3AbsatzAn = !ka3AbsatzAn;
+        ka3Absatz = null;
+        ka3AbsatzSchalter.className = ka3AbsatzAn ? "schalter an" : "schalter";
+        ka3AbsatzSchalter.setAttribute("aria-checked", ka3AbsatzAn ? "true" : "false");
+        // Das Ja merkt sich nur den Ausgangsabsatz; gefragt wird erst beim naechsten Wechsel.
+        ka3AbsatzPruefen();
+      });
+    }
+    ka3AbsatzBeschriften();
 
     /** Nach `pagehide` laeuft nichts nach — kein Timer, keine spaete Antwort. */
     function ka3Stoppen() {
