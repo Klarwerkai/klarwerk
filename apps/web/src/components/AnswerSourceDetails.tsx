@@ -37,6 +37,7 @@ import { deriveStatus } from "../lib/displayStatus";
 import { KoSummaryDisclosure } from "./KoSummaryDisclosure";
 import { SanitizedHtml } from "./SanitizedHtml";
 import { StatusPill } from "./trust/StatusPill";
+import type { DisplayStatus } from "./trust/types";
 import { cx } from "./ui";
 
 /** Die eine Klassenkette der Belegzeilen — literal, damit der Klassenbindungs-Wächter sie auflöst. */
@@ -48,8 +49,15 @@ export function AnswerSourceDetails({
   ko,
   authorName,
   standBestaetigt = true,
+  status = null,
 }: {
   ko: KnowledgeObject;
+  /**
+   * PRÜFSTATUS-ANZEIGE (Ben R2, BEN-04): der Status, den die Seite für DIESE Quelle schon
+   * entschieden hat (`anzeigestatusAus` samt Konfliktlage, dieselbe Auskunft wie die Plakette).
+   * Ohne ihn gilt der Rückfall `deriveStatus(ko)` — der seither einen Serverwert am Objekt annimmt.
+   */
+  status?: DisplayStatus | null;
   // FUNKE F1 (nacht24 Paket 6): der Wissensträger wird sichtbar gewürdigt — „aus dem Wissen von
   // <Name>". Der Name kommt vom Aufrufer (Directory-Auflösung EINMAL je Seite; Fallback bleibt
   // ehrlich die Autor-Id, nie erfunden). Die Komponente bleibt dadurch netz-/hookfrei mountbar.
@@ -95,7 +103,7 @@ export function AnswerSourceDetails({
     <div className="mt-1 w-full">
       <div className="flex flex-wrap items-center gap-1.5">
         {/* Status + Trust — dieselbe Sprache wie Bibliothek/Validierung, kein neues Vokabular. */}
-        <StatusPill status={deriveStatus(ko)} />
+        <StatusPill status={status ?? deriveStatus(ko)} />
         <span className="rounded-pill bg-page px-1.5 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-muted">
           {t("answerSource.trust", { n: ko.trust })}
         </span>

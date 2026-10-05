@@ -1,5 +1,5 @@
 import type { Pool } from "pg";
-import { type Queryable, type TxContext, pgQueryable, poolQueryable } from "../../db-tx";
+import { type Queryable, type TxContext, pgQueryable, poolQueryable, withPgTx } from "../../db-tx";
 import type { AuditRepo } from "./repo";
 import type { AuditEntry, AuditFilter } from "./types";
 
@@ -75,6 +75,50 @@ export const AUDIT_HASH_VERSION_SCHEMA = `
 ALTER TABLE audit ADD COLUMN IF NOT EXISTS hash_version integer NOT NULL DEFAULT 1;
 `;
 
+// Aufnahme gesamt-auditprotokoll (Lauf 3) — DIE KETTENSPERRE. Vorgänger lesen und Anhängen laufen
+// unter dieser transaktionsgebundenen Beratungssperre (`appendNext`). Sie gilt datenbankweit, also
+// auch zwischen zwei Instanzen gegen dieselbe Datenbank, und endet mit COMMIT/ROLLBACK von selbst —
+// ein abgestürzter Prozess hält sie nicht fest. Derselbe Zahlenraum wie `SPERRSCHLUESSEL_BESTANDSRESET`
+// (596000001) und der Trigramm-Sperre der Tests; der Wert kollidiert mit keinem von beiden.
+export const AUDIT_KETTENSPERRE = 613000001;
+export const SQL_AUDIT_KETTENSPERRE = `SELECT pg_advisory_xact_lock(${AUDIT_KETTENSPERRE})`;
+// Nur im Weg OHNE Aufrufer-Transaktion (eigene, kurze Transaktion): ein Schreiber wartet höchstens so
+// lange auf die Sperre und bricht dann mit einem Fehler ab, statt unbegrenzt zu hängen. Das trennt
+// auch den einen Fall, den die Datenbank nicht als Verklemmung erkennen kann: ein Aufrufer hält die
+// Sperre in seiner Transaktion und wartet im Programm auf einen zweiten Schreiber ohne `tx`.
+export const SQL_AUDIT_WARTEFRIST = "SET LOCAL lock_timeout = '15s'";
+const SQL_AUDIT_LETZTER = "SELECT * FROM audit ORDER BY seq DESC LIMIT 1";
+const SQL_AUDIT_INSERT =
+  "INSERT INTO audit(seq,at,actor,action,target,payload,prev_hash,hash,hash_version) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)";
+const SQL_AUDIT_INSERT_ONCE = `INSERT INTO audit(seq,at,actor,action,target,payload,prev_hash,hash,event_id,hash_version)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+       ON CONFLICT (event_id) WHERE event_id IS NOT NULL DO NOTHING
+       RETURNING seq`;
+
+function insertParams(entry: AuditEntry): unknown[] {
+  return [
+    entry.seq,
+    entry.at,
+    entry.actor,
+    entry.action,
+    entry.target,
+    JSON.stringify(entry.payload),
+    entry.prevHash,
+    entry.hash,
+    // JOB 498 D8: `hash_version` wird AUSDRÜCKLICH geschrieben, nicht dem Spaltendefault
+    // überlassen. Der Default ist 1 — ein V2-Eintrag käme sonst als V1 zurück und wäre damit
+    // unprüfbar, obwohl beim Schreiben alles stimmte.
+    entry.hashVersion ?? 1,
+  ];
+}
+
+function insertOnceParams(entry: AuditEntry): unknown[] {
+  // BEIDE INSERT-Pfade führen die Version. BEN2 hat an D7 gerügt, dass nur einer genannt war:
+  // „Ohne beide INSERT-Spalten schreibt ein neuer V2-Eintrag den Datenbank-Default 1."
+  const basis = insertParams(entry);
+  return [...basis.slice(0, 8), entry.eventId ?? null, entry.hashVersion ?? 1];
+}
+
 interface AuditRow {
   seq: number;
   at: string;
@@ -124,49 +168,45 @@ export class PgAuditRepo implements AuditRepo {
   }
 
   async append(entry: AuditEntry, tx?: TxContext): Promise<void> {
-    // JOB 498 D8: `hash_version` wird AUSDRÜCKLICH geschrieben, nicht dem Spaltendefault
-    // überlassen. Der Default ist 1 — ein V2-Eintrag käme sonst als V1 zurück und wäre damit
-    // unprüfbar, obwohl beim Schreiben alles stimmte.
-    await this.queryable(tx).query(
-      "INSERT INTO audit(seq,at,actor,action,target,payload,prev_hash,hash,hash_version) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)",
-      [
-        entry.seq,
-        entry.at,
-        entry.actor,
-        entry.action,
-        entry.target,
-        JSON.stringify(entry.payload),
-        entry.prevHash,
-        entry.hash,
-        entry.hashVersion ?? 1,
-      ],
-    );
+    await this.queryable(tx).query(SQL_AUDIT_INSERT, insertParams(entry));
   }
 
   // WP-SHIP8-CLOSE-6 (bens ROT-1): exactly-once über den partiellen Unique-Index — der zweite
   // Schreiber desselben Events trifft ON CONFLICT (DO NOTHING) und bekommt ehrlich false zurück.
   async appendOnce(entry: AuditEntry, tx?: TxContext): Promise<boolean> {
-    const res = await this.queryable(tx).query(
-      `INSERT INTO audit(seq,at,actor,action,target,payload,prev_hash,hash,event_id,hash_version)
-       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-       ON CONFLICT (event_id) WHERE event_id IS NOT NULL DO NOTHING
-       RETURNING seq`,
-      [
-        entry.seq,
-        entry.at,
-        entry.actor,
-        entry.action,
-        entry.target,
-        JSON.stringify(entry.payload),
-        entry.prevHash,
-        entry.hash,
-        entry.eventId ?? null,
-        // BEIDE INSERT-Pfade führen die Version. BEN2 hat an D7 gerügt, dass nur einer genannt war:
-        // „Ohne beide INSERT-Spalten schreibt ein neuer V2-Eintrag den Datenbank-Default 1."
-        entry.hashVersion ?? 1,
-      ],
-    );
+    const res = await this.queryable(tx).query(SQL_AUDIT_INSERT_ONCE, insertOnceParams(entry));
     return (res.rowCount ?? 0) > 0;
+  }
+
+  // Aufnahme gesamt-auditprotokoll (Lauf 3): Sperre → Vorgänger → Insert, auf EINEM Client.
+  // MIT `tx` in der Transaktion des Aufrufers — die Sperre hält dann bis zu DESSEN Commit, sodass
+  // der nächste Schreiber erst den festgeschriebenen Vorgänger sieht (READ COMMITTED: die Abfrage
+  // nach der Sperre sieht jeden vorher committeten Eintrag). Ein zweiter Eintrag derselben
+  // Transaktion erwirbt dieselbe Sperre erneut, ohne zu warten. OHNE `tx` in einer eigenen, kurzen
+  // Transaktion mit Wartefrist.
+  async appendNext(
+    build: (last: AuditEntry | undefined) => AuditEntry,
+    tx?: TxContext,
+  ): Promise<{ entry: AuditEntry; written: boolean }> {
+    const schritt = async (q: Queryable): Promise<{ entry: AuditEntry; written: boolean }> => {
+      await q.query(SQL_AUDIT_KETTENSPERRE);
+      const res = await q.query<AuditRow>(SQL_AUDIT_LETZTER);
+      const entry = build(res.rows[0] ? toEntry(res.rows[0]) : undefined);
+      if (entry.eventId) {
+        const ins = await q.query(SQL_AUDIT_INSERT_ONCE, insertOnceParams(entry));
+        return { entry, written: (ins.rowCount ?? 0) > 0 };
+      }
+      await q.query(SQL_AUDIT_INSERT, insertParams(entry));
+      return { entry, written: true };
+    };
+    if (tx) {
+      return schritt(pgQueryable(tx));
+    }
+    return withPgTx(this.pool, async (eigene) => {
+      const q = pgQueryable(eigene);
+      await q.query(SQL_AUDIT_WARTEFRIST);
+      return schritt(q);
+    });
   }
 
   async all(): Promise<AuditEntry[]> {
@@ -192,9 +232,7 @@ export class PgAuditRepo implements AuditRepo {
   }
 
   async last(tx?: TxContext): Promise<AuditEntry | undefined> {
-    const res = await this.queryable(tx).query<AuditRow>(
-      "SELECT * FROM audit ORDER BY seq DESC LIMIT 1",
-    );
+    const res = await this.queryable(tx).query<AuditRow>(SQL_AUDIT_LETZTER);
     return res.rows[0] ? toEntry(res.rows[0]) : undefined;
   }
 

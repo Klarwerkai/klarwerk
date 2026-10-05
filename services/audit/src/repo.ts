@@ -28,6 +28,24 @@ export interface AuditRepo {
   // Set-Guard (kein await zwischen Prüfen und Anhängen). Rückgabe true = DIESER Aufruf hat
   // geschrieben; false = der Beleg existierte bereits (idempotenter No-op, kein Fehler).
   appendOnce(entry: AuditEntry, tx?: TxContext): Promise<boolean>;
+  /**
+   * Aufnahme gesamt-auditprotokoll (Lauf 3) — VORGÄNGER LESEN UND ANHÄNGEN ALS EIN SCHRITT.
+   *
+   * `record`/`recordOnce` lasen bisher `last()` und schrieben danach `append()`. Zwei gleichzeitige
+   * Schreiber sahen denselben Vorgänger und vergaben dieselbe `seq`: im Speicher zerbrach die Kette,
+   * auf PostgreSQL scheiterte der zweite an `audit_pkey` (500, und bei der Erstanlage ein Objekt ohne
+   * `ko.created`). Hier bekommt `build` den Vorgänger erst, wenn niemand anderes mehr dazwischen
+   * anhängen kann — im Speicher synchron, auf PostgreSQL unter einer transaktionsgebundenen Sperre,
+   * die bis zum Ende der Transaktion gehalten wird (auch über Instanzen hinweg).
+   *
+   * Trägt der gebaute Eintrag eine `eventId`, gilt der Vertrag von `appendOnce` (`written: false`
+   * statt eines zweiten Eintrags). OPTIONAL aus demselben Grund wie `findBy`: handgeschriebene
+   * Test-Doubles implementieren nur `append`/`last`; fehlt die Methode, bleibt es beim alten Weg.
+   */
+  appendNext?(
+    build: (last: AuditEntry | undefined) => AuditEntry,
+    tx?: TxContext,
+  ): Promise<{ entry: AuditEntry; written: boolean }>;
   all(): Promise<AuditEntry[]>;
   last(tx?: TxContext): Promise<AuditEntry | undefined>;
   /**
@@ -195,6 +213,17 @@ export function pruefeValidationDecisionRef(
   return "OK";
 }
 
+/** Friert ein Objekt samt aller verschachtelten Objekte und Listen ein. */
+function tiefEingefroren<T>(wert: T): T {
+  if (wert && typeof wert === "object" && !Object.isFrozen(wert)) {
+    for (const kind of Object.values(wert)) {
+      tiefEingefroren(kind);
+    }
+    Object.freeze(wert);
+  }
+  return wert;
+}
+
 export class InMemoryAuditRepo implements AuditRepo {
   private readonly entries: AuditEntry[] = [];
   // WP-SHIP8-CLOSE-6 (bens ROT-1): Spiegel des partiellen Pg-Unique-Index audit_event_id_uq.
@@ -203,13 +232,41 @@ export class InMemoryAuditRepo implements AuditRepo {
   // Punktzugriff — dieselbe Zusage in beiden Ablagen, nicht nur dasselbe Ergebnis.
   private readonly bySeq = new Map<number, AuditEntry>();
 
-  append(entry: AuditEntry, _tx?: TxContext): Promise<void> {
-    if (entry.eventId) {
-      this.eventIds.add(entry.eventId);
+  // Aufnahme gesamt-auditprotokoll (Lauf 3): der Spiegel des Primärschlüssels gilt auch beim
+  // SCHREIBEN. PostgreSQL weist eine zweite Zeile mit derselben `seq` ab; hier wurde sie bisher
+  // angehängt, und die Kette zerbrach (zwei Einträge mit derselben `seq`, `linkageBreaks=1`).
+  //
+  // Lauf 5 (BEN-L5-B1): gespeichert wird eine EIGENE, TIEF eingefrorene Kopie. Vorher fror nur das
+  // äußere Objekt ein; `payload` blieb die Referenz des Aufrufers und wurde bei jedem Lesen
+  // herausgegeben — `payload.verdict = …` oder `delete read.payload.verdict` änderte den
+  // gespeicherten Eintrag. Jetzt ändert eine Änderung am Eingabeobjekt nichts mehr, und jeder
+  // Änderungs- oder Löschversuch an einem gelesenen Eintrag wird verweigert (TypeError).
+  //
+  // Runde 3 (BEN-L5-B1, Date): die Kopie ist eine JSON-Kopie, nicht `structuredClone`. Ein `Date`
+  // (ebenso Map/Set) blieb sonst ein Objekt mit innerem Zustand, den `Object.freeze` nicht schützt —
+  // `read.payload.zeit.setUTCFullYear(2000)` änderte den gespeicherten Eintrag. Die JSON-Kopie
+  // speichert genau das, was auch PostgreSQL (`jsonb`) speichert und was der Hash abdeckt
+  // (`canonicalJson` hat die Wertsemantik von `JSON.stringify`): ein Datum als ISO-Zeichenkette.
+  private anhaengen(entry: AuditEntry): AuditEntry {
+    if (this.bySeq.has(entry.seq)) {
+      throw new Error(`AUDIT_SEQ_BELEGT: seq ${entry.seq} ist bereits vergeben.`);
     }
-    this.entries.push(Object.freeze(entry));
-    this.bySeq.set(entry.seq, entry);
-    return Promise.resolve();
+    const gespeichert = tiefEingefroren(JSON.parse(JSON.stringify(entry)) as AuditEntry);
+    if (gespeichert.eventId) {
+      this.eventIds.add(gespeichert.eventId);
+    }
+    this.entries.push(gespeichert);
+    this.bySeq.set(gespeichert.seq, gespeichert);
+    return gespeichert;
+  }
+
+  append(entry: AuditEntry, _tx?: TxContext): Promise<void> {
+    try {
+      this.anhaengen(entry);
+      return Promise.resolve();
+    } catch (err) {
+      return Promise.reject(err);
+    }
   }
 
   // Auftrag gesamt-dubletten-rueckzug (Runde 2, BEN-R3-1): nimmt den LETZTEN Eintrag zurück, wenn
@@ -235,12 +292,39 @@ export class InMemoryAuditRepo implements AuditRepo {
     if (entry.eventId && this.eventIds.has(entry.eventId)) {
       return Promise.resolve(false);
     }
-    if (entry.eventId) {
-      this.eventIds.add(entry.eventId);
+    try {
+      this.anhaengen(entry);
+      return Promise.resolve(true);
+    } catch (err) {
+      return Promise.reject(err);
     }
-    this.entries.push(Object.freeze(entry));
-    this.bySeq.set(entry.seq, entry);
-    return Promise.resolve(true);
+  }
+
+  // Lauf 3: Vorgänger lesen, Eintrag bauen und anhängen ohne ein `await` dazwischen — kein zweiter
+  // Schreiber kann denselben Vorgänger sehen.
+  //
+  // Lauf 5 (Nacharbeit 2): geschrieben wird über die EIGENEN Methoden `append`/`appendOnce` dieser
+  // Instanz, nicht an ihnen vorbei. Wer sie ersetzt oder beobachtet (Messhüllen in Tests, der
+  // Rücknahme-Weg mit seinem Kontext), sieht damit jeden Eintrag — vorher lief `appendNext` direkt
+  // in `anhaengen`, und ein Beleg im Rücknahme-Vorgang blieb für eine solche Hülle unsichtbar. Beide
+  // Methoden hängen synchron an; zwischen dem Lesen des Vorgängers und dem Anhängen liegt weiterhin
+  // kein `await`. Zurückgegeben wird die gespeicherte (eingefrorene) Fassung.
+  appendNext(
+    build: (last: AuditEntry | undefined) => AuditEntry,
+    tx?: TxContext,
+  ): Promise<{ entry: AuditEntry; written: boolean }> {
+    try {
+      const entry = build(this.entries[this.entries.length - 1]);
+      const schreiben = entry.eventId
+        ? this.appendOnce(entry, tx)
+        : this.append(entry, tx).then(() => true);
+      return schreiben.then((written) => ({
+        entry: written ? (this.bySeq.get(entry.seq) ?? entry) : entry,
+        written,
+      }));
+    } catch (err) {
+      return Promise.reject(err);
+    }
   }
 
   all(): Promise<AuditEntry[]> {

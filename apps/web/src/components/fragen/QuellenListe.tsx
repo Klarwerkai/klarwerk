@@ -14,6 +14,7 @@
 // reicht dafür `wissenHref={null}` (eine erfundene Quelle hat kein Wissensobjekt, also keinen Link)
 // und `dank={null}` (nichts, was eine Nutzerdatenänderung auslösen könnte).
 import { ArrowRight, ThumbsUp } from "lucide-react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import type { KnowledgeObject } from "../../api/types";
@@ -23,6 +24,7 @@ import type { EvidenceTone } from "../../lib/knowledgeClass";
 import type { KoUsability } from "../../lib/koOverview";
 import { useReadiness } from "../../lib/useReadiness";
 import { AnswerSourceDetails } from "../AnswerSourceDetails";
+import type { DisplayStatus } from "../trust/types";
 import { SectionLabel } from "../ui";
 import {
   PruefstandPlakette,
@@ -59,7 +61,13 @@ export interface QuellenZeile {
   label: string;
   carrying: boolean;
   verwendung: Verwendung;
-  pruefstand: string | null;
+  /** Der Anzeigestatus der Quelle (`anzeigestatusAus`), `null` = unbekannt. */
+  pruefstand: DisplayStatus | null;
+  /**
+   * PRÜFSTATUS-ANZEIGE (R-0223): validiert ja/nein bei bekannter Quelle, `null` bei unbekannter —
+   * dieselbe Angabe, aus der der Zähler „offen/ungeprüft“ entsteht (`answerSourceSummary`).
+   */
+  validated: boolean | null;
   pruefstandWort: string;
   pruefstandHinweis: string;
   usability: KoUsability | null;
@@ -94,6 +102,17 @@ export function QuellenListe({
   } | null;
 }): JSX.Element {
   const { t } = useTranslation();
+  // ==============================================================================================
+  // PRÜFSTATUS-ANZEIGE (R-0223, Ben R2 BEN-06) · AUS DEM ZÄHLER WIRD EIN FILTER.
+  // ==============================================================================================
+  // „Ungeprüft" heißt hier GENAU das, was der Zähler „offen/ungeprüft" zählt: eine bekannte Quelle,
+  // die nicht validiert ist (`validated === false`). Eine unbekannte Quelle (`null`) zählt weder
+  // dort noch hier — über sie wird nichts behauptet. Der Filter erscheint nur, wenn es mindestens
+  // eine ungeprüfte Quelle gibt; verschwindet sie (neue Antwort), gilt wieder die ganze Liste.
+  const ungepruefte = quellen.filter((s) => s.validated === false);
+  const [nurUngeprueftGewaehlt, setNurUngeprueft] = useState(false);
+  const nurUngeprueft = nurUngeprueftGewaehlt && ungepruefte.length > 0;
+  const gezeigt = nurUngeprueft ? ungepruefte : quellen;
   return (
     <div className="mt-4" data-tutorial-ziel={FRAGEN_ZIEL.quellenliste}>
       <SectionLabel>{t("ask.sources")}</SectionLabel>
@@ -118,8 +137,43 @@ export function QuellenListe({
       )}
       {/* SCRUM-250: Quellen handlungsnah — KO-Titel statt roher ID, Link zum Detail.
           SCRUM-300: je Quelle die kanonische Nutzbarkeit (gleiche Sprache wie KO-Detail/Library). */}
-      <ul className="mt-1.5 space-y-1.5">
-        {quellen.map((s) => {
+      {ungepruefte.length > 0 ? (
+        <fieldset
+          data-testid="ask-quellen-filter"
+          className="m-0 mt-1.5 flex flex-wrap items-center gap-1.5 border-0 p-0"
+        >
+          <legend className="sr-only">{t("pruefstatus.quellen.filterLabel")}</legend>
+          <button
+            type="button"
+            aria-pressed={!nurUngeprueft}
+            data-testid="ask-quellen-filter-alle"
+            onClick={() => setNurUngeprueft(false)}
+            className="rounded-pill border border-hairline px-2 py-0.5 text-[11.5px] font-semibold text-muted aria-pressed:border-ink aria-pressed:bg-ink aria-pressed:text-white"
+          >
+            {t("pruefstatus.quellen.alle", { count: quellen.length })}
+          </button>
+          <button
+            type="button"
+            aria-pressed={nurUngeprueft}
+            data-testid="ask-quellen-filter-ungeprueft"
+            onClick={() => setNurUngeprueft(true)}
+            className="rounded-pill border border-hairline px-2 py-0.5 text-[11.5px] font-semibold text-trust-warn-text aria-pressed:border-ink aria-pressed:bg-ink aria-pressed:text-white"
+          >
+            {t("pruefstatus.quellen.nurUngeprueft", { count: ungepruefte.length })}
+          </button>
+        </fieldset>
+      ) : null}
+      {nurUngeprueft ? (
+        <p
+          data-testid="ask-quellen-filter-hinweis"
+          aria-live="polite"
+          className="mt-1 text-[12px] text-muted"
+        >
+          {t("pruefstatus.quellen.gefiltert", { count: ungepruefte.length, total: quellen.length })}
+        </p>
+      ) : null}
+      <ul className="mt-1.5 space-y-1.5" data-testid="ask-quellen-liste">
+        {gezeigt.map((s) => {
           const sourceKo = koVon(s.id);
           return (
             <li key={s.id} className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -220,6 +274,7 @@ export function QuellenListe({
                 <div data-tutorial-ziel={FRAGEN_ZIEL.original} className="w-full">
                   <AnswerSourceDetails
                     ko={sourceKo}
+                    status={s.pruefstand}
                     authorName={autorVon(sourceKo.author)}
                     standBestaetigt={standBestaetigt}
                   />

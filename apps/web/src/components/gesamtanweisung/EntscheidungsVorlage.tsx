@@ -15,8 +15,15 @@
 // nennen, was die bestehenden Rechte sagen (`entscheiden` fordert `ko.validate`: Controller und
 // Administration, `services/rbac/src/policy.ts`), und was NICHT geschieht: keine automatische
 // fachliche Prüfung, keine Benachrichtigung. Eine neue Pflichtrolle entsteht hier nicht.
+//
+// PRÜFSTATUS-ANZEIGE (Pedi 28.09.2026, Ergänzung 3) · `FreigabeStatus` ist der EINE Statusblock für
+// Übersicht und Detailansicht: Standwort, Stand-Nummer, Bedeutung (freigegeben oder nicht), Angaben
+// zu einer dokumentierten Entscheidung und der nächste Schritt nach den Rechten des Betrachters.
+// Beide Ansichten zeichnen ihn aus `freigabeanzeige` (`zustand.ts`) — so können sie nicht
+// auseinanderlaufen.
 import { useTranslation } from "react-i18next";
 import type { AnweisungStand } from "../../api/types";
+import { formatKoTimestamp } from "../../lib/koDates";
 import {
   CHIP,
   HINWEIS,
@@ -27,12 +34,69 @@ import {
   MELDUNG_FEHLER,
   MELDUNG_HINWEIS,
 } from "./gestaltung";
-import type { Sperre } from "./zustand";
+import { type Freigabeeingabe, type Freigaberechte, type Sperre, freigabeanzeige } from "./zustand";
 
 export const ENTSCHEIDUNG_MARKE = "ga-entscheidung";
 
+/**
+ * Der Statusblock einer Arbeitsanleitung — in der Übersicht je Zeile, in der Detailansicht im Kopf.
+ *
+ * `marke` ist der Testkennungsstamm der Ansicht; das Standwort trägt `${marke}-stand`, damit die
+ * bestehenden Prüfstellen der Liste (`ga-liste-stand`) unverändert greifen.
+ */
+export function FreigabeStatus({
+  marke,
+  eingabe,
+  rechte,
+}: {
+  marke: string;
+  eingabe: Freigabeeingabe;
+  rechte: Freigaberechte;
+}): JSX.Element {
+  const { t, i18n } = useTranslation();
+  const anzeige = freigabeanzeige(eingabe, rechte);
+  const zeit = anzeige.pruefung?.am ? formatKoTimestamp(anzeige.pruefung.am, i18n.language) : null;
+  return (
+    <div
+      data-testid={`${marke}-freigabe`}
+      data-stand={eingabe.stand}
+      data-version={eingabe.version}
+      className="space-y-1"
+    >
+      <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <span data-testid={`${marke}-stand`} className={CHIP}>
+          <span className="sr-only">{t("ga.liste.stand")}: </span>
+          {t(anzeige.wort)}
+        </span>
+        <span data-testid={`${marke}-fassung`} className={HINWEIS}>
+          {t("fe001.status.fassung", { nummer: eingabe.version })}
+        </span>
+      </p>
+      <p data-testid={`${marke}-bedeutung`} className={HINWEIS}>
+        {t(anzeige.bedeutung)}
+      </p>
+      {anzeige.pruefung ? (
+        <p data-testid={`${marke}-pruefung`} className={HINWEIS}>
+          {t(anzeige.pruefung.schluessel, {
+            nummer: eingabe.version,
+            zeit: zeit ?? t("fe001.zeitUnbekannt"),
+          })}
+        </p>
+      ) : null}
+      <p data-testid={`${marke}-schritt`} className="text-[12.5px] leading-relaxed text-text">
+        <span className="font-semibold">{t("fe001.status.naechsterSchritt")}</span>{" "}
+        {t(anzeige.naechsterSchritt)}
+      </p>
+    </div>
+  );
+}
+
 /** Der erklärende Satz zum Stand — was er bedeutet und was als Nächstes möglich ist. */
-function erklaerung(stand: AnweisungStand, darfEntscheiden: boolean): string {
+function erklaerung(
+  stand: AnweisungStand,
+  darfEntscheiden: boolean,
+  darfVorlegen: boolean,
+): string {
   if (stand === "vorgelegt") {
     return darfEntscheiden ? "fe001.entscheidung.wartetAufDich" : "fe001.entscheidung.wartet";
   }
@@ -40,7 +104,8 @@ function erklaerung(stand: AnweisungStand, darfEntscheiden: boolean): string {
     return "fe001.entscheidung.angenommen";
   }
   if (stand === "abgelehnt") {
-    return "fe001.entscheidung.abgelehnt";
+    // „Überarbeiten und erneut vorlegen" nur, wer es darf — sonst nur die Bedeutung (BEN-01).
+    return darfVorlegen ? "fe001.entscheidung.abgelehnt" : "fe001.status.bedeutung.abgelehnt";
   }
   return "fe001.entscheidung.bedeutung";
 }
@@ -49,6 +114,7 @@ export function EntscheidungsVorlage({
   stand,
   sperre,
   darfEntscheiden,
+  darfVorlegen,
   vorlegen,
   entscheiden,
   fehlerSatz,
@@ -57,13 +123,19 @@ export function EntscheidungsVorlage({
   sperre: Sperre;
   /** Das Freigaberecht des Betrachters. Ohne es gibt es die Entscheidungsknöpfe gar nicht. */
   darfEntscheiden: boolean;
+  /**
+   * Das Vorlegerecht (`ko.create`) des Betrachters. Ohne es gibt es den Vorlegeknopf gar nicht —
+   * dieselbe Regel wie beim Freigaberecht (Ben R1, BEN-01: ein Viewer las „nur lesen" und bekam
+   * trotzdem einen aktiven Knopf, der am Server nur 403 kann).
+   */
+  darfVorlegen: boolean;
   vorlegen: () => void;
   entscheiden: (entscheidung: "angenommen" | "abgelehnt") => void;
   /** Der Satz zum letzten gescheiterten Versuch, oder `null`. */
   fehlerSatz: string | null;
 }): JSX.Element {
   const { t } = useTranslation();
-  const vorlegbar = stand === "entwurf" || stand === "abgelehnt";
+  const vorlegbar = darfVorlegen && (stand === "entwurf" || stand === "abgelehnt");
   const entscheidbar = stand === "vorgelegt";
 
   return (
@@ -81,7 +153,7 @@ export function EntscheidungsVorlage({
         </span>
       </div>
       <p className={HINWEIS} data-testid={`${ENTSCHEIDUNG_MARKE}-erklaerung`}>
-        {t(erklaerung(stand, darfEntscheiden))}
+        {t(erklaerung(stand, darfEntscheiden, darfVorlegen))}
       </p>
       <ul className={`${HINWEIS} list-disc space-y-0.5 pl-5`}>
         <li>{t("fe001.entscheidung.wer")}</li>

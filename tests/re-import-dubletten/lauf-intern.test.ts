@@ -6,8 +6,13 @@
 // mitfuehrte (`service.ts:1430`) — aber wieder nur zeichengleich. Eine Sicherung, die denselben
 // Eintrag zweimal in leicht abweichender Schreibweise enthaelt, legte ihn zweimal an. Der Bestand
 // war danach schon beim ERSTEN Einspielen doppelt.
+//
+// Lauf gesamt-import-adoption: die Annahme stellt die Dublettenfrage am heutigen Bestand neu. Der
+// Fall misst darum zusätzlich den AUSGANG beider Annahmen — die zweite legt nichts an und nennt das
+// im selben Lauf erzeugte Objekt mit Kennung.
 import { describe, expect, it } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
+import type { KandidatDublettenbefund } from "../../services/library-analytics";
 
 const ZUGANG = { name: "Admin", email: "laufintern@x.de", password: "secret123" };
 
@@ -16,6 +21,12 @@ interface Uebersprungen {
   grund: string;
   koId: string | null;
   aehnlichkeit?: number;
+}
+
+interface KandidatDto {
+  id: string;
+  koId: string | null;
+  dublettenbefund?: KandidatDublettenbefund;
 }
 
 async function leereApp() {
@@ -78,6 +89,7 @@ describe("JOB 3023 · B — der Vergleich laeuft auch gegen den eigenen Lauf", (
     const vorAnnahme = await app.inject({ method: "GET", url: "/api/kos", headers });
     expect(vorAnnahme.json() as unknown[], "Vor der Annahme entsteht kein Objekt.").toHaveLength(0);
 
+    const angenommen: KandidatDto[] = [];
     for (const k of [erster, zweiter]) {
       const annahme = await app.inject({
         method: "PUT",
@@ -86,11 +98,19 @@ describe("JOB 3023 · B — der Vergleich laeuft auch gegen den eigenen Lauf", (
         payload: { action: "accept" },
       });
       expect(annahme.statusCode, annahme.body).toBe(200);
+      angenommen.push(annahme.json() as KandidatDto);
     }
     const liste = await app.inject({ method: "GET", url: "/api/kos", headers });
+    const kos = liste.json() as { id: string }[];
     expect(
-      liste.json() as unknown[],
+      kos,
       "Aus zwei Schreibweisen derselben Sache wird genau ein Wissensobjekt.",
     ).toHaveLength(1);
+    expect(angenommen[0]?.koId).toBe(kos[0]?.id);
+    expect(angenommen[1]?.koId, "Die Annahme der Dublette legt nichts an.").toBeNull();
+    expect(
+      angenommen[1]?.dublettenbefund,
+      "Der Treffer ist das im selben Lauf erzeugte Objekt — nicht `null`.",
+    ).toMatchObject({ ergebnis: "aehnlich", treffer: { art: "wissensobjekt", koId: kos[0]?.id } });
   });
 });
