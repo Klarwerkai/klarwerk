@@ -89,6 +89,13 @@ export function confluenceInstanz(opts: {
   ergebnisseiten: ConfluencePage[][];
   folgeseite?: (init?: RequestInit) => Promise<unknown>;
   ersteVerzoegerungMs?: number;
+  /**
+   * confluence-import-rechte: die Mailadresse je Quellkonto (`/rest/api/user/email`). Ein Konto
+   * ohne Eintrag antwortet 404 — wie Confluence, wenn es die Adresse nicht herausgibt.
+   */
+  kontoEmails?: Record<string, string>;
+  /** confluence-import-rechte: die Mitglieder je Gruppe (`/rest/api/group/member`), eine Seite. */
+  gruppen?: Record<string, unknown[]>;
 }): { fetchFn: typeof fetch; abrufe: string[] } {
   const abrufe: string[] = [];
   const alle = opts.ergebnisseiten.flat();
@@ -106,6 +113,18 @@ export function confluenceInstanz(opts: {
     // antwortet wie Confluence mit einer anonymen Leseberechtigung und nicht mit einer
     // Ergebnisseite. Ohne diese Antwort gälte das Leserecht als unbekannt, und kein Konto sähe die
     // übernommenen Seiten (fail-closed, Nacharbeit 3).
+    // confluence-import-rechte: Gruppenmitglieder und Kontoadressen liest der Importeur, um die
+    // Leser einer beschränkten Seite auf Konten abzubilden — Antwortform wie Confluence, nie eine
+    // Ergebnisseite des Space-Listings.
+    const pfad = new URL(url);
+    if (pfad.pathname.endsWith("/rest/api/group/member")) {
+      const name = pfad.searchParams.get("name") ?? "";
+      return confluenceAntwort(200, { results: opts.gruppen?.[name] ?? [], _links: {} });
+    }
+    if (pfad.pathname.endsWith("/rest/api/user/email")) {
+      const email = opts.kontoEmails?.[pfad.searchParams.get("accountId") ?? ""];
+      return email ? confluenceAntwort(200, { email }) : confluenceAntwort(404, {});
+    }
     if (/\/rest\/api\/space\/[^/?]+$/.test(new URL(url).pathname)) {
       return confluenceAntwort(200, {
         permissions: [
