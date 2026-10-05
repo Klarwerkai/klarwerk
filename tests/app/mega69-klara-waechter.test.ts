@@ -2614,10 +2614,10 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     //       keine Nutzlaständerung ausser den Begriffen des aktuellen Dokuments, ein zusätzlicher
     //       LESENDER `Word.run` nach der Schreibruhe (kein Schreibweg, gemessen in w1 KA3);
     //       Manifest/CSP/Recht unverändert, kein Sideload. DIESE Änderung bewegt den Pin.
-    // OFFEN: der neue Wert ist NICHT eingetragen — in dieser Sitzung war kein SHA-256-Werkzeug
-    // freigegeben, und ein geschätzter Wert wäre ein falscher Pin. Dieser Fall meldet den Ist-Wert
-    // im nächsten Lauf; erst danach darf der Pin wandern (so in den Nacharbeiten 1 und 3).
-    const PIN = "5fbf5f64546beb67d70799bb8d18bcf6d2adcc631d79e0b404658867baeb0978";
+    // NACHARBEIT 7: PIN BEWUSST AKTUALISIERT (5fbf5f64… -> fe3cc513…). Der Wert ist GEMESSEN, nicht
+    // geschätzt: dieser Fall meldete ihn am Kandidaten 787b3e41 im Prüflauf (`Received:
+    // "fe3cc513…ff821656"`, funktion-erhalten-jsdom); die drei Dateien sind seither unverändert.
+    const PIN = "fe3cc513021c2f2b5e4ef1b0f9376480634c24d18db9b37fbdf725c4ff821656";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(
       ist,
