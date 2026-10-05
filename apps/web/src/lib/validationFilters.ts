@@ -2,6 +2,7 @@
 // Arbeitet auf den bereits geladenen Board-Items; keine Server-/Statusfilter
 // (das Board liefert fachlich bereits die offenen Objekte).
 import type { KnowledgeObject } from "../api/types";
+import { htmlToPlainText } from "./richText";
 
 export interface ValidationFilterState {
   search: string;
@@ -22,11 +23,18 @@ export const EMPTY_VALIDATION_FILTER: ValidationFilterState = {
   aiPending: false,
 };
 
-// Volltext-Heuhaufen: Titel, Aussage, Bedingungen, Maßnahmen, Kategorie, Tags.
+// Volltext-Heuhaufen: Titel, Aussage, Bedingungen, Maßnahmen, Kategorie, Tags — und der
+// ausführliche Inhalt.
+//
+// N-0072 / JOB 3290 A: „Volltext filtern" fand eine Marke nicht, die nur im ausführlichen Inhalt
+// stand; die Bibliothek fand sie. Der Inhalt kommt als Klartext über DIESELBE Reduktion hinein,
+// die die Entwurfsliste benutzt (`htmlToPlainText`). Liefert ein Weg kein `bodyHtml`, tragen die
+// `captionTexts` die Bildbeschreibungen — dieselbe Rückfallregel wie `librarySearch.ts:172`.
 function haystack(k: KnowledgeObject): string {
-  return [k.title, k.statement, ...k.conditions, ...k.measures, k.category, ...k.tags]
-    .join("\n")
-    .toLowerCase();
+  const inhalt = k.bodyHtml ? htmlToPlainText(k.bodyHtml) : "";
+  const fussnoten = k.bodyHtml ? [] : (k.captionTexts ?? []);
+  const kurz = [k.title, k.statement, ...k.conditions, ...k.measures, k.category, ...k.tags];
+  return [...kurz, inhalt, ...fussnoten].join("\n").toLowerCase();
 }
 
 // Alle aktiven Filter wirken gemeinsam als AND. Leerer Filter = keine Einschränkung.
