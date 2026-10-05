@@ -89,6 +89,7 @@ import {
   type ResizeStart,
   breiteAusZug,
   formatImageWidth,
+  imageWidthPercent,
   normalizeImageWidth,
 } from "../lib/imageResize";
 // JOB 3095: die eine Quelle des Onlinezustands (JOB 3084) für den ehrlichen Offline-Satz der Bildsuche.
@@ -2737,12 +2738,14 @@ export function RichTextEditor({
           ))}
           {/* R-0014: die frei gezogene Breite als neutrale Größenangabe — keine Stufe ist dann
               gedrückt, und hier steht, was gilt. */}
-          {selectedImageWidth ? (
+          {/* Die Zahl kommt aus `imageWidthPercent` — derselben Wertregel wie Sanitizer und Zug —
+              und nicht aus einer Zeichenkettenersetzung am Attribut. */}
+          {imageWidthPercent(selectedImageWidth) !== null ? (
             <span
               data-testid="bildgroesse-gezogen"
               className="ml-1 text-[11.5px] font-semibold tabular-nums text-ai"
             >
-              {selectedImageWidth.replace("%", " %")}
+              {`${imageWidthPercent(selectedImageWidth)} %`}
             </span>
           ) : null}
           {/* AUFTRAG-mega9 Block F (Pedi): die SICHTBARE Aktion am Bild, die das echte
