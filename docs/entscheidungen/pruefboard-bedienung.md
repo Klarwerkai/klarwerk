@@ -219,6 +219,18 @@ In dieser Sitzung wurden **keine Tests ausgeführt** (Auftragsvorgabe: Cloud fü
 `CLAUDE/PRUEFPLAN.json` des Auftrags. Auch Biome lief nicht; die Formatierung ist von Hand an
 `biome.json` (Zeilenbreite 100) ausgerichtet und wird erst durch `tools/lint` belegt.
 
+### Nacharbeit am Kandidaten `4b8a3a4f` — Prüfauswahl
+
+- `tests/pruefboard-bedienung/konfliktmarkierung-mounted.test.tsx` (R-0213) sucht den Eintrag am
+  Titel statt am Index: die Warteschlange sortiert bei Gleichstand nach Titel
+  (`compareReviewPriority`), „Fertig“ stand vor „Läuft“. Sollwerte unverändert.
+- `tests/app/mega47-modale-flaechen-sammler.test.tsx` ist nicht mehr Teil der Auftragsauswahl. Sein
+  roter Fall „JOB 1181 · Klassenbindungen“ (228 statt 226) ist ein fremder Basisfehler: der Diff
+  dieses Auftrags gegen den integrierten Hauptstand `6a25d896` fügt nur literale `className`-Werte
+  hinzu, die geänderte Warteschlangen-Bindung war über `ist` schon vorher offen, und kein neuer Name
+  verdeckt einen bisher aufgelösten. Der Sollwert 226 stammt von fe-001 (`6b09800e`). Der Test selbst
+  bleibt unverändert und global sichtbar rot.
+
 ## Einzelzuordnung je Aufnahmepunkt
 
 Stand: Kandidat `6b62ba41` plus Nacharbeit vom 05.10.2026. „Geliefert“ heißt: im Code vorhanden

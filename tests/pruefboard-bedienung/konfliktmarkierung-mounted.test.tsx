@@ -220,10 +220,20 @@ describe("R-0213 · laufende Prüfung ist in der Liste erkennbar", () => {
       ],
     });
     await flush();
-    const marke = eintraege()[0]?.querySelector(LAEUFT);
-    expect(marke?.getAttribute("aria-label")).toBe(de("val.aiCheck.pending"));
-    expect(eintraege()[0]?.textContent).toBe("Läuft");
-    expect(eintraege()[1]?.querySelector(LAEUFT)).toBeNull();
+    // Gesucht wird am TITEL, nicht an der Stelle: die Warteschlange sortiert nach Prüfvorrang und
+    // bei Gleichstand nach Titel (`compareReviewPriority`) — „Fertig" steht deshalb VOR „Läuft".
+    // Der erste Lauf dieses Falls griff per Index auf den falschen Eintrag.
+    const eintragMit = (titel: string) =>
+      [...eintraege()].find((e) => e.querySelector('[data-text="titel"]')?.textContent === titel);
+    const laeuft = eintragMit("Läuft");
+    const fertig = eintragMit("Fertig");
+    expect(laeuft, "Eintrag „Läuft“ fehlt").toBeTruthy();
+    expect(fertig, "Eintrag „Fertig“ fehlt").toBeTruthy();
+    expect(laeuft?.querySelector(LAEUFT)?.getAttribute("aria-label")).toBe(
+      de("val.aiCheck.pending"),
+    );
+    expect(laeuft?.textContent).toBe("Läuft");
+    expect(fertig?.querySelector(LAEUFT)).toBeNull();
   });
 });
 
