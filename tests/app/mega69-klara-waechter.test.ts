@@ -2695,6 +2695,13 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // NACHARBEIT 5: PIN BEWUSST AKTUALISIERT (29062e17… -> d36121d2…). Der Wert ist im Prüflauf zu
     // Kandidat 6dc92d9b GEMESSEN („Received", HISTORIE/nacharbeit-5/PRUEFUNG/panel-auslieferung-
     // pins.log) und unverändert übernommen; die Panel-Dateien sind seit dieser Messung unberührt.
+    // NACHARBEIT 6 (Realhostbeleg 06.10.2026, Word im Web: `getSelectedDataAsync` schwieg):
+    // `readAskSelection` liest im Absendeweg zuerst über `Word.run` → `getSelection().text` mit
+    // eigener Frist (`WORD_ADDIN_AUSWAHL_FRIST_MS`), sonst den bisherigen Weg; `done` höchstens
+    // einmal. Dazu zwei verdichtete Kommentare. Auslieferungsfolgen: kein neues Abrufziel, keine
+    // Nutzlast-, CSP-, Rechte- oder Manifeständerung (WordApi 1.1 bleibt), kein neuer
+    // Wörterbuchschlüssel, kein Sideload. DER PIN MUSS WANDERN; der Prüflauf meldet den Ist-Wert
+    // als „Received", er wird danach gemessen übernommen.
     const PIN = "d36121d2e48f46cff4ebaf56a131c4e354c067ed6d91a7a28ab9e727dfff3b37";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(

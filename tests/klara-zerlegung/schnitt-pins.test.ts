@@ -222,7 +222,10 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   "tests/app/w1-klara-lifecycle-taskpane.test.tsx": "pfad,rueckweg,panelquelle",
   "tests/app/w1-klara-vertrauenskopf.test.ts": "pfad,marken,panelquelle",
   "tests/app/w6-dublettenweg-checktext.test.ts": "pfad,marken,panelquelle",
-  "tests/app/word-addin-ask.test.ts": "pfad,rueckweg,marken,panelquelle",
+  // Word-Host-Gesamtweg (Nacharbeit 6, Realhostbeleg 06.10.2026): die Gegenproben zum
+  // Auswahlzugriff (W1–W9) fahren das ganze Fenster über `createKlaraPanel` — Griff `fixture` neu.
+  // Abgelesen am Muster des Griffs (Import `./klara-panel-fixture`), nicht gemessen.
+  "tests/app/word-addin-ask.test.ts": "pfad,rueckweg,marken,fixture,panelquelle",
   "tests/app/word-addin-csp.test.ts": "pfad,panelquelle",
   "tests/app/word-addin-taskpane-cache.test.ts": "pfad",
   "tests/app/word-addin-taskpane-version-contract.test.ts": "zusammengesetzt,marken,panelquelle",

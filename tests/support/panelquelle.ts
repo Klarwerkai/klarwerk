@@ -112,6 +112,9 @@ const MARKE_KOPF_ENDE = '"use strict";\n';
  * NACHARBEIT 5: GEMESSEN im Prüflauf zu Kandidat 6dc92d9b (`0548d086…`, „Received" von E2,
  * HISTORIE/nacharbeit-5/PRUEFUNG/panel-auslieferung-pins.log) und unverändert übernommen; die
  * Panel-Dateien sind seit dieser Messung unberührt.
+ * NACHARBEIT 6: `taskpane.js` ändert sich am Auswahlzugriff des Fragenwegs (`Word.run` zuerst, mit
+ * Frist). Der Bezugspunkt MUSS wandern; E2 meldet ihn im Prüflauf als „Received", er wird danach
+ * gemessen übernommen.
  */
 export const PANEL_VOR_SCHNITT_BLOB = "0548d0868b70123eca4f16a4a3a3cdab59f6fe5d";
 
