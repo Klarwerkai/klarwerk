@@ -43,8 +43,10 @@
    * der Server seiner Abweisung mitgegeben hat.
    * @typedef {{ id?: number, url?: string, title?: string }} Reiter
    * @typedef {{ url: string, title: string }} Herkunft
-   * @typedef {import("./types").State & { lastTab?: Reiter, pendingTab?: Reiter | null, pendingSource?: Herkunft | null, activeTabId?: number }} Zustand
-   * @typedef {import("./types").View & { canCapture?: boolean, pendingSource?: Herkunft, reason?: string }} Sicht
+   * Nacharbeit 2 (Ben): `skippedCaptures` — wie viele gleichzeitig ausgelöste Erfassungen verdrängt
+   * wurden, ohne gelesen zu werden (s. `capture()`). Dieselbe Abmachung wie oben.
+   * @typedef {import("./types").State & { lastTab?: Reiter, pendingTab?: Reiter | null, pendingSource?: Herkunft | null, activeTabId?: number, skippedCaptures?: number }} Zustand
+   * @typedef {import("./types").View & { canCapture?: boolean, pendingSource?: Herkunft, reason?: string, skippedCaptures?: number }} Sicht
    */
   const ready = chrome.storage.session.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" });
   /**
@@ -559,6 +561,10 @@
       ...(state.pendingCapture === true && state.pendingSource
         ? { pendingSource: state.pendingSource }
         : {}),
+      // Nacharbeit 2 (Ben): verdrängte gleichzeitige Erfassungen werden genannt, nicht verschwiegen.
+      ...(typeof state.skippedCaptures === "number" && state.skippedCaptures > 0
+        ? { skippedCaptures: state.skippedCaptures }
+        : {}),
       // JOB 3524 · Lieferung 3+4: DASS eine neue Übernahme von hier aus überhaupt beginnen kann.
       // Sie braucht einen Tab (laufende Übernahme oder zuletzt gelesener); ohne einen steht in der
       // Leiste kein Knopf, der nichts tun könnte. Die Zusage ist bewusst schwach: „es gibt einen
@@ -838,7 +844,14 @@
     // das hat der Mensch hier gewählt.
     if (message.type === "keep") {
       if (busy || captureBusy) return view(await read(), "busy");
-      await merke({ pendingCapture: false, pendingTab: null, pendingSource: null });
+      // Nacharbeit 2: die Lage ist beantwortet — der Hinweis auf verdrängte Erfassungen ist gesehen.
+      uebergangen = 0;
+      await merke({
+        pendingCapture: false,
+        pendingTab: null,
+        pendingSource: null,
+        skippedCaptures: 0,
+      });
       return view(await read());
     }
     if (message.type === "state") {
@@ -892,14 +905,18 @@
         // es beim bisherigen Weg: der Tab der laufenden Übernahme, sonst der zuletzt gelesene.
         // Alles steht im eigenen Zustand — die Leiste hat kein `tabs`-Recht und rät keinen Tab.
         tab = state.pendingTab ?? (s ? { id: s.tabId, url: s.url, title: s.title } : state.lastTab);
-        if (tab)
+        if (tab) {
+          // Nacharbeit 2: „ersetzen" beantwortet auch den Hinweis auf verdrängte Erfassungen.
+          uebergangen = 0;
           await merke({
             work: null,
             captureStatus: null,
             pendingCapture: false,
             pendingTab: null,
             pendingSource: null,
+            skippedCaptures: 0,
           });
+        }
       } finally {
         busy = false;
       }
@@ -976,11 +993,14 @@
         // JOB 3606: die Nachfrage ist mit dem Verwerfen beantwortet, ihr Tab aber bleibt stehen —
         // er ist die Seite, die Pedi gemeint hat, und „Neue Übernahme" soll danach SIE lesen und
         // nicht die eben verworfene. Die Nachfrage selbst (`pendingSource`) ist erledigt.
+        // Nacharbeit 2: auch Verwerfen beantwortet den Hinweis auf verdrängte Erfassungen.
+        uebergangen = 0;
         await merke({
           work: null,
           captureStatus: null,
           pendingCapture: false,
           pendingSource: null,
+          skippedCaptures: 0,
         });
         return view(await read(), uncertain ? "cancelled_uncertain" : "cancelled");
       }
@@ -1362,10 +1382,18 @@
   // auf die offene Vorschau und wird dort, wie jede andere wartende Seite, sichtbar zur Wahl
   // gestellt („übernehmen und ersetzen" oder „behalten", s. `capture()`). Was dazwischen kam, ist
   // dieselbe Lage wie eine zweite wartende Seite: die zuletzt genannte steht in der Nachfrage. Eine
-  // Warteschlange ohne Deckel ist es bewusst nicht.
+  // Warteschlange ohne Deckel ist es bewusst nicht — sie verschöbe das Überschreiben nur in die
+  // Nachfrage, die ebenfalls genau EINE wartende Seite benennt.
+  //
+  // BEN (Nacharbeit 2): DAS DAZWISCHEN DARF AUCH NICHT STILL WEG SEIN. Drei Erfassungen A, B, C
+  // während einer Sperre ergaben [A, B] → [A, C]; B war ohne Rückmeldung gelöscht. Jetzt wird jede
+  // so verdrängte Erfassung GEZÄHLT und sofort im Sitzungszustand festgehalten
+  // (`skippedCaptures`). Die Leiste zeigt die Zahl als Warnung, bis der Mensch die Lage beantwortet
+  // (behalten, ersetzen oder verwerfen) — dann ist sie gesehen und wird zurückgesetzt.
   /** @typedef {{tab: {id?: number, url?: string, title?: string} | undefined, info: {frameUrl?: string, pageUrl?: string, frameId?: number, selectionText?: string} | undefined}} Wunsch */
   /** @type {Wunsch[]} */
   let gemerkt = [];
+  let uebergangen = 0;
   async function nachholen() {
     if (gemerkt.length === 0 || busy || captureBusy) return;
     const [wartend, ...rest] = gemerkt;
@@ -1375,7 +1403,14 @@
   /** @param {{id?: number, url?: string, title?: string} | undefined} tab @param {{frameUrl?: string, pageUrl?: string, frameId?: number, selectionText?: string}} [info] */
   async function capture(tab, info) {
     if (captureBusy || busy) {
+      // Der Merker wird SYNCHRON gesetzt, erst danach wird gespeichert — sonst könnte `nachholen()`
+      // während des Speicherns den alten Stand abarbeiten.
+      const verdraengt = gemerkt.length >= 2;
       gemerkt = [...gemerkt.slice(0, 1), { tab, info }];
+      if (verdraengt) {
+        uebergangen += 1;
+        await merke({ skippedCaptures: uebergangen });
+      }
       return;
     }
     captureBusy = true;

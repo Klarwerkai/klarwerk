@@ -11,6 +11,8 @@ globalThis.KLARA_TEXT = {
       "Es liegt noch eine offene Übernahme in der Leiste. Die neue Auswahl wurde deshalb noch nicht gelesen.",
     pendingReplace: "Neue Auswahl übernehmen und ersetzen",
     pendingKeep: "Offene Übernahme behalten",
+    skippedCaptures:
+      "Gleichzeitig ausgelöste Erfassungen, die nicht gelesen wurden (bei Bedarf die Seite erneut erfassen):",
     // Die wartende Seite wird BENANNT, nicht beschrieben: Titel und Adresse kommen aus dem Tab, auf
     // den die neue Übernahme zeigte.
     pendingFrom: "Wartet:",
@@ -217,6 +219,8 @@ globalThis.KLARA_TEXT = {
       "A capture is still open in the panel. The new selection has therefore not been read yet.",
     pendingReplace: "Capture the new selection and replace",
     pendingKeep: "Keep the open capture",
+    skippedCaptures:
+      "Captures triggered at the same time that were not read (capture the page again if needed):",
     pendingFrom: "Waiting:",
     refresh: "Check status again",
     unreviewed: "Browser · Unreviewed draft",

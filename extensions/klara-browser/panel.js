@@ -16,7 +16,9 @@
    * JOB 3606 ergänzt zwei Felder nach derselben Abmachung: `pendingSource` — welche Seite auf die
    * Übernahme wartet, damit die Nachfrage sie BENENNEN kann statt „eine neue Auswahl"; `reason` —
    * der Satz, den der Server seiner Abweisung mitgab, den die Zustandszeile anhängt.
-   * @typedef {import("./types").View & { canCapture?: boolean, pendingSource?: { url: string, title: string }, reason?: string }} Sicht
+   * Nacharbeit 2 (Ben): `skippedCaptures` — wie viele gleichzeitig ausgelöste Erfassungen der Worker
+   * verdrängen musste, ohne sie zu lesen; dieselbe Abmachung.
+   * @typedef {import("./types").View & { canCapture?: boolean, pendingSource?: { url: string, title: string }, reason?: string, skippedCaptures?: number }} Sicht
    */
   // JOB 3279 (Pedi 08.09.): Deutsch ist der Standard. Die Browsersprache entscheidet NICHT mehr —
   // sie greift nur, wenn die gespeicherte Wahl gar nicht gelesen werden kann.
@@ -283,6 +285,13 @@
     $("pending-source").textContent = wartend
       ? `${t("pendingFrom")} ${wartend.title || wirt(wartend.url)} · ${wartend.url}`
       : "";
+    // Nacharbeit 2 (Ben): verdrängte gleichzeitige Erfassungen stehen als Zahl da, nie still weg.
+    const uebergangen =
+      typeof next.skippedCaptures === "number" && next.skippedCaptures > 0
+        ? next.skippedCaptures
+        : 0;
+    $("skipped-captures").hidden = uebergangen === 0;
+    $("skipped-count").textContent = uebergangen > 0 ? String(uebergangen) : "";
     $("account").textContent = next.user?.email ?? t("signedOut");
     $("login-form").hidden = Boolean(next.user);
     $("logout").hidden = !next.user;
@@ -800,7 +809,12 @@
     }
     // Deckt beide Folgen aus dem Befund ab: Leiste offen VOR der ersten Erfassung, und Verwerfen
     // gefolgt von einer neuen Markierung. Beide erreichen die Leiste jetzt ohne „Status prüfen".
-    if (andereUebernahme(changes) || "captureStatus" in changes || "pendingCapture" in changes)
+    if (
+      andereUebernahme(changes) ||
+      "captureStatus" in changes ||
+      "pendingCapture" in changes ||
+      "skippedCaptures" in changes
+    )
       refresh();
   });
   render(current);

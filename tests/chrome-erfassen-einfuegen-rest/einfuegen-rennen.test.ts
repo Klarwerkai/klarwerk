@@ -208,13 +208,74 @@ describe("worker.js — konkurrierende Erfassungen verschwinden nicht still", ()
     await runde();
     await runde();
 
-    const zustand = (await h.send({ type: "state" })) as View & {
-      pendingCapture?: boolean;
-      pendingSource?: { url: string; title: string };
-    };
+    const zustand = (await h.send({ type: "state" })) as Ansicht;
     expect(zustand.status, "die erste Erfassung ist verschwunden").toBe("preview");
     expect(zustand.selection?.url).toBe(h.selected.url);
     expect(zustand.pendingCapture, "die zweite Erfassung ist still verschwunden").toBe(true);
     expect(zustand.pendingSource).toEqual({ url: zweite.url, title: zweite.title });
+    // Bei zwei Erfassungen wird nichts verdrängt — es gibt auch keinen Hinweis darauf.
+    expect(zustand.skippedCaptures).toBeUndefined();
+  });
+
+  it("W1b · DREI Erfassungen während eines laufenden Vorgangs: die mittlere wird gezählt und in der Leiste genannt, nicht still gelöscht", async () => {
+    // Bens Minimalreproduktion (Nacharbeit 2): A, B, C während der Anmeldung — der Merker ging
+    // [A, B] → [A, C], und B war ohne jede Rückmeldung weg.
+    const anmeldung = schranke();
+    const h = harness(async (input) => {
+      if (String(input).endsWith("/login")) {
+        await anmeldung.warte;
+        return Response.json({
+          token: "fixture-session-secret",
+          user: { id: "person-a", email: "a@example.test" },
+        });
+      }
+      throw new Error("kein Netz");
+    });
+    const laeuft = h.send({ type: "login", email: "a@example.test", password: "x" });
+    await runde();
+    await h.capture();
+    const mittlere = { id: 7, url: "https://example.test/mittlere-seite", title: "Mittlere Seite" };
+    const letzte = { id: 7, url: "https://example.test/letzte-seite", title: "Letzte Seite" };
+    await h.listeners.action?.(mittlere);
+    await h.listeners.action?.(letzte);
+    expect(h.data.work, "die Erfassung lief, obwohl der Worker gesperrt war").toBeUndefined();
+    // Schon WÄHREND der Sperre festgehalten — nicht erst, wenn alles vorbei ist.
+    expect(h.data.skippedCaptures, "die verdrängte Erfassung wurde nicht festgehalten").toBe(1);
+
+    anmeldung.frei();
+    await laeuft;
+    await runde();
+    await runde();
+
+    const zustand = (await h.send({ type: "state" })) as Ansicht;
+    expect(zustand.selection?.url, "die erste Erfassung ist verschwunden").toBe(h.selected.url);
+    expect(zustand.pendingCapture).toBe(true);
+    expect(zustand.pendingSource).toEqual({ url: letzte.url, title: letzte.title });
+    expect(zustand.skippedCaptures, "die mittlere Erfassung ist still verschwunden").toBe(1);
+
+    // Und die Leiste SAGT es — als Warnung mit Zahl, in DE und EN.
+    const view = await mount({ an: h, auswahl: false });
+    expect(view.el("skipped-captures").hidden, "kein sichtbarer Hinweis").toBe(false);
+    expect(view.el("skipped-captures").className).toContain("warn");
+    expect(view.el("skipped-count").textContent).toBe("1");
+    const texte = wortschatz(view.win);
+    for (const sprache of ["de", "en"]) {
+      view.sprache(sprache);
+      expect(view.el("skipped-captures").textContent).toContain(
+        texte[sprache]?.skippedCaptures ?? "kein Satz",
+      );
+    }
+
+    // Beantwortet der Mensch die Lage, ist der Hinweis gesehen und verschwindet — nicht vorher.
+    view.el("pending-keep").click();
+    await view.settle();
+    expect(view.el("skipped-captures").hidden).toBe(true);
+    expect(h.data.skippedCaptures).toBe(0);
   });
 });
+
+type Ansicht = View & {
+  pendingCapture?: boolean;
+  pendingSource?: { url: string; title: string };
+  skippedCaptures?: number;
+};
