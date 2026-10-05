@@ -1,15 +1,26 @@
 // ================================================================================================
-// JOB 3014 · LIEFERUNG 3 + 4 — DER PROBESCHNITT: TRÄGT DER SCHNITT, ODER TRÄGT ER NICHT?
+// JOB 3014 · LIEFERUNG 3 + 4 — DER PROBESCHNITT. SEIT R-1611: DER ECHTE SCHNITT, GEGEN DAS ORIGINAL.
 // ================================================================================================
 //
-// P11 verlangt eine Zerlegung „ohne Verhalten zu ändern". Dieser Test erzeugt die Zerlegung
-// MECHANISCH (reine Textoperation, `schneideDrei` — kein Zeichen des Stils oder des Skripts wird
-// angefasst) und misst danach zweierlei:
+// P11 verlangt eine Zerlegung „ohne Verhalten zu ändern"; R-1611 verlangt, dass die unveränderte
+// Funktion VOR und NACH dem Schnitt belegt wird. Bis AUFNAHME 20260922 (zentrale-module-aufteilen)
+// erzeugte dieser Test die Zerlegung selbst (`schneideDrei`) und verglich sie mit der einen Datei.
+// Seitdem IST die Zerlegung gemacht: `apps/web/public/word-addin/taskpane.html` trägt nur noch das
+// Markup, `taskpane.css` den früheren Inline-Stil, `taskpane.js` das frühere Inline-Skript.
 //
-//   TEIL A/B/C — DIE AUSLIEFERUNG. Alle drei Dateien gehen über die ECHTE Produktionsverdrahtung
-//   (`registerSecurityHeaders` + `registerWebStatic`, in der Reihenfolge aus `server.ts`) und
-//   müssen mit den erwarteten Kopfzeilen ankommen. Was dabei über die Geschwisterdateien
-//   herauskommt, ist BEFUND, nicht Wunsch — es steht als Vertrag hier fest.
+// Verglichen wird deshalb ab hier:
+//   · VORHER — das Fenster als EIN Dokument (`taskpaneQuelle()`): die drei Dateien an ihren Stellen
+//     zusammengefügt. Dass es Byte für Byte die Datei des Basisstands ist, misst
+//     `schnitt-echt.test.ts` gegen deren Git-Blob-Kennung — ohne das wäre „vorher" nur behauptet.
+//   · NACHHER — die drei Dateien, wie sie im Baum liegen (`echterSchnitt()`), ausgeliefert über die
+//     ECHTE Produktionsverdrahtung.
+//
+//   TEIL A — DER SCHNITT SELBST: er ist die mechanische Textoperation (`schneideDrei`), bis auf die
+//   Cachekennung an den zwei Verweisen und die Blockränder.
+//
+//   TEIL B/C — DIE AUSLIEFERUNG. Alle drei Dateien gehen über `registerSecurityHeaders` +
+//   `registerWebStatic` (Reihenfolge aus `server.ts`) und müssen mit den erwarteten Kopfzeilen
+//   ankommen. Was dabei über die Geschwisterdateien herauskommt, ist BEFUND, nicht Wunsch.
 //
 //   TEIL D — DAS VERHALTEN. Jede Fassung wird als VOLLSTÄNDIGE, ausgelieferte HTML-Antwort in ein
 //   EIGENES jsdom-Fenster gegeben; `taskpane.js` und `taskpane.css` holt sich das Dokument selbst
@@ -23,8 +34,10 @@
 // führt genau diese Gegenprobe jetzt selbst und verlangt von ihr ROT.
 //
 // WAS AUCH JETZT NICHT GEMESSEN IST, und das gehört zur Aussage:
-//   · Kein Browser und kein Word-WebView. jsdom fordert Ressourcen an, führt Skripte aus und rechnet
-//     wirksame Stilwerte; es malt nicht, hat kein Layout und keine echte Office-Runtime.
+//   · Kein Word-WebView. jsdom fordert Ressourcen an, führt Skripte aus und rechnet wirksame
+//     Stilwerte; es malt nicht, hat kein Layout und keine echte Office-Runtime. (Chromium fährt die
+//     geschnittene Seite in `tests/design/zielbild-keinwissen.test.ts` und über `dist` in
+//     `tests/design/k1-messung.ts` — beides ohne Word.)
 //   · Keine echte Socketverbindung. `app.inject` fährt den vollen Fastify-Lebenszyklus, aber kein
 //     TCP und keine Browser-Ursprungsprüfung.
 //   · Kein echtes office.js. Der Word-Zustand wird von einer Attrappe gestellt, die jeden
@@ -46,6 +59,12 @@ import {
   registerWebStatic,
 } from "../../services/app/src/web-static";
 import {
+  PANEL_CSS_VERWEIS,
+  PANEL_JS_VERWEIS,
+  PANEL_MARKE_VERWEIS,
+  markeAbschnitt,
+} from "../support/panelquelle";
+import {
   type Fingerabdruck,
   type Lauf,
   OFFICE_FEHLT,
@@ -56,11 +75,14 @@ import {
   type Block,
   CSS_DATEI,
   JS_DATEI,
+  MARKE_DATEI,
   type Probeschnitt,
   RUECKWEG_DATEI,
   bloeckeVon,
   bytes,
+  echterSchnitt,
   inline,
+  markeQuelle,
   rueckwegQuelle,
   schneideDrei,
   taskpaneQuelle,
@@ -70,12 +92,21 @@ import {
 const FASSUNG = "1.0.0.1";
 const CSS_PFAD = `/word-addin/${CSS_DATEI}`;
 const JS_PFAD = `/word-addin/${JS_DATEI}`;
-/** JOB 3667 R8: die zweite Datei der ECHTEN Auslieferung — kein Ergebnis dieses Probeschnitts. */
+/** JOB 3667 R8: die zweite Datei der ECHTEN Auslieferung — kein Ergebnis dieses Schnitts. */
 const RUECKWEG_PFAD = `/word-addin/${RUECKWEG_DATEI}`;
+/**
+ * Zerlegungsauftrag Bestandsblick: eine weitere Datei der ECHTEN Auslieferung (Block KW-MARKE,
+ * geladen unmittelbar nach `taskpane.js`). Im VORHER-Dokument steht ihr Abschnitt am Ende des
+ * Inline-Skripts; NACHHER kommt er aus der eigenen Datei.
+ */
+const MARKE_PFAD = `/word-addin/${MARKE_DATEI}`;
 
+/** VORHER: das Fenster als EIN Dokument (byte-gleich zum Basisstand, s. `schnitt-echt.test.ts`). */
 const QUELLE = taskpaneQuelle();
 const RUECKWEG_QUELLE = rueckwegQuelle();
-const SCHNITT: Probeschnitt = schneideDrei(QUELLE);
+const MARKE_QUELLE = markeQuelle();
+/** NACHHER: die drei Dateien, wie sie im Baum liegen. */
+const SCHNITT: Probeschnitt = echterSchnitt();
 
 const aufraeumenDirs: string[] = [];
 afterAll(() => {
@@ -88,10 +119,13 @@ afterAll(() => {
  * Ein `dist`-Abbild wie aus `vite build` — genau die Dateien, die der Fall stellen will.
  *
  * JOB 3667 (14.09.2026): `rueckweg.js` liegt IMMER dabei, vor den Dateien des Falls (ein
- * gleichnamiger Eintrag gewinnt also weiterhin). Sie ist kein Ergebnis dieses Probeschnitts,
- * sondern eine Datei der echten Auslieferung — `taskpane.html` lädt sie in beiden Fassungen
- * gleich. Fehlte sie, verglichen die Fälle unten zwei Fenster OHNE Rückweg, und der Unterschied,
- * den sie messen wollen, wäre von einem ReferenceError überdeckt.
+ * gleichnamiger Eintrag gewinnt also weiterhin). Sie ist kein Ergebnis dieses Schnitts, sondern eine
+ * Datei der echten Auslieferung — `taskpane.html` lädt sie in beiden Fassungen gleich. Fehlte sie,
+ * verglichen die Fälle unten zwei Fenster OHNE Rückweg, und der Unterschied, den sie messen wollen,
+ * wäre von einem ReferenceError überdeckt.
+ *
+ * Zerlegungsauftrag Bestandsblick: aus demselben Grund liegt `marke.js` immer dabei. Das
+ * VORHER-Dokument verweist nicht auf sie (der Abschnitt steht dort inline) und lädt sie nicht.
  */
 function dist(dateien: Record<string, string>): string {
   const dir = mkdtempSync(join(tmpdir(), "kw-probeschnitt-"));
@@ -100,6 +134,7 @@ function dist(dateien: Record<string, string>): string {
   writeFileSync(join(dir, "index.html"), "<!doctype html><title>SPA</title>");
   for (const [name, inhalt] of Object.entries({
     [RUECKWEG_DATEI]: RUECKWEG_QUELLE,
+    [MARKE_DATEI]: MARKE_QUELLE,
     ...dateien,
   })) {
     writeFileSync(join(dir, "word-addin", name), inhalt);
@@ -107,7 +142,7 @@ function dist(dateien: Record<string, string>): string {
   return dir;
 }
 
-/** Die vollständige Fassung nach dem Probeschnitt. */
+/** Die vollständige Fassung nach dem Schnitt. */
 function distMitSchnitt(schnitt: Probeschnitt = SCHNITT): string {
   return dist({
     "taskpane.html": schnitt.html,
@@ -124,60 +159,77 @@ async function auslieferung(distPfad: string): Promise<FastifyInstance> {
   return app;
 }
 
+/** Der Verweis, so wie ihn der mechanische Probeschnitt setzt — ohne Cachekennung. */
+const MECH_CSS_VERWEIS = `<link rel="stylesheet" href="${CSS_DATEI}" />`;
+const MECH_JS_VERWEIS = `<script src="${JS_DATEI}"></script>`;
+
 // ================================================================================================
 // A — DER SCHNITT SELBST: mechanisch, verlustfrei, an derselben Stelle.
 // ================================================================================================
 
-describe("JOB 3014 · A — der Probeschnitt ist eine reine Textoperation", () => {
-  it("A1 · Stil und Skript wandern ZEICHENGLEICH in die zwei Dateien", () => {
+describe("R-1611 · A — der echte Schnitt ist die mechanische Textoperation", () => {
+  it("A1 · Stil und Skript liegen ZEICHENGLEICH in den zwei Dateien — wie beim Probeschnitt", () => {
     // Kalibrierung: ein leerer Schnitt wäre unten überall grün und misste nichts.
     expect(bytes(SCHNITT.js)).toBeGreaterThan(100_000);
     expect(bytes(SCHNITT.css)).toBeGreaterThan(5_000);
-    // Verlustfrei: beide Inhalte stehen unverändert in der Quelle.
+    // Verlustfrei: beide Inhalte stehen unverändert im Original.
     expect(QUELLE).toContain(SCHNITT.js);
     expect(QUELLE).toContain(SCHNITT.css);
-    // Und die drei Teile ergeben zusammen wieder die Quelle — bis auf die zwei Verweise.
-    // Die Ersatztexte kommen als FUNKTION: als Zeichenkette würde `String.replace` darin `$&`
-    // auswerten, und genau diese Folge steht im Panelskript (`replace(/…/g, "\\$&")`). Gemessen,
-    // nicht vermutet — die erste Fassung dieses Falls ist daran rot geworden.
-    const wiederEingesetzt = SCHNITT.html
-      .replace(
-        `<link rel="stylesheet" href="${CSS_DATEI}" />`,
-        () => `<style>${SCHNITT.css}</style>`,
-      )
-      .replace(`<script src="${JS_DATEI}"></script>`, () => `<script>${SCHNITT.js}</script>`);
-    expect(wiederEingesetzt).toBe(QUELLE);
+    // Und der echte Schnitt IST der mechanische — die Blöcke sind dieselben Zeichen, nur ohne den
+    // Zeilenumbruch nach dem Öffnungstag und die Einrückung vor dem Schlusstag (beides stand auf den
+    // Zeilen der Tags und steht jetzt auf der Verweiszeile).
+    const mechanisch = schneideDrei(QUELLE);
+    expect(mechanisch.css).toBe(`\n${SCHNITT.css}  `);
+    // Zerlegungsauftrag Bestandsblick: das Skript des Originals endet mit dem Abschnitt KW-MARKE,
+    // der jetzt in `marke.js` liegt — zeichengleich, direkt hinter `taskpane.js`.
+    expect(mechanisch.js).toBe(`\n${SCHNITT.js}${markeAbschnitt(MARKE_QUELLE)}  `);
+    // Die Rest-Seite unterscheidet sich vom mechanischen Schnitt GENAU in der Cachekennung an den
+    // zwei Verweisen — und im Verweis auf `marke.js` in der Zeile danach. Ersatz über eine
+    // Funktion, nicht über eine Zeichenkette: `String.replace` würde darin `$&` auswerten (die
+    // erste Fassung dieses Falls ist daran rot geworden).
+    const mitKennung = mechanisch.html
+      .replace(MECH_CSS_VERWEIS, () => PANEL_CSS_VERWEIS)
+      .replace(MECH_JS_VERWEIS, () => `${PANEL_JS_VERWEIS}\n  ${PANEL_MARKE_VERWEIS}`);
+    expect(mitKennung).toBe(SCHNITT.html);
   });
 
   it("A2 · die Rest-Seite ist um Größenordnungen kleiner und trägt die Verweise des Schnitts", () => {
     expect(zeilen(SCHNITT.html)).toBeLessThan(500);
     expect(bytes(SCHNITT.html)).toBeLessThan(bytes(QUELLE) / 5);
-    expect(SCHNITT.html).toContain(`<link rel="stylesheet" href="${CSS_DATEI}" />`);
-    expect(SCHNITT.html).toContain(`<script src="${JS_DATEI}"></script>`);
-    // JOB 3667 (14.09.2026): ein DRITTER Verweis, und er stammt nicht aus diesem Probeschnitt —
-    // `rueckweg.js` steht schon in der Quelle, weil der Abschnitt KW-RUECKWEG dorthin gewandert
-    // ist (s. schnittflaechen.test.ts B3). Er steht hier, damit die Zahl der Verweise nicht
-    // unbemerkt wächst: wer einen vierten anlegt, sieht diese Stelle.
+    expect(SCHNITT.html).toContain(PANEL_CSS_VERWEIS);
+    expect(SCHNITT.html).toContain(PANEL_JS_VERWEIS);
+    // JOB 3667 (14.09.2026): ein DRITTER Verweis, und er stammt nicht aus diesem Schnitt —
+    // `rueckweg.js` stand schon in der Quelle (s. schnittflaechen.test.ts B1). Er steht hier, damit
+    // die Zahl der Verweise nicht unbemerkt wächst: wer einen vierten anlegt, sieht diese Stelle.
     expect(SCHNITT.html).toContain(`<script src="${RUECKWEG_DATEI}?v=`);
+    // Zerlegungsauftrag Bestandsblick: der vierte, unmittelbar hinter `taskpane.js`.
+    expect(SCHNITT.html).toContain(`${PANEL_JS_VERWEIS}\n  ${PANEL_MARKE_VERWEIS}`);
     // Kein Inline-Code mehr in der Seite — und office.js steht unverändert davor.
     expect(SCHNITT.html).not.toContain("<style>");
+    expect(SCHNITT.html).not.toContain("<script>");
     expect(SCHNITT.html.indexOf("appsforoffice.microsoft.com")).toBeGreaterThan(0);
     expect(SCHNITT.html.indexOf("appsforoffice.microsoft.com")).toBeLessThan(
-      SCHNITT.html.indexOf(`<script src="${JS_DATEI}">`),
+      SCHNITT.html.indexOf(PANEL_JS_VERWEIS),
     );
   });
 
   it("A3 · der Fassungsplatzhalter bleibt in der HTML-Datei und wandert NICHT mit", () => {
-    // ZWEI Vorkommen, beide benannt: das Meta `kw-loaded-version` (JOB 1077, „ist meine Seite noch
-    // die, die ausgeliefert wird") und seit JOB 3667 die Cachekennung am Verweis auf `rueckweg.js`.
-    // Beide stempelt derselbe `stempleFassung`-Lauf; keiner darf in die geschnittenen Dateien
-    // wandern, denn die gehen NICHT durch die Stempelroute (sie kämen roh beim Browser an).
-    expect(SCHNITT.html.split(KLARA_FASSUNG_PLATZHALTER)).toHaveLength(3);
+    // VIER Vorkommen, alle benannt: das Meta `kw-loaded-version` (JOB 1077, „ist meine Seite noch
+    // die, die ausgeliefert wird"), die Cachekennung am Verweis auf `rueckweg.js` (JOB 3667) und
+    // seit R-1611 dieselbe Kennung an den Verweisen auf `taskpane.css` und `taskpane.js`. Alle
+    // stempelt derselbe `stempleFassung`-Lauf; keiner darf in die geschnittenen Dateien wandern,
+    // denn die gehen NICHT durch die Stempelroute (sie kämen roh beim Browser an).
+    // Zerlegungsauftrag Bestandsblick: FÜNF Vorkommen — dazu die Kennung am Verweis auf `marke.js`.
+    expect(SCHNITT.html.split(KLARA_FASSUNG_PLATZHALTER)).toHaveLength(6);
     expect(SCHNITT.html).toContain(`content="${KLARA_FASSUNG_PLATZHALTER}"`);
     expect(SCHNITT.html).toContain(`${RUECKWEG_DATEI}?v=${KLARA_FASSUNG_PLATZHALTER}`);
+    expect(SCHNITT.html).toContain(`${CSS_DATEI}?v=${KLARA_FASSUNG_PLATZHALTER}`);
+    expect(SCHNITT.html).toContain(`${JS_DATEI}?v=${KLARA_FASSUNG_PLATZHALTER}`);
+    expect(SCHNITT.html).toContain(`${MARKE_DATEI}?v=${KLARA_FASSUNG_PLATZHALTER}`);
     expect(SCHNITT.js).not.toContain(KLARA_FASSUNG_PLATZHALTER);
     expect(SCHNITT.css).not.toContain(KLARA_FASSUNG_PLATZHALTER);
     expect(RUECKWEG_QUELLE).not.toContain(KLARA_FASSUNG_PLATZHALTER);
+    expect(MARKE_QUELLE).not.toContain(KLARA_FASSUNG_PLATZHALTER);
   });
 });
 
@@ -185,13 +237,15 @@ describe("JOB 3014 · A — der Probeschnitt ist eine reine Textoperation", () =
 // B — DIE AUSLIEFERUNG DER DREI DATEIEN (Lieferung 3a und 3b).
 // ================================================================================================
 
-describe("JOB 3014 · B — alle drei Dateien kommen an", () => {
+describe("R-1611 · B — alle drei Dateien kommen an", () => {
   it("B1 · 200 mit erwartetem content-type für HTML, CSS und JS", async () => {
     const app = await auslieferung(distMitSchnitt());
     const faelle: Array<[string, string]> = [
       [KLARA_TASKPANE_PFAD, "text/html"],
       [CSS_PFAD, "text/css"],
       [JS_PFAD, "javascript"],
+      [`${CSS_PFAD}?v=${FASSUNG}`, "text/css"],
+      [`${JS_PFAD}?v=${FASSUNG}`, "javascript"],
     ];
     for (const [pfad, typ] of faelle) {
       const res = await app.inject({ method: "GET", url: pfad });
@@ -203,36 +257,42 @@ describe("JOB 3014 · B — alle drei Dateien kommen an", () => {
 
   it("B2 · die Geschwisterdateien tragen wirklich den geschnittenen Inhalt", async () => {
     const app = await auslieferung(distMitSchnitt());
-    const js = await app.inject({ method: "GET", url: JS_PFAD });
-    const css = await app.inject({ method: "GET", url: CSS_PFAD });
+    const js = await app.inject({ method: "GET", url: `${JS_PFAD}?v=${FASSUNG}` });
+    const css = await app.inject({ method: "GET", url: `${CSS_PFAD}?v=${FASSUNG}` });
     expect(js.body).toBe(SCHNITT.js);
     expect(css.body).toBe(SCHNITT.css);
   });
 
-  it("B3 · der Fassungsstempel greift weiter — im gesendeten Körper und im Kopf", async () => {
+  it("B3 · der Fassungsstempel greift weiter — im Körper, an den Verweisen und im Kopf", async () => {
     const app = await auslieferung(distMitSchnitt());
     const res = await app.inject({ method: "GET", url: KLARA_TASKPANE_PFAD });
     expect(res.body).not.toContain(KLARA_FASSUNG_PLATZHALTER);
     expect(res.body).toContain(`content="${FASSUNG}"`);
+    expect(res.body).toContain(`${CSS_DATEI}?v=${FASSUNG}`);
+    expect(res.body).toContain(`${JS_DATEI}?v=${FASSUNG}`);
     expect(String(res.headers[KLARA_FASSUNG_KOPF])).toBe(FASSUNG);
     // Gegenprobe: die ungestempelte Quelldatei im dist trägt den Platzhalter noch.
     expect(SCHNITT.html).toContain(KLARA_FASSUNG_PLATZHALTER);
   });
 
-  it("B4 · BEFUND: die Fassungskette deckt nach dem Schnitt nur noch die HTML-Datei", async () => {
-    // Das ist keine Beanstandung des Schnitts, sondern seine wichtigste Folge — und sie muss vor
-    // dem echten Umbau auf dem Tisch liegen. `stempleFassung` und `KLARA_FASSUNG_KOPF` hängen an
-    // der EINEN Route (`web-static.ts`, `KLARA_TASKPANE_PFAD`). Die Geschwisterdateien laufen über
-    // `@fastify/static` und tragen den Kopf NICHT. Ein Client kann nach dem Schnitt also eine
-    // aktuelle HTML-Seite mit einem älteren `taskpane.js` kombinieren, ohne dass die Fassungskette
-    // (JOB 1077) das bemerkt. Der `no-cache`-Hook auf `/word-addin/*` begrenzt das Fenster, hebt
-    // es aber nicht auf.
+  it("B4 · BEFUND: der Fassungskopf deckt nur die HTML-Datei, die Kennung bindet nur den Cache", async () => {
+    // Das ist keine Beanstandung des Schnitts, sondern seine wichtigste Folge (R-1514 hat sie als
+    // Hinweis festgehalten). `stempleFassung` und `KLARA_FASSUNG_KOPF` hängen an der EINEN Route
+    // (`web-static.ts`, `KLARA_TASKPANE_PFAD`). Die Geschwisterdateien laufen über
+    // `@fastify/static` und tragen den Kopf NICHT. Seit R-1611 zeigen die Verweise mit der
+    // Cachekennung `?v=<Fassung>` auf sie: ein Fassungswechsel ändert die Adresse, also holt der
+    // Webview sie neu. Was die Kennung NICHT leistet, und das ist hier gemessen: der Server liefert
+    // unter JEDER Kennung die Datei, die gerade auf der Platte liegt. Eine Fassungsgleichheit von
+    // HTML und Skript ist damit nicht erzwungen, nur ihr Auseinanderlaufen über den Cache verhindert.
     const app = await auslieferung(distMitSchnitt());
     for (const pfad of [JS_PFAD, CSS_PFAD]) {
-      const res = await app.inject({ method: "GET", url: pfad });
+      const res = await app.inject({ method: "GET", url: `${pfad}?v=${FASSUNG}` });
       expect(res.headers[KLARA_FASSUNG_KOPF], pfad).toBeUndefined();
       // Was der Hook aus `registerWebStatic` sehr wohl durchsetzt: Revalidierung je Abruf.
       expect(res.headers["cache-control"], pfad).toBe("no-cache");
+      const fremd = await app.inject({ method: "GET", url: `${pfad}?v=0.0.0.0` });
+      expect(fremd.statusCode, pfad).toBe(200);
+      expect(fremd.body, `${pfad}: andere Kennung, dieselbe Datei`).toBe(res.body);
     }
   });
 });
@@ -241,7 +301,7 @@ describe("JOB 3014 · B — alle drei Dateien kommen an", () => {
 // C — DIE KOPFZEILEN DER GESCHWISTERDATEIEN (Lieferung 3c). BEFUND, NICHT WUNSCH.
 // ================================================================================================
 
-describe("JOB 3014 · C — was HTML, JS und CSS an Kopfzeilen tragen", () => {
+describe("R-1611 · C — was HTML, JS und CSS an Kopfzeilen tragen", () => {
   it("C1 · die HTML-Antwort trägt die Ersatz-CSP, die Geschwister die strikte globale", async () => {
     const app = await auslieferung(distMitSchnitt());
     const html = await app.inject({ method: "GET", url: KLARA_TASKPANE_PFAD });
@@ -249,14 +309,9 @@ describe("JOB 3014 · C — was HTML, JS und CSS an Kopfzeilen tragen", () => {
     expect(html.headers["x-frame-options"]).toBeUndefined();
 
     // Der gemessene Befund: `WORD_ADDIN_CSP_PATHS` enthält NUR HTML-Adressen — keine der
-    // Geschwisterdateien (JS/CSS) des Probeschnitts steht darin. Das ist die Aussage dieses
-    // Falls, und sie ist der Grund, warum C2 gleich danach kommt.
-    // JOB 4076 (15.09.2026): die Menge hat einen ZWEITEN Eintrag bekommen — `anmeldung.html`, die
-    // Dialogseite der Office-Web-Anmeldung. Sie ist wieder eine HTML-Adresse und ändert an der
-    // Aussage dieses Falls nichts; gemessen wird deshalb ab hier, dass die HTML-Adresse des
-    // Taskpane enthalten ist UND dass die Geschwisterdateien es nicht sind (die Schleife darunter).
-    // Die vollständige, exakte Menge pinnt `tests/app/word-addin-csp.test.ts` — ein zweiter Pin
-    // hier wäre die Fassung, die als Erste veraltet.
+    // Geschwisterdateien (JS/CSS) steht darin. Die vollständige, exakte Menge pinnt
+    // `tests/app/word-addin-csp.test.ts` — ein zweiter Pin hier wäre die Fassung, die als Erste
+    // veraltet.
     expect(WORD_ADDIN_CSP_PATHS).toContain(KLARA_TASKPANE_PFAD);
     for (const pfad of [JS_PFAD, CSS_PFAD]) {
       expect(WORD_ADDIN_CSP_PATHS, pfad).not.toContain(pfad);
@@ -279,42 +334,43 @@ describe("JOB 3014 · C — was HTML, JS und CSS an Kopfzeilen tragen", () => {
     //   · Die strikte CSP AUF der JS-/CSS-Antwort (C1) verbietet dieser Antwort nichts, was sie
     //     täte: `frame-ancestors` gilt nur für Dokumente, und ein Skript lädt keine Unterressourcen
     //     über seinen eigenen Antwortkopf.
-    //   · NICHT GEMESSEN, und deshalb hier auch nicht behauptet: das Verhalten eines echten
-    //     Browsers oder des Word-WebViews. Belegt ist die Erlaubnislage, nicht ihr Vollzug.
+    //   · NICHT GEMESSEN, und deshalb hier auch nicht behauptet: das Verhalten des Word-WebViews.
+    //     Belegt ist die Erlaubnislage, nicht ihr Vollzug im Office-Host.
     const app = await auslieferung(distMitSchnitt());
     const html = await app.inject({ method: "GET", url: KLARA_TASKPANE_PFAD });
     const csp = String(html.headers["content-security-policy"] ?? "");
     expect(csp).toContain("script-src 'self' 'unsafe-inline' https://appsforoffice.microsoft.com");
     expect(csp).toContain("style-src 'self' 'unsafe-inline'");
     expect(csp).toContain("default-src 'self'");
-    // Beide Geschwister sind same-origin und RELATIV verlinkt — 'self' deckt sie. Gemessen an den
+    // Alle eigenen Quellen sind same-origin und RELATIV verlinkt — 'self' deckt sie. Gemessen an den
     // wirklichen Verweisen der geschnittenen Seite, nicht an einer Textprobe: die einzige absolute
     // Skriptquelle bleibt office.js, und sie steht bereits in der CSP oben.
-    // JOB 3667 R8: `rueckweg.js` steht als DRITTE Quelle mit dazwischen — sie kommt nicht aus
-    // diesem Probeschnitt, sondern schon aus der Quelle, und sie ist ebenfalls relativ.
     const skriptquellen = [...SCHNITT.html.matchAll(/<script\s+src="([^"]+)"/g)].map((m) => m[1]);
     expect(skriptquellen).toEqual([
       "https://appsforoffice.microsoft.com/lib/1/hosted/office.js",
       `${RUECKWEG_DATEI}?v=${KLARA_FASSUNG_PLATZHALTER}`,
-      JS_DATEI,
+      `${JS_DATEI}?v=${KLARA_FASSUNG_PLATZHALTER}`,
+      `${MARKE_DATEI}?v=${KLARA_FASSUNG_PLATZHALTER}`,
     ]);
     const stilquellen = [
       ...SCHNITT.html.matchAll(/<link\s+rel="stylesheet"\s+href="([^"]+)"/g),
     ].map((m) => m[1]);
-    expect(stilquellen).toEqual([CSS_DATEI]);
-    for (const ref of [JS_DATEI, CSS_DATEI, RUECKWEG_DATEI]) {
+    expect(stilquellen).toEqual([`${CSS_DATEI}?v=${KLARA_FASSUNG_PLATZHALTER}`]);
+    for (const ref of [JS_DATEI, CSS_DATEI, RUECKWEG_DATEI, MARKE_DATEI]) {
       expect(ref, `${ref} ist nicht relativ`).not.toMatch(/^[a-z]+:|^\/\//);
     }
   });
 
   it("C3 · fehlt eine der Geschwisterdateien, scheitert der Abruf LAUT — nie still als SPA-HTML", async () => {
-    // Wichtig für den echten Umbau: ein vergessenes `taskpane.js` im Build darf keine weiße Seite
-    // erzeugen, sondern muss als 404 auffallen (`isAssetRequest` in `web-static.ts`).
+    // Ein vergessenes `taskpane.js` im Build darf keine weiße Seite erzeugen, sondern muss als 404
+    // auffallen (`isAssetRequest` in `web-static.ts`).
     const app = await auslieferung(dist({ "taskpane.html": SCHNITT.html }));
-    const res = await app.inject({ method: "GET", url: JS_PFAD });
-    expect(res.statusCode).toBe(404);
-    expect(String(res.headers["content-type"] ?? "")).not.toContain("text/html");
-    expect(res.body).not.toContain("SPA");
+    for (const pfad of [JS_PFAD, `${JS_PFAD}?v=${FASSUNG}`, `${CSS_PFAD}?v=${FASSUNG}`]) {
+      const res = await app.inject({ method: "GET", url: pfad });
+      expect(res.statusCode, pfad).toBe(404);
+      expect(String(res.headers["content-type"] ?? ""), pfad).not.toContain("text/html");
+      expect(res.body, pfad).not.toContain("SPA");
+    }
   });
 });
 
@@ -341,12 +397,13 @@ async function laufAus(distPfad: string, officeQuelle = officeAttrappe()): Promi
   });
 }
 
+/** VORHER: das eine Dokument, so wie es bis zum Schnitt ausgeliefert wurde. */
 const DIST_ORIGINAL = (): string => dist({ "taskpane.html": QUELLE });
 
 /**
  * Die Sonde aus BENs Gegenprobe, MECHANISCH ans Ende des Inline-Skripts gesetzt: sie schreibt in
  * den Titel, ob der laufende Code inline oder als eigene Datei kam. Beide Fassungen entstehen
- * anschließend aus DERSELBEN gesondeten Quelle — dieselbe Textoperation wie beim echten Schnitt.
+ * anschließend aus DERSELBEN gesondeten Quelle — dieselbe Textoperation wie beim Schnitt.
  */
 const SONDE =
   '\n;document.title = document.title + "|" + ' +
@@ -362,7 +419,7 @@ function anders(a: Fingerabdruck, b: Fingerabdruck): string[] {
   return schluessel.filter((k) => JSON.stringify(a[k]) !== JSON.stringify(b[k]));
 }
 
-describe("JOB 3014 · D — derselbe Startzustand, geschnitten wie ungeschnitten", () => {
+describe("R-1611 · D — derselbe Startzustand, vor dem Schnitt wie nach dem Schnitt", () => {
   it("D1 · Kalibrierung: der Lauf lädt wirklich, misst wirklich und ist wiederholbar", async () => {
     const eins = await laufAus(DIST_ORIGINAL());
 
@@ -380,12 +437,10 @@ describe("JOB 3014 · D — derselbe Startzustand, geschnitten wie ungeschnitten
     expect(eins.abdruck.bindungen.length).toBeGreaterThan(5);
     expect(eins.abdruck.netzaufrufe.length).toBeGreaterThan(0);
     // (d) Die Stilhälfte trägt: die gemessenen Werte kommen aus dem Stilblatt, nicht aus dem
-    //     jsdom-Nullzustand. Ohne diese Zeile wäre `stile` eine Spalte aus lauter Leerwerten.
-    //     GRENZE, gemessen und deshalb hier benannt: jsdom löst KEINE benutzerdefinierten
-    //     Eigenschaften auf — `color` kommt als `var(--text)` heraus, nicht als Farbe. Für den
-    //     Vergleich genügt das (beide Fassungen bekommen denselben Wert); als Aussage über die
-    //     WIRKLICHE Farbe taugt es nicht, und sie wird hier auch nicht getroffen. Die Werte, die
-    //     jsdom wirklich rechnet, sind die direkten — Längen und Schriftfamilie.
+    //     jsdom-Nullzustand. GRENZE, gemessen und deshalb hier benannt: jsdom löst KEINE
+    //     benutzerdefinierten Eigenschaften auf — `color` kommt als `var(--text)` heraus, nicht als
+    //     Farbe. Für den Vergleich genügt das (beide Fassungen bekommen denselben Wert); als Aussage
+    //     über die WIRKLICHE Farbe taugt es nicht, und sie wird hier auch nicht getroffen.
     const stilwerte = eins.abdruck.stile.join(" ");
     expect(stilwerte, "eine Stilprobe hat ihr Element nicht gefunden").not.toContain(": fehlt");
     expect(stilwerte, "kein Stilblatt wirksam").toMatch(/border-radius=\d+px/);
@@ -400,29 +455,30 @@ describe("JOB 3014 · D — derselbe Startzustand, geschnitten wie ungeschnitten
     expect(anders(eins.abdruck, zwei.abdruck)).toEqual([]);
   });
 
-  it("D2 · Original und Probeschnitt: gleicher Startzustand, verschiedene Ladewege", async () => {
+  it("D2 · vorher und nachher: gleicher Startzustand, verschiedene Ladewege", async () => {
     const original = await laufAus(DIST_ORIGINAL());
     const geschnitten = await laufAus(distMitSchnitt());
 
-    // DER UNTERSCHIED, DEN ES GEBEN MUSS: der Probeschnitt lädt ZWEI WEITERE Dateien nach, das
-    // Original nicht. Ohne diesen Fall wäre nicht belegt, dass hier überhaupt zwei verschiedene
-    // Seiten laufen — genau BENs Befund an Runde 1.
-    // JOB 3667 R8: `rueckweg.js` holen BEIDE Fassungen, denn sie steht schon in der Quelle — sie
-    // ist gerade KEIN Unterschied und darf deshalb auf beiden Seiten stehen. Verglichen wird ab
-    // hier die SORTIERTE Menge: die Reihenfolge, in der jsdom seine Ressourcen anfordert, ist keine
-    // Zusage dieses Falls (sie war es auch vorher nicht — sie stand nur zufällig fest), und ein
-    // Pin auf sie hätte hier eine Wahrheit behauptet, die niemand gemessen hat.
+    // DER UNTERSCHIED, DEN ES GEBEN MUSS: die geschnittene Seite lädt ZWEI WEITERE Dateien nach,
+    // das Original nicht — und zwar unter der gestempelten Cachekennung. Ohne diesen Fall wäre nicht
+    // belegt, dass hier überhaupt zwei verschiedene Seiten laufen — genau BENs Befund an Runde 1.
+    // JOB 3667 R8: `rueckweg.js` holen BEIDE Fassungen, denn sie steht schon in der Quelle. Verglichen
+    // wird die SORTIERTE Menge: die Reihenfolge, in der jsdom seine Ressourcen anfordert, ist keine
+    // Zusage dieses Falls.
     expect([...original.geholt].sort()).toEqual(
       [
         `http://localhost${RUECKWEG_PFAD}?v=${FASSUNG}`,
         "https://appsforoffice.microsoft.com/lib/1/hosted/office.js",
       ].sort(),
     );
+    // Zerlegungsauftrag Bestandsblick: nachher kommt `marke.js` dazu — vorher stand ihr Abschnitt
+    // inline, und genau dort holt das Original sie nicht.
     expect([...geschnitten.geholt].sort()).toEqual(
       [
-        `http://localhost${CSS_PFAD}`,
+        `http://localhost${CSS_PFAD}?v=${FASSUNG}`,
         `http://localhost${RUECKWEG_PFAD}?v=${FASSUNG}`,
-        `http://localhost${JS_PFAD}`,
+        `http://localhost${JS_PFAD}?v=${FASSUNG}`,
+        `http://localhost${MARKE_PFAD}?v=${FASSUNG}`,
         "https://appsforoffice.microsoft.com/lib/1/hosted/office.js",
       ].sort(),
     );
@@ -434,7 +490,7 @@ describe("JOB 3014 · D — derselbe Startzustand, geschnitten wie ungeschnitten
     console.log(
       [
         "",
-        "JOB 3014 · Verhaltensabgleich Original ↔ Probeschnitt",
+        "R-1611 · Verhaltensabgleich vor dem Schnitt ↔ nach dem Schnitt",
         "(je ein eigenes jsdom-Fenster, vollständige Serverantwort, Geschwisterdateien über dieselbe",
         " Fastify-App nachgeladen, dieselbe bereite Office-Attrappe, dieselbe fetch-Attrappe)",
         `  Titel:              ${original.abdruck.titel}`,
@@ -447,8 +503,8 @@ describe("JOB 3014 · D — derselbe Startzustand, geschnitten wie ungeschnitten
         `  Office-Zugriffe:    ${original.abdruck.officeAufrufe.join(", ")}`,
         `  Netzaufrufe:        ${original.abdruck.netzaufrufe.join(", ")}`,
         `  Skriptfehler:       ${original.abdruck.fehler.length}`,
-        `  Nachgeladen:        Original ${original.geholt.length} Ressource(n), Probeschnitt ${geschnitten.geholt.length}`,
-        "  ERGEBNIS: Probeschnitt verhält sich gleich.",
+        `  Nachgeladen:        vorher ${original.geholt.length} Ressource(n), nachher ${geschnitten.geholt.length}`,
+        "  ERGEBNIS: der Schnitt verhält sich gleich.",
         "",
       ].join("\n"),
     );
@@ -461,10 +517,12 @@ describe("JOB 3014 · D — derselbe Startzustand, geschnitten wie ungeschnitten
     const ohneJs = await laufAus(dist({ "taskpane.html": SCHNITT.html, [CSS_DATEI]: SCHNITT.css }));
     expect(ohneJs.abdruck).not.toEqual(original.abdruck);
     // Und es scheitert LAUT: der Lader hat die Datei angefordert und einen Fehler bekommen.
-    expect(ohneJs.geholt).toContain(`http://localhost${JS_PFAD}`);
+    expect(ohneJs.geholt).toContain(`http://localhost${JS_PFAD}?v=${FASSUNG}`);
     expect(ohneJs.abdruck.fehler.join(" ")).toContain("taskpane.js");
     // Das Panel ist ohne sein Skript stumm: keine Netzaufrufe, keine Office-Zugriffe.
-    expect(ohneJs.abdruck.netzaufrufe).toEqual([]);
+    // Zerlegungsauftrag Bestandsblick: AUSGENOMMEN ist genau der eine Abruf von `marke.js` — die
+    // Datei liegt bei und hängt nicht an `taskpane.js`. Nichts sonst.
+    expect(ohneJs.abdruck.netzaufrufe.filter((a) => a !== "GET /api/branding")).toEqual([]);
     expect(ohneJs.abdruck.officeBindungen).toEqual([]);
   });
 
@@ -479,8 +537,9 @@ describe("JOB 3014 · D — derselbe Startzustand, geschnitten wie ungeschnitten
 
   it("D5 · Gegenprobe: ein Inline/Extern-Unterschied im Skript wird ROT", async () => {
     // BENs Gegenprobe aus der Prüfung von Runde 1, wörtlich nachgestellt: eine Sonde, die
-    // `document.currentScript.src` liest, unterscheidet die beiden Fassungen WIRKLICH. In Runde 1
-    // lief sie grün durch — das war der Beweis, dass dort kein echter Schnitt verglichen wurde.
+    // `document.currentScript.src` liest, unterscheidet die beiden Fassungen WIRKLICH. Die Sonde
+    // sitzt im Skript, deshalb entsteht die geschnittene Fassung hier mechanisch (`schneideDrei`)
+    // aus der gesondeten Quelle — A1 belegt, dass der echte Schnitt genau diese Textoperation ist.
     const quelleMitSonde = mitSonde(QUELLE);
     const schnittMitSonde = schneideDrei(quelleMitSonde);
     const originalSonde = await laufAus(dist({ "taskpane.html": quelleMitSonde }));
@@ -513,5 +572,17 @@ describe("JOB 3014 · D — derselbe Startzustand, geschnitten wie ungeschnitten
     // Der Unterschied ist sichtbar, nicht nur intern: der Nicht-Word-Zustand zeigt eine andere
     // Oberfläche.
     expect(anders(wort.abdruck, ohneOffice.abdruck)).toContain("verborgen");
+  });
+
+  it("D7 · nachher in beiden Host-Lagen: auch ohne Office verhält sich der Schnitt wie vorher", async () => {
+    // D2 vergleicht den Word-Zustand. Der zweite Zustand, den ein Mensch sieht — das Fenster im
+    // normalen Browser, ohne Office —, läuft durch andere Zweige; auch dort darf der Schnitt nichts
+    // ändern.
+    const original = await laufAus(DIST_ORIGINAL(), OFFICE_FEHLT);
+    const geschnitten = await laufAus(distMitSchnitt(), OFFICE_FEHLT);
+    // Kalibrierung: das ist wirklich der Nicht-Word-Zustand (D6 belegt, dass er sich unterscheidet).
+    expect(original.abdruck.officeBindungen).toEqual([]);
+    expect(anders(original.abdruck, geschnitten.abdruck)).toEqual([]);
+    expect(geschnitten.abdruck).toEqual(original.abdruck);
   });
 });

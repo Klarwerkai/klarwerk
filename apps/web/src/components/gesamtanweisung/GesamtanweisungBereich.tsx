@@ -72,10 +72,10 @@ import { formatKoTimestamp } from "../../lib/koDates";
 import { useAuthorName } from "../../lib/useAuthorName";
 import { useOnline } from "../../shell/Meldungen";
 import { HelpTip } from "../HelpTip";
+import { FreigabeStatus } from "./EntscheidungsVorlage";
 import { GesamtanweisungSeite } from "./GesamtanweisungSeite";
 import { fehlerSchluessel } from "./api";
 import {
-  CHIP,
   FELD,
   FELD_LABEL,
   HINWEIS,
@@ -86,7 +86,7 @@ import {
   MELDUNG_HINWEIS,
 } from "./gestaltung";
 import { useAnweisungAnlegen, useAnweisungsListe } from "./hooks";
-import { anzeigelage, standSchluessel } from "./zustand";
+import { type Freigaberechte, anzeigelage, standSchluessel } from "./zustand";
 
 export const BEREICH_MARKE = "ga-bereich";
 
@@ -112,11 +112,22 @@ function darfEntscheidenAls(rang: number): boolean {
   return rang >= ROLE_RANK.controller;
 }
 
+/**
+ * PRÜFSTATUS-ANZEIGE · die Rechte des Betrachters für den nächsten Schritt — in Übersicht UND
+ * Detail aus derselben Stelle. Vorlegen fordert `ko.create` (experte und höher, `policy.ts`),
+ * Entscheiden `ko.validate` (siehe oben). Auch hier fällt die Entscheidung am Server; gefragt wird
+ * nur, welcher Schritt angeboten und erklärt wird.
+ */
+function freigaberechteAls(rang: number): Freigaberechte {
+  return { darfVorlegen: rang >= ROLE_RANK.experte, darfEntscheiden: darfEntscheidenAls(rang) };
+}
+
 export function GesamtanweisungBereich(): JSX.Element {
   const { t } = useTranslation();
   const { id } = useParams<{ id?: string }>();
   const { role } = useRole();
   const online = useOnline();
+  const rechte = freigaberechteAls(ROLE_RANK[role]);
 
   if (id) {
     return (
@@ -135,13 +146,14 @@ export function GesamtanweisungBereich(): JSX.Element {
         </Link>
         <GesamtanweisungSeite
           anweisungId={id}
-          darfEntscheiden={darfEntscheidenAls(ROLE_RANK[role])}
+          darfEntscheiden={rechte.darfEntscheiden}
+          darfVorlegen={rechte.darfVorlegen}
           offline={!online}
         />
       </section>
     );
   }
-  return <Einstieg offline={!online} />;
+  return <Einstieg offline={!online} rechte={rechte} />;
 }
 
 // ==================================================================================================
@@ -226,9 +238,11 @@ const ANTWORT_OHNE_BESTAND = {
 function Listeneintrag({
   eintrag,
   nameVon,
+  rechte,
 }: {
   eintrag: AnweisungListeneintrag;
   nameVon: NameResolver;
+  rechte: Freigaberechte;
 }): JSX.Element {
   const { t, i18n } = useTranslation();
   const zeit = formatKoTimestamp(eintrag.geaendertAm, i18n.language);
@@ -247,10 +261,20 @@ function Listeneintrag({
         >
           {eintrag.titel}
         </Link>
-        <span data-testid={`${LISTE_MARKE}-stand`} className={CHIP}>
-          <span className="sr-only">{t("ga.liste.stand")}: </span>
-          {t(`ga.stand.${eintrag.stand}`)}
-        </span>
+      </div>
+      {/* PRÜFSTATUS-ANZEIGE: derselbe Block wie im Kopf der Detailansicht (`GesamtanweisungSeite`). */}
+      <div className="mt-1">
+        <FreigabeStatus
+          marke={LISTE_MARKE}
+          eingabe={{
+            stand: eintrag.stand,
+            version: eintrag.version,
+            geaendertAm: eintrag.geaendertAm,
+            abschnitte: eintrag.sichtbareBausteine + eintrag.verborgeneBausteine,
+            unvollstaendig: eintrag.unvollstaendig || eintrag.verborgeneBausteine > 0,
+          }}
+          rechte={rechte}
+        />
       </div>
       <p className={`${HINWEIS} mt-1 flex flex-wrap gap-x-2 gap-y-0.5`}>
         <span data-testid={`${LISTE_MARKE}-bausteine`}>
@@ -285,20 +309,28 @@ function Listeneintrag({
  */
 function Eintragsliste({
   eintraege,
+  rechte,
 }: {
   eintraege: readonly AnweisungListeneintrag[];
+  rechte: Freigaberechte;
 }): JSX.Element {
   const nameVon = useAuthorName();
   return (
     <ul data-testid={`${LISTE_MARKE}-eintraege`} className="space-y-2">
       {eintraege.map((eintrag) => (
-        <Listeneintrag key={eintrag.id} eintrag={eintrag} nameVon={nameVon} />
+        <Listeneintrag key={eintrag.id} eintrag={eintrag} nameVon={nameVon} rechte={rechte} />
       ))}
     </ul>
   );
 }
 
-function Bestandsliste({ offline }: { offline: boolean }): JSX.Element {
+function Bestandsliste({
+  offline,
+  rechte,
+}: {
+  offline: boolean;
+  rechte: Freigaberechte;
+}): JSX.Element {
   const { t, i18n } = useTranslation();
   const abfrage = useAnweisungsListe();
 
@@ -377,7 +409,7 @@ function Bestandsliste({ offline }: { offline: boolean }): JSX.Element {
           {t(lage.offline ? "ga.offline" : "ga.liste.fehler")}
         </p>
       ) : null}
-      <Eintragsliste eintraege={eintraege} />
+      <Eintragsliste eintraege={eintraege} rechte={rechte} />
     </section>
   );
 }
@@ -479,7 +511,13 @@ function useUnbestaetigterTitel(): [string, (wert: string) => void, () => void] 
  * Anlegen nicht (man kann anlegen, ohne den Bestand zu kennen), und ihr Ladezustand verzögert es
  * nicht. Zwei Gegenstände, zwei Zustände, zwei Meldungen.
  */
-function Einstieg({ offline }: { offline: boolean }): JSX.Element {
+function Einstieg({
+  offline,
+  rechte,
+}: {
+  offline: boolean;
+  rechte: Freigaberechte;
+}): JSX.Element {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const anlegen = useAnweisungAnlegen();
@@ -530,7 +568,7 @@ function Einstieg({ offline }: { offline: boolean }): JSX.Element {
           {t("fe001.einstieg.beispiel")}
         </p>
       </header>
-      <Bestandsliste offline={offline} />
+      <Bestandsliste offline={offline} rechte={rechte} />
       <form
         data-testid={`${BEREICH_MARKE}-anlegen`}
         onSubmit={absenden}

@@ -94,6 +94,7 @@ const DuplicateCompare = lazy(() =>
 const Duplicates = lazy(() =>
   import("./pages/Duplicates").then((m) => ({ default: m.Duplicates })),
 );
+const Einstieg = lazy(() => import("./pages/Einstieg").then((m) => ({ default: m.Einstieg })));
 const ExternalKnowledge = lazy(() =>
   import("./pages/ExternalKnowledge").then((m) => ({ default: m.ExternalKnowledge })),
 );
@@ -258,6 +259,11 @@ export function AppRoutes(): JSX.Element {
           <Route key={item.id} path={item.path} element={<Guarded item={item} />} />
         ))}
         <Route path="/wissen/:id" element={<KnowledgeDetail />} />
+        {/* R-0928 / R-1675 (Folgeauftrag gesamt-erstnutzerfuehrung-quellen): die vier kurzen
+            thematischen Einstiege vor den Vollfunktionen (`pages/Einstieg.tsx`, `lib/einstiege.ts`).
+            OHNE `Guarded`: die Ansicht erklärt nur und öffnet nichts; das Rollen-Tor sitzt an ihrer
+            Übergabe (`RoleLink`) und am Ziel selbst. Ein unbekanntes Thema führt auf die Startseite. */}
+        <Route path="/einstieg/:thema" element={<Einstieg />} />
         {/* SCRUM-527 (Design-Batch B): zuhörende „Wissen erfassen"-Erstversion — Deep-Link zum Browser-
             Check durch Pedi (noch nicht in der Navigation, um die bestehende Erfassung nicht zu berühren). */}
         <Route path="/erfassen/neu" element={<KnowledgeIntake />} />

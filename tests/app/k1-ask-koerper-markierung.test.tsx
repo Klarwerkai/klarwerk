@@ -21,9 +21,8 @@
 // Office-Attrappe liefert eine STELLBARE Textmarkierung, der Router schreibt jeden Koerper mit.
 // Die Sitzung ist gueltig und die Aufloesung frisch — der Ask darf also abgehen; was er traegt,
 // ist die Messgroesse.
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { panelQuelleAus } from "../support/panelquelle";
 import {
   type Antwort,
   type Lauf,
@@ -36,7 +35,7 @@ import {
 } from "./k1-panel-lauf";
 
 const TASKPANE = "apps/web/public/word-addin/taskpane.html";
-const HTML = readFileSync(resolve(process.cwd(), TASKPANE), "utf8");
+const HTML = panelQuelleAus(TASKPANE);
 
 /** Die Fixtures der alten Datei — woertlich, damit rot/gruen an denselben Worten haengt. */
 const MARKIERUNG = "Rückstellung Gewährleistung";

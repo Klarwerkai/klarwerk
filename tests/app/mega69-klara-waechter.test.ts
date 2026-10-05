@@ -46,6 +46,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { panelQuelleAus } from "../support/panelquelle";
 
 const WURZEL = join(__dirname, "..", "..");
 const TASKPANE = join(WURZEL, "apps", "web", "public", "word-addin", "taskpane.html");
@@ -59,8 +60,9 @@ const RUECKWEG = join(WURZEL, "apps", "web", "public", "word-addin", "rueckweg.j
  */
 const ANMELDUNG = join(WURZEL, "apps", "web", "public", "word-addin", "anmeldung.html");
 
+/** Das Fenster als EIN Dokument — seit R-1611 aus `taskpane.html`/`.css`/`.js` zusammengefügt. */
 function quelle(): string {
-  return readFileSync(TASKPANE, "utf8");
+  return panelQuelleAus(TASKPANE);
 }
 
 /** Die deutschen OBERFLÄCHENTEXTE — Werte des STRINGS.de-Objekts, zeilenweise erhoben. */
@@ -2619,8 +2621,62 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // PIN BEWUSST AKTUALISIERT (9549900a… -> 175ddaef…): der Wert ist im Prüflauf auf Kandidat
     // 6eb0541a GEMESSEN (Zusicherung dieses Falls, „Received") und unverändert übernommen;
     // `taskpane.html` ist seit dieser Messung unberührt (geprüft mit `git diff` gegen 6eb0541a).
-    const PIN = "175ddaef38c27b128319ccc5bf37eba158bf08bbcf6ac1fc14fa002c10b6cc07";
-    const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
+    // (Bis hier: Pins der GESAMT-VERTRAULICHKEIT-ERFASSUNG auf die ungeteilte `taskpane.html`. Seit
+    // der Integration mit main 38508a1e gilt der Pin des zusammengefügten Dokuments unten.)
+    // AUFNAHME 20260922 · ZENTRALE-MODULE-AUFTEILEN (R-1611, P11) — DER PIN BLEIBT, WAS ER WAR.
+    // Das Fenster liegt jetzt in DREI Dateien (`taskpane.html`, `taskpane.css`, `taskpane.js`);
+    // gehasht wird deshalb das wieder zusammengefügte Dokument (`panelQuelleAus`). Dass der Pin
+    // NICHT wandern musste, ist der Beleg: kein Zeichen von Markup, Stil oder Skript hat sich
+    // geändert, nur die Ablage. Jede künftige Änderung an einer der drei Dateien macht ihn rot.
+    // Auslieferungsfolgen des Schnitts: ZWEI Abrufe mehr beim Öffnen (beide gleicher Ursprung,
+    // `script-src 'self'`/`style-src 'self'` der Dokument-CSP decken sie), dieselbe Cachekennung
+    // `?v=__KW_FASSUNG__` wie `rueckweg.js`; Abrufziel, Manifest, Recht, Nutzlast unverändert;
+    // kein erneutes Sideload.
+    // AUFNAHME m365-anmeldung (Lauf 1 am 25.09.2026, nach dem Schnitt in `taskpane.js` übertragen)
+    // — DER PIN MUSS DESHALB WANDERN (5fbf5f64… -> Hash des zusammengefügten Dokuments mit dieser
+    // Änderung; bei der Konfliktlösung am 05.10.2026 nicht berechenbar, s. Rückgabe).
+    // Abgelehntes Anmelde-Fenster im Rahmen fremder Herkunft: sofort `loginDialogDeclined` statt Rückfallfenster und fünf Minuten Warten
+    // (gemessen: tests/office-web-anmeldung/seitenfenster-abgelehnter-dialog.test.tsx).
+    //   · Abrufziel: keines neu. · CSP, Recht, Manifest: unverändert.
+    //   · Nutzlast: unverändert. · Sideload: keiner nötig. · Mac-Word/Browsertab: unverändert
+    //     (ohne Rahmenlage bleibt das Rückfallfenster der Weg, Gegenprobe A3).
+    // ZERLEGUNGSAUFTRAG BESTANDSBLICK (aufnahme:20260922:gesamt-bestandsblick:zerlegung-aufraeumen),
+    // NACH DER INTEGRATION MIT R-1611. Zwei Änderungen, und nur EINE bewegt diesen Pin:
+    //   (1) Der Abschnitt KW-MARKE (das Ende des Skripts) wohnt in einer vierten Datei
+    //       `marke.js`, geladen als klassisches Skript UNMITTELBAR NACH `taskpane.js` — er läuft
+    //       also an derselben Stelle. Grund: `schnittflaechen.test.ts` B3 (taskpane.js < 12500
+    //       Zeilen; vorher 12595). `panelQuelleAus` setzt ihn beim Zusammenfügen wieder ans Ende
+    //       des Skripts; das zusammengefügte Dokument ändert sich dadurch um KEIN Byte (gemessen:
+    //       Git-Blob-Vergleich, `schnitt-echt.test.ts` E2).
+    //       Auslieferungsfolgen: EIN Abruf mehr beim Öffnen (gleicher Ursprung, `script-src 'self'`),
+    //       dieselbe Cachekennung; Abrufziel (17, `/api/branding` jetzt in `marke.js`), Manifest,
+    //       Recht, Nutzlast unverändert; kein Sideload. Ein alter Server ohne die Datei liefert 404 —
+    //       das Fenster bleibt bedienbar, nur ohne Firmen-CI.
+    //   (2) Die Bestandsblick-Lesekoordination aus 67d5e6fd in `taskpane.js` —
+    //       `readWholeDocument(done, fehlschlag)`, `ka1Generation`/`ka1Stand`/`ka1Aktuell` und das
+    //       Warten bzw. Neulesen vor dem Vertragsaufruf in `ka3Ausfuehren`. KEIN neues Abrufziel,
+    //       keine Nutzlaständerung ausser den Begriffen des aktuellen Dokuments, ein zusätzlicher
+    //       LESENDER `Word.run` nach der Schreibruhe (kein Schreibweg, gemessen in w1 KA3);
+    //       Manifest/CSP/Recht unverändert, kein Sideload. DIESE Änderung bewegt den Pin.
+    // NACHARBEIT 7: PIN BEWUSST AKTUALISIERT (5fbf5f64… -> fe3cc513…), gemessen am Kandidaten
+    // 787b3e41 — das war das Dokument OHNE die m365-Anmeldeänderung.
+    // NACHARBEIT 12 (Integration mit `main` 93c25f5a): JETZT TRÄGT DAS DOKUMENT BEIDE Änderungen
+    // (m365-Anmeldung UND Bestandsblick); Git-Blob `90936dcc…`, s. `tests/support/panelquelle.ts`.
+    // NACHARBEIT 13: PIN BEWUSST AKTUALISIERT (fe3cc513… -> 66ba98c4…). Der Wert ist GEMESSEN, nicht
+    // geschätzt: dieser Fall meldete ihn am Kandidaten 2dc7cbb7 im Prüflauf (`Received:
+    // "66ba98c4…f74f76e5"`, funktion-erhalten-jsdom); die vier Dateien sind seither unverändert.
+    // AUFNAHME 20260922 · GESAMT-VERTRAULICHKEIT-ERFASSUNG (R-0632), INTEGRATION mit main 38508a1e
+    // (05.10.2026): die Stufenwahl ist in die zerlegte Fassung übertragen — Markup #capture-stufe
+    // in `taskpane.html`, Logik in `taskpane.js` (`draftPostPayload`/`prepareWordDraftRequest` mit
+    // optionaler Stufe, `captureStufeGewaehlt`/`renderCaptureStufe`, Klick-Zuhörer, vier
+    // Wörterbuchschlüssel je Sprache, `confidentiality` im from-docx-Rumpf nur bei echter Wahl).
+    // Auslieferungsfolgen wie oben für die ungeteilte Fassung beschrieben: kein neues Abrufziel; die
+    // Nutzlast trägt `confidentiality` nur nach einem Klick; Manifest, CSP, Recht unverändert; kein
+    // Sideload. DER PIN MUSS DESHALB WANDERN (66ba98c4… -> Hash des zusammengefügten Dokuments mit
+    // dieser Änderung). Bei der Konfliktlösung nicht berechenbar (kein Hash-Werkzeug zugelassen);
+    // der Prüflauf meldet den Ist-Wert als „Received", er wird danach gemessen übernommen.
+    const PIN = "66ba98c4cbaa5cb24a6fe2ae79fe74c56c784c1927dcff9ee7975f98f74f76e5";
+    const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(
       ist,
       "taskpane.html wurde geändert — Auslieferungsfolgen bewusst prüfen (Kommentar oben), dann den Pin aktualisieren.",
@@ -2816,7 +2872,18 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     //                  bisher geladen, nur endlich auch ABGEWARTET.
     //   · Sideload:    KEIN erneutes Sideload — die Datei wird wie jede andere unter `public/` neu
     //                  ausgeliefert.
-    const PIN = "4ae060ee0a4b832ce0c8d93ba1cb1fa9b9b83bd1d2076429208b84603cddf7e2";
+    // AUFNAHME m365-anmeldung RUNDE 2 (25.09.2026) — PIN BEWUSST AKTUALISIERT (4ae060ee… -> d30a829d…).
+    // Bens Befund (R-0355-Restfall SSO): der SSO-Start traegt jetzt die EINE Zielkennung
+    // (`/api/auth/oidc/start?ziel=word-addin`); der Rueckruf der Anwendung schickt das Fenster auf
+    // diese Seite zurueck, und sie uebergibt von selbst. Gemessen:
+    // tests/office-web-anmeldung/sso-rueckweg-zur-dialogseite.test.ts.
+    //   · Abrufziel: keines neu (derselbe SSO-Start, eine Query). · CSP, Recht, Manifest: unveraendert.
+    //   · OIDC-Einrichtung (`redirect_uri`): unveraendert. · Sideload: keiner noetig.
+    // AUFNAHME m365-anmeldung RUNDE 3 (25.09.2026) — PIN BEWUSST AKTUALISIERT (d30a829d… -> f63ac6bc…).
+    // Bens Befund: der sichtbare SSO-Hinweis sagte noch „Fenster schliessen, erneut druecken" —
+    // jetzt in drei Sprachen der automatische Rückweg (gemessen: dialogseite.test.ts S4b4b).
+    //   · Nur Texte; Abrufziele, CSP, Recht, Manifest unveraendert. · Sideload: keiner noetig.
+    const PIN = "f63ac6bc72ed1219f758c7a2d16d929f69d2faef9a1ca0f9c93478490f7c13d9";
     const ist = createHash("sha256").update(readFileSync(ANMELDUNG)).digest("hex");
     expect(
       ist,

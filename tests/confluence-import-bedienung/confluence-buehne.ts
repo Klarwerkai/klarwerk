@@ -95,6 +95,12 @@ export function confluenceInstanz(opts: {
   const fetchFn = (async (eingabe: unknown, init?: RequestInit) => {
     const url = String(eingabe);
     abrufe.push(url);
+    // R-0163: der Importeur liest je Seite auch die Anhangsliste. Diese Instanz führt keine
+    // Anhänge — sie antwortet darauf wie Confluence mit einer leeren Liste ohne Folgecursor und
+    // nicht mit einer Ergebnisseite des Space-Listings.
+    if (new URL(url).pathname.endsWith("/child/attachment")) {
+      return confluenceAntwort(200, { results: [] });
+    }
     const einzel = /\/rest\/api\/content\/([^/?]+)\?/.exec(url);
     if (einzel) {
       const treffer = alle.find((p) => p.id === decodeURIComponent(einzel[1] ?? ""));

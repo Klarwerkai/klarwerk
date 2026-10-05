@@ -89,6 +89,108 @@ export interface CandidateRepo {
   // Ein verschwundener Kandidat ist hier KEIN Fehler (Cleanup darf gewinnen) — der Beleg selbst
   // ist zu diesem Zeitpunkt bereits über recordOnce gesichert bzw. exactly-once nachziehbar.
   clearAuditPending(id: string, eventId: string): Promise<boolean>;
+  // Lauf gesamt-import-adoption:2 (Bens R3-1, B1): DIE ANNAHME-SPERRE. Befund und Anlage einer
+  // Annahme laufen UNTER GEGENSEITIGEM AUSSCHLUSS — über ALLE Dienstinstanzen, die diesen
+  // Kandidatenbestand teilen, und für JEDEN Annahmeweg (Textweg UND Herkunftsanker). Begründung am
+  // Kopf von `AnnahmeKette` unten. Ein werfender Schritt gibt die Sperre frei; sein Fehler kommt
+  // durch. Wer die Sperre nicht binnen `wartezeitMs` bekommt, erhält `CONFLICT` und sein Schritt
+  // läuft NICHT.
+  //
+  // Lauf :2 Runde 3 (Bens B4): der Schritt bekommt `sperreGilt` — er ruft sie UNMITTELBAR vor jeder
+  // Mutation. Sie wirft (CONFLICT), wenn die Sperre inzwischen nicht mehr gehalten wird; dann
+  // schreibt der Schritt nichts. InMemory kann die Sperre nicht verlieren.
+  annahmeSperre<T>(
+    wartezeitMs: number,
+    schritt: (sperreGilt: () => Promise<void>) => Promise<T>,
+  ): Promise<T>;
+}
+
+// Die Antwort an eine Annahme, die die Sperre nicht rechtzeitig bekam. Ein Konflikt, keine Störung:
+// der Claim wird zurückgegeben, und derselbe Klick gelingt, sobald die laufende Annahme fertig ist.
+export function annahmeSperreBelegt(): LibraryError {
+  return new LibraryError(
+    "CONFLICT",
+    "Eine andere Annahme läuft gerade noch — bitte in einem Moment erneut annehmen.",
+  );
+}
+
+// Die Antwort, wenn die Sperre WÄHREND des Schritts verloren ging (Bens B4): vor der Mutation
+// erkannt, also ist nichts geschrieben — derselbe Klick gelingt beim nächsten Versuch.
+export function annahmeSperreVerloren(): LibraryError {
+  return new LibraryError(
+    "CONFLICT",
+    "Die Annahme hat ihre Sperre verloren und nichts angelegt — bitte erneut annehmen.",
+  );
+}
+
+// ================================================================================================
+// Lauf gesamt-import-adoption:2 — DIE ANNAHME-SPERRE GEHÖRT ZUM BESTAND, UND SIE WIRD NIE GEBROCHEN.
+// ================================================================================================
+//
+// RUNDE 3 (Bens R3-1). Die Reihenfolge hing an der Dienstinstanz und galt nur auf dem Textweg: der
+// Anker-Weg lief ungeschützt, und zwei Instanzen mit gemeinsamem Bestand sahen einander nicht.
+// Seitdem sitzt die Sperre im Kandidatenbestand — dem Ort, den alle Instanzen teilen — und umfasst
+// jede Annahme. InMemory: diese Klasse am Repo-Objekt. Postgres: eine transaktionsgebundene
+// Advisory-Sperre (`repo-pg.ts`), davor diese Klasse im Prozess, damit je Prozess höchstens EINE
+// Verbindung auf die Sperre wartet und die Anlage selbst nie mangels freier Verbindung hängt.
+//
+// LAUF :2 RUNDE 1 → 2 (Bens B1). Runde 1 BRACH die Sperre, sobald die Recovery den Claim ihres
+// Halters abschloss, damit ein hängender Halter nicht alles aufhält. Ben hat gemessen, was das
+// kostet: der Halter hängt unmittelbar VOR der Objektanlage, die Recovery gibt seinen Claim frei,
+// ein ANDERER Kandidat desselben Inhalts bzw. derselben Quelle wird angenommen und legt an — und
+// dann setzt der alte Halter fort und legt ein ZWEITES Objekt an. Gegen ihn schützt nichts mehr:
+// der Kandidatenstempel ist je Kandidat eindeutig (A und B sind verschiedene), und der
+// Kandidaten-CAS des Halters kommt erst NACH seiner Anlage. Das Brechen beendet den alten
+// Schreibschritt nicht; es lässt nur einen zweiten daneben laufen.
+//
+// DARUM GILT JETZT: SICHERHEIT VOR DURCHLAUF. Die Sperre endet ausschliesslich, wenn der Schritt
+// ihres Halters endet — mit Ergebnis oder Fehler — oder (Postgres) wenn seine Sitzung stirbt; ein
+// toter Prozess kann nichts mehr anlegen. Ein Halter, der lebt und hängt, hält die Sperre. Wer
+// solange wartet, wartet höchstens `wartezeitMs` und bekommt dann `CONFLICT` statt eines zweiten
+// Objekts; sein Claim wird vom Dienst zurückgegeben, der Kandidat bleibt annehmbar.
+export class AnnahmeKette {
+  private belegt = false;
+  private readonly wartende: Array<() => void> = [];
+
+  async nacheinander<T>(wartezeitMs: number, schritt: () => Promise<T>): Promise<T> {
+    await this.erwerben(wartezeitMs);
+    try {
+      return await schritt();
+    } finally {
+      this.freigeben();
+    }
+  }
+
+  private erwerben(wartezeitMs: number): Promise<void> {
+    if (!this.belegt) {
+      this.belegt = true;
+      return Promise.resolve();
+    }
+    return new Promise<void>((resolve, reject) => {
+      const dran = (): void => {
+        clearTimeout(uhr);
+        resolve();
+      };
+      const uhr = setTimeout(() => {
+        const stelle = this.wartende.indexOf(dran);
+        if (stelle >= 0) {
+          this.wartende.splice(stelle, 1);
+        }
+        reject(annahmeSperreBelegt());
+      }, wartezeitMs);
+      this.wartende.push(dran);
+    });
+  }
+
+  // Übergabe ohne Lücke: der Nächste bekommt die Sperre direkt, `belegt` fällt nie dazwischen ab.
+  private freigeben(): void {
+    const naechster = this.wartende.shift();
+    if (naechster) {
+      naechster();
+    } else {
+      this.belegt = false;
+    }
+  }
 }
 
 // WP-SHIP8-CLOSE (bens F2): ein bedingter Lösch-Auftrag — id + der erwartete (bestätigte) Status.
@@ -104,6 +206,10 @@ export interface ClaimResolution {
   koId?: string | null;
   note?: string | null;
   item?: ImportItem;
+  // Lauf gesamt-import-adoption (Bens B1/B2): der beim ANNEHMEN neu erhobene Dublettenbefund —
+  // er ersetzt den Stand vom Einreihen, damit der Kandidat sagt, was bei der Entscheidung galt.
+  duplicate?: boolean;
+  dublettenbefund?: ImportCandidate["dublettenbefund"];
   // WP-SHIP8-CLOSE-6 (bens ROT-3a): Wer/Wann der Entscheidung — im SELBEN Statuswrite persistiert.
   reviewedBy?: string;
   reviewedAt?: string;
@@ -253,6 +359,14 @@ export function sameOpenCandidateSource(a: ImportCandidate, b: ImportCandidate):
 export class InMemoryCandidateRepo implements CandidateRepo {
   // Map bewahrt die Einfügereihenfolge (wie die bisherige Array-Queue).
   private readonly items = new Map<string, ImportCandidate>();
+  private readonly annahmen = new AnnahmeKette();
+
+  annahmeSperre<T>(
+    wartezeitMs: number,
+    schritt: (sperreGilt: () => Promise<void>) => Promise<T>,
+  ): Promise<T> {
+    return this.annahmen.nacheinander(wartezeitMs, () => schritt(() => Promise.resolve()));
+  }
 
   insert(candidate: ImportCandidate): Promise<void> {
     this.items.set(candidate.id, candidate);
@@ -324,6 +438,12 @@ export class InMemoryCandidateRepo implements CandidateRepo {
     }
     if (next.item !== undefined) {
       candidate.item = next.item;
+    }
+    if (next.duplicate !== undefined) {
+      candidate.duplicate = next.duplicate;
+    }
+    if (next.dublettenbefund !== undefined) {
+      candidate.dublettenbefund = next.dublettenbefund;
     }
     // WP-SHIP8-CLOSE-6 (bens ROT-3a): Wer/Wann im selben Write (Spiegel des Pg-jsonb-Patches).
     if (next.reviewedBy !== undefined) {
