@@ -244,14 +244,14 @@ function Unterschiede({
   if (lage.art === "laden") {
     return (
       <p aria-live="polite" className={HINWEIS}>
-        {t("ga.quellen.unterschiedeLaden")}
+        {t("quellen.unterschiedeLaden")}
       </p>
     );
   }
   if (lage.art === "fehler") {
     return (
       <p role="alert" className={MELDUNG_FEHLER}>
-        {t("ga.quellen.unterschiedeFehler")}
+        {t("quellen.unterschiedeFehler")}
       </p>
     );
   }
@@ -282,13 +282,13 @@ function Unterschiede({
             <dd className="grid gap-1 sm:grid-cols-2">
               <div>
                 <span className="text-[11px] font-semibold uppercase text-muted">
-                  {t("ga.quellen.bisher", { version: diff.von })}
+                  {t("quellen.bisher", { version: diff.von })}
                 </span>
                 <div>{wert(f.alt)}</div>
               </div>
               <div>
                 <span className="text-[11px] font-semibold uppercase text-muted">
-                  {t("ga.quellen.neu", { version: diff.bis })}
+                  {t("quellen.neu", { version: diff.bis })}
                 </span>
                 <div>{wert(f.neu)}</div>
               </div>
@@ -326,22 +326,22 @@ function Aenderungskarte({
         {t("ga.baustein.aktualisierung", { version: aufVersion })}
       </p>
       <dl className="grid gap-x-3 gap-y-0.5 text-[13px] sm:grid-cols-2">
-        <dt className="font-semibold">{t("ga.quellen.quelle")}</dt>
+        <dt className="font-semibold">{t("quellen.quelle")}</dt>
         <dd data-testid={`${LESESTAND_MARKE}-aenderung-quelle`}>{quelle}</dd>
-        <dt className="font-semibold">{t("ga.quellen.verwendet")}</dt>
+        <dt className="font-semibold">{t("quellen.verwendet")}</dt>
         <dd data-testid={`${LESESTAND_MARKE}-aenderung-bisher`}>
-          {t("ga.quellen.fassung", { version: baustein.koVersion })}
+          {t("quellen.fassung", { version: baustein.koVersion })}
         </dd>
-        <dt className="font-semibold">{t("ga.quellen.neuere")}</dt>
+        <dt className="font-semibold">{t("quellen.neuere")}</dt>
         <dd data-testid={`${LESESTAND_MARKE}-aenderung-neu`}>
-          {t("ga.quellen.fassung", { version: aufVersion })}
+          {t("quellen.fassung", { version: aufVersion })}
         </dd>
-        <dt className="font-semibold">{t("ga.quellen.betroffen")}</dt>
+        <dt className="font-semibold">{t("quellen.betroffen")}</dt>
         <dd data-testid={`${LESESTAND_MARKE}-aenderung-abschnitte`}>{betroffen.join(", ")}</dd>
       </dl>
       {beibehalten ? (
         <p className={HINWEIS} data-testid={`${LESESTAND_MARKE}-beibehalten`}>
-          {t("ga.quellen.beibehaltenHinweis", { version: baustein.koVersion })}
+          {t("quellen.beibehaltenHinweis", { version: baustein.koVersion })}
         </p>
       ) : null}
       {aenderung ? (
@@ -356,7 +356,7 @@ function Aenderungskarte({
                 setBeibehalten(false);
               }}
             >
-              {t("ga.quellen.unterschiedeAnsehen")}
+              {t("quellen.unterschiedeAnsehen")}
             </button>
             <button
               type="button"
@@ -366,7 +366,7 @@ function Aenderungskarte({
                 setBeibehalten(true);
               }}
             >
-              {t("ga.quellen.beibehalten")}
+              {t("quellen.beibehalten")}
             </button>
             <button
               type="button"
@@ -374,17 +374,17 @@ function Aenderungskarte({
               disabled={aenderung.gesperrt}
               onClick={() => aenderung.uebernehmen(baustein.id, aufVersion)}
             >
-              {t("ga.quellen.uebernehmen", { version: aufVersion })}
+              {t("quellen.uebernehmen", { version: aufVersion })}
             </button>
           </p>
-          <p className={HINWEIS}>{t("ga.quellen.uebernehmenFolge")}</p>
+          <p className={HINWEIS}>{t("quellen.uebernehmenFolge")}</p>
         </>
       ) : null}
       {offen && aenderung ? (
         <div className="space-y-2" data-testid={`${LESESTAND_MARKE}-aenderung-offen`}>
           {/* Solange angesehen wird, steht da, welche Fassung die Anleitung WEITERHIN verwendet. */}
           <p className={HINWEIS} data-testid={`${LESESTAND_MARKE}-weiterhin`}>
-            {t("ga.quellen.weiterhin", { version: baustein.koVersion })}
+            {t("quellen.weiterhin", { version: baustein.koVersion })}
           </p>
           <Unterschiede
             koId={baustein.koId}
@@ -465,8 +465,8 @@ function BausteinZeile({
           className={HINWEIS}
           data-testid={`${LESESTAND_MARKE}-momentaufnahme`}
         >
-          {t("ga.quellen.momentaufnahme", {
-            name: datei.bezeichnung || t("ga.quellen.dateiOhneName"),
+          {t("quellen.momentaufnahme", {
+            name: datei.bezeichnung || t("quellen.dateiOhneName"),
             zeit: formatKoTimestamp(datei.erfasstAm, i18n.language) ?? t("fe001.zeitUnbekannt"),
           })}
         </p>
@@ -558,23 +558,23 @@ function Quellenpruefung({
       data-testid={`${LESESTAND_MARKE}-quellen`}
     >
       <h3 id="ga-quellen-titel" className="text-[13px] font-semibold text-ink">
-        {t("ga.quellen.titel")}
+        {t("quellen.titel")}
       </h3>
       <p className={HINWEIS} data-testid={`${LESESTAND_MARKE}-quellen-letzte`}>
-        {t("ga.quellen.letzte", { zeit: lesbar(pruefung.pruefzeitpunkt) })}
+        {t("quellen.letzte", { zeit: lesbar(pruefung.pruefzeitpunkt) })}
       </p>
       <p
         className={ergebnis === "fehlgeschlagen" ? MELDUNG_FEHLER : "text-[13px] text-text"}
         data-testid={`${LESESTAND_MARKE}-quellen-ergebnis`}
         data-ergebnis={ergebnis}
       >
-        {t(`ga.quellen.ergebnis.${ergebnis}`, { anzahl: pruefung.fehlgeschlageneQuellen })}
+        {t(`quellen.ergebnis.${ergebnis}`, { anzahl: pruefung.fehlgeschlageneQuellen })}
       </p>
       <p className="text-[13px] text-text" data-testid={`${LESESTAND_MARKE}-quellen-gefunden`}>
-        {t("ga.quellen.gefunden", { anzahl: pruefung.gefundeneAenderungen })}
+        {t("quellen.gefunden", { anzahl: pruefung.gefundeneAenderungen })}
       </p>
       <div data-testid={`${LESESTAND_MARKE}-quellen-uebernommen`} className="text-[13px] text-text">
-        <span>{t("ga.quellen.uebernommen")}: </span>
+        <span>{t("quellen.uebernommen")}: </span>
         {uebernommen === null || uebernommen === undefined ? (
           <span className={HINWEIS}>{t("ga.baustein.unbekannt")}</span>
         ) : uebernommen.length === 0 ? (
@@ -583,7 +583,7 @@ function Quellenpruefung({
           <ul className="ml-5 list-disc">
             {uebernommen.map((u) => (
               <li key={`${u.bausteinId}-${u.anweisungVersion}`}>
-                {t("ga.quellen.uebernahme", {
+                {t("quellen.uebernahme", {
                   abschnitt: nummer.get(u.bausteinId) ?? "?",
                   von: u.vonFassung,
                   bis: u.aufFassung,
@@ -597,7 +597,7 @@ function Quellenpruefung({
       </div>
       {/* Keine automatische Überwachung wird behauptet, die es nicht gibt. */}
       <p className={HINWEIS} data-testid={`${LESESTAND_MARKE}-quellen-ueberwachung`}>
-        {t("ga.quellen.ueberwachungNichtEingerichtet")}
+        {t("quellen.ueberwachungNichtEingerichtet")}
       </p>
     </section>
   );

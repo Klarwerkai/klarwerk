@@ -17,8 +17,14 @@ import { describe, expect, it } from "vitest";
 import type { ReasonerStatus } from "../../apps/web/src/api/types";
 import { deriveAiAvailable } from "../../apps/web/src/lib/aiAvailability";
 import { KLARA_AI_TASK, type KlaraAiPhase, klaraAiLage } from "../../apps/web/src/lib/wordAddin";
+import { panelQuelleAus } from "../support/panelquelle";
 
 function read(rel: string): string {
+  // Das Aufgabenfenster liegt seit dem Drei-Datei-Schnitt (R-1611) in drei Dateien; gelesen wird es
+  // als EIN Dokument, so wie vorher.
+  if (rel === TASKPANE) {
+    return panelQuelleAus(rel);
+  }
   return readFileSync(resolve(process.cwd(), rel), "utf8");
 }
 

@@ -191,9 +191,11 @@ describe("SCRUM-491: checkText — Dry-Run (validated-only, keine Persistenz, so
     expect(get).toHaveBeenCalledWith("v2"); // nur der Treffer, nicht "noise"
     expect(get).not.toHaveBeenCalledWith("noise");
     expect(list).not.toHaveBeenCalled();
-    expect(findCandidates).not.toHaveBeenCalled(); // Semantic-Pfad lieferte Treffer → kein Fallback
-    expect(result.duplicates[0]?.koId).toBe("v2");
-    expect(result.duplicates[0]?.method).toBe("model");
+    // R-0249: der Semantic-Pfad ERGÄNZT die Textkandidaten — die gedeckelte Source-Query läuft mit.
+    expect(findCandidates).toHaveBeenCalledTimes(1);
+    expect(findCandidates).toHaveBeenCalledWith(expect.objectContaining({ limit: 20 }));
+    const v2 = result.duplicates.find((d) => d.koId === "v2");
+    expect(v2?.method).toBe("model");
   });
 
   it("Bounding (semantischer Pfad): 50 im Store, aber der Orchestrator lädt NUR die topK Treffer per ko.get", async () => {
@@ -218,9 +220,11 @@ describe("SCRUM-491: checkText — Dry-Run (validated-only, keine Persistenz, so
     // store.nearest wird mit hartem topK angefragt; danach genau ein ko.get je Treffer — höchstens topK.
     expect(nearest).toHaveBeenCalledWith(expect.anything(), "spy@3", 20, "transient");
     expect(get).toHaveBeenCalledTimes(20);
-    // Kein Full-Load: weder ko.list()-all noch die lexikalische Fallback-Query (Semantic traf → kein Fallback).
+    // Kein Full-Load: kein ko.list()-all. R-0249: die lexikalische Query läuft für die Vereinigung
+    // GENAU EINMAL und mit hartem Deckel — kein zweiter Weg in den Gesamtbestand.
     expect(list).not.toHaveBeenCalled();
-    expect(findCandidates).not.toHaveBeenCalled();
+    expect(findCandidates).toHaveBeenCalledTimes(1);
+    expect(findCandidates).toHaveBeenCalledWith(expect.objectContaining({ limit: 20 }));
   });
 
   it("mit Fake-judge (ohne Prefilter) → Modell-Urteil via findCandidates, KEINE Persistenz", async () => {
@@ -368,6 +372,197 @@ describe("SCRUM-502: check-text schließt vertrauliche KOs aus (beide Stufen)", 
     );
     expect(result.duplicates).toHaveLength(1);
     expect(result.duplicates[0]?.koId).toBe("v3");
+  });
+});
+
+// ================================================================================================
+// R-0249 (Entscheidung c84793cc) — Deep-Weg: Textkandidaten ∪ Vektortreffer, ohne Dubletten.
+// ================================================================================================
+//
+// Die beiden Mengen werden hier GETRENNT gesteuert: `findCandidates` liefert nur die lexikalischen
+// IDs, `store.nearest` nur die Vektor-IDs, `ko.get` bedient den ganzen Bestand. Erst so lässt sich
+// messen, aus WELCHER Menge ein geprüfter Eintrag stammt.
+const LEX_TEXT = "Nach dem Anfahren zehn Sekunden warten.";
+const SEM_TEXT = "Vor Inbetriebnahme Luft aus dem Kreislauf ablassen.";
+const BEIDE_TEXT = "Anlauf abwarten und danach den Kreislauf entlüften.";
+
+function vereinigungsLauf(opts: {
+  seed: KnowledgeObject[];
+  lexikalisch: string[];
+  vektor: string[];
+  includeUnvalidated?: boolean;
+}) {
+  const { ko, findCandidates, get } = koService(opts.seed);
+  findCandidates.mockImplementation(async () =>
+    opts.seed.filter((k) => opts.lexikalisch.includes(k.id)),
+  );
+  const embed = vi.fn(async (_texte: string[]) => ({
+    vectors: [[1, 0, 0]],
+    embeddingVersion: "spy@3",
+    dim: 3,
+  }));
+  const nearest = vi.fn(async () => opts.vektor.map((id) => ({ id })));
+  const prefilter: SemanticPrefilter = {
+    embedder: {
+      name: "spy",
+      embeddingVersion: "spy@3",
+      dim: 3,
+      isAvailable: () => true,
+      embed,
+    } as unknown as EmbeddingProvider,
+    store: { upsert: vi.fn(), nearest, delete: vi.fn() } as unknown as EmbeddingStore,
+    topK: 20,
+  };
+  const judge = vi.fn(
+    async (_a: string, _b: string): Promise<OverlapVerdict | null> => teilweiseVerdict,
+  );
+  const lauf = checkText(
+    { text: TEXT_IDENTISCH, title: "Pumpe entlüften" },
+    {
+      ko,
+      overlaps: new OverlapService({ repo: new InMemoryOverlapRepo() }),
+      duplicateJudge: judge,
+      semanticPrefilter: prefilter,
+      ...(opts.includeUnvalidated ? { includeUnvalidated: true } : {}),
+    },
+  );
+  /** Wie oft der Judge den Kerntext mit genau dieser Aussage vorgelegt bekam. */
+  const urteileZu = (aussage: string) =>
+    judge.mock.calls.filter(([, kern]) => kern.includes(aussage)).length;
+  return { lauf, judge, embed, nearest, findCandidates, get, urteileZu };
+}
+
+describe("R-0249: Deep-Weg prüft die Vereinigung aus Text- und Vektorkandidaten", () => {
+  it("V1 · REGRESSION: ein textnaher Eintrag, der NICHT unter den Vektortreffern ist, wird geprüft und erscheint", async () => {
+    const r = vereinigungsLauf({
+      seed: [mkKo("lex", "validiert", LEX_TEXT), mkKo("sem", "validiert", SEM_TEXT)],
+      lexikalisch: ["lex"],
+      vektor: ["sem"],
+    });
+    const result = await r.lauf;
+
+    expect(r.embed).toHaveBeenCalledTimes(1);
+    expect(r.findCandidates).toHaveBeenCalledTimes(1);
+    // Am alten selectPool rot: dort ersetzten die Vektortreffer die Textkandidaten, `lex` kam nie
+    // in den Pool, der Judge sah ihn nie.
+    expect(r.urteileZu(LEX_TEXT)).toBe(1);
+    expect(result.duplicates.map((d) => d.koId)).toContain("lex");
+  });
+
+  it("V2 · ein nur semantisch naher Eintrag, der NICHT unter den Textkandidaten ist, wird zusätzlich geprüft", async () => {
+    const r = vereinigungsLauf({
+      seed: [mkKo("lex", "validiert", LEX_TEXT), mkKo("sem", "validiert", SEM_TEXT)],
+      lexikalisch: ["lex"],
+      vektor: ["sem"],
+    });
+    const result = await r.lauf;
+
+    expect(r.get).toHaveBeenCalledWith("sem");
+    expect(r.urteileZu(SEM_TEXT)).toBe(1);
+    expect(result.duplicates.map((d) => d.koId).sort()).toEqual(["lex", "sem"]);
+    expect(result.kandidatenwahl).toMatchObject({ weg: "vereinigung", geprueft: 2 });
+  });
+
+  it("V3 · ein Eintrag in BEIDEN Mengen wird genau einmal geprüft und genau einmal angezeigt", async () => {
+    const r = vereinigungsLauf({
+      seed: [
+        mkKo("lex", "validiert", LEX_TEXT),
+        mkKo("beide", "validiert", BEIDE_TEXT),
+        mkKo("sem", "validiert", SEM_TEXT),
+      ],
+      lexikalisch: ["beide", "lex"],
+      vektor: ["sem", "beide"],
+    });
+    const result = await r.lauf;
+
+    expect(r.urteileZu(BEIDE_TEXT)).toBe(1);
+    expect(result.duplicates.filter((d) => d.koId === "beide")).toHaveLength(1);
+    expect(result.duplicates.map((d) => d.koId).sort()).toEqual(["beide", "lex", "sem"]);
+    // Die Zahl ist die der VEREINIGTEN Menge — nicht 2 + 2.
+    expect(r.judge).toHaveBeenCalledTimes(3);
+    expect(result.kandidatenwahl?.geprueft).toBe(3);
+  });
+
+  describe("V4 · Rechte- und Poolregeln gelten für jeden vereinigten Kandidaten", () => {
+    const VERTRAULICH_LEX = "Geheime Rezeptur: Mischverhältnis drei zu eins.";
+    const VERTRAULICH_SEM = "Geheimer Lieferant nur für Werk Nord freigegeben.";
+    const seed = [
+      mkKo("sem", "validiert", SEM_TEXT),
+      { ...mkKo("conf-lex", "validiert", VERTRAULICH_LEX), confidentiality: "vertraulich" },
+      { ...mkKo("conf-sem", "validiert", VERTRAULICH_SEM), confidentiality: "vertraulich" },
+      mkKo("offen-lex", "offen", LEX_TEXT),
+      mkKo("offen-sem", "offen", BEIDE_TEXT),
+      { ...mkKo("demo-lex", "validiert", LEX_TEXT), demoSeed: true },
+      { ...mkKo("demo-sem", "validiert", SEM_TEXT), demoSeed: true },
+    ] as KnowledgeObject[];
+    const lexikalisch = ["conf-lex", "offen-lex", "demo-lex"];
+    const vektor = ["sem", "conf-sem", "offen-sem", "demo-sem"];
+
+    it("ohne Schalter: nur Validiertes, nichts Vertrauliches, kein Demobestand — aus beiden Mengen", async () => {
+      const r = vereinigungsLauf({ seed, lexikalisch, vektor });
+      const result = await r.lauf;
+
+      expect(result.duplicates.map((d) => d.koId)).toEqual(["sem"]);
+      expect(result.kandidatenwahl).toMatchObject({ weg: "vereinigung", geprueft: 1 });
+      expect(r.urteileZu(VERTRAULICH_LEX)).toBe(0);
+      expect(r.urteileZu(VERTRAULICH_SEM)).toBe(0);
+    });
+
+    it("mit `includeUnvalidated`: Offenes aus beiden Mengen zählt mit, Vertrauliches und Demo weiterhin nicht", async () => {
+      const r = vereinigungsLauf({ seed, lexikalisch, vektor, includeUnvalidated: true });
+      const result = await r.lauf;
+
+      const ids = result.duplicates.map((d) => d.koId).sort();
+      expect(ids).toEqual(["offen-lex", "offen-sem", "sem"]);
+      expect(r.urteileZu(VERTRAULICH_LEX)).toBe(0);
+      expect(r.urteileZu(VERTRAULICH_SEM)).toBe(0);
+    });
+
+    it("vertraulicher Bestandstext erreicht den Embedder nie — eingebettet wird nur der geprüfte Text", async () => {
+      const r = vereinigungsLauf({ seed, lexikalisch, vektor, includeUnvalidated: true });
+      await r.lauf;
+
+      expect(r.embed).toHaveBeenCalledTimes(1);
+      const eingebettet = r.embed.mock.calls.flatMap(([texte]) => texte);
+      expect(eingebettet).toHaveLength(1);
+      expect(eingebettet[0]).toContain(TEXT_IDENTISCH);
+      for (const text of eingebettet) {
+        expect(text).not.toContain(VERTRAULICH_LEX);
+        expect(text).not.toContain(VERTRAULICH_SEM);
+      }
+    });
+  });
+
+  it("V5 · Stufe 1 ohne Judge bleibt ohne Embedder, auch wenn ein Prefilter verdrahtet ist", async () => {
+    const { prefilter, embed, nearest } = spyPrefilter([{ id: "sem" }]);
+    const { ko } = koService([mkKo("lex", "validiert", TEXT_IDENTISCH)]);
+    const result = await checkText(
+      { text: TEXT_IDENTISCH, title: "Pumpe entlüften" },
+      {
+        ko,
+        overlaps: new OverlapService({ repo: new InMemoryOverlapRepo() }),
+        semanticPrefilter: prefilter,
+      },
+    );
+    expect(embed).not.toHaveBeenCalled();
+    expect(nearest).not.toHaveBeenCalled();
+    expect(result.kandidatenwahl).toMatchObject({ weg: "lexikalisch", geprueft: 1 });
+  });
+
+  it("V6 · Kapazitätsfehler des Embedders wirft weiter (503), die Textsuche fängt ihn NICHT ab", async () => {
+    const { ko, findCandidates } = koService([mkKo("lex", "validiert", LEX_TEXT)]);
+    await expect(
+      checkText(
+        { text: TEXT_IDENTISCH, title: "Pumpe entlüften" },
+        {
+          ko,
+          overlaps: new OverlapService({ repo: new InMemoryOverlapRepo() }),
+          duplicateJudge: vi.fn(async () => teilweiseVerdict),
+          semanticPrefilter: throwingEmbedPrefilter(new ModelCapacityError("ausgelastet")),
+        },
+      ),
+    ).rejects.toBeInstanceOf(ModelCapacityError);
+    expect(findCandidates).not.toHaveBeenCalled();
   });
 });
 

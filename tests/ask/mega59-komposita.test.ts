@@ -19,6 +19,10 @@
 // Zweck von Block C — S5, die validierte Quelle `koCarBlau` — ist damit NICHT erreicht, sondern
 // präziser beschrieben. Die Negativseite steht in `mega60-kompositum-traegt-nicht.test.ts`.
 //
+// R-0461 (Nachtrag): S5 ist inzwischen über die DEKLARIERTE Liste `services/reasoner/src/
+// fachkomposita.ts` beglichen — nicht über diese Regel. Nur die zwei koCarBlau-Fälle unten haben
+// sich deshalb umgedreht; alle übrigen Fälle dieser Datei gelten unverändert.
+//
 // ------------------------------------------------------------------------------------------------
 //
 // DER URSPRÜNGLICHE BEFUND (S5, am Bestand nachgesehen): auf „Welche Farbe müssen Firmenwagen
@@ -74,27 +78,26 @@ describe("AUFTRAG-mega59 C — der Kompositum-Treffer an einer belegbaren Grenze
     expect(queryTokens(`${KO_CAR_ROT.title} ${KO_CAR_ROT.statement}`)).toContain("farb");
   });
 
-  it("RÜCKNAHME (mega60 A): „Farbe“ findet „Pflichtfarbe“ — aber trägt die Antwort NICHT", () => {
-    // Hier stand: „die validierte Quelle trägt die Antwort". Das war die Zusage, die ben an
-    // Stand/Widerstand widerlegt hat. Was bleibt, ist die halbe Zusage — und die ist wahr:
-    // die Frage liefert nur die zwei Terme „farb“ und „firmenwag“, „farb“ trifft „pflichtfarb“ NUR
-    // als Kompositum, der Substanzwert bleibt bei EINS. Fail-closed, beide Wege leer.
-    expect(rankCandidates(FRAGE_FARBE, [KO_CAR_BLAU])).toEqual([]);
-    expect(keywordSelect(FRAGE_FARBE, [KO_CAR_BLAU])).toEqual([]);
+  it("R-0461: „Farbe“ trägt über „Pflichtfarbe“ — weil das Paar DEKLARIERT ist, nicht per Regel", () => {
+    // Bis R-0461 stand hier die Rücknahme aus mega60 A: „farb" traf „pflichtfarb" NUR als
+    // Kompositum, Substanz eins, beide Wege leer. Seit die Liste `services/reasoner/src/
+    // fachkomposita.ts` das Paar Pflichtfarbe/Farbe führt, trägt genau dieser Treffer. Die formale
+    // Regel bleibt zurückgenommen — „Stand"/„Widerstand" trägt weiterhin nicht
+    // (`tests/suche-zuordnung/fachkomposita-liste.test.ts`).
+    expect(rankCandidates(FRAGE_FARBE, [KO_CAR_BLAU]).map((x) => x.ref.id)).toEqual(["koCarBlau"]);
+    expect(keywordSelect(FRAGE_FARBE, [KO_CAR_BLAU]).map((x) => x.id)).toEqual(["koCarBlau"]);
   });
 
-  it("RÜCKNAHME (mega60 A): S5 ist NICHT beglichen — koCarRot trägt, koCarBlau nicht", () => {
-    // Hier stand: „koCarBlau erscheint VOR koCarRot". Der Bestand tut das Gegenteil, und das ist die
-    // ehrliche Deckungsangabe: koCarRot führt „Farbe" wörtlich (zwei exakte Treffer, Substanz zwei),
-    // koCarBlau nur im Kompositum (Substanz eins). Die VALIDIERTE Quelle fehlt der Antwort damit
-    // weiterhin — die Recall-Schuld S5 ist nicht beglichen, sondern präziser beschrieben. Die
-    // passende Lösung ist eine begrenzte, getestete Domänenrelation echter Fachkomposita; sie steht
-    // im Register und gehört ausdrücklich NICHT in mega60.
+  it("R-0461: S5 ist beglichen — die validierte koCarBlau trägt und steht vor koCarRot", () => {
+    // Hier stand: „S5 ist NICHT beglichen — koCarRot trägt, koCarBlau nicht". Das war der Fall,
+    // der sich als einziger umdrehen sollte, sobald ein Paar deklariert ist (JOB 913,
+    // `domaenenrelation-kompositum.test.ts`). Jetzt erreichen beide die Substanz zwei; bei gleicher
+    // Überschneidung entscheidet der Status-/Trust-Bonus, und die validierte Quelle steht vorn.
     const ranked = rankCandidates(FRAGE_FARBE, [KO_CAR_ROT, KO_CAR_BLAU]);
-    expect(ranked.map((x) => x.ref.id)).toEqual(["koCarRot"]);
-    expect(keywordSelect(FRAGE_FARBE, [KO_CAR_ROT, KO_CAR_BLAU]).map((x) => x.id)).toEqual([
-      "koCarRot",
-    ]);
+    expect(ranked.map((x) => x.ref.id)).toEqual(["koCarBlau", "koCarRot"]);
+    expect(keywordSelect(FRAGE_FARBE, [KO_CAR_ROT, KO_CAR_BLAU]).map((x) => x.id)).toContain(
+      "koCarBlau",
+    );
   });
 
   it("RÜCKNAHME (mega60 A): die Grenze am Fugen-s zählt auf den SUCHWERT, nicht auf die Substanz", () => {

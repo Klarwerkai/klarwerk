@@ -236,7 +236,11 @@ export interface KoVersionSnapshot {
 // Begründung bei `REASONER_TASKS`, :1360-1366). Der Typ bleibt ein Spiegel; die Bindung an das
 // Original leistet `tests/ki-aufgabenarten/aufgabenarten-eine-wahrheit.test.ts` (R3), der rot
 // wird, sobald eine Seite wandert — in beide Richtungen.
-export type ModelRunTask = ReasonerTask;
+//
+// Aufnahme gesamt-ki-laufprotokoll (Ben R1 B2): das Protokoll kennt seither vier Arten MEHR als die
+// KI-Zuordnung (`enrich`, `conflict`, `duplicate`, `probe`). Die Liste der Laufarten ist deshalb
+// `MODEL_RUN_TASKS` (bei `REASONER_TASKS` unten) — die acht Zuordnungsaufgaben plus diese vier.
+export type ModelRunTask = (typeof MODEL_RUN_TASKS)[number];
 export type ModelRunStatus = "success" | "error";
 
 // JOB 3074: der Tokenverbrauch eines Laufs, so wie die Modell-API ihn selbst gemeldet hat.
@@ -248,13 +252,106 @@ export type ModelRunStatus = "success" | "error";
 // deckungsgleich BLEIBEN, prüft der Compiler in `tests/ki-lauf-verbrauch/eine-wahrheit.test.ts` —
 // dieselbe Bauform, mit der JOB 3069 die Aufgabenarten gebunden hat.
 //
-// KEIN PREIS: hier stehen Token, keine Kosten. Die Preisliste je Modell ist Pedis Entscheid und eine
-// eigene Scheibe; ohne sie zeigt die Oberfläche keine Kostenzahl — sie erfindet keine.
+// KEIN PREIS HIER: hier stehen Token. Die Kosten sind ein eigener Nachweis (`ModelRunKosten` unten,
+// Aufnahme gesamt-ki-laufprotokoll) und entstehen nur aus der Preisliste des Betreibers; ohne sie
+// zeigt die Oberfläche keine Kostenzahl — sie erfindet keine.
 export interface ModelRunVerbrauch {
   eingabeToken: number;
   ausgabeToken: number;
   /** Zahl der Modellaufrufe dieses Laufs, die einen Verbrauch gemeldet haben — die Grundmenge. */
   gemeldeteAufrufe: number;
+}
+
+// Aufnahme gesamt-ki-laufprotokoll (V9, Ben R1 B3): Kosten eines Laufs aus Verbrauch × Preisliste
+// des Betreibers, mit Preisstand. Spiegel von `ModelRunKosten` in `services/model-runs/src/types.ts`.
+// FEHLT, wenn keine Preisliste oder kein Preis für das Modell hinterlegt ist — dann steht nichts da.
+export interface ModelRunKosten {
+  betrag: number;
+  waehrung: string;
+  preisstand: string;
+}
+
+// Aufnahme gesamt-ki-laufprotokoll (Ben R1 B4): Art und Anzahl des Erzeugten, nie der Inhalt.
+export type ModelRunErzeugnisArt =
+  | "vorschlag"
+  | "text"
+  | "frage"
+  | "antwort"
+  | "punkt"
+  | "beschreibung"
+  | "gruppe"
+  | "kriterien"
+  | "urteil";
+
+export interface ModelRunErzeugnis {
+  art: ModelRunErzeugnisArt;
+  anzahl: number;
+}
+
+// Ben R2 B3/B5: Versuche (je Modell eigener Verbrauch, eigener Span) und Trace eines Laufs.
+// Spiegel von `ModelRunVersuch`/`ModelRunTrace` in `services/model-runs/src/types.ts`.
+export interface ModelRunVersuch {
+  provider: string;
+  model?: string;
+  startedAt: string;
+  dauerMs: number;
+  ausgang: "erfolg" | "fehler";
+  verbrauch?: ModelRunVerbrauch;
+  aufrufe?: number;
+  spanId: string;
+}
+
+export interface ModelRunTrace {
+  traceId: string;
+  spanId: string;
+  parentSpanId?: string;
+  requestId?: string;
+}
+
+// Aufnahme gesamt-ki-laufprotokoll (V9, R-2071): Antwort von `GET /api/model-runs/auswertung`.
+export interface ModelRunAufgabenWerte {
+  laeufe: number;
+  fehler: number;
+  eingabeToken: number;
+  ausgabeToken: number;
+}
+
+export interface ModelRunKostensumme {
+  waehrung: string;
+  betrag: number;
+  laeufe: number;
+}
+
+export interface ModelRunAuswertung {
+  von: string;
+  bis: string;
+  laeufe: number;
+  erfolg: number;
+  fehler: number;
+  rueckfall: number;
+  demo: number;
+  jeAufgabe: Record<string, ModelRunAufgabenWerte>;
+  dauerSummeMs: number;
+  dauerGezaehlt: number;
+  eingabeToken: number;
+  ausgabeToken: number;
+  verbrauchGezaehlt: number;
+  kosten: ModelRunKostensumme[];
+  verbrauchOhneKosten: number;
+  gekappt: boolean;
+}
+
+export interface ModelRunPreisgrundlage {
+  hinterlegt: boolean;
+  waehrung?: string;
+  preisstand?: string;
+  modelle?: number;
+  fehler?: string;
+}
+
+export interface ModelRunAuswertungAntwort {
+  auswertung: ModelRunAuswertung;
+  preisgrundlage: ModelRunPreisgrundlage;
 }
 
 export interface ModelRunRecord {
@@ -272,6 +369,10 @@ export interface ModelRunRecord {
   // JOB 3074: FEHLT, wenn keine Modell-API in diesem Lauf einen Verbrauch genannt hat. Das Fehlen
   // ist eine Aussage und wird nie zu `0` geglättet — die Fläche schreibt dann nichts hin.
   verbrauch?: ModelRunVerbrauch;
+  kosten?: ModelRunKosten;
+  erzeugt?: ModelRunErzeugnis;
+  versuche?: ModelRunVersuch[];
+  trace?: ModelRunTrace;
 }
 
 export type EvidenceKind = "source" | "attachment";
@@ -481,7 +582,9 @@ export interface KnowledgeObject {
   // JOB 3027 R2: `null` aus demselben Grund wie bei der Stufe darüber — die Board-Route sendet
   // `origin: ko.origin ?? null` (services/validation/src/board-herkunft.ts:128). Fehlend und `null`
   // heissen hier beide „unbekannt"; nur der Board-Vertrag trennt sie von „nicht in dieser Antwort".
-  origin?: "tell" | "studio" | "expert" | "frontdoor" | "word_addin" | null;
+  // R-0180/R-2108: `import` = aus der Import-Prüfwarteschlange von einem Menschen übernommen
+  // (nur am Wissensobjekt, nie am Entwurf — services/knowledge-object/src/types.ts).
+  origin?: "tell" | "studio" | "expert" | "frontdoor" | "word_addin" | "import" | null;
   // Pedi 05.07.: read-only Board-Anreicherung — Peer-Stimmen-Zähler (grün/gelb/rot) für „X von Y grün".
   reviewVotes?: { up: number; warn: number; down: number };
   // SCRUM-507 R2: Anzahl Bewertungen aus einer FRÜHEREN Revision — veraltet, zählen nicht mehr.
@@ -1371,6 +1474,17 @@ export interface ImportItemInput {
   // er wird NIE aus `statement` nachgebildet (`statement` ist seit JOB 2703 der Anriss, nicht der
   // Text). Rein additiv; kein bestehender Aufrufer muss etwas mitgeben.
   bodyHtml?: string;
+  // R-0139 / R-0169 (Nacharbeit 2, bens F1): DIE QUELLANGABEN EINER EINGEREICHTEN DATEI. Der Server
+  // führt dieselben Felder am `ImportItem` (services/library-analytics/src/types.ts) und legt daraus
+  // Herkunfts-Anker und Quellrevision an; fiel das hier weg, ging die Herkunft schon im Browser
+  // verloren. Alle optional — fehlen sie, fehlt die Herkunft ehrlich.
+  provider?: string;
+  externalId?: string;
+  sourceVersion?: number;
+  url?: string;
+  // R-0169 (Nacharbeit 5): die von Klarwerk vergebene INTERNE Dokumentkennung — die nächste
+  // Fassung derselben Dokumentakte. Getrennt von `externalId` (Kennung im Quellsystem).
+  dokumentId?: string;
   // WP-IC-PAKET-1c (ROT-2): Decode-Marker des Server-Kandidaten — "decoded" heisst: Textfelder sind
   // kanonisch dekodiert, die Queue-Karte dekodiert NICHT erneut; fehlt er (Altbestand), defensiv nach.
   textCodec?: "decoded";
@@ -1686,6 +1800,78 @@ export interface MgmtScorePart {
   weight: number;
 }
 
+// R-0751 / FR-EXT-04 (Nacharbeit 1): die neun Faktoren der Quelle, wie der Server sie liefert
+// (services/management/src/types.ts). `value: null` = keine Eingangsdaten, nicht geschätzt.
+export type MgmtPriorityFactorKey =
+  | "busFactor"
+  | "criticality"
+  | "processProximity"
+  | "age"
+  | "sourceQuality"
+  | "conflictDensity"
+  | "repetition"
+  | "damagePotential"
+  | "protection";
+export type MgmtPriorityFlag = "busFactorOne" | "stale" | "highProtection";
+export interface MgmtPriority {
+  category: string;
+  score: number;
+  knownFactors: number;
+  factors: { key: MgmtPriorityFactorKey; value: number | null }[];
+  flags: MgmtPriorityFlag[];
+}
+
+// R-0751 / R-1639 / R-2183 (Nacharbeit 3): gepflegte Bereichsprofile und Ruhestandshorizonte
+// (services/management/src/profiles.ts) und der daraus abgeleitete Bereichsblick (horizon.ts).
+export type AssessmentLevel = "niedrig" | "mittel" | "hoch";
+export type RetirementHorizon = 24 | 36;
+export interface CategoryProfile {
+  category: string;
+  managerId: string | null;
+  criticality: AssessmentLevel | null;
+  processProximity: AssessmentLevel | null;
+  repetition: AssessmentLevel | null;
+  damagePotential: AssessmentLevel | null;
+  updatedAt: string;
+  updatedBy: string;
+}
+export type CategoryProfileInput = Omit<CategoryProfile, "updatedAt" | "updatedBy">;
+export interface RetirementEntry {
+  userId: string;
+  horizonMonths: RetirementHorizon;
+  dueAt: string;
+  updatedAt: string;
+  updatedBy: string;
+}
+export interface ManagementProfiles {
+  categories: CategoryProfile[];
+  retirement: RetirementEntry[];
+}
+export interface RiskHorizonBearer {
+  userId: string;
+  horizonMonths: RetirementHorizon;
+  // Nacharbeit 5: heutige Zugehörigkeit aus Frist und Bezugszeit (horizon.ts `currentHorizonOf`).
+  currentHorizon: RetirementHorizon | null;
+  dueAt: string;
+  koCount: number;
+  openKoIds: string[];
+  soleBearer: boolean;
+  openGaps: number;
+}
+export interface RiskHorizonArea {
+  category: string;
+  managerId: string | null;
+  criticality: AssessmentLevel | null;
+  singleSource: boolean;
+  koCount: number;
+  bearers: RiskHorizonBearer[];
+}
+export interface RiskHorizonView {
+  generatedAt: string;
+  seesAll: boolean;
+  areas: RiskHorizonArea[];
+}
+
 export interface ManagementSnapshot {
   generatedAt: string;
   overview: {
@@ -1712,7 +1898,7 @@ export interface ManagementSnapshot {
     net: number;
   };
   maturity: { stage: number; stageKey: string; progressPct: number };
-  priorities: { category: string; score: number; factors: { key: string; value: number }[] }[];
+  priorities: MgmtPriority[];
   recommendations: { key: string; severity: "hoch" | "mittel"; count: number }[];
   house: { category: string; koCount: number; validatedRatio: number; fragile: boolean }[];
   pilot: { days: number; created: number; validated: number }[];
@@ -2190,6 +2376,18 @@ export const REASONER_TASKS = [
 // Abgeleitet, nicht abgeschrieben — die Union kann nicht mehr hinter der Liste zurückbleiben.
 export type ReasonerTask = (typeof REASONER_TASKS)[number];
 
+// Aufnahme gesamt-ki-laufprotokoll (Ben R1 B2): die Laufarten des Protokolls — die acht Aufgaben der
+// KI-Zuordnung plus die vier Modellwege, die über die globale Wahl laufen. Spiegel der Union
+// `ModelRunTask` in `services/model-runs/src/types.ts`; gebunden durch
+// `tests/ki-aufgabenarten/aufgabenarten-eine-wahrheit.test.ts`.
+export const MODEL_RUN_TASKS = [
+  ...REASONER_TASKS,
+  "enrich",
+  "conflict",
+  "duplicate",
+  "probe",
+] as const;
+
 // JOB 3134 (KI-WAHL): die beiden externen Anbieter sind eigene Auswahlwerte. Dieselbe Liste wie
 // `services/reasoner/src/types.ts` (`REASONER_CLOUD_ANBIETER`) — hier gehalten und nicht importiert,
 // aus demselben Grund wie `REASONER_TASKS` oben; `tests/ki-anbieterwahl` vergleicht beide Seiten.
@@ -2447,8 +2645,17 @@ export type FeatureFlags = Partial<Record<FeatureName, boolean>>;
 // eine AUSSAGE und kein Platzhalter: „es ist kein erfolgreicher Lauf belegt."
 export interface ImportAccessStatus {
   system: string;
-  /** Ist der Import eingeschaltet? Schalter aus ⇒ die Import-Routen existieren gar nicht. */
+  /**
+   * Ist der Import eingeschaltet? Freigegeben (Umgebung) UND vom Betreiber eingeschaltet — genau
+   * das, was die Import-Routen am Server durchsetzen.
+   */
   enabled: boolean;
+  /**
+   * R-0134 / R-1005: die zwei Teile von `enabled` (nur Confluence). `freigegeben` = Umgebung der
+   * Installation, `an` = Betreiberschalter (über `PUT /api/import/confluence/schalter` umlegbar).
+   * Fehlt, wenn der Server keinen Betreiberschalter kennt.
+   */
+  betreiber?: { freigegeben: boolean; an: boolean };
   /** Je Variable: benannt, und ob sie steht. Niemals ihr Wert. */
   credentials: { name: string; present: boolean }[];
   /** Kämen damit Zugangsdaten zustande? (Nicht: sind sie gültig — das wüsste nur ein Aufruf.) */

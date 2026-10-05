@@ -854,10 +854,9 @@ export const TABELLE: Zeile[] = [
     tor: "requireUser",
     erwartet: ANGEMELDET,
   },
+  // R-1064: der Supportweg der Installation. Jede angemeldete Rolle braucht ihn (Hilfeseite
+  // `minRole: "viewer"`), deshalb bewusst kein Recht über die Anmeldung hinaus.
   {
-    // R-1064 · der Supportweg dieser Installation. `requireUser` wie `/api/features` mit Token: die
-    // Hilfe steht jeder Rolle offen, ein Recht darüber hinaus versteckte den Weg genau denen, die ihn
-    // brauchen (Kopf von `support-routes.ts`). Ohne Anmeldung 401.
     gruppe: "supportRoutes",
     methode: "GET",
     pfad: "/api/support",
@@ -869,7 +868,7 @@ export const TABELLE: Zeile[] = [
     gruppe: "importAccessRoutes",
     methode: "GET",
     pfad: "/api/import/confluence/zugang",
-    belegstelle: "services/app/src/routes/import-access-routes.ts:69",
+    belegstelle: "services/app/src/routes/import-access-routes.ts:70",
     tor: "users.manage",
     erwartet: NUR_ADMIN,
   },
@@ -879,7 +878,7 @@ export const TABELLE: Zeile[] = [
     gruppe: "importAccessRoutes",
     methode: "GET",
     pfad: "/api/import/sharepoint/zugang",
-    belegstelle: "services/app/src/routes/import-access-routes.ts:93",
+    belegstelle: "services/app/src/routes/import-access-routes.ts:138",
     tor: "users.manage",
     erwartet: NUR_ADMIN,
   },
@@ -901,6 +900,16 @@ export const TABELLE: Zeile[] = [
     methode: "POST",
     pfad: "/api/admin/import/sharepoint/apply",
     belegstelle: "services/app/src/routes/sharepoint-import-routes.ts:229",
+    tor: "users.manage",
+    payload: {},
+    erwartet: NUR_ADMIN,
+  },
+  // R-0145/R-0190: die Ordnerübernahme in Losen. Ohne Zugangsdaten ebenso ein 503 vor jedem Effekt.
+  {
+    gruppe: "sharepointImportRoutes",
+    methode: "POST",
+    pfad: "/api/admin/import/sharepoint/folder-apply",
+    belegstelle: "services/app/src/routes/sharepoint-import-routes.ts:554",
     tor: "users.manage",
     payload: {},
     erwartet: NUR_ADMIN,
@@ -1211,9 +1220,46 @@ export const TABELLE: Zeile[] = [
     gruppe: "managementRoutes",
     methode: "GET",
     pfad: "/api/management/snapshot",
-    belegstelle: "services/app/src/routes/management-routes.ts:12",
+    belegstelle: "services/app/src/routes/management-routes.ts:19",
     tor: "ko.read",
     erwartet: NUR_LESEN,
+  },
+  // R-1639 / R-2183 (Nacharbeit 3): der Bereichsblick (jede lesende Rolle, gefiltert auf die eigenen
+  // Bereiche) und die drei Pflegetüren seiner Eingänge (nur Admin).
+  {
+    gruppe: "managementRoutes",
+    methode: "GET",
+    pfad: "/api/management/risk-horizon",
+    belegstelle: "services/app/src/routes/management-routes.ts:33",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "managementRoutes",
+    methode: "GET",
+    pfad: "/api/management/profiles",
+    belegstelle: "services/app/src/routes/management-routes.ts:45",
+    tor: "users.manage",
+    erwartet: NUR_ADMIN,
+  },
+  {
+    gruppe: "managementRoutes",
+    methode: "PUT",
+    pfad: "/api/management/profiles/category",
+    belegstelle: "services/app/src/routes/management-routes.ts:57",
+    tor: "users.manage",
+    payload: {},
+    erwartet: NUR_ADMIN,
+  },
+  {
+    gruppe: "managementRoutes",
+    methode: "PUT",
+    pfad: "/api/management/profiles/retirement/gibt-es-nicht",
+    route: "/api/management/profiles/retirement/:userId",
+    belegstelle: "services/app/src/routes/management-routes.ts:69",
+    tor: "users.manage",
+    payload: {},
+    erwartet: NUR_ADMIN,
   },
   {
     gruppe: "mediaRoutes",
@@ -1228,6 +1274,15 @@ export const TABELLE: Zeile[] = [
     methode: "GET",
     pfad: "/api/model-runs",
     belegstelle: "services/app/src/routes/model-runs-routes.ts:34",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    // Aufnahme gesamt-ki-laufprotokoll (V9, R-2071): die Zeitraum-Auswertung, dieselbe Lesestufe.
+    gruppe: "modelRunRoutes",
+    methode: "GET",
+    pfad: "/api/model-runs/auswertung",
+    belegstelle: "services/app/src/routes/model-runs-routes.ts:53",
     tor: "ko.read",
     erwartet: NUR_LESEN,
   },

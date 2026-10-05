@@ -379,6 +379,8 @@ describe("JOB 3027 · R4: der Erfassungsweg steht am Aufklapper", () => {
     ["studio", "ko.origin.studio"],
     ["expert", "ko.origin.expert"],
     ["frontdoor", "ko.origin.frontdoor"],
+    // R-0180/R-2108: aus der Import-Prüfwarteschlange übernommen (`acceptToKo`).
+    ["import", "ko.origin.import"],
   ] as const) {
     it(`\`${herkunft}\` trägt einen eigenen Klartext`, async () => {
       await mountMit([zeile({ origin: herkunft })]);

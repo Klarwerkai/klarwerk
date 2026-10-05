@@ -1042,3 +1042,161 @@ describe("JOB 3256 (CAP-P1-R): die zweite Nahtstelle: öffnen und verwerfen", ()
     expect(schreibfeldPflicht().textContent).toContain("Schmierstellen");
   });
 });
+
+// ================================================================================================
+// AUFTRAG „DIKTAT UND VORLESEN" — LIVE-DIKTAT UND iOS IM ERFASSUNGSBLATT (K8 R-2096, K10 FR-CAP-03).
+// ================================================================================================
+// L-B: Vorläufiges steht sofort sichtbar in `blatt-diktat-zwischen`, der Editor bleibt unberührt;
+//      erst das Endergebnis landet — genau einmal — im Rumpf. Ende und Entwurfswechsel räumen die
+//      Vorschau ab, und ein verspätetes Zwischenergebnis der alten Sitzung taucht nicht wieder auf.
+// I-B: Auf iPhone/iPad startet trotz angebotener `webkitSpeechRecognition` kein Rekorder; der Knopf
+//      bleibt bedienbar und sein Klick zeigt die Nichtverfügbarkeit samt Tastatur-Mikrofon als TEXT
+//      (nicht nur im `title`). Am Desktop ohne API steht nur der allgemeine Satz.
+// NICHT GEMESSEN: echte Spracherkennung, echtes iOS — gemessen wird bis zur Browser-Grenze.
+
+/** Ein Ergebnis mit ausdrücklichem `isFinal` — wie es der Browser bei `interimResults` liefert. */
+async function sprecheMit(s: Sitzung, text: string, isFinal: boolean): Promise<void> {
+  await act(async () => {
+    const ergebnis = Object.assign([{ transcript: text }], { isFinal });
+    s.onresult?.({ resultIndex: 0, results: [ergebnis] });
+    await flush();
+  });
+}
+
+function zwischenanzeige(): HTMLElement | null {
+  const el = container.querySelector('[data-testid="blatt-diktat-zwischen"]');
+  return el instanceof HTMLElement ? el : null;
+}
+
+function vorkommen(text: string, nadel: string): number {
+  return text.split(nadel).length - 1;
+}
+
+describe("Live-Diktat im Erfassungsblatt (K8/K10)", () => {
+  beforeEach(diktatDoppelAnmelden);
+  afterEach(diktatDoppelAbmelden);
+
+  it("L-B1: Vorläufiges ist sofort sichtbar, der Editor bleibt unberührt — Endgültiges landet genau einmal", async () => {
+    await mount("/erfassen");
+    const s = await diktatStarten();
+    const rekorder = s as unknown as FakeRec;
+    expect(rekorder.interimResults, "Zwischenergebnisse nicht angefordert").toBe(true);
+
+    await sprecheMit(s, "Ventil", false);
+    expect(zwischenanzeige()?.textContent).toBe("Ventil");
+    expect(zwischenanzeige()?.getAttribute("aria-live")).toBe("polite");
+    expect(schreibfeldPflicht().textContent ?? "", "Vorläufiges im Editor").not.toContain("Ventil");
+
+    await sprecheMit(s, "Ventil prüfen", true);
+    expect(vorkommen(schreibfeldPflicht().textContent ?? "", "Ventil prüfen")).toBe(1);
+    expect(zwischenanzeige(), "Vorschau steht nach dem Endergebnis noch").toBeNull();
+  });
+
+  it("L-B2: das Aufnahmeende räumt die Vorschau — ein verspätetes altes Zwischenergebnis kehrt nicht zurück", async () => {
+    await mount("/erfassen");
+    const alt = await diktatStarten();
+    await sprecheMit(alt, "Ventil", false);
+    expect(zwischenanzeige()?.textContent).toBe("Ventil");
+
+    await beende(alt);
+    expect(zwischenanzeige(), "Vorschau überlebt das Aufnahmeende").toBeNull();
+
+    // Verspätet, nach dem Ende — und dann eine NEUE Sitzung: dort darf der alte Text nicht stehen.
+    await sprecheMit(alt, "Alter Nachzügler", false);
+    const neu = await diktatStarten();
+    expect(neu).not.toBe(alt);
+    expect(container.textContent ?? "").not.toContain("Alter Nachzügler");
+    expect(zwischenanzeige()).toBeNull();
+    expect(schreibfeldPflicht().textContent ?? "").not.toContain("Alter Nachzügler");
+  });
+
+  it("L-B3: ein Entwurfswechsel räumt die Vorschau — der Nachzügler der getrennten Sitzung erscheint nicht", async () => {
+    await entwurfSaeen();
+    await mount("/erfassen");
+    const alt = await diktatStarten();
+    await sprecheMit(alt, "Ventil", false);
+    expect(zwischenanzeige()?.textContent).toBe("Ventil");
+
+    rueckfrageAntwort = true;
+    await entwurfAusListeKlicken();
+    expect(alt.gestoppt, "die Sitzung wurde beim Entwurfswechsel nicht angehalten").toBe(1);
+    expect(zwischenanzeige(), "Vorschau überlebt den Entwurfswechsel").toBeNull();
+
+    await sprecheMit(alt, "Alter Nachzügler", false);
+    expect(container.textContent ?? "").not.toContain("Alter Nachzügler");
+    expect(schreibfeldPflicht().textContent).toContain("Schmierstellen");
+  });
+});
+
+describe("iOS im Erfassungsblatt: kein Rekorder, aber eine erreichbare Erklärung (K10)", () => {
+  const UA_VORHER = navigator.userAgent;
+  const IPHONE =
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1";
+  const IPAD =
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15";
+
+  function geraet(ua: string, touchpunkte: number): void {
+    Object.defineProperty(window.navigator, "userAgent", { value: ua, configurable: true });
+    Object.defineProperty(window.navigator, "maxTouchPoints", {
+      value: touchpunkte,
+      configurable: true,
+    });
+  }
+
+  beforeEach(() => {
+    sitzungen = [];
+  });
+  afterEach(() => {
+    Object.defineProperty(window.navigator, "userAgent", { value: UA_VORHER, configurable: true });
+    Object.defineProperty(window.navigator, "maxTouchPoints", { value: 0, configurable: true });
+    (globalThis as unknown as { webkitSpeechRecognition?: unknown }).webkitSpeechRecognition =
+      undefined;
+    (globalThis as unknown as { SpeechRecognition?: unknown }).SpeechRecognition = undefined;
+  });
+
+  async function hinweisNachKlick(): Promise<string> {
+    const knopf = pruefknopf("blatt-werkzeug-diktieren");
+    const gesperrt = "der Knopf ist gesperrt — die Erklärung wäre auf Touch unerreichbar";
+    expect(knopf.disabled, gesperrt).toBe(false);
+    expect(container.querySelector('[data-testid="blatt-diktat-na"]')).toBeNull();
+    await click(knopf);
+    expect(sitzungen, "trotz fehlender Unterstützung ein Rekorder gestartet").toHaveLength(0);
+    expect(knopf.getAttribute("aria-expanded")).toBe("true");
+    const satz = container.querySelector('[data-testid="blatt-diktat-na"]');
+    expect(satz, "keine sichtbare Erklärung nach dem Klick").not.toBeNull();
+    // Live-Region über das semantische Element: `<output>` hat die implizite Rolle `status`.
+    expect(satz?.tagName).toBe("OUTPUT");
+    return satz?.textContent ?? "";
+  }
+
+  for (const [name, ua, touch] of [
+    ["iPhone", IPHONE, 5],
+    ["iPad als Macintosh mit maxTouchPoints=5", IPAD, 5],
+  ] as const) {
+    it(`I-B: ${name} — webkitSpeechRecognition angeboten, kein Start, Tastatur-Mikrofon als Text`, async () => {
+      geraet(ua, touch);
+      (globalThis as unknown as { webkitSpeechRecognition: unknown }).webkitSpeechRecognition =
+        FakeRec;
+      await mount("/erfassen");
+      const text = await hinweisNachKlick();
+      expect(text).toContain(i18n.t("capture.diktatUnsupported"));
+      expect(text).toContain(i18n.t("diktat.iosTastatur"));
+    });
+  }
+
+  it("I-B Gegenprobe: Desktop ohne API — nur der allgemeine Satz, kein iOS-Zusatz", async () => {
+    await mount("/erfassen");
+    const text = await hinweisNachKlick();
+    expect(text).toContain(i18n.t("capture.diktatUnsupported"));
+    expect(text).not.toContain(i18n.t("diktat.iosTastatur"));
+  });
+
+  it("I-B Kalibrierung: der Desktop-Mac MIT API startet wirklich einen Rekorder", async () => {
+    geraet(IPAD, 0);
+    (globalThis as unknown as { webkitSpeechRecognition: unknown }).webkitSpeechRecognition =
+      FakeRec;
+    await mount("/erfassen");
+    await diktatStarten();
+    expect(container.querySelector('[data-testid="blatt-diktat-na"]')).toBeNull();
+  });
+});
