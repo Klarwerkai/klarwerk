@@ -27,8 +27,12 @@ type Seitenfenster = {
 };
 
 const g = globalThis as unknown as { window?: Seitenfenster; location?: { href: string } };
-const vorherWindow = g.window;
-const vorherLocation = g.location;
+// Der vorige Zustand als Deskriptor: so wird er nach jedem Fall genau wiederhergestellt — eine
+// vorher fehlende Eigenschaft wird gelöscht statt auf `undefined` gesetzt (exactOptionalPropertyTypes).
+const GESTELLT = ["window", "location"] as const;
+const vorher = new Map(
+  GESTELLT.map((name) => [name, Object.getOwnPropertyDescriptor(globalThis, name)] as const),
+);
 
 // Die gestellte Netzseite: je Pfad eine Antwort — Status, Netzfehler oder „hängt".
 let antworten: Record<string, number | "netzfehler" | "haengt"> = {};
@@ -64,8 +68,14 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  g.window = vorherWindow;
-  g.location = vorherLocation;
+  for (const name of GESTELLT) {
+    const deskriptor = vorher.get(name);
+    if (deskriptor) {
+      Object.defineProperty(globalThis, name, deskriptor);
+    } else {
+      delete g[name];
+    }
+  }
 });
 
 /** Die Seite holt einmal alle fünf Zählquellen erfolgreich — der Stand „vorher". */
