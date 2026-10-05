@@ -7,6 +7,7 @@ import {
   type KantenArt,
   type KantenRichtung,
   type KnowledgeObject,
+  type KoAnhangsquelle,
   KoError,
   type KoFilter,
   type KoService,
@@ -378,8 +379,16 @@ export interface ImportAnhang {
 export interface AnhangsAuftrag {
   readonly koId: string;
   readonly provider: string | undefined;
-  /** Nur die Anhänge, die das Wissensobjekt noch NICHT trägt (Abgleich über den Dateinamen). */
+  /** Anhänge, die das Wissensobjekt noch NICHT trägt (Zuordnung über die Quellkennung). */
   readonly anhaenge: readonly ImportAnhang[];
+  /**
+   * Vorhandene Anhänge, deren Quelle eine NEUERE Version liefert. Der Port holt den neuen Inhalt
+   * und tauscht ihn am selben Eintrag; scheitert das, bleibt der alte Inhalt unverändert stehen.
+   */
+  readonly ersetzen: readonly {
+    readonly attachmentId: string;
+    readonly anhang: ImportAnhang;
+  }[];
   /** Der Annehmende — Hochladender und Handelnder der Anlage, nie der Quellautor. */
   readonly actor: string;
   /** Die Stufe des Wissensobjekts; ein Anhang erbt sie. */
@@ -388,7 +397,26 @@ export interface AnhangsAuftrag {
 
 export interface AnhangsErgebnis {
   readonly uebernommen: number;
+  /** Ersetzte Inhalte (neue Quellversion). Fehlt die Angabe, hat der Port nichts ersetzt. */
+  readonly ersetzt?: number;
   readonly fehlgeschlagen: number;
+}
+
+/**
+ * R-0163: die Bilanz EINES Anhangsabgleichs an einem Wissensobjekt — dieselbe Form im Audit
+ * (`import.attachments`) und im Bereichsimport (`runConfluenceImport`).
+ */
+export interface AnhangsAbgleich {
+  readonly gemeldet: number;
+  readonly uebernommen: number;
+  readonly ersetzt: number;
+  /** Nur der Abrufweg hat sich geändert; die Herkunftsangabe wurde nachgezogen. */
+  readonly nachgezogen: number;
+  readonly vorhanden: number;
+  readonly fehlgeschlagen: number;
+  /** Die Quelle lieferte die Liste nicht vollständig — vorhandene Anhänge bleiben unangetastet. */
+  readonly listeUnvollstaendig: boolean;
+  readonly ohneUebernahmeweg: boolean;
 }
 
 export type AnhangsUebernahme = (auftrag: AnhangsAuftrag) => Promise<AnhangsErgebnis>;
@@ -429,6 +457,17 @@ export function leseImportAnhaenge(item: ImportItem): ImportAnhang[] {
     });
   }
   return out;
+}
+
+// R-0163: die Herkunftsangabe am Anhang aus einem Import-Anhang. Der Provider steht normalisiert
+// darin (`importProviderKey`) — dieselbe Gleichheit, mit der der Abgleich zuordnet.
+function anhangsquelle(provider: string | undefined, anhang: ImportAnhang): KoAnhangsquelle {
+  return {
+    provider: importProviderKey(provider),
+    externalId: anhang.externalId,
+    abruf: anhang.abruf,
+    ...(anhang.sourceVersion !== undefined ? { sourceVersion: anhang.sourceVersion } : {}),
+  };
 }
 
 export interface LibraryServiceDeps {
@@ -1579,72 +1618,183 @@ export class LibraryService {
   }
 
   /**
-   * R-0163: die Anhänge eines angenommenen Eintrags an SEIN Wissensobjekt.
-   *
-   * - Ein Wissensobjekt im Papierkorb wird nicht angefasst (`get` liefert es nicht) — derselbe
-   *   Trash-Vertrag wie in `acceptToKo`.
-   * - Re-Sync und Wiederholung legen nichts doppelt an: was das Objekt unter demselben Dateinamen
-   *   schon trägt, geht nicht erneut an den Port. Confluence führt je Seite jeden Dateinamen
-   *   genau einmal; eine neue Version desselben Anhangs ersetzt den vorhandenen NICHT (Grenze).
-   * - Wirft nie. Ein fehlender Port, ein Fehler des Ports und eine unvollständig gelesene
-   *   Anhangsliste stehen im Audit (`import.attachments`) — nur Zähler, keine Dateinamen.
+   * R-0163: die Anhänge eines angenommenen Eintrags an SEIN Wissensobjekt — derselbe Abgleich wie
+   * für bereits importierte Seiten (`gleicheAnhaengeFuerAnkerAb`), nur mit der Kennung aus der
+   * Annahme. Wirft nie; der Ausgang steht im Audit.
    */
   private async uebernimmAnhaenge(koId: string, item: ImportItem, actor: string): Promise<void> {
+    await this.gleicheAnhaengeAb(koId, item, actor);
+  }
+
+  /**
+   * R-0163 (Bens Befunde 1–3 aus beleg:851c4003 / beleg:2def0ac2): der Anhangsabgleich einer
+   * BEREITS IMPORTIERTEN Seite, deren Version sich nicht geändert hat. Der Bereichsimport
+   * überspringt solche Seiten für die Review-Queue — ihre Anhänge können sich trotzdem geändert
+   * haben (neuer Anhang, neue Anhangsversion, nur ein neuer Abrufweg). `undefined` heisst: es gibt
+   * kein lebendes Wissensobjekt zu diesem Anker (keiner, oder im Papierkorb) — dann wird nichts
+   * abgeglichen und nichts behauptet.
+   */
+  async gleicheAnhaengeFuerAnkerAb(
+    item: ImportItem,
+    actor: string,
+  ): Promise<AnhangsAbgleich | undefined> {
+    const externalId = this.externalUpsert ? item.externalId : undefined;
+    if (!externalId) {
+      return undefined;
+    }
+    const gesucht = ankerSchluessel(item.provider, externalId);
+    const anker = await this.sucheAnkerKo(
+      (s) => ankerSchluessel(s.provider, s.externalId) === gesucht,
+    );
+    if (anker?.art !== "aktiv") {
+      return undefined;
+    }
+    return this.gleicheAnhaengeAb(anker.ko.id, item, actor);
+  }
+
+  /**
+   * R-0163: die EINE Abgleichregel für Anhänge.
+   *
+   * - ZUORDNUNG ÜBER DIE QUELLKENNUNG (`quelle.externalId` am Anhang), nicht über den Namen. Nur
+   *   Anhänge ohne Herkunft (Altbestand) werden über den Dateinamen erkannt und bekommen dabei
+   *   ihre Herkunft nachgetragen.
+   * - NEUE QUELLVERSION eines vorhandenen Anhangs → der Port tauscht den Inhalt am selben Eintrag;
+   *   scheitert das, bleibt der alte Inhalt stehen und der Fall zählt als fehlgeschlagen.
+   * - NUR DER ABRUFWEG GEÄNDERT → die Herkunftsangabe wird nachgezogen (kein erneuter Download).
+   * - NICHTS WIRD ENTFERNT. Ein Anhang, den die Quelle nicht (mehr) liefert, bleibt — erst recht bei
+   *   einer unvollständigen Liste, die keine Abwesenheit beweist (Bens Befund 1). Ob ein in der
+   *   Quelle gelöschter Anhang auch hier verschwinden soll, ist eine offene Produktentscheidung.
+   * - Ein Wissensobjekt im Papierkorb wird nicht angefasst (`get` liefert es nicht).
+   * - Wirft nie. Jede Bilanz mit Inhalt steht im Audit `import.attachments` — nur Zähler.
+   */
+  private async gleicheAnhaengeAb(
+    koId: string,
+    item: ImportItem,
+    actor: string,
+  ): Promise<AnhangsAbgleich | undefined> {
     const anhaenge = leseImportAnhaenge(item);
     const fremd = item as { attachmentsIncomplete?: unknown };
-    const unvollstaendig = fremd.attachmentsIncomplete === true;
-    if (anhaenge.length === 0 && !unvollstaendig) {
-      return;
+    const listeUnvollstaendig = fremd.attachmentsIncomplete === true;
+    if (anhaenge.length === 0 && !listeUnvollstaendig) {
+      return undefined;
     }
     let uebernommen = 0;
-    let fehlgeschlagen = 0;
+    let ersetzt = 0;
+    let nachgezogen = 0;
     let vorhanden = 0;
-    let ohnePort = false;
+    let fehlgeschlagen = 0;
+    let ohneUebernahmeweg = false;
+    let erledigt = 0;
     try {
       const ko = await this.koService.get(koId);
       if (!ko) {
-        return;
+        return undefined;
       }
-      const namen = new Set((ko.attachments ?? []).map((a) => a.name));
-      const offen = anhaenge.filter((a) => !namen.has(a.name));
-      vorhanden = anhaenge.length - offen.length;
-      if (offen.length > 0) {
+      const providerKey = importProviderKey(item.provider);
+      const bestand = ko.attachments ?? [];
+      const neu: ImportAnhang[] = [];
+      const ersetzen: { attachmentId: string; anhang: ImportAnhang }[] = [];
+      const herkunft: { attachmentId: string; anhang: ImportAnhang }[] = [];
+      for (const anhang of anhaenge) {
+        const zugeordnet = bestand.find(
+          (b) =>
+            b.quelle !== undefined &&
+            b.quelle.externalId === anhang.externalId &&
+            importProviderKey(b.quelle.provider) === providerKey,
+        );
+        if (zugeordnet?.quelle) {
+          const alt = zugeordnet.quelle.sourceVersion;
+          if (
+            alt !== undefined &&
+            anhang.sourceVersion !== undefined &&
+            anhang.sourceVersion > alt
+          ) {
+            ersetzen.push({ attachmentId: zugeordnet.id, anhang });
+          } else if (zugeordnet.quelle.abruf !== anhang.abruf) {
+            herkunft.push({ attachmentId: zugeordnet.id, anhang });
+          } else {
+            vorhanden += 1;
+            erledigt += 1;
+          }
+          continue;
+        }
+        const altbestand = bestand.find((b) => b.quelle === undefined && b.name === anhang.name);
+        if (altbestand) {
+          herkunft.push({ attachmentId: altbestand.id, anhang });
+          continue;
+        }
+        neu.push(anhang);
+      }
+      for (const { attachmentId, anhang } of herkunft) {
+        try {
+          await this.koService.updateAttachment(koId, attachmentId, actor, {
+            quelle: anhangsquelle(item.provider, anhang),
+          });
+          nachgezogen += 1;
+        } catch {
+          fehlgeschlagen += 1;
+        }
+        erledigt += 1;
+      }
+      if (neu.length > 0 || ersetzen.length > 0) {
         if (this.anhaenge) {
-          ({ uebernommen, fehlgeschlagen } = await this.anhaenge({
+          const ergebnis = await this.anhaenge({
             koId,
             provider: item.provider,
-            anhaenge: offen,
+            anhaenge: neu,
+            ersetzen,
             actor,
             confidentiality: ko.confidentiality,
-          }));
+          });
+          uebernommen = ergebnis.uebernommen;
+          ersetzt = ergebnis.ersetzt ?? 0;
+          fehlgeschlagen += ergebnis.fehlgeschlagen;
         } else {
-          ohnePort = true;
-          fehlgeschlagen = offen.length;
+          ohneUebernahmeweg = true;
+          fehlgeschlagen += neu.length + ersetzen.length;
         }
+        erledigt += neu.length + ersetzen.length;
       }
     } catch (err) {
-      fehlgeschlagen = anhaenge.length - vorhanden - uebernommen;
+      fehlgeschlagen += anhaenge.length - erledigt;
       process.stderr.write(
-        `[KLARWERK] Anhangsuebernahme fehlgeschlagen (ko=${koId}, fehler=${
+        `[KLARWERK] Anhangsabgleich fehlgeschlagen (ko=${koId}, fehler=${
           err instanceof Error ? err.name : "unknown"
         }).\n`,
       );
     }
-    await this.audit
-      ?.record({
-        actor,
-        action: "import.attachments",
-        target: koId,
-        payload: {
-          gemeldet: anhaenge.length,
-          uebernommen,
-          vorhanden,
-          fehlgeschlagen,
-          ...(unvollstaendig ? { listeUnvollstaendig: true } : {}),
-          ...(ohnePort ? { ohneUebernahmeweg: true } : {}),
-        },
-      })
-      .catch(() => undefined);
+    const abgleich: AnhangsAbgleich = {
+      gemeldet: anhaenge.length,
+      uebernommen,
+      ersetzt,
+      nachgezogen,
+      vorhanden,
+      fehlgeschlagen,
+      listeUnvollstaendig,
+      ohneUebernahmeweg,
+    };
+    const etwasGeschehen =
+      uebernommen + ersetzt + nachgezogen + fehlgeschlagen > 0 || listeUnvollstaendig;
+    if (etwasGeschehen) {
+      await this.audit
+        ?.record({
+          actor,
+          action: "import.attachments",
+          target: koId,
+          payload: {
+            gemeldet: abgleich.gemeldet,
+            uebernommen,
+            ersetzt,
+            nachgezogen,
+            vorhanden,
+            fehlgeschlagen,
+            ...(listeUnvollstaendig ? { listeUnvollstaendig: true } : {}),
+            ...(ohneUebernahmeweg ? { ohneUebernahmeweg: true } : {}),
+          },
+        })
+        .catch(() => undefined);
+    }
+    return abgleich;
   }
 
   // SCRUM-470: Baut das KO aus einem angenommenen Import-Item — idempotent per pageId.

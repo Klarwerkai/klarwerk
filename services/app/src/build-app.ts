@@ -1735,6 +1735,12 @@ export const ERLAUBTE_FEHLERTYPEN: ReadonlySet<string> = new Set([
   // JOB 2702 D1: aus JOB 2683 (Confluence-Zeitgrenzen, services/confluence/src/rest-client.ts:75) —
   // eingebaut nach 2661, vom Waechter unten als fehlend gemeldet, Entscheidung des Kopfs: Eintrag.
   "ConfluenceRequestError",
+  // R-0163: der Nicht-2xx-Status des Confluence-Clients (services/confluence/src/rest-client.ts),
+  // seit dem Anhangsabruf eine eigene Klasse, damit der Fristweg ihn unverändert durchreicht. Er
+  // setzt `name` nicht und trägt zur Laufzeit „Error"; steht er dennoch hier, ist das die
+  // Entscheidung: sein Name sagt nur „Confluence antwortete mit einem Fehlerstatus" — keine
+  // Kennung, kein Host; die Meldung enthält allein die Statuszahl.
+  "ConfluenceStatusError",
   "DevPersistJournalReplayError",
   // JOB 2684 D7: der Standkonflikt aus 2684 (capture/src/service.ts). Der Name sagt nur „veralteter
   // Stand" — kein Nutzertext, keine Kennung; der Meldungstext bleibt wie bei allen unterdrückt.
@@ -1918,6 +1924,11 @@ export const ERLAUBTE_FEHLERCODES: ReadonlySet<string> = new Set([
   // trägt keine Nutzerdaten — er sagt, welcher Zweig lief, und genau dafür ist die Liste da.
   "REASONER_POLICY_ENV_LOCKED",
   "SEARCH_PROJECTION_NOT_READY",
+  // R-0163 (Bens Befund 3, beleg:2def0ac2): der Laufcode eines unvollständigen Anhangsabgleichs
+  // (`routes/confluence-import-routes.ts`, `SOURCE_SYNC_INCOMPLETE`) — am gespeicherten Lauf als
+  // `failureCode` und in der Warnzeile des Laufs. ENTSCHEIDUNG: darf ins Protokoll. Er trägt keine
+  // Seitenkennung und keinen Dateinamen, nur die Auskunft „Anhänge nicht vollständig abgeglichen".
+  "SOURCE_SYNC_INCOMPLETE",
   "STALE_WRITE",
   "UNKNOWN_ART",
   "UNKNOWN_KIND",

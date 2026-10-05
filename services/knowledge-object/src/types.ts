@@ -277,6 +277,22 @@ export interface KoAttachment {
   size?: number; // Originalgröße im Object-Store
   author: string;
   at: string;
+  // R-0163: Herkunft eines aus einer Quelle übernommenen Anhangs. Additiv, JSON-persistiert →
+  // keine Migration; Anhänge ohne das Feld (von Hand hochgeladen, Altbestand) bleiben gültig.
+  quelle?: KoAnhangsquelle;
+}
+
+/**
+ * R-0163: die Quellidentität eines übernommenen Anhangs. `externalId` ist die Kennung des
+ * Anhangs IN der Quelle (Confluence: attachment id) — an ihr wird beim nächsten Abgleich
+ * zugeordnet, nicht am Dateinamen. `abruf` ist der zuletzt gesehene Abrufweg; ändert die Quelle
+ * ihn, wird er hier nachgezogen.
+ */
+export interface KoAnhangsquelle {
+  provider: string;
+  externalId: string;
+  abruf: string;
+  sourceVersion?: number;
 }
 
 // Obergrenzen für den Pilot (kleine Thumbnails, JSONB bleibt handhabbar).

@@ -275,6 +275,12 @@ function abschlussStatus(summary: ImportRunSummary): ImportRunStatus {
   return summary.failed > 0 || summary.truncated ? "PARTIAL" : "COMPLETED";
 }
 
+/**
+ * R-0163: der Laufcode eines unvollständigen Anhangsabgleichs. Er steht in
+ * `ERLAUBTE_FEHLERCODES` (build-app.ts), damit er im Protokoll nicht als `UNBEKANNT` erscheint.
+ */
+const SOURCE_SYNC_INCOMPLETE = "SOURCE_SYNC_INCOMPLETE";
+
 // ================================================================================================
 // JOB 2691 D1 (Befund R2-2) — DER LAUF LAEUFT WEITER, UND DER MENSCH SIEHT KEINEN FEHLER MEHR.
 // ================================================================================================
@@ -417,9 +423,30 @@ async function fuehreLaufAus(
       dryRun: false,
       actor,
     });
+    // R-0163 (Bens Befund 3): ein unvollständiger Anhangsabgleich macht den Lauf über `failed`
+    // bereits PARTIAL; der Grund steht zusätzlich am gespeicherten Lauf — lesbar über
+    // `GET /api/admin/import/runs/:importId`, auch nach einem Neustart, nicht nur in der Antwort.
+    const anhangsLuecken = summary.anhangsabgleich?.unvollstaendigeSeiten.length ?? 0;
+    if (anhangsLuecken > 0) {
+      // Dieselbe Warnzeile wie die übrigen Laufstörungen — mit dem Laufcode statt eines Textes,
+      // ohne Seitenkennung und ohne Dateinamen.
+      wurzelWarn(log).call(
+        log,
+        { stelle: `Lauf (${importId})`, code: SOURCE_SYNC_INCOMPLETE, seiten: anhangsLuecken },
+        "confluence-import: Anhangsabgleich unvollständig",
+      );
+    }
     await beende({
       status: abschlussStatus(summary),
       completedAt: new Date().toISOString(),
+      ...(anhangsLuecken > 0
+        ? {
+            failureCode: SOURCE_SYNC_INCOMPLETE,
+            failureReason: sanitizeImportFailureReason(
+              `Anhangsabgleich unvollständig für ${anhangsLuecken} Seite(n); vorhandene Anhänge bleiben erhalten.`,
+            ),
+          }
+        : {}),
       counters: {
         itemsTotal: summary.found,
         itemsCreated: summary.imported,

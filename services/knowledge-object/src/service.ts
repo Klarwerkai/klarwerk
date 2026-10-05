@@ -106,6 +106,7 @@ import {
   type KnowledgeObject,
   type KnowledgeOwnership,
   type KnowledgeType,
+  type KoAnhangsquelle,
   type KoAppendOp,
   type KoAttachment,
   type KoComment,
@@ -3241,6 +3242,8 @@ export class KoService {
       objectId?: string;
       thumbnail?: string;
       size?: number;
+      // R-0163: Herkunft eines aus einer Quelle übernommenen Anhangs (nur der Importweg setzt sie).
+      quelle?: KoAnhangsquelle;
     },
   ): Promise<KnowledgeObject> {
     const ko = await this.require(id);
@@ -3255,6 +3258,7 @@ export class KoService {
       ...(input.objectId ? { objectId: input.objectId } : {}),
       ...(input.thumbnail ? { thumbnail: input.thumbnail } : {}),
       ...(input.size !== undefined ? { size: input.size } : {}),
+      ...(input.quelle ? { quelle: input.quelle } : {}),
     };
     const updated: KnowledgeObject = {
       ...ko,
@@ -3276,6 +3280,52 @@ export class KoService {
     }
     await this.audit?.record({ actor: author, action: "ko.attached", target: id });
     // AUFNAHME 20260922 (bens Befund Runde 2): die Antwort trägt dieselbe Lesefassung wie ein Reload.
+    return this.lesefassung(updated);
+  }
+
+  /**
+   * R-0163: einen vorhandenen, aus einer Quelle übernommenen Anhang nachziehen — den Abrufweg
+   * (`quelle`) allein oder, bei einer neuen Quellversion, zusätzlich Inhalt (`objectId`, `size`,
+   * `mime`). Kennung, Name und Hochladender des Anhangs bleiben; es entsteht kein zweiter Eintrag.
+   * Ein neuer Inhalt bekommt wie bei `addAttachment` seinen Beleg.
+   */
+  async updateAttachment(
+    id: string,
+    attachmentId: string,
+    actor: string,
+    patch: { objectId?: string; size?: number; mime?: string; quelle?: KoAnhangsquelle },
+  ): Promise<KnowledgeObject> {
+    const ko = await this.require(id);
+    const vorher = (ko.attachments ?? []).find((a) => a.id === attachmentId);
+    if (!vorher) {
+      throw new KoError("NOT_FOUND", "Anhang nicht gefunden.");
+    }
+    const nachher: KoAttachment = {
+      ...vorher,
+      ...(patch.objectId ? { objectId: patch.objectId } : {}),
+      ...(patch.size !== undefined ? { size: patch.size } : {}),
+      ...(patch.mime ? { mime: patch.mime } : {}),
+      ...(patch.quelle ? { quelle: patch.quelle } : {}),
+    };
+    const updated: KnowledgeObject = {
+      ...ko,
+      attachments: (ko.attachments ?? []).map((a) => (a.id === attachmentId ? nachher : a)),
+    };
+    await this.repo.update(updated);
+    if (patch.objectId && patch.objectId !== vorher.objectId) {
+      await this.appendEvidence({
+        koId: id,
+        koVersion: ko.version,
+        kind: "attachment",
+        attachmentId,
+        objectId: patch.objectId,
+        label: nachher.name,
+        mime: nachher.mime,
+        createdBy: actor,
+        createdAt: new Date(this.now()).toISOString(),
+      });
+    }
+    await this.audit?.record({ actor, action: "ko.attachment-updated", target: id });
     return this.lesefassung(updated);
   }
 

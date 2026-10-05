@@ -13,8 +13,14 @@
 // Der Adapter ist hier ein Doppel NUR für die Bytes (`fetchAttachment`); Liste, Download-Auflösung
 // und Origin-Pin misst `services/confluence/src/anhaenge.test.ts` am echten Client.
 import { describe, expect, it } from "vitest";
+import { buildApp, buildServices } from "../../services/app/src/build-app";
 import { confluenceAnhangsUebernahme } from "../../services/app/src/confluence-anhaenge";
 import { runConfluenceImport } from "../../services/app/src/confluence-import";
+import { makeGuards } from "../../services/app/src/http";
+import {
+  confluenceImportRoutes,
+  warteAufOffeneImportLaeufe,
+} from "../../services/app/src/routes/confluence-import-routes";
 import { AuditService, InMemoryAuditRepo } from "../../services/audit";
 import { adapterFromConfig } from "../../services/confluence/src/adapter";
 import { mapConfluencePageToImportItem } from "../../services/confluence/src/mapper";
@@ -24,7 +30,7 @@ import {
   InMemoryUploadLimitsRepo,
   KoService,
 } from "../../services/knowledge-object";
-import { LibraryService } from "../../services/library-analytics";
+import { InMemoryImportRunRepo, LibraryService } from "../../services/library-analytics";
 import { leseImportAnhaenge } from "../../services/library-analytics/src/service";
 import { InMemoryObjectRepo, ObjectStore } from "../../services/object-store";
 
@@ -358,3 +364,234 @@ describe("R-0163 · Bereichsimport über runConfluenceImport (Ben, Nacharbeit 2)
 async function gespeicherteDaten(objects: ObjectStore, id: string): Promise<string | undefined> {
   return (await objects.read(id))?.data;
 }
+
+// ==================================================================================================
+// BEN, NACHARBEIT 3 — DIE DREI HISTORISCHEN ANHANGSFEHLER (beleg:851c4003 / beleg:2def0ac2,
+// jeweils Befunde 1–3), am regulären Bereichsimport einer BEREITS IMPORTIERTEN Seite gleicher
+// Version:
+//   N1 · Die Quelle liefert `results:[{id:'a1'}]` (ohne Titel, ohne Abrufweg). Bisher: removed a1,
+//        synced:true. Soll: Bestand bleibt, Seite und Lauf sind unvollständig.
+//   N2 · Nur der Abrufweg ändert sich. Bisher: skipped, gespeichert blieb der alte Weg. Soll: der
+//        gespeicherte Abrufweg wird nachgezogen.
+//   N3 · Eine neue Anhangsversion trifft auf einen Speicherfehler. Bisher: failed:0,
+//        „unverändert (idempotent)", COMPLETED. Soll: Altbestand bleibt, die Seite ist gescheitert,
+//        und der GESPEICHERTE Lauf ist PARTIAL mit SOURCE_SYNC_INCOMPLETE.
+// Der Adapter ist echt (`adapterFromConfig`), nur `fetch` ist injiziert.
+// ==================================================================================================
+const A1_V1 = {
+  id: "a1",
+  title: "plan.png",
+  extensions: { mediaType: "image/png", fileSize: 8 },
+  version: { number: 1 },
+  _links: { download: "/download/attachments/3001/plan.png?version=1&api=v2" },
+};
+const PNG_V2 = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0b]);
+
+function abgleichAufbau() {
+  const zustand: { anhaenge: unknown[]; bytes: Map<string, Buffer> } = {
+    anhaenge: [A1_V1],
+    bytes: new Map([
+      ["/wiki/download/attachments/3001/plan.png", PNG_BYTES],
+      ["/wiki/download/attachments/3001/plan-v2.png", PNG_V2],
+    ]),
+  };
+  const fetchFn = async (eingabe: string | URL | Request): Promise<Response> => {
+    const url = new URL(String(eingabe));
+    if (url.pathname === "/wiki/rest/api/content/3001/child/attachment") {
+      return antwort(200, { results: zustand.anhaenge });
+    }
+    const bytes = zustand.bytes.get(url.pathname);
+    if (bytes) {
+      return antwort(200, null, bytes);
+    }
+    if (url.pathname === "/wiki/rest/api/content" && url.searchParams.get("spaceKey") === "K") {
+      return antwort(200, { results: [seite(1)] });
+    }
+    return antwort(404, null);
+  };
+  const adapter = adapterFromConfig({
+    baseUrl: BASIS,
+    email: "svc@acme.example",
+    apiToken: "read-only-tok-123",
+    spaceKey: "K",
+    fetchFn: fetchFn as unknown as typeof fetch,
+  });
+  const koService = new KoService({ repo: new InMemoryKoRepo() });
+  const audit = new AuditService({ repo: new InMemoryAuditRepo() });
+  const objects = new ObjectStore({ repo: new InMemoryObjectRepo() });
+  // Der injizierte Speicherfehler (Bens BEN_INJECTED_STORAGE_FAILURE) — am echten Objektspeicher.
+  const stoerung = { an: false };
+  const library = new LibraryService({
+    koService,
+    audit,
+    externalUpsert: true,
+    anhaenge: confluenceAnhangsUebernahme({
+      ko: koService,
+      objects: {
+        put: async (eingabe) => {
+          if (stoerung.an) {
+            throw new Error("BEN_INJECTED_STORAGE_FAILURE");
+          }
+          return objects.put(eingabe);
+        },
+      },
+      uploadLimits: new InMemoryUploadLimitsRepo(),
+      makeAdapter: () => adapter,
+    }),
+  });
+
+  /** Erster regulärer Import samt Annahme — danach trägt das Wissensobjekt a1 mit Herkunft. */
+  const ersterImport = async () => {
+    await koService.activateSearchProjectionV2();
+    await runConfluenceImport({ adapter, library, koService, dryRun: false, actor: "admin" });
+    const [kandidat] = await library.listImportCandidates();
+    const ergebnis = await library.reviewImportCandidate(kandidat!.id, "accept", "reviewerin");
+    const ko = await koService.get(ergebnis.koId!);
+    expect(ko?.attachments).toHaveLength(1);
+    expect(ko?.attachments[0]?.quelle).toMatchObject({ externalId: "a1", sourceVersion: 1 });
+    return ko!;
+  };
+  const zweiterLauf = () =>
+    runConfluenceImport({ adapter, library, koService, dryRun: false, actor: "admin" });
+
+  return {
+    zustand,
+    adapter,
+    koService,
+    audit,
+    objects,
+    stoerung,
+    library,
+    ersterImport,
+    zweiterLauf,
+  };
+}
+
+describe("R-0163 · Anhangsabgleich bereits importierter Seiten (Ben, Nacharbeit 3)", () => {
+  it("N1 · fehlender Anhangstitel bei gleicher Seitenversion: Bestand bleibt, Seite und Lauf unvollständig", async () => {
+    const ctx = abgleichAufbau();
+    const vorher = await ctx.ersterImport();
+    const objektVorher = vorher.attachments[0]!.objectId;
+
+    ctx.zustand.anhaenge = [{ id: "a1" }];
+    const lauf = await ctx.zweiterLauf();
+
+    const nachher = await ctx.koService.get(vorher.id);
+    expect(
+      nachher?.attachments,
+      "a1 bleibt — eine unbrauchbare Liste beweist keine Abwesenheit",
+    ).toHaveLength(1);
+    expect(nachher?.attachments[0]?.objectId).toBe(objektVorher);
+    expect(lauf.failed).toBe(1);
+    expect(lauf.perPage[0]).toMatchObject({ ref: "3001", status: "failed" });
+    expect(lauf.perPage[0]?.note).toContain("Anhangsliste der Quelle unvollständig");
+    expect(lauf.anhangsabgleich?.unvollstaendigeSeiten).toEqual(["3001"]);
+    const eintraege = await ctx.audit.list({ action: "import.attachments", target: vorher.id });
+    expect(eintraege.at(-1)?.payload).toMatchObject({ listeUnvollstaendig: true });
+  });
+
+  it("N2 · nur die Abrufadresse ändert sich: der gespeicherte Abrufweg wird nachgezogen", async () => {
+    const ctx = abgleichAufbau();
+    const vorher = await ctx.ersterImport();
+    const objektVorher = vorher.attachments[0]!.objectId;
+
+    const neuerWeg = "/download/attachments/3001/plan.png?version=1&api=v2&neu=1";
+    ctx.zustand.anhaenge = [{ ...A1_V1, _links: { download: neuerWeg } }];
+    const lauf = await ctx.zweiterLauf();
+
+    const nachher = await ctx.koService.get(vorher.id);
+    expect(nachher?.attachments).toHaveLength(1);
+    expect(nachher?.attachments[0]?.quelle?.abruf, "die Herkunft trägt den neuen Abrufweg").toBe(
+      neuerWeg,
+    );
+    // Gleiche Anhangsversion → kein neuer Inhalt, nur die Herkunft.
+    expect(nachher?.attachments[0]?.objectId).toBe(objektVorher);
+    expect(lauf.failed).toBe(0);
+    expect(lauf.anhangsabgleich).toMatchObject({ nachgezogen: 1, fehlgeschlagen: 0 });
+    expect(lauf.perPage[0]?.note).toContain("1 Abrufweg nachgezogen");
+  });
+
+  it("N3 · Speicherfehler beim geänderten Anhang: Altbestand bleibt, Seite gescheitert, gespeicherter Lauf PARTIAL", async () => {
+    const ctx = abgleichAufbau();
+    const vorher = await ctx.ersterImport();
+    const objektVorher = vorher.attachments[0]!.objectId!;
+
+    ctx.zustand.anhaenge = [
+      {
+        ...A1_V1,
+        version: { number: 2 },
+        _links: { download: "/download/attachments/3001/plan-v2.png?version=2&api=v2" },
+      },
+    ];
+    ctx.stoerung.an = true;
+
+    // (a) Die Laufbilanz nennt die betroffene Seite und zählt sie als gescheitert.
+    const lauf = await ctx.zweiterLauf();
+    expect(lauf.failed).toBe(1);
+    expect(lauf.perPage[0]).toMatchObject({ ref: "3001", status: "failed" });
+    expect(lauf.perPage[0]?.note).toContain("1 Anhang/Anhänge nicht übernommen");
+    expect(lauf.anhangsabgleich).toMatchObject({
+      fehlgeschlagen: 1,
+      ersetzt: 0,
+      unvollstaendigeSeiten: ["3001"],
+    });
+
+    // (b) Der Altbestand ist unverändert: derselbe Eintrag, derselbe Inhalt, dieselbe Herkunft.
+    const nachher = await ctx.koService.get(vorher.id);
+    expect(nachher?.attachments).toHaveLength(1);
+    expect(nachher?.attachments[0]?.objectId).toBe(objektVorher);
+    expect(nachher?.attachments[0]?.quelle?.sourceVersion).toBe(1);
+    expect(await gespeicherteDaten(ctx.objects, objektVorher)).toBe(
+      `data:image/png;base64,${PNG_BYTES.toString("base64")}`,
+    );
+
+    // (c) Der GESPEICHERTE Laufstatus über die echte Importroute mit Laufablage: PARTIAL, mit
+    // eigenem Code und Grund — nicht COMPLETED.
+    // Wie im Statustest: ohne Importschalter registriert `buildApp` die Importroute NICHT selbst —
+    // sie wird gleich mit dem Fixture-Adapter und der Laufablage dieses Falls angemeldet.
+    const gesichert = process.env.KLARWERK_CONFLUENCE_IMPORT;
+    delete process.env.KLARWERK_CONFLUENCE_IMPORT;
+    const services = buildServices();
+    const app = buildApp(services);
+    if (gesichert !== undefined) {
+      process.env.KLARWERK_CONFLUENCE_IMPORT = gesichert;
+    }
+    const importRuns = new InMemoryImportRunRepo();
+    app.register(
+      confluenceImportRoutes({
+        library: ctx.library,
+        koService: ctx.koService,
+        guards: makeGuards(services.auth),
+        reasoner: services.reasoner,
+        makeAdapter: () => ctx.adapter,
+        importRuns,
+      }),
+    );
+    await app.inject({
+      method: "POST",
+      url: "/api/auth/register",
+      payload: { name: "Admin", email: "a@x.de", password: "secret123" },
+    });
+    const login = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { email: "a@x.de", password: "secret123" },
+    });
+    const start = await app.inject({
+      method: "POST",
+      url: "/api/admin/import/confluence",
+      headers: { authorization: `Bearer ${login.json().token}` },
+      payload: { dryRun: false },
+    });
+    expect(start.statusCode).toBe(202);
+    await warteAufOffeneImportLaeufe(importRuns);
+    const gespeichert = await importRuns.findById(start.json().importId);
+    expect(gespeichert).toMatchObject({
+      status: "PARTIAL",
+      failureCode: "SOURCE_SYNC_INCOMPLETE",
+      counters: { itemsFailed: 1 },
+    });
+    expect(gespeichert?.failureReason).toContain("Anhangsabgleich unvollständig für 1 Seite(n)");
+    await app.close();
+  });
+});

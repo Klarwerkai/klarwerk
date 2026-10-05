@@ -24,7 +24,7 @@ import type { ObjectStore } from "../../object-store";
 type AnhangsUebernahme = NonNullable<LibraryServiceDeps["anhaenge"]>;
 
 export interface ConfluenceAnhangsDeps {
-  ko: Pick<KoService, "get" | "addAttachment">;
+  ko: Pick<KoService, "get" | "addAttachment" | "updateAttachment">;
   objects: Pick<ObjectStore, "put">;
   uploadLimits: Pick<UploadLimitsRepo, "get">;
   // Je Auftrag neu gebaut: ohne Schalter oder ohne Zugangsdaten gibt es keinen Adapter — dann wird
@@ -34,19 +34,71 @@ export interface ConfluenceAnhangsDeps {
 
 const UNBESTIMMT = "application/octet-stream";
 
+type Anhang = Parameters<AnhangsUebernahme>[0]["anhaenge"][number];
+
 export function confluenceAnhangsUebernahme(deps: ConfluenceAnhangsDeps): AnhangsUebernahme {
   return async (auftrag) => {
-    const alle = auftrag.anhaenge.length;
+    const alle = auftrag.anhaenge.length + auftrag.ersetzen.length;
     // Nur Confluence-Einträge: ein Abrufweg einer anderen Quelle ist hier nicht auflösbar.
     if ((auftrag.provider ?? "").trim().toLowerCase() !== "confluence") {
-      return { uebernommen: 0, fehlgeschlagen: alle };
+      return { uebernommen: 0, ersetzt: 0, fehlgeschlagen: alle };
     }
     const adapter = deps.makeAdapter();
     const ko = adapter ? await deps.ko.get(auftrag.koId) : undefined;
     if (!adapter || !ko) {
-      return { uebernommen: 0, fehlgeschlagen: alle };
+      return { uebernommen: 0, ersetzt: 0, fehlgeschlagen: alle };
     }
     const limits = (await deps.uploadLimits.get()) ?? DEFAULT_UPLOAD_LIMITS;
+
+    // Bytes holen und ablegen — gemeinsam für neue und ersetzte Anhänge. `undefined` = eine
+    // Grenze ist gerissen (leer, zu groß); ein Fehler (Netz, Speicher) wirft.
+    const lege = async (anhang: Anhang) => {
+      const { bytes, mime } = await adapter.fetchAttachment(anhang.abruf);
+      const typ = anhang.mime !== UNBESTIMMT ? anhang.mime : (mime ?? UNBESTIMMT);
+      const data = `data:${typ};base64,${bytes.toString("base64")}`;
+      if (bytes.byteLength === 0 || data.length > limits.maxAttachmentBytes) {
+        return undefined;
+      }
+      const ref = await deps.objects.put({
+        name: anhang.name,
+        mime: typ,
+        data,
+        purpose: "attachment",
+        owner: auftrag.actor,
+        // Der Anhang erbt die Stufe seines Objekts.
+        ...(auftrag.confidentiality ? { confidentiality: auftrag.confidentiality } : {}),
+      });
+      return { ref, typ };
+    };
+    // Die Quellidentität am Anhang: daran ordnet der nächste Abgleich zu (nicht am Namen).
+    const quelle = (anhang: Anhang) => ({
+      provider: "confluence",
+      externalId: anhang.externalId,
+      abruf: anhang.abruf,
+      ...(anhang.sourceVersion !== undefined ? { sourceVersion: anhang.sourceVersion } : {}),
+    });
+
+    // Neue Quellversion: Inhalt am SELBEN Eintrag tauschen. Scheitert Download oder Ablage, bleibt
+    // der alte Inhalt samt alter Herkunft stehen — der Fall zählt als fehlgeschlagen.
+    let ersetzt = 0;
+    for (const { attachmentId, anhang } of auftrag.ersetzen) {
+      try {
+        const abgelegt = await lege(anhang);
+        if (!abgelegt) {
+          continue;
+        }
+        await deps.ko.updateAttachment(auftrag.koId, attachmentId, auftrag.actor, {
+          objectId: abgelegt.ref.id,
+          size: abgelegt.ref.size,
+          mime: abgelegt.typ,
+          quelle: quelle(anhang),
+        });
+        ersetzt += 1;
+      } catch {
+        // Zählt unten als fehlgeschlagen; der Grund verlässt diese Stelle nicht (keine URL, kein Name).
+      }
+    }
+
     let belegt = ko.attachments?.length ?? 0;
     let uebernommen = 0;
     for (const anhang of auftrag.anhaenge) {
@@ -54,27 +106,17 @@ export function confluenceAnhangsUebernahme(deps: ConfluenceAnhangsDeps): Anhang
         continue;
       }
       try {
-        const { bytes, mime } = await adapter.fetchAttachment(anhang.abruf);
-        const typ = anhang.mime !== UNBESTIMMT ? anhang.mime : (mime ?? UNBESTIMMT);
-        const data = `data:${typ};base64,${bytes.toString("base64")}`;
-        if (bytes.byteLength === 0 || data.length > limits.maxAttachmentBytes) {
+        const abgelegt = await lege(anhang);
+        if (!abgelegt) {
           continue;
         }
-        const ref = await deps.objects.put({
-          name: anhang.name,
-          mime: typ,
-          data,
-          purpose: "attachment",
-          owner: auftrag.actor,
-          // Der Anhang erbt die Stufe seines Objekts.
-          ...(auftrag.confidentiality ? { confidentiality: auftrag.confidentiality } : {}),
-        });
         await deps.ko.addAttachment(auftrag.koId, auftrag.actor, {
           name: anhang.name,
-          mime: typ,
-          objectId: ref.id,
+          mime: abgelegt.typ,
+          objectId: abgelegt.ref.id,
           // Maßgeblich ist die gespeicherte Größe — wie in der Anhangsroute.
-          size: ref.size,
+          size: abgelegt.ref.size,
+          quelle: quelle(anhang),
         });
         belegt += 1;
         uebernommen += 1;
@@ -82,6 +124,6 @@ export function confluenceAnhangsUebernahme(deps: ConfluenceAnhangsDeps): Anhang
         // Zählt unten als fehlgeschlagen; der Grund verlässt diese Stelle nicht (keine URL, kein Name).
       }
     }
-    return { uebernommen, fehlgeschlagen: alle - uebernommen };
+    return { uebernommen, ersetzt, fehlgeschlagen: alle - uebernommen - ersetzt };
   };
 }
