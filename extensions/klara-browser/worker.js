@@ -1353,22 +1353,29 @@
   // vollständig — kein Inhalt, keine Meldung, nichts. Das Fenster ist klein, aber genau in ihm
   // liegt der Aufbau der Leiste (die letzte Zeile von `panel.js` fragt mit Sperre ab).
   //
-  // Der Wunsch wird deshalb GEMERKT und nach dem laufenden Vorgang genau einmal nachgeholt —
-  // dieselbe Bauform wie `nachholen()`/`erledigt()` in der Leiste. Nur der ZULETZT geäusserte
-  // Wunsch wird behalten: zwei Übernahmen hintereinander sind eine Absichtsänderung, keine
-  // Warteschlange, und die zweite ist die gemeinte.
-  /** @type {{tab: {id?: number, url?: string, title?: string} | undefined, info: {frameUrl?: string, pageUrl?: string, frameId?: number, selectionText?: string} | undefined} | null} */
-  let gemerkt = null;
+  // Der Wunsch wird deshalb GEMERKT und nach dem laufenden Vorgang nachgeholt — dieselbe Bauform
+  // wie `nachholen()`/`erledigt()` in der Leiste.
+  //
+  // CHROME-ERFASSEN-EINFUEGEN: ZWEI WÜNSCHE IM SELBEN FENSTER VERSCHWINDEN AUCH NICHT. Bis hierher
+  // überschrieb der zweite den ersten — die erste Übernahme war damit still weg, ohne Meldung. Jetzt
+  // bleiben der ERSTE und der LETZTE stehen: der erste wird gelesen, und der letzte trifft danach
+  // auf die offene Vorschau und wird dort, wie jede andere wartende Seite, sichtbar zur Wahl
+  // gestellt („übernehmen und ersetzen" oder „behalten", s. `capture()`). Was dazwischen kam, ist
+  // dieselbe Lage wie eine zweite wartende Seite: die zuletzt genannte steht in der Nachfrage. Eine
+  // Warteschlange ohne Deckel ist es bewusst nicht.
+  /** @typedef {{tab: {id?: number, url?: string, title?: string} | undefined, info: {frameUrl?: string, pageUrl?: string, frameId?: number, selectionText?: string} | undefined}} Wunsch */
+  /** @type {Wunsch[]} */
+  let gemerkt = [];
   async function nachholen() {
-    const wartend = gemerkt;
-    if (!wartend || busy || captureBusy) return;
-    gemerkt = null;
-    await capture(wartend.tab, wartend.info);
+    if (gemerkt.length === 0 || busy || captureBusy) return;
+    const [wartend, ...rest] = gemerkt;
+    gemerkt = rest;
+    if (wartend) await capture(wartend.tab, wartend.info);
   }
   /** @param {{id?: number, url?: string, title?: string} | undefined} tab @param {{frameUrl?: string, pageUrl?: string, frameId?: number, selectionText?: string}} [info] */
   async function capture(tab, info) {
     if (captureBusy || busy) {
-      gemerkt = { tab, info };
+      gemerkt = [...gemerkt.slice(0, 1), { tab, info }];
       return;
     }
     captureBusy = true;

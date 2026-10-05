@@ -129,7 +129,16 @@ export async function mount(
      * Vorgabe ist `NotAllowedError` — der Name, mit dem der Browser „darf nicht" meldet (auch bei
      * fehlendem Fokus). Jeder andere Name ist ein sonstiger Ausfall.
      */
-    zwischenablage?: { text?: string; fehler?: boolean; fehlerName?: string };
+    zwischenablage?: {
+      text?: string;
+      fehler?: boolean;
+      fehlerName?: string;
+      /**
+       * Chrome-Erfassen-Einfügen: das Lesen hält an, bis dieses Versprechen erfüllt ist — die
+       * Antwort der Ablage kommt dann erst, wenn der Fall es will (vertauschte Reihenfolge).
+       */
+      warte?: Promise<unknown>;
+    };
     /**
      * JOB 3412 · `chrome.permissions` — DAS OPTIONALE RECHT, gestellt wie der Browser es stellt.
      *
@@ -138,7 +147,16 @@ export async function mount(
      * ganz weg — der Browser, der die Anfrage nicht kennt. `wirft: true` lässt die Anfrage
      * scheitern (z. B. Recht gar nicht als optional deklariert).
      */
-    recht?: { erteilt?: boolean; fehlt?: boolean; wirft?: boolean };
+    recht?: {
+      erteilt?: boolean;
+      fehlt?: boolean;
+      wirft?: boolean;
+      /**
+       * Chrome-Erfassen-Einfügen: die VERZÖGERTE Rechteanfrage — der Dialog steht offen, bis dieses
+       * Versprechen erfüllt ist. Aufgezeichnet wird die Anfrage sofort, beantwortet erst danach.
+       */
+      warte?: Promise<unknown>;
+    };
     /**
      * JOB 3280 · CHR-07: eine ANTWORT ANSTELLE DES WORKERS — nur für die Linkprüfung der Leiste.
      *
@@ -198,6 +216,7 @@ export async function mount(
     : {
         request: async (anfrage: { permissions: string[] }) => {
           angefragt.push(anfrage);
+          if (optionen.recht?.warte) await optionen.recht.warte;
           if (optionen.recht?.wirft) throw new Error("nicht anforderbar");
           return optionen.recht?.erteilt !== false;
         },
@@ -245,6 +264,7 @@ export async function mount(
       value: {
         readText: async () => {
           gelesen.push(Date.now());
+          if (optionen.zwischenablage?.warte) await optionen.zwischenablage.warte;
           if (optionen.zwischenablage?.fehler) {
             // Der Browser wirft eine `DOMException` mit sprechendem NAMEN. Nachgestellt wird genau
             // dieser Name — er ist die einzige Angabe, an der die Leiste „darf nicht" von „ging

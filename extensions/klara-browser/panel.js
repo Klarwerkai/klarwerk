@@ -114,6 +114,9 @@
       // Ausfall, sondern eine Nachfrage mit einem Griff, der nachweislich funktioniert (Cmd+V in
       // das Feld). Nichts ging verloren, nichts wurde gesendet.
       "clipboard_manual",
+      // Die Übernahme wechselte, während der Klick auf Recht oder Ablage wartete. Nichts wurde
+      // eingefügt und nichts gesendet — eine Nachfrage, kein Ausfall.
+      "clipboard_stale",
       "classification_locked",
       "origin_missing",
       // JOB 3280 R3: der Inhalt steht still, bis die unklare Anlage geklärt ist. Nichts ging
@@ -560,45 +563,86 @@
       return false;
     }
   }
+  // ================================================================================================
+  // CHROME-ERFASSEN-EINFUEGEN — DER KLICK GEHÖRT DEM VORGANG, AN DEM ER GESCHAH.
+  // ================================================================================================
+  //
+  // Zwischen Klick und Einfügen liegen zwei Wartestellen: die Rechteanfrage (sie kann einen Dialog
+  // offen halten, solange der Mensch überlegt) und das Lesen selbst. Bis hierher wurde die Kennung
+  // erst DANACH aus `current` gelesen. Kam in der Zwischenzeit eine andere Übernahme in die Leiste
+  // (Verwerfen und neu markieren, „Neue Übernahme", ein Rechtsklick), landete der Ablagetext im
+  // Feld und im Vorgang der NEUEN Übernahme — still, unter einer Herkunft, die niemand gewählt hat.
+  // Und ein zweiter Klick während der Anfrage startete einen zweiten Lauf: zwei Anfragen, zwei
+  // Lesevorgänge, zwei Sendungen.
+  //
+  // Jetzt gilt: die Kennung wird IM KLICK festgehalten, ein zweiter Klick während des Laufs tut
+  // nichts, und nach JEDER Wartestelle wird verglichen. Hat die Übernahme gewechselt, wird nicht
+  // (weiter) gelesen, nichts eingefügt und nichts gesendet — die Zeile sagt genau das.
+  let einfuegenLaeuft = false;
   $("paste").addEventListener("click", async () => {
-    if (busy || $("paste").disabled) return;
-    // Der Öffnen-Link bleibt in JEDEM der drei Ausgänge stehen: am gespeicherten Entwurf hat sich
-    // nichts geändert, es wurde gar nichts gesendet. Ihn wegzunehmen wäre eine Folge ohne Ursache.
-    // Ebenso bleiben der bereits eingefügte Text, der gewählte Umfang und die Herkunftswahl —
-    // `render()` schreibt die Felder nur bei einer ANDEREN Übernahme neu (`loadedId`).
-    if (!(await darfLesen())) {
-      render({ ...current, status: "clipboard_manual" });
-      return;
-    }
-    let text = "";
+    if (busy || einfuegenLaeuft || $("paste").disabled) return;
+    const vorgang = current.captureId;
+    const gewechselt = () => current.captureId !== vorgang;
+    einfuegenLaeuft = true;
     try {
-      text = await navigator.clipboard.readText();
-    } catch (fehler) {
-      // Der NAME des Fehlers trennt die beiden Ausgänge, nicht seine Bauart (`instanceof` griffe
-      // über eine Fensterrealm-Grenze hinweg ins Leere). `NotAllowedError` heisst „darf gerade
-      // nicht" — das deckt auch die nicht fokussierte Leiste mit ab, und beide Lagen löst derselbe
-      // Griff: in das Feld klicken (das gibt ihm den Fokus) und einfügen. Jeder ANDERE Name heisst
-      // „ging schief" und bekommt seinen eigenen Satz, statt als Verweigerung ausgegeben zu werden.
-      const name = /** @type {{ name?: unknown }} */ (fehler)?.name;
-      render({
-        ...current,
-        status: name === "NotAllowedError" ? "clipboard_manual" : "clipboard_failed",
-      });
-      return;
+      // Der Öffnen-Link bleibt in JEDEM Ausgang stehen: am gespeicherten Entwurf hat sich nichts
+      // geändert, es wurde gar nichts gesendet. Ihn wegzunehmen wäre eine Folge ohne Ursache.
+      // Ebenso bleiben der bereits eingefügte Text, der gewählte Umfang und die Herkunftswahl —
+      // `render()` schreibt die Felder nur bei einer ANDEREN Übernahme neu (`loadedId`).
+      const darf = await darfLesen();
+      if (gewechselt()) {
+        render({ ...current, status: "clipboard_stale" });
+        return;
+      }
+      if (!darf) {
+        render({ ...current, status: "clipboard_manual" });
+        return;
+      }
+      let text = "";
+      try {
+        text = await navigator.clipboard.readText();
+      } catch (fehler) {
+        // Der NAME des Fehlers trennt die beiden Ausgänge, nicht seine Bauart (`instanceof` griffe
+        // über eine Fensterrealm-Grenze hinweg ins Leere). `NotAllowedError` heisst „darf gerade
+        // nicht" — das deckt auch die nicht fokussierte Leiste mit ab, und beide Lagen löst derselbe
+        // Griff: in das Feld klicken (das gibt ihm den Fokus) und einfügen. Jeder ANDERE Name heisst
+        // „ging schief" und bekommt seinen eigenen Satz, statt als Verweigerung ausgegeben zu werden.
+        const name = /** @type {{ name?: unknown }} */ (fehler)?.name;
+        render({
+          ...current,
+          status: gewechselt()
+            ? "clipboard_stale"
+            : name === "NotAllowedError"
+              ? "clipboard_manual"
+              : "clipboard_failed",
+        });
+        return;
+      }
+      // Gelesen, aber für eine Übernahme, die nicht mehr in der Leiste steht: der Text wird
+      // verworfen, nicht in die neue geschrieben.
+      if (gewechselt()) {
+        render({ ...current, status: "clipboard_stale" });
+        return;
+      }
+      if (!text.trim()) {
+        render({ ...current, status: "clipboard_empty" });
+        return;
+      }
+      $("clipboard").value = text;
+      // Ein anderer Inhalt ist eine andere Übernahme: die Bestätigung verfällt und muss neu erfolgen.
+      $("confirm").checked = false;
+      // Die Herkunft wird VORGESCHLAGEN, nicht gesetzt: ein KI-Chat im offenen Tab ist ein Hinweis,
+      // kein Beleg. Steht schon eine Wahl da, bleibt sie — der Vorschlag überschreibt nie.
+      if (!$("origin").value && current.aiChat === true) $("origin").value = "ki_chat";
+      // Beide Sendungen tragen die festgehaltene Kennung. Wechselt die Übernahme zwischen ihnen,
+      // weist der Worker die zweite als `stale_preview` ab, statt das Formular der alten in die
+      // neue zu schreiben.
+      void send({ type: "clipboard", captureId: vorgang, text }).then(() =>
+        send({ type: "edit", captureId: vorgang, form: form() }, false),
+      );
+    } finally {
+      einfuegenLaeuft = false;
     }
-    if (!text.trim()) {
-      render({ ...current, status: "clipboard_empty" });
-      return;
-    }
-    $("clipboard").value = text;
-    // Ein anderer Inhalt ist eine andere Übernahme: die Bestätigung verfällt und muss neu erfolgen.
-    $("confirm").checked = false;
-    // Die Herkunft wird VORGESCHLAGEN, nicht gesetzt: ein KI-Chat im offenen Tab ist ein Hinweis,
-    // kein Beleg. Steht schon eine Wahl da, bleibt sie — der Vorschlag überschreibt nie.
-    if (!$("origin").value && current.aiChat === true) $("origin").value = "ki_chat";
-    void send({ type: "clipboard", captureId: current.captureId, text }).then(() =>
-      send({ type: "edit", captureId: current.captureId, form: form() }, false),
-    );
   });
   $("clipboard").addEventListener("input", () => {
     $("confirm").checked = false;

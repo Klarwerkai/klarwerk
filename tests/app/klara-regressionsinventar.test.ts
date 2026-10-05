@@ -1039,6 +1039,13 @@ const INVENTAR: readonly string[] = [
   // kommt ALLEIN ueber `worker.js` herein (`capture()`, `:10`) — sie ist der Beleg dafuer, dass der
   // Worker im Muster kein Beiwerk ist: ohne ihn bliebe sie ungedeckt.
   "tests/chrome-einfuegen-leerzustand/neue-uebernahme.test.ts",
+  // Aufnahme chrome-erfassen-einfuegen (Rest aus 3412/3524/3279): Doppelklick, verzögerte
+  // Rechteanfrage, vertauschte Antworten und konkurrierende Erfassungen an der gemounteten Leiste
+  // und am Worker (`panel.html`, `panel.js`, `worker.js`), dazu die Geometrie der schmalen Leiste in
+  // Chromium (`extensions/klara-browser`). Beide über die Achse `erweiterung`; „klara" steht nicht
+  // im Pfad, K5 bleibt unverändert.
+  "tests/chrome-erfassen-einfuegen-rest/einfuegen-rennen.test.ts",
+  "tests/chrome-erfassen-einfuegen-rest/schmale-leiste-chromium.test.ts",
   // JOB 3512: DER AUSLOESER DIESES AUFTRAGS — die gemountete Chrome-Leiste mit der Firmen-CI. Sie
   // nennt `panel.html`, `panel.js` und `worker.js` in ihrem Kopf (`:5`) und kommt ueber die Achse
   // `erweiterung` herein. Der Kommentar weiter oben, der sie seit JOB 3512 als offene Luecke

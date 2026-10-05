@@ -193,7 +193,8 @@ describe("JOB 3412 · der Einfügen-Knopf nennt den gangbaren Weg", () => {
     expect(gelesen.permissions).not.toContain("clipboardRead");
     // JOB 3412 fasst die Nummer nicht an (JOB 3413 führt die Anleitung dazu nach).
     // JOB 3606: eine Stufe weiter — Chrome lädt die reparierte Übernahme sonst nicht neu.
-    expect(gelesen.version).toBe("0.4.1");
+    // Chrome-Erfassen-Einfügen: 0.4.2 — der Einfügeklick hält seinen Vorgang fest (Rennschutz).
+    expect(gelesen.version).toBe("0.4.2");
     expect(gelesen.host_permissions).toEqual(["https://app.klarwerk.ai/*"]);
   });
 
