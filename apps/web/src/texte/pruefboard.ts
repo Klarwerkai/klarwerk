@@ -36,6 +36,7 @@ export default {
     "pruefboard.konfliktNichtFrisch":
       "Konfliktstand nicht aktuell — die letzte Auffrischung ist fehlgeschlagen.",
     "pruefboard.volltextFiltern": "Volltext filtern …",
+    "pruefboard.stapel.menue": "Stapel",
     "pruefboard.stapel.alle": "Alle auswählen",
     "pruefboard.stapel.waehlen": "{{titel}} auswählen",
     "pruefboard.stapel.anzahl": "{{n}} ausgewählt",
@@ -73,6 +74,7 @@ export default {
     "pruefboard.konfliktFehler": "Could not load whether this item has open conflicts.",
     "pruefboard.konfliktNichtFrisch": "Conflict status not current — the last refresh failed.",
     "pruefboard.volltextFiltern": "Filter full text …",
+    "pruefboard.stapel.menue": "Batch",
     "pruefboard.stapel.alle": "Select all",
     "pruefboard.stapel.waehlen": "Select {{titel}}",
     "pruefboard.stapel.anzahl": "{{n}} selected",
@@ -111,6 +113,7 @@ export default {
     "pruefboard.konfliktNichtFrisch":
       "Conflictstand niet actueel — de laatste verversing is mislukt.",
     "pruefboard.volltextFiltern": "Volledige tekst filteren …",
+    "pruefboard.stapel.menue": "Stapel",
     "pruefboard.stapel.alle": "Alles selecteren",
     "pruefboard.stapel.waehlen": "{{titel}} selecteren",
     "pruefboard.stapel.anzahl": "{{n}} geselecteerd",

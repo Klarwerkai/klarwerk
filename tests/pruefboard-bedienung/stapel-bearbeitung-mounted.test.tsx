@@ -104,6 +104,11 @@ function ergebnis(): Record<string, string | null> {
   );
 }
 
+/** Die Stapel-Leiste wohnt im Menü „Stapel" neben dem Filter-Menü — erst öffnen, dann bedienen. */
+async function oeffneStapel(): Promise<void> {
+  await klick(finde(brett.container, '[data-testid="pruefen-menue-stapel"]'));
+}
+
 function zuweisenFeld(): HTMLSelectElement {
   return finde(brett.container, ZUWEISEN) as HTMLSelectElement;
 }
@@ -134,6 +139,10 @@ describe("S1 · Mehrfachauswahl", () => {
     await klick(kaestchen()[1]);
     await klick(kaestchen()[3]);
 
+    // Schon am GESCHLOSSENEN Menü steht, wie viele ausgewählt sind.
+    const zaehler = finde(brett.container, '[data-testid="pruefen-menue-stapel-zaehler"]');
+    expect(zaehler?.textContent).toBe("2");
+    await oeffneStapel();
     const anzahl = finde(brett.container, '[data-testid="pruefen-stapel-anzahl"]');
     expect(anzahl?.textContent).toBe(de("pruefboard.stapel.anzahl").replace("{{n}}", "2"));
     // Das Kästchen wählt für den Stapel, es öffnet keine Karte: rechts steht weiter „A frei".
@@ -143,6 +152,7 @@ describe("S1 · Mehrfachauswahl", () => {
 
   it("„Alle auswählen“ wählt alle sichtbaren Einträge und hebt sie wieder auf", async () => {
     brett = await mounteBrett({ zeilen: vierZeilen() });
+    await oeffneStapel();
     await klick(finde(brett.container, ALLE));
     expect(kaestchen().every((k) => k.checked)).toBe(true);
     await klick(finde(brett.container, ALLE));
@@ -156,6 +166,7 @@ describe("S2 · gesammelt bestätigen mit den Sicherungen je Objekt", () => {
       zeilen: vierZeilen(),
       duplikate: [paar({ koA: "kD", koB: "k9" })],
     });
+    await oeffneStapel();
     await klick(finde(brett.container, ALLE));
     await klick(finde(brett.container, BESTAETIGEN));
     await flush();
@@ -189,6 +200,7 @@ describe("S3 · die Serverantwort je Objekt ist sein Ergebnis", () => {
         zeile({ id: "kE", title: "E fremd", ...EINGESTUFT }),
       ],
     });
+    await oeffneStapel();
     await klick(finde(brett.container, ALLE));
     await klick(finde(brett.container, BESTAETIGEN));
     await flush();
@@ -213,6 +225,7 @@ describe("S4 · gesammelt zuweisen", () => {
         zeile({ id: "kC", title: "C kaputt", ...EINGESTUFT }),
       ],
     });
+    await oeffneStapel();
     await klick(finde(brett.container, ALLE));
     await waehlen(zuweisenFeld(), "u1");
     await flush();
@@ -231,6 +244,7 @@ describe("S4 · gesammelt zuweisen", () => {
 
   it("eine laufende KI-Prüfung sperrt auch das Sammel-Zuweisen dieses Objekts", async () => {
     brett = await mounteBrett({ zeilen: [laufend("kC", "C läuft")] });
+    await oeffneStapel();
     await klick(finde(brett.container, ALLE));
     await waehlen(zuweisenFeld(), "u1");
     await flush();
@@ -245,6 +259,22 @@ describe("S5 · die Stapel-Leiste gibt es erst ab Controller", () => {
     stand.rolle = "experte";
     brett = await mounteBrett({ zeilen: vierZeilen() });
     expect(kaestchen()).toHaveLength(0);
+    expect(finde(brett.container, '[data-testid="pruefen-menue-stapel"]')).toBeNull();
     expect(finde(brett.container, '[data-testid="pruefen-stapel"]')).toBeNull();
+  });
+});
+
+// Die Gegenprobe zu den Geometrieverträgen in `tests/design/job2935-validierung-fussband.test.ts`
+// (Block L): die Stapel-Leiste steht NICHT in der Listenspalte, sondern im Kopf — über der
+// Warteschlange liegt kein zusätzlicher Kasten, der die Liste unter den Anfang der Karte schiebt.
+describe("S6 · die Stapel-Leiste kostet die Liste keinen Platz", () => {
+  it("die Leiste wohnt im Kopfmenü; in der Listenspalte steht vor der Warteschlange nichts von ihr", async () => {
+    brett = await mounteBrett({ zeilen: vierZeilen() });
+    await oeffneStapel();
+    const leiste = finde(brett.container, '[data-testid="pruefen-stapel"]');
+    const liste = finde(brett.container, '[data-testid="pruefen-warteschlange"]');
+    expect(leiste, "die Leiste fehlt im geöffneten Menü").not.toBeNull();
+    expect(leiste?.closest('[data-testid="pruefen-menue-panel-stapel"]')).not.toBeNull();
+    expect(liste?.parentElement?.contains(leiste ?? null)).toBe(false);
   });
 });

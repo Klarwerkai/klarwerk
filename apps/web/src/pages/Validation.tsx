@@ -35,6 +35,7 @@ import {
   FileText,
   HelpCircle,
   Image as ImageIcon,
+  ListChecks,
   Lock,
   Minus,
   SlidersHorizontal,
@@ -1384,7 +1385,37 @@ export function Validation(): JSX.Element {
     </PruefenMenue>
   );
 
-  const kopf = <PruefenKopf aktiv="offen" filter={filterMenue} hilfe={hilfeMenue} />;
+  // R-0246: die Stapel-Leiste wohnt als MENÜ neben dem Filter-Menü — nicht über der Liste. Ein
+  // Kasten über der Liste kostet die Liste genau seine Höhe und schiebt sie unter den Anfang der
+  // Karte; das schliessen die Geometrieverträge aus (`job2935-validierung-fussband.test.ts`, Block
+  // L: Liste und Karte beginnen auf gleicher Höhe, die Liste behält ihren Platz). Das Menüblatt
+  // liegt über der Fläche und nimmt der Spalte nichts. Der Zähler am geschlossenen Menü nennt die
+  // Anzahl der ausgewählten Einträge.
+  const stapelMenue =
+    darfStapel && visible.length > 0 ? (
+      <PruefenMenue
+        kennung="stapel"
+        beschriftung={t("pruefboard.stapel.menue")}
+        symbol={<ListChecks size={16} aria-hidden="true" />}
+        zaehler={stapel.length}
+        breite="w-80"
+      >
+        {stapelLeiste()}
+      </PruefenMenue>
+    ) : null;
+
+  const kopf = (
+    <PruefenKopf
+      aktiv="offen"
+      filter={
+        <>
+          {filterMenue}
+          {stapelMenue}
+        </>
+      }
+      hilfe={hilfeMenue}
+    />
+  );
 
   // ---- Der Leerzustand: EIN Satz, höchstens ein Weiterweg (Auftrag §9) -------------------------
   function leerSatz(): JSX.Element {
@@ -1461,7 +1492,6 @@ export function Validation(): JSX.Element {
           {lage.lage === "leer" || (lage.lage === "bestand" && visible.length === 0)
             ? leerSatz()
             : null}
-          {darfStapel && visible.length > 0 ? stapelLeiste() : null}
           {visible.length > 0 ? (
             // JOB 3504: der Tastenlauf hängt an der LISTE und fängt damit nur, was aus ihr
             // aufsteigt. Ein Pfeil im Suchfeld des Filter-Menüs, im Begründungsfeld der Rückfrage
@@ -1664,7 +1694,7 @@ export function Validation(): JSX.Element {
     return (
       <div
         data-testid="pruefen-stapel"
-        className="mb-2 flex flex-col gap-1.5 text-[12px] text-muted"
+        className="flex flex-col gap-1.5 px-2.5 py-2 text-[12px] text-muted"
       >
         <label className="flex items-center gap-1.5">
           <input

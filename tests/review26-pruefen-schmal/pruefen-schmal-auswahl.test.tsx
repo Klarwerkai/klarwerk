@@ -31,6 +31,8 @@ vi.mock("../../apps/web/src/api/hooks", () => {
     useConflicts: () => ok([]),
     useDuplicates: () => ok([]),
     useLifecyclePending: () => ok([]),
+    // R-0238: die Gegenüber-Suche der widersprechenden Ablehnung — hier Kulisse, nie befragt.
+    useLibrarySearch: () => ok([]),
   };
 });
 vi.mock("../../apps/web/src/app/AuthContext", () => ({
