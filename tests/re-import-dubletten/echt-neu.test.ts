@@ -5,8 +5,12 @@
 // Ohne diesen Fall waere „alles ueberspringen" gruen, und der Auftrag waere mit einer einzigen
 // `return { dublette: true }`-Zeile erfuellbar. Er laeuft ueber DIESELBE Route wie die
 // Dublettenfaelle und misst zugleich, dass der Import als Ganzes mit 200 antwortet.
+//
+// Lauf gesamt-import-adoption: zusätzlich gemessen wird der Befund je Kandidat (mit Kennung des
+// getroffenen Objekts) und der AUSGANG jeder Annahme — nur der neue Eintrag legt an.
 import { describe, expect, it } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
+import type { KandidatDublettenbefund } from "../../services/library-analytics";
 
 const ZUGANG = { name: "Admin", email: "echtneu@x.de", password: "secret123" };
 
@@ -15,6 +19,13 @@ interface Uebersprungen {
   grund: string;
   koId: string | null;
   aehnlichkeit?: number;
+}
+
+interface KandidatDto {
+  id: string;
+  item: { title: string };
+  koId: string | null;
+  dublettenbefund?: KandidatDublettenbefund;
 }
 
 describe("JOB 3023 · D — die Gegenprobe", () => {
@@ -41,6 +52,7 @@ describe("JOB 3023 · D — die Gegenprobe", () => {
       },
     });
     expect(bestand.statusCode, bestand.body).toBe(201);
+    const bestandId = bestand.json().id as string;
 
     const res = await app.inject({
       method: "POST",
@@ -72,16 +84,25 @@ describe("JOB 3023 · D — die Gegenprobe", () => {
       imported: number;
       skipped: number;
       uebersprungen: Uebersprungen[];
-      kandidaten: { id: string; item: { title: string } }[];
+      kandidaten: KandidatDto[];
     };
     expect(body.imported, "Direkt angelegt wird nichts mehr.").toBe(0);
     expect(body.skipped).toBe(1);
     expect(body.uebersprungen.map((e) => e.titel)).toEqual(["VENTIL ENTLUEFTEN"]);
+    expect(
+      body.kandidaten[0]?.dublettenbefund?.ergebnis,
+      "Der fachlich neue Eintrag ist keine Dublette.",
+    ).toBe("keine");
+    expect(body.kandidaten[1]?.dublettenbefund).toMatchObject({
+      ergebnis: "aehnlich",
+      treffer: { art: "wissensobjekt", koId: bestandId },
+    });
 
     const vorAnnahme = await app.inject({ method: "GET", url: "/api/kos", headers });
     expect((vorAnnahme.json() as { title: string }[]).map((ko) => ko.title)).toEqual([
       "Ventil entlueften",
     ]);
+    const angenommen: KandidatDto[] = [];
     for (const k of body.kandidaten) {
       const annahme = await app.inject({
         method: "PUT",
@@ -90,7 +111,10 @@ describe("JOB 3023 · D — die Gegenprobe", () => {
         payload: { action: "accept" },
       });
       expect(annahme.statusCode, annahme.body).toBe(200);
+      angenommen.push(annahme.json() as KandidatDto);
     }
+    expect(angenommen[0]?.koId, "Der fachlich neue Eintrag MUSS ankommen.").toBeTruthy();
+    expect(angenommen[1]?.koId, "Der aehnliche Eintrag legt kein Objekt an.").toBeNull();
 
     const liste = await app.inject({ method: "GET", url: "/api/kos", headers });
     const titel = (liste.json() as { title: string }[]).map((ko) => ko.title).sort();

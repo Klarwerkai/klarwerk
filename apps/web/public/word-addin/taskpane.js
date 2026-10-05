@@ -1531,6 +1531,7 @@
         loginHandoverBlocked: "Die Anmeldung erreicht dieses Fenster nicht: Word zeigt Klara hier in einem Rahmen einer anderen Herkunft. Bitte das Anmelde-Fenster erneut öffnen oder dieses Seitenfenster neu laden.",
         loginHandoverRejected: "Die Übergabe der Anmeldung wurde abgelehnt — der Übergabecode gilt nicht mehr. Ob die Anmeldung selbst geklappt hat, ist damit nicht gesagt. Bitte erneut anmelden.",
         loginPopupBlocked: "Das Anmelde-Fenster wurde blockiert (Popup-Blocker). Bitte Popups für diese Seite erlauben und erneut versuchen.",
+        loginDialogDeclined: "Das Anmelde-Fenster ließ sich nicht öffnen: Word hat es nicht zugelassen oder der Browser hat es verhindert. Bitte erneut auf „Anmelden“ drücken und die Rückfrage von Word, ob ein neues Fenster angezeigt werden darf, zulassen.",
         loginOtherContext: "Hinweis: Das Anmelde-Fenster kann in einem anderen Browser-Kontext laufen. Wird die Anmeldung hier nicht erkannt, bitte erneut versuchen.",
         sendTitle: "An KLARWERK senden",
         // JOB 2620 D5: der Bilder-Halbsatz ist in den gemessenen Kasten (sendImagesNote) umgezogen —
@@ -1994,6 +1995,7 @@
         loginHandoverBlocked: "The sign-in does not reach this pane: Word shows Klara here inside a frame of a different origin. Please open the sign-in window again, or reload this task pane.",
         loginHandoverRejected: "The handover of the sign-in was declined — the handover code is no longer valid. That does not say whether the sign-in itself worked. Please sign in again.",
         loginPopupBlocked: "The sign-in window was blocked (popup blocker). Please allow popups for this page and try again.",
+        loginDialogDeclined: "The sign-in window could not be opened: Word did not allow it or the browser prevented it. Please press “Sign in” again and allow Word’s prompt asking whether a new window may be shown.",
         loginOtherContext: "Note: the sign-in window may run in a different browser context. If the sign-in is not detected here, please try again.",
         sendTitle: "Send to KLARWERK",
         // JOB 2620 D5: the image clause moved into the measured note box (sendImagesNote) — one statement, not two.
@@ -2329,6 +2331,7 @@
         loginHandoverBlocked: "De aanmelding bereikt dit venster niet: Word toont Klara hier in een kader van een andere herkomst. Open het aanmeldvenster opnieuw of laad dit taakvenster opnieuw.",
         loginHandoverRejected: "De overdracht van de aanmelding is afgewezen — de overdrachtscode geldt niet meer. Daarmee is niet gezegd of de aanmelding zelf is gelukt. Meld je opnieuw aan.",
         loginPopupBlocked: "Het aanmeldvenster is geblokkeerd (pop-upblokkering). Sta pop-ups voor deze pagina toe en probeer het opnieuw.",
+        loginDialogDeclined: "Het aanmeldvenster kon niet worden geopend: Word heeft het niet toegestaan of de browser heeft het verhinderd. Druk opnieuw op „Aanmelden” en sta de vraag van Word toe of er een nieuw venster mag worden getoond.",
         loginOtherContext: "Let op: het aanmeldvenster kan in een andere browsercontext draaien. Wordt de aanmelding hier niet herkend, probeer het dan opnieuw.",
         sendTitle: "Naar KLARWERK sturen",
         // JOB 2620 D5: de afbeeldingenclausule is verhuisd naar het gemeten kader (sendImagesNote) — één uitspraak, niet twee.
@@ -4597,17 +4600,10 @@
       return t("sendError", { detail: "HTTP " + (res ? res.status : "?") });
     }
 
-    // WP-KLARA-1c (Pedis Live-Befund): Anmelde-RUECKWEG ohne Navigation — das Panel bleibt auf
-    // taskpane.html, die Anmeldung oeffnet in einem EIGENEN Fenster, das Panel pollt /api/auth/me.
-    // WP-IC-PAKET-1c (bens ROT-1, Poll-Lifecycle):
-    //  (a) GENAU EIN Poll gleichzeitig — der naechste Versuch wird per setTimeout erst NACH Abschluss
-    //      des vorigen geplant (kein setInterval, keine ueberlappenden Fetches).
-    //  (b) jeder Fetch mit eigenem AbortController + eigener Frist (WORD_ADDIN_LOGIN_FETCH_TIMEOUT_MS).
-    //  (c) UNABHAENGIGE harte 5-Minuten-Frist: eigener Deadline-Timer ab Start (greift auch bei
-    //      haengendem Fetch); zusaetzlich prueft loginPollStep die verstrichene Zeit je Abschluss.
-    //  (d) Generation-ID je Lauf: Abbrechen/Neustart erhoeht die Generation und neutralisiert damit
-    //      Timer, laufenden Fetch (abort) UND spaete Dialog-Callbacks (altes Handle wird geschlossen).
-    //  (e) Login-Knopf ist waehrend eines Laufs deaktiviert (kein Mehrfachstart).
+    // WP-KLARA-1c/WP-IC-PAKET-1c: Anmeldung ohne Navigation im eigenen Fenster, Panel pollt /api/auth/me.
+    // (a) GENAU EIN Poll, der naechste erst nach Abschluss (setTimeout); (b) je Fetch AbortController
+    // + Frist; (c) UNABHAENGIGE harte 5-Minuten-Frist (Deadline-Timer); (d) Generation je Lauf
+    // neutralisiert Timer, Fetch UND spaete Dialog-Callbacks; (e) Login-Knopf im Lauf gesperrt.
     var loginPollGeneration = 0;
     var loginPollTimer = null;
     var loginDeadlineTimer = null;
@@ -4754,11 +4750,15 @@
       return generation;
     }
 
-    // (f) Fallback-Fenster (Browser-Vorschau ODER Office-Dialog nicht verfuegbar): window.open MIT
-    // Rueckgabewert-Pruefung — null heisst Popup-Blocker → ehrliche Meldung statt endlosem Warten.
-    // (g) Ehrlicher Hinweis: das Fallback-Fenster kann in einem ANDEREN Browser-Kontext landen.
+    // (f) Fallback-Fenster (Office-Dialog abgelehnt/nicht verfuegbar): window.open MIT Pruefung —
+    // null heisst Popup-Blocker. Im FREMDEN Rahmen (Word im Web) bringt es die Anmeldung nie her
+    // (kein messageParent, kein Lax-Cookie): dort sofort der Grund statt fuenf Minuten Warten.
     function openLoginFallbackWindow(generation, url) {
       if (generation !== loginPollGeneration) { return; }
+      if (loginImFremdenRahmen()) {
+        stopLoginPolling();
+        return setSessionWarn(t("loginDialogDeclined"));
+      }
       var win = window.open(url, "_blank");
       if (win === null) {
         stopLoginPolling();

@@ -521,6 +521,9 @@ export interface KnowledgeObject {
   measures: string[];
   type: KnowledgeType;
   category: string;
+  // R-0431 / R-1728 / FR-LIB-01 (K2): das Fachgebiet, unabhängig von der Kategorie (Spiegel von
+  // services/knowledge-object/src/types.ts). Fehlt = kein Fachgebiet angegeben, nichts abgeleitet.
+  domain?: string;
   tags: string[];
   confidence: number;
   trust: number;
@@ -589,6 +592,9 @@ export interface KnowledgeObject {
   reviewVotes?: { up: number; warn: number; down: number };
   // SCRUM-507 R2: Anzahl Bewertungen aus einer FRÜHEREN Revision — veraltet, zählen nicht mehr.
   staleVotes?: number;
+  // PRÜFSTATUS-ANZEIGE (N-0054): Spiegel von `services/knowledge-object/src/types.ts` — der Verweis
+  // auf die Validierungsentscheidung. Steht er da, hat ein Mensch fachlich entschieden.
+  validationDecisionRef?: { auditSeq: number; auditHash: string };
   asset: string | null;
   createdAt: string;
   history: HistoryEntry[];
@@ -620,6 +626,13 @@ export interface KnowledgeObject {
     // gilt für einen früheren Stand von Inhalt, Quellen, Einordnung oder Vertraulichkeit — er ist
     // nicht aktuell, gleich was Status und Abdeckung sagen.
     ueberholt?: boolean;
+    // PRÜFSTATUS-ANZEIGE (R-0208) · NUR LESEFASSUNG DES PRÜFBRETTS, nie gespeichert. `laeuft`
+    // (nur bei pending): der Worker bearbeitet den Job gerade — sonst ist er bloß ausstehend.
+    // `konfliktGefunden` (nur bei done): zu DIESEM Objekt als Subjekt steht ein offener, automatisch
+    // erkannter Konflikt, dessen Gegenseite der Leser sehen darf. Fehlt das Feld, ist es nicht
+    // erhoben — es heißt dann weder „kein Konflikt" noch „läuft nicht".
+    laeuft?: boolean;
+    konfliktGefunden?: boolean;
   };
 }
 
@@ -2795,6 +2808,47 @@ export interface BausteinLesestand {
   /** Steht DANEBEN, ersetzt nie. `null` = es gibt keine neuere Fassung. */
   aktualisierungsvorschlag: { aufVersion: number } | null;
   inhalt: BausteinInhalt;
+  /**
+   * QUELLENÄNDERUNGEN · hochgeladene Dateien der gebundenen Fassung — Momentaufnahmen.
+   * `null` und ein fehlendes Feld heissen UNBEKANNT, `[]` heisst „keine".
+   */
+  momentaufnahmen?: Momentaufnahme[] | null;
+}
+
+/** Eine hochgeladene Datei: Stand des Hochladens, ohne Verbindung zum Original. */
+export interface Momentaufnahme {
+  bezeichnung: string;
+  erfasstAm: string | null;
+}
+
+/**
+ * QUELLENÄNDERUNGEN · das Ergebnis der letzten Änderungsprüfung (Server: `PruefErgebnis`).
+ * Nur `aktuell` darf als „aktuell" gezeigt werden — `fehlgeschlagen` und `unvollstaendig` nie.
+ */
+export type PruefErgebnis =
+  | "aktuell"
+  | "aenderungen_gefunden"
+  | "fehlgeschlagen"
+  | "unvollstaendig"
+  | "keine_quellen";
+
+export interface Aenderungspruefung {
+  /** Wann nach neueren Fassungen gesehen wurde. `null` = unbekannt. */
+  pruefzeitpunkt: string | null;
+  ergebnis: PruefErgebnis;
+  gefundeneAenderungen: number;
+  fehlgeschlageneQuellen: number;
+  /** Eine automatische Überwachung ist nicht eingerichtet — der Server sagt es selbst. */
+  ueberwachung: "nicht_eingerichtet";
+}
+
+/** Ein bewusst übernommener Fassungswechsel (aus der Historie der Anleitung). */
+export interface UebernommeneAenderung {
+  bausteinId: string;
+  vonFassung: number;
+  aufFassung: number;
+  anweisungVersion: number;
+  uebernommenAm: string;
 }
 
 export interface AnweisungLesestand {
@@ -2814,6 +2868,13 @@ export interface AnweisungLesestand {
   verborgeneBausteine: number;
   /** Der Lückenvermerk vom Server — die Fläche erfindet keinen grünen Haken. */
   pruefanbindung: "nicht_angebunden";
+  /**
+   * QUELLENÄNDERUNGEN · optional, weil ältere Antworten sie nicht tragen. Fehlt sie, zeigt die Fläche
+   * GAR KEINE Prüfaussage — schon gar nicht „aktuell".
+   */
+  aenderungspruefung?: Aenderungspruefung;
+  /** `null` = Historie nicht lesbar (unbekannt), `[]` = keine Übernahme. */
+  uebernommeneAenderungen?: UebernommeneAenderung[] | null;
 }
 
 export interface VergleichsBefund {

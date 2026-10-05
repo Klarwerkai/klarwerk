@@ -91,6 +91,67 @@ export async function dublettenTor(
 export interface ValidationAiCheckDeps {
   ko: KoService;
   worker: AiCheckWorker;
+  /**
+   * PRÜFSTATUS-ANZEIGE (R-0208): die offenen Konflikte — nur gelesen, um „Konflikt gefunden" am
+   * KI-Prüfkennzeichen zu belegen. Optional: ohne ihn bleibt `konfliktGefunden` unerhoben.
+   */
+  conflicts?: { unresolved(): Promise<readonly OffenerKonflikt[]> };
+}
+
+/** Die Felder eines offenen Konflikts, die die Prüfauskunft braucht — und keines mehr. */
+interface OffenerKonflikt {
+  koA: string;
+  koB: string;
+  origin?: "manual" | "auto";
+}
+
+// ================================================================================================
+// PRÜFSTATUS-ANZEIGE (R-0208) · DIE KI-PRÜFAUSKUNFT DES BRETTS — ABGELEITET, NICHT GESPEICHERT.
+// ================================================================================================
+//
+// Der gespeicherte Vermerk kennt drei Lagen (`pending | done | failed`). Die Prüfseite soll mehr
+// unterscheiden: „ausstehend" von „läuft" und „geprüft" von „Konflikt gefunden". Beides weiß der
+// Server — der Worker, welcher Job gerade läuft, und der Konfliktbestand, wozu die automatische
+// Erkennung etwas gefunden hat. Diese Funktion liest beides und hängt es an die ANTWORT, nicht an
+// das Objekt.
+//
+// SICHTBARKEIT: ein Konflikt zählt nur, wenn der Leser BEIDE Seiten sehen darf (`sichtbarePaare`,
+// dieselbe Regel wie `GET /api/conflicts`) — sonst wäre schon das Kennzeichen eine Auskunft über
+// ein Objekt, das er nicht sehen darf. Nur automatisch erkannte Konflikte mit diesem Objekt als
+// Subjekt (`koA`) zählen: es geht um das Ergebnis SEINER Prüfung, nicht um eine Meldung von Hand.
+//
+// SCHEITERT DIE KONFLIKTABFRAGE, bleibt `konfliktGefunden` weg — weder „ja" noch „nein".
+async function mitKiPruefauskunft<T extends { id: string; aiCheck?: AiCheck }>(
+  user: SessionUser,
+  board: readonly T[],
+  deps: ValidationAiCheckDeps,
+): Promise<T[]> {
+  let konfliktSubjekte: Set<string> | null = null;
+  if (deps.conflicts) {
+    try {
+      const ids = new Set(board.map((ko) => ko.id));
+      const auto = (await deps.conflicts.unresolved()).filter(
+        (c) => c.origin === "auto" && ids.has(c.koA),
+      );
+      const sichtbar = await sichtbarePaare(user, auto, deps.ko);
+      konfliktSubjekte = new Set(sichtbar.map((c) => c.koA));
+    } catch {
+      konfliktSubjekte = null;
+    }
+  }
+  return board.map((ko) => {
+    const vermerk = ko.aiCheck;
+    if (!vermerk) {
+      return ko;
+    }
+    if (vermerk.status === "pending") {
+      return { ...ko, aiCheck: { ...vermerk, laeuft: deps.worker.laeuft(ko.id) } };
+    }
+    if (vermerk.status === "done" && konfliktSubjekte) {
+      return { ...ko, aiCheck: { ...vermerk, konfliktGefunden: konfliktSubjekte.has(ko.id) } };
+    }
+    return ko;
+  });
 }
 
 // Validierungs-Leseansichten (§2.3). Bewerten/Zuweisen laufen über den KO-Dispatcher.
@@ -133,6 +194,7 @@ export function validationRoutes(
             return neu ? { ...ko, aiCheck: neu } : ko;
           });
         }
+        board = await mitKiPruefauskunft(user, board, aiCheck);
       }
       // ==========================================================================================
       // JOB 3003 · STATION 4 — STUFE UND HERKUNFT, UND EIN FEHLEN HEISST FEHLEN.

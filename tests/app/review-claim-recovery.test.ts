@@ -139,18 +139,26 @@ describe("WP-SHIP8-CLOSE-3 ROT-1: Crash-Snapshots des Review-Claims", () => {
     expect(after?.opId).toBeUndefined();
     expect((await ctx.koService.list()).map((k) => k.title)).not.toContain("Pumpe");
 
-    // B claimt denselben Kandidaten und akzeptiert VOLLSTÄNDIG (der Wrapper lässt B durch).
-    const b = await recovered.reviewImportCandidate(id, "accept", "rev-B");
-    expect(b.status).toBe("angenommen");
-    const bKoId = b.koId;
-    expect(bKoId).toBeTruthy();
+    // B claimt denselben Kandidaten (der Wrapper lässt B durch).
+    // Lauf gesamt-import-adoption:2 Runde 2 (Bens B1): B WARTET jetzt auf die Annahme-Sperre, die
+    // der noch lebende Lauf A hält — sie wird für einen abgelösten Halter nicht mehr gebrochen
+    // (Kopf von `AnnahmeKette`, repo.ts). Bis hierher wurde B VOR der Fortsetzung von A abgewartet;
+    // das ist unter dem Ausschluss ein Stillstand. Die Zusicherungen sind unverändert.
+    const bLauf = recovered.reviewImportCandidate(id, "accept", "rev-B");
+    await vi.waitFor(async () => {
+      expect((await ctx.candidates.findById(id))?.status).toBe("in_bearbeitung");
+    });
 
-    // Der ALTE Lauf setzt FORT und versucht seinen späten KO-Write: der DB-Unique-Kandidaten-
-    // Anker (InMemory-Spiegel) lehnt den zweiten Insert ab, acceptToKo ADOPTIERT Bs KO, und der
-    // Kandidaten-CAS mit der ALTEN opId scheitert → der alte Lauf endet ehrlich mit CONFLICT.
+    // Der ALTE Lauf setzt FORT und legt an; der Kandidaten-CAS mit der ALTEN opId scheitert →
+    // der alte Lauf endet ehrlich mit CONFLICT. B bekommt danach die Sperre, findet das KO am
+    // Kandidatenstempel und ADOPTIERT es — kein zweiter Insert.
     releaseA();
     const outcome = await oldRunOutcome;
     expect(outcome).toMatchObject({ code: "CONFLICT" });
+    const b = await bLauf;
+    expect(b.status).toBe("angenommen");
+    const bKoId = b.koId;
+    expect(bKoId).toBeTruthy();
 
     // WEDER Doppel- NOCH Orphan-KO: exakt EIN KO trägt den Kandidaten-Anker (inkl. Papierkorb-
     // Sicht), der Kandidat verweist auf GENAU dieses (Bs) KO.
