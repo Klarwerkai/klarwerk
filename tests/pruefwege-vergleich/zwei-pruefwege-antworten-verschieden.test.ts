@@ -207,7 +207,11 @@ describe("Aufnahme 20260922 · zwei Prüfverträge — wer findet was", () => {
     // Die Formen sind NICHT vereinheitlicht; die Verbraucher (Add-in-Panel, Erfassen-Editor) lesen
     // je ihre eigene. Festgehalten, damit eine Angleichung eine bewusste Entscheidung bleibt.
     expect(Object.keys(mensch)).toEqual(expect.arrayContaining(["duplicates", "conflicts"]));
-    expect(Object.keys(wissen).sort()).toEqual(["conflicts", "similar", "status"]);
+    // `coverage` (der belegte Prüfumfang des Live-Checks, `KnowledgeCheckResult` in
+    // knowledge-check.ts) kam mit dem Hauptstand dazu — ein Feld nur dieses Wegs, keine Angleichung
+    // an `checkText`, das seine Deckung je Quellenfund (`sourceHits[].coverage`) führt.
+    expect(Object.keys(wissen).sort()).toEqual(["conflicts", "coverage", "similar", "status"]);
+    expect(Object.keys(mensch)).not.toContain("coverage");
     expect(Object.keys(mensch.duplicates[0] ?? {})).toContain("koId");
     expect(Object.keys(wissen.similar[0] ?? {})).toContain("id");
   });

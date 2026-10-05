@@ -22,7 +22,7 @@ Diese Datei hält zweierlei fest: **(1)** die Unterschiede der beiden Prüfvertr
 | Papierkorb | nein (`findCandidates`) | nein (`findCandidates`) |
 | Kandidatendeckel | 20 (`DETECTION_CANDIDATE_CAP`) | 40 (`CANDIDATE_LIMIT`) |
 | Ähnlichkeitsmaß | deterministische Überdeckung des Overlap-Dienstes; Modell nur mit `want:"deep"` und nicht vertraulich | Trigramm ≥ 0,18, rein lexikalisch; Konflikt-Judge nur, wenn die Route ihn übergibt |
-| Ergebnisform | `duplicates[]` (`koId`, `relation`, …), `conflicts[]`, `sourceHits[]` | `status`, `similar[]` (`id`, `score`, …), `conflicts[]` |
+| Ergebnisform | `duplicates[]` (`koId`, `relation`, …), `conflicts[]`, `sourceHits[]` | `status`, `similar[]` (`id`, `score`, …), `conflicts[]`, `coverage` (belegter Prüfumfang; kam mit dem Hauptstand, im Vergleichstest V4 gepinnt) |
 | Fundort je Treffer | `koStatus`, `koCategory` (+ `koVersion`) | `koStatus`, `koCategory` — dasselbe Vokabular |
 
 **Beide Wege bleiben bestehen.** Sie dienen verschiedenen Flächen, und die Abweichungen sind gewollt: Der Add-in-Schlüssel darf nie aus Ungeprüftem antworten (Capability `checktext.validated`), der Live-Check soll im Demobetrieb Bestand finden.
