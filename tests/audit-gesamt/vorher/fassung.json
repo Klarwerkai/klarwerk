@@ -5,5 +5,14 @@
   "vorher_beschreibung": "integrierter Hauptstand ohne die Behebung dieses Auftrags (erster Elternteil des Integrations-Merges 46f89d12 ist die Arbeitssicherung, zweiter 6c576c70 der Hauptstand)",
   "patch": "behebung-rueckwaerts.patch",
   "umfang": "services/** ohne *.test.ts — 21 Dateien",
-  "befehl": "git diff --binary --output=tests/audit-gesamt/vorher/behebung-rueckwaerts.patch 3886091d 6c576c70 -- services ':(exclude)services/**/*.test.ts'"
+  "befehl": "git diff --binary --output=tests/audit-gesamt/vorher/behebung-rueckwaerts.patch 3886091d 6c576c70 -- services ':(exclude)services/**/*.test.ts'",
+  "lauf2": {
+    "zweck": "die Fassung, an der Ben beleg:6818bd52 meldete (gleichzeitige GET /api/audit/export)",
+    "fassung": "758e76c118482f11a3f322403d71d188e3fda277",
+    "fassung_beschreibung": "ship: 1.0.0-beta.1.622 (lauf:b3:aufnahme:20260922:gesamt-auditprotokoll:2 Runde 1); Elternteil 222abf959b57928d64196b8500e52513088e1ed0; von keinem Branch erreichbar, nur als Git-Objekt vorhanden",
+    "kandidat_beim_erzeugen": "2fee131e2efbd67f3e2d082ec94aea09200d7c5f",
+    "patch": "fassung-758e76c1.patch",
+    "umfang": "services/** ohne *.test.ts — 105 Dateien; apps/web/src/lib/docx.ts (einziger Import aus apps/) ist in beiden Fassungen gleich, package.json unterscheidet sich nur in der Versionsnummer",
+    "befehl": "git diff --binary --output=tests/audit-gesamt/vorher/fassung-758e76c1.patch 2fee131e 758e76c1 -- services ':(exclude)services/**/*.test.ts'"
+  }
 }

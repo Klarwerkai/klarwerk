@@ -57,6 +57,12 @@ Rückwärts-Patch `tests/audit-gesamt/vorher/behebung-rueckwaerts.patch` (`git a
 Historie nötig). Fassung und Befehl: `tests/audit-gesamt/vorher/fassung.json`. Ändert eine spätere
 Nacharbeit `services/`, ist der Patch mit demselben Befehl neu zu erzeugen; sonst meldet der Test
 „Vorher-Fassung veraltet“.
+Nachtrag Nacharbeit 8: Die Fassung `758e76c1`, an der beleg:6818bd52 gemeldet wurde, ist zwar von
+keinem Branch erreichbar, liegt aber als Git-Objekt vor und hat den Exportweg. Sie ist jetzt als
+verfolgtes Prüfmaterial `tests/audit-gesamt/vorher/fassung-758e76c1.patch` (von Git erzeugt) im
+Kandidaten. `vorher-nachher.integration.test.ts` fährt den gemeldeten Auslöser — gleichzeitige
+`GET /api/audit/export` — mit derselben Sollprüfung an `758e76c1` (erwartet: verletzt) und am
+Kandidaten (erwartet: keine Verletzung).
 
 **Prüfstand (lokal, macOS, an dieser Fassung):** `npx tsc --noEmit` (Wurzel, Web) grün;
 `depcruise` ohne Verstoß; Biome-Lint der 45 geänderten Dateien grün; `vitest` (mit
