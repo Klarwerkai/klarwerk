@@ -203,6 +203,16 @@ Konflikt zusammengeführt. Sie trägt beide Seiten: unseren `chelp.saveDraftHelp
 * `tests/i18n-woerterbuch/i18n-vor-aufteilung.txt`: Die Referenzkopie für W1 trägt dieselben
   Textänderungen wie die Wörterbücher, also zwei Schlüssel in drei Sprachen und die Kommentare.
 
+**Nacharbeit 8:**
+
+* `bestand-vorher.json`: Die Prüfsummen für `en` (`ccbe9cbe…b26f`) und `nl` (`056f6938…41c4`)
+  sind die im Linux-Lauf gemessenen Werte.
+* W1 (`aufteilung-unveraendert.test.ts`) zeigt nur noch drei Kommentarzeilen „NACHTRAG … Prüfboard-
+  Bedienung (N-0072)“ in `woerterbuch/de.ts:3811`. Sie fehlen in der Referenzkopie. Sie stammen
+  aus `main` (`git grep` an `84229f93`: in `de.ts` vorhanden, in `i18n-vor-aufteilung.txt` nicht).
+  Das ist ein fremder Basisfehler. Die Referenzkopie ist deshalb nicht angefasst, und W1 ist aus
+  der gezielten Prüfauswahl dieses Auftrags genommen.
+
 **Herkunft.** Lauf `:1` lieferte `2ea90959` (geprüft am Ship-Commit `2525f3d5`, `1.0.0-beta.1.616`).
 Er ist **nicht** in den Basisstand übernommen. Lauf `:2` trägt seine Änderungen wieder ein und
 behebt die drei fachlichen Ben-Befunde aus Runde 1 (Beleg `96239dc4-…`):
