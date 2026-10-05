@@ -200,12 +200,23 @@ describe("Q2d · Bestandsmigration external_id (JOB 3424) über echten Altbestan
   let available = false;
   const hinweise: string[] = [];
 
-  /** Ein Pool, dessen Verbindungen die Server-Hinweise (RAISE NOTICE) mitschreiben. */
-  function neuerPool(max?: number): Pool {
+  /**
+   * Ein Pool, dessen Verbindungen die Server-Hinweise (RAISE NOTICE) mitschreiben.
+   *
+   * `sitzung` sind Startparameter JEDER Verbindung (`options=-c …`). Ein `SET` über `pool.query`
+   * reicht dafür nicht: pg-pool gibt den Client nach einem Abfragefehler mit `release(err)` zurück
+   * und VERWIRFT ihn damit — die nächste Abfrage läuft auf einer frischen Verbindung ohne die
+   * Einstellung (so hing B3 im ersten Lauf: zweiter Versuch ohne lock_timeout, endloses Warten).
+   */
+  function neuerPool(max?: number, sitzung?: string): Pool {
     if (!url) {
       throw new Error("Keine Testdatenbank-URL.");
     }
-    const p = new Pool({ connectionString: url, ...(max ? { max } : {}) });
+    const verbindung = new URL(url);
+    if (sitzung) {
+      verbindung.searchParams.set("options", sitzung);
+    }
+    const p = new Pool({ connectionString: verbindung.toString(), ...(max ? { max } : {}) });
     p.on("connect", (client) => {
       client.on("notice", (n) => hinweise.push(n.message ?? ""));
     });
@@ -367,11 +378,12 @@ describe("Q2d · Bestandsmigration external_id (JOB 3424) über echten Altbestan
     // braucht ACCESS EXCLUSIVE. Mit begrenzter Wartezeit muss sie mit einem benannten Befund
     // abbrechen, statt zu hängen oder halb zu migrieren.
     const leser = await p.connect();
-    const migrierer = neuerPool(1);
+    const migrierer = neuerPool(1, "-c lock_timeout=500");
     try {
       await leser.query("BEGIN");
       await leser.query("SELECT count(*) FROM import_candidates");
-      await migrierer.query("SET lock_timeout = '500ms'");
+      const zeitgrenze = await migrierer.query<{ lock_timeout: string }>("SHOW lock_timeout");
+      expect(zeitgrenze.rows[0]?.lock_timeout, "Die Zeitgrenze gilt je Verbindung.").toBe("500ms");
 
       const befunde: Array<{ code: string | undefined; message: string | undefined }> = [];
       for (let versuch = 1; versuch <= 2; versuch++) {
