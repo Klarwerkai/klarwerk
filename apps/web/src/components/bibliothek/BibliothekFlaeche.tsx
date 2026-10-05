@@ -6,9 +6,14 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { koQueryKey, useConflicts, useKos, useLibrarySearch } from "../../api/hooks";
 import type { KnowledgeObject } from "../../api/types";
 import { useSession } from "../../app/AuthContext";
-import { auffrischungGescheitert, vertraulichkeitsAuskunft } from "../../lib/confidentiality";
+import { auffrischungGescheitert } from "../../lib/abfrageBestand";
+import { vertraulichkeitsAuskunft } from "../../lib/confidentiality";
 import { conflictImpact } from "../../lib/conflictImpact";
-import { countByDemoKnowledge, ownKnowledgeEmptyHint } from "../../lib/demoKnowledge";
+import {
+  DEMO_FILTER_PARAM,
+  countByDemoKnowledge,
+  ownKnowledgeEmptyHint,
+} from "../../lib/demoKnowledge";
 import { isDemoContext } from "../../lib/demoPilotPath";
 import {
   type AnzeigestatusAuskunft,
@@ -403,6 +408,30 @@ export function BibliothekFlaeche({
   // Eine Auswahl ohne zu prüfenden Wert braucht gar keinen Bestand — sie darf nicht warten (sonst
   // wartete JEDER Besuch der Bibliothek auf den Bestandsabruf, auch ohne Filter in der Adresse).
   const keimBrauchtBestand = urlSeed !== null && facetSelectionNeedsKnownValues(urlSeed);
+
+  // ================================================================================================
+  // PRÜFSTATUS-ANZEIGE (R-0216, Ben Nacharbeit 5) · DIE FILTERPRÜFUNG KENNT DIESELBE REIFE WIE DER FILTER.
+  // ================================================================================================
+  // Zähler und Ergebnisfilter leiten die Reife konfliktbewusst ab (`facetBase` unten). Die Prüfung
+  // übernommener Adressfilter tat das bis hierher NICHT: ein Objekt, das nur über die Konfliktliste
+  // „In Prüfung" ist (Server ohne Konfliktstatus, etwa über dem Listendeckel), fehlte in ihrem
+  // Bestand — und `?maturity=in-review` wurde beim Öffnen als unbekannt verworfen.
+  //
+  // Jetzt prüft sie mit derselben Ableitung UND DERSELBEN Konfliktliste. Eine REIFE-Auswahl wartet
+  // dafür auf eine für diese Montage bestätigte Konfliktauskunft — dasselbe Frischemodell wie beim
+  // Bestand oben, aus demselben Grund (ein alter Zwischenstand darf nicht entscheiden). Scheitert
+  // der Konfliktabruf, fehlt die Auskunft dauerhaft: dann wird die Reife-Auswahl NICHT gegen einen
+  // Bestand ohne Konfliktkenntnis geprüft, sondern bleibt stehen (eine gültige Wahl wird nicht aus
+  // Unwissen verworfen). Andere Dimensionen werden wie bisher geprüft.
+  const conflicts = useConflicts();
+  const konflikteBeimMontieren = useRef(conflicts.dataUpdatedAt);
+  const konflikteBestaetigt =
+    conflicts.data !== undefined &&
+    !conflicts.isFetching &&
+    (!conflicts.isStale || conflicts.dataUpdatedAt > konflikteBeimMontieren.current);
+  const keimBrauchtKonflikte =
+    urlSeed !== null && facetSelectionNeedsKnownValues({ maturity: urlSeed.maturity });
+  const konfliktAuskunftFehlt = conflicts.isError && !konflikteBestaetigt;
   useEffect(() => {
     const seed = urlSeed;
     if (seed === null) {
@@ -415,19 +444,36 @@ export function BibliothekFlaeche({
     if (keimBrauchtBestand && !bestandBestaetigt) {
       return;
     }
+    // R-0216: eine Reife-Auswahl wartet auf die Konfliktauskunft — außer der Abruf ist gescheitert.
+    if (keimBrauchtKonflikte && !konflikteBestaetigt && !konfliktAuskunftFehlt) {
+      return;
+    }
     const now = Date.now();
+    const konflikte = konflikteBestaetigt ? conflicts.data : undefined;
     const known = knownFacetValues(
-      (all.data ?? []).map((k) => libraryFilterValues(k, now)),
+      (all.data ?? []).map((k) => libraryFilterValues(k, now, konflikte)),
       LIBRARY_FACET_PARAM_KEYS,
     );
-    const geprueft = pruneFacetSelectionToKnownValues(seed, known);
+    const ausgenommen = konfliktAuskunftFehlt
+      ? [DEMO_FILTER_PARAM, "maturity"]
+      : [DEMO_FILTER_PARAM];
+    const geprueft = pruneFacetSelectionToKnownValues(seed, known, ausgenommen);
     setFacetSel(geprueft);
     // JOB 3877: was die Prüfung ganz weggeräumt hat, geht der Auswahl verloren und wird hier
     // aufgehoben — sonst stünde gleich „Noch keine Einträge." unter einer Adresse, die eingegrenzt
     // hat. Gelesen wird VORHER gegen NACHHER derselben Prüfung, nicht ein zweites Mal geprüft.
     setVerworfeneEingrenzung(droppedFacetDimensions(seed, geprueft));
     setUrlSeed(null);
-  }, [urlSeed, all.data, keimBrauchtBestand, bestandBestaetigt]);
+  }, [
+    urlSeed,
+    all.data,
+    keimBrauchtBestand,
+    bestandBestaetigt,
+    keimBrauchtKonflikte,
+    konflikteBestaetigt,
+    konfliktAuskunftFehlt,
+    conflicts.data,
+  ]);
 
   // Solange der Keim nicht geprüft ist, ist ER die wirksame Auswahl. Das ist KEIN zweiter
   // Auswahlspeicher, sondern eine reine Ableitung aus den zwei vorhandenen Zuständen — und es ist
@@ -436,15 +482,18 @@ export function BibliothekFlaeche({
   // `libraryUrlFilters.ts` von der Prüfung ausgenommen ist).
   const wirksameAuswahl = urlSeed ?? facetSel;
 
-  const conflicts = useConflicts();
   const debouncedQ = useDebouncedValue(q, LIBRARY_SEARCH_DEBOUNCE_MS);
   const query = useLibrarySearch(buildLibraryQuery({ ...EMPTY_LIBRARY_FILTER, q: debouncedQ }));
   const trimmedQ = q.trim();
 
+  // PRÜFSTATUS-ANZEIGE (R-0216): die Reife (Zähler UND Filter) kennt die Konfliktliste — dieselbe
+  // konfliktbegrenzte Nutzbarkeit wie Detail und Antwort. Solange die Liste fehlt, gilt die bisherige
+  // Ableitung (kein erfundener Konflikt, keine erfundene Konfliktfreiheit über die Reife hinaus).
   const facetBase = useMemo(() => {
     const now = Date.now();
-    return new Map((query.data ?? []).map((k) => [k.id, libraryFilterValues(k, now)]));
-  }, [query.data]);
+    const konflikte = conflicts.data;
+    return new Map((query.data ?? []).map((k) => [k.id, libraryFilterValues(k, now, konflikte)]));
+  }, [query.data, conflicts.data]);
 
   // ================================================================================================
   // JOB 3072 · N4 — DER ZUSTAND EINES EINTRAGS: EINMAL BESCHAFFT, VIERMAL VERWENDET.
