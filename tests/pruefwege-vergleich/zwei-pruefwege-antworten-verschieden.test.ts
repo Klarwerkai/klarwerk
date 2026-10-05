@@ -26,7 +26,15 @@
 // deterministische Überdeckung des Overlap-Dienstes) werden nicht gegeneinander vermessen — der
 // Prüftext ist mit Absicht nahezu wortgleich, damit ausschließlich die POOLREGEL entscheidet.
 // Keine Route, kein Modell, kein PostgreSQL: der Vergleich gilt dem Kern.
-import { beforeAll, describe, expect, it } from "vitest";
+//
+// ENTWÜRFE (V5): „auch Entwürfen" aus R-0332 und „Entwürfe aller im Haus" aus R-1788 (Pedi,
+// 30./31.07.) hat Pedi am 05.09.2026 12:03 jünger entschieden: „N1c NEIN (Entwürfe nicht im
+// Kandidatenpool)" (STEUERUNG-ANTWORT-11.md:12; R-1592: „Entwürfe sind gemäß Pedi ausgenommen").
+// Beide Wege antworten hier GLEICH — ein Erfassungsentwurf ist auf keinem von beiden ein Treffer.
+// V5 hält das über die ECHTEN Routen fest (Entwurf über `POST /api/drafts`, Kalibrierung über
+// `/promote`), damit eine spätere Öffnung eine bewusste Entscheidung bleibt und nicht still passiert.
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { buildApp, buildServices } from "../../services/app/src/build-app";
 import { checkText } from "../../services/app/src/check-text-detection";
 import { checkKnowledge } from "../../services/app/src/knowledge-check";
 import {
@@ -202,5 +210,117 @@ describe("Aufnahme 20260922 · zwei Prüfverträge — wer findet was", () => {
     expect(Object.keys(wissen).sort()).toEqual(["conflicts", "similar", "status"]);
     expect(Object.keys(mensch.duplicates[0] ?? {})).toContain("koId");
     expect(Object.keys(wissen.similar[0] ?? {})).toContain("id");
+  });
+});
+
+// ================================================================================================
+// V5 · ENTWURF — beide Wege gleich: kein Treffer (Pedi 05.09.2026 12:03, „N1c NEIN").
+// ================================================================================================
+// An den echten Routen, weil ein Entwurf kein Wissensobjekt ist und im `KoService` oben gar nicht
+// vorkommen KANN: angelegt über `POST /api/drafts` (services/capture), geprüft mit demselben Text
+// über `POST /api/check-text` (Sitzungsweg, `includeUnvalidated` an) und `POST /api/knowledge/check`.
+// Die Kalibrierung danach reicht denselben Entwurf ein (`/promote`): jetzt finden ihn BEIDE — also
+// lag das Schweigen vorher am Entwurfsausschluss, nicht an einem Text, den keiner gefunden hätte.
+const FLAGS = ["KLARWERK_ADDON_API", "KLARWERK_ADDON_API_KEY"] as const;
+const GESICHERT: Partial<Record<(typeof FLAGS)[number], string | undefined>> = {};
+
+describe("Aufnahme 20260922 · zwei Prüfverträge — V5 Entwurf (N1c NEIN)", () => {
+  beforeAll(() => {
+    for (const k of FLAGS) {
+      GESICHERT[k] = process.env[k];
+    }
+    // `/api/check-text` ist nur bei Flag AN registriert (build-app.ts) — wie in der Live-Instanz.
+    process.env.KLARWERK_ADDON_API = "1";
+    process.env.KLARWERK_ADDON_API_KEY = "v5-addon-key";
+  });
+  afterAll(() => {
+    for (const k of FLAGS) {
+      const alt = GESICHERT[k];
+      if (alt === undefined) {
+        delete process.env[k];
+      } else {
+        process.env[k] = alt;
+      }
+    }
+  });
+
+  it("V5 · ein Erfassungsentwurf ist auf keinem Weg ein Treffer; eingereicht finden ihn beide", async () => {
+    const app = buildApp(buildServices());
+    await app.inject({
+      method: "POST",
+      url: "/api/auth/register",
+      payload: { name: "Anna", email: "anna@v5.de", password: "secret123" },
+    });
+    const login = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { email: "anna@v5.de", password: "secret123" },
+    });
+    const headers = { authorization: `Bearer ${login.json().token}` };
+
+    const draft = await app.inject({
+      method: "POST",
+      url: "/api/drafts",
+      headers,
+      payload: {
+        title: TITEL,
+        statement: AUSSAGE,
+        type: "best_practice",
+        category: "Instandhaltung",
+        confidentiality: "intern",
+      },
+    });
+    expect(draft.statusCode).toBe(201);
+    const draftId = draft.json().id as string;
+    // Der Entwurf ist echt da und für dieselbe Person lesbar — das Schweigen unten ist kein Rechte-
+    // oder Anlagefehler.
+    const gelesen = await app.inject({ method: "GET", url: `/api/drafts/${draftId}`, headers });
+    expect(gelesen.statusCode).toBe(200);
+
+    const beideWege = async () => {
+      const text = await app.inject({
+        method: "POST",
+        url: "/api/check-text",
+        headers,
+        payload: { text: PRUEFTEXT, title: TITEL, locale: "de", source: "transient-document" },
+      });
+      const wissen = await app.inject({
+        method: "POST",
+        url: "/api/knowledge/check",
+        headers,
+        payload: { text: PRUEFTEXT },
+      });
+      expect(text.statusCode).toBe(200);
+      expect(wissen.statusCode).toBe(200);
+      return {
+        text: text.json() as { duplicates: Array<{ koId: string; pruefstand: string | null }> },
+        textRoh: text.payload,
+        wissen: wissen.json() as { similar: Array<{ id: string; koStatus: string | null }> },
+        wissenRoh: wissen.payload,
+      };
+    };
+
+    const vorher = await beideWege();
+    expect(vorher.text.duplicates).toEqual([]);
+    expect(vorher.wissen.similar).toEqual([]);
+    // Auch keine Existenzauskunft über Titel oder Kennung des Entwurfs.
+    for (const roh of [vorher.textRoh, vorher.wissenRoh]) {
+      expect(roh).not.toContain(TITEL);
+      expect(roh).not.toContain(draftId);
+    }
+
+    // Kalibrierung: eingereicht ist derselbe Inhalt ein Wissensobjekt (offen) — beide finden ihn.
+    const promote = await app.inject({
+      method: "POST",
+      url: `/api/drafts/${draftId}/promote`,
+      headers,
+      payload: {},
+    });
+    expect(promote.statusCode).toBe(201);
+    const koId = promote.json().id as string;
+
+    const nachher = await beideWege();
+    expect(nachher.text.duplicates.find((d) => d.koId === koId)?.pruefstand).toBe("eingereicht");
+    expect(nachher.wissen.similar.find((s) => s.id === koId)?.koStatus).toBe("offen");
   });
 });
