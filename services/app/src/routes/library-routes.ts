@@ -35,6 +35,7 @@ import type { SemanticPrefilter } from "../duplicate-detection";
 import { schalterAn } from "../feature-flags";
 import { type Guards, type SessionUser, sendError } from "../http";
 import {
+  darfKandidatSehen,
   darfSehen,
   sichtbareFuer,
   sichtbarkeitsfilterFuer,
@@ -1025,7 +1026,15 @@ export function libraryRoutes(
       // WP-SHIP8-CLOSE-8 (bens GELB-2): NIE rohe Kandidatenobjekte auf den Draht — das DTO
       // hält Lease-/Claim-Felder und Beleg-Interna zurück (ko.read-Nutzer sehen nur Produktdaten).
       // NACHARBEIT 3 (bens F3): dieselbe Sichtbarkeitsgrenze für die Kandidatenliste.
-      const kandidaten = await library.listImportCandidates();
+      // confluence-import-rechte (Nacharbeit 6, F1): ein Kandidat, dessen Quelle diesen Menschen
+      // nicht lesen lässt, fehlt in der Liste ganz — Titel und Text eingeschlossen, auch für
+      // `ko.validate`.
+      const kandidaten: ImportCandidate[] = [];
+      for (const kandidat of await library.listImportCandidates()) {
+        if (await darfKandidatSehen(user, kandidat, library)) {
+          kandidaten.push(kandidat);
+        }
+      }
       reply.code(200).send(await kandidatenDtosFuer(library, user, kandidaten));
     });
 
@@ -1079,6 +1088,14 @@ export function libraryRoutes(
         return;
       }
       try {
+        // confluence-import-rechte (Nacharbeit 6, F1): wer den Kandidaten nicht sehen darf, kann
+        // ihn auch nicht entscheiden — die Antwort trüge sonst Titel und Text. 404 wie für eine
+        // unbekannte Kennung, damit keine Existenzauskunft entsteht.
+        const vorher = await library.importKandidat(request.params.id);
+        if (vorher && !(await darfKandidatSehen(user, vorher, library))) {
+          reply.code(404).send({ error: "NOT_FOUND", message: "Importkandidat nicht gefunden." });
+          return;
+        }
         const result = await library.reviewImportCandidate(
           request.params.id,
           request.body.action,

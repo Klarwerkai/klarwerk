@@ -421,6 +421,12 @@ export interface KoQuellrechte {
   leser?: string[];
   version?: number;
   beobachtetAm?: string;
+  /**
+   * Nacharbeit 6: der Leserkreis der Quelle wurde NICHT vollständig gelesen (Gruppenabruf
+   * abgebrochen oder über der technischen Grenze). `leser` ist dann eine Untermenge der in der
+   * Quelle Berechtigten — nie mehr, aber womöglich weniger. Fehlt das Feld, war die Lesung vollständig.
+   */
+  leserUnvollstaendig?: true;
 }
 
 /** Eine ausdrücklich von einem Menschen gesetzte Vertraulichkeitsstufe (`setConfidentiality`). */

@@ -198,6 +198,8 @@ export interface ConfluenceLeseEbene {
   beschraenkt: boolean;
   /** Kleingeschriebene Mailadressen der Leser dieser Ebene. */
   emails: string[];
+  /** Nacharbeit 6: die Leser dieser Ebene konnten nicht vollständig gelesen werden (Gruppenabruf). */
+  unvollstaendig?: true;
 }
 
 /**
@@ -290,6 +292,21 @@ export function confluenceQuellLeser(
   return erste.emails.filter((email) => weitere.every((e) => e.emails.includes(email)));
 }
 
+/**
+ * Nacharbeit 6 (Befund F3): ist eine der Ebenen, aus denen die Leser entstehen (Space, Seite,
+ * beschränkte Vorfahren), nicht vollständig gelesen worden? Dann sind die Leser eine Untermenge der
+ * in der Quelle Berechtigten — das muss am Ergebnis stehen, nicht nur im Ablauf.
+ */
+export function confluenceLeserUnvollstaendig(
+  page: ConfluencePage,
+  ahnen?: ConfluenceAhnenBeschraenkung,
+  kontext?: ConfluenceRechtekontext,
+): boolean {
+  const seitenEbenen = beschraenkteEbenen(page, ahnen, kontext?.eigene) ?? [];
+  const ebenen = kontext?.space?.beschraenkt ? [kontext.space, ...seitenEbenen] : seitenEbenen;
+  return ebenen.some((e) => e.unvollstaendig === true);
+}
+
 export function confluenceGovernanceConfidentiality(
   page: ConfluencePage,
   ahnen?: ConfluenceAhnenBeschraenkung,
@@ -307,6 +324,8 @@ export interface ConfluenceQuellrechte {
   stufe: Confidentiality;
   emails?: string[];
   beobachtetAm?: string;
+  /** Nacharbeit 6: die Leser sind eine Untermenge — ein Gruppenabruf blieb unvollständig. */
+  leserUnvollstaendig?: true;
 }
 
 // AUFTRAG-mega27 A2: Elternkette → QUELLNEUTRALER Pfad. Die Elterntitel in Quell-Reihenfolge
@@ -439,6 +458,8 @@ export function mapConfluencePageToImportItem(
   const updatedAt = page.version?.when?.trim();
   const governance = confluenceGovernanceConfidentiality(page, ahnen);
   const leser = confluenceQuellLeser(page, ahnen, kontext);
+  const leserUnvollstaendig =
+    leser !== undefined && confluenceLeserUnvollstaendig(page, ahnen, kontext);
   // package:confluence (K6): die konkreten Kennungen der Lese-Einschränkung — oder gar nichts.
   const sourceRestrictions = confluenceReadRestrictions(page);
   // AUFTRAG-mega27 A2: die Elternkette (Wurzel zuerst, ohne die Seite selbst) — oder gar nichts.
@@ -462,6 +483,7 @@ export function mapConfluencePageToImportItem(
       stufe: governance,
       ...(leser !== undefined ? { emails: leser } : {}),
       ...(kontext?.beobachtetAm ? { beobachtetAm: kontext.beobachtetAm } : {}),
+      ...(leserUnvollstaendig ? { leserUnvollstaendig: true as const } : {}),
     },
     // SCRUM-510 R2b: quellneutrale Provenienz — externalId = Confluence-pageId (Re-Sync-Anker),
     // sourceScope = Confluence-Space. Der Import-Kern kennt nur diese neutralen Begriffe.

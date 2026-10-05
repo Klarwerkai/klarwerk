@@ -167,6 +167,7 @@ export function ahnenAusSammlung(
         ebenen.set(id, {
           beschraenkt: true,
           emails: alt.emails.filter((email) => neu.emails.includes(email)),
+          ...(alt.unvollstaendig || neu.unvollstaendig ? { unvollstaendig: true as const } : {}),
         });
       }
     }
@@ -185,7 +186,10 @@ export function ahnenAusSammlung(
 class RechteLauf {
   /** VOR dem ersten Abruf gesetzt: die Rechte gelten höchstens ab diesem Zeitpunkt. */
   readonly beobachtetAm = new Date().toISOString();
-  private readonly gruppen = new Map<string, Promise<string[]>>();
+  private readonly gruppen = new Map<
+    string,
+    Promise<{ emails: string[]; vollstaendig: boolean }>
+  >();
   private readonly konten = new Map<string, Promise<string | undefined>>();
 
   constructor(private readonly client: ConfluenceRestClient) {}
@@ -199,7 +203,7 @@ class RechteLauf {
     if (rechte.anonym) {
       return { beschraenkt: false, emails: [] };
     }
-    return { beschraenkt: true, emails: await this.emailsVon(rechte.users, rechte.groups) };
+    return { beschraenkt: true, ...(await this.emailsVon(rechte.users, rechte.groups)) };
   }
 
   /** Die eigene Ebene einer Seite, VOLL aufgelöst (Benutzer und Mitglieder genannter Gruppen). */
@@ -210,15 +214,22 @@ class RechteLauf {
     const lesen = page.restrictions?.read?.restrictions;
     return {
       beschraenkt: true,
-      emails: await this.emailsVon(lesen?.user?.results ?? [], lesen?.group?.results ?? []),
+      ...(await this.emailsVon(lesen?.user?.results ?? [], lesen?.group?.results ?? [])),
     };
   }
 
+  /**
+   * Die Leser einer Ebene. Nacharbeit 6 (Befund F3): eine Gruppe, deren Mitglieder nicht
+   * vollständig gelesen werden konnten — oder eine Gruppe ohne Namen —, macht die Ebene
+   * `unvollstaendig`. Die Leser bleiben eine Untermenge (fail-closed), der Vermerk reist bis an
+   * das Import-Item und das Wissensobjekt.
+   */
   private async emailsVon(
     users: readonly unknown[],
     groups: readonly unknown[],
-  ): Promise<string[]> {
+  ): Promise<{ emails: string[]; unvollstaendig?: true }> {
     const emails = new Set<string>();
+    let unvollstaendig = false;
     for (const user of users) {
       const email = await this.emailVon(user);
       if (email) {
@@ -229,22 +240,27 @@ class RechteLauf {
       const name =
         gruppe && typeof gruppe === "object" ? (gruppe as { name?: unknown }).name : undefined;
       if (typeof name !== "string" || name.trim().length === 0) {
-        continue; // eine Gruppe ohne Namen lässt sich nicht nachsehen — ihre Mitglieder fehlen
+        unvollstaendig = true; // eine Gruppe ohne Namen lässt sich nicht nachsehen
+        continue;
       }
-      for (const email of await this.mitglieder(name)) {
+      const mitglieder = await this.mitglieder(name);
+      if (!mitglieder.vollstaendig) {
+        unvollstaendig = true;
+      }
+      for (const email of mitglieder.emails) {
         emails.add(email);
       }
     }
-    return [...emails];
+    return { emails: [...emails], ...(unvollstaendig ? { unvollstaendig: true as const } : {}) };
   }
 
-  private mitglieder(name: string): Promise<string[]> {
+  private mitglieder(name: string): Promise<{ emails: string[]; vollstaendig: boolean }> {
     const bekannt = this.gruppen.get(name);
     if (bekannt) {
       return bekannt;
     }
     const abruf = (async () => {
-      const { users } = await this.client.getGruppenmitglieder(name);
+      const { users, vollstaendig } = await this.client.getGruppenmitglieder(name);
       const emails: string[] = [];
       for (const user of users) {
         const email = await this.emailVon(user);
@@ -252,7 +268,7 @@ class RechteLauf {
           emails.push(email);
         }
       }
-      return emails;
+      return { emails, vollstaendig };
     })();
     this.gruppen.set(name, abruf);
     return abruf;

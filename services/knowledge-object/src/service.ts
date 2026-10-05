@@ -132,11 +132,12 @@ export function normalizeQuellrechte(raw: unknown): KoQuellrechte | undefined {
   if (raw === null || typeof raw !== "object") {
     return undefined;
   }
-  const { stufe, leser, version, beobachtetAm } = raw as {
+  const { stufe, leser, version, beobachtetAm, leserUnvollstaendig } = raw as {
     stufe?: unknown;
     leser?: unknown;
     version?: unknown;
     beobachtetAm?: unknown;
+    leserUnvollstaendig?: unknown;
   };
   if (!isValidConfidentiality(stufe)) {
     return undefined;
@@ -153,9 +154,14 @@ export function normalizeQuellrechte(raw: unknown): KoQuellrechte | undefined {
   if (beobachtetAm !== undefined && gueltigBeobachtet === undefined) {
     return undefined;
   }
+  if (leserUnvollstaendig !== undefined && leserUnvollstaendig !== true) {
+    return undefined;
+  }
   const stand = {
     ...(gueltigeVersion !== undefined ? { version: gueltigeVersion } : {}),
     ...(gueltigBeobachtet !== undefined ? { beobachtetAm: gueltigBeobachtet } : {}),
+    // Nacharbeit 6: der Vermerk „Leserkreis nicht vollständig gelesen" (s. KoQuellrechte).
+    ...(leserUnvollstaendig === true ? { leserUnvollstaendig: true as const } : {}),
   };
   if (leser === undefined) {
     return { stufe, ...stand };

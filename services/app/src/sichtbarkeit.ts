@@ -129,6 +129,45 @@ export function sichtbarkeitsfilterFuer(user: SessionUser): Sichtbarkeitsfilter 
 }
 
 // ================================================================================================
+// AUFNAHME 20260922 · confluence-import-rechte (Ben, Nacharbeit 6, Befund F1) — DIE WARTESCHLANGE.
+// ================================================================================================
+//
+// Ein Importkandidat trägt Titel und Volltext seiner Quellseite. Die Warteschlange verlangt nur
+// `ko.read` — ohne diese Grenze las jeder Leser eine in Confluence auf Lea beschränkte Seite dort,
+// bevor (und nachdem) sie in Klara angenommen war. DIESELBE Regel wie am Objekt, keine Ausnahme für
+// `ko.validate`:
+//   · ANGENOMMEN (`koId`) und das Objekt lebt → `darfSehen` am Objekt: seine Quellrechte sind die
+//     aktuellen (ein späterer Abgleich hat sie womöglich schon nachgezogen).
+//   · sonst die Quellrechte des Eintrags selbst, auf Klara-Konten abgebildet — dieselbe Abbildung
+//     wie beim Annehmen.
+//   · ein Eintrag OHNE Quellrechte (Dateiweg, andere Quellen) bleibt, wie er war: die Warteschlange
+//     ist für ihn eine Prüffläche für jeden mit `ko.read`.
+export interface KandidatenRechtequelle {
+  /** Die Quellrechte eines Eintrags als Objektrechte — `undefined` = der Eintrag trägt keine. */
+  quellrechteFuerKandidat(item: unknown): Promise<{ leser?: readonly string[] } | undefined>;
+  /** Das lebende Objekt hinter einer Kennung (Papierkorb ausgeblendet). */
+  wissensobjektFuerSicht(koId: string): Promise<SichtbarkeitsFakten | undefined>;
+}
+
+export async function darfKandidatSehen(
+  user: SessionUser,
+  kandidat: { item: unknown; koId: string | null },
+  quelle: KandidatenRechtequelle,
+): Promise<boolean> {
+  const rechte = await quelle.quellrechteFuerKandidat(kandidat.item);
+  if (rechte === undefined) {
+    return true;
+  }
+  if (kandidat.koId) {
+    const ko = await quelle.wissensobjektFuerSicht(kandidat.koId);
+    if (ko) {
+      return darfSehen(user, ko);
+    }
+  }
+  return darfSehen(user, { quellrechte: rechte });
+}
+
+// ================================================================================================
 // AUFTRAG-BASIC-380 — DIESELBE ENTSCHEIDUNG, EINE EBENE TIEFER: ALS SQL, VOR DEM `LIMIT`.
 // ================================================================================================
 //

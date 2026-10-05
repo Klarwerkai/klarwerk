@@ -101,6 +101,22 @@ export function confluenceInstanz(opts: {
     if (new URL(url).pathname.endsWith("/child/attachment")) {
       return confluenceAntwort(200, { results: [] });
     }
+    // confluence-import-rechte: der Importeur liest das Leserecht des Space
+    // (`/rest/api/space/<key>?expand=permissions`). Diese Instanz ist ein OFFENER Space — sie
+    // antwortet wie Confluence mit einer anonymen Leseberechtigung und nicht mit einer
+    // Ergebnisseite. Ohne diese Antwort gälte das Leserecht als unbekannt, und kein Konto sähe die
+    // übernommenen Seiten (fail-closed, Nacharbeit 3).
+    if (/\/rest\/api\/space\/[^/?]+$/.test(new URL(url).pathname)) {
+      return confluenceAntwort(200, {
+        permissions: [
+          {
+            operation: { operation: "read", targetType: "space" },
+            anonymousAccess: true,
+            subjects: { user: { results: [] }, group: { results: [] } },
+          },
+        ],
+      });
+    }
     const einzel = /\/rest\/api\/content\/([^/?]+)\?/.exec(url);
     if (einzel) {
       const treffer = alle.find((p) => p.id === decodeURIComponent(einzel[1] ?? ""));

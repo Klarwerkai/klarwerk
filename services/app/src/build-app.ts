@@ -2681,6 +2681,8 @@ export function buildApp(
         ko: services.ko,
         lesevarianten: services.lesevarianten,
         kandidaten: services.candidates,
+        // confluence-import-rechte (Nacharbeit 6, F1): dieselbe Grenze wie die Warteschlange.
+        kandidatenRechte: services.library,
         ...(services.audit ? { audit: services.audit } : {}),
       },
       guards,

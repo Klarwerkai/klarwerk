@@ -587,33 +587,51 @@ export class ConfluenceRestClient {
    * Die Mitglieder einer Gruppe, seitenweise. Bricht ein Abruf ab, bleibt es bei den bis dahin
    * gelesenen — weniger Leser, nie mehr. `vollstaendig` sagt, ob das Ende erreicht wurde.
    */
+  //
+  // Nacharbeit 6 (Ben, Befund F3): DIE TATSÄCHLICHE PAGINIERUNG. Bis hierher endete der Abruf an
+  // einer Seite mit weniger als 200 Einträgen — Confluence kann aber eine kürzere Seite MIT
+  // Fortsetzung liefern, und die restlichen Mitglieder fielen still weg. Jetzt gilt:
+  //   · trägt die Antwort `_links.next`, wird ihm gefolgt (derselbe Weg wie beim Seitenlisting,
+  //     `nextUrl`: gepinnte Origin, Kontextpfad) — gleich, wie lang die Seite war;
+  //   · trägt sie `_links` OHNE `next`, ist die Gruppe zu Ende;
+  //   · trägt sie gar keine `_links` (ältere Antwortform), entscheidet die Länge: eine volle Seite
+  //     heißt „es kann mehr geben", weitergelesen wird ab `start + gelesen`.
+  // Ein Abruffehler, eine unlesbare Antwort und das Erreichen der technischen Grenze
+  // (`CONFLUENCE_MAX_GRUPPENSEITEN`) ergeben `vollstaendig: false` — nie eine still gekürzte Gruppe.
   async getGruppenmitglieder(name: string): Promise<{ users: unknown[]; vollstaendig: boolean }> {
     const users: unknown[] = [];
     const limit = 200;
+    const allowedOrigin = this.allowedOrigin();
+    const ersteSeite = (start: number): string => {
+      const params = new URLSearchParams({ name, start: String(start), limit: String(limit) });
+      return `${this.baseUrl}/rest/api/group/member?${params.toString()}`;
+    };
+    let url = ersteSeite(0);
     for (let seite = 0; seite < CONFLUENCE_MAX_GRUPPENSEITEN; seite += 1) {
-      const params = new URLSearchParams({
-        name,
-        start: String(seite * limit),
-        limit: String(limit),
-      });
       let data: unknown;
       try {
-        data = await this.getJson(
-          `${this.baseUrl}/rest/api/group/member?${params.toString()}`,
-          this.allowedOrigin(),
-          { nichtGefundenIstLeer: true },
-        );
+        data = await this.getJson(url, allowedOrigin, { nichtGefundenIstLeer: true });
       } catch {
         return { users, vollstaendig: false };
       }
-      const results = (data as { results?: unknown } | undefined)?.results;
+      const antwort = data as { results?: unknown; _links?: { next?: unknown } } | undefined;
+      const results = antwort?.results;
       if (!Array.isArray(results)) {
         return { users, vollstaendig: false };
       }
       users.push(...results);
+      const links = antwort?._links;
+      if (links && typeof links === "object") {
+        if (typeof links.next === "string" && links.next.length > 0) {
+          url = this.nextUrl(links.next, allowedOrigin);
+          continue;
+        }
+        return { users, vollstaendig: true };
+      }
       if (results.length < limit) {
         return { users, vollstaendig: true };
       }
+      url = ersteSeite(users.length);
     }
     return { users, vollstaendig: false };
   }

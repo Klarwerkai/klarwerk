@@ -700,6 +700,29 @@ interface EintragsQuellrechte {
   // Eintrags und der Zeitpunkt, an dem der Adapter die Rechte nachgesehen hat.
   version?: number;
   beobachtetAm?: string;
+  // Nacharbeit 6 (Befund F3): der Leserkreis konnte nicht vollständig gelesen werden (Gruppen-
+  // abruf abgebrochen oder über der technischen Grenze). Die Leser sind dann eine Untermenge.
+  leserUnvollstaendig?: true;
+}
+
+/**
+ * Nacharbeit 6 (Befund F2): tragen gespeicherte und frisch erhobene Rechte dieselbe Lage (Stufe,
+ * Leserkreis, Vollständigkeit)? Dann schreibt der Bereichsabgleich nichts — kein Objekt-Write und
+ * kein Prüfprotokolleintrag je unveränderter Seite und Lauf.
+ */
+function gleicheQuellLage(gespeichert: KoQuellrechte | undefined, neu: KoQuellrechte): boolean {
+  if (!gespeichert || gespeichert.stufe !== neu.stufe) {
+    return false;
+  }
+  if (Boolean(gespeichert.leserUnvollstaendig) !== Boolean(neu.leserUnvollstaendig)) {
+    return false;
+  }
+  if (gespeichert.leser === undefined || neu.leser === undefined) {
+    return gespeichert.leser === neu.leser;
+  }
+  const alt = [...gespeichert.leser].sort();
+  const jetzt = [...neu.leser].sort();
+  return alt.length === jetzt.length && alt.every((id, i) => id === jetzt[i]);
 }
 
 function quellrechteVon(item: ImportItem): EintragsQuellrechte | undefined {
@@ -707,10 +730,11 @@ function quellrechteVon(item: ImportItem): EintragsQuellrechte | undefined {
   if (roh === null || typeof roh !== "object") {
     return undefined;
   }
-  const { stufe, emails, beobachtetAm } = roh as {
+  const { stufe, emails, beobachtetAm, leserUnvollstaendig } = roh as {
     stufe?: unknown;
     emails?: unknown;
     beobachtetAm?: unknown;
+    leserUnvollstaendig?: unknown;
   };
   if (!isValidConfidentiality(stufe)) {
     return undefined;
@@ -720,6 +744,7 @@ function quellrechteVon(item: ImportItem): EintragsQuellrechte | undefined {
     ...(typeof beobachtetAm === "string" && !Number.isNaN(Date.parse(beobachtetAm))
       ? { beobachtetAm }
       : {}),
+    ...(leserUnvollstaendig === true ? { leserUnvollstaendig: true as const } : {}),
   };
   if (emails === undefined) {
     return { stufe, ...stand };
@@ -985,6 +1010,7 @@ export class LibraryService {
     const stand = {
       ...(quelle.version !== undefined ? { version: quelle.version } : {}),
       ...(quelle.beobachtetAm !== undefined ? { beobachtetAm: quelle.beobachtetAm } : {}),
+      ...(quelle.leserUnvollstaendig ? { leserUnvollstaendig: true as const } : {}),
     };
     if (quelle.emails === undefined) {
       return { stufe: quelle.stufe, ...stand };
@@ -994,6 +1020,23 @@ export class LibraryService {
         ? await this.quellLeserAufloesen(quelle.emails)
         : [];
     return { stufe: quelle.stufe, leser, ...stand };
+  }
+
+  /**
+   * confluence-import-rechte (Ben, Nacharbeit 6, Befund F1): die Quellrechte eines Kandidaten,
+   * DIESELBE Abbildung wie beim Annehmen — für die Sichtbarkeitsgrenze der Warteschlange
+   * (`darfKandidatSehen`, services/app/src/sichtbarkeit.ts). `undefined` = der Eintrag trägt keine.
+   */
+  async quellrechteFuerKandidat(item: unknown): Promise<KoQuellrechte | undefined> {
+    if (item === null || typeof item !== "object") {
+      return undefined;
+    }
+    return this.objektQuellrechte(item as ImportItem);
+  }
+
+  /** Nacharbeit 6 (Befund F1): EIN Kandidat zu einer Kennung — für die Sichtprüfung vor der Annahme. */
+  async importKandidat(id: string): Promise<ImportCandidate | undefined> {
+    return this.candidates.findById(id);
   }
 
   /**
@@ -2416,6 +2459,69 @@ export class LibraryService {
       return undefined;
     }
     return this.gleicheAnhaengeAb(anker.ko.id, item, actor);
+  }
+
+  /**
+   * confluence-import-rechte (Ben, Nacharbeit 6, Befund F2) — DER RECHTEABGLEICH EINER SEITE
+   * UNVERÄNDERTER INHALTSVERSION.
+   *
+   * Confluence zählt die Seitenversion bei einer reinen Rechteänderung nicht hoch. Der
+   * Bereichsabgleich übersprang solche Seiten deshalb als „unverändert" — eine inzwischen auf Lea
+   * beschränkte Seite blieb in Klara für die bisherigen Leser offen. Hier werden die FRISCH
+   * erhobenen Quellrechte nachgezogen, an zwei Stellen und beide geschützt:
+   *   1. am LEBENDEN Objekt dieses Ankers über `setQuellrechte` — Aktualitätsschutz unter dem
+   *      Objekt-Lock (ältere Version oder frühere Beobachtung ändern nichts);
+   *   2. an OFFENEN Kandidaten (`neu`) derselben Quelle und Version: ihr Eintrag trägt danach die
+   *      neuere Beobachtung, damit eine spätere Annahme sie nicht verdrängt.
+   * Ein Objekt im Papierkorb und ein Kandidat in Bearbeitung werden nicht angefasst. Bleibt die
+   * Lage gleich, wird nichts geschrieben.
+   */
+  async gleicheQuellrechteFuerAnkerAb(
+    item: ImportItem,
+    actor: string,
+  ): Promise<{ objekt: boolean; kandidaten: number }> {
+    const quelle = quellrechteVon(item);
+    const externalId = this.externalUpsert ? item.externalId : undefined;
+    if (!quelle || !externalId) {
+      return { objekt: false, kandidaten: 0 };
+    }
+    const gesucht = ankerSchluessel(item.provider, externalId);
+    let objekt = false;
+    const anker = await this.sucheAnkerKo(
+      (s) => ankerSchluessel(s.provider, s.externalId) === gesucht,
+    );
+    if (anker?.art === "aktiv") {
+      const rechte = await this.objektQuellrechte(item);
+      if (rechte && !gleicheQuellLage(anker.ko.quellrechte, rechte)) {
+        await this.koService.setQuellrechte(anker.ko.id, rechte, actor);
+        objekt = true;
+      }
+    }
+    let kandidaten = 0;
+    const roh = (item as ImportItem & { readonly quellrechte?: unknown }).quellrechte;
+    for (const kandidat of await this.candidates.all()) {
+      if (
+        kandidat.status !== "neu" ||
+        ankerSchluessel(kandidat.item.provider, kandidat.item.externalId) !== gesucht ||
+        kandidat.item.sourceVersion !== item.sourceVersion
+      ) {
+        continue;
+      }
+      const alt = quellrechteVon(kandidat.item);
+      if (
+        alt?.beobachtetAm !== undefined &&
+        quelle.beobachtetAm !== undefined &&
+        Date.parse(alt.beobachtetAm) >= Date.parse(quelle.beobachtetAm)
+      ) {
+        continue;
+      }
+      await this.candidates.update({
+        ...kandidat,
+        item: { ...kandidat.item, confidentiality: quelle.stufe, quellrechte: roh } as ImportItem,
+      });
+      kandidaten += 1;
+    }
+    return { objekt, kandidaten };
   }
 
   /**

@@ -23,6 +23,7 @@
 // Fixture-Fetch, kein Netz, kein Token einer echten Instanz.
 import { describe, expect, it } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
+import { runConfluenceImport } from "../../services/app/src/confluence-import";
 import { adapterFromConfig } from "../../services/confluence/src/adapter";
 import { mapConfluencePageToImportItem } from "../../services/confluence/src/mapper";
 import type { ConfluencePage } from "../../services/confluence/src/rest-client";
@@ -75,6 +76,11 @@ function antwort(status: number, body: unknown): Response {
 interface FixtureRechte {
   space?: { users?: unknown[]; groups?: unknown[] } | null;
   gruppen?: Record<string, unknown[]>;
+  /**
+   * Nacharbeit 6 (Befund F3): eine Gruppe in MEHREREN Antwortseiten. Jede Seite außer der letzten
+   * trägt `_links.next` — auch eine KURZE Seite. Ab `fehlerAb` antwortet die Quelle mit 500.
+   */
+  gruppenSeiten?: Record<string, { seiten: unknown[][]; fehlerAb?: number }>;
   kontoEmails?: Record<string, string>;
 }
 
@@ -113,7 +119,29 @@ function fixture(
       });
     }
     if (u.pathname.endsWith("/rest/api/group/member")) {
-      return antwort(200, { results: rechte.gruppen?.[u.searchParams.get("name") ?? ""] ?? [] });
+      const name = u.searchParams.get("name") ?? "";
+      const mehrseitig = rechte.gruppenSeiten?.[name];
+      if (mehrseitig) {
+        // Die Seitennummer reist im eigenen Fortsetzungsverweis (`start` = Seitenindex).
+        const index = Number(u.searchParams.get("start") ?? "0");
+        if (mehrseitig.fehlerAb !== undefined && index >= mehrseitig.fehlerAb) {
+          return antwort(500, {});
+        }
+        const naechste = index + 1 < mehrseitig.seiten.length;
+        return antwort(200, {
+          results: mehrseitig.seiten[index] ?? [],
+          _links: naechste
+            ? {
+                next: `/rest/api/group/member?name=${encodeURIComponent(name)}&start=${index + 1}&limit=200`,
+              }
+            : {},
+        });
+      }
+      return antwort(200, { results: rechte.gruppen?.[name] ?? [] });
+    }
+    if (u.pathname.endsWith("/child/attachment")) {
+      // Die Seiten dieser Fixtures tragen keine Anhänge (R-0163-Weg des Bereichsimports).
+      return antwort(200, { results: [] });
     }
     if (u.pathname.endsWith("/rest/api/user/email")) {
       const email = rechte.kontoEmails?.[u.searchParams.get("accountId") ?? ""];
@@ -447,8 +475,23 @@ async function uebernimmAlsAdmin(
   pages: ConfluencePage[],
   rechte: FixtureRechte = {},
 ): Promise<Map<string, string>> {
+  return nimmAnAlsAdmin(k, await reiheEinAlsAdmin(k, pages, rechte));
+}
+
+/** Nacharbeit 6: nur das Einreihen — für Prüfungen der Warteschlange VOR der Annahme. */
+async function reiheEinAlsAdmin(
+  k: Awaited<ReturnType<typeof appMitKonten>>,
+  pages: ConfluencePage[],
+  rechte: FixtureRechte = {},
+) {
   const { items } = await fixture(pages, pages, rechte).adapter.collectAll();
-  const kandidaten = await k.services.library.createImportCandidates(items, k.adminId);
+  return k.services.library.createImportCandidates(items, k.adminId);
+}
+
+async function nimmAnAlsAdmin(
+  k: Awaited<ReturnType<typeof appMitKonten>>,
+  kandidaten: Awaited<ReturnType<typeof reiheEinAlsAdmin>>,
+): Promise<Map<string, string>> {
   const koIds = new Map<string, string>();
   for (const c of kandidaten) {
     const r = await k.services.library.reviewImportCandidate(c.id, "accept", k.adminId);
@@ -469,6 +512,27 @@ async function liest(
   return { einzeln, inListe: ids.includes(koId) };
 }
 
+/**
+ * Nacharbeit 6 (Ben, Befund F1): was ein Konto in der Importwarteschlange von einer Seite sieht —
+ * Titel UND Text werden am Rohkörper gemessen, nicht an einer DTO-Auswahl.
+ */
+async function warteschlange(
+  app: Awaited<ReturnType<typeof appMitKonten>>["app"],
+  headers: Record<string, string>,
+  pageId: string,
+) {
+  const antwort = await app.inject({
+    method: "GET",
+    url: "/api/library/import/candidates",
+    headers,
+  });
+  expect(antwort.statusCode, antwort.body).toBe(200);
+  return {
+    titel: antwort.body.includes(`Seite ${pageId}`),
+    text: antwort.body.includes(`Inhalt ${pageId}`),
+  };
+}
+
 describe("R-0549 · wer in Confluence lesen darf, liest in Klara — und sonst niemand", () => {
   it("L1 · Benutzerrestriktion auf Lea: Lea liest (200), Controller Carl und Leser Otto nicht", async () => {
     const k = await appMitKonten();
@@ -476,6 +540,24 @@ describe("R-0549 · wer in Confluence lesen darf, liest in Klara — und sonst n
     const nurLea = seite("900", [], { user: [{ accountId: "acc-lea", email: "Lea@Example.com" }] });
     const { items } = await fixture([nurLea]).adapter.collectAll();
     const [kandidat] = await k.services.library.createImportCandidates(items, k.adminId);
+
+    // Nacharbeit 6 (F1): die Warteschlange VOR der Annahme — Lea sieht Titel und Text, alle
+    // anderen (auch Controller und Admin) weder noch.
+    expect(await warteschlange(k.app, k.lea.headers, "900")).toEqual({ titel: true, text: true });
+    for (const wer of [k.carl, k.otto, k.admin]) {
+      expect(await warteschlange(k.app, wer.headers, "900")).toEqual({ titel: false, text: false });
+    }
+    // Wer den Kandidaten nicht sehen darf, kann ihn auch nicht annehmen — und erfährt nichts.
+    const blind = await k.app.inject({
+      method: "PUT",
+      url: `/api/library/import/candidates/${kandidat!.id}`,
+      headers: k.carl.headers,
+      payload: { action: "accept" },
+    });
+    expect(blind.statusCode, blind.body).toBe(404);
+    expect(blind.body).not.toContain("Inhalt 900");
+    expect((await k.services.library.importKandidat(kandidat!.id))?.status).toBe("neu");
+
     const r = await k.services.library.reviewImportCandidate(kandidat!.id, "accept", k.adminId);
     const koId = r.koId!;
     expect((await k.services.ko.get(koId))?.quellrechte).toMatchObject({
@@ -504,6 +586,12 @@ describe("R-0549 · wer in Confluence lesen darf, liest in Klara — und sonst n
     expect(admin.einzeln.statusCode).toBe(404);
     expect(admin.einzeln.body).not.toContain("Inhalt 900");
     expect(admin.inListe).toBe(false);
+
+    // Nacharbeit 6 (F1): die Warteschlange NACH der Annahme — dieselbe Grenze.
+    expect(await warteschlange(k.app, k.lea.headers, "900")).toEqual({ titel: true, text: true });
+    for (const wer of [k.carl, k.otto, k.admin]) {
+      expect(await warteschlange(k.app, wer.headers, "900")).toEqual({ titel: false, text: false });
+    }
   });
 
   it("L2 · vererbt: Elternseite nur für Lea UND Carl, Kind nur für Lea → nur Lea liest das Kind", async () => {
@@ -597,7 +685,7 @@ describe("R-0549 · wer in Confluence lesen darf, liest in Klara — und sonst n
 
   it("L5 · eingeschränkter Space: seitenoffene Seite nur für Space-Leser — Gruppe und Konto ohne Mail aufgelöst", async () => {
     const k = await appMitKonten();
-    const koIds = await uebernimmAlsAdmin(k, [seite("940", [])], {
+    const kandidaten = await reiheEinAlsAdmin(k, [seite("940", [])], {
       // Space lesbar für Lea (Benutzer mit Mail) und die Gruppe „team" — deren einziges Mitglied
       // Carl kommt OHNE Mailadresse; sie wird über `/rest/api/user/email` nachgefragt.
       space: {
@@ -607,6 +695,20 @@ describe("R-0549 · wer in Confluence lesen darf, liest in Klara — und sonst n
       gruppen: { team: [{ accountId: "acc-carl" }] },
       kontoEmails: { "acc-carl": "carl@example.com" },
     });
+    // Nacharbeit 6 (F1): die Warteschlange VOR der Annahme — nur die Space-Leser.
+    for (const wer of [k.lea, k.carl]) {
+      expect(await warteschlange(k.app, wer.headers, "940")).toEqual({ titel: true, text: true });
+    }
+    for (const wer of [k.otto, k.admin]) {
+      expect(await warteschlange(k.app, wer.headers, "940")).toEqual({ titel: false, text: false });
+    }
+    const koIds = await nimmAnAlsAdmin(k, kandidaten);
+    for (const wer of [k.lea, k.carl]) {
+      expect(await warteschlange(k.app, wer.headers, "940")).toEqual({ titel: true, text: true });
+    }
+    for (const wer of [k.otto, k.admin]) {
+      expect(await warteschlange(k.app, wer.headers, "940")).toEqual({ titel: false, text: false });
+    }
     const koId = koIds.get("940") ?? "";
     const objekt = await k.services.ko.get(koId);
     // R-2197 bleibt: die Seite selbst ist offen, also nicht vertraulich.
@@ -708,5 +810,163 @@ describe("R-1601/R-2197 · die Gruppierung läuft für offene Bestände", () => 
     expect(groupingRequiresConfidential(offen)).toBe(false);
     const mitVererbung = items.filter((i) => ["1", "3"].includes(i.externalId ?? ""));
     expect(groupingRequiresConfidential(mitVererbung)).toBe(true);
+  });
+});
+
+// ==================================================================================================
+// Nacharbeit 6 (Ben, Befund F2) — DER REGULÄRE BEREICHSABGLEICH UND EINE REINE RECHTEÄNDERUNG.
+// ==================================================================================================
+//
+// Confluence zählt die Seitenversion bei einer reinen Rechteänderung nicht hoch. Gemessen wird über
+// `runConfluenceImport` — den Weg, den „Bereich importieren" wirklich geht —, nicht über eine zweite
+// Warteschlange (Q6).
+
+/** Ein Bereichsimport-Lauf über die echte Kette, mit dem Admin als Akteur. */
+async function bereichsabgleich(
+  k: Awaited<ReturnType<typeof appMitKonten>>,
+  pages: ConfluencePage[],
+  rechte: FixtureRechte = {},
+) {
+  return runConfluenceImport({
+    adapter: fixture(pages, pages, rechte).adapter,
+    library: k.services.library,
+    koService: k.services.ko,
+    dryRun: false,
+    actor: k.adminId,
+  });
+}
+
+async function kandidatFuer(k: Awaited<ReturnType<typeof appMitKonten>>, pageId: string) {
+  const kandidat = (await k.services.library.listImportCandidates()).find(
+    (c) => c.item.externalId === pageId && c.status === "neu",
+  );
+  expect(kandidat, `offener Kandidat für ${pageId}`).toBeDefined();
+  return kandidat!;
+}
+
+describe("R-0549 · der Bereichsabgleich zieht Leserechte auch bei unveränderter Version nach", () => {
+  it("B1 · offen übernommen, bei GLEICHER Version auf Lea beschränkt, erneut abgeglichen: Otto wird abgewiesen", async () => {
+    const k = await appMitKonten();
+    const lauf1 = await bereichsabgleich(k, [seite("980", [], undefined, 4)]);
+    expect(lauf1.imported).toBe(1);
+    const r = await k.services.library.reviewImportCandidate(
+      (await kandidatFuer(k, "980")).id,
+      "accept",
+      k.adminId,
+    );
+    const koId = r.koId!;
+    expect((await liest(k.app, k.otto.headers, koId)).einzeln.statusCode).toBe(200);
+
+    await new Promise((fertig) => setTimeout(fertig, 15));
+    const zu = seite("980", [], { user: [{ accountId: "acc-lea", email: "lea@example.com" }] }, 4);
+    const lauf2 = await bereichsabgleich(k, [zu]);
+    // Kein neuer Kandidat — die Version ist dieselbe. Trotzdem gelten die neuen Rechte.
+    expect(lauf2.imported).toBe(0);
+
+    const objekt = await k.services.ko.get(koId);
+    expect(objekt?.quellrechte?.leser).toEqual([k.lea.id]);
+    expect(objekt?.confidentiality).toBe("vertraulich");
+    expect(objekt?.sources.find((s) => s.externalId === "980")?.sourceVersion).toBe(4);
+    const otto = await liest(k.app, k.otto.headers, koId);
+    expect(otto.einzeln.statusCode).toBe(404);
+    expect(otto.inListe).toBe(false);
+    expect((await liest(k.app, k.lea.headers, koId)).einzeln.statusCode).toBe(200);
+  });
+
+  it("B2 · ein offener Kandidat derselben Version verdrängt die neuere Rechtebeobachtung nicht", async () => {
+    const k = await appMitKonten();
+    await bereichsabgleich(k, [seite("981", [], undefined, 2)]);
+    const offen = await kandidatFuer(k, "981");
+    // Vor der Rechteänderung sieht Otto den offenen Kandidaten.
+    expect(await warteschlange(k.app, k.otto.headers, "981")).toEqual({ titel: true, text: true });
+
+    await new Promise((fertig) => setTimeout(fertig, 15));
+    const zu = seite("981", [], { user: [{ accountId: "acc-lea", email: "lea@example.com" }] }, 2);
+    const lauf2 = await bereichsabgleich(k, [zu]);
+    expect(lauf2.imported).toBe(0);
+    // Der offene Kandidat trägt jetzt die neuere Beobachtung — Otto sieht ihn nicht mehr.
+    expect(await warteschlange(k.app, k.otto.headers, "981")).toEqual({
+      titel: false,
+      text: false,
+    });
+    expect(await warteschlange(k.app, k.lea.headers, "981")).toEqual({ titel: true, text: true });
+
+    const r = await k.services.library.reviewImportCandidate(offen.id, "accept", k.adminId);
+    const objekt = await k.services.ko.get(r.koId!);
+    expect(objekt?.quellrechte?.leser).toEqual([k.lea.id]);
+    expect((await liest(k.app, k.otto.headers, r.koId!)).einzeln.statusCode).toBe(404);
+    expect((await liest(k.app, k.lea.headers, r.koId!)).einzeln.statusCode).toBe(200);
+  });
+});
+
+// ==================================================================================================
+// Nacharbeit 6 (Ben, Befund F3) — GRUPPENLESER VOLLSTÄNDIG, ODER SICHTBAR UNVOLLSTÄNDIG.
+// ==================================================================================================
+
+type MitQuellrechten = { quellrechte?: { emails?: string[]; leserUnvollstaendig?: true } };
+
+describe("R-0549 · mehrseitige Gruppen und der Abbruchfall", () => {
+  it("P1 · KURZE Seite mit Fortsetzung, dann eine zweite Seite: alle Mitglieder werden Leser", async () => {
+    const gross = seite("990", [], { group: [{ name: "gross" }] });
+    const { items } = await fixture([gross], undefined, {
+      gruppenSeiten: {
+        gross: {
+          seiten: [
+            [{ accountId: "a1", email: "lea@example.com" }],
+            [
+              { accountId: "a2", email: "otto@example.com" },
+              { accountId: "a3", email: "eva@example.com" },
+            ],
+          ],
+        },
+      },
+    }).adapter.collectAll();
+    const rechte = (items[0] as MitQuellrechten).quellrechte;
+    expect([...(rechte?.emails ?? [])].sort()).toEqual([
+      "eva@example.com",
+      "lea@example.com",
+      "otto@example.com",
+    ]);
+    expect(rechte?.leserUnvollstaendig).toBeUndefined();
+  });
+
+  it("P2 · Abbruch mitten in der Gruppe: gelesene Mitglieder bleiben, unvollständig steht am Item, am Objekt und im Laufergebnis", async () => {
+    const k = await appMitKonten();
+    const zu = seite("991", [], { group: [{ name: "gross" }] });
+    const lauf = await bereichsabgleich(k, [zu], {
+      gruppenSeiten: {
+        gross: {
+          seiten: [
+            [{ accountId: "a1", email: "lea@example.com" }],
+            [{ accountId: "a2", email: "otto@example.com" }],
+          ],
+          fehlerAb: 1,
+        },
+      },
+    });
+    expect(lauf.leserUnvollstaendig).toBe(1);
+    const kandidat = await kandidatFuer(k, "991");
+    expect((kandidat.item as MitQuellrechten).quellrechte?.leserUnvollstaendig).toBe(true);
+
+    const r = await k.services.library.reviewImportCandidate(kandidat.id, "accept", k.adminId);
+    const objekt = await k.services.ko.get(r.koId!);
+    expect(objekt?.quellrechte).toMatchObject({ leser: [k.lea.id], leserUnvollstaendig: true });
+    // Fail-closed: der nicht gelesene Otto bekommt kein Leserecht.
+    expect((await liest(k.app, k.lea.headers, r.koId!)).einzeln.statusCode).toBe(200);
+    expect((await liest(k.app, k.otto.headers, r.koId!)).einzeln.statusCode).toBe(404);
+  });
+
+  it("P3 · technische Grenze: eine Gruppe über der Seitenobergrenze gilt nicht als vollständig", async () => {
+    // 51 Seiten à ein Mitglied, jede mit Fortsetzung — die Grenze liegt bei 50 Seiten.
+    const seiten = Array.from({ length: 51 }, (_, i) => [
+      { accountId: `m${i}`, email: `m${i}@example.com` },
+    ]);
+    const riesig = seite("992", [], { group: [{ name: "riesig" }] });
+    const { items } = await fixture([riesig], undefined, {
+      gruppenSeiten: { riesig: { seiten } },
+    }).adapter.collectAll();
+    const rechte = (items[0] as MitQuellrechten).quellrechte;
+    expect(rechte?.leserUnvollstaendig).toBe(true);
+    expect(rechte?.emails).toHaveLength(50);
   });
 });
