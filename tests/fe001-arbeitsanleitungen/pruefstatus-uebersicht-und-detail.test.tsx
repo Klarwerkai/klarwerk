@@ -20,12 +20,17 @@ import { act, createElement } from "../../apps/web/node_modules/react";
 import { type Root, createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter, Route, Routes } from "../../apps/web/node_modules/react-router-dom";
 
-const sitzung = vi.hoisted(() => ({ rolle: "experte" as string }));
+// `antworten` zählt beantwortete Sitzungsabfragen: bis dahin gilt in `RoleContext` die Vorschau-
+// Rolle („experte"), nicht die der Sitzung.
+const sitzung = vi.hoisted(() => ({ rolle: "experte" as string, antworten: 0 }));
 
 vi.mock("../../apps/web/src/api/auth", () => ({
   authApi: {
     status: vi.fn(async () => ({ needsSetup: false, oidcEnabled: false })),
-    me: vi.fn(async () => ({ id: "u1", name: "Pia", email: "p@x.de", role: sitzung.rolle })),
+    me: vi.fn(async () => {
+      sitzung.antworten += 1;
+      return { id: "u1", name: "Pia", email: "p@x.de", role: sitzung.rolle };
+    }),
     logout: vi.fn(async () => ({})),
   },
 }));
@@ -350,7 +355,19 @@ async function beideAnsichten(
     root.unmount();
   });
   root = createRoot(container);
+  const antwortenVorher = sitzung.antworten;
   await zeige("/gesamtanweisungen/a-1");
+  // Erst wenn die Sitzung dieser Montage beantwortet ist, gilt ihre Rolle. Der Schritt allein
+  // trennt das nicht immer — „gilt" (entschieden) lautet für jede Rolle gleich, und das Warten
+  // endete sonst noch unter der Vorschau-Rolle.
+  await warteBis(() => sitzung.antworten > antwortenVorher, `Sitzung als ${rolle} beantwortet`);
+  // Die Antwort erreicht den Baum über die gebündelte Benachrichtigung von react-query (eigener
+  // Zeitgeber) — einige Takte durchlaufen lassen, bevor gelesen wird.
+  for (let takt = 0; takt < 3; takt += 1) {
+    await act(async () => {
+      await new Promise((fertig) => setTimeout(fertig, 10));
+    });
+  }
   await warteBis(
     () => marke(`${SEITE_MARKE}-schritt`)?.textContent === schritt,
     `Detail: ${stand} als ${rolle}`,
