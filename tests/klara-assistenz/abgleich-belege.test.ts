@@ -8,12 +8,16 @@ import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { panelQuelleAus } from "../support/panelquelle";
 
 const WURZEL = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const lies = (pfad: string) => readFileSync(join(WURZEL, pfad), "utf8");
 
 const ABGLEICH = lies("docs/klara/aufnahme-20260922-gesamt-klara-assistenz.md");
-const PANEL = lies("apps/web/public/word-addin/taskpane.html");
+// R-1611 (Drei-Datei-Schnitt): das Fenster liegt in `taskpane.html`/`.css`/`.js`; Marken und
+// Funktionen des Skripts stehen in `taskpane.js`. `panelQuelleAus` fügt die drei Dateien zu genau
+// dem einen Dokument zusammen, das dieser Abgleich bisher gelesen hat.
+const PANEL = panelQuelleAus(join(WURZEL, "apps/web/public/word-addin/taskpane.html"));
 const KA8_PFAD = "/api/drafts/:id/naechster-schritt";
 const GELOESCHT_W5 = "tests/klara-panel/ka5-markierung-reist-mit.test.tsx";
 

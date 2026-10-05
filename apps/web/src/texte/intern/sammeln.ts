@@ -92,40 +92,74 @@ function ladeModul(pfad: string, schluessel: string): { wert?: unknown; fehler?:
 }
 
 /**
- * Die Dateien, aus denen sich der GRUNDBESTAND zusammensetzt: `i18n.ts` selbst und jede Datei, aus
- * der es einen Textblock hineinspreadet (heute nur `lib/lesevariante.ts`).
+ * Der Ordner der Grundwörterbücher — relativ zu `apps/web/src`. Seit der I18N-AUFTEILUNG
+ * (Aufnahme 20260922) wohnen `de`, `en` und `nl` dort je in einer eigenen Datei; `i18n.ts` importiert
+ * sie nur noch.
+ */
+export const WOERTERBUCH_ORDNER = "woerterbuch";
+
+/** Löst einen relativen Spezifizierer auf eine vorhandene Datei auf — oder auf nichts. */
+function loeseAuf(von: string, spezifizierer: string): string | undefined {
+  const roh = resolve(dirname(von), spezifizierer);
+  for (const kandidat of [`${roh}.ts`, join(roh, "index.ts"), roh]) {
+    try {
+      readFileSync(kandidat, "utf8");
+      return kandidat;
+    } catch {
+      // nächster Kandidat — ein nicht auflösbarer Spezifizierer ist hier kein Abbruchgrund
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Die Dateien, aus denen sich der GRUNDBESTAND zusammensetzt: `i18n.ts` selbst, die
+ * Grundwörterbücher, die es aus `woerterbuch/` importiert, und jede Datei, aus der eine dieser
+ * Dateien einen Textblock hineinspreadet (heute nur `lib/lesevariante.ts`, gespreadet in jedes der
+ * drei Wörterbücher).
  *
  * WARUM MITGELESEN WIRD, WAS GESPREADET IST: sonst wäre der Eindeutigkeitsnachweis blind für genau
  * die Schlüssel, die schon einmal ausgelagert wurden — ein neues Modul dürfte
  * `lesevariante.badge.original` erfinden, und im Bündel gewänne still das Modul.
+ *
+ * WARUM REKURSIV: seit der Aufteilung steht der Spread nicht mehr in `i18n.ts`, sondern eine Ebene
+ * tiefer in `woerterbuch/<sprache>.ts`. Gefolgt wird deshalb von JEDER eingesammelten Datei aus —
+ * jede höchstens einmal, also auch bei einem Kreis endlich.
  */
 export function basisQuellen(i18nPfad: string): string[] {
-  const text = readFileSync(i18nPfad, "utf8");
-  const herkunft = new Map<string, string>();
-  for (const treffer of text.matchAll(/import\s*\{([^}]*)\}\s*from\s*"([^"]+)"/g)) {
-    const namen = (treffer[1] ?? "").split(",");
-    const quelle = treffer[2] ?? "";
-    for (const roh of namen) {
-      const name = roh.replace(/^\s*type\s+/, "").trim();
-      if (name.length > 0) {
-        herkunft.set(name, quelle);
+  const dateien = new Set<string>([i18nPfad]);
+  const offen = [i18nPfad];
+  while (offen.length > 0) {
+    const datei = offen.shift() as string;
+    const text = readFileSync(datei, "utf8");
+    const herkunft = new Map<string, string>();
+    const folgen: string[] = [];
+    for (const treffer of text.matchAll(/import\s*\{([^}]*)\}\s*from\s*"([^"]+)"/g)) {
+      const namen = (treffer[1] ?? "").split(",");
+      const quelle = treffer[2] ?? "";
+      for (const roh of namen) {
+        const name = roh.replace(/^\s*type\s+/, "").trim();
+        if (name.length > 0) {
+          herkunft.set(name, quelle);
+        }
+      }
+      // Ein Grundwörterbuch wird nicht gespreadet, sondern als Ganzes übergeben — es gehört
+      // trotzdem zum Grundbestand.
+      if (quelle.startsWith(`./${WOERTERBUCH_ORDNER}/`)) {
+        folgen.push(quelle);
       }
     }
-  }
-  const dateien = new Set<string>([i18nPfad]);
-  for (const treffer of text.matchAll(/^\s*\.\.\.([A-Za-z0-9_$]+),\s*$/gm)) {
-    const quelle = herkunft.get(treffer[1] ?? "");
-    if (quelle === undefined || !quelle.startsWith(".")) {
-      continue;
+    for (const treffer of text.matchAll(/^\s*\.\.\.([A-Za-z0-9_$]+),\s*$/gm)) {
+      const quelle = herkunft.get(treffer[1] ?? "");
+      if (quelle?.startsWith(".")) {
+        folgen.push(quelle);
+      }
     }
-    const roh = resolve(dirname(i18nPfad), quelle);
-    for (const kandidat of [`${roh}.ts`, join(roh, "index.ts"), roh]) {
-      try {
-        readFileSync(kandidat, "utf8");
-        dateien.add(kandidat);
-        break;
-      } catch {
-        // nächster Kandidat — ein nicht auflösbarer Spezifizierer ist hier kein Abbruchgrund
+    for (const quelle of folgen) {
+      const ziel = loeseAuf(datei, quelle);
+      if (ziel !== undefined && !dateien.has(ziel)) {
+        dateien.add(ziel);
+        offen.push(ziel);
       }
     }
   }

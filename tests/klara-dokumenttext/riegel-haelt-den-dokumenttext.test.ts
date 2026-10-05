@@ -45,6 +45,7 @@ import {
   resolveKlaraPolicy,
 } from "../../services/reasoner";
 import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
+import { panelQuelleAus } from "../support/panelquelle";
 
 const WURZEL = process.cwd();
 const quelle = (pfad: string): string => readFileSync(resolve(WURZEL, pfad), "utf8");
@@ -486,7 +487,8 @@ describe("R-0639 · R4 — am Draht: was den Modellclient WIRKLICH erreicht", ()
 // `taskpane.html` geschnitten und mit dem echten Hilfsblock (`prepareAskQuestion`, `performAsk`)
 // ausgeführt. Ersetzt sind nur Hostzugriffe (Word-Markierung, DOM, Wörterbuch, Anzeige) und der
 // Transport: `fetch` geht über `app.inject` an die ECHTE Route aus `wegAufbauen`.
-const TASKPANE = quelle("apps/web/public/word-addin/taskpane.html");
+// R-1611: das Fenster liegt in drei Dateien; geschnitten wird aus dem zusammengefügten Dokument.
+const TASKPANE = panelQuelleAus(resolve(WURZEL, "apps/web/public/word-addin/taskpane.html"));
 
 /** Schneidet `function <name>(…) { … }` aus — mit Klammerzählung über Strings und Kommentare. */
 function funktionsquelle(name: string): string {

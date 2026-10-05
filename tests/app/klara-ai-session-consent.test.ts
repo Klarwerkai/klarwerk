@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   assembleServices,
@@ -8,6 +6,7 @@ import {
   inMemoryRepos,
 } from "../../services/app/src/build-app";
 import { InMemoryKlaraSessionRepo } from "../../services/reasoner";
+import { panelQuelleAus } from "../support/panelquelle";
 
 // ================================================================================================
 // W1 S4 — SITZUNG UND ZUSTIMMUNG AM ECHTEN HTTP-WEG (Auftrag §182-197)
@@ -247,7 +246,7 @@ describe("W1 S4 · Gegenprobe 12 — der Sitzungszustand hängt an der Ablage", 
 // verlangt — und was sie ausdrücklich verbietet.
 describe("KW-KA4 · Taskpane: Einwilligung je Dokument", () => {
   const TASKPANE = "apps/web/public/word-addin/taskpane.html";
-  const quelle = (): string => readFileSync(resolve(process.cwd(), TASKPANE), "utf8");
+  const quelle = (): string => panelQuelleAus(TASKPANE);
   /**
    * ALLE Abschnitte zwischen den Marken, verkettet — nicht nur der erste.
    *

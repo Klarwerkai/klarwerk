@@ -18,6 +18,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { panelQuelleAus } from "../support/panelquelle";
 
 const WURZEL = process.cwd();
 const PANEL = join(WURZEL, "apps", "web", "public", "word-addin", "taskpane.html");
@@ -57,7 +58,7 @@ function befunde(html: string): string[] {
 }
 
 describe("JOB 3056 · Abloesung des Zielbilds Main.dc.html (27.08.) — nichts davon kommt ins Sichtfeld zurueck", () => {
-  const html = readFileSync(PANEL, "utf8");
+  const html = panelQuelleAus(PANEL);
 
   it("A · die Traeger des alten Zielbilds sind aus dem Rumpf GELOESCHT, ihre Schluessel gefallen", () => {
     expect(befunde(html)).toEqual([]);
