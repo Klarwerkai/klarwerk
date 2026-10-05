@@ -844,9 +844,17 @@ describe("JOB 3266 R2 · der Zugang zu den eigenen Entwürfen im echten Chromium
       undefined,
       { timeout: 20_000 },
     );
+    // NACHARBEIT 5: Die erste Fassung meldete die Rücknahme als bloßes `false` (Lauf zu 2fde0808,
+    // `gezielt-browser.log`) — ohne zu sagen, WAS abwich. Gesichert und zurückgeschrieben werden
+    // jetzt die ROHEN Attribute `class` und `style` (`getAttribute`/`setAttribute`/
+    // `removeAttribute`, ein Weg für beide), und zurück kommen beide Schnappschüsse je Zeile. Die
+    // Zusage ist dieselbe — nachher === vorher, für jede Zeile —, nur dass ein Rot jetzt die
+    // Abweichung im Bericht nennt.
     const quelle = `() => {
       const traeger = [...document.querySelectorAll('[data-testid="page-entwuerfe"] [data-testid="entwurfsliste-eintrag-titel"]')].map((t) => t.parentElement);
-      const alt = traeger.map((k) => ({ klasse: k.className, stil: k.getAttribute('style') }));
+      const schnappschuss = () => traeger.map((k) => ({ klasse: k.getAttribute('class'), stil: k.getAttribute('style') }));
+      const zuruecksetzen = (k, name, wert) => { if (wert === null) { k.removeAttribute(name); } else { k.setAttribute(name, wert); } };
+      const vorher = schnappschuss();
       let mass = null;
       try {
         for (const k of traeger) {
@@ -858,17 +866,20 @@ describe("JOB 3266 R2 · der Zugang zu den eigenen Entwürfen im echten Chromium
         mass = (${TITELMASSE_SEITE})();
       } finally {
         traeger.forEach((k, i) => {
-          k.className = alt[i].klasse;
-          if (alt[i].stil === null) { k.removeAttribute('style'); } else { k.setAttribute('style', alt[i].stil); }
+          zuruecksetzen(k, 'class', vorher[i].klasse);
+          zuruecksetzen(k, 'style', vorher[i].stil);
         });
       }
-      return { mass: mass, zurueck: traeger.every((k, i) => k.className === alt[i].klasse && k.getAttribute('style') === alt[i].stil) };
+      return { mass: mass, vorher: vorher, nachher: schnappschuss() };
     }`;
-    const k = await s.evaluate<{ mass: Titelmass[]; zurueck: boolean }>(fn(quelle));
+    type Schnappschuss = { klasse: string | null; stil: string | null }[];
+    type Probe = { mass: Titelmass[]; vorher: Schnappschuss; nachher: Schnappschuss };
+    const k = await s.evaluate<Probe>(fn(quelle));
+    expect(k.vorher, "L2K: keine Zeilenträger gefunden").toHaveLength(3);
     expect(
-      k.zurueck,
+      k.nachher,
       "L2K: die Rücknahme im `finally` hat den alten Zustand nicht hergestellt",
-    ).toBe(true);
+    ).toEqual(k.vorher);
     // Die Ursache steht benannt in der Messung: Auslassungspunkte und ein Text, der breiter ist als
     // seine Fläche — bei den beiden langen Titeln mindestens.
     const gekuerzt = k.mass.filter(

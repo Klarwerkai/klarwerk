@@ -435,8 +435,11 @@ describe("P-ENTWUERFE-VERWALTEN · Abnahmefolge nur mit Tab/Enter im echten Chro
       await s.keyboard.press("Enter");
 
       // ── 9 · EINTRAG WEG — auf der Fläche und am Bestand; die anderen bleiben.
+      // Gewartet wird auf die ZEILE (`data-entwurfszeile`), nicht auf ihren „Fortsetzen“-Knopf:
+      // den ersetzt schon die Rückfrage („Behalten“/„Löschen“), er ist also weg, bevor die
+      // Löschung überhaupt unterwegs ist (Nacharbeit 5: so lief die Prüfung zu früh).
       await warteAuf(
-        `(id) => document.querySelector('[data-entwurf-fortsetzen="' + id + '"]') === null`,
+        `(id) => document.querySelector('[data-entwurfszeile="' + id + '"]') === null`,
         ziel,
       );
       expect(await s.evaluate<string[]>(fn(SEITEN_TITEL))).not.toContain(ZIEL_TITEL);
