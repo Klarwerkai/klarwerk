@@ -347,10 +347,16 @@ Als Zeitplan (Beispiel `/etc/cron.d/klarwerk-sicherung`, Nutzer mit Docker-Recht
    SHA-256 des Dumps, Zeitpunkt.
 2. **`auslagern`**: Dump + Prüfsumme + Herkunftsnachweis als `tar`, verschlüsselt mit
    `openssl enc -aes-256-cbc -pbkdf2 -iter 200000`, nach `ZWEITER_ORT` (absoluter Pfad, nicht in
-   Instanz oder Arbeitsordner — ein eingehängter zweiter Speicher). Gestaffelt: `tage/` jede
+   Instanz oder Arbeitsordner — ein eingehängter zweiter Speicher). **Ohne Herkunftsnachweis wird
+   nichts ausgelagert** (170): eine Zweitkopie ohne ihn verweigerte `wiederherstellen` später mit
+   161. Jedes Kopieren ins Paket wird geprüft, der Nachweis vor dem Verschlüsseln bytegleich
+   verglichen; scheitert eines davon, ist das 170 und am zweiten Ort entsteht keine Kopie
+   (Befund B1, Lauf 3 — vorher wurde ein gescheitertes Kopieren des Nachweises übergangen und der
+   Schritt meldete „nachgeprüft: ja"). Gestaffelt: `tage/` jede
    Sicherung (`AUSLAGERUNG_TAGE`, Vorgabe 14), `wochen/` die erste der ISO-Woche
    (`AUSLAGERUNG_WOCHEN`, 8), `monate/` die erste des Monats (`AUSLAGERUNG_MONATE`, 12). Danach wird
-   die Zweitkopie **entschlüsselt** und ihr Dump gegen die Prüfsumme gehalten; jede in diesem Lauf
+   die Zweitkopie **entschlüsselt**, ihr Dump gegen die Prüfsumme gehalten und ihr
+   Herkunftsnachweis bytegleich mit dem Original verglichen (fehlt er oder weicht er ab: 170); jede in diesem Lauf
    angelegte Kopie (Tag, ggf. Woche und Monat) wird gegen ihren Sidecar geprüft, der **ihren eigenen**
    Dateinamen trägt (`sha256sum -c` gelingt in jeder Stufe). Ein gescheitertes Kopieren oder ein nicht
    belegbarer Zeitraum ist Exit 170. Als erledigt gilt ein Zeitraum nur, wenn in `wochen/` bzw.

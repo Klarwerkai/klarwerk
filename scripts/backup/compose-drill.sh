@@ -1316,9 +1316,23 @@ schritt_auslagern() {
   fi
   einmal_veroeffentlichen "$schluessel" "$(zufall_hex 48)" || return 170
   mkdir -p "$ort/tage" "$ort/wochen" "$ort/monate" || return 170
+  # BEFUND B1 (Lauf 3): Hier stand `[ ! -f herkunft ] || cp herkunft paket/` — ein fehlender
+  # Herkunftsnachweis wurde still ausgelassen, und ein gescheitertes `cp` ging im ungeprueften
+  # Zweig unter. Die Zweitkopie war dann „nachgeprueft", liess sich aber nicht zurueckspielen
+  # (161: an keine Instanz gebunden). Seither: ohne Herkunftsnachweis wird nichts ausgelagert,
+  # jedes Kopieren ins Paket ist geprueft, und die Nachpruefung unten verlangt den Nachweis auch
+  # in der ENTSCHLUESSELTEN Zweitkopie, bytegleich mit dem Original.
+  if [ ! -f "$(herkunft_datei "$dump")" ]; then
+    echo "[b3] ABBRUCH (170): kein Herkunftsnachweis $(basename "$(herkunft_datei "$dump")") — eine Zweitkopie ohne ihn liesse sich nicht zurueckspielen; es wird nichts ausgelagert." >&2
+    return 170
+  fi
   paket="$(mktemp -d)"
-  cp "$dump" "$dump.sha256" "$paket/"
-  [ ! -f "$(herkunft_datei "$dump")" ] || cp "$(herkunft_datei "$dump")" "$paket/"
+  if ! cp "$dump" "$dump.sha256" "$paket/" || ! cp "$(herkunft_datei "$dump")" "$paket/" ||
+    ! cmp -s "$(herkunft_datei "$dump")" "$paket/$(basename "$(herkunft_datei "$dump")")"; then
+    rm -rf "$paket"
+    echo "[b3] ABBRUCH (170): Dump, Pruefsumme oder Herkunftsnachweis liessen sich nicht ins Paket kopieren — es wird nichts ausgelagert." >&2
+    return 170
+  fi
   name="$(basename "$dump").tar.enc"
   enc="$ort/tage/$name"
   if ! (cd "$paket" && tar -cf - .) |
@@ -1385,7 +1399,10 @@ schritt_auslagern() {
     (cd "$pruef" && tar -xf -) &&
     [ "$(pruefsumme "$pruef/$(basename "$dump")")" = "$(awk '{print $1}' "$pruef/$(basename "$dump").sha256")" ] &&
     [ "$(pruefsumme "$pruef/$(basename "$dump")")" = "$(pruefsumme "$dump")" ]; then
-    :
+    if ! cmp -s "$(herkunft_datei "$dump")" "$pruef/$(basename "$(herkunft_datei "$dump")")"; then
+      grund="${grund:+$grund; }die entschluesselte Zweitkopie enthaelt den Herkunftsnachweis nicht unveraendert"
+      ergebnis=170
+    fi
   else
     grund="${grund:+$grund; }die Zweitkopie liess sich nicht entschluesseln oder ihr Dump passt nicht"
     ergebnis=170

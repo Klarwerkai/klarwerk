@@ -230,9 +230,11 @@ Zeitplan (Beispiel `/etc/cron.d/klarwerk-sicherung`):
   PostgreSQL-Systemkennung, Stand der Instanz, `/health` (Version, Commit), SHA-256, Zeitpunkt.
   Dasselbe gilt für die Vorab-Sicherung jeder Aktualisierung (§13.5).
 - **Zweitkopie:** Dump + Prüfsumme + Herkunft, verschlüsselt (AES-256, `openssl enc -pbkdf2`),
-  gestaffelt: `tage/` 14, `wochen/` 8, `monate/` 12 (`AUSLAGERUNG_TAGE/WOCHEN/MONATE`); nach dem
-  Schreiben entschlüsselt und gegen die Prüfsumme gehalten, jede neue Stufenkopie gegen ihren
-  eigenen Sidecar (Exit 170 sonst). Der Schlüssel liegt nie am zweiten Ort; er und die
+  gestaffelt: `tage/` 14, `wochen/` 8, `monate/` 12 (`AUSLAGERUNG_TAGE/WOCHEN/MONATE`). Ohne
+  Herkunftsnachweis oder bei gescheitertem Kopieren ins Paket wird **nichts** ausgelagert (Exit
+  170) — eine Zweitkopie ohne Nachweis ließe sich nicht zurückspielen (161). Nach dem Schreiben
+  entschlüsselt: Dump gegen die Prüfsumme, Herkunftsnachweis bytegleich gegen das Original, jede
+  neue Stufenkopie gegen ihren eigenen Sidecar (Exit 170 sonst). Der Schlüssel liegt nie am zweiten Ort; er und die
   Instanzkennung werden beim ersten Lauf genau einmal atomar angelegt.
 - Jede Sicherung hat ihre Prüfsumme (`.sha256`); stimmt sie nicht, startet weder der Drill (10/11)
   noch das Zurückspielen (160) `pg_restore`.
@@ -330,7 +332,7 @@ lief keine Zielprüfung — es gibt keinen festgelegten Wert, gegen den sie prü
 | Aussage | Beleg | Stand |
 | --- | --- | --- |
 | Sicherung über `docker compose exec`, ohne Kennwort, Aufbewahrung, Herkunft | `tests/kundenbetrieb-compose/*` (Docker-Attrappe); lokaler Compose-Lauf `sichern` (3 Läufe, `BACKUP_KEEP=2`, 2 bleiben, `kennwort_im_log=nein`) | dockerfrei gemessen; **echt gemessen** (Docker, 26.09.); Prüfplatz **offen** |
-| verschlüsselte, gestaffelte Zweitkopie, zurückgelesen; gescheiterte Periodenkopie wird nachgeholt statt übergangen | `ernstfall-bindung-auslagerung.test.ts` Z1–Z4, `parallel-und-rueckweg.test.ts` R3-1 (echtes `openssl`); lokaler Lauf `taeglich` (nachgeprüft: ja) | gemessen; ein echter zweiter Ort beim Kunden ist **nicht eingerichtet** |
+| verschlüsselte, gestaffelte Zweitkopie, zurückgelesen; gescheiterte Periodenkopie wird nachgeholt statt übergangen; Herkunftsnachweis Pflicht in der Zweitkopie | `ernstfall-bindung-auslagerung.test.ts` Z1–Z4, `parallel-und-rueckweg.test.ts` R3-1, `tests/kundenbetrieb-sicherung/zweitkopie-herkunft.test.ts` ZH1–ZH4 (echtes `openssl`, Kopierstörung auch im vollständigen `ablauf`); lokaler Lauf `taeglich` (nachgeprüft: ja, Fassung vor der B1-Korrektur) | gemessen; ein echter zweiter Ort beim Kunden ist **nicht eingerichtet** |
 | Instanzbindung inkl. Gegenprobe gegen das falsche Ziel | I1–I4; `gegenprobe` G4/G5 (161, kein Ziel angelegt) | dockerfrei und **echt gemessen**; Prüfplatz **offen** |
 | Ernstfall-Zurückspielen mit Rückweg an jedem Schritt | E1–E8; lokaler Lauf `zurueckspielen` (Exit 0, 8 s, Inhalt gleich) | Erfolgsweg **echt gemessen**; Fehlschlagszweige nur dockerfrei; Prüfplatz **offen** |
 | Wiederherstellung in frische DB, Anwendung dagegen, Anhang byte-identisch | W1–W4 (Testserver-PG und lokaler Lauf `pruefen`: 10/10 Integrationsfälle, 272/272 Vertragsfälle, kein Skip); `wiederherstellen` (Drill exit 0, 45 Pflichttabellen, 512 Bytes Anhang zurückgelesen) | **echt gemessen**; Prüfplatz **offen** |
