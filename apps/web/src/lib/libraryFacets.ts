@@ -118,6 +118,10 @@ export function libraryFilterValues(
       konflikte ? conflictLimitedUsability(reife, conflictImpact(ko.id, konflikte)) : reife,
     ],
     confidentiality: [confidentialityOf(ko.confidentiality)],
+    // R-0431 / R-1728 / FR-LIB-01 (K2, K20, K28): das Fachgebiet als EIGENE Achse neben der
+    // Kategorie. Nur der am Objekt gespeicherte Wert — ohne Angabe bleibt die Achse leer; aus
+    // Kategorie, Titel oder Inhalt wird nichts abgeleitet.
+    domain: ko.domain?.trim() ? [ko.domain.trim()] : [],
   };
 }
 

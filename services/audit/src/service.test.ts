@@ -27,6 +27,82 @@ describe("AuditService", () => {
     expect(Object.isFrozen(entry)).toBe(true);
   });
 
+  // Lauf 5 (BEN-L5-B1): eingefroren war nur das äußere Objekt; das Payload blieb die Referenz des
+  // Aufrufers. Beide Gegenproben Bens — Ändern über das Eingabepayload, Löschen über ein gelesenes
+  // Payload — dürfen den gespeicherten Eintrag nicht mehr verändern.
+  it("FR-AUD-02 (BEN-L5-B1): Ändern des Eingabepayloads ändert den gespeicherten Eintrag nicht", async () => {
+    const payload: Record<string, unknown> = { verdict: "up", liste: ["a"] };
+    await service.record({ actor: "a", action: "ko.rated", target: "k", payload });
+    payload.verdict = "down";
+    (payload.liste as string[]).push("b");
+    const [gespeichert] = await service.list();
+    expect(gespeichert?.payload).toEqual({ verdict: "up", liste: ["a"] });
+    expect(await service.verify()).toBe(true);
+  });
+
+  it("FR-AUD-02 (BEN-L5-B1): Ändern und Löschen über jeden Leseweg wird verweigert, der Eintrag bleibt", async () => {
+    const repo = new InMemoryAuditRepo();
+    const s = new AuditService({ repo });
+    const zurueck = await s.record({
+      actor: "a",
+      action: "ko.rated",
+      target: "k",
+      payload: { verdict: "up", tief: { stufe: 1 } },
+    });
+    const vorher = structuredClone(zurueck);
+    const lesewege = {
+      record: async () => zurueck,
+      list: async () => (await s.list())[0],
+      all: async () => (await repo.all())[0],
+      findBy: async () => (await repo.findBy({ target: "k" }))[0],
+      last: () => repo.last(),
+      findBySeq: () => repo.findBySeq(1),
+      exportChain: async () => (await s.exportChain("export")).entries[0],
+    };
+    for (const [weg, lies] of Object.entries(lesewege)) {
+      const e = (await lies()) as { payload: Record<string, unknown>; actor: string };
+      expect(() => {
+        e.payload.verdict = "down";
+      }, `${weg}: Ändern`).toThrow(TypeError);
+      expect(Reflect.deleteProperty(e.payload, "verdict"), `${weg}: Löschen`).toBe(false);
+      expect(() => {
+        (e.payload.tief as { stufe: number }).stufe = 2;
+      }, `${weg}: tief Ändern`).toThrow(TypeError);
+      expect(() => {
+        e.actor = "jemand-anders";
+      }, `${weg}: Kopf Ändern`).toThrow(TypeError);
+    }
+    expect(await repo.findBySeq(1)).toEqual(vorher);
+    expect(await s.verify()).toBe(true);
+  });
+
+  // Runde 3 (BEN-L5-B1): ein Date im Payload war eingefroren, aber über `setUTCFullYear` änderbar.
+  // Gespeichert wird jetzt, was auch PostgreSQL speichert und was der Hash abdeckt: die ISO-Zeichenkette.
+  it("FR-AUD-02 (BEN-L5-B1): ein Datum im Payload lässt sich über keine Referenz nachträglich ändern", async () => {
+    const zeit = new Date("2026-09-30T10:00:00.000Z");
+    const zurueck = await service.record({
+      actor: "a",
+      action: "ko.rated",
+      target: "k",
+      payload: { zeit, tief: { auch: new Date("2026-01-01T00:00:00.000Z") } },
+    });
+    expect(await service.verify()).toBe(true);
+    zeit.setUTCFullYear(1999);
+    for (const e of [zurueck, ...(await service.list())]) {
+      for (const wert of [e.payload.zeit, (e.payload.tief as { auch: unknown }).auch]) {
+        if (wert instanceof Date) {
+          wert.setUTCFullYear(2000);
+        }
+      }
+    }
+    const [gespeichert] = await service.list();
+    expect(gespeichert?.payload).toEqual({
+      zeit: "2026-09-30T10:00:00.000Z",
+      tief: { auch: "2026-01-01T00:00:00.000Z" },
+    });
+    expect(await service.verify()).toBe(true);
+  });
+
   it("FR-AUD-02: intakte Kette verifiziert", async () => {
     await service.record({ actor: "a", action: "act1", target: "t1" });
     await service.record({ actor: "b", action: "act2", target: "t2" });

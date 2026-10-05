@@ -48,6 +48,9 @@ import i18n from "../../apps/web/src/i18n";
 const SPRACHEN = ["de", "en", "nl"] as const;
 
 // Neu angelegt in diesem Schnitt (die Bibliotheksschlüssel sind mit JOB 3063 entfallen, s. o.).
+// Aufnahme gesamt-entwurf-einreichen (Lauf :3): `capture.draftScope.noteAdmin` („Admin-Ansicht:
+// alle") bleibt im Katalog (JOB 3062 §5a), wird aber nirgends mehr gezeigt — seit Entscheidung Pedi
+// `debbb8e8` sind Entwürfe privat, auch die Admin-Ansicht sieht nur die eigenen.
 const NEUE_SCHLUESSEL = [
   "capture.draftScope.note",
   "capture.draftScope.noteAdmin",
@@ -174,13 +177,14 @@ describe("BASIC-u2 · AK2 — der Entwurfstext benennt den durchsuchten Bestand"
     expect(note).toMatch(/Bibliothek/);
   });
 
-  it("die Admin-Ansicht bekommt einen eigenen, wahren Satz (sie sieht ALLE Entwürfe)", () => {
-    for (const locale of SPRACHEN) {
-      expect(wert(locale, "capture.draftScope.noteAdmin")).not.toBe(
-        wert(locale, "capture.draftScope.note"),
-      );
-    }
-    expect(wert("de", "capture.draftScope.noteAdmin")).toMatch(/Admin/);
+  it("keine Fläche zeigt mehr einen eigenen Admin-Satz — Entwürfe sind privat (debbb8e8)", () => {
+    const meineEntwuerfeSrc = readFileSync(
+      join(process.cwd(), "apps/web/src/pages/MeineEntwuerfe.tsx"),
+      "utf8",
+    );
+    expect(captureSrc).not.toContain('t("capture.draftScope.noteAdmin")');
+    expect(meineEntwuerfeSrc).not.toContain('t("capture.draftScope.noteAdmin")');
+    expect(meineEntwuerfeSrc).toContain('t("capture.draftScope.note")');
   });
 
   it("der Gegenweg trägt einen Namen, der sagt, wohin er führt", () => {
@@ -239,7 +243,6 @@ describe("BASIC-u2 · AK5 — kein hartkodierter sichtbarer Text im neuen JSX", 
     expect(ende, "der Block steht nicht vor der Entwurfsliste").toBeGreaterThan(anfang);
     const block = captureSrc.slice(anfang, ende);
     expect(block).toContain('t("capture.draftScope.note")');
-    expect(block).toContain('t("capture.draftScope.noteAdmin")');
     expect(block).toContain('t("capture.draftScope.toLibrary")');
     expect(sichtbarerText(block)).toEqual([]);
   });

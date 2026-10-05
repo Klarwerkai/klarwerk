@@ -821,6 +821,18 @@ const BEWUSST: readonly Ausnahme[] = [
       "hiermit auf sein Ende, statt zu schlafen. Ein Produktaufrufer waere der alte Fehler: " +
       "eine Route, die auf den Lauf wartet, bevor sie antwortet.",
   },
+  {
+    schluessel: "services/app/src/routes/ko-routes.ts::ohneImportHerkunft",
+    grund:
+      "Seit 1d1cc373 (R-0180/R-2108, Importkandidaten) ohne Produktaufrufer, am Code geprueft: die " +
+      "Urheber schreiben an beiden oeffentlichen Schreibwegen selbst, warum er dort NICHT steht — " +
+      "die Destrukturierung verwirft `origin` vollstaendig, `ohneImportHerkunft` auf einem Rumpf " +
+      "ohne `origin` waere wirkungslos (ko-routes.ts, POST /api/kos und Dokumentweg, Kommentare " +
+      "„R-0180/R-2108“). Gelesen wird er nur in tests/import-kandidaten-echt/" +
+      "annahme-in-validierung.test.ts W6 — der Fall prueft damit den Helfer, NICHT die Routen. " +
+      "Eingetragen von einem fremden Auftrag (Suchraum/Facetten), dessen Zielpfade ko-routes.ts " +
+      "nicht umfassen; Streichen des Helfers oder ein Routenfall gehoert dem Importauftrag.",
+  },
   // JOB 3110 (06.09.2026): Der Eintrag fuer `klara-session-routes.ts::klaraZurufRoutes` ist
   // GESTRICHEN und nicht umformuliert — er war ausdruecklich selbstauslaufend („sobald build-app.ts
   // die Route registriert, hat sie einen Aufrufer, und A3 verlangt die Streichung dieser Zeile").
@@ -1299,6 +1311,37 @@ const BEWUSST_WEB: readonly Ausnahme[] = [
   // HIER STAND `imageResize.ts::imageWidthPercent` UND IST GESTRICHEN — von A3 erzwungen. Die
   // Breitenanzeige der Bildleiste (`RichTextEditor.tsx`, `bildgroesse-gezogen`) liest die Zahl
   // seither über diesen Export statt per Zeichenkettenersetzung am Attribut.
+  {
+    schluessel: "apps/web/src/lib/wordAddin.ts::WORD_ADDIN_DOKUMENT_SETTING",
+    grund:
+      "Seit 4a88a5ef (R-0169, Dokumentkennung im Word-Dokument) am Code geprueft: der Produktweg " +
+      "ist das statische Panel `apps/web/public/word-addin/taskpane.html` — es fuehrt dieselbe " +
+      "Konstante und dieselben zwei Funktionen als Skript-Spiegel (Kommentar „Spiegel von " +
+      "wordAddin.ts“, Lesen/Schreiben der Dokumenteinstellung, Aufruf `mitDokumentkennung` beim " +
+      "Senden). Dieser Waechter liest nur TypeScript und sieht den Aufrufer deshalb nicht; die " +
+      "TS-Fassung ist die getestete Referenz (tests/json-herkunft-rundlauf/" +
+      "herkunft-identitaet-importeur.test.ts). Dieselbe Lage wie die wordAddin-Eintraege im " +
+      "Altbestand — hier mit Grund statt eingefroren.",
+  },
+  {
+    schluessel: "apps/web/src/lib/wordAddin.ts::mitDokumentkennung",
+    grund: "Derselbe Grund wie `WORD_ADDIN_DOKUMENT_SETTING`: Aufrufer ist der Skript-Spiegel.",
+  },
+  {
+    schluessel: "apps/web/src/lib/wordAddin.ts::dokumentkennungAusAntwort",
+    grund: "Derselbe Grund wie `WORD_ADDIN_DOKUMENT_SETTING`: Aufrufer ist der Skript-Spiegel.",
+  },
+  {
+    schluessel: "apps/web/src/lib/captureAdvancedFields.ts::ADVANCED_FIELDS_TOTAL",
+    grund:
+      "Seit 8f70ef9a (R-0922, Zaehler der erweiterten Details) ohne Produktaufrufer, am Code " +
+      "geprueft: der Kommentar an der Konstante sagt woertlich „fuer Tests und Pruefer, nicht fuer " +
+      "die Anzeige“ — das Badge zeigt nur `filledCount` aus `advancedFieldsSummary`, eine " +
+      "Hoechstzahl erscheint auf keiner Flaeche. Gelesen wird der Export in " +
+      "`tests/app/capture-advanced-fields.test.ts` und " +
+      "`tests/capture/job2683-d2-suche-flaeche.test.tsx` als Pruefhilfe dafuer, dass der Zaehler alle neun Angaben erreicht. Ein erfundener " +
+      "Produktaufruf waere hier der Fehler; entfaellt die Pruefhilfe, ist der Export zu streichen.",
+  },
   // HIER STAND `GesamtanweisungSeite` (JOB 4154) UND IST MIT JOB 4156 GESTRICHEN — ebenfalls
   // selbstauslaufend und ebenfalls von A3 erzwungen. Ihr Aufrufer ist jetzt
   // `apps/web/src/components/gesamtanweisung/GesamtanweisungBereich.tsx`, und der haengt ueber
@@ -1395,7 +1438,10 @@ const ALTBESTAND_WEB: readonly string[] = [
   "apps/web/src/lib/files.ts::isPptxDocument",
   "apps/web/src/lib/funke.ts::openGapsView",
   "apps/web/src/lib/importSelectView.ts::folderTreeSegmentKey",
-  "apps/web/src/lib/importSelectView.ts::ordnerOhneEigeneZeile",
+  // R-0991 (K3) gestrichen: `ordnerOhneEigeneZeile` hat einen Aufrufer bekommen. Die Importvorschau
+  // (`components/ImportSelect.tsx`) kennzeichnet damit im Ordnerbaum jeden Ordner, dessen
+  // Elternseite nicht in der Vorschau liegt (`components/ImportPreviewTree.tsx`, Marke
+  // „Seite nicht in diesem Import"). A3 verlangt genau diese Streichung.
   "apps/web/src/lib/intakeSimilarity.ts::classifyIntake",
   "apps/web/src/lib/interviewFlow.ts::answeredTurns",
   "apps/web/src/lib/knowledgeRescue.ts::knowledgeRescueImpact",

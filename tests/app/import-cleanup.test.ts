@@ -275,6 +275,8 @@ describe("WP-D-CLEAN: POST /api/admin/import/cleanup", () => {
   // (services/app/src/speicher-vorgang.ts); scheitert der Beleg, ist nichts geschehen. Die
   // Bereinigung sieht deshalb zwei ehrlich gescheiterte Löschungen: beide KOs aktiv, beide
   // übersprungen, die Kandidaten bleiben für den nächsten Lauf stehen — kein halber Zustand.
+  // Dasselbe verlangt die Aufnahme gesamt-auditprotokoll (Lauf 3): nie „im Papierkorb ohne Beleg";
+  // ohne Klammer hält `KoService.schreibeMitBeleg` es (Rücknahme des Writes).
   it("WP-SHIP8-FIX (bens F1) · atomar: der Audit-Schreiber des Soft-Deletes wirft → KO bleibt aktiv, zählt als skipped", async () => {
     const { app, services, headers, ownKoId } = await cleanupApp();
     const digest = await previewDigest(app, headers);
@@ -307,6 +309,8 @@ describe("WP-D-CLEAN: POST /api/admin/import/cleanup", () => {
     expect(await services.ko.trashed()).toEqual([]);
     expect((await services.ko.list()).map((k) => k.id)).toContain(ownKoId);
     expect(await services.ko.list()).toHaveLength(3);
+    // Kein Beleg für eine nicht gespeicherte Änderung (Aufnahme gesamt-auditprotokoll).
+    expect(await services.audit.list({ action: "ko.deleted" })).toEqual([]);
   });
 
   it("WP-SHIP8-FIX (bens F1): der ABSCHLUSS-Audit wirft → Antwort bleibt ERFOLG mit auditFailed:true (kein Retry-Provokateur)", async () => {

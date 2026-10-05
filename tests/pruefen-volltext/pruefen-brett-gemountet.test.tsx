@@ -26,9 +26,9 @@
 //       an und schneidet die Liste. Ohne diesen Block wäre C1 unten ein Messartefakt.
 //   C1  Marke in der Kernaussage → die Zeile bleibt, die andere fällt weg.
 //   C2  ANTI-VAKUUM: eine Marke, die es nicht gibt, lässt keine Zeile übrig.
-//   C3  DER BEFUND als Tatsache: Marke NUR im Inhalt → keine Zeile.
+//   C3  (entfallen mit der Behebung, Aufnahme 20260922 · Prüfboard-Bedienung, N-0072)
 //   C4  Die Beschriftung sagt die Wahrheit über ihren Umfang — DE, EN und NL.
-//   S1  SOLLVERTRAG (`it.fails`): Marke NUR im Inhalt → die Zeile bleibt stehen.
+//   S1  SOLLVERTRAG: Marke NUR im Inhalt → die Zeile bleibt stehen (seit der Behebung `it`).
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { KnowledgeObject } from "../../apps/web/src/api/types";
 
@@ -44,6 +44,8 @@ vi.mock("../../apps/web/src/api/hooks", () => {
     useConflicts: () => ok([]),
     useDuplicates: () => ok([]),
     useLifecyclePending: () => ok([]),
+    // R-0238: die Gegenüber-Suche der widersprechenden Ablehnung — hier Kulisse, nie befragt.
+    useLibrarySearch: () => ok([]),
   };
 });
 
@@ -75,6 +77,14 @@ import { Validation } from "../../apps/web/src/pages/Validation";
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const MARKE = "ENDE-REV26-065813";
+
+/**
+ * Der Schlüssel, den das Volltextfeld als Platzhalter trägt. Bis zur Behebung (Aufnahme 20260922 ·
+ * Prüfboard-Bedienung, N-0072) war das `val.filter` mit der benannten Grenze; seitdem ist es
+ * `pruefboard.volltextFiltern`. C4 misst weiter an DIESEM Schlüssel, ob die Beschriftung zum
+ * Verhalten passt.
+ */
+const BESCHRIFTUNG = "pruefboard.volltextFiltern";
 
 function text(sprache: string, key: string): string {
   return String(i18n.getResource(sprache, "translation", key));
@@ -155,7 +165,7 @@ function oeffneFilter(): void {
 
 /** Das Volltextfeld im aufgeklappten Menü — erkannt an seinem echten Platzhalter. */
 function suchfeld(): HTMLInputElement {
-  const platzhalter = text("de", "val.filter");
+  const platzhalter = text("de", BESCHRIFTUNG);
   const feld = [...container.querySelectorAll("input")].find(
     (i) => i.placeholder === platzhalter,
   ) as HTMLInputElement | undefined;
@@ -226,12 +236,8 @@ describe("JOB 3290 C · die gemountete Prüfen-Seite und ihr Filterfeld", () => 
     expect(sichtbareTitel()).toEqual([]);
   });
 
-  it("C3 · DER BEFUND als Tatsache: die Marke NUR im Inhalt lässt keine Zeile übrig", () => {
-    mount([mitMarkeImInhalt, ohneMarke]);
-    oeffneFilter();
-    tippe(MARKE);
-    expect(sichtbareTitel()).toEqual([]);
-  });
+  // C3 hielt bis zur Behebung den Befund als Tatsache fest („die Marke NUR im Inhalt lässt keine
+  // Zeile übrig"). Mit der Behebung ist er Geschichte; der Zielzustand steht als S1 unten.
 
   it("C4 · die Beschriftung sagt die Wahrheit über ihren Umfang — DE, EN und NL", () => {
     // ZUERST MESSEN, DANN FORDERN. Die Erwartung an den Text wird aus dem tatsächlichen Verhalten
@@ -250,7 +256,7 @@ describe("JOB 3290 C · die gemountete Prüfen-Seite und ihr Filterfeld", () => 
     };
     const volltext = /volltext|full text|volledige tekst/i;
     for (const sprache of ["de", "en", "nl"]) {
-      const beschriftung = text(sprache, "val.filter");
+      const beschriftung = text(sprache, BESCHRIFTUNG);
       if (findetInhalt) {
         // Der Filter kann es → die Beschriftung DARF und SOLL „Volltext" sagen, und sie darf die
         // Einschränkung nicht mehr behaupten.
@@ -273,10 +279,10 @@ describe("JOB 3290 C · die gemountete Prüfen-Seite und ihr Filterfeld", () => 
 });
 
 // ------------------------------------------------------------------------------------------------
-// S — DER SOLLVERTRAG an der Fläche. Heute kausal rot, nach der Behebung grün.
+// S — DER SOLLVERTRAG an der Fläche. Bis zur Behebung kausal rot (`it.fails`), seitdem `it`.
 // ------------------------------------------------------------------------------------------------
 describe("JOB 3290 C/S · SOLLVERTRAG: die Fläche findet die Marke im ausführlichen Inhalt", () => {
-  it.fails("S1 · die Marke steht NUR im Inhalt — die Zeile bleibt, die andere fällt weg", () => {
+  it("S1 · die Marke steht NUR im Inhalt — die Zeile bleibt, die andere fällt weg", () => {
     // Voraussetzungen ausserhalb dieses Fehlschlags: C0 (Mount, Menü, Tippen, Schnitt) und C1
     // (dieselbe Marke trifft, sobald sie in der Aussage steht).
     mount([mitMarkeImInhalt, ohneMarke]);

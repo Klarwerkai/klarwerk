@@ -4,6 +4,7 @@ import { authApi } from "../api/auth";
 import { ApiError } from "../api/client";
 import { Button } from "../components/ui";
 import { parseOidcCallback } from "../lib/oidcCallback";
+import { ssoWeiterziel } from "../lib/ssoWeiterziel";
 
 // FR-AUTH-07: SSO-Callback. Liegt VOR dem Auth-Gate (ohne Anmeldung erreichbar).
 // Verarbeitet ?code=&state= → tauscht serverseitig (PKCE) gegen die Sitzung,
@@ -29,7 +30,7 @@ export function SsoCallback(): JSX.Element {
     }
     authApi
       .oidc(cb.code, cb.state)
-      .then(() => window.location.assign("/"))
+      .then((antwort) => window.location.assign(ssoWeiterziel(antwort?.weiter)))
       .catch((e: unknown) => setError(e instanceof ApiError ? e.message : t("state.error")));
   }, [t]);
 

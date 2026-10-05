@@ -1,4 +1,5 @@
 import type { AuditService } from "../../audit";
+import type { TxContext } from "../../db-tx";
 import type { KnowledgeObject, KoFilter, KoService } from "../../knowledge-object";
 // JOB 557 (Pedi 13.08.2026): „der Erzeuger ist nicht der Verantwortliche." Beide Helfer kommen über
 // die MODULFASSADE — keine Kante in die Innereien von knowledge-object.
@@ -230,94 +231,140 @@ export class ValidationService {
     // SCRUM-507 R2: die Bewertung wird an die bewertete KO-VERSION gebunden. Ein nebenläufiges Revise
     // (Version+1) macht sie damit implizit stale — keine separate Invalidierung, kein Desync.
     const ratedVersion = ko.version;
-    await this.ratings.upsert({
+    const bewertung: Rating = {
       koId,
       userId,
       verdict,
       createdAt: new Date(this.now()).toISOString(),
       koVersion: ratedVersion,
-    });
-    const all = await this.ratings.listByKo(koId);
-    // Nur Bewertungen der aktuell bewerteten Version zählen (stale Vorversions-Bewertungen ausgeschlossen).
-    const currentVotes = all.filter((r) => ratingVersion(r) === ratedVersion).map((r) => r.verdict);
-    const outcome = computeOutcome(currentVotes, ko.neededValidations);
-    // SCRUM-507 R2: Compare-and-Set gegen die bewertete Version. Hat ein Revise die Version
-    // zwischenzeitlich erhöht, unterbleibt das Schreiben (der Revise-Reset auf „offen" bleibt gültig)
-    // → keine fälschlich gültige Alt-Bewertung. setValidationState ist per-KO serialisiert.
-    await this.koService.setValidationState(
-      koId,
-      { trust: outcome.trust, status: outcome.status },
-      { expectedVersion: ratedVersion },
-    );
-    // W3-B (KW-W3-19): der Rueckgabewert wird FESTGEHALTEN statt verworfen. Er ist die Referenz —
-    // eine spaetere Suche nach „dem passenden Eintrag" ist ausdruecklich verboten.
-    // `koVersion` reist bewusst im Payload mit: die Entscheidung gilt fuer die BEWERTETE Fassung,
-    // und nur so kann ein Leser spaeter `WRONG_SUBJECT` von „passt" unterscheiden.
-    const beleg = await this.audit?.record({
-      actor: userId,
-      action: "ko.rated",
-      target: koId,
-      payload: { verdict, koVersion: ratedVersion },
-    });
-    // FR-VAL-05: Bewertung erledigt eine offene Zuweisung des Nutzers.
-    const assignment = await this.assignments.find(koId, userId);
-    if (assignment && assignment.status === "open") {
-      await this.assignments.update({ ...assignment, status: "done" });
+    };
+    // Aufnahme gesamt-auditprotokoll (Lauf 3, Runde 3, BEN-R2-B1): die Stimmenlage wird NICHT mehr
+    // vor der Klammer gebildet, sondern in ihr (`lese`, aufgerufen aus `zustand` unter dem KO-Lock
+    // und — bei einer zweiten Instanz — nach dem neuen Lesen). Zwei gleichzeitige Bewertungen sahen
+    // sonst die Stimme des jeweils anderen nicht. Die Bewertung selbst wird in der Klammer gespeichert
+    // (Upsert-Semantik: eine Bewertung je Nutzer); hier kommt sie rechnerisch zum Bestand dazu.
+    interface Stimmenlage {
+      vorherige: Rating | undefined;
+      all: Rating[];
+      outcome: ValidationOutcome;
+      zuweisung: Assignment | undefined;
     }
-    // SCRUM-124: Gelb/Rot (warn/down) gibt das Objekt zur Nacharbeit an den Autor zurück.
-    // Schemafrei über das vorhandene Assignment-Modell + Audit; Grün (up) erzeugt nichts.
-    // ==========================================================================================
-    // BEN-70 ROT-2 — DIE SPAETERE ENTSCHEIDUNG IST DIE ENTSCHEIDUNG.
-    // ==========================================================================================
-    //
-    // Bis Freeze 67 wurde der Rueckgabewert von `returnToAuthor` hier VERWORFEN, und `rate()`
-    // lieferte weiter die Referenz des vorherigen `ko.rated`-Ereignisses. Der Weg war gebaut,
-    // aber nicht angeschlossen — eine halbe Zusage.
-    //
-    // Bei `warn`/`down` faellt die tragende Entscheidung in der RUECKGABE AN DEN AUTOR: sie
-    // bestimmt, was mit dem Objekt geschieht. Genau ihre Referenz reist deshalb nach aussen.
-    // Bei `up` gibt es keine Rueckgabe — dort bleibt es bei der Bewertungsreferenz (eigener
-    // Gegenkontrollfall, damit die Korrektur nicht einfach „immer die letzte" liefert).
-    let referenz = refAus(beleg);
-    if (verdict === "warn" || verdict === "down") {
-      // ========================================================================================
-      // JOB 557 — HIER WURDE ERZEUGER MIT VERANTWORTLICHEM VERWECHSELT.
-      // ========================================================================================
-      // Bis hierher stand `ko.author`: die Nacharbeit ging an die Person, die den TEXT geschrieben
-      // hat. Genau diese Gleichsetzung hat Pedis Entscheidung zu JOB 557 verworfen. `responsibleOf`
-      // liefert den benannten Eigentümer — und fällt NUR für Altbestand ohne Aggregat auf den Autor
-      // zurück, benannt und an genau einer Stelle (ownership.ts).
-      const rueckgabeRef = await this.returnToResponsible(koId, ko, userId, verdict, ratedVersion);
-      if (rueckgabeRef) {
-        referenz = rueckgabeRef;
+    let stand: Stimmenlage | undefined;
+    const lese = async (): Promise<Stimmenlage> => {
+      const bisher = await this.ratings.listByKo(koId);
+      const vorherige = bisher.find((r) => r.userId === userId);
+      const all = vorherige
+        ? bisher.map((r) => (r.userId === userId ? bewertung : r))
+        : [...bisher, bewertung];
+      // Nur Bewertungen der aktuell bewerteten Version zählen (stale Vorversions-Bewertungen ausgeschlossen).
+      const currentVotes = all
+        .filter((r) => ratingVersion(r) === ratedVersion)
+        .map((r) => r.verdict);
+      stand = {
+        vorherige,
+        all,
+        outcome: computeOutcome(currentVotes, ko.neededValidations),
+        zuweisung: await this.assignments.find(koId, userId),
+      };
+      return stand;
+    };
+
+    // Rücknahme für den Weg OHNE Transaktion: was `beleg` unten geschrieben hat, rückwärts zurück.
+    const rueckwaerts: Array<() => Promise<void>> = [];
+    const beleg = async (tx?: TxContext): Promise<ValidationDecisionRefWert> => {
+      const { vorherige, zuweisung } = stand ?? (await lese());
+      await this.ratings.upsert(bewertung, tx);
+      rueckwaerts.push(async () => {
+        if (vorherige) {
+          await this.ratings.upsert(vorherige);
+        } else {
+          await this.ratings.remove?.(koId, userId);
+        }
+      });
+      // W3-B (KW-W3-19): der Rueckgabewert wird FESTGEHALTEN statt verworfen. Er ist die Referenz —
+      // eine spaetere Suche nach „dem passenden Eintrag" ist ausdruecklich verboten.
+      // `koVersion` reist bewusst im Payload mit: die Entscheidung gilt fuer die BEWERTETE Fassung,
+      // und nur so kann ein Leser spaeter `WRONG_SUBJECT` von „passt" unterscheiden.
+      const eintrag = await this.audit?.record(
+        {
+          actor: userId,
+          action: "ko.rated",
+          target: koId,
+          payload: { verdict, koVersion: ratedVersion },
+        },
+        tx,
+      );
+      // FR-VAL-05: Bewertung erledigt eine offene Zuweisung des Nutzers.
+      if (zuweisung && zuweisung.status === "open") {
+        await this.assignments.update({ ...zuweisung, status: "done" }, tx);
+        rueckwaerts.push(() => this.assignments.update(zuweisung));
       }
-    }
+      // SCRUM-124: Gelb/Rot (warn/down) gibt das Objekt zur Nacharbeit an den Autor zurück.
+      // Schemafrei über das vorhandene Assignment-Modell + Audit; Grün (up) erzeugt nichts.
+      // ======================================================================================
+      // BEN-70 ROT-2 — DIE SPAETERE ENTSCHEIDUNG IST DIE ENTSCHEIDUNG.
+      // ======================================================================================
+      //
+      // Bei `warn`/`down` faellt die tragende Entscheidung in der RUECKGABE AN DEN AUTOR: sie
+      // bestimmt, was mit dem Objekt geschieht. Genau ihre Referenz reist deshalb nach aussen.
+      // Bei `up` gibt es keine Rueckgabe — dort bleibt es bei der Bewertungsreferenz (eigener
+      // Gegenkontrollfall, damit die Korrektur nicht einfach „immer die letzte" liefert).
+      //
+      // JOB 557: `responsibleOf` liefert den benannten Eigentümer — und fällt NUR für Altbestand
+      // ohne Aggregat auf den Autor zurück, benannt und an genau einer Stelle (ownership.ts).
+      let referenz = refAus(eintrag);
+      if (verdict === "warn" || verdict === "down") {
+        const rueckgabeRef = await this.returnToResponsible(
+          koId,
+          ko,
+          userId,
+          verdict,
+          ratedVersion,
+          tx,
+          rueckwaerts,
+        );
+        if (rueckgabeRef) {
+          referenz = rueckgabeRef;
+        }
+      }
+      return referenz;
+    };
+
+    // SCRUM-507 R2: Compare-and-Set gegen die bewertete Version. Hat ein Revise die Version
+    // zwischenzeitlich erhöht, unterbleibt das Schreiben des Zustands (der Revise-Reset auf „offen"
+    // bleibt gültig) → keine fälschlich gültige Alt-Bewertung. Die Stimme selbst wird dann trotzdem
+    // festgehalten (`nurBeleg`), ohne Zustand und ohne Verweis — wie bisher.
+    //
+    // W3-C (Pedi 03.08.) — DIE ENTSCHEIDUNG WIRD AM OBJEKT FESTGEHALTEN, und zwar in DERSELBEN
+    // Klammer wie Zustand und Beleg (`setValidationStateMitBeleg`): mit der bewerteten Version als
+    // Compare-and-Set; ein zwischenzeitliches `revise` erbt den Verweis nicht.
+    const { geschrieben, ref } = await this.koService.setValidationStateMitBeleg(
+      koId,
+      async () => {
+        rueckwaerts.length = 0;
+        const { outcome } = await lese();
+        return { trust: outcome.trust, status: outcome.status };
+      },
+      { expectedVersion: ratedVersion, beiVersionswechsel: "nurBeleg" },
+      beleg,
+      async () => {
+        for (const schritt of rueckwaerts.reverse()) {
+          await schritt().catch(() => undefined);
+        }
+      },
+    );
     // JOB 557: eine ABGESCHLOSSENE Validierung schreibt fort, WER sie getragen hat. Nicht die
     // Bewertung allein — erst der Übergang nach „validiert" ist die Entscheidung. Getragen haben
     // ihn die grünen Stimmen DIESER Fassung; wer `warn`/`down` gestimmt hat, hat nicht validiert.
-    if (outcome.status === "validiert") {
+    // Ein eigener Schritt mit eigenem Beleg (`ko.ownership-role`, gemeinsam über `schreibeMitBeleg`).
+    const { all, outcome } = stand ?? (await lese());
+    if (geschrieben && outcome.status === "validiert") {
       const tragende = all
         .filter((r) => ratingVersion(r) === ratedVersion && r.verdict === "up")
         .map((r) => r.userId);
       await this.koService.recordOwnershipRole(koId, "validators", tragende, userId);
     }
-    // ==========================================================================================
-    // W3-C (Pedi 03.08.) — DIE ENTSCHEIDUNG WIRD AM OBJEKT FESTGEHALTEN.
-    // ==========================================================================================
-    //
-    // HIER UND NICHT FRÜHER: erst an dieser Stelle steht fest, WELCHE Entscheidung trägt. Bei
-    // `warn`/`down` ist es die Rückgabe an den Autor, bei `up` die Bewertung — die Fallunterscheidung
-    // ist zwei Zeilen weiter oben gefallen. Ein Festhalten vor `audit.record()` wäre unmöglich (den
-    // `seq` gibt es dann noch nicht), eines vor dieser Zeile wäre falsch.
-    //
-    // MIT DER BEWERTETEN VERSION ALS COMPARE-AND-SET: hat ein `revise` zwischenzeitlich die Version
-    // erhöht, unterbleibt das Festhalten — dieselbe Regel, die schon `setValidationState` schützt.
-    if (referenz) {
-      await this.koService.setValidationDecisionRef(koId, referenz, {
-        expectedVersion: ratedVersion,
-      });
-    }
-    return { ...outcome, validationDecisionRef: referenz };
+    return { ...outcome, validationDecisionRef: ref };
   }
 
   // Pedi 05.07.: Admin-Override „als wahr kennzeichnen" — der Admin schließt die Validierung eines
@@ -340,57 +387,56 @@ export class ValidationService {
     // Version zwischen dem `get` oben und diesem Schreibvorgang, und ‚validiert' samt Vertrauen 99
     // springt auf einen Text über, den nie ein Mensch geprüft hat". Dieselbe Bindung tragen die
     // beiden Schwesterstellen: der Bewertungsweg (`rate`, :247-251) und der Verweis weiter unten.
-    const gespeichert = await this.koService.setValidationState(
+    //
+    // Aufnahme gesamt-auditprotokoll (Lauf 3, Runde 2, BEN-B1): Zustand, `ko.admin-validated` und
+    // der Verweis darauf laufen in EINER Klammer (`setValidationStateMitBeleg`) — fällt der Beleg
+    // aus, bleibt das Objekt, wie es war (mit PostgreSQL: Transaktion; im Speicher: Rücknahme).
+    const {
+      ko: gespeichert,
+      geschrieben,
+      ref,
+    } = await this.koService.setValidationStateMitBeleg(
       koId,
-      { trust: TRUST_MAX, status: "validiert" },
-      { expectedVersion: geleseneFassung },
+      async () => ({ trust: TRUST_MAX, status: "validiert" }),
+      { expectedVersion: geleseneFassung, beiVersionswechsel: "nichts" },
+      async (tx) =>
+        refAus(
+          await this.audit?.record(
+            {
+              actor: actorId,
+              action: "ko.admin-validated",
+              target: koId,
+              payload: { koVersion: geleseneFassung },
+            },
+            tx,
+          ),
+        ),
     );
     // ==========================================================================================
     // JOB 3789 — DER VERFEHLTE WETTLAUF WIRD ERKANNT, NICHT NUR ABGEFANGEN.
     // ==========================================================================================
     //
-    // `setValidationState` gibt bei verfehltem Compare-and-Set das UNVERAENDERTE Objekt zurueck
-    // (`knowledge-object/src/service.ts:4080-4081`); an seiner Version ist der No-op erkennbar.
+    // Bei verfehltem Compare-and-Set schreibt die Klammer NICHTS — keinen Zustand, keinen
+    // `ko.admin-validated`, keinen Verweis — und liefert das unveränderte Objekt. Ein Beleg ueber
+    // einen Vorgang, den es nicht gab, waere eine Falschaussage; `validators` nennte einen Traeger
+    // fuer eine Entscheidung ohne Wirkung.
     //
-    // OHNE DIESE AUSWERTUNG LIEFE DER REST DER METHODE WEITER, und genau das waere der Schaden:
-    // der Auditeintrag `ko.admin-validated` stuende ueber einer Validierung, die nicht
-    // stattgefunden hat, `validators` nennte einen Traeger fuer eine Entscheidung ohne Wirkung,
-    // und die Antwort an den Menschen sagte „validiert, Vertrauen 99" ueber einen Stand, den
-    // niemand geschrieben hat. Ein Beleg ueber einen Vorgang, den es nicht gab, ist eine
-    // Falschaussage — und der Beleg IST hier das Versprechen. Der Verweis fiele ohnehin aus (sein
-    // CAS greift schon heute), sodass ausgerechnet der schlimmste Mischzustand entstuende:
-    // „validiert" ohne aufloesbaren Beleg.
-    //
-    // WAS STATTDESSEN GESCHIEHT: nichts wird geschrieben, und die Antwort traegt den Stand, der
-    // wirklich gespeichert ist. Die Stimmenzahlen kommen aus den Bewertungen DER JETZT GUELTIGEN
-    // Fassung (`stimmenAus` — dieselbe Zaehlung, die Board und Pruefstand lesen). Feste Nullen
-    // waeren eine Behauptung ueber Stimmen, die dieser Aufruf nie erhoben hat.
-    if (gespeichert.version !== geleseneFassung) {
+    // Die Antwort traegt den Stand, der wirklich gespeichert ist. Die Stimmenzahlen kommen aus den
+    // Bewertungen DER JETZT GUELTIGEN Fassung (`stimmenAus` — dieselbe Zaehlung, die Board und
+    // Pruefstand lesen). Feste Nullen waeren eine Behauptung ueber Stimmen, die dieser Aufruf nie
+    // erhoben hat.
+    if (!geschrieben) {
       const { votes } = stimmenAus(await this.ratings.listByKo(koId), gespeichert.version);
       return {
         ...votes,
         trust: gespeichert.trust,
         status: gespeichert.status,
         // `null` ist die Hausform fuer „es gibt keine Entscheidung und damit keinen Beleg"
-        // (s. `ValidationDecisionRefWert`, :154-163) — hier ist sie woertlich wahr.
+        // (s. `ValidationDecisionRefWert`) — hier ist sie woertlich wahr.
         validationDecisionRef: null,
       };
     }
-    const beleg = await this.audit?.record({
-      actor: actorId,
-      action: "ko.admin-validated",
-      target: koId,
-      payload: { koVersion: geleseneFassung },
-    });
-    // W3-C (Pedi 03.08.): auch die Admin-Entscheidung wird am KO festgehalten — und GENAU SIE ist
-    // der Grund, warum das Rating als Träger ausschied: hier entsteht keins. Compare-and-Set gegen
-    // die validierte Fassung, damit ein zwischenzeitliches `revise` den Verweis nicht erbt.
-    const referenz = refAus(beleg);
-    if (referenz) {
-      await this.koService.setValidationDecisionRef(koId, referenz, {
-        expectedVersion: geleseneFassung,
-      });
-    }
+    const referenz = ref;
     // JOB 557: auch die Admin-Validierung ist eine abgeschlossene Validierung — und sie hat genau
     // EINE tragende Identität. Sie wird fortgeschrieben, sonst wäre `validators` für den Weg leer,
     // über den die Validierung am häufigsten endgültig entschieden wird.
@@ -456,33 +502,54 @@ export class ValidationService {
     by: string,
     verdict: Verdict,
     koVersion: number,
+    // Aufnahme gesamt-auditprotokoll (Lauf 3, Runde 2): im Transaktionsweg auf dem Client der
+    // Validierung; ohne Transaktion sammelt `rueckwaerts` die Rücknahmen für einen späteren Ausfall.
+    tx?: TxContext,
+    rueckwaerts: Array<() => Promise<void>> = [],
   ): Promise<ValidationDecisionRefWert> {
     const verantwortlich = responsibleOf(ko);
     // EINE Quelle für Name und Payload — s. Kopfkommentar. Zwei Ableitungen wären zwei Wahrheiten.
     const art = responsibleKindOf(ko);
-    const existing = await this.assignments.find(koId, verantwortlich);
+    // Lauf 5 (BEN-R3-B1): im Transaktionsweg auf demselben Client gelesen. Über den Pool sah die
+    // Rückgabe noch „offen", wenn `rate` die Zuweisung der selbst bewertenden verantwortlichen Person
+    // eben in der Transaktion erledigt hatte — und unterließ das Wiederöffnen.
+    const existing = await this.assignments.find(koId, verantwortlich, tx);
     if (existing) {
       if (existing.status !== "open") {
-        await this.assignments.update({ ...existing, status: "open" });
+        await this.assignments.update({ ...existing, status: "open" }, tx);
+        rueckwaerts.push(() => this.assignments.update(existing));
       }
     } else {
-      await this.assignments.create({ koId, userId: verantwortlich, status: "open" });
+      await this.assignments.create({ koId, userId: verantwortlich, status: "open" }, tx);
+      // Runde 3 (BEN-R2-B2): eine im Ausfall neu angelegte Zuweisung wird wieder ENTFERNT, nicht nur
+      // als erledigt zurückgestellt — vorher gab es sie nicht. Nur ein Test-Double ohne Löschweg
+      // fällt auf „erledigt" zurück (dann taucht sie auf keinem offenen Brett auf).
+      rueckwaerts.push(async () => {
+        if (this.assignments.remove) {
+          await this.assignments.remove(koId, verantwortlich);
+        } else {
+          await this.assignments.update({ koId, userId: verantwortlich, status: "done" });
+        }
+      });
     }
     // Auch die Rueckgabe IST eine Entscheidung (KW-W3-19) — sie traegt deshalb dieselbe Bindung.
     // Die Methode ist privat; ihre Referenz reist ueber den Rueckgabewert zum Aufrufer, statt hier
     // zu verfallen.
-    const beleg = await this.audit?.record({
-      actor: by,
-      action: art === "owner" ? "ko.returned-to-owner" : "ko.returned-to-author",
-      target: koId,
-      payload: {
-        verdict,
-        author: ko.author,
-        responsible: verantwortlich,
-        responsibleKind: art,
-        koVersion,
+    const beleg = await this.audit?.record(
+      {
+        actor: by,
+        action: art === "owner" ? "ko.returned-to-owner" : "ko.returned-to-author",
+        target: koId,
+        payload: {
+          verdict,
+          author: ko.author,
+          responsible: verantwortlich,
+          responsibleKind: art,
+          koVersion,
+        },
       },
-    });
+      tx,
+    );
     return refAus(beleg);
   }
 
@@ -531,6 +598,20 @@ export class ValidationService {
    * geteilt. Die ZUSAGE dieser Methode ist unveraendert: GENAU EINE Bewertungsabfrage je Aufruf,
    * gezielt auf dieses Objekt (`ko-routes-anzeigestatus.test.ts`, Fall K, `toBe(1)`).
    */
+  /**
+   * R-0238 · Nacharbeit 8: die gespeicherte Bewertung EINER Person zu diesem Objekt samt der
+   * Fassung, für die sie gilt — oder `null`. Die Fortsetzung eines unterbrochenen
+   * Konfliktvorschlags belegt damit, dass die Ablehnung zu genau dieser Fassung wirklich besteht,
+   * statt sie ein zweites Mal zu schreiben. Liest nur; bewertet nichts.
+   */
+  async bewertungVon(
+    koId: string,
+    userId: string,
+  ): Promise<{ verdict: Verdict; koVersion: number } | null> {
+    const eigene = (await this.ratings.listByKo(koId)).find((r) => r.userId === userId);
+    return eigene ? { verdict: eigene.verdict, koVersion: ratingVersion(eigene) } : null;
+  }
+
   async pruefstandFuer(koId: string, koVersion: number): Promise<KoPruefstand> {
     const [zuweisungen, bewertungen] = await Promise.all([
       this.assignments.listByKos([koId]),
@@ -584,6 +665,92 @@ export class ValidationService {
       }
     }
     return staende;
+  }
+
+  // ==============================================================================================
+  // AUFNAHME gesamt-entwurf-einreichen — ZUWEISEN BEIM EINREICHEN, WIEDERHOLBAR.
+  // ==============================================================================================
+  //
+  // Der Einreichweg (`POST /api/drafts/:id/promote`) wird nach einem Abbruch mit demselben
+  // Vorgangsschlüssel wiederholt und muss dann GENAU das nachholen, was fehlt (Ben Lauf :2 F1).
+  // Ben Lauf :3 Runde 1 (B2) hat gezeigt, dass „Zuweisung vorhanden" dafür nicht reicht: scheitert
+  // bei zwei Prüfern die ZWEITE Zuweisung, steht die erste schon, aber niemand ist benachrichtigt —
+  // die Wiederholung hielt die erste für erledigt, und ihre Benachrichtigung ging für immer verloren.
+  //
+  // Deshalb trägt jede hier angelegte Zuweisung ihren Benachrichtigungsstand
+  // (`Assignment.benachrichtigung`): angelegt als „ausstehend", erst nach dem Versand „erledigt".
+  // Die übrigen Zuweisungswege (`assign`) sind unverändert.
+  //
+  // Legt nur die FEHLENDEN Zuweisungen an (eine vorhandene wird nie überschrieben — ihr Status und
+  // ihr Benachrichtigungsstand bleiben). Die Prüferrolle im Aggregat wird für ALLE genannten
+  // Personen fortgeschrieben; das ist idempotent und holt sie nach, falls der frühere Lauf vor ihr
+  // abbrach.
+  async zuweisenBeimEinreichen(
+    koId: string,
+    userIds: readonly string[],
+    actor: string,
+  ): Promise<void> {
+    const ko = await this.koService.get(koId);
+    if (!ko) {
+      throw new ValidationError("NOT_FOUND", "Wissensobjekt nicht gefunden.");
+    }
+    const neu: string[] = [];
+    for (const userId of userIds) {
+      if (!(await this.assignments.find(koId, userId))) {
+        await this.assignments.create({
+          koId,
+          userId,
+          status: "open",
+          benachrichtigung: "ausstehend",
+        });
+        neu.push(userId);
+      }
+    }
+    if (neu.length > 0) {
+      await this.audit?.record({
+        actor,
+        action: "ko.assigned",
+        target: koId,
+        payload: { userIds: neu },
+      });
+    }
+    await this.koService.recordOwnershipRole(koId, "reviewers", [...userIds], actor);
+  }
+
+  // Wer von diesen Personen hat für das KO eine Zuweisung, deren Benachrichtigung noch AUSSTEHT?
+  // Reine Lesefrage an die eigene Ablage.
+  //
+  // ALTBESTAND (Ben Lauf :3 Runde 2, B2-R): Zuweisungen aus der Zeit vor dem Feld tragen KEINEN
+  // Benachrichtigungsstand. Ob ihre Mail lief, weiss diese Ablage nicht — der Aufrufer weiss es:
+  // `altbestandBenachrichtigt` sagt, ob der frühere Lauf nachweislich über die Benachrichtigung
+  // hinausgekommen ist. Ohne diesen Nachweis gilt eine feldlose Zuweisung als AUSSTEHEND — ein
+  // abgebrochener alter Vorgang darf nicht allein wegen des fehlenden Feldes als fertig gelten.
+  async nochZuBenachrichtigen(
+    koId: string,
+    userIds: readonly string[],
+    opts: { altbestandBenachrichtigt: boolean },
+  ): Promise<string[]> {
+    const offen: string[] = [];
+    for (const userId of userIds) {
+      const zuweisung = await this.assignments.find(koId, userId);
+      if (!zuweisung) {
+        continue;
+      }
+      const stand =
+        zuweisung.benachrichtigung ?? (opts.altbestandBenachrichtigt ? "erledigt" : "ausstehend");
+      if (stand === "ausstehend") {
+        offen.push(userId);
+      }
+    }
+    return offen;
+  }
+
+  // Die Benachrichtigung über diese Zuweisung ist verschickt.
+  async benachrichtigungErledigt(koId: string, userId: string): Promise<void> {
+    const zuweisung = await this.assignments.find(koId, userId);
+    if (zuweisung && zuweisung.benachrichtigung !== "erledigt") {
+      await this.assignments.update({ ...zuweisung, benachrichtigung: "erledigt" });
+    }
   }
 
   // FR-VAL-05: KO an ≥1 Person zuweisen.

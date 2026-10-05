@@ -48,9 +48,8 @@
 //   würde 42 wieder eingebaute Hilfe-Tipps also nicht bemerken. Deshalb zählt der Fall H sie
 //   ausdrücklich über ihr unverwechselbares Merkmal (`aria-label` = `help.open`). Genau das ist die
 //   Gegenprobe aus §6: „einen Hilfe-Tipp wieder einfügen → Textmesser rot".
-import { existsSync } from "node:fs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { type Buehne, MOCKUP, buehneAufbauen, fn } from "./h3-blatt-buehne";
+import { type Buehne, buehneAufbauen, fn } from "./h3-blatt-buehne";
 
 /** Die Grenze aus Auftrag §7. */
 const GRENZE = 40;
@@ -91,9 +90,11 @@ const PROSA = `([wurzelSel, ausSel]) => {
 
 const HILFEN = `(marke) => document.querySelectorAll('button[aria-label="' + marke + '"]').length`;
 
-const mockupDa = existsSync(MOCKUP);
-
-describe.runIf(mockupDa)("JOB 3062 · H3 · Textmesser — auf dem Blatt steht kein Erklärtext", () => {
+// Aufnahme `gesamt-erfassung-einstieg:layout`: Der Textmesser liest KEINEN Sollwert aus dem Mockup —
+// seine Grenze steht oben. Er hing trotzdem an dessen Vorhandensein und übersprang sich deshalb auf
+// dem Linux-Prüfweg, dem einzigen, auf dem Chromium laufen darf. Er läuft jetzt immer; fehlt
+// `apps/web/dist`, meldet die Bühne das in `fehler`.
+describe("JOB 3062 · H3 · Textmesser — auf dem Blatt steht kein Erklärtext", () => {
   let leer: Buehne;
   let voll: Buehne;
   const INHALT = "Hohlprofile in Spritzzonen sind zu vermeiden.";
@@ -266,11 +267,5 @@ describe.runIf(mockupDa)("JOB 3062 · H3 · Textmesser — auf dem Blatt steht k
     expect(nachher).toBeGreaterThan(GRENZE);
     expect(nachher).toBeGreaterThan(vorher);
     expect((await prosa(leer)).join(" ").length).toBe(vorher);
-  });
-});
-
-describe.runIf(!mockupDa)("JOB 3062 · H3 · Textmesser übersprungen", () => {
-  it("meldet das fehlende Mockup, statt eine Prüfung vorzutäuschen", () => {
-    expect(existsSync(MOCKUP), `Mockup nicht lesbar: ${MOCKUP}`).toBe(false);
   });
 });

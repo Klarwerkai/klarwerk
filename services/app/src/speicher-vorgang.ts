@@ -196,6 +196,14 @@ function erfassend<T extends object>(ablage: T, name: AblageName, zustand: Klamm
   const schreibend = SCHREIBEND[name];
   return new Proxy(ablage, {
     get(ziel, prop, receiver) {
+      // Zusammenführung mit gesamt-auditprotokoll: `appendNext` (Vorgänger lesen + anhängen in
+      // EINEM Schritt) schreibt in der Ablage an `append`/`appendOnce` vorbei — hier würde der
+      // Eintrag weder erfasst (keine Rückstellung) noch vom Dev-Journal mitgeschrieben. Die erfassende
+      // Ablage bietet ihn deshalb nicht an; der Audit-Dienst nimmt `last` + `append`/`appendOnce`,
+      // und die `kettenSperre` dieser Klammer macht beide Schritte ungeteilt.
+      if (name === "auditRepo" && prop === "appendNext") {
+        return undefined;
+      }
       const wert = Reflect.get(ziel, prop, receiver);
       if (typeof wert !== "function" || typeof prop !== "string") {
         return wert;

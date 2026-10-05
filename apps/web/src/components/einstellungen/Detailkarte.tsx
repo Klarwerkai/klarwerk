@@ -117,7 +117,15 @@ export function Detailkarte({
           <ChevronLeft size={15} />
           {t("einst.zurueck")}
         </button>
-        <span className="min-w-0 flex-1 truncate text-[15px] font-semibold text-text">{titel}</span>
+        {/* R-1581 (390-px-Befund: abgeschnittene Nutzer-/Rollenlabels): der Titel ist hier der
+            Name des Kontos oder der Rolle. Er bricht im Engpass um statt zu kürzen — derselbe
+            Umbruchvertrag wie an der Zeile (`Zeilenkarte.tsx`, JOB 3117). */}
+        <span
+          data-einst="detailtitel"
+          className="min-w-0 flex-1 break-words text-[15px] font-semibold text-text"
+        >
+          {titel}
+        </span>
         {kopfAktion}
         <HilfeMenue hilfe={hilfe} />
       </div>

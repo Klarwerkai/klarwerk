@@ -256,7 +256,7 @@ describe("Restliche API end-to-end (§2.4/§2.5)", () => {
     await app.close();
   });
 
-  it("Draft-Liste zeigt Admin alle Entwuerfe und normalen Nutzern nur eigene", async () => {
+  it("Draft-Liste zeigt JEDEM nur die eigenen Entwuerfe — auch dem Admin (Entscheidung debbb8e8)", async () => {
     const { app, headers: adminHeaders } = await adminApp();
 
     const adminDraft = await app.inject({
@@ -306,9 +306,10 @@ describe("Restliche API end-to-end (§2.4/§2.5)", () => {
       headers: adminHeaders,
     });
     expect(adminList.statusCode).toBe(200);
+    // Entscheidung Pedi `debbb8e8`: Entwürfe sind privat — bis Lauf :3 der Aufnahme
+    // gesamt-entwurf-einreichen stand hier auch Eriks Entwurf in der Admin-Liste.
     expect(adminList.json().map((draft: { id: string }) => draft.id)).toEqual([
       adminDraft.json().id,
-      erikDraft.json().id,
     ]);
 
     const erikList = await app.inject({ method: "GET", url: "/api/drafts", headers: erikHeaders });
@@ -321,6 +322,13 @@ describe("Restliche API end-to-end (§2.4/§2.5)", () => {
       headers: erikHeaders,
     });
     expect(erikReadsAdmin.statusCode).toBe(403);
+
+    const adminReadsErik = await app.inject({
+      method: "GET",
+      url: `/api/drafts/${erikDraft.json().id}`,
+      headers: adminHeaders,
+    });
+    expect(adminReadsErik.statusCode).toBe(403);
 
     await app.close();
   });
