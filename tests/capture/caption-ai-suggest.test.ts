@@ -14,6 +14,7 @@ import {
   checkCaptionImageDataUrl,
 } from "../../apps/web/src/lib/captionAiSuggest";
 import { MAX_DESCRIBE_IMAGE_DATAURL_CHARS } from "../../services/reasoner";
+import { woerterbuchQuelleAus } from "../support/woerterbuchquelle";
 
 describe("WP-BILD-1c: Fußnoten-KI-Vorschlag (pure UI-Logik)", () => {
   // AUFTRAG-mega84 Block A: Hier stand der Fall zu `captionSuggestVisible` — der Sichtbarkeitsregel
@@ -87,7 +88,7 @@ describe("WP-BILD-1c: Fußnoten-KI-Vorschlag (pure UI-Logik)", () => {
   });
 
   it("alle Copy-Schlüssel existieren in DE, EN und NL (inkl. Cloud-KI-Kennzeichnung)", () => {
-    const i18n = readFileSync(resolve(process.cwd(), "apps/web/src/i18n.ts"), "utf8");
+    const i18n = woerterbuchQuelleAus(resolve(process.cwd(), "apps/web/src/i18n.ts"));
     for (const key of Object.values(CAPTION_AI_TEXT)) {
       const occurrences = i18n.split(`"${key}":`).length - 1;
       expect(`${key}:${occurrences}`).toBe(`${key}:3`);

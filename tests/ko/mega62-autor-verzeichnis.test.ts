@@ -37,6 +37,7 @@ import {
 } from "../../apps/web/src/lib/koAuthor";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 import { seedDemo } from "../../services/app/src/seed-demo";
+import { woerterbuchQuelleAus } from "../support/woerterbuchquelle";
 
 const WURZEL = join(__dirname, "..", "..");
 
@@ -208,7 +209,7 @@ describe("mega62 H · die sechs Flächen benutzen den EINEN Weg", () => {
   });
 
   it("jeder Zustand hat einen Schlüssel in allen drei Sprachen", () => {
-    const i18n = readFileSync(join(WURZEL, "apps/web/src/i18n.ts"), "utf8");
+    const i18n = woerterbuchQuelleAus(join(WURZEL, "apps/web/src/i18n.ts"));
     // AUFTRAG-mega63 Block B: aus zwei Schlüsseln werden drei — der vierte Fall ist der Name selbst.
     for (const schluessel of [AUTHOR_UNKNOWN_KEY, AUTHOR_LOADING_KEY, AUTHOR_UNAVAILABLE_KEY]) {
       const treffer = i18n.split("\n").filter((z) => z.includes(`"${schluessel}"`));

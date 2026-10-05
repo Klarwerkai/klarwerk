@@ -393,8 +393,11 @@ export function flaecheNeuBauen(): { dauerMs: number; sha256: string; dateien: n
     // stempelt Bauzeit und Git-Kürzel in `word-addin/taskpane.html`. Der Stempel wird für den Hash
     // auf einen festen Wert gesetzt — der Rest der Datei zählt mit. Gemessen: ohne diese Zeile
     // ergaben zwei Bauten aus demselben Baum verschiedene Hashes.
+    // R-1611 (Drei-Datei-Schnitt): der Anzeige-Platzhalter `var KLARA_STAND` steht seitdem in
+    // `word-addin/taskpane.js`, und `klaraStand()` stempelt beide Dateien — beide werden normalisiert.
+    const gestempelt = ["word-addin/taskpane.html", "word-addin/taskpane.js"];
     summe.update(
-      p.replaceAll("\\", "/") === "word-addin/taskpane.html"
+      gestempelt.includes(p.replaceAll("\\", "/"))
         ? inhalt
             .toString("utf8")
             .replace(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}Z( · [0-9a-f]+)?/g, "<STAND>")

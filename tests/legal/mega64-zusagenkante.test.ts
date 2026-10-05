@@ -22,12 +22,12 @@
 // von `apps/web/src/legal/mega64-sperre-alle-tabs.test.tsx` (gemountet, zwei Bäume, ein Speicher) und
 // von `tests/legal/mega63-speicher-aufzaehlung.test.ts` (Speicherort und Ablaufzeit gegen den Code).
 // Drei Sammler, drei verschiedene Fragen — kein vierter, der alles halb prüft.
-import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { woerterbuchQuelleAus } from "../support/woerterbuchquelle";
 
 const WURZEL = join(__dirname, "..", "..");
-const I18N = readFileSync(join(WURZEL, "apps/web/src/i18n.ts"), "utf8");
+const I18N = woerterbuchQuelleAus(join(WURZEL, "apps/web/src/i18n.ts"));
 
 /** Alle Fassungen EINES Schlüssels in Dateireihenfolge — die drei Sprachblöcke von i18n.ts. */
 function fassungen(schluessel: string): string[] {

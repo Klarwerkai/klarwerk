@@ -18,6 +18,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { panelQuelleAus } from "../support/panelquelle";
 
 const WURZEL = process.cwd();
 const PANEL = join(WURZEL, "apps", "web", "public", "word-addin", "taskpane.html");
@@ -47,7 +48,7 @@ function befunde(html: string): string[] {
 }
 
 describe("JOB 3056 · Abloesung der Ladekarte PruefungLaeuft (27.08.) — Laden zeigt der Sendeknopf, sonst nichts", () => {
-  const html = readFileSync(PANEL, "utf8");
+  const html = panelQuelleAus(PANEL);
 
   it("A · Ladekarte, Balken und der Satz darunter sind aus dem Rumpf GELOESCHT", () => {
     expect(befunde(html)).toEqual([]);

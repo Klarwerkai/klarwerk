@@ -67,6 +67,7 @@ import { type Guards, type SessionUser, sendError } from "../http";
 import { type LesevariantenRepo, mitAenderungsauskunft } from "../lesevarianten";
 import type { AssignmentNotifier } from "../notify";
 import { darfSehen, sichtbareFuer, sqlSichtbarkeitFuer } from "../sichtbarkeit";
+import { dublettenTor } from "./validation-routes";
 
 // Knowledge-Object-API (§2.3). Mutationen laufen über EINEN Endpunkt
 // PUT /api/kos/:id, der per {action} an das passende Modul verzweigt — die
@@ -350,6 +351,19 @@ function sendMissingConfidentiality(reply: FastifyReply): void {
   });
 }
 
+// R-0180/R-2108: die Herkunft `import` kennzeichnet ein Objekt, das ein Mensch aus der
+// Import-Prüfwarteschlange übernommen hat (`LibraryService.acceptToKo`). Auf den öffentlichen
+// Schreibwegen (`POST /api/kos`, frischer Zweig des Dokumentwegs) wird sie verworfen wie
+// `sources` und `importCandidateId` — sonst könnte jeder mit `ko.create` ein Objekt als importiert
+// ausgeben. Die übrigen Herkunftswerte bleiben unverändert erhalten.
+export function ohneImportHerkunft<T extends { origin?: unknown }>(rumpf: T): T {
+  if (rumpf.origin !== "import") {
+    return rumpf;
+  }
+  const { origin: _verworfen, ...ohne } = rumpf;
+  return ohne as unknown as T;
+}
+
 interface KoQuery {
   type?: KnowledgeType;
   status?: KoStatus;
@@ -482,6 +496,12 @@ export const KO_AKTIONEN_MIT_TORURTEIL: Readonly<Record<string, Torurteil>> = ZI
 interface PutBody {
   action: string;
   verdict?: Verdict;
+  /**
+   * R-0247 — die ausdrückliche Bestätigung „offene Dublette gesehen" an `rate` (`up`) und
+   * `admin-validate`. `unknown`, weil sie aus dem Netz kommt: gilt nur, wenn sie genau `true` ist
+   * (`dublettenTor` in validation-routes.ts).
+   */
+  duplicateAcknowledged?: unknown;
   userIds?: string[];
   changes?: ReviseKoInput;
   /**
@@ -820,6 +840,10 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
   ): Promise<void> => {
     await guards.requireUser(request, reply);
   };
+
+  // R-0247: das Dublettentor der zwei Freigabewege — derselbe Sichtbarkeitszugang wie an
+  // `/api/duplicates` (build-app.ts, `koSichtbarkeit`).
+  const dublettenTorDeps = { overlaps, audit, kos: { get: (koId: string) => ko.get(koId) } };
 
   async function sichtbaresKoOder404(user: SessionUser, id: string, reply: FastifyReply) {
     const item = await ko.get(id);
@@ -1293,11 +1317,25 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
           // gewesen — und wer ein Objekt anlegt, könnte damit die Nacharbeit eines fremden
           // Menschen erklären. Serverwerte werden hier nicht aus ungeprüftem Clientspread geerbt;
           // der autorisierte Weg ist die Aktion `ownership` (Recht `ko.validate`) weiter unten.
+          // R-0139 / FR-EXT-02: `origin` und `importedVia` ebenfalls verwerfen. Beide sind
+          // HERKUNFTSAUSSAGEN — `origin` prüft allein der Entwurfsweg (`normalizeOriginIn`,
+          // services/capture), `importedVia` setzen allein die Importwege. `KoService.create` prüft
+          // keines von beiden nach; über diesen Spread hätte jeder mit `ko.create` ein Objekt als
+          // „aus Word" oder „importiert" ausgeben können. Kein Client dieser Route sendet sie
+          // (Capture.tsx `createPayload`).
+          // R-0180/R-2108: die Herkunft `import` ebenfalls verwerfen — sie gehört allein der
+          // menschlichen Annahme eines Importkandidaten (s. `ohneImportHerkunft`). Die Destrukturierung
+          // darunter verwirft `origin` VOLLSTÄNDIG — damit auch jedes `import`; `ohneImportHerkunft`
+          // auf einem Rumpf ohne `origin` wäre wirkungslos und steht deshalb hier nicht.
           const {
             reviewerIds,
             sources: _ignoredSources,
             importCandidateId: _ignoredAnchor,
             ownership: _ignoredOwnership,
+            origin: _ignoredOrigin,
+            importedVia: _ignoredImportedVia,
+            // R-0169 (Nacharbeit 5): der Fassungsbezug der Dokumentakte entsteht nur serverseitig.
+            dokumentHerkunft: _ignoredDokumentHerkunft,
             ...input
           } = request.body;
           // ==========================================================================================
@@ -1581,9 +1619,14 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
           // Dieselbe Verwerfung wie POST /api/kos: Herkunfts-/Vertrauensanker und der Kandidaten-
           // Anker kommen NIE vom Client. Was an Quellen entsteht, entsteht unten aus den geprüften
           // Dokumenten — nicht aus diesem Feld.
+          // R-0139 / FR-EXT-02: `origin` und `importedVia` aus demselben Grund wie an POST /api/kos.
+          // R-0180/R-2108: mit `origin` fällt hier auch jedes `import` (vgl. `ohneImportHerkunft`).
           const {
             sources: _ignoredSources,
             importCandidateId: _ignoredAnchor,
+            origin: _ignoredOrigin,
+            importedVia: _ignoredImportedVia,
+            dokumentHerkunft: _ignoredDokumentHerkunft,
             ...rest
           } = body.create ?? ({} as Omit<CreateKoInput, "author">);
           input = { ...rest, author: user.id } as CreateKoInput;
@@ -2366,6 +2409,20 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             if (!body.verdict) {
               return badRequest("verdict fehlt.");
             }
+            // R-0247: nur die Zustimmung validiert — Rückfrage und Ablehnung fragen nichts.
+            if (
+              body.verdict === "up" &&
+              !(await dublettenTor(
+                dublettenTorDeps,
+                user,
+                id,
+                body.duplicateAcknowledged,
+                "rate",
+                reply,
+              ))
+            ) {
+              return;
+            }
             reply.code(200).send(await validation.rate(id, user.id, body.verdict));
             return;
           }
@@ -2384,6 +2441,18 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
           case "admin-validate": {
             const user = await guards.requirePermission("users.manage", request, reply);
             if (!user) {
+              return;
+            }
+            if (
+              !(await dublettenTor(
+                dublettenTorDeps,
+                user,
+                id,
+                body.duplicateAcknowledged,
+                "admin-validate",
+                reply,
+              ))
+            ) {
               return;
             }
             reply.code(200).send(await validation.adminValidate(id, user.id));
