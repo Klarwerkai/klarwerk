@@ -3808,6 +3808,9 @@ const de = {
   // Meinung: `tests/pruefen-volltext/pruefen-brett-gemountet.test.tsx` (C4) misst zuerst, ob der
   // Filter den Inhalt findet, und leitet daraus ab, was hier stehen MUSS. Wird der Inhalt eines
   // Tages durchsucht, wird dieser Fall rot und verlangt die Rückkehr zu „Volltext filtern …".
+  // NACHTRAG Aufnahme 20260922 · Prüfboard-Bedienung (N-0072): der Inhalt WIRD jetzt durchsucht.
+  // Das Feld trägt seitdem `pruefboard.volltextFiltern` (apps/web/src/texte/pruefboard.ts). Dieser
+  // Wert bleibt unverändert stehen, weil der Umzugsnachweis (tests/i18n-textmodule) ihn festhält.
   "val.filter": "Filtern (ohne ausführlichen Inhalt) …",
   "val.filterAllTypes": "Alle Wissensarten",
   "val.filterAllCategories": "Alle Kategorien",

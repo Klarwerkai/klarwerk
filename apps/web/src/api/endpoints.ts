@@ -215,7 +215,16 @@ export type KoAction =
   // R-0247: `duplicateAcknowledged` ist die ausdrückliche Bestätigung „offene Dublette gesehen".
   // Sie wird NUR mitgeschickt, wenn sie gegeben wurde; ohne offene Dublette bleibt die Nutzlast
   // unverändert.
-  | { action: "rate"; verdict: Verdict; duplicateAcknowledged?: true }
+  // R-0238: `widerspruch` NUR an der Ablehnung — das Objekt, dem widersprochen wird, und die Art.
+  // Der Server legt dann im selben Aufruf einen Konfliktvorschlag an (`ko-routes.ts`, `rate`).
+  | {
+      action: "rate";
+      verdict: Verdict;
+      duplicateAcknowledged?: true;
+      widerspruch?: { koB: string; type: ConflictType; description: string };
+      // R-0238 · Nacharbeit 8: nur die fehlenden Konfliktschritte, ohne neue Bewertung.
+      fortsetzungFuerFassung?: number;
+    }
   // Pedi 05.07.: Admin-Override „als wahr kennzeichnen" — schließt die Validierung komplett ab.
   | { action: "admin-validate"; duplicateAcknowledged?: true }
   | { action: "assign"; userIds: string[] }
