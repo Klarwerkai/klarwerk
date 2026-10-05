@@ -15,7 +15,7 @@
 //   C — absichtlich offen: Prüfhilfe, offene Produktentscheidung oder fehlender Serverweg.
 //
 // ERGEBNIS HEUTE: 4 × A (drei inzwischen von anderen Aufträgen angeschlossen, einer HIER neu),
-// 72 × B, 6 × C. Damit fehlt heute genau EINE Fähigkeit — nicht drei. Nach der originalen
+// 73 × B, 5 × C. Damit fehlt heute genau EINE Fähigkeit — nicht drei. Nach der originalen
 // Ausweichklausel (D3, Pflicht 3) wird genau dieser eine Fall eingebaut
 // (`components/ImportSelect.tsx` → `components/ImportPreviewTree.tsx`, Wirkungstest
 // `ordner-ohne-seite-mounted.test.tsx`); für alle übrigen trägt die Einzeltabelle die Klausel.
@@ -55,6 +55,8 @@ export interface Bedarf {
   fall: Fall;
   stand: Stand;
   beleg: Beleg | "word-spiegel";
+  /** Weitere Glieder derselben Kette (z. B. Knopf → Handler → Bibliotheksfunktion). */
+  kette?: readonly Beleg[];
   begruendung: string;
 }
 
@@ -404,14 +406,29 @@ export const BEDARFSABGLEICH: readonly Bedarf[] = [
     { datei: "services/external-search/src/wikipedia.ts", muster: "if \\(!title\\) \\{" },
     "Der Server verwirft Treffer ohne Titel, bevor sie die Fläche erreichen.",
   ),
-  C(
-    27,
-    "fileMultiPoint.ts",
-    "mergedDraftFromPoints",
-    "Mehrere Dateipunkte zu EINEM Entwurf zusammenführen",
-    { datei: "apps/web/src/pages/Capture.tsx", muster: "createPointDrafts\\(" },
-    "Erfassen legt bewusst je Punkt einen Entwurf an; die Zusammenführung wäre eine offene Produktentscheidung.",
-  ),
+  {
+    ...B(
+      27,
+      "fileMultiPoint.ts",
+      "mergedDraftFromPoints",
+      "Mehrere Dateipunkte zu EINEM Entwurf zusammenführen",
+      { datei: "apps/web/src/pages/Capture.tsx", muster: "onClick=\\{mergeSelectedPoints\\}" },
+      "Erfassen führt gewählte Punkte über den Knopf „Verbinden“ zusammen: mergeSelectedPoints ruft mergeSelectedIntoOne (lib/captureFromFile.ts).",
+    ),
+    // Nacharbeit 13 (BEN): die ganze Kette Knopf → Handler → Bibliotheksfunktion, nicht nur der
+    // daneben bestehende Einzelentwurfsweg `createPointDrafts`.
+    kette: [
+      {
+        datei: "apps/web/src/pages/Capture.tsx",
+        muster: "const mergeSelectedPoints = \\(\\): void =>",
+      },
+      { datei: "apps/web/src/pages/Capture.tsx", muster: "mergeSelectedIntoOne\\(pts\\)" },
+      {
+        datei: "apps/web/src/lib/captureFromFile.ts",
+        muster: "export function mergeSelectedIntoOne\\(",
+      },
+    ],
+  },
   B(
     28,
     "funke.ts",

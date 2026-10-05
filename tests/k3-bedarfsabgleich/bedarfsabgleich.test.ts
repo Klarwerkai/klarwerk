@@ -36,7 +36,7 @@ describe("R-0991 (K3) · Bedarfsabgleich der 82 Kandidaten", () => {
   it("T2 · Summen: A + B + C = 82, jeder Fall mit passendem Stand, kein A ohne Anschluss", () => {
     const zahl = (f: Bedarf["fall"]): number => BEDARFSABGLEICH.filter((b) => b.fall === f).length;
     expect(zahl("A") + zahl("B") + zahl("C")).toBe(82);
-    expect({ A: zahl("A"), B: zahl("B"), C: zahl("C") }).toEqual({ A: 4, B: 72, C: 6 });
+    expect({ A: zahl("A"), B: zahl("B"), C: zahl("C") }).toEqual({ A: 4, B: 73, C: 5 });
     for (const b of BEDARFSABGLEICH) {
       const erlaubt =
         b.fall === "A"
@@ -71,13 +71,16 @@ describe("R-0991 (K3) · Bedarfsabgleich der 82 Kandidaten", () => {
       if (b.beleg === "word-spiegel") {
         continue;
       }
-      const pfad = b.beleg.datei;
-      if (!existsSync(join(WURZEL, pfad))) {
-        daneben.push(`${schluessel(b)}: ${pfad} fehlt`);
-        continue;
-      }
-      if (!new RegExp(b.beleg.muster).test(lies(pfad))) {
-        daneben.push(`${schluessel(b)}: /${b.beleg.muster}/ nicht in ${pfad}`);
+      // Der Hauptbeleg und jedes weitere Glied seiner Kette müssen heute treffen.
+      for (const glied of [b.beleg, ...(b.kette ?? [])]) {
+        const pfad = glied.datei;
+        if (!existsSync(join(WURZEL, pfad))) {
+          daneben.push(`${schluessel(b)}: ${pfad} fehlt`);
+          continue;
+        }
+        if (!new RegExp(glied.muster).test(lies(pfad))) {
+          daneben.push(`${schluessel(b)}: /${glied.muster}/ nicht in ${pfad}`);
+        }
       }
     }
     expect(daneben, daneben.join("\n")).toEqual([]);
