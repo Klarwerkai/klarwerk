@@ -2625,12 +2625,11 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // NACHARBEIT 7: PIN BEWUSST AKTUALISIERT (5fbf5f64… -> fe3cc513…), gemessen am Kandidaten
     // 787b3e41 — das war das Dokument OHNE die m365-Anmeldeänderung.
     // NACHARBEIT 12 (Integration mit `main` 93c25f5a): JETZT TRÄGT DAS DOKUMENT BEIDE Änderungen
-    // (m365-Anmeldung UND Bestandsblick). Der Git-Blob ist gemessen (`90936dcc…`, s.
-    // `tests/support/panelquelle.ts`), der SHA-256 dieses Pins NICHT — in dieser Sitzung war kein
-    // SHA-256-Werkzeug freigegeben, und ein geschätzter Wert wäre ein falscher Pin. OFFEN: dieser
-    // Fall meldet den Ist-Wert im nächsten Lauf; erst danach darf der Pin wandern. Weder `fe3cc513…`
-    // noch `5fbf5f64…` ist der Wert des zusammengeführten Dokuments.
-    const PIN = "fe3cc513021c2f2b5e4ef1b0f9376480634c24d18db9b37fbdf725c4ff821656";
+    // (m365-Anmeldung UND Bestandsblick); Git-Blob `90936dcc…`, s. `tests/support/panelquelle.ts`.
+    // NACHARBEIT 13: PIN BEWUSST AKTUALISIERT (fe3cc513… -> 66ba98c4…). Der Wert ist GEMESSEN, nicht
+    // geschätzt: dieser Fall meldete ihn am Kandidaten 2dc7cbb7 im Prüflauf (`Received:
+    // "66ba98c4…f74f76e5"`, funktion-erhalten-jsdom); die vier Dateien sind seither unverändert.
+    const PIN = "66ba98c4cbaa5cb24a6fe2ae79fe74c56c784c1927dcff9ee7975f98f74f76e5";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(
       ist,

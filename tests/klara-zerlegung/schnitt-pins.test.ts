@@ -175,6 +175,12 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   // zusammengefuegte Dokument) und nennt Taskpane und Rueckweg ueber ihr Pfadliteral — Griffe
   // `pfad`, `rueckweg` und `panelquelle`, keine Marken, keine Fixture. A2b haelt den Eintrag fest.
   "tests/app/ka3-bestandsblick-aktueller-stand.test.tsx": "pfad,rueckweg,panelquelle",
+  // Integration mit `main` (Nacharbeit 13): zwei Dateien aus `main` (Verwaltungsbereiche 8d9ff6b2 /
+  // Suchraum 22d6b201), die das Pfadliteral von `taskpane.html` tragen. `aufrufer-waechter` nennt
+  // es in einer Begründung, `bedarfsabgleich` liest die Datei. GEMESSEN, NICHT GESETZT: A2 meldete
+  // genau diese zwei Pfade als `neu im Baum, aber nicht gepinnt`; Griff `pfad`, kein anderes Muster.
+  "tests/capture/aufrufer-waechter.test.ts": "pfad",
+  "tests/k3-bedarfsabgleich/bedarfsabgleich.test.ts": "pfad",
   "tests/app/klara-ai-header.test.ts": "pfad,marken,panelquelle",
   "tests/app/klara-ai-session-consent.test.ts": "pfad,marken,panelquelle",
   // Der wichtigste Mitfahrer überhaupt: die Fixture selbst schneidet Rumpf und Skript aus der

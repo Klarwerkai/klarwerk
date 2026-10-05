@@ -419,6 +419,11 @@ const INVENTAR: readonly string[] = [
   // Bestandsblick mit dem Begriffsbild des AKTUELLEN Dokuments fragt (verzoegertes Lesen,
   // geaenderter Text). Inhaltsachse `taskpane`; K2 hat ihn gemeldet.
   "tests/app/ka3-bestandsblick-aktueller-stand.test.tsx",
+  // Integration mit `main` (Nacharbeit 13): zwei Dateien aus `main`, die eine der Achsen treffen.
+  // GEMESSEN, NICHT GESETZT: K2 meldete genau diese zwei Pfade als `neu im Baum, aber nicht im
+  // gepinnten Inventar`; erst danach wurden diese Zeilen angefasst.
+  "tests/app/stage2-gate-mounted.test.tsx",
+  "tests/k3-bedarfsabgleich/bedarfsabgleich.test.ts",
   "tests/app/klara-ai-header.test.ts",
   "tests/app/klara-ai-session-consent.test.ts",
   "tests/app/klara-ai-status-contract.test.ts",
