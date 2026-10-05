@@ -36,7 +36,6 @@ import {
 } from "../../lib/facetRail";
 import {
   type FacetSelection,
-  type FacetValues,
   applyFacetSelection,
   facetSelectedValues,
   isFacetNoMatch,
@@ -744,10 +743,20 @@ export function BibliothekFlaeche({
     }
   };
 
-  const koItems = applyLibraryScope(query.data ?? [], scope, user?.id);
-  const ranked = searchLibrary(koItems, trimmedQ);
-  const valuesOf = (item: { ko: { id: string } }): FacetValues => facetBase.get(item.ko.id) ?? {};
-  const facetItems = ranked.map(valuesOf);
+  // K1 / NFR-PERF-01 (Nacharbeit 27, Lauf HISTORIE/nacharbeit-27): die Erstanzeige bei 10.001
+  // Objekten lag bei 1.124 ms (Grenze < 1.000 ms); Dokument und Skripte standen nach 43 ms, die
+  // Suchroute antwortet in ~75 ms — der Rest ist Rechnen IM BROWSER über den ganzen Bestand. Bis
+  // hierher lief die ganze Kette (Rang, Facettenzähler, Filter, Sortierung) bei JEDEM Aufbau neu,
+  // auch wenn nur `all.data`, die Konfliktliste oder ein Bedienzustand nebenan nachkam. Jetzt hängt
+  // jede Stufe nur an dem, was sie wirklich liest; Ergebnis, Reihenfolge und Zähler bleiben gleich.
+  const ranked = useMemo(
+    () => searchLibrary(applyLibraryScope(query.data ?? [], scope, user?.id), trimmedQ),
+    [query.data, scope, user?.id, trimmedQ],
+  );
+  const facetItems = useMemo(
+    () => ranked.map((item) => facetBase.get(item.ko.id) ?? {}),
+    [ranked, facetBase],
+  );
   const groups = facetRailGroups(
     facetItems,
     LIBRARY_FILTER_CONFIGS,
@@ -756,19 +765,34 @@ export function BibliothekFlaeche({
     facetValueLabel,
     LIBRARY_FACET_DEPENDENCIES,
   );
-  const faceted = applyFacetSelection(ranked, valuesOf, wirksameAuswahl)
-    .filter((item) => matchesFacetRange(koChangedMs(item.ko), range))
-    // Der Umschalter wirkt wie jede andere Wahl: UND, auf demselben Anzeigestatus, den auch Punkt
-    // und Pille zeigen — keine zweite Statusrechnung. Seit JOB 3072 ist das die vom Server erhobene
-    // Zahl, und der Umschalter kennt damit auch den Konflikt: ein Eintrag mit rotem Punkt fiel
-    // vorher unter „Freigegeben", weil diese Zeile als einzige die Konfliktliste nicht ansah.
-    .filter((item) => passtZuSegment(auskunftFuer(item.ko).status, segment));
+  const faceted = useMemo(
+    () =>
+      applyFacetSelection(ranked, (item) => facetBase.get(item.ko.id) ?? {}, wirksameAuswahl)
+        .filter((item) => matchesFacetRange(koChangedMs(item.ko), range))
+        // Der Umschalter wirkt wie jede andere Wahl: UND, auf demselben Anzeigestatus, den auch
+        // Punkt und Pille zeigen — keine zweite Statusrechnung. Seit JOB 3072 ist das die vom
+        // Server erhobene Zahl, und der Umschalter kennt damit auch den Konflikt: ein Eintrag mit
+        // rotem Punkt fiel vorher unter „Freigegeben", weil diese Zeile als einzige die
+        // Konfliktliste nicht ansah. Im Standard „Alle" lässt `passtZuSegment` jeden Eintrag durch —
+        // dort wird der Anzeigestatus deshalb nicht für den ganzen Bestand vorab gerechnet, sondern
+        // nur für die gezeigten Zeilen (je Objekt gemerkt in `auskunftFuer`).
+        .filter(
+          (item) =>
+            segment === BIB_SEGMENT_STANDARD ||
+            passtZuSegment(auskunftFuer(item.ko).status, segment),
+        ),
+    [ranked, facetBase, wirksameAuswahl, range, segment, auskunftFuer],
+  );
   // K16: die Risiko-Sortierung liest denselben angezeigten Zustand wie Punkt, Wort und Segment.
-  const sorted = sortLibrary(
-    faceted,
-    sortKey,
-    (item) => item.ko,
-    (item) => auskunftFuer(item.ko).status,
+  const sorted = useMemo(
+    () =>
+      sortLibrary(
+        faceted,
+        sortKey,
+        (item) => item.ko,
+        (item) => auskunftFuer(item.ko).status,
+      ),
+    [faceted, sortKey, auskunftFuer],
   );
   const win = windowList(sorted, windowLimit);
 

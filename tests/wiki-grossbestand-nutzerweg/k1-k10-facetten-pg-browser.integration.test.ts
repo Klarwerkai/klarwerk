@@ -866,6 +866,12 @@ interface Erstanzeige {
   ids: string[];
   bilder: number;
   navigation: { responseEndMs: number; domContentLoadedMs: number; loadMs: number };
+  /**
+   * Nacharbeit 27: die Ladekette bis zur Erstanzeige — Skriptteile und API-Aufrufe aus der
+   * Resource-Timing-Schnittstelle des Browsers (nur gelesen), damit eine Überschreitung zeigt, WO
+   * die Zeit liegt: im Laden, in der Antwort oder im Rechnen danach.
+   */
+  ressourcen: { pfad: string; startMs: number; endeMs: number; bytes: number }[];
 }
 
 /**
@@ -907,6 +913,16 @@ async function erstanzeigeMessen(
           domContentLoadedMs: n ? n.domContentLoadedEventEnd : -1,
           loadMs: n ? n.loadEventEnd : -1,
         },
+        ressourcen: performance
+          .getEntriesByType("resource")
+          .filter((r) => r.startTime <= m.bildMs)
+          .map((r) => ({
+            pfad: new URL(r.name).pathname + new URL(r.name).search,
+            startMs: Math.round(r.startTime),
+            endeMs: Math.round(r.responseEnd),
+            bytes: r.encodedBodySize || 0,
+          }))
+          .filter((r) => r.pfad.startsWith("/api/") || r.pfad.endsWith(".js")),
       };
     }`),
   );
