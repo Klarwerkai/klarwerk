@@ -211,6 +211,10 @@ export async function buehneAufbauen(
   skript: Skript = {},
   fenster: Fenster = { width: 1280, height: 800 },
   zeigegeraet = false,
+  // Aufnahme `gesamt-erfassung-einstieg:layout` (Nacharbeit 5): ein X-Display (z. B. ":93") startet
+  // Chromium SICHTBAR auf diesem Display, damit native Dialoge wirklich gezeichnet werden
+  // (`h3-wechsel-rueckfragen-bild.test.ts`). Ohne Angabe bleibt alles wörtlich wie bisher: kopflos.
+  anzeige?: string,
 ): Promise<Buehne> {
   const seitenfehler: string[] = [];
   let browser: Browser | null = null;
@@ -257,10 +261,25 @@ export async function buehneAufbauen(
     const { chromium } = require("playwright") as {
       chromium: { launch(o: Record<string, unknown>): Promise<Browser> };
     };
-    browser = await chromium.launch({
-      headless: true,
-      args: ["--no-sandbox", "--disable-gpu", "--single-process", "--no-zygote"],
-    });
+    browser = await chromium.launch(
+      anzeige === undefined
+        ? {
+            headless: true,
+            args: ["--no-sandbox", "--disable-gpu", "--single-process", "--no-zygote"],
+          }
+        : {
+            // Sichtbar: kein Einzelprozess (der sichtbare Browser braucht seine eigene
+            // Fensterprozesslage), Fenster fest oben links, damit das Display es ganz zeigt.
+            headless: false,
+            args: [
+              "--no-sandbox",
+              "--disable-gpu",
+              "--window-position=0,0",
+              `--window-size=${fenster.width},${fenster.height + 140}`,
+            ],
+            env: { ...process.env, DISPLAY: anzeige },
+          },
+    );
     const version = browser.version();
     // Vorgabe 1280×800 wie das Mockup; `fenster` stellt die schmale Lage schon beim Anfahren.
     // JOB 3809: `hasTouch` kommt NUR dazu, wenn es verlangt wurde — ohne den Schalter geht hier
