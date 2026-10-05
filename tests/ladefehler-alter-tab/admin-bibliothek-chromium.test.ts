@@ -122,6 +122,7 @@ const LIES_FLAECHE = `(() => {
 })()`;
 
 let browser: Browser | null = null;
+let starte: (() => Promise<Browser>) | null = null;
 let app: ReturnType<typeof buildApp> | null = null;
 let token = "";
 let aufbaufehler: string | null = null;
@@ -161,10 +162,15 @@ beforeAll(async () => {
     const { chromium } = verlangeModul("playwright") as {
       chromium: { launch(o: Record<string, unknown>): Promise<Browser> };
     };
-    browser = await chromium.launch({
-      headless: true,
-      args: ["--no-sandbox", "--disable-gpu", "--single-process", "--no-zygote"],
-    });
+    // JE FALL EIN EIGENER BROWSER. Mit `--single-process` beendet das Schliessen der letzten Seite
+    // den ganzen Chromium (gemessen, nacharbeit-3: R1 grün, danach `browser.newPage: Target page,
+    // context or browser has been closed` in R2/R3). Ein frischer Browser je Fall ist zugleich der
+    // ehrlichere „alte Tab": kein Zustand aus dem vorigen Fall reist mit.
+    starte = () =>
+      chromium.launch({
+        headless: true,
+        args: ["--no-sandbox", "--disable-gpu", "--single-process", "--no-zygote"],
+      });
   } catch (e) {
     aufbaufehler = String(e).split("\n").slice(0, 2).join(" | ");
   }
@@ -178,11 +184,12 @@ afterAll(async () => {
 /** Ein Tab, der vor der Veröffentlichung geöffnet wurde: die genannten Stücke antworten 404. */
 async function alterTab(gesperrt: Set<string>): Promise<{ seite: Seite; geliefert: Set<string> }> {
   expect(aufbaufehler, "der Chromium-Prüfstand kam nicht zustande").toBeNull();
-  if (browser === null || app === null) {
-    throw new Error("Browser oder App fehlen");
+  if (starte === null || app === null) {
+    throw new Error("Browserstart oder App fehlen");
   }
   const a = app;
   const geliefert = new Set<string>();
+  browser = await starte();
   // Ohne Service Worker: sonst bediente er das Neuladen in R1 an `route` vorbei (Begründung
   // `playwright.smoke.config.ts`, `serviceWorkers: "block"`).
   const seite = await browser.newPage({
@@ -233,6 +240,13 @@ async function alterTab(gesperrt: Set<string>): Promise<{ seite: Seite; geliefer
   return { seite, geliefert };
 }
 
+/** Schliesst den Browser DIESES Falls (nicht nur die Seite — s. `starte`). */
+async function schliessen(): Promise<void> {
+  const b = browser;
+  browser = null;
+  await b?.close();
+}
+
 const lies = (seite: Seite): Promise<Flaeche> => seite.evaluate<Flaeche>(LIES_FLAECHE);
 
 function ruhigeKarteStatt(f: Flaeche, chunk: string, adresse: string): void {
@@ -270,7 +284,7 @@ describe("LADEFEHLER-ALTER-TAB · /admin, /bibliothek und ungesicherte Eingabe i
       expect(nachher.ruhigeKarte, "nach dem Neuladen steht wieder die Karte").toBe(false);
       expect(nachher.generischeKarte).toBe(false);
     } finally {
-      await seite.close();
+      await schliessen();
     }
   }, 180_000);
 
@@ -287,7 +301,7 @@ describe("LADEFEHLER-ALTER-TAB · /admin, /bibliothek und ungesicherte Eingabe i
       await seite.waitForFunction(KARTE_DA, undefined, { timeout: 30_000 });
       ruhigeKarteStatt(await lies(seite), admin, "/admin");
     } finally {
-      await seite.close();
+      await schliessen();
     }
   }, 180_000);
 
@@ -333,7 +347,7 @@ describe("LADEFEHLER-ALTER-TAB · /admin, /bibliothek und ungesicherte Eingabe i
       await seite.waitForFunction(KARTE_DA, undefined, { timeout: 30_000 });
       ruhigeKarteStatt(await lies(seite), bibliothek, "/bibliothek");
     } finally {
-      await seite.close();
+      await schliessen();
     }
   }, 180_000);
 });
