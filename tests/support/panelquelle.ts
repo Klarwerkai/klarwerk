@@ -103,8 +103,10 @@ const MARKE_KOPF_ENDE = '"use strict";\n';
  * nur in der Ablage: die Knopfgruppe steht in der Zeile von `#capture-aktion`, ihr Kommentar in
  * `taskpane.js`, damit die Markup-Datei unter 500 Zeilen bleibt (A2/E5). Der Blob muss deshalb EIN
  * weiteres Mal gemessen übernommen werden.
+ * NACHARBEIT 15: GEMESSEN im Prüflauf zu Kandidat 124645e8 (`b3f3846c…`, „Received" von E2) und
+ * unverändert übernommen; die vier Panel-Dateien sind seit dieser Messung unberührt.
  */
-export const PANEL_VOR_SCHNITT_BLOB = "d5d7a93678cca042148b381345b1f5b0d8c36d7c";
+export const PANEL_VOR_SCHNITT_BLOB = "b3f3846c1ba8163aa575dd97dcca383467d7239b";
 
 export interface PanelTeile {
   html: string;
