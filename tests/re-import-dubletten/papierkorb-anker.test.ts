@@ -420,6 +420,14 @@ describe("JOB 3081 · P2/P3 — der harte Riegel und der Trash-Vertrag", () => {
     const vorher = await bestandsZahlen(ctx);
     ctx.create.mockClear();
     await altkandidatOhneBefund(ctx, ANKER_ITEM, "alt-ohne-befund");
+    // Lauf gesamt-import-adoption:2 Runde 3 (Bens B3): die Vorbedingung gilt dem EINGEREIHTEN
+    // Kandidaten und wird darum VOR der Annahme geprüft. Bis hierher stand sie an der Antwort —
+    // seither schreibt die Annahme ihren tatsächlichen Ausgang am Herkunftsanker zurück, und die
+    // Antwort trägt `im_papierkorb` mit Kennung (Zusicherung unten).
+    expect(
+      (await ctx.candidates.findById("alt-ohne-befund"))?.dublettenbefund,
+      "Vorbedingung: dieser Kandidat traegt KEINEN Befund — es misst wirklich den Riegel.",
+    ).toBeUndefined();
 
     const beschieden = await ctx.library.reviewImportCandidate(
       "alt-ohne-befund",
@@ -427,10 +435,10 @@ describe("JOB 3081 · P2/P3 — der harte Riegel und der Trash-Vertrag", () => {
       "pruefer",
     );
 
-    expect(
-      beschieden.dublettenbefund,
-      "Vorbedingung: dieser Kandidat traegt KEINEN Befund — es misst wirklich den Riegel.",
-    ).toBeUndefined();
+    expect(beschieden.dublettenbefund, "Bens B3: der Ausgang steht an der Antwort.").toEqual({
+      ergebnis: "im_papierkorb",
+      treffer: { art: "wissensobjekt", koId: getrashteId },
+    });
     expect(
       beschieden.koId,
       "Der Accept nennt die VORHANDENE (getrashte) Kennung statt einer neuen.",
