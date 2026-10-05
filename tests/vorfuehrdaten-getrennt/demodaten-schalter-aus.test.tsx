@@ -33,7 +33,11 @@ const d = vi.hoisted(() => ({
 
 vi.mock("../../apps/web/src/api/client", async (echt) => ({
   ...(await echt<typeof import("../../apps/web/src/api/client")>()),
-  api: { get: vi.fn(async () => ({})), put: vi.fn(async () => ({})) },
+  // Branding-Stand in derselben Form wie `flaeche-mounted.test.tsx:254`.
+  api: {
+    get: vi.fn(async () => ({ profil: null, aktiv: false, version: 1, marke: null })),
+    put: vi.fn(async () => ({})),
+  },
 }));
 vi.mock("../../apps/web/src/api/endpoints", () => ({
   endpoints: {
@@ -41,7 +45,9 @@ vi.mock("../../apps/web/src/api/endpoints", () => ({
       demoStatus: vi.fn(async () => ({ present: true, count: 4 })),
       demoSeed: d.demoSeed,
       demoPurge: d.demoPurge,
-      demoPackages: { list: vi.fn(async () => []), load: vi.fn() },
+      // Vertragsform `{ packages: [...] }` wie in `flaeche-mounted.test.tsx` — ein nacktes Array
+      // liess die Advisor-Karte (`liste.packages.find`) im Rendern werfen.
+      demoPackages: { list: vi.fn(async () => ({ packages: [] })), load: vi.fn() },
     },
   },
 }));
