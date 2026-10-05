@@ -20,6 +20,8 @@
 //                         Bandes lehnt der Server ab
 //   W6  Externe Abfrage   Stufe schreiben/lesen/zurücknehmen · Fehler: Störung beim Speichern
 //   W7  Duplikat-Schwelle schreiben/lesen/zurücknehmen · Fehler: Wert außerhalb des Bandes
+//   W8  Prüferanzahl      Standard-Prüferanzahl mit ihrem eigenen Speichern-Knopf schreiben/lesen/
+//                         zurücknehmen · Fehler: Störung beim Speichern, Stand unverändert
 //
 // Die KI-Konfiguration (Anbieter-/Modellwahl je Aufgabe) ist hier BEWUSST nicht noch einmal gebaut:
 // sie hat ihren eigenen Durchstich am echten Server samt Fehler- und Rücknahmefällen
@@ -508,6 +510,70 @@ describe("W5 · Grenzen über die Karte „Grenzen“", () => {
     await klick(uploadSpeichern());
     await warteBis(() => fehlerToasts().length > 0, "Ablehnung");
     expect(await grenzen(), "nichts geändert").toEqual(vorher);
+  });
+});
+
+// ------------------------------------------------------------------------------------------------
+// W8 · Standard-Prüferanzahl (BEN, Nacharbeit 8: dieselbe Karte, die ZWEITE Quelle)
+// ------------------------------------------------------------------------------------------------
+describe("W8 · Standard-Prüferanzahl über die Karte „Grenzen“", () => {
+  async function karte(): Promise<void> {
+    await montiere(createElement(KiGrenzenDetail, { onZurueck: ohneZurueck }));
+    await warteBis(() => anzahlFeld()?.value !== "", "Prüferanzahl geladen");
+  }
+
+  const pruefer = async (): Promise<number> =>
+    (await lies<{ defaultNeededValidations: number }>("/api/validation/settings"))
+      .defaultNeededValidations;
+  const grenzen = (): Promise<Grenzen> => lies<Grenzen>("/api/upload-limits");
+  const anzahlFeld = (): HTMLInputElement | null => nachAria(t("adm.val.label"));
+  /**
+   * Der EIGENE Speichern-Knopf der Prüferanzahl: der Knopf in ihrer Hülle `huelle-pruefanzahl`
+   * mit dem Wortlaut `adm.val.save` — nicht der gleichlautende der Upload-Grenzen (siehe W5).
+   */
+  const prueferSpeichern = (): HTMLButtonElement => {
+    const knopf = container.querySelector<HTMLButtonElement>(
+      '[data-testid="huelle-pruefanzahl"] button',
+    );
+    if (!knopf || (knopf.textContent ?? "").trim() !== t("adm.val.save")) {
+      throw new Error(`Speichern der Prüferanzahl fehlt — sichtbar: ${text().slice(0, 400)}`);
+    }
+    return knopf;
+  };
+
+  it("schreiben, erneut lesen, über die Oberfläche zurücknehmen", async () => {
+    const vorher = await pruefer();
+    const grenzenVorher = await grenzen();
+    const neu = vorher === 3 ? 4 : 3;
+    await karte();
+    expect(anzahlFeld()?.value, "die Karte zeigt den Serverstand").toBe(String(vorher));
+    await tippe(anzahlFeld(), String(neu));
+    await klick(prueferSpeichern());
+    await warteBis(() => erfolgToasts().some((m) => m.includes(t("adm.val.saved"))), "gespeichert");
+    expect(await pruefer(), "erneut gelesen").toBe(neu);
+    await warteBis(() => anzahlFeld()?.value === String(neu), "die Karte zeigt den neuen Stand");
+
+    await tippe(anzahlFeld(), String(vorher));
+    await klick(prueferSpeichern());
+    await warteBis(() => erfolgToasts().length > 1, "Rücknahme gespeichert");
+    expect(await pruefer(), "Rücknahme").toBe(vorher);
+    await warteBis(() => anzahlFeld()?.value === String(vorher), "die Karte zeigt die Rücknahme");
+    expect(fehlerToasts(), "kein Fehler auf dem gelungenen Weg").toEqual([]);
+    expect(await grenzen(), "die Upload-Grenzen blieben unberührt").toEqual(grenzenVorher);
+  });
+
+  it("Fehler: bricht die Verbindung beim Speichern, meldet die Karte es — Stand unverändert", async () => {
+    const vorher = await pruefer();
+    const neu = vorher === 3 ? 4 : 3;
+    await karte();
+    await tippe(anzahlFeld(), String(neu));
+    stoerung = { methode: "PUT", pfad: "/api/validation/settings" };
+    await klick(prueferSpeichern());
+    await warteBis(() => fehlerToasts().length > 0, "Fehlermeldung");
+    expect(gestoerteAufrufe, "die Störung ist wirklich eingetreten").toBe(1);
+    expect(fehlerToasts()[0]?.trim().length ?? 0, "die Meldung trägt Text").toBeGreaterThan(0);
+    expect(erfolgToasts(), "keine Erfolgsmeldung").toEqual([]);
+    expect(await pruefer(), "nichts geändert").toBe(vorher);
   });
 });
 
