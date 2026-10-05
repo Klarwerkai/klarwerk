@@ -418,6 +418,8 @@ type KoAktion =
   | "remove-source"
   | "category"
   | "tags"
+  // R-0431 / R-1728 / FR-LIB-01 (K2): das Fachgebiet am Objekt setzen, ändern oder entfernen.
+  | "domain"
   | "confidentiality"
   // JOB 557: die Verantwortung am Objekt benennen (Recht `ko.validate`, s. den Zweig unten).
   | "ownership"
@@ -460,6 +462,9 @@ type KoAktion =
  */
 type Torurteil = "tor" | "kein-zielobjekt";
 
+/** R-0431 (K2): die Höchstlänge eines Fachgebiets (`action: "domain"`). */
+const DOMAIN_MAX_LENGTH = 120;
+
 const ZIELOBJEKT_TOR: Record<KoAktion, Torurteil> = {
   rate: "tor",
   assign: "tor",
@@ -473,6 +478,8 @@ const ZIELOBJEKT_TOR: Record<KoAktion, Torurteil> = {
   "remove-source": "tor",
   category: "tor",
   tags: "tor",
+  // R-0431 (K2): arbeitet AM Objekt unter `:id` — es passiert das Sichtbarkeitstor wie `category`.
+  domain: "tor",
   confidentiality: "tor",
   // JOB 557: die Aktion arbeitet AM Objekt unter `:id` — sie passiert das Sichtbarkeitstor.
   ownership: "tor",
@@ -568,6 +575,8 @@ interface PutBody {
   note?: string;
   category?: string;
   tags?: string[];
+  /** R-0431 (K2): das Fachgebiet (`action: "domain"`). `unknown`, gelesen an der `case`. */
+  domain?: unknown;
   conflict?: ConflictInput;
   conflictId?: string;
   decision?: string;
@@ -3216,6 +3225,23 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
                   bedingung,
                 ),
               );
+            return;
+          }
+          case "domain": {
+            // R-0431 / R-1728 / FR-LIB-01 (K2): dasselbe Recht wie die Kategorie (`ko.create`). Ein
+            // leerer Wert entfernt die Angabe; ein Nicht-Text oder ein überlanger Wert ist ein 400 —
+            // nichts wird gekürzt oder geraten.
+            const user = await guards.requirePermission("ko.create", request, reply);
+            if (!user) {
+              return;
+            }
+            if (typeof body.domain !== "string") {
+              return badRequest("domain fehlt.");
+            }
+            if (body.domain.trim().length > DOMAIN_MAX_LENGTH) {
+              return badRequest(`domain ist länger als ${DOMAIN_MAX_LENGTH} Zeichen.`);
+            }
+            reply.code(200).send(await ko.setDomain(id, body.domain, user.id));
             return;
           }
           case "tags": {
