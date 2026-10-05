@@ -13,7 +13,7 @@
 // R1  /bibliothek über den Kopfbandpunkt: ruhige Karte statt generischer, kein Selbst-Neuladen;
 //     „Neu laden" lädt GENAU EINMAL neu, und nach dem Neuladen (neuer Stand ausgeliefert) steht die
 //     Bibliothek ohne Karte.
-// R2  /admin über „Arbeitsbereiche" → „Verwaltung": ruhige Karte statt generischer, kein Neuladen.
+// R2  /admin über Zahnrad → „Verwaltung · Einstellungen": ruhige Karte statt generischer, kein Neuladen.
 // R3  Ungesicherte Eingabe im Blatt, dann Klick auf „Bibliothek" (Chunk 404): erst die Rückfrage;
 //     „Hier bleiben" hält Adresse und getippten Text, nichts lädt neu. Erst „Verwerfen und wechseln"
 //     führt zur ruhigen Karte.
@@ -291,13 +291,16 @@ describe("LADEFEHLER-ALTER-TAB · /admin, /bibliothek und ungesicherte Eingabe i
   it("R2: /admin mit Chunk-404 → ruhige Karte statt generischer, nichts lädt von selbst", async () => {
     const { seite } = await alterTab(new Set<string>([admin]));
     try {
-      await seite.click('[data-testid="kopfband-arbeitsbereiche"]');
+      // /admin ist der Punkt „Einstellungen" unter „Verwaltung" im ZAHNRAD-Menü
+      // (`app/navigation.ts:511` EINSTELLUNGEN_ID = "admin", `shell/ZahnradMenue.tsx:96-118`), nicht
+      // eine Zeile unter „Arbeitsbereiche" — dort gibt es kein `bereich-admin` (nacharbeit-4: rot).
+      await seite.click('[data-testid="kopfband-zahnrad"]');
       await seite.waitForFunction(
-        `document.querySelector('[data-testid="bereich-admin"]') !== null`,
+        `document.querySelector('[data-testid="zahnrad-einstellungen"]') !== null`,
         undefined,
         { timeout: 30_000 },
       );
-      await seite.click('[data-testid="bereich-admin"]');
+      await seite.click('[data-testid="zahnrad-einstellungen"]');
       await seite.waitForFunction(KARTE_DA, undefined, { timeout: 30_000 });
       ruhigeKarteStatt(await lies(seite), admin, "/admin");
     } finally {
