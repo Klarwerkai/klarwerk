@@ -1580,6 +1580,141 @@ export class LibraryService {
       reviewedAction: action,
       auditPending: { eventId: auditEventId, action, actor },
     };
+    // Befund UND Anlage als EIN Schritt hinter der Annahme-Sperre des Kandidatenbestands
+    // (Bens N1, R3-1): zwei überlappende Annahmen lesen nie beide den noch leeren Bestand —
+    // weder gleichen Inhalts (Textweg) noch derselben Quelle (Herkunftsanker), und auch nicht
+    // aus zwei Dienstinstanzen mit gemeinsamem Bestand, und auch nicht neben einem Halter, dessen
+    // Claim die Recovery inzwischen freigegeben hat (Bens B1). Bekommt die Annahme die Sperre
+    // nicht rechtzeitig, wirft `annahmeSperre` CONFLICT, BEVOR hier etwas läuft — der Fehlerpfad
+    // unten gibt den Claim dann zurück (kein Objekt entstanden).
+    // Nacharbeit 4: die Schritte stehen VOR dem `try`, weil auch der äußere Fehlerabschluss sie
+    // braucht (Bens Befund zu Zeile 2469, s. `loeseAnlageAuf`).
+    const annehmen = async (sperreGilt: () => Promise<void>): Promise<ClaimResolution> => {
+      neuerBefund = await this.befundBeiAnnahme(candidate, pruefeDublette);
+      if (neuerBefund) {
+        entschieden = { ...candidate, ...neuerBefund };
+      }
+      if (!kandidatErzeugtWissensobjekt(entschieden)) {
+        // JOB 3050: hier landen ZWEI Fälle, und der Kandidat sagt selbst, welcher es war —
+        // `dublettenbefund` reist mit in die Antwort. (a) als Dublette erkannt: es wird nichts
+        // angelegt und nichts überschrieben. (b) die Dublettenfrage war nicht entscheidbar:
+        // fail-closed wird ebenfalls nichts angelegt — eine unbemerkte Dublette im Bestand ist
+        // teurer als ein Eintrag, der nicht anlegt und dessen Grund am Kandidaten steht.
+        return { status: "angenommen", ...(neuerBefund ?? {}), ...reviewedStamp };
+      }
+      // SCRUM-515-Vervollständigung: ein PERSISTIERTER Alt-Kandidat (vor 515 eingereiht;
+      // PgCandidateRepo liefert das JSONB unverändert) wurde bei createImportCandidates evtl.
+      // nie sanitisiert. Unmittelbar VOR acceptToKo erneut sanitisieren — sonst würde ein
+      // ungültiger Altwert im Re-Sync-Ranking auf „intern" normalisiert (fail-open) bzw. bei
+      // der Erstanlage hart abgelehnt. Das bereinigte Item wird MIT persistiert.
+      const item = this.withSanitizedConfidentiality(candidate.item);
+      // NACHARBEIT 2 (bens F1, Hauptstand): über den Dateiweg eingereichte Quellangaben
+      // bleiben erhalten.
+      const ausgang = await this.acceptToKo(
+        item,
+        actor,
+        id,
+        kamUeberDateiweg(item) ? DATEI_KANDIDATEN_WEG : KANDIDATEN_WEG,
+        sperreGilt,
+      );
+      createdKoId = ausgang.koId;
+      // Bens B3: der Ausgang am Herkunftsanker ersetzt den Befund vom Einreihen. Der Textweg
+      // hat seinen neuen Befund oben schon erhoben; dort kommt hier keiner zurück.
+      if (ausgang.befund) {
+        neuerBefund = ausgang.befund;
+      }
+      return {
+        status: "angenommen",
+        koId: createdKoId,
+        item,
+        ...(neuerBefund ?? {}),
+        ...reviewedStamp,
+      };
+    };
+    // ============================================================================================
+    // Lauf :2 Nacharbeit nach Runde 3 (Bens B4) — DER ZWEITE DURCHGANG NACH SPERRVERLUST.
+    // ============================================================================================
+    //
+    // `acceptToKo` hat angelegt und danach festgestellt, dass die Sperre nicht mehr hielt
+    // (`SperreNachAnlageVerloren`). Ob inzwischen ein ANDERER angelegt hat, wird jetzt unter
+    // einer NEU erworbenen Sperre entschieden — alle, die in der Lücke liefen, sind dann fertig:
+    //   · kein Mitbewerber neben dem eigenen Objekt → es bleibt, die Annahme ist eine
+    //     Erstanlage (wer in der Lücke lief, hat es gesehen und darauf verwiesen);
+    //   · ein Mitbewerber → das EIGENE, eben angelegte Objekt wird endgültig entfernt (es ist
+    //     die zweite Kennung), und die Annahme läuft noch einmal regulär: sie trifft dann den
+    //     Mitbewerber (Textweg: Dublette mit Kennung; Anker-Weg: Wiederverwendung);
+    //   · ein Mitbewerber im PAPIERKORB (Bs Objekt wurde vor As Fortsetzung gelöscht) →
+    //     ebenso entfernt; die Annahme nennt `im_papierkorb` mit dessen Kennung.
+    // Ist die Sperre nicht zurückzugewinnen (z. B. die Datenbank weist ab), fällt dieselbe
+    // Entscheidung ohne Sperre — laut protokolliert. Das ist schwächer als der gesperrte Weg,
+    // aber besser als eine sicher stehende zweite Kennung.
+    const nachSperrverlust = async (
+      eigeneKoId: string,
+      sperreGilt: () => Promise<void>,
+    ): Promise<ClaimResolution> => {
+      const mitbewerber = await this.mitbewerberNebenAnlage(candidate, eigeneKoId, pruefeDublette);
+      if (mitbewerber === undefined) {
+        const item = this.withSanitizedConfidentiality(candidate.item);
+        if (this.ankerWeg(candidate)) {
+          neuerBefund = { duplicate: false, dublettenbefund: { ergebnis: "nicht_gestellt" } };
+        }
+        // Bens B5: fehlt ein neu erhobener Befund, ist es die Erstanlage dieses Kandidaten.
+        neuerBefund ??= befundNachVollendeterAnlage(entschieden, this.ankerWeg(candidate));
+        createdKoId = eigeneKoId;
+        return {
+          status: "angenommen",
+          koId: eigeneKoId,
+          item,
+          ...(neuerBefund ?? {}),
+          ...reviewedStamp,
+        };
+      }
+      await sperreGilt();
+      await this.koService.delete(eigeneKoId, actor, { hard: true });
+      process.stderr.write(
+        `[KLARWERK] Annahme-Sperre nach der Anlage verloren, Mitbewerber vorhanden — eigenes Objekt entfernt (kandidat=${id}, ko=${eigeneKoId}).\n`,
+      );
+      if (mitbewerber.art === "papierkorb" && !this.ankerWeg(candidate)) {
+        // Bens Befund zu Zeile 2179: der Lückenmitbewerber liegt im Papierkorb. Auf dem
+        // Anker-Weg nennt ihn `acceptToKo` selbst (Trash-Vertrag, unten über `annehmen`); auf
+        // dem Textweg wird der Befund hier gesetzt — derselbe wie bei der regulären Annahme
+        // gegen einen Papierkorb-Anker: nichts angelegt, Kennung des gelöschten Objekts.
+        neuerBefund = {
+          duplicate: true,
+          dublettenbefund: {
+            ergebnis: "im_papierkorb",
+            treffer: { art: "wissensobjekt", koId: mitbewerber.koId },
+          },
+        };
+        return { status: "angenommen", ...neuerBefund, ...reviewedStamp };
+      }
+      return annehmen(sperreGilt);
+    };
+    // Der zweite Durchgang als EIN Schritt: unter neu erworbener Sperre, sonst — laut — ohne.
+    // Nacharbeit 4 (Bens Befund zu Zeile 2469): dieselbe Auflösung dient auch dem äußeren
+    // Fehlerabschluss unten, wenn dort ein gestempeltes Objekt gefunden wird, dessen Anlage nie
+    // nachgeprüft wurde.
+    const loeseAnlageAuf = async (eigeneKoId: string): Promise<ClaimResolution> => {
+      zweiterDurchgangOffen = true;
+      let schrittLief = false;
+      let ergebnis: ClaimResolution;
+      try {
+        ergebnis = await this.candidates.annahmeSperre(this.annahmeWartezeitMs, (gilt) => {
+          schrittLief = true;
+          return nachSperrverlust(eigeneKoId, gilt);
+        });
+      } catch (zweiter) {
+        if (schrittLief) {
+          throw zweiter;
+        }
+        process.stderr.write(
+          `[KLARWERK] Annahme-Sperre nach Sperrverlust nicht zurückgewonnen (kandidat=${id}) — Entscheidung über das eigene Objekt ohne Sperre.\n`,
+        );
+        ergebnis = await nachSperrverlust(eigeneKoId, () => Promise.resolve());
+      }
+      zweiterDurchgangOffen = false;
+      return ergebnis;
+    };
     try {
       let resolution: ClaimResolution;
       if (action === "reject") {
@@ -1591,140 +1726,13 @@ export class LibraryService {
           ...reviewedStamp,
         };
       } else {
-        // Befund UND Anlage als EIN Schritt hinter der Annahme-Sperre des Kandidatenbestands
-        // (Bens N1, R3-1): zwei überlappende Annahmen lesen nie beide den noch leeren Bestand —
-        // weder gleichen Inhalts (Textweg) noch derselben Quelle (Herkunftsanker), und auch nicht
-        // aus zwei Dienstinstanzen mit gemeinsamem Bestand, und auch nicht neben einem Halter, dessen
-        // Claim die Recovery inzwischen freigegeben hat (Bens B1). Bekommt die Annahme die Sperre
-        // nicht rechtzeitig, wirft `annahmeSperre` CONFLICT, BEVOR hier etwas läuft — der Fehlerpfad
-        // unten gibt den Claim dann zurück (kein Objekt entstanden).
-        const annehmen = async (sperreGilt: () => Promise<void>): Promise<ClaimResolution> => {
-          neuerBefund = await this.befundBeiAnnahme(candidate, pruefeDublette);
-          if (neuerBefund) {
-            entschieden = { ...candidate, ...neuerBefund };
-          }
-          if (!kandidatErzeugtWissensobjekt(entschieden)) {
-            // JOB 3050: hier landen ZWEI Fälle, und der Kandidat sagt selbst, welcher es war —
-            // `dublettenbefund` reist mit in die Antwort. (a) als Dublette erkannt: es wird nichts
-            // angelegt und nichts überschrieben. (b) die Dublettenfrage war nicht entscheidbar:
-            // fail-closed wird ebenfalls nichts angelegt — eine unbemerkte Dublette im Bestand ist
-            // teurer als ein Eintrag, der nicht anlegt und dessen Grund am Kandidaten steht.
-            return { status: "angenommen", ...(neuerBefund ?? {}), ...reviewedStamp };
-          }
-          // SCRUM-515-Vervollständigung: ein PERSISTIERTER Alt-Kandidat (vor 515 eingereiht;
-          // PgCandidateRepo liefert das JSONB unverändert) wurde bei createImportCandidates evtl.
-          // nie sanitisiert. Unmittelbar VOR acceptToKo erneut sanitisieren — sonst würde ein
-          // ungültiger Altwert im Re-Sync-Ranking auf „intern" normalisiert (fail-open) bzw. bei
-          // der Erstanlage hart abgelehnt. Das bereinigte Item wird MIT persistiert.
-          const item = this.withSanitizedConfidentiality(candidate.item);
-          // NACHARBEIT 2 (bens F1, Hauptstand): über den Dateiweg eingereichte Quellangaben
-          // bleiben erhalten.
-          const ausgang = await this.acceptToKo(
-            item,
-            actor,
-            id,
-            kamUeberDateiweg(item) ? DATEI_KANDIDATEN_WEG : KANDIDATEN_WEG,
-            sperreGilt,
-          );
-          createdKoId = ausgang.koId;
-          // Bens B3: der Ausgang am Herkunftsanker ersetzt den Befund vom Einreihen. Der Textweg
-          // hat seinen neuen Befund oben schon erhoben; dort kommt hier keiner zurück.
-          if (ausgang.befund) {
-            neuerBefund = ausgang.befund;
-          }
-          return {
-            status: "angenommen",
-            koId: createdKoId,
-            item,
-            ...(neuerBefund ?? {}),
-            ...reviewedStamp,
-          };
-        };
-        // ========================================================================================
-        // Lauf :2 Nacharbeit nach Runde 3 (Bens B4) — DER ZWEITE DURCHGANG NACH SPERRVERLUST.
-        // ========================================================================================
-        //
-        // `acceptToKo` hat angelegt und danach festgestellt, dass die Sperre nicht mehr hielt
-        // (`SperreNachAnlageVerloren`). Ob inzwischen ein ANDERER angelegt hat, wird jetzt unter
-        // einer NEU erworbenen Sperre entschieden — alle, die in der Lücke liefen, sind dann fertig:
-        //   · kein Mitbewerber neben dem eigenen Objekt → es bleibt, die Annahme ist eine
-        //     Erstanlage (wer in der Lücke lief, hat es gesehen und darauf verwiesen);
-        //   · ein Mitbewerber → das EIGENE, eben angelegte Objekt wird endgültig entfernt (es ist
-        //     die zweite Kennung), und die Annahme läuft noch einmal regulär: sie trifft dann den
-        //     Mitbewerber (Textweg: Dublette mit Kennung; Anker-Weg: Wiederverwendung);
-        //   · ein Mitbewerber im PAPIERKORB (Bs Objekt wurde vor As Fortsetzung gelöscht) →
-        //     ebenso entfernt; die Annahme nennt `im_papierkorb` mit dessen Kennung.
-        // Ist die Sperre nicht zurückzugewinnen (z. B. die Datenbank weist ab), fällt dieselbe
-        // Entscheidung ohne Sperre — laut protokolliert. Das ist schwächer als der gesperrte Weg,
-        // aber besser als eine sicher stehende zweite Kennung.
-        const nachSperrverlust = async (
-          eigeneKoId: string,
-          sperreGilt: () => Promise<void>,
-        ): Promise<ClaimResolution> => {
-          const mitbewerber = await this.mitbewerberNebenAnlage(
-            candidate,
-            eigeneKoId,
-            pruefeDublette,
-          );
-          if (mitbewerber === undefined) {
-            const item = this.withSanitizedConfidentiality(candidate.item);
-            if (this.ankerWeg(candidate)) {
-              neuerBefund = { duplicate: false, dublettenbefund: { ergebnis: "nicht_gestellt" } };
-            }
-            createdKoId = eigeneKoId;
-            return {
-              status: "angenommen",
-              koId: eigeneKoId,
-              item,
-              ...(neuerBefund ?? {}),
-              ...reviewedStamp,
-            };
-          }
-          await sperreGilt();
-          await this.koService.delete(eigeneKoId, actor, { hard: true });
-          process.stderr.write(
-            `[KLARWERK] Annahme-Sperre nach der Anlage verloren, Mitbewerber vorhanden — eigenes Objekt entfernt (kandidat=${id}, ko=${eigeneKoId}).\n`,
-          );
-          if (mitbewerber.art === "papierkorb" && !this.ankerWeg(candidate)) {
-            // Bens Befund zu Zeile 2179: der Lückenmitbewerber liegt im Papierkorb. Auf dem
-            // Anker-Weg nennt ihn `acceptToKo` selbst (Trash-Vertrag, unten über `annehmen`); auf
-            // dem Textweg wird der Befund hier gesetzt — derselbe wie bei der regulären Annahme
-            // gegen einen Papierkorb-Anker: nichts angelegt, Kennung des gelöschten Objekts.
-            neuerBefund = {
-              duplicate: true,
-              dublettenbefund: {
-                ergebnis: "im_papierkorb",
-                treffer: { art: "wissensobjekt", koId: mitbewerber.koId },
-              },
-            };
-            return { status: "angenommen", ...neuerBefund, ...reviewedStamp };
-          }
-          return annehmen(sperreGilt);
-        };
         try {
           resolution = await this.candidates.annahmeSperre(this.annahmeWartezeitMs, annehmen);
         } catch (fehler) {
           if (!(fehler instanceof SperreNachAnlageVerloren)) {
             throw fehler;
           }
-          const eigeneKoId = fehler.eigeneKoId;
-          zweiterDurchgangOffen = true;
-          let schrittLief = false;
-          try {
-            resolution = await this.candidates.annahmeSperre(this.annahmeWartezeitMs, (gilt) => {
-              schrittLief = true;
-              return nachSperrverlust(eigeneKoId, gilt);
-            });
-          } catch (zweiter) {
-            if (schrittLief) {
-              throw zweiter;
-            }
-            process.stderr.write(
-              `[KLARWERK] Annahme-Sperre nach Sperrverlust nicht zurückgewonnen (kandidat=${id}) — Entscheidung über das eigene Objekt ohne Sperre.\n`,
-            );
-            resolution = await nachSperrverlust(eigeneKoId, () => Promise.resolve());
-          }
-          zweiterDurchgangOffen = false;
+          resolution = await loeseAnlageAuf(fehler.eigeneKoId);
         }
       }
       // SCRUM-157: Endstatus/koId/Note (+ bereinigtes Item, 515) persistieren — atomar über den
@@ -1773,6 +1781,27 @@ export class LibraryService {
           ankerUnsettled = true; // Anker/Belege nicht gesichert → fail-closed (s. unten).
         }
       }
+      // ==========================================================================================
+      // Nacharbeit 4 (Bens Befund zu Zeile 2469) — DER STEMPEL ALLEIN RECHTFERTIGT KEINEN ABSCHLUSS.
+      // ==========================================================================================
+      //
+      // Hier wurde das Objekt NUR über seinen Kandidatenstempel gefunden (`createdKoId` ist leer):
+      // die Anlage warf, bevor `acceptToKo` sie nachprüfen konnte — etwa weil der Snapshot bei
+      // `create` UND beim ersten Belegnachzug scheiterte. Ob die Sperre dabei noch hielt, ist
+      // unbekannt; ein anderer kann in der Lücke angelegt haben. Darum entscheidet dieselbe
+      // Auflösung wie nach einem erkannten Sperrverlust (`loeseAnlageAuf`): kein Mitbewerber →
+      // das Objekt bleibt; ein Mitbewerber → das eigene wird als zweite Kennung entfernt und die
+      // Annahme nennt den Mitbewerber. Scheitert die Auflösung, bleibt der Claim stehen
+      // (fail-closed); die Recovery prüft vor einer Vollendung dasselbe.
+      let aufloesung: ClaimResolution | undefined;
+      if (!ankerUnsettled && stampedId !== null && createdKoId === null && action === "accept") {
+        try {
+          aufloesung = await loeseAnlageAuf(stampedId);
+        } catch {
+          ankerUnsettled = true;
+          stampedId = null;
+        }
+      }
       // Bens B5: fehlt der neu erhobene Befund (die Anlage warf, bevor ihr Ausgang zurückkam),
       // trägt das gestempelte Objekt die Auskunft — es ist die Erstanlage dieses Kandidaten.
       let abschlussBefund = neuerBefund;
@@ -1782,20 +1811,23 @@ export class LibraryService {
       if (stampedId !== null) {
         // Das KO existiert — die Operation DIREKT vollenden statt auf die Recovery zu warten.
         // CAS auf die EIGENE opId: eine übernommene Lease wird nie überschrieben.
+        // Nacharbeit 4: nach einer Auflösung gilt deren Ausgang (eigenes Objekt behalten, oder
+        // entfernt und den Mitbewerber genannt) — sonst der bisherige Abschluss.
+        const abschluss: ClaimResolution = aufloesung ?? {
+          status: "angenommen",
+          koId: stampedId,
+          // Bens N4: derselbe neu erhobene Befund wie im regulären Abschluss.
+          ...(abschlussBefund ?? {}),
+          ...reviewedStamp,
+        };
         const completed = await this.candidates
-          .resolveClaim(id, opId, {
-            status: "angenommen",
-            koId: stampedId,
-            // Bens N4: derselbe neu erhobene Befund wie im regulären Abschluss.
-            ...(abschlussBefund ?? {}),
-            ...reviewedStamp,
-          })
+          .resolveClaim(id, opId, abschluss)
           .catch(() => undefined);
         if (completed) {
           process.stderr.write(
-            `[KLARWERK] Review-Accept trotz Seiteneffekt-Fehler vollendet (kandidat=${id}, fehler=${
+            `[KLARWERK] Review-Accept trotz Seiteneffekt-Fehler abgeschlossen (kandidat=${id}, fehler=${
               err instanceof Error ? err.name : "unknown"
-            }) — genau EIN KO, Endzustand angenommen.\n`,
+            }) — höchstens EIN KO, Endzustand angenommen.\n`,
           );
           resolved = completed;
         } else {
@@ -1988,6 +2020,46 @@ export class LibraryService {
             `[KLARWERK] Recovery: Stempel-KO vorhanden, aber geclaimte Aktion ist ${candidate.claimedAction} (kandidat=${candidate.id}) — Claim bleibt stehen (fail-closed).\n`,
           );
           continue;
+        }
+        // Nacharbeit 4 (Bens Befund zu Zeile 2469): auch ein VERTAGTER Abschluss vollendet nicht
+        // allein auf den Kandidatenstempel hin. Unter der Annahme-Sperre wird gefragt, ob neben
+        // dem gestempelten Objekt ein anderes steht, das dieser Kandidat getroffen hätte (eine
+        // ungeschützte Anlage nach Sperrverlust). Wenn ja, wird das gestempelte Objekt als zweite
+        // Kennung entfernt und der Claim auf `neu` zurückgegeben — die nächste Annahme entscheidet
+        // dann regulär und nennt den Mitbewerber. Ohne Sperre bleibt der Claim stehen (nächster
+        // Lauf). Ein getrashtes Stempel-Objekt fällt weiter unter den Trash-Vertrag oben.
+        // Die Recovery kennt den Dublettenport nicht; die Textfrage stellt sie darum nur in der
+        // exakten Form (Pass 1 derselben Regel, s. `mitbewerberNebenAnlage`).
+        if (!stamped.deletedAt) {
+          const eigeneKoId = stamped.id;
+          const raeume = async (gilt: () => Promise<void>): Promise<boolean> => {
+            const mitbewerber = await this.mitbewerberNebenAnlage(candidate, eigeneKoId, undefined);
+            if (mitbewerber === undefined) {
+              return false;
+            }
+            await gilt();
+            const akteur = candidate.claimedBy ?? "system";
+            await this.koService.delete(eigeneKoId, akteur, { hard: true });
+            return true;
+          };
+          let entfernt: boolean;
+          try {
+            entfernt = await this.candidates.annahmeSperre(this.annahmeWartezeitMs, raeume);
+          } catch {
+            process.stderr.write(
+              `[KLARWERK] Recovery: Mitbewerber-Pruefung nicht moeglich (kandidat=${candidate.id}) — Claim bleibt stehen (fail-closed).\n`,
+            );
+            continue;
+          }
+          if (entfernt) {
+            process.stderr.write(
+              `[KLARWERK] Recovery: gestempeltes Objekt neben einem Mitbewerber entfernt (kandidat=${candidate.id}, ko=${eigeneKoId}) — Claim zurück auf neu.\n`,
+            );
+            if (await this.candidates.resolveClaim(candidate.id, opId, { status: "neu" })) {
+              released += 1;
+            }
+            continue;
+          }
         }
         // WP-SHIP8-CLOSE-7 (bens ROT-2): der ECHTE Reviewer aus dem Claim (claimedBy) — nur
         // Altclaims ohne das Feld fallen EHRLICH auf "system" zurück (Kennzeichnung im Beleg).
@@ -2524,8 +2596,8 @@ export class LibraryService {
   //     getrashter Objekte liest der Wissensobjekt-Dienst nicht aus; der Kandidatenstempel ist der
   //     einzige Weg, den gelöschten Lückenmitbewerber ohne Modulgrenzübertritt zu finden — darum
   //     gilt hier nur die wortgleiche Form, keine Ähnlichkeit.
-  // `pruefung_nicht_moeglich` belegt keinen Mitbewerber; ohne Port ist die Textfrage nicht
-  // stellbar. In beiden Fällen bleibt das eigene, bereits angelegte Objekt stehen.
+  // `pruefung_nicht_moeglich` belegt keinen Mitbewerber; ohne Port (Recovery) wird nur die exakte
+  // Form gefragt (Nacharbeit 4, s. unten). Ohne Treffer bleibt das eigene Objekt stehen.
   private async mitbewerberNebenAnlage(
     candidate: ImportCandidate,
     eigeneKoId: string,
@@ -2563,8 +2635,21 @@ export class LibraryService {
     if (ergebnis?.ergebnis === "im_papierkorb" && ergebnis.treffer.art === "wissensobjekt") {
       return { art: "papierkorb", koId: ergebnis.treffer.koId };
     }
+    // Nacharbeit 4: ohne Port (Recovery, Altaufrufer) stellt `befundBeiAnnahme` keine Textfrage.
+    // Gefragt wird dann die EXAKTE Form — Pass 1 derselben Regel (`title|statement`), wie beim
+    // Einreihen und bei der Annahme: ein anderes aktives Objekt mit wortgleichem Titel und
+    // Aussage ist ein Mitbewerber. Ähnlichkeit ohne Port wird nicht geraten.
     if (pruefeDublette === undefined) {
-      return undefined;
+      for (const ko of await this.koService.list()) {
+        if (
+          ko.id !== eigeneKoId &&
+          ko.importCandidateId !== candidate.id &&
+          ko.title === item.title &&
+          ko.statement === item.statement
+        ) {
+          return { art: "aktiv" };
+        }
+      }
     }
     for (const anderer of await this.candidates.all()) {
       if (

@@ -123,14 +123,15 @@ async function aufbau(anker: boolean) {
     });
   };
   const ablage = verzoegerteAblage();
-  // Nacharbeit 1: ein einmal scharf zu schaltender Snapshotfehler NACH dem Insert (Teilpersistenz,
-  // wie `sideEffectHarness` in tests/app/review-claim-recovery.test.ts).
-  const snapshotFehler = { einmal: false };
+  // Nacharbeit 1: scharf zu schaltende Snapshotfehler NACH dem Insert (Teilpersistenz, wie
+  // `sideEffectHarness` in tests/app/review-claim-recovery.test.ts). Nacharbeit 4: als Zähler —
+  // `rest` aufeinanderfolgende Snapshot-Schreibversuche scheitern.
+  const snapshotFehler = { rest: 0 };
   const versionen = new InMemoryKoVersionRepo();
   const versions: KoVersionRepo = {
     append: async (snapshot) => {
-      if (snapshotFehler.einmal) {
-        snapshotFehler.einmal = false;
+      if (snapshotFehler.rest > 0) {
+        snapshotFehler.rest -= 1;
         throw new Error("SnapshotDown");
       }
       return versionen.append(snapshot);
@@ -140,15 +141,19 @@ async function aufbau(anker: boolean) {
   };
   const ko = new KoService({ repo: ablage.repo, versions });
   await ko.activateSearchProjectionV2();
+  // Nacharbeit 4: eine gemeinsame Uhr, damit die Recovery eine abgelaufene Lease sieht.
+  const uhr = { ms: Date.parse("2026-10-01T08:00:00Z") };
   const aDienst = new LibraryService({
     koService: ko,
     candidates: mitSperre(new PgCandidateRepo(aPool.pool)),
     externalUpsert: anker,
+    now: () => uhr.ms,
   });
   const bDienst = new LibraryService({
     koService: ko,
     candidates: mitSperre(new PgCandidateRepo(bPool.pool)),
     externalUpsert: anker,
+    now: () => uhr.ms,
   });
   const item = {
     title: "Filterwechsel",
@@ -158,7 +163,18 @@ async function aufbau(anker: boolean) {
     confidentiality: "intern" as const,
     ...(anker ? { provider: "wiki", externalId: "quelle-42" } : {}),
   };
-  return { transport, aPool, ko, ablage, aDienst, bDienst, item, snapshotFehler };
+  return {
+    transport,
+    aPool,
+    ko,
+    ablage,
+    aDienst,
+    bDienst,
+    item,
+    snapshotFehler,
+    uhr,
+    kandidaten: gemeinsam,
+  };
 }
 
 /**
@@ -279,10 +295,10 @@ describe("B4 · Sperrverlust nach der letzten Prüfung, vor dem echten Insert", 
     // Nacharbeit 1, Bens Befund zu service.ts:2129 — der Adoptionsweg nach Teilpersistenz.
     it(`${weg} (Nacharbeit 1): As Insert gelingt, sein Snapshot wirft einmal → die Adoption geht durch die Nachprüfung, genau EINE Kennung`, async () => {
       const { ko, ablage, a, aLauf, rb, snapshotFehler } = await bisVorAsFortsetzung(anker);
-      snapshotFehler.einmal = true;
+      snapshotFehler.rest = 1;
       ablage.fortsetzen();
       const ra = await aLauf;
-      expect(snapshotFehler.einmal, "Vorbedingung: der Snapshotfehler hat ausgelöst.").toBe(false);
+      expect(snapshotFehler.rest, "Vorbedingung: der Snapshotfehler hat ausgelöst.").toBe(0);
 
       const kos = await ko.list();
       expect(kos, "Auch die Adoption hinterlässt keine zweite Kennung.").toHaveLength(1);
@@ -293,6 +309,69 @@ describe("B4 · Sperrverlust nach der letzten Prüfung, vor dem echten Insert", 
         ergebnis: anker ? "wiederverwendet" : "identisch",
         treffer: { art: "wissensobjekt", koId: rb.koId },
       });
+    });
+
+    // Nacharbeit 4, Bens Befund zu service.ts:2469 — der äußere Fehlerabschluss.
+    it(`${weg} (Nacharbeit 4): As Snapshot scheitert bei create UND beim ersten Belegnachzug → der äußere Abschluss prüft nach, genau EINE Kennung`, async () => {
+      const { ko, ablage, a, aLauf, rb, snapshotFehler } = await bisVorAsFortsetzung(anker);
+      // 1. Fehler: `create` nach dem Insert; 2. Fehler: der Belegnachzug der Adoption in
+      // `acceptToKo` — die Nachprüfung dort wird nicht erreicht. Der Nachzug im äußeren
+      // Fehlerabschluss gelingt; ohne Prüfung schlösse er A allein auf den Stempel hin ab.
+      snapshotFehler.rest = 2;
+      ablage.fortsetzen();
+      const ra = await aLauf;
+      expect(snapshotFehler.rest, "Vorbedingung: beide Snapshotfehler haben ausgelöst.").toBe(0);
+
+      const kos = await ko.list();
+      expect(kos, "Der äußere Abschluss hinterlässt keine zweite Kennung.").toHaveLength(1);
+      expect(kos[0]?.id).toBe(rb.koId);
+      expect(await ko.findByImportCandidateId(a.id), "As Objekt ist entfernt.").toBeUndefined();
+      expect(ra.status).toBe("angenommen");
+      expect(ra.dublettenbefund).toEqual({
+        ergebnis: anker ? "wiederverwendet" : "identisch",
+        treffer: { art: "wissensobjekt", koId: rb.koId },
+      });
+    });
+
+    it(`${weg} (Nacharbeit 4): auch der äußere Belegnachzug scheitert → vertagt; die Recovery prüft vor der Vollendung, genau EINE Kennung`, async () => {
+      const welt = await bisVorAsFortsetzung(anker);
+      const { ko, ablage, a, aLauf, rb, snapshotFehler, uhr, bDienst, kandidaten } = welt;
+      // Drei Fehler: create, Adoption UND äußerer Nachzug — der Claim bleibt fail-closed stehen.
+      snapshotFehler.rest = 3;
+      ablage.fortsetzen();
+      await expect(aLauf).rejects.toThrow();
+      expect(snapshotFehler.rest, "Vorbedingung: alle drei Snapshotfehler haben ausgelöst.").toBe(
+        0,
+      );
+      expect((await kandidaten.findById(a.id))?.status).toBe("in_bearbeitung");
+      expect(await ko.list(), "Vor der Recovery stehen noch beide Objekte.").toHaveLength(2);
+
+      // Lease abgelaufen: die Recovery (über die intakte Instanz B) darf A NICHT allein auf den
+      // Stempel hin vollenden. Sie findet Bs Objekt, entfernt As zweite Kennung und gibt den
+      // Claim zurück.
+      uhr.ms += REVIEW_CLAIM_LEASE_MS + 1;
+      expect(await bDienst.recoverStaleReviewClaims()).toEqual({ completed: 0, released: 1 });
+      const kos = await ko.list();
+      expect(kos, "Die Recovery hinterlässt keine zweite Kennung.").toHaveLength(1);
+      expect(kos[0]?.id).toBe(rb.koId);
+      expect(await ko.findByImportCandidateId(a.id), "As Objekt ist entfernt.").toBeUndefined();
+      expect((await kandidaten.findById(a.id))?.status, "Claim zurück, nicht vollendet.").toBe(
+        "neu",
+      );
+
+      // Die nächste Annahme entscheidet regulär und nennt Bs Objekt.
+      const erneut = await bDienst.reviewImportCandidate(
+        a.id,
+        "accept",
+        "rev-a",
+        undefined,
+        NIE_AEHNLICH,
+      );
+      expect(erneut.dublettenbefund).toEqual({
+        ergebnis: anker ? "wiederverwendet" : "identisch",
+        treffer: { art: "wissensobjekt", koId: rb.koId },
+      });
+      expect(await ko.list()).toHaveLength(1);
     });
 
     // Nacharbeit 1, Bens Befund zu service.ts:2179 — Bs Lückenobjekt liegt im Papierkorb.
