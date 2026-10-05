@@ -66,7 +66,7 @@ import { type SemanticPrefilter, indexKoForDuplicatePrefilter } from "../duplica
 import { type Guards, type SessionUser, sendError } from "../http";
 import { type LesevariantenRepo, mitAenderungsauskunft } from "../lesevarianten";
 import type { AssignmentNotifier } from "../notify";
-import { darfSehen, sichtbareFuer, sqlSichtbarkeitFuer } from "../sichtbarkeit";
+import { darfSehen, sichtbareFuer, sichtbarePaare, sqlSichtbarkeitFuer } from "../sichtbarkeit";
 import { dublettenTor } from "./validation-routes";
 
 // Knowledge-Object-API (§2.3). Mutationen laufen über EINEN Endpunkt
@@ -689,12 +689,14 @@ function erwarteteKoVersion(roh: unknown): number | undefined | "unlesbar" {
  */
 const ANZEIGESTATUS_UNGEPRUEFT_GRUND = {
   /**
-   * JOB 3002 baut den Konfliktweg gerade um (`services/conflicts/**`, `conflicts-routes.ts`), und
-   * `ConflictService` bietet ohnehin keine Abfrage je Objekt, sondern nur `unresolved()` ueber den
-   * ganzen Bestand.
+   * PRÜFSTATUS-ANZEIGE (R-0212): BEIDE LESEROUTEN ERHEBEN DEN KONFLIKT JETZT — bis hierher stand
+   * hier die Enthaltung („der Konfliktweg wird umgebaut, JOB 3002"), und der Widerspruch hielt nur
+   * in der Oberflaeche, nicht ueber die Schnittstelle. Erhoben wird ueber `conflicts.unresolved()`
+   * (eine Abfrage je Antwort) und dieselbe Paarregel wie `GET /api/conflicts` (`sichtbarePaare`).
+   * Diese Zeile steht deshalb nur noch da, wenn GENAU DIESE Abfrage fehlgeschlagen ist.
    */
   konflikt:
-    "Der Konfliktweg wird derzeit umgebaut (JOB 3002); dieser Lesepfad fragt ihn nicht ab. Ob dieses Objekt in einem Konflikt steht, ist hier nicht erhoben.",
+    "Ob dieses Objekt in einem offenen Konflikt steht, ist hier nicht erhoben: die Abfrage der offenen Konflikte ist fehlgeschlagen.",
   /**
    * JOB 3054: DIESER GRUND IST SEITHER EIN FEHLERGRUND, KEIN NORMALFALL.
    *
@@ -897,8 +899,10 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
   // DER LESEPFAD BRAUCHT VOM LEBENSZYKLUS GENAU EINE FRAGE, und er nimmt sie in der Form entgegen,
   // in der er sie stellen darf. `RevalidierungMerkerLeser` traegt nur `revalidierungAnstehtFuer`;
   // `pendingRevalidation()` — der selbstheilende, SCHREIBENDE Arbeitsbereichsweg (SCRUM-420) — ist
-  // von hier aus nicht erreichbar. Die Zusage „ein Lesepfad schreibt nicht" haelt damit der
-  // Compiler und nicht eine Sichtpruefung; gemessen wird sie zusaetzlich in R-4.
+  // UEBER DIESEN ALIAS nicht erreichbar. Das ist eine Begrenzung, keine Garantie des Compilers: das
+  // volle `lifecycle` bleibt in diesem Closure fuer die Mutationsrouten erreichbar. Die Zusage „ein
+  // Lesepfad schreibt nicht" belegt deshalb der Laufzeitfall R-4
+  // (`tests/anzeigestatus-revalidierung/revalidierung-wird-erhoben.test.ts`).
   const merkerLeser: RevalidierungMerkerLeser = lifecycle;
 
   /**
@@ -930,13 +934,51 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
    * waren — eine Antwort, die weniger weiss, als der Server nachgesehen hat. Gepinnt in R-6a/R-6b.
    */
   async function anzeigestatusEingaengeFuer(
+    user: SessionUser,
     item: KnowledgeObject,
   ): Promise<AnzeigestatusEingaenge> {
-    const [ausPruefstand, revalidierungFuer] = await Promise.all([
+    const [ausPruefstand, revalidierungFuer, konfliktFuer] = await Promise.all([
       pruefstandEingaengeFuer(item),
       revalidierungJeEintrag([item.id]),
+      konfliktJeEintrag(user, [item.id]),
     ]);
-    return { ...ausPruefstand, revalidierung: revalidierungFuer(item.id) };
+    return {
+      ...ausPruefstand,
+      revalidierung: revalidierungFuer(item.id),
+      konflikt: konfliktFuer(item.id),
+    };
+  }
+
+  /**
+   * PRÜFSTATUS-ANZEIGE (R-0212) · DER VIERTE EINGANG: STEHT DAS OBJEKT IN EINEM OFFENEN KONFLIKT?
+   *
+   * EINE Abfrage fuer die ganze Menge (`unresolved()`), dann dieselbe Paarregel wie die
+   * Konfliktliste: ein Konflikt zaehlt nur, wenn der Leser BEIDE Seiten sehen darf. Sonst waere
+   * schon „Konflikt" am eigenen Objekt eine Auskunft ueber ein Objekt, das er nicht sehen darf.
+   * Gefragt wird gegen den Bestand und nicht gegen die gelieferte Teilmenge — ein Listenfilter
+   * aendert die Konfliktlage eines Objekts nicht.
+   *
+   * FAIL-CLOSED, ABER NICHT STILL: scheitert die Abfrage, wird daraus kein `false`, sondern der
+   * benannte Grund. Ein `false` heisst „nachgesehen, kein sichtbarer offener Konflikt".
+   */
+  async function konfliktJeEintrag(
+    user: SessionUser,
+    koIds: readonly string[],
+  ): Promise<(koId: string) => Erhoben<boolean>> {
+    try {
+      const ids = new Set(koIds);
+      const relevant = (await conflicts.unresolved()).filter(
+        (c) => ids.has(c.koA) || ids.has(c.koB),
+      );
+      const betroffen = new Set<string>();
+      for (const c of await sichtbarePaare(user, relevant, ko)) {
+        betroffen.add(c.koA);
+        betroffen.add(c.koB);
+      }
+      return (koId) => ({ wert: betroffen.has(koId) });
+    } catch {
+      return () => ({ ungeprueft: ANZEIGESTATUS_UNGEPRUEFT_GRUND.konflikt });
+    }
   }
 
   /** Die zwei Eingaenge aus der Pruefstandslage — fail-closed mit ihrem eigenen Grund (Fall J). */
@@ -972,13 +1014,13 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
   // auch im Deckel- und im Fehlerfall, und kein Aufrufer muss aus einem fehlenden Karteneintrag
   // etwas schliessen. Was nicht erhoben wurde, sagt es mit Grund.
   async function anzeigestatusEingaengeJeEintrag(
+    user: SessionUser,
     sichtbare: readonly KnowledgeObject[],
   ): Promise<(item: KnowledgeObject) => AnzeigestatusEingaenge> {
     if (sichtbare.length > ANZEIGESTATUS_LISTE_DECKEL) {
       const deckel = anzeigestatusDeckelGrund(sichtbare.length);
-      // Alle vier Eingaenge tragen den Deckel. Bei `konflikt` steht er NEBEN dem bestehenden Grund,
-      // nicht an seiner Stelle: dieser Eingang wird auch unterhalb des Deckels nicht erhoben, und
-      // ein alleiniger Deckelgrund liesse das Gegenteil vermuten.
+      // Alle vier Eingaenge tragen den Deckel — seit R-0212 auch `konflikt` ALLEIN: unterhalb des
+      // Deckels wird er erhoben, der Deckel ist der einzige Grund, aus dem er hier fehlt.
       //
       // JOB 3054: `revalidierung` traegt seither den Deckelgrund ALLEIN — wie `zuweisungen` und
       // `bewertungen`. Unterhalb des Deckels wird er erhoben; der Deckel ist der einzige Grund,
@@ -986,18 +1028,26 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
       const ueberDeckel: AnzeigestatusEingaenge = {
         zuweisungen: { ungeprueft: deckel },
         bewertungen: { ungeprueft: deckel },
-        konflikt: { ungeprueft: `${ANZEIGESTATUS_UNGEPRUEFT_GRUND.konflikt} ${deckel}` },
+        konflikt: { ungeprueft: deckel },
         revalidierung: { ungeprueft: deckel },
       };
       return () => ueberDeckel;
     }
     // JOB 3054: zwei Erhebungen, nebenlaeufig und einzeln fallend — dieselbe Trennung wie am
     // Detailpfad. Die Merkerabfrage kommt fuer die GANZE sichtbare Menge, nicht je Eintrag (R-5).
-    const [ausPruefstand, revalidierungFuer] = await Promise.all([
+    const [ausPruefstand, revalidierungFuer, konfliktFuer] = await Promise.all([
       pruefstaendeJeEintrag(sichtbare),
       revalidierungJeEintrag(sichtbare.map((item) => item.id)),
+      konfliktJeEintrag(
+        user,
+        sichtbare.map((item) => item.id),
+      ),
     ]);
-    return (item) => ({ ...ausPruefstand(item), revalidierung: revalidierungFuer(item.id) });
+    return (item) => ({
+      ...ausPruefstand(item),
+      revalidierung: revalidierungFuer(item.id),
+      konflikt: konfliktFuer(item.id),
+    });
   }
 
   /** Die zwei Eingaenge aus der Pruefstandslage, fuer die ganze Menge in zwei Abfragen (L3). */
@@ -1132,7 +1182,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
       // wird ausschliesslich die sichtbare Menge, und nur ihre Kennungen gehen an die
       // Pruefstandsabfrage. Ein Prueflauf ueber ein unsichtbares Objekt waere eine Existenzauskunft
       // ueber den Umweg der Kosten (gepinnt in L6).
-      const eingaengeFuer = await anzeigestatusEingaengeJeEintrag(sichtbare);
+      const eingaengeFuer = await anzeigestatusEingaengeJeEintrag(user, sichtbare);
       reply.code(200).send(
         sichtbare.map((item) => ({
           ...item,
@@ -1221,7 +1271,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
       reply.code(200).send({
         ...item,
         ...discloseConfidentiality(item.confidentiality),
-        ...discloseDisplayStatus(item, await anzeigestatusEingaengeFuer(item)),
+        ...discloseDisplayStatus(item, await anzeigestatusEingaengeFuer(user, item)),
         ...(einordnung
           ? {
               category: einordnung.category,

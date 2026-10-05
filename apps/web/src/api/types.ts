@@ -592,6 +592,9 @@ export interface KnowledgeObject {
   reviewVotes?: { up: number; warn: number; down: number };
   // SCRUM-507 R2: Anzahl Bewertungen aus einer FRÜHEREN Revision — veraltet, zählen nicht mehr.
   staleVotes?: number;
+  // PRÜFSTATUS-ANZEIGE (N-0054): Spiegel von `services/knowledge-object/src/types.ts` — der Verweis
+  // auf die Validierungsentscheidung. Steht er da, hat ein Mensch fachlich entschieden.
+  validationDecisionRef?: { auditSeq: number; auditHash: string };
   asset: string | null;
   createdAt: string;
   history: HistoryEntry[];
@@ -623,6 +626,13 @@ export interface KnowledgeObject {
     // gilt für einen früheren Stand von Inhalt, Quellen, Einordnung oder Vertraulichkeit — er ist
     // nicht aktuell, gleich was Status und Abdeckung sagen.
     ueberholt?: boolean;
+    // PRÜFSTATUS-ANZEIGE (R-0208) · NUR LESEFASSUNG DES PRÜFBRETTS, nie gespeichert. `laeuft`
+    // (nur bei pending): der Worker bearbeitet den Job gerade — sonst ist er bloß ausstehend.
+    // `konfliktGefunden` (nur bei done): zu DIESEM Objekt als Subjekt steht ein offener, automatisch
+    // erkannter Konflikt, dessen Gegenseite der Leser sehen darf. Fehlt das Feld, ist es nicht
+    // erhoben — es heißt dann weder „kein Konflikt" noch „läuft nicht".
+    laeuft?: boolean;
+    konfliktGefunden?: boolean;
   };
 }
 
