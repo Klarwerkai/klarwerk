@@ -2,6 +2,7 @@
 // bei leerem Bestand. Bewusst KEIN Re-Use der FE-Health-Formel (eigene, kapital-
 // spezifische Aggregate); minimaler Overlap der Rohquoten ist akzeptiert.
 import type { KnowledgeObject } from "../../knowledge-object";
+import { ASSESSMENT_VALUE, type AssessmentLevel } from "./profiles";
 import type {
   Band,
   CapitalScore,
@@ -13,6 +14,8 @@ import type {
   MetricsInput,
   Overview,
   PilotWindow,
+  PriorityFactorKey,
+  PriorityFlag,
   Recommendation,
   ValuationFacts,
 } from "./types";
@@ -157,48 +160,104 @@ export function maturity(input: MetricsInput, capScore: number): Maturity {
   };
 }
 
-// FE-MGMT-09: 9-Faktoren-Dringlichkeit je Kategorie (jeder Faktor 0–100, höher = dringender).
-const PRIORITY_WEIGHTS: Record<string, number> = {
-  size: 0.1,
-  lowValidation: 0.2,
-  lowTrust: 0.15,
-  singleSource: 0.15,
-  authorConcentration: 0.1,
-  staleShare: 0.1,
-  openShare: 0.1,
-  fragility: 0.05,
-  coverageGap: 0.05,
-};
+// ================================================================================================
+// FE-MGMT-09 / FR-EXT-04 / R-0751 (Nacharbeit 1, ben F2) — DIE NEUN FAKTOREN DER QUELLE.
+// ================================================================================================
+//
+// Bis zur Nacharbeit rechnete diese Funktion neun ANDERE Größen (size, lowValidation, …). Jetzt
+// steht jeder Faktor der Quelle für sich (jeder 0–100, höher = dringender zu sichern):
+//
+//   busFactor        100 / Zahl der Urheber der Kategorie (Bus-Faktor 1 ⇒ 100)
+//   criticality      gepflegte Stufe im Bereichsprofil (Nacharbeit 3): niedrig 0, mittel 50, hoch 100
+//   processProximity gepflegte Stufe im Bereichsprofil (Nacharbeit 3)
+//   age              mittleres Alter seit `createdAt`, 730 Tage und älter ⇒ 100
+//   sourceQuality    Mittel aus (100 − mittleres Vertrauen) und Anteil Objekte ohne Quelle
+//   conflictDensity  Anteil Objekte an einem offenen sichtbaren Konflikt (fehlt die Angabe ⇒ keine Daten)
+//   repetition       gepflegte Stufe im Bereichsprofil (Nacharbeit 3) — Lücken zählen zwar ihre
+//                    Häufigkeit, tragen aber keine Kategorie; deshalb eingeschätzt, nicht abgeleitet
+//   damagePotential  gepflegte Stufe im Bereichsprofil (Nacharbeit 3)
+//   (Ohne Profil oder ohne gesetzte Stufe bleiben diese vier „keine Eingangsdaten".)
+//   protection       Schutzwert aus `confidentiality`: intern 0, vertraulich 50, streng vertraulich 100
+//                    (fehlende Stufe zählt wie „intern" — dieselbe Regel wie beim Zugriff)
+//
+// Ein Faktor ohne Eingangsdaten ist `null`: er wird NICHT geschätzt und NICHT durch eine andere
+// Größe ersetzt. Der Score ist das gleichgewichtete Mittel der Faktoren MIT Daten; `knownFactors`
+// sagt, aus wie vielen der neun er stammt.
+export const PRIORITY_FACTOR_KEYS: readonly PriorityFactorKey[] = [
+  "busFactor",
+  "criticality",
+  "processProximity",
+  "age",
+  "sourceQuality",
+  "conflictDensity",
+  "repetition",
+  "damagePotential",
+  "protection",
+];
+const ALTER_VOLL_TAGE = 730;
+const SCHUTZWERT: Record<string, number> = { intern: 0, vertraulich: 50, streng_vertraulich: 100 };
+/** Ab diesem Schutzwert trägt eine Kategorie das Merkmal „hoher Schutzwert". */
+const HOHER_SCHUTZWERT = 50;
+
+function mittel(werte: readonly number[]): number | null {
+  return werte.length === 0 ? null : werte.reduce((s, w) => s + w, 0) / werte.length;
+}
 
 export function priorities(input: MetricsInput): CategoryPriority[] {
   const cats = categories(input.kos);
-  const maxCount = Math.max(1, ...[...cats.values()].map((l) => l.length));
   const busByCat = new Map(input.busFactor.map((b) => [b.category, b]));
   const pendingSet = new Set(input.pendingRevalidation);
+  const konflikte = input.openConflictKoIds ? new Set(input.openConflictKoIds) : null;
+  const profilByCat = new Map((input.categoryProfiles ?? []).map((p) => [p.category, p]));
+  const stufe = (s: AssessmentLevel | null | undefined): number | null =>
+    s ? ASSESSMENT_VALUE[s] : null;
 
   const rows: CategoryPriority[] = [];
   for (const [category, list] of cats) {
-    const validated = list.filter((k) => k.status === "validiert").length;
-    const open = list.length - validated;
-    const validatedRatio = pct(validated, list.length);
-    const avgTrust = avgTrustOf(list);
     const bus = busByCat.get(category);
-    const authorCount = bus?.authorCount ?? 1;
-    const stale = list.filter((k) => pendingSet.has(k.id)).length;
+    const profil = profilByCat.get(category);
+    const alterTage = mittel(
+      list
+        .map((k) => Date.parse(k.createdAt))
+        .filter((t) => !Number.isNaN(t))
+        .map((t) => Math.max(0, (input.now - t) / DAY_MS)),
+    );
+    const ohneQuelle = pct(list.filter((k) => (k.sources ?? []).length === 0).length, list.length);
+    const schutz = mittel(list.map((k) => SCHUTZWERT[k.confidentiality ?? "intern"] ?? 0));
+    const imKonflikt = konflikte === null ? null : list.filter((k) => konflikte.has(k.id)).length;
 
-    const factors = [
-      { key: "size", value: clamp((list.length / maxCount) * 100) },
-      { key: "lowValidation", value: clamp(100 - validatedRatio) },
-      { key: "lowTrust", value: clamp(100 - avgTrust) },
-      { key: "singleSource", value: bus?.singleSource ? 100 : 0 },
-      { key: "authorConcentration", value: clamp(100 / Math.max(1, authorCount)) },
-      { key: "staleShare", value: clamp(pct(stale, list.length)) },
-      { key: "openShare", value: clamp(pct(open, list.length)) },
-      { key: "fragility", value: validatedRatio < 50 ? 100 : 0 },
-      { key: "coverageGap", value: validated === 0 ? 100 : 0 },
-    ];
-    const score = clamp(factors.reduce((s, f) => s + f.value * (PRIORITY_WEIGHTS[f.key] ?? 0), 0));
-    rows.push({ category, score, factors });
+    const werte: Record<PriorityFactorKey, number | null> = {
+      busFactor: bus ? clamp(100 / Math.max(1, bus.authorCount)) : null,
+      criticality: stufe(profil?.criticality),
+      processProximity: stufe(profil?.processProximity),
+      age: alterTage === null ? null : clamp((alterTage / ALTER_VOLL_TAGE) * 100),
+      sourceQuality: clamp((100 - avgTrustOf(list) + ohneQuelle) / 2),
+      conflictDensity: imKonflikt === null ? null : clamp(pct(imKonflikt, list.length)),
+      repetition: stufe(profil?.repetition),
+      damagePotential: stufe(profil?.damagePotential),
+      protection: schutz === null ? null : clamp(schutz),
+    };
+    const factors = PRIORITY_FACTOR_KEYS.map((key) => ({ key, value: werte[key] }));
+    const bekannt = factors.flatMap((f) => (f.value === null ? [] : [f.value]));
+
+    const flags: PriorityFlag[] = [];
+    if (bus?.singleSource) {
+      flags.push("busFactorOne");
+    }
+    if (list.some((k) => pendingSet.has(k.id))) {
+      flags.push("stale");
+    }
+    if ((werte.protection ?? 0) >= HOHER_SCHUTZWERT) {
+      flags.push("highProtection");
+    }
+
+    rows.push({
+      category,
+      score: clamp(mittel(bekannt) ?? 0),
+      knownFactors: bekannt.length,
+      factors,
+      flags,
+    });
   }
   rows.sort((a, b) => b.score - a.score || a.category.localeCompare(b.category));
   return rows;

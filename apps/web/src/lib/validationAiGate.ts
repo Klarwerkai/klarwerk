@@ -5,9 +5,11 @@
 // (aiCheck pending), ist der Eintrag reine Anzeige — ausgegraut, Prüf-Aktionen gesperrt, ehrlicher
 // Hinweis „läuft …". done/kein Prüf-Job (Altbestand) → normal aktiv; failed → NICHT gesperrt, das
 // AiCheckBadge (F1-Vertrag) kennzeichnet den Fehlschlag mit Ursache + Retry.
-import type { KnowledgeObject } from "../api/types";
+import type { KnowledgeObject, OverlapEntry } from "../api/types";
 // EINE Quelle für das pending-Prädikat — dasselbe, mit dem Capture/aiCheckStatusCard das Polling steuert.
 import { aiCheckPollAgain } from "./aiCheckStatusCard";
+// R-0247: dieselbe Lesart von „offene Dublette" wie der Doppelhinweis an der Prüfkarte.
+import { doppelhinweis } from "./validationDoppelhinweis";
 
 export type ValidationAiGate =
   // Prüfung läuft (pending): reine Anzeige — Aktionen gesperrt, ehrlicher Hinweis.
@@ -33,6 +35,26 @@ export function validationAiGate(
       }
     : { locked: false };
 }
+
+// ================================================================================================
+// R-0247 — OFFENE DUBLETTE: WEICHE SPERRE (Pedis Entscheidung 73b53301).
+// ================================================================================================
+//
+// Ein ZWEITES Tor neben „Prüfung läuft noch", das dieses unverändert lässt. Es sperrt nicht hart:
+// liegt eine offene (nicht „geschlossen") Dublette vor, verlangt das Validieren nur eine
+// ausdrückliche Bestätigung, dass die prüfende Person sie gesehen hat. Die Dublette selbst bleibt
+// unberührt — keine automatische Auflösung. Ohne Treffer (auch: keine Antwort von
+// `/api/duplicates`) fragt die Karte nichts; der Server bleibt die zweite Linie
+// (`DUBLETTE_BESTAETIGUNG_FEHLT`).
+export function brauchtDublettenBestaetigung(
+  koId: string,
+  duplikate: readonly OverlapEntry[] | undefined,
+): boolean {
+  return doppelhinweis(koId, duplikate) !== null;
+}
+
+/** Der Fehlercode, mit dem der Server ein Validieren ohne Bestätigungskennzeichen ablehnt. */
+export const DUBLETTE_BESTAETIGUNG_FEHLT = "DUPLICATE_ACK_REQUIRED";
 
 // Weiter pollen, solange MINDESTENS ein Eintrag der Liste noch in Prüfung ist — kein pending mehr,
 // kein Polling (die Liste bekommt den Übergang pending → done/failed ohne manuelles Neuladen mit).

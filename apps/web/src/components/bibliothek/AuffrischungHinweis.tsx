@@ -1,9 +1,9 @@
 import type { UseQueryResult } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
+import { auffrischungGescheitert } from "../../lib/abfrageBestand";
 import {
   AUFFRISCHUNG_HINWEIS_KLASSE,
   AUFFRISCHUNG_HINWEIS_MARKE,
-  auffrischungGescheitert,
   auffrischungHinweisText,
 } from "../../lib/confidentiality";
 

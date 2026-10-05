@@ -363,19 +363,21 @@ describe("JOB 3024 · der Anzeigestatus am Detailabruf, mit ausgewiesener Herkun
     expect(mitNeunFremden).toBe(1);
   });
 
-  it("D · KONFLIKT: ausdruecklich ungeprueft — die Antwort behauptet nirgends `kein Konflikt`", async () => {
+  // PRÜFSTATUS-ANZEIGE (R-0212): bis hierher „KONFLIKT: ausdruecklich ungeprueft". Seither erhebt
+  // der Lesepfad den Konflikt; ohne offenen Konflikt ist der Eingang `geprueft`. Die zweite Hälfte
+  // des Falls bleibt: es entsteht KEIN zusätzliches Gegenfeld wie `konflikte: 0` — die Auskunft
+  // steht allein in Stufe und Herkunft. Die Konfliktfälle selbst (Stufe `konflikt`, Sichtbarkeit,
+  // Ausfall) stehen in `tests/pruefstatus-anzeige/r0212-konflikt-ueber-schnittstelle.test.ts`.
+  it("D · KONFLIKT: erhoben — ohne offenen Konflikt `geprueft`, und kein Gegenfeld wie `konflikte: 0`", async () => {
     const { app, services, pruefer } = await setup();
-    const irgendeins = await anlegen(services, "Objekt ohne Konfliktauskunft");
+    const irgendeins = await anlegen(services, "Objekt ohne Konflikt");
 
     const voll = await detail(app, pruefer, irgendeins.id);
     const h = herkunftVon(voll);
-    expect(h.konflikt).toBe("ungeprueft");
-    expect(typeof h.ungeprueft.konflikt).toBe("string");
-    expect(String(h.ungeprueft.konflikt).length).toBeGreaterThan(20);
+    expect(h.konflikt).toBe("geprueft");
+    expect(Object.keys(h.ungeprueft)).not.toContain("konflikt");
 
-    // KEINE GEGENBEHAUPTUNG: die Antwort traegt kein Feld, das die Konfliktfrage mit einem Wert
-    // beantwortet. Ein `konflikte: 0` oder `hasConflict: false` waere genau die Unwahrheit, die
-    // dieser Fall ausschliesst — der Lesepfad hat nicht nachgesehen.
+    // KEIN ZUSÄTZLICHES FELD: die Konfliktfrage wird nur über Stufe und Herkunft beantwortet.
     for (const verboten of ["konflikt", "konflikte", "conflicts", "hasConflict", "conflictFree"]) {
       expect(Object.keys(voll)).not.toContain(verboten);
     }

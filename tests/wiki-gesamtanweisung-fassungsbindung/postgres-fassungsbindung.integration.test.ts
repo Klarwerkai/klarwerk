@@ -11,7 +11,8 @@
 //      „Den konkurrierenden CAS-Fall und den Historienfehler beim Vorlegen dauerhaft gegen echtes
 //      Postgres prüfen: genau ein Gewinner beziehungsweise unveränderter Vorherbestand;
 //      Wiederholung erzeugt genau einen vollständigen Stand." Zwei Aufnahmen auf DERSELBEN gelesenen
-//      Version, gleichzeitig abgeschickt.
+//      Version, nachweislich gleichzeitig am CAS der Datenbank; Bestand und Historie tragen danach
+//      genau den Gewinner. Dies ist die dauerhafte Fassung von BENs R5-Probe (Aufnahme 20260922).
 //   3. Der Historienfehler beim VORLEGEN, erzwungen aus der Datenbank selbst (Trigger), wie in
 //      `tests/wiki-gesamtanweisung/postgres-atomar.integration.test.ts` — dort für Anlegen und
 //      Ändern, hier für den Weg, den dieser Auftrag anfasst.
@@ -25,6 +26,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { guardedLocalPgTestUrl } from "../../services/db-tx";
 import { PgAnweisungRepo } from "../../services/knowledge-object/src/gesamtanweisung-repo-pg";
 import { GesamtanweisungDienst } from "../../services/knowledge-object/src/gesamtanweisung-service";
+import type { Anweisung } from "../../services/knowledge-object/src/gesamtanweisung-types";
 import { eintrag, kennungen, koLeser, sichtbarAls, uhr } from "../wiki-gesamtanweisung/pruefstand";
 
 const TABELLEN = ["gesamtanweisung_staende", "gesamtanweisung_bausteine", "gesamtanweisungen"];
@@ -208,37 +210,120 @@ describe("JOB 4233: die Fassungsbindung gegen echtes PostgreSQL", () => {
     expect(JSON.stringify(staende.rows)).not.toContain(TEXT_EINS);
   });
 
+  /**
+   * Wartet, bis `anzahl` Schreiber am Zeilenschloss des Kopfes stehen — erst dann ist bewiesen,
+   * dass beide GLEICHZEITIG unterwegs sind und die Vorprüfung im Dienst schon hinter sich haben.
+   */
+  async function wartendeSchreiber(p: Pool, anzahl: number): Promise<void> {
+    const frist = Date.now() + 15_000;
+    for (;;) {
+      const res = await p.query<{ n: number }>(
+        `SELECT count(*)::int AS n FROM pg_stat_activity
+          WHERE datname = current_database() AND wait_event_type = 'Lock'
+            AND query LIKE 'UPDATE gesamtanweisungen%'`,
+      );
+      if ((res.rows[0]?.n ?? 0) >= anzahl) {
+        return;
+      }
+      if (Date.now() > frist) {
+        throw new Error(`Nur ${res.rows[0]?.n ?? 0} von ${anzahl} Schreibern am Schloss.`);
+      }
+      await new Promise((r) => setTimeout(r, 25));
+    }
+  }
+
+  // JOB 4154 R5 · BENs unabhängige Probe, hier dauerhaft. Das Original lag nur unter `/private/tmp`
+  // und ist nicht erhalten; übernommen ist seine gemessene Aussage („genau ein Gewinner, ein
+  // Konflikt und passende Historie", `archiv/4154/runde-5/ben.md`, Punkt 6).
+  //
+  // WARUM EIN HALTER: ohne ihn kann der zweite Aufruf erst lesen, wenn der erste schon committet
+  // hat — dann entscheidet die Vorprüfung im Dienst (`pruefeVersion`) und der CAS der Datenbank
+  // bliebe ungeprüft. Der Halter sperrt die Kopfzeile, beide Aufrufe lesen Version 1, bestehen die
+  // Vorprüfung und stehen am `UPDATE … WHERE version=$9`. Erst dann wird losgelassen; NUR die
+  // WHERE-Klausel kann jetzt noch einen der beiden abweisen.
+  //
+  // GEGENPROBE: in `PgAnweisungRepo.schreiben` die Bedingung `AND version=$9` entfernen — dann
+  // gewinnen beide, und „genau ein Gewinner" wird rot.
   it("KONKURRIERENDER CAS: zwei Aufnahmen auf demselben Stand — genau ein Gewinner", async (ctx) => {
     const p = requirePool(ctx);
-    const { dienst } = await frisch(p);
+    const { dienst, repo } = await frisch(p);
     const a = await dienst.anlegen({ titel: "Wartung" }, "anna");
 
-    const ergebnisse = await Promise.allSettled([
-      dienst.bausteinAufnehmen(
-        a.id,
-        a.version,
-        { koId: "ko-a", koVersion: 1, nachweisHash: "h-1" },
-        ANNA,
-      ),
-      dienst.bausteinAufnehmen(
-        a.id,
-        a.version,
-        { koId: "ko-a", koVersion: 2, nachweisHash: "h-2" },
-        ANNA,
-      ),
-    ]);
+    const halter = await p.connect();
+    let ergebnisse: PromiseSettledResult<Anweisung>[];
+    try {
+      await halter.query("BEGIN");
+      await halter.query("SELECT 1 FROM gesamtanweisungen WHERE id=$1 FOR UPDATE", [a.id]);
+      const laeufe = Promise.allSettled([
+        dienst.bausteinAufnehmen(
+          a.id,
+          a.version,
+          { koId: "ko-a", koVersion: 1, nachweisHash: "h-1" },
+          ANNA,
+        ),
+        dienst.bausteinAufnehmen(
+          a.id,
+          a.version,
+          { koId: "ko-a", koVersion: 2, nachweisHash: "h-2" },
+          ANNA,
+        ),
+      ]);
+      await wartendeSchreiber(p, 2);
+      await halter.query("COMMIT");
+      ergebnisse = await laeufe;
+    } finally {
+      await halter.query("ROLLBACK").catch(() => undefined);
+      halter.release();
+    }
 
-    const gewonnen = ergebnisse.filter((e) => e.status === "fulfilled");
-    const verloren = ergebnisse.filter((e) => e.status === "rejected");
+    const gewonnen = ergebnisse.filter(
+      (e): e is PromiseFulfilledResult<Anweisung> => e.status === "fulfilled",
+    );
+    const verloren = ergebnisse.filter((e): e is PromiseRejectedResult => e.status === "rejected");
     expect(gewonnen).toHaveLength(1);
     expect(verloren).toHaveLength(1);
-    expect((verloren[0] as PromiseRejectedResult).reason).toMatchObject({ code: "CONFLICT" });
+    // Der Verlierer erfährt den Stand, an dem er gescheitert ist — den des Gewinners.
+    expect(verloren[0]?.reason).toMatchObject({
+      code: "CONFLICT",
+      aktuell: { stand: "entwurf", version: 2 },
+    });
 
-    // GENAU EIN Baustein und GENAU EIN zusätzlicher Stand — kein halber Schreibvorgang daneben.
-    const nachher = await bild(p, a.id);
-    expect(nachher.kopf).toEqual({ version: 2, stand: "entwurf" });
-    expect(nachher.fassungen).toHaveLength(1);
-    expect(nachher.staende).toEqual([1, 2]);
+    const sieger = gewonnen[0]?.value;
+    const siegerBaustein = sieger?.bausteine[0];
+    expect(sieger?.bausteine).toHaveLength(1);
+    const verliererHash = siegerBaustein?.nachweisHash === "h-1" ? "h-2" : "h-1";
+
+    // BESTAND: genau die bestätigte Änderung des Gewinners — Fassung UND Nachweis.
+    const zeilen = await p.query<{ id: string; ko_version: number; nachweis_hash: string }>(
+      "SELECT id,ko_version,nachweis_hash FROM gesamtanweisung_bausteine WHERE anweisung_id=$1",
+      [a.id],
+    );
+    expect(zeilen.rows).toEqual([
+      {
+        id: siegerBaustein?.id,
+        ko_version: siegerBaustein?.koVersion,
+        nachweis_hash: siegerBaustein?.nachweisHash,
+      },
+    ]);
+    expect(await bild(p, a.id)).toMatchObject({ kopf: { version: 2, stand: "entwurf" } });
+
+    // HISTORIE: genau ein zusätzlicher Stand, und der trägt den Gewinner.
+    expect(await repo.staende(a.id)).toEqual([1, 2]);
+    const stand2 = await repo.standLesen(a.id, 2);
+    expect(stand2?.bausteine.map((b) => [b.id, b.koVersion, b.nachweisHash])).toEqual([
+      [siegerBaustein?.id, siegerBaustein?.koVersion, siegerBaustein?.nachweisHash],
+    ]);
+
+    // Vom Verlierer steht nirgends etwas — weder im Bestand noch in der Historie.
+    const historie = await p.query("SELECT aufnahme FROM gesamtanweisung_staende");
+    expect(JSON.stringify([zeilen.rows, historie.rows])).not.toContain(verliererHash);
+
+    // KEIN VERLORENER BESTÄTIGTER INHALT: was der Gewinner bestätigt bekam, liest man wieder.
+    const gelesen = await dienst.lesen(a.id, ANNA);
+    expect(gelesen.version).toBe(sieger?.version);
+    expect(gelesen.bausteine.map((b) => [b.id, b.koVersion, b.nachweisHash])).toEqual([
+      [siegerBaustein?.id, siegerBaustein?.koVersion, siegerBaustein?.nachweisHash],
+    ]);
   });
 
   it("HISTORIENFEHLER BEIM VORLEGEN: der Vorherbestand bleibt vollständig", async (ctx) => {

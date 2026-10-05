@@ -70,7 +70,9 @@ describe("A2 · die elf Türen der Gesamtanweisung in der Rollenabnahme", () => 
     const tueren = tuerenAusDemQuelltext();
     // Die Zahl steht hier, weil sie sonst still veraltet — und sie ist erhoben, nicht gesetzt.
     // JOB 4357: zehn → elf. Die elfte ist der lesende Bestand `GET /api/gesamtanweisungen`.
-    expect(tueren.length, "Türen im Quelltext der Route").toBe(11);
+    // QUELLENÄNDERUNGEN (aufnahme:20260928): elf → zwölf. Die zwölfte ist die bewusste Übernahme
+    // einer neueren Fassung (`POST …/bausteine/:bausteinId/uebernehmen`, `ko.create`).
+    expect(tueren.length, "Türen im Quelltext der Route").toBe(12);
 
     const ausTabelle = ZEILEN.map((z) => `${z.methode} ${registrierteRoute(z)}`).sort();
     const ausQuelle = tueren.map((t) => `${t.methode} ${t.pfad}`).sort();

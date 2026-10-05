@@ -39,9 +39,15 @@ import {
 // spiegeln; genau deshalb werden sie hier importiert und die Spiegelfassung gegen sie gemessen.
 import { normalizeSearchFragment, normalizeSearchTerms } from "../../services/knowledge-object";
 import { queryTokens } from "../../services/reasoner";
+import { panelQuelleAus } from "../support/panelquelle";
 import { type KlaraPanel, createKlaraPanel, reply } from "./klara-panel-fixture";
 
 function read(rel: string): string {
+  // Das Aufgabenfenster liegt seit dem Drei-Datei-Schnitt (R-1611) in drei Dateien; gelesen wird es
+  // als EIN Dokument, so wie vorher.
+  if (rel === TASKPANE) {
+    return panelQuelleAus(rel);
+  }
   return readFileSync(resolve(process.cwd(), rel), "utf8");
 }
 
@@ -614,6 +620,11 @@ describe("WP-KLARA-1: Manifest + Taskpane + Hosting", () => {
 
   it("Pfad-Konvention: Taskpane + Icons liegen unter public/word-addin (statisch mit ausgeliefert)", () => {
     expect(existsSync(resolve(process.cwd(), TASKPANE))).toBe(true);
+    // R-1611: Stil und Skript des Fensters liegen daneben und werden genauso mit ausgeliefert.
+    expect(existsSync(resolve(process.cwd(), "apps/web/public/word-addin/taskpane.css"))).toBe(
+      true,
+    );
+    expect(existsSync(resolve(process.cwd(), "apps/web/public/word-addin/taskpane.js"))).toBe(true);
     expect(existsSync(resolve(process.cwd(), "apps/web/public/word-addin/icon-32.png"))).toBe(true);
     expect(existsSync(resolve(process.cwd(), "apps/web/public/word-addin/icon-80.png"))).toBe(true);
   });
@@ -801,7 +812,8 @@ describe("WP-KLARA-2: Taskpane-Verdrahtung (Umfang, HTML, Deep-Link, ehrliche Gr
   it("Bedingung 4: Snapshot-Konsistenz — HTML zuerst, Klartext daraus abgeleitet, Text-Aufruf nur im Fallback", () => {
     const readSel = html.slice(
       html.indexOf("function readSelection(done)"),
-      html.indexOf("function readWholeDocument(done)"),
+      // Aufnahme 20260922: die Signatur traegt seit Runde 2 einen optionalen `fehlschlag`.
+      html.indexOf("function readWholeDocument("),
     );
     // HTML-Aufruf kommt VOR dem Text-Aufruf; der Erfolgszweig leitet den Klartext ab und returned.
     const htmlCall = readSel.indexOf("Office.CoercionType.Html");

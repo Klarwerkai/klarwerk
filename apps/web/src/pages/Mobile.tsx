@@ -19,7 +19,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import { useConflicts, useDrafts, useKos, useLibrarySearch } from "../api/hooks";
-import type { AnswerResult } from "../api/types";
+import type { AnswerResult, KnowledgeObject } from "../api/types";
 // JOB 4333: die Sitzungsfrage, dreiwertig — diese Fläche muss „der Server sagt: keine Sitzung" von
 // „es konnte niemand gefragt werden" unterscheiden, sonst sagt sie das Falsche.
 import { useSession } from "../app/AuthContext";
@@ -45,7 +45,8 @@ import { AnswerMarkdown } from "../components/AnswerMarkdown";
 import { HelpTip } from "../components/HelpTip";
 import { ConfidenceBar, KnowledgeTypeTag, StatusPill } from "../components/trust";
 import { selectAnswer } from "../lib/askResponse";
-import { deriveStatus } from "../lib/displayStatus";
+import { conflictImpact } from "../lib/conflictImpact";
+import { anzeigestatusAnker, anzeigestatusAus } from "../lib/displayStatus";
 import {
   type DraftFeld,
   type DraftFormState,
@@ -785,6 +786,16 @@ export function Mobile(): JSX.Element {
   const [sq, setSq] = useState("");
   const debouncedSq = useDebouncedValue(sq, LIBRARY_SEARCH_DEBOUNCE_MS);
   const search = useLibrarySearch(debouncedSq.trim() ? { q: debouncedSq.trim() } : {});
+  // PRÜFSTATUS-ANZEIGE (Ben R2, BEN-04): die Suche liefert keinen Serverstatus (`anzeigestatus`
+  // fehlt an dieser Route). Die Pille riet ihn deshalb aus dem Kern-Enum und zeigte eine anstehende
+  // Re-Validierung als „validiert". Jetzt gilt dieselbe EINE Entscheidung wie in der Bibliothek:
+  // der Eintrag aus dem bereits geladenen Bestand (`/api/kos`, mit Serverstatus), die bekannte
+  // Konfliktlage zuerst — und ohne Bestandseintrag der benannte Rückfall von `anzeigestatusAus`.
+  const kosNachId = new Map((kos.data ?? []).map((k) => [k.id, k]));
+  const trefferStatus = (k: KnowledgeObject) =>
+    anzeigestatusAus(kosNachId.get(k.id) ?? k, {
+      konflikt: conflictImpact(k.id, conflicts.data ?? []).limited,
+    });
 
   const tabCls = (active: boolean): string =>
     `flex-1 rounded-btn py-1.5 text-[12px] font-semibold ${
@@ -1179,8 +1190,20 @@ export function Mobile(): JSX.Element {
                     <ul className="space-y-1">
                       {queue.queue.map((op) => (
                         <li key={op.id} className="text-[12px]">
+                          {/* Aufnahme 20260922 (mobile-abweisung-rest): Ein abgewiesener Vorgang
+                              zeigt seinen Titel GANZ — er sagt, wozu der Grund darunter gehört.
+                              Gekürzt waren bei 390 px zwei lange Titel mit gleichem Anfang nicht
+                              zu unterscheiden (gemessen: 345 px Text in 226 px Breite). Wartende
+                              und laufende Vorgänge bleiben einzeilig. Die Klassenliste bleibt
+                              EINE feste Zeichenkette (auflösbar für den Sammler aus JOB 1181);
+                              die Lage trägt `data-abgewiesen`, die Variante hebt die Kürzung auf. */}
                           <div className="flex items-center gap-2">
-                            <span className="min-w-0 flex-1 truncate text-text">{op.title}</span>
+                            <span
+                              data-abgewiesen={op.status === "failed" ? "ja" : undefined}
+                              className="min-w-0 flex-1 truncate text-text data-[abgewiesen=ja]:overflow-visible data-[abgewiesen=ja]:whitespace-normal data-[abgewiesen=ja]:break-words"
+                            >
+                              {op.title}
+                            </span>
                             <span
                               className={`rounded-pill px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase ${QUEUE_TONE[op.status]}`}
                             >
@@ -1585,7 +1608,15 @@ export function Mobile(): JSX.Element {
                             className="block rounded-input border border-hairline p-2.5 hover:bg-hairline-soft"
                           >
                             <div className="mb-1 flex items-center gap-1.5">
-                              <StatusPill status={deriveStatus(k)} />
+                              {/* Derselbe unsichtbare Zustandsanker wie an der Bibliothekszeile (JOB 3072):
+                                Herkunft und nicht Erhobenes maschinenlesbar, ohne neues Wort. */}
+                              <span
+                                data-testid="mob-treffer-zustand"
+                                data-ko={k.id}
+                                {...anzeigestatusAnker(trefferStatus(k))}
+                              >
+                                <StatusPill status={trefferStatus(k).status} />
+                              </span>
                               <KnowledgeTypeTag type={k.type} />
                               <span className="ml-auto font-mono text-[10px] text-muted-2">
                                 T{k.trust}

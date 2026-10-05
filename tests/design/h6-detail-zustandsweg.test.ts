@@ -31,11 +31,22 @@
 //   · EINE HANDGESCHRIEBENE LISTE. Der Fall V leitet die Vollzähligkeit aus dem Quelltext der sechs
 //     Seiten ab, statt sie zu behaupten: jede `queryFn:` und jeder Haken aus `../api/hooks` braucht
 //     einen Fall hier. Die nächste neue Quelle macht V rot, bevor sie ungemessen live geht.
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import i18n from "../../apps/web/src/i18n";
-import { ORIGIN, type Stand, WURZEL, beende, fn, starte, wechsle } from "./h6-chromium";
+import { BRANDING_MINDESTABSTAND_MS } from "../../apps/web/src/lib/brandTheme";
+import { ZAEHLER_FRISCHE_MS } from "../../apps/web/src/lib/loadingState";
+import {
+  ORIGIN,
+  type Stand,
+  WURZEL,
+  beende,
+  fn,
+  setzeSprache,
+  starte,
+  wechsle,
+} from "./h6-chromium";
 
 /** Eine querygestützte Quelle eines Bedienortes. */
 interface Quelle {
@@ -57,6 +68,19 @@ interface Quelle {
   behaelter: string;
   /** Der ECHTE Inhalt, der nach der Erholung im Behälter stehen muss. */
   inhalt: string;
+  /**
+   * Nur bei Karten mit MEHREREN Quellen: die `data-testid` der `Abfragehuelle` GENAU DIESER Quelle.
+   * Die Zustandsfolge Z misst dann in dieser Hülle und nicht in der ganzen Karte — sonst würde die
+   * Standzeile einer Nachbarquelle derselben Karte als Beleg für diese gelesen (Nacharbeit 6).
+   */
+  huelle?: string;
+  /**
+   * Die Quelle zeichnet einen BESTÄTIGTEN Stand ausdrücklich ohne Hülle und meldet eine gescheiterte
+   * Auffrischung nicht (Vertrag der Karte, Begründung im Feld). Z prüft dann statt der Standzeile
+   * einen ECHTEN gescheiterten Neuabruf über den Produktweg (Request, 503, Markenwerte erhalten) und
+   * danach einen erfolgreichen mit geändertem Wert (BEN, Nacharbeit 8).
+   */
+  standOhneHuelle?: string;
 }
 
 const t = (k: string): string => i18n.t(k);
@@ -106,6 +130,7 @@ function matrixAdmin(): Quelle[] {
       zeile: '[data-testid="zeile-ki-grenzen"]',
       behaelter: "detail-ki-grenzen",
       inhalt: t("adm.val.save"),
+      huelle: "huelle-pruefanzahl",
     },
     {
       id: "Upload-Grenzen · /api/upload-limits",
@@ -114,6 +139,7 @@ function matrixAdmin(): Quelle[] {
       zeile: '[data-testid="zeile-ki-grenzen"]',
       behaelter: "detail-ki-grenzen",
       inhalt: t("adm.upload.save"),
+      huelle: "huelle-uploadgrenzen",
     },
     {
       id: "Externe Wissensabfrage · /api/external/policy",
@@ -141,6 +167,7 @@ function matrixAdmin(): Quelle[] {
       zeile: '[data-testid="zeile-demodaten"]',
       behaelter: "detail-demodaten",
       inhalt: t("einst.daten.demoBestand"),
+      huelle: "huelle-demostatus",
     },
     {
       // JOB 3511 (DEMO-FIRMEN-CI): die ZWEITE Quelle derselben Karte — der Abschnitt
@@ -158,6 +185,12 @@ function matrixAdmin(): Quelle[] {
       zeile: '[data-testid="zeile-demodaten"]',
       behaelter: "detail-demodaten",
       inhalt: t("einst.marke.profil"),
+      // JOB 3563 (`AdminDatenDetails.tsx`, Kopf von `DemoErscheinungsbild`): hat das Markenmodul
+      // einen bestätigten Stand, zeichnet die Karte ihn OHNE Hülle; eine spätere gescheiterte
+      // Auffrischung leert nichts und meldet nichts. Eine Standzeile dieser Quelle gibt es also
+      // nicht — das ist ihr Vertrag, keine Lücke.
+      standOhneHuelle:
+        "bestätigter Markenstand ohne Hülle; gescheiterte Auffrischung wird nicht gemeldet (JOB 3563)",
     },
     {
       // JOB 3636 (VORFUEHRDATEN GETRENNT WAEHLEN): die DRITTE Quelle derselben Karte — die Liste
@@ -175,6 +208,7 @@ function matrixAdmin(): Quelle[] {
       zeile: '[data-testid="zeile-demodaten"]',
       behaelter: "detail-demodaten",
       inhalt: "Advisor ICT (EN)",
+      huelle: "huelle-demopakete",
     },
     {
       id: "Werkseinstellungen · /api/admin/factory-reset",
@@ -353,6 +387,90 @@ function matrixProfil(): Quelle[] {
   ];
 }
 
+// ================================================================================================
+// R-0913 (Nacharbeit 2/5) — DIE SCHALTERQUELLE DER DEMODATENKARTE.
+// ================================================================================================
+//
+// Die Demodatenkarte fragt seit R-0913 die Betriebsschalter (`useFeatures` → `/api/features`)
+// selbst ab: bei BESTÄTIGTEM `demodaten=false` sagt sie „Laden ist ausgeschaltet", bei bestätigtem
+// `true` steht der Ladeknopf da. Diese Quelle ist weder tragend (ihr Ausfall darf die Karte nicht
+// sperren — Entfernen bleibt bedienbar) noch nachrangig im Sinn von JOB 3140 (sie hat keine
+// schwächere Ersatzauskunft): ihr Ausfall heißt schlicht „keine Aussage über den Schalter". Gemessen
+// wird deshalb genau das, und nach der Erholung das, was der Server WIRKLICH meldet.
+interface SchalterQuelle {
+  id: string;
+  pfad: string;
+  reiter: string;
+  zeile: string;
+  behaelter: string;
+}
+
+function matrixSchalter(): SchalterQuelle[] {
+  return [
+    {
+      id: "Demodaten · /api/features (Betriebsschalter, R-0913)",
+      pfad: "/api/features",
+      reiter: t("adm.sec.vorfuehrdaten"),
+      zeile: '[data-testid="zeile-demodaten"]',
+      behaelter: "detail-demodaten",
+    },
+  ];
+}
+
+interface SchalterLage {
+  fehler: string | null;
+  fehlerbox?: boolean;
+  ausZeile?: boolean;
+  ladeknopf?: boolean;
+  entfernen?: boolean;
+  /** Was der Server über den Schalter meldet (nur nach der Erholung gelesen). */
+  serverAn?: boolean | null;
+}
+
+/**
+ * In der Seite: Karte öffnen, warten bis der Bestand der Karte steht, dann ablesen. Mit
+ * `serverFragen` fragt die Seite den Schalter zusätzlich selbst am Server nach — die Erwartung nach
+ * der Erholung kommt damit aus der echten Auskunft, nicht aus einer Annahme über die Umgebung.
+ */
+const SCHALTER_LIES = `(async ([reiter, zeile, behaelter, ladeText, entfernenText, serverFragen]) => {
+  const warte = async (pruefung, ms = 15000) => {
+    const bis = Date.now() + ms;
+    while (Date.now() < bis) { if (pruefung()) return true; await new Promise((r) => setTimeout(r, 50)); }
+    return pruefung();
+  };
+  const zurueck = document.querySelector('[data-einst="zurueck"]');
+  if (zurueck) { zurueck.click(); await warte(() => document.querySelector('[data-einst="detail"]') === null, 4000); }
+  const r = [...document.querySelectorAll('[data-einst="reiter"]')].find((b) => (b.textContent||'').trim() === reiter);
+  if (!r) return { fehler: 'Reiter fehlt: ' + reiter };
+  r.click();
+  await warte(() => r.getAttribute('aria-pressed') === 'true', 4000);
+  const z = document.querySelector(zeile);
+  if (!z) return { fehler: 'Zeile fehlt: ' + zeile };
+  z.click();
+  const karte = () => document.querySelector('[data-testid="' + behaelter + '"]');
+  if (!(await warte(() => karte() !== null, 10000))) return { fehler: 'Karte ging nicht auf: ' + behaelter };
+  await warte(() => { const k = karte(); return k !== null && k.querySelector('[data-testid="demo-bestand"]') !== null; }, 15000);
+  let serverAn = null;
+  if (serverFragen) {
+    const antwort = await fetch('/api/features', { credentials: 'include' });
+    serverAn = antwort.ok ? ((await antwort.json()).features || {}).demodaten === true : null;
+    if (serverAn === false) await warte(() => karte() !== null && karte().querySelector('[data-testid="demo-laden-aus"]') !== null, 15000);
+  }
+  // Die Schalterabfrage darf noch einmal wiederholt werden (react-query) — sie soll ausgelaufen sein.
+  await new Promise((r) => setTimeout(r, 2500));
+  const k = karte();
+  const allgemein = k ? k.querySelector('[data-einst="karte-allgemein"]') : null;
+  const entfernen = k ? k.querySelector('[data-einst="entfernen"]') : null;
+  return {
+    fehler: null,
+    fehlerbox: k ? k.querySelector('[data-einst="abfrage-fehler"]') !== null : false,
+    ausZeile: k ? k.querySelector('[data-testid="demo-laden-aus"]') !== null : false,
+    ladeknopf: allgemein ? [...allgemein.querySelectorAll('button')].some((b) => (b.textContent || '').trim() === ladeText) : false,
+    entfernen: entfernen ? [...entfernen.querySelectorAll('button')].some((b) => (b.textContent || '').includes(entfernenText)) : false,
+    serverAn,
+  };
+})`;
+
 /**
  * In der Seite: Reiter wählen, (falls es eine gibt) die Zeile öffnen, den Zustand des Behälters
  * ablesen. Ist `zeile` leer, ist der Behälter die Flächenkarte selbst — dann wird nichts geöffnet.
@@ -453,6 +571,422 @@ const OEFFNE_UND_LIES_OHNE_FEHLERWARTEN = `(async ([reiter, zeile, behaelter, zw
     text: karte ? (karte.textContent || '').replace(/\\s+/g, ' ').trim() : '',
   };
 })`;
+
+// ================================================================================================
+// R-1563 / R-1581 (BEN, Nacharbeit 5) — DIE ZUSTANDSFOLGE JE QUELLE, nicht nur „503 und zurück".
+// ================================================================================================
+//
+// Der vierteilige Beleg oben deckt „Fehler ohne Daten → Neuabruf → Erholung". Für jede Quelle, die
+// ihre Karte über die gemeinsame `Abfragehuelle` zeichnet, läuft hier zusätzlich die Folge der
+// übrigen Zustände des Vertrags (`components/einstellungen/Abfragehuelle.tsx`, Kopf):
+//
+//   1  Laden            die Antwort GENAU DIESES PFADES wird zurückgehalten → „Wird geladen …"
+//   2  offline, leer    der Browser meldet „offline", während die Antwort noch fehlt → Offline-Box
+//   3  Erholung         online, Antwort frei → der echte Inhalt
+//   4  offline, Cache   der Browser meldet „offline" → Inhalt BLEIBT, darüber „nicht aktualisiert"
+//   5  gescheitert      online, Störung (503) auf genau diesen Pfad, „Erneut" in der Standzeile →
+//                       der Pfad wird WIRKLICH neu abgerufen, die Markierung bleibt, der Inhalt auch
+//   6  Erholung         Störung weg, „Erneut" → Markierung weg, Inhalt da
+//
+// DER OFFLINEWECHSEL hier ist das Browserereignis `offline`/`online` am Fenster — dieselbe Quelle,
+// aus der die Fläche den Zustand liest (`lib/netzzustand.ts`, `onlineManager`). Es ist KEIN
+// Abschalten des Netzwerks des Geräts; die unabhängige Live-Gegenprobe mit echtem Offlinewechsel
+// bleibt ein eigener, offener Beleg.
+//
+// „Laufende Auffrischung" (ruhiges „Stand von …") entsteht nur bei einem Abruf über einer
+// abgelaufenen Frischefrist (30 s, `main.tsx`) ohne vorausgegangene Störung. Sie misst seit
+// Nacharbeit 8 die eigene Folge R weiter unten für jede Hüllen-Quelle und das Profil: Frist
+// verstreichen lassen, Browserfokus, Antwort zurückhalten. Die Kontenfläche und die Bereitschaft
+// zeichnen ihre Zustände NICHT über die Hülle; ihre Folgen messen
+// `tests/h6-d1-nutzerdetail-stand/` und `tests/h6-bereitschaft-stand-nutzerweg/`.
+const BEHAELTER_OHNE_HUELLE = new Set(["flaeche-nutzer", "detail-bereitschaft"]);
+
+/** In der Seite: Reiter wählen und die Zeile öffnen — ohne auf irgendeinen Zustand zu warten. */
+const OEFFNE_ROH = `(async ([reiter, zeile, behaelter]) => {
+  const warte = async (p, ms = 10000) => {
+    const bis = Date.now() + ms;
+    while (Date.now() < bis) { if (p()) return true; await new Promise((r) => setTimeout(r, 40)); }
+    return p();
+  };
+  const zurueck = document.querySelector('[data-einst="zurueck"]');
+  if (zurueck) { zurueck.click(); await warte(() => document.querySelector('[data-einst="detail"]') === null, 4000); }
+  if (reiter) {
+    const r = [...document.querySelectorAll('[data-einst="reiter"]')].find((b) => (b.textContent||'').trim() === reiter);
+    if (!r) return 'Reiter fehlt: ' + reiter;
+    r.click();
+    await warte(() => r.getAttribute('aria-pressed') === 'true', 4000);
+  }
+  const z = document.querySelector(zeile);
+  if (!z) return 'Zeile fehlt: ' + zeile;
+  z.click();
+  return (await warte(() => document.querySelector('[data-testid="' + behaelter + '"]') !== null)) ? null : 'Karte ging nicht auf: ' + behaelter;
+})`;
+
+/** In der Seite: was der Behälter gerade zeigt. */
+const BEHAELTER_LAGE = `((behaelter) => {
+  const k = document.querySelector('[data-testid="' + behaelter + '"]');
+  if (!k) return null;
+  const box = k.querySelector('[data-einst="abfrage-fehler"]');
+  const staende = [...k.querySelectorAll('[data-einst="stand"]')];
+  return {
+    // Im Ladezustand IST die Hülle selbst der Ladeabsatz (\`<p data-einst="laedt" data-testid>\`).
+    laedt: k.matches('[data-einst="laedt"]') || k.querySelector('[data-einst="laedt"]') !== null,
+    fehlerbox: box !== null,
+    fehlerText: box ? (box.textContent || '').replace(/\\s+/g, ' ').trim() : '',
+    stand: staende.map((s) => (s.textContent || '').replace(/\\s+/g, ' ').trim()).join(' | '),
+    text: (k.textContent || '').replace(/\\s+/g, ' ').trim(),
+  };
+})`;
+
+/** In der Seite: JEDES „Erneut" in den Standzeilen des Behälters drücken. */
+const STAND_ERNEUT = `(async (behaelter) => {
+  const k = document.querySelector('[data-testid="' + behaelter + '"]');
+  const knoepfe = k ? [...k.querySelectorAll('[data-einst="stand"] button')] : [];
+  knoepfe.forEach((b) => b.click());
+  await new Promise((r) => setTimeout(r, 2500));
+  return knoepfe.length;
+})`;
+
+// ================================================================================================
+// BEN, Nacharbeit 8, Befund 1 — DER MARKENSTAND UND SEIN ECHTER NEUABRUF.
+// ================================================================================================
+//
+// `/api/branding` zeichnet einen bestätigten Stand ohne Hülle und meldet eine gescheiterte
+// Auffrischung nicht (JOB 3563). Belegt wird deshalb nicht eine Fehlermeldung, sondern der Abruf
+// selbst: der Mithörer schreibt in der Seite jeden Abruf GENAU DIESES Pfades mit Beginn und
+// Antwortstatus mit — er reicht die Antwort unverändert durch und ändert nichts am Produktweg. Er
+// lebt bis zum nächsten Seitenaufbau.
+const MARKEN_MITHOERER = `((pfad) => {
+  if (window.__kwMarkenAbrufe) return true;
+  const liste = [];
+  window.__kwMarkenAbrufe = liste;
+  const roh = window.fetch;
+  window.fetch = async (...args) => {
+    const ziel = new URL(typeof args[0] === 'string' ? args[0] : args[0].url, location.href);
+    const eintrag = ziel.pathname === pfad ? { beginn: Date.now(), status: null, fertig: false } : null;
+    if (eintrag) liste.push(eintrag);
+    try {
+      const antwort = await roh.apply(window, args);
+      if (eintrag) { eintrag.status = antwort.status; eintrag.fertig = true; }
+      return antwort;
+    } catch (e) {
+      if (eintrag) { eintrag.status = -1; eintrag.fertig = true; }
+      throw e;
+    }
+  };
+  return true;
+})`;
+
+/** In der Seite: die sichtbaren Markenwerte der Karte, das Wurzelattribut und die Mitschrift. */
+const MARKE_LIES = `((behaelter) => {
+  const k = document.querySelector('[data-testid="' + behaelter + '"]');
+  const auswahl = k ? k.querySelector('[data-testid="marke-profil"]') : null;
+  const schalter = k ? k.querySelector('[data-testid="marke-schalter"]') : null;
+  return {
+    profil: auswahl ? auswahl.value : null,
+    aktiv: schalter ? schalter.checked : null,
+    wurzel: document.documentElement.getAttribute('data-brand'),
+    huelle: k ? k.querySelector('[data-testid="huelle-branding"]') !== null : false,
+    fehlerbox: k ? k.querySelector('[data-einst="abfrage-fehler"]') !== null : false,
+    text: k ? (k.textContent || '').replace(/\\s+/g, ' ').trim() : '',
+    abrufe: (window.__kwMarkenAbrufe || []).map((e) => ({ beginn: e.beginn, status: e.status, fertig: e.fertig })),
+  };
+})`;
+
+/** In der Seite: den Markenstand am Server lesen — vor dem Mithörer, an der Karte vorbei. */
+const MARKE_SERVER = `(async () => {
+  const r = await fetch('/api/branding', { credentials: 'include' });
+  return { status: r.status, daten: await r.json() };
+})`;
+
+/** In der Seite: den Markenstand am Server umschalten — an der Karte vorbei (zweiter Admin). */
+const MARKE_SETZEN = `(async (wahl) => {
+  const r = await fetch('/api/admin/branding', {
+    method: 'PUT',
+    credentials: 'include',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(wahl),
+  });
+  return { status: r.status };
+})`;
+
+/** In der Seite: das Fensterfokus-Ereignis, auf das `initBrandTheme` hört. */
+const FENSTER_FOKUS = `() => { window.dispatchEvent(new Event('focus')); return true; }`;
+
+interface MarkenAbruf {
+  beginn: number;
+  status: number | null;
+  fertig: boolean;
+}
+
+interface MarkenLage {
+  profil: string | null;
+  aktiv: boolean | null;
+  wurzel: string | null;
+  huelle: boolean;
+  fehlerbox: boolean;
+  text: string;
+  abrufe: MarkenAbruf[];
+}
+
+// ================================================================================================
+// BEN, Nacharbeit 8, Befund 3 — DIE VOLLSTÄNDIGEN SICHTBAREN INHALTE JE SPRACHE.
+// ================================================================================================
+//
+// Der Fehlerweg in EN/NL (S-Quellen) belegt nur Fehlerwort, Ausweg und EIN Inhaltswort. Hier wird
+// jede Karte der Matrix samt Profil in Ruhe geöffnet, ihre „?"-Hilfen aufgeklappt und ALLES gelesen,
+// was sichtbar ist: Textknoten (Titel, Beschriftungen, Wertebezeichnungen, Knöpfe, Optionen,
+// Hilfetexte) und die Namen an `aria-label`/`title`/`placeholder`. Verglichen wird gegen den
+// Katalog, aus dem die Oberfläche spricht (`i18n.ts`): jeder deutsch erkannte Katalogtext muss in
+// EN/NL als SEIN Soll-Text dastehen, kein deutscher Katalogtext darf in EN/NL stehen bleiben, und
+// was EN/NL zusätzlich zeigt, muss auch deutsch dastehen. Daten (Namen, Pfade, Zahlen) sind kein
+// Katalogtext und werden nicht übersetzt erwartet.
+//
+// Nacharbeit 9: Die Kontenfläche hat keine Detailkarte; ihr Behälter `flaeche-nutzer` ist nur die
+// Nutzerliste (Namen = Daten). Gelesen wird deshalb die GANZE sichtbare Themenspalte des Reiters
+// „Konten" (`bereich`, `[data-einst="spalte"]`): Nutzerliste, Hinzufügen, Rollen.
+const INHALT_LIES = `(async ([reiter, zeile, behaelter, bereich]) => {
+  const warte = async (p, ms = 15000) => {
+    const bis = Date.now() + ms;
+    while (Date.now() < bis) { if (p()) return true; await new Promise((r) => setTimeout(r, 50)); }
+    return p();
+  };
+  const zurueck = document.querySelector('[data-einst="zurueck"]');
+  if (zurueck) { zurueck.click(); await warte(() => document.querySelector('[data-einst="detail"]') === null, 4000); }
+  if (reiter) {
+    const r = [...document.querySelectorAll('[data-einst="reiter"]')].find((b) => (b.textContent||'').trim() === reiter);
+    if (!r) return { fehler: 'Reiter fehlt: ' + reiter };
+    r.click();
+    await warte(() => r.getAttribute('aria-pressed') === 'true', 4000);
+  }
+  if (zeile) {
+    const z = document.querySelector(zeile);
+    if (!z) return { fehler: 'Zeile fehlt: ' + zeile };
+    z.click();
+  }
+  const behaelterDa = () => document.querySelector('[data-testid="' + behaelter + '"]');
+  if (!(await warte(() => behaelterDa() !== null, 10000))) return { fehler: 'Karte fehlt: ' + behaelter };
+  if (bereich) {
+    // Die Kontenfläche: erst lesen, wenn die Konten wirklich da sind.
+    await warte(() => behaelterDa() !== null && behaelterDa().querySelector('button[data-einst="zeile"]') !== null, 15000);
+  }
+  const karte = () => (bereich ? document.querySelector(bereich) : behaelterDa());
+  if (karte() === null) return { fehler: 'Bereich fehlt: ' + bereich };
+  const ruhig = () => {
+    const k = karte();
+    return k !== null && !k.matches('[data-einst="laedt"]') && k.querySelector('[data-einst="laedt"]') === null
+      && k.querySelector('[data-einst="stand"]') === null && k.querySelector('[data-einst="abfrage-fehler"]') === null;
+  };
+  await warte(ruhig, 20000);
+  // Nachrangige Abfragen (z. B. Namen im Prüfprotokoll) dürfen noch auflaufen.
+  await new Promise((r) => setTimeout(r, 1500));
+  if (!ruhig()) return { fehler: 'Karte kam nicht zur Ruhe: ' + behaelter };
+  const knoepfe = [...karte().querySelectorAll('[data-einst="hilfe"]')];
+  knoepfe.forEach((b) => { if (b.getAttribute('aria-expanded') !== 'true') b.click(); });
+  await warte(() => karte().querySelectorAll('[data-einst="hilfemenue"]').length >= knoepfe.length, 4000);
+  const norm = (s) => (s || '').replace(/\\s+/g, ' ').trim();
+  const sichtbar = (el) => {
+    if (!el) return false;
+    for (let e = el; e; e = e.parentElement) {
+      const st = getComputedStyle(e);
+      if (st.display === 'none' || st.visibility === 'hidden') return false;
+    }
+    return el.getClientRects().length > 0;
+  };
+  const fragmente = [];
+  const gang = document.createTreeWalker(karte(), NodeFilter.SHOW_TEXT);
+  for (let n = gang.nextNode(); n; n = gang.nextNode()) {
+    const text = norm(n.nodeValue);
+    const el = n.parentElement;
+    if (!text || !el) continue;
+    const option = el.closest('option');
+    if (option ? !sichtbar(option.closest('select')) : !sichtbar(el)) continue;
+    fragmente.push(text);
+  }
+  for (const el of karte().querySelectorAll('[aria-label],[title],[placeholder]')) {
+    if (!sichtbar(el)) continue;
+    for (const a of ['aria-label', 'title', 'placeholder']) { const v = norm(el.getAttribute(a)); if (v) fragmente.push(v); }
+  }
+  const hilfen = karte().querySelectorAll('[data-einst="hilfetext"]').length;
+  [...karte().querySelectorAll('[data-einst="hilfe"]')].forEach((b) => { if (b.getAttribute('aria-expanded') === 'true') b.click(); });
+  const titel = karte().querySelector('[data-einst="detailtitel"]');
+  return { fehler: null, lang: document.documentElement.lang, titel: titel ? norm(titel.textContent) : null, fragmente, hilfeKnoepfe: knoepfe.length, hilfen };
+})`;
+
+interface InhaltLage {
+  fehler: string | null;
+  lang?: string;
+  /** Der Titel der Detailkarte (`null` auf der Kontenfläche, die keine Karte ist). */
+  titel?: string | null;
+  /** Nacharbeit 10: der Titel ist ein DATENWERT (Name des Kontos), kein Katalogtext. */
+  titelDaten?: boolean;
+  fragmente: string[];
+  hilfeKnoepfe: number;
+  hilfen: number;
+}
+
+interface Sprachindex {
+  bundle: Record<string, string>;
+  /** Katalogtext ohne Platzhalter → seine Schlüssel. */
+  statisch: Map<string, string[]>;
+  /** Katalogtexte MIT Platzhaltern als Muster — nur mit genug festem Text, um zu unterscheiden. */
+  muster: [string, RegExp][];
+}
+
+const normText = (s: string): string => s.replace(/\s+/g, " ").trim();
+const PLATZHALTER = /\{\{[^}]+\}\}/g;
+
+function alsMuster(wert: string, mindestFest: number): RegExp | null {
+  const teile = normText(wert).split(PLATZHALTER);
+  if (teile.join("").replace(/\s+/g, "").length < mindestFest) {
+    return null;
+  }
+  const flucht = teile.map((teil) => teil.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  return new RegExp(`^${flucht.join(".+?")}$`);
+}
+
+const SPRACHINDEX = new Map<string, Sprachindex>();
+
+function sprachindex(sprache: string): Sprachindex {
+  const vorhanden = SPRACHINDEX.get(sprache);
+  if (vorhanden) {
+    return vorhanden;
+  }
+  const roh = (i18n.getResourceBundle(sprache, "translation") ?? {}) as Record<string, unknown>;
+  const bundle: Record<string, string> = {};
+  const statisch = new Map<string, string[]>();
+  const muster: [string, RegExp][] = [];
+  for (const [k, v] of Object.entries(roh)) {
+    if (typeof v !== "string") {
+      continue;
+    }
+    bundle[k] = v;
+    if (v.includes("{{")) {
+      const m = alsMuster(v, 4);
+      if (m) {
+        muster.push([k, m]);
+      }
+    } else {
+      const w = normText(v);
+      statisch.set(w, [...(statisch.get(w) ?? []), k]);
+    }
+  }
+  const index = { bundle, statisch, muster };
+  SPRACHINDEX.set(sprache, index);
+  return index;
+}
+
+const ohneDoppelpunkt = (f: string): string => f.replace(/\s*:$/, "");
+
+/** Die Katalogschlüssel, deren Text dieses Fragment ist (exakt, sonst über ein Muster). */
+function schluessel(idx: Sprachindex, f: string, mitMuster: boolean): string[] {
+  const exakt = idx.statisch.get(f) ?? idx.statisch.get(ohneDoppelpunkt(f));
+  if (exakt) {
+    return exakt;
+  }
+  return mitMuster ? idx.muster.filter(([, m]) => m.test(f)).map(([k]) => k) : [];
+}
+
+/** Steht der Text von `k` in dieser Sprache unter den gelesenen Fragmenten? */
+function stehtDa(idx: Sprachindex, k: string, fragmente: string[]): boolean {
+  const w = idx.bundle[k];
+  if (w === undefined) {
+    return false;
+  }
+  if (!w.includes("{{")) {
+    const soll = normText(w);
+    return fragmente.some((f) => f === soll || ohneDoppelpunkt(f) === soll);
+  }
+  const m = alsMuster(w, 1);
+  return m === null || fragmente.some((f) => m.test(f));
+}
+
+/**
+ * Die Kalibrierung je Ort: die Messung greift wirklich, sonst wäre der Vergleich über einer leeren
+ * Menge trivial grün.
+ *
+ * Nacharbeit 9: Bis hierher stand hier pauschal „mindestens drei Katalogtexte". Gemessen ist, dass
+ * das an der Fläche vorbeigeht: die Auditkarte zeigt außer Titel und „Zurück" nur Protokolldaten
+ * (5 Fragmente, 2 Katalogtexte), und `flaeche-nutzer` war allein die Nutzerliste. Jetzt verlangt
+ * jede DETAILKARTE ihre zwei festen Katalogtexte namentlich — ihren Titel und „Zurück" in DIESER
+ * Sprache —, und die Kontenfläche wird als ganze Themenspalte gelesen und braucht weiter drei.
+ *
+ * Nacharbeit 10: Die Nutzerkarte trägt als Titel den NAMEN des Kontos — ein Datenwert, der in keiner
+ * Sprache Katalogtext ist. Für sie gilt statt des Titels: „Zurück" und mindestens drei Katalogtexte.
+ */
+function kalibrierung(karte: string, l: InhaltLage, sprache: string): string[] {
+  const idx = sprachindex(sprache);
+  const befunde: string[] = [];
+  const katalog = [...new Set(l.fragmente)].filter((f) => schluessel(idx, f, true).length > 0);
+  if (typeof l.titel === "string") {
+    if (l.titelDaten === true) {
+      if (katalog.length < 3) {
+        befunde.push(`${karte}: nur ${katalog.length} Katalogtexte neben dem Datentitel`);
+      }
+    } else if (schluessel(idx, l.titel, false).length === 0) {
+      befunde.push(`${karte}: Kartentitel „${l.titel}“ ist kein ${sprache}-Katalogtext`);
+    }
+    if (!stehtDa(idx, "einst.zurueck", l.fragmente)) {
+      befunde.push(`${karte}: „${idx.bundle["einst.zurueck"] ?? "?"}“ (einst.zurueck) fehlt`);
+    }
+  } else if (katalog.length < 3) {
+    befunde.push(`${karte}: nur ${katalog.length} von ${new Set(l.fragmente).size} Katalogtexten`);
+  }
+  if (l.hilfeKnoepfe > 0 && l.hilfen === 0) {
+    befunde.push(`${karte}: „?“ ohne aufgeklappte Hilfen`);
+  }
+  return befunde;
+}
+
+function sprachBefunde(karte: string, de: InhaltLage, ziel: InhaltLage, sprache: string): string[] {
+  const iDe = sprachindex("de");
+  const iZiel = sprachindex(sprache);
+  const befunde: string[] = kalibrierung(karte, ziel, sprache);
+  // (1) Jeder deutsch erkannte Katalogtext steht in der Zielsprache als sein Soll-Text da.
+  for (const f of new Set(de.fragmente)) {
+    const keys = schluessel(iDe, f, true);
+    if (keys.length === 0) {
+      continue;
+    }
+    if (!keys.some((k) => stehtDa(iZiel, k, ziel.fragmente))) {
+      const soll = keys.slice(0, 3).map((k) => iZiel.bundle[k] ?? "(kein Text)");
+      befunde.push(
+        `${karte}: „${f}“ (${keys.slice(0, 3).join(" | ")}) fehlt — Soll „${soll.join(" | ")}“`,
+      );
+    }
+  }
+  for (const g of new Set(ziel.fragmente)) {
+    const zielKeys = schluessel(iZiel, g, false);
+    const deKeys = schluessel(iDe, g, false);
+    // (2) Kein deutscher Katalogtext bleibt in der Zielsprache stehen.
+    if (zielKeys.length === 0 && deKeys.length > 0) {
+      befunde.push(`${karte}: „${g}“ ist deutscher Katalogtext (${deKeys[0]})`);
+      continue;
+    }
+    // (3) Was nur die Zielsprache zeigt, muss auch deutsch dastehen.
+    if (
+      zielKeys.length > 0 &&
+      !de.fragmente.includes(g) &&
+      !zielKeys.some((k) => stehtDa(iDe, k, de.fragmente))
+    ) {
+      befunde.push(`${karte}: „${g}“ (${zielKeys[0]}) steht nur in ${sprache}`);
+    }
+  }
+  if (de.hilfeKnoepfe !== ziel.hilfeKnoepfe || de.hilfen !== ziel.hilfen) {
+    befunde.push(
+      `${karte}: Hilfen de ${de.hilfeKnoepfe}/${de.hilfen}, ${sprache} ${ziel.hilfeKnoepfe}/${ziel.hilfen}`,
+    );
+  }
+  return befunde;
+}
+
+interface BehaelterLage {
+  laedt: boolean;
+  fehlerbox: boolean;
+  fehlerText: string;
+  stand: string;
+  text: string;
+}
 
 interface Lage {
   fehler: string | null;
@@ -585,6 +1119,55 @@ describe("JOB 3065 H6 R3 · Endpunkt-Matrix der Detailkarten — 503 am gebauten
     }, 120_000);
   }
 
+  /** R-0913: der Beleg für die Schalterquelle (siehe `matrixSchalter`). */
+  async function pruefeSchalter(q: SchalterQuelle): Promise<void> {
+    const s = stand as Stand;
+    expect(s.fehler, "Seite nicht gemountet").toBeNull();
+    const seite = s.seite as NonNullable<Stand["seite"]>;
+    const argumente = (serverFragen: boolean): unknown[] => [
+      q.reiter,
+      q.zeile,
+      q.behaelter,
+      t("adm.seedButton"),
+      t("adm.purgeButton"),
+      serverFragen,
+    ];
+
+    // 1 — Störung auf genau diese Quelle, Seite neu aufbauen, Karte öffnen.
+    s.stoerung = q.pfad;
+    const vorher = s.abrufe.get(q.pfad) ?? 0;
+    await neuLaden("/admin", '[data-einst="seite"]');
+    const gestoert = await seite.evaluate<SchalterLage>(fn(SCHALTER_LIES), argumente(false));
+    expect(gestoert.fehler, `${q.id}: ${gestoert.fehler}`).toBeNull();
+    expect(s.abrufe.get(q.pfad) ?? 0, `${q.id}: die Quelle wurde nie gefragt`).toBeGreaterThan(
+      vorher,
+    );
+
+    // 2 — Keine Behauptung ohne Auskunft, und die Karte bleibt bedienbar.
+    expect(gestoert.fehlerbox, `${q.id}: die Schalterquelle sperrt die Karte`).toBe(false);
+    expect(gestoert.ausZeile, `${q.id}: Ausfall als bestätigtes „aus“ ausgegeben`).toBe(false);
+    expect(gestoert.ladeknopf, `${q.id}: Ladeknopf ohne bestätigten Schalter`).toBe(false);
+    expect(gestoert.entfernen, `${q.id}: Entfernen fehlt bei gestörter Quelle`).toBe(true);
+
+    // 3 — Erholung: die Karte zeigt, was der Server WIRKLICH meldet.
+    s.stoerung = null;
+    await neuLaden("/admin", '[data-einst="seite"]');
+    const heil = await seite.evaluate<SchalterLage>(fn(SCHALTER_LIES), argumente(true));
+    expect(heil.fehler, `${q.id} (erholt): ${heil.fehler}`).toBeNull();
+    expect(heil.serverAn, `${q.id}: der Server gab keine Auskunft`).not.toBeNull();
+    const serverAus = heil.serverAn === false;
+    const serverAn = heil.serverAn === true;
+    expect(heil.ausZeile, `${q.id}: Aus-Zeile passt nicht zum Server`).toBe(serverAus);
+    expect(heil.ladeknopf, `${q.id}: Ladeknopf passt nicht zum Server`).toBe(serverAn);
+    expect(heil.entfernen, `${q.id}: Entfernen fehlt nach der Erholung`).toBe(true);
+  }
+
+  for (const quelle of matrixSchalter()) {
+    it(`SCH · ${quelle.id}`, async () => {
+      await pruefeSchalter(quelle);
+    }, 120_000);
+  }
+
   it("K · KALIBRIERUNG: ohne Störung gibt es in keiner Karte einen Fehlerzustand", async () => {
     const s = stand as Stand;
     s.stoerung = null;
@@ -671,6 +1254,559 @@ describe("JOB 3065 H6 R3 · Endpunkt-Matrix der Detailkarten — 503 am gebauten
     expect(lage.boxen, "Fehlerbox auf der Kontenfläche OHNE Störung").toBe(0);
   }, 120_000);
 
+  // ---- Z · die Zustandsfolge je Hüllen-Quelle (siehe Kommentar an `BEHAELTER_OHNE_HUELLE`) -------
+  /** Hält die Antworten EINES Pfades zurück, bis `oeffnen()` gerufen wird. */
+  let tor: { pfad: string; oeffnen: () => void; offen: Promise<void> } | null = null;
+
+  function torSchliessen(pfad: string): void {
+    let oeffnen = (): void => undefined;
+    const offen = new Promise<void>((fertig) => {
+      oeffnen = fertig;
+    });
+    tor = { pfad, oeffnen, offen };
+    (stand as Stand).antworten.vorAuslieferung = async (url, body) => {
+      const aktuell = tor;
+      if (aktuell !== null && url.pathname.startsWith(aktuell.pfad)) {
+        await aktuell.offen;
+      }
+      return body;
+    };
+  }
+
+  async function netz(an: boolean): Promise<void> {
+    await (stand?.seite as NonNullable<Stand["seite"]>).evaluate(
+      fn(`(an) => window.dispatchEvent(new Event(an ? 'online' : 'offline'))`),
+      an,
+    );
+  }
+
+  async function lage(behaelter: string): Promise<BehaelterLage> {
+    const l = await (stand?.seite as NonNullable<Stand["seite"]>).evaluate<BehaelterLage | null>(
+      fn(BEHAELTER_LAGE),
+      behaelter,
+    );
+    expect(l, `Behälter ${behaelter} fehlt`).not.toBeNull();
+    return l as BehaelterLage;
+  }
+
+  /** Wartet in Node-Takten auf eine Lage — die Seite wird nur gelesen, nicht belagert. */
+  async function warteAufLage(
+    behaelter: string,
+    pruefung: (l: BehaelterLage) => boolean,
+    was: string,
+  ): Promise<BehaelterLage> {
+    const seite = stand?.seite as NonNullable<Stand["seite"]>;
+    let zuletzt: BehaelterLage | null = null;
+    for (let i = 0; i < 150; i++) {
+      zuletzt = await lage(behaelter);
+      if (pruefung(zuletzt)) {
+        return zuletzt;
+      }
+      await seite.waitForTimeout(100);
+    }
+    throw new Error(`${was} — nie erreicht; zuletzt: ${JSON.stringify(zuletzt)}`);
+  }
+
+  async function marke(behaelter: string): Promise<MarkenLage> {
+    return (stand?.seite as NonNullable<Stand["seite"]>).evaluate<MarkenLage>(
+      fn(MARKE_LIES),
+      behaelter,
+    );
+  }
+
+  /**
+   * Wartet, bis der Mithörer den Abruf Nummer `index` mit abgeschlossener Antwort gesehen hat. Je
+   * Sekunde geht EIN Fokusereignis an das Fenster — vor Ablauf des Mindestabstands lässt das Modul
+   * es ausdrücklich verfallen, danach löst es den regulären Neuabruf aus (oder der Minutentakt tut
+   * es zuerst; beides ist der Produktweg).
+   */
+  async function warteAufMarkenabruf(behaelter: string, index: number): Promise<MarkenAbruf> {
+    const seite = stand?.seite as NonNullable<Stand["seite"]>;
+    const bis = Date.now() + BRANDING_MINDESTABSTAND_MS + 20_000;
+    let zuletzt = await marke(behaelter);
+    while (Date.now() < bis) {
+      const abruf = zuletzt.abrufe[index];
+      if (abruf?.fertig) {
+        return abruf;
+      }
+      await seite.evaluate(fn(FENSTER_FOKUS));
+      await seite.waitForTimeout(1000);
+      zuletzt = await marke(behaelter);
+    }
+    throw new Error(
+      `Markenabruf ${index + 1} kam nicht — Mitschrift: ${JSON.stringify(zuletzt.abrufe)}`,
+    );
+  }
+
+  async function pruefeFolge(q: Quelle, seitenPfad: string): Promise<void> {
+    const s = stand as Stand;
+    const seite = s.seite as NonNullable<Stand["seite"]>;
+    expect(s.fehler, "Seite nicht gemountet").toBeNull();
+    let markeVorher: { profil: string | null; aktiv: boolean } | null = null;
+    try {
+      // 1 — Laden.
+      s.stoerung = null;
+      if (q.standOhneHuelle !== undefined) {
+        // Ausgangsstand des Markenfalls: ein bestätigter, SICHTBARER Wert (Profil gewählt, aktiv),
+        // damit „erhalten" an konkreten Werten gemessen wird und nicht am leeren Grundzustand.
+        const ausgang = await seite.evaluate<{
+          status: number;
+          daten: { profil: string | null; aktiv: boolean };
+        }>(fn(MARKE_SERVER));
+        expect(ausgang.status, `${q.id}: Markenstand am Server`).toBe(200);
+        markeVorher = { profil: ausgang.daten.profil, aktiv: ausgang.daten.aktiv };
+        const gesetzt = await seite.evaluate<{ status: number }>(fn(MARKE_SETZEN), {
+          profil: "advisor",
+          aktiv: true,
+        });
+        expect(gesetzt.status, `${q.id}: Ausgangsstand setzen`).toBe(200);
+      }
+      torSchliessen(q.pfad);
+      await neuLaden(seitenPfad, '[data-einst="seite"]');
+      const offenFehler = await seite.evaluate<string | null>(fn(OEFFNE_ROH), [
+        q.reiter,
+        q.zeile,
+        q.behaelter,
+      ]);
+      expect(offenFehler, `${q.id}: ${offenFehler}`).toBeNull();
+      // Der Messbereich: die Hülle GENAU DIESER Quelle, wenn die Karte mehrere trägt — sonst die
+      // Karte. Gelesen, gedrückt und gezählt wird ausschließlich darin (Nacharbeit 6).
+      const bereich = q.huelle ?? q.behaelter;
+      await warteAufLage(bereich, (l) => l.laedt && !l.fehlerbox, `${q.id}: Ladezustand`);
+
+      // 2 — offline, solange die Antwort fehlt: die ehrliche Offline-Auskunft samt Ausweg.
+      await netz(false);
+      const leer = await warteAufLage(bereich, (l) => l.fehlerbox, `${q.id}: offline ohne Daten`);
+      expect(leer.fehlerText, `${q.id}: Offline-Wortlaut`).toContain(t("einst.detail.offline"));
+      expect(leer.fehlerText).toContain(t("loadstate.error.retry"));
+
+      // 3 — Erholung: online, Antwort frei.
+      await netz(true);
+      tor?.oeffnen();
+      await warteAufLage(
+        bereich,
+        (l) => l.text.includes(q.inhalt) && !l.laedt && !l.fehlerbox,
+        `${q.id}: Inhalt nach der Erholung`,
+      );
+
+      if (q.standOhneHuelle !== undefined) {
+        // 4 — offline: der bestätigte Stand steht OHNE Hülle da und wird weder geleert noch gemeldet.
+        await netz(false);
+        await seite.waitForTimeout(500);
+        const offline = await marke(q.behaelter);
+        expect(offline.text, `${q.id}: Stand verschwand offline`).toContain(q.inhalt);
+        expect(offline.fehlerbox, `${q.id}: offline wurde zur Fehlerbox`).toBe(false);
+        expect(offline.huelle, `${q.id}: ${q.standOhneHuelle}`).toBe(false);
+        await netz(true);
+
+        // 5 — ein ECHTER gescheiterter Neuabruf (BEN, Nacharbeit 8). Die Störung steht, BEVOR der
+        //     nächste Abruf zulässig ist; ausgelöst wird er über den Produktweg (Fensterfokus bzw.
+        //     der Minutentakt des Moduls), frühestens nach `BRANDING_MINDESTABSTAND_MS`.
+        s.stoerung = q.pfad;
+        const vorher = s.abrufe.get(q.pfad) ?? 0;
+        await seite.evaluate(fn(MARKEN_MITHOERER), q.pfad);
+        const bestaetigt = await marke(q.behaelter);
+        expect(bestaetigt.abrufe, `${q.id}: Mitschrift beginnt leer`).toEqual([]);
+        expect(
+          { profil: bestaetigt.profil, aktiv: bestaetigt.aktiv, wurzel: bestaetigt.wurzel },
+          `${q.id}: der bestätigte Stand vor der Störung`,
+        ).toEqual({ profil: "advisor", aktiv: true, wurzel: "advisor" });
+        const gescheitert = await warteAufMarkenabruf(q.behaelter, 0);
+        expect(gescheitert.status, `${q.id}: Antwort des gestörten Neuabrufs`).toBe(503);
+        expect(s.abrufe.get(q.pfad) ?? 0, `${q.id}: Request am Prüfstand`).toBeGreaterThan(vorher);
+        await seite.waitForTimeout(500);
+        const erhalten = await marke(q.behaelter);
+        expect(
+          { profil: erhalten.profil, aktiv: erhalten.aktiv, wurzel: erhalten.wurzel },
+          `${q.id}: Markenwerte nach dem gescheiterten Neuabruf`,
+        ).toEqual({ profil: "advisor", aktiv: true, wurzel: "advisor" });
+        expect(erhalten.text, `${q.id}: Inhalt nach dem gescheiterten Neuabruf`).toContain(
+          q.inhalt,
+        );
+        expect(erhalten.huelle, `${q.id}: ${q.standOhneHuelle}`).toBe(false);
+
+        // 6 — danach eine erfolgreiche Aktualisierung mit GEÄNDERTEM Antwortwert: der Server wird
+        //     an der Karte vorbei umgeschaltet (wie durch einen zweiten Admin), die Karte erfährt es
+        //     nur über den nächsten regulären Neuabruf.
+        s.stoerung = null;
+        const umgeschaltet = await seite.evaluate<{ status: number }>(fn(MARKE_SETZEN), {
+          profil: "advisor",
+          aktiv: false,
+        });
+        expect(umgeschaltet.status, `${q.id}: Umschalten am Server`).toBe(200);
+        const erfolg = await warteAufMarkenabruf(q.behaelter, 1);
+        expect(erfolg.status, `${q.id}: Antwort des erfolgreichen Neuabrufs`).toBe(200);
+        let nachher = await marke(q.behaelter);
+        for (let i = 0; i < 50 && nachher.aktiv !== false; i++) {
+          await seite.waitForTimeout(100);
+          nachher = await marke(q.behaelter);
+        }
+        expect(
+          { profil: nachher.profil, aktiv: nachher.aktiv, wurzel: nachher.wurzel },
+          `${q.id}: Markenwerte nach dem erfolgreichen Neuabruf`,
+        ).toEqual({ profil: "advisor", aktiv: false, wurzel: null });
+        expect(nachher.fehlerbox, `${q.id}: Fehlerbox nach der Erholung`).toBe(false);
+        return;
+      }
+
+      // 4 — offline MIT Daten: der Inhalt bleibt, darüber „nicht aktualisiert".
+      await netz(false);
+      const cache = await warteAufLage(
+        bereich,
+        (l) => l.stand.includes(t("einst.wert.nichtAktualisiert")),
+        `${q.id}: Standzeile offline`,
+      );
+      expect(cache.text, `${q.id}: der Inhalt verschwand offline`).toContain(q.inhalt);
+      expect(cache.fehlerbox, `${q.id}: offline mit Daten wurde zur Fehlerbox`).toBe(false);
+
+      // 5 — gescheiterte Auffrischung: online, 503 auf genau diesen Pfad, „Erneut" in der Standzeile.
+      await netz(true);
+      s.stoerung = q.pfad;
+      const vorher = s.abrufe.get(q.pfad) ?? 0;
+      const knoepfe = await seite.evaluate<number>(fn(STAND_ERNEUT), bereich);
+      expect(knoepfe, `${q.id}: kein „Erneut“ in der Standzeile`).toBeGreaterThan(0);
+      const nachher = s.abrufe.get(q.pfad) ?? 0;
+      expect(nachher, `${q.id}: „Erneut“ hat ${q.pfad} nicht abgerufen`).toBeGreaterThan(vorher);
+      const gescheitert = await lage(bereich);
+      expect(gescheitert.stand, `${q.id}: Markierung nach gescheiterter Auffrischung`).toContain(
+        t("einst.wert.nichtAktualisiert"),
+      );
+      expect(gescheitert.text, `${q.id}: Inhalt nach gescheitertem Abruf`).toContain(q.inhalt);
+
+      // 6 — Erholung: Störung weg, „Erneut" → Markierung weg, Inhalt da.
+      s.stoerung = null;
+      await seite.evaluate<number>(fn(STAND_ERNEUT), bereich);
+      await warteAufLage(
+        bereich,
+        (l) => l.stand === "" && l.text.includes(q.inhalt) && !l.fehlerbox,
+        `${q.id}: Erholung nach der Auffrischung`,
+      );
+    } finally {
+      s.stoerung = null;
+      tor?.oeffnen();
+      tor = null;
+      delete s.antworten.vorAuslieferung;
+      await netz(true);
+      if (markeVorher !== null) {
+        // Den Markenstand der Instanz für die folgenden Fälle zurücknehmen.
+        await seite.evaluate(fn(MARKE_SETZEN), markeVorher);
+      }
+    }
+  }
+
+  for (const quelle of matrixAdmin().filter((q) => !BEHAELTER_OHNE_HUELLE.has(q.behaelter))) {
+    // Der Markenfall wartet zweimal den Mindestabstand des Moduls ab (60 s, `brandTheme.ts`) — ein
+    // regulärer Neuabruf ist vorher ausdrücklich nicht zulässig. Seine Frist deckt genau das.
+    const frist =
+      quelle.standOhneHuelle !== undefined ? 2 * BRANDING_MINDESTABSTAND_MS + 120_000 : 120_000;
+    it(
+      `Z · ${quelle.id}`,
+      async () => {
+        await pruefeFolge(quelle, "/admin");
+      },
+      frist,
+    );
+  }
+
+  // BEN, Nacharbeit 8, Befund 2: die Profilquelle durchläuft dieselbe Zustandsfolge.
+  for (const quelle of matrixProfil()) {
+    it(`Z · ${quelle.id}`, async () => {
+      await pruefeFolge(quelle, "/profil");
+    }, 120_000);
+  }
+
+  // ---- R · die LAUFENDE Auffrischung je Hüllen-Quelle (BEN, Nacharbeit 8, Befund 2) -------------
+  //
+  //   1  erfolgreicher Stand    Karte offen, Inhalt da, keine Standzeile
+  //   2  Frischefrist           `ZAEHLER_FRISCHE_MS` (30 s, `main.tsx`) verstreicht — ohne Auslöser
+  //                             holt die Karte nichts und zeigt nichts an
+  //   3  laufend                Browserfokus (`visibilitychange` am Fenster, dort hört `focusManager`),
+  //                             die Antwort GENAU DIESES PFADES wird zurückgehalten → ruhiges
+  //                             „Stand von …" ohne „nicht aktualisiert", Inhalt bleibt, Abruf gezählt
+  //   4  Erfolg                 Antwort frei → Standzeile weg, Inhalt da
+  //   5  Fehler mit Cache       Frist erneut, Störung (503) auf genau diesen Pfad, Browserfokus →
+  //                             „nicht aktualisiert", Inhalt bleibt, keine Fehlerbox, Abruf gezählt
+  //   6  Erholung               Störung weg, „Erneut" in der Standzeile → Standzeile weg
+  //
+  // Kontenfläche und Bereitschaft zeichnen ihre Zustände nicht über die Hülle; ihre laufende
+  // Auffrischung messen weiterhin `tests/h6-d1-nutzerdetail-stand/frischefrist-nachholung.test.tsx`
+  // und `tests/h6-bereitschaft-stand-nutzerweg/` (beide im PRUEFPLAN ausgewählt). Der Markenstand
+  // hat keine Standzeile (JOB 3563); sein Neuabruf ist der Z-Fall oben.
+  const FOKUS = `() => {
+    window.dispatchEvent(new Event('visibilitychange'));
+    window.dispatchEvent(new Event('focus'));
+    return document.visibilityState;
+  }`;
+
+  async function pruefeAuffrischung(q: Quelle, seitenPfad: string): Promise<void> {
+    const s = stand as Stand;
+    const seite = s.seite as NonNullable<Stand["seite"]>;
+    expect(s.fehler, "Seite nicht gemountet").toBeNull();
+    const bereich = q.huelle ?? q.behaelter;
+    const standWort = t("einst.wert.stand").replace("{{zeit}}", "").trim();
+    const nichtAktualisiert = t("einst.wert.nichtAktualisiert");
+    try {
+      // 1 — erfolgreicher Stand.
+      s.stoerung = null;
+      await neuLaden(seitenPfad, '[data-einst="seite"]');
+      const offenFehler = await seite.evaluate<string | null>(fn(OEFFNE_ROH), [
+        q.reiter,
+        q.zeile,
+        q.behaelter,
+      ]);
+      expect(offenFehler, `${q.id}: ${offenFehler}`).toBeNull();
+      await warteAufLage(
+        bereich,
+        (l) => l.text.includes(q.inhalt) && !l.laedt && !l.fehlerbox && l.stand === "",
+        `${q.id}: erfolgreicher Stand`,
+      );
+
+      // 2 — die reguläre Frischefrist verstreicht.
+      await seite.waitForTimeout(ZAEHLER_FRISCHE_MS + 2_000);
+      const abgelaufen = await lage(bereich);
+      expect(abgelaufen.stand, `${q.id}: Standzeile ohne Auslöser`).toBe("");
+      expect(abgelaufen.text, `${q.id}: Inhalt nach der Frist`).toContain(q.inhalt);
+
+      // 3 — Browserfokus mit zurückgehaltener Antwort: die laufende Auffrischung.
+      torSchliessen(q.pfad);
+      const vorher = s.abrufe.get(q.pfad) ?? 0;
+      await seite.evaluate(fn(FOKUS));
+      const laufend = await warteAufLage(
+        bereich,
+        (l) => l.stand.includes(standWort),
+        `${q.id}: laufende Auffrischung`,
+      );
+      expect(laufend.stand, `${q.id}: laufend ist keine Störung`).not.toContain(nichtAktualisiert);
+      expect(laufend.text, `${q.id}: Inhalt während der Auffrischung`).toContain(q.inhalt);
+      expect(laufend.fehlerbox, `${q.id}: Fehlerbox während der Auffrischung`).toBe(false);
+      expect(laufend.laedt, `${q.id}: Ladewort statt Stand`).toBe(false);
+      expect(s.abrufe.get(q.pfad) ?? 0, `${q.id}: Fokus hat nicht abgerufen`).toBeGreaterThan(
+        vorher,
+      );
+
+      // 4 — die Antwort kommt: Erfolg.
+      tor?.oeffnen();
+      tor = null;
+      delete s.antworten.vorAuslieferung;
+      await warteAufLage(
+        bereich,
+        (l) => l.stand === "" && l.text.includes(q.inhalt) && !l.fehlerbox && !l.laedt,
+        `${q.id}: Erfolg nach der Auffrischung`,
+      );
+
+      // 5 — Frist erneut, Störung, Browserfokus: Fehler mit erhaltenem Cache.
+      await seite.waitForTimeout(ZAEHLER_FRISCHE_MS + 2_000);
+      s.stoerung = q.pfad;
+      const vorFehler = s.abrufe.get(q.pfad) ?? 0;
+      await seite.evaluate(fn(FOKUS));
+      const gescheitert = await warteAufLage(
+        bereich,
+        (l) => l.stand.includes(nichtAktualisiert),
+        `${q.id}: gescheiterte Auffrischung`,
+      );
+      expect(gescheitert.text, `${q.id}: Inhalt nach gescheiterter Auffrischung`).toContain(
+        q.inhalt,
+      );
+      expect(gescheitert.fehlerbox, `${q.id}: Cache wurde zur Fehlerbox`).toBe(false);
+      expect(s.abrufe.get(q.pfad) ?? 0, `${q.id}: Fokus hat nicht abgerufen`).toBeGreaterThan(
+        vorFehler,
+      );
+
+      // 6 — Erholung.
+      s.stoerung = null;
+      await seite.evaluate<number>(fn(STAND_ERNEUT), bereich);
+      await warteAufLage(
+        bereich,
+        (l) => l.stand === "" && l.text.includes(q.inhalt) && !l.fehlerbox,
+        `${q.id}: Erholung nach gescheiterter Auffrischung`,
+      );
+    } finally {
+      s.stoerung = null;
+      tor?.oeffnen();
+      tor = null;
+      delete s.antworten.vorAuslieferung;
+    }
+  }
+
+  const AUFFRISCHUNG: [Quelle, string][] = [
+    ...matrixAdmin()
+      .filter((q) => !BEHAELTER_OHNE_HUELLE.has(q.behaelter) && q.standOhneHuelle === undefined)
+      .map((q): [Quelle, string] => [q, "/admin"]),
+    ...matrixProfil().map((q): [Quelle, string] => [q, "/profil"]),
+  ];
+  for (const [quelle, seitenPfad] of AUFFRISCHUNG) {
+    it(
+      `R · ${quelle.id}`,
+      async () => {
+        await pruefeAuffrischung(quelle, seitenPfad);
+      },
+      2 * ZAEHLER_FRISCHE_MS + 90_000,
+    );
+  }
+
+  // ---- S · der Fehlerzustand jeder Quelle auch in Englisch und Niederländisch ----------------------
+  // Derselbe vierteilige Beleg wie M, mit den Texten DIESER Sprache: Reiter, Fehlerwort, Ausweg und
+  // der echte Inhalt der Erholung kommen aus demselben Katalog, aus dem die Oberfläche sie nimmt.
+  //
+  // Davor und danach je Sprache: die vollständigen sichtbaren Inhalte jeder Karte (BEN, Nacharbeit
+  // 8, Befund 3 — siehe `INHALT_LIES`). Deutsch wird zuerst gelesen und ist der Vergleichsstand.
+  const inhalte = new Map<string, Map<string, InhaltLage>>();
+
+  interface InhaltsOrt {
+    reiter: string;
+    zeile: string;
+    behaelter: string;
+    seitenPfad: string;
+    titelDaten?: boolean;
+  }
+
+  /**
+   * Nacharbeit 10 (BEN, K6/K7): die Detailkarten OHNE eigene Abfragequelle. Sie standen bis hierher
+   * nicht im Sprachinventar, weil es nur aus der Endpunkt-Matrix gebildet wurde. Die Zugänge sind
+   * dieselben wie in `h6-funktionsinventar.test.ts` (§5a 1, 6, 8, 21, 26); dazu die Rollenkarte
+   * hinter den Rollenzeilen der Kontenfläche. Nutzeranlage und Passwortkarte werden nur geöffnet,
+   * nichts wird gespeichert. Welche Karten es gibt, sagt der Fall `S-inhalt-V` aus dem Quelltext.
+   */
+  function zusatzOrte(): InhaltsOrt[] {
+    return [
+      {
+        reiter: t("adm.sec.konten"),
+        zeile: '[data-testid="flaeche-nutzer"] button[data-einst="zeile"]',
+        behaelter: "detail-nutzer",
+        seitenPfad: "/admin",
+        titelDaten: true,
+      },
+      {
+        reiter: t("adm.sec.konten"),
+        zeile: '[data-testid="knopf-nutzer-hinzufuegen"]',
+        behaelter: "detail-nutzer-neu",
+        seitenPfad: "/admin",
+      },
+      {
+        reiter: t("adm.sec.konten"),
+        zeile: '[data-testid="zeile-ansicht-rolle"]',
+        behaelter: "detail-ansicht-rolle",
+        seitenPfad: "/admin",
+      },
+      {
+        reiter: t("adm.sec.konten"),
+        zeile: '[data-testid="zeile-rolle-experte"]',
+        behaelter: "detail-rolle",
+        seitenPfad: "/admin",
+      },
+      {
+        reiter: t("adm.sec.sicherheit"),
+        zeile: '[data-testid="zeile-datenschutz"]',
+        behaelter: "detail-datenschutz",
+        seitenPfad: "/admin",
+      },
+      {
+        reiter: "",
+        zeile: '[data-testid="zeile-passwort"]',
+        behaelter: "detail-passwort",
+        seitenPfad: "/profil",
+      },
+    ];
+  }
+
+  /** Jede Detailkarte genau einmal, samt Profil — Reiter in der Sprache dieses Laufs. */
+  function inhaltsOrte(): InhaltsOrt[] {
+    const orte = new Map<string, InhaltsOrt>();
+    const nimm = (o: InhaltsOrt): void => {
+      if (!orte.has(o.behaelter)) {
+        orte.set(o.behaelter, o);
+      }
+    };
+    for (const q of matrixAdmin()) {
+      nimm({ reiter: q.reiter, zeile: q.zeile, behaelter: q.behaelter, seitenPfad: "/admin" });
+    }
+    for (const o of zusatzOrte()) {
+      nimm(o);
+    }
+    for (const q of matrixProfil()) {
+      nimm({ reiter: q.reiter, zeile: q.zeile, behaelter: q.behaelter, seitenPfad: "/profil" });
+    }
+    // Erst alle Orte der Verwaltung, dann die des Profils: je Seite genau ein Neuaufbau.
+    return [...orte.values()].sort(
+      (a, b) => Number(a.seitenPfad === "/profil") - Number(b.seitenPfad === "/profil"),
+    );
+  }
+
+  async function liesInhalte(sprache: string): Promise<Map<string, InhaltLage>> {
+    const s = stand as Stand;
+    const seite = s.seite as NonNullable<Stand["seite"]>;
+    expect(s.fehler, "Seite nicht gemountet").toBeNull();
+    s.stoerung = null;
+    const gelesen = new Map<string, InhaltLage>();
+    let geladen = "";
+    for (const ort of inhaltsOrte()) {
+      if (ort.seitenPfad !== geladen) {
+        await neuLaden(ort.seitenPfad, '[data-einst="seite"]');
+        geladen = ort.seitenPfad;
+      }
+      // Ein Ort ohne Zeile ist eine Fläche, keine Karte: dann die ganze Themenspalte lesen.
+      const l = await seite.evaluate<InhaltLage>(fn(INHALT_LIES), [
+        ort.reiter,
+        ort.zeile,
+        ort.behaelter,
+        ort.zeile === "" ? '[data-einst="spalte"]' : null,
+      ]);
+      expect(l.fehler, `${sprache} · ${ort.behaelter}: ${l.fehler}`).toBeNull();
+      expect(l.lang, `${sprache} · ${ort.behaelter}: <html lang>`).toBe(sprache);
+      gelesen.set(ort.behaelter, { ...l, titelDaten: ort.titelDaten === true });
+    }
+    return gelesen;
+  }
+
+  it("S-inhalt-de · vollständige sichtbare Karteninhalte als Vergleichsstand", async () => {
+    await i18n.changeLanguage("de");
+    const gelesen = await liesInhalte("de");
+    inhalte.set("de", gelesen);
+    const befunde: string[] = [];
+    for (const [karte, l] of gelesen) {
+      // Kalibrierung (siehe `kalibrierung`): die Messung greift in jeder Karte wirklich.
+      befunde.push(...kalibrierung(karte, l, "de"));
+    }
+    expect(befunde, befunde.join("\n")).toEqual([]);
+  }, 240_000);
+
+  for (const sprache of ["en", "nl"]) {
+    it(`S-${sprache} · die Oberfläche spricht ${sprache}`, async () => {
+      await i18n.changeLanguage(sprache);
+      const l = await setzeSprache(stand as Stand, sprache, "/admin", '[data-einst="seite"]');
+      expect(l.lang).toBe(sprache);
+    }, 120_000);
+    it(`S-inhalt-${sprache} · jede Karte samt Profil spricht vollständig ${sprache}`, async () => {
+      await i18n.changeLanguage(sprache);
+      const de = inhalte.get("de");
+      expect(de, "der deutsche Vergleichsstand fehlt").toBeDefined();
+      const gelesen = await liesInhalte(sprache);
+      const befunde: string[] = [];
+      for (const [karte, deLage] of de ?? new Map<string, InhaltLage>()) {
+        const ziel = gelesen.get(karte);
+        if (!ziel) {
+          befunde.push(`${karte}: in ${sprache} nicht gelesen`);
+          continue;
+        }
+        befunde.push(...sprachBefunde(karte, deLage, ziel, sprache));
+      }
+      expect(befunde, befunde.join("\n")).toEqual([]);
+    }, 240_000);
+    for (let i = 0; i < matrixAdmin().length; i++) {
+      it(`S-${sprache} · Quelle ${i + 1}`, async () => {
+        await i18n.changeLanguage(sprache);
+        const quelle = matrixAdmin()[i] as Quelle;
+        await pruefeQuelle(quelle, "/admin");
+      }, 120_000);
+    }
+  }
+
+  it("S-de · zurück auf Deutsch für die übrigen Fälle", async () => {
+    await i18n.changeLanguage("de");
+    const l = await setzeSprache(stand as Stand, "de", "/admin", '[data-einst="seite"]');
+    expect(l.lang).toBe("de");
+  }, 120_000);
+
   // ================================================================================================
   // V · VOLLZÄHLIGKEIT — JOB 3065 R4, BENs Korrekturpflicht 2.
   // ================================================================================================
@@ -737,6 +1873,8 @@ describe("JOB 3065 H6 R3 · Endpunkt-Matrix der Detailkarten — 503 am gebauten
     useAnalytics: "/api/analytics",
     useValidationBoard: "/api/validation/board",
     useMyImpact: "/api/me/impact",
+    // R-0913: die Betriebsschalter der Demodatenkarte — Fall `SCH · Demodaten · /api/features`.
+    useFeatures: "/api/features",
   };
 
   /** Jede Abfragequelle, die in den sechs Seiten wirklich vorkommt — samt ihrer Datei. */
@@ -780,7 +1918,9 @@ describe("JOB 3065 H6 R3 · Endpunkt-Matrix der Detailkarten — 503 am gebauten
     // JOB 3140: die nachrangigen Quellen zählen mit — sie haben einen eigenen, spiegelbildlichen
     // Fall (`N · …`), aber sie sind genauso wenig ungemessen erlaubt wie eine tragende.
     const inMatrix = new Set(
-      [...matrixAdmin(), ...matrixNachrangig(), ...matrixProfil()].map((q) => q.pfad),
+      [...matrixAdmin(), ...matrixNachrangig(), ...matrixProfil(), ...matrixSchalter()].map(
+        (q) => q.pfad,
+      ),
     );
     const ohneFall = [...new Set(gefunden.map((g) => QUELLE_PFAD[g.quelle] ?? ""))].filter(
       (p) => p !== "" && !inMatrix.has(p),
@@ -800,6 +1940,33 @@ describe("JOB 3065 H6 R3 · Endpunkt-Matrix der Detailkarten — 503 am gebauten
 
     console.info(
       `JOB 3065 H6 R4 · Vollzähligkeit: ${gefunden.length} Quellen in ${SEITEN.length} Seiten → ${abgerufen.size} Endpunkte → ${inMatrix.size} Matrix-Pfade`,
+    );
+  });
+
+  // Nacharbeit 10 (BEN, K6/K7): die Kartenmenge der Sprachfälle wird nicht behauptet, sondern gegen
+  // das Detailinventar des Quelltexts abgeglichen — jede `Detailkarte` der Verwaltung und des Profils
+  // (`testId="detail-…"`), unabhängig davon, ob sie eine eigene Abfragequelle hat.
+  it("S-inhalt-V · das Sprachinventar deckt jede Detailkarte von Verwaltung und Profil", () => {
+    const seitenDir = join(WURZEL, "apps/web/src/pages");
+    const dateien = readdirSync(seitenDir).filter(
+      (d) => (d.startsWith("Admin") && d.endsWith(".tsx")) || d === "Profile.tsx",
+    );
+    const karten = new Set<string>();
+    for (const d of dateien) {
+      const text = readFileSync(join(seitenDir, d), "utf8");
+      for (const m of text.matchAll(/testId="(detail-[a-z0-9-]+)"/g)) {
+        karten.add(m[1] ?? "");
+      }
+    }
+    // Kalibrierung: der Griff findet die bekannten Karten überhaupt.
+    expect(karten.size, `Detailkarten im Quelltext: ${[...karten].join(" · ")}`).toBeGreaterThan(
+      15,
+    );
+    const imInventar = new Set(inhaltsOrte().map((o) => o.behaelter));
+    const fehlt = [...karten].filter((k) => !imInventar.has(k)).sort();
+    expect(fehlt, `Detailkarte ohne Sprachfall: ${fehlt.join(" · ")}`).toEqual([]);
+    console.info(
+      `Nacharbeit 10 · Sprachinventar: ${karten.size} Detailkarten aus ${dateien.length} Seiten`,
     );
   });
 

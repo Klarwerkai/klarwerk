@@ -46,19 +46,20 @@ import {
 // ZWEI Bilder mit DERSELBEN Kennung — bens Fall. Unterschiedliche Quellen und unterschiedliche
 // Fussnoten, damit ueberhaupt UNTERSCHEIDBAR ist, welches der beiden adressiert wurde.
 //
-// WARUM DIE FUSSNOTEN EIGENE KENNUNGEN TRAGEN — das ist kein Kunstgriff, sondern noetig, und es ist
-// nachgemessen: `ensureImageAnchors` (editorFigures.ts) schreibt die Bildkennung auf eine einzelne
-// kennungslose Fussnote. Traegen beide Fussnoten danach `kw-img-dup-1`, liefert `captionForImage`
-// fuer BEIDE Bilder dieselbe (erste) Fussnote — der Test koennte dann nicht mehr unterscheiden,
-// welches Bild die globale Suche gewaehlt hat, und waere ein Scheinbeleg. Mit je eigener
-// Fussnotenkennung greift `gemeinsameKennung` nicht, es wird NICHTS ueberschrieben, und die Auswahl
-// an `:764-766` schlaegt sichtbar bis ins Formular durch. Genau das ist der Fall
-// „widerspruechliches oder fremdes Markup", um den es in I50 ohnehin geht.
+// WARUM DIE FUSSNOTEN DIESELBE KENNUNG TRAGEN WIE IHR BILD (Aufnahme 20260922, Bildidentität):
+// Bis hierher trugen sie eigene Kennungen (`kw-cap-erste`, `kw-cap-zweite`), die zu keinem Bild
+// gehörten, und der Test las sie trotzdem als Beschreibung ihres Bildes — über den
+// Nachbarschaftsrückfall in `captionForImage`, der eine widersprechende Kennung nicht prüfte. Genau
+// diese stille Paarung ist mit der Aufnahme abgestellt: eine fremd gekennzeichnete Fußnote ist
+// nicht die Beschreibung des Bildes daneben. Die Vorlage ist deshalb der wirkliche Doppelfall —
+// eine ganze Einheit kopiert, Bild UND Fußnote tragen `kw-img-dup-1`. Die Entdublettierung gibt
+// dem zweiten Bild eine frische Kennung, und seine Fußnote geht mit (sie trug die alte). Damit
+// bleiben beide Beschreibungen unterscheidbar, ohne dass eine fremde Kennung gelesen wird.
 const DUBLETTE =
   '<figure><img src="/api/objects/erstes/raw" data-image-id="kw-img-dup-1">' +
-  '<figcaption data-image-id="kw-cap-erste">Erste</figcaption></figure>' +
+  '<figcaption data-image-id="kw-img-dup-1">Erste</figcaption></figure>' +
   '<figure><img src="/api/objects/zweites/raw" data-image-id="kw-img-dup-1">' +
-  '<figcaption data-image-id="kw-cap-zweite">Zweite</figcaption></figure>';
+  '<figcaption data-image-id="kw-img-dup-1">Zweite</figcaption></figure>';
 
 interface Bitte {
   imageId: string;
@@ -207,9 +208,17 @@ describe("JOB 2084 / I50-3: die Bitte trifft das Bild, das der Nutzer gewaehlt h
     expect(fussnoten).toHaveLength(2);
     expect(fussnoten[0]?.textContent).toBe("Erste");
     expect(fussnoten[1]?.textContent).toBe("Zweite");
-    // Unangetastet: keine der beiden trug die alte Bildkennung, also wird an keiner geschrieben.
-    expect(fussnoten[0]?.getAttribute("data-image-id")).toBe("kw-cap-erste");
-    expect(fussnoten[1]?.getAttribute("data-image-id")).toBe("kw-cap-zweite");
+    // Jede Fußnote trägt danach die Kennung IHRES Bildes: die erste bleibt bei `kw-img-dup-1`, die
+    // zweite ist mit ihrem Bild zur frischen Kennung gewandert.
+    const beide = bilder();
+    expect(fussnoten[0]?.getAttribute("data-image-id")).toBe("kw-img-dup-1");
+    expect(fussnoten[0]?.getAttribute("data-image-id")).toBe(
+      beide[0]?.getAttribute("data-image-id"),
+    );
+    expect(fussnoten[1]?.getAttribute("data-image-id")).toBe(
+      beide[1]?.getAttribute("data-image-id"),
+    );
+    expect(fussnoten[1]?.getAttribute("data-image-id")).not.toBe("kw-img-dup-1");
   });
 
   it("HAELFTE 2, DIE KERNAUSSAGE: die Bitte fuer den ZWEITEN Eintrag oeffnet das ZWEITE Bild", () => {

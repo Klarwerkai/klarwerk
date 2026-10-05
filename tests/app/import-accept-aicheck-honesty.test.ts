@@ -22,6 +22,10 @@
 //   • Kapazitätsabbruch → NICHT done, Abbruch im Protokoll,
 //   • einzeln übersprungene Kandidaten → NICHT done, skipped im Protokoll,
 //   • der Accept selbst gelingt in ALLEN Fällen — die Erkennung kippt ihn nie.
+// Lauf gesamt-import-adoption R3 (Bens N3, R-0145): die KI-Erkennung am Import-Accept läuft nur
+// noch, wenn der Prüfer sie für die Annahme ausdrücklich anfordert (`kiPruefung: true`). Diese
+// Datei misst genau diese Erkennung und fordert sie darum an jeder Annahme an; dass OHNE die
+// Anforderung kein Modellaufruf geschieht, misst `tests/import-genau-einmal/nachbarn.test.ts`.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AI_CHECK_JOB_TIMEOUT_MS } from "../../services/app/src/ai-check-worker";
 import { type AppServices, buildApp, buildServices } from "../../services/app/src/build-app";
@@ -167,7 +171,7 @@ async function acceptCandidate(
     method: "PUT",
     url: `/api/library/import/candidates/${created.json()[0].id}`,
     headers,
-    payload: { action: "accept" },
+    payload: { action: "accept", kiPruefung: true },
   });
   expect(accepted.statusCode).toBe(200);
   // Der Accept gelingt IMMER — die Erkennung darf ihn nie kippen.
@@ -367,7 +371,7 @@ describe("mega29 A · Import-Accept: `done` nur bei einem Lauf, der wirklich geu
         method: "PUT",
         url: `/api/library/import/candidates/${created.json()[0].id}`,
         headers,
-        payload: { action: "accept" },
+        payload: { action: "accept", kiPruefung: true },
       });
       // Die Frist des regulären Workers — dieselbe Konstante, keine zweite.
       await vi.advanceTimersByTimeAsync(AI_CHECK_JOB_TIMEOUT_MS);

@@ -54,6 +54,7 @@ import {
 // G24 (JOB 1610): die Fixture baut den Serververtrag nicht mehr NACH, sie BENUTZT ihn. Siehe
 // `ka6AskKoerper` — der Grund steht dort.
 import { aiGeneratedMark } from "../../services/model-runs";
+import { panelQuelleAus } from "../support/panelquelle";
 
 const TASKPANE = "apps/web/public/word-addin/taskpane.html";
 // JOB 3667 R8 (14.09.2026): das Fenster wird aus ZWEI Dateien ausgeliefert. Wer nur das
@@ -62,6 +63,11 @@ const TASKPANE = "apps/web/public/word-addin/taskpane.html";
 const RUECKWEG = "apps/web/public/word-addin/rueckweg.js";
 
 function read(rel: string): string {
+  // Das Aufgabenfenster liegt seit dem Drei-Datei-Schnitt (R-1611) in drei Dateien; gelesen wird es
+  // als EIN Dokument, so wie vorher.
+  if (rel === TASKPANE) {
+    return panelQuelleAus(rel);
+  }
   return readFileSync(resolve(process.cwd(), rel), "utf8");
 }
 
@@ -1719,8 +1725,12 @@ describe("JOB 1153 · KA6 Stufe 1: die Schreibflaeche im Aufgabenfenster", () =>
       // Der Auftragssatz des Zurufs plus die MARKIERUNG — nicht der getippte Text.
       expect(koerper.question).toBe(`${ka6Wortlaut(zuruf.auftrag)} ${ka6Markierung}`);
       expect(String(koerper.question)).not.toContain("Wie oft wird die Spannrolle geprueft?");
-      // Und byte-gleich zum Stand vor KA5: der Zuruf schickt KEIN `selection`-Feld mit.
-      expect(Object.keys(koerper).sort()).toEqual(["locale", "mode", "question"]);
+      // Der Zuruf schickt weiterhin KEIN `selection`-Feld mit. R-0639 (Aufnahme
+      // gesamt-klara-extern, Bens Befund B1): die Markierung reist hier im FRAGETEXT, und das
+      // Fenster sagt es mit `questionSource: "selection"` — sonst ginge Dokumenttext unter der
+      // Klasse `question` am Dokumenttext-Riegel vorbei.
+      expect(Object.keys(koerper).sort()).toEqual(["locale", "mode", "question", "questionSource"]);
+      expect(koerper.questionSource).toBe("selection");
       expect(koerper.mode, "Der server-garantierte Modus fehlt").toBe("retrieval-only");
     });
   }

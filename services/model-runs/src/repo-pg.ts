@@ -32,4 +32,15 @@ export class PgModelRunRepo implements ModelRunRepo {
     );
     return res.rows.map((row) => row.data);
   }
+
+  // Aufnahme gesamt-ki-laufprotokoll: Zeitraum über den ISO-Zeitstempel im Datensatz. Alle
+  // Schreiber setzen `startedAt` über `toISOString()` (UTC, feste Länge) — der Textvergleich ist
+  // damit derselbe wie der Zeitvergleich, und `recent` sortiert schon genauso.
+  async zwischen(von: string, bis: string, limit: number): Promise<ModelRunRecord[]> {
+    const res = await this.pool.query<ModelRunRow>(
+      "SELECT data FROM model_runs WHERE data->>'startedAt' >= $1 AND data->>'startedAt' < $2 ORDER BY data->>'startedAt' DESC LIMIT $3",
+      [von, bis, Math.max(0, limit)],
+    );
+    return res.rows.map((row) => row.data);
+  }
 }

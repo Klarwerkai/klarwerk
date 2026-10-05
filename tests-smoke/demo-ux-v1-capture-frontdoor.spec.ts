@@ -530,3 +530,373 @@ test("DEMO-UX-V1 · Fall 8: natives Einfügen verpufft während der Entwurf läd
     await page.unrouteAll({ behavior: "wait" });
   }
 });
+
+// ------------------------------------------------------------------------------------------------
+// FALL 9 — DER NATIVE RUNDLAUF, DEUTSCH UND ENGLISCH (Auftrag gesamt-entwurf-datenerhalt).
+// ------------------------------------------------------------------------------------------------
+//
+// Bens Befund (Runde 1): Fälle 6 und 7 enden, sobald der eingefügte Text im Feld steht — vor dem
+// Sichern und vor dem Wiederöffnen; Englisch war nur gemountet (jsdom) belegt. CAP-P1 verlangt aber
+// „Speichern/Wiederöffnen vollständig" und den echten Clipboardweg DE/EN. Dieser Fall fährt beides
+// in einem Zug: natives Tastatur-Einfügen in Titel UND Rumpf → „Entwurf sichern" über die sichtbare
+// Beschriftung der jeweiligen Sprache → Serverstand über `GET /api/drafts/:id` → frische Seite über
+// die Adresse → Titel und Rumpf stehen wieder da.
+//
+// SPRACHE ÜBER `?lang=` (`lib/htmlLang.ts`, `sprachAusEintritt`): sie gilt für diesen Seitenaufbau
+// und wird NICHT gespeichert — die übrigen Fälle dieser Datei, die deutsch lesen, bleiben unberührt.
+// Die Proben tragen eine Laufkennung; sie sind nicht die ENTWURFSPROBE der Fälle 3 und 8.
+//
+// GRENZEN wie oben: nur Tastatur (Kontextmenü nicht maschinell bedienbar), nur Chromium, und der
+// Server ist der In-Memory-Smoke-Server — kein PostgreSQL-Beleg (K13 bleibt davon getrennt offen).
+for (const fall of [
+  { sprache: "de", sichern: "Entwurf sichern", gesichert: "Entwurf gespeichert." },
+  { sprache: "en", sichern: "Save draft", gesichert: "Draft saved." },
+] as const) {
+  test(`DEMO-UX-V1 · Fall 9 (${fall.sprache}): natives Einfügen übersteht Sichern und Wiederöffnen`, async ({
+    page,
+  }) => {
+    await ensureLoggedIn(page);
+    await page.goto(`${VORDERTUER}?lang=${fall.sprache}`);
+    await expect
+      .poll(() => page.evaluate(() => document.documentElement.lang), {
+        message: "Kalibrierung: die Seite steht in der verlangten Sprache",
+      })
+      .toBe(fall.sprache);
+    const editor = page.locator(EDITOR).first();
+    await expect(editor).toBeVisible({ timeout: 15_000 });
+    const titel = page.getByTestId("blatt-titel");
+    await expect(titel).toBeEnabled();
+
+    const lauf = `${fall.sprache.toUpperCase()}-${Date.now()}`;
+    const titelProbe = `CAP-P1 Rundlauf ${lauf}`;
+    const rumpfProbe = `CAP-P1 Rundlauf ${lauf}: Vor dem Anfahren den Ventildruck prüfen.`;
+
+    await fuelleZwischenablage(page, titelProbe);
+    await titel.click();
+    await expect(titel).toBeFocused();
+    await fuegeNativEin(page);
+    await expect(titel).toHaveValue(titelProbe);
+
+    await fuelleZwischenablage(page, rumpfProbe);
+    await editor.click();
+    await expect(editor).toBeFocused();
+    await fuegeNativEin(page);
+    await expect(editor).toHaveText(rumpfProbe);
+
+    const sichern = page.getByRole("button", { name: fall.sichern, exact: true });
+    await expect(sichern).toBeEnabled();
+    await sichern.click();
+    await expect(page.getByText(fall.gesichert).first()).toBeVisible({ timeout: 15_000 });
+    await expect(page).toHaveURL(new RegExp(`${VORDERTUER}\\?draft=[^&]+$`), { timeout: 15_000 });
+    const id = new URL(page.url()).searchParams.get("draft") ?? "";
+    expect(id).not.toBe("");
+
+    // Der SERVER trägt, was eingefügt wurde — nicht nur die Fläche.
+    const antwort = await page.request.get(`/api/drafts/${encodeURIComponent(id)}`);
+    expect(antwort.ok(), "der gesicherte Entwurf ist über die Route nicht lesbar").toBe(true);
+    const entwurf: { payload: { title?: string | null; bodyHtml?: string | null } } =
+      await antwort.json();
+    expect(entwurf.payload.title).toBe(titelProbe);
+    expect(entwurf.payload.bodyHtml ?? "").toContain(rumpfProbe);
+
+    // Normales Wiederöffnen: frischer Seitenaufbau über die Adresse, dieselbe Sprache.
+    await page.goto(`${VORDERTUER}?draft=${encodeURIComponent(id)}&lang=${fall.sprache}`);
+    await expect(page.locator(EDITOR).first()).toHaveText(rumpfProbe, { timeout: 15_000 });
+    await expect(page.getByTestId("blatt-titel")).toHaveValue(titelProbe);
+    expect(await page.evaluate(() => document.documentElement.lang)).toBe(fall.sprache);
+  });
+}
+
+// ------------------------------------------------------------------------------------------------
+// FÄLLE 10 UND 11 — DIE RESTLICHEN CAP-P1-KOMBINATIONEN NATIV (Auftrag gesamt-entwurf-datenerhalt,
+// Runde 3, Bens Befund: Ladefenster nativ nur deutsch; Bild-/Beschreibungspaarung und verwaiste
+// Beschreibung nur gemountet belegt).
+// ------------------------------------------------------------------------------------------------
+//
+// Der Entwurf entsteht über die echte Schnittstelle der Sitzung (`POST /api/drafts`, Vorbild
+// `mega89-mehrbild-browser.spec.ts`) — mit einer Laufkennung, damit kein anderer Fall ihn findet.
+// Das Bild ist eine winzige eingebettete PNG-Grafik, kein Objekt-Store, kein Upload.
+//
+// Fall 10 (en) ist Fall 8 in der englischen Oberfläche: das echte Laden wird festgehalten, beide
+// nativen Einfügeversuche (Rumpfbereich, gesperrter Titel) kommen nicht an, der englische Grund
+// steht da, und nach der Freigabe steht genau der Serverstand.
+//
+// Fall 11 (de/en) ist die positive Paarung aus CAP-P1 („Reload ohne Captions", „verwaiste
+// Caption"): ein Entwurf mit Bild UND Beschreibung wird geöffnet, nativ wird Text eingefügt,
+// gesichert und über die Adresse neu geöffnet. Danach gilt am SERVER und im EDITOR: genau ein Bild,
+// genau eine Beschreibung, beide mit derselben Kennung, und keine Beschreibung ohne ihr Bild.
+const PNG_1PX =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+
+async function entwurfUeberSchnittstelle(
+  page: import("@playwright/test").Page,
+  daten: { title: string; bodyHtml: string },
+): Promise<string> {
+  const antwort = await page.request.post("/api/drafts", {
+    data: { ...daten, statement: daten.title, origin: "frontdoor" },
+  });
+  expect(antwort.status(), "der Probeentwurf konnte nicht angelegt werden").toBe(201);
+  return ((await antwort.json()) as { id: string }).id;
+}
+
+/** Bild-/Beschreibungslage des Editors: Figuren, Beschreibungen, Paarung, Waisen. */
+async function bildlage(page: import("@playwright/test").Page) {
+  return await page
+    .locator(EDITOR)
+    .first()
+    .evaluate((el) => {
+      const beschreibungen = [...el.querySelectorAll("figcaption")];
+      return {
+        figuren: el.querySelectorAll("figure").length,
+        bilder: el.querySelectorAll("figure img").length,
+        texte: beschreibungen.map((c) => (c.textContent ?? "").trim()),
+        gepaart: beschreibungen.every((c) => {
+          const bild = c.closest("figure")?.querySelector("img");
+          return !!bild && bild.getAttribute("data-image-id") === c.getAttribute("data-image-id");
+        }),
+        waisen: beschreibungen.filter((c) => !c.closest("figure")?.querySelector("img")).length,
+      };
+    });
+}
+
+test("DEMO-UX-V1 · Fall 10 (en): natives Einfügen verpufft während der Entwurf lädt", async ({
+  page,
+}) => {
+  await ensureLoggedIn(page);
+  const lauf = `EN-${Date.now()}`;
+  const titelServer = `CAP-P1 load window ${lauf}`;
+  const rumpfServer = `Check the valve pressure before start-up (${lauf}).`;
+  const id = await entwurfUeberSchnittstelle(page, {
+    title: titelServer,
+    bodyHtml: `<p>${rumpfServer}</p>`,
+  });
+  const abruf = `/api/drafts/${encodeURIComponent(id)}`;
+  const probe = `CAP-P1 EN MUST NOT ARRIVE WHILE LOADING ${lauf}`;
+  await page.goto(`${VORDERTUER}?lang=en`);
+  await expect(page.locator(EDITOR).first()).toBeVisible({ timeout: 15_000 });
+  await fuelleZwischenablage(page, probe);
+
+  let freigeben = (): void => {};
+  const freigabe = new Promise<void>((resolve) => {
+    freigeben = resolve;
+  });
+  let antwortWartet = false;
+  await page.route(`**${abruf}`, async (route) => {
+    const antwort = await route.fetch();
+    expect(antwort.ok(), "Fall 10 braucht eine erfolgreiche echte Ladeantwort").toBe(true);
+    antwortWartet = true;
+    await Promise.all([freigabe, new Promise((resolve) => setTimeout(resolve, 3_000))]);
+    antwortWartet = false;
+    await route.fulfill({ response: antwort });
+  });
+
+  try {
+    await page.goto(`${VORDERTUER}?draft=${encodeURIComponent(id)}&lang=en`);
+    await expect
+      .poll(() => antwortWartet, { message: "echte Ladeantwort wird zurückgehalten" })
+      .toBe(true);
+    expect(await page.evaluate(() => document.documentElement.lang)).toBe("en");
+    const hinweis = page.getByTestId("blatt-nicht-bereit");
+    const titel = page.getByRole("textbox", { name: "Title", exact: true });
+    await expect
+      .soft(hinweis)
+      .toHaveText(
+        "The draft is being fetched. Until it is here, this sheet accepts nothing — otherwise the loaded text would overwrite what you wrote.",
+      );
+    await expect.soft(page.locator("[contenteditable]")).toHaveCount(0);
+    await expect.soft(titel).toBeDisabled();
+
+    await page
+      .getByTestId("blatt-text")
+      .locator(`${EDITOR}, [data-testid="blatt-nicht-bereit"]`)
+      .first()
+      .click();
+    await fuegeNativEin(page);
+    await expect.soft(page.locator("body")).not.toContainText(probe);
+    await titel.click({ force: true });
+    await fuegeNativEin(page);
+    await expect.soft(titel).not.toHaveValue(new RegExp(probe));
+    expect(antwortWartet, "das Ladefenster muss beide Einfügeversuche umfassen").toBe(true);
+
+    freigeben();
+    await expect(hinweis).toHaveCount(0, { timeout: 15_000 });
+    await expect(page.locator(EDITOR).first()).toHaveText(rumpfServer);
+    await expect(titel).toBeEnabled();
+    await expect(titel).toHaveValue(titelServer);
+    await expect(page.locator("body")).not.toContainText(probe);
+  } finally {
+    freigeben();
+    await page.unrouteAll({ behavior: "wait" });
+  }
+});
+
+for (const fall of [
+  { sprache: "de", sichern: "Entwurf sichern", gesichert: "Entwurf gespeichert." },
+  { sprache: "en", sichern: "Save draft", gesichert: "Draft saved." },
+] as const) {
+  test(`DEMO-UX-V1 · Fall 11 (${fall.sprache}): Bild und Beschreibung überstehen natives Einfügen, Sichern und Wiederöffnen`, async ({
+    page,
+  }) => {
+    await ensureLoggedIn(page);
+    const lauf = `${fall.sprache.toUpperCase()}-${Date.now()}`;
+    const kennung = `kw-img-capp1-${Date.now()}`;
+    const beschreibung = `Schmierstelle am Exzenter ${lauf}`;
+    const id = await entwurfUeberSchnittstelle(page, {
+      title: `CAP-P1 Bildpaarung ${lauf}`,
+      bodyHtml: `<p>Ausgangstext ${lauf}.</p><figure data-image-id="${kennung}"><img data-image-id="${kennung}" alt="${beschreibung}" src="${PNG_1PX}"><figcaption data-image-id="${kennung}">${beschreibung}</figcaption></figure>`,
+    });
+    const adresse = `${VORDERTUER}?draft=${encodeURIComponent(id)}&lang=${fall.sprache}`;
+    await page.goto(adresse);
+    const editor = page.locator(EDITOR).first();
+    await expect(editor).toContainText(`Ausgangstext ${lauf}.`, { timeout: 15_000 });
+    const vorher = await bildlage(page);
+    expect(vorher, "Kalibrierung: der geladene Entwurf trägt genau eine Paarung").toMatchObject({
+      figuren: 1,
+      bilder: 1,
+      texte: [beschreibung],
+      gepaart: true,
+      waisen: 0,
+    });
+
+    // Nativ einfügen, und zwar in den Textabsatz — nicht in die Beschreibung.
+    const probe = `Nativ eingefügt ${lauf}`;
+    await fuelleZwischenablage(page, ` ${probe}`);
+    await editor.locator("p").first().click();
+    await page.keyboard.press("End");
+    await fuegeNativEin(page);
+    await expect(editor).toContainText(probe);
+    expect(await bildlage(page), "das Einfügen hat die Paarung verändert").toEqual(vorher);
+
+    await page.getByRole("button", { name: fall.sichern, exact: true }).click();
+    await expect(page.getByText(fall.gesichert).first()).toBeVisible({ timeout: 15_000 });
+
+    // Der Server trägt Text UND Paarung.
+    const antwort = await page.request.get(`/api/drafts/${encodeURIComponent(id)}`);
+    expect(antwort.ok()).toBe(true);
+    const rumpf =
+      ((await antwort.json()) as { payload: { bodyHtml?: string | null } }).payload.bodyHtml ?? "";
+    expect(rumpf).toContain(probe);
+    expect(rumpf.match(/<figcaption\b/g) ?? [], "Beschreibung am Server").toHaveLength(1);
+    expect(rumpf).toContain(beschreibung);
+
+    // Wiederöffnen: frischer Seitenaufbau über die Adresse.
+    await page.goto(adresse);
+    await expect(page.locator(EDITOR).first()).toContainText(probe, { timeout: 15_000 });
+    expect(await page.evaluate(() => document.documentElement.lang)).toBe(fall.sprache);
+    expect(
+      await bildlage(page),
+      "nach dem Wiederöffnen fehlt oder verwaist eine Beschreibung",
+    ).toEqual(vorher);
+  });
+}
+
+// Fall 12 (de/en) ist der Gegenfall zu Fall 11 aus CAP-P1 („verwaiste Caption"): der Entwurf trägt
+// neben einer echten Paarung eine TATSÄCHLICH verwaiste Beschreibung — eine `figcaption`, deren
+// Kennung auf kein Bild zeigt und die in keiner figure mit Bild steht (die Lage „Bild entfernt,
+// Beschreibung geblieben"). Zugesagt ist in `editorFigures.ts` (`enhanceFiguresForEditing`,
+// `imageForCaption`): sie bleibt sichtbar stehen, trägt die Kennzeichnung „noch keinem Bild
+// zugeordnet" und wird NICHT still an das vorhandene Bild gehängt. Nativ eingefügt wird in den
+// Textabsatz; gemessen wird am Editor, am Server und nach dem Wiederöffnen.
+/** Lage der Beschreibungen OHNE Bild; gelesen über denselben Maßstab wie `bildlage`. */
+async function waisenlage(page: import("@playwright/test").Page) {
+  return await page
+    .locator(EDITOR)
+    .first()
+    .evaluate((el) => {
+      const waisen = [...el.querySelectorAll("figcaption")].filter(
+        (c) => !c.closest("figure")?.querySelector("img"),
+      );
+      return {
+        texte: waisen.map((c) => (c.textContent ?? "").trim()),
+        kennungen: waisen.map((c) => c.getAttribute("data-image-id")),
+        gekennzeichnet: waisen.filter((c) => c.hasAttribute("data-kw-nicht-zugeordnet")).length,
+      };
+    });
+}
+
+for (const fall of [
+  { sprache: "de", sichern: "Entwurf sichern", gesichert: "Entwurf gespeichert." },
+  { sprache: "en", sichern: "Save draft", gesichert: "Draft saved." },
+] as const) {
+  test(`DEMO-UX-V1 · Fall 12 (${fall.sprache}): verwaiste Beschreibung übersteht natives Einfügen, Sichern und Wiederöffnen`, async ({
+    page,
+  }) => {
+    await ensureLoggedIn(page);
+    const lauf = `${fall.sprache.toUpperCase()}-${Date.now()}`;
+    const kennung = `kw-img-capp1-paar-${Date.now()}`;
+    const verlorenesBild = `kw-img-capp1-entfernt-${Date.now()}`;
+    const beschreibung = `Schmierstelle am Exzenter ${lauf}`;
+    const verwaist = `Beschreibung ohne Bild ${lauf}`;
+    const id = await entwurfUeberSchnittstelle(page, {
+      title: `CAP-P1 verwaiste Beschreibung ${lauf}`,
+      bodyHtml: `<p>Ausgangstext ${lauf}.</p><figure data-image-id="${kennung}"><img data-image-id="${kennung}" alt="${beschreibung}" src="${PNG_1PX}"><figcaption data-image-id="${kennung}">${beschreibung}</figcaption></figure><figcaption data-image-id="${verlorenesBild}">${verwaist}</figcaption>`,
+    });
+    const adresse = `${VORDERTUER}?draft=${encodeURIComponent(id)}&lang=${fall.sprache}`;
+    await page.goto(adresse);
+    const editor = page.locator(EDITOR).first();
+    await expect(editor).toContainText(`Ausgangstext ${lauf}.`, { timeout: 15_000 });
+    await expect(editor).toContainText(verwaist);
+    const waisenVorher = await waisenlage(page);
+    expect(waisenVorher, "Kalibrierung: genau eine tatsächlich verwaiste Beschreibung").toEqual({
+      texte: [verwaist],
+      kennungen: [verlorenesBild],
+      gekennzeichnet: 1,
+    });
+    const paarVorher = await bildlage(page);
+    expect(paarVorher, "Kalibrierung: das Bild behält seine eigene Beschreibung").toMatchObject({
+      figuren: 1,
+      bilder: 1,
+      texte: [beschreibung, verwaist],
+      waisen: 1,
+    });
+
+    const probe = `Nativ eingefügt ${lauf}`;
+    await fuelleZwischenablage(page, ` ${probe}`);
+    await editor.locator("p").first().click();
+    await page.keyboard.press("End");
+    await fuegeNativEin(page);
+    await expect(editor).toContainText(probe);
+    expect(await waisenlage(page), "das Einfügen hat die verwaiste Beschreibung verändert").toEqual(
+      waisenVorher,
+    );
+    expect(await bildlage(page), "das Einfügen hat die Paarung verändert").toEqual(paarVorher);
+
+    await page.getByRole("button", { name: fall.sichern, exact: true }).click();
+    await expect(page.getByText(fall.gesichert).first()).toBeVisible({ timeout: 15_000 });
+
+    // Der Server trägt Text, Paarung UND die verwaiste Beschreibung — außerhalb der Bild-figure.
+    const antwort = await page.request.get(`/api/drafts/${encodeURIComponent(id)}`);
+    expect(antwort.ok()).toBe(true);
+    const rumpf =
+      ((await antwort.json()) as { payload: { bodyHtml?: string | null } }).payload.bodyHtml ?? "";
+    expect(rumpf).toContain(probe);
+    const serverlage = await page.evaluate((html) => {
+      const doc = new DOMParser().parseFromString(html, "text/html");
+      const beschreibungen = [...doc.querySelectorAll("figcaption")];
+      return {
+        texte: beschreibungen.map((c) => (c.textContent ?? "").trim()),
+        waisen: beschreibungen
+          .filter((c) => !c.closest("figure")?.querySelector("img"))
+          .map((c) => (c.textContent ?? "").trim()),
+        bilder: doc.querySelectorAll("img").length,
+      };
+    }, rumpf);
+    expect(serverlage, "Serverstand nach dem Sichern").toEqual({
+      texte: [beschreibung, verwaist],
+      waisen: [verwaist],
+      bilder: 1,
+    });
+
+    // Wiederöffnen: frischer Seitenaufbau über die Adresse.
+    await page.goto(adresse);
+    await expect(page.locator(EDITOR).first()).toContainText(probe, { timeout: 15_000 });
+    expect(await page.evaluate(() => document.documentElement.lang)).toBe(fall.sprache);
+    expect(
+      await waisenlage(page),
+      "nach dem Wiederöffnen fehlt die verwaiste Beschreibung oder hängt an einem Bild",
+    ).toEqual(waisenVorher);
+    expect(await bildlage(page), "nach dem Wiederöffnen ist die Paarung verändert").toEqual(
+      paarVorher,
+    );
+  });
+}

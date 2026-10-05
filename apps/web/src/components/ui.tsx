@@ -191,7 +191,28 @@ export function TextInput({
   );
 }
 
-export function Field({ label, children }: { label: ReactNode; children: ReactNode }): JSX.Element {
+// `gruppe`: für ZUSAMMENGESETZTE Bereiche (mehrere Knöpfe, ein Editor …). Ein `<label>` um solche
+// Kinder ist falsch: ein Klick irgendwo hinein — auch ins contentEditable — aktiviert das erste
+// beschriftbare Element, also den ersten Knopf (Live-Befund 03.10.2026: Klick ins Schreibfeld des
+// Expertenformulars öffnete ungefragt das Knowledge Studio). Die Gruppe trägt ihren Namen als
+// `<legend>` eines `<fieldset>`; einzelne Eingabefelder behalten ihr Label wie bisher.
+export function Field({
+  label,
+  children,
+  gruppe = false,
+}: {
+  label: ReactNode;
+  children: ReactNode;
+  gruppe?: boolean;
+}): JSX.Element {
+  if (gruppe) {
+    return (
+      <fieldset className="m-0 block min-w-0 space-y-1.5 border-0 p-0">
+        <legend className="block p-0 text-[12.5px] font-medium text-muted">{label}</legend>
+        {children}
+      </fieldset>
+    );
+  }
   return (
     // biome-ignore lint/a11y/noLabelWithoutControl: Das Eingabefeld wird als children im Label gerendert.
     <label className="block space-y-1.5">

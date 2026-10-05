@@ -17,7 +17,9 @@ import { demoKennwort } from "../support/demoZugang";
 // Route ausschliesslich nach einem tatsächlich WEICHEN Löschen. Dieser Test misst beide Ausgänge
 // derselben Route an derselben Zählung:
 //   HARTER AUSGANG (Demo-Seed)  — genau EIN Ruf je Dienst, und zwar der im Haken der Transaktion.
-//   WEICHER AUSGANG (Papierkorb) — genau EIN Ruf je Dienst, und zwar der Nachlauf der Route.
+//   WEICHER AUSGANG (Papierkorb) — genau EIN Ruf je Dienst, und zwar der im Papierkorb-Haken.
+// Auftrag gesamt-dubletten-rueckzug (R-1547): den Nachlauf der Route gibt es nicht mehr; der weiche
+// Ausgang räumt im Dienst auf (KoService.delete → `setRuecknahmeTxCleanup`, build-app.ts).
 // Dazu jeweils die WIRKUNG: je Befund genau EIN Abschlussbeleg, nie zwei.
 // JOB 3128 R8: Die Array-LÄNGE zählt Aufrufe; jeder Array-WERT zählt geschlossene Befunde.
 // Beim weichen Ausgang findet die Live-Erkennung jetzt den gleichen Inhalt trotz anderem Titel.
@@ -47,8 +49,10 @@ describe("JOB 3066 R4 · F5: DELETE /api/kos/:id räumt auf JEDEM Ausgang genau 
       rufe.konflikte.push(n);
       return n;
     };
-    services.overlaps.onKoRemoved = async (koId, actor, tx) => {
-      const n = await echteUeberschneidungen(koId, actor, tx);
+    // Alle Argumente durchreichen — auch die vorab bestimmte Rücknahme (vierter Parameter), die
+    // beide Haken mitgeben. Eine Zählung, die sie verschluckte, veränderte das Gemessene.
+    services.overlaps.onKoRemoved = async (koId, actor, tx, ruecknahme) => {
+      const n = await echteUeberschneidungen(koId, actor, tx, ruecknahme);
       rufe.ueberschneidungen.push(n);
       return n;
     };
@@ -142,7 +146,7 @@ describe("JOB 3066 R4 · F5: DELETE /api/kos/:id räumt auf JEDEM Ausgang genau 
     expect(offeneKonflikte.every((c) => c.koA !== a && c.koB !== a)).toBe(true);
   });
 
-  it("normales Löschen (weicher Ausgang): der Nachlauf der Route ist der EINE Aufräumweg", async () => {
+  it("normales Löschen (weicher Ausgang): der Papierkorb-Haken ist der EINE Aufräumweg", async () => {
     const { services, app, headers, rufe } = await welt();
     const anlegen = async (title: string) =>
       (
@@ -184,7 +188,7 @@ describe("JOB 3066 R4 · F5: DELETE /api/kos/:id räumt auf JEDEM Ausgang genau 
     const del = await app.inject({ method: "DELETE", url: `/api/kos/${a}`, headers });
     expect(del.statusCode).toBe(204);
 
-    // Kein Purge — der Beitrag liegt im Papierkorb. Aufgeräumt hat der Nachlauf der Route, EINMAL.
+    // Kein Purge — der Beitrag liegt im Papierkorb. Aufgeräumt hat der Papierkorb-Haken, EINMAL.
     expect(await belege(services, "ko.purged", a)).toHaveLength(0);
     // Ein zweiter Lauf, selbst mit Rückgabewert 0, verletzt weiterhin den Vertrag.
     expect(rufe.ueberschneidungen).toHaveLength(1);

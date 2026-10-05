@@ -139,6 +139,26 @@ export interface GebundeneFassung {
    * Wissenseintrag — und der Vergleich spräche plötzlich über HTML statt über Tatsachen.
    */
   readonly rumpfHtml: string | null;
+  /**
+   * QUELLENÄNDERUNGEN · die hochgeladenen Dateien, auf denen diese Fassung beruht.
+   *
+   * Optional, weil ältere Erzeuger dieser Form das Feld nicht kennen; fehlt es, ist es UNBEKANNT.
+   * Aus demselben Fassungssatz wie Titel und Rumpf — nicht aus der heutigen Fassung.
+   */
+  readonly momentaufnahmen?: readonly Momentaufnahme[] | null;
+}
+
+/**
+ * QUELLENÄNDERUNGEN · Eine hochgeladene Datei ist eine MOMENTAUFNAHME.
+ *
+ * Sie hat keine neuere Fassung, die das Produkt erkennen könnte: ändert sich das Original ausserhalb,
+ * erfährt hier niemand davon. Erkannt wird nur eine neuere Fassung des WISSENSEINTRAGS. Erkannt
+ * wird sie an der bestätigten Anhangskennung der Belegstelle (`KoSource.objectId`, `types.ts`).
+ */
+export interface Momentaufnahme {
+  readonly bezeichnung: string;
+  /** Wann die Datei als Beleg aufgenommen wurde — `null`, wenn der Beleg es nicht trägt. */
+  readonly erfasstAm: string | null;
 }
 
 /**
@@ -229,6 +249,70 @@ export interface BausteinLesestand {
   readonly aktuelleKoVersion: number | null;
   readonly aktualisierungsvorschlag: Aktualisierungsvorschlag | null;
   readonly inhalt: BausteinInhalt;
+  /** Die hochgeladenen Dateien der GEBUNDENEN Fassung. `null` = unbekannt, `[]` = keine. */
+  readonly momentaufnahmen: readonly Momentaufnahme[] | null;
+}
+
+// ================================================================================================
+// QUELLENÄNDERUNGEN (aufnahme:20260928) · LETZTE PRÜFUNG, GEFUNDENE UND ÜBERNOMMENE ÄNDERUNGEN
+// ================================================================================================
+//
+// DREI VERSCHIEDENE AUSSAGEN, und die Oberfläche darf sie nicht zusammenziehen:
+//   · die LETZTE ÄNDERUNGSPRÜFUNG — wann nachgesehen wurde und mit welchem Ergebnis;
+//   · die GEFUNDENEN Änderungen — gebundene Fassungen, zu denen es eine neuere gibt. Das ist
+//     WÖRTLICH die Zahl der `aktualisierungsvorschlag`-Einträge: keine zweite Frischeregel;
+//   · die ÜBERNOMMENEN Änderungen — Fassungswechsel, die ein Mensch bewusst ausgelöst hat. Sie
+//     stammen aus den festgehaltenen Prüfständen, nicht aus einem eigenen Protokoll.
+//
+// Geprüft wird beim Lesen. Eine AUTOMATISCHE Überwachung gibt es nicht, und der Server sagt das
+// selbst (`UEBERWACHUNG_NICHT_EINGERICHTET`) — wie `PRUEFANBINDUNG_OFFEN` für die Prüfanbindung.
+
+export const UEBERWACHUNG_NICHT_EINGERICHTET = "nicht_eingerichtet" as const;
+
+/**
+ * Das Ergebnis der letzten Änderungsprüfung.
+ *
+ * `aktuell` entsteht NUR, wenn jede gebundene Quelle gelesen werden konnte, für den Betrachter
+ * sichtbar ist und keine neuere Fassung hat. Ein Ausfall heisst `fehlgeschlagen`, ein verborgener
+ * Abschnitt `unvollstaendig` — beides wird nie zu `aktuell` gerundet.
+ */
+export type PruefErgebnis =
+  | "aktuell"
+  | "aenderungen_gefunden"
+  | "fehlgeschlagen"
+  | "unvollstaendig"
+  | "keine_quellen";
+
+// DAS FELD HEISST `pruefzeitpunkt` UND NICHT `geprueftAm`: der Draht des Lesestands trägt kein
+// Wort, das eine Prüfung der ANWEISUNG behauptet (`tests/wiki-gesamtanweisung/f5-…`). Gemeint ist
+// nur, WANN nach neueren Quellenfassungen gesehen wurde.
+export interface Aenderungspruefung {
+  /** `null`: dieser Lesestand ist ohne Prüflauf entstanden (reine Funktion, kein Dienst). */
+  readonly pruefzeitpunkt: string | null;
+  readonly ergebnis: PruefErgebnis;
+  /** Sichtbare Abschnitte mit neuerer Quellenfassung — die Zahl der Aktualisierungsvorschläge. */
+  readonly gefundeneAenderungen: number;
+  /** Wie viele gebundene Quellen nicht gelesen werden konnten. Nur die Zahl. */
+  readonly fehlgeschlageneQuellen: number;
+  readonly ueberwachung: typeof UEBERWACHUNG_NICHT_EINGERICHTET;
+}
+
+/** Ein bewusst übernommener Fassungswechsel, abgelesen aus zwei aufeinanderfolgenden Prüfständen. */
+export interface UebernommeneAenderung {
+  readonly bausteinId: string;
+  readonly vonFassung: number;
+  readonly aufFassung: number;
+  /** Der Anleitungsstand, der durch die Übernahme entstand. */
+  readonly anweisungVersion: number;
+  readonly uebernommenAm: string;
+}
+
+/** Was der Dienst beim Lesen zusätzlich festgestellt hat. */
+export interface Aenderungspruefungslauf {
+  readonly pruefzeitpunkt: string;
+  readonly fehlgeschlageneQuellen: number;
+  /** `null`: die Historie war nicht vollständig lesbar — dann bleibt es unbekannt, nicht leer. */
+  readonly uebernommen: readonly UebernommeneAenderung[] | null;
 }
 
 /**
@@ -264,6 +348,9 @@ export interface AnweisungLesestand {
    */
   readonly verborgeneBausteine: number;
   readonly pruefanbindung: typeof PRUEFANBINDUNG_OFFEN;
+  readonly aenderungspruefung: Aenderungspruefung;
+  /** Nur für sichtbare Abschnitte. `null` = Historie nicht lesbar, also unbekannt. */
+  readonly uebernommeneAenderungen: readonly UebernommeneAenderung[] | null;
 }
 
 // ================================================================================================

@@ -1,8 +1,8 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowRight, Copy, ThumbsUp } from "lucide-react";
+import { ArrowRight, Copy, ThumbsUp, Volume2 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import { useConflicts, useKos, useReasonerStatus } from "../api/hooks";
@@ -35,6 +35,7 @@ import {
   type Verwendung,
   chipPunkt,
 } from "../components/fragen/Quellenplaketten";
+import { useVorlesen } from "../components/fragen/useVorlesen";
 import { FRAGEN_ZIEL } from "../components/fragen/ziele";
 // WP-UX-WOW-1 U1 / JOB 3064 §5: sichere Markdown-Darstellung der Antwort (React-Elemente, kein
 // HTML-Sink) — mit den Fussnotenmarken des H5-Zielbilds. Derselbe Parser wie `AnswerMarkdown`.
@@ -64,7 +65,7 @@ import {
 } from "../lib/askQuestion";
 import { selectAnswer } from "../lib/askResponse";
 import { stepsBeyondSources, stepsWorthShowing } from "../lib/askSteps";
-import { answerReviewGuard } from "../lib/askView";
+import { answerReviewGuard, evidenzWiederholtStatus } from "../lib/askView";
 import { captureGapHref, gapPrivacyNoticeKey } from "../lib/captureFromGap";
 import { demoHref, isDemoContext } from "../lib/demoPilotPath";
 // JOB 3267 Q1: der Prüfstand einer Quelle kommt aus der EINEN Ableitung, die auch Bibliothek und
@@ -72,13 +73,26 @@ import { demoHref, isDemoContext } from "../lib/demoPilotPath";
 import { anzeigestatusAus } from "../lib/displayStatus";
 // AUFTRAG-mega33 A: die EINE effektive Antwort-Einstufung — Quelle jeder Einstufungs-Anzeige.
 import { conflictKnowledge, effectiveAnswer } from "../lib/effectiveAnswer";
+// Pedi 28.09.2026 · Ergänzung 1: Entwurf und zuletzt angezeigte Antwort bleiben dem Konto erhalten.
+import {
+  arbeitsstandLesen,
+  arbeitsstandSchreiben,
+  belegNochGueltig,
+  fragenSpeicher,
+  startadresseMarke,
+  startadresseMerken,
+  wiederaufnahmeAus,
+} from "../lib/fragenArbeitsstand";
 import { helpfulDisabled, helpfulLabel } from "../lib/helpfulSignal";
 import { type KnowledgeGuidanceTone, knowledgeGuidance } from "../lib/knowledgeGuidance";
+import { formatKoTimestamp } from "../lib/koDates";
 import { type ReasonerBadgeTone, reasonerBadge } from "../lib/reasonerBadge";
 import { toReasonerLocale } from "../lib/reasonerLocale";
+import { istIosGeraet } from "../lib/speechSupport";
 import { useAiAvailable } from "../lib/useAiAvailable";
 import { useAiBillable } from "../lib/useAiBillable";
 import { useAuthorName } from "../lib/useAuthorName";
+import { useKontoKennung } from "../lib/useKontoKennung";
 import { useReadiness } from "../lib/useReadiness";
 
 // Tone → Badge-Stil: seit FE-003 (Runde 2) `EVIDENCE_TONE` aus `components/fragen/QuellenListe.tsx`,
@@ -254,10 +268,12 @@ function MehrFlaechenInfo({
   badge,
   guide,
   speechSupported,
+  vorlesenMoeglich,
 }: {
   badge: ReturnType<typeof reasonerBadge>;
   guide: ReturnType<typeof knowledgeGuidance>;
   speechSupported: boolean;
+  vorlesenMoeglich: boolean;
 }): JSX.Element {
   const { t } = useTranslation();
   return (
@@ -306,6 +322,17 @@ function MehrFlaechenInfo({
           className="mb-3 rounded-btn bg-trust-warn-bg px-2.5 py-2 text-[12px] text-trust-warn-text"
         >
           {t("ask.diktatUnsupported")}
+          {/* FR-CAP-03: auf iPhone/iPad ist der Ausweg das Mikrofon der Bildschirmtastatur. */}
+          {istIosGeraet(window) ? ` ${t("diktat.iosTastatur")}` : null}
+        </p>
+      )}
+      {/* R-1053: dieselbe Ehrlichkeit für die Sprachausgabe — ohne sie fehlt der Vorlese-Knopf. */}
+      {vorlesenMoeglich ? null : (
+        <p
+          data-testid="ask-vorlesen-na"
+          className="mb-3 rounded-btn bg-trust-warn-bg px-2.5 py-2 text-[12px] text-trust-warn-text"
+        >
+          {t("diktat.antwortVorlesenNa")}
         </p>
       )}
       {/* SCRUM-289 / D-034: warum Klarwerk kein generischer Chat ist — Titel, Fliesstext und
@@ -463,11 +490,99 @@ function MehrLueckenInfo({
   );
 }
 
+/** Eine Anfrage und die Kontogeneration der Fläche, unter der sie gestellt wurde (Ben R1, F1). */
+interface AskAnfrage {
+  frage: string;
+  generation: number;
+}
+
 export function Ask(): JSX.Element {
   const { t, i18n } = useTranslation();
   // SCRUM-272: optionale Startfrage aus der URL (/fragen?q=…) — nur vorbefüllen, kein Auto-Ask.
   const [params] = useSearchParams();
-  const [q, setQ] = useState(() => readAskQuestion(params) ?? "");
+  // ==============================================================================================
+  // PEDI 28.09.2026 · ERGÄNZUNG 1 — WEITERARBEITEN, WO MAN AUFGEHÖRT HAT.
+  // ==============================================================================================
+  // Der Arbeitsstand dieses Kontos (Entwurf + zuletzt angezeigte Antwort) wird beim Aufbau EINMAL
+  // gelesen und füllt die Anfangswerte — es geht dafür keine Modellanfrage hinaus.
+  // `standFuer` sagt, WESSEN Stand die Fläche gerade zeigt; geschrieben wird nur, solange er zur
+  // angemeldeten Kennung passt (s. die beiden Effekte unter `ask`).
+  //
+  // DIE STARTADRESSE (`?q=`, `?ask=1`) IST EIN AUSDRÜCKLICHER WUNSCH — ABER NUR EINMAL (Ben R1,
+  // F2/F3). Sie gewann bis Runde 1 bei JEDEM Aufbau: Neuladen derselben Adresse holte die Startfrage
+  // über einen weitergeschriebenen oder bewusst geleerten Entwurf zurück, und `?ask=1` fragte das
+  // Modell ein zweites Mal. Jetzt merkt sich der Stand die übernommene Adresse samt
+  // Navigationskennung (`startadresseMarke`); dieselbe Adresse erneut ist verbraucht, ein neuer Weg
+  // auf die Seite (neue Kennung) gilt wieder.
+  const location = useLocation();
+  const navigationsSchluessel = location.key;
+  const konto = useKontoKennung();
+  const [anfang] = useState(() => arbeitsstandLesen(fragenSpeicher(), konto));
+  const [adresse, setAdresse] = useState(() => {
+    const frage = readAskQuestion(params);
+    const autoFrage = shouldAutoAskFromSearch(params);
+    return { frage, autoFrage, marke: startadresseMarke(location.key, frage, autoFrage) };
+  });
+  const [startfrageGilt, setStartfrageGilt] = useState(
+    adresse.marke !== null && !(anfang?.startadressen ?? []).includes(adresse.marke),
+  );
+  // Die Marke, die mit dem Stand gespeichert wird: die eben übernommene Adresse oder, ohne
+  // Startfrage, die zuletzt übernommene.
+  const [gemerkteStartadressen, setGemerkteStartadressen] = useState(() =>
+    startadresseMerken(anfang?.startadressen ?? [], adresse.marke),
+  );
+  const [standFuer, setStandFuer] = useState(konto);
+  const [q, setQ] = useState(() =>
+    startfrageGilt ? (adresse.frage ?? "") : (anfang?.entwurf ?? ""),
+  );
+  // Der sichtbare Hinweis „hier kannst du weitermachen" — nur, wenn wirklich etwas aufgenommen
+  // wurde. Er geht, sobald eine neue Frage gestellt wird.
+  const [wiederaufnahme, setWiederaufnahme] = useState(() =>
+    wiederaufnahmeAus(anfang, startfrageGilt),
+  );
+  // Der Zeitpunkt der stehenden Antwort — gespeichert mit ihr, genannt im Hinweis.
+  const [antwortAm, setAntwortAm] = useState<string | null>(anfang?.antwort?.angezeigtAm ?? null);
+  // R-0474 (Ben, Runde 1, B1): der Router montiert `/fragen` bei einem Wechsel NUR der Adresszeile
+  // nicht neu — der Anfangswert oben sah eine zweite Übergabe (`/fragen?q=Alt` → Palette/Hilfe →
+  // `/fragen?q=Neu`) also nie, im Feld blieb die alte Frage stehen. Jede NAVIGATION mit `?q=`
+  // übernimmt deshalb ihre Frage ins Feld. Gebunden an den Navigationsschlüssel, nicht an den
+  // Text: auch ein zweites Anbieten derselben Frage nach eigenem Tippen kommt an. Ohne `?q=` bleibt
+  // das Feld, wie es ist.
+  // Ergänzung 1: dieselbe Regel wie beim Aufbau — eine schon übernommene Adresse (gleiche Marke)
+  // ist verbraucht und überschreibt den Arbeitsstand nicht noch einmal.
+  const ersteNavigation = useRef(navigationsSchluessel);
+  const gemerkteJetzt = useRef(gemerkteStartadressen);
+  gemerkteJetzt.current = gemerkteStartadressen;
+  useEffect(() => {
+    if (navigationsSchluessel === ersteNavigation.current) {
+      return;
+    }
+    ersteNavigation.current = navigationsSchluessel;
+    const frage = readAskQuestion(params);
+    const autoFrage = shouldAutoAskFromSearch(params);
+    const marke = startadresseMarke(navigationsSchluessel, frage, autoFrage);
+    if (frage === null || marke === null || gemerkteJetzt.current.includes(marke)) {
+      // Ben L2 R2, B1: wer die Navigation einer Startfrage VERLÄSST (hierher ohne neue Startfrage),
+      // nimmt ihren noch wartenden Antwortwunsch nicht mit — sonst ginge er nach Ende einer
+      // laufenden Anfrage doch noch hinaus, obwohl die Seite längst woanders steht.
+      setStartfrageGilt(false);
+      return;
+    }
+    setAdresse({ frage, autoFrage, marke });
+    setQ(frage);
+    setStartfrageGilt(true);
+    setGemerkteStartadressen((liste) => startadresseMerken(liste, marke));
+    // Im Feld steht jetzt die angebotene Frage, nicht mehr der aufgenommene Entwurf.
+    setWiederaufnahme((w) => (w?.antwortAm ? { entwurf: false, antwortAm: w.antwortAm } : null));
+  }, [navigationsSchluessel, params]);
+  // Ben L2 R2, B1: ändert der Nutzer die angebotene Startfrage im Feld (leeren = verwerfen,
+  // umschreiben, diktieren), ist sie nicht mehr der Wunsch der Adresse. Ein noch wartender
+  // Antwortwunsch verfällt damit; gesendet wird dann nur, was er selbst absendet.
+  useEffect(() => {
+    if (startfrageGilt && adresse.frage !== null && q !== adresse.frage) {
+      setStartfrageGilt(false);
+    }
+  }, [q, startfrageGilt, adresse.frage]);
   // AUFTRAG-mega38 BLOCK J2: „Bitte gib zuerst eine Frage ein." stand auf `/fragen`, BEVOR die
   // Leserin irgendetwas getan hatte — eine Zurechtweisung als Begrüssung. Der Satz ist richtig,
   // sein Zeitpunkt war es nicht. Er erscheint jetzt erst, wenn wirklich leer abgesendet wurde.
@@ -483,6 +598,8 @@ export function Ask(): JSX.Element {
   // ANGEHÄNGT, und das Stoppen löst KEINE Modellanfrage aus.
   const diktat = useDiktat((text: string) => setQ((prev) => (prev ? `${prev} ${text}` : text)));
   const speechSupported = diktat.moeglich;
+  // R-1053: die Antwort auf Klick vorlesen — Browser-Sprachausgabe, kein Auto-Play.
+  const vorlesen = useVorlesen();
   // JOB 3064 §5: zwei Schalter der Fläche — das Info-Blatt („…" → „Mehr") und die Beispielliste
   // im leeren Frage-Feld. Beide sind reine Anzeige-Zustände; keiner löst eine Modellanfrage aus.
   const [mehr, setMehr] = useState(false);
@@ -494,20 +611,30 @@ export function Ask(): JSX.Element {
   // erst beim Schliessen — nicht beim Öffnen.
   const menuGriffRef = useRef<HTMLButtonElement | null>(null);
   const [beispiele, setBeispiele] = useState(false);
-  const [result, setResult] = useState<AnswerResult | null>(null);
+  const [result, setResult] = useState<AnswerResult | null>(anfang?.antwort?.result ?? null);
+  // Eine neue (oder keine) Antwort: was gerade vorgelesen wird, gilt nicht mehr.
+  const vorlesenStoppen = vorlesen.stoppen;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Absichts-Abhängigkeit — genau beim Antwortwechsel stoppen.
+  useEffect(() => {
+    vorlesenStoppen();
+  }, [result, vorlesenStoppen]);
+  // Ergänzung 1: welche Antwort aus dem Arbeitsstand kam (s. das Anspringen unter `revealResult`).
+  const aufgenommeneAntwort = useRef<AnswerResult | null>(result);
   // JOB 2626 D1: die Torlage einer Nicht-Antwort — welche gefundenen Dokumente NICHT antworten
   // konnten und welches Tor bei ihnen zu ist (Freigabe/Stufe/Volltext). „Keine belastbare
   // Grundlage" war ehrlich und unbrauchbar; R3 des Design-Leads gilt auch hier: Störung sieht
   // niemals aus wie Leere. Kommt vom Server nur bei Nicht-Antwort und nur mit Betrachterfilter.
-  const [verschlossen, setVerschlossen] = useState<VerschlossenHinweis[]>([]);
+  const [verschlossen, setVerschlossen] = useState<VerschlossenHinweis[]>(
+    anfang?.antwort?.verschlossen ?? [],
+  );
   // FUNKE-FIX P0 (bens ROT-1): der Answer-Receipt DIESES Antwortvorgangs — das „Danke" je Quelle
   // reicht ihn zurück, damit der Server die Quellen-Bindung serverseitig belegen kann.
-  const [receipt, setReceipt] = useState("");
+  const [receipt, setReceipt] = useState(anfang?.antwort?.receipt ?? "");
   // SCRUM-264: zuletzt gestellte Frage festhalten → für die Anzeige des Rescue-Blocks.
-  const [asked, setAsked] = useState("");
+  const [asked, setAsked] = useState(anfang?.antwort?.frage ?? "");
   // FUNKE-FIX2 P0 (bens Erforderlich 4): die vom Server erzeugte Wissenslücke (mit ID) — der Capture-
   // Einstieg trägt die GAP-ID (kein Fragetext in der URL); Capture lädt den Text nach Berechtigung.
-  const [gapId, setGapId] = useState<string | null>(null);
+  const [gapId, setGapId] = useState<string | null>(anfang?.antwort?.gapId ?? null);
   const qc = useQueryClient();
   const guide = knowledgeGuidance("ask");
 
@@ -616,9 +743,20 @@ export function Ask(): JSX.Element {
   // Ref und kein Zustand: es steuert keine Darstellung, sondern beantwortet beim Absenden die eine
   // Frage „ist das dieselbe wie eben?" — ein Zustand würde dafür einen Renderdurchlauf erzwingen,
   // der genau zwischen `setAsked` und `mutate` fiele.
-  const antwortFrage = useRef("");
+  // Ergänzung 1: eine wiederaufgenommene Antwort gehört zu ihrer gespeicherten Frage — dieselbe
+  // Frage erneut zu stellen ist damit eine Auffrischung, wie bei einer eben angekommenen Antwort.
+  const antwortFrage = useRef(anfang?.antwort?.frage ?? "");
+  // Ergänzung 1 · Ben R1, F1 — EINE ANFRAGE GEHÖRT DEM KONTO, FÜR DAS SIE GESTELLT WURDE.
+  // Bis Runde 1 schrieb eine noch laufende Anfrage ihre Antwort nach einem Kontowechsel in die
+  // Fläche — und damit in den Stand — des NEUEN Kontos. Jede Anfrage trägt jetzt die Generation
+  // der Fläche mit, unter der sie startete; ein echter Kontowechsel zählt sie hoch (s. den Effekt
+  // „DIE KENNUNG KOMMT ODER WECHSELT"), und eine Antwort aus einer älteren Generation wird
+  // verworfen, bevor sie irgendeinen Zustand berührt. Das erste Bekanntwerden der Kennung ist
+  // kein Wechsel: dieselbe Person, keine neue Generation.
+  const kontoGeneration = useRef(0);
   const ask = useMutation({
-    mutationFn: (question: string) => endpoints.ask.ask(question, toReasonerLocale(i18n.language)),
+    mutationFn: (anfrage: AskAnfrage) =>
+      endpoints.ask.ask(anfrage.frage, toReasonerLocale(i18n.language)),
     // D5: eine schon offene Fläche kennt die Abschaltung noch nicht — der Server hat sie eben
     // gemeldet. Der Status wird neu gelesen, damit der Absendeknopf danach gesperrt ist und der
     // Hinweis dasteht, statt dass der Mensch dieselbe Absage ein zweites Mal abholt.
@@ -651,7 +789,7 @@ export function Ask(): JSX.Element {
     // immer dann, wenn die neue Frage eine ANDERE ist als die, zu der die stehende Antwort gehört.
     // `antwortFrage` ist der Beleg dafür, welche Frage das ist; es wird ausschliesslich in
     // `onSuccess` gesetzt, also nur von einer wirklich angekommenen Antwort.
-    onMutate: (question: string) => {
+    onMutate: ({ frage: question }: AskAnfrage) => {
       if (question === antwortFrage.current) {
         return;
       }
@@ -665,9 +803,14 @@ export function Ask(): JSX.Element {
       setVerschlossen([]);
     },
     // SCRUM-138: Backend liefert { result, gap, receipt } — Antwort + Answer-Receipt entpacken.
-    onSuccess: (r, question) => {
+    onSuccess: (r, { frage: question, generation }) => {
+      // Ben R1, F1: die Antwort eines anderen (früheren) Kontos berührt nichts.
+      if (generation !== kontoGeneration.current) {
+        return;
+      }
       // Der Beleg für „zu welcher Frage gehört das, was da steht" — s. `onMutate`.
       antwortFrage.current = question;
+      setAntwortAm(new Date().toISOString());
       // JOB 2694 D1: eine Antwort ohne Text kommt hier als Lücke an — Begründung am Helfer oben.
       setResult(leereAntwortAlsLuecke(selectAnswer(r)));
       setReceipt(r.receipt);
@@ -683,8 +826,13 @@ export function Ask(): JSX.Element {
       }
     },
   });
+  // Ben R1, F8: eine abgelehnte Rückmeldung (etwa ein inzwischen abgelaufener Beleg) wird gesagt,
+  // nicht verschluckt — sonst sah der Klick aus, als sei nichts geschehen.
+  const { push } = useToast();
+  const rueckmeldungAbgelehnt = (): void => push("error", t("ask.rueckmeldungAbgelehnt"));
   const helpful = useMutation({
     mutationFn: (koId: string) => endpoints.ask.helpful(koId, receipt),
+    onError: rueckmeldungAbgelehnt,
   });
   // FUNKE F2 (nacht24 Paket 6): „Das hat mir geholfen" je QUELLE — Ein-Klick, einmal je
   // Nutzer+Ziel (der Server ist idempotent; die Sitzung merkt sich bedankte Quellen). FUNKE-FIX P0:
@@ -693,7 +841,107 @@ export function Ask(): JSX.Element {
   const thankSource = useMutation({
     mutationFn: (koId: string) => endpoints.ask.helpful(koId, receipt),
     onSuccess: (_data, koId) => setThankedSources((prev) => new Set(prev).add(koId)),
+    onError: rueckmeldungAbgelehnt,
   });
+  // Ben R1, F8: eine WIEDERAUFGENOMMENE Antwort trägt ihren alten Beleg. Ist er abgelaufen, bietet
+  // die Fläche die Rückmeldung nicht mehr an, sondern sagt, warum — und wie es wieder geht.
+  const belegGueltig = belegNochGueltig(receipt, antwortAm, Date.now());
+
+  // Ergänzung 1 · SCHREIBEN: jede Änderung an Entwurf oder stehender Antwort geht in den Stand
+  // DIESES Kontos. Eine neue Frage räumt die alte Antwort in `onMutate` ab — damit ist auch der
+  // Wiederherstellungsstand sofort der neue. Ein geleertes Feld ist ein verworfener Entwurf.
+  // Kein Schreiben ohne Kennung und keines, solange die Fläche noch den Stand eines anderen Kontos
+  // zeigt (`standFuer`) — sonst landete fremde Arbeit unter der neuen Kennung.
+  useEffect(() => {
+    if (konto === null || konto !== standFuer) {
+      return;
+    }
+    const frage = antwortFrage.current;
+    arbeitsstandSchreiben(fragenSpeicher(), konto, {
+      entwurf: q,
+      antwort:
+        result && frage
+          ? {
+              frage,
+              result,
+              receipt,
+              verschlossen,
+              gapId,
+              angezeigtAm: antwortAm ?? new Date().toISOString(),
+            }
+          : null,
+      startadressen: gemerkteStartadressen,
+    });
+  }, [konto, standFuer, q, result, receipt, verschlossen, gapId, antwortAm, gemerkteStartadressen]);
+
+  // Ergänzung 1 · DIE KENNUNG KOMMT ODER WECHSELT bei stehender Fläche.
+  //   · WECHSEL (vorher ein anderes Konto): der Stand des neuen Kontos ersetzt den alten
+  //     vollständig — fremde Arbeit bleibt nicht auf dem Bildschirm stehen. Eine noch laufende
+  //     Anfrage des alten Kontos wird abgehängt (`reset`) und ihre Generation ungültig (Ben R1, F1);
+  //     die Startadresse gilt für das neue Konto nicht.
+  //   · ERSTES BEKANNTWERDEN (vorher keine Kennung, etwa weil `/auth/me` noch lief): es wird nur
+  //     aufgefüllt, was leer ist. Steht noch die unveränderte Startfrage im Feld und hat dieser
+  //     Stand die Adresse schon übernommen (Neuladen), gewinnt der Stand (Ben R1, F2). Schon
+  //     Getipptes und eine stehende oder laufende Antwort bleiben.
+  //   · Wird die Kennung nur kurz unbekannt (Auffrischung, Netzlücke), bleibt alles stehen — es
+  //     wird dann bloss nicht geschrieben.
+  // Der aktuelle Stand wird über einen Ref gelesen: der Effekt soll auf die KENNUNG reagieren,
+  // nicht auf jeden Tastendruck.
+  const flaecheJetzt = useRef({ q, result, wartet: ask.isPending, startfrageGilt });
+  flaecheJetzt.current = { q, result, wartet: ask.isPending, startfrageGilt };
+  const askZuruecksetzen = ask.reset;
+  useEffect(() => {
+    if (konto === null || konto === standFuer) {
+      return;
+    }
+    const gelesen = arbeitsstandLesen(fragenSpeicher(), konto);
+    const wechsel = standFuer !== null;
+    const jetzt = flaecheJetzt.current;
+    if (wechsel) {
+      kontoGeneration.current += 1;
+      askZuruecksetzen();
+    }
+    const adresseVerbraucht =
+      adresse.marke !== null && (gelesen?.startadressen ?? []).includes(adresse.marke);
+    const startfrageUnberuehrt = jetzt.startfrageGilt && jetzt.q === (adresse.frage ?? "");
+    const entwurfNehmen =
+      wechsel || jetzt.q.trim() === "" || (startfrageUnberuehrt && adresseVerbraucht);
+    const antwortNehmen = wechsel || (jetzt.result === null && !jetzt.wartet);
+    const startfrageBleibt = !wechsel && jetzt.startfrageGilt && !entwurfNehmen;
+    const entwurf = entwurfNehmen ? (gelesen?.entwurf ?? "") : jetzt.q;
+    const antwort = antwortNehmen ? (gelesen?.antwort ?? null) : null;
+    if (entwurfNehmen) {
+      setQ(entwurf);
+    }
+    if (antwortNehmen) {
+      antwortFrage.current = antwort?.frage ?? "";
+      aufgenommeneAntwort.current = antwort?.result ?? null;
+      setResult(antwort?.result ?? null);
+      setReceipt(antwort?.receipt ?? "");
+      setVerschlossen(antwort?.verschlossen ?? []);
+      setGapId(antwort?.gapId ?? null);
+      setAsked(antwort?.frage ?? "");
+      setAntwortAm(antwort?.angezeigtAm ?? null);
+      setThankedSources(new Set());
+    }
+    setStartfrageGilt(startfrageBleibt);
+    setGemerkteStartadressen(
+      wechsel
+        ? (gelesen?.startadressen ?? [])
+        : startadresseMerken(gelesen?.startadressen ?? [], adresse.marke),
+    );
+    setWiederaufnahme(
+      wiederaufnahmeAus(
+        gelesen && {
+          entwurf: entwurfNehmen ? entwurf : "",
+          antwort,
+          startadressen: gelesen.startadressen,
+        },
+        !entwurfNehmen,
+      ),
+    );
+    setStandFuer(konto);
+  }, [konto, standFuer, adresse, askZuruecksetzen]);
 
   // ==============================================================================================
   // AUFTRAG-mega38 BLOCK A (Pedi 27.07.) — DIE ANTWORT MUSS ANKOMMEN.
@@ -719,7 +967,50 @@ export function Ask(): JSX.Element {
   // Wurzel: `onMutate` räumt `result` ab, sobald eine ANDERE Frage startet. Steht während eines
   // laufenden Asks also noch ein `result`, dann kann es nur zur laufenden Frage gehören — eine
   // fremde Antwort ist hier strukturell unerreichbar, nicht bloss unwahrscheinlich.
-  const karteSichtbar = Boolean(result) && Boolean(contract);
+  // R-0330 (Ben R1, F5): „Kann Klara Wissen oder Rechte gerade nicht sicher prüfen, erscheint keine
+  // Teilantwort." Bis hierher stand die Antwort bei einem abgerissenen Konflikt- oder
+  // Bestandsabruf weiter da, nur mit Vorbehalt (mega34). Ohne Konfliktstand ist nicht prüfbar, ob
+  // die tragende Quelle umstritten ist; ohne Bestand nicht, was sie ist und ob sie gilt. Dann steht
+  // statt der Antwort EIN Satz mit EINER Aktion — und die Aktion holt genau das nach, was fehlte,
+  // statt das Modell erneut zu fragen. Ein Abruf, der NOCH LÄUFT, ist keine Störung: dort bleibt
+  // der benannte Vorbehalt aus mega34 (er schweigt, sobald der Abruf durch ist).
+  //
+  // Ben R2, F5 — ZWEI LÜCKEN DIESER REGEL GESCHLOSSEN:
+  //   · Sie galt nur für `answered: true`. Eine Nicht-Antwort bei abgerissenem Abruf sah wie eine
+  //     Wissenslücke aus — die Störung als Leere, genau das, was R-0330 verbietet. Sie gilt jetzt
+  //     für JEDES Ergebnis.
+  //   · „Erneut versuchen" startet die Abrufe neu; react-query setzt einen Abruf ohne Altdaten dabei
+  //     auf „pending", und `pending` war hier keine Störung — die gesperrte Antwort erschien, bevor
+  //     irgendetwas geprüft war. Nach einem Wiederholversuch bleibt die Sperre deshalb stehen, bis
+  //     BEIDE Abrufe erfolgreich durch sind (`pruefungWiederholt`).
+  const [pruefungWiederholt, setPruefungWiederholt] = useState(false);
+  const pruefungBelegt = conflictKnown.state === "loaded" && kos.isSuccess;
+  useEffect(() => {
+    if (pruefungWiederholt && pruefungBelegt) {
+      setPruefungWiederholt(false);
+    }
+  }, [pruefungWiederholt, pruefungBelegt]);
+  const pruefungGestoert =
+    Boolean(result) &&
+    (conflictKnown.state === "failed" || kos.isError || (pruefungWiederholt && !pruefungBelegt));
+  const karteSichtbar = Boolean(result) && Boolean(contract) && !pruefungGestoert;
+  // Ben R2, F10: welche Sperrgründe liegen in der Torlage WIRKLICH vor — in fester Reihenfolge —,
+  // und welcher Prüfweg passt dazu (nur Freigabe und Stufe entstehen in der Prüfung).
+  const verschlossenGruende = (["freigabe", "stufe", "volltext"] as const).filter((grund) =>
+    verschlossen.some((h) =>
+      grund === "freigabe" ? h.freigabeFehlt : grund === "stufe" ? h.stufeFehlt : h.volltextFehlt,
+    ),
+  );
+  const pruefFreigabe = verschlossenGruende.includes("freigabe");
+  const pruefStufe = verschlossenGruende.includes("stufe");
+  const verschlossenPruefweg =
+    pruefFreigabe && pruefStufe
+      ? "ask.verschlossen.pruefPfad.beides"
+      : pruefFreigabe
+        ? "ask.verschlossen.pruefPfad.freigabe"
+        : pruefStufe
+          ? "ask.verschlossen.pruefPfad.stufe"
+          : null;
   // Die Antwortkarte im engeren Sinn — die Weiche, welches der beiden „Mehr"-Blätter rendert.
   // KORREKTURPFLICHT 1 (Ben, Runde 5): bis hierher hing sie an `karteSichtbar`, und im LÜCKENFALL
   // war das wahr, ohne dass die Antwortkarte (und damit ihr Blatt) existierte — das sichtbare
@@ -777,8 +1068,10 @@ export function Ask(): JSX.Element {
   }, [ask.isPending, revealResult]);
   // A2: Antwort UND Wissenslücke — beide setzen `result`, beide sind ein Ergebnis. Der Fokus geht
   // mit, damit Tastatur und Screenreader an derselben Stelle weiterlesen wie das Auge.
+  // Ergänzung 1: eine WIEDERAUFGENOMMENE Antwort ist nicht angekommen, sie stand schon da — sie
+  // holt weder Fokus noch Bildlauf, damit das Fragefeld beim Öffnen an seinem Platz bleibt.
   useEffect(() => {
-    if (result) {
+    if (result && result !== aufgenommeneAntwort.current) {
       revealResult(true);
     }
   }, [result, revealResult]);
@@ -799,7 +1092,11 @@ export function Ask(): JSX.Element {
         return;
       }
       setAsked(trimmed);
-      ask.mutate(trimmed);
+      setStartfrageGilt(false);
+      // Ergänzung 1: wer eine Frage stellt, arbeitet weiter — der Wiederaufnahme-Hinweis hat
+      // seinen Zweck erfüllt.
+      setWiederaufnahme(null);
+      ask.mutate({ frage: trimmed, generation: kontoGeneration.current });
     },
     [answerAi.available, ask.isPending, ask.mutate],
   );
@@ -808,6 +1105,13 @@ export function Ask(): JSX.Element {
   const askExample = (question: string): void => {
     setQ(question);
     submitAsk(question);
+  };
+  // Ergänzung 1: „Entwurf verwerfen" leert das Feld — und weil der Arbeitsstand dem Feld folgt,
+  // ist der Entwurf damit auch aus dem Speicher fort. Eine stehende Antwort bleibt.
+  const entwurfVerwerfen = (): void => {
+    setQ("");
+    setEmptyAttempted(false);
+    setWiederaufnahme((w) => (w?.antwortAm ? { entwurf: false, antwortAm: w.antwortAm } : null));
   };
   // Chips stabil je Bestand memoisiert (die Zufallswahl würfelt sonst bei jedem Render neu).
   const exampleChips = useMemo(() => buildAskExampleChips(kos.data ?? []), [kos.data]);
@@ -820,22 +1124,48 @@ export function Ask(): JSX.Element {
   // bis der Verfügbarkeits-Status GELADEN ist, und verbraucht seinen Ein-Schuss dann GENAU EINMAL:
   // Modell nutzbar → automatisch fragen; kein Modell → KEINE Mutation (die Frage bleibt nur
   // vorbefüllt, der Hinweis erklärt es).
-  const autoAsked = useRef(false);
+  //
+  // R-0474 · Ben B3 (Runde 2): EIN SCHUSS JE NAVIGATION, UND ER FEUERT DIE FRAGE DER ADRESSE.
+  // Bis hierher las der Auto-Ask den Feldzustand `q` und hatte einen Schuss je MONTAGE. Seit
+  // `/fragen` bei einem Adresswechsel seine Frage übernimmt (Effekt oben), kam `?q=Neu&ask=1` auf
+  // der offenen Seite in einem Durchlauf an, in dem `params` schon neu, `q` aber noch alt war — und
+  // gesendet wurde die ALTE Frage, während das Feld danach die neue zeigte. Jetzt lesen Vorbefüllung
+  // und Auto-Ask dieselbe Quelle (`readAskQuestion(params)`), und verbraucht wird der Schuss der
+  // jeweiligen Navigation (`location.key`). Ohne `ask=1` wird weiterhin nichts gesendet (SCRUM-272).
+  // Läuft gerade eine Anfrage, wartet der Schuss, statt still zu verfallen.
+  // Ergänzung 1 (Ben R1, F3): der Antwortwunsch gilt nur, solange die Adresse nicht schon übernommen
+  // wurde (`startfrageGilt`) — eine wiederaufgenommene Antwort wird gezeigt, nicht neu erfragt. Der
+  // Schuss hängt an der Marke der Adresse (Navigationsschlüssel + Frage + Wunsch).
+  const autoAskedFuer = useRef<string | null>(null);
   useEffect(() => {
-    if (autoAsked.current || answerAi.isLoading) {
+    if (autoAskedFuer.current === adresse.marke || answerAi.isLoading || ask.isPending) {
       return;
     }
-    if (shouldAutoAskFromSearch(params) && q.trim().length > 0) {
-      autoAsked.current = true;
+    // Nur der Wunsch DER Navigation, auf der die Seite gerade steht (Ben L2 R2, B1).
+    const zurNavigation = adresse.marke?.startsWith(`${navigationsSchluessel}:`) === true;
+    if (
+      zurNavigation &&
+      adresse.autoFrage &&
+      startfrageGilt &&
+      adresse.frage !== null &&
+      adresse.frage.trim()
+    ) {
+      autoAskedFuer.current = adresse.marke;
       // WP-UX-WOW-1 U5: die Startfrage auch als Lücken-/Capture-Kontext festhalten (wie Submit) —
       // das übernimmt submitAsk; ohne nutzbares Modell passiert bewusst NICHTS.
-      submitAsk(q);
+      submitAsk(adresse.frage);
     }
-  }, [params, q, answerAi.isLoading, submitAsk]);
+  }, [
+    adresse,
+    navigationsSchluessel,
+    startfrageGilt,
+    answerAi.isLoading,
+    ask.isPending,
+    submitAsk,
+  ]);
 
   // SCRUM-430 (VIP): beantwortete Frage inkl. Quellen exportieren/teilen. Quellen bleiben klar
   // ausgewiesen (Status/Trust/Nutzbarkeit). Markdown wird erst beim Klick gebaut (frischer Zeitstempel).
-  const { push } = useToast();
   const kosById = new Map((kos.data ?? []).map((k) => [k.id, k]));
   // ==============================================================================================
   // JOB 3267 Q1 — DIE GERENDERTEN FUSSNOTEN, AM DOM GEMESSEN.
@@ -1025,7 +1355,7 @@ export function Ask(): JSX.Element {
         </p>
         {/* Das „…" gehört an die Antwortkarte (§5). Solange es keine gibt, steht es hier — genau
             EIN Menü ist zu jeder Zeit auf der Fläche, und „Mehr" ist von Anfang an erreichbar. */}
-        {result?.answered ? null : (
+        {karteSichtbar && result?.answered ? null : (
           <OverflowMenu
             label={t("ask.menu.label")}
             testId="ask-menu"
@@ -1035,6 +1365,37 @@ export function Ask(): JSX.Element {
           />
         )}
       </div>
+      {/* Ergänzung 1 (Pedi 28.09.2026): beim Wiederkommen steht OBEN, was aufgenommen wurde und wo
+          es weitergeht — ein Satz, keine Karte, damit das Fragefeld ohne Bildlauf sichtbar bleibt.
+          Die Antwort wird ausdrücklich als NICHT neu erzeugt benannt, mit ihrem Zeitpunkt. */}
+      {wiederaufnahme ? (
+        <div
+          data-testid="ask-wiederaufnahme"
+          className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-btn bg-page px-3 py-2 text-[12.5px] text-muted"
+        >
+          <p className="min-w-0 flex-1">
+            {wiederaufnahme.entwurf && wiederaufnahme.antwortAm
+              ? t("ask.wiederaufnahme.beides", {
+                  zeit: formatKoTimestamp(wiederaufnahme.antwortAm, i18n.language),
+                })
+              : wiederaufnahme.entwurf
+                ? t("ask.wiederaufnahme.entwurf")
+                : t("ask.wiederaufnahme.antwort", {
+                    zeit: formatKoTimestamp(wiederaufnahme.antwortAm, i18n.language),
+                  })}
+          </p>
+          {wiederaufnahme.entwurf ? (
+            <button
+              type="button"
+              data-testid="ask-entwurf-verwerfen"
+              onClick={entwurfVerwerfen}
+              className="shrink-0 text-[12.5px] font-semibold text-brand-text underline-offset-2 hover:underline"
+            >
+              {t("ask.wiederaufnahme.verwerfen")}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       {/* SCRUM-291: Demo-/Pilotpfad auf der Zielseite wiedererkennbar (nur bei ?demo=stage1). */}
       {isDemoContext(params) ? <DemoBanner surface="ask" /> : null}
 
@@ -1287,6 +1648,30 @@ export function Ask(): JSX.Element {
             )}
           </div>
         ) : null}
+        {/* R-0330 (Ben R1, F5): die Störung sieht nie wie Leere aus — und nie wie eine Antwort. */}
+        {pruefungGestoert ? (
+          <div
+            data-testid="ask-pruefung-gestoert"
+            role="alert"
+            className="mt-5 rounded-card border border-trust-crit-fill bg-trust-crit-bg p-5"
+          >
+            <p className="text-[13px] font-semibold text-trust-crit-text">
+              {t("ask.pruefungGestoert")}
+            </p>
+            <Button
+              className="mt-3"
+              variant="ghost"
+              onClick={() => {
+                setPruefungWiederholt(true);
+                void conflicts.refetch();
+                void kos.refetch();
+              }}
+            >
+              {t("ask.error.retry")}
+              <ArrowRight size={14} />
+            </Button>
+          </div>
+        ) : null}
         {/* Eine ANDERE Frage räumt die alte Antwort ab (`onMutate`) — sie gehört zu einer anderen
             Frage, und stehenzubleiben hieße, sie als Antwort auf die neue auszugeben. DIESELBE
             Frage frischt nur auf: dann bleibt die Antwort stehen (Korrekturpflicht 2). */}
@@ -1460,6 +1845,7 @@ export function Ask(): JSX.Element {
                         badge={badge}
                         guide={guide}
                         speechSupported={speechSupported}
+                        vorlesenMoeglich={vorlesen.moeglich}
                       />
                       <div
                         data-testid="ask-mehr-antwort"
@@ -1545,12 +1931,24 @@ export function Ask(): JSX.Element {
                       Export. Sein Entfernen macht diesen Wächter rot (in diesem Durchgang gemessen).
                       Die Testdatei liegt außerhalb der Lease dieses Auftrags; ein Eingriff dort wäre
                       ein LEASE-VERSTOSS. Gemeldet unter BLOCKIERT in der Rückgabe. */}
-                            <span
-                              className={`rounded-pill px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase ${EVIDENCE_TONE[effective?.evidence.tone ?? "neutral"]}`}
-                            >
-                              {t("ask.evidence")}:{" "}
-                              {t(effective?.evidence.labelKey ?? "ask.knowledgeClass.unbekannt")}
-                            </span>
+                            {/* R-0287 (Ben R1, F6): D-048 (1) ist jetzt ausgeführt — die Plakette
+                      entfällt, wenn sie nur die Statusplakette wiederholt. Die Zusage von mega32/33
+                      („nirgends Gesichert, wenn es nicht belegt ist") hängt an der Statusplakette
+                      und am Export; beide bleiben. `ask-check-caveat-mounted` A4 prüft jetzt die
+                      EINE Plakette. */}
+                            {effective &&
+                            evidenzWiederholtStatus(
+                              effective.status,
+                              effective.evidence.labelKey,
+                            ) ? null : (
+                              <span
+                                data-testid="ask-evidenz-plakette"
+                                className={`rounded-pill px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase ${EVIDENCE_TONE[effective?.evidence.tone ?? "neutral"]}`}
+                              >
+                                {t("ask.evidence")}:{" "}
+                                {t(effective?.evidence.labelKey ?? "ask.knowledgeClass.unbekannt")}
+                              </span>
+                            )}
                           </div>
                           {/* AUFTRAG-mega33 A4 (beim Bauen des Wortnachweises gefunden): der Trust-Balken
                     beschriftet seinen Wert ab 85 mit dem Qualitätswort „Gesichert" — eine SIEBTE
@@ -1745,11 +2143,16 @@ export function Ask(): JSX.Element {
                             // gescheitert, ist der Quellenstand UNBEKANNT (§9) — das Angebot „öffne
                             // das Original" entfällt. Begründung am Vertrag von AnswerSourceDetails.
                             standBestaetigt={!auffrischungGescheitert}
-                            dank={{
-                              bedankt: (id) => thankedSources.has(id),
-                              laeuft: thankSource.isPending,
-                              danken: (id) => thankSource.mutate(id),
-                            }}
+                            // Ben R1, F8: ohne gültigen Beleg kein Dank-Knopf — er liefe in 403.
+                            dank={
+                              belegGueltig
+                                ? {
+                                    bedankt: (id) => thankedSources.has(id),
+                                    laeuft: thankSource.isPending,
+                                    danken: (id) => thankSource.mutate(id),
+                                  }
+                                : null
+                            }
                           />
                         ) : null}
                       </div>
@@ -1771,12 +2174,30 @@ export function Ask(): JSX.Element {
                     <Copy size={14} aria-hidden="true" />
                     {t("ask.export.copy")}
                   </button>
+                  {/* R-1053: die Antwort vorlesen — nur wo der Browser sprechen kann; sonst nennt
+                      das „Mehr"-Blatt den Grund (`ask-vorlesen-na`), kein toter Knopf. Vorgelesen
+                      wird der Antworttext selbst, ohne Markdown-Zeichen und Fussnotenmarken. */}
+                  {vorlesen.moeglich ? (
+                    <button
+                      type="button"
+                      data-testid="ask-vorlesen"
+                      aria-pressed={vorlesen.liest}
+                      onClick={() => vorlesen.umschalten(result.answer ?? "")}
+                      className="inline-flex items-center gap-1.5 rounded-[10px] border border-hairline bg-surface px-5 py-2.5 text-[14px] text-text hover:bg-hairline-soft"
+                    >
+                      <Volume2 size={14} aria-hidden="true" />
+                      {vorlesen.liest
+                        ? t("diktat.antwortVorlesenStop")
+                        : t("diktat.antwortVorlesen")}
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     disabled={helpfulDisabled(
                       { pending: helpful.isPending, success: helpful.isSuccess },
-                      (result.citedSources ?? []).length === 0,
+                      (result.citedSources ?? []).length === 0 || !belegGueltig,
                     )}
+                    aria-describedby={belegGueltig ? undefined : "ask-rueckmeldung-abgelaufen"}
                     onClick={() => {
                       const carrying = (result.citedSources ?? [])[0];
                       if (carrying) {
@@ -1792,10 +2213,162 @@ export function Ask(): JSX.Element {
                       t("ask.thanked"),
                     )}
                   </button>
+                  {/* Ben R1, F8: eine nicht ausführbare Aktion wird erklärt, nicht bloss gesperrt. */}
+                  {belegGueltig || helpful.isSuccess ? null : (
+                    <p
+                      id="ask-rueckmeldung-abgelaufen"
+                      data-testid="ask-rueckmeldung-abgelaufen"
+                      className="basis-full text-[12px] text-muted-2"
+                    >
+                      {t("ask.rueckmeldungAbgelaufen")}
+                    </p>
+                  )}
                 </div>
               </div>
             ) : (
               <Card className="mt-3 border-dashed" data-testid="ask-gap">
+                {verschlossen.length > 0 ? (
+                  <>
+                    <div className="mb-3" data-testid="ask-verschlossen">
+                      {/* N-0009 (Ben R1, F10): ZUERST DIE LAGE, DANN DIE LÜCKE. Gibt es passende
+                        Dokumente, die nur noch nicht für Antworten freigegeben sind, ist „keine
+                        belastbare Grundlage" nicht das Erste, was stimmt — das Erste ist: der
+                        Inhalt ist da. Der Lückensatz und die Neuerfassung folgen darunter. */}
+                      <p
+                        data-testid="ask-verschlossen-titel"
+                        className="text-[15px] font-semibold text-text"
+                      >
+                        {t("ask.verschlossen.titel")}
+                      </p>
+                      {/* Ben R2, F10: die Erklärung nennt die Gründe, die WIRKLICH vorliegen —
+                          nicht pauschal „nicht freigegeben". Ein validiertes, eingestuftes
+                          Dokument ohne durchsuchbaren Text ist kein Prüffall. */}
+                      {verschlossenGruende.map((grund) => (
+                        <p
+                          key={grund}
+                          data-testid={`ask-verschlossen-grund-${grund}`}
+                          className="mt-1 text-sm text-muted"
+                        >
+                          {t(`ask.verschlossen.grund.${grund}`)}
+                        </p>
+                      ))}
+                      <p className="mt-2 text-[11.5px] font-medium text-muted-2">
+                        {t("ask.verschlossen.label")}
+                      </p>
+                      {/* ============================================================================
+                        JOB 3109 UX-09 §5 — HIER WIRD NICHT GEFILTERT. Die Liste ist GENAU die, die
+                        der Server geschickt hat: keine Rollenabfrage, kein Sortieren, kein
+                        Ausblenden, kein Nachladen. Die Sperre trägt der Server, zweifach und vor
+                        dem Feld: `dropConfidential(prefilteredRaw).filter(verschlossenSicht)`
+                        (services/ask/src/service.ts:829-833), und `verschlossenSicht` ist
+                        `darfSehen(user, ko)` (services/app/src/sichtbarkeit.ts:108-110) — dieselbe
+                        Funktion, die auch den Leseweg des einzelnen Objekts bewacht. DARAUS folgt
+                        der Leselink unten: jeder Titel, der hier steht, gehört zu einem Dokument,
+                        das dieser Mensch ohnehin öffnen darf; der Link spart den Umweg über die
+                        Bibliothekssuche, er öffnet nichts Neues. Wer hier eine Rechteprüfung
+                        „nachrüsten" will, baut eine zweite Wahrheit neben die des Servers — genau
+                        das ist verboten. Fehlt das Feld (älterer Server / Weg ohne Betrachter,
+                        api/types.ts:1190-1191), ist die Liste leer und es steht nichts da.
+                        ============================================================================ */}
+                      <ul className="mt-1 space-y-1">
+                        {verschlossen.map((h) => (
+                          <li
+                            key={h.id}
+                            className="flex flex-wrap items-center gap-1.5 text-[12px]"
+                            data-testid="ask-verschlossen-eintrag"
+                          >
+                            {/* JOB 3109 UX-09 §1: derselbe Weg wie die tragenden Quellen oben
+                              (`ask-quellen-chip`, :1202-1206) — ein `<Link>` auf `/wissen/:id` mit
+                              demselben `demoHref`, kein zweiter Linkbauer. §2: der zugängliche Name
+                              sagt, WOHIN er führt; ein Vorleseprogramm liest sonst nur einen
+                              nackten Dokumenttitel vor. Sichtbar bleibt genau der Titel. */}
+                            <Link
+                              to={demoHref(`/wissen/${h.id}`, params)}
+                              data-testid="ask-verschlossen-link"
+                              aria-label={t("ask.verschlossen.lesen", { titel: h.title })}
+                              className="font-medium text-text underline decoration-hairline underline-offset-2 hover:decoration-ink"
+                            >
+                              {h.title}
+                            </Link>
+                            {/* JOB 3109 UX-09 §3 — DER SPERRGRUND OHNE MAUS. Die drei Sätze gab es
+                              schon, sie hingen aber ALLEIN im `title=` und sind damit nur beim
+                              Verweilen mit dem Zeiger erreichbar. Sie stehen jetzt zusätzlich im
+                              zugänglichen Namen der Plakette. `role="note"` ist dabei nicht Zierde:
+                              ein `aria-label` an einem nackten `<span>` (Rolle `generic`) wird von
+                              Vorleseprogrammen ignoriert und wäre ein Name nur auf dem Papier. Das
+                              `title=` bleibt für die Maus stehen — es ist nur nicht mehr der
+                              einzige Träger. Sichtbar bleibt der Kurztext, damit der Wortlaut von
+                              Station 3 (JOB 2623) unverändert lesbar ist. */}
+                            {h.freigabeFehlt ? (
+                              <span
+                                role="note"
+                                title={t("ask.verschlossen.freigabeHint")}
+                                aria-label={t("ask.verschlossen.freigabeHint")}
+                                className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10px] font-semibold text-trust-warn-text"
+                              >
+                                {t("ask.verschlossen.freigabe")}
+                              </span>
+                            ) : null}
+                            {h.stufeFehlt ? (
+                              <span
+                                role="note"
+                                title={t("ask.verschlossen.stufeHint")}
+                                aria-label={t("ask.verschlossen.stufeHint")}
+                                className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10px] font-semibold text-trust-warn-text"
+                              >
+                                {t("ask.verschlossen.stufe")}
+                              </span>
+                            ) : null}
+                            {h.volltextFehlt ? (
+                              <span
+                                role="note"
+                                title={t("ask.verschlossen.volltextHint")}
+                                aria-label={t("ask.verschlossen.volltextHint")}
+                                className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10px] font-semibold text-trust-warn-text"
+                              >
+                                {t("ask.verschlossen.volltext")}
+                              </span>
+                            ) : null}
+                          </li>
+                        ))}
+                      </ul>
+                      {/* JOB 3109 UX-09 §4: „fachlich freigegeben" und „durfte diese Antwort tragen"
+                        sind zwei verschiedene Fragen. Wer das nicht liest, hält den Leselink für
+                        einen Widerspruch („ich darf es öffnen, aber es war gesperrt?"). EINMAL je
+                        Liste, nicht je Eintrag — je Eintrag wäre derselbe Satz zweimal und läse
+                        sich als Eigenschaft des einzelnen Dokuments. Ist die Liste leer, steht er
+                        nicht da: die bestehende Regel „kein Grund wird erfunden" gilt auch für
+                        diesen Satz. */}
+                      <p
+                        data-testid="ask-verschlossen-trennung"
+                        className="mt-2 text-[11.5px] text-muted-2"
+                      >
+                        {t("ask.verschlossen.trennung")}
+                      </p>
+                    </div>
+                    {/* N-0009 (Ben R1, F10): der Prüf-/Einstufungsweg NEBEN dem Lesen. Freigabe
+                      und Einstufung entstehen in der Prüfung (`/validierung`, Rolle
+                      `controller`, dort auch die Vertraulichkeitsstufe); über `RoleLink` sieht,
+                      wer sie nicht erreicht, die Lage ohne toten Link. Die Neuerfassung bleibt
+                      unten als weitere Möglichkeit.
+                      Ben R2, F10: der Weg steht NUR, wenn er zum Grund passt — fehlt allein der
+                      durchsuchbare Text, hilft keine Prüfung; der Weg ist dann das Dokument
+                      selbst (der Leselink oben, dort wird Text ergänzt), und der Grund-Satz sagt
+                      das. */}
+                    {verschlossenPruefweg ? (
+                      <div className="-mt-1 mb-3 text-[12px] text-muted-2">
+                        {t(verschlossenPruefweg)}{" "}
+                        <RoleLink
+                          to="/validierung"
+                          testId="ask-verschlossen-pruefen"
+                          className="font-semibold text-brand-text"
+                        >
+                          {() => t("ask.verschlossen.zurPruefung")}
+                        </RoleLink>
+                      </div>
+                    ) : null}
+                  </>
+                ) : null}
                 <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-trust-warn-text">
                   {t("ask.gapBadge")}
                 </span>
@@ -1813,103 +2386,6 @@ export function Ask(): JSX.Element {
                     legen hiesse, Pedis Befund von damals wiederherzustellen. Sie ist keine zweite
                     Karte, sondern die Begründung der einen. Ist die Liste leer, wird KEIN Grund
                     erfunden (§4 des Auftrags 2626). */}
-                {verschlossen.length > 0 ? (
-                  <div className="mt-3" data-testid="ask-verschlossen">
-                    <p className="text-[11.5px] font-medium text-muted-2">
-                      {t("ask.verschlossen.label")}
-                    </p>
-                    {/* ============================================================================
-                        JOB 3109 UX-09 §5 — HIER WIRD NICHT GEFILTERT. Die Liste ist GENAU die, die
-                        der Server geschickt hat: keine Rollenabfrage, kein Sortieren, kein
-                        Ausblenden, kein Nachladen. Die Sperre trägt der Server, zweifach und vor
-                        dem Feld: `dropConfidential(prefilteredRaw).filter(verschlossenSicht)`
-                        (services/ask/src/service.ts:829-833), und `verschlossenSicht` ist
-                        `darfSehen(user, ko)` (services/app/src/sichtbarkeit.ts:108-110) — dieselbe
-                        Funktion, die auch den Leseweg des einzelnen Objekts bewacht. DARAUS folgt
-                        der Leselink unten: jeder Titel, der hier steht, gehört zu einem Dokument,
-                        das dieser Mensch ohnehin öffnen darf; der Link spart den Umweg über die
-                        Bibliothekssuche, er öffnet nichts Neues. Wer hier eine Rechteprüfung
-                        „nachrüsten" will, baut eine zweite Wahrheit neben die des Servers — genau
-                        das ist verboten. Fehlt das Feld (älterer Server / Weg ohne Betrachter,
-                        api/types.ts:1190-1191), ist die Liste leer und es steht nichts da.
-                        ============================================================================ */}
-                    <ul className="mt-1 space-y-1">
-                      {verschlossen.map((h) => (
-                        <li
-                          key={h.id}
-                          className="flex flex-wrap items-center gap-1.5 text-[12px]"
-                          data-testid="ask-verschlossen-eintrag"
-                        >
-                          {/* JOB 3109 UX-09 §1: derselbe Weg wie die tragenden Quellen oben
-                              (`ask-quellen-chip`, :1202-1206) — ein `<Link>` auf `/wissen/:id` mit
-                              demselben `demoHref`, kein zweiter Linkbauer. §2: der zugängliche Name
-                              sagt, WOHIN er führt; ein Vorleseprogramm liest sonst nur einen
-                              nackten Dokumenttitel vor. Sichtbar bleibt genau der Titel. */}
-                          <Link
-                            to={demoHref(`/wissen/${h.id}`, params)}
-                            data-testid="ask-verschlossen-link"
-                            aria-label={t("ask.verschlossen.lesen", { titel: h.title })}
-                            className="font-medium text-text underline decoration-hairline underline-offset-2 hover:decoration-ink"
-                          >
-                            {h.title}
-                          </Link>
-                          {/* JOB 3109 UX-09 §3 — DER SPERRGRUND OHNE MAUS. Die drei Sätze gab es
-                              schon, sie hingen aber ALLEIN im `title=` und sind damit nur beim
-                              Verweilen mit dem Zeiger erreichbar. Sie stehen jetzt zusätzlich im
-                              zugänglichen Namen der Plakette. `role="note"` ist dabei nicht Zierde:
-                              ein `aria-label` an einem nackten `<span>` (Rolle `generic`) wird von
-                              Vorleseprogrammen ignoriert und wäre ein Name nur auf dem Papier. Das
-                              `title=` bleibt für die Maus stehen — es ist nur nicht mehr der
-                              einzige Träger. Sichtbar bleibt der Kurztext, damit der Wortlaut von
-                              Station 3 (JOB 2623) unverändert lesbar ist. */}
-                          {h.freigabeFehlt ? (
-                            <span
-                              role="note"
-                              title={t("ask.verschlossen.freigabeHint")}
-                              aria-label={t("ask.verschlossen.freigabeHint")}
-                              className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10px] font-semibold text-trust-warn-text"
-                            >
-                              {t("ask.verschlossen.freigabe")}
-                            </span>
-                          ) : null}
-                          {h.stufeFehlt ? (
-                            <span
-                              role="note"
-                              title={t("ask.verschlossen.stufeHint")}
-                              aria-label={t("ask.verschlossen.stufeHint")}
-                              className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10px] font-semibold text-trust-warn-text"
-                            >
-                              {t("ask.verschlossen.stufe")}
-                            </span>
-                          ) : null}
-                          {h.volltextFehlt ? (
-                            <span
-                              role="note"
-                              title={t("ask.verschlossen.volltextHint")}
-                              aria-label={t("ask.verschlossen.volltextHint")}
-                              className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10px] font-semibold text-trust-warn-text"
-                            >
-                              {t("ask.verschlossen.volltext")}
-                            </span>
-                          ) : null}
-                        </li>
-                      ))}
-                    </ul>
-                    {/* JOB 3109 UX-09 §4: „fachlich freigegeben" und „durfte diese Antwort tragen"
-                        sind zwei verschiedene Fragen. Wer das nicht liest, hält den Leselink für
-                        einen Widerspruch („ich darf es öffnen, aber es war gesperrt?"). EINMAL je
-                        Liste, nicht je Eintrag — je Eintrag wäre derselbe Satz zweimal und läse
-                        sich als Eigenschaft des einzelnen Dokuments. Ist die Liste leer, steht er
-                        nicht da: die bestehende Regel „kein Grund wird erfunden" gilt auch für
-                        diesen Satz. */}
-                    <p
-                      data-testid="ask-verschlossen-trennung"
-                      className="mt-2 text-[11.5px] text-muted-2"
-                    >
-                      {t("ask.verschlossen.trennung")}
-                    </p>
-                  </div>
-                ) : null}
                 <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
                   {/* SCRUM-264: direkt Wissen erfassen — die gestellte Frage als Capture-Kontext (kein Auto-KO). */}
                   {/* AUFTRAG-mega71 BLOCK E (Stelle 4): /erfassen verlangt experte — die Expertin
@@ -1976,7 +2452,12 @@ export function Ask(): JSX.Element {
           onSchliessen={() => setMehr(false)}
           ausloeser={() => menuGriffRef.current}
         >
-          <MehrFlaechenInfo badge={badge} guide={guide} speechSupported={speechSupported} />
+          <MehrFlaechenInfo
+            badge={badge}
+            guide={guide}
+            speechSupported={speechSupported}
+            vorlesenMoeglich={vorlesen.moeglich}
+          />
           {karteSichtbar && result && contract && !result.answered ? (
             <MehrLueckenInfo contract={contract} sourceSummary={sourceSummary} />
           ) : null}

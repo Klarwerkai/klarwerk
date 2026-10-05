@@ -5,8 +5,10 @@
 // bleibt nach Größe). „Relevanz" ist der Default = die bisherige Reihenfolge (searchLibrary-Ranking),
 // die anderen Optionen tragen je eine FESTE, klar benannte Richtung (kein verwirrender Umschalter).
 import type { KnowledgeObject } from "../api/types";
+import type { DisplayStatus } from "../components/trust/types";
+import { deriveStatus } from "./displayStatus";
 
-export const LIBRARY_SORT_KEYS = ["relevance", "title", "trust", "recent"] as const;
+export const LIBRARY_SORT_KEYS = ["relevance", "title", "trust", "recent", "risk"] as const;
 export type LibrarySortKey = (typeof LIBRARY_SORT_KEYS)[number];
 
 // Default = bisherige Reihenfolge (Relevanz-Ranking aus searchLibrary), damit nichts still umsortiert.
@@ -19,7 +21,32 @@ export const LIBRARY_SORT_LABEL_KEYS: Record<LibrarySortKey, string> = {
   title: "lib.sort.title",
   trust: "lib.sort.trust",
   recent: "lib.sort.recent",
+  risk: "lib.sort.risk",
 };
+
+// R-1006 (K16): „Risiko" je Wissensobjekt — kein neuer Score, sondern die vorhandene Reife-Einteilung
+// (`koOverview.usabilityOf`: validiert → nutzbar; pruefung/revalidierung → in Prüfung; alles andere
+// → zu prüfen): wer sich auf ein Objekt am wenigsten verlassen kann, steht oben. Innerhalb derselben
+// Gruppe entscheidet das Vertrauen, niedrig zuerst. Das Bereichsrisiko der Risiko-Seite
+// (`domainRisk`) gilt je Kategorie und ist hier bewusst NICHT verwendet.
+//
+// BEN NACHARBEIT 5: der Rang hängt am ANGEZEIGTEN Zustand, nicht am Rohstatus des Suchobjekts. Die
+// Suchantwort trägt weder die erhobene Revalidierung noch die Konfliktkenntnis; die Fläche reicht
+// deshalb ihre Zustandsauskunft (`auskunftFuer`, dieselbe wie Punkt, Wort und Segment) als
+// `statusOf` herein. Nur ohne sie fällt der Rang auf `deriveStatus` am Objekt zurück.
+const RISK_RANK: Record<DisplayStatus, number> = {
+  entwurf: 0,
+  offen: 0,
+  abgelehnt: 0,
+  konflikt: 0,
+  pruefung: 1,
+  revalidierung: 1,
+  validiert: 2,
+};
+
+export function riskRankOf(status: DisplayStatus): number {
+  return RISK_RANK[status];
+}
 
 export function isLibrarySortKey(value: unknown): value is LibrarySortKey {
   return typeof value === "string" && (LIBRARY_SORT_KEYS as readonly string[]).includes(value);
@@ -46,10 +73,12 @@ export function sortLibrary<T>(
   items: readonly T[],
   key: LibrarySortKey,
   koOf: (item: T) => KnowledgeObject,
+  statusOf: (item: T) => DisplayStatus = (item) => deriveStatus(koOf(item)),
 ): T[] {
   if (key === "relevance") {
     return items.slice();
   }
+  const rank = (item: T): number => riskRankOf(statusOf(item));
   const primary = (a: T, b: T): number => {
     switch (key) {
       case "title":
@@ -58,6 +87,8 @@ export function sortLibrary<T>(
         return (koOf(b).trust ?? 0) - (koOf(a).trust ?? 0);
       case "recent":
         return koChangedMs(koOf(b)) - koChangedMs(koOf(a));
+      case "risk":
+        return rank(a) - rank(b) || (koOf(a).trust ?? 0) - (koOf(b).trust ?? 0);
       default:
         return 0;
     }

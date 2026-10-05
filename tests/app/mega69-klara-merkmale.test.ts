@@ -41,6 +41,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { panelQuelleAus } from "../support/panelquelle";
 
 const WURZEL = join(__dirname, "..", "..");
 const TASKPANE = join(WURZEL, "apps", "web", "public", "word-addin", "taskpane.html");
@@ -58,7 +59,7 @@ const RUECKWEG = join(WURZEL, "apps", "web", "public", "word-addin", "rueckweg.j
  * besser geworden ist. Die Reihenfolge ist die der Auslieferung.
  */
 function quelle(): string {
-  return `${readFileSync(TASKPANE, "utf8")}\n${readFileSync(RUECKWEG, "utf8")}`;
+  return `${panelQuelleAus(TASKPANE)}\n${readFileSync(RUECKWEG, "utf8")}`;
 }
 
 /**
