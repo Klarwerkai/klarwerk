@@ -2587,6 +2587,42 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // die R-0639-Argumente stehen auf den bestehenden Zeilen, damit das Inline-Skript unter der
     // Schranke von `schnittflaechen.test.ts` B3 bleibt (Server: „expected 12510 to be less than
     // 12500"). Kein Ausdruck, kein Abrufziel, keine Nutzlast geändert; kein Sideload.
+    // AUFNAHME 20260922 · GESAMT-VERTRAULICHKEIT-ERFASSUNG (R-0632, BEN-Befund K2, 03.10.2026) —
+    // PIN BEWUSST AKTUALISIERT (5fbf5f64… -> 72213c31…). Auslieferungsfolgen, jede geprüft:
+    //   · Abrufziel: KEINES neu. `POST /api/drafts` und `POST /api/drafts/from-docx` wie bisher.
+    //   · Nutzlast:  EIN Feld mehr, und nur nach einem Klick auf eine der drei neuen Stufenknöpfe
+    //                (#capture-stufe-*): `confidentiality` ∈ intern|vertraulich|streng_vertraulich.
+    //                Ohne Klick fällt es bei `JSON.stringify` heraus — Körper Zeichen für Zeichen
+    //                der bisherige. Der Server weist einen unbekannten Wert mit 400 ab.
+    //   · Markup:    eine Knopfgruppe #capture-stufe NACH #capture-felder (die zwei gepinnten
+    //                `label.capture-zeile` bleiben unverändert); vier Wörterbuchschlüssel je Sprache.
+    //   · Inline-Skript bleibt unter der Schranke von `schnittflaechen.test.ts` B3 (gemessen 12492):
+    //                drei Kommentarblöcke im Sendeweg sind dafür verdichtet, kein Ausdruck entfernt.
+    //   · Manifest, CSP, Recht: unverändert. Kein erneutes Sideload.
+    // Der Wert 72213c31… war im Prüflauf auf Kandidat 9612aa9c GEMESSEN.
+    // HAUPTSTAND INTEGRIERT (Commit 605704eb, aus 0a4a2c1d „Modellläufe ohne Anfrage- und
+    // Antwortinhalte nachvollziehen") — PIN ERNEUT BEWUSST AKTUALISIERT (72213c31… -> 9549900a…).
+    // Die mitgebrachte Änderung ist EINE Zeile in `istKiKennzeichnung`: die Liste der gültigen
+    // Aufgaben einer KI-Kennzeichnung nimmt zusätzlich „enrich" auf. Auslieferungsfolgen geprüft:
+    //   · Abrufziel, Nutzlast, Manifest, CSP, Recht: unverändert — die Zeile LIEST nur eine
+    //     Serverantwort und entscheidet, ob ihr KI-Vermerk gezeigt wird. Kein erneutes Sideload.
+    // Der Wert ist im Prüflauf auf Kandidat 897ebc1a GEMESSEN (Zusicherung dieses Falls,
+    // „Received") und unverändert übernommen.
+    // HAUPTSTAND ERNEUT INTEGRIERT (main 4c1746be, darin R-0169 „Importiertes Wissen mit dauerhafter
+    // Herkunft"): main hat `taskpane.html` geändert, ohne diesen Pin mitzuziehen. Mitgebracht ist
+    // `dokumentId` als EIN zusätzliches, optionales Feld in beiden Einreichrümpfen (`/api/drafts`,
+    // `/api/drafts/from-docx`) — gelesen aus der im Dokument gespeicherten Kennung, nur wenn eine da
+    // ist. Abrufziel, Manifest, CSP, Recht: unverändert. Der Konflikt zur Stufenwahl (R-0632) ist so
+    // aufgelöst, dass beide Felder mitreisen. Gemessen auf Kandidat a9840417: 9aa99402…08ea13b1cc.
+    // NACHARBEIT 8 — DANACH ERNEUT GEÄNDERT, NUR KOMMENTAR: die 48 Abschnittsköpfe des Inline-Skripts
+    // sind auf ihre Titelzeile verdichtet (die reinen `// ====`-Trennlinien entfernt), damit das
+    // Skript wieder unter der Schranke von `schnittflaechen.test.ts` B3 liegt (12590 -> 12494).
+    // Kein Ausdruck, kein Abrufziel, keine Nutzlast, keine Blockmarke geändert; kein Sideload.
+    // PIN BEWUSST AKTUALISIERT (9549900a… -> 175ddaef…): der Wert ist im Prüflauf auf Kandidat
+    // 6eb0541a GEMESSEN (Zusicherung dieses Falls, „Received") und unverändert übernommen;
+    // `taskpane.html` ist seit dieser Messung unberührt (geprüft mit `git diff` gegen 6eb0541a).
+    // (Bis hier: Pins der GESAMT-VERTRAULICHKEIT-ERFASSUNG auf die ungeteilte `taskpane.html`. Seit
+    // der Integration mit main 38508a1e gilt der Pin des zusammengefügten Dokuments unten.)
     // AUFNAHME 20260922 · ZENTRALE-MODULE-AUFTEILEN (R-1611, P11) — DER PIN BLEIBT, WAS ER WAR.
     // Das Fenster liegt jetzt in DREI Dateien (`taskpane.html`, `taskpane.css`, `taskpane.js`);
     // gehasht wird deshalb das wieder zusammengefügte Dokument (`panelQuelleAus`). Dass der Pin
@@ -2629,16 +2665,37 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // NACHARBEIT 13: PIN BEWUSST AKTUALISIERT (fe3cc513… -> 66ba98c4…). Der Wert ist GEMESSEN, nicht
     // geschätzt: dieser Fall meldete ihn am Kandidaten 2dc7cbb7 im Prüflauf (`Received:
     // "66ba98c4…f74f76e5"`, funktion-erhalten-jsdom); die vier Dateien sind seither unverändert.
-    // AUFNAHME 20260922 · GESAMT-BESTANDSBLICK (R-0427, Ben Nacharbeit 3) — DER PIN MUSS WANDERN.
-    // Neu: Einstellungszeile `#einst-absatzblick` (Schalter, AUS bis zum bewussten Ja, nur für dieses
+    // AUFNAHME 20260922 · GESAMT-VERTRAULICHKEIT-ERFASSUNG (R-0632), INTEGRATION mit main 38508a1e
+    // (05.10.2026): die Stufenwahl ist in die zerlegte Fassung übertragen — Markup #capture-stufe
+    // in `taskpane.html`, Logik in `taskpane.js` (`draftPostPayload`/`prepareWordDraftRequest` mit
+    // optionaler Stufe, `captureStufeGewaehlt`/`renderCaptureStufe`, Klick-Zuhörer, vier
+    // Wörterbuchschlüssel je Sprache, `confidentiality` im from-docx-Rumpf nur bei echter Wahl).
+    // Auslieferungsfolgen wie oben für die ungeteilte Fassung beschrieben: kein neues Abrufziel; die
+    // Nutzlast trägt `confidentiality` nur nach einem Klick; Manifest, CSP, Recht unverändert; kein
+    // Sideload. DER PIN MUSS DESHALB WANDERN (66ba98c4… -> Hash des zusammengefügten Dokuments mit
+    // dieser Änderung). Bei der Konfliktlösung nicht berechenbar (kein Hash-Werkzeug zugelassen);
+    // der Prüflauf meldet den Ist-Wert als „Received", er wird danach gemessen übernommen.
+    // GEMESSEN im Prüflauf zu Kandidat 83c9a4b8: 637602b1…686f298 (unten eingetragen). DANACH ERNEUT
+    // GEÄNDERT, und zwar nur in der Ablage, nicht in der Wirkung: die Knopfgruppe #capture-stufe steht
+    // jetzt in der Zeile von #capture-aktion und ihr Erklärkommentar in `taskpane.js`, weil die
+    // Markup-Datei unter 500 Zeilen bleiben muss (probeschnitt A2 / schnitt-echt E5 meldeten 509).
+    // Kein Abrufziel, keine Nutzlast, kein Ausdruck geändert. Der Pin muss deshalb EIN weiteres Mal
+    // gemessen übernommen werden; ohne Hash-Werkzeug ist er hier nicht berechenbar.
+    // NACHARBEIT 15: PIN BEWUSST AKTUALISIERT (637602b1… -> 29062e17…). Der Wert ist im Prüflauf zu
+    // Kandidat 124645e8 GEMESSEN („Received") und unverändert übernommen; die vier Panel-Dateien sind
+    // seit dieser Messung unberührt (geprüft mit `git diff 124645e8 -- apps/web/public/word-addin/`).
+    // AUFNAHME 20260922 · GESAMT-BESTANDSBLICK (R-0427, Ben Nacharbeit 3; Integration mit main
+    // a6c9c5d9) — DER PIN MUSS NOCH EINMAL WANDERN. Auf die Stufenwahl oben kommt die
+    // Einstellungszeile `#einst-absatzblick` (Schalter, AUS bis zum bewussten Ja, nur für dieses
     // Fenster) und `ka3AbsatzPruefen` in `taskpane.js`: nach dem Ja liest ein `Word.run` je
     // Markierungsanlass nur die ZAHL der Absätze bis zur Markierung (kein Text) und ruft bei einem
     // Wechsel denselben Bestandsblick wie nach der Schreibruhe. Auslieferungsfolgen: kein neues
     // Abrufziel, keine neue Nutzlast, CSP/Recht/Manifest unverändert, kein Sideload; Office-API
-    // `Range.expandTo` (WordApi 1.3) — fehlt sie, schweigt der Weg. Der neue Wert war in der
-    // Bausitzung nicht messbar (kein SHA-256-Werkzeug); Blob des Dokuments `0f733b04…`
-    // (`tests/support/panelquelle.ts`). Nachzuführen aus dem `Received` des nächsten Prüflaufs.
-    const PIN = "66ba98c4cbaa5cb24a6fe2ae79fe74c56c784c1927dcff9ee7975f98f74f76e5";
+    // `Range.expandTo` (WordApi 1.3) — fehlt sie, schweigt der Weg. Unten steht noch der gemessene
+    // Wert von main; der neue SHA-256 war beim Auflösen nicht messbar (kein Hash-Werkzeug zugelassen),
+    // der Blob des Dokuments ist gemessen (`eb344beb…`, `tests/support/panelquelle.ts`).
+    // Nachzuführen aus dem `Received` des nächsten Prüflaufs.
+    const PIN = "29062e179bedebd2e48aeaed93ad335ac4cf740ae09fb2af587d655673c3753c";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(
       ist,

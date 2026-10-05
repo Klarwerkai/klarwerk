@@ -6,7 +6,13 @@ import { Link, useSearchParams } from "react-router-dom";
 import { ApiError } from "../../api/client";
 import { endpoints } from "../../api/endpoints";
 import { useDrafts, useKos } from "../../api/hooks";
-import type { AssistResult, Confidentiality, DraftPayload, StructureResult } from "../../api/types";
+import type {
+  AssistResult,
+  Confidentiality,
+  DraftPayload,
+  SchutzdatenArt,
+  StructureResult,
+} from "../../api/types";
 import { useSession } from "../../app/AuthContext";
 import { ImageDescribeProvider } from "../../app/ImageDescribeContext";
 import { WACHE_FLAECHE, useNavGuard, useUnloadGuard } from "../../app/NavGuardContext";
@@ -234,6 +240,12 @@ function diktatAnhaengen(bodyHtml: string, text: string): string {
  * Menüknopfs. Zwei getippte Zeichenketten wären die Bauform, in der ein Verweis ins Leere zeigt.
  */
 const BLATT_VERTRAULICHKEIT_HINWEIS_ID = "blatt-vertraulichkeit-hinweis";
+
+/**
+ * R-0658 (BEN, Nacharbeit 5): die `id` der Schutzdatenwarnung — aus demselben Grund eine Konstante
+ * wie oben: Warnung und `aria-describedby` der Erfolgszeile müssen dieselbe Kennung tragen.
+ */
+const BLATT_SCHUTZDATEN_WARNUNG_ID = "blatt-schutzdaten-warnung";
 
 /**
  * JOB 3141 (CAP-P1): Die `id` des Satzes, der sagt, warum das Blatt gerade nichts annimmt. Aus
@@ -1313,7 +1325,15 @@ export function Blatt({
       submitOperationRef.current = null;
       submitDraftRef.current = null;
       setRestartOffer(null);
-      setSubmittedKo({ id: ko.id, title: ko.title, zustand: deriveStatus(ko) });
+      // R-0658 (BEN, Nacharbeit 5): die Quarantäne-Auskunft des Servers wird NICHT verworfen —
+      // sie ist die Warnung, die der Mensch an genau dieser Stelle lesen muss (`BlattLage`).
+      const schutzdatenArten = ko.schutzdatenQuarantaene?.arten ?? [];
+      setSubmittedKo({
+        id: ko.id,
+        title: ko.title,
+        zustand: deriveStatus(ko),
+        ...(schutzdatenArten.length > 0 ? { schutzdatenArten } : {}),
+      });
       setTitle("");
       setBodyHtml("");
       setActiveDraftId(null);
@@ -3429,6 +3449,11 @@ interface Eingereicht {
   readonly id: string;
   readonly title: string;
   readonly zustand: DisplayStatus;
+  /**
+   * R-0658 (Nacharbeit 5): die Quarantäne-Auskunft des Servers (`schutzdatenQuarantaene.arten`) —
+   * nur die ARTEN, nie Werte. Sie trägt die Warnung in `BlattLage`.
+   */
+  readonly schutzdatenArten?: SchutzdatenArt[];
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -3485,11 +3510,22 @@ function BlattLage({
     // Verschachtelung, und React meldete das in jedem Testlauf. Der Browser bricht ein solches `<p>`
     // an der Stelle auf; die „eine Zeile" wäre dann genau bei der Rolle, die den Weg NICHT gehen
     // darf, zwei Zeilen gewesen. `inline-flex` an beiden Fassungen hält sie in der Zeile.
+    // R-0658 (BEN, Nacharbeit 5): hat der Server Schutzdaten erkannt, steht die Warnung als
+    // eigene Zeile UNTER der Erfolgszeile — `role="alert"`, damit sie angesagt wird, und über
+    // `aria-describedby` der Zeile zugeordnet, die nach dem Einreichen den Fokus bekommt.
+    const arten = erfolg.schutzdatenArten ?? [];
+    const warnung =
+      arten.length > 0
+        ? t("schutzdaten.warnung", {
+            arten: arten.map((art) => t(`schutzdaten.art.${art}`)).join(t("schutzdaten.und")),
+          })
+        : null;
     return (
       <div
         ref={erfolgRef}
         data-testid="blatt-lage"
         tabIndex={-1}
+        aria-describedby={warnung ? BLATT_SCHUTZDATEN_WARNUNG_ID : undefined}
         className="pointer-events-auto text-[13px] text-trust-pos-text"
       >
         {t("erfassen.eingereicht")}{" "}
@@ -3514,6 +3550,17 @@ function BlattLage({
           <button type="button" onClick={aufNeuerEintrag} className="ml-2 font-semibold underline">
             {t("fd.newEntry")}
           </button>
+        ) : null}
+        {warnung ? (
+          <span
+            id={BLATT_SCHUTZDATEN_WARNUNG_ID}
+            role="alert"
+            data-testid="blatt-schutzdaten-warnung"
+            data-arten={arten.join(" ")}
+            className="mt-1 block text-trust-crit-text"
+          >
+            {warnung}
+          </span>
         ) : null}
       </div>
     );

@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 // was eine Bildunterschrift ist (Alt-Platzhalter zählen nicht, 500 Zeichen je Fußnote, 50 je KO).
 import { decodeHtmlEntities, searchCaptionTexts } from "../../structure";
 import { isValidConfidentiality } from "./confidentiality";
+import { inSchutzdatenQuarantaene } from "./schutzdaten";
 import type { Confidentiality, KnowledgeObject, KoVersionSnapshot } from "./types";
 
 // ================================================================================================
@@ -626,6 +627,12 @@ interface ProjektionsInhalt {
 }
 
 function inhaltVon(ko: KnowledgeObject): ProjektionsInhalt {
+  // R-0658: ein Objekt in Schutzdaten-Quarantäne trägt KEINEN durchsuchbaren Text — die Zeile
+  // entsteht (Rebuild, Readiness und Audit sehen ein projiziertes Objekt), aber Personalnummer oder
+  // Kontodaten gelangen gar nicht erst in den Suchbestand. Begründung in `schutzdaten.ts`.
+  if (inSchutzdatenQuarantaene(ko)) {
+    return { titleText: "", statementText: "", captionText: "", bodyText: "" };
+  }
   return {
     titleText: normalizeSearchFragment(ko.title),
     statementText: normalizeSearchFragment(ko.statement),

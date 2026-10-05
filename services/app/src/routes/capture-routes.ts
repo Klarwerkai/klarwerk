@@ -27,6 +27,8 @@ import {
   alsSchreibpatch,
   createOperationFingerprint,
   gelieferteDokumentId,
+  inSchutzdatenQuarantaene,
+  isValidConfidentiality,
 } from "../../../knowledge-object";
 // JOB 2703 D2: DIE EINE Kuerzungsregel fuer die Kernaussage — dieselbe Funktion wie im
 // Confluence-Mapper (services/confluence/src/mapper.ts). Der Server kuerzt; der Client nicht mehr.
@@ -256,6 +258,15 @@ function docxDraftTooLargeErrorHandler(
   });
 }
 
+/**
+ * N11 (Pedi, Entscheidung 23 vom 05.09.2026): der Übernahme-Standard einer Word-Dokumentübernahme
+ * ohne ausdrückliche Einstufung — derselbe Wert wie im Import-Kern (`UEBERNAHME_STANDARD`,
+ * services/library-analytics). Gilt für beide Word-Übernahmewege beim Neuanlegen: das ganze
+ * Dokument (`POST /api/drafts/from-docx`) und die Markierung (`POST /api/drafts` mit
+ * `origin: "word_addin"`, Nacharbeit 11). Manuelle Entwürfe und Altentwürfe bleiben unberührt.
+ */
+const WORD_UEBERNAHME_STANDARD = "intern" as const;
+
 /** Was das Panel schickt: die `.docx` als Base64 plus die Angaben, die es ohnehin kennt. */
 export interface DocxDraftRequest {
   /** Dateiname, für Titel und Formatprüfung. */
@@ -264,6 +275,12 @@ export interface DocxDraftRequest {
   data: string;
   /** Titelvorschlag des Panels; ohne ihn wird der Dateiname genommen. */
   title?: string;
+  /**
+   * R-0632: die im Panel mit einem Klick GEWÄHLTE Stufe. Fehlt sie, entsteht der Entwurf wie
+   * bisher ohne Stufe — „nicht gewählt" wird nicht als Wahl ausgegeben, und das Einreichen fragt
+   * danach (Q3). Ein gesetzter, aber unbekannter Wert wird mit 400 abgewiesen, nie geraten.
+   */
+  confidentiality?: unknown;
   /** R-0169 (Nacharbeit 5): die im Word-Dokument gespeicherte Dokumentkennung, falls vorhanden. */
   dokumentId?: string;
 }
@@ -1099,6 +1116,14 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
           sendeUnbekannteDokumentkennung(reply);
           return;
         }
+        // N11 (BEN, Nacharbeit 11): auch die Übernahme einer Word-MARKIERUNG ist eine Übernahme aus
+        // Word — ohne ausdrückliche Panelwahl gilt derselbe Übernahme-Standard wie an `/from-docx`.
+        // Nur beim NEU Anlegen: manuelle Entwürfe (ohne Word-Herkunft) und bereits gespeicherte,
+        // unklassifizierte Altentwürfe bleiben ohne Vorbelegung (Q3, N-0017/UX-05).
+        const neuerEntwurf: DraftPayload =
+          ausWord && gestalt.payload.confidentiality === undefined
+            ? { ...gestalt.payload, confidentiality: WORD_UEBERNAHME_STANDARD }
+            : gestalt.payload;
         try {
           // JOB 2697: DIE ROUTE ÜBERSETZT NUR. Sie trifft keine eigene Entscheidung über
           // Wiederholung oder Konflikt und führt kein eigenes Register — der Dienst hat
@@ -1109,7 +1134,7 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
           // Bestandspfad antwortet unverändert mit 201.
           const { draft, angelegt } = await capture.createDraftVorgang(
             // JOB 2703 D2: die Aussage geht kanonisch gekuerzt in die Ablage — eine Regel, ein Ort.
-            mitKanonischerAussage(gestalt.payload),
+            mitKanonischerAussage(neuerEntwurf),
             user.id,
             vorgangsId,
           );
@@ -1167,12 +1192,22 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
           name,
           data,
           title,
+          confidentiality,
           dokumentId: rohDokumentId,
         } = request.body ?? ({} as DocxDraftRequest);
         if (typeof data !== "string" || data.length === 0) {
           reply
             .code(400)
             .send({ error: "BAD_REQUEST", message: "Es wurden keine Dokumentbytes uebergeben." });
+          return;
+        }
+        // R-0632: dieselbe Schärfe wie die Gestaltprüfung von `POST /api/drafts`
+        // (`draft-payload-schema.ts`) — gültig oder abgewiesen, vor jeder Umwandlung.
+        if (confidentiality !== undefined && !isValidConfidentiality(confidentiality)) {
+          reply.code(400).send({
+            error: "BAD_REQUEST",
+            message: "confidentiality muss intern, vertraulich oder streng_vertraulich sein.",
+          });
           return;
         }
         // R-0169 (Nacharbeit 5): dasselbe Tor wie an POST /api/drafts — vor jeder Umwandlung.
@@ -1305,6 +1340,15 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
             statement: kernaussageAusKlartext(reich.text) || titelVorschlag || "",
             bodyHtml,
             origin: "word_addin",
+            // R-0632 / N11 (BEN, Nacharbeit 10): die ausdrückliche Wahl aus dem Panel gilt. OHNE Wahl
+            // gilt für diese ÜBERNAHME eines Word-Dokuments der Übernahme-Standard „intern" — Pedis
+            // jüngere Entscheidung 23 (05.09.2026) für Word-/Dateiübernahmen, gespeichert als echte
+            // Stufe und damit bis zum KI-Egress wirksam. ABGEGRENZT: das manuelle Erfassen (Blatt,
+            // Arbeitsraum, `POST /api/drafts`) behält seine Pflicht zur ausdrücklichen Wahl (Q3,
+            // N-0017/UX-05) — dort wird nichts vorbelegt.
+            confidentiality: isValidConfidentiality(confidentiality)
+              ? confidentiality
+              : WORD_UEBERNAHME_STANDARD,
             // JOB 512 (R5): die Zahl der Bilder in der QUELLDATEI, vor jedem Budgetabzug. Der
             // Client entscheidet damit fail-closed, ob etwas verloren ging.
             sourceImageCount: quellbilder,
@@ -1726,7 +1770,9 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
           // arbeitet ihn danach ab (dieselben Erkennungs-Pfade, Status im Board sichtbar).
           // Wie in ko-routes: die Antwort trägt den Vermerk ehrlich mit (aiCheck pending);
           // Nachlesen VOR dem enqueue → deterministischer Job-Start in der Antwort.
-          if (!aiCheckWorker) {
+          // R-0658: dieselbe Regel wie am direkten Einreichen (`ko-routes.ts`) — ein Objekt in
+          // Schutzdaten-Quarantäne geht nicht in die KI-Prüfung, auch nicht bei der Wiederholung.
+          if (!aiCheckWorker || inSchutzdatenQuarantaene(stand)) {
             return undefined;
           }
           if (stand.aiCheck) {
@@ -1784,7 +1830,10 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
               const nachgeholt = await nacharbeiten(replay.id, body.reviewerIds);
               // 200 statt 201: derselbe Vorgang, aber das Objekt entsteht NICHT jetzt.
               reply.code(200).send(nachgeholt ?? replay);
-              await indexKoForDuplicatePrefilter(replay, semanticPrefilter);
+              // R-0658: ein Objekt in Schutzdaten-Quarantäne kommt nicht in die Ähnlichkeitsablage.
+              if (!inSchutzdatenQuarantaene(replay)) {
+                await indexKoForDuplicatePrefilter(replay, semanticPrefilter);
+              }
               return;
             }
           }
@@ -1841,12 +1890,18 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
           // `deleteDraft` (weich). Es sind zwei verschiedene Vorgänge, die nur zufällig beide
           // dazu führen, dass der Entwurf aus der Liste verschwindet.
           await capture.entwurfVerbraucht(request.params.id);
+          // R-0658: ein Objekt in Schutzdaten-Quarantäne geht weder in die KI-Prüfung
+          // (`nacharbeiten`) noch in die Ähnlichkeitsablage (unten). Die Warnung reist als
+          // `schutzdatenQuarantaene` in der 201-Antwort an das Blatt.
+          const inQuarantaene = inSchutzdatenQuarantaene(created);
           const submitted = (await nacharbeiten(created.id, body.reviewerIds)) ?? created;
           reply.code(201).send(submitted);
           // Weg 3 (B6): Einbettung + Ablage NACH der Antwort — der Nutzer wartet nie darauf. Flag aus
           // = No-op; Fehler brechen den (bereits gesendeten) Submit nie. await nur zur deterministischen
           // Fertigstellung der Ablage, nicht zur Client-Latenz (201 ist schon raus).
-          await indexKoForDuplicatePrefilter(created, semanticPrefilter);
+          if (!inQuarantaene) {
+            await indexKoForDuplicatePrefilter(created, semanticPrefilter);
+          }
         } catch (error) {
           // JOB 2684 D1: ein veralteter Stand ist ein Konflikt, kein Eingabefehler — 409, und es ist
           // NICHTS entstanden (der Vergleich steht vor `continueDraft` und vor `ko.create`).

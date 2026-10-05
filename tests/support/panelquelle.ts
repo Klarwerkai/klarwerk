@@ -91,16 +91,32 @@ const MARKE_KOPF_ENDE = '"use strict";\n';
  * nur in diesen drei Stellen ab (+60/-8), `taskpane.html` nur im Verweis auf `marke.js`,
  * `taskpane.css` gar nicht.
  *
- * Aufnahme 20260922 · gesamt-bestandsblick (R-0427, Bens Befund Nacharbeit 3): dieselbe Regel.
- * Hinzugekommen ist GENAU der Absatzwechselweg nach bewusstem Ja — in `taskpane.html` die
- * Einstellungszeile `#einst-absatzblick` (5 Zeilen), in `taskpane.js` drei Texte DE/EN/NL in
- * `KA3_TEXTE`, der Aufruf `ka3AbsatzPruefen()` in `ka3Planen`, die Beschriftung in
- * `ka3Neuzeichnen` und der Block `ka3AbsatzPruefen`/Schalter (+60/-0 am zusammengefügten
- * Dokument). Gemessen: das genau nach `fuegePanelZusammen` aus den vier Dateien zusammengesetzte
- * Dokument hat den Blob `0f733b04…` (`git diff --no-index --full-index`); dasselbe Verfahren
- * ergibt am unveränderten Stand `8e0ee5cc` wörtlich den alten Wert `90936dcc…`.
+ * Aufnahme GESAMT-VERTRAULICHKEIT-ERFASSUNG (R-0632, Integration mit `main` 38508a1e): dieselbe
+ * Regel. Die Stufenwahl war in der ungeschnittenen Datei gebaut und ist übertragen — Markup
+ * `#capture-stufe` in `taskpane.html`, Logik in `taskpane.js` (optionales `confidentiality` in
+ * `draftPostPayload`/`prepareWordDraftRequest`, `captureStufeGewaehlt`/`renderCaptureStufe`,
+ * Klick-Zuhörer, vier Wörterbuchschlüssel je Sprache, Stufe im from-docx-Rumpf nur bei echter Wahl).
+ * Der Bezugspunkt MUSS deshalb wandern; der Blob des zusammengefügten Dokuments war bei der
+ * Konfliktlösung nicht berechenbar (kein Hash-Werkzeug zugelassen). E2 meldet ihn im Prüflauf als
+ * „Received"; er wird danach gemessen übernommen.
+ * GEMESSEN im Prüflauf zu Kandidat 83c9a4b8: `d5d7a936…` (unten eingetragen). DANACH ERNEUT GEÄNDERT,
+ * nur in der Ablage: die Knopfgruppe steht in der Zeile von `#capture-aktion`, ihr Kommentar in
+ * `taskpane.js`, damit die Markup-Datei unter 500 Zeilen bleibt (A2/E5). Der Blob muss deshalb EIN
+ * weiteres Mal gemessen übernommen werden.
+ * NACHARBEIT 15: GEMESSEN im Prüflauf zu Kandidat 124645e8 (`b3f3846c…`, „Received" von E2) und
+ * unverändert übernommen; die vier Panel-Dateien sind seit dieser Messung unberührt.
+ *
+ * Aufnahme 20260922 · gesamt-bestandsblick (R-0427, Bens Befund Nacharbeit 3; Integration mit
+ * `main` a6c9c5d9): dieselbe Regel. Auf die Stufenwahl oben kommt GENAU der Absatzwechselweg nach
+ * bewusstem Ja — in `taskpane.html` die Einstellungszeile `#einst-absatzblick` (in der Zeile hinter
+ * `#einst-mitlesen`, damit die Markup-Datei unter 500 Zeilen bleibt), in `taskpane.js` drei Texte
+ * DE/EN/NL in `KA3_TEXTE`, der Aufruf `ka3AbsatzPruefen()` in `ka3Planen`, die Beschriftung in
+ * `ka3Neuzeichnen` und der Block `ka3AbsatzPruefen`/Schalter (+48/-1 am zusammengefügten Dokument).
+ * GEMESSEN beim Auflösen: das genau nach `fuegePanelZusammen` aus den vier Dateien zusammengesetzte
+ * Dokument hat den Blob `eb344beb…` (`git diff --no-index --full-index`); dasselbe Verfahren ergibt
+ * an den vier Dateien von `main` a6c9c5d9 wörtlich deren Wert `b3f3846c…`.
  */
-export const PANEL_VOR_SCHNITT_BLOB = "0f733b04c68b1823b51e41001d9ac8efac82db23";
+export const PANEL_VOR_SCHNITT_BLOB = "eb344bebd7e450241a741b8220eceab0bb68a043";
 
 export interface PanelTeile {
   html: string;

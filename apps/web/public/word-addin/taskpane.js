@@ -241,8 +241,9 @@
     // undefiniert, `JSON.stringify` laesst das Feld weg — der Rumpf ist dann BYTEGLEICH der von
     // vorher (nicht `""`, nicht `null`), und der Bibliotheksspiegel `wordAddin.ts#draftPostPayload`
     // (drei Parameter, nicht Zielpfad dieses Jobs) bleibt der gemessene Zwilling.
-    function draftPostPayload(title, statement, bodyHtml, category) {
-      return JSON.stringify({ title: title, statement: statement, bodyHtml: bodyHtml, category: category, origin: "word_addin" });
+    // R-0632: `confidentiality` ebenso OPTIONAL — nur eine echte Panelwahl reist mit.
+    function draftPostPayload(title, statement, bodyHtml, category, confidentiality) {
+      return JSON.stringify({ title: title, statement: statement, confidentiality: confidentiality, bodyHtml: bodyHtml, category: category, origin: "word_addin" });
     }
 
     // R-0169 (Nacharbeit 5) — Spiegel von wordAddin.ts (WORD_ADDIN_DOKUMENT_SETTING,
@@ -351,13 +352,14 @@
       return { html: aktuell, dropped: dropped, passt: false };
     }
 
-    function prepareWordDraftRequest(html, text, titleOverride, categoryWahl) {
+    function prepareWordDraftRequest(html, text, titleOverride, categoryWahl, stufeWahl) {
       // JOB 3057 K2: ein von Hand gesetzter Titel (Zeile „Titel") geht vor der Ableitung.
       var eigen = (titleOverride || "").slice(0, WORD_ADDIN_TITLE_MAX).trim();
       var title = eigen.length > 0 ? eigen : deriveDraftTitleFromSelection(text);
       // JOB 3555 K2b: der gewaehlte Bereich (Zeile „Bereich"). NUR eine echte Wahl reist mit —
       // ohne sie bleibt `category` undefiniert und der Payload unveraendert wie bisher.
       var category = typeof categoryWahl === "string" && categoryWahl.length > 0 ? categoryWahl : undefined;
+      var stufe = stufeWahl === "intern" || stufeWahl === "vertraulich" || stufeWahl === "streng_vertraulich" ? stufeWahl : undefined;
       // JOB 2703 D3: KEINE Kuerzung mehr im Client. Bis D2 stand hier `slice(0, 500)` — was der
       // Client abschnitt, sah der Server nie, und keine kanonische Regel konnte es zurueckholen.
       // Der Server kuerzt die Aussage an EINEM Ort (kernaussageAusKlartext, capture-routes.ts).
@@ -369,19 +371,19 @@
       // "alles gut", obwohl Formatierung und Bilder verschwanden — die stille Null. Keine
       // geratene Bildzahl: wo kein HTML ankam, ist jede Zahl erfunden.
       if (inner.length === 0) {
-        return { payload: draftPostPayload(title, statement, selectionToBodyHtml(text), category), title: title, usedHtml: false, overBudget: false, undeliveredImages: 0, plainTextFallback: true, droppedImages: 0 };
+        return { payload: draftPostPayload(title, statement, selectionToBodyHtml(text), category, stufe), title: title, usedHtml: false, overBudget: false, undeliveredImages: 0, plainTextFallback: true, droppedImages: 0 };
       }
       var passt = function (kandidat) {
-        return wordHtmlUtf8Bytes(draftPostPayload(title, statement, kandidat, category)) <= WORD_ADDIN_BODY_BUDGET_BYTES;
+        return wordHtmlUtf8Bytes(draftPostPayload(title, statement, kandidat, category, stufe)) <= WORD_ADDIN_BODY_BUDGET_BYTES;
       };
-      var htmlPayload = draftPostPayload(title, statement, inner, category);
+      var htmlPayload = draftPostPayload(title, statement, inner, category, stufe);
       if (wordHtmlUtf8Bytes(htmlPayload) > WORD_ADDIN_BODY_BUDGET_BYTES) {
         // JOB 2613 D1: erst Bilder weglassen, dann erst den ganzen Rumpf aufgeben.
         var getrimmt = trimWordImagesToBudget(inner, passt);
         if (getrimmt.passt && getrimmt.dropped > 0) {
-          return { payload: draftPostPayload(title, statement, getrimmt.html, category), title: title, usedHtml: true, overBudget: false, undeliveredImages: countUndeliveredWordImages(getrimmt.html), plainTextFallback: false, droppedImages: getrimmt.dropped };
+          return { payload: draftPostPayload(title, statement, getrimmt.html, category, stufe), title: title, usedHtml: true, overBudget: false, undeliveredImages: countUndeliveredWordImages(getrimmt.html), plainTextFallback: false, droppedImages: getrimmt.dropped };
         }
-        return { payload: draftPostPayload(title, statement, selectionToBodyHtml(text), category), title: title, usedHtml: false, overBudget: true, undeliveredImages: undeliveredImages, plainTextFallback: false, droppedImages: 0 };
+        return { payload: draftPostPayload(title, statement, selectionToBodyHtml(text), category, stufe), title: title, usedHtml: false, overBudget: true, undeliveredImages: undeliveredImages, plainTextFallback: false, droppedImages: 0 };
       }
       return { payload: htmlPayload, title: title, usedHtml: true, overBudget: false, undeliveredImages: undeliveredImages, plainTextFallback: false, droppedImages: 0 };
     }
@@ -1552,6 +1554,7 @@
         // Bestand (die Route sieht nur die Sicht des Fragenden, category-routes.ts:9-11), „Fehler"
         // sagt Fehler statt Leere. Die Zeile bleibt in jeder Lage sichtbar, Senden bleibt moeglich.
         captureBereichLabel: "Bereich",
+        captureStufeLabel: "Vertraulichkeit", captureStufeIntern: "Öffentlich-intern", captureStufeVertraulich: "Vertraulich", captureStufeStreng: "Streng vertraulich",
         captureBereichWahl: "Bereich wählen",
         captureBereichLaedt: "Wird geladen …",
         captureBereichLeer: "Noch kein Bereich in deinem Bestand",
@@ -2010,6 +2013,7 @@
         // JOB 3555 K2b: „Area" ist der Begriff, den dieses Panel fuer `category` schon fuehrt
         // (bestandBereich: „Area: {bereich}") — kein zweites Wort fuer dieselbe Sache.
         captureBereichLabel: "Area",
+        captureStufeLabel: "Confidentiality", captureStufeIntern: "Internal", captureStufeVertraulich: "Confidential", captureStufeStreng: "Strictly confidential",
         captureBereichWahl: "Choose area",
         captureBereichLaedt: "Loading …",
         captureBereichLeer: "No area in your knowledge yet",
@@ -2345,6 +2349,7 @@
         captureTitleLabel: "Titel",
         // JOB 3555 K2b: „Gebied" wie in bestandBereich („Gebied: {bereich}").
         captureBereichLabel: "Gebied",
+        captureStufeLabel: "Vertrouwelijkheid", captureStufeIntern: "Intern", captureStufeVertraulich: "Vertrouwelijk", captureStufeStreng: "Strikt vertrouwelijk",
         captureBereichWahl: "Gebied kiezen",
         captureBereichLaedt: "Wordt geladen …",
         captureBereichLeer: "Nog geen gebied in jouw bestand",
@@ -2759,6 +2764,21 @@
     var captureBereiche = [];
     var captureBereichWahl = "";
     var captureBereichLauf = 0;
+    // R-0632: DIE STUFE MIT EINEM KLICK (#capture-stufe in taskpane.html). Drei Knoepfe, keiner
+    // vorgewaehlt — „nicht gewaehlt" wird nicht als Wahl ausgegeben, und ohne Wahl reist kein Feld
+    // mit (der Server setzt dann den Uebernahme-Standard, N11). Bewusst KEIN `label.capture-zeile` in
+    // #capture-felder: dort stehen genau zwei Zeilen (Zielbild K2, gepinnt). Das Markup steht in der
+    // Zeile von #capture-aktion, weil die Markup-Datei unter 500 Zeilen bleiben muss (R-1611,
+    // probeschnitt A2 / schnitt-echt E5). Die Wahl reist an BEIDEN Einreichwegen mit (sendeEntwurf).
+    // Die im Panel per Klick gewaehlte Stufe ("" = nicht gewaehlt; nur die drei Werte gehen hinaus).
+    var CAPTURE_STUFEN = ["intern", "vertraulich", "streng_vertraulich"], captureStufeWahl = "";
+    function captureStufeGewaehlt() { return CAPTURE_STUFEN.indexOf(captureStufeWahl) >= 0 ? captureStufeWahl : ""; }
+    function renderCaptureStufe() { // `aria-pressed` ist die Auskunft, nicht die Farbe
+      CAPTURE_STUFEN.forEach(function (s) {
+        var k = document.getElementById("capture-stufe-" + s), an = captureStufeGewaehlt() === s;
+        if (k) { k.setAttribute("aria-pressed", an ? "true" : "false"); k.className = an ? "primary" : "ghost"; }
+      });
+    }
 
     function updateSendState() {
       var sendBtn = document.getElementById("send-btn");
@@ -4882,7 +4902,8 @@
         // Parameter, der in beiden Faellen mitginge, haette den Pin gebrochen und dabei nichts
         // gewonnen: `undefined` und „kein Argument" bauen denselben Payload.
         var bereichWahl = captureBereichGewaehlt();
-        var prepared = bereichWahl
+        var stufeWahl = captureStufeGewaehlt(); // R-0632: an derselben Entscheidungsstelle, Budget misst mit
+        var prepared = stufeWahl ? prepareWordDraftRequest(html, text, titelWunsch, bereichWahl || undefined, stufeWahl) : bereichWahl
           ? prepareWordDraftRequest(html, text, titelWunsch, bereichWahl)
           : prepareWordDraftRequest(html, text, titelWunsch);
         // JOB 3594 K2b RUNDE 2: hier stand `showSendStatus("busy", t("sendBusy"))`. Der Satz steht
@@ -5085,6 +5106,7 @@
       // capture-routes.ts); ohne ihn nimmt die Route wie bisher den Dateinamen.
       var titel = (titelWunsch || "").slice(0, WORD_ADDIN_TITLE_MAX).trim();
       if (titel.length > 0) { koerper.title = titel; }
+      if (captureStufeGewaehlt()) { koerper.confidentiality = captureStufeGewaehlt(); } // R-0632: nur echte Wahl
       // R-0169 (Nacharbeit 5): dieselbe Dokumentkennung wie im Auswahl-Weg.
       var gespeicherteKennung = gespeicherteDokumentkennung();
       if (gespeicherteKennung) { koerper.dokumentId = gespeicherteKennung; }
@@ -6881,6 +6903,11 @@
     document.getElementById("capture-bereich").addEventListener("change", function () {
       captureBereichWahl = this.value;
     });
+    // R-0632: ein Klick waehlt die Stufe; sie wird gewechselt, nie still zurueckgenommen.
+    CAPTURE_STUFEN.forEach(function (s) {
+      document.getElementById("capture-stufe-" + s).addEventListener("click", function () { captureStufeWahl = s; renderCaptureStufe(); });
+    });
+    renderCaptureStufe();
     // JOB 3506 K2b: das „?"-Menue der Erfassen-Flaeche ist entfallen — es gibt nichts mehr auf-
     // und zuzuklappen. Die vier Saetze stehen offen hinter dem Zahnrad (#einst-erfassen).
 
@@ -8081,52 +8108,44 @@
       ka3AbsatzPruefen();
     }
 
-    // R-0427 — BESTANDSBLICK BEIM ABSATZWECHSEL, NUR NACH BEWUSSTEM JA. Der Schalter
-    // `#einst-absatzblick` steht AUS; erst sein Klick schaltet den Weg ein, und das gilt nur fuer
-    // dieses Fenster (nichts gespeichert, derselbe Schalter nimmt es zurueck). Gelesen wird je Anlass
-    // nur, im WIEVIELTEN Absatz die Markierung beginnt (Absatzzahl bis dorthin, kein Text); wechselt
-    // er, laeuft derselbe Bestandsblick wie nach der Schreibruhe. Kein Fokus, kein Schreibweg.
+    // R-0427 — BESTANDSBLICK BEIM ABSATZWECHSEL, NUR NACH BEWUSSTEM JA. `#einst-absatzblick` steht
+    // AUS; erst sein Klick schaltet ein (nur dieses Fenster, nichts gespeichert, zuruecknehmbar).
+    // Gelesen wird je Anlass nur die Absatzzahl bis zur Markierung (kein Text); wechselt sie, laeuft
+    // derselbe Bestandsblick wie nach der Schreibruhe. Kein Fokus, kein Schreibweg. Host ohne diese
+    // Lesart (WordApi 1.3 `expandTo`): der Weg schweigt — kein Ersatzsignal, kein Takt.
     var ka3AbsatzAn = false;
     var ka3Absatz = null;
+    var ka3AbsatzSchalter = document.getElementById("einst-absatzblick");
 
     function ka3AbsatzPruefen() {
       if (!ka3AbsatzAn || ka3Beendet || !window.Word || typeof Word.run !== "function") { return; }
-      Promise.resolve()
-        .then(function () {
-          return Word.run(function (context) {
-            var dok = context.document;
-            var davor = dok.body.getRange("Start").expandTo(dok.getSelection().getRange("Start"));
-            var absaetze = davor.paragraphs;
-            absaetze.load("items/alignment");
-            return context.sync().then(function () {
-              var vorher = ka3Absatz;
-              ka3Absatz = absaetze.items.length;
-              if (ka3AbsatzAn && vorher !== null && vorher !== ka3Absatz) {
-                ka3Ausfuehren("absatzwechsel");
-              }
-            });
+      Promise.resolve().then(function () {
+        return Word.run(function (context) {
+          var dok = context.document;
+          var absaetze = dok.body.getRange("Start")
+            .expandTo(dok.getSelection().getRange("Start")).paragraphs;
+          absaetze.load("items/alignment");
+          return context.sync().then(function () {
+            var vorher = ka3Absatz;
+            ka3Absatz = absaetze.items.length;
+            if (ka3AbsatzAn && vorher !== null && vorher !== ka3Absatz) { ka3Ausfuehren("absatzwechsel"); }
           });
-        })
-        // Host ohne diese Lesart: der Weg schweigt — kein Ersatzsignal, kein Takt.
-        .catch(function () { ka3Absatz = null; });
+        });
+      }).catch(function () { ka3Absatz = null; });
     }
-
-    var ka3AbsatzSchalter = document.getElementById("einst-absatzblick");
 
     function ka3AbsatzBeschriften() {
       if (!ka3AbsatzSchalter) { return; }
       document.getElementById("einst-absatzblick-text").textContent = t("einstAbsatzblick");
       ka3AbsatzSchalter.setAttribute("aria-label", t("einstAbsatzblick"));
     }
-
     if (ka3AbsatzSchalter) {
       ka3AbsatzSchalter.addEventListener("click", function () {
         ka3AbsatzAn = !ka3AbsatzAn;
         ka3Absatz = null;
         ka3AbsatzSchalter.className = ka3AbsatzAn ? "schalter an" : "schalter";
         ka3AbsatzSchalter.setAttribute("aria-checked", ka3AbsatzAn ? "true" : "false");
-        // Das Ja merkt sich nur den Ausgangsabsatz; gefragt wird erst beim naechsten Wechsel.
-        ka3AbsatzPruefen();
+        ka3AbsatzPruefen(); // merkt nur den Ausgangsabsatz; gefragt wird erst beim naechsten Wechsel
       });
     }
     ka3AbsatzBeschriften();
