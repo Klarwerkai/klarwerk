@@ -59,6 +59,8 @@ function zaehlenderPruefjob() {
   const worker: AiCheckWorker = {
     enqueue,
     has: (koId) => eingereiht.has(koId),
+    // R-0208 (main): der stille Job arbeitet nie — es läuft also nichts.
+    laeuft: () => false,
     queuedCount: () => 0,
     idle: async () => undefined,
   };
