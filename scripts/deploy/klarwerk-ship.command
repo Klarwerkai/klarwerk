@@ -16,6 +16,7 @@ set -euo pipefail
 
 REPO="$HOME/Documents/dev_Klarwerk"
 VERSION_FILE="apps/web/src/version.ts"
+PKG_FILE="package.json"
 DEPLOY_REMOTE="github"   # Coolify baut von hier
 MIRROR_REMOTE="origin"   # Gitea-Spiegel (best effort)
 BRANCH="main"
@@ -79,7 +80,23 @@ case "${LAST}" in
   ''|*[!0-9]*) NEXT="${CUR}.1" ;;
   *)           NEXT="${BASE}.$((LAST + 1))" ;;
 esac
-echo "ℹ 2/5  Versions-Zähler: ${CUR} → ${NEXT}"
+# R-1028: /health liest die Version aus package.json (nur die liegt im Image). Beide Stellen
+# bekommen dieselbe Nummer im selben Commit — sonst meldet /health einen anderen Stand als die
+# Topbar (Wächter: tests/app/health-version-commit.test.ts). Geprüft wird VOR jedem Schreiben:
+# Trägt package.json nicht genau einmal die bisherige Nummer, bricht der Lauf ab, ohne eine Datei
+# anzufassen. Vorhandene Arbeitsänderungen in beiden Dateien bleiben unberührt.
+# Punkte der Nummer wörtlich nehmen (in Mustern stünde „." sonst für jedes Zeichen): jeder Punkt
+# wird zur Zeichenklasse [.]. Bewusst per sed statt `${CUR//…}` — die Parametererweiterung enthielte
+# die Zeichenfolge Punkt-Schrägstrich, die der cwd-Wächter (tools/check-cwd-contract.mjs) zu Recht
+# als relative Pfadangabe liest.
+CUR_RE="$(printf '%s' "$CUR" | sed 's/[.]/[.]/g')"; NEXT_RE="$(printf '%s' "$NEXT" | sed 's/[.]/[.]/g')"
+PKG_TREFFER="$(grep -c "^  \"version\": \"${CUR_RE}\",\{0,1\}$" "$PKG_FILE" || true)"
+if [ "${PKG_TREFFER}" != "1" ]; then
+  echo "✗ ${PKG_FILE} trägt nicht genau einmal die Version ${CUR} (wie ${VERSION_FILE}) —"
+  echo "  Versionen laufen auseinander. Abgebrochen, nichts geschrieben, committet oder gepusht."
+  exit 1
+fi
+echo "ℹ 2/5  Versions-Zähler: ${CUR} → ${NEXT} (${VERSION_FILE} und ${PKG_FILE})"
 echo ""
 
 # 3) EINE Sicherheits-Nachfrage vor den festen Schritten (Commit + Push + Deploy).
@@ -89,8 +106,17 @@ case "${ANS}" in
   *) echo "Abgebrochen — nichts geändert, gepusht oder deployt."; exit 0 ;;
 esac
 
-# 3a) Neue Version schreiben (BSD-sed: -i '') + committen.
-sed -i '' "s/\(APP_VERSION *= *\"\)[^\"]*\(\"\)/\1${NEXT}\2/" "$VERSION_FILE"
+# 3a) Neue Version schreiben + committen. `-i.kwbak` statt BSD-`-i ''`: gleiches Verhalten unter
+# macOS und GNU-sed; die Sicherung wird sofort entfernt. Geändert wird NUR die Versionszeile.
+sed -i.kwbak "s/\(APP_VERSION *= *\"\)${CUR_RE}\(\"\)/\1${NEXT}\2/" "$VERSION_FILE" && rm -f "${VERSION_FILE}.kwbak"
+sed -i.kwbak "s/^\(  \"version\": \"\)${CUR_RE}\(\"\)/\1${NEXT}\2/" "$PKG_FILE" && rm -f "${PKG_FILE}.kwbak"
+if ! grep -q "APP_VERSION *= *\"${NEXT_RE}\"" "$VERSION_FILE" || ! grep -q "^  \"version\": \"${NEXT_RE}\"" "$PKG_FILE"; then
+  # Nur die EIGENE Änderung zurücknehmen (NEXT → CUR in genau dieser Zeile), nie die ganze Datei.
+  sed -i.kwbak "s/\(APP_VERSION *= *\"\)${NEXT_RE}\(\"\)/\1${CUR}\2/" "$VERSION_FILE" && rm -f "${VERSION_FILE}.kwbak"
+  sed -i.kwbak "s/^\(  \"version\": \"\)${NEXT_RE}\(\"\)/\1${CUR}\2/" "$PKG_FILE" && rm -f "${PKG_FILE}.kwbak"
+  echo "✗ Versionsnummer ließ sich nicht in beiden Dateien setzen — eigene Änderung zurückgenommen, abgebrochen."
+  exit 1
+fi
 MSG="${1:-KLARWERK Ship v${NEXT}}"
 git add -A
 git commit -m "${MSG}"
@@ -123,7 +149,17 @@ echo ""
 
 # 5) Live-Update: stößt den Coolify-Deploy an, wartet und prüft die Live-Seite.
 echo "▶ 5/5  Live-Update (Coolify) …"
-bash "$REPO/scripts/deploy/klarwerk-live-update.command"
+# R-0786: „fertig" erst, wenn /health GENAU den gepushten Commit gesund meldet. Jeder andere
+# Ausgang des Live-Updates ist ein Fehlschlag und beendet diesen Lauf mit dessen Exitcode.
+SHIP_COMMIT="$(git rev-parse HEAD)"
+LU_CODE=0
+bash "$REPO/scripts/deploy/klarwerk-live-update.command" "${SHIP_COMMIT}" || LU_CODE=$?
+if [ "${LU_CODE}" -ne 0 ]; then
+  echo ""
+  echo "✗ v${NEXT} (${SHIP_COMMIT}) ist NICHT als geliefert bestätigt (Live-Update Exit ${LU_CODE})."
+  echo "  Gepusht ist der Stand, live nachgewiesen nicht — nicht als fertig melden."
+  exit "${LU_CODE}"
+fi
 
 echo ""
 echo "════════════════════════════════════════════════════════"

@@ -27,6 +27,7 @@
 import { AlertTriangle, CheckCircle2, Clock, HelpCircle, XCircle } from "lucide-react";
 import { useId } from "react";
 import { useTranslation } from "react-i18next";
+import { IMPORT_FAILURE_CODE_TEXT } from "../../lib/importAccessState";
 import type { ImportRunStateView, ImportRunTone } from "../../lib/importResultView";
 import { cx } from "../ui";
 
@@ -70,6 +71,9 @@ export function RunStateBanner({
   const ton = TON[state.tone] ?? TON.warn;
   // Je Instanz eigen (s. Kopf): zwei Banner auf einer Seite dürfen sich keine Kennung teilen.
   const ueberschriftId = useId();
+  const fehlerTextKey: string | undefined = failureCode
+    ? IMPORT_FAILURE_CODE_TEXT[failureCode]
+    : undefined;
   return (
     <section
       aria-labelledby={ueberschriftId}
@@ -98,6 +102,13 @@ export function RunStateBanner({
         <p data-testid="w2-run-failure-code" className="mt-2 break-words text-[12.5px]">
           <span className="font-medium">{t("w2.run.failureCode")}: </span>
           <span className="font-mono">{failureCode}</span>
+        </p>
+      ) : null}
+      {/* R-0159: zum Code ein Satz in der Sprache der Fläche — nur für Codes mit eindeutiger
+          Bedeutung (lib/importAccessState.ts). Der Grund darunter bleibt der Wortlaut des Servers. */}
+      {fehlerTextKey ? (
+        <p data-testid="w2-run-failure-text" className="mt-1 break-words text-[12.5px]">
+          {t(fehlerTextKey)}
         </p>
       ) : null}
       {failureReason ? (

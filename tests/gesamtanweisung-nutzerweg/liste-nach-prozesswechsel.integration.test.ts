@@ -28,7 +28,7 @@
 //   · ECHTE TASTENDRÜCKE. In dieser Datei kommt `.click(` NICHT vor — das hält
 //     `zeuge-liste.test.ts` im Tor fest.
 //   · EIN ZWEITES, FRISCHES BROWSERPROFIL nach dem Neustart: neue Anmeldung, leerer Speicher, KEINE
-//     getippte Adresse. Der Weg geht über Zahnrad → Bereiche → Gesamtanweisungen → Eintrag.
+//     getippte Adresse. Der Weg geht über „Arbeitsbereiche“ → Gesamtanweisungen → Eintrag (FE-002; vorher Zahnrad → Bereiche).
 //
 // WAS SIE NICHT MISST und was deshalb nirgends behauptet wird: andere Browser, den Word-Add-in-Host,
 // Bildschirmleser, `docker compose`, TLS, die Liste in Englisch oder Niederländisch, und die
@@ -213,7 +213,7 @@ describe("JOB 4357 · der Menüpunkt führt ohne getippte Adresse auf den gespei
         await seite.goto(`${basis}/start`, { waitUntil: "domcontentloaded" });
         await menuewegOhneMaus(
           seite,
-          sprachbestand("de")["menue.weitereBereiche"] ?? "",
+          sprachbestand("de")["fe002.arbeitsbereiche"] ?? "",
           sprachbestand("de")["ga.bereich.titel"] ?? "",
           "de",
         );
@@ -269,7 +269,7 @@ describe("JOB 4357 · der Menüpunkt führt ohne getippte Adresse auf den gespei
         // RICHTIGE Zeile zeigt.
         await menuewegOhneMaus(
           nachher,
-          sprachbestand("de")["menue.weitereBereiche"] ?? "",
+          sprachbestand("de")["fe002.arbeitsbereiche"] ?? "",
           sprachbestand("de")["ga.bereich.titel"] ?? "",
           "de",
         );
@@ -311,7 +311,7 @@ describe("JOB 4357 · der Menüpunkt führt ohne getippte Adresse auf den gespei
         await nachher.goto(`${basis}/start`, { waitUntil: "domcontentloaded" });
         await menuewegOhneMaus(
           nachher,
-          sprachbestand("de")["menue.weitereBereiche"] ?? "",
+          sprachbestand("de")["fe002.arbeitsbereiche"] ?? "",
           sprachbestand("de")["ga.bereich.titel"] ?? "",
           "de",
         );

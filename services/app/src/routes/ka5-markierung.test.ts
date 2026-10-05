@@ -218,6 +218,10 @@ async function messplatz(freigebend = false): Promise<Messplatz> {
   const gesehen: (Record<string, unknown> | null)[] = [];
   const protokoll: string[] = [];
   const ask = {
+    // D5 (KI aus): die Route prüft nach der Antwort erneut; bei eingeschalteter KI tut das nichts.
+    kiStand: () => undefined,
+    kiSperreVorFrage: () => undefined,
+    kiSperreVorAuslieferung: () => undefined,
     ask: async (_q: string, _actor: string, _locale: string, opts?: Record<string, unknown>) => {
       gesehen.push(opts ?? null);
       return {
@@ -374,7 +378,13 @@ describe("KA5 · der Serververtrag der Markierung", () => {
       method: "POST",
       url: "/api/ask",
       headers: { "content-type": "application/json", ...KLARA_BINDUNG },
-      payload: { question: FRAGE, mode: "retrieval-only", selection: PASSAGE },
+      // R-0639 Runde 3 (Bens Befund B1): mit Klara-Bindung ist nur ausdrücklich `manual` getippt.
+      payload: {
+        question: FRAGE,
+        mode: "retrieval-only",
+        selection: PASSAGE,
+        questionSource: "manual",
+      },
     });
     // Die Freigabe hebt die Enge auf (KA4-Vertrag) — und die Markierung bleibt trotzdem dabei.
     expect(session.gesehen[0]).toEqual({ selection: PASSAGE });
@@ -385,7 +395,7 @@ describe("KA5 · der Serververtrag der Markierung", () => {
       method: "POST",
       url: "/api/ask",
       headers: { "content-type": "application/json", "x-als-addon": "ja", ...KLARA_BINDUNG },
-      payload: { question: FRAGE, selection: PASSAGE },
+      payload: { question: FRAGE, selection: PASSAGE, questionSource: "manual" },
     });
     expect(addon.gesehen[0]).toEqual({ gapPolicy: "count_only", selection: PASSAGE });
     await addon.app.close();
@@ -397,7 +407,7 @@ describe("KA5 · der Serververtrag der Markierung", () => {
       method: "POST",
       url: "/api/ask",
       headers: { "content-type": "application/json", ...KLARA_BINDUNG },
-      payload: { question: FRAGE, mode: "retrieval-only" },
+      payload: { question: FRAGE, mode: "retrieval-only", questionSource: "manual" },
     });
     expect(ohne.gesehen[0]).toBe(null);
     await ohne.app.close();

@@ -35,7 +35,14 @@
 // `erstinstallation.integration.test.ts` daneben — und meldet SICHTBAR, wenn es nicht messen kann.
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import Fastify from "fastify";
 import { describe, expect, it } from "vitest";
+import {
+  WORD_ADDIN_FRAME_ANCESTORS,
+  leseM365Mandanten,
+  wordAddinFrameAncestors,
+} from "../../services/app/src/office-host";
+import { registerSecurityHeaders } from "../../services/app/src/security-headers";
 import { STARTVERTRAG, fehlendePflichtwerte } from "../../services/app/src/start-vertrag";
 import { assertCookieSecurityConfig, selfRegistrationEnabled } from "../../services/auth";
 
@@ -812,5 +819,129 @@ describe("JOB 4201 · die Regeln schlagen an — kalibriert an synthetischen Ein
     expect(leer.CANONICAL_HOST ?? "klarwerk.ai").toBe("");
     const nichtGesetzt: Record<string, string | undefined> = {};
     expect(nichtGesetzt.CANONICAL_HOST ?? "klarwerk.ai").toBe("klarwerk.ai");
+  });
+});
+
+// ================================================================================================
+// M · KLARWERK_M365_MANDANTEN — DER DOKUMENTIERTE INSTALLATIONSWERT KOMMT IN DER ANWENDUNG AN
+// ================================================================================================
+//
+// Nachtrag zu arbeit:word-web-sharepoint-einbettung-20260926 (Befund der Auftragsprüfung): die
+// Anwendung las KLARWERK_M365_MANDANTEN, aber `docker-compose.prod.yml` reichte den Wert nicht
+// durch. Die Compose-Datei kennt kein `env_file` — ein Eintrag in der `.env` einer
+// Kundeninstallation wäre also wirkungslos geblieben, ohne dass es jemand gemerkt hätte.
+//
+// Gemessen wird der ganze Weg ohne Docker: der dokumentierte Wert aus der Anleitung
+// (`<!-- m365-beispiel -->`) → die Interpolation der Zeile im `environment:`-Block des Dienstes
+// `app` → die Umgebung der Anwendung → die echte Startregistrierung `registerSecurityHeaders`
+// (ihr Startprotokoll) und die daraus gebaute Direktive. Die Kopfzeile am Draht misst
+// `tests/office-web-anmeldung/sharepoint-mandanten.test.ts` mit demselben Wert.
+
+const M365 = "KLARWERK_M365_MANDANTEN";
+
+/**
+ * Die Compose-Interpolation einer Zeile des `environment:`-Blocks für eine gegebene `.env`.
+ * `${NAME:-x}`: fehlt NAME oder ist er leer, gilt `x`. Andere Formen braucht dieser Fall nicht —
+ * trifft er eine, scheitert er laut statt still etwas anzunehmen.
+ */
+function interpoliere(roh: string, dotenv: Record<string, string>): string {
+  const passt = /^\$\{([A-Z][A-Z0-9_]*):-(.*)\}$/.exec(roh.replace(/^"(.*)"$/, "$1"));
+  if (!passt) {
+    throw new Error(`nicht als \${NAME:-vorgabe} lesbar: ${roh}`);
+  }
+  const wert = dotenv[passt[1] as string];
+  return wert === undefined || wert === "" ? (passt[2] ?? "") : wert;
+}
+
+/** Die `.env`-Zeilen des ausgewiesenen Beispielblocks `<!-- m365-beispiel -->` der Anleitung. */
+function m365Beispiel(text: string): Record<string, string> {
+  const marke = text.indexOf("<!-- m365-beispiel -->");
+  if (marke < 0) {
+    return {};
+  }
+  const start = text.indexOf("```", marke);
+  const ende = text.indexOf("```", start + 3);
+  const block = text.slice(start, ende);
+  return Object.fromEntries(
+    [...block.matchAll(/^([A-Z][A-Z0-9_]*)=(.*)$/gm)].map((m) => [m[1] as string, m[2] as string]),
+  );
+}
+
+/** Startet die echte Registrierung mit dieser Umgebung und gibt ihr Startprotokoll zurück. */
+async function startprotokoll(env: NodeJS.ProcessEnv): Promise<string[]> {
+  const zeilen: string[] = [];
+  const app = Fastify({
+    logger: { level: "info", stream: { write: (zeile: string) => zeilen.push(zeile) } },
+  });
+  try {
+    await registerSecurityHeaders(app, env);
+    await app.ready();
+  } finally {
+    await app.close();
+  }
+  return zeilen
+    .map((zeile) => (JSON.parse(zeile) as { msg: string }).msg)
+    .filter((msg) => msg.startsWith(`${M365}:`));
+}
+
+describe("M · KLARWERK_M365_MANDANTEN auf dem Ein-Befehl-Weg", () => {
+  it("M1 · die Compose-Datei reicht den Wert optional durch — leer heißt wie bisher", () => {
+    const zeile = appWert(M365);
+    expect(zeile, `${M365} fehlt im environment:-Block des Dienstes app`).toBeDefined();
+    expect(form(zeile?.roh ?? "")).toEqual({ art: "vorgabe", wert: "" });
+    // Die Anleitung lässt ihn in die `.env` schreiben (D6 misst, dass er dann auch wirkt).
+    expect(envBeispielNamen(lies(ANLEITUNG))).toContain(M365);
+    // Und der Kopf der Compose-Datei bleibt dabei: kein env_file, nur der environment:-Block.
+    expect(composeInhalt).not.toMatch(/^\s*env_file\s*:/m);
+  });
+
+  it("M2 · der dokumentierte Installationswert kommt in der Anwendung an", async () => {
+    const dotenv = m365Beispiel(lies(ANLEITUNG));
+    expect(dotenv[M365], "Die Anleitung weist keinen Beispielwert aus").toBe("klarwerktest4711");
+
+    const appEnv: NodeJS.ProcessEnv = { [M365]: interpoliere(appWert(M365)?.roh ?? "", dotenv) };
+    expect(appEnv[M365]).toBe("klarwerktest4711");
+    const { mandanten, verworfen } = leseM365Mandanten(appEnv[M365]);
+    expect(mandanten).toEqual(["klarwerktest4711"]);
+    expect(verworfen).toEqual([]);
+    expect(wordAddinFrameAncestors(mandanten)).toBe(
+      `${WORD_ADDIN_FRAME_ANCESTORS} https://klarwerktest4711.sharepoint.com https://klarwerktest4711-my.sharepoint.com`,
+    );
+    // Die echte Startregistrierung liest genau diesen Wert — belegt an ihrem Startprotokoll.
+    expect(await startprotokoll(appEnv)).toEqual([
+      `${M365}: Word im Browser darf Klara aus den SharePoint-Herkünften von klarwerktest4711 einbetten.`,
+    ]);
+  });
+
+  it("M3 · ohne Eintrag in der `.env` bleibt alles wie bisher, ohne Warnung", async () => {
+    const appEnv: NodeJS.ProcessEnv = { [M365]: interpoliere(appWert(M365)?.roh ?? "", {}) };
+    expect(appEnv[M365]).toBe("");
+    const { mandanten, verworfen } = leseM365Mandanten(appEnv[M365]);
+    expect(mandanten).toEqual([]);
+    expect(verworfen).toEqual([]);
+    expect(wordAddinFrameAncestors(mandanten)).toBe(
+      "frame-ancestors 'self' https://*.office.com https://*.officeapps.live.com",
+    );
+    expect(await startprotokoll(appEnv)).toEqual([]);
+  });
+
+  it("M4 · die Anleitung erklärt Wert, Bedeutung, Aktivierung und beide Wege getrennt", () => {
+    const text = lies(ANLEITUNG);
+    const abschnitt = text.slice(text.indexOf("### 2.6"), text.indexOf("## 3. Der Start"));
+    expect(abschnitt).toContain(M365);
+    expect(abschnitt).toContain("SharePoint-Domänenstämme");
+    expect(abschnitt).toContain("Entra");
+    expect(abschnitt).toContain("neuen App-Prozess");
+    expect(abschnitt).toContain("**Ein-Befehl-Weg");
+    expect(abschnitt).toContain("**Coolify-Betrieb");
+    expect(abschnitt).toContain("Laufzeitvariable");
+  });
+
+  it("M5 · Kalibrierung: die Interpolation unterscheidet gesetzt, leer und fehlend", () => {
+    expect(interpoliere("${X:-v}", { X: "a" })).toBe("a");
+    expect(interpoliere("${X:-v}", { X: "" })).toBe("v");
+    expect(interpoliere("${X:-v}", {})).toBe("v");
+    expect(() => interpoliere("${X:?pflicht}", {})).toThrow();
+    expect(m365Beispiel("kein Block")).toEqual({});
   });
 });

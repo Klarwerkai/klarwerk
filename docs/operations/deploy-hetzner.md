@@ -12,7 +12,12 @@ Secrets). Paul liefert Repo-Bausteine (Dockerfile, dieses Runbook) und hilft bei
 > Wer eine **eigenständige Kundeninstanz** auf einer leeren Linux-Maschine aufsetzt (Docker
 > Compose, eigene Datenbank, eigene Domain), folgt stattdessen
 > `docs/operations/kundeninstanz-neuinstallation.md`. Dort steht auch, was der Ein-Befehl-Weg
-> zwingend verlangt und woran ein Fehlstart zu erkennen ist.
+> zwingend verlangt und woran ein Fehlstart zu erkennen ist. Jener Weg ist als ausführbare
+> Prüfstrecke hinterlegt — leere Compose-Installation, TLS-Proxy, Ersteinrichtung und Erfassung im
+> echten Browser, Neustart von Anwendung und Datenbank (dort §9) — und am 26.09.2026 auf einem
+> leeren Linux-Prüfplatz erfolgreich gefahren (dort §9.1). Für
+> **dieses** Runbook gilt die Strecke ohnehin nicht: der Coolify-Betrieb baut über das `Dockerfile`,
+> und sein TLS/Proxy ist hier nicht gemessen.
 > Der Mac-Studio-Weg („Insel", nativ, ohne Docker) ist ein drittes Thema und steht in
 > `scripts/insel/README.md`.
 
@@ -106,11 +111,16 @@ Secrets). Paul liefert Repo-Bausteine (Dockerfile, dieses Runbook) und hilft bei
 ## 4. Betrieb (Kurzform)
 
 - **Update (Ein-Klick):** `scripts/deploy/klarwerk-live-update.command` — stößt den Coolify-Deploy
-  per API an (Token im Schlüsselbund `KLARWERK-LiveUpdate`; Einrichtung im Skript-Kopf).
+  per API an (Token im Schlüsselbund `KLARWERK-LiveUpdate`; Einrichtung im Skript-Kopf). Aufruf mit
+  dem vollen erwarteten Commit (`$(git rev-parse HEAD)`); Exit 0 nur, wenn das Deployment `finished` ist
+  und Coolify-Deployment und `/health` (gesund) GENAU diesen vollen Commit nennen; Exit 1 = Ausfall,
+  Exit 2 = nicht geliefert bzw. Teilnachweis.
   Reihenfolge IMMER: Runner grün → Commit → Sync (Push) → Live-Update.
 - **Update (manuell):** Pedi pusht → in Coolify „Redeploy" (oder Auto-Deploy per Webhook aktivieren —
   bewusst NICHT eingeschaltet, damit Pedi entscheidet, wann Externe einen neuen Stand sehen).
 - **Rollback:** Coolify → vorheriges Deployment redeployen.
+- **Welcher Stand läuft:** `/health.commit` gegen den gepushten Commit vergleichen; Belege und
+  offener Nachprüfweg in `docs/operations/deploy-health-commit-abgleich.md`.
 
 > **Unbestätigt (U6) · Auto-Deploy per Webhook ist in Coolify aktivierbar.**
 > **Vorbehalt:** durch Ops/Pedi zu bestätigen — das ist eine Möglichkeit der Plattform, kein eingeschalteter Zustand.

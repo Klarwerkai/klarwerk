@@ -15,7 +15,6 @@
 //   B2   Anzeige, Kopieren und Einfügen benutzen denselben Hinweis — der eingefügte Text trägt die
 //        Einstufung MIT.
 //   B3   Die Word-Laufzeit wertet den Zustand aus, in beiden Fassungen (TS-Modul und Inline-HTML).
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 // `answerGrade` wird hier nicht mehr gebraucht: die Paritätstafel, die den Spiegel gegen die
 // Server-Regel hielt, steht seit JOB 619 D5 in `tests/app/mega34-answer-grade-parity.test.ts`.
@@ -27,6 +26,7 @@ import {
 } from "../../apps/web/src/lib/wordAddin";
 import { answerEvidence } from "../../services/ask";
 import type { KnowledgeObject } from "../../services/knowledge-object";
+import { panelQuelleAus } from "../support/panelquelle";
 
 const TASKPANE = "apps/web/public/word-addin/taskpane.html";
 
@@ -234,7 +234,7 @@ describe("mega34 B2 · Anzeige, Kopieren und Einfügen tragen denselben Hinweis"
 });
 
 describe("mega34 B · die Inline-Fassung im Taskpane ist mitgezogen", () => {
-  const html = readFileSync(TASKPANE, "utf8");
+  const html = panelQuelleAus(TASKPANE);
 
   it("das Taskpane liest `evidence` aus der Antwort und wertet den Grad aus", () => {
     expect(html).toContain("evidence");

@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { woerterbuchQuelleAus } from "../support/woerterbuchquelle";
 
 // ================================================================================================
 // AUFTRAG-mega52 BLOCK C3 — DER SAMMLER FÜR DIE VALIDIERT-ZUSICHERUNG.
@@ -119,7 +120,8 @@ interface Fund {
 // Liest die Anzeigewerte aus dem i18n — Schlüssel plus (ggf. mehrzeiligen) String-Wert. Kommentar-
 // zeilen fallen weg; ein Kommentar ist kein Anzeigetext.
 function i18nWerte(): Fund[] {
-  const quelle = readFileSync(join(WURZEL, I18N), "utf8");
+  // I18N-AUFTEILUNG: das Wörterbuch liegt je Sprache in `woerterbuch/`; gelesen wird es als EIN Text.
+  const quelle = woerterbuchQuelleAus(join(WURZEL, I18N));
   const funde: Fund[] = [];
   const muster = /^ {2}"([\w.]+)":\s*\n?\s*("(?:[^"\\]|\\.)*")/gm;
   for (const m of quelle.matchAll(muster)) {

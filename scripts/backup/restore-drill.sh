@@ -333,6 +333,9 @@ PFLICHTTABELLEN=(
   gesamtanweisungen
   gesamtanweisung_bausteine
   gesamtanweisung_staende
+  ko_bearbeitungen
+  dokument_fassungen
+  confluence_import_schalter
 )
 FEHLENDE_TABELLEN=()
 for tabelle in "${PFLICHTTABELLEN[@]}"; do

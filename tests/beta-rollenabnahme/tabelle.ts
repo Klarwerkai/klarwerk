@@ -707,6 +707,37 @@ export const TABELLE: Zeile[] = [
     // Der Umbau selbst liegt ausserhalb der Zielpfade (`services/auth/src/routes.ts`, JOB 4011).
     codes: { "401": "INVALID_CREDENTIALS" },
   },
+  // WIKI-BEARBEITUNGSRESERVIERUNG · der Bearbeitungshinweis. Lesen hängt an `ko.read`, Beginnen,
+  // Erneuern und Beenden an `ko.create` — dieselben Rechte wie Lesen und Bearbeiten des Eintrags;
+  // kein neues Recht. Die URLs sind zustandsfrei (erfundene Kennung): hinter dem Tor endet jede
+  // Tür im 404 „nicht gefunden" — das ist „durchgelassen" und legt nichts an.
+  {
+    gruppe: "bearbeitungRoutes",
+    methode: "GET",
+    pfad: "/api/kos/gibt-es-nicht/bearbeitungen",
+    route: "/api/kos/:id/bearbeitungen",
+    belegstelle: "services/app/src/routes/bearbeitung-routes.ts:99",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "bearbeitungRoutes",
+    methode: "PUT",
+    pfad: "/api/kos/gibt-es-nicht/bearbeitungen/abnahme-sitzung-1",
+    route: "/api/kos/:id/bearbeitungen/:sitzung",
+    belegstelle: "services/app/src/routes/bearbeitung-routes.ts:116",
+    tor: "ko.create",
+    erwartet: AB_EXPERTE,
+  },
+  {
+    gruppe: "bearbeitungRoutes",
+    methode: "DELETE",
+    pfad: "/api/kos/gibt-es-nicht/bearbeitungen/abnahme-sitzung-1",
+    route: "/api/kos/:id/bearbeitungen/:sitzung",
+    belegstelle: "services/app/src/routes/bearbeitung-routes.ts:139",
+    tor: "ko.create",
+    erwartet: AB_EXPERTE,
+  },
   {
     gruppe: "brandingRoutes",
     methode: "GET",
@@ -823,11 +854,21 @@ export const TABELLE: Zeile[] = [
     tor: "requireUser",
     erwartet: ANGEMELDET,
   },
+  // R-1064: der Supportweg der Installation. Jede angemeldete Rolle braucht ihn (Hilfeseite
+  // `minRole: "viewer"`), deshalb bewusst kein Recht über die Anmeldung hinaus.
+  {
+    gruppe: "supportRoutes",
+    methode: "GET",
+    pfad: "/api/support",
+    belegstelle: "services/app/src/routes/support-routes.ts:150",
+    tor: "requireUser",
+    erwartet: ANGEMELDET,
+  },
   {
     gruppe: "importAccessRoutes",
     methode: "GET",
     pfad: "/api/import/confluence/zugang",
-    belegstelle: "services/app/src/routes/import-access-routes.ts:69",
+    belegstelle: "services/app/src/routes/import-access-routes.ts:70",
     tor: "users.manage",
     erwartet: NUR_ADMIN,
   },
@@ -837,7 +878,7 @@ export const TABELLE: Zeile[] = [
     gruppe: "importAccessRoutes",
     methode: "GET",
     pfad: "/api/import/sharepoint/zugang",
-    belegstelle: "services/app/src/routes/import-access-routes.ts:93",
+    belegstelle: "services/app/src/routes/import-access-routes.ts:138",
     tor: "users.manage",
     erwartet: NUR_ADMIN,
   },
@@ -859,6 +900,16 @@ export const TABELLE: Zeile[] = [
     methode: "POST",
     pfad: "/api/admin/import/sharepoint/apply",
     belegstelle: "services/app/src/routes/sharepoint-import-routes.ts:229",
+    tor: "users.manage",
+    payload: {},
+    erwartet: NUR_ADMIN,
+  },
+  // R-0145/R-0190: die Ordnerübernahme in Losen. Ohne Zugangsdaten ebenso ein 503 vor jedem Effekt.
+  {
+    gruppe: "sharepointImportRoutes",
+    methode: "POST",
+    pfad: "/api/admin/import/sharepoint/folder-apply",
+    belegstelle: "services/app/src/routes/sharepoint-import-routes.ts:554",
     tor: "users.manage",
     payload: {},
     erwartet: NUR_ADMIN,
@@ -1023,6 +1074,19 @@ export const TABELLE: Zeile[] = [
     tor: "ko.read",
     erwartet: NUR_LESEN,
   },
+  {
+    // QUELLENÄNDERUNGEN (aufnahme:20260928) · DIE ZWÖLFTE TÜR: eine neuere Quellenfassung bewusst
+    // übernehmen. Erfundene Kennungen wie die übrigen Zeilen; mit leerer Nutzlast endet sie hinter
+    // dem Rechtetor in der 400 `VALIDATION` der Route — der Bestand bleibt unberührt.
+    gruppe: "gesamtanweisungRoutes",
+    methode: "POST",
+    pfad: "/api/gesamtanweisungen/gibt-es-nicht/bausteine/gibt-es-auch-nicht/uebernehmen",
+    route: "/api/gesamtanweisungen/:id/bausteine/:bausteinId/uebernehmen",
+    belegstelle: "services/app/src/routes/gesamtanweisung-routes.ts:567",
+    tor: "ko.create",
+    payload: {},
+    erwartet: AB_EXPERTE,
+  },
   // ------------------------------------------------------------------------------------------------
   // JOB 4151 (WG-PERSISTENZ) — DIE VIER TÜREN DER KURATIERTEN BEZIEHUNGEN.
   // ------------------------------------------------------------------------------------------------
@@ -1156,9 +1220,46 @@ export const TABELLE: Zeile[] = [
     gruppe: "managementRoutes",
     methode: "GET",
     pfad: "/api/management/snapshot",
-    belegstelle: "services/app/src/routes/management-routes.ts:12",
+    belegstelle: "services/app/src/routes/management-routes.ts:19",
     tor: "ko.read",
     erwartet: NUR_LESEN,
+  },
+  // R-1639 / R-2183 (Nacharbeit 3): der Bereichsblick (jede lesende Rolle, gefiltert auf die eigenen
+  // Bereiche) und die drei Pflegetüren seiner Eingänge (nur Admin).
+  {
+    gruppe: "managementRoutes",
+    methode: "GET",
+    pfad: "/api/management/risk-horizon",
+    belegstelle: "services/app/src/routes/management-routes.ts:33",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "managementRoutes",
+    methode: "GET",
+    pfad: "/api/management/profiles",
+    belegstelle: "services/app/src/routes/management-routes.ts:45",
+    tor: "users.manage",
+    erwartet: NUR_ADMIN,
+  },
+  {
+    gruppe: "managementRoutes",
+    methode: "PUT",
+    pfad: "/api/management/profiles/category",
+    belegstelle: "services/app/src/routes/management-routes.ts:57",
+    tor: "users.manage",
+    payload: {},
+    erwartet: NUR_ADMIN,
+  },
+  {
+    gruppe: "managementRoutes",
+    methode: "PUT",
+    pfad: "/api/management/profiles/retirement/gibt-es-nicht",
+    route: "/api/management/profiles/retirement/:userId",
+    belegstelle: "services/app/src/routes/management-routes.ts:69",
+    tor: "users.manage",
+    payload: {},
+    erwartet: NUR_ADMIN,
   },
   {
     gruppe: "mediaRoutes",
@@ -1173,6 +1274,15 @@ export const TABELLE: Zeile[] = [
     methode: "GET",
     pfad: "/api/model-runs",
     belegstelle: "services/app/src/routes/model-runs-routes.ts:34",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    // Aufnahme gesamt-ki-laufprotokoll (V9, R-2071): die Zeitraum-Auswertung, dieselbe Lesestufe.
+    gruppe: "modelRunRoutes",
+    methode: "GET",
+    pfad: "/api/model-runs/auswertung",
+    belegstelle: "services/app/src/routes/model-runs-routes.ts:53",
     tor: "ko.read",
     erwartet: NUR_LESEN,
   },

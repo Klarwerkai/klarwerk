@@ -2,7 +2,12 @@
 // auf die KI-Pruefung — DIESES Badge macht den Hintergrund-Status auf der Validierungs-Karte
 // sichtbar. pending → dezenter Laeuft-Hinweis (Uhr, kein lauter Spinner); failed → ehrliche
 // Warn-Pill mit Ursache im Tooltip + Retry-Knopf (reiht den Job serverseitig neu ein);
-// done ODER Altbestand ohne aiCheck-Feld → bewusst NICHTS (kein Badge-Rauschen fuer den Normalfall).
+// Altbestand ohne aiCheck-Feld → bewusst NICHTS.
+//
+// PRÜFSTATUS-ANZEIGE (R-0208, Ben R2 BEN-03): „done ⇒ nichts" ist aufgehoben. Eine abgeschlossene
+// KI-Prüfung ist ein eigener, sichtbarer Zustand — gerade damit sie nicht mit einer menschlichen
+// Freigabe verwechselt wird. Die Zustände leitet `kiPruefzustand` ab (lib/aiCheckStatusCard.ts);
+// jedes Kennzeichen trägt ihn maschinenlesbar als `data-ki-pruefzustand`.
 import { Clock } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { Confidentiality, KnowledgeObject } from "../api/types";
@@ -13,6 +18,7 @@ import {
   aiCheckFailureReasonKey,
   aiCheckPendingHintKey,
   aiCheckPendingLabelKey,
+  kiPruefzustand,
 } from "../lib/aiCheckStatusCard";
 
 export interface AiCheckBadgeProps {
@@ -65,9 +71,10 @@ export function AiCheckBadge({
   // AUFNAHME 20260922 · Prüfbasis-Aktualität: ein abgeschlossener Nachweis, dessen gespeicherte
   // Basis nicht mehr zum Objekt passt (Server-Ableitung `ueberholt`), ist NICHT aktuell — weder als
   // stilles „done" noch als Fehlschlag mit alter Ursache. Der Knopf reiht den neuen Lauf ein.
+  const zustand = kiPruefzustand(aiCheck);
   if (aiCheck.ueberholt && aiCheck.status !== "pending") {
     return (
-      <span className="inline-flex items-center gap-1">
+      <span className="inline-flex items-center gap-1" data-ki-pruefzustand={zustand ?? undefined}>
         <span
           title={t("pruefbasis.ueberholtHinweis")}
           className="rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-[10px] font-semibold text-trust-warn-text"
@@ -86,18 +93,53 @@ export function AiCheckBadge({
     );
   }
   if (aiCheck.status === "done") {
+    if (zustand === "konflikt") {
+      return (
+        <span
+          data-ki-pruefzustand="konflikt"
+          title={t("pruefstatus.ki.konfliktHinweis")}
+          className="rounded-pill bg-trust-crit-bg px-1.5 py-0.5 font-mono text-[10px] font-semibold text-trust-crit-text"
+        >
+          {t("pruefstatus.ki.konflikt")}
+        </span>
+      );
+    }
+    // Teilgeprüft heißt unsicher: der Tooltip nennt die Zahlen und was ein leeres Ergebnis
+    // NICHT heißt (mega28 A2) — unverändert derselbe Text.
     return coverage ? (
       <span
+        data-ki-pruefzustand="unsicher"
         title={coverageTip}
-        className="rounded-pill bg-page px-1.5 py-0.5 font-mono text-[10px] font-semibold text-muted"
+        className="rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-[10px] font-semibold text-trust-warn-text"
       >
-        {t("val.aiCheck.coverage.partial")}
+        {t("pruefstatus.ki.unsicher")}
       </span>
-    ) : null;
+    ) : (
+      <span
+        data-ki-pruefzustand="geprueft"
+        title={t("pruefstatus.ki.geprueftHinweis")}
+        className="rounded-pill bg-page px-1.5 py-0.5 font-mono text-[10px] font-semibold text-text"
+      >
+        {t(modelActive ? "pruefstatus.ki.geprueftKi" : "pruefstatus.ki.geprueft")}
+      </span>
+    );
   }
   if (aiCheck.status === "pending") {
+    if (zustand === "ausstehend") {
+      return (
+        <span
+          data-ki-pruefzustand="ausstehend"
+          title={t("pruefstatus.ki.ausstehendHinweis")}
+          className="inline-flex items-center gap-1 rounded-pill bg-page px-1.5 py-0.5 font-mono text-[10px] font-semibold text-muted"
+        >
+          <Clock className="h-3 w-3" aria-hidden="true" />
+          {t(modelActive ? "pruefstatus.ki.ausstehendKi" : "pruefstatus.ki.ausstehend")}
+        </span>
+      );
+    }
     return (
       <span
+        data-ki-pruefzustand="laeuft"
         title={t(aiCheckPendingHintKey(modelActive))}
         className="inline-flex items-center gap-1 rounded-pill bg-page px-1.5 py-0.5 font-mono text-[10px] font-semibold text-muted"
       >
@@ -107,12 +149,14 @@ export function AiCheckBadge({
     );
   }
   return (
-    <span className="inline-flex items-center gap-1">
+    <span className="inline-flex items-center gap-1" data-ki-pruefzustand={zustand ?? undefined}>
       <span
         title={t(aiCheckFailureReasonKey(aiCheck.fallbackReason, subjectConfidentiality))}
         className="rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-[10px] font-semibold text-trust-warn-text"
       >
-        {t("val.aiCheck.failed")}
+        {t(
+          zustand === "nicht_verfuegbar" ? "pruefstatus.ki.nichtVerfuegbar" : "val.aiCheck.failed",
+        )}
       </span>
       {/* mega28 A2: auch der gescheiterte Lauf sagt, wie weit er kam — die Ursache allein
           beantwortet nicht, wie viel überhaupt angesehen wurde. */}

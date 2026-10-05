@@ -1,11 +1,11 @@
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { woerterbuchQuelleAus } from "../support/woerterbuchquelle";
 
 // SCRUM-486 D: kein leeres „Zusammenführen"-Versprechen. Es gibt keine echte Merge-Aktion (nur
 // Getrennt lassen / Verlinken / Fehlalarm), also darf die Copy keinen Merge-Button/CTA vortäuschen.
 // Der Merge selbst ist ein bewusst separates Folge-Feature — hier nur ehrliche Sprache.
 describe("SCRUM-486 D: ehrliches Merge-Wording", () => {
-  const i18n = readFileSync("apps/web/src/i18n.ts", "utf8");
+  const i18n = woerterbuchQuelleAus("apps/web/src/i18n.ts");
 
   it("der Seitentitel verspricht kein Zusammenführen mehr", () => {
     expect(i18n).toContain('"dup.title": "Doppelungen klären');

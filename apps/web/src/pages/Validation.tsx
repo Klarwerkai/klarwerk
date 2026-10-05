@@ -76,6 +76,7 @@ import { ConfidenceBar, KnowledgeTypeTag, KoAuthorLine } from "../components/tru
 import { Button, cx } from "../components/ui";
 import { aiModelUsable } from "../lib/aiAvailability";
 import { AI_CHECK_POLL_MS } from "../lib/aiCheckStatusCard";
+import { bewertungsumfang } from "../lib/bewertungsumfang";
 import { type PruefZeile, boardZeilen, stufenFacetLabelKey } from "../lib/boardAuskunft";
 import {
   DEMO_KNOWLEDGE_FILTERS,
@@ -115,8 +116,10 @@ import { reviewSignals, reviewWorkView, sortByReviewPriority } from "../lib/revi
 import { useAuthorName } from "../lib/useAuthorName";
 import { useReadiness } from "../lib/useReadiness";
 import {
+  DUBLETTE_BESTAETIGUNG_FEHLT,
   type ValidationAiGate,
   boardHasPendingAiCheck,
+  brauchtDublettenBestaetigung,
   validationAiGate,
 } from "../lib/validationAiGate";
 import {
@@ -209,6 +212,12 @@ const RAD_MASS_PX: Record<number, number> = { 0: 1, 1: 16, 2: 400 };
  * deshalb nicht in dieser Aufzählung.
  */
 type Freigabeweg = "rate" | "admin";
+
+/** R-0247: die offene Frage „offene Dublette gesehen?" — für welchen Eintrag, auf welchem Weg. */
+interface DublettenFrage {
+  id: string;
+  weg: Freigabeweg;
+}
 
 export function Validation(): JSX.Element {
   const { t, i18n } = useTranslation();
@@ -377,6 +386,12 @@ export function Validation(): JSX.Element {
     gespeichert: Confidentiality | null;
   } | null>(null);
 
+  // R-0247 (Pedis Entscheidung 73b53301, weiche Sperre): die offene Bestätigungsfrage „offene
+  // Dublette gesehen?" — für welchen Eintrag und auf welchem Freigabeweg — und der Eintrag, für den
+  // die Bestätigung ausdrücklich gegeben wurde. Nur dann trägt die Freigabe `duplicateAcknowledged`.
+  const [dublettenFrage, setDublettenFrage] = useState<DublettenFrage | null>(null);
+  const [dubletteBestaetigt, setDubletteBestaetigt] = useState<string | null>(null);
+
   // ================================================================================================
   // JOB 3112 · V3 — DER EINE FREIGABEWEG, MIT DER STUFENFRAGE DAVOR.
   // ================================================================================================
@@ -408,7 +423,17 @@ export function Validation(): JSX.Element {
       id,
       weg,
       stufe,
-    }: { id: string; title: string; weg: Freigabeweg; stufe: Confidentiality | null }) => {
+      dubletteBestaetigt,
+    }: {
+      id: string;
+      title: string;
+      weg: Freigabeweg;
+      stufe: Confidentiality | null;
+      dubletteBestaetigt: boolean;
+    }) => {
+      // R-0247: das Kennzeichen steht NUR in der Nutzlast, wenn ausdrücklich bestätigt wurde —
+      // ohne offene Dublette bleibt der Aufruf zeichengleich wie bisher.
+      const bestaetigung = dubletteBestaetigt ? { duplicateAcknowledged: true as const } : {};
       if (stufe) {
         try {
           await endpoints.ko.act(id, { action: "confidentiality", level: stufe });
@@ -419,10 +444,10 @@ export function Validation(): JSX.Element {
       }
       try {
         if (weg === "rate") {
-          await endpoints.ko.act(id, { action: "rate", verdict: "up" });
+          await endpoints.ko.act(id, { action: "rate", verdict: "up", ...bestaetigung });
           return;
         }
-        await endpoints.ko.act(id, { action: "admin-validate" });
+        await endpoints.ko.act(id, { action: "admin-validate", ...bestaetigung });
       } catch (e) {
         // Schritt 2 gescheitert: `stufe` ist genau dann gespeichert, wenn Schritt 1 überhaupt lief.
         throw new FreigabeFehler("freigabe", stufe, e);
@@ -430,6 +455,8 @@ export function Validation(): JSX.Element {
     },
     onSuccess: (_data, vars) => {
       setStufenfrage(null);
+      setDublettenFrage(null);
+      setDubletteBestaetigt(null);
       if (vars.weg === "rate") {
         nachEntscheidung({ id: vars.id, title: vars.title, verdict: "up" });
         return;
@@ -448,6 +475,16 @@ export function Validation(): JSX.Element {
       const neuGespeichert = gespeicherteStufeAusFehler(e);
       if (neuGespeichert) {
         invalidate();
+      }
+      // R-0247: der Server kennt eine offene Dublette, die diese Karte (noch) nicht zeigte, und
+      // lehnt ohne Bestätigung ab. Dann stellt die Karte die Bestätigungsfrage — nichts wurde
+      // validiert. Eine bereits gespeicherte Stufe ist oben nachgeladen; die Stufenfrage schliesst.
+      const ursache = freigabeFehlerUrsache(e);
+      if (ursache instanceof ApiError && ursache.code === DUBLETTE_BESTAETIGUNG_FEHLT) {
+        setStufenfrage(null);
+        setDubletteBestaetigt(null);
+        setDublettenFrage({ id: vars.id, weg: vars.weg });
+        return;
       }
       // `?? vorher.gespeichert` IST die Korrektur aus Runde 3: eine spätere, erfolglose Wiederholung
       // meldet `null` — das heisst „bei DIESEM Versuch kam nichts an", nicht „es liegt nichts". Was
@@ -472,9 +509,21 @@ export function Validation(): JSX.Element {
    * Trägt das Objekt schon eine Stufe, bleibt der heutige Weg Zeichen für Zeichen erhalten: ein
    * Klick, ein Aufruf. Sonst wird gefragt — und nichts geschickt, bis geantwortet ist.
    */
-  const freigabeStarten = (k: PruefZeile, weg: Freigabeweg): void => {
+  const freigabeStarten = (
+    k: PruefZeile,
+    weg: Freigabeweg,
+    bestaetigt = dubletteBestaetigt === k.id,
+  ): void => {
     // Die Prüfsperre gilt am Eingang wie im Ablauf (siehe `freigabeSenden`).
     if (validationAiGate(k.aiCheck, aiModelActive).locked) {
+      return;
+    }
+    // R-0247: VOR der Stufenfrage steht die Dublettenfrage. Ohne ausdrückliche Bestätigung wird
+    // nichts geschickt; die Bestätigung führt über `dublettenBestaetigen` hierher zurück.
+    if (!bestaetigt && brauchtDublettenBestaetigung(k.id, duplikate.data)) {
+      freigabe.reset();
+      setStufenfrage(null);
+      setDublettenFrage({ id: k.id, weg });
       return;
     }
     if (brauchtStufenfrage(k.auskunft.stufe.lage)) {
@@ -491,7 +540,31 @@ export function Validation(): JSX.Element {
       }));
       return;
     }
-    freigabe.mutate({ id: k.id, title: k.title, weg, stufe: null });
+    freigabe.mutate({
+      id: k.id,
+      title: k.title,
+      weg,
+      stufe: null,
+      dubletteBestaetigt: bestaetigt,
+    });
+  };
+
+  /** R-0247: die ausdrückliche Bestätigung „Dublette gesehen" — und erst danach die Freigabe. */
+  const dublettenBestaetigen = (k: PruefZeile, gate: ValidationAiGate): void => {
+    if (!dublettenFrage || dublettenFrage.id !== k.id || gate.locked) {
+      return;
+    }
+    const { weg } = dublettenFrage;
+    setDublettenFrage(null);
+    setDubletteBestaetigt(k.id);
+    freigabeStarten(k, weg, true);
+  };
+
+  /** Abbrechen schickt nichts und lässt die Dublette, wie sie ist. */
+  const dublettenFrageAbbrechen = (): void => {
+    setDublettenFrage(null);
+    setDubletteBestaetigt(null);
+    setConfirmTrueId(null);
   };
 
   /**
@@ -519,6 +592,7 @@ export function Validation(): JSX.Element {
       title: stufenfrage.title,
       weg: stufenfrage.weg,
       stufe,
+      dubletteBestaetigt: dubletteBestaetigt === stufenfrage.id,
     });
   };
 
@@ -529,6 +603,7 @@ export function Validation(): JSX.Element {
 
   const stufenfrageAbbrechen = (): void => {
     setStufenfrage(null);
+    setDubletteBestaetigt(null);
     setConfirmTrueId(null);
     freigabe.reset();
   };
@@ -1365,6 +1440,10 @@ export function Validation(): JSX.Element {
                   // — der erste Klick auf eine Stufe schlösse nur das Menü. Ein Ablauf, zwei Orte.
                   stufenfrage?.id === k.id && stufenfrage.weg === "admin" ? (
                     <div className="px-2.5 py-2">{stufenfrageBlock(gate)}</div>
+                  ) : dublettenFrage?.id === k.id && dublettenFrage.weg === "admin" ? (
+                    // R-0247: dieselbe Begründung wie bei der Stufenfrage — im Menüblatt, nicht
+                    // unter dessen Schließfläche im Fußband.
+                    <div className="px-2.5 py-2">{dublettenFrageBlock(k, gate)}</div>
                   ) : confirmTrueId === k.id ? (
                     <div className="px-2.5 py-2">
                       <div className="text-[12.5px] font-semibold text-trust-pos-text">
@@ -1815,6 +1894,22 @@ export function Validation(): JSX.Element {
               </button>
             );
           })}
+          {/* PRÜFSTATUS-ANZEIGE (N-0078): „Freigeben" ist EINE positive Bewertung, nicht schon die
+              Validierung. Der noch nötige Umfang steht deshalb unmittelbar daneben — als Text,
+              nicht nur als Punkte mit Tooltip (`lib/bewertungsumfang.ts`). */}
+          {((): JSX.Element => {
+            const umfang = bewertungsumfang(sig);
+            return (
+              <span
+                data-testid="pruefen-restumfang"
+                data-umfang={umfang.art}
+                data-text="text"
+                className="text-[12px] text-muted"
+              >
+                {t(umfang.schluessel, umfang.werte)}
+              </span>
+            );
+          })()}
           {/* Die drei Punkte: grün gefüllt je Stimme, rot je Gegenstimme (Pruefen.dc.html:60). */}
           <span
             data-testid="pruefen-stimmenpunkte"
@@ -1854,6 +1949,10 @@ export function Validation(): JSX.Element {
           {/* JOB 3112 · V3: die Stufenfrage des FUSSBAND-Weges — dieselbe Stelle und dieselbe
               Bauform wie das Begründungsfeld darunter. Der Administratorweg stellt dieselbe Frage
               in seinem Menüblatt (Begründung dort). */}
+          {/* R-0247: die Dublettenfrage des Fußband-Weges steht vor der Stufenfrage. */}
+          {dublettenFrage?.id === k.id && dublettenFrage.weg === "rate"
+            ? dublettenFrageBlock(k, gate)
+            : null}
           {stufenfrage?.id === k.id && stufenfrage.weg === "rate" ? stufenfrageBlock(gate) : null}
           {/* Begründungspflicht bleibt: Rückfrage/Ablehnen klappen das Feld hier auf. */}
           {feedback?.id === k.id ? (
@@ -1907,6 +2006,45 @@ export function Validation(): JSX.Element {
               </div>
             </div>
           ) : null}
+        </div>
+      </div>
+    );
+  }
+
+  // ================================================================================================
+  // R-0247 — DIE DUBLETTENFRAGE (Pedis Entscheidung 73b53301, weiche Sperre).
+  // ================================================================================================
+  //
+  // Eine Zeichenfunktion wie `stufenfrageBlock`. Sie sperrt nicht und löst die Dublette nicht auf:
+  // sie verlangt nur, dass die prüfende Person ausdrücklich bestätigt, sie gesehen zu haben. Der
+  // Doppelhinweis darüber (mit dem Weg zum Vergleich) bleibt, wie er ist.
+  function dublettenFrageBlock(k: PruefZeile, gate: ValidationAiGate): JSX.Element {
+    return (
+      <div data-testid="pruefen-dublettenfrage" className="w-full basis-full pt-2">
+        <p data-text="text" className="text-[12.5px] font-semibold text-trust-warn-text">
+          {t("val.doppel.bestaetigung.frage")}
+        </p>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            data-text="knopf"
+            data-testid="pruefen-dublettenfrage-ja"
+            disabled={gate.locked || freigabe.isPending}
+            onClick={() => dublettenBestaetigen(k, gate)}
+            className="rounded-[9px] border border-hairline bg-surface px-3 py-1.5 text-[12.5px] font-semibold text-text hover:bg-hairline-soft disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {t("val.doppel.bestaetigung.ja")}
+          </button>
+          <button
+            type="button"
+            data-text="knopf"
+            data-testid="pruefen-dublettenfrage-abbrechen"
+            disabled={freigabe.isPending}
+            onClick={dublettenFrageAbbrechen}
+            className="text-[12px] font-semibold text-muted hover:text-text disabled:opacity-50"
+          >
+            {t("val.doppel.bestaetigung.abbrechen")}
+          </button>
         </div>
       </div>
     );

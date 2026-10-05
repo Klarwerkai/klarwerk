@@ -18,6 +18,7 @@ import { useSession } from "../../app/AuthContext";
 import { ImageDescribeProvider } from "../../app/ImageDescribeContext";
 import { useRole } from "../../app/RoleContext";
 import { useToast } from "../../app/ToastContext";
+import { abfrageMitBestand, auffrischungGescheitert } from "../../lib/abfrageBestand";
 import {
   type AppendDocumentOutcome,
   commitDocumentAppend,
@@ -32,12 +33,7 @@ import {
 } from "../../lib/bodyFileLink";
 import type { OriginalDocument, OriginalRefCache } from "../../lib/captureAttachments";
 import { fileSourcePayload } from "../../lib/captureFromFile";
-import {
-  CONF_TONE_CLASS,
-  abfrageMitBestand,
-  auffrischungGescheitert,
-  vertraulichkeitsAuskunft,
-} from "../../lib/confidentiality";
+import { CONF_TONE_CLASS, vertraulichkeitsAuskunft } from "../../lib/confidentiality";
 import { conflictImpact, conflictNotice } from "../../lib/conflictImpact";
 import { anzeigestatusAnker, anzeigestatusAus } from "../../lib/displayStatus";
 import { studioSaveConfidence } from "../../lib/editorApplySafety";
@@ -90,6 +86,7 @@ import { ListEditor, TagEditor } from "../editors";
 import { KNOWLEDGE_TYPES } from "../trust";
 import { Button, Field, TextInput, cx } from "../ui";
 import { AuffrischungHinweis } from "./AuffrischungHinweis";
+import { Bearbeitungshinweis, useEigeneBearbeitung } from "./Bearbeitungshinweis";
 import { MehrAbschnitte, type Sprungziel } from "./MehrAbschnitte";
 import { Menue, MenuePunkt, MenueTrenner } from "./Menue";
 import { fragenHref } from "./fragen";
@@ -112,7 +109,7 @@ import { type ZustandsTon, zustandsTon } from "./zustand";
 //   · JOB 3034 R2 · KONFLIKTRUNDE 2 (nachgezogen): scheitert die Auffrischung eines schon
 //     geholten Eintrags, bleibt der Eintrag samt Stufenkennzeichen stehen — der Fehler steht als
 //     Hinweis über der Fläche, aus derselben Quelle wie auf der (frueheren) Detailseite
-//     (`lib/confidentiality.ts`, `abfrageMitBestand`/`auffrischungGescheitert`).
+//     (`lib/abfrageBestand.ts`, `abfrageMitBestand`/`auffrischungGescheitert`).
 //
 // ==================================================================================================
 // JOB 3068 · N5 — DER EIGENE BEFUND STEHT HIER, DAUERHAFT, UND NICHT MEHR HINTER „MEHR".
@@ -1019,6 +1016,9 @@ export function BibliothekLesen({
     setTextKnoten(knoten);
   }, []);
   const [loeschenOffen, setLoeschenOffen] = useState(false);
+  // Auftrag gesamt-dubletten-rueckzug (R-1615): dieselbe Rückfrage, geöffnet über den Knopf am
+  // eigenen Dublettenhinweis — dann spricht sie vom Rückzug der eigenen Seite (Texte: texte/rueckzug.ts).
+  const [alsRueckzug, setAlsRueckzug] = useState(false);
   const [reworkSavedFor, setReworkSavedFor] = useState<string | null>(null);
   const reworkSaved = reviewReworkContext && reworkSavedFor === koId;
   const [detailFeedback, setDetailFeedback] = useState<FeedbackVerdict | null>(null);
@@ -1135,7 +1135,7 @@ export function BibliothekLesen({
     onSuccess: () => {
       setLoeschenOffen(false);
       invalidate();
-      push("success", t("ko.deleteDone"));
+      push("success", alsRueckzug ? t("rueckzug.erledigt") : t("ko.deleteDone"));
       onGeloescht();
     },
     onError: (e) => {
@@ -2047,6 +2047,28 @@ export function BibliothekLesen({
     });
   };
 
+  // ================================================================================================
+  // WIKI-BEARBEITUNGSRESERVIERUNG · SOLANGE DAS FORMULAR OFFEN IST, WEISS DER SERVER ES.
+  // ================================================================================================
+  //
+  // Die Anmeldung hängt an GENAU der Grösse, die „das Formular ist offen" heisst: `edit`. Speichern
+  // und Abbrechen laufen beide durch `bearbeitenBeenden` und nehmen damit auch den Hinweis zurück;
+  // ein Konflikt (409), ein Teilabbruch oder ein entzogenes Recht lassen `edit` stehen — und damit
+  // auch den Hinweis, denn die Arbeit ist ja noch da. Umgekehrt fasst der Hinweis `edit` nie an:
+  // Ablauf, Wiederholung oder ein Verbindungsabbruch können keinen Text löschen.
+  //
+  // Kommt die Verbindung nach einer Unterbrechung zurück, wird der tatsächliche Serverstand neu
+  // gelesen. Hat inzwischen jemand anderes gespeichert, sieht der Mensch das im Lesebild — und beim
+  // Speichern greift wie immer `expectedVersion` (die Fassung beim Öffnen steht in `edit.version`).
+  //
+  // „Neu gelesen" sagt die Fläche erst, wenn das Nachlesen WIRKLICH gelungen ist — deshalb liefert
+  // `nachlesen` den Ausgang des Abrufs, statt ihn nur anzustossen.
+  const nachlesen = async (): Promise<boolean> => {
+    const ergebnis = await query.refetch();
+    return ergebnis.status === "success" && !ergebnis.isError;
+  };
+  const eigeneBearbeitung = useEigeneBearbeitung(koId, edit !== null && canEdit, nachlesen);
+
   // KEIN Aufräum-Effekt beim Wechsel des Eintrags: die Fläche montiert diese Komponente mit
   // `key={koId}` neu (s. `BibliothekFlaeche`). Ein offenes Formular des vorigen Objekts kann
   // deshalb gar nicht über dem neuen stehenbleiben — der Zustand entsteht mit dem Eintrag.
@@ -2061,7 +2083,7 @@ export function BibliothekLesen({
 
   // JOB 3034 R2 · KONFLIKTRUNDE 2 (nachgezogen): scheitert die Auffrischung eines schon geholten
   // Eintrags, bleiben Eintrag und Stufenkennzeichen stehen — der Fehler wird als Hinweis über der
-  // Fläche gesagt, nicht als Verlust des Bestands (`lib/confidentiality.ts`, `abfrageMitBestand`).
+  // Fläche gesagt, nicht als Verlust des Bestands (`lib/abfrageBestand.ts`, `abfrageMitBestand`).
   const bestand = abfrageMitBestand(query);
   if (bestand.isError) {
     return (
@@ -2267,6 +2289,10 @@ export function BibliothekLesen({
     }
   };
   const darfLoeschen = role === "admin" || role === "controller" || ko.author === user?.id;
+  // Nur am eigenen Eintrag und nur bei einer offenen Dublette (auch neben einem Konflikt) — dort,
+  // wo der Hinweis steht, um den es geht.
+  const rueckzugMoeglich =
+    eigenesObjekt && darfLoeschen && (kollision.art === "dublette" || kollision.art === "beides");
   const fb = latestValidationFeedback(ko.comments);
 
   return (
@@ -2396,6 +2422,7 @@ export function BibliothekLesen({
                           if (!removeKo.isPending) {
                             removeKo.reset();
                           }
+                          setAlsRueckzug(false);
                           setLoeschenOffen(true);
                           schliessen();
                         }}
@@ -2488,6 +2515,30 @@ export function BibliothekLesen({
                 </button>
               </>
             ) : null}
+            {/* Auftrag gesamt-dubletten-rueckzug (R-1615): am EIGENEN Eintrag, neben dem
+                Dublettenhinweis, der Rückzug der eigenen Seite. Kein zweiter Löschweg: der Knopf
+                öffnet dieselbe Rückfrage wie der Menüpunkt, und bestätigt wird derselbe eine Aufruf
+                von `endpoints.ko.remove`. Der Server schliesst den Befund dabei als
+                `withdrawn_own` mit der Kennung der Autorin; die Gegenseite fasst er nicht an. */}
+            {rueckzugMoeglich ? (
+              <>
+                {" "}
+                <button
+                  type="button"
+                  data-testid="bib-kollision-rueckzug"
+                  onClick={() => {
+                    if (!removeKo.isPending) {
+                      removeKo.reset();
+                    }
+                    setAlsRueckzug(true);
+                    setLoeschenOffen(true);
+                  }}
+                  className="font-semibold text-brand-text underline"
+                >
+                  {t("rueckzug.knopf")}
+                </button>
+              </>
+            ) : null}
           </div>
         ) : null}
 
@@ -2549,6 +2600,18 @@ export function BibliothekLesen({
           </p>
         ) : null}
 
+        {/* WIKI-BEARBEITUNGSRESERVIERUNG: wer gerade (sonst noch) bearbeitet — im Lesen wie im
+            Bearbeiten an derselben Stelle, direkt über dem Inhalt. Endet eine fremde Bearbeitung,
+            wird der Eintrag neu gelesen; ein offenes Formular bleibt davon unberührt. */}
+        <Bearbeitungshinweis
+          koId={koId}
+          eigeneSitzung={eigeneBearbeitung.sitzung}
+          eigeneLage={eigeneBearbeitung.lage}
+          eigenerLesestand={eigeneBearbeitung.lesestand}
+          onEigenesNachlesen={eigeneBearbeitung.nochmalLesen}
+          ablaufSekunden={eigeneBearbeitung.ablaufSekunden}
+          onFremdesEnde={nachlesen}
+        />
         {edit ? (
           // ---- Bearbeiten: dasselbe Formular wie bisher, an derselben Stelle -------------------
           <div className="space-y-3">
@@ -3017,6 +3080,7 @@ export function BibliothekLesen({
               ) : (
                 <Button
                   variant="primary"
+                  data-testid="bib-speichern"
                   disabled={
                     save.isPending ||
                     appendDocument.isPending ||
@@ -3033,7 +3097,11 @@ export function BibliothekLesen({
                   {t("ko.saveEdit")}
                 </Button>
               )}
-              <Button variant="ghost" onClick={bearbeitenBeenden}>
+              <Button
+                variant="ghost"
+                data-testid="bib-bearbeiten-abbrechen"
+                onClick={bearbeitenBeenden}
+              >
                 {t("ko.cancelEdit")}
               </Button>
             </div>
@@ -3514,7 +3582,7 @@ export function BibliothekLesen({
         <Modal
           open={loeschenOffenEffektiv}
           onClose={loeschenSchliessen}
-          title={t("ko.deleteButton")}
+          title={alsRueckzug ? t("rueckzug.knopf") : t("ko.deleteButton")}
           panelMarker="data-bib-loeschen"
         >
           {/* `aria-busy` trägt den laufenden Aufruf maschinenlesbar — zusammen mit den beiden
@@ -3529,7 +3597,7 @@ export function BibliothekLesen({
             className="flex flex-wrap items-center gap-2"
           >
             <span className="min-w-0 flex-1 text-[12.5px] font-semibold text-text">
-              {t("ko.deleteQ")}
+              {alsRueckzug ? t("rueckzug.frage") : t("ko.deleteQ")}
             </span>
             <Button variant="ghost" disabled={removeKo.isPending} onClick={loeschenSchliessen}>
               {t("ko.deleteKeep")}
@@ -3539,7 +3607,7 @@ export function BibliothekLesen({
               disabled={removeKo.isPending}
               onClick={() => removeKo.mutate()}
             >
-              {t("ko.deleteYes")}
+              {alsRueckzug ? t("rueckzug.ja") : t("ko.deleteYes")}
             </Button>
           </div>
           {/* Der Grund am Bedienort. Er steht NUR beim ECHTEN Fehlschlag (403, 500, ein Fehler

@@ -66,4 +66,16 @@ describe("WP-UX-WOW-1 U1: stripAnswerMarkdown (Klartext-Fassung)", () => {
   it("reiner Text bleibt unverändert", () => {
     expect(stripAnswerMarkdown("Kein Markdown, nur Text.")).toBe("Kein Markdown, nur Text.");
   });
+
+  it("Ben R3, F4: Tabelle ohne äußere Striche behält Köpfe und Datenzeilen", () => {
+    expect(stripAnswerMarkdown("Anlage | Frist\n--- | ---\nV4 | jährlich\nV5 | monatlich")).toBe(
+      "- Anlage: V4 · Frist: jährlich\n- Anlage: V5 · Frist: monatlich",
+    );
+  });
+
+  it("Ben R3, F4: Tabellenkopf ohne Datenzeile entfällt nicht", () => {
+    expect(stripAnswerMarkdown("| Anlage | Frist |\n| --- | --- |\n\nDanach Text.")).toBe(
+      "- Anlage · Frist\nDanach Text.",
+    );
+  });
 });

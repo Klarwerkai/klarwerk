@@ -81,6 +81,7 @@ import {
   starteChromium,
   warte,
 } from "../gast-nutzerweg/browserweg";
+import { SICHT_RUECKFALL } from "../support/sichtRueckfall";
 import type { Laufzustand } from "../wiki-gesamtanweisung-abnahme/laufzustand";
 
 export const MARKE = "[KLARWERK] JOB 4328";
@@ -211,13 +212,20 @@ const kantentitelVon = (b: (typeof BEZIEHUNGEN)[number]): string =>
 //
 // `innerText` und nicht `textContent`: ein ausgeblendetes Feld kommt in `innerText` nicht vor, im
 // Baum schon. Die einzige Ausnahme steht in `KANTEN_METADATEN` und ist dort begruendet.
+//
+// Ohne `checkVisibility` misst der Rückfall die ganze Vorfahrenkette samt Verdeckung
+// (`tests/support/sichtRueckfall.ts`); vorher sah er nur das Element selbst. Kann er die Verdeckung
+// nicht messen (auch an SVG-Linien), WIRFT `sichtbarOhneCheck` mit „SICHTMESSUNG NICHT MOEGLICH".
 const SICHT = `
+  ${SICHT_RUECKFALL}
   const sichtbar = (e) => {
     if (!e) return false;
     if (typeof e.checkVisibility === "function") {
       if (!e.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true, contentVisibilityAuto: true })) {
         return false;
       }
+    } else if (!sichtbarOhneCheck(e)) {
+      return false;
     }
     const s = getComputedStyle(e);
     if (s.visibility === "hidden" || s.display === "none" || s.opacity === "0") return false;
@@ -232,6 +240,8 @@ const SICHT = `
     if (!e) return false;
     if (typeof e.checkVisibility === "function") {
       if (!e.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })) return false;
+    } else if (!sichtbarOhneCheck(e)) {
+      return false;
     }
     const s = getComputedStyle(e);
     if (s.visibility === "hidden" || s.display === "none" || s.opacity === "0") return false;
@@ -807,19 +817,13 @@ export async function fahreStrecke(umgebung: Umgebung, lauf: Lauf): Promise<Prot
       return Number(ergebnis.rows[0]?.n ?? "-1");
     };
     const inDenBereich = async (id: string, ziel: string): Promise<void> => {
-      await seite.click('[data-testid="kopfband-zahnrad"]');
-      await warte(
-        seite,
-        `() => !!document.querySelector('[data-testid="zahnrad-weitere-bereiche"]')`,
-        "das Zahnradmenue steht offen",
-        undefined,
-        30_000,
-      );
-      await seite.click('[data-testid="zahnrad-weitere-bereiche"]');
+      // FE-002 (26.09.2026): die weiteren Bereiche stehen offen unter „Arbeitsbereiche“ im Kopfband
+      // (bis dahin Zahnrad → „Weitere Bereiche“ aufklappen).
+      await seite.click('[data-testid="kopfband-arbeitsbereiche"]');
       await warte(
         seite,
         `(arg) => !!document.querySelector('[data-testid="bereich-' + arg + '"]')`,
-        `der Menuepunkt ${id} steht unter Weitere Bereiche`,
+        `der Menuepunkt ${id} steht unter Arbeitsbereiche`,
         id,
         30_000,
       );
@@ -1160,6 +1164,10 @@ export async function fahreStrecke(umgebung: Umgebung, lauf: Lauf): Promise<Prot
       // Kuerzungsauskunft zu, nicht die Gleichzeitigkeit von Massenschreiben und offener Ansicht.
       // Ein Mensch haelt den Graphen auch nicht offen, waehrend 101 Eintraege entstehen. Der Befund
       // steht in der Rueckgabe als benannte Pruefluecke — er wird hier weder behoben noch versteckt.
+      //
+      // NACHFOLGE (GRAPH-BROWSER-RECHTE): diesen Ablauf faehrt jetzt mit interner Treiberdiagnose
+      // `tests/wissensbeziehungen-browser-rechte/tastatur-schmal-rechte-pg.integration.test.ts`
+      // (ALT-500-AUSLÖSER); die dort diagnostizierte Ursache reproduziert der Fall ALT-500 minimal.
       await seite.goto("about:blank", { waitUntil: "domcontentloaded" });
 
       // 101 Eintraege ueber den ECHTEN Weg (POST /api/kos) — mit je EIGENEM Schlagwort, damit

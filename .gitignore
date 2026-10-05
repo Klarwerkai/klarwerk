@@ -34,3 +34,6 @@ LOT/
 # solchen Rest sonst versehentlich versioniert (derselbe Fehler wie LOT/ oben, anderer Ordner).
 .claude/
 .codex/
+
+# Aufnahme pg-start-audit-konkurrenz (E1-K): zeitweilige Abschriften der App-Suite, nur während des Falls vorhanden.
+services/app/src/build-app.e1-*.integration.test.ts

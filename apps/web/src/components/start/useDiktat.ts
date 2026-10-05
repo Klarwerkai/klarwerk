@@ -25,11 +25,14 @@ export interface Diktat {
   moeglich: boolean;
   laeuft: boolean;
   umschalten: () => void;
+  /** FR-CAP-03: was gerade erkannt, aber noch nicht endgültig ist — reine Anzeige, nie im Feld. */
+  zwischen: string;
 }
 
 export function useDiktat(anhaengen: (text: string) => void): Diktat {
   const { i18n } = useTranslation();
   const [laeuft, setLaeuft] = useState(false);
+  const [zwischen, setZwischen] = useState("");
   const recRef = useRef<SpeechRec | null>(null);
   // Der Rückruf darf nicht in der Abhängigkeitsliste des Abbaus hängen; er wird nur beim Erkennen
   // gelesen und soll immer der aktuelle sein.
@@ -66,8 +69,15 @@ export function useDiktat(anhaengen: (text: string) => void): Diktat {
         }
         recRef.current = null;
         setLaeuft(false);
+        setZwischen("");
       },
       diktatSprache(i18n.language),
+      (text) => {
+        // Derselbe Identitätsriegel wie beim Ende: ein fremder Rekorder malt nicht in die Anzeige.
+        if (recRef.current === rec) {
+          setZwischen(text);
+        }
+      },
     );
     if (!rec) {
       return;
@@ -77,5 +87,5 @@ export function useDiktat(anhaengen: (text: string) => void): Diktat {
     setLaeuft(true);
   };
 
-  return { moeglich, laeuft, umschalten };
+  return { moeglich, laeuft, umschalten, zwischen };
 }

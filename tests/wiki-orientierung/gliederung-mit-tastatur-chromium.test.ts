@@ -27,27 +27,11 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { DIST, type H4Stand, ORIGIN, fn, h4Stand } from "../design/h4-harness";
+import { VERSCHACHTELT_LANG, zeigerKlick } from "./gliederung-zeiger";
 
-/**
- * BENs ZWEITES Gegenbeispiel (R2), auf mehrere Bildschirmhöhen gestreckt — der härtere der beiden.
- *
- * `<h2>Eins<strong><h2>Zwei</h2></strong></h2>`: der Server-Sanitizer lässt es stehen (gemessen in
- * `gliederung-in-der-lesespalte.test.tsx`, W0), und anders als bei der direkten Schachtelung löst
- * der Browser sie NICHT auf — er schliesst eine offene Überschrift nur, wenn sie das AKTUELLE
- * Element ist, und hier steht `<strong>` dazwischen. Im Baum bleiben also DREI Überschriften,
- * ineinander. Genau daran ist Runde 2 gescheitert. Die Länge ist kein Beiwerk: ohne sie läge
- * „Drei" schon im Bild, und C1 prüfte einen Sprung, der nichts bewirken müsste.
- */
-const VERSCHACHTELT_LANG = [
-  "<h2>Eins<strong><h2>Zwei</h2></strong></h2>",
-  "<p>Halterungen und Profile sind ohne waagerechte Oberseiten auszuführen. Offene, ablaufende Profile sind zu bevorzugen, damit Flüssigkeit nicht stehen bleibt.</p>".repeat(
-    40,
-  ),
-  "<h2>Drei</h2>",
-  "<p>Vollverschweißte Hohlprofile sind in Lebensmittel- und Spritzzonen zu vermeiden, weil ihre Dichtheit langfristig nicht garantiert werden kann.</p>".repeat(
-    40,
-  ),
-].join("");
+// Der Prüfgegenstand (BENs verschachteltes Gegenbeispiel, auf mehrere Bildschirmhöhen gestreckt)
+// steht seit der Aufnahme „dokument-pointer-bedienung" in `gliederung-zeiger.ts` — dieselbe Vorlage
+// misst dort der echte Zeiger in breiter und schmaler Darstellung.
 
 /** In der Seite: Leiste, Überschriften, Fokus und Pixel in EINEM Zug — sonst zwei Stände. */
 const MESSEN = `() => {
@@ -293,14 +277,15 @@ describe("JOB 4145 R2 · die Gliederung in Chromium: echte Tastatur, echte Pixel
     expect(fehler).toBeNull();
     await frisch();
     const s = (stand as H4Stand).seite;
-    // Ein echter Klick auf den Knopf mit der Beschriftung „Drei“ — ohne seine Position zu kennen.
-    await s.evaluate(
-      fn(`() => {
-        const leiste = document.querySelector('[data-testid="bib-gliederung"]');
-        const knopf = [].slice.call(leiste.querySelectorAll('button')).find((b) => (b.textContent || '').trim() === 'Drei');
-        knopf.click();
-      }`),
-    );
+    // AUFNAHME 20260922 · DOKUMENT-POINTER-BEDIENUNG: bis hierher stand an dieser Stelle
+    // `knopf.click()` in der Seite — ein synthetisches DOM-Ereignis, das den Knopf auch unter einem
+    // Überzug erreicht. Jetzt ein ECHTER Zeigerklick an den Mittelpunkt des Knopfs mit der
+    // Beschriftung „Drei“, nachdem der Treffertest dort den Knopf obenauf gefunden hat.
+    const { griff, ereignisse } = await zeigerKlick(s, "Drei");
+    console.info(`JOB 4145 R2 · C2 · Zeiger · ${JSON.stringify({ griff, ereignisse })}`);
+    expect(ereignisse.filter((e) => e.art === "click")).toEqual([
+      { art: "click", echt: true, zeigerart: "mouse", knopf: "Drei" },
+    ]);
     await s.waitForFunction(
       fn(
         `() => { const f = document.querySelector('[data-testid="bib-text"]'); if (!f) return false; const u = f.querySelectorAll('h1, h2, h3, h4, h5, h6'); return !!u[2] && document.activeElement === u[2]; }`,
@@ -404,13 +389,11 @@ describe("JOB 4145 R2 · die Gliederung in Chromium: echte Tastatur, echte Pixel
     expect(zurueck.titel, "der Rückweg führte nicht zur Übersetzung").toBe("Uebersetzter Titel");
     expect(zurueck.eintraege).toEqual(["EinsZwei", "Zwei", "Drei"]);
 
-    await s.evaluate(
-      fn(`() => {
-        const leiste = document.querySelector('[data-testid="bib-gliederung"]');
-        const knopf = [].slice.call(leiste.querySelectorAll('button')).find((b) => (b.textContent || '').trim() === 'Drei');
-        knopf.click();
-      }`),
-    );
+    // Echter Zeiger statt `knopf.click()` (s. C2).
+    const { ereignisse } = await zeigerKlick(s, "Drei");
+    expect(ereignisse.filter((e) => e.art === "click")).toEqual([
+      { art: "click", echt: true, zeigerart: "mouse", knopf: "Drei" },
+    ]);
     await s.waitForFunction(
       fn(
         `() => { const f = document.querySelector('[data-testid="bib-text"]'); if (!f) return false; const u = f.querySelectorAll('h1, h2, h3, h4, h5, h6'); return !!u[2] && document.activeElement === u[2]; }`,

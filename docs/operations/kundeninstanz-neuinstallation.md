@@ -1,7 +1,11 @@
 # Eine neue Kundeninstanz aufsetzen (Linux + Docker Compose)
 
 **Zweck:** Von einer leeren Linux-Maschine zu einer benutzbaren, isolierten KLARWERK-Instanz —
-eigene Datenbank, eigene Domain, eigener erster Administrator. Stand: 16.09.2026 (JOB 4201).
+eigene Datenbank, eigene Domain, eigener erster Administrator. Stand: 16.09.2026 (JOB 4201),
+fortgeschrieben am 26.09.2026: der ganze Weg — leere Compose-Installation, HTTPS im echten Browser,
+Neustart von Anwendung **und** Datenbank — ist als ausführbare Prüfstrecke hinterlegt (§9) und auf
+einem leeren Linux-Prüfplatz **erfolgreich gefahren** (Laufstand und Belege in §9.1). Gemessen ist
+damit genau **dieser** Weg auf **einem** Platz — keine Zusage für jede Maschine.
 
 **Was Sie am Ende haben:** eine laufende Instanz, in der Sie sich anmelden, ein Wissensobjekt mit
 Quelle und Anhang erfassen und nach einem Neustart von Anwendung **und** Datenbank alles unverändert
@@ -38,13 +42,20 @@ nicht hier improvisieren):
 Nur das, was wirklich gebraucht wird:
 
 1. Eine Linux-Maschine mit **Docker** und **Docker Compose** (`docker compose version` antwortet).
+   Auf Ubuntu 24.04 genügen die Pakete der Distribution: `sudo apt-get install docker.io
+   docker-compose-v2 docker-buildx`. Genau so hat die Prüfstrecke (§9) den leeren Prüfplatz
+   eingerichtet (gemessen: Docker 29.1.3, Compose 2.40.3, Buildx 0.30.1; §9.1).
 2. Eine **Domain**, die auf diese Maschine zeigt, und ein **TLS-Proxy davor** (siehe §5 —
-   das ist keine Empfehlung, sondern Bedingung).
-3. Dieses Repository auf der Maschine (die Compose-Datei baut das Abbild selbst).
+   das ist keine Empfehlung, sondern Bedingung; §5.2 beschreibt den Proxy der Prüfstrecke).
+3. Dieses Repository auf der Maschine (die Compose-Datei baut das Abbild selbst) — sauber, in genau
+   der Fassung, die Sie installieren wollen (z. B. `git clone` bzw. `git archive <commit>`).
 
-**Keine Angabe zu CPU, RAM oder Plattenplatz.** Eine solche Zahl ist im Repo nirgends gemessen;
-sie hier zu erfinden, wäre eine Zusage ohne Grundlage. Der Container bringt LibreOffice Impress und
-poppler mit (für die Folienausgabe) — das ist der größte Einzelposten des Abbilds.
+**Keine Mindestangabe zu CPU, RAM oder Plattenplatz.** Die Prüfstrecke (§9) schreibt in ihren
+Beleg, auf welchem Platz sie lief. Der erfolgreiche Lauf (§9.1) lief auf 8 Kernen, 32 GB RAM und
+rund 22 GB freiem Platz unter `/var/lib/docker`; der erste Abbildbau dauerte dort rund eine Minute.
+Das belegt **einen** Platz, auf dem es ging — keine Mindestanforderung.
+Der Container bringt LibreOffice Impress und poppler mit (für die Folienausgabe) — das ist der
+größte Einzelposten des Abbilds.
 
 ---
 
@@ -83,6 +94,7 @@ APP_BASE_URL=
 # OIDC_AUDIENCE=
 # OIDC_JWKS_URI=
 # OIDC_AUTOPROVISION=
+# KLARWERK_M365_MANDANTEN=
 ```
 
 ### 2.1 Pflicht — ohne diese Werte startet nichts
@@ -97,9 +109,12 @@ APP_BASE_URL=
 > dann — und die neue Kundeninstanz zeigte still auf eine fremde Adresse. Der Vorgabewert ist
 > entfernt; `APP_BASE_URL` ist jetzt eine echte Pflichtangabe des Ein-Befehl-Weges.
 >
-> **Ein Rest bleibt, und er steht hier offen:** `.env.example` enthält die Vorführ-Adresse als
-> Beispielwert. Wer `.env` daraus ableitet und die Zeile **nicht ersetzt**, hat einen gesetzten
-> Wert — und kommt an der Pflichtprüfung vorbei. Prüfen Sie diese Zeile.
+> **Der Rest ist seit dem 25.09.2026 geschlossen:** `.env.example` enthielt die Vorführ-Adresse als
+> Beispielwert; wer `.env` daraus ableitete und die Zeile nicht ersetzte, kam an der Pflichtprüfung
+> vorbei. Die Zeile steht dort jetzt **leer**. Eine unverändert übernommene `.env.example` bricht
+> `docker compose` damit genauso ab wie ein fehlender Wert — gemessen am echten `up` auf dem
+Prüfplatz (§9, K6a; §9.1): Abbruch mit `required variable APP_BASE_URL is missing a value`, danach
+kein Container, kein Volume, kein Netz.
 
 ### 2.2 `CANONICAL_HOST` — im Zweifel: **nicht anfassen**
 
@@ -139,9 +154,18 @@ Praktisch:
 ### 2.3 `SMTP_HOST` und `SMTP_FROM`
 
 Ohne Postausgangsserver gibt es **keinen Mailversand**: Kennwort-Zurücksetzen und Benachrichtigungen
-erreichen niemanden; die Mail landet nur im Protokoll. Die Instanz läuft trotzdem, Kennwörter setzt
-dann ein Administrator. Die Vorgabe-Absenderadresse `noreply@klarwerk.ai` ist für eine eigene Domain
-meist falsch — `SMTP_FROM` mitsetzen.
+erreichen niemanden. **Die Mail steht dann auch nicht im Protokoll** — sie wird nur im Arbeitsspeicher
+der Anwendung abgelegt und ist nirgends lesbar (`ConsoleMailer` in
+`services/notifications/src/mailer.ts`; bis zum 25.09.2026 stand hier fälschlich, sie lande im
+Protokoll). Die Instanz läuft trotzdem, Kennwörter setzt dann ein Administrator. Die
+Vorgabe-Absenderadresse `noreply@klarwerk.ai` ist für eine eigene Domain meist falsch — `SMTP_FROM`
+mitsetzen.
+
+Wohin der Kennwort-Link einer Mail zeigt, misst die Prüfstrecke (§9, K6c): ein eigener
+Test-Empfänger (`SMTP_HOST=mailfalle`, `SMTP_PORT=2525`) nimmt die echte Mail der Instanz an, und
+der Link muss auf `<APP_BASE_URL>/reset` und auf keine andere Adresse zeigen. Echte Mails verlassen
+dabei den Prüfplatz nicht. Gemessen (§9.1): der Link zeigte auf `https://kundeninstanz.pruefplatz.test/reset`,
+also auf die eigene `APP_BASE_URL`.
 
 ### 2.4 Was Sie auf diesem Weg **nicht** über `.env` steuern
 
@@ -163,6 +187,45 @@ regelbasiert und werden auf der Oberfläche ehrlich als solche ausgewiesen. Wer 
 setzt, setzt **immer auch** `REASONER_MODEL` (sonst bleibt der OpenAI-Weg stumm). Schlüssel gehören
 in die `.env` auf der Maschine, **niemals ins Repository**.
 
+### 2.6 Optional: Word im Browser aus SharePoint/OneDrive — `KLARWERK_M365_MANDANTEN`
+
+Wer ein Word-Dokument aus dem SharePoint oder OneDrive seines Microsoft-365-Mandanten im Browser
+öffnet, lädt den Klara-Seitenbereich unter der SharePoint-Adresse des Mandanten. Der Browser zeigt
+ihn nur, wenn die Instanz diese Herkunft ausdrücklich erlaubt.
+
+| | |
+|---|---|
+| Wert | Die **SharePoint-Domänenstämme** Ihrer Mandanten, kommagetrennt — der Teil vor `.sharepoint.com` in der Adresse Ihres SharePoint (`https://kunde.sharepoint.com` → `kunde`). **Nicht** der Anzeigename des Mandanten und **nicht** die Entra-Mandanten-ID (GUID). |
+| Bedeutung | Je Stamm dürfen genau `https://<stamm>.sharepoint.com` und `https://<stamm>-my.sharepoint.com` den Seitenbereich einbetten — keine anderen SharePoint-Adressen, kein Platzhalter. Die Liste ersetzt keine Anmeldung, keine Berechtigung und keine Datentrennung. |
+| Leer / nicht gesetzt | Wie bisher: keine SharePoint-Herkunft darf einbetten; Word im Browser aus SharePoint zeigt dann eine Fehlerseite statt Klara. Keine Warnung. |
+| Prüfung | Gültig ist ein Stamm aus `a–z`, `0–9` und `-`, 1 bis 60 Zeichen, ohne Bindestrich am Anfang oder Ende. Jeder andere Eintrag wird beim Start **mit Grund protokolliert und verworfen**; gültige Einträge daneben wirken weiter. |
+| Aktivierung | Erst mit einem **neuen App-Prozess**. Die Anwendung liest den Wert einmal beim Start; ein geänderter Wert wirkt nicht in einem laufenden Container. |
+
+Beispiel (der Wert, den `tests/neuinstallation/pflichtkonfiguration.test.ts` M2 durch die
+Compose-Datei bis in die Anwendung verfolgt):
+
+<!-- m365-beispiel -->
+```dotenv
+KLARWERK_M365_MANDANTEN=klarwerktest4711
+```
+
+**Zwei Wege, getrennt:**
+
+- **Ein-Befehl-Weg (diese Anleitung, `docker-compose.prod.yml`):** Die Compose-Datei reicht Werte
+  nur über ihren `environment:`-Block durch, nicht per `env_file`. `KLARWERK_M365_MANDANTEN` steht
+  dort als `${KLARWERK_M365_MANDANTEN:-}`. Tragen Sie die Zeile in die `.env` neben der
+  Compose-Datei ein und erzeugen Sie den App-Container neu:
+  `docker compose -f docker-compose.prod.yml up -d` (Compose erkennt die geänderte Umgebung und
+  ersetzt den Container). Ein bloßes `restart` übernimmt eine geänderte `.env` **nicht**.
+- **Coolify-Betrieb (`docs/operations/deploy-hetzner.md`):** Coolify liest diese Compose-Datei und
+  diese `.env` nicht. Den Wert setzt der Betreiber als **Laufzeitvariable** der Anwendung in Coolify
+  und stellt danach neu bereit; erst der neue Container trägt den Wert.
+
+Nach dem Start steht im Protokoll entweder
+`KLARWERK_M365_MANDANTEN: Word im Browser darf Klara aus den SharePoint-Herkünften von … einbetten.`
+oder je verworfenem Eintrag eine Warnung mit Grund. Einzelheiten und die Live-Abnahme:
+`docs/operations/word-web-hostabnahme.md`.
+
 ---
 
 ## 3. Der Start
@@ -170,6 +233,12 @@ in die `.env` auf der Maschine, **niemals ins Repository**.
 ```bash
 docker compose -f docker-compose.prod.yml up -d --build
 ```
+
+Mit `-p <projektname>` (z. B. `docker compose -p klarwerk -f docker-compose.prod.yml up -d --build`)
+geben Sie der Instanz einen festen Projektnamen; ohne ihn nimmt Compose den Ordnernamen. Der Name
+bestimmt, wie Container, Netz (`<projektname>_default`), Datenvolume (`<projektname>_pgdata`) und
+das gebaute Abbild (`<projektname>-app`) heißen. Verwenden Sie danach bei **jedem** Befehl denselben
+Namen. Der Prüfplatz (§9) fährt genau diesen Befehl, mit einem je Lauf eindeutigen Namen.
 
 Der erste Lauf baut das Abbild und lädt Pakete; das dauert einige Minuten. Danach:
 
@@ -219,6 +288,8 @@ für Gäste bitte **befristet**.
 
 ## 5. TLS ist keine Option
 
+### 5.1 Warum
+
 Die Compose-Datei setzt `COOKIE_SECURE` auf `true`, und der `Dockerfile` setzt `NODE_ENV` auf
 `production`. In Produktion wird das Secure-Flag am Sitzungsplätzchen **erzwungen**; abschalten
 lässt es sich nicht — ein ausdrückliches `COOKIE_SECURE=false` **bricht den Start ab**
@@ -230,16 +301,71 @@ das Plätzchen aber stillschweigend, und Sie landen sofort wieder auf der Anmeld
 **kein** Kennwortfehler. Setzen Sie einen TLS-Proxy davor und rufen Sie die Instanz über `https://`
 auf.
 
+### 5.2 Der TLS-Proxy der Prüfstrecke: Caddy im Netz der Instanz
+
+Das ist der Proxy, mit dem die Prüfstrecke (§9) die Instanz im echten Browser bedient — so
+gefahren im erfolgreichen Lauf (§9.1). Er läuft als
+eigener Container **im Compose-Netz der Instanz** und reicht an den Dienst `app` auf Port 3001
+weiter; die Anwendung selbst bleibt unverändert.
+
+1. Zertifikat und Schlüssel für Ihren Namen in einen Ordner legen, als `instanz.pem` und
+   `instanz-key.pem`. Der Prüfplatz erzeugt dafür je Lauf eine eigene Test-CA und stellt damit ein
+   Zertifikat für `kundeninstanz.pruefplatz.test` aus; im Betrieb ist es das Zertifikat Ihrer Domain.
+2. Daneben eine Datei `Caddyfile` mit genau diesem Inhalt (den Namen durch Ihren ersetzen):
+
+<!-- caddyfile-eigenes-zertifikat -->
+```caddyfile
+{
+	auto_https disable_redirects
+	admin off
+}
+https://kundeninstanz.pruefplatz.test {
+	tls /certs/instanz.pem /certs/instanz-key.pem
+	reverse_proxy app:3001
+}
+```
+
+3. Den Proxy starten — `<projekt>` ist der Projektname aus §3:
+
+```bash
+docker run -d --name <projekt>-tls --restart unless-stopped \
+  --network <projekt>_default -p 127.0.0.1:443:443 \
+  -v /pfad/zum/zertifikatsordner:/certs:ro -v /pfad/zur/Caddyfile:/etc/caddy/Caddyfile:ro \
+  caddy:2-alpine
+```
+
+`127.0.0.1:443` hält den Proxy zunächst **nur lokal** erreichbar — das ist die Reihenfolge aus §4
+(Ersteinrichtung, bevor die Adresse öffentlich wird). Danach die Portabbildung auf `443:443`
+umstellen und den Container neu anlegen.
+
+**Nicht gefahren und deshalb nicht zugesagt:** Caddy mit automatisch bezogenem Zertifikat für eine
+öffentliche Domain (ein `Caddyfile` ohne `tls`-Zeile). Das ist der übliche Weg, braucht aber eine
+echte, öffentlich erreichbare Domain — die hat der Prüfplatz nicht.
+
+**Woran Sie sehen, dass es stimmt:** Der Browser öffnet `https://<ihr-name>/` ohne Warnung und zeigt
+die Ersteinrichtung bzw. die Anmeldung. Die Prüfstrecke misst zusätzlich die Gegenrichtung: ein
+Browserprofil, das der Test-CA **nicht** vertraut, bekommt die Seite nicht (Zertifikatsfehler) —
+die Prüfung des Zertifikats ist also wirklich an.
+
 ---
 
 ## 6. Neustart
 
+Der Weg der Prüfstrecke beendet **beide** Dienste und startet sie wieder:
+
 ```bash
-docker compose -f docker-compose.prod.yml restart
+docker compose -f docker-compose.prod.yml stop
+docker compose -f docker-compose.prod.yml start
 ```
 
-Erwartet: Konten, Wissensobjekte, Quellen, Anhänge und Rechte sind unverändert da; bestehende
-Anmeldungen gelten weiter (die Sitzungen liegen in der Datenbank, nicht im Prozess).
+`stop`/`start` behalten Container und das Volume `pgdata`; nichts wird neu aufgebaut. Danach meldet
+der Anwendungscontainer nach kurzer Zeit wieder `healthy` (`docker compose -f
+docker-compose.prod.yml ps`), und die Instanz ist über den TLS-Proxy wieder erreichbar — der
+Proxy selbst läuft dabei weiter und antwortet in der Zwischenzeit mit einem Fehler (502).
+
+Erwartet: Konten, Wissensobjekte, Quellen, Anhänge und Rechte sind unverändert da; die
+Ersteinrichtung wird **nicht** erneut verlangt. Bestehende Anmeldungen gelten weiter (die Sitzungen
+liegen in der Datenbank, nicht im Prozess — gemessen in N1).
 
 **Was davon belegt ist — und womit.** „Neustart" ist dreierlei, und die Belege sind unterschiedlich
 stark. `tests/neuinstallation/erstinstallation.integration.test.ts` trennt das ausdrücklich:
@@ -249,10 +375,10 @@ stark. `tests/neuinstallation/erstinstallation.integration.test.ts` trennt das a
 | Anwendung neu **aufgebaut** (gleicher Prozess) | N1 | Bestand, Quelle, Anhangszuordnung, Rechte und Sitzungen kommen aus der Datenhaltung, nicht aus dem Arbeitsspeicher. |
 | Anwendungs**prozess** neu gestartet | N3 | Der Produktionseinstieg (`server.ts`, `NODE_ENV=production`) fährt über einen echten Socket gegen den vorhandenen Bestand wieder hoch; die Datei kommt über `/api/objects/:id/raw` **Byte für Byte** zurück. |
 | **Datenbankdienst** neu gestartet | N1, aber nur wo der Testlauf die Datenbank selbst betreibt | Läuft der Test gegen eine vorgegebene PostgreSQL, wird deren Dienst **nicht** angefasst; der Lauf meldet das sichtbar. |
+| **Der ganze Weg dieser Anleitung**: `up -d --build` aus einem leeren Stand, gebautes Abbild, TLS-Proxy, Chromium über HTTPS, `stop`/`start` beider Dienste | Kundeninstallations-Strecke (§9), K1–K7 — erfolgreich gefahren (§9.1) | Container-Lebenszyklus (Startzeit, Prozess) **beider** Container und die Startzeit des PostgreSQL-Servers ändern sich, Container und Volume bleiben dieselben; ein neues Browserprofil meldet sich neu an und findet Dokument, Fassung, Text, Quelle und die Datei (SHA-256) unverändert; der Betrachter hat dieselben Rechte. |
 
-Was **nicht** gemessen ist und deshalb hier nicht zugesagt wird: der Aufbau über `docker compose`
-selbst, das gebaute Abbild, Browser und TLS. Der Befehl oben ist der richtige Weg — sein Ergebnis
-auf Ihrer Maschine ist Ihre Messung, nicht unsere.
+Aufbau über `docker compose`, gebautes Abbild, Browser und TLS sind damit auf **einem** leeren
+Prüfplatz gemessen (§9.1). Ihr Lauf auf Ihrer Maschine bleibt Ihre Messung.
 
 Die Daten liegen im Docker-Volume `pgdata`. **Löschen Sie es nie** ohne Sicherung —
 `docker compose down -v` entfernt es mit.
@@ -272,17 +398,127 @@ Die Daten liegen im Docker-Volume `pgdata`. **Löschen Sie es nie** ohne Sicheru
 | Der Start bricht mit `KLARWERK-Start abgebrochen: … Pflichtwert(e)` ab | Der Startvertrag der Anwendung — er nennt **alle** fehlenden Namen auf einmal. | Alle genannten Werte nachtragen. |
 | Nach dem Start ist der Port nicht erreichbar | Die Instanz horcht auf 3001; ein Proxy oder eine Firewall trifft einen anderen Port. | Proxy auf 3001 richten; siehe `docs/operations/server-hardening-readiness.md`. |
 | Die Ersteinrichtung ist schon weg (409) | Jemand war schneller — oder Sie haben sie bereits durchgeführt. | Wenn Sie es nicht waren: Instanz sofort vom Netz nehmen, Datenbank verwerfen, neu aufsetzen und §4 einhalten. |
+| Der Browser meldet einen Zertifikatsfehler | Das Zertifikat am Proxy passt nicht zum Namen, ist abgelaufen oder stammt von einer Stelle, der der Browser nicht vertraut. | Zertifikat für genau den Namen aus `APP_BASE_URL` ausstellen; bei einer eigenen CA deren Stammzertifikat im Browser bzw. System hinterlegen (§5.2). Nicht „trotzdem fortfahren" — dann prüft niemand. |
+| Über HTTPS kommt 502 | Der Proxy läuft, die Anwendung (noch) nicht — etwa kurz nach `start` (§6). | `docker compose -f docker-compose.prod.yml ps` abwarten, bis `app` `healthy` meldet. |
 
 ---
 
 ## 8. Ehrliche Grenzen dieses Textes
 
-- **Nicht gemessen und deshalb nicht zugesagt:** wie lange der erste Build auf Ihrer Maschine
-  dauert, welche Hardware reicht, und ob Ihr Proxy TLS korrekt terminiert. Das ist
-  Laufzeitkonfiguration außerhalb dieses Repositorys.
+- **Nicht gemessen und deshalb nicht zugesagt:** wie lange der erste Build auf **Ihrer** Maschine
+  dauert, welche Hardware **mindestens** reicht, und ob **Ihr** Proxy TLS korrekt terminiert. Der
+  erfolgreiche Lauf der Prüfstrecke (§9.1) belegt Platz und Dauer **eines** Prüfplatzes.
 - Der Abbruch des Ein-Befehl-Weges bei fehlender Pflichtangabe ist als Fall **N2** in
   `tests/neuinstallation/erstinstallation.integration.test.ts` hinterlegt. Auf einer Maschine
   **ohne** `docker compose` meldet dieser Lauf den Grund sichtbar und überspringt — ein
   übersprungener Lauf ist kein bestandener.
+  Auf dem Prüfplatz misst die Strecke aus §9 denselben Abbruch am echten `up` (K6a) — dort ohne
+  Übersprung.
 - SSO/OIDC, eine echte Microsoft-365-Anbindung, SMTP im Echtbetrieb, Skalierung und Monitoring sind
   eigene Themen und hier bewusst nicht beschrieben.
+
+---
+
+## 9. Der Prüfweg: die ganze Strecke als ausführbare Prüfung
+
+`tests/neuinstallation/kundeninstallation-strecke.integration.test.ts` fährt diese Anleitung auf
+einem Prüfplatz von vorn bis hinten. **Als gemessen gilt der Weg nur mit einem erfolgreichen,
+revisionsgebundenen Lauf (§9.1)** — die Strecke allein ist kein Nachweis. Gestartet wird sie
+ausdrücklich, auf einem leeren Linux-Prüfplatz:
+
+```bash
+npx vitest run --config vitest.integration.config.ts \
+  tests/neuinstallation/kundeninstallation-strecke.integration.test.ts
+```
+
+So ruft sie auch der gezielte Prüfweg des Testservers auf
+(`testlauf.py --commit <SHA> --gezielt tests/neuinstallation/kundeninstallation-strecke.integration.test.ts`).
+
+**Wann sie Pflicht ist.** Sobald ihr Dateiname auf der Kommandozeile steht (oder
+`KLARWERK_KUNDENINSTALLATION=pflicht` gesetzt ist; ausgewertet in `vitest.integration.config.ts`,
+Regel in `tests/neuinstallation/kundeninstallation/pflicht.ts`). Dann gibt es **keinen**
+Übersprung: ein Platz, der Docker, Compose, HTTPS oder den Browser nicht trägt, ist **rot**. In
+einem allgemeinen Integrationslauf ohne diesen Namen läuft sie nicht und meldet das sichtbar — ein
+solcher Lauf ist für diese Strecke **kein** Nachweis. In `tools/check` steht sie bewusst **nicht**:
+ein Tor, das an einem Compose-Bau hängt, sperrte jeden anderen Auftrag.
+
+**Was der Platz braucht — und was der Lauf dafür tut.** Docker mit Compose, `openssl`, `certutil`
+(Paket `libnss3-tools`) und Chromium (`npx playwright install chromium`). Fehlt Docker und ist
+`sudo` ohne Passwort möglich, richtet der Lauf es aus der Paketverwaltung ein (die Pakete aus §1);
+jeder Einrichtungsschritt steht im Beleg. Ohne Docker und ohne diese Möglichkeit ist der Platz
+ungeeignet — rot.
+
+**Der Weg, so wie die Strecke ihn fährt:**
+
+| Schritt | Was geschieht | Was belegt wird |
+|---|---|---|
+| Leerer Platz | eindeutiger Projektname `kn-kundeninst-<zeit>-<zufall>`; Installationsordner per `git archive` aus genau dem geprüften Commit | Commit und Tree, Platzbefund (Host, Kernel, Kerne, RAM, freier Platz, Docker-/Compose-/Buildx-Fassung, Gesamtbestand), **kein** Container/Volume/Netz/Abbild dieses Projekts |
+| K6a | `.env` ohne `APP_BASE_URL`, ohne `POSTGRES_PASSWORD` und unverändert aus `.env.example` → `up -d --build` | Abbruch mit dem Namen des Wertes, danach weiterhin nichts angelegt |
+| K1 | `.env` wie §2.0 (plus Test-Mailempfänger, §2.3) → `docker compose -p <projekt> -f docker-compose.prod.yml up -d --build` | Abbild-ID des gebauten `<projekt>-app`, Bauzeit, `healthy`, `/health`, „Datenhaltung: Postgres", Datenbank `klarwerk_prod`, Volume `<projekt>_pgdata`, `COOKIE_SECURE=true`, kein KI-Schlüssel |
+| TLS | Test-CA und Serverzertifikat je Lauf; Caddy aus §5.2 mit **genau dem** `Caddyfile` dieser Anleitung | Fingerabdrücke (SHA-256) von CA und Serverzertifikat; Vertrauensweg: CA im NSS-Speicher des Browserprofils |
+| K6b | das gebaute Abbild ohne Pflichtwerte gestartet | Abbruch mit „KLARWERK-Start abgebrochen" und den fehlenden Namen |
+| K2 | frisches Chromium-Profil über HTTPS: Ersteinrichtung, Anmeldung; zweites Profil versucht die Ersteinrichtung erneut; Betrachter über „Nutzer hinzufügen" | Profil ohne Test-CA bekommt genau „ERR_CERT_AUTHORITY_INVALID“; Sitzungsplätzchen `Secure` und `HttpOnly`; zweiter Versuch 409, genau ein Administrator |
+| K3 | Dokument mit festem Unicode-Text über das Blatt, Bild-Anhang (SHA-256 vorab festgehalten), Quelle am Anhang | nach Neuladen über die Oberfläche: Kennung, Fassung (Historie), Titel/Text, Quelle mit Anhang, heruntergeladene Bytes |
+| K5 | Betrachter liest; versucht eine Quelle anzuhängen; fragt einen vertraulichen Kontrolleintrag und dessen Datei direkt ab | Lesen gleich, Liste zeigt genau das erlaubte Dokument, Änderung 403, danach unverändert; Kontrolleintrag und Datei 404, Seite gesperrt |
+| K6c | „Passwort vergessen?" für den Betrachter | Link der echten Mail zeigt auf `APP_BASE_URL` + `/reset`; die eigene Adresse wird nicht umgeleitet |
+| K4 | `stop`/`start` wie §6, dann neues Profil, neue Anmeldung | Startzeit und Prozess beider Container und `pg_postmaster_start_time()` neu, Container und Volume gleich; alles aus K3 unverändert; K5 erneut |
+| K7 | Gegenproben im eigenen Aufbau: nur `restart app`; Dateizeile vor einem Neustart beiseitegelegt | genau „DB-Neustart" bzw. genau „Datei" rot, alles andere grün; Rücknahme, danach grün |
+| Bereinigung | eigene Container (`<projekt>-tls`, `<projekt>-mailfalle`), `down -v --rmi local` für das Projekt, Arbeitsordner | danach kein Container/Volume/Netz/Abbild dieses Projekts; fremde Abbilder bleiben |
+
+**Ein vorübergehender Browserabbruch ist kein Zertifikatsurteil.** Direkt nach dem Start eines
+frischen Profils lädt Chromium den NSS-Speicher mit der Test-CA und verwirft dabei manchmal die
+gerade laufende Navigation mit „net::ERR_CERT_VERIFIER_CHANGED“ (gemessen im Prüfauftrag
+`pa-1790443204-e1e59d28`, §9.1). Die Strecke wiederholt genau diesen einen Abbruch höchstens zweimal
+und meldet jede Wiederholung auf stderr; jeder andere Fehler, auch jedes echte Zertifikatsurteil,
+geht unverändert durch. Die Gegenprobe ohne Test-CA verlangt deshalb genau
+„ERR_CERT_AUTHORITY_INVALID“ und nicht irgendeinen „ERR_CERT_…“-Text.
+
+**Wo die Belege liegen.** Am Ende druckt der Lauf seinen Beleg zwischen
+`[KLARWERK · Kundeninstallation] BELEG` und `… BELEG ENDE` in seine Ausgabe (der Prüfweg des
+Testservers sichert diese Ausgabe als `ausgabe.txt` samt `MANIFEST.json` mit SHA-256 außerhalb des
+Servers) und legt ihn
+zusätzlich unter `.local/logs/kundeninstallation/<kennung>.json` (nicht versioniert) ab. Passwörter werden je Lauf
+erzeugt und im Beleg geschwärzt; der Kennwort-Link erscheint nur als Adresse ohne Token.
+
+### 9.1 Laufstand
+
+Nur ein Lauf mit Ausgang „bestanden" für einen bestimmten Commit — mit `ergebnis.json`,
+`ausgabe.txt`, geprüftem HEAD und dem Beleg der Strecke (§9) — macht die Aussagen dieser Anleitung
+über Compose, Abbild, Browser/TLS und Neustart zu einer Messung.
+
+**Erfolgreicher Lauf, 26.09.2026** — Prüfauftrag `pa-1790404031-d93165f6`, Commit `c66eb812`
+(Tree `567e017a`), Ausgang **bestanden**, 11 von 11 Fällen, kein Übersprung:
+
+| Was | Gemessen |
+|---|---|
+| Prüfplatz | frischer UpCloud-Server (Anlage `b6-515bb4859f-g1`, Plan 8 Kerne/32 GB), Ubuntu 24.04.4, Kernel 6.8; vorher **0** Container, **0** Volumes, **0** Abbilder |
+| Einrichtung | `apt-get install docker.io docker-compose-v2 docker-buildx libnss3-tools openssl` → Docker 29.1.3, Compose 2.40.3, Buildx 0.30.1 |
+| K6a | alle drei Fehlfälle (ohne `APP_BASE_URL`, ohne `POSTGRES_PASSWORD`, `.env.example` unverändert) brechen `up` mit dem Namen ab; danach nichts angelegt |
+| K1 | `up -d --build` in 66 s, Abbild `<projekt>-app` frisch gebaut und vom laufenden Container benutzt, `healthy`, Datenbank `klarwerk_prod`, eigenes Volume `<projekt>_pgdata`, `COOKIE_SECURE=true`, kein KI-Schlüssel |
+| TLS | Caddy mit dem `Caddyfile` aus §5.2; Profil **ohne** Test-CA: „ERR_CERT_AUTHORITY_INVALID“ |
+| K6b | gebautes Abbild ohne Werte: `APP_BASE_URL, DATABASE_URL` fehlen; nur mit Datenbank: `APP_BASE_URL` fehlt |
+| K2 | Ersteinrichtung im Browser, Plätzchen `Secure`/`HttpOnly`; zweiter Versuch 409 „ALREADY_SETUP“; Rollen genau `admin`, `viewer` |
+| K3/K4 | Kennung, Fassung 1, Unicode-Titel/-Text, Quelle mit Anhang und Datei-SHA-256 vor und nach `stop`/`start` gleich; beide Container mit neuer Startzeit und neuem Prozess, neue `pg_postmaster_start_time()`, Container und Volume dieselben |
+| K5 | Betrachter liest vor und nach dem Neustart gleich; `PUT … add-source` 403; Kontrolleintrag, Dateiverweis und Rohdatei 404, Seite gesperrt |
+| K6c | Kennwort-Link → `https://kundeninstanz.pruefplatz.test/reset` |
+| K7 | nur `restart app` → genau `dbNeustart` rot; beiseitegelegte Dateizeile → genau `datei` rot; jeweils Rücknahme, danach grün |
+| Bereinigung | danach kein Container/Volume/Netz/Abbild des Projekts, Arbeitsordner entfernt |
+
+Belege: `ergebnis.json` und `ausgabe.txt` (mit dem vollständigen Streckenbeleg) im Belegordner des
+Testservers zu diesem Prüfauftrag, gesichert mit `MANIFEST.json` (SHA-256 von `ausgabe.txt`:
+`59472d6d…95bcd8`).
+
+**Weitere Läufe derselben Strecke (26.09.2026):**
+
+| Prüfauftrag | Commit | Ausgang |
+|---|---|---|
+| `pa-1790406049-de6a6569` | 998ea604 | bestanden, 11/11 |
+| `pa-1790416478-716651c4` | 0febb8e0 | bestanden, 11/11 |
+| `pa-1790423570-5bfae984` | fed375ba | bestanden, 11/11 |
+| `pa-1790430697-048f1938` | 1da9820e | bestanden, 11/11 |
+| `pa-1790443204-e1e59d28` | f707dc30 | **nicht bestanden**, 6/11: die erste Navigation des Profils in K3 endete mit „net::ERR_CERT_VERIFIER_CHANGED“ (Chromium lud den Zertifikatsprüfer neu), K4, K5 und K7b schlugen als Folge fehl. Der Produktstand war an dieser Stelle unverändert. Daraufhin wiederholt die Strecke genau diesen Abbruch, und die Gegenprobe verlangt genau „ERR_CERT_AUTHORITY_INVALID“ (oben in §9). |
+
+**Frühere Versuche (25.09.2026) ohne Lauf der Strecke:** `pa-1790327971-78504ec0` (7481c3d7),
+`pa-1790334899-64290c4d` (e349c532), `pa-1790335469-1acf28a2` (4b083cf1),
+`pa-1790336130-047a9462` (43c3e565) — jeweils „Prüfumgebung defekt" (Tor-Selbstprüfung des
+Testservers am Ausgangsstand rot); diese Commits wurden nie geprüft.

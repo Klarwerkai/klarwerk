@@ -139,17 +139,39 @@
 .prose-kw[contenteditable="true"] img {
   max-height: 320px;
 }
-.prose-kw img[data-kw-scale="25"] {
+/* R-0014 (freies Ziehen an Griffen): eine gezogene Breite steht als HTML-`width="NN.N%"` am Bild
+   und wirkt als Darstellungshinweis. Den überstimmt jede Autorenregel — die Stufen gelten deshalb
+   nur, solange KEINE gezogene Breite da ist (`:not([width])`). Der Editor führt ohnehin nur eine
+   der beiden Angaben; das hier entscheidet nur fremdes Markup mit beiden. */
+.prose-kw img[data-kw-scale="25"]:not([width]) {
   width: 25%;
 }
-.prose-kw img[data-kw-scale="50"] {
+.prose-kw img[data-kw-scale="50"]:not([width]) {
   width: 50%;
 }
-.prose-kw img[data-kw-scale="75"] {
+.prose-kw img[data-kw-scale="75"]:not([width]) {
   width: 75%;
 }
-.prose-kw img[data-kw-scale="100"] {
+.prose-kw img[data-kw-scale="100"]:not([width]) {
   width: 100%;
+}
+/* Die Griffe sind Oberfläche, kein Inhalt: sie liegen NEBEN dem contenteditable (nie darin) und
+   werden deshalb weder emittiert noch gespeichert. */
+.kw-bildgriff {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  margin: -6px 0 0 -6px;
+  border-radius: 2px;
+  touch-action: none;
+}
+.kw-bildgriff[data-kw-griff="nw"],
+.kw-bildgriff[data-kw-griff="se"] {
+  cursor: nwse-resize;
+}
+.kw-bildgriff[data-kw-griff="ne"],
+.kw-bildgriff[data-kw-griff="sw"] {
+  cursor: nesw-resize;
 }
 .prose-kw blockquote {
   @apply my-2 border-l-2 border-hairline pl-3 text-muted;
@@ -334,4 +356,84 @@ body.klara-inspect * {
   outline: 2px solid rgb(var(--kw-ai));
   outline-offset: 2px;
   border-radius: 4px;
+}
+
+/* FE-003 · Seitentutorial: das gerade erklärte Bedienelement IN DER DEMO. Gefunden wird es über
+   seinen Zielnamen (`data-tutorial-ziel`), nie über Koordinaten; der Rahmen setzt
+   `data-tutorial-aktiv`. Die Markierung ist ruhig und statisch — Bewegung (ein kurzes, zweimaliges
+   Aufleuchten) gibt es nur ohne `prefers-reduced-motion: reduce`. Welches Element gemeint ist, sagt
+   zusätzlich der Text „Gerade gezeigt: …“ — die Farbe ist nicht der einzige Träger. */
+.tutorial-demo [data-tutorial-aktiv="true"] {
+  outline: 3px solid rgb(var(--kw-brand));
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .tutorial-demo [data-tutorial-aktiv="true"] {
+    animation: kw-tutorial-aufleuchten 1.2s ease-in-out 2;
+  }
+}
+/* FE-003 · Fortschrittsbalken des Tutorials: reine Grafik ohne Text (die Zahl steht daneben als
+   Text „Schritt n von 7“). Die Pseudoelemente lassen sich nicht als Grundklasse schreiben. */
+.tutorial-fortschritt::-webkit-progress-bar {
+  background-color: rgb(var(--kw-hairline));
+}
+.tutorial-fortschritt::-webkit-progress-value {
+  background-color: rgb(var(--kw-brand));
+}
+.tutorial-fortschritt::-moz-progress-bar {
+  background-color: rgb(var(--kw-brand));
+}
+@keyframes kw-tutorial-aufleuchten {
+  0%,
+  100% {
+    outline-color: rgb(var(--kw-brand));
+  }
+  50% {
+    outline-color: rgb(var(--kw-brand-300));
+  }
+}
+
+/* ================================================================================================
+   FE-002 · DIE STUFEN DER RECHTEN GRUPPE DES KOPFBANDS (shell/Kopfband.tsx, shell/kopfbandStufe.ts).
+   ================================================================================================
+   Welche Stufe gilt, misst der Browser (`data-stufe` an `kw-kopfband-rechts`); hier steht nur, was
+   eine Stufe ausblendet. Keine Stufe nimmt einen Weg oder eine Benennung weg:
+     1  das Wort „Meldungen" (Glocke, Zahl, Name und Zeigehinweis bleiben)
+     2  der breite Knopf „Seite finden ⌘K" — nur in der breiten Bauform; der Weg bleibt unter
+        „Arbeitsbereiche" und auf ⌘K/Strg+K
+     3  die Suche kompakt: statt des Feldes die Lupe mit dem SICHTBAREN Wort „Wissen suchen"
+   Gemessen in tests/fe002-kopfband/kopfband-fe002-chromium.test.ts. */
+.kw-kopfband-suche-kurz {
+  display: none;
+}
+.kw-kopfband-rechts:is([data-stufe="1"], [data-stufe="2"], [data-stufe="3"])
+  .kw-kopfband-meldungen-wort {
+  display: none;
+}
+.kw-kopfband-rechts[data-bauform="breit"]:is([data-stufe="2"], [data-stufe="3"])
+  .kw-kopfband-gehezu {
+  display: none;
+}
+.kw-kopfband-rechts[data-stufe="3"] .kw-kopfband-suche {
+  width: auto;
+  min-width: 0;
+  /* Lauf 3 R2 (Bens Befund B1, 900 px/nl): die kompakte Suche gibt keinen Platz unter ihren Inhalt
+     ab — sonst läge das Wort „Kennis zoeken" über dem Zahnrad. Reicht der Platz nicht, hält die
+     Gruppe ihren Inhalt als Mindestbreite und links wird umgebrochen (kopfbandStufe.ts). */
+  flex-shrink: 0;
+  padding: 4px 8px;
+}
+.kw-kopfband-rechts[data-stufe="3"] .kw-kopfband-suche input {
+  display: none;
+}
+.kw-kopfband-rechts[data-stufe="3"] .kw-kopfband-suche-kurz {
+  display: block;
+}
+
+/* FE-002: „Arbeitsbereiche" steht links in der Zeile — seine Übersicht öffnet nach rechts, nicht
+   wie Zahnrad und Konto nach links, sonst ragte sie aus dem Fenster. */
+.kw-menue.kw-menue-links {
+  left: 0;
+  right: auto;
 }

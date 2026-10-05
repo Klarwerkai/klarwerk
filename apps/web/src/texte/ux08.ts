@@ -13,6 +13,11 @@
 // JEDER NEUE Schlüssel dieses Nutzerwegs heisst dagegen `ux08.<name>` — dann kann kein zweites
 // Modul denselben Namen erfinden. Die Regel wird nicht nur beschrieben, sie wird geprüft:
 // `apps/web/src/texte/intern/pruefung.ts`, im Tor und im Produktbuild.
+//
+// UX-08 · QUELLENHINWEIS-HÄLFTE: der Weg zur Stufe heisst in jeder Sprache genau so, wie ein
+// Administrator ihn anklickt — Seitentitel (`einst.titel`), Reiter (`adm.sec.ki`), Zeile und
+// Detailkarte (`adm.ext.title`). Das frühere „Verwaltung → Externes Wissen“ gab es als Menüweg
+// nicht. Nachgemessen in `tests/ux08-quellenhinweis/`.
 import type { Textmodul } from "./intern/pruefung";
 
 export default {
@@ -21,26 +26,28 @@ export default {
   de: {
     // AUFTRAG-mega17 Block A-2: fehlende HERKUNFT beim Namen nennen — und wie du das nachholst.
     "capture.sourceMissingNext":
-      "Nächster Schritt: Wissensobjekt öffnen, das Quelldokument dort anhängen und die Quelle erneut vermerken. Erlaubt die eingestellte Stufe „Externes Wissen“ das nicht, kann ein Administrator sie unter Verwaltung → Externes Wissen ändern.",
+      "Nächster Schritt: Wissensobjekt öffnen, das Quelldokument dort anhängen und die Quelle erneut vermerken. Erlaubt die eingestellte Stufe der externen Wissensabfrage das nicht, kann ein Administrator sie unter Einstellungen → KI → Externe Wissensabfrage ändern.",
     // AUFTRAG-mega14 Block D (SCRUM-414): der Knopf ist auf gesperrter Stufe nicht anwählbar — und
     // sagt WARUM. Ein ausgegrauter Knopf ohne Grund ist eine Sackgasse, keine Erklärung.
     "ext.attachBlocked":
-      "Auf der eingestellten Stufe darf gesucht, aber nicht angehängt werden. Ein Administrator kann das unter Verwaltung → Externes Wissen ändern.",
-    "ext.gate.how": "Ein Administrator kann die Stufe unter Verwaltung → Externes Wissen ändern.",
+      "Auf der eingestellten Stufe darf gesucht, aber nicht angehängt werden. Ein Administrator kann das unter Einstellungen → KI → Externe Wissensabfrage ändern.",
+    "ext.gate.how":
+      "Ein Administrator kann die Stufe unter Einstellungen → KI → Externe Wissensabfrage ändern.",
   },
   en: {
     "capture.sourceMissingNext":
-      "Next step: open the knowledge object, attach the source document there and record the source again. If the configured “External knowledge” stage does not allow this, an administrator can change it under Administration → External knowledge.",
+      "Next step: open the knowledge object, attach the source document there and record the source again. If the configured external knowledge stage does not allow this, an administrator can change it under Settings → AI → External knowledge.",
     "ext.attachBlocked":
-      "At the configured stage, searching is allowed but attaching is not. An administrator can change this under Administration → External knowledge.",
+      "At the configured stage, searching is allowed but attaching is not. An administrator can change this under Settings → AI → External knowledge.",
     "ext.gate.how":
-      "An administrator can change the stage under Administration → External knowledge.",
+      "An administrator can change the stage under Settings → AI → External knowledge.",
   },
   nl: {
     "capture.sourceMissingNext":
-      "Volgende stap: kennisobject openen, het brondocument daar bijvoegen en de bron opnieuw vermelden. Staat het ingestelde niveau „Externe kennis“ dat niet toe, dan kan een beheerder het wijzigen onder Beheer → Externe kennis.",
+      "Volgende stap: kennisobject openen, het brondocument daar bijvoegen en de bron opnieuw vermelden. Staat het ingestelde niveau van de externe kennisopvraag dat niet toe, dan kan een beheerder het wijzigen onder Instellingen → AI → Externe kennisopvraag.",
     "ext.attachBlocked":
-      "Op het ingestelde niveau mag wel worden gezocht, maar niet worden toegevoegd. Een beheerder kan dit wijzigen onder Beheer → Externe kennis.",
-    "ext.gate.how": "Een beheerder kan het niveau wijzigen onder Beheer → Externe kennis.",
+      "Op het ingestelde niveau mag wel worden gezocht, maar niet worden toegevoegd. Een beheerder kan dit wijzigen onder Instellingen → AI → Externe kennisopvraag.",
+    "ext.gate.how":
+      "Een beheerder kan het niveau wijzigen onder Instellingen → AI → Externe kennisopvraag.",
   },
 } satisfies Textmodul;

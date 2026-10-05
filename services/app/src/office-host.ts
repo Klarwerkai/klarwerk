@@ -117,7 +117,160 @@ export const NICHT_FREIGEGEBENE_PLATTFORMFAMILIEN: readonly AusgeschlosseneFamil
       "framen. Die office.js-CDN appsforoffice.microsoft.com ist eine SKRIPTQUELLE und " +
       "berechtigt zu keiner Einbettung.",
   },
+  {
+    familie: "sharepoint.com",
+    beispiel: "https://beliebig-my.sharepoint.com",
+    warum:
+      "Ganze Plattformfamilie aller Microsoft-365-Mandanten: mit ihr dürfte JEDE SharePoint-Seite " +
+      "JEDES Mandanten Klara einbetten. Freigegeben sind ausschließlich die zwei Herkünfte der " +
+      "Mandanten, die die Installation in KLARWERK_M365_MANDANTEN ausdrücklich einträgt.",
+  },
 ];
+
+// ------------------------------------------------------------------------------------------------
+// DIE MANDANTEN DER INSTALLATION — SharePoint als Top-Rahmen von Word im Browser
+// ------------------------------------------------------------------------------------------------
+// Live belegt (1.0.0-beta.1.609, 26.09.2026): Wer ein Dokument aus OneDrive/SharePoint im Browser
+// öffnet, bekommt die Rahmenkette `https://<mandant>-my.sharepoint.com` (TOP) →
+// `https://dec-word-edit.officeapps.live.com` → Klara. `frame-ancestors` prüft JEDEN Vorfahren, also
+// auch den SharePoint-Top-Rahmen — ohne ihn blockiert Chrome das Taskpane („refused to connect").
+//
+// Die Antwort ist NICHT `https://*.sharepoint.com` (siehe NICHT_FREIGEGEBENE_PLATTFORMFAMILIEN),
+// sondern die Mandanten, die DIESE Installation einträgt: je SharePoint-Domänenstamm (der Teil vor
+// `.sharepoint.com` — kein Anzeigename, keine Entra-GUID) genau `https://<stamm>.sharepoint.com`
+// und danach `https://<stamm>-my.sharepoint.com`, ohne Platzhalter. Ohne Eintrag bleibt alles wie
+// zuvor. Die Stämme kommen aus der Umgebung (KLARWERK_M365_MANDANTEN), die allein der Betreiber
+// setzt — nicht aus dem Code und nie aus Anfragedaten (Origin, Referer, Host). Die Liste erlaubt nur
+// das Einbetten; sie ersetzt keine Anmeldung, keine Berechtigung und keine Datentrennung.
+
+/** Ein Eintrag aus KLARWERK_M365_MANDANTEN, der NICHT übernommen wurde — mit Grund. */
+export interface VerworfenerMandant {
+  readonly eintrag: string;
+  readonly grund: string;
+}
+
+/** Das Ergebnis der Auswertung: die übernommenen Stämme (klein, eindeutig, lexikografisch sortiert). */
+export interface M365Mandanten {
+  readonly mandanten: readonly string[];
+  readonly verworfen: readonly VerworfenerMandant[];
+}
+
+/**
+ * Die Höchstlänge eines Stamms: aus ihm wird auch der Bezeichner `<stamm>-my`, und ein
+ * DNS-Bezeichner hat höchstens 63 Zeichen (RFC 1035 §2.3.4) — also 63 − 3 = 60.
+ */
+const STAMM_HOECHSTLAENGE = 60;
+
+/**
+ * Ein Stamm nach Kleinschreibung: nur a–z, 0–9, Bindestrich, 1 bis 60 Zeichen — und (siehe
+ * `grundGegenMandant`) weder am Anfang noch am Ende ein Bindestrich.
+ */
+const MANDANTENNAME = /^[a-z0-9-]{1,60}$/;
+
+/**
+ * Warum ist dieser (bereits kleingeschriebene) Name KEIN Mandantenname? `undefined` heißt: er ist
+ * einer. Die Gründe sind benannt, damit der Betreiber im Startprotokoll liest, WAS falsch ist —
+ * die letzte Zeile (Zeichensatz) fängt alles ab, was die benannten Fälle nicht treffen.
+ */
+function grundGegenMandant(name: string): string | undefined {
+  if (name.length === 0) {
+    return "leerer Eintrag";
+  }
+  if (name.includes("://")) {
+    return "enthält ein Schema — nur der Mandantenname, keine Adresse";
+  }
+  if (name.includes("*")) {
+    return "enthält einen Platzhalter (*) — Platzhalter sind nicht erlaubt";
+  }
+  if (name.includes(".")) {
+    return "enthält einen Punkt — nur der Mandantenname, ohne .sharepoint.com";
+  }
+  if (name.includes("/")) {
+    return "enthält einen Schrägstrich (Pfad)";
+  }
+  if (name.includes(":")) {
+    return "enthält einen Doppelpunkt (Port)";
+  }
+  if (name.includes("@")) {
+    return "enthält ein @ (Nutzerangabe)";
+  }
+  if (/\s/.test(name)) {
+    return "enthält Leerraum";
+  }
+  if (name.length > STAMM_HOECHSTLAENGE) {
+    return `länger als ${STAMM_HOECHSTLAENGE} Zeichen (${name.length}) — <stamm>-my wäre kein DNS-Bezeichner mehr`;
+  }
+  if (!MANDANTENNAME.test(name)) {
+    return "enthält Zeichen außer a–z, 0–9 und Bindestrich";
+  }
+  // Bens Befund E4 (Runde 1): `-`, `-kunde` und `kunde-` kamen hier durch, ihre Herkünfte standen
+  // in der Direktive — die Hostregel (`HOSTNAME`) lehnte sie aber ab. Ein DNS-Bezeichner beginnt und
+  // endet nicht mit einem Bindestrich; ein solcher Name ist also kein Mandant.
+  if (name.startsWith("-") || name.endsWith("-")) {
+    return "beginnt oder endet mit einem Bindestrich";
+  }
+  // Der Riegel dahinter: eine Herkunft kommt NUR in die Direktive, wenn die Hostregel sie auch als
+  // Hostnamen annimmt. So können Direktive und `istErlaubterEinbettungsHost` nicht auseinanderlaufen,
+  // auch wenn eine der beiden Regeln künftig geändert wird.
+  if (!herkuenfteAus(name).every((herkunft) => HOSTNAME.test(herkunft.slice(HTTPS.length)))) {
+    return "ergibt keinen gültigen Hostnamen";
+  }
+  return undefined;
+}
+
+function herkuenfteAus(name: string): [string, string] {
+  return [`${HTTPS}${name}.sharepoint.com`, `${HTTPS}${name}-my.sharepoint.com`];
+}
+
+/**
+ * Liest KLARWERK_M365_MANDANTEN — fail-closed: jeder Eintrag, der kein Stamm ist, wird verworfen
+ * und mit Grund zurückgegeben; gültige Einträge daneben wirken weiter. Die Normalisierung ist
+ * deterministisch: am Komma teilen, den Leerraum UM einen Eintrag (`a, b`) entfernen, ASCII
+ * kleinschreiben, prüfen, Doppelte entfernen, lexikografisch sortieren. Fehlt der Wert oder ist er
+ * insgesamt leer bzw. nur Leerraum, gibt es weder Mandanten noch Verworfenes (keine Warnung); ein
+ * leerer Eintrag in einer befüllten Liste (`a,,b`) wird dagegen verworfen und gemeldet.
+ */
+export function leseM365Mandanten(roh: string | undefined): M365Mandanten {
+  if (roh === undefined || roh.trim() === "") {
+    return { mandanten: [], verworfen: [] };
+  }
+  return pruefeMandanten(roh.split(","));
+}
+
+function pruefeMandanten(eintraege: readonly string[]): M365Mandanten {
+  const mandanten: string[] = [];
+  const verworfen: VerworfenerMandant[] = [];
+  for (const eintrag of eintraege) {
+    const name = asciiKlein(eintrag.trim());
+    const grund = grundGegenMandant(name);
+    if (grund !== undefined) {
+      verworfen.push({ eintrag, grund });
+    } else if (!mandanten.includes(name)) {
+      mandanten.push(name);
+    }
+  }
+  // Codepunkt-Reihenfolge, keine Gebietsschema-Sortierung: dasselbe Ergebnis auf jeder Maschine.
+  mandanten.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  return { mandanten, verworfen };
+}
+
+/**
+ * Nur A–Z werden klein. `toLowerCase` bildete auch Nicht-ASCII-Zeichen ab (das Kelvin-Zeichen
+ * U+212A wird zu `k`) und machte so aus einem ungültigen Eintrag einen gültigen.
+ */
+function asciiKlein(text: string): string {
+  return text.replace(/[A-Z]/g, (zeichen) => zeichen.toLowerCase());
+}
+
+/**
+ * Die SharePoint-Herkünfte der eingetragenen Mandanten, je Stamm genau zwei: erst die normale, dann
+ * die `-my`-Herkunft; die Stämme lexikografisch sortiert.
+ * Die Namen werden HIER noch einmal einzeln durch dieselbe Prüfung geschickt: wer diese Funktion
+ * mit ungeprüften Werten ruft, bekommt für sie nichts — Direktive und Prüfung bleiben fail-closed.
+ */
+export function sharepointHerkuenfte(mandanten: readonly string[]): string[] {
+  return pruefeMandanten(mandanten).mandanten.flatMap(herkuenfteAus);
+}
 
 const HTTPS = "https://";
 
@@ -151,19 +304,31 @@ function basisAus(hostQuelle: string): string {
  *     https://office.com.angreifer.tld               FALSCH — dasselbe, kürzer
  *     https://xofficeapps.live.com                   FALSCH — kein Punkt vor dem Namensteil
  *
- * EINZIGE Normalisierung ist die Schreibung: Hostnamen sind laut DNS nicht schreibungsabhängig,
+ * EINZIGE Normalisierung ist die ASCII-Schreibung: Hostnamen sind laut DNS nicht schreibungsabhängig,
  * und Browser senden `Origin` ohnehin klein. Alles andere — führender oder folgender Leerraum,
  * Pfad, Query, Fragment, Port, Nutzerinfo, ein anderes Schema als HTTPS — macht die Antwort FALSCH,
  * statt vorher „repariert" zu werden.
+ *
+ * Die SharePoint-Herkünfte der eingetragenen `mandanten` stehen OHNE Platzhalter in der Direktive
+ * und werden deshalb EXAKT verglichen — `https://fremd-my.sharepoint.com`, ein angehängter Suffix
+ * oder ein vorangestelltes Zeichen treffen nicht. Ohne Mandanten ist keine SharePoint-Herkunft WAHR.
  */
-export function istErlaubterEinbettungsHost(origin: string | undefined): boolean {
+export function istErlaubterEinbettungsHost(
+  origin: string | undefined,
+  mandanten: readonly string[] = [],
+): boolean {
   const roh = origin ?? "";
   if (!roh.startsWith(HTTPS)) {
     return false;
   }
-  const host = roh.slice(HTTPS.length).toLowerCase();
+  const host = asciiKlein(roh.slice(HTTPS.length));
   if (!HOSTNAME.test(host)) {
     return false;
+  }
+  // Die exakten Herkünfte zuerst und für sich: ihr Vergleich ist die Gleichheit der ganzen
+  // Herkunft, sie laufen NIE durch den Platzhalter-/Suffixvergleich darunter.
+  if (sharepointHerkuenfte(mandanten).includes(`${HTTPS}${host}`)) {
+    return true;
   }
   return ERLAUBTE_EINBETTUNGS_HOSTS.some((eintrag) =>
     host.endsWith(`.${basisAus(eintrag.hostQuelle)}`),
@@ -172,17 +337,24 @@ export function istErlaubterEinbettungsHost(origin: string | undefined): boolean
 
 /**
  * Die Direktive, die `security-headers.ts` in die Ersatz-CSP des Taskpanes einsetzt — zusammengesetzt
- * aus GENAU DEN Host-Quellen, die `istErlaubterEinbettungsHost` befragt. Zwei Wahrheiten kann es
- * damit nicht geben: die Zeichenkette im Header und die Regel im Code sind dieselbe Angabe.
+ * aus GENAU DEN Host-Quellen und Mandanten-Herkünften, die `istErlaubterEinbettungsHost` befragt.
+ * Zwei Wahrheiten kann es damit nicht geben: die Zeichenkette im Header und die Regel im Code sind
+ * dieselbe Angabe.
  *
  * `'self'` bleibt drin: das Taskpane liegt auf der App-Domain und wird von der App selbst
  * eingebettet (Vorschau im Browser), ohne dass ein fremder Host das dürfte.
  */
-export const WORD_ADDIN_FRAME_ANCESTORS = [
-  "frame-ancestors",
-  "'self'",
-  ...ERLAUBTE_EINBETTUNGS_HOSTS.map((eintrag) => eintrag.hostQuelle),
-].join(" ");
+export function wordAddinFrameAncestors(mandanten: readonly string[] = []): string {
+  return [
+    "frame-ancestors",
+    "'self'",
+    ...ERLAUBTE_EINBETTUNGS_HOSTS.map((eintrag) => eintrag.hostQuelle),
+    ...sharepointHerkuenfte(mandanten),
+  ].join(" ");
+}
+
+/** Die Direktive OHNE eingetragene Mandanten — zeichengleich mit der Fassung vor den Mandanten. */
+export const WORD_ADDIN_FRAME_ANCESTORS = wordAddinFrameAncestors();
 
 /**
  * Der Riegel gegen die zwei Fehler, die dieser Datei ihren Sinn geben — gemessen beim Laden des
@@ -215,20 +387,31 @@ function pruefeEintraege(): void {
       );
     }
   }
+  // (3) Die Mandanten-Herkünfte öffnen keine Familie: auch MIT einem eingetragenen Mandanten bleibt
+  //     jedes Familien-Beispiel FALSCH, und die Direktive trägt keine Familie als Platzhalter.
+  const mitMandant = wordAddinFrameAncestors([PRUEFMANDANT]);
   for (const familie of NICHT_FREIGEGEBENE_PLATTFORMFAMILIEN) {
-    if (istErlaubterEinbettungsHost(familie.beispiel)) {
+    if (
+      istErlaubterEinbettungsHost(familie.beispiel) ||
+      istErlaubterEinbettungsHost(familie.beispiel, [PRUEFMANDANT])
+    ) {
       throw new Error(
         `office-host: die Plattformfamilie ${familie.familie} ist bewusst NICHT freigegeben, ` +
           `aber ${familie.beispiel} gilt als erlaubte Einbettungs-Herkunft.`,
       );
     }
-    if (WORD_ADDIN_FRAME_ANCESTORS.includes(`*.${familie.familie}`)) {
-      throw new Error(
-        `office-host: die Plattformfamilie ${familie.familie} ist bewusst NICHT freigegeben, ` +
-          `steht aber in der ausgelieferten Direktive: ${WORD_ADDIN_FRAME_ANCESTORS}`,
-      );
+    for (const direktive of [WORD_ADDIN_FRAME_ANCESTORS, mitMandant]) {
+      if (direktive.includes(`*.${familie.familie}`)) {
+        throw new Error(
+          `office-host: die Plattformfamilie ${familie.familie} ist bewusst NICHT freigegeben, ` +
+            `steht aber in der ausgelieferten Direktive: ${direktive}`,
+        );
+      }
     }
   }
 }
+
+/** Ein Stellvertreter-Mandant, an dem der Riegel die Mandanten-Herkünfte misst. */
+const PRUEFMANDANT = "pruef";
 
 pruefeEintraege();
