@@ -155,6 +155,88 @@ const BLATT_SICHTBARER_TEXT = `() => {
   return el ? (el.innerText || '').replace(/\\s+/g, ' ').trim() : '';
 }`;
 
+/** Der Titel des vorbereiteten Entwurfs E3, an dem `P2p` den Punkteweg verlässt. */
+const E3_TITEL = "Entwurf Punkteweg";
+
+/**
+ * Die drei Funde, die `P2p` als Antwort der Auswertung stellt. Ihre Belegstelle ist der Satz, der
+ * WIRKLICH in `sample.docx` steht (`QUELLSATZ`, die Datei hat genau einen) — der Quellenbezug ist
+ * damit echter Dateiinhalt und nichts, was der Prüfstand erfunden hat. `PUNKT_C` wird abgewählt.
+ */
+const PUNKT_A = {
+  title: "Überdruck: Ventil schließen",
+  summary: "Bei Überdruck wird das Ventil geschlossen.",
+  sourceExcerpt: QUELLSATZ,
+};
+const PUNKT_B = {
+  title: "Ventilstellung bei Druckanstieg",
+  summary: "Ein Druckanstieg über den Sollwert verlangt das Schließen des Ventils.",
+  sourceExcerpt: QUELLSATZ,
+};
+const PUNKT_C = {
+  title: "Abgewählter Fund ohne Entwurf",
+  summary: "Dieser Fund wird vor dem Verlassen weggeklickt.",
+  sourceExcerpt: QUELLSATZ,
+};
+
+/**
+ * Die Quellenzeile, die ein Punktentwurf im Rumpf trägt — die Form aus `lib/bodyExtract.ts:35`
+ * mit dem deutschen Etikett aus `:12` („Quelle"). Abgeschrieben und nicht importiert: das Modul
+ * läuft durch `sanitizeHtml`, und das braucht ein DOM, das dieser Node-Prozess nicht hat.
+ */
+function punktQuellenzeile(excerpt: string): string {
+  return `„${excerpt}“ — Quelle: ${DATEI_NAME}`;
+}
+
+/** Die Playwright-Weiche, mit der `P2p` die Vorbereitung stellt (`fulfill`) oder durchreicht. */
+interface Stellweiche {
+  request(): { method(): string; postData(): string | null };
+  fulfill(antwort: {
+    status: number;
+    body: string;
+    headers: Record<string, string>;
+  }): Promise<void>;
+  fallback(): Promise<void>;
+}
+
+/** Steht ein BETÄTIGBARER Knopf mit diesem Text auf der Seite? */
+const KNOPF_BETAETIGBAR = `(text) => [...document.querySelectorAll('button')].some(
+  (b) => (b.textContent || '').replace(/\\s+/g, ' ').trim().includes(text)
+    && !b.disabled && b.offsetParent !== null,
+)`;
+
+/** Markiert die Beschriftung (Klickziel) des Fundes mit genau diesem Titel. */
+const FUND_MARKIEREN = `(titel) => {
+  const zeilen = document.querySelectorAll('li');
+  for (let i = 0; i < zeilen.length; i += 1) {
+    const kaestchen = zeilen[i].querySelector('input[type=checkbox]');
+    const t = zeilen[i].querySelector('label > span > span');
+    if (!kaestchen || !t || (t.textContent || '').trim() !== titel) { continue; }
+    const label = zeilen[i].querySelector('label');
+    if (!label) { return false; }
+    label.setAttribute('data-kw-p2p', 'abwahl');
+    return true;
+  }
+  return false;
+}`;
+
+/** Ist das Kästchen des Fundes mit diesem Titel angehakt? `null`, wenn es ihn nicht gibt. */
+const FUND_ANGEHAKT = `(titel) => {
+  const zeilen = document.querySelectorAll('li');
+  for (let i = 0; i < zeilen.length; i += 1) {
+    const kaestchen = zeilen[i].querySelector('input[type=checkbox]');
+    const t = zeilen[i].querySelector('label > span > span');
+    if (kaestchen && t && (t.textContent || '').trim() === titel) { return kaestchen.checked; }
+  }
+  return null;
+}`;
+
+/** Der Wert des Titelfeldes im Blatt. */
+const BLATT_TITEL = `() => {
+  const el = document.querySelector('[data-testid="blatt-titel"]');
+  return el && 'value' in el ? String(el.value) : '(kein Titelfeld)';
+}`;
+
 /** Steht ein Knopf mit diesem Text auf der Fläche? */
 const KNOPF_DA = `(text) => [...document.querySelectorAll('button')].some(
   (b) => (b.textContent || '').replace(/\\s+/g, ' ').trim().includes(text),
@@ -224,6 +306,9 @@ const wegwerfDb = `klarwerk_importwieder_test_${`${Date.now()}`.slice(-9)}`;
 /** Was `P1` erarbeitet und die späteren Stationen brauchen. */
 let k1: string | undefined;
 let zeileK1NachA: string | undefined;
+/** Was `P2` beim Verlassen anlegt — `P2w` öffnet genau diesen Entwurf wieder. */
+let kennungK2: string | undefined;
+let zeileK2NachB: string | undefined;
 /** Der sichtbare Blattinhalt nach dem Neuladen (`P3`) — die Bezugsgrösse für `P4` und `P5`. */
 let inhaltNachC: string | undefined;
 
@@ -526,9 +611,13 @@ describe("JOB 4324 P · der Import-Wiederöffnen-Nutzerweg im Browser, gegen ech
   // gemacht. Es hat also die Wache des BLATTS gespeichert: sie schreibt den Blattstand in E2, trägt
   // die Datei nicht, und die Quittung sagt danach wahrheitsgemäß „verworfen".
   //
-  // DIESER FALL BLEIBT DESHALB ROT und wird NICHT abgeschwächt: er hält die Zusage fest, bis der
-  // zweite Befund repariert ist (eigener Auftrag — er verlangt `NavGuardContext.tsx` bzw.
-  // `Blatt.tsx`, beide ausserhalb der Zielpfade von JOB 4335).
+  // DIESER FALL WURDE DESHALB NICHT abgeschwächt: er hielt die Zusage fest, bis der zweite Befund
+  // repariert war. Die Reparatur steht seit JOB 4335 Runde 2 im Produkt (`NavGuardContext.tsx`
+  // führt ein VERZEICHNIS angemeldeter Wachen statt eines Platzes; geliefert mit
+  // `1.0.0-beta.1.592`, Ursachenabnahme in
+  // `tests/datei-verlassen-quittung/wache-zustaendigkeit-blatt-und-arbeitsraum.test.tsx`). Ob dieser
+  // Fall seither grün ist, entscheidet der Lauf und nicht dieser Kommentar — seine Erwartungen sind
+  // unverändert (Abgleich: `tests/dateientwurf-wiederaufnahme/README.md`).
   //
   // DIE MELDUNG BESCHREIBT, WAS STATTDESSEN DASTEHT. Ein „expected false to be true" ohne den
   // wirklich gerenderten Dialog liesse den nächsten Leser raten.
@@ -627,8 +716,8 @@ describe("JOB 4324 P · der Import-Wiederöffnen-Nutzerweg im Browser, gegen ech
           "Dialog der Wache (Knopf „Hier bleiben“)",
         );
 
-        // ── DIE ZUSAGE DES AUFTRAGS (§5 Lieferung 2b). Diese Zeile ist seit JOB 4335 grün; der
-        //    Fall bleibt danach an der Quittung rot (zweiter Befund, oben ausgeschrieben). ─────
+        // ── DIE ZUSAGE DES AUFTRAGS (§5 Lieferung 2b). Diese Zeile ist seit JOB 4335 grün; die
+        //    Quittung danach hing am zweiten Befund (oben ausgeschrieben, JOB 4335 Runde 2). ─────
         const wacheSpeichern = satz("nav.guard.save");
         const stattdessen = [
           `Titel «${satz("nav.guard.unsavableTitle")}» ${
@@ -697,11 +786,341 @@ describe("JOB 4324 P · der Import-Wiederöffnen-Nutzerweg im Browser, gegen ech
         expect(k2, "der beim Verlassen gesicherte Entwurf trägt die Herkunft nicht").toContain(
           DATEI_NAME,
         );
+        // Erst NACH allen Zusicherungen weitergeben (dieselbe Regel wie bei K1 in `P1`).
+        zeileK2NachB = k2;
+        kennungK2 = uebrige.rows[0]?.id;
+        process.stderr.write(`${JOB} P2 (b) GRÜN · K2 ${kennungK2} · drafts-Zeilen 3\n`);
       } finally {
         await seite.close({ runBeforeUnload: false }).catch(() => undefined);
       }
     },
     FALL_RAHMEN_MS * 3,
+  );
+
+  // ══════════════════════════════════════════════════════════════════════════════════════════════
+  // P2w · DER BEIM VERLASSEN GESICHERTE ENTWURF K2 — WIEDERGEFUNDEN SAMT ORIGINALQUELLE.
+  // ══════════════════════════════════════════════════════════════════════════════════════════════
+  //
+  // DIE LÜCKE (Auftrag `aufnahme:20260922:dateientwurf-absturz`, Zielzustand
+  // P-C-DATEIENTWURF-VERLASSEN: „… und der Nutzer findet den gespeicherten Bestand samt
+  // Originalquelle wieder"). `P2` belegt K2 nur in der Tabelle; `P3`–`P5` öffnen K1 aus dem
+  // Speicherknopf, nicht den Entwurf aus dem Verlassen-Weg. Dieser Fall öffnet GENAU K2 über die
+  // Adresse, lädt neu und liest Inhalt und Herkunft sichtbar ab — mit denselben Werkzeugen wie `P3`.
+  // Hängt an `P2`: ist `P2` rot, scheitert dieser Fall LAUT an `brauche`, statt still zu fehlen.
+  it(
+    "P2w — den beim Verlassen gesicherten Entwurf K2 öffnen und neu laden: Inhalt und Originalquelle stehen sichtbar da, die Zeile bleibt unverändert",
+    async (ctx) => {
+      if (!verfuegbar) {
+        ctx.skip();
+        return;
+      }
+      const db = brauche(pool, "der Verbindungspool");
+      const kennung = brauche(kennungK2, "die Kennung K2 aus P2 (b)");
+      const standK2 = brauche(zeileK2NachB, "der Stand von K2 nach P2 (b)");
+      const zeilenVorher = await entwurfszahl(db);
+      const seite = await frischeSeite(brauche(kontextA, "die Sitzung aus dem Aufbau"));
+      try {
+        const quellenzeile = persistierteQuellenzeile(DATEI_NAME);
+        await gehe(seite, `/erfassen?draft=${encodeURIComponent(kennung)}`);
+        await aufSichtbarkeitWarten(seite, QUELLSATZ, "Inhalt von K2 aus der realen DOCX");
+        await seite.reload({ waitUntil: "load", timeout: wartebudget("neuLadenAdresse") });
+        await aufZustandWarten(seite, SELEKTOR_DA, "das Blatt steht nach dem Neuladen", BLATT);
+        await aufSichtbarkeitWarten(seite, QUELLSATZ, "Inhalt von K2 nach dem Neuladen");
+        await sichtbarZugesichert(seite, QUELLSATZ, "Inhalt von K2 nach dem Neuladen");
+        await sichtbarZugesichert(
+          seite,
+          quellenzeile,
+          "Quellenanzeige (Originalquelle) von K2 nach dem Neuladen",
+        );
+        expect(
+          await quellenanzeige(seite),
+          "die Quellenanzeige von K2 nennt den Dateinamen nicht",
+        ).toContain(DATEI_NAME);
+        // Öffnen und Neuladen schreiben nichts: keine Doppelanlage, K2 Byte für Byte derselbe.
+        expect(
+          await entwurfszahl(db),
+          "das Wiederöffnen von K2 hat die Zahl der Entwürfe verändert",
+        ).toBe(zeilenVorher);
+        expect(
+          await entwurfszeile(db, kennung),
+          "die Zeile K2 hat sich durch Öffnen und Neuladen verändert",
+        ).toBe(standK2);
+        process.stderr.write(`${JOB} P2w GRÜN · K2 ${kennung}\n`);
+      } finally {
+        await seite.close({ runBeforeUnload: false }).catch(() => undefined);
+      }
+    },
+    FALL_RAHMEN_MS * 3,
+  );
+
+  // ══════════════════════════════════════════════════════════════════════════════════════════════
+  // P2p · DER PUNKTEWEG BEIM VERLASSEN — AUSGEWÄHLTE PUNKTE GESICHERT, QUITTIERT, WIEDERGEFUNDEN.
+  // ══════════════════════════════════════════════════════════════════════════════════════════════
+  //
+  // DIE LÜCKE (BEN zu diesem Auftrag, Nacharbeit 1): `P2`/`P2w` belegen den Ganzdokument-Zweig. Der
+  // Zweig „ausgewählte Punkte" (`Capture.tsx:3651-3720`, `createPointDrafts`) war nur gegen einen
+  // attrappierten Bestand gemessen (`quittung-dateiwege-mounted.test.tsx` A2,
+  // `dateiweg-abwahl-mounted.test.tsx` A1).
+  //
+  // VORBEREITUNG, AUSDRÜCKLICH GESTELLT — und nur sie: die Auswertung bräuchte ein echtes Modell.
+  // Am Netzrand DIESER Seite werden deshalb genau zwei Antworten gestellt:
+  //   · `GET /api/reasoner/status` meldet ein nutzbares Modell für `extract` — sonst graut die
+  //     Fläche den Auswertungsknopf aus (`Capture.tsx:6147-6152`, `lib/aiAvailability.ts:35-55`);
+  //   · `POST /api/reasoner` mit `task: "extract"` antwortet mit drei Funden (`PUNKT_A/B/C`).
+  // Jeder andere Aufruf geht an die echte App. ECHT bleiben: Datei, Einlesen, Auswahl, Wache,
+  // Speichern (`POST /api/drafts` über den Socket in PostgreSQL), Quittung und Wiederöffnen.
+  it(
+    "P2p — Entwurf fortsetzen, Datei laden und auswerten, einen Fund abwählen, verlassen: genau die ausgewählten Punkte stehen in PostgreSQL, die Quittung nennt sie, und jeder öffnet sich samt Originalquelle wieder",
+    async (ctx) => {
+      if (!verfuegbar) {
+        ctx.skip();
+        return;
+      }
+      const db = brauche(pool, "der Verbindungspool");
+      const api = brauche(adminApi, "die API-Sitzung des Betreibers");
+      const basis = brauche(strecke, "die Messstrecke").basis;
+      const seite = await frischeSeite(brauche(kontextA, "die Sitzung aus dem Aufbau"));
+      const auswertungen: string[] = [];
+      try {
+        // ── Die Vorbereitung (s. oben) — gelegt VOR dem ersten Seitenaufbau.
+        await seite.route(`${basis}/api/reasoner/status`, async (route) => {
+          const r = route as unknown as Stellweiche;
+          if (r.request().method() !== "GET") {
+            await r.fallback();
+            return;
+          }
+          await r.fulfill({
+            status: 200,
+            body: JSON.stringify({
+              active: true,
+              mode: "cloud",
+              reachable: "active",
+              tasks: { extract: true },
+            }),
+            headers: { "content-type": "application/json" },
+          });
+        });
+        await seite.route(`${basis}/api/reasoner`, async (route) => {
+          const r = route as unknown as Stellweiche;
+          const rumpf = r.request().postData() ?? "";
+          let aufgabe = "";
+          try {
+            aufgabe = String((JSON.parse(rumpf) as { task?: unknown }).task ?? "");
+          } catch {
+            aufgabe = "";
+          }
+          if (r.request().method() !== "POST" || aufgabe !== "extract") {
+            await r.fallback();
+            return;
+          }
+          auswertungen.push(rumpf);
+          await r.fulfill({
+            status: 200,
+            body: JSON.stringify({ points: [PUNKT_A, PUNKT_B, PUNKT_C], note: null, demo: false }),
+            headers: { "content-type": "application/json" },
+          });
+        });
+
+        // E3 über die echte Route — die Ausgangslage, wie E2 in `P2`.
+        const antwort = await api.sende("POST", "/api/drafts", {
+          title: E3_TITEL,
+          statement: "",
+          origin: "expert",
+        });
+        expect([200, 201], `E3 anlegen: ${antwort.status} ${antwort.text.slice(0, 400)}`).toContain(
+          antwort.status,
+        );
+        const e3 = (antwort.json as { id: string }).id;
+        const zeileE3Vorher = await entwurfszeile(db, e3);
+        expect(zeileE3Vorher, "E3 steht nicht in der Datenbank").not.toBeNull();
+        const kennungenVorher = new Set(
+          (await db.query<{ id: string }>("SELECT id FROM drafts")).rows.map((z) => z.id),
+        );
+
+        await gehe(seite, `/erfassen?draft=${encodeURIComponent(e3)}`);
+        await aufZustandWarten(
+          seite,
+          BLATT_TITEL_WERT,
+          `das Blatt trägt den Titel des fortgesetzten Entwurfs E3 («${E3_TITEL}»)`,
+          E3_TITEL,
+        );
+        expect(
+          await klickKnopf(seite, satz("erfassen.werkzeug.datei")),
+          "das Menü „Datei ▾“ war nicht betätigbar",
+        ).toBe(true);
+        await aufZustandWarten(
+          seite,
+          KNOPF_DA,
+          `der Menüeintrag «${satz("erfassen.weg.formular")}» steht`,
+          satz("erfassen.weg.formular"),
+        );
+        expect(
+          await klickKnopf(seite, satz("erfassen.weg.formular")),
+          "der Weg „Formular (Experten)“ war nicht betätigbar",
+        ).toBe(true);
+        await aufZustandWarten(
+          seite,
+          SELEKTOR_DA,
+          "der Verlassen-Knopf des geöffneten Entwurfs steht",
+          VERLASSEN_KNOPF,
+        );
+        // Titel leeren wie in `P2`: E3 bleibt unberührt, die Quittung hängt allein am Dateizweig.
+        expect(
+          await seite.evaluate<boolean>(fn(TITELFELD_MARKIEREN), satz("capture.fTitle")),
+          `das Titelfeld des Expertenformulars («${satz("capture.fTitle")}») war nicht auffindbar`,
+        ).toBe(true);
+        await seite.fill(TITELMARKE, "");
+
+        // Datei laden — Importart bleibt auf ihrem Vorgabewert „Einzelne Erkenntnisse".
+        await dateiwegOeffnen(seite);
+        await dateiUeberSichtbareAuswahl(seite, quellAnlage());
+        const auswerten = satz(CAPTURE_FILE_TEXT.searchCta);
+        await aufZustandWarten(
+          seite,
+          KNOPF_BETAETIGBAR,
+          `der Auswertungsknopf «${auswerten}» ist betätigbar (Datei eingelesen)`,
+          auswerten,
+        );
+        expect(await klickKnopf(seite, auswerten), `«${auswerten}» war nicht betätigbar`).toBe(
+          true,
+        );
+        for (const p of [PUNKT_A, PUNKT_B, PUNKT_C]) {
+          await aufZustandWarten(
+            seite,
+            FUND_ANGEHAKT,
+            `der Fund «${p.title}» steht angehakt in der Liste`,
+            p.title,
+          );
+        }
+        expect(auswertungen.length, "die Auswertung wurde nicht genau einmal angefragt").toBe(1);
+        expect(
+          auswertungen[0],
+          "die Auswertung bekam nicht den echten Dateitext der DOCX",
+        ).toContain(QUELLSATZ);
+
+        // PUNKT_C abwählen — über die echte Beschriftung, ein Zeigerklick.
+        expect(
+          await seite.evaluate<boolean>(fn(FUND_MARKIEREN), PUNKT_C.title),
+          `der Fund «${PUNKT_C.title}» war nicht auffindbar`,
+        ).toBe(true);
+        await seite.click('[data-kw-p2p="abwahl"]', { timeout: wartebudget("zeigerklick") });
+        expect(
+          await seite.evaluate<boolean | null>(fn(FUND_ANGEHAKT), PUNKT_C.title),
+          `der Fund «${PUNKT_C.title}» ist nach dem Klick weiterhin angehakt`,
+        ).toBe(false);
+
+        await seite.click(VERLASSEN_KNOPF, { timeout: wartebudget("zeigerklick") });
+        await aufSichtbarkeitWarten(
+          seite,
+          satz("nav.guard.stay"),
+          "Dialog der Wache (Knopf „Hier bleiben“)",
+        );
+        const wacheSpeichern = satz("nav.guard.save");
+        expect(
+          await seite.evaluate<boolean>(fn(KNOPF_DA), wacheSpeichern),
+          `die Wache bietet «${wacheSpeichern}» für die ausgewählten Punkte nicht an`,
+        ).toBe(true);
+        expect(
+          await klickKnopf(seite, wacheSpeichern),
+          `«${wacheSpeichern}» war im Dialog der Wache nicht betätigbar`,
+        ).toBe(true);
+
+        // Die Quittung: „gesichert", dazu die Zahl der WIRKLICH angelegten Punkte — nicht drei.
+        const gespeichert = satz("capture.leaveDraft.doneSaved");
+        const verworfen = satz("capture.leaveDraft.done");
+        const zwei = satz(CAPTURE_FILE_TEXT.draftsSaved, { count: 2, name: DATEI_NAME });
+        await aufSichtbarkeitWarten(seite, gespeichert, "Quittung des Verlassen-Wegs");
+        await aufSichtbarkeitWarten(seite, zwei, "Quittung der angelegten Punktentwürfe");
+        const quittungen = (await seite.evaluate<string[]>(fn(SICHTBARE_QUITTUNGEN))).join(" | ");
+        expect(quittungen, "die Quittung behauptet „verworfen“").not.toContain(verworfen);
+        expect(quittungen, "die Quittung zählt den abgewählten Fund mit").not.toContain(
+          satz(CAPTURE_FILE_TEXT.draftsSaved, { count: 3, name: DATEI_NAME }),
+        );
+        await sichtbarZugesichert(seite, gespeichert, "Quittung „… gesichert.“ (Punkteweg)");
+        await sichtbarZugesichert(seite, zwei, "Quittung „2 Entwürfe aus <Datei>“");
+
+        // Die Datenbank: genau zwei neue Zeilen, je Punkt EINE, der abgewählte keine, E3 unverändert.
+        const neu = (
+          await db.query<{ id: string; data: unknown }>("SELECT id, data FROM drafts")
+        ).rows
+          .filter((z) => !kennungenVorher.has(z.id))
+          .map((z) => ({ id: z.id, zeile: JSON.stringify(z.data) }));
+        expect(
+          neu.length,
+          `nicht genau zwei neue Entwürfe: ${neu.map((z) => z.zeile.slice(0, 120)).join(" · ")}`,
+        ).toBe(2);
+        expect(
+          await entwurfszeile(db, e3),
+          "der fortgesetzte Entwurf E3 wurde beim Verlassen verändert",
+        ).toBe(zeileE3Vorher);
+        const jePunkt = (titel: string) =>
+          neu.filter((z) => z.zeile.includes(JSON.stringify(titel)));
+        expect(jePunkt(PUNKT_A.title).length, `«${PUNKT_A.title}» nicht genau einmal`).toBe(1);
+        expect(jePunkt(PUNKT_B.title).length, `«${PUNKT_B.title}» nicht genau einmal`).toBe(1);
+        expect(jePunkt(PUNKT_C.title).length, "der abgewählte Fund wurde angelegt").toBe(0);
+        for (const z of neu) {
+          expect(z.zeile, "ein Punktentwurf trägt die Belegstelle nicht").toContain(QUELLSATZ);
+          expect(z.zeile, "ein Punktentwurf trägt die Herkunft nicht").toContain(DATEI_NAME);
+        }
+
+        // ── Wiederöffnen: jeden Punktentwurf über die Adresse, neu laden, sichtbar ablesen.
+        for (const punkt of [PUNKT_A, PUNKT_B]) {
+          const treffer = jePunkt(punkt.title)[0];
+          if (treffer === undefined) {
+            throw new Error(`${JOB} P2p: kein Entwurf für «${punkt.title}»`);
+          }
+          const leser = await frischeSeite(brauche(kontextA, "die Sitzung aus dem Aufbau"));
+          try {
+            await gehe(leser, `/erfassen?draft=${encodeURIComponent(treffer.id)}`);
+            await aufZustandWarten(
+              leser,
+              BLATT_TITEL_WERT,
+              `das Blatt trägt den Titel «${punkt.title}»`,
+              punkt.title,
+            );
+            await leser.reload({ waitUntil: "load", timeout: wartebudget("neuLadenAdresse") });
+            await aufZustandWarten(leser, SELEKTOR_DA, "das Blatt steht nach dem Neuladen", BLATT);
+            await aufZustandWarten(
+              leser,
+              BLATT_TITEL_WERT,
+              `nach dem Neuladen trägt das Blatt den Titel «${punkt.title}»`,
+              punkt.title,
+            );
+            const quellenzeile = punktQuellenzeile(punkt.sourceExcerpt);
+            await aufSichtbarkeitWarten(leser, quellenzeile, `Quellenzeile von «${punkt.title}»`);
+            await sichtbarZugesichert(
+              leser,
+              quellenzeile,
+              `Originalquelle von «${punkt.title}» nach dem Neuladen`,
+            );
+            expect(
+              await quellenanzeige(leser),
+              `die Quellenanzeige von «${punkt.title}» nennt den Dateinamen nicht`,
+            ).toContain(DATEI_NAME);
+            expect(
+              await leser.evaluate<string>(fn(BLATT_TITEL)),
+              "das Blatt zeigt einen anderen Entwurf",
+            ).toBe(punkt.title);
+            expect(
+              await entwurfszeile(db, treffer.id),
+              `die Zeile «${punkt.title}» hat sich durch Öffnen und Neuladen verändert`,
+            ).toBe(treffer.zeile);
+          } finally {
+            await leser.close({ runBeforeUnload: false }).catch(() => undefined);
+          }
+        }
+        expect(
+          (await db.query<{ id: string }>("SELECT id FROM drafts")).rows.length,
+          "das Wiederöffnen hat Entwürfe angelegt oder entfernt",
+        ).toBe(kennungenVorher.size + 2);
+        process.stderr.write(
+          `${JOB} P2p GRÜN · E3 ${e3} · Punktentwürfe ${neu.map((z) => z.id).join(", ")}\n`,
+        );
+      } finally {
+        await seite.close({ runBeforeUnload: false }).catch(() => undefined);
+      }
+    },
+    FALL_RAHMEN_MS * 4,
   );
 
   // ══════════════════════════════════════════════════════════════════════════════════════════════
