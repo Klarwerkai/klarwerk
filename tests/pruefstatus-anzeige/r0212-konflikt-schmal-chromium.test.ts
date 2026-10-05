@@ -22,7 +22,7 @@ import i18n from "../../apps/web/src/i18n";
 import { type H4Stand, ORIGIN, TITEL_FREI, fn, h4Stand } from "../design/h4-harness";
 
 /** Ist ein Element mit dieser Marke im DOM? */
-const DA = `(sel) => !!document.querySelector(sel)`;
+const DA = "(sel) => !!document.querySelector(sel)";
 
 const KONFLIKT = (): string => i18n.t("status.konflikt", { lng: "de" }) as string;
 

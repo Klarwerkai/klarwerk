@@ -308,6 +308,8 @@ export type KoAction =
   // sie ginge am Fall vorbei (s. `KnowledgeObject.metadataRevision` in `api/types.ts`).
   | { action: "category"; category: string; expectedMetadataRevision?: number }
   | { action: "tags"; tags: string[]; expectedMetadataRevision?: number }
+  // R-0431 (K2): das Fachgebiet setzen/ändern; leer entfernt die Angabe (ko-routes.ts `domain`).
+  | { action: "domain"; domain: string }
   // SCRUM-415: Vertraulichkeitsstufe setzen/ändern (mit Audit).
   | { action: "confidentiality"; level: Confidentiality }
   | {

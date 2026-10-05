@@ -108,4 +108,11 @@ describe("KoReadView — VIP-Sichtvertrag", () => {
     expect(nl).toContain("Beoordelingsstand: 84 %");
     expect(nl).not.toContain("zeker");
   });
+
+  // R-0432 (K3, Nacharbeit 7): die deutsche Leseansicht sagt „Schlagwörter", nicht „Tags".
+  it("R-0432: der eingeklappte Detailkopf nennt Schlagwörter statt Tags", () => {
+    const html = renderMarkup(<KoReadView ko={fullKo()} />);
+    expect(html).toContain("Weitere Angaben (Bedingungen · Maßnahmen · Schlagwörter)");
+    expect(html).not.toContain("Tags");
+  });
 });
