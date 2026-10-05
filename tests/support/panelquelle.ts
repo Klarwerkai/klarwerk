@@ -115,8 +115,11 @@ const MARKE_KOPF_ENDE = '"use strict";\n';
  * NACHARBEIT 6: `taskpane.js` ändert sich am Auswahlzugriff des Fragenwegs (`Word.run` zuerst, mit
  * Frist). Der Bezugspunkt MUSS wandern; E2 meldet ihn im Prüflauf als „Received", er wird danach
  * gemessen übernommen.
+ * NACHARBEIT 7: GEMESSEN im Prüflauf zu Kandidat 26e86268 (`87cb70fe…`, „Received" von E2,
+ * HISTORIE/nacharbeit-7/PRUEFUNG/panel-auslieferung-pins.log) und unverändert übernommen; die
+ * Panel-Dateien sind seit dieser Messung unberührt.
  */
-export const PANEL_VOR_SCHNITT_BLOB = "0548d0868b70123eca4f16a4a3a3cdab59f6fe5d";
+export const PANEL_VOR_SCHNITT_BLOB = "87cb70fe49e2fc85891a0f1683e2659698a566ed";
 
 export interface PanelTeile {
   html: string;

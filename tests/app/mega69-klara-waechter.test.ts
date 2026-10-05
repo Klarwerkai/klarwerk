@@ -2702,7 +2702,10 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // Nutzlast-, CSP-, Rechte- oder Manifeständerung (WordApi 1.1 bleibt), kein neuer
     // Wörterbuchschlüssel, kein Sideload. DER PIN MUSS WANDERN; der Prüflauf meldet den Ist-Wert
     // als „Received", er wird danach gemessen übernommen.
-    const PIN = "d36121d2e48f46cff4ebaf56a131c4e354c067ed6d91a7a28ab9e727dfff3b37";
+    // NACHARBEIT 7: PIN BEWUSST AKTUALISIERT (d36121d2… -> 5f2efde9…). Im Prüflauf zu Kandidat
+    // 26e86268 GEMESSEN („Received", HISTORIE/nacharbeit-7/PRUEFUNG/panel-auslieferung-pins.log) und
+    // unverändert übernommen; die Panel-Dateien sind seit dieser Messung unberührt.
+    const PIN = "5f2efde93a6a41dac7448116aaebcee945c34e2de6d01b38958cfdb4c923a2f2";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(
       ist,
