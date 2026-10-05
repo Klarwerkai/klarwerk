@@ -3,6 +3,7 @@ import type { AuditService } from "../../../audit";
 import type {
   ConflictInput,
   ConflictService,
+  ConflictType,
   OverlapService,
   OverlapSettingsRepo,
 } from "../../../conflicts";
@@ -418,6 +419,8 @@ type KoAktion =
   | "remove-source"
   | "category"
   | "tags"
+  // R-0431 / R-1728 / FR-LIB-01 (K2): das Fachgebiet am Objekt setzen, ändern oder entfernen.
+  | "domain"
   | "confidentiality"
   // JOB 557: die Verantwortung am Objekt benennen (Recht `ko.validate`, s. den Zweig unten).
   | "ownership"
@@ -460,6 +463,9 @@ type KoAktion =
  */
 type Torurteil = "tor" | "kein-zielobjekt";
 
+/** R-0431 (K2): die Höchstlänge eines Fachgebiets (`action: "domain"`). */
+const DOMAIN_MAX_LENGTH = 120;
+
 const ZIELOBJEKT_TOR: Record<KoAktion, Torurteil> = {
   rate: "tor",
   assign: "tor",
@@ -473,6 +479,8 @@ const ZIELOBJEKT_TOR: Record<KoAktion, Torurteil> = {
   "remove-source": "tor",
   category: "tor",
   tags: "tor",
+  // R-0431 (K2): arbeitet AM Objekt unter `:id` — es passiert das Sichtbarkeitstor wie `category`.
+  domain: "tor",
   confidentiality: "tor",
   // JOB 557: die Aktion arbeitet AM Objekt unter `:id` — sie passiert das Sichtbarkeitstor.
   ownership: "tor",
@@ -568,7 +576,21 @@ interface PutBody {
   note?: string;
   category?: string;
   tags?: string[];
+  /** R-0431 (K2): das Fachgebiet (`action: "domain"`). `unknown`, gelesen an der `case`. */
+  domain?: unknown;
   conflict?: ConflictInput;
+  /**
+   * R-0238 — DIE WIDERSPRECHENDE ABLEHNUNG. Nur an `rate` mit `verdict: "down"`: das Objekt, dem
+   * dieser Beitrag widerspricht, und die Art des Widerspruchs. Dann legt derselbe Aufruf einen
+   * Konfliktvorschlag (manueller Konflikt, Status „offen") zwischen beiden an. `unknown`, weil die
+   * Form aus dem Netz kommt und erst `widerspruchAus` sie prüft.
+   */
+  widerspruch?: unknown;
+  /**
+   * R-0238 · Nacharbeit 8: die Fassung, für die eine bereits gespeicherte Ablehnung gilt. Mit ihr
+   * setzt `rate` NUR die fehlenden Konfliktschritte fort und bewertet nicht erneut.
+   */
+  fortsetzungFuerFassung?: unknown;
   conflictId?: string;
   decision?: string;
   newAuthor?: string;
@@ -625,6 +647,56 @@ interface PutBody {
     // im selben Vorgang schon committet). Mit `changes` revidiert sie den Inhalt gleich mit.
     changes?: { bodyHtml?: string; statement?: string; title?: string };
   };
+}
+
+const KONFLIKTARTEN: readonly ConflictType[] = [
+  "truth",
+  "experience",
+  "context",
+  "temporal",
+  "role",
+];
+
+/** R-0238 · Nacharbeit 7: die Bewertung steht, der Konfliktvorschlag nicht (Teilerfolg). */
+const KONFLIKTVORSCHLAG_OFFEN = "KONFLIKTVORSCHLAG_OFFEN";
+/** R-0238 · Nacharbeit 8: Bewertung UND Vorschlag stehen, nur die Wahrheitskonflikt-Folge fehlt. */
+const KONFLIKTFOLGE_OFFEN = "KONFLIKTFOLGE_OFFEN";
+/** R-0238 · Nacharbeit 8: die Fortsetzung passt nicht mehr zur Fassung (überarbeitet o. Ä.). */
+const FASSUNG_UEBERARBEITET = "FASSUNG_UEBERARBEITET";
+
+/**
+ * R-0238 — DIE LESART DER WIDERSPRECHENDEN ABLEHNUNG (UI/UX-Brief Screen 5: „widersprechende
+ * Ablehnung → Konfliktvorschlag").
+ *
+ * Ein Konflikt verbindet in diesem Produkt immer ZWEI Wissensobjekte. Eine Ablehnung „widerspricht"
+ * deshalb einem benannten anderen Objekt; ohne dieses Gegenüber entsteht kein Vorschlag. Die Art
+ * wählt der ablehnende Mensch — sie wird hier nicht geraten. `null` = kein Widerspruch angegeben;
+ * eine Zeichenkette = die Formfehlermeldung (400).
+ */
+function widerspruchAus(
+  roh: unknown,
+  koId: string,
+): { koB: string; type: ConflictType; description: string } | null | string {
+  if (roh === undefined || roh === null) {
+    return null;
+  }
+  if (typeof roh !== "object") {
+    return "widerspruch muss ein Objekt { koB, type, description? } sein.";
+  }
+  const { koB, type, description } = roh as Record<string, unknown>;
+  if (typeof koB !== "string" || koB.trim().length === 0) {
+    return "widerspruch.koB fehlt.";
+  }
+  if (koB === koId) {
+    return "Ein Wissensobjekt kann sich nicht selbst widersprechen.";
+  }
+  if (typeof type !== "string" || !KONFLIKTARTEN.includes(type as ConflictType)) {
+    return `widerspruch.type muss eines von ${KONFLIKTARTEN.join(", ")} sein.`;
+  }
+  if (description !== undefined && typeof description !== "string") {
+    return "widerspruch.description muss Text sein.";
+  }
+  return { koB, type: type as ConflictType, description: description ?? "" };
 }
 
 /**
@@ -846,6 +918,48 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
   // R-0247: das Dublettentor der zwei Freigabewege — derselbe Sichtbarkeitszugang wie an
   // `/api/duplicates` (build-app.ts, `koSichtbarkeit`).
   const dublettenTorDeps = { overlaps, audit, kos: { get: (koId: string) => ko.get(koId) } };
+
+  /**
+   * Der EINE manuelle Anlageweg eines Konflikts — für `action: "conflict"` und für die
+   * widersprechende Ablehnung (R-0238). SCRUM-358 / AG-14-SERVER-TRUST: ein offener
+   * WAHRHEITSKONFLIKT holt betroffene VALIDIERTE Bezugs-KOs serverseitig zurück in Review (Status
+   * validiert→offen, Trust konservativ gesenkt). markTruthConflictReview ist idempotent/No-op für
+   * offene/fehlende KOs.
+   */
+  async function konfliktAnlegen(input: ConflictInput, userId: string) {
+    const created = await conflicts.create(input, userId);
+    await wahrheitsfolge(created, userId);
+    return created;
+  }
+
+  /**
+   * R-0238 · Nacharbeit 7: der Konfliktvorschlag der widersprechenden Ablehnung ist IDEMPOTENT.
+   * Scheiterte ein früherer Versuch NACH dem Anlegen (etwa an der Wahrheitskonflikt-Folge), findet
+   * die Wiederholung denselben offenen Vorschlag derselben Person — gleiches Paar, gleiche Art —
+   * und legt keinen zweiten an.
+   */
+  async function vorschlagFindenOderAnlegen(input: ConflictInput, userId: string) {
+    const vorhanden = (await conflicts.unresolved()).find(
+      (c) =>
+        c.origin === "manual" &&
+        c.createdBy === userId &&
+        c.type === input.type &&
+        ((c.koA === input.koA && c.koB === input.koB) ||
+          (c.koA === input.koB && c.koB === input.koA)),
+    );
+    return vorhanden ?? (await conflicts.create(input, userId));
+  }
+
+  /** Die Folge eines Wahrheitskonflikts — idempotent, darf also wiederholt laufen. */
+  async function wahrheitsfolge(
+    konflikt: { type: ConflictType; koA: string; koB: string },
+    userId: string,
+  ) {
+    if (konflikt.type === "truth") {
+      await ko.markTruthConflictReview(konflikt.koA, userId);
+      await ko.markTruthConflictReview(konflikt.koB, userId);
+    }
+  }
 
   async function sichtbaresKoOder404(user: SessionUser, id: string, reply: FastifyReply) {
     const item = await ko.get(id);
@@ -2459,6 +2573,19 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             if (!body.verdict) {
               return badRequest("verdict fehlt.");
             }
+            // R-0238: ein Widerspruch gehört NUR zur Ablehnung, und er wird VOR der Bewertung
+            // vollständig geprüft (Form, Gegenüber sichtbar) — sonst stünde eine Bewertung, deren
+            // angekündigter Konfliktvorschlag nie entstehen konnte.
+            const widerspruch = widerspruchAus(body.widerspruch, id);
+            if (typeof widerspruch === "string") {
+              return badRequest(widerspruch);
+            }
+            if (widerspruch && body.verdict !== "down") {
+              return badRequest("widerspruch gilt nur für die Ablehnung (verdict: down).");
+            }
+            if (widerspruch && !(await sichtbaresKoOder404(user, widerspruch.koB, reply))) {
+              return;
+            }
             // R-0247: nur die Zustimmung validiert — Rückfrage und Ablehnung fragen nichts.
             if (
               body.verdict === "up" &&
@@ -2473,7 +2600,98 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             ) {
               return;
             }
-            reply.code(200).send(await validation.rate(id, user.id, body.verdict));
+            // R-0238 · Nacharbeit 8 — DIE FORTSETZUNG BEWERTET NICHT NOCH EINMAL.
+            //
+            // Nach einem Teilerfolg (Ablehnung gespeichert, Vorschlag oder seine Folge nicht) schickt
+            // die Oberfläche `fortsetzungFuerFassung`: die Fassung, für die ihre Ablehnung gilt.
+            // Dann wird NICHT bewertet — eine zweite Bewertung träfe nach einer zwischenzeitlichen
+            // Überarbeitung die NEUE Fassung mit der alten Ablehnung und gäbe sie erneut zurück, am
+            // Revisionsweg vorbei. Fortgesetzt werden nur die fehlenden Konfliktschritte, und nur,
+            // solange die eigene Ablehnung genau dieser Fassung besteht und das Objekt seither
+            // nicht überarbeitet wurde. Sonst 409 — nichts bewertet, nichts angelegt.
+            //
+            // Die Konfliktschritte der widersprechenden Ablehnung: (1) Vorschlag finden oder
+            // anlegen, (2) Wahrheitskonflikt-Folge. DER TEILERFOLG WIRD GENAU BENANNT: scheitert
+            // (1), fehlt der Vorschlag (`KONFLIKTVORSCHLAG_OFFEN`); scheitert erst (2), steht der
+            // Vorschlag schon und nur seine Folge fehlt (`KONFLIKTFOLGE_OFFEN`, mit Kennung). In
+            // beiden Fällen ist die Ablehnung gespeichert, und die Antwort nennt ihre Fassung.
+            const vorschlagFortsetzen = async (
+              ergebnis: object | null,
+              fassung: number | null,
+            ): Promise<void> => {
+              if (!widerspruch || typeof widerspruch === "string") {
+                return;
+              }
+              let angelegt: { id: string } | null = null;
+              try {
+                const konfliktvorschlag = await vorschlagFindenOderAnlegen(
+                  { koA: id, ...widerspruch },
+                  user.id,
+                );
+                angelegt = konfliktvorschlag;
+                await wahrheitsfolge(konfliktvorschlag, user.id);
+                reply.code(200).send({ ...(ergebnis ?? {}), konfliktvorschlag });
+              } catch (error) {
+                request.log.error({ err: error, koId: id }, "Konfliktvorschlag unvollständig");
+                reply.code(500).send(
+                  angelegt
+                    ? {
+                        error: KONFLIKTFOLGE_OFFEN,
+                        message:
+                          "Die Ablehnung und der Konfliktvorschlag sind gespeichert; die Folge des Wahrheitskonflikts (betroffene Beiträge zurück in die Prüfung) steht noch aus. Erneut senden holt nur sie nach.",
+                        bewertungGespeichert: true,
+                        konfliktAngelegt: true,
+                        konfliktId: angelegt.id,
+                        bewerteteFassung: fassung,
+                      }
+                    : {
+                        error: KONFLIKTVORSCHLAG_OFFEN,
+                        message:
+                          "Die Ablehnung ist gespeichert, der Konfliktvorschlag nicht. Erneut senden legt nur ihn an — ohne neue Bewertung.",
+                        bewertungGespeichert: true,
+                        konfliktAngelegt: false,
+                        bewerteteFassung: fassung,
+                      },
+                );
+              }
+            };
+            const fortsetzung = body.fortsetzungFuerFassung;
+            if (fortsetzung !== undefined) {
+              if (!widerspruch || body.verdict !== "down" || !Number.isInteger(fortsetzung)) {
+                return badRequest(
+                  "fortsetzungFuerFassung gilt nur mit widerspruch an der Ablehnung und als Fassungsnummer.",
+                );
+              }
+              const jetzt = await ko.get(id);
+              const eigene = await validation.bewertungVon(id, user.id);
+              if (
+                !jetzt ||
+                jetzt.version !== fortsetzung ||
+                !eigene ||
+                eigene.verdict !== "down" ||
+                eigene.koVersion !== fortsetzung
+              ) {
+                reply.code(409).send({
+                  error: FASSUNG_UEBERARBEITET,
+                  message:
+                    "Der Beitrag wurde seit der Ablehnung überarbeitet, oder die Ablehnung gilt nicht mehr. Es wurde nichts bewertet und kein Konfliktvorschlag angelegt.",
+                  ...(jetzt ? { currentVersion: jetzt.version } : {}),
+                });
+                return;
+              }
+              await vorschlagFortsetzen(null, fortsetzung);
+              return;
+            }
+            // Die bewertete Fassung — sie reist bei einem Teilerfolg mit, damit die Fortsetzung an
+            // GENAU diese Fassung gebunden ist. Gelesen vor der Bewertung: überarbeitet jemand in
+            // der Lücke, passt sie nicht mehr, und die Fortsetzung lehnt ab (409) statt zu raten.
+            const bewerteteFassung = (await ko.get(id))?.version ?? null;
+            const entscheidung = await validation.rate(id, user.id, body.verdict);
+            if (!widerspruch) {
+              reply.code(200).send(entscheidung);
+              return;
+            }
+            await vorschlagFortsetzen(entscheidung, bewerteteFassung);
             return;
           }
           case "assign": {
@@ -3218,6 +3436,23 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
               );
             return;
           }
+          case "domain": {
+            // R-0431 / R-1728 / FR-LIB-01 (K2): dasselbe Recht wie die Kategorie (`ko.create`). Ein
+            // leerer Wert entfernt die Angabe; ein Nicht-Text oder ein überlanger Wert ist ein 400 —
+            // nichts wird gekürzt oder geraten.
+            const user = await guards.requirePermission("ko.create", request, reply);
+            if (!user) {
+              return;
+            }
+            if (typeof body.domain !== "string") {
+              return badRequest("domain fehlt.");
+            }
+            if (body.domain.trim().length > DOMAIN_MAX_LENGTH) {
+              return badRequest(`domain ist länger als ${DOMAIN_MAX_LENGTH} Zeichen.`);
+            }
+            reply.code(200).send(await ko.setDomain(id, body.domain, user.id));
+            return;
+          }
           case "tags": {
             const user = await guards.requirePermission("ko.create", request, reply);
             if (!user) {
@@ -3292,15 +3527,7 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             if (!body.conflict) {
               return badRequest("conflict fehlt.");
             }
-            const created = await conflicts.create(body.conflict, user.id);
-            // SCRUM-358 / AG-14-SERVER-TRUST: ein offener WAHRHEITSKONFLIKT holt betroffene VALIDIERTE
-            // Bezugs-KOs serverseitig zurück in Review (Status validiert→offen, Trust konservativ
-            // gesenkt). markTruthConflictReview ist idempotent/No-op für offene/fehlende KOs.
-            if (created.type === "truth") {
-              await ko.markTruthConflictReview(created.koA, user.id);
-              await ko.markTruthConflictReview(created.koB, user.id);
-            }
-            reply.code(201).send(created);
+            reply.code(201).send(await konfliktAnlegen(body.conflict, user.id));
             return;
           }
           case "resolve-conflict": {

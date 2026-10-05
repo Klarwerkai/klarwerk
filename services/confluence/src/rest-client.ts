@@ -1,6 +1,7 @@
 // SCRUM-510 (Import-Variante B, Adapter #1) / R2a (Credential-Egress-Härtung, dieselbe Disziplin wie
 // 502/514): read-only Confluence-REST-Client, gescoped auf EINEN Space. Nur LESENDE Endpunkte (Seiten +
-// Body-Storage + Version + Labels + Read-Restriktionen). Die Credentials (Service-Account + read-only
+// Body-Storage + Version + Labels + Read-Restriktionen; R-0163: Anhangsliste + Anhangsdownload einer
+// Seite). Die Credentials (Service-Account + read-only
 // API-Token) sind BEWUSST von den Modell-Credentials getrennt (eigene env-Variablen, eigener Namespace).
 //
 // R2a-Garantien: (1) der apiToken wird nur INNERHALB der Client-Closure aufgelöst und nie zurückgegeben/
@@ -24,6 +25,8 @@ export interface ConfluenceRestConfig {
   timeoutMs?: number;
   totalBudgetMs?: number;
   maxResponseBytes?: number;
+  // R-0163: Obergrenze je heruntergeladenem Anhang (Rohbytes). Ohne Angabe gilt die Konstante unten.
+  maxAttachmentBytes?: number;
 }
 
 // ================================================================================================
@@ -54,6 +57,10 @@ export interface ConfluenceRestConfig {
 export const CONFLUENCE_REQUEST_TIMEOUT_MS = 15_000;
 export const CONFLUENCE_TOTAL_BUDGET_MS = 180_000;
 export const CONFLUENCE_MAX_RESPONSE_BYTES = 5 * 1024 * 1024;
+// R-0163: ein Anhang ist Rohinhalt, keine JSON-Antwort — eigene Kante. 20 MB entsprechen der
+// Werksvorgabe für Anhänge (knowledge-object MAX_ATTACHMENT_BYTES); als Daten-URL (Base64, +33 %)
+// bleibt ein solcher Anhang unter der festen Objektspeicher-Grenze von 30 MB.
+export const CONFLUENCE_MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
 
 export type ConfluenceAbbruchGrund = "timeout" | "zu_gross" | "zeitbudget";
 
@@ -102,6 +109,51 @@ export interface ConfluenceListAllResult {
   truncated: boolean;
   abbruch?: ConfluenceAbbruch;
 }
+
+// Ein Nicht-2xx-Status. Eigene Klasse nur, damit der Fristweg (`mitFrist`) ihn unverändert
+// durchreicht statt ihn als „nicht lesbar" zu verpacken; `name` bleibt bewusst „Error".
+class ConfluenceStatusError extends Error {
+  constructor(status: number) {
+    // Nur der Status (eine Zahl) — strukturell token-frei.
+    super(`Confluence-API antwortete mit ${status}`);
+  }
+}
+
+// ================================================================================================
+// R-0163 — ZU EINER SEITE GEHÖREN IHRE ANHÄNGE UND BILDER.
+// ================================================================================================
+//
+// Confluence führt Anhänge als Kindinhalte der Seite (`/content/{id}/child/attachment`). Ein Bild
+// im Seitentext ist ein solcher Anhang, auf den `<ac:image><ri:attachment ri:filename=…/>` zeigt —
+// es gibt keinen zweiten Bildweg. Gelesen werden nur Felder, die der Mapper braucht.
+export interface ConfluenceAttachment {
+  id: string;
+  title: string; // Dateiname
+  type?: string;
+  status?: string;
+  metadata?: { mediaType?: string };
+  extensions?: { mediaType?: string; fileSize?: number };
+  version?: { number?: number; when?: string };
+  // Relativ zum Kontextpfad der baseUrl (Cloud: ohne `/wiki`), wie `_links.next`.
+  _links?: { download?: string };
+}
+
+export interface ConfluenceAttachmentListResult {
+  attachments: ConfluenceAttachment[];
+  // true, wenn die Liste NICHT vollständig gelesen wurde (Cap, Frist, Größe, Budget).
+  truncated: boolean;
+}
+
+export interface ConfluenceAnhangInhalt {
+  bytes: Buffer;
+  // `content-type` der Antwort ohne Parameter, falls geliefert.
+  mime?: string;
+}
+
+const WEITERLEITUNG = new Set([301, 302, 303, 307, 308]);
+
+// Ausgang des ersten Download-Hops: entweder der Inhalt oder das Ziel der einen Weiterleitung.
+type ErsterHop = { inhalt: ConfluenceAnhangInhalt } | { weiter: string };
 
 export interface ConfluenceUser {
   displayName?: string;
@@ -229,12 +281,12 @@ export class ConfluenceRestClient {
 
   // Zentraler Request-Bauer (WP1/R2a): EIN Ort, an dem Origin-Pin (https + exakte Origin), redirect:error
   // und Basic-Auth erzwungen werden. Jede Confluence-URL läuft hierdurch — kein verstreuter fetch.
-  private async getContent(
+  private async getContent<T = ConfluencePage>(
     url: string,
     allowedOrigin: string,
-  ): Promise<{ results: ConfluencePage[]; next: string | null }> {
+  ): Promise<{ results: T[]; next: string | null }> {
     const data = (await this.getJson(url, allowedOrigin)) as {
-      results?: ConfluencePage[];
+      results?: T[];
       _links?: { next?: string };
     };
     return { results: data?.results ?? [], next: data?._links?.next ?? null };
@@ -254,9 +306,41 @@ export class ConfluenceRestClient {
     opts: { nichtGefundenIstLeer?: boolean } = {},
   ): Promise<unknown> {
     assertAllowedConfluenceUrl(url, allowedOrigin); // vor JEDEM Netzcall
+    const maxBytes = this.config.maxResponseBytes ?? CONFLUENCE_MAX_RESPONSE_BYTES;
+    return this.mitFrist(
+      url,
+      {
+        method: "GET",
+        headers: { authorization: this.authHeader(), accept: "application/json" },
+        redirect: "error", // kein Folgen auf fremde Hosts
+      },
+      async (res) => {
+        // R-0162 (main): ein echtes 404 ist ein eigener Wert, nie mit einem leeren 2xx-Body
+        // verwechselbar. R-0163: die Prüfung liegt im Lesezweig des gemeinsamen Fristrahmens.
+        if (res.status === 404 && opts.nichtGefundenIstLeer) {
+          return NICHT_GEFUNDEN;
+        }
+        if (!res.ok) {
+          throw new ConfluenceStatusError(res.status);
+        }
+        return leseBegrenzt(res, maxBytes);
+      },
+    );
+  }
+
+  /**
+   * R-0163: der Frist- und Redaction-Rahmen JEDES Requests dieses Clients, herausgezogen aus
+   * `getJson`, damit der Anhangsabruf (`downloadAttachment`) dieselbe Frist, dieselbe Redaction
+   * und dieselbe Fehlerklasse bekommt statt einer zweiten, abweichenden Kopie. Origin-Pin und
+   * Redirect-Regel setzt der Aufrufer — sie unterscheiden sich zwischen JSON und Rohinhalt.
+   */
+  private async mitFrist<T>(
+    url: string,
+    init: RequestInit,
+    lesen: (res: Response) => Promise<T>,
+  ): Promise<T> {
     const fetchFn = this.config.fetchFn ?? fetch;
     const timeoutMs = this.config.timeoutMs ?? CONFLUENCE_REQUEST_TIMEOUT_MS;
-    const maxBytes = this.config.maxResponseBytes ?? CONFLUENCE_MAX_RESPONSE_BYTES;
     // JOB 2683 D1: EINE Frist für Verbindung und Body. Der Controller geht als `signal` an fetch (undici
     // bricht dann sauber ab); zusätzlich wird der Aufruf gegen die Frist GERACET — ein fetch, das das
     // Signal nicht kennt (Fixture, fremde Implementierung), kann den Aufrufer trotzdem nicht festhalten.
@@ -278,35 +362,20 @@ export class ConfluenceRestClient {
       // Message/Stack die URL/Credentials tragen könnte) verlässt den Request-Bauer NIE unredigiert.
       let res: Response;
       try {
-        res = await Promise.race([
-          fetchFn(url, {
-            method: "GET",
-            headers: { authorization: this.authHeader(), accept: "application/json" },
-            redirect: "error", // kein Folgen auf fremde Hosts
-            signal: controller.signal,
-          }),
-          frist,
-        ]);
+        res = await Promise.race([fetchFn(url, { ...init, signal: controller.signal }), frist]);
       } catch (err) {
         if (err instanceof ConfluenceRequestError || abgelaufen) {
           throw new ConfluenceRequestError("timeout", timeoutMs);
         }
         throw this.redactedError("Confluence-Request fehlgeschlagen", err);
       }
-      if (res.status === 404 && opts.nichtGefundenIstLeer) {
-        return NICHT_GEFUNDEN;
-      }
-      if (!res.ok) {
-        // Nur der Status (eine Zahl) — strukturell token-frei.
-        throw new Error(`Confluence-API antwortete mit ${res.status}`);
-      }
       // SCRUM-510-R3 (WP4): auch ein Parse-Fehler wird redigiert (der JSON-Body/Fehlertext könnte Reste
       // tragen). EIN Ausgang, EIN Redaction-Kontrakt für alle Fehlerklassen dieses Bauers.
       // JOB 2683 D1: der Body wird begrenzt gelesen und steht unter derselben Frist.
       try {
-        return await Promise.race([leseBegrenzt(res, maxBytes), frist]);
+        return await Promise.race([lesen(res), frist]);
       } catch (err) {
-        if (err instanceof ConfluenceRequestError) {
+        if (err instanceof ConfluenceRequestError || err instanceof ConfluenceStatusError) {
           throw err;
         }
         if (abgelaufen) {
@@ -356,6 +425,91 @@ export class ConfluenceRestClient {
 
   private pageUrl(pageId: string): string {
     return `${this.baseUrl}/rest/api/content/${encodeURIComponent(pageId)}?expand=${encodeURIComponent(EXPAND)}`;
+  }
+
+  /**
+   * R-0163: die Anhänge EINER Seite (Dateien und Bilder), vollständig über die Cursor-Pagination —
+   * dieselbe Regel wie `listAllPages`: der erste Request wirft, ein scheiternder Folge-Request
+   * behält das Gelesene und meldet `truncated`. Eine abgeschnittene Liste wird nie als vollständig
+   * ausgegeben; der Aufrufer weist sie aus.
+   */
+  async listAttachments(pageId: string, maxPages = 20): Promise<ConfluenceAttachmentListResult> {
+    const allowedOrigin = this.allowedOrigin();
+    const params = new URLSearchParams({ limit: "50", expand: "version" });
+    let url: string | null =
+      `${this.baseUrl}/rest/api/content/${encodeURIComponent(pageId)}/child/attachment?${params.toString()}`;
+    const out: ConfluenceAttachment[] = [];
+    let i = 0;
+    let abgebrochen = false;
+    for (; url && i < maxPages; i++) {
+      let results: ConfluenceAttachment[];
+      let next: string | null;
+      try {
+        ({ results, next } = await this.getContent<ConfluenceAttachment>(url, allowedOrigin));
+      } catch (err) {
+        if (i > 0 && err instanceof ConfluenceRequestError) {
+          abgebrochen = true;
+          break;
+        }
+        throw err;
+      }
+      out.push(...results);
+      url = next ? this.nextUrl(next, allowedOrigin) : null;
+    }
+    return { attachments: out, truncated: abgebrochen || (i >= maxPages && url !== null) };
+  }
+
+  /**
+   * R-0163: die Rohbytes EINES Anhangs, begrenzt (Frist + `maxAttachmentBytes`).
+   *
+   * DER LINK IST RELATIV ZUM KONTEXTPFAD wie `_links.next` (Cloud: `/download/attachments/…` ohne
+   * `/wiki`) und wird deshalb über `nextUrl` aufgelöst — nur mit der Origin präfixiert landete er
+   * im Jira-Namensraum. Ein absoluter Link muss die gepinnte Origin tragen.
+   *
+   * GENAU EINE WEITERLEITUNG: Confluence Cloud beantwortet den Download mit 302 auf seinen
+   * Mediendienst (anderer Host, signierte Adresse). Gefolgt wird nur über HTTPS und nur einmal; an
+   * einen FREMDEN Host geht der Request OHNE Anmeldung — der Token verlässt die gepinnte Origin
+   * weiterhin nie (R2a). Der zweite Hop steht wieder auf `redirect:"error"`.
+   */
+  async downloadAttachment(downloadLink: string): Promise<ConfluenceAnhangInhalt> {
+    const allowedOrigin = this.allowedOrigin();
+    const url = /^[a-z][a-z0-9+.-]*:/i.test(downloadLink)
+      ? downloadLink
+      : this.nextUrl(downloadLink, allowedOrigin);
+    assertAllowedConfluenceUrl(url, allowedOrigin); // vor JEDEM Netzcall
+    const maxBytes = this.config.maxAttachmentBytes ?? CONFLUENCE_MAX_ATTACHMENT_BYTES;
+    const erster = await this.mitFrist<ErsterHop>(
+      url,
+      { method: "GET", headers: { authorization: this.authHeader() }, redirect: "manual" },
+      async (res) => {
+        if (WEITERLEITUNG.has(res.status)) {
+          return { weiter: weiterleitungsZiel(res, url) };
+        }
+        if (!res.ok) {
+          throw new ConfluenceStatusError(res.status);
+        }
+        return { inhalt: await leseAnhangBegrenzt(res, maxBytes) };
+      },
+    );
+    if ("inhalt" in erster) {
+      return erster.inhalt;
+    }
+    const ziel = erster.weiter;
+    const gleicheOrigin = new URL(ziel).origin === allowedOrigin;
+    return this.mitFrist(
+      ziel,
+      {
+        method: "GET",
+        headers: gleicheOrigin ? { authorization: this.authHeader() } : {},
+        redirect: "error",
+      },
+      async (res) => {
+        if (!res.ok) {
+          throw new ConfluenceStatusError(res.status);
+        }
+        return leseAnhangBegrenzt(res, maxBytes);
+      },
+    );
   }
 
   private firstUrl(): string {
@@ -483,8 +637,51 @@ export function confluenceClientFromEnv(
 // vorab (kein einziges Byte, wenn die Zahl schon zu groß ist), dann der Stream mit laufender Zählung
 // (undici/native fetch), sonst — Fixtures ohne Body-Stream — der gewöhnliche `json()`-Weg.
 async function leseBegrenzt(res: Response, maxBytes: number): Promise<unknown> {
-  const kopf = (res as { headers?: { get?: (name: string) => string | null } }).headers;
-  const angekuendigt = Number(kopf?.get?.("content-length"));
+  const roh = await leseRohBegrenzt(res, maxBytes);
+  return roh ? JSON.parse(roh.toString("utf8")) : res.json();
+}
+
+function kopfwert(res: Response, name: string): string | null | undefined {
+  return (res as { headers?: { get?: (name: string) => string | null } }).headers?.get?.(name);
+}
+
+// R-0163: Rohbytes eines Anhangs — dieselben Stufen wie `leseBegrenzt`; Fixtures ohne Body-Stream
+// liefern `arrayBuffer()`, das danach gegen dieselbe Kante geprüft wird.
+async function leseAnhangBegrenzt(
+  res: Response,
+  maxBytes: number,
+): Promise<ConfluenceAnhangInhalt> {
+  let bytes = await leseRohBegrenzt(res, maxBytes);
+  if (!bytes) {
+    bytes = Buffer.from(await res.arrayBuffer());
+    if (bytes.byteLength > maxBytes) {
+      throw new ConfluenceRequestError("zu_gross", maxBytes);
+    }
+  }
+  const mime = kopfwert(res, "content-type")?.split(";")[0]?.trim().toLowerCase();
+  return { bytes, ...(mime ? { mime } : {}) };
+}
+
+// R-0163: das Ziel einer Weiterleitung, absolut. Ohne `location` oder ohne HTTPS: Abbruch — ein
+// Anhang wird nie über eine unverschlüsselte Verbindung nachgeladen. Kein Host in der Meldung.
+function weiterleitungsZiel(res: Response, von: string): string {
+  const location = kopfwert(res, "location");
+  let ziel: URL;
+  try {
+    ziel = new URL(location ?? "", von);
+  } catch {
+    throw new Error("Confluence: Weiterleitung des Anhangs ohne gültiges Ziel — Abbruch.");
+  }
+  if (!location || ziel.protocol !== "https:") {
+    throw new Error("Confluence: Weiterleitung des Anhangs nicht über HTTPS — Abbruch.");
+  }
+  return ziel.toString();
+}
+
+// Gemeinsamer Kern: `content-length` vorab, dann der Stream mit laufender Zählung. `undefined`,
+// wenn die Antwort keinen Body-Stream hat (Fixture) — der Aufrufer wählt dann seinen Ersatzweg.
+async function leseRohBegrenzt(res: Response, maxBytes: number): Promise<Buffer | undefined> {
+  const angekuendigt = Number(kopfwert(res, "content-length"));
   if (Number.isFinite(angekuendigt) && angekuendigt > maxBytes) {
     throw new ConfluenceRequestError("zu_gross", maxBytes);
   }
@@ -507,7 +704,7 @@ async function leseBegrenzt(res: Response, maxBytes: number): Promise<unknown> {
         chunks.push(Buffer.from(value));
       }
     }
-    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    return Buffer.concat(chunks);
   }
-  return res.json();
+  return undefined;
 }

@@ -521,6 +521,9 @@ export interface KnowledgeObject {
   measures: string[];
   type: KnowledgeType;
   category: string;
+  // R-0431 / R-1728 / FR-LIB-01 (K2): das Fachgebiet, unabhängig von der Kategorie (Spiegel von
+  // services/knowledge-object/src/types.ts). Fehlt = kein Fachgebiet angegeben, nichts abgeleitet.
+  domain?: string;
   tags: string[];
   confidence: number;
   trust: number;

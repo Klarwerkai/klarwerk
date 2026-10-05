@@ -598,6 +598,20 @@ export class ValidationService {
    * geteilt. Die ZUSAGE dieser Methode ist unveraendert: GENAU EINE Bewertungsabfrage je Aufruf,
    * gezielt auf dieses Objekt (`ko-routes-anzeigestatus.test.ts`, Fall K, `toBe(1)`).
    */
+  /**
+   * R-0238 · Nacharbeit 8: die gespeicherte Bewertung EINER Person zu diesem Objekt samt der
+   * Fassung, für die sie gilt — oder `null`. Die Fortsetzung eines unterbrochenen
+   * Konfliktvorschlags belegt damit, dass die Ablehnung zu genau dieser Fassung wirklich besteht,
+   * statt sie ein zweites Mal zu schreiben. Liest nur; bewertet nichts.
+   */
+  async bewertungVon(
+    koId: string,
+    userId: string,
+  ): Promise<{ verdict: Verdict; koVersion: number } | null> {
+    const eigene = (await this.ratings.listByKo(koId)).find((r) => r.userId === userId);
+    return eigene ? { verdict: eigene.verdict, koVersion: ratingVersion(eigene) } : null;
+  }
+
   async pruefstandFuer(koId: string, koVersion: number): Promise<KoPruefstand> {
     const [zuweisungen, bewertungen] = await Promise.all([
       this.assignments.listByKos([koId]),
