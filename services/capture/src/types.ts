@@ -130,6 +130,13 @@ export interface Draft {
    */
   createOperation?: DraftCreateOperation;
   /**
+   * R-0632 (BEN-Befund, Nacharbeit 5) — AM `Draft`, NICHT IM `DraftPayload`, aus demselben Grund
+   * wie `createOperation`: kein Rumpf erreicht dieses Feld (`continueDraft` mischt nur die
+   * Nutzlast). Gesetzt bei der Anlage eines Word-Entwurfs; solange es steht, wird eine gespeicherte
+   * Stufe nur angehoben, nie gesenkt — auch wenn die Herkunft in der Nutzlast später wechselt.
+   */
+  stufeNurAnheben?: true;
+  /**
    * R-0169 (herkunft-identitaet, Nacharbeit 5) — DIE FASSUNG DES WORD-DOKUMENTS, AUS DEM DIESER
    * ENTWURF KAM.
    *
@@ -235,6 +242,9 @@ export type CaptureErrorCode =
   // Anlagerouten für dasselbe Versäumnis schon tragen. NUR DAS FEHLEN; ein vorhandener, aber
   // ungültiger Wert bleibt `INCOMPLETE`. Begründung: `services/capture/src/service.ts`.
   | "MISSING_CONFIDENTIALITY"
+  // R-0632: die gespeicherte Stufe eines Word-Entwurfs würde gesenkt — sie wird nur angehoben.
+  // Begründung und Abgrenzung: `pruefeKeineHerabstufung` in `services/capture/src/service.ts`.
+  | "CONFIDENTIALITY_DOWNGRADE"
   // JOB 2684 D1 (Review R2-17): der Aufrufer hat einen ÄLTEREN Stand des Entwurfs gelesen, als
   // jetzt gespeichert ist — ein zweiter Tab, das Studio, die Vordertür. Sein Schreiben würde still
   // überschreiben; deshalb Konflikt (409), nicht Merge.

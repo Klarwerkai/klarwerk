@@ -206,8 +206,10 @@ describe("KW-W2-01: Ganzdokument-Import als bewusster Entwurf", () => {
     expect(captureSource.indexOf("CAPTURE_FILE_TEXT.importModeLabel")).toBeLessThan(
       captureSource.indexOf("<CaptureFileImport"),
     );
+    // Auftrag import-meldungen, Nacharbeit 2 (R-0120): die Ablehnung reist mit laufender Nummer,
+    // damit die jüngste Ursache gewinnt — gepinnt sind weiterhin ALLE drei Eigenschaften.
     expect(captureSource).toMatch(
-      /<CaptureFileImport\s+onExtractFile=\{\(e\) => void onExtractFile\(e\)\}\s+importMeldung=\{fileImportMeldung\}\s*\/>/,
+      /<CaptureFileImport\s+onExtractFile=\{\(e\) => void onExtractFile\(e\)\}\s+importMeldung=\{fileImportMeldung\?\.text \?\? null\}\s+importMeldungNr=\{fileImportMeldung\?\.nr\}\s*\/>/,
     );
     expect(captureSource).not.toContain(
       "fileWholeDraft = useMutation({\n    mutationFn: () => endpoints.ko.create",

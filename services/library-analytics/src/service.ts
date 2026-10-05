@@ -13,6 +13,7 @@ import {
   type KantenArt,
   type KantenRichtung,
   type KnowledgeObject,
+  type KoAnhangsquelle,
   KoError,
   type KoFilter,
   type KoService,
@@ -21,6 +22,7 @@ import {
   type KoSource,
   confidentialityRank,
   gelieferteDokumentId,
+  inSchutzdatenQuarantaene,
   isConfidential,
   isValidConfidentiality,
   normalizeConfidentiality,
@@ -70,6 +72,14 @@ import {
 // Leser einer gepflegten Ausgabe sonst selbst ergänzt.
 export const EXPORT_NO_CHECK_NOTE =
   "Hinweis: Diese Ausgabe trifft keine Aussage darüber, ob das enthaltene Wissen auf Konflikte oder Duplikate geprüft wurde.";
+
+// §12.3 „Export": die Auswahl eines Exports plus — für Ausgaben nach außen — der Beleg, der ihn
+// im Audit festhält (s. `exportJson`).
+interface ExportOptionen {
+  ids?: readonly string[];
+  includeConfidential?: boolean;
+  beleg?: { actor: string; format: "json" | "markdown" | "mediawiki" | "html" };
+}
 
 export const SEARCH_BACKFILL_LIMIT_PER_QUERY = 20;
 
@@ -472,9 +482,140 @@ export function cleanupDigest(candidateIds: readonly string[], koIds: readonly s
  */
 export const LIBRARY_SEARCH_HIT_LIMIT = 200;
 
+// ================================================================================================
+// R-0163 — ZU EINER ÜBERNOMMENEN SEITE GEHÖREN IHRE ANHÄNGE UND BILDER.
+// ================================================================================================
+//
+// WARUM KEIN FELD AN `ImportItem`: `src/types.ts` und `index.ts` stehen unter Freeze-144, und eine
+// Freigabe dafür zeichnet nicht der Bau (dieselbe Lage wie `originalAuthor`, s. `quellautorVon`).
+// Der Adapter legt die Anhänge als zusätzliches Feld `attachments` an das Item; die Kandidaten-
+// ablagen speichern `item` als Ganzes. Gelesen wird es hier als FREMDES, UNGEPRÜFTES Feld — nur
+// ein Eintrag mit allen Pflichtangaben zählt (`leseImportAnhaenge`).
+//
+// WARUM EIN PORT: dieses Modul kennt weder die Quelle noch den Objektspeicher. Wie die Bytes
+// geholt und abgelegt werden, entscheidet die Kompositionswurzel; hier fällt nur, OB und WELCHE
+// Anhänge an WELCHES Wissensobjekt gehören.
+export interface ImportAnhang {
+  readonly externalId: string;
+  readonly name: string;
+  readonly mime: string;
+  readonly size?: number;
+  readonly sourceVersion?: number;
+  readonly abruf: string;
+}
+
+export interface AnhangsAuftrag {
+  readonly koId: string;
+  readonly provider: string | undefined;
+  /** Anhänge, die das Wissensobjekt noch NICHT trägt (Zuordnung über die Quellkennung). */
+  readonly anhaenge: readonly ImportAnhang[];
+  /**
+   * Vorhandene Anhänge, deren Quelle eine NEUERE Version liefert. Der Port holt den neuen Inhalt
+   * und tauscht ihn am selben Eintrag; scheitert das, bleibt der alte Inhalt unverändert stehen.
+   */
+  readonly ersetzen: readonly {
+    readonly attachmentId: string;
+    readonly anhang: ImportAnhang;
+  }[];
+  /** Der Annehmende — Hochladender und Handelnder der Anlage, nie der Quellautor. */
+  readonly actor: string;
+  /** Die Stufe des Wissensobjekts; ein Anhang erbt sie. */
+  readonly confidentiality: Confidentiality | undefined;
+}
+
+export interface AnhangsErgebnis {
+  readonly uebernommen: number;
+  /** Ersetzte Inhalte (neue Quellversion). Fehlt die Angabe, hat der Port nichts ersetzt. */
+  readonly ersetzt?: number;
+  /**
+   * Nacharbeit 7: übernommen bzw. ersetzt, aber der Beleg dazu ist gescheitert. Diese Anhänge
+   * zählen in `uebernommen`/`ersetzt`, NICHT in `fehlgeschlagen`; der Beleg wird nachgetragen.
+   */
+  readonly belegOffen?: number;
+  readonly fehlgeschlagen: number;
+}
+
+/**
+ * R-0163: die Bilanz EINES Anhangsabgleichs an einem Wissensobjekt — dieselbe Form im Audit
+ * (`import.attachments`) und im Bereichsimport (`runConfluenceImport`).
+ */
+export interface AnhangsAbgleich {
+  readonly gemeldet: number;
+  readonly uebernommen: number;
+  readonly ersetzt: number;
+  /** Nur der Abrufweg hat sich geändert; die Herkunftsangabe wurde nachgezogen. */
+  readonly nachgezogen: number;
+  readonly vorhanden: number;
+  readonly fehlgeschlagen: number;
+  /**
+   * Nacharbeit 7: übernommene Anhänge, deren Beleg nach diesem Abgleich IMMER NOCH fehlt (auch
+   * der Nachtrag scheiterte). Die Seite ist dann nicht vollständig abgeglichen.
+   */
+  readonly belegOffen: number;
+  /** Nacharbeit 7: Belege, die dieser Abgleich für früher übernommene Anhänge nachgetragen hat. */
+  readonly belegNachgetragen: number;
+  /** Die Quelle lieferte die Liste nicht vollständig — vorhandene Anhänge bleiben unangetastet. */
+  readonly listeUnvollstaendig: boolean;
+  readonly ohneUebernahmeweg: boolean;
+}
+
+export type AnhangsUebernahme = (auftrag: AnhangsAuftrag) => Promise<AnhangsErgebnis>;
+
+/** Liest das fremde Feld `attachments` eines Items. Unbrauchbare Einträge fallen weg. */
+export function leseImportAnhaenge(item: ImportItem): ImportAnhang[] {
+  const roh: unknown = (item as { attachments?: unknown }).attachments;
+  if (!Array.isArray(roh)) {
+    return [];
+  }
+  const text = (wert: unknown): string | undefined =>
+    typeof wert === "string" && wert.trim() ? wert.trim() : undefined;
+  const out: ImportAnhang[] = [];
+  for (const eintrag of roh as unknown[]) {
+    if (typeof eintrag !== "object" || eintrag === null) {
+      continue;
+    }
+    const e = eintrag as Record<string, unknown>;
+    const externalId = text(e.externalId);
+    const name = text(e.name);
+    const mime = text(e.mime);
+    const abruf = text(e.abruf);
+    if (!externalId || !name || !mime || !abruf) {
+      continue;
+    }
+    const size = typeof e.size === "number" && Number.isFinite(e.size) ? e.size : undefined;
+    const version =
+      typeof e.sourceVersion === "number" && Number.isFinite(e.sourceVersion)
+        ? e.sourceVersion
+        : undefined;
+    out.push({
+      externalId,
+      name,
+      mime,
+      abruf,
+      ...(size !== undefined ? { size } : {}),
+      ...(version !== undefined ? { sourceVersion: version } : {}),
+    });
+  }
+  return out;
+}
+
+// R-0163: die Herkunftsangabe am Anhang aus einem Import-Anhang. Der Provider steht normalisiert
+// darin (`importProviderKey`) — dieselbe Gleichheit, mit der der Abgleich zuordnet.
+function anhangsquelle(provider: string | undefined, anhang: ImportAnhang): KoAnhangsquelle {
+  return {
+    provider: importProviderKey(provider),
+    externalId: anhang.externalId,
+    abruf: anhang.abruf,
+    ...(anhang.sourceVersion !== undefined ? { sourceVersion: anhang.sourceVersion } : {}),
+  };
+}
+
 export interface LibraryServiceDeps {
   koService: KoService;
   audit?: AuditService;
+  // R-0163: legt die Anhänge eines übernommenen Eintrags am Wissensobjekt an. Ohne Port werden
+  // keine Anhänge übernommen — und das wird je Annahme auditiert, nicht verschwiegen.
+  anhaenge?: AnhangsUebernahme;
   // SCRUM-157: persistente Import-Queue. Optional; ohne Angabe In-Memory (Dev/Test).
   candidates?: CandidateRepo;
   genId?: () => string;
@@ -551,11 +692,33 @@ function increment(map: Record<string, number>, key: string): void {
   map[key] = (map[key] ?? 0) + 1;
 }
 
+// ================================================================================================
+// N11 · DER ÜBERNAHME-STANDARD IST „INTERN" — ABLÖSUNG VON SCRUM-509 R3/R4 FÜR DAS FEHLENDE SIGNAL.
+// ================================================================================================
+//
+// Pedi, Entscheidung 23 vom 05.09.2026: „Es ist nicht vertraulich … externe KI ist überall
+// erlaubt". Vertraulich wird nur, was der Mensch so markiert oder die Quelle restringiert. JOB 3089
+// hat das nur am Confluence-Mapper umgesetzt; der Import-Kern setzte eine fehlende Stufe an BEIDEN
+// Anlagewegen (Kandidaten-Accept, `importJson`) und beim Re-Sync weiter auf „vertraulich". Ab hier
+// gilt an allen drei Stellen dieser eine Wert — als ECHTE, gespeicherte Einstufung „intern", nicht
+// als leeres Feld, damit die Anzeige nicht „nicht eingestuft" sagt.
+//
+// WAS UNVERÄNDERT BLEIBT: ein ungültiger, aber GESETZTER Wert wird weiter restriktiv „vertraulich"
+// (`sanitizeImportConfidentiality`) — das ist kein fehlendes Signal, sondern ein kaputtes. Ein
+// mitgeliefertes „vertraulich"/„streng_vertraulich" wird nie abgesenkt.
+//
+// QUELLENWIDERSPRUCH, SICHTBAR GEHALTEN: Der Auftrag nennt im Nutzen „ohne Stufe bleibt vertraulich"
+// und R-0632 einen Word-Standard „vertraulich". N11 ist die jüngere, ausdrücklich dokumentierte
+// Entscheidung zum Übernahme-Standard; sie gilt hier. Für Erfassen und Word gilt sie NICHT als
+// stille Stufe — dort bleibt die ausdrückliche Wahl Pflicht (Q3, N-0017).
+const UEBERNAHME_STANDARD: Confidentiality = "intern";
+
 // SCRUM-515: Runtime-Validierung der Vertraulichkeit an der Import-Ingest-Grenze. Fremd-Payload (HTTP-
 // Body ODER Quell-Adapter) ist untrusted: ein GESETZTER, aber ungültiger/unbekannter Wert wird
 // RESTRIKTIV auf „vertraulich" gezogen (NIE intern) — der Import scheitert weder hart noch stuft er
-// still herab. FEHLT der Wert ganz, bleibt er undefined (acceptToKo/importJson stufen dann fail-safe auf
-// „vertraulich", R3/R4). Der einzige Ort, an dem eine rohe confidentiality in den Import-Kern eintritt.
+// still herab. FEHLT der Wert ganz, bleibt er undefined (acceptToKo/importJson setzen dann den
+// Übernahme-Standard „intern", N11). Der einzige Ort, an dem eine rohe confidentiality in den
+// Import-Kern eintritt.
 export function sanitizeImportConfidentiality(raw: unknown): Confidentiality | undefined {
   if (raw === undefined || raw === null) {
     return undefined;
@@ -746,6 +909,8 @@ export class LibraryService {
   // JOB 4155 (WG-LUECKEN): der Kantenbestand für `/api/graph`. `undefined` = nicht verdrahtet; die
   // Antwort trägt das Feld dann GAR NICHT (s. `LibraryServiceDeps.kanten`).
   private readonly kanten: KuratierteKantenLeser | undefined;
+  // R-0163: s. `LibraryServiceDeps.anhaenge`.
+  private readonly anhaenge: AnhangsUebernahme | undefined;
   // R-0169: Schreibweg der Quellrevisionen; `undefined` = nicht verdrahtet (s. Deps).
   private readonly externalSources: ExternalSourceRepo | undefined;
   // R-0169 (Nacharbeit 5): die interne Dokumentakte; `undefined` = nicht verdrahtet (s. Deps).
@@ -754,6 +919,7 @@ export class LibraryService {
   constructor(deps: LibraryServiceDeps) {
     this.koService = deps.koService;
     this.audit = deps.audit;
+    this.anhaenge = deps.anhaenge;
     this.candidates = deps.candidates ?? new InMemoryCandidateRepo();
     this.genId = deps.genId ?? (() => randomUUID());
     this.now = deps.now ?? (() => Date.now());
@@ -1744,6 +1910,16 @@ export class LibraryService {
           "Der Review-Claim wurde zwischenzeitlich übernommen — Aktion nicht gespeichert.",
         );
       }
+      // R-0163: die Anhänge NACH dem persistierten Endstatus — ihr Nachladen verlängert so nie die
+      // Claim-Lease, und ein gescheiterter Anhang kann weder die Annahme noch das Wissensobjekt
+      // zurücknehmen. `uebernimmAnhaenge` wirft nicht; ihr Ausgang steht im Audit.
+      // Maßgeblich ist die GESPEICHERTE Auflösung (`resolved.koId`), nicht der Zwischenstand
+      // `createdKoId`: nach einem Sperrverlust kann das eben angelegte Objekt wieder entfernt und
+      // auf einen Mitbewerber verwiesen worden sein. Ein Objekt im Papierkorb fasst der Abgleich
+      // ohnehin nicht an.
+      if (action === "accept" && resolved.koId) {
+        await this.uebernimmAnhaenge(resolved.koId, resolved.item, actor);
+      }
     } catch (err) {
       // WP-SHIP8-CLOSE-4 (bens ROT-1A): der ANKER entscheidet über den Fehlerpfad — eine blinde
       // Freigabe, während das gestempelte KO existiert (z. B. create-Teilpersistenz: Insert
@@ -2141,6 +2317,208 @@ export class LibraryService {
     return { completed, released };
   }
 
+  /**
+   * R-0163: die Anhänge eines angenommenen Eintrags an SEIN Wissensobjekt — derselbe Abgleich wie
+   * für bereits importierte Seiten (`gleicheAnhaengeFuerAnkerAb`), nur mit der Kennung aus der
+   * Annahme. Wirft nie; der Ausgang steht im Audit.
+   */
+  private async uebernimmAnhaenge(koId: string, item: ImportItem, actor: string): Promise<void> {
+    await this.gleicheAnhaengeAb(koId, item, actor);
+  }
+
+  /**
+   * R-0163 (Bens Befunde 1–3 aus beleg:851c4003 / beleg:2def0ac2): der Anhangsabgleich einer
+   * BEREITS IMPORTIERTEN Seite, deren Version sich nicht geändert hat. Der Bereichsimport
+   * überspringt solche Seiten für die Review-Queue — ihre Anhänge können sich trotzdem geändert
+   * haben (neuer Anhang, neue Anhangsversion, nur ein neuer Abrufweg). `undefined` heisst: es gibt
+   * kein lebendes Wissensobjekt zu diesem Anker (keiner, oder im Papierkorb) — dann wird nichts
+   * abgeglichen und nichts behauptet.
+   */
+  async gleicheAnhaengeFuerAnkerAb(
+    item: ImportItem,
+    actor: string,
+  ): Promise<AnhangsAbgleich | undefined> {
+    const externalId = this.externalUpsert ? item.externalId : undefined;
+    if (!externalId) {
+      return undefined;
+    }
+    const gesucht = ankerSchluessel(item.provider, externalId);
+    const anker = await this.sucheAnkerKo(
+      (s) => ankerSchluessel(s.provider, s.externalId) === gesucht,
+    );
+    if (anker?.art !== "aktiv") {
+      return undefined;
+    }
+    return this.gleicheAnhaengeAb(anker.ko.id, item, actor);
+  }
+
+  /**
+   * R-0163: die EINE Abgleichregel für Anhänge.
+   *
+   * - ZUORDNUNG ÜBER DIE QUELLKENNUNG (`quelle.externalId` am Anhang), nicht über den Namen. Nur
+   *   Anhänge ohne Herkunft (Altbestand) werden über den Dateinamen erkannt und bekommen dabei
+   *   ihre Herkunft nachgetragen.
+   * - NEUE QUELLVERSION eines vorhandenen Anhangs → der Port tauscht den Inhalt am selben Eintrag;
+   *   scheitert das, bleibt der alte Inhalt stehen und der Fall zählt als fehlgeschlagen.
+   * - NUR DER ABRUFWEG GEÄNDERT → die Herkunftsangabe wird nachgezogen (kein erneuter Download).
+   * - NICHTS WIRD ENTFERNT. Ein Anhang, den die Quelle nicht (mehr) liefert, bleibt — erst recht bei
+   *   einer unvollständigen Liste, die keine Abwesenheit beweist (Bens Befund 1). Ob ein in der
+   *   Quelle gelöschter Anhang auch hier verschwinden soll, ist eine offene Produktentscheidung.
+   * - Ein Wissensobjekt im Papierkorb wird nicht angefasst (`get` liefert es nicht).
+   * - Wirft nie. Jede Bilanz mit Inhalt steht im Audit `import.attachments` — nur Zähler.
+   */
+  private async gleicheAnhaengeAb(
+    koId: string,
+    item: ImportItem,
+    actor: string,
+  ): Promise<AnhangsAbgleich | undefined> {
+    const anhaenge = leseImportAnhaenge(item);
+    const fremd = item as { attachmentsIncomplete?: unknown };
+    const listeUnvollstaendig = fremd.attachmentsIncomplete === true;
+    if (anhaenge.length === 0 && !listeUnvollstaendig) {
+      return undefined;
+    }
+    let uebernommen = 0;
+    let ersetzt = 0;
+    let nachgezogen = 0;
+    let vorhanden = 0;
+    let fehlgeschlagen = 0;
+    let ohneUebernahmeweg = false;
+    let erledigt = 0;
+    let belegOffenPort = 0;
+    let koGefunden = false;
+    try {
+      const ko = await this.koService.get(koId);
+      if (!ko) {
+        return undefined;
+      }
+      koGefunden = true;
+      const providerKey = importProviderKey(item.provider);
+      const bestand = ko.attachments ?? [];
+      const neu: ImportAnhang[] = [];
+      const ersetzen: { attachmentId: string; anhang: ImportAnhang }[] = [];
+      const herkunft: { attachmentId: string; anhang: ImportAnhang }[] = [];
+      for (const anhang of anhaenge) {
+        const zugeordnet = bestand.find(
+          (b) =>
+            b.quelle !== undefined &&
+            b.quelle.externalId === anhang.externalId &&
+            importProviderKey(b.quelle.provider) === providerKey,
+        );
+        if (zugeordnet?.quelle) {
+          const alt = zugeordnet.quelle.sourceVersion;
+          if (
+            alt !== undefined &&
+            anhang.sourceVersion !== undefined &&
+            anhang.sourceVersion > alt
+          ) {
+            ersetzen.push({ attachmentId: zugeordnet.id, anhang });
+          } else if (zugeordnet.quelle.abruf !== anhang.abruf) {
+            herkunft.push({ attachmentId: zugeordnet.id, anhang });
+          } else {
+            vorhanden += 1;
+            erledigt += 1;
+          }
+          continue;
+        }
+        const altbestand = bestand.find((b) => b.quelle === undefined && b.name === anhang.name);
+        if (altbestand) {
+          herkunft.push({ attachmentId: altbestand.id, anhang });
+          continue;
+        }
+        neu.push(anhang);
+      }
+      for (const { attachmentId, anhang } of herkunft) {
+        try {
+          await this.koService.updateAttachment(koId, attachmentId, actor, {
+            quelle: anhangsquelle(item.provider, anhang),
+          });
+          nachgezogen += 1;
+        } catch {
+          fehlgeschlagen += 1;
+        }
+        erledigt += 1;
+      }
+      if (neu.length > 0 || ersetzen.length > 0) {
+        if (this.anhaenge) {
+          const ergebnis = await this.anhaenge({
+            koId,
+            provider: item.provider,
+            anhaenge: neu,
+            ersetzen,
+            actor,
+            confidentiality: ko.confidentiality,
+          });
+          uebernommen = ergebnis.uebernommen;
+          ersetzt = ergebnis.ersetzt ?? 0;
+          belegOffenPort = ergebnis.belegOffen ?? 0;
+          fehlgeschlagen += ergebnis.fehlgeschlagen;
+        } else {
+          ohneUebernahmeweg = true;
+          fehlgeschlagen += neu.length + ersetzen.length;
+        }
+        erledigt += neu.length + ersetzen.length;
+      }
+    } catch (err) {
+      fehlgeschlagen += anhaenge.length - erledigt;
+      process.stderr.write(
+        `[KLARWERK] Anhangsabgleich fehlgeschlagen (ko=${koId}, fehler=${
+          err instanceof Error ? err.name : "unknown"
+        }).\n`,
+      );
+    }
+    // Nacharbeit 7 — DER WIEDERANLAUF EINER TEILPERSISTENZ: fehlt zu einem übernommenen Anhang der
+    // Beleg (in diesem oder einem früheren Lauf übernommen, Beleg gescheitert), wird er hier
+    // nachgetragen. Gelingt das nicht, bleibt der Beleg offen, und die Seite ist unvollständig —
+    // beim nächsten Abgleich wird es erneut versucht.
+    let belegNachgetragen = 0;
+    let belegOffen = 0;
+    if (koGefunden) {
+      try {
+        belegNachgetragen = await this.koService.ensureImportAttachmentEvidence(koId, actor);
+      } catch {
+        belegOffen = Math.max(belegOffenPort, 1);
+      }
+    }
+    const abgleich: AnhangsAbgleich = {
+      gemeldet: anhaenge.length,
+      uebernommen,
+      ersetzt,
+      nachgezogen,
+      vorhanden,
+      fehlgeschlagen,
+      belegOffen,
+      belegNachgetragen,
+      listeUnvollstaendig,
+      ohneUebernahmeweg,
+    };
+    const etwasGeschehen =
+      uebernommen + ersetzt + nachgezogen + fehlgeschlagen + belegOffen + belegNachgetragen > 0 ||
+      listeUnvollstaendig;
+    if (etwasGeschehen) {
+      await this.audit
+        ?.record({
+          actor,
+          action: "import.attachments",
+          target: koId,
+          payload: {
+            gemeldet: abgleich.gemeldet,
+            uebernommen,
+            ersetzt,
+            nachgezogen,
+            vorhanden,
+            fehlgeschlagen,
+            ...(belegOffen > 0 ? { belegOffen } : {}),
+            ...(belegNachgetragen > 0 ? { belegNachgetragen } : {}),
+            ...(listeUnvollstaendig ? { listeUnvollstaendig: true } : {}),
+            ...(ohneUebernahmeweg ? { ohneUebernahmeweg: true } : {}),
+          },
+        })
+        .catch(() => undefined);
+    }
+    return abgleich;
+  }
+
   // Lauf gesamt-import-adoption (Bens B1/B2): der Dublettenbefund im Augenblick der Annahme —
   // Begründung am Kopf von `reviewImportCandidate`. `undefined` heisst „der Befund vom Einreihen
   // gilt weiter" (kein Port, oder Anker-Strang).
@@ -2389,8 +2767,13 @@ export class LibraryService {
       // Importstufe wird respektiert. Ziel = die höhere aus (aktueller Stufe, Import-Boden) → nie ein
       // Downgrade über Re-Sync. Der Upgrade läuft durch setConfidentiality (transaktional: Lock + CAS +
       // Audit) und wird von der nachfolgenden revise() nicht angetastet.
+      //
+      // N11 (Pedi, Entscheidung 23 vom 05.09.2026): OHNE Signal ist der Boden „intern" — also KEINE
+      // Anhebung. Bis hierher hob ein Re-Sync ohne Signal still auf „vertraulich"; vertraulich wird
+      // aber nur, was der Mensch so markiert oder die Quelle restringiert. Ein Downgrade bleibt
+      // unverändert ausgeschlossen (Ziel = die höhere Stufe), eine explizit höhere Importstufe gilt.
       const currentConf = normalizeConfidentiality(existing.confidentiality);
-      const importFloor: Confidentiality = item.confidentiality ?? "vertraulich";
+      const importFloor: Confidentiality = item.confidentiality ?? UEBERNAHME_STANDARD;
       const target =
         confidentialityRank(importFloor) > confidentialityRank(currentConf)
           ? importFloor
@@ -2502,10 +2885,9 @@ export class LibraryService {
         author: actor,
         ...quellautorVon(item),
         tags: item.tags ?? [],
-        // SCRUM-509 R3: Import ist ein Bulk-/Programmatik-Pfad → konservativ. Fehlt das Governance-Signal,
-        // gilt „vertraulich" (NICHT still intern) — importierter Fremdinhalt bleibt bis zur bewussten
-        // Freigabe aus Cloud/Export heraus.
-        confidentiality: item.confidentiality ?? "vertraulich",
+        // N11 löst SCRUM-509 R3 ab (Begründung an `UEBERNAHME_STANDARD`): fehlt das Signal, gilt
+        // ausdrücklich „intern"; ein mitgeliefertes „vertraulich"/„streng_vertraulich" bleibt.
+        confidentiality: item.confidentiality ?? UEBERNAHME_STANDARD,
         ...(item.bodyHtml ? { bodyHtml: item.bodyHtml } : {}),
         // R-0180 (bens F2): die ORIGINALQUELLE haengt nicht mehr am Anker-Strang. Mit wirksamer
         // externalId entsteht wie bisher der Herkunfts-Anker (Re-Sync-Schluessel) — seit R-0169
@@ -2947,11 +3329,14 @@ export class LibraryService {
     opts: { trim?: KoSichtbarkeitstrim } = {},
   ): Promise<KnowledgeObject[]> {
     const q = query.trim().toLowerCase();
+    // R-0658: ein Objekt in Schutzdaten-Quarantäne gehört nicht zum durchsuchbaren Bestand — weder
+    // in der Bestandsliste noch als Treffer (auch nicht über Kategorie/Schlagwort).
+    const durchsuchbar = (ko: KnowledgeObject): boolean => !inSchutzdatenQuarantaene(ko);
     if (!q) {
       // Leere Suchzeile = „zeig den Bestand", keine Textabfrage — unverändert. Und genau dieser
       // Weg ist der teuerste (kein Suchbegriff grenzt vorher ein), also der, an dem der Trim in
       // der Datenquelle am meisten zählt.
-      return this.koService.listForSearch(filter, opts.trim);
+      return (await this.koService.listForSearch(filter, opts.trim)).filter(durchsuchbar);
     }
     // G27 R1 (Entscheidung 04 §5): HIER STAND DER GEDECKELTE NACHZUG — ersatzlos entfallen.
     // Der reguläre Suchpfad darf funktional nicht mehr von ihm abhängen; er ist Wartung, nicht
@@ -3001,7 +3386,7 @@ export class LibraryService {
     const out: KnowledgeObject[] = [];
     for (const ko of list) {
       const hit = treffer.get(ko.id);
-      if (!hit) {
+      if (!hit || !durchsuchbar(ko)) {
         continue;
       }
       // WP-BILD-1e/1g: das Fußnotenfeld reist im Treffer mit — der Client kennzeichnet damit die
@@ -3034,20 +3419,34 @@ export class LibraryService {
   // die Output Factory (services/output): NUR validierte KOs (nicht-validierte nie im regulären
   // Export) und KEINE vertraulichen KOs — außer der Aufrufer ist berechtigt (includeConfidential,
   // in der Route an ko.validate gebunden: Controller/Admin). Fail-closed by default.
-  async exportJson(
-    opts: { ids?: readonly string[]; includeConfidential?: boolean } = {},
-  ): Promise<KnowledgeObject[]> {
+  //
+  // FR-AUD-01 / §12.3 „Export": trägt der Aufruf einen `beleg`, wird der Export VOR der Auslieferung
+  // als `library.export` angehängt — wer, welches Format, welche Objekte. Ohne `beleg` (interne
+  // Aufrufer, die nichts nach außen geben) bleibt der Weg schreibfrei wie bisher. Die drei
+  // Textformate reichen `opts` unverändert hierher durch; der Beleg entsteht damit an EINER Stelle.
+  async exportJson(opts: ExportOptionen = {}): Promise<KnowledgeObject[]> {
     const list = await this.koService.list({ status: "validiert" });
     const scoped = opts.ids ? list.filter((ko) => opts.ids?.includes(ko.id)) : list;
-    return opts.includeConfidential
+    const items = opts.includeConfidential
       ? scoped
       : scoped.filter((ko) => !isConfidential(ko.confidentiality));
+    if (opts.beleg) {
+      await this.audit?.record({
+        actor: opts.beleg.actor,
+        action: "library.export",
+        target: "library",
+        payload: {
+          format: opts.beleg.format,
+          count: items.length,
+          includeConfidential: opts.includeConfidential === true,
+          koIds: items.map((ko) => ko.id),
+        },
+      });
+    }
+    return items;
   }
 
-  async exportMediaWiki(opts?: {
-    ids?: readonly string[];
-    includeConfidential?: boolean;
-  }): Promise<string> {
+  async exportMediaWiki(opts?: ExportOptionen): Promise<string> {
     const items = await this.exportJson(opts);
     // AUFTRAG-mega31 BLOCK B (bens ROT-3): der Warnsatz steht VOR dem ersten Inhalt. Er stand in
     // allen vier Ausgabewegen hinter dem gesamten Dokument — bei einem langen Export liest ihn
@@ -3061,10 +3460,7 @@ export class LibraryService {
   }
 
   // FR-LIB-02: echtes Text-Markdown (Überschrift, Listen, Herkunfts-Fußzeile).
-  async exportMarkdown(opts?: {
-    ids?: readonly string[];
-    includeConfidential?: boolean;
-  }): Promise<string> {
+  async exportMarkdown(opts?: ExportOptionen): Promise<string> {
     const items = await this.exportJson(opts);
     // mega31 B: Exportkopf mit dem Warnsatz, VOR dem ersten Wissensobjekt (s. exportMediaWiki).
     const body = items
@@ -3091,10 +3487,7 @@ export class LibraryService {
   }
 
   // FR-LIB-02: druckfertiges HTML — der Browser erzeugt daraus per „Als PDF sichern" das PDF.
-  async exportHtml(opts?: {
-    ids?: readonly string[];
-    includeConfidential?: boolean;
-  }): Promise<string> {
+  async exportHtml(opts?: ExportOptionen): Promise<string> {
     const items = await this.exportJson(opts);
     const esc = (s: string): string =>
       s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -3325,8 +3718,8 @@ export class LibraryService {
         author: actor,
         ...quellautorVon(item),
         tags: item.tags ?? [],
-        // SCRUM-509 R3: JSON-Import ist ein Bulk-Pfad → konservativ „vertraulich" bei fehlendem Signal.
-        confidentiality: item.confidentiality ?? "vertraulich",
+        // N11: derselbe Übernahme-Standard wie im Accept-Pfad (s. `UEBERNAHME_STANDARD`).
+        confidentiality: item.confidentiality ?? UEBERNAHME_STANDARD,
         // ==========================================================================================
         // JOB 4293 — DER DIREKTE IMPORTWEG VERLOR DEN DOKUMENTTEXT, UND ZWAR ALS EINZIGER.
         // ==========================================================================================

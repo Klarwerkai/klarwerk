@@ -7,6 +7,7 @@ import { Splash } from "./components/Splash";
 // WP-UX-WOW-1 U9: erklärende Karte statt stiller Stufe-2-Umleitung.
 // AUFTRAG-mega70 BLOCK A: dieselbe Behandlung für den Rollenfall (RoleNotice, gleicher Rahmen).
 import { RoleNotice, Stage2Notice } from "./components/Stage2Notice";
+import { CAPTURE_FRONT_DOOR_ROUTE } from "./lib/captureFrontDoor";
 
 // ================================================================================================
 // JOB 3030 (U4/SCRUM-543) — JEDE SEITE WIRD NACHGELADEN, KEINE HÄNGT MEHR AM EINTRITT.
@@ -93,6 +94,7 @@ const DuplicateCompare = lazy(() =>
 const Duplicates = lazy(() =>
   import("./pages/Duplicates").then((m) => ({ default: m.Duplicates })),
 );
+const Einstieg = lazy(() => import("./pages/Einstieg").then((m) => ({ default: m.Einstieg })));
 const ExternalKnowledge = lazy(() =>
   import("./pages/ExternalKnowledge").then((m) => ({ default: m.ExternalKnowledge })),
 );
@@ -217,6 +219,33 @@ function Guarded({ item }: { item: NavItem }): JSX.Element {
   );
 }
 
+// ================================================================================================
+// Q3 (b) · `/erfassen/vordertuer` IST EIN ALIAS DES BLATTS, KEIN WEG NACH `/start`.
+// ================================================================================================
+//
+// DER BEFUND: Die Adresse steht in Aufträgen, Lesezeichen und Kommentaren („zeigt dasselbe Blatt
+// wie `/erfassen`", `pages/CaptureFrontDoor.tsx:19-21`) — eine Router-Zeile dafür gab es aber nie.
+// Die Vordertür liegt unter `CAPTURE_FRONT_DOOR_ROUTE` (`/capture/frontdoor`), und
+// `/erfassen/vordertuer` fiel in den `*`-Zweig unten: still nach `/start`, der Entwurf aus
+// `?draft=…` verloren.
+//
+// WIE: KEINE UMLEITUNG, sondern DERSELBE Eintrag der Vordertür (`EXTRA_GUARDED_ITEMS`,
+// `app/navigation.ts`) unter einer zweiten Adresse — also dasselbe Rollentor, dieselbe Seite,
+// dieselbe Fehlergrenze. Die Abfrage bleibt dadurch von selbst stehen:
+// `/erfassen/vordertuer?draft=<id>` öffnet genau diesen Entwurf, und die Stufenpflicht des Blatts
+// greift unverändert (gemessen in
+// `tests/vertraulichkeit-pflicht/vordertuer-alias-und-altentwurf.test.tsx`). Fehlte der Eintrag
+// je, wäre das ein Baufehler — dann lieber laut scheitern als wieder still auf `/start`.
+const VORDERTUER_ALIAS = "/erfassen/vordertuer";
+function vordertuerEintrag(): NavItem {
+  const item = GUARDED_ITEMS.find((g) => g.path === CAPTURE_FRONT_DOOR_ROUTE);
+  if (!item) {
+    throw new Error(`routes.tsx: kein bewachter Eintrag für ${CAPTURE_FRONT_DOOR_ROUTE}`);
+  }
+  return item;
+}
+const VORDERTUER_ITEM = vordertuerEintrag();
+
 export function AppRoutes(): JSX.Element {
   // JOB 3030: GENAU EINE Grenze für alle Routen. Sie steht um `<Routes>` herum und nicht je Route,
   // weil zu jedem Zeitpunkt genau eine Seite gerendert wird — je Route wären es 30 gleiche Grenzen
@@ -230,9 +259,16 @@ export function AppRoutes(): JSX.Element {
           <Route key={item.id} path={item.path} element={<Guarded item={item} />} />
         ))}
         <Route path="/wissen/:id" element={<KnowledgeDetail />} />
+        {/* R-0928 / R-1675 (Folgeauftrag gesamt-erstnutzerfuehrung-quellen): die vier kurzen
+            thematischen Einstiege vor den Vollfunktionen (`pages/Einstieg.tsx`, `lib/einstiege.ts`).
+            OHNE `Guarded`: die Ansicht erklärt nur und öffnet nichts; das Rollen-Tor sitzt an ihrer
+            Übergabe (`RoleLink`) und am Ziel selbst. Ein unbekanntes Thema führt auf die Startseite. */}
+        <Route path="/einstieg/:thema" element={<Einstieg />} />
         {/* SCRUM-527 (Design-Batch B): zuhörende „Wissen erfassen"-Erstversion — Deep-Link zum Browser-
             Check durch Pedi (noch nicht in der Navigation, um die bestehende Erfassung nicht zu berühren). */}
         <Route path="/erfassen/neu" element={<KnowledgeIntake />} />
+        {/* Q3 (b): der Alias der Vordertür — Begründung an `VORDERTUER_ALIAS`. */}
+        <Route path={VORDERTUER_ALIAS} element={<Guarded item={VORDERTUER_ITEM} />} />
         {/* ==========================================================================================
             JOB 4309 · DIE GEÖFFNETE ANWEISUNG — DIE EINE ZEILE, DIE NICHT AUS `NAV_GROUPS` KOMMT.
             ==========================================================================================

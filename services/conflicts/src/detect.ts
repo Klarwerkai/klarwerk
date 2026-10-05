@@ -140,15 +140,120 @@ export function selectCandidates(
   return (Number.isFinite(cap) ? scored.slice(0, Math.max(0, cap)) : scored).map((x) => x.subject);
 }
 
-// G-2 (3.4 Schritt 4): Beide Belegzitate müssen WÖRTLICH in den jeweiligen Kerntexten vorkommen —
-// sonst wird das Urteil als Modell-Halluzination verworfen (kein Konflikt). Vergleich auf
-// normalisiertem Text (Robustheit gegen Leerraum/Satzzeichen), leeres Zitat gilt als Fehlschlag.
+// R-1117: Ein Token ist eine Folge aus Buchstaben/Ziffern ODER genau ein anderes Zeichen. Satzzeichen
+// bleiben damit Teil des Vergleichs ('1,5' ≠ '1–5', '.5' ≠ '5', '-8' ≠ '8').
+const ZITAT_TOKEN = /[\p{L}\p{M}\p{N}]+|[^\p{L}\p{M}\p{N}\s]/gu;
+
+// Typografische Varianten DESSELBEN Zeichens werden gleichgesetzt — sonst nichts. Prime ′/″ sind
+// Maßzeichen, keine Anführungszeichen, und bleiben bewusst eigenständig (Bens BEN-1).
+const ZITAT_ZEICHEN: ReadonlyArray<[RegExp, string]> = [
+  [/[„“”‟«»〝〞＂]/g, '"'],
+  [/[‚‘’‛‹›＇]/g, "'"],
+  [/[‐‑‒–—―]/g, "-"],
+  [/…/g, "..."],
+];
+
+const ANFUEHRUNG = new Set(['"', "'"]);
+const SATZENDE = new Set([".", ",", ";", ":", "!", "?"]);
+const KLAMMER_AUF = new Set(["(", "[", "{"]);
+const KLAMMER_ZU = new Set([")", "]", "}"]);
+
+interface ZitatToken {
+  text: string;
+  // true: steht ohne Leerraum direkt am vorigen Token ('5' in '1.5', '.' in 'bar.').
+  angeklebt: boolean;
+}
+
+function zitatTokens(text: string): ZitatToken[] {
+  let t = text.normalize("NFC").toLowerCase();
+  for (const [muster, ersatz] of ZITAT_ZEICHEN) {
+    t = t.replace(muster, ersatz);
+  }
+  const tokens: ZitatToken[] = [];
+  let ende = -1;
+  for (const m of t.matchAll(ZITAT_TOKEN)) {
+    const start = m.index ?? 0;
+    tokens.push({ text: m[0], angeklebt: start === ende });
+    ende = start + m[0].length;
+  }
+  return tokens;
+}
+
+// Randbereinigung des Modellzitats: entfernt werden nur Zeichen, die das Modell um das Zitat setzt —
+// Anführungszeichen am Anfang, ein freistehender Satzzeichen-Lauf am Anfang ('... 5 bar') sowie
+// Anführungszeichen, Satzendezeichen und schließende Klammern am Ende. Ein Zeichen, das am Zitatinhalt
+// klebt und Bedeutung trägt ('.5', '-5', '+5', '5%'), bleibt stehen.
+function zitatRandBereinigt(tokens: ZitatToken[]): ZitatToken[] {
+  let von = 0;
+  let bis = tokens.length;
+  for (;;) {
+    const kopf = tokens[von];
+    if (kopf && (ANFUEHRUNG.has(kopf.text) || KLAMMER_AUF.has(kopf.text))) {
+      von++;
+      continue;
+    }
+    let lauf = von;
+    while (lauf < bis && SATZENDE.has(tokens[lauf]?.text ?? "")) {
+      lauf++;
+    }
+    if (lauf > von && lauf < bis && !tokens[lauf]?.angeklebt) {
+      von = lauf;
+      continue;
+    }
+    break;
+  }
+  while (bis > von) {
+    const fuss = tokens[bis - 1]?.text ?? "";
+    if (!(ANFUEHRUNG.has(fuss) || SATZENDE.has(fuss) || KLAMMER_ZU.has(fuss))) {
+      break;
+    }
+    bis--;
+  }
+  return tokens.slice(von, bis);
+}
+
+// Der Treffer darf kein Bruchstück einer längeren Angabe sein: ein am Treffer klebendes Nachbartoken
+// im Kerntext ist nur erlaubt, wenn es öffnende (davor) bzw. schließende Zeichensetzung (danach) ist,
+// die ihrerseits frei steht. 'beträgt 1' trifft so weder 'beträgt 1.5' noch 'beträgt 1–5', '5 bar'
+// trifft aber 'Set pressure to 5 bar.'.
+function randFrei(core: ZitatToken[], start: number, ende: number): boolean {
+  for (let i = start; core[i]?.angeklebt && i > 0; i--) {
+    const davor = core[i - 1]?.text ?? "";
+    if (!(ANFUEHRUNG.has(davor) || KLAMMER_AUF.has(davor))) {
+      return false;
+    }
+  }
+  for (let i = ende; i < core.length && core[i]?.angeklebt; i++) {
+    const danach = core[i]?.text ?? "";
+    if (!(ANFUEHRUNG.has(danach) || SATZENDE.has(danach) || KLAMMER_ZU.has(danach))) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// G-2 (3.4 Schritt 4) / R-1117: Beide Belegzitate müssen WÖRTLICH in den jeweiligen Kerntexten
+// vorkommen — als lückenlose Tokenfolge, Token für Token gleich (Groß-/Kleinschreibung, Leerraum und
+// typografische Varianten gleicher Zeichen egal). Sonst wird das Urteil als Modell-Halluzination
+// verworfen (kein Konflikt). Leeres Zitat gilt als Fehlschlag. Dieselbe Funktion prüft die geteilten
+// Zitate der Dublettenaspekte (verifiedAspects).
+// Bekannte Grenze: Zitate mit abweichender Zeichensetzung in der Mitte oder einer Auslassung („…")
+// in der Mitte gelten als nicht wörtlich.
 export function quoteFound(quote: string, core: string): boolean {
-  const q = normalizeForCompare(quote);
+  const q = zitatRandBereinigt(zitatTokens(quote));
   if (q.length === 0) {
     return false;
   }
-  return normalizeForCompare(core).includes(q);
+  const c = zitatTokens(core);
+  for (let start = 0; start + q.length <= c.length; start++) {
+    if (
+      q.every((tok, i) => c[start + i]?.text === tok.text) &&
+      randFrei(c, start, start + q.length)
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
 export function quotesVerbatim(verdict: ConflictVerdict, coreA: string, coreB: string): boolean {

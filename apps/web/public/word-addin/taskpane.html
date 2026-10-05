@@ -295,7 +295,7 @@
          nichts dasteht, was der Bestand nicht hergibt. -->
     <label class="capture-zeile" for="capture-bereich"><span data-t="captureBereichLabel"></span><select id="capture-bereich" disabled></select></label>
   </div>
-  <div id="capture-aktion"><button type="button" class="primary" id="send-btn" data-t="sendCta" disabled></button></div>
+  <div id="capture-stufe" role="group" aria-labelledby="capture-stufe-titel"><span id="capture-stufe-titel" data-t="captureStufeLabel"></span><button type="button" class="ghost" id="capture-stufe-intern" data-stufe="intern" aria-pressed="false" data-t="captureStufeIntern"></button><button type="button" class="ghost" id="capture-stufe-vertraulich" data-stufe="vertraulich" aria-pressed="false" data-t="captureStufeVertraulich"></button><button type="button" class="ghost" id="capture-stufe-streng_vertraulich" data-stufe="streng_vertraulich" aria-pressed="false" data-t="captureStufeStreng"></button></div><div id="capture-aktion"><button type="button" class="primary" id="send-btn" data-t="sendCta" disabled></button></div>
   <div id="office-hint" class="hidden"></div>
   <button type="button" class="ghost capture-knopf hidden" id="office-hint-btn" data-t="captureReload"></button>
   <div id="send-status" class="status hidden"></div>
@@ -493,5 +493,6 @@
   </div>
   <script src="rueckweg.js?v=__KW_FASSUNG__"></script>
   <script src="taskpane.js?v=__KW_FASSUNG__"></script>
+  <script src="marke.js?v=__KW_FASSUNG__"></script>
 </body>
 </html>

@@ -128,6 +128,9 @@ import {
  * Messungen dieser Seite ohne `NavGuardProvider` montieren; Codex hat das in Runde 2 verworfen —
  * eine Schutzregel wird nicht nach der Bequemlichkeit eines Prüfstands geschnitten. Die vier
  * Prüfstände montieren den Anbieter jetzt mit.
+ *
+ * R-1581 (390-px-Befund): derselbe Umbruchvertrag wie `Zeile` (`Zeilenkarte.tsx`, JOB 3117) — im
+ * Engpass rückt der Wert unter die Beschriftung, nichts wird gekürzt; nur der Pfeil ist unteilbar.
  */
 function Kurzlink({
   label,
@@ -145,14 +148,24 @@ function Kurzlink({
       to={to}
       data-einst="zeile"
       data-testid={testId}
-      className="flex w-full items-center justify-between border-b border-hairline px-4 py-[13px] text-left no-underline last:border-b-0 hover:bg-hairline-soft"
+      className="flex w-full flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-hairline px-4 py-[13px] text-left no-underline last:border-b-0 hover:bg-hairline-soft"
     >
-      <span data-einst="label" className="min-w-0 text-[14px] text-text">
+      <span data-einst="label" className="min-w-0 break-words text-[14px] text-text">
         {label}
       </span>
-      <span className="flex shrink-0 items-center gap-1.5 text-[14px] text-muted-2">
-        {wert === undefined ? null : <span data-einst="wert">{wert}</span>}
-        <ArrowUpRight data-einst="kurzlink" size={13} strokeWidth={2} aria-hidden="true" />
+      <span className="ml-auto flex min-w-0 items-center gap-1.5 break-words text-[14px] text-muted-2">
+        {wert === undefined ? null : (
+          <span data-einst="wert" className="min-w-0 break-words">
+            {wert}
+          </span>
+        )}
+        <ArrowUpRight
+          data-einst="kurzlink"
+          className="shrink-0"
+          size={13}
+          strokeWidth={2}
+          aria-hidden="true"
+        />
       </span>
     </GuardedLink>
   );

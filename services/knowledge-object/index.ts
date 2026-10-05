@@ -408,6 +408,9 @@ export type {
   ConfidentialityDisclosure,
   ConfidentialityProvenance,
 } from "./src/confidentiality";
+// R-0658: Schutzdaten vor der Suche — Erkennung und die eine Lesestelle der Quarantäne.
+export { erkenneSchutzdaten, inSchutzdatenQuarantaene } from "./src/schutzdaten";
+export type { SchutzdatenArt, SchutzdatenQuarantaene } from "./src/types";
 export type {
   EvidenceKind,
   EvidenceRecord,
@@ -420,6 +423,8 @@ export type {
   HistoryEntry,
   KoComment,
   KoAttachment,
+  // R-0163: die Quellidentität eines übernommenen Anhangs.
+  KoAnhangsquelle,
   // AUFTRAG-mega18 Block A-1: das Vorgangsgedächtnis der Verbund-Operation (am Objekt persistiert).
   KoAppendOp,
   // AUFTRAG-mega20 Block A: der Reparaturvermerk einer gescheiterten Rücknahme.

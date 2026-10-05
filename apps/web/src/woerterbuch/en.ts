@@ -174,7 +174,7 @@ const en: typeof de = {
   // JOB 3768 — the fifth page of the same path; see the German entry for what each sentence rests on.
   "seitenhilfe.entwuerfe.title": "My drafts: pick up what you started",
   "seitenhilfe.entwuerfe.body":
-    "These are the captures saved as a draft that have not become a knowledge object yet — the same drafts the editor and the workspace show, only in a place of their own; this is not a second draft store. As an administrator you see the drafts of all creators here, and the “All creators” selector above the list narrows them down to one person; without that role only your own drafts stand here, and that selector is not there. The search field above the list covers only these drafts and no knowledge from the library, “Sort” orders them by when they were saved or by title. Deleted drafts go to the “Recycle bin” below the list: “Restore” brings one back, “Delete permanently” really removes it, and the recycle bin does not empty itself. Next step: click “Resume” on a line — the draft opens in the editor, and unsaved input is asked about beforehand; if the list stands empty, “Capture” leads to where a new draft is created.",
+    "These are the captures saved as a draft that have not become a knowledge object yet — the same drafts the editor and the workspace show, only in a place of their own; this is not a second draft store. Only your own drafts stand here: they are private, nobody else sees them, not even an administrator. The search field above the list covers only these drafts and no knowledge from the library, “Sort” orders them by when they were saved or by title. Deleted drafts go to the “Recycle bin” below the list: “Restore” brings one back, “Delete permanently” really removes it, and the recycle bin does not empty itself. Next step: click “Resume” on a line — the draft opens in the editor, and unsaved input is asked about beforehand; if the list stands empty, “Capture” leads to where a new draft is created.",
   "menue.weitereBereiche": "Areas",
   "menue.schnellnavigation": "Go to …",
   "menue.darstellung": "Appearance",
@@ -5126,7 +5126,7 @@ const en: typeof de = {
     "The title is the first thing colleagues see in the library and in answers — it decides whether your knowledge is found. Good: concrete and actionable („checking weld seams on aluminium under 5 mm“). You can change it anytime; the AI suggestion is only a starting point.",
   "chelp.saveDraftHelp.title": "Save draft",
   "chelp.saveDraftHelp.body":
-    "Saves your interim state on the server under your account — continue anytime, even on another device. A draft is NOT submitted: nobody sees it, it appears in no review and no answer. You find saved drafts under “More” → Drafts.",
+    "Saves your interim state privately on the server — continue anytime, on any of your devices and even after a restart. A draft is NOT submitted: only you can see it, and it appears in no review and no answer. You find your saved drafts to resume under “More” → Drafts and in the menu under My drafts.",
   "chelp.discardHelp.title": "Discard",
   "chelp.discardHelp.body":
     "Discards the current input — text, structure and attachments of this capture. It affects ONLY this input: already submitted knowledge objects and saved drafts stay untouched. The app deliberately asks first.",
