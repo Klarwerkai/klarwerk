@@ -319,10 +319,10 @@ const de = {
   // JOB 3669 bei JOB 3668 (Entwurfs-Papierkorb) lag; der Grund ist mit dessen Auslieferung entfallen.
   //
   // JEDER SATZ IST AN DER FLÄCHE GEMESSEN (`pages/MeineEntwuerfe.tsx`, `components/CaptureDraftList.tsx`):
-  //   · Der Ersteller-Filter ist eine ADMIN-Auskunft (`CaptureDraftList.tsx:245` — `isAdmin`); wer
-  //     die Rolle nicht hat, findet ihn nicht. Deshalb steht der Vorbehalt im Satz und nicht daneben
-  //     (Korrekturpflicht 1 aus JOB 3669 R1: keine Bedienung versprechen, die es für den Betrachter
-  //     nicht gibt).
+  //   · Entwürfe sind PRIVAT (Entscheidung Pedi `debbb8e8`): jede Rolle, auch der Administrator,
+  //     sieht hier nur die eigenen (`canSeeDraft`). Der frühere Satz über „Entwürfe aller Ersteller"
+  //     und die Auswahl „Alle Ersteller" ist deshalb fort — die Seite zeigt diese Auswahl nicht mehr
+  //     (`MeineEntwuerfe.tsx`, `isAdmin={false}`).
   //   · „Wiederherstellen"/„Endgültig löschen" sind die Wörter, die der Papierkorb wirklich trägt
   //     (`adm.trash.restore`/`adm.trash.purge`) — kein zweites Wort für dieselbe Handlung.
   //   · KEINE Aufbewahrungsfrist: es gibt keine (JOB 3668, Rückgabe R1). „Von selbst leert er sich
@@ -331,7 +331,7 @@ const de = {
   //     da sind — nur, was mit ihnen geschieht und wo man nachsieht.
   "seitenhilfe.entwuerfe.title": "Meine Entwürfe: begonnene Erfassungen fortsetzen",
   "seitenhilfe.entwuerfe.body":
-    "Hier stehen die Erfassungen, die als Entwurf gespeichert und noch nicht zu einem Wissensobjekt geworden sind — dieselben Entwürfe, die auch der Editor und der Arbeitsraum zeigen, nur an einem eigenen Ort; einen zweiten Entwurfsspeicher gibt es nicht. Als Administrator siehst du hier die Entwürfe aller Ersteller, und die Auswahl „Alle Ersteller“ über der Liste grenzt sie auf eine Person ein; ohne diese Rolle stehen hier nur deine eigenen, und diese Auswahl gibt es dann nicht. Das Suchfeld über der Liste durchsucht ausschließlich diese Entwürfe und kein Wissen aus der Bibliothek, „Sortieren“ ordnet sie nach Stand oder Titel. Gelöschte Entwürfe gehen in den „Papierkorb“ unter der Liste: „Wiederherstellen“ holt einen zurück, „Endgültig löschen“ entfernt ihn wirklich, und von selbst leert sich der Papierkorb nicht. Nächster Schritt: Klick „Fortsetzen“ an einer Zeile — der Entwurf öffnet sich im Editor, und noch nicht gespeicherte Eingaben werden vorher abgefragt; steht die Liste leer da, führt „Erfassen“ dorthin, wo ein neuer Entwurf entsteht.",
+    "Hier stehen die Erfassungen, die als Entwurf gespeichert und noch nicht zu einem Wissensobjekt geworden sind — dieselben Entwürfe, die auch der Editor und der Arbeitsraum zeigen, nur an einem eigenen Ort; einen zweiten Entwurfsspeicher gibt es nicht. Hier stehen nur deine eigenen Entwürfe: Sie sind privat, niemand sonst sieht sie, auch kein Administrator. Das Suchfeld über der Liste durchsucht ausschließlich diese Entwürfe und kein Wissen aus der Bibliothek, „Sortieren“ ordnet sie nach Stand oder Titel. Gelöschte Entwürfe gehen in den „Papierkorb“ unter der Liste: „Wiederherstellen“ holt einen zurück, „Endgültig löschen“ entfernt ihn wirklich, und von selbst leert sich der Papierkorb nicht. Nächster Schritt: Klick „Fortsetzen“ an einer Zeile — der Entwurf öffnet sich im Editor, und noch nicht gespeicherte Eingaben werden vorher abgefragt; steht die Liste leer da, führt „Erfassen“ dorthin, wo ein neuer Entwurf entsteht.",
   // JOB 3337: der Zugang heißt jetzt, was er ist. „Weitere Bereiche" war eine Restekiste,
   // „Schnellnavigation" ein Fachwort — Pedi: „Die Direktfunktion ist … schwer zu erkennen."
   // Die SCHLÜSSEL bleiben, damit kein Aufrufer und kein Pin ins Leere greift.
@@ -6511,8 +6511,14 @@ const de = {
   "chelp.captureTitle.body":
     "Der Titel ist das Erste, was Kollegen in Bibliothek und Antworten sehen — er entscheidet, ob dein Wissen gefunden wird. Gut: konkret und handlungsnah („Schweißnaht bei Aluminium unter 5 mm prüfen“). Du kannst ihn jederzeit ändern, auch der KI-Vorschlag ist nur ein Startpunkt.",
   "chelp.saveDraftHelp.title": "Entwurf speichern",
+  // AUFNAHME gesamt-entwurf-einreichen · Entscheidung Pedi `debbb8e8` („Beides“): Standardfall ist
+  // der PRIVATE Entwurf am Server, NUR für die Autorin sichtbar (auch kein Administrator,
+  // `canSeeDraft`), auf allen eigenen Geräten fortsetzbar — deshalb „Nur du siehst ihn“ statt
+  // „Niemand sieht ihn“ (`tests/entwurf-einreichen/hilfetext-entwurf-am-server.test.ts`). Der Weg
+  // „Mehr“ → Entwürfe stammt aus `gesamt-erfassung-einstieg` (R-1000: jedes Zitat ist eine
+  // Beschriftung des Blattes); der Menüpunkt `mob.drafts` steht ohne Anführungszeichen daneben.
   "chelp.saveDraftHelp.body":
-    "Sichert deinen Zwischenstand auf dem Server unter deinem Konto — du kannst jederzeit weitermachen, auch auf einem anderen Gerät. Ein Entwurf ist NICHT eingereicht: Niemand sieht ihn, er taucht in keiner Prüfung und keiner Antwort auf. Gespeicherte Entwürfe findest du unter „Mehr“ → Entwürfe.",
+    "Sichert deinen Zwischenstand privat auf dem Server — du kannst jederzeit weitermachen, auf jedem deiner Geräte und auch nach einem Neustart. Ein Entwurf ist NICHT eingereicht: Nur du siehst ihn, er taucht in keiner Prüfung und keiner Antwort auf. Deine gespeicherten Entwürfe findest du zum Fortsetzen unter „Mehr“ → Entwürfe und im Menü unter Meine Entwürfe.",
   "chelp.discardHelp.title": "Verwerfen",
   "chelp.discardHelp.body":
     "Verwirft die aktuelle Eingabe — Text, Struktur und Anhänge dieser Erfassung. Es betrifft NUR diese Eingabe: Bereits eingereichte Wissensobjekte und gesicherte Entwürfe bleiben unberührt. Vorher fragt die App bewusst nach.",
