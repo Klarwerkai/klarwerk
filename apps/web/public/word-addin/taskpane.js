@@ -2764,7 +2764,13 @@
     var captureBereiche = [];
     var captureBereichWahl = "";
     var captureBereichLauf = 0;
-    // R-0632: die im Panel per Klick gewaehlte Stufe ("" = nicht gewaehlt; nur die drei Werte gehen hinaus).
+    // R-0632: DIE STUFE MIT EINEM KLICK (#capture-stufe in taskpane.html). Drei Knoepfe, keiner
+    // vorgewaehlt — „nicht gewaehlt" wird nicht als Wahl ausgegeben, und ohne Wahl reist kein Feld
+    // mit (der Server setzt dann den Uebernahme-Standard, N11). Bewusst KEIN `label.capture-zeile` in
+    // #capture-felder: dort stehen genau zwei Zeilen (Zielbild K2, gepinnt). Das Markup steht in der
+    // Zeile von #capture-aktion, weil die Markup-Datei unter 500 Zeilen bleiben muss (R-1611,
+    // probeschnitt A2 / schnitt-echt E5). Die Wahl reist an BEIDEN Einreichwegen mit (sendeEntwurf).
+    // Die im Panel per Klick gewaehlte Stufe ("" = nicht gewaehlt; nur die drei Werte gehen hinaus).
     var CAPTURE_STUFEN = ["intern", "vertraulich", "streng_vertraulich"], captureStufeWahl = "";
     function captureStufeGewaehlt() { return CAPTURE_STUFEN.indexOf(captureStufeWahl) >= 0 ? captureStufeWahl : ""; }
     function renderCaptureStufe() { // `aria-pressed` ist die Auskunft, nicht die Farbe

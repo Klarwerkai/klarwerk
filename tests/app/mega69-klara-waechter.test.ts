@@ -2675,7 +2675,13 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // Sideload. DER PIN MUSS DESHALB WANDERN (66ba98c4… -> Hash des zusammengefügten Dokuments mit
     // dieser Änderung). Bei der Konfliktlösung nicht berechenbar (kein Hash-Werkzeug zugelassen);
     // der Prüflauf meldet den Ist-Wert als „Received", er wird danach gemessen übernommen.
-    const PIN = "66ba98c4cbaa5cb24a6fe2ae79fe74c56c784c1927dcff9ee7975f98f74f76e5";
+    // GEMESSEN im Prüflauf zu Kandidat 83c9a4b8: 637602b1…686f298 (unten eingetragen). DANACH ERNEUT
+    // GEÄNDERT, und zwar nur in der Ablage, nicht in der Wirkung: die Knopfgruppe #capture-stufe steht
+    // jetzt in der Zeile von #capture-aktion und ihr Erklärkommentar in `taskpane.js`, weil die
+    // Markup-Datei unter 500 Zeilen bleiben muss (probeschnitt A2 / schnitt-echt E5 meldeten 509).
+    // Kein Abrufziel, keine Nutzlast, kein Ausdruck geändert. Der Pin muss deshalb EIN weiteres Mal
+    // gemessen übernommen werden; ohne Hash-Werkzeug ist er hier nicht berechenbar.
+    const PIN = "637602b1e5026157751449b42a36b6c55c55868ddfa34911741e2e0f8686f298";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(
       ist,

@@ -415,6 +415,12 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   // Panel-Fixture importiert sie nicht. A2 hat sie gemeldet, das Verzeichnis nimmt sie nicht
   // still auf.
   "tests/ki-fragment-sichtbar/flaeche-klara-panel.test.ts": "pfad,rueckweg,panelquelle",
+  // AUFNAHME 20260922 · GESAMT-VERTRAULICHKEIT-ERFASSUNG (R-0632/N11): die Stufenwahl im Panel bis
+  // zum gespeicherten Entwurf. Sie baut das GANZE Fenster in jsdom (Pfadliteral `taskpane.html`,
+  // gelesen über `panelQuelleAus`), lädt `rueckweg.js` davor und führt das Skript unverändert aus —
+  // ein echter Mitfahrer mit drei Griffen. A2 hat sie nach der Integration mit main 38508a1e
+  // gemeldet (Prüflauf zu 83c9a4b8).
+  "tests/vertraulichkeit-pflicht/word-panel-stufenwahl.test.tsx": "pfad,rueckweg,panelquelle",
   // JOB 3512 DEMO-FIRMEN-CI VERBRAUCHER (10.09.2026): die Firmen-CI in Klara/Word. Zwei echte
   // Mitfahrer, mit zwei verschiedenen Griffen — und beide GEMESSEN, nicht gesetzt:
   //   · `marke-quelle.test.ts` nennt `apps/web/public/word-addin/taskpane.html` als Literal

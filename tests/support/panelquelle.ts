@@ -98,9 +98,13 @@ const MARKE_KOPF_ENDE = '"use strict";\n';
  * Klick-Zuhörer, vier Wörterbuchschlüssel je Sprache, Stufe im from-docx-Rumpf nur bei echter Wahl).
  * Der Bezugspunkt MUSS deshalb wandern; der Blob des zusammengefügten Dokuments war bei der
  * Konfliktlösung nicht berechenbar (kein Hash-Werkzeug zugelassen). E2 meldet ihn im Prüflauf als
- * „Received"; er wird danach gemessen übernommen. Bis dahin steht hier der Wert von `main`.
+ * „Received"; er wird danach gemessen übernommen.
+ * GEMESSEN im Prüflauf zu Kandidat 83c9a4b8: `d5d7a936…` (unten eingetragen). DANACH ERNEUT GEÄNDERT,
+ * nur in der Ablage: die Knopfgruppe steht in der Zeile von `#capture-aktion`, ihr Kommentar in
+ * `taskpane.js`, damit die Markup-Datei unter 500 Zeilen bleibt (A2/E5). Der Blob muss deshalb EIN
+ * weiteres Mal gemessen übernommen werden.
  */
-export const PANEL_VOR_SCHNITT_BLOB = "90936dcc8daea18c0d82cb9902964e6e6900c667";
+export const PANEL_VOR_SCHNITT_BLOB = "d5d7a93678cca042148b381345b1f5b0d8c36d7c";
 
 export interface PanelTeile {
   html: string;

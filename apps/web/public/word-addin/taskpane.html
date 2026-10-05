@@ -295,17 +295,7 @@
          nichts dasteht, was der Bestand nicht hergibt. -->
     <label class="capture-zeile" for="capture-bereich"><span data-t="captureBereichLabel"></span><select id="capture-bereich" disabled></select></label>
   </div>
-  <!-- R-0632: DIE STUFE MIT EINEM KLICK. Drei Knoepfe, keiner vorgewaehlt — „nicht gewaehlt" wird
-       nicht als Wahl ausgegeben, und ohne Wahl reist kein Feld mit (das Einreichen in der App fragt
-       dann, Q3). Bewusst KEIN `label.capture-zeile` in #capture-felder: dort stehen genau zwei Zeilen
-       (Zielbild K2, gepinnt). Die Wahl reist an BEIDEN Einreichwegen mit (sendeEntwurf). -->
-  <div id="capture-stufe" role="group" aria-labelledby="capture-stufe-titel">
-    <span id="capture-stufe-titel" data-t="captureStufeLabel"></span>
-    <button type="button" class="ghost" id="capture-stufe-intern" data-stufe="intern" aria-pressed="false" data-t="captureStufeIntern"></button>
-    <button type="button" class="ghost" id="capture-stufe-vertraulich" data-stufe="vertraulich" aria-pressed="false" data-t="captureStufeVertraulich"></button>
-    <button type="button" class="ghost" id="capture-stufe-streng_vertraulich" data-stufe="streng_vertraulich" aria-pressed="false" data-t="captureStufeStreng"></button>
-  </div>
-  <div id="capture-aktion"><button type="button" class="primary" id="send-btn" data-t="sendCta" disabled></button></div>
+  <div id="capture-stufe" role="group" aria-labelledby="capture-stufe-titel"><span id="capture-stufe-titel" data-t="captureStufeLabel"></span><button type="button" class="ghost" id="capture-stufe-intern" data-stufe="intern" aria-pressed="false" data-t="captureStufeIntern"></button><button type="button" class="ghost" id="capture-stufe-vertraulich" data-stufe="vertraulich" aria-pressed="false" data-t="captureStufeVertraulich"></button><button type="button" class="ghost" id="capture-stufe-streng_vertraulich" data-stufe="streng_vertraulich" aria-pressed="false" data-t="captureStufeStreng"></button></div><div id="capture-aktion"><button type="button" class="primary" id="send-btn" data-t="sendCta" disabled></button></div>
   <div id="office-hint" class="hidden"></div>
   <button type="button" class="ghost capture-knopf hidden" id="office-hint-btn" data-t="captureReload"></button>
   <div id="send-status" class="status hidden"></div>
