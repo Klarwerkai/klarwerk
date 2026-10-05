@@ -29,13 +29,13 @@ auslösenden Zustand, ihren Träger auf der Fläche und eine Messung über DE→
 | `parseError` | Lesen wirft | Live-Region `capture-datei-meldung` | DE bleibt stehen |
 | `extracting` | Einlesen läuft | `notice` (keine Ansage) | DE bleibt stehen |
 | `wholeSaved` | Ganzdokument gespeichert | `notice` (+ Toast) | DE bleibt stehen |
-| `tooLargeForImport` | Ganzdokument über der Client-Grenze | `err` (+ Toast) | DE bleibt stehen |
+| `tooLargeForImport` | Ganzdokument über der Client-Grenze | Live-Region `capture-datei-meldung` (seit Nacharbeit 1; vorher `err` + Toast) | DE bleibt stehen |
 | `wholeOpenMissing` | gespeichert, ohne Entwurfskennung | `err` (+ Toast), Karte daneben | DE bleibt, die Karte übersetzt sich mit |
 
 **Reproduzierbarer Befund, Ursache aus dem Code:** Alle acht werden beim Auslösen als fertig
 übersetzter Text in den Zustand gelegt (`Capture.tsx`: `setNotice(t(…))` für `extracting`,
-`setFileImportMeldung(t(…))` für `unsupported`, `empty` und `parseError`, `setErr(t(…))` für
-`tooLargeForImport` und `wholeOpenMissing`, `setNotice(\`${savedNote}…\`)` für `wholeSaved`;
+`setFileImportMeldung(t(…))` für `unsupported`, `empty`, `parseError` und `tooLargeForImport`,
+`setErr(t(…))` für `wholeOpenMissing`, `setNotice(\`${savedNote}…\`)` für `wholeSaved`;
 `CaptureFileImport.tsx`: `setMeldung(t(…))` für `dropReject`). Dieser Befund **begründet einen eigenen
 Reparaturschnitt**. Das Muster dafür gibt es schon: `meldungText` / `Textbaustein` in `Capture.tsx`
 (JOB 3196 R2). In diesem Auftrag wurde nichts repariert. Die neuen `it.fails`-Fälle werden rot,
@@ -89,11 +89,17 @@ Ergebnis: **10 erreichbar, 1 ersetzt, 28 weiterhin unbewiesen.**
 - **Offen:**
   - Ein echter Screenreader oder eine echte Vorlesehilfe (Abnahme laut Register) braucht einen
     Menschen und ist nicht ersetzt.
-  - `tooLargeForImport` steht im Arbeitsraum in `err`, also ohne Ansage. Angesagt würde er nur über
-    einen Toast, dessen `<output>` erst beim Ereignis eingehängt wird (`ToastViewport.tsx`). Laut
-    `a18-ansagen-ereignisse` (B2) wird eine solche Region von Vorlesehilfen überhört. Das ist nur
-    Quelleninspektion, nicht gemessen.
   - Nach einem Sprachwechsel bleibt die Ansage deutsch (Befund K1).
+- **Nacharbeit 1 (Befund Ben, behoben):** `tooLargeForImport` stand im stummen Fehlerkasten UND als
+  erst beim Ereignis eingehängter Toast — doppelt und ohne verlässliche Ansage. Jetzt geht er über
+  `setFileImportMeldung` in dieselbe dauerhaft montierte Region wie die übrigen Ablehnungen; Fehlerkasten
+  und Toast entfallen für diesen Fall. Der Wachen-Dialog (`NavGuardSaveError`) nennt den Satz
+  unverändert. Gegenprobe: `abbruch-moduswechsel-chromium.test.ts` (K4, vollständige Anwendung samt
+  Toast-Ausgabe: genau ein Träger, die vorher markierte Region, einmal auf der Fläche, Datei und
+  Eingabe erhalten) und die jsdom-Zuordnung in `acht-meldungen-drei-sprachen.test.tsx`.
+- **Grenze:** `CaptureFileImport` zeigt `meldung ?? importMeldung`. Hat der Mensch NACH der
+  Dateiwahl eine nicht importierende Kachel angetippt, verdeckt deren Hinweis eine danach folgende
+  Größenablehnung. Nicht gemessen, nicht geändert (das Bauteil ist geteilt).
 
 ## K5 — R-0152 (Größengrenze vor der Auswahl)
 

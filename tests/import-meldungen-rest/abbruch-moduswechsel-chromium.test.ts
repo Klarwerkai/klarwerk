@@ -16,6 +16,11 @@
 //
 // K5 (R-0152): vor jeder Auswahl steht die Grenze unmittelbar vor Ablagefläche und Auswahlknopf —
 // mit den Werten, die DIESER Server über `GET /api/upload-limits` ausliefert.
+//
+// K4 (R-0120, Nacharbeit 1): der Größenabbruch des Ganzdokuments in der VOLLSTÄNDIGEN Anwendung,
+// also samt Toast-Ausgabe (`ToastViewport.tsx`), die die jsdom-Bühne nicht montiert. Genau eine
+// sichtbare Meldung, und zwar in der Region, die schon VOR dem Ereignis stand; Datei und Eingabe
+// bleiben.
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import i18n from "../../apps/web/src/i18n";
 import { CAPTURE_FILE_TEXT as T } from "../../apps/web/src/lib/captureFromFile";
@@ -24,9 +29,11 @@ import {
   BLATT_TEXT,
   type SeiteMitDialog,
   aufEingelesenWarten,
+  aufLiveMeldungWarten,
   dateiUeberSichtbareAuswahl,
   dateiwegSchliessen,
   flaeche,
+  liveregionen,
   satz,
 } from "../d3-dateien-durchgaengig/d3-buehne";
 import { type Buehne, buehneAufbauen, fn } from "../design/h3-blatt-buehne";
@@ -38,6 +45,7 @@ import {
   dateiwegOeffnen,
   ganzdokumentWaehlen,
   neuLaden,
+  speichernDruecken,
   wartebudget,
 } from "../ux19-speichern-oeffnen-reload/ux19-buehne";
 
@@ -70,6 +78,25 @@ const GRENZE_LESEN = `() => {
     hatFlaeche: r.width > 0 && r.height > 0,
   };
 }`;
+
+/** Markiert die Ablehnungsregion VOR dem Ereignis — so ist nachher prüfbar, dass sie schon stand. */
+const REGION_MARKIEREN = `() => {
+  const r = document.querySelector('[data-testid="capture-datei-meldung"]');
+  if (!r) {
+    return false;
+  }
+  r.setAttribute('data-vor-dem-ereignis', 'ja');
+  return true;
+}`;
+
+/** Trägt die vorher markierte Region (dasselbe Element) jetzt den Satz? */
+const MARKIERTE_REGION_TRAEGT = `(s) => {
+  const r = document.querySelector('[data-vor-dem-ereignis="ja"]');
+  return r !== null && (r.textContent || '').replace(/\\s+/g, ' ').includes(s);
+}`;
+
+/** Ein Ganzdokument über der Client-Grenze — dieselbe Grösse wie im jsdom-Fall von JOB 3379. */
+const RIESE = "abbruch-zu-gross.txt";
 
 interface Grenzlage {
   readonly text: string;
@@ -224,6 +251,44 @@ describe("K2 · Abbruch, dann echter Moduswechsel — am Browserzustand", () => 
 
       await dateiwegSchliessen(seite);
       expect(await blatt(), "Eingabe am Ende des Weges").toBe(vorher);
+      expect(b.seitenfehler, `Seitenfehler: ${JSON.stringify(b.seitenfehler)}`).toEqual([]);
+    },
+    FALL_RAHMEN_MS,
+  );
+});
+
+describe("K4 · R-0120 — der Größenabbruch in der vollständigen Anwendung", () => {
+  it(
+    "zu großes Ganzdokument: eine Meldung in der vorher montierten Region, kein Toast",
+    async () => {
+      expect(b.fehler, "Bühne nicht aufgebaut").toBeNull();
+      const vorher = await eigeneEingabeSchreiben();
+      await dateiwegOeffnen(seite);
+      await ganzdokumentWaehlen(seite);
+      await dateiUeberSichtbareAuswahl(seite, dateiAnlage(RIESE, "A".repeat(4_500_000)));
+      await aufEingelesenWarten(seite, RIESE);
+
+      const zuGross = satz(T.tooLargeForImport);
+      expect(await flaeche(seite), "die Ablehnung steht schon vor dem Speichern da").not.toContain(
+        zuGross,
+      );
+      expect(await seite.evaluate<boolean>(fn(REGION_MARKIEREN)), "Region fehlt").toBe(true);
+      expect(await speichernDruecken(seite), "Speichern-Knopf nicht betätigbar").toBe(true);
+      await aufLiveMeldungWarten(seite, zuGross);
+
+      // Genau EIN Träger, und es ist die Region, die schon vor dem Ereignis montiert war.
+      const regionen = await liveregionen(seite);
+      const traeger = regionen.filter((r) => r.text.includes(zuGross)).map((r) => r.marke);
+      expect(traeger, `Ansagen: ${JSON.stringify(regionen)}`).toHaveLength(1);
+      expect(traeger[0]).toContain("capture-datei-meldung");
+      expect(await seite.evaluate<boolean>(fn(MARKIERTE_REGION_TRAEGT), zuGross)).toBe(true);
+      // Keine zweite Ausgabe — weder Fehlerkasten noch Toast.
+      const text = await flaeche(seite);
+      expect(text.split(zuGross).length - 1, "die Ablehnung steht mehrfach da").toBe(1);
+      // Die eingelesene Datei bleibt, und die eigene Eingabe auch.
+      expect(text).toContain(satz(T.wholeSourceNote, { name: RIESE }));
+      await dateiwegSchliessen(seite);
+      expect(await blatt(), "Eingabe nach dem Größenabbruch").toBe(vorher);
       expect(b.seitenfehler, `Seitenfehler: ${JSON.stringify(b.seitenfehler)}`).toEqual([]);
     },
     FALL_RAHMEN_MS,

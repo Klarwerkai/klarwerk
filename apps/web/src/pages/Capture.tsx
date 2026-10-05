@@ -1709,8 +1709,11 @@ export function CaptureArbeitsraum({
         ganzdokumentOffenRef.current = null;
       }
       if (error instanceof DraftPayloadTooLargeError) {
-        setErr(t(CAPTURE_FILE_TEXT.tooLargeForImport));
-        push("error", t(CAPTURE_FILE_TEXT.tooLargeForImport));
+        // R-0120: der Größenabbruch ist eine Ablehnung DIESES Import-Wegs und gehört in dieselbe,
+        // dauerhaft montierte Live-Region wie die übrigen (`fileImportMeldung`, oben). Bis hierher
+        // stand er im stummen Fehlerkasten UND als erst beim Ereignis eingehängter Toast — zweimal
+        // sichtbar und auf keinem verlässlich angesagten Weg. Datei und Eingabe bleiben unberührt.
+        setFileImportMeldung(t(CAPTURE_FILE_TEXT.tooLargeForImport));
         return;
       }
       fail(error);

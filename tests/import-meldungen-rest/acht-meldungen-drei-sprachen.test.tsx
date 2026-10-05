@@ -107,7 +107,8 @@ const ACHT: readonly Zeile[] = [
   {
     key: "tooLargeForImport",
     zustand: "Ganzdokument über der Client-Grenze (4,5 Mio. Zeichen) — Abbruch vor dem Upload.",
-    traeger: "fehlerfeld",
+    // Nacharbeit 1 (R-0120): eine Ablehnung des Import-Wegs, also in die gemeinsame Region.
+    traeger: "live-region",
     zielspracheZusaetzlich: false,
   },
   {
@@ -197,6 +198,8 @@ async function ausloesen(key: Achter): Promise<void> {
       await click(buttonByText(txt(T.wholeCta)));
       expect(endpoints.objects.upload).not.toHaveBeenCalled();
       expect(endpoints.drafts.create).not.toHaveBeenCalled();
+      // Die Ablehnung räumt nichts: die eingelesene Datei steht weiter zum Speichern bereit.
+      expect(sichtbar()).toContain(txt(T.wholeSourceNote, { name: TXT }));
       return;
     case "wholeSaved":
     case "wholeOpenMissing":
