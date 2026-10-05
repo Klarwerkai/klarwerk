@@ -222,7 +222,8 @@ describe(`${JOB} · der JSON-Rundlauf mit Volltext, am echten Socket`, () => {
     const { quelle, ziel } = await neuesPaar();
     const titel = `${TITEL} · direkter Weg`;
     // Die Datei entsteht wie beim sichtbaren Weg — aus einem echten Export, durch den echten
-    // Parser. Nur die Oberfläche fehlt: eingespielt wird ohne Warteschlange und ohne Prüfkarte.
+    // Parser. Nur die Oberfläche fehlt. R-0143 (bens F1): auch dieser Eingang reiht in die
+    // Prüfwarteschlange ein — das Objekt entsteht erst durch die Annahme.
     const quellId = await legeQuellobjektAn(quelle, {
       titel,
       kern: KERNAUSSAGE,
@@ -233,12 +234,10 @@ describe(`${JOB} · der JSON-Rundlauf mit Volltext, am echten Socket`, () => {
     const quellEintrag = exportEintrag(await exportiere(quelle), titel);
     const items = auswahlLesen(exportdatei([quellEintrag]));
     const befund = await direktImportieren(ziel, items);
-    expect(
-      befund.imported,
-      `${JOB}: N3 · der direkte Weg hat nichts eingespielt (skipped ${befund.skipped}).`,
-    ).toBe(1);
+    expect(befund.imported, `${JOB}: N3 · der direkte Weg hat direkt angelegt.`).toBe(0);
+    const kandidat = kandidatMitTitel(befund.kandidaten, titel);
+    await entscheiden(ziel, kandidat.id, "accept");
     // Das angelegte Objekt unabhängig suchen und lesen — nicht die Antwort des Schreibwegs glauben.
-    // Sie nennt ohnehin keine Kennung (`ImportResult` zählt nur), und das ist ihr Vertrag.
     const zielObjekt = await koLesen(ziel, await kennungAusDemBestand(ziel, titel));
     expect(
       zielObjekt.bodyHtml,

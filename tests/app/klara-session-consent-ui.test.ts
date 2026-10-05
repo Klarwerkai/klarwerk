@@ -17,10 +17,11 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { panelQuelleAus } from "../support/panelquelle";
 
 const TASKPANE = "apps/web/public/word-addin/taskpane.html";
 const ROUTEN = "services/app/src/routes/klara-ai-routes.ts";
-const HTML = readFileSync(resolve(process.cwd(), TASKPANE), "utf8");
+const HTML = panelQuelleAus(TASKPANE);
 const ROUTEN_SRC = readFileSync(resolve(process.cwd(), ROUTEN), "utf8");
 
 // ------------------------------------------------------------------------------------------------

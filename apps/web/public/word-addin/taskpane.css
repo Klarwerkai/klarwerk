@@ -1,0 +1,733 @@
+    /* ============================================================================================
+       AUFTRAG-mega43 BLOCK A — KLARA TRAEGT DIE WERKBANK-PALETTE.
+       ============================================================================================
+       Die Werte hier kommen Ziffer fuer Ziffer aus apps/web/src/styles/themes.css,
+       [data-theme="modern"] (Papier, Nacht und ein Funke). Sie stehen als Hex statt als
+       Kanal-Tripel, weil das Panel buildlos ist (kein Tailwind, kein Import) — es MUSS eine Kopie
+       sein. Gegen genau diese Kopie steht ein Sammler:
+       tests/app/mega43-klara-werkbank-palette.test.ts liest beide Dateien, rechnet die Tripel nach
+       Hex um und verlangt Gleichheit; er misst ausserdem den Kontrast der texttragenden Paare.
+
+       JOB 3056 (K1, Pedis Mockups design/klara vom 04.09.): DREI Werte der Mockups gibt es in der
+       Werkbank-Palette NICHT — das Hinweisgrau #9AA2B1 (Platzhalter, Ruhe-Satz, Stand), das
+       Lupengrau #C9C2B6 und der Umschalter-Grund #EEEAE3. Sie stehen hier als benannte
+       Mockup-Werte („← mockup:…") und im Sammler als MOCKUP_AUSNAHMEN mit Grund; der Nachzug in
+       themes.css ist ein eigener Auftrag (apps/web/src ist nicht Zielpfad von JOB 3056). */
+    :root {
+      /* Flaechen und Tinte */
+      --page: #FAF8F5; /* Papier ← --kw-page */
+      --surface: #FFFFFF; /* Karte ← --kw-surface */
+      --ink: #0E1626; /* Nacht ← --kw-ink / --kw-night (Ueberschriften) */
+      --text: #1A2233; /* Tinte ← --kw-text */
+      --muted: #525B6B; /* Tinte-2 ← --kw-muted */
+      --hairline: #E9E5DE; /* Linie ← --kw-hairline */
+      /* Die drei Mockup-Werte (JOB 3056), s. Kopfkommentar. */
+      --hint: #9AA2B1; /* Hinweisgrau ← mockup:design/klara/Ruhe.dc.html Z.30/35 */
+      --lupe: #C9C2B6; /* Lupe in Ruhe ← mockup:design/klara/Ruhe.dc.html Z.29 */
+      --segment: #EEEAE3; /* Umschalter-Grund ← mockup:design/klara/Ruhe.dc.html Z.20 */
+
+      /* Marke: der Funke. Drei Rollen, drei Token — wie im Web, aus demselben Grund:
+         #E8630A traegt Weiss nur mit 3,38:1 (Flaeche/Strich, kein Text), #C2500A traegt Weiss mit
+         4,72:1 (Knopfflaeche), und als TEXT auf Papier liegt #C2500A bei 4,45:1 — deshalb dort
+         --kw-brand-text (AUFTRAG-mega62 Block D: #9C5009, 5,56:1 auf Papier — vorher #A8560A mit
+         4,95:1), das der modern-Block ABSICHTLICH nicht ueberschreibt (themes.css). */
+      --brand: #E8630A; /* Funke ← --kw-brand */
+      --brand-deep: #C2500A; /* Funke dunkel ← --kw-funke-deep */
+      --brand-text: #9C5009; /* Funke als Text ← --kw-brand-text (im modern-Thema wirksam) */
+
+      /* Trust — nur Reife/Status */
+      --pos-bg: #E0F1E7; /* ← --kw-trust-pos-bg */
+      --pos-text: #116B3C; /* ← --kw-trust-pos-text */
+      --warn-bg: #FDF1D7; /* ← --kw-trust-warn-bg */
+      --warn-text: #8A5A00; /* ← --kw-trust-warn-text */
+
+      /* Elevation: weiches Licht statt hartem Rahmen ← --kw-shadow-tile */
+      --shadow-tile: 0 1px 2px rgba(14, 22, 38, 0.05), 0 8px 24px -12px rgba(14, 22, 38, 0.12);
+      /* JOB 3512: das Streulicht unter dem Hauptknopf. Der Wert ist ZEICHENGLEICH der, der bis
+         hierher direkt in `button.primary` stand — er ist nur zur Variablen geworden, damit die
+         Firmen-CI ihn mit der Markenfarbe belegen kann (ein Blau tragender Knopf mit orangem
+         Schein wäre der halbe Umbau, den niemand meldet). Dieselbe Bauform und derselbe Name wie
+         in `extensions/klara-browser/panel.css`. */
+      --shadow-primary: 0 2px 10px -2px rgba(232, 99, 10, 0.45); /* Knopfschein ← --kw-brand / 0.45 */
+      /* Das aktive Segment des Umschalters (Ruhe.dc.html Z.21) — Nacht mit 8 % Deckung. */
+      --shadow-segment: 0 1px 2px rgba(14, 22, 38, 0.08);
+    }
+    * { box-sizing: border-box; }
+    /* ============================================================================================
+       JOB 3056 K1 — DER RAHMEN IST EINE FENSTERHOHE FLEX-SPALTE (Ruhe.dc.html Z.15).
+       ============================================================================================
+       Alle drei Mockups (Ruhe, Antwort, Einstellungen) sind 360 × 720 grosse Flex-Spalten: der Kopf
+       oben, die Mitte nimmt den freien Raum, das Frage-Feld bzw. der Stand steht unten. Das Panel
+       traegt deshalb keine Koerperpolsterung mehr; jede Flaeche bringt ihre Seitenraender selbst
+       mit (16px wie im Mockup). Kein Webfont: der System-Stapel bleibt (kein Egress aus Word). */
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      padding: 0;
+      background: var(--page);
+      color: var(--text);
+      font: 14px/1.5 -apple-system, "Segoe UI", system-ui, sans-serif;
+      display: flex;
+      flex-direction: column;
+      min-height: 100%;
+    }
+    /* Der Kopf (Ruhe.dc.html Z.17-26): links Zurueck-Chevron + Titel, rechts Umschalter + Zahnrad.
+       Sonst NICHTS — Sprachwahl, Anmeldezeile, Vertrauenskopf und Sitzungszeile sind hinter das
+       Zahnrad gezogen (Einstellungen / „Wie Klara antwortet"). */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 16px 10px;
+      flex: 0 0 auto;
+    }
+    #kw-kopf-links { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    #kw-kopf-rechts { display: flex; align-items: center; gap: 12px; }
+    .brand { font-size: 15px; font-weight: 650; letter-spacing: 0.2px; color: var(--text); }
+    /* JOB 3512 · das Firmenlogo NEBEN der Wortmarke, nicht an ihrer Stelle: Pedis Vorgabe für
+       Freitag lautet „Produktidentität erkennbar halten" (gespraech/ci-advisor). Es ist ein Bild
+       ohne eigene Farbregel — die Grundfläche des Kopfes bleibt Papier, wie sie ist. 18px ist die
+       Höhe der beiden Strichsymbole daneben (Z. 106 ff.), damit die Kopfzeile ihre Maße behält.
+       KEIN `display` in dieser Regel, und das ist der Grund: `.hidden { display: none }` weiter
+       unten traegt EINE Klasse, diese Regel eine ID — ein `display: block` haette die Verbergung
+       geschlagen, und das Bild stuende ohne `src` als kaputtes Symbol im Kopf. Als Flex-Kind der
+       Gruppe wird es ohnehin blockartig gesetzt; die Angabe waere auch sonst leer. */
+    #kw-marke-logo { height: 18px; width: auto; }
+    /* Zurueck und Zahnrad: nackte 18px-Strichsymbole (Z.19/24), Farbe Tinte-2 ueber currentColor. */
+    .kw-icon {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 18px;
+      height: 18px;
+      margin: 0;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+    }
+    .kw-icon.hidden { display: none; }
+    .kw-icon svg { display: block; }
+    /* Der Umschalter Fragen | Erfassen als Segment (Z.20-23): Grund #EEEAE3, Radius 9, 2px Polster;
+       das aktive Segment weiss mit 7px Radius, 600 und dem 8%-Schatten. */
+    .tabs { display: flex; background: var(--segment); border-radius: 9px; padding: 2px; }
+    .tabs.hidden { display: none; }
+    .tabs button {
+      margin: 0;
+      padding: 5px 12px;
+      border: 0;
+      border-radius: 7px;
+      background: transparent;
+      color: var(--muted);
+      font: inherit;
+      font-size: 12.5px;
+      line-height: normal;
+      cursor: pointer;
+    }
+    .tabs button.active {
+      background: var(--surface);
+      color: var(--text);
+      font-weight: 600;
+      box-shadow: var(--shadow-segment);
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--hairline);
+      border-radius: 10px;
+      padding: 12px;
+      margin-top: 12px;
+      /* weiches Licht statt hartem Rahmen: der Rahmen bleibt als hauchduenne Linie stehen,
+         die Tiefe kommt aus dem Schatten-Rezept des modern-Themas. */
+      box-shadow: var(--shadow-tile);
+    }
+    /* Abschnittsueberschriften: die Kicker-Token des modern-Themas (--kw-kicker-*), NICHT die
+       Mono-Versalien — die hat mega40 BLOCK C im Web ausdruecklich abgeschafft. */
+    h2 { font-size: 13px; margin: 0 0 6px; color: var(--ink); font-weight: 600; letter-spacing: 0.02em; }
+    p { margin: 6px 0; }
+    .muted { color: var(--muted); font-size: 12.5px; }
+    button.primary {
+      background: var(--brand-deep);
+      color: var(--surface);
+      border: 0;
+      border-radius: 8px;
+      padding: 9px 14px;
+      font-weight: 600;
+      font-size: 13.5px;
+      cursor: pointer;
+      width: 100%;
+      box-shadow: var(--shadow-primary);
+    }
+    button.primary:disabled { opacity: 0.5; cursor: default; box-shadow: none; }
+    button.ghost {
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--hairline);
+      border-radius: 8px;
+      padding: 7px 12px;
+      font-size: 12.5px;
+      cursor: pointer;
+    }
+    :focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+    .status { border-radius: 8px; padding: 8px 10px; font-size: 12.5px; margin-top: 8px; }
+    .status.ok { background: var(--pos-bg); color: var(--pos-text); }
+    .status.warn { background: var(--warn-bg); color: var(--warn-text); }
+    .hidden { display: none; }
+    ul { margin: 6px 0; padding-left: 18px; }
+    a { color: var(--brand-text); }
+    /* ============================================================================================
+       JOB 3056 K1 — DIE FRAGEN-FLAECHE: RUHE (Ruhe.dc.html) UND ANTWORT (Main.dc.html).
+       ============================================================================================
+       #section-ask ist die Flex-Spalte unter dem Kopf. In Ruhe traegt die Mitte (#ask-ruhe) nur die
+       Lupe und den EINEN Satz; unten steht das Frage-Feld (#ask-feld). Im Antwortzustand steht
+       oben die Frage als gedaempfte Zeile, darunter die Antwortkarte und die zwei Knoepfe, und das
+       Frage-Feld bleibt unten (margin-top: auto) — es IST die neue Frage. Nicht angemeldet / nicht
+       erreichbar: EIN Satz und EIN Knopf in der Mitte, keine Karte. */
+    #section-ask { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+    #section-ask.hidden { display: none; }
+    #ask-ruhe {
+      flex-grow: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      gap: 10px;
+      padding: 0 32px;
+      text-align: center;
+    }
+    #ask-ruhe.hidden { display: none; }
+    /* Z.29: die Lupe (40px, Strich 1.6) zeichnet mit currentColor — die Farbe ist das Token. */
+    #ask-ruhe-lupe { color: var(--lupe); display: block; }
+    #ask-ruhe-lupe.hidden { display: none; }
+    /* Z.30: der EINE Satz der Ruhe. */
+    #ask-ruhe-satz { font-size: 14px; color: var(--hint); line-height: 1.5; }
+    #ask-ruhe-satz.hidden { display: none; }
+    /* Nicht angemeldet / nicht erreichbar / Anmeldung laeuft: EIN Satz (kein Kasten) und EIN Knopf. */
+    #session-block { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+    #session-block.hidden { display: none; }
+    #session-status { margin: 0; padding: 0; background: transparent; font-size: 14px; line-height: 1.5; color: var(--muted); }
+    #login-block { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+    #login-block.hidden { display: none; }
+    #login-btn { width: auto; padding: 10px 22px; border-radius: 10px; font-size: 13.5px; box-shadow: none; }
+    #login-context-hint { margin: 0; font-size: 12px; text-align: center; }
+    /* Das Dokument-Begriffsbild (KA1, JOB 1149) — nur mit Begriffen sichtbar, ohne Titel und
+       ohne Hinweissatz: Begriffe sind Inhalt, kein Erklaertext. Ohne Begriffe bleibt es weg. */
+    #ka1-block { margin: 12px 0 0; padding: 0; border: 0; background: transparent; box-shadow: none; }
+    #ka1-block.hidden { display: none; }
+    #ka1-terms { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin: 0; padding: 0; list-style: none; }
+    #ka1-terms li { padding: 4px 9px; border: 1px solid var(--hairline); border-radius: 8px; background: var(--surface); font-size: 11.5px; color: var(--muted); }
+    #ka1-empty { display: none; }
+    /* „Haben wir das schon?" (JOB 3093): der Knopf in der Ruhe; darunter — nur nach einer Frage —
+       die datierte Standzeile und die Trefferliste, linksbuendig. Die Zeilen entstehen zur
+       Laufzeit; sie setzen deshalb KEINE eigene `color` (mega43 B1 kann eine Laufzeitklasse keiner
+       Flaeche zuordnen): Text erbt --text vom Rumpf, Gedaempftes traegt die vorhandene Klasse
+       `muted` (dieselbe Regel wie ueberall im Fenster). Rahmen --hairline auf --surface wie die
+       Begriffe des Begriffsbilds. */
+    #bestand-block { flex: 0 0 auto; margin: 0; padding: 0 16px 8px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+    #bestand-block.hidden { display: none; }
+    #bestand-btn { width: auto; }
+    #bestand-ergebnis { width: 100%; text-align: left; }
+    #bestand-ergebnis.hidden { display: none; }
+    #bestand-stand { margin: 0; }
+    #bestand-liste { margin: 6px 0 0; padding: 0; list-style: none; }
+    #bestand-liste li { margin-top: 6px; padding: 8px 10px; border: 1px solid var(--hairline); border-radius: 8px; background: var(--surface); font-size: 12.5px; }
+    #bestand-liste .bestand-titel { display: block; font-weight: 600; }
+    #bestand-liste .bestand-pruefstand { display: inline-block; margin: 4px 6px 0 0; padding: 1px 7px; border: 1px solid var(--hairline); border-radius: 999px; font-size: 11.5px; }
+    #bestand-liste .bestand-fakten { display: inline-block; margin-top: 4px; }
+    #bestand-liste a { display: block; margin-top: 4px; }
+    /* JOB 3243 · M3c-UI — DER QUELLENFUND: EIN EIGENER BEREICH UNTER DER STANDZEILE, NIE IN DER
+       DUBLETTENLISTE. Dieselben Bausteine wie oben (Rahmen --hairline auf --surface, `muted` fuer
+       Gedaempftes) und aus demselben Grund KEINE eigene `color`: die Zeilen entstehen zur Laufzeit,
+       und mega43 B1 kann eine Laufzeitklasse keiner Flaeche zuordnen. Der Bereich ist einklappbar
+       (Auftrag §8.7: mehr Inhalt im Panel) — der Schalter klappt NUR die Liste, die Lagezeile
+       bleibt immer im Bild, damit „nicht durchsucht" nicht unter einem zugeklappten Deckel
+       verschwindet. */
+    #quellenfund-block { width: 100%; text-align: left; margin-top: 4px; }
+    #quellenfund-block.hidden { display: none; }
+    #quellenfund-stand { margin: 0; cursor: pointer; }
+    /* Ohne Treffer klappt nichts auf: der Griff verschwindet, die Lagezeile bleibt. */
+    #quellenfund-block[data-leer] > summary { list-style: none; cursor: default; }
+    #quellenfund-block[data-leer] > summary::-webkit-details-marker { display: none; }
+    #quellenfund-liste { margin: 6px 0 0; padding: 0; list-style: none; }
+    #quellenfund-liste li { margin-top: 6px; padding: 8px 10px; border: 1px solid var(--hairline); border-radius: 8px; background: var(--surface); font-size: 12.5px; }
+    #quellenfund-liste .quellenfund-titel { display: block; font-weight: 600; }
+    #quellenfund-liste .quellenfund-pruefstand { display: inline-block; margin: 4px 6px 0 0; padding: 1px 7px; border: 1px solid var(--hairline); border-radius: 999px; font-size: 11.5px; }
+    #quellenfund-liste .quellenfund-fakten { display: inline-block; margin-top: 4px; }
+    #quellenfund-liste details { margin-top: 4px; }
+    #quellenfund-liste .quellenfund-ausschnitt { margin: 4px 0 0; white-space: pre-wrap; }
+    #quellenfund-liste a { display: block; margin-top: 4px; }
+    /* Das Frage-Feld (Ruhe.dc.html Z.33-39): Karte mit 12px Radius, Feld 15px/1.45 mit 52px Platz
+       rechts fuer den runden Sendeknopf (32px, rechts 8 / oben 7). Grau, solange nichts da ist;
+       Funke dunkel, sobald Text da ist (Klasse `bereit`, updateAskState). Im Antwortzustand ohne
+       Schatten (Main.dc.html Z.48). */
+    #ask-feld { margin-top: auto; padding: 12px 16px 16px; flex: 0 0 auto; }
+    #ask-karte { position: relative; margin: 0; padding: 0; border-radius: 12px; }
+    #ask-feld.antwort #ask-karte { box-shadow: none; }
+    #ask-karte.hidden { display: none; }
+    /* Die Herkunftszeile — NUR im einen Fall, in dem etwas verworfen wuerde (Markierung UND
+       getippter Text): ein Satz ueber dem Feld, sonst nichts (updateAskSourceNote). */
+    #ask-karte #ask-source-note { margin: 0; padding: 10px 14px 0; font-size: 12px; }
+    #ask-input {
+      display: block;
+      width: 100%;
+      margin: 0;
+      border: 0;
+      border-radius: 12px;
+      background: transparent;
+      padding: 12px 52px 12px 14px;
+      font: inherit;
+      font-size: 15px;
+      line-height: 1.45;
+      min-height: 0;
+      resize: none;
+      overflow: hidden;
+      color: var(--text);
+    }
+    #ask-input::placeholder { color: var(--hint); opacity: 1; }
+    #ask-btn {
+      position: absolute;
+      right: 8px;
+      top: 7px;
+      width: 32px;
+      height: 32px;
+      padding: 0;
+      border: 0;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--hairline);
+      color: var(--surface);
+      box-shadow: none;
+    }
+    #ask-btn:disabled { opacity: 1; box-shadow: none; }
+    #ask-btn.bereit { background: var(--brand-deep); }
+    #ask-btn svg { display: block; }
+    /* Laden zeigt der Sendeknopf: der Pfeil weicht einem drehenden Kreis (sonst nichts, §9). */
+    @keyframes kw-drehen { to { transform: rotate(360deg); } }
+    #ask-btn .kreisel { display: none; animation: kw-drehen 0.9s linear infinite; }
+    #ask-btn.laeuft .pfeil { display: none; }
+    #ask-btn.laeuft .kreisel { display: block; }
+    /* Die Schreibflaeche „auf Zuruf" (KA6) — ein Untermenue des Felds, direkt darueber, nur mit
+       Kontext (ka6Zeichnen); die Zurufe sind Chips, kein Dauertext. */
+    #ka6-block { margin: 0 16px; }
+    #ka6-block.hidden { display: none; }
+    #ka6-block h2 { margin: 0 0 4px; font-size: 12px; }
+    /* Fehler unter dem Frage-Feld: der Warnkasten (echte Warnungen) plus EIN Knopf „Erneut versuchen". */
+    #ask-status { margin: 0 16px; }
+    #ask-retry-btn { margin: 8px 16px 0; align-self: center; width: auto; }
+    #ask-retry-btn.hidden { display: none; }
+    /* ============================================================================================
+       KW-D2-LUECKE (JOB 3046) — DIE EHRLICHE LUECKE NACH ZIELBILD KeinWissen.dc.html (Pedi, 27.08.).
+       ============================================================================================
+       Eine Luecke ist kein Fehler, sie ist eine Auskunft: die ruhige, mittige Flaeche (kein Kasten),
+       die Lupe, der EINE Satz, die Hauptaktion „Frage aendern" und der Textlink „offene Frage".
+       JOB 3056: der Block ist ein Flex-Kind der Fensterspalte und nimmt den freien Raum von selbst
+       (kein gemessenes Buehnenmass mehr); die Fusszeile der Luecke steht hinter dem Zahnrad. */
+    #ask-gap-block {
+      flex: 1 0 auto;
+      display: flex;
+      flex-direction: column;
+    }
+    /* Die id-Regel schlaegt `.hidden` — die Verbergung braucht deshalb ihre eigene Zeile. */
+    #ask-gap-block.hidden { display: none; }
+    #ask-luecke {
+      flex-grow: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      padding: 0 32px;
+      text-align: center;
+    }
+    /* Z.28: die Lupe zeichnet mit currentColor — die Strichfarbe ist das Token, kein zweites Literal. */
+    #ask-luecke svg { color: var(--muted); display: block; }
+    /* Z.29: der EINE Satz. */
+    #ask-luecke-satz { font-size: 16px; line-height: 1.55; color: var(--text); }
+    /* Z.30: die Hauptaktion „Frage aendern" — weisser Knopf mit Haarlinie, kein `primary`. */
+    #ask-luecke-frage-aendern {
+      padding: 10px 22px;
+      background: var(--surface);
+      border: 1px solid var(--hairline);
+      border-radius: 10px;
+      font-size: 13.5px;
+      font-weight: 600;
+      color: var(--text);
+      cursor: pointer;
+    }
+    /* Z.31: die Nebenaktion — der Weg „offene Frage" bleibt, als Textlink 12px. Waehrend des
+       Sendens traegt er aria-disabled (ein <a> kennt kein disabled) und nimmt keinen Klick an. */
+    #ask-gap-send-btn { font-size: 12px; }
+    #ask-gap-send-btn[aria-disabled="true"] { pointer-events: none; cursor: default; }
+    /* Der Rueckweg zum Entwurf nach dem Senden (kein Zielbild-Element, bleibt erhalten). */
+    #ask-gap-open-block { margin: 12px 0 0; padding: 0 32px; text-align: center; font-size: 12px; }
+    /* KW-D2-LUECKE (Stil) — Ende */
+    /* JOB 3057 Runde 4: die zweite `.tabs`-Regelgruppe (JOB 2620 D4, weisse Leiste 13px / 11px 0
+       9px aus WissenErfassen.dc.html) ist ENTFERNT — der Umschalter „Fragen | Erfassen" ist seit
+       K1 (JOB 3056, Ruhe.dc.html Z.20-23) das Segment oben im Stilblock; eine spaetere Regel
+       ueberschrieb es in der Kaskade (zielbild-k1-ruhe K4-K6). Eine Wahrheit, oben. */
+    /* ============================================================================================
+       JOB 3057 K2 — „ERFASSEN" NACH ZIELBILD Erfassen.dc.html (Pedi, 04.09.), Z.28-52, in Chromium
+       gemessen: tests/design/zielbild-k2-erfassen.test.ts. Werte uebernommen, nicht erfunden; die
+       Farben sind die Werkbank-Token (Z.28/35 #FFFFFF/#E9E5DE = --surface/--hairline, Z.29/37/52
+       #525B6B = --muted, Z.30/36 #1A2233 = --text ueber Vererbung, Z.49 #C2500A = --brand-deep).
+       Die Seitenraender heben die 14px Koerperpolsterung auf, damit Z.28/34/48/52 ihre 16px zum
+       Fensterrand messen (Bauform von JOB 3004/3046). Die Absaetze der Markierung (Z.30/31)
+       entstehen zur Laufzeit und tragen BEWUSST keine Farbregel — sie erben die Tinte des Rumpfs.
+       Aus dem SICHTFELD ersetzt (nicht daneben belassen): Radiogruppe, Bilder-Hinweisband, Pruef-
+       und Seitenhinweis; ihre Funktionen wohnen im „?"-Menue unten (Auftrag §5a: kein Verlust,
+       benannter Ort) — jede Zeile misst tests/design/k2-funktionsinventar.test.ts.
+       KONFLIKTRUNDE 6: die -14px-Kompensation war fuer die 14px Koerperpolsterung vor JOB 3056
+       gebaut; K1s Kopf steht jetzt direkt am Fensterrand (body padding: 0, s.o.) — ohne Polsterung
+       zum Aufheben bleibt die Karte einfach randlos (margin: 0), damit ihre eigenen 16px wieder am
+       Fensterrand ankommen.
+       JOB 3506 K2b: die Flaeche ist jetzt die Flex-Spalte von Fensterhoehe, die das Zielbild
+       voraussetzt (Erfassen.dc.html Z.15: `height: 720px; display: flex; flex-direction: column`).
+       Die Bauform ist die VORHANDENE — dieselben drei Angaben wie an #section-ask (JOB 3056) und
+       #kw-einstellungen: `flex: 1 1 auto` unter dem Kopf, `min-height: 0`. Erst dadurch wirkt die
+       Auto-Marge des Dokumentlinks (Z.52, s. u.); ohne die Spalte waere sie eine tote Regel. */
+    #section-capture { margin: 0; display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+    #section-capture.hidden { display: none; }
+    /* Z.28: die Markierungskarte. */
+    #capture-karte { margin: 10px 16px 0; padding: 16px; border-radius: 12px; display: flex; flex-direction: column; gap: 10px; }
+    /* Z.29: der Kicker „MARKIERUNG · n ABSAETZE". */
+    #capture-kicker { font-size: 11px; letter-spacing: 0.4px; color: var(--muted); }
+    /* Z.30/31: die Absaetze — Kinder des Kartenrasters (gap 10px), Farbe geerbt (s. o.). */
+    #capture-absaetze { display: contents; }
+    .capture-absatz { margin: 0; font-size: 15px; line-height: 1.55; }
+    /* Ohne Markierung: der EINE Satz (Auftrag §5.1, 15px). Der dortige Farbwert #9AA2B1 ist kein
+       Werkbank-Token (mega43) — Tinte-2 (--muted) statt einer dritten Tinte; als OFFENER Wert im
+       Messtest gefuehrt. */
+    #capture-leer { margin: 0; font-size: 15px; line-height: 1.55; color: var(--muted); }
+    /* Erfolg: die Karte wird EINE Zeile mit Textlink (§5.3); der Bilder-Satz nur im Fall (§5.5). */
+    #capture-ergebnis, #capture-bilder-ergebnis { margin: 0; font-size: 15px; line-height: 1.55; }
+    #capture-ergebnis a, #capture-bilder-ergebnis a { margin-left: 8px; white-space: nowrap; }
+    /* Z.34-38: die Zeile „Titel" — Beschriftung links, Wert rechts, editierbar. */
+    #capture-felder { margin: 14px 16px 0; display: flex; flex-direction: column; gap: 8px; }
+    .capture-zeile { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; background: var(--surface); border: 1px solid var(--hairline); border-radius: 10px; font-size: 14px; color: var(--text); }
+    #capture-titel { flex: 1 1 auto; min-width: 0; margin: 0 0 0 12px; padding: 0; border: 0; background: var(--surface); font: inherit; font-size: 14px; color: var(--muted); text-align: right; }
+    /* JOB 3555 K2b — Z.39-45: die Zeile „Bereich", dieselbe Bauform wie „Titel" (Z.35-38). Der Wert
+       ist eine echte Auswahl: ein natives <select> bringt den Chevron aus Z.43 selbst mit. Seine
+       Farbe stellt der Host, nicht dieses Blatt — der Zielbildwert #9AA2B1 bleibt damit derselbe
+       OFFENE Gestaltungsposten wie bei #capture-leer (mega43: kein Werkbank-Token), er wird hier
+       weder behauptet noch als Literal eingeschleust. Die Auswahl waechst mit ihrem Inhalt statt
+       die Zeile zu fuellen, damit Wert und Chevron wie im Zielbild rechts stehen. */
+    #capture-bereich { flex: 0 1 auto; min-width: 0; max-width: 62%; margin: 0 0 0 12px; padding: 0; border: 0; background: var(--surface); font: inherit; font-size: 14px; color: var(--muted); }
+    /* Gesperrt (laedt / leer in deinem Bestand / Fehler): der gezeigte Satz IST die Auskunft und
+       darf nicht halbdurchsichtig werden (dieselbe Entscheidung wie bei #send-btn:disabled). Die
+       TINTE steht bewusst NICHT noch einmal hier: die Regel darueber setzt sie fuer beide Zustaende,
+       und eine zweite `color`-Angabe waere eine zweite Wahrheit ueber dieselbe Farbe, die der
+       Palettensammler an einem Zustandsselektor nicht nachmessen kann (mega43 B1). Dass die eine
+       Angabe auch im gesperrten Zustand traegt, misst tests/design/zielbild-k2-erfassen.test.ts
+       Z.42 in Chromium — an genau diesem Feld, das dort gesperrt steht. */
+    #capture-bereich:disabled { opacity: 1; }
+    /* Z.48/49: der EINE Knopf. Gesperrt: grau (§5.3: #E9E5DE = --hairline) statt halbdurchsichtig. */
+    #capture-aktion { margin: 14px 16px 0; }
+    #capture-aktion #send-btn { width: 100%; padding: 13px 0; border-radius: 10px; font-size: 14px; font-weight: 600; box-shadow: none; }
+    #capture-aktion #send-btn:disabled { opacity: 1; background: var(--hairline); color: var(--muted); }
+    /* Fehler- und Officefall: EIN Satz, EIN Knopf (§5.6). */
+    #send-status, #office-hint { margin: 12px 16px 0; }
+    .capture-knopf { margin: 8px 16px 0; }
+    /* Z.52: der Textlink „Ganzes Dokument uebernehmen" — mittig, am FENSTERBODEN. JOB 3506 K2b:
+       `margin-top: auto` wie im Zielbild, in derselben Bauform, die #kw-stand-zeile in den
+       Einstellungen schon benutzt (`margin: auto 0 0` als letztes Kind einer Flex-Spalte). Die
+       Spalte bringt #section-capture jetzt mit (s. o.); Polsterung, Achse, Groesse und Tinte aus
+       Z.52 bleiben unveraendert. */
+    #capture-dokument-link { display: block; margin: auto 0 0; padding: 12px 16px 16px; text-align: center; font-size: 12.5px; color: var(--muted); text-decoration: none; }
+    #capture-dokument-link[aria-disabled="true"] { pointer-events: none; opacity: 0.5; }
+    /* JOB 3506 K2b — DIE VIER ERKLAERSAETZE SIND HINTER DAS ZAHNRAD GEZOGEN (#einst-erfassen).
+       Das „?"-Menue in der Flaeche (#capture-mehr-btn / #capture-mehr, JOB 3057 §5a) ist ERSETZT,
+       nicht daneben belassen: Markup, Stilregeln und der Schluessel `captureMehr` sind weg. Die
+       Saetze wohnen jetzt dort, wo Klara alles Erklaerende fuehrt — in den Einstellungen, in der
+       vorhandenen Bauform (.einst-kicker + .einst-gruppe + .einst-zeile). Die Zeilen tragen
+       FLIESSTEXT statt Beschriftung+Wert, deshalb nehmen ihre Absaetze keine eigene Marge mit.
+       Der Bilder-Kasten zieht UNVERAENDERT mit um — gleiche Kennung, gleiche Regel, gleiche
+       Inline-Farben (mega43 A2: Inline-Stile sind eine Farbquelle des Sammlers). */
+    #einst-erfassen p { margin: 0; }
+    #capture-bilder-hinweis { display: flex; align-items: flex-start; gap: 8px; padding: 9px 10px; border-radius: 8px; font-size: 12px; line-height: 1.5; margin: 8px 0 4px; }
+    textarea {
+      width: 100%;
+      border: 1px solid var(--hairline);
+      border-radius: 8px;
+      padding: 8px;
+      font: inherit;
+      resize: vertical;
+      margin: 6px 0 8px;
+    }
+    .answer-text { white-space: pre-wrap; }
+    /* ============================================================================================
+       JOB 3056 K1 — DIE ANTWORTFLAECHE NACH Main.dc.html (Pedi, 04.09.), Z.25-45.
+       ============================================================================================
+       Frage-Zeile, Antwortkarte mit Text und Quellen-Chips, zwei Knoepfe. Jeder Wert ist aus dem
+       Mockup uebernommen und wird in tests/design/zielbild-k1-antwort.test.ts an der in Chromium
+       geladenen dist-Fassung DIESER Datei per getComputedStyle nachgemessen — ein Vergleich je
+       Wert. Farben sind die Werkbank-Token oben.
+       WEG (JOB 3056): Herkunftszeile in der Karte, Fassung im Chip (Status/Rolle/Vertrauen/Stand),
+       Fusszeile „Woertlich zitiert · fachlich pruefen", „Neue Frage", Leitsatz, Pruefhinweis. Was
+       davon Auskunft ist, lebt weiter: lagebezogen als EIN Satz unter der Karte (#ask-vorbehalt)
+       oder im „Mehr"-Bereich der Karte (#ask-mehr-block: Einstufung, Vorbehalt, Konfliktlage,
+       Ausschnitt, Quellen mit Status/Rolle/Vertrauen/Stand). Erklaertext steht hinter dem Zahnrad. */
+    #ask-answer-block { display: flex; flex-direction: column; }
+    #ask-answer-block.hidden { display: none; }
+    /* Z.25: die Frage als gedaempfte Zeile (13px/1.4, Tinte-2). Sie bleibt ein Knopf: ein Klick
+       holt die Frage zum Bearbeiten ins Feld (askFrageBearbeiten). */
+    #ask-frage-zeile-btn {
+      display: block;
+      width: calc(100% - 32px);
+      margin: 6px 16px 0;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      font: inherit;
+      font-size: 13px;
+      line-height: 1.4;
+      text-align: left;
+      cursor: pointer;
+    }
+    #ask-frage-zeile { display: block; }
+    /* Z.27: die Karte. */
+    #antwortkarte {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      margin: 14px 16px 0;
+      padding: 18px 16px;
+      background: var(--surface);
+      border: 1px solid var(--hairline);
+      border-radius: 12px;
+      box-shadow: var(--shadow-tile);
+    }
+    /* Die Vorlese-Ueberschrift der Karte: fuer Hilfstechnik da, nicht im Bild. */
+    .nur-vorlesen { position: absolute; width: 1px; height: 1px; margin: 0; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+    /* Z.28: der Antworttext IST das bearbeitbare Feld (mega35/36: ein Feld, alle Ausgaenge) — in
+       der Textoptik der Vorlage (16px/1.55), ohne Formularrahmen; Hoehe folgt dem Inhalt. */
+    #ask-answer-edit {
+      display: block;
+      margin: 0;
+      padding: 0;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      color: var(--text);
+      font-size: 16px;
+      line-height: 1.55;
+      resize: none;
+      overflow: hidden;
+    }
+    /* JOB 3056 Runde 4 (Main.dc.html Z.28-29, Codex Pflicht 1): die Fussnotenziffern — echte
+       <sup>-Elemente (10px, Funke als Text, 700) — stehen an der GEMESSENEN Stelle nach dem letzten
+       Zeichen des Felds. Der Text bleibt das bearbeitbare Feld (mega35/36: EIN Feld, alle Ausgaenge);
+       ein unsichtbarer Spiegel mit denselben Schriftmassen liefert die Koordinaten (askFussnotenSetzen). */
+    #ask-answer-text { position: relative; }
+    #ask-answer-spiegel { position: absolute; top: 0; left: 0; margin: 0; padding: 0; border: 0; visibility: hidden; pointer-events: none; white-space: pre-wrap; overflow-wrap: break-word; word-wrap: break-word; }
+    #ask-answer-spiegel .textende { display: inline-block; width: 0; vertical-align: top; }
+    #ask-fussnoten { position: absolute; left: 0; top: 0; padding-left: 2px; white-space: nowrap; pointer-events: none; color: var(--brand-text); }
+    #ask-fussnoten.hidden { display: none; }
+    .fussnote { font-size: 10px; font-weight: 700; vertical-align: super; }
+    .fussnote + .fussnote { margin-left: 2px; }
+    /* Der Bearbeitungshinweis erscheint, sobald das Feld den Fokus hat. */
+    #ask-answer-edit-hint { display: none; margin: 0; font-size: 11.5px; }
+    #ask-answer-text:focus-within ~ #ask-answer-edit-hint { display: block; }
+    #antwortkarte .status { margin: 0; }
+    /* Z.30: die Quellenreihe — Trennlinie oben, 12px Abstand, Chips mit 6px Luecke. */
+    #ask-sources-block {
+      flex-direction: column;
+      gap: 8px;
+      border-top: 1px solid var(--hairline);
+      padding-top: 12px;
+    }
+    #ask-sources-block:not(.hidden) { display: flex; }
+    #ask-sources { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+    /* KEIN display an `#ask-sources li`: die id-Regel schluege die Klassenregel `.quelle-chip`. */
+    #ask-sources li { max-width: 100%; }
+    /* Z.31-38: der Chip — Dokumentsymbol und „n · Titel", sonst nichts. */
+    .quelle-chip {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      max-width: 100%;
+      margin: 0;
+      padding: 5px 9px;
+      background: var(--page);
+      color: var(--muted);
+      border: 1px solid var(--hairline);
+      border-radius: 8px;
+      font: inherit;
+      font-size: 11.5px;
+      line-height: 1.4;
+      text-align: left;
+    }
+    .quelle-chip svg { flex-shrink: 0; stroke: var(--muted); }
+    .quelle-chip-titel { font-size: 11.5px; font-weight: 600; color: var(--text); background: var(--page); }
+    .quelle-chip-titel a { color: var(--text); background: var(--page); text-decoration: none; }
+    button.quelle-chip { cursor: pointer; }
+    /* „Mehr" (Funktionsinventar §5a): Einstufung, Vorbehalt, Konfliktlage, Ausschnitt und die
+       Quellen mit Status, Rolle, Vertrauen und Stand — aufklappbar, nicht Dauertext. */
+    #ask-mehr-block { display: none; flex-direction: column; gap: 10px; border-top: 1px solid var(--hairline); padding-top: 12px; }
+    #ask-mehr-block.offen { display: flex; }
+    #antwortkarte-herkunft-zeile { margin: 0; font-size: 11px; letter-spacing: 0.4px; color: var(--muted); }
+    #ask-evidence-detail { display: contents; }
+    #ask-quellen-detail { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+    #ask-quellen-detail li { font-size: 12px; line-height: 1.45; color: var(--muted); }
+    #ask-snippet-block { margin: 0; }
+    .snippet-label { display: block; font-size: 11px; font-weight: 600; color: var(--muted); }
+    .snippet-text {
+      display: block;
+      margin-top: 3px;
+      padding: 6px 8px;
+      border-radius: 8px;
+      background: var(--page);
+      border: 1px solid var(--hairline);
+      font-size: 12px;
+      line-height: 1.45;
+      white-space: pre-wrap;
+      color: var(--text);
+    }
+    /* Z.42-45: die zwei Knoepfe — gleich breit, 12px 0, Radius 10, 14px. */
+    #antwortkarte-aktionen { display: flex; gap: 8px; margin: 12px 16px 0; }
+    #antwortkarte-aktionen button { flex: 1 1 50%; min-width: 0; width: auto; padding: 12px 0; border-radius: 10px; font-size: 14px; text-align: center; box-shadow: none; }
+    #ask-copy-btn { font-weight: 400; }
+    /* Lieferung 5: Vorbehalt oder Konfliktlage — NUR wenn der Fall eintritt, als EIN Satz. */
+    #ask-vorbehalt { margin: 10px 16px 0; font-size: 13px; line-height: 1.4; color: var(--muted); }
+    #ask-vorbehalt.hidden { display: none; }
+    /* JOB 3092 S6 (W5): die Herkunft an der Antwort — je tragender Quelle eine Zeile, der Titel ein
+       Link (Linkfarbe des Fensters); darunter, nur im Fall, der Ungeprueft-Satz. Beides Kinder der
+       Karte (Flex-Spalte, 14px Luecke); verborgen nehmen sie keinen Platz. Farben NUR an den
+       Markup-Elementen (mega43 misst Regeln ohne Fundstelle gegen jede Flaeche). */
+    #ask-herkunft { display: flex; flex-direction: column; gap: 4px; margin: 0; font-size: 12.5px; line-height: 1.4; color: var(--muted); }
+    #ask-herkunft.hidden { display: none; }
+    #ask-herkunft p { margin: 0; }
+    #ask-ungeprueft { margin: 0; font-size: 12.5px; line-height: 1.4; color: var(--text); }
+    #ask-ungeprueft.hidden { display: none; }
+    #ask-gap-ungeprueft { margin: 0 16px; font-size: 13px; line-height: 1.4; text-align: center; color: var(--text); }
+    #ask-gap-ungeprueft.hidden { display: none; }
+    /* JOB 3366: der Fragment-Satz. Dieselben Masse wie der Ungeprueft-Satz daneben — er ist eine
+       Auskunft zur Antwort, keine Fehlerkarte, und traegt deshalb die Warnfarbe der Statuszeilen. */
+    #ask-fragment { margin: 0; font-size: 12.5px; line-height: 1.4; color: var(--warn-text); }
+    #ask-fragment.hidden { display: none; }
+    /* JOB 3092 S6 (W6): die Dublettenauskunft in der Markierungskarte — vor dem Einreichen. */
+    #capture-dubletten { margin: 0; font-size: 12.5px; line-height: 1.45; color: var(--muted); }
+    #capture-dubletten.hidden { display: none; }
+    #capture-dubletten p { margin: 0; }
+    #capture-dubletten ul { margin: 4px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
+    /* JOB 3667 (WORD-RUECKWEG): der Rueckweg auf ein BESTEHENDES Wissensobjekt. Eigener Kasten unter
+       der Markierungskarte — er ist eine andere Handlung als „Als Entwurf senden" (das legt Neues an)
+       und darf deshalb nicht wie eine Zeile daneben aussehen. Kein primaerer Knopf: der eine
+       primaere Knopf der Flaeche bleibt #send-btn (Zielbild K2 Z.49). */
+    #rw-block { margin: 10px 16px 0; padding: 12px 14px; background: var(--surface); border: 1px solid var(--hairline); border-radius: 10px; font-size: 12.5px; line-height: 1.45; color: var(--text); display: flex; flex-direction: column; gap: 8px; }
+    #rw-block.hidden { display: none; }
+    #rw-block p { margin: 0; }
+    #rw-liste { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+    #rw-liste button { width: 100%; text-align: left; padding: 8px 10px; font-size: 12.5px; }
+    #rw-liste button[aria-pressed="true"] { border-color: var(--brand-deep); }
+    #rw-ziel.hidden, #rw-status.hidden, #rw-vorschau.hidden { display: none; }
+    #rw-ziel { display: flex; flex-direction: column; gap: 8px; }
+    #rw-ziel-zeile { font-weight: 600; }
+    #rw-vorschau { max-height: 132px; overflow-y: auto; padding: 8px 10px; background: var(--page); border: 1px solid var(--hairline); border-radius: 8px; color: var(--muted); }
+    #rw-vorschau p + p { margin-top: 4px; }
+    #rw-zweit-zeile { display: flex; align-items: center; gap: 8px; color: var(--muted); }
+    #rw-zweit-zeile.hidden, #rw-pflicht.hidden, #rw-vorschlaege.hidden { display: none; }
+    #rw-vorschlaege { border-top: 1px solid var(--hairline); padding-top: 8px; }
+    #rw-vorschlaege-liste { margin: 6px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+    #rw-vorschlaege-liste li { padding: 8px 10px; border: 1px solid var(--hairline); border-radius: 8px; background: var(--page); }
+    #rw-vorschlaege-liste p { margin: 0; }
+    .rw-vorschlag-text { margin-top: 4px; max-height: 88px; overflow-y: auto; }
+    #rw-status { color: var(--muted); }
+    #rw-status.warn { color: var(--warn-text); }
+    /* ============================================================================================
+       JOB 3056 K1 — EINSTELLUNGEN (Einstellungen.dc.html) UND „WIE KLARA ANTWORTET".
+       ============================================================================================
+       Gruppen sind weisse Karten (Z.22: Rand Linie, Radius 12), Zeilen 13px 14px mit Trennlinie,
+       Beschriftung 14px, Wert 14px Tinte-2, Chevron/Schloss im Hinweisgrau, Schalter 40 × 24 mit
+       20px-Knopf. Der Kicker (Z.36) 11px mit 0.4px Laufweite. Unten der Stand (Z.68). */
+    #kw-einstellungen, #kw-hilfe { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+    #kw-einstellungen.hidden, #kw-hilfe.hidden { display: none; }
+    .einst-gruppe {
+      margin: 10px 16px 0;
+      background: var(--surface);
+      border: 1px solid var(--hairline);
+      border-radius: 12px;
+      display: flex;
+      flex-direction: column;
+    }
+    .einst-gruppe.admin { margin: 0 16px; }
+    .einst-gruppe.konto { margin: 20px 16px 0; }
+    .einst-zeile {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      width: 100%;
+      margin: 0;
+      padding: 13px 14px;
+      border: 0;
+      border-bottom: 1px solid var(--hairline);
+      background: transparent;
+      font: inherit;
+      font-size: 14px;
+      color: var(--text);
+      text-align: left;
+    }
+    .einst-zeile.hidden { display: none; }
+    .einst-gruppe > :last-child { border-bottom: 0; }
+    button.einst-zeile { cursor: pointer; }
+    .einst-wert { display: flex; align-items: center; gap: 6px; font-size: 14px; color: var(--muted); }
+    .einst-wert svg { display: block; color: var(--hint); }
+    .einst-kicker { margin: 20px 16px 6px; font-size: 11px; letter-spacing: 0.4px; color: var(--muted); }
+    /* Die Sprachwahl (die bisherigen #lang-*-Knoepfe) klappt unter der Sprach-Zeile auf. */
+    .lang { display: flex; flex-direction: column; border-bottom: 1px solid var(--hairline); }
+    .lang.hidden { display: none; }
+    .lang button { padding-left: 28px; border-bottom: 0; }
+    .lang button.active { font-weight: 600; }
+    .schalter {
+      position: relative;
+      flex: 0 0 auto;
+      width: 40px;
+      height: 24px;
+      margin: 0;
+      padding: 0;
+      border: 0;
+      border-radius: 12px;
+      background: var(--hairline);
+      cursor: pointer;
+    }
+    .schalter.hidden { display: none; }
+    .schalter .knopf { position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; border-radius: 50%; background: var(--surface); }
+    .schalter.an { background: var(--pos-text); }
+    .schalter.an .knopf { left: auto; right: 2px; }
+    .einst-link { margin: 0; padding: 0; border: 0; background: transparent; font: inherit; font-size: 14px; color: var(--brand-deep); cursor: pointer; }
+    .einst-detail { margin: 0; padding: 10px 14px; border-bottom: 1px solid var(--hairline); font-size: 12.5px; line-height: 1.45; color: var(--muted); overflow-wrap: anywhere; }
+    .einst-detail.hidden { display: none; }
+    /* Die Zustimmungsauskunft (Anbieter, Modell, Datenklassen, aktive Frage KA4) unter der
+       Schalterzeile — sichtbar nur, wenn der Server sie anbietet (renderKlaraS4). */
+    #klara-consent-card { display: flex; flex-direction: column; gap: 6px; }
+    #klara-consent-card.hidden { display: none; }
+    #klara-consent-card p { margin: 0; }
+    #klara-consent-card .status { margin: 0; }
+    #kw-stand-zeile { margin: auto 0 0; padding: 12px 16px 16px; text-align: center; font-size: 11px; color: var(--hint); }
+    #kw-fassung { margin: 0; padding: 0 16px 12px; text-align: center; font-size: 10px; }
+    #kw-fassung-btn { margin: 0 16px 12px; align-self: center; font-size: 11px; }
+    /* „Wie Klara antwortet": die Saetze, die frueher im Sichtfeld standen — Regel, Pruefhinweis,
+       KI-Stand von KLARWERK (W1-Vertrauenskopf), Hilfe und Anmeldung. */
+    .hilfe-block { margin: 10px 16px 0; padding: 13px 14px; background: var(--surface); border: 1px solid var(--hairline); border-radius: 12px; }
+    .hilfe-block p { margin: 0 0 6px; }
+    .hilfe-block p:last-child { margin-bottom: 0; }
+    .hilfe-block ul { margin: 0; padding-left: 18px; }
+    #klara-trust-head { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+    .trust-pill {
+      display: inline-block;
+      max-width: 100%;
+      padding: 2px 9px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+      border: 1px solid var(--hairline);
+      color: var(--muted);
+      background: var(--page);
+    }
+    .trust-pill-ok { background: var(--pos-bg); color: var(--pos-text); border-color: transparent; }
+    .trust-pill-warn { background: var(--warn-bg); color: var(--warn-text); border-color: transparent; }
+    .trust-detail { margin: 0; color: var(--muted); font-size: 12.5px; line-height: 1.45; }

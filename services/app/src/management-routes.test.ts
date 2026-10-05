@@ -135,3 +135,204 @@ describe("SCRUM-240: Management-Snapshot (HTTP end-to-end)", () => {
     expect(res.statusCode).toBeGreaterThanOrEqual(400);
   });
 });
+
+// R-0751 (Nacharbeit 3, ben K4): die Konfliktdichte über den ECHT verdrahteten Managementweg —
+// `buildServices` mit dem echten Konfliktdienst und dem in build-app gebauten `openConflictKoIds`,
+// nichts davon ersetzt. Geprüft wird die Paar-Regel selbst: ein Konflikt zählt nur, wenn BEIDE
+// Partner sichtbar sind. Das blosse Wegschneiden der unsichtbaren Kennung im ManagementService
+// würde bei A–B das sichtbare A trotzdem als „im Konflikt" zählen (33 statt 0).
+describe("R-0751: Konfliktdichte über buildServices (Paar-Regel im build-app-Datenweg)", () => {
+  it("A–B mit unsichtbarem B zählt nicht (0); A–C mit zwei sichtbaren Partnern zählt (67)", async () => {
+    const services = buildServices();
+    const KATEGORIE = "Konfliktdichte NA3";
+    const anlegen = (title: string) =>
+      services.ko.create({
+        title,
+        statement: `Aussage zu ${title}`,
+        type: "best_practice",
+        category: KATEGORIE,
+        author: "u-konfliktdichte",
+      });
+    const a = await anlegen("Objekt A");
+    const b = await anlegen("Objekt B");
+    const c = await anlegen("Objekt C");
+    await anlegen("Objekt D");
+    const sichtbar = (ko: { id: string }) => ko.id !== b.id;
+    const dichte = async () => {
+      const snap = await services.management.snapshot({ sichtbar });
+      const zeile = snap.priorities.find((p) => p.category === KATEGORIE);
+      return zeile?.factors.find((f) => f.key === "conflictDensity")?.value;
+    };
+
+    await services.conflicts.create({ koA: a.id, koB: b.id, type: "truth", description: "A–B" });
+    expect(await dichte(), "Konflikt mit nur einem sichtbaren Partner").toBe(0);
+
+    await services.conflicts.create({ koA: a.id, koB: c.id, type: "truth", description: "A–C" });
+    expect(await dichte(), "A und C von A, C, D sichtbar im Konflikt").toBe(67);
+  });
+});
+
+// R-0751 · R-1639 · R-2183 (Nacharbeit 3): die gepflegten Eingänge und der Bereichsblick über die
+// ECHTEN HTTP-Türen — Pflege nur mit users.manage, „mein Bereich" nur für den eingetragenen
+// Verantwortlichen, die vier gepflegten Stufen als Prioritätsfaktoren im Snapshot.
+describe("Nacharbeit 3: Bereichsprofile, Ruhestandshorizonte und Bereichsblick (HTTP)", () => {
+  type Kopf = Record<string, string>;
+  const KATEGORIE = "Presse NA3";
+  const PASSWORT = "geheim12345";
+  const holen = async (app: ReturnType<typeof buildApp>, url: string, wer: Kopf) =>
+    (await app.inject({ method: "GET", url, headers: wer })).json();
+  type Zeile = {
+    category: string;
+    knownFactors: number;
+    factors: { key: string; value: unknown }[];
+  };
+  const zeileVon = (snap: { priorities: Zeile[] }) =>
+    snap.priorities.find((p) => p.category === KATEGORIE);
+
+  async function buehne() {
+    const app = buildApp(buildServices());
+    const anmelden = async (email: string): Promise<Kopf> => {
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/auth/login",
+        payload: { email, password: PASSWORT },
+      });
+      return { authorization: `Bearer ${res.json().token}` };
+    };
+    await app.inject({
+      method: "POST",
+      url: "/api/auth/register",
+      payload: { name: "Admin", email: "admin@na3.test", password: PASSWORT },
+    });
+    const admin = await anmelden("admin@na3.test");
+    for (const [name, role] of [
+      ["Mara Manager", "controller"],
+      ["Tom Kollege", "controller"],
+      ["Rosa Traegerin", "experte"],
+    ] as const) {
+      const email = `${name.split(" ")[0]?.toLowerCase()}@na3.test`;
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/users",
+        headers: admin,
+        payload: { name, email, password: PASSWORT, role },
+      });
+      expect(res.statusCode, res.body).toBe(201);
+    }
+    const verzeichnis: { id: string; name: string }[] = await holen(app, "/api/directory", admin);
+    const id = (name: string) => verzeichnis.find((p) => p.name === name)?.id ?? "";
+    const rosa = await anmelden("rosa@na3.test");
+    for (const titel of ["Presse anfahren", "Presse einrichten"]) {
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/kos",
+        headers: rosa,
+        payload: {
+          confidentiality: "intern",
+          title: titel,
+          statement: `Aussage zu ${titel}`,
+          type: "best_practice",
+          category: KATEGORIE,
+        },
+      });
+      expect(res.statusCode, res.body).toBe(201);
+    }
+    return {
+      app,
+      admin,
+      mara: await anmelden("mara@na3.test"),
+      tom: await anmelden("tom@na3.test"),
+      maraId: id("Mara Manager"),
+      rosaId: id("Rosa Traegerin"),
+    };
+  }
+
+  const profilSetzen = (app: ReturnType<typeof buildApp>, kopf: Kopf, payload: object) =>
+    app.inject({ method: "PUT", url: "/api/management/profiles/category", headers: kopf, payload });
+
+  it("Pflege nur mit users.manage; unbekannte Stufe 400, fremdes Konto 404, falscher Horizont 400", async () => {
+    const { app, admin, mara, maraId, rosaId } = await buehne();
+    const gueltig = { category: KATEGORIE, managerId: maraId, criticality: "hoch" };
+
+    expect((await profilSetzen(app, mara, gueltig)).statusCode).toBe(403);
+    const falsch = await profilSetzen(app, admin, { category: KATEGORIE, criticality: "extrem" });
+    expect(falsch.statusCode).toBe(400);
+    expect((await profilSetzen(app, admin, gueltig)).statusCode).toBe(200);
+
+    const horizont = (wer: Kopf, userId: string, horizonMonths: unknown) =>
+      app.inject({
+        method: "PUT",
+        url: `/api/management/profiles/retirement/${userId}`,
+        headers: wer,
+        payload: { horizonMonths },
+      });
+    expect((await horizont(mara, rosaId, 24)).statusCode).toBe(403);
+    expect((await horizont(admin, "gibt-es-nicht", 24)).statusCode).toBe(404);
+    expect((await horizont(admin, rosaId, 12)).statusCode).toBe(400);
+    const gesetzt = await horizont(admin, rosaId, 24);
+    expect(gesetzt.statusCode).toBe(200);
+    expect(gesetzt.json().entry.horizonMonths).toBe(24);
+
+    const lesen = (wer: Kopf) =>
+      app.inject({ method: "GET", url: "/api/management/profiles", headers: wer });
+    expect((await lesen(mara)).statusCode).toBe(403);
+    const profile = (await lesen(admin)).json();
+    expect(profile.categories[0].managerId).toBe(maraId);
+    expect(profile.retirement[0].userId).toBe(rosaId);
+  });
+
+  it("„mein Bereich“: der Verantwortliche sieht Träger, Frist und Arbeitsvorrat — ein anderer Manager nicht", async () => {
+    const { app, admin, mara, tom, maraId, rosaId } = await buehne();
+    await profilSetzen(app, admin, { category: KATEGORIE, managerId: maraId, criticality: "hoch" });
+    await app.inject({
+      method: "PUT",
+      url: `/api/management/profiles/retirement/${rosaId}`,
+      headers: admin,
+      payload: { horizonMonths: 36 },
+    });
+    const blick = (wer: Kopf) => holen(app, "/api/management/risk-horizon", wer);
+
+    const fuerMara = await blick(mara);
+    expect(fuerMara.areas).toHaveLength(1);
+    const bereich = fuerMara.areas[0];
+    expect(bereich.category).toBe(KATEGORIE);
+    expect(bereich.singleSource).toBe(true);
+    expect(bereich.criticality).toBe("hoch");
+    expect(bereich.bearers).toHaveLength(1);
+    expect(bereich.bearers[0]).toMatchObject({
+      userId: rosaId,
+      horizonMonths: 36,
+      soleBearer: true,
+      koCount: 2,
+    });
+    expect(bereich.bearers[0].openKoIds).toHaveLength(2);
+
+    // Gegenprobe: Tom verantwortet keinen Bereich — er sieht weder Bereich noch Rosas Horizont.
+    const fuerTom = await blick(tom);
+    expect(fuerTom.areas).toEqual([]);
+    expect(JSON.stringify(fuerTom)).not.toContain(rosaId);
+    // Die Pflegerolle sieht alle Bereiche.
+    expect((await blick(admin)).seesAll).toBe(true);
+  });
+
+  it("die vier gepflegten Stufen erscheinen im Snapshot als Prioritätsfaktoren — dann zählen alle neun", async () => {
+    const { app, admin } = await buehne();
+    const vorher = zeileVon(await holen(app, "/api/management/snapshot", admin));
+    expect(vorher?.knownFactors, "ohne Profil: vier Faktoren ohne Daten").toBe(5);
+
+    await profilSetzen(app, admin, {
+      category: KATEGORIE,
+      criticality: "hoch",
+      processProximity: "mittel",
+      repetition: "niedrig",
+      damagePotential: "hoch",
+    });
+    const zeile = zeileVon(await holen(app, "/api/management/snapshot", admin));
+    const wert = (k: string) => zeile?.factors.find((f) => f.key === k)?.value;
+    expect(wert("criticality")).toBe(100);
+    expect(wert("processProximity")).toBe(50);
+    expect(wert("repetition")).toBe(0);
+    expect(wert("damagePotential")).toBe(100);
+    expect(zeile?.knownFactors).toBe(9);
+  });
+});

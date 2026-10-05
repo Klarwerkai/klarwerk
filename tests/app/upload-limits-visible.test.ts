@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { woerterbuchQuelleAus } from "../support/woerterbuchquelle";
 
 // AUFTRAG-mega14 Block E (SCRUM-421) — die Grenzen stehen AN der Auswahlstelle, und sie kommen aus
 // der Serverquelle.
@@ -103,7 +104,7 @@ describe("SCRUM-421: die Upload-Grenzen sind an jeder Auswahlstelle sichtbar", (
 });
 
 describe("SCRUM-421: der Admin-Text behauptet nur noch, was stimmt", () => {
-  const i18nSrc = read("i18n.ts");
+  const i18nSrc = woerterbuchQuelleAus(join(WEB_SRC, "i18n.ts"));
 
   it("die alte Behauptung (angezeigt beim Erfassen) ist weg", () => {
     // Sie war unwahr: die Zahl stand an einer einzigen von zwölf Auswahlstellen.

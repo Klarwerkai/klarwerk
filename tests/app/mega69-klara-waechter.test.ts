@@ -46,6 +46,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { panelQuelleAus } from "../support/panelquelle";
 
 const WURZEL = join(__dirname, "..", "..");
 const TASKPANE = join(WURZEL, "apps", "web", "public", "word-addin", "taskpane.html");
@@ -59,8 +60,9 @@ const RUECKWEG = join(WURZEL, "apps", "web", "public", "word-addin", "rueckweg.j
  */
 const ANMELDUNG = join(WURZEL, "apps", "web", "public", "word-addin", "anmeldung.html");
 
+/** Das Fenster als EIN Dokument — seit R-1611 aus `taskpane.html`/`.css`/`.js` zusammengefügt. */
 function quelle(): string {
-  return readFileSync(TASKPANE, "utf8");
+  return panelQuelleAus(TASKPANE);
 }
 
 /** Die deutschen OBERFLÄCHENTEXTE — Werte des STRINGS.de-Objekts, zeilenweise erhoben. */
@@ -2585,8 +2587,17 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // die R-0639-Argumente stehen auf den bestehenden Zeilen, damit das Inline-Skript unter der
     // Schranke von `schnittflaechen.test.ts` B3 bleibt (Server: „expected 12510 to be less than
     // 12500"). Kein Ausdruck, kein Abrufziel, keine Nutzlast geändert; kein Sideload.
+    // AUFNAHME 20260922 · ZENTRALE-MODULE-AUFTEILEN (R-1611, P11) — DER PIN BLEIBT, WAS ER WAR.
+    // Das Fenster liegt jetzt in DREI Dateien (`taskpane.html`, `taskpane.css`, `taskpane.js`);
+    // gehasht wird deshalb das wieder zusammengefügte Dokument (`panelQuelleAus`). Dass der Pin
+    // NICHT wandern musste, ist der Beleg: kein Zeichen von Markup, Stil oder Skript hat sich
+    // geändert, nur die Ablage. Jede künftige Änderung an einer der drei Dateien macht ihn rot.
+    // Auslieferungsfolgen des Schnitts: ZWEI Abrufe mehr beim Öffnen (beide gleicher Ursprung,
+    // `script-src 'self'`/`style-src 'self'` der Dokument-CSP decken sie), dieselbe Cachekennung
+    // `?v=__KW_FASSUNG__` wie `rueckweg.js`; Abrufziel, Manifest, Recht, Nutzlast unverändert;
+    // kein erneutes Sideload.
     const PIN = "5fbf5f64546beb67d70799bb8d18bcf6d2adcc631d79e0b404658867baeb0978";
-    const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
+    const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(
       ist,
       "taskpane.html wurde geändert — Auslieferungsfolgen bewusst prüfen (Kommentar oben), dann den Pin aktualisieren.",

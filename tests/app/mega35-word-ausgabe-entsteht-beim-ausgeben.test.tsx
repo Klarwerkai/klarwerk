@@ -32,6 +32,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
+import { panelQuelleAus } from "../support/panelquelle";
 
 const TASKPANE = "apps/web/public/word-addin/taskpane.html";
 // JOB 3667 R8 (14.09.2026): das Fenster wird aus ZWEI Dateien ausgeliefert. Wer nur das
@@ -51,7 +52,7 @@ interface Laufzeit {
 // Laedt das ECHTE Taskpane: Markup in das jsdom-Dokument, danach das vollstaendige Inline-Skript
 // ausfuehren. Ab hier laeuft die Seite so, wie sie in Word laeuft — getrieben wird ueber Klicks.
 function taskpaneStarten(evidence: unknown): Laufzeit {
-  const html = readFileSync(resolve(process.cwd(), TASKPANE), "utf8");
+  const html = panelQuelleAus(TASKPANE);
   const bodyStart = html.indexOf("<body>") + "<body>".length;
   const bodyEnd = html.indexOf("</body>");
   const body = html.slice(bodyStart, bodyEnd);

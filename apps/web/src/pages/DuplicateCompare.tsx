@@ -282,9 +282,9 @@ export function DuplicateCompare({ kind }: { kind: DuplicateCompareKind }): JSX.
     quellen === undefined
       ? null
       : quellen === null
-        ? t("dcmp.quelle.manuell")
-        : t("dcmp.quelle.label", {
-            quellen: quellen.map((q) => t(`dcmp.quelle.${q}`)).join(" · "),
+        ? t("r0194.quelle.manuell")
+        : t("r0194.quelle.label", {
+            quellen: quellen.map((q) => t(`r0194.quelle.${q}`)).join(" · "),
           });
 
   return (
@@ -309,7 +309,7 @@ export function DuplicateCompare({ kind }: { kind: DuplicateCompareKind }): JSX.
 
         {quelleText ? (
           <p data-testid="dcmp-quelle" className="text-[12.5px] leading-relaxed text-muted">
-            {t("dcmp.quelle.hinweis", { brett: t("pruefen.tab.duplikate") })}
+            {t("r0194.quelle.hinweis", { brett: t("pruefen.tab.duplikate") })}
           </p>
         ) : null}
 

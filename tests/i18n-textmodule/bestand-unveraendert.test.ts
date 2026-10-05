@@ -42,6 +42,7 @@ import { describe, expect, it } from "vitest";
 import i18n from "../../apps/web/src/i18n";
 import { ladeTextbaum } from "../../apps/web/src/texte/intern/sammeln";
 import { repoPfad } from "../support/repoPfad";
+import { woerterbuchQuelle } from "../support/woerterbuchquelle";
 
 const SPRACHEN = ["de", "en", "nl"] as const;
 
@@ -187,9 +188,13 @@ describe("JOB 4367 · K1 — der Umzug hat keinen Text verändert und keinen ver
 
 describe("JOB 4367 · K4 — die verschobenen Schlüssel stehen im Modul und nicht mehr in i18n.ts", () => {
   const i18nQuelle = readFileSync(repoPfad("apps/web/src/i18n.ts"), "utf8");
+  // I18N-AUFTEILUNG: die Grundwörterbücher liegen seither in `woerterbuch/`. K4.1 fragt den
+  // GRUNDBESTAND — also `i18n.ts` samt dieser Dateien, als EIN Text gelesen. Gegen `i18n.ts` allein
+  // wäre der Fall seit der Aufteilung trivial grün.
+  const grundbestand = woerterbuchQuelle();
 
   it("K4.1 · i18n.ts führt keinen der sieben Schlüssel mehr (Schnittmenge leer)", () => {
-    const nochDa = VERSCHOBEN.filter((schluessel) => i18nQuelle.includes(`"${schluessel}":`));
+    const nochDa = VERSCHOBEN.filter((schluessel) => grundbestand.includes(`"${schluessel}":`));
     expect(
       nochDa,
       "diese Schlüssel stehen noch als Eintrag in apps/web/src/i18n.ts — dann gäbe es sie zweimal",

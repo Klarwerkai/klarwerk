@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import type { OverlapEntry as WebOverlapEntry } from "../../apps/web/src/api/types";
 import { kandidatenQuellen } from "../../apps/web/src/lib/duplicateCompare";
+import r0194Texte from "../../apps/web/src/texte/r0194";
 import { DETECTION_CANDIDATE_CAP } from "../../services/app/src/detection-cap";
 import {
   type DuplicateDetectionDeps,
@@ -333,16 +334,18 @@ describe("K5: die Prüfansicht zeigt die Kandidatenquelle; der Mensch entscheide
   });
 
   const compareSource = lies("../../apps/web/src/pages/DuplicateCompare.tsx");
-  const i18nSource = lies("../../apps/web/src/i18n.ts");
 
+  // Seit der I18N-AUFTEILUNG (main) wohnen neue Texte im Textmodul `texte/r0194.ts`.
   it("alle vier Quellen sind in de/en/nl benannt, die Seite rendert Pille und Hinweis", () => {
     for (const q of ["metadaten", "text", "pruefsumme", "abschnitt"]) {
-      expect(i18nSource.split(`"dcmp.quelle.${q}"`).length - 1).toBe(3);
+      for (const sprache of [r0194Texte.de, r0194Texte.en, r0194Texte.nl]) {
+        expect(sprache[`r0194.quelle.${q}` as keyof typeof sprache]).toBeTruthy();
+      }
     }
-    expect(i18nSource).toContain('"dcmp.quelle.pruefsumme": "Prüfsumme"');
+    expect(r0194Texte.de["r0194.quelle.pruefsumme"]).toBe("Prüfsumme");
     expect(compareSource).toContain("kandidatenQuellen(");
     expect(compareSource).toContain('kennung="quelle"');
-    expect(compareSource).toContain("dcmp.quelle.hinweis");
+    expect(compareSource).toContain("r0194.quelle.hinweis");
     // Die Vergleichsseite entscheidet nichts: keine Mutation, nur Lesen.
     expect(compareSource).not.toMatch(/useMutation|Mutation\(/);
   });

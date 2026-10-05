@@ -90,6 +90,7 @@ const HERKUNFT_LABEL_KEYS: Record<KoOrigin, string> = {
   expert: "ko.origin.expert",
   frontdoor: "ko.origin.frontdoor",
   word_addin: "ko.originWordAddin.label",
+  import: "ko.origin.import",
 };
 
 const STUFEN_TONE: Record<Confidentiality, StufenAuskunft["tone"]> = {
