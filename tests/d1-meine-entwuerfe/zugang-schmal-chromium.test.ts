@@ -30,7 +30,9 @@
 // M2    der Mausklick auf einen Titel öffnet GENAU diesen Entwurf (Kennung, Adresse, Inhalt).
 // T     NUR die Tastatur — vom Werkzeug über die Titelzeile bis in den geladenen Entwurf.
 // L     der TITELTEXT steht ganz da: nichts gekürzt, nichts abgeschnitten, die Enden unterscheidbar.
+// L2    dieselbe Lesbarkeitsmessung an der Übersicht `/entwuerfe` (Ben Runde 2, B3-R).
 // Dazu einmalig:
+// L2K   ROT-GEGENPROBE zu L2: mit der alten Kürzung (`truncate`) in der Seite MUSS L2 rot sein.
 // M3    der Weg von der Startseite bei 390 px: der Link liegt im Fenster, führt hin, Liste offen.
 // K     KALIBRIERUNG: wird der gemessene Ausgleich in der Seite zurückgenommen, MUSS die Messung
 //       rot werden — sonst misst sie nichts.
@@ -365,6 +367,45 @@ interface Titelmass {
   kuerzung: string;
 }
 
+// ================================================================================================
+// AUFNAHME entwuerfe-verwalten (Ben Runde 2, B3-R) — DIESELBE MESSUNG AN DER NORMALEN ÜBERSICHT
+// `/entwuerfe`.
+// ================================================================================================
+//
+// Ben: „Die vorhandene Chromium-Titelmessung untersucht die andere Blatt-Menüliste." Die Übersicht
+// trug am Zeilenträger `truncate`; ein inline stehender Titel-`<span>` hätte für sich gemessen
+// `clientWidth = 0` gezeigt. Gemessen wird deshalb der Titelträger UND sein Zeilenträger, und
+// gemeldet wird der schlechtere der beiden — eine Kürzung am Behälter ist dieselbe Kürzung.
+//
+// `\\s+` IST HIER DOPPELT MASKIERT, wie in `MASSE` oben: in einer Vorlagenzeichenkette wird ein
+// einfaches `\s` zu `s`, und im Browser stünde dann `/s+/g` — jedes „s" im Titel würde zum
+// Leerzeichen, und `ganzLesbar` fiele am Textvergleich statt an einer Kürzung (Kandidat 13feb4a6).
+const TITELMASSE_SEITE = `() => {
+  const zeilen = [...document.querySelectorAll('[data-testid="page-entwuerfe"] [data-testid="entwurfsliste-eintrag"]')];
+  return zeilen.map((z) => {
+    const el = z.querySelector('[data-testid="entwurfsliste-eintrag-titel"]');
+    const kandidaten = [el, el.parentElement];
+    const masse = kandidaten.map((k) => {
+      const stil = getComputedStyle(k);
+      return {
+        text: (el.textContent || '').replace(/\\s+/g, ' ').trim(),
+        sichtbreite: k.clientWidth,
+        textbreite: k.scrollWidth,
+        sichthoehe: k.clientHeight,
+        texthoehe: k.scrollHeight,
+        umbruch: stil.whiteSpace,
+        kuerzung: stil.textOverflow,
+      };
+    });
+    const ueberhang = (m) => Math.max(m.textbreite - m.sichtbreite, m.texthoehe - m.sichthoehe);
+    const ellipse = masse.find((m) => m.kuerzung === 'ellipsis');
+    if (ellipse) {
+      return ellipse;
+    }
+    return masse.reduce((a, b) => (ueberhang(b) > ueberhang(a) ? b : a));
+  });
+}`;
+
 /** Jeder Titel steht GANZ da — nichts ist abgeschnitten, und die Enden unterscheiden sich. */
 function ganzLesbar(titel: Titelmass[], lage: string): void {
   expect(titel.length, `${lage}: nicht alle Titelzeilen gemessen`).toBe(ALLE_TITEL.length);
@@ -427,7 +468,13 @@ function imFenster(m: Masse, lage: string): void {
  * Speicher gehört einer Herkunft, ist vor der ersten Fahrt (`about:blank`) also gar nicht
  * erreichbar. Deshalb: fahren, prüfen, bei Bedarf setzen und noch einmal fahren.
  */
-async function stelle(breite: number, sprache: string, pfad: string): Promise<void> {
+async function stelle(
+  breite: number,
+  sprache: string,
+  pfad: string,
+  // AUFNAHME entwuerfe-verwalten (L2): die Übersicht `/entwuerfe` trägt kein Blatt.
+  anker = '[data-testid="blatt"]',
+): Promise<void> {
   const s = seite as Seite;
   await s.setViewportSize({ width: breite, height: 844 });
   await s.goto(`${ORIGIN}${pfad}`, { waitUntil: "load", timeout: 60_000 });
@@ -436,13 +483,9 @@ async function stelle(breite: number, sprache: string, pfad: string): Promise<vo
     await s.evaluate(fn(`(l) => { localStorage.setItem('kw.sprache', l); }`), sprache);
     await s.goto(`${ORIGIN}${pfad}`, { waitUntil: "load", timeout: 60_000 });
   }
-  await s.waitForFunction(
-    fn("(sel) => document.querySelector(sel) !== null"),
-    '[data-testid="blatt"]',
-    {
-      timeout: 30_000,
-    },
-  );
+  await s.waitForFunction(fn("(sel) => document.querySelector(sel) !== null"), anker, {
+    timeout: 30_000,
+  });
   // Die Sprache gilt wirklich — sonst behauptete „DE/EN gemessen" nur den Dateinamen.
   const gesetzt = await s.evaluate<string>(
     fn(`() => document.documentElement.getAttribute('lang') || ''`),
@@ -658,6 +701,25 @@ describe("JOB 3266 R2 · der Zugang zu den eigenen Entwürfen im echten Chromium
         );
       }, 120_000);
 
+      it(`L2 · ${breite} px / ${sprache}: auch die ÜBERSICHT „Meine Entwürfe“ zeigt die Titel GANZ`, async () => {
+        expect(fehler, "Prüfstand nicht aufgebaut").toBeNull();
+        const s = seite as Seite;
+        await stelle(breite, sprache, "/entwuerfe", '[data-testid="page-entwuerfe"]');
+        await s.waitForFunction(
+          fn(
+            `() => document.querySelectorAll('[data-testid="page-entwuerfe"] [data-testid="entwurfsliste-eintrag-titel"]').length === 3`,
+          ),
+          undefined,
+          { timeout: 20_000 },
+        );
+        ganzLesbar(
+          await s.evaluate<Titelmass[]>(fn(TITELMASSE_SEITE)),
+          `${breite}/${sprache} · Übersicht`,
+        );
+        // Die Maskierung ist heil angekommen — sonst fiele `ganzLesbar` am Text, nicht am Maß.
+        expect(TITELMASSE_SEITE).toContain("(el.textContent || '').replace(/\\s+/g, ' ')");
+      }, 120_000);
+
       it(`M2 · ${breite} px / ${sprache}: der Klick auf den Titel öffnet GENAU diesen Entwurf`, async () => {
         expect(fehler, "Prüfstand nicht aufgebaut").toBeNull();
         const s = seite as Seite;
@@ -758,6 +820,109 @@ describe("JOB 3266 R2 · der Zugang zu den eigenen Entwürfen im echten Chromium
       }, 120_000);
     }
   }
+
+  // ==============================================================================================
+  // L2K — DIE ROT-GEGENPROBE ZU L2 (Ben, Nacharbeit 3: „für B3-R ist nur Grün belegt").
+  // ==============================================================================================
+  //
+  // Der Stand VOR der Behebung trug am Zeilenträger der Übersicht `truncate`
+  // (`CaptureDraftList.tsx`, Elternknoten von `entwurfsliste-eintrag-titel`; Basis 8f70ef9a).
+  // Genau diese Kürzung wird hier in der laufenden Seite wiederhergestellt — die Klasse UND ihre
+  // drei Regeln als Inline-Stil, damit die Probe nicht davon abhängt, ob das gebaute CSS die Klasse
+  // an dieser Stelle führt. Verstellung, Messung und Rücknahme liegen in EINEM synchronen Aufruf mit
+  // `finally` (Begründung bei `ohneAusgleich` oben). Dieselbe Messung `TITELMASSE_SEITE` und
+  // dieselbe Zusage `ganzLesbar` wie in L2 MÜSSEN dann rot werden — sonst misst L2 nichts. Danach
+  // misst L2 auf dem Zustand, den das Produkt gemacht hat, wieder grün.
+  it("L2K · KALIBRIERUNG: mit der alten Kürzung am Zeilenträger ist die Übersichtsmessung rot", async () => {
+    expect(fehler, "Prüfstand nicht aufgebaut").toBeNull();
+    const s = seite as Seite;
+    await stelle(320, "de", "/entwuerfe", '[data-testid="page-entwuerfe"]');
+    await s.waitForFunction(
+      fn(
+        `() => document.querySelectorAll('[data-testid="page-entwuerfe"] [data-testid="entwurfsliste-eintrag-titel"]').length === 3`,
+      ),
+      undefined,
+      { timeout: 20_000 },
+    );
+    // NACHARBEIT 5: Die erste Fassung meldete die Rücknahme als bloßes `false` (Lauf zu 2fde0808,
+    // `gezielt-browser.log`) — ohne zu sagen, WAS abwich. Gesichert und zurückgeschrieben werden
+    // jetzt die ROHEN Attribute `class` und `style` (`getAttribute`/`setAttribute`/
+    // `removeAttribute`, ein Weg für beide), und zurück kommen beide Schnappschüsse je Zeile. Die
+    // Zusage ist dieselbe — nachher === vorher, für jede Zeile —, nur dass ein Rot jetzt die
+    // Abweichung im Bericht nennt.
+    //
+    // NACHARBEIT 6 — DER DIFF HAT DIE URSACHE GENANNT (Lauf zu a393fef0): `class` kam exakt zurück,
+    // `style` stand vorher auf `null` und nachher auf `""`. Wer `el.style.…` beschreibt, legt in
+    // Chromium eine Inline-Stil-Deklaration an; nach `removeAttribute('style')` meldet das Attribut
+    // dann `""` statt `null`. Die Probe fasst `style` deshalb GAR NICHT mehr an: die drei Regeln der
+    // alten Kürzung kommen über ein eigenes `<style>`-Element, das nur Knoten mit der Marke
+    // `data-l2k-alte-kuerzung` trifft; dazu die Klasse `truncate` wie im alten Bau. Zurückgenommen
+    // werden Marke, Klasse und `<style>`-Element; die Zusage bleibt unverändert streng —
+    // `class`, `style` UND die Marke je Zeile nachher === vorher, und das `<style>`-Element ist fort.
+    const quelle = `() => {
+      const traeger = [...document.querySelectorAll('[data-testid="page-entwuerfe"] [data-testid="entwurfsliste-eintrag-titel"]')].map((t) => t.parentElement);
+      const schnappschuss = () => traeger.map((k) => ({ klasse: k.getAttribute('class'), stil: k.getAttribute('style'), marke: k.getAttribute('data-l2k-alte-kuerzung') }));
+      const vorher = schnappschuss();
+      const regel = document.createElement('style');
+      regel.id = 'l2k-alte-kuerzung';
+      regel.textContent = '[data-l2k-alte-kuerzung] { white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important; }';
+      let mass = null;
+      try {
+        document.head.appendChild(regel);
+        for (const k of traeger) {
+          k.setAttribute('data-l2k-alte-kuerzung', '');
+          k.classList.add('truncate');
+        }
+        mass = (${TITELMASSE_SEITE})();
+      } finally {
+        traeger.forEach((k, i) => {
+          k.removeAttribute('data-l2k-alte-kuerzung');
+          if (vorher[i].klasse === null) { k.removeAttribute('class'); } else { k.setAttribute('class', vorher[i].klasse); }
+        });
+        regel.remove();
+      }
+      return { mass: mass, vorher: vorher, nachher: schnappschuss(), regelFort: document.getElementById('l2k-alte-kuerzung') === null };
+    }`;
+    type Schnappschuss = { klasse: string | null; stil: string | null; marke: string | null }[];
+    type Probe = {
+      mass: Titelmass[];
+      vorher: Schnappschuss;
+      nachher: Schnappschuss;
+      regelFort: boolean;
+    };
+    const k = await s.evaluate<Probe>(fn(quelle));
+    expect(k.vorher, "L2K: keine Zeilenträger gefunden").toHaveLength(3);
+    expect(
+      k.nachher,
+      "L2K: die Rücknahme im `finally` hat den alten Zustand nicht hergestellt",
+    ).toEqual(k.vorher);
+    expect(k.regelFort, "L2K: die Stilregel der alten Kürzung steht noch im Dokument").toBe(true);
+    // Die Ursache steht benannt in der Messung: Auslassungspunkte und ein Text, der breiter ist als
+    // seine Fläche — bei den beiden langen Titeln mindestens.
+    const gekuerzt = k.mass.filter(
+      (m) => m.kuerzung === "ellipsis" && m.textbreite > m.sichtbreite + 1,
+    );
+    expect(
+      gekuerzt.length,
+      `L2K: mit \`truncate\` meldet die Messung keine Kürzung (${JSON.stringify(k.mass)})`,
+    ).toBeGreaterThanOrEqual(2);
+    // Und die Zusage selbst wird rot.
+    let rot: unknown = null;
+    try {
+      ganzLesbar(k.mass, "320/de · Übersicht mit alter Kürzung");
+    } catch (e) {
+      rot = e;
+    }
+    expect(
+      rot,
+      "L2K: `ganzLesbar` blieb mit der alten Kürzung grün — dann misst L2 nichts",
+    ).not.toBeNull();
+    // Nach der Rücknahme misst L2 wieder auf dem Produktzustand — und ist grün.
+    ganzLesbar(
+      await s.evaluate<Titelmass[]>(fn(TITELMASSE_SEITE)),
+      "320/de · Übersicht nach Rücknahme (L2K)",
+    );
+  }, 120_000);
 
   it("M3 · 390 px: der Weg von der Startseite ist sichtbar, anklickbar und endet in der offenen Liste", async () => {
     expect(fehler, "Prüfstand nicht aufgebaut").toBeNull();
