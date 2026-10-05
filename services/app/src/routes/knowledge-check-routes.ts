@@ -6,7 +6,7 @@ import type { Reasoner } from "../../../reasoner";
 import type { Guards } from "../http";
 import { checkKnowledge } from "../knowledge-check";
 import { type Ka4Freigabepruefer, ka4Freigabe, klaraBindungVorhanden } from "./ask-routes";
-import { classifyProvenanceConfidential } from "./reasoner-routes";
+import { classifyProvenanceConfidential, ohneEinstufung } from "./reasoner-routes";
 
 // SCRUM-527 (Live-Check): POST /api/knowledge/check — echte Ähnlichkeits-/Widerspruchsprüfung eines
 // Entwurfstextes gegen den Bestand, für die Live-Reaktion in „Wissen erfassen". Auth-geschützt
@@ -102,7 +102,13 @@ async function resolveDraftConfidential(
   // keinen Anker haben — ein Blatt, das noch nie gesichert wurde, hat keinen. Es verliert damit die
   // Widerspruchsprüfung (ehrliches „nicht geprüft"), nicht die Funktion: die deterministische
   // Ähnlichkeit läuft unverändert weiter. Der Weg zurück ist einer, den der Mensch kennt: sichern.
-  if (body.source === "draft" && !backstop.found) {
+  //
+  // N11b (P-N11b, Ben nacharbeit-1): NICHT eingestufter Text mit bestätigter Dokumentzustimmung
+  // braucht keinen gespeicherten Anker — dieselbe enge Ausnahme wie `reasoner-routes.ts`.
+  // Ausdrückliches „intern" ohne Anker bleibt gesperrt; ein vertraulicher Anker hebt weiterhin.
+  const zustimmungMachtIntern =
+    dokumentZustimmung === true && ohneEinstufung(body.confidentiality, body.nichtEingestuft);
+  if (body.source === "draft" && !backstop.found && !zustimmungMachtIntern) {
     return true;
   }
   return confidential;

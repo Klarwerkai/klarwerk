@@ -184,6 +184,39 @@ describe("K3 · Dokumentzustimmung (BEN-Korrekturpflicht 3)", () => {
     ).toEqual({ status: "pending", judge: 0 });
   });
 
+  // Ben nacharbeit-1: K3a belegte den positiven Fall nur MIT gespeichertem Anker. P-N11b setzt für
+  // nicht eingestuften Text mit Zustimmung keinen Anker voraus — K3f/K3g messen genau das.
+  const OHNE_ANKER = {
+    text: DRAFT,
+    source: "draft",
+    confidentiality: "vertraulich",
+    nichtEingestuft: true,
+  };
+
+  it("K3f · POSITIVER BELEG OHNE ANKER: nicht eingestuft + bestätigte Einwilligung wird geprüft", async () => {
+    await starte({ ka4: { erlaubt: true } });
+    expect(await frage(OHNE_ANKER, KLARA_BINDUNG)).toEqual({ status: "done", judge: 1 });
+  });
+
+  it("K3g · dasselbe mit einer Entwurfskennung, die nicht auflöst", async () => {
+    await starte({ ka4: { erlaubt: true } });
+    const nutzlast = { ...OHNE_ANKER, draftId: "gibt-es-nicht" };
+    expect(await frage(nutzlast, KLARA_BINDUNG)).toEqual({ status: "done", judge: 1 });
+  });
+
+  it("K3h · GEGENPROBE: ohne Anker und ohne Einwilligung wird nicht geprüft", async () => {
+    await starte({ ka4: { erlaubt: false } });
+    expect(await frage(OHNE_ANKER, KLARA_BINDUNG)).toEqual({ status: "pending", judge: 0 });
+  });
+
+  it("K3i · GEGENPROBE: ausdrückliche Stufe ohne Anker bleibt trotz Einwilligung gesperrt", async () => {
+    await starte({ ka4: { erlaubt: true } });
+    for (const confidentiality of ["intern", "vertraulich", "streng_vertraulich"]) {
+      const nutzlast = { text: DRAFT, source: "draft", confidentiality };
+      expect(await frage(nutzlast, KLARA_BINDUNG)).toEqual({ status: "pending", judge: 0 });
+    }
+  });
+
   it("K3e · der Browser-Editor ist ungebunden: kein Riegel, keine Zustimmung, unverändert", async () => {
     await starte({ ka4: { erlaubt: true } });
     // Ohne Klara-Kopfzeilen wird der Prüfer gar nicht erst gefragt — eine Einwilligung, die für ein

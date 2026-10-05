@@ -43,7 +43,7 @@ Klarwerk ist ein **Single-Origin-Dienst mit interner REST-API** (`/api/*`, Fasti
 
 **Geeignet (mit vorhandenen Endpunkten):**
 - Periodischer **Export** von Wissensinhalten in ein Wiki/Drive (Pull via `/api/library/export`).
-- **Import** kuratierter Inhalte/Kandidaten (Push via `/api/library/import`).
+- **Import** kuratierter Inhalte als Kandidaten (Push via `/api/library/import` oder `/api/library/import/candidates` — beide reihen in die Prüf-Warteschlange ein; ein Wissensobjekt entsteht erst, wenn ein Berechtigter den Kandidaten annimmt).
 - **Ask-Abfrage** aus einem internen Tool (POST `/api/ask`) — mit ehrlicher Quellen-/Lücken-Antwort.
 - **Status-/Health-Polling** (`/health`, `/api/reasoner/status`) für Monitoring.
 
