@@ -9,7 +9,13 @@ import { useTranslation } from "react-i18next";
 // nicht dass etwas fehlt. Ein `fallback={null}` wäre die stumme Aussage und ist ausgeschlossen.
 export function Splash(): JSX.Element {
   const { t } = useTranslation();
-  return (
-    <div className="grid h-full place-items-center text-sm text-muted">{t("state.loading")}</div>
-  );
+  return <SplashFlaeche text={t("state.loading")} />;
+}
+
+// R-0801 (ben, Nacharbeit 3, F1): DIESELBE Fläche, aber ohne `useTranslation`. `main.tsx` zeigt sie,
+// BEVOR die Startsprache vorliegt — dort darf nichts auf ein fehlendes Sprachpaket warten (der
+// Haken würde bei ausstehendem Paket suspendieren, und ohne Grenze darüber bliebe `#root` leer).
+// Den Text reicht der Aufrufer herein; `Splash` oben ist nur noch die übersetzende Hülle darum.
+export function SplashFlaeche({ text }: { text: string }): JSX.Element {
+  return <div className="grid h-full place-items-center text-sm text-muted">{text}</div>;
 }

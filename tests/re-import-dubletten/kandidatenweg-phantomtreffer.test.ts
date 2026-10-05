@@ -154,12 +154,17 @@ describe("JOB 3050 · K10 — jede genannte Kandidaten-Id steht wirklich in der 
     );
     expect(inDerQueue.has(offeneId ?? "")).toBe(true);
 
-    // Ehrlich ausgeschrieben, was der Eintrag OHNE Anker jetzt bekommt: der Vergleichsbestand
-    // sind die WISSENSOBJEKTE und die Kandidaten DIESES Laufs — ein bereits in der Warteschlange
-    // LIEGENDER Kandidat ist keins von beidem. `keine` ist damit die richtige Auskunft, und sie
-    // nennt niemanden. Vorher stand hier `identisch` mit einer erfundenen Id.
-    expect(zweiter[0]?.dublettenbefund).toEqual({ ergebnis: "keine" });
-    expect(zweiter[0]?.duplicate).toBe(false);
+    // Ehrlich ausgeschrieben, was der Eintrag OHNE Anker jetzt bekommt. Bis zum Lauf
+    // gesamt-import-adoption stand hier `keine`: der Vergleich kannte nur die Wissensobjekte und
+    // die Kandidaten DIESES Laufs. Seit R-0116 zählen auch die OFFENEN Kandidaten früherer
+    // Uploads — der Eintrag trifft darum den WIRKLICH wartenden Kandidaten aus Lauf 1, mit dessen
+    // Kennung (nie die des abgelehnten Einreihungsversuchs; in Runde 2 von JOB 3050 stand hier
+    // `identisch` mit einer erfundenen Id).
+    expect(zweiter[0]?.dublettenbefund).toEqual({
+      ergebnis: "identisch",
+      treffer: { art: "kandidat", kandidatId: offeneId },
+    });
+    expect(zweiter[0]?.duplicate).toBe(true);
   });
 
   // ==============================================================================================

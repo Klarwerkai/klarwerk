@@ -11,6 +11,7 @@ import {
   isStaleChunkError,
   shortErrorDetail,
 } from "../../apps/web/src/lib/staleChunk";
+import { woerterbuchQuelleAus } from "../support/woerterbuchquelle";
 
 describe("WP-RETEST7 R1: Stale-Bundle-Erkennung", () => {
   it("erkennt die bekannten dynamic-import-/Preload-Fehler aller Browser", () => {
@@ -80,7 +81,7 @@ describe("WP-RETEST7 R1: Stale-Bundle-Erkennung", () => {
   });
 
   it("die Neu-laden-Meldung existiert in DE, EN und NL", () => {
-    const i18n = readFileSync(resolve(process.cwd(), "apps/web/src/i18n.ts"), "utf8");
+    const i18n = woerterbuchQuelleAus(resolve(process.cwd(), "apps/web/src/i18n.ts"));
     expect(i18n.split(`"${STALE_BUNDLE_KEY}":`).length - 1).toBe(3);
   });
 

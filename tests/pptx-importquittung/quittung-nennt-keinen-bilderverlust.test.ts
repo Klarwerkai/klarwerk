@@ -36,6 +36,7 @@ import {
   wholeDraftFitsWithObjectLink,
 } from "../../apps/web/src/lib/captureFromFile";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
+import { woerterbuchQuelleAus } from "../support/woerterbuchquelle";
 import {
   BILD_BASE64,
   BILD_BYTES,
@@ -538,7 +539,7 @@ describe("JOB 4269 · 4 — Bedienhinweis und Beleg sagen über Bilder dasselbe:
 
   it("nirgends im Produktcode steht noch eine PPTX-Bilderverlust-Behauptung (Ablösung, §8.7)", () => {
     const lib = readFileSync(resolve(process.cwd(), "apps/web/src/lib/captureFromFile.ts"), "utf8");
-    const i18nQuelle = readFileSync(resolve(process.cwd(), "apps/web/src/i18n.ts"), "utf8");
+    const i18nQuelle = woerterbuchQuelleAus(resolve(process.cwd(), "apps/web/src/i18n.ts"));
     for (const quelle of [lib, i18nQuelle]) {
       expect(quelle).not.toContain("Bilder und Sprechernotizen gehen verloren");
       expect(quelle).not.toContain("images and speaker notes are lost");
@@ -550,7 +551,7 @@ describe("JOB 4269 · 4 — Bedienhinweis und Beleg sagen über Bilder dasselbe:
   // ergänzt. Der Katalog darf die Bildzusage danach nirgends mehr tragen — auch nicht in einem
   // zweiten, vergessenen Schlüssel. Deshalb wird die GANZE Datei gelesen, nicht nur der eine Wert.
   it("JOB 4269 · der pauschale Oberflächensatz kommt in i18n.ts nicht mehr vor, in keiner Sprache", () => {
-    const i18nQuelle = readFileSync(resolve(process.cwd(), "apps/web/src/i18n.ts"), "utf8");
+    const i18nQuelle = woerterbuchQuelleAus(resolve(process.cwd(), "apps/web/src/i18n.ts"));
     for (const sprache of SPRACHEN) {
       expect(i18nQuelle, `pauschale Bildzusage steht noch in ${sprache}`).not.toContain(
         PAUSCHALE_BILDZUSAGE[sprache],
@@ -591,7 +592,7 @@ describe("JOB 4228 · 5 — ein gespeicherter Beleg wird nicht umgeschrieben", (
 
   it("es gibt keine Migration: der alte Wortlaut kommt im Produktcode nicht mehr vor", () => {
     const lib = readFileSync(resolve(process.cwd(), "apps/web/src/lib/captureFromFile.ts"), "utf8");
-    const i18nQuelle = readFileSync(resolve(process.cwd(), "apps/web/src/i18n.ts"), "utf8");
+    const i18nQuelle = woerterbuchQuelleAus(resolve(process.cwd(), "apps/web/src/i18n.ts"));
     for (const quelle of [lib, i18nQuelle]) {
       expect(quelle).not.toContain(ALTER_WORTLAUT.de);
       expect(quelle).not.toContain("Text und Struktur je Folie übernommen");

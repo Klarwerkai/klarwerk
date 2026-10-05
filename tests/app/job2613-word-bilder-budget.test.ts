@@ -35,6 +35,7 @@ import {
   trimWordImagesToBudget,
   wordHtmlUtf8Bytes,
 } from "../../apps/web/src/lib/wordAddin";
+import { panelQuelleAus } from "../support/panelquelle";
 
 /** PNG-Magic-Bytes, damit die Bilder als echte Rasterbilder durchgehen. */
 const PNG = "iVBORw0KGgo";
@@ -166,12 +167,8 @@ describe("JOB 2613 D1 · das Budget nimmt Bilder, nicht das ganze Dokument", () 
     // taskpane.html haelt eine verhaltensgleiche ES5-Kopie. Der Aequivalenztest in
     // word-addin.test.ts vergleicht die Rueckgaben; hier wird festgehalten, dass die Kopie den
     // Trimmer und das Feld ueberhaupt kennt, damit die Ursache beim Bruch sofort lesbar ist.
-    const { readFileSync } = require("node:fs") as typeof import("node:fs");
     const { resolve } = require("node:path") as typeof import("node:path");
-    const html = readFileSync(
-      resolve(process.cwd(), "apps/web/public/word-addin/taskpane.html"),
-      "utf8",
-    );
+    const html = panelQuelleAus(resolve(process.cwd(), "apps/web/public/word-addin/taskpane.html"));
     expect(html).toMatch(/function trimWordImagesToBudget/);
     expect(html).toMatch(/droppedImages:/);
     expect(html).toMatch(/prepared\.droppedImages/);

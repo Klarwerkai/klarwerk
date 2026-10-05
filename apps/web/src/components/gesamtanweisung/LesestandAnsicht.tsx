@@ -15,9 +15,10 @@
 //     Verzeichnis (`nameVon`), Zeitpunkte über `formatKoTimestamp`, wie auf den Hauptseiten.
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { AnweisungLesestand, BausteinLesestand } from "../../api/types";
+import type { AnweisungLesestand, BausteinLesestand, KoVersionSnapshot } from "../../api/types";
 import type { NameResolver } from "../../lib/koAuthor";
 import { formatKoTimestamp } from "../../lib/koDates";
+import { type KoVersionPaarDiff, paarDiff } from "../../lib/koVersionDiff";
 import { SanitizedHtml } from "../SanitizedHtml";
 // JOB 4233: die ANZEIGE- UND STRUKTURREGELN der Gliederung kommen aus der EINEN Stelle des Hauses
 // und werden nicht nachgebaut — `d44LeisteZeigen` („ohne Überschrift keine Leiste, aber KEINE
@@ -45,6 +46,21 @@ export interface Bausteinbearbeitung {
   readonly gesperrt: boolean;
   /** FE-001 · Meldet je Abschnitt, ob seine Voraussetzung noch nicht übernommen ist. */
   readonly meldeUngespeichert?: (bausteinId: string, ungespeichert: boolean) => void;
+}
+
+/**
+ * QUELLENÄNDERUNGEN · was ein Abschnitt mit neuerer Quellenfassung an Bedienung zulässt.
+ *
+ * Getrennt von `Bausteinbearbeitung`, weil die Sperren verschieden sind: eine ENTSCHIEDENE Anleitung
+ * wird nicht mehr geordnet, aber eine neuere Fassung darf sie bewusst übernehmen — dann wird sie
+ * wieder zum Entwurf (Server: `mitUebernommenerFassung`). Fehlt es, bleibt die Änderung sichtbar,
+ * aber ohne Knöpfe.
+ */
+export interface Aenderungsbearbeitung {
+  /** Die Fassungssätze eines Eintrags — für die Gegenüberstellung über `paarDiff`. */
+  readonly fassungenLaden: (koId: string) => Promise<KoVersionSnapshot[]>;
+  readonly uebernehmen: (bausteinId: string, aufVersion: number) => void;
+  readonly gesperrt: boolean;
 }
 
 export const LESESTAND_MARKE = "ga-lesestand";
@@ -154,11 +170,241 @@ function BausteinText({ rumpfHtml }: { rumpfHtml: string | null }): JSX.Element 
   );
 }
 
+// ==================================================================================================
+// QUELLENÄNDERUNGEN (aufnahme:20260928) · ÄNDERUNG ANSEHEN, BEIBEHALTEN ODER BEWUSST ÜBERNEHMEN
+// ==================================================================================================
+//
+// DIE GEGENÜBERSTELLUNG IST DIE VORHANDENE: `paarDiff` (`lib/koVersionDiff.ts`) — dieselbe Regel, die
+// die Fassungskarte der Bibliothek trägt. Hier entsteht keine zweite Vergleichsregel.
+//
+// NICHTS GESCHIEHT VON SELBST: solange niemand „übernehmen" wählt, bleibt die bisherige Fassung
+// gebunden und wird auch während des Ansehens ausdrücklich genannt. „Beibehalten" schreibt nichts —
+// die gebundene Fassung IST schon die bisherige; die gefundene Änderung bleibt als solche sichtbar.
+
+/**
+ * Die Abschnitte (ab 1), die von DIESER Quellenänderung betroffen sind: dieselbe Quelle UND ein
+ * offener Vorschlag auf dieselbe neue Fassung.
+ *
+ * BEN, Nacharbeit 3 (F1): hier wurde nur nach `koId` gefiltert. Hatte ein zweiter Abschnitt
+ * derselben Quelle die neue Fassung schon übernommen, stand er trotzdem als „betroffen" da. Die
+ * Liste entsteht bei jedem Zeichnen aus dem gerade gelesenen Lesestand — nach einer Übernahme fällt
+ * der übernommene Abschnitt deshalb von selbst heraus.
+ */
+function betroffeneAbschnitte(
+  bausteine: readonly BausteinLesestand[],
+  baustein: BausteinLesestand,
+): number[] {
+  const ziel = baustein.aktualisierungsvorschlag?.aufVersion;
+  if (ziel === undefined) {
+    return [];
+  }
+  return bausteine.flatMap((b, index) =>
+    b.koId === baustein.koId && b.aktualisierungsvorschlag?.aufVersion === ziel ? [index + 1] : [],
+  );
+}
+
+type Unterschiedslage =
+  | { art: "laden" }
+  | { art: "fehler" }
+  | { art: "da"; diff: KoVersionPaarDiff | null };
+
+function Unterschiede({
+  koId,
+  von,
+  bis,
+  laden,
+}: {
+  koId: string;
+  von: number;
+  bis: number;
+  laden: (koId: string) => Promise<KoVersionSnapshot[]>;
+}): JSX.Element {
+  const { t } = useTranslation();
+  const [lage, setLage] = useState<Unterschiedslage>({ art: "laden" });
+  useEffect(() => {
+    let gueltig = true;
+    setLage({ art: "laden" });
+    laden(koId).then(
+      (saetze) => {
+        if (gueltig) {
+          setLage({ art: "da", diff: paarDiff(saetze, von, bis) });
+        }
+      },
+      () => {
+        if (gueltig) {
+          setLage({ art: "fehler" });
+        }
+      },
+    );
+    return () => {
+      gueltig = false;
+    };
+  }, [koId, von, bis, laden]);
+
+  if (lage.art === "laden") {
+    return (
+      <p aria-live="polite" className={HINWEIS}>
+        {t("quellen.unterschiedeLaden")}
+      </p>
+    );
+  }
+  if (lage.art === "fehler") {
+    return (
+      <p role="alert" className={MELDUNG_FEHLER}>
+        {t("quellen.unterschiedeFehler")}
+      </p>
+    );
+  }
+  const diff = lage.diff;
+  if (diff === null) {
+    // WISSENSLÜCKE STATT ERFINDUNG: eine der beiden Fassungen liegt nicht vor.
+    return <p className={HINWEIS}>{t("ko.snapshotCompareUnknown")}</p>;
+  }
+  if (diff.felder.length === 0) {
+    return <p className={HINWEIS}>{t("ko.snapshotCompareNone")}</p>;
+  }
+  return (
+    <dl className="grid gap-2" data-testid={`${LESESTAND_MARKE}-unterschiede`}>
+      {diff.felder.map((f) => {
+        const wert = (text: string): JSX.Element =>
+          text.length === 0 ? (
+            <span className="text-muted">{t("ko.snapshotFieldEmpty")}</span>
+          ) : f.feld === "bodyHtml" ? (
+            <SanitizedHtml html={text} className="prose-kw text-[12.5px]" />
+          ) : (
+            <>{text}</>
+          );
+        return (
+          <div key={f.feld} data-feld={f.feld}>
+            <dt className="text-[12px] font-semibold text-muted">
+              {t(`ko.snapshotField.${f.feld}`)}
+            </dt>
+            <dd className="grid gap-1 sm:grid-cols-2">
+              <div>
+                <span className="text-[11px] font-semibold uppercase text-muted">
+                  {t("quellen.bisher", { version: diff.von })}
+                </span>
+                <div>{wert(f.alt)}</div>
+              </div>
+              <div>
+                <span className="text-[11px] font-semibold uppercase text-muted">
+                  {t("quellen.neu", { version: diff.bis })}
+                </span>
+                <div>{wert(f.neu)}</div>
+              </div>
+            </dd>
+          </div>
+        );
+      })}
+    </dl>
+  );
+}
+
+function Aenderungskarte({
+  baustein,
+  aufVersion,
+  quelle,
+  betroffen,
+  aenderung,
+}: {
+  baustein: BausteinLesestand;
+  aufVersion: number;
+  quelle: string;
+  /** Die Abschnitte (ab 1) derselben Quelle mit offenem Vorschlag auf dieselbe Fassung. */
+  betroffen: readonly number[];
+  aenderung?: Aenderungsbearbeitung;
+}): JSX.Element {
+  const { t } = useTranslation();
+  const [offen, setOffen] = useState(false);
+  const [beibehalten, setBeibehalten] = useState(false);
+  return (
+    <div
+      className="space-y-2 rounded-btn border border-hairline bg-page p-2.5"
+      data-testid={`${LESESTAND_MARKE}-aenderung`}
+    >
+      <p className={MELDUNG_HINWEIS} data-testid={`${LESESTAND_MARKE}-vorschlag`}>
+        {t("ga.baustein.aktualisierung", { version: aufVersion })}
+      </p>
+      <dl className="grid gap-x-3 gap-y-0.5 text-[13px] sm:grid-cols-2">
+        <dt className="font-semibold">{t("quellen.quelle")}</dt>
+        <dd data-testid={`${LESESTAND_MARKE}-aenderung-quelle`}>{quelle}</dd>
+        <dt className="font-semibold">{t("quellen.verwendet")}</dt>
+        <dd data-testid={`${LESESTAND_MARKE}-aenderung-bisher`}>
+          {t("quellen.fassung", { version: baustein.koVersion })}
+        </dd>
+        <dt className="font-semibold">{t("quellen.neuere")}</dt>
+        <dd data-testid={`${LESESTAND_MARKE}-aenderung-neu`}>
+          {t("quellen.fassung", { version: aufVersion })}
+        </dd>
+        <dt className="font-semibold">{t("quellen.betroffen")}</dt>
+        <dd data-testid={`${LESESTAND_MARKE}-aenderung-abschnitte`}>{betroffen.join(", ")}</dd>
+      </dl>
+      {beibehalten ? (
+        <p className={HINWEIS} data-testid={`${LESESTAND_MARKE}-beibehalten`}>
+          {t("quellen.beibehaltenHinweis", { version: baustein.koVersion })}
+        </p>
+      ) : null}
+      {aenderung ? (
+        <>
+          <p className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className={KNOPF_NEBEN}
+              aria-expanded={offen}
+              onClick={() => {
+                setOffen((war) => !war);
+                setBeibehalten(false);
+              }}
+            >
+              {t("quellen.unterschiedeAnsehen")}
+            </button>
+            <button
+              type="button"
+              className={KNOPF_NEBEN}
+              onClick={() => {
+                setOffen(false);
+                setBeibehalten(true);
+              }}
+            >
+              {t("quellen.beibehalten")}
+            </button>
+            <button
+              type="button"
+              className={KNOPF_NEBEN}
+              disabled={aenderung.gesperrt}
+              onClick={() => aenderung.uebernehmen(baustein.id, aufVersion)}
+            >
+              {t("quellen.uebernehmen", { version: aufVersion })}
+            </button>
+          </p>
+          <p className={HINWEIS}>{t("quellen.uebernehmenFolge")}</p>
+        </>
+      ) : null}
+      {offen && aenderung ? (
+        <div className="space-y-2" data-testid={`${LESESTAND_MARKE}-aenderung-offen`}>
+          {/* Solange angesehen wird, steht da, welche Fassung die Anleitung WEITERHIN verwendet. */}
+          <p className={HINWEIS} data-testid={`${LESESTAND_MARKE}-weiterhin`}>
+            {t("quellen.weiterhin", { version: baustein.koVersion })}
+          </p>
+          <Unterschiede
+            koId={baustein.koId}
+            von={baustein.koVersion}
+            bis={aufVersion}
+            laden={aenderung.fassungenLaden}
+          />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function BausteinZeile({
   baustein,
   nummer,
   anzahl,
   bearbeiten,
+  aenderung,
+  betroffen,
   nameVon,
 }: {
   baustein: BausteinLesestand;
@@ -166,6 +412,8 @@ function BausteinZeile({
   nummer: number;
   anzahl: number;
   bearbeiten?: Bausteinbearbeitung;
+  aenderung?: Aenderungsbearbeitung;
+  betroffen: readonly number[];
   nameVon: NameResolver;
 }): JSX.Element {
   const { t, i18n } = useTranslation();
@@ -202,12 +450,27 @@ function BausteinZeile({
         <p className={MELDUNG_HINWEIS}>{t("ga.baustein.herkunftUnbekannt")}</p>
       )}
       {baustein.aktualisierungsvorschlag ? (
-        <p className={MELDUNG_HINWEIS} data-testid={`${LESESTAND_MARKE}-vorschlag`}>
-          {t("ga.baustein.aktualisierung", {
-            version: baustein.aktualisierungsvorschlag.aufVersion,
+        <Aenderungskarte
+          baustein={baustein}
+          aufVersion={baustein.aktualisierungsvorschlag.aufVersion}
+          quelle={titel}
+          betroffen={betroffen}
+          {...(aenderung ? { aenderung } : {})}
+        />
+      ) : null}
+      {(baustein.momentaufnahmen ?? []).map((datei) => (
+        // Eine hochgeladene Datei hat keine neuere Fassung, die hier erkannt würde.
+        <p
+          key={`${datei.bezeichnung}-${datei.erfasstAm ?? ""}`}
+          className={HINWEIS}
+          data-testid={`${LESESTAND_MARKE}-momentaufnahme`}
+        >
+          {t("quellen.momentaufnahme", {
+            name: datei.bezeichnung || t("quellen.dateiOhneName"),
+            zeit: formatKoTimestamp(datei.erfasstAm, i18n.language) ?? t("fe001.zeitUnbekannt"),
           })}
         </p>
-      ) : null}
+      ))}
       {baustein.nachweisHash === null ? (
         <p className={HINWEIS}>{t("ga.baustein.nachweisFehlt")}</p>
       ) : null}
@@ -262,6 +525,84 @@ function BausteinZeile({
   );
 }
 
+/**
+ * QUELLENÄNDERUNGEN · DREI GETRENNTE AUSSAGEN: letzte Prüfung, gefundene, übernommene Änderungen.
+ *
+ * „Aktuell" steht NUR, wenn der Server `aktuell` gemeldet hat UND die Fläche ihren Stand frisch
+ * bekommen hat. Ist die Auffrischung gescheitert oder fehlt die Verbindung, ist das Ergebnis „nicht
+ * gesichert" — der alte Befund wird nicht als heutiger ausgegeben.
+ */
+function Quellenpruefung({
+  stand,
+  lage,
+}: {
+  stand: AnweisungLesestand;
+  lage: Extract<Anzeigelage, { art: "stand" }>;
+}): JSX.Element | null {
+  const { t, i18n } = useTranslation();
+  const pruefung = stand.aenderungspruefung;
+  if (!pruefung) {
+    return null;
+  }
+  const gescheitert = lage.auffrischungGescheitert || lage.offline;
+  const ergebnis =
+    gescheitert && pruefung.ergebnis === "aktuell" ? "nichtGesichert" : pruefung.ergebnis;
+  const lesbar = (iso: string | null): string =>
+    formatKoTimestamp(iso, i18n.language) ?? t("fe001.zeitUnbekannt");
+  const nummer = new Map(stand.bausteine.map((b, i) => [b.id, i + 1]));
+  const uebernommen = stand.uebernommeneAenderungen;
+  return (
+    <section
+      aria-labelledby="ga-quellen-titel"
+      className="space-y-1.5 rounded-btn border border-hairline bg-page p-3"
+      data-testid={`${LESESTAND_MARKE}-quellen`}
+    >
+      <h3 id="ga-quellen-titel" className="text-[13px] font-semibold text-ink">
+        {t("quellen.titel")}
+      </h3>
+      <p className={HINWEIS} data-testid={`${LESESTAND_MARKE}-quellen-letzte`}>
+        {t("quellen.letzte", { zeit: lesbar(pruefung.pruefzeitpunkt) })}
+      </p>
+      <p
+        className={ergebnis === "fehlgeschlagen" ? MELDUNG_FEHLER : "text-[13px] text-text"}
+        data-testid={`${LESESTAND_MARKE}-quellen-ergebnis`}
+        data-ergebnis={ergebnis}
+      >
+        {t(`quellen.ergebnis.${ergebnis}`, { anzahl: pruefung.fehlgeschlageneQuellen })}
+      </p>
+      <p className="text-[13px] text-text" data-testid={`${LESESTAND_MARKE}-quellen-gefunden`}>
+        {t("quellen.gefunden", { anzahl: pruefung.gefundeneAenderungen })}
+      </p>
+      <div data-testid={`${LESESTAND_MARKE}-quellen-uebernommen`} className="text-[13px] text-text">
+        <span>{t("quellen.uebernommen")}: </span>
+        {uebernommen === null || uebernommen === undefined ? (
+          <span className={HINWEIS}>{t("ga.baustein.unbekannt")}</span>
+        ) : uebernommen.length === 0 ? (
+          <span>{t("ga.baustein.keine")}</span>
+        ) : (
+          <ul className="ml-5 list-disc">
+            {uebernommen.map((u) => (
+              <li key={`${u.bausteinId}-${u.anweisungVersion}`}>
+                {t("quellen.uebernahme", {
+                  abschnitt: nummer.get(u.bausteinId) ?? "?",
+                  von: u.vonFassung,
+                  bis: u.aufFassung,
+                  zeit: lesbar(u.uebernommenAm),
+                  stand: u.anweisungVersion,
+                })}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      {/* Keine automatische Überwachung wird behauptet, die es nicht gibt. */}
+      <p className={HINWEIS} data-testid={`${LESESTAND_MARKE}-quellen-ueberwachung`}>
+        {t("quellen.ueberwachungNichtEingerichtet")}
+      </p>
+    </section>
+  );
+}
+
 /** Eine Kopfangabe der Anleitung — leer heisst „noch nicht beschrieben", nie ein leerer Doppelpunkt. */
 function Kopfangabe({ schluessel, wert }: { schluessel: string; wert: string }): JSX.Element {
   const { t } = useTranslation();
@@ -311,6 +652,7 @@ export function LesestandAnsicht({
   stand,
   zeit,
   bearbeiten,
+  aenderung,
   nameVon,
 }: {
   lage: Anzeigelage;
@@ -318,6 +660,8 @@ export function LesestandAnsicht({
   /** Der Zeitpunkt, auf den sich der angezeigte Stand bezieht. */
   zeit: string;
   bearbeiten?: Bausteinbearbeitung;
+  /** QUELLENÄNDERUNGEN · fehlt es, bleiben gefundene Änderungen sichtbar, aber ohne Knöpfe. */
+  aenderung?: Aenderungsbearbeitung;
   /**
    * FE-001 · Namen aus dem Verzeichnis. Fehlt er (die Ansicht wird auch ohne Abfragen gezeichnet),
    * steht der ehrliche Ersatz „nicht abrufbar" — nie die Kennung.
@@ -409,6 +753,7 @@ export function LesestandAnsicht({
           {t("ga.unvollstaendig")} {t("ga.verborgene", { anzahl: stand.verborgeneBausteine })}
         </p>
       ) : null}
+      <Quellenpruefung stand={stand} lage={lage} />
 
       <Dokument stand={stand}>
         {stand.bausteine.length === 0 ? (
@@ -422,7 +767,9 @@ export function LesestandAnsicht({
                 nummer={index + 1}
                 anzahl={stand.bausteine.length}
                 nameVon={namen}
+                betroffen={betroffeneAbschnitte(stand.bausteine, baustein)}
                 {...(bearbeiten ? { bearbeiten } : {})}
+                {...(aenderung ? { aenderung } : {})}
               />
             ))}
           </ol>

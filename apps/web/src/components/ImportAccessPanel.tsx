@@ -32,16 +32,31 @@
 // KEINE ADMIN-FLÄCHE DANEBEN: Der Entwurf (C3) schlug eine Verwaltung im Admin-Bereich vor. Weil die
 // Zugangsdaten nur noch auf dem Server gesetzt werden, gibt es NICHTS zu verwalten — die Teilung
 // entfällt, und der Verweis dorthin wäre ein Verweis auf eine leere Seite.
+//
+// ================================================================================================
+// R-0134 / R-1005 — DER EINE KNOPF: DEN IMPORT EIN- UND AUSSCHALTEN.
+// ================================================================================================
+//
+// Hier steht seither GENAU EIN Knopf, und er nimmt kein Geheimnis entgegen: er legt den
+// Betreiberschalter um (`PUT /api/import/confluence/schalter`, nur `{ an }`). Er erscheint nur, wenn
+// der Server einen Betreiberschalter meldet UND die Installation den Import freigibt — sonst
+// könnte er nichts bewirken. Die Sperre setzen die Importrouten am Server durch; dieser Knopf ist
+// die Bedienung dazu, nicht die Sperre selbst. Weiterhin kein Eingabefeld, kein Formular, kein Wert.
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
+import { ApiError } from "../api/client";
+import { endpoints } from "../api/endpoints";
 import { useImportAccessConfluence } from "../api/hooks";
 import { useRole } from "../app/RoleContext";
 import {
   IMPORT_ACCESS_BLOCKER_TEXT,
+  IMPORT_ACCESS_SWITCHED_OFF_TEXT,
   IMPORT_ACCESS_TEXT,
+  betreiberHatAusgeschaltet,
   importAccessState,
 } from "../lib/importAccessState";
 import { formatKoTimestamp } from "../lib/koDates";
-import { Card } from "./ui";
+import { Button, Card } from "./ui";
 
 const TONE_CLASS: Record<"pos" | "warn" | "neutral", string> = {
   pos: "bg-trust-pos-bg text-trust-pos-text",
@@ -55,6 +70,15 @@ export function ImportAccessPanel(): JSX.Element | null {
   // Die Route verlangt `users.manage` — wer es nicht trägt, fragt gar nicht erst (kein 403-Rauschen,
   // dieselbe Regel wie bei useReasonerConfig). Der Import selbst ist ohnehin admin-gebunden.
   const zugang = useImportAccessConfluence(role === "admin");
+  const qc = useQueryClient();
+  // R-0134 / R-1005: Umlegen des Betreiberschalters. Die Antwort IST die neue Auskunft — sie ersetzt
+  // den Stand im Abfragespeicher, den auch die Lauf-Karte liest (Stufe2.tsx, ImportRunPanel).
+  const umlegen = useMutation({
+    mutationFn: (an: boolean) => endpoints.importAccess.confluenceSchalter(an),
+    onSuccess: (neu) => {
+      qc.setQueryData(["import-access", "confluence"], neu);
+    },
+  });
   if (!zugang.data) {
     // Keine Auskunft — dann auch keine Behauptung. Eine Fläche, die „unbekannt" anzeigt, wäre für
     // eine Beitragende nur Rauschen über etwas, das sie ohnehin nicht ändern kann.
@@ -68,7 +92,17 @@ export function ImportAccessPanel(): JSX.Element | null {
     enabled: daten.enabled,
     credentialsUsable: daten.credentialsUsable,
   });
-  const text = IMPORT_ACCESS_TEXT[state];
+  // „Vom Betreiber ausgeschaltet" hat einen eigenen Text — der für „nicht freigegeben" schickt zum
+  // Server, dieser hier zum Knopf darunter.
+  const betreiberAus = betreiberHatAusgeschaltet(daten.betreiber);
+  const text = betreiberAus ? IMPORT_ACCESS_SWITCHED_OFF_TEXT : IMPORT_ACCESS_TEXT[state];
+  const betreiber = daten.betreiber;
+  const schalterFehler =
+    umlegen.error instanceof ApiError && umlegen.error.code === "IMPORT_NOT_RELEASED"
+      ? "imp.access.schalter.nichtFreigegeben"
+      : umlegen.error
+        ? "imp.access.schalter.fehler"
+        : null;
   const blockerKey = daten.blocker ? IMPORT_ACCESS_BLOCKER_TEXT[daten.blocker] : undefined;
   // JOB-924 D6: fail-closed — ein unparsebarer Wert wird zu `null` und damit zum Unbekannt-Satz.
   const zuletzt = formatKoTimestamp(daten.lastConnectedAt, i18n.language);
@@ -80,13 +114,37 @@ export function ImportAccessPanel(): JSX.Element | null {
       <div className="mt-1.5 flex flex-wrap items-center gap-2">
         <span
           data-testid="import-access-state"
-          data-state={state}
+          data-state={betreiberAus ? "switched-off" : state}
           className={`inline-flex items-center rounded-pill px-2 py-0.5 font-mono text-[10px] font-semibold ${TONE_CLASS[text.tone]}`}
         >
           {t(text.titleKey)}
         </span>
       </div>
       <p className="mt-1.5 text-[12.5px] leading-relaxed text-muted">{t(text.bodyKey)}</p>
+      {/* R-0134 / R-1005: der Betreiberschalter — nur wenn der Server ihn meldet UND die
+          Installation den Import freigibt. Ohne Freigabe könnte der Knopf nichts bewirken. */}
+      {betreiber?.freigegeben ? (
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <Button
+            variant={betreiber.an ? "outline" : "primary"}
+            data-testid="import-access-schalter"
+            data-an={betreiber.an ? "yes" : "no"}
+            disabled={umlegen.isPending}
+            onClick={() => umlegen.mutate(!betreiber.an)}
+          >
+            {t(betreiber.an ? "imp.access.schalter.aus" : "imp.access.schalter.an")}
+          </Button>
+          <span className="text-[12px] text-muted">{t("imp.access.schalter.hinweis")}</span>
+        </div>
+      ) : null}
+      {schalterFehler ? (
+        <p
+          data-testid="import-access-schalter-fehler"
+          className="mt-1 text-[12.5px] leading-relaxed text-trust-crit-text"
+        >
+          {t(schalterFehler)}
+        </p>
+      ) : null}
       {/* Der Zusatzgrund NUR dann, wenn er etwas erklärt: „alle vier stehen und es geht trotzdem
           nicht" wäre sonst von „eine fehlt" ununterscheidbar. */}
       {blockerKey ? (

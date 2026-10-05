@@ -190,8 +190,9 @@ Prüflauf.
   P-PRUEFEN-VOLLTEXT Hälfte 1.
 - Beschriftung: das Feld trägt wieder „Volltext filtern …“ über den neuen Schlüssel
   `pruefboard.volltextFiltern`. `val.filter` bleibt unverändert stehen, weil der Umzugsnachweis
-  `tests/i18n-textmodule/bestand-unveraendert.test.ts` seinen Wert samt Prüfsumme festhält. In
-  `i18n.ts` ist nur ein Kommentar dazu ergänzt, kein Wert geändert. Rest: `val.filter` ist damit
+  `tests/i18n-textmodule/bestand-unveraendert.test.ts` seinen Wert samt Prüfsumme festhält. Am
+  Eintrag `val.filter` ist nur ein Kommentar ergänzt, kein Wert geändert — seit der
+  I18N-AUFTEILUNG auf main steht er in `apps/web/src/woerterbuch/de.ts`, nicht mehr in `i18n.ts`. Rest: `val.filter` ist damit
   ungenutzt; entfernen lässt er sich erst mit einem neu erzeugten Schnappschuss
   (`tests/i18n-textmodule/bestand-erzeugen.ts`).
 - `services/ask/src/service.ts` / `services/app/src/routes/ask-routes.ts`: `gap.priority-changed`

@@ -23,6 +23,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
+import { panelQuelleAus } from "../support/panelquelle";
 
 const TASKPANE = "apps/web/public/word-addin/taskpane.html";
 // JOB 3667 R8 (14.09.2026): das Fenster wird aus ZWEI Dateien ausgeliefert. Wer nur das
@@ -45,7 +46,7 @@ interface Laufzeit {
 }
 
 function taskpaneStarten(evidence: unknown, optionen: LaufOptionen = {}): Laufzeit {
-  const html = readFileSync(resolve(process.cwd(), TASKPANE), "utf8");
+  const html = panelQuelleAus(TASKPANE);
   const bodyStart = html.indexOf("<body>") + "<body>".length;
   const bodyEnd = html.indexOf("</body>");
   const body = html.slice(bodyStart, bodyEnd);
@@ -332,7 +333,7 @@ describe("mega36 B3 · der Fehler-Rueckfall bietet den ABGELEITETEN Text an", ()
   });
 
   it("in DE, EN und NL fordert der Rueckfalltext nirgends mehr das Kopieren des reinen Koerpers", () => {
-    const html = readFileSync(resolve(process.cwd(), TASKPANE), "utf8");
+    const html = panelQuelleAus(TASKPANE);
     expect(html).not.toContain("bitte den Text im Feld markieren und manuell kopieren");
     expect(html).not.toContain("please select the text in the field and copy it manually");
     expect(html).not.toContain("selecteer de tekst in het veld en kopieer deze handmatig");

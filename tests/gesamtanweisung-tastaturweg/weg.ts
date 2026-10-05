@@ -9,6 +9,17 @@
 //     „Bereiche“ und den Punkt „Gesamtanweisungen“ — mit sichtbarem Fokus — und steht danach die
 //     Seite? Und schliesst Escape das Menü mit Fokusrückgabe?
 //
+// FE-002 (HEADER TEIL 1, 26.09.2026) HAT DEN WEG VERKÜRZT, nicht die Frage: die weiteren Bereiche
+// stehen seither unter dem beschrifteten Einstieg „Arbeitsbereiche“ im Kopfband, OFFEN statt in
+// einem Untermenü des Zahnrads. Der Weg heisst jetzt „Arbeitsbereiche“ → „Gesamtanweisungen“ →
+// die Seite steht. Die Stationen bleiben, ihr Gegenstand ist nachgeführt:
+//   1  „Arbeitsbereiche“ per Tab erreichen (sichtbarer Fokus), mit Enter öffnen
+//   2  der Einstieg SAGT sein Öffnen an (`aria-expanded=true` am Auslöser) — vorher das Untermenü
+//   3  der Menüpunkt per Tab und Enter
+//   4  die Seite steht
+// K2 fragt jetzt, ob der Punkt NOCH hinter dem Zahnrad liegt (er darf es nicht — FE-002), K3 misst
+// Escape und Fokusrückgabe am neuen Einstieg und die Nachbarn in beiden Menüs.
+//
 // ------------------------------------------------------------------------------------------------
 // WAS HIER ECHT IST — und was ein Nachweis aus diesen Stationen deshalb behaupten darf.
 // ------------------------------------------------------------------------------------------------
@@ -76,9 +87,12 @@ export const SPRACHEN = ["de", "en", "nl"] as const;
  */
 export const BREIT = { width: 1280, height: 900 } as const;
 
+/** FE-002: der beschriftete Einstieg „Arbeitsbereiche“ — er trägt auch `aria-expanded`. */
+export const AUSLOESER = '[data-testid="kopfband-arbeitsbereiche"]';
+export const MENUEFLAECHE = '[data-testid="arbeitsbereiche-menue"]';
+/** Das Zahnrad („Einstellungen und Hilfe“) — K2 misst, dass der Punkt dort NICHT mehr liegt. */
 export const ZAHNRAD = '[data-testid="kopfband-zahnrad"]';
-export const MENUEFLAECHE = '[data-testid="zahnrad-menue"]';
-export const BEREICHE = '[data-testid="zahnrad-weitere-bereiche"]';
+export const ZAHNRAD_MENUE = '[data-testid="zahnrad-menue"]';
 export const EINTRAG = '[data-testid="bereich-gesamtanweisungen"]';
 export const GESAMTANWEISUNG_PFAD = "/gesamtanweisungen";
 
@@ -131,10 +145,10 @@ export function sollwerte(sprache: string): Sollwerte {
     return wert as string;
   };
   return {
-    bereiche: hole("menue.weitereBereiche"),
+    bereiche: hole("fe002.arbeitsbereiche"),
     eintrag: hole("ga.bereich.titel"),
     seitenhilfe: hole("menue.seitenhilfe"),
-    schnellnavigation: hole("menue.schnellnavigation"),
+    schnellnavigation: hole("fe002.seiteFindenMenue"),
     hilfe: hole("nav.help"),
   };
 }
@@ -250,14 +264,46 @@ export function profilFuer(
 }
 
 /**
- * STATION 1 · Das Zahnrad per Tab erreichen, sichtbaren Fokus nachmessen, mit Enter öffnen.
+ * STATION 1 · „Arbeitsbereiche“ per Tab erreichen, sichtbaren Fokus nachmessen, mit Enter öffnen.
  *
- * Der Selektorweg und nicht der Beschriftungsweg: das Zahnrad trägt keinen Text, nur ein
- * `aria-label` (`ZahnradMenue.tsx:207`).
+ * FE-002: bis hierher war Station 1 das Zahnrad (Selektorweg, es trug nur ein `aria-label`). Der
+ * neue Einstieg trägt sein Wort sichtbar; erreicht wird er trotzdem über den Selektor, damit die
+ * Zählung der Tab-Schritte dieselbe Bauart behält.
  *
  * Nach dem Öffnen wird nachgemessen, dass der Fokus WIRKLICH im Menü steht — sonst führte jeder
  * Tab-Weg darunter an ihm vorbei, und die Zahlen sagten etwas über die Seite statt über das Menü.
  */
+export async function oeffneArbeitsbereiche(
+  seite: Seite,
+  sprache: string,
+  frist = 30_000,
+): Promise<number> {
+  await warte(
+    seite,
+    IM_DOKUMENT,
+    `das Kopfband mit „Arbeitsbereiche“ (${sprache})`,
+    AUSLOESER,
+    45_000,
+  );
+  const schritte = await tabUndEnter(seite, AUSLOESER, `Arbeitsbereiche (${sprache})`, 250, true);
+  await warte(
+    seite,
+    IM_DOKUMENT,
+    `das geöffnete Menü „Arbeitsbereiche“ (${sprache})`,
+    MENUEFLAECHE,
+    frist,
+  );
+  await warte(
+    seite,
+    FLAECHE_HAT_FOKUS,
+    `der Fokus steht nach dem Öffnen IM Menü „Arbeitsbereiche“ (${sprache})`,
+    MENUEFLAECHE,
+    frist,
+  );
+  return schritte;
+}
+
+/** Das Zahnrad-Menü („Einstellungen und Hilfe“) per Tab und Enter öffnen — für K2 und K3. */
 export async function oeffneZahnrad(
   seite: Seite,
   sprache: string,
@@ -265,67 +311,51 @@ export async function oeffneZahnrad(
 ): Promise<number> {
   await warte(seite, IM_DOKUMENT, `das Kopfband mit dem Zahnrad (${sprache})`, ZAHNRAD, 45_000);
   const schritte = await tabUndEnter(seite, ZAHNRAD, `Zahnrad (${sprache})`, 250, true);
-  await warte(seite, IM_DOKUMENT, `das geöffnete Zahnrad-Menü (${sprache})`, MENUEFLAECHE, frist);
+  await warte(seite, IM_DOKUMENT, `das geöffnete Zahnrad-Menü (${sprache})`, ZAHNRAD_MENUE, frist);
   await warte(
     seite,
     FLAECHE_HAT_FOKUS,
     `der Fokus steht nach dem Öffnen IM Zahnrad-Menü (${sprache})`,
-    MENUEFLAECHE,
+    ZAHNRAD_MENUE,
     frist,
   );
   return schritte;
 }
 
 /**
- * STATION 2 · „Bereiche“ aufklappen — Beschriftung zuerst prüfen, dann bedienen.
+ * STATION 2 · Der Einstieg trägt sein Wort SICHTBAR und SAGT sein Öffnen an.
  *
  * `aria-expanded=true` ist die ZUSAGE an die Tastatur- und Vorlesebedienung und wird deshalb
- * eigens nachgemessen; ein Untermenü, das sichtbar aufklappt und es nicht ansagt, ist für einen
- * Bildschirmleser zu.
+ * eigens nachgemessen; ein Menü, das sichtbar aufgeht und es nicht ansagt, ist für einen
+ * Bildschirmleser zu. (Bis FE-002 stand diese Zusage am Untermenü „Bereiche“ im Zahnrad.)
  */
-export async function klappeBereicheAuf(
+export async function arbeitsbereicheSagenOeffnenAn(
   seite: Seite,
   sollBereiche: string,
   sprache: string,
   frist = 30_000,
-  /**
-   * Beginnt der Tab-Weg am Dokumentanfang? Standard ist NEIN: nach dem Öffnen steht der Fokus in
-   * der ersten Menüzeile, und ein Mensch tabbt von dort weiter. JA braucht, wer den Fokus vorher
-   * aus dem Menü getragen hat (der Gang aus `keinVersteckterTabstopp`) — sonst hinge die Zählung
-   * an der Vorgeschichte.
-   */
-  vonVorn = false,
-): Promise<number> {
+): Promise<void> {
   await mussSichtbarTragen(
     seite,
-    BEREICHE,
+    AUSLOESER,
     sollBereiche,
-    `das Untermenü heisst in „${sprache}" nicht „${sollBereiche}"`,
-  );
-  const schritte = await tabUndEnter(
-    seite,
-    BEREICHE,
-    `Untermenü „${sollBereiche}" (${sprache})`,
-    vonVorn ? 250 : 80,
-    vonVorn,
+    `der Einstieg heisst in „${sprache}" nicht „${sollBereiche}"`,
   );
   try {
     await warte(
       seite,
       ARIA_AUFGEKLAPPT,
-      `das aufgeklappte Untermenü „${sollBereiche}" (${sprache})`,
-      BEREICHE,
+      `der geöffnete Einstieg „${sollBereiche}" sagt es an (${sprache})`,
+      AUSLOESER,
       frist,
     );
   } catch (fehler) {
-    // Der STAND wird erst JETZT gelesen — vor dem Warten wäre er zwangsläufig „false" gewesen und
-    // sagte nichts. Er unterscheidet die beiden Ursachen: Attribut steht auf „false" (das
-    // Untermenü sagt seinen Zustand falsch an) gegen „(kein Attribut)" (es sagt ihn gar nicht an).
+    // Der STAND wird erst JETZT gelesen — er unterscheidet „false" (falsch angesagt) von „(kein
+    // Attribut)" (gar nicht angesagt).
     throw new Error(
-      `${MARKE}: ${String(fehler)}\naria-expanded an ${BEREICHE} steht auf „${await seite.evaluate<string>(fn(ARIA_STAND), BEREICHE)}"`,
+      `${MARKE}: ${String(fehler)}\naria-expanded an ${AUSLOESER} steht auf „${await seite.evaluate<string>(fn(ARIA_STAND), AUSLOESER)}"`,
     );
   }
-  return schritte;
 }
 
 /**
@@ -345,7 +375,7 @@ export async function waehleGesamtanweisungen(
   await warte(
     seite,
     IM_DOKUMENT,
-    `der Menüpunkt „${sollEintrag}" im aufgeklappten Untermenü (${sprache})`,
+    `der Menüpunkt „${sollEintrag}" im geöffneten Menü „Arbeitsbereiche“ (${sprache})`,
     EINTRAG,
     frist,
   );
@@ -440,27 +470,26 @@ export async function seiteMussStehen(
 }
 
 export interface Menuebefund {
-  zahnrad: number;
-  bereiche: number;
+  /** Tab-Schritte bis „Arbeitsbereiche“ (FE-002; bis dahin: bis zum Zahnrad). */
+  arbeitsbereiche: number;
   eintrag: number;
   beschriftung: string;
   href: string;
   seite: Seitenbefund;
 }
 
-/** DER GANZE MENÜWEG: Zahnrad → Bereiche → Gesamtanweisungen → die Seite steht. */
+/** DER GANZE MENÜWEG: Arbeitsbereiche → Gesamtanweisungen → die Seite steht (FE-002). */
 export async function menuewegOhneMaus(
   seite: Seite,
   soll: Sollwerte,
   sprache: string,
 ): Promise<Menuebefund> {
-  const zahnrad = await oeffneZahnrad(seite, sprache);
-  const bereiche = await klappeBereicheAuf(seite, soll.bereiche, sprache);
+  const arbeitsbereiche = await oeffneArbeitsbereiche(seite, sprache);
+  await arbeitsbereicheSagenOeffnenAn(seite, soll.bereiche, sprache);
   const punkt = await waehleGesamtanweisungen(seite, soll.eintrag, sprache);
   const befund = await seiteMussStehen(seite, soll.eintrag, sprache);
   return {
-    zahnrad,
-    bereiche,
+    arbeitsbereiche,
     eintrag: punkt.schritte,
     beschriftung: punkt.beschriftung,
     href: punkt.href,
@@ -478,17 +507,20 @@ export interface Tabstoppbefund {
 }
 
 /**
- * K2 · VOR dem Aufklappen ist der Menüpunkt NICHT fokussierbar — kein versteckter Tab-Stopp.
+ * K2 · Der Menüpunkt liegt NICHT (mehr) hinter dem Zahnrad — kein versteckter Tab-Stopp dort.
+ *
+ * FE-002: Pedis Befund war, dass Arbeitsseiten hinter einem Zahnrad liegen. Bis hierher fragte K2,
+ * ob der Punkt VOR dem Aufklappen von „Bereiche“ schon ertabbar sei; seither gibt es dieses
+ * Untermenü nicht mehr, und die Frage lautet: steht „Gesamtanweisungen“ im geöffneten Zahnrad-Menü
+ * („Einstellungen und Hilfe“) — als Tab-Halt oder überhaupt im Dokument? Beides darf nicht sein.
  *
  * WARUM ZWEI MESSUNGEN UND NICHT EINE: „steht nicht im Dokument" allein liesse einen Punkt durch,
  * der ausserhalb des Menüs vorgehalten wird; „kein Tab-Halt im Menü" allein liesse einen durch, der
  * im Dokument steht und nur gerade nicht erreicht wurde. Beides zusammen ist die Zusage.
  *
- * UND DER GANG BELEGT SICH SELBST: er muss mindestens drei Hälte IM Menü gehabt haben. Ein Gang,
- * der das Menü nie betritt, fände den Punkt auch dann nicht, wenn er mitten darin stünde — er wäre
- * grün und wertlos.
+ * UND DER GANG BELEGT SICH SELBST: er muss mindestens drei Halte IM Zahnrad-Menü gehabt haben.
  *
- * VORBEDINGUNG: das Zahnrad-Menü ist offen, das Untermenü ist ZU. Beides wird nachgemessen.
+ * VORBEDINGUNG: das Zahnrad-Menü ist offen, „Arbeitsbereiche“ ist zu. Beides wird nachgemessen.
  */
 export async function keinVersteckterTabstopp(
   seite: Seite,
@@ -497,12 +529,12 @@ export async function keinVersteckterTabstopp(
   anschlaege = 40,
 ): Promise<Tabstoppbefund> {
   expect(
-    await seite.evaluate<boolean>(fn(IM_DOKUMENT), MENUEFLAECHE),
+    await seite.evaluate<boolean>(fn(IM_DOKUMENT), ZAHNRAD_MENUE),
     `${MARKE}: das Zahnrad-Menü ist nicht offen (${sprache}) — dann misst dieser Gang nichts`,
   ).toBe(true);
   expect(
-    await seite.evaluate<string>(fn(ARIA_STAND), BEREICHE),
-    `${MARKE}: das Untermenü ist bereits aufgeklappt (${sprache}) — dann misst dieser Gang nicht den Zustand VOR dem Aufklappen`,
+    await seite.evaluate<string>(fn(ARIA_STAND), AUSLOESER),
+    `${MARKE}: „Arbeitsbereiche“ ist offen (${sprache}) — dann misst dieser Gang nicht das Zahnrad allein`,
   ).toBe("false");
 
   const imDokument = await seite.evaluate<boolean>(fn(IM_DOKUMENT), EINTRAG);
@@ -512,7 +544,7 @@ export async function keinVersteckterTabstopp(
     await seite.keyboard.press("Tab");
     const halt = await seite.evaluate<{ marke: string; text: string; imMenue: boolean }>(
       fn(TABHALT),
-      { flaeche: MENUEFLAECHE },
+      { flaeche: ZAHNRAD_MENUE },
     );
     if (!halt.imMenue) {
       continue;
@@ -529,17 +561,18 @@ export async function keinVersteckterTabstopp(
   ).toBeGreaterThanOrEqual(3);
   expect(
     treffer,
-    `${MARKE}: „${sollEintrag}" ist in „${sprache}" schon VOR dem Aufklappen ein Tab-Stopp im Menü — das ist ein versteckter Halt`,
+    `${MARKE}: „${sollEintrag}" ist in „${sprache}" ein Tab-Stopp im Zahnrad-Menü — die Arbeitsseite liegt wieder hinter dem Zahnrad (FE-002)`,
   ).toEqual([]);
   expect(
     imDokument,
-    `${MARKE}: „${sollEintrag}" steht in „${sprache}" schon VOR dem Aufklappen im Dokument — besucht: ${imMenue.join(" · ")}`,
+    `${MARKE}: „${sollEintrag}" steht in „${sprache}" bei offenem Zahnrad-Menü im Dokument — besucht: ${imMenue.join(" · ")}`,
   ).toBe(false);
   return { imMenue, treffer, imDokument };
 }
 
 /**
- * K3 · Escape schliesst das Menü, und der Fokus liegt wieder SICHTBAR auf dem Zahnrad.
+ * K3 · Escape schliesst das Menü „Arbeitsbereiche“, und der Fokus liegt wieder SICHTBAR auf dem
+ * Einstieg (FE-002; bis dahin: auf dem Zahnrad).
  *
  * Der sichtbare Fokus wird auch hier am berechneten Stil nachgemessen und nicht aus dem Quelltext
  * geschlossen: `schliessen(true)` ruft `focus()` programmatisch (`Menue.tsx:62-67`), und ob ein
@@ -560,15 +593,15 @@ export async function escapeSchliesstUndGibtFokusZurueck(
   await warte(
     seite,
     NICHT_IM_DOKUMENT,
-    `das geschlossene Zahnrad-Menü nach Escape (${sprache})`,
+    `das geschlossene Menü „Arbeitsbereiche“ nach Escape (${sprache})`,
     MENUEFLAECHE,
     frist,
   );
   expect(
-    await seite.evaluate<boolean>(fn(AKTIV_IST), ZAHNRAD),
-    `${MARKE}: nach Escape liegt der Fokus in „${sprache}" nicht auf dem Zahnrad — aktiv: ${await seite.evaluate<string>(fn(AKTIV_BESCHREIBUNG))}`,
+    await seite.evaluate<boolean>(fn(AKTIV_IST), AUSLOESER),
+    `${MARKE}: nach Escape liegt der Fokus in „${sprache}" nicht auf „Arbeitsbereiche“ — aktiv: ${await seite.evaluate<string>(fn(AKTIV_BESCHREIBUNG))}`,
   ).toBe(true);
-  await fokusMussSichtbarSein(seite, `Zahnrad nach Escape (${sprache})`);
+  await fokusMussSichtbarSein(seite, `„Arbeitsbereiche“ nach Escape (${sprache})`);
 }
 
 /** Ein Menüpunkt, der unverändert erreichbar bleiben muss. */
@@ -604,7 +637,7 @@ export async function nachbarpunkteBleibenErreichbar(
   return schritte;
 }
 
-/** Der sichtbare Text des offenen Menüs — für den Befund, den ein Mensch in der Rückgabe liest. */
-export async function menuetext(seite: Seite): Promise<string> {
-  return (await sichtbefund(seite, MENUEFLAECHE)).text;
+/** Der sichtbare Text eines offenen Menüs — für den Befund, den ein Mensch in der Rückgabe liest. */
+export async function menuetext(seite: Seite, flaeche = MENUEFLAECHE): Promise<string> {
+  return (await sichtbefund(seite, flaeche)).text;
 }

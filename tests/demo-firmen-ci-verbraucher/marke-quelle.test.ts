@@ -17,11 +17,13 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { panelQuelleAus } from "../support/panelquelle";
 
 const WURZEL = join(__dirname, "..", "..");
 const lies = (rel: string) => readFileSync(join(WURZEL, rel), "utf8");
 
-const TASKPANE = lies("apps/web/public/word-addin/taskpane.html");
+// R-1611: das Fenster liegt in drei Dateien; gelesen wird es als EIN Dokument.
+const TASKPANE = panelQuelleAus(join(WURZEL, "apps/web/public/word-addin/taskpane.html"));
 const PANEL_JS = lies("extensions/klara-browser/panel.js");
 const PANEL_CSS = lies("extensions/klara-browser/panel.css");
 const PANEL_HTML = lies("extensions/klara-browser/panel.html");

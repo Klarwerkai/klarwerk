@@ -77,12 +77,16 @@ import {
   type AnweisungRepo,
   type AnweisungStandAufnahme,
   DeduplizierenderKantenBestand,
+  // R-0169 (Nacharbeit 5): die interne Dokumentakte (Word-Zusatz, JSON ohne externalId).
+  type DokumentaktenRepo,
+  DokumentaktenService,
   type EvidenceRepo,
   // JOB 4156 (WIKI-GESAMTANWEISUNG-ANSCHLUSS): der Anweisungsdienst und seine haltbare Ablage.
   // Beide sind seit diesem Auftrag über `services/knowledge-object/index.ts` erreichbar — genau
   // dieser fehlende Modulexport war der Grund, warum das seit JOB 4154 fertige Routen-Plugin an
   // keiner App angemeldet werden konnte (`routes/gesamtanweisung-routes.ts`, Kopf).
   GesamtanweisungDienst,
+  InMemoryDokumentaktenRepo,
   InMemoryEvidenceRepo,
   InMemoryKoRepo,
   InMemoryKoVersionRepo,
@@ -100,6 +104,7 @@ import {
   KoService,
   type KoVersionRepo,
   PgAnweisungRepo,
+  PgDokumentaktenRepo,
   PgEvidenceRepo,
   PgKantenRepo,
   PgKoRepo,
@@ -129,13 +134,22 @@ import {
   LifecycleService,
   PgLifecycleRepo,
 } from "../../lifecycle";
-import { ManagementService } from "../../management";
+import {
+  InMemoryManagementProfileRepo,
+  type ManagementProfileRepo,
+  ManagementService,
+  PgManagementProfileRepo,
+} from "../../management";
 import { MediaAnalysisService, createCappedTranscriberFromEnv } from "../../media";
 import {
   InMemoryModelRunRepo,
   type ModelRunRepo,
   ModelRunService,
   PgModelRunRepo,
+  ProtokollModelRunRepo,
+  lesePreisliste,
+  mitKiTrace,
+  traceKontextAus,
 } from "../../model-runs";
 import {
   ConsoleMailer,
@@ -208,6 +222,13 @@ import {
   InMemoryBrandingSettingsRepo,
   PgBrandingSettingsRepo,
 } from "./branding-settings";
+// R-0134 / R-1005: der Betreiberschalter des Confluence-Imports — dieselbe Bauform wie die
+// Markenwahl (haltbar im Postgres-Betrieb, im Speicher ohne Datenbank).
+import {
+  type ConfluenceImportSchalterRepo,
+  InMemoryConfluenceImportSchalterRepo,
+  PgConfluenceImportSchalterRepo,
+} from "./confluence-import-schalter";
 import { type SemanticPrefilter, removeKoFromDuplicatePrefilter } from "./duplicate-detection";
 import { cappedEmbeddingProvider } from "./embed-concurrency";
 import type { FactoryReset } from "./factory-reset";
@@ -227,7 +248,7 @@ import {
   type LesevariantenRepo,
   PgLesevariantenRepo,
 } from "./lesevarianten";
-import { sanitizeLogText } from "./log-sanitize";
+import { entferneGeheimeEnvWerte, sanitizeLogText } from "./log-sanitize";
 import { makeAssignmentNotifier } from "./notify";
 // AUFTRAG-mega20 Block C: die modulübergreifende Referenzprüfung lebt in services/app (s. Datei).
 import type { ObjectReferenceSources } from "./object-references";
@@ -278,6 +299,7 @@ import { reasonerRoutes } from "./routes/reasoner-routes";
 // JOB 4086: Adapter #2 des quellneutralen Import-Vertrags — SharePoint/OneDrive.
 import { sharepointImportRoutes } from "./routes/sharepoint-import-routes";
 import { slidesRoutes } from "./routes/slides-routes";
+import { supportKontaktAusUmgebung, supportRoutes } from "./routes/support-routes";
 import { validationRoutes } from "./routes/validation-routes";
 // G27 R2 (Entscheidung 15 §A): der EINE kanonische Startupvertrag der Suchprojektion — von
 // App-Ready hier und von `runSeed()` in `seed.ts` gemeinsam benutzt.
@@ -387,6 +409,12 @@ export interface AppServices {
    */
   brandingSettings: BrandingSettingsRepo;
   /**
+   * R-0134 / R-1005: der Betreiberschalter des Confluence-Imports — über die Oberfläche umlegbar,
+   * von jeder Confluence-Importroute je Anfrage durchgesetzt. Aus demselben Grund wie
+   * `brandingSettings` NICHT in `AppRepos`; im Postgres-Betrieb haltbar (`buildPgServices`).
+   */
+  confluenceImportSchalter: ConfluenceImportSchalterRepo;
+  /**
    * WIKI-BEARBEITUNGSRESERVIERUNG: die laufenden Bearbeitungshinweise („hier bearbeitet gerade
    * jemand"). Neben `kanten` und ausdrücklich NICHT in `AppRepos`, aus demselben Grund wie dort
    * (`MUTATING_METHODS` in `dev-persist.ts` ist ein vollständiger Record über `keyof AppRepos`) —
@@ -453,6 +481,8 @@ export interface AppServices {
   // Route fernhalten. `ImportAccessService` bekommt diese Ablage; die Route bekommt nur ihn.
   importRuns: ImportRunRepo;
   externalSources: ExternalSourceRepo;
+  // R-0169 (Nacharbeit 5): die interne Dokumentakte — Word-Weg und JSON ohne externalId.
+  dokumente: DokumentaktenService;
   mailer: Mailer;
   // Audit-P3 (SCRUM-397): Gelesen-Status der Glocke (öffentliche Modul-Schnittstelle).
   notificationSeen: NotificationSeenRepo;
@@ -500,6 +530,8 @@ export interface AppRepos {
   overlapRepo: OverlapRepo;
   // Pedi 04.07.: persistierte Anzeige-Schwelle der Duplikat-Erkennung (Admin-Einstellung).
   overlapSettings: OverlapSettingsRepo;
+  // R-0751 / R-1639 / R-2183 (Nacharbeit 3): Bereichsprofile und Ruhestandshorizonte.
+  managementProfiles: ManagementProfileRepo;
   lifecycleRepo: LifecycleRepo;
   objects: ObjectRepo;
   candidates: CandidateRepo;
@@ -507,6 +539,8 @@ export interface AppRepos {
   // Lauf angelegt werden — die Tabelle wurde migriert und blieb leer.
   importRuns: ImportRunRepo;
   externalSources: ExternalSourceRepo;
+  // R-0169 (Nacharbeit 5): die Fassungen der internen Dokumentakte (eigene Tabelle).
+  dokumente: DokumentaktenRepo;
   modelRuns: ModelRunRepo;
   // Audit-P3 (SCRUM-397): pro Nutzer bewusst als gesehen markierte Benachrichtigungs-IDs.
   notificationSeen: NotificationSeenRepo;
@@ -843,6 +877,8 @@ export function assembleServices(
     // `buildPgServices` (echter Pool); ohne Injektion die In-Memory-Ablage — derselbe Vertrag,
     // andere Haltbarkeit, beide werden getrennt geprüft.
     brandingSettings?: BrandingSettingsRepo;
+    // R-0134 / R-1005: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
+    confluenceImportSchalter?: ConfluenceImportSchalterRepo;
     // WIKI-BEARBEITUNGSRESERVIERUNG: gesetzt von `buildPgServices` (echter Pool); ohne Injektion
     // die Speicherfassung — dieselbe Regel, die Uhr des Prozesses statt der Datenbank.
     bearbeitungen?: BearbeitungsRepo;
@@ -898,12 +934,17 @@ export function assembleServices(
   // gesetzt sind — ebenfalls gecappt (globaler Cap), aber ohne Egress-Wächter (on-prem, kein externer
   // Egress → bedient vertrauliche Inhalte weiter). Werte aus Launcher/Schlüsselbund, nie aus dem Code.
   const cappedLocal = createCappedLocalClientFromEnv();
+  // Aufnahme gesamt-ki-laufprotokoll (V9, R-2071): EIN Schreibweg für alle Läufe — er berechnet die
+  // Kosten aus der Preisliste des Betreibers (`KLARWERK_KI_PREISLISTE`, ohne Vorgabepreise) und
+  // schreibt je Lauf die strukturierte Logzeile `ki_lauf` (verbunden in `buildApp`).
+  const preislisteLesung = lesePreisliste(process.env.KLARWERK_KI_PREISLISTE);
+  const modelRunProtokoll = new ProtokollModelRunRepo(repos.modelRuns, preislisteLesung.preisliste);
   // SCRUM-164: ModelRun-Protokoll mitgeben (No-op-fähig); API-Shape des Reasoners unverändert.
   const reasoner = new Reasoner(
     // JOB 3134: kein `primary` mehr — die externen Anbieter kommen benannt über `cloud` (unten).
     undefined,
     undefined,
-    repos.modelRuns,
+    modelRunProtokoll,
     // SCRUM-386: Presets über das Repo — persistent in Pg bzw. im Dev-Journal der Desktop-App.
     repos.assistPresets,
     // SCRUM-424: zweites Backend (lokaler LLM) als optionaler Provider.
@@ -1032,11 +1073,18 @@ export function assembleServices(
   // Beziehungsroute nicht kennt. Die Wahlregel selbst ist UNVERÄNDERT (Postgres, wenn injiziert,
   // sonst der DEDUPLIZIERENDE Speicherbestand — die Begründung steht unten an der Verwendung).
   const kantenBestand = opts.kanten ?? new DeduplizierenderKantenBestand();
+  // R-0169 (Nacharbeit 5): EINE Dokumentakte für Word-Weg und Bibliotheksimport.
+  const dokumente = new DokumentaktenService({ repo: repos.dokumente });
   const library = new LibraryService({
     koService: ko,
+    dokumente,
     audit,
     candidates: repos.candidates,
     externalUpsert: externalImportEnabled,
+    // R-0169 (herkunft-identitaet): DERSELBE Quellrevisionsbestand, den die Importlauf-Routen lesen
+    // (`importRunRoutes`, unten). Bis hierher las ihn das Produkt nur — geschrieben hat ihn kein
+    // Importweg. Jetzt legt jede übernommene Quellfassung ihre unveränderliche Revision an.
+    externalSources: repos.externalSources,
     // JOB 4155: die kuratierten Kanten für `/api/graph` — EINE Mengenabfrage über `alleAktiven`,
     // keine Abfrage je Knoten. Derselbe Bestand, den `kantenRoutes` und die Netzroute lesen.
     kanten: kantenBestand,
@@ -1096,6 +1144,9 @@ export function assembleServices(
       opts.anweisungen ?? new FluechtigeAnweisungsablage(process.env.KLARWERK_DEV_PERSIST === "1"),
     // JOB 3510/3578: die Markenwahl — Postgres, wenn injiziert, sonst im Speicher.
     brandingSettings: opts.brandingSettings ?? new InMemoryBrandingSettingsRepo(),
+    // R-0134 / R-1005: der Betreiberschalter — Postgres, wenn injiziert, sonst im Speicher.
+    confluenceImportSchalter:
+      opts.confluenceImportSchalter ?? new InMemoryConfluenceImportSchalterRepo(),
     // WIKI-BEARBEITUNGSRESERVIERUNG: die Bearbeitungshinweise — Postgres, wenn injiziert, sonst im
     // Speicher.
     bearbeitungen: opts.bearbeitungen ?? new InMemoryBearbeitungsRepo(),
@@ -1104,6 +1155,8 @@ export function assembleServices(
     zurufModell,
     importRuns: repos.importRuns,
     externalSources: repos.externalSources,
+    // R-0169 (Nacharbeit 5): DIESELBE Instanz, die oben in den `LibraryService` gereicht wurde.
+    dokumente,
     ko,
     auth: new AuthService({
       users: repos.users,
@@ -1240,8 +1293,23 @@ export function assembleServices(
         }
         return zaehler;
       },
+      // R-0751 (Nacharbeit 1): dieselbe Paar-Regel, aber mit den beteiligten Kennungen — der
+      // Eingang des Prioritätsfaktors „Konfliktdichte" je Kategorie.
+      openConflictKoIds: async (opts) => {
+        const offen = await conflicts.unresolved();
+        const ids: string[] = [];
+        for (const fund of offen) {
+          const [a, b] = await Promise.all([ko.get(fund.koA), ko.get(fund.koB)]);
+          if (a && b && opts.sichtbar(a) && opts.sichtbar(b)) {
+            ids.push(a.id, b.id);
+          }
+        }
+        return ids;
+      },
       pendingRevalidation: () => lifecycle.pendingRevalidation(),
       busFactor: (opts) => library.busFactor(opts),
+      // R-0751 / R-1639 / R-2183 (Nacharbeit 3): gepflegte Bereichsprofile und Ruhestandshorizonte.
+      profiles: repos.managementProfiles,
     }),
     // SCRUM-118: externer Such-Proxy (Wikipedia) — optional via Env abschaltbar.
     externalSearch: createExternalSearchFromEnv(),
@@ -1292,7 +1360,12 @@ export function assembleServices(
           .map((k) => k.confidentiality ?? "intern"),
     }),
     // SCRUM-165: read-only ModelRun-Sicht über dasselbe Protokoll-Repo wie der Reasoner.
-    modelRuns: new ModelRunService({ repo: repos.modelRuns }),
+    modelRuns: new ModelRunService({
+      repo: modelRunProtokoll,
+      preisliste: preislisteLesung.preisliste,
+      ...(preislisteLesung.fehler ? { preislisteFehler: preislisteLesung.fehler } : {}),
+      protokoll: modelRunProtokoll,
+    }),
     // FR-AUTH-08/FR-VAL-07: SMTP, wenn konfiguriert; sonst sammelnder Fallback ohne Versand.
     mailer: createMailerFromEnv() ?? new ConsoleMailer(),
     // Audit-P3 (SCRUM-397): Gelesen-Status der Glocke — Repo direkt (schmale Modul-API).
@@ -1329,11 +1402,13 @@ export function inMemoryRepos(): AppRepos {
     conflictsRepo: new InMemoryConflictRepo(),
     overlapRepo: new InMemoryOverlapRepo(),
     overlapSettings: new InMemoryOverlapSettingsRepo(),
+    managementProfiles: new InMemoryManagementProfileRepo(),
     lifecycleRepo: new InMemoryLifecycleRepo(),
     objects: new InMemoryObjectRepo(),
     candidates: new InMemoryCandidateRepo(),
     importRuns: new InMemoryImportRunRepo(),
     externalSources: new InMemoryExternalSourceRepo(),
+    dokumente: new InMemoryDokumentaktenRepo(),
     modelRuns: new InMemoryModelRunRepo(),
     notificationSeen: new InMemoryNotificationSeenRepo(),
     assistPresets: new InMemoryAssistPresetRepo(),
@@ -1402,6 +1477,7 @@ export function buildPgServices(rohPool: Pool): AppServices {
       overlapRepo: new PgOverlapRepo(pool),
       // Pedi 04.07.: Anzeige-Schwelle persistent.
       overlapSettings: new PgOverlapSettingsRepo(pool),
+      managementProfiles: new PgManagementProfileRepo(pool),
       lifecycleRepo: new PgLifecycleRepo(pool),
       // SCRUM-155: Object-Store jetzt persistent (Attachment-/Evidence-Originale überleben Neustart).
       objects: new PgObjectRepo(pool),
@@ -1411,6 +1487,8 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // „haengend in QUEUED" nach jedem Neustart ununterscheidbar von „nie gestartet".
       importRuns: new PgImportRunRepo(pool),
       externalSources: new PgExternalSourceRepo(pool),
+      // R-0169 (Nacharbeit 5): die Fassungen der internen Dokumentakte (DOKUMENTAKTE_SCHEMA).
+      dokumente: new PgDokumentaktenRepo(pool),
       // SCRUM-164: ModelRun-Protokoll persistent (KI-Aufrufe nachvollziehbar).
       modelRuns: new PgModelRunRepo(pool),
       // Audit-P3 (SCRUM-397): Gelesen-Status der Glocke persistent.
@@ -1464,6 +1542,9 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // überlebt die vom Administrator gesetzte Firmen-CI Neustart und Deploy; ohne sie fiele
       // `assembleServices` auch im Postgres-Betrieb auf die flüchtige In-Memory-Ablage zurück.
       brandingSettings: new PgBrandingSettingsRepo(pool),
+      // R-0134 / R-1005: der Betreiberschalter überlebt Neustart und Deploy — sonst stünde ein
+      // ausgeschalteter Import nach dem nächsten Neustart still wieder auf „an".
+      confluenceImportSchalter: new PgConfluenceImportSchalterRepo(pool),
       // WIKI-BEARBEITUNGSRESERVIERUNG: die Bearbeitungshinweise liegen in DERSELBEN Datenbank. Nur
       // so sehen mehrere App-Prozesse derselben Instanz denselben Hinweis — und die Uhr, die über
       // Ablauf und Erneuerung entscheidet, ist die der Datenbank, nicht die eines Prozesses.
@@ -2053,9 +2134,27 @@ export function senkeUeberWert(
   }
   const ergebnis: Record<string, unknown> = {};
   for (const [schluessel, inhalt] of Object.entries(wert)) {
-    ergebnis[schluessel] = senkeUeberWert(inhalt, env, tiefe + 1);
+    // Ben R3 B8: die Trace-Ausnahme setzt NUR die Token-Regel aus — der Wert einer
+    // secret-benannten Env-Variablen wird auch unter einem Trace-Feldnamen entfernt.
+    ergebnis[schluessel] = istTraceKennung(schluessel, inhalt)
+      ? entferneGeheimeEnvWerte(inhalt, env)
+      : senkeUeberWert(inhalt, env, tiefe + 1);
   }
   return ergebnis;
+}
+
+// Aufnahme gesamt-ki-laufprotokoll (Ben R2 B5, Tracing): Regel 4 von `sanitizeLogText` liest jedes
+// Wort ab 24 Zeichen als Token — eine W3C-Trace-Kennung (32 Hexzeichen) wurde damit zu `[redacted]`,
+// und die Logzeile ließ sich ihrem Trace nicht mehr zuordnen. Die Ausnahme ist so eng wie möglich:
+// NUR unter genau diesen drei Feldnamen und NUR in der W3C-Form (16 oder 32 Kleinbuchstaben-Hex).
+// Derselbe Wert unter jedem anderen Namen und jeder andere Wert unter diesen Namen bleibt der
+// Bereinigung unterworfen (tests/ki-lauf-protokoll/kosten-und-auswertung.test.ts, L1); die Werte
+// secret-benannter Env-Variablen werden auch unter diesen Namen entfernt (Ben R3 B8, L2).
+const TRACE_FELDER: ReadonlySet<string> = new Set(["traceId", "spanId", "parentSpanId"]);
+const TRACE_KENNUNG = /^(?:[0-9a-f]{16}|[0-9a-f]{32})$/;
+
+function istTraceKennung(schluessel: string, inhalt: unknown): inhalt is string {
+  return TRACE_FELDER.has(schluessel) && typeof inhalt === "string" && TRACE_KENNUNG.test(inhalt);
 }
 
 /**
@@ -2170,6 +2269,24 @@ export function buildApp(
   // Fehler wird formtreu an Fastifys Standard-Fehlerbehandlung weitergereicht (Validierungs-400 etc.
   // unverändert).
   app.setErrorHandler(modelBusyErrorHandler);
+  // Aufnahme gesamt-ki-laufprotokoll (R-2071): je KI-Lauf eine strukturierte Logzeile `ki_lauf`
+  // (nur Metadaten, s. `kiLaufLogzeile`) über den App-Logger mit seinen Redaktionsregeln.
+  // Ben R2 B5 (R-2071, Tracing): je Anfrage ein Trace-Kontext nach W3C Trace Context — ein
+  // eingehender `traceparent` wird fortgesetzt, sonst entsteht ein neuer Trace. Jeder KI-Lauf der
+  // Anfrage trägt `traceId`, seinen Span, den Span der Anfrage und die Anfragekennung (`request.id`,
+  // dieselbe wie in den Anfrage-Logzeilen). Geöffnet im `preHandler`, also NACH dem Lesen des
+  // Körpers: die Stream-Ereignisse des Körpers laufen sonst außerhalb des Kontexts, und der Handler
+  // samt aller asynchronen Fortsetzungen läuft hier sicher darin.
+  app.addHook("preHandler", (request, _reply, done) => {
+    mitKiTrace(traceKontextAus(request.headers.traceparent, request.id), done);
+  });
+  // Optional aufgerufen: Prüfaufbauten ersetzen `modelRuns` teils durch eine schmale Attrappe nur
+  // mit `recent` (tests/deploy-health-commit) — die App muss auch dann entstehen.
+  services.modelRuns.logAn?.((zeile) => app.log.info(zeile, "ki_lauf"));
+  const preisgrundlage = services.modelRuns.preisgrundlage?.();
+  if (preisgrundlage?.fehler) {
+    app.log.warn({ event: "ki_preisliste" }, preisgrundlage.fehler);
+  }
   // G27 R1 / Entscheidung 06 §3 — DIE READINESS-BINDUNG.
   //
   // `onReady` ist der von Fastify vorgesehene asynchrone Start-/Ready-Pfad: `app.ready()`,
@@ -2997,7 +3114,8 @@ export function buildApp(
   );
   // SCRUM-491 Slice 5: /api/check-text existiert NUR bei aktivem Add-on-Flag — sonst gar nicht
   // registriert → Endpunkt existiert nicht → bit-identisch zum heutigen Verhalten. Deterministische
-  // Stufe-1-Dry-Run-Prüfung (validated-only, kein Modell, keine Persistenz).
+  // Stufe-1-Dry-Run-Prüfung (kein Modell, keine Persistenz; nur Validiertes gilt allein für den
+  // Add-in-Pfad, der Session-Pfad prüft seit JOB 3020 auch Ungeprüftes — check-text-routes.ts).
   if (addonApiEnabled()) {
     app.register(
       checkTextRoutes(
@@ -3028,7 +3146,10 @@ export function buildApp(
   );
   app.register(categoryRoutes(services.ko, guards));
   app.register(outputRoutes(services.output, guards));
-  app.register(managementRoutes(services.management, guards));
+  // R-2183 (Nacharbeit 3): Ruhestandshorizonte nur an echten internen Konten.
+  const kontoGibtEs = async (id: string) =>
+    (await services.auth.listUsers()).some((u) => u.id === id);
+  app.register(managementRoutes(services.management, guards, kontoGibtEs));
   app.register(modelRunRoutes(services.modelRuns, guards));
   app.register(
     externalRoutes(
@@ -3071,6 +3192,10 @@ export function buildApp(
   app.register(reasonerRoutes({ ...services, ka4: klaraSessions }, guards));
   // Klara Stufe 2 (Pedi 05.07.): KI-gestuetzte Hilfe-Antwort aus Hilfe-Schnipseln (help-routes).
   app.register(helpRoutes({ reasoner: services.reasoner }, guards));
+  // R-1064: der vom Betreiber festgelegte Supportweg dieser Installation (optional, kein
+  // Pflichtwert für den Start). Gelesen EINMAL hier beim Aufbau; Zustände und Prüfung in
+  // support-routes.ts.
+  app.register(supportRoutes({ kontakt: supportKontaktAusUmgebung(process.env) }, guards));
   // AUFTRAG-mega74 BLOCK C (G2): der Anhang-Lesepfad erfährt hier — und nur hier —, welche
   // Wissensobjekte einen Anhang tragen. `services/object-store` darf das nicht selbst wissen
   // (dieselbe Modulgrenze wie object-references.ts); die Kompositionswurzel reicht den Zugang.
@@ -3143,8 +3268,17 @@ export function buildApp(
   // melden — und genau der ist einer der vier Zustaende aus Block D.
   // JOB-924 D6: Die Route bekommt den Dienst, nicht die Ablage. Die Ablage geht AUSSCHLIESSLICH
   // hier hinein — das ist die einzige Stelle, an der beide zusammenkommen.
+  // R-0134 / R-1005: derselbe Dienst trägt jetzt auch den Betreiberschalter (Auskunft UND Umlegen,
+  // mit Prüfprotokoll) — die Route kennt weiterhin nur ihn.
   app.register(
-    importAccessRoutes(guards, new ImportAccessService({ importRuns: services.importRuns })),
+    importAccessRoutes(
+      guards,
+      new ImportAccessService({
+        importRuns: services.importRuns,
+        betreiberSchalter: services.confluenceImportSchalter,
+        audit: services.audit,
+      }),
+    ),
   );
   app.register(adminRoutes(services, guards, opts.factoryReset)); // SCRUM-181: Demo-Seed; Pedi 05.07.: Werksreset
   // SCRUM-510 WP2: Admin-Trigger für den Confluence-Space-Import — NUR bei aktivem Import-Flag registriert
@@ -3161,10 +3295,17 @@ export function buildApp(
         reasoner: services.reasoner,
         // W2-A/148: der echte Lauf bekommt seine Identität VOR dem ersten Effekt.
         importRuns: services.importRuns,
+        // R-0134 / R-1005: der Betreiberschalter, je Anfrage durchgesetzt.
+        betreiberSchalter: services.confluenceImportSchalter,
       }),
     );
-    // W2-A/148: der Leseweg der Laufdomäne. Hinter demselben Schalter wie der Start — ein Lesepfad
-    // auf Läufe, die es ohne den Schalter gar nicht geben kann, wäre eine Route ins Leere.
+  }
+
+  // W2-A/148: der Leseweg der Laufdomäne. Er ist QUELLNEUTRAL und steht deshalb hinter JEDEM
+  // Importweg, der Läufe schreibt — nicht nur hinter Confluence. Bis R-0145 hing er allein am
+  // Confluence-Schalter: eine Instanz nur mit SharePoint gab eine `importId` heraus, hinter der eine
+  // 404 stand. Sind alle Importwege aus, gibt es keine Läufe und damit auch keinen Leseweg.
+  if (schalterAn("confluenceImport") || schalterAn("sharepointImport")) {
     app.register(
       importRunRoutes({
         importRuns: services.importRuns,

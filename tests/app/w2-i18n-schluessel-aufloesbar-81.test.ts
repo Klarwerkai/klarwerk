@@ -1,6 +1,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { woerterbuchQuelleAus } from "../support/woerterbuchquelle";
 
 // ================================================================================================
 // AUFTRAG-81 — JEDER SCHLUESSEL, DEN DIE W2-FLAECHE BENUTZT, MUSS AUFLOESEN.
@@ -31,7 +32,7 @@ const I18N = join(WURZEL, "apps/web/src/i18n.ts");
 const VIEWLOGIK = join(WURZEL, "apps/web/src/lib/importResultView.ts");
 const KOMPONENTEN = join(WURZEL, "apps/web/src/components/confluence-import");
 
-const i18nQuelle = readFileSync(I18N, "utf8");
+const i18nQuelle = woerterbuchQuelleAus(I18N);
 const viewQuelle = readFileSync(VIEWLOGIK, "utf8");
 const komponentenQuelle = readdirSync(KOMPONENTEN)
   .filter((d) => d.endsWith(".tsx"))

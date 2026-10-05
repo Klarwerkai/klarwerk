@@ -1,8 +1,8 @@
-# 00 — Prinzipien
+# 00 — Grundsätze
 
-1. **Drei getrennte Wahrheiten:** Spezifikation (Was) · Harness (Wie) · Evidenz (Ist es korrekt?). Code folgt daraus.
-2. **Determinismus vor Meinung:** Maschinell prüfbare Regeln schlagen LLM-Urteil. Was prüfbar ist, wird als Tool implementiert.
-3. **Lean zuerst:** Methode kopieren, nicht Topologie. Modularer Monolith vor Microservices; ein vertikaler Anwendungsfall zuerst.
-4. **Harness Correction Development:** Jede wiederkehrende Abweichung wird als fehlende Harness-Regel behandelt und in `90-correction-log.md` dokumentiert.
-5. **Specs sind operative Wahrheit:** Nie von vager Idee direkt zu Produktivcode. Zwischenschritt zur überprüfbaren Spec ist Pflicht.
-6. **Mensch bleibt Stakeholder:** Pedi liefert Idee, Richtung, Freigabe. Finanz-/Kommunikationsaktionen brauchen Freigabe.
+1. Der aktuelle Nutzerauftrag bestimmt Ziel und Umfang. Spezifikation, Regeln und Tests helfen dabei; sie sind überprüfbarer Bestand und keine unveränderlichen Vorgaben über dem Nutzerauftrag.
+2. Vorhandenen Code, Kandidaten und Lieferungen zuerst prüfen und weiterverwenden. Eine Unterbrechung startet die Aufgabe nicht von vorn.
+3. Ein einfacher Weg: Claude bearbeitet, passende Prüfungen laufen, Ben prüft unabhängig, konkrete Nacharbeit geht zurück, der fertige Kandidat wird veröffentlicht und der Abschluss belegt.
+4. Prüfungen belegen das geforderte Verhalten. Testgrün allein ist keine Lieferung; fehlende Ausführung oder Abnahme wird nicht erfunden.
+5. Wiederkehrende Fehler an ihrer Ursache beheben. Dafür zuerst Abläufe und Regeln vereinfachen; keine automatische Pflicht zu einer weiteren Regel, Rolle oder Freigabe.
+6. Bereits erteilte Freigaben gelten weiter. Nur eine tatsächlich fehlende Entscheidung oder Handlung des Nutzers erfordert eine Rückfrage. Geheimnisse, Rechte und Datentrennung bleiben geschützt.

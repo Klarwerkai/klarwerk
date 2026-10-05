@@ -81,6 +81,17 @@ export class ModelEmptyResponseError extends Error {
   }
 }
 
+// Aufnahme gesamt-ki-laufprotokoll (Ben R1 B1): eine Meldung, die der eigene Code AUSSCHLIESSLICH
+// aus festen Sätzen, Anbieter- und Modellnamen baut — nie aus Eingabe- oder Antworttext. Nur
+// solche Meldungen (und die der typisierten Modellfehler oben) gehen wörtlich ins Laufprotokoll.
+// Wer hier einen Text einsetzt, der Inhalt tragen kann, bricht diese Zusage.
+export class ReasonerMeldungFehler extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ReasonerMeldungFehler";
+  }
+}
+
 export interface ModelFailureInfo {
   failureClass: ModelFailureClass;
   status?: number;

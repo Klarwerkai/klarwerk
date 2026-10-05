@@ -198,14 +198,33 @@ export interface DomainRisk {
   authorCount: number;
   singleSource: boolean;
   level: RiskLevel;
+  // R-1639 (Nacharbeit 1): Objekte dieser Kategorie mit offenem „Stimmt das noch?"-Merker. Diesen
+  // Merker setzt ausschliesslich die gemeldete Anlagenänderung (lifecycle `assetChanged`) — die Zahl
+  // ist also genau „durch Anlagenänderung veraltet". `null` = Merkerlage nicht geladen: unbekannt,
+  // nicht 0.
+  staleByAssetChange: number | null;
+}
+
+/**
+ * R-1639 (Nacharbeit 1): der Werksdurchschnitt der Abdeckung — die Validierungsquote über den
+ * GANZEN sichtbaren Bestand, gegen die sich jede Kategorie vergleicht. `null` bei leerem Bestand:
+ * ein Durchschnitt über nichts ist keine 0.
+ */
+export function plantValidatedRatio(kos: readonly KnowledgeObject[]): number | null {
+  if (kos.length === 0) {
+    return null;
+  }
+  return pct(kos.filter((k) => k.status === "validiert").length, kos.length);
 }
 
 // SCRUM-133: Risiko je Bereich/Domäne/Kategorie aus KO-Bestand + Bus-Faktor.
 export function domainRisk(
   kos: readonly KnowledgeObject[],
   busFactor: readonly BusFactorEntry[],
+  pendingRevalidation: readonly string[] | null = null,
 ): DomainRisk[] {
   const busByCat = new Map(busFactor.map((b) => [b.category, b]));
+  const pending = pendingRevalidation === null ? null : new Set(pendingRevalidation);
   const cats = new Map<string, KnowledgeObject[]>();
   for (const ko of kos) {
     const list = cats.get(ko.category) ?? [];
@@ -231,7 +250,19 @@ export function domainRisk(
       level = "mittel";
     }
 
-    rows.push({ category, koCount, validatedRatio, openCount, authorCount, singleSource, level });
+    const staleByAssetChange =
+      pending === null ? null : list.filter((k) => pending.has(k.id)).length;
+
+    rows.push({
+      category,
+      koCount,
+      validatedRatio,
+      openCount,
+      authorCount,
+      singleSource,
+      level,
+      staleByAssetChange,
+    });
   }
 
   const order: Record<RiskLevel, number> = { kritisch: 0, mittel: 1, gut: 2 };

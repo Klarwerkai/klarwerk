@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import type { KnowledgeObject } from "../../apps/web/src/api/types";
 import { fragenHref } from "../../apps/web/src/components/bibliothek/fragen";
 import i18n from "../../apps/web/src/i18n";
+import { woerterbuchQuelleAus } from "../support/woerterbuchquelle";
 
 function read(rel: string): string {
   return readFileSync(resolve(process.cwd(), rel), "utf8");
@@ -138,7 +139,7 @@ describe("WP-UX-WOW-1 U7: echte Umlaute in Nutzertexten", () => {
     // in `i18n.ts` (das Blatt selbst ruft nur Schlüssel auf).
     expect(capture).not.toContain("Entwuerfe");
     expect(capture).not.toContain("naechsten Oeffnen");
-    const woerter = read("apps/web/src/i18n.ts");
+    const woerter = woerterbuchQuelleAus("apps/web/src/i18n.ts");
     expect(woerter).toContain('"erfassen.mehr.entwuerfe": "Entwürfe"');
     expect(woerter).toContain('"erfassen.mehr.anhaenge": "Anhänge"');
     expect(woerter).not.toContain('"Entwuerfe"');

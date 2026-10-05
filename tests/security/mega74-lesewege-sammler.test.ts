@@ -345,6 +345,12 @@ const REGISTER: Record<string, Eintrag> = {
     recht: "ko.validate",
     grund: "Projektion entfernt actor/subject (model-runs-routes.ts:46).",
   },
+  // Aufnahme gesamt-ki-laufprotokoll: nur Zähler und Summen über Läufe (Aufgabe, Status, Token,
+  // Kosten) — kein Anfragender, kein Gegenstand, kein Fehlertext, kein Wissensobjekt.
+  "GET /api/model-runs/auswertung": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "nur Laufsummen je Aufgabe/Währung (model-runs-routes.ts:52-68).",
+  },
   "GET /api/analytics/expertise": {
     urteil: "KURATORENTOR",
     recht: "ko.assign",
@@ -389,6 +395,13 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "KURATORENTOR",
     recht: "users.manage",
     grund: "Zugangszustand, Admin.",
+  },
+  // R-0134 / R-1005: der Betreiberschalter. Nimmt genau ein Ja/Nein entgegen und antwortet mit
+  // derselben Zugangsauskunft wie der Leseweg darüber — kein Inhalt eines Wissensobjekts.
+  "PUT /api/import/confluence/schalter": {
+    urteil: "KURATORENTOR",
+    recht: "users.manage",
+    grund: "Betreiberschalter (Ja/Nein) + Zugangszustand, Admin.",
   },
   // JOB 4086: dieselbe Auskunft für SharePoint/OneDrive. Sie gibt Schalterzustand, die NAMEN der
   // Umgebungsvariablen und ja/nein je Variable aus — nie einen Wert, nie eine Maske mit Länge und
@@ -446,6 +459,13 @@ const REGISTER: Record<string, Eintrag> = {
   "GET /api/ai-status": { urteil: "KEIN_KO_INHALT", grund: "Modellzustand." },
   "GET /api/reasoner/status": { urteil: "KEIN_KO_INHALT", grund: "Modellzustand." },
   "GET /api/features": { urteil: "KEIN_KO_INHALT", grund: "Schalter als Ja/Nein." },
+  // R-1064: Supportweg der Installation — Zustand, geprüftes Ziel und Beschriftung aus zwei
+  // Betreiberwerten (support-routes.ts:119), kein Feld aus einem Wissensobjekt.
+  "GET /api/support": {
+    urteil: "KEIN_KO_INHALT",
+    grund:
+      "R-1064 — Supportkontakt der Instanz aus der Umgebung (support-routes.ts), kein Bestand.",
+  },
   // JOB 3510 · die Markenwahl. Beide Wege geben ausschließlich die Darstellungslage der Instanz
   // aus: Profilname, `aktiv`, Änderungszahl und — nur bei eingeschalteter Wahl — Markenname, zwei
   // Logofarben und der Pfad des mitgelieferten Logos (`branding-settings.ts`, BRANDING_PROFILE).
@@ -542,6 +562,29 @@ const REGISTER: Record<string, Eintrag> = {
   "GET /api/analytics/busfactor": { urteil: "PRAEDIKAT", grund: "Block D — Kategoriezeilen." },
   "GET /api/analytics/impact": { urteil: "PRAEDIKAT", grund: "Block D — validatedTotal/Wochen." },
   "GET /api/management/snapshot": { urteil: "PRAEDIKAT", grund: "Block D — breitester Pfad." },
+  // R-1639 / R-2183 (Nacharbeit 3): der Bereichsblick zählt Objekte je Kategorie und nennt
+  // Kennungen offener Objekte — Grundmenge über `sichtbarkeitsfilterFuer`, wie der Snapshot.
+  "GET /api/management/risk-horizon": {
+    urteil: "PRAEDIKAT",
+    grund: "Nacharbeit 3 — Kategoriezeilen und Objektkennungen erst nach dem Trimm der Grundmenge.",
+  },
+  // Die Pflege der Bereichsprofile und Ruhestandshorizonte ist admin-gebunden; die Antworten tragen
+  // Kategorienamen, Konto-Kennungen, Stufen und Fristen — keinen Inhalt eines Wissensobjekts.
+  "GET /api/management/profiles": {
+    urteil: "KURATORENTOR",
+    recht: "users.manage",
+    grund: "Nacharbeit 3 — gepflegte Profile/Horizonte, nur mit users.manage.",
+  },
+  "PUT /api/management/profiles/category": {
+    urteil: "KURATORENTOR",
+    recht: "users.manage",
+    grund: "Nacharbeit 3 — Pflege eines Bereichsprofils, nur mit users.manage.",
+  },
+  "PUT /api/management/profiles/retirement/:userId": {
+    urteil: "KURATORENTOR",
+    recht: "users.manage",
+    grund: "Nacharbeit 3 — Pflege eines Ruhestandshorizonts, nur mit users.manage.",
+  },
   "GET /api/ai-check/coverage-summary": { urteil: "PRAEDIKAT", grund: "Block D — vier Zähler." },
   "GET /api/validation/overview": { urteil: "PRAEDIKAT", grund: "Block D — Personenzeilen." },
   "GET /api/validation/settings": { urteil: "KEIN_KO_INHALT", grund: "Einstellungen." },
@@ -641,6 +684,9 @@ const REGISTER: Record<string, Eintrag> = {
     // Wissensobjekts aus — sie geben Namen, Adressen und Stände von QUELLDATEIEN aus.
     "POST /api/admin/import/sharepoint/files": "users.manage.",
     "POST /api/admin/import/sharepoint/apply": "users.manage.",
+    // R-0145/R-0190: `folder-apply` ist derselbe Übernahmeweg für ein Los eines Ordners — er gibt
+    // dieselben Quelldatei-Angaben aus wie `apply`, dazu die Kennungen des Loses.
+    "POST /api/admin/import/sharepoint/folder-apply": "users.manage.",
     "PUT /api/reasoner/config": "users.manage.",
     "PUT /api/reasoner/assist-presets": "users.manage.",
     "POST /api/reasoner/test": "users.manage.",
@@ -711,6 +757,10 @@ const REGISTER: Record<string, Eintrag> = {
   "POST /api/gesamtanweisungen/:id/entscheiden": {
     urteil: "PRAEDIKAT",
     grund: "JOB 4154 — Schreibweg mit ko.validate UND darfSehen an jedem gebundenen Baustein.",
+  },
+  "POST /api/gesamtanweisungen/:id/bausteine/:bausteinId/uebernehmen": {
+    urteil: "PRAEDIKAT",
+    grund: "aufnahme:20260928 — darfSehen am Bestand UND an der neu gebundenen Fassung.",
   },
   // Die Anlage gibt NICHTS aus ausser dem gerade selbst eingegebenen Kopf: Titel, Zweck,
   // Geltungsbereich, Voraussetzungen, leere Bausteinliste. Es gibt in diesem Augenblick keinen

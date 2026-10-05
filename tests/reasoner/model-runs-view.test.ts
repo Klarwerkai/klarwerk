@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { REASONER_TASKS } from "../../apps/web/src/api/types";
+import { MODEL_RUN_TASKS } from "../../apps/web/src/api/types";
 import type { ModelRunRecord, ModelRunTask } from "../../apps/web/src/api/types";
 import {
   limitModelRuns,
@@ -30,7 +30,7 @@ function erwarteteZaehlung(
   treffer: Partial<Record<ModelRunTask, number>>,
 ): Record<ModelRunTask, number> {
   return {
-    ...(Object.fromEntries(REASONER_TASKS.map((task) => [task, 0])) as Record<
+    ...(Object.fromEntries(MODEL_RUN_TASKS.map((task) => [task, 0])) as Record<
       ModelRunTask,
       number
     >),

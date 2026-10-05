@@ -2,8 +2,10 @@
 // JOB 3424 (Q2d) — DIE MESSUNG GEGEN ECHTES POSTGRES.
 // ================================================================================================
 //
-// Der Live-Befund (Codex, 05.09. 20:43, Fassungen 1.103/1.105) hing an der DATENBANK: die Route
-// antwortete beim ZWEITEN Import mit `externalId: ""` INTERNAL 500. Auf der In-Memory-Warteschlange
+// Der Live-Befund (Codex, 05.09. 20:43, Fassungen 1.103/1.105): die Route antwortete beim ZWEITEN
+// Import mit `externalId: ""` INTERNAL 500. Seine URSACHE ist NICHT erwiesen (Auftrag P-Q2d: „Ursache
+// offen"); diese Datei misst eine plausible Datenbankstelle, sie belegt nicht, dass der Live-500
+// dort entstand. Auf der In-Memory-Warteschlange
 // ist der Fall nicht herstellbar (dort gibt es keinen UNIQUE-Index, ein `insert` kann nicht werfen)
 // — die Route-Messung steht deshalb in `route-leere-kennung.test.ts`, die DB-Messung hier.
 //
@@ -138,7 +140,7 @@ describe("JOB 3424 · Q2d — leere externe Kennung gegen echtes Postgres", () =
     await repo.insert(kandidat("a", { externalId: "" }));
     await expect(
       repo.insert(kandidat("b", { externalId: "" })),
-      "Genau hier entstand live der INTERNAL 500 (unique violation auf dem partiellen Index).",
+      "Ein zweiter Insert mit leerer Kennung darf nicht am partiellen Index scheitern (eine moegliche, nicht erwiesene Ursache des Live-500).",
     ).resolves.toBeUndefined();
     const anzahl = await p.query<{ n: string }>(
       "SELECT count(*)::text AS n FROM import_candidates",
