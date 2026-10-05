@@ -11,12 +11,17 @@
 // redirect:"error" ⇒ kein Folgen auf einen fremden Host (kein Token an ein Redirect-Ziel). `fetchFn` ist
 // injizierbar → deterministische Fixture-Tests ohne Netz/Live-Token.
 
+import { type ConfluenceAuthMode, confluenceAuthMode } from "./credential-state";
+
 // Config INKL. Token — modul-intern (NICHT über die Paket-index re-exportiert). Der Token lebt danach nur
 // noch in der privaten Client-Closure.
 export interface ConfluenceRestConfig {
   baseUrl: string; // https-Origin des Confluence (z. B. https://acme.atlassian.net/wiki)
-  email: string; // Service-Account (read-only)
-  apiToken: string; // read-only API-Token — NIE ein Modell-Credential, nie loggen/exportieren/in URL
+  // R-0166: "cloud" (Standard) = Basic aus email + apiToken; "pat" = selbst betriebenes Confluence
+  // (Data Center/Server) mit persönlichem Zugriffstoken als Bearer, ohne Kennung.
+  authMode?: ConfluenceAuthMode;
+  email?: string; // Service-Account (read-only) — nur beim Cloud-Weg
+  apiToken: string; // read-only API-Token bzw. PAT — NIE ein Modell-Credential, nie loggen/exportieren/in URL
   spaceKey: string; // gescoped auf EINEN Space (Space K)
   fetchFn?: typeof fetch;
   pageLimit?: number;
@@ -246,7 +251,16 @@ export class ConfluenceRestClient {
 
   // Basic-Auth aus Service-Account + read-only Token (Confluence-Cloud-Konvention). Bleibt lokal in
   // dieser Methode; der Token wird nie geloggt/zurückgegeben.
+  // R-0166: beim selbst betriebenen Confluence (authMode "pat") geht das persönliche Zugriffstoken
+  // unverändert als Bearer — so verlangt es Confluence Data Center/Server; eine Kennung gibt es dort
+  // nicht. Ohne Kennung kein Cloud-Header: ein Basic aus "undefined:<token>" wäre ein Fehlversuch.
   private authHeader(): string {
+    if (this.config.authMode === "pat") {
+      return `Bearer ${this.config.apiToken}`;
+    }
+    if (!this.config.email) {
+      throw new Error("Confluence: Cloud-Anmeldung ohne Kennung — Abbruch, kein Request.");
+    }
     const raw = `${this.config.email}:${this.config.apiToken}`;
     return `Basic ${Buffer.from(raw, "utf8").toString("base64")}`;
   }
@@ -263,10 +277,14 @@ export class ConfluenceRestClient {
     if (token) {
       out = out.split(token).join("[redacted-token]");
     }
-    const auth = this.authHeader(); // "Basic <base64(email:token)>"
-    const b64 = auth.slice("Basic ".length);
-    if (b64) {
-      out = out.split(auth).join("[redacted]").split(b64).join("[redacted]");
+    // Cloud: "Basic <base64(email:token)>" — die Base64 trägt den Token nur kodiert, also lesbar, und wird
+    // eigens ersetzt. Beim Bearer-Weg (R-0166) steht der Token roh im Header; den deckt die Zeile oben.
+    if (this.config.authMode !== "pat" && this.config.email) {
+      const auth = this.authHeader();
+      const b64 = auth.slice("Basic ".length);
+      if (b64) {
+        out = out.split(auth).join("[redacted]").split(b64).join("[redacted]");
+      }
     }
     // Credential-tragende URLs (userinfo@host) generisch entschärfen — auch für fremde/unerwartete Werte.
     out = out.replace(/(https?:\/\/)[^/\s@]*@/gi, "$1[redacted]@");
@@ -747,7 +765,10 @@ export function confluenceClientFromEnv(
   const email = env.KLARWERK_CONFLUENCE_USER;
   const apiToken = env.KLARWERK_CONFLUENCE_TOKEN;
   const spaceKey = env.KLARWERK_CONFLUENCE_SPACE;
-  if (!baseUrl || !email || !apiToken || !spaceKey) {
+  // R-0166: der Anmeldeweg aus derselben Regel wie die Zustandsauskunft (credential-state.ts).
+  // Unbekannter Wert ⇒ kein Client; beim persönlichen Zugriffstoken wird keine Kennung verlangt.
+  const authMode = confluenceAuthMode(env);
+  if (!authMode || !baseUrl || !apiToken || !spaceKey || (authMode === "cloud" && !email)) {
     return undefined;
   }
   // R2a: nur HTTPS-Origin — ein plain-http/ungültiger Host ⇒ kein Client (kein Token-Egress an einen
@@ -766,7 +787,10 @@ export function confluenceClientFromEnv(
   const budgetMs = Number(env.KLARWERK_CONFLUENCE_BUDGET_MS);
   return new ConfluenceRestClient({
     baseUrl,
-    email,
+    authMode,
+    // Beim Cloud-Weg ist email oben schon als gesetzt geprüft; die Bedingung hier verengt nur den Typ
+    // (exactOptionalPropertyTypes: `email` darf nie als ausdrücklich undefined ankommen).
+    ...(authMode === "cloud" && email ? { email } : {}),
     apiToken,
     spaceKey,
     ...(Number.isInteger(limit) && limit > 0 ? { pageLimit: limit } : {}),
