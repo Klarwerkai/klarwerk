@@ -157,7 +157,15 @@ Vertragsprüfung, der `SCHEMA-STAND` und der Versionsbeleg des Rückfalls fielen
 ist das im Paket ab dieser Korrekturausgabe. Wer von einer älteren Fassung aus aktualisiert, fährt
 aber deren `update-einspielen.sh`: dieses eine Update läuft noch ohne wirksame Vertragsprüfung und
 ohne `SCHEMA-STAND` (das nächste Update holt den Stand aus dem Vertrag der laufenden Fassung nach).
-Für die Korrekturausgabe selbst ist das unkritisch — sie bringt keine neue Stufe mit.
+Die Korrekturausgabe bringt gegenüber dem Vorgänger `1.0.0-beta.1.580` neue Stufen mit
+(gemessen: `KO_BEARBEITUNG_SCHEMA`, `DOKUMENTAKTE_SCHEMA`, `CONFLUENCE_IMPORT_SCHALTER_SCHEMA`,
+`MANAGEMENT_PROFILE_SCHEMA`), alle **ADDITIV**; keine Stufe des Vorgängers entfällt oder ändert ihre
+Risikoklasse. Der bestehende Vertragsprüfer nennt diesen Übergang verträglich (Exit 0) — die
+fehlende Prüfung beim ersten Update aus einer älteren Fassung hätte hier also nichts abgelehnt.
+Bringt eine künftige Ausgabe eine IRREVERSIBLE Stufe mit oder fehlt ihr eine Stufe des Vorgängers,
+gilt das nicht mehr: dann liefe dieses eine Update ohne die Sperren aus Exit 3/4.
+`tests/insel-auslieferung/` (K1a) prüft den Übergang am echten Paket und wird schon bei jeder
+nicht additiven neuen Stufe rot.
 
 ## App starten
 

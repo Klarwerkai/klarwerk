@@ -383,15 +383,47 @@ describe("K1 · vier echte ZIP-Erzeugnisse aus dem offiziellen Releasebauer", ()
       { cwd: WURZEL },
     ).stdout;
     expect(startKorrektur).toContain("export KLARWERK_ALLOW_INMEMORY_PROD=1");
-    // Vorgänger und Korrekturausgabe kennen DIESELBEN Stufen: das Update bringt keine Migration mit
-    // (Grundlage der Aussage in `scripts/insel/README.md` zur Grenze beim Update aus alter Fassung).
+    // DER TATSÄCHLICHE ÜBERGANG VORGÄNGER → KORREKTURAUSGABE (Grundlage der Aussage in
+    // `scripts/insel/README.md` zur Grenze beim Update aus alter Fassung). Die Korrekturausgabe darf
+    // Stufen HINZUFÜGEN, aber nur additive: jede Stufe des Vorgängers steht unverändert (Name UND
+    // Risikoklasse, in derselben Reihenfolge) auch im neuen Vertrag — sonst wäre es ein Downgrade —,
+    // und keine hinzugekommene Stufe ist TRANSFORMIEREND oder IRREVERSIBEL.
+    const vertrag = (q: Paket) =>
+      fahreBefehl("unzip", ["-p", q.zip, `${q.releaseName}/SCHEMA-VERTRAG`], { cwd: WURZEL })
+        .stdout;
     const stufen = (q: Paket) =>
-      /^stufen=(.*)$/m.exec(
-        fahreBefehl("unzip", ["-p", q.zip, `${q.releaseName}/SCHEMA-VERTRAG`], { cwd: WURZEL })
-          .stdout,
-      )?.[1] ?? "";
-    expect(stufen(korr)).not.toBe("");
-    expect(stufen(korr)).toBe(stufen(vorg));
+      (/^stufen=(.*)$/m.exec(vertrag(q))?.[1] ?? "").split(" ").filter((s) => s !== "");
+    const alt = stufen(vorg);
+    const neu = stufen(korr);
+    expect(alt.length).toBeGreaterThan(0);
+    const altNamen = new Set(alt.map((s) => s.split(":")[0]));
+    const hinzu = neu.filter((s) => !altNamen.has(s.split(":")[0]));
+    // Die Gleichheit bleibt — gemessen an dem Teil, den beide kennen.
+    expect(
+      neu.filter((s) => !hinzu.includes(s)),
+      "eine Stufe des Vorgängers fehlt oder hat ihre Risikoklasse geändert (Downgrade)",
+    ).toEqual(alt);
+    expect(
+      hinzu.filter((s) => !s.endsWith(":ADDITIV")),
+      "die Korrekturausgabe bringt eine nicht additive Stufe mit",
+    ).toEqual([]);
+    // Und der BESTEHENDE Vertragsprüfer sagt dasselbe: Stand des Vorgängers gegen den neuen Vertrag
+    // ergibt „verträglich" (Exit 0) und nennt jede hinzugekommene Stufe beim Namen.
+    const ablage = brauche(bauplatz, "der Bauplatz").ordner;
+    const standPfad = join(ablage, "stand-vorgaenger");
+    const vertragPfad = join(ablage, "vertrag-korrektur");
+    writeFileSync(standPfad, `${vertrag(vorg).trimEnd()}\nbestaetigt=ja\n`);
+    writeFileSync(vertragPfad, vertrag(korr));
+    const pruefung = fahreBefehl(
+      "node",
+      [join(WURZEL, "scripts/insel/schema-vertrag.mjs"), "pruefen", standPfad, vertragPfad],
+      { cwd: WURZEL },
+    );
+    const urteil = `${pruefung.stdout}${pruefung.stderr}`;
+    expect(pruefung.code, urteil).toBe(0);
+    for (const stufe of hinzu) {
+      expect(urteil, `die neue Stufe ${stufe} wird nicht benannt`).toContain(stufe.split(":")[0]);
+    }
   });
 });
 
