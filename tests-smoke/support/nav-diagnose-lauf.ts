@@ -15,7 +15,7 @@ export interface LaufInfo {
   project: { name: string };
 }
 
-export function laufEnde(info: LaufInfo, url: string): Record<string, unknown> {
+export function laufEnde(info: LaufInfo, url: string, ablage: string): Record<string, unknown> {
   let pfad: string;
   try {
     pfad = new URL(url).pathname;
@@ -32,6 +32,8 @@ export function laufEnde(info: LaufInfo, url: string): Record<string, unknown> {
       projekt: info.project.name,
       wiederholung: info.retry,
       durchgang: info.repeatEachIndex,
+      // Relativer Ordner mit trace.zip und Screenshot dieses Tests (kein absoluter Nutzerpfad).
+      ablage,
     },
   };
 }

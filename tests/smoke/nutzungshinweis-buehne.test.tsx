@@ -112,7 +112,8 @@ it("D5: Schlusszeile bindet Endpfad und Laufkennung, ohne Query oder Hash", () =
     expectedStatus: "passed",
     project: { name: "chromium" },
   };
-  const zeile = laufEnde(info, "http://127.0.0.1:3123/erfassen?token=NICHT-LOGGEN#x");
+  const ablage = "test-results/nutzungshinweis-buehne-Diagnose-chromium";
+  const zeile = laufEnde(info, "http://127.0.0.1:3123/erfassen?token=NICHT-LOGGEN#x", ablage);
   expect(zeile).toEqual({
     status: "passed",
     erwartet: "passed",
@@ -123,10 +124,11 @@ it("D5: Schlusszeile bindet Endpfad und Laufkennung, ohne Query oder Hash", () =
       projekt: "chromium",
       wiederholung: 0,
       durchgang: 0,
+      ablage,
     },
   });
   expect(JSON.stringify(zeile)).not.toContain("NICHT-LOGGEN");
-  expect(laufEnde({ ...info, status: undefined }, "kaputt")).toMatchObject({
+  expect(laufEnde({ ...info, status: undefined }, "kaputt", ablage)).toMatchObject({
     status: null,
     pfad: "(ungültige URL)",
   });
