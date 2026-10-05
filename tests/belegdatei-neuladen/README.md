@@ -64,6 +64,11 @@ erkennen, ob der Lauf wirklich ausgeführt wurde.
   Dieser Weg war eine Host-PG-Installation auf dem Mac. Nach der heutigen Regel (keine
   PostgreSQL-/Browser-Schwerläufe und keine neue Host-PG-Installation auf dem Produktions-Mac) wird
   er nicht mehr empfohlen; die Anleitung dazu ist entfernt.
+
+  **Kein zuordenbarer Beleg für den Kandidaten.** Die Läufe gehörten zu den Lauf-1-Ständen
+  `bc329da9` bzw. `1189ecad`, nicht zum gebundenen Kandidaten. Ein Originalprotokoll (stderr mit der
+  Zeile `[KLARWERK] BELEGDATEI-NEULADEN PROTOKOLL`) liegt in den Auftragsakten nicht vor. Die
+  Angaben oben sind eine Nacherzählung und ersetzen keinen Ausführungsbeleg (Ben, Nacharbeit 1).
 - **Lauf 1, Runde 3:** Der damalige Testserverweg (`testlauf.py`) führte nur `./tools/check` aus,
   und `vitest.config.ts` schließt `**/*.integration.test.ts` aus. Beleg `pa-1790370863-a7d37a0f`
   für `05825d76`: Ausgang `bestanden`, der Integrationslauf wurde dort nicht ausgeführt.
