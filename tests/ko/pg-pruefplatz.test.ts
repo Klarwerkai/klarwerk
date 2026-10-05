@@ -309,7 +309,12 @@ describe("KO-PG-Prüfplatz · B2 · kein offener Verwaltungspool", () => {
     }
     const name = /^CREATE DATABASE (\w+) /.exec(schein.aufrufe[1] ?? "")?.[1];
     expect(name).toBeDefined();
-    expect(schein.aufrufe[2]).toBe(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`);
+    // Nacharbeit 33: erst wird gefragt, ob noch Sitzungen auf der Datenbank stehen (der Schein
+    // antwortet ohne Zeilen = keine), dann gelöscht.
+    expect(schein.aufrufe[2]).toBe(
+      `SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname = '${name}'`,
+    );
+    expect(schein.aufrufe[3]).toBe(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`);
     expect(schein.end).toHaveBeenCalledTimes(1);
   });
 

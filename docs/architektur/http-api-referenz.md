@@ -1,0 +1,369 @@
+# HTTP-API-Referenz
+
+*R-2076 / NFR-MNT-02 (Aufnahme 20260922, zentrale-module-aufteilen). Stand: Kandidat `69ac08a3`.
+Gilt für die App, die `buildApp` (`services/app/src/build-app.ts`) baut — dieselbe Wurzel für
+Server, Tests und Rollenabnahme. Die statische Auslieferung der Web-Oberfläche (`web-static.ts`,
+nur `server.ts`) ist keine API und hier nicht geführt.*
+
+**Vollständigkeit wird gemessen, nicht behauptet.** `tests/architektur-vertrag/http-api-referenz.test.ts`
+baut die App mit allen Schaltern (`tests/beta-rollenabnahme/buehne.ts`), zählt die registrierten
+Routen am Router (`registrierte-routen.ts`) und verlangt: jede Route (ohne die automatischen
+`HEAD`-Spiegel) hat genau eine Zeile in den Tabellen unten, und keine Zeile nennt eine Route, die es
+nicht gibt. Ändert jemand eine Route, wird der Prüfstand rot, bis diese Datei nachgezogen ist.
+
+**Was die Spalten bedeuten.** *Recht* ist das serverseitige Tor der Route (`requirePermission`,
+`requireUser`, `requireAdmin` oder keines). *Eingaben* sind die Parameter, die die Route liest — aus
+den Typangaben der Registrierung und dem Rumpf der Route abgeschrieben. *Erfolg* nennt Status und,
+wo der Rumpf nicht offensichtlich ist, den Dienstaufruf, der ihn liefert. *Fehler* nennt die
+Codes, die die Route **selbst** setzt; dazu kommen immer die allgemeinen Fälle aus Abschnitt 2.
+
+## 1 Anmeldung und Rechte
+
+**Sitzung.** `POST /api/auth/login` liefert `{ user, token }` und setzt das Cookie `kw_session`
+(HttpOnly, `Path=/`, `SameSite=Lax`, `Secure` in Produktion — `services/app/src/csrf.ts`,
+`COOKIE_STRATEGY`). Jede geschützte Route nimmt den Token aus `Authorization: Bearer <token>` oder
+aus diesem Cookie (`tokenFromRequest`, `services/app/src/http.ts`). Der Web-Client nutzt nur das
+Cookie; der Token im Rumpf ist der Weg für Clients ohne Cookies.
+
+**CSRF.** Kein eigener Anti-CSRF-Token. Zustandsändernde Methoden mit Cookie sind durch
+`SameSite=Lax` begrenzt, mit Bearer nicht cookie-gefährdet; Einschätzung und Restrisiko stehen in
+`csrfAssessment` (`csrf.ts`).
+
+**Rollen und Rechte** (`services/rbac`):
+
+| Rolle | Rechte |
+| --- | --- |
+| `viewer` | `ko.read` |
+| `experte` | `ko.read`, `ko.create` |
+| `controller` | wie `experte`, dazu `ko.validate`, `ko.assign`, `ko.relate`, `conflict.resolve` |
+| `admin` | wie `controller`, dazu `users.manage` |
+
+`requireAdmin` (nur im Anmeldemodul, `services/auth/src/routes.ts`) verlangt die Rolle `admin`.
+
+**Add-in-Zugang.** Mit `KLARWERK_ADDON_API=1` nimmt die App zusätzlich den Kopf
+`x-klarwerk-addon-key` an (`ADDON_KEY_HEADER`, `addon-api.ts`). Ein gültiger Schlüssel öffnet
+ausschliesslich `POST /api/ask` und `POST /api/check-text` (je mit eigener Fähigkeit), jede andere
+Route antwortet ihm `403 FORBIDDEN`; ein ungültiger Schlüssel bekommt `401 UNAUTHENTICATED`.
+Fehlversuche werden je IP gedrosselt (`429 RATE_LIMITED` mit `retry-after`). CORS gilt nur für
+diese zwei Pfade und nur für die eine eingestellte Add-in-Herkunft.
+
+## 2 Fehler, die jede Route haben kann
+
+Jede Fehlerantwort ist JSON `{ "error": "<CODE>", "message": "<Text>" }`. Der Text folgt dem Kopf
+`Accept-Language` (de/en/nl), wo er aus dem Meldungskatalog kommt.
+
+| Status | `error` | Wann |
+| --- | --- | --- |
+| 401 | `UNAUTHENTICATED` | Gemeinsamer Wächter (`makeGuards`, `http.ts`): kein oder ungültiger Token. |
+| 401 | `INVALID_CREDENTIALS` | Dasselbe an den Routen des Anmeldemoduls (eigener `requireUser`), dazu falsche Zugangsdaten. |
+| 403 | `FORBIDDEN` | Recht fehlt (`requirePermission`; die Meldung nennt das fehlende Recht) oder Rolle ist nicht `admin` (`requireAdmin`). |
+| 404 | `NOT_FOUND` | Unbekannte Route (Fastify) oder Objekt fehlt bzw. ist für den Anfragenden nicht sichtbar — bewusst dieselbe Antwort. |
+| 400 | Domänencode | `sendError`: jeder Dienstfehler mit Code aus Grossbuchstaben/Unterstrich, Status aus `STATUS_BY_CODE`, sonst 400. |
+| 409 | `CONFLICT`, `STAND_VERALTET`, `EMAIL_TAKEN`, `CLEANUP_DRIFT`, `CREATE_ANCHOR_TAKEN`, `IDEMPOTENCY_PAYLOAD_MISMATCH`, `CREATE_REPAIR_REQUIRED` | `STATUS_BY_CODE` — der Stand hat sich bewegt oder der Schlüssel ist belegt. |
+| 403 | `NOT_APPROVED`, `DOWNGRADE_FORBIDDEN`, `EXTERNAL_ATTACH_BLOCKED` | `STATUS_BY_CODE`. |
+| 503 | `KI_ABGESCHALTET`, `JOURNAL_AUSGANG_UNGEWISS` | `STATUS_BY_CODE` — Betriebszustand, kein Fehler des Aufrufers. |
+| 503 | Modell ausgelastet | `modelBusyErrorHandler` (`build-app.ts`): Kapazitätsüberlauf des Modells, mit `Retry-After`. |
+| 500 | `INTERNAL` | Alles Übrige, auch Datenbankfehler und der rein interne Code `SEARCH_PROJECTION_NOT_READY` — ohne Ursache im Text. `CREATE_ROLLBACK_FAILED` ist der eine Domänencode mit 500. |
+| 400 | Fastify-Formfehler | Rumpf kein JSON oder grösser als die Grenze der Route (Standard 1 MiB; eigene Grenzen tragen `PUT /api/kos/:id`, `POST /api/objects`, `POST /api/drafts`, `POST /api/reasoner/describe`, `POST /api/capture/slides`). |
+
+## 3 Endpunkte
+
+Pfadparameter stehen als `:name` im Pfad und werden in *Eingaben* nicht wiederholt. „Sichtbar"
+heisst: die Route prüft zusätzlich die Vertraulichkeit des Objekts für den Anfragenden
+(`services/app/src/sichtbarkeit.ts`) und antwortet sonst `404`.
+
+### 3.1 Betrieb und öffentliche Auskünfte (`buildApp` direkt, `i18nRoutes`, `brandingRoutes`, `featuresRoutes`, `supportRoutes`)
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `GET` | `/health` | keines | — | 200 `{ status: "ok", version, commit, ai, aiRuns }` | — |
+| `GET` | `/api/reasoner/status` | keines | — | 200 abstrakter KI-Status (`reasoner.publicStatus()`), ohne Anbieter- oder Modellnamen | — |
+| `GET` | `/api/ai-status` | keines | — | 200 `{ ai: publicStatus() }` | — |
+| `GET` | `/api/analytics/impact` | `ko.read` | — | 200 Wirkungsbericht (`impactReport`), sichtbarkeitsgefiltert | — |
+| `GET` | `/api/i18n/locales` | keines | — | 200 `{ locales }` | — |
+| `GET` | `/api/i18n/:locale/:key` | keines | — | 200 `{ value }` | — |
+| `GET` | `/api/branding` | keines | — | 200 die Markenwahl der Instanz | — |
+| `PUT` | `/api/admin/branding` | `users.manage` | Rumpf `{ profil?, aktiv? }` | 200 neue Markenwahl | 400 `UNKNOWN_PROFILE` |
+| `GET` | `/api/features` | ohne Token keines, mit Token `requireUser` | — | 200 `{ features }` (vor der Anmeldung die verkürzte Fassung) | 401 bei ungültigem Token |
+| `GET` | `/api/support` | `requireUser` | — | 200 der eingestellte Supportweg der Installation | — |
+| `OPTIONS` | `/*` | keines | CORS-Vorflug | Antwort von `@fastify/cors`; Kopfzeilen nur für die zwei Add-in-Pfade | — |
+
+### 3.2 Anmeldung und Konten (`authRoutes`, `services/auth/src/routes.ts`)
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `POST` | `/api/auth/register` | keines (Schalter Selbstregistrierung) | Rumpf `{ name, email, password }` | 201 Konto | 403 `REGISTRATION_DISABLED`; 429 `RATE_LIMITED`; 400 `BAD_REQUEST`, `WEAK_PASSWORD`; 409 `EMAIL_TAKEN` |
+| `POST` | `/api/auth/login` | keines | Rumpf `{ email, password }` | 200 `{ user, token }`, setzt `kw_session` | 401 `INVALID_CREDENTIALS`; 403 `NOT_APPROVED`; 429 `RATE_LIMITED` |
+| `POST` | `/api/auth/logout` | keines (Token, falls vorhanden) | — | 204, löscht `kw_session` | — |
+| `GET` | `/api/auth/me` | `requireUser` (Modul) | — | 200 eigenes Konto | 401 `INVALID_CREDENTIALS` |
+| `POST` | `/api/auth/office-handover` | `requireUser` (Modul) | — | 201 `{ code, expiresInMs }` (Einmalcode für das Word-Add-in) | 401 `INVALID_CREDENTIALS` |
+| `POST` | `/api/auth/office-handover/redeem` | keines (der Code ist der Nachweis) | Rumpf `{ code }` | 200 `{ token, user }` | 401 `INVALID_CREDENTIALS` |
+| `GET` | `/api/auth/notice` | `requireUser` (Modul) | — | 200 Hinweisstand des Kontos | 401 |
+| `POST` | `/api/auth/notice` | `requireUser` (Modul) | — | 200 Hinweis als gelesen vermerkt | 401 |
+| `POST` | `/api/auth/password` | `requireUser` (Modul) | Rumpf `{ oldPassword, newPassword }` | 204 | 401; Dienstfehler (`WEAK_PASSWORD`, `INVALID_CREDENTIALS`) |
+| `POST` | `/api/auth/forgot` | keines | Rumpf `{ email }` | 204, gleich für bekannte und unbekannte Adressen | — |
+| `POST` | `/api/auth/reset` | keines | Rumpf `{ token, newPassword }` | 204 | 429 `RATE_LIMITED`; Dienstfehler |
+| `GET` | `/api/auth/oidc/start` | keines | — | Weiterleitung zum Anbieter, setzt die Ablauf-Cookies (state, nonce, PKCE) | 501 `OIDC_DISABLED` |
+| `POST` | `/api/auth/oidc` | keines | Rumpf `{ code, state }` | 200 `{ user, token }`, setzt `kw_session` | 501 `OIDC_DISABLED`; 400 `OIDC_INVALID` (state passt nicht); 401 `OIDC_INVALID` (Anmeldung gescheitert) |
+| `GET` | `/api/auth/status` | keines | — | 200 `{ needsSetup, oidcEnabled, selfRegistrationEnabled }` | — |
+| `POST` | `/api/auth/setup` | keines (nur auf leerer Instanz) | Rumpf `{ name, email, password }` | 201 `{ user, token }`, setzt `kw_session` — erstes Konto, Admin | 409 `ALREADY_SETUP`; Dienstfehler |
+| `POST` | `/api/auth/users/:id/approve` | `requireAdmin` | — | 200 freigegebenes Konto | 401; 403 `FORBIDDEN`; Dienstfehler |
+| `POST` | `/api/auth/users/:id/reset` | `requireAdmin` | Rumpf `{ password }` | 204 | 401; 403; Dienstfehler |
+| `DELETE` | `/api/auth/users/:id` | `requireAdmin` | — | 204 | 401; 403; Dienstfehler |
+| `GET` | `/api/users` | `requireAdmin` | — | 200 Kontenliste (`listUsers`) | 401; 403 |
+| `POST` | `/api/users` | `requireAdmin` | Rumpf `{ name, email, password, role?, accessExpiresAt? }` | 201 Konto | 400 `BAD_REQUEST`, `WEAK_PASSWORD`; 403 `FORBIDDEN` (Befristung unlesbar oder Rollenwechsel unzulässig); 409 `EMAIL_TAKEN` |
+| `PUT` | `/api/users/:id` | `requireAdmin` | Rumpf `{ role?, approve?, password?, accessExpiresAt? }` | 200 Konto bzw. 204 | 400 `BAD_REQUEST`, `WEAK_PASSWORD`; 403 `FORBIDDEN` |
+| `DELETE` | `/api/users/:id` | `requireAdmin` | — | 204 | 401; 403; Dienstfehler |
+| `GET` | `/api/directory` | `requireUser` (Modul) | — | 200 `[{ id, name }]` — ohne E-Mail | 401 |
+
+Ausnahme zu Abschnitt 2: Die Wächter dieses Moduls antworten bei fehlender Anmeldung mit
+`401 INVALID_CREDENTIALS`, nicht `UNAUTHENTICATED`.
+
+### 3.3 Wissensobjekte (`koRoutes`, `lesevarianten`, `kanten`, `bearbeitung`, `provenance`)
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `GET` | `/api/kos` | `ko.read` | Abfrage `type?`, `status?`, `category?`, `tag?` | 200 Liste, sichtbarkeitsgefiltert | — |
+| `POST` | `/api/kos` | `ko.create` | Rumpf `CreateKoInput` ohne `author` (`title`, `statement`, `type`, `category`, `confidentiality`, …) und `reviewerIds?` | 201 Wissensobjekt | 400 `MISSING_CONFIDENTIALITY`; Dienstfehler |
+| `POST` | `/api/kos/from-document` | `ko.create` | Rumpf `{ draftId?, create?, draftPayload?, … }` | 201 Wissensobjekt; 200 bei Wiederholung desselben Vorgangs | 400 `BAD_REQUEST`, `MISSING_CONFIDENTIALITY`, `DRAFT_STAND_FEHLT`; 409 `DRAFT_STALE`; 403 `EXTERNAL_ATTACH_BLOCKED` |
+| `GET` | `/api/kos/trash` | `users.manage` | — | 200 Papierkorb (`ko.trashed()`) | — |
+| `DELETE` | `/api/kos/trash/:id` | `users.manage` | — | 204 endgültig gelöscht | Dienstfehler |
+| `GET` | `/api/kos/:id` | `ko.read`, sichtbar | — | 200 Wissensobjekt samt `metadata_revision` | 404 `NOT_FOUND` |
+| `PUT` | `/api/kos/:id` | je Aktion (unten); Anmeldung vor dem Einlesen des Rumpfs | Rumpf `{ action, … }` | 200 bzw. 201/204 je Aktion | 400 `BAD_REQUEST`; 404; 409 `KO_STALE` (mit `currentVersion`); 403 `PROPOSAL_OWN`, `PROPOSAL_REQUIRED`, `EXTERNAL_ATTACH_BLOCKED`; 409 `PROPOSAL_DECIDED`; 404 `PROPOSAL_NOT_FOUND` |
+| `DELETE` | `/api/kos/:id` | `ko.read`, sichtbar, dazu Autor oder `ko.validate` | — | 204 (in den Papierkorb) | 403 `FORBIDDEN`; 404 |
+| `POST` | `/api/kos/:id/restore` | `users.manage` | — | 200 wiederhergestelltes Objekt | Dienstfehler |
+| `GET` | `/api/kos/:id/versions` | `ko.read`, sichtbar | — | 200 Fassungen (`ko.versionsOf`) | 404 |
+| `GET` | `/api/kos/:id/evidence` | `ko.read`, sichtbar | — | 200 Belegkette (`ko.evidenceOf`) | 404 |
+| `POST` | `/api/kos/:id/ai-check` | `ko.validate` | — | 200 `{ status: "pending" }` | 404; 503 `AI_CHECK_UNAVAILABLE`; 409 `AI_CHECK_NOT_RETRYABLE` |
+| `GET` | `/api/evidence` | `ko.read` | Abfrage `limit?` | 200 Belege der sichtbaren Objekte | — |
+| `GET` | `/api/upload-limits` | `ko.read` | — | 200 Grenzen (Vorgabe, wenn keine gesetzt) | — |
+| `PUT` | `/api/upload-limits` | `users.manage` | Rumpf `{ maxAttachments?, maxAttachmentBytes? }` | 200 neue Grenzen | Dienstfehler |
+| `GET` | `/api/wissensnetz/luecken` | `ko.read` | Abfrage `deckel?` | 200 Lückenmetrik | — |
+| `GET` | `/api/kos/:id/lesevariante/:lang` | `ko.read`, sichtbar | — | 200 Lesevariante mit Änderungsauskunft | 404 `NOT_FOUND`, `NO_LESEVARIANTE` |
+| `GET` | `/api/lesevarianten` | `ko.read` | Abfrage `lang` | 200 `{ lang, eintraege }` | 400 `MISSING_LANG` |
+| `GET` | `/api/library/import/candidates/:id/lesevariante/:lang` | `ko.read` | — | 200 Lesevariante des Kandidaten | 404 `NOT_FOUND`, `NO_LESEVARIANTE` |
+| `POST` | `/api/admin/lesevarianten/laden` | `users.manage` | Rumpf `{ package }` | 200 Ladebilanz | 400 `UNKNOWN_PACKAGE` |
+| `GET` | `/api/kos/:id/beziehungen` | `ko.read`, sichtbar | — | 200 kuratierte Beziehungen | 404 |
+| `POST` | `/api/kos/:id/beziehungen` | `ko.relate` | Rumpf `{ zielId, art, richtung, beitragSchluessel?, gesehen }` | 201 neu angelegt, 200 Wiederholung desselben Beitrags (Ansicht der Beziehung) | 400 `VALIDATION`; 404; 409 `STAND_VERALTET` (mit den aktuellen Fassungen) |
+| `POST` | `/api/beziehungen/:beziehungId/widerruf` | `ko.relate` | Rumpf `{ version }` | 200 widerrufene Beziehung | 400; 404; 409 `STAND_VERALTET` |
+| `GET` | `/api/kos/:id/bearbeitungen` | `ko.read`, sichtbar | — | 200 laufende Bearbeitungshinweise | 404 `NOT_FOUND` |
+| `PUT` | `/api/kos/:id/bearbeitungen/:sitzung` | `ko.create`, sichtbar | — | 200 `{ jetzt, …Takt, bearbeitung }` | 404; 400 `BAD_REQUEST` (Sitzungskennung ungültig) |
+| `DELETE` | `/api/kos/:id/bearbeitungen/:sitzung` | `ko.create`, sichtbar | — | 200 `{ beendet }` | 404; 400 `BAD_REQUEST` (Sitzungskennung ungültig) |
+| `GET` | `/api/kos/:id/provenance` | `ko.read`, sichtbar (Schalter `KLARWERK_PROVENANCE_ENABLED`) | — | 200 Herkunftsgraph | 404 |
+| `GET` | `/api/kos/:id/neighbors` | `ko.read`, sichtbar | — | 200 Nachbarn im Wissensnetz | 404 |
+
+**Aktionen von `PUT /api/kos/:id`** (Feld `action`; Liste und Sichtbarkeitsurteil je Aktion in
+`KO_AKTIONEN_MIT_TORURTEIL`, `ko-routes.ts`):
+
+| `action` | Recht | weitere Felder |
+| --- | --- | --- |
+| `rate` | `ko.validate` | `verdict` |
+| `assign` | `ko.assign` | `userIds` |
+| `admin-validate` | `users.manage` | — |
+| `revise` | `ko.create` | `changes`, `expectedVersion?` |
+| `revise-release` | `requireUser` | `expectedVersion?` |
+| `propose` | `ko.create` | `proposal { statement?, bodyHtml?, clearBody?, baseVersion, origin? }` |
+| `decide-proposal` | `users.manage` | `proposalId`, `decision` (`uebernehmen`/`ablehnen`), `note?`, `expectedVersion?` |
+| `comment`, `comment-resolve`, `comment-reopen` | `requireUser` | `text` bzw. die Fadenfelder |
+| `attach`, `detach` | `ko.create` | Anhang bzw. `attachmentId` |
+| `add-source`, `remove-source` | `ko.create` | Quelle bzw. `sourceId` |
+| `append-document` | `ko.create` | Dokument |
+| `category`, `tags` | `ko.create` | `category` bzw. `tags`, `expectedMetadataRevision?` |
+| `confidentiality` | `ko.create` | Stufe |
+| `ownership` | `ko.validate` | `ownership` |
+| `conflict` | `ko.validate` | `conflict` (antwortet 201) |
+| `resolve-conflict` | `conflict.resolve` | `conflictId`, `decision` |
+| `transfer-author` | `users.manage` | `newAuthor` |
+| `revalidate` | `ko.create` | — |
+
+### 3.4 Entwürfe und Erfassung (`captureRoutes`, `slidesRoutes`, `objectRoutes`, `mediaRoutes`)
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `GET` | `/api/drafts` | `ko.create` | — | 200 eigene/sichtbare Entwürfe | — |
+| `POST` | `/api/drafts` | `ko.create` | Rumpf `DraftPayload` (`title?`, `statement?`, `type?`, `category?`, `tags?`, `bodyHtml?`, `confidentiality?`, …), `operationId?`, `expectedOwner?` | 201 Entwurf; 200 bei Wiederholung derselben `operationId` | 400 `BAD_REQUEST`; 409 `DRAFT_OWNER_MISMATCH`, `IDEMPOTENCY_PAYLOAD_MISMATCH`; 413 `PAYLOAD_TOO_LARGE` |
+| `POST` | `/api/drafts/from-docx` | `ko.create` | Rumpf `{ data (Base64 .docx), name?, title? }` | 201 Entwurf aus dem Dokument | 400 `BAD_REQUEST`; 415 `UNSUPPORTED_MEDIA_TYPE`; 503 `BUSY` (mit `retry-after`); 408 `CLIENT_ABORTED` |
+| `GET` | `/api/drafts/trash` | `ko.create` | — | 200 gelöschte, sichtbare Entwürfe | — |
+| `DELETE` | `/api/drafts/trash/:id` | `ko.create` | — | 204 | 404 `NOT_FOUND` |
+| `GET` | `/api/drafts/:id` | `ko.create` | — | 200 Entwurf | 404 `NOT_FOUND`; 403 `FORBIDDEN` (nicht sichtbar) |
+| `PUT` | `/api/drafts/:id` | `ko.create` | Rumpf `DraftPayload`, `expectedUpdatedAt?` | 200 Entwurf | 400 `BAD_REQUEST`; 404; 403; 409 `DRAFT_STALE` |
+| `DELETE` | `/api/drafts/:id` | `ko.create` | — | 204 (in den Papierkorb) | 404; 403 |
+| `GET` | `/api/drafts/:id/naechster-schritt` | `ko.create` | — | 200 `{ naechsterSchritt }` oder `{}` | 404; 403 |
+| `POST` | `/api/drafts/:id/restore` | `ko.create` | — | 200 wiederhergestellter Entwurf | 404 |
+| `POST` | `/api/drafts/:id/promote` | `ko.create` | Rumpf `{ reviewerIds?, operationId?, draftPayload?, expectedUpdatedAt? }` | 201 Wissensobjekt; 200 bei Wiederholung | 400 `BAD_REQUEST`; 409 `DRAFT_STALE`; 403 `EXTERNAL_ATTACH_BLOCKED`; Idempotenzfehler aus Abschnitt 2 |
+| `GET` | `/api/capture/slides/availability` | `ko.create` | — | 200 `{ available }` | — |
+| `POST` | `/api/capture/slides` | `ko.create` (vor dem Einlesen) | Rumpf `{ data }` (Base64 PPTX) | 200 Folienbilder | 400 `BAD_REQUEST`; 413 `PAYLOAD_TOO_LARGE`; 415 `SLIDES_INVALID`; 422 `SLIDES_TIMEOUT`; 429 `RATE_LIMITED`, `CONVERSION_BUSY`; 408 `CLIENT_ABORTED`; 503 `SLIDES_UNAVAILABLE`; 500 `SLIDES_FAILED` |
+| `POST` | `/api/objects` | `ko.create` (vor dem Einlesen) | Rumpf `{ name, mime, data, kind?, confidentiality?, purpose?, draftId? }` | 201 Objektbeschreibung | Dienstfehler |
+| `GET` | `/api/objects/:id` | `ko.read`, nur Anhänge sichtbarer Träger | — | 200 Objekt | 404 `NOT_FOUND` |
+| `GET` | `/api/objects/:id/raw` | `ko.read`, wie oben | — | 200 Rohbytes mit Inhaltstyp | 404; 415 `UNSUPPORTED` |
+| `GET` | `/api/media/status` | `requireUser` | — | 200 Engine-Auskunft | — |
+| `POST` | `/api/media/analyze` | `ko.read` | Rumpf `{ objectId, locale?, confidentiality? }` | 200 Analyse | 404 `NOT_FOUND` |
+
+### 3.5 Prüfung, Konflikte, Dubletten (`validationRoutes`, `conflictRoutes`, `overlapRoutes`, `aiCheckCoverageRoutes`, `auditRoutes`)
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `GET` | `/api/validation/board` | `ko.read` | Abfrage wie `GET /api/kos` ohne `status` | 200 Prüfboard | — |
+| `GET` | `/api/validation/overview` | `ko.read` | — | 200 Übersicht | — |
+| `GET` | `/api/validation/settings` | `ko.read` | — | 200 `{ defaultNeededValidations }` | — |
+| `PUT` | `/api/validation/settings` | `users.manage` | Rumpf `{ defaultNeededValidations }` | 200 `{ defaultNeededValidations }` | Dienstfehler |
+| `GET` | `/api/conflicts` | `ko.read` | — | 200 offene Konflikte, sichtbarkeitsgefiltert | — |
+| `GET` | `/api/conflicts/:id` | `ko.read`, sichtbar | — | 200 Konflikt | 404 `NOT_FOUND` |
+| `POST` | `/api/conflicts/:id/escalate` | `conflict.resolve` | — | 200 Konflikt | Dienstfehler |
+| `POST` | `/api/conflicts/:id/dismiss` | `conflict.resolve` | Rumpf `{ note? }` | 200 Konflikt | Dienstfehler |
+| `POST` | `/api/conflicts/:id/second-opinion` | `ko.validate` | Rumpf `{ opinion }` | 200 Konflikt | Dienstfehler |
+| `GET` | `/api/duplicate-signal` | `ko.read` | — | 200 eigene Objekte mit offenem Befund | — |
+| `GET` | `/api/duplicates` | `ko.read` | — | 200 offene Überschneidungen | — |
+| `GET` | `/api/duplicates/settings` | `ko.read` | — | 200 Anzeigeschwelle | — |
+| `PUT` | `/api/duplicates/settings` | `users.manage` | Rumpf `{ minConfidence }` | 200 neue Schwelle | Dienstfehler |
+| `GET` | `/api/duplicates/:id` | `ko.read`, sichtbar | — | 200 Überschneidung | 404 `NOT_FOUND` |
+| `POST` | `/api/duplicates/:id/dismiss` | `ko.validate` | Rumpf `{ note? }` | 200 | Dienstfehler |
+| `POST` | `/api/duplicates/:id/keep-separate` | `ko.validate` | Rumpf `{ note? }` | 200 | Dienstfehler |
+| `POST` | `/api/duplicates/:id/link-related` | `ko.validate` | Rumpf `{ note? }` | 200 | Dienstfehler |
+| `POST` | `/api/duplicates/:id/status` | `ko.validate` | Rumpf `{ status?, reason?, note? }` | 200 | Dienstfehler |
+| `GET` | `/api/ai-check/coverage-summary` | `ko.read` | — | 200 Abdeckung der KI-Prüfung | — |
+| `GET` | `/api/audit` | `ko.validate` | Abfrage `actor?`, `action?`, `target?` | 200 Protokolleinträge | — |
+| `GET` | `/api/audit/verify` | `ko.validate` | — | 200 Prüfbericht der Protokollkette | — |
+
+### 3.6 Fragen, Klara und KI (`askRoutes`, `klaraAiRoutes`, `klaraZurufRoutes`, `klaraAnswerExplanationRoutes`, `knowledgeCheckRoutes`, `checkTextRoutes`, `reasonerRoutes`, `helpRoutes`, `modelRunRoutes`)
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `POST` | `/api/ask` | `ko.read` oder Add-in-Fähigkeit | Rumpf `{ question, locale?, mode?, selection?, selectionConfidentiality?, questionSource? }` | 200 Antwort mit Belegen | 401 `UNAUTHENTICATED`; 403 `FORBIDDEN`; 503 `KI_ABGESCHALTET` |
+| `POST` | `/api/ask/helpful` | `ko.read` | Rumpf `{ koId, receipt? }` | 204 | Dienstfehler |
+| `GET` | `/api/gaps` | `ko.read` | — | 200 Wissenslücken | — |
+| `GET` | `/api/gaps/summary` | `ko.read` | — | 200 Zusammenfassung | — |
+| `PUT` | `/api/gaps/:id` | `ko.assign` | Rumpf `{ expertId? \| close? \| priority? }` | 200 Lücke | 400 `BAD_REQUEST` |
+| `DELETE` | `/api/gaps/:id` | `ko.validate` | Abfrage `confirm` | 204 | Dienstfehler |
+| `GET` | `/api/klara/ai-status` | `ko.read` | Bindung aus Kopfzeilen des Add-ins | 200 Klara-Status der Sitzung | — |
+| `POST` | `/api/klara/sessions` | `ko.read` | Rumpf `{ addinInstanceId?, documentDescriptor? }` | 201 Sitzung | Dienstfehler |
+| `GET` | `/api/klara/sessions/:sessionId` | `ko.read` | — | 200 Sitzung | Dienstfehler |
+| `POST` | `/api/klara/sessions/:sessionId/document-context` | `ko.read` | Rumpf `{ documentDescriptor? }` | 200 Sitzung | Dienstfehler |
+| `POST` | `/api/klara/sessions/:sessionId/consent` | `ko.read` | — | 200 Sitzung mit Zustimmung | Dienstfehler |
+| `DELETE` | `/api/klara/sessions/:sessionId/consent` | `ko.read` | — | 200 Sitzung ohne Zustimmung | Dienstfehler |
+| `POST` | `/api/klara/sessions/:sessionId/close` | `ko.read` | — | 200 geschlossene Sitzung | Dienstfehler |
+| `POST` | `/api/klara/sessions/:sessionId/zuruf` | `ko.read` | Rumpf `{ text, koIds, art }` | 200 Vorschlag (schreibt nichts) | 503 `NO_FORMULIERER`; Dienstfehler |
+| `GET` | `/api/klara/answers/:answerId/explanation` | `ko.read` | — | 200 Erklärung der Antwort | 404 `NOT_FOUND` |
+| `POST` | `/api/knowledge/check` | `ko.read` | Rumpf `{ text, source?, koId?, draftId?, confidentiality?, nichtEingestuft? }` | 200 Ähnlichkeits-/Widerspruchsbefund | — |
+| `POST` | `/api/check-text` | `ko.read` oder Add-in-Fähigkeit (Schalter `KLARWERK_ADDON_API`) | Rumpf `{ text, title?, locale?, want?, source?, koId?, confidentiality?, nichtEingestuft? }` | 200 Prüfergebnis | 403 `FORBIDDEN`; 400 Formfehler |
+| `POST` | `/api/reasoner` | `ko.read` | Rumpf `{ task, text?, answers?, locale?, instruction?, query?, outputLanguage?, source?, koId?, confidentiality?, nichtEingestuft?, draftId? }` | 200 Ergebnis der Aufgabe | 400 `BAD_REQUEST`; 409 `CONFIDENTIAL_CLOUD_BLOCKED` (mit `reason`); 503 `KI_ABGESCHALTET` |
+| `POST` | `/api/reasoner/describe` | `ko.read` (vor dem Einlesen) | Rumpf `{ dataUrl, locale?, source?, koId?, confidentiality?, nichtEingestuft?, draftId?, context? }` | 200 Bildbeschreibung | 400 `BAD_REQUEST`; 413 `PAYLOAD_TOO_LARGE` |
+| `POST` | `/api/reasoner/enrich` | `ko.create` | Rumpf `{ query, locale? }` | 200 Anreicherung | 400 `BAD_REQUEST`; 403 `PUBLIC_AI_ENRICHMENT_BLOCKED` |
+| `GET` | `/api/reasoner/config` | `users.manage` | — | 200 Konfiguration samt Anbietern (`configStatus()`) | — |
+| `PUT` | `/api/reasoner/config` | `users.manage` | Rumpf `{ global?, perTask?, kiFreigabe? { oeffentlicheKi?, vertraulicheInhalte? } }` | 200 neuer Status | 400 `BAD_REQUEST`; 409 `REASONER_POLICY_ENV_LOCKED`; 503 `REASONER_FREIGABE_NICHT_PROTOKOLLIERBAR` |
+| `GET` | `/api/reasoner/assist-presets` | `ko.read` | — | 200 Vorlagen | — |
+| `PUT` | `/api/reasoner/assist-presets` | `users.manage` | Rumpf `{ presets: [{ id?, name?, instruction? }] }` | 200 Vorlagen | 400 `BAD_REQUEST` |
+| `POST` | `/api/reasoner/test` | `users.manage` | — | 200 Probe des Cloud-Wegs | — |
+| `POST` | `/api/reasoner/test-local` | `users.manage` | — | 200 Probe des lokalen Wegs | — |
+| `POST` | `/api/reasoner/conflict-self-test` | `users.manage` | — | 200 Selbsttest Widerspruch | — |
+| `POST` | `/api/reasoner/duplicate-self-test` | `users.manage` | — | 200 Selbsttest Dublette | — |
+| `POST` | `/api/help/explain` | `ko.read` | Rumpf `{ question, snippets, locale? }` | 200 Hilfeantwort | 400 `BAD_REQUEST` |
+| `GET` | `/api/model-runs` | `ko.read` | Abfrage `limit?` | 200 Modellläufe (Kontext nur für Berechtigte) | — |
+| `GET` | `/api/model-runs/auswertung` | `ko.read` | Abfrage `von?`, `bis?` (ISO 8601; Vorgabe 30 Tage, höchstens 366) | 200 `{ auswertung, preisgrundlage }` — nur Summen und Zähler | 400 `BAD_REQUEST` |
+
+### 3.7 Bibliothek, Import, Auswertung (`libraryRoutes`, `categoryRoutes`, `outputRoutes`, `managementRoutes`, `externalRoutes`, `lifecycleRoutes`, `notificationsRoutes`, `livewallRoutes`, `impactRoutes`, `gesamtanweisungRoutes`)
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `GET` | `/api/library/search` | `ko.read` | Abfrage `q?` und Filter wie `GET /api/kos` | 200 Treffer | 500 `INTERNAL`, solange die Suchprojektion nicht bereit ist |
+| `GET` | `/api/library/images` | `ko.read` | Abfrage `q?`, `limit?` | 200 Bildtreffer | 400 `BAD_REQUEST`; 503 `SEARCH_UNAVAILABLE` |
+| `GET` | `/api/library/export` | `ko.read` | Abfrage `format?` | 200 Export | — |
+| `POST` | `/api/library/import` | `ko.create` | Rumpf `{ items }` | 200 Importbilanz | Dienstfehler |
+| `GET` | `/api/library/import/candidates` | `ko.read` | — | 200 Prüfwarteschlange | — |
+| `POST` | `/api/library/import/candidates` | `ko.create` | Rumpf `{ items }` | 201 Kandidaten | Dienstfehler |
+| `PUT` | `/api/library/import/candidates/:id` | `ko.validate` | Rumpf `{ action: accept \| reject \| info, note? }` | 200 Kandidat | 400 `BAD_REQUEST` |
+| `POST` | `/api/admin/import/cleanup` | `users.manage` | Rumpf `{ confirm?, digest? }` | 200 `{ preview: true, … }` bzw. `{ preview: false, … }` | 409 `CLEANUP_DRIFT` |
+| `GET` | `/api/analytics` | `ko.read` | — | 200 Auswertung | — |
+| `GET` | `/api/analytics/busfactor` | `ko.read` | — | 200 Busfaktor | — |
+| `GET` | `/api/analytics/expertise` | `ko.assign` (Schalter `KLARWERK_EXPERT_MATCHING`) | — | 200 Expertise | 404 `not_found` ohne Schalter, vor dem Rechtetor |
+| `GET` | `/api/graph` | `ko.read` | — | 200 Wissensgraph | — |
+| `GET` | `/api/categories` | `requireUser` | — | 200 `{ categories }` | — |
+| `GET` | `/api/output/sources` | `ko.read` | — | 200 geeignete Quellen | — |
+| `POST` | `/api/output/generate` | `ko.read` | Rumpf `{ kind, koIds, audienceRole? }` | 200 Dokument | 400 `NO_SOURCES`, `NOT_VALIDATED`, `UNKNOWN_KO`, `UNKNOWN_KIND`, `CONFIDENTIAL` |
+| `GET` | `/api/management/snapshot` | `ko.read` | — | 200 Lagebild | — |
+| `GET` | `/api/management/risk-horizon` | `ko.read` (alle Bereiche nur mit `users.manage`) | — | 200 Bereichsblick mit Ruhestandshorizonten, sichtbarkeitsgefiltert | — |
+| `GET` | `/api/management/profiles` | `users.manage` | — | 200 `{ categories, retirement }` | — |
+| `PUT` | `/api/management/profiles/category` | `users.manage` | Rumpf: Bereichsprofil einer Kategorie | 200 gespeichertes Profil | Dienstfehler |
+| `PUT` | `/api/management/profiles/retirement/:userId` | `users.manage` | Rumpf `{ horizonMonths }` | 200 `{ entry }` | 404 `NOT_FOUND` (unbekanntes Konto); Dienstfehler |
+| `GET` | `/api/external/policy` | `ko.read` | — | 200 `{ stage }` | — |
+| `PUT` | `/api/external/policy` | `users.manage` | Rumpf `{ stage }` | 200 `{ stage }` | Dienstfehler |
+| `GET` | `/api/external/search` | `ko.read` | Abfrage `q?` | 200 Treffer | 403 `EXTERNAL_SEARCH_BLOCKED`; 501 `EXTERNAL_SEARCH_DISABLED` |
+| `POST` | `/api/lifecycle/couple` | `ko.create` | Rumpf `{ assetRef, koId }` | 204 | Dienstfehler |
+| `GET` | `/api/lifecycle/couplings/:koId` | `ko.read`, sichtbar | — | 200 Kopplungen | 404 |
+| `POST` | `/api/lifecycle/asset-changed` | `ko.validate` | Rumpf `{ assetRef }` | 200 betroffene Objekte | Dienstfehler |
+| `GET` | `/api/lifecycle/pending` | `ko.read` | — | 200 Kennungen sichtbarer offener Objekte | — |
+| `POST` | `/api/learning-paths` | `ko.create` | Rumpf `{ role, steps: [{ title }] }` | 201 Lernpfad | Dienstfehler |
+| `GET` | `/api/learning-paths/:role` | `ko.read` | — | 200 Lernpfad | 404 `NOT_FOUND` |
+| `POST` | `/api/learning-paths/:pathId/complete` | `ko.read` | Rumpf `{ stepId }` | 200 Fortschritt | Dienstfehler |
+| `GET` | `/api/learning-paths/:pathId/progress` | `ko.read` | — | 200 Fortschritt | — |
+| `GET` | `/api/notifications` | `requireUser` | — | 200 Glockenliste | — |
+| `POST` | `/api/notifications/seen` | `requireUser` | Rumpf `{ ids }` | 200 `{ unseenCount }` | 400 (`ids` fehlt) |
+| `GET` | `/api/livewall` | `ko.read` | — | 200 Live-Wand | — |
+| `GET` | `/api/me/impact` | `requireUser` | — | 200 eigene Wirkung | — |
+| `GET` | `/api/gesamtanweisungen` | `ko.read` | — | 200 sichtbare Anweisungen | — |
+| `POST` | `/api/gesamtanweisungen` | `ko.create` | Rumpf `{ titel?, zweck?, geltungsbereich?, voraussetzungen? }` | 201 Anweisung | Dienstfehler |
+| `GET` | `/api/gesamtanweisungen/:id` | `ko.read`, sichtbar | — | 200 Anweisung | 404 |
+| `PUT` | `/api/gesamtanweisungen/:id` | `ko.create` | Rumpf Kopf wie oben und `version` | 200 Anweisung | 400 `VALIDATION`; 409 `CONFLICT` (mit `stand`, `version`) |
+| `POST` | `/api/gesamtanweisungen/:id/bausteine` | `ko.create` | Rumpf `{ version, koId, koVersion, nachweisHash?, voraussetzung? }` | 200 Anweisung | 400 `VALIDATION`; 409 `CONFLICT` |
+| `PUT` | `/api/gesamtanweisungen/:id/reihenfolge` | `ko.create` | Rumpf `{ version, reihenfolge }` | 200 Anweisung | 400 `VALIDATION`; 409 `CONFLICT` |
+| `PUT` | `/api/gesamtanweisungen/:id/bausteine/:bausteinId/voraussetzung` | `ko.create` | Rumpf `{ version, voraussetzung? }` | 200 Anweisung | 400 `VALIDATION`; 409 `CONFLICT` |
+| `GET` | `/api/gesamtanweisungen/:id/staende` | `ko.read`, sichtbar | — | 200 `{ staende }` | 404 |
+| `GET` | `/api/gesamtanweisungen/:id/vergleich` | `ko.read`, sichtbar | Abfrage `von`, `bis` | 200 Vergleich zweier Stände | 400 `VALIDATION`; 404 |
+| `POST` | `/api/gesamtanweisungen/:id/vorlegen` | `ko.create` | Rumpf `{ version }` | 200 Anweisung | 400 `VALIDATION`; 409 `CONFLICT` |
+| `POST` | `/api/gesamtanweisungen/:id/entscheiden` | `ko.validate` | Rumpf `{ version, entscheidung: angenommen \| abgelehnt }` | 200 Anweisung | 400 `VALIDATION`; 409 `CONFLICT` |
+
+### 3.8 Verwaltung und Quellenimport (`adminRoutes`, `importAccessRoutes`, `confluenceImportRoutes`, `importRunRoutes`, `sharepointImportRoutes`)
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `GET` | `/api/admin/demo-seed` | `users.manage` | — | 200 `{ present, count }` | — |
+| `POST` | `/api/admin/demo-seed` | `users.manage` | — | 200 Ladebilanz | Dienstfehler |
+| `DELETE` | `/api/admin/demo-seed` | `users.manage` | — | 200 Entfernbilanz | Dienstfehler |
+| `POST` | `/api/admin/sim-corpus` | `users.manage` | — | 200 Ladebilanz | Dienstfehler |
+| `POST` | `/api/admin/examples/load` | `users.manage` | Rumpf `{ package }` | 200 Ladebilanz | 400 `UNKNOWN_PACKAGE` |
+| `GET` | `/api/admin/demo-packages` | `users.manage` | — | 200 Paketübersicht | — |
+| `GET` | `/api/admin/demo-packages/:id/preview` | `users.manage` | Abfrage `aktion?` | 200 Vorschau | 404 `UNKNOWN_PACKAGE`; 400 `UNKNOWN_ACTION` |
+| `POST` | `/api/admin/demo-packages/:id/load` | `users.manage` | — | 200 Ladebilanz | 404 `UNKNOWN_PACKAGE` |
+| `POST` | `/api/admin/demo-packages/:id/reset` | `users.manage` | — | 200 Bilanz | 404 `UNKNOWN_PACKAGE` |
+| `DELETE` | `/api/admin/demo-packages/:id` | `users.manage` | — | 200 Entfernbilanz | 404 `UNKNOWN_PACKAGE` |
+| `GET` | `/api/admin/factory-reset` | `users.manage` | — | 200 `{ available }` | — |
+| `POST` | `/api/admin/factory-reset` | `users.manage` | Rumpf `{ password }` (erneute Bestätigung) | 200 `{ ok: true }`, danach endet der Prozess | 403 `FORBIDDEN` (nicht verfügbar); 401 `INVALID_PASSWORD` |
+| `GET` | `/api/admin/sicherungen` | `users.manage` | — | 200 `{ zustand, verzeichnis, gelesenUtc, sicherungen? }` | — |
+| `GET` | `/api/import/confluence/zugang` | `users.manage` | — | 200 Zugangszustand | — |
+| `PUT` | `/api/import/confluence/schalter` | `users.manage` | Rumpf `{ an: true \| false }` | 200 neuer Schalterstand | 400 `BAD_REQUEST`; 409 `IMPORT_NOT_RELEASED`; 503 `SWITCH_UNAVAILABLE` |
+| `GET` | `/api/import/sharepoint/zugang` | `users.manage` | — | 200 Zugangszustand | — |
+| `POST` | `/api/admin/import/confluence` | `users.manage` (Schalter `KLARWERK_CONFLUENCE_IMPORT`) | Rumpf `{ dryRun? }` | 200 Zusammenfassung bzw. 202 `{ importId, status: "QUEUED" }` | 503 `IMPORT_UNAVAILABLE`; 409 `IMPORT_ALREADY_RUNNING`; `IMPORT_FAILED` |
+| `POST` | `/api/admin/import/confluence/explore` | `users.manage` (Schalter wie oben) | — | 200 Erkundung | 503 `IMPORT_UNAVAILABLE`; `EXPLORE_FAILED` |
+| `POST` | `/api/admin/import/confluence/select` | `users.manage` (Schalter wie oben) | Rumpf `{ prompt?, criteria?, locale?, promptConfidential? }` | 200 Auswahlvorschau | 400 `BAD_REQUEST`; 503 `IMPORT_UNAVAILABLE`; `SELECT_FAILED` |
+| `POST` | `/api/admin/import/confluence/group` | `users.manage` (Schalter wie oben) | Rumpf `{ criteria?, locale?, selectedCandidateIds? }` | 200 Gruppierung | 400 `GROUP_EMPTY_SELECTION`, `GROUP_TOO_MANY`, `GROUP_TOO_LARGE`; 503; `GROUP_FAILED` |
+| `POST` | `/api/admin/import/confluence/apply` | `users.manage` (Schalter wie oben) | Rumpf `{ criteria?, includeIds?, snapshotToken? }` | 200 Übernahmebilanz | 400 `APPLY_TOO_MANY`; 409 `SNAPSHOT_EXPIRED`; 503; `APPLY_FAILED` |
+| `GET` | `/api/admin/import/runs/:importId` | `users.manage` (Schalter wie oben) | — | 200 Lauf | 404 `NOT_FOUND` |
+| `GET` | `/api/admin/import/runs/:importId/result` | `users.manage` (Schalter wie oben) | — | 200 Laufergebnis | 404 `NOT_FOUND` |
+| `GET` | `/api/admin/import/source-records/:sourceRecordId` | `users.manage` (Schalter wie oben) | — | 200 Quellsatz | 404 `NOT_FOUND` |
+| `POST` | `/api/admin/import/sharepoint/files` | `users.manage` (Schalter `KLARWERK_SHAREPOINT_IMPORT`) | Rumpf `{ folderId?, ids? }` | 200 `{ dateien, truncated, nurBefunde, befunde }` | 503 `IMPORT_UNAVAILABLE`; 400 `APPLY_TOO_MANY`; 403/404/502 `SHAREPOINT_*` |
+| `POST` | `/api/admin/import/sharepoint/folder-apply` | `users.manage` (Schalter `KLARWERK_SHAREPOINT_IMPORT`) | Rumpf `{ folderId?, fortsetzung? }` | 200 Übernahmebilanz eines Ordners (in Losen) | 503 `IMPORT_UNAVAILABLE`; 400 `FORTSETZUNG_INVALID`, `FORTSETZUNG_ORDNER`; 409 `FORTSETZUNG_UNBEKANNT`, `FORTSETZUNG_BELEGT` |
+| `POST` | `/api/admin/import/sharepoint/apply` | `users.manage` (Schalter wie oben) | Rumpf `{ ids }` | 200 Übernahmebilanz | 503 `IMPORT_UNAVAILABLE`; 400 `APPLY_EMPTY_SELECTION`, `APPLY_TOO_MANY` |
+
+### 3.9 Älteres Klara-Add-in (`addinStaticRoutes`, Schalter `KLARWERK_ADDON_API`)
+
+| Methode | Pfad | Recht | Eingaben | Erfolg | Fehler |
+| --- | --- | --- | --- | --- | --- |
+| `GET` | `/addin` | keines | — | — (immer 404, kein Verzeichnislisting) | 404 `NOT_FOUND` |
+| `GET` | `/addin/*` | keines | Dateipfad im Bündel | 200 Datei aus der festen Dateiliste | 404 `NOT_FOUND` |
+
+## 4 Testabdeckung und Abdeckungsziel
+
+Das Abdeckungsziel ist das vorhandene und wird hier nicht neu gesetzt: `vitest.config.ts`,
+`GEMEINSAM.coverage` — Anbieter `v8`, `thresholds: { lines: 80, functions: 80 }`, Bericht nach
+`docs/generated/coverage`.
+
+**Ehrlicher Stand:** Kein Paketskript fährt Vitest mit `--coverage` (`package.json`: `test`,
+`test:integration`, `check`), und das Anbieterpaket `@vitest/coverage-v8` steht nicht in den
+Abhängigkeiten. Das Ziel ist also festgelegt, wird aber von keinem Tor durchgesetzt. Ein Lauf
+braucht die Installation dieses Pakets — die ist in diesem Auftrag ausdrücklich nicht erlaubt
+und deshalb nicht gemacht.
+
+Gegen die Endpunkte dieser Referenz laufen heute schon die Rollenabnahme
+(`tests/beta-rollenabnahme/`, jede Route gemessen oder mit Grund zurückgestellt) und die
+Routentests unter `services/app/src/*.test.ts`. Der neue Prüfstand
+`tests/architektur-vertrag/http-api-referenz.test.ts` hält diese Datei mit dem Router deckungsgleich.

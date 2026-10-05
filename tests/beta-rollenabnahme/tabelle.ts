@@ -679,7 +679,7 @@ export const TABELLE: Zeile[] = [
     gruppe: "auditRoutes",
     methode: "GET",
     pfad: "/api/audit",
-    belegstelle: "services/app/src/routes/audit-routes.ts:8",
+    belegstelle: "services/app/src/routes/audit-routes.ts:17",
     tor: "ko.validate",
     erwartet: AB_CONTROLLER,
   },
@@ -1074,6 +1074,19 @@ export const TABELLE: Zeile[] = [
     tor: "ko.read",
     erwartet: NUR_LESEN,
   },
+  {
+    // QUELLENÄNDERUNGEN (aufnahme:20260928) · DIE ZWÖLFTE TÜR: eine neuere Quellenfassung bewusst
+    // übernehmen. Erfundene Kennungen wie die übrigen Zeilen; mit leerer Nutzlast endet sie hinter
+    // dem Rechtetor in der 400 `VALIDATION` der Route — der Bestand bleibt unberührt.
+    gruppe: "gesamtanweisungRoutes",
+    methode: "POST",
+    pfad: "/api/gesamtanweisungen/gibt-es-nicht/bausteine/gibt-es-auch-nicht/uebernehmen",
+    route: "/api/gesamtanweisungen/:id/bausteine/:bausteinId/uebernehmen",
+    belegstelle: "services/app/src/routes/gesamtanweisung-routes.ts:567",
+    tor: "ko.create",
+    payload: {},
+    erwartet: AB_EXPERTE,
+  },
   // ------------------------------------------------------------------------------------------------
   // JOB 4151 (WG-PERSISTENZ) — DIE VIER TÜREN DER KURATIERTEN BEZIEHUNGEN.
   // ------------------------------------------------------------------------------------------------
@@ -1466,7 +1479,27 @@ export const TABELLE: Zeile[] = [
     gruppe: "auditRoutes",
     methode: "GET",
     pfad: "/api/audit/verify",
-    belegstelle: "services/app/src/routes/audit-routes.ts:18",
+    belegstelle: "services/app/src/routes/audit-routes.ts:27",
+    tor: "ko.validate",
+    erwartet: AB_CONTROLLER,
+  },
+  // Aufnahme gesamt-auditprotokoll (R-0613): der Export der Kette. Er hängt beim Abruf einen
+  // `audit.exported`-Eintrag an; die Tür ist dieselbe wie bei `/api/audit`.
+  {
+    gruppe: "auditRoutes",
+    methode: "GET",
+    pfad: "/api/audit/export",
+    belegstelle: "services/app/src/routes/audit-routes.ts:62",
+    tor: "ko.validate",
+    erwartet: AB_CONTROLLER,
+  },
+  // Aufnahme gesamt-auditprotokoll, Lauf 2 (R-0766): Kennungen der Konflikte und Überschneidungen
+  // eines Objekts für dessen Kette — dieselbe Tür wie `/api/audit`.
+  {
+    gruppe: "auditRoutes",
+    methode: "GET",
+    pfad: "/api/audit/ko/:koId/findings",
+    belegstelle: "services/app/src/routes/audit-routes.ts:39",
     tor: "ko.validate",
     erwartet: AB_CONTROLLER,
   },

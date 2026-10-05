@@ -2075,25 +2075,40 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // ist an diesem Arbeitsbaum ohne Git-Verlauf nicht namentlich bestimmt. `anbieter` 1 und
     // `traeger` 2 sind in derselben Meldung unverändert.
     //
-    // Folgeauftrag gesamt-erstnutzerfuehrung-quellen, Nacharbeit 10 (R-0928/R-1675): 437 → 438.
-    // GENAU EIN Bauteil kommt dazu:
-    //     + `Einstieg` (`pages/Einstieg.tsx`) — die kurze thematische Einstiegsansicht
-    // Es zeigt kein Bild, trägt keinen `documentTitle` und kein `CAPTION_AI_TEXT`; `anbieter` 1 und
-    // `traeger` 2 bleiben. EHRLICH GESAGT: diese 438 ist GERECHNET (437 + 1), nicht gemessen — der
-    // Arbeitsbaum dieses Auftrags führt keine Tests aus. Weicht der Prüflauf ab, nennt die Meldung
-    // oben die gemessene Zahl, und DIE gehört hier hin.
+    // PRÜFSTATUS-ANZEIGE (Pedi 28.09.2026, Ergänzung 3): GENAU EIN Bauteil zusätzlich:
+    //     + `FreigabeStatus` (`components/gesamtanweisung/EntscheidungsVorlage.tsx`) — der eine
+    //       Statusblock für Übersicht und Detailansicht der Arbeitsanleitungen.
+    // Kein Bild, kein `CAPTION_AI_TEXT`, kein `documentTitle`: `anbieter` 1 und `traeger` 2 bleiben.
+    // Auf dem eigenen Stand GEMESSEN: 430 → 431 („gemessen: 431 Komponenten · 1 Anbieter · 2 Traeger
+    // · Grundmenge 527 Quelldateien"). Nach der Zusammenführung mit dem Hauptstand (437) waren
+    // 437 + 1 = 438 nur GERECHNET.
     //
-    // Nacharbeit 12: GEMESSEN 444. Am Kandidaten 3874b441 meldete der Sammler wörtlich „gemessen:
-    // 444 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 542 Quelldateien … expected
-    // { komponenten: 444, … } to deeply equal { komponenten: 438, … }". Die sechs über 438 kamen mit
-    // dem eingemischten Hauptstand (`a2ff8da8`, der selbst noch 437 führt), namentlich:
-    //     + `ProfilZeile`, `RuhestandZeile`, `BereichsprofilPflege` (`components/BereichsprofilPflege.tsx`)
-    //     + `Bereich`, `RisikoHorizont` (`components/RisikoHorizont.tsx`)
-    //     + `WissensPriorisierung` (`components/WissensPriorisierung.tsx`)
-    // 437 + 6 + 1 (`Einstieg`) = 444 — Rechnung und Messung stimmen überein. `anbieter` 1 und
-    // `traeger` 2 sind in derselben Meldung unverändert.
+    // DIE 444 IST GEMESSEN, nicht gerechnet: am zusammengeführten Kandidaten 4be0477f meldete der
+    // Sammler wörtlich „gemessen: 444 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 546
+    // Quelldateien … expected { komponenten: 444, … } to deeply equal { komponenten: 438, … }".
+    // Die sechs Komponenten über 438 kamen mit dem erneut eingemischten Hauptstand (Grundmenge
+    // 536 → 546 Quelldateien); die Prüfstatus-Anzeige fügt seit `FreigabeStatus` kein Bauteil
+    // hinzu. Welche es sind, ist an diesem Arbeitsbaum ohne Git-Verlauf nicht namentlich bestimmt.
+    // `anbieter` 1 und `traeger` 2 sind in derselben Meldung unverändert.
+    //
+    // DIE 447 IST GEMESSEN, nicht gerechnet: am Kandidaten 903b2a22 meldete der Sammler wörtlich
+    // „gemessen: 447 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 549 Quelldateien … expected
+    // { komponenten: 447, … } to deeply equal { komponenten: 444, … }". Die Nacharbeit zwischen
+    // 4be0477f und 903b2a22 änderte im Produktcode nichts (nur Test-Gegenprobe und Sollwert); die
+    // drei Komponenten mehr kamen mit dem Hauptstand (Grundmenge 546 → 549). Welche es sind, ist
+    // auch hier ohne Git-Verlauf nicht namentlich bestimmt. `anbieter` 1 und `traeger` 2 bleiben.
+    //
+    // Folgeauftrag gesamt-erstnutzerfuehrung-quellen (R-0928/R-1675), Integration mit diesem
+    // Hauptstand: 447 → 448. GENAU EIN Bauteil kommt dazu, das main noch nicht trägt:
+    //     + `Einstieg` (`pages/Einstieg.tsx`) — die kurze thematische Einstiegsansicht
+    // Kein Bild, kein `documentTitle`, kein `CAPTION_AI_TEXT`; `anbieter` 1 und `traeger` 2 bleiben.
+    // Auf dem eigenen Stand war die Zahl GEMESSEN 444 (Kandidat 3874b441; 437 + 6 aus `a2ff8da8`
+    // — `ProfilZeile`, `RuhestandZeile`, `BereichsprofilPflege`, `Bereich`, `RisikoHorizont`,
+    // `WissensPriorisierung` — + 1 `Einstieg`). Diese sechs stecken in den 447 von main schon drin.
+    // EHRLICH GESAGT: die 448 ist bei der Konfliktauflösung GERECHNET (447 + 1), nicht gemessen;
+    // weicht der Prüflauf ab, nennt die Meldung oben die gemessene Zahl, und DIE gehört hier hin.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 444,
+      komponenten: 448,
       anbieter: 1,
       traeger: 2,
     });

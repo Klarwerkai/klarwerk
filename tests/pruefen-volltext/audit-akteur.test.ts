@@ -141,12 +141,8 @@ describe("JOB 3290 B/K · der Weg und die Messfläche funktionieren", () => {
     );
   });
 
-  it("K3 · DER BEFUND, als Tatsache festgehalten: der Eintrag steht heute unter „system“", async () => {
-    const { app, admin } = await lage(["hoch", "niedrig"]);
-    const alle = await protokoll(app, admin.headers, { action: "gap.priority-changed" });
-    expect(alle).toHaveLength(2);
-    expect(alle.map((e) => e.actor)).toEqual(["system", "system"]);
-  });
+  // K3 hielt bis zur Behebung (Aufnahme 20260922 · Prüfboard-Bedienung, P-PRUEFEN-VOLLTEXT) den
+  // Befund als Tatsache fest: beide Einträge standen unter „system". Seitdem gelten B1–B3 unten.
 
   it("K4 · eine automatische Änderung OHNE Aufrufer steht unter „system“ — und soll es bleiben", async () => {
     // Der Weg des Demo-Seeds (`seed-demo.ts:723`): kein Aufrufer, also Systemausführung. Dieser
@@ -168,41 +164,35 @@ describe("JOB 3290 B/K · der Weg und die Messfläche funktionieren", () => {
 });
 
 // ------------------------------------------------------------------------------------------------
-// B — DER SOLLVERTRAG. Heute kausal rot, nach der Behebung grün.
+// B — DER SOLLVERTRAG. Bis zur Behebung kausal rot (`it.fails`), seitdem `it`.
 // ------------------------------------------------------------------------------------------------
 describe("JOB 3290 B/S · SOLLVERTRAG: der Handelnde steht am Lücken-Ereignis", () => {
-  it.fails(
-    "B1 · der Filter auf das EIGENE Konto findet die eigene Prioritätsänderung",
-    async () => {
-      // Genau das, was Codex vergeblich versucht hat. Voraussetzungen ausserhalb dieses
-      // Fehlschlags: K1 (der Eintrag existiert) und K2 (der Actor-Filter funktioniert).
-      const { app, admin, gapId } = await lage(["hoch"]);
-      const meine = await protokoll(app, admin.headers, {
-        action: "gap.priority-changed",
-        actor: admin.id,
-      });
-      expect(meine).toHaveLength(1);
-      expect(meine[0]?.target).toBe(gapId);
-    },
-  );
+  it("B1 · der Filter auf das EIGENE Konto findet die eigene Prioritätsänderung", async () => {
+    // Genau das, was Codex vergeblich versucht hat. Voraussetzungen: K1 (der Eintrag existiert)
+    // und K2 (der Actor-Filter funktioniert).
+    const { app, admin, gapId } = await lage(["hoch"]);
+    const meine = await protokoll(app, admin.headers, {
+      action: "gap.priority-changed",
+      actor: admin.id,
+    });
+    expect(meine).toHaveLength(1);
+    expect(meine[0]?.target).toBe(gapId);
+  });
 
-  it.fails("B2 · derselbe Eintrag steht NICHT mehr unter dem Systemkontext", async () => {
+  it("B2 · derselbe Eintrag steht NICHT mehr unter dem Systemkontext", async () => {
     const { app, admin } = await lage(["niedrig"]);
     expect(
       await protokoll(app, admin.headers, { action: "gap.priority-changed", actor: "system" }),
     ).toEqual([]);
   });
 
-  it.fails(
-    "B3 · Codex' Fall wörtlich: ZWEI selbst ausgelöste Änderungen, beide unter dem Konto",
-    async () => {
-      const { app, admin, gapId } = await lage(["hoch", "niedrig"]);
-      const meine = await protokoll(app, admin.headers, {
-        action: "gap.priority-changed",
-        actor: admin.id,
-      });
-      expect(meine).toHaveLength(2);
-      expect(meine.every((e) => e.target === gapId)).toBe(true);
-    },
-  );
+  it("B3 · Codex' Fall wörtlich: ZWEI selbst ausgelöste Änderungen, beide unter dem Konto", async () => {
+    const { app, admin, gapId } = await lage(["hoch", "niedrig"]);
+    const meine = await protokoll(app, admin.headers, {
+      action: "gap.priority-changed",
+      actor: admin.id,
+    });
+    expect(meine).toHaveLength(2);
+    expect(meine.every((e) => e.target === gapId)).toBe(true);
+  });
 });

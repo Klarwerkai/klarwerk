@@ -893,19 +893,24 @@ export function libraryRoutes(
       // Pfade. Vertrauliche KOs nur für Berechtigte — hier an ko.validate gebunden (Controller/
       // Admin, die den Bestand ohnehin kuratieren). Alle anderen Rollen (viewer/experte) bekommen
       // nur die validierten, nicht-vertraulichen KOs.
-      const opts = { includeConfidential: can(user.role, "ko.validate") };
+      const includeConfidential = can(user.role, "ko.validate");
+      // §12.3 „Export": jeder ausgelieferte Export hinterlässt `library.export` (wer, Format, Objekte).
+      const opts = (format: "json" | "markdown" | "mediawiki" | "html") => ({
+        includeConfidential,
+        beleg: { actor: user.id, format },
+      });
       if (request.query.format === "markdown") {
         reply
           .header("content-type", "text/markdown; charset=utf-8")
           .code(200)
-          .send(await library.exportMarkdown(opts));
+          .send(await library.exportMarkdown(opts("markdown")));
         return;
       }
       if (request.query.format === "mediawiki") {
         reply
           .header("content-type", "text/plain; charset=utf-8")
           .code(200)
-          .send(await library.exportMediaWiki(opts));
+          .send(await library.exportMediaWiki(opts("mediawiki")));
         return;
       }
       if (request.query.format === "html") {
@@ -913,10 +918,10 @@ export function libraryRoutes(
         reply
           .header("content-type", "text/html; charset=utf-8")
           .code(200)
-          .send(await library.exportHtml(opts));
+          .send(await library.exportHtml(opts("html")));
         return;
       }
-      reply.code(200).send(await library.exportJson(opts));
+      reply.code(200).send(await library.exportJson(opts("json")));
     });
 
     // R-0143: DIE EINE Einreihstelle beider Importeingänge — dieselbe Dublettenregel (JOB 3050),
@@ -986,7 +991,10 @@ export function libraryRoutes(
       // Laden der Queue — dasselbe dokumentierte Muster wie der aiCheck-Lazy-Re-Enqueue am
       // Board-Load (kein Cron): eine abgelaufene Lease wird VOLLENDET (KO mit opId-Stempel
       // existiert) oder sicher auf 'neu' zurückgegeben, bevor die Liste antwortet.
-      await library.recoverStaleReviewClaims();
+      // Lauf gesamt-import-adoption:2, Nacharbeit 5 (Bens Befund): DIESELBE Dublettenregel wie bei
+      // Einreihen und Annahme — die Recovery prüft vor einer vertagten Vollendung, ob neben dem
+      // gestempelten Objekt ein Mitbewerber (auch in anderer Schreibweise) steht.
+      await library.recoverStaleReviewClaims(pruefeReImportDublette);
       // WP-SHIP8-CLOSE-6 (bens ROT-3b): schwebende Review-Aktionsbelege (auditPending) werden
       // am selben Lazy-Punkt exactly-once nachgezogen.
       await library.retryPendingReviewAudits();
@@ -1028,73 +1036,93 @@ export function libraryRoutes(
       },
     );
 
-    app.put<{ Params: { id: string }; Body: { action: ReviewAction; note?: string } }>(
-      "/api/library/import/candidates/:id",
-      async (request, reply) => {
-        const user = await guards.requirePermission("ko.validate", request, reply);
-        if (!user) {
-          return;
-        }
-        // SCRUM-470 (ben-Review #2): Review-Aktion an der Route auf die Whitelist prüfen. Der Service
-        // behandelt alles außer "reject"/"info" als Accept — ein Tippfehler wie {action:"foo"} würde
-        // sonst still ein KO anlegen/revidieren. Ungültige Aktion → 400, kein KO-Write.
-        if (!REVIEW_ACTIONS.includes(request.body.action)) {
-          reply.code(400).send({
-            error: "BAD_REQUEST",
-            message: "Ungültige Review-Aktion (accept/reject/info).",
-          });
-          return;
-        }
-        try {
-          const result = await library.reviewImportCandidate(
-            request.params.id,
-            request.body.action,
-            user.id,
-            request.body.note,
+    app.put<{
+      Params: { id: string };
+      Body: { action: ReviewAction; note?: string; kiPruefung?: boolean };
+    }>("/api/library/import/candidates/:id", async (request, reply) => {
+      const user = await guards.requirePermission("ko.validate", request, reply);
+      if (!user) {
+        return;
+      }
+      // SCRUM-470 (ben-Review #2): Review-Aktion an der Route auf die Whitelist prüfen. Der Service
+      // behandelt alles außer "reject"/"info" als Accept — ein Tippfehler wie {action:"foo"} würde
+      // sonst still ein KO anlegen/revidieren. Ungültige Aktion → 400, kein KO-Write.
+      if (!REVIEW_ACTIONS.includes(request.body.action)) {
+        reply.code(400).send({
+          error: "BAD_REQUEST",
+          message: "Ungültige Review-Aktion (accept/reject/info).",
+        });
+        return;
+      }
+      try {
+        const result = await library.reviewImportCandidate(
+          request.params.id,
+          request.body.action,
+          user.id,
+          request.body.note,
+          // Lauf gesamt-import-adoption (Bens B1/B2): die Annahme stellt die Dublettenfrage am
+          // heutigen Bestand noch einmal — mit DERSELBEN Instanz der Regel wie das Einreihen.
+          pruefeReImportDublette,
+        );
+        // SCRUM-470 (S6): ein akzeptierter Import-Kandidat wird — wie ein promoteter Entwurf im
+        // Einreiche-Pfad — auf Widerspruch/Duplikat geprüft. Hinter dem Import-Flag (Default AUS).
+        // detect*ForKo sind selbst fehlertolerant (schlucken Fehler intern) → der Accept kann daran
+        // nie scheitern. VOR send(), damit das Ergebnis deterministisch sichtbar ist (analog Promote).
+        //
+        // ========================================================================================
+        // Lauf gesamt-import-adoption R3 (Bens N3, R-0145) — KEIN MODELLAUFRUF, DER NICHT BESTELLT IST.
+        // ========================================================================================
+        //
+        // Seit B3 führt JEDER Import über diese Annahme. Mit eingeschaltetem Import-Schalter
+        // startete sie für jedes übernommene Objekt die KI-Erkennung — genau das, was R-0145
+        // ausschliesst: „ohne dass für jedes Objekt ein KI-Aufruf läuft … schliesst aus, dass
+        // Dokumente ungefragt an ein externes Modell gehen". Die Erkennung läuft darum nur noch,
+        // wenn der Prüfer sie für DIESE Annahme ausdrücklich anfordert (`kiPruefung: true`).
+        // Ohne die Anforderung trägt das Objekt keinen Prüfvermerk und wird auch später nicht
+        // von selbst geprüft (`shouldReEnqueueAiCheck` greift nur bei vorhandenem Vermerk).
+        if (
+          detection &&
+          confluenceImportEnabled() &&
+          result.koId &&
+          request.body.kiPruefung === true
+        ) {
+          // AUFTRAG-mega29 A1: DERSELBE Lauf wie im Hintergrund-Worker — kein zweiter Aufbau der
+          // Erkennungskette und keine zweite Auslegung, wann ein Lauf „vollständig" war. Der
+          // Runner ist selbst best-effort (die detect*-Kerne schlucken ihre Fehler und melden sie
+          // über den Ausgang), der Accept kann daran also weiterhin nie scheitern.
+          // AUFTRAG-mega31 BLOCK D (bens GELB-1): DIESELBE Frist wie im Hintergrund-Worker
+          // (runWithTimeout/AI_CHECK_JOB_TIMEOUT_MS), nicht eine zweite. Vorher wartete die Route
+          // unbegrenzt synchron auf den Runner: ein Provider, der nie antwortet, blockierte sie
+          // ohne Statusabschluss. Nach Fristablauf gewinnt `failed/timeout`; ein spät doch noch
+          // eintreffender Ausgang wird verworfen (runWithTimeout settlet genau EINMAL), sodass
+          // der Statusschreib unten eindeutig und einmalig bleibt.
+          // AUFNAHME 20260922 (bens Befund Runde 2): die VOLLSTÄNDIGE Basis — Objekt UND Bestand —
+          // wird VOR dem Lauf erfasst und unverändert an den Abschluss übergeben. Eine Änderung an
+          // einer Vergleichsquelle während des Urteils lässt den Nachweis damit überholt stehen.
+          const startStand = await detection.ko.get(result.koId);
+          const startBasis = startStand
+            ? await detection.ko.aktuellePruefbasis(startStand)
+            : undefined;
+          const outcome = await runWithTimeout(
+            createAiCheckRunner({
+              ko: detection.ko,
+              conflicts: detection.conflicts,
+              overlaps: detection.overlaps,
+              overlapSettings: detection.overlapSettings,
+              reasoner: detection.reasoner,
+              semanticPrefilter: detection.semanticPrefilter,
+            })(result.koId),
+            AI_CHECK_JOB_TIMEOUT_MS,
           );
-          // SCRUM-470 (S6): ein akzeptierter Import-Kandidat wird — wie ein promoteter Entwurf im
-          // Einreiche-Pfad — auf Widerspruch/Duplikat geprüft. Hinter dem Import-Flag (Default AUS).
-          // detect*ForKo sind selbst fehlertolerant (schlucken Fehler intern) → der Accept kann daran
-          // nie scheitern. VOR send(), damit das Ergebnis deterministisch sichtbar ist (analog Promote).
-          if (detection && confluenceImportEnabled() && result.koId) {
-            // AUFTRAG-mega29 A1: DERSELBE Lauf wie im Hintergrund-Worker — kein zweiter Aufbau der
-            // Erkennungskette und keine zweite Auslegung, wann ein Lauf „vollständig" war. Der
-            // Runner ist selbst best-effort (die detect*-Kerne schlucken ihre Fehler und melden sie
-            // über den Ausgang), der Accept kann daran also weiterhin nie scheitern.
-            // AUFTRAG-mega31 BLOCK D (bens GELB-1): DIESELBE Frist wie im Hintergrund-Worker
-            // (runWithTimeout/AI_CHECK_JOB_TIMEOUT_MS), nicht eine zweite. Vorher wartete die Route
-            // unbegrenzt synchron auf den Runner: ein Provider, der nie antwortet, blockierte sie
-            // ohne Statusabschluss. Nach Fristablauf gewinnt `failed/timeout`; ein spät doch noch
-            // eintreffender Ausgang wird verworfen (runWithTimeout settlet genau EINMAL), sodass
-            // der Statusschreib unten eindeutig und einmalig bleibt.
-            // AUFNAHME 20260922 (bens Befund Runde 2): die VOLLSTÄNDIGE Basis — Objekt UND Bestand —
-            // wird VOR dem Lauf erfasst und unverändert an den Abschluss übergeben. Eine Änderung an
-            // einer Vergleichsquelle während des Urteils lässt den Nachweis damit überholt stehen.
-            const startStand = await detection.ko.get(result.koId);
-            const startBasis = startStand
-              ? await detection.ko.aktuellePruefbasis(startStand)
-              : undefined;
-            const outcome = await runWithTimeout(
-              createAiCheckRunner({
-                ko: detection.ko,
-                conflicts: detection.conflicts,
-                overlaps: detection.overlaps,
-                overlapSettings: detection.overlapSettings,
-                reasoner: detection.reasoner,
-                semanticPrefilter: detection.semanticPrefilter,
-              })(result.koId),
-              AI_CHECK_JOB_TIMEOUT_MS,
-            );
-            await recordImportAcceptAiCheck(detection.ko, result.koId, outcome, startBasis);
-          }
-          // WP-SHIP8-CLOSE-8 (bens GELB-2): dieselbe DTO-Grenze wie am Queue-Load — die Antwort
-          // der Review-Aktion trägt keine Claim-/Beleg-Interna (auditPending nur als Boolean).
-          reply.code(200).send(toImportCandidateDto(result));
-        } catch (error) {
-          sendError(reply, error);
+          await recordImportAcceptAiCheck(detection.ko, result.koId, outcome, startBasis);
         }
-      },
-    );
+        // WP-SHIP8-CLOSE-8 (bens GELB-2): dieselbe DTO-Grenze wie am Queue-Load — die Antwort
+        // der Review-Aktion trägt keine Claim-/Beleg-Interna (auditPending nur als Boolean).
+        reply.code(200).send(toImportCandidateDto(result));
+      } catch (error) {
+        sendError(reply, error);
+      }
+    });
 
     app.get("/api/analytics", async (request, reply) => {
       const user = await guards.requirePermission("ko.read", request, reply);

@@ -24,11 +24,11 @@
 // ändert der Marker deshalb heute NICHTS an der Antwort (R1), und genau das steht hier als
 // gemessene Zusage. Was er ändert, ist die EINSTUFUNG: R2/R3 fordern denselben Rumpf einmal mit
 // `want: "deep"` an und zeigen, dass er mit Zustimmung intern ist und ohne sie vertraulich bleibt.
-import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 import { ModelProvider, Reasoner } from "../../services/reasoner";
 import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
+import { panelQuelleAus } from "../support/panelquelle";
 
 const TEXT =
   "Vor jeder Wartung an der Presse P2 ist der Hauptschalter abzuschließen und der Druck im " +
@@ -49,7 +49,7 @@ type W6Weg = (
   sprache: string,
 ) => Promise<unknown>;
 function w6Weg(bindung: Record<string, string>): W6Weg {
-  const html = readFileSync("apps/web/public/word-addin/taskpane.html", "utf8");
+  const html = panelQuelleAus("apps/web/public/word-addin/taskpane.html");
   const start = html.indexOf("    function w6DublettenAusCheckText(");
   const end = html.indexOf("    // KW-KLARA-W6-CHECKTEXT-END", start);
   expect(start, "w6DublettenAusCheckText nicht auffindbar").toBeGreaterThan(0);

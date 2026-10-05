@@ -340,6 +340,12 @@ const REGISTER: Record<string, Eintrag> = {
   "GET /api/kos/trash": { urteil: "KURATORENTOR", recht: "users.manage", grund: "Papierkorb." },
   "GET /api/audit": { urteil: "KURATORENTOR", recht: "ko.validate", grund: "Protokoll." },
   "GET /api/audit/verify": { urteil: "KURATORENTOR", recht: "ko.validate", grund: "Protokoll." },
+  "GET /api/audit/export": { urteil: "KURATORENTOR", recht: "ko.validate", grund: "Protokoll." },
+  "GET /api/audit/ko/:koId/findings": {
+    urteil: "KURATORENTOR",
+    recht: "ko.validate",
+    grund: "Protokoll.",
+  },
   "GET /api/model-runs": {
     urteil: "KURATORENTOR",
     recht: "ko.validate",
@@ -757,6 +763,10 @@ const REGISTER: Record<string, Eintrag> = {
   "POST /api/gesamtanweisungen/:id/entscheiden": {
     urteil: "PRAEDIKAT",
     grund: "JOB 4154 — Schreibweg mit ko.validate UND darfSehen an jedem gebundenen Baustein.",
+  },
+  "POST /api/gesamtanweisungen/:id/bausteine/:bausteinId/uebernehmen": {
+    urteil: "PRAEDIKAT",
+    grund: "aufnahme:20260928 — darfSehen am Bestand UND an der neu gebundenen Fassung.",
   },
   // Die Anlage gibt NICHTS aus ausser dem gerade selbst eingegebenen Kopf: Titel, Zweck,
   // Geltungsbereich, Voraussetzungen, leere Bausteinliste. Es gibt in diesem Augenblick keinen
