@@ -758,6 +758,10 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "PRAEDIKAT",
     grund: "JOB 4154 — Schreibweg mit ko.validate UND darfSehen an jedem gebundenen Baustein.",
   },
+  "POST /api/gesamtanweisungen/:id/bausteine/:bausteinId/uebernehmen": {
+    urteil: "PRAEDIKAT",
+    grund: "aufnahme:20260928 — darfSehen am Bestand UND an der neu gebundenen Fassung.",
+  },
   // Die Anlage gibt NICHTS aus ausser dem gerade selbst eingegebenen Kopf: Titel, Zweck,
   // Geltungsbereich, Voraussetzungen, leere Bausteinliste. Es gibt in diesem Augenblick keinen
   // gebundenen Eintrag — deshalb hier kein Prädikat und trotzdem kein Loch. LESEURTEIL, nachlesbar
