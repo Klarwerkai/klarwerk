@@ -17,17 +17,23 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { panelQuelleAus } from "../support/panelquelle";
 
 const WURZEL = join(__dirname, "..", "..");
 const lies = (rel: string) => readFileSync(join(WURZEL, rel), "utf8");
 
-const TASKPANE = lies("apps/web/public/word-addin/taskpane.html");
+// R-1611: das Fenster liegt in drei Dateien; gelesen wird es als EIN Dokument.
+const TASKPANE = panelQuelleAus(join(WURZEL, "apps/web/public/word-addin/taskpane.html"));
 /**
- * Zerlegungsauftrag Bestandsblick (01.10.2026): der Markenblock des Aufgabenfensters ist Zeile für
- * Zeile in diese Geschwisterdatei gewandert (`taskpane.html` lädt sie mit `defer`). Die Zusagen
- * über den Block lesen ihn deshalb dort; die Zusagen über Stil und Markup bleiben an `TASKPANE`.
+ * Zerlegungsauftrag Bestandsblick: der Markenblock des Aufgabenfensters ist Zeile für Zeile in
+ * diese Geschwisterdatei gewandert (`taskpane.html` lädt sie unmittelbar nach `taskpane.js`). Die
+ * Zusagen über den Block lesen ihn deshalb DORT — in der ausgelieferten Datei, nicht im
+ * zusammengefügten Dokument; die Zusagen über Stil und Markup bleiben an `TASKPANE`.
  */
 const MARKE_JS = lies("apps/web/public/word-addin/marke.js");
+/** Die zwei Dateien, an denen sich zeigt, dass der Block GENAU EINMAL ausgeliefert wird. */
+const SEITE_ROH = lies("apps/web/public/word-addin/taskpane.html");
+const SKRIPT_ROH = lies("apps/web/public/word-addin/taskpane.js");
 const PANEL_JS = lies("extensions/klara-browser/panel.js");
 const PANEL_CSS = lies("extensions/klara-browser/panel.css");
 const PANEL_HTML = lies("extensions/klara-browser/panel.html");
@@ -151,12 +157,14 @@ describe("JOB 3512 Q1 · das Logo ist die Originaldatei, Byte für Byte", () => 
 describe("JOB 3512 Q2 · EINE Quelle, kein zweiter Schalter, kein zweiter Farbsatz", () => {
   it("beide Oberflächen lesen genau `/api/branding` — und sonst nichts Neues", () => {
     expect(block(MARKE_JS, "KW-MARKE")).toContain('"/api/branding"');
-    // Der Block steht genau EINMAL im ausgelieferten Fenster: in der Geschwisterdatei, nicht
-    // zusätzlich noch im Inline-Skript (sonst liefen zwei Abrufketten nebeneinander). Die Marke
+    // Der Block wird genau EINMAL ausgeliefert: in der Geschwisterdatei, nicht zusätzlich noch in
+    // `taskpane.js` (sonst liefen zwei Abrufketten nebeneinander), und die Seite lädt sie. Die Marke
     // steht bewusst zusammengesetzt da: als Literal griffe `schnitt-pins.test.ts` sie als `marken`.
     const markenname = "KW-MARKE";
-    expect(TASKPANE).not.toContain(`${markenname}-START`);
-    expect(TASKPANE).toContain('<script src="marke.js?v=__KW_FASSUNG__" defer></script>');
+    expect(SKRIPT_ROH).not.toContain(`${markenname}-START`);
+    expect(SEITE_ROH).toContain('<script src="marke.js?v=__KW_FASSUNG__"></script>');
+    // Und im zusammengefügten Dokument steht er wieder genau einmal — am Ende des Skripts.
+    expect(TASKPANE.split(`${markenname}-START`)).toHaveLength(2);
     // Der Worker setzt den Pfad an seine EINE Hostkonstante (`HOST`), deshalb hier ohne die
     // Anführungszeichen — der Host selbst wird im Fall darunter (Q3) auf app.klarwerk.ai gepinnt.
     expect(block(WORKER, "KW-MARKE")).toContain("/api/branding");

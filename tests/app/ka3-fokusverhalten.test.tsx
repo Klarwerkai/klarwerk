@@ -32,20 +32,15 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { panelQuelleAus } from "../support/panelquelle";
 
 const TASKPANE = "apps/web/public/word-addin/taskpane.html";
-const HTML = readFileSync(resolve(process.cwd(), TASKPANE), "utf8");
+const HTML = panelQuelleAus(TASKPANE);
 // JOB 3667 R8 (14.09.2026): das Fenster wird aus ZWEI Dateien ausgeliefert. Wer nur das
 // Inline-Skript ausfuehrt, laesst `rwZeichnen` fehlen — `renderCapture` bricht dann mit
 // ReferenceError, und der Fall misst ein Fenster, das es so nicht gibt.
 const RUECKWEG = "apps/web/public/word-addin/rueckweg.js";
 const RUECKWEG_QUELLE = readFileSync(resolve(process.cwd(), RUECKWEG), "utf8");
-// Zerlegungsauftrag Bestandsblick: der Block KW-MARKE wohnt in `marke.js`, die mit `defer` NACH
-// dem Inline-Skript laeuft — dort, wo er vorher stand.
-const MARKE_QUELLE = readFileSync(
-  resolve(process.cwd(), "apps/web/public/word-addin/marke.js"),
-  "utf8",
-);
 
 /**
  * Die Ruhefrist wird AUS dem Aufgabenfenster gelesen, nicht hier abgeschrieben. Waere sie als Zahl
@@ -87,7 +82,7 @@ async function ladeTaskpane(): Promise<void> {
   const skriptStart = HTML.lastIndexOf("<script>");
   const skriptEnde = HTML.lastIndexOf("</script>");
   expect(skriptStart, `${TASKPANE}: Inline-Skript nicht gefunden`).toBeGreaterThan(0);
-  const skript = `${RUECKWEG_QUELLE}\n${HTML.slice(skriptStart + "<script>".length, skriptEnde)}\n${MARKE_QUELLE}`;
+  const skript = `${RUECKWEG_QUELLE}\n${HTML.slice(skriptStart + "<script>".length, skriptEnde)}`;
 
   const bodyStart = HTML.indexOf("<body>");
   expect(bodyStart, `${TASKPANE}: <body> nicht gefunden`).toBeGreaterThan(0);

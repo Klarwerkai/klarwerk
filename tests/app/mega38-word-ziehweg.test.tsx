@@ -26,15 +26,13 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
+import { panelQuelleAus } from "../support/panelquelle";
 
 const TASKPANE = "apps/web/public/word-addin/taskpane.html";
 // JOB 3667 R8 (14.09.2026): das Fenster wird aus ZWEI Dateien ausgeliefert. Wer nur das
 // Inline-Skript ausfuehrt, laesst `rwZeichnen` fehlen — `renderCapture` bricht dann mit
 // ReferenceError, und der Fall misst ein Fenster, das es so nicht gibt.
 const RUECKWEG = "apps/web/public/word-addin/rueckweg.js";
-// Zerlegungsauftrag Bestandsblick: der Block KW-MARKE laeuft aus `marke.js` (`defer`) NACH dem
-// Inline-Skript — dort, wo er vorher stand.
-const MARKE = "apps/web/public/word-addin/marke.js";
 
 const ANTWORT = "Ventil V4 wird jaehrlich geprueft und vor der Wartung entlastet.";
 
@@ -43,7 +41,7 @@ interface Laufzeit {
 }
 
 function taskpaneStarten(): Laufzeit {
-  const html = readFileSync(resolve(process.cwd(), TASKPANE), "utf8");
+  const html = panelQuelleAus(TASKPANE);
   const bodyStart = html.indexOf("<body>") + "<body>".length;
   const bodyEnd = html.indexOf("</body>");
   const body = html.slice(bodyStart, bodyEnd);
@@ -52,7 +50,7 @@ function taskpaneStarten(): Laufzeit {
   const skript = `${readFileSync(resolve(process.cwd(), RUECKWEG), "utf8")}\n${body.slice(
     skriptStart,
     skriptEnd,
-  )}\n${readFileSync(resolve(process.cwd(), MARKE), "utf8")}`;
+  )}`;
   document.body.innerHTML = body.slice(0, body.indexOf("<script>"));
 
   let quellenAufloesen: () => void = () => undefined;
@@ -164,7 +162,7 @@ function ziehenFeuern(ziel: HTMLElement, daten?: unknown): Event {
 
 // Der Wartetext aus dem Quelltext — je Sprachblock genau einmal.
 function wartetexte(): string[] {
-  const html = readFileSync(resolve(process.cwd(), TASKPANE), "utf8");
+  const html = panelQuelleAus(TASKPANE);
   const treffer = html.match(/askCopyNativePending:\s*"((?:[^"\\]|\\.)*)"/g) ?? [];
   return treffer.map((t) => t.replace(/^askCopyNativePending:\s*"/, "").replace(/"$/, ""));
 }

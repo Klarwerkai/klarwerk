@@ -2,30 +2,32 @@
 // KLARA · FIRMEN-CI (JOB 3512) — DER BLOCK KW-MARKE, ALS EIGENE DATEI.
 // ================================================================================================
 //
-// WARUM DIESE DATEI EXISTIERT: das Inline-Skript von `taskpane.html` ist in seiner Groesse bewacht
-// (`tests/klara-zerlegung/schnittflaechen.test.ts` B3, Schranke 12500 Zeilen), und seit JOB 3667
-// gilt dort „schneiden statt anheben". Der Bestandsblick-Kandidat (aufnahme:20260922:gesamt-
-// bestandsblick) hat die Schranke mit 12551 Zeilen gerissen; die Schranke bleibt, wo sie ist.
-// Geschnitten wird nach dem Vorbild `rueckweg.js`: ein geschlossener Abschnitt wandert heraus.
+// WARUM DIESE DATEI EXISTIERT: das Fensterskript ist in seiner Groesse bewacht
+// (`tests/klara-zerlegung/schnittflaechen.test.ts` B3, Schranke 12500 Zeilen — bis R-1611 am
+// Inline-Skript von `taskpane.html`, seither an `taskpane.js`), und seit JOB 3667 gilt dort
+// „schneiden statt anheben". Der Bestandsblick-Kandidat (aufnahme:20260922:gesamt-bestandsblick)
+// hat die Schranke mit 12551 Zeilen gerissen; die Schranke bleibt, wo sie ist. Geschnitten wird
+// nach dem Vorbild `rueckweg.js`: ein geschlossener Abschnitt wandert heraus.
 //
-// WARUM GERADE DIESER BLOCK: er ist der letzte im Inline-Skript und haengt an nichts aus dem
+// WARUM GERADE DIESER BLOCK: er ist der letzte im Fensterskript und haengt an nichts aus dem
 // Fenster — nur an `document`, `window`, `fetch`, `setTimeout` und dem Logo-Element
 // `#kw-marke-logo` im Rumpf. Keine Zeile ausserhalb des Blocks ruft eine seiner Funktionen.
 //
 // ZEILE FUER ZEILE VERSCHOBEN, NICHTS UMGESCHRIEBEN. Unterhalb dieses Kopfes steht der Abschnitt
-// aus `taskpane.html` unveraendert, samt Einrueckung und seinem Markenpaar (Start und Ende).
-// Dieselbe Sprache wie das Fenster (ES5, `var`, kein Modul, kein Build) — deshalb steht die Datei
-// wie `rueckweg.js` auf der Ignorierliste von Biome.
+// unveraendert, samt Einrueckung und seinem Markenpaar (Start und Ende), und davor die eine
+// Leerzeile, die ihn im Skript vom Block davor trennte. Dieselbe Sprache wie das Fenster (ES5,
+// `var`, kein Modul, kein Build) — deshalb steht die Datei wie `rueckweg.js` auf der Ignorierliste
+// von Biome.
 //
-// LADEREIHENFOLGE, und sie ist Absicht: `taskpane.html` laedt diese Datei mit `defer`. Ein
-// zurueckgestelltes Skript laeuft NACH dem Inline-Skript und vor `DOMContentLoaded` — genau dort,
-// wo der Block bisher stand: am Ende des Inline-Skripts. Damit bleibt die Reihenfolge erhalten:
-// der erste Abruf von `/api/branding` geht weiter durch den `fetch`-Umschlag des Fensters, und die
-// Zuhoerer fuer `visibilitychange`/`focus` haengen sich wie bisher hinter die des Fensters.
+// LADEREIHENFOLGE, und sie ist Absicht: `taskpane.html` laedt diese Datei als klassisches Skript
+// UNMITTELBAR NACH `taskpane.js`. Klassische Skripte laufen in Dokumentreihenfolge; der Block laeuft
+// damit genau dort, wo er bisher stand: am Ende des Fensterskripts. Der erste Abruf von
+// `/api/branding` geht weiter durch den `fetch`-Umschlag des Fensters, und die Zuhoerer fuer
+// `visibilitychange`/`focus` haengen sich wie bisher hinter die des Fensters.
 //
-// KEINE VERHALTENSAENDERUNG: `"use strict"` steht hier wie im Inline-Skript. Die Pruefstaende, die
-// das Fenster im jsdom bauen, haengen diese Datei in derselben Reihenfolge HINTER das Inline-Skript
-// (`splitTaskpane` in `tests/app/klara-panel-fixture.ts`); die Chromium-Buehnen liefern sie mit aus.
+// KEINE VERHALTENSAENDERUNG: `"use strict"` steht hier wie im Fensterskript. Die Pruefstaende lesen
+// das Fenster ueber `tests/support/panelquelle.ts`; das setzt diesen Block beim Zusammenfuegen
+// wieder an das Ende des Skripts — dasselbe Dokument wie vor dem Schnitt.
 // ================================================================================================
 "use strict";
 

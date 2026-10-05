@@ -44,6 +44,7 @@ import {
   registerWebStatic,
   stempleFassung,
 } from "../../services/app/src/web-static";
+import { panelQuelleAus } from "../support/panelquelle";
 
 const WURZEL = join(__dirname, "..", "..");
 const QUELLE = join(WURZEL, "apps", "web", "public", "word-addin", "taskpane.html");
@@ -69,8 +70,9 @@ function distMit(html: string): string {
   return dir;
 }
 
+/** Das Fenster als EIN Dokument — seit R-1611 aus `taskpane.html`/`.css`/`.js` zusammengefügt. */
 function quelltext(): string {
-  return readFileSync(QUELLE, "utf8");
+  return panelQuelleAus(QUELLE);
 }
 
 async function auslieferung(fassung: string, html = quelltext()): Promise<FastifyInstance> {

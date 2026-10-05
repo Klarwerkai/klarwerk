@@ -23,6 +23,7 @@
 // wird im `afterEach` UNBEDINGT gerufen — nicht „falls exportiert", nicht „wenn vorhanden".
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { panelQuelleAus } from "../support/panelquelle";
 
 export const TASKPANE_PATH = "apps/web/public/word-addin/taskpane.html";
 /**
@@ -35,12 +36,6 @@ export const TASKPANE_PATH = "apps/web/public/word-addin/taskpane.html";
 export const RUECKWEG_PATH = "apps/web/public/word-addin/rueckweg.js";
 /** Das Verweis-Tag, an dem der Rumpf endet — es steht im Markup, gehoert aber zum Skriptteil. */
 const RUECKWEG_TAG = '<script src="rueckweg.js';
-/**
- * Zerlegungsauftrag Bestandsblick (01.10.2026): der Block KW-MARKE wohnt in dieser dritten
- * Geschwisterdatei. `taskpane.html` laedt sie mit `defer`, also NACH dem Inline-Skript — genau dort,
- * wo der Block vorher stand. `splitTaskpane` haengt sie deshalb hinten an.
- */
-export const MARKE_PATH = "apps/web/public/word-addin/marke.js";
 
 // ---- Schmale Struktur-Typen (Ersatz fuer die fehlende DOM-lib) ---------------------------------
 
@@ -189,10 +184,27 @@ interface FakeDateiHandhabe {
   closeAsync(callback: (r: { status: string }) => void): void;
 }
 
+/**
+ * R-0169 (Nacharbeit 8): die Dokumenteinstellungen (`Office.context.document.settings`).
+ *
+ * NUR WENN DIESE OPTION GESETZT IST, kennt der Office-Fake `settings` — ohne sie fehlt die
+ * Schnittstelle wie bisher, und kein bestehender Fall ändert sein Verhalten. `werte` ist der Stand,
+ * den das Dokument beim ÖFFNEN mitbringt; `set` ändert nur die Arbeitskopie, erst ein erfolgreiches
+ * `saveAsync` überträgt sie nach `gespeichert` (der Stand, den ein Wiederöffnen sähe). Dies bildet
+ * den Office-Vertrag nach — es ist KEIN Nachweis, dass echtes Word die Einstellung im .docx behält.
+ */
+export interface FakeDokumentEinstellungen {
+  werte?: Record<string, unknown>;
+  speichernScheitert?: boolean;
+  /** Vom Test übergebenes Ziel: hier landet, was `saveAsync` dauerhaft gemacht hat. */
+  gespeichert?: Record<string, unknown>;
+}
+
 function buildFakeOffice(
   selectionHtml: string,
   selectionText: string,
   docx: FakeDocxDatei | undefined,
+  einstellungen?: FakeDokumentEinstellungen,
 ): Record<string, unknown> {
   const coercion = { Html: "html", Text: "text" };
   const asyncStatus = { Succeeded: "succeeded", Failed: "failed" };
@@ -218,6 +230,25 @@ function buildFakeOffice(
     },
     context: { document: dokument },
   };
+  if (einstellungen !== undefined) {
+    const arbeitskopie: Record<string, unknown> = { ...(einstellungen.werte ?? {}) };
+    dokument.settings = {
+      get: (name: string): unknown => arbeitskopie[name] ?? null,
+      set: (name: string, wert: unknown): void => {
+        arbeitskopie[name] = wert;
+      },
+      saveAsync: (callback: (r: { status: string; error?: { message: string } }) => void): void => {
+        if (einstellungen.speichernScheitert) {
+          callback({ status: asyncStatus.Failed, error: { message: "Speichern fehlgeschlagen" } });
+          return;
+        }
+        if (einstellungen.gespeichert) {
+          Object.assign(einstellungen.gespeichert, arbeitskopie);
+        }
+        callback({ status: asyncStatus.Succeeded });
+      },
+    };
+  }
   if (docx !== undefined) {
     const bytes = docx.bytes ?? [0x50, 0x4b, 0x03, 0x04];
     const fileType = { Compressed: "compressed", Text: "text" };
@@ -273,6 +304,8 @@ export interface KlaraPanelOptions {
    * `readWholeDocument` zurueck. Siehe `FakeDocxDatei`.
    */
   docxDatei?: FakeDocxDatei;
+  /** R-0169 (Nacharbeit 8): schaltet `Office.context.document.settings` frei (Vorgabe: aus). */
+  dokumentEinstellungen?: FakeDokumentEinstellungen;
 }
 
 export interface KlaraPanel {
@@ -308,25 +341,24 @@ interface PanelExports {
   t(key: string, vars?: Record<string, string>): string;
 }
 
+/**
+ * Das Fenster als EIN Dokument. Seit dem Drei-Datei-Schnitt (R-1611) liegen Stil und Skript in
+ * `taskpane.css`/`taskpane.js`; `panelQuelleAus` fügt sie an ihren Stellen wieder ein.
+ */
 function readTaskpane(): string {
-  return readFileSync(resolve(process.cwd(), TASKPANE_PATH), "utf8");
+  return panelQuelleAus(resolve(process.cwd(), TASKPANE_PATH));
 }
 
 export function readRueckweg(): string {
   return readFileSync(resolve(process.cwd(), RUECKWEG_PATH), "utf8");
 }
 
-export function readMarke(): string {
-  return readFileSync(resolve(process.cwd(), MARKE_PATH), "utf8");
-}
-
 /**
  * Rumpf und Skript aus der AUSGELIEFERTEN Seite schneiden (kein zweiter Quelltext).
  *
  * `script` ist das, was der Browser in dieser Reihenfolge ausfuehrt: erst `rueckweg.js`, dann das
- * Inline-Skript, dann das zurueckgestellte `marke.js`. Der Rumpf endet am Verweis-Tag, nicht erst
- * am Inline-Skript — sonst stuende ein `<script src>` im `innerHTML`, das im jsdom stumm bliebe und
- * nur verwirrte.
+ * Inline-Skript. Der Rumpf endet am Verweis-Tag, nicht erst am Inline-Skript — sonst stuende ein
+ * `<script src>` im `innerHTML`, das im jsdom stumm bliebe und nur verwirrte.
  */
 export function splitTaskpane(html: string): { markup: string; script: string } {
   const bodyOpen = html.indexOf("<body>");
@@ -339,7 +371,7 @@ export function splitTaskpane(html: string): { markup: string; script: string } 
   const rumpfBis = tagOpen >= 0 && tagOpen < scriptOpen ? tagOpen : scriptOpen;
   return {
     markup: html.slice(bodyOpen + "<body>".length, rumpfBis),
-    script: `${readRueckweg()}\n${html.slice(scriptOpen + "<script>".length, scriptClose)}\n${readMarke()}`,
+    script: `${readRueckweg()}\n${html.slice(scriptOpen + "<script>".length, scriptClose)}`,
   };
 }
 
@@ -427,6 +459,7 @@ export function createKlaraPanel(options: KlaraPanelOptions = {}): KlaraPanel {
       options.selectionHtml ?? "<html><body><p>Ventil entlasten vor der Wartung</p></body></html>",
       options.selectionText ?? "",
       options.docxDatei,
+      options.dokumentEinstellungen,
     );
     globals.Office = office;
     globals.window.Office = office;

@@ -50,6 +50,9 @@ export {
   // Aussagekraft verloren — dieselbe Funktion, derselbe Fall, nur ohne Versprechen nach außen.
   // SCRUM-361 / AG-03: Tokenisierung der Frage für den Repo-Prefilter (konsistent zum Ranking).
   queryTokens,
+  // R-0473 (K8): die UND-Bindung der Fragebegriffe — angewandt im Fragedienst vor Tor 1.
+  undVerknuepfteFragebegriffe,
+  decktAlleFragebegriffe,
   // PMO-FEA-0006: ehrlicher Extract-Fallback (keine Fake-Punkte ohne Modell).
   honestExtractUnavailable,
   // WP-IC-4: ehrliche deterministische Themen-Gruppierung (Fallback + Tests).

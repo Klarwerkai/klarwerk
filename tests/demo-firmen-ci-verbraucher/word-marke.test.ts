@@ -88,19 +88,12 @@
 // geblieben, nur die Schreibweise nennt die Muster nicht mehr wörtlich.
 //
 // Der Gate-`tsc` läuft ohne DOM-lib; DOM-Zugriffe gehen über schmale Struktur-Typen.
-import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { panelQuelleAus } from "../support/panelquelle";
 
 const WURZEL = join(__dirname, "..", "..");
 const TASKPANE = join(WURZEL, "apps", "web", "public", "word-addin", "taskpane.html");
-/**
- * Zerlegungsauftrag Bestandsblick (01.10.2026): der Markenblock ist Zeile fuer Zeile in diese
- * Geschwisterdatei gewandert. Das Fenster laedt sie mit `defer`, also NACH dem Inline-Skript — genau
- * dort, wo der Block vorher stand. `ladeFenster` fuehrt beide deshalb in dieser Reihenfolge aus.
- * Die Zeilenangaben in den Kommentaren dieser Datei meinen den Stand VOR dem Schnitt.
- */
-const MARKE = join(WURZEL, "apps", "web", "public", "word-addin", "marke.js");
 
 interface El {
   id: string;
@@ -282,10 +275,10 @@ interface Frist {
 const fristen: Frist[] = [];
 /**
  * Die Frist des Markenblocks aus dem zuletzt geladenen Fenster — oder `null`, wenn das Laden keine
- * gestellt hat. Sie wird NICHT geraten: der Markenblock ist der letzte Code, der beim Laden laeuft
- * (`marke.js` laeuft mit `defer` nach dem Inline-Skript, und `kwMarkeFristStellen()` steht dort
- * unmittelbar vor dem ersten Abruf am Ende des Blocks), also ist sie die letzte Frist, die das
- * Laden synchron stellt.
+ * gestellt hat. Sie wird NICHT geraten: der Markenblock ist der letzte Code im Inline-Skript
+ * (`taskpane.html:13454` steht unmittelbar vor der Endmarke des Markenblocks `:13457` und vor
+ * `</script>` `:13458`), also ist `kwMarkeFristStellen()` die letzte Frist, die das Laden synchron
+ * stellt.
  */
 let markenFrist: Frist | null = null;
 
@@ -303,7 +296,7 @@ async function ladeFenster(folge: Folge): Promise<void> {
     fristen.push({ id, fn, ms });
     return id;
   });
-  const quelle = readFileSync(TASKPANE, "utf8");
+  const quelle = panelQuelleAus(TASKPANE);
   const skriptStart = quelle.lastIndexOf("<script>");
   const skriptEnde = quelle.lastIndexOf("</script>");
   expect(skriptStart, "Inline-Skript nicht gefunden").toBeGreaterThan(0);
@@ -330,9 +323,7 @@ async function ladeFenster(folge: Folge): Promise<void> {
   }
   const vorDemLaden = fristen.length;
   try {
-    new Function(
-      `${quelle.slice(skriptStart + "<script>".length, skriptEnde)}\n${readFileSync(MARKE, "utf8")}`,
-    )();
+    new Function(quelle.slice(skriptStart + "<script>".length, skriptEnde))();
   } finally {
     for (const [ziel, original] of echt) {
       ziel.addEventListener = original;

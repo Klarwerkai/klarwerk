@@ -29,18 +29,11 @@
 // `services/app/src/trash-sweep-scheduler.ts` von `Timeout` auf `number` um. Eine Testdatei darf
 // den Typenstand des Produktcodes nicht verschieben. Deshalb: genau die Handvoll Fensterteile,
 // die hier wirklich angefasst werden, lokal beschrieben — mehr nicht.
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { panelQuelleAus } from "../support/panelquelle";
 
 const TASKPANE = "apps/web/public/word-addin/taskpane.html";
-const HTML = readFileSync(resolve(process.cwd(), TASKPANE), "utf8");
-// Zerlegungsauftrag Bestandsblick: der Block KW-MARKE laeuft aus `marke.js` (`defer`) NACH dem
-// Inline-Skript — dort, wo er vorher stand. Angehaengt, damit hier dasselbe Skript laeuft wie zuvor.
-const MARKE_QUELLE = readFileSync(
-  resolve(process.cwd(), "apps/web/public/word-addin/marke.js"),
-  "utf8",
-);
+const HTML = panelQuelleAus(TASKPANE);
 
 /** Die Form, auf die KA3 den Vertrag normalisiert (`ka3Normalisieren`). */
 interface Treffer {
@@ -180,7 +173,7 @@ async function ladePanel(): Promise<void> {
   const skriptStart = HTML.lastIndexOf("<script>");
   const skriptEnde = HTML.lastIndexOf("</script>");
   expect(skriptStart, `${TASKPANE}: Inline-Skript nicht gefunden`).toBeGreaterThan(0);
-  const skript = `${HTML.slice(skriptStart + "<script>".length, skriptEnde)}\n${MARKE_QUELLE}`;
+  const skript = HTML.slice(skriptStart + "<script>".length, skriptEnde);
 
   const bodyStart = HTML.indexOf("<body>");
   expect(bodyStart, `${TASKPANE}: <body> nicht gefunden`).toBeGreaterThan(0);

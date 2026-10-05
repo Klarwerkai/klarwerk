@@ -17,6 +17,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
+import { panelQuelleAus } from "../support/panelquelle";
 
 export const WURZEL = resolve(process.cwd());
 export const TASKPANE = resolve(WURZEL, "apps/web/public/word-addin/taskpane.html");
@@ -27,15 +28,17 @@ export const SEITE_PFAD = "/word-addin/taskpane.html";
 /** JOB 3667: die zweite ausgelieferte Datei des Fensters (Block KW-RUECKWEG). */
 export const RUECKWEG_DATEI = resolve(WURZEL, "apps/web/public/word-addin/rueckweg.js");
 export const RUECKWEG_PFAD = "/word-addin/rueckweg.js";
-/** Zerlegungsauftrag Bestandsblick: die dritte ausgelieferte Datei des Fensters (Block KW-MARKE). */
-export const MARKE_DATEI = resolve(WURZEL, "apps/web/public/word-addin/marke.js");
-export const MARKE_PFAD = "/word-addin/marke.js";
 const OFFICE_JS = "https://appsforoffice.microsoft.com/lib/1/hosted/office.js";
 export const NAME = "Pedi";
 
-export const HTML = readFileSync(TASKPANE, "utf8");
+/**
+ * R-1611 (Drei-Datei-Schnitt): das Fenster liegt in `taskpane.html`/`.css`/`.js`. Die Bühne liefert
+ * es als EIN Dokument aus (Stil und Skript wieder an ihren Stellen), weil ihre Kalibrierungen das
+ * Dokument im Speicher verfälschen (`Plan.html`). Dass die geschnittene Auslieferung sich gleich
+ * verhält, misst `tests/klara-zerlegung/probeschnitt.test.ts` (D2) — in jsdom, nicht in Chromium.
+ */
+export const HTML = panelQuelleAus(TASKPANE);
 export const RUECKWEG = readFileSync(RUECKWEG_DATEI, "utf8");
-export const MARKE = readFileSync(MARKE_DATEI, "utf8");
 export const zielbildDa = existsSync(ZIELBILD);
 export const ZIEL = zielbildDa ? readFileSync(ZIELBILD, "utf8") : "";
 const ZIEL_ZEILEN = ZIEL.split("\n");
@@ -333,16 +336,6 @@ export async function buehneBauen(teil: Partial<Plan> = {}): Promise<Buehne> {
       await route.fulfill({
         status: 200,
         body: RUECKWEG,
-        contentType: "application/javascript; charset=utf-8",
-      });
-      return;
-    }
-    // Zerlegungsauftrag Bestandsblick: `marke.js` gehoert ebenso zur Auslieferung (Block KW-MARKE,
-    // mit `defer` nach dem Inline-Skript). Ohne sie liefe hier ein Fenster ohne Markenblock.
-    if (url.origin === ORIGIN && url.pathname === MARKE_PFAD && req.method() === "GET") {
-      await route.fulfill({
-        status: 200,
-        body: MARKE,
         contentType: "application/javascript; charset=utf-8",
       });
       return;

@@ -26,13 +26,12 @@
 // die an einer Zahl bzw. an einer Zuweisung im Panel haengen, wird einmal mit einem VERFAELSCHTEN
 // Skript gefahren. Misst der Fall wirklich das Panel, muss sich das Ergebnis dabei aendern. Das
 // Panel selbst wird nie veraendert — die Verfaelschung lebt nur im Speicher dieses Laufs.
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { readMarke, readRueckweg, splitTaskpane } from "../app/klara-panel-fixture";
+import { readRueckweg, splitTaskpane } from "../app/klara-panel-fixture";
+import { panelQuelleAus } from "../support/panelquelle";
 
 const TASKPANE = "apps/web/public/word-addin/taskpane.html";
-const HTML = readFileSync(resolve(process.cwd(), TASKPANE), "utf8");
+const HTML = panelQuelleAus(TASKPANE);
 const { markup: MARKUP, script: SKRIPT } = splitTaskpane(HTML);
 
 /**
@@ -583,14 +582,8 @@ describe("JOB 3008 · der Pruefstand misst ein LEBENDES Fenster", () => {
     // der Reihenfolge der Auslieferung zusammen. „Nicht nachgebaut" heisst deshalb ab hier: jedes
     // Stueck stammt wörtlich aus SEINER Datei, und zusammen sind sie das ganze Skript — geprüft an
     // beiden Quellen statt an einer, sonst wäre der Fall nach dem Schnitt nur noch halb scharf.
-    // Zerlegungsauftrag Bestandsblick: dazu kommt `marke.js` HINTER dem Inline-Skript (`defer`).
-    const inlineTeil = SKRIPT.slice(
-      readRueckweg().length + 1,
-      SKRIPT.length - readMarke().length - 1,
-    );
-    expect(HTML).toContain(inlineTeil);
+    expect(HTML).toContain(splitTaskpane(HTML).script.slice(readRueckweg().length + 1));
     expect(SKRIPT.startsWith(readRueckweg())).toBe(true);
-    expect(SKRIPT.endsWith(`\n${readMarke()}`)).toBe(true);
     expect(OFFICE_FRIST).toBeGreaterThan(0);
   });
 

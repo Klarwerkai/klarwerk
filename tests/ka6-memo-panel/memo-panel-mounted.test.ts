@@ -21,17 +21,20 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { panelQuelleAus } from "../support/panelquelle";
 
 const TASKPANE = "apps/web/public/word-addin/taskpane.html";
 // JOB 3667 R8 (14.09.2026): das Fenster wird aus ZWEI Dateien ausgeliefert. Wer nur das
 // Inline-Skript ausfuehrt, laesst `rwZeichnen` fehlen — `renderCapture` bricht dann mit
 // ReferenceError, und der Fall misst ein Fenster, das es so nicht gibt.
 const RUECKWEG = "apps/web/public/word-addin/rueckweg.js";
-// Zerlegungsauftrag Bestandsblick: der Block KW-MARKE laeuft aus `marke.js` (`defer`) NACH dem
-// Inline-Skript — dort, wo er vorher stand.
-const MARKE = "apps/web/public/word-addin/marke.js";
 
 function read(rel: string): string {
+  // Das Aufgabenfenster liegt seit dem Drei-Datei-Schnitt (R-1611) in drei Dateien; gelesen wird es
+  // als EIN Dokument, so wie vorher.
+  if (rel === TASKPANE) {
+    return panelQuelleAus(rel);
+  }
   return readFileSync(resolve(process.cwd(), rel), "utf8");
 }
 
@@ -265,7 +268,7 @@ async function ladeFenster(lage: Lage): Promise<void> {
   const skriptStart = quelle.lastIndexOf("<script>");
   const skriptEnde = quelle.lastIndexOf("</script>");
   expect(skriptStart, `${TASKPANE}: Inline-Skript nicht gefunden`).toBeGreaterThan(0);
-  const skript = `${read(RUECKWEG)}\n${quelle.slice(skriptStart + "<script>".length, skriptEnde)}\n${read(MARKE)}`;
+  const skript = `${read(RUECKWEG)}\n${quelle.slice(skriptStart + "<script>".length, skriptEnde)}`;
   const bodyStart = quelle.indexOf("<body>");
   expect(bodyStart).toBeGreaterThan(0);
   const markup = quelle.slice(bodyStart + "<body>".length, skriptStart);

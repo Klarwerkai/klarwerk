@@ -58,10 +58,11 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { panelQuelleAus } from "../support/panelquelle";
 
 const WURZEL = resolve(__dirname, "..", "..");
 const TASKPANE = resolve(WURZEL, "apps/web/public/word-addin/taskpane.html");
-const HTML = readFileSync(TASKPANE, "utf8");
+const HTML = panelQuelleAus(TASKPANE);
 /**
  * JOB 3667 R8 (14.09.2026): das Fenster wird aus ZWEI Dateien ausgeliefert — `taskpane.html` laedt
  * `rueckweg.js` als klassisches Skript unmittelbar vor seinem Inline-Skript. Dieses jsdom laeuft
@@ -74,31 +75,13 @@ const HTML = readFileSync(TASKPANE, "utf8");
  * vorzeitig schliessen (gemessen: 0 Treffer).
  */
 const RUECKWEG = resolve(WURZEL, "apps/web/public/word-addin/rueckweg.js");
-/**
- * Zerlegungsauftrag Bestandsblick (01.10.2026): der Block KW-MARKE wohnt in `marke.js`, die mit
- * `defer` NACH dem Inline-Skript laeuft. Ein eingesetztes Inline-Skript kennt kein `defer` — der
- * Verweis faellt deshalb weg, und der Inhalt kommt hinter das Inline-Skript, vor `</body>`: dieselbe
- * Reihenfolge wie im Browser und wie vor dem Schnitt.
- */
-const MARKE = resolve(WURZEL, "apps/web/public/word-addin/marke.js");
-const MIT_RUECKWEG = HTML.replace(
+const SEITE = HTML.replace(
   /<script src="rueckweg\.js[^"]*"><\/script>/,
   () => `<script>${readFileSync(RUECKWEG, "utf8")}</script>`,
 );
-if (MIT_RUECKWEG === HTML) {
+if (SEITE === HTML) {
   throw new Error("taskpane.html: der Verweis auf rueckweg.js ist nicht auffindbar");
 }
-const OHNE_MARKENVERWEIS = MIT_RUECKWEG.replace(
-  /<script src="marke\.js[^"]*" defer><\/script>/,
-  "",
-);
-if (OHNE_MARKENVERWEIS === MIT_RUECKWEG) {
-  throw new Error("taskpane.html: der Verweis auf marke.js ist nicht auffindbar");
-}
-const SEITE = OHNE_MARKENVERWEIS.replace(
-  /<\/body>/,
-  () => `<script>${readFileSync(MARKE, "utf8")}</script>\n</body>`,
-);
 
 // Der Gate-tsc laeuft ohne DOM-lib (`tsconfig.json`: `lib: ["ES2022"]`), und `@types/jsdom` gibt es
 // hier nicht. Deshalb jsdom und die Knoten ueber schmale Struktur-Typen — dasselbe Muster wie

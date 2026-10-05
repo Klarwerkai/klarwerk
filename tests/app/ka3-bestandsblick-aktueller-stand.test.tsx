@@ -18,18 +18,14 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { panelQuelleAus } from "../support/panelquelle";
 
 const TASKPANE = "apps/web/public/word-addin/taskpane.html";
-const HTML = readFileSync(resolve(process.cwd(), TASKPANE), "utf8");
+// Das Fenster liegt in mehreren Dateien (R-1611: taskpane.html/.css/.js; dazu marke.js). Gelesen
+// wird es als EIN Dokument — `panelQuelleAus` setzt Stil, Skript und den Markenblock an ihre Stellen.
+const HTML = panelQuelleAus(TASKPANE);
 const RUECKWEG_QUELLE = readFileSync(
   resolve(process.cwd(), "apps/web/public/word-addin/rueckweg.js"),
-  "utf8",
-);
-// Zerlegungsauftrag Bestandsblick (Nacharbeit 2): der Block KW-MARKE wohnt in `marke.js`, die
-// `taskpane.html` mit `defer` NACH dem Inline-Skript laedt. Geladen wird deshalb in der Reihenfolge
-// der Auslieferung: rueckweg.js, Inline-Skript, marke.js.
-const MARKE_QUELLE = readFileSync(
-  resolve(process.cwd(), "apps/web/public/word-addin/marke.js"),
   "utf8",
 );
 
@@ -128,7 +124,7 @@ async function ladePanel(): Promise<void> {
   const skriptStart = HTML.lastIndexOf("<script>");
   const skriptEnde = HTML.lastIndexOf("</script>");
   expect(skriptStart).toBeGreaterThan(0);
-  const skript = `${RUECKWEG_QUELLE}\n${HTML.slice(skriptStart + "<script>".length, skriptEnde)}\n${MARKE_QUELLE}`;
+  const skript = `${RUECKWEG_QUELLE}\n${HTML.slice(skriptStart + "<script>".length, skriptEnde)}`;
   const markup = HTML.slice(HTML.indexOf("<body>") + "<body>".length, skriptStart);
   expect(markup.length).toBeGreaterThan(2000);
   document.body.innerHTML = markup;

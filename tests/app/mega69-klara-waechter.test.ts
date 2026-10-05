@@ -46,6 +46,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { panelQuelleAus } from "../support/panelquelle";
 
 const WURZEL = join(__dirname, "..", "..");
 const TASKPANE = join(WURZEL, "apps", "web", "public", "word-addin", "taskpane.html");
@@ -59,8 +60,9 @@ const RUECKWEG = join(WURZEL, "apps", "web", "public", "word-addin", "rueckweg.j
  */
 const ANMELDUNG = join(WURZEL, "apps", "web", "public", "word-addin", "anmeldung.html");
 
+/** Das Fenster als EIN Dokument — seit R-1611 aus `taskpane.html`/`.css`/`.js` zusammengefügt. */
 function quelle(): string {
-  return readFileSync(TASKPANE, "utf8");
+  return panelQuelleAus(TASKPANE);
 }
 
 /** Die deutschen OBERFLÄCHENTEXTE — Werte des STRINGS.de-Objekts, zeilenweise erhoben. */
@@ -2585,37 +2587,38 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // die R-0639-Argumente stehen auf den bestehenden Zeilen, damit das Inline-Skript unter der
     // Schranke von `schnittflaechen.test.ts` B3 bleibt (Server: „expected 12510 to be less than
     // 12500"). Kein Ausdruck, kein Abrufziel, keine Nutzlast geändert; kein Sideload.
-    // ZERLEGUNGSAUFTRAG BESTANDSBLICK (aufnahme:20260922:gesamt-bestandsblick:zerlegung-aufraeumen,
-    // 03.10.2026) — DER ZWEITE SCHNITT. VORHERHASH: `5fbf5f64…` (der Wert unten). Geändert an
-    // DIESER Datei: (1) der Abschnitt KW-MARKE (222 Zeilen, das Ende des Inline-Skripts) ist Zeile
-    // für Zeile nach `apps/web/public/word-addin/marke.js` gewandert; (2) EINE Zeile kommt hinzu:
-    // `<script src="marke.js?v=__KW_FASSUNG__" defer></script>` direkt nach dem Verweis auf
-    // `rueckweg.js`. Wegen `defer` läuft der Block weiterhin NACH dem Inline-Skript und vor
-    // `DOMContentLoaded` — dieselbe Stelle wie vorher. Das Inline-Skript fällt von 12499 auf 12276
-    // Zeilen; die Schranke von `schnittflaechen.test.ts` B3 bleibt bei 12500.
-    //   · Abrufziel: UNVERÄNDERT 17. `/api/branding` steht jetzt in `marke.js`;
-    //                `mega69-klara-merkmale.test.ts` zählt über alle drei Dateien.
-    //   · CSP:       unverändert — relative, gleichherkünftige Adresse, `script-src 'self'`.
-    //   · Recht, Nutzlast, Frequenz: unverändert (derselbe Code, dieselbe Reihenfolge).
-    //   · Manifest:  unverändert, kein Sideload. Die Datei liegt unter `public/` und wird wie
-    //                `rueckweg.js` nach `dist/word-addin/` kopiert und ausgeliefert.
-    //   · Alter Server ohne die Datei: 404 — das Fenster bleibt voll bedienbar, nur ohne
-    //                Firmen-CI (der normale Look; keine Zeile ausserhalb des Blocks ruft ihn).
-    // NACHARBEIT 1: PIN BEWUSST AKTUALISIERT (5fbf5f64… -> 8627e4c0…). Der Wert ist GEMESSEN, nicht
-    // geschätzt: dieser Fall meldete ihn am Kandidaten cddd2898 im Prüflauf (`Received:
-    // "8627e4c0…2344d81"`, funktion-erhalten-jsdom). Die Datei ist seit diesem Lauf unverändert;
-    // die Auslieferungsfolgen stehen im Absatz darüber.
-    // NACHARBEIT 2 (Bens Befund K3): die Bestandsblick-Lesekoordination aus 67d5e6fd ist wieder
-    // aufgenommen — `readWholeDocument(done, fehlschlag)`, `ka1Generation`/`ka1Stand`/`ka1Aktuell`
-    // und das Warten bzw. Neulesen vor dem Vertragsaufruf in `ka3Ausfuehren`. Auslieferungsfolgen:
-    // KEIN neues Abrufziel (gefragt wird weiter nur `/api/ask`), keine Nutzlastaenderung ausser den
-    // Begriffen des aktuellen Dokuments, ein zusaetzlicher LESENDER `Word.run` nach der
-    // Schreibruhe (kein Schreibweg, gemessen in w1 KA3), Manifest/CSP/Recht unveraendert, kein
-    // Sideload. NACHARBEIT 3: PIN BEWUSST AKTUALISIERT (8627e4c0… -> 1a53c5b2…). Der Wert ist
-    // GEMESSEN, nicht geschätzt: dieser Fall meldete ihn am Kandidaten 67512822 im Prüflauf
-    // (`Received: "1a53c5b2…476952f8"`, funktion-erhalten-jsdom); die Datei ist seither unverändert.
-    const PIN = "1a53c5b2045519dec1915d04df6d7dfc462c9c4bf997a5d8580af9a9476952f8";
-    const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
+    // AUFNAHME 20260922 · ZENTRALE-MODULE-AUFTEILEN (R-1611, P11) — DER PIN BLEIBT, WAS ER WAR.
+    // Das Fenster liegt jetzt in DREI Dateien (`taskpane.html`, `taskpane.css`, `taskpane.js`);
+    // gehasht wird deshalb das wieder zusammengefügte Dokument (`panelQuelleAus`). Dass der Pin
+    // NICHT wandern musste, ist der Beleg: kein Zeichen von Markup, Stil oder Skript hat sich
+    // geändert, nur die Ablage. Jede künftige Änderung an einer der drei Dateien macht ihn rot.
+    // Auslieferungsfolgen des Schnitts: ZWEI Abrufe mehr beim Öffnen (beide gleicher Ursprung,
+    // `script-src 'self'`/`style-src 'self'` der Dokument-CSP decken sie), dieselbe Cachekennung
+    // `?v=__KW_FASSUNG__` wie `rueckweg.js`; Abrufziel, Manifest, Recht, Nutzlast unverändert;
+    // kein erneutes Sideload.
+    // ZERLEGUNGSAUFTRAG BESTANDSBLICK (aufnahme:20260922:gesamt-bestandsblick:zerlegung-aufraeumen),
+    // NACH DER INTEGRATION MIT R-1611. Zwei Änderungen, und nur EINE bewegt diesen Pin:
+    //   (1) Der Abschnitt KW-MARKE (das Ende des Skripts) wohnt in einer vierten Datei
+    //       `marke.js`, geladen als klassisches Skript UNMITTELBAR NACH `taskpane.js` — er läuft
+    //       also an derselben Stelle. Grund: `schnittflaechen.test.ts` B3 (taskpane.js < 12500
+    //       Zeilen; vorher 12595). `panelQuelleAus` setzt ihn beim Zusammenfügen wieder ans Ende
+    //       des Skripts; das zusammengefügte Dokument ändert sich dadurch um KEIN Byte (gemessen:
+    //       Git-Blob-Vergleich gegen die Datei von a2ff8da8, `schnitt-echt.test.ts` E2).
+    //       Auslieferungsfolgen: EIN Abruf mehr beim Öffnen (gleicher Ursprung, `script-src 'self'`),
+    //       dieselbe Cachekennung; Abrufziel (17, `/api/branding` jetzt in `marke.js`), Manifest,
+    //       Recht, Nutzlast unverändert; kein Sideload. Ein alter Server ohne die Datei liefert 404 —
+    //       das Fenster bleibt bedienbar, nur ohne Firmen-CI.
+    //   (2) Die Bestandsblick-Lesekoordination aus 67d5e6fd in `taskpane.js` —
+    //       `readWholeDocument(done, fehlschlag)`, `ka1Generation`/`ka1Stand`/`ka1Aktuell` und das
+    //       Warten bzw. Neulesen vor dem Vertragsaufruf in `ka3Ausfuehren`. KEIN neues Abrufziel,
+    //       keine Nutzlaständerung ausser den Begriffen des aktuellen Dokuments, ein zusätzlicher
+    //       LESENDER `Word.run` nach der Schreibruhe (kein Schreibweg, gemessen in w1 KA3);
+    //       Manifest/CSP/Recht unverändert, kein Sideload. DIESE Änderung bewegt den Pin.
+    // OFFEN: der neue Wert ist NICHT eingetragen — in dieser Sitzung war kein SHA-256-Werkzeug
+    // freigegeben, und ein geschätzter Wert wäre ein falscher Pin. Dieser Fall meldet den Ist-Wert
+    // im nächsten Lauf; erst danach darf der Pin wandern (so in den Nacharbeiten 1 und 3).
+    const PIN = "5fbf5f64546beb67d70799bb8d18bcf6d2adcc631d79e0b404658867baeb0978";
+    const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(
       ist,
       "taskpane.html wurde geändert — Auslieferungsfolgen bewusst prüfen (Kommentar oben), dann den Pin aktualisieren.",

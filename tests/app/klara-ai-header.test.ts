@@ -22,12 +22,13 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { panelQuelleAus } from "../support/panelquelle";
 
 const TASKPANE = "apps/web/public/word-addin/taskpane.html";
 const POLICY = "services/reasoner/src/klara-policy.ts";
 const STORE = "services/reasoner/src/klara-policy-store.ts";
 
-const HTML = readFileSync(resolve(process.cwd(), TASKPANE), "utf8");
+const HTML = panelQuelleAus(TASKPANE);
 const POLICY_SRC = readFileSync(resolve(process.cwd(), POLICY), "utf8");
 const STORE_SRC = readFileSync(resolve(process.cwd(), STORE), "utf8");
 

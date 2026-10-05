@@ -1,5 +1,4 @@
 // @vitest-environment jsdom
-import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { act, createElement } from "../../apps/web/node_modules/react";
@@ -7,6 +6,7 @@ import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { ImportResultView } from "../../apps/web/src/components/confluence-import/ImportResultView";
 import "../../apps/web/src/i18n";
 import type { ImportResultViewInput } from "../../apps/web/src/lib/importResultView";
+import { woerterbuchQuelleAus } from "../support/woerterbuchquelle";
 
 // ================================================================================================
 // AUFTRAG-81 — DER VORHANDENE A11Y-VERTRAG DER W2-RESULTATVIEW, FESTGEHALTEN.
@@ -196,7 +196,7 @@ describe("AUFTRAG-81: der A11y-Vertrag der W2-Resultatview bleibt bestehen", () 
     expect(gezeigt.length, "die fehlende Pflichtangabe wird gar nicht benannt").toBeGreaterThan(0);
     expect(gezeigt, "hier stand der rohe Schluessel").not.toBe("w2.value.missing");
     // Gegenprobe gegen das Woerterbuch: der gezeigte Satz ist WIRKLICH der hinterlegte.
-    const i18nQuelle = readFileSync(join(WURZEL, "apps/web/src/i18n.ts"), "utf8");
+    const i18nQuelle = woerterbuchQuelleAus(join(WURZEL, "apps/web/src/i18n.ts"));
     const erwartet = /^ {2}"w2\.value\.missing":\s*"([^"]+)"/m.exec(i18nQuelle)?.[1];
     expect(erwartet, "w2.value.missing steht nicht im DE-Woerterbuch").toBeDefined();
     expect(gezeigt).toBe(erwartet);
