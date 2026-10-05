@@ -5,30 +5,32 @@
 // Behebung fehlschlagen und danach bestehen. Diese Datei führt DIESELBEN fachlichen Sollprüfungen
 // zweimal aus, jeweils auf einer frischen Datenbank mit dem Schema der jeweiligen Fassung:
 //
-//   VORHER   der Produktcode der Fassung `41fad46c` (Basis vor Lauf 3, letzte Fassung VOR der
-//            Behebung, Vorfahr des Kandidaten). Er wird zur Laufzeit mit `git archive` aus dem
-//            Prüfbaum entpackt (`services/`, `apps/web/src/`, `package.json`) und GELADEN — es ist
-//            sein `buildPgServices`/`buildApp`/`migrate`, kein Nachbau. Die Kennung wird mit
-//            `git rev-parse` vollständig aufgelöst und im Lauf ausgegeben (Fassungsbindung).
+//   VORHER   der Produktcode des integrierten HAUPTSTANDS OHNE DIE BEHEBUNG (`6c576c70`, s.
+//            `vorher/fassung.json`). Der Prüfweg arbeitet mit einem depth-1-Checkout ohne Historie
+//            (Nacharbeit 7: `git rev-parse 41fad46c` scheiterte dort). Die Vorher-Fassung entsteht
+//            deshalb aus VERFOLGTEN Dateien: die `services/` des Prüfbaums werden in ein temporäres
+//            Verzeichnis kopiert und dort mit `vorher/behebung-rueckwaerts.patch` (die Behebung
+//            rückwärts, von Git erzeugt) per `git apply` zurückgesetzt. Danach wird GELADEN — es ist
+//            das `buildPgServices`/`buildApp`/`migrate` dieser Fassung, kein Nachbau.
 //   NACHHER  der Kandidat selbst (statische Importe unten).
 //
 // Erwartung: VORHER verletzt jede Sollprüfung FACHLICH (die Verletzungen werden benannt und
-// geprüft), NACHHER verletzt keine. Ein Fehler beim Bereitstellen der alten Fassung (kein git, ein
-// flacher Klon ohne `41fad46c`) lässt die VORHER-Fälle ROT werden — mit dem Grund „Prüfmittel fehlt";
-// er wird nicht übersprungen und nicht als Produktbefund ausgegeben.
+// geprüft), NACHHER verletzt keine. Lässt sich die Vorher-Fassung nicht herstellen (Patch passt nicht
+// mehr, `git` fehlt), werden die VORHER-Fälle ROT — mit dem Grund im Text; sie werden nicht
+// übersprungen und nicht als Produktbefund ausgegeben.
 //
 // FASSUNGSWAHL, ehrlich benannt: Ben meldete beide Befunde an den Lauf-2-Fassungen `758e76c1` und
-// `d3c1bc09`. Diese sind von keinem Branch oder Tag des Repositories aus erreichbar und liegen deshalb
-// auf keinem Prüfbaum vor; `41fad46c` ist die letzte erreichbare Fassung vor der Behebung. Den
-// Exportweg (`GET /api/audit/export`, Auslöser von beleg:6818bd52) gibt es dort noch nicht. Der
-// zugrunde liegende Fehler — zwei Schreiber berechnen dieselbe `seq`, der zweite scheitert am
-// Primärschlüssel — wird deshalb am Anlageweg gemessen, der in BEIDEN Fassungen besteht: die Anlage
-// gegen einen offenen Fremdschreiber (zugleich der gemeldete Auslöser von beleg:1ea197ac).
+// `d3c1bc09`. Diese sind von keinem Branch oder Tag des Repositories aus erreichbar. Gemessen wird am
+// Produktstand ohne die Behebung, auf demselben Hauptstand wie der Kandidat. Den Exportweg
+// (`GET /api/audit/export`, Auslöser von beleg:6818bd52) bringt erst die Behebung mit. Der zugrunde
+// liegende Fehler — zwei Schreiber berechnen dieselbe `seq`, der zweite scheitert am Primärschlüssel —
+// wird deshalb am Anlageweg gemessen, der in BEIDEN Fassungen besteht: die Anlage gegen einen offenen
+// Fremdschreiber (zugleich der gemeldete Auslöser von beleg:1ea197ac).
 //
 // Ergänzend (nicht Ersatz) bleibt `rot-kalibrierung.integration.test.ts`: dort der nachgebildete
 // Altweg AM KANDIDATEN, einschliesslich des Exportwegs.
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -41,8 +43,13 @@ import { AuditService, PgAuditRepo, inspectChain } from "../../services/audit";
 import { guardedLocalPgTestUrl, withPgTx } from "../../services/db-tx";
 
 const PREFIX = "[KLARWERK][gesamt-auditprotokoll vorher/nachher]";
-const VORHER = "41fad46c";
 const WURZEL = fileURLToPath(new URL("../../", import.meta.url));
+const VORHER_ORDNER = fileURLToPath(new URL("./vorher/", import.meta.url));
+const FASSUNG = JSON.parse(readFileSync(join(VORHER_ORDNER, "fassung.json"), "utf8")) as {
+  kandidat_beim_erzeugen: string;
+  vorher_hauptstand: string;
+  patch: string;
+};
 
 /** Was die Sollprüfungen von einer Fassung brauchen — beide Fassungen bieten genau das an. */
 interface AppModul {
@@ -76,24 +83,38 @@ function git(...args: string[]): string {
   return execFileSync("git", ["-C", WURZEL, ...args], { encoding: "utf8" }).trim();
 }
 
-/** Entpackt die Fassung und lädt ihren Produktcode. Wirft mit „Prüfmittel fehlt", wenn das nicht geht. */
-async function ladeFassung(
-  kennung: string,
-): Promise<{ modul: AppModul; voll: string; ordner: string }> {
-  let voll: string;
-  let ordner: string;
+/**
+ * Stellt den Produktstand ohne die Behebung her und lädt ihn: verfolgte `services/` kopieren, die
+ * Behebung rückwärts anwenden. Wirft mit benanntem Grund, wenn das nicht geht.
+ */
+async function ladeVorher(): Promise<{ modul: AppModul; ordner: string }> {
+  const ordner = mkdtempSync(join(tmpdir(), "kw-vorher-"));
   try {
-    voll = git("rev-parse", "--verify", `${kennung}^{commit}`);
-    ordner = mkdtempSync(join(tmpdir(), `kw-fassung-${kennung}-`));
-    const archiv = join(ordner, "fassung.tar");
-    git("archive", "--format=tar", "-o", archiv, voll, "services", "apps/web/src", "package.json");
-    execFileSync("tar", ["-xf", archiv, "-C", ordner]);
+    cpSync(join(WURZEL, "services"), join(ordner, "services"), { recursive: true });
+    cpSync(join(WURZEL, "apps/web/src"), join(ordner, "apps/web/src"), { recursive: true });
+    cpSync(join(WURZEL, "package.json"), join(ordner, "package.json"));
+  } catch (fehler) {
+    throw new Error(`${PREFIX} Vorher-Fassung: Kopieren scheiterte. ${String(fehler)}`);
+  }
+  try {
+    execFileSync("git", ["apply", "--whitespace=nowarn", join(VORHER_ORDNER, FASSUNG.patch)], {
+      cwd: ordner,
+      encoding: "utf8",
+    });
   } catch (fehler) {
     throw new Error(
-      `${PREFIX} Prüfmittel fehlt: die Fassung ${kennung} lässt sich im Prüfbaum nicht bereitstellen (git/Historie). ${String(fehler)}`,
+      `${PREFIX} Vorher-Fassung veraltet oder git fehlt: ${FASSUNG.patch} (erzeugt an ${FASSUNG.kandidat_beim_erzeugen}) passt nicht auf die services/ dieses Prüfbaums — mit dem Befehl aus vorher/fassung.json neu erzeugen. ${String(fehler)}`,
     );
   }
-  // Die Pakete der alten Fassung sind die des Prüfbaums (gleiche Abhängigkeiten, s. package.json).
+  // Gegenprobe der Herstellung: die Kettensperre der Behebung ist in der Vorher-Fassung NICHT da,
+  // im Kandidaten schon. Sonst wäre „vorher" heimlich „nachher".
+  const marke = "appendNext";
+  const vorherRepo = readFileSync(join(ordner, "services/audit/src/repo-pg.ts"), "utf8");
+  const kandidatRepo = readFileSync(join(WURZEL, "services/audit/src/repo-pg.ts"), "utf8");
+  if (vorherRepo.includes(marke) || !kandidatRepo.includes(marke)) {
+    throw new Error(`${PREFIX} Vorher-Fassung unplausibel: Marke ${marke} falsch verteilt.`);
+  }
+  // Die Pakete der Vorher-Fassung sind die des Prüfbaums (dieselbe package.json-Grundlage).
   for (const teil of ["node_modules", "apps/web/node_modules"]) {
     if (existsSync(join(WURZEL, teil)) && !existsSync(join(ordner, teil))) {
       symlinkSync(join(WURZEL, teil), join(ordner, teil), "dir");
@@ -101,7 +122,7 @@ async function ladeFassung(
   }
   const eintritt = join(ordner, "services/app/index.ts");
   const modul = (await import(/* @vite-ignore */ eintritt)) as AppModul;
-  return { modul, voll, ordner };
+  return { modul, ordner };
 }
 
 interface Buehne {
@@ -113,7 +134,7 @@ interface Buehne {
   headers: Record<string, string>;
 }
 
-describe("Vorher/Nachher auf PostgreSQL · dieselben Sollprüfungen an 41fad46c und am Kandidaten", () => {
+describe("Vorher/Nachher auf PostgreSQL · dieselben Sollprüfungen ohne und mit der Behebung", () => {
   let container: StartedTestContainer | undefined;
   let verwaltung: Pool | undefined;
   let basisUrl = "";
@@ -202,9 +223,11 @@ describe("Vorher/Nachher auf PostgreSQL · dieselben Sollprüfungen an 41fad46c 
     }
     nachher = await buehne("nachher", kandidat as unknown as AppModul);
     try {
-      const fassung = await ladeFassung(VORHER);
+      const fassung = await ladeVorher();
       ordner.push(fassung.ordner);
-      process.stderr.write(`${PREFIX} VORHER-Fassung: ${VORHER} = ${fassung.voll}\n`);
+      process.stderr.write(
+        `${PREFIX} VORHER-Fassung: Hauptstand ${FASSUNG.vorher_hauptstand} ohne Behebung (Patch erzeugt an ${FASSUNG.kandidat_beim_erzeugen})\n`,
+      );
       vorher = await buehne("vorher", fassung.modul);
     } catch (fehler) {
       vorherFehler = fehler;
@@ -376,7 +399,7 @@ describe("Vorher/Nachher auf PostgreSQL · dieselben Sollprüfungen an 41fad46c 
     );
   }
 
-  it("VORHER 41fad46c · Anlage gegen offenen Fremdschreiber: die Sollprüfung schlägt fachlich fehl", async (ctx) => {
+  it("VORHER Hauptstand ohne Behebung · Anlage gegen offenen Fremdschreiber: die Sollprüfung schlägt fachlich fehl", async (ctx) => {
     datenbankDa(ctx);
     const s = vorherBuehne();
     const verletzt = await sollAnlageGegenFremdschreiber(s);
@@ -399,7 +422,7 @@ describe("Vorher/Nachher auf PostgreSQL · dieselben Sollprüfungen an 41fad46c 
     expect(verletzt).toEqual([]);
   });
 
-  it("VORHER 41fad46c · Datenbank weist ko.created ab: die Sollprüfung schlägt fachlich fehl", async (ctx) => {
+  it("VORHER Hauptstand ohne Behebung · Datenbank weist ko.created ab: die Sollprüfung schlägt fachlich fehl", async (ctx) => {
     datenbankDa(ctx);
     const s = vorherBuehne();
     const verletzt = await sollErfassenOhneBeleg(s);

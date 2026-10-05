@@ -1,0 +1,9 @@
+{
+  "zweck": "Produktstand VOR der Behebung für tests/audit-gesamt/vorher-nachher.integration.test.ts",
+  "kandidat_beim_erzeugen": "3886091d5d4289ce99a72ce03a025cf33f860b38",
+  "vorher_hauptstand": "6c576c7014302bc85b86af85c50794e0aefe7d64",
+  "vorher_beschreibung": "integrierter Hauptstand ohne die Behebung dieses Auftrags (erster Elternteil des Integrations-Merges 46f89d12 ist die Arbeitssicherung, zweiter 6c576c70 der Hauptstand)",
+  "patch": "behebung-rueckwaerts.patch",
+  "umfang": "services/** ohne *.test.ts — 21 Dateien",
+  "befehl": "git diff --binary --output=tests/audit-gesamt/vorher/behebung-rueckwaerts.patch 3886091d 6c576c70 -- services ':(exclude)services/**/*.test.ts'"
+}

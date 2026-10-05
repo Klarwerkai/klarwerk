@@ -50,6 +50,13 @@ an ihm und am Kandidaten DIESELBEN Sollprüfungen aus (Anlage gegen offenen Frem
 weist `ko.created` ab). Erwartet: an `41fad46c` fachlich verletzt, am Kandidaten keine Verletzung.
 Die gemeldeten Lauf-2-Fassungen `758e76c1`/`d3c1bc09` sind von keinem Branch erreichbar; den Exportweg
 von beleg:6818bd52 gibt es in `41fad46c` nicht. Die Rot-Kalibrierung oben gilt seither als ergänzend.
+Nachtrag Nacharbeit 7: Der Prüfweg arbeitet mit einem depth-1-Checkout ohne Historie; `41fad46c` war
+dort nicht auflösbar. Die Vorher-Fassung ist jetzt der integrierte Hauptstand OHNE die Behebung
+(`6c576c70`), hergestellt aus verfolgten Dateien: `services/` des Prüfbaums plus der von Git erzeugte
+Rückwärts-Patch `tests/audit-gesamt/vorher/behebung-rueckwaerts.patch` (`git apply`, keine
+Historie nötig). Fassung und Befehl: `tests/audit-gesamt/vorher/fassung.json`. Ändert eine spätere
+Nacharbeit `services/`, ist der Patch mit demselben Befehl neu zu erzeugen; sonst meldet der Test
+„Vorher-Fassung veraltet“.
 
 **Prüfstand (lokal, macOS, an dieser Fassung):** `npx tsc --noEmit` (Wurzel, Web) grün;
 `depcruise` ohne Verstoß; Biome-Lint der 45 geänderten Dateien grün; `vitest` (mit
