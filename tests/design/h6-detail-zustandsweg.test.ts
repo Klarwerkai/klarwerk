@@ -741,7 +741,11 @@ interface MarkenLage {
 // EN/NL als SEIN Soll-Text dastehen, kein deutscher Katalogtext darf in EN/NL stehen bleiben, und
 // was EN/NL zusätzlich zeigt, muss auch deutsch dastehen. Daten (Namen, Pfade, Zahlen) sind kein
 // Katalogtext und werden nicht übersetzt erwartet.
-const INHALT_LIES = `(async ([reiter, zeile, behaelter]) => {
+//
+// Nacharbeit 9: Die Kontenfläche hat keine Detailkarte; ihr Behälter `flaeche-nutzer` ist nur die
+// Nutzerliste (Namen = Daten). Gelesen wird deshalb die GANZE sichtbare Themenspalte des Reiters
+// „Konten" (`bereich`, `[data-einst="spalte"]`): Nutzerliste, Hinzufügen, Rollen.
+const INHALT_LIES = `(async ([reiter, zeile, behaelter, bereich]) => {
   const warte = async (p, ms = 15000) => {
     const bis = Date.now() + ms;
     while (Date.now() < bis) { if (p()) return true; await new Promise((r) => setTimeout(r, 50)); }
@@ -760,8 +764,14 @@ const INHALT_LIES = `(async ([reiter, zeile, behaelter]) => {
     if (!z) return { fehler: 'Zeile fehlt: ' + zeile };
     z.click();
   }
-  const karte = () => document.querySelector('[data-testid="' + behaelter + '"]');
-  if (!(await warte(() => karte() !== null, 10000))) return { fehler: 'Karte fehlt: ' + behaelter };
+  const behaelterDa = () => document.querySelector('[data-testid="' + behaelter + '"]');
+  if (!(await warte(() => behaelterDa() !== null, 10000))) return { fehler: 'Karte fehlt: ' + behaelter };
+  if (bereich) {
+    // Die Kontenfläche: erst lesen, wenn die Konten wirklich da sind.
+    await warte(() => behaelterDa() !== null && behaelterDa().querySelector('button[data-einst="zeile"]') !== null, 15000);
+  }
+  const karte = () => (bereich ? document.querySelector(bereich) : behaelterDa());
+  if (karte() === null) return { fehler: 'Bereich fehlt: ' + bereich };
   const ruhig = () => {
     const k = karte();
     return k !== null && !k.matches('[data-einst="laedt"]') && k.querySelector('[data-einst="laedt"]') === null
@@ -799,12 +809,15 @@ const INHALT_LIES = `(async ([reiter, zeile, behaelter]) => {
   }
   const hilfen = karte().querySelectorAll('[data-einst="hilfetext"]').length;
   [...karte().querySelectorAll('[data-einst="hilfe"]')].forEach((b) => { if (b.getAttribute('aria-expanded') === 'true') b.click(); });
-  return { fehler: null, lang: document.documentElement.lang, fragmente, hilfeKnoepfe: knoepfe.length, hilfen };
+  const titel = karte().querySelector('[data-einst="detailtitel"]');
+  return { fehler: null, lang: document.documentElement.lang, titel: titel ? norm(titel.textContent) : null, fragmente, hilfeKnoepfe: knoepfe.length, hilfen };
 })`;
 
 interface InhaltLage {
   fehler: string | null;
   lang?: string;
+  /** Der Titel der Detailkarte (`null` auf der Kontenfläche, die keine Karte ist). */
+  titel?: string | null;
   fragmente: string[];
   hilfeKnoepfe: number;
   hilfen: number;
@@ -886,27 +899,52 @@ function stehtDa(idx: Sprachindex, k: string, fragmente: string[]): boolean {
   return m === null || fragmente.some((f) => m.test(f));
 }
 
+/**
+ * Die Kalibrierung je Ort: die Messung greift wirklich, sonst wäre der Vergleich über einer leeren
+ * Menge trivial grün.
+ *
+ * Nacharbeit 9: Bis hierher stand hier pauschal „mindestens drei Katalogtexte". Gemessen ist, dass
+ * das an der Fläche vorbeigeht: die Auditkarte zeigt außer Titel und „Zurück" nur Protokolldaten
+ * (5 Fragmente, 2 Katalogtexte), und `flaeche-nutzer` war allein die Nutzerliste. Jetzt verlangt
+ * jede DETAILKARTE ihre zwei festen Katalogtexte namentlich — ihren Titel und „Zurück" in DIESER
+ * Sprache —, und die Kontenfläche wird als ganze Themenspalte gelesen und braucht weiter drei.
+ */
+function kalibrierung(karte: string, l: InhaltLage, sprache: string): string[] {
+  const idx = sprachindex(sprache);
+  const befunde: string[] = [];
+  const katalog = [...new Set(l.fragmente)].filter((f) => schluessel(idx, f, true).length > 0);
+  if (typeof l.titel === "string") {
+    if (schluessel(idx, l.titel, false).length === 0) {
+      befunde.push(`${karte}: Kartentitel „${l.titel}“ ist kein ${sprache}-Katalogtext`);
+    }
+    if (!stehtDa(idx, "einst.zurueck", l.fragmente)) {
+      befunde.push(`${karte}: „${idx.bundle["einst.zurueck"] ?? "?"}“ (einst.zurueck) fehlt`);
+    }
+  } else if (katalog.length < 3) {
+    befunde.push(`${karte}: nur ${katalog.length} von ${new Set(l.fragmente).size} Katalogtexten`);
+  }
+  if (l.hilfeKnoepfe > 0 && l.hilfen === 0) {
+    befunde.push(`${karte}: „?“ ohne aufgeklappte Hilfen`);
+  }
+  return befunde;
+}
+
 function sprachBefunde(karte: string, de: InhaltLage, ziel: InhaltLage, sprache: string): string[] {
   const iDe = sprachindex("de");
   const iZiel = sprachindex(sprache);
-  const befunde: string[] = [];
-  let erkannt = 0;
+  const befunde: string[] = kalibrierung(karte, ziel, sprache);
   // (1) Jeder deutsch erkannte Katalogtext steht in der Zielsprache als sein Soll-Text da.
   for (const f of new Set(de.fragmente)) {
     const keys = schluessel(iDe, f, true);
     if (keys.length === 0) {
       continue;
     }
-    erkannt += 1;
     if (!keys.some((k) => stehtDa(iZiel, k, ziel.fragmente))) {
       const soll = keys.slice(0, 3).map((k) => iZiel.bundle[k] ?? "(kein Text)");
       befunde.push(
         `${karte}: „${f}“ (${keys.slice(0, 3).join(" | ")}) fehlt — Soll „${soll.join(" | ")}“`,
       );
     }
-  }
-  if (erkannt < 3) {
-    befunde.push(`${karte}: nur ${erkannt} Katalogtexte erkannt — die Messung greift nicht`);
   }
   for (const g of new Set(ziel.fragmente)) {
     const zielKeys = schluessel(iZiel, g, false);
@@ -1631,10 +1669,12 @@ describe("JOB 3065 H6 R3 · Endpunkt-Matrix der Detailkarten — 503 am gebauten
         await neuLaden(seitenPfad, '[data-einst="seite"]');
         geladen = seitenPfad;
       }
+      // Ein Ort ohne Zeile ist eine Fläche, keine Karte: dann die ganze Themenspalte lesen.
       const l = await seite.evaluate<InhaltLage>(fn(INHALT_LIES), [
         ort.reiter,
         ort.zeile,
         ort.behaelter,
+        ort.zeile === "" ? '[data-einst="spalte"]' : null,
       ]);
       expect(l.fehler, `${sprache} · ${ort.behaelter}: ${l.fehler}`).toBeNull();
       expect(l.lang, `${sprache} · ${ort.behaelter}: <html lang>`).toBe(sprache);
@@ -1649,18 +1689,8 @@ describe("JOB 3065 H6 R3 · Endpunkt-Matrix der Detailkarten — 503 am gebauten
     inhalte.set("de", gelesen);
     const befunde: string[] = [];
     for (const [karte, l] of gelesen) {
-      // Kalibrierung: der Griff erkennt in jeder Karte genug Katalogtext (sonst wäre der Vergleich
-      // über einer leeren Menge trivial grün), und jedes „?" hat seine Hilfen aufgeklappt.
-      const erkannt = new Set(l.fragmente).size;
-      const katalog = [...new Set(l.fragmente)].filter(
-        (f) => schluessel(sprachindex("de"), f, true).length > 0,
-      ).length;
-      if (katalog < 3) {
-        befunde.push(`${karte}: nur ${katalog} von ${erkannt} Fragmenten sind Katalogtext`);
-      }
-      if (l.hilfeKnoepfe > 0 && l.hilfen === 0) {
-        befunde.push(`${karte}: „?“ ohne aufgeklappte Hilfen`);
-      }
+      // Kalibrierung (siehe `kalibrierung`): die Messung greift in jeder Karte wirklich.
+      befunde.push(...kalibrierung(karte, l, "de"));
     }
     expect(befunde, befunde.join("\n")).toEqual([]);
   }, 240_000);
