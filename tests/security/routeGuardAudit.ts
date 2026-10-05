@@ -568,6 +568,14 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
     protection: "ko.read",
     zeilenrecht: ["sichtbarkeitsfilterFuer"],
   },
+  // R-1639 / R-2183 (Nacharbeit 3): Bereichsblick (Grundmenge getrimmt) und Pflege seiner Eingänge.
+  "GET /api/management/risk-horizon": {
+    protection: "ko.read",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
+  "GET /api/management/profiles": { protection: "users.manage" },
+  "PUT /api/management/profiles/category": { protection: "users.manage" },
+  "PUT /api/management/profiles/retirement/:userId": { protection: "users.manage" },
   "GET /api/model-runs": { protection: "ko.read" },
   // Aufnahme gesamt-ki-laufprotokoll: Zeitraum-Auswertung (nur Summen) — dieselbe Lesestufe.
   "GET /api/model-runs/auswertung": { protection: "ko.read" },
@@ -595,6 +603,10 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "GET /api/audit": { protection: "ko.validate" },
   // SCRUM-439: aktive Integritätsprüfung der Audit-Kette — Governance-Einsicht wie /api/audit.
   "GET /api/audit/verify": { protection: "ko.validate" },
+  // Aufnahme gesamt-auditprotokoll (R-0613): Export der Kette samt Kopf — dieselbe Einsicht.
+  "GET /api/audit/export": { protection: "ko.validate" },
+  // Lauf 2 (R-0766): Befund-Kennungen eines Objekts für dessen Kette — dieselbe Einsicht.
+  "GET /api/audit/ko/:koId/findings": { protection: "ko.validate" },
   // WP-D11: PPTX-Folien-Konvertierung — Import-Guard (ko.create) wie der Datei-/Draft-Pfad;
   // großes bodyLimit mit Auth VOR dem Body-Parsing (onRequest requireUser).
   "POST /api/capture/slides": { protection: "ko.create" },
@@ -677,6 +689,9 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // den Zustand „ausgeschaltet" melden können, und hinter dem Schalter gäbe es nur einen 404,
   // ununterscheidbar von „kaputt".
   "GET /api/import/confluence/zugang": { protection: "users.manage" },
+  // R-0134 / R-1005: der Betreiberschalter — nimmt genau ein Ja/Nein entgegen (keine Zugangsdaten),
+  // dasselbe Recht wie jede Confluence-Importroute. Liegt wie die Auskunft VOR dem Schalter.
+  "PUT /api/import/confluence/schalter": { protection: "users.manage" },
   // JOB 4086: dieselbe Auskunft für SharePoint/OneDrive, dieselbe Tür und derselbe Grund, warum
   // sie VOR ihrem Schalter steht — sie muss „ausgeschaltet" melden können.
   "GET /api/import/sharepoint/zugang": { protection: "users.manage" },
@@ -686,6 +701,9 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // `apply` stellt die gewählten Dateien in die Review-Queue — nie ein Wissensobjekt.
   "POST /api/admin/import/sharepoint/files": { protection: "users.manage" },
   "POST /api/admin/import/sharepoint/apply": { protection: "users.manage" },
+  // R-0145/R-0190: die dritte Tür — einen ganzen Ordner in Losen übernehmen, ein Los je Aufruf.
+  // Derselbe Übernahmeweg wie `apply`, also dieselbe Schranke.
+  "POST /api/admin/import/sharepoint/folder-apply": { protection: "users.manage" },
 
   // --- Admin (admin-routes.ts) ---
   // AUFTRAG-mega14 Block H (SCRUM-437): LESENDER Demodaten-Stand für die Bereitschafts-Zeile.
@@ -769,6 +787,12 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   },
   "POST /api/gesamtanweisungen/:id/entscheiden": {
     protection: "ko.validate",
+    zeilenrecht: ["darfSehen"],
+  },
+  // QUELLENÄNDERUNGEN (aufnahme:20260928): bewusste Übernahme einer neueren Fassung. Dieselbe Lage
+  // wie die Aufnahme — darfSehen am Bestand UND an der neu gebundenen Fassung.
+  "POST /api/gesamtanweisungen/:id/bausteine/:bausteinId/uebernehmen": {
+    protection: "ko.create",
     zeilenrecht: ["darfSehen"],
   },
 };

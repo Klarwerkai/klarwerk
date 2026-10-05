@@ -106,9 +106,19 @@ function poolDoppel() {
         zaehler.existsBy += 1;
         return { rows: [{ vorhanden: rows.some((r) => trifft(r, params)) }], rowCount: 1 };
       }
+      // Aufnahme gesamt-auditprotokoll (Lauf 3): der Anhängeweg (`PgAuditRepo.appendNext`) läuft in
+      // einer eigenen kurzen Transaktion unter der Kettensperre. Das Doppel hat nur EINEN Schreiber —
+      // Klammer, Wartefrist und Sperre sind hier wirkungslos und werden nur quittiert.
+      if (
+        /^(BEGIN|COMMIT|ROLLBACK|SET LOCAL lock_timeout|SELECT pg_advisory_xact_lock)/.test(sql)
+      ) {
+        return { rows: [], rowCount: 0 };
+      }
       throw new Error(`Doppel kennt diese Anweisung nicht: ${sql.slice(0, 80)}`);
     },
   };
+  // `withPgTx` holt sich einen Client — hier dasselbe Doppel.
+  Object.assign(pool, { connect: async () => ({ query: pool.query, release: () => undefined }) });
   return { pool, rows, zaehler };
 }
 

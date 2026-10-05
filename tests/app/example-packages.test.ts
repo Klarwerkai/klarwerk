@@ -3,7 +3,6 @@
 // fehlerfrei über die bestehenden Anlege-Wege, das Laden ist IDEMPOTENT (ehrliche Bilanz), der
 // Guard greift (403 ohne users.manage), Audit wird geschrieben — und der Entfernen-Weg ist der
 // BESTEHENDE Demo-Purge (demoSeed), NICHT das Import-Aufräumen (eigene Provenienz).
-import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { EXAMPLE_PACKAGES_ALL_KEYS } from "../../apps/web/src/lib/examplePackages";
@@ -13,6 +12,7 @@ import {
   EXAMPLE_PROVIDER,
   EXAMPLE_TITLE_PREFIX,
 } from "../../services/app/src/example-packages";
+import { woerterbuchQuelleAus } from "../support/woerterbuchquelle";
 
 async function adminApp() {
   const services = buildServices();
@@ -272,7 +272,7 @@ describe("WP-B6: POST /api/admin/examples/load", () => {
   });
 
   it("die Beispielpaket-Copy existiert in DE, EN und NL", () => {
-    const i18n = readFileSync(resolve(process.cwd(), "apps/web/src/i18n.ts"), "utf8");
+    const i18n = woerterbuchQuelleAus(resolve(process.cwd(), "apps/web/src/i18n.ts"));
     for (const key of EXAMPLE_PACKAGES_ALL_KEYS) {
       expect(`${key}:${i18n.split(`"${key}":`).length - 1}`).toBe(`${key}:3`);
     }

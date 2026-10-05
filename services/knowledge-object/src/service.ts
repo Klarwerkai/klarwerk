@@ -106,6 +106,7 @@ import {
   type KnowledgeObject,
   type KnowledgeOwnership,
   type KnowledgeType,
+  type KoAnhangsquelle,
   type KoAppendOp,
   type KoAttachment,
   type KoComment,
@@ -288,6 +289,13 @@ const RUECKNAHME_VORAB_FRIST_MS = 2000;
 // audit.record durch — KEIN Pg-Typ in dieser Signatur.
 export type WithTx = <T>(fn: (tx: TxContext) => Promise<T>) => Promise<T>;
 
+// Aufnahme gesamt-auditprotokoll (Lauf 3): was die Belegschritte einer Erstanlage der Rücknahmeklammer
+// melden (`schreibeErstanlage`) — nur im Weg ohne Transaktion von Bedeutung.
+interface ErstanlageMeldung {
+  snapshot(): void;
+  projektion(geschrieben: boolean): void;
+}
+
 export interface KoServiceDeps {
   repo: KoRepo;
   audit?: AuditService;
@@ -395,6 +403,9 @@ export interface CreateKoInput {
   statement: string;
   type: KnowledgeType;
   category: string;
+  // R-0431 (K2): das Fachgebiet, unabhängig von der Kategorie (Begründung am Modell, types.ts).
+  // Leer oder fehlend = kein Fachgebiet angegeben; es wird nichts abgeleitet.
+  domain?: string | null;
   author: string;
   conditions?: string[];
   measures?: string[];
@@ -426,6 +437,13 @@ export interface CreateKoInput {
   // setzt ihn; die öffentlichen Schreibrouten verwerfen das Feld wie `sources` (sonst könnte
   // ein Client die Crash-Recovery eines fremden Review-Claims kapern).
   importCandidateId?: string;
+  // R-0139 / FR-EXT-02: der Importweg (Begründung am Modell, types.ts). Nur die beiden Importwege
+  // setzen ihn; die öffentlichen Schreibrouten verwerfen das Feld wie `importCandidateId`.
+  importedVia?: KnowledgeObject["importedVia"];
+  // R-0169 (Nacharbeit 5): der Bezug auf die Fassung der internen Dokumentakte. Nur Serverpfade
+  // (Entwurfs-Promote aus dem Word-Zusatz, JSON-Import ohne externalId) setzen ihn; die
+  // öffentlichen Schreibrouten verwerfen das Feld wie `importedVia`.
+  dokumentHerkunft?: KnowledgeObject["dokumentHerkunft"];
   // JOB 557: das Eigentümer-Aggregat ab Erfassen — für SERVERPFADE (Import, Seed, interne Anlage),
   // die die Verantwortung schon kennen.
   //
@@ -592,6 +610,14 @@ export interface DocumentAppendCommit {
   ko: KnowledgeObject;
 }
 
+// R-0431 (K2): die Normalform des Fachgebiets — Ränder weg, Innenleerraum zu einem Zeichen. Ein
+// leerer Wert ist KEIN Fachgebiet (`undefined`), keine leere Zeichenkette im Bestand. Die Längen-
+// grenze prüft die Route (ko-routes.ts, `case "domain"`), dort entsteht die 400-Antwort.
+function normalizeDomain(domain: string | null | undefined): string | undefined {
+  const wert = typeof domain === "string" ? domain.replace(/\s+/g, " ").trim() : "";
+  return wert.length > 0 ? wert : undefined;
+}
+
 // KW-STR / NFR-SEC-04: bodyHtml IMMER serverseitig sanitisieren; statement aus dem
 // HTML ableiten, falls leer (statement bleibt führende Plaintext-Kurzfassung).
 function cleanBody(bodyHtml: string | null | undefined): string | null {
@@ -690,6 +716,14 @@ function belegSchluessel(record: Omit<EvidenceRecord, "id">): string {
     : `attachment:${record.attachmentId ?? ""}`;
 }
 
+/**
+ * Wie viele Projektionszeilen die Hash-Prüfung des Starts gleichzeitig anfragt (`hashIntegritaet`).
+ * Kein Sollwert und keine Frist: die Anfragen reihen sich ohnehin in den Verbindungspool ein; der
+ * Block begrenzt nur, wie viele auf einmal ausstehen und wie viel nach einem frühen Befund noch
+ * unnötig nachläuft.
+ */
+const HASH_PRUEFBLOCK = 100;
+
 export class KoService {
   private readonly repo: KoRepo;
   private readonly audit: AuditService | undefined;
@@ -778,25 +812,74 @@ export class KoService {
   // kein Interleave IM Prozess) UND optimistisch auf DB-Ebene (repo.update macht Compare-and-Set auf
   // rowVersion → ein veralteter fremder Write kann nichts überschreiben, auch prozessübergreifend).
   // `apply` bekommt das FRISCH gelesene KO und liefert das aktualisierte KO + Rückgabewert + optionalen
-  // Audit-Schritt. #4: der Audit läuft ZUERST — schlägt er fehl, unterbleibt der Write (nie „wirksam,
-  // aber unbelegt"); im Prozess ist der Write durch den Lock konfliktfrei, sodass kein verwaister Audit
-  // entsteht. Ein (seltener) prozessübergreifender STALE_WRITE wird ehrlich geworfen, nicht geraten.
+  // Audit-Schritt. #4 (bis Lauf 3): der Audit lief ZUERST — schlug er fehl, unterblieb der Write.
+  // Ein (seltener) prozessübergreifender STALE_WRITE wird ehrlich geworfen, nicht geraten.
+  //
+  // Aufnahme gesamt-auditprotokoll (Lauf 3): „Audit zuerst" schloss nur EINE Richtung. Scheiterte der
+  // Write danach (STALE_WRITE aus einem zweiten Prozess, Verbindungsfehler), stand ein Beleg für eine
+  // Änderung, die nie gespeichert wurde. Jetzt über `schreibeMitBeleg`: mit `withTx` Write und Beleg
+  // in EINER Transaktion; ohne sie erst der Write, dann der Beleg, und scheitert der Beleg, wird der
+  // Vorzustand zurückgeschrieben.
   private async mutateKo<T>(
     id: string,
     apply: (ko: KnowledgeObject) => {
       updated: KnowledgeObject;
       value: T;
-      audit?: () => Promise<void>;
+      audit?: (tx?: TxContext) => Promise<void>;
     },
   ): Promise<T> {
     const value = await this.withKoLock(id, async () => {
       const ko = await this.require(id);
       const { updated, value, audit } = apply(ko);
-      await audit?.();
-      await this.repo.update(updated);
+      await this.schreibeMitBeleg(
+        (tx) => this.repo.update(updated, tx),
+        async (tx) => {
+          await audit?.(tx);
+        },
+        () => this.rollbackKo(ko),
+        id,
+      );
       return value;
     });
     return this.lesefassungWert(value);
+  }
+
+  // Aufnahme gesamt-auditprotokoll (Lauf 3) — EINE ÄNDERUNG UND IHR BELEG, GEMEINSAM ODER GAR NICHT.
+  //
+  // MIT `withTx` (PostgreSQL): `schreib` und `beleg` auf EINEM Transaktionsclient — scheitert einer,
+  // rollt die Datenbank beide zurück; ein Beleg für eine nicht gespeicherte Änderung kann nicht
+  // entstehen, eine gespeicherte Änderung ohne Beleg auch nicht.
+  //
+  // OHNE `withTx` (Speicher, Dev-Journal): erst `schreib`, dann `beleg`. Scheitert `schreib`, gibt es
+  // keinen Beleg; scheitert `beleg`, nimmt `ruecknahme` die Änderung zurück (ihr eigener Fehler wird
+  // geschluckt, der Ursachenfehler geworfen) — dieselbe Kompensation wie in `mutateKoTxRoh`.
+  private async schreibeMitBeleg<T>(
+    schreib: (tx?: TxContext) => Promise<T>,
+    beleg: (tx?: TxContext) => Promise<void>,
+    ruecknahme: () => Promise<void>,
+    belegZiel?: string,
+  ): Promise<T> {
+    if (this.withTx) {
+      return this.withTx(async (tx) => {
+        const wert = await schreib(tx);
+        await beleg(tx);
+        return wert;
+      });
+    }
+    const wert = await schreib();
+    const kopf = await this.kopfVorBeleg();
+    try {
+      await beleg();
+    } catch (err) {
+      await ruecknahme().catch(() => undefined);
+      // Runde 3 (BEN-R2-B2): schreibt `beleg` mehr als einen Eintrag und fällt nach dem ersten aus,
+      // benennt `ko.change-rolled-back` die stehengebliebenen als zurückgenommen (append-only).
+      if (belegZiel) {
+        await this.belegeRuecknahme(belegZiel, kopf, { grund: "change" }).catch(() => undefined);
+      }
+      throw err;
+    }
+    return wert;
   }
 
   // SCRUM-507 R3: transaktionaler MEHRSCHRITT-Mutationspfad (persist + Snapshot + Audit + Status als EINE
@@ -883,6 +966,10 @@ export class KoService {
       await this.repo.update(updated);
       let snapshotWritten = false;
       let projectionWritten = false;
+      // Aufnahme gesamt-auditprotokoll (Runde 3): der Kettenkopf VOR dem Audit-Schritt. Scheitert der
+      // Schritt nach einem schon angehängten Beleg (z. B. `ko.revised` steht, `ko.revalidated` fällt
+      // aus), lässt sich danach genau benennen, welche Belege dieses Objekts die Rücknahme betrifft.
+      let kopfVorAudit: number | undefined;
       try {
         // 2) Nachgelagert: erst Snapshot, dann Audit. Ein Fehler in EINEM Schritt rollt ALLES zurück.
         // G27: die Suchprojektion der NEUEN Version entsteht in DIESER Klammer — sie ist damit
@@ -896,6 +983,9 @@ export class KoService {
             projectionWritten = geschrieben;
           });
         }
+        // Nur ein Hilfswert für die Rücknahme — er darf den Schreibweg nie selbst kosten (auch nicht
+        // bei einem Test-Double ohne `kopfSeq`).
+        kopfVorAudit = await this.kopfVorBeleg();
         await audit?.();
         return value;
       } catch (err) {
@@ -912,10 +1002,58 @@ export class KoService {
             .remove(updated.id, updated.version, { ruecknahme: true })
             .catch(() => undefined);
         }
-        await this.rollbackKo(before).catch(() => undefined);
+        const zurueckgesetzt = await this.rollbackKo(before).then(
+          () => true,
+          () => false,
+        );
+        if (zurueckgesetzt && kopfVorAudit !== undefined) {
+          await this.belegeRuecknahme(id, kopfVorAudit, {
+            version: updated.version,
+            restoredVersion: before.version,
+          }).catch(() => undefined);
+        }
         throw err;
       }
     });
+  }
+
+  // Aufnahme gesamt-auditprotokoll (Runde 3) — DIE RÜCKNAHME IM PROTOKOLL, OHNE EINEN EINTRAG ANZUFASSEN.
+  //
+  // Nur im Weg OHNE Transaktion: dort bleibt ein vor dem Ausfall angehängter Beleg (etwa `ko.revised`
+  // mit der neuen Fassung) stehen, obwohl die Fassung zurückgesetzt wurde. Die Kette ist append-only —
+  // der Beleg wird weder geändert noch gelöscht. Stattdessen folgt ein eigener Eintrag
+  // `ko.change-rolled-back`, der die zurückgenommene Fassung und die Sequenzen der betroffenen
+  // Belege nennt. Geschrieben wird er NUR, wenn die Rücksetzung tatsächlich gelungen ist, und nur,
+  // wenn der Audit-Schritt schon etwas zu diesem Objekt angehängt hatte.
+  private async belegeRuecknahme(
+    id: string,
+    kopfVorAudit: number | undefined,
+    payload: Record<string, unknown>,
+  ): Promise<void> {
+    if (!this.audit || kopfVorAudit === undefined) {
+      return;
+    }
+    const betroffen = (await this.audit.list({ target: id }))
+      .filter((e) => e.seq > kopfVorAudit)
+      .map((e) => e.seq);
+    if (betroffen.length === 0) {
+      return;
+    }
+    await this.audit.record({
+      actor: "system",
+      action: "ko.change-rolled-back",
+      target: id,
+      payload: { ...payload, rolledBackSeqs: betroffen },
+    });
+  }
+
+  // Der Kettenkopf vor einem Belegschritt im Weg OHNE Transaktion — nur ein Hilfswert für
+  // `belegeRuecknahme`; er darf den Schreibweg nie selbst kosten (auch nicht bei einem Test-Double
+  // ohne `kopfSeq`).
+  private async kopfVorBeleg(): Promise<number | undefined> {
+    return typeof this.audit?.kopfSeq === "function"
+      ? await this.audit.kopfSeq().catch(() => undefined)
+      : undefined;
   }
 
   // SCRUM-507 R3: setzt den KO-Inhalt auf `before` zurück. Der vorangegangene Persist hat rowVersion um
@@ -1578,20 +1716,36 @@ export class KoService {
    * einzige Zusage, die das beantworten kann, ohne den ganzen Text zu vergleichen — und er ist
    * bewusst zeitfrei (der Zeitstempel geht nicht ein), sonst wäre jede Neuableitung ein Unterschied.
    */
+  //
+  // K16 / R-1006 (Aufnahme Suchraum, Nacharbeit 32 — gemessen, nicht geschätzt): diese Prüfung
+  // läuft bei JEDEM Start im `onReady`-Pfad (Entscheidung 06 §3). Bis hierher holte sie die
+  // Projektionszeile JE OBJEKT mit einer eigenen, abgewarteten Anfrage — 100.000 Objekte, 100.000
+  // Rundreisen hintereinander. Gemessen im K16-Lauf (HISTORIE/nacharbeit-32): 10.457 ms allein für
+  // `searchProjectionReadiness`, Ergebnis `alle: true`; Fastifys Startfrist von 10 s riss, die App
+  // wurde auf einem GESUNDEN Bestand nie bereit. Jetzt werden die Zeilen blockweise gleichzeitig
+  // geholt und danach in derselben Reihenfolge geprüft wie vorher. Die Aussage ist zeichengleich:
+  // fehlende Zeile oder abweichender Hash → `false` (die erste in Bestandsreihenfolge), sonst
+  // `true`; ein Datenbankfehler wirft wie bisher. Keine Frist, keine Prüfung und kein Kriterium
+  // ist verändert — nur die Rundreisen laufen nicht mehr einzeln hintereinander.
   private async hashIntegritaet(): Promise<boolean> {
-    for (const ko of await this.repo.list({})) {
-      if (ko.deletedAt) {
-        continue;
-      }
-      const alt = await this.searchProjections.find(ko.id, ko.version);
-      if (!alt) {
-        return false;
-      }
-      const frisch = buildSearchProjection(ko, alt.updatedAt, {
-        classification: alt.classificationSnapshot,
-      });
-      if (frisch.contentHash !== alt.contentHash) {
-        return false;
+    const lebend = (await this.repo.list({})).filter((ko) => !ko.deletedAt);
+    for (let start = 0; start < lebend.length; start += HASH_PRUEFBLOCK) {
+      const block = lebend.slice(start, start + HASH_PRUEFBLOCK);
+      const zeilen = await Promise.all(
+        block.map((ko) => this.searchProjections.find(ko.id, ko.version)),
+      );
+      for (let i = 0; i < block.length; i += 1) {
+        const ko = block[i] as KnowledgeObject;
+        const alt = zeilen[i];
+        if (!alt) {
+          return false;
+        }
+        const frisch = buildSearchProjection(ko, alt.updatedAt, {
+          classification: alt.classificationSnapshot,
+        });
+        if (frisch.contentHash !== alt.contentHash) {
+          return false;
+        }
       }
     }
     return true;
@@ -1844,11 +1998,11 @@ export class KoService {
 
   // SCRUM-160: Evidence-Records append-only schreiben. No-op ohne Evidence-Repo;
   // bestehende KO-Flows bleiben dadurch rückwärtskompatibel.
-  private async appendEvidence(record: Omit<EvidenceRecord, "id">): Promise<void> {
+  private async appendEvidence(record: Omit<EvidenceRecord, "id">, tx?: TxContext): Promise<void> {
     if (!this.evidence) {
       return;
     }
-    await this.evidence.append({ id: this.genId(), ...record });
+    await this.evidence.append({ id: this.genId(), ...record }, tx);
   }
 
   /**
@@ -2025,6 +2179,8 @@ export class KoService {
     // statement bleibt führend; falls leer, aus dem HTML-Body ableiten.
     const statement =
       input.statement.trim() || (bodyHtml ? htmlToPlainText(bodyHtml) : input.statement);
+    // R-0431 (K2): das Fachgebiet in Normalform — oder gar keins.
+    const domain = normalizeDomain(input.domain);
     const ko: KnowledgeObject = {
       id: this.genId(),
       title: input.title,
@@ -2040,6 +2196,9 @@ export class KoService {
       measures: input.measures ?? [],
       type: input.type,
       category: input.category,
+      // R-0431 (K2): nur speichern, wenn jemand ein Fachgebiet mitbringt — kein Leerwert, keine
+      // Ableitung aus der Kategorie.
+      ...(domain ? { domain } : {}),
       tags: input.tags ?? [],
       confidence: input.confidence ?? 0,
       trust: 0,
@@ -2093,6 +2252,10 @@ export class KoService {
       // WP-SHIP8-CLOSE-3/4 (bens ROT-1): stabiler Kandidaten-Anker des Import-Accepts (DB-unique
       // erzwungen — der Insert eines zweiten KO desselben Kandidaten scheitert am Index/Guard).
       ...(input.importCandidateId ? { importCandidateId: input.importCandidateId } : {}),
+      // R-0139 / FR-EXT-02: der Importweg — dieselbe Bauform, kein stiller Default.
+      ...(input.importedVia ? { importedVia: input.importedVia } : {}),
+      // R-0169 (Nacharbeit 5): der Fassungsbezug — dieselbe Bauform, kein stiller Default.
+      ...(input.dokumentHerkunft ? { dokumentHerkunft: input.dokumentHerkunft } : {}),
       // JOB 557: das Eigentümer-Aggregat nur setzen, wenn der Aufrufer eines MITBRINGT — dieselbe
       // Bauform wie `confidentiality` und `origin` daneben. KEIN stiller Default auf den Autor: ein
       // Objekt ohne benannte Verantwortung bleibt ein Objekt ohne benannte Verantwortung, und genau
@@ -2191,11 +2354,14 @@ export class KoService {
       },
     });
     try {
-      await this.repo.insert(ko);
+      await this.schreibeErstanlage(ko, input.author, (tx, melde) =>
+        this.finishCreated(ko, input.author, tx, melde),
+      );
     } catch (err) {
       // KOLLISIONS-ADOPTION, wortgleich zur Dokumentübernahme: der Nachschlag war leer, der Insert
       // kollidiert trotzdem — zwei Prozesse im Rennen um denselben Vorgang. Die DB entscheidet, der
-      // Verlierer übernimmt das materialisierte Objekt statt ein zweites anzulegen.
+      // Verlierer übernimmt das materialisierte Objekt statt ein zweites anzulegen. Nur der Insert
+      // wirft diesen Code; bis dahin ist nichts geschrieben.
       if (err instanceof KoError && err.code === "CREATE_ANCHOR_TAKEN") {
         const raced = await this.adoptCreatedKo(createOperationId, requester);
         if (raced) {
@@ -2204,15 +2370,76 @@ export class KoService {
       }
       throw err;
     }
-    await this.finishCreated(ko, input.author);
     return ko;
   }
 
   private async createPlain(input: CreateKoInput): Promise<KnowledgeObject> {
     const ko = await this.buildCreatedKo(input);
-    await this.repo.insert(ko);
-    await this.finishCreated(ko, input.author);
+    await this.schreibeErstanlage(ko, input.author, (tx, melde) =>
+      this.finishCreated(ko, input.author, tx, melde),
+    );
     return ko;
+  }
+
+  /**
+   * Aufnahme gesamt-auditprotokoll (Lauf 3) — DIE ERSTANLAGE UND IHRE BELEGE, GEMEINSAM ODER GAR NICHT.
+   *
+   * DER BEFUND (Ben, Lauf 2 Runde 2): `finishCreated` lief NACH einem eigenständig festgeschriebenen
+   * `repo.insert`. Scheiterte danach ein Belegschritt — gemessen: `ko.created` an `audit_pkey`, weil
+   * eine zweite Instanz dieselbe Sequenz berechnet hatte —, antwortete `POST /api/kos` mit 500, das
+   * Objekt stand trotzdem im Bestand, ohne `ko.created`. Die frühere Entscheidung WP-SHIP8-CLOSE-5
+   * („Objekt bleibt, der Nachzug heilt") heilte diesen Weg nie: `ensureCreatedSideEffects` läuft nur
+   * aus Import- und Dokumentwegen.
+   *
+   * JETZT, MIT `withTx` (PostgreSQL, Betrieb): Insert, Fassung, Suchprojektion (beide Hälften),
+   * Belegkette und `ko.created` laufen auf EINEM Transaktionsclient. Scheitert irgendein Schritt, rollt
+   * die Datenbank alles zurück — kein Objekt, kein Beleg. Gelingt alles, werden Objekt und Beleg im
+   * selben Commit sichtbar. `ko.created` erwirbt dabei die Kettensperre des Audits (`appendNext`);
+   * eine gleichzeitige Anlage wartet an ihr, statt an `audit_pkey` zu scheitern.
+   *
+   * OHNE `withTx` (Speicher, Dev-Journal): Insert, dann die Belege in der Rücknahmeklammer
+   * `rollbackCreatedKo` — dieselbe, die die Erstanlage aus Dokumenten seit mega19 hat. Scheitert ein
+   * Beleg, wird das Objekt wieder entfernt; gelingt auch das nicht, steht es mit Reparaturvermerk und
+   * `ko.create-rollback-failed` im Bestand. Das ist eine Kompensation, keine Transaktion — ein
+   * Prozessabbruch zwischen Insert und Beleg bleibt dort möglich (Auffang: `ensureCreatedSideEffects`).
+   *
+   * `melde` sagt der Rücknahmeklammer, was DIESER Vorgang geschrieben hat; im Transaktionsweg wird es
+   * nicht gebraucht (die Datenbank nimmt alles zurück).
+   */
+  private async schreibeErstanlage(
+    ko: KnowledgeObject,
+    author: string,
+    belege: (tx: TxContext | undefined, melde: ErstanlageMeldung) => Promise<void>,
+  ): Promise<void> {
+    if (this.withTx) {
+      await this.withTx(async (tx) => {
+        await this.repo.insert(ko, tx);
+        await belege(tx, { snapshot: () => undefined, projektion: () => undefined });
+      });
+      return;
+    }
+    await this.repo.insert(ko);
+    const written = { snapshotWritten: false, projectionWritten: false };
+    const kopf = await this.kopfVorBeleg();
+    try {
+      await belege(undefined, {
+        snapshot: () => {
+          written.snapshotWritten = this.versions !== undefined;
+        },
+        projektion: (geschrieben) => {
+          written.projectionWritten = geschrieben;
+        },
+      });
+    } catch (err) {
+      await this.rollbackCreatedKo(ko, written, author, err);
+      // Runde 3 (BEN-R2-B2): die Rücknahme ist gelungen (sonst hätte `rollbackCreatedKo` geworfen).
+      // Schon angehängte Belege dieser Anlage (etwa `ko.created` vor einem gescheiterten
+      // `ko.document-appended`) bleiben append-only stehen und werden hier als zurückgenommen benannt.
+      await this.belegeRuecknahme(ko.id, kopf, { grund: "create", koRemoved: true }).catch(
+        () => undefined,
+      );
+      throw err;
+    }
   }
 
   /**
@@ -2229,16 +2456,20 @@ export class KoService {
    * gemessen in `tests/demo-erster-nutzerweg/befund-promote-verliert-die-herkunft.test.ts`. Damit
    * hing die Antwort auf „woher stammt dieser Satz?" an der Tür, durch die das Objekt gekommen war.
    */
-  private async finishCreated(ko: KnowledgeObject, author: string): Promise<void> {
+  private async finishCreated(
+    ko: KnowledgeObject,
+    author: string,
+    tx: TxContext | undefined,
+    melde: ErstanlageMeldung,
+  ): Promise<void> {
     // SCRUM-159: Version-1-Snapshot persistieren (Foundation; aktuelles KO bleibt canonical).
-    // WP-SHIP8-CLOSE-5 (bens ROT-1A): wirft Snapshot ODER Audit NACH dem Insert, lehnt create ab,
-    // obwohl das KO existiert (Teilpersistenz). Der Adoptions-/Recovery-Pfad des Import-Accepts
-    // zieht die fehlenden Belege dann IDEMPOTENT nach (ensureCreatedSideEffects) und ist ohne
-    // vollständige Belege fail-closed — hier bleibt der Ablauf bewusst untransaktional schlank.
-    await this.snapshot(ko, author, "erstellt");
+    // Aufnahme gesamt-auditprotokoll (Lauf 3): löst WP-SHIP8-CLOSE-5 ab — die Belege laufen in
+    // `schreibeErstanlage` mit dem Insert zusammen (Transaktion) bzw. in dessen Rücknahmeklammer.
+    await this.snapshot(ko, author, "erstellt", tx);
+    melde.snapshot();
     // G27: die Suchprojektion der Version 1 entsteht im selben Belegschritt wie der Snapshot —
     // ein frisch angelegtes Objekt ist ab diesem Moment auffindbar, mit seinem VOLLEN Text.
-    await this.persistSearchProjection(ko);
+    await this.persistSearchProjection(ko, melde.projektion, tx);
     // JOB 4137: DIE BELEGKETTE, an derselben Stelle wie Snapshot und Projektion und aus denselben
     // Tatsachen wie der Dokumentweg (`erstanlageBelege`). `ko.createdAt` und nicht `this.now()`:
     // die Zeile gehört zur ANLAGE dieses Objekts und trägt deren Zeitpunkt — genau wie die Zeilen
@@ -2254,16 +2485,16 @@ export class KoService {
       ko.createdAt,
       this.anhangJeQuelleAusAnker(ko),
     )) {
-      await this.appendEvidence(zeile);
+      await this.appendEvidence(zeile, tx);
     }
     // WP-SHIP8-CLOSE-6 (bens ROT-1): auch die ERSTANLAGE schreibt ihren Beleg exactly-once über
     // dieselbe stabile Event-Id wie der Nachzieh-Pfad — ein Race zwischen create und einem
     // parallelen Nachzug kann nie zwei ko.created-Einträge erzeugen.
-    await this.audit?.recordOnce(`ko.created:${ko.id}`, {
-      actor: author,
-      action: "ko.created",
-      target: ko.id,
-    });
+    await this.audit?.recordOnce(
+      `ko.created:${ko.id}`,
+      { actor: author, action: "ko.created", target: ko.id },
+      tx,
+    );
   }
 
   /**
@@ -2464,12 +2695,58 @@ export class KoService {
         at,
       },
     });
+    // Aufnahme gesamt-auditprotokoll (Lauf 3): Insert und Belege über `schreibeErstanlage` — mit
+    // `withTx` EINE Transaktion, ohne sie die bisherige Rücknahmeklammer (`rollbackCreatedKo`).
     try {
-      await this.repo.insert(ko);
+      await this.schreibeErstanlage(ko, input.author, async (tx, melde) => {
+        await this.snapshot(ko, input.author, "erstellt (Dokumentinhalt übernommen)", tx);
+        melde.snapshot();
+        // G27: derselbe Belegschritt wie bei der allgemeinen Erstanlage. Die Meldung sagt, ob
+        // DIESER Vorgang die Zeile geschrieben hat; nur dann darf die Rücknahme sie wieder
+        // entfernen (s. `rollbackCreatedKo`). Sie trifft ein, BEVOR die zweite Projektionshälfte
+        // geschrieben wird — auch deren Fehler nimmt die Zeile mit.
+        await this.persistSearchProjection(ko, melde.projektion, tx);
+        // JOB 4137: DIESELBE BILDUNG WIE DIE ALLGEMEINE ERSTANLAGE. Hier standen bis dahin zwei
+        // ausgeschriebene Schleifen; sie sind nach `erstanlageBelege` gewandert, weil
+        // `finishCreated` seit diesem Auftrag dieselben Zeilen schreibt und zwei Kopien der
+        // Feldliste zwei Gelegenheiten wären, sie auseinanderlaufen zu lassen. `bySource` bleibt
+        // die Zuordnung dieses Weges: sie steht je BÜNDEL fest und ist damit genauer als jede
+        // Ableitung aus dem fertigen Objekt (zwei Bündel können dasselbe Original anhängen).
+        for (const zeile of this.erstanlageBelege(ko, input.author, at, bySource)) {
+          await this.appendEvidence(zeile, tx);
+        }
+        await this.audit?.recordOnce(
+          `ko.created:${ko.id}`,
+          { actor: input.author, action: "ko.created", target: ko.id },
+          tx,
+        );
+        await this.audit?.record(
+          {
+            actor: input.author,
+            action: "ko.document-appended",
+            target: ko.id,
+            payload: {
+              created: true,
+              version: ko.version,
+              documents: documents.length,
+              sources: sources.length,
+            },
+          },
+          tx,
+        );
+      });
     } catch (err) {
       // KOLLISIONS-ADOPTION. Der Nachschlag oben war leer, der Insert kollidiert trotzdem: genau
       // das Rennen zweier Prozesse um DENSELBEN Vorgang. Die DB hat entschieden, wer gewinnt; der
       // Verlierer erzeugt kein zweites Objekt, sondern übernimmt das materialisierte.
+      //
+      // Jeder andere Fehler: VOLLSTÄNDIGE RÜCKNAHME ist bereits geschehen — mit Transaktion durch
+      // die Datenbank, ohne sie in `schreibeErstanlage` (`rollbackCreatedKo`). Es gibt hier keinen
+      // Vorzustand, auf den zurückgesetzt werden könnte, nur „existiert" und „existiert nicht";
+      // bei jedem Fehlschlag bleibt KEIN Wissensobjekt mit Dokumentinhalt zurück. EHRLICHE GRENZE
+      // des Wegs ohne Transaktion, dieselbe wie in `appendDocumentExtract`: bereits geschriebene
+      // EvidenceRecords sind append-only und bleiben stehen — der HARMLOSE Spiegel. AUFTRAG-mega20
+      // Block A: scheitert die Rücknahme selbst, kommt `CREATE_ROLLBACK_FAILED` heraus, nicht still.
       if (err instanceof KoError && err.code === "CREATE_ANCHOR_TAKEN") {
         const raced = await this.adoptCreatedKo(createOperationId, requester);
         if (raced) {
@@ -2478,64 +2755,7 @@ export class KoService {
       }
       throw err;
     }
-
-    let snapshotWritten = false;
-    let projectionWritten = false;
-    try {
-      await this.snapshot(ko, input.author, "erstellt (Dokumentinhalt übernommen)");
-      snapshotWritten = this.versions !== undefined;
-      // G27: derselbe Belegschritt wie bei der allgemeinen Erstanlage — hier aber INNERHALB der
-      // Rücknahmeklammer. Die Meldung sagt, ob DIESER Vorgang die Zeile geschrieben hat; nur dann
-      // darf die Rücknahme sie wieder entfernen (s. `rollbackCreatedKo`). Sie trifft ein, BEVOR
-      // die zweite Projektionshälfte geschrieben wird — auch deren Fehler nimmt die Zeile mit.
-      await this.persistSearchProjection(ko, (geschrieben) => {
-        projectionWritten = geschrieben;
-      });
-      // JOB 4137: DIESELBE BILDUNG WIE DIE ALLGEMEINE ERSTANLAGE. Hier standen bis dahin zwei
-      // ausgeschriebene Schleifen; sie sind nach `erstanlageBelege` gewandert, weil `finishCreated`
-      // seit diesem Auftrag dieselben Zeilen schreibt und zwei Kopien der Feldliste zwei
-      // Gelegenheiten wären, sie auseinanderlaufen zu lassen. GESCHRIEBEN wird weiterhin HIER —
-      // innerhalb der Rücknahmeklammer, denn dieser Weg nimmt bei einem Fehler das ganze Objekt
-      // zurück. `bySource` bleibt die Zuordnung dieses Weges: sie steht je BÜNDEL fest und ist
-      // damit genauer als jede Ableitung aus dem fertigen Objekt (zwei Bündel können dasselbe
-      // Original anhängen).
-      for (const zeile of this.erstanlageBelege(ko, input.author, at, bySource)) {
-        await this.appendEvidence(zeile);
-      }
-      await this.audit?.recordOnce(`ko.created:${ko.id}`, {
-        actor: input.author,
-        action: "ko.created",
-        target: ko.id,
-      });
-      await this.audit?.record({
-        actor: input.author,
-        action: "ko.document-appended",
-        target: ko.id,
-        payload: {
-          created: true,
-          version: ko.version,
-          documents: documents.length,
-          sources: sources.length,
-        },
-      });
-      return ko;
-    } catch (err) {
-      // VOLLSTÄNDIGE RÜCKNAHME. Anders als bei `revise` gibt es hier keinen Vorzustand, auf den
-      // zurückgesetzt werden könnte — es gibt nur „existiert" und „existiert nicht". Also wird das
-      // Wissensobjekt ENTFERNT. Damit bleibt bei jedem Fehlschlag KEIN Wissensobjekt mit
-      // Dokumentinhalt zurück, was die Zusage dieses Blocks ist.
-      //
-      // EHRLICHE GRENZE, dieselbe wie in `appendDocumentExtract`: bereits geschriebene
-      // EvidenceRecords sind append-only und bleiben stehen. Sie zeigen dann auf ein
-      // Wissensobjekt, das es nicht gibt — der HARMLOSE Spiegel, nicht der verbotene Zustand.
-      //
-      // AUFTRAG-mega20 Block A: die Rücknahme VERSCHLUCKT IHREN EIGENEN FEHLER NICHT MEHR. Bis
-      // mega19 stand hier `.catch(() => undefined)` — scheiterte `delete`, blieb ein vollständiges
-      // Wissensobjekt im kanonischen Bestand (Body, Anker, Belegstellen), je nach vorherigem
-      // Fehler ohne Snapshot, ohne Evidence, ohne Audit, und der Aufrufer erfuhr davon NICHTS.
-      await this.rollbackCreatedKo(ko, { snapshotWritten, projectionWritten }, input.author, err);
-      throw err;
-    }
+    return ko;
   }
 
   /**
@@ -2989,13 +3209,16 @@ export class KoService {
       return {
         updated,
         value: updated,
-        audit: async () => {
-          await this.audit?.record({
-            actor,
-            action: "ko.confidentiality",
-            target: id,
-            payload: { level, previous, downgrade },
-          });
+        audit: async (tx) => {
+          await this.audit?.record(
+            {
+              actor,
+              action: "ko.confidentiality",
+              target: id,
+              payload: { level, previous, downgrade },
+            },
+            tx,
+          );
         },
       };
     });
@@ -3033,20 +3256,23 @@ export class KoService {
       return {
         updated,
         value: updated,
-        audit: async () => {
-          await this.audit?.record({
-            actor,
-            action: "ko.ownership",
-            target: id,
-            // Der Beleg nennt beide Stände. Ohne den vorherigen wäre nicht erkennbar, ob hier
-            // Verantwortung ERSTMALS benannt oder einer Person WEGGENOMMEN wurde.
-            payload: {
-              owner: next.owner ?? null,
-              reviewers: next.reviewers,
-              validators: next.validators,
-              previousOwner: previous?.owner ?? null,
+        audit: async (tx) => {
+          await this.audit?.record(
+            {
+              actor,
+              action: "ko.ownership",
+              target: id,
+              // Der Beleg nennt beide Stände. Ohne den vorherigen wäre nicht erkennbar, ob hier
+              // Verantwortung ERSTMALS benannt oder einer Person WEGGENOMMEN wurde.
+              payload: {
+                owner: next.owner ?? null,
+                reviewers: next.reviewers,
+                validators: next.validators,
+                previousOwner: previous?.owner ?? null,
+              },
             },
-          });
+            tx,
+          );
         },
       };
     });
@@ -3086,13 +3312,24 @@ export class KoService {
         return ko;
       }
       const updated: KnowledgeObject = { ...ko, ownership: next };
-      await this.audit?.record({
-        actor,
-        action: "ko.ownership-role",
-        target: id,
-        payload: { role, added: next[role].filter((x) => !(previous?.[role] ?? []).includes(x)) },
-      });
-      await this.repo.update(updated);
+      await this.schreibeMitBeleg(
+        (tx) => this.repo.update(updated, tx),
+        async (tx) => {
+          await this.audit?.record(
+            {
+              actor,
+              action: "ko.ownership-role",
+              target: id,
+              payload: {
+                role,
+                added: next[role].filter((x) => !(previous?.[role] ?? []).includes(x)),
+              },
+            },
+            tx,
+          );
+        },
+        () => this.rollbackKo(ko),
+      );
       return updated;
     });
   }
@@ -3165,7 +3402,16 @@ export class KoService {
       }
       const comment: KoComment = { ...neu, koVersion: ko.version };
       const updated: KnowledgeObject = { ...ko, comments: [...bestand, comment] };
-      await this.repo.update(updated);
+      // Aufnahme gesamt-auditprotokoll (Lauf 3): Beitrag und `ko.commented` gemeinsam oder gar nicht
+      // (`schreibeMitBeleg`). Ein STALE_WRITE rollt mit Transaktion auch den Beleg zurück; der
+      // Wiederholversuch unten schreibt dann beides neu.
+      await this.schreibeMitBeleg(
+        (tx) => this.repo.update(updated, tx),
+        async (tx) => {
+          await this.audit?.record({ actor: author, action: "ko.commented", target: id }, tx);
+        },
+        () => this.rollbackKo(ko),
+      );
       return { ko: updated, geschrieben: true };
     };
 
@@ -3179,9 +3425,6 @@ export class KoService {
       // Frisch lesen und EINMAL erneut anfügen. Der Beitrag des anderen Schreibers steht dabei
       // bereits im Bestand und wird mitgenommen — er verschwindet nicht.
       ergebnis = await versuch();
-    }
-    if (ergebnis.geschrieben) {
-      await this.audit?.record({ actor: author, action: "ko.commented", target: id });
     }
     return this.lesefassung(ergebnis.ko);
   }
@@ -3218,13 +3461,16 @@ export class KoService {
       return {
         updated,
         value: updated,
-        audit: async () => {
-          await this.audit?.record({
-            actor,
-            action: state === "erledigt" ? "ko.comment-resolved" : "ko.comment-reopened",
-            target: id,
-            payload: { commentId: wurzel.id },
-          });
+        audit: async (tx) => {
+          await this.audit?.record(
+            {
+              actor,
+              action: state === "erledigt" ? "ko.comment-resolved" : "ko.comment-reopened",
+              target: id,
+              payload: { commentId: wurzel.id },
+            },
+            tx,
+          );
         },
       };
     });
@@ -3241,6 +3487,8 @@ export class KoService {
       objectId?: string;
       thumbnail?: string;
       size?: number;
+      // R-0163: Herkunft eines aus einer Quelle übernommenen Anhangs (nur der Importweg setzt sie).
+      quelle?: KoAnhangsquelle;
     },
   ): Promise<KnowledgeObject> {
     const ko = await this.require(id);
@@ -3255,28 +3503,154 @@ export class KoService {
       ...(input.objectId ? { objectId: input.objectId } : {}),
       ...(input.thumbnail ? { thumbnail: input.thumbnail } : {}),
       ...(input.size !== undefined ? { size: input.size } : {}),
+      ...(input.quelle ? { quelle: input.quelle } : {}),
     };
     const updated: KnowledgeObject = {
       ...ko,
       attachments: [...(ko.attachments ?? []), attachment],
     };
-    await this.repo.update(updated);
-    if (attachment.objectId) {
+    // Aufnahme gesamt-auditprotokoll (Lauf 3): Anhang, Belegzeile und `ko.attached` gemeinsam
+    // (`schreibeMitBeleg`). Ohne Transaktion bleibt eine schon geschriebene Belegzeile bei einem
+    // Beleg-Ausfall stehen (append-only) — derselbe harmlose Spiegel wie in `appendDocumentExtract`.
+    await this.schreibeMitBeleg(
+      async (tx) => {
+        await this.repo.update(updated, tx);
+        if (attachment.objectId) {
+          await this.appendEvidence(
+            {
+              koId: id,
+              koVersion: ko.version,
+              kind: "attachment",
+              attachmentId: attachment.id,
+              objectId: attachment.objectId,
+              label: attachment.name,
+              mime: attachment.mime,
+              createdBy: author,
+              createdAt: attachment.at,
+            },
+            tx,
+          );
+        }
+      },
+      async (tx) => {
+        await this.audit?.record({ actor: author, action: "ko.attached", target: id }, tx);
+      },
+      () => this.rollbackKo(ko),
+    );
+    // AUFNAHME 20260922 (bens Befund Runde 2): die Antwort trägt dieselbe Lesefassung wie ein Reload.
+    return this.lesefassung(updated);
+  }
+
+  /**
+   * R-0163: einen vorhandenen, aus einer Quelle übernommenen Anhang nachziehen — den Abrufweg
+   * (`quelle`) allein oder, bei einer neuen Quellversion, zusätzlich Inhalt (`objectId`, `size`,
+   * `mime`). Kennung, Name und Hochladender des Anhangs bleiben; es entsteht kein zweiter Eintrag.
+   * Ein neuer Inhalt bekommt wie bei `addAttachment` seinen Beleg.
+   *
+   * BENS BEFUND (Nacharbeit 7) — KEIN „UNVERÄNDERT", WENN SICH ETWAS GEÄNDERT HAT:
+   * - Objektänderung und Audit sind EINE Einheit (`mutateKoTx`): mit Datenbank eine Transaktion,
+   *   ohne Datenbank mit Rücknahme des Objektstands. Scheitert einer der beiden, ist nichts
+   *   geändert, und der Fehler geht an den Aufrufer — dann stimmt „Altbestand erhalten".
+   * - Der Beleg (`EvidenceRepo.append`) kennt keine Transaktion und folgt DANACH. Scheitert er, ist
+   *   der Anhang bereits übernommen; die Methode wirft dann NICHT, sondern meldet `belegOffen`. Der
+   *   fehlende Beleg ist wiederaufnehmbar: `ensureImportAttachmentEvidence` trägt ihn nach — beim
+   *   selben Abgleich und bei jedem weiteren, bis er steht.
+   */
+  async updateAttachment(
+    id: string,
+    attachmentId: string,
+    actor: string,
+    patch: { objectId?: string; size?: number; mime?: string; quelle?: KoAnhangsquelle },
+  ): Promise<{ ko: KnowledgeObject; belegOffen: boolean }> {
+    const geplant: { beleg?: Omit<EvidenceRecord, "id"> } = {};
+    const ko = await this.mutateKoTx(id, (aktuell) => {
+      const vorher = (aktuell.attachments ?? []).find((a) => a.id === attachmentId);
+      if (!vorher) {
+        throw new KoError("NOT_FOUND", "Anhang nicht gefunden.");
+      }
+      const nachher: KoAttachment = {
+        ...vorher,
+        ...(patch.objectId ? { objectId: patch.objectId } : {}),
+        ...(patch.size !== undefined ? { size: patch.size } : {}),
+        ...(patch.mime ? { mime: patch.mime } : {}),
+        ...(patch.quelle ? { quelle: patch.quelle } : {}),
+      };
+      const updated: KnowledgeObject = {
+        ...aktuell,
+        attachments: (aktuell.attachments ?? []).map((a) => (a.id === attachmentId ? nachher : a)),
+      };
+      if (patch.objectId && patch.objectId !== vorher.objectId) {
+        geplant.beleg = {
+          koId: id,
+          koVersion: aktuell.version,
+          kind: "attachment",
+          attachmentId,
+          objectId: patch.objectId,
+          label: nachher.name,
+          mime: nachher.mime,
+          createdBy: actor,
+          createdAt: new Date(this.now()).toISOString(),
+        };
+      }
+      return {
+        updated,
+        value: updated,
+        audit: async (tx?: TxContext) => {
+          await this.audit?.record({ actor, action: "ko.attachment-updated", target: id }, tx);
+        },
+      };
+    });
+    const beleg = geplant.beleg;
+    if (!beleg) {
+      return { ko, belegOffen: false };
+    }
+    try {
+      await this.appendEvidence(beleg);
+      return { ko, belegOffen: false };
+    } catch {
+      return { ko, belegOffen: true };
+    }
+  }
+
+  /**
+   * R-0163 (Nacharbeit 7): trägt fehlende Belege ÜBERNOMMENER Anhänge nach — je Anhang mit
+   * Herkunft (`quelle`) und `objectId`, zu dem die Belegkette keinen `attachment`-Eintrag mit
+   * genau dieser Kennung und diesem Objekt führt. Das ist der Wiederanlauf einer Teilpersistenz
+   * (Anhang übernommen, Beleg gescheitert). Von Hand hochgeladene Anhänge bleiben unberührt.
+   * Rückgabe: die Zahl der nachgetragenen Belege. Ein Schreibfehler wird weitergereicht.
+   */
+  async ensureImportAttachmentEvidence(id: string, actor: string): Promise<number> {
+    if (!this.evidence) {
+      return 0;
+    }
+    const ko = await this.require(id);
+    const belege = await this.evidence.listByKo(id);
+    let nachgetragen = 0;
+    for (const anhang of ko.attachments ?? []) {
+      if (!anhang.quelle || !anhang.objectId) {
+        continue;
+      }
+      const vorhanden = belege.some(
+        (b) =>
+          b.kind === "attachment" && b.attachmentId === anhang.id && b.objectId === anhang.objectId,
+      );
+      if (vorhanden) {
+        continue;
+      }
       await this.appendEvidence({
         koId: id,
         koVersion: ko.version,
         kind: "attachment",
-        attachmentId: attachment.id,
-        objectId: attachment.objectId,
-        label: attachment.name,
-        mime: attachment.mime,
-        createdBy: author,
-        createdAt: attachment.at,
+        attachmentId: anhang.id,
+        objectId: anhang.objectId,
+        label: anhang.name,
+        mime: anhang.mime,
+        createdBy: actor,
+        createdAt: new Date(this.now()).toISOString(),
       });
+      nachgetragen += 1;
     }
-    await this.audit?.record({ actor: author, action: "ko.attached", target: id });
-    // AUFNAHME 20260922 (bens Befund Runde 2): die Antwort trägt dieselbe Lesefassung wie ein Reload.
-    return this.lesefassung(updated);
+    return nachgetragen;
   }
 
   async removeAttachment(
@@ -3289,8 +3663,13 @@ export class KoService {
       ...ko,
       attachments: (ko.attachments ?? []).filter((a) => a.id !== attachmentId),
     };
-    await this.repo.update(updated);
-    await this.audit?.record({ actor, action: "ko.detached", target: id });
+    await this.schreibeMitBeleg(
+      (tx) => this.repo.update(updated, tx),
+      async (tx) => {
+        await this.audit?.record({ actor, action: "ko.detached", target: id }, tx);
+      },
+      () => this.rollbackKo(ko),
+    );
     return this.lesefassung(updated);
   }
 
@@ -3349,21 +3728,33 @@ export class KoService {
       at: new Date(this.now()).toISOString(),
     };
     const updated: KnowledgeObject = { ...ko, sources: [...(ko.sources ?? []), source] };
-    await this.repo.update(updated);
-    await this.appendEvidence({
-      koId: id,
-      koVersion: ko.version,
-      kind: "source",
-      sourceId: source.id,
-      label: source.label,
-      url: source.url,
-      provider: source.provider ?? null,
-      // mega26 Block B: der Grund der Verknüpfung, wörtlich aus der eben gebauten Quelle.
-      ...(source.excerpt ? { excerpt: source.excerpt } : {}),
-      createdBy: author,
-      createdAt: source.at,
-    });
-    await this.audit?.record({ actor: author, action: "ko.source-added", target: id });
+    // Aufnahme gesamt-auditprotokoll (Lauf 3): wie `addAttachment` — Quelle, Belegzeile und Beleg
+    // gemeinsam (`schreibeMitBeleg`).
+    await this.schreibeMitBeleg(
+      async (tx) => {
+        await this.repo.update(updated, tx);
+        await this.appendEvidence(
+          {
+            koId: id,
+            koVersion: ko.version,
+            kind: "source",
+            sourceId: source.id,
+            label: source.label,
+            url: source.url,
+            provider: source.provider ?? null,
+            // mega26 Block B: der Grund der Verknüpfung, wörtlich aus der eben gebauten Quelle.
+            ...(source.excerpt ? { excerpt: source.excerpt } : {}),
+            createdBy: author,
+            createdAt: source.at,
+          },
+          tx,
+        );
+      },
+      async (tx) => {
+        await this.audit?.record({ actor: author, action: "ko.source-added", target: id }, tx);
+      },
+      () => this.rollbackKo(ko),
+    );
     // AUFNAHME 20260922 (bens Befund Runde 2): die Antwort trägt dieselbe Lesefassung wie ein Reload.
     return this.lesefassung(updated);
   }
@@ -3374,8 +3765,13 @@ export class KoService {
       ...ko,
       sources: (ko.sources ?? []).filter((s) => s.id !== sourceId),
     };
-    await this.repo.update(updated);
-    await this.audit?.record({ actor, action: "ko.source-removed", target: id });
+    await this.schreibeMitBeleg(
+      (tx) => this.repo.update(updated, tx),
+      async (tx) => {
+        await this.audit?.record({ actor, action: "ko.source-removed", target: id }, tx);
+      },
+      () => this.rollbackKo(ko),
+    );
     return this.lesefassung(updated);
   }
 
@@ -4142,6 +4538,7 @@ export class KoService {
       action: "ko.restored",
       payload: {},
       beitrag: undefined,
+      vorher: ko,
     });
     return this.lesefassung(restored as KnowledgeObject);
   }
@@ -4455,7 +4852,21 @@ export class KoService {
     id: string,
     changes: ReviseMitHerkunft,
     author: string,
-    opts: { expectedVersion?: number } = {},
+    opts: {
+      expectedVersion?: number;
+      // Aufnahme gesamt-auditprotokoll (Runde 2): ein ZWEITER Beleg derselben Fassung, geschrieben
+      // im selben Audit-Schritt wie `ko.revised` — scheitert er, rollt die Revision mit zurück
+      // (Beispiel: `ko.revalidated` aus `LifecycleService.confirmStillValid`). `version` wird ergänzt.
+      //
+      // Lauf 2: `vorher` läuft im selben Audit-Schritt VOR beiden Belegen, mit `withTx` auf dem
+      // Transaktionsclient (`tx`), ohne `withTx` mit `tx === undefined`. Was es zurückgibt, geht in die
+      // Nutzlast des Zusatzbelegs — so nennt der Beleg nur, was in DIESEM Schritt tatsächlich geschah.
+      zusatzBeleg?: {
+        action: string;
+        payload?: Record<string, unknown>;
+        vorher?: (tx?: TxContext) => Promise<Record<string, unknown>>;
+      };
+    } = {},
   ): Promise<KnowledgeObject> {
     if (changes.type && !KNOWLEDGE_TYPES.includes(changes.type)) {
       throw new KoError("INVALID_TYPE", "Unbekannte Wissensart.");
@@ -4510,6 +4921,7 @@ export class KoService {
         // JOB 2704 D1: der Beleg läuft auf dem Transaktionsclient der Revision (tx aus mutateKoTx,
         // undefined ohne withTx) — er committet und verschwindet mit ihr.
         audit: async (tx) => {
+          const vorher = await opts.zusatzBeleg?.vorher?.(tx);
           await this.audit?.record(
             {
               actor: author,
@@ -4519,6 +4931,17 @@ export class KoService {
             },
             tx,
           );
+          if (opts.zusatzBeleg) {
+            await this.audit?.record(
+              {
+                actor: author,
+                action: opts.zusatzBeleg.action,
+                target: id,
+                payload: { ...opts.zusatzBeleg.payload, ...vorher, version },
+              },
+              tx,
+            );
+          }
         },
       };
     });
@@ -4793,13 +5216,16 @@ export class KoService {
       return {
         updated,
         value: { ko: updated, proposal },
-        audit: async () => {
-          await this.audit?.record({
-            actor: author,
-            action: "ko.proposed",
-            target: id,
-            payload: { proposalId: proposal.id, baseVersion: proposal.baseVersion },
-          });
+        audit: async (tx) => {
+          await this.audit?.record(
+            {
+              actor: author,
+              action: "ko.proposed",
+              target: id,
+              payload: { proposalId: proposal.id, baseVersion: proposal.baseVersion },
+            },
+            tx,
+          );
         },
       };
     });
@@ -5148,16 +5574,12 @@ export class KoService {
       // Compare-and-Set auf rowVersion (repo.update). Es gibt keinen zweiten Write in dieser
       // Operation, gegen den ein erster verlieren könnte — das ist die strukturelle Antwort auf
       // den parallelen CAS. Ab der nächsten Zeile GILT das Ergebnis.
-      await this.repo.update(committed);
-
       let snapshotWritten = false;
       let projectionWritten = false;
-      try {
-        // Nachgelagerte BELEGE der Änderung (Versions-Snapshot, Evidence-Records, Audit) — genau
-        // das Muster aus `mutateKoTx`: schlägt einer fehl, wird der Commit KOMPENSIEREND
-        // zurückgenommen, damit nie „wirksam, aber unbelegt" entsteht.
+      // Nachgelagerte BELEGE der Änderung (Versions-Snapshot, Evidence-Records, Audit).
+      const belege = async (tx?: TxContext): Promise<void> => {
         if (revises) {
-          await this.snapshot(committed, author, "überarbeitet (Dokumentinhalt übernommen)");
+          await this.snapshot(committed, author, "überarbeitet (Dokumentinhalt übernommen)", tx);
           snapshotWritten = this.versions !== undefined;
         }
         // G27: die Projektion der jetzt gültigen Version entsteht in DERSELBEN
@@ -5166,60 +5588,91 @@ export class KoService {
         // Operation bindet nur Anker und Belegstellen) und die Version dieselbe; dann greift die
         // Append-only-Regel, `insert` ist ein No-op und die bestehende, gültige Projektion bleibt
         // unangetastet. Genau diese Unterscheidung trägt die Meldung.
-        await this.persistSearchProjection(committed, (geschrieben) => {
-          projectionWritten = geschrieben;
-        });
+        await this.persistSearchProjection(
+          committed,
+          (geschrieben) => {
+            projectionWritten = geschrieben;
+          },
+          tx,
+        );
         // Die Evidence-Records tragen die JETZT gültige Inhaltsversion: Anker und Belegstellen
         // gehören zu der Fassung, die diese Operation hinterlässt — nicht zur Vorversion.
-        await this.appendEvidence({
-          koId: id,
-          koVersion: version,
-          kind: "attachment",
-          attachmentId: attachment.id,
-          objectId: anchorObjectId,
-          label: attachment.name,
-          mime: attachment.mime,
-          createdBy: author,
-          createdAt: at,
-        });
-        for (const source of sources) {
-          await this.appendEvidence({
+        await this.appendEvidence(
+          {
             koId: id,
             koVersion: version,
-            kind: "source",
-            sourceId: source.id,
-            label: source.label,
-            url: safeSourceUrl(source.url),
-            provider: source.provider ?? null,
-            // mega26 Block B: der Grund der Verknüpfung — die Belegstelle der übernommenen
-            // Dokumentstelle. Genau sie macht später nachvollziehbar, WARUM dieser Anhang
-            // diese Aussage stützt.
-            ...(source.excerpt ? { excerpt: source.excerpt } : {}),
+            kind: "attachment",
+            attachmentId: attachment.id,
+            objectId: anchorObjectId,
+            label: attachment.name,
+            mime: attachment.mime,
             createdBy: author,
             createdAt: at,
-          });
-        }
-        await this.audit?.record({
-          actor: author,
-          action: "ko.document-appended",
-          target: id,
-          payload: {
-            operationId,
-            version,
-            revised: revises,
-            objectId: anchorObjectId,
-            sources: sources.length,
           },
+          tx,
+        );
+        for (const source of sources) {
+          await this.appendEvidence(
+            {
+              koId: id,
+              koVersion: version,
+              kind: "source",
+              sourceId: source.id,
+              label: source.label,
+              url: safeSourceUrl(source.url),
+              provider: source.provider ?? null,
+              // mega26 Block B: der Grund der Verknüpfung — die Belegstelle der übernommenen
+              // Dokumentstelle. Genau sie macht später nachvollziehbar, WARUM dieser Anhang
+              // diese Aussage stützt.
+              ...(source.excerpt ? { excerpt: source.excerpt } : {}),
+              createdBy: author,
+              createdAt: at,
+            },
+            tx,
+          );
+        }
+        await this.audit?.record(
+          {
+            actor: author,
+            action: "ko.document-appended",
+            target: id,
+            payload: {
+              operationId,
+              version,
+              revised: revises,
+              objectId: anchorObjectId,
+              sources: sources.length,
+            },
+          },
+          tx,
+        );
+      };
+      const ergebnis = {
+        committed: true,
+        operationId,
+        replayed: false,
+        koVersion: version,
+        attachmentId: attachment.id,
+        sourceIds: sources.map((s) => s.id),
+        ko: committed,
+      } satisfies DocumentAppendCommit;
+
+      // Aufnahme gesamt-auditprotokoll (Lauf 3): mit `withTx` Write und alle Belege in EINER
+      // Transaktion — ein Fehler hinterlässt nichts, auch keine Belegzeile. Ohne `withTx` bleibt die
+      // Kompensation unten.
+      if (this.withTx) {
+        await this.withTx(async (tx) => {
+          await this.repo.update(committed, tx);
+          await belege(tx);
         });
-        return {
-          committed: true,
-          operationId,
-          replayed: false,
-          koVersion: version,
-          attachmentId: attachment.id,
-          sourceIds: sources.map((s) => s.id),
-          ko: committed,
-        } satisfies DocumentAppendCommit;
+        return ergebnis;
+      }
+      await this.repo.update(committed);
+      try {
+        // Genau das Muster aus `mutateKoTx`: schlägt ein Beleg fehl, wird der Commit KOMPENSIEREND
+        // zurückgenommen, damit nie „wirksam, aber unbelegt" entsteht.
+        await belege();
+        return ergebnis;
       } catch (err) {
         // Vollständige Rücknahme: Snapshot entfernen (falls geschrieben) und den Inhalt auf den
         // Vorzustand zurücksetzen — inklusive `appendOps`, sodass eine Wiederholung den Vorgang
@@ -5352,29 +5805,50 @@ export class KoService {
         opts.meldeMetadatenstand?.(unveraendert.projection.metadataRevision);
         return before;
       }
+      const schritte = async (tx?: TxContext): Promise<number> => {
+        const ergebnis = await this.projectMetadata(
+          updated,
+          new Date(this.now()).toISOString(),
+          tx,
+        );
+        await this.audit?.record(
+          {
+            actor,
+            action: beleg.action,
+            target: id,
+            payload: {
+              // Der Audit-Mindestinhalt aus Abschnitt 4: KO-Id (= target), vorher/nachher, Actor
+              // (= actor), Zeitpunkt (setzt die Audit-Kette selbst), metadata_revision und Ursache.
+              grund: beleg.grund,
+              vorher: { category: before.category, tags: [...(before.tags ?? [])] },
+              nachher: { category: updated.category, tags: [...(updated.tags ?? [])] },
+              metadataRevision: ergebnis.projection.metadataRevision,
+              metadataChanged: ergebnis.changed,
+              // Rückwärtskompatibel: der bisherige Beleg trug genau dieses Feld.
+              category: updated.category,
+            },
+          },
+          tx,
+        );
+        return ergebnis.projection.metadataRevision;
+      };
+      // Aufnahme gesamt-auditprotokoll (Lauf 3, §12.3 „Kategorie"): mit `withTx` laufen Write,
+      // Metadatenprojektion und Beleg in EINER Transaktion — scheitert einer, bleibt nichts davon.
+      if (this.withTx) {
+        const revision = await this.withTx(async (tx) => {
+          await this.repo.update(updated, tx);
+          return schritte(tx);
+        });
+        opts.meldeMetadatenstand?.(revision);
+        return updated;
+      }
       await this.repo.update(updated);
       try {
-        const ergebnis = await this.projectMetadata(updated, new Date(this.now()).toISOString());
-        await this.audit?.record({
-          actor,
-          action: beleg.action,
-          target: id,
-          payload: {
-            // Der Audit-Mindestinhalt aus Abschnitt 4: KO-Id (= target), vorher/nachher, Actor
-            // (= actor), Zeitpunkt (setzt die Audit-Kette selbst), metadata_revision und Ursache.
-            grund: beleg.grund,
-            vorher: { category: before.category, tags: [...(before.tags ?? [])] },
-            nachher: { category: updated.category, tags: [...(updated.tags ?? [])] },
-            metadataRevision: ergebnis.projection.metadataRevision,
-            metadataChanged: ergebnis.changed,
-            // Rückwärtskompatibel: der bisherige Beleg trug genau dieses Feld.
-            category: updated.category,
-          },
-        });
+        const revision = await schritte();
         // ERST HIER, nach dem Beleg: gemeldet wird nur ein Stand, der auch WIRKLICH gilt. Scheitert
         // die Projektion oder der Beleg, läuft die Kompensation unten — und der Aufrufer hat dann
         // keinen Stempel bekommen, den er für bestätigt halten könnte.
-        opts.meldeMetadatenstand?.(ergebnis.projection.metadataRevision);
+        opts.meldeMetadatenstand?.(revision);
         return updated;
       } catch (err) {
         // Kompensation: der autoritative Stand geht zurück, und die Projektion wird auf DIESEN
@@ -5463,6 +5937,37 @@ export class KoService {
     );
   }
 
+  // R-0431 / R-1728 / FR-LIB-01 (K2): das Fachgebiet nachträglich setzen, ändern oder entfernen.
+  // Bauform wie `setConfidentiality` (per KO serialisiert, Beleg im Audit); die Rechte prüft die
+  // Route (wie `category`). BEWUSST NICHT über `mutateKoMetadata`: dessen Stempel und Suchprojektion
+  // gehören zur Einordnung aus Kategorie und Schlagwörtern (KW-ARCH-G27) — ein Fachgebiet dort
+  // einzuhängen, verschöbe den Bedingungsstempel der Einordnung, ohne dass sich an ihr etwas ändert.
+  // Ein leerer Wert ENTFERNT die Angabe (das Feld fehlt danach wieder); ein unveränderter Wert
+  // ändert das Objekt nicht und erzeugt keinen Beleg.
+  async setDomain(id: string, domain: string, actor: string): Promise<KnowledgeObject> {
+    const nachher = normalizeDomain(domain);
+    return this.mutateKo(id, (ko) => {
+      const vorher = normalizeDomain(ko.domain);
+      if (vorher === nachher) {
+        return { updated: ko, value: ko };
+      }
+      const { domain: _alt, ...ohne } = ko;
+      const updated: KnowledgeObject = nachher ? { ...ohne, domain: nachher } : ohne;
+      return {
+        updated,
+        value: updated,
+        audit: async () => {
+          await this.audit?.record({
+            actor,
+            action: "ko.domain-changed",
+            target: id,
+            payload: { vorher, nachher },
+          });
+        },
+      };
+    });
+  }
+
   // SCRUM-358 / AG-14-SERVER-TRUST / VC-P1-1 / FR-VAL-01: serverseitige Konfliktwirkung.
   // Ein offener WAHRHEITSKONFLIKT gegen ein VALIDIERTES KO darf serverseitig nicht so tun, als sei das
   // KO unverändert voll vertrauenswürdig: Status validiert → offen (review-pflichtig) und Trust
@@ -5482,13 +5987,26 @@ export class KoService {
     const previousTrust = ko.trust;
     const trust = Math.max(0, ko.trust - TRUTH_CONFLICT_TRUST_PENALTY);
     const updated: KnowledgeObject = { ...ko, status: "offen", trust };
-    await this.repo.update(updated);
-    await this.audit?.record({
-      actor,
-      action: "ko.conflict-review",
-      target: id,
-      payload: { previousStatus: "validiert", previousTrust, trust, reason: "truth-conflict" },
-    });
+    await this.schreibeMitBeleg(
+      (tx) => this.repo.update(updated, tx),
+      async (tx) => {
+        await this.audit?.record(
+          {
+            actor,
+            action: "ko.conflict-review",
+            target: id,
+            payload: {
+              previousStatus: "validiert",
+              previousTrust,
+              trust,
+              reason: "truth-conflict",
+            },
+          },
+          tx,
+        );
+      },
+      () => this.rollbackKo(ko),
+    );
     return updated;
   }
 
@@ -5512,6 +6030,135 @@ export class KoService {
       return updated;
     });
     return this.lesefassung(ergebnis);
+  }
+
+  // ==============================================================================================
+  // Aufnahme gesamt-auditprotokoll (Lauf 3, Runde 2, BEN-B1) — VALIDIERUNG UND ENTSCHEIDUNGSBELEG
+  // GEMEINSAM ODER GAR NICHT.
+  // ==============================================================================================
+  //
+  // DER BEFUND: `ValidationService.rate`/`adminValidate` schrieben Status und Vertrauen über
+  // `setValidationState` und hängten den Entscheidungsbeleg (`ko.rated`, `ko.admin-validated`,
+  // `ko.returned-to-*`) erst DANACH an. Fiel der Beleg aus, blieb das Objekt „validiert, Vertrauen
+  // 99" — ohne Beleg und ohne `validationDecisionRef`.
+  //
+  // JETZT, in dieser einen Klammer unter dem KO-Lock:
+  //   1. Compare-and-Set gegen `expectedVersion` (wie `setValidationState`). Verfehlt → je nach
+  //      `beiVersionswechsel` nichts, oder NUR `beleg` (ohne Zustandsänderung, ohne Verweis) — der
+  //      Bewertungsweg hält eine Stimme auf die überholte Fassung ehrlich fest, wie bisher.
+  //   2. `zustand(ko)` — Runde 3 (BEN-R2-B1): der Zustand wird HIER bestimmt, unter derselben
+  //      Serialisierung, die auch schreibt. Vorher rechnete der Aufrufer die Stimmenlage VOR der
+  //      Klammer; zwei gleichzeitige Bewertungen sahen die Stimme des anderen nicht, und die
+  //      spätere Serialisierung schrieb beide veralteten Ergebnisse (up+up blieb offen, down+up
+  //      wurde validiert).
+  //   3. Zustand schreiben → `beleg(tx)` (Bewertung, Zuweisungen, Auditeinträge des Aufrufers; liefert
+  //      die tragende Referenz) → Verweis `validationDecisionRef` schreiben.
+  // MIT `withTx`: alles auf EINEM Transaktionsclient — scheitert ein Schritt, bleibt nichts. Verliert
+  // die Transaktion den Compare-and-Set an eine ZWEITE INSTANZ (`STALE_WRITE`: deren Transaktion hat
+  // dieselbe Objektzeile zuerst festgeschrieben), rollt sie vollständig zurück; die Klammer liest
+  // dann frisch und bestimmt den Zustand neu — jetzt mit der festgeschriebenen fremden Stimme
+  // (höchstens fünf Versuche, s. unten).
+  // OHNE `withTx`: scheitert ein Schritt, wird der Vorzustand zurückgeschrieben und `ruecknahme` des
+  // Aufrufers läuft (Bewertung/Zuweisungen zurück); ihre Fehler werden geschluckt, der Ursachenfehler
+  // geworfen. Runde 3 (BEN-R2-B2): hatte der Schritt schon Auditeinträge angehängt (etwa `ko.rated`
+  // vor einem gescheiterten `ko.returned-to-*`), bleiben sie stehen — die Kette ist append-only —,
+  // und `ko.change-rolled-back` nennt sie danach ausdrücklich als zurückgenommen.
+  async setValidationStateMitBeleg(
+    id: string,
+    zustand: (ko: KnowledgeObject) => Promise<{ trust: number; status: KoStatus }>,
+    opts: { expectedVersion: number; beiVersionswechsel: "nichts" | "nurBeleg" },
+    beleg: (tx?: TxContext) => Promise<{ auditSeq: number; auditHash: string } | null>,
+    ruecknahme: () => Promise<void> = async () => undefined,
+  ): Promise<{
+    ko: KnowledgeObject;
+    geschrieben: boolean;
+    ref: { auditSeq: number; auditHash: string } | null;
+  }> {
+    const versuch = () =>
+      this.withKoLock(id, async () => {
+        const ko = await this.require(id);
+        if (ko.version !== opts.expectedVersion) {
+          // `ref` nennt dann den festgehaltenen Beleg, wird aber NICHT am Objekt vermerkt.
+          let ref: { auditSeq: number; auditHash: string } | null = null;
+          if (opts.beiVersionswechsel === "nurBeleg") {
+            if (this.withTx) {
+              ref = await this.withTx((tx) => beleg(tx));
+            } else {
+              const kopf = await this.kopfVorBeleg();
+              try {
+                ref = await beleg();
+              } catch (err) {
+                await ruecknahme().catch(() => undefined);
+                await this.belegeRuecknahme(id, kopf, {
+                  grund: "validation",
+                  restoredVersion: ko.version,
+                }).catch(() => undefined);
+                throw err;
+              }
+            }
+          }
+          return { ko, geschrieben: false, ref };
+        }
+        const state = await zustand(ko);
+        const updated: KnowledgeObject = { ...ko, trust: state.trust, status: state.status };
+        const schritte = async (tx?: TxContext) => {
+          await this.repo.update(updated, tx);
+          const ref = await beleg(tx);
+          if (!ref) {
+            return { ko: updated, geschrieben: true, ref };
+          }
+          // Zweiter Write DERSELBEN Klammer: `update` hat die rowVersion um 1 erhöht.
+          const mitVerweis: KnowledgeObject = {
+            ...updated,
+            rowVersion: (updated.rowVersion ?? 0) + 1,
+            validationDecisionRef: { auditSeq: ref.auditSeq, auditHash: ref.auditHash },
+          };
+          await this.repo.update(mitVerweis, tx);
+          return { ko: mitVerweis, geschrieben: true, ref };
+        };
+        if (this.withTx) {
+          return this.withTx((tx) => schritte(tx));
+        }
+        const kopf = await this.kopfVorBeleg();
+        try {
+          return await schritte();
+        } catch (err) {
+          const zurueck = await this.rollbackKo(ko).then(
+            () => true,
+            () => false,
+          );
+          await ruecknahme().catch(() => undefined);
+          if (zurueck) {
+            await this.belegeRuecknahme(id, kopf, {
+              grund: "validation",
+              restoredVersion: ko.version,
+              restoredStatus: ko.status,
+              restoredTrust: ko.trust,
+            }).catch(() => undefined);
+          }
+          throw err;
+        }
+      });
+    // Lauf 5 (Nacharbeit 5): NICHT NUR EIN zweiter Versuch. Dieselbe Objektzeile schreiben neben der
+    // zweiten Instanz auch andere Wege fort — etwa die KI-Prüfung einer frischen Anlage (`aiCheck`).
+    // Verlor die Transaktion den Compare-and-Set zweimal (erst an die andere Instanz, dann an die
+    // KI-Prüfung), kam `STALE_WRITE` beim Nutzer an und seine Stimme ging verloren (gemessen:
+    // „down + up, Quorum 1" endete mit 400 + „validiert"). Jeder Versuch liest frisch und bestimmt
+    // den Zustand neu; die Grenze verhindert eine Endlosschleife unter Dauerlast.
+    const MAX_VERSUCHE = 5;
+    for (let nr = 1; ; nr++) {
+      let ergebnis: Awaited<ReturnType<typeof versuch>>;
+      try {
+        ergebnis = await versuch();
+      } catch (err) {
+        const verloren = this.withTx && err instanceof KoError && err.code === "STALE_WRITE";
+        if (!verloren || nr >= MAX_VERSUCHE) {
+          throw err;
+        }
+        continue;
+      }
+      return { ...ergebnis, ko: await this.lesefassung(ergebnis.ko) };
+    }
   }
 
   // ==============================================================================================
@@ -5581,13 +6228,16 @@ export class KoService {
       return {
         updated,
         value: updated,
-        audit: async () => {
-          await this.audit?.record({
-            actor,
-            action: "ko.author-transferred",
-            target: id,
-            payload: { author },
-          });
+        audit: async (tx) => {
+          await this.audit?.record(
+            {
+              actor,
+              action: "ko.author-transferred",
+              target: id,
+              payload: { author },
+            },
+            tx,
+          );
         },
       };
     });
@@ -5641,6 +6291,7 @@ export class KoService {
         action: "ko.deleted",
         payload: { trash: true },
         beitrag: hook ? (tx) => hook(id, actor, tx, { zurueckgezogenVon }) : undefined,
+        vorher: ko,
       },
     );
   }
@@ -5691,9 +6342,11 @@ export class KoService {
       action: "ko.deleted" | "ko.restored";
       payload: Record<string, unknown>;
       beitrag: RuecknahmeBeitrag | undefined;
+      // Der Stand vor dem Schreiben — für die Rücknahme im Weg ohne Klammer (unten).
+      vorher: KnowledgeObject;
     },
   ): Promise<void> {
-    const { actor, action, payload, beitrag } = vorgang;
+    const { actor, action, payload, beitrag, vorher } = vorgang;
     const beleg = (zusatz: Record<string, unknown>) => {
       const gesamt = { ...payload, ...zusatz };
       return {
@@ -5716,10 +6369,18 @@ export class KoService {
       return;
     }
     // Nur ein KoService, den jemand OHNE Kompositionswurzel und ohne Klammer baut (Einzeltests
-    // des Moduls, Test-Doubles ohne Rückstellung), fällt hierher: ohne Atomaritätszusage.
+    // des Moduls, Test-Doubles ohne Rückstellung), fällt hierher: ohne Atomaritätszusage für den
+    // Aufräumbeitrag. Änderung und Beleg bleiben aber gemeinsam oder gar nicht (Aufnahme
+    // gesamt-auditprotokoll, `schreibeMitBeleg`): scheitert der Beleg, wird die Änderung
+    // zurückgenommen; scheitert die Änderung, entsteht kein Beleg.
     const zusatz = (await beitrag?.(undefined)) ?? {};
-    await this.repo.update(neu);
-    await audit?.record(beleg(zusatz));
+    await this.schreibeMitBeleg(
+      (tx) => this.repo.update(neu, tx),
+      async (tx) => {
+        await audit?.record(beleg(zusatz), tx);
+      },
+      () => this.rollbackKo(vorher),
+    );
   }
 
   // ==============================================================================================

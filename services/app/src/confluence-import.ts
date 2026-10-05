@@ -2,8 +2,9 @@
 // der Lease) und auch nicht hier nachgebaut — er wird aus dem bereits oeffentlichen `CollectResult`
 // abgeleitet. Eine Wahrheit, kein zweiter Typ, keine Scopeerweiterung.
 import type { CollectResult, ConfluenceSourceAdapter } from "../../confluence";
-import type { KoService } from "../../knowledge-object";
+import type { KnowledgeObject, KoService, KoSource } from "../../knowledge-object";
 import {
+  type ImportCandidate,
   type ImportItem,
   type LibraryService,
   importSourceKey,
@@ -15,7 +16,10 @@ import {
 // KEINE stillen Auto-KOs, alles landet ausschließlich als Kandidat. Never block: eine fehlerhafte Seite
 // wird als `failed` verbucht, der Lauf läuft weiter. Ehrliche Zusammenfassung je Seite.
 
-export type ImportPageStatus = "imported" | "skipped" | "failed";
+// R-0162: "removed" = die Seite ist in der Quelle gelöscht und das Wissensobjekt wurde in den
+// Papierkorb gelegt (bzw. würde es im Probelauf); "kept" = in der Quelle gelöscht, das Objekt
+// bleibt aber, weil es weitere Quellen trägt oder zwischenzeitlich überarbeitet wurde.
+export type ImportPageStatus = "imported" | "skipped" | "failed" | "removed" | "kept";
 
 export interface ImportRunSummary {
   dryRun: boolean;
@@ -36,6 +40,42 @@ export interface ImportRunSummary {
   // die Station, die ein Mensch nach einem Importlauf liest — der Urteilspunkt „SERVERINTERN,
   // Verluststelle gefunden, Zielwirkung offen" schliesst sich erst hier.
   hierarchie?: NonNullable<CollectResult["hierarchie"]>;
+  // R-0163 (Bens Befunde 1–3): der Anhangsabgleich der BEREITS IMPORTIERTEN Seiten unveränderter
+  // Version. Nur bei einem schreibenden Lauf gesetzt, und nur, wenn eine Seite Anhangsdaten trug.
+  // Eine Seite, deren Abgleich nicht vollständig gelang (Fehler oder unvollständige Liste), steht
+  // in `unvollstaendigeSeiten`, zählt in `failed` und macht den Lauf damit unvollständig.
+  anhangsabgleich?: {
+    seiten: number;
+    uebernommen: number;
+    ersetzt: number;
+    nachgezogen: number;
+    fehlgeschlagen: number;
+    // Nacharbeit 7: übernommene Anhänge mit noch fehlendem Beleg / in diesem Lauf nachgetragene.
+    belegOffen: number;
+    belegNachgetragen: number;
+    unvollstaendigeSeiten: string[];
+  };
+  // R-0162 (Abgleich): in der Quelle gelöschte Seiten, deren Wissensobjekt in den Papierkorb
+  // gelegt wurde (bei dryRun: gelegt WÜRDE). Wiederherstellbar über den Papierkorb.
+  removed: number;
+  // R-0162: in der Quelle gelöscht, Objekt bleibt BEWUSST — es trägt weitere Quellen.
+  removalKept: number;
+  // R-0162 (Nacharbeit, bens Befund 4): OFFENE Importkandidaten einer in der Quelle gelöschten
+  // Seite, die abgelehnt wurden (bei dryRun: abgelehnt WÜRDEN) — sonst entstünde aus dem
+  // gespeicherten Item beim späteren Annehmen doch noch ein Wissensobjekt.
+  candidatesRejected: number;
+  // R-0162: Löschungen, die NICHT nachgezogen werden konnten — Gegenprobe gescheitert oder das
+  // Objekt wurde zwischenzeitlich überarbeitet (STALE_WRITE). Je Seite in perPage; der Lauf ist
+  // dann nicht vollständig (PARTIAL).
+  removalOpen: number;
+  // R-0162: false, wenn der Löschabgleich gar nicht lief — bei einem abgeschnittenen Lauf
+  // (truncated) ist „fehlt in der Liste" kein Beleg für eine Löschung.
+  removalChecked: boolean;
+  // R-0159 (Befund F2): WARUM der Lauf vor dem letzten Cursor endete — Frist, Zeitbudget oder
+  // Größe, samt hostfreier Meldung aus dem Client. Bis hierher kam er bis `collectAll` und wurde
+  // HIER verworfen; der gespeicherte Lauf stand dann auf PARTIAL ohne Grund. Nur gesetzt, wenn der
+  // Adapter ihn geliefert hat; die bereits gelesenen Seiten bleiben davon unberührt.
+  abbruch?: NonNullable<CollectResult["abbruch"]>;
   perPage: { ref: string; status: ImportPageStatus; note?: string }[];
 }
 
@@ -196,7 +236,13 @@ export function importStatusFor(
 }
 
 export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<ImportRunSummary> {
-  const { items, failed: collectFailed, truncated, hierarchie } = await deps.adapter.collectAll();
+  const {
+    items,
+    failed: collectFailed,
+    truncated,
+    hierarchie,
+    abbruch,
+  } = await deps.adapter.collectAll();
   const seen = await existingVersions(deps.koService);
   const pending = await pendingKeys(deps.library);
 
@@ -209,6 +255,10 @@ export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<I
   // eingereiht werden (die Quelle kann dieselbe Seite doppelt liefern; seen/pending kennen die gerade erst
   // in diesem Lauf eingereihten Items noch nicht). Der DB-UNIQUE-Index ist der atomare Backstop dahinter.
   const queuedKeys = new Set<string>();
+  // R-0163: bereits importierte Seiten unveränderter Version — sie gehen nicht in die Queue, ihre
+  // Anhänge werden aber abgeglichen (s. unten). Offene Kandidaten gehören nicht dazu: deren Anhänge
+  // kommen mit der Annahme.
+  const abzugleichen: { item: ImportItem; perPageIdx: number }[] = [];
   for (const item of items) {
     const ref = item.externalId ?? item.title;
     const version = item.sourceVersion ?? 1;
@@ -228,6 +278,9 @@ export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<I
     // offener Kandidat für exakt diese Version eingereiht ist. Eine HÖHERE Version → erneut einreihen
     // (der acceptToKo-Upsert übernimmt beim Annehmen den Re-Sync, R4).
     if ((already !== undefined && already >= version) || isPending) {
+      if (!isPending) {
+        abzugleichen.push({ item, perPageIdx: perPage.length });
+      }
       perPage.push({ ref, status: "skipped", note: "unverändert (idempotent)" });
       continue;
     }
@@ -248,6 +301,18 @@ export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<I
   // eingereihte Seite NICHT persistiert → sie zählt NICHT als importiert (nie mehr toQueue.length blind).
   let imported = toQueue.length;
   if (!deps.dryRun && toQueue.length > 0) {
+    // R-0163 (Ben, Nacharbeit 2): `collectAll` liefert die Seiten OHNE Anhangsliste — so bleibt die
+    // Erkundung ohne Anhangsabrufe. Was hier wirklich eingereiht wird, bekommt seine Anhänge vorher,
+    // je Seite nacheinander; sonst endete die Annahme ohne Anhang und ohne Anhangsaudit. Ein
+    // Adapter ohne `withAttachments` (Fixture-Doppel) reiht unverändert ein. `dryRun` liest nichts nach.
+    if (typeof deps.adapter.withAttachments === "function") {
+      for (let i = 0; i < toQueue.length; i++) {
+        const item = toQueue[i];
+        if (item) {
+          toQueue[i] = await deps.adapter.withAttachments(item);
+        }
+      }
+    }
     const persisted = await deps.library.createImportCandidates(toQueue, deps.actor);
     imported = persisted.length;
     // perPage ehrlich nachziehen: eingereihte, aber nicht persistierte Seiten → skipped (Parallelkonflikt).
@@ -265,18 +330,345 @@ export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<I
     }
   }
 
+  // ==============================================================================================
+  // R-0163 — DER ANHANGSABGLEICH BEREITS IMPORTIERTER SEITEN (Bens Befunde 1–3).
+  // ==============================================================================================
+  //
+  // Eine Seite gleicher Version geht nicht erneut in die Queue — ihre Anhänge können sich trotzdem
+  // geändert haben: ein neuer Anhang, eine neue Anhangsversion, oder nur ein neuer Abrufweg. Hier
+  // wird je solcher Seite die Anhangsliste gelesen und am lebenden Wissensobjekt abgeglichen
+  // (`LibraryService.gleicheAnhaengeFuerAnkerAb`). Nichts wird entfernt. Gelingt der Abgleich nicht
+  // vollständig (Speicher-/Downloadfehler, unvollständige Liste), wird die Seite mit Grund als
+  // `failed` geführt — der Lauf ist dann unvollständig und sagt es, statt „unverändert" zu melden.
+  // `dryRun` liest nichts nach; ein Adapter ohne `withAttachments` (Fixture-Doppel) gleicht nicht ab.
+  let anhangsabgleich: ImportRunSummary["anhangsabgleich"];
+  let abgleichUnvollstaendig = 0;
+  if (
+    !deps.dryRun &&
+    abzugleichen.length > 0 &&
+    typeof deps.adapter.withAttachments === "function" &&
+    typeof deps.library.gleicheAnhaengeFuerAnkerAb === "function"
+  ) {
+    const bilanz: NonNullable<ImportRunSummary["anhangsabgleich"]> = {
+      seiten: 0,
+      uebernommen: 0,
+      ersetzt: 0,
+      nachgezogen: 0,
+      fehlgeschlagen: 0,
+      belegOffen: 0,
+      belegNachgetragen: 0,
+      unvollstaendigeSeiten: [],
+    };
+    for (const { item, perPageIdx } of abzugleichen) {
+      const entry = perPage[perPageIdx];
+      let abgleich: Awaited<ReturnType<LibraryService["gleicheAnhaengeFuerAnkerAb"]>> | null;
+      try {
+        const mitAnhaengen = await deps.adapter.withAttachments(item);
+        abgleich = await deps.library.gleicheAnhaengeFuerAnkerAb(mitAnhaengen, deps.actor);
+      } catch {
+        abgleich = null; // der Abgleich selbst ist gescheitert — die Seite ist nicht abgeglichen
+      }
+      if (abgleich === undefined) {
+        continue; // keine Anhangsdaten oder kein lebendes Wissensobjekt — nichts abzugleichen
+      }
+      bilanz.seiten += 1;
+      if (abgleich) {
+        bilanz.uebernommen += abgleich.uebernommen;
+        bilanz.ersetzt += abgleich.ersetzt;
+        bilanz.nachgezogen += abgleich.nachgezogen;
+        bilanz.fehlgeschlagen += abgleich.fehlgeschlagen;
+        bilanz.belegOffen += abgleich.belegOffen;
+        bilanz.belegNachgetragen += abgleich.belegNachgetragen;
+      }
+      if (
+        abgleich === null ||
+        abgleich.fehlgeschlagen > 0 ||
+        abgleich.belegOffen > 0 ||
+        abgleich.listeUnvollstaendig
+      ) {
+        abgleichUnvollstaendig += 1;
+        bilanz.unvollstaendigeSeiten.push(item.externalId ?? item.title);
+        if (entry) {
+          entry.status = "failed";
+          entry.note = anhangsNotiz(abgleich);
+        }
+        continue;
+      }
+      const geaendert =
+        abgleich.uebernommen + abgleich.ersetzt + abgleich.nachgezogen + abgleich.belegNachgetragen;
+      if (entry && geaendert > 0) {
+        const belegZusatz =
+          abgleich.belegNachgetragen > 0
+            ? `, ${abgleich.belegNachgetragen} Beleg(e) nachgetragen`
+            : "";
+        entry.note = `Anhänge abgeglichen: ${abgleich.uebernommen} neu, ${abgleich.ersetzt} ersetzt, ${abgleich.nachgezogen} Abrufweg nachgezogen${belegZusatz}`;
+      }
+    }
+    anhangsabgleich = bilanz;
+  }
+
+  // R-0162: Änderungen laufen oben über die höhere sourceVersion (neuer Kandidat → Re-Sync beim
+  // Annehmen). Löschungen zieht der folgende Abgleich nach — nur bei VOLLSTÄNDIG gelesenem Space
+  // und nur mit bekanntem Space: ohne ihn wäre jeder fremde oder scopelose Anker ein „Fehlender".
+  const removal =
+    truncated || !deps.adapter.sourceScope
+      ? {
+          removed: 0,
+          removalKept: 0,
+          candidatesRejected: 0,
+          removalOpen: 0,
+          removalChecked: false,
+        }
+      : await reconcileRemovals(deps, items, collectFailed, perPage);
+
   return {
     dryRun: deps.dryRun,
     found: items.length,
     imported,
     // Alles Gesehene, das NICHT (real) importiert wurde: In-Run-/Idempotenz-Skips + Parallelkonflikte.
-    skipped: items.length - imported,
-    failed: collectFailed.length,
+    // R-0163: eine Seite mit unvollständigem Anhangsabgleich zählt nicht mehr als übersprungen,
+    // sondern als gescheitert.
+    skipped: items.length - imported - abgleichUnvollstaendig,
+    failed: collectFailed.length + abgleichUnvollstaendig,
     truncated,
     // JOB 1042 D3: unveraendert durchgereicht — nur gesetzt, wenn der Adapter ihn geliefert hat.
     ...(hierarchie ? { hierarchie } : {}),
+    ...(anhangsabgleich ? { anhangsabgleich } : {}),
+    // R-0159 (F2): unverändert durchgereicht — nur gesetzt, wenn der Adapter ihn geliefert hat.
+    ...(abbruch ? { abbruch } : {}),
+    ...removal,
     perPage,
   };
+}
+
+// R-0163: der verständliche Grund einer unvollständig abgeglichenen Seite — ohne Dateinamen und
+// ohne Adresse, nur Zahlen und die Zusage, dass der Bestand bleibt.
+function anhangsNotiz(
+  abgleich: Awaited<ReturnType<LibraryService["gleicheAnhaengeFuerAnkerAb"]>> | null,
+): string {
+  if (!abgleich) {
+    return "Anhangsabgleich gescheitert — vorhandene Anhänge bleiben unverändert erhalten";
+  }
+  const teile: string[] = [];
+  if (abgleich.fehlgeschlagen > 0) {
+    teile.push(`${abgleich.fehlgeschlagen} Anhang/Anhänge nicht übernommen`);
+  }
+  if (abgleich.belegOffen > 0) {
+    // Nacharbeit 7: der Anhang IST übernommen — nur sein Beleg fehlt noch und wird nachgetragen.
+    teile.push(`${abgleich.belegOffen} Beleg(e) zu übernommenen Anhängen offen`);
+  }
+  if (abgleich.listeUnvollstaendig) {
+    teile.push("Anhangsliste der Quelle unvollständig");
+  }
+  return `Anhangsabgleich unvollständig (${teile.join(", ")}) — vorhandene Anhänge bleiben erhalten`;
+}
+
+// ---- R-0162: LÖSCHUNGEN DER QUELLE BEIM NÄCHSTEN ABGLEICH NACHZIEHEN ----
+//
+// KANDIDAT: ein lebender KO-Herkunftsanker dieses Providers UND dieses Space, dessen externalId der
+// vollständige Lauf nicht mehr gesehen hat (weder als Item noch als fehlgeschlagene Seite).
+// GEGENPROBE: die Quelle wird je Id gefragt (adapter.isGoneAtSource) — fehlt die Seite nur in der
+// Liste, liefert sie aber je Id noch, bleibt alles, wie es ist. Scheitert die Gegenprobe, wird
+// nichts geändert und die Seite als offen gemeldet.
+// WIRKUNG: das Wissensobjekt wandert in den PAPIERKORB (forceTrash, nie Endlöschung, mit
+// expectedVersion) — wiederherstellbar, auditiert über ko.deleted. Trägt das Objekt weitere
+// Quellen, bleibt es stehen ("kept"): es hat dann noch eine Grundlage außerhalb dieser Seite.
+// OFFENE KANDIDATEN (Nacharbeit, bens Befund 4): auch ein noch nicht angenommener Kandidat dieses
+// Providers und Space zählt — sein gespeichertes Item würde beim Annehmen sonst ohne erneuten
+// Quellenabgleich zum Wissensobjekt. Nach bestätigter Löschung wird ein Kandidat im Status "neu"
+// über den regulären Review-Weg ABGELEHNT (reviewedBy = Akteur des Laufs, Audit
+// import.candidate-reject); ein gerade bearbeiteter ("in_bearbeitung") bleibt unberührt und offen.
+// dryRun schreibt nichts und meldet nur, was nachgezogen würde.
+async function reconcileRemovals(
+  deps: ConfluenceImportDeps,
+  items: readonly ImportItem[],
+  collectFailed: CollectResult["failed"],
+  perPage: ImportRunSummary["perPage"],
+): Promise<{
+  removed: number;
+  removalKept: number;
+  candidatesRejected: number;
+  removalOpen: number;
+  removalChecked: true;
+}> {
+  const provider = deps.adapter.source;
+  const scope = deps.adapter.sourceScope;
+  // Der Schlüssel eines Ankers, der zu DIESEM Lauf gehört (Provider + Space), sonst null.
+  const ownAnchorKey = (
+    anchorProvider: string | null | undefined,
+    externalId: string | undefined,
+    anchorScope: string | undefined,
+  ): string | null => {
+    if (!externalId || anchorScope !== scope) {
+      return null;
+    }
+    const key = importSourceKey(anchorProvider, externalId);
+    return key === importSourceKey(provider, externalId) ? key : null;
+  };
+  const ownKey = (s: KoSource): string | null => ownAnchorKey(s.provider, s.externalId, s.spaceKey);
+  const seenKeys = new Set<string>();
+  for (const item of items) {
+    if (item.externalId) {
+      seenKeys.add(importSourceKey(item.provider ?? provider, item.externalId));
+    }
+  }
+  for (const f of collectFailed) {
+    seenKeys.add(importSourceKey(provider, f.ref));
+  }
+
+  // Je fehlender Seite die betroffenen Objekte (ein Anker kann — etwa nach einer Zusammenführung —
+  // an mehr als einem Objekt hängen).
+  type Fehlend = { externalId: string; kos: KnowledgeObject[]; candidates: ImportCandidate[] };
+  const missing = new Map<string, Fehlend>();
+  const eintrag = (key: string, externalId: string): Fehlend => {
+    const vorhanden = missing.get(key);
+    if (vorhanden) {
+      return vorhanden;
+    }
+    const neu: Fehlend = { externalId, kos: [], candidates: [] };
+    missing.set(key, neu);
+    return neu;
+  };
+  for (const ko of await deps.koService.list()) {
+    for (const s of ko.sources ?? []) {
+      const key = ownKey(s);
+      if (!key || !s.externalId || seenKeys.has(key)) {
+        continue;
+      }
+      const entry = eintrag(key, s.externalId);
+      if (!entry.kos.includes(ko)) {
+        entry.kos.push(ko);
+      }
+    }
+  }
+  for (const c of await deps.library.listImportCandidates()) {
+    if (!isOpenReviewStatus(c.status) || !c.item.externalId) {
+      continue;
+    }
+    const key = ownAnchorKey(c.item.provider, c.item.externalId, c.item.sourceScope);
+    if (!key || seenKeys.has(key)) {
+      continue;
+    }
+    eintrag(key, c.item.externalId).candidates.push(c);
+  }
+
+  let removed = 0;
+  let removalKept = 0;
+  let candidatesRejected = 0;
+  let removalOpen = 0;
+  const goneKeys = new Set<string>();
+  const checks: Fehlend[] = [];
+  for (const [key, entry] of missing) {
+    let gone: boolean;
+    try {
+      gone = await deps.adapter.isGoneAtSource(entry.externalId);
+    } catch (err) {
+      removalOpen += 1;
+      perPage.push({
+        ref: entry.externalId,
+        status: "failed",
+        note: `Löschprüfung nicht möglich (${err instanceof Error ? err.name : "unknown"}) — nichts geändert`,
+      });
+      continue;
+    }
+    if (gone) {
+      goneKeys.add(key);
+      checks.push(entry);
+    }
+  }
+
+  // Offene Kandidaten gelöschter Seiten: ablehnen, damit kein späteres Annehmen sie übernimmt.
+  for (const { externalId, candidates } of checks) {
+    for (const c of candidates) {
+      if (c.status !== "neu") {
+        removalOpen += 1;
+        perPage.push({
+          ref: externalId,
+          status: "failed",
+          note: "in der Quelle gelöscht — Importkandidat wird gerade bearbeitet, nicht abgelehnt",
+        });
+        continue;
+      }
+      if (deps.dryRun) {
+        candidatesRejected += 1;
+        perPage.push({
+          ref: externalId,
+          status: "removed",
+          note: "in der Quelle gelöscht — offener Importkandidat würde abgelehnt",
+        });
+        continue;
+      }
+      try {
+        await deps.library.reviewImportCandidate(c.id, "reject", deps.actor);
+        candidatesRejected += 1;
+        perPage.push({
+          ref: externalId,
+          status: "removed",
+          note: "in der Quelle gelöscht — offener Importkandidat abgelehnt",
+        });
+      } catch (err) {
+        removalOpen += 1;
+        perPage.push({
+          ref: externalId,
+          status: "failed",
+          note: `in der Quelle gelöscht — Importkandidat nicht abgelehnt (${err instanceof Error ? err.name : "unknown"})`,
+        });
+      }
+    }
+  }
+
+  // Ein Objekt mit mehreren gelöschten Ankern wird genau einmal behandelt.
+  const handled = new Set<string>();
+  for (const { externalId, kos } of checks) {
+    for (const ko of kos) {
+      if (handled.has(ko.id)) {
+        continue;
+      }
+      handled.add(ko.id);
+      const weitereQuellen = (ko.sources ?? []).some((s) => {
+        const key = ownKey(s);
+        return !key || !goneKeys.has(key);
+      });
+      if (weitereQuellen) {
+        removalKept += 1;
+        perPage.push({
+          ref: externalId,
+          status: "kept",
+          note: "in der Quelle gelöscht — Wissensobjekt trägt weitere Quellen und bleibt",
+        });
+        continue;
+      }
+      if (deps.dryRun) {
+        removed += 1;
+        perPage.push({
+          ref: externalId,
+          status: "removed",
+          note: "in der Quelle gelöscht — würde in den Papierkorb gelegt",
+        });
+        continue;
+      }
+      try {
+        await deps.koService.delete(ko.id, deps.actor, {
+          forceTrash: true,
+          expectedVersion: ko.version,
+        });
+        removed += 1;
+        perPage.push({
+          ref: externalId,
+          status: "removed",
+          note: "in der Quelle gelöscht — Wissensobjekt in den Papierkorb gelegt",
+        });
+      } catch (err) {
+        removalOpen += 1;
+        perPage.push({
+          ref: externalId,
+          status: "kept",
+          note: `in der Quelle gelöscht — nicht nachgezogen (${err instanceof Error ? err.name : "unknown"})`,
+        });
+      }
+    }
+  }
+  return { removed, removalKept, candidatesRejected, removalOpen, removalChecked: true };
 }
 
 // Der Dedup-/Vergleichsschlüssel eines Items: provider@externalId@version (Anker, bens F3) bzw.

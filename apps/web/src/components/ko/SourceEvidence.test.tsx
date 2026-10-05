@@ -109,6 +109,8 @@ describe("SourceEvidence", () => {
     await setLanguage("nl");
     const nl = renderMarkup(<SourceEvidence {...props} />);
     expect(nl).toContain("geen bron vastgelegd");
-    expect(nl).toContain("80 % zeker");
+    // UX-27: auch NL verspricht keine Wahrheit mehr (Bestandsabgleich Prüfstatus-Anzeige).
+    expect(nl).toContain("Beoordelingsstand: 80 %");
+    expect(nl).not.toContain("zeker");
   });
 });

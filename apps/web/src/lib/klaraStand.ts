@@ -51,6 +51,12 @@ interface KlaraStandPlugin {
 // es gibt keine zweite Wahrheit neben dem Build. Ohne .git (z. B. Docker-Kontext ohne Repo)
 // bleibt ehrlich nur der Zeitstempel. public/ wird von Vite 1:1 kopiert (kein Transform-Hook für
 // diese Dateien) — deshalb der Ersatz NACH dem Bündeln direkt in dist/.
+//
+// R-1611 (Drei-Datei-Schnitt): das Skript des Fensters liegt seitdem in `taskpane.js`, und dort
+// steht auch `var KLARA_STAND = "__KLARA_STAND__"`. Gestempelt werden deshalb BEIDE Dateien mit
+// demselben Wert; die HTML-Datei trägt den Platzhalter weiter in einem erklärenden Kommentar.
+export const KLARA_STAND_DATEIEN: readonly string[] = ["taskpane.html", "taskpane.js"];
+
 export function klaraStand(): KlaraStandPlugin {
   let ziel: { root: string; outDir: string } | null = null;
   return {
@@ -63,12 +69,17 @@ export function klaraStand(): KlaraStandPlugin {
       if (!ziel) {
         return;
       }
-      const file = resolve(ziel.root, ziel.outDir, "word-addin", "taskpane.html");
-      let html: string;
-      try {
-        html = readFileSync(file, "utf8");
-      } catch {
-        return; // kein word-addin im Build (z. B. abgespeckter Test-Build) — nichts zu stempeln
+      const dateien: Array<{ file: string; inhalt: string }> = [];
+      for (const name of KLARA_STAND_DATEIEN) {
+        const file = resolve(ziel.root, ziel.outDir, "word-addin", name);
+        try {
+          dateien.push({ file, inhalt: readFileSync(file, "utf8") });
+        } catch {
+          // fehlt (z. B. abgespeckter Test-Build ohne word-addin) — an dieser Datei nichts zu stempeln
+        }
+      }
+      if (dateien.length === 0) {
+        return;
       }
       let sha = "";
       try {
@@ -83,7 +94,9 @@ export function klaraStand(): KlaraStandPlugin {
       // replaceAll: der Platzhalter steht auch in erklärenden Kommentaren der Datei — nach dem
       // Stempeln trägt die ausgelieferte Fassung überall denselben Stand (replace() erwischte nur
       // das erste Vorkommen, und das war ein Kommentar).
-      writeFileSync(file, html.replaceAll("__KLARA_STAND__", stamp));
+      for (const { file, inhalt } of dateien) {
+        writeFileSync(file, inhalt.replaceAll("__KLARA_STAND__", stamp));
+      }
     },
   };
 }

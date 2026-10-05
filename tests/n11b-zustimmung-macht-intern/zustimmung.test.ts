@@ -285,14 +285,66 @@ describe("N11b: bestätigte Dokumentzustimmung am echten Router", () => {
       expect(a.gesehen).toEqual([]);
     },
   );
+  // Ben nacharbeit-1: P-N11b setzt für nicht eingestuften Text mit Zustimmung KEINEN gespeicherten
+  // Anker voraus. Bis hierher erwartete Z7 an dieser Stelle die Sperre — das war auftragswidrig.
+  // Alle Z7-Fälle stehen als `it.each`: die Fallakte in tests/ki-anbieterwahl/routing-zwei-attrappen
+  // nummeriert diese Datei nach einfachen Fallköpfen (ohne `.each`); ein neuer Kopf verschöbe jede
+  // folgende Nummer.
+  it.each([
+    ["ohne koId", draftProvenance(undefined)],
+    ["mit nicht auflösbarer koId", draftProvenance(undefined, "nicht-gespeichert")],
+    ["mit nicht auflösbarer draftId", draftProvenance(undefined, undefined, "gibt-es-nicht")],
+    ["ohne Marker (fehlendes Feld)", { source: "draft" }],
+  ] as const)(
+    "Z7 Draft ohne auflösbaren Anker, %s: nicht eingestuft + Zustimmung gilt als intern",
+    async (_fall, provenance) => {
+      const a = await aufbauen();
+      expect((await reasoner(a, "cloud", provenance)).demo).toBe(false);
+      expect(a.gesehen.join("\n")).toContain(TEXT);
+    },
+  );
+  it.each([
+    ["ohne Zustimmung", false, undefined],
+    ["ohne Klara-Bindung", true, {}],
+  ] as const)(
+    "Z7 Gegenprobe %s: nicht eingestuft ohne Anker bleibt gesperrt",
+    async (_fall, zustimmen, bindung) => {
+      const a = await aufbauen(zustimmen);
+      const binding = (bindung ?? a.binding) as Aufbau["binding"];
+      const antwort = await reasoner(a, "unsaved_draft", draftProvenance(undefined), binding);
+      expect(antwort.demo).toBe(true);
+      expect(a.gesehen).toEqual([]);
+    },
+  );
+  it.each(["intern", "vertraulich", "streng_vertraulich"] as const)(
+    "Z7 Gegenprobe ausdrücklich %s ohne Anker: Zustimmung ersetzt den Anker nicht",
+    async (level) => {
+      const a = await aufbauen();
+      expect((await reasoner(a, "unsaved_draft", draftProvenance(level))).demo).toBe(true);
+      expect(a.gesehen).toEqual([]);
+    },
+  );
   it.each([undefined, "nicht-gespeichert"])(
-    "Z7 Draft ohne auflösbaren Anker %s bleibt vertraulich",
+    "Z7 Gegenprobe Bild ohne Anker %s: Zustimmung stuft nicht eingestufte Bilder nicht herab",
     async (koId) => {
       const a = await aufbauen();
-      // KEIN auflösbarer Anker (JOB 2692 D2) — der Mensch sichert, also `unsaved_draft`.
-      expect((await reasoner(a, "unsaved_draft", draftProvenance(undefined, koId))).demo).toBe(
-        true,
-      );
+      const response = await a.app.inject({
+        method: "POST",
+        url: "/api/reasoner/describe",
+        headers: { ...a.headers, ...a.binding },
+        payload: {
+          dataUrl: "data:image/png;base64,iVBORw0KGgoAAAAA",
+          context: TEXT,
+          ...draftProvenance(undefined, koId),
+        },
+      });
+      expect(response.statusCode, response.body).toBe(200);
+      expect(response.json()).toMatchObject({
+        text: null,
+        demo: true,
+        fallbackReason: "confidential",
+      });
+      expect(a.bilder).toEqual([]);
       expect(a.gesehen).toEqual([]);
     },
   );
