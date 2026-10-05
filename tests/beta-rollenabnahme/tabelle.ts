@@ -679,7 +679,7 @@ export const TABELLE: Zeile[] = [
     gruppe: "auditRoutes",
     methode: "GET",
     pfad: "/api/audit",
-    belegstelle: "services/app/src/routes/audit-routes.ts:8",
+    belegstelle: "services/app/src/routes/audit-routes.ts:17",
     tor: "ko.validate",
     erwartet: AB_CONTROLLER,
   },
@@ -1479,7 +1479,27 @@ export const TABELLE: Zeile[] = [
     gruppe: "auditRoutes",
     methode: "GET",
     pfad: "/api/audit/verify",
-    belegstelle: "services/app/src/routes/audit-routes.ts:18",
+    belegstelle: "services/app/src/routes/audit-routes.ts:27",
+    tor: "ko.validate",
+    erwartet: AB_CONTROLLER,
+  },
+  // Aufnahme gesamt-auditprotokoll (R-0613): der Export der Kette. Er hängt beim Abruf einen
+  // `audit.exported`-Eintrag an; die Tür ist dieselbe wie bei `/api/audit`.
+  {
+    gruppe: "auditRoutes",
+    methode: "GET",
+    pfad: "/api/audit/export",
+    belegstelle: "services/app/src/routes/audit-routes.ts:62",
+    tor: "ko.validate",
+    erwartet: AB_CONTROLLER,
+  },
+  // Aufnahme gesamt-auditprotokoll, Lauf 2 (R-0766): Kennungen der Konflikte und Überschneidungen
+  // eines Objekts für dessen Kette — dieselbe Tür wie `/api/audit`.
+  {
+    gruppe: "auditRoutes",
+    methode: "GET",
+    pfad: "/api/audit/ko/:koId/findings",
+    belegstelle: "services/app/src/routes/audit-routes.ts:39",
     tor: "ko.validate",
     erwartet: AB_CONTROLLER,
   },

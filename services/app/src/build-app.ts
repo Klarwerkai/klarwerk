@@ -3234,7 +3234,7 @@ export function buildApp(
   app.register(livewallRoutes({ ko: services.ko, audit: services.audit }, guards));
   // FUNKE F1 (nacht24 Paket 6): „Meine Wirkung" — persönliche Zähler aus eigenen KOs + Audits.
   app.register(impactRoutes({ ko: services.ko, audit: services.audit }, guards));
-  app.register(auditRoutes(services.audit, guards));
+  app.register(auditRoutes(services.audit, guards, [services.conflicts, services.overlaps]));
   // JOB 2692 D1: der KA4-Riegel gilt auch auf /api/reasoner und /describe — DIESELBE Instanz des
   // Ausführungstors wie bei askRoutes oben, kein zweiter Dienst. `capture` kommt aus `services`
   // (Entwurfs-Backstop: die gespeicherte Stufe eines Entwurfs hebt, senkt nie).

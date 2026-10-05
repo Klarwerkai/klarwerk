@@ -220,7 +220,8 @@ export class OverlapService {
       actor,
       action: "overlap.auto-created",
       target: entry.id,
-      payload: { relation: entry.relation, method: detector.method },
+      // R-0766: die beteiligten Objekte stehen im Beleg — die Objektkette ordnet ihn so zu.
+      payload: { relation: entry.relation, method: detector.method, koIds: [entry.koA, entry.koB] },
     });
   }
 
@@ -558,7 +559,12 @@ export class OverlapService {
       closedAt: this.iso(),
     };
     await this.repo.update(saved);
-    await this.audit?.record({ actor, action: "overlap.superseded", target: entry.id, payload });
+    await this.audit?.record({
+      actor,
+      action: "overlap.superseded",
+      target: entry.id,
+      payload: { ...payload, koIds: [entry.koA, entry.koB] },
+    });
   }
 
   // D-AISTATE PAKET 4 (bens V5, aistate-fix3): Revisions-Sweep — analog ConflictService.onKoRevised.
@@ -762,7 +768,7 @@ export class OverlapService {
       actor: by,
       action: "overlap.in-progress",
       target: id,
-      ...(note ? { payload: { note } } : {}),
+      payload: { ...(note ? { note } : {}), koIds: [entry.koA, entry.koB] },
     });
     return saved;
   }
@@ -803,7 +809,13 @@ export class OverlapService {
       closedAt: this.iso(),
     };
     await this.repo.update(saved);
-    await this.audit?.record({ actor: by, action, target: id });
+    // R-0766: die Entscheidung (getrennt lassen, verwandt, Fehlalarm …) nennt beide Objekte.
+    await this.audit?.record({
+      actor: by,
+      action,
+      target: id,
+      payload: { koIds: [entry.koA, entry.koB] },
+    });
     return saved;
   }
 
@@ -1009,6 +1021,14 @@ export class OverlapService {
       }
     }
     return result;
+  }
+
+  // Aufnahme gesamt-auditprotokoll, Lauf 2 (R-0766): wie `ConflictService.idsForKo` — alle
+  // Überschneidungen des Objekts, offen und geschlossen. Belege vor Lauf 1 (`overlap.auto-created`,
+  // `overlap.kept-separate` …) tragen nur die Überschneidungs-Id; erst der gespeicherte Befund kennt
+  // die beiden Objekte.
+  async idsForKo(koId: string): Promise<string[]> {
+    return (await this.repo.all()).filter((e) => e.koA === koId || e.koB === koId).map((e) => e.id);
   }
 
   async badgeCount(): Promise<number> {
