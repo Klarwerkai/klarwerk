@@ -31,6 +31,13 @@ import {
   type OverlapResolutionReason,
 } from "./overlap-types";
 import {
+  CHECKSUM_CANDIDATE_CAP,
+  CHECKSUM_LEXICAL_MARGIN,
+  type CandidateSource,
+  SimilarityChecksumIndex,
+  selectChecksumCandidates,
+} from "./similarity-checksum";
+import {
   type CurrentVersionLookup,
   cachedCurrentVersions,
   isBoundToCurrentVersions,
@@ -86,6 +93,15 @@ export interface OverlapServiceDeps {
   // wird SICHTBAR gemeldet statt still verschluckt. Default: console.error.
   // JOB 3071: derselbe Kanal trägt zusätzlich den Ausfall des Rücknahme-Ports (s. dort).
   onError?: (context: string, error: unknown) => void;
+  // R-0194: die gepflegte Ähnlichkeitsprüfsummen-Ablage (s. similarity-checksum.ts). Ohne Angabe
+  // führt der Dienst eine eigene; Tests übergeben eine, um Anlage/Änderung/Löschung abzulesen.
+  checksums?: SimilarityChecksumIndex;
+}
+
+// R-0194: Herkunft eines Kandidaten im Lauf — reist bis an den detector des Befunds.
+interface CandidateOrigin {
+  sources: CandidateSource[];
+  checksumSimilarity?: number;
 }
 
 interface BuiltOverlap {
@@ -128,9 +144,12 @@ export class OverlapService {
   // JOB 3071 R2: die Frist dieser Auskunft, in Millisekunden (s. Deps).
   private readonly ruecknahmeFrist: number;
   private readonly onError: (context: string, error: unknown) => void;
+  // R-0194: Prüfsumme je Wissensobjekt — Anlage/Änderung über detectForSubject, Löschung über onKoRemoved.
+  readonly checksums: SimilarityChecksumIndex;
 
   constructor(deps: OverlapServiceDeps) {
     this.repo = deps.repo;
+    this.checksums = deps.checksums ?? new SimilarityChecksumIndex();
     this.audit = deps.audit;
     this.now = deps.now ?? (() => Date.now());
     this.genId = deps.genId ?? (() => randomUUID());
@@ -261,6 +280,13 @@ export class OverlapService {
     // die tatsächlichen Vergleiche mit; ein offenes Paar kostet nur seinen Rang, keinen Prüfplatz.
     const cap = options.cap ?? Number.POSITIVE_INFINITY;
     const ranked = selectOverlapCandidates(subject, pool, Number.POSITIVE_INFINITY);
+    // R-0194: die vierte Kandidatenquelle. Pflegt dabei die Prüfsummen von Subjekt (Anlage/Änderung)
+    // und Bestand; schlägt nur vor — verglichen wird unten mit demselben compareCandidate.
+    const byChecksum = selectChecksumCandidates(subject, pool, this.checksums);
+    const checksumOf = new Map<string, number>();
+    for (const c of byChecksum) {
+      checksumOf.set(c.subject.refId, c.similarity);
+    }
     const coverage = options.coverage;
     if (coverage) {
       coverage.available = pool.filter((c) => c.refId !== subject.refId).length;
@@ -311,46 +337,74 @@ export class OverlapService {
       coverage.capped = selected < coverage.available;
     };
     writeCoverage();
+    const seen = new Set<string>();
+    const visit = async (cand: DetectSubject, origin: CandidateOrigin): Promise<void> => {
+      selected += 1;
+      seen.add(cand.refId);
+      // Ein Paar mit bereits OFFENEM Eintrag braucht keinen neuen Vergleich (der Befund steht ja
+      // schon) — es zählt als angesehen, aber NICHT als geprüft und kostet keinen Deckelplatz.
+      if (hasOpenPair(subject.refId, cand.refId, subject.version, cand.version)) {
+        alreadyOpen += 1;
+        writeCoverage();
+        return;
+      }
+      attempted += 1;
+      writeCoverage();
+      // AUFTRAG-mega31 A1 (bens ROT-1): der Vergleich MELDET jetzt seinen Ausgang, statt ihn zu
+      // verschlucken. `modelVerdict` macht aus einem 429/no-model/confidential/Parsefehler ein
+      // `null` (nur ModelCapacityError fliegt weiter) — das kam hier als normaler Rücksprung an
+      // und zählte als abgeschlossen. Die deterministische Ebene kann daneben weiterhin einen
+      // Eintrag anlegen; das ändert nichts daran, dass der KI-Vergleich nicht stattgefunden hat.
+      const outcome = await this.compareCandidate(
+        subject,
+        cand,
+        subjectCore,
+        judge,
+        options,
+        open,
+        created,
+        origin,
+      );
+      if (outcome.status === "skipped") {
+        skipped += 1;
+        if (coverage) {
+          coverage.skippedReasons ??= {};
+          const reasons = coverage.skippedReasons;
+          reasons[outcome.reason] = (reasons[outcome.reason] ?? 0) + 1;
+        }
+      } else {
+        completed += 1;
+      }
+      writeCoverage();
+    };
     try {
       for (const cand of ranked) {
         if (attempted >= cap) {
           break; // Deckel erreicht — alles ab hier blieb ungeprüft und wird auch nicht behauptet.
         }
-        selected += 1;
-        // Ein Paar mit bereits OFFENEM Eintrag braucht keinen neuen Vergleich (der Befund steht ja
-        // schon) — es zählt als angesehen, aber NICHT als geprüft und kostet keinen Deckelplatz.
-        if (hasOpenPair(subject.refId, cand.refId, subject.version, cand.version)) {
-          alreadyOpen += 1;
-          writeCoverage();
+        const similarity = checksumOf.get(cand.refId);
+        await visit(
+          cand,
+          similarity === undefined
+            ? { sources: ["text"] }
+            : { sources: ["text", "pruefsumme"], checksumSimilarity: similarity },
+        );
+      }
+      // R-0194: was die Prüfsumme vorschlägt, der Trigramm-Rang unter dem Deckel aber nicht erreicht
+      // hat, wird ZUSÄTZLICH verglichen — mit eigenem, kleinem Deckel (nur echte Vergleiche zählen)
+      // und nur, wo die Prüfsumme deutlich mehr Nähe sieht als die Feld-gegen-Feld-Deckung.
+      const attemptedByText = attempted;
+      for (const { subject: cand, similarity } of byChecksum) {
+        if (attempted - attemptedByText >= CHECKSUM_CANDIDATE_CAP) {
+          break;
+        }
+        if (seen.has(cand.refId)) {
           continue;
         }
-        attempted += 1;
-        writeCoverage();
-        // AUFTRAG-mega31 A1 (bens ROT-1): der Vergleich MELDET jetzt seinen Ausgang, statt ihn zu
-        // verschlucken. `modelVerdict` macht aus einem 429/no-model/confidential/Parsefehler ein
-        // `null` (nur ModelCapacityError fliegt weiter) — das kam hier als normaler Rücksprung an
-        // und zählte als abgeschlossen. Die deterministische Ebene kann daneben weiterhin einen
-        // Eintrag anlegen; das ändert nichts daran, dass der KI-Vergleich nicht stattgefunden hat.
-        const outcome = await this.compareCandidate(
-          subject,
-          cand,
-          subjectCore,
-          judge,
-          options,
-          open,
-          created,
-        );
-        if (outcome.status === "skipped") {
-          skipped += 1;
-          if (coverage) {
-            coverage.skippedReasons ??= {};
-            const reasons = coverage.skippedReasons;
-            reasons[outcome.reason] = (reasons[outcome.reason] ?? 0) + 1;
-          }
-        } else {
-          completed += 1;
+        if (similarity < lexicalOverlapScore(subject, cand) + CHECKSUM_LEXICAL_MARGIN) {
+          continue;
         }
-        writeCoverage();
+        await visit(cand, { sources: ["pruefsumme"], checksumSimilarity: similarity });
       }
     } catch (err) {
       // SCRUM-498 B2: der Kapazitätsfehler wird bewusst DURCHGEREICHT (503 + Retry-After statt
@@ -386,6 +440,7 @@ export class OverlapService {
     },
     open: OverlapEntry[],
     created: OverlapEntry[],
+    origin: CandidateOrigin,
     // AUFTRAG-mega31 A1: der Rückgabewert ist der AUSGANG des Vergleichs (hat das Modell geurteilt?),
     // nicht „ist ein Eintrag entstanden?". Ein gültiges „verschieden" ist ein Urteil und damit
     // abgeschlossen, obwohl nichts angelegt wird; ein `null` aus einem Providerfehler ist es nicht.
@@ -430,6 +485,10 @@ export class OverlapService {
       ...(built.confidence !== undefined ? { confidence: built.confidence } : {}),
       ...(built.rationale ? { rationale: built.rationale } : {}),
       ...(options.modelLabel && built.method === "model" ? { modelLabel: options.modelLabel } : {}),
+      candidateSources: origin.sources,
+      ...(origin.checksumSimilarity !== undefined
+        ? { checksumSimilarity: origin.checksumSimilarity }
+        : {}),
     };
     // D-AISTATE PAKET 4 (bens V5, aistate-fix5): versions-konditionale Aktivierung — Umfang und
     // ehrliche Grenze der Absicherung s. createAutoVersionBound.
@@ -914,6 +973,10 @@ export class OverlapService {
     ruecknahme?: { zurueckgezogenVon: string | null },
   ): Promise<number> {
     const at = this.iso();
+    // R-0194: die Prüfsumme des entfernten Beitrags geht mit — weicher wie harter Löschweg rufen
+    // genau diesen Haken. Prozesslokal und vor jeder Anweisung: ein späterer Rollback lässt den
+    // Beitrag stehen, und dessen Prüfsumme rechnet der nächste Lauf aus dem Bestand nach.
+    this.checksums.remove(koId);
     // JOB 3071: EINMAL je Löschung, VOR der Anweisung — der Grund gilt für alle Befunde dieses
     // Vorgangs, so wie der Zeitstempel. `await` hier und nicht nebenläufig: es wird nichts
     // geschrieben, solange die Auskunft nicht da ist (Auftrag §9, „noch nicht ermittelt").
