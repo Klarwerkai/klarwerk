@@ -708,6 +708,14 @@ function belegSchluessel(record: Omit<EvidenceRecord, "id">): string {
     : `attachment:${record.attachmentId ?? ""}`;
 }
 
+/**
+ * Wie viele Projektionszeilen die Hash-Prüfung des Starts gleichzeitig anfragt (`hashIntegritaet`).
+ * Kein Sollwert und keine Frist: die Anfragen reihen sich ohnehin in den Verbindungspool ein; der
+ * Block begrenzt nur, wie viele auf einmal ausstehen und wie viel nach einem frühen Befund noch
+ * unnötig nachläuft.
+ */
+const HASH_PRUEFBLOCK = 100;
+
 export class KoService {
   private readonly repo: KoRepo;
   private readonly audit: AuditService | undefined;
@@ -1596,20 +1604,36 @@ export class KoService {
    * einzige Zusage, die das beantworten kann, ohne den ganzen Text zu vergleichen — und er ist
    * bewusst zeitfrei (der Zeitstempel geht nicht ein), sonst wäre jede Neuableitung ein Unterschied.
    */
+  //
+  // K16 / R-1006 (Aufnahme Suchraum, Nacharbeit 32 — gemessen, nicht geschätzt): diese Prüfung
+  // läuft bei JEDEM Start im `onReady`-Pfad (Entscheidung 06 §3). Bis hierher holte sie die
+  // Projektionszeile JE OBJEKT mit einer eigenen, abgewarteten Anfrage — 100.000 Objekte, 100.000
+  // Rundreisen hintereinander. Gemessen im K16-Lauf (HISTORIE/nacharbeit-32): 10.457 ms allein für
+  // `searchProjectionReadiness`, Ergebnis `alle: true`; Fastifys Startfrist von 10 s riss, die App
+  // wurde auf einem GESUNDEN Bestand nie bereit. Jetzt werden die Zeilen blockweise gleichzeitig
+  // geholt und danach in derselben Reihenfolge geprüft wie vorher. Die Aussage ist zeichengleich:
+  // fehlende Zeile oder abweichender Hash → `false` (die erste in Bestandsreihenfolge), sonst
+  // `true`; ein Datenbankfehler wirft wie bisher. Keine Frist, keine Prüfung und kein Kriterium
+  // ist verändert — nur die Rundreisen laufen nicht mehr einzeln hintereinander.
   private async hashIntegritaet(): Promise<boolean> {
-    for (const ko of await this.repo.list({})) {
-      if (ko.deletedAt) {
-        continue;
-      }
-      const alt = await this.searchProjections.find(ko.id, ko.version);
-      if (!alt) {
-        return false;
-      }
-      const frisch = buildSearchProjection(ko, alt.updatedAt, {
-        classification: alt.classificationSnapshot,
-      });
-      if (frisch.contentHash !== alt.contentHash) {
-        return false;
+    const lebend = (await this.repo.list({})).filter((ko) => !ko.deletedAt);
+    for (let start = 0; start < lebend.length; start += HASH_PRUEFBLOCK) {
+      const block = lebend.slice(start, start + HASH_PRUEFBLOCK);
+      const zeilen = await Promise.all(
+        block.map((ko) => this.searchProjections.find(ko.id, ko.version)),
+      );
+      for (let i = 0; i < block.length; i += 1) {
+        const ko = block[i] as KnowledgeObject;
+        const alt = zeilen[i];
+        if (!alt) {
+          return false;
+        }
+        const frisch = buildSearchProjection(ko, alt.updatedAt, {
+          classification: alt.classificationSnapshot,
+        });
+        if (frisch.contentHash !== alt.contentHash) {
+          return false;
+        }
       }
     }
     return true;
