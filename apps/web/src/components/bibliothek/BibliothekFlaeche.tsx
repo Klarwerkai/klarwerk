@@ -541,7 +541,31 @@ export function BibliothekFlaeche({
     );
   }, [facetSel, range, setParams, urlSeed]);
 
-  const all = useKos();
+  const conflicts = useConflicts();
+  const debouncedQ = useDebouncedValue(q, LIBRARY_SEARCH_DEBOUNCE_MS);
+  const query = useLibrarySearch(buildLibraryQuery({ ...EMPTY_LIBRARY_FILTER, q: debouncedQ }));
+  const trimmedQ = q.trim();
+  // Eine Auswahl ohne zu prüfenden Wert braucht gar keinen Bestand — sie darf nicht warten (sonst
+  // wartete JEDER Besuch der Bibliothek auf den Bestandsabruf, auch ohne Filter in der Adresse).
+  const keimBrauchtBestand = urlSeed !== null && facetSelectionNeedsKnownValues(urlSeed);
+  // K1 / NFR-PERF-01 (Nacharbeit 28, Lauf HISTORIE/nacharbeit-28): die Erstanzeige bei 10.001
+  // Objekten lag bei 1.075 ms. Die Ladekette zeigt WO: `/api/library/search` (6,8 MB, allein ~75 ms)
+  // lief von 449 bis 923 ms, weil im selben Augenblick dieser Abruf des GANZEN Bestands
+  // (`/api/kos`, 19,3 MB) auf denselben Server ging — die Liste wartete auf eine Antwort, die sie für
+  // die Erstanzeige nicht braucht. Der Bestand dient hier (1) der Wertprüfung eines Adresskeims und
+  // (2) der erhobenen Zustandsauskunft (`auskunftFuer`), die ohne ihn ausdrücklich auf das
+  // Suchobjekt zurückfällt (s. unten, „OHNE `all.data`"). Er wird deshalb ERST abgerufen, wenn die
+  // Suche geantwortet hat (oder gescheitert ist) — sofort dagegen, wenn ein Adresskeim auf ihn
+  // wartet, denn dort hält die Liste ohnehin an (JOB 3115, unverändert). Einmal freigegeben, bleibt
+  // er es für diese Montage: ein neuer Suchbegriff schaltet ihn nicht wieder ab.
+  const sucheBeantwortet = query.data !== undefined || query.isError;
+  const [bestandFreigegeben, setBestandFreigegeben] = useState(sucheBeantwortet);
+  useEffect(() => {
+    if (sucheBeantwortet) {
+      setBestandFreigegeben(true);
+    }
+  }, [sucheBeantwortet]);
+  const all = useKos(undefined, bestandFreigegeben || sucheBeantwortet || keimBrauchtBestand);
   // ================================================================================================
   // JOB 3115 · UX-02b — DIE WERTPRÜFUNG WARTET AUF EINEN BESTÄTIGTEN BESTAND, NICHT AUF IRGENDEINEN.
   // ================================================================================================
@@ -580,9 +604,6 @@ export function BibliothekFlaeche({
     all.data !== undefined &&
     !all.isFetching &&
     (!all.isStale || all.dataUpdatedAt > standBeimMontieren.current);
-  // Eine Auswahl ohne zu prüfenden Wert braucht gar keinen Bestand — sie darf nicht warten (sonst
-  // wartete JEDER Besuch der Bibliothek auf den Bestandsabruf, auch ohne Filter in der Adresse).
-  const keimBrauchtBestand = urlSeed !== null && facetSelectionNeedsKnownValues(urlSeed);
   useEffect(() => {
     const seed = urlSeed;
     if (seed === null) {
@@ -615,11 +636,6 @@ export function BibliothekFlaeche({
   // volle Liste zu machen wäre die zu starke Aussage (dieselbe Begründung, mit der `origin` in
   // `libraryUrlFilters.ts` von der Prüfung ausgenommen ist).
   const wirksameAuswahl = urlSeed ?? facetSel;
-
-  const conflicts = useConflicts();
-  const debouncedQ = useDebouncedValue(q, LIBRARY_SEARCH_DEBOUNCE_MS);
-  const query = useLibrarySearch(buildLibraryQuery({ ...EMPTY_LIBRARY_FILTER, q: debouncedQ }));
-  const trimmedQ = q.trim();
 
   const facetBase = useMemo(() => {
     const now = Date.now();
