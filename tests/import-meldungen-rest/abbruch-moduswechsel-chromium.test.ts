@@ -95,6 +95,31 @@ const MARKIERTE_REGION_TRAEGT = `(s) => {
   return r !== null && (r.textContent || '').replace(/\\s+/g, ' ').includes(s);
 }`;
 
+/** Tippt die erste nicht importierende Kachel an — sie meldet ihren Hinweis in dieselbe Region. */
+const KACHEL_ANTIPPEN = `() => {
+  const k = [...document.querySelectorAll('button[data-id][data-state]')].find(
+    (b) => b.getAttribute('data-state') !== 'active',
+  );
+  if (!k) {
+    return false;
+  }
+  k.click();
+  return true;
+}`;
+
+/** Der Text der Ablehnungsregion — `null`, wenn es sie nicht gibt. */
+const REGION_TEXT = `() => {
+  const r = document.querySelector('[data-testid="capture-datei-meldung"]');
+  return r ? (r.textContent || '').replace(/\\s+/g, ' ').trim() : null;
+}`;
+
+/** Wartet, bis die Region einen Kachelhinweis trägt (nicht leer, nicht die Größenablehnung). */
+const REGION_TRAEGT_HINWEIS = `(ablehnung) => {
+  const r = document.querySelector('[data-testid="capture-datei-meldung"]');
+  const text = r ? (r.textContent || '').replace(/\\s+/g, ' ').trim() : '';
+  return text.length > 0 && text !== ablehnung;
+}`;
+
 /** Ein Ganzdokument über der Client-Grenze — dieselbe Grösse wie im jsdom-Fall von JOB 3379. */
 const RIESE = "abbruch-zu-gross.txt";
 
@@ -156,6 +181,33 @@ function keineQuittung(text: string, name: string): void {
       satz(key, { name, chars: ZEICHEN }),
     );
   }
+}
+
+/** Kachelhinweis setzen und warten, bis er in der Region steht; zurück kommt sein Text. */
+async function kachelhinweisSetzen(ablehnung: string): Promise<string> {
+  const angetippt = await seite.evaluate<boolean>(fn(KACHEL_ANTIPPEN));
+  expect(angetippt, "keine Kachel ohne Import im Arbeitsraum").toBe(true);
+  await seite.waitForFunction(fn(REGION_TRAEGT_HINWEIS), ablehnung, {
+    timeout: wartebudget("zeigerklick"),
+  });
+  return (await seite.evaluate<string | null>(fn(REGION_TEXT))) ?? "";
+}
+
+/** Nach dem Speichern: die Ablehnung allein in der Region, der ältere Hinweis nirgends angesagt. */
+async function ablehnungGewinnt(zuGross: string, hinweis: string): Promise<void> {
+  await aufLiveMeldungWarten(seite, zuGross);
+  const region = await seite.evaluate<string | null>(fn(REGION_TEXT));
+  expect(region, "Region nach dem Speichern").toBe(zuGross);
+  const regionen = await liveregionen(seite);
+  const alt = regionen.filter((r) => r.text.includes(hinweis));
+  expect(alt, `älterer Hinweis noch angesagt: ${JSON.stringify(alt)}`).toEqual([]);
+  const traeger = regionen.filter((r) => r.text.includes(zuGross)).map((r) => r.marke);
+  expect(traeger, `Ansagen: ${JSON.stringify(regionen)}`).toHaveLength(1);
+  expect(traeger[0]).toContain("capture-datei-meldung");
+  expect(await seite.evaluate<boolean>(fn(MARKIERTE_REGION_TRAEGT), zuGross)).toBe(true);
+  const text = await flaeche(seite);
+  expect(text.split(zuGross).length - 1, "die Ablehnung steht mehrfach da").toBe(1);
+  expect(text, "Datei weg").toContain(satz(T.wholeSourceNote, { name: RIESE }));
 }
 
 beforeAll(async () => {
@@ -287,6 +339,40 @@ describe("K4 · R-0120 — der Größenabbruch in der vollständigen Anwendung",
       expect(text.split(zuGross).length - 1, "die Ablehnung steht mehrfach da").toBe(1);
       // Die eingelesene Datei bleibt, und die eigene Eingabe auch.
       expect(text).toContain(satz(T.wholeSourceNote, { name: RIESE }));
+      await dateiwegSchliessen(seite);
+      expect(await blatt(), "Eingabe nach dem Größenabbruch").toBe(vorher);
+      expect(b.seitenfehler, `Seitenfehler: ${JSON.stringify(b.seitenfehler)}`).toEqual([]);
+    },
+    FALL_RAHMEN_MS,
+  );
+
+  // NACHARBEIT 2 (Befund Ben): Kachelhinweis ZUERST, Größenablehnung DANACH — die jüngere Ursache
+  // muss gewinnen. Und dasselbe ein zweites Mal mit WORTGLEICHER Ablehnung: auch sie ist neu.
+  it(
+    "Kachelhinweis, dann Größenablehnung (zweimal): die jüngste Ursache steht allein da",
+    async () => {
+      expect(b.fehler, "Bühne nicht aufgebaut").toBeNull();
+      const vorher = await eigeneEingabeSchreiben();
+      await dateiwegOeffnen(seite);
+      await ganzdokumentWaehlen(seite);
+      await dateiUeberSichtbareAuswahl(seite, dateiAnlage(RIESE, "A".repeat(4_500_000)));
+      await aufEingelesenWarten(seite, RIESE);
+      const zuGross = satz(T.tooLargeForImport);
+      expect(await seite.evaluate<boolean>(fn(REGION_MARKIEREN)), "Region fehlt").toBe(true);
+
+      // Runde 1: der Hinweis steht in der Region, dann wird gespeichert.
+      const hinweis = await kachelhinweisSetzen(zuGross);
+      expect(hinweis.length, "kein Kachelhinweis in der Region").toBeGreaterThan(0);
+      expect(await speichernDruecken(seite), "Speichern-Knopf nicht betätigbar").toBe(true);
+      await ablehnungGewinnt(zuGross, hinweis);
+
+      // Runde 2: dieselbe Kachel schliesst ihren Hinweis beim ersten Tippen und öffnet ihn beim
+      // zweiten wieder — danach dieselbe, wortgleiche Ablehnung.
+      await seite.evaluate<boolean>(fn(KACHEL_ANTIPPEN));
+      expect(await kachelhinweisSetzen(zuGross)).toBe(hinweis);
+      expect(await speichernDruecken(seite), "Speichern-Knopf nicht betätigbar").toBe(true);
+      await ablehnungGewinnt(zuGross, hinweis);
+
       await dateiwegSchliessen(seite);
       expect(await blatt(), "Eingabe nach dem Größenabbruch").toBe(vorher);
       expect(b.seitenfehler, `Seitenfehler: ${JSON.stringify(b.seitenfehler)}`).toEqual([]);

@@ -301,6 +301,36 @@ describe("K4 · R-0120 am ganzen Arbeitsraum: hörbar, einmal, die jüngste Ursa
     expect(liveTraeger(hinweis), "der ältere Kachelhinweis wird weiter angesagt").toEqual([]);
   });
 
+  // Nacharbeit 2 (Befund Ben): die Größenablehnung kommt NACH einem Kachelhinweis und muss ihn
+  // ablösen — auch ein zweites Mal mit wortgleichem Satz.
+  it("Kachelhinweis, dann Größenablehnung (zweimal): die jüngste Ursache gewinnt", async () => {
+    await mount();
+    await click(modusKarte(T.importModeWhole));
+    await dateiEinlesen(TXT, "A".repeat(4_500_000));
+    const zuGross = satzIn("de", "tooLargeForImport");
+    const kachel = nichtImportierendeKachel();
+    await click(kachel);
+    const hinweis = meldungsfeld();
+    expect(hinweis.length, "kein Kachelhinweis in der Region").toBeGreaterThan(0);
+    expect(hinweis).not.toBe(zuGross);
+    for (const runde of [1, 2]) {
+      if (runde === 2) {
+        // Dieselbe Kachel schliesst ihren Hinweis beim ersten Tippen und öffnet ihn beim zweiten.
+        await click(kachel);
+        await click(kachel);
+        expect(meldungsfeld(), "Runde 2: Hinweis vor dem Speichern").toBe(hinweis);
+      }
+      await click(buttonByText(txt(T.wholeCta)));
+      expect(meldungsfeld(), `Runde ${runde}: Region nach dem Speichern`).toBe(zuGross);
+      expect(liveTraeger(hinweis), `Runde ${runde}: alter Hinweis angesagt`).toEqual([]);
+      expect(liveTraeger(zuGross), `Runde ${runde}: Zahl der Ansagen`).toHaveLength(1);
+      expect(pageText().split(zuGross).length - 1, `Runde ${runde}: doppelt`).toBe(1);
+      expect(sichtbar()).toContain(txt(T.wholeSourceNote, { name: TXT }));
+    }
+    expect(endpoints.objects.upload).not.toHaveBeenCalled();
+    expect(endpoints.drafts.create).not.toHaveBeenCalled();
+  });
+
   it("eine danach unterstützte Datei räumt die Ansage", async () => {
     await mount();
     await dateiEinlesen(BIN);

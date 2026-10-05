@@ -97,9 +97,14 @@ Ergebnis: **10 erreichbar, 1 ersetzt, 28 weiterhin unbewiesen.**
   unverändert. Gegenprobe: `abbruch-moduswechsel-chromium.test.ts` (K4, vollständige Anwendung samt
   Toast-Ausgabe: genau ein Träger, die vorher markierte Region, einmal auf der Fläche, Datei und
   Eingabe erhalten) und die jsdom-Zuordnung in `acht-meldungen-drei-sprachen.test.tsx`.
-- **Grenze:** `CaptureFileImport` zeigt `meldung ?? importMeldung`. Hat der Mensch NACH der
-  Dateiwahl eine nicht importierende Kachel angetippt, verdeckt deren Hinweis eine danach folgende
-  Größenablehnung. Nicht gemessen, nicht geändert (das Bauteil ist geteilt).
+- **Nacharbeit 2 (Befund Ben, behoben):** `CaptureFileImport` zeigte `meldung ?? importMeldung`;
+  ein Kachelhinweis verdeckte eine danach folgende Größenablehnung vollständig. Jetzt gewinnt die
+  zeitlich jüngste Ursache: jede Ablehnung des Import-Wegs trägt eine laufende Nummer
+  (`Capture.tsx`, `importMeldungNr`), und die eigene Meldung der Fläche gilt nur, solange seit ihrem
+  Setzen keine neue Ablehnung kam. Gegenprobe: Kachelhinweis → Größenablehnung, zweimal (auch
+  wortgleich), in jsdom (`acht-meldungen-drei-sprachen.test.tsx`) und in Chromium
+  (`abbruch-moduswechsel-chromium.test.ts`): Ablehnung genau einmal in der vorher montierten Region,
+  alter Hinweis nicht mehr angesagt, Datei und Eingabe erhalten.
 
 ## K5 — R-0152 (Größengrenze vor der Auswahl)
 
