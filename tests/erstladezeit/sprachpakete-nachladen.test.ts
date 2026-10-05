@@ -7,9 +7,11 @@
 // ging und dass die Oberfläche die Pakete zur Laufzeit wirklich bekommt. Das prüft diese Datei:
 //
 //   S · DER SCHNITT, am echten `apps/web/src/i18n.ts` und mit GENAU DEM Plugin, das `vite.config.ts`
-//       einträgt (`sprachpaketeNachladen`). Jeder Paketrumpf ist ein wörtlicher Ausschnitt der
-//       Quelle, trägt dieselben Schlüssel wie Deutsch, und der Rest der Datei behält Zeile für Zeile
-//       seine Nummer. Fehlt ein Anker, bricht das Plugin ab, statt still alles im Eintritt zu lassen.
+//       einträgt (`sprachpaketeNachladen`). Seit der I18N-AUFTEILUNG stehen die Blöcke in
+//       `apps/web/src/woerterbuch/{de,en,nl}.ts`; das Plugin nimmt die Importe von en und nl aus
+//       `i18n.ts`. Jeder Paketrumpf ist ein wörtlicher Ausschnitt SEINER Sprachdatei, trägt dieselben
+//       Schlüssel wie Deutsch, und `i18n.ts` behält Zeile für Zeile seine Nummer. Fehlt ein Anker,
+//       bricht das Plugin ab, statt still alles im Eintritt zu lassen.
 //   N · DER NACHLADER (`lib/sprachNachlader.ts`) an einem echten i18next: Deutsch startet ohne
 //       Warten, ein Wechsel stellt erst um, wenn das Paket da ist, ein Fehlschlag fällt auf Deutsch
 //       zurück, statt abzubrechen.
@@ -26,11 +28,24 @@ import { describe, expect, it } from "vitest";
 import { createInstance } from "../../apps/web/node_modules/i18next";
 import { sprachNachlader } from "../../apps/web/src/lib/sprachNachlader";
 import { basisSchluesselAusQuelltext } from "../../apps/web/src/texte/intern/pruefung";
-import { sprachpaketeNachladen } from "../../apps/web/src/texte/intern/sprachpakete";
+import {
+  sprachpaketAus,
+  sprachpaketeNachladen,
+} from "../../apps/web/src/texte/intern/sprachpakete";
 
 const WEB = resolve(__dirname, "..", "..", "apps", "web");
 const I18N = join(WEB, "src", "i18n.ts");
 const QUELLE = readFileSync(I18N, "utf8");
+const SPRACHDATEI = {
+  de: readFileSync(join(WEB, "src", "woerterbuch", "de.ts"), "utf8"),
+  en: readFileSync(join(WEB, "src", "woerterbuch", "en.ts"), "utf8"),
+  nl: readFileSync(join(WEB, "src", "woerterbuch", "nl.ts"), "utf8"),
+} as const;
+const IMPORT = {
+  de: 'import { de } from "./woerterbuch/de";',
+  en: 'import { en } from "./woerterbuch/en";',
+  nl: 'import { nl } from "./woerterbuch/nl";',
+} as const;
 const PAKET_ID = {
   en: join(WEB, "src", "i18n.sprachpaket.en.js"),
   nl: join(WEB, "src", "i18n.sprachpaket.nl.js"),
@@ -64,12 +79,11 @@ function paket(sprache: "en" | "nl"): string {
 describe("S · der Schnitt am echten i18n.ts", () => {
   it("S1 en und nl verlassen die Eintrittsdatei, Deutsch bleibt, keine Zeile verrutscht", () => {
     const eintritt = geschnitten();
-    expect(QUELLE, "Vorbedingung: die Quelle trägt beide Blöcke").toContain(
-      "\nconst en: typeof de = {\n",
-    );
-    expect(eintritt).not.toContain("\nconst en: typeof de = {\n");
-    expect(eintritt).not.toContain("\nconst nl: typeof de = {\n");
-    expect(eintritt, "das deutsche Wörterbuch bleibt im Eintritt").toContain("\nconst de = {\n");
+    expect(QUELLE, "Vorbedingung: die Quelle importiert beide Sprachen").toContain(IMPORT.en);
+    expect(QUELLE).toContain(IMPORT.nl);
+    expect(eintritt).not.toContain(IMPORT.en);
+    expect(eintritt).not.toContain(IMPORT.nl);
+    expect(eintritt, "das deutsche Wörterbuch bleibt im Eintritt").toContain(IMPORT.de);
     expect(eintritt.split("\n").length, "Leerzeilen statt Block: die Zeilenzahl bleibt").toBe(
       QUELLE.split("\n").length,
     );
@@ -80,16 +94,17 @@ describe("S · der Schnitt am echten i18n.ts", () => {
     );
   });
 
-  it("S2 jedes Paket ist ein wörtlicher Ausschnitt der Quelle mit den Importen seiner Spreads", () => {
+  it("S2 jedes Paket ist ein wörtlicher Ausschnitt seiner Sprachdatei mit den Importen seiner Spreads", () => {
     for (const sprache of ["en", "nl"] as const) {
       const code = paket(sprache);
       const kopf = "export default {\n";
       const rumpf = code.slice(code.indexOf(kopf) + kopf.length, code.length - "};\n".length);
       expect(code.indexOf(kopf), `${sprache}: kein Standardexport`).toBeGreaterThanOrEqual(0);
       expect(code.endsWith("\n};\n"), `${sprache}: das Objekt ist nicht geschlossen`).toBe(true);
-      expect(QUELLE.includes(`\nconst ${sprache}: typeof de = {\n${rumpf}};\n`), sprache).toBe(
-        true,
-      );
+      expect(
+        SPRACHDATEI[sprache].includes(`\nconst ${sprache}: typeof de = {\n${rumpf}};\n`),
+        sprache,
+      ).toBe(true);
       const spread = sprache === "en" ? "lesevarianteTexteEn" : "lesevarianteTexteNl";
       expect(code).toContain(`import { ${spread} } from "./lib/lesevariante";`);
     }
@@ -100,11 +115,11 @@ describe("S · der Schnitt am echten i18n.ts", () => {
   });
 
   it("S3 kein Schlüssel geht verloren: en, nl und der verbliebene Grundbestand sind gleich", () => {
-    const deutsch = basisSchluesselAusQuelltext([geschnitten()]);
-    const vorher = basisSchluesselAusQuelltext([QUELLE]);
+    // Der Grundbestand, aus dem die Textmodul-Prüfung schöpft, ist das deutsche Wörterbuch — und
+    // das bleibt im Eintritt (S1: sein Import steht nach dem Schnitt unverändert da).
+    const deutsch = basisSchluesselAusQuelltext([SPRACHDATEI.de]);
     expect(deutsch.size, "keine Schlüssel gefunden").toBeGreaterThan(1000);
-    // Der Grundbestand, aus dem die Textmodul-Prüfung schöpft, bleibt derselbe.
-    expect([...deutsch].sort()).toEqual([...vorher].sort());
+    expect(geschnitten().split(IMPORT.de)).toHaveLength(2);
     for (const sprache of ["en", "nl"] as const) {
       const schluessel = basisSchluesselAusQuelltext([paket(sprache)]);
       expect([...schluessel].sort(), `${sprache} trägt andere Schlüssel als de`).toEqual(
@@ -132,9 +147,14 @@ describe("S · der Schnitt am echten i18n.ts", () => {
     );
     expect(ohneZeile).not.toBe(QUELLE);
     expect(() => geschnitten(ohneZeile)).toThrow(/Anker[\s\S]*Bau abgebrochen/);
-    const ohneBlock = QUELLE.replace("\nconst nl: typeof de = {\n", "\nconst nl = {\n");
-    expect(ohneBlock).not.toBe(QUELLE);
-    expect(() => geschnitten(ohneBlock)).toThrow(/Anker[\s\S]*Bau abgebrochen/);
+    const ohneImport = QUELLE.replace(IMPORT.nl, 'import { nl } from "./woerterbuch/nl.ts";');
+    expect(ohneImport).not.toBe(QUELLE);
+    expect(() => geschnitten(ohneImport)).toThrow(/Anker[\s\S]*Bau abgebrochen/);
+    // Und an der Sprachdatei selbst: ohne ihren Blockkopf entsteht kein (leeres) Paket.
+    const ohneBlock = SPRACHDATEI.nl.replace("\nconst nl: typeof de = {\n", "\nconst nl = {\n");
+    expect(ohneBlock).not.toBe(SPRACHDATEI.nl);
+    expect(() => sprachpaketAus("nl", ohneBlock)).toThrow(/Anker[\s\S]*Bau abgebrochen/);
+    expect(() => sprachpaketAus("nl", SPRACHDATEI.nl)).not.toThrow();
   });
 });
 
