@@ -234,9 +234,11 @@ ${SICHTBARKEIT}
       satz: feld(li, "p:first-of-type"),
       herkunft: feld(li, '[data-testid="wb-herkunft"]'),
       fassung: feld(li, '[data-testid="wb-fassung"]'),
-      // Die Urheberzeile traegt kein eigenes Testkennzeichen; sie ist das erste span der
-      // Fusszeile NACH dem Herkunftsetikett (WissensbeziehungenBereich.tsx:622-624).
-      urheber: feld(li, '[data-testid="wb-herkunft"] + span'),
+      // Die Urheberzeile traegt kein eigenes Testkennzeichen. Seit JOB 4356 steht zwischen
+      // Herkunftsetikett und Urheberzeile das Statusetikett wb-status („Status: gilt"); die
+      // Urheberzeile ist das span direkt NACH dem Statusetikett (WissensbeziehungenBereich.tsx,
+      // Fusszeile der Kachel). Vorher las dieser Waehler das Statusetikett als Urheber.
+      urheber: feld(li, '[data-testid="wb-status"] + span'),
       // GERENDERT, nicht im Baum: ein ausgeblendetes Feld kommt in innerText nicht vor.
       text: sauber(li.innerText),
       sichtbar: sichtbar(li),
@@ -1123,7 +1125,7 @@ describe("JOB 4305 · Wissensbeziehungen nach dem Produkt-Restore im echten Brow
         ],
         [
           "die Urheberzeile",
-          '[data-testid="wb-herkunft"] + span',
+          '[data-testid="wb-status"] + span',
           "visibility",
           "die Urheberzeile der Kachel",
         ],

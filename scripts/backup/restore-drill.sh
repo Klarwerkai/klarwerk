@@ -336,6 +336,8 @@ PFLICHTTABELLEN=(
   ko_bearbeitungen
   dokument_fassungen
   confluence_import_schalter
+  management_category_profiles
+  management_retirement_horizons
 )
 FEHLENDE_TABELLEN=()
 for tabelle in "${PFLICHTTABELLEN[@]}"; do

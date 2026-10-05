@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   existsSync,
@@ -291,8 +291,17 @@ describe("B3 · Wächter des Drills gegen die reale PostgreSQL-Strecke", () => {
     return { status: r.status, ausgabe: `${r.stdout ?? ""}${r.stderr ?? ""}` };
   }
 
-  /** Der UNVERÄNDERTE Drill; `zusatz` setzt oder entfernt (undefined) einzelne Umgebungswerte. */
-  function fahreDrill(
+  /**
+   * Der UNVERÄNDERTE Drill; `zusatz` setzt oder entfernt (undefined) einzelne Umgebungswerte.
+   *
+   * ASYNCHRON, NICHT `spawnSync` (Nacharbeit 3): L1 wartet im Drill bis zu 60 s auf eine PID-Datei,
+   * die nie kommt. Ein synchroner Aufruf blockierte so lange die Ereignisschleife des Testarbeiters;
+   * das Protokoll zeigte drei `onTaskUpdate`-Zeitüberschreitungen und einen Bericht mit noch
+   * laufenden Fällen. Der Drill wird deshalb mit `spawn` gestartet und VOLLSTÄNDIG abgewartet
+   * (`close`: Prozess beendet UND beide Ausgabeströme leer). Zeitgrenze (600 s, dann SIGTERM wie bei
+   * `spawnSync`), Ausgabe (stdout, dann stderr) und Exitcode bleiben dieselben.
+   */
+  async function fahreDrill(
     v: Verbindung,
     ziel: string,
     port: number,
@@ -313,20 +322,35 @@ describe("B3 · Wächter des Drills gegen die reale PostgreSQL-Strecke", () => {
       DRILL_LOGIN_PASSWORT: PASSWORT,
       ...zusatz,
     };
-    env.KLARWERK_DATABASE_URL = undefined;
-    env.DATABASE_URL = undefined;
+    delete env.KLARWERK_DATABASE_URL;
+    delete env.DATABASE_URL;
     for (const [schluessel, wert] of Object.entries(zusatz)) {
       if (wert === undefined) {
         delete env[schluessel];
       }
     }
-    const r = spawnSync("bash", [join(root, "scripts/backup/restore-drill.sh"), dump], {
-      cwd: root,
-      encoding: "utf8",
-      timeout: 600_000,
-      env,
-    });
-    const ausgabe = `${r.stdout ?? ""}${r.stderr ?? ""}`;
+    const r = await new Promise<{ status: number | null; stdout: string; stderr: string }>(
+      (fertig, scheitere) => {
+        const kind = spawn("bash", [join(root, "scripts/backup/restore-drill.sh"), dump], {
+          cwd: root,
+          env,
+          timeout: 600_000,
+        });
+        let stdout = "";
+        let stderr = "";
+        kind.stdout.setEncoding("utf8");
+        kind.stderr.setEncoding("utf8");
+        kind.stdout.on("data", (d: string) => {
+          stdout += d;
+        });
+        kind.stderr.on("data", (d: string) => {
+          stderr += d;
+        });
+        kind.once("error", scheitere);
+        kind.once("close", (status) => fertig({ status, stdout, stderr }));
+      },
+    );
+    const ausgabe = `${r.stdout}${r.stderr}`;
     return {
       status: r.status,
       ausgabe,
@@ -418,7 +442,7 @@ describe("B3 · Wächter des Drills gegen die reale PostgreSQL-Strecke", () => {
     }
     const falsch = `falsch-${kennung}-Drill`;
     const port = await freierPort();
-    const lauf = fahreDrill(verbindung, zielDbAnmeldung, port, join(arbeitsordner, "u4"), {
+    const lauf = await fahreDrill(verbindung, zielDbAnmeldung, port, join(arbeitsordner, "u4"), {
       PGUSER: `b3_rolle_gibt_es_nicht_${kennung}`,
       PGPASSWORD: falsch,
     });
@@ -447,7 +471,7 @@ describe("B3 · Wächter des Drills gegen die reale PostgreSQL-Strecke", () => {
     const arbeit = join(arbeitsordner, "l1");
     // Produktion OHNE `APP_BASE_URL`: der Startvertrag (`services/app/src/start-vertrag.ts`) wirft
     // als erste Anweisung von `start()`, der Prozess endet mit „Serverstart fehlgeschlagen".
-    const lauf = fahreDrill(verbindung, zielDbLauncher, port, arbeit, {
+    const lauf = await fahreDrill(verbindung, zielDbLauncher, port, arbeit, {
       NODE_ENV: "production",
       APP_BASE_URL: undefined,
     });
@@ -484,7 +508,7 @@ describe("B3 · Wächter des Drills gegen die reale PostgreSQL-Strecke", () => {
     const protokoll = join(arbeit, "taub.protokoll");
     const vorhandeneOptionen = process.env.NODE_OPTIONS ?? "";
 
-    const lauf = fahreDrill(verbindung, zielDbAbbau, port, arbeit, {
+    const lauf = await fahreDrill(verbindung, zielDbAbbau, port, arbeit, {
       NODE_OPTIONS: `${vorhandeneOptionen} --require ${vorlade}`.trim(),
       WAECHTER_TAUB_PROTOKOLL: protokoll,
     });
