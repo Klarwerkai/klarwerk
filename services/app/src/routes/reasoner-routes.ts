@@ -35,11 +35,21 @@ function normalizeLocale(value: unknown): ReasonerLocale {
 }
 
 // N11b: Nicht eingestufter draft/transient-document-Text erreicht die Cloud nur mit bestätigter
-// KA4-Dokumentzustimmung; gespeicherte Vertraulichkeit und der Draft-Ankerriegel bleiben wirksam.
+// KA4-Dokumentzustimmung; gespeicherte Vertraulichkeit bleibt wirksam. Der Draft-Ankerriegel gilt
+// weiter für eingestuften Text und Bilder — nicht eingestufter Text mit Zustimmung braucht keinen Anker.
 // koId/draftId heben ausschließlich die Stufe; source:"ko" gibt frei gelieferten Text nie frei.
 export type StoredLookup = { found: boolean; level?: Confidentiality | null };
 
 const CLIENT_TEXT_SOURCES = new Set(["draft", "transient-document"]);
+
+// N11b: „ohne Einstufung" heißt fehlende/ungültige Stufe ODER das gewaschene „vertraulich" mit dem
+// booleschen Marker. Ausdrückliches vertraulich/streng_vertraulich ohne Marker fällt nie darunter.
+export function ohneEinstufung(declared: unknown, nichtEingestuft: unknown): boolean {
+  return (
+    (declared !== "intern" && declared !== "vertraulich" && declared !== "streng_vertraulich") ||
+    (declared === "vertraulich" && nichtEingestuft === true)
+  );
+}
 
 export function classifyProvenanceConfidential(
   source: unknown,
@@ -54,10 +64,7 @@ export function classifyProvenanceConfidential(
   } = {},
 ): boolean {
   if (typeof source === "string" && CLIENT_TEXT_SOURCES.has(source)) {
-    const ohneEinstufung =
-      (declared !== "intern" && declared !== "vertraulich" && declared !== "streng_vertraulich") ||
-      (declared === "vertraulich" && nichtEingestuft === true);
-    if (ohneEinstufung) {
+    if (ohneEinstufung(declared, nichtEingestuft)) {
       return dokumentZustimmung !== true || isConfidential(backstop.level ?? null);
     }
     // Backstop hebt nur: ein gespeichert-vertrauliches KO (via koId) macht auch als "intern"
@@ -381,8 +388,19 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
     //
     // Was eine FEHLENDE Stufe bedeutet, bleibt unberührt: ein aufgelöster Entwurf ohne Stufe hebt
     // nicht — dann gilt wie bisher die Deklaration (D1, Fall A5).
+    //
+    // N11b (P-N11b, Ben nacharbeit-1): NICHT eingestufter TEXT mit bestätigter Dokumentzustimmung
+    // gilt als intern, auch OHNE gespeicherten Anker — der Auftrag setzt für diesen Fall keinen voraus.
+    // Die Ausnahme ist eng: nur Text (nie Bilder), nur ohne Einstufung (ausdrückliches „intern" ohne
+    // Anker bleibt gesperrt, R-0619), nur mit bestätigter Zustimmung. Löst ein Anker auf und ist er
+    // vertraulich, hebt er weiterhin (`classifyProvenanceConfidential`).
     const ankerAufgeloest = backstop.found;
-    if (source === "draft" && !ankerAufgeloest) {
+    const zustimmungMachtIntern =
+      bindung.inhalt === "text" &&
+      dokumentZustimmung === true &&
+      ohneEinstufung(declared, bindung.nichtEingestuft);
+    const ankerSperre = source === "draft" && !ankerAufgeloest && !zustimmungMachtIntern;
+    if (ankerSperre) {
       confidential = true;
     }
     if (gebunden && !dokumentZustimmung) {
@@ -394,12 +412,11 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
     // GESPEICHERTE Stand die Stufe, gehört sie dort geändert; sonst war es die Einstufung dieses
     // Aufrufs — dorthin fällt auch der KA4-Riegel, denn er wirkt wie eine fehlende Zustimmung zu
     // DIESEM Text und wird an derselben Stelle entschieden.
-    const grund: VertraulichGrund =
-      source === "draft" && !ankerAufgeloest
-        ? "unsaved_draft"
-        : backstop.found && isConfidential(backstop.level ?? null)
-          ? "backstop"
-          : "declared";
+    const grund: VertraulichGrund = ankerSperre
+      ? "unsaved_draft"
+      : backstop.found && isConfidential(backstop.level ?? null)
+        ? "backstop"
+        : "declared";
     return {
       confidential,
       ...(subject ? { subject } : {}),
