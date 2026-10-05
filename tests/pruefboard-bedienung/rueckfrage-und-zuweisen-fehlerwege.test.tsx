@@ -349,12 +349,15 @@ describe("W1 · Ablehnung mit Widerspruch", () => {
     });
   });
 
-  // Nacharbeit 7 (Ben): die Ablehnung steht, nur der Konfliktvorschlag nicht — die Fläche sagt
-  // genau das (nicht „Bewertung nicht gespeichert“) und schickt den Vorschlag erneut.
-  it("Server meldet KONFLIKTVORSCHLAG_OFFEN: eigener Satz, eigener Knopf, Wiederholung mit Widerspruch", async () => {
+  // Nacharbeit 7/8 (Ben): die Ablehnung steht, nur der Konfliktvorschlag nicht — die Fläche sagt
+  // genau das (nicht „Bewertung nicht gespeichert“) und setzt NUR den Vorschlag fort: die
+  // Wiederholung trägt `fortsetzungFuerFassung` der abgelehnten Fassung und bewertet nicht neu.
+  it("Server meldet KONFLIKTVORSCHLAG_OFFEN: eigener Satz, eigener Knopf, Fortsetzung an die Fassung gebunden", async () => {
     antworten((b) => {
       if (b.action === "rate") {
-        throw new ApiError(500, "KONFLIKTVORSCHLAG_OFFEN", "Vorschlag fehlt.");
+        throw new ApiError(500, "KONFLIKTVORSCHLAG_OFFEN", "Vorschlag fehlt.", {
+          bewerteteFassung: 1,
+        });
       }
     });
     await ablehnenMitWiderspruch();
@@ -369,7 +372,62 @@ describe("W1 · Ablehnung mit Widerspruch", () => {
       action: "rate",
       verdict: "down",
       widerspruch: WIDERSPRUCH,
+      fortsetzungFuerFassung: 1,
     });
+  });
+
+  // Nacharbeit 8 (Ben): der Vorschlag STEHT schon, nur seine Folge fehlt — die Fläche sagt nicht
+  // „Konfliktvorschlag nicht gespeichert“, sondern nennt den tatsächlich offenen Folgeschritt.
+  it("Server meldet KONFLIKTFOLGE_OFFEN: der Vorschlag steht, genannt wird nur der offene Folgeschritt", async () => {
+    antworten((b) => {
+      if (b.action === "rate") {
+        throw new ApiError(500, "KONFLIKTFOLGE_OFFEN", "Folge fehlt.", {
+          bewerteteFassung: 1,
+          konfliktAngelegt: true,
+          konfliktId: "c1",
+        });
+      }
+    });
+    await ablehnenMitWiderspruch();
+    const satz = finde(brett.container, TEILERFOLG)?.textContent;
+    expect(satz).toBe(de("pruefboard.konfliktfolgeOffen"));
+    expect(satz).not.toBe(de("pruefboard.konfliktvorschlagOffen"));
+
+    antworten(() => undefined);
+    await klick(knopfMitText(brett.container, de("pruefboard.konfliktfolgeSenden")));
+    expect(putFolge().filter((p) => p.action === "comment")).toHaveLength(1);
+    expect(letzte()).toEqual({
+      action: "rate",
+      verdict: "down",
+      widerspruch: WIDERSPRUCH,
+      fortsetzungFuerFassung: 1,
+    });
+  });
+
+  // Nacharbeit 8 (Ben): zwischen Teilerfolg und Fortsetzung wurde überarbeitet — der Server weist
+  // ab (nichts bewertet, nichts angelegt), und die Fläche sagt es; der alte Vorgang ist beendet.
+  it("Fortsetzung nach Überarbeitung: 409 FASSUNG_UEBERARBEITET wird gesagt, der Vorgang endet", async () => {
+    antworten((b) => {
+      if (b.action === "rate") {
+        throw new ApiError(500, "KONFLIKTVORSCHLAG_OFFEN", "Vorschlag fehlt.", {
+          bewerteteFassung: 1,
+        });
+      }
+    });
+    await ablehnenMitWiderspruch();
+    antworten((b) => {
+      if (b.action === "rate") {
+        throw new ApiError(409, "FASSUNG_UEBERARBEITET", "überarbeitet", { currentVersion: 2 });
+      }
+    });
+    await klick(knopfMitText(brett.container, de("pruefboard.konfliktvorschlagSenden")));
+
+    expect(
+      finde(brett.container, '[data-testid="pruefen-begruendung-ueberarbeitet"]')?.textContent,
+    ).toBe(de("pruefboard.fassungUeberarbeitet"));
+    expect(finde(brett.container, TEILERFOLG)).toBeNull();
+    // Kein Kommentar wurde ein zweites Mal geschrieben.
+    expect(putFolge().filter((p) => p.action === "comment")).toHaveLength(1);
   });
 
   it("ohne Gegenüber bleibt die Ablehnung, wie sie war; die Rückfrage kennt keinen Widerspruch", async () => {

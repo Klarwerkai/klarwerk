@@ -283,18 +283,36 @@ describe("SCRUM-334: Review-Nacharbeitsfluss E2E (HTTP + FE-Helfer)", () => {
   // R-0238 · Nacharbeit 7 — DIE TEILERFOLGE ZWISCHEN BEWERTUNG UND KONFLIKTVORSCHLAG.
   // ==============================================================================================
   //
-  // Die Bewertung wird zuerst gespeichert. Scheitert danach der Vorschlag, muss die Antwort das
-  // sagen (`bewertungGespeichert: true`), und die Wiederholung desselben Aufrufs darf weder die
-  // Ablehnung doppelt zählen noch einen zweiten Konflikt anlegen. Eingespeist wird der Fehler an
-  // den echten Dienstinstanzen, die die Route benutzt — einmal, danach läuft der Dienst normal.
+  // Die Bewertung wird zuerst gespeichert. Scheitert danach ein Konfliktschritt, sagt die Antwort
+  // GENAU, welcher fehlt (Nacharbeit 8): der Vorschlag selbst (`KONFLIKTVORSCHLAG_OFFEN`) oder
+  // nur seine Folge (`KONFLIKTFOLGE_OFFEN`, der Vorschlag steht). Sie nennt die bewertete Fassung.
+  // Die Fortsetzung schickt `fortsetzungFuerFassung` und BEWERTET NICHT NOCH EINMAL — belegt am
+  // Audit: genau ein `ko.rated` der Ablehnenden. Eingespeist wird der Fehler an den echten
+  // Dienstinstanzen, die die Route benutzt — einmal, danach läuft der Dienst normal.
   const ABLEHNUNG = (b: string) => ({
     action: "rate",
     verdict: "down",
     widerspruch: { koB: b, type: "truth", description: "Widerspricht dem 8-bar-Eintrag." },
   });
 
-  it("R-0238: scheitert der Vorschlag nach der Bewertung, sagt die Antwort es — und die Wiederholung ergänzt nur ihn", async () => {
-    const { app, services, admin, carla, a, b } = await zweiObjekte();
+  /** Wie oft die Person dieses Objekt bewertet hat — gezählt am Audit, nicht an den Stimmen. */
+  async function bewertungsereignisse(
+    app: App,
+    headers: Record<string, string>,
+    actor: string,
+    target: string,
+  ) {
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/audit?action=ko.rated&actor=${encodeURIComponent(actor)}`,
+      headers,
+    });
+    expect(res.statusCode).toBe(200);
+    return (res.json() as Array<{ target: string }>).filter((e) => e.target === target).length;
+  }
+
+  /** `conflicts.create` scheitert genau einmal, danach läuft der echte Dienst. */
+  function anlageScheitertEinmal(services: ReturnType<typeof buildServices>): void {
     const original = services.conflicts.create.bind(services.conflicts);
     let einmal = true;
     services.conflicts.create = (async (...args: Parameters<typeof original>) => {
@@ -304,6 +322,24 @@ describe("SCRUM-334: Review-Nacharbeitsfluss E2E (HTTP + FE-Helfer)", () => {
       }
       return original(...args);
     }) as typeof services.conflicts.create;
+  }
+
+  /** Die Wahrheitskonflikt-Folge scheitert genau einmal — NACH dem Anlegen des Konflikts. */
+  function folgeScheitertEinmal(services: ReturnType<typeof buildServices>): void {
+    const original = services.ko.markTruthConflictReview.bind(services.ko);
+    let einmal = true;
+    services.ko.markTruthConflictReview = (async (...args: Parameters<typeof original>) => {
+      if (einmal) {
+        einmal = false;
+        throw new Error("Folge gescheitert");
+      }
+      return original(...args);
+    }) as typeof services.ko.markTruthConflictReview;
+  }
+
+  it("R-0238: scheitert der Vorschlag nach der Bewertung, sagt die Antwort es — die Fortsetzung bewertet nicht erneut", async () => {
+    const { app, services, admin, carla, a, b } = await zweiObjekte();
+    anlageScheitertEinmal(services);
 
     const erster = await app.inject({
       method: "PUT",
@@ -315,6 +351,8 @@ describe("SCRUM-334: Review-Nacharbeitsfluss E2E (HTTP + FE-Helfer)", () => {
     expect(erster.json()).toMatchObject({
       error: "KONFLIKTVORSCHLAG_OFFEN",
       bewertungGespeichert: true,
+      konfliktAngelegt: false,
+      bewerteteFassung: 1,
     });
     // Wahr ist: die Ablehnung steht, der Vorschlag nicht.
     expect(await stimmenVon(app, admin.headers, a)).toBe(1);
@@ -324,24 +362,17 @@ describe("SCRUM-334: Review-Nacharbeitsfluss E2E (HTTP + FE-Helfer)", () => {
       method: "PUT",
       url: `/api/kos/${a}`,
       headers: carla.headers,
-      payload: ABLEHNUNG(b),
+      payload: { ...ABLEHNUNG(b), fortsetzungFuerFassung: 1 },
     });
     expect(zweiter.statusCode).toBe(200);
     expect(await konflikteZwischen(app, admin.headers, a, b)).toHaveLength(1);
     expect(await stimmenVon(app, admin.headers, a)).toBe(1);
+    expect(await bewertungsereignisse(app, admin.headers, carla.id, a)).toBe(1);
   });
 
-  it("R-0238: scheitert erst die Folge NACH dem Anlegen, legt die Wiederholung keinen zweiten Konflikt an", async () => {
+  it("R-0238: scheitert erst die Folge NACH dem Anlegen, sagt die Antwort, dass der Vorschlag steht — die Fortsetzung legt keinen zweiten an", async () => {
     const { app, services, admin, carla, a, b } = await zweiObjekte();
-    const original = services.ko.markTruthConflictReview.bind(services.ko);
-    let einmal = true;
-    services.ko.markTruthConflictReview = (async (...args: Parameters<typeof original>) => {
-      if (einmal) {
-        einmal = false;
-        throw new Error("Folge gescheitert");
-      }
-      return original(...args);
-    }) as typeof services.ko.markTruthConflictReview;
+    folgeScheitertEinmal(services);
 
     const erster = await app.inject({
       method: "PUT",
@@ -350,20 +381,78 @@ describe("SCRUM-334: Review-Nacharbeitsfluss E2E (HTTP + FE-Helfer)", () => {
       payload: ABLEHNUNG(b),
     });
     expect(erster.statusCode).toBe(500);
-    expect(erster.json()).toMatchObject({ bewertungGespeichert: true });
-    // Der Konflikt war schon geschrieben, als die Folge scheiterte.
-    expect(await konflikteZwischen(app, admin.headers, a, b)).toHaveLength(1);
+    // Der Konflikt war schon geschrieben, als die Folge scheiterte — und genau das sagt die Antwort.
+    const konflikteNachher = await konflikteZwischen(app, admin.headers, a, b);
+    expect(konflikteNachher).toHaveLength(1);
+    expect(erster.json()).toMatchObject({
+      error: "KONFLIKTFOLGE_OFFEN",
+      bewertungGespeichert: true,
+      konfliktAngelegt: true,
+      konfliktId: konflikteNachher[0]?.id,
+      bewerteteFassung: 1,
+    });
 
     const zweiter = await app.inject({
       method: "PUT",
       url: `/api/kos/${a}`,
       headers: carla.headers,
-      payload: ABLEHNUNG(b),
+      payload: { ...ABLEHNUNG(b), fortsetzungFuerFassung: 1 },
     });
     expect(zweiter.statusCode).toBe(200);
     const konflikte = await konflikteZwischen(app, admin.headers, a, b);
     expect(konflikte).toHaveLength(1);
     expect(zweiter.json().konfliktvorschlag?.id).toBe(konflikte[0]?.id);
     expect(await stimmenVon(app, admin.headers, a)).toBe(1);
+    expect(await bewertungsereignisse(app, admin.headers, carla.id, a)).toBe(1);
+  });
+
+  it("R-0238: Teilerfolg → Revision → Fortsetzung: keine neue Bewertung, kein Vorschlag, 409", async () => {
+    const { app, services, admin, carla, a, b } = await zweiObjekte();
+    anlageScheitertEinmal(services);
+    const erster = await app.inject({
+      method: "PUT",
+      url: `/api/kos/${a}`,
+      headers: carla.headers,
+      payload: ABLEHNUNG(b),
+    });
+    expect(erster.statusCode).toBe(500);
+    expect(erster.json().bewerteteFassung).toBe(1);
+
+    // Der Verantwortliche überarbeitet das zurückgegebene Objekt — Fassung 2, neu zu prüfen.
+    const revidiert = await app.inject({
+      method: "PUT",
+      url: `/api/kos/${a}`,
+      headers: admin.headers,
+      payload: { action: "revise", changes: { statement: "Die Presse P2 läuft mit 7 bar." } },
+    });
+    expect(revidiert.statusCode).toBe(200);
+    expect((await getKo(app, admin.headers, a)).json().version).toBe(2);
+
+    const fortsetzung = await app.inject({
+      method: "PUT",
+      url: `/api/kos/${a}`,
+      headers: carla.headers,
+      payload: { ...ABLEHNUNG(b), fortsetzungFuerFassung: 1 },
+    });
+    expect(fortsetzung.statusCode).toBe(409);
+    expect(fortsetzung.json()).toMatchObject({ error: "FASSUNG_UEBERARBEITET", currentVersion: 2 });
+    // Nichts ist entstanden: kein Vorschlag, keine Bewertung der neuen Fassung, kein zweites
+    // Bewertungsereignis — der Revisionsweg bleibt, wie er ist.
+    expect(await konflikteZwischen(app, admin.headers, a, b)).toEqual([]);
+    expect(await stimmenVon(app, admin.headers, a)).toBe(0);
+    expect(await bewertungsereignisse(app, admin.headers, carla.id, a)).toBe(1);
+  });
+
+  it("R-0238: eine Fortsetzung ohne bestehende Ablehnung dieser Fassung wird abgewiesen", async () => {
+    const { app, admin, carla, a, b } = await zweiObjekte();
+    const res = await app.inject({
+      method: "PUT",
+      url: `/api/kos/${a}`,
+      headers: carla.headers,
+      payload: { ...ABLEHNUNG(b), fortsetzungFuerFassung: 1 },
+    });
+    expect(res.statusCode).toBe(409);
+    expect(await konflikteZwischen(app, admin.headers, a, b)).toEqual([]);
+    expect(await bewertungsereignisse(app, admin.headers, carla.id, a)).toBe(0);
   });
 });

@@ -28,8 +28,13 @@ export default {
       "Die Begründung ist gespeichert, die Bewertung nicht. Erneut senden schickt nur die Bewertung.",
     "pruefboard.bewertungSenden": "Bewertung erneut senden",
     "pruefboard.konfliktvorschlagOffen":
-      "Begründung und Ablehnung sind gespeichert, der Konfliktvorschlag nicht. Erneut senden legt nur den Vorschlag an.",
+      "Begründung und Ablehnung sind gespeichert, der Konfliktvorschlag nicht. Erneut senden legt nur den Vorschlag an — ohne neue Bewertung.",
     "pruefboard.konfliktvorschlagSenden": "Konfliktvorschlag erneut senden",
+    "pruefboard.konfliktfolgeOffen":
+      "Begründung, Ablehnung und Konfliktvorschlag sind gespeichert. Offen ist nur, die betroffenen Beiträge wegen des Wahrheitskonflikts zurück in die Prüfung zu holen. Erneut senden holt nur das nach.",
+    "pruefboard.konfliktfolgeSenden": "Rückholung in die Prüfung erneut anstoßen",
+    "pruefboard.fassungUeberarbeitet":
+      "Der Beitrag wurde seit deiner Ablehnung überarbeitet. Es wurde nichts neu bewertet und kein Konfliktvorschlag angelegt — bitte prüfe die neue Fassung.",
     "pruefboard.konfliktAnzahl": "{{n}} offene Konflikte",
     "pruefboard.konfliktZurSeite": "Zu den Konflikten",
     "pruefboard.konfliktMarke": "Offener Konflikt",
@@ -74,8 +79,13 @@ export default {
       "The reason is saved, the rating is not. Sending again submits only the rating.",
     "pruefboard.bewertungSenden": "Send rating again",
     "pruefboard.konfliktvorschlagOffen":
-      "The reason and the rejection are saved, the conflict proposal is not. Sending again creates only the proposal.",
+      "The reason and the rejection are saved, the conflict proposal is not. Sending again creates only the proposal — without a new rating.",
     "pruefboard.konfliktvorschlagSenden": "Send conflict proposal again",
+    "pruefboard.konfliktfolgeOffen":
+      "The reason, the rejection and the conflict proposal are saved. Still open: bringing the affected items back into review because of the truth conflict. Sending again does only that.",
+    "pruefboard.konfliktfolgeSenden": "Retry bringing back into review",
+    "pruefboard.fassungUeberarbeitet":
+      "The item has been revised since your rejection. Nothing was rated again and no conflict proposal was created — please review the new version.",
     "pruefboard.konfliktAnzahl": "{{n}} open conflicts",
     "pruefboard.konfliktZurSeite": "Go to conflicts",
     "pruefboard.konfliktMarke": "Open conflict",
@@ -117,8 +127,13 @@ export default {
       "De onderbouwing is opgeslagen, de beoordeling niet. Opnieuw versturen verstuurt alleen de beoordeling.",
     "pruefboard.bewertungSenden": "Beoordeling opnieuw versturen",
     "pruefboard.konfliktvorschlagOffen":
-      "Onderbouwing en afwijzing zijn opgeslagen, het conflictvoorstel niet. Opnieuw versturen maakt alleen het voorstel aan.",
+      "Onderbouwing en afwijzing zijn opgeslagen, het conflictvoorstel niet. Opnieuw versturen maakt alleen het voorstel aan — zonder nieuwe beoordeling.",
     "pruefboard.konfliktvorschlagSenden": "Conflictvoorstel opnieuw versturen",
+    "pruefboard.konfliktfolgeOffen":
+      "Onderbouwing, afwijzing en conflictvoorstel zijn opgeslagen. Nog open: de betrokken bijdragen vanwege het waarheidsconflict terug in de controle halen. Opnieuw versturen doet alleen dat.",
+    "pruefboard.konfliktfolgeSenden": "Terughalen in de controle opnieuw starten",
+    "pruefboard.fassungUeberarbeitet":
+      "De bijdrage is sinds je afwijzing herzien. Er is niets opnieuw beoordeeld en geen conflictvoorstel aangemaakt — controleer a.u.b. de nieuwe versie.",
     "pruefboard.konfliktAnzahl": "{{n}} openstaande conflicten",
     "pruefboard.konfliktZurSeite": "Naar de conflicten",
     "pruefboard.konfliktMarke": "Openstaand conflict",

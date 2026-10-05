@@ -237,6 +237,10 @@ function vorgangSchluessel(id: string, verdict: FeedbackVerdict): string {
 
 /** R-0238 · Nacharbeit 7: die Bewertung steht am Server, nur der Konfliktvorschlag fehlt. */
 const KONFLIKTVORSCHLAG_OFFEN = "KONFLIKTVORSCHLAG_OFFEN";
+/** R-0238 · Nacharbeit 8: Bewertung und Vorschlag stehen, nur die Wahrheitskonflikt-Folge fehlt. */
+const KONFLIKTFOLGE_OFFEN = "KONFLIKTFOLGE_OFFEN";
+/** R-0238 · Nacharbeit 8: die Fortsetzung passt nicht mehr zur abgelehnten Fassung. */
+const FASSUNG_UEBERARBEITET = "FASSUNG_UEBERARBEITET";
 
 /** R-0246 · Nacharbeit 7: der Stand, an dem der Stapel jedes Objekt vor seinem Aufruf prüft. */
 interface StapelStand {
@@ -251,8 +255,34 @@ interface GespeicherterVorgang {
   text: string;
   /** Der gewählte Widerspruch — er kehrt beim Wiederöffnen zurück. */
   widerspruch?: { koB: string; type: ConflictType; titel: string } | undefined;
-  /** Wahr, wenn auch die Bewertung steht und nur der Konfliktvorschlag fehlt. */
-  bewertungGespeichert: boolean;
+  /**
+   * `null` = die Bewertung fehlt noch. Sonst steht sie (für `fassung`), und offen ist entweder der
+   * Konfliktvorschlag selbst oder nur seine Folge. Die Fortsetzung schickt dann
+   * `fortsetzungFuerFassung` und bewertet NICHT erneut (Nacharbeit 8).
+   */
+  fortsetzung: { fassung: number; offen: "vorschlag" | "folge" } | null;
+}
+
+/**
+ * Nacharbeit 8: was eine Fehlerantwort über den Stand des Vorgangs sagt. Nur die zwei Teilerfolge
+ * mit Fassungsangabe setzen eine Fortsetzung; jeder andere Fehlschlag (Netz, Server) lässt die
+ * schon bekannte stehen — ein Fehler ist ein Ereignis, kein Gedächtnis.
+ */
+function fortsetzungAus(
+  ursache: ApiError | null,
+  vorher: GespeicherterVorgang["fortsetzung"],
+): GespeicherterVorgang["fortsetzung"] {
+  const fassung = ursache?.details.bewerteteFassung;
+  if (typeof fassung !== "number") {
+    return vorher;
+  }
+  if (ursache?.code === KONFLIKTFOLGE_OFFEN) {
+    return { fassung, offen: "folge" };
+  }
+  if (ursache?.code === KONFLIKTVORSCHLAG_OFFEN) {
+    return { fassung, offen: "vorschlag" };
+  }
+  return vorher;
 }
 
 function ohneKarte<T>(
@@ -685,9 +715,9 @@ export function Validation(): JSX.Element {
   //
   // NACHARBEIT 7 · DER VORGANG TRÄGT AUCH SEINEN WIDERSPRUCH. Gespeichert wurde bisher nur der Text;
   // beim Wiederöffnen fehlten Gegenüber und Art, und „Bewertung erneut senden" schickte eine
-  // gewöhnliche Ablehnung ohne den gewählten Konfliktvorschlag. `bewertungGespeichert` hält den
-  // zweiten Teilerfolg fest: die Ablehnung steht, nur der Vorschlag fehlt (Server-Code
-  // `KONFLIKTVORSCHLAG_OFFEN`).
+  // gewöhnliche Ablehnung ohne den gewählten Konfliktvorschlag. `fortsetzung` hält den zweiten
+  // Teilerfolg fest (Nacharbeit 8): die Ablehnung steht für eine bestimmte Fassung, offen ist der
+  // Vorschlag (`KONFLIKTVORSCHLAG_OFFEN`) oder nur seine Folge (`KONFLIKTFOLGE_OFFEN`).
   const [begruendungenGespeichert, setBegruendungenGespeichert] = useState<
     Readonly<Record<string, GespeicherterVorgang>>
   >({});
@@ -724,6 +754,7 @@ export function Validation(): JSX.Element {
       text,
       nurBewertung,
       widerspruch,
+      fortsetzungFuerFassung,
     }: {
       id: string;
       title: string;
@@ -733,6 +764,8 @@ export function Validation(): JSX.Element {
       widerspruch?: { koB: string; type: ConflictType; description: string };
       /** Nur für das Wiederöffnen: der Titel des Gegenübers, wie die Fläche ihn zeigte. */
       widerspruchTitel?: string;
+      /** Nacharbeit 8: nur die fehlenden Konfliktschritte, gebunden an diese Fassung. */
+      fortsetzungFuerFassung?: number;
     }) => {
       if (!nurBewertung) {
         try {
@@ -749,6 +782,7 @@ export function Validation(): JSX.Element {
           action: "rate",
           verdict,
           ...(widerspruch ? { widerspruch } : {}),
+          ...(fortsetzungFuerFassung !== undefined ? { fortsetzungFuerFassung } : {}),
         });
       } catch (e) {
         throw new BegruendungFehler(true, e);
@@ -768,9 +802,21 @@ export function Validation(): JSX.Element {
       nachEntscheidung(vars);
     },
     onError: (e, vars) => {
-      if (e instanceof BegruendungFehler && e.begruendungGespeichert) {
-        const ursache = e.ursache;
-        const vorgang: GespeicherterVorgang = {
+      if (!(e instanceof BegruendungFehler && e.begruendungGespeichert)) {
+        return;
+      }
+      const ursache = e.ursache instanceof ApiError ? e.ursache : null;
+      const schluessel = vorgangSchluessel(vars.id, vars.verdict);
+      // Nacharbeit 8: die abgelehnte Fassung ist überarbeitet (oder die Ablehnung gilt nicht
+      // mehr). Es wurde nichts bewertet und nichts angelegt — der Vorgang ist beendet, und eine
+      // neue Entscheidung beginnt von vorn (mit neuer Begründung zur neuen Fassung).
+      if (ursache?.code === FASSUNG_UEBERARBEITET) {
+        setBegruendungenGespeichert((alt) => ohneKarte(alt, vars.id));
+        return;
+      }
+      setBegruendungenGespeichert((alt) => ({
+        ...alt,
+        [schluessel]: {
           text: vars.text,
           widerspruch: vars.widerspruch
             ? {
@@ -779,14 +825,9 @@ export function Validation(): JSX.Element {
                 titel: vars.widerspruchTitel ?? vars.widerspruch.koB,
               }
             : undefined,
-          bewertungGespeichert:
-            ursache instanceof ApiError && ursache.code === KONFLIKTVORSCHLAG_OFFEN,
-        };
-        setBegruendungenGespeichert((alt) => ({
-          ...alt,
-          [vorgangSchluessel(vars.id, vars.verdict)]: vorgang,
-        }));
-      }
+          fortsetzung: fortsetzungAus(ursache, alt[schluessel]?.fortsetzung ?? null),
+        },
+      }));
     },
   });
 
@@ -1991,8 +2032,15 @@ export function Validation(): JSX.Element {
     const vorgang =
       feedback?.id === k.id ? gespeicherteBegruendung(k.id, feedback.verdict) : undefined;
     const begruendungLiegt = vorgang !== undefined;
-    // Nacharbeit 7: auch die Ablehnung steht schon — es fehlt nur der Konfliktvorschlag.
-    const bewertungLiegt = vorgang?.bewertungGespeichert === true;
+    // Nacharbeit 7/8: auch die Ablehnung steht schon — offen ist der Vorschlag oder nur seine Folge.
+    const fortsetzung = vorgang?.fortsetzung ?? null;
+    // Nacharbeit 8: die Fortsetzung wurde abgewiesen, weil die Fassung überarbeitet wurde.
+    const fehlerJetzt = reviewWithFeedback.error;
+    const ursacheJetzt = fehlerJetzt instanceof BegruendungFehler ? fehlerJetzt.ursache : null;
+    const ueberarbeitet =
+      feedback?.id === k.id &&
+      ursacheJetzt instanceof ApiError &&
+      ursacheJetzt.code === FASSUNG_UEBERARBEITET;
 
     return (
       // Der Flächen-Klick ist reiner MAUS-Komfort. Die Karte bekommt ausdrücklich KEINE
@@ -2660,9 +2708,18 @@ export function Validation(): JSX.Element {
                   data-testid="pruefen-begruendung-teilerfolg"
                   className="mt-2 rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text"
                 >
-                  {bewertungLiegt
-                    ? t("pruefboard.konfliktvorschlagOffen")
-                    : t("pruefboard.begruendungGespeichert")}
+                  {fortsetzung?.offen === "folge"
+                    ? t("pruefboard.konfliktfolgeOffen")
+                    : fortsetzung?.offen === "vorschlag"
+                      ? t("pruefboard.konfliktvorschlagOffen")
+                      : t("pruefboard.begruendungGespeichert")}
+                </div>
+              ) : ueberarbeitet ? (
+                <div
+                  data-testid="pruefen-begruendung-ueberarbeitet"
+                  className="mt-2 rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text"
+                >
+                  {t("pruefboard.fassungUeberarbeitet")}
                 </div>
               ) : reviewWithFeedback.isError ? (
                 <div
@@ -2709,14 +2766,19 @@ export function Validation(): JSX.Element {
                             widerspruchTitel: widerspruchZiel.title,
                           }
                         : {}),
+                      // Nacharbeit 8: steht die Ablehnung schon, wird NICHT neu bewertet — nur die
+                      // fehlenden Konfliktschritte, gebunden an die abgelehnte Fassung.
+                      ...(fortsetzung ? { fortsetzungFuerFassung: fortsetzung.fassung } : {}),
                     })
                   }
                 >
-                  {bewertungLiegt
-                    ? t("pruefboard.konfliktvorschlagSenden")
-                    : begruendungLiegt
-                      ? t("pruefboard.bewertungSenden")
-                      : t("val.feedback.submit")}
+                  {fortsetzung?.offen === "folge"
+                    ? t("pruefboard.konfliktfolgeSenden")
+                    : fortsetzung?.offen === "vorschlag"
+                      ? t("pruefboard.konfliktvorschlagSenden")
+                      : begruendungLiegt
+                        ? t("pruefboard.bewertungSenden")
+                        : t("val.feedback.submit")}
                 </Button>
               </div>
             </div>

@@ -586,6 +586,11 @@ interface PutBody {
    * Form aus dem Netz kommt und erst `widerspruchAus` sie prüft.
    */
   widerspruch?: unknown;
+  /**
+   * R-0238 · Nacharbeit 8: die Fassung, für die eine bereits gespeicherte Ablehnung gilt. Mit ihr
+   * setzt `rate` NUR die fehlenden Konfliktschritte fort und bewertet nicht erneut.
+   */
+  fortsetzungFuerFassung?: unknown;
   conflictId?: string;
   decision?: string;
   newAuthor?: string;
@@ -654,6 +659,10 @@ const KONFLIKTARTEN: readonly ConflictType[] = [
 
 /** R-0238 · Nacharbeit 7: die Bewertung steht, der Konfliktvorschlag nicht (Teilerfolg). */
 const KONFLIKTVORSCHLAG_OFFEN = "KONFLIKTVORSCHLAG_OFFEN";
+/** R-0238 · Nacharbeit 8: Bewertung UND Vorschlag stehen, nur die Wahrheitskonflikt-Folge fehlt. */
+const KONFLIKTFOLGE_OFFEN = "KONFLIKTFOLGE_OFFEN";
+/** R-0238 · Nacharbeit 8: die Fortsetzung passt nicht mehr zur Fassung (überarbeitet o. Ä.). */
+const FASSUNG_UEBERARBEITET = "FASSUNG_UEBERARBEITET";
 
 /**
  * R-0238 — DIE LESART DER WIDERSPRECHENDEN ABLEHNUNG (UI/UX-Brief Screen 5: „widersprechende
@@ -917,27 +926,39 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
    * validiert→offen, Trust konservativ gesenkt). markTruthConflictReview ist idempotent/No-op für
    * offene/fehlende KOs.
    */
-  async function konfliktAnlegen(input: ConflictInput, userId: string, wiederverwenden = false) {
-    // R-0238 · Nacharbeit 7: der Konfliktvorschlag der widersprechenden Ablehnung ist IDEMPOTENT.
-    // Scheiterte ein früherer Versuch NACH dem Anlegen (etwa an der Wahrheitskonflikt-Folge),
-    // findet die Wiederholung denselben offenen Vorschlag derselben Person — gleiches Paar, gleiche
-    // Art — und legt keinen zweiten an. Die Folgeschritte laufen dann erneut (sie sind idempotent).
-    const vorhanden = wiederverwenden
-      ? (await conflicts.unresolved()).find(
-          (c) =>
-            c.origin === "manual" &&
-            c.createdBy === userId &&
-            c.type === input.type &&
-            ((c.koA === input.koA && c.koB === input.koB) ||
-              (c.koA === input.koB && c.koB === input.koA)),
-        )
-      : undefined;
-    const created = vorhanden ?? (await conflicts.create(input, userId));
-    if (created.type === "truth") {
-      await ko.markTruthConflictReview(created.koA, userId);
-      await ko.markTruthConflictReview(created.koB, userId);
-    }
+  async function konfliktAnlegen(input: ConflictInput, userId: string) {
+    const created = await conflicts.create(input, userId);
+    await wahrheitsfolge(created, userId);
     return created;
+  }
+
+  /**
+   * R-0238 · Nacharbeit 7: der Konfliktvorschlag der widersprechenden Ablehnung ist IDEMPOTENT.
+   * Scheiterte ein früherer Versuch NACH dem Anlegen (etwa an der Wahrheitskonflikt-Folge), findet
+   * die Wiederholung denselben offenen Vorschlag derselben Person — gleiches Paar, gleiche Art —
+   * und legt keinen zweiten an.
+   */
+  async function vorschlagFindenOderAnlegen(input: ConflictInput, userId: string) {
+    const vorhanden = (await conflicts.unresolved()).find(
+      (c) =>
+        c.origin === "manual" &&
+        c.createdBy === userId &&
+        c.type === input.type &&
+        ((c.koA === input.koA && c.koB === input.koB) ||
+          (c.koA === input.koB && c.koB === input.koA)),
+    );
+    return vorhanden ?? (await conflicts.create(input, userId));
+  }
+
+  /** Die Folge eines Wahrheitskonflikts — idempotent, darf also wiederholt laufen. */
+  async function wahrheitsfolge(
+    konflikt: { type: ConflictType; koA: string; koB: string },
+    userId: string,
+  ) {
+    if (konflikt.type === "truth") {
+      await ko.markTruthConflictReview(konflikt.koA, userId);
+      await ko.markTruthConflictReview(konflikt.koB, userId);
+    }
   }
 
   async function sichtbaresKoOder404(user: SessionUser, id: string, reply: FastifyReply) {
@@ -2579,36 +2600,98 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             ) {
               return;
             }
+            // R-0238 · Nacharbeit 8 — DIE FORTSETZUNG BEWERTET NICHT NOCH EINMAL.
+            //
+            // Nach einem Teilerfolg (Ablehnung gespeichert, Vorschlag oder seine Folge nicht) schickt
+            // die Oberfläche `fortsetzungFuerFassung`: die Fassung, für die ihre Ablehnung gilt.
+            // Dann wird NICHT bewertet — eine zweite Bewertung träfe nach einer zwischenzeitlichen
+            // Überarbeitung die NEUE Fassung mit der alten Ablehnung und gäbe sie erneut zurück, am
+            // Revisionsweg vorbei. Fortgesetzt werden nur die fehlenden Konfliktschritte, und nur,
+            // solange die eigene Ablehnung genau dieser Fassung besteht und das Objekt seither
+            // nicht überarbeitet wurde. Sonst 409 — nichts bewertet, nichts angelegt.
+            //
+            // Die Konfliktschritte der widersprechenden Ablehnung: (1) Vorschlag finden oder
+            // anlegen, (2) Wahrheitskonflikt-Folge. DER TEILERFOLG WIRD GENAU BENANNT: scheitert
+            // (1), fehlt der Vorschlag (`KONFLIKTVORSCHLAG_OFFEN`); scheitert erst (2), steht der
+            // Vorschlag schon und nur seine Folge fehlt (`KONFLIKTFOLGE_OFFEN`, mit Kennung). In
+            // beiden Fällen ist die Ablehnung gespeichert, und die Antwort nennt ihre Fassung.
+            const vorschlagFortsetzen = async (
+              ergebnis: object | null,
+              fassung: number | null,
+            ): Promise<void> => {
+              if (!widerspruch || typeof widerspruch === "string") {
+                return;
+              }
+              let angelegt: { id: string } | null = null;
+              try {
+                const konfliktvorschlag = await vorschlagFindenOderAnlegen(
+                  { koA: id, ...widerspruch },
+                  user.id,
+                );
+                angelegt = konfliktvorschlag;
+                await wahrheitsfolge(konfliktvorschlag, user.id);
+                reply.code(200).send({ ...(ergebnis ?? {}), konfliktvorschlag });
+              } catch (error) {
+                request.log.error({ err: error, koId: id }, "Konfliktvorschlag unvollständig");
+                reply.code(500).send(
+                  angelegt
+                    ? {
+                        error: KONFLIKTFOLGE_OFFEN,
+                        message:
+                          "Die Ablehnung und der Konfliktvorschlag sind gespeichert; die Folge des Wahrheitskonflikts (betroffene Beiträge zurück in die Prüfung) steht noch aus. Erneut senden holt nur sie nach.",
+                        bewertungGespeichert: true,
+                        konfliktAngelegt: true,
+                        konfliktId: angelegt.id,
+                        bewerteteFassung: fassung,
+                      }
+                    : {
+                        error: KONFLIKTVORSCHLAG_OFFEN,
+                        message:
+                          "Die Ablehnung ist gespeichert, der Konfliktvorschlag nicht. Erneut senden legt nur ihn an — ohne neue Bewertung.",
+                        bewertungGespeichert: true,
+                        konfliktAngelegt: false,
+                        bewerteteFassung: fassung,
+                      },
+                );
+              }
+            };
+            const fortsetzung = body.fortsetzungFuerFassung;
+            if (fortsetzung !== undefined) {
+              if (!widerspruch || body.verdict !== "down" || !Number.isInteger(fortsetzung)) {
+                return badRequest(
+                  "fortsetzungFuerFassung gilt nur mit widerspruch an der Ablehnung und als Fassungsnummer.",
+                );
+              }
+              const jetzt = await ko.get(id);
+              const eigene = await validation.bewertungVon(id, user.id);
+              if (
+                !jetzt ||
+                jetzt.version !== fortsetzung ||
+                !eigene ||
+                eigene.verdict !== "down" ||
+                eigene.koVersion !== fortsetzung
+              ) {
+                reply.code(409).send({
+                  error: FASSUNG_UEBERARBEITET,
+                  message:
+                    "Der Beitrag wurde seit der Ablehnung überarbeitet, oder die Ablehnung gilt nicht mehr. Es wurde nichts bewertet und kein Konfliktvorschlag angelegt.",
+                  ...(jetzt ? { currentVersion: jetzt.version } : {}),
+                });
+                return;
+              }
+              await vorschlagFortsetzen(null, fortsetzung);
+              return;
+            }
+            // Die bewertete Fassung — sie reist bei einem Teilerfolg mit, damit die Fortsetzung an
+            // GENAU diese Fassung gebunden ist. Gelesen vor der Bewertung: überarbeitet jemand in
+            // der Lücke, passt sie nicht mehr, und die Fortsetzung lehnt ab (409) statt zu raten.
+            const bewerteteFassung = (await ko.get(id))?.version ?? null;
             const entscheidung = await validation.rate(id, user.id, body.verdict);
             if (!widerspruch) {
               reply.code(200).send(entscheidung);
               return;
             }
-            // Derselbe Anlageweg wie `action: "conflict"` unten (manuell, Status „offen", der
-            // Ablehnende als `createdBy`) samt derselben Wahrheitskonflikt-Folge — hier aber
-            // wiederverwendend (Nacharbeit 7).
-            //
-            // DER TEILERFOLG WIRD GESAGT, NICHT VERSCHWIEGEN: die Bewertung steht an dieser Stelle
-            // schon (Upsert je Person und Fassung, eine Wiederholung zählt nicht doppelt). Scheitert
-            // jetzt der Vorschlag, antwortet die Route mit `bewertungGespeichert: true` — sonst
-            // behauptete die Oberfläche „Bewertung nicht gespeichert". Die Wiederholung desselben
-            // Aufrufs bewertet idempotent und legt den Vorschlag an, ohne einen zweiten zu erzeugen.
-            try {
-              const konfliktvorschlag = await konfliktAnlegen(
-                { koA: id, ...widerspruch },
-                user.id,
-                true,
-              );
-              reply.code(200).send({ ...entscheidung, konfliktvorschlag });
-            } catch (error) {
-              request.log.error({ err: error, koId: id }, "Konfliktvorschlag nicht angelegt");
-              reply.code(500).send({
-                error: KONFLIKTVORSCHLAG_OFFEN,
-                message:
-                  "Die Ablehnung ist gespeichert, der Konfliktvorschlag nicht. Erneut senden legt ihn an, ohne die Ablehnung doppelt zu zählen.",
-                bewertungGespeichert: true,
-              });
-            }
+            await vorschlagFortsetzen(entscheidung, bewerteteFassung);
             return;
           }
           case "assign": {

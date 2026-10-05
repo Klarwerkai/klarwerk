@@ -222,6 +222,8 @@ export type KoAction =
       verdict: Verdict;
       duplicateAcknowledged?: true;
       widerspruch?: { koB: string; type: ConflictType; description: string };
+      // R-0238 · Nacharbeit 8: nur die fehlenden Konfliktschritte, ohne neue Bewertung.
+      fortsetzungFuerFassung?: number;
     }
   // Pedi 05.07.: Admin-Override „als wahr kennzeichnen" — schließt die Validierung komplett ab.
   | { action: "admin-validate"; duplicateAcknowledged?: true }
