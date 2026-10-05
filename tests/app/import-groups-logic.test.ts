@@ -1,7 +1,6 @@
 // WP-IC-4 (Teil 2+3, pure Client-Logik): Vorab-Abwahl bereits Importierter, Gruppen-Entscheid als
 // Vorgabe + Einzel-Override, laufender Zähler, Batches für ehrlichen Fortschritt und die ehrliche
 // Bilanz (übernommen/übersprungen/ausgeschlossen/fehlgeschlagen inkl. not-found). Copy DE/EN/NL.
-import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -17,6 +16,7 @@ import {
   selectionCounts,
   toggleCandidate,
 } from "../../apps/web/src/lib/importGroups";
+import { woerterbuchQuelleAus } from "../support/woerterbuchquelle";
 
 const CANDIDATES: GroupedCandidate[] = [
   { id: "a", title: "Pumpe", alreadyImported: false, hints: [] },
@@ -173,7 +173,7 @@ describe("WP-IC-4: Auswahl-Logik", () => {
   });
 
   it("die komplette Copy existiert in DE, EN und NL", () => {
-    const i18n = readFileSync(resolve(process.cwd(), "apps/web/src/i18n.ts"), "utf8");
+    const i18n = woerterbuchQuelleAus(resolve(process.cwd(), "apps/web/src/i18n.ts"));
     for (const key of Object.values(IMPORT_GROUPS_TEXT)) {
       expect(`${key}:${i18n.split(`"${key}":`).length - 1}`).toBe(`${key}:3`);
     }

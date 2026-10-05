@@ -113,6 +113,13 @@ export function Analytics(): JSX.Element {
     busFactor: busFactor.data ?? [],
     detectionCoverage: coverageSummary.data ?? null,
   });
+  // R-0734: „Fehlen Live-Signale, gilt er ehrlich als unbekannt statt geschätzt." Solange eine der
+  // fünf Quellen des Werts KEINE Antwort hat (lädt noch, gescheitert ohne früheren Stand), stünde
+  // oben sonst die Rechnung über leere Listen — eine 0, die wie ein Befund aussieht. Ein früher
+  // geholter Stand (gescheiterte Auffrischung) bleibt ein echtes Signal und zählt weiter.
+  const healthUnknown = [kos, gaps, conflicts, pending, busFactor].some(
+    (q) => q.data === undefined,
+  );
 
   // SCRUM-143: Audit-Filter über echte Daten (clientseitig, ohne Chain-Umbau).
   const [filter, setFilter] = useState<AuditFilter>({});
@@ -201,88 +208,99 @@ export function Analytics(): JSX.Element {
           <SectionLabel>{t("health.title")}</SectionLabel>
           <HelpTip title={t("health.title")} body={t("ana.help.health")} />
         </div>
-        <Card className="space-y-4">
-          <div className="flex items-center gap-4">
+        {healthUnknown ? (
+          <Card data-testid="health-unknown" className="flex items-center gap-4">
             <div className="flex h-16 w-16 shrink-0 flex-col items-center justify-center rounded-card bg-page">
-              <span className="text-2xl font-semibold text-ink">{health.score}</span>
-              <span className="font-mono text-[9px] uppercase text-muted-2">/100</span>
+              <span className="font-mono text-[10px] font-semibold uppercase text-muted-2">
+                {t("health.unknown")}
+              </span>
             </div>
-            <div className="min-w-0 flex-1">
-              {/* AUFTRAG-mega33 B3: solange der Konfliktanteil unbelegt ist, gibt es KEIN Band.
-                  Ein „gut" mit Fußnote wäre wieder eine Behauptung, die sich selbst widerspricht —
-                  hier steht stattdessen, dass die Einstufung nicht belegt ist. */}
-              {health.band ? (
-                <>
-                  <span
-                    className={`inline-block rounded-pill px-2.5 py-0.5 font-mono text-[11px] font-semibold uppercase ${BAND_TONE[health.band]}`}
-                  >
-                    {t(`health.band.${health.band}`)}
-                  </span>
-                  <p className="mt-1.5 text-[12.5px] text-muted">
-                    {t(`health.explain.${health.band}`)}
-                  </p>
-                </>
-              ) : (
-                <>
-                  <span
-                    data-testid="health-band-unproven"
-                    className="inline-block rounded-pill bg-page px-2.5 py-0.5 font-mono text-[11px] font-semibold uppercase text-muted-2"
-                  >
-                    {t("health.band.unproven")}
-                  </span>
-                  <p className="mt-1.5 text-[12.5px] text-muted">
-                    {t("health.range.explain", {
-                      worst: health.score,
-                      best: health.scoreOptimistic,
-                    })}
-                  </p>
-                </>
-              )}
-            </div>
-          </div>
-          {/* AUFTRAG-mega33 BLOCK B (Pedi 27.07.): bei unbelegter Erkennung rechnet die sichtbare
-              Zahl mit dem VOLLEN Konfliktabzug — der schlechteste Fall steht groß da. Der
-              optimistische Rand steht daneben, benannt als das, was er ist. */}
-          {health.conflictFactor.proven ? null : (
-            <div
-              data-testid="health-conflict-unproven"
-              className="rounded-card border border-trust-warn-fill bg-trust-warn-bg px-3 py-2"
-            >
-              <p className="text-[12.5px] font-semibold leading-snug text-trust-warn-text">
-                {t("health.conflictUnproven.title", {
-                  worst: health.score,
-                  best: health.scoreOptimistic,
-                })}
-              </p>
-              <p className="mt-0.5 text-[12px] leading-relaxed text-trust-warn-text">
-                {t(`health.conflictUnproven.${health.conflictFactor.reason}`)}
-              </p>
-              <p className="mt-0.5 text-[12px] leading-relaxed text-trust-warn-text">
-                {t("health.conflictUnproven.known", {
-                  count: health.openConflicts,
-                  penalty: health.conflictFactor.knownPenalty,
-                  max: health.conflictFactor.maxPenalty,
-                })}
-              </p>
-            </div>
-          )}
-          <div className="space-y-1.5">
-            {health.factors.map((f) => (
-              <div key={f.key} className="flex items-center gap-2 text-[12.5px]">
-                <span
-                  className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-                    f.direction === "positive" ? "bg-trust-pos-fill" : "bg-trust-crit-fill"
-                  }`}
-                />
-                <span className="flex-1 text-text">{t(`health.factor.${f.key}`)}</span>
-                <span className="font-mono text-muted-2">
-                  {f.value}
-                  {f.unit === "percent" ? "%" : ""}
-                </span>
+            <p className="min-w-0 flex-1 text-[12.5px] text-muted">{t("health.unknownExplain")}</p>
+          </Card>
+        ) : (
+          <Card className="space-y-4">
+            <div className="flex items-center gap-4">
+              <div className="flex h-16 w-16 shrink-0 flex-col items-center justify-center rounded-card bg-page">
+                <span className="text-2xl font-semibold text-ink">{health.score}</span>
+                <span className="font-mono text-[9px] uppercase text-muted-2">/100</span>
               </div>
-            ))}
-          </div>
-        </Card>
+              <div className="min-w-0 flex-1">
+                {/* AUFTRAG-mega33 B3: solange der Konfliktanteil unbelegt ist, gibt es KEIN Band.
+                    Ein „gut" mit Fußnote wäre wieder eine Behauptung, die sich selbst widerspricht —
+                    hier steht stattdessen, dass die Einstufung nicht belegt ist. */}
+                {health.band ? (
+                  <>
+                    <span
+                      className={`inline-block rounded-pill px-2.5 py-0.5 font-mono text-[11px] font-semibold uppercase ${BAND_TONE[health.band]}`}
+                    >
+                      {t(`health.band.${health.band}`)}
+                    </span>
+                    <p className="mt-1.5 text-[12.5px] text-muted">
+                      {t(`health.explain.${health.band}`)}
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <span
+                      data-testid="health-band-unproven"
+                      className="inline-block rounded-pill bg-page px-2.5 py-0.5 font-mono text-[11px] font-semibold uppercase text-muted-2"
+                    >
+                      {t("health.band.unproven")}
+                    </span>
+                    <p className="mt-1.5 text-[12.5px] text-muted">
+                      {t("health.range.explain", {
+                        worst: health.score,
+                        best: health.scoreOptimistic,
+                      })}
+                    </p>
+                  </>
+                )}
+              </div>
+            </div>
+            {/* AUFTRAG-mega33 BLOCK B (Pedi 27.07.): bei unbelegter Erkennung rechnet die sichtbare
+                Zahl mit dem VOLLEN Konfliktabzug — der schlechteste Fall steht groß da. Der
+                optimistische Rand steht daneben, benannt als das, was er ist. */}
+            {health.conflictFactor.proven ? null : (
+              <div
+                data-testid="health-conflict-unproven"
+                className="rounded-card border border-trust-warn-fill bg-trust-warn-bg px-3 py-2"
+              >
+                <p className="text-[12.5px] font-semibold leading-snug text-trust-warn-text">
+                  {t("health.conflictUnproven.title", {
+                    worst: health.score,
+                    best: health.scoreOptimistic,
+                  })}
+                </p>
+                <p className="mt-0.5 text-[12px] leading-relaxed text-trust-warn-text">
+                  {t(`health.conflictUnproven.${health.conflictFactor.reason}`)}
+                </p>
+                <p className="mt-0.5 text-[12px] leading-relaxed text-trust-warn-text">
+                  {t("health.conflictUnproven.known", {
+                    count: health.openConflicts,
+                    penalty: health.conflictFactor.knownPenalty,
+                    max: health.conflictFactor.maxPenalty,
+                  })}
+                </p>
+              </div>
+            )}
+            <div className="space-y-1.5">
+              {health.factors.map((f) => (
+                <div key={f.key} className="flex items-center gap-2 text-[12.5px]">
+                  <span
+                    className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                      f.direction === "positive" ? "bg-trust-pos-fill" : "bg-trust-crit-fill"
+                    }`}
+                  />
+                  <span className="flex-1 text-text">{t(`health.factor.${f.key}`)}</span>
+                  <span className="font-mono text-muted-2">
+                    {f.value}
+                    {f.unit === "percent" ? "%" : ""}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
       </div>
 
       <QueryState query={analytics}>

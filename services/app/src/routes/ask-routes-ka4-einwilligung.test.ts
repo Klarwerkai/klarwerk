@@ -16,8 +16,11 @@
 // ist gefallen (`PRIORITAETEN.md` Zeile V2) — die Freischaltung nicht: der Versuch hat vier
 // Sperrgruende freigelegt (Frist, Empfaenger, Nutzlastumfang, Panelvertrag), die im Kopf von
 // `klara-policy.ts` einzeln benannt und in `tests/ka4-freischaltung/ka4-einwilligung-wirkt.test.ts`
-// an den Schalter gebunden sind. Die Konstante steht weiter auf `false`, und I0 bis I6 messen
-// unveraendert.
+// an den Schalter gebunden sind. Die Konstante blieb damals auf `false`.
+//
+// STAND 05.09.2026 (JOB 3079): die vier Sperrgruende sind behoben, die Konstante steht auf
+// `true` (I6 pinnt das). I0 bis I2 messen weiter den Bestand OHNE verdrahtete Cloud — dort kommt
+// die Einwilligung gar nicht zustande, und die Enge bleibt unabhaengig vom Schalter.
 //
 // ------------------------------------------------------------------------------------------------
 // KEIN EINGESETZTER PRUEFER. Die App entsteht ueber `buildApp(buildServices())`; `klaraSessions`

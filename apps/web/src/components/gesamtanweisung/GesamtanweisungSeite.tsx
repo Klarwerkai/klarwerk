@@ -21,6 +21,7 @@
 // selbst hochgezählte Nummer wäre eine Behauptung über einen Bestand, den diese Fläche nicht kennt.
 import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { endpoints } from "../../api/endpoints";
 import { formatKoTimestamp } from "../../lib/koDates";
 import { useAuthorName } from "../../lib/useAuthorName";
 import { BausteinAufnahme } from "./BausteinAufnahme";
@@ -41,6 +42,7 @@ import {
   useAnweisungVergleich,
   useBausteinAufnehmen,
   useEntscheiden,
+  useFassungUebernehmen,
   useKopfAendern,
   useReihenfolgeSetzen,
   useVoraussetzungSetzen,
@@ -131,6 +133,7 @@ export function GesamtanweisungSeite({
   const vorlegen = useVorlegen(anweisungId);
   const entscheiden = useEntscheiden(anweisungId);
   const kopfAendern = useKopfAendern(anweisungId);
+  const uebernehmen = useFassungUebernehmen(anweisungId);
 
   const lage = anzeigelage(
     {
@@ -212,6 +215,7 @@ export function GesamtanweisungSeite({
   const aufnahmeFehler = aufnehmen.error ?? null;
   const letzterFehler =
     entscheiden.error ??
+    uebernehmen.error ??
     vorlegen.error ??
     voraussetzung.error ??
     ordnen.error ??
@@ -319,6 +323,17 @@ export function GesamtanweisungSeite({
           },
           gesperrt: bearbeiten.gesperrt || version === null,
           meldeUngespeichert: meldeVoraussetzung,
+        }}
+        // QUELLENÄNDERUNGEN: NICHT an `bearbeiten.gesperrt` — die Standsperre „entschieden" gilt
+        // dem Ordnen, nicht der bewussten Übernahme (danach ist die Anleitung wieder Entwurf).
+        aenderung={{
+          fassungenLaden: endpoints.ko.versions,
+          uebernehmen: (bausteinId, aufVersion) => {
+            if (version !== null) {
+              uebernehmen.mutate({ version, bausteinId, aufVersion });
+            }
+          },
+          gesperrt: schreibSperre(lage).gesperrt || version === null || uebernehmen.isPending,
         }}
       />
 
