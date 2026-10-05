@@ -2694,8 +2694,11 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // `Range.expandTo` (WordApi 1.3) — fehlt sie, schweigt der Weg. Unten steht noch der gemessene
     // Wert von main; der neue SHA-256 war beim Auflösen nicht messbar (kein Hash-Werkzeug zugelassen),
     // der Blob des Dokuments ist gemessen (`eb344beb…`, `tests/support/panelquelle.ts`).
-    // Nachzuführen aus dem `Received` des nächsten Prüflaufs.
-    const PIN = "29062e179bedebd2e48aeaed93ad335ac4cf740ae09fb2af587d655673c3753c";
+    // NACHARBEIT 5 (gesamt-bestandsblick): PIN BEWUSST AKTUALISIERT (29062e17… -> a4461e39…). Der
+    // Wert ist im Prüflauf zu Kandidat c8ade1c9 GEMESSEN („Received") und unverändert übernommen; die
+    // vier Panel-Dateien sind seit dieser Messung unberührt (`git diff c8ade1c9 --
+    // apps/web/public/word-addin/` leer).
+    const PIN = "a4461e3983454c04eca17afa93d93248f8ef4facb12d41b06c2c580a3e24e017";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(
       ist,
