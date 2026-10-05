@@ -2090,8 +2090,15 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // 536 → 546 Quelldateien); die Prüfstatus-Anzeige fügt seit `FreigabeStatus` kein Bauteil
     // hinzu. Welche es sind, ist an diesem Arbeitsbaum ohne Git-Verlauf nicht namentlich bestimmt.
     // `anbieter` 1 und `traeger` 2 sind in derselben Meldung unverändert.
+    //
+    // DIE 447 IST GEMESSEN, nicht gerechnet: am Kandidaten 903b2a22 meldete der Sammler wörtlich
+    // „gemessen: 447 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 549 Quelldateien … expected
+    // { komponenten: 447, … } to deeply equal { komponenten: 444, … }". Die Nacharbeit zwischen
+    // 4be0477f und 903b2a22 änderte im Produktcode nichts (nur Test-Gegenprobe und Sollwert); die
+    // drei Komponenten mehr kamen mit dem Hauptstand (Grundmenge 546 → 549). Welche es sind, ist
+    // auch hier ohne Git-Verlauf nicht namentlich bestimmt. `anbieter` 1 und `traeger` 2 bleiben.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 444,
+      komponenten: 447,
       anbieter: 1,
       traeger: 2,
     });
