@@ -45,7 +45,16 @@ Geändert, weil konkrete Lücken bestanden:
    gesicherte Entwurf K2 wird über die Adresse geöffnet und neu geladen; Inhalt und Originalquelle
    müssen sichtbar dastehen, Zeilenzahl und K2-Zeile bleiben unverändert. Bisher war K2 nur in der
    Tabelle belegt („findet den gespeicherten Bestand samt Originalquelle wieder“ war im Browser offen).
-2. **Kommentar von P2 berichtigt**: er behauptete „bleibt rot“, obwohl die Reparatur aus JOB 4335
+2. **Neuer Fall `P2p`** (Nacharbeit 1, BEN-Befund) in derselben Strecke: der Punkteweg beim
+   Verlassen. Entwurf E3 fortsetzen, reale DOCX laden und auswerten, einen von drei Funden abwählen,
+   „Entwurf speichern und wechseln“. Belegt werden die Quittung („gesichert“ plus „2 Entwürfe aus
+   <Datei>“, nie „verworfen“, nie 3), genau zwei neue `drafts`-Zeilen (je Punkt eine, der abgewählte
+   keine, E3 unverändert) und das Wiederöffnen jedes Punktentwurfs samt Quellenzeile
+   „„<Belegstelle>“ — Quelle: sample.docx“ nach Neuladen. **Gestellt** ist allein die Vorbereitung am
+   Netzrand der Seite: `GET /api/reasoner/status` (nutzbares Modell) und `POST /api/reasoner` mit
+   `task: "extract"` (drei Funde, Belegstelle = der echte Satz der DOCX). Datei, Auswahl, Wache,
+   Speichern in PostgreSQL und Wiederöffnen sind echt.
+3. **Kommentar von P2 berichtigt**: er behauptete „bleibt rot“, obwohl die Reparatur aus JOB 4335
    Runde 2 mit `1.0.0-beta.1.592` im Produkt steht. Die Erwartungen von P2 sind unverändert.
 
 ## 4 · Quellenwidersprüche und fehlende Belege
@@ -64,10 +73,11 @@ Geändert, weil konkrete Lücken bestanden:
 
 ## 5 · Grenzen
 
-- Der Zweig **„ausgewählte Punkte“** im echten Chromium braucht eine echte Modellauswertung
-  (`POST /api/reasoner`, `task: "extract"`); er ist nur gemountet belegt (Abwahl, Teilfehler,
-  Wiederholung ohne Doppelanlage). Ein Browserbeleg mit echtem Modell bleibt eine offene externe
-  Voraussetzung.
+- Der Zweig **„ausgewählte Punkte“** ist seit `P2p` im echten Chromium gegen echtes PostgreSQL
+  belegt (Speichern, Quittung, Wiederöffnen samt Originalquelle); nur die Antwort der
+  Modellauswertung ist dort gestellt. Ob ein echtes Modell aus `sample.docx` brauchbare Funde zieht,
+  ist nicht Gegenstand dieses Auftrags. Teilfehler und Wiederholung ohne Doppelanlage im Punkteweg
+  bleiben gemountet belegt (`dateiweg-teilfehler-mounted`, `quittung-dateiwege-mounted` A3/A4).
 - Echte menschliche Bedienung an der Livefassung ist durch keinen dieser Prüfstände ersetzt.
 - Liefernachweis mit Fassung entsteht erst nach Veröffentlichung (AUFTRAG.json, K5).
 - Abgegrenzt: Entwurfsverwaltung/CRUD (Nichtziel), Papierkorb und Leserechte (eigene Aufnahmen,
