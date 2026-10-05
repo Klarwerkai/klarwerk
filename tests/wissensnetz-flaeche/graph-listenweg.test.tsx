@@ -237,7 +237,9 @@ describe("N-0011 / N-0024 · die Volltitelliste am Graphen", () => {
     await mount();
     await filtere("Kontrollobjekt");
     expect(ids()).toEqual([]);
-    expect(marke("graph-objektliste-leer")?.textContent).toBe(i18n.t("wissensgraph.liste.keinTreffer"));
+    expect(marke("graph-objektliste-leer")?.textContent).toBe(
+      i18n.t("wissensgraph.liste.keinTreffer"),
+    );
     expect(container.textContent ?? "").not.toContain(KONTROLLE.title);
   });
 
