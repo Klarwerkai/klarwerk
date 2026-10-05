@@ -66,6 +66,18 @@ interface Quelle {
   behaelter: string;
   /** Der ECHTE Inhalt, der nach der Erholung im Behälter stehen muss. */
   inhalt: string;
+  /**
+   * Nur bei Karten mit MEHREREN Quellen: die `data-testid` der `Abfragehuelle` GENAU DIESER Quelle.
+   * Die Zustandsfolge Z misst dann in dieser Hülle und nicht in der ganzen Karte — sonst würde die
+   * Standzeile einer Nachbarquelle derselben Karte als Beleg für diese gelesen (Nacharbeit 6).
+   */
+  huelle?: string;
+  /**
+   * Die Quelle zeichnet einen BESTÄTIGTEN Stand ausdrücklich ohne Hülle und meldet eine gescheiterte
+   * Auffrischung nicht (Vertrag der Karte, Begründung im Feld). Z prüft dann für „offline mit
+   * Daten" genau diesen Vertrag statt der Standzeile.
+   */
+  standOhneHuelle?: string;
 }
 
 const t = (k: string): string => i18n.t(k);
@@ -115,6 +127,7 @@ function matrixAdmin(): Quelle[] {
       zeile: '[data-testid="zeile-ki-grenzen"]',
       behaelter: "detail-ki-grenzen",
       inhalt: t("adm.val.save"),
+      huelle: "huelle-pruefanzahl",
     },
     {
       id: "Upload-Grenzen · /api/upload-limits",
@@ -123,6 +136,7 @@ function matrixAdmin(): Quelle[] {
       zeile: '[data-testid="zeile-ki-grenzen"]',
       behaelter: "detail-ki-grenzen",
       inhalt: t("adm.upload.save"),
+      huelle: "huelle-uploadgrenzen",
     },
     {
       id: "Externe Wissensabfrage · /api/external/policy",
@@ -150,6 +164,7 @@ function matrixAdmin(): Quelle[] {
       zeile: '[data-testid="zeile-demodaten"]',
       behaelter: "detail-demodaten",
       inhalt: t("einst.daten.demoBestand"),
+      huelle: "huelle-demostatus",
     },
     {
       // JOB 3511 (DEMO-FIRMEN-CI): die ZWEITE Quelle derselben Karte — der Abschnitt
@@ -167,6 +182,12 @@ function matrixAdmin(): Quelle[] {
       zeile: '[data-testid="zeile-demodaten"]',
       behaelter: "detail-demodaten",
       inhalt: t("einst.marke.profil"),
+      // JOB 3563 (`AdminDatenDetails.tsx`, Kopf von `DemoErscheinungsbild`): hat das Markenmodul
+      // einen bestätigten Stand, zeichnet die Karte ihn OHNE Hülle; eine spätere gescheiterte
+      // Auffrischung leert nichts und meldet nichts. Eine Standzeile dieser Quelle gibt es also
+      // nicht — das ist ihr Vertrag, keine Lücke.
+      standOhneHuelle:
+        "bestätigter Markenstand ohne Hülle; gescheiterte Auffrischung wird nicht gemeldet (JOB 3563)",
     },
     {
       // JOB 3636 (VORFUEHRDATEN GETRENNT WAEHLEN): die DRITTE Quelle derselben Karte — die Liste
@@ -184,6 +205,7 @@ function matrixAdmin(): Quelle[] {
       zeile: '[data-testid="zeile-demodaten"]',
       behaelter: "detail-demodaten",
       inhalt: "Advisor ICT (EN)",
+      huelle: "huelle-demopakete",
     },
     {
       id: "Werkseinstellungen · /api/admin/factory-reset",
@@ -605,7 +627,8 @@ const BEHAELTER_LAGE = `((behaelter) => {
   const box = k.querySelector('[data-einst="abfrage-fehler"]');
   const staende = [...k.querySelectorAll('[data-einst="stand"]')];
   return {
-    laedt: k.querySelector('[data-einst="laedt"]') !== null,
+    // Im Ladezustand IST die Hülle selbst der Ladeabsatz (\`<p data-einst="laedt" data-testid>\`).
+    laedt: k.matches('[data-einst="laedt"]') || k.querySelector('[data-einst="laedt"]') !== null,
     fehlerbox: box !== null,
     fehlerText: box ? (box.textContent || '').replace(/\\s+/g, ' ').trim() : '',
     stand: staende.map((s) => (s.textContent || '').replace(/\\s+/g, ' ').trim()).join(' | '),
@@ -964,15 +987,14 @@ describe("JOB 3065 H6 R3 · Endpunkt-Matrix der Detailkarten — 503 am gebauten
         q.behaelter,
       ]);
       expect(offenFehler, `${q.id}: ${offenFehler}`).toBeNull();
-      await warteAufLage(q.behaelter, (l) => l.laedt && !l.fehlerbox, `${q.id}: Ladezustand`);
+      // Der Messbereich: die Hülle GENAU DIESER Quelle, wenn die Karte mehrere trägt — sonst die
+      // Karte. Gelesen, gedrückt und gezählt wird ausschließlich darin (Nacharbeit 6).
+      const bereich = q.huelle ?? q.behaelter;
+      await warteAufLage(bereich, (l) => l.laedt && !l.fehlerbox, `${q.id}: Ladezustand`);
 
       // 2 — offline, solange die Antwort fehlt: die ehrliche Offline-Auskunft samt Ausweg.
       await netz(false);
-      const leer = await warteAufLage(
-        q.behaelter,
-        (l) => l.fehlerbox,
-        `${q.id}: offline ohne Daten`,
-      );
+      const leer = await warteAufLage(bereich, (l) => l.fehlerbox, `${q.id}: offline ohne Daten`);
       expect(leer.fehlerText, `${q.id}: Offline-Wortlaut`).toContain(t("einst.detail.offline"));
       expect(leer.fehlerText).toContain(t("loadstate.error.retry"));
 
@@ -980,15 +1002,40 @@ describe("JOB 3065 H6 R3 · Endpunkt-Matrix der Detailkarten — 503 am gebauten
       await netz(true);
       tor?.oeffnen();
       await warteAufLage(
-        q.behaelter,
+        bereich,
         (l) => l.text.includes(q.inhalt) && !l.laedt && !l.fehlerbox,
         `${q.id}: Inhalt nach der Erholung`,
       );
 
+      if (q.standOhneHuelle !== undefined) {
+        // 4/5 — der Vertrag dieser Quelle: ein bestätigter Stand steht OHNE Hülle da, und weder der
+        // Offlinewechsel noch eine gestörte Leitung leeren ihn oder melden etwas über ihn.
+        await netz(false);
+        await seite.waitForTimeout(500);
+        const offline = await lage(q.behaelter);
+        expect(offline.text, `${q.id}: Stand verschwand offline`).toContain(q.inhalt);
+        expect(offline.fehlerbox, `${q.id}: offline wurde zur Fehlerbox`).toBe(false);
+        const huelleDa = await seite.evaluate<boolean>(
+          fn(
+            `(id) => document.querySelector('[data-testid="' + id + '"] [data-testid="huelle-branding"]') !== null`,
+          ),
+          q.behaelter,
+        );
+        expect(huelleDa, `${q.id}: ${q.standOhneHuelle}`).toBe(false);
+        await netz(true);
+        s.stoerung = q.pfad;
+        await seite.waitForTimeout(500);
+        const gestoert = await lage(q.behaelter);
+        const gestoertText = gestoert.text;
+        expect(gestoertText, `${q.id}: Stand bei gestörter Leitung`).toContain(q.inhalt);
+        expect(gestoert.fehlerbox, `${q.id}: gestörte Leitung wurde zur Fehlerbox`).toBe(false);
+        return;
+      }
+
       // 4 — offline MIT Daten: der Inhalt bleibt, darüber „nicht aktualisiert".
       await netz(false);
       const cache = await warteAufLage(
-        q.behaelter,
+        bereich,
         (l) => l.stand.includes(t("einst.wert.nichtAktualisiert")),
         `${q.id}: Standzeile offline`,
       );
@@ -999,11 +1046,11 @@ describe("JOB 3065 H6 R3 · Endpunkt-Matrix der Detailkarten — 503 am gebauten
       await netz(true);
       s.stoerung = q.pfad;
       const vorher = s.abrufe.get(q.pfad) ?? 0;
-      const knoepfe = await seite.evaluate<number>(fn(STAND_ERNEUT), q.behaelter);
+      const knoepfe = await seite.evaluate<number>(fn(STAND_ERNEUT), bereich);
       expect(knoepfe, `${q.id}: kein „Erneut“ in der Standzeile`).toBeGreaterThan(0);
       const nachher = s.abrufe.get(q.pfad) ?? 0;
       expect(nachher, `${q.id}: „Erneut“ hat ${q.pfad} nicht abgerufen`).toBeGreaterThan(vorher);
-      const gescheitert = await lage(q.behaelter);
+      const gescheitert = await lage(bereich);
       expect(gescheitert.stand, `${q.id}: Markierung nach gescheiterter Auffrischung`).toContain(
         t("einst.wert.nichtAktualisiert"),
       );
@@ -1011,9 +1058,9 @@ describe("JOB 3065 H6 R3 · Endpunkt-Matrix der Detailkarten — 503 am gebauten
 
       // 6 — Erholung: Störung weg, „Erneut" → Markierung weg, Inhalt da.
       s.stoerung = null;
-      await seite.evaluate<number>(fn(STAND_ERNEUT), q.behaelter);
+      await seite.evaluate<number>(fn(STAND_ERNEUT), bereich);
       await warteAufLage(
-        q.behaelter,
+        bereich,
         (l) => l.stand === "" && l.text.includes(q.inhalt) && !l.fehlerbox,
         `${q.id}: Erholung nach der Auffrischung`,
       );

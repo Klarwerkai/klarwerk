@@ -470,18 +470,33 @@ describe("W5 · Grenzen über die Karte „Grenzen“", () => {
 
   const grenzen = (): Promise<Grenzen> => lies<Grenzen>("/api/upload-limits");
   const anzahlFeld = (): HTMLInputElement | null => nachAria(t("adm.upload.maxAttachments"));
+  /**
+   * Der Speichern-Knopf DER UPLOAD-ZEILE. Die Karte trägt zwei Knöpfe mit demselben Wortlaut
+   * (`adm.val.save` und `adm.upload.save` heißen beide „Speichern"); der erste gehört zur
+   * Prüferanzahl und ist ohne deren Entwurf gesperrt. Gegriffen wird deshalb der Knopf in der
+   * Zeile, in der das Anzahl-Feld steht (`AdminKiDetails.tsx`, Hülle `huelle-uploadgrenzen`).
+   */
+  const uploadSpeichern = (): HTMLButtonElement => {
+    const knopf = container.querySelector<HTMLButtonElement>(
+      '[data-testid="huelle-uploadgrenzen"] button',
+    );
+    if (!knopf || (knopf.textContent ?? "").trim() !== t("adm.upload.save")) {
+      throw new Error(`Speichern der Upload-Grenzen fehlt — sichtbar: ${text().slice(0, 400)}`);
+    }
+    return knopf;
+  };
 
   it("schreiben, erneut lesen, zurücknehmen", async () => {
     const vorher = await grenzen();
     await karte();
     await tippe(anzahlFeld(), "12");
-    await klick(knopf(t("adm.upload.save")));
+    await klick(uploadSpeichern());
     await warteBis(() => erfolgToasts().length > 0, "gespeichert");
     expect((await grenzen()).maxAttachments, "gelesen").toBe(12);
     await warteBis(() => anzahlFeld()?.value === "12", "die Karte zeigt den neuen Stand");
 
     await tippe(anzahlFeld(), String(vorher.maxAttachments));
-    await klick(knopf(t("adm.upload.save")));
+    await klick(uploadSpeichern());
     await warteBis(() => erfolgToasts().length > 1, "Rücknahme gespeichert");
     expect(await grenzen(), "Rücknahme").toEqual(vorher);
   });
@@ -490,7 +505,7 @@ describe("W5 · Grenzen über die Karte „Grenzen“", () => {
     const vorher = await grenzen();
     await karte();
     await tippe(anzahlFeld(), "99");
-    await klick(knopf(t("adm.upload.save")));
+    await klick(uploadSpeichern());
     await warteBis(() => fehlerToasts().length > 0, "Ablehnung");
     expect(await grenzen(), "nichts geändert").toEqual(vorher);
   });
