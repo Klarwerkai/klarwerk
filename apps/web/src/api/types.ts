@@ -2790,6 +2790,47 @@ export interface BausteinLesestand {
   /** Steht DANEBEN, ersetzt nie. `null` = es gibt keine neuere Fassung. */
   aktualisierungsvorschlag: { aufVersion: number } | null;
   inhalt: BausteinInhalt;
+  /**
+   * QUELLENÄNDERUNGEN · hochgeladene Dateien der gebundenen Fassung — Momentaufnahmen.
+   * `null` und ein fehlendes Feld heissen UNBEKANNT, `[]` heisst „keine".
+   */
+  momentaufnahmen?: Momentaufnahme[] | null;
+}
+
+/** Eine hochgeladene Datei: Stand des Hochladens, ohne Verbindung zum Original. */
+export interface Momentaufnahme {
+  bezeichnung: string;
+  erfasstAm: string | null;
+}
+
+/**
+ * QUELLENÄNDERUNGEN · das Ergebnis der letzten Änderungsprüfung (Server: `PruefErgebnis`).
+ * Nur `aktuell` darf als „aktuell" gezeigt werden — `fehlgeschlagen` und `unvollstaendig` nie.
+ */
+export type PruefErgebnis =
+  | "aktuell"
+  | "aenderungen_gefunden"
+  | "fehlgeschlagen"
+  | "unvollstaendig"
+  | "keine_quellen";
+
+export interface Aenderungspruefung {
+  /** Wann nach neueren Fassungen gesehen wurde. `null` = unbekannt. */
+  pruefzeitpunkt: string | null;
+  ergebnis: PruefErgebnis;
+  gefundeneAenderungen: number;
+  fehlgeschlageneQuellen: number;
+  /** Eine automatische Überwachung ist nicht eingerichtet — der Server sagt es selbst. */
+  ueberwachung: "nicht_eingerichtet";
+}
+
+/** Ein bewusst übernommener Fassungswechsel (aus der Historie der Anleitung). */
+export interface UebernommeneAenderung {
+  bausteinId: string;
+  vonFassung: number;
+  aufFassung: number;
+  anweisungVersion: number;
+  uebernommenAm: string;
 }
 
 export interface AnweisungLesestand {
@@ -2809,6 +2850,13 @@ export interface AnweisungLesestand {
   verborgeneBausteine: number;
   /** Der Lückenvermerk vom Server — die Fläche erfindet keinen grünen Haken. */
   pruefanbindung: "nicht_angebunden";
+  /**
+   * QUELLENÄNDERUNGEN · optional, weil ältere Antworten sie nicht tragen. Fehlt sie, zeigt die Fläche
+   * GAR KEINE Prüfaussage — schon gar nicht „aktuell".
+   */
+  aenderungspruefung?: Aenderungspruefung;
+  /** `null` = Historie nicht lesbar (unbekannt), `[]` = keine Übernahme. */
+  uebernommeneAenderungen?: UebernommeneAenderung[] | null;
 }
 
 export interface VergleichsBefund {
