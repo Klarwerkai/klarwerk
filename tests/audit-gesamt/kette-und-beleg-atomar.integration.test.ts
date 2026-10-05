@@ -361,11 +361,27 @@ describe("Aufnahme gesamt-auditprotokoll · Lauf 3 · Kette und Beleg gemeinsam 
     await pruefeKette(pa);
   });
 
+  // Lauf 5 (BEN-L5-R3-B3, Nacharbeit 2): jede Anlage über `POST /api/kos` reiht eine KI-Prüfung ein,
+  // die NACH der Antwort `aiCheck` an derselben Objektzeile fortschreibt (pending → failed ohne
+  // Modell). Lief sie während eines Vorher/Nachher-Vergleichs, brach dieser ab, ohne dass am
+  // Rollback etwas falsch war; lief sie während einer `kos:update`-Probe, scheiterte stattdessen
+  // ihr eigenes Schreiben. Deshalb beginnt jeder Fall mit Vergleich oder Probe erst, wenn dieser
+  // zweite Schreiber fertig ist — die Vergleiche der ganzen Zeile bleiben unverändert streng.
+  async function kiPruefungFertig(id: string): Promise<void> {
+    await (servicesA as ReturnType<typeof buildPgServices>).aiCheckWorker?.idle();
+    const nachKi = await (poolA as Pool).query<{ data: { aiCheck?: { status?: string } } }>(
+      "SELECT data FROM kos WHERE id=$1",
+      [id],
+    );
+    expect(nachKi.rows[0]?.data.aiCheck?.status, "KI-Prüfung abgeschlossen").not.toBe("pending");
+  }
+
   it("B2 · Ändern: weist die Datenbank den Beleg ab, bleibt das Objekt unverändert (Kommentar, Vertraulichkeit)", async (ctx) => {
     const { a, pa } = bereit(ctx);
     const id = (
       await a.inject({ method: "POST", url: "/api/kos", headers, payload: KO("Ändern") })
     ).json().id as string;
+    await kiPruefungFertig(id);
     const stand = async () =>
       (
         await pa.query<{ data: Record<string, unknown> }>("SELECT data FROM kos WHERE id = $1", [
@@ -404,6 +420,7 @@ describe("Aufnahme gesamt-auditprotokoll · Lauf 3 · Kette und Beleg gemeinsam 
     const id = (
       await a.inject({ method: "POST", url: "/api/kos", headers, payload: KO("Umgekehrt") })
     ).json().id as string;
+    await kiPruefungFertig(id);
     const auditVorher = await zeilen(pa);
     await probe(pa, ["kos:update"]);
     try {
@@ -457,17 +474,7 @@ describe("Aufnahme gesamt-auditprotokoll · Lauf 3 · Kette und Beleg gemeinsam 
     const res = await a.inject({ method: "POST", url: "/api/kos", headers, payload: KO(titel) });
     expect(res.statusCode, res.body).toBe(201);
     const id = res.json().id as string;
-    // Lauf 5, Runde 4 (BEN-L5-R3-B3): die Anlage reiht eine KI-Prüfung ein, die NACH der Antwort
-    // `aiCheck` an derselben Objektzeile fortschreibt (pending → failed ohne Modell). Lief sie
-    // während des Vorher/Nachher-Vergleichs, brach dieser ab, ohne dass am Rollback etwas falsch
-    // war. Deshalb wird der Ausgangsstand erst gelesen, wenn dieser zweite Schreiber fertig ist —
-    // der Vergleich der ganzen Zeile bleibt unverändert streng.
-    await (servicesA as ReturnType<typeof buildPgServices>).aiCheckWorker?.idle();
-    const nachKi = await (poolA as Pool).query<{ data: { aiCheck?: { status?: string } } }>(
-      "SELECT data FROM kos WHERE id=$1",
-      [id],
-    );
-    expect(nachKi.rows[0]?.data.aiCheck?.status, "KI-Prüfung abgeschlossen").not.toBe("pending");
+    await kiPruefungFertig(id);
     return id;
   }
 

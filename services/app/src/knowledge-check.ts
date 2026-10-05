@@ -284,11 +284,11 @@ const CANDIDATE_LIMIT = 40;
 //   · RUMPF findCandidates — services/knowledge-object/src/service.ts:4076-4106
 //   · AUFRUF findSearchHits — services/knowledge-object/src/service.ts:4087
 //   · RUMPF findSearchHits — services/knowledge-object/src/service.ts:1959-1961
-//   · RUMPF findActive — services/knowledge-object/src/search-projection-repo.ts:708-807
-//   · RUMPF normalizeSearchTerms — services/knowledge-object/src/search-projection.ts:967-979
-//   · RUMPF expandSearchTerms — services/knowledge-object/src/search-projection.ts:1107-1127
+//   · RUMPF findActive — services/knowledge-object/src/search-projection-repo.ts:726-837
+//   · RUMPF normalizeSearchTerms — services/knowledge-object/src/search-projection.ts:973-985
+//   · RUMPF expandSearchTerms — services/knowledge-object/src/search-projection.ts:1148-1168
 //   · RUMPF matchEffectiveSearchDocument — services/knowledge-object/src/effective-search-document.ts:116-148
-//   · RUMPF koCandidateScore — services/knowledge-object/src/repo.ts:282-291
+//   · RUMPF koCandidateScore — services/knowledge-object/src/repo.ts:293-302
 //
 // WARUM DIE LÄNGE UND NICHT DIE STELLE — AN DIESER KETTE GEMESSEN (Fall S1 im Messstand-Test).
 // `findActive` bereinigt die Wortliste (`normalizeSearchTerms`), ergänzt sie um deklarierte

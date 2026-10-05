@@ -302,16 +302,26 @@ export class InMemoryAuditRepo implements AuditRepo {
 
   // Lauf 3: Vorgänger lesen, Eintrag bauen und anhängen ohne ein `await` dazwischen — kein zweiter
   // Schreiber kann denselben Vorgänger sehen.
+  //
+  // Lauf 5 (Nacharbeit 2): geschrieben wird über die EIGENEN Methoden `append`/`appendOnce` dieser
+  // Instanz, nicht an ihnen vorbei. Wer sie ersetzt oder beobachtet (Messhüllen in Tests, der
+  // Rücknahme-Weg mit seinem Kontext), sieht damit jeden Eintrag — vorher lief `appendNext` direkt
+  // in `anhaengen`, und ein Beleg im Rücknahme-Vorgang blieb für eine solche Hülle unsichtbar. Beide
+  // Methoden hängen synchron an; zwischen dem Lesen des Vorgängers und dem Anhängen liegt weiterhin
+  // kein `await`. Zurückgegeben wird die gespeicherte (eingefrorene) Fassung.
   appendNext(
     build: (last: AuditEntry | undefined) => AuditEntry,
-    _tx?: TxContext,
+    tx?: TxContext,
   ): Promise<{ entry: AuditEntry; written: boolean }> {
     try {
       const entry = build(this.entries[this.entries.length - 1]);
-      if (entry.eventId && this.eventIds.has(entry.eventId)) {
-        return Promise.resolve({ entry, written: false });
-      }
-      return Promise.resolve({ entry: this.anhaengen(entry), written: true });
+      const schreiben = entry.eventId
+        ? this.appendOnce(entry, tx)
+        : this.append(entry, tx).then(() => true);
+      return schreiben.then((written) => ({
+        entry: written ? (this.bySeq.get(entry.seq) ?? entry) : entry,
+        written,
+      }));
     } catch (err) {
       return Promise.reject(err);
     }
