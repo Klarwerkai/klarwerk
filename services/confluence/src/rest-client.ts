@@ -459,7 +459,9 @@ export function confluenceClientFromEnv(
   return new ConfluenceRestClient({
     baseUrl,
     authMode,
-    ...(authMode === "cloud" ? { email } : {}),
+    // Beim Cloud-Weg ist email oben schon als gesetzt geprüft; die Bedingung hier verengt nur den Typ
+    // (exactOptionalPropertyTypes: `email` darf nie als ausdrücklich undefined ankommen).
+    ...(authMode === "cloud" && email ? { email } : {}),
     apiToken,
     spaceKey,
     ...(Number.isInteger(limit) && limit > 0 ? { pageLimit: limit } : {}),
