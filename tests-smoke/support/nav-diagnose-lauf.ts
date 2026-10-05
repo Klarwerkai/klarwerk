@@ -9,7 +9,8 @@ export interface LaufInfo {
   title: string;
   retry: number;
   repeatEachIndex: number;
-  status?: string;
+  // Playwright setzt status erst nach dem Testkörper; vorher ist er ausdrücklich undefined.
+  status?: string | undefined;
   expectedStatus: string;
   project: { name: string };
 }
