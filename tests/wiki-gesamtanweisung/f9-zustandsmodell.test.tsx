@@ -198,6 +198,7 @@ describe("F9 · das Zustandsmodell — je Aussage ein Fall", () => {
         stand: "vorgelegt",
         sperre,
         darfEntscheiden: true,
+        darfVorlegen: true,
         vorlegen: () => {},
         entscheiden: () => {},
         fehlerSatz: null,

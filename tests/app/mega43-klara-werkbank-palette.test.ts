@@ -101,6 +101,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
+import { panelQuelleAus } from "../support/panelquelle";
 
 const REPO = join(__dirname, "../..");
 const TASKPANE = join(REPO, "apps/web/public/word-addin/taskpane.html");
@@ -111,7 +112,7 @@ const MEGA40 = join(REPO, "tests/app/mega40-kontrast-modern.test.ts");
 // Quellen lesen
 // ================================================================================================
 
-const HTML = readFileSync(TASKPANE, "utf8");
+const HTML = panelQuelleAus(TASKPANE);
 
 function stilBlock(html: string): string {
   const start = html.indexOf("<style>");

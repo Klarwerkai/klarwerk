@@ -324,8 +324,15 @@ function laufScope(): string {
  * einzige gelesene Seite fehlschlug. Ihn `COMPLETED` zu nennen waere die teuerste Sorte Luege —
  * eine, die spaeter niemand mehr nachprueft.
  */
+// R-0162: eine in der Quelle gelöschte Seite, deren Löschung nicht nachgezogen werden konnte
+// (removalOpen), lässt den Abgleich ebenso unvollständig zurück wie eine gescheiterte Seite.
 function abschlussStatus(summary: ImportRunSummary): ImportRunStatus {
-  return summary.failed > 0 || summary.truncated || abgleichUnvollstaendig(summary)
+  // ZUSAMMENFÜHRUNG (Nacharbeit 4): beide Abgleiche zählen — der des Abgleich-Auftrags
+  // (`removalOpen`) und der Quellabgleich dieser Lieferung (`abgleichUnvollstaendig`).
+  return summary.failed > 0 ||
+    summary.truncated ||
+    summary.removalOpen > 0 ||
+    abgleichUnvollstaendig(summary)
     ? "PARTIAL"
     : "COMPLETED";
 }

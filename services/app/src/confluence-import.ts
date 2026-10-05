@@ -7,12 +7,15 @@ import type {
   ConfluenceSourceAdapter,
 } from "../../confluence";
 import {
+  type KnowledgeObject,
   type KoService,
+  type KoSource,
   confidentialityRank,
   normalizeConfidentiality,
   safeSourceUrl,
 } from "../../knowledge-object";
 import {
+  type ImportCandidate,
   type ImportItem,
   type LibraryService,
   importSourceKey,
@@ -24,7 +27,10 @@ import {
 // KEINE stillen Auto-KOs, alles landet ausschließlich als Kandidat. Never block: eine fehlerhafte Seite
 // wird als `failed` verbucht, der Lauf läuft weiter. Ehrliche Zusammenfassung je Seite.
 
-export type ImportPageStatus = "imported" | "skipped" | "failed";
+// R-0162: "removed" = die Seite ist in der Quelle gelöscht und das Wissensobjekt wurde in den
+// Papierkorb gelegt (bzw. würde es im Probelauf); "kept" = in der Quelle gelöscht, das Objekt
+// bleibt aber, weil es weitere Quellen trägt oder zwischenzeitlich überarbeitet wurde.
+export type ImportPageStatus = "imported" | "skipped" | "failed" | "removed" | "kept";
 
 export interface ImportRunSummary {
   dryRun: boolean;
@@ -45,6 +51,22 @@ export interface ImportRunSummary {
   // die Station, die ein Mensch nach einem Importlauf liest — der Urteilspunkt „SERVERINTERN,
   // Verluststelle gefunden, Zielwirkung offen" schliesst sich erst hier.
   hierarchie?: NonNullable<CollectResult["hierarchie"]>;
+  // R-0162 (Abgleich): in der Quelle gelöschte Seiten, deren Wissensobjekt in den Papierkorb
+  // gelegt wurde (bei dryRun: gelegt WÜRDE). Wiederherstellbar über den Papierkorb.
+  removed: number;
+  // R-0162: in der Quelle gelöscht, Objekt bleibt BEWUSST — es trägt weitere Quellen.
+  removalKept: number;
+  // R-0162 (Nacharbeit, bens Befund 4): OFFENE Importkandidaten einer in der Quelle gelöschten
+  // Seite, die abgelehnt wurden (bei dryRun: abgelehnt WÜRDEN) — sonst entstünde aus dem
+  // gespeicherten Item beim späteren Annehmen doch noch ein Wissensobjekt.
+  candidatesRejected: number;
+  // R-0162: Löschungen, die NICHT nachgezogen werden konnten — Gegenprobe gescheitert oder das
+  // Objekt wurde zwischenzeitlich überarbeitet (STALE_WRITE). Je Seite in perPage; der Lauf ist
+  // dann nicht vollständig (PARTIAL).
+  removalOpen: number;
+  // R-0162: false, wenn der Löschabgleich gar nicht lief — bei einem abgeschnittenen Lauf
+  // (truncated) ist „fehlt in der Liste" kein Beleg für eine Löschung.
+  removalChecked: boolean;
   // R-0159 (Befund F2): WARUM der Lauf vor dem letzten Cursor endete — Frist, Zeitbudget oder
   // Größe, samt hostfreier Meldung aus dem Client. Bis hierher kam er bis `collectAll` und wurde
   // HIER verworfen; der gespeicherte Lauf stand dann auf PARTIAL ohne Grund. Nur gesetzt, wenn der
@@ -75,9 +97,14 @@ export interface ImportRunSummary {
 //   3. Die Reaktion ist ein VERMERK am Herkunftsanker (`sourceRemovedAt`), protokolliert im
 //      Audit. Das Wissensobjekt wird weder gelöscht noch revidiert noch herabgestuft — Wissen
 //      verschwindet in Klara nie still, auch nicht, weil es in der Quelle verschwand.
+//      ZUSAMMENFÜHRUNG (Nacharbeit 4): die maßgebliche Reaktion auf eine bestätigte Löschung ist
+//      seither die des Abgleich-Auftrags (`reconcileRemovals`, Papierkorb, solange das Objekt keine
+//      weitere Quelle trägt). Er läuft VOR diesem Abgleich; der Vermerk hier trifft deshalb nur
+//      Objekte, die stehen geblieben sind.
 //   4. Im Probelauf (dryRun) wird gemeldet, was vermerkt WÜRDE, und nichts geschrieben.
-//   5. (Runde 3) „Gelöscht" heisst NUR: die Einzelnachfrage antwortete 404. Eine Erfolgsantwort
-//      ohne brauchbare Seite wirft im Client (`ConfluenceUnusableResponseError`) und landet hier
+//   5. (Runde 3) „Gelöscht" heisst NUR: die Einzelnachfrage antwortete 404 (oder, seit der
+//      Zusammenführung, ein ausdrücklicher Lösch-/Archivstatus — `adapter.isGoneAtSource`). Eine
+//      Erfolgsantwort ohne brauchbare Seite wirft im Client (`getPageStateById`) und landet hier
 //      als „nicht prüfbar" — ein unbekannter Zustand erzeugt nie einen Vermerk.
 //   6. (Runde 3) Taucht eine vermerkte Seite wieder in der Bereichsliste auf, wird der Vermerk
 //      aufgehoben — unabhängig von ihrer Version und auch nach einem unvollständigen Lesen (was
@@ -324,7 +351,11 @@ async function quellAbgleich(
   // „unvollständigen" zu behaupten. Der echte Confluence-Adapter kann beides.
   const adapter = deps.adapter as Partial<ConfluenceSourceAdapter>;
   const scope = adapter.sourceScope;
-  if (typeof adapter.fetchItem !== "function" || !scope) {
+  // Zusammenführung mit R-0162 (main, `confluence-import-abgleich`): die Einzelnachfrage ist die
+  // strenge Gegenprobe `isGoneAtSource` — NUR 404 oder ein ausdrücklicher Lösch-/Archivstatus heißt
+  // „gelöscht"; eine unbrauchbare 2xx-Antwort WIRFT (→ `unchecked`). `fetchItem`/`getPageById`
+  // werten eine solche Antwort seit main als „nicht vorhanden" und taugen dafür nicht mehr.
+  if (typeof adapter.isGoneAtSource !== "function" || !scope) {
     // Lauf 3 R2 (Bens B8): ein gescheiterter Nachzug wird auch hier nicht verschluckt — dann trägt
     // der Lauf einen Abgleich, der ausdrücklich keiner über Löschungen ist.
     return nachgezogen.syncFailed.length > 0
@@ -384,7 +415,7 @@ async function quellAbgleich(
     nachfragen += 1;
     let nochDa: boolean;
     try {
-      nochDa = (await adapter.fetchItem(externalId)) !== undefined;
+      nochDa = !(await adapter.isGoneAtSource(externalId));
     } catch {
       summary.unchecked.push(externalId);
       continue;
@@ -658,7 +689,26 @@ export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<I
     }
   }
 
-  // R-0162: der Löschabgleich — nur nach vollständigem Lesen (Regel s. `quellAbgleich`).
+  // R-0162: Änderungen laufen oben über die höhere sourceVersion (neuer Kandidat → Re-Sync beim
+  // Annehmen). Löschungen zieht der folgende Abgleich nach — nur bei VOLLSTÄNDIG gelesenem Space
+  // und nur mit bekanntem Space: ohne ihn wäre jeder fremde oder scopelose Anker ein „Fehlender".
+  const removal =
+    truncated || !deps.adapter.sourceScope
+      ? {
+          removed: 0,
+          removalKept: 0,
+          candidatesRejected: 0,
+          removalOpen: 0,
+          removalChecked: false,
+        }
+      : await reconcileRemovals(deps, items, collectFailed, perPage);
+
+  // ZUSAMMENFÜHRUNG (Nacharbeit 4): die maßgebliche Reaktion auf eine bestätigte Löschung ist die
+  // des Abgleich-Auftrags oben (Papierkorb, solange das Objekt keine weitere Quelle trägt). DANACH
+  // läuft der Quellabgleich dieser Lieferung: er liest nur noch AKTIVE Objekte, vermerkt also nur
+  // dort `sourceRemovedAt`, wo das Objekt stehen geblieben ist — damit sein Rücklink nichts mehr
+  // verspricht (R-0131) —, hebt Vermerke wieder auf (Wiederauftauchen) und zieht Anhänge und
+  // Leserestriktion unveränderter Seiten nach (s. `quellAbgleich`, `nachzug`).
   const sourceSync = await quellAbgleich(
     deps,
     new Set(items.map((i) => i.externalId).filter((id): id is string => !!id)),
@@ -686,9 +736,218 @@ export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<I
     ...(hierarchie ? { hierarchie } : {}),
     // R-0159 (F2): unverändert durchgereicht — nur gesetzt, wenn der Adapter ihn geliefert hat.
     ...(abbruch ? { abbruch } : {}),
+    ...removal,
     perPage,
     ...(sourceSync ? { sourceSync } : {}),
   };
+}
+
+// ---- R-0162: LÖSCHUNGEN DER QUELLE BEIM NÄCHSTEN ABGLEICH NACHZIEHEN ----
+//
+// KANDIDAT: ein lebender KO-Herkunftsanker dieses Providers UND dieses Space, dessen externalId der
+// vollständige Lauf nicht mehr gesehen hat (weder als Item noch als fehlgeschlagene Seite).
+// GEGENPROBE: die Quelle wird je Id gefragt (adapter.isGoneAtSource) — fehlt die Seite nur in der
+// Liste, liefert sie aber je Id noch, bleibt alles, wie es ist. Scheitert die Gegenprobe, wird
+// nichts geändert und die Seite als offen gemeldet.
+// WIRKUNG: das Wissensobjekt wandert in den PAPIERKORB (forceTrash, nie Endlöschung, mit
+// expectedVersion) — wiederherstellbar, auditiert über ko.deleted. Trägt das Objekt weitere
+// Quellen, bleibt es stehen ("kept"): es hat dann noch eine Grundlage außerhalb dieser Seite.
+// OFFENE KANDIDATEN (Nacharbeit, bens Befund 4): auch ein noch nicht angenommener Kandidat dieses
+// Providers und Space zählt — sein gespeichertes Item würde beim Annehmen sonst ohne erneuten
+// Quellenabgleich zum Wissensobjekt. Nach bestätigter Löschung wird ein Kandidat im Status "neu"
+// über den regulären Review-Weg ABGELEHNT (reviewedBy = Akteur des Laufs, Audit
+// import.candidate-reject); ein gerade bearbeiteter ("in_bearbeitung") bleibt unberührt und offen.
+// dryRun schreibt nichts und meldet nur, was nachgezogen würde.
+async function reconcileRemovals(
+  deps: ConfluenceImportDeps,
+  items: readonly ImportItem[],
+  collectFailed: CollectResult["failed"],
+  perPage: ImportRunSummary["perPage"],
+): Promise<{
+  removed: number;
+  removalKept: number;
+  candidatesRejected: number;
+  removalOpen: number;
+  removalChecked: true;
+}> {
+  const provider = deps.adapter.source;
+  const scope = deps.adapter.sourceScope;
+  // Der Schlüssel eines Ankers, der zu DIESEM Lauf gehört (Provider + Space), sonst null.
+  const ownAnchorKey = (
+    anchorProvider: string | null | undefined,
+    externalId: string | undefined,
+    anchorScope: string | undefined,
+  ): string | null => {
+    if (!externalId || anchorScope !== scope) {
+      return null;
+    }
+    const key = importSourceKey(anchorProvider, externalId);
+    return key === importSourceKey(provider, externalId) ? key : null;
+  };
+  const ownKey = (s: KoSource): string | null => ownAnchorKey(s.provider, s.externalId, s.spaceKey);
+  const seenKeys = new Set<string>();
+  for (const item of items) {
+    if (item.externalId) {
+      seenKeys.add(importSourceKey(item.provider ?? provider, item.externalId));
+    }
+  }
+  for (const f of collectFailed) {
+    seenKeys.add(importSourceKey(provider, f.ref));
+  }
+
+  // Je fehlender Seite die betroffenen Objekte (ein Anker kann — etwa nach einer Zusammenführung —
+  // an mehr als einem Objekt hängen).
+  type Fehlend = { externalId: string; kos: KnowledgeObject[]; candidates: ImportCandidate[] };
+  const missing = new Map<string, Fehlend>();
+  const eintrag = (key: string, externalId: string): Fehlend => {
+    const vorhanden = missing.get(key);
+    if (vorhanden) {
+      return vorhanden;
+    }
+    const neu: Fehlend = { externalId, kos: [], candidates: [] };
+    missing.set(key, neu);
+    return neu;
+  };
+  for (const ko of await deps.koService.list()) {
+    for (const s of ko.sources ?? []) {
+      const key = ownKey(s);
+      if (!key || !s.externalId || seenKeys.has(key)) {
+        continue;
+      }
+      const entry = eintrag(key, s.externalId);
+      if (!entry.kos.includes(ko)) {
+        entry.kos.push(ko);
+      }
+    }
+  }
+  for (const c of await deps.library.listImportCandidates()) {
+    if (!isOpenReviewStatus(c.status) || !c.item.externalId) {
+      continue;
+    }
+    const key = ownAnchorKey(c.item.provider, c.item.externalId, c.item.sourceScope);
+    if (!key || seenKeys.has(key)) {
+      continue;
+    }
+    eintrag(key, c.item.externalId).candidates.push(c);
+  }
+
+  let removed = 0;
+  let removalKept = 0;
+  let candidatesRejected = 0;
+  let removalOpen = 0;
+  const goneKeys = new Set<string>();
+  const checks: Fehlend[] = [];
+  for (const [key, entry] of missing) {
+    let gone: boolean;
+    try {
+      gone = await deps.adapter.isGoneAtSource(entry.externalId);
+    } catch (err) {
+      removalOpen += 1;
+      perPage.push({
+        ref: entry.externalId,
+        status: "failed",
+        note: `Löschprüfung nicht möglich (${err instanceof Error ? err.name : "unknown"}) — nichts geändert`,
+      });
+      continue;
+    }
+    if (gone) {
+      goneKeys.add(key);
+      checks.push(entry);
+    }
+  }
+
+  // Offene Kandidaten gelöschter Seiten: ablehnen, damit kein späteres Annehmen sie übernimmt.
+  for (const { externalId, candidates } of checks) {
+    for (const c of candidates) {
+      if (c.status !== "neu") {
+        removalOpen += 1;
+        perPage.push({
+          ref: externalId,
+          status: "failed",
+          note: "in der Quelle gelöscht — Importkandidat wird gerade bearbeitet, nicht abgelehnt",
+        });
+        continue;
+      }
+      if (deps.dryRun) {
+        candidatesRejected += 1;
+        perPage.push({
+          ref: externalId,
+          status: "removed",
+          note: "in der Quelle gelöscht — offener Importkandidat würde abgelehnt",
+        });
+        continue;
+      }
+      try {
+        await deps.library.reviewImportCandidate(c.id, "reject", deps.actor);
+        candidatesRejected += 1;
+        perPage.push({
+          ref: externalId,
+          status: "removed",
+          note: "in der Quelle gelöscht — offener Importkandidat abgelehnt",
+        });
+      } catch (err) {
+        removalOpen += 1;
+        perPage.push({
+          ref: externalId,
+          status: "failed",
+          note: `in der Quelle gelöscht — Importkandidat nicht abgelehnt (${err instanceof Error ? err.name : "unknown"})`,
+        });
+      }
+    }
+  }
+
+  // Ein Objekt mit mehreren gelöschten Ankern wird genau einmal behandelt.
+  const handled = new Set<string>();
+  for (const { externalId, kos } of checks) {
+    for (const ko of kos) {
+      if (handled.has(ko.id)) {
+        continue;
+      }
+      handled.add(ko.id);
+      const weitereQuellen = (ko.sources ?? []).some((s) => {
+        const key = ownKey(s);
+        return !key || !goneKeys.has(key);
+      });
+      if (weitereQuellen) {
+        removalKept += 1;
+        perPage.push({
+          ref: externalId,
+          status: "kept",
+          note: "in der Quelle gelöscht — Wissensobjekt trägt weitere Quellen und bleibt",
+        });
+        continue;
+      }
+      if (deps.dryRun) {
+        removed += 1;
+        perPage.push({
+          ref: externalId,
+          status: "removed",
+          note: "in der Quelle gelöscht — würde in den Papierkorb gelegt",
+        });
+        continue;
+      }
+      try {
+        await deps.koService.delete(ko.id, deps.actor, {
+          forceTrash: true,
+          expectedVersion: ko.version,
+        });
+        removed += 1;
+        perPage.push({
+          ref: externalId,
+          status: "removed",
+          note: "in der Quelle gelöscht — Wissensobjekt in den Papierkorb gelegt",
+        });
+      } catch (err) {
+        removalOpen += 1;
+        perPage.push({
+          ref: externalId,
+          status: "kept",
+          note: `in der Quelle gelöscht — nicht nachgezogen (${err instanceof Error ? err.name : "unknown"})`,
+        });
+      }
+    }
+  }
+  return { removed, removalKept, candidatesRejected, removalOpen, removalChecked: true };
 }
 
 // Der Dedup-/Vergleichsschlüssel eines Items: provider@externalId@version (Anker, bens F3) bzw.

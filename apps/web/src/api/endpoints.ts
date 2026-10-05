@@ -216,7 +216,16 @@ export type KoAction =
   // R-0247: `duplicateAcknowledged` ist die ausdrückliche Bestätigung „offene Dublette gesehen".
   // Sie wird NUR mitgeschickt, wenn sie gegeben wurde; ohne offene Dublette bleibt die Nutzlast
   // unverändert.
-  | { action: "rate"; verdict: Verdict; duplicateAcknowledged?: true }
+  // R-0238: `widerspruch` NUR an der Ablehnung — das Objekt, dem widersprochen wird, und die Art.
+  // Der Server legt dann im selben Aufruf einen Konfliktvorschlag an (`ko-routes.ts`, `rate`).
+  | {
+      action: "rate";
+      verdict: Verdict;
+      duplicateAcknowledged?: true;
+      widerspruch?: { koB: string; type: ConflictType; description: string };
+      // R-0238 · Nacharbeit 8: nur die fehlenden Konfliktschritte, ohne neue Bewertung.
+      fortsetzungFuerFassung?: number;
+    }
   // Pedi 05.07.: Admin-Override „als wahr kennzeichnen" — schließt die Validierung komplett ab.
   | { action: "admin-validate"; duplicateAcknowledged?: true }
   | { action: "assign"; userIds: string[] }
@@ -302,6 +311,8 @@ export type KoAction =
   // sie ginge am Fall vorbei (s. `KnowledgeObject.metadataRevision` in `api/types.ts`).
   | { action: "category"; category: string; expectedMetadataRevision?: number }
   | { action: "tags"; tags: string[]; expectedMetadataRevision?: number }
+  // R-0431 (K2): das Fachgebiet setzen/ändern; leer entfernt die Angabe (ko-routes.ts `domain`).
+  | { action: "domain"; domain: string }
   // SCRUM-415: Vertraulichkeitsstufe setzen/ändern (mit Audit).
   | { action: "confidentiality"; level: Confidentiality }
   | {
@@ -1361,5 +1372,11 @@ export const endpoints = {
       api.post<Anweisung>(`/gesamtanweisungen/${id}/vorlegen`, { version }),
     entscheiden: (id: string, version: number, entscheidung: "angenommen" | "abgelehnt") =>
       api.post<Anweisung>(`/gesamtanweisungen/${id}/entscheiden`, { version, entscheidung }),
+    // QUELLENÄNDERUNGEN: eine neuere Fassung EINES Abschnitts bewusst übernehmen.
+    uebernehmen: (id: string, version: number, bausteinId: string, aufVersion: number) =>
+      api.post<Anweisung>(`/gesamtanweisungen/${id}/bausteine/${bausteinId}/uebernehmen`, {
+        version,
+        aufVersion,
+      }),
   },
 };

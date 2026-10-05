@@ -43,7 +43,7 @@ export function FrageFeld({
   beispieleOffen: boolean;
   onBeispiele: () => void;
   /** Ohne Spracherkennung `null` — dann steht KEIN Mikrofon da (JOB 3038). */
-  diktat: { laeuft: boolean; umschalten: () => void } | null;
+  diktat: { laeuft: boolean; umschalten: () => void; zwischen?: string } | null;
   /** Eine Anfrage läuft: Spinner im Sendeknopf, Knopf gesperrt. */
   wartet: boolean;
   /** Kein nutzbares Modell (D-AISTATE): der Sendeknopf ist hart gesperrt. */
@@ -84,6 +84,17 @@ export function FrageFeld({
         >
           {t("ask.examplesLabel")}
         </button>
+      ) : null}
+      {/* FR-CAP-03: was gerade gesprochen wird, steht sofort sichtbar neben dem Feld — ins Feld
+          selbst kommt erst das endgültig Erkannte. */}
+      {diktat?.laeuft && diktat.zwischen ? (
+        <span
+          data-testid="ask-diktat-zwischen"
+          aria-live="polite"
+          className="min-w-0 max-w-[40%] shrink truncate text-[13px] italic text-muted-2"
+        >
+          {diktat.zwischen}
+        </span>
       ) : null}
       {diktat ? (
         <button

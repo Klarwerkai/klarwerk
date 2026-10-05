@@ -428,7 +428,13 @@ describe("JOB 4154 · der ganze Weg in der Oberfläche", () => {
     expect(container.textContent).toContain("Nicht bestimmbare Befunde: 0");
     // Und nirgends steht ein Wort, das mehr behauptet als „unverändert".
     expect(container.textContent).not.toContain("geprüft");
-    expect(container.textContent).not.toContain("freigegeben");
+    // Prüfstatus-Anzeige (Pedi 28.09.2026, Ergänzung 3): der Entwurf sagt jetzt AUSDRÜCKLICH
+    // „nicht freigegeben". Diese Verneinung ist erlaubt — jede andere Nennung, auch das Standwort
+    // „Freigegeben", wäre eine Freigabebehauptung und bleibt verboten.
+    const ohneVerneinung = (container.textContent ?? "").replaceAll("nicht freigegeben", "");
+    expect(container.textContent).toContain("nicht freigegeben");
+    expect(ohneVerneinung).not.toContain("freigegeben");
+    expect(ohneVerneinung).not.toContain("Freigegeben");
 
     // FE-001 R2 (E8) — UNGESPEICHERTE KOPFANGABEN SPERREN DAS VORLEGEN, mit sichtbarem Grund.
     const vorlegeKnopf = () =>
@@ -464,7 +470,8 @@ describe("JOB 4154 · der ganze Weg in der Oberfläche", () => {
     await act(async () => {
       knopfMit("Annehmen").click();
     });
-    await warteBis(() => standzeile() === "Entschieden", "den Stand „Entschieden“");
+    // Prüfstatus-Anzeige (Pedi 28.09.2026): der angenommene Stand heißt sichtbar „Freigegeben".
+    await warteBis(() => standzeile() === "Freigegeben", "den Stand „Freigegeben“");
   });
 
   it("jede bedienbare Stelle ist mit der Tastatur erreichbar", async () => {

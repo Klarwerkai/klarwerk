@@ -101,7 +101,10 @@ describe("JOB 3072 · N4 — der Anzeigestatus der Web-App kommt vom Server, nic
         anzeigestatusHerkunft: HERKUNFT_VOLL,
       });
       // Die Kalibrierung: ohne den Serverzweig kommt hier nachweislich etwas ANDERES heraus.
-      expect(deriveStatus(objekt)).toBe(geraten);
+      // (Prüfstatus-Anzeige, Ben R2 BEN-04: `deriveStatus` nimmt einen mitgelieferten Serverwert
+      // seither selbst an — die eigene Ableitung zeigt sich deshalb erst OHNE ihn.)
+      expect(deriveStatus({ ...objekt, anzeigestatus: undefined })).toBe(geraten);
+      expect(deriveStatus(objekt)).toBe(erhoben);
       const auskunft = anzeigestatusAus(objekt, { konflikt: false });
       expect(auskunft.status).toBe(erhoben);
       expect(auskunft.herkunft).toBe("server");

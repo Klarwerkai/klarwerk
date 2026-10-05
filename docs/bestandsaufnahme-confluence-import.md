@@ -341,6 +341,25 @@ repariert und aus der Auftragsauswahl genommen: Drilltabellen von `MANAGEMENT_PR
 (`tabellensatz.test.ts`), fehlendes `zeilenrecht` der unveränderten Bibliotheks-Importrouten (`g10`),
 `DokumentError`/`ManagementProfileError` und drei Codes auf den Loglisten (`build-app.test.ts`).
 
+**Nacharbeit 4 (Integration mit main `3127ef2c`):** sechs Konfliktdateien, beide Seiten erhalten.
+(a) i18n: main hat die Wörterbücher nach `apps/web/src/woerterbuch/` verlegt; neue Texte gehören in
+Textmodule. Die 33 Texte dieser Lieferung (DE/EN/NL, Wortlaut unverändert) stehen jetzt in
+`apps/web/src/texte/confluenceimport.ts`, unter ihren bisherigen Namen (`legacySchluessel`).
+(b) R-0162: main bringt die Lieferung des ausgegliederten Abgleich-Auftrags (`reconcileRemovals`,
+`adapter.isGoneAtSource`, `getPageStateById`): eine bestätigt gelöschte Seite schickt ihr Objekt in
+den Papierkorb, solange es keine weitere Quelle trägt. Diese Regel ist maßgeblich und läuft zuerst;
+der Quellabgleich dieser Lieferung läuft danach, sieht nur noch aktive Objekte und vermerkt
+`sourceRemovedAt` damit nur an stehen gebliebenen (R-0131: der Rücklink verspricht dort nichts mehr).
+Seine Einzelnachfrage nutzt jetzt `isGoneAtSource` statt `fetchItem`, weil mains `getPageById` eine
+unbrauchbare 2xx-Antwort als „nicht vorhanden" liest. Der doppelte `sourceScope`-Getter im Adapter
+ist entfernt. `PARTIAL` zählt beide Abgleiche. (c) Annahme: main hat sie hinter die Annahme-Sperre
+verlegt; Säuberung samt Quellangaben und Laufbindung sitzen jetzt in deren Schritten (`annehmen`,
+`nachSperrverlust`). `recoverStaleReviewClaims` nimmt mains Dublettenregel und zieht danach weiter die
+Elementreferenzen nach. **Folge für frühere Tests dieser Lieferung:** Fälle, die nach einer
+bestätigten Löschung ein AKTIVES, nur vermerktes Objekt erwarten (z. B. `runde3.test.ts` N2,
+`abgleich.test.ts`), widersprechen mains maßgeblicher Papierkorb-Regel aus R-0162 (ausgegliedert) und
+können rot werden; sie sind dann dem Abgleich-Auftrag zuzuordnen, nicht hier umzudeuten.
+
 ## Abgrenzung
 
 - SharePoint/OneDrive-Import (JOB 4086) ist ein eigener Adapter und eigener Auftrag.

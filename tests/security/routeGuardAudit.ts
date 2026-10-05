@@ -794,4 +794,10 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
     protection: "ko.validate",
     zeilenrecht: ["darfSehen"],
   },
+  // QUELLENÄNDERUNGEN (aufnahme:20260928): bewusste Übernahme einer neueren Fassung. Dieselbe Lage
+  // wie die Aufnahme — darfSehen am Bestand UND an der neu gebundenen Fassung.
+  "POST /api/gesamtanweisungen/:id/bausteine/:bausteinId/uebernehmen": {
+    protection: "ko.create",
+    zeilenrecht: ["darfSehen"],
+  },
 };

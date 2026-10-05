@@ -20,6 +20,7 @@ import {
   submitFrontDoorDraft,
   withFrontDoorSaveTimeout,
 } from "../../apps/web/src/lib/captureFrontDoor";
+import { woerterbuchQuelleAus } from "../support/woerterbuchquelle";
 
 describe("KW-PROD-02: CaptureFrontDoor", () => {
   it("stellt den neuen Einstieg als stabile Deep-Link-Route bereit", () => {
@@ -211,7 +212,7 @@ describe("KW-PROD-02: CaptureFrontDoor", () => {
       resolve(process.cwd(), "apps/web/src/components/erfassen/Blatt.tsx"),
       "utf8",
     );
-    const i18nSource = readFileSync(resolve(process.cwd(), "apps/web/src/i18n.ts"), "utf8");
+    const i18nSource = woerterbuchQuelleAus(resolve(process.cwd(), "apps/web/src/i18n.ts"));
 
     expect(ASSIST_ACTIONS).toEqual(["clarify", "structure", "expand", "spelling", "format"]);
     expect(assistActionLabelKey("clarify")).toBe("capture.ai.action.clarify");
@@ -313,7 +314,7 @@ describe("KW-PROD-02: CaptureFrontDoor", () => {
     // die ehrliche DE-Formulierung bleibt in i18n.ts gepinnt.
     expect(pageSource).toContain("FRONT_DOOR_STRUCTURING_UNAVAILABLE_KEY");
     expect(FRONT_DOOR_STRUCTURING_UNAVAILABLE_KEY).toBe("cfd.structuringUnavailable");
-    const i18nSource = readFileSync(resolve(process.cwd(), "apps/web/src/i18n.ts"), "utf8");
+    const i18nSource = woerterbuchQuelleAus(resolve(process.cwd(), "apps/web/src/i18n.ts"));
     expect(i18nSource).toContain(
       '"cfd.structuringUnavailable": "Ich kann das gerade nicht verlässlich ordnen."',
     );
@@ -609,7 +610,7 @@ describe("KW-PROD-02: CaptureFrontDoor", () => {
     expect(pageSource).toContain('t("fd.fallbackNoModel")');
 
     // Der neue Grund-Text existiert in DE/EN/NL (3×) und benennt die Vertraulichkeit im DE.
-    const i18nSource = readFileSync(resolve(process.cwd(), "apps/web/src/i18n.ts"), "utf8");
+    const i18nSource = woerterbuchQuelleAus(resolve(process.cwd(), "apps/web/src/i18n.ts"));
     expect(i18nSource.split('"fd.fallbackConfidential":').length - 1).toBe(3);
     const deLine = i18nSource
       .split("\n")

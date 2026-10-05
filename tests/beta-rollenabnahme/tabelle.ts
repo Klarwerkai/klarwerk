@@ -1074,6 +1074,19 @@ export const TABELLE: Zeile[] = [
     tor: "ko.read",
     erwartet: NUR_LESEN,
   },
+  {
+    // QUELLENÄNDERUNGEN (aufnahme:20260928) · DIE ZWÖLFTE TÜR: eine neuere Quellenfassung bewusst
+    // übernehmen. Erfundene Kennungen wie die übrigen Zeilen; mit leerer Nutzlast endet sie hinter
+    // dem Rechtetor in der 400 `VALIDATION` der Route — der Bestand bleibt unberührt.
+    gruppe: "gesamtanweisungRoutes",
+    methode: "POST",
+    pfad: "/api/gesamtanweisungen/gibt-es-nicht/bausteine/gibt-es-auch-nicht/uebernehmen",
+    route: "/api/gesamtanweisungen/:id/bausteine/:bausteinId/uebernehmen",
+    belegstelle: "services/app/src/routes/gesamtanweisung-routes.ts:567",
+    tor: "ko.create",
+    payload: {},
+    erwartet: AB_EXPERTE,
+  },
   // ------------------------------------------------------------------------------------------------
   // JOB 4151 (WG-PERSISTENZ) — DIE VIER TÜREN DER KURATIERTEN BEZIEHUNGEN.
   // ------------------------------------------------------------------------------------------------

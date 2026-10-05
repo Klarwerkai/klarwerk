@@ -35,6 +35,7 @@ import {
   FileText,
   HelpCircle,
   Image as ImageIcon,
+  ListChecks,
   Lock,
   Minus,
   SlidersHorizontal,
@@ -46,8 +47,15 @@ import { useTranslation } from "react-i18next";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
-import { useDirectory, useDuplicates, useReasonerStatus, useValidationBoard } from "../api/hooks";
-import type { Confidentiality, KnowledgeObject } from "../api/types";
+import {
+  useConflicts,
+  useDirectory,
+  useDuplicates,
+  useLibrarySearch,
+  useReasonerStatus,
+  useValidationBoard,
+} from "../api/hooks";
+import type { Confidentiality, ConflictType, KnowledgeObject, OverlapEntry } from "../api/types";
 import { useSession } from "../app/AuthContext";
 import { useRole } from "../app/RoleContext";
 import { useToast } from "../app/ToastContext";
@@ -76,7 +84,9 @@ import { ConfidenceBar, KnowledgeTypeTag, KoAuthorLine } from "../components/tru
 import { Button, cx } from "../components/ui";
 import { aiModelUsable } from "../lib/aiAvailability";
 import { AI_CHECK_POLL_MS } from "../lib/aiCheckStatusCard";
+import { bewertungsumfang } from "../lib/bewertungsumfang";
 import { type PruefZeile, boardZeilen, stufenFacetLabelKey } from "../lib/boardAuskunft";
+import type { ConflictImpact } from "../lib/conflictImpact";
 import {
   DEMO_KNOWLEDGE_FILTERS,
   type DemoKnowledgeFilter,
@@ -97,6 +107,13 @@ import {
 import { koAuthorParts } from "../lib/koAuthor";
 import { formatKoTimestamp } from "../lib/koDates";
 import { quellHinweise, quellennachweis, sourceBadgeKey } from "../lib/koSource";
+import { pruefKonfliktLage } from "../lib/pruefKonflikt";
+import {
+  type StapelErgebnis,
+  bestaetigenVorpruefung,
+  bleibtAusgewaehlt,
+  zuweisenVorpruefung,
+} from "../lib/pruefStapel";
 import {
   REVIEW_DECISIONS,
   type ReviewVerdict,
@@ -145,6 +162,7 @@ import {
   validationFacetValues,
 } from "../lib/validationFacets";
 import {
+  BegruendungFehler,
   type FeedbackVerdict,
   buildValidationFeedback,
   isFeedbackSubmittable,
@@ -203,6 +221,80 @@ const RAD_SCHWELLE_PX = 40;
 // erreichte je die Schwelle.
 const RAD_MASS_PX: Record<number, number> = { 0: 1, 1: 16, 2: 400 };
 
+// R-0238: die Arten eines Widerspruchs — dieselbe Liste wie „Konflikt melden" in der Bibliothek.
+const KONFLIKTARTEN: readonly ConflictType[] = [
+  "truth",
+  "experience",
+  "context",
+  "temporal",
+  "role",
+];
+
+// Rückfrage/Ablehnung: ein unterbrochener Vorgang ist EINE Karte mit EINER Entscheidung.
+function vorgangSchluessel(id: string, verdict: FeedbackVerdict): string {
+  return `${id}|${verdict}`;
+}
+
+/** R-0238 · Nacharbeit 7: die Bewertung steht am Server, nur der Konfliktvorschlag fehlt. */
+const KONFLIKTVORSCHLAG_OFFEN = "KONFLIKTVORSCHLAG_OFFEN";
+/** R-0238 · Nacharbeit 8: Bewertung und Vorschlag stehen, nur die Wahrheitskonflikt-Folge fehlt. */
+const KONFLIKTFOLGE_OFFEN = "KONFLIKTFOLGE_OFFEN";
+/** R-0238 · Nacharbeit 8: die Fortsetzung passt nicht mehr zur abgelehnten Fassung. */
+const FASSUNG_UEBERARBEITET = "FASSUNG_UEBERARBEITET";
+
+/** R-0246 · Nacharbeit 7: der Stand, an dem der Stapel jedes Objekt vor seinem Aufruf prüft. */
+interface StapelStand {
+  visible: PruefZeile[];
+  duplikate: OverlapEntry[] | undefined;
+  aiModelActive: boolean;
+}
+
+/** Ein unterbrochener Rückfrage-/Ablehnungsvorgang: was davon schon am Server liegt. */
+interface GespeicherterVorgang {
+  /** Die bestätigte Begründung. */
+  text: string;
+  /** Der gewählte Widerspruch — er kehrt beim Wiederöffnen zurück. */
+  widerspruch?: { koB: string; type: ConflictType; titel: string } | undefined;
+  /**
+   * `null` = die Bewertung fehlt noch. Sonst steht sie (für `fassung`), und offen ist entweder der
+   * Konfliktvorschlag selbst oder nur seine Folge. Die Fortsetzung schickt dann
+   * `fortsetzungFuerFassung` und bewertet NICHT erneut (Nacharbeit 8).
+   */
+  fortsetzung: { fassung: number; offen: "vorschlag" | "folge" } | null;
+}
+
+/**
+ * Nacharbeit 8: was eine Fehlerantwort über den Stand des Vorgangs sagt. Nur die zwei Teilerfolge
+ * mit Fassungsangabe setzen eine Fortsetzung; jeder andere Fehlschlag (Netz, Server) lässt die
+ * schon bekannte stehen — ein Fehler ist ein Ereignis, kein Gedächtnis.
+ */
+function fortsetzungAus(
+  ursache: ApiError | null,
+  vorher: GespeicherterVorgang["fortsetzung"],
+): GespeicherterVorgang["fortsetzung"] {
+  const fassung = ursache?.details.bewerteteFassung;
+  if (typeof fassung !== "number") {
+    return vorher;
+  }
+  if (ursache?.code === KONFLIKTFOLGE_OFFEN) {
+    return { fassung, offen: "folge" };
+  }
+  if (ursache?.code === KONFLIKTVORSCHLAG_OFFEN) {
+    return { fassung, offen: "vorschlag" };
+  }
+  return vorher;
+}
+
+function ohneKarte<T>(
+  vorgaenge: Readonly<Record<string, T>>,
+  id: string,
+): Readonly<Record<string, T>> {
+  const weg = new Set([vorgangSchluessel(id, "warn"), vorgangSchluessel(id, "down")]);
+  return Object.fromEntries(
+    Object.entries(vorgaenge).filter(([schluessel]) => !weg.has(schluessel)),
+  );
+}
+
 /**
  * JOB 3112 · V3 — die zwei Wege, auf denen ein Wissensobjekt die Prüffläche FREIGEGEBEN verlässt.
  * `rate` ist der Knopf „Freigeben" im Fußband (Recht `ko.validate`), `admin` das „Als wahr
@@ -228,6 +320,10 @@ export function Validation(): JSX.Element {
   // teilt beide Leser denselben Eintrag. Scheitert er, bleibt `data` `undefined` und es entsteht
   // KEINE Aussage; scheitert eine AUFFRISCHUNG, bleibt der zuletzt geholte Stand stehen.
   const duplikate = useDuplicates();
+  // §8.2 / Pedis Entscheidung vom 03.10.2026: die Konfliktlage je Karte. Derselbe Eintrag
+  // `["conflicts"]`, den der Reiterkopf für seinen Zähler zieht — kein zweiter Netzabruf, aber ein
+  // EIGENER Lade- und Fehlerzustand an der Karte (`pruefKonfliktLage`).
+  const konflikte = useConflicts();
   const { user } = useSession();
   const aiModelActive = aiModelUsable(useReasonerStatus().data);
   const qc = useQueryClient();
@@ -607,35 +703,164 @@ export function Validation(): JSX.Element {
     freigabe.reset();
   };
 
+  // Aufnahme 20260922 · Prüfboard-Bedienung: die Begründung, die der Server schon BESTÄTIGT hat,
+  // während die Bewertung danach scheiterte. Dieselbe Regel wie `stufenfrage.gespeichert`: ein
+  // Fehler ist ein Ereignis, kein Gedächtnis — was angekommen ist, bleibt eine Tatsache des
+  // Vorgangs, auch über Abbrechen und erneutes Öffnen hinweg, bis die Bewertung durch ist.
+  //
+  // RUNDE 2 · BENS BEFUND B1: EIN VORGANG JE KARTE UND ENTSCHEIDUNG, nicht einer für die Seite.
+  // Runde 1 hielt genau einen Platz; der Teilerfolg auf Karte B überschrieb den noch offenen von
+  // Karte A, und A schrieb ihre Begründung danach ein zweites Mal. Der Schlüssel ist
+  // `vorgangSchluessel(id, verdict)`.
+  //
+  // NACHARBEIT 7 · DER VORGANG TRÄGT AUCH SEINEN WIDERSPRUCH. Gespeichert wurde bisher nur der Text;
+  // beim Wiederöffnen fehlten Gegenüber und Art, und „Bewertung erneut senden" schickte eine
+  // gewöhnliche Ablehnung ohne den gewählten Konfliktvorschlag. `fortsetzung` hält den zweiten
+  // Teilerfolg fest (Nacharbeit 8): die Ablehnung steht für eine bestimmte Fassung, offen ist der
+  // Vorschlag (`KONFLIKTVORSCHLAG_OFFEN`) oder nur seine Folge (`KONFLIKTFOLGE_OFFEN`).
+  const [begruendungenGespeichert, setBegruendungenGespeichert] = useState<
+    Readonly<Record<string, GespeicherterVorgang>>
+  >({});
+  const gespeicherteBegruendung = (
+    id: string,
+    verdict: FeedbackVerdict,
+  ): GespeicherterVorgang | undefined => begruendungenGespeichert[vorgangSchluessel(id, verdict)];
+
+  // R-0238 · DIE WIDERSPRECHENDE ABLEHNUNG (UI/UX-Brief Screen 5: „widersprechende Ablehnung →
+  // Konfliktvorschlag"). Optional und nur an der Ablehnung: das Gegenüber wird über die vorhandene
+  // Bibliothekssuche gefunden (sie läuft erst ab zwei Zeichen), die Art wählt der Mensch. Gewählt
+  // ist ein Gegenüber erst mit einer Art — sonst bleibt „Absenden" gesperrt.
+  const [widerspruchSuche, setWiderspruchSuche] = useState("");
+  const [widerspruchZiel, setWiderspruchZiel] = useState<{ id: string; title: string } | null>(
+    null,
+  );
+  const [widerspruchArt, setWiderspruchArt] = useState<ConflictType | "">("");
+  const widerspruchUnvollstaendig = widerspruchZiel !== null && widerspruchArt === "";
+  const widerspruchBegriff = widerspruchSuche.trim();
+  const widerspruchTreffer = useLibrarySearch(
+    { q: widerspruchBegriff },
+    feedback?.verdict === "down" && widerspruchZiel === null && widerspruchBegriff.length >= 2,
+  );
+  const widerspruchZuruecksetzen = (): void => {
+    setWiderspruchSuche("");
+    setWiderspruchZiel(null);
+    setWiderspruchArt("");
+  };
+
   const reviewWithFeedback = useMutation({
     mutationFn: async ({
       id,
       verdict,
       text,
-    }: { id: string; title: string; verdict: FeedbackVerdict; text: string }) => {
-      await endpoints.ko.act(id, {
-        action: "comment",
-        text: buildValidationFeedback(verdict, text),
-      });
-      await endpoints.ko.act(id, { action: "rate", verdict });
+      nurBewertung,
+      widerspruch,
+      fortsetzungFuerFassung,
+    }: {
+      id: string;
+      title: string;
+      verdict: FeedbackVerdict;
+      text: string;
+      nurBewertung: boolean;
+      widerspruch?: { koB: string; type: ConflictType; description: string };
+      /** Nur für das Wiederöffnen: der Titel des Gegenübers, wie die Fläche ihn zeigte. */
+      widerspruchTitel?: string;
+      /** Nacharbeit 8: nur die fehlenden Konfliktschritte, gebunden an diese Fassung. */
+      fortsetzungFuerFassung?: number;
+    }) => {
+      if (!nurBewertung) {
+        try {
+          await endpoints.ko.act(id, {
+            action: "comment",
+            text: buildValidationFeedback(verdict, text),
+          });
+        } catch (e) {
+          throw new BegruendungFehler(false, e);
+        }
+      }
+      try {
+        await endpoints.ko.act(id, {
+          action: "rate",
+          verdict,
+          ...(widerspruch ? { widerspruch } : {}),
+          ...(fortsetzungFuerFassung !== undefined ? { fortsetzungFuerFassung } : {}),
+        });
+      } catch (e) {
+        throw new BegruendungFehler(true, e);
+      }
     },
     onSuccess: (_data, vars) => {
       setFeedback(null);
       setFeedbackText("");
+      widerspruchZuruecksetzen();
+      // Der Konfliktvorschlag ist entstanden: Reiterzähler und Konfliktmarkierung lesen ihn neu.
+      if (vars.widerspruch) {
+        void qc.invalidateQueries({ queryKey: ["conflicts"] });
+      }
+      // Entschieden ist die KARTE: auch ein offener Vorgang mit der anderen Entscheidung auf
+      // derselben Karte ist damit überholt. Andere Karten bleiben unberührt.
+      setBegruendungenGespeichert((alt) => ohneKarte(alt, vars.id));
       nachEntscheidung(vars);
+    },
+    onError: (e, vars) => {
+      if (!(e instanceof BegruendungFehler && e.begruendungGespeichert)) {
+        return;
+      }
+      const ursache = e.ursache instanceof ApiError ? e.ursache : null;
+      const schluessel = vorgangSchluessel(vars.id, vars.verdict);
+      // Nacharbeit 8: die abgelehnte Fassung ist überarbeitet (oder die Ablehnung gilt nicht
+      // mehr). Es wurde nichts bewertet und nichts angelegt — der Vorgang ist beendet, und eine
+      // neue Entscheidung beginnt von vorn (mit neuer Begründung zur neuen Fassung).
+      if (ursache?.code === FASSUNG_UEBERARBEITET) {
+        setBegruendungenGespeichert((alt) => ohneKarte(alt, vars.id));
+        return;
+      }
+      setBegruendungenGespeichert((alt) => ({
+        ...alt,
+        [schluessel]: {
+          text: vars.text,
+          widerspruch: vars.widerspruch
+            ? {
+                koB: vars.widerspruch.koB,
+                type: vars.widerspruch.type,
+                titel: vars.widerspruchTitel ?? vars.widerspruch.koB,
+              }
+            : undefined,
+          fortsetzung: fortsetzungAus(ursache, alt[schluessel]?.fortsetzung ?? null),
+        },
+      }));
     },
   });
 
   const openFeedback = (id: string, verdict: FeedbackVerdict): void => {
     setFeedback({ id, verdict });
-    setFeedbackText("");
+    // Liegt die Begründung zu genau diesem Vorgang schon am Server, steht sie wieder da — sie wird
+    // nicht ein zweites Mal geschrieben. Mit ihr kehrt ein gewählter Widerspruch zurück.
+    const vorgang = gespeicherteBegruendung(id, verdict);
+    setFeedbackText(vorgang?.text ?? "");
+    widerspruchZuruecksetzen();
+    if (vorgang?.widerspruch) {
+      setWiderspruchZiel({ id: vorgang.widerspruch.koB, title: vorgang.widerspruch.titel });
+      setWiderspruchArt(vorgang.widerspruch.type);
+    }
     reviewWithFeedback.reset();
   };
 
   const assign = useMutation({
     mutationFn: ({ id, userId }: { id: string; userId: string }) =>
       endpoints.ko.act(id, { action: "assign", userIds: [userId] }),
-    onSuccess: invalidate,
+    onSuccess: (_data, vars) => {
+      invalidate();
+      push("success", t("pruefboard.zuweisenErfolg", { name: nameOf(vars.userId) }));
+    },
+    // Bisher ohne jede Meldung: das Auswahlfeld sprang zurück, und niemand erfuhr, dass die
+    // Zuweisung nicht angekommen war.
+    onError: (e) =>
+      push(
+        "error",
+        t("pruefboard.zuweisenFehler", {
+          grund: e instanceof ApiError ? e.message : t("state.error"),
+        }),
+      ),
   });
 
   const aiCheckRetry = useMutation({
@@ -646,6 +871,19 @@ export function Validation(): JSX.Element {
     },
     onError: (e) => push("error", e instanceof ApiError ? e.message : t("state.error")),
   });
+
+  // R-0246 · STAPEL-BEARBEITUNG: die Auswahl mehrerer Einträge, ab Controller (UI/UX-Brief
+  // Screen 5). Die Regel je Objekt steht in `lib/pruefStapel.ts`; das Ergebnis je Objekt bleibt
+  // stehen, bis der nächste Stapel läuft.
+  const darfStapel = role === "admin" || role === "controller";
+  const [stapelAuswahl, setStapelAuswahl] = useState<ReadonlySet<string>>(() => new Set());
+  const [stapelLaeuft, setStapelLaeuft] = useState(false);
+  const [stapelErgebnisse, setStapelErgebnisse] = useState<StapelErgebnis[] | null>(null);
+  // Nacharbeit 6: die Kästchen stehen nur im AUSWAHLMODUS da (eingeschaltet im Menü „Stapel“
+  // oder solange etwas ausgewählt ist). Dauernd sichtbar kosteten sie jedem Titel rund 20 px
+  // Breite; ein Titel brach dann eine Zeile tiefer um, und die Auswahl rutschte bei 1280×420 aus
+  // der Liste (`job2935-validierung-fussband.test.ts` L19). Ohne Modus ist die Liste wie vorher.
+  const [stapelModus, setStapelModus] = useState(false);
 
   // JOB 3112 · V3: die eigene Mutation `adminValidate` ist ENTFALLEN — „Als wahr kennzeichnen"
   // läuft über denselben `freigabe`-Ausgang wie das Fußband, samt Stufenfrage davor. Der Zustand
@@ -728,6 +966,138 @@ export function Validation(): JSX.Element {
   }
 
   const aktiv = visible.find((k) => k.id === aktivId) ?? visible[0] ?? null;
+
+  // ================================================================================================
+  // R-0246 — MEHRERE AUSWÄHLEN, GESAMMELT BESTÄTIGEN ODER ZUWEISEN.
+  // ================================================================================================
+  //
+  // Ausgewählt ist nur, was die Liste gerade zeigt, in IHRER Reihenfolge (Prüfvorrang) — ein
+  // weggefilterter Eintrag wird nicht still mitbearbeitet. Die Auswahl ist unabhängig von der
+  // aktiven Karte: das Kästchen wählt für den Stapel, der Eintrag selbst öffnet die Karte.
+  const stapel = visible.filter((k) => stapelAuswahl.has(k.id));
+  const alleGewaehlt = visible.length > 0 && stapel.length === visible.length;
+  const kaestchenSichtbar = darfStapel && (stapelModus || stapel.length > 0);
+
+  /** Modus aus heisst auch: nichts mehr ausgewählt — sonst bliebe eine unsichtbare Auswahl. */
+  function modusUmschalten(): void {
+    if (kaestchenSichtbar) {
+      setStapelModus(false);
+      setStapelAuswahl(new Set());
+      return;
+    }
+    setStapelModus(true);
+  }
+
+  function stapelUmschalten(id: string): void {
+    setStapelAuswahl((alt) => {
+      const neu = new Set(alt);
+      if (neu.has(id)) {
+        neu.delete(id);
+      } else {
+        neu.add(id);
+      }
+      return neu;
+    });
+  }
+
+  function alleUmschalten(): void {
+    setStapelAuswahl(alleGewaehlt ? new Set() : new Set(visible.map((k) => k.id)));
+  }
+
+  // Nacharbeit 7: der jeweils letzte gezeichnete Stand — Liste, Dublettenlage, Modell. Der Stapel
+  // liest ihn VOR JEDEM einzelnen Aufruf; ein Stand, der beim Start festgehalten wurde, sähe eine
+  // inzwischen laufende KI-Prüfung nicht. Nachgeführt nach jedem Zeichenlauf (wie `aktivRef`).
+  const stapelStandRef = useRef<StapelStand>({ visible, duplikate: duplikate.data, aiModelActive });
+  useEffect(() => {
+    stapelStandRef.current = { visible, duplikate: duplikate.data, aiModelActive };
+  });
+
+  function stapelFehler(k: PruefZeile, e: unknown): StapelErgebnis {
+    const meldung = e instanceof ApiError ? e.message : t("state.error");
+    return { id: k.id, title: k.title, art: "fehler", meldung };
+  }
+
+  /**
+   * Läuft den Stapel NACHEINANDER ab, nicht parallel: jedes Objekt bekommt seine eigene
+   * Serverantwort, und das Ergebnis je Objekt ist genau diese Antwort. Erledigtes verlässt die
+   * Auswahl; was nicht geschickt wurde oder scheiterte, bleibt ausgewählt.
+   */
+  async function stapelAusfuehren(
+    schritt: (k: PruefZeile, stand: StapelStand) => Promise<StapelErgebnis>,
+  ): Promise<void> {
+    // Festgehalten wird nur, WELCHE Einträge gewählt waren — nicht ihr Stand (Nacharbeit 7).
+    const ziele = stapel.map((k) => ({ id: k.id, title: k.title }));
+    setStapelLaeuft(true);
+    setStapelErgebnisse(null);
+    const ergebnisse: StapelErgebnis[] = [];
+    for (const ziel of ziele) {
+      // VOR JEDEM Aufruf der jetzige Stand: was während des vorigen Aufrufs gesperrt wurde oder
+      // aus der Liste fiel, wird nicht mehr geschickt.
+      const stand = stapelStandRef.current;
+      const k = stand.visible.find((z) => z.id === ziel.id);
+      if (!k) {
+        ergebnisse.push({ id: ziel.id, title: ziel.title, art: "entfallen" });
+        continue;
+      }
+      ergebnisse.push(await schritt(k, stand));
+    }
+    setStapelErgebnisse(ergebnisse);
+    setStapelAuswahl((alt) => {
+      const neu = new Set(alt);
+      for (const e of ergebnisse) {
+        if (!bleibtAusgewaehlt(e.art)) {
+          neu.delete(e.id);
+        }
+      }
+      return neu;
+    });
+    setStapelLaeuft(false);
+    invalidate();
+  }
+
+  // Gesammelt bestätigen = je Objekt DERSELBE Freigabeweg wie am Knopf „Freigeben", mit denselben
+  // Sperren davor. Eine offene Dublette oder eine fehlende Stufe wird NICHT im Stapel entschieden:
+  // das Objekt wird nicht geschickt und bleibt für die Einzelentscheidung an seiner Karte stehen.
+  const stapelBestaetigen = (): Promise<void> =>
+    stapelAusfuehren(async (k, stand) => {
+      const vorab = bestaetigenVorpruefung({
+        gesperrt: validationAiGate(k.aiCheck, stand.aiModelActive).locked,
+        dubletteOffen: brauchtDublettenBestaetigung(k.id, stand.duplikate),
+        stufeFehlt: brauchtStufenfrage(k.auskunft.stufe.lage),
+      });
+      if (vorab) {
+        return { id: k.id, title: k.title, art: vorab };
+      }
+      try {
+        await endpoints.ko.act(k.id, { action: "rate", verdict: "up" });
+        return { id: k.id, title: k.title, art: "bestaetigt" };
+      } catch (e) {
+        // Der Server kennt eine Dublette, die die Fläche (noch) nicht zeigte: nichts validiert.
+        if (e instanceof ApiError && e.code === DUBLETTE_BESTAETIGUNG_FEHLT) {
+          return { id: k.id, title: k.title, art: "dubletteOffen" };
+        }
+        return stapelFehler(k, e);
+      }
+    });
+
+  // Gesammelt zuweisen = je Objekt derselbe `assign` wie das Auswahlfeld der Karte.
+  const stapelZuweisen = (userId: string): Promise<void> =>
+    stapelAusfuehren(async (k, stand) => {
+      const vorab = zuweisenVorpruefung(
+        { gesperrt: validationAiGate(k.aiCheck, stand.aiModelActive).locked },
+        k.assignments ?? [],
+        userId,
+      );
+      if (vorab) {
+        return { id: k.id, title: k.title, art: vorab };
+      }
+      try {
+        await endpoints.ko.act(k.id, { action: "assign", userIds: [userId] });
+        return { id: k.id, title: k.title, art: "zugewiesen" };
+      } catch (e) {
+        return stapelFehler(k, e);
+      }
+    });
 
   // ================================================================================================
   // JOB 3504 — DURCH DIE LISTE GEHEN, OHNE JEDEN ARTIKEL ANZUKLICKEN (Pedi, 10.09. 06:48).
@@ -839,6 +1209,7 @@ export function Validation(): JSX.Element {
   });
 
   const listeSteht = visible.length > 0;
+  const laeuftKey = aiModelActive ? "val.aiCheck.pendingAi" : "val.aiCheck.pending";
   useEffect(() => {
     const ul = listeSteht ? warteschlangeRef.current : null;
     if (!ul) {
@@ -926,7 +1297,7 @@ export function Validation(): JSX.Element {
         <input
           value={filter.search}
           onChange={(e) => setFilter((f) => ({ ...f, search: e.target.value }))}
-          placeholder={t("val.filter")}
+          placeholder={t("pruefboard.volltextFiltern")}
           className="h-9 w-full rounded-input border border-hairline bg-surface px-3 text-[12.5px] outline-none focus:border-ink/30"
         />
         <select
@@ -1136,7 +1507,42 @@ export function Validation(): JSX.Element {
     </PruefenMenue>
   );
 
-  const kopf = <PruefenKopf aktiv="offen" filter={filterMenue} hilfe={hilfeMenue} />;
+  // R-0246: die Stapel-Leiste wohnt als MENÜ neben dem Filter-Menü — nicht über der Liste. Ein
+  // Kasten über der Liste kostet die Liste genau seine Höhe und schiebt sie unter den Anfang der
+  // Karte; das schliessen die Geometrieverträge aus (`job2935-validierung-fussband.test.ts`, Block
+  // L: Liste und Karte beginnen auf gleicher Höhe, die Liste behält ihren Platz). Das Menüblatt
+  // liegt über der Fläche und nimmt der Spalte nichts. Der Zähler am geschlossenen Menü nennt die
+  // Anzahl der ausgewählten Einträge.
+  //
+  // Nacharbeit 7: das Menü bleibt auch bei LEERER Warteschlange stehen, solange ein Lauf läuft oder
+  // ein Ergebnis vorliegt — sonst nahm die letzte erfolgreiche Bestätigung die Rückmeldung je
+  // Objekt mit: das Board lud neu, die Liste war leer, das Menü samt Ergebnis verschwand.
+  const stapelSichtbar = visible.length > 0 || stapelLaeuft || stapelErgebnisse !== null;
+  const stapelMenue =
+    darfStapel && stapelSichtbar ? (
+      <PruefenMenue
+        kennung="stapel"
+        beschriftung={t("pruefboard.stapel.menue")}
+        symbol={<ListChecks size={16} aria-hidden="true" />}
+        zaehler={stapel.length}
+        breite="w-80"
+      >
+        {stapelLeiste()}
+      </PruefenMenue>
+    ) : null;
+
+  const kopf = (
+    <PruefenKopf
+      aktiv="offen"
+      filter={
+        <>
+          {filterMenue}
+          {stapelMenue}
+        </>
+      }
+      hilfe={hilfeMenue}
+    />
+  );
 
   // ---- Der Leerzustand: EIN Satz, höchstens ein Weiterweg (Auftrag §9) -------------------------
   function leerSatz(): JSX.Element {
@@ -1270,8 +1676,23 @@ export function Validation(): JSX.Element {
             >
               {visible.map((k) => {
                 const ist = aktiv?.id === k.id;
+                // R-0213: eine laufende Prüfung ist schon in der LISTE erkennbar, nicht erst an der
+                // Karte. Dasselbe Prädikat wie die Sperre der Karte (`validationAiGate`).
+                const laeuft = validationAiGate(k.aiCheck, aiModelActive).locked;
                 return (
-                  <li key={k.id} data-testid="validation-row">
+                  <li key={k.id} data-testid="validation-row" className="flex items-center gap-1.5">
+                    {/* R-0246: das Kästchen wählt für den Stapel; es öffnet keine Karte. */}
+                    {kaestchenSichtbar ? (
+                      <input
+                        type="checkbox"
+                        data-testid="pruefen-stapel-waehlen"
+                        aria-label={t("pruefboard.stapel.waehlen", { titel: k.title })}
+                        checked={stapelAuswahl.has(k.id)}
+                        disabled={stapelLaeuft}
+                        onChange={() => stapelUmschalten(k.id)}
+                        className="shrink-0"
+                      />
+                    ) : null}
                     <button
                       type="button"
                       data-testid="pruefen-warteschlange-eintrag"
@@ -1292,13 +1713,34 @@ export function Validation(): JSX.Element {
                         pruefbereichRef.current?.focus({ preventScroll: true });
                       }}
                       className={cx(
-                        "block w-full rounded-[9px] border px-[12px] py-[10px] text-left text-[13.5px] leading-[1.35]",
+                        "block w-full min-w-0 flex-1 rounded-[9px] border px-[12px] py-[10px] text-left text-[13.5px] leading-[1.35]",
                         ist
                           ? "border-hairline bg-surface font-semibold text-text"
                           : "border-transparent text-muted hover:bg-hairline-soft",
+                        laeuft ? "opacity-60" : "",
                       )}
                     >
                       <span data-text="titel">{k.title}</span>
+                      {laeuft ? (
+                        <Lock
+                          size={12}
+                          role="img"
+                          data-testid="pruefen-warteschlange-laeuft"
+                          aria-label={t(laeuftKey)}
+                          className="ml-1.5 inline-block align-middle text-muted"
+                        />
+                      ) : null}
+                      {/* §8.2: betroffene Einträge sind schon in der Liste erkennbar. Ein Punkt
+                          mit Namen statt eines Wortes — der Titel bleibt der Text des Eintrags. */}
+                      {pruefKonfliktLage(k.id, konflikte).art === "betroffen" ? (
+                        <span
+                          role="img"
+                          data-testid="pruefen-warteschlange-konflikt"
+                          aria-label={t("pruefboard.konfliktMarke")}
+                          title={t("pruefboard.konfliktMarke")}
+                          className="ml-1.5 inline-block h-[7px] w-[7px] rounded-full bg-trust-warn-fill align-middle"
+                        />
+                      ) : null}
                     </button>
                   </li>
                 );
@@ -1369,6 +1811,189 @@ export function Validation(): JSX.Element {
   // „···"-Menü und der Cursor im Begründungsfeld gingen bei jedem Tastendruck verloren. Eine
   // Zeichenfunktion liefert dagegen gewöhnliche Elemente in den Baum der Seite — kein neuer Typ,
   // kein Neuaufbau. Deshalb wird sie gerufen (`karte(aktiv)`) und nicht gerendert (`<Karte …/>`).
+  // ================================================================================================
+  // R-0246 — DIE STAPEL-LEISTE. Eine Zeichenfunktion wie `karte` (dieselbe Begründung).
+  // ================================================================================================
+  //
+  // „Alle auswählen" steht immer da; die Aktionen erst, wenn etwas ausgewählt ist. Das Ergebnis
+  // nennt JEDES bearbeitete Objekt mit seinem Ausgang — auch die, die nicht geschickt wurden.
+  function stapelLeiste(): JSX.Element {
+    return (
+      <div
+        data-testid="pruefen-stapel"
+        className="flex flex-col gap-1.5 px-2.5 py-2 text-[12px] text-muted"
+      >
+        <button
+          type="button"
+          data-text="knopf"
+          data-testid="pruefen-stapel-modus"
+          aria-pressed={kaestchenSichtbar}
+          disabled={stapelLaeuft}
+          onClick={modusUmschalten}
+          className="self-start text-[12px] font-semibold text-text underline-offset-4 hover:underline disabled:opacity-50"
+        >
+          {kaestchenSichtbar ? t("pruefboard.stapel.modusAus") : t("pruefboard.stapel.modusAn")}
+        </button>
+        <label className="flex items-center gap-1.5">
+          <input
+            type="checkbox"
+            data-testid="pruefen-stapel-alle"
+            checked={alleGewaehlt}
+            disabled={stapelLaeuft}
+            onChange={alleUmschalten}
+          />
+          <span data-text="text">{t("pruefboard.stapel.alle")}</span>
+        </label>
+        {stapel.length > 0 ? (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span data-testid="pruefen-stapel-anzahl" data-text="text">
+              {t("pruefboard.stapel.anzahl", { n: stapel.length })}
+            </span>
+            <button
+              type="button"
+              data-text="knopf"
+              data-testid="pruefen-stapel-bestaetigen"
+              disabled={stapelLaeuft}
+              onClick={() => void stapelBestaetigen()}
+              className="rounded-[9px] bg-trust-pos-fill px-3 py-1.5 text-[12px] font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {t("pruefboard.stapel.bestaetigen")}
+            </button>
+            <select
+              value=""
+              data-testid="pruefen-stapel-zuweisen"
+              disabled={stapelLaeuft}
+              onChange={(e) => {
+                if (e.target.value) {
+                  void stapelZuweisen(e.target.value);
+                }
+              }}
+              className={selectCls}
+              aria-label={t("pruefboard.stapel.zuweisen")}
+            >
+              <option value="">{t("pruefboard.stapel.zuweisen")}</option>
+              {(users.data ?? []).map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.name || u.id}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              data-text="knopf"
+              data-testid="pruefen-stapel-aufheben"
+              disabled={stapelLaeuft}
+              onClick={() => setStapelAuswahl(new Set())}
+              className="text-[12px] font-semibold text-muted hover:text-text disabled:opacity-50"
+            >
+              {t("pruefboard.stapel.aufheben")}
+            </button>
+          </div>
+        ) : null}
+        {stapelLaeuft ? (
+          <p data-testid="pruefen-stapel-laeuft" data-text="text" aria-busy="true">
+            {t("pruefboard.stapel.laeuft")}
+          </p>
+        ) : null}
+        {stapelErgebnisse ? (
+          <div data-testid="pruefen-stapel-ergebnis" aria-live="polite">
+            <p data-text="text" className="font-semibold text-text">
+              {t("pruefboard.stapel.ergebnis")}
+            </p>
+            <ul className="mt-0.5 space-y-0.5">
+              {stapelErgebnisse.map((e) => (
+                <li key={e.id} data-testid="pruefen-stapel-ergebnis-zeile" data-art={e.art}>
+                  <span className="text-text">{e.title}</span> —{" "}
+                  {t(`pruefboard.stapel.art.${e.art}`, { meldung: e.meldung ?? "" })}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
+  // R-0238 — die optionale Angabe „widerspricht Beitrag …" im Ablehnungsfeld. Gesucht wird über die
+  // Bibliothekssuche (dieselben Sichtbarkeitsregeln); das Objekt selbst steht nie in den Treffern.
+  function widerspruchBlock(k: PruefZeile): JSX.Element {
+    const treffer = (widerspruchTreffer.data ?? []).filter((x) => x.id !== k.id).slice(0, 5);
+    return (
+      <div data-testid="pruefen-widerspruch" className="mt-2 space-y-1.5 text-[12.5px] text-muted">
+        <p data-text="text" className="font-semibold text-text">
+          {t("pruefboard.widerspruch.titel")}
+        </p>
+        {widerspruchZiel ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <span data-testid="pruefen-widerspruch-ziel" className="text-text">
+              {widerspruchZiel.title}
+            </span>
+            <button
+              type="button"
+              data-text="knopf"
+              data-testid="pruefen-widerspruch-entfernen"
+              onClick={() => {
+                setWiderspruchZiel(null);
+                setWiderspruchArt("");
+              }}
+              className="text-[12px] font-semibold text-muted hover:text-text"
+            >
+              {t("pruefboard.widerspruch.entfernen")}
+            </button>
+            <select
+              value={widerspruchArt}
+              data-testid="pruefen-widerspruch-art"
+              onChange={(e) => setWiderspruchArt(e.target.value as ConflictType | "")}
+              className={selectCls}
+              aria-label={t("pruefboard.widerspruch.art")}
+            >
+              <option value="">{t("pruefboard.widerspruch.art")}</option>
+              {KONFLIKTARTEN.map((ct) => (
+                <option key={ct} value={ct}>
+                  {t(`con.type.${ct}`)}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : (
+          <>
+            <input
+              value={widerspruchSuche}
+              data-testid="pruefen-widerspruch-suche"
+              onChange={(e) => setWiderspruchSuche(e.target.value)}
+              placeholder={t("pruefboard.widerspruch.suche")}
+              aria-label={t("pruefboard.widerspruch.suche")}
+              className="h-9 w-full rounded-input border border-hairline bg-surface px-3 text-[12.5px] outline-none focus:border-ink/30"
+            />
+            {widerspruchTreffer.isError ? (
+              <p data-text="text">{t("pruefboard.widerspruch.suchFehler")}</p>
+            ) : null}
+            {treffer.length > 0 ? (
+              <ul className="space-y-0.5">
+                {treffer.map((x) => (
+                  <li key={x.id}>
+                    <button
+                      type="button"
+                      data-text="knopf"
+                      data-testid="pruefen-widerspruch-treffer"
+                      onClick={() => {
+                        setWiderspruchZiel({ id: x.id, title: x.title });
+                        setWiderspruchSuche("");
+                      }}
+                      className="text-left text-[12.5px] text-text underline-offset-4 hover:underline"
+                    >
+                      {x.title}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </>
+        )}
+      </div>
+    );
+  }
+
   function karte(k: PruefZeile): JSX.Element {
     const sig = reviewSignals(k);
     const reviewWork = reviewWorkView(k);
@@ -1390,8 +2015,32 @@ export function Validation(): JSX.Element {
     // `minRole: "controller"` (`navigation.ts:204`).
     const doppel = doppelhinweis(k.id, duplikate.data);
     const darfVergleichen = role === "admin" || role === "controller";
+    // Die Konfliktseite trägt dieselbe Schwelle (`navigation.ts:274`, minRole controller).
+    const konfliktLage = pruefKonfliktLage(k.id, konflikte);
+    const konfliktNichtFrisch = "nichtFrisch" in konfliktLage && konfliktLage.nichtFrisch;
+    const konfliktTitel = (w: ConflictImpact): string => {
+      const titel = t(w.hasTruth ? "conflict.impact.truthTitle" : "conflict.impact.title");
+      const n = w.unresolvedCount;
+      return n > 1 ? `${titel} · ${t("pruefboard.konfliktAnzahl", { n })}` : titel;
+    };
     const punkte = Array.from({ length: Math.max(sig.needed, 1) }, (_, i) => i);
     const quittung = quittungOffen && lastDecision ? reviewOutcome(lastDecision.verdict) : null;
+    // Die OFFENEN Zuweisungen (die Board-Route reicht nur offene durch, ValidationService
+    // `withOpenAssignments`) — „zugewiesen" allein sagte nicht, an wen.
+    const zugewiesen = k.assignments ?? [];
+    // Rückfrage/Ablehnung: liegt die Begründung dieses Vorgangs schon am Server?
+    const vorgang =
+      feedback?.id === k.id ? gespeicherteBegruendung(k.id, feedback.verdict) : undefined;
+    const begruendungLiegt = vorgang !== undefined;
+    // Nacharbeit 7/8: auch die Ablehnung steht schon — offen ist der Vorschlag oder nur seine Folge.
+    const fortsetzung = vorgang?.fortsetzung ?? null;
+    // Nacharbeit 8: die Fortsetzung wurde abgewiesen, weil die Fassung überarbeitet wurde.
+    const fehlerJetzt = reviewWithFeedback.error;
+    const ursacheJetzt = fehlerJetzt instanceof BegruendungFehler ? fehlerJetzt.ursache : null;
+    const ueberarbeitet =
+      feedback?.id === k.id &&
+      ursacheJetzt instanceof ApiError &&
+      ursacheJetzt.code === FASSUNG_UEBERARBEITET;
 
     return (
       // Der Flächen-Klick ist reiner MAUS-Komfort. Die Karte bekommt ausdrücklich KEINE
@@ -1489,11 +2138,18 @@ export function Validation(): JSX.Element {
                     aria-label={t("val.assign")}
                   >
                     <option value="">{t("val.assign")}</option>
-                    {(users.data ?? []).map((u) => (
-                      <option key={u.id} value={u.id}>
-                        {u.name || u.id}
-                      </option>
-                    ))}
+                    {/* Wer schon offen zugewiesen ist, steht da — aber nicht noch einmal wählbar:
+                        ein zweites Zuweisen derselben Person änderte nichts und sähe aus wie eins. */}
+                    {(users.data ?? []).map((u) => {
+                      const schon = zugewiesen.includes(u.id);
+                      return (
+                        <option key={u.id} value={u.id} disabled={schon}>
+                          {schon
+                            ? t("pruefboard.bereitsZugewiesen", { name: u.name || u.id })
+                            : u.name || u.id}
+                        </option>
+                      );
+                    })}
                   </select>
                 </div>
                 <PruefenMenueEintrag onClick={() => navigate(`/wissen/${k.id}?edit=1`)}>
@@ -1621,6 +2277,13 @@ export function Validation(): JSX.Element {
               {sig.authorTransferred ? ` · ${t("val.transferred")}` : ""}
               {sig.assigned ? ` · ${t("val.assigned")}` : ""}
             </PruefenMehrZeile>
+            {zugewiesen.length > 0 ? (
+              <PruefenMehrZeile beschriftung={t("pruefboard.zugewiesenAn")}>
+                <span data-testid="pruefen-zugewiesen-an">
+                  {zugewiesen.map((id) => nameOf(id)).join(", ")}
+                </span>
+              </PruefenMehrZeile>
+            ) : null}
             <PruefenMehrZeile beschriftung={t("pruefen.mehr.aiCheck")}>
               <AiCheckBadge
                 aiCheck={k.aiCheck}
@@ -1843,6 +2506,70 @@ export function Validation(): JSX.Element {
               ) : null}
             </p>
           ) : null}
+
+          {/* ---- §8.2: die Konfliktlage DIESER Karte (Pedi, 03.10.2026) -------------------- */}
+          {/* Vier Lagen aus `pruefKonfliktLage`. Ohne Antwort entsteht KEINE Aussage über
+              Konflikte, nur der Ladesatz oder der Fehlersatz mit „Erneut laden". „Keiner" bleibt
+              still — dieselbe Entwarnungsregel wie beim Paarhinweis darüber. */}
+          {konfliktLage.art === "laedt" ? (
+            <p
+              data-testid="pruefen-konflikt-laedt"
+              data-text="text"
+              aria-busy="true"
+              className="text-[12px] text-muted"
+            >
+              {t("pruefboard.konfliktLaedt")}
+            </p>
+          ) : null}
+          {konfliktLage.art === "fehler" ? (
+            <div
+              data-testid="pruefen-konflikt-fehler"
+              className="flex flex-wrap items-center gap-2 text-[12px] text-muted"
+            >
+              <span data-text="text">{t("pruefboard.konfliktFehler")}</span>
+              <button
+                type="button"
+                data-text="knopf"
+                data-testid="pruefen-konflikt-neu-laden"
+                onClick={() => void qc.invalidateQueries({ queryKey: ["conflicts"] })}
+                className="rounded-[9px] border border-hairline bg-surface px-3 py-1 text-[12px] font-semibold text-text hover:bg-hairline-soft"
+              >
+                {t("pruefen.reload")}
+              </button>
+            </div>
+          ) : null}
+          {konfliktLage.art === "betroffen" ? (
+            <div
+              data-testid="pruefen-konflikthinweis"
+              data-schwere={konfliktLage.wirkung.hasTruth ? "truth" : "limited"}
+              className="rounded-[10px] border border-trust-warn-fill/60 bg-page px-3 py-2 text-[12.5px] text-trust-warn-text"
+            >
+              <p data-text="text" className="font-semibold">
+                {konfliktTitel(konfliktLage.wirkung)}
+              </p>
+              {/* Kein Erklärsatz darunter: die Prüffläche trägt keine Vorbehaltstexte (Design
+                  „Prüfen", R-1577). Wer mehr wissen will, geht zur Konfliktseite. */}
+              {darfVergleichen ? (
+                <Link
+                  to="/konflikte"
+                  data-testid="pruefen-konflikt-link"
+                  data-text="knopf"
+                  className="mt-1 inline-block font-semibold underline-offset-4 hover:underline"
+                >
+                  {t("pruefboard.konfliktZurSeite")} <span aria-hidden="true">→</span>
+                </Link>
+              ) : null}
+            </div>
+          ) : null}
+          {konfliktNichtFrisch ? (
+            <p
+              data-testid="pruefen-konflikt-nicht-frisch"
+              data-text="text"
+              className="text-[11.5px] text-muted"
+            >
+              {t("pruefboard.konfliktNichtFrisch")}
+            </p>
+          ) : null}
         </div>
 
         {/* ---- Das Fußband (Pruefen.dc.html Z.58–61) ---------------------------------------- */}
@@ -1903,6 +2630,22 @@ export function Validation(): JSX.Element {
               </button>
             );
           })}
+          {/* PRÜFSTATUS-ANZEIGE (N-0078): „Freigeben" ist EINE positive Bewertung, nicht schon die
+              Validierung. Der noch nötige Umfang steht deshalb unmittelbar daneben — als Text,
+              nicht nur als Punkte mit Tooltip (`lib/bewertungsumfang.ts`). */}
+          {((): JSX.Element => {
+            const umfang = bewertungsumfang(sig);
+            return (
+              <span
+                data-testid="pruefen-restumfang"
+                data-umfang={umfang.art}
+                data-text="text"
+                className="text-[12px] text-muted"
+              >
+                {t(umfang.schluessel, umfang.werte)}
+              </span>
+            );
+          })()}
           {/* Die drei Punkte: grün gefüllt je Stimme, rot je Gegenstimme (Pruefen.dc.html:60). */}
           <span
             data-testid="pruefen-stimmenpunkte"
@@ -1955,6 +2698,9 @@ export function Validation(): JSX.Element {
                 onChange={(e) => setFeedbackText(e.target.value)}
                 placeholder={t("val.feedback.placeholder")}
                 rows={3}
+                // Die gespeicherte Begründung wird nicht mehr geschrieben — also auch nicht mehr
+                // bearbeitet: eine geänderte Fassung käme nie am Server an.
+                readOnly={begruendungLiegt}
                 aria-label={
                   feedback.verdict === "warn"
                     ? t("val.feedback.condTitle")
@@ -1962,8 +2708,34 @@ export function Validation(): JSX.Element {
                 }
                 className="w-full resize-y rounded-input border border-hairline bg-surface p-2.5 text-sm text-text outline-none placeholder:text-muted-2 focus:border-ink/30"
               />
-              {reviewWithFeedback.isError ? (
-                <div className="mt-2 rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text">
+              {/* R-0238: nur an der Ablehnung — optional das Gegenüber, dem widersprochen wird. */}
+              {feedback.verdict === "down" ? widerspruchBlock(k) : null}
+              {/* Zwei Zustände, zwei Sätze: „nichts gespeichert" ist etwas anderes als „die
+                  Begründung liegt, die Bewertung nicht" (dieselbe Unterscheidung wie an der
+                  Stufenfrage, `val.stufenfrage.fehlerNachStufe`). */}
+              {begruendungLiegt ? (
+                <div
+                  data-testid="pruefen-begruendung-teilerfolg"
+                  className="mt-2 rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text"
+                >
+                  {fortsetzung?.offen === "folge"
+                    ? t("pruefboard.konfliktfolgeOffen")
+                    : fortsetzung?.offen === "vorschlag"
+                      ? t("pruefboard.konfliktvorschlagOffen")
+                      : t("pruefboard.begruendungGespeichert")}
+                </div>
+              ) : ueberarbeitet ? (
+                <div
+                  data-testid="pruefen-begruendung-ueberarbeitet"
+                  className="mt-2 rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text"
+                >
+                  {t("pruefboard.fassungUeberarbeitet")}
+                </div>
+              ) : reviewWithFeedback.isError ? (
+                <div
+                  data-testid="pruefen-begruendung-fehler"
+                  className="mt-2 rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text"
+                >
                   {t("val.feedback.error")}
                 </div>
               ) : null}
@@ -1974,6 +2746,7 @@ export function Validation(): JSX.Element {
                   onClick={() => {
                     setFeedback(null);
                     setFeedbackText("");
+                    widerspruchZuruecksetzen();
                   }}
                 >
                   {t("val.feedback.cancel")}
@@ -1983,7 +2756,8 @@ export function Validation(): JSX.Element {
                   disabled={
                     gate.locked ||
                     reviewWithFeedback.isPending ||
-                    !isFeedbackSubmittable(feedbackText)
+                    !isFeedbackSubmittable(feedbackText) ||
+                    widerspruchUnvollstaendig
                   }
                   onClick={() =>
                     reviewWithFeedback.mutate({
@@ -1991,10 +2765,30 @@ export function Validation(): JSX.Element {
                       title: k.title,
                       verdict: feedback.verdict,
                       text: feedbackText,
+                      nurBewertung: begruendungLiegt,
+                      ...(feedback.verdict === "down" && widerspruchZiel && widerspruchArt
+                        ? {
+                            widerspruch: {
+                              koB: widerspruchZiel.id,
+                              type: widerspruchArt,
+                              description: feedbackText.trim(),
+                            },
+                            widerspruchTitel: widerspruchZiel.title,
+                          }
+                        : {}),
+                      // Nacharbeit 8: steht die Ablehnung schon, wird NICHT neu bewertet — nur die
+                      // fehlenden Konfliktschritte, gebunden an die abgelehnte Fassung.
+                      ...(fortsetzung ? { fortsetzungFuerFassung: fortsetzung.fassung } : {}),
                     })
                   }
                 >
-                  {t("val.feedback.submit")}
+                  {fortsetzung?.offen === "folge"
+                    ? t("pruefboard.konfliktfolgeSenden")
+                    : fortsetzung?.offen === "vorschlag"
+                      ? t("pruefboard.konfliktvorschlagSenden")
+                      : begruendungLiegt
+                        ? t("pruefboard.bewertungSenden")
+                        : t("val.feedback.submit")}
                 </Button>
               </div>
             </div>
