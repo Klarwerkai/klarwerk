@@ -43,7 +43,14 @@ const DIST = resolve(WURZEL, "apps/web/dist");
 // Blatts. Dieselbe Umstellung wie h4/h6 (`tests/vorrichtung-sicherer-kontext/`); alle Anfragen
 // beantwortet weiterhin die Route unten, ein Zertifikat ist nicht im Spiel.
 const ORIGIN = "https://klarwerk.test";
-const FRAGE = "Welche Profile sind in Spritzzonen erlaubt?";
+// Folgeauftrag gesamt-erstnutzerfuehrung-quellen, Nacharbeit 13 — WARUM NICHT MEHR „… erlaubt?“:
+// Seit R-0473 (K8, mit dem Hauptstand `a2ff8da8` eingemischt, `services/ask/src/service.ts`,
+// `decktAlleFragebegriffe`) müssen ALLE gebundenen Fragebegriffe in der Quelle vorkommen. „erlaubt“
+// steht im angelegten Eintrag nirgends; die Frage wurde damit — vertragsgemäß — eine Wissenslücke,
+// es entstand keine Antwortkarte, und I7 lief in seine Zeitgrenze (Kandidaten 3874b441, 35a9d10c).
+// Die Frage benutzt jetzt nur Begriffe, die der Eintrag wirklich trägt („Profile“, „Spritzzonen“,
+// „bevorzugen“); was I7 und I10 danach verlangen, ist unverändert.
+const FRAGE = "Welche Profile sind in Spritzzonen zu bevorzugen?";
 const t = i18n.getFixedT("de");
 
 /**
