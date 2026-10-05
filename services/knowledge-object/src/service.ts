@@ -6056,7 +6056,8 @@ export class KoService {
   // MIT `withTx`: alles auf EINEM Transaktionsclient — scheitert ein Schritt, bleibt nichts. Verliert
   // die Transaktion den Compare-and-Set an eine ZWEITE INSTANZ (`STALE_WRITE`: deren Transaktion hat
   // dieselbe Objektzeile zuerst festgeschrieben), rollt sie vollständig zurück; die Klammer liest
-  // dann EINMAL frisch und bestimmt den Zustand neu — jetzt mit der festgeschriebenen fremden Stimme.
+  // dann frisch und bestimmt den Zustand neu — jetzt mit der festgeschriebenen fremden Stimme
+  // (höchstens fünf Versuche, s. unten).
   // OHNE `withTx`: scheitert ein Schritt, wird der Vorzustand zurückgeschrieben und `ruecknahme` des
   // Aufrufers läuft (Bewertung/Zuweisungen zurück); ihre Fehler werden geschluckt, der Ursachenfehler
   // geworfen. Runde 3 (BEN-R2-B2): hatte der Schritt schon Auditeinträge angehängt (etwa `ko.rated`
@@ -6138,16 +6139,26 @@ export class KoService {
           throw err;
         }
       });
-    let ergebnis: Awaited<ReturnType<typeof versuch>>;
-    try {
-      ergebnis = await versuch();
-    } catch (err) {
-      if (!(this.withTx && err instanceof KoError && err.code === "STALE_WRITE")) {
-        throw err;
+    // Lauf 5 (Nacharbeit 5): NICHT NUR EIN zweiter Versuch. Dieselbe Objektzeile schreiben neben der
+    // zweiten Instanz auch andere Wege fort — etwa die KI-Prüfung einer frischen Anlage (`aiCheck`).
+    // Verlor die Transaktion den Compare-and-Set zweimal (erst an die andere Instanz, dann an die
+    // KI-Prüfung), kam `STALE_WRITE` beim Nutzer an und seine Stimme ging verloren (gemessen:
+    // „down + up, Quorum 1" endete mit 400 + „validiert"). Jeder Versuch liest frisch und bestimmt
+    // den Zustand neu; die Grenze verhindert eine Endlosschleife unter Dauerlast.
+    const MAX_VERSUCHE = 5;
+    for (let nr = 1; ; nr++) {
+      let ergebnis: Awaited<ReturnType<typeof versuch>>;
+      try {
+        ergebnis = await versuch();
+      } catch (err) {
+        const verloren = this.withTx && err instanceof KoError && err.code === "STALE_WRITE";
+        if (!verloren || nr >= MAX_VERSUCHE) {
+          throw err;
+        }
+        continue;
       }
-      ergebnis = await versuch();
+      return { ...ergebnis, ko: await this.lesefassung(ergebnis.ko) };
     }
-    return { ...ergebnis, ko: await this.lesefassung(ergebnis.ko) };
   }
 
   // ==============================================================================================
