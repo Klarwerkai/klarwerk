@@ -92,7 +92,49 @@ Jede Fehlermeldung nennt Modul **und** Schlüssel — es muss niemand suchen.
 
 ## Was dieser Umbau ausdrücklich nicht getan hat
 
-Der Bestand von `i18n.ts` wurde **nicht** umgezogen. Dort stehen weiterhin rund 4.400 Schlüssel,
-und das ist in Ordnung: ein Massenumzug wäre ein Risiko ohne Nutzen. Umgezogen wurde genau das,
-woran als Nächstes gearbeitet wird. Wer einen Bereich anfasst, nimmt seine Texte bei der
+Der Bestand von `i18n.ts` wurde in JOB 4367 **nicht** in Textmodule umgezogen. Umgezogen wurde
+genau das, woran als Nächstes gearbeitet wurde. Wer einen Bereich anfasst, nimmt seine Texte bei der
 Gelegenheit mit — ein Schlüssel nach dem anderen, jeder mit unverändertem Wert.
+
+## Die Grundwörterbücher je Sprache (I18N-AUFTEILUNG, Aufnahme 20260922)
+
+Der übrige Bestand (rund 4.400 Schlüssel je Sprache) stand bis dahin als drei große Blöcke in
+`apps/web/src/i18n.ts` (18.928 Zeilen). Er ist jetzt **nach Sprache** aufgeteilt:
+
+| Datei | Inhalt |
+| --- | --- |
+| `apps/web/src/woerterbuch/de.ts` | `const de = { … }` — der deutsche Grundbestand |
+| `apps/web/src/woerterbuch/en.ts` | `const en: typeof de = { … }` |
+| `apps/web/src/woerterbuch/nl.ts` | `const nl: typeof de = { … }` |
+| `apps/web/src/i18n.ts` | nur noch Importe, Textmodul-Sammler, R-0801-Nachladen und i18next-Start (120 Zeilen) |
+
+Jeder Block ist **Zeile für Zeile verschoben**, kein Schlüssel und kein Wert ist geändert; die
+Lesevariante spreadet jede Sprachdatei selbst hinein. `typeof de` bindet `en` und `nl` weiter an
+die deutsche Schlüsselmenge.
+
+**Wo neue Texte hinkommen, ändert sich nicht:** in ein Textmodul unter `texte/`. Die
+Grundwörterbücher sind kein Ablageort für neue Texte; wer einen bestehenden Text ändert, ändert ihn
+dort, wo er steht.
+
+**Nachladen von en und nl (R-0801) bleibt.** Im Produktionsbau nimmt das Plugin
+`sprachpaketeNachladen` (`texte/intern/sprachpakete.ts`) die Importe von `woerterbuch/en.ts` und
+`woerterbuch/nl.ts` aus `i18n.ts` heraus und liefert beide Blöcke als eigene, nachgeladene Stücke;
+Deutsch bleibt im Eintritt. Gegenprobe: `tests/erstladezeit/sprachpakete-nachladen.test.ts`, am
+gebauten Bündel der Block DECKEL in `tests/erstladezeit/eintritt-ohne-seiten.test.ts`.
+
+**Der Duplikatwächter bleibt derselbe.** `basisQuellen` (`texte/intern/sammeln.ts`) folgt von
+`i18n.ts` aus den Importen nach `woerterbuch/` und von dort den Spreads (Lesevariante); Build-Plugin,
+Tor und Browser prüfen also weiter gegen den VOLLEN Grundbestand.
+
+**Belege:**
+
+| Aussage | Prüfstand |
+| --- | --- |
+| Die vier Dateien ergeben Byte für Byte die frühere `i18n.ts` | `tests/i18n-woerterbuch/aufteilung-unveraendert.test.ts` W1 gegen `tests/i18n-woerterbuch/i18n-vor-aufteilung.txt` (unveränderte Kopie der ungeteilten Datei von `main` 1147c026, nachprüfbar mit `git hash-object` gegen `git rev-parse 1147c026:apps/web/src/i18n.ts`); Gegenproben W2 |
+| i18next trägt jeden Schlüssel der drei Dateien mit genau ihrem Wert | dieselbe Datei, W3; dazu unverändert `tests/i18n-textmodule/bestand-unveraendert.test.ts` K1.1 |
+| Der Duplikatwächter sieht die drei Dateien samt Lesevariante | W4; `tests/i18n-textmodule/grundbestand.test.ts` |
+
+**Für Prüfstände, die das Wörterbuch als Text lesen:** `tests/support/woerterbuchquelle.ts`,
+`woerterbuchQuelle()` bzw. `woerterbuchQuelleAus(pfad)` — liefert genau den früheren Text von
+`i18n.ts`. Neue Prüfstände sollten Werte lieber über `tests/support/i18nBestand.ts` (das laufende
+i18next) lesen.

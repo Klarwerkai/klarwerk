@@ -23,13 +23,10 @@ import type {
 } from "../../api/types";
 import { useRole } from "../../app/RoleContext";
 import { useToast } from "../../app/ToastContext";
+import { abfrageMitBestand } from "../../lib/abfrageBestand";
 import { auditActionLabel } from "../../lib/auditAction";
 import { objectRawHref } from "../../lib/bodyFileLink";
-import {
-  CONFIDENTIALITY_LEVELS,
-  abfrageMitBestand,
-  confidentialityOf,
-} from "../../lib/confidentiality";
+import { CONFIDENTIALITY_LEVELS, confidentialityOf } from "../../lib/confidentiality";
 import { conflictImpact, conflictLimitedUsability } from "../../lib/conflictImpact";
 import { isDemoKnowledge } from "../../lib/demoKnowledge";
 import { deriveStatus } from "../../lib/displayStatus";
@@ -64,6 +61,7 @@ import {
 import { diffForVersion, paarDiff } from "../../lib/koVersionDiff";
 import { koVersionRows, uebernahmeHerkunft } from "../../lib/koVersionSnapshots";
 import { useNetzOnline } from "../../lib/netzzustand";
+import { nochNichtFachlichGeprueft } from "../../lib/pruefeinordnung";
 import {
   type SourceContributionInput,
   formatSourceComment,
@@ -363,6 +361,15 @@ export function MehrAbschnitte({
   const neighborhood = useKoNeighbors(id);
   const koList = useKos();
   const conflicts = useConflicts();
+  // R-0766 (Aufnahme gesamt-auditprotokoll, Lauf 2): alle Befunde des Objekts, auch abgeschlossene
+  // Überschneidungen und gelöste Konflikte, die `useConflicts` nicht mehr führt. Nur wer das Protokoll
+  // lesen darf, braucht sie — deshalb erst nach einer gelungenen Protokollabfrage.
+  const befundKennungen = useQuery({
+    queryKey: ["audit", "ko-findings", id],
+    queryFn: () => endpoints.audit.koFindings(id),
+    enabled: audit.isSuccess,
+    retry: false,
+  });
   const pending = useLifecyclePending();
   const dir = useDirectory();
   const extPolicy = useExternalPolicy();
@@ -832,7 +839,13 @@ export function MehrAbschnitte({
     conflictImpact(ko.id, conflicts.data ?? []),
   );
   const lineage = lineageSummary(ko, neighborhood.data?.total ?? 0);
-  const auditEvents = koAuditEvents(audit.data ?? [], ko.id)
+  // R-0766: die Kette am Objekt schließt Konflikte und Überschneidungen ein, an denen es beteiligt
+  // ist — die offenen aus `useConflicts`, dazu alle (auch abgeschlossene) vom Server.
+  const eigeneBefunde = [
+    ...(conflicts.data ?? []).filter((c) => c.koA === ko.id || c.koB === ko.id).map((c) => c.id),
+    ...(befundKennungen.data?.ids ?? []),
+  ];
+  const auditEvents = koAuditEvents(audit.data ?? [], ko.id, eigeneBefunde)
     .slice(-6)
     .reverse();
   const gueltigkeit = validityProtectionView(ko, pending.data ?? [], conflicts.data ?? []);
@@ -1727,7 +1740,7 @@ export function MehrAbschnitte({
         {/* AUFTRAG-mega51 D2 (unverändert übernommen): „Validiert" NEBEN einer 0-Leiste verwirrt —
             Bedingung und Anzeige lesen deshalb DENSELBEN Wert (`confidence`), und bei validiert +
             Sicherheit 0 steht statt der leeren Leiste der nüchterne Hinweis. */}
-        <div className="mb-3">
+        <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1">
           {deriveStatus(ko) === "validiert" && ko.confidence === 0 ? (
             <span title={t("lib.confidenceNoneHint")} className="text-[12px] text-muted-2">
               {t("lib.confidenceNone")}
@@ -1735,6 +1748,16 @@ export function MehrAbschnitte({
           ) : (
             <ConfidenceBar value={ko.confidence} showLabel={false} percentPhrase />
           )}
+          {/* PRÜFSTATUS-ANZEIGE (N-0054): die Einordnung steht DIREKT am Wert — und nur, wenn die
+              Daten belegen, dass noch niemand fachlich geprüft hat (`lib/pruefeinordnung.ts`). */}
+          {nochNichtFachlichGeprueft(ko) ? (
+            <span
+              data-testid="pruefwert-einordnung"
+              className="text-[12px] font-semibold text-trust-warn-text"
+            >
+              {t("pruefstatus.wert.nochNichtGeprueft")}
+            </span>
+          ) : null}
         </div>
         {/* SCRUM-359 / AG-05 / PI-K2: Trust ist ein Review-/Evidenzsignal, KEINE Wahrheitsgarantie —
             die Grundaussage steht ohne Klick bei der Zahl; nur die Vertiefung ist aufklappbar. */}

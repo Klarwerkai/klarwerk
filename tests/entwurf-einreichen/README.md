@@ -169,6 +169,29 @@ Konflikt zusammengeführt. Sie trägt beide Seiten: unseren `chelp.saveDraftHelp
 `ga.*`-Texte des Zielbranchs. Die drei Prüfsummen sind daraus nach der Regel von K1.0
 (`bestand-unveraendert.test.ts`) neu berechnet. Anzahl (4437) und Basisstand sind unverändert.
 
+**Nacharbeit 5 — Zusammenführung mit `main` `84229f93` (1.0.0-beta.1.696):**
+
+* Auf `main` stehen jetzt die Entwurfsverwaltung (Auftrag `entwuerfe-verwalten`, mit unserem
+  Code aus `13feb4a6`), der Erfassungseinstieg (`gesamt-erfassung-einstieg`) und die Aufteilung der
+  Wörterbücher (`apps/web/src/woerterbuch/`).
+* Fassung von `main` übernommen: `CaptureDraftList.tsx`, `draftListView.ts`, `i18n.ts` und
+  `abnahmefolge-gesamt.test.tsx`.
+* `Blatt.tsx`: Die Erfolgszeile trägt beides, das Statusabzeichen (`Eingereicht`, R-0102) und den
+  Fokus von `main` (`erfolgRef`, R-0084).
+* `zugang-schmal-chromium.test.ts`: L2 importiert `TITELMASSE_SEITE` weiter aus
+  `titelmasse-seite.ts`. Damit prüft `titelmasse-seite.test.ts` genau die Zeichenkette, die L2
+  benutzt. Kommentar und Maskierungsprobe in L2 kommen von `main`.
+* Texte in `woerterbuch/{de,en,nl}.ts`:
+  * `chelp.saveDraftHelp.body` führt beide Fassungen zusammen. Von uns (Entscheidung `debbb8e8`)
+    kommen „privat auf dem Server“, „auf jedem deiner Geräte“ und „Nur du siehst ihn“. Von `main`
+    (R-1000) kommt der Weg „Mehr“ → Entwürfe. Der Menüpunkt `mob.drafts` steht ohne
+    Anführungszeichen, weil R-1000 jedes Zitat als Blatt-Beschriftung verlangt.
+  * `seitenhilfe.entwuerfe.body`: Der Admin-Satz („Entwürfe aller Ersteller“) war auf `main`
+    zurückgekehrt. Er ist wieder ersetzt, denn die Fläche zeigt `isAdmin={false}`.
+* `werte-vorher.json`: Die Fassung von `main` trägt jetzt diese sechs Werte.
+* **Offen:** `bestand-vorher.json` trägt noch die Prüfsummen von `main`. Neu berechnen mit der
+  Regel von K1.0 (Anzahl unverändert 4437). Bis dahin ist K1.0 rot.
+
 **Herkunft.** Lauf `:1` lieferte `2ea90959` (geprüft am Ship-Commit `2525f3d5`, `1.0.0-beta.1.616`).
 Er ist **nicht** in den Basisstand übernommen. Lauf `:2` trägt seine Änderungen wieder ein und
 behebt die drei fachlichen Ben-Befunde aus Runde 1 (Beleg `96239dc4-…`):

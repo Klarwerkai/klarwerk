@@ -3,6 +3,7 @@
 // für Preview/UX (gleiche Allowlist) plus Editor-State-Helfer. Rein/testbar ohne DOM.
 
 import { decodeHtmlEntities } from "./htmlEntities";
+import { normalizeImageWidth } from "./imageResize";
 
 const ALLOWED_TAGS = new Set([
   "p",
@@ -59,7 +60,8 @@ const TAG_MAP: Record<string, string> = {
 const ALLOWED_ATTRS: Record<string, Set<string>> = {
   a: new Set(["href", "title"]),
   // WP-BILD-1b: img trägt zusätzlich data-image-id (beidseitige Verankerung Bild↔Fußnote).
-  img: new Set(["src", "alt", "data-kw-scale", "data-image-id"]),
+  // R-0014: `width` NUR als gezogene Prozentbreite (normalizeImageWidth) — Pixelwerte fallen.
+  img: new Set(["src", "alt", "data-kw-scale", "data-image-id", "width"]),
   div: new Set(["class"]),
   // Formatierung Stufe 2 (Tabellen): nur numerische Zell-Spannen erhalten (Merges aus Word/HTML).
   th: new Set(["colspan", "rowspan"]),
@@ -161,13 +163,32 @@ function parseAttrs(raw: string): Map<string, string> {
   return attrs;
 }
 
+// AUFNAHME 20260922 (R-0090, Kriterium 2): die SPUR einer Kennungsreparatur. Genau ein Attribut mit
+// genau zwei festen Werten, nur an figure/img/figcaption — kein Fremdwert passiert:
+//   · `ungueltig` — die mitgebrachte `data-image-id` war kein Token und wurde verworfen,
+//   · `doppelt`   — die Kennung war schon vergeben, das Bild wurde getrennt (nur der Server trennt).
+// Der Editor liest die Spur beim Öffnen, meldet sie und nimmt sie aus seinem Inhalt; gespeichert
+// wird danach ohne sie. So verschweigt die Speicherung ihre Bereinigung nicht.
+export const KENNUNG_SPUR_ATTR = "data-kw-kennung";
+const KENNUNG_SPUR_WERTE: ReadonlySet<string> = new Set(["doppelt", "ungueltig"]);
+
 function renderAttrs(tag: string, raw: string): string {
   const allowed = ALLOWED_ATTRS[tag];
   if (!allowed) {
     return "";
   }
   const out: string[] = [];
+  let spur: string | null = null;
   for (const [name, value] of parseAttrs(raw)) {
+    // AUFNAHME 20260922 (R-0090, Runde 2 Bens Befund B4): eine ungültige Kennung fällt weiter
+    // weg (Sicherheitsgrenze), aber NICHT spurlos. An ihre Stelle tritt genau ein festes Merkmal
+    // `data-kw-kennung="ungueltig"`, das der Editor beim Öffnen meldet. Wortgleich in beiden Sanitizern.
+    if (name === KENNUNG_SPUR_ATTR) {
+      if (KENNUNG_SPUR_WERTE.has(value)) {
+        spur = spur ?? value;
+      }
+      continue;
+    }
     if (name.startsWith("on") || !allowed.has(name)) {
       continue;
     }
@@ -181,6 +202,14 @@ function renderAttrs(tag: string, raw: string): string {
       const scale = normalizeImageScale(value);
       if (scale) {
         out.push(`${name}="${scale}"`);
+      }
+      continue;
+    }
+    // R-0014: die frei gezogene Breite — nur innerhalb der Grenzen, kanonisch („37.5%").
+    if (tag === "img" && name === "width") {
+      const width = normalizeImageWidth(value);
+      if (width) {
+        out.push(`${name}="${width}"`);
       }
       continue;
     }
@@ -198,6 +227,8 @@ function renderAttrs(tag: string, raw: string): string {
     if ((tag === "figcaption" || tag === "img" || tag === "figure") && name === "data-image-id") {
       if (/^[\w-]{1,64}$/.test(value)) {
         out.push(`${name}="${value}"`);
+      } else if (value !== "") {
+        spur = "ungueltig";
       }
       continue;
     }
@@ -214,6 +245,11 @@ function renderAttrs(tag: string, raw: string): string {
   }
   if (tag === "a") {
     out.push('rel="noopener noreferrer nofollow"', 'target="_blank"');
+  }
+  // Die Spur steht immer am Ende des Tags — ein zweiter Durchlauf liest sie dort und schreibt sie
+  // an dieselbe Stelle (Fixpunkt).
+  if (spur !== null && (tag === "figcaption" || tag === "img" || tag === "figure")) {
+    out.push(`${KENNUNG_SPUR_ATTR}="${spur}"`);
   }
   return out.length > 0 ? ` ${out.join(" ")}` : "";
 }

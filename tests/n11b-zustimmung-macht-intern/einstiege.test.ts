@@ -1,7 +1,7 @@
-import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { endpoints } from "../../apps/web/src/api/endpoints";
 import { documentProvenance, draftProvenance } from "../../apps/web/src/lib/reasonerProvenance";
+import { panelQuelleAus } from "../support/panelquelle";
 
 afterEach(() => vi.unstubAllGlobals());
 const TEXT = "Nach dem Anfahren zehn Sekunden warten, dann die Pumpe entlüften.";
@@ -18,7 +18,7 @@ type W6Weg = (
   sprache: string,
 ) => Promise<unknown>;
 function w6Weg(bindung?: Record<string, string>): W6Weg {
-  const html = readFileSync("apps/web/public/word-addin/taskpane.html", "utf8");
+  const html = panelQuelleAus("apps/web/public/word-addin/taskpane.html");
   const start = html.indexOf("    function w6DublettenAusCheckText(");
   const end = html.indexOf("    // KW-KLARA-W6-CHECKTEXT-END", start);
   expect(start).toBeGreaterThan(0);
@@ -118,7 +118,7 @@ describe("N11b: Messung der ausgelieferten Anfrage-Rümpfe", () => {
     );
   });
   it("Word KA7: der separate Konfliktabruf sendet deep und intern, keine Klara-Kopfzeilen", async () => {
-    const html = readFileSync("apps/web/public/word-addin/taskpane.html", "utf8");
+    const html = panelQuelleAus("apps/web/public/word-addin/taskpane.html");
     const start = html.indexOf("    function ka7Pruefen()");
     const end = html.indexOf("    /** Ein bestaetigter Logout", start);
     expect(start).toBeGreaterThan(0);

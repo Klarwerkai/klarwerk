@@ -35,6 +35,7 @@ describe("JOB 3071 R3: eine ausfallende Vorablesung hält die Endlöschung nicht
 
   interface Welt {
     services: AppServices;
+    repos: ReturnType<typeof inMemoryRepos>;
     txGehalten: () => boolean;
   }
 
@@ -52,7 +53,7 @@ describe("JOB 3071 R3: eine ausfallende Vorablesung hält die Endlöschung nicht
     };
     const services = assembleServices(repos, { withTx });
     buildApp(services); // die Aufräum-Haken der Endlöschung leben in der Kompositionswurzel
-    return { services, txGehalten: () => gehalten };
+    return { services, repos, txGehalten: () => gehalten };
   }
 
   /** Läuft der Vorgang zu Ende, oder hängt er? Ohne diese Schranke bliebe der Test selbst stehen. */
@@ -76,7 +77,7 @@ describe("JOB 3071 R3: eine ausfallende Vorablesung hält die Endlöschung nicht
     }
   }
 
-  async function lageMitOffenemBefund(services: AppServices) {
+  async function lageMitOffenemBefund({ services, repos }: Welt) {
     const a = await services.ko.create({
       title: "Ventil V3 zuerst",
       statement: "Bei Überdruck Ventil V3 schließen.",
@@ -104,9 +105,20 @@ describe("JOB 3071 R3: eine ausfallende Vorablesung hält die Endlöschung nicht
       { trigger: "manual", method: "deterministic", lexicalScore: 0.95 },
       "system",
     );
-    // Die Autorin legt ihren eigenen Beitrag in den Papierkorb — der Befund bleibt bis zur
-    // Endlöschung offen, denn diese Komposition hat keinen Nachlauf am weichen Löschen.
-    await services.ko.delete(a.id, AUTORIN);
+    // Die Autorin HAT ihren eigenen Beitrag in den Papierkorb gelegt, und der Befund steht noch
+    // offen. Auftrag gesamt-dubletten-rueckzug: seit das weiche Löschen seinen Befund selbst (in
+    // seiner Transaktion) schliesst, gibt es diese Lage nur noch als ALTBESTAND — vor dem Auftrag
+    // getrasht. Sie wird deshalb am Speicher hergestellt; der Aufräumweg, den dieser Fall misst,
+    // bleibt die Endlöschung mit ihrer Vorablesung.
+    const gespeichert = await repos.koRepo.findById(a.id);
+    if (!gespeichert) {
+      throw new Error("KO fehlt");
+    }
+    await repos.koRepo.update({
+      ...gespeichert,
+      deletedAt: new Date().toISOString(),
+      deletedBy: AUTORIN,
+    });
     expect((await services.overlaps.get(eintrag.id))?.status).toBe("offen");
     return { a, b, eintrag };
   }
@@ -134,8 +146,9 @@ describe("JOB 3071 R3: eine ausfallende Vorablesung hält die Endlöschung nicht
   }
 
   it("die Vorablesung wirft synchron: die Endlöschung läuft trotzdem vollständig durch", async () => {
-    const { services, txGehalten } = aufbau();
-    const { a, eintrag } = await lageMitOffenemBefund(services);
+    const welt = aufbau();
+    const { services, txGehalten } = welt;
+    const { a, eintrag } = await lageMitOffenemBefund(welt);
     const konsole = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
     let rufeInDerTransaktion = 0;
@@ -156,8 +169,9 @@ describe("JOB 3071 R3: eine ausfallende Vorablesung hält die Endlöschung nicht
   });
 
   it("die Vorablesung lehnt ab: die Endlöschung läuft trotzdem vollständig durch", async () => {
-    const { services, txGehalten } = aufbau();
-    const { a, eintrag } = await lageMitOffenemBefund(services);
+    const welt = aufbau();
+    const { services, txGehalten } = welt;
+    const { a, eintrag } = await lageMitOffenemBefund(welt);
     const konsole = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
     let rufeInDerTransaktion = 0;
@@ -182,8 +196,9 @@ describe("JOB 3071 R3: eine ausfallende Vorablesung hält die Endlöschung nicht
   // Betrieb steht. Deshalb dauert er rund zwei Sekunden — das ist der gemessene Preis, nicht ein
   // Versehen.
   it("die Vorablesung schweigt: nach der Vorgabefrist läuft die Endlöschung vollständig durch", async () => {
-    const { services, txGehalten } = aufbau();
-    const { a, eintrag } = await lageMitOffenemBefund(services);
+    const welt = aufbau();
+    const { services, txGehalten } = welt;
+    const { a, eintrag } = await lageMitOffenemBefund(welt);
     const konsole = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
     let rufeInDerTransaktion = 0;

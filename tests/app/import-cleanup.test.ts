@@ -2,7 +2,6 @@
 // Admin-Aufräumweg. Vorschau zählt korrekt und verändert NICHTS; confirm löscht GENAU den Umfang
 // (Queue komplett leer, Import-KOs mit Confluence-/Jira-Provenienz in den PAPIERKORB, KOs ohne
 // Import-Provenienz bleiben unangetastet); Audit-Eintrag mit Zählern; users.manage-Guard.
-import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { IMPORT_CLEANUP_TEXT } from "../../apps/web/src/lib/importCleanup";
@@ -10,6 +9,7 @@ import { buildApp, buildServices } from "../../services/app/src/build-app";
 import type { KoSource } from "../../services/knowledge-object";
 import { InMemoryCandidateRepo } from "../../services/library-analytics";
 import { PgCandidateRepo } from "../../services/library-analytics";
+import { woerterbuchQuelleAus } from "../support/woerterbuchquelle";
 
 // JOB 3050: der Kandidatenweg nimmt die Dublettenregel als Port entgegen; fehlt er, gilt jeder
 // Eintrag fail-closed als nicht prüfbar. Die Fälle dieser Datei messen das Aufräumen (Zielmenge,
@@ -269,11 +269,17 @@ describe("WP-D-CLEAN: POST /api/admin/import/cleanup", () => {
     expect((await services.ko.trashed()).length).toBe(1);
   });
 
-  it("WP-SHIP8-FIX (bens F1, bens Fenster): KO IST im Papierkorb, aber der Audit-Schreiber warf → zählt als trashed, NIE als skipped", async () => {
+  // Auftrag gesamt-dubletten-rueckzug (Runde 2, Bens BEN-R3-1): „bens Fenster" — KO schon im
+  // Papierkorb, sein Beleg `ko.deleted` aber gescheitert — gibt es nicht mehr. Das weiche Löschen
+  // schreibt Beitrag, Aufräumen und Beleg jetzt auch ohne Datenbank in EINER Klammer
+  // (services/app/src/speicher-vorgang.ts); scheitert der Beleg, ist nichts geschehen. Die
+  // Bereinigung sieht deshalb zwei ehrlich gescheiterte Löschungen: beide KOs aktiv, beide
+  // übersprungen, die Kandidaten bleiben für den nächsten Lauf stehen — kein halber Zustand.
+  // Dasselbe verlangt die Aufnahme gesamt-auditprotokoll (Lauf 3): nie „im Papierkorb ohne Beleg";
+  // ohne Klammer hält `KoService.schreibeMitBeleg` es (Rücknahme des Writes).
+  it("WP-SHIP8-FIX (bens F1) · atomar: der Audit-Schreiber des Soft-Deletes wirft → KO bleibt aktiv, zählt als skipped", async () => {
     const { app, services, headers, ownKoId } = await cleanupApp();
     const digest = await previewDigest(app, headers);
-    // Der Audit-Schreiber des Soft-Deletes wirft NACH dem Trash-Write (genau bens Fenster);
-    // der Abschluss-Audit (import.cleanup) bleibt intakt.
     const realRecord = services.audit.record.bind(services.audit);
     services.audit.record = async (entry, tx) => {
       if (entry.action === "ko.deleted") {
@@ -288,21 +294,23 @@ describe("WP-D-CLEAN: POST /api/admin/import/cleanup", () => {
       payload: { confirm: true, digest },
     });
     expect(res.statusCode).toBe(200);
-    // Die Nachlese erkennt: beide KOs sind in Wahrheit im Papierkorb → trashed, skipped LEER —
-    // und weil die KO-Phase damit vollständig gut ging, wird auch die Queue geleert.
-    expect(res.json()).toEqual({
+    const body = res.json();
+    expect(body).toMatchObject({
       preview: false,
-      removedCandidates: 2,
-      trashedKos: 2,
-      skipped: [],
+      removedCandidates: 0,
+      trashedKos: 0,
       auditFailed: false,
       newCandidates: 0,
       claimedKos: 0,
       auditPendingCandidates: 0,
     });
-    expect(await services.library.listImportCandidates()).toEqual([]);
-    expect((await services.ko.trashed()).length).toBe(2);
-    expect((await services.ko.list()).map((k) => k.id)).toEqual([ownKoId]);
+    expect(body.skipped).toHaveLength(2);
+    expect((await services.library.listImportCandidates()).length).toBe(2);
+    expect(await services.ko.trashed()).toEqual([]);
+    expect((await services.ko.list()).map((k) => k.id)).toContain(ownKoId);
+    expect(await services.ko.list()).toHaveLength(3);
+    // Kein Beleg für eine nicht gespeicherte Änderung (Aufnahme gesamt-auditprotokoll).
+    expect(await services.audit.list({ action: "ko.deleted" })).toEqual([]);
   });
 
   it("WP-SHIP8-FIX (bens F1): der ABSCHLUSS-Audit wirft → Antwort bleibt ERFOLG mit auditFailed:true (kein Retry-Provokateur)", async () => {
@@ -965,7 +973,7 @@ describe("WP-D-CLEAN: POST /api/admin/import/cleanup", () => {
   });
 
   it("die Aufräum-Copy existiert in DE, EN und NL", () => {
-    const i18n = readFileSync(resolve(process.cwd(), "apps/web/src/i18n.ts"), "utf8");
+    const i18n = woerterbuchQuelleAus(resolve(process.cwd(), "apps/web/src/i18n.ts"));
     for (const key of Object.values(IMPORT_CLEANUP_TEXT)) {
       expect(`${key}:${i18n.split(`"${key}":`).length - 1}`).toBe(`${key}:3`);
     }

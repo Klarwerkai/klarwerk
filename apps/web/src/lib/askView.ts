@@ -30,6 +30,17 @@ export function answerStatus(grade: AnswerGrade): AnswerStatus {
     : { key: "unverified", tone: "warn" };
 }
 
+// R-0287 (Ben R1, F6): „Zwei Etiketten, die dasselbe sagen, werden zu einem." Die Evidenzplakette
+// wiederholt die Statusplakette genau dann, wenn beide dieselbe Einstufung nennen — „Noch
+// ungeprüft" neben „Evidenz: Ungeprüft", „Gesichert" neben „Evidenz: Gesichert". Nur dann entfällt
+// sie; nennt sie etwas Eigenes (Meinung, Annahme, externe Quelle, unbekannt), bleibt sie stehen.
+// Der Export behält beide Zeilen — dort ist er ein Protokoll, keine Fläche.
+export function evidenzWiederholtStatus(status: AnswerStatus, evidenzLabelKey: string): boolean {
+  return status.key === "verified"
+    ? evidenzLabelKey === "ask.knowledgeClass.gesichert"
+    : evidenzLabelKey === "ask.knowledgeClass.ungeprueft";
+}
+
 export interface SourceRef {
   id: string;
   label: string; // KO-Titel, sonst die ID als Fallback

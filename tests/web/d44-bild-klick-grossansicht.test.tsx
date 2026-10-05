@@ -186,11 +186,21 @@ describe("D44-BILD-KLICK · Weg (a) am gedeckelten Editorbild", () => {
     expect(grossesBild()?.getAttribute("src")).toBe(BILD_B);
   });
 
-  it("K4 · fail-closed: ein Bild OHNE data-image-id oeffnet nichts", () => {
-    // Nur verankerte Bilder stehen in der Galerie (`apps/web/src/lib/bodyImages.ts`). Eine leere
-    // Grossansicht waere schlimmer als keine.
+  it("K4 · ein im gespeicherten Text loses Bild öffnet SICH SELBST — weder leer noch ein anderes", () => {
+    // Hier stand „fail-closed: ein Bild OHNE data-image-id oeffnet nichts" — begründet mit „eine
+    // leere Grossansicht waere schlimmer als keine". Leer war sie nie: der Editor hüllt das lose
+    // Bild beim Laden ein und verankert es (mega88), im Editor HAT es eine Kennung. Nur die Galerie
+    // kannte sie nicht, weil sie den gespeicherten Körper liest.
+    //
+    // AUFNAHME 20260922 (Runde 3, R-0945/R-0053): die Großansicht wird seither aus dem Stand des
+    // Editors aufgebaut, den der Klick mitbringt. Damit gilt für dieses Bild, was R-0052 verlangt:
+    // gedeckelt, aber groß zu sehen — und zwar genau dieses, erkennbar an Position 3 von 3.
     act(() => editorBilder()[2]?.click());
-    expect(dialog()?.open ?? false, "ein Bild ohne Kennung hat geoeffnet").toBe(false);
+    expect(dialog()?.open, "das gedeckelte Bild ist nicht groß zu sehen").toBe(true);
+    expect(dialog()?.querySelector("span.font-mono")?.textContent ?? "").toMatch(/3\D+3/);
+    expect(dialog()?.textContent ?? "", "es wurde ein anderes Bild geöffnet").not.toMatch(
+      /Aufriss|Schnitt/,
+    );
   });
 
   it("K5 · der Editorinhalt bleibt unberuehrt — der Deckel begrenzt die Anzeige, nicht die Datei", () => {

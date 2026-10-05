@@ -382,6 +382,38 @@ describe("JOB 4076 · S4 · die Dialogseite gibt die Anmeldung an das Seitenfens
     expect(mit.ssoSichtbar()).toBe(true);
   });
 
+  it("S4b4b — der sichtbare SSO-Hinweis sagt in drei Sprachen den automatischen Rückweg", async () => {
+    // Aufnahme m365-anmeldung Runde 3 (Ben, Runde 2): seit dem SSO-Rückweg auf diese Seite ist
+    // „Fenster schliessen und in Klara erneut »Anmelden« druecken" falsch. Gelesen wird, was die
+    // AUSGEFÜHRTE Seite nach dem Sprachwechsel wirklich anzeigt — nicht die Texttabelle.
+    const lauf = fahre({
+      routen: routenOhneSitzung({
+        "/api/auth/status": { status: 200, koerper: { needsSetup: false, oidcEnabled: true } },
+      }),
+    });
+    await lauf.flush();
+    expect(lauf.stelle("sso-hinweis").className).not.toContain("hidden");
+    const gesehen = new Set<string>();
+    for (const [sprache, zurueck] of [
+      ["de", "von selbst hierher zurueck"],
+      ["en", "returns here by itself"],
+      ["nl", "vanzelf hierheen terug"],
+    ] as const) {
+      lauf.klick(`lang-${sprache}`);
+      const hinweis = lauf.stelle("sso-hinweis").textContent ?? "";
+      expect(hinweis, sprache).toContain(zurueck);
+      for (const alt of [
+        "schliessen und in Klara erneut",
+        "close this window and press",
+        "Sluit dit venster",
+      ]) {
+        expect(hinweis, `${sprache}: überholte Anweisung „${alt}"`).not.toContain(alt);
+      }
+      gesehen.add(hinweis);
+    }
+    expect(gesehen.size).toBe(3);
+  });
+
   it("S4b5 — ohne jedes Office wird nichts gesendet UND kein Erfolg behauptet", async () => {
     // Das Rueckfallfenster (`window.open`) im normalen Browser: es gibt gar kein `window.Office`.
     // RUNDE 4: Bis Runde 3 stand hier „Klara erkennt die Anmeldung von selbst" — im Rueckfallfenster

@@ -190,6 +190,19 @@ export interface Seite {
    * `mouse.click(x, y)` mit zwei Zahlen, sonst nichts.
    */
   mouse: { click(x: number, y: number): Promise<void> };
+  /**
+   * FE-002 · BREITE, TASTATUR UND BILDBELEG — bestellt von
+   * `tests/fe002-kopfband/kopfband-fe002-chromium.test.ts`: die Breite wird je Messpunkt verstellt
+   * (1280/1024/390 px und die Umbruchgrenzen), die Menüs werden mit echten Tasten bedient (Tab,
+   * Enter, Pfeile, Escape — nur so zeigt der Browser `:focus-visible`), und die gerenderten Ansichten
+   * werden als Bildbeleg abgelegt. Jedes Glied so schmal, wie es dort gerufen wird.
+   */
+  setViewportSize(size: { width: number; height: number }): Promise<void>;
+  keyboard: { press(taste: string): Promise<void> };
+  screenshot(opts: {
+    path: string;
+    clip?: { x: number; y: number; width: number; height: number };
+  }): Promise<unknown>;
 }
 interface Browser {
   version(): string;

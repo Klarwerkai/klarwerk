@@ -10,13 +10,19 @@
 //    Fassung wieder da → Löschen mit Bestätigung → Eintrag weg; alles in DE und EN, mit Maus und
 //    durchgehend mit Tastatur."
 //
-// Ben (Aufnahme gesamt-entwurf-einreichen, Lauf :3 Runde 1, B3) hat belegt, dass die vorhandenen
-// Fälle sie nur in Stücken prüfen: `blatt-entwuerfe-verwalten.test.tsx` G beginnt per Adresse im
-// Entwurf und nutzt „Eingabe verwerfen" statt des Listenwechsels, H prüft die Tabulatorordnung ohne
-// Bearbeitung, I nur übersetzte Beschriftungen, und die Chromium-Fälle enden beim Öffnen. Diese
-// Datei geht den ganzen Weg in EINEM Lauf, viermal: {de, en} × {maus, tastatur}.
+// HERKUNFT: übernommen aus dem Kandidaten 13feb4a6 (Lauf 3), nicht neu gebaut. Ben (Runde 1, B3)
+// hatte belegt, dass die vorhandenen Fälle die Folge nur in Stücken prüfen:
+// `blatt-entwuerfe-verwalten.test.tsx` G beginnt per Adresse im Entwurf und nutzt „Eingabe
+// verwerfen" statt des Listenwechsels, H prüft die Tabulatorordnung ohne Bearbeitung, I nur
+// übersetzte Beschriftungen, und die Chromium-Fälle enden beim Öffnen. Diese Datei geht den ganzen
+// Weg in EINEM Lauf, viermal: {de, en} × {maus, tastatur}.
 //
-// WAS „NORMAL" HEISST: Start ist die Startseite `/start` (dorthin leitet `/` weiter). Von dort geht es über den Kopfband-Punkt
+// NACHGEFÜHRT auf den heutigen Stand (Aufnahme entwuerfe-verwalten): die Übersicht liest seit
+// JOB 3668 auch den Papierkorb (`endpoints.drafts.trash`), die Startseite die eigenen KI-Vorlagen
+// (`reasoner.assistPresets`) — beide stehen deshalb im Endpunktsatz, sonst prüfte der Lauf eine
+// Seite im Fehlerzustand. Neu ist Schritt 2b: der kurze Inhaltsauszug (N-0065).
+//
+// WAS „NORMAL" HEISST: Start ist die Startseite `/start`. Von dort geht es über den Kopfband-Punkt
 // „Meine Entwürfe" (`data-kopfband-punkt="entwuerfe"`, JOB 3503) zur Übersicht — keine Adresse
 // wird von Hand gesetzt, jeder Ortswechsel danach ist eine Bedienhandlung. Der Listenwechsel aus
 // dem geöffneten Entwurf ist derselbe Kopfband-Punkt, und die Rückfrage darauf ist die gemeinsame
@@ -28,8 +34,17 @@
 // Ausgelöst wird wie im Browser: Enter auf einer Schaltfläche oder einem Link erzeugt dort den
 // `click`, ohne Zeigerereignisse (`mousedown`/`mouseup`). jsdom erzeugt diesen `click` nicht
 // selbst; `taste` erzeugt `keydown Enter` und danach genau den einen `click`, den der Browser
-// erzeugen würde — und KEIN `mousedown`, damit kein Zeigerpfad (Menü-Schliesshörer) mitgemessen
-// wird. Getippt wird in das per Tabulator fokussierte Feld.
+// erzeugen würde. Getippt wird in das per Tabulator fokussierte Feld.
+//
+// GRENZE DES TASTATURMODUS (Ben, Nacharbeit 3): jsdom kennt keine Tabulatornavigation. `tabBis`
+// bildet den Lauf nach und setzt den Fokus mit `focus()`, `taste` erzeugt den `click()` selbst.
+// Das prüft, dass jedes Ziel im Tabulatorlauf LIEGT, nicht aber die echte Fokusführung.
+// Die Folge mit echten Tab-/Enter-Tasten, Navigationswache und Löschbestätigung steht in
+// `tests/entwuerfe-verwalten/abnahmefolge-tastatur-chromium.test.ts`.
+//
+// WAS DIESE DATEI NICHT IST: eine Pixelmessung (jsdom hat kein Layout) und keine echte menschliche
+// Bedienung. Die Pixelmessung der Titel steht in `tests/d1-meine-entwuerfe/
+// zugang-schmal-chromium.test.ts` (L2); eine Vorführung vor Pedi ersetzt keiner der beiden.
 //
 // DER SERVER ist der echte Entwurfsdienst (`CaptureService` über `InMemoryDraftRepo`) hinter den
 // Endpunkten; „die alte Fassung ist wieder da" und „Eintrag weg" werden deshalb AM BESTAND
@@ -87,6 +102,11 @@ vi.mock("../../apps/web/src/api/endpoints", async () => {
           box.zaehler.remove += 1;
           return svc.deleteDraft(id);
         }),
+        // Der Papierkorb der Übersicht (JOB 3668) — für diese Folge leer; seine Bedienung prüft
+        // ein eigener Auftrag.
+        trash: ok([]),
+        restore: ok({}),
+        purge: ok({}),
         promote: ok({ id: "ko-1", title: "egal" }),
       },
       directory: { list: ok([{ id: "u1", name: "Pia", email: "p@x.de", role: "editor" }]) },
@@ -104,15 +124,16 @@ vi.mock("../../apps/web/src/api/endpoints", async () => {
       external: { policy: ok({ stage: "search_on_click" }) },
       uploadLimits: { get: ok({ maxAttachments: 10, maxAttachmentBytes: 20_000_000 }) },
       notifications: { list: ok([]), markSeen: ok({ unseenCount: 0 }) },
-      // Was die Startseite zusätzlich liest (wie in tests/kollision-netztrennung/start-fuerdich-*).
+      // Was die Startseite zusätzlich liest (wie in tests/d1-meine-entwuerfe/start-zugang-*).
       duplicateSignal: { list: ok([]) },
-      learningPaths: { byRole: ok(null), progress: ok([]) },
-      livewall: { get: ok({ fresh: [], helped: [] }) },
+      learningPaths: { byRole: ok(null), progress: ok(null) },
+      livewall: { get: ok({ saved: [], helped: [], helpedToday: 0 }) },
       admin: { demoStatus: ok({ present: false, count: 0 }) },
-      analytics: { overview: ok({ total: 0, byStatus: {} }) },
+      analytics: { overview: ok({ total: 0, byStatus: { offen: 0, validiert: 0 } }) },
       reasoner: {
         status: ok({ active: false, mode: "off", reachable: "unknown" }),
         config: ok(null),
+        assistPresets: ok([]),
         structure: vi.fn(async () => ({})),
         assist: vi.fn(async () => ({})),
       },
@@ -133,6 +154,7 @@ import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
 import { RoleProvider } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
+import { markStartOrientationSeen } from "../../apps/web/src/lib/startOrientation";
 import { AppRoutes } from "../../apps/web/src/routes";
 import { KopfbandPunkte } from "../../apps/web/src/shell/KopfbandPunkte";
 import { ToastViewport } from "../../apps/web/src/shell/ToastViewport";
@@ -152,9 +174,19 @@ const flush = async (): Promise<void> => {
   }
 };
 
+// PFAD UND ABFRAGETEIL GETRENNT (Nacharbeit 10, Wächter tests/adresse-ist-kein-pfad): Hier stand
+// EIN Knoten mit `${pathname}${search}`, und die Folge stellte ihn gegen reine Pfade — damit
+// behauptete jeder Routenvergleich stillschweigend auch „kein Abfrageteil". Jetzt trägt ein Knoten
+// den Pfad und einer den Abfrageteil; `routenPfad()` prüft die Route, `adresse()` gibt beide Teile
+// getrennt — die Bauform aus Eigenprobe VII des Wächters.
 function Adresse(): JSX.Element {
   const ort = useLocation();
-  return createElement("span", { "data-testid": "adresse" }, `${ort.pathname}${ort.search}`);
+  return createElement(
+    "span",
+    null,
+    createElement("span", { "data-testid": "ort-pfad" }, ort.pathname),
+    createElement("span", { "data-testid": "ort-abfrage" }, ort.search),
+  );
 }
 
 async function montiere(pfad: string): Promise<void> {
@@ -210,8 +242,21 @@ function abbauen(): void {
   }
 }
 
-function adresse(): string {
-  return container.querySelector('[data-testid="adresse"]')?.textContent ?? "";
+/** Die Route — und nichts sonst. Trägt der Pfadknoten ein `?`, ist die Sonde kaputt: Abbruch. */
+function routenPfad(): string {
+  const wert = container.querySelector('[data-testid="ort-pfad"]')?.textContent ?? "";
+  if (wert.includes("?")) {
+    throw new Error(`der Pfadknoten trägt einen Abfrageteil: ${wert}`);
+  }
+  return wert;
+}
+
+/** Pfad UND Abfrageteil, getrennt — für Aussagen über die ganze Adresse (z. B. `?draft=`). */
+function adresse(): { pfad: string; abfrage: string } {
+  return {
+    pfad: routenPfad(),
+    abfrage: container.querySelector('[data-testid="ort-abfrage"]')?.textContent ?? "",
+  };
 }
 
 /** Auf ein Element WARTEN (die Seiten werden nachgeladen); nach der Frist ist der Fall rot. */
@@ -336,7 +381,7 @@ function kopfbandEntwuerfe(): HTMLAnchorElement {
 }
 
 // ------------------------------------------------------------------------------------------------
-// LESBARKEIT DES TITELS — was jsdom davon messen kann, und was nicht (Ben Lauf :3 Runde 2, B3-R).
+// LESBARKEIT DES TITELS — was jsdom davon messen kann, und was nicht (Ben Runde 2, B3-R).
 // ------------------------------------------------------------------------------------------------
 //
 // Bens Befund: ein vollständiger `textContent` beweist keine sichtbare Lesbarkeit — der Titelträger
@@ -346,8 +391,8 @@ function kopfbandEntwuerfe(): HTMLAnchorElement {
 // geprüft wird, ist der VERTRAG DER KLASSEN, mit denen eine Kürzung gemacht würde: weder der
 // Titelträger noch ein Behälter bis zur Zeile trägt `truncate`, `whitespace-nowrap`,
 // `text-ellipsis`, `overflow-hidden`/`-clip` oder `line-clamp-*`, und der Träger selbst bricht um
-// (`break-words`, als Block). Gegenprobe: mit `truncate` am Zeilenträger (Stand Runde 2) ist dieser
-// Schritt in allen vier Läufen rot.
+// (`break-words`, als Block). Gegenprobe: mit `truncate` am Zeilenträger (Stand vor dieser
+// Lieferung, `CaptureDraftList.tsx`) ist dieser Schritt in allen vier Läufen rot.
 const KUERZENDE_KLASSEN =
   /^(truncate|whitespace-nowrap|text-ellipsis|overflow-(x-)?(hidden|clip)|line-clamp-\d+)$/;
 
@@ -441,6 +486,7 @@ async function fixture(): Promise<{ ziel: string; andere: string[] }> {
 beforeEach(() => {
   box.reset();
   window.localStorage.clear();
+  markStartOrientationSeen(window.localStorage);
 });
 
 afterEach(async () => {
@@ -460,15 +506,23 @@ describe("P-ENTWUERFE-VERWALTEN · die Abnahmefolge am Stück", () => {
 
         // 1 · NORMAL ZUR LISTE: von der Startseite über den Kopfband-Punkt.
         await montiere("/start");
-        expect(adresse()).toBe("/start");
+        expect(routenPfad()).toBe("/start");
         await druecke(kopfbandEntwuerfe());
-        expect(adresse()).toBe("/entwuerfe");
+        expect(routenPfad()).toBe("/entwuerfe");
         await warteAuf(testid("page-entwuerfe"));
         await flush();
 
         // 2 · NEUESTER ZUERST, VOLLSTÄNDIGER TITEL — als Text UND ohne kürzenden Träger.
         expect(seitenTitel()).toEqual([ZIEL.title, "Anlage Süd", "Ventil V2 Nord"]);
         titelSichtbarUngekuerzt();
+
+        // 2b · DER KURZE INHALTSAUSZUG (N-0065): wörtlich aus dem Fließtext, in der Zeile dieses
+        // Entwurfs, UNTER dem Titel und nicht in dessen Träger.
+        const auszug = zeileVon(ziel).querySelector(testid("entwurfsliste-eintrag-auszug"));
+        expect(auszug?.textContent ?? "").toContain("Schwingungswert über 7 mm/s");
+        expect(
+          zeileVon(ziel).querySelector(testid("entwurfsliste-eintrag-titel"))?.textContent,
+        ).toBe(ZIEL.title);
 
         // 3 · FINDEN — per INHALT (ein Wort, das in keinem Titel steht) …
         const suche = await warteAuf<HTMLInputElement>(testid("entwurfsliste-suche"));
@@ -481,7 +535,7 @@ describe("P-ENTWUERFE-VERWALTEN · die Abnahmefolge am Stück", () => {
 
         // 4 · ÖFFNEN — genau diesen Entwurf.
         await druecke(fortsetzenKnopf(ziel));
-        expect(adresse()).toBe(`/erfassen?draft=${ziel}`);
+        expect(adresse()).toEqual({ pfad: "/erfassen", abfrage: `?draft=${ziel}` });
         const titelfeld = await warteAuf<HTMLInputElement>(testid("blatt-titel"));
         await flush();
         expect(titelfeld.value).toBe(ZIEL.title);
@@ -496,15 +550,16 @@ describe("P-ENTWUERFE-VERWALTEN · die Abnahmefolge am Stück", () => {
         await druecke(kopfbandEntwuerfe());
         expect(document.querySelectorAll("[data-navguard-dialog]")).toHaveLength(1);
         expect(document.body.textContent).toContain(i18n.t("nav.guard.title"));
-        expect(adresse(), "ohne Antwort darf der Wechsel nicht geschehen").toBe(
-          `/erfassen?draft=${ziel}`,
-        );
+        expect(adresse(), "ohne Antwort darf der Wechsel nicht geschehen").toEqual({
+          pfad: "/erfassen",
+          abfrage: `?draft=${ziel}`,
+        });
         // „Verwerfen" (ungesicherte Änderung) und „Löschen" (gespeicherter Entwurf) sind zwei
         // Wörter — sie dürfen sich nicht verwechseln lassen.
         expect(i18n.t("nav.guard.discard")).not.toBe(i18n.t("capture.discardDraftYes"));
         await druecke(wacheKnopf(i18n.t("nav.guard.discard")));
         expect(document.querySelectorAll("[data-navguard-dialog]")).toHaveLength(0);
-        expect(adresse()).toBe("/entwuerfe");
+        expect(routenPfad()).toBe("/entwuerfe");
         await warteAuf(testid("page-entwuerfe"));
         await flush();
 
@@ -521,7 +576,7 @@ describe("P-ENTWUERFE-VERWALTEN · die Abnahmefolge am Stück", () => {
         // Zurück zur Liste: das Blatt ist sauber, also fragt die Wache NICHT.
         await druecke(kopfbandEntwuerfe());
         expect(document.querySelectorAll("[data-navguard-dialog]")).toHaveLength(0);
-        expect(adresse()).toBe("/entwuerfe");
+        expect(routenPfad()).toBe("/entwuerfe");
         await warteAuf(testid("page-entwuerfe"));
         await flush();
 
@@ -550,4 +605,33 @@ describe("P-ENTWUERFE-VERWALTEN · die Abnahmefolge am Stück", () => {
       });
     }
   }
+
+  // ROT-GEGENPROBE zu Schritt 2 (Ben, Nacharbeit 3): dieselbe Prüfung `titelSichtbarUngekuerzt` an
+  // einer Zeile im Bau des Stands VOR der Behebung — `truncate` am Zeilenträger, der Titel-`<span>`
+  // ohne `block break-words` (CaptureDraftList.tsx an Basis 8f70ef9a). Sie MUSS rot werden; bliebe
+  // sie grün, bewiese Schritt 2 oben nichts über die Kürzung.
+  it("Gegenprobe: mit dem alten Titelbau (`truncate` am Zeilenträger) schlägt die Klassenprüfung an", () => {
+    container = document.createElement("div");
+    container.innerHTML = [
+      '<div data-testid="page-entwuerfe"><ul><li data-testid="entwurfsliste-eintrag">',
+      '<div class="min-w-0 flex-1"><div class="truncate text-[13px] font-semibold text-text">',
+      `<span data-testid="entwurfsliste-eintrag-titel">${ZIEL.title}</span>`,
+      "</div></div></li></ul></div>",
+    ].join("");
+    document.body.appendChild(container);
+    try {
+      expect(() => titelSichtbarUngekuerzt()).toThrow();
+      // Und der heutige Bau besteht dieselbe Prüfung — die Gegenprobe misst die Kürzung, nicht
+      // eine Eigenheit des Prüfaufbaus.
+      const traeger = container.querySelector("div.truncate") as HTMLElement;
+      traeger.classList.remove("truncate");
+      const titel = container.querySelector(
+        '[data-testid="entwurfsliste-eintrag-titel"]',
+      ) as HTMLElement;
+      titel.className = "block break-words";
+      expect(() => titelSichtbarUngekuerzt()).not.toThrow();
+    } finally {
+      container.remove();
+    }
+  });
 });

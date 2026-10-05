@@ -25,16 +25,15 @@
 //
 // NICHT GEGENSTAND (F3, ausdruecklich): Bilder tatsaechlich zu uebertragen, wo Word sie nur als
 // Verweis liefert. Hier geht es allein darum, dass kein Verlust unbemerkt bleibt.
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   WORD_ADDIN_BODY_BUDGET_BYTES,
   prepareWordDraftRequest,
 } from "../../apps/web/src/lib/wordAddin";
+import { panelQuelleAus } from "../support/panelquelle";
 
 const TASKPANE = "apps/web/public/word-addin/taskpane.html";
-const HTML = readFileSync(resolve(process.cwd(), TASKPANE), "utf8");
+const HTML = panelQuelleAus(TASKPANE);
 
 // Die Eingaben, die den Klartext-Rueckfall ausloesen — je EIN Vertreter pro baulichem Weg.
 // „html" ist genau das, was `readSelection`/`readWholeDocument` an `prepareWordDraftRequest` reicht.

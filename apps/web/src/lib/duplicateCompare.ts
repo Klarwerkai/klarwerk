@@ -1,4 +1,4 @@
-import type { Conflict, KnowledgeObject, OverlapEntry } from "../api/types";
+import type { CandidateSource, Conflict, KnowledgeObject, OverlapEntry } from "../api/types";
 import { LEAD_METRIC_TEXT, type LeadMetric, overlapDetectorInfo } from "./duplicateBoard";
 import { htmlToPlainText } from "./richText";
 
@@ -256,6 +256,17 @@ export function buildDuplicateCompareSections(
       t,
     ),
   ];
+}
+
+// R-0194: aus welcher Quelle der Kandidat stammt. Gelesen wird, was die Erkennung am Befund notiert
+// hat; ein automatischer Altbefund ohne Angabe stammt aus dem Trigramm-Rang (vor R-0194 der einzige
+// Weg). Ein von Hand gemeldetes Paar hat keine Kandidatenquelle — `null`.
+export function kandidatenQuellen(entry: OverlapEntry): CandidateSource[] | null {
+  if (entry.origin === "manual") {
+    return null;
+  }
+  const notiert = entry.detector?.candidateSources ?? [];
+  return notiert.length > 0 ? notiert : ["text"];
 }
 
 function average(values: number[]): number {

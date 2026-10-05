@@ -3,7 +3,6 @@
 // fehlerfrei über die bestehenden Anlege-Wege, das Laden ist IDEMPOTENT (ehrliche Bilanz), der
 // Guard greift (403 ohne users.manage), Audit wird geschrieben — und der Entfernen-Weg ist der
 // BESTEHENDE Demo-Purge (demoSeed), NICHT das Import-Aufräumen (eigene Provenienz).
-import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { EXAMPLE_PACKAGES_ALL_KEYS } from "../../apps/web/src/lib/examplePackages";
@@ -13,6 +12,7 @@ import {
   EXAMPLE_PROVIDER,
   EXAMPLE_TITLE_PREFIX,
 } from "../../services/app/src/example-packages";
+import { woerterbuchQuelleAus } from "../support/woerterbuchquelle";
 
 async function adminApp() {
   const services = buildServices();
@@ -272,7 +272,7 @@ describe("WP-B6: POST /api/admin/examples/load", () => {
   });
 
   it("die Beispielpaket-Copy existiert in DE, EN und NL", () => {
-    const i18n = readFileSync(resolve(process.cwd(), "apps/web/src/i18n.ts"), "utf8");
+    const i18n = woerterbuchQuelleAus(resolve(process.cwd(), "apps/web/src/i18n.ts"));
     for (const key of EXAMPLE_PACKAGES_ALL_KEYS) {
       expect(`${key}:${i18n.split(`"${key}":`).length - 1}`).toBe(`${key}:3`);
     }
@@ -353,9 +353,18 @@ describe("WP-SHIP8-FINAL Bedingung 5: Anker-Claim + Trash-Raender", () => {
     expect(body.created).toBe(0);
     expect(body.skipped).toBe(6); // wiederhergestellt = vorhanden
     expect(body.skippedInTrash).toBe(0);
-    expect(body.conflicts).toEqual({ created: 0, skipped: 3, failed: 0 });
+    // Auftrag gesamt-dubletten-rueckzug (R-1547): der weiche Löschweg schliesst die Konflikte des
+    // Beitrags jetzt IM Dienst (vorher nur im Nachlauf der Löschroute, den `services.ko.delete` hier
+    // umging). Das Wiederherstellen öffnet Konflikte nicht wieder (nie zugesagt) — das Nachladen
+    // legt für das Paar des zurückgekehrten Beitrags deshalb EINEN frischen offenen Konflikt an,
+    // wie es über `DELETE /api/kos/:id` schon zuvor geschah. Kein Duplikat an Wissensobjekten.
+    expect(body.conflicts).toEqual({ created: 1, skipped: 2, failed: 0 });
     expect(
       (await services.ko.list()).filter((k) => k.title.startsWith(EXAMPLE_TITLE_PREFIX)).length,
     ).toBe(6);
+    // Und keine fortlaufende Erzeugung: ein weiteres Laden legt nichts mehr an.
+    const nochmal = (await load(app, headers, "konflikte")).json() as LoadBody;
+    expect(nochmal.created).toBe(0);
+    expect(nochmal.conflicts).toEqual({ created: 0, skipped: 3, failed: 0 });
   });
 });

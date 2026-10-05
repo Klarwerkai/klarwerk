@@ -183,6 +183,13 @@ function validatedRank(ko: KnowledgeObject): number {
   return ko.status === "validiert" ? 1 : 0;
 }
 
+// K1 / NFR-PERF-01 (Nacharbeit 27): EIN Vergleicher für alle Vergleiche einer Sortierung. Bei
+// leerer Suche sortiert die Bibliothek den ganzen Bestand (10.001 → ~130.000 Vergleiche); ein
+// `localeCompare` je Vergleich baut die Vergleichsregel jedes Mal neu auf. `new Intl.Collator()`
+// ohne Angaben ist nach ECMA-402 genau die Regel, die `localeCompare()` ohne Angaben verwendet —
+// die Reihenfolge bleibt dieselbe.
+const VERGLEICH = new Intl.Collator().compare;
+
 // Re-rankt die (bereits gefilterten) Treffer stabil nach Relevanz. Trust/Status sind NUR
 // Tie-Breaker. Verwirft nichts — Score-0-Treffer landen hinten in sinnvoller Default-Ordnung.
 export function searchLibrary(kos: readonly KnowledgeObject[], query: string): ScoredKo[] {
@@ -193,7 +200,7 @@ export function searchLibrary(kos: readonly KnowledgeObject[], query: string): S
         b.score - a.score ||
         validatedRank(b.ko) - validatedRank(a.ko) ||
         (b.ko.trust ?? 0) - (a.ko.trust ?? 0) ||
-        a.ko.title.localeCompare(b.ko.title) ||
-        a.ko.id.localeCompare(b.ko.id),
+        VERGLEICH(a.ko.title, b.ko.title) ||
+        VERGLEICH(a.ko.id, b.ko.id),
     );
 }

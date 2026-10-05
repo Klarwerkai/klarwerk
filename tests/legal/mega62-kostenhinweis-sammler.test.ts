@@ -26,6 +26,7 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { woerterbuchQuelleAus } from "../support/woerterbuchquelle";
 
 const WURZEL = join(__dirname, "..", "..");
 const WEB = join("apps", "web", "src");
@@ -114,7 +115,7 @@ describe("mega62 F · der Kostenhinweis an jeder Auslösestelle", () => {
   });
 
   it("der Hinweis existiert als EIN Schlüssel in allen drei Sprachen", () => {
-    const i18n = readFileSync(join(WURZEL, WEB, "i18n.ts"), "utf8");
+    const i18n = woerterbuchQuelleAus(join(WURZEL, WEB, "i18n.ts"));
     const treffer = i18n.split("\n").filter((z) => z.includes(`"${SCHLUESSEL}"`));
     expect(treffer.length, "der Hinweis fehlt in einer der drei Sprachen").toBe(3);
   });
@@ -187,7 +188,7 @@ describe("mega62 F · der Kostenhinweis an jeder Auslösestelle", () => {
   it("der Wortlaut nennt in jeder Sprache wirklich die Kosten", () => {
     // Ein Halbsatz, der alles Mögliche sagt, nur nicht, dass es Geld kostet, wäre kein Hinweis.
     // Dieselbe Kalibrierung wie in tests/ask/mega61-kostenhinweis.test.ts.
-    const i18n = readFileSync(join(WURZEL, WEB, "i18n.ts"), "utf8");
+    const i18n = woerterbuchQuelleAus(join(WURZEL, WEB, "i18n.ts"));
     const zeilen = i18n.split("\n").filter((z) => z.includes(`"${SCHLUESSEL}"`));
     const stamm = ["kostenpflichtig", "chargeable", "betaalde"];
     for (const [i, wort] of stamm.entries()) {

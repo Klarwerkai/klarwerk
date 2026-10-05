@@ -146,6 +146,32 @@ const ACHSEN: Achse[] = [
     positiv: "tests/demo-firmen-ci-verbraucher/panel-marke.test.ts",
     gegenprobe: "tests/app/word-addin.test.ts",
   },
+  // ----------------------------------------------------------------------------------------------
+  // AUFNAHME 20260922 · GESAMT-KLARA-EXTERN (R-1526) — DIE ACHTE ACHSE.
+  // ----------------------------------------------------------------------------------------------
+  // DER BEFUND, wörtlich aus der Auftragsquelle: „tests/ka6/job3026-riegel-am-erzeuger.test.ts wird
+  // von den sechs Erkennungsachsen des Klara-Regressionsinventars nicht gefunden und ist dort nicht
+  // gepinnt, obwohl REGELN.md §5 jeden neuen Klara-Test verlangt." Die Datei prüft Klaras
+  // Einwilligungsriegel am Erzeuger, trägt aber weder „klara" im Pfad noch eines der Wörter der
+  // übrigen Achsen.
+  // DAS MUSTER IST GEMESSEN, NICHT GERATEN (`node`-Erhebung über dieselben drei Flächen):
+  //   · mit zusätzlich `KLARA_EXTERNAL_EXECUTION_MIGRATED` — 25 Treffer, 15 neu, darunter
+  //     `job2622-sandbox-skips.test.ts`, das den Namen nur als Ruhegrund der Sandbox nennt. Zu weit.
+  //   · die hier stehende Fassung — 16 Treffer, 11 neu (eine davon die mit dieser Achse angelegte
+  //     `tests/klara-dokumenttext/…`, die ohnehin über `name` hereinkommt). Jede der zehn übrigen
+  //     ruft das Einwilligungstor des Klara-Sitzungsdienstes (`pruefeExterneAusfuehrung`) oder die
+  //     Prüferschnittstelle des Zuruf-Erzeugers (`Ka6Einwilligungspruefer`) — das sind die Tore, an
+  //     denen der externe Klara-Weg hängt.
+  {
+    kennung: "einwilligung",
+    wo: "inhalt",
+    muster: /Ka6Einwilligungspruefer|pruefeExterneAusfuehrung|pruefeDokumenttextFreigabe/,
+    zweck:
+      "Klaras Einwilligungstore für den externen Weg — Sitzungsdienst, Dokumenttext und Zuruf-Erzeuger. " +
+      "Noetig, weil eine Pruefung dieser Tore weder „klara“ im Pfad noch ein Wort der anderen Achsen tragen muss.",
+    positiv: "tests/ka6/job3026-riegel-am-erzeuger.test.ts",
+    gegenprobe: "tests/app/mega40-token-disziplin.test.ts",
+  },
 ];
 
 // ------------------------------------------------------------------------------------------------
@@ -491,6 +517,14 @@ const INVENTAR: readonly string[] = [
   "tests/office-web-anmeldung/uebergabe-keine-auskunft.test.ts",
   "tests/office-web-anmeldung/uebergabe-ohne-cookie.test.ts",
   "tests/office-web-anmeldung/uebergabe-vertrag.test.ts",
+  // Aufnahme m365-anmeldung Runde 2 (25.09.2026): der SSO-Rückweg auf die Dialogseite — liest die
+  // ausgelieferte `anmeldung.html`, deshalb von der Achse gefunden. K2 hat sie gemeldet, das
+  // Inventar nimmt sie nicht still auf.
+  "tests/office-web-anmeldung/sso-rueckweg-zur-dialogseite.test.ts",
+  // Aufnahme m365-anmeldung Runde 3 (25.09.2026): der Sitzungsablauf am ausgelieferten
+  // Seitenfenster (verständlicher Satz, Wiederanmeldung im Panel, Arbeit geht weiter) — fährt
+  // `taskpane.html` über die Fixture. K2 hat sie gemeldet, das Inventar nimmt sie nicht still auf.
+  "tests/office-web-anmeldung/sitzungsablauf-im-seitenfenster.test.tsx",
   // JOB 4085 (OFFICE-PG-ABNAHME): die Abnahme des Word-Rueckwegs gegen eine ECHTE `.docx` durch den
   // produktiven Extraktor — die Word-Auswahl geht durch das ausgelieferte Aufgabenfenster an die
   // echte Route, gemessen wird am zurueckgelesenen Wissensobjekt. Von der Achse `taskpane`
@@ -824,6 +858,12 @@ const INVENTAR: readonly string[] = [
   // mit Zustimmung KEINEN Cloudweg oeffnet (er fordert nie `want:"deep"` an) und dass die
   // Einstufung des nicht eingestuften Textes an der Klara-Bindung haengt, nicht am Marker allein.
   "tests/m3-dokumentweg-panel/w6-anschluss-echte-route.test.ts",
+  // P-M3b (29.09.2026, Nacharbeit BEN-3): EIN Prüfstand-Wortlaut für die Web-Live-Zone und die
+  // Bestandsliste des Word-Panels. Von der Achse `komponente` gefunden (die Datei führt das
+  // ausgelieferte Aufgabenfenster über `createKlaraPanel` aus). „klara" steht nicht im Pfad, K5
+  // bleibt unverändert. Sachlich Klara-Regression: sie hält fest, dass das Panel für eingereichte
+  // und validierte Treffer in de/en/nl dasselbe Wort nennt wie die Web-Fläche.
+  "tests/erfassungs-konfliktpruefung/pruefstand-wortlaut.test.tsx",
   // JOB 3052 D6 (04.09.2026): das Wissensnetz der Web-App gegen das Zielbild Wissensnetz.dc.html,
   // in Chromium gemessen (tests/design/zielbild-wissensnetz.test.ts). Von der Inhaltsachse
   // `palette` gefunden: der statische Leseweg loest die Token `rgb(var(--kw-…))` der gerenderten
@@ -834,6 +874,12 @@ const INVENTAR: readonly string[] = [
   "tests/design/zielbild-wissensnetz.test.ts",
   "tests/klara-zerlegung/marken-skelett.test.ts",
   "tests/klara-zerlegung/probeschnitt.test.ts",
+  // AUFNAHME 20260922 · ZENTRALE-MODULE-AUFTEILEN (R-1611): der fünfte Messpunkt der Zerlegung —
+  // er belegt, dass die drei Dateien des echten Schnitts Byte für Byte die frühere `taskpane.html`
+  // ergeben. Liegt unter `tests/klara-zerlegung/`, trägt „klara" also im PFAD (K5: 69 -> 70), dazu
+  // die Inhaltsachse `taskpane`. Sachlich Klara-Regression: fällt er, lesen rund hundert
+  // Prüfstände ein Fenster, das es so nicht gibt.
+  "tests/klara-zerlegung/schnitt-echt.test.ts",
   "tests/klara-zerlegung/schnitt-pins.test.ts",
   "tests/klara-zerlegung/schnittflaechen.test.ts",
   // JOB 3062 · H3 (04.09.2026): zwei Dateien der Web-Flaeche „Erfassen" kamen in die Erhebung.
@@ -1168,6 +1214,67 @@ const INVENTAR: readonly string[] = [
   // Baum, aber nicht im gepinnten Inventar — Inventar nachfuehren` mit genau diesen zwei Pfaden.
   "tests/deploy-health-commit/eine-programmversion.test.ts",
   "tests/deploy-liefernachweis/live-update-liefernachweis.test.ts",
+  // AUFNAHME 20260922 · GESAMT-KLARA-EXTERN (01.10.2026), R-0639: der Dokumenttext-Riegel. Traegt
+  // „klara" im PFAD und kommt ueber `name` herein (K5: 68 -> 69). GEMESSEN, NICHT GESETZT: K2
+  // meldete lokal `neu im Baum, aber nicht im gepinnten Inventar` mit genau diesem Pfad.
+  "tests/klara-dokumenttext/riegel-haelt-den-dokumenttext.test.ts",
+  // R-1526: die zehn Pruefungen, die erst die Achse `einwilligung` findet — Begruendung und Messung
+  // an der Achse. Keine traegt „klara" im Pfad; sie fallen in `verfehlt`, K5 bleibt bei 69.
+  "tests/ka6/job3026-riegel-am-erzeuger.test.ts",
+  "tests/app/job2666-stufe-die-nur-der-client-behauptet.test.ts",
+  // Nacharbeit K6 (aufnahme:20260922:gesamt-ki-einwilligung:freigabe-wirkung, 03.10.2026): die
+  // Dokumentfreigabe auf `structure` und `/describe` durch die echte Anbieterkette. Kein „klara" im
+  // Pfad; gefunden über die Achse `einwilligung` (nennt das Tor im Kopf). K5 bleibt bei 69.
+  "tests/admin-ki-freigabe/ka4-direktwege-volle-kette.test.ts",
+  "tests/app/job2692-ein-dokument-das-nur-der-client-beschreibt.test.ts",
+  "tests/d5-ki-aus/halt-vor-dem-dienst.test.ts",
+  "tests/ka6-memo-panel/memo-route.test.ts",
+  "tests/live-check-verdrahtung/anker-und-zustimmung.test.ts",
+  "tests/output/ka6-zuruf.test.ts",
+  "services/app/src/ask-routes.test.ts",
+  "services/app/src/db.migrate.integration.test.ts",
+  "services/app/src/routes/ka5-markierung.test.ts",
+  // Übernahme `erfassungs-konfliktpruefung` (03.10.2026): kam mit dem eingemischten Hauptstand in
+  // den Baum. GEFUNDEN VON GENAU EINER ACHSE: `palette` — die Datei nennt die „Bildpalette“ des
+  // Erfassungsblatts (Kopfkommentar und Ablauf), nicht die Klara-Palette. Sachlich keine
+  // Klara-Regression; gepinnt, weil das Verzeichnis die abgeleitete Menge exakt abbildet und die
+  // Achse hier nicht still verengt wird. Kein „klara" im Pfad: fällt in `verfehlt`, K5 bleibt bei
+  // 69. GEMESSEN, NICHT GESETZT: der Serverlauf am Kandidaten c1c7f0d9 meldete K2 `neu im Baum,
+  // aber nicht im gepinnten Inventar` mit genau diesem Pfad.
+  "tests/anhaenge-ziehen/speichern-wiederoeffnen-pg.integration.test.ts",
+  // FE-002 (HEADER TEIL 1, 26.09.2026): von der Achse `palette` gefunden (Muster `palette`) — die
+  // Datei montiert `CommandPalette` und misst den Schnellzugriff „Seite finden" (vormals „Gehe zu …")
+  // samt Namenssuche und ohne technische Pfade. Dieselbe Klasse wie die `admin-navigation`-Dateien
+  // oben. GEMESSEN, NICHT GESETZT: K2 meldete `neu im Baum, aber nicht im gepinnten Inventar`
+  // (tests/fe002-kopfband/kopfband-fe002.test.tsx); erst danach wurde diese Zeile angefasst. Der
+  // Chromium-Zwilling derselben Mappe nennt das Muster nicht und steht deshalb nicht hier.
+  "tests/fe002-kopfband/kopfband-fe002.test.tsx",
+  // AUFNAHME 20260922 · ZENTRALE-MODULE-AUFTEILEN, Nacharbeit 4 (Integration mit main): zwei
+  // Prüfstände, die auf `main` ohne Inventareintrag entstanden sind. GEMESSEN, NICHT GESETZT: der
+  // Prüflauf am Kandidaten e0ac4c8f meldete K2 `neu im Baum, aber nicht im gepinnten Inventar` mit
+  // genau diesen zwei Pfaden; erst danach wurden diese Zeilen angefasst.
+  //   · `word-addin-dokumentkennung.test.ts` (R-0169) — Achse `taskpane` (nennt den Pfad im Kopf
+  //     und fährt das Fenster über `createKlaraPanel`).
+  //   · `klara-assistenz/abgleich-belege.test.ts` (gesamt-klara-assistenz) — Achse `name` („klara"
+  //     im Pfad); sie zählt deshalb in K5 mit (70 -> 71).
+  // (Dieselben zwei Pfade hatte der Folgeauftrag gesamt-erstnutzerfuehrung-quellen in seiner
+  // Nacharbeit 4 eingetragen, gemessen am Kandidaten 039d5468; bei der Integration mit main in diesen
+  // Eintrag zusammengeführt — ein Pfad steht im Inventar genau einmal.)
+  "tests/app/word-addin-dokumentkennung.test.ts",
+  "tests/klara-assistenz/abgleich-belege.test.ts",
+  // Nacharbeit 7 desselben Auftrags (Integration mit main): R-1864 hält die Zuordnung der Quelle W9
+  // an den Panelblöcken fest (KW-KLARA-W6-CHECKTEXT, KW-WORDVERGLEICH, KW-KA6-MEMO, KW-D2-LUECKE) —
+  // Achse `taskpane`; „klara" steht nicht im Pfad, K5 bleibt bei 71. GEMESSEN, NICHT GESETZT: der
+  // Prüflauf am Kandidaten cd1073c0 meldete K2 mit genau diesem Pfad.
+  "tests/r1864-w9-zuordnung/w9-quelle-und-zuordnung.test.ts",
+  // Folgeauftrag gesamt-erstnutzerfuehrung-quellen, Nacharbeit 15 (Integration mit main): der
+  // Aufrufer-Wächter der Erfassung nennt seit `22d6b201` („Suchraum und kombinierbare Facetten …",
+  // über main eingemischt) das statische Panel `apps/web/public/word-addin/taskpane.html` (`:1318`)
+  // — Achse `taskpane`. Sachlich keine Klara-Regression, gepinnt, weil die Achse hier nicht still
+  // verengt wird. Kein „klara" im Pfad: fällt in `verfehlt`, K5 bleibt bei 71. GEMESSEN, NICHT
+  // GESETZT: der Prüflauf am Kandidaten 95636768 meldete K2 `neu im Baum, aber nicht im gepinnten
+  // Inventar` mit genau diesem Pfad.
+  "tests/capture/aufrufer-waechter.test.ts",
 ];
 
 // ------------------------------------------------------------------------------------------------
@@ -1271,7 +1378,8 @@ describe("JOB 920 · K — das Klara-Regressionsinventar ist ableitbar, nicht be
     }
     expect(befunde, "Achse ohne tragende Kalibrierung").toEqual([]);
     // 6 -> 7 am 12.09.2026 (JOB 3781): die Achse `erweiterung` ist dazugekommen.
-    expect(ACHSEN, "weniger als sieben Achsen — eine ist weggefallen").toHaveLength(7);
+    // 7 -> 8 am 01.10.2026 (Aufnahme gesamt-klara-extern, R-1526): die Achse `einwilligung`.
+    expect(ACHSEN, "weniger als acht Achsen — eine ist weggefallen").toHaveLength(8);
   });
 
   it("K4 · der Eigenbeitrag jeder Achse ist gemessen, nicht angenommen", () => {
@@ -1285,10 +1393,16 @@ describe("JOB 920 · K — das Klara-Regressionsinventar ist ableitbar, nicht be
     // 5 -> 6 am 12.09.2026 (JOB 3781): die neue Achse `erweiterung` traegt 6 Dateien allein, die
     // Schwelle steigt deshalb mit. Gemessene Eigenbeitraege an diesem Stand: name 22, taskpane 55,
     // manifest 0, version 3, komponente 10, palette 34, erweiterung 6.
+    // 6 -> 7 am 01.10.2026 (R-1526): die Achse `einwilligung` traegt allein bei (Messung unten).
     const alleine = [...eigen.entries()].filter(([, n]) => n > 0).map(([k]) => k);
     expect(alleine.length, `Eigenbeitraege: ${JSON.stringify([...eigen])}`).toBeGreaterThanOrEqual(
-      6,
+      7,
     );
+    // R-1526: dieselbe Pflicht wie bei `erweiterung` — die Achse muss den Auslöser WIRKLICH holen.
+    expect(
+      eigen.get("einwilligung"),
+      "die Achse `einwilligung` holt keine Datei allein herein — sie ist wirkungslos",
+    ).toBeGreaterThan(0);
     // JOB 3781: die neue Achse muss WIRKEN, nicht nur dastehen. Waere ihr Eigenbeitrag 0, faende sie
     // ausschliesslich Dateien, die andere Achsen ohnehin holen — dann waere das Muster falsch
     // gewaehlt und die Luecke aus dem 3512-Kommentar nur scheinbar geschlossen.
@@ -1486,7 +1600,19 @@ describe("JOB 920 · K — das Klara-Regressionsinventar ist ableitbar, nicht be
     // Beleg in der RUECKGABE des Jobs.
     // JOB 4224 RUNDE 3: dazu `kette-postgres.integration.test.ts` — 67 -> 68. GEMESSEN, NICHT
     // GESETZT: Beleg in der RUECKGABE des Jobs.
-    expect(nurName.length).toBe(68);
+    // AUFNAHME 20260922 · GESAMT-KLARA-EXTERN (01.10.2026):
+    // `tests/klara-dokumenttext/riegel-haelt-den-dokumenttext.test.ts` traegt „klara" im PFAD —
+    // 68 -> 69. GEMESSEN, NICHT GESETZT: K5 meldete lokal `expected 69 to be 68`.
+    // AUFNAHME 20260922 · ZENTRALE-MODULE-AUFTEILEN (R-1611): `tests/klara-zerlegung/schnitt-
+    // echt.test.ts` trägt „klara" im PFAD — 69 -> 70. NICHT GEMESSEN, sondern aus der Pfadregel
+    // abgeleitet: in dieser Lieferung wurde kein Testlauf gestartet; der Cloud-Lauf ist der Beleg.
+    // Nacharbeit 4 desselben Auftrags (Integration mit main): `tests/klara-assistenz/abgleich-
+    // belege.test.ts` (auf main entstanden) trägt „klara" im PFAD — 70 -> 71. GEMESSEN, NICHT
+    // GESETZT: der Prüflauf am Kandidaten e0ac4c8f meldete `expected 71 to be 70`.
+    // (Den Schritt für `abgleich-belege` hatte der Folgeauftrag gesamt-erstnutzerfuehrung-quellen
+    // in seiner Nacharbeit 4 gleichlautend als 69 -> 70 gezählt; zusammen mit `schnitt-echt` ergibt
+    // die Vereinigung beider Stände 71 — die Datei zählt nur einmal.)
+    expect(nurName.length).toBe(71);
     expect(verfehlt.length).toBeGreaterThanOrEqual(25);
     expect(verfehlt.length + nurName.length).toBe(GEFUNDEN.length);
   });

@@ -26,8 +26,9 @@
 //       FREISCHALTUNG nicht. Der Versuch hat vier Sperrgruende freigelegt — Frist, Empfaenger,
 //       Nutzlastumfang, Panelvertrag —, die im Kopf von `klara-policy.ts` einzeln benannt und in
 //       `tests/ka4-freischaltung/ka4-einwilligung-wirkt.test.ts` an den Schalter gebunden sind.
-//       Dieser Fall hier bleibt deshalb vorerst uebersprungen; er wacht mit derselben Zeile auf,
-//       sobald die vier behoben sind und der Wert umgelegt wird.
+//       Dieser Fall blieb deshalb damals uebersprungen.
+//       STAND 05.09.2026 (JOB 3079): die vier sind behoben, der Wert steht auf `true`, und
+//       `KA4-E1` laeuft ohne weitere Aenderung mit.
 //   (2) Die Reasoner-Lage meldet eine verdrahtete Cloud. Keine Faelschung, sondern der Zustand
 //       eines Betriebs mit konfiguriertem Anbieter: `KlaraSessionService` nimmt die Lage als
 //       `policy()`-Funktion entgegen (klara-session-service.ts:106) — genau so, wie die
@@ -90,18 +91,18 @@ const ENGE = {
 };
 
 /**
- * DER POSITIVE FALL SCHLAEFT, BIS DIE FREISCHALTUNG WIRKLICH FAELLT — und weckt sich dann selbst.
+ * DER POSITIVE FALL HAENGT AM SCHALTER — und laeuft, seit er umgelegt ist.
  *
- * Waere `KA4-E1` unbedingt, staende er heute dauerhaft ROT im Tor: die Policy blockiert mit
- * `external_not_migrated`, solange `KLARA_EXTERNAL_EXECUTION_MIGRATED` auf `false` steht. Ein rot
- * hinterlassener Fall widerspricht E-05 und wuerde nach zwei Tagen als „bekannt rot" abgehakt.
+ * Waere `KA4-E1` unbedingt, stuende er bei zurueckgelegtem Schalter dauerhaft ROT im Tor: die
+ * Policy blockiert mit `external_not_migrated`, solange `KLARA_EXTERNAL_EXECUTION_MIGRATED` auf
+ * `false` steht. Ein rot hinterlassener Fall widerspricht E-05.
  *
- * Er wird deshalb uebersprungen, solange die Sperre steht — und laeuft ohne jede weitere Aenderung
- * mit, sobald jemand die Konstante umlegt. Dass er dann traegt, ist gemessen und nicht behauptet:
- * JOB 3033 Runde 1 hat die Konstante versuchsweise umgelegt, und dieser Fall lief auf Anhieb gruen
- * (8/8 in derselben Datei). Umgelegt BLEIBEN konnte sie nicht — vier Sperrgruende (Frist,
- * Empfaenger, Nutzlastumfang, Panelvertrag) stehen im Kopf von `klara-policy.ts` und sind in
- * `tests/ka4-freischaltung/ka4-einwilligung-wirkt.test.ts` an den Schalter gebunden.
+ * Bis JOB 3079 (05.09.2026) stand der Schalter auf `false`, und der Fall wurde uebersprungen. JOB
+ * 3033 Runde 1 hatte die Konstante versuchsweise umgelegt (8/8 gruen in dieser Datei), konnte sie
+ * aber wegen vier Sperrgruenden (Frist, Empfaenger, Nutzlastumfang, Panelvertrag) nicht umgelegt
+ * lassen. JOB 3079 hat die vier behoben (Kopf von `klara-policy.ts`) und den Schalter auf `true`
+ * gelegt; seither laeuft `KA4-E1` in jedem Lauf mit. `tests/ka4-freischaltung/ka4-einwilligung-
+ * wirkt.test.ts` misst die vier weiterhin in BEIDEN Zustaenden.
  */
 const nurWennFreigegeben = KLARA_EXTERNAL_EXECUTION_MIGRATED ? it : it.skip;
 
@@ -197,7 +198,8 @@ const fragen = (a: Aufbau, kopf: Record<string, string>) =>
     method: "POST",
     url: "/api/ask",
     headers: { ...kopf, "content-type": "application/json" },
-    payload: { question: FRAGE, locale: "de", mode: "retrieval-only" },
+    // R-0639 Runde 3 (Bens Befund B1): mit Klara-Bindung ist nur ausdrücklich `manual` getippt.
+    payload: { question: FRAGE, locale: "de", mode: "retrieval-only", questionSource: "manual" },
   });
 
 describe("KA4 · D3 · der ownerfreigegebene Endzustand", () => {

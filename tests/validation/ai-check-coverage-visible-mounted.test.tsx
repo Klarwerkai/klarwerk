@@ -94,7 +94,9 @@ describe("mega28 A2 · der gedeckelte Lauf zeigt sich dort, wo das Urteil gelese
     expect(tip).toContain("mindestens");
   });
 
-  it("done + vollständig → weiterhin NICHTS (der Hinweis ist kein Dauerrauschen)", () => {
+  // PRÜFSTATUS-ANZEIGE (R-0208): ein vollständiger Lauf zeigt jetzt sein Kennzeichen „geprüft" —
+  // aber weiterhin KEINEN Teilprüfungs-Hinweis (der bleibt kein Dauerrauschen).
+  it("done + vollständig → „geprüft“, kein Teilprüfungs-Hinweis", () => {
     mount({
       aiCheck: {
         status: "done",
@@ -104,15 +106,21 @@ describe("mega28 A2 · der gedeckelte Lauf zeigt sich dort, wo das Urteil gelese
       },
       onRetry: () => {},
     });
-    expect(container.innerHTML).toBe("");
+    expect(container.querySelector('[data-ki-pruefzustand="geprueft"]')).not.toBeNull();
+    expect(container.querySelector('[data-ki-pruefzustand="unsicher"]')).toBeNull();
+    expect(container.textContent).not.toContain("TEILGEPRÜFT");
   });
 
-  it("Altbestand ohne Abdeckung → NICHTS behauptet, in keine Richtung", () => {
+  it("Altbestand ohne Abdeckung → über die Reichweite NICHTS behauptet, in keine Richtung", () => {
     mount({
       aiCheck: { status: "done", requestedAt: "2026-07-26T06:00:00.000Z" },
       onRetry: () => {},
     });
-    expect(container.innerHTML).toBe("");
+    // Abgeschlossen ist der Lauf — das sagt das Kennzeichen. Über Teil- oder Vollprüfung sagt es
+    // nichts: kein „unsicher", kein Abdeckungs-Tooltip mit Zahlen.
+    expect(container.querySelector('[data-ki-pruefzustand="geprueft"]')).not.toBeNull();
+    expect(container.querySelector('[data-ki-pruefzustand="unsicher"]')).toBeNull();
+    expect(container.innerHTML).not.toContain("mindestens");
     expect(aiCheckCoverageNote(undefined)).toBeNull();
   });
 

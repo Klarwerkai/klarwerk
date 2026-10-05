@@ -79,10 +79,11 @@ function draftSearchText(draft: Draft, titleFallback: string): string {
   return parts.join(" ").toLowerCase();
 }
 
-// AUFNAHME gesamt-entwurf-einreichen (N-0065): ein kurzer INHALTSAUSZUG je Eintrag — zwei Entwürfe
-// desselben Vorhabens unterscheiden sich oft erst im Text. Wörtlich aus dem Entwurf (Fließtext, sonst
-// Kernaussage), über dieselbe kanonische Reduktion wie die Suche; KEINE Zusammenfassung, keine KI
-// (P-ENTWUERFE-VERWALTEN). Gekürzt wird an einer Wortgrenze. Kein Text → `null`, kein Platzhalter.
+// AUFNAHME entwuerfe-verwalten (N-0065, übernommen aus Kandidat 13feb4a6): ein kurzer
+// INHALTSAUSZUG je Eintrag — zwei Entwürfe desselben Vorhabens unterscheiden sich oft erst im Text.
+// Wörtlich aus dem Entwurf (Fließtext, sonst Kernaussage), über dieselbe kanonische Reduktion wie
+// die Suche; KEINE Zusammenfassung, keine KI (P-ENTWUERFE-VERWALTEN). Gekürzt wird an einer
+// Wortgrenze. Kein Text → `null`, kein Platzhalter.
 //
 // ER WIEDERHOLT NIE DEN TITEL: Ohne eigenen Titel steht die Kernaussage schon als Titel da
 // (`draftTitle`) und reist deshalb nicht noch einmal als Auszug; und ein Text, der genau dem

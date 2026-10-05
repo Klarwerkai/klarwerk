@@ -21,10 +21,12 @@ import {
   validateDraftPayloadShape,
 } from "../../../capture";
 import {
+  type DokumentaktenService,
   type KoService,
   alsMenge,
   alsSchreibpatch,
   createOperationFingerprint,
+  gelieferteDokumentId,
 } from "../../../knowledge-object";
 // JOB 2703 D2: DIE EINE Kuerzungsregel fuer die Kernaussage — dieselbe Funktion wie im
 // Confluence-Mapper (services/confluence/src/mapper.ts). Der Server kuerzt; der Client nicht mehr.
@@ -262,6 +264,8 @@ export interface DocxDraftRequest {
   data: string;
   /** Titelvorschlag des Panels; ohne ihn wird der Dateiname genommen. */
   title?: string;
+  /** R-0169 (Nacharbeit 5): die im Word-Dokument gespeicherte Dokumentkennung, falls vorhanden. */
+  dokumentId?: string;
 }
 
 // Der Bildzähler zählt EINZELNE eingebettete Bilder — `data:image/…;base64,` je `<img>`. Er zählt
@@ -712,7 +716,14 @@ const DRAFT_BODY_TOO_LARGE_MESSAGE =
 // KEIN ZWEITES RECHTESYSTEM: Es ersetzt keine einzige Prüfung. `requirePermission("ko.create")`
 // entscheidet unverändert, WER schreiben darf; `expectedOwner` entscheidet nur, ob der Absender
 // noch derselbe ist, für den er die Nutzlast zusammengestellt hat.
-export type DraftCreateRequest = DraftPayload & { operationId?: string; expectedOwner?: string };
+// R-0169 (Nacharbeit 5): `dokumentId` ist wie `operationId` TRANSPORT — die Kennung, die der
+// Word-Zusatz nach dem ersten Senden im Dokument gespeichert hat. Sie wird vor der Gestaltprüfung
+// abgetrennt und geht nie in den Payload.
+export type DraftCreateRequest = DraftPayload & {
+  operationId?: string;
+  expectedOwner?: string;
+  dokumentId?: string;
+};
 
 /**
  * JOB 4249 R6: Der Aufruf war für ein anderes Konto gedacht als das, mit dem er ankommt — es wurde
@@ -784,6 +795,67 @@ export interface CaptureRoutesDeps {
    * Im Betrieb bleibt es `DOCX_GRENZEN_VORGABE`.
    */
   docxGrenzen?: DocxGrenzen | undefined;
+  /**
+   * R-0169 (Nacharbeit 5): die interne Dokumentakte. Ist sie verdrahtet, bekommt jeder über den
+   * Word-Zusatz angelegte Entwurf den Bezug auf eine festgeschriebene Fassung seines Dokuments.
+   * Optional wie die Abhängigkeiten darüber; ohne sie bleibt der Word-Weg exakt wie vorher.
+   */
+  dokumente?: DokumentaktenService | undefined;
+}
+
+// ================================================================================================
+// R-0169 (herkunft-identitaet, Nacharbeit 5) — DER WORD-ZUSATZ BEKOMMT EINE DOKUMENTIDENTITÄT.
+// ================================================================================================
+//
+// DER ABLAUF. Der Zusatz sendet beim ersten Mal KEINE Kennung: die Akte entsteht hier, Klarwerk
+// vergibt die `dokumentId`, und die Antwort trägt sie im Entwurf (`dokumentHerkunft`). Der Zusatz
+// speichert sie IM Word-Dokument (Office-Dokumenteinstellungen, taskpane.html) und schickt sie bei
+// jedem weiteren Senden mit — so bleibt ein überarbeitetes Dokument dieselbe Akte, und jeder Stand
+// wird eine neue, unveränderliche Fassung.
+//
+// ZWEI TORE, beide VOR jeder Schreibwirkung bzw. nur für einen NEU angelegten Entwurf:
+//   1. Eine mitgebrachte Kennung, die hier nicht vergeben wurde, weist die Anfrage ab (400
+//      `DOKUMENT_UNBEKANNT`) — es entsteht weder Entwurf noch Akte. Sie wird nicht übernommen.
+//   2. Festgeschrieben und gebunden wird nur, wenn DIESER Aufruf den Entwurf angelegt hat. Eine
+//      Wiederholung desselben Vorgangs (`operationId`) liefert den schon gebundenen Entwurf.
+async function unbekannteDokumentkennung(
+  dokumente: DokumentaktenService | undefined,
+  dokumentId: string | undefined,
+): Promise<boolean> {
+  if (dokumente === undefined || dokumentId === undefined) {
+    return false;
+  }
+  return !(await dokumente.bekannt(dokumentId));
+}
+
+function sendeUnbekannteDokumentkennung(reply: FastifyReply): void {
+  reply.code(400).send({
+    error: "DOKUMENT_UNBEKANNT",
+    message:
+      "Diese Dokumentkennung wurde hier nicht vergeben — sie wird weder übernommen noch neu angelegt.",
+  });
+}
+
+async function anWordDokumentBinden(
+  deps: { capture: CaptureService; dokumente?: DokumentaktenService | undefined },
+  draft: Draft,
+  dokumentId: string | undefined,
+  actor: string,
+): Promise<Draft> {
+  if (!deps.dokumente) {
+    return draft;
+  }
+  const herkunft = await deps.dokumente.festschreiben({
+    dokumentId,
+    inhalt: {
+      title: draft.payload.title,
+      statement: draft.payload.statement,
+      bodyHtml: draft.payload.bodyHtml,
+    },
+    weg: "word_addin",
+    actor,
+  });
+  return deps.capture.dokumentHerkunftBinden(draft.id, herkunft);
 }
 
 // ================================================================================================
@@ -821,6 +893,8 @@ function antwortBeiVeraltetemStand(reply: FastifyReply, error: unknown): boolean
 
 export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyPluginAsync {
   const { capture, ko, validation, notifyAssignment, semanticPrefilter, aiCheckWorker } = deps;
+  // R-0169 (Nacharbeit 5): die interne Dokumentakte des Word-Wegs (optional, s. Deps).
+  const dokumente = deps.dokumente;
   // JOB 2671 D2: EINE Entscheidung, beim Aufbau getroffen — nicht bei jeder Anfrage neu.
   const docxUmwandeln = deps.docxUmwandlung ?? extractDocxRich;
   const docxUmwandlungTimeoutMs = deps.docxUmwandlungTimeoutMs ?? DOCX_UMWANDLUNG_TIMEOUT_MS;
@@ -971,6 +1045,8 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
         const {
           operationId: rohSchluessel,
           expectedOwner: rohEigentuemer,
+          // R-0169 (Nacharbeit 5): Transport wie `operationId`, nie Payload.
+          dokumentId: rohDokumentId,
           ...nutzlast
         } = request.body ?? {};
         const gestalt = validateDraftPayloadShape(nutzlast);
@@ -1015,6 +1091,14 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
           typeof rohSchluessel === "string" && rohSchluessel.trim().length > 0
             ? rohSchluessel
             : undefined;
+        // R-0169 (Nacharbeit 5): nur der Word-Weg trägt eine Dokumentidentität. Ein anderer Weg mit
+        // mitgeschickter Kennung bleibt, was er war — die Kennung wird dort nicht beachtet.
+        const ausWord = gestalt.payload.origin === "word_addin";
+        const dokumentId = ausWord ? gelieferteDokumentId(rohDokumentId) : undefined;
+        if (ausWord && (await unbekannteDokumentkennung(dokumente, dokumentId))) {
+          sendeUnbekannteDokumentkennung(reply);
+          return;
+        }
         try {
           // JOB 2697: DIE ROUTE ÜBERSETZT NUR. Sie trifft keine eigene Entscheidung über
           // Wiederholung oder Konflikt und führt kein eigenes Register — der Dienst hat
@@ -1029,7 +1113,19 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
             user.id,
             vorgangsId,
           );
-          reply.code(angelegt ? 201 : 200).send(draft);
+          // R-0169 (Nacharbeit 5): ein Word-Entwurf wird an eine Fassung gebunden.
+          // NACHARBEIT 8 (bens F2): nicht mehr nur beim NEU angelegten Entwurf. Scheiterte das
+          // Festschreiben oder Binden nach der Anlage, stand der Entwurf ohne Bezug im Bestand — und
+          // die Wiederholung desselben Vorgangs (`angelegt === false`) gab ihn mit 200 zurück, als
+          // wäre alles erledigt. Jetzt vervollständigt die Wiederholung die fehlende Bindung; ein
+          // bereits gebundener Entwurf wird unverändert wiederverwendet (`dokumentHerkunftBinden`
+          // bindet nie um). Erfolg meldet die Route erst, wenn der Entwurf den Bezug trägt — scheitert
+          // das Binden erneut, antwortet sie mit dem Fehler statt mit dem ungebundenen Entwurf.
+          const antwort =
+            ausWord && !draft.dokumentHerkunft
+              ? await anWordDokumentBinden({ capture, dokumente }, draft, dokumentId, user.id)
+              : draft;
+          reply.code(angelegt ? 201 : 200).send(antwort);
         } catch (error) {
           sendError(reply, error);
         }
@@ -1067,11 +1163,22 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
         if (!user) {
           return;
         }
-        const { name, data, title } = request.body ?? ({} as DocxDraftRequest);
+        const {
+          name,
+          data,
+          title,
+          dokumentId: rohDokumentId,
+        } = request.body ?? ({} as DocxDraftRequest);
         if (typeof data !== "string" || data.length === 0) {
           reply
             .code(400)
             .send({ error: "BAD_REQUEST", message: "Es wurden keine Dokumentbytes uebergeben." });
+          return;
+        }
+        // R-0169 (Nacharbeit 5): dasselbe Tor wie an POST /api/drafts — vor jeder Umwandlung.
+        const dokumentId = gelieferteDokumentId(rohDokumentId);
+        if (await unbekannteDokumentkennung(dokumente, dokumentId)) {
+          sendeUnbekannteDokumentkennung(reply);
           return;
         }
         // Nur `.docx`. Das alte Binärformat `.doc` liest mammoth nicht — eine ehrliche Absage ist
@@ -1202,7 +1309,14 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
             // Client entscheidet damit fail-closed, ob etwas verloren ging.
             sourceImageCount: quellbilder,
           };
-          const draft = await capture.createDraft(payload, user.id);
+          // R-0169 (Nacharbeit 5): der neu angelegte Entwurf wird an die Fassung seines
+          // Word-Dokuments gebunden (Akte neu, wenn das Dokument noch keine Kennung trägt).
+          const draft = await anWordDokumentBinden(
+            { capture, dokumente },
+            await capture.createDraft(payload, user.id),
+            dokumentId,
+            user.id,
+          );
           // JOB 2912 D1 — DIE BILANZ WIRD AUF DEM STAND GEZOGEN, DER WIRKLICH GESPEICHERT WURDE.
           //
           // GEMESSEN, nicht gelesen: `createDraft` säubert `bodyHtml` mit dem Allowlist-Sanitizer

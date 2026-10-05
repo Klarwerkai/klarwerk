@@ -20,8 +20,19 @@ import type { DisplayStatus } from "../components/trust/types";
 // Zuweisungen liegen im `AssignmentRepo` der Validierung. Von den sieben Stufen sind aus dieser
 // Funktion allein `offen` und `validiert` erreichbar — `pruefung`, `abgelehnt` und `revalidierung`
 // nur über `flags`, die im Lesepfad der Bibliothek niemand setzen konnte.
+//
+// PRÜFSTATUS-ANZEIGE (Ben R2, BEN-04): DER SERVERSTATUS GEHT DER EIGENEN ABLEITUNG VOR. Die Aufrufer
+// außerhalb der Bibliothek reichen ein ganzes Objekt herein; trug es die Auskunft des Servers
+// (`anzeigestatus`, z. B. `revalidierung`), warf diese Funktion sie bisher weg und meldete aus dem
+// Kern-Enum wieder `validiert`. Jetzt gilt: ausdrücklich übergebene Konflikt-/Ablehnungslage der
+// Fläche zuerst (dieselbe Rangfolge wie `anzeigestatusAus`), dann der Serverwert, erst dann die
+// eigene Ableitung. Ohne Serverwert ändert sich nichts.
 export function deriveStatus(
-  ko: { status: "offen" | "validiert"; assignments?: string[] },
+  ko: {
+    status: "offen" | "validiert";
+    assignments?: string[];
+    anzeigestatus?: DisplayStatus | null | undefined;
+  },
   flags?: { conflict?: boolean; revalidation?: boolean; rejected?: boolean },
 ): DisplayStatus {
   if (flags?.conflict) {
@@ -29,6 +40,9 @@ export function deriveStatus(
   }
   if (flags?.rejected) {
     return "abgelehnt";
+  }
+  if (ko.anzeigestatus) {
+    return ko.anzeigestatus;
   }
   if (ko.status === "validiert") {
     return flags?.revalidation ? "revalidierung" : "validiert";
