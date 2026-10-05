@@ -32,6 +32,7 @@
 // L     der TITELTEXT steht ganz da: nichts gekürzt, nichts abgeschnitten, die Enden unterscheidbar.
 // L2    dieselbe Lesbarkeitsmessung an der Übersicht `/entwuerfe` (Ben Runde 2, B3-R).
 // Dazu einmalig:
+// L2K   ROT-GEGENPROBE zu L2: mit der alten Kürzung (`truncate`) in der Seite MUSS L2 rot sein.
 // M3    der Weg von der Startseite bei 390 px: der Link liegt im Fenster, führt hin, Liste offen.
 // K     KALIBRIERUNG: wird der gemessene Ausgleich in der Seite zurückgenommen, MUSS die Messung
 //       rot werden — sonst misst sie nichts.
@@ -819,6 +820,81 @@ describe("JOB 3266 R2 · der Zugang zu den eigenen Entwürfen im echten Chromium
       }, 120_000);
     }
   }
+
+  // ==============================================================================================
+  // L2K — DIE ROT-GEGENPROBE ZU L2 (Ben, Nacharbeit 3: „für B3-R ist nur Grün belegt").
+  // ==============================================================================================
+  //
+  // Der Stand VOR der Behebung trug am Zeilenträger der Übersicht `truncate`
+  // (`CaptureDraftList.tsx`, Elternknoten von `entwurfsliste-eintrag-titel`; Basis 8f70ef9a).
+  // Genau diese Kürzung wird hier in der laufenden Seite wiederhergestellt — die Klasse UND ihre
+  // drei Regeln als Inline-Stil, damit die Probe nicht davon abhängt, ob das gebaute CSS die Klasse
+  // an dieser Stelle führt. Verstellung, Messung und Rücknahme liegen in EINEM synchronen Aufruf mit
+  // `finally` (Begründung bei `ohneAusgleich` oben). Dieselbe Messung `TITELMASSE_SEITE` und
+  // dieselbe Zusage `ganzLesbar` wie in L2 MÜSSEN dann rot werden — sonst misst L2 nichts. Danach
+  // misst L2 auf dem Zustand, den das Produkt gemacht hat, wieder grün.
+  it("L2K · KALIBRIERUNG: mit der alten Kürzung am Zeilenträger ist die Übersichtsmessung rot", async () => {
+    expect(fehler, "Prüfstand nicht aufgebaut").toBeNull();
+    const s = seite as Seite;
+    await stelle(320, "de", "/entwuerfe", '[data-testid="page-entwuerfe"]');
+    await s.waitForFunction(
+      fn(
+        `() => document.querySelectorAll('[data-testid="page-entwuerfe"] [data-testid="entwurfsliste-eintrag-titel"]').length === 3`,
+      ),
+      undefined,
+      { timeout: 20_000 },
+    );
+    const quelle = `() => {
+      const traeger = [...document.querySelectorAll('[data-testid="page-entwuerfe"] [data-testid="entwurfsliste-eintrag-titel"]')].map((t) => t.parentElement);
+      const alt = traeger.map((k) => ({ klasse: k.className, stil: k.getAttribute('style') }));
+      let mass = null;
+      try {
+        for (const k of traeger) {
+          k.classList.add('truncate');
+          k.style.whiteSpace = 'nowrap';
+          k.style.overflow = 'hidden';
+          k.style.textOverflow = 'ellipsis';
+        }
+        mass = (${TITELMASSE_SEITE})();
+      } finally {
+        traeger.forEach((k, i) => {
+          k.className = alt[i].klasse;
+          if (alt[i].stil === null) { k.removeAttribute('style'); } else { k.setAttribute('style', alt[i].stil); }
+        });
+      }
+      return { mass: mass, zurueck: traeger.every((k, i) => k.className === alt[i].klasse && k.getAttribute('style') === alt[i].stil) };
+    }`;
+    const k = await s.evaluate<{ mass: Titelmass[]; zurueck: boolean }>(fn(quelle));
+    expect(
+      k.zurueck,
+      "L2K: die Rücknahme im `finally` hat den alten Zustand nicht hergestellt",
+    ).toBe(true);
+    // Die Ursache steht benannt in der Messung: Auslassungspunkte und ein Text, der breiter ist als
+    // seine Fläche — bei den beiden langen Titeln mindestens.
+    const gekuerzt = k.mass.filter(
+      (m) => m.kuerzung === "ellipsis" && m.textbreite > m.sichtbreite + 1,
+    );
+    expect(
+      gekuerzt.length,
+      `L2K: mit \`truncate\` meldet die Messung keine Kürzung (${JSON.stringify(k.mass)})`,
+    ).toBeGreaterThanOrEqual(2);
+    // Und die Zusage selbst wird rot.
+    let rot: unknown = null;
+    try {
+      ganzLesbar(k.mass, "320/de · Übersicht mit alter Kürzung");
+    } catch (e) {
+      rot = e;
+    }
+    expect(
+      rot,
+      "L2K: `ganzLesbar` blieb mit der alten Kürzung grün — dann misst L2 nichts",
+    ).not.toBeNull();
+    // Nach der Rücknahme misst L2 wieder auf dem Produktzustand — und ist grün.
+    ganzLesbar(
+      await s.evaluate<Titelmass[]>(fn(TITELMASSE_SEITE)),
+      "320/de · Übersicht nach Rücknahme (L2K)",
+    );
+  }, 120_000);
 
   it("M3 · 390 px: der Weg von der Startseite ist sichtbar, anklickbar und endet in der offenen Liste", async () => {
     expect(fehler, "Prüfstand nicht aufgebaut").toBeNull();

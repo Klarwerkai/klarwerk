@@ -36,6 +36,12 @@
 // selbst; `taste` erzeugt `keydown Enter` und danach genau den einen `click`, den der Browser
 // erzeugen würde. Getippt wird in das per Tabulator fokussierte Feld.
 //
+// GRENZE DES TASTATURMODUS (Ben, Nacharbeit 3): jsdom kennt keine Tabulatornavigation. `tabBis`
+// bildet den Lauf nach und setzt den Fokus mit `focus()`, `taste` erzeugt den `click()` selbst.
+// Das prüft, dass jedes Ziel im Tabulatorlauf LIEGT, nicht aber die echte Fokusführung.
+// Die Folge mit echten Tab-/Enter-Tasten, Navigationswache und Löschbestätigung steht in
+// `tests/entwuerfe-verwalten/abnahmefolge-tastatur-chromium.test.ts`.
+//
 // WAS DIESE DATEI NICHT IST: eine Pixelmessung (jsdom hat kein Layout) und keine echte menschliche
 // Bedienung. Die Pixelmessung der Titel steht in `tests/d1-meine-entwuerfe/
 // zugang-schmal-chromium.test.ts` (L2); eine Vorführung vor Pedi ersetzt keiner der beiden.
@@ -575,4 +581,33 @@ describe("P-ENTWUERFE-VERWALTEN · die Abnahmefolge am Stück", () => {
       });
     }
   }
+
+  // ROT-GEGENPROBE zu Schritt 2 (Ben, Nacharbeit 3): dieselbe Prüfung `titelSichtbarUngekuerzt` an
+  // einer Zeile im Bau des Stands VOR der Behebung — `truncate` am Zeilenträger, der Titel-`<span>`
+  // ohne `block break-words` (CaptureDraftList.tsx an Basis 8f70ef9a). Sie MUSS rot werden; bliebe
+  // sie grün, bewiese Schritt 2 oben nichts über die Kürzung.
+  it("Gegenprobe: mit dem alten Titelbau (`truncate` am Zeilenträger) schlägt die Klassenprüfung an", () => {
+    container = document.createElement("div");
+    container.innerHTML = [
+      '<div data-testid="page-entwuerfe"><ul><li data-testid="entwurfsliste-eintrag">',
+      '<div class="min-w-0 flex-1"><div class="truncate text-[13px] font-semibold text-text">',
+      `<span data-testid="entwurfsliste-eintrag-titel">${ZIEL.title}</span>`,
+      "</div></div></li></ul></div>",
+    ].join("");
+    document.body.appendChild(container);
+    try {
+      expect(() => titelSichtbarUngekuerzt()).toThrow();
+      // Und der heutige Bau besteht dieselbe Prüfung — die Gegenprobe misst die Kürzung, nicht
+      // eine Eigenheit des Prüfaufbaus.
+      const traeger = container.querySelector("div.truncate") as HTMLElement;
+      traeger.classList.remove("truncate");
+      const titel = container.querySelector(
+        '[data-testid="entwurfsliste-eintrag-titel"]',
+      ) as HTMLElement;
+      titel.className = "block break-words";
+      expect(() => titelSichtbarUngekuerzt()).not.toThrow();
+    } finally {
+      container.remove();
+    }
+  });
 });
