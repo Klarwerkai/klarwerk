@@ -56,10 +56,10 @@ Word für das Web zählt hier nicht. Ergebnis = die Ausgabe des Vergleichs, wör
 
 | # | Schritt | Soll | Ergebnis |
 | --- | --- | --- | --- |
-| MS1 | `pruefdokument-mac.docx` in Word für Mac öffnen, Änderungssatz aus `soll-mac.json` als letzten Absatz eintippen, „Ganzes Dokument übernehmen“ | Entwurf angelegt, Kennung notiert | |
+| MS1 | `pruefdokument-mac.docx` in Word für Mac öffnen, Änderungssatz aus `soll-mac.json` als letzten Absatz eintippen, „Ganzes Dokument übernehmen“, sofort `GET /api/drafts/<id>` lesen | Entwurf angelegt; `<id>` und `dokumentHerkunft.dokumentId` (`<dok>`) notiert | |
 | MS2 | Speichern, Word beenden (Cmd+Q), Dokument wieder öffnen, als `wiedergeoeffnet-mac.docx` sichern | Datei liegt vor | |
 | MS3 | `node tools/word-host-wiederoeffnen.ts vergleiche-docx soll-mac.json wiedergeoeffnet-mac.docx` | „✓ gleich dem Soll“ | |
-| MS4 | `GET /api/drafts/<id>` als `entwurf-mac.json`, dann `node tools/word-host-wiederoeffnen.ts vergleiche-objekt soll-mac.json entwurf-mac.json <id>` | „✓ gleich dem Soll“ (bei „offen“: `vergleiche-bild`) | |
+| MS4 | `GET /api/drafts/<id>` als `entwurf-mac.json`, dann `node tools/word-host-wiederoeffnen.ts vergleiche-objekt soll-mac.json entwurf-mac.json <id> <dok>` | „✓ gleich dem Soll“ (bei „offen“: `vergleiche-bild`) | |
 
 ## Ergebnis dieses Belegs
 

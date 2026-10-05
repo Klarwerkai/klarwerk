@@ -450,14 +450,19 @@ function texteVergleichen(
       ab = gefunden + 1;
     }
   });
-  const aenderungen = absaetze.filter((a) => a === normal(soll.aenderung)).length;
-  if (aenderungen > 1) {
+  // HÄUFIGKEIT: jeder Sollabsatz genau einmal — ein doppelter Absatz ist eine Doppelübertragung.
+  soll.absaetze.forEach((erwartet, i) => {
+    const anzahl = absaetze.filter((a) => a === normal(erwartet)).length;
+    if (anzahl <= 1) {
+      return;
+    }
+    const istAenderung = erwartet === soll.aenderung;
     befunde.push({
-      feld: "aenderung",
+      feld: istAenderung ? "aenderung" : `doppelt[${i}]`,
       lage: "abweichung",
-      text: `der Änderungssatz steht ${aenderungen}-mal da — doppelt übertragen`,
+      text: `„${erwartet}“ steht ${anzahl}-mal da — doppelt übertragen`,
     });
-  }
+  });
 }
 
 /** Die nach dem Wiederöffnen heruntergeladene DOCX gegen das Sollpaket. */
@@ -504,30 +509,87 @@ function htmlText(html: string): string {
   return normal(entitaeten(html.replace(/<[^>]+>/g, " ")));
 }
 
+/**
+ * Ohne `figcaption` (der Word-Weg `POST /api/drafts/from-docx` baut keine) gilt als Unterschrift
+ * eines Bildes der nächste Textblock nach ihm — dieselbe Regel wie an der DOCX.
+ */
+function unterschriftenNachBild(html: string): string[] {
+  const ohneTabellen = html.replace(/<table\b[^>]*>[\s\S]*?<\/table>/g, " ");
+  const muster = /<img\b[^>]*>|<(h[1-6]|p|li|figcaption)\b[^>]*>([\s\S]*?)<\/\1>/g;
+  const raus: string[] = [];
+  let offen = 0;
+  for (const [ganz, , inhalt = ""] of ohneTabellen.matchAll(muster)) {
+    const text = htmlText(inhalt);
+    for (; text.length > 0 && offen > 0; offen -= 1) {
+      raus.push(text);
+    }
+    offen += (ganz.match(/<img\b/g) ?? []).length;
+  }
+  return raus;
+}
+
 function bildunterschriftenAus(objekt: Record<string, unknown>, html: string): string[] {
   const ausHtml = [...html.matchAll(/<figcaption\b[^>]*>([\s\S]*?)<\/figcaption>/g)];
   if (ausHtml.length > 0) {
     return ausHtml.map(([, c = ""]) => htmlText(c));
   }
-  if (Array.isArray(objekt.captionTexts)) {
+  if (Array.isArray(objekt.captionTexts) && objekt.captionTexts.length > 0) {
     return objekt.captionTexts.map((c) => normal(String(c)));
   }
-  return [];
+  return unterschriftenNachBild(html);
+}
+
+/** Die Textblöcke des Rumpfes außerhalb von Tabellen, in Reihenfolge (Absatz, Überschrift, …). */
+function textbloecke(html: string): string[] {
+  const ohneTabellen = html.replace(/<table\b[^>]*>[\s\S]*?<\/table>/g, " ");
+  const bloecke: string[] = [];
+  const muster = /<(h[1-6]|p|li|figcaption)\b[^>]*>([\s\S]*?)<\/\1>/g;
+  for (const [, , inhalt = ""] of ohneTabellen.matchAll(muster)) {
+    const text = htmlText(inhalt);
+    if (text.length > 0) {
+      bloecke.push(text);
+    }
+  }
+  return bloecke;
+}
+
+/** Die Tabellen des Rumpfes, Zelle für Zelle an ihrer Position (Zeile, Spalte). */
+function tabellenAus(html: string): string[][][] {
+  const tabellen: string[][][] = [];
+  for (const [tabelle] of html.matchAll(/<table\b[^>]*>[\s\S]*?<\/table>/g)) {
+    const reihen: string[][] = [];
+    for (const [, reihe = ""] of tabelle.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/g)) {
+      const zellen = [...reihe.matchAll(/<t[dh]\b[^>]*>([\s\S]*?)<\/t[dh]>/g)];
+      reihen.push(zellen.map(([, z = ""]) => htmlText(z)));
+    }
+    tabellen.push(reihen);
+  }
+  return tabellen;
+}
+
+/** Der fett ausgezeichnete Text des Rumpfes (`strong` oder `b`). */
+function fetteTexte(html: string): string[] {
+  const muster = /<(strong|b)\b[^>]*>([\s\S]*?)<\/\1>/g;
+  return [...html.matchAll(muster)].map(([, , inhalt = ""]) => htmlText(inhalt));
 }
 
 export interface Objekterwartung {
-  readonly objektId?: string;
-  readonly dokumentId?: string;
+  /** Die Kennung des Entwurfs bzw. Wissensobjekts, notiert beim Anlegen. */
+  readonly objektId: string;
+  /** `dokumentHerkunft.dokumentId`, notiert direkt nach dem ersten Senden — vor dem Schließen. */
+  readonly dokumentId: string;
 }
 
 /**
  * Der Eintrag in KLARWERK (Entwurf `GET /api/drafts/<id>` oder Wissensobjekt `GET /api/kos/<id>`,
- * als JSON gespeichert) gegen dasselbe Sollpaket: Inhalt, Bilder, Zuordnung und Quelle.
+ * als JSON gespeichert) gegen dasselbe Sollpaket: Inhalt (Reihenfolge, Häufigkeit, Tabelle mit
+ * Zellpositionen, Fettdruck), Bilder, Zuordnung und Quelle. Objekt- und Dokumentkennung sind
+ * Pflicht: eine fremde, aber nicht leere Kennung besteht nicht.
  */
 export function vergleicheObjekt(
   soll: Sollpaket,
   objekt: unknown,
-  erwartung: Objekterwartung = {},
+  erwartung: Objekterwartung,
 ): Vergleichsurteil {
   const befunde: Vergleichsbefund[] = [];
   const basis = objekt !== null && typeof objekt === "object" ? objekt : {};
@@ -537,7 +599,7 @@ export function vergleicheObjekt(
   const id = typeof o.id === "string" ? o.id : "";
   if (id === "") {
     befunde.push({ feld: "id", lage: "abweichung", text: "der Eintrag trägt keine Kennung" });
-  } else if (erwartung.objektId !== undefined && id !== erwartung.objektId) {
+  } else if (id !== erwartung.objektId) {
     befunde.push({
       feld: "id",
       lage: "abweichung",
@@ -561,7 +623,7 @@ export function vergleicheObjekt(
       lage: "abweichung",
       text: "keine Dokumentkennung — die Bindung an die Word-Datei fehlt",
     });
-  } else if (erwartung.dokumentId !== undefined && dokumentId !== erwartung.dokumentId) {
+  } else if (dokumentId !== erwartung.dokumentId) {
     befunde.push({
       feld: "quelle.dokumentHerkunft",
       lage: "abweichung",
@@ -569,18 +631,24 @@ export function vergleicheObjekt(
     });
   }
   const html = typeof nutzlast.bodyHtml === "string" ? nutzlast.bodyHtml : "";
-  const text = htmlText(html);
-  soll.absaetze.forEach((absatz, i) => {
-    if (!text.includes(normal(absatz))) {
-      befunde.push({ feld: `absatz[${i}]`, lage: "abweichung", text: `fehlt: „${absatz}“` });
-    }
-  });
-  for (const zelle of soll.tabelle.flat()) {
-    if (!text.includes(normal(zelle))) {
+  // INHALT: dieselbe Prüfung wie an der DOCX — Reihenfolge und Häufigkeit der Absätze, die Tabelle
+  // zellgenau an ihrer Position, der Fettdruck als Auszeichnung (nicht bloß als Text).
+  texteVergleichen(soll, textbloecke(html), befunde);
+  const sollTabelle = JSON.stringify(soll.tabelle.map((z) => z.map(normal)));
+  if (!tabellenAus(html).some((t) => JSON.stringify(t) === sollTabelle)) {
+    befunde.push({
+      feld: "tabelle",
+      lage: "abweichung",
+      text: "die Tabelle fehlt, ist aufgelöst oder ihre Zellen stehen nicht an ihrer Position",
+    });
+  }
+  const fett = fetteTexte(html);
+  for (const erwartet of soll.fett) {
+    if (!fett.some((f) => f.includes(normal(erwartet)))) {
       befunde.push({
-        feld: "tabelle",
+        feld: "fett",
         lage: "abweichung",
-        text: `Tabellenzelle fehlt: „${zelle}“`,
+        text: `„${erwartet}“ ist nicht mehr fett`,
       });
     }
   }
@@ -758,30 +826,43 @@ async function sollpaketAblegen(kurz: "web" | "mac", ordner: string): Promise<vo
   console.log(`✓ ${dokumentDatei} und ${sollDatei} für ${host}`);
 }
 
+/**
+ * Die Vergleichsbefehle, genau so, wie der Aufruf sie ausführt — Dateien lesen, vergleichen, das
+ * Urteil zurückgeben. `null` heißt: unvollständiger Aufruf (dann steht die Gebrauchsanweisung da).
+ * `vergleiche-objekt` verlangt Objekt- UND Dokumentkennung; ohne Dokumentkennung gibt es kein
+ * Urteil, denn eine beliebige fremde Kennung dürfte den Quellenvergleich nicht bestehen.
+ */
+export async function vergleichAusAufruf(
+  argumente: readonly string[],
+): Promise<Vergleichsurteil | null> {
+  const [befehl, a, b, c, d] = argumente;
+  if (befehl === "vergleiche-docx" && a && b) {
+    return vergleicheDocx(liesSoll(a), await liesDocx(readFileSync(b)));
+  }
+  if (befehl === "vergleiche-objekt" && a && b && c && d) {
+    const erwartung: Objekterwartung = { objektId: c, dokumentId: d };
+    return vergleicheObjekt(liesSoll(a), JSON.parse(readFileSync(b, "utf8")), erwartung);
+  }
+  if (befehl === "vergleiche-bild" && a && b && c) {
+    return vergleicheBild(liesSoll(a), Number(b), readFileSync(c));
+  }
+  if (befehl === "vergleiche-anleitung" && a && b && c && d) {
+    const objekt = JSON.parse(readFileSync(b, "utf8"));
+    const erwartung = { objektId: c, fassung: Number(d) };
+    return vergleicheAnleitung(readFileSync(a, "utf8"), objekt, erwartung);
+  }
+  return null;
+}
+
 async function aufruf(argumente: readonly string[]): Promise<void> {
-  const [befehl, a, b, c] = argumente;
+  const [befehl, a, b] = argumente;
   if (befehl === "sollpaket" && (a === "web" || a === "mac") && b) {
     await sollpaketAblegen(a, b);
     return;
   }
-  if (befehl === "vergleiche-docx" && a && b) {
-    ausgeben(vergleicheDocx(liesSoll(a), await liesDocx(readFileSync(b))));
-    return;
-  }
-  if (befehl === "vergleiche-objekt" && a && b) {
-    const erwartung: Objekterwartung = c ? { objektId: c } : {};
-    ausgeben(vergleicheObjekt(liesSoll(a), JSON.parse(readFileSync(b, "utf8")), erwartung));
-    return;
-  }
-  if (befehl === "vergleiche-bild" && a && b && c) {
-    ausgeben(vergleicheBild(liesSoll(a), Number(b), readFileSync(c)));
-    return;
-  }
-  const [, , , , fassung] = argumente;
-  if (befehl === "vergleiche-anleitung" && a && b && c && fassung) {
-    const objekt = JSON.parse(readFileSync(b, "utf8"));
-    const erwartung = { objektId: c, fassung: Number(fassung) };
-    ausgeben(vergleicheAnleitung(readFileSync(a, "utf8"), objekt, erwartung));
+  const urteil = await vergleichAusAufruf(argumente);
+  if (urteil !== null) {
+    ausgeben(urteil);
     return;
   }
   console.error(
@@ -789,7 +870,7 @@ async function aufruf(argumente: readonly string[]): Promise<void> {
       "Aufruf:",
       "  node tools/word-host-wiederoeffnen.ts sollpaket <web|mac> <ordner>",
       "  node tools/word-host-wiederoeffnen.ts vergleiche-docx <soll.json> <datei.docx>",
-      "  node tools/word-host-wiederoeffnen.ts vergleiche-objekt <soll.json> <eintrag.json> [id]",
+      "  node tools/word-host-wiederoeffnen.ts vergleiche-objekt <soll.json> <eintrag.json> <id> <dok>",
       "  node tools/word-host-wiederoeffnen.ts vergleiche-bild <soll.json> <nr> <bild.png>",
       "  node tools/word-host-wiederoeffnen.ts vergleiche-anleitung <soll.txt> <ko.json> <id> <n>",
     ].join("\n"),

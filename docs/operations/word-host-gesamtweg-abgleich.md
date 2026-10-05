@@ -98,7 +98,7 @@ Ergebnisse:
 | R-0405 | Auslieferungs-Pin und Vollbeleg | geliefert | `tests/app/mega69-klara-auslieferung.test.ts`, `tests/app/mega69-klara-waechter.test.ts` | — |
 | R-0406 | Bild-Alternativtext aus Word übernehmen | ungeprueft | `apps/web/src/lib/docx.ts` nennt keine Übernahme von Word-Beschreibungen | kein Prüfstand belegt die Übernahme in `alt`; zu messen oder zu bauen |
 | R-0407 | Bilder aus Kopf- und Fußzeilen | ungeprueft | der Import liest den Dokumentkörper (`apps/web/src/lib/docx.ts`) | kein Prüfstand für Kopf-/Fußzeilenbilder; ob sie fehlen und gemeldet werden, ist ungeklärt |
-| R-0408 | Frei platzierte Bilder erkennen | offen | `tests/app/job1135-word-umflossenes-bild.test.ts` misst den Mangel: ein umflossenes Bild fehlt im Entwurf, und die Bilanz meldet „nichts fehlt“ | Übernahme oder wenigstens ehrliche Meldung frei platzierter Bilder bauen; die Rauchprobe der Quelle fehlt damit ebenfalls |
+| R-0408 | Frei platzierte Bilder erkennen | teilweise | Ganzdokumentweg (`getFileAsync` → `POST /api/drafts/from-docx`) und Browser-Dateiimport: eine DOCX mit verankertem, umflossenem Rasterbild (`wp:anchor`) läuft durch `tests/word-host-gesamtweg/verankertes-bild-wege.test.ts` (A1, B1) | Auswahlweg und HTML-Rückfall des Ganzdokumentwegs (`body.getHtml()`): `tests/app/job1135-word-umflossenes-bild.test.ts` belegt nur den bedingten Fall „Word gibt für ein umflossenes Bild kein `img` aus“, den der Test selbst eine unbewiesene Hypothese nennt — die echte Word-Ausgabe bleibt bis zum Hostnachweis offen; eine Rauchprobe im Host fehlt |
 | R-0409 | Erfassung später fortsetzen | geliefert | `tests/entwurf-fortsetzen/blatt-entwurf-fortsetzen.test.tsx`, `tests/app/mega69-capture-draft-resume.test.tsx` | — |
 | R-0410 | Inhaltsverzeichnis führt nicht ins Leere | geliefert | `apps/web/src/lib/docx.ts` (D-043) | — |
 | R-0411 | KA7 — Widerspruchshinweis im Dokument | geliefert | `tests/ka7-konflikt-im-panel/konfliktkarte-mounted.test.ts` | — |
@@ -182,9 +182,9 @@ Ergebnisse:
 | Ergebnis | Anzahl |
 |---|---|
 | `geliefert` | 59 |
-| `teilweise` | 20 |
+| `teilweise` | 21 |
 | `hostprobe` | 29 |
-| `offen` | 2 |
+| `offen` | 1 |
 | `ungeprueft` | 4 |
 | `ersetzt` | 9 |
 | `abgegrenzt` | 4 |

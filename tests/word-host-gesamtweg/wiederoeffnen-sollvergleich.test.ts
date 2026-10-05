@@ -9,9 +9,11 @@
 // Zuordnung, Doppelübertragung, Herkunft, Dokumentkennung — und der Vergleich muss sie benennen.
 // Die Bedienung im echten Word Web bzw. Word für Mac ersetzt diese Datei NICHT.
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { deflateSync } from "node:zlib";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 import {
   type DocxInhalt,
   PRUEF_FETT,
@@ -26,6 +28,7 @@ import {
   liesDocx,
   pruefdokumentAbsaetze,
   sollpaket,
+  vergleichAusAufruf,
   vergleicheAnleitung,
   vergleicheBild,
   vergleicheDocx,
@@ -236,63 +239,160 @@ function reihe(zellen: readonly string[]): string {
   return `<tr>${zellen.map((z) => `<td>${z}</td>`).join("")}</tr>`;
 }
 
+const UEBERSCHRIFT_HTML = `<h1>${PRUEF_UEBERSCHRIFT}</h1>`;
+const FETT_HTML = `<p>${PRUEF_FETT_VOR}<strong>${PRUEF_FETT}</strong>${PRUEF_FETT_NACH}</p>`;
+const TABELLE_HTML = `<table>${PRUEF_TABELLE.map(reihe).join("")}</table>`;
+const AENDERUNG_HTML = `<p>${WEB.aenderung}</p>`;
+
+interface Eintragsteil {
+  origin?: string;
+  dokumentId?: string;
+  bilder?: string[];
+  /** Ersetzt den ganzen Rumpf — für die Strukturgegenfälle. */
+  html?: string;
+}
+
 /** Der KLARWERK-Eintrag, wie der Import ihn aus dem Prüfdokument macht (Entwurfsform). */
-function eintrag(teil: { origin?: string; dokumentId?: string; bilder?: string[] } = {}) {
+function eintrag(teil: Eintragsteil = {}) {
   const bilder = teil.bilder ?? PNGS.map(datenquelle);
-  const html = [
-    `<h1>${PRUEF_UEBERSCHRIFT}</h1>`,
-    `<p>${PRUEF_FETT_VOR}<strong>${PRUEF_FETT}</strong>${PRUEF_FETT_NACH}</p>`,
-    `<table>${PRUEF_TABELLE.map(reihe).join("")}</table>`,
-    bilder.map(figur).join(""),
-    `<p>${WEB.aenderung}</p>`,
-  ].join("");
+  const figuren = bilder.map(figur).join("");
+  const html = teil.html ?? [UEBERSCHRIFT_HTML, FETT_HTML, TABELLE_HTML, figuren, AENDERUNG_HTML];
   return {
     id: "entwurf-1",
     dokumentHerkunft: { dokumentId: teil.dokumentId ?? "dok-1", fassung: 1, fassungId: "f-1" },
-    payload: { origin: teil.origin ?? "word_addin", bodyHtml: html },
+    payload: {
+      origin: teil.origin ?? "word_addin",
+      bodyHtml: Array.isArray(html) ? html.join("") : html,
+    },
   };
 }
 
+/** Die vor dem Lauf notierte Erwartung: Entwurfskennung und Dokumentkennung. */
+const ERWARTUNG = { objektId: "entwurf-1", dokumentId: "dok-1" };
+
+function rumpfFelder(html: string): string[] {
+  return felder(vergleicheObjekt(WEB, eintrag({ html }), ERWARTUNG));
+}
+
+const FIGUREN = PNGS.map(datenquelle).map(figur).join("");
+
 describe("Kriterium 3 · der KLARWERK-Eintrag gegen dasselbe Soll (Inhalt, Bilder, Zuordnung, Quelle)", () => {
   it("O1 · vollständig — gleich, mit erwarteter Kennung", () => {
-    const urteil = vergleicheObjekt(WEB, eintrag(), { objektId: "entwurf-1", dokumentId: "dok-1" });
+    const urteil = vergleicheObjekt(WEB, eintrag(), ERWARTUNG);
     expect(urteil.befunde).toEqual([]);
   });
 
   it("O2 · falsche Herkunft und fremde Dokumentkennung sind Quellenbefunde", () => {
-    const herkunft = vergleicheObjekt(WEB, eintrag({ origin: "frontdoor" }));
+    const herkunft = vergleicheObjekt(WEB, eintrag({ origin: "frontdoor" }), ERWARTUNG);
     expect(felder(herkunft)).toEqual(["quelle.origin"]);
-    const fremd = vergleicheObjekt(WEB, eintrag({ dokumentId: "dok-2" }), { dokumentId: "dok-1" });
+    const fremd = vergleicheObjekt(WEB, eintrag({ dokumentId: "dok-2" }), ERWARTUNG);
     expect(felder(fremd)).toEqual(["quelle.dokumentHerkunft"]);
   });
 
   it("O3 · ein anderer Eintrag (Dublette) wird an der Kennung erkannt", () => {
-    expect(felder(vergleicheObjekt(WEB, eintrag(), { objektId: "entwurf-2" }))).toEqual(["id"]);
+    const andere = { ...ERWARTUNG, objektId: "entwurf-2" };
+    expect(felder(vergleicheObjekt(WEB, eintrag(), andere))).toEqual(["id"]);
   });
 
   it("O4 · Bild im Eintrag verändert — benannt; Bild nur als Adresse — offen, nicht bestanden", () => {
     const erstes = datenquelle(BILD1);
     const zweitesAnders = datenquelle(einPunktAnders(1));
-    const veraendert = vergleicheObjekt(WEB, eintrag({ bilder: [erstes, zweitesAnders] }));
+    const bilder = [erstes, zweitesAnders];
+    const veraendert = vergleicheObjekt(WEB, eintrag({ bilder }), ERWARTUNG);
     expect(felder(veraendert)).toEqual(["bild[1]"]);
-    const adresse = vergleicheObjekt(WEB, eintrag({ bilder: [erstes, "/api/assets/bild-2"] }));
+    const nurAdresse = [erstes, "/api/assets/bild-2"];
+    const adresse = vergleicheObjekt(WEB, eintrag({ bilder: nurAdresse }), ERWARTUNG);
     expect(adresse.gleich).toBe(false);
     expect(adresse.befunde.map((b) => [b.feld, b.lage])).toEqual([["bild[1]", "offen"]]);
   });
 
-  it("O5 · Unterschriften im Eintrag vertauscht — die Zuordnung schlägt an", () => {
+  it("O5 · Unterschriften im Eintrag vertauscht — Reihenfolge und Zuordnung schlagen an", () => {
     const vertauscht = eintrag({ bilder: [datenquelle(BILD1), datenquelle(BILD2)] });
     vertauscht.payload.bodyHtml = vertauscht.payload.bodyHtml
       .replace(PRUEF_UNTERSCHRIFTEN[0] ?? "", "§")
       .replace(PRUEF_UNTERSCHRIFTEN[1] ?? "", PRUEF_UNTERSCHRIFTEN[0] ?? "")
       .replace("§", PRUEF_UNTERSCHRIFTEN[1] ?? "");
-    expect(felder(vergleicheObjekt(WEB, vertauscht))).toEqual(["zuordnung"]);
+    const urteil = vergleicheObjekt(WEB, vertauscht, ERWARTUNG);
+    expect(felder(urteil)).toEqual(["absatz[3]", "zuordnung"]);
   });
 
   it("O6 · ein einzeln heruntergeladenes Bild lässt sich gegen das Soll prüfen", () => {
     expect(vergleicheBild(WEB, 2, BILD2).gleich).toBe(true);
     expect(vergleicheBild(WEB, 2, neuVerpackt(1)).gleich).toBe(true);
     expect(vergleicheBild(WEB, 2, BILD1).gleich).toBe(false);
+  });
+});
+
+describe("Kriterien 3/7 · Strukturverlust im KLARWERK-Eintrag — je ein isolierter Gegenfall", () => {
+  it("O7 · Tabellenstruktur aufgelöst, alle Zellentexte stehen noch da — benannt", () => {
+    const zellen = `<p>${PRUEF_TABELLE.flat().join(" ")}</p>`;
+    const html = [UEBERSCHRIFT_HTML, FETT_HTML, zellen, FIGUREN, AENDERUNG_HTML].join("");
+    expect(rumpfFelder(html)).toEqual(["tabelle"]);
+  });
+
+  it("O8 · Zellen in einer Zeile vertauscht — benannt", () => {
+    const zeilen = [PRUEF_TABELLE[0] ?? [], ["0 bar", "Druck"], PRUEF_TABELLE[2] ?? []];
+    const tabelle = `<table>${zeilen.map(reihe).join("")}</table>`;
+    const html = [UEBERSCHRIFT_HTML, FETT_HTML, tabelle, FIGUREN, AENDERUNG_HTML].join("");
+    expect(rumpfFelder(html)).toEqual(["tabelle"]);
+  });
+
+  it("O9 · Fettdruck verloren, Text unverändert — benannt", () => {
+    const ohneFett = `<p>${PRUEF_FETT_VOR}${PRUEF_FETT}${PRUEF_FETT_NACH}</p>`;
+    const html = [UEBERSCHRIFT_HTML, ohneFett, TABELLE_HTML, FIGUREN, AENDERUNG_HTML].join("");
+    expect(rumpfFelder(html)).toEqual(["fett"]);
+  });
+
+  it("O10 · ein Absatz doppelt — benannt", () => {
+    const html = [UEBERSCHRIFT_HTML, FETT_HTML, FETT_HTML, TABELLE_HTML, FIGUREN, AENDERUNG_HTML];
+    expect(rumpfFelder(html.join(""))).toEqual(["doppelt[1]"]);
+  });
+
+  it("O11 · Absatzreihenfolge vertauscht — benannt", () => {
+    const html = [AENDERUNG_HTML, UEBERSCHRIFT_HTML, FETT_HTML, TABELLE_HTML, FIGUREN].join("");
+    expect(rumpfFelder(html)).toEqual(["absatz[4]"]);
+  });
+
+  it("O12 · ohne figcaption (Word-Weg) zählt der Textblock nach dem Bild als Unterschrift", () => {
+    const [eins = "", zwei = ""] = PNGS.map(datenquelle);
+    const [u1 = "", u2 = ""] = PRUEF_UNTERSCHRIFTEN;
+    const bloecke = (a: string, b: string): string =>
+      `<p><img src="${eins}"></p><p>${a}</p><p><img src="${zwei}"></p><p>${b}</p>`;
+    const vorne = [UEBERSCHRIFT_HTML, FETT_HTML, TABELLE_HTML];
+    expect(rumpfFelder([...vorne, bloecke(u1, u2), AENDERUNG_HTML].join(""))).toEqual([]);
+    const vertauscht = [...vorne, bloecke(u2, u1), AENDERUNG_HTML].join("");
+    expect(rumpfFelder(vertauscht)).toEqual(["absatz[3]", "zuordnung"]);
+  });
+});
+
+describe("Kriterium 3 · der tatsächlich dokumentierte Aufruf `vergleiche-objekt`", () => {
+  const ordner = mkdtempSync(join(tmpdir(), "word-host-wiederoeffnen-"));
+  const sollDatei = join(ordner, "soll-web.json");
+  const fremdDatei = join(ordner, "entwurf-fremd.json");
+  const eigenDatei = join(ordner, "entwurf-eigen.json");
+  writeFileSync(sollDatei, JSON.stringify(WEB));
+  writeFileSync(fremdDatei, JSON.stringify(eintrag({ dokumentId: "dok-fremd" })));
+  writeFileSync(eigenDatei, JSON.stringify(eintrag()));
+
+  afterAll(() => {
+    rmSync(ordner, { recursive: true, force: true });
+  });
+
+  it("C1 · fremde, nicht leere Dokumentkennung besteht den Aufruf nicht", async () => {
+    const aufruf = ["vergleiche-objekt", sollDatei, fremdDatei, "entwurf-1", "dok-1"];
+    const urteil = await vergleichAusAufruf(aufruf);
+    expect(urteil?.gleich).toBe(false);
+    expect(urteil === null ? [] : felder(urteil)).toEqual(["quelle.dokumentHerkunft"]);
+  });
+
+  it("C2 · mit der notierten Dokumentkennung besteht derselbe Aufruf", async () => {
+    const aufruf = ["vergleiche-objekt", sollDatei, eigenDatei, "entwurf-1", "dok-1"];
+    expect((await vergleichAusAufruf(aufruf))?.gleich).toBe(true);
+  });
+
+  it("C3 · ohne Dokumentkennung gibt es kein Urteil — nur die Gebrauchsanweisung", async () => {
+    const ohne = ["vergleiche-objekt", sollDatei, fremdDatei, "entwurf-1"];
+    expect(await vergleichAusAufruf(ohne)).toBeNull();
   });
 });
 
@@ -369,5 +469,13 @@ describe("Kriterium 3 · Anleitung und Protokolle nennen den Sollvergleich je Ho
     expect(mac).toContain("tools/word-host-wiederoeffnen.ts vergleiche-docx soll-mac.json");
     expect(web).not.toContain("soll-mac.json");
     expect(mac).not.toContain("soll-web.json");
+  });
+
+  it("P3 · der dokumentierte Objektvergleich verlangt Entwurfs- UND Dokumentkennung", () => {
+    const webAufruf = "vergleiche-objekt soll-web.json entwurf-web.json <id> <dok>";
+    expect(anleitung).toContain(webAufruf);
+    expect(web).toContain(webAufruf);
+    expect(mac).toContain("vergleiche-objekt soll-mac.json entwurf-mac.json <id> <dok>");
+    expect(anleitung).not.toMatch(/vergleiche-objekt \S+ \S+ <id>(?! <dok>)/);
   });
 });

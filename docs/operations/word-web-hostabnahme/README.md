@@ -69,10 +69,10 @@ Word für Mac zählt hier nicht. Ergebnis = die Ausgabe des Vergleichs, wörtlic
 
 | # | Schritt | Soll | Ergebnis |
 | --- | --- | --- | --- |
-| WS1 | `pruefdokument-web.docx` in OneDrive/SharePoint öffnen, Änderungssatz aus `soll-web.json` als letzten Absatz eintippen, „Ganzes Dokument übernehmen“ | Entwurf angelegt, Kennung notiert | |
+| WS1 | `pruefdokument-web.docx` in OneDrive/SharePoint öffnen, Änderungssatz aus `soll-web.json` als letzten Absatz eintippen, „Ganzes Dokument übernehmen“, sofort `GET /api/drafts/<id>` lesen | Entwurf angelegt; `<id>` und `dokumentHerkunft.dokumentId` (`<dok>`) notiert | |
 | WS2 | Speichern, Browserfenster schließen, Dokument wieder öffnen, Kopie als `wiedergeoeffnet-web.docx` herunterladen | Datei liegt vor | |
 | WS3 | `node tools/word-host-wiederoeffnen.ts vergleiche-docx soll-web.json wiedergeoeffnet-web.docx` | „✓ gleich dem Soll“ | |
-| WS4 | `GET /api/drafts/<id>` als `entwurf-web.json`, dann `node tools/word-host-wiederoeffnen.ts vergleiche-objekt soll-web.json entwurf-web.json <id>` | „✓ gleich dem Soll“ (bei „offen“: `vergleiche-bild`) | |
+| WS4 | `GET /api/drafts/<id>` als `entwurf-web.json`, dann `node tools/word-host-wiederoeffnen.ts vergleiche-objekt soll-web.json entwurf-web.json <id> <dok>` | „✓ gleich dem Soll“ (bei „offen“: `vergleiche-bild`) | |
 
 ## Ergebnis dieses Belegs
 

@@ -126,8 +126,10 @@ der den Host nennt. Ein Ergebnis aus Word für Mac besteht deshalb den Web-Vergl
 2. Das Prüfdokument im jeweiligen Host öffnen (Web: in OneDrive/SharePoint des Testmandanten
    hochladen; Mac: in Word für Mac öffnen). Am Ende genau den Änderungssatz aus dem Sollpaket
    (`aenderung`) als letzten Absatz eintippen.
-3. In Klara unter „Erfassen“ „Ganzes Dokument übernehmen“ → Entwurf. Kennung des Entwurfs
-   notieren.
+3. In Klara unter „Erfassen“ „Ganzes Dokument übernehmen“ → Entwurf. **Sofort, noch vor dem
+   Speichern und Schließen**, `GET /api/drafts/<id>` lesen und zwei Werte notieren: die
+   Entwurfskennung `<id>` und die Dokumentkennung `<dok>` (`dokumentHerkunft.dokumentId`). Beide
+   sind Pflicht für Schritt 6; ohne `<dok>` gibt der Vergleich kein Urteil.
 4. Speichern, Word bzw. das Browserfenster **schließen**, das Dokument **wieder öffnen**, dann eine
    Kopie als DOCX herunterladen bzw. sichern (`wiedergeoeffnet-web.docx` / `-mac.docx`).
 5. Den Entwurf in KLARWERK als JSON sichern (`GET /api/drafts/<id>` → `entwurf-web.json` /
@@ -136,8 +138,14 @@ der den Host nennt. Ein Ergebnis aus Word für Mac besteht deshalb den Web-Vergl
 
    ```
    node tools/word-host-wiederoeffnen.ts vergleiche-docx soll-web.json wiedergeoeffnet-web.docx
-   node tools/word-host-wiederoeffnen.ts vergleiche-objekt soll-web.json entwurf-web.json <id>
+   node tools/word-host-wiederoeffnen.ts vergleiche-objekt soll-web.json entwurf-web.json <id> <dok>
    ```
+
+   Trägt der Entwurf eine andere Dokumentkennung als die in Schritt 3 notierte — auch eine nicht
+   leere —, ist das ein Quellenbefund (`quelle.dokumentHerkunft`), kein Bestehen. Verglichen werden
+   außerdem Absatzreihenfolge und -häufigkeit, die Tabelle mit ihren Zellpositionen und der
+   Fettdruck als Auszeichnung; ohne `figcaption` gilt der Textblock nach einem Bild als dessen
+   Unterschrift.
 
    (Mac entsprechend mit `soll-mac.json`.) Liegt ein Bild im Entwurf nur als Adresse vor, meldet
    der Vergleich das als **offen**; dann das Bild herunterladen und mit
@@ -147,10 +155,10 @@ Was verglichen wird:
 
 | Teil | DOCX nach Wiederöffnen | KLARWERK-Eintrag |
 |---|---|---|
-| Inhalt | alle Absätze in Reihenfolge, Änderungssatz genau einmal, Tabelle zellgenau, Fettdruck | alle Absätze und Tabellenzellen im Text |
+| Inhalt | alle Absätze in Reihenfolge, jeder genau einmal, Tabelle zellgenau, Fettdruck | dasselbe: Absatzreihenfolge und -häufigkeit, Tabelle mit Zellpositionen, Fettdruck als Auszeichnung |
 | Rasterbilder | Anzahl; je Bild Byte- **oder** Bildpunkt-Prüfsumme gleich | Anzahl; je Bild Prüfsumme (oder `vergleiche-bild`) |
 | Zuordnung | auf Bild k folgt dessen Unterschrift | Unterschriften in Bildreihenfolge |
-| Quelle | — | Herkunft `word_addin`, Dokumentkennung vorhanden, erwartete Kennung |
+| Quelle | — | Herkunft `word_addin`; Entwurfs- und Dokumentkennung gleich den in Schritt 3 notierten (Pflicht) |
 
 Ein neu verpacktes PNG mit denselben Bildpunkten gilt als erhalten; ein anderes Format (etwa JPEG)
 oder ein einziger anderer Bildpunkt nicht. EMF/WMF sind kein unterstütztes Rasterformat und nicht
