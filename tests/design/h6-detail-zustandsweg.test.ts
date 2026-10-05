@@ -35,7 +35,16 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import i18n from "../../apps/web/src/i18n";
-import { ORIGIN, type Stand, WURZEL, beende, fn, starte, wechsle } from "./h6-chromium";
+import {
+  ORIGIN,
+  type Stand,
+  WURZEL,
+  beende,
+  fn,
+  setzeSprache,
+  starte,
+  wechsle,
+} from "./h6-chromium";
 
 /** Eine querygestützte Quelle eines Bedienortes. */
 interface Quelle {
@@ -353,6 +362,90 @@ function matrixProfil(): Quelle[] {
   ];
 }
 
+// ================================================================================================
+// R-0913 (Nacharbeit 2/5) — DIE SCHALTERQUELLE DER DEMODATENKARTE.
+// ================================================================================================
+//
+// Die Demodatenkarte fragt seit R-0913 die Betriebsschalter (`useFeatures` → `/api/features`)
+// selbst ab: bei BESTÄTIGTEM `demodaten=false` sagt sie „Laden ist ausgeschaltet", bei bestätigtem
+// `true` steht der Ladeknopf da. Diese Quelle ist weder tragend (ihr Ausfall darf die Karte nicht
+// sperren — Entfernen bleibt bedienbar) noch nachrangig im Sinn von JOB 3140 (sie hat keine
+// schwächere Ersatzauskunft): ihr Ausfall heißt schlicht „keine Aussage über den Schalter". Gemessen
+// wird deshalb genau das, und nach der Erholung das, was der Server WIRKLICH meldet.
+interface SchalterQuelle {
+  id: string;
+  pfad: string;
+  reiter: string;
+  zeile: string;
+  behaelter: string;
+}
+
+function matrixSchalter(): SchalterQuelle[] {
+  return [
+    {
+      id: "Demodaten · /api/features (Betriebsschalter, R-0913)",
+      pfad: "/api/features",
+      reiter: t("adm.sec.vorfuehrdaten"),
+      zeile: '[data-testid="zeile-demodaten"]',
+      behaelter: "detail-demodaten",
+    },
+  ];
+}
+
+interface SchalterLage {
+  fehler: string | null;
+  fehlerbox?: boolean;
+  ausZeile?: boolean;
+  ladeknopf?: boolean;
+  entfernen?: boolean;
+  /** Was der Server über den Schalter meldet (nur nach der Erholung gelesen). */
+  serverAn?: boolean | null;
+}
+
+/**
+ * In der Seite: Karte öffnen, warten bis der Bestand der Karte steht, dann ablesen. Mit
+ * `serverFragen` fragt die Seite den Schalter zusätzlich selbst am Server nach — die Erwartung nach
+ * der Erholung kommt damit aus der echten Auskunft, nicht aus einer Annahme über die Umgebung.
+ */
+const SCHALTER_LIES = `(async ([reiter, zeile, behaelter, ladeText, entfernenText, serverFragen]) => {
+  const warte = async (pruefung, ms = 15000) => {
+    const bis = Date.now() + ms;
+    while (Date.now() < bis) { if (pruefung()) return true; await new Promise((r) => setTimeout(r, 50)); }
+    return pruefung();
+  };
+  const zurueck = document.querySelector('[data-einst="zurueck"]');
+  if (zurueck) { zurueck.click(); await warte(() => document.querySelector('[data-einst="detail"]') === null, 4000); }
+  const r = [...document.querySelectorAll('[data-einst="reiter"]')].find((b) => (b.textContent||'').trim() === reiter);
+  if (!r) return { fehler: 'Reiter fehlt: ' + reiter };
+  r.click();
+  await warte(() => r.getAttribute('aria-pressed') === 'true', 4000);
+  const z = document.querySelector(zeile);
+  if (!z) return { fehler: 'Zeile fehlt: ' + zeile };
+  z.click();
+  const karte = () => document.querySelector('[data-testid="' + behaelter + '"]');
+  if (!(await warte(() => karte() !== null, 10000))) return { fehler: 'Karte ging nicht auf: ' + behaelter };
+  await warte(() => { const k = karte(); return k !== null && k.querySelector('[data-testid="demo-bestand"]') !== null; }, 15000);
+  let serverAn = null;
+  if (serverFragen) {
+    const antwort = await fetch('/api/features', { credentials: 'include' });
+    serverAn = antwort.ok ? ((await antwort.json()).features || {}).demodaten === true : null;
+    if (serverAn === false) await warte(() => karte() !== null && karte().querySelector('[data-testid="demo-laden-aus"]') !== null, 15000);
+  }
+  // Die Schalterabfrage darf noch einmal wiederholt werden (react-query) — sie soll ausgelaufen sein.
+  await new Promise((r) => setTimeout(r, 2500));
+  const k = karte();
+  const allgemein = k ? k.querySelector('[data-einst="karte-allgemein"]') : null;
+  const entfernen = k ? k.querySelector('[data-einst="entfernen"]') : null;
+  return {
+    fehler: null,
+    fehlerbox: k ? k.querySelector('[data-einst="abfrage-fehler"]') !== null : false,
+    ausZeile: k ? k.querySelector('[data-testid="demo-laden-aus"]') !== null : false,
+    ladeknopf: allgemein ? [...allgemein.querySelectorAll('button')].some((b) => (b.textContent || '').trim() === ladeText) : false,
+    entfernen: entfernen ? [...entfernen.querySelectorAll('button')].some((b) => (b.textContent || '').includes(entfernenText)) : false,
+    serverAn,
+  };
+})`;
+
 /**
  * In der Seite: Reiter wählen, (falls es eine gibt) die Zeile öffnen, den Zustand des Behälters
  * ablesen. Ist `zeile` leer, ist der Behälter die Flächenkarte selbst — dann wird nichts geöffnet.
@@ -453,6 +546,89 @@ const OEFFNE_UND_LIES_OHNE_FEHLERWARTEN = `(async ([reiter, zeile, behaelter, zw
     text: karte ? (karte.textContent || '').replace(/\\s+/g, ' ').trim() : '',
   };
 })`;
+
+// ================================================================================================
+// R-1563 / R-1581 (BEN, Nacharbeit 5) — DIE ZUSTANDSFOLGE JE QUELLE, nicht nur „503 und zurück".
+// ================================================================================================
+//
+// Der vierteilige Beleg oben deckt „Fehler ohne Daten → Neuabruf → Erholung". Für jede Quelle, die
+// ihre Karte über die gemeinsame `Abfragehuelle` zeichnet, läuft hier zusätzlich die Folge der
+// übrigen Zustände des Vertrags (`components/einstellungen/Abfragehuelle.tsx`, Kopf):
+//
+//   1  Laden            die Antwort GENAU DIESES PFADES wird zurückgehalten → „Wird geladen …"
+//   2  offline, leer    der Browser meldet „offline", während die Antwort noch fehlt → Offline-Box
+//   3  Erholung         online, Antwort frei → der echte Inhalt
+//   4  offline, Cache   der Browser meldet „offline" → Inhalt BLEIBT, darüber „nicht aktualisiert"
+//   5  gescheitert      online, Störung (503) auf genau diesen Pfad, „Erneut" in der Standzeile →
+//                       der Pfad wird WIRKLICH neu abgerufen, die Markierung bleibt, der Inhalt auch
+//   6  Erholung         Störung weg, „Erneut" → Markierung weg, Inhalt da
+//
+// DER OFFLINEWECHSEL hier ist das Browserereignis `offline`/`online` am Fenster — dieselbe Quelle,
+// aus der die Fläche den Zustand liest (`lib/netzzustand.ts`, `onlineManager`). Es ist KEIN
+// Abschalten des Netzwerks des Geräts; die unabhängige Live-Gegenprobe mit echtem Offlinewechsel
+// bleibt ein eigener, offener Beleg.
+//
+// NICHT HIER: „laufende Auffrischung" (ruhiges „Stand von …"). Sie entsteht nur bei einem Abruf
+// über einer abgelaufenen Frischefrist (30 s, `main.tsx`) ohne vorausgegangene Störung — dafür
+// gibt es in dieser Fläche keinen Auslöser außer Warten. Gemessen ist sie NUR am Nutzerdetail
+// (`tests/h6-d1-nutzerdetail-stand/frischefrist-nachholung.test.tsx`, jsdom mit virtueller Uhr);
+// für die übrigen Karten bleibt dieser eine Zustand hier ungemessen. Die Kontenfläche und die
+// Bereitschaft zeichnen ihre Zustände NICHT über die Hülle; ihre Folgen messen
+// `tests/h6-d1-nutzerdetail-stand/` und `tests/h6-bereitschaft-stand-nutzerweg/`.
+const BEHAELTER_OHNE_HUELLE = new Set(["flaeche-nutzer", "detail-bereitschaft"]);
+
+/** In der Seite: Reiter wählen und die Zeile öffnen — ohne auf irgendeinen Zustand zu warten. */
+const OEFFNE_ROH = `(async ([reiter, zeile, behaelter]) => {
+  const warte = async (p, ms = 10000) => {
+    const bis = Date.now() + ms;
+    while (Date.now() < bis) { if (p()) return true; await new Promise((r) => setTimeout(r, 40)); }
+    return p();
+  };
+  const zurueck = document.querySelector('[data-einst="zurueck"]');
+  if (zurueck) { zurueck.click(); await warte(() => document.querySelector('[data-einst="detail"]') === null, 4000); }
+  if (reiter) {
+    const r = [...document.querySelectorAll('[data-einst="reiter"]')].find((b) => (b.textContent||'').trim() === reiter);
+    if (!r) return 'Reiter fehlt: ' + reiter;
+    r.click();
+    await warte(() => r.getAttribute('aria-pressed') === 'true', 4000);
+  }
+  const z = document.querySelector(zeile);
+  if (!z) return 'Zeile fehlt: ' + zeile;
+  z.click();
+  return (await warte(() => document.querySelector('[data-testid="' + behaelter + '"]') !== null)) ? null : 'Karte ging nicht auf: ' + behaelter;
+})`;
+
+/** In der Seite: was der Behälter gerade zeigt. */
+const BEHAELTER_LAGE = `((behaelter) => {
+  const k = document.querySelector('[data-testid="' + behaelter + '"]');
+  if (!k) return null;
+  const box = k.querySelector('[data-einst="abfrage-fehler"]');
+  const staende = [...k.querySelectorAll('[data-einst="stand"]')];
+  return {
+    laedt: k.querySelector('[data-einst="laedt"]') !== null,
+    fehlerbox: box !== null,
+    fehlerText: box ? (box.textContent || '').replace(/\\s+/g, ' ').trim() : '',
+    stand: staende.map((s) => (s.textContent || '').replace(/\\s+/g, ' ').trim()).join(' | '),
+    text: (k.textContent || '').replace(/\\s+/g, ' ').trim(),
+  };
+})`;
+
+/** In der Seite: JEDES „Erneut" in den Standzeilen des Behälters drücken. */
+const STAND_ERNEUT = `(async (behaelter) => {
+  const k = document.querySelector('[data-testid="' + behaelter + '"]');
+  const knoepfe = k ? [...k.querySelectorAll('[data-einst="stand"] button')] : [];
+  knoepfe.forEach((b) => b.click());
+  await new Promise((r) => setTimeout(r, 2500));
+  return knoepfe.length;
+})`;
+
+interface BehaelterLage {
+  laedt: boolean;
+  fehlerbox: boolean;
+  fehlerText: string;
+  stand: string;
+  text: string;
+}
 
 interface Lage {
   fehler: string | null;
@@ -585,6 +761,55 @@ describe("JOB 3065 H6 R3 · Endpunkt-Matrix der Detailkarten — 503 am gebauten
     }, 120_000);
   }
 
+  /** R-0913: der Beleg für die Schalterquelle (siehe `matrixSchalter`). */
+  async function pruefeSchalter(q: SchalterQuelle): Promise<void> {
+    const s = stand as Stand;
+    expect(s.fehler, "Seite nicht gemountet").toBeNull();
+    const seite = s.seite as NonNullable<Stand["seite"]>;
+    const argumente = (serverFragen: boolean): unknown[] => [
+      q.reiter,
+      q.zeile,
+      q.behaelter,
+      t("adm.seedButton"),
+      t("adm.purgeButton"),
+      serverFragen,
+    ];
+
+    // 1 — Störung auf genau diese Quelle, Seite neu aufbauen, Karte öffnen.
+    s.stoerung = q.pfad;
+    const vorher = s.abrufe.get(q.pfad) ?? 0;
+    await neuLaden("/admin", '[data-einst="seite"]');
+    const gestoert = await seite.evaluate<SchalterLage>(fn(SCHALTER_LIES), argumente(false));
+    expect(gestoert.fehler, `${q.id}: ${gestoert.fehler}`).toBeNull();
+    expect(s.abrufe.get(q.pfad) ?? 0, `${q.id}: die Quelle wurde nie gefragt`).toBeGreaterThan(
+      vorher,
+    );
+
+    // 2 — Keine Behauptung ohne Auskunft, und die Karte bleibt bedienbar.
+    expect(gestoert.fehlerbox, `${q.id}: die Schalterquelle sperrt die Karte`).toBe(false);
+    expect(gestoert.ausZeile, `${q.id}: Ausfall als bestätigtes „aus“ ausgegeben`).toBe(false);
+    expect(gestoert.ladeknopf, `${q.id}: Ladeknopf ohne bestätigten Schalter`).toBe(false);
+    expect(gestoert.entfernen, `${q.id}: Entfernen fehlt bei gestörter Quelle`).toBe(true);
+
+    // 3 — Erholung: die Karte zeigt, was der Server WIRKLICH meldet.
+    s.stoerung = null;
+    await neuLaden("/admin", '[data-einst="seite"]');
+    const heil = await seite.evaluate<SchalterLage>(fn(SCHALTER_LIES), argumente(true));
+    expect(heil.fehler, `${q.id} (erholt): ${heil.fehler}`).toBeNull();
+    expect(heil.serverAn, `${q.id}: der Server gab keine Auskunft`).not.toBeNull();
+    const serverAus = heil.serverAn === false;
+    const serverAn = heil.serverAn === true;
+    expect(heil.ausZeile, `${q.id}: Aus-Zeile passt nicht zum Server`).toBe(serverAus);
+    expect(heil.ladeknopf, `${q.id}: Ladeknopf passt nicht zum Server`).toBe(serverAn);
+    expect(heil.entfernen, `${q.id}: Entfernen fehlt nach der Erholung`).toBe(true);
+  }
+
+  for (const quelle of matrixSchalter()) {
+    it(`SCH · ${quelle.id}`, async () => {
+      await pruefeSchalter(quelle);
+    }, 120_000);
+  }
+
   it("K · KALIBRIERUNG: ohne Störung gibt es in keiner Karte einen Fehlerzustand", async () => {
     const s = stand as Stand;
     s.stoerung = null;
@@ -671,6 +896,166 @@ describe("JOB 3065 H6 R3 · Endpunkt-Matrix der Detailkarten — 503 am gebauten
     expect(lage.boxen, "Fehlerbox auf der Kontenfläche OHNE Störung").toBe(0);
   }, 120_000);
 
+  // ---- Z · die Zustandsfolge je Hüllen-Quelle (siehe Kommentar an `BEHAELTER_OHNE_HUELLE`) -------
+  /** Hält die Antworten EINES Pfades zurück, bis `oeffnen()` gerufen wird. */
+  let tor: { pfad: string; oeffnen: () => void; offen: Promise<void> } | null = null;
+
+  function torSchliessen(pfad: string): void {
+    let oeffnen = (): void => undefined;
+    const offen = new Promise<void>((fertig) => {
+      oeffnen = fertig;
+    });
+    tor = { pfad, oeffnen, offen };
+    (stand as Stand).antworten.vorAuslieferung = async (url, body) => {
+      const aktuell = tor;
+      if (aktuell !== null && url.pathname.startsWith(aktuell.pfad)) {
+        await aktuell.offen;
+      }
+      return body;
+    };
+  }
+
+  async function netz(an: boolean): Promise<void> {
+    await (stand?.seite as NonNullable<Stand["seite"]>).evaluate(
+      fn(`(an) => window.dispatchEvent(new Event(an ? 'online' : 'offline'))`),
+      an,
+    );
+  }
+
+  async function lage(behaelter: string): Promise<BehaelterLage> {
+    const l = await (stand?.seite as NonNullable<Stand["seite"]>).evaluate<BehaelterLage | null>(
+      fn(BEHAELTER_LAGE),
+      behaelter,
+    );
+    expect(l, `Behälter ${behaelter} fehlt`).not.toBeNull();
+    return l as BehaelterLage;
+  }
+
+  /** Wartet in Node-Takten auf eine Lage — die Seite wird nur gelesen, nicht belagert. */
+  async function warteAufLage(
+    behaelter: string,
+    pruefung: (l: BehaelterLage) => boolean,
+    was: string,
+  ): Promise<BehaelterLage> {
+    const seite = stand?.seite as NonNullable<Stand["seite"]>;
+    let zuletzt: BehaelterLage | null = null;
+    for (let i = 0; i < 150; i++) {
+      zuletzt = await lage(behaelter);
+      if (pruefung(zuletzt)) {
+        return zuletzt;
+      }
+      await seite.waitForTimeout(100);
+    }
+    throw new Error(`${was} — nie erreicht; zuletzt: ${JSON.stringify(zuletzt)}`);
+  }
+
+  async function pruefeFolge(q: Quelle, seitenPfad: string): Promise<void> {
+    const s = stand as Stand;
+    const seite = s.seite as NonNullable<Stand["seite"]>;
+    expect(s.fehler, "Seite nicht gemountet").toBeNull();
+    try {
+      // 1 — Laden.
+      s.stoerung = null;
+      torSchliessen(q.pfad);
+      await neuLaden(seitenPfad, '[data-einst="seite"]');
+      const offenFehler = await seite.evaluate<string | null>(fn(OEFFNE_ROH), [
+        q.reiter,
+        q.zeile,
+        q.behaelter,
+      ]);
+      expect(offenFehler, `${q.id}: ${offenFehler}`).toBeNull();
+      await warteAufLage(q.behaelter, (l) => l.laedt && !l.fehlerbox, `${q.id}: Ladezustand`);
+
+      // 2 — offline, solange die Antwort fehlt: die ehrliche Offline-Auskunft samt Ausweg.
+      await netz(false);
+      const leer = await warteAufLage(
+        q.behaelter,
+        (l) => l.fehlerbox,
+        `${q.id}: offline ohne Daten`,
+      );
+      expect(leer.fehlerText, `${q.id}: Offline-Wortlaut`).toContain(t("einst.detail.offline"));
+      expect(leer.fehlerText).toContain(t("loadstate.error.retry"));
+
+      // 3 — Erholung: online, Antwort frei.
+      await netz(true);
+      tor?.oeffnen();
+      await warteAufLage(
+        q.behaelter,
+        (l) => l.text.includes(q.inhalt) && !l.laedt && !l.fehlerbox,
+        `${q.id}: Inhalt nach der Erholung`,
+      );
+
+      // 4 — offline MIT Daten: der Inhalt bleibt, darüber „nicht aktualisiert".
+      await netz(false);
+      const cache = await warteAufLage(
+        q.behaelter,
+        (l) => l.stand.includes(t("einst.wert.nichtAktualisiert")),
+        `${q.id}: Standzeile offline`,
+      );
+      expect(cache.text, `${q.id}: der Inhalt verschwand offline`).toContain(q.inhalt);
+      expect(cache.fehlerbox, `${q.id}: offline mit Daten wurde zur Fehlerbox`).toBe(false);
+
+      // 5 — gescheiterte Auffrischung: online, 503 auf genau diesen Pfad, „Erneut" in der Standzeile.
+      await netz(true);
+      s.stoerung = q.pfad;
+      const vorher = s.abrufe.get(q.pfad) ?? 0;
+      const knoepfe = await seite.evaluate<number>(fn(STAND_ERNEUT), q.behaelter);
+      expect(knoepfe, `${q.id}: kein „Erneut“ in der Standzeile`).toBeGreaterThan(0);
+      const nachher = s.abrufe.get(q.pfad) ?? 0;
+      expect(nachher, `${q.id}: „Erneut“ hat ${q.pfad} nicht abgerufen`).toBeGreaterThan(vorher);
+      const gescheitert = await lage(q.behaelter);
+      expect(gescheitert.stand, `${q.id}: Markierung nach gescheiterter Auffrischung`).toContain(
+        t("einst.wert.nichtAktualisiert"),
+      );
+      expect(gescheitert.text, `${q.id}: Inhalt nach gescheitertem Abruf`).toContain(q.inhalt);
+
+      // 6 — Erholung: Störung weg, „Erneut" → Markierung weg, Inhalt da.
+      s.stoerung = null;
+      await seite.evaluate<number>(fn(STAND_ERNEUT), q.behaelter);
+      await warteAufLage(
+        q.behaelter,
+        (l) => l.stand === "" && l.text.includes(q.inhalt) && !l.fehlerbox,
+        `${q.id}: Erholung nach der Auffrischung`,
+      );
+    } finally {
+      s.stoerung = null;
+      tor?.oeffnen();
+      tor = null;
+      delete s.antworten.vorAuslieferung;
+      await netz(true);
+    }
+  }
+
+  for (const quelle of matrixAdmin().filter((q) => !BEHAELTER_OHNE_HUELLE.has(q.behaelter))) {
+    it(`Z · ${quelle.id}`, async () => {
+      await pruefeFolge(quelle, "/admin");
+    }, 120_000);
+  }
+
+  // ---- S · der Fehlerzustand jeder Quelle auch in Englisch und Niederländisch ----------------------
+  // Derselbe vierteilige Beleg wie M, mit den Texten DIESER Sprache: Reiter, Fehlerwort, Ausweg und
+  // der echte Inhalt der Erholung kommen aus demselben Katalog, aus dem die Oberfläche sie nimmt.
+  for (const sprache of ["en", "nl"]) {
+    it(`S-${sprache} · die Oberfläche spricht ${sprache}`, async () => {
+      await i18n.changeLanguage(sprache);
+      const l = await setzeSprache(stand as Stand, sprache, "/admin", '[data-einst="seite"]');
+      expect(l.lang).toBe(sprache);
+    }, 120_000);
+    for (let i = 0; i < matrixAdmin().length; i++) {
+      it(`S-${sprache} · Quelle ${i + 1}`, async () => {
+        await i18n.changeLanguage(sprache);
+        const quelle = matrixAdmin()[i] as Quelle;
+        await pruefeQuelle(quelle, "/admin");
+      }, 120_000);
+    }
+  }
+
+  it("S-de · zurück auf Deutsch für die übrigen Fälle", async () => {
+    await i18n.changeLanguage("de");
+    const l = await setzeSprache(stand as Stand, "de", "/admin", '[data-einst="seite"]');
+    expect(l.lang).toBe("de");
+  }, 120_000);
+
   // ================================================================================================
   // V · VOLLZÄHLIGKEIT — JOB 3065 R4, BENs Korrekturpflicht 2.
   // ================================================================================================
@@ -737,6 +1122,8 @@ describe("JOB 3065 H6 R3 · Endpunkt-Matrix der Detailkarten — 503 am gebauten
     useAnalytics: "/api/analytics",
     useValidationBoard: "/api/validation/board",
     useMyImpact: "/api/me/impact",
+    // R-0913: die Betriebsschalter der Demodatenkarte — Fall `SCH · Demodaten · /api/features`.
+    useFeatures: "/api/features",
   };
 
   /** Jede Abfragequelle, die in den sechs Seiten wirklich vorkommt — samt ihrer Datei. */
@@ -780,7 +1167,9 @@ describe("JOB 3065 H6 R3 · Endpunkt-Matrix der Detailkarten — 503 am gebauten
     // JOB 3140: die nachrangigen Quellen zählen mit — sie haben einen eigenen, spiegelbildlichen
     // Fall (`N · …`), aber sie sind genauso wenig ungemessen erlaubt wie eine tragende.
     const inMatrix = new Set(
-      [...matrixAdmin(), ...matrixNachrangig(), ...matrixProfil()].map((q) => q.pfad),
+      [...matrixAdmin(), ...matrixNachrangig(), ...matrixProfil(), ...matrixSchalter()].map(
+        (q) => q.pfad,
+      ),
     );
     const ohneFall = [...new Set(gefunden.map((g) => QUELLE_PFAD[g.quelle] ?? ""))].filter(
       (p) => p !== "" && !inMatrix.has(p),

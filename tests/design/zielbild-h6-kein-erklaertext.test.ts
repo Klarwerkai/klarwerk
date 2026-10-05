@@ -292,6 +292,102 @@ describe("JOB 3065 H6 · kein Erklärtext im Sichtfeld — gemessen in Chromium"
     }
   }, 120_000);
 
+  // ================================================================================================
+  // R-1581 (BEN, Nacharbeit 5) — DER VOLLSTÄNDIGE HILFETEXTVERGLEICH, IN BEIDE RICHTUNGEN.
+  // ================================================================================================
+  //
+  // D-hilfe oben prüft eine Richtung: jeder der zwölf Körper von gestern steht in einem „?"-Menü.
+  // Offen blieb die Gegenrichtung — ob im „?"-Menü etwas steht, das in keiner Sollzeile vorkommt.
+  // Dieser Fall vergleicht deshalb die SOLLMENGE des ursprünglichen H6-Inventars mit SÄMTLICHEN
+  // tatsächlich ausgelieferten Detailhilfen der sieben Themen:
+  //
+  //   SOLL      die zwölf `HelpTip`-Körper (D-hilfe) ∪ die Hilfetexte der §5a-Tabelle
+  //             (`tests/design/h6-funktionsinventar.test.ts`, Feld `hilfeText`).
+  //   BEDINGT   `adm.seedHint` steht nur bei bestätigt eingeschalteter Vorführhilfe im Menü
+  //             (R-0913, `AdminDatenDetails.tsx`) — die Erwartung folgt dem ECHTEN Schalter.
+  //   ZUGÄNGE   was heute zusätzlich im Menü steht und in keiner Sollzeile — namentlich, damit eine
+  //             weitere stille Ergänzung (oder ein stiller Verlust) diesen Fall rot macht.
+  const SOLL_HILFE = [
+    "adm.ai.help",
+    "adm.ai.accessHelp",
+    "adm.presets.help",
+    "adm.val.help",
+    "adm.upload.help",
+    "adm.ext.help",
+    "adm.dup.help",
+    "adm.trash.help",
+    "adm.factory.help",
+    "adm.sich.auditHelp",
+    "adm.sich.dataHelp",
+    "adm.ready.help",
+    "adm.ready.intro",
+    "adm.createHint",
+    "adm.ai.internExtern",
+    "adm.seedHint",
+  ];
+  /** Steht nur bei bestätigt eingeschaltetem Betriebsschalter im Menü. */
+  const NUR_MIT_SCHALTER: Record<string, string> = { "adm.seedHint": "demodaten" };
+  /**
+   * Heute im „?"-Menü, aber in keiner Sollzeile. Herkunft je Zeile laut Quelltext der Karte: die
+   * Hinweis-/Einleitungsabsätze, die JOB 3065 aus dem Sichtfeld in das Menü derselben Karte verlegt
+   * hat, und die Sicherungsauskunft aus JOB 4025.
+   */
+  const ZUGAENGE_HILFE = [
+    "adm.presets.hint",
+    "adm.val.hint",
+    "adm.upload.hint",
+    "adm.ext.hint",
+    "adm.dup.hint",
+    "adm.factory.hint",
+    "adm.sich.auditIntro",
+    "adm.sich.qualityNote",
+    "adm.ready.note",
+    "adm.backup.help",
+  ];
+
+  it("D-soll · Sollmenge des H6-Inventars gegen sämtliche Detailhilfen — in beide Richtungen", async () => {
+    const seite = adminStand?.seite as NonNullable<Stand["seite"]>;
+    const norm = (s: string): string => s.replace(/\s+/g, " ").trim();
+    const schalter = await seite.evaluate<Record<string, boolean> | null>(
+      fn(`async () => {
+        const a = await fetch('/api/features', { credentials: 'include' });
+        return a.ok ? ((await a.json()).features || {}) : null;
+      }`),
+    );
+    expect(schalter, "die Betriebsschalter waren nicht abrufbar").not.toBeNull();
+    const ist: string[] = [];
+    for (const tab of TABS_MIT_KARTEN) {
+      for (const karte of await karten(adminStand, i18n.t(`adm.sec.${tab}`))) {
+        ist.push(...karte.hilfe.map(norm));
+      }
+    }
+    const textVon = (key: string): string => norm(i18n.t(key));
+    const erwartetDa = (key: string): boolean => {
+      const bedingung = NUR_MIT_SCHALTER[key];
+      return bedingung === undefined || schalter?.[bedingung] === true;
+    };
+
+    // (1) Soll → Ist: jede Sollzeile steht im Menü — außer sie hängt an einem Schalter, der aus ist.
+    //     Dann darf sie gerade NICHT dort stehen (sonst beschriebe das Menü eine gesperrte Handlung).
+    const soll = SOLL_HILFE.filter((k) => erwartetDa(k) !== ist.includes(textVon(k))).map((k) =>
+      erwartetDa(k) ? `fehlt: ${k}` : `steht trotz Schalter aus da: ${k}`,
+    );
+    expect(soll, soll.join(" · ")).toEqual([]);
+
+    // (2) Ist → Soll: nichts im Menü, das weder Sollzeile noch benannter Zugang ist.
+    const bekannt = new Set([...SOLL_HILFE, ...ZUGAENGE_HILFE].map(textVon));
+    const unbekannt = ist.filter((h) => !bekannt.has(h)).map((h) => `„${h.slice(0, 60)}…“`);
+    expect(unbekannt, `Detailhilfe ohne Sollzeile: ${unbekannt.join(" · ")}`).toEqual([]);
+
+    // (3) Keine Gespenster: jeder benannte Zugang steht wirklich im Menü.
+    const gespenster = ZUGAENGE_HILFE.filter((k) => !ist.includes(textVon(k)));
+    expect(gespenster, `Zugang nicht (mehr) im Menü: ${gespenster.join(" · ")}`).toEqual([]);
+
+    console.info(
+      `R-1581 · Hilfetextvergleich: ${ist.length} Detailhilfen · Soll ${SOLL_HILFE.length} · Zugänge ${ZUGAENGE_HILFE.length} · demodaten=${String(schalter?.demodaten)}`,
+    );
+  }, 180_000);
+
   it("K-berichte · KALIBRIERUNG: „Berichte und Analyse“ führt wirklich nur Kurzlinks", async () => {
     // Der Ausschluss aus TABS_MIT_KARTEN ist damit gemessen und nicht behauptet: null Zeilen mit
     // Chevron (= null Detailkarten), aber mindestens ein Kurzlink. Bekäme dieses Thema morgen eine
