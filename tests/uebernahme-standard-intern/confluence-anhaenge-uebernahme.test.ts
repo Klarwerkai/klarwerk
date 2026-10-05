@@ -26,6 +26,8 @@ import { adapterFromConfig } from "../../services/confluence/src/adapter";
 import { mapConfluencePageToImportItem } from "../../services/confluence/src/mapper";
 import type { ConfluencePage } from "../../services/confluence/src/rest-client";
 import {
+  type EvidenceRecord,
+  InMemoryEvidenceRepo,
   InMemoryKoRepo,
   InMemoryUploadLimitsRepo,
   KoService,
@@ -387,6 +389,20 @@ const A1_V1 = {
 };
 const PNG_V2 = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0b]);
 
+/**
+ * Nacharbeit 7: die echte Belegablage, mit einem injizierbaren Schreibfehler (Bens Fall „Fehler bei
+ * der Belegschreibung NACH erfolgreichem Objekt-Update"). Lesen bleibt immer möglich.
+ */
+class StoerbareBelege extends InMemoryEvidenceRepo {
+  an = false;
+  override append(record: EvidenceRecord): Promise<void> {
+    if (this.an) {
+      return Promise.reject(new Error("BEN_INJECTED_EVIDENCE_FAILURE"));
+    }
+    return super.append(record);
+  }
+}
+
 function abgleichAufbau() {
   const zustand: { anhaenge: unknown[]; bytes: Map<string, Buffer> } = {
     anhaenge: [A1_V1],
@@ -416,7 +432,8 @@ function abgleichAufbau() {
     spaceKey: "K",
     fetchFn: fetchFn as unknown as typeof fetch,
   });
-  const koService = new KoService({ repo: new InMemoryKoRepo() });
+  const belege = new StoerbareBelege();
+  const koService = new KoService({ repo: new InMemoryKoRepo(), evidence: belege });
   const audit = new AuditService({ repo: new InMemoryAuditRepo() });
   const objects = new ObjectStore({ repo: new InMemoryObjectRepo() });
   // Der injizierte Speicherfehler (Bens BEN_INJECTED_STORAGE_FAILURE) — am echten Objektspeicher.
@@ -447,8 +464,10 @@ function abgleichAufbau() {
     const [kandidat] = await library.listImportCandidates();
     const ergebnis = await library.reviewImportCandidate(kandidat!.id, "accept", "reviewerin");
     const ko = await koService.get(ergebnis.koId!);
+    // Nur die Voraussetzung „a1 ist am Objekt". Die Herkunft (`quelle`) prüfen N2 und N3 fachlich
+    // selbst — stünde sie hier, scheiterte ein Vor-Korrektur-Lauf (cda3ac3b) schon im Aufbau statt
+    // an der Assertion, um die es im jeweiligen Fall geht (Bens Befund, Nacharbeit 7).
     expect(ko?.attachments).toHaveLength(1);
-    expect(ko?.attachments[0]?.quelle).toMatchObject({ externalId: "a1", sourceVersion: 1 });
     return ko!;
   };
   const zweiterLauf = () =>
@@ -460,6 +479,7 @@ function abgleichAufbau() {
     koService,
     audit,
     objects,
+    belege,
     stoerung,
     library,
     ersterImport,
@@ -504,6 +524,8 @@ describe("R-0163 · Anhangsabgleich bereits importierter Seiten (Ben, Nacharbeit
     expect(nachher?.attachments[0]?.quelle?.abruf, "die Herkunft trägt den neuen Abrufweg").toBe(
       neuerWeg,
     );
+    // Die Zuordnung lief über die Quellkennung, nicht über den Namen.
+    expect(nachher?.attachments[0]?.quelle).toMatchObject({ externalId: "a1", sourceVersion: 1 });
     // Gleiche Anhangsversion → kein neuer Inhalt, nur die Herkunft.
     expect(nachher?.attachments[0]?.objectId).toBe(objektVorher);
     expect(lauf.failed).toBe(0);
@@ -593,5 +615,97 @@ describe("R-0163 · Anhangsabgleich bereits importierter Seiten (Ben, Nacharbeit
     });
     expect(gespeichert?.failureReason).toContain("Anhangsabgleich unvollständig für 1 Seite(n)");
     await app.close();
+  });
+
+  // ------------------------------------------------------------------------------------------------
+  // BEN, NACHARBEIT 7 — DER FEHLER NACH DER OBJEKTÄNDERUNG. N3 oben scheitert VOR jeder Änderung
+  // (objects.put). Hier gelingen Ablage und Objektänderung, und erst der Beleg scheitert. Bisher warf
+  // `updateAttachment` dann trotzdem, der Port zählte „fehlgeschlagen", und die Seite meldete
+  // „vorhandene Anhänge bleiben erhalten" — obwohl der Anhang schon ersetzt war.
+  // ------------------------------------------------------------------------------------------------
+  it("N3b · Belegfehler nach erfolgreichem Objekt-Update: Anhang ist ersetzt, Beleg offen, Seite unvollständig", async () => {
+    const ctx = abgleichAufbau();
+    const vorher = await ctx.ersterImport();
+    const objektVorher = vorher.attachments[0]!.objectId!;
+    const belegeVorher = await ctx.belege.listByKo(vorher.id);
+    expect(
+      belegeVorher.some((b) => b.kind === "attachment" && b.objectId === objektVorher),
+      "der erste Import hat seinen Beleg",
+    ).toBe(true);
+
+    ctx.zustand.anhaenge = [
+      {
+        ...A1_V1,
+        version: { number: 2 },
+        _links: { download: "/download/attachments/3001/plan-v2.png?version=2&api=v2" },
+      },
+    ];
+    ctx.belege.an = true;
+    const lauf = await ctx.zweiterLauf();
+
+    // Inhalt und Herkunft: der Anhang IST ersetzt — derselbe Eintrag, neue Bytes, Version 2.
+    const nachher = await ctx.koService.get(vorher.id);
+    expect(nachher?.attachments).toHaveLength(1);
+    const objektNachher = nachher?.attachments[0]?.objectId;
+    expect(objektNachher).toBeTruthy();
+    expect(objektNachher).not.toBe(objektVorher);
+    expect(nachher?.attachments[0]?.quelle?.sourceVersion).toBe(2);
+    expect(await gespeicherteDaten(ctx.objects, objektNachher!)).toBe(
+      `data:image/png;base64,${PNG_V2.toString("base64")}`,
+    );
+
+    // Beleg: zum neuen Objekt gibt es (noch) keinen.
+    const belegeNachher = await ctx.belege.listByKo(vorher.id);
+    expect(belegeNachher.some((b) => b.objectId === objektNachher)).toBe(false);
+
+    // Laufbilanz: ersetzt, NICHT fehlgeschlagen — und trotzdem unvollständig, mit ehrlichem Grund.
+    expect(lauf.anhangsabgleich).toMatchObject({
+      ersetzt: 1,
+      fehlgeschlagen: 0,
+      belegOffen: 1,
+      unvollstaendigeSeiten: ["3001"],
+    });
+    expect(lauf.failed).toBe(1);
+    expect(lauf.perPage[0]).toMatchObject({ ref: "3001", status: "failed" });
+    expect(lauf.perPage[0]?.note).toContain("1 Beleg(e) zu übernommenen Anhängen offen");
+    expect(lauf.perPage[0]?.note).not.toContain("nicht übernommen");
+    const eintraege = await ctx.audit.list({ action: "import.attachments", target: vorher.id });
+    expect(eintraege.at(-1)?.payload).toMatchObject({
+      ersetzt: 1,
+      fehlgeschlagen: 0,
+      belegOffen: 1,
+    });
+  });
+
+  it("N3c · der nächste Lauf trägt den fehlenden Beleg nach — die Teilpersistenz bleibt nicht unbemerkt", async () => {
+    const ctx = abgleichAufbau();
+    const vorher = await ctx.ersterImport();
+    ctx.zustand.anhaenge = [
+      {
+        ...A1_V1,
+        version: { number: 2 },
+        _links: { download: "/download/attachments/3001/plan-v2.png?version=2&api=v2" },
+      },
+    ];
+    ctx.belege.an = true;
+    await ctx.zweiterLauf();
+    const objektNachher = (await ctx.koService.get(vorher.id))?.attachments[0]?.objectId;
+
+    // Die Belegablage ist wieder da; Seite und Anhänge sind unverändert (gleiche Versionen).
+    ctx.belege.an = false;
+    const lauf = await ctx.zweiterLauf();
+
+    const belege = await ctx.belege.listByKo(vorher.id);
+    expect(
+      belege.filter((b) => b.kind === "attachment" && b.objectId === objektNachher),
+      "genau EIN nachgetragener Beleg zum ersetzten Inhalt",
+    ).toHaveLength(1);
+    expect(lauf.failed).toBe(0);
+    expect(lauf.anhangsabgleich).toMatchObject({ belegNachgetragen: 1, belegOffen: 0 });
+    expect(lauf.perPage[0]?.status).toBe("skipped");
+    expect(lauf.perPage[0]?.note).toContain("1 Beleg(e) nachgetragen");
+    // Ein weiterer Lauf hat nichts mehr nachzutragen.
+    const danach = await ctx.zweiterLauf();
+    expect(danach.anhangsabgleich?.belegNachgetragen ?? 0).toBe(0);
   });
 });

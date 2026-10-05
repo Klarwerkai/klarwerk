@@ -50,6 +50,9 @@ export interface ImportRunSummary {
     ersetzt: number;
     nachgezogen: number;
     fehlgeschlagen: number;
+    // Nacharbeit 7: übernommene Anhänge mit noch fehlendem Beleg / in diesem Lauf nachgetragene.
+    belegOffen: number;
+    belegNachgetragen: number;
     unvollstaendigeSeiten: string[];
   };
   // R-0162 (Abgleich): in der Quelle gelöschte Seiten, deren Wissensobjekt in den Papierkorb
@@ -352,6 +355,8 @@ export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<I
       ersetzt: 0,
       nachgezogen: 0,
       fehlgeschlagen: 0,
+      belegOffen: 0,
+      belegNachgetragen: 0,
       unvollstaendigeSeiten: [],
     };
     for (const { item, perPageIdx } of abzugleichen) {
@@ -372,8 +377,15 @@ export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<I
         bilanz.ersetzt += abgleich.ersetzt;
         bilanz.nachgezogen += abgleich.nachgezogen;
         bilanz.fehlgeschlagen += abgleich.fehlgeschlagen;
+        bilanz.belegOffen += abgleich.belegOffen;
+        bilanz.belegNachgetragen += abgleich.belegNachgetragen;
       }
-      if (abgleich === null || abgleich.fehlgeschlagen > 0 || abgleich.listeUnvollstaendig) {
+      if (
+        abgleich === null ||
+        abgleich.fehlgeschlagen > 0 ||
+        abgleich.belegOffen > 0 ||
+        abgleich.listeUnvollstaendig
+      ) {
         abgleichUnvollstaendig += 1;
         bilanz.unvollstaendigeSeiten.push(item.externalId ?? item.title);
         if (entry) {
@@ -382,11 +394,14 @@ export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<I
         }
         continue;
       }
-      const geaendert = abgleich.uebernommen + abgleich.ersetzt + abgleich.nachgezogen;
+      const geaendert =
+        abgleich.uebernommen + abgleich.ersetzt + abgleich.nachgezogen + abgleich.belegNachgetragen;
       if (entry && geaendert > 0) {
-        entry.note =
-          `Anhänge abgeglichen: ${abgleich.uebernommen} neu, ${abgleich.ersetzt} ersetzt, ` +
-          `${abgleich.nachgezogen} Abrufweg nachgezogen`;
+        const belegZusatz =
+          abgleich.belegNachgetragen > 0
+            ? `, ${abgleich.belegNachgetragen} Beleg(e) nachgetragen`
+            : "";
+        entry.note = `Anhänge abgeglichen: ${abgleich.uebernommen} neu, ${abgleich.ersetzt} ersetzt, ${abgleich.nachgezogen} Abrufweg nachgezogen${belegZusatz}`;
       }
     }
     anhangsabgleich = bilanz;
@@ -437,6 +452,10 @@ function anhangsNotiz(
   const teile: string[] = [];
   if (abgleich.fehlgeschlagen > 0) {
     teile.push(`${abgleich.fehlgeschlagen} Anhang/Anhänge nicht übernommen`);
+  }
+  if (abgleich.belegOffen > 0) {
+    // Nacharbeit 7: der Anhang IST übernommen — nur sein Beleg fehlt noch und wird nachgetragen.
+    teile.push(`${abgleich.belegOffen} Beleg(e) zu übernommenen Anhängen offen`);
   }
   if (abgleich.listeUnvollstaendig) {
     teile.push("Anhangsliste der Quelle unvollständig");

@@ -81,19 +81,26 @@ export function confluenceAnhangsUebernahme(deps: ConfluenceAnhangsDeps): Anhang
     // Neue Quellversion: Inhalt am SELBEN Eintrag tauschen. Scheitert Download oder Ablage, bleibt
     // der alte Inhalt samt alter Herkunft stehen — der Fall zählt als fehlgeschlagen.
     let ersetzt = 0;
+    // Nacharbeit 7: übernommen, aber ohne Beleg — ehrlich getrennt gezählt, nie als „unverändert".
+    let belegOffen = 0;
     for (const { attachmentId, anhang } of auftrag.ersetzen) {
       try {
         const abgelegt = await lege(anhang);
         if (!abgelegt) {
           continue;
         }
-        await deps.ko.updateAttachment(auftrag.koId, attachmentId, auftrag.actor, {
+        // Wirft nur, solange NICHTS geändert ist (Objekt + Audit sind eine Einheit); ein danach
+        // gescheiterter Beleg kommt als `belegOffen` zurück.
+        const ergebnis = await deps.ko.updateAttachment(auftrag.koId, attachmentId, auftrag.actor, {
           objectId: abgelegt.ref.id,
           size: abgelegt.ref.size,
           mime: abgelegt.typ,
           quelle: quelle(anhang),
         });
         ersetzt += 1;
+        if (ergebnis.belegOffen) {
+          belegOffen += 1;
+        }
       } catch {
         // Zählt unten als fehlgeschlagen; der Grund verlässt diese Stelle nicht (keine URL, kein Name).
       }
@@ -121,9 +128,25 @@ export function confluenceAnhangsUebernahme(deps: ConfluenceAnhangsDeps): Anhang
         belegt += 1;
         uebernommen += 1;
       } catch {
-        // Zählt unten als fehlgeschlagen; der Grund verlässt diese Stelle nicht (keine URL, kein Name).
+        // Nacharbeit 7: `addAttachment` schreibt den Anhang VOR Beleg und Audit. Wirft es danach,
+        // steht der Anhang trotzdem am Objekt — dann ist er übernommen, nur der Beleg fehlt (der
+        // Belegnachtrag im Abgleich holt ihn nach). Sonst zählt der Fall unten als fehlgeschlagen.
+        const jetzt = await deps.ko.get(auftrag.koId).catch(() => undefined);
+        const steht = (jetzt?.attachments ?? []).some(
+          (a) => a.quelle?.externalId === anhang.externalId,
+        );
+        if (steht) {
+          belegt += 1;
+          uebernommen += 1;
+          belegOffen += 1;
+        }
       }
     }
-    return { uebernommen, ersetzt, fehlgeschlagen: alle - uebernommen - ersetzt };
+    return {
+      uebernommen,
+      ersetzt,
+      belegOffen,
+      fehlgeschlagen: alle - uebernommen - ersetzt,
+    };
   };
 }

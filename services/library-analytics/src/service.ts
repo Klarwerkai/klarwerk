@@ -518,6 +518,11 @@ export interface AnhangsErgebnis {
   readonly uebernommen: number;
   /** Ersetzte Inhalte (neue Quellversion). Fehlt die Angabe, hat der Port nichts ersetzt. */
   readonly ersetzt?: number;
+  /**
+   * Nacharbeit 7: übernommen bzw. ersetzt, aber der Beleg dazu ist gescheitert. Diese Anhänge
+   * zählen in `uebernommen`/`ersetzt`, NICHT in `fehlgeschlagen`; der Beleg wird nachgetragen.
+   */
+  readonly belegOffen?: number;
   readonly fehlgeschlagen: number;
 }
 
@@ -533,6 +538,13 @@ export interface AnhangsAbgleich {
   readonly nachgezogen: number;
   readonly vorhanden: number;
   readonly fehlgeschlagen: number;
+  /**
+   * Nacharbeit 7: übernommene Anhänge, deren Beleg nach diesem Abgleich IMMER NOCH fehlt (auch
+   * der Nachtrag scheiterte). Die Seite ist dann nicht vollständig abgeglichen.
+   */
+  readonly belegOffen: number;
+  /** Nacharbeit 7: Belege, die dieser Abgleich für früher übernommene Anhänge nachgetragen hat. */
+  readonly belegNachgetragen: number;
   /** Die Quelle lieferte die Liste nicht vollständig — vorhandene Anhänge bleiben unangetastet. */
   readonly listeUnvollstaendig: boolean;
   readonly ohneUebernahmeweg: boolean;
@@ -2342,11 +2354,14 @@ export class LibraryService {
     let fehlgeschlagen = 0;
     let ohneUebernahmeweg = false;
     let erledigt = 0;
+    let belegOffenPort = 0;
+    let koGefunden = false;
     try {
       const ko = await this.koService.get(koId);
       if (!ko) {
         return undefined;
       }
+      koGefunden = true;
       const providerKey = importProviderKey(item.provider);
       const bestand = ko.attachments ?? [];
       const neu: ImportAnhang[] = [];
@@ -2405,6 +2420,7 @@ export class LibraryService {
           });
           uebernommen = ergebnis.uebernommen;
           ersetzt = ergebnis.ersetzt ?? 0;
+          belegOffenPort = ergebnis.belegOffen ?? 0;
           fehlgeschlagen += ergebnis.fehlgeschlagen;
         } else {
           ohneUebernahmeweg = true;
@@ -2420,6 +2436,19 @@ export class LibraryService {
         }).\n`,
       );
     }
+    // Nacharbeit 7 — DER WIEDERANLAUF EINER TEILPERSISTENZ: fehlt zu einem übernommenen Anhang der
+    // Beleg (in diesem oder einem früheren Lauf übernommen, Beleg gescheitert), wird er hier
+    // nachgetragen. Gelingt das nicht, bleibt der Beleg offen, und die Seite ist unvollständig —
+    // beim nächsten Abgleich wird es erneut versucht.
+    let belegNachgetragen = 0;
+    let belegOffen = 0;
+    if (koGefunden) {
+      try {
+        belegNachgetragen = await this.koService.ensureImportAttachmentEvidence(koId, actor);
+      } catch {
+        belegOffen = Math.max(belegOffenPort, 1);
+      }
+    }
     const abgleich: AnhangsAbgleich = {
       gemeldet: anhaenge.length,
       uebernommen,
@@ -2427,11 +2456,14 @@ export class LibraryService {
       nachgezogen,
       vorhanden,
       fehlgeschlagen,
+      belegOffen,
+      belegNachgetragen,
       listeUnvollstaendig,
       ohneUebernahmeweg,
     };
     const etwasGeschehen =
-      uebernommen + ersetzt + nachgezogen + fehlgeschlagen > 0 || listeUnvollstaendig;
+      uebernommen + ersetzt + nachgezogen + fehlgeschlagen + belegOffen + belegNachgetragen > 0 ||
+      listeUnvollstaendig;
     if (etwasGeschehen) {
       await this.audit
         ?.record({
@@ -2445,6 +2477,8 @@ export class LibraryService {
             nachgezogen,
             vorhanden,
             fehlgeschlagen,
+            ...(belegOffen > 0 ? { belegOffen } : {}),
+            ...(belegNachgetragen > 0 ? { belegNachgetragen } : {}),
             ...(listeUnvollstaendig ? { listeUnvollstaendig: true } : {}),
             ...(ohneUebernahmeweg ? { ohneUebernahmeweg: true } : {}),
           },

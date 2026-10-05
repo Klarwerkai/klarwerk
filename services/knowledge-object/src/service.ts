@@ -3299,45 +3299,111 @@ export class KoService {
    * (`quelle`) allein oder, bei einer neuen Quellversion, zusätzlich Inhalt (`objectId`, `size`,
    * `mime`). Kennung, Name und Hochladender des Anhangs bleiben; es entsteht kein zweiter Eintrag.
    * Ein neuer Inhalt bekommt wie bei `addAttachment` seinen Beleg.
+   *
+   * BENS BEFUND (Nacharbeit 7) — KEIN „UNVERÄNDERT", WENN SICH ETWAS GEÄNDERT HAT:
+   * - Objektänderung und Audit sind EINE Einheit (`mutateKoTx`): mit Datenbank eine Transaktion,
+   *   ohne Datenbank mit Rücknahme des Objektstands. Scheitert einer der beiden, ist nichts
+   *   geändert, und der Fehler geht an den Aufrufer — dann stimmt „Altbestand erhalten".
+   * - Der Beleg (`EvidenceRepo.append`) kennt keine Transaktion und folgt DANACH. Scheitert er, ist
+   *   der Anhang bereits übernommen; die Methode wirft dann NICHT, sondern meldet `belegOffen`. Der
+   *   fehlende Beleg ist wiederaufnehmbar: `ensureImportAttachmentEvidence` trägt ihn nach — beim
+   *   selben Abgleich und bei jedem weiteren, bis er steht.
    */
   async updateAttachment(
     id: string,
     attachmentId: string,
     actor: string,
     patch: { objectId?: string; size?: number; mime?: string; quelle?: KoAnhangsquelle },
-  ): Promise<KnowledgeObject> {
-    const ko = await this.require(id);
-    const vorher = (ko.attachments ?? []).find((a) => a.id === attachmentId);
-    if (!vorher) {
-      throw new KoError("NOT_FOUND", "Anhang nicht gefunden.");
+  ): Promise<{ ko: KnowledgeObject; belegOffen: boolean }> {
+    const geplant: { beleg?: Omit<EvidenceRecord, "id"> } = {};
+    const ko = await this.mutateKoTx(id, (aktuell) => {
+      const vorher = (aktuell.attachments ?? []).find((a) => a.id === attachmentId);
+      if (!vorher) {
+        throw new KoError("NOT_FOUND", "Anhang nicht gefunden.");
+      }
+      const nachher: KoAttachment = {
+        ...vorher,
+        ...(patch.objectId ? { objectId: patch.objectId } : {}),
+        ...(patch.size !== undefined ? { size: patch.size } : {}),
+        ...(patch.mime ? { mime: patch.mime } : {}),
+        ...(patch.quelle ? { quelle: patch.quelle } : {}),
+      };
+      const updated: KnowledgeObject = {
+        ...aktuell,
+        attachments: (aktuell.attachments ?? []).map((a) => (a.id === attachmentId ? nachher : a)),
+      };
+      if (patch.objectId && patch.objectId !== vorher.objectId) {
+        geplant.beleg = {
+          koId: id,
+          koVersion: aktuell.version,
+          kind: "attachment",
+          attachmentId,
+          objectId: patch.objectId,
+          label: nachher.name,
+          mime: nachher.mime,
+          createdBy: actor,
+          createdAt: new Date(this.now()).toISOString(),
+        };
+      }
+      return {
+        updated,
+        value: updated,
+        audit: async (tx?: TxContext) => {
+          await this.audit?.record({ actor, action: "ko.attachment-updated", target: id }, tx);
+        },
+      };
+    });
+    const beleg = geplant.beleg;
+    if (!beleg) {
+      return { ko, belegOffen: false };
     }
-    const nachher: KoAttachment = {
-      ...vorher,
-      ...(patch.objectId ? { objectId: patch.objectId } : {}),
-      ...(patch.size !== undefined ? { size: patch.size } : {}),
-      ...(patch.mime ? { mime: patch.mime } : {}),
-      ...(patch.quelle ? { quelle: patch.quelle } : {}),
-    };
-    const updated: KnowledgeObject = {
-      ...ko,
-      attachments: (ko.attachments ?? []).map((a) => (a.id === attachmentId ? nachher : a)),
-    };
-    await this.repo.update(updated);
-    if (patch.objectId && patch.objectId !== vorher.objectId) {
+    try {
+      await this.appendEvidence(beleg);
+      return { ko, belegOffen: false };
+    } catch {
+      return { ko, belegOffen: true };
+    }
+  }
+
+  /**
+   * R-0163 (Nacharbeit 7): trägt fehlende Belege ÜBERNOMMENER Anhänge nach — je Anhang mit
+   * Herkunft (`quelle`) und `objectId`, zu dem die Belegkette keinen `attachment`-Eintrag mit
+   * genau dieser Kennung und diesem Objekt führt. Das ist der Wiederanlauf einer Teilpersistenz
+   * (Anhang übernommen, Beleg gescheitert). Von Hand hochgeladene Anhänge bleiben unberührt.
+   * Rückgabe: die Zahl der nachgetragenen Belege. Ein Schreibfehler wird weitergereicht.
+   */
+  async ensureImportAttachmentEvidence(id: string, actor: string): Promise<number> {
+    if (!this.evidence) {
+      return 0;
+    }
+    const ko = await this.require(id);
+    const belege = await this.evidence.listByKo(id);
+    let nachgetragen = 0;
+    for (const anhang of ko.attachments ?? []) {
+      if (!anhang.quelle || !anhang.objectId) {
+        continue;
+      }
+      const vorhanden = belege.some(
+        (b) =>
+          b.kind === "attachment" && b.attachmentId === anhang.id && b.objectId === anhang.objectId,
+      );
+      if (vorhanden) {
+        continue;
+      }
       await this.appendEvidence({
         koId: id,
         koVersion: ko.version,
         kind: "attachment",
-        attachmentId,
-        objectId: patch.objectId,
-        label: nachher.name,
-        mime: nachher.mime,
+        attachmentId: anhang.id,
+        objectId: anhang.objectId,
+        label: anhang.name,
+        mime: anhang.mime,
         createdBy: actor,
         createdAt: new Date(this.now()).toISOString(),
       });
+      nachgetragen += 1;
     }
-    await this.audit?.record({ actor, action: "ko.attachment-updated", target: id });
-    return this.lesefassung(updated);
+    return nachgetragen;
   }
 
   async removeAttachment(
