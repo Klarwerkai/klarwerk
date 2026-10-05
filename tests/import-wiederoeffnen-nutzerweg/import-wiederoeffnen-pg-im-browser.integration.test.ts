@@ -224,6 +224,9 @@ const wegwerfDb = `klarwerk_importwieder_test_${`${Date.now()}`.slice(-9)}`;
 /** Was `P1` erarbeitet und die späteren Stationen brauchen. */
 let k1: string | undefined;
 let zeileK1NachA: string | undefined;
+/** Was `P2` beim Verlassen anlegt — `P2w` öffnet genau diesen Entwurf wieder. */
+let kennungK2: string | undefined;
+let zeileK2NachB: string | undefined;
 /** Der sichtbare Blattinhalt nach dem Neuladen (`P3`) — die Bezugsgrösse für `P4` und `P5`. */
 let inhaltNachC: string | undefined;
 
@@ -526,9 +529,13 @@ describe("JOB 4324 P · der Import-Wiederöffnen-Nutzerweg im Browser, gegen ech
   // gemacht. Es hat also die Wache des BLATTS gespeichert: sie schreibt den Blattstand in E2, trägt
   // die Datei nicht, und die Quittung sagt danach wahrheitsgemäß „verworfen".
   //
-  // DIESER FALL BLEIBT DESHALB ROT und wird NICHT abgeschwächt: er hält die Zusage fest, bis der
-  // zweite Befund repariert ist (eigener Auftrag — er verlangt `NavGuardContext.tsx` bzw.
-  // `Blatt.tsx`, beide ausserhalb der Zielpfade von JOB 4335).
+  // DIESER FALL WURDE DESHALB NICHT abgeschwächt: er hielt die Zusage fest, bis der zweite Befund
+  // repariert war. Die Reparatur steht seit JOB 4335 Runde 2 im Produkt (`NavGuardContext.tsx`
+  // führt ein VERZEICHNIS angemeldeter Wachen statt eines Platzes; geliefert mit
+  // `1.0.0-beta.1.592`, Ursachenabnahme in
+  // `tests/datei-verlassen-quittung/wache-zustaendigkeit-blatt-und-arbeitsraum.test.tsx`). Ob dieser
+  // Fall seither grün ist, entscheidet der Lauf und nicht dieser Kommentar — seine Erwartungen sind
+  // unverändert (Abgleich: `tests/dateientwurf-wiederaufnahme/README.md`).
   //
   // DIE MELDUNG BESCHREIBT, WAS STATTDESSEN DASTEHT. Ein „expected false to be true" ohne den
   // wirklich gerenderten Dialog liesse den nächsten Leser raten.
@@ -627,8 +634,8 @@ describe("JOB 4324 P · der Import-Wiederöffnen-Nutzerweg im Browser, gegen ech
           "Dialog der Wache (Knopf „Hier bleiben“)",
         );
 
-        // ── DIE ZUSAGE DES AUFTRAGS (§5 Lieferung 2b). Diese Zeile ist seit JOB 4335 grün; der
-        //    Fall bleibt danach an der Quittung rot (zweiter Befund, oben ausgeschrieben). ─────
+        // ── DIE ZUSAGE DES AUFTRAGS (§5 Lieferung 2b). Diese Zeile ist seit JOB 4335 grün; die
+        //    Quittung danach hing am zweiten Befund (oben ausgeschrieben, JOB 4335 Runde 2). ─────
         const wacheSpeichern = satz("nav.guard.save");
         const stattdessen = [
           `Titel «${satz("nav.guard.unsavableTitle")}» ${
@@ -697,6 +704,66 @@ describe("JOB 4324 P · der Import-Wiederöffnen-Nutzerweg im Browser, gegen ech
         expect(k2, "der beim Verlassen gesicherte Entwurf trägt die Herkunft nicht").toContain(
           DATEI_NAME,
         );
+        // Erst NACH allen Zusicherungen weitergeben (dieselbe Regel wie bei K1 in `P1`).
+        zeileK2NachB = k2;
+        kennungK2 = uebrige.rows[0]?.id;
+        process.stderr.write(`${JOB} P2 (b) GRÜN · K2 ${kennungK2} · drafts-Zeilen 3\n`);
+      } finally {
+        await seite.close({ runBeforeUnload: false }).catch(() => undefined);
+      }
+    },
+    FALL_RAHMEN_MS * 3,
+  );
+
+  // ══════════════════════════════════════════════════════════════════════════════════════════════
+  // P2w · DER BEIM VERLASSEN GESICHERTE ENTWURF K2 — WIEDERGEFUNDEN SAMT ORIGINALQUELLE.
+  // ══════════════════════════════════════════════════════════════════════════════════════════════
+  //
+  // DIE LÜCKE (Auftrag `aufnahme:20260922:dateientwurf-absturz`, Zielzustand
+  // P-C-DATEIENTWURF-VERLASSEN: „… und der Nutzer findet den gespeicherten Bestand samt
+  // Originalquelle wieder"). `P2` belegt K2 nur in der Tabelle; `P3`–`P5` öffnen K1 aus dem
+  // Speicherknopf, nicht den Entwurf aus dem Verlassen-Weg. Dieser Fall öffnet GENAU K2 über die
+  // Adresse, lädt neu und liest Inhalt und Herkunft sichtbar ab — mit denselben Werkzeugen wie `P3`.
+  // Hängt an `P2`: ist `P2` rot, scheitert dieser Fall LAUT an `brauche`, statt still zu fehlen.
+  it(
+    "P2w — den beim Verlassen gesicherten Entwurf K2 öffnen und neu laden: Inhalt und Originalquelle stehen sichtbar da, die Zeile bleibt unverändert",
+    async (ctx) => {
+      if (!verfuegbar) {
+        ctx.skip();
+        return;
+      }
+      const db = brauche(pool, "der Verbindungspool");
+      const kennung = brauche(kennungK2, "die Kennung K2 aus P2 (b)");
+      const standK2 = brauche(zeileK2NachB, "der Stand von K2 nach P2 (b)");
+      const zeilenVorher = await entwurfszahl(db);
+      const seite = await frischeSeite(brauche(kontextA, "die Sitzung aus dem Aufbau"));
+      try {
+        const quellenzeile = persistierteQuellenzeile(DATEI_NAME);
+        await gehe(seite, `/erfassen?draft=${encodeURIComponent(kennung)}`);
+        await aufSichtbarkeitWarten(seite, QUELLSATZ, "Inhalt von K2 aus der realen DOCX");
+        await seite.reload({ waitUntil: "load", timeout: wartebudget("neuLadenAdresse") });
+        await aufZustandWarten(seite, SELEKTOR_DA, "das Blatt steht nach dem Neuladen", BLATT);
+        await aufSichtbarkeitWarten(seite, QUELLSATZ, "Inhalt von K2 nach dem Neuladen");
+        await sichtbarZugesichert(seite, QUELLSATZ, "Inhalt von K2 nach dem Neuladen");
+        await sichtbarZugesichert(
+          seite,
+          quellenzeile,
+          "Quellenanzeige (Originalquelle) von K2 nach dem Neuladen",
+        );
+        expect(
+          await quellenanzeige(seite),
+          "die Quellenanzeige von K2 nennt den Dateinamen nicht",
+        ).toContain(DATEI_NAME);
+        // Öffnen und Neuladen schreiben nichts: keine Doppelanlage, K2 Byte für Byte derselbe.
+        expect(
+          await entwurfszahl(db),
+          "das Wiederöffnen von K2 hat die Zahl der Entwürfe verändert",
+        ).toBe(zeilenVorher);
+        expect(
+          await entwurfszeile(db, kennung),
+          "die Zeile K2 hat sich durch Öffnen und Neuladen verändert",
+        ).toBe(standK2);
+        process.stderr.write(`${JOB} P2w GRÜN · K2 ${kennung}\n`);
       } finally {
         await seite.close({ runBeforeUnload: false }).catch(() => undefined);
       }
