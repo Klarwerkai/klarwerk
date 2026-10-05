@@ -51,7 +51,9 @@ export interface CaptureFileImportProps {
    * wortgleiche Ablehnung (zweimal „zu groß") zu einem NEUEN Ereignis, das einen inzwischen
    * gesetzten Kachelhinweis ablöst. Ohne Nummer zählt nur ein geänderter Text als neu.
    */
-  importMeldungNr?: number;
+  // `| undefined` ausdrücklich: Capture reicht `fileImportMeldung?.nr` durch, und das Projekt prüft
+  // mit `exactOptionalPropertyTypes` (ohne Ablehnung gibt es keine Nummer).
+  importMeldungNr?: number | undefined;
 }
 
 export function CaptureFileImport({
