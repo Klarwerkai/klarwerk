@@ -151,17 +151,22 @@ function mount(): void {
   document.body.appendChild(container);
   const neu = createRoot(container);
   root = neu;
-  // EIN Client und EIN Baum für alle Zeichnungen: ein erneutes `render` hält den Zustand der Fläche
-  // (Keim, Auswahl) und ruft nur die Hooks neu ab — so kommt die Konfliktliste „später" an.
+  // EIN Client und DIESELBE Baumform für alle Zeichnungen: ein erneutes `render` hält den Zustand
+  // der Fläche (Keim, Auswahl) und ruft nur die Hooks neu ab — so kommt die Konfliktliste „später" an.
+  // Die Elemente werden JE ZEICHNUNG NEU erzeugt: dasselbe Elementobjekt erneut übergeben lässt React
+  // den Teilbaum unverändert stehen (gleiche Props-Referenz), `Library` liefe dann gar nicht erneut
+  // und läse den neuen Stand der (nachgebildeten) Hooks nie. Gleiche Typen an gleicher Stelle sind
+  // ein Update, kein Neumontieren — `MemoryRouter` liest `initialEntries` nur beim ersten Mal.
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  const baum = createElement(
-    QueryClientProvider,
-    { client: qc },
-    createElement(MemoryRouter, { initialEntries: [ADRESSE] }, createElement(Library)),
-  );
+  const baum = () =>
+    createElement(
+      QueryClientProvider,
+      { client: qc },
+      createElement(MemoryRouter, { initialEntries: [ADRESSE] }, createElement(Library)),
+    );
   zeichnen = () => {
     act(() => {
-      neu.render(baum);
+      neu.render(baum());
     });
   };
   zeichnen();

@@ -2080,11 +2080,18 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     //       Statusblock für Übersicht und Detailansicht der Arbeitsanleitungen.
     // Kein Bild, kein `CAPTION_AI_TEXT`, kein `documentTitle`: `anbieter` 1 und `traeger` 2 bleiben.
     // Auf dem eigenen Stand GEMESSEN: 430 → 431 („gemessen: 431 Komponenten · 1 Anbieter · 2 Traeger
-    // · Grundmenge 527 Quelldateien"). Nach der Zusammenführung mit dem Hauptstand (437) ist
-    // 437 + 1 = 438 GERECHNET, nicht gemessen — die Bestätigung liefert der nächste Sammlerlauf am
-    // zusammengeführten Kandidaten; meldet er eine andere Zahl, gilt die gemessene.
+    // · Grundmenge 527 Quelldateien"). Nach der Zusammenführung mit dem Hauptstand (437) waren
+    // 437 + 1 = 438 nur GERECHNET.
+    //
+    // DIE 444 IST GEMESSEN, nicht gerechnet: am zusammengeführten Kandidaten 4be0477f meldete der
+    // Sammler wörtlich „gemessen: 444 Komponenten · 1 Anbieter · 2 Traeger · Grundmenge 546
+    // Quelldateien … expected { komponenten: 444, … } to deeply equal { komponenten: 438, … }".
+    // Die sechs Komponenten über 438 kamen mit dem erneut eingemischten Hauptstand (Grundmenge
+    // 536 → 546 Quelldateien); die Prüfstatus-Anzeige fügt seit `FreigabeStatus` kein Bauteil
+    // hinzu. Welche es sind, ist an diesem Arbeitsbaum ohne Git-Verlauf nicht namentlich bestimmt.
+    // `anbieter` 1 und `traeger` 2 sind in derselben Meldung unverändert.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 438,
+      komponenten: 444,
       anbieter: 1,
       traeger: 2,
     });
