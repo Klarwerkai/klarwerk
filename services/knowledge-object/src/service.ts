@@ -106,6 +106,7 @@ import {
   type KnowledgeObject,
   type KnowledgeOwnership,
   type KnowledgeType,
+  type KoAnhangsquelle,
   type KoAppendOp,
   type KoAttachment,
   type KoComment,
@@ -395,6 +396,9 @@ export interface CreateKoInput {
   statement: string;
   type: KnowledgeType;
   category: string;
+  // R-0431 (K2): das Fachgebiet, unabhängig von der Kategorie (Begründung am Modell, types.ts).
+  // Leer oder fehlend = kein Fachgebiet angegeben; es wird nichts abgeleitet.
+  domain?: string | null;
   author: string;
   conditions?: string[];
   measures?: string[];
@@ -599,6 +603,14 @@ export interface DocumentAppendCommit {
   ko: KnowledgeObject;
 }
 
+// R-0431 (K2): die Normalform des Fachgebiets — Ränder weg, Innenleerraum zu einem Zeichen. Ein
+// leerer Wert ist KEIN Fachgebiet (`undefined`), keine leere Zeichenkette im Bestand. Die Längen-
+// grenze prüft die Route (ko-routes.ts, `case "domain"`), dort entsteht die 400-Antwort.
+function normalizeDomain(domain: string | null | undefined): string | undefined {
+  const wert = typeof domain === "string" ? domain.replace(/\s+/g, " ").trim() : "";
+  return wert.length > 0 ? wert : undefined;
+}
+
 // KW-STR / NFR-SEC-04: bodyHtml IMMER serverseitig sanitisieren; statement aus dem
 // HTML ableiten, falls leer (statement bleibt führende Plaintext-Kurzfassung).
 function cleanBody(bodyHtml: string | null | undefined): string | null {
@@ -696,6 +708,14 @@ function belegSchluessel(record: Omit<EvidenceRecord, "id">): string {
     ? `source:${record.sourceId ?? ""}`
     : `attachment:${record.attachmentId ?? ""}`;
 }
+
+/**
+ * Wie viele Projektionszeilen die Hash-Prüfung des Starts gleichzeitig anfragt (`hashIntegritaet`).
+ * Kein Sollwert und keine Frist: die Anfragen reihen sich ohnehin in den Verbindungspool ein; der
+ * Block begrenzt nur, wie viele auf einmal ausstehen und wie viel nach einem frühen Befund noch
+ * unnötig nachläuft.
+ */
+const HASH_PRUEFBLOCK = 100;
 
 export class KoService {
   private readonly repo: KoRepo;
@@ -1585,20 +1605,36 @@ export class KoService {
    * einzige Zusage, die das beantworten kann, ohne den ganzen Text zu vergleichen — und er ist
    * bewusst zeitfrei (der Zeitstempel geht nicht ein), sonst wäre jede Neuableitung ein Unterschied.
    */
+  //
+  // K16 / R-1006 (Aufnahme Suchraum, Nacharbeit 32 — gemessen, nicht geschätzt): diese Prüfung
+  // läuft bei JEDEM Start im `onReady`-Pfad (Entscheidung 06 §3). Bis hierher holte sie die
+  // Projektionszeile JE OBJEKT mit einer eigenen, abgewarteten Anfrage — 100.000 Objekte, 100.000
+  // Rundreisen hintereinander. Gemessen im K16-Lauf (HISTORIE/nacharbeit-32): 10.457 ms allein für
+  // `searchProjectionReadiness`, Ergebnis `alle: true`; Fastifys Startfrist von 10 s riss, die App
+  // wurde auf einem GESUNDEN Bestand nie bereit. Jetzt werden die Zeilen blockweise gleichzeitig
+  // geholt und danach in derselben Reihenfolge geprüft wie vorher. Die Aussage ist zeichengleich:
+  // fehlende Zeile oder abweichender Hash → `false` (die erste in Bestandsreihenfolge), sonst
+  // `true`; ein Datenbankfehler wirft wie bisher. Keine Frist, keine Prüfung und kein Kriterium
+  // ist verändert — nur die Rundreisen laufen nicht mehr einzeln hintereinander.
   private async hashIntegritaet(): Promise<boolean> {
-    for (const ko of await this.repo.list({})) {
-      if (ko.deletedAt) {
-        continue;
-      }
-      const alt = await this.searchProjections.find(ko.id, ko.version);
-      if (!alt) {
-        return false;
-      }
-      const frisch = buildSearchProjection(ko, alt.updatedAt, {
-        classification: alt.classificationSnapshot,
-      });
-      if (frisch.contentHash !== alt.contentHash) {
-        return false;
+    const lebend = (await this.repo.list({})).filter((ko) => !ko.deletedAt);
+    for (let start = 0; start < lebend.length; start += HASH_PRUEFBLOCK) {
+      const block = lebend.slice(start, start + HASH_PRUEFBLOCK);
+      const zeilen = await Promise.all(
+        block.map((ko) => this.searchProjections.find(ko.id, ko.version)),
+      );
+      for (let i = 0; i < block.length; i += 1) {
+        const ko = block[i] as KnowledgeObject;
+        const alt = zeilen[i];
+        if (!alt) {
+          return false;
+        }
+        const frisch = buildSearchProjection(ko, alt.updatedAt, {
+          classification: alt.classificationSnapshot,
+        });
+        if (frisch.contentHash !== alt.contentHash) {
+          return false;
+        }
       }
     }
     return true;
@@ -2032,6 +2068,8 @@ export class KoService {
     // statement bleibt führend; falls leer, aus dem HTML-Body ableiten.
     const statement =
       input.statement.trim() || (bodyHtml ? htmlToPlainText(bodyHtml) : input.statement);
+    // R-0431 (K2): das Fachgebiet in Normalform — oder gar keins.
+    const domain = normalizeDomain(input.domain);
     const ko: KnowledgeObject = {
       id: this.genId(),
       title: input.title,
@@ -2047,6 +2085,9 @@ export class KoService {
       measures: input.measures ?? [],
       type: input.type,
       category: input.category,
+      // R-0431 (K2): nur speichern, wenn jemand ein Fachgebiet mitbringt — kein Leerwert, keine
+      // Ableitung aus der Kategorie.
+      ...(domain ? { domain } : {}),
       tags: input.tags ?? [],
       confidence: input.confidence ?? 0,
       trust: 0,
@@ -3252,6 +3293,8 @@ export class KoService {
       objectId?: string;
       thumbnail?: string;
       size?: number;
+      // R-0163: Herkunft eines aus einer Quelle übernommenen Anhangs (nur der Importweg setzt sie).
+      quelle?: KoAnhangsquelle;
     },
   ): Promise<KnowledgeObject> {
     const ko = await this.require(id);
@@ -3266,6 +3309,7 @@ export class KoService {
       ...(input.objectId ? { objectId: input.objectId } : {}),
       ...(input.thumbnail ? { thumbnail: input.thumbnail } : {}),
       ...(input.size !== undefined ? { size: input.size } : {}),
+      ...(input.quelle ? { quelle: input.quelle } : {}),
     };
     const updated: KnowledgeObject = {
       ...ko,
@@ -3288,6 +3332,118 @@ export class KoService {
     await this.audit?.record({ actor: author, action: "ko.attached", target: id });
     // AUFNAHME 20260922 (bens Befund Runde 2): die Antwort trägt dieselbe Lesefassung wie ein Reload.
     return this.lesefassung(updated);
+  }
+
+  /**
+   * R-0163: einen vorhandenen, aus einer Quelle übernommenen Anhang nachziehen — den Abrufweg
+   * (`quelle`) allein oder, bei einer neuen Quellversion, zusätzlich Inhalt (`objectId`, `size`,
+   * `mime`). Kennung, Name und Hochladender des Anhangs bleiben; es entsteht kein zweiter Eintrag.
+   * Ein neuer Inhalt bekommt wie bei `addAttachment` seinen Beleg.
+   *
+   * BENS BEFUND (Nacharbeit 7) — KEIN „UNVERÄNDERT", WENN SICH ETWAS GEÄNDERT HAT:
+   * - Objektänderung und Audit sind EINE Einheit (`mutateKoTx`): mit Datenbank eine Transaktion,
+   *   ohne Datenbank mit Rücknahme des Objektstands. Scheitert einer der beiden, ist nichts
+   *   geändert, und der Fehler geht an den Aufrufer — dann stimmt „Altbestand erhalten".
+   * - Der Beleg (`EvidenceRepo.append`) kennt keine Transaktion und folgt DANACH. Scheitert er, ist
+   *   der Anhang bereits übernommen; die Methode wirft dann NICHT, sondern meldet `belegOffen`. Der
+   *   fehlende Beleg ist wiederaufnehmbar: `ensureImportAttachmentEvidence` trägt ihn nach — beim
+   *   selben Abgleich und bei jedem weiteren, bis er steht.
+   */
+  async updateAttachment(
+    id: string,
+    attachmentId: string,
+    actor: string,
+    patch: { objectId?: string; size?: number; mime?: string; quelle?: KoAnhangsquelle },
+  ): Promise<{ ko: KnowledgeObject; belegOffen: boolean }> {
+    const geplant: { beleg?: Omit<EvidenceRecord, "id"> } = {};
+    const ko = await this.mutateKoTx(id, (aktuell) => {
+      const vorher = (aktuell.attachments ?? []).find((a) => a.id === attachmentId);
+      if (!vorher) {
+        throw new KoError("NOT_FOUND", "Anhang nicht gefunden.");
+      }
+      const nachher: KoAttachment = {
+        ...vorher,
+        ...(patch.objectId ? { objectId: patch.objectId } : {}),
+        ...(patch.size !== undefined ? { size: patch.size } : {}),
+        ...(patch.mime ? { mime: patch.mime } : {}),
+        ...(patch.quelle ? { quelle: patch.quelle } : {}),
+      };
+      const updated: KnowledgeObject = {
+        ...aktuell,
+        attachments: (aktuell.attachments ?? []).map((a) => (a.id === attachmentId ? nachher : a)),
+      };
+      if (patch.objectId && patch.objectId !== vorher.objectId) {
+        geplant.beleg = {
+          koId: id,
+          koVersion: aktuell.version,
+          kind: "attachment",
+          attachmentId,
+          objectId: patch.objectId,
+          label: nachher.name,
+          mime: nachher.mime,
+          createdBy: actor,
+          createdAt: new Date(this.now()).toISOString(),
+        };
+      }
+      return {
+        updated,
+        value: updated,
+        audit: async (tx?: TxContext) => {
+          await this.audit?.record({ actor, action: "ko.attachment-updated", target: id }, tx);
+        },
+      };
+    });
+    const beleg = geplant.beleg;
+    if (!beleg) {
+      return { ko, belegOffen: false };
+    }
+    try {
+      await this.appendEvidence(beleg);
+      return { ko, belegOffen: false };
+    } catch {
+      return { ko, belegOffen: true };
+    }
+  }
+
+  /**
+   * R-0163 (Nacharbeit 7): trägt fehlende Belege ÜBERNOMMENER Anhänge nach — je Anhang mit
+   * Herkunft (`quelle`) und `objectId`, zu dem die Belegkette keinen `attachment`-Eintrag mit
+   * genau dieser Kennung und diesem Objekt führt. Das ist der Wiederanlauf einer Teilpersistenz
+   * (Anhang übernommen, Beleg gescheitert). Von Hand hochgeladene Anhänge bleiben unberührt.
+   * Rückgabe: die Zahl der nachgetragenen Belege. Ein Schreibfehler wird weitergereicht.
+   */
+  async ensureImportAttachmentEvidence(id: string, actor: string): Promise<number> {
+    if (!this.evidence) {
+      return 0;
+    }
+    const ko = await this.require(id);
+    const belege = await this.evidence.listByKo(id);
+    let nachgetragen = 0;
+    for (const anhang of ko.attachments ?? []) {
+      if (!anhang.quelle || !anhang.objectId) {
+        continue;
+      }
+      const vorhanden = belege.some(
+        (b) =>
+          b.kind === "attachment" && b.attachmentId === anhang.id && b.objectId === anhang.objectId,
+      );
+      if (vorhanden) {
+        continue;
+      }
+      await this.appendEvidence({
+        koId: id,
+        koVersion: ko.version,
+        kind: "attachment",
+        attachmentId: anhang.id,
+        objectId: anhang.objectId,
+        label: anhang.name,
+        mime: anhang.mime,
+        createdBy: actor,
+        createdAt: new Date(this.now()).toISOString(),
+      });
+      nachgetragen += 1;
+    }
+    return nachgetragen;
   }
 
   async removeAttachment(
@@ -5472,6 +5628,37 @@ export class KoService {
       (ko) => ({ ...ko, tags }),
       opts,
     );
+  }
+
+  // R-0431 / R-1728 / FR-LIB-01 (K2): das Fachgebiet nachträglich setzen, ändern oder entfernen.
+  // Bauform wie `setConfidentiality` (per KO serialisiert, Beleg im Audit); die Rechte prüft die
+  // Route (wie `category`). BEWUSST NICHT über `mutateKoMetadata`: dessen Stempel und Suchprojektion
+  // gehören zur Einordnung aus Kategorie und Schlagwörtern (KW-ARCH-G27) — ein Fachgebiet dort
+  // einzuhängen, verschöbe den Bedingungsstempel der Einordnung, ohne dass sich an ihr etwas ändert.
+  // Ein leerer Wert ENTFERNT die Angabe (das Feld fehlt danach wieder); ein unveränderter Wert
+  // ändert das Objekt nicht und erzeugt keinen Beleg.
+  async setDomain(id: string, domain: string, actor: string): Promise<KnowledgeObject> {
+    const nachher = normalizeDomain(domain);
+    return this.mutateKo(id, (ko) => {
+      const vorher = normalizeDomain(ko.domain);
+      if (vorher === nachher) {
+        return { updated: ko, value: ko };
+      }
+      const { domain: _alt, ...ohne } = ko;
+      const updated: KnowledgeObject = nachher ? { ...ohne, domain: nachher } : ohne;
+      return {
+        updated,
+        value: updated,
+        audit: async () => {
+          await this.audit?.record({
+            actor,
+            action: "ko.domain-changed",
+            target: id,
+            payload: { vorher, nachher },
+          });
+        },
+      };
+    });
   }
 
   // SCRUM-358 / AG-14-SERVER-TRUST / VC-P1-1 / FR-VAL-01: serverseitige Konfliktwirkung.

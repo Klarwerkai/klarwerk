@@ -517,6 +517,14 @@ const INVENTAR: readonly string[] = [
   "tests/office-web-anmeldung/uebergabe-keine-auskunft.test.ts",
   "tests/office-web-anmeldung/uebergabe-ohne-cookie.test.ts",
   "tests/office-web-anmeldung/uebergabe-vertrag.test.ts",
+  // Aufnahme m365-anmeldung Runde 2 (25.09.2026): der SSO-Rückweg auf die Dialogseite — liest die
+  // ausgelieferte `anmeldung.html`, deshalb von der Achse gefunden. K2 hat sie gemeldet, das
+  // Inventar nimmt sie nicht still auf.
+  "tests/office-web-anmeldung/sso-rueckweg-zur-dialogseite.test.ts",
+  // Aufnahme m365-anmeldung Runde 3 (25.09.2026): der Sitzungsablauf am ausgelieferten
+  // Seitenfenster (verständlicher Satz, Wiederanmeldung im Panel, Arbeit geht weiter) — fährt
+  // `taskpane.html` über die Fixture. K2 hat sie gemeldet, das Inventar nimmt sie nicht still auf.
+  "tests/office-web-anmeldung/sitzungsablauf-im-seitenfenster.test.tsx",
   // JOB 4085 (OFFICE-PG-ABNAHME): die Abnahme des Word-Rueckwegs gegen eine ECHTE `.docx` durch den
   // produktiven Extraktor — die Word-Auswahl geht durch das ausgelieferte Aufgabenfenster an die
   // echte Route, gemessen wird am zurueckgelesenen Wissensobjekt. Von der Achse `taskpane`

@@ -49,6 +49,40 @@ interface Verwaltung {
 const oeffneVerwaltung = (url: string): Verwaltung =>
   new Pool({ connectionString: url, connectionTimeoutMillis: 15_000 });
 
+// ================================================================================================
+// ERST SCHLIESSEN LASSEN, DANN LÖSCHEN (Aufnahme Suchraum, Nacharbeit 33).
+// ================================================================================================
+//
+// BEFUND (HISTORIE/nacharbeit-33, `tests/ko/g27-welle1-single-active-projection.integration.test.ts`):
+// alle 22 Fälle grün, danach „Uncaught Exception: terminating connection due to administrator
+// command" (PostgreSQL 57P01) an einem Client der isolierten Datenbank im Zustand `_ending: true,
+// _ended: false`. Die Ursache ist die Reihenfolge beim Abräumen: `pool.end()` in den Fällen löst
+// auf, sobald der Pool seine Clients ABGEMELDET hat — nicht erst, wenn deren Verbindungen zu sind.
+// Das folgende `DROP DATABASE … WITH (FORCE)` beendet die noch schliessenden Sitzungen
+// zwangsweise, und ihr Client bekommt den FATAL-Fehler mitten im Schliessen. Sichtbar wurde es,
+// seit die Hash-Prüfung des Starts (`KoService.hashIntegritaet`) mehrere Verbindungen gleichzeitig
+// nutzt: mehr Clients je Pool, mehr Sitzungen im Schliessen.
+//
+// DIE KORREKTUR IST DIE REIHENFOLGE, KEIN WEGFANGEN: vor dem Löschen wird gewartet, bis keine
+// Sitzung mehr auf der Datenbank steht (`pg_stat_activity`). `WITH (FORCE)` bleibt: hält eine
+// Sitzung WIRKLICH offen (ein Leck), beendet der Abbau sie weiterhin — und derselbe Fehler wird
+// sichtbar wie zuvor. Kein Fehler wird abgefangen, keine Frist eines Falls verändert.
+const SCHLIESS_VERSUCHE = 100;
+const SCHLIESS_PAUSE_MS = 20;
+
+async function bisVerbindungenGeschlossen(verwaltung: Verwaltung, name: string): Promise<void> {
+  // `name` stammt aus `isolierterName` (nur [a-z0-9_]) — als Literal sicher; die Verwaltungsschnitt-
+  // stelle nimmt bewusst nur SQL ohne Parameter.
+  const frage = `SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname = '${name}'`;
+  for (let versuch = 0; versuch < SCHLIESS_VERSUCHE; versuch += 1) {
+    const antwort = (await verwaltung.query(frage)) as { rows?: { n?: number }[] } | undefined;
+    if ((antwort?.rows?.[0]?.n ?? 0) === 0) {
+      return;
+    }
+    await new Promise((weiter) => setTimeout(weiter, SCHLIESS_PAUSE_MS));
+  }
+}
+
 /**
  * Ist dieser Abfrageschlüssel ein Passwortträger? `pg-connection-string` übernimmt JEDEN
  * Abfrageparameter in die Konfiguration — `?password=…` ist dort ein vollwertiges Passwort (BEN
@@ -230,6 +264,7 @@ export async function oeffneIsoliertePg(
       herkunft: `KLARWERK_PG_TEST_URL · isolierte Datenbank ${name} auf ${ohneGeheimnis(url)}`,
       abraeumen: async () => {
         try {
+          await bisVerbindungenGeschlossen(verwaltung, name);
           await verwaltung.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`);
         } finally {
           await verwaltung.end();
