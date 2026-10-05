@@ -1,5 +1,6 @@
 import { type ConsoleMessage, type Request, type Response, test as basis } from "@playwright/test";
 import { installiereNavDiagnose } from "./nav-diagnose";
+import { laufEnde } from "./nav-diagnose-lauf";
 
 export { expect } from "@playwright/test";
 
@@ -84,7 +85,9 @@ export const test = basis.extend<{ navDiagnose: undefined }>({
         page.off("requestfailed", fehlgeschlagen);
         page.off("pageerror", seitenfehler);
         await Promise.all(offen);
-        log("test-ende", { status: info.status, pfad: new URL(page.url()).pathname });
+        // Endadresse und Laufkennung in derselben Zeile: Trace/Screenshot desselben
+        // Testergebnisses sind darüber eindeutig diesem Mitschnitt zugeordnet.
+        log("test-ende", laufEnde(info, page.url()));
         const body = zeilen.join("\n");
         await info.attach("navigation-diagnose.jsonl", {
           body,

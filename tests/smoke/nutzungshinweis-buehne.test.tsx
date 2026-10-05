@@ -2,6 +2,7 @@
 // JOB 3367: Kalibrierung der Diagnose, kein Nachweis für den Cloud-Navigationsfehler.
 import { afterEach, expect, it, vi } from "vitest";
 import { installiereNavDiagnose } from "../../tests-smoke/support/nav-diagnose";
+import { laufEnde } from "../../tests-smoke/support/nav-diagnose-lauf";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -99,6 +100,36 @@ it("D3: verspäteter Hinweis und Guard-Dialog werden mit ihrer Reihenfolge erfas
   } finally {
     stop();
   }
+});
+
+it("D5: Schlusszeile bindet Endpfad und Laufkennung, ohne Query oder Hash", () => {
+  const info = {
+    testId: "abc123",
+    title: "Diagnose: offener Nutzungshinweis lässt den Kopfband-Klick navigieren",
+    retry: 0,
+    repeatEachIndex: 0,
+    status: "passed",
+    expectedStatus: "passed",
+    project: { name: "chromium" },
+  };
+  const zeile = laufEnde(info, "http://127.0.0.1:3123/erfassen?token=NICHT-LOGGEN#x");
+  expect(zeile).toEqual({
+    status: "passed",
+    erwartet: "passed",
+    pfad: "/erfassen",
+    lauf: {
+      testId: "abc123",
+      titel: info.title,
+      projekt: "chromium",
+      wiederholung: 0,
+      durchgang: 0,
+    },
+  });
+  expect(JSON.stringify(zeile)).not.toContain("NICHT-LOGGEN");
+  expect(laufEnde({ ...info, status: undefined }, "kaputt")).toMatchObject({
+    status: null,
+    pfad: "(ungültige URL)",
+  });
 });
 
 it("D4: Abbau stellt die nativen Methoden wieder her und beendet den Mitschnitt", () => {
