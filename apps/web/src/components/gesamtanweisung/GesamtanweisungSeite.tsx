@@ -364,14 +364,19 @@ export function GesamtanweisungSeite({
         }}
         // QUELLENÄNDERUNGEN: NICHT an `bearbeiten.gesperrt` — die Standsperre „entschieden" gilt
         // dem Ordnen, nicht der bewussten Übernahme (danach ist die Anleitung wieder Entwurf).
+        // Die RECHTESPERRE gilt dagegen auch hier (Ben, nacharbeit-9): die Übernahme verlangt am
+        // Server `ko.create` wie jeder andere Schreibweg dieser Fläche (`gesamtanweisung-routes.ts`).
         aenderung={{
           fassungenLaden: endpoints.ko.versions,
           uebernehmen: (bausteinId, aufVersion) => {
-            if (version !== null) {
+            if (version !== null && darfVorlegen) {
               uebernehmen.mutate({ version, bausteinId, aufVersion });
             }
           },
-          gesperrt: schreibSperre(lage).gesperrt || version === null || uebernehmen.isPending,
+          gesperrt:
+            mitRechtesperre(schreibSperre(lage), darfVorlegen).gesperrt ||
+            version === null ||
+            uebernehmen.isPending,
         }}
       />
 

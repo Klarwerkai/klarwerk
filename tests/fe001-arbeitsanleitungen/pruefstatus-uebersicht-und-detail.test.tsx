@@ -163,7 +163,7 @@ let container: HTMLDivElement;
 let root: Root;
 let echtesFetch: typeof globalThis.fetch;
 
-function lesestand(stand: AnweisungStand, version: number): AnweisungLesestand {
+function lesestand(stand: AnweisungStand, version: number, neuere = false): AnweisungLesestand {
   return {
     id: "a-1",
     titel: "Start im Homeoffice",
@@ -190,8 +190,9 @@ function lesestand(stand: AnweisungStand, version: number): AnweisungLesestand {
           status: "validated",
         },
         rumpfHtml: "<p>Dockingstation anschließen.</p>",
-        aktuelleKoVersion: 1,
-        aktualisierungsvorschlag: null,
+        // `neuere`: die Quelle hat inzwischen Fassung 2 — die Fläche bietet die Übernahme an.
+        aktuelleKoVersion: neuere ? 2 : 1,
+        aktualisierungsvorschlag: neuere ? { aufVersion: 2 } : null,
         inhalt: { tabellenUeberschriften: [], abbildungen: [], geltung: null },
       },
     ],
@@ -216,9 +217,16 @@ function listeneintrag(stand: AnweisungStand, version: number): AnweisungListene
   };
 }
 
-function serviere(stand: AnweisungStand, version: number): void {
-  globalThis.fetch = (async (eingabe: unknown) => {
+/** Jede Schreibanfrage (POST/PUT/PATCH/DELETE) dieses Falls — Methode und Adresse. */
+let schreibanfragen: string[] = [];
+
+function serviere(stand: AnweisungStand, version: number, neuere = false): void {
+  globalThis.fetch = (async (eingabe: unknown, init?: { method?: string }) => {
     const adresse = String(eingabe);
+    const methode = (init?.method ?? "GET").toUpperCase();
+    if (methode !== "GET") {
+      schreibanfragen.push(`${methode} ${adresse}`);
+    }
     const antwort = (status: number, rumpf: unknown) =>
       ({
         status,
@@ -229,8 +237,8 @@ function serviere(stand: AnweisungStand, version: number): void {
     if (adresse === "/api/gesamtanweisungen") {
       return antwort(200, { eintraege: [listeneintrag(stand, version)] });
     }
-    if (adresse === "/api/gesamtanweisungen/a-1") {
-      return antwort(200, lesestand(stand, version));
+    if (adresse === "/api/gesamtanweisungen/a-1" && methode === "GET") {
+      return antwort(200, lesestand(stand, version, neuere));
     }
     if (adresse === "/api/gesamtanweisungen/a-1/staende") {
       return antwort(200, { staende: [version] });
@@ -256,6 +264,7 @@ afterEach(async () => {
   container.remove();
   globalThis.fetch = echtesFetch;
   sitzung.rolle = "experte";
+  schreibanfragen = [];
 });
 
 async function zeige(pfad: string): Promise<void> {
@@ -324,9 +333,10 @@ async function beideAnsichten(
   version: number,
   rolle: string,
   erwarteterSchritt: string,
+  neuere = false,
 ): Promise<{ liste: Record<string, string | null>; detail: Record<string, string | null> }> {
   sitzung.rolle = rolle;
-  serviere(stand, version);
+  serviere(stand, version, neuere);
   const schritt = `${text("fe001.status.naechsterSchritt")} ${text(erwarteterSchritt)}`;
 
   await zeige("/gesamtanweisungen");
@@ -472,4 +482,57 @@ describe("C · BEN-01: Vorlegen und Ändern nur, wer es darf", () => {
     await beideAnsichten("entwurf", 7, "controller", "fe001.status.schritt.vorlegen");
     expect(knopf("ga-entscheidung-vorlegen")?.disabled).toBe(false);
   });
+});
+
+// ================================================================================================
+// TEIL D · BEN nacharbeit-9 — die Übernahme einer neueren Quellfassung folgt demselben Recht
+// ================================================================================================
+//
+// Befund: der Knopf „Fassung N übernehmen" prüfte nur Lese-/Schreiblage, Fassung und laufende
+// Anfrage — ein Viewer bekam ihn aktiv, obwohl der Server dafür `ko.create` verlangt
+// (`gesamtanweisung-routes.ts`). Die Übernahme aus einer ENTSCHIEDENEN Anleitung bleibt für
+// Berechtigte bewusst möglich (danach wieder Entwurf) — die Standsperre gilt ihr nicht.
+// GEGENPROBE: in `GesamtanweisungSeite.tsx` die Rechtesperre an `aenderung.gesperrt` wieder
+// entfernen → die Viewer-Fälle werden rot (Knopf aktiv, Klick schreibt).
+
+const uebernahmen = (): string[] => schreibanfragen.filter((a) => a.endsWith("/uebernehmen"));
+
+const uebernahmeKnopf = (): HTMLButtonElement | null =>
+  ([...container.querySelectorAll("button")].find(
+    (b) => b.textContent === text("quellen.uebernehmen", { version: 2 }),
+  ) ?? null) as HTMLButtonElement | null;
+
+describe("D · Übernahme einer neueren Quellfassung nur, wer schreiben darf", () => {
+  for (const stand of ["entwurf", "entschieden"] as const) {
+    const schritt = (rolle: string) =>
+      stand === "entschieden"
+        ? "fe001.status.schritt.gilt"
+        : rolle === "viewer"
+          ? "fe001.status.schritt.nurLesen"
+          : "fe001.status.schritt.vorlegen";
+
+    it(`Viewer, ${stand}: die Änderung ist sichtbar, die Übernahme nicht ausführbar`, async () => {
+      await beideAnsichten(stand, 7, "viewer", schritt("viewer"), true);
+      await warteBis(() => uebernahmeKnopf() !== null, "Übernahmeknopf gezeichnet");
+      expect(marke("ga-lesestand-aenderung")).not.toBeNull();
+      expect(uebernahmeKnopf()?.disabled, "Viewer darf nicht übernehmen").toBe(true);
+      await act(async () => {
+        uebernahmeKnopf()?.click();
+      });
+      expect(uebernahmen()).toEqual([]);
+    });
+
+    it(`Experte, ${stand}: die Übernahme ist aktiv und schreibt genau diesen Abschnitt`, async () => {
+      await beideAnsichten(stand, 7, "experte", schritt("experte"), true);
+      await warteBis(() => uebernahmeKnopf() !== null, "Übernahmeknopf gezeichnet");
+      expect(uebernahmeKnopf()?.disabled).toBe(false);
+      await act(async () => {
+        uebernahmeKnopf()?.click();
+      });
+      await warteBis(() => uebernahmen().length > 0, "Übernahme angefragt");
+      expect(uebernahmen()).toEqual([
+        "POST /api/gesamtanweisungen/a-1/bausteine/b-1/uebernehmen",
+      ]);
+    });
+  }
 });
