@@ -114,6 +114,7 @@ import {
   KlaraSessionService,
   pruefeConsentDeckung,
 } from "../../services/app/src/services/klara-session-service";
+import { imBindungsrahmen } from "../../services/reasoner";
 import {
   InMemoryKlaraSessionRepo,
   type ReasonerPolicySource,
@@ -264,13 +265,19 @@ async function klaraWeg(a: Aufbau): Promise<{ erlaubt: boolean; grund: string | 
   return f.erlaubt ? { erlaubt: true, grund: null } : { erlaubt: false, grund: f.grund };
 }
 
-/** Der Word-Weg: dieselbe Entscheidung, wie die Ask-Route sie trifft (`ask-routes.ts`). */
+/**
+ * Der Word-Weg: dieselbe Entscheidung, wie die Ask-Route sie trifft (`ask-routes.ts`) — im
+ * Anfragerahmen, den die Route je Anfrage öffnet (`onRequest`). Ohne Rahmen lässt sich die Freigabe
+ * nicht an den Lauf binden und gilt nicht (Auftrag gesamt-ki-einwilligung, Bens B3/B5).
+ */
 async function wordWeg(a: Aufbau): Promise<boolean> {
-  return ka4Freigabe(a.dienst, a.kopf, AKTEUR, {
-    info: (obj: unknown) => {
-      a.protokoll.push((obj as { ka4: { entscheidung: string; grund?: string } }).ka4);
-    },
-  });
+  return imBindungsrahmen(() =>
+    ka4Freigabe(a.dienst, a.kopf, AKTEUR, {
+      info: (obj: unknown) => {
+        a.protokoll.push((obj as { ka4: { entscheidung: string; grund?: string } }).ka4);
+      },
+    }),
+  );
 }
 
 describe("JOB 3502 · V — beide Verbraucher folgen der einen zentralen Freigabe", () => {

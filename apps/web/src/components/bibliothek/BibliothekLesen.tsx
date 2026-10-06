@@ -83,6 +83,7 @@ import { WissensbeziehungenBereich } from "../WissensbeziehungenBereich";
 // Sprungziel ist die Elementreferenz selbst. `tests/wiki-orientierung/…` (O9) hält beides fest.
 import { type D44Eintrag, d44LeisteZeigen, d44SichtbareEintraege } from "../d44Struktur";
 import { ListEditor, TagEditor } from "../editors";
+import { KenntnisnahmeBereich } from "../kenntnisnahme/KenntnisnahmeBereich";
 import { KNOWLEDGE_TYPES } from "../trust";
 import { Button, Field, TextInput, cx } from "../ui";
 import { AuffrischungHinweis } from "./AuffrischungHinweis";
@@ -2611,6 +2612,14 @@ export function BibliothekLesen({
           onEigenesNachlesen={eigeneBearbeitung.nochmalLesen}
           ablaufSekunden={eigeneBearbeitung.ablaufSekunden}
           onFremdesEnde={nachlesen}
+        />
+        {/* Kenntnisnahme einer gültigen Fassung: die eigene Anforderung (Bestätigen nur per Klick)
+            und — mit Zuweisungsrecht — Anfordern und Übersicht. Ohne beides erscheint nichts.
+            `darfAnfordern` spiegelt `ko.assign` (Controller/Admin) nur für die Anzeige; entschieden
+            wird am Server. */}
+        <KenntnisnahmeBereich
+          koId={koId}
+          darfAnfordern={role === "controller" || role === "admin"}
         />
         {edit ? (
           // ---- Bearbeiten: dasselbe Formular wie bisher, an derselben Stelle -------------------

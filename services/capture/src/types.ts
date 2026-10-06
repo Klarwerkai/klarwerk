@@ -1,4 +1,5 @@
 import type { Confidentiality, DokumentHerkunft, KnowledgeType } from "../../knowledge-object";
+import type { DraftAblauf } from "./ablauf";
 
 // Roh-Inhalt eines Entwurfs (wird später zu einem KO strukturiert/eingereicht).
 export interface DraftPayload {
@@ -89,6 +90,11 @@ export interface DraftPayload {
     done?: boolean;
     demo?: boolean;
   };
+  /**
+   * BILDSCHIRMABLÄUFE — die übernommenen Schritte samt Herkunft (Begründung: `./ablauf.ts`).
+   * `null` leert ausdrücklich (Merge-Vertrag); ins Wissensobjekt reist nur der daraus erzeugte Rumpf.
+   */
+  ablauf?: DraftAblauf | null;
 }
 
 /**
@@ -147,6 +153,17 @@ export interface Draft {
    * Additiv im JSONB, keine Migration.
    */
   dokumentHerkunft?: DokumentHerkunft;
+  /**
+   * AUFNAHME entwurf-in-gemeinsamen-pool-geben (R-2099, FR-CAP-06, Pedi `debbb8e8`) — DER AUTOR HAT
+   * DIESEN ENTWURF BEWUSST IN DEN GEMEINSAMEN POOL GEGEBEN.
+   *
+   * Fehlt das Feld, ist der Entwurf privat — das ist der Standardfall, und jeder Bestand ohne Feld
+   * bleibt es. AM `Draft`, NICHT IM `DraftPayload`, aus demselben Grund wie `createOperation`: kein
+   * Speichern, Fortsetzen oder Einreichen erreicht es (`continueDraft` mischt nur die Nutzlast,
+   * `toKoInput` liest nur die Nutzlast). Setzen und zurücknehmen kann es allein der Autor über
+   * `PUT /api/drafts/:id/pool` (`CaptureService.entwurfInPool`). Additiv im JSONB, keine Migration.
+   */
+  imPool?: true;
   /**
    * JOB 3668 (Papierkorb) — GESETZT BEIM WEICHEN LÖSCHEN.
    *

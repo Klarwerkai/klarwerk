@@ -341,6 +341,8 @@ describe("JOB 3065 H6 · kein Erklärtext im Sichtfeld — gemessen in Chromium"
     "adm.factory.hint",
     "adm.sich.auditIntro",
     "adm.sich.qualityNote",
+    // Verwalteransicht (N-0027): erklärt Spalten und die Detailansicht mit den Kennungen.
+    "auditprotokoll.technik.hilfe",
     "adm.ready.note",
     "adm.backup.help",
   ];

@@ -938,6 +938,11 @@ describe("N11b: Word-Riegel mit realem KA4-Dienst", () => {
           // gesperrt (`klara-policy.ts`, `=== true`). Diese Attrappe stellt einen Betrieb dar,
           // in dem allein die Dokumentzustimmung entscheidet — die Adminfreigabe gehört dazu.
           zentralFreigegeben: true,
+          // NACHGEFÜHRT DURCH Auftrag gesamt-ki-einwilligung (Bens B3): die Urteile folgen der
+          // globalen Wahl, die Zustimmung wird an `answer` gebildet. Sie trägt die Urteile nur,
+          // wenn beide an DENSELBEN Anbieter gehen — ohne Karte trägt sie ausschliesslich
+          // `answer`. Diese Attrappe stellt den gleichen Anbieter für beide ausdrücklich her.
+          aufgabenAnbieter: { answer: "anthropic", global: "anthropic" },
         }),
       });
       const session = await dienst.createSession("u1", "instance-1", {

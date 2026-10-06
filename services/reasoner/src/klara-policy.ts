@@ -126,6 +126,16 @@ export interface KlaraPolicyInput {
   readonly modelLabel?: string | undefined;
   /** Anzeigelabel des LOKALEN Anbieters/Modells, falls eines verdrahtet ist. */
   readonly localProviderLabel?: string | undefined;
+  /**
+   * Auftrag gesamt-ki-einwilligung (Bens B3): der WIRKSAME Anbieter JE AUFGABE
+   * (`configStatus().effectiveAnbieter`, dazu `global` für die Urteile, die der globalen Wahl
+   * folgen). Die Zustimmung wird an der Aufgabe `answer` gebildet; andere Aufgaben dürfen sie nur
+   * benutzen, wenn sie an DENSELBEN Anbieter gehen (`KlaraSessionService.pruefeExterneAusfuehrung`).
+   * Geht in die Konfigurationsversion ein: wechselt irgendeine Aufgabe den Anbieter, ist eine
+   * erteilte Zustimmung entwertet. Fehlt die Karte, darf ausschliesslich `answer` die Zustimmung
+   * benutzen.
+   */
+  readonly aufgabenAnbieter?: Readonly<Record<string, string>> | undefined;
   /** Liegt für die betrachtete Sitzung eine gültige externe Zustimmung vor? */
   readonly externalConsentGranted: boolean;
   /**
@@ -664,13 +674,14 @@ export function klaraConfigurationVersion(
     | "modelLabel"
     | "localProviderLabel"
     | "effectiveAnswerProvider"
+    | "aufgabenAnbieter"
   >,
 ): string {
   const cloud = input.cloudConfigured ? "cloud" : "-";
   const local = input.localConfigured ? "local" : "-";
   // Die EFFEKTIVE Bindung gehört in die Version: wechselt sie von `cloud` auf `local`, wechselt
   // der Empfänger — und genau das muss eine erteilte Zustimmung entwerten (KW-S4-03 §1.3 Nr. 12).
-  return [
+  const teile = [
     "config",
     cloud,
     local,
@@ -678,5 +689,17 @@ export function klaraConfigurationVersion(
     input.providerLabel,
     input.modelLabel ?? "-",
     input.localProviderLabel ?? "-",
-  ].join(":");
+  ];
+  // Bens B3: ein Anbieterwechsel einer ANDEREN Aufgabe (etwa `assist` auf einen zweiten
+  // Cloud-Anbieter) liess die Kennung unverändert, und die Zustimmung lebte weiter. Die Karte steht
+  // deshalb mit drin — sortiert, damit die Kennung nicht von der Reihenfolge der Schlüssel abhängt.
+  // Ohne Karte bleibt die Kennung Zeichen für Zeichen die alte.
+  if (input.aufgabenAnbieter) {
+    const karte = Object.entries(input.aufgabenAnbieter)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+      .map(([aufgabe, anbieter]) => `${aufgabe}=${anbieter}`)
+      .join(",");
+    teile.push(`aufgaben[${karte}]`);
+  }
+  return teile.join(":");
 }

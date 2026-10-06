@@ -10,8 +10,28 @@ import { kernaussageAusHtml } from "../../structure";
 // WP-IC-PAKET-1b (bens ROT-1): decodeHtmlEntities auch für die NICHT-Body-Felder — Confluence liefert
 // Entities nicht nur im Storage-HTML, sondern auch in Titel/Autor/Labels.
 import { decodeHtmlEntities } from "../../structure";
-import type { ConfluenceAttachment, ConfluencePage } from "./rest-client";
+import { type ConfluenceAttachment, type ConfluencePage, istAnhangsliste } from "./rest-client";
 import { confluenceStorageToHtml } from "./storage";
+
+// ================================================================================================
+// R-0549 / R-0163 — DIE QUELLANGABEN, DIE DIESER ADAPTER AN EIN ITEM HÄNGT.
+// ZUSAMMENFÜHRUNG (Nacharbeit 5): daneben steht mains R-0163-Form für die Dateiinhalte
+// (`attachments`/`attachmentsIncomplete`, unten). Beide Felderpaare sind getrennt und reisen
+// nebeneinander am Item.
+// ================================================================================================
+//
+// Eine ERWEITERUNG des quellneutralen `ImportItem`, keine Änderung: dessen Typdatei ist eingefroren
+// (FREEZE-144). Die Form ist feldgleich mit `ImportQuellangaben` in
+// `services/library-analytics/src/quellangaben.ts`; dort ist sie Eingang und wird an der
+// Ingest-Grenze gesäubert (`saeubereQuellangaben`), hier ist sie Ausgang. Der Vertrag zwischen
+// beiden ist das JSON des Items — deshalb darf es hier keine Form geben, die dort fehlt.
+export interface ImportAttachment {
+  externalId: string;
+  name: string;
+  mime?: string;
+  size?: number;
+  url?: string;
+}
 
 // ================================================================================================
 // R-0163 — DIE ANHÄNGE EINER SEITE, QUELLNEUTRAL.
@@ -35,6 +55,11 @@ export interface ConfluenceImportAnhang {
 }
 
 export type ConfluenceImportItem = ImportItem & {
+  // Diese Lieferung (R-0549/R-0163 Herkunftsangaben).
+  sourceReadRestriction?: { groups: string[]; users: string[] };
+  sourceAttachments?: ImportAttachment[];
+  sourceAttachmentsIncomplete?: boolean;
+  // main, R-0163 (Dateiinhalte).
   attachments?: ConfluenceImportAnhang[];
   // Die Anhangsliste konnte nicht oder nicht vollständig gelesen werden. Fehlt das Feld, ist sie
   // vollständig — ein stilles „keine Anhänge" bei einem Lesefehler gibt es nicht.
@@ -154,6 +179,74 @@ export function confluenceReadRestrictions(page: ConfluencePage): KoSourceRestri
 // davon unberührt — dort gilt sein fail-safe „vertraulich" weiter.
 export function confluenceGovernanceConfidentiality(page: ConfluencePage): Confidentiality {
   return isPageRestricted(page) ? "vertraulich" : "intern";
+}
+
+// ================================================================================================
+// R-0549 — WER DIE SEITE IN DER QUELLE LESEN DARF, GEHT NICHT MEHR VERLOREN.
+// ================================================================================================
+//
+// Bis hierher wurde aus der Restriktion genau ein Bit (restringiert ja/nein) und daraus die Stufe.
+// Welche Gruppen und Benutzer lesen dürfen, fiel weg: zwei Seiten mit verschiedenen erlaubten
+// Gruppen ergaben dasselbe Item. Diese Funktion bewahrt die Identitäten — Gruppen über ihren
+// Namen, Benutzer über ihre stabile Kennung (Cloud `accountId`, Server/Data Center `username`
+// bzw. `userKey`), nie über den Anzeigenamen.
+//
+// DURCHGESETZT WIRD HIER NICHTS. Klara kennt keine Leserechte je Gruppe oder Person; die
+// Sichtbarkeit hängt an Rolle, Stufe und Autor (`services/app/src/sichtbarkeit.ts`), und eine
+// Freigabe je Nutzer ist dort ausdrücklich als nicht entschiedene „Variante B" benannt. Die
+// Angabe reist als Herkunft bis an den Anker; ihre Durchsetzung braucht diese Entscheidung.
+export function confluenceReadRestriction(
+  page: ConfluencePage,
+): { groups: string[]; users: string[] } | undefined {
+  const read = page.restrictions?.read?.restrictions;
+  const groups = ((read?.group?.results ?? []) as { name?: unknown }[])
+    .map((g) => (typeof g?.name === "string" ? g.name.trim() : ""))
+    .filter((name) => name.length > 0);
+  const users = (
+    (read?.user?.results ?? []) as { accountId?: unknown; username?: unknown; userKey?: unknown }[]
+  )
+    .map((u) => [u?.accountId, u?.username, u?.userKey].find((v) => typeof v === "string" && v))
+    .filter((id): id is string => typeof id === "string")
+    .map((id) => id.trim());
+  if (groups.length === 0 && users.length === 0) {
+    return undefined;
+  }
+  const sortiert = (werte: string[]) => [...new Set(werte)].sort();
+  return { groups: sortiert(groups), users: sortiert(users) };
+}
+
+// ================================================================================================
+// R-0163 — DIE ANHÄNGE EINER SEITE.
+// ================================================================================================
+//
+// Aus der Anhangsliste werden Name, Typ, Größe und die absolute Abruf-URL (auf der gepinnten
+// Confluence-Adresse). Ein Eintrag ohne Kennung oder Namen wird verworfen — ohne sie lässt er sich
+// weder wiederfinden noch benennen. Die Abruf-URL führt zur Datei in Confluence; wer sie öffnet,
+// braucht dort Leserecht — der Link verspricht nicht mehr.
+export function confluenceAttachments(
+  attachments: readonly ConfluenceAttachment[],
+  baseUrl: string,
+): ImportAttachment[] {
+  const basis = baseUrl.replace(/\/+$/, "");
+  const out: ImportAttachment[] = [];
+  for (const a of attachments) {
+    const externalId = a?.id?.trim();
+    const name = a?.title ? decodeHtmlEntities(a.title).trim() : "";
+    if (!externalId || !name) {
+      continue;
+    }
+    const mime = (a.extensions?.mediaType ?? a.metadata?.mediaType)?.trim();
+    const size = a.extensions?.fileSize;
+    const download = a._links?.download;
+    out.push({
+      externalId,
+      name,
+      ...(mime ? { mime } : {}),
+      ...(typeof size === "number" && Number.isFinite(size) && size >= 0 ? { size } : {}),
+      ...(download?.startsWith("/") ? { url: `${basis}${download}` } : {}),
+    });
+  }
+  return out;
 }
 
 // AUFTRAG-mega27 A2: Elternkette → QUELLNEUTRALER Pfad. Die Elterntitel in Quell-Reihenfolge
@@ -285,6 +378,20 @@ export function mapConfluencePageToImportItem(
   const sourceRestrictions = confluenceReadRestrictions(page);
   // AUFTRAG-mega27 A2: die Elternkette (Wurzel zuerst, ohne die Seite selbst) — oder gar nichts.
   const sourcePath = confluenceSourcePath(page);
+  // R-0549: wer lesen darf (nur bei restringierten Seiten). R-0163: die Anhänge aus dem Expand.
+  const readRestriction = confluenceReadRestriction(page);
+  // Lauf 2: nur eine brauchbare Liste ohne Folgeseite ist VOLLSTÄNDIG. Fehlt sie oder ist sie
+  // unbrauchbar, ist die Anhangslage unbekannt — nie „keine Anhänge" (sonst entfernte die Annahme
+  // bestehende Anhangsquellen auf eine Nicht-Antwort hin).
+  const anhangsliste = page.children?.attachment;
+  const gelieferteAnhaenge = Array.isArray(anhangsliste?.results) ? anhangsliste.results : [];
+  const attachments = confluenceAttachments(gelieferteAnhaenge, opts.baseUrl);
+  // Lauf 3 R2 (Bens B3): verwirft `confluenceAttachments` einen Eintrag (etwa ohne Titel), ist die
+  // Liste NICHT vollständig übernommen — auch wenn die Antwort als Liste brauchbar war.
+  const anhaengeBekannt =
+    istAnhangsliste(anhangsliste) &&
+    !anhangsliste._links?.next &&
+    attachments.length === gelieferteAnhaenge.length;
 
   return {
     title,
@@ -306,6 +413,9 @@ export function mapConfluencePageToImportItem(
     // AUFTRAG-mega27 A2: quellneutrale HIERARCHIE innerhalb des Containers. Ein Jira-Adapter füllt
     // dasselbe Feld später mit Epic/Projekt — der Import-Kern kennt weiterhin kein Confluence-Symbol.
     ...(sourcePath ? { sourcePath } : {}),
+    ...(readRestriction ? { sourceReadRestriction: readRestriction } : {}),
+    ...(attachments.length > 0 ? { sourceAttachments: attachments } : {}),
+    ...(anhaengeBekannt ? {} : { sourceAttachmentsIncomplete: true }),
     ...(typeof page.version?.number === "number" ? { sourceVersion: page.version.number } : {}),
     ...(sourceRestrictions ? { sourceRestrictions } : {}),
     ...(url ? { url } : {}),

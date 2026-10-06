@@ -237,6 +237,17 @@ export interface KoRepo {
   // dauerhaft ohne Feld und damit bei JEDER Bildsuche Kandidat (fehlendes Feld = „unbekannt").
   // Deshalb die eigene, schmale Liste — kein Rumpf, nur Kennungen, indexnah und gedeckelt.
   missingImageNames(limit: number): Promise<string[]>;
+  // R-0098 (inhaltskennung-zweitbegriff): derselbe schmale Nachzug für das ABGELEITETE Feld
+  // `bildInhalte` (Vorkommensanker + Inhaltskennung je Bild). Vertrag wortgleich zu
+  // `setImageNames`/`missingImageNames`: schreibt ATOMAR NUR, WENN DAS FELD FEHLT (ein Voll-Write
+  // gewinnt), ohne rowVersion-CAS, Snapshot oder Audit; die Liste nennt lebende Objekte ohne Feld.
+  // Der Rumpf und damit jeder Vorkommensanker bleibt unberührt. OPTIONAL, weil Test-Doubles den
+  // Vertrag als Objektliteral nachbauen; fehlt die Methode, findet kein Nachzug statt.
+  setBildInhalte?(
+    id: string,
+    bildInhalte: NonNullable<KnowledgeObject["bildInhalte"]>,
+  ): Promise<boolean>;
+  missingBildInhalte?(limit: number): Promise<string[]>;
   // SCRUM-361: begrenzte, vorgefilterte Kandidatenmenge (kein All-Pool-Load) — ODER-Treffer über
   // die Inhalts-Terme, gedeckelt auf `limit`.
   //
@@ -577,6 +588,38 @@ export class InMemoryKoRepo implements KoRepo {
     }
     for (const ko of this.items.values()) {
       if (ko.deletedAt || ko.imageNames !== undefined) {
+        continue;
+      }
+      out.push(ko.id);
+      if (out.length >= cap) {
+        break;
+      }
+    }
+    return Promise.resolve(out);
+  }
+
+  // R-0098: Nachzug von `bildInhalte` — nur-wenn-fehlt, kein Versions-/Audit-Pfad (s. Vertrag).
+  setBildInhalte(
+    id: string,
+    bildInhalte: NonNullable<KnowledgeObject["bildInhalte"]>,
+  ): Promise<boolean> {
+    const ko = this.items.get(id);
+    if (ko && ko.bildInhalte === undefined) {
+      this.items.set(id, { ...ko, bildInhalte: bildInhalte.map((e) => ({ ...e })) });
+      return Promise.resolve(true);
+    }
+    return Promise.resolve(false);
+  }
+
+  // R-0098: Arbeitsliste — kein Papierkorb, Feld fehlt, gedeckelt (Zwilling des SQL in PgKoRepo).
+  missingBildInhalte(limit: number): Promise<string[]> {
+    const cap = Math.max(0, Math.floor(limit));
+    const out: string[] = [];
+    if (cap === 0) {
+      return Promise.resolve(out);
+    }
+    for (const ko of this.items.values()) {
+      if (ko.deletedAt || ko.bildInhalte !== undefined) {
         continue;
       }
       out.push(ko.id);

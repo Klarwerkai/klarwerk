@@ -35,6 +35,7 @@
 // IST DAS ÜBERHAUPT EINE LADUNG, und tragen ihre Felder Typen, mit denen weitergerechnet werden kann?
 
 import { CONFIDENTIALITY_LEVELS, isValidConfidentiality } from "../../knowledge-object";
+import { pruefeAblaufGestalt } from "./ablauf";
 import type { DraftPayload } from "./types";
 
 export type DraftPayloadShapeResult =
@@ -117,6 +118,13 @@ export function validateDraftPayloadShape(wert: unknown): DraftPayloadShapeResul
   const needed = wert.neededValidations;
   if (needed !== undefined && (typeof needed !== "number" || !Number.isFinite(needed))) {
     return { ok: false, message: "draftPayload.neededValidations muss eine endliche Zahl sein." };
+  }
+  // BILDSCHIRMABLÄUFE: der Ablauf ist die Ausnahme von der typ-toleranten Normalisierung darunter.
+  // Ein unvollständiger Ablauf wird abgewiesen statt ausgedünnt — sonst entstünde eine scheinbar
+  // vollständige Anleitung mit fehlenden Schritten (Begründung: `./ablauf.ts`).
+  const ablaufFehler = pruefeAblaufGestalt(wert.ablauf);
+  if (ablaufFehler !== undefined) {
+    return { ok: false, message: ablaufFehler };
   }
   // Die verschachtelten Strukturen werden an der Persistenzgrenze typ-tolerant normalisiert
   // (falscher Container ⇒ Feld fällt weg) und können dort nicht werfen. Hier wird deshalb NUR

@@ -738,6 +738,54 @@ export const TABELLE: Zeile[] = [
     tor: "ko.create",
     erwartet: AB_EXPERTE,
   },
+  // Kenntnisnahme einer gültigen Fassung. Anfordern, Übersicht und Erinnern hängen am vorhandenen
+  // Zuweisungsrecht `ko.assign` (Controller/Admin), die eigenen Anforderungen und das Bestätigen
+  // am Leserecht. Die URLs sind zustandsfrei (erfundene Kennung): hinter dem Tor endet jede Tür im
+  // 404 bzw. 400 — das ist „durchgelassen" und legt nichts an.
+  {
+    gruppe: "kenntnisnahmeRoutes",
+    methode: "GET",
+    pfad: "/api/kos/gibt-es-nicht/kenntnisnahmen",
+    route: "/api/kos/:id/kenntnisnahmen",
+    belegstelle: "services/app/src/routes/kenntnisnahme-routes.ts:110",
+    tor: "ko.assign",
+    erwartet: AB_CONTROLLER,
+  },
+  {
+    gruppe: "kenntnisnahmeRoutes",
+    methode: "POST",
+    pfad: "/api/kos/gibt-es-nicht/kenntnisnahmen",
+    route: "/api/kos/:id/kenntnisnahmen",
+    belegstelle: "services/app/src/routes/kenntnisnahme-routes.ts:133",
+    tor: "ko.assign",
+    erwartet: AB_CONTROLLER,
+  },
+  {
+    gruppe: "kenntnisnahmeRoutes",
+    methode: "POST",
+    pfad: "/api/kenntnisnahmen/gibt-es-nicht/erinnern",
+    route: "/api/kenntnisnahmen/:anforderungId/erinnern",
+    belegstelle: "services/app/src/routes/kenntnisnahme-routes.ts:170",
+    tor: "ko.assign",
+    erwartet: AB_CONTROLLER,
+  },
+  {
+    gruppe: "kenntnisnahmeRoutes",
+    methode: "GET",
+    pfad: "/api/kenntnisnahmen/meine",
+    belegstelle: "services/app/src/routes/kenntnisnahme-routes.ts:191",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "kenntnisnahmeRoutes",
+    methode: "POST",
+    pfad: "/api/kenntnisnahmen/gibt-es-nicht/bestaetigen",
+    route: "/api/kenntnisnahmen/:anforderungId/bestaetigen",
+    belegstelle: "services/app/src/routes/kenntnisnahme-routes.ts:205",
+    tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
   {
     gruppe: "brandingRoutes",
     methode: "GET",
@@ -1309,6 +1357,26 @@ export const TABELLE: Zeile[] = [
     pfad: "/api/output/sources",
     belegstelle: "services/app/src/routes/output-routes.ts:9",
     tor: "ko.read",
+    erwartet: NUR_LESEN,
+  },
+  // produkt:wettbewerb:20261003:lernplattform — die leere Nutzlast endet für jede Rolle in der
+  // Rumpfprüfung (400 BAD_REQUEST), also HINTER dem Rechtetor; anonym bleibt 401.
+  {
+    gruppe: "lmsExportRoutes",
+    methode: "POST",
+    pfad: "/api/output/scorm/pruefen",
+    belegstelle: "services/app/src/routes/lms-export-routes.ts:25",
+    tor: "ko.read",
+    payload: {},
+    erwartet: NUR_LESEN,
+  },
+  {
+    gruppe: "lmsExportRoutes",
+    methode: "POST",
+    pfad: "/api/output/scorm/paket",
+    belegstelle: "services/app/src/routes/lms-export-routes.ts:37",
+    tor: "ko.read",
+    payload: {},
     erwartet: NUR_LESEN,
   },
   {

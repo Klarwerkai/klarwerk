@@ -35,6 +35,11 @@
 // zustande kommt, sind Wissen DIESES Moduls. Läge die Liste in der App, gäbe es zwei Wahrheiten
 // darüber, was Confluence braucht — und die zweite würde beim nächsten Umbau still falsch.
 
+// ZUSAMMENFÜHRUNG (Nacharbeit 10): R-0166 gehört dem ausgegliederten Auftrag
+// `confluence-import-onprem-anmeldung`; dessen mit main integrierte Fassung (unten, ab „R-0166 —
+// CONFLUENCE IM EIGENEN HAUS") ist maßgeblich. Die ältere Fassung dieser Lieferung (Anmeldeweg-Leser
+// in rest-client.ts, eigener Riegel `invalid-auth-mode`) ist zurückgenommen.
+
 /** Die Variablen, die ein Confluence-Zugang braucht. Reihenfolge = Anzeigereihenfolge. */
 export const CONFLUENCE_CREDENTIAL_VARS = [
   "KLARWERK_CONFLUENCE_BASE_URL",

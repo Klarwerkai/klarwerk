@@ -2286,7 +2286,7 @@ const de = {
     "{{name}}: nur txt/md/csv/json/log, docx und pdf werden als Volltext gelesen.",
   "capture.ocr": "OCR → Text",
   "capture.ocrRunningShort": "OCR …",
-  "capture.ocrRunning": "OCR läuft für {{name}} (Worker/Sprachdaten werden geladen) …",
+  "capture.ocrRunning": "Text wird aus {{name}} gelesen … Beim ersten Mal dauert das etwas länger.",
   "capture.ocrDone": "OCR-Text aus {{name}} übernommen.",
   "capture.ocrEmpty": "{{name}}: OCR hat keinen Text erkannt.",
   "capture.ocrFailed": "OCR für {{name}} fehlgeschlagen.",
@@ -2607,7 +2607,7 @@ const de = {
   "capture.fConditions": "Bedingungen",
   "capture.fMeasures": "Maßnahmen",
   "capture.fTags": "Schlagwörter",
-  "capture.fAsset": "Anlage / Asset",
+  "capture.fAsset": "Anlage / Gerät",
   "conf.field": "Vertraulichkeit",
   "conf.confirmPending": "— Vertraulichkeit bestätigen —",
   // JOB 3114 (UX-05, Befund N-0017): der Satz, den der abgewiesene Einreichversuch AM FELD zeigt.

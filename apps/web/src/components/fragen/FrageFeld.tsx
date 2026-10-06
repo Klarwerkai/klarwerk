@@ -32,6 +32,7 @@ export function FrageFeld({
   gesperrt,
   sperrHinweis,
   nurLesen = false,
+  lage = "unten",
 }: {
   wert: string;
   onWert: (wert: string) => void;
@@ -51,11 +52,17 @@ export function FrageFeld({
   sperrHinweis?: string | undefined;
   /** Nur die Vorführung: das Feld zeigt Text, nimmt aber keine Eingabe an. */
   nurLesen?: boolean;
+  /**
+   * R-0286: „Nach dem Absenden ist die Antwort das erste, was der Nutzer liest — direkt unter dem
+   * Eingabefeld." `"oben"` stellt das Feld in seine Quelltextstelle (vor das Ergebnis); `"unten"`
+   * ist die Zielbild-H5-Lage (`order-3 mt-auto`), die die Tutorial-Vorführung weiter nutzt.
+   */
+  lage?: "oben" | "unten";
 }): JSX.Element {
   const { t } = useTranslation();
   return (
     <form
-      className="order-3 mt-auto flex items-center gap-3 rounded-[14px] border border-hairline bg-surface px-[18px] py-3.5 shadow-tile"
+      className={`${lage === "unten" ? "order-3 mt-auto " : ""}flex items-center gap-3 rounded-[14px] border border-hairline bg-surface px-[18px] py-3.5 shadow-tile`}
       onSubmit={(e) => {
         e.preventDefault();
         onAbsenden();

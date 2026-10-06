@@ -456,6 +456,9 @@ export type AskOutcomeKind =
   | "auth"
   | "forbidden"
   | "rate-limited"
+  // R-0590 · Ben nacharbeit-3: die Klara-Antwort unter Zustimmung wurde NICHT ersatzweise anders
+  // beantwortet (409 `KLARA_AUSWEICHWEG_GESPERRT`); der Grund reist in `reason`.
+  | "fallback-blocked"
   | "error"
   | "timeout";
 
@@ -515,6 +518,9 @@ export interface AskOutcome {
   // AUFTRAG-JOB507-D4: bei `rate-limited` die gelesene Wartezeit in Sekunden — `null`, wenn der
   // Server keine oder eine unbrauchbare genannt hat. Die Oberflaeche zeigt dann KEINE Zahl.
   retryAfterSeconds?: number | null;
+  // R-0590 · Ben nacharbeit-3: bei `fallback-blocked` der benannte Grund des Servers
+  // (`fallback_not_equivalent` | `consent_ended`) — gelesen, nie hergeleitet; fehlt er, fehlt das Feld.
+  reason?: string;
   // AUFTRAG-mega77 BLOCK A: hier stand `ungeprueft` — die Zahl der unterdrueckten ungeprueften
   // Treffer aus mega74 Teil 2b, samt der Zusage „0 heisst es gab wirklich nichts". Feld, Zusage und
   // serverseitige Berechnung sind entfernt (services/ask/src/service.ts): die Zahl entstand ohne
@@ -815,6 +821,22 @@ export function performAsk(
             Date.now(),
           ),
         };
+      }
+      // R-0590 · Ben nacharbeit-3: der gesperrte Ausweichweg ist KEIN anonymer Fehler — sein Körper
+      // trägt Kennung und Grund, und die Fläche nennt ihn. Jede andere 409 bleibt der bisherige Fehler.
+      if (res.status === 409) {
+        return res.json().then(
+          (body): AskOutcome => {
+            const sperre = body as { error?: unknown; reason?: unknown } | null;
+            if (sperre?.error !== "KLARA_AUSWEICHWEG_GESPERRT") {
+              return { kind: "error", detail: "HTTP 409" };
+            }
+            return typeof sperre.reason === "string"
+              ? { kind: "fallback-blocked", reason: sperre.reason }
+              : { kind: "fallback-blocked" };
+          },
+          (): AskOutcome => ({ kind: "error", detail: "HTTP 409" }),
+        );
       }
       if (!res.ok) {
         return { kind: "error", detail: `HTTP ${res.status}` };

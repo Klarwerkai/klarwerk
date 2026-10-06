@@ -744,6 +744,9 @@ const AUS_DEN_ENTWURFSROUTEN = [
   "DRAFT_NOT_FOUND",
   "DRAFT_NOT_VISIBLE",
   "DRAFT_OWNER_MISMATCH",
+  // Aufnahme entwurf-in-gemeinsamen-pool-geben: der Eingabefehler des Pool-Schalters
+  // (`PUT /api/drafts/:id/pool`), dieselbe Datei. Am Draht gemessen in EN/NL (s. `GEMESSEN_VON`).
+  "DRAFT_POOL_INVALID",
   "PERMISSION_DENIED",
 ];
 
@@ -1509,6 +1512,12 @@ const GEMESSEN_VON = {
   DRAFT_OWNER_MISMATCH: [
     "tests/offline-identitaet-anlage/fremder-schluessel-gibt-nichts-heraus.test.ts · S6a EN · fremdes Konto beim Anlegen: 409 DRAFT_OWNER_MISMATCH mit englischem Satz",
     "tests/offline-identitaet-anlage/fremder-schluessel-gibt-nichts-heraus.test.ts · S6b NL · fremdes Konto beim Anlegen: 409 DRAFT_OWNER_MISMATCH mit niederländischem Satz",
+  ],
+  // Aufnahme entwurf-in-gemeinsamen-pool-geben · der Satz des Pool-Schalters, gemessen am Tag
+  // seiner Einführung: je Fremdsprache ein Fall, wörtlich UND über `MELDUNGEN.DRAFT_POOL_INVALID`.
+  DRAFT_POOL_INVALID: [
+    "tests/entwurf-pool/pool-rechte.test.ts · A3b EN · Pool-Schalter ohne Wahrheitswert: 400 BAD_REQUEST mit englischem Satz",
+    "tests/entwurf-pool/pool-rechte.test.ts · A3c NL · Pool-Schalter ohne Wahrheitswert: 400 BAD_REQUEST mit niederländischem Satz",
   ],
   /**
    * EHRLICH GELESEN: nur R12 hält den INTERNAL-Satz POSITIV gegen eine Antwort. Die vier anderen

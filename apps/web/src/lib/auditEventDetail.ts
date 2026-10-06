@@ -97,7 +97,10 @@ export interface DetailZeile {
   readonly valueKey?: string;
   /** Die Kennung — sie bleibt IMMER erreichbar, auch wenn ein Name danebensteht. */
   readonly id?: string;
-  /** Nur bei `kind: "id"`: warum hier kein Name steht. */
+  /**
+   * Bei `kind: "id"`: warum hier kein Name steht. Bei `kind: "text"` nur für einen Namen aus dem
+   * Protokoll, dessen Konto im frisch geladenen Verzeichnis fehlt („Konto nicht mehr vorhanden").
+   */
   readonly hinweisKey?: string;
 }
 
@@ -118,6 +121,7 @@ const KONTO_ZIEL_AKTIONEN: ReadonlySet<string> = new Set([
   "auth.logout",
   "notice.acknowledged",
   "user.approve",
+  "user.created",
   "user.delete",
   "user.oidc-linked",
   "user.oidc-linked-unverified",
@@ -144,6 +148,33 @@ export function verzeichnisNamen(
   return new Map((eintraege ?? []).map((e) => [e.id, e.name]));
 }
 
+/**
+ * Verwalteransicht (N-0027, „gelöschte Konten weiterhin benennen"): die Namen, die das Protokoll
+ * SELBST über Konten gespeichert hat — `actorName` zum Akteur, `targetName` zum Kontoziel.
+ *
+ * Ein gelöschtes Konto steht in keinem Verzeichnis mehr. Seit `user.delete` und `user.role-change`
+ * den Namen von damals mitschreiben, kennt die Kette ihn aber — und damit lässt sich auch eine
+ * frühere Anmeldung desselben Kontos benennen. Zugeordnet wird ausschließlich über die Kennung
+ * (Regel 1); bei mehreren Einträgen gilt der jüngste.
+ */
+export function protokollNamen(
+  eintraege: readonly AuditEreignis[] | undefined,
+): ReadonlyMap<string, string> {
+  const namen = new Map<string, string>();
+  for (const e of eintraege ?? []) {
+    const payload = e.payload ?? {};
+    const akteurName = textfeld(payload, "actorName");
+    if (akteurName !== undefined && e.actor !== "" && e.actor !== SYSTEM_AKTEUR) {
+      namen.set(e.actor, akteurName);
+    }
+    const zielName = textfeld(payload, "targetName");
+    if (zielName !== undefined && e.target !== "" && KONTO_ZIEL_AKTIONEN.has(e.action)) {
+      namen.set(e.target, zielName);
+    }
+  }
+  return namen;
+}
+
 /** Ein Zeichenkettenfeld aus der Nutzlast — leer oder falsch getippt zählt als nicht vorhanden. */
 function textfeld(payload: Record<string, unknown>, feld: string): string | undefined {
   const wert = payload[feld];
@@ -156,6 +187,7 @@ function kontoZeile(
   id: string,
   gespeicherterName: string | undefined,
   verzeichnis: VerzeichnisLage,
+  protokoll: ReadonlyMap<string, string>,
 ): DetailZeile {
   if (gespeicherterName !== undefined) {
     // Der Stand von DAMALS schlägt jedes heutige Verzeichnis — und kennt keinen Ladezustand.
@@ -163,6 +195,21 @@ function kontoZeile(
   }
   if (id === "") {
     return { labelKey, kind: "missing" };
+  }
+  const heutigerName = verzeichnis.art === "geladen" ? verzeichnis.namen.get(id) : undefined;
+  const protokollName = protokoll.get(id);
+  if (protokollName !== undefined && (heutigerName === undefined || heutigerName.trim() === "")) {
+    // Das heutige Verzeichnis kennt die Kennung nicht (oder ist noch nicht da) — ein anderer
+    // Eintrag der Kette hat den Namen aber gespeichert. Die Löschaussage bleibt an Regel 2
+    // gebunden: nur bei erfolgreich und abgeschlossen geladenem Verzeichnis.
+    const belegtWeg = verzeichnis.art === "geladen" && verzeichnis.stand === "frisch";
+    return {
+      labelKey,
+      kind: "text",
+      value: protokollName,
+      id,
+      ...(belegtWeg ? { hinweisKey: "audit.detail.accountGone" } : {}),
+    };
   }
   if (verzeichnis.art === "laedt") {
     return { labelKey, kind: "id", id, hinweisKey: "audit.detail.nameLoading" };
@@ -221,6 +268,7 @@ function rollenZeile(labelKey: string, wert: string | undefined): DetailZeile {
 export function auditEventDetail(
   eintrag: AuditEreignis,
   verzeichnis: VerzeichnisLage,
+  protokoll: ReadonlyMap<string, string> = new Map(),
 ): DetailZeile[] {
   const payload = eintrag.payload ?? {};
   const akteur =
@@ -235,6 +283,7 @@ export function auditEventDetail(
           eintrag.actor,
           textfeld(payload, "actorName"),
           verzeichnis,
+          protokoll,
         );
   const ziel = KONTO_ZIEL_AKTIONEN.has(eintrag.action)
     ? kontoZeile(
@@ -242,6 +291,7 @@ export function auditEventDetail(
         eintrag.target,
         textfeld(payload, "targetName"),
         verzeichnis,
+        protokoll,
       )
     : objektZeile(eintrag.target);
   const zeilen: DetailZeile[] = [akteur, ziel];

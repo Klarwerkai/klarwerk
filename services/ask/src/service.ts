@@ -44,6 +44,12 @@ import {
 
 const HELPFUL_TRUST_STEP = 2;
 
+/**
+ * R-0142: wie viele offene Lücken `offeneLueckenZu` je Aufruf höchstens prüft (die jüngsten). Jede
+ * geprüfte Lücke kostet eine Vorauswahl (bis zu `ASK_PREFILTER_MAX_TERMS` Abfragen); der Deckel hält
+ * die Admin-Auskunft auf einer Wissensseite bezahlbar und wird in der Antwort ausgewiesen.
+ */
+const OFFENE_LUECKEN_BEZUG_DECKEL = 50;
 // SCRUM-361 / AG-03 / NFR-PERF-03: Obergrenze der datenquellennahen Kandidaten-Vorauswahl. Bewusst
 // deutlich größer als DEFAULT_TOP_K (8): das Repository liefert eine großzügige, vorgefilterte Menge,
 // die finale, präzise Status-/Trust-/Relevanz-Sortierung + Top-K macht der Reasoner (selectCandidates).
@@ -1444,6 +1450,50 @@ export class AskService {
   async listGaps(): Promise<Gap[]> {
     const gaps = await this.gaps.all();
     return gaps.map(withPriority);
+  }
+
+  /**
+   * ============================================================================================
+   * R-0142 (Confluence-Import, Lauf 5 R3, Bens B7) — WELCHE OFFENEN LÜCKEN EIN WISSENSOBJEKT BETREFFEN.
+   * ============================================================================================
+   *
+   * Eine Lücke entsteht, wenn die Antwortsuche eine Frage nicht beantworten konnte. Sie trägt
+   * keinen Objektbezug — und hier wird KEINE neue Zuordnungsregel erfunden. Der Bezug ist genau
+   * die Rechnung, die diese Domäne für die Frage ohnehin anstellt: die deterministische
+   * Vorauswahl (`prefilterCandidates` über die Inhaltstoken der Frage, `queryTokens`). Eine
+   * offene Lücke betrifft ein Objekt, wenn die Antwortsuche es für ihre Frage HEUTE heranzieht —
+   * es lag also auf dem Tisch, als die Frage offen blieb, oder liegt es jetzt.
+   *
+   * KEIN KI-AUFRUF, KEIN SCHREIBEN: weder Reasoner noch Lückenanlage noch Beleg. Ohne Inhaltstoken
+   * (nur Stoppwörter) hat eine Frage keine Vorauswahl und betrifft kein Objekt.
+   *
+   * GEDECKELT UND AUSGEWIESEN: je Aufruf werden höchstens `deckel` offene Lücken (die jüngsten)
+   * geprüft; `geprueft < offen` heisst, die Antwort ist eine Untergrenze. Die Fragetexte verlassen
+   * diese Methode als `Gap` — die Redaktion je Betrachter (`redactGapForViewer`) ist Sache des
+   * Aufrufers an der Route, wie bei `/api/gaps`.
+   */
+  async offeneLueckenZu(
+    koIds: readonly string[],
+    opts: { readonly deckel?: number } = {},
+  ): Promise<{ bezug: Map<string, Gap[]>; geprueft: number; offen: number }> {
+    const gesucht = new Set(koIds);
+    const bezug = new Map<string, Gap[]>();
+    const offene = (await this.listGaps())
+      .filter((g) => g.status === "offen")
+      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0));
+    const deckel = Math.max(0, Math.floor(opts.deckel ?? OFFENE_LUECKEN_BEZUG_DECKEL));
+    const geprueft = offene.slice(0, deckel);
+    if (gesucht.size > 0) {
+      for (const gap of geprueft) {
+        const kandidaten = await this.prefilterCandidates(queryTokens(gap.question), undefined);
+        for (const ko of kandidaten) {
+          if (gesucht.has(ko.id)) {
+            bezug.set(ko.id, [...(bezug.get(ko.id) ?? []), gap]);
+          }
+        }
+      }
+    }
+    return { bezug, geprueft: geprueft.length, offen: offene.length };
   }
 
   // SCRUM-115 / FE-RISK: aggregierte Zähler der offenen Lücken — NUR Zahlen, KEIN Fragetext. Die

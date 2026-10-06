@@ -273,7 +273,7 @@ export interface ArbeitZeile {
 /** Was eine Meldung beisteuert — strukturell wie `api/types.ts:Notification`. */
 export interface MeldungZeile {
   id: string;
-  kind: "conflict" | "duplicate" | "gap" | "assignment" | "impact";
+  kind: "conflict" | "duplicate" | "gap" | "assignment" | "impact" | "kenntnisnahme";
   title: string;
   seen?: boolean;
   redacted?: boolean;
@@ -297,12 +297,18 @@ const MELDUNG_SEVERITY: Record<MeldungZeile["kind"], ForYouSeverity> = {
   conflict: "critical",
   duplicate: "today",
   assignment: "today",
+  // Eine angeforderte Kenntnisnahme ist Arbeit von heute — wie eine Zuweisung.
+  kenntnisnahme: "today",
   gap: "later",
   impact: "later",
 };
 
 /** Bereichsname je Meldungsart (i18n-Schlüssel) — steht als Meta rechts in der Zeile. */
 export function meldungMetaKey(kind: MeldungZeile["kind"]): string {
+  // Die Kenntnisnahme bringt ihre Texte im eigenen Textmodul mit (`texte/kenntnisnahme.ts`).
+  if (kind === "kenntnisnahme") {
+    return "kenntnisnahme.meldungArt";
+  }
   return `start.fuerdich.art.${kind}`;
 }
 

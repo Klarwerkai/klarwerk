@@ -53,9 +53,15 @@ describe("Fehlersatz · jede Lage bekommt ihren Satz", () => {
     const speichern = new FrontDoorSaveTimeoutError();
     for (const fehler of [client, speichern]) {
       expect(erfassenFehlerSchluessel(fehler)).toBe("einstieg.fehler.frist");
-      expect(erfassenFehlersatz(fehler, tIn("en"), "x")).toBe(tIn("en")("einstieg.fehler.frist"));
-      expect(erfassenFehlersatz(fehler, tIn("en"), "x")).not.toContain("clientseitig");
+      for (const sprache of SPRACHEN) {
+        const satz = erfassenFehlersatz(fehler, tIn(sprache), "x");
+        expect(satz).toBe(tIn(sprache)("einstieg.fehler.frist"));
+        expect(satz).not.toContain("clientseitig");
+        expect(satz).not.toBe("einstieg.fehler.frist");
+      }
     }
+    // Drei Sprachen, drei verschiedene Sätze — kein stiller deutscher Rückfall.
+    expect(new Set(SPRACHEN.map((s) => tIn(s)("einstieg.fehler.frist"))).size).toBe(3);
   });
 
   it("F4 · Gegenprobe: eine fachliche Servermeldung gewinnt weiter (JOB 2690 F5)", () => {
@@ -79,7 +85,10 @@ describe("Fehlersatz · jede Lage bekommt ihren Satz", () => {
 /** Die Hilfetexte, die Knöpfe oder Wege des Blattes beim Namen nennen. */
 const HILFE_MIT_ZITAT = [
   "chelp.wizardSteps.body",
-  "chelp.saveDraftHelp.body",
+  // Aufnahme entwurf-in-gemeinsamen-pool-geben: der angezeigte Text zu „Entwurf speichern" steht
+  // seither unter diesem Schlüssel (`lib/captureHelp.ts`); `chelp.saveDraftHelp.body` liest keine
+  // Fläche mehr.
+  "entwurfspool.saveDraftHelp.body",
   "chelp.discardHelp.body",
   "fd.whatOnSaveBody",
   "einstieg.knopf.entwurf",

@@ -321,6 +321,13 @@ export interface KlaraSessionRepo {
    * keine.
    */
   purgeExpiredSessions(vor: string): Promise<number>;
+
+  /**
+   * Auftrag gesamt-ki-einwilligung (Bens B2, Runde 2): die Kennungen genau der Sitzungen, die
+   * `purgeExpiredSessions(vor)` entfernen würde — dieselbe Bedingung. Der Dienst trägt davor die
+   * fehlenden Endeinträge des Prüfprotokolls nach, aus den Zeilen, die danach nicht mehr existieren.
+   */
+  findExpiredSessionIds(vor: string): Promise<readonly string[]>;
 }
 
 export class InMemoryKlaraSessionRepo implements KlaraSessionRepo {
@@ -505,6 +512,15 @@ export class InMemoryKlaraSessionRepo implements KlaraSessionRepo {
       [...this.consents.values()]
         .filter((c) => c.sessionId === sessionId)
         .sort((a, b) => a.consentId.localeCompare(b.consentId)),
+    );
+  }
+
+  findExpiredSessionIds(vor: string): Promise<readonly string[]> {
+    const grenze = Date.parse(vor);
+    return Promise.resolve(
+      [...this.sessions.values()]
+        .filter((s) => Date.parse(s.expiresAt) < grenze)
+        .map((s) => s.sessionId),
     );
   }
 
@@ -930,6 +946,14 @@ export class PgKlaraSessionRepo implements KlaraSessionRepo {
    * ohne Sitzung zurückbleibt. Keine Revisionsprüfung: eine Sitzung, deren Frist vor der Grenze
    * liegt, kann kein Dienstweg mehr berühren (jeder prüft `expiresAt` vor dem Schreiben).
    */
+  async findExpiredSessionIds(vor: string): Promise<readonly string[]> {
+    const res = await this.pool.query<{ session_id: string }>(
+      "SELECT session_id FROM klara_sessions WHERE expires_at < $1",
+      [vor],
+    );
+    return res.rows.map((r) => r.session_id);
+  }
+
   async purgeExpiredSessions(vor: string): Promise<number> {
     const client: PoolClient = await this.pool.connect();
     try {

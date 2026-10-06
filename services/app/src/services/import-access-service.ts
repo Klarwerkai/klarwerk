@@ -100,7 +100,8 @@ export interface ImportAccessStatus {
   readonly betreiber?: { readonly freigegeben: boolean; readonly an: boolean };
   readonly credentials: { name: string; present: boolean }[];
   readonly credentialsUsable: boolean;
-  readonly blocker: "missing" | "insecure-base-url" | null;
+  // R-0166: `invalid-auth-mode` nur bei Confluence (KLARWERK_CONFLUENCE_AUTH mit unbekanntem Wert).
+  readonly blocker: "missing" | "insecure-base-url" | "invalid-auth-mode" | null;
   /**
    * Der letzte belegte erfolgreiche Import — ISO-Zeichenkette, wie sie in der Ablage steht, oder
    * `null`. `null` ist eine AUSSAGE („dazu ist nichts belegt") und kein Platzhalter.

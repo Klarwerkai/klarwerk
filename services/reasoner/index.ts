@@ -233,3 +233,14 @@ export {
   type KlaraConsentStatus,
   type KlaraSessionRepo,
 } from "./src/klara-policy-store";
+// Auftrag gesamt-ki-einwilligung (Bens B3, Runde 2): die Klara-Anbieterbindung eines Laufs — die App
+// startet Läufe nach bestätigter Dokumentzustimmung darin, der Reasoner wertet sie beim Kettenbau aus.
+export {
+  imBindungsrahmen,
+  bindeAnbieter,
+  bindeZustimmung,
+  anbieterZugelassen,
+  // R-0590 · Ben nacharbeit-1: der gesperrte Ausweichweg — die App bildet ihn auf 409 mit Grund ab.
+  KlaraAusweichwegGesperrtFehler,
+  type KlaraAusweichwegGrund,
+} from "./src/anbieterbindung";

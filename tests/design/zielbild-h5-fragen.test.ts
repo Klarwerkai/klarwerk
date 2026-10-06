@@ -43,7 +43,13 @@ const TITEL = "Profile in Spritzzonen";
 // modellfreien Einzeltest (`tests/app/job3064-fussnote-markiert.test.tsx`).
 const AUSSAGE =
   "Offene, ablaufende Profile sind zu bevorzugen; vollverschweisste Hohlprofile sind in Spritzzonen zu vermeiden [1].";
-const FRAGE = "Welche Profile sind in Spritzzonen erlaubt?";
+// WARUM NICHT MEHR „… erlaubt?“ — dieselbe Umstellung wie `h5-funktionsinventar.test.ts` (Hauptstand
+// 2b57cad5): seit R-0473 (`services/ask/src/service.ts`, `decktAlleFragebegriffe`) müssen ALLE
+// gebundenen Fragebegriffe in der Quelle vorkommen. „erlaubt“ steht in AUSSAGE nirgends; die Frage
+// wurde vertragsgemäß eine Wissenslücke, es entstand keine Antwortkarte, und der Aufbau lief in seine
+// Zeitgrenze (Kandidat 3d4d49f7, Nacharbeit 1). Die Frage benutzt jetzt nur Begriffe, die der Eintrag
+// wirklich trägt; alle Messungen und Sollwerte darunter sind unverändert.
+const FRAGE = "Welche Profile sind in Spritzzonen zu bevorzugen?";
 
 // ---- Das Zielbild lesen ---------------------------------------------------------------------------
 function zielStil(ziel: string, ...anker: string[]): string | null {
@@ -187,8 +193,18 @@ const ELEMENTE = `([pfadFnSrc]) => {
     chipSymbol: p(chipSymbol), chipText: p(chipText), chipTextWort: chipText ? (chipText.textContent || '').trim() : null,
     knopfzeile: p(knopfzeile), knopf: p(knopf), knopfWort: knopf ? (knopf.textContent || '').trim() : null,
     feld: p(feld), input: p(input), senden: p(senden), sendenSymbol: p(sendenSymbol), mikro: p(mikro),
-    // Die SICHTBARE Lage: das Feld steht unter der Antwortkarte (Zielbild Z.45, margin-top: auto).
-    feldUnterKarte: feld && karte ? feld.getBoundingClientRect().top >= karte.getBoundingClientRect().bottom : null,
+    // R-0286 (Originalauftrag, Ben Nacharbeit 2): die Antwort steht SICHTBAR direkt UNTER dem Feld.
+    // Bis dahin stand hier die Zielbild-H5-Lage („das Feld unter der Antwortkarte", Z.45).
+    feldUeberKarte: feld && karte ? feld.getBoundingClientRect().bottom <= karte.getBoundingClientRect().top : null,
+    abstandFeldKarte: feld && karte ? Math.round(karte.getBoundingClientRect().top - feld.getBoundingClientRect().bottom) : null,
+    // „direkt": zwischen Feld und Karte steht KEIN sichtbarer Text — kein Hinweis, kein Kasten.
+    zwischenFeldUndKarte: feld && karte && spalte ? [...spalte.querySelectorAll('*')].filter((e) => {
+      if (e.children.length > 0) return false;
+      const r = e.getBoundingClientRect();
+      if (r.height === 0 || r.width === 0) return false;
+      if (!(e.textContent || '').trim()) return false;
+      return r.top >= feld.getBoundingClientRect().bottom && r.bottom <= karte.getBoundingClientRect().top;
+    }).map((e) => (e.textContent || '').trim()) : null,
     // Und im Quelltext steht es davor — D-034 („erst fragen, dann erklären") bleibt eingelöst.
     feldVorErgebnisImQuelltext: feld && karte ? (feld.compareDocumentPosition(karte) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0 : null,
   };
@@ -223,7 +239,9 @@ interface Selektoren {
   senden: string | null;
   sendenSymbol: string | null;
   mikro: string | null;
-  feldUnterKarte: boolean | null;
+  feldUeberKarte: boolean | null;
+  abstandFeldKarte: number | null;
+  zwischenFeldUndKarte: string[] | null;
   feldVorErgebnisImQuelltext: boolean | null;
   aufgeloest: boolean;
   vollstaendig: boolean;
@@ -552,13 +570,22 @@ describe("JOB 3064 · H5 · die Fragenfläche gegen `Fragen.dc.html` — die ech
     expect(await messen(sel?.sendenSymbol, "width")).toBe("16px");
     expect(await messen(sel?.sendenSymbol, "stroke-width")).toBe("2.2px");
   });
-  it("V16 · das Feld steht UNTER der Antwortkarte (Z.45, margin-top: auto) — und im Quelltext davor", () => {
+  it("V16 · R-0286: die Antwort steht sichtbar DIREKT UNTER dem Feld — und im Quelltext dahinter", () => {
+    // NACHGEFÜHRT AUF DEN ORIGINALAUFTRAG (Ben, Nacharbeit 2): bis dahin bestätigte dieser Fall die
+    // Zielbild-H5-Lage „Feld unter der Antwortkarte" (Z.45, margin-top: auto) — das Gegenteil von
+    // R-0286 („die Antwort … direkt unter dem Eingabefeld"). Gemessen wird jetzt die Lage, die der
+    // Auftrag verlangt; der Zielbildwert Z.45 ist damit bewusst nicht mehr eingehalten.
     expect(fehler).toBeNull();
-    // Die sichtbare Lage ist die des Zielbilds …
-    expect(sel?.feldUnterKarte).toBe(true);
-    // … und die Quelltextreihenfolge bleibt die von D-034 (JOB 1106): erst fragen, dann erklären.
-    // Beides gleichzeitig ist der Grund für `order` im Flex-Container; wer eines von beiden
-    // aufgibt, macht genau diesen Fall rot.
+    console.info(
+      `R-0286 · V16 · Abstand Feld→Karte ${sel?.abstandFeldKarte}px · dazwischen ${JSON.stringify(sel?.zwischenFeldUndKarte)}`,
+    );
+    // Die Karte beginnt unterhalb des Feldes …
+    expect(sel?.feldUeberKarte, "die Antwortkarte steht nicht unter dem Feld").toBe(true);
+    // … und DIREKT darunter: kein sichtbarer Text dazwischen, nur der Spaltenabstand.
+    expect(sel?.zwischenFeldUndKarte, "zwischen Feld und Antwort steht etwas").toEqual([]);
+    expect(sel?.abstandFeldKarte ?? 9999).toBeLessThanOrEqual(48);
+    // Die Quelltextreihenfolge bleibt die von D-034 (JOB 1106): erst fragen, dann die Antwort —
+    // und jetzt stimmt die sichtbare Folge mit ihr überein.
     expect(sel?.feldVorErgebnisImQuelltext).toBe(true);
   });
 
@@ -786,4 +813,386 @@ describe("JOB 3064 · H5 · die Fragenfläche gegen `Fragen.dc.html` — die ech
       expect(chip, "der Modus-Chip ist unsichtbar").toBeGreaterThan(0);
     });
   });
+});
+
+// ================================================================================================
+// R-1580 (Ben, Nacharbeit 2) — DIE FRAGENFLÄCHE WIRD BEDIENT, NICHT NUR VERMESSEN.
+// ================================================================================================
+//
+// „Gesamten Start-/Fragenumfang einschließlich Quellen-Chips, Kopieren, Rückmeldung und DE/EN
+// prüfen … echte Browserprüfung fehlt." Die Fälle oben messen Gestalt und Menüinventar; I7 im
+// Funktionsinventar öffnet nur „Mehr". Hier läuft die BEDIENKETTE — und zwar ausschliesslich über
+// die Tastatur, in den beiden schmalen Breiten, die bisher offen waren:
+//
+//   · DE bei 390 px und EN bei 320 px (Sprache über die gespeicherte Wahl `kw.sprache`, wie nach
+//     einer Wahl unter /profil — der Wortlaut jeder Erwartung kommt aus DEM Wörterbuch der Sprache).
+//   · Vom Seitenanfang per Tab ins Fragefeld, Frage tippen, Eingabetaste.
+//   · Per Tab zu „Kopieren", Eingabetaste — und die ZWISCHENABLAGE wird zurückgelesen: Antworttext,
+//     Quellentitel und Quellkennung müssen darin stehen.
+//   · Per Tab zu „Hat geholfen", Eingabetaste — der Server muss die Rückmeldung für GENAU die
+//     tragende Quelle angenommen haben (2xx am echten `POST /api/ask/helpful`), und der Knopf sagt
+//     danach „Danke!" in der Sprache der Fläche.
+//   · Per Umschalt+Tab zurück zum Quellen-Chip, Eingabetaste — die Quelle öffnet sich unter
+//     `/wissen/<Kennung>` und zeigt ihren Titel.
+//
+// `https`: die Zwischenablage gibt es nur im sicheren Kontext (dieselbe Umstellung wie
+// `h5-funktionsinventar.test.ts`; ein Zertifikat ist nicht im Spiel, die Route beantwortet alles).
+// Gesetzt wird wie oben GENAU EINE lesende Auskunft (Verfügbarkeit des Modells) — die Antwort, die
+// Rückmeldung und die Quelle kommen aus der echten App. Kein Cloud-Modell.
+interface Tastatur {
+  press(taste: string): Promise<void>;
+  type(text: string): Promise<void>;
+}
+interface BedienSeite extends Seite {
+  keyboard: Tastatur;
+  close(): Promise<void>;
+}
+
+const ORIGIN_SICHER = "https://klarwerk.test";
+const BEDIENFAELLE = [
+  { name: "DE · 390 px", sprache: "de", breite: 390, hoehe: 844 },
+  { name: "EN · 320 px", sprache: "en", breite: 320, hoehe: 700 },
+] as const;
+
+const FOKUS_FELD = `() => { const a = document.activeElement; return !!a && a.matches('[data-testid="page-fragen"] form input'); }`;
+const FOKUS_KNOPF = `(wort) => { const a = document.activeElement; return !!a && a.tagName === 'BUTTON' && (a.textContent || '').trim() === wort; }`;
+const FOKUS_CHIP = `() => { const a = document.activeElement; return !!a && a.matches('[data-testid="ask-quellen-chip"]'); }`;
+
+describe("R-1580 · die Fragenfläche bedient: Quelle öffnen, Kopieren, Rückmeldung — DE/EN, Tastatur, 320/390 px", () => {
+  let bBrowser: Browser | null = null;
+  let bApp: ReturnType<typeof buildApp> | null = null;
+  let bFehler: string | null = null;
+  let bToken = "";
+  let koId = "";
+  const rueckmeldungen: Array<{ status: number; koId: string | null }> = [];
+
+  beforeAll(async () => {
+    try {
+      if (!existsSync(join(DIST, "index.html"))) {
+        throw new Error("apps/web/dist fehlt — vorher ./tools/build (im Tor laeuft es immer)");
+      }
+      const services = buildServices();
+      bApp = buildApp(services);
+      await bApp.ready();
+      await bApp.inject({
+        method: "POST",
+        url: "/api/auth/register",
+        payload: { name: "Pedi", email: "pedi@r1580.test", password: "geheim12345" },
+      });
+      const login = await bApp.inject({
+        method: "POST",
+        url: "/api/auth/login",
+        payload: { email: "pedi@r1580.test", password: "geheim12345" },
+      });
+      bToken = (login.json() as { token: string }).token;
+      const me = await bApp.inject({
+        method: "GET",
+        url: "/api/auth/me",
+        headers: { authorization: `Bearer ${bToken}` },
+      });
+      const autorId = (me.json() as { id: string }).id;
+      await bApp.inject({
+        method: "POST",
+        url: "/api/auth/notice",
+        headers: { authorization: `Bearer ${bToken}` },
+      });
+      const ko = await services.ko.create({
+        title: TITEL,
+        statement: AUSSAGE,
+        type: "best_practice",
+        category: "Konstruktion",
+        author: autorId,
+        tags: ["Profile", "Spritzzone", "Hohlprofile"],
+      } as never);
+      koId = (ko as { id: string }).id;
+      await services.ko.setValidationState(koId, { trust: 92, status: "validiert" });
+    } catch (e) {
+      bFehler = String(e).split("\n").slice(0, 3).join(" | ");
+    }
+  }, 240_000);
+
+  afterAll(async () => {
+    await bBrowser?.close();
+    await bApp?.close();
+  }, 60_000);
+
+  // EIN BROWSER JE FALL (Nacharbeit 5): im `--single-process`-Betrieb beendet das Schliessen der
+  // letzten Seite den ganzen Chromium-Prozess — gemessen: der zweite Fall scheiterte an
+  // „browser.newPage: Target page, context or browser has been closed“, der erste war grün. Jeder
+  // Fall startet deshalb seinen eigenen Browser und schliesst ihn wieder.
+  async function browserStarten(): Promise<Browser> {
+    const require = createRequire(import.meta.url);
+    const { chromium } = require("playwright") as {
+      chromium: { launch(o: Record<string, unknown>): Promise<Browser> };
+    };
+    return chromium.launch({
+      headless: true,
+      args: ["--no-sandbox", "--disable-gpu", "--single-process", "--no-zygote"],
+    });
+  }
+
+  async function bedienSeite(sprache: string, breite: number, hoehe: number): Promise<BedienSeite> {
+    const s = (await (bBrowser as Browser).newPage({
+      viewport: { width: breite, height: hoehe },
+      permissions: ["clipboard-read", "clipboard-write"],
+    })) as BedienSeite;
+    await s.addInitScript(
+      `try { localStorage.setItem("kw.designTheme", "modern"); localStorage.setItem("kw.sprache", ${JSON.stringify(sprache)}); } catch (e) {}`,
+    );
+    const a = bApp as ReturnType<typeof buildApp>;
+    await s.route(`${ORIGIN_SICHER}/**`, async (route) => {
+      const req = route.request();
+      const url = new URL(req.url());
+      if (url.pathname.startsWith("/api/")) {
+        const kopf: Record<string, string> = {};
+        for (const [k, v] of Object.entries(req.headers())) {
+          if (!["host", "origin", "referer", "cookie"].includes(k.toLowerCase())) kopf[k] = v;
+        }
+        kopf.authorization = `Bearer ${bToken}`;
+        const body = req.postData();
+        const res = await a.inject({
+          method: req.method() as "GET",
+          url: url.pathname + url.search,
+          headers: kopf,
+          ...(body !== null ? { payload: body } : {}),
+        });
+        // Die Rückmeldung wird am ECHTEN Server beobachtet, nicht angenommen: Status und Ziel.
+        if (url.pathname === "/api/ask/helpful" && req.method() === "POST") {
+          let ziel: string | null = null;
+          try {
+            ziel = (JSON.parse(body ?? "{}") as { koId?: string }).koId ?? null;
+          } catch {
+            ziel = null;
+          }
+          rueckmeldungen.push({ status: res.statusCode, koId: ziel });
+        }
+        // Dieselbe EINE gesetzte Auskunft wie oben (Begründung dort): Verfügbarkeit, nie Antwort.
+        if (url.pathname === "/api/reasoner/status" && res.statusCode === 200) {
+          const echt = JSON.parse(res.body) as {
+            active?: boolean;
+            tasks?: Record<string, boolean>;
+          };
+          await route.fulfill({
+            status: 200,
+            body: JSON.stringify({
+              ...echt,
+              active: true,
+              tasks: { ...(echt.tasks ?? {}), answer: true },
+            }),
+            headers: { "content-type": "application/json" },
+          });
+          return;
+        }
+        await route.fulfill({
+          status: res.statusCode,
+          body: res.body,
+          headers: {
+            "content-type": (res.headers["content-type"] as string) ?? "application/json",
+          },
+        });
+        return;
+      }
+      const d = distDatei(url.pathname);
+      await route.fulfill({ status: 200, body: d.body, contentType: d.typ });
+    });
+    return s;
+  }
+
+  /** Tab (oder Umschalt+Tab), bis das Prädikat auf das fokussierte Element zutrifft. */
+  async function tabBis(
+    s: BedienSeite,
+    was: string,
+    praedikat: string,
+    arg?: unknown,
+    rueckwaerts = false,
+  ): Promise<number> {
+    for (let schritt = 1; schritt <= 80; schritt++) {
+      await s.keyboard.press(rueckwaerts ? "Shift+Tab" : "Tab");
+      if (await s.evaluate<boolean>(fn(praedikat), arg)) return schritt;
+    }
+    throw new Error(`Tastatur: „${was}“ nach 80 Schritten nicht erreicht`);
+  }
+
+  for (const fall of BEDIENFAELLE) {
+    it(`${fall.name}: Feld → Kopieren (Zwischenablage) → Hat geholfen (Server) → Quellen-Chip (Quelle offen), nur per Tastatur`, async () => {
+      expect(bFehler, "Bedienvorrichtung nicht aufgebaut").toBeNull();
+      const tt = i18n.getFixedT(fall.sprache);
+      bBrowser = await browserStarten();
+      const s = await bedienSeite(fall.sprache, fall.breite, fall.hoehe);
+      try {
+        const vorher = rueckmeldungen.length;
+        await s.goto(`${ORIGIN_SICHER}/fragen`, { waitUntil: "load", timeout: 60_000 });
+        await s.waitForFunction(
+          fn(`() => !!document.querySelector('[data-testid="page-fragen"] form input')`),
+          undefined,
+          { timeout: 30_000 },
+        );
+        // Die Fläche spricht wirklich die gewählte Sprache (EN wird im Produktionsbau nachgeladen —
+        // deshalb wird auf den Wortlaut GEWARTET, nicht einmal gelesen).
+        await s.waitForFunction(
+          fn(
+            `(w) => { const i = document.querySelector('[data-testid="page-fragen"] form input'); return !!i && i.getAttribute('placeholder') === w; }`,
+          ),
+          tt("ask.placeholder"),
+          { timeout: 30_000 },
+        );
+
+        // 1 · vom Seitenanfang per Tab ins Feld, tippen, Eingabetaste.
+        const bisFeld = await tabBis(s, "Fragefeld", FOKUS_FELD);
+        await s.keyboard.type(FRAGE);
+        await s.waitForFunction(
+          fn(
+            `() => { const b = document.querySelector('[data-testid="page-fragen"] form button[type="submit"]'); return !!b && !b.disabled; }`,
+          ),
+          undefined,
+          { timeout: 30_000 },
+        );
+        await s.keyboard.press("Enter");
+        await s.waitForFunction(
+          fn(`() => !!document.querySelector('[data-testid="ask-answer"] .ask-answer-body')`),
+          undefined,
+          { timeout: 60_000 },
+        );
+        // R-0287 im Browser und in der Sprache der Fläche: die Warnung steht ohne Griff da.
+        const warnung = await s.evaluate<string>(
+          fn(
+            `() => ((document.querySelector('[data-testid="ask-warnungen"]') || {}).innerText || '')`,
+          ),
+        );
+        expect(warnung).toContain(tt("ask.checkCaveat.title"));
+
+        // 2 · Kopieren per Tastatur — und die Zwischenablage zurücklesen.
+        const bisKopieren = await tabBis(
+          s,
+          tt("ask.export.copy"),
+          FOKUS_KNOPF,
+          tt("ask.export.copy"),
+        );
+        await s.keyboard.press("Enter");
+        await s.waitForFunction(
+          fn(`(w) => (document.body.innerText || '').includes(w)`),
+          tt("ask.export.copied"),
+          { timeout: 10_000 },
+        );
+        const ablage = await s.evaluate<string>(fn("() => navigator.clipboard.readText()"));
+        expect(ablage, "Antworttext fehlt in der Zwischenablage").toContain(
+          "Profile sind zu bevorzugen",
+        );
+        expect(ablage, "Quellentitel fehlt in der Zwischenablage").toContain(TITEL);
+        expect(ablage, "Quellkennung fehlt in der Zwischenablage").toContain(koId);
+
+        // 3 · Rückmeldung per Tastatur — vom Server angenommen, für die tragende Quelle.
+        const bisRueckmeldung = await tabBis(s, tt("ask.helpful"), FOKUS_KNOPF, tt("ask.helpful"));
+        await s.keyboard.press("Enter");
+        await s.waitForFunction(
+          fn(
+            `(w) => [...document.querySelectorAll('button')].some((b) => (b.textContent || '').trim() === w)`,
+          ),
+          tt("ask.thanked"),
+          { timeout: 15_000 },
+        );
+        const neu = rueckmeldungen.slice(vorher);
+        expect(neu.length, "keine Rückmeldung am Server angekommen").toBe(1);
+        expect(neu[0]?.status ?? 0).toBeGreaterThanOrEqual(200);
+        expect(neu[0]?.status ?? 0).toBeLessThan(300);
+        expect(neu[0]?.koId).toBe(koId);
+
+        // 4 · zurück zum Quellen-Chip, Eingabetaste — die Quelle ist offen.
+        const bisChip = await tabBis(s, "Quellen-Chip", FOKUS_CHIP, undefined, true);
+        await s.keyboard.press("Enter");
+        await s.waitForFunction(
+          fn(
+            `([pfad, titel]) => location.pathname === pfad && ((document.querySelector('main') || {}).innerText || '').includes(titel)`,
+          ),
+          [`/wissen/${koId}`, TITEL],
+          { timeout: 30_000 },
+        );
+        console.info(
+          `R-1580 · ${fall.name} · Tab-Schritte: Feld ${bisFeld}, Kopieren ${bisKopieren}, Rückmeldung ${bisRueckmeldung}, Chip zurück ${bisChip} · Rückmeldung ${JSON.stringify(neu)} · Ablage ${ablage.length} Zeichen`,
+        );
+      } finally {
+        await s.close().catch(() => undefined);
+        await bBrowser?.close().catch(() => undefined);
+        bBrowser = null;
+      }
+    }, 240_000);
+  }
+
+  // ==============================================================================================
+  // R-0286 · EINSTIEG ÜBER DIE BEISPIELE (Ben, Nacharbeit 6).
+  // ==============================================================================================
+  // V16 beginnt mit geschlossener Beispielliste. Ben hat den anderen Einstieg gefunden: „Beispiele"
+  // öffnen und ein Beispiel absenden — die Liste blieb offen und stand damit zwischen Feld und
+  // Antwort. Hier läuft genau dieser Weg; erwartet wird dasselbe wie in V16: das Ergebnis direkt
+  // unter dem Feld, kein sichtbarer Text dazwischen, Abstand ≤ 48 px — und die Liste zu.
+  // Ob das Beispiel geprüftes Wissen findet oder bewusst eine Lücke zeigt (R-0282), entscheidet der
+  // Bestand; gemessen wird deshalb die ERGEBNISKARTE, ob Antwort oder Wissenslücke.
+  it("R-0286 · Beispiele öffnen → Beispiel absenden → Ergebnis direkt unter dem Feld, Liste geschlossen", async () => {
+    expect(bFehler, "Bedienvorrichtung nicht aufgebaut").toBeNull();
+    bBrowser = await browserStarten();
+    const s = await bedienSeite("de", 1280, 800);
+    try {
+      await s.goto(`${ORIGIN_SICHER}/fragen`, { waitUntil: "load", timeout: 60_000 });
+      await s.waitForFunction(
+        fn(`() => !!document.querySelector('[data-testid="ask-beispiele-knopf"]')`),
+        undefined,
+        { timeout: 30_000 },
+      );
+      await s.click('[data-testid="ask-beispiele-knopf"]');
+      await s.waitForFunction(
+        fn(
+          `() => { const d = document.querySelector('[data-testid="ask-beispiele"]'); return !!d && !d.hasAttribute('hidden') && !!d.querySelector('button:not([disabled])'); }`,
+        ),
+        undefined,
+        { timeout: 30_000 },
+      );
+      await s.click('[data-testid="ask-beispiele"] button:not([disabled])');
+      await s.waitForFunction(
+        fn(
+          `() => !!document.querySelector('[data-testid="ask-answer"] .ask-answer-body, [data-testid="ask-gap"]')`,
+        ),
+        undefined,
+        { timeout: 60_000 },
+      );
+      const lage = await s.evaluate<{
+        listeOffen: boolean;
+        ueber: boolean;
+        abstand: number;
+        dazwischen: string[];
+      }>(
+        fn(
+          `() => {
+            const spalte = document.querySelector('[data-testid="page-fragen"]');
+            const feld = spalte.querySelector('form');
+            const karte = document.querySelector('[data-testid="ask-answer"], [data-testid="ask-gap"]');
+            const liste = document.querySelector('[data-testid="ask-beispiele"]');
+            const unten = feld.getBoundingClientRect().bottom;
+            const oben = karte.getBoundingClientRect().top;
+            const dazwischen = [...spalte.querySelectorAll('*')].filter((e) => {
+              if (e.children.length > 0) return false;
+              const r = e.getBoundingClientRect();
+              if (r.height === 0 || r.width === 0) return false;
+              if (!(e.textContent || '').trim()) return false;
+              return r.top >= unten && r.bottom <= oben;
+            }).map((e) => (e.textContent || '').trim());
+            return {
+              listeOffen: !!liste && !liste.hasAttribute('hidden') && liste.getBoundingClientRect().height > 0,
+              ueber: unten <= oben,
+              abstand: Math.round(oben - unten),
+              dazwischen,
+            };
+          }`,
+        ),
+      );
+      console.info(`R-0286 · Beispiel-Einstieg · ${JSON.stringify(lage)}`);
+      expect(lage.listeOffen, "die Beispielliste ist nach dem Absenden noch offen").toBe(false);
+      expect(lage.ueber, "das Ergebnis steht nicht unter dem Feld").toBe(true);
+      expect(lage.dazwischen, "zwischen Feld und Ergebnis steht etwas").toEqual([]);
+      expect(lage.abstand).toBeLessThanOrEqual(48);
+    } finally {
+      await s.close().catch(() => undefined);
+      await bBrowser?.close().catch(() => undefined);
+      bBrowser = null;
+    }
+  }, 240_000);
 });

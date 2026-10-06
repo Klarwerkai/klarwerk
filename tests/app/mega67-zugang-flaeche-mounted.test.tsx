@@ -165,6 +165,20 @@ describe("mega67 D / mega69 B3 · drei erreichbare Zustände, drei EIGENE Texte"
     unmount();
   });
 
+  // R-0166: eine unbekannte Anmeldeart (KLARWERK_CONFLUENCE_AUTH) ist ein eigener Grund — weder
+  // „es fehlt etwas" noch „keine https-Adresse".
+  it("unbekannte Anmeldeart → eigener, benannter Grund", async () => {
+    zugangMock.mockResolvedValue(
+      antwort({ credentialsUsable: false, blocker: "invalid-auth-mode" }),
+    );
+    const { container, unmount } = await mount();
+    expect(zustand(container)).toBe("no-credentials");
+    const grund = container.querySelector("[data-testid=import-access-blocker]")?.textContent ?? "";
+    expect(grund).toMatch(/Anmeldeart ist unbekannt/);
+    expect(grund).not.toMatch(/https-Adresse/);
+    unmount();
+  });
+
   // mega69 B3: DREI Fälle für DREI Zustände — der frühere Name „die vier Texte" behauptete einen
   // vierten, den weder die Fälle noch die echte Fläche je erzeugt haben.
   it("die drei Texte sind wirklich VERSCHIEDEN (kein geliehener Text)", async () => {
