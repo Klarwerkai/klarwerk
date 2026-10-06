@@ -7,21 +7,26 @@
 //   1. Version: Lockdatei, laufende Instanz und Bewertung nennen dieselbe Version, und das Urteil
 //      „im betroffenen Bereich" passt zu ihr. Wird `fastify` gehoben, wird dieser Fall ROT — dann ist
 //      die Bewertung neu zu machen, nicht der Test anzupassen.
-//   2. Konfiguration: nur ein positiver ganzzahliger `KLARWERK_TRUST_PROXY` ergibt eine Hop-Anzahl.
-//      Gemessen an der echten `buildApp`-Instanz: nur dann (oder mit IP-Liste) entscheidet ein
-//      Weiterleitungskopf über `request.ip`, ohne Konfiguration nie.
-//   3. Ausgelieferte Konfiguration: `docker-compose.prod.yml` reicht die Variable nicht durch.
-//
-// Der Fehlermechanismus der Advisory selbst wird hier NICHT nachgestellt.
+//   2. Der Advisory-Fall ist auf der gebundenen Version scharf: eine nackte Instanz mit Hop-Anzahl
+//      glaubt einem NICHT vertrauten Client, der direkt am Proxy vorbei kommt, seinen eigenen
+//      `X-Forwarded-For` (Kalibrierung).
+//   3. Das Produkt reicht keine Hop-Anzahl mehr an Fastify: mit `KLARWERK_TRUST_PROXY=1` bleibt
+//      `request.ip` beim direkten Client die Socket-Adresse; mit IP-Liste wird derselbe Kopf vom
+//      nicht vertrauten Client zurückgewiesen und nur über den vertrauten Proxy angenommen.
+//   4. Ausgelieferte Konfiguration: `docker-compose.prod.yml` reicht die Variable nicht durch.
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import Fastify from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
 import { resolveTrustProxy } from "../../services/app/src/addon-auth-throttle";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 
 const HIER = dirname(fileURLToPath(import.meta.url));
 const WURZEL = join(HIER, "..", "..");
+
+/** Der vertraute Proxy-Sprung vor dem Ursprung. */
+const PROXY = "10.0.0.5";
 
 /** Der gemeldete Bereich der Advisory: `>=5.8.3 <5.12.1`. */
 const BETROFFEN_AB = [5, 8, 3] as const;
@@ -75,6 +80,7 @@ afterEach(() => {
 async function gemesseneIp(
   trustProxy: string | undefined,
   kopf: Record<string, string>,
+  remoteAddress = PROXY,
 ): Promise<{ ip: string; version: string }> {
   if (trustProxy === undefined) {
     delete process.env.KLARWERK_TRUST_PROXY;
@@ -88,7 +94,7 @@ async function gemesseneIp(
       method: "GET",
       url: "/__pruefung/fastify-restbewertung/ip",
       headers: kopf,
-      remoteAddress: "10.0.0.5",
+      remoteAddress,
     });
     expect(res.statusCode).toBe(200);
     return { ip: (res.json() as { ip: string }).ip, version: app.version };
@@ -97,7 +103,11 @@ async function gemesseneIp(
   }
 }
 
+/** Ein Weg über den vertrauten Proxy: der Proxy hat die echte Client-Adresse 203.0.113.7 angehängt. */
 const GEFAELSCHTE_KETTE = { "x-forwarded-for": "198.51.100.66, 203.0.113.7" };
+/** Ein Client, der den Ursprung DIREKT erreicht und eine Adresse seiner Wahl behauptet. */
+const DIREKTER_CLIENT = "198.51.100.200";
+const DIREKT_GEFAELSCHT = { "x-forwarded-for": "203.0.113.66" };
 
 describe("GHSA-3m5p-2c4r-xxw2 · K1: Version am heutigen Stand", () => {
   it("Lockdatei und Bewertung nennen dieselbe Version, und das Urteil passt zum gemeldeten Bereich", () => {
@@ -119,29 +129,62 @@ describe("GHSA-3m5p-2c4r-xxw2 · K1: Version am heutigen Stand", () => {
   });
 });
 
-describe("GHSA-3m5p-2c4r-xxw2 · K2: betroffene Konfiguration", () => {
-  it("nur eine positive ganze Zahl ergibt eine Hop-Anzahl", () => {
+describe("GHSA-3m5p-2c4r-xxw2 · K2/K3: Konfiguration, direkter Zugriff am Proxy vorbei", () => {
+  it("eine Zahl ergibt keine Hop-Anzahl mehr — nur IP-/CIDR-Listen ergeben Vertrauen", () => {
     expect(resolveTrustProxy({})).toBe(false);
     expect(resolveTrustProxy({ KLARWERK_TRUST_PROXY: "" })).toBe(false);
     expect(resolveTrustProxy({ KLARWERK_TRUST_PROXY: "true" })).toBe(false);
     expect(resolveTrustProxy({ KLARWERK_TRUST_PROXY: "0" })).toBe(false);
+    expect(resolveTrustProxy({ KLARWERK_TRUST_PROXY: "1" })).toBe(false);
+    expect(resolveTrustProxy({ KLARWERK_TRUST_PROXY: "2" })).toBe(false);
     expect(resolveTrustProxy({ KLARWERK_TRUST_PROXY: "10.0.0.5" })).toEqual(["10.0.0.5"]);
-    expect(resolveTrustProxy({ KLARWERK_TRUST_PROXY: "1" })).toBe(1);
   });
 
-  it("ohne Einstellung entscheidet kein Weiterleitungskopf über request.ip", async () => {
-    const { ip } = await gemesseneIp(undefined, GEFAELSCHTE_KETTE);
-    expect(ip).toBe("10.0.0.5");
+  // KALIBRIERUNG: die Advisory-Bedingung ist auf der gebundenen Version wirklich scharf. Eine nackte
+  // Fastify-Instanz mit Hop-Anzahl 1 — genau das, was resolveTrustProxy bis zu dieser Änderung bei
+  // KLARWERK_TRUST_PROXY=1 lieferte — glaubt einem NICHT vertrauten Client, der direkt am Proxy
+  // vorbei kommt, seinen eigenen Kopf. Ohne diesen Fall wäre der Produktfall darunter eine
+  // Behauptung über Fastify statt einer Messung. Bei einer Hebung (Fall K1 wird dann rot) ist dieser
+  // Fall mit der Bewertung neu zu fassen.
+  it("Kalibrierung: Hop-Anzahl auf der gebundenen Version lässt einen direkten Client request.ip fälschen", async () => {
+    expect(imBetroffenenBereich(lockVersion())).toBe(true);
+    const probe = Fastify({ trustProxy: 1 });
+    probe.get("/ip", async (request) => ({ ip: request.ip }));
+    try {
+      const res = await probe.inject({
+        method: "GET",
+        url: "/ip",
+        headers: DIREKT_GEFAELSCHT,
+        remoteAddress: DIREKTER_CLIENT,
+      });
+      expect((res.json() as { ip: string }).ip, "die Falle ist nicht scharf").toBe("203.0.113.66");
+    } finally {
+      await probe.close();
+    }
   });
 
-  it("mit Hop-Anzahl entscheidet der Weiterleitungskopf über request.ip (Advisory-Bedingung)", async () => {
-    const { ip } = await gemesseneIp("1", GEFAELSCHTE_KETTE);
+  it("Produkt mit KLARWERK_TRUST_PROXY=1: der direkte Client kann request.ip NICHT mehr fälschen", async () => {
+    const { ip } = await gemesseneIp("1", DIREKT_GEFAELSCHT, DIREKTER_CLIENT);
+    expect(ip, "eine Hop-Anzahl wirkt wieder — GHSA-3m5p-2c4r-xxw2 ist erreichbar").toBe(
+      DIREKTER_CLIENT,
+    );
+  });
+
+  it("Produkt mit IP-Liste: derselbe Kopf vom nicht vertrauten direkten Client wird zurückgewiesen", async () => {
+    const { ip } = await gemesseneIp(PROXY, DIREKT_GEFAELSCHT, DIREKTER_CLIENT);
+    expect(ip).toBe(DIREKTER_CLIENT);
+  });
+
+  it("Produkt mit IP-Liste: über den vertrauten Proxy gilt die von ihm angehängte Adresse", async () => {
+    const { ip } = await gemesseneIp(PROXY, GEFAELSCHTE_KETTE, PROXY);
     expect(ip).toBe("203.0.113.7");
   });
 
-  it("mit IP-Liste wirkt der Kopf ebenfalls, aber ohne Hop-Anzahl", async () => {
-    const { ip } = await gemesseneIp("10.0.0.5", GEFAELSCHTE_KETTE);
-    expect(ip).toBe("203.0.113.7");
+  it("Produkt ohne Einstellung: kein Weiterleitungskopf entscheidet über request.ip", async () => {
+    expect((await gemesseneIp(undefined, GEFAELSCHTE_KETTE, PROXY)).ip).toBe(PROXY);
+    expect((await gemesseneIp(undefined, DIREKT_GEFAELSCHT, DIREKTER_CLIENT)).ip).toBe(
+      DIREKTER_CLIENT,
+    );
   });
 
   it("docker-compose.prod.yml reicht KLARWERK_TRUST_PROXY nicht durch und lädt kein env_file", () => {
