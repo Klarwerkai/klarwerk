@@ -810,11 +810,13 @@ export class OverlapService {
     };
     await this.repo.update(saved);
     // R-0766: die Entscheidung (getrennt lassen, verwandt, Fehlalarm …) nennt beide Objekte.
+    // R-0733 (aktionsabdeckung): und ihren Ausgang als festen Grund, gleichlautend mit
+    // `conflict.resolved`/`conflict.dismissed`. Der Vermerk bleibt am Eintrag, nicht in der Kette.
     await this.audit?.record({
       actor: by,
       action,
       target: id,
-      payload: { koIds: [entry.koA, entry.koB] },
+      payload: { koIds: [entry.koA, entry.koB], resolutionReason: reason },
     });
     return saved;
   }

@@ -243,10 +243,13 @@ describe("FR-RBAC-02: Admin-Aktionen mit Audit", () => {
       code: "NOT_FOUND",
     });
 
-    // Vier Admin-Aktionen → vier Audit-Einträge; Kette intakt.
+    // Zwei Kontoanlagen (Ersteinrichtung, Selbstregistrierung) und vier Admin-Aktionen → sechs
+    // Audit-Einträge; Kette intakt.
     const entries = await audit.list();
-    expect(entries).toHaveLength(4);
+    expect(entries).toHaveLength(6);
     expect(entries.map((e) => e.action)).toEqual([
+      "user.created",
+      "user.created",
       "user.approve",
       "user.role-change",
       "user.password-reset",

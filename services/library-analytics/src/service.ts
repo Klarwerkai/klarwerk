@@ -1320,11 +1320,14 @@ export class LibraryService {
         }
       }
     }
+    // Aufnahme gesamt-auditprotokoll:aktionsabdeckung (Bens Befund, Nacharbeit 2): der Eintrag nennt
+    // die tatsächlich gespeicherten Kandidaten — sonst wäre aus dem Importbeleg nicht bestimmbar,
+    // welche Objekte er betrifft. Nur Kennungen, kein Inhalt.
     await this.audit?.record({
       actor,
       action: "import.candidates-created",
       target: "library",
-      payload: { count: persisted.length },
+      payload: { count: persisted.length, candidateIds: persisted.map((c) => c.id) },
     });
     return persisted;
   }
