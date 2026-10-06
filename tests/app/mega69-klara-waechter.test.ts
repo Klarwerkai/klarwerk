@@ -2887,6 +2887,11 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // unverändert, kein Sideload; die Nutzlast trägt Bilder, die vorher verloren gingen. DER PIN
     // MUSS WANDERN; der Prüflauf meldet den Ist-Wert als „Received", er wird danach übernommen.
     // Root 06.10.2026: SHA-256 direkt aus der geprüften Bild-Mischfallkorrektur berechnet.
+    // NACHARBEIT 13 (Ben, Reihenfolge im gemeinsamen Absatz): fehlende Bilder stehen jetzt RELATIV
+    // zu den schon eingebetteten Bildern ihres Absatzes in Word-Reihenfolge (A, B statt B, A); die
+    // Platzhalter-Zuordnung gilt nur, wenn sie der Word-Reihenfolge folgt. Auslieferungsfolgen wie
+    // in Nacharbeit 12 (kein Abrufziel, CSP/Recht/Manifest unverändert, kein Sideload). DER PIN MUSS
+    // WANDERN; der Prüflauf meldet den Ist-Wert als „Received", er wird danach übernommen.
     const PIN = "f3ab60bcf6822fd11588483bd4165b5fcbf6dcb729ffebb93ed22a26c970b1ac";
     const ist = createHash("sha256").update(readFileSync(RUECKWEG)).digest("hex");
     expect(

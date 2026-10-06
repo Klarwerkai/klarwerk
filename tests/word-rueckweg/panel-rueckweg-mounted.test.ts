@@ -949,5 +949,30 @@ describe("Nacharbeit 9 · der Rückweg aus Word im Web erhält Bilder und Übers
       expect(html.indexOf(JPEG)).toBeLessThan(html.indexOf("Abbildung 2:"));
       expect(p.text("#rw-status")).toBe(satzOhneVerlust(p, rolle));
     });
+
+    // Nacharbeit 13 (Ben): EIN Word-Absatz trägt die Bilder A, B; das HTML trägt nur das schon
+    // eingebettete B. Bis dahin wurde A am Absatzende ergänzt — B, A statt A, B, ohne Warnung.
+    it(`R28 (${weg}): Absatz mit A, B und nur eingebettetem B — A steht VOR B, jedes Bild genau einmal`, async () => {
+      // Absatz 8 trägt beide Bilder (A = PNG, B = JPEG); Absatz 10 bleibt ohne Bild.
+      const absaetze = wordAbsaetze(PNG, JPEG);
+      absaetze[8] = { text: "", bilder: [PNG, JPEG] };
+      absaetze[10] = { text: "" };
+      const nurB = OFFICE_HTML.replace(
+        "<p>&nbsp;</p><p>Abbildung 1",
+        `<p><img src="data:image/jpeg;base64,${JPEG}"></p><p>Abbildung 1`,
+      );
+      const p = await rueckgabeFlaeche(rolle, nurB, { lage: "sofort", absaetze });
+      expect(schreibrufe(p)[0]?.koerper.action).toBe(weg);
+      const html = bodyHtmlDesEinenPut(p);
+      expect(html).toContain(
+        `<p><img src="data:image/png;base64,${PNG}"><img src="data:image/jpeg;base64,${JPEG}"></p><p>Abbildung 1`,
+      );
+      expect(html.indexOf(PNG)).toBeLessThan(html.indexOf(JPEG));
+      expect(html.split(PNG)).toHaveLength(2);
+      expect(html.split(JPEG)).toHaveLength(2);
+      expect(html.match(/<img\b/g)).toHaveLength(2);
+      expect(p.text("#rw-status")).toBe(satzOhneVerlust(p, rolle));
+      expect(p.q("#rw-status")?.className).toBe("");
+    });
   }
 });

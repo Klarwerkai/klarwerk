@@ -680,11 +680,13 @@
      *   1. Ein schon eingebettetes Bild (data-URL) mit denselben Bytes IST dieses Bild — es bleibt,
      *      wo es steht, und wird nicht ein zweites Mal eingesetzt.
      *   2. Stehen dort genau so viele Platzhalter (`<img>` ohne Bytes) wie noch offene Bilder, bekommt
-     *      jeder Platzhalter der Reihe nach die Bytes seines Bildes.
-     *   3. Sonst ist die Zuordnung im Bereich nicht eindeutig: die Platzhalter fallen, und die offenen
-     *      Bilder stehen in Word-Reihenfolge an der Stelle des ersten Platzhalters (ohne einen: an der
-     *      Stelle des Absatzes). Mehr Platzhalter als Bilder heisst: Word gab diese nicht heraus —
-     *      sie zaehlen als fehlend.
+     *      jeder Platzhalter der Reihe nach die Bytes seines Bildes — sofern die Lagen dann der
+     *      Word-Reihenfolge folgen.
+     *   3. Sonst ist die Zuordnung im Bereich nicht eindeutig: die Platzhalter fallen, und jedes offene
+     *      Bild steht RELATIV zu den schon eingebetteten Bildern seines Absatzes in Word-Reihenfolge
+     *      (vor dem naechsten, sonst hinter dem letzten; ohne beide an der Stelle des ersten
+     *      Platzhalters bzw. des Absatzes). Mehr Platzhalter als Bilder heisst: Word gab diese nicht
+     *      heraus — sie zaehlen als fehlend.
      * Ein Platzhalter ausserhalb jedes Bildbereichs bleibt unberuehrt; `rwLadung` zaehlt ihn wie bisher.
      */
     function rwStrukturEinsetzen(inner, w, bilderJe) {
@@ -743,35 +745,62 @@
           continue;
         }
         // (1) schon eingebettete Bilder ueber ihre Bytes zuordnen — im Bereich, sonst irgendwo frei.
-        var offen = [];
+        // `folge` haelt die Bilder in WORD-Reihenfolge; `anker` ist der eingebettete Tag IM Bereich,
+        // an dem sich ein fehlendes Bild ausrichtet (ein Treffer ausserhalb verhindert nur das Duplikat).
+        var folge = [];
         for (var o = 0; o < gr.bilder.length; o += 1) {
           var roh = rwRoh(gr.bilder[o]);
           var da = null;
           for (t = 0; t < imgs.length && da === null; t += 1) {
             if (imgs[t].frei && imgs[t].daten !== null && imgs[t].daten === roh) { da = imgs[t]; }
           }
-          if (da) { da.frei = false; } else { offen.push(roh); }
+          if (da) { da.frei = false; }
+          var drinnen = da !== null && da.pos >= gr.bereich.von && da.ende <= gr.bereich.bis;
+          folge.push({ roh: roh, da: da !== null, anker: drinnen ? da : null, platz: null });
         }
+        var offen = [];
+        for (o = 0; o < folge.length; o += 1) { if (!folge[o].da) { offen.push(folge[o]); } }
         var platzhalter = [];
         for (t = 0; t < drin.length; t += 1) {
           if (drin[t].frei && drin[t].daten === null) { platzhalter.push(drin[t]); drin[t].frei = false; }
         }
         if (platzhalter.length === offen.length) {
-          // (2) eindeutig: jeder Platzhalter bekommt der Reihe nach die Bytes seines Bildes.
-          for (t = 0; t < platzhalter.length; t += 1) {
-            var mime = wordImageMimeFromBase64(offen[t]);
-            if (mime) { setze(platzhalter[t].pos, platzhalter[t].ende - platzhalter[t].pos, rwTagMitBild(platzhalter[t].tag, mime, offen[t])); }
+          // (2) gleich viele: der Reihe nach zuordnen — aber nur, wenn die Lagen dann der
+          // Word-Reihenfolge folgen (Nacharbeit 13). Sonst ist es Fall (3).
+          var letzte = -1;
+          var steigt = true;
+          for (o = 0; o < folge.length; o += 1) {
+            if (!folge[o].da) { folge[o].platz = platzhalter[offen.indexOf(folge[o])]; }
+            var lage = folge[o].anker ? folge[o].anker.pos : folge[o].platz ? folge[o].platz.pos : -1;
+            if (lage >= 0) { steigt = steigt && lage > letzte; letzte = lage; }
           }
-          continue;
+          if (steigt) {
+            for (t = 0; t < offen.length; t += 1) {
+              var mime = wordImageMimeFromBase64(offen[t].roh);
+              if (mime) { setze(offen[t].platz.pos, offen[t].platz.ende - offen[t].platz.pos, rwTagMitBild(offen[t].platz.tag, mime, offen[t].roh)); }
+            }
+            continue;
+          }
         }
-        // (3) nicht eindeutig: Platzhalter fallen, die offenen Bilder stehen in Word-Reihenfolge.
+        // (3) nicht eindeutig: Platzhalter fallen; jedes offene Bild steht VOR dem naechsten schon
+        // eingebetteten Bild seines Absatzes (Word-Reihenfolge), sonst HINTER dem letzten davor, sonst
+        // an der Stelle des ersten Platzhalters bzw. des Absatzes (Nacharbeit 13, Ben: A, B statt B, A).
         for (t = 0; t < platzhalter.length; t += 1) { setze(platzhalter[t].pos, platzhalter[t].ende - platzhalter[t].pos, ""); }
         if (platzhalter.length > offen.length) { ergebnis.bilderFehlen += platzhalter.length - offen.length; }
-        var bild = rwBildTags(offen);
-        ergebnis.bilderFehlen += bild.fehlen;
-        if (bild.tags.length === 0) { continue; }
-        if (platzhalter.length > 0) { setze(platzhalter[0].pos, 0, bild.tags); continue; }
-        setze(gr.bereich.stelle, 0, gr.bereich.imBlock ? bild.tags : "<p>" + bild.tags + "</p>");
+        for (o = 0; o < folge.length; o += 1) {
+          if (folge[o].da) { continue; }
+          var bild = rwBildTags([folge[o].roh]);
+          ergebnis.bilderFehlen += bild.fehlen;
+          if (bild.tags.length === 0) { continue; }
+          var nach = null;
+          var vorher = null;
+          for (var n = o + 1; n < folge.length && nach === null; n += 1) { if (folge[n].anker) { nach = folge[n].anker; } }
+          for (n = o - 1; n >= 0 && vorher === null; n -= 1) { if (folge[n].anker) { vorher = folge[n].anker; } }
+          if (nach) { setze(nach.pos, 0, bild.tags); continue; }
+          if (vorher) { setze(vorher.ende, 0, bild.tags); continue; }
+          if (platzhalter.length > 0) { setze(platzhalter[0].pos, 0, bild.tags); continue; }
+          setze(gr.bereich.stelle, 0, gr.bereich.imBlock ? bild.tags : "<p>" + bild.tags + "</p>");
+        }
       }
       // Von hinten nach vorn: Ersetzungen vor Einfuegungen an derselben Stelle, Einfuegungen in
       // umgekehrter Reihenfolge — so steht, was zuerst kam, auch vorn.
