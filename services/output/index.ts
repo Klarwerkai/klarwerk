@@ -14,6 +14,29 @@ export {
 } from "./src/types";
 // AUFTRAG-mega29 C3: der Ehrlichkeits-Satz des Herkunftsblocks (+ der Renderer, der ihn trägt).
 export { OUTPUT_NO_CHECK_NOTE, renderProvenance } from "./src/render";
+// produkt:wettbewerb:20261003:lernplattform — Übergabe an eine Lernplattform als SCORM-1.2-Paket.
+export {
+  LmsExportService,
+  LmsExportError,
+  SCORM_FORMAT,
+  MAX_SCORM_EINHEITEN,
+  leseLmsEmpfaenger,
+  leseScormEingabe,
+} from "./src/scorm";
+export type {
+  LmsExportServiceDeps,
+  ScormBefund,
+  ScormBefundCode,
+  ScormBefundBereich,
+  ScormEmpfaenger,
+  ScormExportEingabe,
+  ScormFassung,
+  ScormMedienLeser,
+  ScormMedium,
+  ScormPaket,
+  ScormPruefung,
+} from "./src/scorm";
+export { SCORM_BESCHRIFTUNG, SCORM_SPRACHEN, type ScormSprache } from "./src/scorm-laufzeit";
 // KA6 Stufe 1 (JOB 1491 D1): der Zuruf, der einen VORSCHLAG erzeugt und nichts schreibt.
 // KA6 Stufe 2 (JOB 3026): `ZurufBindung` und `Ka6Einwilligungspruefer` kommen dazu — der Riegel
 // liegt im Erzeuger und fragt das Sitzungstor, statt einem Client-Bool zu glauben.

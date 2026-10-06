@@ -590,6 +590,10 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "GET /api/output/sources": { protection: "ko.read" },
   "POST /api/output/generate": { protection: "ko.read" },
 
+  // --- Lernplattform-Übergabe (lms-export-routes.ts) ---
+  "POST /api/output/scorm/pruefen": { protection: "ko.read" },
+  "POST /api/output/scorm/paket": { protection: "ko.read" },
+
   // --- Management / Model-runs / External / Audit / Reasoner / Objects ---
   "GET /api/management/snapshot": {
     protection: "ko.read",
