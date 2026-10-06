@@ -142,8 +142,12 @@ const MARKE_KOPF_ENDE = '"use strict";\n';
  * Schlusszeile des Bestandsblocks, Schranke A2/E5 „unter 500 Zeilen"). Die vollständige Kennung
  * stand im Prüfbericht nur gekürzt, und kein Hash-Werkzeug war zugelassen. E2 meldet den Wert der
  * endgültigen Fassung als „Received"; er wird danach gemessen übernommen. E3 bleibt die Gegenprobe.
+ * NACHARBEIT 2 (firmenwoerterbuch): GEMESSEN am Kandidaten 64d3d35d durch Rekonstruktion nach
+ * `fuegePanelZusammen` aus den vier Quelldateien (`f96a6710…`, Beleg
+ * BAHN17-PANEL-BLOB-MESSUNG-20261006.json samt SHA-256 der vier Quellen) und unverändert
+ * übernommen. Die Integration mit `main` danach hat keine der vier Panel-Dateien berührt.
  */
-export const PANEL_VOR_SCHNITT_BLOB = "33e522809e3ed8dbd6dd42cc8c071414b775c20d";
+export const PANEL_VOR_SCHNITT_BLOB = "f96a6710facce23542f46adf2a198f18db9df7e4";
 
 export interface PanelTeile {
   html: string;

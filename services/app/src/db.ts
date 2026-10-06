@@ -51,6 +51,8 @@ import { CONFLUENCE_IMPORT_SCHALTER_SCHEMA } from "./confluence-import-schalter"
 // Firmenwörterbuch: die Fassungen des Begriffskatalogs. Im App-Wurzelverzeichnis wie die
 // Markenwahl: Editor und Word-Panel lesen ihn, kein Fachmodul besitzt ihn.
 import { BEGRIFFE_SCHEMA } from "./firmenwoerterbuch";
+// Kenntnisnahme einer gültigen Fassung: Anforderungen und Bestätigungen.
+import { KENNTNISNAHME_SCHEMA } from "./kenntnisnahme";
 // JOB 3326: die Lesevarianten (gekennzeichnete Leseübersetzungen). Sie wohnen im App-Root und nicht
 // im knowledge-object-Modul, weil sie das KO-Modell ausdrücklich NICHT umbauen: die Variante ist ein
 // eigener, danebenliegender Datenraum, den kein Lesepfad des Originals berührt.
@@ -230,6 +232,10 @@ export const schemas = [
   // Firmenwörterbuch: die unveränderlichen Fassungen des Begriffskatalogs. Additiv und
   // wiederholbar (CREATE TABLE IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed.
   BEGRIFFE_SCHEMA,
+  // Kenntnisnahme einer gültigen Fassung: Kopf der Anforderung und je Empfänger eine Zeile. Additiv
+  // und wiederholbar (CREATE TABLE/INDEX IF NOT EXISTS); der einzige Fremdschlüssel zeigt auf den
+  // eigenen Kopf, keine Extension, kein Seed.
+  KENNTNISNAHME_SCHEMA,
 ];
 
 // Führt die DDL aller Module aus. Jedes Modul liefert seine eigenen Tabellen (Datenhoheit).
