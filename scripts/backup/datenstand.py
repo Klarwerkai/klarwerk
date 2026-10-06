@@ -41,9 +41,9 @@ def main():
     holder = subprocess.Popen(["psql", "-X", "-qAt", "-v", "ON_ERROR_STOP=1"],
                               stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
     try:
-        holder.stdin.write("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;SELECT pg_export_snapshot();\n")
+        holder.stdin.write("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;SELECT pg_export_snapshot(),transaction_timestamp();\n")
         holder.stdin.flush()
-        snapshot = holder.stdout.readline().strip()
+        snapshot, snapshot_time = holder.stdout.readline().strip().split("|", 1)
         if not re.fullmatch(r"[0-9A-Fa-f]+-[0-9A-Fa-f]+-[0-9]+", snapshot):
             raise RuntimeError("PostgreSQL-Snapshot fehlt")
         measured = bestand(snapshot)
@@ -54,7 +54,8 @@ def main():
             subprocess.run(["bash", str(root / "scripts/backup/backup.sh"), sys.argv[3]], env=env, check=True)
         elif mode != "pruefen":
             raise ValueError("sichern oder pruefen angeben")
-        Path(output).write_text(json.dumps({"tabellen": measured, "snapshot": snapshot}, indent=2) + "\n")
+        Path(output).write_text(json.dumps({"tabellen": measured, "snapshot": snapshot,
+                                          "snapshot_zeit": snapshot_time}, indent=2) + "\n")
     finally:
         try:
             holder.stdin.write("ROLLBACK;\n")
