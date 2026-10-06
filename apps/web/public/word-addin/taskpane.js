@@ -261,9 +261,7 @@
     // Wiederoeffnen ohne gespeicherte Kennung ist sie weg; genau deshalb wird der Fehlschlag gemeldet.
     var dokumentkennungUngesichert = null;
 
-    // WORD-HOST-GESAMTWEG (Realhostbeleg 06.10.2026): `saveAsync` antwortet spaeter als der Sendeweg.
-    // Ausstehend: keine Warnung. Erfolg: nur die noch sichtbare Warnung DIESER Kennung faellt, neuere
-    // Meldungen bleiben. Fehlschlag: Warnung, auch ueber einer neueren Meldung.
+    // Realhost 06.10.2026: `saveAsync` ausstehend = keine Warnung; Erfolg nimmt nur DIESE Warnung zurueck, Fehlschlag warnt.
     var dokumentkennungAusstehend = null;  // Kennung, deren `saveAsync` noch nicht geantwortet hat
     var kennungWarnungFuer = null;         // Kennung, deren Warnung GERADE im Sendesatz steht
 
@@ -1996,6 +1994,8 @@
         rwStale: "Der Eintrag steht inzwischen auf Version {n}. Es wurde nichts überschrieben.",
         rwStaleCta: "Stand neu laden",
         rwMarkierungAnders: "Die Markierung hat sich geändert — nichts gesendet.",
+        rwUeberschriftFehlt: "Überschriften: {n} kamen nur als Absatz an — der Text ist vollständig.",
+        rwStrukturUngeprueft: "Ob Bilder und Überschriften vollständig ankamen, ließ sich in Word nicht prüfen.",
       },
       en: {
         greetTitle: "Hi, I am Klara.",
@@ -2333,6 +2333,8 @@
         rwStale: "The entry is now at version {n}. Nothing was overwritten.",
         rwStaleCta: "Reload state",
         rwMarkierungAnders: "The selection has changed — nothing sent.",
+        rwUeberschriftFehlt: "Headings: {n} arrived only as paragraphs — the text is complete.",
+        rwStrukturUngeprueft: "Word could not confirm whether images and headings arrived completely.",
       },
       nl: {
         greetTitle: "Hallo, ik ben Klara.",
@@ -2669,6 +2671,8 @@
         rwStale: "Het item staat inmiddels op versie {n}. Er is niets overschreven.",
         rwStaleCta: "Stand opnieuw laden",
         rwMarkierungAnders: "De selectie is gewijzigd — niets verstuurd.",
+        rwUeberschriftFehlt: "Koppen: {n} kwamen alleen als alinea aan — de tekst is volledig.",
+        rwStrukturUngeprueft: "Word kon niet bevestigen of afbeeldingen en koppen volledig aankwamen.",
       },
     };
 
@@ -4209,12 +4213,13 @@
     //     Ergebniszeile).
     // SIE BLOCKIERT NICHTS: der Sendeknopf haengt weiter allein an Anmeldung, Word und Markierung
     // (updateSendState). Ein Treffer ist eine Auskunft, keine Sperre — der Mensch entscheidet.
-    // GENAU EIN LAUF JE TEXT: derselbe Text wird nicht erneut geprueft; ein neuer Text macht den
-    // alten Lauf unbeachtlich (Laufnummer) — ein verspaeteter Rueckfall kann keine fremde Markierung
-    // beschriften.
+    // GENAU EIN LAUF JE TEXT UND TITEL: dieselbe Kombination wird nicht erneut geprueft; eine neue macht
+    // den alten Lauf unbeachtlich (Laufnummer, Titelvergleich) — ein verspaeteter Rueckfall kann keine
+    // fremde Markierung und keinen alten Titel beschriften (WORD-WEB-TITLE-CACHE, Realhost 06.10.2026).
     var captureDubletten = null;
     var captureDublettenText = "";
     var captureDublettenLauf = 0;
+    var captureTitelUhr = null;  // Tipp-Pause der Titelaenderung (s. Eingabe „Titel")
 
     var W6_RELATION_KEYS = {
       identisch: "captureDubIdentisch",
@@ -4238,8 +4243,10 @@
         renderCaptureDubletten();
         return;
       }
-      if (text === captureDublettenText) { return; }
-      captureDublettenText = text;
+      var titelFeld = document.getElementById("capture-titel");
+      var schluessel = text + "\u0000" + (titelFeld ? titelFeld.value : "");
+      if (schluessel === captureDublettenText) { return; }
+      captureDublettenText = schluessel;
       captureDublettenLauf += 1;
       var lauf = captureDublettenLauf;
       if (text.replace(/^\s+|\s+$/g, "").length < W6_MINDESTZEICHEN) {
@@ -4255,7 +4262,6 @@
       // JOB 3093: die Zeile „Titel" reist als `title` mit — der Titel, unter dem der Entwurf zum
       // Eintrag wuerde. Ohne ihn fand der deterministische Pfad nicht einmal den wortgleichen
       // Absatz (gemessen, fundort-im-server.test.ts K2); der Koerper ist sonst derselbe.
-      var titelFeld = document.getElementById("capture-titel");
       w6DublettenAusCheckText(
         "erfassen",
         function () { return text; },
@@ -4264,6 +4270,7 @@
         titelFeld ? titelFeld.value : ""
       ).then(function (ergebnis) {
         if (lauf !== captureDublettenLauf) { return; }
+        if ((titelFeld ? titelFeld.value : "") !== schluessel.slice(text.length + 1)) { captureDublettenText = ""; return; }
         captureDubletten = {
           lage: ergebnis.lage,
           treffer: ergebnis.treffer,
@@ -4337,15 +4344,9 @@
       rwZeichnen();
     }
 
-    // JOB 3667 · WORD-RUECKWEG: der Abschnitt mit dem Block KW-RUECKWEG (811 Zeilen) stand bis
-    // zum 14.09.2026 HIER und wohnt seither Zeile fuer Zeile in der Geschwisterdatei
-    // `rueckweg.js` — gleicher Ursprung, klassisches Skript, VOR diesem hier geladen; das
-    // Verweis-Tag steht im Rumpf unmittelbar ueber diesem Block. KEIN zweites Tag in einem
-    // Kommentar: der Blocksammler von tests/klara-zerlegung/zerlegung.ts liest die Seite als Text
-    // und haelte es fuer ein weiteres Skript.
-    // Grund und Ladereihenfolge stehen im Kopf jener Datei; die Schranke B3 in
-    // tests/klara-zerlegung/schnittflaechen.test.ts
-    // ist der Anlass, und sie wurde dafuer NICHT angehoben.
+    // JOB 3667 · WORD-RUECKWEG: der Block KW-RUECKWEG (811 Zeilen) wohnt seit 14.09.2026 in `rueckweg.js`
+    // (klassisches Skript, VOR diesem geladen; KEIN zweites Tag in einem Kommentar — zerlegung.ts liest
+    // die Seite als Text). Grund und Ladereihenfolge im Kopf jener Datei; Schranke B3 NICHT angehoben.
 
     // Die Markierung aus Word lesen (nur Text — die Karte zeigt Absaetze, der Sendeweg holt sich
     // das HTML selbst). Ein spaeter Rueckruf eines aelteren Lesens wird verworfen (Laufnummer).
@@ -6270,8 +6271,7 @@
     // bisher (prepareAskQuestion: Markierung vor Eingabe). Gilt nur fuer diese Panelinstanz.
     var askMitlesen = true;
 
-    // WORD-HOST-GESAMTWEG (Realhost 06.10.2026: `getSelectedDataAsync` schwieg in Word im Web). Der
-    // Absendeweg liest zuerst `Word.run` → `getSelection().text` mit Frist, sonst den alten Weg; `done` hoechstens einmal.
+    // Realhost 06.10.2026 (`getSelectedDataAsync` schwieg in Word im Web): erst `Word.run` mit Frist, dann der alte Weg.
     var WORD_ADDIN_AUSWAHL_FRIST_MS = 4000;
 
     function readAskSelection(done, wordZuerst, fehler) {
@@ -6938,10 +6938,11 @@
     document.getElementById("office-hint-btn").addEventListener("click", function () {
       window.location.reload();
     });
-    // Die Zeile „Titel": ab dem ersten eigenen Zeichen gehoert sie dem Menschen; geleert nimmt die
-    // Vorbelegung wieder ueber.
+    // Zeile „Titel": eigene Zeichen gehoeren dem Menschen (leer: Vorbelegung); nach Tipp-Pause neu suchen.
     document.getElementById("capture-titel").addEventListener("input", function () {
       captureTitelVonHand = this.value.replace(/^\s+|\s+$/g, "").length > 0;
+      clearTimeout(captureTitelUhr);
+      captureTitelUhr = setTimeout(captureDublettenPruefen, 400);
     });
     // JOB 3555 K2b: die Zeile „Bereich". Der gehaltene Zustand folgt der Wahl des Menschen — der
     // Platzhalter (leerer Wert) bedeutet KEINE Wahl, und dann geht auch kein Feld hinaus.

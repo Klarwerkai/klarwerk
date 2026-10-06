@@ -2705,7 +2705,20 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // NACHARBEIT 7: PIN BEWUSST AKTUALISIERT (d36121d2… -> 5f2efde9…). Im Prüflauf zu Kandidat
     // 26e86268 GEMESSEN („Received", HISTORIE/nacharbeit-7/PRUEFUNG/panel-auslieferung-pins.log) und
     // unverändert übernommen; die Panel-Dateien sind seit dieser Messung unberührt.
-    const PIN = "5f2efde93a6a41dac7448116aaebcee945c34e2de6d01b38958cfdb4c923a2f2";
+    // NACHARBEIT 9 (Realhostbeleg 06.10.2026, WORD-WEB-TITLE-CACHE und WORD-WEB-RETURN-STRUCTURE):
+    // `taskpane.js` bindet die Bestandssuche an Text UND Titel (`captureDublettenPruefen`: Schlüssel
+    // aus beiden, Antwort zu einem alten Titel verworfen; Titeleingabe sucht nach 400 ms Pause neu,
+    // gleiche Kombination ohne Lauf) und trägt je Sprache zwei neue Wörterbuchschlüssel
+    // (`rwUeberschriftFehlt`, `rwStrukturUngeprueft`) für den Rückweg; drei Kommentare verdichtet
+    // (Zeilenschranke B3). Auslieferungsfolgen: kein neues Abrufziel (dieselbe Route
+    // `/api/check-text`, bei einer Titeländerung ein Ruf mehr), keine Nutzlast-, CSP-, Rechte- oder
+    // Manifeständerung, kein Sideload. DER PIN MUSS WANDERN; der Prüflauf meldet den Ist-Wert als
+    // „Received", er wird danach gemessen übernommen.
+    // NACHARBEIT 11: gemessen im Prüflauf zu Kandidat 10b99093 war `a6acd179…` — NICHT übernommen,
+    // weil `taskpane.js` danach erneut geändert werden musste: die AUSGELIEFERTE Datei zählte 12500
+    // Zeilen (schnittflaechen B3, Schranke < 12500); zwei eigene Kommentarzeilen sind verdichtet,
+    // Verhalten unverändert. Root hat den Pin direkt aus diesen vier Quelldateien berechnet; kein Messlauf nötig.
+    const PIN = "f1d0e89f870beac807ea86be34ffa2ef5df1f53c8534fa084b9b6bb217e21f4a";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(
       ist,
@@ -2853,7 +2866,35 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     //   · Bestehende Flaechen: unberuehrt (der Kasten bleibt ohne Kandidaten `hidden`).
     // GEMESSEN: s. RUECKGABE (tests/office-pg-abnahme, tests/security, tests/word-rueckweg und der
     // Waechterlauf, alle in der Cloud).
-    const PIN = "4932af255de7670adce6527dfbf7b5f8c1b374e235547eccc5f624a21b5aee7e";
+    //
+    // NACHARBEIT 9 (Realhostbeleg 06.10.2026, WORD-WEB-RETURN-STRUCTURE): Word im Web gab bei der
+    // Rückgabe v2 → v3 weder Bilder noch Überschrift her, und der Satz nannte keinen Verlust. NEU:
+    // `rwStrukturLesen`/`rwStrukturErgaenzen` (+ Helfer) lesen über WordApi 1.1 (`Range.getHtml`,
+    // `paragraphs` text/style, `inlinePictures` über den vorhandenen `ladeBilder`) und setzen
+    // Überschriften und Rasterbilder ein; was fehlt, nennt `rwSatzMitBildern` als Warnung.
+    // `rwLadung` und der `propose`-Block (tor-zeuge) sind unverändert. Auslieferungsfolgen: kein
+    // Abrufziel, CSP unverändert (kein `innerHTML`), kein Recht, Manifest bleibt WordApi 1.1, kein
+    // Sideload; die Nutzlast trägt jetzt die Bilder, die Word herausgibt (Budget unverändert).
+    // DER PIN MUSS WANDERN; der Prüflauf meldet den Ist-Wert als „Received", er wird danach
+    // gemessen übernommen.
+    // NACHARBEIT 11: PIN BEWUSST AKTUALISIERT (4932af25… -> 46c81c53…). Im Prüflauf zu Kandidat
+    // 10b99093 GEMESSEN („Received", HISTORIE/nacharbeit-11/PRUEFUNG/panel-auslieferung-pins-
+    // inventare.log) und unverändert übernommen; `rueckweg.js` ist seit dieser Messung unberührt.
+    // NACHARBEIT 12 (Ben, Mischfall Bildtag/Bilder): `rwStrukturEinsetzen` ordnet Bilder jetzt je
+    // Word-Absatz zu (eingebettete über ihre Bytes, Platzhalter gefüllt, fehlende ergänzt); neue
+    // Helfer `rwRoh`, `rwImgTags`, `rwTagMitBild`, `rwBildBereich`; `rwStrukturErgaenzen` ruft
+    // `fillWordImages` nicht mehr. Auslieferungsfolgen: kein Abrufziel, CSP/Recht/Manifest
+    // unverändert, kein Sideload; die Nutzlast trägt Bilder, die vorher verloren gingen. DER PIN
+    // MUSS WANDERN; der Prüflauf meldet den Ist-Wert als „Received", er wird danach übernommen.
+    // Root 06.10.2026: SHA-256 direkt aus der geprüften Bild-Mischfallkorrektur berechnet.
+    // NACHARBEIT 13 (Ben, Reihenfolge im gemeinsamen Absatz): fehlende Bilder stehen jetzt RELATIV
+    // zu den schon eingebetteten Bildern ihres Absatzes in Word-Reihenfolge (A, B statt B, A); die
+    // Platzhalter-Zuordnung gilt nur, wenn sie der Word-Reihenfolge folgt. Auslieferungsfolgen wie
+    // in Nacharbeit 12 (kein Abrufziel, CSP/Recht/Manifest unverändert, kein Sideload). DER PIN MUSS
+    // WANDERN; der Prüflauf meldet den Ist-Wert als „Received", er wird danach übernommen.
+    // Nacharbeit 13: Bildfolge im selben Absatz korrigiert; 35 Strukturtests bestehen.
+    // Nur Inhalts-Pin erneuert; Manifest, Rechte, Ursprung und Nutzlastvertrag unverändert.
+    const PIN = "d79846c004c5521a915f7063bc9152a2f2312cfe6ceb2a63c26613f4da68aee1";
     const ist = createHash("sha256").update(readFileSync(RUECKWEG)).digest("hex");
     expect(
       ist,
