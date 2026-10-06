@@ -18,7 +18,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Check, HelpCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
 import { useKos, useLearningPath, useLearningProgress, useLifecyclePending } from "../api/hooks";
 import { useSession } from "../app/AuthContext";
@@ -39,6 +39,7 @@ import {
 } from "../components/pruefen/PruefenZustand";
 import { abhaengigeQuelle, flaechenZustand } from "../components/pruefen/zaehler";
 import { Button, cx } from "../components/ui";
+import { leseFall } from "../lib/fallAbsprung";
 import { completedCount, isStepDone, progressPercent } from "../lib/learningPath";
 import {
   revalidationCta,
@@ -64,7 +65,10 @@ export function Lifecycle(): JSX.Element {
   const progress = useLearningProgress(pathId);
   const done = progress.data ?? [];
 
-  const [aktivId, setAktivId] = useState<string | null>(null);
+  // R-0961: `?fall=<id>` aus der Aufgabenliste wählt genau dieses Objekt vor. Steht es nicht (mehr)
+  // in der Fälligkeitsliste, führt wie bisher der erste Eintrag (`aktivIdEffektiv` unten).
+  const [params] = useSearchParams();
+  const [aktivId, setAktivId] = useState<string | null>(() => leseFall(params));
   const [lastRevalidated, setLastRevalidated] = useState<{
     id: string;
     title: string;

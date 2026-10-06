@@ -363,6 +363,15 @@ export function MehrAbschnitte({
   const neighborhood = useKoNeighbors(id);
   const koList = useKos();
   const conflicts = useConflicts();
+  // R-0766 (Aufnahme gesamt-auditprotokoll, Lauf 2): alle Befunde des Objekts, auch abgeschlossene
+  // Überschneidungen und gelöste Konflikte, die `useConflicts` nicht mehr führt. Nur wer das Protokoll
+  // lesen darf, braucht sie — deshalb erst nach einer gelungenen Protokollabfrage.
+  const befundKennungen = useQuery({
+    queryKey: ["audit", "ko-findings", id],
+    queryFn: () => endpoints.audit.koFindings(id),
+    enabled: audit.isSuccess,
+    retry: false,
+  });
   const pending = useLifecyclePending();
   const dir = useDirectory();
   const extPolicy = useExternalPolicy();
@@ -832,7 +841,13 @@ export function MehrAbschnitte({
     conflictImpact(ko.id, conflicts.data ?? []),
   );
   const lineage = lineageSummary(ko, neighborhood.data?.total ?? 0);
-  const auditEvents = koAuditEvents(audit.data ?? [], ko.id)
+  // R-0766: die Kette am Objekt schließt Konflikte und Überschneidungen ein, an denen es beteiligt
+  // ist — die offenen aus `useConflicts`, dazu alle (auch abgeschlossene) vom Server.
+  const eigeneBefunde = [
+    ...(conflicts.data ?? []).filter((c) => c.koA === ko.id || c.koB === ko.id).map((c) => c.id),
+    ...(befundKennungen.data?.ids ?? []),
+  ];
+  const auditEvents = koAuditEvents(audit.data ?? [], ko.id, eigeneBefunde)
     .slice(-6)
     .reverse();
   const gueltigkeit = validityProtectionView(ko, pending.data ?? [], conflicts.data ?? []);

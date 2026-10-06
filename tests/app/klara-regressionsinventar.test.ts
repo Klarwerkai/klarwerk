@@ -415,6 +415,15 @@ const INVENTAR: readonly string[] = [
   // Aufgabenfenster und misst Pedis Auflage am VERHALTEN — Inhaltsachse `taskpane`, deshalb
   // verlangt K2 diesen Eintrag. Nachgefuehrt in JOB 1571 D9, nachdem K2 ihn gemeldet hat.
   "tests/app/ka3-fokusverhalten.test.tsx",
+  // Aufnahme 20260922 (gesamt-bestandsblick, Runde 2): der Wirkungsnachweis, dass der
+  // Bestandsblick mit dem Begriffsbild des AKTUELLEN Dokuments fragt (verzoegertes Lesen,
+  // geaenderter Text). Inhaltsachse `taskpane`; K2 hat ihn gemeldet.
+  "tests/app/ka3-bestandsblick-aktueller-stand.test.tsx",
+  // Integration mit `main` (Nacharbeit 13): zwei Dateien aus `main`, die eine der Achsen treffen.
+  // GEMESSEN, NICHT GESETZT: K2 meldete genau diese zwei Pfade als `neu im Baum, aber nicht im
+  // gepinnten Inventar`; erst danach wurden diese Zeilen angefasst.
+  "tests/app/stage2-gate-mounted.test.tsx",
+  "tests/k3-bedarfsabgleich/bedarfsabgleich.test.ts",
   "tests/app/klara-ai-header.test.ts",
   "tests/app/klara-ai-session-consent.test.ts",
   "tests/app/klara-ai-status-contract.test.ts",
@@ -525,6 +534,17 @@ const INVENTAR: readonly string[] = [
   // Seitenfenster (verständlicher Satz, Wiederanmeldung im Panel, Arbeit geht weiter) — fährt
   // `taskpane.html` über die Fixture. K2 hat sie gemeldet, das Inventar nimmt sie nicht still auf.
   "tests/office-web-anmeldung/sitzungsablauf-im-seitenfenster.test.tsx",
+  // Word-Host-Gesamtweg (Nacharbeit 3, Realhostbeleg 05.10.2026): der COOP-Kopf der Dialogseite am
+  // echten Fastify-Draht — nennt das Taskpane als Gegenpfad, deshalb von der Achse `taskpane`
+  // gefunden; kein „klara" im Pfad, K5 unverändert. Abgelesen am Achsenmuster, nicht gemessen: der
+  // Prüflauf am Kandidaten 26e86268 hat dieses Inventar nicht gefahren, wohl aber `schnitt-pins` A2
+  // mit genau diesem Pfad gemeldet.
+  "tests/office-web-anmeldung/dialog-opener-kopf.test.ts",
+  // Word-Host-Gesamtweg (Nacharbeit 7, Realhostbeleg 06.10.2026): der Auswahlzugriff des Fragenwegs
+  // (`Word.run` zuerst, mit Frist) am ganzen Fenster über `createKlaraPanel` — von der Achse
+  // `komponente` gefunden (Typ `KlaraPanel`); kein „klara" im Pfad, K5 unverändert. Abgelesen am
+  // Achsenmuster, nicht gemessen.
+  "tests/app/word-addin-auswahlzugriff.test.ts",
   // JOB 4085 (OFFICE-PG-ABNAHME): die Abnahme des Word-Rueckwegs gegen eine ECHTE `.docx` durch den
   // produktiven Extraktor — die Word-Auswahl geht durch das ausgelieferte Aufgabenfenster an die
   // echte Route, gemessen wird am zurueckgelesenen Wissensobjekt. Von der Achse `taskpane`
@@ -1257,6 +1277,9 @@ const INVENTAR: readonly string[] = [
   //     und fährt das Fenster über `createKlaraPanel`).
   //   · `klara-assistenz/abgleich-belege.test.ts` (gesamt-klara-assistenz) — Achse `name` („klara"
   //     im Pfad); sie zählt deshalb in K5 mit (70 -> 71).
+  // (Dieselben zwei Pfade hatte der Folgeauftrag gesamt-erstnutzerfuehrung-quellen in seiner
+  // Nacharbeit 4 eingetragen, gemessen am Kandidaten 039d5468; bei der Integration mit main in diesen
+  // Eintrag zusammengeführt — ein Pfad steht im Inventar genau einmal.)
   "tests/app/word-addin-dokumentkennung.test.ts",
   "tests/klara-assistenz/abgleich-belege.test.ts",
   // Nacharbeit 7 desselben Auftrags (Integration mit main): R-1864 hält die Zuordnung der Quelle W9
@@ -1264,6 +1287,27 @@ const INVENTAR: readonly string[] = [
   // Achse `taskpane`; „klara" steht nicht im Pfad, K5 bleibt bei 71. GEMESSEN, NICHT GESETZT: der
   // Prüflauf am Kandidaten cd1073c0 meldete K2 mit genau diesem Pfad.
   "tests/r1864-w9-zuordnung/w9-quelle-und-zuordnung.test.ts",
+  // Folgeauftrag gesamt-erstnutzerfuehrung-quellen, Nacharbeit 15 (Integration mit main): der
+  // Aufrufer-Wächter der Erfassung nennt seit `22d6b201` („Suchraum und kombinierbare Facetten …",
+  // über main eingemischt) das statische Panel `apps/web/public/word-addin/taskpane.html` (`:1318`)
+  // — Achse `taskpane`. Sachlich keine Klara-Regression, gepinnt, weil die Achse hier nicht still
+  // verengt wird. Kein „klara" im Pfad: fällt in `verfehlt`, K5 bleibt bei 71. GEMESSEN, NICHT
+  // GESETZT: der Prüflauf am Kandidaten 95636768 meldete K2 `neu im Baum, aber nicht im gepinnten
+  // Inventar` mit genau diesem Pfad.
+  "tests/capture/aufrufer-waechter.test.ts",
+  // Word-Host-Gesamtweg (Nacharbeit 8): `word-panel-stufenwahl.test.tsx` (R-0632, Stufenwahl im
+  // Word-Panel) stammt aus dem Bestand, nicht aus diesem Auftrag, und ist unverändert — sie fährt
+  // das Fenster und nennt `taskpane`, Achse `taskpane`; kein „klara" im Pfad, K5 bleibt bei 71.
+  // GEMESSEN, NICHT GESETZT: der Prüflauf am Kandidaten e48905fd meldete K2 `neu im Baum, aber
+  // nicht im gepinnten Inventar` mit genau diesem Pfad; erst danach wurde diese Zeile angefasst.
+  "tests/vertraulichkeit-pflicht/word-panel-stufenwahl.test.tsx",
+  // AUFNAHME 20260922 · GESAMT-SCHNELLWAHL (R-0893/R-1669): der neue Prüfstand montiert
+  // `CommandPalette` über die Griffe von `tests/navigationsnamen/vorrichtung.tsx`
+  // (`paletteOeffnen`, `paletteTippen`) und trifft damit die Achse `palette` — dieselbe Klasse wie
+  // die `navigationsnamen`-Dateien oben. Kein „klara" im Pfad, K5 bleibt unverändert. NICHT
+  // GEMESSEN, SONDERN AUS DER QUELLE ABGELEITET: die Bahn dieses Auftrags startet keine Tests; ob
+  // K2 mit diesem Eintrag grün ist, zeigt erst der Prüflauf.
+  "tests/schnellwahl/wissen-in-der-schnellwahl.test.tsx",
 ];
 
 // ------------------------------------------------------------------------------------------------
@@ -1598,6 +1642,9 @@ describe("JOB 920 · K — das Klara-Regressionsinventar ist ableitbar, nicht be
     // Nacharbeit 4 desselben Auftrags (Integration mit main): `tests/klara-assistenz/abgleich-
     // belege.test.ts` (auf main entstanden) trägt „klara" im PFAD — 70 -> 71. GEMESSEN, NICHT
     // GESETZT: der Prüflauf am Kandidaten e0ac4c8f meldete `expected 71 to be 70`.
+    // (Den Schritt für `abgleich-belege` hatte der Folgeauftrag gesamt-erstnutzerfuehrung-quellen
+    // in seiner Nacharbeit 4 gleichlautend als 69 -> 70 gezählt; zusammen mit `schnitt-echt` ergibt
+    // die Vereinigung beider Stände 71 — die Datei zählt nur einmal.)
     expect(nurName.length).toBe(71);
     expect(verfehlt.length).toBeGreaterThanOrEqual(25);
     expect(verfehlt.length + nurName.length).toBe(GEFUNDEN.length);

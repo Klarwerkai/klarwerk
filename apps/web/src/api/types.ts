@@ -513,6 +513,9 @@ export interface AnzeigestatusHerkunft extends Record<AnzeigestatusEingang, Eing
   ungeprueft: Partial<Record<AnzeigestatusEingang, string>>;
 }
 
+/** R-0658: welche Art Schutzdaten der Server erkannt hat — Spiegel von `SchutzdatenArt`. */
+export type SchutzdatenArt = "personalnummer" | "kontodaten";
+
 export interface KnowledgeObject {
   id: string;
   title: string;
@@ -578,6 +581,9 @@ export interface KnowledgeObject {
   // Beleglage mitliefert, sagt allein der Routenvertrag (`ValidationBoardKo` weiter unten) — nur
   // dort ist `null` von „diese Antwort trägt die Auskunft nicht" unterscheidbar.
   confidentiality?: Confidentiality | null;
+  // R-0658: die Schutzdaten-Quarantäne des Servers (`services/knowledge-object/src/schutzdaten.ts`).
+  // Nur die ARTEN, nie die Werte. Fehlt das Feld, liegt das Objekt nicht in Quarantäne.
+  schutzdatenQuarantaene?: { arten: SchutzdatenArt[]; seit: string };
   // JOB 3034: WOHER die Stufe stammt — der Detailabruf schickt sie mit
   // (`services/app/src/routes/ko-routes.ts:598` → `discloseConfidentiality`), die Listenroute
   // (noch) nicht. Deshalb OPTIONAL: fehlt das Feld, wendet die Oberfläche dieselbe Regel selbst an
@@ -747,6 +753,18 @@ export interface AuditVerifyReport {
   firstDeviation?: { seq: number; at: string; action: string; kind: ChainDeviationKind };
 }
 
+// Aufnahme gesamt-auditprotokoll (R-0613): Export der Kette (GET /api/audit/export). Spiegelt
+// `AuditChainExport` aus services/audit/src/service.ts. `head` ist der Wert zum Ablegen außerhalb.
+export interface AuditChainExport {
+  format: "klarwerk-audit-export";
+  formatVersion: 1;
+  exportedAt: string;
+  count: number;
+  head: { seq: number; hash: string } | null;
+  inspection: AuditVerifyReport;
+  entries: AuditEntry[];
+}
+
 // SCRUM-422: Papierkorb-Zeile (Admin) — nur Metadaten.
 export interface TrashedKo {
   id: string;
@@ -846,7 +864,12 @@ export interface OverlapDetector {
   // die Anzeige führt dann konsistent über die Textdeckung (siehe overlapDetectorInfo.isModelFinding).
   confidence?: number;
   rationale?: string;
+  // R-0194: Herkunft des Kandidaten (Spiegel von services/conflicts OverlapDetector).
+  candidateSources?: CandidateSource[];
+  checksumSimilarity?: number;
 }
+
+export type CandidateSource = "metadaten" | "text" | "pruefsumme" | "abschnitt";
 
 export interface OverlapResolution {
   reason: OverlapResolutionReason;

@@ -33,7 +33,7 @@ const en: typeof de = {
   "gliederung.verwaltung": "Administration",
   "gliederung.persoenlich": "Personal and help",
   "nav.start": "Home",
-  "nav.tasks": "My Tasks",
+  "nav.tasks": "Open tasks",
   "nav.capture": "Capture Knowledge",
   "nav.ask": "Ask",
   "nav.library": "Library",
@@ -165,16 +165,16 @@ const en: typeof de = {
   "seitenhilfe.bibliothek.title": "Library: the whole stock",
   "seitenhilfe.bibliothek.body":
     "This is your entire knowledge stock. On a wide screen the list stands on the left and the entry you are reading on the right; on a narrow device only one of the two fills the surface — the list without a selection, the entry with one, and the button “Back to Library” at the top takes you back to the list (on a tablet, “Show result list” slides it in as a drawer OVER the entry, “Hide result list” takes it away again). You search with the search field at the top of the header bar; filters, sorting, saved views and export sit in the “…” menu above the list. Next step: click an entry and read it — if the list is empty, the “Capture” button leads to where new knowledge is created, provided your role is allowed to capture; otherwise it says “No access”.",
-  "seitenhilfe.aufgaben.title": "My Tasks: what is waiting for you to do",
+  "seitenhilfe.aufgaben.title": "Open tasks: what is waiting to be done here",
   "seitenhilfe.aufgaben.body":
-    "This is your work in one place: validations, conflicts, due revalidations, open knowledge gaps and objects that came back to you for rework. The coloured dot shows the urgency (red “Critical”, yellow “Today”, green “Later”), the row of buttons above filters by type and states the count, and the “i” on a line tells you what has to be done there. Next step: click the topmost line — it takes you to where the task gets done, provided that area is enabled for your role; otherwise the way stays closed (conflicts, risk and lifecycle are not open to every role). If it says “Nothing open.”, “What happens next?” shows the possible next moves.",
+    "This is the open work in one place: validations, conflicts, due revalidations, open knowledge gaps and objects that came back to you for rework. The coloured dot shows the urgency (red “Critical”, yellow “Today”, green “Later”), the row of buttons above filters by type and states the count, and the “i” on a line tells you what has to be done there. Next step: click the topmost line — it takes you to where the task gets done, provided that area is enabled for your role; otherwise the way stays closed (conflicts, risk and lifecycle are not open to every role). If it says “Nothing open.”, “What happens next?” shows the possible next moves.",
   "seitenhilfe.wissen.title": "Knowledge object: one statement and its evidence",
   "seitenhilfe.wissen.body":
     "You are reading a single knowledge object — the same surface as the library, only with this entry preselected: on a wide screen the list on the left and its statement with status and source on the right, on a narrow device the entry fills the surface alone and the button “Back to Library” at the top leads to the list. Everything else — sources and attachments, versions, history, comments, conflicts — sits behind the “More” line; if your interface is set to another language and a reading translation exists, it stands at the top, explicitly named as a translation. Next step: read the statement, check status and source, and open “More” when you want to know what it rests on.",
   // JOB 3768 — the fifth page of the same path; see the German entry for what each sentence rests on.
   "seitenhilfe.entwuerfe.title": "My drafts: pick up what you started",
   "seitenhilfe.entwuerfe.body":
-    "These are the captures saved as a draft that have not become a knowledge object yet — the same drafts the editor and the workspace show, only in a place of their own; this is not a second draft store. As an administrator you see the drafts of all creators here, and the “All creators” selector above the list narrows them down to one person; without that role only your own drafts stand here, and that selector is not there. The search field above the list covers only these drafts and no knowledge from the library, “Sort” orders them by when they were saved or by title. Deleted drafts go to the “Recycle bin” below the list: “Restore” brings one back, “Delete permanently” really removes it, and the recycle bin does not empty itself. Next step: click “Resume” on a line — the draft opens in the editor, and unsaved input is asked about beforehand; if the list stands empty, “Capture” leads to where a new draft is created.",
+    "These are the captures saved as a draft that have not become a knowledge object yet — the same drafts the editor and the workspace show, only in a place of their own; this is not a second draft store. Only your own drafts stand here: they are private, nobody else sees them, not even an administrator. The search field above the list covers only these drafts and no knowledge from the library, “Sort” orders them by when they were saved or by title. Deleted drafts go to the “Recycle bin” below the list: “Restore” brings one back, “Delete permanently” really removes it, and the recycle bin does not empty itself. Next step: click “Resume” on a line — the draft opens in the editor, and unsaved input is asked about beforehand; if the list stands empty, “Capture” leads to where a new draft is created.",
   "menue.weitereBereiche": "Areas",
   "menue.schnellnavigation": "Go to …",
   "menue.darstellung": "Appearance",
@@ -4332,7 +4332,7 @@ const en: typeof de = {
   "klara.page.start":
     "Your overview: what was freshly secured, what helped today and what is waiting for you. Jump into any area from here.",
   "klara.page.tasks":
-    "Your open tasks: assigned reviews, gaps and due items — each with a direct jump to the work.",
+    "Open tasks: due reviews, gaps and due items — each with a direct jump to the work.",
   "klara.page.capture":
     "Here you secure experience knowledge: tell it, dictate it, in an interview or from a file. The AI only structures — you review and submit.",
   "klara.page.ask":
@@ -4553,9 +4553,9 @@ const en: typeof de = {
   "help.library.title": "Library & knowledge object",
   "help.library.body":
     "The library is the whole body of knowledge in one place. The search field above finds an entry; filters, sorting, saved views and export sit in the “…” menu above the list. One click opens the knowledge object: its statement, its state and its source stand there straight away; sources and attachments, versions, history, comments and reported contradictions sit behind “More”. On a narrow device only one of the two fills the surface — either the list or the entry. Next step: click an entry, read the statement and open “More”.",
-  "help.tasks.title": "My tasks",
+  "help.tasks.title": "Open tasks",
   "help.tasks.body":
-    "Your own work stands here in one place: objects waiting for you to check them on Validation, queries directed at you, reported contradictions, open knowledge gaps and objects that should be confirmed once more after a change to a machine or process. A coloured dot shows the urgency, the row of buttons above narrows the list down to one kind, and the “i” on a row tells you what is to be done there. Every row leads exactly to where the matter gets settled — as far as your role is allowed to see that area. Next step: click the top row and work it off.",
+    "The open work stands here in one place: objects waiting for you to check them on Validation, queries directed at you, reported contradictions, open knowledge gaps and objects that should be confirmed once more after a change to a machine or process. A coloured dot shows the urgency, the row of buttons above narrows the list down to one kind, and the “i” on a row tells you what is to be done there. Every row leads exactly to where the matter gets settled — as far as your role is allowed to see that area. Next step: click the top row and work it off.",
   "help.risk.title": "Risk & Gaps",
   "help.risk.body":
     "This page shows where knowledge is missing and where it hangs on one person alone. Every open knowledge gap carries its next step with it: judge the urgency, assign it to a specialist, or close it with “Capture knowledge”. Alongside that, the domains are coloured by how many people the knowledge recorded there came from — red means: all of it came from one person, nobody else has contributed to it so far. What helps against that is written on the red row itself. Next step: look at a red row, open its objects and assign the most urgent gap to someone.",
@@ -5126,7 +5126,7 @@ const en: typeof de = {
     "The title is the first thing colleagues see in the library and in answers — it decides whether your knowledge is found. Good: concrete and actionable („checking weld seams on aluminium under 5 mm“). You can change it anytime; the AI suggestion is only a starting point.",
   "chelp.saveDraftHelp.title": "Save draft",
   "chelp.saveDraftHelp.body":
-    "Saves your interim state on the server under your account — continue anytime, even on another device. A draft is NOT submitted: nobody sees it, it appears in no review and no answer. You find saved drafts under “More” → Drafts.",
+    "Saves your interim state privately on the server — continue anytime, on any of your devices and even after a restart. A draft is NOT submitted: only you can see it, and it appears in no review and no answer. You find your saved drafts to resume under “More” → Drafts and in the menu under My drafts.",
   "chelp.discardHelp.title": "Discard",
   "chelp.discardHelp.body":
     "Discards the current input — text, structure and attachments of this capture. It affects ONLY this input: already submitted knowledge objects and saved drafts stay untouched. The app deliberately asks first.",

@@ -1,11 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { CONFLUENCE_AUTH_VAR, confluenceCredentialState } from "./credential-state";
 import {
-  type ConfluencePage,
-  ConfluenceRestClient,
-  confluenceAuthModeFrom,
-  confluenceClientFromEnv,
-} from "./rest-client";
+  CONFLUENCE_AUTH_VAR,
+  confluenceAuthMode,
+  confluenceCredentialState,
+} from "./credential-state";
+import { type ConfluencePage, ConfluenceRestClient, confluenceClientFromEnv } from "./rest-client";
+
+// ZUSAMMENFÜHRUNG (Nacharbeit 10): R-0166 gehört dem ausgegliederten Auftrag
+// `confluence-import-onprem-anmeldung`; dessen mit main integrierter Vertrag ist maßgeblich
+// (`credential-state.ts`, `onprem-anmeldung.test.ts`). Dieser ältere Test liest den Anmeldeweg
+// deshalb über `confluenceAuthMode` und erwartet bei einem unbekannten Wert dasselbe wie dort:
+// kein eigener Riegel, sondern `missing` mit der Auswahlvariablen als „steht nicht“.
 
 // ================================================================================================
 // R-0166 — CONFLUENCE IM EIGENEN HAUS: PERSONAL ACCESS TOKEN STATT E-MAIL + API-TOKEN
@@ -30,12 +35,14 @@ function okJson(body: unknown): Response {
 
 describe("R-0166 · Anmeldeart aus der Umgebung", () => {
   it("ungesetzt/leer = cloud (heutiges Verhalten), cloud/pat in jeder Schreibweise, sonst nichts", () => {
-    expect(confluenceAuthModeFrom(undefined)).toBe("cloud");
-    expect(confluenceAuthModeFrom("")).toBe("cloud");
-    expect(confluenceAuthModeFrom(" PAT ")).toBe("pat");
-    expect(confluenceAuthModeFrom("Cloud")).toBe("cloud");
-    expect(confluenceAuthModeFrom("basic")).toBeUndefined();
-    expect(confluenceAuthModeFrom("oauth")).toBeUndefined();
+    const weg = (wert: string | undefined) =>
+      confluenceAuthMode(wert === undefined ? {} : { [CONFLUENCE_AUTH_VAR]: wert });
+    expect(weg(undefined)).toBe("cloud");
+    expect(weg("")).toBe("cloud");
+    expect(weg(" PAT ")).toBe("pat");
+    expect(weg("Cloud")).toBe("cloud");
+    expect(weg("basic")).toBeNull();
+    expect(weg("oauth")).toBeNull();
   });
 });
 
@@ -152,14 +159,16 @@ describe("R-0166 · Client aus der Umgebung", () => {
 });
 
 describe("R-0166 · die Zugangsauskunft kennt beide Wege", () => {
-  it("pat: die Kennung wird nicht verlangt, drei Werte genügen", () => {
+  it("pat: die Kennung wird nicht verlangt — drei Zugangswerte plus die Auswahlvariable", () => {
     const s = confluenceCredentialState(PAT_ENV);
     expect(s.authMode).toBe("pat");
     expect(s.vars.map((v) => v.name)).toEqual([
       "KLARWERK_CONFLUENCE_BASE_URL",
       "KLARWERK_CONFLUENCE_TOKEN",
       "KLARWERK_CONFLUENCE_SPACE",
+      CONFLUENCE_AUTH_VAR,
     ]);
+    expect(s.vars.map((v) => v.name)).not.toContain("KLARWERK_CONFLUENCE_USER");
     expect(s.usable).toBe(true);
     expect(s.blocker).toBeNull();
     // Kein Wert, keine Länge in der Auskunft.
@@ -174,11 +183,12 @@ describe("R-0166 · die Zugangsauskunft kennt beide Wege", () => {
     expect(s.blocker).toBe("missing");
   });
 
-  it("unbekannte Anmeldeart: eigener Riegel statt „fehlt“", () => {
+  it("unbekannte Anmeldeart: nicht benutzbar, die Auswahlvariable steht als „fehlt“", () => {
     const s = confluenceCredentialState({ ...PAT_ENV, [CONFLUENCE_AUTH_VAR]: "kerberos" });
     expect(s.usable).toBe(false);
-    expect(s.blocker).toBe("invalid-auth-mode");
+    expect(s.blocker).toBe("missing");
     expect(s.authMode).toBeNull();
+    expect(s.vars.find((v) => v.name === CONFLUENCE_AUTH_VAR)?.present).toBe(false);
   });
 
   it("Auskunft und Client-Bau sind sich einig (keine zweite Wahrheit)", () => {

@@ -382,6 +382,18 @@ Quellabgleich übernimmt sie. (c) Biome: drei Zeilenumbrüche. (d) `runde3.test.
 die frühere vorläufige Löschregel dieser Lieferung und ist seit der Integration von R-0162 überholt —
 aus der Auftragsauswahl genommen, global unverändert.
 
+**Nacharbeit 10 (Integration mit main `2b1131ad`):** Konflikte nur in `credential-state.ts` und
+`rest-client.ts`, beide R-0166 (Anmeldeweg für selbst betriebenes Confluence, ausgegliedert an
+`confluence-import-onprem-anmeldung`). mains Lieferung ist maßgeblich und übernommen: Leser
+`confluenceAuthMode` in `credential-state.ts`, ein unbekannter Wert ergibt `missing` mit
+`KLARWERK_CONFLUENCE_AUTH` als „steht nicht“, beim Weg `pat` steht die Auswahlvariable in der Liste.
+Die ältere Fassung dieser Lieferung (`confluenceAuthModeFrom` in `rest-client.ts`, eigener Riegel
+`invalid-auth-mode`, eigene Startmeldung in `start-vertrag.ts`, Export von `CONFLUENCE_AUTH_VAR` im
+Paketindex) ist zurückgenommen; doppelte Deklarationen und der Importkreis zwischen beiden Dateien
+sind damit weg. `auth-mode.test.ts` ist auf mains Vertrag umgestellt. Der Oberflächenwert
+`invalid-auth-mode` (`importAccessState.ts`, Text `imp.access.blocker.invalidAuthMode`) bleibt als
+tolerante Anzeige bestehen, wird vom Server aber nicht mehr gesendet.
+
 ## Abgrenzung
 
 - SharePoint/OneDrive-Import (JOB 4086) ist ein eigener Adapter und eigener Auftrag.

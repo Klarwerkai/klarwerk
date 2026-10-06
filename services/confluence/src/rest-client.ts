@@ -11,16 +11,17 @@
 // redirect:"error" ⇒ kein Folgen auf einen fremden Host (kein Token an ein Redirect-Ziel). `fetchFn` ist
 // injizierbar → deterministische Fixture-Tests ohne Netz/Live-Token.
 
+import { type ConfluenceAuthMode, confluenceAuthMode } from "./credential-state";
+
 // Config INKL. Token — modul-intern (NICHT über die Paket-index re-exportiert). Der Token lebt danach nur
 // noch in der privaten Client-Closure.
 export interface ConfluenceRestConfig {
   baseUrl: string; // https-Origin des Confluence (z. B. https://acme.atlassian.net/wiki)
-  // R-0166: bei `authMode: "pat"` (Confluence im eigenen Haus) bleibt die Kennung ungenutzt.
-  email?: string; // Service-Account (read-only)
-  apiToken: string; // read-only API-Token — NIE ein Modell-Credential, nie loggen/exportieren/in URL
-  // R-0166: Anmeldeart. "cloud" (Vorgabe) = Basic aus E-Mail + API-Token (Atlassian Cloud);
-  // "pat" = Bearer mit Personal Access Token (Confluence Server/Data Center im eigenen Haus).
+  // R-0166: "cloud" (Standard) = Basic aus email + apiToken; "pat" = selbst betriebenes Confluence
+  // (Data Center/Server) mit persönlichem Zugriffstoken als Bearer, ohne Kennung.
   authMode?: ConfluenceAuthMode;
+  email?: string; // Service-Account (read-only) — nur beim Cloud-Weg
+  apiToken: string; // read-only API-Token bzw. PAT — NIE ein Modell-Credential, nie loggen/exportieren/in URL
   spaceKey: string; // gescoped auf EINEN Space (Space K)
   fetchFn?: typeof fetch;
   pageLimit?: number;
@@ -31,34 +32,6 @@ export interface ConfluenceRestConfig {
   maxResponseBytes?: number;
   // R-0163: Obergrenze je heruntergeladenem Anhang (Rohbytes). Ohne Angabe gilt die Konstante unten.
   maxAttachmentBytes?: number;
-}
-
-// ================================================================================================
-// R-0166 — DER ANMELDEWEG FÜR CONFLUENCE IM EIGENEN HAUS
-// ================================================================================================
-//
-// Atlassian Cloud meldet sich mit E-Mail + API-Token per Basic an. Confluence Server/Data Center
-// (ab 7.9) kennt dafür den Personal Access Token, der als `Authorization: Bearer <PAT>` gesendet
-// wird — ohne Kennung. Welcher Weg gilt, entscheidet der Betreiber ausdrücklich über
-// `KLARWERK_CONFLUENCE_AUTH`; geraten wird nichts. Ein unbekannter Wert ergibt KEINEN Client
-// (fail-closed) statt stillschweigend auf Cloud zurückzufallen. Alle übrigen Riegel (HTTPS,
-// Origin-Pinning, redirect:error, Redaction) gelten für beide Wege unverändert.
-export type ConfluenceAuthMode = "cloud" | "pat";
-
-export const CONFLUENCE_AUTH_MODES: readonly ConfluenceAuthMode[] = ["cloud", "pat"];
-
-/**
- * Liest die Anmeldeart aus dem Wert von `KLARWERK_CONFLUENCE_AUTH`. Leer/ungesetzt = "cloud"
- * (heutiges Verhalten). `undefined` = ein Wert, den es nicht gibt — der Aufrufer baut dann nichts.
- */
-export function confluenceAuthModeFrom(raw: string | undefined): ConfluenceAuthMode | undefined {
-  const wert = (raw ?? "").trim().toLowerCase();
-  if (wert === "") {
-    return "cloud";
-  }
-  return (CONFLUENCE_AUTH_MODES as readonly string[]).includes(wert)
-    ? (wert as ConfluenceAuthMode)
-    : undefined;
 }
 
 // ================================================================================================
@@ -313,14 +286,19 @@ export function assertAllowedConfluenceUrl(url: string, allowedOrigin: string): 
 export class ConfluenceRestClient {
   constructor(private readonly config: ConfluenceRestConfig) {}
 
-  // Basic-Auth aus Service-Account + read-only Token (Confluence-Cloud-Konvention) oder — R-0166 —
-  // Bearer mit Personal Access Token (Server/Data Center). Bleibt lokal in dieser Methode; der Token
-  // wird nie geloggt/zurückgegeben.
+  // Basic-Auth aus Service-Account + read-only Token (Confluence-Cloud-Konvention). Bleibt lokal in
+  // dieser Methode; der Token wird nie geloggt/zurückgegeben.
+  // R-0166: beim selbst betriebenen Confluence (authMode "pat") geht das persönliche Zugriffstoken
+  // unverändert als Bearer — so verlangt es Confluence Data Center/Server; eine Kennung gibt es dort
+  // nicht. Ohne Kennung kein Cloud-Header: ein Basic aus "undefined:<token>" wäre ein Fehlversuch.
   private authHeader(): string {
     if (this.config.authMode === "pat") {
       return `Bearer ${this.config.apiToken}`;
     }
-    const raw = `${this.config.email ?? ""}:${this.config.apiToken}`;
+    if (!this.config.email) {
+      throw new Error("Confluence: Cloud-Anmeldung ohne Kennung — Abbruch, kein Request.");
+    }
+    const raw = `${this.config.email}:${this.config.apiToken}`;
     return `Basic ${Buffer.from(raw, "utf8").toString("base64")}`;
   }
 
@@ -336,11 +314,14 @@ export class ConfluenceRestClient {
     if (token) {
       out = out.split(token).join("[redacted-token]");
     }
-    // "Basic <base64(email:token)>" bzw. "Bearer <PAT>" — beides samt Nutzlast entfernen.
-    const auth = this.authHeader();
-    const nutzlast = auth.slice(auth.indexOf(" ") + 1);
-    if (nutzlast) {
-      out = out.split(auth).join("[redacted]").split(nutzlast).join("[redacted]");
+    // Cloud: "Basic <base64(email:token)>" — die Base64 trägt den Token nur kodiert, also lesbar, und wird
+    // eigens ersetzt. Beim Bearer-Weg (R-0166) steht der Token roh im Header; den deckt die Zeile oben.
+    if (this.config.authMode !== "pat" && this.config.email) {
+      const auth = this.authHeader();
+      const b64 = auth.slice("Basic ".length);
+      if (b64) {
+        out = out.split(auth).join("[redacted]").split(b64).join("[redacted]");
+      }
     }
     // Credential-tragende URLs (userinfo@host) generisch entschärfen — auch für fremde/unerwartete Werte.
     out = out.replace(/(https?:\/\/)[^/\s@]*@/gi, "$1[redacted]@");
@@ -741,8 +722,9 @@ export function confluenceClientFromEnv(
   const email = env.KLARWERK_CONFLUENCE_USER;
   const apiToken = env.KLARWERK_CONFLUENCE_TOKEN;
   const spaceKey = env.KLARWERK_CONFLUENCE_SPACE;
-  // R-0166: unbekannte Anmeldeart ⇒ kein Client. Die Kennung ist nur für "cloud" Pflicht.
-  const authMode = confluenceAuthModeFrom(env.KLARWERK_CONFLUENCE_AUTH);
+  // R-0166: der Anmeldeweg aus derselben Regel wie die Zustandsauskunft (credential-state.ts).
+  // Unbekannter Wert ⇒ kein Client; beim persönlichen Zugriffstoken wird keine Kennung verlangt.
+  const authMode = confluenceAuthMode(env);
   if (!authMode || !baseUrl || !apiToken || !spaceKey || (authMode === "cloud" && !email)) {
     return undefined;
   }
@@ -762,10 +744,12 @@ export function confluenceClientFromEnv(
   const budgetMs = Number(env.KLARWERK_CONFLUENCE_BUDGET_MS);
   return new ConfluenceRestClient({
     baseUrl,
+    authMode,
+    // Beim Cloud-Weg ist email oben schon als gesetzt geprüft; die Bedingung hier verengt nur den Typ
+    // (exactOptionalPropertyTypes: `email` darf nie als ausdrücklich undefined ankommen).
     ...(authMode === "cloud" && email ? { email } : {}),
     apiToken,
     spaceKey,
-    authMode,
     ...(Number.isInteger(limit) && limit > 0 ? { pageLimit: limit } : {}),
     ...(Number.isInteger(timeoutMs) && timeoutMs > 0 ? { timeoutMs } : {}),
     ...(Number.isInteger(budgetMs) && budgetMs > 0 ? { totalBudgetMs: budgetMs } : {}),

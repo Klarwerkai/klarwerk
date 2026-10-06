@@ -41,6 +41,8 @@ import {
   // `displayStatus` keinen einzigen Aufrufer im Produkt (`git log -S displayStatus -- services/app`:
   // kein Treffer); `discloseDisplayStatus` bildet beide Haelften der Auskunft an EINER Stelle.
   discloseDisplayStatus,
+  // R-0658: die eine Lesestelle der Schutzdaten-Quarantäne (Begründung in `schutzdaten.ts`).
+  inSchutzdatenQuarantaene,
   normalizeUploadLimits,
 } from "../../../knowledge-object";
 // JOB 3054: `RevalidierungMerkerLeser` ist die SCHREIBFREIE Haelfte desselben Dienstes — sie kommt
@@ -1500,6 +1502,8 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             importedVia: _ignoredImportedVia,
             // R-0169 (Nacharbeit 5): der Fassungsbezug der Dokumentakte entsteht nur serverseitig.
             dokumentHerkunft: _ignoredDokumentHerkunft,
+            // R-0632 (Nacharbeit 10): die Herabstufungssperre setzt allein der Entwurfs-Promote.
+            stufeNurAnheben: _ignoredStufeNurAnheben,
             ...input
           } = request.body;
           // ==========================================================================================
@@ -1558,7 +1562,11 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
           // Die 201-Antwort trägt den Vermerk ehrlich mit (aiCheck pending) — das Nachlesen
           // passiert VOR dem enqueue, damit die Antwort deterministisch den Job-Start zeigt.
           let submitted = created;
-          if (aiCheckWorker) {
+          // R-0658: ein Objekt in Schutzdaten-Quarantäne geht weder in die KI-Prüfung (externer
+          // Modellaufruf mit dem Text) noch in die Ähnlichkeitsablage (Einbettung = durchsuchbar).
+          // Die Warnung reist als `schutzdatenQuarantaene` (nur die Arten) in der 201-Antwort mit.
+          const inQuarantaene = inSchutzdatenQuarantaene(created);
+          if (aiCheckWorker && !inQuarantaene) {
             await ko.markAiCheckPending(created.id);
             submitted = (await ko.get(created.id)) ?? created;
             // WP-SHIP8-CLOSE-2 (bens F3): die Zielversion des frisch gesetzten pending-Vermerks
@@ -1569,7 +1577,9 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
           // Weg 3 (B6): Einbettung + Ablage NACH der Antwort — der Nutzer wartet nie darauf. Flag aus
           // = No-op; Fehler brechen den (bereits gesendeten) Submit nie. await nur zur deterministischen
           // Fertigstellung der Ablage, nicht zur Client-Latenz (201 ist schon raus).
-          await indexKoForDuplicatePrefilter(created, semanticPrefilter);
+          if (!inQuarantaene) {
+            await indexKoForDuplicatePrefilter(created, semanticPrefilter);
+          }
         } catch (error) {
           sendError(reply, error);
         }
@@ -1791,6 +1801,8 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             origin: _ignoredOrigin,
             importedVia: _ignoredImportedVia,
             dokumentHerkunft: _ignoredDokumentHerkunft,
+            // R-0632 (Nacharbeit 10): die Herabstufungssperre setzt allein der Entwurfs-Promote.
+            stufeNurAnheben: _ignoredStufeNurAnheben,
             ...rest
           } = body.create ?? ({} as Omit<CreateKoInput, "author">);
           input = { ...rest, author: user.id } as CreateKoInput;

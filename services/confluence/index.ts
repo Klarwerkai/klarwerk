@@ -16,7 +16,6 @@ export type { ConfluenceImportItem } from "./src/mapper";
 // Wert und nie eine Maske mit Länge. Diese Auskunft darf nach außen, weil sie strukturell kein
 // Geheimnis tragen kann (s. credential-state.ts); der Token-tragende Resolver bleibt modul-intern.
 export {
-  CONFLUENCE_AUTH_VAR,
   CONFLUENCE_CREDENTIAL_VARS,
   type ConfluenceCredentialState,
   confluenceCredentialState,

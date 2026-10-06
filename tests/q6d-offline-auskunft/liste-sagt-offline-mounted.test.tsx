@@ -206,3 +206,59 @@ describe("JOB 3531 · Q6d F2 — der Block erklärt die Wiederaufnahme und nimmt
     expect(block?.querySelectorAll("button, a, input").length).toBe(0);
   });
 });
+
+// ------------------------------------------------------------------------------------------------
+// F3 — N-0036 „für assistive Technik ankündigen": der Satz steht in einer Live-Region, die schon
+// VOR ihm im Baum war
+// ------------------------------------------------------------------------------------------------
+//
+// AUSGANGSLAGE (Gegenprüfung N-0036 vom 06.09.2026): „keine Status-/Alert-/Live-Region". Der Block
+// war ein stummes `<div>`. Gemessen wird hier nicht nur, DASS eine Region da ist, sondern dass es
+// DERSELBE Knoten vor und nach dem Wechsel in die Lage `pausiert` ist — eine Region, die erst mit
+// dem Satz zusammen entsteht, wird von Vorleseprogrammen nicht verlässlich gemeldet.
+describe("Auftrag gesamt-suchfehler · N-0036 F3 — der Offline-Satz wird angekündigt", () => {
+  const ANSAGE = '[data-testid="bib-offline-ansage"]';
+
+  function wechsle(pausiert: boolean): void {
+    act(() => {
+      root?.render(createElement(Wirt, { pausiert }));
+    });
+  }
+
+  it("online steht die Region schon da und ist leer; offline trägt DERSELBE Knoten beide Sätze", () => {
+    mounten(false);
+    tippe(suchfeld(), BEGRIFF);
+
+    const vorher = container.querySelector(ANSAGE);
+    expect(vorher, "die Live-Region steht vor dem Netzverlust im Baum").not.toBeNull();
+    expect(vorher?.tagName).toBe("OUTPUT");
+    expect(vorher?.getAttribute("aria-live")).toBe("polite");
+    expect(vorher?.textContent, "online wird nichts angesagt").toBe("");
+
+    wechsle(true);
+
+    const nachher = container.querySelector(ANSAGE);
+    expect(nachher, "kein neu eingefügter Knoten, sondern dieselbe Region").toBe(vorher);
+    expect(nachher?.querySelector(OFFLINE), "der Offline-Block steht IN der Region").not.toBeNull();
+    expect(nachher?.textContent).toContain(KLARTEXT.offline);
+    expect(nachher?.textContent, "die Wiederaufnahme wird mit angesagt").toContain(
+      KLARTEXT.offlineWeiter,
+    );
+    // Der Suchtext bleibt beim Wechsel stehen (N-0036: „eingegebenen Suchtext erhalten").
+    expect(suchfeld().value).toBe(BEGRIFF);
+  });
+
+  it("Netzrückkehr: die Region bleibt, ihr Inhalt verschwindet — keine veraltete Ansage", () => {
+    mounten(true);
+    tippe(suchfeld(), BEGRIFF);
+    const region = container.querySelector(ANSAGE);
+    expect(region?.textContent).toContain(KLARTEXT.offline);
+
+    wechsle(false);
+
+    expect(container.querySelector(ANSAGE)).toBe(region);
+    expect(region?.textContent).toBe("");
+    expect(container.querySelector(OFFLINE)).toBeNull();
+    expect(suchfeld().value).toBe(BEGRIFF);
+  });
+});

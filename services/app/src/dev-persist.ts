@@ -407,6 +407,13 @@ function journaled<T extends object>(
   const mutators = MUTATING_METHODS[name];
   return new Proxy(repo, {
     get(target, prop, receiver) {
+      // Aufnahme gesamt-auditprotokoll: `appendNext` schreibt in der Ablage an `append`/`appendOnce`
+      // vorbei und landete so nicht im Journal — nach einem Neustart fehlte der Eintrag. Die
+      // journalierte Ablage bietet ihn nicht an; der Audit-Dienst nimmt `last` + `append`/`appendOnce`
+      // (ungeteilt unter der `kettenSperre` der Speicher-Klammer, services/app/src/speicher-vorgang.ts).
+      if (name === "auditRepo" && prop === "appendNext") {
+        return undefined;
+      }
       const value = Reflect.get(target, prop, receiver);
       if (typeof value !== "function") {
         return value;

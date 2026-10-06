@@ -81,7 +81,6 @@
 //      gespiegelt (tests/demo-zugang-start/env-beispiel.test.ts C5), und diese Datei liegt nicht in
 //      den Zielpfaden dieses Auftrags. Die Schaerfung ist in der RUECKGABE bestellt.
 import {
-  CONFLUENCE_AUTH_VAR,
   CONFLUENCE_CREDENTIAL_VARS,
   type ConfluenceCredentialState,
   confluenceCredentialState,
@@ -1382,22 +1381,16 @@ export function startbericht(
   }
   if (schalterAn("confluenceImport") && !confluence.usable) {
     const fehlend = confluence.vars.filter((v) => !v.present).map((v) => v.name);
-    maengel.push(
-      // R-0166: ein unbekannter Anmeldeweg ist ein eigener Grund, kein fehlender Wert.
-      confluence.blocker === "invalid-auth-mode"
-        ? {
-            befund:
-              "Der Confluence-Import ist eingeschaltet, aber nicht benutzbar: die Anmeldeart ist unbekannt (erlaubt: cloud, pat).",
-            betrifft: [CONFLUENCE_AUTH_VAR],
-          }
-        : {
-            befund:
-              fehlend.length > 0
-                ? "Der Confluence-Import ist eingeschaltet, aber nicht benutzbar — diese Zugangswerte fehlen:"
-                : "Der Confluence-Import ist eingeschaltet, aber nicht benutzbar: die Basisadresse ist nicht https, und ohne https kommt kein Client zustande.",
-            betrifft: fehlend.length > 0 ? fehlend : [CONFLUENCE_CREDENTIAL_VARS[0]],
-          },
-    );
+    // ZUSAMMENFÜHRUNG (Nacharbeit 10): R-0166 nach dem maßgeblichen Vertrag aus main — ein
+    // unbekannter Anmeldeweg erscheint als fehlende KLARWERK_CONFLUENCE_AUTH in `fehlend`, nicht als
+    // eigener Riegel (credential-state.ts).
+    maengel.push({
+      befund:
+        fehlend.length > 0
+          ? "Der Confluence-Import ist eingeschaltet, aber nicht benutzbar — diese Zugangswerte fehlen:"
+          : "Der Confluence-Import ist eingeschaltet, aber nicht benutzbar: die Basisadresse ist nicht https, und ohne https kommt kein Client zustande.",
+      betrifft: fehlend.length > 0 ? fehlend : [CONFLUENCE_CREDENTIAL_VARS[0]],
+    });
   }
   if (gesetzt(env.KLARWERK_REASONER_POLICY)) {
     maengel.push({

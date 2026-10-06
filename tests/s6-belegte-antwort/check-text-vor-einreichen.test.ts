@@ -352,4 +352,88 @@ describe("JOB 3092 · S6 — Dublettenpruefung vor dem Einreichen (gemountet)", 
     await p.flush();
     expect(checkTextRufe(p)).toHaveLength(2);
   });
+
+  // ==============================================================================================
+  // WORD-WEB-TITLE-CACHE (Realhostbeleg 06.10.2026, Nacharbeit 9): die Suche sendet den Titel mit,
+  // ihr Merkschluessel war aber nur der Text. Im echten Word Web blieb nach einer Titelaenderung auf
+  // den Titel eines vorhandenen Eintrags der alte Leerstand stehen; erst Neumarkieren fand ihn.
+  // ==============================================================================================
+  const TITEL_PAUSE_MS = 600;
+  const warte = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+  const nurBeiTitel = (titel: string) => (_url: string, init?: Record<string, unknown>) => {
+    const koerper = JSON.parse(String(init?.body ?? "{}")) as { title?: string };
+    return reply(200, {
+      duplicates:
+        koerper.title === titel
+          ? [{ koId: "ko-1", koTitle: titel, relation: "identisch", koStatus: "validiert" }]
+          : [],
+      conflicts: [],
+    });
+  };
+
+  it("C11 · eine Titelaenderung erneuert die Suche mit dem neuen Titel; dieselbe Kombination startet keinen Lauf", async () => {
+    const p = oeffnen({ routes: { "/api/check-text": nurBeiTitel("Ventilwartung") } });
+    p.setTab("capture");
+    await p.flush();
+    expect(checkTextRufe(p)).toHaveLength(1);
+    expect(p.text("#capture-dubletten-satz")).toMatch(/^Nichts Vergleichbares gefunden/);
+
+    // Mehrere Tastenanschlaege in der Pause: EIN neuer Lauf, mit dem Titel, der dann im Feld steht.
+    tippenTitel(p, "V");
+    tippenTitel(p, "Ventil");
+    tippenTitel(p, "Ventilwartung");
+    await warte(TITEL_PAUSE_MS);
+    await p.flush();
+    const rufe = checkTextRufe(p);
+    expect(rufe).toHaveLength(2);
+    expect(rufe[1]?.title).toBe("Ventilwartung");
+    expect(rufe[1]?.text).toBe(MARKIERUNG);
+    expect(p.text("#capture-dubletten-satz")).toMatch(/^Dazu gibt es schon Vergleichbares/);
+    expect(zeilen(p)[0]).toMatch(/^Ventilwartung · identisch/);
+
+    // Dieselbe Kombination aus Text und Titel: kein weiterer Lauf.
+    tippenTitel(p, "Ventilwartung");
+    await warte(TITEL_PAUSE_MS);
+    await p.flush();
+    expect(checkTextRufe(p)).toHaveLength(2);
+    // Und der Reiterwechsel (dieselbe Markierung, derselbe Titel) ebenfalls nicht.
+    p.setTab("ask");
+    p.setTab("capture");
+    await p.flush();
+    expect(checkTextRufe(p)).toHaveLength(2);
+  });
+
+  it("C12 · eine noch ausstehende Antwort zum ALTEN Titel wird verworfen — es gilt die Antwort zum neuen", async () => {
+    let rufNr = 0;
+    const p = oeffnen({
+      routes: {
+        "/api/check-text": (url: string, init?: Record<string, unknown>) => {
+          rufNr += 1;
+          // Waehrend der erste Ruf unterwegs ist, aendert der Mensch den Titel.
+          if (rufNr === 1 && panel) tippenTitel(panel, "Ventilwartung");
+          return nurBeiTitel("Ventilwartung")(url, init);
+        },
+      },
+    });
+    p.setTab("capture");
+    await p.flush();
+    expect(checkTextRufe(p)).toHaveLength(1);
+    // Die Antwort zum alten Titel („nichts gefunden") steht NICHT da — der Lauf wartet weiter.
+    expect(p.text("#capture-dubletten-satz")).toBe(p.t("captureDubLaeuft"));
+    await warte(TITEL_PAUSE_MS);
+    await p.flush();
+    const rufe = checkTextRufe(p);
+    expect(rufe).toHaveLength(2);
+    expect(rufe[1]?.title).toBe("Ventilwartung");
+    expect(p.text("#capture-dubletten-satz")).toMatch(/^Dazu gibt es schon Vergleichbares/);
+  });
 });
+
+function tippenTitel(p: KlaraPanel, wert: string): void {
+  const el = p.q("#capture-titel");
+  if (el === null) throw new Error("#capture-titel fehlt");
+  el.value = wert;
+  const EventKlasse = (globalThis as unknown as { Event: new (typ: string) => { type: string } })
+    .Event;
+  el.dispatchEvent(new EventKlasse("input"));
+}

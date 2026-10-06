@@ -35,20 +35,10 @@
 // zustande kommt, sind Wissen DIESES Moduls. Läge die Liste in der App, gäbe es zwei Wahrheiten
 // darüber, was Confluence braucht — und die zweite würde beim nächsten Umbau still falsch.
 
-import { type ConfluenceAuthMode, confluenceAuthModeFrom } from "./rest-client";
-
-// ================================================================================================
-// R-0166 — ZWEI ANMELDEWEGE, EINE AUSKUNFT
-// ================================================================================================
-//
-// `KLARWERK_CONFLUENCE_AUTH` wählt zwischen Cloud (E-Mail + API-Token) und `pat` (Personal Access
-// Token, Confluence im eigenen Haus). Die Auskunft meldet je Weg genau die Variablen, die DIESER
-// Weg braucht: bei `pat` fehlt die Kennung nicht, sie wird schlicht nicht gebraucht. Ein Wert, den
-// es nicht gibt, ist ein eigener Riegel (`invalid-auth-mode`) — sonst stünden alle Variablen
-// „da", und der Import ginge trotzdem nicht.
-
-/** Die Variable, die den Anmeldeweg wählt. Kein Geheimnis. */
-export const CONFLUENCE_AUTH_VAR = "KLARWERK_CONFLUENCE_AUTH";
+// ZUSAMMENFÜHRUNG (Nacharbeit 10): R-0166 gehört dem ausgegliederten Auftrag
+// `confluence-import-onprem-anmeldung`; dessen mit main integrierte Fassung (unten, ab „R-0166 —
+// CONFLUENCE IM EIGENEN HAUS") ist maßgeblich. Die ältere Fassung dieser Lieferung (Anmeldeweg-Leser
+// in rest-client.ts, eigener Riegel `invalid-auth-mode`) ist zurückgenommen.
 
 /** Die Variablen, die ein Confluence-Zugang braucht. Reihenfolge = Anzeigereihenfolge. */
 export const CONFLUENCE_CREDENTIAL_VARS = [
@@ -58,36 +48,67 @@ export const CONFLUENCE_CREDENTIAL_VARS = [
   "KLARWERK_CONFLUENCE_SPACE",
 ] as const;
 
+// ================================================================================================
+// R-0166 — CONFLUENCE IM EIGENEN HAUS (Data Center / Server).
+// ================================================================================================
+//
+// Cloud meldet sich mit E-Mail + API-Token an (Basic). Ein selbst betriebenes Confluence kennt
+// dafür das persönliche Zugriffstoken (Personal Access Token), das als `Bearer` geschickt wird und
+// KEINE Kennung braucht. Welcher Weg gilt, sagt `KLARWERK_CONFLUENCE_AUTH`:
+//   - nicht gesetzt oder `cloud` → wie bisher: BASE_URL, USER, TOKEN, SPACE; Basic-Anmeldung.
+//   - `pat`                      → BASE_URL, TOKEN (= das persönliche Zugriffstoken), SPACE; Bearer.
+// Jeder andere Wert ergibt KEINEN Client — still auf Cloud zurückzufallen hieße, ein Token mit
+// der falschen Anmeldeart an den Server zu schicken. Das Token bleibt in derselben Variablen wie
+// bisher: Namensraum, Origin-Pinning, HTTPS-Riegel und Redaction gelten für beide Wege gleich.
+//
+// EINE WAHRHEIT: `confluenceClientFromEnv` (rest-client.ts) liest den Weg über DIESE Funktion,
+// nicht über eine eigene Kopie der Regel.
+export const CONFLUENCE_AUTH_VAR = "KLARWERK_CONFLUENCE_AUTH";
+
+export type ConfluenceAuthMode = "cloud" | "pat";
+
+/** Der eingestellte Anmeldeweg, oder `null`, wenn der Wert keiner der bekannten ist. */
+export function confluenceAuthMode(
+  env: Record<string, string | undefined> = process.env,
+): ConfluenceAuthMode | null {
+  const roh = (env[CONFLUENCE_AUTH_VAR] ?? "").trim().toLowerCase();
+  if (roh === "" || roh === "cloud") {
+    return "cloud";
+  }
+  return roh === "pat" ? "pat" : null;
+}
+
 export interface ConfluenceCredentialState {
   /** Je Variable: benannt, und ob sie steht. Niemals ihr Wert, niemals ihre Länge. */
   vars: { name: string; present: boolean }[];
   /** Käme mit diesen Variablen ein Client zustande? (Nicht: sind sie gültig — das weiß nur ein Aufruf.) */
   usable: boolean;
   /** Warum nicht, falls nicht. `null`, wenn usable. */
-  blocker: "missing" | "insecure-base-url" | "invalid-auth-mode" | null;
-  /** R-0166: der gewählte Anmeldeweg, oder `null`, wenn der gesetzte Wert keiner ist. */
+  blocker: "missing" | "insecure-base-url" | null;
+  /** R-0166: der eingestellte Anmeldeweg; `null` bei unbekanntem Wert in KLARWERK_CONFLUENCE_AUTH. */
   authMode: ConfluenceAuthMode | null;
-}
-
-/** Welche der Variablen ein Anmeldeweg braucht — `pat` kommt ohne Kennung aus. */
-function benoetigt(authMode: ConfluenceAuthMode | undefined): readonly string[] {
-  return authMode === "pat"
-    ? CONFLUENCE_CREDENTIAL_VARS.filter((name) => name !== "KLARWERK_CONFLUENCE_USER")
-    : CONFLUENCE_CREDENTIAL_VARS;
 }
 
 export function confluenceCredentialState(
   env: Record<string, string | undefined> = process.env,
 ): ConfluenceCredentialState {
-  const authMode = confluenceAuthModeFrom(env[CONFLUENCE_AUTH_VAR]);
-  const vars = benoetigt(authMode).map((name) => ({
-    name,
+  const authMode = confluenceAuthMode(env);
+  // R-0166: beim persönlichen Zugriffstoken gibt es keine Kennung — USER wird dann nicht verlangt
+  // und nicht als „fehlt" gemeldet. Die Auswahlvariable selbst erscheint nur, wenn sie etwas
+  // ändert: als „steht" beim Weg `pat`, als „steht nicht" bei einem unbekannten Wert (ein Wert,
+  // den das Modul nicht versteht, wirkt wie keiner — wie die leere Variable unten). Beim Cloud-Weg
+  // ohne Angabe bleibt die Liste genau die bisherigen vier.
+  const benoetigt = CONFLUENCE_CREDENTIAL_VARS.filter(
+    (name) => !(authMode === "pat" && name === "KLARWERK_CONFLUENCE_USER"),
+  );
+  const vars = benoetigt.map((name) => ({
+    name: name as string,
     // Eine gesetzte, aber leere Variable ist nicht gesetzt — sonst meldete die Fläche „steht",
     // und der Import scheiterte trotzdem (confluenceClientFromEnv prüft ebenfalls auf truthy).
     present: (env[name] ?? "") !== "",
   }));
-  if (authMode === undefined) {
-    return { vars, usable: false, blocker: "invalid-auth-mode", authMode: null };
+  if (authMode !== "cloud") {
+    vars.push({ name: CONFLUENCE_AUTH_VAR, present: authMode === "pat" });
   }
   if (vars.some((v) => !v.present)) {
     return { vars, usable: false, blocker: "missing", authMode };

@@ -20,9 +20,11 @@ import { describe, expect, it } from "vitest";
 import {
   PANEL_CSS_VERWEIS,
   PANEL_JS_VERWEIS,
+  PANEL_MARKE_VERWEIS,
   PANEL_VOR_SCHNITT_BLOB,
   fuegePanelZusammen,
   gitBlobKennung,
+  markeAbschnitt,
   panelQuelle,
   panelQuelleAus,
   panelTeile,
@@ -79,6 +81,7 @@ describe("R-1611 · E — das zusammengefügte Fenster ist die Datei des Basisst
           zeile("taskpane.html (Markup)", teile.html),
           zeile("taskpane.css (Stil)", teile.css),
           zeile("taskpane.js (Skript)", teile.js),
+          zeile("marke.js (KW-MARKE)", teile.marke),
           zeile("vorher: eine Datei", ganz),
         ],
       )}\n`,
@@ -90,8 +93,13 @@ describe("R-1611 · E — das zusammengefügte Fenster ist die Datei des Basisst
     // Tags samt Zeilenumbruch nach dem Öffnen und Einrückung vor dem Schließen — sonst nichts.
     const tags = bytes("<style>\n  </style><script>\n  </script>");
     const verweise = bytes(PANEL_CSS_VERWEIS) + bytes(PANEL_JS_VERWEIS);
-    expect(bytes(teile.html) + bytes(teile.css) + bytes(teile.js)).toBe(
-      bytes(ganz) - tags + verweise,
+    // Zerlegungsauftrag Bestandsblick: dazu die vierte Datei. Sie bringt ihren Verweis samt
+    // Zeilenumbruch und Einrueckung in die Seite und ihren Kopf in sich selbst mit — sonst nichts.
+    const markeVerweis = bytes(`\n  ${PANEL_MARKE_VERWEIS}`);
+    const markeKopf = bytes(teile.marke) - bytes(markeAbschnitt(teile.marke));
+    expect(markeKopf).toBeGreaterThan(0);
+    expect(bytes(teile.html) + bytes(teile.css) + bytes(teile.js) + bytes(teile.marke)).toBe(
+      bytes(ganz) - tags + verweise + markeVerweis + markeKopf,
     );
   });
 });

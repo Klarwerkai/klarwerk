@@ -27,7 +27,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight, HelpCircle } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import { useConflicts, useKos } from "../api/hooks";
@@ -75,6 +75,7 @@ import {
   conflictNextStep,
   resolutionEffect,
 } from "../lib/conflictView";
+import { leseFall } from "../lib/fallAbsprung";
 import { conflictFinding, groupFindingsByBeitrag, resolveKo } from "../lib/findingGroups";
 import { REVIEW_HELP_TOPICS } from "../lib/reviewHelp";
 
@@ -112,7 +113,11 @@ export function Conflicts(): JSX.Element {
   const [opinionId, setOpinionId] = useState<string | null>(null);
   const [opinion, setOpinion] = useState("");
   const [err, setErr] = useState<string | null>(null);
-  const [index, setIndex] = useState(0);
+  const [gewaehlt, setGewaehlt] = useState(0);
+  // R-0961: `?fall=<id>` aus der Aufgabenliste wählt genau diesen Konflikt vor. Die Vorwahl gilt,
+  // bis der Prüfer selbst blättert; ein unbekannter Fall fällt auf die gewohnte erste Stelle zurück.
+  const [params] = useSearchParams();
+  const [zielFall, setZielFall] = useState<string | null>(() => leseFall(params));
 
   const invalidate = (): void => {
     void qc.invalidateQueries({ queryKey: ["conflicts"] });
@@ -170,6 +175,12 @@ export function Conflicts(): JSX.Element {
   // ohne den zweiten Abruf gibt es keine Karte, sondern nur zwei IDs. Solange er läuft, ist die
   // Fläche am Laden; sie sagt nicht „Objekt entfernt" und bietet keine Entscheidung an.
   const lage = flaechenZustand(query, abhaengigeQuelle(kos));
+  const zielIndex = zielFall === null ? -1 : items.findIndex((c) => c.id === zielFall);
+  const index = zielIndex >= 0 ? zielIndex : gewaehlt;
+  const blaettern = (ziel: number): void => {
+    setZielFall(null);
+    setGewaehlt(Math.min(Math.max(0, ziel), Math.max(items.length - 1, 0)));
+  };
   const aktiv: Conflict | null =
     lage.lage === "bestand"
       ? (items[Math.min(index, Math.max(items.length - 1, 0))] ?? null)
@@ -479,7 +490,7 @@ export function Conflicts(): JSX.Element {
                 data-testid="pruefen-zurueck"
                 aria-label={t("pruefen.prev")}
                 disabled={index === 0}
-                onClick={() => setIndex((i) => Math.max(0, i - 1))}
+                onClick={() => blaettern(index - 1)}
                 className="rounded-[8px] border border-hairline p-1 text-muted disabled:opacity-40"
               >
                 <ChevronLeft size={14} aria-hidden="true" />
@@ -490,7 +501,7 @@ export function Conflicts(): JSX.Element {
                 data-testid="pruefen-vor"
                 aria-label={t("pruefen.next")}
                 disabled={index >= items.length - 1}
-                onClick={() => setIndex((i) => Math.min(items.length - 1, i + 1))}
+                onClick={() => blaettern(index + 1)}
                 className="rounded-[8px] border border-hairline p-1 text-muted disabled:opacity-40"
               >
                 <ChevronRight size={14} aria-hidden="true" />
