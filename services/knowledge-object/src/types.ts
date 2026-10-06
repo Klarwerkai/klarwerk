@@ -439,6 +439,14 @@ export interface KnowledgeObject {
   // Feld, ist es ein Legacy-KO von vor dieser Regel → Nachzug über den Wartungslauf
   // (ensureSearchArtifacts); `[]` heißt ausdrücklich „keine Benennungen", nicht „unbekannt".
   imageNames?: string[];
+  // R-0098 (inhaltskennung-zweitbegriff): ABGELEITETES Feld — je Bild des bodyHtml sein
+  // Vorkommensanker (`imageId` = `data-image-id`) und die aus den Bildbytes abgeleitete
+  // `inhaltskennung` (`sha256:<hex>`), beim SCHREIBEN gesetzt (create/revise/Dokumentübernahme,
+  // structure/src/bildinhalt.ts). Zwei Vorkommen desselben Bildes: zwei Einträge, zwei Anker, eine
+  // Inhaltskennung. Zweiter Begriff NEBEN dem Anker, für die Dublettenerkennung — Fußnoten-
+  // Zuordnung und Klick laufen weiter allein über `data-image-id`. Optional/additiv im
+  // JSONB-Dokument (keine Migration); FEHLT das Feld, ist es Altbestand von vor dieser Regel.
+  bildInhalte?: { imageId: string | null; inhaltskennung: string | null }[];
   // R-0658: die Quarantänemarke, gesetzt beim Anlegen/Überarbeiten, wenn der Inhalt Schutzdaten
   // trägt (`schutzdaten.ts`). Sie nennt nur die ARTEN, nie die Werte. Solange sie steht, trägt die
   // Suchprojektion keinen Text und die Sucheinstiege lassen das Objekt aus. Optional/additiv im
