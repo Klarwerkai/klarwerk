@@ -2892,7 +2892,9 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // Platzhalter-Zuordnung gilt nur, wenn sie der Word-Reihenfolge folgt. Auslieferungsfolgen wie
     // in Nacharbeit 12 (kein Abrufziel, CSP/Recht/Manifest unverändert, kein Sideload). DER PIN MUSS
     // WANDERN; der Prüflauf meldet den Ist-Wert als „Received", er wird danach übernommen.
-    const PIN = "f3ab60bcf6822fd11588483bd4165b5fcbf6dcb729ffebb93ed22a26c970b1ac";
+    // Nacharbeit 13: Bildfolge im selben Absatz korrigiert; 35 Strukturtests bestehen.
+    // Nur Inhalts-Pin erneuert; Manifest, Rechte, Ursprung und Nutzlastvertrag unverändert.
+    const PIN = "d79846c004c5521a915f7063bc9152a2f2312cfe6ceb2a63c26613f4da68aee1";
     const ist = createHash("sha256").update(readFileSync(RUECKWEG)).digest("hex");
     expect(
       ist,
