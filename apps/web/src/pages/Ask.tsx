@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowRight, Copy, ThumbsUp, Volume2 } from "lucide-react";
+import { AlertTriangle, ArrowRight, Copy, ThumbsUp, Volume2 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
@@ -610,6 +610,10 @@ export function Ask(): JSX.Element {
   // trifft als Wissenslücke ein). Deshalb hält beide Menüorte derselbe Ref, und das Blatt liest ihn
   // erst beim Schliessen — nicht beim Öffnen.
   const menuGriffRef = useRef<HTMLButtonElement | null>(null);
+  // R-0287: der zweite Weg ins Blatt — der sichtbare Vorbehaltsgriff unter der Antwort. Wer das
+  // Blatt über ihn geöffnet hat, bekommt den Fokus beim Schliessen auch an ihn zurück.
+  const vorbehaltGriffRef = useRef<HTMLButtonElement | null>(null);
+  const mehrUeberVorbehaltRef = useRef(false);
   const [beispiele, setBeispiele] = useState(false);
   const [result, setResult] = useState<AnswerResult | null>(anfang?.antwort?.result ?? null);
   // Eine neue (oder keine) Antwort: was gerade vorgelesen wird, gilt nicht mehr.
@@ -731,6 +735,14 @@ export function Ask(): JSX.Element {
   const reviewGuard = effective
     ? answerReviewGuard(effective.grade, effective.carryingSources)
     : null;
+  // R-0287: wie viele Vorbehalte das Blatt „Mehr" zu dieser Antwort trägt — genau die vier Kästen,
+  // die dort stehen. Steht einer da, zeigt die Karte den sichtbaren Griff dazu (`ask-vorbehalt`).
+  const vorbehalte = [
+    reviewGuard !== null,
+    effective?.sourcesConflicted === true,
+    conflictCaveat !== null,
+    checkCaveat !== null,
+  ].filter(Boolean).length;
   // SCRUM-366 / FR-ASK-02 / PI-K2: Antwortvertrag — quellengebunden, ehrlich (gesichert vs. ungeprüft
   // vs. Wissenslücke), kein generischer Chatbot. Nur noch die Beschriftung der Einstufung.
   const contract = effective ? answerContract(effective.grade) : null;
@@ -1361,7 +1373,10 @@ export function Ask(): JSX.Element {
             testId="ask-menu"
             griffRef={menuGriffRef}
             punkte={[{ id: "mehr", label: t("ask.menu.mehr") }]}
-            onWahl={() => setMehr(true)}
+            onWahl={() => {
+              mehrUeberVorbehaltRef.current = false;
+              setMehr(true);
+            }}
           />
         )}
       </div>
@@ -1749,6 +1764,27 @@ export function Ask(): JSX.Element {
                   <p className="m-0">
                     <AiGeneratedNotice />
                   </p>
+                  {/* R-0287 / R-0286: „Die eigentliche Warnung bleibt vollständig und unübersehbar."
+                    Seit H5 stehen die Vorbehaltskästen nur im Blatt „Mehr" — ohne Griff sah sie
+                    niemand. Dieser Knopf steht deshalb DIREKT unter der Antwort, in Warnfarbe, und
+                    öffnet genau dieses Blatt. Er wiederholt keinen Vorbehalt (jeder steht weiter
+                    genau einmal, vollständig, im Blatt); er sagt nur, dass es einen gibt. Ein Knopf
+                    und kein Satz: H5 (`zielbild-h5-kein-erklaertext`) lässt Beschriftungen zu. */}
+                  {vorbehalte > 0 ? (
+                    <button
+                      ref={vorbehaltGriffRef}
+                      type="button"
+                      data-testid="ask-vorbehalt"
+                      onClick={() => {
+                        mehrUeberVorbehaltRef.current = true;
+                        setMehr(true);
+                      }}
+                      className="print-hide inline-flex items-center gap-1.5 self-start rounded-btn border border-trust-warn-fill bg-trust-warn-bg px-3 py-1.5 text-left text-[12.5px] font-semibold text-trust-warn-text hover:opacity-90"
+                    >
+                      <AlertTriangle size={14} aria-hidden="true" className="shrink-0" />
+                      {t("antwortvorbehalt.hinweis", { count: vorbehalte })}
+                    </button>
+                  ) : null}
                   {/* ==========================================================================
                     DIE QUELLEN-CHIPS (Zielbild Z.42) — „n · Titel", getrennt durch eine Linie.
                     ==========================================================================
@@ -1819,6 +1855,7 @@ export function Ask(): JSX.Element {
                           downloadAnswer();
                           return;
                         }
+                        mehrUeberVorbehaltRef.current = false;
                         setMehr(true);
                       }}
                     />
@@ -1839,7 +1876,10 @@ export function Ask(): JSX.Element {
                       titel={t("ask.menu.label")}
                       testId="ask-mehr"
                       onSchliessen={() => setMehr(false)}
-                      ausloeser={() => menuGriffRef.current}
+                      ausloeser={() =>
+                        (mehrUeberVorbehaltRef.current ? vorbehaltGriffRef.current : null) ??
+                        menuGriffRef.current
+                      }
                     >
                       <MehrFlaechenInfo
                         badge={badge}
