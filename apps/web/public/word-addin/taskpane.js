@@ -637,6 +637,20 @@
               ),
             };
           }
+          // R-0590 · Ben nacharbeit-3: der gesperrte Ausweichweg traegt Kennung und Grund im Koerper —
+          // die Flaeche nennt ihn, statt nur „HTTP 409". Jede andere 409 bleibt der bisherige Fehler.
+          if (res.status === 409) {
+            return res.json().then(function (sperre) {
+              if (!sperre || sperre.error !== "KLARA_AUSWEICHWEG_GESPERRT") {
+                return { kind: "error", detail: "HTTP 409" };
+              }
+              return typeof sperre.reason === "string"
+                ? { kind: "fallback-blocked", reason: sperre.reason }
+                : { kind: "fallback-blocked" };
+            }, function () {
+              return { kind: "error", detail: "HTTP 409" };
+            });
+          }
           if (!res.ok) { return { kind: "error", detail: "HTTP " + res.status }; }
           return res.json().then(function (body) {
             var result = body && body.result ? body.result : null;
@@ -1844,6 +1858,9 @@
           "Fehlendes Recht: Dein Konto darf das KLARWERK-Wissen nicht lesen. Bitte an die KLARWERK-Administration wenden.",
         askRateLimited: "Zu viele Anfragen — bitte in {n} Sekunden erneut versuchen.",
         askRateLimitedUnknown: "Zu viele Anfragen — bitte später erneut versuchen.",
+        // R-0590 · Ben nacharbeit-3: die beiden Gründe des gesperrten Ausweichwegs.
+        askFallbackBlocked: "Keine Antwort: Der KI-Anbieter, dem du zugestimmt hast, hat nicht geantwortet. Ein anderer Antwortweg wird nicht ersatzweise benutzt, solange nicht entschieden ist, dass er gleichwertig ist.",
+        askFallbackConsentEnded: "Keine Antwort: Deine Zustimmung für dieses Dokument ist beendet. Bitte erneut zustimmen, um die externe KI zu nutzen.",
         askAnswerTitle: "Quellengebundene Antwort",
         // AUFTRAG-mega34 B2: die Einstufung — im Panel UND im eingefuegten Text. Bis hierher
         // versprach diese Flaeche unbedingt "geprueftes Wissen", auch bei gedeckelter Abdeckung
@@ -2215,6 +2232,8 @@
           "Missing permission: your account may not read the KLARWERK knowledge base. Please contact your KLARWERK administrator.",
         askRateLimited: "Too many requests — please try again in {n} seconds.",
         askRateLimitedUnknown: "Too many requests — please try again later.",
+        askFallbackBlocked: "No answer: the AI provider you consented to did not respond. No other answer path is used as a substitute until it has been decided that it is equivalent.",
+        askFallbackConsentEnded: "No answer: your consent for this document has ended. Please consent again to use the external AI.",
         askAnswerTitle: "Source-bound answer",
         // AUFTRAG-mega34 B2: the classification — in the panel AND in the inserted text.
         askEvidenceVerified: "Classification: assured — sources evidenced, no open contradictions known.",
@@ -2553,6 +2572,8 @@
           "Ontbrekend recht: je account mag de KLARWERK-kennis niet lezen. Neem contact op met de KLARWERK-beheerder.",
         askRateLimited: "Te veel verzoeken — probeer het over {n} seconden opnieuw.",
         askRateLimitedUnknown: "Te veel verzoeken — probeer het later opnieuw.",
+        askFallbackBlocked: "Geen antwoord: de AI-aanbieder waarvoor je toestemming hebt gegeven, heeft niet geantwoord. Er wordt geen andere antwoordweg als vervanging gebruikt zolang niet is besloten dat die gelijkwaardig is.",
+        askFallbackConsentEnded: "Geen antwoord: je toestemming voor dit document is beëindigd. Geef opnieuw toestemming om de externe AI te gebruiken.",
         askAnswerTitle: "Bronvast antwoord",
         // AUFTRAG-mega34 B2: de classificatie — in het paneel EN in de ingevoegde tekst.
         askEvidenceVerified: "Classificatie: gewaarborgd — bronnen aangetoond, geen open tegenstrijdigheden bekend.",
@@ -6253,6 +6274,17 @@
       }
       if (outcome.kind === "timeout") {
         showAskStatus("warn", t("askTimeout"));
+        askRetryZeigen();
+        return;
+      }
+      // R-0590 · Ben nacharbeit-3: der Grund des gesperrten Ausweichwegs, in der Sprache des
+      // Fensters. Kein „Erneut versuchen" bei beendeter Zustimmung — erst muss neu zugestimmt werden.
+      if (outcome.kind === "fallback-blocked") {
+        if (outcome.reason === "consent_ended") {
+          showAskStatus("warn", t("askFallbackConsentEnded"));
+          return;
+        }
+        showAskStatus("warn", t("askFallbackBlocked"));
         askRetryZeigen();
         return;
       }

@@ -102,8 +102,9 @@ export function gebundenerAnbieter(): string | undefined {
 // Originalpunkt: „Bei einem nicht gleichwertigen Ausweichweg wird bis zur Produktentscheidung
 // sicherheitshalber blockiert und der Grund angezeigt."
 //
-// Die Zustimmung gilt GENAU EINEM Anbieter. Scheitert er in einer Klara-Antwort oder fällt er aus der
-// Kette (Wechsel nach dem Tor, beendete Zustimmung), lief der Reasoner bisher still am nächsten Glied
+// Die Zustimmung gilt GENAU EINEM Anbieter. Scheitert er in einem gebundenen Lauf (jede Aufgabe, nicht
+// nur die Antwort — Ben nacharbeit-3) oder fällt er aus der Kette (Wechsel nach dem Tor, beendete
+// Zustimmung), lief der Reasoner bisher still am nächsten Glied
 // weiter — lokales Modell oder deterministischer Ersatz. Ob ein solcher Ersatz der zugestimmten
 // Antwort GLEICHWERTIG ist, hat niemand entschieden; bis zu dieser Produktentscheidung gilt keiner
 // als gleichwertig. Der Lauf endet deshalb mit diesem Fehler, und sein Grund geht an die Fläche
@@ -125,7 +126,7 @@ export class KlaraAusweichwegGesperrtFehler extends Error {
     super(
       grund === "consent_ended"
         ? `Die Zustimmung für ${anbieter} ist beendet — ein anderer Antwortweg wird nicht ersatzweise benutzt.`
-        : `${anbieter} hat nicht geantwortet — ein anderer, nicht als gleichwertig freigegebener Antwortweg wird nicht ersatzweise benutzt.`,
+        : `${anbieter} hat nicht geantwortet oder steht für diesen Lauf nicht bereit — ein anderer, nicht als gleichwertig freigegebener Weg wird nicht ersatzweise benutzt.`,
     );
     this.name = "KlaraAusweichwegGesperrtFehler";
     this.grund = grund;

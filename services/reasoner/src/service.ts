@@ -1451,13 +1451,21 @@ export class Reasoner {
     // Kostenrechnung je Modellpreis und die Spans des Laufs. Genau ein Eintrag je Versuch, gesetzt
     // an derselben Stelle wie die Verbrauchsübernahme (und damit ebenso nur einmal).
     const versuche: ModelRunVersuch[] = [];
-    // R-0590 · Ben nacharbeit-1: steht die Klara-Antwort unter einer Zustimmung für GENAU einen
+    // R-0590 · Ben nacharbeit-1/-3: läuft eine Aufgabe unter einer Klara-Zustimmung für GENAU einen
     // externen Anbieter, ist jedes andere Glied ein Ausweichweg, den niemand als gleichwertig
     // freigegeben hat — lokales Modell wie deterministischer Ersatz. Bis zur Produktentscheidung wird
-    // er nicht ausgeführt, sondern der Lauf mit benanntem Grund beendet (`anbieterbindung.ts`).
-    // Begrenzt auf `answer`, die Aufgabe, an der die Zustimmung gebildet wird; ohne Bindung, bei
-    // Absage oder ohne externen Anbieter (`gebundenerAnbieter`) bleibt die Kette wie bisher.
-    const zugestimmt = task === "answer" ? gebundenerAnbieter() : undefined;
+    // er nicht ausgeführt, sondern der Lauf mit benanntem Grund beendet (`anbieterbindung.ts`). Das
+    // gilt für JEDE Aufgabe unter der Bindung (nacharbeit-3), nicht nur für `answer`.
+    //
+    // WAS UNBERÜHRT BLEIBT:
+    //   · Läufe ohne Bindung, bei Absage des Tors (`null`) oder ohne externen Anbieter
+    //     (`gebundenerAnbieter`) — die ungebundenen Basisfunktionen behalten ihre Kette.
+    //   · VERTRAULICHE Läufe. Vertraulicher Inhalt war nie Gegenstand der Zustimmung — sie deckt die
+    //     ausgewiesenen Nutzlastklassen, und Vertrauliches verlässt das Haus nur nach der eigenen
+    //     Adminfreigabe (`oeffentlicheKiErlaubt`). Es gibt dort keinen zugestimmten externen Weg, von
+    //     dem ausgewichen würde; die Vertraulichkeitsregel mit ihrem eigenen, angezeigten Grund
+    //     (`fallbackReason`, `ConfidentialCloudBlockedError`) bleibt, wie sie ist.
+    const zugestimmt = confidential ? undefined : gebundenerAnbieter();
     const zugestimmterAnbieter = REASONER_CLOUD_ANBIETER.find(
       (anbieter) => anbieter === zugestimmt,
     );

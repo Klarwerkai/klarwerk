@@ -51,10 +51,11 @@ describe("Bens B3 · der Reasoner lässt unter Bindung nur den gebundenen Anbiet
 
   it("gebunden an Anthropic, `assist` steht auf OpenAI: OpenAI wird NICHT gerufen", async () => {
     const { reasoner, openai, anthropic } = await aufbau("openai");
-    // Ohne zugelassenes Modell sagt `assistText` ehrlich, dass kein Vorschlag entstand.
+    // R-0590 · Ben nacharbeit-3: der zugestimmte Anbieter steht für `assist` nicht in der Kette —
+    // statt still den deterministischen Ersatz zu versuchen, endet der Lauf mit dem benannten Grund.
     await expect(
       mitAnbieterbindung("anthropic", () => reasoner.assistText("Ein Satz.", "de")),
-    ).rejects.toThrow("keine Antwort");
+    ).rejects.toMatchObject({ grund: "fallback_not_equivalent", anbieter: "anthropic" });
     expect(openai).not.toHaveBeenCalled();
     expect(anthropic).not.toHaveBeenCalled();
   });
@@ -348,6 +349,16 @@ const ANTWORT = {
   demo: false,
 };
 
+const STRUKTUR = {
+  title: "Titel",
+  statement: "Aussage",
+  conditions: [],
+  measures: [],
+  tags: [],
+  confidence: 0.8,
+  demo: false,
+};
+
 async function ausweichAufbau(anthropicScheitert: boolean) {
   const anthropic = new ModelProvider({ name: "anthropic:claude", complete: vi.fn() });
   const anthropicAntwort = vi.fn(async () => {
@@ -360,14 +371,36 @@ async function ausweichAufbau(anthropicScheitert: boolean) {
   const lokal = new ModelProvider({ name: "lokal:llm", complete: vi.fn() });
   const lokalAntwort = vi.fn(async () => ({ ...ANTWORT, answer: "vom lokalen Modell" }));
   (lokal as unknown as { answer: unknown }).answer = lokalAntwort;
+  // Ben nacharbeit-3: derselbe Aufbau für `structure` — eine zweite Aufgabe unter derselben Bindung.
+  const anthropicStruktur = vi.fn(async () => {
+    if (anthropicScheitert) {
+      throw new Error("Anthropic: HTTP 503");
+    }
+    return { ...STRUKTUR, title: "von Anthropic" };
+  });
+  (anthropic as unknown as { structure: unknown }).structure = anthropicStruktur;
+  const lokalStruktur = vi.fn(async () => ({ ...STRUKTUR, title: "vom lokalen Modell" }));
+  (lokal as unknown as { structure: unknown }).structure = lokalStruktur;
   const ersatz = new DeterministicProvider();
   const ersatzAntwort = vi.spyOn(ersatz, "answer");
+  const ersatzStruktur = vi.spyOn(ersatz, "structure");
   const reasoner = new Reasoner(undefined, ersatz, undefined, undefined, lokal, undefined, {
     anbieter: { anthropic },
   });
   await reasoner.setTaskConfig(mitKiFreigabe({ global: "auto", perTask: { answer: "auto" } }));
   const fragen = () => reasoner.answer("Wie wird die Pumpe geschmiert?", [], "de");
-  return { fragen, anthropicAntwort, lokalAntwort, ersatzAntwort };
+  const strukturieren = (vertraulich = false) =>
+    reasoner.structure("Pumpe P2 alle 200 Betriebsstunden schmieren.", "de", vertraulich);
+  return {
+    fragen,
+    strukturieren,
+    anthropicAntwort,
+    lokalAntwort,
+    ersatzAntwort,
+    anthropicStruktur,
+    lokalStruktur,
+    ersatzStruktur,
+  };
 }
 
 describe("R-0590 · kein nicht gleichwertiger Ausweichweg hinter der Zustimmung", () => {
@@ -420,5 +453,50 @@ describe("R-0590 · kein nicht gleichwertiger Ausweichweg hinter der Zustimmung"
     const ergebnis = await mitAnbieterbindung(null, k.fragen);
     expect(k.anthropicAntwort).not.toHaveBeenCalled();
     expect(ergebnis.answer).toBe("vom lokalen Modell");
+  });
+});
+
+// ================================================================================================
+// R-0590 · BEN NACHARBEIT-3 — DIE SPERRE GILT FÜR JEDE AUFGABE UNTER DER BINDUNG, NICHT NUR `answer`.
+// ================================================================================================
+
+describe("R-0590 · gebundener `structure`-Lauf: kein nicht gleichwertiger Ausweichweg", () => {
+  it("GEGENPROBE: der zugestimmte Anbieter strukturiert — sein Ergebnis kommt an, kein Ersatz läuft", async () => {
+    const k = await ausweichAufbau(false);
+    const ergebnis = await mitAnbieterbindung("anthropic", () => k.strukturieren());
+    expect(ergebnis.title).toBe("von Anthropic");
+    expect(ergebnis.demo).toBe(false);
+    expect(k.anthropicStruktur).toHaveBeenCalledTimes(1);
+    expect(k.lokalStruktur).not.toHaveBeenCalled();
+    expect(k.ersatzStruktur).not.toHaveBeenCalled();
+  });
+
+  it("der zugestimmte Anbieter scheitert: lokales Modell und deterministischer Ersatz laufen NICHT", async () => {
+    const k = await ausweichAufbau(true);
+    const lauf = mitAnbieterbindung("anthropic", () => k.strukturieren());
+    await expect(lauf).rejects.toBeInstanceOf(KlaraAusweichwegGesperrtFehler);
+    await expect(lauf).rejects.toMatchObject({
+      grund: "fallback_not_equivalent",
+      anbieter: "anthropic",
+    });
+    expect(k.anthropicStruktur).toHaveBeenCalledTimes(1);
+    expect(k.lokalStruktur).not.toHaveBeenCalled();
+    expect(k.ersatzStruktur).not.toHaveBeenCalled();
+  });
+
+  it("GRENZE: ohne Klara-Bindung bleibt der Ersatzweg der Basisfunktion erhalten", async () => {
+    const k = await ausweichAufbau(true);
+    const ergebnis = await k.strukturieren();
+    expect(ergebnis.title).toBe("vom lokalen Modell");
+    expect(k.lokalStruktur).toHaveBeenCalledTimes(1);
+  });
+
+  it("GRENZE: ein VERTRAULICHER Lauf folgt weiter der Vertraulichkeitsregel, nicht der Ausweichwegsperre", async () => {
+    // Vertrauliches war nie Gegenstand der Zustimmung: Anthropic steht ohne Vertraulichkeitsfreigabe
+    // gar nicht in der Kette, und der Lauf endet wie bisher mit einem gekennzeichneten Ergebnis.
+    const k = await ausweichAufbau(false);
+    const ergebnis = await mitAnbieterbindung("anthropic", () => k.strukturieren(true));
+    expect(k.anthropicStruktur).not.toHaveBeenCalled();
+    expect(ergebnis).toBeDefined();
   });
 });

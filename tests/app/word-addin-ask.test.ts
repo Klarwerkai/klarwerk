@@ -402,6 +402,36 @@ describe("WP-KLARA-ASK Teil 1: performAsk — der Konsolen-Vertrag mit Fake-fetc
     );
     expect(offline).toEqual({ kind: "error", detail: "Netz weg" });
   });
+
+  it("R-0590: 409 KLARA_AUSWEICHWEG_GESPERRT → kind fallback-blocked MIT Grund; jede andere 409 bleibt error", async () => {
+    const gesperrt = await performAsk(
+      "Frage",
+      "de",
+      async () =>
+        fakeRes(409, {
+          error: "KLARA_AUSWEICHWEG_GESPERRT",
+          reason: "fallback_not_equivalent",
+          message: "anthropic hat nicht geantwortet …",
+        }),
+      WORD_ADDIN_ASK_TIMEOUT_MS,
+    );
+    expect(gesperrt).toEqual({ kind: "fallback-blocked", reason: "fallback_not_equivalent" });
+    const beendet = await performAsk(
+      "Frage",
+      "de",
+      async () => fakeRes(409, { error: "KLARA_AUSWEICHWEG_GESPERRT", reason: "consent_ended" }),
+      WORD_ADDIN_ASK_TIMEOUT_MS,
+    );
+    expect(beendet).toEqual({ kind: "fallback-blocked", reason: "consent_ended" });
+    // Die bisherigen Sonderfaelle bleiben: eine fremde 409 ist weiter der benannte Fehler.
+    const andere = await performAsk(
+      "Frage",
+      "de",
+      async () => fakeRes(409, { error: "CONFLICT", message: "x" }),
+      WORD_ADDIN_ASK_TIMEOUT_MS,
+    );
+    expect(andere).toEqual({ kind: "error", detail: "HTTP 409" });
+  });
 });
 
 describe("WP-KLARA-ASK Teil 2: Einfuege-Gating + Quellen-Zeile + Offene-Frage-Weg", () => {
@@ -636,6 +666,17 @@ describe("WP-KLARA-ASK Teil 3: Inline-Spiegel im buildlosen Taskpane ist VERHALT
       ["forbidden", async () => fakeRes(403, {})],
       ["rate-limited", async () => fakeResWithHeaders(429, {}, { "retry-after": "45" })],
       ["rate-limited-blank", async () => fakeRes(429, {})],
+      // R-0590 · Ben nacharbeit-3: der gesperrte Ausweichweg und eine fremde 409 — beide Fassungen.
+      [
+        "fallback-blocked",
+        async () =>
+          fakeRes(409, { error: "KLARA_AUSWEICHWEG_GESPERRT", reason: "fallback_not_equivalent" }),
+      ],
+      [
+        "fallback-consent-ended",
+        async () => fakeRes(409, { error: "KLARA_AUSWEICHWEG_GESPERRT", reason: "consent_ended" }),
+      ],
+      ["conflict-other", async () => fakeRes(409, { error: "CONFLICT" })],
       ["error", async () => fakeRes(500, {})],
       [
         "offline",
@@ -998,6 +1039,9 @@ describe("WP-KLARA-ASK: Taskpane-Verdrahtung (Quelltext-Pins) + i18n x3", () => 
       // JOB 3016 Runde 5: die Auswahlfrist des Word-Wegs (Word bleibt den Rueckruf schuldig).
       'askSelectionTimeout: "',
       'askError: "',
+      // R-0590 · Ben nacharbeit-3: die beiden Gruende des gesperrten Ausweichwegs.
+      'askFallbackBlocked: "',
+      'askFallbackConsentEnded: "',
       'askAnswerTitle: "',
       'askSourcesTitle: "',
       'askTrust: "',
@@ -1787,6 +1831,42 @@ describe("JOB 1153 · KA6 Stufe 1: die Schreibflaeche im Aufgabenfenster", () =>
     expect(ka6El("ask-answer-edit").value, "Trotz Fehler steht ein Vorschlag im Feld").toBe("");
     expect(ka6Schreibaufrufe(), "Trotz Fehler wurde geschrieben").toBe(0);
   });
+
+  // R-0590 · Ben nacharbeit-3: am AUSGELIEFERTEN Fenster gemessen — der Sperrgrund des Servers
+  // erreicht den Menschen als Satz, nicht als „Fragen fehlgeschlagen (HTTP 409)".
+  for (const [grund, schluessel] of [
+    ["fallback_not_equivalent", "askFallbackBlocked"],
+    ["consent_ended", "askFallbackConsentEnded"],
+  ] as const) {
+    it(`R-0590: 409 KLARA_AUSWEICHWEG_GESPERRT (${grund}) — #ask-status nennt den Grund, nichts wird eingefuegt`, async () => {
+      await ladeKa6Fenster(ka6Erlaubt());
+      vi.stubGlobal("fetch", (url: string) =>
+        url === "/api/ask"
+          ? Promise.resolve(
+              ka6Antwort(
+                {
+                  error: "KLARA_AUSWEICHWEG_GESPERRT",
+                  reason: grund,
+                  message: "anthropic hat nicht geantwortet …",
+                },
+                false,
+                409,
+              ),
+            )
+          : Promise.resolve(ka6Antwort({})),
+      );
+      ka6El("ask-input").value = "Wie wird die Pumpe geschmiert?";
+      ka6El("ask-btn").click();
+      await ka6Leerlauf(20);
+
+      const status = ka6El("ask-status");
+      expect(status.className).toContain("warn");
+      expect(status.textContent).toBe(ka6Wortlaut(schluessel));
+      expect(status.textContent ?? "", "nur der nackte Statuscode").not.toContain("HTTP 409");
+      expect(ka6El("ask-answer-edit").value, "trotz Sperre steht eine Antwort im Feld").toBe("");
+      expect(ka6Schreibaufrufe(), "trotz Sperre wurde geschrieben").toBe(0);
+    });
+  }
 
   it("BEWAHREN: die Ask-Flaeche und ihr Einfuegeknopf bleiben unveraendert erreichbar", async () => {
     await ladeKa6Fenster(ka6Erlaubt());
