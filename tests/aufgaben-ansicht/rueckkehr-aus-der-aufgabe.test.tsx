@@ -22,18 +22,37 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Conflict, Gap } from "../../apps/web/src/api/types";
 
-const lage = vi.hoisted(() => ({ gaps: [] as unknown[], conflicts: [] as unknown[] }));
+// `laedt`: die Quellen haben (noch) keine Daten — der Rückweg vor dem Eintreffen der Antworten.
+// `stand` + `hoerer` machen die gestellten Hooks reaktiv: `liefere()` lässt die Seite neu zeichnen,
+// genau wie eine eintreffende Antwort.
+const lage = vi.hoisted(() => ({
+  gaps: [] as unknown[],
+  conflicts: [] as unknown[],
+  laedt: false,
+  stand: 0,
+  hoerer: new Set<() => void>(),
+}));
 
-vi.mock("../../apps/web/src/api/hooks", () => {
-  const ok = <T,>(data: T) => ({ data, isLoading: false, isError: false, error: null });
+vi.mock("../../apps/web/src/api/hooks", async () => {
+  const { useSyncExternalStore } = await import("../../apps/web/node_modules/react");
+  const abonniere = (h: () => void): (() => void) => {
+    lage.hoerer.add(h);
+    return () => lage.hoerer.delete(h);
+  };
+  const quelle = <T,>(data: T) => {
+    useSyncExternalStore(abonniere, () => lage.stand);
+    return lage.laedt
+      ? { data: undefined, isLoading: true, isError: false, error: null }
+      : { data, isLoading: false, isError: false, error: null };
+  };
   return {
-    useGaps: () => ok(lage.gaps),
-    useKos: () => ok([]),
-    useAudit: () => ok([]),
-    useConflicts: () => ok(lage.conflicts),
-    useLifecyclePending: () => ok([]),
-    useValidationBoard: () => ok([]),
-    useDirectory: () => ok([]),
+    useGaps: () => quelle(lage.gaps),
+    useKos: () => quelle([]),
+    useAudit: () => quelle([]),
+    useConflicts: () => quelle(lage.conflicts),
+    useLifecyclePending: () => quelle([]),
+    useValidationBoard: () => quelle([]),
+    useDirectory: () => quelle([]),
   };
 });
 vi.mock("../../apps/web/src/app/AuthContext", () => ({
@@ -66,10 +85,12 @@ let angefahren: number[] = [];
 function stelleScrollzustandEin(): void {
   scrollPos = 0;
   angefahren = [];
+  lage.laedt = false;
   Object.defineProperty(window, "scrollY", { configurable: true, get: () => scrollPos });
+  // Ohne Daten gibt es keine Zeilen und damit nichts zu scrollen: die Höhe ist die des Fensters.
   Object.defineProperty(document.documentElement, "scrollHeight", {
     configurable: true,
-    get: () => SCROLLHOEHE,
+    get: () => (lage.laedt ? window.innerHeight : SCROLLHOEHE),
   });
   window.scrollTo = ((...args: [number, number]): void => {
     const y = args[1];
@@ -403,5 +424,77 @@ describe("JOB 3101 · UX-04 · R · Rückkehr aus der geöffneten Aufgabe", () =
     const machbar = SCROLLHOEHE - window.innerHeight;
     await ablauf(machbar + 5000);
     expect(angefahren.at(-1), "kein Sprung ins Leere").toBe(machbar);
+  });
+});
+
+// ── N-0015 · BEN, Lauf 3 R1 (B1): DIE DATEN KOMMEN ERST NACH DEM WIEDEREINTRITT ──────────────────
+// R1–R6 liefern die Daten sofort. Im Browser kommt die Liste nach dem Rückweg aber oft erst mit der
+// Antwort: der Eintritt sieht eine leere, nicht scrollbare Seite. Bens Gegenbeleg: Soll 820, Ist 0.
+describe("N-0015 · Rückweg mit verzögerten Listendaten", () => {
+  async function liefere(): Promise<void> {
+    await act(async () => {
+      lage.laedt = false;
+      lage.stand += 1;
+      for (const h of lage.hoerer) {
+        h();
+      }
+      await flush();
+    });
+  }
+
+  async function oeffneUndKehreOhneDatenZurueck(stelle: number): Promise<void> {
+    await mount();
+    await klickSegment("conflict");
+    scrollPos = stelle;
+    await oeffneZeile(11);
+    expect(text()).toContain("SEITE-KONFLIKTE");
+    // Der Rückweg trifft auf Quellen ohne Antwort.
+    lage.laedt = true;
+    angefahren = [];
+    scrollPos = 0;
+    await zurueck();
+    expect(zeilen(), "KALIBRIERUNG: beim Wiedereintritt stehen noch keine Zeilen").toHaveLength(0);
+  }
+
+  it("V1 · Filter UND Stelle stehen wieder, sobald die Daten eintreffen", async () => {
+    await oeffneUndKehreOhneDatenZurueck(820);
+    expect(
+      angefahren.filter((y) => y !== 820),
+      "kein vorzeitiger Sprung gegen die leere Seite",
+    ).toEqual([]);
+
+    await liefere();
+
+    expect(zeilen()).toHaveLength(14);
+    expect(new URLSearchParams(window.location.search).get("art")).toBe("conflict");
+    expect(segment("conflict").getAttribute("aria-pressed")).toBe("true");
+    expect(angefahren, "genau ein Sprung, erst mit den Daten").toEqual([820]);
+    expect(window.scrollY).toBe(820);
+  });
+
+  it("V2 · weitere Antworten danach springen NICHT erneut", async () => {
+    await oeffneUndKehreOhneDatenZurueck(820);
+    await liefere();
+    // Der Reviewer arbeitet weiter; ein späterer Neuabruf darf ihn nicht zurückwerfen.
+    scrollPos = 1200;
+    await liefere();
+    expect(angefahren).toEqual([820]);
+    expect(window.scrollY).toBe(1200);
+  });
+
+  it("V3 · wer vor dem Eintreffen wieder geht, behält die gemerkte Stelle", async () => {
+    await oeffneUndKehreOhneDatenZurueck(820);
+    // Noch ohne Daten erneut zur Aufgabe (Vorwärts) und wieder zurück.
+    await act(async () => {
+      window.history.forward();
+      await flush();
+    });
+    await act(flush);
+    expect(text()).toContain("SEITE-KONFLIKTE");
+    angefahren = [];
+    scrollPos = 0;
+    await zurueck();
+    await liefere();
+    expect(angefahren, "die 0 des Ladezustands hat die Stelle nicht überschrieben").toEqual([820]);
   });
 });
