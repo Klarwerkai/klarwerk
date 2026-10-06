@@ -236,9 +236,10 @@ aus Lauf 1/2 sind unverändert. Geschlossen wurden die Reste:
 Beschreibung am Knopf reicht, H3 bleibt." Kein sichtbarer Satz gebaut; E3 belegt `aria-describedby`
 und `title` in DE/EN/NL.
 
-**Offen:** `tests/i18n-textmodule/bestand-vorher.json` trägt noch die Prüfsummen vor dieser
-Textänderung. In diesem Lauf konnte nichts ausgeführt werden; die neuen Summen sind daher nicht
-berechnet. K1.0 (`bestand-unveraendert.test.ts`) wird deshalb rot und nennt dank `expect.soft` alle
-drei Ist-Summen („Received"). Diese sind nachzutragen; die Anzahl (4437) bleibt gleich. Außerhalb
+**Nacharbeit 1:** `tests/i18n-textmodule/bestand-vorher.json` trägt jetzt die Prüfsummen, die der
+Linux-Prüflauf am Kandidaten `b74a7744` für K1.0 gemessen hat (Diff-Zeilen „Received", Bericht
+`HISTORIE/nacharbeit-1/PRUEFUNG/textbestand-r0101.log`): `de` `055d63f8…a0ba`, `en` `5dcdd149…cc53`,
+`nl` `bdcbb373…c756`. Anzahl (4437) und Basisstand unverändert. K1.1–K1.3 und K4 waren in diesem
+Lauf bereits grün; `werte-vorher.json` ist nicht erneut angefasst. Außerhalb
 der Erfassungsfläche bleibt „Asset" unverändert stehen, z. B. `ko.couple.placeholder` (EN „Asset
 reference, …", Anlagenkopplung im Wissensobjekt). Das gehört nicht zu diesem Auftrag.
