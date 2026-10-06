@@ -239,6 +239,48 @@ describe("R-0766 · die Kette am Objekt zeigt Konflikte und Exporte", () => {
     expect(koAuditEvents(alle, "K1").map((e) => e.target)).not.toContain("C-ALT");
   });
 
+  // Verwalteransicht · Bens Befund Nacharbeit 7: der SCORM-Export trägt als Ziel das Exportpaket
+  // (`lms-export:<kennung>`) und nennt die Objekte NUR unter `payload.objekte[].koId`
+  // (`services/app/src/routes/lms-export-routes.ts:53-60`). Bis hierher fehlte er in der Kette.
+  it("SCORM-Export · gespeicherter Beleg erscheint in der Kette jedes exportierten Objekts, nicht beim unbeteiligten", async () => {
+    const audit = new AuditService({ repo: new InMemoryAuditRepo() });
+    await audit.record({ actor: "anna", action: "ko.created", target: "K1" });
+    await audit.record({ actor: "anna", action: "ko.created", target: "K2" });
+    await audit.record({ actor: "anna", action: "ko.created", target: "K9" });
+    // Dieselbe Nutzlastform, die die Route schreibt — ein bereits gespeicherter Beleg.
+    await audit.record({
+      actor: "vera",
+      action: "output.lms-export",
+      target: "lms-export:EXP-1",
+      payload: {
+        format: "SCORM 1.2",
+        exportfassung: "EXP-1",
+        manifestId: "M-1",
+        empfaenger: "Lernplattform Werk 1",
+        sprache: "de",
+        objekte: [
+          { koId: "K1", version: 3 },
+          { koId: "K2", version: 1 },
+        ],
+        paketSha256: "abc",
+      },
+    });
+    expect((await audit.verifyReport()).ok).toBe(true);
+
+    const alle = (await audit.list()) as WebAuditEntry[];
+    for (const ko of ["K1", "K2"]) {
+      const kette = koAuditEvents(alle, ko);
+      expect(
+        kette.map((e) => `${e.action}@${e.target}`),
+        ko,
+      ).toEqual([`ko.created@${ko}`, "output.lms-export@lms-export:EXP-1"]);
+      expect(kette.at(-1)?.actor).toBe("vera");
+    }
+    // Das unbeteiligte Objekt bekommt den Export nicht — auch nicht über eine ähnliche Kennung.
+    expect(koAuditEvents(alle, "K9").map((e) => e.action)).toEqual(["ko.created"]);
+    expect(koAuditEvents(alle, "K").map((e) => e.action)).toEqual([]);
+  });
+
   it("Lauf 2 · abgeschlossene Alt-Überschneidung ohne koIds: über die Befunde des Objekts in der Kette, fremde bleibt draußen", async () => {
     const b = await baueFrischeBuehne();
     const h = (r: "admin" | "controller" | "viewer") => ({

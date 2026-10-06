@@ -330,6 +330,13 @@ const INVENTAR: readonly string[] = [
   "services/app/src/routes/addin-static-routes.test.ts",
   "services/app/src/routes/klara-ai-routes.test.ts",
   "services/app/src/services/klara-session-service.test.ts",
+  // Auftrag gesamt-ki-einwilligung (R-0609): das Prüfprotokoll jeder Zustimmungserteilung und
+  // jedes Endes — Klara-Regression im engsten Sinn (dieselbe Sitzungsgrenze wie die Datei darüber).
+  "services/app/src/services/klara-consent-protokoll.test.ts",
+  // Derselbe Auftrag (Bens B13/B14): der Auslöser des Aufräumlaufs, der fehlende Endeinträge des
+  // Prüfprotokolls nachträgt, bevor Sitzungen gelöscht werden — einmal ohne, einmal mit PostgreSQL.
+  "services/app/src/klara-aufraeumen.test.ts",
+  "services/app/src/klara-aufraeumen-pg.integration.test.ts",
   "services/app/src/web-static.test.ts",
   "services/reasoner/src/klara-policy.test.ts",
   // JOB 3337 (ADMIN-NAVIGATION): zwei neue Dateien, von der Achse `palette` gefunden (Muster
@@ -534,6 +541,17 @@ const INVENTAR: readonly string[] = [
   // Seitenfenster (verständlicher Satz, Wiederanmeldung im Panel, Arbeit geht weiter) — fährt
   // `taskpane.html` über die Fixture. K2 hat sie gemeldet, das Inventar nimmt sie nicht still auf.
   "tests/office-web-anmeldung/sitzungsablauf-im-seitenfenster.test.tsx",
+  // Word-Host-Gesamtweg (Nacharbeit 3, Realhostbeleg 05.10.2026): der COOP-Kopf der Dialogseite am
+  // echten Fastify-Draht — nennt das Taskpane als Gegenpfad, deshalb von der Achse `taskpane`
+  // gefunden; kein „klara" im Pfad, K5 unverändert. Abgelesen am Achsenmuster, nicht gemessen: der
+  // Prüflauf am Kandidaten 26e86268 hat dieses Inventar nicht gefahren, wohl aber `schnitt-pins` A2
+  // mit genau diesem Pfad gemeldet.
+  "tests/office-web-anmeldung/dialog-opener-kopf.test.ts",
+  // Word-Host-Gesamtweg (Nacharbeit 7, Realhostbeleg 06.10.2026): der Auswahlzugriff des Fragenwegs
+  // (`Word.run` zuerst, mit Frist) am ganzen Fenster über `createKlaraPanel` — von der Achse
+  // `komponente` gefunden (Typ `KlaraPanel`); kein „klara" im Pfad, K5 unverändert. Abgelesen am
+  // Achsenmuster, nicht gemessen.
+  "tests/app/word-addin-auswahlzugriff.test.ts",
   // JOB 4085 (OFFICE-PG-ABNAHME): die Abnahme des Word-Rueckwegs gegen eine ECHTE `.docx` durch den
   // produktiven Extraktor — die Word-Auswahl geht durch das ausgelieferte Aufgabenfenster an die
   // echte Route, gemessen wird am zurueckgelesenen Wissensobjekt. Von der Achse `taskpane`
@@ -1284,6 +1302,19 @@ const INVENTAR: readonly string[] = [
   // GESETZT: der Prüflauf am Kandidaten 95636768 meldete K2 `neu im Baum, aber nicht im gepinnten
   // Inventar` mit genau diesem Pfad.
   "tests/capture/aufrufer-waechter.test.ts",
+  // Word-Host-Gesamtweg (Nacharbeit 8): `word-panel-stufenwahl.test.tsx` (R-0632, Stufenwahl im
+  // Word-Panel) stammt aus dem Bestand, nicht aus diesem Auftrag, und ist unverändert — sie fährt
+  // das Fenster und nennt `taskpane`, Achse `taskpane`; kein „klara" im Pfad, K5 bleibt bei 71.
+  // GEMESSEN, NICHT GESETZT: der Prüflauf am Kandidaten e48905fd meldete K2 `neu im Baum, aber
+  // nicht im gepinnten Inventar` mit genau diesem Pfad; erst danach wurde diese Zeile angefasst.
+  "tests/vertraulichkeit-pflicht/word-panel-stufenwahl.test.tsx",
+  // AUFNAHME 20260922 · GESAMT-SCHNELLWAHL (R-0893/R-1669): der neue Prüfstand montiert
+  // `CommandPalette` über die Griffe von `tests/navigationsnamen/vorrichtung.tsx`
+  // (`paletteOeffnen`, `paletteTippen`) und trifft damit die Achse `palette` — dieselbe Klasse wie
+  // die `navigationsnamen`-Dateien oben. Kein „klara" im Pfad, K5 bleibt unverändert. NICHT
+  // GEMESSEN, SONDERN AUS DER QUELLE ABGELEITET: die Bahn dieses Auftrags startet keine Tests; ob
+  // K2 mit diesem Eintrag grün ist, zeigt erst der Prüflauf.
+  "tests/schnellwahl/wissen-in-der-schnellwahl.test.tsx",
 ];
 
 // ------------------------------------------------------------------------------------------------
@@ -1621,7 +1652,15 @@ describe("JOB 920 · K — das Klara-Regressionsinventar ist ableitbar, nicht be
     // (Den Schritt für `abgleich-belege` hatte der Folgeauftrag gesamt-erstnutzerfuehrung-quellen
     // in seiner Nacharbeit 4 gleichlautend als 69 -> 70 gezählt; zusammen mit `schnitt-echt` ergibt
     // die Vereinigung beider Stände 71 — die Datei zählt nur einmal.)
-    expect(nurName.length).toBe(71);
+    // Auftrag gesamt-ki-einwilligung (R-0609), Integration mit main: drei Testdateien dieses
+    // Auftrags tragen „klara" im PFAD und fehlen auf main — `services/app/src/services/klara-consent-
+    // protokoll.test.ts` (im eigenen Zweig gemessen 68 -> 69, `expected 69 to be 68`),
+    // `services/app/src/klara-aufraeumen.test.ts` und `services/app/src/klara-aufraeumen-pg.
+    // integration.test.ts` (Bens B13/B14). Auf den Stand von main (71) kommen sie hinzu: 71 -> 74.
+    // NICHT GEMESSEN, sondern aus der Pfadregel abgeleitet (in dieser Nacharbeit wurde kein Testlauf
+    // gestartet; der Cloud-Lauf ist der Beleg). Die beiden `klara-aufraeumen`-Dateien fehlten im
+    // eigenen Zweig auch im Inventar (K2) — mit dieser Nacharbeit nachgeführt.
+    expect(nurName.length).toBe(74);
     expect(verfehlt.length).toBeGreaterThanOrEqual(25);
     expect(verfehlt.length + nurName.length).toBe(GEFUNDEN.length);
   });

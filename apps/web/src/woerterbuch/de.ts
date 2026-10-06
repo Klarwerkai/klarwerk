@@ -38,7 +38,7 @@ const de = {
   "gliederung.verwaltung": "Verwaltung",
   "gliederung.persoenlich": "Persönlich und Hilfe",
   "nav.start": "Start",
-  "nav.tasks": "Meine Aufgaben",
+  "nav.tasks": "Offene Aufgaben",
   "nav.capture": "Wissen erfassen",
   "nav.ask": "Fragen",
   "nav.library": "Bibliothek",
@@ -309,9 +309,9 @@ const de = {
   "seitenhilfe.bibliothek.title": "Bibliothek: der ganze Bestand",
   "seitenhilfe.bibliothek.body":
     "Das ist der gesamte Wissensbestand. Auf einem breiten Bildschirm steht links die Liste und rechts der Eintrag, den du gerade liest; auf einem schmalen Gerät trägt immer nur eines von beiden die Fläche — ohne Wahl die Liste, mit Wahl der Eintrag, und oben bringt dich der Knopf „Zurück zu Bibliothek“ wieder in die Liste (auf dem Tablet legt „Trefferliste einblenden“ sie als Schublade ÜBER den Eintrag, „Trefferliste ausblenden“ nimmt sie wieder weg). Gesucht wird über das Suchfeld oben im Kopfband; Filter, Sortierung, gespeicherte Sichten und Export liegen im Menü „…“ über der Liste. Nächster Schritt: Klick einen Eintrag an und lies ihn — ist die Liste leer, führt der Knopf „Erfassen“ dorthin, wo neues Wissen entsteht, sofern deine Rolle das Erfassen erlaubt; sonst steht dort „Kein Zugriff“.",
-  "seitenhilfe.aufgaben.title": "Meine Aufgaben: was von dir erledigt werden will",
+  "seitenhilfe.aufgaben.title": "Offene Aufgaben: was hier zu erledigen ist",
   "seitenhilfe.aufgaben.body":
-    "Hier steht deine Arbeit an einer Stelle: Prüfungen, Konflikte, fällige Revalidierungen, offene Wissenslücken und Objekte, die zur Nacharbeit an dich zurückgingen. Der farbige Punkt zeigt die Dringlichkeit (rot „Kritisch“, gelb „Heute“, grün „Später“), die Knopfreihe oben filtert nach Art und nennt die Anzahl, und das „i“ an einer Zeile sagt dir, was dort zu tun ist. Nächster Schritt: Klick die oberste Zeile an — sie führt an die Stelle, an der die Aufgabe erledigt wird, sofern diese Fläche für deine Rolle freigegeben ist; sonst bleibt der Weg zu (Konflikte, Risiko und Lebenszyklus sind nicht für jede Rolle offen). Steht „Nichts offen.“, zeigt „Wie geht es weiter?“ die möglichen nächsten Wege.",
+    "Hier steht die offene Arbeit an einer Stelle: Prüfungen, Konflikte, fällige Revalidierungen, offene Wissenslücken und Objekte, die zur Nacharbeit an dich zurückgingen. Der farbige Punkt zeigt die Dringlichkeit (rot „Kritisch“, gelb „Heute“, grün „Später“), die Knopfreihe oben filtert nach Art und nennt die Anzahl, und das „i“ an einer Zeile sagt dir, was dort zu tun ist. Nächster Schritt: Klick die oberste Zeile an — sie führt an die Stelle, an der die Aufgabe erledigt wird, sofern diese Fläche für deine Rolle freigegeben ist; sonst bleibt der Weg zu (Konflikte, Risiko und Lebenszyklus sind nicht für jede Rolle offen). Steht „Nichts offen.“, zeigt „Wie geht es weiter?“ die möglichen nächsten Wege.",
   "seitenhilfe.wissen.title": "Wissensobjekt: eine Aussage und ihre Belege",
   "seitenhilfe.wissen.body":
     "Du liest ein einzelnes Wissensobjekt — dieselbe Fläche wie in der Bibliothek, nur mit diesem Eintrag vorgewählt: auf einem breiten Bildschirm steht die Liste links und seine Aussage mit Status und Quelle rechts, auf einem schmalen Gerät trägt der Eintrag die Fläche allein und der Knopf „Zurück zu Bibliothek“ oben führt in die Liste. Alles Weitere — Quellen und Anhänge, Versionen, Historie, Kommentare, Konflikte — liegt hinter der Zeile „Mehr“; steht deine Oberfläche auf einer anderen Sprache und gibt es eine Leseübersetzung, steht sie oben, ausdrücklich als Übersetzung benannt. Nächster Schritt: Lies die Aussage, sieh auf Status und Quelle, und öffne „Mehr“, wenn du wissen willst, worauf sie sich stützt.",
@@ -2286,7 +2286,7 @@ const de = {
     "{{name}}: nur txt/md/csv/json/log, docx und pdf werden als Volltext gelesen.",
   "capture.ocr": "OCR → Text",
   "capture.ocrRunningShort": "OCR …",
-  "capture.ocrRunning": "OCR läuft für {{name}} (Worker/Sprachdaten werden geladen) …",
+  "capture.ocrRunning": "Text wird aus {{name}} gelesen … Beim ersten Mal dauert das etwas länger.",
   "capture.ocrDone": "OCR-Text aus {{name}} übernommen.",
   "capture.ocrEmpty": "{{name}}: OCR hat keinen Text erkannt.",
   "capture.ocrFailed": "OCR für {{name}} fehlgeschlagen.",
@@ -2607,7 +2607,7 @@ const de = {
   "capture.fConditions": "Bedingungen",
   "capture.fMeasures": "Maßnahmen",
   "capture.fTags": "Schlagwörter",
-  "capture.fAsset": "Anlage / Asset",
+  "capture.fAsset": "Anlage / Gerät",
   "conf.field": "Vertraulichkeit",
   "conf.confirmPending": "— Vertraulichkeit bestätigen —",
   // JOB 3114 (UX-05, Befund N-0017): der Satz, den der abgewiesene Einreichversuch AM FELD zeigt.
@@ -5548,7 +5548,7 @@ const de = {
   "klara.page.start":
     "Dein Überblick: was frisch gesichert wurde, was heute geholfen hat und was auf dich wartet. Von hier springst du direkt in jeden Bereich.",
   "klara.page.tasks":
-    "Deine offenen Aufgaben: zugewiesene Prüfungen, Lücken und Fälligkeiten — mit direktem Absprung zur jeweiligen Arbeit.",
+    "Offene Aufgaben: fällige Prüfungen, Lücken und Fälligkeiten — mit direktem Absprung zur jeweiligen Arbeit.",
   "klara.page.capture":
     "Hier sicherst du Erfahrungswissen: erzählen, diktieren, im Interview oder aus einer Datei. Die KI strukturiert nur — du prüfst und reichst ein.",
   "klara.page.ask":
@@ -5852,9 +5852,9 @@ const de = {
   "help.library.title": "Bibliothek & Wissensobjekt",
   "help.library.body":
     "Die Bibliothek ist der gesamte Wissensbestand an einem Ort. Über das Suchfeld oben findest du einen Eintrag; Filter, Sortierung, gespeicherte Sichten und Export liegen im Menü „…“ über der Liste. Ein Klick öffnet das Wissensobjekt: seine Aussage, sein Stand und seine Quelle stehen sofort da; Quellen und Anhänge, Versionen, Historie, Kommentare und gemeldete Widersprüche liegen hinter „Mehr“. Auf einem schmalen Gerät trägt immer nur eines von beiden die Fläche — entweder die Liste oder der Eintrag. Nächster Schritt: einen Eintrag anklicken, die Aussage lesen und „Mehr“ öffnen.",
-  "help.tasks.title": "Meine Aufgaben",
+  "help.tasks.title": "Offene Aufgaben",
   "help.tasks.body":
-    "Hier steht deine eigene Arbeit an einer Stelle: Objekte, die auf deine Prüfung in der Validierung warten, Rückfragen an dich, gemeldete Widersprüche, offene Wissenslücken und Objekte, die nach einer Anlagenänderung noch einmal bestätigt werden sollen. Ein farbiger Punkt zeigt die Dringlichkeit, die Knopfreihe darüber grenzt die Liste auf eine Art ein, und das „i“ an einer Zeile sagt, was dort zu tun ist. Jede Zeile führt genau dorthin, wo die Sache erledigt wird — sofern deine Rolle diesen Bereich sehen darf. Nächster Schritt: die oberste Zeile anklicken und sie abarbeiten.",
+    "Hier steht die offene Arbeit an einer Stelle: Objekte, die auf deine Prüfung in der Validierung warten, Rückfragen an dich, gemeldete Widersprüche, offene Wissenslücken und Objekte, die nach einer Anlagenänderung noch einmal bestätigt werden sollen. Ein farbiger Punkt zeigt die Dringlichkeit, die Knopfreihe darüber grenzt die Liste auf eine Art ein, und das „i“ an einer Zeile sagt, was dort zu tun ist. Jede Zeile führt genau dorthin, wo die Sache erledigt wird — sofern deine Rolle diesen Bereich sehen darf. Nächster Schritt: die oberste Zeile anklicken und sie abarbeiten.",
   "help.risk.title": "Risiko & Lücken",
   "help.risk.body":
     "Diese Seite zeigt, wo Wissen fehlt und wo es an einem einzigen Menschen hängt. Zu jeder offenen Wissenslücke steht der nächste Schritt dabei: die Dringlichkeit einschätzen, sie einer Fachperson zuweisen oder sie mit „Wissen erfassen“ schließen. Daneben sind die Fachgebiete danach eingefärbt, von wie vielen Personen das dort festgehaltene Wissen stammt — rot heißt: alles kam von einer einzigen Person, niemand sonst hat bisher dazu beigetragen. Was dagegen hilft, steht an der roten Zeile selbst. Nächster Schritt: eine rote Zeile ansehen, ihre Objekte öffnen und die dringendste Lücke jemandem zuweisen.",

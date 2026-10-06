@@ -33,7 +33,7 @@ const nl: typeof de = {
   "gliederung.verwaltung": "Beheer",
   "gliederung.persoenlich": "Persoonlijk en help",
   "nav.start": "Start",
-  "nav.tasks": "Mijn taken",
+  "nav.tasks": "Open taken",
   "nav.capture": "Kennis vastleggen",
   "nav.ask": "Vragen",
   "nav.library": "Bibliotheek",
@@ -164,9 +164,9 @@ const nl: typeof de = {
   "seitenhilfe.bibliothek.title": "Bibliotheek: de hele voorraad",
   "seitenhilfe.bibliothek.body":
     "Dit is de volledige kennisvoorraad. Op een breed scherm staat links de lijst en rechts het item dat je leest; op een smal apparaat vult telkens maar één van beide het vlak — zonder keuze de lijst, met keuze het item, en bovenaan brengt de knop “Terug naar Bibliotheek” je weer in de lijst (op een tablet schuift “Resultatenlijst tonen” hem als lade OVER het item, “Resultatenlijst verbergen” haalt hem weer weg). Zoeken doe je met het zoekveld bovenin de kopbalk; filters, sortering, opgeslagen weergaven en export zitten in het menu “…” boven de lijst. Volgende stap: klik een item aan en lees het — is de lijst leeg, dan leidt de knop “Vastleggen” naar de plek waar nieuwe kennis ontstaat, voor zover je rol vastleggen toestaat; anders staat er “Geen toegang”.",
-  "seitenhilfe.aufgaben.title": "Mijn taken: wat er van jou wordt verwacht",
+  "seitenhilfe.aufgaben.title": "Open taken: wat hier te doen is",
   "seitenhilfe.aufgaben.body":
-    "Hier staat je werk op één plek: validaties, conflicten, openstaande hervalidaties, open kennishiaten en objecten die voor nawerk bij jou terugkwamen. De gekleurde stip toont de urgentie (rood “Kritiek”, geel “Vandaag”, groen “Later”), de knoppenrij erboven filtert op soort en noemt het aantal, en de “i” bij een regel zegt wat daar te doen is. Volgende stap: klik de bovenste regel aan — die brengt je naar de plek waar de taak wordt afgerond, voor zover dat gebied is vrijgegeven voor jouw rol; anders blijft de weg dicht (conflicten, risico en levenscyclus zijn niet voor elke rol open). Staat er “Niets open.”, dan toont “Hoe gaat het verder?” de mogelijke volgende wegen.",
+    "Hier staat het openstaande werk op één plek: validaties, conflicten, openstaande hervalidaties, open kennishiaten en objecten die voor nawerk bij jou terugkwamen. De gekleurde stip toont de urgentie (rood “Kritiek”, geel “Vandaag”, groen “Later”), de knoppenrij erboven filtert op soort en noemt het aantal, en de “i” bij een regel zegt wat daar te doen is. Volgende stap: klik de bovenste regel aan — die brengt je naar de plek waar de taak wordt afgerond, voor zover dat gebied is vrijgegeven voor jouw rol; anders blijft de weg dicht (conflicten, risico en levenscyclus zijn niet voor elke rol open). Staat er “Niets open.”, dan toont “Hoe gaat het verder?” de mogelijke volgende wegen.",
   "seitenhilfe.wissen.title": "Kennisobject: één uitspraak en haar bewijs",
   "seitenhilfe.wissen.body":
     "Je leest één kennisobject — hetzelfde vlak als de bibliotheek, alleen met dit item voorgeselecteerd: op een breed scherm links de lijst en rechts de uitspraak met status en bron, op een smal apparaat vult het item het vlak alleen en brengt de knop “Terug naar Bibliotheek” bovenaan je naar de lijst. Al het overige — bronnen en bijlagen, versies, historie, opmerkingen, conflicten — zit achter de regel “Meer”; staat je interface op een andere taal en bestaat er een leesvertaling, dan staat die bovenaan, uitdrukkelijk als vertaling benoemd. Volgende stap: lees de uitspraak, kijk naar status en bron, en open “Meer” als je wilt weten waarop ze steunt.",
@@ -1764,7 +1764,8 @@ const nl: typeof de = {
     "{{name}}: alleen txt/md/csv/json/log, docx en pdf worden als volledige tekst gelezen.",
   "capture.ocr": "OCR → tekst",
   "capture.ocrRunningShort": "OCR …",
-  "capture.ocrRunning": "OCR loopt voor {{name}} (worker/taaldata worden geladen) …",
+  "capture.ocrRunning":
+    "De tekst in {{name}} wordt gelezen … De eerste keer duurt dit iets langer.",
   "capture.ocrDone": "OCR-tekst uit {{name}} overgenomen.",
   "capture.ocrEmpty": "{{name}}: OCR heeft geen tekst herkend.",
   "capture.ocrFailed": "OCR voor {{name}} mislukt.",
@@ -2033,7 +2034,7 @@ const nl: typeof de = {
   "capture.fConditions": "Voorwaarden",
   "capture.fMeasures": "Maatregelen",
   "capture.fTags": "Trefwoorden",
-  "capture.fAsset": "Installatie / asset",
+  "capture.fAsset": "Installatie / apparaat",
   "conf.field": "Vertrouwelijkheid",
   "conf.confirmPending": "— vertrouwelijkheid bevestigen —",
   "conf.requiredHint": "Kies een vertrouwelijkheidsniveau voordat u indient.",
@@ -4321,7 +4322,7 @@ const nl: typeof de = {
   "klara.page.start":
     "Jouw overzicht: wat er net is geborgd, wat er vandaag heeft geholpen en wat er op je wacht. Van hieruit spring je direct naar elk onderdeel.",
   "klara.page.tasks":
-    "Jouw open taken: toegewezen beoordelingen, hiaten en vervaldata — met een directe sprong naar het bijbehorende werk.",
+    "Open taken: openstaande beoordelingen, hiaten en vervaldata — met een directe sprong naar het bijbehorende werk.",
   "klara.page.capture":
     "Hier borg je ervaringskennis: vertellen, dicteren, in een interview of uit een bestand. De AI structureert alleen — jij controleert en dient in.",
   "klara.page.ask":
@@ -4542,9 +4543,9 @@ const nl: typeof de = {
   "help.library.title": "Bibliotheek & kennisobject",
   "help.library.body":
     "De bibliotheek is de volledige kennisvoorraad op één plek. Met het zoekveld erboven vind je een item; filters, sortering, opgeslagen weergaven en export zitten in het menu „…“ boven de lijst. Eén klik opent het kennisobject: de uitspraak, de stand en de bron staan er meteen; bronnen en bijlagen, versies, historie, opmerkingen en gemelde tegenstrijdigheden zitten achter „Meer“. Op een smal apparaat draagt steeds maar één van beide het scherm — of de lijst, of het item. Volgende stap: een item aanklikken, de uitspraak lezen en „Meer“ openen.",
-  "help.tasks.title": "Mijn taken",
+  "help.tasks.title": "Open taken",
   "help.tasks.body":
-    "Hier staat je eigen werk op één plek: objecten die op jouw controle in de Validatie wachten, terugvragen aan jou, gemelde tegenstrijdigheden, open kennishiaten en objecten die na een wijziging aan een installatie of proces nog eens bevestigd moeten worden. Een gekleurde stip toont de urgentie, de knoppenrij erboven perkt de lijst in tot één soort, en de „i“ bij een regel zegt wat daar te doen is. Elke regel leidt precies naar de plek waar de zaak wordt afgehandeld — voor zover jouw rol dat onderdeel mag zien. Volgende stap: de bovenste regel aanklikken en afwerken.",
+    "Hier staat het openstaande werk op één plek: objecten die op jouw controle in de Validatie wachten, terugvragen aan jou, gemelde tegenstrijdigheden, open kennishiaten en objecten die na een wijziging aan een installatie of proces nog eens bevestigd moeten worden. Een gekleurde stip toont de urgentie, de knoppenrij erboven perkt de lijst in tot één soort, en de „i“ bij een regel zegt wat daar te doen is. Elke regel leidt precies naar de plek waar de zaak wordt afgehandeld — voor zover jouw rol dat onderdeel mag zien. Volgende stap: de bovenste regel aanklikken en afwerken.",
   "help.risk.title": "Risico & hiaten",
   "help.risk.body":
     "Deze pagina laat zien waar kennis ontbreekt en waar zij aan één mens hangt. Bij elk open kennishiaat staat de volgende stap erbij: de urgentie inschatten, het aan een vakgenoot toewijzen of het met „Kennis vastleggen“ sluiten. Daarnaast zijn de vakgebieden gekleurd naar van hoeveel personen de daar vastgelegde kennis komt — rood betekent: alles komt van één enkele persoon, niemand anders heeft er tot nu toe aan bijgedragen. Wat daartegen helpt, staat bij de rode regel zelf. Volgende stap: een rode regel bekijken, de bijbehorende objecten openen en het dringendste hiaat aan iemand toewijzen.",

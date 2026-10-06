@@ -190,6 +190,17 @@ export interface DraftRepo {
    * Vorfilterung eine zweite Sichtbarkeitsregel — und davon ist eine schon eine zu viel.
    */
   listByAuthor(authorId: string): Promise<Draft[]>;
+  /**
+   * AUFNAHME entwurf-in-gemeinsamen-pool-geben (R-2099): die Entwürfe, die ihr Autor bewusst in den
+   * gemeinsamen Pool gegeben hat (`imPool`), aus der Ablage gefiltert — dieselbe Ersparnis wie
+   * `listByAuthor` (JOB 2696): wer nach seinen Entwürfen und dem Pool fragt, bezahlt die privaten
+   * Entwürfe aller anderen nicht mit. Einschliesslich Papierkorb wie `list()`; wer einem Menschen
+   * eine Liste zeigt, trimmt selbst (`visibleDraftsFor`).
+   *
+   * OPTIONAL, damit die Ersatzablagen der Bestandstests unverändert gültig bleiben. Fehlt sie, fällt
+   * der Dienst auf `list()` mit demselben Prädikat zurück (`CaptureService.listDraftsForResume`).
+   */
+  listPool?(): Promise<Draft[]>;
 }
 
 /**
@@ -368,5 +379,10 @@ export class InMemoryDraftRepo implements DraftRepo {
     return Promise.resolve(
       [...this.drafts.values()].filter((draft) => draft.originalAuthor === authorId),
     );
+  }
+
+  // Pool-Auftrag (R-2099): Spiegel der Pg-Bedingung `data->'imPool' = 'true'::jsonb`.
+  listPool(): Promise<Draft[]> {
+    return Promise.resolve([...this.drafts.values()].filter((draft) => draft.imPool === true));
   }
 }

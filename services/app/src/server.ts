@@ -7,6 +7,7 @@ import { buildApp, buildPgServices, buildServices } from "./build-app";
 import { createPool, migrate } from "./db";
 import { buildDevPersistServices } from "./dev-persist";
 import { type FactoryReset, factoryResetUnavailable } from "./factory-reset";
+import { resolveKlaraAufraeumIntervalMs, starteKlaraAufraeumen } from "./klara-aufraeumen";
 import { registerNoindexHook } from "./noindex-hook";
 import { registerSecurityHeaders } from "./security-headers";
 // JOB 3776: der Startvertrag wird am Einstiegspunkt gerufen — als erste Anweisung von `start()`,
@@ -151,7 +152,15 @@ async function start(): Promise<void> {
       : buildServices();
   // Werksreset nur im Desktop/Dev-Journal-Modus (nie mit DATABASE_URL).
   const factoryReset = databaseUrl ? factoryResetUnavailable : makeFactoryReset(journal);
-  const app = buildApp(services, { factoryReset });
+  // R-0609 · Bens B13: der Aufräumlauf der Klara-Sitzungen (Nachtrag fehlender Endeinträge des
+  // Prüfprotokolls, dann Löschen) — gestartet unten, nach `app.listen`, neben dem Papierkorb-Sweep.
+  let klaraAufraeumLauf: (() => Promise<number>) | undefined;
+  const app = buildApp(services, {
+    factoryReset,
+    klaraAufraeumen: (lauf) => {
+      klaraAufraeumLauf = lauf;
+    },
+  });
   await configureWebDelivery(app);
   const port = Number(process.env.PORT ?? "3001");
   // SCRUM-525 P.5 (WP3-Batch3): die wirksame KI-Zuordnung (Policy) MUSS feststehen, BEVOR der Server
@@ -235,6 +244,17 @@ async function start(): Promise<void> {
       app.log.warn(`Periodischer Papierkorb-Sweep übersprungen: ${String(error)}`),
   });
   app.log.info(`Papierkorb-Sweep aktiv — Intervall ${Math.round(sweepInterval / 60000)} min.`);
+  if (klaraAufraeumLauf) {
+    const klaraInterval = resolveKlaraAufraeumIntervalMs(
+      process.env.KLARWERK_KLARA_AUFRAEUM_INTERVAL_MS,
+    );
+    starteKlaraAufraeumen({
+      lauf: klaraAufraeumLauf,
+      intervalMs: klaraInterval,
+      log: { info: (t) => app.log.info(t), warn: (t) => app.log.warn(t) },
+    });
+    app.log.info(`Klara-Aufräumlauf aktiv — Intervall ${Math.round(klaraInterval / 60000)} min.`);
+  }
 }
 
 start().catch((error) => {

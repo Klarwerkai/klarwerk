@@ -42,7 +42,7 @@ import { type Guards, type SessionUser, sendError } from "../http";
 // ausdrücklich DOM- UND paketfrei gehalten, damit der Browser denselben Kern nutzen kann.
 import { bildVerkleinerung, bildausfaelleVermerken } from "../import/bildverkleinerung";
 import type { AssignmentNotifier } from "../notify";
-import { entwurfSichtbarFuer } from "../sichtbarkeit";
+import { autorenrechtAmEntwurf, entwurfSichtbarFuer } from "../sichtbarkeit";
 
 // AUFTRAG-mega19 Block B: EXPORTIERT, damit die Composition-Root den Entwurfs-Zugang der
 // Dokumentübernahme (ko-routes, `DraftPromotionSource`) aus DERSELBEN Regel bildet. Zwei
@@ -63,8 +63,22 @@ import { entwurfSichtbarFuer } from "../sichtbarkeit";
 // Lauf :3 Runde 3 (Ben B1-R): die Regel selbst steht in `sichtbarkeit.ts` (`entwurfSichtbarFuer`),
 // weil der Anhang-Leseweg (`GET /api/objects/:id/raw`) dieselbe braucht. Diese Funktion bleibt der
 // Name, unter dem die Entwurfsrouten und die Composition-Root sie rufen.
+//
+// AUFNAHME entwurf-in-gemeinsamen-pool-geben (R-2099, FR-CAP-06): die oben angekündigte zweite,
+// ausdrückliche Bedingung steht jetzt IN `entwurfSichtbarFuer` — ein Entwurf, den sein Autor bewusst
+// in den gemeinsamen Pool gegeben hat, ist für jeden Schreibberechtigten sichtbar und fortsetzbar
+// (Liste, Einzelabruf, Speichern, nächster Schritt, Anhänge). Ohne diese Handlung bleibt alles wie
+// oben beschrieben.
 export function canSeeDraft(user: SessionUser, draft: Draft): boolean {
   return entwurfSichtbarFuer(user, draft);
+}
+
+// Pool-Auftrag (Pedi, entscheidung:297afc57): Sehen und Fortsetzen ist nicht Verfügen. EINREICHEN
+// (Promote und Dokumentübernahme), LÖSCHEN, der PAPIERKORB und das TEILEN selbst bleiben beim Autor
+// — auch bei einem Pool-Entwurf. Für einen privaten Entwurf ist das dieselbe Menge wie
+// `canSeeDraft`; der Unterschied entsteht erst durch den Pool.
+export function canManageDraft(user: SessionUser, draft: Draft): boolean {
+  return autorenrechtAmEntwurf(user, draft);
 }
 
 // ================================================================================================
@@ -148,6 +162,7 @@ async function requireVisibleDraft(
   user: SessionUser,
   reply: FastifyReply,
   request: FastifyRequest,
+  opts: { nurAutor?: boolean } = {},
 ): Promise<Draft | undefined> {
   const draft = await capture.getDraft(id);
   if (!draft) {
@@ -160,6 +175,15 @@ async function requireVisibleDraft(
     reply
       .code(403)
       .send({ error: "FORBIDDEN", message: meldung("DRAFT_NOT_VISIBLE", sprache(request)) });
+    return undefined;
+  }
+  // Pool-Auftrag (297afc57): wer einen fremden Pool-Entwurf SIEHT, darf ihn noch nicht einreichen
+  // oder löschen. Der Satz ist der vorhandene Rechtesatz (`PERMISSION_DENIED`), nicht
+  // `DRAFT_NOT_VISIBLE` — der Entwurf IST für ihn verfügbar, es fehlt das Recht an dieser Handlung.
+  if (opts.nurAutor && !canManageDraft(user, draft)) {
+    reply
+      .code(403)
+      .send({ error: "FORBIDDEN", message: meldung("PERMISSION_DENIED", sprache(request)) });
     return undefined;
   }
   return draft;
@@ -188,7 +212,9 @@ async function requireVisibleTrashedDraft(
   reply: FastifyReply,
 ): Promise<Draft | undefined> {
   const draft = await capture.findTrashedDraft(id);
-  if (!draft || !canSeeDraft(user, draft)) {
+  // Pool-Auftrag (297afc57): der Papierkorb gehört dem, der löschen darf — dem Autor. Ein Pool-
+  // Entwurf im Papierkorb ist für den Pool nicht vorhanden.
+  if (!draft || !canManageDraft(user, draft)) {
     reply.code(404).send({ error: "NOT_FOUND", message: "Entwurf nicht im Papierkorb." });
     return undefined;
   }
@@ -1014,8 +1040,12 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
       // entscheidet, wer welchen Entwurf sieht. Die Vorfilterung ist eine Ersparnis, keine zweite
       // Regel — liefe sie je auseinander, faengt der Aufruf unten es ab. Eine Sichtbarkeitsregel
       // zu ersetzen, um Bytes zu sparen, waere der falsche Handel.
+      //
+      // Pool-Auftrag (R-2099): `mitPool` holt die bewusst geteilten Entwürfe dazu — wieder aus der
+      // Ablage gefiltert. Ob sie dieser Mensch sieht, entscheidet danach dieselbe eine Regel.
       const geprueft = await capture.listDraftsForResume(
         user.role === "admin" ? undefined : user.id,
+        { mitPool: true },
       );
       reply.code(200).send(
         visibleDraftsFor(
@@ -1562,7 +1592,9 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
         const geloescht = await capture.listTrashedDrafts(
           user.role === "admin" ? undefined : user.id,
         );
-        reply.code(200).send(geloescht.filter((draft) => canSeeDraft(user, draft)));
+        // Pool-Auftrag (297afc57): der Papierkorb zeigt, was dieser Mensch löschen durfte — nur
+        // eigene Entwürfe (und dem Admin herrenlosen Altbestand), nie fremde Pool-Entwürfe.
+        reply.code(200).send(geloescht.filter((draft) => canManageDraft(user, draft)));
       } catch (error) {
         sendError(reply, error);
       }
@@ -1606,13 +1638,64 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
       }
     });
 
+    // ============================================================================================
+    // AUFNAHME entwurf-in-gemeinsamen-pool-geben (R-2099, FR-CAP-06, Pedi `debbb8e8` „Beides").
+    // ============================================================================================
+    //
+    // DIE BEWUSSTE HANDLUNG DES AUTORS: `{ imPool: true }` gibt genau diesen einen Entwurf in den
+    // gemeinsamen Pool, `{ imPool: false }` nimmt ihn zurück. Ohne diesen Aufruf ist und bleibt jeder
+    // Entwurf privat. Nur der Autor darf das (`nurAutor`, entscheidung:297afc57); ein anderer
+    // Schreibberechtigter bekommt für einen fremden Pool-Entwurf 403, für einen privaten das
+    // bisherige 403 `DRAFT_NOT_VISIBLE`. Ein Rumpf ohne Wahrheitswert ist ein Eingabefehler (400)
+    // und wird geprüft, bevor überhaupt ein Entwurf gelesen wird.
+    //
+    // KEIN ZWEITER SPEICHER: das Feld steht am Entwurf derselben Ablage (`Draft.imPool`); Liste,
+    // Editor und Anhänge lesen es über dieselbe eine Regel (`entwurfSichtbarFuer`).
+    app.put<{ Params: { id: string }; Body: { imPool?: unknown } | null }>(
+      "/api/drafts/:id/pool",
+      async (request, reply) => {
+        const user = await guards.requirePermission("ko.create", request, reply);
+        if (!user) {
+          return;
+        }
+        const imPool = request.body?.imPool;
+        // Der Satz kommt aus dem Katalog in der Sprache der Sitzung (Q9-Wächter,
+        // `tests/q9-fremde-flaechen/keine-deutschen-literale.test.ts`: kein Meldungsliteral an
+        // dieser Fläche). Nacharbeit 1: hier stand das Literal „imPool: true | false".
+        if (typeof imPool !== "boolean") {
+          reply.code(400).send({
+            error: "BAD_REQUEST",
+            message: meldung("DRAFT_POOL_INVALID", sprache(request)),
+          });
+          return;
+        }
+        try {
+          if (
+            !(await requireVisibleDraft(capture, request.params.id, user, reply, request, {
+              nurAutor: true,
+            }))
+          ) {
+            return;
+          }
+          reply.code(200).send(await capture.entwurfInPool(request.params.id, imPool));
+        } catch (error) {
+          sendError(reply, error);
+        }
+      },
+    );
+
     app.delete<{ Params: { id: string } }>("/api/drafts/:id", async (request, reply) => {
       const user = await guards.requirePermission("ko.create", request, reply);
       if (!user) {
         return;
       }
       try {
-        if (!(await requireVisibleDraft(capture, request.params.id, user, reply, request))) {
+        // Pool-Auftrag (297afc57): Löschen bleibt beim Autor, auch bei einem Pool-Entwurf.
+        if (
+          !(await requireVisibleDraft(capture, request.params.id, user, reply, request, {
+            nurAutor: true,
+          }))
+        ) {
           return;
         }
         // JOB 3668: DERSELBE ENDPUNKT, NEUE BEDEUTUNG — er legt den Entwurf in den Papierkorb,
@@ -1837,7 +1920,13 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
               return;
             }
           }
-          if (!(await requireVisibleDraft(capture, request.params.id, user, reply, request))) {
+          // Pool-Auftrag (297afc57): Einreichen bleibt beim Autor, auch bei einem Pool-Entwurf —
+          // geprüft VOR jedem Schreiben, ein abgewiesener Aufruf ändert weder Entwurf noch Bestand.
+          if (
+            !(await requireVisibleDraft(capture, request.params.id, user, reply, request, {
+              nurAutor: true,
+            }))
+          ) {
             return;
           }
           // AUFTRAG-mega22 Block H: liegt ein Stand bei, wird er HIER geschrieben — im selben

@@ -160,8 +160,14 @@ import {
   PgNotificationSeenRepo,
   createMailerFromEnv,
 } from "../../notifications";
-import { InMemoryObjectRepo, type ObjectRepo, ObjectStore, PgObjectRepo } from "../../object-store";
-import { OutputService } from "../../output";
+import {
+  InMemoryObjectRepo,
+  type ObjectRepo,
+  ObjectStore,
+  PgObjectRepo,
+  decodeDataUrl,
+} from "../../object-store";
+import { LmsExportService, OutputService, leseLmsEmpfaenger } from "../../output";
 // SCRUM-443: echte Rollenwechsel-Regel (FR-RBAC-03) in den AuthService injizieren.
 import { canChangeRole } from "../../rbac";
 import {
@@ -171,6 +177,7 @@ import {
   // Reasoner-Persistenz (Cross-Modul-Import nur über die öffentliche index.ts).
   InMemoryKlaraSessionRepo,
   InMemoryReasonerPolicyRepo,
+  KlaraAusweichwegGesperrtFehler,
   type KlaraSessionRepo,
   ModelCapacityError,
   ModelProvider,
@@ -179,6 +186,7 @@ import {
   PgReasonerPolicyRepo,
   Reasoner,
   type ReasonerPolicyRepo,
+  anbieterZugelassen,
   createCappedCloudClientFromEnv,
   createCappedLocalClientFromEnv,
 } from "../../reasoner";
@@ -207,6 +215,7 @@ import {
   AddonAuthAttemptThrottle,
   addonAuthThrottleConfigFromEnv,
   isAddonEndpointPath,
+  isHopCountTrustProxy,
   resolveTrustProxy,
 } from "./addon-auth-throttle";
 import { matchAddonRoute, principalHasCapability, resolveAddonAuth } from "./addon-principal";
@@ -244,6 +253,13 @@ import {
   tokenFromRequest,
 } from "./http";
 import { impactReport } from "./impact";
+// Kenntnisnahme einer gültigen Fassung — haltbar im Postgres-Betrieb, im Speicher ohne Datenbank.
+import {
+  InMemoryKenntnisnahmeRepo,
+  KenntnisnahmeDienst,
+  type KenntnisnahmeRepo,
+  PgKenntnisnahmeRepo,
+} from "./kenntnisnahme";
 // WP-D11: PPTX-Folien → PNG (Route + injizierbarer Konverter).
 import {
   InMemoryLesevariantenRepo,
@@ -254,6 +270,11 @@ import { entferneGeheimeEnvWerte, sanitizeLogText } from "./log-sanitize";
 import { makeAssignmentNotifier } from "./notify";
 // AUFTRAG-mega20 Block C: die modulübergreifende Referenzprüfung lebt in services/app (s. Datei).
 import type { ObjectReferenceSources } from "./object-references";
+import {
+  InMemoryQuellabgleichRepo,
+  PgQuellabgleichRepo,
+  type QuellabgleichRepo,
+} from "./quellabgleich-ablage";
 import { addinStaticRoutes } from "./routes/addin-static-routes";
 import { adminRoutes } from "./routes/admin-routes";
 import { aiCheckCoverageRoutes } from "./routes/ai-check-coverage-routes";
@@ -261,7 +282,7 @@ import { askRoutes } from "./routes/ask-routes";
 import { auditRoutes } from "./routes/audit-routes";
 import { bearbeitungRoutes } from "./routes/bearbeitung-routes";
 import { brandingRoutes } from "./routes/branding-routes";
-import { canSeeDraft, captureRoutes } from "./routes/capture-routes";
+import { canManageDraft, captureRoutes } from "./routes/capture-routes";
 import { categoryRoutes } from "./routes/category-routes";
 import { checkTextRoutes } from "./routes/check-text-routes";
 import { conflictRoutes } from "./routes/conflicts-routes";
@@ -277,6 +298,7 @@ import { impactRoutes } from "./routes/impact-routes";
 import { importAccessRoutes } from "./routes/import-access-routes";
 import { importRunRoutes } from "./routes/import-run-routes";
 import { kantenRoutes } from "./routes/kanten-routes";
+import { kenntnisnahmeRoutes } from "./routes/kenntnisnahme-routes";
 import { klaraAiRoutes } from "./routes/klara-ai-routes";
 // W3-C (JOB 541 D3): die kanonische Antwort-Erklaerroute und ihr Lesedienst.
 import { klaraAnswerExplanationRoutes } from "./routes/klara-answer-explanation-routes";
@@ -289,6 +311,7 @@ import { lesevariantenRoutes } from "./routes/lesevarianten-routes";
 import { libraryRoutes } from "./routes/library-routes";
 import { lifecycleRoutes } from "./routes/lifecycle-routes";
 import { livewallRoutes } from "./routes/livewall-routes";
+import { lmsExportRoutes } from "./routes/lms-export-routes";
 import { managementRoutes } from "./routes/management-routes";
 import { mediaRoutes } from "./routes/media-routes";
 import { modelRunRoutes } from "./routes/model-runs-routes";
@@ -426,6 +449,15 @@ export interface AppServices {
    */
   bearbeitungen: BearbeitungsRepo;
   /**
+   * Kenntnisnahme einer gültigen Fassung: Anforderungen und Bestätigungen. Aus demselben Grund wie
+   * `bearbeitungen` NICHT in `AppRepos`. Im Postgres-Betrieb `PgKenntnisnahmeRepo`; ohne Datenbank
+   * die Speicherfassung, die im Desktop-Journal-Betrieb Schreibvorgänge ablehnt, statt sie beim
+   * Neustart zu verlieren.
+   */
+  kenntnisnahmen: KenntnisnahmeRepo;
+  /** Die Uhr des Kenntnisnahmedienstes (Millisekunden) — in Tests stellbar für Frist und Erinnerung. */
+  kenntnisnahmeUhr: () => number;
+  /**
    * JOB 3363: die Ablage der Import-Kandidaten — DIESELBE Instanz, die `LibraryService` bekommt.
    * Sie steht hier, weil die Lesevarianten-Routen einen einzelnen Kandidaten nachschlagen müssen
    * (die Prüfkarte fragt über die Kandidaten-Kennung), `LibraryService` seine Ablage aber privat
@@ -459,6 +491,8 @@ export interface AppServices {
   overlapSettings: OverlapSettingsRepo;
   library: LibraryService;
   output: OutputService;
+  // produkt:wettbewerb:20261003:lernplattform: SCORM-1.2-Übergabe an eine Lernplattform.
+  lmsExport: LmsExportService;
   management: ManagementService;
   // SCRUM-118: optionaler externer Such-Proxy (undefined, wenn EXTERNAL_SEARCH=off).
   externalSearch: ExternalSearchService | undefined;
@@ -483,6 +517,9 @@ export interface AppServices {
   // Route fernhalten. `ImportAccessService` bekommt diese Ablage; die Route bekommt nur ihn.
   importRuns: ImportRunRepo;
   externalSources: ExternalSourceRepo;
+  // R-0162 (Runde 3): das dauerhafte Quellabgleichsergebnis je Lauf (`quellabgleich-ablage.ts`).
+  // Eine eigene Ablage neben der eingefrorenen Laufablage (FREEZE-144).
+  quellabgleich: QuellabgleichRepo;
   // R-0169 (Nacharbeit 5): die interne Dokumentakte — Word-Weg und JSON ohne externalId.
   dokumente: DokumentaktenService;
   mailer: Mailer;
@@ -541,6 +578,7 @@ export interface AppRepos {
   // Lauf angelegt werden — die Tabelle wurde migriert und blieb leer.
   importRuns: ImportRunRepo;
   externalSources: ExternalSourceRepo;
+  quellabgleich: QuellabgleichRepo;
   // R-0169 (Nacharbeit 5): die Fassungen der internen Dokumentakte (eigene Tabelle).
   dokumente: DokumentaktenRepo;
   modelRuns: ModelRunRepo;
@@ -884,6 +922,10 @@ export function assembleServices(
     // WIKI-BEARBEITUNGSRESERVIERUNG: gesetzt von `buildPgServices` (echter Pool); ohne Injektion
     // die Speicherfassung — dieselbe Regel, die Uhr des Prozesses statt der Datenbank.
     bearbeitungen?: BearbeitungsRepo;
+    // Kenntnisnahme: gesetzt von `buildPgServices` (echter Pool); ohne Injektion die Speicherfassung.
+    kenntnisnahmen?: KenntnisnahmeRepo;
+    // Kenntnisnahme: die Uhr für Frist, Überfälligkeit und Erinnerung — ohne Injektion `Date.now`.
+    kenntnisnahmeUhr?: () => number;
     // W1 Weg A (Auftrag 143): `answerSnapshots` stand hier als Option, mit dem benannten Preis,
     // dass der Beleg nicht durch das Dev-Journal lief. Die Restgrenze ist geschlossen — das Repo
     // liegt jetzt in `AppRepos` und kommt wie jedes andere aus `repos.`.
@@ -914,6 +956,8 @@ export function assembleServices(
     ...(opts.withTx ? { withTx: opts.withTx } : {}),
     ...(speicher ? { ruecknahmeKlammer: speicher.klammer } : {}),
     ...(opts.searchProjections ? { searchProjections: opts.searchProjections } : {}),
+    // R-0098: die Bytes eines Objekt-Store-Bildes für seine Inhaltskennung (`bildInhalte`).
+    bildObjektDaten: async (objectId) => (await repos.objects.findById(objectId))?.data,
   });
   // FR-RSN-02/06 + SCRUM-502 R8: echtes Cloud-Modell, wenn der Cloud-Key per Env/Keychain verfügbar ist
   // — GECAPPT aus der Factory (Egress-Wächter rejectsConfidential=true + globaler In-Flight-Cap sind
@@ -989,6 +1033,18 @@ export function assembleServices(
                 ),
               );
             }
+            // Bens B3 (Runde 2): dieser Weg baut keine Reasoner-Kette — er prüft die Klara-
+            // Anbieterbindung deshalb selbst. Wurde nach dem Tor auf einen anderen Anbieter
+            // umgestellt, geht nichts hinaus.
+            if (!anbieterZugelassen(anbieter)) {
+              return Promise.reject(
+                new Error(
+                  `Die Zustimmung für dieses Dokument gilt einem anderen Anbieter als ${anbieter} — der Zuruf wird nicht formuliert.`,
+                ),
+              );
+            }
+            // Lauf 2 · Bens B7: ein Widerruf oder Sitzungsablauf WÄHREND des Wartens auf einen
+            // Modellplatz fängt der gecappte Client selbst ab (`cappedModelClient`, Chokepoint).
             return client.complete(system, user, confidential, maxTokens);
           },
         }
@@ -1098,6 +1154,10 @@ export function assembleServices(
     // JOB 4155: die kuratierten Kanten für `/api/graph` — EINE Mengenabfrage über `alleAktiven`,
     // keine Abfrage je Knoten. Derselbe Bestand, den `kantenRoutes` und die Netzroute lesen.
     kanten: kantenBestand,
+    // R-0142 (Lauf 5): eine Entscheidung über einen laufgebundenen Kandidaten schreibt ihre
+    // Elementreferenz in DIESELBE Laufdomäne, die `importRunRoutes` liest. Die Quellrevisionen
+    // (`externalSources`) reichen R-0169 und R-0142 gemeinsam — EIN Eintrag oben.
+    importRuns: repos.importRuns,
     // R-0163: Anhänge und Bilder einer angenommenen Confluence-Seite — nur hinter demselben
     // Schalter wie der Import selbst; der Adapter entsteht je Annahme aus derselben Factory wie in
     // den Importrouten (Token bleibt in der Client-Closure).
@@ -1167,11 +1227,19 @@ export function assembleServices(
     // WIKI-BEARBEITUNGSRESERVIERUNG: die Bearbeitungshinweise — Postgres, wenn injiziert, sonst im
     // Speicher.
     bearbeitungen: opts.bearbeitungen ?? new InMemoryBearbeitungsRepo(),
+    // Kenntnisnahme: Postgres, wenn injiziert, sonst im Speicher. Sagt der Betrieb Haltbarkeit zu
+    // (Desktop-Journal), lehnt die Speicherfassung Schreibvorgänge ab — eine angenommene und beim
+    // Neustart verlorene Bestätigung wäre schlimmer als eine abgelehnte.
+    kenntnisnahmen:
+      opts.kenntnisnahmen ??
+      new InMemoryKenntnisnahmeRepo(process.env.KLARWERK_DEV_PERSIST === "1"),
+    kenntnisnahmeUhr: opts.kenntnisnahmeUhr ?? Date.now,
     // JOB 3110 (M2b): DIE VORHANDENEN gecappten Cloud-Clients, weitergereicht — kein zweiter Aufruf
     // der Fabrik. JOB 3134: hinter der Hülle (oben), die je Aufruf den GEWÄHLTEN Anbieter nimmt.
     zurufModell,
     importRuns: repos.importRuns,
     externalSources: repos.externalSources,
+    quellabgleich: repos.quellabgleich,
     // R-0169 (Nacharbeit 5): DIESELBE Instanz, die oben in den `LibraryService` gereicht wurde.
     dokumente,
     ko,
@@ -1291,6 +1359,29 @@ export function assembleServices(
     candidates: repos.candidates,
     // SCRUM-117: Output Factory — stateless, nur validierte KOs als Quelle.
     output: new OutputService({ koService: ko }),
+    // produkt:wettbewerb:20261003:lernplattform: dieselbe Inhaltsquelle wie die Output Factory; die
+    // Bilder liest er aus DEMSELBEN Objektspeicher. Die zugelassenen Lernplattformen legt allein
+    // der Betreiber fest (`KLARWERK_LMS_EMPFAENGER`); ohne Eintrag ist kein Export möglich.
+    lmsExport: new LmsExportService({
+      koService: ko,
+      medien: async (objectId) => {
+        const gespeichert = await objects.read(objectId);
+        // Ein Objekt, dessen Inhalt sich nicht als Daten-URL lesen lässt, ist für das Paket so
+        // unbrauchbar wie ein fehlendes — derselbe Befund (MEDIA_MISSING), kein halbes Bild.
+        const roh = gespeichert ? decodeDataUrl(gespeichert.data) : null;
+        if (!gespeichert || !roh) {
+          return undefined;
+        }
+        return {
+          mime: gespeichert.ref.mime,
+          data: roh.bytes,
+          ...(gespeichert.ref.confidentiality
+            ? { confidentiality: gespeichert.ref.confidentiality }
+            : {}),
+        };
+      },
+      empfaenger: leseLmsEmpfaenger(process.env.KLARWERK_LMS_EMPFAENGER),
+    }),
     // SCRUM-120: Management/Kapital — stateless, aggregiert echte Live-Daten.
     management: new ManagementService({
       koService: ko,
@@ -1425,6 +1516,7 @@ export function inMemoryRepos(): AppRepos {
     candidates: new InMemoryCandidateRepo(),
     importRuns: new InMemoryImportRunRepo(),
     externalSources: new InMemoryExternalSourceRepo(),
+    quellabgleich: new InMemoryQuellabgleichRepo(),
     dokumente: new InMemoryDokumentaktenRepo(),
     modelRuns: new InMemoryModelRunRepo(),
     notificationSeen: new InMemoryNotificationSeenRepo(),
@@ -1504,6 +1596,7 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // „haengend in QUEUED" nach jedem Neustart ununterscheidbar von „nie gestartet".
       importRuns: new PgImportRunRepo(pool),
       externalSources: new PgExternalSourceRepo(pool),
+      quellabgleich: new PgQuellabgleichRepo(pool),
       // R-0169 (Nacharbeit 5): die Fassungen der internen Dokumentakte (DOKUMENTAKTE_SCHEMA).
       dokumente: new PgDokumentaktenRepo(pool),
       // SCRUM-164: ModelRun-Protokoll persistent (KI-Aufrufe nachvollziehbar).
@@ -1566,6 +1659,8 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // so sehen mehrere App-Prozesse derselben Instanz denselben Hinweis — und die Uhr, die über
       // Ablauf und Erneuerung entscheidet, ist die der Datenbank, nicht die eines Prozesses.
       bearbeitungen: new PgBearbeitungsRepo(pool),
+      // Kenntnisnahme: Anforderungen und Bestätigungen überleben Neuladen, Neuanmeldung und Neustart.
+      kenntnisnahmen: new PgKenntnisnahmeRepo(pool),
     },
   );
 }
@@ -1616,6 +1711,18 @@ export function modelBusyErrorHandler(
     reply.code(503).header("Retry-After", "1").send({
       error: "MODEL_BUSY",
       message: "KI-Modell derzeit ausgelastet. Bitte in Kürze erneut versuchen.",
+    });
+    return;
+  }
+  // R-0590 · Ben nacharbeit-1: eine Klara-Antwort unter Zustimmung, deren zugestimmter Anbieter nicht
+  // geantwortet hat, wird nicht ersatzweise anders beantwortet — und die Fläche erfährt den Grund.
+  // 409 wie die übrigen Sperren des Zustimmungswegs; `error` trägt die Kennung (das Feld, das der
+  // Client auf `ApiError.code` abbildet), `reason` den benannten Grund. Kein Nutzertext.
+  if (error instanceof KlaraAusweichwegGesperrtFehler) {
+    reply.code(409).send({
+      error: "KLARA_AUSWEICHWEG_GESPERRT",
+      reason: error.grund,
+      message: error.message,
     });
     return;
   }
@@ -1807,6 +1914,10 @@ export const ERLAUBTE_FEHLERTYPEN: ReadonlySet<string> = new Set([
   // Entscheidung: sein Name sagt nur „Confluence antwortete mit einem Fehlerstatus" — keine
   // Kennung, kein Host; die Meldung enthält allein die Statuszahl.
   "ConfluenceStatusError",
+  // R-0162 (Confluence-Gesamtimport, Runde 3): 2xx-Antwort ohne brauchbare Seiten-Id — Zustand
+  // unbekannt. Fester Satz ohne Host und ohne Quellinhalt. Seit der Zusammenführung wirft ihn die
+  // strenge Anhangsliste dieser Lieferung (`listAttachmentsStreng`).
+  "ConfluenceUnusableResponseError",
   "DevPersistJournalReplayError",
   // R-0163 / K3 (Ben, Nacharbeit 15): der Fachfehler der Dokumentakte
   // (`services/knowledge-object/src/dokumentakte.ts`, R-0169). ENTSCHEIDUNG: der Name darf ins
@@ -1905,6 +2016,8 @@ export const ERLAUBTE_FEHLERCODES: ReadonlySet<string> = new Set([
   // rest-client.ts:87–88), die der Waechter unten nicht erhebt (ternaer zugewiesen) — gemeldet in
   // der Rueckgabe 2702, nicht eingetragen: Entscheidung beim Eigentuemer von 2661.
   "CONFLUENCE_TIMEOUT",
+  // R-0162 (Runde 3): der Code von ConfluenceUnusableResponseError (rest-client.ts).
+  "CONFLUENCE_UNUSABLE_RESPONSE",
   "CONSENT_MISSING",
   "CREATE_ANCHOR_TAKEN",
   "CREATE_REPAIR_REQUIRED",
@@ -2007,6 +2120,10 @@ export const ERLAUBTE_FEHLERCODES: ReadonlySet<string> = new Set([
   // trägt keine Nutzerdaten — er sagt, welcher Zweig lief, und genau dafür ist die Liste da.
   "REASONER_POLICY_ENV_LOCKED",
   "SEARCH_PROJECTION_NOT_READY",
+  // R-0162 (Confluence-Gesamtimport, Runde 3): der Code eines Importlaufs, der nur deshalb
+  // `PARTIAL` ist, weil sein Löschabgleich unvollständig blieb (confluence-import-routes.ts,
+  // `abgleichGrund`). ENTSCHEIDUNG: darf ins Protokoll — fester Name ohne Kennung und ohne
+  // Quellinhalt; er sagt, welcher Zweig lief.
   // R-0163 (Bens Befund 3, beleg:2def0ac2): der Laufcode eines unvollständigen Anhangsabgleichs
   // (`routes/confluence-import-routes.ts`, `SOURCE_SYNC_INCOMPLETE`) — am gespeicherten Lauf als
   // `failureCode` und in der Warnzeile des Laufs. ENTSCHEIDUNG: darf ins Protokoll. Er trägt keine
@@ -2288,7 +2405,15 @@ export function buildApp(
   //
   // JOB 2661: `log` ist der Prüfeinstieg für die Logsenke — ohne ihn ist der Logger derselbe,
   // er schreibt nur auf die Standardausgabe statt in einen lesbaren Puffer.
-  opts: { factoryReset?: FactoryReset; log?: { senke?: LogSenke; stufe?: string } } = {},
+  //
+  // R-0609 · Bens B13: `klaraAufraeumen` bekommt den Aufräumlauf DER Klara-Dienstinstanz dieser App
+  // (Nachtrag fehlender Prüfprotokoll-Enden, dann Löschen abgelaufener Sitzungen). `server.ts`
+  // startet ihn (`klara-aufraeumen.ts`); ohne Option läuft nichts (Tests).
+  opts: {
+    factoryReset?: FactoryReset;
+    log?: { senke?: LogSenke; stufe?: string };
+    klaraAufraeumen?: (lauf: () => Promise<number>) => void;
+  } = {},
 ): FastifyInstance {
   // SCRUM-490 R3 (B2, Fix 4): trustProxy gezielt aus env (KLARWERK_TRUST_PROXY) — request.ip = echte
   // Client-IP hinter dem bekannten Proxy-Hop; Default (unset) = false = Socket-Peer (heutiges Verhalten).
@@ -2309,6 +2434,13 @@ export function buildApp(
     trustProxy: resolveTrustProxy(),
     logger: baueLoggerOptionen(opts.log),
   });
+  // GHSA-3m5p-2c4r-xxw2: eine Hop-Anzahl wird verworfen (resolveTrustProxy). Ohne diese Zeile sähe ein
+  // Betreiber nur, dass alle Drosseln plötzlich gegen die Proxy-IP zählen.
+  if (isHopCountTrustProxy()) {
+    app.log.warn(
+      "KLARWERK_TRUST_PROXY ist eine Hop-Anzahl und wird nicht mehr beachtet (GHSA-3m5p-2c4r-xxw2) — die IP-Adresse(n) des Proxys eintragen.",
+    );
+  }
   // SCRUM-498 B2: einheitliche Backpressure-Antwort. Ein Modell-Cap-Überlauf (ModelCapacityError) wird
   // von der Reasoner-Kette bis hierher durchgereicht → 503 + Retry-After (kein 500/Crash). Jeder andere
   // Fehler wird formtreu an Fastifys Standard-Fehlerbehandlung weitergereicht (Validierungs-400 etc.
@@ -2590,6 +2722,9 @@ export function buildApp(
   // vorhandene gehoben und weitergereicht, nicht kopiert. Keine neue Ablage, keine neue Route.
   const klaraSessions = new KlaraSessionService({
     repo: services.klaraSessions,
+    // R-0609: jede Erteilung und jedes Ende einer Zustimmung geht in die Hash-Kette des
+    // Prüfprotokolls — der Nachweis überdauert das Fortschreiben und Aufräumen der Zustimmungszeile.
+    ...(services.audit ? { protokoll: services.audit } : {}),
     policy: () => {
       const config = services.reasoner.configStatus();
       const antwortWahl = config.taskConfig.perTask.answer ?? config.taskConfig.global;
@@ -2653,9 +2788,19 @@ export function buildApp(
         providerLabel: antwortCloud?.name ?? config.provider,
         modelLabel: antwortCloud ? antwortCloud.name : config.model,
         localProviderLabel: config.localProvider,
+        // Bens B3: der wirksame Anbieter JE AUFGABE, dazu `global` für die Urteile. Ohne diese
+        // Karte öffnete eine an `answer` gebildete Zustimmung jede andere Aufgabe — auch eine, die
+        // der Reasoner an einen anderen Anbieter schickt. Sie geht in die Konfigurationsversion ein
+        // (Wechsel entwertet) und entscheidet im Tor, welche Aufgabe die Zustimmung tragen darf.
+        aufgabenAnbieter: {
+          ...config.effectiveAnbieter,
+          global: config.effectiveAnbieterGlobal ?? "unbekannt",
+        },
       };
     },
   });
+  // R-0609 · Bens B13: der Aufräumlauf GENAU DIESER Instanz geht an den Auslöser in `server.ts`.
+  opts.klaraAufraeumen?.(() => klaraSessions.raeumeAbgelaufeneAuf());
   app.register(klaraAiRoutes({ sessions: klaraSessions }, guards));
   // JOB 3326: die Lesevarianten — Übersicht, Einzelabruf und die Admin-Ladeaktion. Sie bekommen
   // DIESELBE Ablage-Instanz, die auch `koRoutes` oben durchgereicht wird; eine zweite wäre ein
@@ -2884,7 +3029,11 @@ export function buildApp(
             if (!draft) {
               return { ok: false, reason: "not-found" as const };
             }
-            if (!canSeeDraft({ id: user.id, role: user.role as SessionUser["role"] }, draft)) {
+            // Pool-Auftrag (Pedi, entscheidung:297afc57): die Dokumentübernahme REICHT EIN — und
+            // Einreichen bleibt beim Autor, auch für einen Entwurf im gemeinsamen Pool. Deshalb hier
+            // `canManageDraft` (dieselbe Funktion wie `POST /api/drafts/:id/promote`), nicht nur
+            // die Sichtbarkeit.
+            if (!canManageDraft({ id: user.id, role: user.role as SessionUser["role"] }, draft)) {
               return { ok: false, reason: "forbidden" as const };
             }
             const input = await services.capture.toKoInput(draftId);
@@ -2917,7 +3066,8 @@ export function buildApp(
             if (!draft) {
               return { ok: false, reason: "not-found" as const };
             }
-            if (!canSeeDraft({ id: user.id, role: user.role as SessionUser["role"] }, draft)) {
+            // Pool-Auftrag (297afc57): derselbe Einreichweg wie `load` — nur der Autor.
+            if (!canManageDraft({ id: user.id, role: user.role as SessionUser["role"] }, draft)) {
               return { ok: false, reason: "forbidden" as const };
             }
             // JOB 2684 D4 (R2-17, BEN: „der Fall ohne Stand bleibt absichtlich gruen"): DER WEG
@@ -3071,6 +3221,18 @@ export function buildApp(
       guards,
     ),
   );
+  // Kenntnisnahme einer gültigen Fassung. Der Dienst liest Einträge über `services.ko` und Konten
+  // über die vorhandene Kontenliste (Rolle, Freigabe, Befristung); dieselbe Instanz speist die
+  // Glocke (`notificationsRoutes` unten), damit Anforderung und Erinnerung den vorhandenen
+  // Benachrichtigungsweg nehmen.
+  const kenntnisnahmeDienst = new KenntnisnahmeDienst({
+    repo: services.kenntnisnahmen,
+    ko: services.ko,
+    konten: () => services.auth.listUsers(),
+    jetzt: services.kenntnisnahmeUhr,
+    kennung: () => randomUUID(),
+  });
+  app.register(kenntnisnahmeRoutes({ dienst: kenntnisnahmeDienst, kos: services.ko }, guards));
   // ==============================================================================================
   // JOB 4156 (WIKI-GESAMTANWEISUNG-ANSCHLUSS) — HIER BEKOMMT DIE GESAMTANWEISUNG IHRE TÜR.
   // ==============================================================================================
@@ -3195,6 +3357,7 @@ export function buildApp(
   );
   app.register(categoryRoutes(services.ko, guards));
   app.register(outputRoutes(services.output, guards));
+  app.register(lmsExportRoutes(services.lmsExport, services.audit, guards));
   // R-2183 (Nacharbeit 3): Ruhestandshorizonte nur an echten internen Konten.
   const kontoGibtEs = async (id: string) =>
     (await services.auth.listUsers()).some((u) => u.id === id);
@@ -3226,6 +3389,8 @@ export function buildApp(
         seen: services.notificationSeen,
         // AUFTRAG-mega74 BLOCK D (G5): dieselbe Quelle wie Konflikte und Überschneidungen.
         kos: koSichtbarkeit,
+        // Kenntnisnahme: offene Anforderungen und Erinnerungen des Betrachters.
+        kenntnisnahmen: kenntnisnahmeDienst,
       },
       guards,
     ),
@@ -3290,6 +3455,11 @@ export function buildApp(
       (await services.capture.listDrafts()).map((draft) => ({
         originalAuthor: draft.originalAuthor,
         lastEditor: draft.lastEditor,
+        // Pool-Auftrag (R-2099): ein bewusst geteilter Entwurf öffnet seine Anhänge für die
+        // Schreibberechtigten — über dieselbe Regel wie die Entwurfsrouten (`entwurfSichtbarFuer`).
+        // Ein Entwurf im Papierkorb ist für den Pool nicht vorhanden (die Entwurfsrouten zeigen
+        // ihn dort auch nicht); er bleibt dann nur für seinen Autor sichtbar.
+        imPool: draft.imPool === true && !("deletedAt" in draft),
         bodyHtml: draft.payload.bodyHtml,
         objectIds: [
           ...(draft.payload.pendingSources ?? []).map((src) => src.objectId),
@@ -3344,6 +3514,8 @@ export function buildApp(
         reasoner: services.reasoner,
         // W2-A/148: der echte Lauf bekommt seine Identität VOR dem ersten Effekt.
         importRuns: services.importRuns,
+        // R-0162: dieselbe Ablage, aus der der Leseweg unten den Abgleich liest.
+        quellabgleich: services.quellabgleich,
         // R-0134 / R-1005: der Betreiberschalter, je Anfrage durchgesetzt.
         betreiberSchalter: services.confluenceImportSchalter,
       }),
@@ -3359,6 +3531,11 @@ export function buildApp(
       importRunRoutes({
         importRuns: services.importRuns,
         externalSources: services.externalSources,
+        quellabgleich: services.quellabgleich,
+        // R-0142 (Lauf 5): das Importergebnis je Wissensobjekt.
+        koService: services.ko,
+        // R-0142 (Lauf 5 R3, Bens B7): die offenen Lücken je Objekt.
+        luecken: services.ask,
         guards,
       }),
     );

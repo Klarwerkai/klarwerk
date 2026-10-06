@@ -188,6 +188,24 @@ function zeile(seq: number, labelKey: string): Element {
   return el;
 }
 
+/** Ein Spaltenkopf der Protokolltabelle (Verwalteransicht, N-0027). */
+function spalte(labelKey: string): Element {
+  const el = container.querySelector(`th[data-audit-spalte="${labelKey}"]`);
+  if (!el) {
+    throw new Error(`Spaltenkopf „${labelKey}“ fehlt`);
+  }
+  return el;
+}
+
+/** Eine Kennung in der Detailansicht „Technische Angaben“ eines Eintrags. */
+function kennung(seq: number, key: string): Element {
+  const el = eintrag(seq).querySelector(`[data-audit-technik] [data-audit-kennung="${key}"]`);
+  if (!el) {
+    throw new Error(`Kennung „${key}“ fehlt in der Detailansicht von Eintrag ${seq}`);
+  }
+  return el;
+}
+
 beforeEach(async () => {
   await i18n.changeLanguage("de");
   verzeichnis.art = "geladen";
@@ -217,19 +235,22 @@ describe("JOB 3140 · das Prüfprotokoll sagt, wer wem welche Rolle gegeben hat"
     expect(text(zeile(2, "audit.detail.target"))).toContain("Tom Test");
     expect(text(zeile(2, "audit.detail.roleBefore"))).toContain(i18n.t("role.name.experte"));
     expect(text(zeile(2, "audit.detail.roleAfter"))).toContain(i18n.t("role.name.controller"));
-    // Die Beschriftungen stehen dabei, sonst wäre wieder nicht klar, wer wer ist.
-    expect(text(eintrag(2))).toContain(i18n.t("audit.detail.actor"));
-    expect(text(eintrag(2))).toContain(i18n.t("audit.detail.target"));
-    // Die Kennungen bleiben erreichbar — sie beherrschen die Zeile nur nicht mehr.
-    expect(text(zeile(2, "audit.detail.actor"))).toContain("a-1");
-    expect(text(zeile(2, "audit.detail.target"))).toContain("t-1");
+    // Die Beschriftungen stehen dabei, sonst wäre wieder nicht klar, wer wer ist — seit der
+    // Verwalteransicht (N-0027) als Spaltenköpfe der Tabelle.
+    expect(text(spalte("audit.detail.actor"))).toBe(i18n.t("audit.detail.actor"));
+    expect(text(spalte("audit.detail.target"))).toBe(i18n.t("audit.detail.target"));
+    // Die Kennungen bleiben erreichbar — in der Detailansicht des Eintrags, nicht in der Spalte.
+    expect(text(kennung(2, "audit.detail.actor"))).toBe("a-1");
+    expect(text(kennung(2, "audit.detail.target"))).toBe("t-1");
+    expect(text(zeile(2, "audit.detail.actor"))).not.toContain("a-1");
+    expect(text(zeile(2, "audit.detail.target"))).not.toContain("t-1");
   });
 
   it("3 DE · der Alteintrag sagt „nicht gespeichert“ und klebt keinen fremden Namen an", async () => {
     await mount([ALT, FRISCH]);
     expect(text(zeile(1, "audit.detail.roleBefore"))).toBe(i18n.t("audit.detail.notStored"));
     expect(text(zeile(1, "audit.detail.actor"))).toContain(i18n.t("audit.detail.accountGone"));
-    expect(text(zeile(1, "audit.detail.actor"))).toContain("geloescht-admin");
+    expect(text(kennung(1, "audit.detail.actor"))).toBe("geloescht-admin");
     expect(text(zeile(1, "audit.detail.target"))).toContain(i18n.t("audit.detail.accountGone"));
     // Der einzige Name im Verzeichnis darf beim Alteintrag NIRGENDS auftauchen.
     expect(text(eintrag(1))).not.toContain("Lea Lebt");
@@ -270,7 +291,7 @@ describe("JOB 3140 · das Prüfprotokoll sagt, wer wem welche Rolle gegeben hat"
     expect(container.querySelector('[data-einst="abfrage-fehler"]')).toBeNull();
   });
 
-  it("7 Lieferung 5 · die Detailzeilen sind reiner Text — kein Tabstopp, kein Bedienelement", async () => {
+  it("7 Lieferung 5 · die Detailzeilen sind reiner Text — einziges Bedienelement ist die Detailansicht", async () => {
     await mount([ALT, FRISCH]);
     // Zuerst: es gibt überhaupt Detailzeilen. Ohne diesen Anker wäre der Fall auch dann grün, wenn
     // gar nichts gerendert würde — ein Test, der die Abwesenheit belohnt, pinnt einen Defekt.
@@ -279,6 +300,14 @@ describe("JOB 3140 · das Prüfprotokoll sagt, wer wem welche Rolle gegeben hat"
       "[data-audit-eintrag] button, [data-audit-eintrag] a, [data-audit-eintrag] input, [data-audit-eintrag] [tabindex]",
     );
     expect(bedienbar).toHaveLength(0);
+    // Verwalteransicht (N-0027): je Eintrag genau EIN Aufklapper für die Kennungen — und keiner in
+    // einer Spalte mit Namen oder Rollen.
+    for (const seq of [1, 2]) {
+      expect(eintrag(seq).querySelectorAll("summary")).toHaveLength(1);
+    }
+    for (const z of container.querySelectorAll("[data-audit-zeile]")) {
+      expect(z.querySelector("summary, details")).toBeNull();
+    }
     // Die echten Bedienelemente der Karte bleiben erreichbar (kein tabIndex={-1} eingeschleppt).
     const knoepfe = [...container.querySelectorAll("button")].filter(
       (b) => b.getAttribute("tabindex") !== "-1",
@@ -328,7 +357,7 @@ describe("JOB 3140 · das Prüfprotokoll sagt, wer wem welche Rolle gegeben hat"
     // WÄHREND des Abrufs: keine Tatsachenaussage über ein fehlendes Konto (§9).
     expect(container.textContent).not.toContain(i18n.t("audit.detail.accountGone"));
     expect(text(zeile(4, "audit.detail.actor"))).toContain(i18n.t("audit.detail.nameLoading"));
-    expect(text(zeile(4, "audit.detail.actor"))).toContain("frisch-1");
+    expect(text(kennung(4, "audit.detail.actor"))).toBe("frisch-1");
 
     // NACH der erfolgreichen Antwort: der Name steht da.
     await act(async () => {
@@ -353,5 +382,178 @@ describe("JOB 3140 · das Prüfprotokoll sagt, wer wem welche Rolle gegeben hat"
     });
     expect(text(zeile(4, "audit.detail.actor"))).toContain(i18n.t("audit.detail.accountGone"));
     expect(text(zeile(4, "audit.detail.actor"))).not.toContain("Lea Lebt");
+  });
+});
+
+// ————————————————————————————————————————————————————————————————————————————————————————————————
+// Verwalteransicht (aufnahme:20260922:gesamt-auditprotokoll:verwalteransicht) — N-0027 / R-1085.
+// Beschriftete deutsche Spalten, Kennungen ergänzend in der Detailansicht, gelöschte Konten benannt,
+// letzte Aktionen mit Gesamtzahl.
+// ————————————————————————————————————————————————————————————————————————————————————————————————
+
+/** Eine frühere Anmeldung des später gelöschten Kontos — ohne gespeicherten Namen (wie jeder Login). */
+const LOGIN_SPAETER_GELOESCHT = {
+  ...kette(5),
+  actor: "weg-1",
+  target: "weg-1",
+  action: "auth.login",
+  payload: {},
+};
+
+/** Die Löschung selbst — seit dieser Lieferung mit dem Namen von damals (`AuthService.deleteUser`). */
+const LOESCHUNG = {
+  ...kette(6),
+  actor: "lebt-1",
+  target: "weg-1",
+  action: "user.delete",
+  payload: { targetName: "Gerd Gelöscht", actorName: "Lea Lebt" },
+};
+
+describe("Verwalteransicht · Spalten, Detailansicht, gelöschte Konten, Gesamtzahl", () => {
+  it("V1 DE · die Tabelle hat beschriftete deutsche Spalten", async () => {
+    await mount([ALT, FRISCH]);
+    const koepfe = [...container.querySelectorAll("th[data-audit-spalte]")].map(text);
+    expect(koepfe).toEqual([
+      "Zeitpunkt",
+      "Ereignis",
+      "Ausgeführt von",
+      "Betroffen",
+      "Rolle vorher",
+      "Rolle nachher",
+      "Technische Angaben",
+    ]);
+    // Jede Zelle mit Namen oder Rolle steht unter ihrem Kopf: gleiche Position in der Zeile.
+    const reihe = eintrag(2) as HTMLTableRowElement;
+    const kopfzeile = container.querySelector("thead tr") as HTMLTableRowElement;
+    for (const key of ["audit.detail.actor", "audit.detail.roleBefore", "audit.detail.roleAfter"]) {
+      const zelle = zeile(2, key) as HTMLTableCellElement;
+      const kopf = kopfzeile.cells[zelle.cellIndex];
+      expect(kopf?.getAttribute("data-audit-spalte"), key).toBe(key);
+    }
+    expect(reihe.cells.length).toBe(kopfzeile.cells.length);
+  });
+
+  it("V2 · ein Rollenwechsel zeigt in den Spalten Namen und Rollen, die Kennungen nur im Detail", async () => {
+    await mount([FRISCH]);
+    expect(text(zeile(2, "audit.detail.event"))).toBe("Rolle geändert");
+    expect(text(zeile(2, "audit.detail.actor"))).toBe("Ada Admin");
+    expect(text(zeile(2, "audit.detail.target"))).toBe("Tom Test");
+    expect(text(zeile(2, "audit.detail.roleBefore"))).toBe(i18n.t("role.name.experte"));
+    expect(text(zeile(2, "audit.detail.roleAfter"))).toBe(i18n.t("role.name.controller"));
+    const detail = eintrag(2).querySelector("[data-audit-technik]");
+    expect(detail?.tagName).toBe("DETAILS");
+    // Eingeklappt: die Kennungen sind ergänzend, nicht vorrangig.
+    expect((detail as HTMLDetailsElement).open).toBe(false);
+    expect(text(detail?.querySelector("summary") ?? null)).toBe("Kennungen anzeigen");
+    expect(text(kennung(2, "seq"))).toBe("2");
+    expect(text(kennung(2, "hash"))).toBe("h2");
+  });
+
+  it("V3 · ein gelöschtes Konto bleibt benannt — an der Löschung UND an früheren Einträgen", async () => {
+    // Verzeichnis frisch geladen, „weg-1" ist nicht mehr darin: genau die Lage nach einer Löschung.
+    await mount([LOGIN_SPAETER_GELOESCHT, LOESCHUNG]);
+    expect(text(zeile(6, "audit.detail.target"))).toContain("Gerd Gelöscht");
+    expect(text(zeile(6, "audit.detail.actor"))).toContain("Lea Lebt");
+    // Die frühere Anmeldung trug keinen Namen — die Kette kennt ihn aus der Löschung.
+    expect(text(zeile(5, "audit.detail.actor"))).toContain("Gerd Gelöscht");
+    expect(text(zeile(5, "audit.detail.actor"))).toContain(i18n.t("audit.detail.accountGone"));
+    expect(text(zeile(5, "audit.detail.target"))).toContain("Gerd Gelöscht");
+    // Kein fremder Name klebt am gelöschten Konto.
+    expect(text(zeile(5, "audit.detail.actor"))).not.toContain("Lea Lebt");
+    expect(text(kennung(5, "audit.detail.actor"))).toBe("weg-1");
+  });
+
+  it("V4 §9 · ohne belastbares Verzeichnis: Name aus der Kette, aber keine Löschaussage", async () => {
+    verzeichnis.art = "fehler";
+    await mount([LOGIN_SPAETER_GELOESCHT, LOESCHUNG]);
+    expect(text(zeile(5, "audit.detail.actor"))).toContain("Gerd Gelöscht");
+    expect(container.textContent).not.toContain(i18n.t("audit.detail.accountGone"));
+  });
+
+  it("V6 · die Quellabgleich-Belege tragen in der Spalte „Ereignis“ einen deutschen Namen", async () => {
+    // Bens Befund Nacharbeit 5: `KoService` schreibt diese vier Codes mit dem Objekt als Ziel; ohne
+    // Schlüssel stand hier die Humanisierung „ko source removed in origin“.
+    const codes = [
+      "ko.source-removed-in-origin",
+      "ko.source-restored-in-origin",
+      "ko.source-attachments-synced",
+      "ko.source-restriction-synced",
+    ];
+    await mount(
+      codes.map((action, i) => ({
+        ...kette(10 + i),
+        actor: "lebt-1",
+        target: "ko-existiert",
+        action,
+        payload: { provider: "confluence", externalId: "123" },
+      })),
+    );
+    const erwartet = {
+      "ko.source-removed-in-origin": "Quelle im Ursprungssystem gelöscht",
+      "ko.source-restored-in-origin": "Quelle im Ursprungssystem wiederhergestellt",
+      "ko.source-attachments-synced": "Anhänge der Quelle abgeglichen",
+      "ko.source-restriction-synced": "Leseeinschränkung der Quelle abgeglichen",
+    } as const;
+    codes.forEach((code, i) => {
+      expect(text(zeile(10 + i, "audit.detail.event")), code).toBe(
+        erwartet[code as keyof typeof erwartet],
+      );
+      // Das Ziel ist ein Objekt, kein Konto — keine Löschaussage.
+      expect(text(zeile(10 + i, "audit.detail.targetObject"))).toContain("ko-existiert");
+    });
+    for (const code of codes) {
+      expect(container.textContent).not.toContain(code);
+      expect(container.textContent).not.toContain(code.replace(/[._-]/g, " "));
+    }
+    expect(container.textContent).not.toContain(i18n.t("audit.detail.accountGone"));
+  });
+
+  it("V7 · der SCORM-Export trägt in der Spalte „Ereignis“ einen deutschen Namen", async () => {
+    // Bens Befund Nacharbeit 7: `lms-export-routes.ts` schreibt `output.lms-export` mit dem
+    // Exportpaket als Ziel; ohne Schlüssel stand hier „output lms export“.
+    await mount([
+      {
+        ...kette(20),
+        actor: "lebt-1",
+        target: "lms-export:EXP-1",
+        action: "output.lms-export",
+        payload: { format: "SCORM 1.2", objekte: [{ koId: "ko-existiert", version: 1 }] },
+      },
+    ]);
+    expect(text(zeile(20, "audit.detail.event"))).toBe("Für Lernplattform exportiert (SCORM)");
+    expect(text(zeile(20, "audit.detail.actor"))).toBe("Lea Lebt");
+    // Das Paket ist kein Konto — Objektzeile, keine Löschaussage.
+    expect(text(zeile(20, "audit.detail.targetObject"))).toContain("lms-export:EXP-1");
+    expect(container.textContent).not.toContain("output lms export");
+    expect(container.textContent).not.toContain("output.lms-export");
+    expect(container.textContent).not.toContain(i18n.t("audit.detail.accountGone"));
+    // Und EN ist eine eigene Fassung, kein deutscher Rest.
+    await i18n.changeLanguage("en");
+    expect(i18n.t("audit.action.output_lms_export")).toBe("Exported for learning platform (SCORM)");
+    await i18n.changeLanguage("de");
+  });
+
+  it("V5 R-1085 · letzte Aktionen mit Gesamtzahl und Knopf zur Kettenprüfung", async () => {
+    const viele = Array.from({ length: 14 }, (_, i) => ({
+      ...kette(i + 1),
+      actor: "lebt-1",
+      target: "lebt-1",
+      action: "auth.login",
+      payload: {},
+    }));
+    await mount(viele);
+    expect(container.querySelectorAll("[data-audit-eintrag]")).toHaveLength(12);
+    // Die jüngste Aktion steht oben.
+    expect(
+      container.querySelector("[data-audit-eintrag]")?.getAttribute("data-audit-eintrag"),
+    ).toBe("14");
+    expect(text(container.querySelector("caption"))).toBe(
+      "Die 12 jüngsten Aktionen von insgesamt 14",
+    );
+    expect(container.textContent).toContain(i18n.t("adm.sich.auditCount", { count: 14 }));
+    const knopf = [...container.querySelectorAll("button")].find(
+      (b) => text(b) === i18n.t("adm.sich.verify.button"),
+    );
+    expect(knopf, "Knopf zur Kettenprüfung fehlt").toBeDefined();
   });
 });

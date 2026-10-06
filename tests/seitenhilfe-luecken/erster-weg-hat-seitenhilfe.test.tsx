@@ -228,7 +228,10 @@ const SEITEN = [
     pfad: "/entwuerfe",
     muster: "/entwuerfe",
     seite: MeineEntwuerfe,
-    schluessel: "seitenhilfe.entwuerfe",
+    // Aufnahme entwurf-in-gemeinsamen-pool-geben (R-2099): die Seitenhilfe nennt jetzt den
+    // gemeinsamen Pool und steht unter einem neuen Stamm, weil `seitenhilfe.entwuerfe.body`
+    // eingefroren ist (Begründung in `apps/web/src/texte/entwurfspool.ts`).
+    schluessel: "entwurfspool.seitenhilfe",
   },
 ] as const;
 
@@ -605,7 +608,8 @@ describe("JOB 3669 R2 · was die Seitenhilfe zusagt, hält die Seite — je Roll
     const zeile = container.querySelector('[data-testid="task-zeile"] a');
     expect(zeile).not.toBeNull();
     const ziel = zeile?.getAttribute("href") ?? "";
-    expect(ziel).toBe("/konflikte");
+    // R-0961 (Aufnahme 20260922): die Zeile führt direkt zu IHREM Fall; das Rollentor bleibt dasselbe.
+    expect(ziel).toBe("/konflikte?fall=c1");
     // `routePathAllows` ist dieselbe Quelle, aus der der Router sein Tor zieht (`navigation.ts:561`).
     expect(routePathAllows(ziel, "viewer")).toBe(false);
     // Also MUSS die Zusage den Vorbehalt tragen — in der Sprache, in der sie dasteht.
@@ -621,7 +625,7 @@ describe("JOB 3669 R2 · was die Seitenhilfe zusagt, hält die Seite — je Roll
     await mount(SEITEN[2]);
     const ziel =
       container.querySelector('[data-testid="task-zeile"] a')?.getAttribute("href") ?? "";
-    expect(ziel).toBe("/konflikte");
+    expect(ziel).toBe("/konflikte?fall=c1");
     expect(routePathAllows(ziel, "admin")).toBe(true);
     // Und der Erklärsatz je Zeile, den die Hilfe nennt („das i"), steht wirklich an der Zeile.
     expect(container.querySelector('[data-testid="task-erklaerung-knopf"]')).not.toBeNull();
@@ -931,10 +935,13 @@ describe("JOB 3768 · D · die Rückfrage vor dem Löschen sagt, was wirklich ge
 // Bis dahin sah ein Administrator hier die Entwürfe aller Ersteller samt Auswahl „Alle Ersteller",
 // und die Hilfe trug dafür einen Rollenvorbehalt. Beides ist fort: jede Rolle sieht nur die
 // eigenen, es gibt keine Ersteller-Auswahl, und die Hilfe sagt genau das — auch dem Administrator.
+// Aufnahme entwurf-in-gemeinsamen-pool-geben (R-2099): privat bleibt der Standard; die Zusage
+// endet jetzt nicht mehr mit „nur deine eigenen Entwürfe", weil hier auch bewusst geteilte Pool-
+// Entwürfe anderer stehen. Die Ausnahme (die bewusste Handlung des Autors) nennt der Satz dahinter.
 const PRIVAT_ZUSAGE = {
-  de: "Hier stehen nur deine eigenen Entwürfe: Sie sind privat, niemand sonst sieht sie, auch kein Administrator.",
-  en: "Only your own drafts stand here: they are private, nobody else sees them, not even an administrator.",
-  nl: "Hier staan alleen je eigen concepten: ze zijn privé, niemand anders ziet ze, ook geen beheerder.",
+  de: "Deine Entwürfe sind privat: Niemand sonst sieht sie, auch kein Administrator",
+  en: "Your drafts are private: nobody else sees them, not even an administrator",
+  nl: "Je concepten zijn privé: niemand anders ziet ze, ook geen beheerder",
 } as const;
 
 /** Die Anführungszeichen, in denen die Hilfetexte dieser Sprache eine Beschriftung zitieren. */
@@ -971,7 +978,7 @@ describe("JOB 3768 · E · die Zusage der Entwurfs-Hilfe und die Fläche im selb
     expect(container.querySelector('[data-testid="entwuerfe-papierkorb"]')).not.toBeNull();
 
     // Die ZUSAGE nennt genau diese Beschriftungen — und zwar die echten, nicht eigene Wörter.
-    const zusage = normal(ressource("de", "seitenhilfe.entwuerfe.body"));
+    const zusage = normal(ressource("de", "entwurfspool.seitenhilfe.body"));
     for (const schluessel of [
       "capture.resume",
       "adm.trash.title",
@@ -996,7 +1003,7 @@ describe("JOB 3768 · E · die Zusage der Entwurfs-Hilfe und die Fläche im selb
     expect(erfassen, "der Leerzustand hat keinen Weg").not.toBeNull();
     expect(erfassen?.getAttribute("href")).toBe("/erfassen");
     expect(normal(erfassen?.textContent ?? "")).toContain(ressource("de", "lib.liste.erfassen"));
-    const zusage = normal(ressource("de", "seitenhilfe.entwuerfe.body"));
+    const zusage = normal(ressource("de", "entwurfspool.seitenhilfe.body"));
     expect(zusage).toContain(zitiert("de", "lib.liste.erfassen"));
     // §9: die Hilfe beschreibt die leere Lage, sie BEHAUPTET sie nicht.
     expect(zusage).not.toContain(normal(ressource("de", "erfassen.entwuerfe.keine")));
@@ -1018,14 +1025,14 @@ describe("JOB 3768 · E · die Zusage der Entwurfs-Hilfe und die Fläche im selb
     expect(suchraum).toContain(normal(ressource("de", "capture.draftScope.note")));
     expect(suchraum).not.toContain(normal(ressource("de", "capture.draftScope.noteAdmin")));
     // Seit debbb8e8 gibt es keinen Rollenunterschied mehr (E1 misst dasselbe für den Admin).
-    const zusage = normal(ressource("de", "seitenhilfe.entwuerfe.body"));
+    const zusage = normal(ressource("de", "entwurfspool.seitenhilfe.body"));
     expect(zusage).toContain(normal(PRIVAT_ZUSAGE.de));
     expect(await seitenhilfe()).toContain(normal(PRIVAT_ZUSAGE.de));
   });
 
   it("E4 · in allen drei Sprachen sagt die Zusage „privat“ und trägt die echten Beschriftungen", () => {
     for (const sprache of SPRACHEN) {
-      const zusage = normal(ressource(sprache, "seitenhilfe.entwuerfe.body"));
+      const zusage = normal(ressource(sprache, "entwurfspool.seitenhilfe.body"));
       expect(zusage, `${sprache}: die Privat-Zusage fehlt`).toContain(
         normal(PRIVAT_ZUSAGE[sprache]),
       );

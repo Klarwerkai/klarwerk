@@ -187,10 +187,11 @@ Ausnahme zu Abschnitt 2: Die Wächter dieses Moduls antworten bei fehlender Anme
 | `DELETE` | `/api/drafts/trash/:id` | `ko.create` | — | 204 | 404 `NOT_FOUND` |
 | `GET` | `/api/drafts/:id` | `ko.create` | — | 200 Entwurf | 404 `NOT_FOUND`; 403 `FORBIDDEN` (nicht sichtbar) |
 | `PUT` | `/api/drafts/:id` | `ko.create` | Rumpf `DraftPayload`, `expectedUpdatedAt?` | 200 Entwurf | 400 `BAD_REQUEST`; 404; 403; 409 `DRAFT_STALE` |
-| `DELETE` | `/api/drafts/:id` | `ko.create` | — | 204 (in den Papierkorb) | 404; 403 |
+| `DELETE` | `/api/drafts/:id` | `ko.create` | — | 204 (in den Papierkorb) | 404; 403 (nicht sichtbar oder nicht Autor, auch bei Pool-Entwurf) |
+| `PUT` | `/api/drafts/:id/pool` | `ko.create`, nur Autor | Rumpf `{ imPool: boolean }` | 200 Entwurf (`imPool: true` im gemeinsamen Pool, ohne Feld privat) | 400 `BAD_REQUEST`; 404; 403 `FORBIDDEN` (nicht sichtbar oder nicht Autor) |
 | `GET` | `/api/drafts/:id/naechster-schritt` | `ko.create` | — | 200 `{ naechsterSchritt }` oder `{}` | 404; 403 |
 | `POST` | `/api/drafts/:id/restore` | `ko.create` | — | 200 wiederhergestellter Entwurf | 404 |
-| `POST` | `/api/drafts/:id/promote` | `ko.create` | Rumpf `{ reviewerIds?, operationId?, draftPayload?, expectedUpdatedAt? }` | 201 Wissensobjekt; 200 bei Wiederholung | 400 `BAD_REQUEST`; 409 `DRAFT_STALE`; 403 `EXTERNAL_ATTACH_BLOCKED`; Idempotenzfehler aus Abschnitt 2 |
+| `POST` | `/api/drafts/:id/promote` | `ko.create` | Rumpf `{ reviewerIds?, operationId?, draftPayload?, expectedUpdatedAt? }` | 201 Wissensobjekt; 200 bei Wiederholung | 400 `BAD_REQUEST`; 409 `DRAFT_STALE`; 403 `FORBIDDEN` (nicht sichtbar oder nicht Autor, auch bei Pool-Entwurf); 403 `EXTERNAL_ATTACH_BLOCKED`; Idempotenzfehler aus Abschnitt 2 |
 | `GET` | `/api/capture/slides/availability` | `ko.create` | — | 200 `{ available }` | — |
 | `POST` | `/api/capture/slides` | `ko.create` (vor dem Einlesen) | Rumpf `{ data }` (Base64 PPTX) | 200 Folienbilder | 400 `BAD_REQUEST`; 413 `PAYLOAD_TOO_LARGE`; 415 `SLIDES_INVALID`; 422 `SLIDES_TIMEOUT`; 429 `RATE_LIMITED`, `CONVERSION_BUSY`; 408 `CLIENT_ABORTED`; 503 `SLIDES_UNAVAILABLE`; 500 `SLIDES_FAILED` |
 | `POST` | `/api/objects` | `ko.create` (vor dem Einlesen) | Rumpf `{ name, mime, data, kind?, confidentiality?, purpose?, draftId? }` | 201 Objektbeschreibung | Dienstfehler |
@@ -280,6 +281,8 @@ Ausnahme zu Abschnitt 2: Die Wächter dieses Moduls antworten bei fehlender Anme
 | `GET` | `/api/categories` | `requireUser` | — | 200 `{ categories }` | — |
 | `GET` | `/api/output/sources` | `ko.read` | — | 200 geeignete Quellen | — |
 | `POST` | `/api/output/generate` | `ko.read` | Rumpf `{ kind, koIds, audienceRole? }` | 200 Dokument | 400 `NO_SOURCES`, `NOT_VALIDATED`, `UNKNOWN_KO`, `UNKNOWN_KIND`, `CONFIDENTIAL` |
+| `POST` | `/api/output/scorm/pruefen` | `ko.read` | Rumpf `{ koIds, sprache: de \| en, empfaenger, titel? }` | 200 Prüfung `{ exportierbar, format, empfaenger, befunde, fassung }` (erzeugt und schreibt nichts) | 400 `BAD_REQUEST` |
+| `POST` | `/api/output/scorm/paket` | `ko.read` | Rumpf wie `/api/output/scorm/pruefen` | 200 `application/zip` (SCORM-1.2-Paket), Kopf `x-klarwerk-exportfassung`, `x-klarwerk-paket-sha256`; Auditeintrag `output.lms-export` | 400 `BAD_REQUEST`; 422 `EXPORT_BLOCKED` mit Prüfung |
 | `GET` | `/api/management/snapshot` | `ko.read` | — | 200 Lagebild | — |
 | `GET` | `/api/management/risk-horizon` | `ko.read` (alle Bereiche nur mit `users.manage`) | — | 200 Bereichsblick mit Ruhestandshorizonten, sichtbarkeitsgefiltert | — |
 | `GET` | `/api/management/profiles` | `users.manage` | — | 200 `{ categories, retirement }` | — |

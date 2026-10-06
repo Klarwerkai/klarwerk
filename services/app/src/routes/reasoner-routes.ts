@@ -17,14 +17,19 @@ import {
   type Reasoner,
   type ReasonerLocale,
   ReasonerPolicyLockedError,
+  imBindungsrahmen,
   validateDescribeImageDataUrl,
 } from "../../../reasoner";
 import { runConflictSelfTest } from "../conflict-self-test";
 import { runDuplicateSelfTest } from "../duplicate-self-test";
 import type { Guards } from "../http";
 import {
+  KLARA_AUFGABE_ANDERER_ANBIETER,
+  type KlaraAufgabe,
+} from "../services/klara-session-service";
+import {
   type Ka4Freigabepruefer,
-  ka4Freigabe,
+  ka4Entscheidung,
   kiAbgeschaltetSenden,
   klaraBindungVorhanden,
 } from "./ask-routes";
@@ -111,6 +116,9 @@ export interface ReasonerRoutesDeps {
 // handelnder Nutzer, Kopfzeilen (Klara-Bindung) und das Protokoll. Kein Inhalt reist hier mit.
 type Aufrufbindung = {
   inhalt: "text" | "bild";
+  // Bens B3: die Reasoner-Aufgabe, die gleich ein Modell ruft — das Tor prüft, ob die Zustimmung
+  // (gebildet an `answer`) an DENSELBEN Anbieter geht. Pflichtfeld, damit kein Zweig sie vergisst.
+  aufgabe: KlaraAufgabe;
   nichtEingestuft?: unknown;
   draftId: unknown;
   actorId: string;
@@ -180,8 +188,12 @@ export const CONFIDENTIAL_CLOUD_BLOCKED = "CONFIDENTIAL_CLOUD_BLOCKED";
  *                      das gespeicherte Objekt um, nicht das Formular.
  *  · `declared`      — die Einstufung dieses Aufrufs (oder ihr Fehlen, fail-safe) sperrt; ebenso der
  *                      KA4-Riegel ohne Dokumentzustimmung. Der Mensch stuft hier um.
+ *  · `provider_mismatch` — Auftrag gesamt-ki-einwilligung (Bens B4): die Dokumentzustimmung liegt
+ *                      vor, gilt aber einem ANDEREN externen Anbieter als dem, dem diese Aufgabe
+ *                      zugeordnet ist (`task_provider_mismatch` des Tors). An der Einstufung liegt
+ *                      es dann nicht — eine Umstufung wäre der falsche Rat.
  */
-export type VertraulichGrund = "unsaved_draft" | "declared" | "backstop";
+export type VertraulichGrund = "unsaved_draft" | "declared" | "backstop" | "provider_mismatch";
 
 /**
  * Der anzeigbare Satz je Grund, in der Sprache des Requests. Kein Nutzertext, keine Kennung.
@@ -203,6 +215,13 @@ export type VertraulichGrund = "unsaved_draft" | "declared" | "backstop";
  * Sichern ermöglicht die erneute Einstufungsprüfung; es verspricht keine Cloud-Freigabe.
  */
 function cloudGesperrtMeldung(locale: ReasonerLocale, grund: VertraulichGrund): string {
+  // Bens B4: dieser Grund ist KEINE Einstufung — der Satz nennt die Zustimmung und ihren Anbieter
+  // und schickt den Menschen nicht zum Umstufen.
+  if (grund === "provider_mismatch") {
+    return locale === "en"
+      ? "Your consent for this document applies to a different cloud AI provider than the one assigned to this task, so this text is not sent. Ask the administrator to align the AI assignment, or choose the local AI."
+      : "Die Zustimmung für dieses Dokument gilt einem anderen Cloud-KI-Anbieter als dem, der dieser Aufgabe zugeordnet ist — der Text wird deshalb nicht gesendet. KI-Zuordnung angleichen lassen oder lokale KI wählen.";
+  }
   if (locale === "en") {
     return grund === "unsaved_draft"
       ? "Unsaved draft: this text is treated as confidential, so the cloud AI cannot process it. Save the draft so its classification can be checked, or choose the local AI."
@@ -362,15 +381,20 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
       }
     }
     const gebunden = klaraBindungVorhanden(bindung.headers);
-    const dokumentZustimmung =
-      gebunden &&
-      (await ka4Freigabe(
-        ka4,
-        bindung.headers,
-        bindung.actorId,
-        bindung.log,
-        "reasoner.ka4.dokument-consent",
-      ));
+    // Bens B4: das Tor-Ergebnis MIT Grund — `task_provider_mismatch` bekommt unten seine eigene
+    // Meldung. Das Tor hält zugleich die Anbieterbindung des Laufs fest (Bens B3, `ka4Entscheidung`).
+    const tor = gebunden
+      ? await ka4Entscheidung(
+          ka4,
+          bindung.headers,
+          bindung.actorId,
+          bindung.log,
+          "reasoner.ka4.dokument-consent",
+          bindung.aufgabe,
+        )
+      : { erlaubt: false };
+    const dokumentZustimmung = gebunden && tor.erlaubt;
+    const anbieterAbweichend = gebunden && tor.grund === KLARA_AUFGABE_ANDERER_ANBIETER;
     let confidential = classifyProvenanceConfidential(source, declared, backstop, {
       dokumentZustimmung: bindung.inhalt === "text" && dokumentZustimmung,
       nichtEingestuft: bindung.nichtEingestuft,
@@ -418,11 +442,21 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
     // GESPEICHERTE Stand die Stufe, gehört sie dort geändert; sonst war es die Einstufung dieses
     // Aufrufs — dorthin fällt auch der KA4-Riegel, denn er wirkt wie eine fehlende Zustimmung zu
     // DIESEM Text und wird an derselben Stelle entschieden.
+    // Bens B4: sperrt NUR die Anbieterabweichung — wäre der Text mit einer Zustimmung für diesen
+    // Anbieter freigegeben —, dann ist sie die Ursache und nicht die Einstufung.
+    const nurAnbieter =
+      anbieterAbweichend &&
+      !classifyProvenanceConfidential(source, declared, backstop, {
+        dokumentZustimmung: bindung.inhalt === "text",
+        nichtEingestuft: bindung.nichtEingestuft,
+      });
     const grund: VertraulichGrund = ankerSperre
       ? "unsaved_draft"
       : backstop.found && isConfidential(backstop.level ?? null)
         ? "backstop"
-        : "declared";
+        : nurAnbieter
+          ? "provider_mismatch"
+          : "declared";
     return {
       confidential,
       ...(subject ? { subject } : {}),
@@ -440,6 +474,12 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
   ): Promise<boolean> => (await resolveProvenance(source, koId, declared, bindung)).confidential;
 
   return async (app) => {
+    // Bens B3 (Runde 2): je Anfrage ein Rahmen für die Klara-Anbieterbindung
+    // (`services/reasoner/src/anbieterbindung.ts`) — das Tor hält sein Ergebnis darin fest, der
+    // Reasoner liest es beim Kettenbau. `run(…, done)` ist das Muster von `@fastify/request-context`.
+    app.addHook("onRequest", (_request, _reply, done) => {
+      imBindungsrahmen(() => done());
+    });
     // WP-BILD-1f (bens P2): der Text-Dispatcher behält die KLEINE Parsergrenze (globaler
     // 1-MiB-Fastify-Default) — NUR der Bild-Task (eigene Route /api/reasoner/describe unten)
     // bekommt die große Grenze, mit Auth VOR dem großen Parse.
@@ -487,6 +527,7 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
           request.body.confidentiality,
           {
             inhalt: "text",
+            aufgabe: "structure",
             draftId: request.body.draftId,
             nichtEingestuft: request.body.nichtEingestuft,
             actorId: user.id,
@@ -513,13 +554,16 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
         // Protokollname wie die übrigen Reasoner-Wege. Ohne Bindung (Konsole) byteweise wie zuvor.
         const gebundenOhneFreigabe =
           klaraBindungVorhanden(request.headers) &&
-          !(await ka4Freigabe(
-            ka4,
-            request.headers,
-            user.id,
-            request.log,
-            "reasoner.ka4.dokument-consent",
-          ));
+          !(
+            await ka4Entscheidung(
+              ka4,
+              request.headers,
+              user.id,
+              request.log,
+              "reasoner.ka4.dokument-consent",
+              "answer",
+            )
+          ).erlaubt;
         // D5: derselbe Dienst wie `/api/ask` und damit dieselbe Abschaltauskunft. Wie dort gilt die
         // Abschalt-Epoche vom EINGANG der Anfrage und wird NACH dem letzten Warten noch einmal geprüft,
         // bevor die Antwort hinausgeht (Bens Befund Lauf 2 Runde 1: eine hier angehaltene Frage
@@ -555,6 +599,7 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
           request.body.confidentiality,
           {
             inhalt: "text",
+            aufgabe: "assist",
             draftId: request.body.draftId,
             nichtEingestuft: request.body.nichtEingestuft,
             actorId: user.id,
@@ -581,6 +626,7 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
           request.body.confidentiality,
           {
             inhalt: "text",
+            aufgabe: "interview",
             draftId: request.body.draftId,
             nichtEingestuft: request.body.nichtEingestuft,
             actorId: user.id,
@@ -627,6 +673,7 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
           request.body.confidentiality,
           {
             inhalt: "text",
+            aufgabe: "extract",
             draftId: request.body.draftId,
             nichtEingestuft: request.body.nichtEingestuft,
             actorId: user.id,
@@ -725,6 +772,7 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
           request.body.confidentiality,
           {
             inhalt: "bild",
+            aufgabe: "describe",
             draftId: request.body.draftId,
             nichtEingestuft: request.body.nichtEingestuft,
             actorId: user.id,

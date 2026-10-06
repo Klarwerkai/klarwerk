@@ -455,6 +455,10 @@ export interface ReasonerConfigStatus {
   // „extern" sagt nicht, WEM die Texte gezeigt werden. Bei Stufe cloud steht hier openai/anthropic,
   // sonst derselbe Wert wie in `effectiveProvider`.
   effectiveAnbieter: Record<string, ReasonerCloudAnbieter | "local" | "deterministic">;
+  // Auftrag gesamt-ki-einwilligung (Bens B3): derselbe Wert für die GLOBALE Wahl, der die Urteile
+  // (Dublette, Konflikt) folgen. Optional, damit vorhandene Statusattrappen gültig bleiben; wer ihn
+  // auswertet, behandelt „fehlt" als „kein belegter Anbieter".
+  effectiveAnbieterGlobal?: ReasonerCloudAnbieter | "local" | "deterministic";
   // JOB 3134: die beiden externen Anbieter EINZELN — eingerichtet oder nicht, und warum nicht.
   // `cloudConfigured` oben bleibt „irgendein externer Anbieter ist eingerichtet".
   cloudProviders: Record<ReasonerCloudAnbieter, ReasonerCloudAnbieterStatus>;

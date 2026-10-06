@@ -13,6 +13,12 @@ import {
   traceFuerLauf,
 } from "../../model-runs";
 import {
+  KlaraAusweichwegGesperrtFehler,
+  anbieterZugelassen,
+  gebundenerAnbieter,
+  zustimmungenTragen,
+} from "./anbieterbindung";
+import {
   ConfidentialEgressError,
   KiAbgeschaltetFehler,
   ModelCapacityError,
@@ -881,7 +887,11 @@ export class Reasoner {
         opts?.fuerAnzeige === true ? !confidential : this.oeffentlicheKiErlaubt(confidential);
       if (darfHinaus && choice !== "local") {
         const cloud = this.cloudFuerWahl(choice);
-        if (cloud) {
+        // Auftrag gesamt-ki-einwilligung (Bens B3, Runde 2): läuft der Aufruf unter einer
+        // Klara-Anbieterbindung, darf nur DER gebundene Anbieter in die Kette — entschieden hier,
+        // beim Bilden der Kette, und nicht beim Tor davor (`anbieterbindung.ts`). Die Anzeige
+        // (`fuerAnzeige`) beantwortet die Konfigurationsfrage und bleibt davon unberührt.
+        if (cloud && (opts?.fuerAnzeige === true || anbieterZugelassen(this.anbieterVon(cloud)))) {
           chain.push(cloud);
         }
       }
@@ -924,7 +934,15 @@ export class Reasoner {
   private effectiveAnbieterFor(
     task: ReasonerTask,
   ): ReasonerCloudAnbieter | "local" | "deterministic" {
-    const first = this.chainForChoice(this.choiceFor(task), false, { fuerAnzeige: true })[0];
+    return this.effectiveAnbieterFuerWahl(this.choiceFor(task));
+  }
+
+  // Auftrag gesamt-ki-einwilligung (Bens B3): dieselbe Auflösung für eine WAHL statt einer Aufgabe —
+  // gebraucht für die globale Wahl, der die Urteile (`judgeProviders` → `globaleKette`) folgen.
+  private effectiveAnbieterFuerWahl(
+    choice: ReasonerAktiveWahl,
+  ): ReasonerCloudAnbieter | "local" | "deterministic" {
+    const first = this.chainForChoice(choice, false, { fuerAnzeige: true })[0];
     if (!first || first === this.fallback) {
       return "deterministic";
     }
@@ -1433,10 +1451,58 @@ export class Reasoner {
     // Kostenrechnung je Modellpreis und die Spans des Laufs. Genau ein Eintrag je Versuch, gesetzt
     // an derselben Stelle wie die Verbrauchsübernahme (und damit ebenso nur einmal).
     const versuche: ModelRunVersuch[] = [];
+    // R-0590 · Ben nacharbeit-1/-3: läuft eine Aufgabe unter einer Klara-Zustimmung für GENAU einen
+    // externen Anbieter, ist jedes andere Glied ein Ausweichweg, den niemand als gleichwertig
+    // freigegeben hat — lokales Modell wie deterministischer Ersatz. Bis zur Produktentscheidung wird
+    // er nicht ausgeführt, sondern der Lauf mit benanntem Grund beendet (`anbieterbindung.ts`). Das
+    // gilt für JEDE Aufgabe unter der Bindung (nacharbeit-3), nicht nur für `answer`.
+    //
+    // WAS UNBERÜHRT BLEIBT:
+    //   · Läufe ohne Bindung, bei Absage des Tors (`null`) oder ohne externen Anbieter
+    //     (`gebundenerAnbieter`) — die ungebundenen Basisfunktionen behalten ihre Kette.
+    //   · VERTRAULICHE Läufe. Vertraulicher Inhalt war nie Gegenstand der Zustimmung — sie deckt die
+    //     ausgewiesenen Nutzlastklassen, und Vertrauliches verlässt das Haus nur nach der eigenen
+    //     Adminfreigabe (`oeffentlicheKiErlaubt`). Es gibt dort keinen zugestimmten externen Weg, von
+    //     dem ausgewichen würde; die Vertraulichkeitsregel mit ihrem eigenen, angezeigten Grund
+    //     (`fallbackReason`, `ConfidentialCloudBlockedError`) bleibt, wie sie ist.
+    const zugestimmt = confidential ? undefined : gebundenerAnbieter();
+    const zugestimmterAnbieter = REASONER_CLOUD_ANBIETER.find(
+      (anbieter) => anbieter === zugestimmt,
+    );
     for (let i = 0; i < chain.length; i++) {
       const provider = chain[i];
       if (!provider) {
         continue;
+      }
+      if (
+        zugestimmterAnbieter !== undefined &&
+        this.anbieterVon(provider) !== zugestimmterAnbieter
+      ) {
+        const sperre = new KlaraAusweichwegGesperrtFehler(
+          zustimmungenTragen() ? "fallback_not_equivalent" : "consent_ended",
+          zugestimmterAnbieter,
+        );
+        versuchsfehler.push(`${provider.name}: ${sperre.message}`);
+        // Derselbe eine Fehlerdatensatz wie bei der Auslastung: das Glied, an dem der Lauf stand,
+        // der bis dahin gesammelte Verbrauch und die Versuchsfehler. Ein Schreibfehler verdeckt die
+        // Sperre nicht.
+        await this.recordRun(
+          task,
+          locale,
+          startedAt,
+          "error",
+          {
+            fallback: i > 0,
+            demo: false,
+            provider: provider.name,
+            ...(lastModel ? { model: lastModel } : {}),
+            ...(laufVerbrauch ? { verbrauch: laufVerbrauch } : {}),
+            error: Reasoner.versuchsfehlerZeile(versuchsfehler),
+            versuche,
+          },
+          context,
+        ).catch(() => undefined);
+        throw sperre;
       }
       const versuchBeginn = Date.now();
       // JOB 3036 R2: die Spur GENAU DIESES Versuchs. Neu je Versuch, damit ein Lauf, der erst die
@@ -1445,10 +1511,25 @@ export class Reasoner {
       // D5 (KI aus): für die Aufgabe `answer` trägt die Spur die Abschaltprüfung an den Chokepoint.
       // Die Kette wurde oben VOR jedem Warten gebildet; ob die KI noch an ist, entscheidet sich erst
       // dort, unmittelbar vor der Übertragung (`kiSperreVorUebertragung`).
+      // Lauf 2 · Bens B5: für einen EXTERNEN Anbieter prüft die Spur zusätzlich die Klara-Bindung
+      // am Chokepoint — eine Zustimmung, die seit dem Kettenbau beendet wurde, lässt nichts hinaus.
+      const extern = this.anbieterVon(provider);
+      const kiSperre = task === "answer";
       const spur: ModellAufrufSpur = {
         gerufen: false,
-        ...(task === "answer"
-          ? { vorUebertragung: () => this.kiSperreVorUebertragung(kiBeginn) }
+        ...(kiSperre || extern !== undefined
+          ? {
+              vorUebertragung: () => {
+                if (kiSperre) {
+                  this.kiSperreVorUebertragung(kiBeginn);
+                }
+                if (extern !== undefined && !anbieterZugelassen(extern)) {
+                  throw new Error(
+                    `Die Zustimmung für dieses Dokument trägt keine Übertragung an ${extern} mehr.`,
+                  );
+                }
+              },
+            }
           : {}),
       };
       // JOB 3074 R2 (bens Befund): DIE SPUR EINES VERSUCHS WIRD GENAU EINMAL ÜBERNOMMEN. Runde 1
@@ -1940,6 +2021,7 @@ export class Reasoner {
       effectiveAnbieter: Object.fromEntries(
         REASONER_TASKS.map((task) => [task, this.effectiveAnbieterFor(task)]),
       ),
+      effectiveAnbieterGlobal: this.effectiveAnbieterFuerWahl(this.taskConfig.global),
       cloudProviders: {
         openai: this.cloudStatus("openai"),
         anthropic: this.cloudStatus("anthropic"),

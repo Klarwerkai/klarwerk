@@ -2684,29 +2684,67 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // NACHARBEIT 15: PIN BEWUSST AKTUALISIERT (637602b1… -> 29062e17…). Der Wert ist im Prüflauf zu
     // Kandidat 124645e8 GEMESSEN („Received") und unverändert übernommen; die vier Panel-Dateien sind
     // seit dieser Messung unberührt (geprüft mit `git diff 124645e8 -- apps/web/public/word-addin/`).
-    // AUFNAHME 20260922 · GESAMT-BESTANDSBLICK (R-0427, Ben Nacharbeit 3; Integration mit main
-    // a6c9c5d9) — DER PIN MUSS NOCH EINMAL WANDERN. Auf die Stufenwahl oben kommt die
-    // Einstellungszeile `#einst-absatzblick` (Schalter, AUS bis zum bewussten Ja, nur für dieses
-    // Fenster) und `ka3AbsatzPruefen` in `taskpane.js`: nach dem Ja liest ein `Word.run` je
-    // Markierungsanlass nur die ZAHL der Absätze bis zur Markierung (kein Text) und ruft bei einem
-    // Wechsel denselben Bestandsblick wie nach der Schreibruhe. Auslieferungsfolgen: kein neues
-    // Abrufziel, keine neue Nutzlast, CSP/Recht/Manifest unverändert, kein Sideload; Office-API
-    // `Range.expandTo` (WordApi 1.3) — fehlt sie, schweigt der Weg. Unten steht noch der gemessene
-    // Wert von main; der neue SHA-256 war beim Auflösen nicht messbar (kein Hash-Werkzeug zugelassen),
-    // der Blob des Dokuments ist gemessen (`eb344beb…`, `tests/support/panelquelle.ts`).
-    // NACHARBEIT 5 (gesamt-bestandsblick): PIN BEWUSST AKTUALISIERT (29062e17… -> a4461e39…). Der
-    // Wert ist im Prüflauf zu Kandidat c8ade1c9 GEMESSEN („Received") und unverändert übernommen; die
-    // vier Panel-Dateien sind seit dieser Messung unberührt (`git diff c8ade1c9 --
-    // apps/web/public/word-addin/` leer).
-    // NACHARBEIT 6 (Bens Befund) — DER PIN MUSS NOCH EINMAL WANDERN: der Absatzwechselabruf ist an
-    // die gültige Aktivierung gebunden (`ka3AbsatzRunde`, `gilt()` in `ka3Ausfuehren` vor Serverabruf
-    // und Anzeige). Weniger Abrufe, kein neues Abrufziel, keine neue Nutzlast, CSP/Recht/Manifest
-    // unverändert, kein Sideload. Der SHA-256 war ohne Hash-Werkzeug nicht messbar; der Blob ist
-    // gemessen (`fd19fe43…`, `tests/support/panelquelle.ts`).
-    // NACHARBEIT 7: PIN BEWUSST AKTUALISIERT (a4461e39… -> 9effe6a0…). Der Wert ist im Prüflauf zu
-    // Kandidat b4415199 GEMESSEN („Received") und unverändert übernommen; die vier Panel-Dateien sind
-    // seit dieser Messung unberührt (`git diff b4415199 -- apps/web/public/word-addin/` leer).
-    const PIN = "9effe6a0246e0bf489fa23e0925de4061729f00adab9824511666b7eb9f2b731";
+    // WORD-HOST-GESAMTWEG (Realhostbeleg 06.10.2026, Nacharbeit 4): `taskpane.js` ändert sich an
+    // der Dokumentkennung — `dokumentkennungAusstehend`/`kennungWarnungFuer`: eine noch laufende
+    // `saveAsync`-Speicherung warnt nicht, ein später Erfolg nimmt NUR die Warnung seiner Kennung
+    // zurück, ein Fehlschlag warnt weiter; `showSendStatus`/`hideSendStatus` setzen die Marke zurück.
+    // Auslieferungsfolgen: kein neues Abrufziel, keine Nutzlast-, CSP-, Rechte- oder
+    // Manifeständerung, kein neuer Wörterbuchschlüssel, kein Sideload. DER PIN MUSS WANDERN; ohne
+    // zugelassenes Hash-Werkzeug ist er hier nicht berechenbar — der Prüflauf meldet den Ist-Wert
+    // als „Received", er wird danach gemessen übernommen (dasselbe Verfahren wie Nacharbeit 15).
+    // NACHARBEIT 5: PIN BEWUSST AKTUALISIERT (29062e17… -> d36121d2…). Der Wert ist im Prüflauf zu
+    // Kandidat 6dc92d9b GEMESSEN („Received", HISTORIE/nacharbeit-5/PRUEFUNG/panel-auslieferung-
+    // pins.log) und unverändert übernommen; die Panel-Dateien sind seit dieser Messung unberührt.
+    // NACHARBEIT 6 (Realhostbeleg 06.10.2026, Word im Web: `getSelectedDataAsync` schwieg):
+    // `readAskSelection` liest im Absendeweg zuerst über `Word.run` → `getSelection().text` mit
+    // eigener Frist (`WORD_ADDIN_AUSWAHL_FRIST_MS`), sonst den bisherigen Weg; `done` höchstens
+    // einmal. Dazu zwei verdichtete Kommentare. Auslieferungsfolgen: kein neues Abrufziel, keine
+    // Nutzlast-, CSP-, Rechte- oder Manifeständerung (WordApi 1.1 bleibt), kein neuer
+    // Wörterbuchschlüssel, kein Sideload. DER PIN MUSS WANDERN; der Prüflauf meldet den Ist-Wert
+    // als „Received", er wird danach gemessen übernommen.
+    // NACHARBEIT 7: PIN BEWUSST AKTUALISIERT (d36121d2… -> 5f2efde9…). Im Prüflauf zu Kandidat
+    // 26e86268 GEMESSEN („Received", HISTORIE/nacharbeit-7/PRUEFUNG/panel-auslieferung-pins.log) und
+    // unverändert übernommen; die Panel-Dateien sind seit dieser Messung unberührt.
+    // NACHARBEIT 9 (Realhostbeleg 06.10.2026, WORD-WEB-TITLE-CACHE und WORD-WEB-RETURN-STRUCTURE):
+    // `taskpane.js` bindet die Bestandssuche an Text UND Titel (`captureDublettenPruefen`: Schlüssel
+    // aus beiden, Antwort zu einem alten Titel verworfen; Titeleingabe sucht nach 400 ms Pause neu,
+    // gleiche Kombination ohne Lauf) und trägt je Sprache zwei neue Wörterbuchschlüssel
+    // (`rwUeberschriftFehlt`, `rwStrukturUngeprueft`) für den Rückweg; drei Kommentare verdichtet
+    // (Zeilenschranke B3). Auslieferungsfolgen: kein neues Abrufziel (dieselbe Route
+    // `/api/check-text`, bei einer Titeländerung ein Ruf mehr), keine Nutzlast-, CSP-, Rechte- oder
+    // Manifeständerung, kein Sideload. DER PIN MUSS WANDERN; der Prüflauf meldet den Ist-Wert als
+    // „Received", er wird danach gemessen übernommen.
+    // NACHARBEIT 11: gemessen im Prüflauf zu Kandidat 10b99093 war `a6acd179…` — NICHT übernommen,
+    // weil `taskpane.js` danach erneut geändert werden musste: die AUSGELIEFERTE Datei zählte 12500
+    // Zeilen (schnittflaechen B3, Schranke < 12500); zwei eigene Kommentarzeilen sind verdichtet,
+    // Verhalten unverändert. Root hat den Pin direkt aus diesen vier Quelldateien berechnet; kein Messlauf nötig.
+    // AUFTRAG gesamt-ki-einwilligung:bindung (R-0590, Ben nacharbeit-3/-4): `taskpane.js` wertet in
+    // `performAsk` die 409 `KLARA_AUSWEICHWEG_GESPERRT` aus und nennt in `#ask-status` den Grund
+    // (zwei neue Wörterbuchschlüssel je Sprache, `askFallbackBlocked`/`askFallbackConsentEnded`);
+    // ein fremder Kommentar ist umformuliert (er enthielt die Zeichenfolge „import " und machte den
+    // Buildlos-Pin in word-addin-ask rot). Netto null Zeilen (B3: 12497). Auslieferungsfolgen: kein
+    // neues Abrufziel, keine Nutzlast-, CSP-, Rechte- oder Manifeständerung, kein Sideload. Gemessen
+    // zu Kandidat f0687be0 war `9fdf44f2…` — NICHT übernommen, weil `taskpane.js` danach erneut
+    // geändert wurde (B3, „import "). DER PIN MUSS WANDERN; ohne zugelassenes Hash-Werkzeug ist er
+    // hier nicht berechenbar — der Prüflauf meldet den Ist-Wert als „Received", er wird danach
+    // gemessen übernommen.
+    // NACHARBEIT 5 (dieser Auftrag): PIN BEWUSST AKTUALISIERT (f1d0e89f… -> fabd6ab5…). Im Prüflauf zu
+    // Kandidat 430c247c GEMESSEN („Received", HISTORIE/nacharbeit-5/PRUEFUNG/panel-auslieferung-pins.log)
+    // und unverändert übernommen; die Panel-Dateien sind seit dieser Messung unberührt.
+    // AUFNAHME 20260922 · GESAMT-BESTANDSBLICK (R-0427; Integration mit main d19886ff) — DER PIN MUSS
+    // WANDERN. Auf den Stand oben kommt die Einstellungszeile `#einst-absatzblick` (Schalter, AUS bis
+    // zum bewussten Ja, nur für dieses Fenster) und `ka3AbsatzPruefen` in `taskpane.js`: nach dem Ja
+    // liest ein `Word.run` je Markierungsanlass nur die ZAHL der Absätze bis zur Markierung (kein
+    // Text) und ruft bei einem Wechsel denselben Bestandsblick wie nach der Schreibruhe; ein Abruf
+    // gilt nur in der Aktivierungsrunde, in der er begann (`ka3AbsatzRunde`, `gilt()`). Dazu sind die
+    // Kommentarköpfe KA2-BESTAND und W6 verdichtet (Schranke B3; kein Ausdruck geändert).
+    // Auslieferungsfolgen: kein neues Abrufziel, keine neue Nutzlast, CSP/Recht/Manifest unverändert,
+    // kein Sideload; `Range.expandTo` (WordApi 1.3) — fehlt sie, schweigt der Weg. Gemessene Werte
+    // dieses Auftrags vor der Integration: a4461e39… (c8ade1c9), 9effe6a0… (b4415199). Unten steht
+    // der gemessene Wert von main; der neue SHA-256 ist ohne zugelassenes Hash-Werkzeug nicht
+    // messbar, der Blob ist gemessen (`2d5d9c26…`, `tests/support/panelquelle.ts`).
+    // Nachzuführen aus dem `Received` des nächsten Prüflaufs.
+    const PIN = "fabd6ab528b4c21a7c64dbfedb984e02c7fe29fb0e202a3d373afe0d2a7b6675";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(
       ist,
@@ -2854,7 +2892,35 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     //   · Bestehende Flaechen: unberuehrt (der Kasten bleibt ohne Kandidaten `hidden`).
     // GEMESSEN: s. RUECKGABE (tests/office-pg-abnahme, tests/security, tests/word-rueckweg und der
     // Waechterlauf, alle in der Cloud).
-    const PIN = "4932af255de7670adce6527dfbf7b5f8c1b374e235547eccc5f624a21b5aee7e";
+    //
+    // NACHARBEIT 9 (Realhostbeleg 06.10.2026, WORD-WEB-RETURN-STRUCTURE): Word im Web gab bei der
+    // Rückgabe v2 → v3 weder Bilder noch Überschrift her, und der Satz nannte keinen Verlust. NEU:
+    // `rwStrukturLesen`/`rwStrukturErgaenzen` (+ Helfer) lesen über WordApi 1.1 (`Range.getHtml`,
+    // `paragraphs` text/style, `inlinePictures` über den vorhandenen `ladeBilder`) und setzen
+    // Überschriften und Rasterbilder ein; was fehlt, nennt `rwSatzMitBildern` als Warnung.
+    // `rwLadung` und der `propose`-Block (tor-zeuge) sind unverändert. Auslieferungsfolgen: kein
+    // Abrufziel, CSP unverändert (kein `innerHTML`), kein Recht, Manifest bleibt WordApi 1.1, kein
+    // Sideload; die Nutzlast trägt jetzt die Bilder, die Word herausgibt (Budget unverändert).
+    // DER PIN MUSS WANDERN; der Prüflauf meldet den Ist-Wert als „Received", er wird danach
+    // gemessen übernommen.
+    // NACHARBEIT 11: PIN BEWUSST AKTUALISIERT (4932af25… -> 46c81c53…). Im Prüflauf zu Kandidat
+    // 10b99093 GEMESSEN („Received", HISTORIE/nacharbeit-11/PRUEFUNG/panel-auslieferung-pins-
+    // inventare.log) und unverändert übernommen; `rueckweg.js` ist seit dieser Messung unberührt.
+    // NACHARBEIT 12 (Ben, Mischfall Bildtag/Bilder): `rwStrukturEinsetzen` ordnet Bilder jetzt je
+    // Word-Absatz zu (eingebettete über ihre Bytes, Platzhalter gefüllt, fehlende ergänzt); neue
+    // Helfer `rwRoh`, `rwImgTags`, `rwTagMitBild`, `rwBildBereich`; `rwStrukturErgaenzen` ruft
+    // `fillWordImages` nicht mehr. Auslieferungsfolgen: kein Abrufziel, CSP/Recht/Manifest
+    // unverändert, kein Sideload; die Nutzlast trägt Bilder, die vorher verloren gingen. DER PIN
+    // MUSS WANDERN; der Prüflauf meldet den Ist-Wert als „Received", er wird danach übernommen.
+    // Root 06.10.2026: SHA-256 direkt aus der geprüften Bild-Mischfallkorrektur berechnet.
+    // NACHARBEIT 13 (Ben, Reihenfolge im gemeinsamen Absatz): fehlende Bilder stehen jetzt RELATIV
+    // zu den schon eingebetteten Bildern ihres Absatzes in Word-Reihenfolge (A, B statt B, A); die
+    // Platzhalter-Zuordnung gilt nur, wenn sie der Word-Reihenfolge folgt. Auslieferungsfolgen wie
+    // in Nacharbeit 12 (kein Abrufziel, CSP/Recht/Manifest unverändert, kein Sideload). DER PIN MUSS
+    // WANDERN; der Prüflauf meldet den Ist-Wert als „Received", er wird danach übernommen.
+    // Nacharbeit 13: Bildfolge im selben Absatz korrigiert; 35 Strukturtests bestehen.
+    // Nur Inhalts-Pin erneuert; Manifest, Rechte, Ursprung und Nutzlastvertrag unverändert.
+    const PIN = "d79846c004c5521a915f7063bc9152a2f2312cfe6ceb2a63c26613f4da68aee1";
     const ist = createHash("sha256").update(readFileSync(RUECKWEG)).digest("hex");
     expect(
       ist,

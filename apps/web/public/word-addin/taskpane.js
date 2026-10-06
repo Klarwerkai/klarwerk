@@ -257,9 +257,13 @@
     // NICHT nachgewiesen ist, dass sie im Word-Dokument gespeichert wurde (`saveAsync` mit Erfolg).
     // Solange sie hier steht, ist die Identitaetsbindung UNVOLLSTAENDIG: das Panel meldet es
     // (`sendDocIdUnsaved`), und jedes weitere Senden in dieser Sitzung traegt GENAU diese Kennung —
-    // es geht also nicht still ein neuer Dokumentimport ohne Kennung hinaus. Nach Schliessen und
+    // es geht also kein neuer Dokumentimport, der keine Kennung traegt, still hinaus. Nach Schliessen und
     // Wiederoeffnen ohne gespeicherte Kennung ist sie weg; genau deshalb wird der Fehlschlag gemeldet.
     var dokumentkennungUngesichert = null;
+
+    // Realhost 06.10.2026: `saveAsync` ausstehend = keine Warnung; Erfolg nimmt nur DIESE Warnung zurueck, Fehlschlag warnt.
+    var dokumentkennungAusstehend = null;  // Kennung, deren `saveAsync` noch nicht geantwortet hat
+    var kennungWarnungFuer = null;         // Kennung, deren Warnung GERADE im Sendesatz steht
 
     function gespeicherteDokumentkennung() {
       try {
@@ -275,7 +279,10 @@
     }
 
     function meldeUngesicherteDokumentkennung() {
-      if (dokumentkennungUngesichert) { showSendStatus("warn", t("sendDocIdUnsaved")); }
+      if (!dokumentkennungUngesichert) { return; }
+      if (dokumentkennungAusstehend === dokumentkennungUngesichert) { return; }
+      showSendStatus("warn", t("sendDocIdUnsaved"));
+      kennungWarnungFuer = dokumentkennungUngesichert;
     }
 
     function mitDokumentkennung(payload, dokumentId) {
@@ -315,16 +322,22 @@
         }
         einstellungen.set(WORD_ADDIN_DOKUMENT_SETTING, kennung);
         var erfolg = Office.AsyncResultStatus ? Office.AsyncResultStatus.Succeeded : "succeeded";
+        dokumentkennungAusstehend = kennung;
         einstellungen.saveAsync(function (ergebnis) {
+          if (dokumentkennungAusstehend === kennung) { dokumentkennungAusstehend = null; }
           if (ergebnis && ergebnis.status === erfolg) {
             if (dokumentkennungUngesichert === kennung) { dokumentkennungUngesichert = null; }
+            // NUR die eigene, noch sichtbare Warnung zuruecknehmen — nichts anderes anfassen.
+            if (kennungWarnungFuer === kennung) { hideSendStatus(); }
             return;
           }
           dokumentkennungUngesichert = kennung;
           meldeUngesicherteDokumentkennung();
         });
       } catch (err) {
-        // Die Kennung bleibt ungesichert stehen und wird am Ende des Sendewegs gemeldet.
+        // Die Kennung bleibt ungesichert stehen und wird am Ende des Sendewegs gemeldet — ein
+        // synchroner Fehler ist kein Ausstehen.
+        if (dokumentkennungAusstehend === kennung) { dokumentkennungAusstehend = null; }
       }
     }
 
@@ -624,7 +637,7 @@
               ),
             };
           }
-          if (!res.ok) { return { kind: "error", detail: "HTTP " + res.status }; }
+          if (!res.ok) { return res.status !== 409 ? { kind: "error", detail: "HTTP " + res.status } : res.json().then(function (s) { return s && s.error === "KLARA_AUSWEICHWEG_GESPERRT" ? (typeof s.reason === "string" ? { kind: "fallback-blocked", reason: s.reason } : { kind: "fallback-blocked" }) : { kind: "error", detail: "HTTP 409" }; }, function () { return { kind: "error", detail: "HTTP 409" }; }); } // R-0590: gesperrter Ausweichweg = Grund statt nacktem 409
           return res.json().then(function (body) {
             var result = body && body.result ? body.result : null;
             var answer = result ? result.answer : null;
@@ -1831,6 +1844,7 @@
           "Fehlendes Recht: Dein Konto darf das KLARWERK-Wissen nicht lesen. Bitte an die KLARWERK-Administration wenden.",
         askRateLimited: "Zu viele Anfragen — bitte in {n} Sekunden erneut versuchen.",
         askRateLimitedUnknown: "Zu viele Anfragen — bitte später erneut versuchen.",
+        askFallbackBlocked: "Keine Antwort: Der KI-Anbieter, dem du zugestimmt hast, hat nicht geantwortet. Ein anderer Antwortweg wird nicht ersatzweise benutzt, solange nicht entschieden ist, dass er gleichwertig ist.", askFallbackConsentEnded: "Keine Antwort: Deine Zustimmung für dieses Dokument ist beendet. Bitte erneut zustimmen, um die externe KI zu nutzen.",
         askAnswerTitle: "Quellengebundene Antwort",
         // AUFTRAG-mega34 B2: die Einstufung — im Panel UND im eingefuegten Text. Bis hierher
         // versprach diese Flaeche unbedingt "geprueftes Wissen", auch bei gedeckelter Abdeckung
@@ -1981,6 +1995,8 @@
         rwStale: "Der Eintrag steht inzwischen auf Version {n}. Es wurde nichts überschrieben.",
         rwStaleCta: "Stand neu laden",
         rwMarkierungAnders: "Die Markierung hat sich geändert — nichts gesendet.",
+        rwUeberschriftFehlt: "Überschriften: {n} kamen nur als Absatz an — der Text ist vollständig.",
+        rwStrukturUngeprueft: "Ob Bilder und Überschriften vollständig ankamen, ließ sich in Word nicht prüfen.",
       },
       en: {
         greetTitle: "Hi, I am Klara.",
@@ -2200,6 +2216,7 @@
           "Missing permission: your account may not read the KLARWERK knowledge base. Please contact your KLARWERK administrator.",
         askRateLimited: "Too many requests — please try again in {n} seconds.",
         askRateLimitedUnknown: "Too many requests — please try again later.",
+        askFallbackBlocked: "No answer: the AI provider you consented to did not respond. No other answer path is used as a substitute until it has been decided that it is equivalent.", askFallbackConsentEnded: "No answer: your consent for this document has ended. Please consent again to use the external AI.",
         askAnswerTitle: "Source-bound answer",
         // AUFTRAG-mega34 B2: the classification — in the panel AND in the inserted text.
         askEvidenceVerified: "Classification: assured — sources evidenced, no open contradictions known.",
@@ -2318,6 +2335,8 @@
         rwStale: "The entry is now at version {n}. Nothing was overwritten.",
         rwStaleCta: "Reload state",
         rwMarkierungAnders: "The selection has changed — nothing sent.",
+        rwUeberschriftFehlt: "Headings: {n} arrived only as paragraphs — the text is complete.",
+        rwStrukturUngeprueft: "Word could not confirm whether images and headings arrived completely.",
       },
       nl: {
         greetTitle: "Hallo, ik ben Klara.",
@@ -2536,6 +2555,7 @@
           "Ontbrekend recht: je account mag de KLARWERK-kennis niet lezen. Neem contact op met de KLARWERK-beheerder.",
         askRateLimited: "Te veel verzoeken — probeer het over {n} seconden opnieuw.",
         askRateLimitedUnknown: "Te veel verzoeken — probeer het later opnieuw.",
+        askFallbackBlocked: "Geen antwoord: de AI-aanbieder waarvoor je toestemming hebt gegeven, heeft niet geantwoord. Er wordt geen andere antwoordweg als vervanging gebruikt zolang niet is besloten dat die gelijkwaardig is.", askFallbackConsentEnded: "Geen antwoord: je toestemming voor dit document is beëindigd. Geef opnieuw toestemming om de externe AI te gebruiken.",
         askAnswerTitle: "Bronvast antwoord",
         // AUFTRAG-mega34 B2: de classificatie — in het paneel EN in de ingevoegde tekst.
         askEvidenceVerified: "Classificatie: gewaarborgd — bronnen aangetoond, geen open tegenstrijdigheden bekend.",
@@ -2654,6 +2674,8 @@
         rwStale: "Het item staat inmiddels op versie {n}. Er is niets overschreven.",
         rwStaleCta: "Stand opnieuw laden",
         rwMarkierungAnders: "De selectie is gewijzigd — niets verstuurd.",
+        rwUeberschriftFehlt: "Koppen: {n} kwamen alleen als alinea aan — de tekst is volledig.",
+        rwStrukturUngeprueft: "Word kon niet bevestigen of afbeeldingen en koppen volledig aankwamen.",
       },
     };
 
@@ -3922,6 +3944,9 @@
       updateSendState();
     }
     function showSendStatus(kind, text, aktion, url) {
+      // Jede Meldung ersetzt eine stehende Kennungswarnung; `meldeUngesicherteDokumentkennung`
+      // setzt die Marke danach fuer ihre eigene wieder.
+      kennungWarnungFuer = null;
       var el = document.getElementById("send-status");
       var knopf = document.getElementById("send-status-btn");
       el.className = kind === "ok" ? "status ok" : kind === "busy" ? "status" : "status warn";
@@ -3941,6 +3966,7 @@
       if (kind !== "busy") { sendeSperreLoesen(); }
     }
     function hideSendStatus() {
+      kennungWarnungFuer = null;
       var el = document.getElementById("send-status");
       el.className = "status hidden";
       el.textContent = "";
@@ -4190,12 +4216,13 @@
     //     Ergebniszeile).
     // SIE BLOCKIERT NICHTS: der Sendeknopf haengt weiter allein an Anmeldung, Word und Markierung
     // (updateSendState). Ein Treffer ist eine Auskunft, keine Sperre — der Mensch entscheidet.
-    // GENAU EIN LAUF JE TEXT: derselbe Text wird nicht erneut geprueft; ein neuer Text macht den
-    // alten Lauf unbeachtlich (Laufnummer) — ein verspaeteter Rueckfall kann keine fremde Markierung
-    // beschriften.
+    // GENAU EIN LAUF JE TEXT UND TITEL: dieselbe Kombination wird nicht erneut geprueft; eine neue macht
+    // den alten Lauf unbeachtlich (Laufnummer, Titelvergleich) — ein verspaeteter Rueckfall kann keine
+    // fremde Markierung und keinen alten Titel beschriften (WORD-WEB-TITLE-CACHE, Realhost 06.10.2026).
     var captureDubletten = null;
     var captureDublettenText = "";
     var captureDublettenLauf = 0;
+    var captureTitelUhr = null;  // Tipp-Pause der Titelaenderung (s. Eingabe „Titel")
 
     var W6_RELATION_KEYS = {
       identisch: "captureDubIdentisch",
@@ -4219,8 +4246,10 @@
         renderCaptureDubletten();
         return;
       }
-      if (text === captureDublettenText) { return; }
-      captureDublettenText = text;
+      var titelFeld = document.getElementById("capture-titel");
+      var schluessel = text + "\u0000" + (titelFeld ? titelFeld.value : "");
+      if (schluessel === captureDublettenText) { return; }
+      captureDublettenText = schluessel;
       captureDublettenLauf += 1;
       var lauf = captureDublettenLauf;
       if (text.replace(/^\s+|\s+$/g, "").length < W6_MINDESTZEICHEN) {
@@ -4236,7 +4265,6 @@
       // JOB 3093: die Zeile „Titel" reist als `title` mit — der Titel, unter dem der Entwurf zum
       // Eintrag wuerde. Ohne ihn fand der deterministische Pfad nicht einmal den wortgleichen
       // Absatz (gemessen, fundort-im-server.test.ts K2); der Koerper ist sonst derselbe.
-      var titelFeld = document.getElementById("capture-titel");
       w6DublettenAusCheckText(
         "erfassen",
         function () { return text; },
@@ -4245,6 +4273,7 @@
         titelFeld ? titelFeld.value : ""
       ).then(function (ergebnis) {
         if (lauf !== captureDublettenLauf) { return; }
+        if ((titelFeld ? titelFeld.value : "") !== schluessel.slice(text.length + 1)) { captureDublettenText = ""; return; }
         captureDubletten = {
           lage: ergebnis.lage,
           treffer: ergebnis.treffer,
@@ -4318,15 +4347,9 @@
       rwZeichnen();
     }
 
-    // JOB 3667 · WORD-RUECKWEG: der Abschnitt mit dem Block KW-RUECKWEG (811 Zeilen) stand bis
-    // zum 14.09.2026 HIER und wohnt seither Zeile fuer Zeile in der Geschwisterdatei
-    // `rueckweg.js` — gleicher Ursprung, klassisches Skript, VOR diesem hier geladen; das
-    // Verweis-Tag steht im Rumpf unmittelbar ueber diesem Block. KEIN zweites Tag in einem
-    // Kommentar: der Blocksammler von tests/klara-zerlegung/zerlegung.ts liest die Seite als Text
-    // und haelte es fuer ein weiteres Skript.
-    // Grund und Ladereihenfolge stehen im Kopf jener Datei; die Schranke B3 in
-    // tests/klara-zerlegung/schnittflaechen.test.ts
-    // ist der Anlass, und sie wurde dafuer NICHT angehoben.
+    // JOB 3667 · WORD-RUECKWEG: der Block KW-RUECKWEG (811 Zeilen) wohnt seit 14.09.2026 in `rueckweg.js`
+    // (klassisches Skript, VOR diesem geladen; KEIN zweites Tag in einem Kommentar — zerlegung.ts liest
+    // die Seite als Text). Grund und Ladereihenfolge im Kopf jener Datei; Schranke B3 NICHT angehoben.
 
     // Die Markierung aus Word lesen (nur Text — die Karte zeigt Absaetze, der Sendeweg holt sich
     // das HTML selbst). Ein spaeter Rueckruf eines aelteren Lesens wird verworfen (Laufnummer).
@@ -6237,12 +6260,9 @@
         return;
       }
       // JOB 3056 K1 (§9): ohne Verbindung EIN Satz „Keine Verbindung." und „Erneut versuchen";
-      // ein benannter Serverfehler nennt weiter sein Detail.
-      showAskStatus(
-        "warn",
-        outcome.detail ? t("askError", { detail: outcome.detail }) : t("askOffline")
-      );
-      askRetryZeigen();
+      // ein benannter Serverfehler nennt weiter sein Detail. R-0590: der gesperrte Ausweichweg nennt seinen Grund (bei beendeter Zustimmung ohne „Erneut versuchen").
+      showAskStatus("warn", outcome.kind === "fallback-blocked" ? t(outcome.reason === "consent_ended" ? "askFallbackConsentEnded" : "askFallbackBlocked") : outcome.detail ? t("askError", { detail: outcome.detail }) : t("askOffline"));
+      if (outcome.reason !== "consent_ended") { askRetryZeigen(); }
     }
 
     // Auswahl lesen (nur Text — die Frage ist Klartext); ohne Office ehrlich leer → Eingabefeld.
@@ -6251,11 +6271,36 @@
     // bisher (prepareAskQuestion: Markierung vor Eingabe). Gilt nur fuer diese Panelinstanz.
     var askMitlesen = true;
 
-    function readAskSelection(done) {
+    // Realhost 06.10.2026 (`getSelectedDataAsync` schwieg in Word im Web): erst `Word.run` mit Frist, dann der alte Weg.
+    var WORD_ADDIN_AUSWAHL_FRIST_MS = 4000;
+
+    function readAskSelection(done, wordZuerst, fehler) {
       if (!askMitlesen || !officeUsable()) { done(""); return; }
-      Office.context.document.getSelectedDataAsync(Office.CoercionType.Text, function (result) {
-        done(result.status === Office.AsyncResultStatus.Succeeded ? String(result.value || "") : "");
-      });
+      var ueberOffice = function () {
+        Office.context.document.getSelectedDataAsync(Office.CoercionType.Text, function (result) {
+          done(result.status === Office.AsyncResultStatus.Succeeded ? String(result.value || "") : "");
+        });
+      };
+      if (wordZuerst !== true || !window.Word || typeof Word.run !== "function") { ueberOffice(); return; }
+      var erledigt = false;
+      var einmal = function (text) {
+        if (erledigt) { return; }
+        erledigt = true; clearTimeout(uhr);
+        if (typeof text === "string") { done(text.replace(/\r\n?/g, "\n")); return; }
+        try { ueberOffice(); } catch (err) { if (fehler) { fehler(err); } }
+      };
+      var uhr = setTimeout(function () { einmal(null); }, WORD_ADDIN_AUSWAHL_FRIST_MS);
+      try {
+        var lauf = Word.run(function (context) {
+          var auswahl = context.document.getSelection();
+          auswahl.load("text");
+          return context.sync().then(function () { return auswahl.text; });
+        });
+        if (!lauf || typeof lauf.then !== "function") { einmal(null); return; }
+        lauf.then(function (text) { einmal(typeof text === "string" ? text : null); }, function () { einmal(null); });
+      } catch (err) {
+        einmal(null);
+      }
     }
 
     // JOB 3056 K1 (Rebase auf KA5): die Wahrheitstabelle der zwei Deckel (`askSelectionTruncated`,
@@ -6401,7 +6446,7 @@
       try {
         readAskSelection(function (selectionText) {
           try { absenden(selectionText); } catch (err) { fehlerVorDemFetch(err); }
-        });
+        }, true, fehlerVorDemFetch);
       } catch (err) {
         fehlerVorDemFetch(err);
       }
@@ -6893,10 +6938,11 @@
     document.getElementById("office-hint-btn").addEventListener("click", function () {
       window.location.reload();
     });
-    // Die Zeile „Titel": ab dem ersten eigenen Zeichen gehoert sie dem Menschen; geleert nimmt die
-    // Vorbelegung wieder ueber.
+    // Zeile „Titel": eigene Zeichen gehoeren dem Menschen (leer: Vorbelegung); nach Tipp-Pause neu suchen.
     document.getElementById("capture-titel").addEventListener("input", function () {
       captureTitelVonHand = this.value.replace(/^\s+|\s+$/g, "").length > 0;
+      clearTimeout(captureTitelUhr);
+      captureTitelUhr = setTimeout(captureDublettenPruefen, 400);
     });
     // JOB 3555 K2b: die Zeile „Bereich". Der gehaltene Zustand folgt der Wahl des Menschen — der
     // Platzhalter (leerer Wert) bedeutet KEINE Wahl, und dann geht auch kein Feld hinaus.
@@ -7456,52 +7502,18 @@
     // ============================================================================================
     // JOB 1571 · D1 · KA2 — DER BESTANDSBLICK. „Gibt es dazu schon etwas?"
     // ============================================================================================
-    //
-    // DER VERTRAG, woertlich aus dem Auftrag (Chef, 21.08. 00:47):
-    //
-    //     window.klaraBestandsblick(grund)  ->  Promise<{treffer:[{id,title,status}]}>
-    //
-    // KA3 ist seit JOB 1151 gebaut und wartet auf GENAU diesen Namen und GENAU diese Form
-    // (`ka3Vertrag`, `ka3Normalisieren` — Zeilen unter `KW-KA3-KARTEN-START`). Bis heute erzeugte
-    // ihn niemand im Baum; KA3 lief deshalb fail-closed ins Leere. Dieser Block ist die fehlende
-    // Haelfte der Naht — nicht eine neue Faehigkeit, sondern der Anschluss zweier gebauter.
-    //
-    // WAS DIESER BLOCK TUT: er nimmt die KA1-Begriffe des offenen Dokuments, stellt damit EINE
-    // Frage ueber den BESTEHENDEN Weg `performAsk` -> `POST /api/ask` und reicht die aufgeloesten
-    // Quellen als Treffer weiter. Das ist woertlich die Abnahme aus `OFFEN.md` (KA2): „Die
-    // KA1-Begriffe fragen den validierten Bestand ueber die bestehende Frage-/Suchmechanik ab".
-    //
-    // WAS ER AUSDRUECKLICH NICHT TUT — und das ist die Zusage, nicht eine Nebenbemerkung:
-    //   · KEIN neues Abrufziel. Er ruft `performAsk` und `resolveAskSources`, die beiden bereits
-    //     vorhandenen Abrufstellen. Die Menge der `fetch(...)`-Ziele bleibt unveraendert
-    //     (`BEKANNTE_ABRUFZIELE` in `tests/app/mega69-klara-merkmale.test.ts`).
-    //   · KEINE zweite Suche, KEINE eigene Tokenisierung, KEINE Dublettenbewertung. Die
-    //     Dubletten-Kette (`services/app/src/routes/check-text-routes.ts`, JOB 989/686/631) wird
-    //     nicht angefasst — `OFFEN.md` sagt das bei KA2 zweimal.
-    //   · KEIN zweiter Office-Schnappschuss. Die Begriffe werden GELESEN, wo KA1 sie haelt
-    //     (`ka1Terms`), nicht ein zweites Mal aus dem Dokument geholt.
-    //   · KEINE eigene Anzeige. Die Trefferanzeige mit Status ist KA3s Karte; ein zweites
-    //     Anzeigefeld waere der zweite Weg neben einem bestehenden (`ENTSCHEIDUNGEN/JOB-646.md`).
-    //   · KEIN Timer, kein Takt, kein Autostart. WANN nachgesehen wird, entscheidet allein KA3.
-    //
-    // WARUM OHNE BINDUNGSKOEPFE — die eine Entwurfsentscheidung, die Begruendung braucht:
-    // `performAsk` schickt immer `mode: "retrieval-only"`. Das ist eine BITTE um die Enge, nicht
-    // ihre Garantie: liegt fuer diese Sitzung UND dieses Dokument eine KA4-Einwilligung vor, hebt
-    // der Server die Zwangsflags auf und antwortet ueber den vollen Weg — mit Modellaufruf
-    // (`services/app/src/routes/ask-routes.ts`, Zweig `request.body.mode === "retrieval-only"`).
-    // Der Server findet diese Einwilligung ausschliesslich ueber die drei Bindungs-Kopfzeilen.
-    // KA2 schickt sie deshalb NICHT: dieser Blick laeuft UNGEFRAGT und WIEDERHOLT (Oeffnen,
-    // Tastenruhe). Was der Anwender fuer seine eigene Frage erlaubt hat, hat er nicht fuer einen
-    // Hintergrundvorgang erlaubt, der die Begriffe seines ganzen Dokuments traegt. Ohne die
-    // Koepfe faellt die Route zwingend in `validatedOnly` + `retrievalOnly` — der
-    // deterministische Pfad `answerRetrievalOnly` (`services/reasoner/src/service.ts:1119`),
-    // kein Modell- und kein Embedder-Aufruf erreichbar. Damit ist „kein Modellaufruf" aus §4 des
-    // Auftrags nicht beabsichtigt, sondern strukturell erzwungen. Das ist STRENGER als der
-    // Bestandsweg, nie lockerer; weggenommen wird keine Zusicherung.
-    //
-    // `grund` wird entgegengenommen und bewusst NICHT ausgewertet: der Bestand haengt davon ab,
-    // WORUEBER geschrieben wird, nicht davon, WARUM gerade nachgesehen wird. Der Parameter steht
-    // im Vertrag und wird deshalb gefuehrt, statt eine Form zu liefern, die KA3 nicht erwartet.
+    // VERTRAG (Chef, 21.08.): `window.klaraBestandsblick(grund)` -> Promise<{treffer:[{id,title,
+    // status}]}> — genau die Form, auf die KA3 (`ka3Vertrag`, `ka3Normalisieren`) wartet. Der Block
+    // nimmt die KA1-Begriffe (`ka1Terms`, kein zweiter Office-Schnappschuss), fragt EINMAL ueber den
+    // bestehenden Weg `performAsk` -> `POST /api/ask` und reicht die ueber `resolveAskSources`
+    // aufgeloesten Quellen als Treffer weiter (Abnahme OFFEN.md KA2). Kein neues Abrufziel, keine
+    // zweite Suche, keine Dublettenbewertung, keine eigene Anzeige, kein Timer — WANN, sagt KA3.
+    // OHNE BINDUNGSKOEPFE, mit Absicht: `retrieval-only` ist nur eine Bitte; mit KA4-Einwilligung
+    // hebt der Server sie auf (ask-routes.ts). Dieser Blick laeuft ungefragt und wiederholt ueber die
+    // Begriffe des ganzen Dokuments — ohne die Koepfe faellt die Route zwingend in `validatedOnly` +
+    // `retrievalOnly` (`answerRetrievalOnly`), kein Modell- und kein Embedderaufruf erreichbar.
+    // Strenger als der Bestandsweg, nie lockerer. `grund` wird gefuehrt (Vertragsform), aber nicht
+    // ausgewertet: der Bestand haengt am Inhalt, nicht am Anlass.
     var KA2_MAX_BEGRIFFE = 12;
     var KA2_MAX_TREFFER = 5;
 
@@ -7684,33 +7696,15 @@
     // ============================================================================================
     // W6 (OFFEN.md) — DER WEG ZUR DUBLETTENPRUEFUNG. Aufruf, nicht Vertragsort.
     // ============================================================================================
-    //
-    // W6 lautet: „`POST /api/check-text` ist die Dublettenpruefung — und Klara benutzt sie
-    // nirgends." Gemessen auf diesem Stand: `check-text` hat in `apps/` NULL Treffer; niemand
-    // ruft sie. Das ist der ganze Befund, und diese Funktion ist sein fehlendes Glied.
-    //
-    // WARUM SIE NICHT DER BESTANDSBLICK IST — die Unterscheidung traegt den ganzen Auftrag:
-    // KA2 speist `window.klaraBestandsblick` aus `POST /api/ask` (retrieval-only) und
-    // `GET /api/kos/:id` — belegt in RUECKGABE-BASIC2-JOB-1571-D1, Bausteintabelle; die
-    // Dubletten-Kette bleibt dort ausdruecklich unberuehrt. „Gibt es dazu schon etwas?" und
-    // „ist dieser Text eine Dublette?" sind zwei verschiedene Fragen mit zwei Diensten.
-    // DESHALB SCHLIESST KA2 W6 NICHT — und deshalb steht diese Funktion hier.
-    //
-    // SIE BESETZT DEN VERTRAGSORT NICHT. Sie wird hier NICHT an `window.klaraBestandsblick`
-    // gehaengt: dieser Slot gehoert PRO3 (1571 D3), und zwei Anbieter an einem Slot waeren genau
-    // der zweite Weg, den `ENTSCHEIDUNGEN/JOB-646.md` verbietet. Sie liefert deshalb GENAU die
-    // Vertragsform `{treffer:[{id,title,status}]}`, damit der Vertragsort sie ohne Anpassung
-    // einsetzen oder mit dem Bestandsblick zusammenfuehren kann. Bis dahin ist sie inert.
-    //
-    // KEIN ZWEITER OFFICE-SCHNAPPSCHUSS: den Text reicht der Aufrufer herein (`leseText`) —
-    // dieselbe Zurueckhaltung, mit der KA2 `ka1Terms` benutzt statt selbst zu lesen. Auch `fetchFn`
-    // wird hereingereicht, genau wie bei `performAsk` (:999) — so ist der Weg ohne Netz und ohne
-    // Word-Host ausfuehrbar und damit pruefbar.
-    //
-    // FAIL-CLOSED IN JEDER RICHTUNG: zu kurzer Text, Fehlerantwort, kaputter Koerper, Ausnahme —
-    // immer `{treffer: []}`. Klara schweigt lieber, als etwas zu behaupten. Ein Eintrag ohne
-    // Kennung ist kein Treffer (dieselbe Regel wie `ka3Normalisieren`), und `status` bleibt
-    // `null`: die Dublettenpruefung fuehrt kein Statusfeld, und ein erfundenes waere eine Luege.
+    // W6: „`POST /api/check-text` ist die Dublettenpruefung — und Klara benutzt sie nirgends."
+    // Diese Funktion ist das fehlende Glied. Sie ist NICHT der Bestandsblick: KA2 fragt „gibt es
+    // dazu schon etwas?" ueber `/api/ask`, W6 „ist dieser Text eine Dublette?" — zwei Fragen, zwei
+    // Dienste. Sie besetzt den Vertragsort von KA2 nicht (ein Slot, ein Anbieter, JOB-646), liefert
+    // aber genau dessen Form `{treffer:[{id,title,status}]}`. Text (`leseText`) und `fetchFn` reicht
+    // der Aufrufer herein — kein zweiter Office-Schnappschuss, ohne Netz und Word-Host pruefbar.
+    // FAIL-CLOSED: zu kurzer Text, Fehlerantwort, kaputter Koerper, Ausnahme — immer `{treffer: []}`.
+    // Ein Eintrag ohne Kennung ist kein Treffer (wie `ka3Normalisieren`); `status` bleibt `null`,
+    // die Dublettenpruefung fuehrt kein Statusfeld.
     var W6_MINDESTZEICHEN = 40;   // check-text-routes.ts:20 — darunter antwortet die Route 400.
     var W6_HOECHSTZEICHEN = 8000; // check-text-routes.ts:21 — darueber ebenfalls.
 

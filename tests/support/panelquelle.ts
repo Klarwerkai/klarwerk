@@ -105,21 +105,47 @@ const MARKE_KOPF_ENDE = '"use strict";\n';
  * weiteres Mal gemessen übernommen werden.
  * NACHARBEIT 15: GEMESSEN im Prüflauf zu Kandidat 124645e8 (`b3f3846c…`, „Received" von E2) und
  * unverändert übernommen; die vier Panel-Dateien sind seit dieser Messung unberührt.
+ * WORD-HOST-GESAMTWEG (Nacharbeit 4, Realhostbeleg 06.10.2026): `taskpane.js` ändert sich an der
+ * Warnung zur Dokumentkennung (verzögertes `saveAsync`). Der Bezugspunkt MUSS deshalb wandern; ohne
+ * zugelassenes Hash-Werkzeug ist er hier nicht berechenbar. E2 meldet ihn im Prüflauf als
+ * „Received"; er wird danach gemessen übernommen.
+ * NACHARBEIT 5: GEMESSEN im Prüflauf zu Kandidat 6dc92d9b (`0548d086…`, „Received" von E2,
+ * HISTORIE/nacharbeit-5/PRUEFUNG/panel-auslieferung-pins.log) und unverändert übernommen; die
+ * Panel-Dateien sind seit dieser Messung unberührt.
+ * NACHARBEIT 6: `taskpane.js` ändert sich am Auswahlzugriff des Fragenwegs (`Word.run` zuerst, mit
+ * Frist). Der Bezugspunkt MUSS wandern; E2 meldet ihn im Prüflauf als „Received", er wird danach
+ * gemessen übernommen.
+ * NACHARBEIT 7: GEMESSEN im Prüflauf zu Kandidat 26e86268 (`87cb70fe…`, „Received" von E2,
+ * HISTORIE/nacharbeit-7/PRUEFUNG/panel-auslieferung-pins.log) und unverändert übernommen; die
+ * Panel-Dateien sind seit dieser Messung unberührt.
+ * NACHARBEIT 9: `taskpane.js` ändert sich an der Bestandssuche (Schlüssel Text + Titel) und um zwei
+ * Wörterbuchschlüssel des Rückwegs. Der Bezugspunkt MUSS wandern; E2 meldet ihn im Prüflauf als
+ * „Received", er wird danach gemessen übernommen.
+ * NACHARBEIT 11: gemessen zu Kandidat 10b99093 war `99c60bac…` — NICHT übernommen, weil
+ * `taskpane.js` wegen der Zeilenschranke B3 (ausgeliefert 12500) danach um zwei Kommentarzeilen
+ * kürzer wurde. Root hat den neuen Blob direkt aus den vier Quelldateien berechnet.
+ * AUFTRAG gesamt-ki-einwilligung:bindung (R-0590, Ben nacharbeit-3/-4): `taskpane.js` ändert sich
+ * an `performAsk` (409 `KLARA_AUSWEICHWEG_GESPERRT` → Grund), an der Statusanzeige des Fragenwegs,
+ * um zwei Wörterbuchschlüssel je Sprache und an einem umformulierten Kommentar; netto null Zeilen.
+ * Der Bezugspunkt MUSS wandern; ohne zugelassenes Hash-Werkzeug ist er hier nicht berechenbar. E2
+ * meldet ihn im Prüflauf als „Received"; er wird danach gemessen übernommen.
+ * NACHARBEIT 5 (dieser Auftrag): GEMESSEN im Prüflauf zu Kandidat 430c247c (`33e52280…`, „Received"
+ * von E2, HISTORIE/nacharbeit-5/PRUEFUNG/panel-auslieferung-pins.log) und unverändert übernommen;
+ * die vier Panel-Dateien sind seit dieser Messung unberührt.
  *
- * Aufnahme 20260922 · gesamt-bestandsblick (R-0427, Bens Befund Nacharbeit 3; Integration mit
- * `main` a6c9c5d9): dieselbe Regel. Auf die Stufenwahl oben kommt GENAU der Absatzwechselweg nach
- * bewusstem Ja — in `taskpane.html` die Einstellungszeile `#einst-absatzblick` (in der Zeile hinter
- * `#einst-mitlesen`, damit die Markup-Datei unter 500 Zeilen bleibt), in `taskpane.js` drei Texte
- * DE/EN/NL in `KA3_TEXTE`, der Aufruf `ka3AbsatzPruefen()` in `ka3Planen`, die Beschriftung in
- * `ka3Neuzeichnen` und der Block `ka3AbsatzPruefen`/Schalter (+48/-1 am zusammengefügten Dokument).
- * GEMESSEN beim Auflösen: das genau nach `fuegePanelZusammen` aus den vier Dateien zusammengesetzte
- * Dokument hat den Blob `eb344beb…` (`git diff --no-index --full-index`); dasselbe Verfahren ergibt
- * an den vier Dateien von `main` a6c9c5d9 wörtlich deren Wert `b3f3846c…`.
- * Nacharbeit 6 (Bens Befund): der Absatzwechselabruf ist an die gültige Aktivierung gebunden
- * (`ka3AbsatzRunde`, Prüfung `gilt()` in `ka3Ausfuehren` vor Serverabruf und Anzeige), zeilenneutral.
- * GEMESSEN mit demselben Verfahren: `fd19fe43…`; am unveränderten Kandidaten 22bad536 `eb344beb…`.
+ * Aufnahme 20260922 · gesamt-bestandsblick (R-0427; Integration mit `main` d19886ff): dieselbe
+ * Regel. Auf den Stand oben kommt GENAU der Absatzwechselweg nach bewusstem Ja — Einstellungszeile
+ * `#einst-absatzblick` (in der Zeile hinter `#einst-mitlesen`, Markup unter 500 Zeilen), drei Texte
+ * DE/EN/NL in `KA3_TEXTE`, `ka3AbsatzPruefen()` in `ka3Planen`, Beschriftung in `ka3Neuzeichnen`,
+ * Block `ka3AbsatzPruefen`/Schalter und die Bindung an die gültige Aktivierung (`ka3AbsatzRunde`,
+ * `gilt()` in `ka3Ausfuehren`). Damit `taskpane.js` unter der Schranke B3 bleibt (zusammengeführt
+ * 12544 Zeilen), sind die Kommentarköpfe der Blöcke KA2-BESTAND und W6 verdichtet — nur Kommentar,
+ * kein Ausdruck geändert; die Datei hat 12492 Zeilen. GEMESSEN beim Auflösen: das genau nach
+ * `fuegePanelZusammen` zusammengesetzte Dokument hat den Blob `2d5d9c26…` (`git diff --no-index
+ * --full-index`); dasselbe Verfahren ergibt an den vier Dateien von `main` d19886ff wörtlich
+ * `33e52280…`. Frühere Messungen dieses Auftrags: `0f733b04…`, `eb344beb…`, `fd19fe43…`.
  */
-export const PANEL_VOR_SCHNITT_BLOB = "fd19fe43f291313184ee70a3d50761db33a0baa7";
+export const PANEL_VOR_SCHNITT_BLOB = "2d5d9c26bd4fbf4fa289f06314aac06856685c06";
 
 export interface PanelTeile {
   html: string;

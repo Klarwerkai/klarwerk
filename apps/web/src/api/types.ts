@@ -118,6 +118,13 @@ export interface KoSource {
   // hier ausdrücklich „keine Datei" — nicht „unbekannt". Aufgelöst wird er beim ANZEIGEN
   // (`lib/koSource.ts`, `quellennachweis`); der Dateiname steht NICHT an der Quelle.
   objectId?: string;
+  // R-0549 / R-0163 / R-0162 (Confluence-Gesamtimport): Spiegel der drei Herkunftsangaben aus
+  // `services/knowledge-object/src/types.ts` (KoSource). Alle optional, alle vom Import
+  // geschrieben; keine davon ist ein Recht. Angezeigt über `quellHinweise` (`lib/koSource.ts`).
+  readRestriction?: { groups: string[]; users: string[] };
+  attachmentOf?: string;
+  attachment?: { externalId: string; mime?: string; size?: number };
+  sourceRemovedAt?: string;
   author: string;
   at: string;
 }
@@ -929,6 +936,30 @@ export interface GapSummary {
   byPriority: Record<GapPriority, number>;
 }
 
+// BILDSCHIRMABLÄUFE — zeichengleicher Spiegel von `DraftAblauf` (`services/capture/src/ablauf.ts`).
+// `art: "import"`: die Aufzeichnung entstand AUSSERHALB Klarwerks und wurde als Datei übernommen.
+export interface AblaufQuelle {
+  art: "import";
+  format: string;
+  werkzeug: string;
+  datei?: string;
+  aufgezeichnetAm?: string;
+  anwendung?: string;
+  /** Übernahmeschlüssel (`lib/ablaufImport.ts`, `uebernahmeSchluessel`). */
+  schluessel?: string;
+}
+
+export interface AblaufSchritt {
+  id: string;
+  text: string;
+  bild?: string;
+}
+
+export interface Ablauf {
+  quelle: AblaufQuelle;
+  schritte: AblaufSchritt[];
+}
+
 export interface DraftPayload {
   title?: string;
   statement?: string;
@@ -970,6 +1001,9 @@ export interface DraftPayload {
   // Fehlt das Feld (getippter Entwurf, Klara, Altbestand), bleibt die Aussage `unbekannt`; es wird
   // dann KEIN Verlust behauptet (lib/bildverlust.ts).
   sourceImageCount?: number;
+  // BILDSCHIRMABLÄUFE: die übernommenen Schritte samt Herkunft — Spiegel von
+  // `services/capture/src/ablauf.ts`. `null` leert ausdrücklich (Merge-Vertrag des Servers).
+  ablauf?: Ablauf | null;
   // AUFTRAG-mega4/mega5 Block A (bens Auflage A): „Entwurf speichern" sicherte bisher nur Text + drei
   // Skalar-Metadaten. Der Entwurf trägt jetzt ALLE inhaltlichen, textuell sicherbaren Dirty-Felder —
   // Prüferauswahl, offene/teilweise Quelle, externe Suchanfrage und den Interviewfortschritt — und der
@@ -1022,6 +1056,9 @@ export interface Draft {
   // Body — bewusst und benannt, nicht versehentlich. Es gehört an den ENTWURFS-Umschlag und nicht
   // in die Nutzlast: es beschreibt einen Befund über den Entwurf, nichts, was jemand eingegeben hat.
   anchorsMissing?: string[];
+  // Aufnahme entwurf-in-gemeinsamen-pool-geben (R-2099): der Autor hat diesen Entwurf bewusst in den
+  // gemeinsamen Pool gegeben. Fehlt das Feld, ist der Entwurf privat (der Standardfall).
+  imPool?: true;
 }
 
 export interface BusFactorEntry {
@@ -1827,6 +1864,48 @@ export interface OutputDocument {
   provenance: OutputProvenance[];
 }
 
+// produkt:wettbewerb:20261003:lernplattform — Spiegel von services/output/src/scorm.ts.
+export type ScormSprache = "de" | "en";
+
+export interface ScormExportBody {
+  koIds: string[];
+  sprache: ScormSprache;
+  empfaenger: string;
+  titel?: string;
+}
+
+export interface ScormBefund {
+  code: string;
+  schwere: "blockiert" | "hinweis";
+  bereich: "inhalt" | "medien" | "quellen" | "empfaenger";
+  koId?: string;
+  detail: string;
+}
+
+export interface ScormFassung {
+  kennung: string;
+  manifestId: string;
+  titel: string;
+  sprache: ScormSprache;
+  objekte: { koId: string; titel: string; version: number; stand: string }[];
+  dateiname: string;
+}
+
+export interface ScormPruefung {
+  exportierbar: boolean;
+  format: {
+    standard: string;
+    schemaversion: string;
+    paketart: string;
+    referenzLms: string;
+    netz: string;
+    rueckkanal: string;
+  };
+  empfaenger: { id: string; label: string }[];
+  befunde: ScormBefund[];
+  fassung: ScormFassung | null;
+}
+
 // SCRUM-120 / FE-MGMT: Management-/Wissenskapital-Snapshot (Spiegel des Backend-Modells).
 export type MgmtBand = "gut" | "mittel" | "kritisch";
 
@@ -2018,6 +2097,47 @@ export interface ImportRunCounters {
   itemsFailed: number;
 }
 
+/**
+ * R-0142 (Lauf 5): das Importergebnis EINES Wissensobjekts (`GET /admin/import/knowledge/:koId`).
+ * Alles serverseitig gelesen; `null` heisst jeweils „liegt nicht vor", nie „leer".
+ */
+export interface ImportKnowledgeResult {
+  knowledgeObjectId: string;
+  source: {
+    sourceRecordId: string;
+    sourceSystem: string;
+    externalId: string;
+    sourceVersion: number;
+    url: string | null;
+    title: string;
+    contentReferenceState: string;
+    importedAt: string;
+  } | null;
+  run: ImportRunRecord | null;
+  item: {
+    ordinal: number;
+    candidateItemId: string;
+    knowledgeObjectId: string | null;
+    /** `CREATED` · `BOUND` · `SKIPPED` · `FAILED` — gelesen, nie hergeleitet. */
+    itemOutcome: string;
+  } | null;
+  /** `RELATION_NOT_AVAILABLE` (mit `null`) oder `AVAILABLE` (mit Kennungen). */
+  knowledgeGapRelationState: string;
+  knowledgeGapIds: string[] | null;
+  /**
+   * Lauf 5 R3: die offenen Lücken, für deren Frage die Antwortsuche dieses Wissen heranzieht —
+   * redigiert wie `/api/gaps` (ohne Freigabe kein Fragetext). Fehlt ohne Lückenbezug.
+   */
+  knowledgeGaps?: { id: string; question: string; redacted?: boolean }[];
+  /** Wie viele offene Lücken geprüft wurden; weniger als alle ⇒ die Liste ist eine Untergrenze. */
+  knowledgeGapScope?: { checkedOpenGaps: number; openGaps: number } | null;
+  /**
+   * Lauf 5 R4: warum der Lückenbezug nicht erhoben werden konnte (`KI_ABGESCHALTET`,
+   * `LUECKENBEZUG_FEHLER`). Fehlt, wenn er erhoben wurde oder kein Lückenport verdrahtet ist.
+   */
+  knowledgeGapUnavailableReason?: string;
+}
+
 export interface ImportRunRecord {
   importId: string;
   sourceSystem: string;
@@ -2036,6 +2156,41 @@ export interface ImportRunRecord {
   failureCode: string | null;
   failureReason: string | null;
   counters: ImportRunCounters;
+  /**
+   * R-0162 (Runde 3): der Löschabgleich dieses Laufs, vom Server geliefert — nur Quell-Kennungen.
+   * `null`/fehlend heisst: dieser Lauf trägt keinen (anderer Importweg oder Altlauf).
+   */
+  sourceSync?: {
+    checked: boolean;
+    reason: string | null;
+    removed: string[];
+    restored: string[];
+    outsideScope: string[];
+    unchecked: string[];
+    /** R-0163 (Lauf 2): unveränderte Seiten mit angeglichenen Anhängen (fehlt bei Altläufen). */
+    attachmentsUpdated?: string[];
+    /** R-0162/R-0549 (Lauf 3 R2): unveränderte Seiten mit nachgezogener Quellrestriktion. */
+    restrictionsUpdated?: string[];
+    /** Lauf 3 R2: Seiten, deren Nachzug beim Schreiben scheiterte. */
+    syncFailed?: string[];
+    /** Lauf 3 R3: gelesene Seiten, deren Anhangsliste nicht vollständig übernommen wurde. */
+    attachmentsIncomplete?: string[];
+    /**
+     * Lauf 3 R2 (Bens B6): die Gesamtzahl je Liste — die Listen sind gedeckelt, diese Zahlen nicht.
+     * Die Anzeige zählt hiernach; fehlt das Feld (Altlauf), gilt die Listenlänge.
+     */
+    counts?: {
+      removed: number;
+      restored: number;
+      outsideScope: number;
+      unchecked: number;
+      attachmentsUpdated: number;
+      restrictionsUpdated: number;
+      syncFailed: number;
+      attachmentsIncomplete?: number;
+    };
+    listsTruncated?: boolean;
+  } | null;
 }
 
 export interface ImportApplyResponse {
@@ -2618,7 +2773,13 @@ export interface LiveWall {
   helpedToday: number;
 }
 
-export type NotificationKind = "conflict" | "duplicate" | "gap" | "assignment" | "impact";
+export type NotificationKind =
+  | "conflict"
+  | "duplicate"
+  | "gap"
+  | "assignment"
+  | "impact"
+  | "kenntnisnahme";
 
 export interface Notification {
   id: string;
@@ -2632,6 +2793,10 @@ export interface Notification {
   // FUNKE-FIX3 P0 (bens Blocker B): true → Gap-Fragetext serverseitig zurückgehalten; die Glocke
   // zeigt dann NUR die neutrale Bezeichnung (topbar.notifGapRedacted), nie den Fragetext.
   redacted?: boolean;
+  // Kenntnisnahme: angeforderte Fassung, Erinnerung und abgelaufene Frist (nur bei diesem `kind`).
+  fassung?: number;
+  erinnerung?: boolean;
+  ueberfaellig?: boolean;
 }
 
 // AUFTRAG-mega46 Block F: die Betriebsschalter, die die Oberfläche erfahren darf — AUSSCHLIESSLICH
@@ -2696,7 +2861,8 @@ export interface ImportAccessStatus {
   credentials: { name: string; present: boolean }[];
   /** Kämen damit Zugangsdaten zustande? (Nicht: sind sie gültig — das wüsste nur ein Aufruf.) */
   credentialsUsable: boolean;
-  blocker: "missing" | "insecure-base-url" | null;
+  // R-0166: `invalid-auth-mode` = KLARWERK_CONFLUENCE_AUTH trägt einen unbekannten Anmeldeweg.
+  blocker: "missing" | "insecure-base-url" | "invalid-auth-mode" | null;
   lastConnectedAt: string | null;
 }
 

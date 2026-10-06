@@ -8,6 +8,7 @@ import {
   isValidConfidentiality,
 } from "../../knowledge-object";
 import { sanitizeHtml } from "../../structure";
+import { normalizeAblauf } from "./ablauf";
 import { DRAFT_LIMITS } from "./draft-limits";
 import type { DraftRepo } from "./repo";
 import {
@@ -441,6 +442,8 @@ function normalizeDraftPayload(payload: DraftPayload): DraftPayload {
     extQuery: _extQuery,
     interview: _interview,
     extResults: _extResults,
+    // BILDSCHIRMABLÄUFE: der Ablauf läuft durch dieselbe Schleuse (`./ablauf.ts`).
+    ablauf: _ablauf,
     ...rest
   } = payload as DraftPayload & { extResults?: unknown };
   const next: DraftPayload = normalizeOriginIn(rest);
@@ -468,6 +471,10 @@ function normalizeDraftPayload(payload: DraftPayload): DraftPayload {
   const interview = normalizeInterview(raw.interview);
   if (interview !== undefined) {
     next.interview = interview;
+  }
+  const ablauf = normalizeAblauf(raw.ablauf);
+  if (ablauf !== undefined) {
+    next.ablauf = ablauf;
   }
   return next;
 }
@@ -844,16 +851,70 @@ export class CaptureService {
   // Die Entscheidung, wer wen sieht, faellt weiterhin in `visibleDraftsFor` (capture-routes.ts);
   // diese Vorfilterung nimmt ihr nichts ab, sie erspart ihr nur die Arbeit an Zeilen, die sie
   // ohnehin verworfen haette. Deshalb ist das Praedikat hier dasselbe und kein zweites.
+  //
+  // AUFNAHME entwurf-in-gemeinsamen-pool-geben (R-2099): `mitPool` nimmt zur eigenen Menge die
+  // bewusst geteilten Entwürfe dazu — wieder aus der Ablage gefiltert (`listPool`), nicht aus dem
+  // ganzen Bestand. Auch das ist nur eine Vorfilterung: wer welchen Entwurf sieht, entscheidet
+  // weiterhin `visibleDraftsFor` mit der einen Regel `entwurfSichtbarFuer`.
   async listDraftsForResume(
     fuerAutor?: string,
+    opts: { mitPool?: boolean } = {},
   ): Promise<{ draft: Draft; anchorsMissing: string[] }[]> {
-    const drafts =
+    const eigene =
       fuerAutor === undefined ? await this.repo.list() : await this.repo.listByAuthor(fuerAutor);
+    const drafts =
+      fuerAutor === undefined || !opts.mitPool
+        ? eigene
+        : [
+            ...eigene,
+            ...(await this.poolEntwuerfe()).filter((d) => !eigene.some((e) => e.id === d.id)),
+          ];
     const result: { draft: Draft; anchorsMissing: string[] }[] = [];
     for (const draft of drafts) {
       result.push(await this.withAnchorCheck(draft));
     }
     return result;
+  }
+
+  /** Die Pool-Entwürfe aus der Ablage; eine Ablage ohne `listPool` mit demselben Prädikat. */
+  private async poolEntwuerfe(): Promise<Draft[]> {
+    if (this.repo.listPool) {
+      return this.repo.listPool();
+    }
+    return (await this.repo.list()).filter((draft) => draft.imPool === true);
+  }
+
+  /**
+   * AUFNAHME entwurf-in-gemeinsamen-pool-geben (R-2099, FR-CAP-06) — DER AUTOR GIBT EINEN ENTWURF
+   * BEWUSST IN DEN GEMEINSAMEN POOL (`imPool = true`) ODER NIMMT IHN ZURÜCK (`false`).
+   *
+   * Wer das darf, entscheidet die Route (nur der Autor, `canManageDraft`). Hier steht nur das
+   * Schreiben: derselbe Compare-and-Swap wie `continueDraft` und derselbe streng steigende
+   * `updatedAt` (JOB 2684) — ein paralleles Speichern, das den Stand vor dem Teilen gelesen hat,
+   * überschreibt das Feld damit nicht still, sondern bekommt einen veralteten Stand gemeldet.
+   * Die Nutzlast wird nicht angefasst.
+   */
+  async entwurfInPool(id: string, imPool: boolean): Promise<Draft> {
+    return this.withDraftLock(id, async () => {
+      const draft = await this.require(id);
+      const { imPool: _bisher, ...ohneFeld } = draft;
+      const bisher = Date.parse(draft.updatedAt);
+      const jetzt = this.now();
+      const updated: Draft = {
+        ...ohneFeld,
+        ...(imPool ? { imPool: true as const } : {}),
+        updatedAt: new Date(
+          Number.isFinite(bisher) ? Math.max(jetzt, bisher + 1) : jetzt,
+        ).toISOString(),
+      };
+      if (!(await this.repo.updateWennStand(updated, draft.updatedAt))) {
+        throw new CaptureError(
+          "DRAFT_WRITE_CONTENDED",
+          "Der Entwurf wird gerade an anderer Stelle geschrieben — bitte noch einmal versuchen.",
+        );
+      }
+      return updated;
+    });
   }
 
   /** Der gemeinsame Kern von Einzel-Fortsetzung und Liste (s. `resumeDraft` für die Abwägung). */
