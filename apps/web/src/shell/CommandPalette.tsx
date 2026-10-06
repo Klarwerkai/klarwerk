@@ -183,6 +183,12 @@ export function CommandPalette(): JSX.Element | null {
     (): Zeilenziel[] => [...gruppen.flatMap((g) => g.ziele), ...wissen],
     [gruppen, wissen],
   );
+  // R-0893 (BEN, Nacharbeit 2): DIE AUSWAHL IST IMMER EINE ZEILE, DIE DASTEHT. Die Wissenseinträge
+  // kommen ASYNCHRON — eine Pfeiltaste während der Tipp-Pause traf eine leere Liste und setzte
+  // `active` auf -1; die eintreffenden Einträge korrigierten das nicht, und Enter fiel auf „als
+  // Frage" statt auf das sichtbare Wissensobjekt. Markierung, Bildlauf, Pfeile und Enter lesen
+  // deshalb `stelle`: der gemerkte Index, begrenzt auf die Liste, die JETZT dasteht (leer → 0).
+  const stelle = Math.max(0, Math.min(active, sichtbareReihenfolge.length - 1));
 
   useEffect(() => {
     offenRef.current = open;
@@ -306,11 +312,11 @@ export function CommandPalette(): JSX.Element | null {
     if (!open) {
       return;
     }
-    const markiert = listeRef.current?.querySelector(`[data-cmd-stelle="${active}"]`);
+    const markiert = listeRef.current?.querySelector(`[data-cmd-stelle="${stelle}"]`);
     if (markiert && typeof markiert.scrollIntoView === "function") {
       markiert.scrollIntoView({ block: "nearest" });
     }
-  }, [open, active]);
+  }, [open, stelle]);
 
   if (!open) {
     return null;
@@ -325,7 +331,8 @@ export function CommandPalette(): JSX.Element | null {
   };
 
   const springe = (richtung: 1 | -1): void => {
-    setActive((a) => Math.min(Math.max(a + richtung, 0), sichtbareReihenfolge.length - 1));
+    // Von der SICHTBAREN Stelle aus, und nie unter 0 — auch nicht bei leerer Liste.
+    setActive(Math.max(0, Math.min(stelle + richtung, sichtbareReihenfolge.length - 1)));
   };
 
   /** Der laufende Index über ALLE Gruppen — die Tastatur kennt eine Liste, nicht vier. */
@@ -333,7 +340,7 @@ export function CommandPalette(): JSX.Element | null {
   const zeile = (it: Zeilenziel): JSX.Element => {
     laufend += 1;
     const i = laufend;
-    const aktiv = i === active;
+    const aktiv = i === stelle;
     return (
       <li key={it.id}>
         <button
@@ -436,7 +443,7 @@ export function CommandPalette(): JSX.Element | null {
             } else if (e.key === "Enter") {
               e.preventDefault();
               // Aus DERSELBEN Liste, die dasteht — siehe den Block bei `sichtbareReihenfolge`.
-              const it = sichtbareReihenfolge[active];
+              const it = sichtbareReihenfolge[stelle];
               if (it) {
                 go(it.path);
               } else if (fragenErreichbar && q.trim()) {

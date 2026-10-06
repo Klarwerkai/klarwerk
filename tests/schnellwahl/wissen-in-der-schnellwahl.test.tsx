@@ -9,6 +9,7 @@
 //   S1  ab zwei Zeichen stehen Wissenseinträge der Bibliothekssuche unter „Wissen", jeder mit dem
 //       Weg `/wissen/:id`, dazu die Schnellaktion „Alle Treffer … in der Bibliothek"
 //   S2  nur Tastatur: ⌘K, tippen, Enter — und man steht auf dem Wissensobjekt
+//   S2b dasselbe, wenn vor der Antwort Pfeiltasten gedrückt wurden (BEN, Nacharbeit 2)
 //   S3  höchstens fünf Einträge; der Rest bleibt über die Schnellaktion erreichbar
 //   S4  ein Zeichen fragt den Server nicht
 //   S5  Seiten bleiben vorn: Enter auf einen Seitennamen öffnet weiter die Seite
@@ -201,6 +202,28 @@ describe("R-0893 · S1–S3 — Wissenseinträge in der Schnellwahl", () => {
     expect(
       palettenFlaeche(s).querySelector('[data-cmd-stelle="0"]')?.getAttribute("data-cmd-pfad"),
     ).toBe("/wissen/alpha");
+    await enter(s);
+    expect(ort(s)).toBe("/wissen/alpha");
+  });
+
+  it("S2b: Pfeiltasten VOR der Antwort verlieren die Auswahl nicht — Enter öffnet das Wissensobjekt", async () => {
+    // BEN, Nacharbeit 2: bei leerer Liste setzte eine Pfeiltaste die Auswahl auf -1, und Enter
+    // öffnete danach `/fragen?q=…` statt des sichtbaren Eintrags.
+    const s = await offenMit([netz.ko("alpha", "Ventil Alpha")]);
+    await paletteTippen(s, "Ventil");
+    const feld = palettenFlaeche(s).querySelector("input");
+    for (const key of ["ArrowDown", "ArrowUp", "ArrowDown"]) {
+      await act(async () => {
+        feld?.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
+      });
+    }
+    // Nicht-vakuös: die Tasten trafen wirklich die LEERE Liste, vor jeder Serverfrage.
+    expect(netz.gefragt).toEqual([]);
+    expect(palettenFlaeche(s).querySelectorAll("[data-cmd-ziel]")).toHaveLength(0);
+
+    await entprellungAbwarten();
+    const markiert = palettenFlaeche(s).querySelector('[data-cmd-aktiv="true"]');
+    expect(markiert?.getAttribute("data-cmd-pfad")).toBe("/wissen/alpha");
     await enter(s);
     expect(ort(s)).toBe("/wissen/alpha");
   });
