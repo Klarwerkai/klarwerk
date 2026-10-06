@@ -272,6 +272,11 @@ export function importRunRoutes(deps: ImportRunRoutesDeps): FastifyPluginAsync {
    * Herkunftsanker, entscheidet deren Sichtbarkeit — dieselbe Regel wie Wissensseite
    * (`darfSehen`) und Warteschlange (`darfKandidatSehen`). Sieht er keinen davon, ist die Revision
    * für ihn nicht vorhanden. Gibt es keinen solchen Träger, bleibt es beim bisherigen Verhalten.
+   *
+   * Nacharbeit 17 (Ben K1): trägt ein Wissensobjekt den Anker, entscheidet ALLEIN seine aktuelle
+   * Sichtbarkeit — ein älterer (etwa abgelehnter) Kandidat mit damals offenen Quellrechten darf
+   * eine heutige Sperre nicht überstimmen. Kandidaten zählen nur, solange die Quelle noch nicht
+   * übernommen ist, und dann fail-closed: JEDER passende Kandidat muss sichtbar sein.
    */
   const darfRevisionSehen = async (
     user: Parameters<typeof darfSehen>[0],
@@ -283,7 +288,7 @@ export function importRunRoutes(deps: ImportRunRoutesDeps): FastifyPluginAsync {
       const anbieter = (provider ?? "").trim().toLowerCase() || "confluence";
       return externalId === satz.externalId && anbieter === system;
     };
-    let getragen = false;
+    let objektGetragen = false;
     for (const ko of deps.koService ? await deps.koService.list() : []) {
       const traegt = ko.sources.some(
         (s) =>
@@ -294,8 +299,11 @@ export function importRunRoutes(deps: ImportRunRoutesDeps): FastifyPluginAsync {
         if (darfSehen(user, ko)) {
           return true;
         }
-        getragen = true;
+        objektGetragen = true;
       }
+    }
+    if (objektGetragen) {
+      return false; // die aktuelle Sperre am Objekt ist verbindlich — kein Kandidaten-Rückweg
     }
     for (const k of deps.kandidaten ? await deps.kandidaten.all() : []) {
       const gleicheFassung = (k.item.sourceVersion ?? 1) === satz.sourceVersion;
@@ -305,12 +313,11 @@ export function importRunRoutes(deps: ImportRunRoutesDeps): FastifyPluginAsync {
       const sichtbar = deps.kandidatenRechte
         ? await darfKandidatSehen(user, k, deps.kandidatenRechte)
         : (k.item as { quellrechte?: unknown }).quellrechte === undefined;
-      if (sichtbar) {
-        return true;
+      if (!sichtbar) {
+        return false;
       }
-      getragen = true;
     }
-    return !getragen;
+    return true;
   };
 
   return async (app) => {

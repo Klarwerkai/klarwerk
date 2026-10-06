@@ -70,6 +70,10 @@ const ELTERN: Seite = {
 
 async function aufbau() {
   const bereich = new Map<string, Seite>();
+  // Die Quellkonten mit Space-Leserecht; ein Fall kann sie erweitern (Nacharbeit 17, E14).
+  const spaceLeser: { accountId: string; email: string }[] = [
+    { accountId: "acc-admin", email: ADMIN_EMAIL },
+  ];
   const antwort = (status: number, body: unknown) =>
     ({ ok: status < 300, status, json: async () => body }) as Response;
   const fetchFn = (async (u: string) => {
@@ -86,7 +90,7 @@ async function aufbau() {
             operation: { operation: "read", targetType: "space" },
             anonymousAccess: false,
             subjects: {
-              user: { results: [{ accountId: "acc-admin", email: ADMIN_EMAIL }] },
+              user: { results: [...spaceLeser] },
               group: { results: [] },
             },
           },
@@ -202,7 +206,18 @@ async function aufbau() {
     (await services.library.listImportCandidates()).filter(
       (k) => k.status === "neu" && k.item.externalId !== ELTERN.id,
     );
-  return { app, services, headers, fremdHeaders, bereich, lauf, ergebnis, offene };
+  return {
+    app,
+    services,
+    headers,
+    fremdHeaders,
+    fremdeMail,
+    spaceLeser,
+    bereich,
+    lauf,
+    ergebnis,
+    offene,
+  };
 }
 
 describe("R-0142 · der Ergebnisweg des Confluence-Imports", () => {
@@ -699,6 +714,64 @@ describe("R-0142 · der Ergebnisweg des Confluence-Imports", () => {
         knowledgeGapRelationState: "RELATION_NOT_AVAILABLE",
         knowledgeGapIds: null,
       });
+    } finally {
+      await t.app.close();
+    }
+  });
+
+  // confluence-import-rechte (Nacharbeit 17, Ben K1): ein älterer, abgelehnter Kandidat mit damals
+  // offenen Quellrechten darf die heutige Sperre am Wissensobjekt nicht überstimmen.
+  it("E14 · Ablehnung v1 → Wiederimport und Annahme v1 → Beschränkung v2: die alte Quellrevision bleibt für Ausgeschlossene verschlossen", async () => {
+    const t = await aufbau();
+    try {
+      // Beide Administratorinnen dürfen den Space in der Quelle zunächst lesen.
+      t.spaceLeser.push({ accountId: "acc-fremd", email: t.fremdeMail });
+      t.bereich.set("P-1", seite("P-1", 1));
+      await t.lauf();
+      const [abgelehnt] = await t.offene();
+      await t.services.library.reviewImportCandidate(abgelehnt?.id ?? "", "reject", "admin");
+      const zweiter = await t.lauf();
+      const [k1] = await t.offene();
+      const a1 = await t.services.library.reviewImportCandidate(k1?.id ?? "", "accept", "admin");
+      const altRevision = (await t.ergebnis(zweiter)).items[0]?.sourceRecordId ?? "";
+      expect(altRevision).not.toBe("");
+      const fremd = (url: string) => t.app.inject({ method: "GET", url, headers: t.fremdHeaders });
+      const eigen = (url: string) => t.app.inject({ method: "GET", url, headers: t.headers });
+      const quelleUrl = `/api/admin/import/source-records/${altRevision}`;
+      // Gegenprobe: solange beide quellberechtigt sind, liest auch die zweite die Revision.
+      expect((await fremd(quelleUrl)).statusCode).toBe(200);
+
+      // Fassung 2: die Seite ist an der Quelle nur noch für die erste Administratorin lesbar.
+      t.bereich.set("P-1", {
+        ...seite("P-1", 2),
+        restrictions: {
+          read: {
+            restrictions: {
+              user: { results: [{ accountId: "acc-admin", email: ADMIN_EMAIL }] },
+              group: { results: [] },
+            },
+          },
+        },
+      });
+      await t.lauf();
+      const [k2] = await t.offene();
+      const a2 = await t.services.library.reviewImportCandidate(k2?.id ?? "", "accept", "admin");
+      expect(a2.koId).toBe(a1.koId);
+
+      const alt = await fremd(quelleUrl);
+      expect(alt.statusCode).toBe(404);
+      expect(alt.body).not.toContain("Wartung");
+      expect(alt.body).not.toContain("/spaces/K/pages/P-1");
+      const laufErgebnis = await fremd(`/api/admin/import/runs/${zweiter}/result`);
+      expect(laufErgebnis.statusCode, laufErgebnis.body).toBe(200);
+      expect(laufErgebnis.body).not.toContain("Wartung");
+      expect(laufErgebnis.body).not.toContain("/spaces/K/pages/P-1");
+      expect((await fremd(`/api/admin/import/knowledge/${a1.koId}`)).statusCode).toBe(404);
+
+      // Die weiterhin Berechtigte liest die alte Revision unverändert.
+      const berechtigt = await eigen(quelleUrl);
+      expect(berechtigt.statusCode, berechtigt.body).toBe(200);
+      expect(berechtigt.json()).toMatchObject({ externalId: "P-1", sourceVersion: 1 });
     } finally {
       await t.app.close();
     }
