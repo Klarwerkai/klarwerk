@@ -152,6 +152,21 @@ interface CaptureDraftListBasis {
   discardPending: boolean;
   onDiscard: (id: string) => void;
   onResume: (draft: Draft) => void;
+  /**
+   * Aufnahme entwurf-in-gemeinsamen-pool-geben (Pedi, entscheidung:297afc57): die Kennung des
+   * angemeldeten Menschen. An einem FREMDEN Pool-Entwurf (`imPool` und anderer `originalAuthor`)
+   * steht damit weder Löschen noch der Pool-Knopf — sehen und fortsetzen ja, verfügen nein. Ein
+   * privater Entwurf in dieser Liste ist immer der eigene (der Server gibt fremde private gar nicht
+   * heraus); fehlt die Kennung, bleibt die Liste wie bisher.
+   */
+  nutzerKennung?: string | undefined;
+  /**
+   * Die bewusste Handlung des Autors: einen eigenen Entwurf in den gemeinsamen Pool geben (`true`)
+   * oder zurücknehmen (`false`). Ohne Rückruf steht der Knopf nicht da — er erscheint dort, wo die
+   * Fläche ihn anbietet („Meine Entwürfe").
+   */
+  onPoolUmschalten?: ((id: string, imPool: boolean) => void) | undefined;
+  poolPending?: boolean | undefined;
 }
 
 export interface CaptureDraftListArbeitsraumProps extends CaptureDraftListBasis {
@@ -234,7 +249,24 @@ export function CaptureDraftList(props: CaptureDraftListProps): JSX.Element | nu
     discardPending,
     onDiscard,
     onResume,
+    nutzerKennung,
+    onPoolUmschalten,
+    poolPending,
   } = props;
+
+  // Pool-Auftrag (297afc57): ein Entwurf, den jemand ANDERES in den Pool gegeben hat. Eine Funktion
+  // und kein Bauteil — sie entscheidet nur, was an der Zeile steht.
+  const fremderPoolEntwurf = (d: Draft): boolean =>
+    d.imPool === true &&
+    nutzerKennung !== undefined &&
+    d.originalAuthor !== "" &&
+    d.originalAuthor !== nutzerKennung;
+  // Wort und Folge des Pool-Knopfs: was er jetzt tut, hängt davon ab, ob der Entwurf schon im Pool
+  // liegt.
+  const poolTexte = (d: Draft): { wort: string; folge: string } =>
+    d.imPool
+      ? { wort: "entwurfspool.aktion.nehmen", folge: "entwurfspool.aktion.nehmenFolge" }
+      : { wort: "entwurfspool.aktion.geben", folge: "entwurfspool.aktion.gebenFolge" };
 
   const totalCount = drafts.length;
   if (totalCount === 0) {
@@ -403,9 +435,19 @@ export function CaptureDraftList(props: CaptureDraftListProps): JSX.Element | nu
                             {t("capture.draftJustSaved")}
                           </span>
                         ) : null}
+                        {/* Pool-Auftrag (R-2099): ein geteilter Entwurf sagt es an der Zeile. */}
+                        {d.imPool ? (
+                          <span
+                            data-testid="entwurfsliste-eintrag-pool"
+                            className="font-mono text-[10px] uppercase text-ai"
+                          >
+                            {t("entwurfspool.marke")}
+                          </span>
+                        ) : null}
                       </span>
                     </button>
-                    {confirmDiscardId === d.id ? null : (
+                    {/* Pool-Auftrag (297afc57): einen fremden Pool-Entwurf löscht nur sein Autor. */}
+                    {confirmDiscardId === d.id || fremderPoolEntwurf(d) ? null : (
                       <LoeschKnopf id={d.id} onConfirmDiscard={onConfirmDiscard} />
                     )}
                   </div>
@@ -493,6 +535,16 @@ export function CaptureDraftList(props: CaptureDraftListProps): JSX.Element | nu
                       {t("capture.draftJustSaved")}
                     </span>
                   ) : null}
+                  {/* Pool-Auftrag (R-2099): ein geteilter Entwurf sagt es an der Zeile; WER ihn
+                      geteilt hat, steht darunter als Ersteller (`capture.draftCreatorMeta`). */}
+                  {d.imPool ? (
+                    <span
+                      data-testid="entwurfsliste-eintrag-pool"
+                      className="ml-2 font-mono text-[10px] uppercase text-ai"
+                    >
+                      {t("entwurfspool.marke")}
+                    </span>
+                  ) : null}
                 </div>
                 {/* AUFNAHME entwuerfe-verwalten (N-0065): der kurze Inhaltsauszug, wörtlich aus
                     dem Entwurf (`draftExcerpt`). Er steht UNTER dem Titel und nicht in dessen
@@ -542,7 +594,31 @@ export function CaptureDraftList(props: CaptureDraftListProps): JSX.Element | nu
                     <RotateCcw size={13} />
                     {t("capture.resume")}
                   </button>
-                  <LoeschKnopf id={d.id} onConfirmDiscard={onConfirmDiscard} />
+                  {/* ====================================================================
+                      Aufnahme entwurf-in-gemeinsamen-pool-geben (R-2099, FR-CAP-06) — DIE
+                      BEWUSSTE HANDLUNG DES AUTORS, an genau dieser einen Zeile.
+                      ====================================================================
+                      Ein echter `<button>`: Tab erreicht ihn, Enter und Leertaste lösen ihn
+                      aus. Das Wort sagt, was geschieht („In den Pool geben" / „Aus dem Pool
+                      nehmen"), `title` und Beschreibung sagen die Folge. An einem fremden
+                      Pool-Entwurf steht er nicht (297afc57). */}
+                  {onPoolUmschalten && !fremderPoolEntwurf(d) ? (
+                    <button
+                      type="button"
+                      data-testid="entwurfsliste-pool"
+                      data-entwurf-pool={d.id}
+                      disabled={poolPending === true}
+                      title={t(poolTexte(d).folge)}
+                      onClick={() => onPoolUmschalten(d.id, d.imPool !== true)}
+                      className="inline-flex items-center gap-1 rounded-btn border border-hairline px-2.5 py-1 text-[12px] font-semibold text-muted hover:text-text disabled:opacity-50"
+                    >
+                      {t(poolTexte(d).wort)}
+                    </button>
+                  ) : null}
+                  {/* Pool-Auftrag (297afc57): einen fremden Pool-Entwurf löscht nur sein Autor. */}
+                  {fremderPoolEntwurf(d) ? null : (
+                    <LoeschKnopf id={d.id} onConfirmDiscard={onConfirmDiscard} />
+                  )}
                 </>
               )}
             </li>

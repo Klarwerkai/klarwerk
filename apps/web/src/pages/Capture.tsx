@@ -940,6 +940,24 @@ export function CaptureArbeitsraum({
   const [videoBusy, setVideoBusy] = useState<string | null>(null);
   // SCRUM-113 / FE-CAP-07: aktuell fortgesetzter Entwurf (null = neuer Entwurf).
   const [draftId, setDraftId] = useState<string | null>(null);
+  // Aufnahme entwurf-in-gemeinsamen-pool-geben (Pedi, entscheidung:297afc57): WESSEN Entwurf hier
+  // fortgesetzt wird. Kennung und Autor reisen zusammen, damit ein veralteter Eintrag nach einem
+  // Wechsel nichts mehr aussagt (`draftId` muss passen). Ist es ein fremder Pool-Entwurf, darf
+  // diese Fläche ihn fortsetzen und sichern, aber nicht einreichen — der Knopf steht dann nicht da
+  // (der Server weist den Aufruf ohnehin ab). Nur ein POOL-Entwurf kann fremd sein: einen fremden
+  // privaten Entwurf gibt der Server gar nicht heraus.
+  const [entwurfVon, setEntwurfVon] = useState<{
+    id: string;
+    autor: string;
+    imPool: boolean;
+  } | null>(null);
+  const fremderEntwurf =
+    draftId !== null &&
+    entwurfVon?.id === draftId &&
+    entwurfVon.imPool &&
+    entwurfVon.autor !== "" &&
+    user?.id !== undefined &&
+    entwurfVon.autor !== user.id;
   // JOB 3414: läuft gerade der Ladeversuch des Adress-Entwurfs (s. Ladeweg weiter unten)? Solange
   // er läuft, ist das Formular in seinem bisherigen Zustand SICHTBAR (nichts wird geleert), sagt
   // aber, dass es lädt — und das Speicher-Tor bleibt zu: ein Zwischenstand darf nicht hinausgehen,
@@ -2674,6 +2692,7 @@ export function CaptureArbeitsraum({
     setExtResults([]);
     setExtListDropped(Boolean(p.extQuery?.trim()));
     setDraftId(d.id);
+    setEntwurfVon({ id: d.id, autor: d.originalAuthor, imPool: d.imPool === true });
     // JOB 2684 D2: DAS ist der Stand, den diese Seite gesehen hat — er reist ab jetzt beim Speichern
     // und Einreichen mit. Ein früherer Konflikt ist mit dem Neuladen erledigt.
     loadedUpdatedAtRef.current = d.updatedAt ?? null;
@@ -5724,6 +5743,8 @@ export function CaptureArbeitsraum({
           discardPending={discardDraft.isPending}
           onDiscard={(id) => discardDraft.mutate(id)}
           onResume={loadDraft}
+          // Pool-Auftrag (297afc57): fremde Pool-Entwürfe tragen keinen Löschknopf.
+          nutzerKennung={user?.id}
         />
 
         {/* SCRUM-384: Die frühere Weg-Leiste (SCRUM-370) entfiel — die „Wissen retten“-
@@ -7280,25 +7301,28 @@ export function CaptureArbeitsraum({
                       {/* JOB 3526: auch der Experten-Weg trägt einen geöffneten Entwurf (JOB 3414)
                         — und hatte bis hierher überhaupt keinen Ausgang ausser Einreichen. */}
                       {entwurfVerlassenKnopf()}
-                      <Button
-                        variant="primary"
-                        className="flex-1"
-                        disabled={submit.isPending || !readiness?.canSave}
-                        // F-0007/D2: ohne Argument — sonst reichte React das Klick-Ereignis als
-                        // `bestaetigt` herein, und jeder erste Griff waere eine Bestaetigung.
-                        onClick={() => requestSubmit()}
-                      >
-                        {/* WP-D7/D7b (Befund 4/Rot-Fix 1): ehrliches, mehrstufiges Ladefeedback — Einreichen
+                      {/* Pool-Auftrag (297afc57): einen fremden Pool-Entwurf reicht nur sein Autor ein. */}
+                      {fremderEntwurf ? null : (
+                        <Button
+                          variant="primary"
+                          className="flex-1"
+                          disabled={submit.isPending || !readiness?.canSave}
+                          // F-0007/D2: ohne Argument — sonst reichte React das Klick-Ereignis als
+                          // `bestaetigt` herein, und jeder erste Griff waere eine Bestaetigung.
+                          onClick={() => requestSubmit()}
+                        >
+                          {/* WP-D7/D7b (Befund 4/Rot-Fix 1): ehrliches, mehrstufiges Ladefeedback — Einreichen
                           kettet mehrere Netz-Aufrufe; der Text zeigt die aktuelle Phase (inkl. Upload-Größe). */}
-                        {submit.isPending ? (
-                          <>
-                            <Loader2 size={15} className="animate-spin" />
-                            {submitBusyLabel}
-                          </>
-                        ) : (
-                          t("capture.submit")
-                        )}
-                      </Button>
+                          {submit.isPending ? (
+                            <>
+                              <Loader2 size={15} className="animate-spin" />
+                              {submitBusyLabel}
+                            </>
+                          ) : (
+                            t("capture.submit")
+                          )}
+                        </Button>
+                      )}
                     </div>
                   </div>
                 </ReasonerDraft>
@@ -7676,24 +7700,27 @@ export function CaptureArbeitsraum({
                     (und daneben „Verwerfen", das die Fläche leert und stehen bleibt). Der dritte Weg
                     geht: Änderungen weg, gespeicherter Entwurf bleibt. */}
                   {entwurfVerlassenKnopf()}
-                  <Button
-                    variant="primary"
-                    className="flex-1"
-                    disabled={submit.isPending || !readiness?.canSave}
-                    // F-0007/D2: ohne Argument — sonst reichte React das Klick-Ereignis als
-                    // `bestaetigt` herein, und jeder erste Griff waere eine Bestaetigung.
-                    onClick={() => requestSubmit()}
-                  >
-                    {/* WP-D7/D7b (Befund 4/Rot-Fix 1): mehrstufiges Ladefeedback beim Einreichen. */}
-                    {submit.isPending ? (
-                      <>
-                        <Loader2 size={15} className="animate-spin" />
-                        {submitBusyLabel}
-                      </>
-                    ) : (
-                      <>{t("capture.submit")} →</>
-                    )}
-                  </Button>
+                  {/* Pool-Auftrag (297afc57): einen fremden Pool-Entwurf reicht nur sein Autor ein. */}
+                  {fremderEntwurf ? null : (
+                    <Button
+                      variant="primary"
+                      className="flex-1"
+                      disabled={submit.isPending || !readiness?.canSave}
+                      // F-0007/D2: ohne Argument — sonst reichte React das Klick-Ereignis als
+                      // `bestaetigt` herein, und jeder erste Griff waere eine Bestaetigung.
+                      onClick={() => requestSubmit()}
+                    >
+                      {/* WP-D7/D7b (Befund 4/Rot-Fix 1): mehrstufiges Ladefeedback beim Einreichen. */}
+                      {submit.isPending ? (
+                        <>
+                          <Loader2 size={15} className="animate-spin" />
+                          {submitBusyLabel}
+                        </>
+                      ) : (
+                        <>{t("capture.submit")} →</>
+                      )}
+                    </Button>
+                  )}
                 </div>
               </div>
             </Card>

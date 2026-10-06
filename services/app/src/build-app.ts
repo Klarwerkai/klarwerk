@@ -263,7 +263,7 @@ import { askRoutes } from "./routes/ask-routes";
 import { auditRoutes } from "./routes/audit-routes";
 import { bearbeitungRoutes } from "./routes/bearbeitung-routes";
 import { brandingRoutes } from "./routes/branding-routes";
-import { canSeeDraft, captureRoutes } from "./routes/capture-routes";
+import { canManageDraft, captureRoutes } from "./routes/capture-routes";
 import { categoryRoutes } from "./routes/category-routes";
 import { checkTextRoutes } from "./routes/check-text-routes";
 import { conflictRoutes } from "./routes/conflicts-routes";
@@ -2926,7 +2926,11 @@ export function buildApp(
             if (!draft) {
               return { ok: false, reason: "not-found" as const };
             }
-            if (!canSeeDraft({ id: user.id, role: user.role as SessionUser["role"] }, draft)) {
+            // Pool-Auftrag (Pedi, entscheidung:297afc57): die Dokumentübernahme REICHT EIN — und
+            // Einreichen bleibt beim Autor, auch für einen Entwurf im gemeinsamen Pool. Deshalb hier
+            // `canManageDraft` (dieselbe Funktion wie `POST /api/drafts/:id/promote`), nicht nur
+            // die Sichtbarkeit.
+            if (!canManageDraft({ id: user.id, role: user.role as SessionUser["role"] }, draft)) {
               return { ok: false, reason: "forbidden" as const };
             }
             const input = await services.capture.toKoInput(draftId);
@@ -2959,7 +2963,8 @@ export function buildApp(
             if (!draft) {
               return { ok: false, reason: "not-found" as const };
             }
-            if (!canSeeDraft({ id: user.id, role: user.role as SessionUser["role"] }, draft)) {
+            // Pool-Auftrag (297afc57): derselbe Einreichweg wie `load` — nur der Autor.
+            if (!canManageDraft({ id: user.id, role: user.role as SessionUser["role"] }, draft)) {
               return { ok: false, reason: "forbidden" as const };
             }
             // JOB 2684 D4 (R2-17, BEN: „der Fall ohne Stand bleibt absichtlich gruen"): DER WEG
@@ -3332,6 +3337,11 @@ export function buildApp(
       (await services.capture.listDrafts()).map((draft) => ({
         originalAuthor: draft.originalAuthor,
         lastEditor: draft.lastEditor,
+        // Pool-Auftrag (R-2099): ein bewusst geteilter Entwurf öffnet seine Anhänge für die
+        // Schreibberechtigten — über dieselbe Regel wie die Entwurfsrouten (`entwurfSichtbarFuer`).
+        // Ein Entwurf im Papierkorb ist für den Pool nicht vorhanden (die Entwurfsrouten zeigen
+        // ihn dort auch nicht); er bleibt dann nur für seinen Autor sichtbar.
+        imPool: draft.imPool === true && !("deletedAt" in draft),
         bodyHtml: draft.payload.bodyHtml,
         objectIds: [
           ...(draft.payload.pendingSources ?? []).map((src) => src.objectId),

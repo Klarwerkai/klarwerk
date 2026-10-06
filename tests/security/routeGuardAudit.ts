@@ -380,6 +380,10 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "PUT /api/drafts/:id": { protection: "ko.create" },
   "DELETE /api/drafts/:id": { protection: "ko.create" },
   "POST /api/drafts/:id/promote": { protection: "ko.create" },
+  // Aufnahme entwurf-in-gemeinsamen-pool-geben (R-2099): der Autor gibt seinen Entwurf bewusst in
+  // den gemeinsamen Pool oder nimmt ihn zurück. Dasselbe Routenrecht wie alle Entwurfsrouten; das
+  // Zeilenrecht ist `canManageDraft` — nur der Autor (entscheidung:297afc57), sonst 403.
+  "PUT /api/drafts/:id/pool": { protection: "ko.create" },
   // JOB 3668 (Entwurfs-Papierkorb): DIESELBE Berechtigung und DERSELBE Torwächter wie die übrigen
   // Entwurfsrouten — `canSeeDraft`, nur auf der Papierkorb-Sicht (`requireVisibleTrashedDraft`).
   // BEWUSST NICHT `users.manage` wie beim Papierkorb der Wissensobjekte (`POST /api/kos/:id/restore`):
