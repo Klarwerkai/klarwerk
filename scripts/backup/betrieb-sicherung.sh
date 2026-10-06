@@ -18,13 +18,15 @@ START="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 LAUF="$(date -u +%Y%m%dT%H%M%SZ)"
 BELEG="$ARBEIT/belege/$LAUF.json"
 TMP="$(mktemp -d "$ARBEIT/.lauf.XXXXXX")"
+GRUND=""
 abschluss() {
   local code=$?
-  python3 - "$BELEG" "$START" "$code" "$LAUF" <<'PY'
+  python3 - "$BELEG" "$START" "$code" "$LAUF" "$GRUND" <<'PY'
 import datetime,json,os,sys
-p,start,code,run=sys.argv[1:]
+p,start,code,run,reason=sys.argv[1:]
 d=json.load(open(p)) if os.path.exists(p) else {'lauf':run,'gestartet':start}
 d.update(beendet=datetime.datetime.now(datetime.timezone.utc).isoformat(),exit=int(code))
+if reason:d['grund']=reason
 with open(p+'.tmp','w') as f:json.dump(d,f,ensure_ascii=False,indent=2);f.write('\n')
 os.replace(p+'.tmp',p)
 with open(os.path.join(os.path.dirname(os.path.dirname(p)),'letzter-lauf.json')+'.tmp','w') as f:json.dump(d,f,ensure_ascii=False,indent=2);f.write('\n')
@@ -36,8 +38,22 @@ trap abschluss EXIT
 export DATABASE_URL BACKUP_KEEP="${BACKUP_KEEP:-14}"
 # Versionsaufnahme vor und nach pg_dump; bei einem gleichzeitigen Deploy keine falsche Herkunft.
 curl --fail --silent --show-error --connect-timeout 10 --max-time 30 "$HEALTH_URL" >"$TMP/health-vorher.json"
-python3 "$WURZEL/scripts/backup/datenstand.py" sichern "$TMP/bestand.json" "$ARBEIT/sicherungen" >"$TMP/backup.log" 2>&1
-cat "$TMP/backup.log"
+code=0
+python3 "$WURZEL/scripts/backup/datenstand.py" sichern "$TMP/bestand.json" "$ARBEIT/sicherungen" >"$TMP/backup.log" 2>&1 || code=$?
+python3 - "$TMP/backup.log" "$ARBEIT/belege/$LAUF-export.log" <<'PY'
+import os,re,sys
+text=open(sys.argv[1]).read()
+url=os.environ.get('DATABASE_URL','')
+if url:text=text.replace(url,'[Datenbankadresse entfernt]')
+text=re.sub(r'postgres(?:ql)?://[^\s"\']+', '[Datenbankadresse entfernt]', text)
+text=re.sub(r'(?i)((?:password|passwort|token|authorization)\s*[:=]\s*)\S+', r'\1[entfernt]', text)
+with open(sys.argv[2],'w') as f:f.write(text)
+PY
+cat "$ARBEIT/belege/$LAUF-export.log"
+if [ "$code" -ne 0 ]; then
+  GRUND="$(head -c 6000 "$ARBEIT/belege/$LAUF-export.log")"
+  exit "$code"
+fi
 DUMP="$(sed -n 's/^\[backup\] Dump nach: //p' "$TMP/backup.log" | head -n1)"
 test -f "$DUMP"
 curl --fail --silent --show-error --connect-timeout 10 --max-time 30 "$HEALTH_URL" >"$TMP/health-nachher.json"

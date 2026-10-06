@@ -30,8 +30,9 @@ def bestand(snapshot=None):
         for line in proc.stdout:
             digest.update(line)
             rows += 1
-        if proc.wait():
-            raise RuntimeError("Inhaltsmessung fehlgeschlagen: " + table)
+        code = proc.wait()
+        if code:
+            raise SystemExit(code)
         result[table] = {"zeilen": rows, "sha256_kanonische_zeilen": digest.hexdigest()}
     return result
 
@@ -43,7 +44,10 @@ def main():
     try:
         holder.stdin.write("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;SELECT pg_export_snapshot(),transaction_timestamp();\n")
         holder.stdin.flush()
-        snapshot, snapshot_time = holder.stdout.readline().strip().split("|", 1)
+        line = holder.stdout.readline().strip()
+        if not line:
+            raise SystemExit(holder.wait() or 1)
+        snapshot, snapshot_time = line.split("|", 1)
         if not re.fullmatch(r"[0-9A-Fa-f]+-[0-9A-Fa-f]+-[0-9]+", snapshot):
             raise RuntimeError("PostgreSQL-Snapshot fehlt")
         measured = bestand(snapshot)
@@ -66,4 +70,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except subprocess.CalledProcessError as error:
+        raise SystemExit(error.returncode)
