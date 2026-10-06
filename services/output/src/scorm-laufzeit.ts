@@ -38,6 +38,7 @@ export interface ScormBeschriftung {
   abschlussOffen: string;
   abschlussFehler: string;
   abschlussOhneLms: string;
+  abschlussOffline: string;
   kernaussage: string;
   kontext: string;
   vorgehen: string;
@@ -63,6 +64,8 @@ export const SCORM_BESCHRIFTUNG: Record<ScormSprache, ScormBeschriftung> = {
     abschlussFehler:
       "Die Lernplattform hat den Abschluss nicht angenommen. Er gilt NICHT als gemeldet.",
     abschlussOhneLms: "Nicht gemeldet: Es ist keine Lernplattform verbunden.",
+    abschlussOffline:
+      "Keine Netzverbindung: Der Abschluss ist NICHT gemeldet. Bitte nach Wiederherstellung der Verbindung erneut „Abschließen“ wählen.",
     kernaussage: "Kernaussage",
     kontext: "Kontext / Voraussetzungen",
     vorgehen: "Was zu tun ist",
@@ -86,6 +89,8 @@ export const SCORM_BESCHRIFTUNG: Record<ScormSprache, ScormBeschriftung> = {
     abschlussFehler:
       "The learning platform did not accept the completion. It is NOT considered reported.",
     abschlussOhneLms: "Not reported: no learning platform is connected.",
+    abschlussOffline:
+      "No network connection: the completion has NOT been reported. Please choose “Complete” again once the connection is back.",
     kernaussage: "Key statement",
     kontext: "Context / prerequisites",
     vorgehen: "What to do",
@@ -187,6 +192,15 @@ export const SCO_JS = `(function () {
     if (!alleBesucht()) { meldung(text("abschluss-offen")); return; }
     if (!verbunden) { meldung(text("abschluss-ohne-lms")); return; }
     if (abgeschlossen) { meldung(text("abgeschlossen")); return; }
+    // Moodle 4.5 antwortet bei bekannter Netzunterbrechung auf LMSSetValue UND LMSCommit mit
+    // "true" und auf LMSGetLastError mit "0", speichert aber nichts (Referenzlauf 2026-10-06).
+    // Die API-Rückgaben taugen dann nicht als Beleg — der vom Browser gemeldete Offlinezustand
+    // schon. Ist er bekannt, wird nichts gesetzt, nichts bestätigt und ein erneuter Versuch bleibt
+    // offen. (Ein vom Browser NICHT erkannter Ausfall bleibt eine benannte Grenze.)
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      meldung(text("abschluss-offline"));
+      return;
+    }
     // Bestätigt ist der Abschluss erst, wenn die Plattform den Wert angenommen UND gespeichert hat:
     // scheitert LMSCommit (etwa bei Netzunterbrechung), gilt er NICHT als gemeldet, und ein erneuter
     // Klick auf „Abschließen" versucht es wieder.

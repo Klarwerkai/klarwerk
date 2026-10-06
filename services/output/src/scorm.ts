@@ -390,6 +390,7 @@ function indexHtml(
     "abschluss-offen": b.abschlussOffen,
     "abschluss-fehler": b.abschlussFehler,
     "abschluss-ohne-lms": b.abschlussOhneLms,
+    "abschluss-offline": b.abschlussOffline,
   };
   const daten = Object.entries(texte)
     .map(([k, v]) => ` data-text-${k}="${esc(v)}"`)

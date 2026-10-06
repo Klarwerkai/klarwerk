@@ -72,6 +72,12 @@ Den Lernabschluss meldet das **Paket** an die Lernplattform (SCORM 1.2 `cmi.core
 * bestätigt ist der Abschluss erst, wenn die Plattform ihn auch gespeichert hat (`LMSCommit`
   erfolgreich); scheitert das Speichern, etwa bei einer Netzunterbrechung, meldet das Paket
   „nicht angenommen“, und „Abschließen“ kann erneut gewählt werden.
+* meldet der Browser keine Netzverbindung (`navigator.onLine === false`), bestätigt das Paket
+  keinen Abschluss und setzt auch keinen; es bittet, nach Wiederherstellung der Verbindung erneut
+  „Abschließen“ zu wählen. Hintergrund: Moodle 4.5 antwortet in diesem Zustand auf
+  `LMSSetValue`/`LMSCommit` mit „true“ und Fehlercode „0“, speichert aber nichts.
+  Grenze: Einen Ausfall, den auch der Browser nicht erkennt, kann das Paket nicht von einem
+  erfolgreichen Speichern unterscheiden — es gibt in SCORM 1.2 keine Rückfrage beim Server.
 
 Es gibt keine Punktzahl und keine Verständnisprüfung (die Verständnisprüfung aus Auftrag 02 ist
 nicht Teil dieser Lieferung). Ohne Lernplattform (Datei direkt geöffnet) wird der Inhalt gezeigt

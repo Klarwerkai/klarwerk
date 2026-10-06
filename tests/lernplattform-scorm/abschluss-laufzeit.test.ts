@@ -12,7 +12,13 @@ import {
   SCO_JS as SCO_JS_FUER_TEST,
 } from "../../services/output/src/scorm-laufzeit";
 import { beispielKo, bestand, eingabe, entpacke, paketOderFehler } from "./beispiel";
-import { type FensterLike, Scorm12Attrappe, fenster, gestartet } from "./scorm12-attrappe";
+import {
+  type FensterLike,
+  Scorm12Attrappe,
+  fenster,
+  gestartet,
+  setzeOnline,
+} from "./scorm12-attrappe";
 
 const offen: FensterLike[] = [];
 afterEach(() => {
@@ -205,6 +211,53 @@ describe("K3 · Abschluss im Referenzablauf (SCORM 1.2 RTE)", () => {
     api.netzGetrennt = false;
     verlassen(w);
     expect(api.gespeichert["cmi.core.exit"]).toBe("suspend");
+  });
+
+  it("Moodle-Offlineverhalten: SetValue/Commit „true“, Fehler „0“, nichts gespeichert → KEIN gemeldeter Abschluss, erneuter Versuch nach Wiederverbindung", async () => {
+    const api = new Scorm12Attrappe();
+    const w = await starte(api);
+    klick(w, "kw-weiter");
+    klick(w, "kw-weiter");
+
+    // Genau der beobachtete Zustand: Browser kennt den Ausfall, die API meldet trotzdem Erfolg.
+    api.offlineWieMoodle = true;
+    setzeOnline(w, false);
+    expect(api.LMSSetValue("cmi.core.lesson_location", "2")).toBe("true");
+    expect(api.LMSCommit("")).toBe("true");
+    expect(api.LMSGetLastError()).toBe("0");
+    expect(api.gespeichert["cmi.core.lesson_status"]).toBe("incomplete");
+
+    klick(w, "kw-abschliessen");
+    expect(w.document.getElementById("kw-meldung")?.textContent).toBe(
+      SCORM_BESCHRIFTUNG.de.abschlussOffline,
+    );
+    expect(w.document.body.getAttribute("data-kw-abgeschlossen")).toBeNull();
+    expect(api.gespeichert["cmi.core.lesson_status"]).toBe("incomplete");
+    expect(w.document.getElementById("kw-abschliessen")?.hidden).toBe(false);
+
+    // Verbindung wieder da: derselbe Knopf schliesst jetzt wirklich ab.
+    api.offlineWieMoodle = false;
+    setzeOnline(w, true);
+    klick(w, "kw-abschliessen");
+    expect(api.gespeichert["cmi.core.lesson_status"]).toBe("completed");
+    expect(w.document.getElementById("kw-meldung")?.textContent).toBe(
+      SCORM_BESCHRIFTUNG.de.abgeschlossen,
+    );
+    expect(w.document.body.getAttribute("data-kw-abgeschlossen")).toBe("ja");
+  });
+
+  it("Moodle-Offlineverhalten auf Englisch: dieselbe Sperre mit englischem Hinweis", async () => {
+    const api = new Scorm12Attrappe();
+    const w = await starte(api, "en");
+    klick(w, "kw-weiter");
+    klick(w, "kw-weiter");
+    api.offlineWieMoodle = true;
+    setzeOnline(w, false);
+    klick(w, "kw-abschliessen");
+    expect(w.document.getElementById("kw-meldung")?.textContent).toBe(
+      SCORM_BESCHRIFTUNG.en.abschlussOffline,
+    );
+    expect(api.abschlussJeGesetzt()).toBe(false);
   });
 
   it("ohne Lernplattform: Inhalt sichtbar, ausdrücklich nichts gemeldet (auch auf Englisch)", async () => {

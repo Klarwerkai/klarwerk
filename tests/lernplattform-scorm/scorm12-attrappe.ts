@@ -36,6 +36,7 @@ export interface FensterLike {
   eval(code: string): unknown;
   dispatchEvent(e: unknown): boolean;
   Event: new (typ: string) => unknown;
+  readonly navigator: { readonly onLine: boolean };
   DOMParser: new () => {
     parseFromString(text: string, typ: string): DokumentLike;
   };
@@ -104,6 +105,13 @@ export class Scorm12Attrappe {
    * „gemeldet" angezeigt. Nur die Rückgabe von `LMSCommit` verrät den Ausfall.
    */
   netzGetrennt = false;
+  /**
+   * Das im Moodle-Referenzlauf TATSÄCHLICH beobachtete Offlineverhalten (nacharbeit-4,
+   * DIAGNOSE-API-OFFLINE.json): `LMSSetValue` und `LMSCommit` liefern beide "true",
+   * `LMSGetLastError` liefert "0" — gespeichert wird trotzdem nichts. Aus den API-Rückgaben ist der
+   * Ausfall also NICHT erkennbar.
+   */
+  offlineWieMoodle = false;
 
   constructor(vorher: Record<string, string> = {}) {
     this.gespeichert = {
@@ -184,6 +192,10 @@ export class Scorm12Attrappe {
       this.fehler = "0";
       return "false";
     }
+    if (this.offlineWieMoodle) {
+      this.fehler = "0";
+      return "true";
+    }
     this.gespeichert = { ...this.arbeit };
     this.fehler = "0";
     return "true";
@@ -195,7 +207,9 @@ export class Scorm12Attrappe {
       this.fehler = "301";
       return "false";
     }
-    this.gespeichert = { ...this.arbeit };
+    if (!this.offlineWieMoodle) {
+      this.gespeichert = { ...this.arbeit };
+    }
     this.zustand = "beendet";
     this.finishZahl += 1;
     this.fehler = "0";
@@ -222,6 +236,11 @@ export class Scorm12Attrappe {
         a === "LMSSetValue(cmi.core.lesson_status,passed)",
     );
   }
+}
+
+/** Setzt den vom Browser gemeldeten Netzzustand (`navigator.onLine`) dieses Fensters. */
+export function setzeOnline(w: FensterLike, online: boolean): void {
+  Object.defineProperty(w.navigator, "onLine", { configurable: true, get: () => online });
 }
 
 /** Wartet, bis das SCO gestartet ist (jsdom feuert DOMContentLoaded nach der Konstruktion). */
