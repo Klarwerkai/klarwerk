@@ -145,7 +145,17 @@ test.describe("Bildschirmablauf übernehmen · Browser", () => {
     expect((await texte(page)).join(" ")).not.toContain("Musterfirma");
 
     // ---- K4: Bild schwärzen — Rahmen mit der Maus über das rote Datenfeld ziehen ----------------
+    // Nacharbeit 3 (Trace des Prüflaufs): Der Datenschutzhinweis des Produkts lag über dem Bild,
+    // und der Mausweg markierte seinen Text statt einen Rahmen zu ziehen. Ein sichtbarer Hinweis
+    // wird deshalb wie von einem Menschen über seinen regulären Knopf bestätigt. Steht keiner da,
+    // hat ihn derselbe geteilte Smoke-Account schon quittiert.
+    const hinweisWeiter = page.getByTestId("notice-ack");
+    if (await hinweisWeiter.isVisible()) {
+      await hinweisWeiter.click();
+      await expect(page.getByTestId("notice-banner")).toHaveCount(0);
+    }
     const bildB1 = schritte(page).nth(1).getByTestId("ablauf-bild");
+    await bildB1.scrollIntoViewIfNeeded();
     const box = await bildB1.boundingBox();
     if (!box) {
       throw new Error("Bild ohne Fläche");
@@ -153,11 +163,25 @@ test.describe("Bildschirmablauf übernehmen · Browser", () => {
     // Das Datenfeld liegt bei 40..120 × 25..55 von 160 × 80 — Rahmen mit Rand darum.
     const fx = box.width / 160;
     const fy = box.height / 80;
-    await page.mouse.move(box.x + 35 * fx, box.y + 20 * fy);
+    const start = { x: box.x + 35 * fx, y: box.y + 20 * fy };
+    const ende = { x: box.x + 125 * fx, y: box.y + 60 * fy };
+    // Start und Ende des Mauswegs treffen wirklich das Bild und nicht etwas, das darüber liegt.
+    for (const p of [start, ende]) {
+      const getroffen = await page.evaluate(
+        ({ x, y }) => document.elementFromPoint(x, y)?.getAttribute("data-testid") ?? null,
+        p,
+      );
+      const meldung = `der Mausweg trifft bei ${p.x},${p.y} nicht das Bild`;
+      expect(getroffen, meldung).toBe("ablauf-bild");
+    }
+    await page.mouse.move(start.x, start.y);
     await page.mouse.down();
-    await page.mouse.move(box.x + 125 * fx, box.y + 60 * fy, { steps: 5 });
+    await page.mouse.move(ende.x, ende.y, { steps: 5 });
     await page.mouse.up();
-    await schritte(page).nth(1).getByTestId("ablauf-bild-schwaerzen").click();
+    const schwaerzKnopf = schritte(page).nth(1).getByTestId("ablauf-bild-schwaerzen");
+    const freigabe = "der gezogene Rahmen hat den Knopf nicht freigegeben";
+    await expect(schwaerzKnopf, freigabe).toBeEnabled();
+    await schwaerzKnopf.click();
     await expect(page.getByTestId("ablauf-meldung")).toContainText("Bereich geschwärzt");
     const geschwaerzt = await bildB1.evaluate((e) => (e as HTMLImageElement).src);
     expect(geschwaerzt).not.toBe(b1);
