@@ -118,8 +118,14 @@ const MARKE_KOPF_ENDE = '"use strict";\n';
  * NACHARBEIT 7: GEMESSEN im Prüflauf zu Kandidat 26e86268 (`87cb70fe…`, „Received" von E2,
  * HISTORIE/nacharbeit-7/PRUEFUNG/panel-auslieferung-pins.log) und unverändert übernommen; die
  * Panel-Dateien sind seit dieser Messung unberührt.
+ * NACHARBEIT 9: `taskpane.js` ändert sich an der Bestandssuche (Schlüssel Text + Titel) und um zwei
+ * Wörterbuchschlüssel des Rückwegs. Der Bezugspunkt MUSS wandern; E2 meldet ihn im Prüflauf als
+ * „Received", er wird danach gemessen übernommen.
+ * NACHARBEIT 11: gemessen zu Kandidat 10b99093 war `99c60bac…` — NICHT übernommen, weil
+ * `taskpane.js` wegen der Zeilenschranke B3 (ausgeliefert 12500) danach um zwei Kommentarzeilen
+ * kürzer wurde. Root hat den neuen Blob direkt aus den vier Quelldateien berechnet.
  */
-export const PANEL_VOR_SCHNITT_BLOB = "87cb70fe49e2fc85891a0f1683e2659698a566ed";
+export const PANEL_VOR_SCHNITT_BLOB = "cb4cde214ee3f29e30d928322e1a200504a80e81";
 
 export interface PanelTeile {
   html: string;

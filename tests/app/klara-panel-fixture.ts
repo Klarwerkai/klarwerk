@@ -270,6 +270,58 @@ function buildFakeWord(wa: FakeWordAuswahl): Record<string, unknown> {
   };
 }
 
+/**
+ * WORD-WEB-RETURN-STRUCTURE (Nacharbeit 9): die STRUKTUR der Markierung, wie Word sie über
+ * WordApi 1.1 hergibt — `getSelection().getHtml()`, `paragraphs` mit `text`/`style` und je Absatz
+ * `inlinePictures` mit `getBase64ImageSrc()`. Nur gesetzt, wenn ein Test es ausdrücklich verlangt.
+ *   "sofort" — jede Lesung antwortet.
+ *   "nie"    — `context.sync` antwortet beim Lesen der Auswahl nie (Frist des Panels).
+ *   "wirft"  — `Word.run` wirft synchron.
+ */
+export interface FakeWordMarkierung {
+  lage: "sofort" | "nie" | "wirft";
+  /** Was `Range.getHtml()` liefert (Vorgabe: leer). */
+  html?: string;
+  absaetze: { text: string; stil?: string; bilder?: string[] }[];
+}
+
+function buildFakeWordMarkierung(wm: FakeWordMarkierung): Record<string, unknown> {
+  return {
+    run: (fn: (kontext: unknown) => unknown): Promise<unknown> => {
+      if (wm.lage === "wirft") {
+        throw new Error("Word.run nicht verfügbar");
+      }
+      let auswahlGelesen = false;
+      const sync = (): Promise<void> => {
+        if (auswahlGelesen && wm.lage === "nie") {
+          return new Promise<void>(() => undefined);
+        }
+        return Promise.resolve();
+      };
+      const absaetze = wm.absaetze.map((a) => ({
+        text: a.text,
+        style: a.stil ?? "Standard",
+        inlinePictures: {
+          items: (a.bilder ?? []).map((b) => ({ getBase64ImageSrc: () => ({ value: b }) })),
+          load: () => undefined,
+        },
+      }));
+      const auswahl = {
+        text: wm.absaetze.map((a) => a.text).join("\r"),
+        load: () => undefined,
+        getHtml: () => ({ value: wm.html ?? "" }),
+        paragraphs: { items: absaetze, load: () => undefined },
+      };
+      const body = { text: "", load: () => undefined, getHtml: () => ({ value: "" }) };
+      const getSelection = (): typeof auswahl => {
+        auswahlGelesen = true;
+        return auswahl;
+      };
+      return Promise.resolve().then(() => fn({ document: { getSelection, body }, sync }));
+    },
+  };
+}
+
 function buildFakeOffice(
   selectionHtml: string,
   selectionText: string,
@@ -396,6 +448,8 @@ export interface KlaraPanelOptions {
   auswahlHaengt?: boolean;
   /** Word-Host-Gesamtweg: setzt ein `Word` mit steuerbarer Auswahl (Vorgabe: kein `Word`). */
   wordAuswahl?: FakeWordAuswahl;
+  /** Nacharbeit 9: setzt ein `Word` mit der Struktur der Markierung (Vorgabe: kein `Word`). */
+  wordMarkierung?: FakeWordMarkierung;
 }
 
 export interface KlaraPanel {
@@ -558,8 +612,11 @@ export function createKlaraPanel(options: KlaraPanelOptions = {}): KlaraPanel {
   // `Word` bleibt bewusst ungesetzt: der Auswahl-Weg braucht es nicht, und ein halb gefaelschtes
   // Word.run wuerde einen Pfad vortaeuschen, den dieser Test nicht deckt. Ausnahme: `wordAuswahl`
   // setzt ausdrücklich den Lesezugriff `getSelection().text` — und nichts sonst.
-  if (options.wordAuswahl !== undefined) {
-    const word = buildFakeWord(options.wordAuswahl);
+  if (options.wordAuswahl !== undefined || options.wordMarkierung !== undefined) {
+    const word =
+      options.wordAuswahl !== undefined
+        ? buildFakeWord(options.wordAuswahl)
+        : buildFakeWordMarkierung(options.wordMarkierung as FakeWordMarkierung);
     globals.Word = word;
     globals.window.Word = word;
   } else {
