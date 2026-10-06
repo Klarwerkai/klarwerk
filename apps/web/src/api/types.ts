@@ -118,6 +118,13 @@ export interface KoSource {
   // hier ausdrücklich „keine Datei" — nicht „unbekannt". Aufgelöst wird er beim ANZEIGEN
   // (`lib/koSource.ts`, `quellennachweis`); der Dateiname steht NICHT an der Quelle.
   objectId?: string;
+  // R-0549 / R-0163 / R-0162 (Confluence-Gesamtimport): Spiegel der drei Herkunftsangaben aus
+  // `services/knowledge-object/src/types.ts` (KoSource). Alle optional, alle vom Import
+  // geschrieben; keine davon ist ein Recht. Angezeigt über `quellHinweise` (`lib/koSource.ts`).
+  readRestriction?: { groups: string[]; users: string[] };
+  attachmentOf?: string;
+  attachment?: { externalId: string; mime?: string; size?: number };
+  sourceRemovedAt?: string;
   author: string;
   at: string;
 }
@@ -2048,6 +2055,47 @@ export interface ImportRunCounters {
   itemsFailed: number;
 }
 
+/**
+ * R-0142 (Lauf 5): das Importergebnis EINES Wissensobjekts (`GET /admin/import/knowledge/:koId`).
+ * Alles serverseitig gelesen; `null` heisst jeweils „liegt nicht vor", nie „leer".
+ */
+export interface ImportKnowledgeResult {
+  knowledgeObjectId: string;
+  source: {
+    sourceRecordId: string;
+    sourceSystem: string;
+    externalId: string;
+    sourceVersion: number;
+    url: string | null;
+    title: string;
+    contentReferenceState: string;
+    importedAt: string;
+  } | null;
+  run: ImportRunRecord | null;
+  item: {
+    ordinal: number;
+    candidateItemId: string;
+    knowledgeObjectId: string | null;
+    /** `CREATED` · `BOUND` · `SKIPPED` · `FAILED` — gelesen, nie hergeleitet. */
+    itemOutcome: string;
+  } | null;
+  /** `RELATION_NOT_AVAILABLE` (mit `null`) oder `AVAILABLE` (mit Kennungen). */
+  knowledgeGapRelationState: string;
+  knowledgeGapIds: string[] | null;
+  /**
+   * Lauf 5 R3: die offenen Lücken, für deren Frage die Antwortsuche dieses Wissen heranzieht —
+   * redigiert wie `/api/gaps` (ohne Freigabe kein Fragetext). Fehlt ohne Lückenbezug.
+   */
+  knowledgeGaps?: { id: string; question: string; redacted?: boolean }[];
+  /** Wie viele offene Lücken geprüft wurden; weniger als alle ⇒ die Liste ist eine Untergrenze. */
+  knowledgeGapScope?: { checkedOpenGaps: number; openGaps: number } | null;
+  /**
+   * Lauf 5 R4: warum der Lückenbezug nicht erhoben werden konnte (`KI_ABGESCHALTET`,
+   * `LUECKENBEZUG_FEHLER`). Fehlt, wenn er erhoben wurde oder kein Lückenport verdrahtet ist.
+   */
+  knowledgeGapUnavailableReason?: string;
+}
+
 export interface ImportRunRecord {
   importId: string;
   sourceSystem: string;
@@ -2066,6 +2114,41 @@ export interface ImportRunRecord {
   failureCode: string | null;
   failureReason: string | null;
   counters: ImportRunCounters;
+  /**
+   * R-0162 (Runde 3): der Löschabgleich dieses Laufs, vom Server geliefert — nur Quell-Kennungen.
+   * `null`/fehlend heisst: dieser Lauf trägt keinen (anderer Importweg oder Altlauf).
+   */
+  sourceSync?: {
+    checked: boolean;
+    reason: string | null;
+    removed: string[];
+    restored: string[];
+    outsideScope: string[];
+    unchecked: string[];
+    /** R-0163 (Lauf 2): unveränderte Seiten mit angeglichenen Anhängen (fehlt bei Altläufen). */
+    attachmentsUpdated?: string[];
+    /** R-0162/R-0549 (Lauf 3 R2): unveränderte Seiten mit nachgezogener Quellrestriktion. */
+    restrictionsUpdated?: string[];
+    /** Lauf 3 R2: Seiten, deren Nachzug beim Schreiben scheiterte. */
+    syncFailed?: string[];
+    /** Lauf 3 R3: gelesene Seiten, deren Anhangsliste nicht vollständig übernommen wurde. */
+    attachmentsIncomplete?: string[];
+    /**
+     * Lauf 3 R2 (Bens B6): die Gesamtzahl je Liste — die Listen sind gedeckelt, diese Zahlen nicht.
+     * Die Anzeige zählt hiernach; fehlt das Feld (Altlauf), gilt die Listenlänge.
+     */
+    counts?: {
+      removed: number;
+      restored: number;
+      outsideScope: number;
+      unchecked: number;
+      attachmentsUpdated: number;
+      restrictionsUpdated: number;
+      syncFailed: number;
+      attachmentsIncomplete?: number;
+    };
+    listsTruncated?: boolean;
+  } | null;
 }
 
 export interface ImportApplyResponse {
@@ -2736,7 +2819,8 @@ export interface ImportAccessStatus {
   credentials: { name: string; present: boolean }[];
   /** Kämen damit Zugangsdaten zustande? (Nicht: sind sie gültig — das wüsste nur ein Aufruf.) */
   credentialsUsable: boolean;
-  blocker: "missing" | "insecure-base-url" | null;
+  // R-0166: `invalid-auth-mode` = KLARWERK_CONFLUENCE_AUTH trägt einen unbekannten Anmeldeweg.
+  blocker: "missing" | "insecure-base-url" | "invalid-auth-mode" | null;
   lastConnectedAt: string | null;
 }
 

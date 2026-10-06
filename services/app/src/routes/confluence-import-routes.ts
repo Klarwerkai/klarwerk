@@ -40,6 +40,7 @@ import {
 import type { ConfluenceImportSchalterRepo } from "../confluence-import-schalter";
 import type { Guards } from "../http";
 import { sanitizeLogText } from "../log-sanitize";
+import type { ImportRunSourceSync, QuellabgleichRepo } from "../quellabgleich-ablage";
 
 // SCRUM-510 WP2: Admin-Trigger für den Confluence-Space-Import. NUR bei aktivem KLARWERK_CONFLUENCE_IMPORT
 // registriert (Flag OFF → Route existiert nicht). Echte Admin-Auth (users.manage, wie die übrigen
@@ -59,6 +60,10 @@ export interface ConfluenceImportRouteDeps {
   // nur den Import-Pfad prüfen — ohne sie bleibt es beim Verhalten vor 148. Die Kompositionswurzel
   // reicht sie IMMER durch; im Produkt ist der Zweig damit nie der alte.
   importRuns?: ImportRunRepo;
+  // R-0162 (Runde 3): die Ablage der Quellabgleiche (`quellabgleich-ablage.ts`). OPTIONAL aus
+  // demselben Grund wie `importRuns`; die Kompositionswurzel reicht sie IMMER durch — dieselbe
+  // Instanz, aus der `GET /api/admin/import/runs/:id` liest.
+  quellabgleich?: QuellabgleichRepo;
   // R-0134 / R-1005: der Betreiberschalter, je Anfrage gelesen (`betreiberSperre`). Optional nur
   // für direkte Testaufrufer; die Kompositionswurzel reicht ihn immer durch.
   betreiberSchalter?: ConfluenceImportSchalterRepo;
@@ -322,7 +327,12 @@ function laufScope(): string {
 // R-0162: eine in der Quelle gelöschte Seite, deren Löschung nicht nachgezogen werden konnte
 // (removalOpen), lässt den Abgleich ebenso unvollständig zurück wie eine gescheiterte Seite.
 function abschlussStatus(summary: ImportRunSummary): ImportRunStatus {
-  return summary.failed > 0 || summary.truncated || summary.removalOpen > 0
+  // ZUSAMMENFÜHRUNG (Nacharbeit 4): beide Abgleiche zählen — der des Abgleich-Auftrags
+  // (`removalOpen`) und der Quellabgleich dieser Lieferung (`abgleichUnvollstaendig`).
+  return summary.failed > 0 ||
+    summary.truncated ||
+    summary.removalOpen > 0 ||
+    abgleichUnvollstaendig(summary)
     ? "PARTIAL"
     : "COMPLETED";
 }
@@ -330,8 +340,82 @@ function abschlussStatus(summary: ImportRunSummary): ImportRunStatus {
 /**
  * R-0163: der Laufcode eines unvollständigen Anhangsabgleichs. Er steht in
  * `ERLAUBTE_FEHLERCODES` (build-app.ts), damit er im Protokoll nicht als `UNBEKANNT` erscheint.
+ * ZUSAMMENFÜHRUNG (Nacharbeit 5): derselbe Code, den der Quellabgleich dieser Lieferung seit
+ * Lauf 3 setzt (`abgleichGrund`) — eine Konstante für beide.
  */
 const SOURCE_SYNC_INCOMPLETE = "SOURCE_SYNC_INCOMPLETE";
+
+/**
+ * R-0162 (Runde 3): ein Lauf, dessen Löschabgleich nicht stattfand oder Seiten mit unbekanntem
+ * Zustand zurückliess, hat seinen Auftrag nicht ganz erfüllt — er heisst `PARTIAL`, nicht
+ * `COMPLETED`. Vorher endete genau dieser Fall mit `COMPLETED` und ohne jede Spur.
+ */
+function abgleichUnvollstaendig(summary: ImportRunSummary): boolean {
+  const sync = summary.sourceSync;
+  // Lauf 3 R2 (Bens B8): ein gescheiterter Nachzug (Anhänge/Restriktion) zählt ebenso.
+  return (
+    sync !== undefined && (!sync.checked || sync.unchecked.length > 0 || sync.syncFailed.length > 0)
+  );
+}
+
+/** R-0162: das dauerhafte Abgleichsergebnis — nur Quell-Kennungen (s. `ImportRunSourceSync`). */
+function abgleichFuerDenLauf(summary: ImportRunSummary): ImportRunSourceSync | undefined {
+  const sync = summary.sourceSync;
+  if (!sync) {
+    return undefined;
+  }
+  return {
+    checked: sync.checked,
+    reason: sync.reason ?? null,
+    removed: sync.removed.map((r) => r.externalId),
+    restored: sync.restored.map((r) => r.externalId),
+    outsideScope: [...sync.outsideScope],
+    unchecked: [...sync.unchecked],
+    attachmentsUpdated: sync.attachmentsUpdated.map((a) => a.externalId),
+    restrictionsUpdated: sync.restrictionsUpdated.map((r) => r.externalId),
+    syncFailed: [...sync.syncFailed],
+    attachmentsIncomplete: [...sync.attachmentsIncomplete],
+    // Lauf 3 R2 (Bens B6): die Zahlen stehen VOR dem Deckel der Ablage fest — hier sind die Listen
+    // noch vollständig. `sourceSyncSnapshot` kürzt die Listen, nie die Zahlen.
+    counts: {
+      removed: sync.removed.length,
+      restored: sync.restored.length,
+      outsideScope: sync.outsideScope.length,
+      unchecked: sync.unchecked.length,
+      attachmentsUpdated: sync.attachmentsUpdated.length,
+      restrictionsUpdated: sync.restrictionsUpdated.length,
+      syncFailed: sync.syncFailed.length,
+      attachmentsIncomplete: sync.attachmentsIncomplete.length,
+    },
+    listsTruncated: false,
+  };
+}
+
+/**
+ * Der Fehlercode des Laufs, wenn allein der Abgleich unvollständig war — damit ein `PARTIAL`
+ * ohne gescheiterte Seite einen benannten Grund hat. Sonst unverändert `null` (wie bisher).
+ */
+function abgleichGrund(summary: ImportRunSummary): { code: string; reason: string } | null {
+  const sync = summary.sourceSync;
+  if (!sync || summary.failed > 0 || summary.truncated || !abgleichUnvollstaendig(summary)) {
+    return null;
+  }
+  return {
+    code: SOURCE_SYNC_INCOMPLETE,
+    reason: [
+      sync.checked
+        ? sync.unchecked.length > 0
+          ? `Löschabgleich unvollständig: ${sync.unchecked.length} Seite(n) mit unbekanntem Zustand, kein Vermerk gesetzt.`
+          : null
+        : "Löschabgleich nicht durchgeführt — über Löschungen in der Quelle sagt dieser Lauf nichts.",
+      sync.syncFailed.length > 0
+        ? `Nachzug von Anhängen oder Restriktion an ${sync.syncFailed.length} Seite(n) gescheitert — dort gilt der alte Stand.`
+        : null,
+    ]
+      .filter((teil): teil is string => teil !== null)
+      .join(" "),
+  };
+}
 
 // ================================================================================================
 // JOB 2691 D1 (Befund R2-2) — DER LAUF LAEUFT WEITER, UND DER MENSCH SIEHT KEINEN FEHLER MEHR.
@@ -474,11 +558,27 @@ async function fuehreLaufAus(
       koService: deps.koService,
       dryRun: false,
       actor,
+      // R-0142 (Lauf 5): die Kandidaten dieses Laufs tragen seine Kennung (`laufbindung.ts`).
+      importId,
     });
+    const sync = abgleichFuerDenLauf(summary);
+    const grund = abgleichGrund(summary);
+    // R-0162: das Abgleichsergebnis VOR dem Endzustand festhalten — wer den Lauf abgeschlossen
+    // liest, liest seinen Abgleich mit. Scheitert das Schreiben, bleibt der Lauf gültig; der
+    // Abgleich fehlt dann ehrlich (`sourceSync: null`), statt behauptet zu werden.
+    if (sync && deps.quellabgleich) {
+      try {
+        await deps.quellabgleich.speichere(importId, sync);
+      } catch (err) {
+        warne(log, `Quellabgleich schreiben (${importId})`, err);
+      }
+    }
     // R-0159 (Befund F2): scheiterte ein FOLGEabruf an Frist, Zeitbudget oder Größe, behält der Lauf
     // die gelesenen Seiten (PARTIAL) — und trägt jetzt AUCH den Grund: eigener Code, hostfreie
     // Meldung aus dem Client, zweite Linie `sanitizeImportFailureReason`. Bis hierher stand er auf
     // PARTIAL mit `failureCode: null`, und niemand erfuhr, dass Confluence zu langsam war.
+    // Zusammenführung mit R-0162: ein Leseabbruch macht den Lauf `truncated`, `abgleichGrund` ist
+    // dann ohnehin `null` — der Abbruch hat Vorrang, sonst gilt der Abgleichsgrund.
     const abbruch = summary.abbruch;
     // R-0163 (Bens Befund 3): ein unvollständiger Anhangsabgleich macht den Lauf über `failed`
     // bereits PARTIAL; der Grund steht zusätzlich am gespeicherten Lauf — lesbar über
@@ -512,10 +612,26 @@ async function fuehreLaufAus(
             failureReason: sanitizeImportFailureReason(anhangsGrund),
           }
         : null;
+    // ZUSAMMENFÜHRUNG (Nacharbeit 5): der Quellabgleich dieser Lieferung (`abgleichGrund`, derselbe
+    // Code SOURCE_SYNC_INCOMPLETE) tritt neben mains Anhangslücke. Der Leseabbruch geht weiter vor;
+    // ohne ihn nennt der Grundtext beide Lücken, keine verschweigt die andere.
+    const lueckeMitAbgleich = abbruch
+      ? laufluecke
+      : laufluecke && grund
+        ? {
+            failureCode: SOURCE_SYNC_INCOMPLETE,
+            failureReason: sanitizeImportFailureReason(
+              `${anhangsGrund ?? ""} ${grund.reason}`.trim(),
+            ),
+          }
+        : (laufluecke ??
+          (grund
+            ? { failureCode: grund.code, failureReason: sanitizeImportFailureReason(grund.reason) }
+            : null));
     await beende({
       status: abschlussStatus(summary),
       completedAt: new Date().toISOString(),
-      ...(laufluecke ?? {}),
+      ...(lueckeMitAbgleich ?? {}),
       counters: {
         itemsTotal: summary.found,
         itemsCreated: summary.imported,
@@ -1382,7 +1498,16 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
               // WP-SHIP7-FIX (Fix 3): die Rückgabe zählt EHRLICH — nur tatsächlich eingereihte
               // Kandidaten sind „importiert"; ein idempotenter No-op (bereits offener Kandidat
               // derselben externalId/Version, z. B. Retry/Parallel-Lauf) wird SEPARAT ausgewiesen.
-              const created = await deps.library.createImportCandidates([zuSchreiben], user.id);
+              // R-0142 (Lauf 5): an die Kennung dieser Übernahme gebunden, Ordnung = Position der
+              // Id in der Anfrage.
+              const created = await deps.library.createImportCandidates(
+                [zuSchreiben],
+                user.id,
+                undefined,
+                uebernahmelauf
+                  ? { lauf: { importId: uebernahmelauf, ordinal: includeIds.indexOf(id) } }
+                  : {},
+              );
               if (created.length > 0) {
                 imported += 1;
                 if (importStatusFor(item, applyAnchors, applyPending).sourceNewer) {
