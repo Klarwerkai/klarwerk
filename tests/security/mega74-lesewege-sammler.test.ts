@@ -230,6 +230,30 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "PRAEDIKAT",
     grund: "Bearbeitungshinweis — darfSehen vor dem Beenden, sonst 404.",
   },
+  // --- Kenntnisnahme einer gültigen Fassung ------------------------------------------------------
+  // Übersicht und eigene Anforderungen tragen den Titel des Eintrags; alle fünf Türen halten den
+  // Eintrag vor jeder Antwort gegen dasselbe Prädikat wie der Detailabruf. Ein entzogener Zugriff
+  // macht die eigene Anforderung unsichtbar und das Bestätigen zum 404.
+  "GET /api/kos/:id/kenntnisnahmen": {
+    urteil: "PRAEDIKAT",
+    grund: "Kenntnisnahme — Übersicht nur zu einem Eintrag, den der Anfordernde sehen darf.",
+  },
+  "POST /api/kos/:id/kenntnisnahmen": {
+    urteil: "PRAEDIKAT",
+    grund: "Kenntnisnahme — darfSehen vor dem Anfordern, sonst 404.",
+  },
+  "POST /api/kenntnisnahmen/:anforderungId/erinnern": {
+    urteil: "PRAEDIKAT",
+    grund: "Kenntnisnahme — darfSehen am Eintrag der Anforderung vor dem Erinnern, sonst 404.",
+  },
+  "GET /api/kenntnisnahmen/meine": {
+    urteil: "PRAEDIKAT",
+    grund: "Kenntnisnahme — eigene Anforderungen, je Eintrag über darfSehen gefiltert.",
+  },
+  "POST /api/kenntnisnahmen/:anforderungId/bestaetigen": {
+    urteil: "PRAEDIKAT",
+    grund: "Kenntnisnahme — nur die eigene Anforderung und nur bei darfSehen, sonst 404.",
+  },
   // --- W2-A/148: die Laufdomäne des Imports -------------------------------------------------
   // Der Lauf selbst trägt AUSSCHLIESSLICH Kennungen, Status, Zeitstempel und Zähler — keine Zeile
   // Fachinhalt. `knowledgeObjectId` ist eine Id, kein Inhalt (import-run-routes.ts:88-99).
@@ -249,6 +273,12 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "KURATORENTOR",
     recht: "users.manage",
     grund: "Quellrevision mit Seitentitel und Inhaltsverweis — nie der Inhalt selbst.",
+  },
+  // R-0142 (Lauf 5): das Importergebnis EINES Wissensobjekts — Quellrevision (Seitentitel), Lauf,
+  // Ausgang. Zusätzlich zum Rollentor fährt die Route `darfSehen` am Objekt (unsichtbar ⇒ 404).
+  "GET /api/admin/import/knowledge/:koId": {
+    urteil: "PRAEDIKAT",
+    grund: "darfSehen am Objekt vor jeder Auskunft, sonst 404 — import-run-routes.ts.",
   },
   // --- Die Anhänge (Block C) ---------------------------------------------------------------
   "GET /api/objects/:id": { urteil: "PRAEDIKAT", grund: "Block C — G2, Anhang erbt seine Stufe." },

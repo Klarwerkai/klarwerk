@@ -267,8 +267,16 @@ const CONFLUENCE_ERKLAERUNG: Record<
     wofuer:
       "Basisadresse der Confluence-Instanz. MUSS https sein, sonst kommt kein Client zustande.",
   },
-  KLARWERK_CONFLUENCE_USER: { geheim: false, wofuer: "Kennung (E-Mail) des Confluence-Zugangs." },
-  KLARWERK_CONFLUENCE_TOKEN: { geheim: true, wofuer: "API-Token des Confluence-Zugangs." },
+  KLARWERK_CONFLUENCE_USER: {
+    geheim: false,
+    wofuer:
+      "Kennung (E-Mail) des Confluence-Zugangs. Nur bei der Cloud-Anmeldung nötig; mit KLARWERK_CONFLUENCE_AUTH=pat wird sie nicht gelesen.",
+  },
+  KLARWERK_CONFLUENCE_TOKEN: {
+    geheim: true,
+    wofuer:
+      "API-Token des Confluence-Zugangs (Cloud) bzw. persönliches Zugriffstoken (KLARWERK_CONFLUENCE_AUTH=pat).",
+  },
   KLARWERK_CONFLUENCE_SPACE: { geheim: false, wofuer: "Der Space, aus dem importiert wird." },
 };
 
@@ -1012,6 +1020,17 @@ const GRUNDWERTE: readonly Startwert[] = [
       "Die Hilfeseite benennt den Supportweg mit dem eingebauten Text der gewählten Sprache.",
   },
   // ------------------------------------------------------------------------------------- Sonstiges
+  // R-0166: der Anmeldeweg. Kein Geheimnis, keine Pflicht — ungesetzt gilt die Cloud-Anmeldung.
+  {
+    name: "KLARWERK_CONFLUENCE_AUTH",
+    bereich: "Confluence-Import",
+    pflicht: { art: "nie" },
+    geheim: false,
+    vorgabe: "cloud",
+    wofuer:
+      "Anmeldeart an Confluence: „cloud“ (E-Mail + API-Token, Atlassian Cloud) oder „pat“ (persönliches Zugriffstoken, Confluence Server/Data Center im eigenen Haus). Ein anderer Wert ergibt keinen Zugang.",
+    ohneIhn: "Es gilt die Cloud-Anmeldung mit E-Mail und API-Token.",
+  },
   {
     name: "KLARWERK_CONFLUENCE_BUDGET_MS",
     bereich: "Confluence-Import",
@@ -1371,6 +1390,9 @@ export function startbericht(
   }
   if (schalterAn("confluenceImport") && !confluence.usable) {
     const fehlend = confluence.vars.filter((v) => !v.present).map((v) => v.name);
+    // ZUSAMMENFÜHRUNG (Nacharbeit 10): R-0166 nach dem maßgeblichen Vertrag aus main — ein
+    // unbekannter Anmeldeweg erscheint als fehlende KLARWERK_CONFLUENCE_AUTH in `fehlend`, nicht als
+    // eigener Riegel (credential-state.ts).
     maengel.push({
       befund:
         fehlend.length > 0

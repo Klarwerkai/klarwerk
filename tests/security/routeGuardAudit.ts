@@ -236,8 +236,17 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // W2-A/148: der Leseweg der Laufdomaene. Dasselbe Recht wie der Start — waere er weicher,
   // koennte jemand ohne users.manage die Ergebnisse eines Imports lesen, den er nicht ausloesen darf.
   "GET /api/admin/import/runs/:importId": { protection: "users.manage" },
-  "GET /api/admin/import/runs/:importId/result": { protection: "users.manage" },
+  // R-0142 (Lauf 5 R3): der Lückenbezug je Element wird nur für sichtbare Objekte erhoben.
+  "GET /api/admin/import/runs/:importId/result": {
+    protection: "users.manage",
+    zeilenrecht: ["darfSehen"],
+  },
   "GET /api/admin/import/source-records/:sourceRecordId": { protection: "users.manage" },
+  // R-0142 (Lauf 5): das Importergebnis EINES Wissensobjekts (Quellrevision, Lauf, Elementausgang).
+  "GET /api/admin/import/knowledge/:koId": {
+    protection: "users.manage",
+    zeilenrecht: ["darfSehen"],
+  },
   // IC-3 (Import-Cockpit): READ-ONLY Auswahl-VORSCHAU (Prompt/Filter → gefilterte Vorschau). Schreibt
   // nichts (keine Kandidaten); gleiche Admin-Auth, nur bei aktivem Confluence-Flag registriert.
   "POST /api/admin/import/confluence/select": { protection: "users.manage" },
@@ -293,6 +302,20 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   },
   "DELETE /api/kos/:id/bearbeitungen/:sitzung": {
     protection: "ko.create",
+    zeilenrecht: ["darfSehen"],
+  },
+  // Kenntnisnahme einer gültigen Fassung: Anfordern, Übersicht und Erinnern mit dem vorhandenen
+  // Zuweisungsrecht (`ko.assign`), die eigenen Anforderungen und das Bestätigen mit `ko.read`. Jede
+  // Tür hält den Eintrag vor der Antwort gegen `darfSehen` (sonst 404 wie am Detailabruf).
+  "GET /api/kos/:id/kenntnisnahmen": { protection: "ko.assign", zeilenrecht: ["darfSehen"] },
+  "POST /api/kos/:id/kenntnisnahmen": { protection: "ko.assign", zeilenrecht: ["darfSehen"] },
+  "POST /api/kenntnisnahmen/:anforderungId/erinnern": {
+    protection: "ko.assign",
+    zeilenrecht: ["darfSehen"],
+  },
+  "GET /api/kenntnisnahmen/meine": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
+  "POST /api/kenntnisnahmen/:anforderungId/bestaetigen": {
+    protection: "ko.read",
     zeilenrecht: ["darfSehen"],
   },
   "POST /api/kos": { protection: "ko.create" },

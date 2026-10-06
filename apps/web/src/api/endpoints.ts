@@ -60,6 +60,7 @@ import type {
   ImportExploreResponse,
   ImportGroupResponse,
   ImportItemInput,
+  ImportKnowledgeResult,
   ImportRunRecord,
   ImportRunStartResponse,
   ImportSelectCriteria,
@@ -1197,6 +1198,9 @@ export const endpoints = {
         };
       },
       run: (importId: string) => api.get<ImportRunRecord>(`/admin/import/runs/${importId}`),
+      // R-0142 (Lauf 5): das Importergebnis EINES Wissensobjekts — Quellrevision, Lauf, Ausgang.
+      knowledgeResult: (koId: string) =>
+        api.get<ImportKnowledgeResult>(`/admin/import/knowledge/${encodeURIComponent(koId)}`),
       explore: () => api.post<ImportExploreResponse>("/admin/import/confluence/explore", {}),
       // IC-3: READ-ONLY Auswahl-Vorschau (Prompt und/oder Klick-Kriterien). Schreibt nichts.
       // WP-SAMMEL20-FIX (bens Fix 3): locale reist explizit mit (Route-Schema: de/en).
