@@ -38,6 +38,10 @@ export default {
     "audit.action.overlap_withdrawn_own",
     "audit.action.ko_change_rolled_back",
     "audit.action.user_created",
+    "audit.action.ko_source_removed_in_origin",
+    "audit.action.ko_source_restored_in_origin",
+    "audit.action.ko_source_attachments_synced",
+    "audit.action.ko_source_restriction_synced",
     "adm.sich.export.button",
     "adm.sich.export.done",
     "adm.sich.qualityNote",
@@ -69,6 +73,13 @@ export default {
     "audit.action.ko_change_rolled_back": "Änderung zurückgenommen",
     // Aktionsabdeckung (Nacharbeit 2): die Kontoanlage hat einen eigenen Beleg.
     "audit.action.user_created": "Konto angelegt",
+    // Verwalteransicht (Bens Befund Nacharbeit 5): die Herkunftsbelege aus dem Quellabgleich
+    // (`KoService`, Confluence-Import) tragen das Objekt als Ziel und erscheinen in Prüfprotokoll
+    // und Objektspur — ohne Namen stand dort die Humanisierung „ko source removed in origin“.
+    "audit.action.ko_source_removed_in_origin": "Quelle im Ursprungssystem gelöscht",
+    "audit.action.ko_source_restored_in_origin": "Quelle im Ursprungssystem wiederhergestellt",
+    "audit.action.ko_source_attachments_synced": "Anhänge der Quelle abgeglichen",
+    "audit.action.ko_source_restriction_synced": "Leseeinschränkung der Quelle abgeglichen",
     "adm.sich.export.button": "Kette exportieren",
     "adm.sich.export.done":
       "Export mit {{count}} Einträgen gespeichert. Kopf der Kette: Nr. {{seq}} · {{hash}}. Wer diesen Kopf außerhalb der Anlage ablegt, erkennt dort später, ob die Kette bis zu diesem Punkt neu gebildet wurde.",
@@ -111,6 +122,10 @@ export default {
     "audit.action.overlap_withdrawn_own": "Overlap closed by withdrawal",
     "audit.action.ko_change_rolled_back": "Change rolled back",
     "audit.action.user_created": "Account created",
+    "audit.action.ko_source_removed_in_origin": "Source deleted in the origin system",
+    "audit.action.ko_source_restored_in_origin": "Source restored in the origin system",
+    "audit.action.ko_source_attachments_synced": "Source attachments synchronised",
+    "audit.action.ko_source_restriction_synced": "Source read restriction synchronised",
     "adm.sich.export.button": "Export chain",
     "adm.sich.export.done":
       "Export with {{count}} entries saved. Head of the chain: no. {{seq}} · {{hash}}. Whoever stores this head outside the installation can later tell there whether the chain up to this point was rebuilt.",
@@ -151,6 +166,10 @@ export default {
     "audit.action.overlap_withdrawn_own": "Overlap gesloten door intrekking",
     "audit.action.ko_change_rolled_back": "Wijziging teruggedraaid",
     "audit.action.user_created": "Account aangemaakt",
+    "audit.action.ko_source_removed_in_origin": "Bron in het herkomstsysteem verwijderd",
+    "audit.action.ko_source_restored_in_origin": "Bron in het herkomstsysteem hersteld",
+    "audit.action.ko_source_attachments_synced": "Bijlagen van de bron bijgewerkt",
+    "audit.action.ko_source_restriction_synced": "Leesbeperking van de bron bijgewerkt",
     "adm.sich.export.button": "Keten exporteren",
     "adm.sich.export.done":
       "Export met {{count}} items opgeslagen. Kop van de keten: nr. {{seq}} · {{hash}}. Wie deze kop buiten de installatie bewaart, kan daar later zien of de keten tot dit punt opnieuw is opgebouwd.",

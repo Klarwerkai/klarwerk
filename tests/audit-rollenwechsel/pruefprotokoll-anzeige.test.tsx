@@ -470,6 +470,44 @@ describe("Verwalteransicht · Spalten, Detailansicht, gelöschte Konten, Gesamtz
     expect(container.textContent).not.toContain(i18n.t("audit.detail.accountGone"));
   });
 
+  it("V6 · die Quellabgleich-Belege tragen in der Spalte „Ereignis“ einen deutschen Namen", async () => {
+    // Bens Befund Nacharbeit 5: `KoService` schreibt diese vier Codes mit dem Objekt als Ziel; ohne
+    // Schlüssel stand hier die Humanisierung „ko source removed in origin“.
+    const codes = [
+      "ko.source-removed-in-origin",
+      "ko.source-restored-in-origin",
+      "ko.source-attachments-synced",
+      "ko.source-restriction-synced",
+    ];
+    await mount(
+      codes.map((action, i) => ({
+        ...kette(10 + i),
+        actor: "lebt-1",
+        target: "ko-existiert",
+        action,
+        payload: { provider: "confluence", externalId: "123" },
+      })),
+    );
+    const erwartet = {
+      "ko.source-removed-in-origin": "Quelle im Ursprungssystem gelöscht",
+      "ko.source-restored-in-origin": "Quelle im Ursprungssystem wiederhergestellt",
+      "ko.source-attachments-synced": "Anhänge der Quelle abgeglichen",
+      "ko.source-restriction-synced": "Leseeinschränkung der Quelle abgeglichen",
+    } as const;
+    codes.forEach((code, i) => {
+      expect(text(zeile(10 + i, "audit.detail.event")), code).toBe(
+        erwartet[code as keyof typeof erwartet],
+      );
+      // Das Ziel ist ein Objekt, kein Konto — keine Löschaussage.
+      expect(text(zeile(10 + i, "audit.detail.targetObject"))).toContain("ko-existiert");
+    });
+    for (const code of codes) {
+      expect(container.textContent).not.toContain(code);
+      expect(container.textContent).not.toContain(code.replace(/[._-]/g, " "));
+    }
+    expect(container.textContent).not.toContain(i18n.t("audit.detail.accountGone"));
+  });
+
   it("V5 R-1085 · letzte Aktionen mit Gesamtzahl und Knopf zur Kettenprüfung", async () => {
     const viele = Array.from({ length: 14 }, (_, i) => ({
       ...kette(i + 1),
