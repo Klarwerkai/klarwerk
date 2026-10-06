@@ -5310,6 +5310,7 @@ const nl: typeof de = {
   "erfassen.weg.formular": "Formulier (experts)",
   "erfassen.ki.struktur": "Structuur voorstellen",
   "erfassen.ki.ausfuehrer": "Uitgevoerd door: {{wer}}",
+  "erfassen.ki.ausfuehrerUnbekannt": "hier niet bekend (zichtbaar in AI-beheer)",
   "erfassen.ki.pille": "AI",
   "erfassen.mehr.entwuerfe": "Concepten",
   "erfassen.mehr.anhaenge": "Bijlagen",

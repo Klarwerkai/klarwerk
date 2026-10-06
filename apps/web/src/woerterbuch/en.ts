@@ -5317,6 +5317,7 @@ const en: typeof de = {
   "erfassen.weg.formular": "Form (experts)",
   "erfassen.ki.struktur": "Suggest structure",
   "erfassen.ki.ausfuehrer": "Runs on: {{wer}}",
+  "erfassen.ki.ausfuehrerUnbekannt": "not known here (visible in AI management)",
   "erfassen.ki.pille": "AI",
   "erfassen.mehr.entwuerfe": "Drafts",
   "erfassen.mehr.anhaenge": "Attachments",

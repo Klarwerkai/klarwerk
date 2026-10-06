@@ -18,13 +18,14 @@
 // — beim Öffnen da, also vor dem Ausführen — und bricht um statt abzuschneiden (`break-words`),
 // damit der Anbietername nie hinter einer Auslassung verschwindet.
 //
-// DIESELBE ABLEITUNG, KEINE ZWEITE WAHRHEIT: `aiTaskInfo`/`aiTaskInfoPublic` wie `AiModelInfo`.
-// Der Anbietername steht — wie dort — nur in der Adminsicht; alle anderen sehen die Stufe
-// (Cloud/Lokal/Regelbasiert). Das ist die bestehende Grenze aus WP-VIP2-GATE-2 (Anbieter- und
-// Modellnamen nur für `users.manage`); ob Nicht-Admins den Anbieternamen sehen sollen, ist eine
-// offene Produktentscheidung und wird hier NICHT getroffen.
+// NUR AUS EINER AUFGABENBEZOGENEN AUSKUNFT (Nacharbeit 5, BEN): die Adminsicht nennt je Aufgabe
+// Stufe und Anbieter/Modell (`aiTaskInfo`). Für alle anderen gibt es keine aufgabenbezogene Auskunft
+// — der öffentliche `mode` ist hausweit und wäre bei lokal gestellter Aufgabe falsch. Dann sagt der
+// Satz „hier nicht bekannt" (Begründung in `lib/aiAusfuehrer.ts`). Namen bleiben wie bisher der
+// Adminsicht vorbehalten (WP-VIP2-GATE-2); ob Nicht-Admins Stufe oder Anbieter je Aufgabe sehen
+// sollen, ist eine offene Produktentscheidung und wird hier NICHT getroffen.
 import { useTranslation } from "react-i18next";
-import { useReasonerConfig, useReasonerStatus } from "../api/hooks";
+import { useReasonerConfig } from "../api/hooks";
 import type { ReasonerTask } from "../api/types";
 import { useRoleOptional } from "../app/RoleContext";
 import { ausfuehrerWer } from "../lib/aiAusfuehrer";
@@ -37,12 +38,10 @@ export function AiAusfuehrerZeile({ tasks }: { tasks: readonly ReasonerTask[] })
   const { t } = useTranslation();
   const istAdmin = useRoleOptional()?.role === "admin";
   const config = useReasonerConfig(istAdmin);
-  const status = useReasonerStatus();
   const wer = ausfuehrerWer({
     tasks,
     istAdmin,
     config: config.data,
-    status: status.data,
     t: (schluessel) => t(schluessel),
   });
   const satz = t(AI_AUSFUEHRER_KEY, { wer });

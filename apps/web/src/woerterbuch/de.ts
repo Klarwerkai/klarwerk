@@ -6756,6 +6756,8 @@ const de = {
   "erfassen.ki.struktur": "Struktur vorschlagen",
   // KI-WAHL-BETRIEBSABNAHME · N-0070: wer die Aufgabe ausführt — vor dem Klick, in der Palette.
   "erfassen.ki.ausfuehrer": "Führt aus: {{wer}}",
+  // Ohne Adminsicht gibt es keine aufgabenbezogene Auskunft — dann nicht die hausweite Stufe raten.
+  "erfassen.ki.ausfuehrerUnbekannt": "hier nicht bekannt (einsehbar in der KI-Verwaltung)",
   "erfassen.ki.pille": "KI",
   "erfassen.mehr.entwuerfe": "Entwürfe",
   "erfassen.mehr.anhaenge": "Anhänge",
