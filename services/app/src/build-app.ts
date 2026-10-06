@@ -160,8 +160,14 @@ import {
   PgNotificationSeenRepo,
   createMailerFromEnv,
 } from "../../notifications";
-import { InMemoryObjectRepo, type ObjectRepo, ObjectStore, PgObjectRepo } from "../../object-store";
-import { OutputService } from "../../output";
+import {
+  InMemoryObjectRepo,
+  type ObjectRepo,
+  ObjectStore,
+  PgObjectRepo,
+  decodeDataUrl,
+} from "../../object-store";
+import { LmsExportService, OutputService, leseLmsEmpfaenger } from "../../output";
 // SCRUM-443: echte Rollenwechsel-Regel (FR-RBAC-03) in den AuthService injizieren.
 import { canChangeRole } from "../../rbac";
 import {
@@ -305,6 +311,7 @@ import { lesevariantenRoutes } from "./routes/lesevarianten-routes";
 import { libraryRoutes } from "./routes/library-routes";
 import { lifecycleRoutes } from "./routes/lifecycle-routes";
 import { livewallRoutes } from "./routes/livewall-routes";
+import { lmsExportRoutes } from "./routes/lms-export-routes";
 import { managementRoutes } from "./routes/management-routes";
 import { mediaRoutes } from "./routes/media-routes";
 import { modelRunRoutes } from "./routes/model-runs-routes";
@@ -484,6 +491,8 @@ export interface AppServices {
   overlapSettings: OverlapSettingsRepo;
   library: LibraryService;
   output: OutputService;
+  // produkt:wettbewerb:20261003:lernplattform: SCORM-1.2-Übergabe an eine Lernplattform.
+  lmsExport: LmsExportService;
   management: ManagementService;
   // SCRUM-118: optionaler externer Such-Proxy (undefined, wenn EXTERNAL_SEARCH=off).
   externalSearch: ExternalSearchService | undefined;
@@ -1350,6 +1359,29 @@ export function assembleServices(
     candidates: repos.candidates,
     // SCRUM-117: Output Factory — stateless, nur validierte KOs als Quelle.
     output: new OutputService({ koService: ko }),
+    // produkt:wettbewerb:20261003:lernplattform: dieselbe Inhaltsquelle wie die Output Factory; die
+    // Bilder liest er aus DEMSELBEN Objektspeicher. Die zugelassenen Lernplattformen legt allein
+    // der Betreiber fest (`KLARWERK_LMS_EMPFAENGER`); ohne Eintrag ist kein Export möglich.
+    lmsExport: new LmsExportService({
+      koService: ko,
+      medien: async (objectId) => {
+        const gespeichert = await objects.read(objectId);
+        // Ein Objekt, dessen Inhalt sich nicht als Daten-URL lesen lässt, ist für das Paket so
+        // unbrauchbar wie ein fehlendes — derselbe Befund (MEDIA_MISSING), kein halbes Bild.
+        const roh = gespeichert ? decodeDataUrl(gespeichert.data) : null;
+        if (!gespeichert || !roh) {
+          return undefined;
+        }
+        return {
+          mime: gespeichert.ref.mime,
+          data: roh.bytes,
+          ...(gespeichert.ref.confidentiality
+            ? { confidentiality: gespeichert.ref.confidentiality }
+            : {}),
+        };
+      },
+      empfaenger: leseLmsEmpfaenger(process.env.KLARWERK_LMS_EMPFAENGER),
+    }),
     // SCRUM-120: Management/Kapital — stateless, aggregiert echte Live-Daten.
     management: new ManagementService({
       koService: ko,
@@ -3325,6 +3357,7 @@ export function buildApp(
   );
   app.register(categoryRoutes(services.ko, guards));
   app.register(outputRoutes(services.output, guards));
+  app.register(lmsExportRoutes(services.lmsExport, services.audit, guards));
   // R-2183 (Nacharbeit 3): Ruhestandshorizonte nur an echten internen Konten.
   const kontoGibtEs = async (id: string) =>
     (await services.auth.listUsers()).some((u) => u.id === id);

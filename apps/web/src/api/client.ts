@@ -122,4 +122,40 @@ export const api = {
   // zweimal getippt.
   postWithTimeout: <T>(path: string, body: unknown, timeoutMs: number): Promise<T> =>
     mitFrist<T>(path, { method: "POST", body: JSON.stringify(body) }, timeoutMs),
+  // produkt:wettbewerb:20261003:lernplattform: POST, dessen Erfolg eine DATEI ist (SCORM-Paket).
+  // Der Fehlerweg ist derselbe wie bei `apiFetch` — JSON `{ error, message, … }` wird zum ApiError,
+  // die übrigen Felder (etwa `pruefung` einer blockierten Übergabe) reisen in `details` mit.
+  postDatei: async (path: string, body: unknown): Promise<{ blob: Blob; dateiname: string }> => {
+    const headers = new Headers({
+      "Content-Type": "application/json",
+      "Accept-Language": i18n.language || gespeicherteSprache(),
+    });
+    const res = await fetch(`${BASE}${path}`, {
+      method: "POST",
+      credentials: "include",
+      headers,
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const raw = await res.text();
+      let data: Record<string, unknown> = {};
+      try {
+        const geparst: unknown = raw ? JSON.parse(raw) : {};
+        if (typeof geparst === "object" && geparst !== null) {
+          data = geparst as Record<string, unknown>;
+        }
+      } catch {
+        data = {};
+      }
+      throw new ApiError(
+        res.status,
+        data.error ? String(data.error) : "ERROR",
+        data.message ? String(data.message) : res.statusText,
+        data,
+      );
+    }
+    const kopf = res.headers.get("content-disposition") ?? "";
+    const dateiname = /filename="([^"]+)"/.exec(kopf)?.[1] ?? "klarwerk-scorm12.zip";
+    return { blob: await res.blob(), dateiname };
+  },
 };
