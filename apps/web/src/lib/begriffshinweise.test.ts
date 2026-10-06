@@ -100,13 +100,15 @@ describe("K2/K3/K4 · Formatierungsgrenzen", () => {
       lage: "uebernommen",
       html: '<p>Siehe <a href="https://example.invalid/k">Kunden</a><b>konto</b>.</p>',
     });
-    // Beginnt der geänderte Teil im Link, steht der neue Teil im Link; der Link bleibt bestehen.
+    // Läuft der geänderte Teil aus dem Link hinaus, wird der neue Teil auf Link und Folgetext
+    // verteilt: der Link bleibt mit Ziel bestehen, der Folgetext wird nicht gelöscht.
+    // (Nacharbeit 5: vorher stand hier „<a>Kundenkonto</a> bleibt." — der Folgelauf fiel weg.)
     const imLink = '<p><a href="https://example.invalid/k">Kundenac</a>count bleibt.</p>';
     const s2 = segmenteAusHtml(imLink);
     const e2 = hinweisUebernehmen(imLink, hinweisAn(s2, 0, "Kundenaccount", "Kundenkonto"), s2);
     expect(e2).toEqual({
       lage: "uebernommen",
-      html: '<p><a href="https://example.invalid/k">Kundenkonto</a> bleibt.</p>',
+      html: '<p><a href="https://example.invalid/k">Kundenko</a>nto bleibt.</p>',
     });
     // Gleiches Ende bleibt ebenso stehen: nur der abweichende Anfang wird ersetzt.
     const ende = "<p>Das <i>Alt</i><b>konto</b> ist offen.</p>";
@@ -116,6 +118,28 @@ describe("K2/K3/K4 · Formatierungsgrenzen", () => {
       lage: "uebernommen",
       html: "<p>Das <i>Kunden</i><b>konto</b> ist offen.</p>",
     });
+  });
+
+  it("BAHN17-G4-K4: läuft der geänderte Kern in Fett bzw. Link hinein, bleibt beides bestehen", () => {
+    // Die zwei ausgeführten Gegenfälle der Prüfung am Kandidaten 8c0b938a: dort wurde aus beiden
+    // vollständig unformatiertes „Kundenkonto" — <b> und <a> verschwanden.
+    const fett = "<p>Das Kundenac<b>count</b> bleibt.</p>";
+    const sf = segmenteAusHtml(fett);
+    const ef = hinweisUebernehmen(fett, hinweisAn(sf, 0, "Kundenaccount", "Kundenkonto"), sf);
+    expect(ef).toEqual({ lage: "uebernommen", html: "<p>Das Kundenko<b>nto</b> bleibt.</p>" });
+
+    const link = '<p>Das Kundenac<a href="https://example.invalid/b17">count</a> bleibt.</p>';
+    const sl = segmenteAusHtml(link);
+    const el = hinweisUebernehmen(link, hinweisAn(sl, 0, "Kundenaccount", "Kundenkonto"), sl);
+    expect(el).toEqual({
+      lage: "uebernommen",
+      html: '<p>Das Kundenko<a href="https://example.invalid/b17">nto</a> bleibt.</p>',
+    });
+    // Der neue Text ist vollständig und genau einmal da; fremde Textteile bleiben.
+    for (const e of [ef, el]) {
+      const html = e.lage === "uebernommen" ? e.html : "";
+      expect(segmenteAusHtml(html)).toEqual(["Das Kundenkonto bleibt."]);
+    }
   });
 });
 

@@ -11,9 +11,9 @@
 // abgebildet; übernommen wird, indem nur diese Knoten an genau diesen Stellen ihren Text ändern.
 // Ersetzt wird nur der Teil, in dem sich Fund und Vorzugsbezeichnung unterscheiden; gleicher
 // Anfang und gleiches Ende bleiben in ihren Knoten und damit in ihrer Formatierung
-// („Kunden<b>account</b>" → „Kunden<b>konto</b>"). Der neue Mittelteil steht in dem Knoten, in dem
-// der alte begann; aus weiteren Knoten fällt nur ihr Anteil daran weg, und ein dadurch leeres
-// Inline-Element fällt weg. Elemente, Attribute, Links, Bilder und alle anderen Textteile bleiben.
+// („Kunden<b>account</b>" → „Kunden<b>konto</b>"). Lief der alte Mittelteil über mehrere Knoten,
+// wird der neue mechanisch auf dieselben Knoten verteilt (`verteile`), sodass keiner samt
+// Auszeichnung verschwindet. Elemente, Attribute, Links, Bilder und alle anderen Textteile bleiben.
 //
 // NIE AUF VERDACHT: Passt der Knoten nicht mehr zu dem Stand, gegen den geprüft wurde (der Text
 // wurde inzwischen geändert), wird NICHTS ersetzt — der Aufrufer bekommt `veraltet` und prüft neu.
@@ -178,6 +178,35 @@ function geaenderterBereich(h: SegmentHinweis): { start: number; ende: number; n
 }
 
 /**
+ * Teilt den neuen Text in der Reihenfolge der betroffenen Läufe auf. Rein mechanisch, ohne
+ * sprachliche Silbenregel: jeder Lauf bekommt zuerst ein Zeichen (damit keiner samt Auszeichnung
+ * verschwindet), der Rest folgt dem Anteil, den der Lauf am alten Text hatte. Hat der neue Text
+ * weniger Zeichen als Läufe, bleiben die hinteren leer. Ein einziger Lauf erhält alles.
+ */
+function verteile(neu: string, alteLaengen: readonly number[]): string[] {
+  const k = alteLaengen.length;
+  if (k <= 1) {
+    return [neu];
+  }
+  const sockel = neu.length >= k ? 1 : 0;
+  const rest = neu.length - sockel * k;
+  const summe = alteLaengen.reduce((a, b) => a + b, 0);
+  const raus: string[] = [];
+  let pos = 0;
+  let kumuliert = 0;
+  let restVergeben = 0;
+  alteLaengen.forEach((laenge, i) => {
+    kumuliert += laenge;
+    const restBisHier = i === k - 1 || summe === 0 ? rest : Math.round((rest * kumuliert) / summe);
+    const anzahl = sockel + restBisHier - restVergeben;
+    restVergeben = restBisHier;
+    raus.push(neu.slice(pos, pos + anzahl));
+    pos += anzahl;
+  });
+  return raus;
+}
+
+/**
  * Ersetzt die Fundstelle eines Hinweises durch die Vorzugsbezeichnung — nur, wenn der Knoten
  * noch genau der geprüfte ist. `geprueft` sind die Segmente, gegen die der Hinweis entstand.
  */
@@ -219,14 +248,23 @@ export function hinweisUebernehmen(
     }
     return { lage: "uebernommen", html: body.innerHTML };
   }
-  // Ersetzen: der neue Mittelteil steht dort, wo der alte begann; aus den übrigen betroffenen
-  // Knoten fällt nur ihr Anteil am alten Mittelteil weg.
-  const betroffen = teile.filter((t) => t.von < aEnde && aStart < t.bis);
+  // Ersetzen: der neue Mittelteil wird auf ALLE Knoten verteilt, über die der alte lief
+  // (`verteile`). Kein betroffener Lauf wird geleert, solange der neue Text genug Zeichen hat —
+  // sonst verschwände mit ihm seine Auszeichnung (<b>, <a>). Nacharbeit 5, BAHN17-G4-K4.
+  const betroffen = teile
+    .filter((t) => t.von < aEnde && aStart < t.bis)
+    .map((t) => ({
+      ...t,
+      anfang: Math.max(aStart, t.von) - t.von,
+      schluss: Math.min(aEnde, t.bis) - t.von,
+    }));
+  const anteile = verteile(
+    neu,
+    betroffen.map((t) => t.schluss - t.anfang),
+  );
   betroffen.forEach((t, i) => {
-    const anfang = Math.max(aStart, t.von) - t.von;
-    const schluss = Math.min(aEnde, t.bis) - t.von;
-    const einsatz = i === 0 ? neu : "";
-    t.knoten.data = t.knoten.data.slice(0, anfang) + einsatz + t.knoten.data.slice(schluss);
+    const einsatz = anteile[i] ?? "";
+    t.knoten.data = t.knoten.data.slice(0, t.anfang) + einsatz + t.knoten.data.slice(t.schluss);
     if (t.knoten.data === "") {
       leereInlineEntfernen(t.knoten);
     }
