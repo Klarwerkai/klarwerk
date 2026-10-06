@@ -22,3 +22,13 @@ export {
   MAX_CAPTION_TEXT_LENGTH,
   MAX_CAPTIONS_PER_KO,
 } from "./src/captions";
+// R-0098: die Inhaltskennung als zweiter Begriff neben dem Vorkommensanker (`data-image-id`) —
+// abgeleitet aus den Bildbytes, gespeichert im KO-Feld `bildInhalte`, nie im Rumpf.
+export {
+  bildInhalteAusRumpf,
+  inhaltskennungAusBytes,
+  inhaltskennungAusDatenUrl,
+  INHALTSKENNUNG_PRAEFIX,
+  type BildInhalt,
+  type BildObjektDaten,
+} from "./src/bildinhalt";

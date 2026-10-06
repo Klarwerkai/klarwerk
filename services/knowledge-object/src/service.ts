@@ -6,6 +6,9 @@ import type { TxContext } from "../../db-tx";
 // JOB 3111 · B1b: searchImageNames ist derselbe Pfad für die BENENNUNGEN (alt-Texte) — ein
 // Scanner, ein Deckel, dieselben drei Schreibränder wie bei den Fußnoten.
 import {
+  type BildInhalt,
+  type BildObjektDaten,
+  bildInhalteAusRumpf,
   htmlToPlainText,
   sanitizeHtml,
   searchCaptionTexts,
@@ -362,6 +365,10 @@ export interface KoServiceDeps {
   // Autorschaft.
   ruecknahmeFrist?: number;
   onError?: (context: string, error: unknown) => void;
+  // R-0098 (inhaltskennung-zweitbegriff): liest die gespeicherte data-URL eines Objekt-Store-Bildes,
+  // damit auch ein `/api/objects/<id>/raw`-Bild seine Inhaltskennung bekommt. Als injizierte
+  // Funktion — KEIN Import über die Modulgrenze. Fehlt sie, ist die Kennung solcher Bilder `null`.
+  bildObjektDaten?: BildObjektDaten;
 }
 
 /**
@@ -750,6 +757,8 @@ export class KoService {
   // JOB 3071 R3: Frist und Fehlerkanal der Rücknahme-Vorablesung (s. KoServiceDeps).
   private readonly ruecknahmeFrist: number;
   private readonly onError: (context: string, error: unknown) => void;
+  // R-0098: s. KoServiceDeps.bildObjektDaten.
+  private readonly bildObjektDaten: BildObjektDaten | undefined;
   // SCRUM-509 R2 / 507 R2: EIN per-KO Schreib-Lock serialisiert die zueinander wettlaufenden KO-
   // Mutationen (Vertraulichkeit setzen, Validierungsstatus setzen, Revision). So gibt es kein Inter-
   // leave zwischen Lesen und Schreiben (kein TOCTOU, kein Lost-Update, keine fälschlich gültige
@@ -782,6 +791,13 @@ export class KoService {
       ((context, error) => {
         console.error(`[kos] ${context}:`, error);
       });
+    this.bildObjektDaten = deps.bildObjektDaten;
+  }
+
+  // R-0098 (inhaltskennung-zweitbegriff): die Inhaltskennungen der Bilder eines Rumpfes — das
+  // abgeleitete Feld `bildInhalte`, getrennt vom Vorkommensanker im Rumpf (structure/bildinhalt.ts).
+  private bildInhalteVon(bodyHtml: string | null | undefined): Promise<BildInhalt[]> {
+    return bildInhalteAusRumpf(bodyHtml, this.bildObjektDaten);
   }
 
   // SCRUM-523 P.3 (WP2): den Purge-Aufräum-Hook spät verdrahten (die App erstellt conflicts/overlaps/
@@ -952,6 +968,14 @@ export class KoService {
     return this.withKoLock(id, async () => {
       const before = await this.require(id);
       const { updated, value, snapshot, audit } = build(before);
+      // R-0098: Hat sich der Rumpf geändert, wird `bildInhalte` neu abgeleitet. `build` ist
+      // synchron, das Lesen eines Objekt-Store-Bildes nicht — deshalb hier, noch vor dem Schreiben.
+      // Ein geänderter Rumpf heißt immer ein frisch gebautes Objekt (`naechsteFassung`); es wird
+      // an Ort und Stelle ergänzt, damit auch `value` (das oft genau dieses Objekt ist oder
+      // enthält) die neue Ableitung trägt. Unveränderter Rumpf: das Feld reist unverändert mit.
+      if (updated !== before && updated.bodyHtml !== before.bodyHtml) {
+        updated.bildInhalte = await this.bildInhalteVon(updated.bodyHtml);
+      }
       if (this.withTx) {
         // JOB 2704 D1: die vier Schritte in EINER Transaktion — Reihenfolge wie im Fallback unten,
         // ohne Kompensation (s. o.). Jeder Fehler verlässt den Transaktionskörper; withPgTx rollt
@@ -2197,6 +2221,8 @@ export class KoService {
       // JOB 3111 · B1b: dieselbe Zusage für die Benennungen — ein Objekt, das nach dieser Regel
       // gespeichert wird, trägt BEIDE Suchfelder immer (auch [] bei „keine Bilder/keine alt-Texte").
       imageNames: searchImageNames(bodyHtml),
+      // R-0098: je Bild Vorkommensanker + Inhaltskennung, getrennt vom Rumpf (auch [] ohne Bilder).
+      bildInhalte: await this.bildInhalteVon(bodyHtml),
       conditions: input.conditions ?? [],
       measures: input.measures ?? [],
       type: input.type,
@@ -5582,6 +5608,8 @@ export class KoService {
           captionTexts: searchCaptionTexts(nextBody),
           // JOB 3111 · B1b: der dritte Schreibrand (Dokumentinhalt übernehmen) setzt beide Felder.
           imageNames: searchImageNames(nextBody),
+          // R-0098: und die Inhaltskennungen der Bilder, wie beim Anlegen und Überarbeiten.
+          bildInhalte: await this.bildInhalteVon(nextBody),
           version,
           trust: 0, // Revisions-Semantik unverändert: Bewertungen der Vorversion zählen nicht mehr.
           status: "offen", // muss neu validiert werden
