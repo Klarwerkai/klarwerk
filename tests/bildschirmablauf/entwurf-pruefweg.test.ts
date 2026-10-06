@@ -10,8 +10,6 @@
 //
 // Originalkriterien: K1, K2, K3, K4, K5 (Serverrand), K6, K8. Die KI-Prüfung nach dem Einreichen
 // läuft mit dem ECHTEN Hintergrund-Worker des Bestands; `fetch` wird über den ganzen Weg beobachtet.
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Ablauf } from "../../apps/web/src/api/types";
 import {
