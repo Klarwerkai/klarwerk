@@ -161,6 +161,7 @@ async function setup() {
       queue.enqueued += 1;
     },
     has: () => false,
+    laeuft: () => false,
     queuedCount: () => 0,
     idle: () => Promise.resolve(),
   };

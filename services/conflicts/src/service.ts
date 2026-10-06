@@ -95,7 +95,14 @@ export class ConflictService {
       createdAt: new Date(this.now()).toISOString(),
     };
     await this.repo.insert(conflict);
-    await this.audit?.record({ actor, action: "conflict.created", target: conflict.id });
+    // R-0766: der Beleg nennt die beiden beteiligten Wissensobjekte — damit die Herkunftskette am
+    // Objekt den Konflikt und seine Folgeereignisse (Ziel = Konflikt-Id) zuordnen kann.
+    await this.audit?.record({
+      actor,
+      action: "conflict.created",
+      target: conflict.id,
+      payload: { koIds: [conflict.koA, conflict.koB] },
+    });
     return conflict;
   }
 
@@ -144,7 +151,12 @@ export class ConflictService {
       actor,
       action: "conflict.auto-created",
       target: conflict.id,
-      payload: { trigger: detector.trigger, method: detector.method },
+      payload: {
+        trigger: detector.trigger,
+        method: detector.method,
+        // R-0766: wie bei `conflict.created` — die beteiligten Objekte stehen im Beleg.
+        koIds: [conflict.koA, conflict.koB],
+      },
     });
   }
 
@@ -585,6 +597,15 @@ export class ConflictService {
       }
     }
     return result;
+  }
+
+  // Aufnahme gesamt-auditprotokoll, Lauf 2 (R-0766): die Kennungen ALLER Konflikte, an denen das
+  // Objekt beteiligt ist — offen UND gelöst, ohne Versionsfilter. Die Kette am Objekt findet darüber
+  // Altbelege, die das Objekt selbst nicht nennen (Belegformat vor Lauf 1 ohne `koIds`). Nur Kennungen,
+  // kein Inhalt: der Leseweg dafür (`GET /api/audit/ko/:koId/findings`) steht hinter derselben Tür wie
+  // das Protokoll, das diese Kennungen ohnehin als Ziel führt.
+  async idsForKo(koId: string): Promise<string[]> {
+    return (await this.repo.all()).filter((c) => c.koA === koId || c.koB === koId).map((c) => c.id);
   }
 
   // FR-CON-04: Zähler für das Sidebar-Badge.

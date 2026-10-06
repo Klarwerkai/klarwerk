@@ -19,13 +19,27 @@
 // Alles hier ist reine Textarbeit; die DOM-Seite steht mit schmalen Struktur-Typen in
 // `probeschnitt.test.ts` — dieselbe Bauform wie `tests/app/klara-panel-fixture.ts`.
 import { readFileSync } from "node:fs";
+import { panelQuelle, panelTeile } from "../support/panelquelle";
 import { repoPfad } from "../support/repoPfad";
 
-/** Die eine Datei, um die es geht. In diesem Auftrag wird sie mit keinem Zeichen verändert. */
+/** Die Datei, auf die das Manifest zeigt — seit R-1611 nur noch das Markup des Fensters. */
 export const TASKPANE_RELATIV = "apps/web/public/word-addin/taskpane.html";
 
+/**
+ * Das Fenster als EIN Dokument — Markup, Stil und Skript an ihren Stellen, so wie es bis zum
+ * echten Schnitt (AUFNAHME 20260922 · R-1611) in `taskpane.html` stand. Byte-gleich belegt in
+ * `schnitt-echt.test.ts` gegen die Git-Blob-Kennung des Basisstands.
+ */
 export function taskpaneQuelle(): string {
-  return readFileSync(repoPfad(TASKPANE_RELATIV), "utf8");
+  return panelQuelle();
+}
+
+/**
+ * Der ECHTE Schnitt: die drei Dateien, wie sie im Baum liegen und ausgeliefert werden. Gleiche
+ * Form wie der mechanische Probeschnitt, damit dieselben Messungen an beiden laufen.
+ */
+export function echterSchnitt(): Probeschnitt {
+  return panelTeile();
 }
 
 /**
@@ -41,6 +55,20 @@ export const RUECKWEG_DATEI = "rueckweg.js";
 
 export function rueckwegQuelle(): string {
   return readFileSync(repoPfad(RUECKWEG_RELATIV), "utf8");
+}
+
+/**
+ * Zerlegungsauftrag Bestandsblick — EINE WEITERE AUSGELIEFERTE SKRIPTDATEI DES FENSTERS.
+ *
+ * Sie trägt den Abschnitt KW-MARKE Zeile für Zeile. `taskpane.html` lädt sie unmittelbar nach
+ * `taskpane.js`, also läuft sie dort, wo der Abschnitt vorher stand: am Ende des Skripts.
+ */
+export const MARKE_RELATIV = "apps/web/public/word-addin/marke.js";
+/** Der Dateiname, unter dem sie neben `taskpane.html` liegt (und so auch im `src` steht). */
+export const MARKE_DATEI = "marke.js";
+
+export function markeQuelle(): string {
+  return readFileSync(repoPfad(MARKE_RELATIV), "utf8");
 }
 
 // ------------------------------------------------------------------------------------------------

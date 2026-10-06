@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { woerterbuchQuelleAus } from "../support/woerterbuchquelle";
 
 describe("KW-PROD-27: Capture Submit Flow", () => {
   it("schickt den fortgesetzten Studio-Draft MIT dem Promote — ohne vorgeschalteten PUT", () => {
@@ -96,10 +97,12 @@ describe("KW-PROD-29: Frontdoor Save/Submit State", () => {
       resolve(process.cwd(), "apps/web/src/components/CaptureDraftList.tsx"),
       "utf8",
     );
-    const i18nSource = readFileSync(resolve(process.cwd(), "apps/web/src/i18n.ts"), "utf8");
+    const i18nSource = woerterbuchQuelleAus(resolve(process.cwd(), "apps/web/src/i18n.ts"));
 
     expect(source).toContain("draftScopeLabel");
-    expect(source).toContain("Admin-Ansicht: alle Entwürfe");
+    // Entscheidung Pedi `debbb8e8`: Entwürfe sind privat — auch die Admin-Ansicht sieht nur die
+    // eigenen. Die Plakette „Admin-Ansicht: alle Entwürfe" wäre eine falsche Reichweitenangabe.
+    expect(source).not.toContain("Admin-Ansicht: alle Entwürfe");
     expect(source).toContain("Meine Entwürfe");
     expect(listSource).toContain("formatDraftTimestamp");
     expect(listSource).toContain("draftAuthorName");

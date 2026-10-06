@@ -121,6 +121,52 @@ abzubrechen; scheitert auch der Rückfall, sagt die Ergebniszeile das (**Exit 9*
 Der ganze Ablauf steht in `docs/operations/maintenance-update-process.md` §6.1; geprüft wird er in
 `tests/insel-update/`.
 
+### Die ganze Strecke am echten Paket
+
+`tests/insel-auslieferung/release-update-rueckfall.integration.test.ts` fährt genau den Weg oben
+mit **echten ZIPs** aus diesem Bauer — nicht mit nachgestellten Releases:
+
+1. **Bau** je Paket in einem eigenen Klon seines Standes, verpackt mit `zip`: die Vorgängerversion
+   `1.0.0-beta.1.580` (Commit `fdeb3c04`, die erste Fassung, deren eigener Startbefehl startet), die
+   aktuelle Korrekturausgabe und zwei Varianten davon (`…-startfehler`: Startabbruch im
+   Startvertrag, bevor ein Speicher geöffnet wird; `…-nichtumkehrbar`: eine zusätzliche
+   IRREVERSIBEL-Stufe).
+2. **Zielumgebung** ohne Repo (Wegwerfordner): Zips hineinkopieren, dort hashen, mit `unzip`
+   auspacken, Erstinstallation über `install.command` des Vorgängers.
+3. **Browser** (Chromium, eigenes Profil je Anmeldung): Ersteinrichtung an der Maske, DOCX über
+   „Erfassen → Datei → Ganzes Dokument übernehmen", speichern, einreichen, am Eintrag Inhalt,
+   Quellenvermerk und die **heruntergeladene Originaldatei** (Abdruck) wiederlesen. Verlangt wird
+   jeder Absatz der Prüfdatei und ein Titel; nach Update, Rückfall und Abbrüchen muss der Eintrag
+   (Titel, vollständiger Rumpftext, Quellenvermerk, Datei) GENAU dem ersten Wiederlesen gleichen.
+4. **Update** mit `…/current/scripts/insel/update-einspielen.sh <zip>`, **Startfehler** mit
+   automatischem Rückfall, **Abbrüche** (ohne `unzip`, beschädigtes Zip, nicht umkehrbar,
+   Wiederholung) — jeweils mit Prozess, Port, Health-Version, Sicherung und Bestand gemessen.
+5. Beides **zweimal**: mit dem eigenen Start (`nohup start.command`, kein Agent geladen) und mit einem
+   **echten launchd-Agenten** (`launchctl kickstart -k`, eigenes Label). Der launchd-Weg braucht
+   macOS; auf Linux wird dieser Teil rot, nicht übersprungen.
+
+Aufruf: `npx vitest run --config vitest.integration.config.ts tests/insel-auslieferung/` (braucht
+`git`, `zip`, `unzip`, `lsof`, Chromium aus `playwright`, Netz oder npm-Zwischenspeicher für
+`npm ci`). Belege je Lauf unter `.local/run/insel-auslieferung/<zeitstempel>/`. Nicht Teil des
+Tors (`tools/check`); PostgreSQL wird auf diesem Weg **nicht** geprüft — er benutzt den
+Journalbetrieb, dessen Warnung („… NICHT prod-tauglich …") im Serverprotokoll stehen bleibt.
+
+**Bekannte Grenze beim Update AUS einer älteren Fassung:** Bis einschließlich dieser Korrektur tat
+`schema-vertrag.mjs` nichts, wenn man es über `current` rief (der dokumentierte Weg) — die
+Vertragsprüfung, der `SCHEMA-STAND` und der Versionsbeleg des Rückfalls fielen still aus. Behoben
+ist das im Paket ab dieser Korrekturausgabe. Wer von einer älteren Fassung aus aktualisiert, fährt
+aber deren `update-einspielen.sh`: dieses eine Update läuft noch ohne wirksame Vertragsprüfung und
+ohne `SCHEMA-STAND` (das nächste Update holt den Stand aus dem Vertrag der laufenden Fassung nach).
+Die Korrekturausgabe bringt gegenüber dem Vorgänger `1.0.0-beta.1.580` neue Stufen mit
+(gemessen: `KO_BEARBEITUNG_SCHEMA`, `DOKUMENTAKTE_SCHEMA`, `CONFLUENCE_IMPORT_SCHALTER_SCHEMA`,
+`MANAGEMENT_PROFILE_SCHEMA`), alle **ADDITIV**; keine Stufe des Vorgängers entfällt oder ändert ihre
+Risikoklasse. Der bestehende Vertragsprüfer nennt diesen Übergang verträglich (Exit 0) — die
+fehlende Prüfung beim ersten Update aus einer älteren Fassung hätte hier also nichts abgelehnt.
+Bringt eine künftige Ausgabe eine IRREVERSIBLE Stufe mit oder fehlt ihr eine Stufe des Vorgängers,
+gilt das nicht mehr: dann liefe dieses eine Update ohne die Sperren aus Exit 3/4.
+`tests/insel-auslieferung/` (K1a) prüft den Übergang am echten Paket und wird schon bei jeder
+nicht additiven neuen Stufe rot.
+
 ## App starten
 
 ```bash

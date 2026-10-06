@@ -16,6 +16,7 @@ import type {
   AssignmentSummary,
   AssistPreset,
   AssistResult,
+  AuditChainExport,
   AuditEntry,
   AuditVerifyReport,
   BearbeitungsLage,
@@ -23,6 +24,8 @@ import type {
   BeziehungSetzenBody,
   BeziehungWiderrufBody,
   BusFactorEntry,
+  CategoryProfile,
+  CategoryProfileInput,
   Confidentiality,
   Conflict,
   ConflictSelfTestResult,
@@ -75,6 +78,7 @@ import type {
   LesevariantenUebersicht,
   LibraryImageSearchResponse,
   LiveWall,
+  ManagementProfiles,
   ManagementSnapshot,
   MediaAnalysis,
   ModelRunAuswertungAntwort,
@@ -93,7 +97,10 @@ import type {
   ReasonerConfigStatus,
   ReasonerProbeResult,
   ReasonerStatus,
+  RetirementEntry,
+  RetirementHorizon,
   ReviewAction,
+  RiskHorizonView,
   Role,
   SicherungenAuskunft,
   Sichtmetrik,
@@ -206,9 +213,21 @@ export interface KoDiskussionsbeitrag extends KoComment {
 
 // PUT /api/kos/:id — ein Mutations-Endpunkt, per {action} verzweigt.
 export type KoAction =
-  | { action: "rate"; verdict: Verdict }
+  // R-0247: `duplicateAcknowledged` ist die ausdrückliche Bestätigung „offene Dublette gesehen".
+  // Sie wird NUR mitgeschickt, wenn sie gegeben wurde; ohne offene Dublette bleibt die Nutzlast
+  // unverändert.
+  // R-0238: `widerspruch` NUR an der Ablehnung — das Objekt, dem widersprochen wird, und die Art.
+  // Der Server legt dann im selben Aufruf einen Konfliktvorschlag an (`ko-routes.ts`, `rate`).
+  | {
+      action: "rate";
+      verdict: Verdict;
+      duplicateAcknowledged?: true;
+      widerspruch?: { koB: string; type: ConflictType; description: string };
+      // R-0238 · Nacharbeit 8: nur die fehlenden Konfliktschritte, ohne neue Bewertung.
+      fortsetzungFuerFassung?: number;
+    }
   // Pedi 05.07.: Admin-Override „als wahr kennzeichnen" — schließt die Validierung komplett ab.
-  | { action: "admin-validate" }
+  | { action: "admin-validate"; duplicateAcknowledged?: true }
   | { action: "assign"; userIds: string[] }
   // ================================================================================================
   // JOB 3667 R3 — `expectedVersion` AM REVISE: DER BEDINGTE SCHREIBZUGRIFF, VOM CLIENT AUS NUTZBAR.
@@ -292,6 +311,8 @@ export type KoAction =
   // sie ginge am Fall vorbei (s. `KnowledgeObject.metadataRevision` in `api/types.ts`).
   | { action: "category"; category: string; expectedMetadataRevision?: number }
   | { action: "tags"; tags: string[]; expectedMetadataRevision?: number }
+  // R-0431 (K2): das Fachgebiet setzen/ändern; leer entfernt die Angabe (ko-routes.ts `domain`).
+  | { action: "domain"; domain: string }
   // SCRUM-415: Vertraulichkeitsstufe setzen/ändern (mit Audit).
   | { action: "confidentiality"; level: Confidentiality }
   | {
@@ -945,6 +966,12 @@ export const endpoints = {
     // SCRUM-439: aktive Integritätsprüfung der Audit-Kette (Admin-Knopf „Integrität geprüft").
     // AUFTRAG-mega14 Block A: der Bericht nennt jetzt auch die URSACHE einer Abweichung.
     verify: () => api.get<AuditVerifyReport>("/audit/verify"),
+    // R-0613: die ganze Kette samt Kopf als Datei; der Abruf wird selbst protokolliert.
+    exportChain: () => api.get<AuditChainExport>("/audit/export"),
+    // R-0766 (Lauf 2): Kennungen aller Konflikte und Überschneidungen eines Objekts, auch
+    // abgeschlossener — damit die Kette am Objekt Altbelege ohne Objektbezug zuordnen kann.
+    koFindings: (koId: string) =>
+      api.get<{ ids: string[] }>(`/audit/ko/${encodeURIComponent(koId)}/findings`),
   },
   // SCRUM-121: Objekt-/Attachment-Speicher — Original via Referenz statt Inline im KO.
   objects: {
@@ -1028,6 +1055,16 @@ export const endpoints = {
   // SCRUM-120 / FE-MGMT: Management-/Wissenskapital-Snapshot (read-only).
   management: {
     snapshot: () => api.get<ManagementSnapshot>("/management/snapshot"),
+    // R-1639 / R-2183 (Nacharbeit 3): Bereichsblick (eigene Bereiche) und Pflege seiner Eingänge.
+    riskHorizon: () => api.get<RiskHorizonView>("/management/risk-horizon"),
+    profiles: () => api.get<ManagementProfiles>("/management/profiles"),
+    setCategoryProfile: (body: CategoryProfileInput) =>
+      api.put<CategoryProfile>("/management/profiles/category", body),
+    setRetirement: (userId: string, horizonMonths: RetirementHorizon | null) =>
+      api.put<{ entry: RetirementEntry | null }>(
+        `/management/profiles/retirement/${encodeURIComponent(userId)}`,
+        { horizonMonths },
+      ),
   },
   // SCRUM-165: read-only Einsicht in jüngste ModelRuns (nur Metadaten).
   modelRuns: {
@@ -1224,6 +1261,9 @@ export const endpoints = {
   // „ausgeschaltet" melden können muss. Begründung ausführlich in import-access-routes.ts.
   importAccess: {
     confluence: () => api.get<ImportAccessStatus>("/import/confluence/zugang"),
+    // R-0134 / R-1005: der Betreiberschalter — genau ein Ja/Nein, die Antwort ist die neue Auskunft.
+    confluenceSchalter: (an: boolean) =>
+      api.put<ImportAccessStatus>("/import/confluence/schalter", { an }),
   },
   users: {
     list: () => api.get<PublicUser[]>("/users"),
@@ -1335,5 +1375,11 @@ export const endpoints = {
       api.post<Anweisung>(`/gesamtanweisungen/${id}/vorlegen`, { version }),
     entscheiden: (id: string, version: number, entscheidung: "angenommen" | "abgelehnt") =>
       api.post<Anweisung>(`/gesamtanweisungen/${id}/entscheiden`, { version, entscheidung }),
+    // QUELLENÄNDERUNGEN: eine neuere Fassung EINES Abschnitts bewusst übernehmen.
+    uebernehmen: (id: string, version: number, bausteinId: string, aufVersion: number) =>
+      api.post<Anweisung>(`/gesamtanweisungen/${id}/bausteine/${bausteinId}/uebernehmen`, {
+        version,
+        aufVersion,
+      }),
   },
 };

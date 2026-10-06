@@ -18,7 +18,7 @@ import { SourceEvidence } from "./SourceEvidence";
 //   Freigabe-Status/-Datum. (Ein dedizierter validiert-von/-am-Vertrag fehlt noch — siehe Bericht;
 //   hier wird nur EHRLICH das gezeigt, was der KO-Vertrag trägt, nichts geraten.)
 // - ZONE 3 (Sekundär, kompakt): Kategorie · Verantwortlich · Version · Erfasst am.
-// - EINGEKLAPPT: Bedingungen · Maßnahmen · Tags (weitere Historie/Lineage/Evidence bleiben in der
+// - EINGEKLAPPT: Bedingungen · Maßnahmen · Schlagwörter (weitere Historie/Lineage/Evidence bleiben in der
 //   Sidebar der Seite).
 export function KoReadView({
   ko,
@@ -105,7 +105,8 @@ export function KoReadView({
       {ko.conditions.length > 0 || ko.measures.length > 0 || ko.tags.length > 0 ? (
         <details className="rounded-card border border-hairline bg-surface">
           <summary className="cursor-pointer list-none px-4 py-2.5 font-mono text-micro uppercase tracking-wider text-muted-2">
-            {t("ko.read.moreDetails")}
+            {/* R-0432: „Schlagwörter" statt „Tags" — neuer Schlüssel, Begründung in i18n.ts. */}
+            {t("ko.read.weitereAngaben")}
           </summary>
           <div className="border-t border-hairline p-4">
             <KoReadDetails ko={ko} />

@@ -506,6 +506,9 @@ export interface AnzeigestatusHerkunft extends Record<AnzeigestatusEingang, Eing
   ungeprueft: Partial<Record<AnzeigestatusEingang, string>>;
 }
 
+/** R-0658: welche Art Schutzdaten der Server erkannt hat — Spiegel von `SchutzdatenArt`. */
+export type SchutzdatenArt = "personalnummer" | "kontodaten";
+
 export interface KnowledgeObject {
   id: string;
   title: string;
@@ -521,6 +524,9 @@ export interface KnowledgeObject {
   measures: string[];
   type: KnowledgeType;
   category: string;
+  // R-0431 / R-1728 / FR-LIB-01 (K2): das Fachgebiet, unabhängig von der Kategorie (Spiegel von
+  // services/knowledge-object/src/types.ts). Fehlt = kein Fachgebiet angegeben, nichts abgeleitet.
+  domain?: string;
   tags: string[];
   confidence: number;
   trust: number;
@@ -568,6 +574,9 @@ export interface KnowledgeObject {
   // Beleglage mitliefert, sagt allein der Routenvertrag (`ValidationBoardKo` weiter unten) — nur
   // dort ist `null` von „diese Antwort trägt die Auskunft nicht" unterscheidbar.
   confidentiality?: Confidentiality | null;
+  // R-0658: die Schutzdaten-Quarantäne des Servers (`services/knowledge-object/src/schutzdaten.ts`).
+  // Nur die ARTEN, nie die Werte. Fehlt das Feld, liegt das Objekt nicht in Quarantäne.
+  schutzdatenQuarantaene?: { arten: SchutzdatenArt[]; seit: string };
   // JOB 3034: WOHER die Stufe stammt — der Detailabruf schickt sie mit
   // (`services/app/src/routes/ko-routes.ts:598` → `discloseConfidentiality`), die Listenroute
   // (noch) nicht. Deshalb OPTIONAL: fehlt das Feld, wendet die Oberfläche dieselbe Regel selbst an
@@ -582,11 +591,16 @@ export interface KnowledgeObject {
   // JOB 3027 R2: `null` aus demselben Grund wie bei der Stufe darüber — die Board-Route sendet
   // `origin: ko.origin ?? null` (services/validation/src/board-herkunft.ts:128). Fehlend und `null`
   // heissen hier beide „unbekannt"; nur der Board-Vertrag trennt sie von „nicht in dieser Antwort".
-  origin?: "tell" | "studio" | "expert" | "frontdoor" | "word_addin" | null;
+  // R-0180/R-2108: `import` = aus der Import-Prüfwarteschlange von einem Menschen übernommen
+  // (nur am Wissensobjekt, nie am Entwurf — services/knowledge-object/src/types.ts).
+  origin?: "tell" | "studio" | "expert" | "frontdoor" | "word_addin" | "import" | null;
   // Pedi 05.07.: read-only Board-Anreicherung — Peer-Stimmen-Zähler (grün/gelb/rot) für „X von Y grün".
   reviewVotes?: { up: number; warn: number; down: number };
   // SCRUM-507 R2: Anzahl Bewertungen aus einer FRÜHEREN Revision — veraltet, zählen nicht mehr.
   staleVotes?: number;
+  // PRÜFSTATUS-ANZEIGE (N-0054): Spiegel von `services/knowledge-object/src/types.ts` — der Verweis
+  // auf die Validierungsentscheidung. Steht er da, hat ein Mensch fachlich entschieden.
+  validationDecisionRef?: { auditSeq: number; auditHash: string };
   asset: string | null;
   createdAt: string;
   history: HistoryEntry[];
@@ -618,6 +632,13 @@ export interface KnowledgeObject {
     // gilt für einen früheren Stand von Inhalt, Quellen, Einordnung oder Vertraulichkeit — er ist
     // nicht aktuell, gleich was Status und Abdeckung sagen.
     ueberholt?: boolean;
+    // PRÜFSTATUS-ANZEIGE (R-0208) · NUR LESEFASSUNG DES PRÜFBRETTS, nie gespeichert. `laeuft`
+    // (nur bei pending): der Worker bearbeitet den Job gerade — sonst ist er bloß ausstehend.
+    // `konfliktGefunden` (nur bei done): zu DIESEM Objekt als Subjekt steht ein offener, automatisch
+    // erkannter Konflikt, dessen Gegenseite der Leser sehen darf. Fehlt das Feld, ist es nicht
+    // erhoben — es heißt dann weder „kein Konflikt" noch „läuft nicht".
+    laeuft?: boolean;
+    konfliktGefunden?: boolean;
   };
 }
 
@@ -725,6 +746,18 @@ export interface AuditVerifyReport {
   firstDeviation?: { seq: number; at: string; action: string; kind: ChainDeviationKind };
 }
 
+// Aufnahme gesamt-auditprotokoll (R-0613): Export der Kette (GET /api/audit/export). Spiegelt
+// `AuditChainExport` aus services/audit/src/service.ts. `head` ist der Wert zum Ablegen außerhalb.
+export interface AuditChainExport {
+  format: "klarwerk-audit-export";
+  formatVersion: 1;
+  exportedAt: string;
+  count: number;
+  head: { seq: number; hash: string } | null;
+  inspection: AuditVerifyReport;
+  entries: AuditEntry[];
+}
+
 // SCRUM-422: Papierkorb-Zeile (Admin) — nur Metadaten.
 export interface TrashedKo {
   id: string;
@@ -824,7 +857,12 @@ export interface OverlapDetector {
   // die Anzeige führt dann konsistent über die Textdeckung (siehe overlapDetectorInfo.isModelFinding).
   confidence?: number;
   rationale?: string;
+  // R-0194: Herkunft des Kandidaten (Spiegel von services/conflicts OverlapDetector).
+  candidateSources?: CandidateSource[];
+  checksumSimilarity?: number;
 }
+
+export type CandidateSource = "metadaten" | "text" | "pruefsumme" | "abschnitt";
 
 export interface OverlapResolution {
   reason: OverlapResolutionReason;
@@ -1472,6 +1510,17 @@ export interface ImportItemInput {
   // er wird NIE aus `statement` nachgebildet (`statement` ist seit JOB 2703 der Anriss, nicht der
   // Text). Rein additiv; kein bestehender Aufrufer muss etwas mitgeben.
   bodyHtml?: string;
+  // R-0139 / R-0169 (Nacharbeit 2, bens F1): DIE QUELLANGABEN EINER EINGEREICHTEN DATEI. Der Server
+  // führt dieselben Felder am `ImportItem` (services/library-analytics/src/types.ts) und legt daraus
+  // Herkunfts-Anker und Quellrevision an; fiel das hier weg, ging die Herkunft schon im Browser
+  // verloren. Alle optional — fehlen sie, fehlt die Herkunft ehrlich.
+  provider?: string;
+  externalId?: string;
+  sourceVersion?: number;
+  url?: string;
+  // R-0169 (Nacharbeit 5): die von Klarwerk vergebene INTERNE Dokumentkennung — die nächste
+  // Fassung derselben Dokumentakte. Getrennt von `externalId` (Kennung im Quellsystem).
+  dokumentId?: string;
   // WP-IC-PAKET-1c (ROT-2): Decode-Marker des Server-Kandidaten — "decoded" heisst: Textfelder sind
   // kanonisch dekodiert, die Queue-Karte dekodiert NICHT erneut; fehlt er (Altbestand), defensiv nach.
   textCodec?: "decoded";
@@ -1787,6 +1836,78 @@ export interface MgmtScorePart {
   weight: number;
 }
 
+// R-0751 / FR-EXT-04 (Nacharbeit 1): die neun Faktoren der Quelle, wie der Server sie liefert
+// (services/management/src/types.ts). `value: null` = keine Eingangsdaten, nicht geschätzt.
+export type MgmtPriorityFactorKey =
+  | "busFactor"
+  | "criticality"
+  | "processProximity"
+  | "age"
+  | "sourceQuality"
+  | "conflictDensity"
+  | "repetition"
+  | "damagePotential"
+  | "protection";
+export type MgmtPriorityFlag = "busFactorOne" | "stale" | "highProtection";
+export interface MgmtPriority {
+  category: string;
+  score: number;
+  knownFactors: number;
+  factors: { key: MgmtPriorityFactorKey; value: number | null }[];
+  flags: MgmtPriorityFlag[];
+}
+
+// R-0751 / R-1639 / R-2183 (Nacharbeit 3): gepflegte Bereichsprofile und Ruhestandshorizonte
+// (services/management/src/profiles.ts) und der daraus abgeleitete Bereichsblick (horizon.ts).
+export type AssessmentLevel = "niedrig" | "mittel" | "hoch";
+export type RetirementHorizon = 24 | 36;
+export interface CategoryProfile {
+  category: string;
+  managerId: string | null;
+  criticality: AssessmentLevel | null;
+  processProximity: AssessmentLevel | null;
+  repetition: AssessmentLevel | null;
+  damagePotential: AssessmentLevel | null;
+  updatedAt: string;
+  updatedBy: string;
+}
+export type CategoryProfileInput = Omit<CategoryProfile, "updatedAt" | "updatedBy">;
+export interface RetirementEntry {
+  userId: string;
+  horizonMonths: RetirementHorizon;
+  dueAt: string;
+  updatedAt: string;
+  updatedBy: string;
+}
+export interface ManagementProfiles {
+  categories: CategoryProfile[];
+  retirement: RetirementEntry[];
+}
+export interface RiskHorizonBearer {
+  userId: string;
+  horizonMonths: RetirementHorizon;
+  // Nacharbeit 5: heutige Zugehörigkeit aus Frist und Bezugszeit (horizon.ts `currentHorizonOf`).
+  currentHorizon: RetirementHorizon | null;
+  dueAt: string;
+  koCount: number;
+  openKoIds: string[];
+  soleBearer: boolean;
+  openGaps: number;
+}
+export interface RiskHorizonArea {
+  category: string;
+  managerId: string | null;
+  criticality: AssessmentLevel | null;
+  singleSource: boolean;
+  koCount: number;
+  bearers: RiskHorizonBearer[];
+}
+export interface RiskHorizonView {
+  generatedAt: string;
+  seesAll: boolean;
+  areas: RiskHorizonArea[];
+}
+
 export interface ManagementSnapshot {
   generatedAt: string;
   overview: {
@@ -1813,7 +1934,7 @@ export interface ManagementSnapshot {
     net: number;
   };
   maturity: { stage: number; stageKey: string; progressPct: number };
-  priorities: { category: string; score: number; factors: { key: string; value: number }[] }[];
+  priorities: MgmtPriority[];
   recommendations: { key: string; severity: "hoch" | "mittel"; count: number }[];
   house: { category: string; koCount: number; validatedRatio: number; fragile: boolean }[];
   pilot: { days: number; created: number; validated: number }[];
@@ -2560,8 +2681,17 @@ export type FeatureFlags = Partial<Record<FeatureName, boolean>>;
 // eine AUSSAGE und kein Platzhalter: „es ist kein erfolgreicher Lauf belegt."
 export interface ImportAccessStatus {
   system: string;
-  /** Ist der Import eingeschaltet? Schalter aus ⇒ die Import-Routen existieren gar nicht. */
+  /**
+   * Ist der Import eingeschaltet? Freigegeben (Umgebung) UND vom Betreiber eingeschaltet — genau
+   * das, was die Import-Routen am Server durchsetzen.
+   */
   enabled: boolean;
+  /**
+   * R-0134 / R-1005: die zwei Teile von `enabled` (nur Confluence). `freigegeben` = Umgebung der
+   * Installation, `an` = Betreiberschalter (über `PUT /api/import/confluence/schalter` umlegbar).
+   * Fehlt, wenn der Server keinen Betreiberschalter kennt.
+   */
+  betreiber?: { freigegeben: boolean; an: boolean };
   /** Je Variable: benannt, und ob sie steht. Niemals ihr Wert. */
   credentials: { name: string; present: boolean }[];
   /** Kämen damit Zugangsdaten zustande? (Nicht: sind sie gültig — das wüsste nur ein Aufruf.) */
@@ -2696,6 +2826,47 @@ export interface BausteinLesestand {
   /** Steht DANEBEN, ersetzt nie. `null` = es gibt keine neuere Fassung. */
   aktualisierungsvorschlag: { aufVersion: number } | null;
   inhalt: BausteinInhalt;
+  /**
+   * QUELLENÄNDERUNGEN · hochgeladene Dateien der gebundenen Fassung — Momentaufnahmen.
+   * `null` und ein fehlendes Feld heissen UNBEKANNT, `[]` heisst „keine".
+   */
+  momentaufnahmen?: Momentaufnahme[] | null;
+}
+
+/** Eine hochgeladene Datei: Stand des Hochladens, ohne Verbindung zum Original. */
+export interface Momentaufnahme {
+  bezeichnung: string;
+  erfasstAm: string | null;
+}
+
+/**
+ * QUELLENÄNDERUNGEN · das Ergebnis der letzten Änderungsprüfung (Server: `PruefErgebnis`).
+ * Nur `aktuell` darf als „aktuell" gezeigt werden — `fehlgeschlagen` und `unvollstaendig` nie.
+ */
+export type PruefErgebnis =
+  | "aktuell"
+  | "aenderungen_gefunden"
+  | "fehlgeschlagen"
+  | "unvollstaendig"
+  | "keine_quellen";
+
+export interface Aenderungspruefung {
+  /** Wann nach neueren Fassungen gesehen wurde. `null` = unbekannt. */
+  pruefzeitpunkt: string | null;
+  ergebnis: PruefErgebnis;
+  gefundeneAenderungen: number;
+  fehlgeschlageneQuellen: number;
+  /** Eine automatische Überwachung ist nicht eingerichtet — der Server sagt es selbst. */
+  ueberwachung: "nicht_eingerichtet";
+}
+
+/** Ein bewusst übernommener Fassungswechsel (aus der Historie der Anleitung). */
+export interface UebernommeneAenderung {
+  bausteinId: string;
+  vonFassung: number;
+  aufFassung: number;
+  anweisungVersion: number;
+  uebernommenAm: string;
 }
 
 export interface AnweisungLesestand {
@@ -2715,6 +2886,13 @@ export interface AnweisungLesestand {
   verborgeneBausteine: number;
   /** Der Lückenvermerk vom Server — die Fläche erfindet keinen grünen Haken. */
   pruefanbindung: "nicht_angebunden";
+  /**
+   * QUELLENÄNDERUNGEN · optional, weil ältere Antworten sie nicht tragen. Fehlt sie, zeigt die Fläche
+   * GAR KEINE Prüfaussage — schon gar nicht „aktuell".
+   */
+  aenderungspruefung?: Aenderungspruefung;
+  /** `null` = Historie nicht lesbar (unbekannt), `[]` = keine Übernahme. */
+  uebernommeneAenderungen?: UebernommeneAenderung[] | null;
 }
 
 export interface VergleichsBefund {

@@ -148,21 +148,26 @@ const DIENST_VERMERKE = [
     // von `:3715` ein (Begründung dort bei `pruefeHerkunft`), deshalb bleiben die drei „erstellt"-
     // Fundstellen und ihre Nachbarn stehen, wo sie standen. Gemessen mit
     // `grep -n '"erstellt"' services/knowledge-object/src/service.ts`, nicht fortgeschrieben.
-    fundstellen: [2108, 2237],
+    // AUFNAHME 20260922 · gesamt-auditprotokoll (Lauf 3): NEU GEMESSEN (`grep -n`) — Erstanlage in
+    // `schreibeErstanlage`, Belegklammern an den Schreibwegen. Wortlaute und Zahl unverändert.
+    // Zusammenführung mit dem Dubletten-Rückzug: am zusammengeführten Dienst NEU GEMESSEN
+    // (`grep -n`), für alle Einträge dieser Tabelle. Wortlaute und Zahl unverändert.
+    // Erneute Integration des Hauptstands (Kandidat 170a42a0): wieder NEU GEMESSEN, alle Einträge.
+    fundstellen: [2272, 2468],
   },
   {
     wort: "erstellt (Dokumentinhalt übernommen)",
     schluessel: "ko.historyNote.createdFromDocument",
     en: "created (document content adopted)",
     nl: "aangemaakt (documentinhoud overgenomen)",
-    fundstellen: [2484],
+    fundstellen: [2702],
   },
   {
     wort: "erstellt (nachgezogen)",
     schluessel: "ko.historyNote.createdBackfilled",
     en: "created (backfilled)",
     nl: "aangemaakt (nagetrokken)",
-    fundstellen: [2898],
+    fundstellen: [3119],
   },
   {
     wort: "überarbeitet",
@@ -200,14 +205,15 @@ const DIENST_VERMERKE = [
     // Dubletten-Rückzug (BEN-R5-5): NEU GEMESSEN (`grep -n`), alle Fundstellen um 8 Zeilen (vor
     // `restore`) bzw. 17 Zeilen (danach) verschoben — die Rücknahme-Klammer in Deps/Feld/Konstruktor
     // und der gemeinsame Weg in `restore`. Wortlaute und Zahl der Vermerke UNVERÄNDERT.
-    fundstellen: [4493, 4610, 4706, 4895],
+    // Zusammenführung mit gesamt-auditprotokoll (Belegklammern, Erstanlage): NEU GEMESSEN (`grep -n`).
+    fundstellen: [4920, 5049, 5145, 5337],
   },
   {
     wort: "überarbeitet (Dokumentinhalt übernommen)",
     schluessel: "ko.historyNote.revisedFromDocument",
     en: "revised (document content adopted)",
     nl: "herzien (documentinhoud overgenomen)",
-    fundstellen: [5126, 5144],
+    fundstellen: [5568, 5582],
   },
 ] as const;
 

@@ -17,6 +17,7 @@ import { HelpTip } from "../components/HelpTip";
 import { PausedMarker, StaleMarker } from "../components/LoadState";
 import { KoAuthorLine } from "../components/trust";
 import { PageHeader } from "../components/ui";
+import { fallHref } from "../lib/fallAbsprung";
 import { gapLocaleTag } from "../lib/gapLocaleTag";
 import { type KoAuthorParts, koAuthorParts } from "../lib/koAuthor";
 import { groupLoadPhase, gruppeAngehalten, isGroupStale } from "../lib/loadingState";
@@ -180,11 +181,15 @@ export function MyTasks(): JSX.Element {
         )
       : []),
     // SCHEIBE D-019b: dieselbe Regel wie der Seitenleisten-Zähler, aus derselben Quelle.
-    ...(conflicts.data ?? [])
-      .filter(isUnresolvedConflict)
-      .map((c) =>
-        task({ id: c.id, label: c.description, typeKey: "task.conflict", to: "/konflikte" }),
-      ),
+    ...(conflicts.data ?? []).filter(isUnresolvedConflict).map((c) =>
+      task({
+        id: c.id,
+        label: c.description,
+        typeKey: "task.conflict",
+        // R-0961: direkter Absprung — die Konfliktfläche wählt genau diesen Fall vor.
+        to: fallHref("/konflikte", c.id),
+      }),
+    ),
     ...(board.data ?? []).map((k) =>
       task({
         id: k.id,
@@ -200,7 +205,7 @@ export function MyTasks(): JSX.Element {
         id: `lc-${id}`,
         label: kosById.get(id)?.title ?? id,
         typeKey: "task.revalidation",
-        to: "/lebenszyklus",
+        to: fallHref("/lebenszyklus", id),
         ...(authorOf(id) ? { author: authorOf(id) as KoAuthorParts } : {}),
       }),
     ),
@@ -212,7 +217,7 @@ export function MyTasks(): JSX.Element {
         id: g.id,
         label: g.redacted ? t("task.gapRedacted") : g.question,
         typeKey: "task.gap",
-        to: "/risiko",
+        to: fallHref("/risiko", g.id),
         ...(sprache ? { localeTag: sprache } : {}),
         // JOB 1111 / D-032: erst ab zwei — eine „1×" wäre Rauschen.
         ...(typeof g.askCount === "number" && g.askCount > 1 ? { askCount: g.askCount } : {}),
@@ -317,6 +322,13 @@ export function MyTasks(): JSX.Element {
   // ersetzten Zwilling desselben Verlaufsplatzes weg.
   const { pathname, key: eintragsSchluessel } = useLocation();
   const listenort = useRef<Verlaufsort | null>(null);
+  // Die gemerkte Stelle dieses Eintrags, solange sie noch nicht angefahren ist.
+  //
+  // N-0015 · BEN, Lauf 3 R1 (B1): Der Eintritt fuhr die Stelle SOFORT an — gegen eine Liste, deren
+  // Daten nach dem Rückweg oft noch nicht da sind. Begrenzt auf die Höhe des Ladezustands wurde aus
+  // 820 eine 0, und beim Eintreffen der Zeilen lief nichts mehr. Deshalb wartet die Stelle hier auf
+  // die Datenbereitschaft (`ladephase`) und wird erst dann, einmal, angefahren.
+  const offeneStelle = useRef<number | null>(null);
   useLayoutEffect(() => {
     const ort: Verlaufsort = {
       pfad: pathname,
@@ -325,21 +337,30 @@ export function MyTasks(): JSX.Element {
     };
     listenort.current = ort;
     verwirfUeberholtePositionen(ort);
-    // Nur so weit, wie die Liste JETZT reicht: eine erledigte Aufgabe macht sie kürzer, und ein
-    // Sprung ins Leere wäre schlimmer als gar keiner. Auf einen späteren, längeren Stand wird
-    // ausdrücklich nicht gewartet.
-    const machbar = document.documentElement.scrollHeight - window.innerHeight;
-    const ziel = begrenzteListenposition(leseListenposition(ort), machbar);
-    if (ziel !== null) {
-      window.scrollTo(0, ziel);
-    }
+    offeneStelle.current = leseListenposition(ort);
     return () => {
       const verlassen = listenort.current;
       if (verlassen) {
-        merkeListenposition(verlassen, window.scrollY);
+        // Wer die Seite verlässt, bevor die Daten kamen, war nie an einer anderen Stelle: die
+        // gemerkte bleibt, statt von der 0 des Ladezustands überschrieben zu werden.
+        merkeListenposition(verlassen, offeneStelle.current ?? window.scrollY);
       }
     };
   }, [pathname, eintragsSchluessel]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `pathname`/`eintragsSchluessel` sind der AUSLÖSER (neuer Eintrag bei schon geladenen Daten), nicht gelesene Größen.
+  useLayoutEffect(() => {
+    if (ladephase !== "loaded" || offeneStelle.current === null) {
+      return;
+    }
+    // Nur so weit, wie die GELADENE Liste reicht: eine erledigte Aufgabe macht sie kürzer, und ein
+    // Sprung ins Leere wäre schlimmer als gar keiner.
+    const machbar = document.documentElement.scrollHeight - window.innerHeight;
+    const ziel = begrenzteListenposition(offeneStelle.current, machbar);
+    offeneStelle.current = null;
+    if (ziel !== null) {
+      window.scrollTo(0, ziel);
+    }
+  }, [ladephase, pathname, eintragsSchluessel]);
   // §4: der Weg aus dem Leerzustand liegt hinter EINEM Knopf, nicht als Textblock daneben.
   const [wieWeiter, setWieWeiter] = useState(false);
 
@@ -377,7 +398,7 @@ export function MyTasks(): JSX.Element {
           Er rendert nichts im Sichtfeld (`components/HelpTip.tsx`): die Zeilenform von JOB 3064
           bleibt unverändert. */}
       <HelpTip title={t("seitenhilfe.aufgaben.title")} body={t("seitenhilfe.aufgaben.body")} />
-      <PageHeader title={t("nav.tasks")} pageKey="aufgaben" />
+      <PageHeader title={t("nav.tasks")} lead={t("aufgaben.leitsatz")} pageKey="aufgaben" />
       {/* §4: EIN Segment statt sechs Monopillen — die Zähler bleiben, die Schrift wird Fließtext. */}
       <fieldset
         aria-label={t("task.kicker")}

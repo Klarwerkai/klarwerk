@@ -197,11 +197,13 @@ describe("JOB 3668 · R — der Papierkorb der Entwürfe an der echten Route", (
     ).toBe(200);
 
     // DIE RECHTE BLEIBEN, WIE SIE SIND (§4.5): der Admin sieht im Papierkorb, was er auch sonst
-    // sieht — alles. Der Papierkorb fügt keine Sichtbarkeit hinzu und nimmt keine weg.
+    // sieht. Der Papierkorb fügt keine Sichtbarkeit hinzu und nimmt keine weg. Seit Entscheidung
+    // Pedi `debbb8e8` (Aufnahme gesamt-entwurf-einreichen, Lauf :3) sind Entwürfe privat — der
+    // Admin sieht fremde Entwürfe nirgends mehr, also auch hier nicht (bis dahin: `[annas]`).
     await app.inject({ method: "DELETE", url: `/api/drafts/${annas}`, headers: anna });
     expect(
       ids(await app.inject({ method: "GET", url: "/api/drafts/trash", headers: admin })),
-    ).toEqual([annas]);
+    ).toEqual([]);
   });
 
   it("R5 · ein EINGEREICHTER Entwurf ist verbraucht, nicht gelöscht — er landet NICHT im Papierkorb", async () => {

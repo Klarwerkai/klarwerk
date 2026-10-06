@@ -10,7 +10,7 @@ import type {
   AssistResult,
   Confidentiality,
   DraftPayload,
-  KnowledgeObject,
+  SchutzdatenArt,
   StructureResult,
 } from "../../api/types";
 import { useSession } from "../../app/AuthContext";
@@ -48,6 +48,7 @@ import {
   newCreateOperationId,
 } from "../../lib/createOperation";
 import { isDemoContext } from "../../lib/demoPilotPath";
+import { deriveStatus } from "../../lib/displayStatus";
 import { CLEARED_DRAFT_BODY_HTML } from "../../lib/draftBody";
 import { erfassenFehlersatz } from "../../lib/erfassenFehlersatz";
 import { dominantCategory, pickExampleKo } from "../../lib/intakeExample";
@@ -59,7 +60,7 @@ import { toReasonerLocale } from "../../lib/reasonerLocale";
 import { draftProvenance } from "../../lib/reasonerProvenance";
 import { isEmptyHtml } from "../../lib/richText";
 import { type SpeechRec, diktatSprache, makeRec } from "../../lib/speechDictation";
-import { hasSpeechRecognition } from "../../lib/speechSupport";
+import { hasSpeechRecognition, istIosGeraet } from "../../lib/speechSupport";
 import type { TitelMitQuelle } from "../../lib/titelRangfolge";
 import { useAiBillable } from "../../lib/useAiBillable";
 import { umfangKurz } from "../../lib/vorschauUmfang";
@@ -75,6 +76,8 @@ import { HelpTip } from "../HelpTip";
 import { RichTextEditor } from "../RichTextEditor";
 import { RoleLink } from "../RoleLink";
 import { LiveReactionZone } from "../capture/intake/LiveReactionZone";
+import { StatusPill } from "../trust/StatusPill";
+import type { DisplayStatus } from "../trust/types";
 import { Menue, MenueEintrag, MenueFlaeche, MenueTrenner } from "./Menue";
 import {
   SymbolBild,
@@ -239,6 +242,12 @@ function diktatAnhaengen(bodyHtml: string, text: string): string {
 const BLATT_VERTRAULICHKEIT_HINWEIS_ID = "blatt-vertraulichkeit-hinweis";
 
 /**
+ * R-0658 (BEN, Nacharbeit 5): die `id` der Schutzdatenwarnung — aus demselben Grund eine Konstante
+ * wie oben: Warnung und `aria-describedby` der Erfolgszeile müssen dieselbe Kennung tragen.
+ */
+const BLATT_SCHUTZDATEN_WARNUNG_ID = "blatt-schutzdaten-warnung";
+
+/**
  * JOB 3141 (CAP-P1): Die `id` des Satzes, der sagt, warum das Blatt gerade nichts annimmt. Aus
  * demselben Grund eine Konstante wie oben: sie steht am Satz UND im `aria-describedby` des
  * Titelfeldes — der eine Grund gilt für beide Felder, also darf er nicht zweimal getippt werden.
@@ -265,7 +274,11 @@ export function Blatt({
 }): JSX.Element {
   const { i18n, t } = useTranslation();
   const { user } = useSession();
-  const strukturKostet = useAiBillable(["structure", "assist"]);
+  // Auftrag anzeige-kosten (R-0952): JE AUFGABE, nicht als Paar. Die Mehrfachform sagte „ja",
+  // sobald EINE der beiden kostet — lief dann die andere (lokal/deterministisch), stand der
+  // Kostensatz über einem Klick, der nichts kostet. Unten wird jede Auskunft an IHREN Lauf gebunden.
+  const strukturKostet = useAiBillable("structure");
+  const assistKostet = useAiBillable("assist");
   const { push } = useToast();
   const qc = useQueryClient();
   const { setGuard } = useNavGuard();
@@ -471,9 +484,7 @@ export function Blatt({
   const [assistAccepted, setAssistAccepted] = useState(false);
 
   // ---- Vorgang ---------------------------------------------------------------------------------
-  const [submittedKo, setSubmittedKo] = useState<Pick<KnowledgeObject, "id" | "title"> | null>(
-    null,
-  );
+  const [submittedKo, setSubmittedKo] = useState<Eingereicht | null>(null);
   // Aufnahme `gesamt-erfassung-einstieg` (R-0084): Nach dem Einreichen springt der Blick auf die
   // Erfolgszeile, statt auf dem gerade leer geräumten Blatt stehen zu bleiben. Fokus statt nur
   // Bildlauf: Tastatur und Screenreader landen damit auf „Eingereicht: …" und ihren drei Wegen.
@@ -510,6 +521,11 @@ export function Blatt({
     nonce: number;
   } | null>(null);
   const [diktatLaeuft, setDiktatLaeuft] = useState(false);
+  // FR-CAP-03: das noch nicht Endgültige, sofort sichtbar — reine Anzeige, nie im Rumpf.
+  const [diktatZwischen, setDiktatZwischen] = useState("");
+  // FR-CAP-03 / R-0925: ohne Spracherkennung (oder auf iOS) erklärt der Knopf auf Klick, warum —
+  // als sichtbarer Text, nicht nur im `title` eines gesperrten Knopfes (auf Touch unerreichbar).
+  const [diktatHinweisOffen, setDiktatHinweisOffen] = useState(false);
   const recRef = useRef<SpeechRec | null>(null);
   const diktatMoeglich = hasSpeechRecognition(window);
 
@@ -849,6 +865,7 @@ export function Blatt({
     }
     recRef.current = null;
     setDiktatLaeuft(false);
+    setDiktatZwischen("");
     getrennt.stop();
   }, []);
 
@@ -1308,7 +1325,15 @@ export function Blatt({
       submitOperationRef.current = null;
       submitDraftRef.current = null;
       setRestartOffer(null);
-      setSubmittedKo({ id: ko.id, title: ko.title });
+      // R-0658 (BEN, Nacharbeit 5): die Quarantäne-Auskunft des Servers wird NICHT verworfen —
+      // sie ist die Warnung, die der Mensch an genau dieser Stelle lesen muss (`BlattLage`).
+      const schutzdatenArten = ko.schutzdatenQuarantaene?.arten ?? [];
+      setSubmittedKo({
+        id: ko.id,
+        title: ko.title,
+        zustand: deriveStatus(ko),
+        ...(schutzdatenArten.length > 0 ? { schutzdatenArten } : {}),
+      });
       setTitle("");
       setBodyHtml("");
       setActiveDraftId(null);
@@ -1680,6 +1705,11 @@ export function Blatt({
   // Absender bis hierher nicht.
   const diktatUmschalten = (): void => {
     setOffenesMenue(null);
+    if (!diktatMoeglich) {
+      // Kein Rekorder, kein Start — nur die Erklärung auf- und zuklappen.
+      setDiktatHinweisOffen((offen) => !offen);
+      return;
+    }
     if (diktatLaeuft) {
       // Der Mensch selbst hält an: hier wird NICHT getrennt, also NICHT `diktatVomBlattTrennen`.
       // Sein Abschlussergebnis gehört ihm und soll noch ankommen — das ist der Unterschied zu den
@@ -1689,6 +1719,10 @@ export function Blatt({
       recRef.current?.stop();
       return;
     }
+    // Die Vorschau gehört nur einer LAUFENDEN Sitzung. `recRef` zeigt nach dem Ende weiter auf sie
+    // (das Abschlussergebnis darf noch ankommen, s. N7) — ein verspätetes Zwischenergebnis fiele
+    // also durch den Identitätsriegel und tauchte beim nächsten Start als fremder Text wieder auf.
+    let sitzungZu = false;
     const rec = makeRec(
       (text) => {
         if (recRef.current !== rec) {
@@ -1697,17 +1731,26 @@ export function Blatt({
         setBodyHtml((prev) => diktatAnhaengen(prev, text));
       },
       (beendet) => {
+        sitzungZu = true;
         if (recRef.current !== beendet) {
           return;
         }
         setDiktatLaeuft(false);
+        setDiktatZwischen("");
       },
       diktatSprache(i18n.language),
+      (text) => {
+        // Derselbe Identitätsriegel: eine getrennte oder beendete Sitzung malt nicht in dieses Blatt.
+        if (recRef.current === rec && !sitzungZu) {
+          setDiktatZwischen(text);
+        }
+      },
     );
     if (!rec) {
       return;
     }
     recRef.current = rec;
+    setDiktatZwischen("");
     rec.start();
     setDiktatLaeuft(true);
   };
@@ -2249,14 +2292,11 @@ export function Blatt({
         data-testid="blatt-werkzeug-diktieren"
         // JOB 3141 (CAP-P1): dieselbe eine Regel. Diktiertes reist über `setBodyHtml` in den Rumpf —
         // es wäre der eine Eingabeweg, der die fehlende Schreibfläche umginge.
-        disabled={!diktatMoeglich || !blattNimmtAn}
-        title={
-          diktatMoeglich
-            ? blattNimmtAn
-              ? undefined
-              : t("erfassen.laden.nichtBereit")
-            : t("capture.diktatUnsupported")
-        }
+        // Ohne Spracherkennung bleibt der Knopf bedienbar: sein Klick öffnet die Erklärung darunter.
+        disabled={!blattNimmtAn}
+        title={blattNimmtAn ? undefined : t("erfassen.laden.nichtBereit")}
+        aria-expanded={diktatMoeglich ? undefined : diktatHinweisOffen}
+        aria-controls={diktatMoeglich ? undefined : "blatt-diktat-na"}
         onClick={diktatUmschalten}
         className={`inline-flex items-center gap-1.5 text-[13px] ${
           !diktatMoeglich || !blattNimmtAn
@@ -2269,6 +2309,26 @@ export function Blatt({
         <SymbolMikrofon />
         {t("erfassen.werkzeug.diktieren")}
       </button>
+      {diktatLaeuft && diktatZwischen ? (
+        <span
+          data-testid="blatt-diktat-zwischen"
+          aria-live="polite"
+          className="max-w-[16rem] truncate text-[13px] italic text-muted-2"
+        >
+          {diktatZwischen}
+        </span>
+      ) : null}
+      {!diktatMoeglich && diktatHinweisOffen ? (
+        // `<output>` trägt die Rolle `status` von Haus aus — eine höfliche Live-Region ohne `role`.
+        <output
+          id="blatt-diktat-na"
+          data-testid="blatt-diktat-na"
+          className="basis-full rounded-btn bg-trust-warn-bg px-2.5 py-2 text-[12px] text-trust-warn-text"
+        >
+          {t("capture.diktatUnsupported")}
+          {istIosGeraet(window) ? ` ${t("diktat.iosTastatur")}` : null}
+        </output>
+      ) : null}
 
       <button
         type="button"
@@ -3315,7 +3375,7 @@ export function Blatt({
           <BlattLage
             fehler={blattFehler}
             erfolg={submittedKo}
-            kostet={strukturKostet && (structure.isPending || assist.isPending)}
+            kostet={(strukturKostet && structure.isPending) || (assistKostet && assist.isPending)}
             uebernommen={structureAccepted || assistAccepted}
             rumpfZurueckgehalten={rumpfZurueckgehalten}
             keptRichBody={structureKeptRichBody}
@@ -3380,6 +3440,22 @@ function AnhangListe({ bodyHtml }: { bodyHtml: string }): JSX.Element {
   return <p className="text-[12.5px] text-text">{t("erfassen.anhaenge.anzahl", { n: anzahl })}</p>;
 }
 
+/**
+ * AUFNAHME gesamt-entwurf-einreichen (R-0102, R-0111, R-1014): was nach dem Einreichen gilt. Neben
+ * Titel und Kennung reist der ZUSTAND des neuen Objekts mit — aus der Serverantwort abgeleitet
+ * (`deriveStatus`, dieselbe Ableitung wie Bibliothek und Antwortquellen), nicht angenommen.
+ */
+interface Eingereicht {
+  readonly id: string;
+  readonly title: string;
+  readonly zustand: DisplayStatus;
+  /**
+   * R-0658 (Nacharbeit 5): die Quarantäne-Auskunft des Servers (`schutzdatenQuarantaene.arten`) —
+   * nur die ARTEN, nie Werte. Sie trägt die Warnung in `BlattLage`.
+   */
+  readonly schutzdatenArten?: SchutzdatenArt[];
+}
+
 // ------------------------------------------------------------------------------------------------
 // Die Lage des Blattes — EIN Satz, nie eine Karte (Zustandsmodell §9). Fehler bekommt seinen Weg
 // zurück, Erfolg eine Zeile mit Link. „Gespeichert"/„eingereicht" steht nur nach Serverbestätigung.
@@ -3399,7 +3475,7 @@ function BlattLage({
   erfolgRef,
 }: {
   fehler: string | null;
-  erfolg: Pick<KnowledgeObject, "id" | "title"> | null;
+  erfolg: Eingereicht | null;
   kostet: boolean;
   uebernommen: boolean;
   /**
@@ -3434,17 +3510,35 @@ function BlattLage({
     // Verschachtelung, und React meldete das in jedem Testlauf. Der Browser bricht ein solches `<p>`
     // an der Stelle auf; die „eine Zeile" wäre dann genau bei der Rolle, die den Weg NICHT gehen
     // darf, zwei Zeilen gewesen. `inline-flex` an beiden Fassungen hält sie in der Zeile.
+    // R-0658 (BEN, Nacharbeit 5): hat der Server Schutzdaten erkannt, steht die Warnung als
+    // eigene Zeile UNTER der Erfolgszeile — `role="alert"`, damit sie angesagt wird, und über
+    // `aria-describedby` der Zeile zugeordnet, die nach dem Einreichen den Fokus bekommt.
+    const arten = erfolg.schutzdatenArten ?? [];
+    const warnung =
+      arten.length > 0
+        ? t("schutzdaten.warnung", {
+            arten: arten.map((art) => t(`schutzdaten.art.${art}`)).join(t("schutzdaten.und")),
+          })
+        : null;
     return (
       <div
         ref={erfolgRef}
         data-testid="blatt-lage"
         tabIndex={-1}
+        aria-describedby={warnung ? BLATT_SCHUTZDATEN_WARNUNG_ID : undefined}
         className="pointer-events-auto text-[13px] text-trust-pos-text"
       >
         {t("erfassen.eingereicht")}{" "}
         <Link className="font-semibold underline" to={`/wissen/${erfolg.id}`}>
           {erfolg.title}
-        </Link>
+        </Link>{" "}
+        {/* AUFNAHME gesamt-entwurf-einreichen (R-0102/R-0111): der Zustand steht AN der Zeile —
+            „Offen" bzw. „In Prüfung" statt raten. Die vorhandene `StatusPill`, kein neuer Satz und
+            kein neuer Schlüssel; die Zeile bleibt EINE Zeile (§9). Die KI-Prüfung läuft danach im
+            Hintergrund weiter (WP-SUBMIT-ASYNC); ihr Ergebnis steht am Objekt, nicht hier. */}
+        <span data-testid="blatt-lage-zustand" data-zustand={erfolg.zustand}>
+          <StatusPill status={erfolg.zustand} />
+        </span>
         <RoleLink
           className="ml-2 inline-flex items-center gap-1 font-semibold underline"
           hoverClassName="hover:opacity-80"
@@ -3456,6 +3550,17 @@ function BlattLage({
           <button type="button" onClick={aufNeuerEintrag} className="ml-2 font-semibold underline">
             {t("fd.newEntry")}
           </button>
+        ) : null}
+        {warnung ? (
+          <span
+            id={BLATT_SCHUTZDATEN_WARNUNG_ID}
+            role="alert"
+            data-testid="blatt-schutzdaten-warnung"
+            data-arten={arten.join(" ")}
+            className="mt-1 block text-trust-crit-text"
+          >
+            {warnung}
+          </span>
         ) : null}
       </div>
     );
@@ -3506,7 +3611,7 @@ function BlattLage({
     // mega62: der Kostenhinweis kommt aus SEINER Komponente, nicht aus einem zweiten `t()`-Aufruf.
     // Ein abgeschriebener Wortlaut wäre eine zweite Wahrheit über dieselben Kosten — und der
     // Sammler, der jede Auslösestelle prüft, sähe diese Fläche gar nicht.
-    // `billable` ist hier definitionsgemäß wahr: `kostet` IST `useAiBillable([...]) && läuft`.
+    // `billable` ist hier definitionsgemäß wahr: `kostet` IST „die LAUFENDE Aufgabe ist billable".
     return (
       <p data-testid="blatt-lage" className="pointer-events-auto text-[13px] text-muted">
         <AiCostHint billable />

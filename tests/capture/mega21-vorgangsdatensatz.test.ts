@@ -131,17 +131,21 @@ function bündel(objectId: string) {
 // 1. DER EIGENTÜMER (bens SB-1) — der rechtmäßige Wiederholversuch eines Admins.
 // ----------------------------------------------------------------------------------------------
 describe("mega21 A: der Eigentümer des Vorgangs ist der ANFRAGENDE, nicht der KO-Autor", () => {
-  it("ADMIN SENDET FREMDEN ENTWURF, Antwortverlust, rechtmäßiger Wiederholversuch ⇒ 200 mit DEMSELBEN Objekt", async () => {
-    // DER FALL, den mega20 falsch beantwortete. Bea schreibt einen Entwurf. Der Admin darf ihn
-    // absehen und absenden (canSeeDraft). Das entstehende Wissensobjekt trägt BEAS Autorschaft
-    // (FR-CAP-07, `draft.originalAuthor`) — der VORGANG aber gehört dem Admin, der ihn gestartet
-    // hat. mega20 verglich `known.author === author` und antwortete deshalb dem rechtmäßigen
-    // Wiederholversuch des Admins mit 409, für einen Vorgang, den er selbst gefahren hatte.
+  // ==========================================================================================
+  // AUFNAHME gesamt-entwurf-einreichen (Lauf :3) · Entscheidung Pedi `debbb8e8` — UMGEDREHT.
+  // ==========================================================================================
+  //
+  // Bis hierher stand an dieser Stelle „ADMIN SENDET FREMDEN ENTWURF … ⇒ 200 mit DEMSELBEN
+  // Objekt": der Admin durfte Beas Entwurf absehen und absenden (canSeeDraft), und der Fall belegte
+  // daran, dass der VORGANG dem Anfragenden gehört, nicht dem KO-Autor. Seit `debbb8e8` sind
+  // Entwürfe privat — der Admin sieht Beas Entwurf nicht und kann ihn deshalb auch nicht einreichen.
+  // Die Zusage „Eigentümer ist der Anfragende, nicht der Autor" bleibt belegt, und zwar am einzigen
+  // Weg, auf dem beide heute noch auseinanderlaufen: der Autor-Übergabe (`setAuthor`, dritter Fall).
+  it("ADMIN SENDET FREMDEN ENTWURF ⇒ abgewiesen, es entsteht NICHTS, Beas Entwurf bleibt (debbb8e8)", async () => {
     const { app, headers } = await setup();
     const bea = await zweiterNutzer(app, headers);
     const objectId = await objektAnlegen(app, headers);
 
-    // Bea legt IHREN Entwurf an.
     const entwurf = await app.inject({
       method: "POST",
       url: "/api/drafts",
@@ -151,52 +155,39 @@ describe("mega21 A: der Eigentümer des Vorgangs ist der ANFRAGENDE, nicht der K
     expect(entwurf.statusCode).toBe(201);
     const draftId = entwurf.json().id as string;
 
-    const payload = {
+    const versuch = await ausDokument(app, headers, {
       operationId: "admin-fremder-entwurf-1",
       draftId,
-      // AUFTRAG-mega22 Block C: `draftPayload` ist bei gesetztem `draftId` Pflicht.
       draftPayload: {},
       documents: bündel(objectId),
-    };
-
-    // Der ADMIN reicht ihn ein. Der Server führt aus — in der Wirklichkeit erreicht die Antwort
-    // den Browser nicht.
-    const erst = await ausDokument(app, headers, payload);
-    expect(erst.statusCode).toBe(201);
-    const ersterKo = erst.json();
-    // Der AUTOR ist Bea — genau das ist der Grund, warum `author` als Eigentümer untauglich war.
-    expect(ersterKo.author).toBe(bea.id);
-
-    // Der rechtmäßige Wiederholversuch DESSELBEN Admins.
-    const zweit = await ausDokument(app, headers, payload);
-    expect(zweit.statusCode).toBe(200); // mega20: 409.
-    expect(zweit.json().id).toBe(ersterKo.id);
-    expect(await bestand(app, headers)).toHaveLength(1);
+    });
+    expect(versuch.statusCode).toBe(403);
+    expect(versuch.body).not.toContain(INHALT.statement);
+    expect(await bestand(app, headers)).toHaveLength(0);
+    const beas = await app.inject({
+      method: "GET",
+      url: `/api/drafts/${draftId}`,
+      headers: bea.headers,
+    });
+    expect(beas.statusCode).toBe(200);
   });
 
   it("BEA dagegen bekommt auf DENSELBEN Schlüssel weiterhin einen Konflikt — und nichts vom Inhalt", async () => {
     // Die Kalibrierung der Zeile darüber. Die Bindung ist nicht weicher geworden, sondern nur an
     // die richtige Person geknüpft: Bea ist zwar AUTORIN des Objekts, aber nicht Eigentümerin des
     // Vorgangs. Ein Treffer über eine fremde Kennung liefert ihr nichts.
+    // Lauf :3 (debbb8e8): der Vorgang des Admins läuft nicht mehr über Beas (privaten) Entwurf,
+    // sondern als Erstanlage. Geprüft wird unverändert: derselbe Schlüssel gibt Bea nichts davon.
     const { app, headers } = await setup();
     const bea = await zweiterNutzer(app, headers);
     const objectId = await objektAnlegen(app, headers);
-    const entwurf = await app.inject({
-      method: "POST",
-      url: "/api/drafts",
-      headers: bea.headers,
-      payload: { ...INHALT },
-    });
-    const draftId = entwurf.json().id as string;
 
     const erst = await ausDokument(app, headers, {
       operationId: "admin-fremder-entwurf-2",
-      draftId,
-      draftPayload: {},
+      create: INHALT,
       documents: bündel(objectId),
     });
     expect(erst.statusCode).toBe(201);
-    expect(erst.json().author).toBe(bea.id);
 
     // ==========================================================================================
     // AUFTRAG-mega22 Block G — UMGEDREHTE ZUSICHERUNG (Statuscode), UNVERÄNDERTE SICHERHEIT.

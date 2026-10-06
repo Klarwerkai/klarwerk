@@ -53,9 +53,10 @@ import {
   type ReasonerTaskChoice,
 } from "../../services/reasoner";
 import { erteileKiFreigabe } from "../../services/reasoner/src/testhelfer-ki-freigabe";
+import { panelQuelleAus } from "../support/panelquelle";
 
 const TASKPANE = "apps/web/public/word-addin/taskpane.html";
-const HTML = readFileSync(resolve(process.cwd(), TASKPANE), "utf8");
+const HTML = panelQuelleAus(TASKPANE);
 
 const FRAGE = "Wie wird die Zylinderkopfdichtung XQ42 gewechselt?";
 const AKTEUR = "nutzer-1";

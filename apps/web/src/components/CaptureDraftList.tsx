@@ -41,6 +41,7 @@ import {
   DRAFT_SORT_LABEL_KEYS,
   DRAFT_SORT_STORAGE_KEY,
   draftCreatorIds,
+  draftExcerpt,
   draftListView,
 } from "../lib/draftListView";
 import { formatKoTimestamp } from "../lib/koDates";
@@ -253,6 +254,9 @@ export function CaptureDraftList(props: CaptureDraftListProps): JSX.Element | nu
     fallbackTitle,
   );
   const creatorIds = isAdmin ? draftCreatorIds(drafts) : [];
+  // AUFNAHME entwuerfe-verwalten (N-0065): der kurze Inhaltsauszug je Zeile, einmal je Lauf
+  // gerechnet. Kein Text → `null` → keine Zeile, kein Platzhalter.
+  const auszuege = new Map(visibleDrafts.map((d) => [d.id, draftExcerpt(d)] as const));
 
   // ==============================================================================================
   // DIE SUCH- UND SORTIER-BEDIENUNG — EINMAL GESCHRIEBEN, VON BEIDEN FLÄCHEN GEZEIGT.
@@ -462,12 +466,21 @@ export function CaptureDraftList(props: CaptureDraftListProps): JSX.Element | nu
               }`}
             >
               <div className="min-w-0 flex-1">
-                <div className="truncate text-[13px] font-semibold text-text">
+                <div className="text-[13px] font-semibold text-text">
                   {/* JOB 3503: der Titel trägt einen eigenen Träger — die Marken „in Bearbeitung"
                       und „gerade gespeichert" stehen DANEBEN und nicht darin, sonst läse ein
                       Titelvergleich sie mit. Dieselbe Trennung wie im Blatt-Zweig
-                      (`blatt-entwurf-eintrag-titel`, JOB 3266 R3). */}
-                  <span data-testid="entwurfsliste-eintrag-titel">
+                      (`blatt-entwurf-eintrag-titel`, JOB 3266 R3).
+
+                      AUFNAHME entwuerfe-verwalten (Ben Runde 2, B3-R): hier stand `truncate` am
+                      Zeilenträger — der Titel brach in der normalen Übersicht mit Auslassungs-
+                      punkten AM ENDE ab, obwohl der DOM-Text vollständig war. Dieselbe Behebung
+                      wie im Blatt-Zweig (JOB 3266 R3): der Titel bricht um (`break-words`), ein
+                      überlanges Wort bricht innerhalb; die Zeile darf höher werden. Gemessen im
+                      echten Browser in `tests/d1-meine-entwuerfe/zugang-schmal-chromium.test.ts`
+                      (Fall L2), gemountet als Klassenvertrag in
+                      `tests/entwuerfe-verwalten/abnahmefolge-gesamt.test.tsx`. */}
+                  <span data-testid="entwurfsliste-eintrag-titel" className="block break-words">
                     {draftTitle(d, fallbackTitle)}
                   </span>
                   {editingId === d.id ? (
@@ -481,6 +494,17 @@ export function CaptureDraftList(props: CaptureDraftListProps): JSX.Element | nu
                     </span>
                   ) : null}
                 </div>
+                {/* AUFNAHME entwuerfe-verwalten (N-0065): der kurze Inhaltsauszug, wörtlich aus
+                    dem Entwurf (`draftExcerpt`). Er steht UNTER dem Titel und nicht in dessen
+                    Träger — ein Titelvergleich liest ihn nicht mit. */}
+                {auszuege.get(d.id) ? (
+                  <p
+                    data-testid="entwurfsliste-eintrag-auszug"
+                    className="mt-0.5 line-clamp-2 break-words text-[12px] leading-snug text-muted"
+                  >
+                    {auszuege.get(d.id)}
+                  </p>
+                ) : null}
                 <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11.5px] text-muted">
                   <span>
                     {t("capture.draftCreatorMeta", { name: draftAuthorName(d, directory) })}

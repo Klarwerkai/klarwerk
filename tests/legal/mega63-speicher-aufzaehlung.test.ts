@@ -22,6 +22,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { woerterbuchQuelleAus } from "../support/woerterbuchquelle";
 
 const WURZEL = join(__dirname, "..", "..");
 /**
@@ -35,7 +36,7 @@ function ohneKommentare(inhalt: string): string {
   return inhalt.replace(/^\s*\/\/.*$/gm, "");
 }
 
-const I18N = ohneKommentare(readFileSync(join(WURZEL, "apps/web/src/i18n.ts"), "utf8"));
+const I18N = ohneKommentare(woerterbuchQuelleAus(join(WURZEL, "apps/web/src/i18n.ts")));
 const LEGAL_PAGES = readFileSync(join(WURZEL, "apps/web/src/legal/LegalPages.tsx"), "utf8");
 // AUFTRAG-mega64 Block B: die Datei heißt jetzt `abmeldeschuld.ts` — der Zustand ist keine
 // Tab-Sperre, sondern eine dem Server geschuldete Abmeldung, und der Dateiname sagt das.

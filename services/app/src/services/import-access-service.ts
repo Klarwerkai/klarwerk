@@ -49,9 +49,24 @@
 // dort). Eine Methode mit Schalter müsste diese Zuordnung hier führen, also eine dritte Stelle,
 // die weiss, was Confluence und was SharePoint braucht. Zwei benannte Methoden sagen dasselbe,
 // ohne diese Stelle zu erzeugen.
+//
+// ================================================================================================
+// R-0134 / R-1005 — DER BETREIBERSCHALTER GEHÖRT IN DIESELBE AUSKUNFT.
+// ================================================================================================
+//
+// Die Zugangsauskunft sagt seit mega67, ob der Import eingeschaltet ist. Seit dem Betreiberschalter
+// (confluence-import-schalter.ts) hat „eingeschaltet" zwei Teile: die FREIGABE der Installation
+// (Umgebung) und den BETREIBERSCHALTER (gespeichert, über die Oberfläche umlegbar). `enabled` ist
+// beides zusammen — genau das, was die Importrouten durchsetzen. `betreiber` sagt, welcher Teil
+// fehlt, damit die Fläche den richtigen Satz und den richtigen Knopf zeigt.
+//
+// GESETZT wird der Schalter ebenfalls HIER und nicht in der Route: die Route kennt weiterhin nur
+// diesen Dienst (BEN7s Prüflücke 2), das Prüfprotokoll entsteht an derselben Stelle wie die Auskunft.
+import type { AuditService } from "../../../audit";
 import { confluenceCredentialState } from "../../../confluence";
 import type { ImportRunRepo } from "../../../library-analytics";
 import { sharepointCredentialState } from "../../../sharepoint";
+import type { ConfluenceImportSchalterRepo } from "../confluence-import-schalter";
 import { schalterAn } from "../feature-flags";
 
 /** Das Quellsystem der Confluence-Auskunft. Eine Auskunft, ein System — `ImportRun.sourceSystem`. */
@@ -62,11 +77,27 @@ const SYSTEM_SHAREPOINT = "sharepoint";
 export interface ImportAccessDeps {
   /** Die Laufablage. NICHT optional: ein zweiter, zeitloser Pfad waere die Luecke selbst. */
   readonly importRuns: ImportRunRepo;
+  /**
+   * Der Betreiberschalter des Confluence-Imports. Optional nur für direkte Testaufrufer, die ihn
+   * nicht brauchen; ohne ihn gibt es keinen Betreiberschalter — `betreiber` fehlt dann in der
+   * Antwort, und Setzen wird abgelehnt. Die Kompositionswurzel reicht ihn immer mit.
+   */
+  readonly betreiberSchalter?: ConfluenceImportSchalterRepo;
+  readonly audit?: AuditService;
 }
+
+/** Warum das Umlegen nicht geht — die Route macht daraus einen ehrlichen Status. */
+export type BetreiberSchalterAbweisung = "nicht-freigegeben" | "kein-schalter";
 
 export interface ImportAccessStatus {
   readonly system: string;
+  /** Freigegeben UND vom Betreiber eingeschaltet — genau das, was die Importrouten durchsetzen. */
   readonly enabled: boolean;
+  /**
+   * Nur Confluence: die zwei Teile von `enabled`. `freigegeben` = Umgebung der Installation,
+   * `an` = Betreiberschalter. Fehlt, wenn kein Betreiberschalter verdrahtet ist.
+   */
+  readonly betreiber?: { readonly freigegeben: boolean; readonly an: boolean };
   readonly credentials: { name: string; present: boolean }[];
   readonly credentialsUsable: boolean;
   readonly blocker: "missing" | "insecure-base-url" | null;
@@ -82,15 +113,48 @@ export class ImportAccessService {
 
   async zugangsstatus(): Promise<ImportAccessStatus> {
     const credentials = confluenceCredentialState();
+    // Freigabe aus ⇒ die Import-Routen existieren gar nicht. Diese Auskunft steht bewusst davor.
+    const freigegeben = schalterAn("confluenceImport");
+    const schalter = this.deps.betreiberSchalter
+      ? await this.deps.betreiberSchalter.lies()
+      : undefined;
     return {
       system: SYSTEM,
-      // Schalter aus ⇒ die Import-Routen existieren gar nicht. Diese Auskunft steht bewusst davor.
-      enabled: schalterAn("confluenceImport"),
+      enabled: freigegeben && (schalter?.an ?? true),
+      ...(schalter ? { betreiber: { freigegeben, an: schalter.an } } : {}),
       credentials: credentials.vars,
       credentialsUsable: credentials.usable,
       blocker: credentials.blocker,
       lastConnectedAt: await this.letzteVerbindung(SYSTEM),
     };
+  }
+
+  /**
+   * Legt den Betreiberschalter um und antwortet mit der neuen Auskunft.
+   *
+   * ABGELEHNT wird, wenn die Installation den Import gar nicht freigibt: ein „an", das nichts
+   * bewirken kann, wäre eine Behauptung. Zugangsdaten nimmt dieser Weg NICHT entgegen — es gibt
+   * nur `an: boolean`.
+   */
+  async setzeBetreiberSchalter(
+    an: boolean,
+    actor: string,
+  ): Promise<ImportAccessStatus | BetreiberSchalterAbweisung> {
+    const schalter = this.deps.betreiberSchalter;
+    if (!schalter) {
+      return "kein-schalter";
+    }
+    if (!schalterAn("confluenceImport")) {
+      return "nicht-freigegeben";
+    }
+    const { vorher, nachher } = await schalter.setze(an);
+    await this.deps.audit?.record({
+      actor,
+      action: "confluence-import.betreiberschalter",
+      target: "settings",
+      payload: { vorherAn: vorher.an, an: nachher.an, version: nachher.version },
+    });
+    return this.zugangsstatus();
   }
 
   /**

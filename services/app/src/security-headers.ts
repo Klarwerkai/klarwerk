@@ -110,6 +110,33 @@ function pfadOhneQuery(rawUrl: string | undefined): string {
 // einbettet. Die Dialogseite ist top-level und behält die Ersatz-CSP ohne Mandanten.
 const TASKPANE_PATH = "/word-addin/taskpane.html";
 
+// ================================================================================================
+// WORD-HOST-GESAMTWEG (Realhostbeleg 05.10.2026) — DIE DIALOGSEITE DARF DEN OFFICE-OPENER NICHT KAPPEN.
+// ================================================================================================
+//
+// Gemessen in Word für das Web: der Dialog meldete „Signed in", die Anmeldung kam im
+// Seitenfenster nie an, und office.js warf beim Start `Sys.ArgumentNullException … conversationId`.
+// Word im Web öffnet `/word-addin/anmeldung.html` als EIGENES Browserfenster aus einem Office-Rahmen
+// FREMDER Herkunft; office.js im Dialog findet seine Gegenstelle über diese Opener-Beziehung.
+// helmet setzt global `Cross-Origin-Opener-Policy: same-origin`. Für ein Dokument, das ein
+// fremder Opener geöffnet hat, erzwingt das einen Wechsel der Browsing-Context-Group: `opener`
+// wird getrennt, `window.name` geleert — die Kennung des Gesprächs ist weg, `messageParent` hat
+// keine Gegenstelle. Der Live-Kopf trug genau diesen Wert (HOST-20261005/LIVE-anmeldung.html.headers).
+//
+// DIE KORREKTUR IST SO ENG WIE MÖGLICH: NUR dieser eine Pfad (Query/Fragment abgestreift, sonst
+// byte-genau; der Dialog trägt `?_host_Info=…`) bekommt `unsafe-none` — der Wert, der die
+// Opener-Beziehung bestehen lässt. Alles andere, das Taskpane eingeschlossen (ein iframe, für den
+// COOP ohnehin nicht gilt), behält `same-origin`. Keine CSP-, Cookie- oder Anmeldeänderung: der
+// Übergabeweg (`messageParent` → einmaliger Code → `/api/auth/office-handover/redeem`) bleibt
+// derselbe. Die Weiterleitungen des SSO-Rückwegs sind 302-Antworten, für die der Kopf nicht gilt;
+// ihr Ziel ist wieder diese Seite.
+export const OFFICE_DIALOG_PATH = "/word-addin/anmeldung.html";
+export const OFFICE_DIALOG_COOP = "unsafe-none";
+
+export function isOfficeDialogPath(rawUrl: string | undefined): boolean {
+  return pfadOhneQuery(rawUrl) === OFFICE_DIALOG_PATH;
+}
+
 // Globale Security-Header (helmet) + die exakt gebundene Word-Add-in-CSP-Ausnahme. Alle Routen außer
 // dem kanonischen Taskpane-Pfad behalten die strikte globale CSP inkl. frame-ancestors 'none'
 // und X-Frame-Options.
@@ -178,6 +205,12 @@ export async function registerSecurityHeaders(
       // Office-Einbettung trotz korrekter CSP.
       reply.removeHeader("X-Frame-Options");
       reply.raw.removeHeader("X-Frame-Options");
+    }
+    // Nur die Dialogseite: helmet hat `same-origin` auf die RAW-Response gelegt (derselbe Befund
+    // wie bei X-Frame-Options) — beide Ebenen räumen, dann den einen Wert setzen.
+    if (isOfficeDialogPath(request.url)) {
+      reply.raw.removeHeader("Cross-Origin-Opener-Policy");
+      reply.header("Cross-Origin-Opener-Policy", OFFICE_DIALOG_COOP);
     }
     // AUFTRAG-mega15 Block C: die Direktive kommt erst HIER dazu, und nur auf echtem HTTPS.
     // Gelesen wird die RAW-Response, weil helmet seine Header dort ablegt (derselbe Befund wie bei

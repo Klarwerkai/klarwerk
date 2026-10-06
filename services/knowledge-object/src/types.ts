@@ -1,3 +1,5 @@
+import type { DokumentHerkunft } from "./dokumentakte";
+
 // FR-KO-02: fünf Wissensarten (Pflichtenheft §3.5).
 export type KnowledgeType =
   | "bauchgefuehl"
@@ -88,6 +90,13 @@ export interface AiCheck {
   // NUR LESEFASSUNG, nie gespeichert: bei jedem Lesen aus `basis` gegen das jetzige Objekt
   // abgeleitet (mitPruefstand). true = der abgeschlossene Nachweis gilt für eine frühere Basis.
   ueberholt?: boolean;
+  // PRÜFSTATUS-ANZEIGE (R-0208) · NUR LESEFASSUNG DES PRÜFBRETTS, nie gespeichert. `laeuft`
+  // (nur bei pending): der Worker bearbeitet den Job gerade — sonst ist er bloß ausstehend.
+  // `konfliktGefunden` (nur bei done): zu DIESEM Objekt als Subjekt steht ein offener, automatisch
+  // erkannter Konflikt, dessen Gegenseite der Leser sehen darf. Fehlt das Feld, ist es nicht
+  // erhoben — es heißt dann weder „kein Konflikt" noch „läuft nicht".
+  laeuft?: boolean;
+  konfliktGefunden?: boolean;
 }
 
 // Fingerabdrücke der Prüfbasis (s. pruefbasis.ts): quelle = Fassung + Quellen + Anhänge;
@@ -277,6 +286,22 @@ export interface KoAttachment {
   size?: number; // Originalgröße im Object-Store
   author: string;
   at: string;
+  // R-0163: Herkunft eines aus einer Quelle übernommenen Anhangs. Additiv, JSON-persistiert →
+  // keine Migration; Anhänge ohne das Feld (von Hand hochgeladen, Altbestand) bleiben gültig.
+  quelle?: KoAnhangsquelle;
+}
+
+/**
+ * R-0163: die Quellidentität eines übernommenen Anhangs. `externalId` ist die Kennung des
+ * Anhangs IN der Quelle (Confluence: attachment id) — an ihr wird beim nächsten Abgleich
+ * zugeordnet, nicht am Dateinamen. `abruf` ist der zuletzt gesehene Abrufweg; ändert die Quelle
+ * ihn, wird er hier nachgezogen.
+ */
+export interface KoAnhangsquelle {
+  provider: string;
+  externalId: string;
+  abruf: string;
+  sourceVersion?: number;
 }
 
 // Obergrenzen für den Pilot (kleine Thumbnails, JSONB bleibt handhabbar).
@@ -287,6 +312,30 @@ export const MAX_ATTACHMENTS = 8;
 // SCRUM-129 / FR-KO-07: echte Quelle am Objekt. Externe Quellen sind NIE peer-validiert
 // (klare Stufe-2-Markierung); kein automatisches Peer-Validation-Verfahren.
 export type KoSourceKind = "external";
+
+/**
+ * package:confluence (K6) — die LESE-EINSCHRÄNKUNG, wie die QUELLE sie führt, am Herkunftsanker.
+ *
+ * WAS ES IST: die Kennungen der Quelle selbst — Benutzerkennungen (Confluence: `accountId`, auf
+ * älteren Instanzen `userKey`/`username`) und Gruppennamen —, unverändert übernommen, damit
+ * nachvollziehbar bleibt, WEM die Quelle diese Seite zugänglich gemacht hat.
+ *
+ * WAS ES AUSDRÜCKLICH NICHT IST: eine Rechte- oder Rollenabbildung in KLARWERK. Kein Zugriffspfad
+ * wertet dieses Feld aus; die wirksame Einstufung bleibt `confidentiality`. Wie (und ob) diese
+ * Kennungen auf KLARWERK-Konten oder -Rollen abgebildet werden, gehört dem gesonderten
+ * Rechteauftrag (Entscheidung a7834397) und wird hier nicht vorweggenommen.
+ *
+ * ERZEUGER: ausschließlich ein Quell-Adapter (`services/confluence/src/mapper.ts`). Aus einem
+ * Client-Rumpf wird das Feld verworfen (`ohneQuellRestriktionen`, library-analytics) — es ist eine
+ * Herkunftsangabe der Quelle, keine Behauptung eines Einreichers. Fehlt das Feld, hat die Quelle
+ * keine konkrete Einschränkung geliefert.
+ */
+export interface KoSourceRestrictions {
+  /** Benutzerkennungen der Quelle, in Quell-Reihenfolge, ohne Doppelte. */
+  users: string[];
+  /** Gruppennamen der Quelle, in Quell-Reihenfolge, ohne Doppelte. */
+  groups: string[];
+}
 
 export interface KoSource {
   id: string;
@@ -310,6 +359,9 @@ export interface KoSource {
   // Migration; Altquellen ohne das Feld bleiben gültig.
   sourcePath?: string[];
   sourceVersion?: number;
+  // package:confluence (K6): die Lese-Einschränkung der Quelle zu GENAU dieser Quellfassung
+  // (`sourceVersion`). Additiv, JSON-persistiert → keine Migration. Begründung am Typ oben.
+  sourceRestrictions?: KoSourceRestrictions;
   // JOB 4077: DER ANKER DIESER BELEGSTELLE — die `objectId` eines Anhangs, den DIESES Wissensobjekt
   // trägt. Additiv, JSON-persistiert → keine Migration; Altquellen ohne das Feld bleiben gültig.
   //
@@ -325,6 +377,14 @@ export interface KoSource {
   // (`apps/web/src/lib/koSource.ts`, `quellennachweis`). Ein an die Quelle kopierter Name würde
   // durch eine Umbenennung des Anhangs zur Lüge, ohne dass irgendjemand es merkt.
   objectId?: string;
+  // R-0169 (herkunft-identitaet): DIE FESTGESCHRIEBENE QUELLFASSUNG dieses Ankers — die interne
+  // `sourceRecordId` der unveränderlichen Quellrevision (`ExternalSourceRecord`,
+  // services/library-analytics), die der Import für genau `externalId` + `sourceVersion` angelegt
+  // hat. Weil der Anker im Versionsschnappschuss des Objekts mitreist, sagt jede Objektfassung,
+  // aus welcher Quellfassung ihre Aussage stammt. Nur die Importwege setzen das Feld; die
+  // öffentlichen Schreibrouten verwerfen `sources` ohnehin. Additiv, JSON-persistiert, kein Backfill:
+  // Altanker ohne Feld sind vor dieser Regel entstanden.
+  sourceRecordId?: string;
   author: string;
   at: string;
 }
@@ -344,6 +404,16 @@ export interface KoAppendOp {
   attachmentId: string;
   /** Die Belegstellen, die dieser Vorgang angelegt hat. */
   sourceIds: string[];
+}
+
+/** R-0658: welche Art Schutzdaten erkannt wurde — nie der Wert selbst. */
+export type SchutzdatenArt = "personalnummer" | "kontodaten";
+
+/** R-0658: die Quarantänemarke am Wissensobjekt (Begründung in `schutzdaten.ts`). */
+export interface SchutzdatenQuarantaene {
+  arten: SchutzdatenArt[];
+  /** Zeitpunkt des ERSTEN Befunds; eine weitere Fassung mit Schutzdaten setzt ihn nicht neu. */
+  seit: string;
 }
 
 // FR-KO-01: Datenmodell inkl. version/history/originalAuthor/needed/assignments/asset
@@ -369,10 +439,29 @@ export interface KnowledgeObject {
   // Feld, ist es ein Legacy-KO von vor dieser Regel → Nachzug über den Wartungslauf
   // (ensureSearchArtifacts); `[]` heißt ausdrücklich „keine Benennungen", nicht „unbekannt".
   imageNames?: string[];
+  // R-0658: die Quarantänemarke, gesetzt beim Anlegen/Überarbeiten, wenn der Inhalt Schutzdaten
+  // trägt (`schutzdaten.ts`). Sie nennt nur die ARTEN, nie die Werte. Solange sie steht, trägt die
+  // Suchprojektion keinen Text und die Sucheinstiege lassen das Objekt aus. Optional/additiv im
+  // JSONB-Dokument (keine Migration); fehlt sie, liegt das Objekt nicht in Quarantäne.
+  schutzdatenQuarantaene?: SchutzdatenQuarantaene;
   conditions: string[];
   measures: string[];
   type: KnowledgeType;
   category: string;
+  // ============================================================================================
+  // R-0431 / R-1728 / FR-LIB-01 (K2, K20, K28) — DAS FACHGEBIET, UNABHÄNGIG VON DER KATEGORIE.
+  // ============================================================================================
+  //
+  // Die Originalanforderungen nennen Domäne/Fachgebiet als EIGENE Filterachse neben Kategorie,
+  // Art, Status und Schlagwort. Bis hierher gab es dafür kein Datenfeld — die Erfassung führte
+  // „Domäne / Kategorie" als ein Feld (`category`). Dieses Feld trägt das Fachgebiet als eigene
+  // Angabe, frei benannt wie die Kategorie.
+  //
+  // OPTIONAL UND OHNE MIGRATION: das KO liegt als Voll-JSONB (`kos.data`, repo-pg.ts). FEHLT das
+  // Feld, ist KEIN Fachgebiet angegeben — es wird bewusst NICHT aus Kategorie, Titel oder Inhalt
+  // abgeleitet oder nachgetragen; der Altbestand erscheint in der Facette als „ohne Wert".
+  // Gesetzt wird es beim Anlegen (`CreateKoInput.domain`) oder nachträglich über `setDomain`.
+  domain?: string;
   tags: string[];
   confidence: number;
   trust: number;
@@ -410,7 +499,13 @@ export interface KnowledgeObject {
   // zusaetzliches optionales Feld landet im Dokument; Altbestand hat den Schluessel schlicht nicht.
   // Kein DDL, kein Backfill. FEHLT das Feld, ist die Herkunft UNBEKANNT — das ist ehrlich und
   // heisst ausdruecklich nicht „ueber die Vordertuer erfasst".
-  origin?: "tell" | "studio" | "expert" | "frontdoor" | "word_addin";
+  //
+  // R-0180/R-2108: `import` ist die EINZIGE Ausnahme von „dieselbe Wertmenge wie am Entwurf". Den
+  // Wert setzt allein die menschliche Annahme eines Importkandidaten (`LibraryService.acceptToKo`,
+  // Erstanlage). Ein Entwurf kann ihn nicht tragen (`ERLAUBTE_HERKUNFT` in services/capture kennt
+  // ihn bewusst nicht), und die öffentlichen Schreibrouten verwerfen ihn (ko-routes.ts) — sonst
+  // könnte sich jedes Objekt als „importiert" ausgeben.
+  origin?: "tell" | "studio" | "expert" | "frontdoor" | "word_addin" | "import";
   // Pedi 05.07.: read-only Board-Anreicherung — Peer-Stimmen-Zähler (grün/gelb/rot) für die Anzeige
   // „X von Y grün" auf der Validierungsseite. Nur die Board-Sicht setzt es; sonst undefined.
   reviewVotes?: { up: number; warn: number; down: number };
@@ -484,6 +579,44 @@ export interface KnowledgeObject {
   // es wie `sources`); die Claim-Recovery findet darüber ein bereits erzeugtes KO — auch im
   // Papierkorb.
   importCandidateId?: string;
+  // ============================================================================================
+  // R-0139 / FR-EXT-02 (aufnahme:20260922:gesamt-import-adoption:herkunft-identitaet) — DASS DIESES
+  // OBJEKT IMPORTIERT IST, STEHT AM OBJEKT, UND ZWAR FÜR BEIDE IMPORTWEGE GLEICH.
+  // ============================================================================================
+  //
+  // Bis hierher trug nur der Kandidaten-Accept eine Spur (`importCandidateId`); ein über
+  // `POST /api/library/import` (importJson) eingespieltes Objekt war von einem frei erfassten nicht
+  // zu unterscheiden — die Herkunft „importiert" ging an der Persistenzgrenze verloren, genau wie
+  // `origin` vor JOB 679.
+  //
+  //   · "library_import"   — direkter JSON-Import (`LibraryService.importJson`).
+  //   · "import_candidate" — Prüfwarteschlange → Annehmen (`acceptToKo`); die Quelle selbst steht
+  //                          dann in `sources` (Anker mit provider/externalId/sourceVersion) bzw.
+  //                          über `importCandidateId` am Kandidaten.
+  //
+  // NUR SERVERPFADE SETZEN DAS FELD. Die öffentlichen Schreibrouten verwerfen es wie `sources` und
+  // `importCandidateId` (ko-routes.ts) — sonst könnte jeder mit `ko.create` ein Objekt als
+  // importiert ausgeben. Additiv im JSONB, keine Migration. FEHLT das Feld, ist das Objekt nicht
+  // über einen der beiden Importwege entstanden ODER Altbestand von vor dieser Regel — ein Backfill
+  // findet bewusst nicht statt, weil er für importJson-Altbestand raten müsste.
+  importedVia?: "library_import" | "import_candidate";
+  // ============================================================================================
+  // R-0169 (herkunft-identitaet, Nacharbeit 5) — AUS WELCHER FASSUNG EINES INTERNEN DOKUMENTS.
+  // ============================================================================================
+  //
+  // Der Bezug auf genau eine unveränderliche Fassung der internen Dokumentakte (dokumentakte.ts):
+  // Word-Zusatz und JSON ohne `externalId`. Er reist im Versionsschnappschuss mit — so sagt jede
+  // Objektfassung, aus welcher Dokumentfassung ihre Aussage stammt. Getrennt von `sources`
+  // (externe Quellen mit eigener Kennung): eine interne Dokumentkennung ist keine Quelle im
+  // Quellsystem und wird nie als solche ausgegeben. Nur Serverpfade setzen das Feld; die
+  // öffentlichen Schreibrouten verwerfen es. Additiv im JSONB, keine Migration, kein Backfill.
+  dokumentHerkunft?: DokumentHerkunft;
+  // R-0632 (BEN, Nacharbeit 10): die Herabstufungssperre eines Word-Entwurfs reist beim Promote
+  // ins Wissensobjekt. Solange sie steht, wird die Stufe nur angehoben, NIE gesenkt — auch nicht
+  // von Prüfer oder Administrator (`setConfidentiality`, unabhängig von `mayDowngrade`). Nur der
+  // Entwurfs-Promote setzt sie (Marke `stufeNurAnheben` am Draft); die öffentlichen Schreibrouten
+  // verwerfen das Feld. Andere Wissensobjekte behalten die Regel aus SCRUM-509.
+  stufeNurAnheben?: true;
   // WP-SUBMIT-ASYNC (Pedis R3 21.07.): Status der HINTERGRUND-KI-Prüfung nach dem Einreichen —
   // additiv im JSONB, keine Migration; Altbestand ohne Feld = kein Prüf-Job. Die Ergebnis-Signale
   // (Konflikte/Überschneidungen) entstehen unverändert in ihren Services — aiCheck trägt nur den

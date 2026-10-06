@@ -80,7 +80,7 @@ import type {
   KantenStatus,
   KuratierteKanteAnsicht,
 } from "../api/types";
-import { auffrischungGescheitert } from "../lib/confidentiality";
+import { auffrischungGescheitert } from "../lib/abfrageBestand";
 import { koDetailPath } from "../lib/graphNav";
 import { formatKoTimestamp } from "../lib/koDates";
 import { AuffrischungHinweis } from "./bibliothek/AuffrischungHinweis";
