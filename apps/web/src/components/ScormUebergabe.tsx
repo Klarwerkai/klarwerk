@@ -21,6 +21,9 @@ export function ScormUebergabe({ koIds }: { koIds: string[] }): JSX.Element {
   const [empfaenger, setEmpfaenger] = useState("");
   const [liste, setListe] = useState<{ id: string; label: string }[]>([]);
   const [urteil, setUrteil] = useState<{ fuer: string; p: ScormPruefung } | null>(null);
+  // Die Übergabe bleibt als eigene Zeile stehen (ein Toast verschwindet nach Sekunden): sie sagt
+  // dauerhaft, dass der Inhalt übergeben, aber noch NICHT in der Lernplattform eingespielt ist.
+  const [uebergeben, setUebergeben] = useState<{ fuer: string; datei: string } | null>(null);
 
   // Ein Urteil gilt nur für genau die Eingabe, für die es gefällt wurde: jede Änderung an Auswahl,
   // Reihenfolge, Sprache oder Empfänger blendet es aus, bis erneut geprüft wurde.
@@ -55,7 +58,8 @@ export function ScormUebergabe({ koIds }: { koIds: string[] }): JSX.Element {
 
   const herunterladen = useMutation({
     mutationFn: (b: ScormExportBody) => endpoints.output.scormPaket(b),
-    onSuccess: ({ blob, dateiname }) => {
+    onSuccess: ({ blob, dateiname }, b) => {
+      setUebergeben({ fuer: schluesselVon(b), datei: dateiname });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -161,6 +165,11 @@ export function ScormUebergabe({ koIds }: { koIds: string[] }): JSX.Element {
               </div>
               <ul className="mt-1 space-y-1">{hinweise.map(zeile)}</ul>
             </>
+          ) : null}
+          {uebergeben && uebergeben.fuer === schluesselVon(body) ? (
+            <p className="mt-2 text-[12.5px] text-text" data-testid="scorm-uebergeben">
+              {t("lmsexport.heruntergeladen", { datei: uebergeben.datei })}
+            </p>
           ) : null}
         </output>
       ) : null}

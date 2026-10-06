@@ -194,8 +194,11 @@ describe("Bedienweg „An Lernplattform übergeben“", () => {
     expect(box.paketAufrufe).toEqual([
       { koIds: ["K2", "K1"], sprache: "de", empfaenger: "moodle-referenz" },
     ]);
-    // Inhaltsübergabe ist NICHT Veröffentlichung in der Lernplattform — das sagt die Meldung.
-    expect(document.body.textContent).toContain(
+    // Inhaltsübergabe ist NICHT Veröffentlichung in der Lernplattform — das sagt die Meldung, und
+    // zwar als BLEIBENDE Zeile im Kasten (der Toast verschwindet nach Sekunden und wird von
+    // `ToastProvider` selbst gar nicht gezeichnet, sondern von der App-Hülle).
+    const meldung = c.querySelector("[data-testid='scorm-uebergeben']");
+    expect(meldung?.textContent).toBe(
       i18n.t("lmsexport.heruntergeladen", {
         datei: "klarwerk-scorm12-schulungsunterlage-abcdef0123456789.zip",
       }),
