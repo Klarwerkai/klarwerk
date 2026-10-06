@@ -238,6 +238,9 @@ import { type SemanticPrefilter, removeKoFromDuplicatePrefilter } from "./duplic
 import { cappedEmbeddingProvider } from "./embed-concurrency";
 import type { FactoryReset } from "./factory-reset";
 import { schalterAn } from "./feature-flags";
+// Firmenwörterbuch: der versionierte Begriffskatalog der Instanz — im Postgres-Betrieb haltbar
+// (`PgBegriffeRepo`, s. `buildPgServices`), im Speicher nur ohne Datenbank.
+import { type BegriffeRepo, InMemoryBegriffeRepo, PgBegriffeRepo } from "./firmenwoerterbuch";
 import { kiLaeufeAuskunft } from "./health-ki-laeufe";
 import {
   type SessionUser,
@@ -263,6 +266,7 @@ import { aiCheckCoverageRoutes } from "./routes/ai-check-coverage-routes";
 import { askRoutes } from "./routes/ask-routes";
 import { auditRoutes } from "./routes/audit-routes";
 import { bearbeitungRoutes } from "./routes/bearbeitung-routes";
+import { begriffeRoutes } from "./routes/begriffe-routes";
 import { brandingRoutes } from "./routes/branding-routes";
 import { canManageDraft, captureRoutes } from "./routes/capture-routes";
 import { categoryRoutes } from "./routes/category-routes";
@@ -413,6 +417,12 @@ export interface AppServices {
    * In-Memory-Ablage, genau wie bei `lesevarianten` und `klaraSessions`.
    */
   brandingSettings: BrandingSettingsRepo;
+  /**
+   * Firmenwörterbuch: die Fassungen des Begriffskatalogs (`firmenwoerterbuch.ts`). Aus demselben
+   * Grund wie `brandingSettings` NICHT in `AppRepos`; im Postgres-Betrieb haltbar
+   * (`PgBegriffeRepo`, eingehängt in `buildPgServices`), sonst die In-Memory-Ablage.
+   */
+  begriffe: BegriffeRepo;
   /**
    * R-0134 / R-1005: der Betreiberschalter des Confluence-Imports — über die Oberfläche umlegbar,
    * von jeder Confluence-Importroute je Anfrage durchgesetzt. Aus demselben Grund wie
@@ -882,6 +892,8 @@ export function assembleServices(
     // `buildPgServices` (echter Pool); ohne Injektion die In-Memory-Ablage — derselbe Vertrag,
     // andere Haltbarkeit, beide werden getrennt geprüft.
     brandingSettings?: BrandingSettingsRepo;
+    // Firmenwörterbuch: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
+    begriffe?: BegriffeRepo;
     // R-0134 / R-1005: gesetzt von `buildPgServices` (echter Pool); ohne Injektion im Speicher.
     confluenceImportSchalter?: ConfluenceImportSchalterRepo;
     // WIKI-BEARBEITUNGSRESERVIERUNG: gesetzt von `buildPgServices` (echter Pool); ohne Injektion
@@ -1178,6 +1190,8 @@ export function assembleServices(
       opts.anweisungen ?? new FluechtigeAnweisungsablage(process.env.KLARWERK_DEV_PERSIST === "1"),
     // JOB 3510/3578: die Markenwahl — Postgres, wenn injiziert, sonst im Speicher.
     brandingSettings: opts.brandingSettings ?? new InMemoryBrandingSettingsRepo(),
+    // Firmenwörterbuch — Postgres, wenn injiziert, sonst im Speicher.
+    begriffe: opts.begriffe ?? new InMemoryBegriffeRepo(),
     // R-0134 / R-1005: der Betreiberschalter — Postgres, wenn injiziert, sonst im Speicher.
     confluenceImportSchalter:
       opts.confluenceImportSchalter ?? new InMemoryConfluenceImportSchalterRepo(),
@@ -1576,6 +1590,9 @@ export function buildPgServices(rohPool: Pool): AppServices {
       // überlebt die vom Administrator gesetzte Firmen-CI Neustart und Deploy; ohne sie fiele
       // `assembleServices` auch im Postgres-Betrieb auf die flüchtige In-Memory-Ablage zurück.
       brandingSettings: new PgBrandingSettingsRepo(pool),
+      // Firmenwörterbuch: jede Fassung eines Begriffs liegt in DERSELBEN Datenbank wie der Bestand
+      // (eine Kundeninstanz = ein Datenraum) und überlebt Neuladen, Neustart und Deploy.
+      begriffe: new PgBegriffeRepo(pool),
       // R-0134 / R-1005: der Betreiberschalter überlebt Neustart und Deploy — sonst stünde ein
       // ausgeschalteter Import nach dem nächsten Neustart still wieder auf „an".
       confluenceImportSchalter: new PgConfluenceImportSchalterRepo(pool),
@@ -3378,6 +3395,9 @@ export function buildApp(
   app.register(
     brandingRoutes({ branding: services.brandingSettings, audit: services.audit }, guards),
   );
+  // Firmenwörterbuch: Pflege (`ko.validate`), Nachschlagen und der deterministische Abgleich
+  // (`ko.read`). Nicht geschaltet: ohne Einträge liefert der Abgleich schlicht keine Hinweise.
+  app.register(begriffeRoutes({ begriffe: services.begriffe, audit: services.audit }, guards));
   // AUFTRAG-mega67 Block C/D: der ZUGANGS-ZUSTAND des Confluence-Imports, rein lesend. BEWUSST
   // ausserhalb des `confluenceImport`-Schalters registriert (anders als die Import-Routen unten):
   // eine Auskunft, die selbst hinter dem Schalter laege, koennte den Zustand „ausgeschaltet" nicht

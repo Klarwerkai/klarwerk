@@ -107,6 +107,9 @@ const ExternalKnowledge = lazy(() =>
 // daneben in einen zweiten Ordner zu legen hiesse, den Bereich an zwei Orten zu führen. Für die
 // Aufteilung des Bündels ändert das nichts: `tests/erstladezeit/` erhebt seine Sollmenge aus den
 // `lazy`-Zeilen DIESER Datei, nicht aus dem Verzeichnisnamen.
+const Firmenwoerterbuch = lazy(() =>
+  import("./pages/Firmenwoerterbuch").then((m) => ({ default: m.Firmenwoerterbuch })),
+);
 const GesamtanweisungBereich = lazy(() =>
   import("./components/gesamtanweisung/GesamtanweisungBereich").then((m) => ({
     default: m.GesamtanweisungBereich,
@@ -292,6 +295,12 @@ export function AppRoutes(): JSX.Element {
             `services/app/src/routes/gesamtanweisung-routes.ts`), gemessen in
             `tests/wiki-gesamtanweisung-abnahme/a1-tuer-in-der-gebauten-app.test.ts`. */}
         <Route path="/gesamtanweisungen/:id" element={<GesamtanweisungBereich />} />
+        {/* Firmenwörterbuch: Nachschlagen und Pflege des Begriffskatalogs. Ohne `Guarded`, wie
+            `/wissen/:id`: die Türen dahinter fordern ihr Recht am Server (`ko.read` zum Lesen,
+            `ko.validate` zum Pflegen, `services/app/src/routes/begriffe-routes.ts`). Erreichbar
+            aus jedem Begriffshinweis im Editor; ein eigener Menüpunkt ist bewusst nicht Teil
+            dieser Lieferung. */}
+        <Route path="/begriffe" element={<Firmenwoerterbuch />} />
         <Route path="/mobile" element={<Mobile />} />
         <Route path="/ui-kit" element={<UiKit />} />
         <Route path="*" element={<Navigate to={HOME_ROUTE} replace />} />

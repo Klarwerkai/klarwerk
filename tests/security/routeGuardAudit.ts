@@ -684,6 +684,16 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // Umschalten ist Verwaltung — dieselbe Schranke wie jeder Weg in admin-routes.ts.
   "PUT /api/admin/branding": { protection: "users.manage" },
 
+  // --- Firmenwörterbuch (begriffe-routes.ts) ---
+  // Nachschlagen und der deterministische Abgleich eines eigenen Textes: wer Wissen lesen darf.
+  "GET /api/begriffe": { protection: "ko.read" },
+  "GET /api/begriffe/:id": { protection: "ko.read" },
+  "GET /api/begriffe/:id/fassungen/:version": { protection: "ko.read" },
+  "POST /api/begriffe/pruefen": { protection: "ko.read" },
+  // Pflegen wirkt auf alle Texte des Hauses — dieselben Rollen, die über fremde Beiträge urteilen.
+  "POST /api/begriffe": { protection: "ko.validate" },
+  "PUT /api/begriffe/:id": { protection: "ko.validate" },
+
   // --- Zugangs-Zustand des Imports (import-access-routes.ts) ---
   // AUFTRAG-mega67 Block C/D: rein LESEND — Schalter-Zustand, die BENANNTEN Zugangsvariablen mit
   // Ja/Nein und der HTTPS-Riegel. Niemals ein Wert, niemals eine Maske mit Länge; kein Aufruf an

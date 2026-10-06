@@ -251,6 +251,10 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
   // nachgezählt: zwei `CREATE TABLE IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein
   // Fremdschlüssel, keine Extension. Ein zweiter Lauf ist folgenlos.
   { stufe: "MANAGEMENT_PROFILE_SCHEMA", risiko: "ADDITIV" },
+  // Firmenwörterbuch: die Fassungen des Begriffskatalogs. ADDITIV, nachgezählt: ein einziges
+  // `CREATE TABLE IF NOT EXISTS`, kein RISIKOMARKER, kein Seed, kein Fremdschlüssel, keine
+  // Extension. Ein zweiter Lauf ist folgenlos.
+  { stufe: "BEGRIFFE_SCHEMA", risiko: "ADDITIV" },
 ];
 
 /**

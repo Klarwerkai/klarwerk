@@ -132,6 +132,11 @@ const MARKE_KOPF_ENDE = '"use strict";\n';
  * NACHARBEIT 5 (dieser Auftrag): GEMESSEN im Prüflauf zu Kandidat 430c247c (`33e52280…`, „Received"
  * von E2, HISTORIE/nacharbeit-5/PRUEFUNG/panel-auslieferung-pins.log) und unverändert übernommen;
  * die vier Panel-Dateien sind seit dieser Messung unberührt.
+ * AUFTRAG firmenwoerterbuch: `taskpane.html` ändert sich um den Block `#begriffe-block` (Markup,
+ * ohne Text) und den Verweis auf `begriffe.js` im Kopf hinter office.js; `taskpane.js`, `taskpane.css`
+ * und `marke.js` bleiben unberührt. Der Bezugspunkt MUSS deshalb wandern; ohne zugelassenes
+ * Hash-Werkzeug ist er hier nicht berechenbar. E2 meldet ihn im Prüflauf als „Received"; er wird
+ * danach gemessen übernommen.
  */
 export const PANEL_VOR_SCHNITT_BLOB = "33e522809e3ed8dbd6dd42cc8c071414b775c20d";
 

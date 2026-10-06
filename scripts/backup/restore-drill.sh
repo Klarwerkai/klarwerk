@@ -336,6 +336,7 @@ PFLICHTTABELLEN=(
   ko_bearbeitungen
   dokument_fassungen
   confluence_import_schalter
+  begriffe_fassungen
 )
 FEHLENDE_TABELLEN=()
 for tabelle in "${PFLICHTTABELLEN[@]}"; do

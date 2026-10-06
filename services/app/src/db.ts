@@ -48,6 +48,9 @@ import { KO_BEARBEITUNG_SCHEMA } from "./bearbeitungshinweis";
 import { BRANDING_SETTINGS_SCHEMA } from "./branding-settings";
 // R-0134 / R-1005: der Betreiberschalter des Confluence-Imports (umlegbar über die Oberfläche).
 import { CONFLUENCE_IMPORT_SCHALTER_SCHEMA } from "./confluence-import-schalter";
+// Firmenwörterbuch: die Fassungen des Begriffskatalogs. Im App-Wurzelverzeichnis wie die
+// Markenwahl: Editor und Word-Panel lesen ihn, kein Fachmodul besitzt ihn.
+import { BEGRIFFE_SCHEMA } from "./firmenwoerterbuch";
 // JOB 3326: die Lesevarianten (gekennzeichnete Leseübersetzungen). Sie wohnen im App-Root und nicht
 // im knowledge-object-Modul, weil sie das KO-Modell ausdrücklich NICHT umbauen: die Variante ist ein
 // eigener, danebenliegender Datenraum, den kein Lesepfad des Originals berührt.
@@ -224,6 +227,9 @@ export const schemas = [
   // Prioritätsfaktoren) und Ruhestandshorizonte (24/36 Monate). Additiv und wiederholbar (CREATE
   // TABLE IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed.
   MANAGEMENT_PROFILE_SCHEMA,
+  // Firmenwörterbuch: die unveränderlichen Fassungen des Begriffskatalogs. Additiv und
+  // wiederholbar (CREATE TABLE IF NOT EXISTS), ohne Fremdschlüssel, ohne Extension, ohne Seed.
+  BEGRIFFE_SCHEMA,
 ];
 
 // Führt die DDL aller Module aus. Jedes Modul liefert seine eigenen Tabellen (Datenhoheit).
