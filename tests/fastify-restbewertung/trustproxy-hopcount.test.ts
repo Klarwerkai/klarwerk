@@ -3,21 +3,19 @@
 // ================================================================================================
 //
 // Die Advisory (moderate, `>=5.8.3 <5.12.1`) betrifft `trustProxy` als HOP-ANZAHL. Dieser Test hält
-// drei Dinge fest, auf denen die Bewertung ruht:
+// fest, worauf die Bewertung ruht:
 //   1. Version: Lockdatei, laufende Instanz und Bewertung nennen dieselbe Version, und das Urteil
-//      „im betroffenen Bereich" passt zu ihr. Wird `fastify` gehoben, wird dieser Fall ROT — dann ist
-//      die Bewertung neu zu machen, nicht der Test anzupassen.
-//   2. Der Advisory-Fall ist auf der gebundenen Version scharf: eine nackte Instanz mit Hop-Anzahl
-//      glaubt einem NICHT vertrauten Client, der direkt am Proxy vorbei kommt, seinen eigenen
-//      `X-Forwarded-For` (Kalibrierung).
-//   3. Das Produkt reicht keine Hop-Anzahl mehr an Fastify: mit `KLARWERK_TRUST_PROXY=1` bleibt
+//      passt zu ihr; `package.json` lässt keine Auflösung in den betroffenen Bereich zu. Ändert sich
+//      die gebundene Version, wird dieser Fall ROT — dann ist die Bewertung neu zu machen, nicht der
+//      Test anzupassen.
+//   2. Das Produkt reicht keine Hop-Anzahl an Fastify: mit `KLARWERK_TRUST_PROXY=1` bleibt
 //      `request.ip` beim direkten Client die Socket-Adresse; mit IP-Liste wird derselbe Kopf vom
 //      nicht vertrauten Client zurückgewiesen und nur über den vertrauten Proxy angenommen.
-//   4. Ausgelieferte Konfiguration: `docker-compose.prod.yml` reicht die Variable nicht durch.
+//   3. Ausgelieferte Konfiguration: `docker-compose.prod.yml` reicht die Variable nicht durch.
+// Die Kalibrierung des Advisory-Falls auf 5.8.5 ist historisch (s. Kommentar im zweiten Block).
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import Fastify from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
 import { resolveTrustProxy } from "../../services/app/src/addon-auth-throttle";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
@@ -123,6 +121,19 @@ describe("GHSA-3m5p-2c4r-xxw2 · K1: Version am heutigen Stand", () => {
     );
   });
 
+  it("gebunden ist eine behobene Version, und package.json verlangt mindestens 5.12.1", () => {
+    const lock = lockVersion();
+    expect(imBetroffenenBereich(lock), `fastify ${lock} ist betroffen`).toBe(false);
+    const pkg = JSON.parse(readFileSync(join(WURZEL, "package.json"), "utf8")) as {
+      dependencies: Record<string, string>;
+    };
+    const spanne = pkg.dependencies.fastify ?? "";
+    expect(spanne, "package.json erlaubt eine Auflösung in den betroffenen Bereich").toMatch(
+      /^\^\d+\.\d+\.\d+$/,
+    );
+    expect(vergleiche(teile(spanne.slice(1)), BEHOBEN_AB)).toBeGreaterThanOrEqual(0);
+  });
+
   it("die laufende Instanz meldet die Version aus der Lockdatei", async () => {
     const { version } = await gemesseneIp(undefined, {});
     expect(version, "Laufzeit und Lockdatei sind auseinandergelaufen").toBe(lockVersion());
@@ -140,28 +151,12 @@ describe("GHSA-3m5p-2c4r-xxw2 · K2/K3: Konfiguration, direkter Zugriff am Proxy
     expect(resolveTrustProxy({ KLARWERK_TRUST_PROXY: "10.0.0.5" })).toEqual(["10.0.0.5"]);
   });
 
-  // KALIBRIERUNG: die Advisory-Bedingung ist auf der gebundenen Version wirklich scharf. Eine nackte
-  // Fastify-Instanz mit Hop-Anzahl 1 — genau das, was resolveTrustProxy bis zu dieser Änderung bei
-  // KLARWERK_TRUST_PROXY=1 lieferte — glaubt einem NICHT vertrauten Client, der direkt am Proxy
-  // vorbei kommt, seinen eigenen Kopf. Ohne diesen Fall wäre der Produktfall darunter eine
-  // Behauptung über Fastify statt einer Messung. Bei einer Hebung (Fall K1 wird dann rot) ist dieser
-  // Fall mit der Bewertung neu zu fassen.
-  it("Kalibrierung: Hop-Anzahl auf der gebundenen Version lässt einen direkten Client request.ip fälschen", async () => {
-    expect(imBetroffenenBereich(lockVersion())).toBe(true);
-    const probe = Fastify({ trustProxy: 1 });
-    probe.get("/ip", async (request) => ({ ip: request.ip }));
-    try {
-      const res = await probe.inject({
-        method: "GET",
-        url: "/ip",
-        headers: DIREKT_GEFAELSCHT,
-        remoteAddress: DIREKTER_CLIENT,
-      });
-      expect((res.json() as { ip: string }).ip, "die Falle ist nicht scharf").toBe("203.0.113.66");
-    } finally {
-      await probe.close();
-    }
-  });
+  // KALIBRIERUNG AUF 5.8.5 — HISTORISCH. Solange 5.8.5 gebunden war, stand hier ein Fall mit nackter
+  // Fastify-Instanz und `trustProxy: 1`: ein NICHT vertrauter, direkt verbundener Client bestimmte
+  // mit seinem eigenen X-Forwarded-For `request.ip` (Ergebnis 203.0.113.66). Bestanden im Kandidaten
+  // c277165b, Beleg `HISTORIE/nacharbeit-2/PRUEFUNG/fastify-restbewertung.json`. Mit der Hebung auf
+  // 5.12.1 misst er nichts mehr über die gebundene Version und ist entfallen; die Aussage über das
+  // Produkt tragen die Fälle unten, die von keiner numerischen Fastify-Einstellung abhängen.
 
   it("Produkt mit KLARWERK_TRUST_PROXY=1: der direkte Client kann request.ip NICHT mehr fälschen", async () => {
     const { ip } = await gemesseneIp("1", DIREKT_GEFAELSCHT, DIREKTER_CLIENT);

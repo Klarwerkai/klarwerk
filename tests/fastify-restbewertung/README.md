@@ -1,6 +1,6 @@
 # Fastify-Sicherheitsrest GHSA-3m5p-2c4r-xxw2 — Neubewertung am aktuellen Stand
 
-**Stand:** 06.10.2026, Nacharbeit 1 · **Basis:** `2b1131ad` (1.0.0-beta.1.713) · **Auftrag:** `aufnahme:20260922:fastify-restbewertung`
+**Stand:** 06.10.2026, Nacharbeit 2 (Hebung auf 5.12.1) · **Basis:** `2b1131ad` (1.0.0-beta.1.713) · **Auftrag:** `aufnahme:20260922:fastify-restbewertung`
 
 Ausgangspunkt ist der in JOB 4272 Runde 4 offen gelassene Rest (`fastify` 5.8.5, GHSA-3m5p-2c4r-xxw2,
 s. `tests/produktionsabhaengigkeiten/README.md` Abschnitt „`fastify`", Stand 17.09.2026). Jener Bericht
@@ -10,16 +10,16 @@ Die beiden Zeilen unten werden von `trustproxy-hopcount.test.ts` gegen `package-
 gemeldeten Versionsbereich gehalten. Ändert sich die gebundene Version, wird der Test rot und verlangt
 diese Bewertung neu — er wird dann nicht angepasst, sondern die Bewertung.
 
-**Gebundene Version:** 5.8.5
-**Urteil:** im betroffenen Bereich
+**Gebundene Version:** 5.12.1
+**Urteil:** außerhalb des betroffenen Bereichs
 
 ## 1. Version und Advisory (K1)
 
 | Was | Beleg |
 |---|---|
-| Bindung in `package.json` | `"fastify": "^5.0.0"` (`package.json:44`) |
-| Gebundene Version | `package-lock.json`, Eintrag `node_modules/fastify` → `5.8.5` (Zeilen 3821–3822) |
-| Laufzeitversion | Der Test liest die Version der **laufenden** Produktinstanz (`buildApp(...).version`) nach `npm ci` im Prüfplatz und hält sie gegen die Lockdatei — im Prüflauf des Kandidaten `6519a364` grün. |
+| Bindung in `package.json` | `"fastify": "^5.12.1"` (`package.json:44`; vorher `^5.0.0`) |
+| Gebundene Version | `package-lock.json`, Eintrag `node_modules/fastify` → `5.12.1` (Zeilen 3821–3822; vorher 5.8.5) |
+| Laufzeitversion | Der Test liest die Version der **laufenden** Produktinstanz (`buildApp(...).version`) nach `npm ci` im Prüfplatz und hält sie gegen die Lockdatei. Auf 5.8.5 grün in den Kandidaten `6519a364` und `c277165b`; auf 5.12.1 belegt erst der nächste Prüflauf. |
 | Advisory | GHSA-3m5p-2c4r-xxw2, *moderate*, betroffen `>=5.8.3 <5.12.1`, behoben ab 5.12.1. Gegenstand: `trustProxy` als **Hop-Anzahl**; ein Client, der den Ursprung am Proxy vorbei erreicht, bestimmt die Weiterleitungskette selbst. |
 | Datierung | Veröffentlicht 18.08.2026, aktualisiert 02.09.2026 — so von BEN in der Prüfung des Kandidaten `6519a364` an der offiziellen GitHub-Advisory gelesen (`HISTORIE/nacharbeit-1/BEN/ANTWORT.json`, Hinweise). Ältester datierter Beleg im Repository: `npm audit --omit=dev` vom 17.09.2026 (`tests/produktionsabhaengigkeiten/README.md:127`). |
 
@@ -38,10 +38,12 @@ Fastify. Abhängig davon:
 - `services/app/src/security-headers.ts:84` (`request.protocol`), `services/app/src/server.ts:51`
   (`request.hostname`).
 
-**Kalibrierung, gemessen** (`trustproxy-hopcount.test.ts`): auf 5.8.5 glaubt eine Fastify-Instanz mit
+**Kalibrierung auf 5.8.5, gemessen — historisch:** auf 5.8.5 glaubte eine Fastify-Instanz mit
 Hop-Anzahl 1 einem **nicht vertrauten, direkt verbundenen** Client (`198.51.100.200`) seinen eigenen
-`X-Forwarded-For: 203.0.113.66` — `request.ip` wird `203.0.113.66`. Damit ließe sich jede IP-Drossel
-mit wechselnden Fantasieadressen umgehen.
+`X-Forwarded-For: 203.0.113.66` — `request.ip` wurde `203.0.113.66`. Damit ließ sich jede IP-Drossel
+mit wechselnden Fantasieadressen umgehen. Bestanden im Kandidaten `c277165b`
+(`HISTORIE/nacharbeit-2/PRUEFUNG/fastify-restbewertung.json`). Mit der Hebung auf 5.12.1 ist der Fall
+aus dem Test entfernt: er beschrieb die nicht mehr gebundene Version.
 
 **Gegenprobe IP-/CIDR-Liste**, an der echten `buildApp`-Instanz: mit `KLARWERK_TRUST_PROXY=10.0.0.5`
 wird derselbe Kopf vom direkten Client **zurückgewiesen** (`request.ip` = `198.51.100.200`) und nur über
@@ -70,30 +72,36 @@ Damit ist die Advisory-Bedingung im Produkt auf **jeder** fastify-Version unerre
 Client-IP hinter dem Proxy; alle Drosseln zählen dann gegen die Proxy-IP (gemeinsames Kontingent),
 bis die IP-Adresse(n) des Proxys eingetragen sind. Das ist fail-safe, aber spürbar.
 
-### Nicht umgesetzt: die Versionshebung auf 5.12.1
+### Umgesetzt, separat: die Versionshebung auf 5.12.1
 
-Die kleinste kompatible Aktualisierung bleibt `fastify` **5.12.1** (innerhalb `^5`). Sie ist in dieser
-Bearbeitung **nicht** eingebaut, weil sich `package-lock.json` nur über eine Installation
-(`npm install --package-lock-only fastify@5.12.1`) ehrlich neu binden lässt — Integritätswert und
-mitgezogene Abhängigkeiten von Hand zu schreiben wäre eine erfundene Lockdatei. Installationen sind in
-diesem Ausführungsweg nicht erlaubt; im Arbeitsbaum und in seiner Git-Historie liegt kein Lockeintrag
-für 5.12.1. `package.json` allein zu heben würde `npm ci` brechen.
+Die kleinste kompatible Aktualisierung ist `fastify` **5.12.1** (innerhalb `^5`, kein Hauptwechsel).
+Übernommen sind die beiden **von npm erzeugten** Dateien aus `ROOT-LOCKFILE-20261006/`
+(Erzeugung `npm install --package-lock-only --ignore-scripts --no-audit --no-fund fastify@5.12.1`,
+Exit 0, Manifest `QUELLEN-FASTIFY-LOCKFILE-20261006.json` neben dem Auftrag) — unverändert, nichts von
+Hand geschrieben. Der Diff gegen den Kandidaten `c277165b`:
+- `package.json`: `"fastify": "^5.0.0"` → `"^5.12.1"` — sonst dürfte ein späteres `npm install` wieder
+  in den betroffenen Bereich auflösen (der Test hält das fest);
+- `package-lock.json`: `node_modules/fastify` 5.8.5 → 5.12.1 mit npm-Integritätswert; zwei neue,
+  verschachtelte Knoten `node_modules/fastify/node_modules/fast-json-stringify` 7.0.1 und
+  `…/fast-uri` 4.2.1 (5.12.1 verlangt `fast-json-stringify ^7`); die Wurzelknoten `fast-uri` 3.1.8 und
+  `find-my-way` 9.6.0 bleiben; dazu das Feld `version` der Lockdatei (1.0.0-beta.1.554 → .714), das npm
+  an `package.json` nachzieht.
 
-Die Produktänderung oben nimmt der Hebung ihre bekannte Typbruchstelle: der am 17.09.2026 gemessene
-`TS2769` am Aufruf `Fastify({ trustProxy: resolveTrustProxy(), … })` passt zu einem Typ, der keine Zahl
-mehr annimmt, und `resolveTrustProxy` liefert keine mehr. Ob die Typprüfung mit 5.12.1 damit grün ist
-(einschließlich der damals gemeldeten Stelle in `tests/produktionsabhaengigkeiten/kalibrierung.test.ts`),
-ist **nicht** gemessen.
+Die Hebung schließt zugleich GHSA-w2qp-rph6-63g4 (`<5.12.1`), die laut JOB 4272 für Klarwerk nicht
+exponiert war.
 
-Für die Hebung zu tun: `package.json` → `"fastify": "^5.12.1"`, Lockdatei per Installation neu binden,
-Typprüfung; Regression: diese Datei samt Test (K1 wird absichtlich rot; der Kalibrierfall mit
-nackter Hop-Anzahl ist dann neu zu fassen), `services/app/src/addon-auth-throttle.test.ts`,
-`tests/app/csp-upgrade-insecure-requests.test.ts`, `tests/demo-kennzeichnung/schalter.test.ts`,
-`tests/produktionsabhaengigkeiten/`.
+**Typstellen.** Der am 17.09.2026 mit 5.12.1 gemessene `TS2769` am Aufruf
+`Fastify({ trustProxy: resolveTrustProxy(), … })` ist durch den engeren Rückgabetyp oben adressiert
+(`boolean | string[]`, keine Zahl). Die damals gemeldete Stelle `kalibrierung.test.ts:217` steht heute
+als doppelte Umwandlung `as unknown as …` (Zeile 231) da und kann `TS2352` nicht mehr auslösen. Ob die
+Typprüfung mit 5.12.1 grün ist, zeigt erst der Prüflauf (`tools/build` im Prüfplatz) — hier ist nichts
+gelaufen.
 
 ## Nicht gemessen
 
 - Eigener Abruf der offiziellen Advisory (Datierung nach BENs Lesung).
 - Die tatsächliche `KLARWERK_TRUST_PROXY`-Einstellung laufender Instanzen und ob ihr Fastify-Ursprung
   am Proxy vorbei direkt erreichbar ist.
-- Das Verhalten von `fastify` 5.12.1 — weder Typprüfung noch Laufzeit.
+- `fastify` 5.12.1 in Typprüfung und Laufzeit — bis zum Prüflauf dieses Kandidaten.
+- Das Verhalten von 5.12.1 bei einer numerischen `trustProxy`-Einstellung selbst: das Produkt reicht
+  keine mehr durch, gemessen wird deshalb nur das Produkt.
