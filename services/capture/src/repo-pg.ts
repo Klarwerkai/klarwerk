@@ -310,4 +310,14 @@ export class PgDraftRepo implements DraftRepo {
     );
     return res.rows.map((row) => row.data);
   }
+
+  // Pool-Auftrag (R-2099): nur die bewusst geteilten Entwürfe verlassen die Datenbank — dieselbe
+  // Sortierung wie `listByAuthor`. `= 'true'::jsonb` trifft genau das gesetzte `imPool: true`; ein
+  // fehlendes Feld (der private Standardfall) ergibt NULL und fällt heraus.
+  async listPool(): Promise<Draft[]> {
+    const res = await this.pool.query<DraftRow>(
+      "SELECT data FROM drafts WHERE data->'imPool' = 'true'::jsonb ORDER BY data->>'createdAt'",
+    );
+    return res.rows.map((row) => row.data);
+  }
 }

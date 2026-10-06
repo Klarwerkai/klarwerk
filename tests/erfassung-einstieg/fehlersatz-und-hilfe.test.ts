@@ -79,7 +79,10 @@ describe("Fehlersatz · jede Lage bekommt ihren Satz", () => {
 /** Die Hilfetexte, die Knöpfe oder Wege des Blattes beim Namen nennen. */
 const HILFE_MIT_ZITAT = [
   "chelp.wizardSteps.body",
-  "chelp.saveDraftHelp.body",
+  // Aufnahme entwurf-in-gemeinsamen-pool-geben: der angezeigte Text zu „Entwurf speichern" steht
+  // seither unter diesem Schlüssel (`lib/captureHelp.ts`); `chelp.saveDraftHelp.body` liest keine
+  // Fläche mehr.
+  "entwurfspool.saveDraftHelp.body",
   "chelp.discardHelp.body",
   "fd.whatOnSaveBody",
   "einstieg.knopf.entwurf",
