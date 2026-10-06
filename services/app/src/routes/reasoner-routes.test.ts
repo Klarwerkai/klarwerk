@@ -260,17 +260,20 @@ describe("JOB 3353 B: Cloud wegen Vertraulichkeit gesperrt → typisierte 409 st
     expect((en.json() as Record<string, string>).message).toContain("Unsaved draft");
     expect((en.json() as Record<string, string>).message).toContain("local AI");
 
-    // GEMESSEN und dokumentiert: die Route kennt nur DE/EN (`normalizeLocale`, FR-I18N-01). Eine
-    // dritte Sprache bekommt den deutschen Satz — wie jeder andere Text dieser Route auch. Das ist
-    // keine Lücke dieses Auftrags, sondern die Sprachregel des Endpunkts, hier festgehalten, damit
-    // niemand eine Abdeckung annimmt, die es nicht gibt.
+    // KI-WAHL-Betriebsabnahme (K3): die Route kennt jetzt DE/EN/NL (`normalizeLocale`). Hier stand
+    // bis dahin die gemessene Grenze „eine dritte Sprache bekommt den deutschen Satz"; mit der
+    // geöffneten Route gehört der niederländische Satz dazu — und der deutsche darf nicht mehr kommen.
     const nl = await assistUeberRoute(app, headers, {
       source: "draft",
       confidentiality: "intern",
       locale: "nl",
     });
     expect(nl.statusCode).toBe(409);
-    expect((nl.json() as Record<string, string>).message).toContain("Nicht gesicherter Entwurf");
+    expect((nl.json() as Record<string, string>).message).toContain("Niet opgeslagen concept");
+    expect((nl.json() as Record<string, string>).message).toContain("lokale AI");
+    expect((nl.json() as Record<string, string>).message).not.toContain(
+      "Nicht gesicherter Entwurf",
+    );
   });
 
   it("B3 — gespeicherter Entwurf, Aufruf deklariert ‹vertraulich› → Grund `declared`", async () => {

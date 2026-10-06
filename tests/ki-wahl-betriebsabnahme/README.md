@@ -1,0 +1,95 @@
+# KI-WAHL-Betriebsabnahme — Stand je Originalpunkt
+
+Auftrag `aufnahme:20260922:ki-wahl-betriebsabnahme` (Revision 3), Basis `2b1131ad` (1.0.0-beta.1.713).
+Quelle der Punkte: `QUELLEN.json` → `original_points` (Auftragsquelle `b292a21b…`, Stand 22.09.2026).
+
+Diese Datei hält fest, was **dieser Lauf** geändert und mit Tests unterlegt hat, was aus früheren
+Lieferungen **übernommen** wird (mit Fassung laut Quelle, hier nicht erneut geprüft) und was **offen**
+bleibt — mit der konkreten Voraussetzung. Sie ist keine Erfüllungsbehauptung: welche Tests auf diesem
+Bau wirklich grün sind, steht im Prüfbericht des Adapters, nicht hier.
+
+## Was dieser Lauf geändert hat
+
+| Änderung | Datei | Kriterium |
+|---|---|---|
+| `normalizeLocale` der KI-Route kennt jetzt `nl` (vorher `nl` → `de`, dieselbe Lücke, die JOB 3980 in `help-routes.ts` geschlossen hatte); Body-Typen `locale` auf `ReasonerLocale` | `services/app/src/routes/reasoner-routes.ts` | K3 |
+| Niederländischer Satz der Vertraulichkeitssperre (409), den der Code-Kommentar für den Fall „Route öffnet sich für nl“ ausdrücklich verlangte | `services/app/src/routes/reasoner-routes.ts` | K3, K6 |
+| B2 erwartet für `nl` jetzt den niederländischen statt des deutschen Satzes | `services/app/src/routes/reasoner-routes.test.ts` | K3 |
+| nl-Kette getrennt gemessen: `nl-NL` → `nl` (Client) → Reasoner-Argument → niederländische Ausgaberegel im Rumpf an `/chat/completions`; Antwort nur als Durchreichung | `nl-erreicht-das-modell.test.ts` | K3 |
+| EN-Fläche in Chromium wählt Claude per Tastatur; Zeile `reasoner_policy` direkt in PostgreSQL gelesen; Probe und echte Aufgabe gehen nur an Anthropic; Neuaufbau von Pool/Diensten/Reasoner/Server gegen dieselbe DB → Quelle `persisted`, Anzeige und Empfänger unverändert; Gegenprobe „auto“ → OpenAI | `en-wahl-pg-neustart.integration.test.ts` | K1, K5, K8 |
+
+## Stand je Originalpunkt
+
+Legende: **geliefert (Quelle)** = laut datierter Quelle geliefert, in diesem Lauf nicht erneut
+geprüft · **dieser Lauf** = hier geändert/gemessen · **offen** = braucht echte Bedienung,
+Produktivmittel oder eine Entscheidung.
+
+| Punkt | Inhalt (kurz) | Stand | Beleg / verbleibende Entscheidung |
+|---|---|---|---|
+| R-0684 | Admin bestimmt global und je Aufgabe Cloud/lokal/Ersatz; Schlüssel nur serverseitig | geliefert (Quelle) + dieser Lauf (global, EN, PG) | JOB 3134 R3 LIVE 1.0.0-beta.1.165; `tests/ki-anbieterwahl/**`; K1-Lauf prüft, dass kein Schlüssel in Admin-Antwort oder Anbieterrumpf steht. Je-Aufgabe-Wahl im echten Browser hier nicht gefahren. |
+| R-0685 | Lokales Modell als zweites Backend, Kette Cloud → lokal → Ersatz | Code vorhanden, Betrieb **offen** | `createLocalClientFromEnv` (`model-client.ts:721`). Ohne Maschine nicht abnehmbar → R-1787. |
+| R-0689 | Schlüssel-Test mit echtem kleinem Aufruf, echter Fehlergrund | geliefert (Quelle) + dieser Lauf (EN-Knopf → Anthropic) | `POST /api/reasoner/test`, `test-local`; Fehlergrund JOB 3420 LIVE 1.0.0-beta.1.254 (`tests/ki-fehlerhilfe/**`). Echter Fehlgrund gegen echten Anbieter: Betriebsprobe. |
+| R-0693 | Beide Zugänge beim Start aus ENV/Schlüsselbund; nie Schlüssel in der Oberfläche | Code vorhanden | `createCappedCloudClientFromEnv(process.env, …)` in `build-app.ts`. **Quellenwiderspruch** mit R-0799 (s. u.). |
+| R-0699 | Quelloffenes Modell für Eigenbetrieb auswählen, „verbindlich erst nach Test vor Ort“ | **offen** (Entscheidung) | Kein Ortstest belegt. Hängt an R-1787. |
+| R-0799 | KI-Verwaltung: Schlüssel eintragen, testen, wirksamen Zustand sehen, Kopfzeile, steuert Word mit | Teil geliefert (Quelle) | Test/Zustand: JOB 3134/3420. „Schlüssel eintragen“ widerspricht R-0693 und JOB 3134 („Env-Name, nie ein Schlüssel“). Word-Mitsteuerung im echten Word: **offen**. |
+| R-0802 | Lokaler Modell-Server als gleichberechtigter Anbieter; es fehlt Maschine und Entscheidung | **offen** (Entscheidung) | Auswahlwert `local` sichtbar, ohne Server ausgegraut (`AdminKiDetails.tsx` `WahlOptionen`). Hardware/Kosten/erste Aufgabe: Pedis Entscheidung. |
+| R-0804 | Betreiber stellt Modell ein, nicht der Nutzer, nicht der Anbieter | Code vorhanden | Modell nur aus ENV (`OPENAI_MODEL`/`ANTHROPIC_MODEL`/`REASONER_MODEL`), Wahl nur mit `users.manage` (`persistenz-und-migration.test.ts` C7). |
+| R-0818 | Weboberfläche zum Laden/Löschen lokaler Modelle | **offen** | Im Produktbaum kein solcher Weg gefunden. Setzt R-1787 voraus. |
+| R-1138 | Notiz zum Antwort-/Kostenverhalten der Modelle | **offen** | Laufprotokoll mit Kosten existiert (`ki-lauf-*`); eine Auswertungsnotiz je Modell ist nicht vorhanden und braucht echte Läufe. |
+| R-1787 | ENTSCHEIDUNG: Maschine für hausinternes Modell — ja/nein, welche Aufgabe zuerst | **offen** (Entscheidung Pedi) | Unverändert. Kein Bau ohne Entscheidung. |
+| N-0026 | Cloud-Auswahl mit tatsächlichem Anbieter beschriften; HTTP 400 nicht pauschal als Schlüsselwechsel | Teil (Beschriftung) dieser Lauf; Fehlerhilfe verwandt geliefert | Quelle: „Gegenprüfung offen, keine bestätigte Behebung dieses Einzelbefunds“. Verwandte Lieferungen JOB 3120/3420 (UX-10, UX-10b, 1.0.0-beta.1.254). Dieser Lauf prüft die EN-Beschriftung „External · Claude (Anthropic) · …“ und die Statuszeile; die Fehlerhilfe im ausgelieferten Web gegen einen echten 400 bleibt Betriebsprobe. |
+| N-0066 | KI-Schreibaktionen liefern unveränderten Text statt Bearbeitung | **offen** | Braucht echte Modellantwort; in diesem Lauf nicht gemessen. Aktueller Erfüllungsstand ungeklärt. |
+| N-0070 | Zugang an der Editorleiste, Anbieter vor Ausführen zeigen | ungeklärt | Bestand `tests/ki-palette-*`; die Anbieteranzeige vor Ausführen wurde hier nicht geprüft. |
+| N-0087 | Interview-Ersatzfragen verständlich einordnen | ungeklärt | Hier nicht geprüft. |
+| P-KI-WAHL | ChatGPT/Claude getrennt, Wahl bestimmt Empfänger, kein heimlicher Wechsel | geliefert DE (07.09., JOB 3134 R3, 1.0.0-beta.1.165) + **dieser Lauf EN/PG/Neustart** | Rest laut Quelle war „EN-Anzeige und echter Anbieterweg getrennt offen“: EN-Anzeige und Empfänger sind jetzt im Chromium-PG-Lauf gemessen (gestellter Transport). Echter Anthropic-Anbieterweg: **offen** (K2). |
+| P-KI-OPENAI-400 | OpenAI sendet `max_completion_tokens`, Abnahme = nichtleere Text- UND Bildausgabe | geliefert (Quelle) | JOB 3222 R2 LIVE 1.0.0-beta.1.171; **echte Probe 07.09. 15:34 bestanden** (Codex 616faf45, `openai-text-bild-live.json`: vier nichtleere Text-/Bildantworten DE/EN). Diese API-Teilprobe bleibt der Beleg und wird nicht wiederholt. |
+| P-KI-OPENAI-400-R | Usage-only-Testfall | geliefert (Quelle) | geschlossen 07.09. (JOB 3239 §5.5, BEN M3). |
+| P-KI-OPENAI-400-R3 | Zwei Meldungen bei zwei Aufrufen, fremde `finish_reason`, Extract-Rettung | geliefert (Quelle) | JOB 3248; `tests/ki-abgeschnittene-antwort/**`. „Echter Anbieter/Word ungemessen“ bleibt **offen** (K4). |
+| P-N12b | `OPENAI_API_KEY`/`OPENAI_BASE_URL` in Compose durchreichen | geliefert | `docker-compose.prod.yml:111-130` reicht beide und `REASONER_MODEL` (leerer Vorgabewert) durch. Prämisse der Zeile von der Quelle selbst korrigiert (Compose ist nicht Coolifys Deploy-Quelle). |
+| P-N12c | Bildaufträge auch über ChatGPT (`completeVision`) | geliefert (Code) | `openAiCompatibleClient` trägt `completeVision` (`model-client.ts:686`); echte Bildantwort: s. P-KI-OPENAI-400 (OpenAI). Für Anthropic: **offen** (K2). |
+| P-N12d / UX-10 / UX-10b | Anbieter und Fehlerhilfe stimmen überein; kein pauschaler Schlüsseltipp | geliefert (Quelle) | JOB 3122 (1.0.0-beta.1.143), JOB 3420 (1.0.0-beta.1.254). |
+| TEST-A07 / TEST-A13 | Testgruppen „Klara: Fragen, Antworten, Quellen“ / „KI-Verwaltung und lokale Modelle“ | ungeklärt | In der Quelle „noch nicht beurteilt“; kein eigener Bau. |
+
+## Kriterien, die dieser Lauf nicht schliessen kann
+
+- **K2 — echte Text-/Bildantwort, Quellenweg, Weltwissen-/Konfliktgrenze je Anbieter.** Für OpenAI
+  liegt die echte Probe vom 07.09. vor (s. o.). Für Claude (Anthropic) fehlt in den Quellen jeder
+  Echtbeleg. Ein echter Lauf braucht einen freigegebenen Schlüssel auf einem echten Host und
+  verursacht Kosten — das Kriterium schliesst eine freie neue Kostenfreigabe aus. Bleibt
+  **Betriebsprobe mit vorhandener Freigabe**.
+- **K3, zweite Hälfte — tatsächliche Antwortsprache.** Gemessen ist, dass `nl` als Argument und als
+  niederländische Ausgaberegel beim Anbieter ankommt. Ob ein echtes Modell niederländisch antwortet,
+  braucht einen echten Anbieterlauf.
+- **K4 — Abbruch-/Fragmentwarnung im echten Word-WebView.** Komponentenbelege DE/EN bleiben Teilnachweise
+  (`tests/ki-fragment-sichtbar/**`). Ein echtes Word (Desktop oder Online) mit geladenem Add-in ist im
+  Prüfstand nicht vorhanden → **menschliche Bedienung** nötig.
+- **K8 — echter Host.** Der Neustartnachweis ist ein Neuaufbau im selben Node-Prozess gegen dieselbe
+  Datenbank, kein Container-Neustart auf dem Produktionshost. Ein Neustart des Live-Containers ist
+  ein Betriebseingriff und ist nicht Teil dieses Laufs.
+
+## Befund dieses Laufs (nicht geändert, Entscheidung nötig)
+
+**Die Erreichbarkeitssonde pingt jeden eingerichteten Anbieter, unabhängig von Wahl und Freigabe.**
+`GET /api/reasoner/status` und `GET /api/ai-status` (öffentlich, `build-app.ts:2564-2571`) rufen
+`refreshReachabilityIfStale()`; das schickt höchstens einmal je 60 s einen festen Mini-Ping
+(„Antworte mit genau einem Wort: OK“, `provider-model.ts:1764-1767`) an **jeden** eingerichteten
+Cloud-Anbieter (`service.ts:1102-1120`) — auch an ChatGPT, wenn Claude gewählt ist, und ohne die
+Grundfreigabe `kiFreigabe.oeffentlicheKi` zu prüfen (`probe()` geht direkt an `cloudProvider`, nicht
+über `chainForChoice`). Es reist kein Nutzer- oder Dokumenttext mit, wohl aber ein bezahlter Aufruf
+nach draussen. Das steht im Spannungsfeld zu Pedis Regel „Ohne ausdrückliche Grundfreigabe geht
+nichts hinaus“ (`service.ts:846-851`) und zu „kein heimlicher Wechsel“ (P-KI-WAHL), ist aber als
+D-AISTATE-Vertrag (Pedi 23.07.) ausdrücklich so gebaut. Der K1-Lauf trennt deshalb Aufgabenrufe von
+diesen Pings über den Inhalt. **Zu entscheiden:** Sonde nur bei erteilter Freigabe und/oder nur für
+den gewählten Anbieter — oder bewusst so lassen.
+
+## Quellenwidersprüche
+
+1. **R-0693 ↔ R-0799:** „Kein Schlüssel wird je in der Oberfläche eingegeben“ gegen „Schlüssel
+   eintragen, testen …“ im Verwaltungsbereich. Der Code folgt R-0693 (Schlüssel nur aus ENV/Schlüsselbund).
+2. **R-0685 ↔ P-KI-WAHL:** „wählt selbsttätig zuerst die Cloud, dann das lokale Modell“ gegen „kein
+   heimlicher Wechsel“. Der Code trennt das: die Wahl `auto` folgt der Kette, eine ausdrückliche
+   Anbieterwahl wechselt nie zu einem anderen externen Anbieter (JOB 3134 R3, `globaleKette`).
+3. **FR-I18N-01 „nur DE/EN“ (Kommentar und Test B2 in `reasoner-routes*`) ↔ K3 / JOB 3980:** in
+   diesem Lauf zugunsten von K3 aufgelöst.
+4. **P-N12b:** die Prämisse („ohne Durchreichung wirkungslos“) ist von der Quelle selbst als
+   unzutreffend korrigiert.

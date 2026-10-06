@@ -29,9 +29,23 @@ import {
   klaraBindungVorhanden,
 } from "./ask-routes";
 
-// FR-I18N-01: nur DE/EN; alles andere/ungültige normalisiert sauber auf "de" (keine 400).
+// FR-I18N-01: DE/EN/NL; alles andere/ungültige normalisiert sauber auf "de" (keine 400).
+//
+// KI-WAHL-BETRIEBSABNAHME (K3, der nl-NL-Hinweis) — NIEDERLÄNDISCH KOMMT AUCH HIER AN. Hier stand
+// `value === "en" ? "en" : "de"`, dieselbe Zeile, die JOB 3980 in `help-routes.ts:22` schon
+// ersetzt hat: Der Client schickt seit AUFTRAG-mega52 D1 `"nl"` (`apps/web/src/lib/reasonerLocale.ts`,
+// `nl-NL` → `nl`), der Reasoner kennt `nl` (`ReasonerLocale`, `outputLanguageRule`), und nur diese
+// Route machte still `"de"` daraus — das Modell bekam für eine niederländische Fläche die deutsche
+// Sprachregel. Reihenfolge wie dort und aus demselben Grund: bekannte Sprache zuerst, Deutsch
+// zuletzt, damit eine vierte Oberflächensprache auf dem sicheren Default landet.
 function normalizeLocale(value: unknown): ReasonerLocale {
-  return value === "en" ? "en" : "de";
+  if (value === "en") {
+    return "en";
+  }
+  if (value === "nl") {
+    return "nl";
+  }
+  return "de";
 }
 
 // N11b: Nicht eingestufter draft/transient-document-Text erreicht die Cloud nur mit bestätigter
@@ -186,11 +200,11 @@ export type VertraulichGrund = "unsaved_draft" | "declared" | "backstop";
 /**
  * Der anzeigbare Satz je Grund, in der Sprache des Requests. Kein Nutzertext, keine Kennung.
  *
- * DE UND EN, und das ist vollständig: diese Route normalisiert JEDE Sprachangabe auf genau diese
- * zwei (`normalizeLocale`, Zeile 27 — „FR-I18N-01: nur DE/EN"). Ein niederländischer Satz stünde
- * hier als Zweig, den kein Aufruf erreichen kann; er sähe nach Abdeckung aus und wäre keine. Öffnet
- * FR-I18N-01 die Route eines Tages für „nl", gehört er hierher — zusammen mit dem Aufruf, der ihn
- * auslöst.
+ * DE, EN UND NL, und das ist vollständig: diese Route normalisiert JEDE Sprachangabe auf genau
+ * diese drei (`normalizeLocale` am Dateikopf). Bis zur KI-WAHL-Betriebsabnahme kannte sie nur DE/EN,
+ * und hier stand deshalb bewusst kein niederländischer Satz — „Öffnet FR-I18N-01 die Route eines
+ * Tages für ‚nl', gehört er hierher, zusammen mit dem Aufruf, der ihn auslöst." Beides ist jetzt
+ * geschehen; der auslösende Aufruf steht in `reasoner-routes.test.ts` (B2, `locale: "nl"`).
  *
  * JEDER DER DREI SÄTZE NENNT DIE EINSTUFUNG, auch der des nicht gesicherten Entwurfs (Runde 3,
  * gemessen an reasoner-egress.test.ts:66). Das ist keine Rücksicht auf einen Test, sondern die Sache
@@ -209,6 +223,13 @@ function cloudGesperrtMeldung(locale: ReasonerLocale, grund: VertraulichGrund): 
       : grund === "backstop"
         ? "The saved entry is classified as confidential, so the cloud AI cannot process this text. Change the classification of the saved entry, or choose the local AI."
         : "This text is classified as confidential, so the cloud AI cannot process it. Change the classification here, or choose the local AI.";
+  }
+  if (locale === "nl") {
+    return grund === "unsaved_draft"
+      ? "Niet opgeslagen concept: zonder opgeslagen versie geldt deze tekst als vertrouwelijk, dus de cloud-AI mag hem niet verwerken. Sla het concept op (de classificatie wordt dan gecontroleerd) of kies de lokale AI."
+      : grund === "backstop"
+        ? "Het opgeslagen item is als vertrouwelijk geclassificeerd, dus de cloud-AI mag deze tekst niet verwerken. Wijzig de classificatie van het opgeslagen item of kies de lokale AI."
+        : "Deze tekst is als vertrouwelijk geclassificeerd, dus de cloud-AI mag hem niet verwerken. Wijzig hier de classificatie of kies de lokale AI.";
   }
   return grund === "unsaved_draft"
     ? "Nicht gesicherter Entwurf: ohne gesicherten Stand gilt der Text als vertraulich eingestuft — die Cloud-KI darf ihn nicht bearbeiten. Entwurf sichern (die Einstufung wird dann geprüft) oder lokale KI wählen."
@@ -448,7 +469,7 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
         task: "structure" | "ask" | "assist" | "interview" | "extract";
         text?: string;
         answers?: string[];
-        locale?: "de" | "en";
+        locale?: ReasonerLocale;
         // SCRUM-312: optionale Bearbeitungs-Anweisung für 'assist' (klarer/strukturieren/… oder frei).
         instruction?: string;
         // PMO-FEA-0006: optionaler Suchauftrag des Experten für 'extract' (wonach suchen?).
@@ -539,8 +560,7 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
           ask.kiSperreVorAuslieferung(kiBeginn);
           reply.code(200).send(antwort);
         } catch (fehler) {
-          // Die Auskunft in der angefragten Sprache — auch NL, das `normalizeLocale` für die
-          // Antwort selbst (bestehend: nur DE/EN) auf DE zurückführt.
+          // Die Auskunft in der angefragten Sprache (DE/EN/NL, wie `normalizeLocale`).
           if (!kiAbgeschaltetSenden(reply, fehler, String(request.body.locale ?? locale))) {
             throw fehler;
           }
@@ -671,7 +691,7 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
     app.post<{
       Body: {
         dataUrl?: string;
-        locale?: "de" | "en";
+        locale?: ReasonerLocale;
         // Bild-Einstufungen bleiben fail-closed: Dokumentzustimmung hebt hier weder eine
         // fehlende Stufe noch den Textmarker; ausdrückliches intern behält den KA4-Riegel.
         source?: "draft" | "transient-document";
@@ -745,7 +765,7 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
     // Zwei Gates: (1) Schreibberechtigung (ko.create); (2) der Admin-Regler „externe
     // Wissensabfrage" muss auf „offen" stehen (publicAiEnrichmentAllowed) — sonst 403.
     // Ergebnis ist extern/ungeprüft; die UI kennzeichnet das und übernimmt nur bewusst.
-    app.post<{ Body: { query?: string; locale?: "de" | "en" } }>(
+    app.post<{ Body: { query?: string; locale?: ReasonerLocale } }>(
       "/api/reasoner/enrich",
       async (request, reply) => {
         const user = await guards.requirePermission("ko.create", request, reply);
