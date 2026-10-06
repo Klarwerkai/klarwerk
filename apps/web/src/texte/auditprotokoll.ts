@@ -42,6 +42,7 @@ export default {
     "audit.action.ko_source_restored_in_origin",
     "audit.action.ko_source_attachments_synced",
     "audit.action.ko_source_restriction_synced",
+    "audit.action.output_lms_export",
     "adm.sich.export.button",
     "adm.sich.export.done",
     "adm.sich.qualityNote",
@@ -80,6 +81,9 @@ export default {
     "audit.action.ko_source_restored_in_origin": "Quelle im Ursprungssystem wiederhergestellt",
     "audit.action.ko_source_attachments_synced": "Anhänge der Quelle abgeglichen",
     "audit.action.ko_source_restriction_synced": "Leseeinschränkung der Quelle abgeglichen",
+    // Bens Befund Nacharbeit 7: der SCORM-Export (`lms-export-routes.ts`) — Prüfprotokoll und, über
+    // `objekte[].koId`, die Spur jedes exportierten Objekts.
+    "audit.action.output_lms_export": "Für Lernplattform exportiert (SCORM)",
     "adm.sich.export.button": "Kette exportieren",
     "adm.sich.export.done":
       "Export mit {{count}} Einträgen gespeichert. Kopf der Kette: Nr. {{seq}} · {{hash}}. Wer diesen Kopf außerhalb der Anlage ablegt, erkennt dort später, ob die Kette bis zu diesem Punkt neu gebildet wurde.",
@@ -126,6 +130,7 @@ export default {
     "audit.action.ko_source_restored_in_origin": "Source restored in the origin system",
     "audit.action.ko_source_attachments_synced": "Source attachments synchronised",
     "audit.action.ko_source_restriction_synced": "Source read restriction synchronised",
+    "audit.action.output_lms_export": "Exported for learning platform (SCORM)",
     "adm.sich.export.button": "Export chain",
     "adm.sich.export.done":
       "Export with {{count}} entries saved. Head of the chain: no. {{seq}} · {{hash}}. Whoever stores this head outside the installation can later tell there whether the chain up to this point was rebuilt.",
@@ -170,6 +175,7 @@ export default {
     "audit.action.ko_source_restored_in_origin": "Bron in het herkomstsysteem hersteld",
     "audit.action.ko_source_attachments_synced": "Bijlagen van de bron bijgewerkt",
     "audit.action.ko_source_restriction_synced": "Leesbeperking van de bron bijgewerkt",
+    "audit.action.output_lms_export": "Geëxporteerd voor leerplatform (SCORM)",
     "adm.sich.export.button": "Keten exporteren",
     "adm.sich.export.done":
       "Export met {{count}} items opgeslagen. Kop van de keten: nr. {{seq}} · {{hash}}. Wie deze kop buiten de installatie bewaart, kan daar later zien of de keten tot dit punt opnieuw is opgebouwd.",

@@ -508,6 +508,31 @@ describe("Verwalteransicht · Spalten, Detailansicht, gelöschte Konten, Gesamtz
     expect(container.textContent).not.toContain(i18n.t("audit.detail.accountGone"));
   });
 
+  it("V7 · der SCORM-Export trägt in der Spalte „Ereignis“ einen deutschen Namen", async () => {
+    // Bens Befund Nacharbeit 7: `lms-export-routes.ts` schreibt `output.lms-export` mit dem
+    // Exportpaket als Ziel; ohne Schlüssel stand hier „output lms export“.
+    await mount([
+      {
+        ...kette(20),
+        actor: "lebt-1",
+        target: "lms-export:EXP-1",
+        action: "output.lms-export",
+        payload: { format: "SCORM 1.2", objekte: [{ koId: "ko-existiert", version: 1 }] },
+      },
+    ]);
+    expect(text(zeile(20, "audit.detail.event"))).toBe("Für Lernplattform exportiert (SCORM)");
+    expect(text(zeile(20, "audit.detail.actor"))).toBe("Lea Lebt");
+    // Das Paket ist kein Konto — Objektzeile, keine Löschaussage.
+    expect(text(zeile(20, "audit.detail.targetObject"))).toContain("lms-export:EXP-1");
+    expect(container.textContent).not.toContain("output lms export");
+    expect(container.textContent).not.toContain("output.lms-export");
+    expect(container.textContent).not.toContain(i18n.t("audit.detail.accountGone"));
+    // Und EN ist eine eigene Fassung, kein deutscher Rest.
+    await i18n.changeLanguage("en");
+    expect(i18n.t("audit.action.output_lms_export")).toBe("Exported for learning platform (SCORM)");
+    await i18n.changeLanguage("de");
+  });
+
   it("V5 R-1085 · letzte Aktionen mit Gesamtzahl und Knopf zur Kettenprüfung", async () => {
     const viele = Array.from({ length: 14 }, (_, i) => ({
       ...kette(i + 1),
