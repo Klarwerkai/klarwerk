@@ -1104,6 +1104,10 @@ export function Ask(): JSX.Element {
       // Ergänzung 1: wer eine Frage stellt, arbeitet weiter — der Wiederaufnahme-Hinweis hat
       // seinen Zweck erfüllt.
       setWiederaufnahme(null);
+      // R-0286 (Ben, Nacharbeit 6): die Beispielliste steht zwischen Feld und Ergebnis. Bliebe sie
+      // nach dem Absenden offen, stünden Beispieltexte und Hinweise zwischen Feld und Antwort. Sie
+      // schliesst deshalb hier — nur bei einem ANGENOMMENEN Absenden, für Feld, Chip und Auto-Ask.
+      setBeispiele(false);
       ask.mutate({ frage: trimmed, generation: kontoGeneration.current });
     },
     [answerAi.available, ask.isPending, ask.mutate],

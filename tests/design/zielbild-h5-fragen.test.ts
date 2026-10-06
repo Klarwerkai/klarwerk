@@ -1117,4 +1117,82 @@ describe("R-1580 · die Fragenfläche bedient: Quelle öffnen, Kopieren, Rückme
       }
     }, 240_000);
   }
+
+  // ==============================================================================================
+  // R-0286 · EINSTIEG ÜBER DIE BEISPIELE (Ben, Nacharbeit 6).
+  // ==============================================================================================
+  // V16 beginnt mit geschlossener Beispielliste. Ben hat den anderen Einstieg gefunden: „Beispiele"
+  // öffnen und ein Beispiel absenden — die Liste blieb offen und stand damit zwischen Feld und
+  // Antwort. Hier läuft genau dieser Weg; erwartet wird dasselbe wie in V16: das Ergebnis direkt
+  // unter dem Feld, kein sichtbarer Text dazwischen, Abstand ≤ 48 px — und die Liste zu.
+  // Ob das Beispiel geprüftes Wissen findet oder bewusst eine Lücke zeigt (R-0282), entscheidet der
+  // Bestand; gemessen wird deshalb die ERGEBNISKARTE, ob Antwort oder Wissenslücke.
+  it("R-0286 · Beispiele öffnen → Beispiel absenden → Ergebnis direkt unter dem Feld, Liste geschlossen", async () => {
+    expect(bFehler, "Bedienvorrichtung nicht aufgebaut").toBeNull();
+    bBrowser = await browserStarten();
+    const s = await bedienSeite("de", 1280, 800);
+    try {
+      await s.goto(`${ORIGIN_SICHER}/fragen`, { waitUntil: "load", timeout: 60_000 });
+      await s.waitForFunction(
+        fn(`() => !!document.querySelector('[data-testid="ask-beispiele-knopf"]')`),
+        undefined,
+        { timeout: 30_000 },
+      );
+      await s.click('[data-testid="ask-beispiele-knopf"]');
+      await s.waitForFunction(
+        fn(
+          `() => { const d = document.querySelector('[data-testid="ask-beispiele"]'); return !!d && !d.hasAttribute('hidden') && !!d.querySelector('button:not([disabled])'); }`,
+        ),
+        undefined,
+        { timeout: 30_000 },
+      );
+      await s.click('[data-testid="ask-beispiele"] button:not([disabled])');
+      await s.waitForFunction(
+        fn(
+          `() => !!document.querySelector('[data-testid="ask-answer"] .ask-answer-body, [data-testid="ask-gap"]')`,
+        ),
+        undefined,
+        { timeout: 60_000 },
+      );
+      const lage = await s.evaluate<{
+        listeOffen: boolean;
+        ueber: boolean;
+        abstand: number;
+        dazwischen: string[];
+      }>(
+        fn(
+          `() => {
+            const spalte = document.querySelector('[data-testid="page-fragen"]');
+            const feld = spalte.querySelector('form');
+            const karte = document.querySelector('[data-testid="ask-answer"], [data-testid="ask-gap"]');
+            const liste = document.querySelector('[data-testid="ask-beispiele"]');
+            const unten = feld.getBoundingClientRect().bottom;
+            const oben = karte.getBoundingClientRect().top;
+            const dazwischen = [...spalte.querySelectorAll('*')].filter((e) => {
+              if (e.children.length > 0) return false;
+              const r = e.getBoundingClientRect();
+              if (r.height === 0 || r.width === 0) return false;
+              if (!(e.textContent || '').trim()) return false;
+              return r.top >= unten && r.bottom <= oben;
+            }).map((e) => (e.textContent || '').trim());
+            return {
+              listeOffen: !!liste && !liste.hasAttribute('hidden') && liste.getBoundingClientRect().height > 0,
+              ueber: unten <= oben,
+              abstand: Math.round(oben - unten),
+              dazwischen,
+            };
+          }`,
+        ),
+      );
+      console.info(`R-0286 · Beispiel-Einstieg · ${JSON.stringify(lage)}`);
+      expect(lage.listeOffen, "die Beispielliste ist nach dem Absenden noch offen").toBe(false);
+      expect(lage.ueber, "das Ergebnis steht nicht unter dem Feld").toBe(true);
+      expect(lage.dazwischen, "zwischen Feld und Ergebnis steht etwas").toEqual([]);
+      expect(lage.abstand).toBeLessThanOrEqual(48);
+    } finally {
+      await s.close().catch(() => undefined);
+      await bBrowser?.close().catch(() => undefined);
+      bBrowser = null;
+    }
+  }, 240_000);
 });
