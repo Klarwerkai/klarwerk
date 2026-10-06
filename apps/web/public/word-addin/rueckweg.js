@@ -539,10 +539,11 @@
     // WordApi 1.1, das Manifest bleibt: `Range.getHtml()` als zweites HTML, je Absatz `text` und
     // `style` (die Formatvorlage, im Web lokalisiert: „Ueberschrift 1"/„Heading 1"), je Absatz
     // `inlinePictures` und ueber `ladeBilder` (derselbe Helfer wie am Sendeweg) die Bytes.
-    //   · Traegt das HTML schon `<img>`-Tags, fuellt `fillWordImages` sie wie am Sendeweg.
-    //   · Traegt es keines, steht jedes Bild in SEINEM Absatz (Absatz mit Text) oder als eigener
-    //     Absatz vor dem Absatz, der in Word darauf folgt — vor dessen Tabelle, falls er in einer
-    //     beginnt; ohne Nachfolger am Ende. Die Zuordnung laeuft ueber den Absatztext in Reihenfolge.
+    //   · Bilder werden je Word-Absatz ZUGEORDNET (Nacharbeit 12, s. `rwStrukturEinsetzen`): ein schon
+    //     eingebettetes Bild mit denselben Bytes bleibt, passende Platzhalter bekommen ihre Bytes, ein
+    //     fehlendes Bild steht in SEINEM Absatz (Absatz mit Text) oder als eigener Absatz vor dem
+    //     Absatz, der in Word darauf folgt — vor dessen Tabelle, falls er in einer beginnt; ohne
+    //     Nachfolger am Ende. Die Zuordnung laeuft ueber den Absatztext in Reihenfolge.
     //   · Ein Absatz mit Ueberschriftenvorlage wird `<hN>` (der Server bildet h1 auf h2 ab).
     // WAS DANACH FEHLT, WIRD GEZAEHLT UND GESAGT, und der Satz ist dann eine Warnung: Bilder mit dem
     // Wortlaut des Sendewegs (`sendImagesMissing`, auch fuer EMF/WMF — sie sind kein Rasterbild),
@@ -594,16 +595,65 @@
       return m ? Number(m[1]) : 0;
     }
 
+    /** Bildbytes ohne `data:`-Kopf und Leerraum — die Form, in der zwei Bilder verglichen werden. */
+    function rwRoh(b64) {
+      return String(b64 || "").replace(/^\s*data:[^,]*,/, "").replace(/\s+/g, "");
+    }
+
     /** Die Bildtags eines Absatzes; was kein unterstuetztes Rasterbild ist, zaehlt als fehlend. */
     function rwBildTags(liste) {
       var tags = "";
       var fehlen = 0;
       for (var i = 0; i < liste.length; i += 1) {
-        var roh = String(liste[i] || "").replace(/^data:[^,]*,/, "").replace(/\s+/g, "");
+        var roh = rwRoh(liste[i]);
         var mime = wordImageMimeFromBase64(roh);
         if (mime) { tags += '<img src="data:' + mime + ";base64," + roh + '">'; } else { fehlen += 1; }
       }
       return { tags: tags, fehlen: fehlen };
+    }
+
+    /** Alle `<img>`-Tags des HTML: Lage, Wortlaut und — wenn schon eingebettet — ihre Bytes. */
+    function rwImgTags(inner) {
+      var re = /<img\b[^>]*>/gi;
+      var liste = [];
+      var m = re.exec(inner);
+      while (m !== null) {
+        var src = /src\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(m[0]);
+        var wert = src ? (src[1] !== undefined ? src[1] : src[2]) : "";
+        var daten = /^\s*data:image\/(png|jpe?g|gif|webp);base64,/i.test(wert) ? rwRoh(wert) : null;
+        liste.push({ pos: m.index, ende: m.index + m[0].length, tag: m[0], daten: daten, frei: true });
+        m = re.exec(inner);
+      }
+      return liste;
+    }
+
+    /** Ein Platzhalter-Tag bekommt die Bytes SEINES Bildes; andere Attribute bleiben (wie `fillWordImages`). */
+    function rwTagMitBild(tag, mime, roh) {
+      var datenUrl = "data:" + mime + ";base64," + roh;
+      return /src\s*=\s*(?:"[^"]*"|'[^']*')/i.test(tag)
+        ? tag.replace(/src\s*=\s*(?:"[^"]*"|'[^']*')/i, 'src="' + datenUrl + '"')
+        : tag.replace(/^<img/i, '<img src="' + datenUrl + '"');
+    }
+
+    /**
+     * Der Bereich des HTML, in dem die Bilder von Word-Absatz `i` stehen muessten: der eigene Block
+     * (Absatz mit Text) oder die Strecke zwischen dem vorigen und dem naechsten gefundenen Absatz.
+     */
+    function rwBildBereich(inner, bloecke, treffer, i) {
+      var vor = 0;
+      for (var j = i - 1; j >= 0; j -= 1) {
+        if (treffer[j] >= 0) { vor = bloecke[treffer[j]].ende; break; }
+      }
+      if (treffer[i] >= 0) {
+        var blk = bloecke[treffer[i]];
+        return { von: blk.start >= 0 ? blk.start : vor, bis: blk.ende, stelle: blk.schluss, imBlock: true, schluessel: "b" + treffer[i] };
+      }
+      var bis = inner.length;
+      for (var k = i + 1; k < treffer.length; k += 1) {
+        var b = treffer[k] >= 0 ? bloecke[treffer[k]] : null;
+        if (b && b.start >= vor) { bis = b.start; break; }
+      }
+      return { von: vor, bis: bis, stelle: rwBildStelle(inner, bloecke, treffer, i), imBlock: false, schluessel: vor + ":" + bis };
     }
 
     /** Wohin ein Bildabsatz ohne Text kommt: vor den naechsten gefundenen Absatz (oder dessen Tabelle). */
@@ -622,7 +672,21 @@
       return inner.length;
     }
 
-    /** Ueberschriften und (bei HTML ohne `<img>`) Bilder in das HTML einsetzen — und zaehlen, was nicht ging. */
+    /**
+     * Ueberschriften und Bilder in das HTML einsetzen — und zaehlen, was nicht ging.
+     *
+     * BILDER NACH ZUORDNUNG, NICHT NACH GESAMTZAHL (Nacharbeit 12, Ben): die Bilder eines Word-Absatzes
+     * gehoeren in SEINEN Bereich (`rwBildBereich`). Je Bereich gilt:
+     *   1. Ein schon eingebettetes Bild (data-URL) mit denselben Bytes IST dieses Bild — es bleibt,
+     *      wo es steht, und wird nicht ein zweites Mal eingesetzt.
+     *   2. Stehen dort genau so viele Platzhalter (`<img>` ohne Bytes) wie noch offene Bilder, bekommt
+     *      jeder Platzhalter der Reihe nach die Bytes seines Bildes.
+     *   3. Sonst ist die Zuordnung im Bereich nicht eindeutig: die Platzhalter fallen, und die offenen
+     *      Bilder stehen in Word-Reihenfolge an der Stelle des ersten Platzhalters (ohne einen: an der
+     *      Stelle des Absatzes). Mehr Platzhalter als Bilder heisst: Word gab diese nicht heraus —
+     *      sie zaehlen als fehlend.
+     * Ein Platzhalter ausserhalb jedes Bildbereichs bleibt unberuehrt; `rwLadung` zaehlt ihn wie bisher.
+     */
     function rwStrukturEinsetzen(inner, w, bilderJe) {
       var bloecke = rwBloecke(inner);
       var treffer = [];
@@ -640,8 +704,9 @@
       var setze = function (pos, weg, neu) {
         aenderungen.push({ pos: pos, weg: weg, neu: neu, nr: aenderungen.length });
       };
-      var mitTags = /<img\b/i.test(inner);
       var ergebnis = { html: inner, bilderFehlen: 0, ueberschriftenFehlen: 0, ungeprueft: false };
+      var gruppen = [];
+      var gruppeVon = {};
       for (i = 0; i < w.absaetze.length; i += 1) {
         var blk = treffer[i] >= 0 ? bloecke[treffer[i]] : null;
         var stufe = rwUeberschriftStufe(w.absaetze[i].stil);
@@ -654,13 +719,59 @@
           }
         }
         var zahl = w.zahlen[i] || 0;
-        if (zahl === 0 || mitTags) { continue; }
-        if (!bilderJe) { ergebnis.bilderFehlen += zahl; continue; }
-        var bild = rwBildTags(bilderJe[i]);
+        if (zahl === 0) { continue; }
+        var bereich = rwBildBereich(inner, bloecke, treffer, i);
+        if (!gruppeVon[bereich.schluessel]) {
+          gruppeVon[bereich.schluessel] = { bereich: bereich, zahl: 0, bilder: [] };
+          gruppen.push(gruppeVon[bereich.schluessel]);
+        }
+        var gruppe = gruppeVon[bereich.schluessel];
+        gruppe.zahl += zahl;
+        if (bilderJe) { gruppe.bilder = gruppe.bilder.concat(bilderJe[i]); }
+      }
+      var imgs = rwImgTags(inner);
+      for (var g = 0; g < gruppen.length; g += 1) {
+        var gr = gruppen[g];
+        var drin = [];
+        for (var t = 0; t < imgs.length; t += 1) {
+          if (imgs[t].frei && imgs[t].pos >= gr.bereich.von && imgs[t].ende <= gr.bereich.bis) { drin.push(imgs[t]); }
+        }
+        if (!bilderJe) {
+          // Ohne Bytes keine Zuordnung: was im Bereich als Tag steht, zaehlt `rwLadung`; der Rest fehlt.
+          ergebnis.bilderFehlen += gr.zahl > drin.length ? gr.zahl - drin.length : 0;
+          for (t = 0; t < drin.length; t += 1) { drin[t].frei = false; }
+          continue;
+        }
+        // (1) schon eingebettete Bilder ueber ihre Bytes zuordnen — im Bereich, sonst irgendwo frei.
+        var offen = [];
+        for (var o = 0; o < gr.bilder.length; o += 1) {
+          var roh = rwRoh(gr.bilder[o]);
+          var da = null;
+          for (t = 0; t < imgs.length && da === null; t += 1) {
+            if (imgs[t].frei && imgs[t].daten !== null && imgs[t].daten === roh) { da = imgs[t]; }
+          }
+          if (da) { da.frei = false; } else { offen.push(roh); }
+        }
+        var platzhalter = [];
+        for (t = 0; t < drin.length; t += 1) {
+          if (drin[t].frei && drin[t].daten === null) { platzhalter.push(drin[t]); drin[t].frei = false; }
+        }
+        if (platzhalter.length === offen.length) {
+          // (2) eindeutig: jeder Platzhalter bekommt der Reihe nach die Bytes seines Bildes.
+          for (t = 0; t < platzhalter.length; t += 1) {
+            var mime = wordImageMimeFromBase64(offen[t]);
+            if (mime) { setze(platzhalter[t].pos, platzhalter[t].ende - platzhalter[t].pos, rwTagMitBild(platzhalter[t].tag, mime, offen[t])); }
+          }
+          continue;
+        }
+        // (3) nicht eindeutig: Platzhalter fallen, die offenen Bilder stehen in Word-Reihenfolge.
+        for (t = 0; t < platzhalter.length; t += 1) { setze(platzhalter[t].pos, platzhalter[t].ende - platzhalter[t].pos, ""); }
+        if (platzhalter.length > offen.length) { ergebnis.bilderFehlen += platzhalter.length - offen.length; }
+        var bild = rwBildTags(offen);
         ergebnis.bilderFehlen += bild.fehlen;
         if (bild.tags.length === 0) { continue; }
-        if (blk) { setze(blk.schluss, 0, bild.tags); continue; }
-        setze(rwBildStelle(inner, bloecke, treffer, i), 0, "<p>" + bild.tags + "</p>");
+        if (platzhalter.length > 0) { setze(platzhalter[0].pos, 0, bild.tags); continue; }
+        setze(gr.bereich.stelle, 0, gr.bereich.imBlock ? bild.tags : "<p>" + bild.tags + "</p>");
       }
       // Von hinten nach vorn: Ersetzungen vor Einfuegungen an derselben Stelle, Einfuegungen in
       // umgekehrter Reihenfolge — so steht, was zuerst kam, auch vorn.
@@ -734,13 +845,7 @@
           pos += w.zahlen[j];
         }
       }
-      var tags = imgZahl(inner);
-      var r = rwStrukturEinsetzen(inner, w, bilderJe);
-      if (tags > 0) {
-        if (bilderJe) { r.html = fillWordImages(r.html, w.liste).html; }
-        r.bilderFehlen += summe > tags ? summe - tags : 0;
-      }
-      return r;
+      return rwStrukturEinsetzen(inner, w, bilderJe);
     }
 
     // ============================================================================================

@@ -2880,6 +2880,12 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // NACHARBEIT 11: PIN BEWUSST AKTUALISIERT (4932af25… -> 46c81c53…). Im Prüflauf zu Kandidat
     // 10b99093 GEMESSEN („Received", HISTORIE/nacharbeit-11/PRUEFUNG/panel-auslieferung-pins-
     // inventare.log) und unverändert übernommen; `rueckweg.js` ist seit dieser Messung unberührt.
+    // NACHARBEIT 12 (Ben, Mischfall Bildtag/Bilder): `rwStrukturEinsetzen` ordnet Bilder jetzt je
+    // Word-Absatz zu (eingebettete über ihre Bytes, Platzhalter gefüllt, fehlende ergänzt); neue
+    // Helfer `rwRoh`, `rwImgTags`, `rwTagMitBild`, `rwBildBereich`; `rwStrukturErgaenzen` ruft
+    // `fillWordImages` nicht mehr. Auslieferungsfolgen: kein Abrufziel, CSP/Recht/Manifest
+    // unverändert, kein Sideload; die Nutzlast trägt Bilder, die vorher verloren gingen. DER PIN
+    // MUSS WANDERN; der Prüflauf meldet den Ist-Wert als „Received", er wird danach übernommen.
     const PIN = "46c81c53b09dc68b0d4df1cb5ff8aafc804b7bfa9ed8fb62bc7784df4d65fe18";
     const ist = createHash("sha256").update(readFileSync(RUECKWEG)).digest("hex");
     expect(

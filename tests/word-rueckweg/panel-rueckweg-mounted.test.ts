@@ -896,4 +896,58 @@ describe("Nacharbeit 9 · der Rückweg aus Word im Web erhält Bilder und Übers
     expect(html.match(/<img src="data:image\/(png|jpeg);base64,/g)).toHaveLength(2);
     expect(p.text("#rw-status")).toBe(p.t("rwEingereicht"));
   });
+
+  // Nacharbeit 12 (Ben): zwei VERSCHIEDENE Rasterbilder in Word, im HTML aber nur EIN Bildtag.
+  // Bis dahin übersprang ein einziges `<img>` jede Ergänzung, und `fillWordImages` füllte wegen
+  // ungleicher Anzahl nicht einmal den einen Platzhalter — beide Bilder gingen verloren.
+  const MISCH_HTML = OFFICE_HTML.replace(
+    "<p>&nbsp;</p><p>Abbildung 1",
+    '<p><img alt="Prüfbild 1" src="cid:bild1"></p><p>Abbildung 1',
+  );
+  const satzOhneVerlust = (p: KlaraPanel, rolle: string | undefined): string =>
+    rolle === "admin" ? p.t("rwFertigFrei", { n: "3" }) : p.t("rwEingereicht");
+
+  for (const rolle of ["admin", undefined]) {
+    const weg = rolle === "admin" ? "revise-release" : "propose";
+    it(`R26 (${weg}): ein Platzhalter, zwei Bilder — der Platzhalter bekommt SEIN Bild, das zweite wird ergänzt; Reihenfolge stimmt, nichts doppelt`, async () => {
+      const p = await rueckgabeFlaeche(rolle, MISCH_HTML, {
+        lage: "sofort",
+        absaetze: wordAbsaetze(PNG, JPEG),
+      });
+      expect(schreibrufe(p)[0]?.koerper.action).toBe(weg);
+      const html = bodyHtmlDesEinenPut(p);
+      // Identität: der vorhandene Platzhalter (vor Abbildung 1) trägt Bild 1 und behält sein alt.
+      const bild1 = html.indexOf(`<img alt="Prüfbild 1" src="data:image/png;base64,${PNG}">`);
+      const bild2 = html.indexOf(`<img src="data:image/jpeg;base64,${JPEG}">`);
+      expect(bild1, "Bild 1 steht nicht im Platzhalter").toBeGreaterThan(html.indexOf("</table>"));
+      expect(bild1).toBeLessThan(html.indexOf("Abbildung 1:"));
+      expect(bild2, "Bild 2 wurde nicht ergänzt").toBeGreaterThan(html.indexOf("Abbildung 1:"));
+      expect(bild2).toBeLessThan(html.indexOf("Abbildung 2:"));
+      // Keine Duplikate, kein Platzhalter mehr.
+      expect(html.match(/<img\b/g)).toHaveLength(2);
+      expect(html.split(PNG)).toHaveLength(2);
+      expect(html.split(JPEG)).toHaveLength(2);
+      expect(html).not.toContain("cid:");
+      expect(p.text("#rw-status")).toBe(satzOhneVerlust(p, rolle));
+      expect(p.q("#rw-status")?.className).toBe("");
+    });
+
+    it(`R27 (${weg}): ist Bild 1 schon eingebettet, wird es nicht ein zweites Mal eingesetzt — nur Bild 2 kommt dazu`, async () => {
+      const eingebettet = OFFICE_HTML.replace(
+        "<p>&nbsp;</p><p>Abbildung 1",
+        `<p><img src="data:image/png;base64,${PNG}"></p><p>Abbildung 1`,
+      );
+      const p = await rueckgabeFlaeche(rolle, eingebettet, {
+        lage: "sofort",
+        absaetze: wordAbsaetze(PNG, JPEG),
+      });
+      const html = bodyHtmlDesEinenPut(p);
+      expect(html.split(PNG)).toHaveLength(2);
+      expect(html.split(JPEG)).toHaveLength(2);
+      expect(html.indexOf(PNG)).toBeLessThan(html.indexOf("Abbildung 1:"));
+      expect(html.indexOf(JPEG)).toBeGreaterThan(html.indexOf("Abbildung 1:"));
+      expect(html.indexOf(JPEG)).toBeLessThan(html.indexOf("Abbildung 2:"));
+      expect(p.text("#rw-status")).toBe(satzOhneVerlust(p, rolle));
+    });
+  }
 });
