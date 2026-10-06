@@ -99,3 +99,46 @@ den gewählten Anbieter — oder bewusst so lassen.
    diesem Lauf zugunsten von K3 aufgelöst.
 4. **P-N12b:** die Prämisse („ohne Durchreichung wirkungslos“) ist von der Quelle selbst als
    unzutreffend korrigiert.
+
+## Belegabgleich EDITOR09 — Nachtrag (Nacharbeit 6)
+
+Ergänzt `EDITOR09-BELEGABGLEICH.json` und `EDITOR-ORTSBELEG-20261007/` im Auftragsordner; beide
+bleiben **unverändert**. Grund ist BENs Befund zu `report.no_model_control`.
+
+**Was dort behauptet wird:** `no_model_control.actual_surface_message` = „Ich kann diese KI-Hilfe
+gerade nicht verlässlich ausführen. Originaltext bleibt unverändert.“ als tatsächlich sichtbare
+Meldung im Editor, mit Beleg `16-ohne-modell-hinweis.png`.
+
+**Was die Artefakte tatsächlich zeigen** (Hashes laut `EDITOR-ORTSBELEG-20261007/BELEG-HASHES.json`):
+
+| Artefakt | SHA-256 (gekürzt) | Inhalt |
+|---|---|---|
+| `16-ohne-modell-hinweis.png` | `cf6bff8b…` | Erfassen-Blatt mit dem unveränderten Satz „Der Mitarbeiter kontrolliert die Anlage vor dem Start.“; **keine** Fehlerkarte, **kein** Meldungssatz |
+| `16-ohne-modell-hinweis.txt` | `0c5dd507…` | AX-Differenz: nur der Meldungen-Knopf geändert; **kein** Meldungssatz |
+| `15-ohne-modell-menue.txt` | `6755053b…` | AX: „no change“, KI-Menü aufgeklappt |
+| `belegbericht.py` | `3ba51736…` | Zeile 21 setzt `actual_surface_message` als **festen Text** — keine Messung |
+| `OHNE-MODELL-ZAEHLUNG.json` | `f53e6f5b…` | Server: `POST /api/reasoner` → **500**, Grund „Kein KI-Modell hat geantwortet; die deterministische Ersatzform hätte nur den Originaltext zurückgegeben.“; Lauf `assist`/`deterministic`/`error` |
+| `OHNE-MODELL-KONFIG.json` | `5b2a913e…` | global `local`, `assist` → `deterministic` |
+
+**Abgrenzung:**
+- **Belegt (Server):** Ohne Modell endet die Schreib-Palette mit einem 500 und benanntem Grund, ohne
+  Modellaufruf für `assist` und ohne den Originaltext als Vorschlag.
+- **Nicht belegt (tatsächliche Editorbeobachtung):** Eine sichtbare Meldung im laufenden Editor zeigt
+  kein vorhandener Rohbeleg — weder Bild noch AX-Text. Ein passender Rohbeleg liegt im Auftragsordner
+  nicht vor; nachgereicht wird deshalb keiner.
+- **Wortlaut:** Die Fehlerkarte des Blattes (`Blatt.tsx`, `blatt-ki-fehler`) zeigt bei einem 500 ohne
+  Vertraulichkeitskennung genau `fd.errAssist` („Ich kann diese KI-Hilfe gerade nicht verlässlich
+  ausführen.“) mit „Erneut versuchen“. Der zweite Satz „Originaltext bleibt unverändert.“ steht in
+  dieser Karte **nicht**; er ist im Bericht hinzugefügt.
+
+**Was stattdessen belegt wird (Prüfauswahl):**
+- **Komponentenbeleg, vorhanden und bereits bestanden:** `tests/ki-freie-anweisung/standardeditor-mounted.test.tsx`
+  F3 — ein 500 aus `assist` zeigt in `blatt-ki-fehler` den Satz `fd.errAssist`, der Editortext bleibt
+  unverändert, „Erneut versuchen“ wiederholt dieselbe Anweisung.
+- **Serverhälfte derselben Lage, neu:** `tests/ki-wahl-betriebsabnahme/ohne-modell-fehlerstrecke.test.ts`
+  — dieselbe Zuordnung wie im Ortsbeleg an der echten Route: kein 200 mit Originaltext, Grund im
+  Körper, keine Vertraulichkeitskennung (daran wählt die Fläche `fd.errAssist`), kein Modellruf;
+  Gegenprobe mit „wie global“ → 200 mit Vorschlag.
+
+Zusammen ist das die **modellfreie Fehlerstrecke mit sichtbarer Meldung auf Komponentenebene** — keine
+Beobachtung im echten Editor.
