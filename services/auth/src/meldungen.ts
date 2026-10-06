@@ -193,6 +193,14 @@ export const MELDUNGEN = {
     en: "This entry was created by a different account. Nothing was saved — sign in with the account it belongs to.",
     nl: "Dit item is met een ander account gemaakt. Er is niets opgeslagen — meld je aan met het account waar het bij hoort.",
   },
+  // Aufnahme entwurf-in-gemeinsamen-pool-geben (R-2099) · der Eingabefehler des Pool-Schalters
+  // (`PUT /api/drafts/:id/pool`): der Rumpf trägt keinen Wahrheitswert `imPool`. Es ändert sich
+  // nichts am Entwurf. Gemessen in EN und NL in `tests/entwurf-pool/pool-rechte.test.ts` (A3b/A3c).
+  DRAFT_POOL_INVALID: {
+    de: "Ob der Entwurf im gemeinsamen Pool liegt, braucht die Angabe imPool: true oder false. Es wurde nichts geändert.",
+    en: "Whether the draft is in the shared pool needs imPool: true or false. Nothing was changed.",
+    nl: "Of het concept in de gedeelde pool staat, vraagt imPool: true of false. Er is niets gewijzigd.",
+  },
   REGISTRATION_DISABLED: {
     de: "Registrierung nur per Einladung.",
     en: "Registration is by invitation only.",

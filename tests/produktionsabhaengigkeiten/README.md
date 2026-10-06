@@ -28,7 +28,7 @@ gebundenen** Stand?*
 | `brace-expansion` (unter `@fastify/static`) | `node_modules/@fastify/static/node_modules/brace-expansion` | 5.0.12 | nicht exponiert |
 | `brace-expansion` (Wurzel, dev-markiert) | `node_modules/brace-expansion` | 2.1.7 | nicht exponiert |
 | `fast-uri` | `node_modules/fast-uri` | 3.1.8 | nicht exponiert |
-| `fastify` | `node_modules/fastify` | 5.8.5 | exponiert |
+| `fastify` | `node_modules/fastify` | 5.12.1 | nicht exponiert |
 | `find-my-way` | `node_modules/find-my-way` | 9.6.0 | nicht exponiert |
 | `nodemailer` | `node_modules/nodemailer` | 6.10.1 | exponiert |
 | `sharp` | `node_modules/sharp` | 0.35.4 | nicht exponiert |
@@ -112,6 +112,12 @@ Bereiche; das Nachher-Audit nennt das Paket nicht mehr. Die Frage nach einem err
 bleibt damit **unbeantwortet, nicht verneint** — „nicht gefunden" war nie „nicht vorhanden".
 
 ### `fastify` — exponiert; die Hebung wurde probiert und musste zurückgenommen werden
+
+> **Nachtrag 06.10.2026 (Auftrag `aufnahme:20260922:fastify-restbewertung`):** Die Tabellenzeile oben
+> steht jetzt auf **5.12.1 / nicht exponiert**. Gehoben aus den von npm erzeugten Dateien, außerhalb
+> beider Bereiche (`<5.12.1`); zusätzlich reicht `resolveTrustProxy` keine Hop-Anzahl mehr an Fastify.
+> Bewertung, Gegenproben und Grenzen: `tests/fastify-restbewertung/README.md`. Der Text dieses
+> Abschnitts darunter ist die Messung vom 17.09.2026 und bleibt als solche unverändert stehen.
 
 Hier liegen **zwei** Advisories mit **zwei verschiedenen** Bedingungen. Der Warnstand vom 16.09.
 nannte nur die erste.

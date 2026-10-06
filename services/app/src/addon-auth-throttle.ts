@@ -81,15 +81,20 @@ export function isAddonEndpointPath(rawUrl: string | undefined): boolean {
 
 // SCRUM-490 R3 (B2, Fix 4): trustProxy GEZIELT — request.ip soll die ECHTE Client-IP sein, aber NIE
 // blanket (sonst wird X-Forwarded-For spoofbar → die IP-Drossel wertlos). KLARWERK_TRUST_PROXY:
-//  - Zahl N        → vertraue den letzten N Proxy-Hops (nur setzen, wenn die feste Hop-Anzahl bekannt ist).
 //  - IP/Subnetz(e) → vertraue NUR diesen Adressen (komma-separiert), z. B. dem Traefik-/Coolify-Hop.
 //  - unset / "true"/"false"/"*" → KEIN Vertrauen (konservativ; request.ip = Socket-Peer). Blanket-Werte
 //    werden BEWUSST als „kein Vertrauen" behandelt — XFF wird nie blind geglaubt.
+//  - Zahl N (Hop-Anzahl) → ebenfalls KEIN Vertrauen (s. GHSA-3m5p-2c4r-xxw2 unten).
 // SCRUM-490 R4 (B2, Fix 2): auch Catch-all-CIDRs (0.0.0.0/0, ::/0, jede /0-Maske, unspecified-Adressen)
 // werden als Blanket abgelehnt — ein „vertraue alle Adressen"-Subnetz ist genauso spoofbar wie true.
+// GHSA-3m5p-2c4r-xxw2 (fastify >=5.8.3 <5.12.1): Eine Hop-Anzahl vertraut dem Socket-Peer, egal wer
+// er ist. Erreicht ein Client den Ursprung direkt am Proxy vorbei, bestimmt sein eigener
+// X-Forwarded-For-Kopf request.ip — und damit den Schlüssel jeder IP-Drossel. Die Hop-Anzahl wird
+// deshalb nicht mehr an Fastify gereicht — auf jeder fastify-Version, nicht erst nach einer Hebung.
+// Bewertung und Gegenproben: tests/fastify-restbewertung/.
 export function resolveTrustProxy(
   env: Record<string, string | undefined> = process.env,
-): boolean | number | string[] {
+): boolean | string[] {
   const raw = env.KLARWERK_TRUST_PROXY?.trim();
   if (!raw) {
     return false;
@@ -98,9 +103,8 @@ export function resolveTrustProxy(
   if (lowered === "true" || lowered === "false" || lowered === "*") {
     return false; // Blanket-Vertrauen ist verboten (spoofbar)
   }
-  const n = Number(raw);
-  if (Number.isInteger(n) && n > 0) {
-    return n; // fester Hop-Count
+  if (isHopCountTrustProxy(env)) {
+    return false; // Hop-Anzahl ist verboten (spoofbar am Proxy vorbei)
   }
   // Liste von IPs/Subnetzen. R6: jeder Eintrag wird zuerst STRIKT validiert (isValidTrustEntry: node:net
   // .isIP + Zone-ID-/Präfix-Prüfung) — ungültige/malformte Einträge werden verworfen (KEIN Fastify-
@@ -115,6 +119,19 @@ export function resolveTrustProxy(
     .filter((s) => s.length > 0 && isValidTrustEntry(s) && !isCatchAllTrustEntry(s))
     .map(canonicalizeTrustEntry);
   return list.length > 0 ? list : false;
+}
+
+// GHSA-3m5p-2c4r-xxw2: erkennt eine als Hop-Anzahl gemeinte Einstellung (positive ganze Zahl), damit
+// der Aufbau sie verwerfen UND im Log benennen kann, statt sie still zu ignorieren.
+export function isHopCountTrustProxy(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  const raw = env.KLARWERK_TRUST_PROXY?.trim();
+  if (!raw) {
+    return false;
+  }
+  const n = Number(raw);
+  return Number.isInteger(n) && n > 0;
 }
 
 // R7: kanonische Neuzusammensetzung eines bereits validierten Eintrags — reine Adresse ODER

@@ -230,6 +230,30 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "PRAEDIKAT",
     grund: "Bearbeitungshinweis — darfSehen vor dem Beenden, sonst 404.",
   },
+  // --- Kenntnisnahme einer gültigen Fassung ------------------------------------------------------
+  // Übersicht und eigene Anforderungen tragen den Titel des Eintrags; alle fünf Türen halten den
+  // Eintrag vor jeder Antwort gegen dasselbe Prädikat wie der Detailabruf. Ein entzogener Zugriff
+  // macht die eigene Anforderung unsichtbar und das Bestätigen zum 404.
+  "GET /api/kos/:id/kenntnisnahmen": {
+    urteil: "PRAEDIKAT",
+    grund: "Kenntnisnahme — Übersicht nur zu einem Eintrag, den der Anfordernde sehen darf.",
+  },
+  "POST /api/kos/:id/kenntnisnahmen": {
+    urteil: "PRAEDIKAT",
+    grund: "Kenntnisnahme — darfSehen vor dem Anfordern, sonst 404.",
+  },
+  "POST /api/kenntnisnahmen/:anforderungId/erinnern": {
+    urteil: "PRAEDIKAT",
+    grund: "Kenntnisnahme — darfSehen am Eintrag der Anforderung vor dem Erinnern, sonst 404.",
+  },
+  "GET /api/kenntnisnahmen/meine": {
+    urteil: "PRAEDIKAT",
+    grund: "Kenntnisnahme — eigene Anforderungen, je Eintrag über darfSehen gefiltert.",
+  },
+  "POST /api/kenntnisnahmen/:anforderungId/bestaetigen": {
+    urteil: "PRAEDIKAT",
+    grund: "Kenntnisnahme — nur die eigene Anforderung und nur bei darfSehen, sonst 404.",
+  },
   // --- W2-A/148: die Laufdomäne des Imports -------------------------------------------------
   // Der Lauf selbst trägt AUSSCHLIESSLICH Kennungen, Status, Zeitstempel und Zähler — keine Zeile
   // Fachinhalt. `knowledgeObjectId` ist eine Id, kein Inhalt (import-run-routes.ts:88-99).
@@ -447,7 +471,13 @@ const REGISTER: Record<string, Eintrag> = {
   },
   "GET /api/gaps/summary": { urteil: "KEIN_KO_INHALT", grund: "Zähler, keine Fragetexte." },
   // --- Entwürfe: eigener Bestand, nach Eigentümer begrenzt -----------------------------------
-  "GET /api/drafts": { urteil: "EIGENER_BESTAND", grund: "visibleDraftsFor — Eigentümerlogik." },
+  // Pool-Auftrag (R-2099): dazu kommen Entwürfe, die ihr Autor BEWUSST in den gemeinsamen Pool
+  // gegeben hat — Entwürfe, keine Wissensobjekte; entschieden von derselben einen Regel
+  // (`entwurfSichtbarFuer`), die auch den Anhang-Leseweg trägt.
+  "GET /api/drafts": {
+    urteil: "EIGENER_BESTAND",
+    grund: "visibleDraftsFor — Eigentümerlogik plus bewusst geteilter Pool.",
+  },
   "GET /api/drafts/:id": { urteil: "EIGENER_BESTAND", grund: "requireVisibleDraft." },
   // JOB 3668 (Entwurfs-Papierkorb): derselbe Bestand, dieselbe Eigentümerlogik — nur die gelöschten
   // Entwürfe. Zweifach begrenzt: die Ablage lädt fremde gar nicht erst (`listTrashed(user.id)`), und
@@ -647,6 +677,9 @@ const REGISTER: Record<string, Eintrag> = {
     "PUT /api/drafts/:id": "eigener Entwurf.",
     "DELETE /api/drafts/:id": "eigener Entwurf.",
     "POST /api/drafts/:id/promote": "eigener Entwurf → eigenes KO.",
+    // Pool-Auftrag (R-2099): nur der Autor (`canManageDraft`), die Antwort ist sein eigener Entwurf.
+    "PUT /api/drafts/:id/pool":
+      "eigener Entwurf — Autor gibt ihn in den Pool oder nimmt ihn zurück.",
     // JOB 3668: die zwei schreibenden Papierkorb-Wege. Beide gehen durch
     // `requireVisibleTrashedDraft` (dasselbe `canSeeDraft`) und tragen keinen fremden Inhalt
     // hinaus: `restore` gibt den EIGENEN Entwurf zurück, `purge` antwortet mit 204 ohne Rumpf.

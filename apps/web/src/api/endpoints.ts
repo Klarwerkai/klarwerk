@@ -777,6 +777,10 @@ export const endpoints = {
     // Aufruf, die Adresse und die Antwort (204) bleiben zeichengleich — der Entwurf verschwindet
     // aus `list()` wie zuvor, ist aber unter `trash()` wieder auffindbar.
     remove: (id: string) => api.del<void>(`/drafts/${id}`),
+    // Aufnahme entwurf-in-gemeinsamen-pool-geben (R-2099): der Autor gibt GENAU DIESEN Entwurf
+    // bewusst in den gemeinsamen Pool (`true`) oder nimmt ihn zurück (`false`). Nur der Autor darf
+    // das; die Antwort ist der Entwurf mit neuem Stand.
+    pool: (id: string, imPool: boolean) => api.put<Draft>(`/drafts/${id}/pool`, { imPool }),
     // ==========================================================================================
     // JOB 3668 — DER PAPIERKORB DER ENTWÜRFE: DIESELBEN DREI METHODEN WIE BEIM WISSENSOBJEKT.
     // ==========================================================================================

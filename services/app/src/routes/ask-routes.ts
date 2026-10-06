@@ -9,9 +9,11 @@ import {
 import type { ConflictService } from "../../../conflicts";
 import type { KnowledgeObject, KoService } from "../../../knowledge-object";
 import { can } from "../../../rbac";
+import { bindeAnbieter, bindeZustimmung, imBindungsrahmen } from "../../../reasoner";
 import { authorizesAsk } from "../addon-principal";
 import { addonRateLimit } from "../addon-rate-limit";
 import { type Guards, type SessionUser, sendError } from "../http";
+import type { KlaraAufgabe } from "../services/klara-session-service";
 // JOB 1591 D1 (W5): NUR gelesen — das bestehende Praedikat, kein zweites.
 import { sichtbarkeitsfilterFuer } from "../sichtbarkeit";
 
@@ -166,7 +168,13 @@ export interface Ka4Freigabepruefer {
   pruefeExterneAusfuehrung(
     sessionId: string,
     bindung: { actorId: string; addinInstanceId: string; documentContextId: string },
-  ): Promise<{ readonly erlaubt: boolean; readonly grund?: string }>;
+    aufgabe?: KlaraAufgabe,
+  ): Promise<{
+    readonly erlaubt: boolean;
+    readonly grund?: string;
+    readonly anbieter?: string;
+    readonly giltNoch?: () => boolean;
+  }>;
   /**
    * F-0295 / R-0639 — die eigene Deckungsprüfung des markierten Dokumenttexts
    * (`KlaraSessionService.pruefeDokumenttextFreigabe`). OPTIONAL: ein Prüfer ohne sie gibt den
@@ -177,6 +185,19 @@ export interface Ka4Freigabepruefer {
     bindung: { actorId: string; addinInstanceId: string; documentContextId: string },
     lage: { readonly vertraulich: boolean },
   ): Promise<{ readonly erlaubt: boolean; readonly grund?: string }>;
+}
+
+/**
+ * Bens B3/B4 (Runde 2): das Ergebnis des Tors OHNE Verdichtung auf einen Boolean. `grund` erlaubt
+ * der Route, die richtige Ursache zu nennen (B4); `anbieter` ist der externe Anbieter, an den der
+ * anschliessende Lauf gebunden wird (B3, `bindeAnbieter`).
+ */
+export interface Ka4Entscheidung {
+  readonly erlaubt: boolean;
+  readonly grund?: string;
+  readonly anbieter?: string;
+  /** Lauf 2 · Bens B5: gilt die Zustimmung, auf die sich die Freigabe stützt, noch? */
+  readonly giltNoch?: () => boolean;
 }
 
 // Dieselben Kopfzeilen wie der Klara-Sitzungsweg (`klara-ai-routes.ts:40-42`) — eine Schreibweise,
@@ -206,9 +227,58 @@ export async function ka4Freigabe(
   actorId: string,
   log: { info: (obj: unknown, msg: string) => void },
   ereignis = "ask.ka4.dokument-consent",
+  // Bens B3: die Aufgabe, die gleich ein Modell ruft. Die Zustimmung trägt nur Aufgaben, die an
+  // denselben Anbieter gehen wie `answer` — entschieden im Tor, hier nur durchgereicht.
+  aufgabe: KlaraAufgabe = "answer",
 ): Promise<boolean> {
+  return (await ka4Entscheidung(pruefer, headers, actorId, log, ereignis, aufgabe)).erlaubt;
+}
+
+/** Dieselbe Prüfung wie `ka4Freigabe`, mit Grund und gebundenem Anbieter (Bens B3/B4). */
+export async function ka4Entscheidung(
+  pruefer: Ka4Freigabepruefer | undefined,
+  headers: Record<string, unknown>,
+  actorId: string,
+  log: { info: (obj: unknown, msg: string) => void },
+  ereignis = "ask.ka4.dokument-consent",
+  aufgabe: KlaraAufgabe = "answer",
+): Promise<Ka4Entscheidung> {
+  const entscheidung = await ka4Pruefen(pruefer, headers, actorId, log, ereignis, aufgabe);
+  // Bens B3 (Runde 2): DAS ERGEBNIS GILT FÜR DEN REST DER ANFRAGE, NICHT NUR FÜR DIESEN AUGENBLICK.
+  // Eine Anfrage MIT Klara-Bindung hält es im Anfragerahmen fest (`bindeAnbieter`): bei Freigabe den
+  // Anbieter, dem die Zustimmung gilt — der Reasoner lässt beim Kettenbau keinen anderen zu, auch
+  // keinen, auf den nach dem Tor umgestellt wurde; bei Absage `null` — dann keinen. Ohne Rahmen
+  // lässt sich eine Freigabe nicht an den Lauf binden, und dann gilt sie nicht (fail-closed).
+  // Anfragen OHNE Klara-Bindung (Konsole) bleiben unberührt.
+  if (!klaraBindungVorhanden(headers)) {
+    return entscheidung;
+  }
+  if (!entscheidung.erlaubt) {
+    bindeAnbieter(null);
+    return entscheidung;
+  }
+  // Lauf 2 · Bens B5: auch die Zustimmung selbst wird gebunden — ein danach abgeschlossener Widerruf
+  // nimmt den externen Anbieter aus der Kette und sperrt ihn vor der Übertragung.
+  if (
+    (entscheidung.giltNoch !== undefined && !bindeZustimmung(entscheidung.giltNoch)) ||
+    (entscheidung.anbieter !== undefined && !bindeAnbieter(entscheidung.anbieter))
+  ) {
+    log.info({ ka4: { entscheidung: "blockiert", grund: "anbieterbindung_fehlt" } }, ereignis);
+    return { erlaubt: false, grund: "anbieterbindung_fehlt" };
+  }
+  return entscheidung;
+}
+
+async function ka4Pruefen(
+  pruefer: Ka4Freigabepruefer | undefined,
+  headers: Record<string, unknown>,
+  actorId: string,
+  log: { info: (obj: unknown, msg: string) => void },
+  ereignis: string,
+  aufgabe: KlaraAufgabe,
+): Promise<Ka4Entscheidung> {
   if (!pruefer || typeof pruefer.pruefeExterneAusfuehrung !== "function") {
-    return false;
+    return { erlaubt: false };
   }
   const sessionId = klaraKopf(headers, KLARA_SESSION_HEADER);
   const addinInstanceId = klaraKopf(headers, KLARA_INSTANCE_HEADER);
@@ -216,25 +286,32 @@ export async function ka4Freigabe(
   if (!sessionId || !addinInstanceId || !documentContextId) {
     // Kein Protokolleintrag: eine Anfrage ganz ohne Klara-Bindung ist der Normalfall und keine
     // Entscheidung über eine Einwilligung.
-    return false;
+    return { erlaubt: false };
   }
   try {
-    const freigabe = await pruefer.pruefeExterneAusfuehrung(sessionId, {
-      actorId,
-      addinInstanceId,
-      documentContextId,
-    });
+    const freigabe = await pruefer.pruefeExterneAusfuehrung(
+      sessionId,
+      { actorId, addinInstanceId, documentContextId },
+      aufgabe,
+    );
     const erlaubt = freigabe?.erlaubt === true;
     log.info(
       { ka4: { entscheidung: erlaubt ? "freigegeben" : "blockiert", grund: freigabe?.grund } },
       ereignis,
     );
-    return erlaubt;
+    return {
+      erlaubt,
+      ...(typeof freigabe?.grund === "string" ? { grund: freigabe.grund } : {}),
+      ...(erlaubt && typeof freigabe?.anbieter === "string" ? { anbieter: freigabe.anbieter } : {}),
+      ...(erlaubt && typeof freigabe?.giltNoch === "function"
+        ? { giltNoch: freigabe.giltNoch }
+        : {}),
+    };
   } catch (err) {
     // Fremde/abgelaufene/geschlossene Sitzung wirft (NOT_FOUND/CONFLICT). Das ist eine Absage,
     // kein Serverfehler — der Ask läuft in der unveränderten Enge weiter.
     log.info({ ka4: { entscheidung: "blockiert", grund: "bindung_ungueltig" } }, ereignis);
-    return false;
+    return { erlaubt: false, grund: "bindung_ungueltig" };
   }
 }
 
@@ -436,6 +513,12 @@ async function evidenceFor(
 export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsync {
   const ask = deps.ask;
   return async (app) => {
+    // Bens B3 (Runde 2): je Anfrage ein Rahmen für die Klara-Anbieterbindung
+    // (`services/reasoner/src/anbieterbindung.ts`) — das Tor hält sein Ergebnis darin fest, der
+    // Reasoner liest es beim Kettenbau. `run(…, done)` ist das Muster von `@fastify/request-context`.
+    app.addHook("onRequest", (_request, _reply, done) => {
+      imBindungsrahmen(() => done());
+    });
     app.decorateRequest("askSessionUser", null);
     // D5: in der App dekoriert `buildApp` (erster onRequest-Hook); hier nur für eigenständige Aufbauten.
     if (!app.hasRequestDecorator("askKiBeginn")) {
@@ -639,13 +722,15 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
           return;
         }
         // WP-KLARA-ASK-FIX (bens Fix 1, P0-Kern): "retrieval-only" — der Modus des Word-Add-ins
-        // (markierter DOKUMENTTEXT ist potenziell vertraulich und darf NIE zur Cloud). Bewusst ein
+        // (markierter DOKUMENTTEXT ist potenziell vertraulich und geht OHNE bestätigte
+        // Einwilligung für genau diese Sitzung und dieses Dokument NIE zur Cloud; mit ihr öffnet
+        // seit JOB 3079 allein der KA4-Zweig unten den normalen Answerweg). Bewusst ein
         // Request-Flag statt eines eigenen Endpunkts: Auth, Body-Schema, Rate-Limits und der
         // Add-on-Zweig dieser Route bleiben EINE Quelle der Wahrheit — server-erzwungen ist die
         // SEMANTIK des Modus: ask.ask mit validatedOnly (nur validierte KOs als Grundlage) +
         // retrievalOnly (answerRetrievalOnly = deterministischer Pfad; kein Modell-, kein
         // Embedder-Aufruf erreichbar — exakt der seit SCRUM-490 R2 bestehende Add-on-Vertrag).
-        // Die Antwort ist die WOERTLICHE validierte Aussage + Quellen, keine Synthese. Die
+        // Ohne Einwilligung ist die Antwort die WOERTLICHE validierte Aussage + Quellen, keine Synthese. Die
         // Wissensluecke wird weiter vermerkt (Session-Nutzer, bestehende gap-Semantik) — darauf
         // baut der Offene-Frage-Weg des Panels. Konsole ohne mode: byte-identisches Verhalten.
         // R-0639, Bens Befund B2 (Runde 2): die Einwilligungs- und Dokumenttext-Prüfung hängt NICHT

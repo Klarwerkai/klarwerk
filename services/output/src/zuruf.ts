@@ -157,6 +157,14 @@ export interface Ka6Einwilligungspruefer {
      * ohne Anbieterangabe (`null`), nie mit einem Ersatzwert.
      */
     readonly resolution?: { readonly provider: string; readonly model: string };
+    /**
+     * Auftrag gesamt-ki-einwilligung (Bens B3, Runde 2): der externe Anbieter, dem die Zustimmung
+     * gilt (`openai`/`anthropic`). Dieser Dienst liest ihn nicht; die Route bindet damit den Lauf
+     * des Formulierers an genau diesen Anbieter.
+     */
+    readonly anbieter?: string;
+    /** Lauf 2 · Bens B5: gilt die tragende Zustimmung noch? Die Route bindet den Lauf daran. */
+    readonly giltNoch?: () => boolean;
   }>;
 }
 

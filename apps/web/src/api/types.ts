@@ -1029,6 +1029,9 @@ export interface Draft {
   // Body — bewusst und benannt, nicht versehentlich. Es gehört an den ENTWURFS-Umschlag und nicht
   // in die Nutzlast: es beschreibt einen Befund über den Entwurf, nichts, was jemand eingegeben hat.
   anchorsMissing?: string[];
+  // Aufnahme entwurf-in-gemeinsamen-pool-geben (R-2099): der Autor hat diesen Entwurf bewusst in den
+  // gemeinsamen Pool gegeben. Fehlt das Feld, ist der Entwurf privat (der Standardfall).
+  imPool?: true;
 }
 
 export interface BusFactorEntry {
@@ -2701,7 +2704,13 @@ export interface LiveWall {
   helpedToday: number;
 }
 
-export type NotificationKind = "conflict" | "duplicate" | "gap" | "assignment" | "impact";
+export type NotificationKind =
+  | "conflict"
+  | "duplicate"
+  | "gap"
+  | "assignment"
+  | "impact"
+  | "kenntnisnahme";
 
 export interface Notification {
   id: string;
@@ -2715,6 +2724,10 @@ export interface Notification {
   // FUNKE-FIX3 P0 (bens Blocker B): true → Gap-Fragetext serverseitig zurückgehalten; die Glocke
   // zeigt dann NUR die neutrale Bezeichnung (topbar.notifGapRedacted), nie den Fragetext.
   redacted?: boolean;
+  // Kenntnisnahme: angeforderte Fassung, Erinnerung und abgelaufene Frist (nur bei diesem `kind`).
+  fassung?: number;
+  erinnerung?: boolean;
+  ueberfaellig?: boolean;
 }
 
 // AUFTRAG-mega46 Block F: die Betriebsschalter, die die Oberfläche erfahren darf — AUSSCHLIESSLICH
