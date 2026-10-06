@@ -9,11 +9,14 @@
 // freier Anweisung und Vorlagen — JOB 3062/3584). Die Anbieterangabe fehlte dort: jede andere
 // KI-Fläche trägt sie über `AiModelInfo` („(!)"), die Palette des Blattes nicht.
 //
-// WARUM EINE ZEILE UND NICHT `AiModelInfo`: `AiModelInfo` bringt den KI-Satz und den Kostenhinweis
+// WARUM EIN SATZ UND NICHT `AiModelInfo`: `AiModelInfo` bringt den KI-Satz und den Kostenhinweis
 // mit — im Blatt stehen beide schon (Vorschlagskarten, Lagezeile `blatt-lage`). In der Palette
-// kosteten sie drei bis vier Zeilen, und die Palette muss am Handy ohne Rollen ins Fenster passen
-// (`tests/ki-freie-anweisung/ki-palette-390px-chromium.test.ts`, B6). Diese Zeile bleibt EINE Zeile
-// (`truncate`, voller Wortlaut im `title`).
+// kosteten sie drei bis vier Zeilen, und Vorlagen, freie Eingabe und Ausführen-Knopf müssen am
+// Handy ohne Rollen im Fenster stehen (`tests/ki-freie-anweisung/ki-palette-390px-chromium.test.ts`,
+// B5a/B6). Gemessen (Nacharbeit 4): schon EINE Zeile OBERHALB davon schob die freie Eingabe in der
+// höchsten Lage B5a 31,3 px unter den Rand. Der Satz steht deshalb im Blatt UNTER Eingabe und Knopf
+// — beim Öffnen da, also vor dem Ausführen — und bricht um statt abzuschneiden (`break-words`),
+// damit der Anbietername nie hinter einer Auslassung verschwindet.
 //
 // DIESELBE ABLEITUNG, KEINE ZWEITE WAHRHEIT: `aiTaskInfo`/`aiTaskInfoPublic` wie `AiModelInfo`.
 // Der Anbietername steht — wie dort — nur in der Adminsicht; alle anderen sehen die Stufe
@@ -44,11 +47,7 @@ export function AiAusfuehrerZeile({ tasks }: { tasks: readonly ReasonerTask[] })
   });
   const satz = t(AI_AUSFUEHRER_KEY, { wer });
   return (
-    <p
-      data-testid="ki-ausfuehrer"
-      title={satz}
-      className="mb-1.5 truncate text-[11.5px] text-muted"
-    >
+    <p data-testid="ki-ausfuehrer" className="mt-1.5 break-words text-[11.5px] text-muted">
       {satz}
     </p>
   );

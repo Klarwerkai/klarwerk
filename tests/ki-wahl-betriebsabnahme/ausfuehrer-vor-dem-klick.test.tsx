@@ -15,9 +15,15 @@
 //   A1–A3 · die Ableitung `ausfuehrerWer`: Adminsicht nennt Stufe UND Anbieter/Modell je Aufgabe,
 //           bei abweichender Zuordnung je Aufgabe getrennt; öffentliche Sicht nur die Stufe
 //           (WP-VIP2-GATE-2 — ob Nicht-Admins den Namen sehen sollen, ist offene Produktentscheidung).
-//   A4    · die Zeile rendert auch OHNE `RoleProvider` (das Blatt in seinen Einzeltests) — als
+//   A4    · der Satz rendert auch OHNE `RoleProvider` (das Blatt in seinen Einzeltests) — als
 //           öffentliche Sicht, ohne zu werfen.
-//   A5    · im Blatt steht sie im Menü „KI" VOR dem ersten Eintrag, für `structure` und `assist`.
+//   A5    · im Blatt steht er im Menü „KI", in der Fläche der freien Anweisung UNTER Eingabe und
+//           Knopf (Nacharbeit 4: eine Zeile darüber schob die freie Eingabe am 390-px-Telefon
+//           31,3 px unter den Rand, `ki-palette-390px-chromium.test.ts` B5a), für `structure` und
+//           `assist`. Beim Öffnen der Palette steht er da — also vor jedem Ausführen.
+//
+// NACHARBEIT 4: als `.tsx`, damit die DOM-/JSX-Testkonfiguration (`tsconfig.tests-tsx.json`) gilt —
+// als `.ts` lief die Datei unter der Node-reinen Wurzelkonfiguration ohne DOM und ohne JSX.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -98,7 +104,7 @@ describe("N-0070 · wer führt die Palette aus — die Ableitung", () => {
   });
 });
 
-describe("N-0070 · die Zeile in der Fläche", () => {
+describe("N-0070 · der Satz in der Fläche", () => {
   let wurzel: Root | null = null;
   let behaelter: HTMLDivElement | null = null;
 
@@ -117,12 +123,13 @@ describe("N-0070 · die Zeile in der Fläche", () => {
       defaultOptions: { queries: { retry: false, staleTime: Number.POSITIVE_INFINITY } },
     });
     abfragen.setQueryData(["reasoner", "status"], { active: true, mode: "cloud" });
-    behaelter = document.createElement("div");
-    document.body.appendChild(behaelter);
-    const ziel = behaelter;
+    const ziel = document.createElement("div");
+    behaelter = ziel;
+    document.body.appendChild(ziel);
     await act(async () => {
-      wurzel = createRoot(ziel);
-      wurzel.render(
+      const r = createRoot(ziel);
+      wurzel = r;
+      r.render(
         createElement(
           QueryClientProvider,
           { client: abfragen },
@@ -131,25 +138,27 @@ describe("N-0070 · die Zeile in der Fläche", () => {
       );
     });
     const zeile = ziel.querySelector('[data-testid="ki-ausfuehrer"]');
-    expect(zeile, "die Zeile wurde nicht gerendert").not.toBeNull();
+    expect(zeile, "der Satz wurde nicht gerendert").not.toBeNull();
     expect(zeile?.textContent).toBe(
       i18n.t(AI_AUSFUEHRER_KEY, { lng: "de", wer: DE("reasoner.taskInfo.cloud") }),
     );
   });
 
-  it("A5 · im Blatt: im Menü „KI“ VOR dem ersten Eintrag, für structure und assist", () => {
+  it("A5 · im Blatt: im Menü „KI“, unter freier Eingabe und Knopf, für structure und assist", () => {
     const blatt = readFileSync(
       join(process.cwd(), "apps/web/src/components/erfassen/Blatt.tsx"),
       "utf8",
     );
     const menue = blatt.indexOf('name="ki"');
     expect(menue, "das Menü „KI“ fehlt im Blatt").toBeGreaterThan(0);
+    const menueEnde = blatt.indexOf("</Menue>", menue);
+    const anweisung = blatt.indexOf("<AiAssistInstructions", menue);
     const zeile = blatt.indexOf("<AiAusfuehrerZeile tasks={KI_PALETTE_AUFGABEN} />", menue);
-    const ersterEintrag = blatt.indexOf("<MenueEintrag", menue);
-    expect(zeile, "die Ausführerzeile steht nicht im Menü „KI“").toBeGreaterThan(menue);
-    expect(zeile, "die Ausführerzeile steht erst NACH einem ausführbaren Eintrag").toBeLessThan(
-      ersterEintrag,
+    expect(anweisung, "die freie Anweisung fehlt im Menü „KI“").toBeGreaterThan(menue);
+    expect(zeile, "die Ausführerangabe steht nicht nach der freien Anweisung").toBeGreaterThan(
+      anweisung,
     );
+    expect(zeile, "die Ausführerangabe steht nicht mehr im Menü „KI“").toBeLessThan(menueEnde);
     expect(blatt).toContain('const KI_PALETTE_AUFGABEN = ["structure", "assist"] as const;');
   });
 });

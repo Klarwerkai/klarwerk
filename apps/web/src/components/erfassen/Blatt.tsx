@@ -2381,12 +2381,6 @@ export function Blatt({
         symbol={<SymbolKi />}
         gesperrt={structure.isPending || assist.isPending}
       >
-        {/* KI-WAHL-BETRIEBSABNAHME · N-0070: wer das ausführt, steht VOR jedem Eintrag dieser
-            Palette — Strukturieren (`structure`) und alle Umformulier-Wege samt freier Anweisung
-            und Vorlagen (`assist`). Eine Zeile; Begründung in `AiAusfuehrerZeile.tsx`. */}
-        <MenueFlaeche>
-          <AiAusfuehrerZeile tasks={KI_PALETTE_AUFGABEN} />
-        </MenueFlaeche>
         <MenueEintrag
           gesperrt={!canStructure}
           onClick={() => {
@@ -2418,6 +2412,12 @@ export function Blatt({
               assist.mutate({ instruction });
             }}
           />
+          {/* KI-WAHL-BETRIEBSABNAHME · N-0070: wer das ausführt — Strukturieren (`structure`) und
+              alle Umformulier-Wege samt freier Anweisung und Vorlagen (`assist`). Sie steht beim
+              Öffnen der Palette da, also vor jedem Ausführen, aber UNTER Eingabe und Knopf: jede
+              Zeile darüber schob am 390-px-Telefon die freie Eingabe unter den Rand (gemessen,
+              `ki-palette-390px-chromium.test.ts` B5a, 31,3 px). Begründung in `AiAusfuehrerZeile.tsx`. */}
+          <AiAusfuehrerZeile tasks={KI_PALETTE_AUFGABEN} />
         </MenueFlaeche>
       </Menue>
 
