@@ -207,6 +207,7 @@ import {
   AddonAuthAttemptThrottle,
   addonAuthThrottleConfigFromEnv,
   isAddonEndpointPath,
+  isHopCountTrustProxy,
   resolveTrustProxy,
 } from "./addon-auth-throttle";
 import { matchAddonRoute, principalHasCapability, resolveAddonAuth } from "./addon-principal";
@@ -2309,6 +2310,13 @@ export function buildApp(
     trustProxy: resolveTrustProxy(),
     logger: baueLoggerOptionen(opts.log),
   });
+  // GHSA-3m5p-2c4r-xxw2: eine Hop-Anzahl wird verworfen (resolveTrustProxy). Ohne diese Zeile sähe ein
+  // Betreiber nur, dass alle Drosseln plötzlich gegen die Proxy-IP zählen.
+  if (isHopCountTrustProxy()) {
+    app.log.warn(
+      "KLARWERK_TRUST_PROXY ist eine Hop-Anzahl und wird nicht mehr beachtet (GHSA-3m5p-2c4r-xxw2) — die IP-Adresse(n) des Proxys eintragen.",
+    );
+  }
   // SCRUM-498 B2: einheitliche Backpressure-Antwort. Ein Modell-Cap-Überlauf (ModelCapacityError) wird
   // von der Reasoner-Kette bis hierher durchgereicht → 503 + Retry-After (kein 500/Crash). Jeder andere
   // Fehler wird formtreu an Fastifys Standard-Fehlerbehandlung weitergereicht (Validierungs-400 etc.
