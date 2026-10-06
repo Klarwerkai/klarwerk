@@ -1764,7 +1764,8 @@ const nl: typeof de = {
     "{{name}}: alleen txt/md/csv/json/log, docx en pdf worden als volledige tekst gelezen.",
   "capture.ocr": "OCR → tekst",
   "capture.ocrRunningShort": "OCR …",
-  "capture.ocrRunning": "OCR loopt voor {{name}} (worker/taaldata worden geladen) …",
+  "capture.ocrRunning":
+    "De tekst in {{name}} wordt gelezen … De eerste keer duurt dit iets langer.",
   "capture.ocrDone": "OCR-tekst uit {{name}} overgenomen.",
   "capture.ocrEmpty": "{{name}}: OCR heeft geen tekst herkend.",
   "capture.ocrFailed": "OCR voor {{name}} mislukt.",
@@ -2033,7 +2034,7 @@ const nl: typeof de = {
   "capture.fConditions": "Voorwaarden",
   "capture.fMeasures": "Maatregelen",
   "capture.fTags": "Trefwoorden",
-  "capture.fAsset": "Installatie / asset",
+  "capture.fAsset": "Installatie / apparaat",
   "conf.field": "Vertrouwelijkheid",
   "conf.confirmPending": "— vertrouwelijkheid bevestigen —",
   "conf.requiredHint": "Kies een vertrouwelijkheidsniveau voordat u indient.",

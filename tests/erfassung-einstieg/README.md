@@ -91,14 +91,14 @@ Test belegt · **teilweise** = Rest benannt · **offen** = nicht geliefert, Ents
 | R-0061 | „Noch offen: …" unter der Schrittleiste | **überholt / offen zur Entscheidung** | Schrittleiste entfernt (H3). Auf dem Blatt ist die einzige Pflicht vor dem Einreichen die Vertraulichkeit; ihr Fehlen wird als Satz erklärt (`conf.requiredHint`, `tests/vertraulichkeit-hinweis/einreichen-ohne-stufe-erklaert-sich.test.tsx`). Entscheidung Pedi: ob eine Fortschrittsanzeige auf das Blatt zurückkehren soll. |
 | R-0063 | Datei-Knopf + als Schaltfläche bedienbare Ablagefläche | **erfüllt** | `components/CaptureFileImport.tsx` `capture-file-pick`, `capture-dropzone` (beide `<button>`). Test: `tests/capture/mega34-dateiauswahl-knopf.test.tsx` (7/7 grün in diesem Lauf). Tastatur-Enter nicht eigens getestet (natives `<button>`). |
 | R-0064 | Speicher-Check vor dem Einreichen | **teilweise** | Arbeitsraum: Speicher-Check mit Pflicht/optional (`Capture.tsx` Speicher-Check, `lib/captureReadiness.ts`; `tests/capture/capture-readiness.test.ts` grün). Blatt: nur die Stufenpflicht als Satz (s. R-0061). |
-| R-0066 | Standardweg-Karte „Dokument-Editor öffnen" dreisprachig | **überholt** | Karte existiert nicht mehr (H3). Der Sprachanteil des Punkts ist für die heutige Fläche aufgenommen: deutscher Rest im Beispiel-Tor behoben (dieser Lauf). Offener Rest: `capture.ocrRunning`/`capture.fAsset` technisch formuliert (s. R-0101). |
+| R-0066 | Standardweg-Karte „Dokument-Editor öffnen" dreisprachig | **überholt** | Karte existiert nicht mehr (H3). Der Sprachanteil des Punkts ist für die heutige Fläche aufgenommen: deutscher Rest im Beispiel-Tor behoben (dieser Lauf). `capture.ocrRunning`/`capture.fAsset` seit `fehlerfaelle` in Anwendersprache (s. R-0101). |
 | R-0080 | Zahl statt Text → verständliche Abweisung, richtiger Satz im roten Kasten | **erfüllt** (dieser Lauf) | Server: `services/capture/src/draft-payload-schema.ts` → 400 (war schon da; `tests/capture/job2690-entwurf-gestaltpruefung.test.tsx`). Oberfläche: übersetzter Satz `einstieg.fehler.form`. Test: E1 (DE/EN/NL), F1. Rest: der Server liefert weiterhin einen deutschen Techniksatz mit Feldname (für andere Aufrufer, z. B. Klara-Tests pinnen ihn); `body: 42` wird nicht abgewiesen, weil es kein Feld `body` gibt. |
-| R-0084 | Entwurf/Einreichen unterscheidbar, Satz daneben, Blick springt auf Erfolg | **erfüllt** mit Abweichung | Form unterscheidet (umrandet/gefüllt, `Blatt.tsx` Knopfleiste). Folge je Knopf als Beschreibung + `title` (E3); Fokus auf Erfolgszeile (E4). **Abweichung:** kein sichtbarer Absatz, weil Zielbild H3 Erklärtext verbietet — Quellenwiderspruch, s. unten. Der Arbeitsraum zeigt den sichtbaren Block weiterhin (`KnopfUnterschied`, `tests/erstnutzer-u1/knopf-unterschied.test.tsx` grün). |
+| R-0084 | Entwurf/Einreichen unterscheidbar, Satz daneben, Blick springt auf Erfolg | **erfüllt** mit Abweichung | Form unterscheidet (umrandet/gefüllt, `Blatt.tsx` Knopfleiste). Folge je Knopf als Beschreibung + `title` (E3); Fokus auf Erfolgszeile (E4, seit `fehlerfaelle` DE/EN/NL). **Abweichung:** kein sichtbarer Absatz, weil Zielbild H3 Erklärtext verbietet. **Entschieden** von Pedi (`entscheidung:1214edcf-b80f-455d-9501-476cb014fc0b`, 01.10.2026): „Ja, die Beschreibung am Knopf reicht, H3 bleibt." Die Beschreibung am Knopf ist damit der Sollzustand. Der Arbeitsraum zeigt den sichtbaren Block weiterhin (`KnopfUnterschied`, `tests/erstnutzer-u1/knopf-unterschied.test.tsx` grün). |
 | R-0085 | Fronttür fertig bauen | **erfüllt** (durch H3) | `CaptureFrontDoor.tsx` rendert das Blatt; die Logik steht in `Blatt.tsx`. Eine fachliche Gesamtabnahme der Fronttür nennt die Quelle als nie erfolgt — das bleibt eine Aufgabe der Endabnahme, kein Codebefund. |
 | R-0093 | Quellen-Panel beim Erfassen | **teilweise** | Arbeitsraum → „Erweiterte Details" → „Externe Quellen" (`Capture.tsx` ~6344-6583). Auf dem Blatt selbst nicht; dort nur „Mehr" → Status → vermutete Quelle. Entscheidung Pedi: ob das Panel auf das Blatt gehört (Zielbild H3 zeigt es nicht). |
 | R-0094 | Strukturiertes Formular (Symptom, Kontext, Diagnose, Maßnahme, Risiko) | **teilweise** | Formular vorhanden (Kernaussage, Aussage, Inhalt, Bedingungen, Maßnahmen). Die fünf genannten Felder gibt es so nicht. Quelle selbst benennt Widerspruch (extract_04 „erledigt" vs. Checkliste leer). Entscheidung Pedi: gilt die Feldliste aus dem Juli-Konzept noch? |
 | R-0099 | Fläche gegen das Zielbild bauen, Wert für Wert | **erfüllt** (JOB 3062), hier nicht erneut gemessen | `tests/design/zielbild-h3-erfassen.test.ts` misst gegen `design/klarwerk/Erfassen.dc.html` in Chromium. In diesem Lauf nicht gefahren (Browserregel); läuft im Linux-Tor. |
-| R-0101 | Klare Worte, keine technischen Beschriftungen | **teilweise** | Behoben: Formfehler-, Größen- und Fristsätze (dieser Lauf). Offen: „Vordertür-Entwurf geöffnet" (`fd.draftOpen`, wörtlich gepinnt in `tests/capture/f0040-fremder-entwurf-frontdoor.test.tsx:505,530`), „OCR → Text"/„Worker/Sprachdaten" (`capture.ocrRunning`), „Anlage / Asset" (`capture.fAsset`), „Externe Quellen (Stufe 2)", „Live-Prüfung", das Werkzeug „?" ohne sprechenden Namen. Entscheidung: Wortlaut (Pedi) — Textänderungen sind Produktänderungen. |
+| R-0101 | Klare Worte, keine technischen Beschriftungen | **teilweise** | Behoben: Formfehler-, Größen- und Fristsätze (dieser Lauf); seit `fehlerfaelle` auch `capture.ocrRunning` („Text wird aus … gelesen … Beim ersten Mal dauert das etwas länger." statt „OCR läuft … (Worker/Sprachdaten …)") und `capture.fAsset` („Anlage / Gerät" statt „Anlage / Asset") in DE/EN/NL, Test `klare-worte-r0101.test.ts`. Weiter offen (nicht Teil von `fehlerfaelle`): „Vordertür-Entwurf geöffnet" (`fd.draftOpen`, wörtlich gepinnt in `tests/capture/f0040-fremder-entwurf-frontdoor.test.tsx:505,530`), die Knopfbeschriftung „OCR → Text" (`capture.ocr`, `capture.ocrRunningShort`), „Externe Quellen (Stufe 2)", „Live-Prüfung", das Werkzeug „?" ohne sprechenden Namen. |
 | R-0112 | „Weitere Wege" scrollt den Arbeitsraum ins Bild | **überholt** | Knopf entfernt (H3). Das Blatt scrollt nur bei `?weg=`-Einsprung; der Menüweg bewusst nicht (`tests/import-mausziel/dateiauswahl-im-bild-chromium.test.ts` N). |
 | R-0117 | = R-0063 (historisch erledigt) | **Doppel** | wie R-0063. |
 | R-0149 | Quellen-Panel mit serverseitiger Suche, nie automatisch angehängt | **teilweise** | Suche über `endpoints.external.search` (Server-Proxy), Anhängen nur per Klick. Tests: `tests/capture/capture-sources.test.ts`, `tests/capture/job2683-d2-suche-flaeche.test.tsx`. **Fehlender Beleg:** kein Test sagt ausdrücklich „Treffer werden nie automatisch angehängt". |
@@ -171,8 +171,9 @@ Soll: `klarwerk_steuerung/archiv/3082/AUFTRAG.md:221-234`. Ist: `q3a-zustandsmat
    H3 (R-1578, jünger, von Pedi):** H3 hat die Elemente entfernt. Nicht zurückgebaut; Entscheidung
    Pedi, ob eine Orientierungshilfe auf dem Blatt zurückkehren soll.
 2. **„Ein Satz daneben" (R-0084) gegen „kein Erklärtext auf der Fläche" (H3):** gelöst als
-   Beschreibung am Knopf (Screenreader + `title`), nicht als sichtbarer Absatz. Soll der Satz
-   sichtbar stehen, muss das Zielbild geändert werden.
+   Beschreibung am Knopf (Screenreader + `title`), nicht als sichtbarer Absatz. **Entschieden**
+   (Pedi, `entscheidung:1214edcf-…`, 01.10.2026): „Ja, die Beschreibung am Knopf reicht, H3 bleibt."
+   Kein sichtbarer Satz; E3 belegt den Sollzustand in DE/EN/NL.
 3. **R-0094:** Feldliste Symptom/Kontext/Diagnose/Maßnahme/Risiko gegen das gebaute Formular.
 4. **R-0915:** „zweite Erfassungsstufe" hat heute keinen Gegenstand.
 
@@ -217,3 +218,27 @@ Wo das Mockup liegt, prüft Fall A den Auszug gegen das Mockup. Neu dort: Fall N
 390 px (kein Überlauf, Blatt und beide Knöpfe im Fenster). Die Leertextfarbe (K2b Teil 4,
 `#9AA2B1`; auf dem Blatt `placeholder:text-muted-2/60`) bleibt unberührt — Pedis Vorbehalt „nicht
 vor der Vorführung".
+
+## Nachtrag `gesamt-erfassung-einstieg:fehlerfaelle` (Teil c, 06.10.2026, Basis `3264ad7d`)
+
+Abgleich statt Neubau. Die Fehlersatz-Zuordnung, die Knopfbeschreibungen und die Titelbehandlung
+aus Lauf 1/2 sind unverändert. Geschlossen wurden die Reste:
+
+| Datei | Änderung | Kriterium |
+|---|---|---|
+| `apps/web/src/woerterbuch/{de,en,nl}.ts` | `capture.ocrRunning`: DE „Text wird aus {{name}} gelesen … Beim ersten Mal dauert das etwas länger.", EN „Reading the text in {{name}} … The first time takes a little longer.", NL „De tekst in {{name}} wordt gelezen … De eerste keer duurt dit iets langer." — `capture.fAsset`: „Anlage / Gerät", „Equipment / machine", „Installatie / apparaat". | R-0101 |
+| `tests/i18n-textmodule/werte-vorher.json`, `tests/i18n-woerterbuch/i18n-vor-aufteilung.txt` | dieselben sechs Werte nachgetragen (K1.1 bzw. W1). | — |
+| `tests/erfassung-einstieg/klare-worte-r0101.test.ts` (neu) | K0 Kalibrierung (alter Wortlaut ist in allen drei Sprachen ein Befund), K1/K2 je Sprache kein Fachwort (OCR, Worker, Sprachdaten, Asset), Dateiname eingesetzt, K3 drei verschiedene Fassungen, K4 beide Schlüssel stehen weiter in `Capture.tsx`/`BodyExtractPanel.tsx`. | R-0101 |
+| `tests/erfassung-einstieg/blatt-einstieg-mounted.test.tsx` | E2 (zu groß, echter 413) und E4 (Fokus auf der Erfolgszeile) jetzt je DE/EN/NL; neu E5 je DE/EN/NL: die Anlage kommt nicht zurück → nach `FRONT_DOOR_SAVE_TIMEOUT_MS` der Fristsatz, Eingabe bleibt, kein Entwurf. | R-1002, R-0080, R-0084 |
+| `tests/erfassung-einstieg/fehlersatz-und-hilfe.test.ts` | F3 (Frist) je DE/EN/NL statt nur EN. | R-1002 |
+
+**R-0084:** Pedi hat entschieden (`entscheidung:1214edcf-b80f-455d-9501-476cb014fc0b`): „Ja, die
+Beschreibung am Knopf reicht, H3 bleibt." Kein sichtbarer Satz gebaut; E3 belegt `aria-describedby`
+und `title` in DE/EN/NL.
+
+**Offen:** `tests/i18n-textmodule/bestand-vorher.json` trägt noch die Prüfsummen vor dieser
+Textänderung. In diesem Lauf konnte nichts ausgeführt werden; die neuen Summen sind daher nicht
+berechnet. K1.0 (`bestand-unveraendert.test.ts`) wird deshalb rot und nennt dank `expect.soft` alle
+drei Ist-Summen („Received"). Diese sind nachzutragen; die Anzahl (4437) bleibt gleich. Außerhalb
+der Erfassungsfläche bleibt „Asset" unverändert stehen, z. B. `ko.couple.placeholder` (EN „Asset
+reference, …", Anlagenkopplung im Wissensobjekt). Das gehört nicht zu diesem Auftrag.
