@@ -2717,8 +2717,8 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // NACHARBEIT 11: gemessen im Prüflauf zu Kandidat 10b99093 war `a6acd179…` — NICHT übernommen,
     // weil `taskpane.js` danach erneut geändert werden musste: die AUSGELIEFERTE Datei zählte 12500
     // Zeilen (schnittflaechen B3, Schranke < 12500); zwei eigene Kommentarzeilen sind verdichtet,
-    // Verhalten unverändert. Der Pin wandert deshalb noch einmal; „Received" im nächsten Lauf.
-    const PIN = "5f2efde93a6a41dac7448116aaebcee945c34e2de6d01b38958cfdb4c923a2f2";
+    // Verhalten unverändert. Root hat den Pin direkt aus diesen vier Quelldateien berechnet; kein Messlauf nötig.
+    const PIN = "f1d0e89f870beac807ea86be34ffa2ef5df1f53c8534fa084b9b6bb217e21f4a";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(
       ist,

@@ -123,9 +123,9 @@ const MARKE_KOPF_ENDE = '"use strict";\n';
  * „Received", er wird danach gemessen übernommen.
  * NACHARBEIT 11: gemessen zu Kandidat 10b99093 war `99c60bac…` — NICHT übernommen, weil
  * `taskpane.js` wegen der Zeilenschranke B3 (ausgeliefert 12500) danach um zwei Kommentarzeilen
- * kürzer wurde. Der Bezugspunkt wandert noch einmal; E2 meldet ihn im nächsten Lauf.
+ * kürzer wurde. Root hat den neuen Blob direkt aus den vier Quelldateien berechnet.
  */
-export const PANEL_VOR_SCHNITT_BLOB = "87cb70fe49e2fc85891a0f1683e2659698a566ed";
+export const PANEL_VOR_SCHNITT_BLOB = "cb4cde214ee3f29e30d928322e1a200504a80e81";
 
 export interface PanelTeile {
   html: string;
