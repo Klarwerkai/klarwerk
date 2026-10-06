@@ -7,6 +7,7 @@ WURZEL="$(cd "$(dirname "$0")/../.." && pwd)"
 KONFIG="${1:?Pfad der Betreiberkonfiguration angeben}"
 # Die Konfiguration ist eine vom Betreiber verwaltete Shell-Datei, keine Nutzereingabe.
 source "$KONFIG"
+cd "$WURZEL"
 : "${DATABASE_URL:?}" "${ARBEIT:?}" "${VERSCHLUESSELT:?}" "${ZWEITHOST:?}" "${ZWEITPFAD:?}"
 : "${SSH_KONFIG:?}" "${AUSLAGERUNG_SCHLUESSEL:?}" "${HEALTH_URL:?}" "${PROJEKT:?}"
 [[ "$ZWEITHOST" =~ ^[a-zA-Z0-9._-]+$ ]] && [[ "$ZWEITPFAD" =~ ^/[a-zA-Z0-9/_.-]*$ ]]
