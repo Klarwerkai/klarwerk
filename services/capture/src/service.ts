@@ -8,6 +8,7 @@ import {
   isValidConfidentiality,
 } from "../../knowledge-object";
 import { sanitizeHtml } from "../../structure";
+import { normalizeAblauf } from "./ablauf";
 import { DRAFT_LIMITS } from "./draft-limits";
 import type { DraftRepo } from "./repo";
 import {
@@ -441,6 +442,8 @@ function normalizeDraftPayload(payload: DraftPayload): DraftPayload {
     extQuery: _extQuery,
     interview: _interview,
     extResults: _extResults,
+    // BILDSCHIRMABLÄUFE: der Ablauf läuft durch dieselbe Schleuse (`./ablauf.ts`).
+    ablauf: _ablauf,
     ...rest
   } = payload as DraftPayload & { extResults?: unknown };
   const next: DraftPayload = normalizeOriginIn(rest);
@@ -468,6 +471,10 @@ function normalizeDraftPayload(payload: DraftPayload): DraftPayload {
   const interview = normalizeInterview(raw.interview);
   if (interview !== undefined) {
     next.interview = interview;
+  }
+  const ablauf = normalizeAblauf(raw.ablauf);
+  if (ablauf !== undefined) {
+    next.ablauf = ablauf;
   }
   return next;
 }

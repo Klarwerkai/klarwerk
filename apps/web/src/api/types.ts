@@ -936,6 +936,30 @@ export interface GapSummary {
   byPriority: Record<GapPriority, number>;
 }
 
+// BILDSCHIRMABLÄUFE — zeichengleicher Spiegel von `DraftAblauf` (`services/capture/src/ablauf.ts`).
+// `art: "import"`: die Aufzeichnung entstand AUSSERHALB Klarwerks und wurde als Datei übernommen.
+export interface AblaufQuelle {
+  art: "import";
+  format: string;
+  werkzeug: string;
+  datei?: string;
+  aufgezeichnetAm?: string;
+  anwendung?: string;
+  /** Übernahmeschlüssel (`lib/ablaufImport.ts`, `uebernahmeSchluessel`). */
+  schluessel?: string;
+}
+
+export interface AblaufSchritt {
+  id: string;
+  text: string;
+  bild?: string;
+}
+
+export interface Ablauf {
+  quelle: AblaufQuelle;
+  schritte: AblaufSchritt[];
+}
+
 export interface DraftPayload {
   title?: string;
   statement?: string;
@@ -977,6 +1001,9 @@ export interface DraftPayload {
   // Fehlt das Feld (getippter Entwurf, Klara, Altbestand), bleibt die Aussage `unbekannt`; es wird
   // dann KEIN Verlust behauptet (lib/bildverlust.ts).
   sourceImageCount?: number;
+  // BILDSCHIRMABLÄUFE: die übernommenen Schritte samt Herkunft — Spiegel von
+  // `services/capture/src/ablauf.ts`. `null` leert ausdrücklich (Merge-Vertrag des Servers).
+  ablauf?: Ablauf | null;
   // AUFTRAG-mega4/mega5 Block A (bens Auflage A): „Entwurf speichern" sicherte bisher nur Text + drei
   // Skalar-Metadaten. Der Entwurf trägt jetzt ALLE inhaltlichen, textuell sicherbaren Dirty-Felder —
   // Prüferauswahl, offene/teilweise Quelle, externe Suchanfrage und den Interviewfortschritt — und der

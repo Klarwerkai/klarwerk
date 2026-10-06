@@ -379,8 +379,17 @@ function hinweisNeben(seq: number, labelKey: string, id: string): string {
     throw new Error(`Zeile fehlt: Eintrag ${seq}, ${labelKey}`);
   }
   const roh = gestrafft(dd.textContent);
-  if (!roh.includes(id)) {
-    throw new Error(`Zeile ${labelKey} trägt die Kennung „${id}" gar nicht: „${roh}"`);
+  // Verwalteransicht (N-0027): die Kennung eines KONTOS steht nicht mehr in der Spalte, sondern in
+  // der Detailansicht desselben Eintrags (`data-audit-kennung`). Die Zuordnung Zeile ↔ Kennung wird
+  // deshalb dort belegt; ein Objektziel trägt seine Kennung weiterhin in der Spalte selbst.
+  const technik = container
+    .querySelector(`[data-audit-eintrag="${seq}"]`)
+    ?.querySelector(`[data-audit-technik] [data-audit-kennung="${labelKey}"]`);
+  const kennungImDetail = gestrafft(technik?.textContent) === id;
+  if (!roh.includes(id) && !kennungImDetail) {
+    throw new Error(
+      `Eintrag ${seq} trägt die Kennung „${id}" weder in der Zeile ${labelKey} („${roh}") noch in der Detailansicht`,
+    );
   }
   return roh.replace(id, "").trim();
 }
