@@ -136,6 +136,12 @@ const WIDERRUFENE_FREIGABEN: readonly string[] = [
   // nachträglich decken; ihre Nachfolgerinnen stehen am jeweiligen Eintrag.
   "FREEZE-144/JOB3087-20260905/repo",
   "FREEZE-144/D5-20260817/repo-pg",
+  // AUFNAHME 20260922 · GESAMT-VERTRAULICHKEIT-ERFASSUNG (N11): verbraucht. Diese Freigabe
+  // autorisierte den `service.test.ts`-Stand, in dem ein Import ohne Stufe „vertraulich" ergab.
+  // Sie darf den nachgeführten Inhalt nicht decken; ihre Nachfolgerin steht am Eintrag. (Die
+  // Integration mit main 38508a1e ändert daran nichts: main hat `service.test.ts` seit der
+  // gemeinsamen Basis nicht berührt, die Datei trägt unverändert den N11-Stand.)
+  "FREEZE-144/JOB3050-20260904/service-test",
   // LAUF gesamt-import-adoption R2 (Bens B1–B4): verbraucht. Diese fünf Freigaben autorisierten
   // den Stand MIT dem Direktimport `importJson` (samt seinen Antworttypen) und OHNE den bei der
   // Annahme neu erhobenen Dublettenbefund in `ClaimResolution`. Sie dürfen den neuen Inhalt nicht
@@ -420,12 +426,21 @@ const FREEZE_MANIFEST: readonly FreezeEintrag[] = [
     // ZURÜCKGENOMMEN. Mit der Hauptstand-Integration bleibt `importJson` erhalten, und die
     // Herkunftsfrage ohne Schalter hat der Auftrag herkunft-identitaet auf main entschieden
     // (Adapterkandidat ohne Schalter: kein Anker). Die Datei ist wieder BYTE-GLEICH mit main
-    // 1147c026 — genau der Inhalt, den die Freigabe JOB3050 autorisiert hat. Sie gilt darum wieder
-    // (aus WIDERRUFENE_FREIGABEN genommen); die R2-Freigabe ist dafür widerrufen.
-    hash: "1b0779a403ddede006ff78a6289d94016fdb50b4bc40c3fd246a644ed94d49f9",
+    // 1147c026 — genau der Inhalt, den die Freigabe JOB3050 autorisiert hat.
+    //
+    // AUFNAHME 20260922 · GESAMT-VERTRAULICHKEIT-ERFASSUNG (N11, BEN-Befund K6) · AUSGEWIESENE
+    // ÄNDERUNG, auf diesem Stand: Pedis Entscheidung 23 (05.09.2026) setzt den Übernahme-Standard
+    // auf „intern". Die Fälle, die ein Import OHNE Stufe als „vertraulich" pinnten (JSON-Import,
+    // Confluence-Accept, Re-Sync R4a, Fake-Adapter), messen jetzt „intern"; dazu EINE Gegenprobe
+    // (mitgelieferte vertrauliche Stufen bleiben). Die Fälle zu ungültigen Werten (restriktiv
+    // „vertraulich") und zum ausgeschlossenen Downgrade sind unverändert. Der Hash ist im Prüflauf auf
+    // Kandidat 9612aa9c gemessen („gemessen:" dieses Wächters) und unverändert übernommen; main hat
+    // die Datei seither nicht berührt (Integration 38508a1e). Sollhash UND Freigabe sind in EINEM
+    // Änderungssatz neu gesetzt, JOB3050 steht deshalb in WIDERRUFENE_FREIGABEN.
+    hash: "14d15fc3fa5cffc52153bb9ca3115a2552a499c9c1d6f59a1b2477f3093262f5",
     freigabe: {
-      id: "FREEZE-144/JOB3050-20260904/service-test",
-      autorisiertHash: "1b0779a403ddede006ff78a6289d94016fdb50b4bc40c3fd246a644ed94d49f9",
+      id: "FREEZE-144/N11-20261003/service-test",
+      autorisiertHash: "14d15fc3fa5cffc52153bb9ca3115a2552a499c9c1d6f59a1b2477f3093262f5",
     },
   },
   {

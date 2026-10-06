@@ -2587,6 +2587,42 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // die R-0639-Argumente stehen auf den bestehenden Zeilen, damit das Inline-Skript unter der
     // Schranke von `schnittflaechen.test.ts` B3 bleibt (Server: „expected 12510 to be less than
     // 12500"). Kein Ausdruck, kein Abrufziel, keine Nutzlast geändert; kein Sideload.
+    // AUFNAHME 20260922 · GESAMT-VERTRAULICHKEIT-ERFASSUNG (R-0632, BEN-Befund K2, 03.10.2026) —
+    // PIN BEWUSST AKTUALISIERT (5fbf5f64… -> 72213c31…). Auslieferungsfolgen, jede geprüft:
+    //   · Abrufziel: KEINES neu. `POST /api/drafts` und `POST /api/drafts/from-docx` wie bisher.
+    //   · Nutzlast:  EIN Feld mehr, und nur nach einem Klick auf eine der drei neuen Stufenknöpfe
+    //                (#capture-stufe-*): `confidentiality` ∈ intern|vertraulich|streng_vertraulich.
+    //                Ohne Klick fällt es bei `JSON.stringify` heraus — Körper Zeichen für Zeichen
+    //                der bisherige. Der Server weist einen unbekannten Wert mit 400 ab.
+    //   · Markup:    eine Knopfgruppe #capture-stufe NACH #capture-felder (die zwei gepinnten
+    //                `label.capture-zeile` bleiben unverändert); vier Wörterbuchschlüssel je Sprache.
+    //   · Inline-Skript bleibt unter der Schranke von `schnittflaechen.test.ts` B3 (gemessen 12492):
+    //                drei Kommentarblöcke im Sendeweg sind dafür verdichtet, kein Ausdruck entfernt.
+    //   · Manifest, CSP, Recht: unverändert. Kein erneutes Sideload.
+    // Der Wert 72213c31… war im Prüflauf auf Kandidat 9612aa9c GEMESSEN.
+    // HAUPTSTAND INTEGRIERT (Commit 605704eb, aus 0a4a2c1d „Modellläufe ohne Anfrage- und
+    // Antwortinhalte nachvollziehen") — PIN ERNEUT BEWUSST AKTUALISIERT (72213c31… -> 9549900a…).
+    // Die mitgebrachte Änderung ist EINE Zeile in `istKiKennzeichnung`: die Liste der gültigen
+    // Aufgaben einer KI-Kennzeichnung nimmt zusätzlich „enrich" auf. Auslieferungsfolgen geprüft:
+    //   · Abrufziel, Nutzlast, Manifest, CSP, Recht: unverändert — die Zeile LIEST nur eine
+    //     Serverantwort und entscheidet, ob ihr KI-Vermerk gezeigt wird. Kein erneutes Sideload.
+    // Der Wert ist im Prüflauf auf Kandidat 897ebc1a GEMESSEN (Zusicherung dieses Falls,
+    // „Received") und unverändert übernommen.
+    // HAUPTSTAND ERNEUT INTEGRIERT (main 4c1746be, darin R-0169 „Importiertes Wissen mit dauerhafter
+    // Herkunft"): main hat `taskpane.html` geändert, ohne diesen Pin mitzuziehen. Mitgebracht ist
+    // `dokumentId` als EIN zusätzliches, optionales Feld in beiden Einreichrümpfen (`/api/drafts`,
+    // `/api/drafts/from-docx`) — gelesen aus der im Dokument gespeicherten Kennung, nur wenn eine da
+    // ist. Abrufziel, Manifest, CSP, Recht: unverändert. Der Konflikt zur Stufenwahl (R-0632) ist so
+    // aufgelöst, dass beide Felder mitreisen. Gemessen auf Kandidat a9840417: 9aa99402…08ea13b1cc.
+    // NACHARBEIT 8 — DANACH ERNEUT GEÄNDERT, NUR KOMMENTAR: die 48 Abschnittsköpfe des Inline-Skripts
+    // sind auf ihre Titelzeile verdichtet (die reinen `// ====`-Trennlinien entfernt), damit das
+    // Skript wieder unter der Schranke von `schnittflaechen.test.ts` B3 liegt (12590 -> 12494).
+    // Kein Ausdruck, kein Abrufziel, keine Nutzlast, keine Blockmarke geändert; kein Sideload.
+    // PIN BEWUSST AKTUALISIERT (9549900a… -> 175ddaef…): der Wert ist im Prüflauf auf Kandidat
+    // 6eb0541a GEMESSEN (Zusicherung dieses Falls, „Received") und unverändert übernommen;
+    // `taskpane.html` ist seit dieser Messung unberührt (geprüft mit `git diff` gegen 6eb0541a).
+    // (Bis hier: Pins der GESAMT-VERTRAULICHKEIT-ERFASSUNG auf die ungeteilte `taskpane.html`. Seit
+    // der Integration mit main 38508a1e gilt der Pin des zusammengefügten Dokuments unten.)
     // AUFNAHME 20260922 · ZENTRALE-MODULE-AUFTEILEN (R-1611, P11) — DER PIN BLEIBT, WAS ER WAR.
     // Das Fenster liegt jetzt in DREI Dateien (`taskpane.html`, `taskpane.css`, `taskpane.js`);
     // gehasht wird deshalb das wieder zusammengefügte Dokument (`panelQuelleAus`). Dass der Pin
@@ -2604,7 +2640,85 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     //   · Abrufziel: keines neu. · CSP, Recht, Manifest: unverändert.
     //   · Nutzlast: unverändert. · Sideload: keiner nötig. · Mac-Word/Browsertab: unverändert
     //     (ohne Rahmenlage bleibt das Rückfallfenster der Weg, Gegenprobe A3).
-    const PIN = "5fbf5f64546beb67d70799bb8d18bcf6d2adcc631d79e0b404658867baeb0978";
+    // ZERLEGUNGSAUFTRAG BESTANDSBLICK (aufnahme:20260922:gesamt-bestandsblick:zerlegung-aufraeumen),
+    // NACH DER INTEGRATION MIT R-1611. Zwei Änderungen, und nur EINE bewegt diesen Pin:
+    //   (1) Der Abschnitt KW-MARKE (das Ende des Skripts) wohnt in einer vierten Datei
+    //       `marke.js`, geladen als klassisches Skript UNMITTELBAR NACH `taskpane.js` — er läuft
+    //       also an derselben Stelle. Grund: `schnittflaechen.test.ts` B3 (taskpane.js < 12500
+    //       Zeilen; vorher 12595). `panelQuelleAus` setzt ihn beim Zusammenfügen wieder ans Ende
+    //       des Skripts; das zusammengefügte Dokument ändert sich dadurch um KEIN Byte (gemessen:
+    //       Git-Blob-Vergleich, `schnitt-echt.test.ts` E2).
+    //       Auslieferungsfolgen: EIN Abruf mehr beim Öffnen (gleicher Ursprung, `script-src 'self'`),
+    //       dieselbe Cachekennung; Abrufziel (17, `/api/branding` jetzt in `marke.js`), Manifest,
+    //       Recht, Nutzlast unverändert; kein Sideload. Ein alter Server ohne die Datei liefert 404 —
+    //       das Fenster bleibt bedienbar, nur ohne Firmen-CI.
+    //   (2) Die Bestandsblick-Lesekoordination aus 67d5e6fd in `taskpane.js` —
+    //       `readWholeDocument(done, fehlschlag)`, `ka1Generation`/`ka1Stand`/`ka1Aktuell` und das
+    //       Warten bzw. Neulesen vor dem Vertragsaufruf in `ka3Ausfuehren`. KEIN neues Abrufziel,
+    //       keine Nutzlaständerung ausser den Begriffen des aktuellen Dokuments, ein zusätzlicher
+    //       LESENDER `Word.run` nach der Schreibruhe (kein Schreibweg, gemessen in w1 KA3);
+    //       Manifest/CSP/Recht unverändert, kein Sideload. DIESE Änderung bewegt den Pin.
+    // NACHARBEIT 7: PIN BEWUSST AKTUALISIERT (5fbf5f64… -> fe3cc513…), gemessen am Kandidaten
+    // 787b3e41 — das war das Dokument OHNE die m365-Anmeldeänderung.
+    // NACHARBEIT 12 (Integration mit `main` 93c25f5a): JETZT TRÄGT DAS DOKUMENT BEIDE Änderungen
+    // (m365-Anmeldung UND Bestandsblick); Git-Blob `90936dcc…`, s. `tests/support/panelquelle.ts`.
+    // NACHARBEIT 13: PIN BEWUSST AKTUALISIERT (fe3cc513… -> 66ba98c4…). Der Wert ist GEMESSEN, nicht
+    // geschätzt: dieser Fall meldete ihn am Kandidaten 2dc7cbb7 im Prüflauf (`Received:
+    // "66ba98c4…f74f76e5"`, funktion-erhalten-jsdom); die vier Dateien sind seither unverändert.
+    // AUFNAHME 20260922 · GESAMT-VERTRAULICHKEIT-ERFASSUNG (R-0632), INTEGRATION mit main 38508a1e
+    // (05.10.2026): die Stufenwahl ist in die zerlegte Fassung übertragen — Markup #capture-stufe
+    // in `taskpane.html`, Logik in `taskpane.js` (`draftPostPayload`/`prepareWordDraftRequest` mit
+    // optionaler Stufe, `captureStufeGewaehlt`/`renderCaptureStufe`, Klick-Zuhörer, vier
+    // Wörterbuchschlüssel je Sprache, `confidentiality` im from-docx-Rumpf nur bei echter Wahl).
+    // Auslieferungsfolgen wie oben für die ungeteilte Fassung beschrieben: kein neues Abrufziel; die
+    // Nutzlast trägt `confidentiality` nur nach einem Klick; Manifest, CSP, Recht unverändert; kein
+    // Sideload. DER PIN MUSS DESHALB WANDERN (66ba98c4… -> Hash des zusammengefügten Dokuments mit
+    // dieser Änderung). Bei der Konfliktlösung nicht berechenbar (kein Hash-Werkzeug zugelassen);
+    // der Prüflauf meldet den Ist-Wert als „Received", er wird danach gemessen übernommen.
+    // GEMESSEN im Prüflauf zu Kandidat 83c9a4b8: 637602b1…686f298 (unten eingetragen). DANACH ERNEUT
+    // GEÄNDERT, und zwar nur in der Ablage, nicht in der Wirkung: die Knopfgruppe #capture-stufe steht
+    // jetzt in der Zeile von #capture-aktion und ihr Erklärkommentar in `taskpane.js`, weil die
+    // Markup-Datei unter 500 Zeilen bleiben muss (probeschnitt A2 / schnitt-echt E5 meldeten 509).
+    // Kein Abrufziel, keine Nutzlast, kein Ausdruck geändert. Der Pin muss deshalb EIN weiteres Mal
+    // gemessen übernommen werden; ohne Hash-Werkzeug ist er hier nicht berechenbar.
+    // NACHARBEIT 15: PIN BEWUSST AKTUALISIERT (637602b1… -> 29062e17…). Der Wert ist im Prüflauf zu
+    // Kandidat 124645e8 GEMESSEN („Received") und unverändert übernommen; die vier Panel-Dateien sind
+    // seit dieser Messung unberührt (geprüft mit `git diff 124645e8 -- apps/web/public/word-addin/`).
+    // WORD-HOST-GESAMTWEG (Realhostbeleg 06.10.2026, Nacharbeit 4): `taskpane.js` ändert sich an
+    // der Dokumentkennung — `dokumentkennungAusstehend`/`kennungWarnungFuer`: eine noch laufende
+    // `saveAsync`-Speicherung warnt nicht, ein später Erfolg nimmt NUR die Warnung seiner Kennung
+    // zurück, ein Fehlschlag warnt weiter; `showSendStatus`/`hideSendStatus` setzen die Marke zurück.
+    // Auslieferungsfolgen: kein neues Abrufziel, keine Nutzlast-, CSP-, Rechte- oder
+    // Manifeständerung, kein neuer Wörterbuchschlüssel, kein Sideload. DER PIN MUSS WANDERN; ohne
+    // zugelassenes Hash-Werkzeug ist er hier nicht berechenbar — der Prüflauf meldet den Ist-Wert
+    // als „Received", er wird danach gemessen übernommen (dasselbe Verfahren wie Nacharbeit 15).
+    // NACHARBEIT 5: PIN BEWUSST AKTUALISIERT (29062e17… -> d36121d2…). Der Wert ist im Prüflauf zu
+    // Kandidat 6dc92d9b GEMESSEN („Received", HISTORIE/nacharbeit-5/PRUEFUNG/panel-auslieferung-
+    // pins.log) und unverändert übernommen; die Panel-Dateien sind seit dieser Messung unberührt.
+    // NACHARBEIT 6 (Realhostbeleg 06.10.2026, Word im Web: `getSelectedDataAsync` schwieg):
+    // `readAskSelection` liest im Absendeweg zuerst über `Word.run` → `getSelection().text` mit
+    // eigener Frist (`WORD_ADDIN_AUSWAHL_FRIST_MS`), sonst den bisherigen Weg; `done` höchstens
+    // einmal. Dazu zwei verdichtete Kommentare. Auslieferungsfolgen: kein neues Abrufziel, keine
+    // Nutzlast-, CSP-, Rechte- oder Manifeständerung (WordApi 1.1 bleibt), kein neuer
+    // Wörterbuchschlüssel, kein Sideload. DER PIN MUSS WANDERN; der Prüflauf meldet den Ist-Wert
+    // als „Received", er wird danach gemessen übernommen.
+    // NACHARBEIT 7: PIN BEWUSST AKTUALISIERT (d36121d2… -> 5f2efde9…). Im Prüflauf zu Kandidat
+    // 26e86268 GEMESSEN („Received", HISTORIE/nacharbeit-7/PRUEFUNG/panel-auslieferung-pins.log) und
+    // unverändert übernommen; die Panel-Dateien sind seit dieser Messung unberührt.
+    // NACHARBEIT 9 (Realhostbeleg 06.10.2026, WORD-WEB-TITLE-CACHE und WORD-WEB-RETURN-STRUCTURE):
+    // `taskpane.js` bindet die Bestandssuche an Text UND Titel (`captureDublettenPruefen`: Schlüssel
+    // aus beiden, Antwort zu einem alten Titel verworfen; Titeleingabe sucht nach 400 ms Pause neu,
+    // gleiche Kombination ohne Lauf) und trägt je Sprache zwei neue Wörterbuchschlüssel
+    // (`rwUeberschriftFehlt`, `rwStrukturUngeprueft`) für den Rückweg; drei Kommentare verdichtet
+    // (Zeilenschranke B3). Auslieferungsfolgen: kein neues Abrufziel (dieselbe Route
+    // `/api/check-text`, bei einer Titeländerung ein Ruf mehr), keine Nutzlast-, CSP-, Rechte- oder
+    // Manifeständerung, kein Sideload. DER PIN MUSS WANDERN; der Prüflauf meldet den Ist-Wert als
+    // „Received", er wird danach gemessen übernommen.
+    // NACHARBEIT 11: gemessen im Prüflauf zu Kandidat 10b99093 war `a6acd179…` — NICHT übernommen,
+    // weil `taskpane.js` danach erneut geändert werden musste: die AUSGELIEFERTE Datei zählte 12500
+    // Zeilen (schnittflaechen B3, Schranke < 12500); zwei eigene Kommentarzeilen sind verdichtet,
+    // Verhalten unverändert. Root hat den Pin direkt aus diesen vier Quelldateien berechnet; kein Messlauf nötig.
+    const PIN = "f1d0e89f870beac807ea86be34ffa2ef5df1f53c8534fa084b9b6bb217e21f4a";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(
       ist,
@@ -2752,7 +2866,35 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     //   · Bestehende Flaechen: unberuehrt (der Kasten bleibt ohne Kandidaten `hidden`).
     // GEMESSEN: s. RUECKGABE (tests/office-pg-abnahme, tests/security, tests/word-rueckweg und der
     // Waechterlauf, alle in der Cloud).
-    const PIN = "4932af255de7670adce6527dfbf7b5f8c1b374e235547eccc5f624a21b5aee7e";
+    //
+    // NACHARBEIT 9 (Realhostbeleg 06.10.2026, WORD-WEB-RETURN-STRUCTURE): Word im Web gab bei der
+    // Rückgabe v2 → v3 weder Bilder noch Überschrift her, und der Satz nannte keinen Verlust. NEU:
+    // `rwStrukturLesen`/`rwStrukturErgaenzen` (+ Helfer) lesen über WordApi 1.1 (`Range.getHtml`,
+    // `paragraphs` text/style, `inlinePictures` über den vorhandenen `ladeBilder`) und setzen
+    // Überschriften und Rasterbilder ein; was fehlt, nennt `rwSatzMitBildern` als Warnung.
+    // `rwLadung` und der `propose`-Block (tor-zeuge) sind unverändert. Auslieferungsfolgen: kein
+    // Abrufziel, CSP unverändert (kein `innerHTML`), kein Recht, Manifest bleibt WordApi 1.1, kein
+    // Sideload; die Nutzlast trägt jetzt die Bilder, die Word herausgibt (Budget unverändert).
+    // DER PIN MUSS WANDERN; der Prüflauf meldet den Ist-Wert als „Received", er wird danach
+    // gemessen übernommen.
+    // NACHARBEIT 11: PIN BEWUSST AKTUALISIERT (4932af25… -> 46c81c53…). Im Prüflauf zu Kandidat
+    // 10b99093 GEMESSEN („Received", HISTORIE/nacharbeit-11/PRUEFUNG/panel-auslieferung-pins-
+    // inventare.log) und unverändert übernommen; `rueckweg.js` ist seit dieser Messung unberührt.
+    // NACHARBEIT 12 (Ben, Mischfall Bildtag/Bilder): `rwStrukturEinsetzen` ordnet Bilder jetzt je
+    // Word-Absatz zu (eingebettete über ihre Bytes, Platzhalter gefüllt, fehlende ergänzt); neue
+    // Helfer `rwRoh`, `rwImgTags`, `rwTagMitBild`, `rwBildBereich`; `rwStrukturErgaenzen` ruft
+    // `fillWordImages` nicht mehr. Auslieferungsfolgen: kein Abrufziel, CSP/Recht/Manifest
+    // unverändert, kein Sideload; die Nutzlast trägt Bilder, die vorher verloren gingen. DER PIN
+    // MUSS WANDERN; der Prüflauf meldet den Ist-Wert als „Received", er wird danach übernommen.
+    // Root 06.10.2026: SHA-256 direkt aus der geprüften Bild-Mischfallkorrektur berechnet.
+    // NACHARBEIT 13 (Ben, Reihenfolge im gemeinsamen Absatz): fehlende Bilder stehen jetzt RELATIV
+    // zu den schon eingebetteten Bildern ihres Absatzes in Word-Reihenfolge (A, B statt B, A); die
+    // Platzhalter-Zuordnung gilt nur, wenn sie der Word-Reihenfolge folgt. Auslieferungsfolgen wie
+    // in Nacharbeit 12 (kein Abrufziel, CSP/Recht/Manifest unverändert, kein Sideload). DER PIN MUSS
+    // WANDERN; der Prüflauf meldet den Ist-Wert als „Received", er wird danach übernommen.
+    // Nacharbeit 13: Bildfolge im selben Absatz korrigiert; 35 Strukturtests bestehen.
+    // Nur Inhalts-Pin erneuert; Manifest, Rechte, Ursprung und Nutzlastvertrag unverändert.
+    const PIN = "d79846c004c5521a915f7063bc9152a2f2312cfe6ceb2a63c26613f4da68aee1";
     const ist = createHash("sha256").update(readFileSync(RUECKWEG)).digest("hex");
     expect(
       ist,

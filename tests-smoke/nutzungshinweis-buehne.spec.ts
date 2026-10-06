@@ -6,6 +6,14 @@ import { expect, test } from "./support/nav-diagnose-fixture";
 // eingespeiste GET-Antworten; kein erfundener Reset-Endpunkt und kein Löschen des Kontovermerks.
 // Der echte Client muss beide Zeitlagen bedienen können. Ein Fehlschlag ist ein Produktbefund,
 // der durch eine spätere Bestätigung in ensureLoggedIn NICHT verdeckt werden darf.
+//
+// Auftrag navigation-race-beleg: Die Zeitlagen „Hinweis vor Navigation offen" und „Hinweis erst
+// nach dem Klick" bleiben getrennte Tests. Trace und Screenshot entstehen hier auch bei Grün, damit
+// navigation-diagnose.jsonl (Schlusszeile mit testId und Endpfad), Trace und Bild immer aus
+// demselben Lauf stammen. Ein grüner Lauf reproduziert den Cloud-Fall NICHT: die Ursache von
+// Kante 6 bleibt dann ausdrücklich ungeklärt.
+test.use({ trace: "on", screenshot: "on" });
+
 const NOTICE = "**/api/auth/notice";
 const banner = (page: Page) =>
   page.getByRole("region", {

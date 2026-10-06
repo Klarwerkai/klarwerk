@@ -222,7 +222,11 @@ describe("JOB 2696 · R2-33 — die Zusicherung kippt nicht", () => {
     expect(liste.map((d) => d.payload.title).sort()).toEqual(["Annas Erster", "Annas Zweiter"]);
   });
 
-  it("der Admin sieht weiterhin ALLE drei — auch die von Anna", async () => {
+  // Entscheidung Pedi `debbb8e8` (Aufnahme gesamt-entwurf-einreichen, Lauf :3): Entwürfe sind
+  // privat. Bis dahin sah der Admin hier alle drei; jetzt nur seinen eigenen. Die Vorfilterung der
+  // Ablage bleibt für ihn aus (herrenloser Altbestand, `canSeeDraft`) — die Menge am Ende
+  // entscheidet weiter `visibleDraftsFor`.
+  it("der Admin sieht nur seinen eigenen — Annas nicht (debbb8e8)", async () => {
     const { app, kopf, adminToken } = await baueMitEntwuerfen();
     const antwort = await app.inject({
       method: "GET",
@@ -232,11 +236,6 @@ describe("JOB 2696 · R2-33 — die Zusicherung kippt nicht", () => {
 
     expect(antwort.statusCode).toBe(200);
     const liste = antwort.json() as { payload: { title: string } }[];
-    expect(liste).toHaveLength(3);
-    expect(liste.map((d) => d.payload.title).sort()).toEqual([
-      "Admins Entwurf",
-      "Annas Erster",
-      "Annas Zweiter",
-    ]);
+    expect(liste.map((d) => d.payload.title)).toEqual(["Admins Entwurf"]);
   });
 });

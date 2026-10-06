@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useLibrarySearch } from "../api/hooks";
 import { useModalLocked } from "../app/ModalBoundaryContext";
 import { useGuardedNavigate } from "../app/NavGuardContext";
 import { useRole } from "../app/RoleContext";
@@ -9,6 +10,7 @@ import {
   trefferFuer,
   trefferNachGruppen,
 } from "../app/navigationGliederung";
+import { LIBRARY_SEARCH_DEBOUNCE_MS, useDebouncedValue } from "../lib/useDebouncedValue";
 
 // Command Palette (FE-FND-03): ⌘K / Strg+K öffnet eine Schnellnavigation über
 // alle für die Rolle sichtbaren Ziele. Pfeiltasten + Enter, Esc schließt.
@@ -45,6 +47,18 @@ import {
 //      darunter sagt, dass Inhalte über „Wissen suchen" gefunden werden. So sind die beiden Suchen
 //      auch HIER auseinanderzuhalten, nicht nur im Kopfband.
 //
+// R-0893 / R-1669 (aufnahme:20260922:gesamt-schnellwahl) — DIREKT ZUM WISSENSOBJEKT:
+//   9  Ab zwei getippten Zeichen fragt die Palette zusätzlich die vorhandene Bibliothekssuche
+//      (`useLibrarySearch`, `GET /api/library/search`) und zeigt bis zu fünf Wissenseinträge unter
+//      einer eigenen Überschrift „Wissen" — nach den Seiten, damit Enter auf einen Seitennamen
+//      unverändert die Seite öffnet. Ein Eintrag führt direkt nach `/wissen/:id`; die letzte
+//      Zeile der Gruppe ist die Schnellaktion „Alle Treffer … in der Bibliothek".
+//      ROLLENGEFILTERT an zwei Stellen, keine davon neu: gefragt wird nur, wenn die Bibliothek
+//      unter den Zielen DIESER Rolle steht (dieselbe `canSee`-Liste), und was zurückkommt, hat der
+//      Server bereits nach `sichtbareFuer`/`sqlSichtbarkeitFuer` beschnitten (library-routes.ts).
+//      Gezeigt wird nur eine Antwort auf GENAU die aktuelle Eingabe — eine verspätete Antwort auf
+//      einen älteren Begriff kann weder dastehen noch per Enter geöffnet werden.
+//
 // WAS SICH AUSDRÜCKLICH NICHT ÄNDERT: ⌘K/Strg+K, Escape, die Modalgrenze, und `canSee` als die EINE
 // Sichtbarkeitsregel. Mehr Ziele heißt nicht mehr Rechte — die Verwaltungsziele hängen sämtlich
 // daran, dass die Rolle `/admin` überhaupt sieht (`direktzugangZiele`).
@@ -67,6 +81,14 @@ interface Vormerkung {
 
 /** Wie lange eine vorgemerkte Öffnung auf die Freigabe der Grenze wartet. */
 const VORMERKUNG_MS = 2000;
+
+/** Ab so vielen Zeichen fragt die Palette zusätzlich die Wissenssuche (R-0893). */
+export const WISSEN_AB_ZEICHEN = 2;
+/** So viele Wissenseinträge zeigt die Palette höchstens — alle weiteren stehen in der Bibliothek. */
+export const WISSEN_HOECHSTENS = 5;
+
+/** Was eine Zeile der Palette braucht — ein Seitenziel ebenso wie ein Wissenseintrag. */
+type Zeilenziel = Pick<Direktziel, "id" | "label" | "path" | "kontext">;
 
 export function CommandPalette(): JSX.Element | null {
   const { t } = useTranslation();
@@ -123,8 +145,50 @@ export function CommandPalette(): JSX.Element | null {
   // Markierung. Solange es nur eine Quelle gibt, kann sie nicht mit sich selbst auseinanderlaufen.
   //
   // `filtered` bleibt die Vorstufe (Suche), ist aber ab hier für die Bedienung nicht mehr zuständig.
-  const sichtbareReihenfolge = useMemo(() => gruppen.flatMap((g) => g.ziele), [gruppen]);
   const fragenErreichbar = ziele.some((z) => z.path === "/fragen");
+
+  // R-0893: die Wissenseinträge zur Eingabe (Block „9" oben). Entprellt wie die Bibliothek selbst,
+  // derselbe Hook, derselbe Cache-Schlüssel — kein zweiter Suchweg.
+  const bibliothekErreichbar = ziele.some((z) => z.path === "/bibliothek");
+  const eingabe = q.trim();
+  const begriff = useDebouncedValue(eingabe, LIBRARY_SEARCH_DEBOUNCE_MS);
+  // `begriff === eingabe`: gefragt wird erst nach der Tipp-Pause, und nie mit einem Begriff, der
+  // nicht mehr im Feld steht (etwa der vom letzten Öffnen, solange die Entprellung nachläuft).
+  const wissenGefragt =
+    open && bibliothekErreichbar && begriff === eingabe && begriff.length >= WISSEN_AB_ZEICHEN;
+  const wissenSuche = useLibrarySearch({ q: begriff }, wissenGefragt);
+  const wissen = useMemo((): Zeilenziel[] => {
+    const antwort = wissenSuche.data;
+    if (!wissenGefragt || !Array.isArray(antwort) || antwort.length === 0) {
+      return [];
+    }
+    const oben = t("schnellwahl.wissenGruppe");
+    const eintraege: Zeilenziel[] = antwort.slice(0, WISSEN_HOECHSTENS).map((ko) => ({
+      id: `ko:${ko.id}`,
+      label: ko.title,
+      path: `/wissen/${encodeURIComponent(ko.id)}`,
+      kontext: ko.category ? `${oben} › ${ko.category}` : oben,
+    }));
+    // R-1669 „Schnellaktionen": der Weg zu ALLEN Treffern, wenn die Palette nur die ersten zeigt.
+    eintraege.push({
+      id: "aktion:bibliothek",
+      label: t("schnellwahl.alleTreffer", { q: begriff }),
+      path: `/bibliothek?q=${encodeURIComponent(begriff)}`,
+      kontext: t("fe002.wissenSuchen"),
+    });
+    return eintraege;
+  }, [wissenGefragt, begriff, wissenSuche.data, t]);
+
+  const sichtbareReihenfolge = useMemo(
+    (): Zeilenziel[] => [...gruppen.flatMap((g) => g.ziele), ...wissen],
+    [gruppen, wissen],
+  );
+  // R-0893 (BEN, Nacharbeit 2): DIE AUSWAHL IST IMMER EINE ZEILE, DIE DASTEHT. Die Wissenseinträge
+  // kommen ASYNCHRON — eine Pfeiltaste während der Tipp-Pause traf eine leere Liste und setzte
+  // `active` auf -1; die eintreffenden Einträge korrigierten das nicht, und Enter fiel auf „als
+  // Frage" statt auf das sichtbare Wissensobjekt. Markierung, Bildlauf, Pfeile und Enter lesen
+  // deshalb `stelle`: der gemerkte Index, begrenzt auf die Liste, die JETZT dasteht (leer → 0).
+  const stelle = Math.max(0, Math.min(active, sichtbareReihenfolge.length - 1));
 
   useEffect(() => {
     offenRef.current = open;
@@ -248,11 +312,11 @@ export function CommandPalette(): JSX.Element | null {
     if (!open) {
       return;
     }
-    const markiert = listeRef.current?.querySelector(`[data-cmd-stelle="${active}"]`);
+    const markiert = listeRef.current?.querySelector(`[data-cmd-stelle="${stelle}"]`);
     if (markiert && typeof markiert.scrollIntoView === "function") {
       markiert.scrollIntoView({ block: "nearest" });
     }
-  }, [open, active]);
+  }, [open, stelle]);
 
   if (!open) {
     return null;
@@ -267,15 +331,16 @@ export function CommandPalette(): JSX.Element | null {
   };
 
   const springe = (richtung: 1 | -1): void => {
-    setActive((a) => Math.min(Math.max(a + richtung, 0), sichtbareReihenfolge.length - 1));
+    // Von der SICHTBAREN Stelle aus, und nie unter 0 — auch nicht bei leerer Liste.
+    setActive(Math.max(0, Math.min(stelle + richtung, sichtbareReihenfolge.length - 1)));
   };
 
   /** Der laufende Index über ALLE Gruppen — die Tastatur kennt eine Liste, nicht vier. */
   let laufend = -1;
-  const zeile = (it: Direktziel): JSX.Element => {
+  const zeile = (it: Zeilenziel): JSX.Element => {
     laufend += 1;
     const i = laufend;
-    const aktiv = i === active;
+    const aktiv = i === stelle;
     return (
       <li key={it.id}>
         <button
@@ -378,7 +443,7 @@ export function CommandPalette(): JSX.Element | null {
             } else if (e.key === "Enter") {
               e.preventDefault();
               // Aus DERSELBEN Liste, die dasteht — siehe den Block bei `sichtbareReihenfolge`.
-              const it = sichtbareReihenfolge[active];
+              const it = sichtbareReihenfolge[stelle];
               if (it) {
                 go(it.path);
               } else if (fragenErreichbar && q.trim()) {
@@ -435,14 +500,25 @@ export function CommandPalette(): JSX.Element | null {
               )}
             </li>
           ) : (
-            gruppen.map((g) => (
-              <li key={g.gruppe.id}>
+            [
+              ...gruppen.map((g) => ({
+                id: g.gruppe.id,
+                titel: t(g.gruppe.titleKey),
+                ziele: g.ziele as Zeilenziel[],
+              })),
+              // R-0893: die Wissenseinträge NACH den Seiten — dieselbe Reihenfolge wie
+              // `sichtbareReihenfolge`, aus der Tastatur und Trefferzahl lesen.
+              ...(wissen.length > 0
+                ? [{ id: "wissen", titel: t("schnellwahl.wissenGruppe"), ziele: wissen }]
+                : []),
+            ].map((g) => (
+              <li key={g.id}>
                 {/* Die Überschrift ist bewusst KEIN Knopf: sie ist kein Ziel, sie ordnet nur. */}
                 <div
-                  data-cmd-gruppe={g.gruppe.id}
+                  data-cmd-gruppe={g.id}
                   className="px-3 pb-0.5 pt-2 text-[11px] font-semibold tracking-[0.02em] text-muted-2"
                 >
-                  {t(g.gruppe.titleKey)}
+                  {g.titel}
                 </div>
                 <ul>{g.ziele.map(zeile)}</ul>
               </li>

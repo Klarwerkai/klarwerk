@@ -68,6 +68,8 @@ import type {
   KoSichtbarkeitstrim,
   KoVersionRepo,
 } from "./repo";
+// R-0658: Schutzdaten erkennen, bevor ein Objekt durchsuchbar wird (Begründung in der Datei).
+import { inSchutzdatenQuarantaene, mitSchutzdatenBefund } from "./schutzdaten";
 // G27: die revisionsgebundene Suchprojektion — reine Ableitung (search-projection.ts) und ihre
 // Persistenz (search-projection-repo.ts). Warum es sie gibt, steht im Kopf der Ableitungsdatei.
 import {
@@ -537,6 +539,9 @@ export interface CreateKoInput {
   // (Entwurfs-Promote aus dem Word-Zusatz, JSON-Import ohne externalId) setzen ihn; die
   // öffentlichen Schreibrouten verwerfen das Feld wie `importedVia`.
   dokumentHerkunft?: KnowledgeObject["dokumentHerkunft"];
+  // R-0632 (Nacharbeit 10): die Herabstufungssperre des Word-Entwurfs. Nur der Entwurfs-Promote
+  // setzt sie; die öffentlichen Schreibrouten verwerfen das Feld wie `dokumentHerkunft`.
+  stufeNurAnheben?: true;
   // JOB 557: das Eigentümer-Aggregat ab Erfassen — für SERVERPFADE (Import, Seed, interne Anlage),
   // die die Verantwortung schon kennen.
   //
@@ -2352,6 +2357,8 @@ export class KoService {
       ...(input.importedVia ? { importedVia: input.importedVia } : {}),
       // R-0169 (Nacharbeit 5): der Fassungsbezug — dieselbe Bauform, kein stiller Default.
       ...(input.dokumentHerkunft ? { dokumentHerkunft: input.dokumentHerkunft } : {}),
+      // R-0632 (Nacharbeit 10): die Herabstufungssperre — dieselbe Bauform, kein stiller Default.
+      ...(input.stufeNurAnheben === true ? { stufeNurAnheben: true as const } : {}),
       // JOB 557: das Eigentümer-Aggregat nur setzen, wenn der Aufrufer eines MITBRINGT — dieselbe
       // Bauform wie `confidentiality` und `origin` daneben. KEIN stiller Default auf den Autor: ein
       // Objekt ohne benannte Verantwortung bleibt ein Objekt ohne benannte Verantwortung, und genau
@@ -2375,7 +2382,9 @@ export class KoService {
       // SCRUM-527 (WP2): jede übernommene Quell-URL durch die Allowlist (nur absolute http/https).
       sources: sanitizeSources([...(input.sources ?? []), ...(extras?.sources ?? [])]),
     };
-    return ko;
+    // R-0658: VOR der ersten Suchprojektion (finishCreated) — trägt der Inhalt Schutzdaten, liegt
+    // das Objekt ab seiner Entstehung in Quarantäne und wird nie mit diesem Text durchsuchbar.
+    return mitSchutzdatenBefund(ko, at);
   }
 
   // ============================================================================================
@@ -3315,6 +3324,16 @@ export class KoService {
     return this.mutateKo(id, (ko) => {
       const previous = normalizeConfidentiality(ko.confidentiality);
       const downgrade = isConfidentialityDowngrade(previous, level);
+      // R-0632 (BEN, Nacharbeit 10): ein Wissensobjekt aus einem Word-Entwurf trägt die
+      // Herabstufungssperre (`stufeNurAnheben`) — dort wird NIE gesenkt, auch nicht mit
+      // `mayDowngrade` (Prüfer/Administrator). Gleichbleiben und Anheben bleiben erlaubt. Für jedes
+      // andere Objekt gilt die Regel darunter (SCRUM-509) unverändert.
+      if (downgrade && ko.stufeNurAnheben === true) {
+        throw new KoError(
+          "DOWNGRADE_FORBIDDEN",
+          "Die Vertraulichkeit dieses aus Word übernommenen Eintrags kann nur angehoben werden.",
+        );
+      }
       // SCRUM-509 R2/R3: Downgrade-Autorisierung gegen die GERADE gelesene Stufe (atomar). R3 FAIL-SAFE:
       // fehlt `mayDowngrade`, gilt es als NICHT erlaubt (`!opts...`) — ein Downgrade rutscht nie aus einem
       // fehlenden Recht durch, auch bei programmatischen Aufrufern.
@@ -4461,7 +4480,9 @@ export class KoService {
     // D5: deren Stempel liest nach `listByIds` weiter — die Sperre reist mit (s. `pruefbestandStempel`).
     return this.lesefassungen(
       kos
-        .filter((ko) => !ko.deletedAt)
+        // R-0658: ein Objekt in Quarantäne ist kein Suchkandidat (Ask/Klara) — auch nicht über
+        // Kategorie oder Schlagwort, die in der Metadatenprojektion weiter stehen.
+        .filter((ko) => !ko.deletedAt && !inSchutzdatenQuarantaene(ko))
         .sort((a, b) => (rang.get(a.id) ?? 0) - (rang.get(b.id) ?? 0)),
       query.vorInhaltsabruf,
     );
@@ -5280,14 +5301,17 @@ export class KoService {
       // tragen.
       asset: normalizeAsset(changes.asset !== undefined ? changes.asset : ko.asset),
     };
+    // R-0658: dieselbe Schutzdatenprüfung wie beim Anlegen, an der neuen Fassung — eine
+    // Überarbeitung mit Schutzdaten setzt die Quarantäne, eine ohne hebt sie auf.
+    const geprueft = mitSchutzdatenBefund(fassung, at);
     if (!wirkendeFreigabe) {
-      return fassung;
+      return geprueft;
     }
     // JOB 557: eine abgeschlossene Validierung schreibt fort, WER sie getragen hat. Dieselbe
     // Rollenfolge wie am Bewertungsweg (`recordOwnershipRole`), nur HIER im selben Objekt — ein
     // zweiter Schreibvorgang wäre ein zweiter Zustand und (über `withKoLock`) nicht einmal möglich.
-    const ownership = withRole(ownershipOf(fassung), "validators", [wirkendeFreigabe.actor]);
-    return ownership === null ? fassung : { ...fassung, ownership };
+    const ownership = withRole(ownershipOf(geprueft), "validators", [wirkendeFreigabe.actor]);
+    return ownership === null ? geprueft : { ...geprueft, ownership };
   }
 
   // ==============================================================================================
@@ -5774,6 +5798,11 @@ export class KoService {
             { version, at, author, note: "überarbeitet (Dokumentinhalt übernommen)" },
           ],
         };
+        // R-0658 (BEN, Nacharbeit 5): der DRITTE Schreibrand. Die Übernahme trägt neuen Inhalt und
+        // schreibt gleich darunter eine neue Suchprojektion — also dieselbe Schutzdatenprüfung wie
+        // beim Anlegen und Überarbeiten, VOR Commit und Projektion. Ein übernommener Text mit
+        // Schutzdaten setzt die Quarantäne, einer ohne hebt eine bestehende auf.
+        committed = mitSchutzdatenBefund(committed, at);
       }
 
       // ---- DER COMMIT: GENAU EIN SCHREIBVORGANG ---------------------------------------------

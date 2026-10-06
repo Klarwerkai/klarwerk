@@ -56,7 +56,7 @@ export const OBERGRUPPEN: readonly Obergruppe[] = [
 /**
  * Jedes der 21 Navigationsziele in genau einer Obergruppe — abgeschrieben aus der Tabelle der
  * Vorlage, nicht erfunden (JOB 3503 hat „Meine Entwürfe" ergänzt; es arbeitet, wo erfasst wird):
- *   Arbeiten   Start, Fragen, Bibliothek, Erfassen, Meine Entwürfe, Meine Aufgaben, Themenkarte,
+ *   Arbeiten   Start, Fragen, Bibliothek, Erfassen, Meine Entwürfe, Offene Aufgaben, Themenkarte,
  *              Externes Wissen
  *   Qualität   Prüfen, Konflikte, Doppelungen, Risiken und Wissenslücken, Lebenszyklus
  *   Verwaltung alle Admin-Ziele (Einstellungen, Analytics & Audit, Auswertungen, Import,

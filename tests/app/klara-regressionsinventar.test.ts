@@ -415,6 +415,15 @@ const INVENTAR: readonly string[] = [
   // Aufgabenfenster und misst Pedis Auflage am VERHALTEN — Inhaltsachse `taskpane`, deshalb
   // verlangt K2 diesen Eintrag. Nachgefuehrt in JOB 1571 D9, nachdem K2 ihn gemeldet hat.
   "tests/app/ka3-fokusverhalten.test.tsx",
+  // Aufnahme 20260922 (gesamt-bestandsblick, Runde 2): der Wirkungsnachweis, dass der
+  // Bestandsblick mit dem Begriffsbild des AKTUELLEN Dokuments fragt (verzoegertes Lesen,
+  // geaenderter Text). Inhaltsachse `taskpane`; K2 hat ihn gemeldet.
+  "tests/app/ka3-bestandsblick-aktueller-stand.test.tsx",
+  // Integration mit `main` (Nacharbeit 13): zwei Dateien aus `main`, die eine der Achsen treffen.
+  // GEMESSEN, NICHT GESETZT: K2 meldete genau diese zwei Pfade als `neu im Baum, aber nicht im
+  // gepinnten Inventar`; erst danach wurden diese Zeilen angefasst.
+  "tests/app/stage2-gate-mounted.test.tsx",
+  "tests/k3-bedarfsabgleich/bedarfsabgleich.test.ts",
   "tests/app/klara-ai-header.test.ts",
   "tests/app/klara-ai-session-consent.test.ts",
   "tests/app/klara-ai-status-contract.test.ts",
@@ -525,6 +534,17 @@ const INVENTAR: readonly string[] = [
   // Seitenfenster (verständlicher Satz, Wiederanmeldung im Panel, Arbeit geht weiter) — fährt
   // `taskpane.html` über die Fixture. K2 hat sie gemeldet, das Inventar nimmt sie nicht still auf.
   "tests/office-web-anmeldung/sitzungsablauf-im-seitenfenster.test.tsx",
+  // Word-Host-Gesamtweg (Nacharbeit 3, Realhostbeleg 05.10.2026): der COOP-Kopf der Dialogseite am
+  // echten Fastify-Draht — nennt das Taskpane als Gegenpfad, deshalb von der Achse `taskpane`
+  // gefunden; kein „klara" im Pfad, K5 unverändert. Abgelesen am Achsenmuster, nicht gemessen: der
+  // Prüflauf am Kandidaten 26e86268 hat dieses Inventar nicht gefahren, wohl aber `schnitt-pins` A2
+  // mit genau diesem Pfad gemeldet.
+  "tests/office-web-anmeldung/dialog-opener-kopf.test.ts",
+  // Word-Host-Gesamtweg (Nacharbeit 7, Realhostbeleg 06.10.2026): der Auswahlzugriff des Fragenwegs
+  // (`Word.run` zuerst, mit Frist) am ganzen Fenster über `createKlaraPanel` — von der Achse
+  // `komponente` gefunden (Typ `KlaraPanel`); kein „klara" im Pfad, K5 unverändert. Abgelesen am
+  // Achsenmuster, nicht gemessen.
+  "tests/app/word-addin-auswahlzugriff.test.ts",
   // JOB 4085 (OFFICE-PG-ABNAHME): die Abnahme des Word-Rueckwegs gegen eine ECHTE `.docx` durch den
   // produktiven Extraktor — die Word-Auswahl geht durch das ausgelieferte Aufgabenfenster an die
   // echte Route, gemessen wird am zurueckgelesenen Wissensobjekt. Von der Achse `taskpane`
@@ -1275,6 +1295,19 @@ const INVENTAR: readonly string[] = [
   // GESETZT: der Prüflauf am Kandidaten 95636768 meldete K2 `neu im Baum, aber nicht im gepinnten
   // Inventar` mit genau diesem Pfad.
   "tests/capture/aufrufer-waechter.test.ts",
+  // Word-Host-Gesamtweg (Nacharbeit 8): `word-panel-stufenwahl.test.tsx` (R-0632, Stufenwahl im
+  // Word-Panel) stammt aus dem Bestand, nicht aus diesem Auftrag, und ist unverändert — sie fährt
+  // das Fenster und nennt `taskpane`, Achse `taskpane`; kein „klara" im Pfad, K5 bleibt bei 71.
+  // GEMESSEN, NICHT GESETZT: der Prüflauf am Kandidaten e48905fd meldete K2 `neu im Baum, aber
+  // nicht im gepinnten Inventar` mit genau diesem Pfad; erst danach wurde diese Zeile angefasst.
+  "tests/vertraulichkeit-pflicht/word-panel-stufenwahl.test.tsx",
+  // AUFNAHME 20260922 · GESAMT-SCHNELLWAHL (R-0893/R-1669): der neue Prüfstand montiert
+  // `CommandPalette` über die Griffe von `tests/navigationsnamen/vorrichtung.tsx`
+  // (`paletteOeffnen`, `paletteTippen`) und trifft damit die Achse `palette` — dieselbe Klasse wie
+  // die `navigationsnamen`-Dateien oben. Kein „klara" im Pfad, K5 bleibt unverändert. NICHT
+  // GEMESSEN, SONDERN AUS DER QUELLE ABGELEITET: die Bahn dieses Auftrags startet keine Tests; ob
+  // K2 mit diesem Eintrag grün ist, zeigt erst der Prüflauf.
+  "tests/schnellwahl/wissen-in-der-schnellwahl.test.tsx",
 ];
 
 // ------------------------------------------------------------------------------------------------

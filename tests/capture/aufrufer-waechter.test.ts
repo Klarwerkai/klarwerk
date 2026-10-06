@@ -1447,7 +1447,10 @@ const ALTBESTAND_WEB: readonly string[] = [
   "apps/web/src/lib/files.ts::isPptxDocument",
   "apps/web/src/lib/funke.ts::openGapsView",
   "apps/web/src/lib/importSelectView.ts::folderTreeSegmentKey",
-  "apps/web/src/lib/importSelectView.ts::ordnerOhneEigeneZeile",
+  // R-0991 (K3) gestrichen: `ordnerOhneEigeneZeile` hat einen Aufrufer bekommen. Die Importvorschau
+  // (`components/ImportSelect.tsx`) kennzeichnet damit im Ordnerbaum jeden Ordner, dessen
+  // Elternseite nicht in der Vorschau liegt (`components/ImportPreviewTree.tsx`, Marke
+  // „Seite nicht in diesem Import"). A3 verlangt genau diese Streichung.
   "apps/web/src/lib/intakeSimilarity.ts::classifyIntake",
   "apps/web/src/lib/interviewFlow.ts::answeredTurns",
   "apps/web/src/lib/knowledgeRescue.ts::knowledgeRescueImpact",

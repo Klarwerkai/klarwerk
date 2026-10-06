@@ -47,6 +47,22 @@ export const PANEL_CSS_VERWEIS = `<link rel="stylesheet" href="${PANEL_CSS_DATEI
 export const PANEL_JS_VERWEIS = `<script src="${PANEL_JS_DATEI}?v=__KW_FASSUNG__"></script>`;
 
 /**
+ * Zerlegungsauftrag Bestandsblick (aufnahme:20260922:gesamt-bestandsblick:zerlegung-aufraeumen):
+ * der Block KW-MARKE, das ENDE des Fensterskripts, wohnt in einer vierten Datei. `taskpane.html`
+ * laedt sie als klassisches Skript UNMITTELBAR NACH `taskpane.js` — er laeuft also genau dort, wo
+ * er stand. Grund ist die Schranke von `schnittflaechen.test.ts` B3 (12500 Zeilen an `taskpane.js`),
+ * die nicht angehoben werden darf.
+ */
+export const PANEL_MARKE_RELATIV = "apps/web/public/word-addin/marke.js";
+export const PANEL_MARKE_DATEI = "marke.js";
+export const PANEL_MARKE_VERWEIS = `<script src="${PANEL_MARKE_DATEI}?v=__KW_FASSUNG__"></script>`;
+/**
+ * Das Ende des Kopfes von `marke.js`. Alles DANACH ist der Abschnitt, Zeichen fuer Zeichen so, wie
+ * er am Ende des Skripts stand (beginnend mit der Leerzeile, die ihn vom Block davor trennte).
+ */
+const MARKE_KOPF_ENDE = '"use strict";\n';
+
+/**
  * Git-Blob-Kennung der EINEN Datei `apps/web/public/word-addin/taskpane.html`, die die drei Dateien
  * zusammengefügt ergeben müssen.
  *
@@ -64,22 +80,78 @@ export const PANEL_JS_VERWEIS = `<script src="${PANEL_JS_DATEI}?v=__KW_FASSUNG__
  * am geprüften Kandidaten 7b78946e). Eine ungeschnittene Datei mit diesem Inhalt liegt in keinem
  * Commit — die Abweichung zu `7d5a6234…` ist ausschließlich `git diff ebfe7718 --
  * apps/web/public/word-addin/taskpane.js`. E3 (ein Zeichen mehr → rot) bleibt die Gegenprobe.
+ *
+ * Zerlegungsauftrag Bestandsblick (Integration mit `main` 93c25f5a): dieselbe Regel — eine
+ * fachliche Aenderung am Skript verschiebt den Bezugspunkt. Hinzugekommen ist GENAU die
+ * Bestandsblick-Lesekoordination aus 67d5e6fd (drei Stellen: `readWholeDocument(done, fehlschlag)`,
+ * `ka1Stand`/`ka1Aktuell`, das Warten bzw. Neulesen in `ka3Ausfuehren`). Die Auslagerung von
+ * KW-MARKE nach `marke.js` aendert am zusammengefuegten Dokument kein Byte. Gemessen mit
+ * `git diff --no-index --full-index`: das aus den vier Dateien zusammengefuegte Dokument hat den
+ * Blob `90936dcc…`; `taskpane.js` plus Abschnitt aus `marke.js` weicht von `main`s `taskpane.js`
+ * nur in diesen drei Stellen ab (+60/-8), `taskpane.html` nur im Verweis auf `marke.js`,
+ * `taskpane.css` gar nicht.
+ *
+ * Aufnahme GESAMT-VERTRAULICHKEIT-ERFASSUNG (R-0632, Integration mit `main` 38508a1e): dieselbe
+ * Regel. Die Stufenwahl war in der ungeschnittenen Datei gebaut und ist übertragen — Markup
+ * `#capture-stufe` in `taskpane.html`, Logik in `taskpane.js` (optionales `confidentiality` in
+ * `draftPostPayload`/`prepareWordDraftRequest`, `captureStufeGewaehlt`/`renderCaptureStufe`,
+ * Klick-Zuhörer, vier Wörterbuchschlüssel je Sprache, Stufe im from-docx-Rumpf nur bei echter Wahl).
+ * Der Bezugspunkt MUSS deshalb wandern; der Blob des zusammengefügten Dokuments war bei der
+ * Konfliktlösung nicht berechenbar (kein Hash-Werkzeug zugelassen). E2 meldet ihn im Prüflauf als
+ * „Received"; er wird danach gemessen übernommen.
+ * GEMESSEN im Prüflauf zu Kandidat 83c9a4b8: `d5d7a936…` (unten eingetragen). DANACH ERNEUT GEÄNDERT,
+ * nur in der Ablage: die Knopfgruppe steht in der Zeile von `#capture-aktion`, ihr Kommentar in
+ * `taskpane.js`, damit die Markup-Datei unter 500 Zeilen bleibt (A2/E5). Der Blob muss deshalb EIN
+ * weiteres Mal gemessen übernommen werden.
+ * NACHARBEIT 15: GEMESSEN im Prüflauf zu Kandidat 124645e8 (`b3f3846c…`, „Received" von E2) und
+ * unverändert übernommen; die vier Panel-Dateien sind seit dieser Messung unberührt.
+ * WORD-HOST-GESAMTWEG (Nacharbeit 4, Realhostbeleg 06.10.2026): `taskpane.js` ändert sich an der
+ * Warnung zur Dokumentkennung (verzögertes `saveAsync`). Der Bezugspunkt MUSS deshalb wandern; ohne
+ * zugelassenes Hash-Werkzeug ist er hier nicht berechenbar. E2 meldet ihn im Prüflauf als
+ * „Received"; er wird danach gemessen übernommen.
+ * NACHARBEIT 5: GEMESSEN im Prüflauf zu Kandidat 6dc92d9b (`0548d086…`, „Received" von E2,
+ * HISTORIE/nacharbeit-5/PRUEFUNG/panel-auslieferung-pins.log) und unverändert übernommen; die
+ * Panel-Dateien sind seit dieser Messung unberührt.
+ * NACHARBEIT 6: `taskpane.js` ändert sich am Auswahlzugriff des Fragenwegs (`Word.run` zuerst, mit
+ * Frist). Der Bezugspunkt MUSS wandern; E2 meldet ihn im Prüflauf als „Received", er wird danach
+ * gemessen übernommen.
+ * NACHARBEIT 7: GEMESSEN im Prüflauf zu Kandidat 26e86268 (`87cb70fe…`, „Received" von E2,
+ * HISTORIE/nacharbeit-7/PRUEFUNG/panel-auslieferung-pins.log) und unverändert übernommen; die
+ * Panel-Dateien sind seit dieser Messung unberührt.
+ * NACHARBEIT 9: `taskpane.js` ändert sich an der Bestandssuche (Schlüssel Text + Titel) und um zwei
+ * Wörterbuchschlüssel des Rückwegs. Der Bezugspunkt MUSS wandern; E2 meldet ihn im Prüflauf als
+ * „Received", er wird danach gemessen übernommen.
+ * NACHARBEIT 11: gemessen zu Kandidat 10b99093 war `99c60bac…` — NICHT übernommen, weil
+ * `taskpane.js` wegen der Zeilenschranke B3 (ausgeliefert 12500) danach um zwei Kommentarzeilen
+ * kürzer wurde. Root hat den neuen Blob direkt aus den vier Quelldateien berechnet.
  */
-export const PANEL_VOR_SCHNITT_BLOB = "3c755f6356cb1da091fdb7bba587386262d322a4";
+export const PANEL_VOR_SCHNITT_BLOB = "cb4cde214ee3f29e30d928322e1a200504a80e81";
 
 export interface PanelTeile {
   html: string;
   css: string;
   js: string;
+  /** `marke.js`, wie sie im Baum liegt — samt Kopf. */
+  marke: string;
 }
 
-/** Die drei ausgelieferten Dateien, so wie sie im Baum liegen. */
+/** Die vier ausgelieferten Dateien, so wie sie im Baum liegen. */
 export function panelTeile(): PanelTeile {
   return {
     html: readFileSync(repoPfad(PANEL_HTML_RELATIV), "utf8"),
     css: readFileSync(repoPfad(PANEL_CSS_RELATIV), "utf8"),
     js: readFileSync(repoPfad(PANEL_JS_RELATIV), "utf8"),
+    marke: readFileSync(repoPfad(PANEL_MARKE_RELATIV), "utf8"),
   };
+}
+
+/** Der Abschnitt aus `marke.js` ohne ihren Kopf — fail-closed, wenn das Kopfende fehlt. */
+export function markeAbschnitt(marke: string): string {
+  const ende = marke.indexOf(MARKE_KOPF_ENDE);
+  if (ende < 0) {
+    throw new Error(`${PANEL_MARKE_RELATIV}: das Kopfende ${MARKE_KOPF_ENDE.trim()} fehlt`);
+  }
+  return marke.slice(ende + MARKE_KOPF_ENDE.length);
 }
 
 /** Ersetzt GENAU EIN Vorkommen; zwei oder keines sind ein Fehler und kein stilles Weiterlaufen. */
@@ -102,7 +174,13 @@ function setzeEin(text: string, verweis: string, ersatz: string): string {
  */
 export function fuegePanelZusammen(teile: PanelTeile): string {
   const mitStil = setzeEin(teile.html, PANEL_CSS_VERWEIS, `<style>\n${teile.css}  </style>`);
-  return setzeEin(mitStil, PANEL_JS_VERWEIS, `<script>\n${teile.js}  </script>`);
+  // Der Verweis auf `marke.js` steht in der naechsten Zeile hinter dem auf `taskpane.js`; beide
+  // zusammen werden zu dem EINEN Skript, das vorher dastand (der Abschnitt wieder an dessen Ende).
+  return setzeEin(
+    mitStil,
+    `${PANEL_JS_VERWEIS}\n  ${PANEL_MARKE_VERWEIS}`,
+    `<script>\n${teile.js}${markeAbschnitt(teile.marke)}  </script>`,
+  );
 }
 
 /** Das Aufgabenfenster als EIN Dokument — Markup, Stil und Skript an ihren Stellen. */

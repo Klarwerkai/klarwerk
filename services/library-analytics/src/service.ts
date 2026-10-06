@@ -24,6 +24,7 @@ import {
   type KoSource,
   confidentialityRank,
   gelieferteDokumentId,
+  inSchutzdatenQuarantaene,
   isConfidential,
   isValidConfidentiality,
   normalizeConfidentiality,
@@ -768,11 +769,33 @@ function increment(map: Record<string, number>, key: string): void {
   map[key] = (map[key] ?? 0) + 1;
 }
 
+// ================================================================================================
+// N11 · DER ÜBERNAHME-STANDARD IST „INTERN" — ABLÖSUNG VON SCRUM-509 R3/R4 FÜR DAS FEHLENDE SIGNAL.
+// ================================================================================================
+//
+// Pedi, Entscheidung 23 vom 05.09.2026: „Es ist nicht vertraulich … externe KI ist überall
+// erlaubt". Vertraulich wird nur, was der Mensch so markiert oder die Quelle restringiert. JOB 3089
+// hat das nur am Confluence-Mapper umgesetzt; der Import-Kern setzte eine fehlende Stufe an BEIDEN
+// Anlagewegen (Kandidaten-Accept, `importJson`) und beim Re-Sync weiter auf „vertraulich". Ab hier
+// gilt an allen drei Stellen dieser eine Wert — als ECHTE, gespeicherte Einstufung „intern", nicht
+// als leeres Feld, damit die Anzeige nicht „nicht eingestuft" sagt.
+//
+// WAS UNVERÄNDERT BLEIBT: ein ungültiger, aber GESETZTER Wert wird weiter restriktiv „vertraulich"
+// (`sanitizeImportConfidentiality`) — das ist kein fehlendes Signal, sondern ein kaputtes. Ein
+// mitgeliefertes „vertraulich"/„streng_vertraulich" wird nie abgesenkt.
+//
+// QUELLENWIDERSPRUCH, SICHTBAR GEHALTEN: Der Auftrag nennt im Nutzen „ohne Stufe bleibt vertraulich"
+// und R-0632 einen Word-Standard „vertraulich". N11 ist die jüngere, ausdrücklich dokumentierte
+// Entscheidung zum Übernahme-Standard; sie gilt hier. Für Erfassen und Word gilt sie NICHT als
+// stille Stufe — dort bleibt die ausdrückliche Wahl Pflicht (Q3, N-0017).
+const UEBERNAHME_STANDARD: Confidentiality = "intern";
+
 // SCRUM-515: Runtime-Validierung der Vertraulichkeit an der Import-Ingest-Grenze. Fremd-Payload (HTTP-
 // Body ODER Quell-Adapter) ist untrusted: ein GESETZTER, aber ungültiger/unbekannter Wert wird
 // RESTRIKTIV auf „vertraulich" gezogen (NIE intern) — der Import scheitert weder hart noch stuft er
-// still herab. FEHLT der Wert ganz, bleibt er undefined (acceptToKo/importJson stufen dann fail-safe auf
-// „vertraulich", R3/R4). Der einzige Ort, an dem eine rohe confidentiality in den Import-Kern eintritt.
+// still herab. FEHLT der Wert ganz, bleibt er undefined (acceptToKo/importJson setzen dann den
+// Übernahme-Standard „intern", N11). Der einzige Ort, an dem eine rohe confidentiality in den
+// Import-Kern eintritt.
 export function sanitizeImportConfidentiality(raw: unknown): Confidentiality | undefined {
   if (raw === undefined || raw === null) {
     return undefined;
@@ -2983,15 +3006,20 @@ export class LibraryService {
       // Downgrade über Re-Sync. Der Upgrade läuft durch setConfidentiality (transaktional: Lock + CAS +
       // Audit) und wird von der nachfolgenden revise() nicht angetastet.
       //
+      // N11 (Pedi, Entscheidung 23 vom 05.09.2026): OHNE Signal ist der Boden „intern" — also KEINE
+      // Anhebung. Bis hierher hob ein Re-Sync ohne Signal still auf „vertraulich"; vertraulich wird
+      // aber nur, was der Mensch so markiert oder die Quelle restringiert. Ein Downgrade bleibt
+      // unverändert ausgeschlossen (Ziel = die höhere Stufe), eine explizit höhere Importstufe gilt.
+      //
       // AUFNAHME 20260922 · confluence-import-rechte (Ben, Nacharbeit 2, Befund F2): liefert die
       // Quelle ihre Rechte mit, gleicht `setQuellrechte` ab — Leser immer nach der Quelle, die Stufe
       // nach der Quelle, solange seit dem letzten Abgleich kein Mensch eingestuft hat (dann auch
       // nach unten: eine aufgehobene Confluence-Beschränkung macht das Objekt wieder intern). Eine
       // ausdrücklich menschliche Einstufung wird dort weiter nur angehoben. Ohne Quellrechte gilt
-      // der Bestandszweig darunter unverändert.
+      // der Bestandszweig darunter (mit dem N11-Boden) unverändert.
       const quellrechte = await this.objektQuellrechte(item);
       const currentConf = normalizeConfidentiality(existing.confidentiality);
-      const importFloor: Confidentiality = item.confidentiality ?? "vertraulich";
+      const importFloor: Confidentiality = item.confidentiality ?? UEBERNAHME_STANDARD;
       const target =
         confidentialityRank(importFloor) > confidentialityRank(currentConf)
           ? importFloor
@@ -3109,10 +3137,9 @@ export class LibraryService {
         author: actor,
         ...quellautorVon(item),
         tags: item.tags ?? [],
-        // SCRUM-509 R3: Import ist ein Bulk-/Programmatik-Pfad → konservativ. Fehlt das Governance-Signal,
-        // gilt „vertraulich" (NICHT still intern) — importierter Fremdinhalt bleibt bis zur bewussten
-        // Freigabe aus Cloud/Export heraus.
-        confidentiality: item.confidentiality ?? "vertraulich",
+        // N11 löst SCRUM-509 R3 ab (Begründung an `UEBERNAHME_STANDARD`): fehlt das Signal, gilt
+        // ausdrücklich „intern"; ein mitgeliefertes „vertraulich"/„streng_vertraulich" bleibt.
+        confidentiality: item.confidentiality ?? UEBERNAHME_STANDARD,
         ...(item.bodyHtml ? { bodyHtml: item.bodyHtml } : {}),
         // R-0180 (bens F2): die ORIGINALQUELLE haengt nicht mehr am Anker-Strang. Mit wirksamer
         // externalId entsteht wie bisher der Herkunfts-Anker (Re-Sync-Schluessel) — seit R-0169
@@ -3555,11 +3582,14 @@ export class LibraryService {
     opts: { trim?: KoSichtbarkeitstrim } = {},
   ): Promise<KnowledgeObject[]> {
     const q = query.trim().toLowerCase();
+    // R-0658: ein Objekt in Schutzdaten-Quarantäne gehört nicht zum durchsuchbaren Bestand — weder
+    // in der Bestandsliste noch als Treffer (auch nicht über Kategorie/Schlagwort).
+    const durchsuchbar = (ko: KnowledgeObject): boolean => !inSchutzdatenQuarantaene(ko);
     if (!q) {
       // Leere Suchzeile = „zeig den Bestand", keine Textabfrage — unverändert. Und genau dieser
       // Weg ist der teuerste (kein Suchbegriff grenzt vorher ein), also der, an dem der Trim in
       // der Datenquelle am meisten zählt.
-      return this.koService.listForSearch(filter, opts.trim);
+      return (await this.koService.listForSearch(filter, opts.trim)).filter(durchsuchbar);
     }
     // G27 R1 (Entscheidung 04 §5): HIER STAND DER GEDECKELTE NACHZUG — ersatzlos entfallen.
     // Der reguläre Suchpfad darf funktional nicht mehr von ihm abhängen; er ist Wartung, nicht
@@ -3609,7 +3639,7 @@ export class LibraryService {
     const out: KnowledgeObject[] = [];
     for (const ko of list) {
       const hit = treffer.get(ko.id);
-      if (!hit) {
+      if (!hit || !durchsuchbar(ko)) {
         continue;
       }
       // WP-BILD-1e/1g: das Fußnotenfeld reist im Treffer mit — der Client kennzeichnet damit die
@@ -3941,8 +3971,8 @@ export class LibraryService {
         author: actor,
         ...quellautorVon(item),
         tags: item.tags ?? [],
-        // SCRUM-509 R3: JSON-Import ist ein Bulk-Pfad → konservativ „vertraulich" bei fehlendem Signal.
-        confidentiality: item.confidentiality ?? "vertraulich",
+        // N11: derselbe Übernahme-Standard wie im Accept-Pfad (s. `UEBERNAHME_STANDARD`).
+        confidentiality: item.confidentiality ?? UEBERNAHME_STANDARD,
         // ==========================================================================================
         // JOB 4293 — DER DIREKTE IMPORTWEG VERLOR DEN DOKUMENTTEXT, UND ZWAR ALS EINZIGER.
         // ==========================================================================================
