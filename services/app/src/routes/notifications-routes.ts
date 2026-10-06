@@ -6,7 +6,12 @@ import type { NotificationSeenRepo } from "../../../notifications";
 import { can } from "../../../rbac";
 import type { ValidationService } from "../../../validation";
 import type { Guards, SessionUser } from "../http";
-import { type ImpactNotice, type Notification, buildNotifications } from "../notification-feed";
+import {
+  type ImpactNotice,
+  type KenntnisnahmeNotice,
+  type Notification,
+  buildNotifications,
+} from "../notification-feed";
 import { type KoSichtbarkeitsZugang, sichtbareEintraege, sichtbarePaare } from "../sichtbarkeit";
 
 // In-App-Benachrichtigungen (U-3): aggregiert aus vorhandenen Signalen. Für jeden
@@ -29,6 +34,10 @@ export interface NotificationRoutesDeps {
   // Konflikt-`description`, die Duplikat-`rationale` und den KO-Titel einer Zuweisung ungefiltert.
   // Pflichtparameter ohne Umbau möglich: einziger Aufrufer ist build-app.ts:1018.
   kos: KoSichtbarkeitsZugang;
+  // Kenntnisnahme: die offenen Anforderungen der aktuellen Person (Anforderung, Erinnerung, Frist).
+  // Optional, weil der Feed auch ohne diesen Dienst gebaut werden kann; die Sichtbarkeit läuft
+  // unten in jedem Fall über dieselbe Prüfung wie bei den Zuweisungen.
+  kenntnisnahmen?: { meldungenFuer(nutzerId: string): Promise<KenntnisnahmeNotice[]> };
 }
 
 // PMO-FEA-0002: „Hat geholfen"-Ereignisse für den Originalautor. Bewusst ehrlich:
@@ -96,12 +105,17 @@ async function loadFeed(
   // beschränkt (openAssignmentsFor), aber ein Prüfer ohne `ko.validate` kann auf ein vertrauliches
   // Objekt angesetzt sein, das er nicht öffnen darf — dann darf auch der Titel nicht erscheinen.
   const sichtbareZuweisungen = await sichtbareEintraege(user, assignments, deps.kos);
+  // Kenntnisnahme: derselbe Filter wie bei den Zuweisungen — wem der Zugriff auf den Eintrag
+  // entzogen wurde, der sieht auch dessen Titel in der Glocke nicht mehr.
+  const offeneKenntnisnahmen = (await deps.kenntnisnahmen?.meldungenFuer(user.id)) ?? [];
+  const sichtbareKenntnisnahmen = await sichtbareEintraege(user, offeneKenntnisnahmen, deps.kos);
   return buildNotifications({
     conflicts: sichtbareKonflikte,
     overlaps: sichtbareUeberschneidungen,
     gaps: gapViews,
     assignments: sichtbareZuweisungen,
     impacts,
+    kenntnisnahmen: sichtbareKenntnisnahmen,
   }).map((n) => ({
     ...n,
     seen: seen.has(n.id),
