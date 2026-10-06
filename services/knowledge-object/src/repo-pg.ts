@@ -707,6 +707,33 @@ export class PgKoRepo implements KoRepo {
     return res.rows.map((row) => row.id);
   }
 
+  // R-0098 (inhaltskennung-zweitbegriff): Nachzug des ABGELEITETEN Felds `bildInhalte` —
+  // zeichengleich zu `setImageNames`: EIN bedingtes UPDATE nur-wenn-fehlt, kein Read-Modify-Write,
+  // keine Migration. Der Rumpf (und damit jeder Vorkommensanker) wird nicht angefasst.
+  async setBildInhalte(
+    id: string,
+    bildInhalte: NonNullable<KnowledgeObject["bildInhalte"]>,
+  ): Promise<boolean> {
+    const res = await this.pool.query(
+      "UPDATE kos SET data = jsonb_set(data, '{bildInhalte}', $2::jsonb) WHERE id=$1 AND NOT (data ? 'bildInhalte')",
+      [id, JSON.stringify(bildInhalte)],
+    );
+    return (res.rowCount ?? 0) > 0;
+  }
+
+  // R-0098: die Arbeitsliste dazu — dasselbe Prädikat wie `missingImageNames`, nur Kennungen.
+  async missingBildInhalte(limit: number): Promise<string[]> {
+    const cap = Math.max(0, Math.floor(limit));
+    if (cap === 0) {
+      return [];
+    }
+    const res = await this.pool.query<{ id: string }>(
+      "SELECT id FROM kos WHERE NOT (data ? 'bildInhalte') AND NOT (data ? 'deletedAt') LIMIT $1",
+      [cap],
+    );
+    return res.rows.map((row) => row.id);
+  }
+
   // SCRUM-361 / AG-03 / FR-ASK-02 / NFR-PERF-03: datenquellennahe Kandidaten-Vorauswahl. Statt
   // alle KOs zu laden, filtert die DB ODER-weise über die (bereits
   // tokenisierten) Inhalts-Terme auf den vorhandenen Feldern (title/statement/category/tags/

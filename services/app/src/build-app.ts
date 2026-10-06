@@ -917,6 +917,8 @@ export function assembleServices(
     ...(opts.withTx ? { withTx: opts.withTx } : {}),
     ...(speicher ? { ruecknahmeKlammer: speicher.klammer } : {}),
     ...(opts.searchProjections ? { searchProjections: opts.searchProjections } : {}),
+    // R-0098: die Bytes eines Objekt-Store-Bildes für seine Inhaltskennung (`bildInhalte`).
+    bildObjektDaten: async (objectId) => (await repos.objects.findById(objectId))?.data,
   });
   // FR-RSN-02/06 + SCRUM-502 R8: echtes Cloud-Modell, wenn der Cloud-Key per Env/Keychain verfügbar ist
   // — GECAPPT aus der Factory (Egress-Wächter rejectsConfidential=true + globaler In-Flight-Cap sind
