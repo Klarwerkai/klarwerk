@@ -171,6 +171,7 @@ import {
   // Reasoner-Persistenz (Cross-Modul-Import nur über die öffentliche index.ts).
   InMemoryKlaraSessionRepo,
   InMemoryReasonerPolicyRepo,
+  KlaraAusweichwegGesperrtFehler,
   type KlaraSessionRepo,
   ModelCapacityError,
   ModelProvider,
@@ -1630,6 +1631,18 @@ export function modelBusyErrorHandler(
     reply.code(503).header("Retry-After", "1").send({
       error: "MODEL_BUSY",
       message: "KI-Modell derzeit ausgelastet. Bitte in Kürze erneut versuchen.",
+    });
+    return;
+  }
+  // R-0590 · Ben nacharbeit-1: eine Klara-Antwort unter Zustimmung, deren zugestimmter Anbieter nicht
+  // geantwortet hat, wird nicht ersatzweise anders beantwortet — und die Fläche erfährt den Grund.
+  // 409 wie die übrigen Sperren des Zustimmungswegs; `error` trägt die Kennung (das Feld, das der
+  // Client auf `ApiError.code` abbildet), `reason` den benannten Grund. Kein Nutzertext.
+  if (error instanceof KlaraAusweichwegGesperrtFehler) {
+    reply.code(409).send({
+      error: "KLARA_AUSWEICHWEG_GESPERRT",
+      reason: error.grund,
+      message: error.message,
     });
     return;
   }

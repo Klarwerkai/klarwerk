@@ -1,11 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  KlaraAusweichwegGesperrtFehler,
   anbieterZugelassen,
   bindeAnbieter,
   bindeZustimmung,
   imBindungsrahmen,
 } from "./anbieterbindung";
 import { cappedModelClient, resetModelSemaphoreForTests, withModelSlot } from "./model-concurrency";
+import { DeterministicProvider } from "./provider";
 import { ModelProvider } from "./provider-model";
 import { Reasoner } from "./service";
 import { mitKiFreigabe } from "./testhelfer-ki-freigabe";
@@ -323,5 +325,100 @@ describe("Bens B7 · Widerruf, während ein direkter Aufruf am gecappten Client 
     } finally {
       aufraeumen();
     }
+  });
+});
+
+// ================================================================================================
+// R-0590 · BEN NACHARBEIT-1 — DER NICHT GLEICHWERTIGE AUSWEICHWEG WIRD GESPERRT, MIT GRUND.
+// ================================================================================================
+//
+// Kette einer Klara-Antwort mit `auto`: Anthropic → lokales Modell → deterministischer Ersatz. Alle
+// drei Glieder sind verfügbar; gezählt wird, WER antwortet. Die Zustimmung gilt Anthropic. Scheitert
+// Anthropic oder fällt es aus der Kette, darf weder das lokale Modell noch der Ersatz einspringen —
+// der Lauf endet mit `KlaraAusweichwegGesperrtFehler` und benanntem Grund.
+
+const ANTWORT = {
+  answered: true,
+  answer: "Antwort",
+  knowledgeClass: "gesichert",
+  trust: 60,
+  sources: [],
+  citedSources: [],
+  steps: [],
+  demo: false,
+};
+
+async function ausweichAufbau(anthropicScheitert: boolean) {
+  const anthropic = new ModelProvider({ name: "anthropic:claude", complete: vi.fn() });
+  const anthropicAntwort = vi.fn(async () => {
+    if (anthropicScheitert) {
+      throw new Error("Anthropic: HTTP 503");
+    }
+    return { ...ANTWORT, answer: "von Anthropic" };
+  });
+  (anthropic as unknown as { answer: unknown }).answer = anthropicAntwort;
+  const lokal = new ModelProvider({ name: "lokal:llm", complete: vi.fn() });
+  const lokalAntwort = vi.fn(async () => ({ ...ANTWORT, answer: "vom lokalen Modell" }));
+  (lokal as unknown as { answer: unknown }).answer = lokalAntwort;
+  const ersatz = new DeterministicProvider();
+  const ersatzAntwort = vi.spyOn(ersatz, "answer");
+  const reasoner = new Reasoner(undefined, ersatz, undefined, undefined, lokal, undefined, {
+    anbieter: { anthropic },
+  });
+  await reasoner.setTaskConfig(mitKiFreigabe({ global: "auto", perTask: { answer: "auto" } }));
+  const fragen = () => reasoner.answer("Wie wird die Pumpe geschmiert?", [], "de");
+  return { fragen, anthropicAntwort, lokalAntwort, ersatzAntwort };
+}
+
+describe("R-0590 · kein nicht gleichwertiger Ausweichweg hinter der Zustimmung", () => {
+  it("GEGENPROBE: der zugestimmte Anbieter antwortet — seine Antwort kommt an, kein Ersatz läuft", async () => {
+    const k = await ausweichAufbau(false);
+    const ergebnis = await mitAnbieterbindung("anthropic", k.fragen);
+    expect(ergebnis.answer).toBe("von Anthropic");
+    expect(k.anthropicAntwort).toHaveBeenCalledTimes(1);
+    expect(k.lokalAntwort).not.toHaveBeenCalled();
+    expect(k.ersatzAntwort).not.toHaveBeenCalled();
+  });
+
+  it("der zugestimmte Anbieter scheitert: lokales Modell und Ersatz laufen NICHT, der Grund ist benannt", async () => {
+    const k = await ausweichAufbau(true);
+    const lauf = mitAnbieterbindung("anthropic", k.fragen);
+    await expect(lauf).rejects.toBeInstanceOf(KlaraAusweichwegGesperrtFehler);
+    await expect(lauf).rejects.toMatchObject({
+      grund: "fallback_not_equivalent",
+      anbieter: "anthropic",
+    });
+    expect(k.anthropicAntwort).toHaveBeenCalledTimes(1);
+    expect(k.lokalAntwort).not.toHaveBeenCalled();
+    expect(k.ersatzAntwort).not.toHaveBeenCalled();
+  });
+
+  it("der zugestimmte Anbieter fällt aus der Kette (Zustimmung beendet): kein Ersatz, Grund `consent_ended`", async () => {
+    const k = await ausweichAufbau(false);
+    const z = zustimmung();
+    z.beenden();
+    const lauf = imBindungsrahmen(() => {
+      bindeZustimmung(z.giltNoch);
+      bindeAnbieter("anthropic");
+      return k.fragen();
+    });
+    await expect(lauf).rejects.toMatchObject({ grund: "consent_ended", anbieter: "anthropic" });
+    expect(k.anthropicAntwort).not.toHaveBeenCalled();
+    expect(k.lokalAntwort).not.toHaveBeenCalled();
+    expect(k.ersatzAntwort).not.toHaveBeenCalled();
+  });
+
+  it("GRENZE: ohne Klara-Bindung bleibt die Kette wie bisher — das lokale Modell springt ein", async () => {
+    const k = await ausweichAufbau(true);
+    const ergebnis = await k.fragen();
+    expect(ergebnis.answer).toBe("vom lokalen Modell");
+    expect(k.lokalAntwort).toHaveBeenCalledTimes(1);
+  });
+
+  it("GRENZE: bei Absage des Tors (`null`) gibt es keinen zugestimmten Weg — die Enge antwortet wie bisher", async () => {
+    const k = await ausweichAufbau(false);
+    const ergebnis = await mitAnbieterbindung(null, k.fragen);
+    expect(k.anthropicAntwort).not.toHaveBeenCalled();
+    expect(ergebnis.answer).toBe("vom lokalen Modell");
   });
 });

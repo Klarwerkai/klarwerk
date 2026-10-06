@@ -12,7 +12,12 @@ import {
   sanitizeModelRunContext,
   traceFuerLauf,
 } from "../../model-runs";
-import { anbieterZugelassen } from "./anbieterbindung";
+import {
+  KlaraAusweichwegGesperrtFehler,
+  anbieterZugelassen,
+  gebundenerAnbieter,
+  zustimmungenTragen,
+} from "./anbieterbindung";
 import {
   ConfidentialEgressError,
   KiAbgeschaltetFehler,
@@ -1446,10 +1451,50 @@ export class Reasoner {
     // Kostenrechnung je Modellpreis und die Spans des Laufs. Genau ein Eintrag je Versuch, gesetzt
     // an derselben Stelle wie die Verbrauchsübernahme (und damit ebenso nur einmal).
     const versuche: ModelRunVersuch[] = [];
+    // R-0590 · Ben nacharbeit-1: steht die Klara-Antwort unter einer Zustimmung für GENAU einen
+    // externen Anbieter, ist jedes andere Glied ein Ausweichweg, den niemand als gleichwertig
+    // freigegeben hat — lokales Modell wie deterministischer Ersatz. Bis zur Produktentscheidung wird
+    // er nicht ausgeführt, sondern der Lauf mit benanntem Grund beendet (`anbieterbindung.ts`).
+    // Begrenzt auf `answer`, die Aufgabe, an der die Zustimmung gebildet wird; ohne Bindung, bei
+    // Absage oder ohne externen Anbieter (`gebundenerAnbieter`) bleibt die Kette wie bisher.
+    const zugestimmt = task === "answer" ? gebundenerAnbieter() : undefined;
+    const zugestimmterAnbieter = REASONER_CLOUD_ANBIETER.find(
+      (anbieter) => anbieter === zugestimmt,
+    );
     for (let i = 0; i < chain.length; i++) {
       const provider = chain[i];
       if (!provider) {
         continue;
+      }
+      if (
+        zugestimmterAnbieter !== undefined &&
+        this.anbieterVon(provider) !== zugestimmterAnbieter
+      ) {
+        const sperre = new KlaraAusweichwegGesperrtFehler(
+          zustimmungenTragen() ? "fallback_not_equivalent" : "consent_ended",
+          zugestimmterAnbieter,
+        );
+        versuchsfehler.push(`${provider.name}: ${sperre.message}`);
+        // Derselbe eine Fehlerdatensatz wie bei der Auslastung: das Glied, an dem der Lauf stand,
+        // der bis dahin gesammelte Verbrauch und die Versuchsfehler. Ein Schreibfehler verdeckt die
+        // Sperre nicht.
+        await this.recordRun(
+          task,
+          locale,
+          startedAt,
+          "error",
+          {
+            fallback: i > 0,
+            demo: false,
+            provider: provider.name,
+            ...(lastModel ? { model: lastModel } : {}),
+            ...(laufVerbrauch ? { verbrauch: laufVerbrauch } : {}),
+            error: Reasoner.versuchsfehlerZeile(versuchsfehler),
+            versuche,
+          },
+          context,
+        ).catch(() => undefined);
+        throw sperre;
       }
       const versuchBeginn = Date.now();
       // JOB 3036 R2: die Spur GENAU DIESES Versuchs. Neu je Versuch, damit ein Lauf, der erst die
