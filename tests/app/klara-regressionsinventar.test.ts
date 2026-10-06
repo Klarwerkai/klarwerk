@@ -1301,6 +1301,13 @@ const INVENTAR: readonly string[] = [
   // GEMESSEN, NICHT GESETZT: der Prüflauf am Kandidaten e48905fd meldete K2 `neu im Baum, aber
   // nicht im gepinnten Inventar` mit genau diesem Pfad; erst danach wurde diese Zeile angefasst.
   "tests/vertraulichkeit-pflicht/word-panel-stufenwahl.test.tsx",
+  // AUFNAHME 20260922 · GESAMT-SCHNELLWAHL (R-0893/R-1669): der neue Prüfstand montiert
+  // `CommandPalette` über die Griffe von `tests/navigationsnamen/vorrichtung.tsx`
+  // (`paletteOeffnen`, `paletteTippen`) und trifft damit die Achse `palette` — dieselbe Klasse wie
+  // die `navigationsnamen`-Dateien oben. Kein „klara" im Pfad, K5 bleibt unverändert. NICHT
+  // GEMESSEN, SONDERN AUS DER QUELLE ABGELEITET: die Bahn dieses Auftrags startet keine Tests; ob
+  // K2 mit diesem Eintrag grün ist, zeigt erst der Prüflauf.
+  "tests/schnellwahl/wissen-in-der-schnellwahl.test.tsx",
 ];
 
 // ------------------------------------------------------------------------------------------------
