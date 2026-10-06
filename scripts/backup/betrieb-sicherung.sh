@@ -9,7 +9,7 @@ KONFIG="${1:?Pfad der Betreiberkonfiguration angeben}"
 source "$KONFIG"
 : "${DATABASE_URL:?}" "${ARBEIT:?}" "${VERSCHLUESSELT:?}" "${ZWEITHOST:?}" "${ZWEITPFAD:?}"
 : "${SSH_KONFIG:?}" "${AUSLAGERUNG_SCHLUESSEL:?}" "${HEALTH_URL:?}" "${PROJEKT:?}"
-[[ "$ZWEITHOST" =~ ^[a-zA-Z0-9._-]+$ ]] && [[ "$ZWEITPFAD" =~ ^/[a-zA-Z0-9/_.-]+$ ]]
+[[ "$ZWEITHOST" =~ ^[a-zA-Z0-9._-]+$ ]] && [[ "$ZWEITPFAD" =~ ^/[a-zA-Z0-9/_.-]*$ ]]
 mkdir -p "$ARBEIT/belege" "$ARBEIT/sicherungen"
 exec 9>"$ARBEIT/taeglich.lock"
 flock -n 9 || { echo '[sicherung] Ein täglicher Lauf ist noch aktiv.' >&2; exit 1; }
