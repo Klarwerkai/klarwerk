@@ -31,7 +31,7 @@ import { IMAGE_ID_PREFIX, newImageRunToken } from "./docx";
 // `richText.ts` importiert nur `htmlEntities` und kennt dieses Modul nicht.
 // AUFTRAG-huelle Block A: aus derselben Quelle kommt jetzt auch die Antwort auf die Frage, welches
 // Tag eine bedeutungslose Hülle sein KANN — `FLAT_BODY_TAGS`. Begründung bei `istDurchlaessigesTag`.
-import { FLAT_BODY_TAGS, escapeCaptionText } from "./richText";
+import { FLAT_BODY_TAGS, KENNUNG_SPUR_ATTR, escapeCaptionText } from "./richText";
 
 export const LEGACY_IMAGE_CAPTION_PLACEHOLDERS: readonly string[] = [
   "Noch keine Bildbeschreibung",
@@ -916,6 +916,12 @@ function flacheFigurenHtml(figure: EditableElement, neueKennung: () => string): 
 // zweiter Durchlauf über den Baum, keine zweite Erkennungslogik, keine Nachzählung an der Fläche.
 // Eine zweite Erhebung wäre eine zweite Wahrheit über denselben Sachverhalt — genau die Bauart, aus
 // der die Befunde huelle3/H2-02 und sammel89 entstanden sind.
+/** Wie viele Kennungsreparaturen ein Sanitizer hinterlassen hat, nach Art. */
+export interface KennungsSpuren {
+  doppelt: number;
+  ungueltig: number;
+}
+
 export interface KennungsTrennung {
   /** Die Kennung, die dieses Bild trug — sie war schon von einem früheren Bild beansprucht. */
   alte: string;
@@ -1034,13 +1040,9 @@ export function ensureImageAnchors(
     // auf `I`. Der Text blieb sichtbar, die ZUORDNUNGSWAHRHEIT nicht. Es ist genau der Schaden aus
     // sammel89, eine Etage später — und deshalb hier dieselbe Antwort wie dort, nicht eine zweite.
     //
-    // DIESELBE ANTWORT HEISST WÖRTLICH DIESELBE: `gemeinsameKennung` über ALLE Quellen dieser
-    // figure. Sie ist die eine Stelle, an der dieses Projekt „Widerspruch" entscheidet; sie hier
-    // nachzubauen wäre die Zweitkopie, aus der beide Befunde entstanden sind.
-    //   · `null` — zwei verschiedene, nicht leere Kennungen. Es wird NICHTS geschrieben, an keiner
-    //     Seite. Sichtbar nebeneinanderstehende Kennungen sind reparierbar; eine überschriebene
-    //     ist es nicht.
-    //   · sonst — die EINE genannte Kennung (oder eine neue, wenn keine Seite eine mitbringt).
+    // Seit der Aufnahme 20260922 (Absatz unten) gilt hier nicht mehr `gemeinsameKennung`, sondern
+    // die engere Regel „die Kennung kommt vom Bild". Was huelle4 verlangte, bleibt: eine
+    // vorhandene Fußnotenkennung wird nie überschrieben.
     //
     // UND DIE MENGE STATT DES ERSTEN TREFFERS (dieselbe Bauart-Korrektur wie in huelle3/H2-02):
     // `querySelector(":scope > figcaption")` sieht genau den ersten. Die erste Fußnote kann leer und
@@ -1055,28 +1057,76 @@ export function ensureImageAnchors(
     // Selektoren, die als Zeichenkette AN der Abfrage stehen. Durch den Helfer gereicht, wäre diese
     // Paarung für ihn unsichtbar — und eine spätere Verbreiterung auf „irgendeinen Nachfahren"
     // fiele niemandem mehr auf. `:scope >` bleibt damit gepinnt.
+    //
+    // AUFNAHME 20260922 (Bildidentität, I50 erstens / R-1599) — DIE IDENTITÄT KOMMT NUR VOM BILD.
+    //
+    // Bis hierher lief an dieser Stelle `gemeinsameKennung([imgId, ...Fußnoten])`. Für ein Bild
+    // OHNE Kennung neben einer Fußnote MIT Kennung `X` lieferte das `X`: das Bild übernahm die
+    // Kennung und damit die Beschreibung. Genau das ist die Lage aus I50 erstens — ein Bild wird
+    // ersetzt, das neue steht unmarkiert neben der alten Fußnote, und die bloße Einzigkeit gilt als
+    // Zugehörigkeit. In getrennten Einheiten war das seit JOB 916 abgelöst (`paare()`, Stufe 3),
+    // in der flachen figure lebte es weiter („die figure ist die Bindungseinheit").
+    //
+    // Jetzt gilt in der flachen figure dieselbe Regel wie in `flacheFigurenHtml`:
+    //   · Das Bild behält seine Kennung. Hat es keine, erbt es nur dann eine, wenn die HÜLLE noch
+    //     nie verankert war (kein `data-image-id` an der figure): das ist unverankerter Altbestand
+    //     oder fremdes Markup, und die Hülle ist dort die einzige Auskunft (bisheriger Vertrag).
+    //     Eine verankerte Hülle mit einem Bild OHNE Kennung heißt dagegen: das Bild ist
+    //     nachträglich hineingekommen — ersetzt. Jede verankernde Stelle (dieser Lauf,
+    //     `anchorFigures`, Word-/PPTX-Import) setzt die Kennung an Hülle UND Bild. Es bekommt eine
+    //     neue Kennung und erbt keine Beschreibung.
+    //   · Eine Fußnote OHNE Kennung ist die Beschreibung dieses Bildes (Stufe 2) — aber nur, wenn
+    //     sie die einzige direkte ist. Bei mehreren ist nicht entscheidbar, welche gilt.
+    //   · Trägt keine direkte Fußnote die Kennung des Bildes und keine ist unmarkiert, bekommt das
+    //     Bild eine eigene, leere Fußnote direkt hinter sich. Die fremde bleibt mit IHRER Kennung
+    //     stehen, ist als „nicht zugeordnet" gekennzeichnet und lässt sich bewusst zuordnen (V7).
     const direkte = Array.from(figure.querySelectorAll(":scope > figcaption"));
     const imgId = kennungVon(img);
-    const id = gemeinsameKennung([imgId, ...direkte.map(kennungVon)]);
-    if (id === null) {
-      continue;
+    let wirkliche: string;
+    if (imgId !== "") {
+      wirkliche = imgId;
+    } else if (kennungVon(figure) === "") {
+      const geerbt = gemeinsameKennung(direkte.map(kennungVon));
+      if (geerbt === null) {
+        continue;
+      }
+      wirkliche = geerbt !== "" ? geerbt : neueKennung();
+    } else {
+      wirkliche = neueKennung();
     }
-    const wirkliche = id !== "" ? id : neueKennung();
 
     if (imgId !== wirkliche) {
       img.setAttribute("data-image-id", wirkliche);
       verankert += 1;
     }
-    const eine = direkte[0];
-    if (direkte.length === 0) {
+    const eigene = direkte.filter((f) => kennungVon(f) === wirkliche);
+    const unmarkierte = direkte.filter((f) => kennungVon(f) === "");
+    const eine = unmarkierte[0];
+    // AUFNAHME 20260922 (Runde 2, Bens Befund B2): steht die Fußnote mit der Kennung dieses Bildes
+    // LOSE im Text (außerhalb jeder figure) und ist sie die einzige mit dieser Kennung, ist sie
+    // seine Beschreibung — `captionForImage` findet sie über die Kennung. Eine zweite, leere
+    // danebenzustellen machte die Kennung mehrdeutig und die eigene Beschreibung zur verwaisten.
+    const loseEigene = Array.from(root.querySelectorAll("figcaption")).filter(
+      (f) => kennungVon(f) === wirkliche,
+    );
+    const loseIstEigene =
+      direkte.length === 0 && loseEigene.length === 1 && loseEigene[0]?.closest("figure") === null;
+    if (loseIstEigene) {
+      // Die Beschreibung steht lose, aber ausdrücklich zugeordnet — nichts zu schreiben.
+    } else if (direkte.length === 0) {
       // figure ohne Fußnote — die Fußnote fehlt, nicht die Hülle.
       figure.insertAdjacentHTML(
         "beforeend",
         `<figcaption data-image-id="${wirkliche}"></figcaption>`,
       );
       verankert += 1;
-    } else if (direkte.length === 1 && eine !== undefined && kennungVon(eine) !== wirkliche) {
+    } else if (eigene.length > 0) {
+      // Die eigene Fußnote steht schon da — nichts zu schreiben.
+    } else if (direkte.length === 1 && eine !== undefined) {
       eine.setAttribute("data-image-id", wirkliche);
+      verankert += 1;
+    } else if (unmarkierte.length === 0) {
+      img.insertAdjacentHTML("afterend", `<figcaption data-image-id="${wirkliche}"></figcaption>`);
       verankert += 1;
     }
   }
@@ -1140,9 +1190,18 @@ export function ensureImageAnchors(
     img.setAttribute("data-image-id", frische);
     beansprucht.add(frische);
     const figure = img.closest("figure");
-    const fussnote = figure === null ? null : figure.querySelector(":scope > figcaption");
+    // AUFNAHME 20260922 (Runde 2, Bens Befund B3): hier stand die ERSTE direkte Fußnote. Stand dort
+    // eine fremde und erst dahinter die eigene, bekam nur das Bild die frische Kennung, und seine
+    // Beschreibung blieb bei der alten — zugeordnet war sie danach keinem. Gesucht wird deshalb
+    // unter ALLEN direkten Fußnoten die erste, die wirklich die alte Kennung trägt.
+    const fussnote =
+      figure === null
+        ? null
+        : (Array.from(figure.querySelectorAll(":scope > figcaption")).find(
+            (f) => kennungVon(f) === alte,
+          ) ?? null);
     let fussnoteFolgte = false;
-    if (fussnote !== null && kennungVon(fussnote) === alte) {
+    if (fussnote !== null) {
       fussnote.setAttribute("data-image-id", frische);
       fussnoteFolgte = true;
     }
@@ -1258,7 +1317,18 @@ export function captionForImage(
   if (ueberKennung !== null) {
     return ueberKennung;
   }
-  return img.closest("figure")?.querySelector(":scope > figcaption") ?? null;
+  // AUFNAHME 20260922 (Bildidentität): der Rückfall auf das direkte Kind gilt nur für eine Fußnote,
+  // deren Kennung dem Bild nicht widerspricht. Bis hierher nahm er die erste direkte Fußnote
+  // unbesehen — eine fremd gekennzeichnete Fußnote in derselben figure galt damit als
+  // Beschreibung dieses Bildes, während Galerie (`bodyImages.ts`) und Bildsuche sie zu Recht
+  // nicht paarten. Dieselbe Regel wie dort: Nachbarschaft allein ist keine Zugehörigkeit.
+  const bildKennung = kennungVon(img);
+  for (const f of img.closest("figure")?.querySelectorAll(":scope > figcaption") ?? []) {
+    if (vertraeglich(kennungVon(f), bildKennung)) {
+      return f;
+    }
+  }
+  return null;
 }
 
 // ==================================================================================================
@@ -1581,11 +1651,20 @@ export function zuordnungsgrund(
   if (direkteBilder.length > 1 || !direkteBilder.includes(bild)) {
     return "unklar";
   }
-  const direkteFussnoten = Array.from(figure.querySelectorAll(":scope > figcaption"));
+  // AUFNAHME 20260922 (Bildidentität): gezählt werden die direkten Fußnoten NEBEN der wandernden.
+  // Steht die nicht zugeordnete Fußnote selbst in dieser figure (fremde Kennung neben dem Bild,
+  // das seit dieser Aufnahme eine eigene leere Fußnote bekommt), bleibt nach dem Verschieben genau
+  // eine übrig — die Nachbedingung hält. Jede weitere direkte Fußnote macht die Lage unklar.
+  const direkteFussnoten = Array.from(figure.querySelectorAll(":scope > figcaption")).filter(
+    (f) => f !== caption,
+  );
   if (direkteFussnoten.length > 1) {
     return "unklar";
   }
   if (vorhandene !== null && !direkteFussnoten.includes(vorhandene)) {
+    return "unklar";
+  }
+  if (vorhandene === null && direkteFussnoten.length > 0) {
     return "unklar";
   }
   return "zuordenbar";
@@ -1695,6 +1774,19 @@ export function ordneFussnoteZu(
 // `data-image-id` und an nichts sonst; damit kann die Kennzeichnung weder beim Umhüllen noch beim
 // Flachmachen noch beim Verschieben von Fussnoten an ein anderes Bild wandern, und der
 // Sprachwechsel-Effekt in `RichTextEditor.tsx` frischt ihren Text ohne eigene Verdrahtung auf.
+/** Wofür eine Spur zählt: das Bild selbst, sonst das erste Bild seiner figure, sonst der Knoten. */
+function bildDerEinheit(el: EditableElement): EditableElement {
+  if (el.tagName.toLowerCase() === "img") {
+    return el;
+  }
+  const figure = el.tagName.toLowerCase() === "figure" ? el : el.closest("figure");
+  if (figure === null) {
+    return el;
+  }
+  const bild = alle(figure, "img").find((b) => b.closest("figcaption") === null);
+  return bild ?? figure;
+}
+
 export function enhanceFiguresForEditing(
   root: EditableFigureRoot,
   captionPlaceholder?: string,
@@ -1702,7 +1794,34 @@ export function enhanceFiguresForEditing(
   captionUnassigned?: string,
   captionUnassignedLabel?: string,
   mehrdeutig?: { readonly bildkennungen: ReadonlySet<string>; readonly text: string },
+  meldeSpuren?: (spuren: KennungsSpuren) => void,
 ): KennungsTrennung[] {
+  // AUFNAHME 20260922 (R-0090, Runde 2 Bens Befund B4): die Spuren, die ein Sanitizer beim
+  // Speichern oder Einfügen hinterlassen hat (`data-kw-kennung`, siehe `richText.ts`), werden hier
+  // gelesen, gemeldet und aus dem Inhalt genommen — VOR dem Verankern, an der einen Stelle, die
+  // jeder Lade- und Einfügeweg durchläuft. Gespeichert wird danach ohne sie: die Meldung ist
+  // erfolgt. Solange nicht gespeichert wird, bleibt sie im gespeicherten Text und meldet sich beim
+  // nächsten Öffnen wieder.
+  //
+  // Runde 3 (Bens Befund N3): GEZÄHLT WIRD JE BILD, nicht je markiertem Element. Tragen Rahmen, Bild
+  // und Fußnote derselben Einheit die Spur, ist das EIN Befund; bisher meldete der Hinweis drei.
+  // Ein markierter Rahmen oder eine Fußnote in einer figure zählt für das erste Bild dieser figure;
+  // ohne Bild (lose Fußnote, leere Hülle) für sich selbst.
+  const betroffen = { doppelt: new Set<EditableElement>(), ungueltig: new Set<EditableElement>() };
+  for (const el of root.querySelectorAll(`[${KENNUNG_SPUR_ATTR}]`)) {
+    const wert = el.getAttribute(KENNUNG_SPUR_ATTR);
+    if (wert === "doppelt" || wert === "ungueltig") {
+      betroffen[wert].add(bildDerEinheit(el));
+    }
+    el.removeAttribute(KENNUNG_SPUR_ATTR);
+  }
+  const spuren: KennungsSpuren = {
+    doppelt: betroffen.doppelt.size,
+    ungueltig: betroffen.ungueltig.size,
+  };
+  if (spuren.doppelt > 0 || spuren.ungueltig > 0) {
+    meldeSpuren?.(spuren);
+  }
   // AUFTRAG-mega88 Block B/C: ZUERST die Invariante. Sie läuft INNERHALB dieser Funktion und nicht
   // neben ihr, damit kein Aufrufer sie vergessen kann — und weil der Editor sie an genau einer
   // Stelle ruft, durchläuft JEDER Weg sie: das Laden von außen (Altbestand, Block C), jedes

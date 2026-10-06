@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useLibrarySearch } from "../api/hooks";
 import { useModalLocked } from "../app/ModalBoundaryContext";
 import { useGuardedNavigate } from "../app/NavGuardContext";
 import { useRole } from "../app/RoleContext";
@@ -9,6 +10,7 @@ import {
   trefferFuer,
   trefferNachGruppen,
 } from "../app/navigationGliederung";
+import { LIBRARY_SEARCH_DEBOUNCE_MS, useDebouncedValue } from "../lib/useDebouncedValue";
 
 // Command Palette (FE-FND-03): ⌘K / Strg+K öffnet eine Schnellnavigation über
 // alle für die Rolle sichtbaren Ziele. Pfeiltasten + Enter, Esc schließt.
@@ -36,9 +38,58 @@ import {
 //   6  ESCAPE GIBT DEN FOKUS ZURÜCK (Runde 2, Codex-Befund 1). Vorher schloss Escape die Fläche und
 //      der Fokus fiel auf `<body>` — wer mit der Tastatur arbeitet, stand danach nirgends.
 //
+// FE-002 (Pedi, 26.09.2026) — ZWEI WEITERE SCHRITTE, und wieder keine neue Palette:
+//   7  KEINE ROUTE MEHR IN DER ZEILE. Pedis Befund: „‚Gehe zu …' öffnet … eine Auswahl mit 46 Zielen
+//      und technischen Pfaden wie `/validierung`." Die Zeile trägt jetzt nur Name und Gruppe/Ort;
+//      der Pfad bleibt als Marke am Knopf (`data-cmd-pfad`) für Messungen, gesehen wird er nicht.
+//      Gesucht wird unverändert über alle Namen desselben Ziels (`trefferFuer`).
+//   8  DAS FELD HEISST „SEITE FINDEN" — sichtbar im Platzhalter und als Name —, und eine Zeile
+//      darunter sagt, dass Inhalte über „Wissen suchen" gefunden werden. So sind die beiden Suchen
+//      auch HIER auseinanderzuhalten, nicht nur im Kopfband.
+//
+// R-0893 / R-1669 (aufnahme:20260922:gesamt-schnellwahl) — DIREKT ZUM WISSENSOBJEKT:
+//   9  Ab zwei getippten Zeichen fragt die Palette zusätzlich die vorhandene Bibliothekssuche
+//      (`useLibrarySearch`, `GET /api/library/search`) und zeigt bis zu fünf Wissenseinträge unter
+//      einer eigenen Überschrift „Wissen" — nach den Seiten, damit Enter auf einen Seitennamen
+//      unverändert die Seite öffnet. Ein Eintrag führt direkt nach `/wissen/:id`; die letzte
+//      Zeile der Gruppe ist die Schnellaktion „Alle Treffer … in der Bibliothek".
+//      ROLLENGEFILTERT an zwei Stellen, keine davon neu: gefragt wird nur, wenn die Bibliothek
+//      unter den Zielen DIESER Rolle steht (dieselbe `canSee`-Liste), und was zurückkommt, hat der
+//      Server bereits nach `sichtbareFuer`/`sqlSichtbarkeitFuer` beschnitten (library-routes.ts).
+//      Gezeigt wird nur eine Antwort auf GENAU die aktuelle Eingabe — eine verspätete Antwort auf
+//      einen älteren Begriff kann weder dastehen noch per Enter geöffnet werden.
+//
 // WAS SICH AUSDRÜCKLICH NICHT ÄNDERT: ⌘K/Strg+K, Escape, die Modalgrenze, und `canSee` als die EINE
 // Sichtbarkeitsregel. Mehr Ziele heißt nicht mehr Rechte — die Verwaltungsziele hängen sämtlich
 // daran, dass die Rolle `/admin` überhaupt sieht (`direktzugangZiele`).
+/**
+ * Nutzlast von `open-command-palette`. `nachModalgrenze`: der Auslöser schließt im selben Zug eine
+ * modale Fläche (Drawer) — die Palette öffnet, sobald die Grenze frei ist, statt abzuweisen.
+ * `rueckweg`: wohin der Fokus beim Schließen der Palette geht, wenn der Auslöser selbst dann nicht
+ * mehr steht (die Drawer-Zeile) — der Auslöser der geschlossenen Fläche („Menü").
+ */
+export interface PaletteAnfrage {
+  nachModalgrenze?: boolean;
+  rueckweg?: (() => HTMLElement | null) | undefined;
+}
+
+/** Eine Öffnungsanfrage, die auf die Freigabe der Modalgrenze wartet. */
+interface Vormerkung {
+  seit: number;
+  rueckweg: (() => HTMLElement | null) | undefined;
+}
+
+/** Wie lange eine vorgemerkte Öffnung auf die Freigabe der Grenze wartet. */
+const VORMERKUNG_MS = 2000;
+
+/** Ab so vielen Zeichen fragt die Palette zusätzlich die Wissenssuche (R-0893). */
+export const WISSEN_AB_ZEICHEN = 2;
+/** So viele Wissenseinträge zeigt die Palette höchstens — alle weiteren stehen in der Bibliothek. */
+export const WISSEN_HOECHSTENS = 5;
+
+/** Was eine Zeile der Palette braucht — ein Seitenziel ebenso wie ein Wissenseintrag. */
+type Zeilenziel = Pick<Direktziel, "id" | "label" | "path" | "kontext">;
+
 export function CommandPalette(): JSX.Element | null {
   const { t } = useTranslation();
   // AUFTRAG-mega11 Block B-2: dieselbe geschützte Grenze wie Sidebar/Topbar/Logo.
@@ -65,6 +116,11 @@ export function CommandPalette(): JSX.Element | null {
   const ausloeserRef = useRef<HTMLElement | null>(null);
   /** Der offene Zustand für den Fenster-Zuhörer, der ihn außerhalb von React braucht. */
   const offenRef = useRef(false);
+  /** Öffnungsanfrage, die auf die Freigabe der Modalgrenze wartet (FE-002). */
+  const vormerkungRef = useRef<Vormerkung | null>(null);
+  /** Der Sperrzustand des letzten Renderns — für Rückrufe außerhalb eines Effekts (FE-002). */
+  const modalOffenRef = useRef(modalOffen);
+  modalOffenRef.current = modalOffen;
 
   // JOB 3105 · UX-08: BESCHRIFTET wird mit dem Namen, den die anderen Flächen zeigen; GESUCHT wird
   // über alle Namen desselben Ziels — der angezeigte plus der bisherige. Beides wohnt seit JOB 3337
@@ -89,8 +145,50 @@ export function CommandPalette(): JSX.Element | null {
   // Markierung. Solange es nur eine Quelle gibt, kann sie nicht mit sich selbst auseinanderlaufen.
   //
   // `filtered` bleibt die Vorstufe (Suche), ist aber ab hier für die Bedienung nicht mehr zuständig.
-  const sichtbareReihenfolge = useMemo(() => gruppen.flatMap((g) => g.ziele), [gruppen]);
   const fragenErreichbar = ziele.some((z) => z.path === "/fragen");
+
+  // R-0893: die Wissenseinträge zur Eingabe (Block „9" oben). Entprellt wie die Bibliothek selbst,
+  // derselbe Hook, derselbe Cache-Schlüssel — kein zweiter Suchweg.
+  const bibliothekErreichbar = ziele.some((z) => z.path === "/bibliothek");
+  const eingabe = q.trim();
+  const begriff = useDebouncedValue(eingabe, LIBRARY_SEARCH_DEBOUNCE_MS);
+  // `begriff === eingabe`: gefragt wird erst nach der Tipp-Pause, und nie mit einem Begriff, der
+  // nicht mehr im Feld steht (etwa der vom letzten Öffnen, solange die Entprellung nachläuft).
+  const wissenGefragt =
+    open && bibliothekErreichbar && begriff === eingabe && begriff.length >= WISSEN_AB_ZEICHEN;
+  const wissenSuche = useLibrarySearch({ q: begriff }, wissenGefragt);
+  const wissen = useMemo((): Zeilenziel[] => {
+    const antwort = wissenSuche.data;
+    if (!wissenGefragt || !Array.isArray(antwort) || antwort.length === 0) {
+      return [];
+    }
+    const oben = t("schnellwahl.wissenGruppe");
+    const eintraege: Zeilenziel[] = antwort.slice(0, WISSEN_HOECHSTENS).map((ko) => ({
+      id: `ko:${ko.id}`,
+      label: ko.title,
+      path: `/wissen/${encodeURIComponent(ko.id)}`,
+      kontext: ko.category ? `${oben} › ${ko.category}` : oben,
+    }));
+    // R-1669 „Schnellaktionen": der Weg zu ALLEN Treffern, wenn die Palette nur die ersten zeigt.
+    eintraege.push({
+      id: "aktion:bibliothek",
+      label: t("schnellwahl.alleTreffer", { q: begriff }),
+      path: `/bibliothek?q=${encodeURIComponent(begriff)}`,
+      kontext: t("fe002.wissenSuchen"),
+    });
+    return eintraege;
+  }, [wissenGefragt, begriff, wissenSuche.data, t]);
+
+  const sichtbareReihenfolge = useMemo(
+    (): Zeilenziel[] => [...gruppen.flatMap((g) => g.ziele), ...wissen],
+    [gruppen, wissen],
+  );
+  // R-0893 (BEN, Nacharbeit 2): DIE AUSWAHL IST IMMER EINE ZEILE, DIE DASTEHT. Die Wissenseinträge
+  // kommen ASYNCHRON — eine Pfeiltaste während der Tipp-Pause traf eine leere Liste und setzte
+  // `active` auf -1; die eintreffenden Einträge korrigierten das nicht, und Enter fiel auf „als
+  // Frage" statt auf das sichtbare Wissensobjekt. Markierung, Bildlauf, Pfeile und Enter lesen
+  // deshalb `stelle`: der gemerkte Index, begrenzt auf die Liste, die JETZT dasteht (leer → 0).
+  const stelle = Math.max(0, Math.min(active, sichtbareReihenfolge.length - 1));
 
   useEffect(() => {
     offenRef.current = open;
@@ -101,6 +199,32 @@ export function CommandPalette(): JSX.Element | null {
     const aktiv = document.activeElement;
     ausloeserRef.current = aktiv instanceof HTMLElement ? aktiv : null;
   }, []);
+
+  // Die vorgemerkte Öffnung (s. `onCustom`). Sie greift erst, wenn die Grenze FREI ist. Der Rückweg
+  // wird dabei NICHT aus `document.activeElement` gelesen: unter Last stand dort im Tor-Volllauf
+  // (Prüfauftrag pa-1790494556-7615eb59, C7 Runde 1) noch `BODY` — die Drawer-Zeile war schon
+  // abgebaut, der Fokus noch nicht auf „Menü" — und Escape ließ den Fokus im Leeren. Die Anfrage
+  // nennt ihren Rückweg deshalb selbst; nur ohne ihn gilt weiter das fokussierte Element. Eine
+  // Vormerkung, die nicht binnen `VORMERKUNG_MS` eingelöst wird, verfällt — die Palette erscheint
+  // nie verspätet nach einem ganz anderen, später geschlossenen Dialog.
+  // Gelesen wird der zuletzt GERENDERTE Sperrzustand (`modalOffenRef`), nicht der eines Effekts.
+  const loeseVormerkungEin = useCallback((): void => {
+    const vormerkung = vormerkungRef.current;
+    if (modalOffenRef.current || vormerkung === null) {
+      return;
+    }
+    vormerkungRef.current = null;
+    if (Date.now() - vormerkung.seit > VORMERKUNG_MS) {
+      return;
+    }
+    const rueckweg = vormerkung.rueckweg?.() ?? null;
+    if (rueckweg) {
+      ausloeserRef.current = rueckweg;
+    } else {
+      merkeAusloeser();
+    }
+    setOpen(true);
+  }, [merkeAusloeser]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -119,7 +243,24 @@ export function CommandPalette(): JSX.Element | null {
         setOpen(false);
       }
     };
-    const onCustom = (): void => {
+    const onCustom = (e: Event): void => {
+      // FE-002 (Ben, Lauf 2 Runde 1): „Seite finden" im schmalen Drawer schließt den Drawer und
+      // ruft die Palette im SELBEN Klick — die Grenze ist dann noch gesperrt, und das Ereignis
+      // verfiel. Wer ausdrücklich `nachModalgrenze` sagt, wird deshalb IMMER vorgemerkt und erst
+      // eingelöst, wenn die Grenze frei ist (`loeseVormerkungEin`). Nicht nur bei `modalOffen`:
+      // dieser Zuhörer trägt den Zustand seines letzten Effekts, und der kann dem gerade
+      // geöffneten Drawer hinterherhinken — gemessen in Lauf 2 R3 (lokales Chromium, C7 Runde 5:
+      // Ereignis mit `modal=false` bei offenem Drawer, Palette sofort offen, die Drawer-Zeile als
+      // Rückweg gemerkt, beim Schließen abgebaut → Fokus auf BODY). Alle anderen Anfragen
+      // bleiben, wie sie waren: bei offener Grenze abgewiesen, sonst sofort geöffnet.
+      const anfrage = (e as CustomEvent<PaletteAnfrage | null>).detail;
+      if (anfrage?.nachModalgrenze) {
+        vormerkungRef.current = { seit: Date.now(), rueckweg: anfrage.rueckweg };
+        // Nach dem nächsten Bildaufbau ist das Schließen der auslösenden Fläche verarbeitet; ist
+        // die Grenze dann frei, wird eingelöst — sonst beim Wechsel der Sperre (Effekt unten).
+        window.requestAnimationFrame(() => loeseVormerkungEin());
+        return;
+      }
       if (modalOffen) {
         return;
       }
@@ -132,7 +273,14 @@ export function CommandPalette(): JSX.Element | null {
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("open-command-palette", onCustom);
     };
-  }, [modalOffen, merkeAusloeser]);
+  }, [modalOffen, merkeAusloeser, loeseVormerkungEin]);
+
+  // Die vorgemerkte Öffnung (s. `onCustom`) — eingelöst beim Wechsel der Sperre.
+  useEffect(() => {
+    if (!modalOffen) {
+      loeseVormerkungEin();
+    }
+  }, [modalOffen, loeseVormerkungEin]);
 
   useEffect(() => {
     if (open) {
@@ -164,11 +312,11 @@ export function CommandPalette(): JSX.Element | null {
     if (!open) {
       return;
     }
-    const markiert = listeRef.current?.querySelector(`[data-cmd-stelle="${active}"]`);
+    const markiert = listeRef.current?.querySelector(`[data-cmd-stelle="${stelle}"]`);
     if (markiert && typeof markiert.scrollIntoView === "function") {
       markiert.scrollIntoView({ block: "nearest" });
     }
-  }, [open, active]);
+  }, [open, stelle]);
 
   if (!open) {
     return null;
@@ -183,15 +331,16 @@ export function CommandPalette(): JSX.Element | null {
   };
 
   const springe = (richtung: 1 | -1): void => {
-    setActive((a) => Math.min(Math.max(a + richtung, 0), sichtbareReihenfolge.length - 1));
+    // Von der SICHTBAREN Stelle aus, und nie unter 0 — auch nicht bei leerer Liste.
+    setActive(Math.max(0, Math.min(stelle + richtung, sichtbareReihenfolge.length - 1)));
   };
 
   /** Der laufende Index über ALLE Gruppen — die Tastatur kennt eine Liste, nicht vier. */
   let laufend = -1;
-  const zeile = (it: Direktziel): JSX.Element => {
+  const zeile = (it: Zeilenziel): JSX.Element => {
     laufend += 1;
     const i = laufend;
-    const aktiv = i === active;
+    const aktiv = i === stelle;
     return (
       <li key={it.id}>
         <button
@@ -224,11 +373,6 @@ export function CommandPalette(): JSX.Element | null {
               {it.kontext}
             </span>
           </span>
-          {it.route === undefined ? null : (
-            <span data-cmd-route className="shrink-0 pt-0.5 font-mono text-[11px] opacity-90">
-              {it.route}
-            </span>
-          )}
         </button>
       </li>
     );
@@ -284,7 +428,7 @@ export function CommandPalette(): JSX.Element | null {
           // Codex' Befund: „Der Suchkasten trägt im gelesenen Code nur einen Platzhalter, keine
           // eigene zugängliche Beschriftung." Ein Platzhalter verschwindet beim Tippen — ein Name
           // bleibt, auch für Vorlesewerkzeuge.
-          aria-label={t("cmd.suchfeld")}
+          aria-label={t("fe002.seiteFinden")}
           onChange={(e) => {
             setQ(e.target.value);
             setActive(0);
@@ -299,7 +443,7 @@ export function CommandPalette(): JSX.Element | null {
             } else if (e.key === "Enter") {
               e.preventDefault();
               // Aus DERSELBEN Liste, die dasteht — siehe den Block bei `sichtbareReihenfolge`.
-              const it = sichtbareReihenfolge[active];
+              const it = sichtbareReihenfolge[stelle];
               if (it) {
                 go(it.path);
               } else if (fragenErreichbar && q.trim()) {
@@ -308,7 +452,7 @@ export function CommandPalette(): JSX.Element | null {
               }
             }
           }}
-          placeholder={t("cmd.placeholder")}
+          placeholder={`${t("fe002.seiteFindenMenue")} (⌘K)`}
           // `shrink-0`: Suchfeld und Trefferzahl behalten ihre Höhe, wenn der Kasten eng wird —
           // schrumpfen soll die LISTE (sie kann scrollen), nicht das Feld, in das man tippt.
           className="w-full shrink-0 border-b border-hairline bg-transparent px-4 py-3 text-sm outline-none"
@@ -324,6 +468,14 @@ export function CommandPalette(): JSX.Element | null {
               Reihenfolge, an der irgendwann wieder etwas auseinanderläuft. */}
           {t("cmd.treffer", { count: sichtbareReihenfolge.length })}
         </div>
+        {/* FE-002: bewusst AUSSERHALB der Live-Region — der Satz ändert sich nie und soll nicht bei
+            jedem Tastendruck mit der Trefferzahl erneut vorgelesen werden. */}
+        <p
+          data-cmd="hinweis"
+          className="shrink-0 border-b border-hairline px-4 py-1.5 text-[11.5px] text-muted-2"
+        >
+          {t("fe002.paletteHinweis")}
+        </p>
         {/* `min-h-0` ist der Schalter, ohne den nichts von alledem wirkt: ein Flex-Kind hat von
             Haus aus `min-height: auto` und weigert sich dann, unter seinen Inhalt zu schrumpfen —
             der Kasten hielte seine Obergrenze ein, die Liste liefe trotzdem darüber hinaus. */}
@@ -348,14 +500,25 @@ export function CommandPalette(): JSX.Element | null {
               )}
             </li>
           ) : (
-            gruppen.map((g) => (
-              <li key={g.gruppe.id}>
+            [
+              ...gruppen.map((g) => ({
+                id: g.gruppe.id,
+                titel: t(g.gruppe.titleKey),
+                ziele: g.ziele as Zeilenziel[],
+              })),
+              // R-0893: die Wissenseinträge NACH den Seiten — dieselbe Reihenfolge wie
+              // `sichtbareReihenfolge`, aus der Tastatur und Trefferzahl lesen.
+              ...(wissen.length > 0
+                ? [{ id: "wissen", titel: t("schnellwahl.wissenGruppe"), ziele: wissen }]
+                : []),
+            ].map((g) => (
+              <li key={g.id}>
                 {/* Die Überschrift ist bewusst KEIN Knopf: sie ist kein Ziel, sie ordnet nur. */}
                 <div
-                  data-cmd-gruppe={g.gruppe.id}
+                  data-cmd-gruppe={g.id}
                   className="px-3 pb-0.5 pt-2 text-[11px] font-semibold tracking-[0.02em] text-muted-2"
                 >
-                  {t(g.gruppe.titleKey)}
+                  {g.titel}
                 </div>
                 <ul>{g.ziele.map(zeile)}</ul>
               </li>

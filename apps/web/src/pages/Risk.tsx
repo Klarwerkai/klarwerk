@@ -1,7 +1,8 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Check, Trash2 } from "lucide-react";
+import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
 import {
   useBusFactor,
@@ -10,14 +11,18 @@ import {
   useExpertise,
   useGaps,
   useKos,
+  useLifecyclePending,
 } from "../api/hooks";
 import type { GapPriority } from "../api/types";
 import { useRole } from "../app/RoleContext";
 import { AiCheckBoardCaveat } from "../components/AiCheckCoverageHint";
+import { BereichsprofilPflege } from "../components/BereichsprofilPflege";
 import { HelpTip } from "../components/HelpTip";
+import { RisikoHorizont } from "../components/RisikoHorizont";
 import { Card, PageHeader, QueryState, SectionLabel } from "../components/ui";
 import { captureGapHref, gapPrivacyNoticeKey } from "../lib/captureFromGap";
 import { canSeeExpertise, contributorNamesFor, expertiseVisible } from "../lib/expertiseView";
+import { leseFall } from "../lib/fallAbsprung";
 import { gapLocaleTag } from "../lib/gapLocaleTag";
 import {
   GAP_PRIORITIES,
@@ -27,7 +32,7 @@ import {
   priorityTone,
   sortGapsByPriority,
 } from "../lib/gapPriority";
-import { type RiskLevel, domainRisk } from "../lib/knowledgeHealth";
+import { type RiskLevel, domainRisk, plantValidatedRatio } from "../lib/knowledgeHealth";
 import { buildRiskCockpit } from "../lib/riskCockpit";
 import { phaseLabelKey } from "../lib/taskAction";
 import { useAuthorName } from "../lib/useAuthorName";
@@ -50,6 +55,9 @@ export function Risk(): JSX.Element {
   const gaps = useGaps();
   const conflicts = useConflicts();
   const kos = useKos();
+  // R-1639 (Nacharbeit 1): die „Stimmt das noch?"-Merker — gesetzt allein durch gemeldete
+  // Anlagenänderungen. Ohne Antwort bleibt die Zahl je Kategorie unbekannt (null), nicht 0.
+  const pending = useLifecyclePending();
   const users = useDirectory();
   // Consultant-System (Experten-Matching): nur berechtigte Rollen fragen die Sicht überhaupt an; ist
   // das Flag serverseitig AUS, kommt 404 → keine Daten → nichts gerendert (exakt heutiges Verhalten).
@@ -81,6 +89,19 @@ export function Risk(): JSX.Element {
   // abgeschriebene Zeile hier sagte „Unbekannte Person", sobald das Verzeichnis nur NICHT DA war —
   // eine Aussage über die Person, wo gar keine feststand.
   const nameOf = useAuthorName();
+  // R-0961: `?fall=<id>` aus der Aufgabenliste markiert genau diese Lücke und holt sie EINMAL in
+  // Sicht, sobald die Liste sie trägt. Ohne Treffer bleibt die Seite, wie sie war.
+  const [params] = useSearchParams();
+  const zielLuecke = leseFall(params);
+  const zielZeile = useRef<HTMLDivElement | null>(null);
+  const zielGezeigt = useRef(false);
+  const lueckenGeladen = gaps.data !== undefined;
+  useEffect(() => {
+    if (lueckenGeladen && !zielGezeigt.current && zielZeile.current) {
+      zielGezeigt.current = true;
+      zielZeile.current.scrollIntoView({ block: "center" });
+    }
+  }, [lueckenGeladen]);
 
   // SCRUM-230: kompakter Cockpit-Einstieg aus echten Gap-/Conflict-Daten (kein Score, keine Engine).
   const cockpit = buildRiskCockpit(gaps.data ?? [], conflicts.data ?? []);
@@ -151,7 +172,8 @@ export function Risk(): JSX.Element {
         </div>
         <QueryState query={kos} emptyText={t("risk.cockpitEmpty")}>
           {(items) => {
-            const rows = domainRisk(items, bus.data ?? []);
+            const rows = domainRisk(items, bus.data ?? [], pending.data ?? null);
+            const werk = plantValidatedRatio(items);
             if (rows.length === 0) {
               return (
                 <Card className="border-dashed text-center text-sm text-muted">
@@ -164,8 +186,14 @@ export function Risk(): JSX.Element {
                 {rows.map((r) => {
                   // Pedi 05.07.: „wer trägt das Wissen" sichtbar machen — die Personen hinter dieser
                   // Domäne (aus den echten KO-Autoren abgeleitet), damit ein Einzelquellen-Risiko konkret wird.
+                  // Nacharbeit 1 (ben F1): Träger ist die URHEBERSCHAFT `originalAuthor` — dieselbe
+                  // Regel, nach der der Bus-Faktor zählt (library-analytics `busFactor`). `author` ist
+                  // der Erfasser; nach einer Übernahme fremden Wissens nannte der Hinweis sonst den
+                  // Erfasser, oder bei zwei Erfassern zwei Träger trotz Einzelquelle.
                   const bearers = Array.from(
-                    new Set(items.filter((k) => k.category === r.category).map((k) => k.author)),
+                    new Set(
+                      items.filter((k) => k.category === r.category).map((k) => k.originalAuthor),
+                    ),
                   ).map(nameOf);
                   return (
                     <Card key={r.category} className="space-y-2">
@@ -194,6 +222,33 @@ export function Risk(): JSX.Element {
                           {t("risk.experts")}: <span className="text-text">{r.authorCount}</span>
                         </span>
                       </div>
+                      {/* R-1639 (Nacharbeit 1): „Wie ist meine Wissens-Abdeckung im Vergleich zum
+                          Werks-Durchschnitt?" — Prüfanteil dieser Kategorie gegen den ganzen
+                          sichtbaren Bestand. */}
+                      {werk === null ? null : (
+                        <p data-testid="risk-vs-plant" className="text-[11.5px] text-muted">
+                          {t(
+                            r.validatedRatio > werk
+                              ? "risk.vsPlant.above"
+                              : r.validatedRatio < werk
+                                ? "risk.vsPlant.below"
+                                : "risk.vsPlant.equal",
+                            { avg: werk },
+                          )}
+                        </p>
+                      )}
+                      {/* R-1639 (Nacharbeit 1): „Welche Objekte sind durch Anlagenänderungen
+                          veraltet?" — nur wenn die Merkerlage geladen ist UND etwas ansteht; der
+                          Weg führt zur bestehenden Prüfliste. */}
+                      {r.staleByAssetChange !== null && r.staleByAssetChange > 0 ? (
+                        <Link
+                          data-testid="risk-stale-asset"
+                          to="/lebenszyklus"
+                          className="block text-[11.5px] font-semibold text-trust-warn-text hover:underline"
+                        >
+                          {t("risk.staleByAssetChange", { count: r.staleByAssetChange })}
+                        </Link>
+                      ) : null}
                       {/* Pedi 05.07.: Einzelquellen-Risiko ausführlich erklären + WER es trägt. */}
                       {r.singleSource ? (
                         <div className="rounded-btn bg-trust-crit-bg px-2.5 py-2 text-[11.5px] text-trust-crit-text">
@@ -221,6 +276,14 @@ export function Risk(): JSX.Element {
           }}
         </QueryState>
       </div>
+
+      {/* R-1639 / R-2183 (Nacharbeit 3): „mein Bereich" — Bus-Faktor 1, Ruhestand in 24/36 Monaten
+          und der Arbeitsvorrat bis zur Frist (components/RisikoHorizont). */}
+      <RisikoHorizont />
+
+      {/* Die Pflege der Eingänge dazu (Bereichsverantwortung, vier eingeschätzte Prioritätsfaktoren,
+          Ruhestandshorizonte) — nur die Admin-Rolle; der Server verlangt `users.manage`. */}
+      {role === "admin" ? <BereichsprofilPflege /> : null}
 
       {/* Consultant-System (Experten-Matching): Thema → Personen, die schon dazu beigetragen haben —
           als Hilfe „wen könnte man kurz um eine Einordnung bitten". Kein Ranking, keine Zahlen; die
@@ -327,7 +390,15 @@ export function Risk(): JSX.Element {
             <Card className="p-0">
               <div className="divide-y divide-hairline">
                 {sortGapsByPriority(items).map((g) => (
-                  <div key={g.id} className="flex items-center gap-3 px-4 py-2.5">
+                  <div
+                    key={g.id}
+                    data-testid="luecke-zeile"
+                    ref={g.id === zielLuecke ? zielZeile : undefined}
+                    aria-current={g.id === zielLuecke ? "true" : undefined}
+                    // Die Markierung hängt am `aria-current` selbst: EIN Merkmal trägt Bedeutung
+                    // und Darstellung, und die Klassenkette bleibt statisch lesbar.
+                    className="flex items-center gap-3 px-4 py-2.5 aria-[current=true]:ring-2 aria-[current=true]:ring-inset aria-[current=true]:ring-brand"
+                  >
                     <span
                       className={`shrink-0 rounded-pill px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase ${PRIORITY_TONE[priorityTone(g.priority)]}`}
                     >

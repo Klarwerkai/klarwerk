@@ -221,6 +221,12 @@ export interface ModellVerbrauch {
 export interface ModellAufrufSpur {
   gerufen: boolean;
   /**
+   * Ben Lauf 3 R1 N1: wie viele Modellaufrufe in diesem Lauf WIRKLICH ausgeführt wurden. `gerufen`
+   * allein verdeckt, dass von drei Aufrufen einer keinen Verbrauch gemeldet hat; erst der
+   * Vergleich mit `verbrauch.gemeldeteAufrufe` zeigt die Lücke. Fehlt, solange kein Aufruf lief.
+   */
+  aufrufe?: number;
+  /**
    * FEHLT, solange kein Aufruf dieses Laufs einen brauchbaren Verbrauch genannt hat. Das ist nicht
    * dasselbe wie `0`: `undefined` heißt „unbekannt", `0` wäre ein Messwert (s. `ModelRunVerbrauch`
    * in `services/model-runs/src/types.ts`).
@@ -334,6 +340,7 @@ function vermerkeModellAufruf(): void {
   if (spur) {
     spur.vorUebertragung?.();
     spur.gerufen = true;
+    spur.aufrufe = (spur.aufrufe ?? 0) + 1;
   }
 }
 

@@ -15,6 +15,7 @@
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { woerterbuchQuelleAus } from "../support/woerterbuchquelle";
 
 const WURZEL = resolve(import.meta.dirname, "../..");
 const lies = (pfad: string): string => readFileSync(join(WURZEL, pfad), "utf8");
@@ -109,8 +110,12 @@ describe("JOB 4328 · Zeuge (iv): der Graph wird über das Menü erreicht", () =
     expect(quelle, "das Wissensnetz wird nicht über das Menue erreicht").toContain(
       'inDenBereich("wissensnetz", "/wissensnetz")',
     );
-    expect(quelle, "der Menueausloeser fehlt").toContain('data-testid="kopfband-zahnrad"');
-    expect(quelle, "die Menuegruppe fehlt").toContain('data-testid="zahnrad-weitere-bereiche"');
+    // FE-002: der Auslöser ist seit dem 26.09.2026 „Arbeitsbereiche“ im Kopfband, die Liste steht
+    // darin offen — eine aufzuklappende Menügruppe gibt es nicht mehr.
+    expect(quelle, "der Menueausloeser fehlt").toContain('data-testid="kopfband-arbeitsbereiche"');
+    expect(quelle, "der alte Weg über das Zahnrad steht noch da").not.toContain(
+      'data-testid="zahnrad-weitere-bereiche"',
+    );
   });
 });
 
@@ -151,7 +156,8 @@ describe("JOB 4328 · Zeuge (v): Sichtbarkeit wird über innerText gelesen", () 
 
 describe("JOB 4328 · Zeuge (vi): der neue Katalogsatz nennt die Lieferzahl, nicht die Zeichnung", () => {
   it("die drei neuen Zeilen enthalten weder gezeichnet noch drawn noch getekend", () => {
-    const quelle = lies(KATALOG);
+    // I18N-AUFTEILUNG: der Katalog liegt je Sprache in `woerterbuch/`; gelesen wird er als EIN Text.
+    const quelle = woerterbuchQuelleAus(join(WURZEL, KATALOG));
     // Ueber den WERT und nicht ueber die Zeile: Biome bricht einen langen Satz hinter dem
     // Doppelpunkt um (`lineWidth: 100`), und eine zeilenweise Suche fand dann einen leeren Satz.
     const muster = /"graph\.kuratiertGeladen":\s*"((?:[^"\\]|\\.)*)"/g;

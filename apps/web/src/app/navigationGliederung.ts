@@ -56,7 +56,7 @@ export const OBERGRUPPEN: readonly Obergruppe[] = [
 /**
  * Jedes der 21 Navigationsziele in genau einer Obergruppe — abgeschrieben aus der Tabelle der
  * Vorlage, nicht erfunden (JOB 3503 hat „Meine Entwürfe" ergänzt; es arbeitet, wo erfasst wird):
- *   Arbeiten   Start, Fragen, Bibliothek, Erfassen, Meine Entwürfe, Meine Aufgaben, Themenkarte,
+ *   Arbeiten   Start, Fragen, Bibliothek, Erfassen, Meine Entwürfe, Offene Aufgaben, Themenkarte,
  *              Externes Wissen
  *   Qualität   Prüfen, Konflikte, Doppelungen, Risiken und Wissenslücken, Lebenszyklus
  *   Verwaltung alle Admin-Ziele (Einstellungen, Analytics & Audit, Auswertungen, Import,
@@ -180,14 +180,6 @@ export interface Direktziel {
    * und er ist das, was ein Vorlesewerkzeug nach dem Namen ausgibt.
    */
   kontext: string;
-  /**
-   * Die Route — eine KLEINE Zusatzangabe, nicht die Orientierung.
-   *
-   * Nur Ziele mit eigener Route tragen sie; ein Verwaltungsziel wohnt in einem Queryparameter von
-   * `/admin`, und den als „Adresse" hinzuschreiben wäre Lärm statt Auskunft. Wer die Routen kennt,
-   * behält damit seinen Wiedererkennungswert aus FE-FND-03, ohne dass er jemandem im Weg steht.
-   */
-  route?: string;
 }
 
 /** Nur der Namensnachschlag — die Palette reicht ihr `t` herein, damit hier kein Text wohnt. */
@@ -263,7 +255,6 @@ export function direktzugangZiele(t: Uebersetzer, role: Role, stufe2: boolean): 
           : suchNamenKeys(i).map((key) => t(key)),
       path: i.path,
       kontext: t(obergruppeTitleKey(gruppe)),
-      route: i.path,
     };
   });
 
@@ -278,7 +269,6 @@ export function direktzugangZiele(t: Uebersetzer, role: Role, stufe2: boolean): 
       suchtexte: [t("cmd.audit")],
       path: ANALYTICS_AUDIT_PATH,
       kontext: verwaltungsPfad(t, "berichte"),
-      route: ANALYTICS_AUDIT_PATH,
     });
   }
 

@@ -24,7 +24,7 @@
 //      ueber den Port `Ka6Einwilligungspruefer` das serverseitige Sitzungstor
 //      (`KlaraSessionService.pruefeExterneAusfuehrung`) und wertet allein dessen Antwort aus; eine
 //      zweite Auslegung der Regel an dieser Stelle waere genau der Fehler, den
-//      `ask-routes.ts:96-100` benennt. Ein Aufrufer kann die Einwilligung deshalb nicht mehr
+//      `ask-routes.ts:120-124` benennt. Ein Aufrufer kann die Einwilligung deshalb nicht mehr
 //      BEHAUPTEN: `ZurufEingabe` hat kein Feld dafuer, sondern nur die Bindung, mit der gefragt
 //      wird.
 //   2. VERTRAULICHES WIRD ABGESTREIFT, bevor irgendetwas nach draussen geht — mit `dropConfidential`
@@ -130,7 +130,7 @@ export interface ZurufBindung {
 /**
  * DER PORT ZUM SITZUNGSTOR — die Regel reist als Frage herein, nicht als Import.
  *
- * Strukturgleich zu `Ka4Freigabepruefer` (`services/app/src/routes/ask-routes.ts:124-129`) und
+ * Strukturgleich zu `Ka4Freigabepruefer` (`services/app/src/routes/ask-routes.ts:165-180`) und
  * ABSICHTLICH NICHT von dort importiert: `output` duerfte `app` nicht kennen. Modulgrenzen laufen
  * in diesem Haus nur ueber `index.ts`, und eine Kante `output -> app` gaebe es nicht —
  * `dependency-cruiser` verboete sie zu Recht. Dasselbe Muster hat JOB 3023 fuer
@@ -258,7 +258,7 @@ export class ZurufService {
     const freigabe = await this.einwilligungLiegtVor(eingabe.bindung);
     if (!freigabe) {
       // DERSELBE FESTE SATZ WIE BISHER, und kein Wort mehr: Der `grund` des Sitzungstors bleibt im
-      // Erzeuger. Dieselbe Metadata-only-Haltung wie `ask-routes.ts:145-149` — die Kennungen sind
+      // Erzeuger. Dieselbe Metadata-only-Haltung wie `ask-routes.ts:196-198` — die Kennungen sind
       // opak, und eine Meldung, die sie oder ihren Ablehnungsgrund weiterreichte, waere eine
       // Verknuepfungsspur ueber Dokumente hinweg.
       throw new ZurufError(
@@ -368,7 +368,7 @@ export class ZurufService {
       return { anbieter, modell };
     } catch {
       // Fremde/abgelaufene/geschlossene Sitzung wirft (NOT_FOUND/CONFLICT). Das ist eine Absage,
-      // kein Serverfehler — genau wie bei `ka4Freigabe` (`ask-routes.ts:183-188`).
+      // kein Serverfehler — genau wie bei `ka4Freigabe` (`ask-routes.ts:233-238`).
       return null;
     }
   }

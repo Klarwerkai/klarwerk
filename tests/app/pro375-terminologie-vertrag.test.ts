@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { alleSprachbestaende } from "../support/i18nBestand";
+import { panelQuelleAus } from "../support/panelquelle";
 
 // AUFTRAG-PRO-375 · Terminologie-Vertrag „On-Premise Enterprise AI" (Terminologie V1 §1).
 //
@@ -29,9 +29,8 @@ import { alleSprachbestaende } from "../support/i18nBestand";
 
 const BEGRIFF = "On-Premise Enterprise AI";
 
-const addinSrc = readFileSync(
+const addinSrc = panelQuelleAus(
   fileURLToPath(new URL("../../apps/web/public/word-addin/taskpane.html", import.meta.url)),
-  "utf8",
 );
 
 // Der Textschnitt bleibt für das Word-Add-in (`taskpane.html` trägt ein reines `var STRINGS = {…}`

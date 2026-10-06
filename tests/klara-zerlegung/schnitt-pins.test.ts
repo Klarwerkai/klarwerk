@@ -24,7 +24,14 @@ const FLAECHEN = ["tests", "services", "apps"];
 /** Diese Datei selbst: sie nennt alle Suchbegriffe als Daten und würde sich sonst einsammeln. */
 const SELBST = join("tests", "klara-zerlegung", "schnitt-pins.test.ts");
 
-type Griff = "pfad" | "zusammengesetzt" | "rueckweg" | "marken" | "fixture" | "werkzeug";
+type Griff =
+  | "pfad"
+  | "zusammengesetzt"
+  | "rueckweg"
+  | "marken"
+  | "fixture"
+  | "werkzeug"
+  | "panelquelle";
 
 /**
  * Die Griffe, mit denen eine Datei am ausgelieferten Fenster hängt — seit JOB 3667 R8 sind das
@@ -104,6 +111,16 @@ const GRIFFE: Array<{
     positiv: join("tests", "klara-zerlegung", "probeschnitt.test.ts"),
     gegenprobe: join("tests", "app", "w1-klara-lifecycle-taskpane.test.tsx"),
   },
+  {
+    // AUFNAHME 20260922 · R-1611 (der echte Schnitt): das Fenster liegt in DREI Dateien, und wer es
+    // als EIN Dokument liest, liest es über `tests/support/panelquelle.ts`. Ohne diesen Griff fiele
+    // genau die Abhängigkeit aus dem Verzeichnis, an der seit dem Schnitt fast alle Mitfahrer hängen.
+    kennung: "panelquelle",
+    muster: /from "[^"]*support\/panelquelle"/,
+    zweck: "Das Fenster wird über `panelQuelle*` als EIN Dokument aus den drei Dateien gelesen.",
+    positiv: join("tests", "app", "klara-panel-fixture.ts"),
+    gegenprobe: join("tests", "app", "contrast-tokens-d5.test.ts"),
+  },
 ];
 
 // ------------------------------------------------------------------------------------------------
@@ -120,13 +137,15 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   // hängt an `createKlaraPanel` und nennt den ausgelieferten Pfad im Kopf; die Wörterbuchprobe
   // liest die Datei direkt. A2 hat beide gemeldet, das Verzeichnis nimmt sie nicht still auf.
   "tests/addin-bildbilanz/bildbilanz-im-panel.test.ts": "pfad,fixture",
-  "tests/addin-bildbilanz/bildbilanz-woerterbuch.test.ts": "pfad",
+  "tests/addin-bildbilanz/bildbilanz-woerterbuch.test.ts": "pfad,panelquelle",
   // JOB 3281 (WORD-VERGLEICH): der Vertragsblock liest die ausgelieferte Datei und schneidet sie
   // entlang der Marke KW-WORDVERGLEICH; die drei ausführenden Prüfungen und ihre Bühne hängen an
   // `createKlaraPanel`. A2 hat alle fünf gemeldet, das Verzeichnis nimmt sie nicht still auf.
-  "tests/app/word-addin-wortvergleich.test.ts": "pfad,zusammengesetzt,marken",
+  "tests/app/word-addin-wortvergleich.test.ts": "pfad,zusammengesetzt,marken,panelquelle",
   "tests/word-vergleich/absatzvergleich-mounted.test.ts": "fixture",
-  "tests/word-vergleich/merkliste-und-ruecknahme.test.ts": "fixture",
+  // R-1611: der Quelltext-Wächter (JOB 3892) liest das Fenster seit dem Schnitt über
+  // `panelQuelleAus(TASKPANE_PATH)` — der Pfad kommt weiter aus der Fixture.
+  "tests/word-vergleich/merkliste-und-ruecknahme.test.ts": "fixture,panelquelle",
   "tests/word-vergleich/vorkommen-und-fremdfarben.test.ts": "fixture",
   // Runde 3: zwei Laeufe, die sich ueberholen, und der verzoegerte Schreib-`sync`. Haengt wie die
   // drei darueber an `createKlaraPanel` (`fixture`) und nennt zusaetzlich den ausgelieferten Pfad
@@ -135,66 +154,84 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   "tests/word-vergleich/zwei-laeufe-und-spaete-antworten.test.ts": "pfad,fixture",
   "tests/word-vergleich/word-buehne.ts": "pfad,fixture",
   // N11b: Versandmessung liest das Word-Fenster und führt den W6-Block entlang seiner Marke aus.
-  "tests/n11b-zustimmung-macht-intern/einstiege.test.ts": "pfad,marken",
+  "tests/n11b-zustimmung-macht-intern/einstiege.test.ts": "pfad,marken,panelquelle",
   "tests/app/csp-upgrade-insecure-requests.test.ts": "pfad",
-  "tests/app/g24-ki-kennzeichnung-laufzeitpruefung.test.ts": "pfad,marken",
+  "tests/app/g24-ki-kennzeichnung-laufzeitpruefung.test.ts": "pfad,marken,panelquelle",
   // JOB 3667 R8: laedt die GANZE Seite in ein jsdom mit `runScripts` und ersetzt den Verweis auf
   // `rueckweg.js` durch dessen Inhalt — ohne das bliebe das zweite Skript stumm.
-  "tests/app/job2551-bildverlust-satz-mounted.test.ts": "pfad,rueckweg",
-  "tests/app/job2613-word-bilder-budget.test.ts": "pfad",
-  "tests/app/job2621-panel-wahrheiten.test.ts": "pfad,fixture",
+  "tests/app/job2551-bildverlust-satz-mounted.test.ts": "pfad,rueckweg,panelquelle",
+  "tests/app/job2613-word-bilder-budget.test.ts": "pfad,panelquelle",
+  "tests/app/job2621-panel-wahrheiten.test.ts": "pfad,fixture,panelquelle",
   "tests/app/job2703-ask-trefferliste-und-panel.test.tsx": "fixture",
-  "tests/app/job2703-d3-addin-paritaet.test.ts": "pfad,fixture",
+  "tests/app/job2703-d3-addin-paritaet.test.ts": "pfad,fixture,panelquelle",
   "tests/app/job2923-station1-beweislauf.test.tsx": "fixture",
   // BEN, Korrekturpflicht 3: In Runde 1 fehlte diese Datei. Sie liest `taskpane.html` direkt, baut
   // den Pfad aber aus Segmenten — der Griff `pfad` sah sie deshalb nicht.
-  "tests/app/k1-word-addin-origin-panel.test.ts": "zusammengesetzt",
-  "tests/app/ka2-vertrag-bestandsblick.test.ts": "pfad",
-  "tests/app/ka3-fokusverhalten.test.tsx": "pfad,rueckweg,marken",
-  "tests/app/klara-ai-header.test.ts": "pfad,marken",
-  "tests/app/klara-ai-session-consent.test.ts": "pfad,marken",
+  "tests/app/k1-word-addin-origin-panel.test.ts": "zusammengesetzt,panelquelle",
+  "tests/app/ka2-vertrag-bestandsblick.test.ts": "pfad,panelquelle",
+  "tests/app/ka3-fokusverhalten.test.tsx": "pfad,rueckweg,marken,panelquelle",
+  // AUFNAHME 20260922 · GESAMT-BESTANDSBLICK: der Wirkungsnachweis, dass der Bestandsblick mit dem
+  // aktuellen Dokument fragt. Er laedt das GANZE Fenster (rueckweg.js und das ueber `panelQuelleAus`
+  // zusammengefuegte Dokument) und nennt Taskpane und Rueckweg ueber ihr Pfadliteral — Griffe
+  // `pfad`, `rueckweg` und `panelquelle`, keine Marken, keine Fixture. A2b haelt den Eintrag fest.
+  "tests/app/ka3-bestandsblick-aktueller-stand.test.tsx": "pfad,rueckweg,panelquelle",
+  // Integration mit `main` (Nacharbeit 13): zwei Dateien aus `main` (Verwaltungsbereiche 8d9ff6b2 /
+  // Suchraum 22d6b201), die das Pfadliteral von `taskpane.html` tragen. `aufrufer-waechter` nennt
+  // es in einer Begründung, `bedarfsabgleich` liest die Datei. GEMESSEN, NICHT GESETZT: A2 meldete
+  // genau diese zwei Pfade als `neu im Baum, aber nicht gepinnt`; Griff `pfad`, kein anderes Muster.
+  "tests/capture/aufrufer-waechter.test.ts": "pfad",
+  "tests/k3-bedarfsabgleich/bedarfsabgleich.test.ts": "pfad",
+  "tests/app/klara-ai-header.test.ts": "pfad,marken,panelquelle",
+  "tests/app/klara-ai-session-consent.test.ts": "pfad,marken,panelquelle",
   // Der wichtigste Mitfahrer überhaupt: die Fixture selbst schneidet Rumpf und Skript aus der
   // Datei (`splitTaskpane`). Bricht sie, brechen alle acht Dateien mit dem Griff `fixture` mit.
-  "tests/app/klara-panel-fixture.ts": "pfad,rueckweg",
+  // R-1611: und seit dem Drei-Datei-Schnitt liest sie das Fenster über `panelQuelleAus`.
+  "tests/app/klara-panel-fixture.ts": "pfad,rueckweg,panelquelle",
   // JOB 3062 · H3: nennt den Pfad in einem KOMMENTAR — beide Dateien grenzen ihre eigene Fläche
   // gegen das Aufgabenfenster ab, keine liest es. Genau der „billige Fehlalarm", den der Griff
   // `pfad` bewusst in Kauf nimmt (siehe seinen `zweck`): lieber hier gepinnt als übersehen.
   "tests/app/klara-regressionsinventar.test.ts": "pfad",
-  "tests/app/klara-session-consent-ui.test.ts": "pfad,marken",
-  "tests/app/mega34-word-einstufung.test.ts": "pfad",
+  "tests/app/klara-session-consent-ui.test.ts": "pfad,marken,panelquelle",
+  "tests/app/mega34-word-einstufung.test.ts": "pfad,panelquelle",
   // JOB 3667 R8: die drei Word-Ausgabewege starten das Fenster aus der Quelle und fuehren seither
   // BEIDE Skripte aus — sonst fehlt `rwZeichnen` und der erste `renderCapture` bricht ab.
-  "tests/app/mega35-word-ausgabe-entsteht-beim-ausgeben.test.tsx": "pfad,rueckweg",
-  "tests/app/mega36-word-ausgaenge.test.tsx": "pfad,rueckweg",
-  "tests/app/mega38-word-ziehweg.test.tsx": "pfad,rueckweg",
-  "tests/app/mega43-klara-werkbank-palette.test.ts": "pfad",
-  "tests/app/mega45-word-textrueckfall.test.ts": "pfad",
-  "tests/app/mega52-vertrauenswert-sammler.test.ts": "pfad,zusammengesetzt",
+  "tests/app/mega35-word-ausgabe-entsteht-beim-ausgeben.test.tsx": "pfad,rueckweg,panelquelle",
+  "tests/app/mega36-word-ausgaenge.test.tsx": "pfad,rueckweg,panelquelle",
+  "tests/app/mega38-word-ziehweg.test.tsx": "pfad,rueckweg,panelquelle",
+  "tests/app/mega43-klara-werkbank-palette.test.ts": "pfad,panelquelle",
+  "tests/app/mega45-word-textrueckfall.test.ts": "pfad,panelquelle",
+  "tests/app/mega52-vertrauenswert-sammler.test.ts": "pfad,zusammengesetzt,panelquelle",
   "tests/app/mega69-klara-auslieferung.test.ts": "pfad,zusammengesetzt",
-  "tests/app/mega69-klara-merkmale.test.ts": "pfad,zusammengesetzt,rueckweg",
+  "tests/app/mega69-klara-merkmale.test.ts": "pfad,zusammengesetzt,rueckweg,panelquelle",
   // Der Inhalts-Pin des Aufgabenfensters — er wird bei JEDER Änderung an der Datei rot und muss
   // vom Ändernden nachgeführt werden. Ein Schnitt trifft ihn als Ersten.
-  "tests/app/mega69-klara-waechter.test.ts": "pfad,zusammengesetzt,rueckweg,marken",
+  // R-1611: seit dem Drei-Datei-Schnitt hasht er das zusammengefügte Fenster — der Pin blieb stehen.
+  "tests/app/mega69-klara-waechter.test.ts": "pfad,zusammengesetzt,rueckweg,marken,panelquelle",
   // Legt ein Temp-`dist` mit `word-addin/taskpane.html` an. Nach einem Schnitt müsste es die
   // Geschwisterdateien mitschreiben, sonst prüft es eine Seite, die es so nicht mehr gibt.
   "tests/app/mega71-onsend-synchron.test.ts": "zusammengesetzt",
-  "tests/app/mega74-klara-bilder.test.ts": "pfad,marken",
-  "tests/app/mega75-klara-ki-status.test.ts": "pfad,marken",
-  "tests/app/mega77-klara-wortlaut-und-frist.test.ts": "pfad,marken",
-  "tests/app/mega79-klara-antwort-ohne-modell.test.ts": "pfad,marken",
-  "tests/app/mega81-ki-kennzeichnung-am-verhalten.test.ts": "pfad,marken",
-  "tests/app/pro375-terminologie-vertrag.test.ts": "pfad",
+  "tests/app/mega74-klara-bilder.test.ts": "pfad,marken,panelquelle",
+  "tests/app/mega75-klara-ki-status.test.ts": "pfad,marken,panelquelle",
+  "tests/app/mega77-klara-wortlaut-und-frist.test.ts": "pfad,marken,panelquelle",
+  "tests/app/mega79-klara-antwort-ohne-modell.test.ts": "pfad,marken,panelquelle",
+  "tests/app/mega81-ki-kennzeichnung-am-verhalten.test.ts": "pfad,marken,panelquelle",
+  "tests/app/pro375-terminologie-vertrag.test.ts": "pfad,panelquelle",
   // JOB 3667 R8: sie ist die Gegenprobe der fuenf uebrigen Griffe UND seit dieser Runde selbst ein
   // Mitfahrer des Schnitts — sie laedt das ganze Fenster aus der Quelle und braucht beide Skripte.
   // Deshalb hat der Griff `rueckweg` eine andere Gegenprobe (`contrast-tokens-d5.test.ts`).
-  "tests/app/w1-klara-lifecycle-taskpane.test.tsx": "pfad,rueckweg",
-  "tests/app/w1-klara-vertrauenskopf.test.ts": "pfad,marken",
-  "tests/app/w6-dublettenweg-checktext.test.ts": "pfad,marken",
-  "tests/app/word-addin-ask.test.ts": "pfad,rueckweg,marken",
-  "tests/app/word-addin-csp.test.ts": "pfad",
+  "tests/app/w1-klara-lifecycle-taskpane.test.tsx": "pfad,rueckweg,panelquelle",
+  "tests/app/w1-klara-vertrauenskopf.test.ts": "pfad,marken,panelquelle",
+  "tests/app/w6-dublettenweg-checktext.test.ts": "pfad,marken,panelquelle",
+  "tests/app/word-addin-ask.test.ts": "pfad,rueckweg,marken,panelquelle",
+  // Word-Host-Gesamtweg (Nacharbeit 6/7, Realhostbeleg 06.10.2026): die Gegenproben zum
+  // Auswahlzugriff (W1–W9) fahren das ganze Fenster über `createKlaraPanel`. In Nacharbeit 6 standen
+  // sie in `word-addin-ask.test.ts` (dort GEMESSEN grün, Kandidat 26e86268); umgezogen, weil jene
+  // Datei einen fremden, unveränderten Quelltext-Pin rot trägt. Griff abgelesen, nicht gemessen.
+  "tests/app/word-addin-auswahlzugriff.test.ts": "fixture",
+  "tests/app/word-addin-csp.test.ts": "pfad,panelquelle",
   "tests/app/word-addin-taskpane-cache.test.ts": "pfad",
-  "tests/app/word-addin-taskpane-version-contract.test.ts": "zusammengesetzt,marken",
-  "tests/app/word-addin.test.ts": "pfad,marken,fixture",
+  "tests/app/word-addin-taskpane-version-contract.test.ts": "zusammengesetzt,marken,panelquelle",
+  "tests/app/word-addin.test.ts": "pfad,marken,fixture,panelquelle",
   // JOB 3004 (Nachzug): der Chromium-Vergleich der Antwortkarte gegen das Zielbild „Main“ liest
   // die AUSGELIEFERTE Datei aus `apps/web/dist/word-addin/taskpane.html` (Pfadliteral) und laedt
   // sie in Chromium — nach einem Schnitt muesste dist die Geschwisterdateien mitfuehren, sonst
@@ -216,6 +253,12 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   // einem Schnitt haengt sie an der Fixture. A2 hat die Datei gemeldet (`+ "tests/n1-bestand-im-
   // panel/bestand-im-panel-mounted.test.ts"`), das Verzeichnis hat sie nicht still aufgenommen.
   "tests/n1-bestand-im-panel/bestand-im-panel-mounted.test.ts": "fixture",
+  // AUFNAHME 20260922 · P-M3b (Prüfstand-Wortlaut): misst das Wort am Treffer im Web UND im
+  // ausgelieferten Aufgabenfenster gegen dieselbe Tabelle. Die Word-Hälfte fährt über
+  // `createKlaraPanel` — Griff `fixture`, kein Pfadliteral, keine Marken. A2 hat die Datei im
+  // Server-Gesamtcheck gemeldet (`neu im Baum, aber nicht gepinnt`), das Verzeichnis nimmt sie
+  // nicht still auf.
+  "tests/erfassungs-konfliktpruefung/pruefstand-wortlaut.test.tsx": "fixture",
   // JOB 3243 M3c-UI (08.09.2026): der Quellenfund am ausgelieferten Aufgabenfenster. Dieselbe
   // Technik wie die Zeile darueber (`createKlaraPanel` mit gefaktem `/api/check-text`) — Griff
   // `fixture`; dazu nennt ihr Kopfkommentar `apps/web/public/word-addin/taskpane.html` als das
@@ -229,7 +272,7 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   // baut kein Panel, sondern reicht den abgesetzten Rumpf an `buildApp(buildServices())` weiter.
   // A2 hat sie gemeldet (erst als `neu`, dann mit `+ marken`), das Verzeichnis hat sie nicht still
   // aufgenommen.
-  "tests/m3-dokumentweg-panel/w6-anschluss-echte-route.test.ts": "pfad,marken",
+  "tests/m3-dokumentweg-panel/w6-anschluss-echte-route.test.ts": "pfad,marken,panelquelle",
   // JOB 3062 · H3: die Chromium-Messung des WEB-Blattes `/erfassen`. Sie nennt das Aufgabenfenster
   // nur, um sich davon ABZUGRENZEN (die beiden `zielbild-wissen-erfassen*`-Prüfungen messen
   // taskpane.html, nicht die Web-Seite) — Kommentartreffer des Griffs `pfad`, kein echter Mitfahrer.
@@ -256,7 +299,7 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   // die drei Laufzeittests (Sitzungslagen, Abmelden verwirft, Fussnoten-Zuordnung) importieren
   // die Vorrichtung und nennen die Datei im Kopfkommentar — Griff `pfad`. A2 hat alle vier
   // gemeldet, das Verzeichnis hat sie nicht still aufgenommen.
-  "tests/app/k1-panel-lauf.tsx": "pfad,fixture",
+  "tests/app/k1-panel-lauf.tsx": "pfad,fixture,panelquelle",
   // JOB 3092 S6: die belegte Antwort (Herkunft/Ungeprueft, ueber k1-panel-lauf; nennt den Pfad im
   // Kopf) und die Dublettenpruefung vor dem Einreichen (ueber die Panel-Fixture).
   "tests/s6-belegte-antwort/herkunft-an-der-antwort.test.tsx": "pfad",
@@ -270,17 +313,17 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   "tests/app/k1-abgelaufene-aufloesung.test.tsx": "pfad",
   // JOB 3056 Nachzug-Runde 1: der abgesendete Ask-Koerper (KA5-Faelle A/C/D), dieselbe Vorrichtung;
   // liest zusaetzlich den Deckel WORD_ADDIN_ASK_MAX_CHARS aus der Datei — Griff `pfad`.
-  "tests/app/k1-ask-koerper-markierung.test.tsx": "pfad",
+  "tests/app/k1-ask-koerper-markierung.test.tsx": "pfad,panelquelle",
   // JOB 3091 M2 (06.09.2026): das Memo aus der Quelle am vollstaendigen Aufgabenfenster (Bauform
   // word-addin-ask.test.ts): laedt die Datei ueber den Pfad und liest die Memo-Schluessel aus
   // KA6_MEMO_TEXTE — Griff `pfad`. A2 hat sie gemeldet, das Verzeichnis hat sie nicht still aufgenommen.
-  "tests/ka6-memo-panel/memo-panel-mounted.test.ts": "pfad,rueckweg",
+  "tests/ka6-memo-panel/memo-panel-mounted.test.ts": "pfad,rueckweg,panelquelle",
   // JOB 3056 Runde 3: zwei der alten Namen leben als ABLOESUNGS-WAECHTER weiter — sie lesen die
   // Datei ueber Segmente (Griff `zusammengesetzt`) und pinnen, dass Fusszeile, „Neue Frage",
   // Leitsatz und Ladekarte nicht zurueckkommen; zugleich halten sie die Verweise des Werkzeugs
   // tools/design-vergleich/werte.ts (nicht Zielpfad) aufloesbar. A2 hat beide gemeldet.
-  "tests/design/zielbild-klara-main.test.ts": "zusammengesetzt",
-  "tests/design/zielbild-pruefunglaeuft.test.ts": "zusammengesetzt",
+  "tests/design/zielbild-klara-main.test.ts": "zusammengesetzt,panelquelle",
+  "tests/design/zielbild-pruefunglaeuft.test.ts": "zusammengesetzt,panelquelle",
   "tests/design/zielbild-k1-kein-erklaertext.test.ts": "pfad",
   "tests/design/zielbild-wissen-erfassen-einmal.test.ts": "pfad,fixture",
   // JOB 3057 K2 (05.09.2026): `zielbild-wissen-erfassen.test.ts` (Wertevergleich gegen das Zielbild
@@ -290,15 +333,17 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   // Funktionsinventar (Panel-Fixture). Der Textmesser `zielbild-k2-kein-erklaertext.test.ts` haengt
   // NUR ueber die Buehne an der Datei (kein eigener Griff) und steht deshalb bewusst nicht hier.
   // A2 hat die Dateien gemeldet, das Verzeichnis hat sie nicht still aufgenommen.
-  "tests/design/k2-buehne.ts": "pfad,rueckweg",
+  // R-1611: die Bühne liefert das Fenster als EIN Dokument aus (`panelQuelleAus`), weil ihre
+  // Kalibrierungen es im Speicher verfälschen.
+  "tests/design/k2-buehne.ts": "pfad,rueckweg,panelquelle",
   "tests/design/k2-funktionsinventar.test.ts": "fixture",
   "tests/design/zielbild-k2-erfassen.test.ts": "pfad",
-  "tests/i18n/mega35-word-wortliste.test.ts": "pfad",
+  "tests/i18n/mega35-word-wortliste.test.ts": "pfad,panelquelle",
   // JOB 3033 D2 (03.09.2026): der Vertrag der KA4-Freischaltung. Sein Fall S4 liest
   // `taskpane.html` als Pfadliteral und haelt fest, dass dessen Satz „immer ohne KI-Modell" und
   // ein freigeschalteter externer Antwortweg nicht gleichzeitig bestehen koennen. Ein Schnitt
   // trifft ihn: wandert der Satz in eine Geschwisterdatei, liest S4 ins Leere. Griff `pfad`.
-  "tests/ka4-freischaltung/ka4-einwilligung-wirkt.test.ts": "pfad",
+  "tests/ka4-freischaltung/ka4-einwilligung-wirkt.test.ts": "pfad,panelquelle",
   // JOB 3079 RUNDE 2 (05.09.2026): die Ende-zu-Ende-Gegenprobe der Freischaltung. Sie ist ein
   // Mitfahrer mit ZWEI Griffen, und beide sind wesentlich: sie liest `taskpane.html` als
   // Pfadliteral (`pfad`) UND schneidet vier Bloecke daraus heraus, um sie auszufuehren (`marken`) —
@@ -306,7 +351,7 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   // `KW-KLARA-AI-NOTICE-*` und `KW-KLARA-ASK-FETCH-*`. Wer eine dieser Marken verschiebt oder
   // umbenennt, macht diesen Test rot statt still blind: er ist fail-closed gebaut. Runde 1 stand
   // hier noch nicht — sie hat die Flaeche gar nicht gemessen, und genau das war BENs Befund.
-  "tests/klara-freigabe/v2-einwilligung-ende-zu-ende.test.ts": "pfad,marken",
+  "tests/klara-freigabe/v2-einwilligung-ende-zu-ende.test.ts": "pfad,marken,panelquelle",
   // JOB 3019 D1 (KA5) hatte hier `ka5-markierung-reist-mit.test.tsx` (unter tests/klara-panel) als
   // Mitfahrer (Pfadliteral, `splitTaskpane`). JOB 3056 K1 (Rebase, 05.09.2026): DIE DATEI IST
   // GELOESCHT — sie mass die Vier-Lagen-Herkunftszeile, die mit dem Ruhe-Umbau selbst entfallen ist
@@ -331,25 +376,31 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   "tests/k2b-nebenlauf/zweiter-klick-und-spaeter-abruf.test.ts": "pfad,fixture",
   // JOB 3094 (KA7): die Konfliktkarte — Pfadliteral im Kopfkommentar, Klara-Panel-Fixture.
   "tests/ka7-konflikt-im-panel/konfliktkarte-mounted.test.ts": "pfad,fixture",
-  "tests/klara-panel/p7-office-erkennung-am-fenster.test.tsx": "pfad,fixture",
+  "tests/klara-panel/p7-office-erkennung-am-fenster.test.tsx": "pfad,fixture,panelquelle",
   // Die Messgeräte dieses Auftrags. Sie hängen genauso an der Datei wie alle anderen — nur messen
   // sie ausdrücklich ihre Struktur und nicht ihr Fachverhalten.
+  // R-1611 (der echte Schnitt): `probeschnitt` vergleicht vorher/nachher und nennt dafür den Pfad,
+  // `schnitt-echt` belegt die Byte-Gleichheit; `schnittflaechen` misst die drei ausgelieferten
+  // Dateien und nennt `rueckweg.js` nicht mehr selbst (es kommt über `rueckwegQuelle()`).
   "tests/klara-zerlegung/marken-skelett.test.ts": "zusammengesetzt,marken,werkzeug",
   "tests/klara-zerlegung/panel-lauf.ts": "pfad",
-  "tests/klara-zerlegung/probeschnitt.test.ts": "werkzeug",
-  "tests/klara-zerlegung/schnittflaechen.test.ts": "pfad,rueckweg,werkzeug",
-  "tests/klara-zerlegung/zerlegung.ts": "pfad,rueckweg",
+  "tests/klara-zerlegung/probeschnitt.test.ts": "pfad,werkzeug,panelquelle",
+  "tests/klara-zerlegung/schnitt-echt.test.ts": "pfad,werkzeug,panelquelle",
+  "tests/klara-zerlegung/schnittflaechen.test.ts": "pfad,werkzeug",
+  "tests/klara-zerlegung/zerlegung.ts": "pfad,rueckweg,panelquelle",
   // BEN, Korrekturpflicht 3: In Runde 1 fehlte auch diese Datei. Sie liest `taskpane.html` an drei
   // Stellen über `ADDIN` — ebenfalls ein zusammengesetzter Pfad.
-  "tests/legal/mega61-ki-satz.test.ts": "zusammengesetzt",
+  "tests/legal/mega61-ki-satz.test.ts": "zusammengesetzt,panelquelle",
   // Kein Griff im engeren Sinn: die Testwurzel-Hilfe nennt den Pfad nur in ihrem Beispiel. Sie
   // steht hier, weil der Griff `pfad` bewusst textbreit ist — s. seine Beschreibung.
   "tests/support/repoPfad.ts": "pfad",
+  // R-1611: die Hilfe selbst — sie liest die drei Dateien und fügt sie zum Fenster zusammen.
+  "tests/support/panelquelle.ts": "pfad",
   // JOB 3096 M5 (07.09.2026): das Bild aus dem Bestand am vollstaendigen Aufgabenfenster (Bauform
   // memo-panel-mounted / word-addin-ask.test.ts): laedt die Datei ueber den Pfad und liest die
   // Schluessel aus M5_BILD_TEXTE — Griff `pfad`. A2 hat sie gemeldet, das Verzeichnis hat sie nicht
   // still aufgenommen.
-  "tests/m5-bild-im-panel/bild-vorschlag-mounted.test.ts": "pfad,rueckweg",
+  "tests/m5-bild-im-panel/bild-vorschlag-mounted.test.ts": "pfad,rueckweg,panelquelle",
   // JOB 3278 CHR-01 (08.09.2026): der Gestaltungsvertrag der Chrome-Seitenleiste. Auftrag §5.2
   // verlangt „Kopfzeile wie Klara in Word" — und zwar geprüft, nicht behauptet. Die Datei liest
   // `taskpane.html` deshalb über ihr Pfadliteral (Zeile 44) und hält dessen INHALT gegen
@@ -360,7 +411,7 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   // abdriften — genau der Befund, mit dem Pedi diesen Auftrag ausgelöst hat. Griff `pfad`; Marken
   // schneidet sie keine, die Panel-Fixture importiert sie nicht. A2 hat sie gemeldet, das
   // Verzeichnis nimmt sie nicht still auf.
-  "tests/klara-browser/seitenleiste.test.ts": "pfad",
+  "tests/klara-browser/seitenleiste.test.ts": "pfad,panelquelle",
   // JOB 3366 KI-FRAGMENT-SICHTBAR (09.09.2026): der Fragment-Hinweis im Panel wird am GELADENEN
   // Fenster gemessen — die Datei liest `taskpane.html` über ihr Pfadliteral, schneidet daraus
   // Markup und Inline-Skript und führt beides aus. Ein echter Mitfahrer: wandert das Skript bei
@@ -368,7 +419,13 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   // still grün. Griff `pfad`; KW-Marken schneidet sie keine (sie nimmt das ganze Skript), die
   // Panel-Fixture importiert sie nicht. A2 hat sie gemeldet, das Verzeichnis nimmt sie nicht
   // still auf.
-  "tests/ki-fragment-sichtbar/flaeche-klara-panel.test.ts": "pfad,rueckweg",
+  "tests/ki-fragment-sichtbar/flaeche-klara-panel.test.ts": "pfad,rueckweg,panelquelle",
+  // AUFNAHME 20260922 · GESAMT-VERTRAULICHKEIT-ERFASSUNG (R-0632/N11): die Stufenwahl im Panel bis
+  // zum gespeicherten Entwurf. Sie baut das GANZE Fenster in jsdom (Pfadliteral `taskpane.html`,
+  // gelesen über `panelQuelleAus`), lädt `rueckweg.js` davor und führt das Skript unverändert aus —
+  // ein echter Mitfahrer mit drei Griffen. A2 hat sie nach der Integration mit main 38508a1e
+  // gemeldet (Prüflauf zu 83c9a4b8).
+  "tests/vertraulichkeit-pflicht/word-panel-stufenwahl.test.tsx": "pfad,rueckweg,panelquelle",
   // JOB 3512 DEMO-FIRMEN-CI VERBRAUCHER (10.09.2026): die Firmen-CI in Klara/Word. Zwei echte
   // Mitfahrer, mit zwei verschiedenen Griffen — und beide GEMESSEN, nicht gesetzt:
   //   · `marke-quelle.test.ts` nennt `apps/web/public/word-addin/taskpane.html` als Literal
@@ -383,8 +440,8 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   // Der dritte Fall des Auftrags (`panel-marke.test.ts`, die Chrome-Leiste) greift `taskpane.html`
   // gar nicht an und steht deshalb bewusst NICHT hier.
   // A2 hat beide gemeldet, das Verzeichnis nimmt sie nicht still auf.
-  "tests/demo-firmen-ci-verbraucher/marke-quelle.test.ts": "pfad",
-  "tests/demo-firmen-ci-verbraucher/word-marke.test.ts": "zusammengesetzt",
+  "tests/demo-firmen-ci-verbraucher/marke-quelle.test.ts": "pfad,panelquelle",
+  "tests/demo-firmen-ci-verbraucher/word-marke.test.ts": "zusammengesetzt,panelquelle",
   // JOB 3818 (13.09.2026): der Wächter über den sicheren Kontext der Chromium-Bühnen unter
   // `tests/design/`. Er greift `taskpane.html` NICHT an — er nennt das Pfadliteral zweimal als
   // BEGRÜNDUNG in seinem Bühnenregister: `tests/design/k1-messung.ts` und
@@ -441,6 +498,10 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   "tests/office-web-anmeldung/uebergabe-keine-auskunft.test.ts": "pfad",
   "tests/office-web-anmeldung/uebergabe-ohne-cookie.test.ts": "pfad",
   "tests/office-web-anmeldung/uebergabe-vertrag.test.ts": "pfad",
+  // Aufnahme m365-anmeldung Runde 2 (25.09.2026, R-0355-Restfall SSO): liest die ausgelieferte
+  // Dialogseite (`word-addin/anmeldung.html`) und prüft ihren SSO-Start — Griff `pfad`. A2 hat sie
+  // gemeldet („neu im Baum, aber nicht gepinnt"), erst danach wurde diese Zeile angefasst.
+  "tests/office-web-anmeldung/sso-rueckweg-zur-dialogseite.test.ts": "pfad",
   // JOB 3667 WORD-RÜCKWEG (14.09.2026): der Rückweg aus Word auf DASSELBE Wissensobjekt wohnt im
   // Inline-Skript von `taskpane.html` (Block KW-RUECKWEG). Drei seiner Prüfstände greifen die Datei
   // an, mit drei verschiedenen Griffen — GEMESSEN an denselben Mustern, die dieser Fall benutzt,
@@ -476,7 +537,8 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   // diese Zahl steht in `rueckweg.js` (`RW_ROUTE_BODY_LIMIT_BYTES`). Die Abnahme liest sie dort und
   // misst sie danach an der echten Route nach (A0d) — sie hängt also ab sofort auch an der zweiten
   // ausgelieferten Datei. Ohne diesen Eintrag verschwiege das Verzeichnis eine echte Abhängigkeit.
-  "tests/office-pg-abnahme/echte-worddatei-am-rueckweg.test.ts": "pfad,rueckweg,fixture",
+  "tests/office-pg-abnahme/echte-worddatei-am-rueckweg.test.ts":
+    "pfad,rueckweg,fixture,panelquelle",
   // JOB 4329 WORD-RUECKWEG (17.09.2026): die gemessene Web-Hälfte des Bildrückwegs. Alle vier
   // Dateien hängen an `rueckweg.js` und an NICHTS SONST — sie bilden die Nutzlast `rwLadung`
   // (`apps/web/public/word-addin/rueckweg.js:606-614`) nach und pinnen sie gegen die ausgelieferte
@@ -503,7 +565,33 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   // und prüft `APP_VERSION` im gestempelten Panel — Griff `zusammengesetzt`.
   // GEMESSEN, NICHT GESETZT: `tools/test tests/klara-zerlegung/schnitt-pins` meldete A2 `neu im
   // Baum, aber nicht gepinnt — Verzeichnis nachfuehren` mit genau diesem Pfad und diesem Griff.
-  "tests/deploy-health-commit/eine-programmversion.test.ts": "zusammengesetzt",
+  // R-1611: der Stempel steht seitdem in `taskpane.js`; der Fall baut die drei Dateien nach `dist`.
+  "tests/deploy-health-commit/eine-programmversion.test.ts": "zusammengesetzt,panelquelle",
+  // AUFNAHME 20260922 · GESAMT-KLARA-EXTERN (R-0639, Bens Befund B1, 01.10.2026): R5 schneidet
+  // `askKlara`, `ka6Absenden`, `ka6Zurufgrundlage` und den Block KW-WORDADDIN-HELPERS aus dem
+  // ausgelieferten Fenster und führt sie aus — eine Zerlegung muss diese Datei mitnehmen.
+  // GEMESSEN, NICHT GESETZT: A2 meldete lokal `neu im Baum, aber nicht gepinnt` mit genau diesem
+  // Pfad; der Griff `pfad,marken` steht so im gedruckten Verzeichnis (A4).
+  "tests/klara-dokumenttext/riegel-haelt-den-dokumenttext.test.ts": "pfad,marken,panelquelle",
+  // INTEGRATION MIT main a2ff8da8 (Nacharbeit 3 dieses Auftrags): zwei Prüfstände, die auf `main`
+  // OHNE den Schnitt entstanden sind und das Fenster anfassen.
+  //   · `word-addin-dokumentkennung.test.ts` (R-0169) fährt das Fenster über `createKlaraPanel`
+  //     und nennt das Pfadliteral im Kopf — dieselbe Doppelung wie `panel-rueckweg-mounted.test.ts`.
+  //   · `abgleich-belege.test.ts` (gesamt-klara-assistenz) prüft Marken und `ka2Treffer` am Skript;
+  //     es las `taskpane.html` direkt und liest seit der Integration über `panelQuelleAus`.
+  // Die Griffe sind aus den Mustern oben abgelesen, nicht gemessen — kein Lauf in dieser Runde.
+  "tests/app/word-addin-dokumentkennung.test.ts": "pfad,fixture",
+  "tests/klara-assistenz/abgleich-belege.test.ts": "pfad,marken,panelquelle",
+  // Nacharbeit 7 (Integration mit main): `r1864-w9-zuordnung/w9-quelle-und-zuordnung.test.ts`
+  // (R-1864, auf main ohne den Schnitt entstanden) schneidet KW-Marken aus dem Fenster und nennt
+  // das Pfadliteral. GEMESSEN: der Prüflauf am Kandidaten cd1073c0 meldete A2 `neu im Baum, aber
+  // nicht gepinnt` mit genau diesem Pfad. Sie las `taskpane.html` direkt und liest seither über
+  // `panelQuelleAus` — daher der Griff `panelquelle` (abgelesen, nicht gemessen).
+  "tests/r1864-w9-zuordnung/w9-quelle-und-zuordnung.test.ts": "pfad,marken,panelquelle",
+  // Word-Host-Gesamtweg (Nacharbeit 3): die Gegenprobe am Draht zum COOP-Kopf der Dialogseite nennt
+  // das Taskpane-Pfadliteral als Gegenpfad — Griff `pfad`. GEMESSEN, NICHT GESETZT: der Prüflauf
+  // am Kandidaten 26e86268 meldete A2 `neu im Baum, aber nicht gepinnt` mit genau diesem Pfad.
+  "tests/office-web-anmeldung/dialog-opener-kopf.test.ts": "pfad",
 };
 
 // ------------------------------------------------------------------------------------------------
@@ -579,6 +667,21 @@ describe("JOB 3014 · A — die Mitfahrer der Zerlegung, abgeleitet statt behaup
     expect(neu, "neu im Baum, aber nicht gepinnt — Verzeichnis nachfuehren").toEqual([]);
     expect(weg, "gepinnt, aber im Baum nicht mehr gefunden").toEqual([]);
     expect(anders, "der Griff hat sich geaendert — Verzeichnis nachfuehren").toEqual([]);
+  });
+
+  // AUFNAHME 20260922 · ZERLEGUNG-AUFRAEUMEN (Bens Befund K1, Nacharbeit 2): A2 allein bestaetigt
+  // nur den Bestand, den es vorfindet — fehlt der Bestandsblick-Mitfahrer im Baum UND im
+  // Verzeichnis, ist A2 trotzdem gruen. A2b verlangt ihn deshalb ausdruecklich: Datei im Baum,
+  // vom Sammler gefunden, gepinnt, und der gepinnte Griff ist der abgeleitete.
+  it("A2b · der Bestandsblick-Mitfahrer ist im Baum, gefunden und mit seinem Griff gepinnt", () => {
+    const datei = join("tests", "app", "ka3-bestandsblick-aktueller-stand.test.tsx");
+    const kurz = datei.split(sep).join("/");
+    expect(existsSync(join(REPO_WURZEL, datei)), `${kurz} fehlt im Baum`).toBe(true);
+    expect(ALLE, `${kurz} vom Sammler nicht erfasst`).toContain(datei);
+    const abgeleitet = GEFUNDEN.get(datei);
+    expect(abgeleitet, `${kurz} greift das Fenster nicht an`).toBeDefined();
+    expect(MITFAHRER[kurz], `${kurz} fehlt im gepinnten Verzeichnis`).toBeDefined();
+    expect(MITFAHRER[kurz]).toBe((abgeleitet ?? []).join(","));
   });
 
   it("A3 · jeder Griff ist kalibriert: Positivdatei greift, Gegenprobe greift NICHT", () => {

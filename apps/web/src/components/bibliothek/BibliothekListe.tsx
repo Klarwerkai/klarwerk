@@ -166,6 +166,23 @@ function ZeilenTitel({ zeile, gewaehlt }: { zeile: BibZeile; gewaehlt: boolean }
   );
 }
 
+// ================================================================================================
+// R-1006 (K16) — KOMPAKTE LISTE (STANDARD) ODER KARTEN, UND MEHRFACHAUSWAHL VON ZEILEN.
+// ================================================================================================
+// Beides ist eine Darstellung DERSELBEN Treffer: dieselben Posten, dieselbe Reihenfolge, derselbe
+// Zeilenknopf mit `data-testid="bib-zeile"` (fremder Code fokussiert und rollt ihn). Die Liste
+// bleibt Vorgabe; in der Liste ändert sich ohne Umschalten kein Pixel (H4-Zeilenmaße V10/V11).
+// Die Mehrfachauswahl ist ein eigener Zustand neben der EINEN geöffneten Zeile (`gewaehlt`) — ein
+// Häkchen öffnet nichts, und das Öffnen setzt kein Häkchen.
+export const BIB_ANSICHTEN = ["liste", "karten"] as const;
+export type BibAnsicht = (typeof BIB_ANSICHTEN)[number];
+
+export interface BibMarkierung {
+  readonly ids: ReadonlySet<string>;
+  readonly onUmschalten: (id: string) => void;
+  readonly onLeeren: () => void;
+}
+
 export function BibliothekListe({
   q,
   onQ,
@@ -185,7 +202,10 @@ export function BibliothekListe({
   gesamt,
   onNachladen,
   leerAktion,
+  leerRaum,
   lage,
+  ansicht = "liste",
+  markierung = null,
 }: {
   q: string;
   onQ: (wert: string) => void;
@@ -228,9 +248,16 @@ export function BibliothekListe({
   onNachladen: () => void;
   // Ein Knopf im Leerzustand (Erfassen) — die Rolle entscheidet der Aufrufer.
   leerAktion: ReactNode;
+  // R-0446: WORIN nichts gefunden wurde (und ggf. der Weg in den anderen Bestand). Steht nur unter
+  // „Nichts gefunden." — der Bestandssatz „Noch keine Einträge." braucht keinen Suchraum.
+  leerRaum: ReactNode;
   // JOB 3335: die Lage auf der Fläche — s. `LAGE_KLASSE` oben. Der Aufrufer weiss, welches Band
   // gilt; diese Datei weiss, wie breit sie darin ist.
   lage: BibListenLage;
+  // R-1006: Darstellung der Treffer (Vorgabe Liste) und — nur im Auswahlmodus gesetzt — die
+  // Mehrfachauswahl. Beide optional: ohne sie zeichnet die Liste exakt wie bisher.
+  ansicht?: BibAnsicht;
+  markierung?: BibMarkierung | null;
 }): JSX.Element {
   const { t } = useTranslation();
   const spur = useRef<HTMLDivElement | null>(null);
@@ -331,6 +358,68 @@ export function BibliothekListe({
           der in derselben Lage „–" zeigt. Ohne den Fall ist hier nichts. */}
       {hinweis ? <div className="px-4">{hinweis}</div> : null}
 
+      {/* R-1006: im Auswahlmodus sagt eine Zeile, wie viele Treffer markiert sind, und hebt die
+          Auswahl auf. Ohne Auswahlmodus steht hier nichts. */}
+      {markierung ? (
+        <div
+          data-testid="bib-auswahl-leiste"
+          className="flex items-center justify-between gap-2 border-b border-hairline-soft px-4 py-1.5 text-[12px] text-muted"
+        >
+          <span data-testid="bib-auswahl-anzahl">
+            {t("lib.auswahl.anzahl", { count: markierung.ids.size })}
+          </span>
+          <button
+            type="button"
+            data-testid="bib-auswahl-leeren"
+            disabled={markierung.ids.size === 0}
+            onClick={markierung.onLeeren}
+            className="rounded-btn px-1.5 py-0.5 font-semibold text-text hover:bg-hairline-soft disabled:opacity-45"
+          >
+            {t("lib.auswahl.leeren")}
+          </button>
+        </div>
+      ) : null}
+
+      {/* ==========================================================================================
+          JOB 3531 · Q6d — OFFLINE SAGT DIE LISTE, WAS MIT IHR IST. NICHTS ÜBER DEN BESTAND.
+          ==========================================================================================
+          HIER STAND BIS JOB 3531 NICHTS. Der Zweig `pausiert` war seit JOB 3099 aus dem
+          Leerzustand ausgenommen (zu Recht — s. den Leerzweig in der Spur), und an seine Stelle trat
+          Schweigen: eine leere Fläche, aus der niemand ablesen kann, ob gesucht wurde, ob es nichts
+          gibt oder ob die Verbindung fehlt.
+
+          WAS DER SATZ SAGEN DARF UND WAS NICHT: Er ist eine Aussage über die MASCHINE („ohne
+          Verbindung kann gerade nicht gesucht werden"), nie eine über den Bestand. Offline geht
+          gar kein Ruf hinaus — über Treffer weiss diese Fläche nichts, und genau das steht da.
+          Dazu die Zusage, dass es von selbst weitergeht (N-0036): der Abruf ist ANGEHALTEN, nicht
+          gescheitert. Deshalb entsteht hier auch KEIN Knopf — ein „Erneut versuchen" wäre eine
+          Handlung ohne Wirkung; der Wiederholungsknopf bleibt, wo er hingehört, im Zweig `fehler`.
+          Der Suchtext bleibt unangetastet im Feld (`q` oben), denn die Suche läuft mit dem Netz von
+          selbst weiter.
+
+          AUFTRAG gesamt-suchfehler (N-0036 „für assistive Technik ankündigen"): bis hierher stand der
+          Block als stummes `<div>` IN der Spur; die Gegenprüfung vom 06.09. fand „keine
+          Status-/Alert-/Live-Region". Die Bauform ist die des Hauses (`AuffrischungHinweis.tsx`,
+          `MehrAbschnitte.tsx`): ein `<output aria-live="polite">`. Anders als dort steht die Region
+          hier IMMER, nur ihr Inhalt hängt an `pausiert` — ein Vorleseprogramm meldet zuverlässig nur
+          Änderungen in einer Region, die schon vor der Änderung im Baum stand; eine mit dem Satz
+          zusammen eingefügte Region bleibt je nach Programm stumm. Sie steht ÜBER der Spur und nicht
+          darin, weil die Spur in der Kartenansicht ein Raster ist und eine leere Region dort eine
+          leere Zelle samt Abstand belegen würde. `polite` und nicht `assertive`: der Satz unterbricht
+          niemanden beim Tippen, er folgt danach. */}
+      <output aria-live="polite" data-testid="bib-offline-ansage" className="block shrink-0">
+        {!laedt && !fehler && pausiert ? (
+          <span data-testid="bib-offline" className="block px-4 py-3">
+            <span className="block text-[12.5px] leading-relaxed text-muted">
+              {t("lib.liste.offline")}
+            </span>
+            <span className="mt-1 block text-[12.5px] leading-relaxed text-muted">
+              {t("lib.liste.offlineWeiter")}
+            </span>
+          </span>
+        ) : null}
+      </output>
+
       {/* JOB 3335: die Marke trägt die Rollspur nach aussen — die Fläche merkt sich beim Einklappen
           der Liste (Tablet) deren Rollstand und stellt ihn beim Ausklappen wieder her; dafür muss
           sie das rollende Element finden, ohne seine Klassen zu kennen. */}
@@ -338,7 +427,14 @@ export function BibliothekListe({
         ref={spur}
         onScroll={beiScroll}
         data-testid="bib-spur"
-        className="min-h-0 flex-1 overflow-y-auto"
+        data-ansicht={ansicht}
+        className={cx(
+          "min-h-0 flex-1 overflow-y-auto",
+          // Karten: ein Raster, das sich nach der Breite der Spur richtet (schmal eine Spalte).
+          ansicht === "karten"
+            ? "grid content-start gap-3 p-3 [grid-template-columns:repeat(auto-fill,minmax(220px,1fr))]"
+            : "",
+        )}
       >
         {/* Laden: keine Zeile, kein Text. Erst wenn etwas feststeht, steht hier etwas. */}
         {fehler ? (
@@ -353,33 +449,8 @@ export function BibliothekListe({
             </button>
           </div>
         ) : null}
-        {/* ==========================================================================================
-            JOB 3531 · Q6d — OFFLINE SAGT DIE LISTE, WAS MIT IHR IST. NICHTS ÜBER DEN BESTAND.
-            ==========================================================================================
-            HIER STAND BIS JOB 3531 NICHTS. Der Zweig `pausiert` war seit JOB 3099 aus dem
-            Leerzustand ausgenommen (zu Recht — s. unten), und an seine Stelle trat Schweigen: eine
-            leere Fläche, aus der niemand ablesen kann, ob gesucht wurde, ob es nichts gibt oder ob
-            die Verbindung fehlt. Der Kommentar an dieser Stelle nannte den fehlenden Satz als
-            RESTSCHULD und begründete sie mit einer Sperre auf `apps/web/src/i18n.ts` (belegt von
-            JOB 3079/3095). Diese Sperre ist weg, die Restschuld ist damit eingelöst und ihre
-            Begründung nicht mehr wahr; sie steht deshalb nicht daneben, sondern ist ersetzt.
-
-            WAS DER SATZ SAGEN DARF UND WAS NICHT: Er ist eine Aussage über die MASCHINE („ohne
-            Verbindung kann gerade nicht gesucht werden"), nie eine über den Bestand. Offline geht
-            gar kein Ruf hinaus — über Treffer weiss diese Fläche nichts, und genau das steht da.
-            Dazu die Zusage, dass es von selbst weitergeht (N-0036): der Abruf ist ANGEHALTEN, nicht
-            gescheitert. Deshalb entsteht hier auch KEIN Knopf — ein „Erneut versuchen" wäre eine
-            Handlung ohne Wirkung; der Wiederholungsknopf bleibt, wo er hingehört, im Zweig `fehler`
-            darüber. Der Suchtext bleibt unangetastet im Feld (`q` oben), denn die Suche läuft mit
-            dem Netz von selbst weiter. */}
-        {!laedt && !fehler && pausiert ? (
-          <div data-testid="bib-offline" className="px-4 py-3">
-            <p className="text-[12.5px] leading-relaxed text-muted">{t("lib.liste.offline")}</p>
-            <p className="mt-1 text-[12.5px] leading-relaxed text-muted">
-              {t("lib.liste.offlineWeiter")}
-            </p>
-          </div>
-        ) : null}
+        {/* Der Offline-Satz (Lage `pausiert`) steht seit Auftrag gesamt-suchfehler nicht mehr hier,
+            sondern in der Live-Region `bib-offline-ansage` über der Spur — s. die Begründung dort. */}
         {/* ==========================================================================================
             JOB 3099 · Q6c — DER LEERZUSTAND VERLANGT EINEN ERFOLGREICHEN ABRUF.
             ==========================================================================================
@@ -387,8 +458,8 @@ export function BibliothekListe({
             samt Angebot, den Eintrag neu zu erfassen. Er darf deshalb nur nach einem erfolgreichen
             Abruf entstehen. Die dritte Lage `pausiert` (offline angehalten) war bis JOB 3099 keiner
             der beiden alten Zweige — und fiel damit in den Leerzweig. Sie hat seit JOB 3531 ihren
-            eigenen Zweig direkt darüber; `!pausiert` hält die beiden auseinander, damit nie beide
-            Aussagen zugleich dastehen.
+            eigenen Zweig (heute die Live-Region `bib-offline-ansage` über der Spur); `!pausiert`
+            hält die beiden auseinander, damit nie beide Aussagen zugleich dastehen.
 
             ==========================================================================================
             JOB 3788 — WELCHER DER ZWEI SÄTZE GILT, ENTSCHEIDET DIE FLÄCHE. NICHT MEHR DAS SUCHFELD.
@@ -412,6 +483,16 @@ export function BibliothekListe({
             <p className="text-[12.5px] leading-relaxed text-muted">
               {eingegrenzt ? t("lib.liste.leerSuche") : t("lib.liste.leer")}
             </p>
+            {/* Der erste Absatz bleibt der Satz selbst (Tests lesen `bib-leer p`); die Ortsangabe
+                folgt als eigener Block darunter. */}
+            {eingegrenzt ? (
+              <div
+                data-testid="bib-leer-raum"
+                className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12.5px] leading-relaxed text-muted"
+              >
+                {leerRaum}
+              </div>
+            ) : null}
             <div className="mt-2">{leerAktion}</div>
           </div>
         ) : null}
@@ -454,11 +535,31 @@ export function BibliothekListe({
               key={p.id}
               data-testid="bib-zeilenblock"
               data-bib-id={p.id}
+              data-markiert={markierung ? String(markierung.ids.has(p.id)) : undefined}
               className={cx(
-                "border-b border-hairline-soft",
+                ansicht === "karten"
+                  ? "overflow-hidden rounded-card border border-hairline"
+                  : "border-b border-hairline-soft",
                 p.id === gewaehlt ? "bg-[#FDEADD]" : "hover:bg-hairline-soft",
+                // Im Auswahlmodus ein Raster: Häkchen links über beide Reihen, Zeilenknopf und
+                // Aufklapper rechts — ohne zusätzliche Hülle, die Liste ohne Auswahl bleibt DOM-gleich.
+                markierung ? "grid grid-cols-[auto_minmax(0,1fr)]" : "",
               )}
             >
+              {/* R-1006: das Häkchen ist ein eigenes Steuerelement NEBEN dem Zeilenknopf (kein
+                  Steuerelement im Knopf). Sein Name nennt den Titel, damit ein Screenreader weiß,
+                  WAS markiert wird. */}
+              {markierung ? (
+                <input
+                  type="checkbox"
+                  data-testid="bib-zeile-markieren"
+                  data-bib-id={p.id}
+                  checked={markierung.ids.has(p.id)}
+                  onChange={() => markierung.onUmschalten(p.id)}
+                  aria-label={t("lib.auswahl.zeile", { titel: p.titel })}
+                  className="row-span-2 ml-4 mt-[14px] h-4 w-4 shrink-0 accent-brand"
+                />
+              ) : null}
               <button
                 type="button"
                 data-testid="bib-zeile"

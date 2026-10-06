@@ -72,6 +72,28 @@ export const KLARA_PAGES: readonly KlaraPage[] = [
     bodyKey: "klara.page.analytics",
   },
   { id: "admin", route: "/admin", titleKey: "nav.admin", bodyKey: "klara.page.admin" },
+  // R-1030: die vier Bereiche der zweiten Stufe — Seitenerklärung je Bereich, alle vier gleich.
+  // Die Texte stehen im Textmodul `texte/zweitestufe.ts` (neue Texte gehören nicht mehr in die
+  // Grundwörterbücher).
+  {
+    id: "output",
+    route: "/output",
+    titleKey: "nav.output",
+    bodyKey: "zweitestufe.klara.output",
+  },
+  {
+    id: "import",
+    route: "/import",
+    titleKey: "nav.import",
+    bodyKey: "zweitestufe.klara.import",
+  },
+  { id: "graph", route: "/graph", titleKey: "nav.graph", bodyKey: "zweitestufe.klara.graph" },
+  {
+    id: "kapital",
+    route: "/kapital",
+    titleKey: "nav.capital",
+    bodyKey: "zweitestufe.klara.kapital",
+  },
   { id: "help", route: "/hilfe", titleKey: "nav.help", bodyKey: "klara.page.help" },
   { id: "profile", route: "/profil", titleKey: "nav.profile", bodyKey: "klara.page.profile" },
   // KO-Detail hat keine Nav-Position — eigener Eintrag für /wissen/:id.

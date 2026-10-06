@@ -2,14 +2,14 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { COMPARE_TONE_LEGEND, compareToneLabelKey } from "../../apps/web/src/lib/duplicateCompare";
+import { woerterbuchQuelleAus } from "../support/woerterbuchquelle";
 
 const compareSource = readFileSync(
   fileURLToPath(new URL("../../apps/web/src/pages/DuplicateCompare.tsx", import.meta.url)),
   "utf8",
 );
-const i18nSource = readFileSync(
+const i18nSource = woerterbuchQuelleAus(
   fileURLToPath(new URL("../../apps/web/src/i18n.ts", import.meta.url)),
-  "utf8",
 );
 
 // SCRUM-488/487 (Nullschulung + i18n): Die Abschnittsampeln (grün/gelb/rot) hatten keine Erklärung.

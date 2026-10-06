@@ -6,10 +6,19 @@ import {
   useGapsSummary,
   useKos,
   useLiveWall,
+  useReasonerStatus,
 } from "../../api/hooks";
 import { useRole } from "../../app/RoleContext";
 import { DEMO_PILOT_PATH, captureDemoHref } from "../../lib/demoPilotPath";
 import { eigeneKollisionStart } from "../../lib/eigeneKollision";
+import { EINSTIEGE } from "../../lib/einstiege";
+import {
+  FAEHIGKEITEN,
+  FAEHIGKEITS_SCHRITTE,
+  antwortLage,
+  faehigkeitTextKey,
+  faehigkeitsSchrittKey,
+} from "../../lib/faehigkeiten";
 import { knowledgeCapital } from "../../lib/funke";
 import { KNOWLEDGE_CYCLE } from "../../lib/knowledgeCycle";
 import { type KnowledgeGuidanceTone, knowledgeGuidance } from "../../lib/knowledgeGuidance";
@@ -88,6 +97,9 @@ export function StartPanelInhalt({ id }: { id: StartPanelId }): JSX.Element {
     useNetzOnline(),
   );
   const kollisionsWeg = kollision.weg;
+  // R-1012 · Bens Befund (Nacharbeit 3): der Satz zu „Fragen“ folgt der Antwortlage aus dem
+  // öffentlichen Status — dieselbe Quelle wie `/fragen` (`lib/faehigkeiten.ts`, dort begründet).
+  const antwort = antwortLage(useReasonerStatus().data);
   const stufe2Features = stufe2FeatureLabelKeys()
     .map((k) => t(k))
     .join(", ");
@@ -95,12 +107,102 @@ export function StartPanelInhalt({ id }: { id: StartPanelId }): JSX.Element {
   if (id === "ueber") {
     // AUFTRAG-mega38 BLOCK G1: der eine bejahende Satz ohne Fachwort — plus der Leitsatz, der bis
     // JOB 3015 D5 die letzte Zeile der Startseite war.
+    //
+    // R-1012 (OFFEN.md U4, SCRUM-474): darunter die Fähigkeitsübersicht — was KLARWERK kann, in der
+    // Reihenfolge der Kernschleife erfassen → prüfen → finden (`lib/faehigkeiten.ts`, dort
+    // begründet). Jeder Eintrag läuft über `RoleLink`: was die Rolle nicht erreicht, bleibt als
+    // Auskunft stehen und wird kein Weg (mega51 Block A).
     return (
       <div className="space-y-4">
         <p className="kw-start-purpose text-[13.5px] leading-relaxed text-text">
           {t("start.purpose")}
         </p>
         <p className="text-[12px] leading-relaxed text-muted-2">{t("start.konsole.leitsatz")}</p>
+        <section
+          data-testid="erstnutzer-faehigkeiten"
+          data-antwort-lage={antwort}
+          className="border-t border-hairline pt-4"
+        >
+          <h3 className="text-[14px] font-semibold text-ink">
+            {t("erstnutzer.faehigkeiten.titel")}
+          </h3>
+          <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">
+            {t("erstnutzer.faehigkeiten.einleitung")}
+          </p>
+          {FAEHIGKEITS_SCHRITTE.map((schritt) => (
+            <div key={schritt} className="mt-3">
+              <h4 className="font-mono text-[10px] uppercase tracking-wider text-muted-2">
+                {t(faehigkeitsSchrittKey(schritt))}
+              </h4>
+              <ul className="mt-1.5 grid gap-2">
+                {FAEHIGKEITEN.filter((f) => f.schritt === schritt).map((faehigkeit) => (
+                  <li key={faehigkeit.id}>
+                    <RoleLink
+                      to={faehigkeit.to}
+                      testId={`erstnutzer-faehigkeit-${faehigkeit.id}`}
+                      className="flex items-start gap-2 rounded-card border border-hairline bg-surface p-3 transition"
+                      hoverClassName="hover:border-ink/30"
+                    >
+                      {(erreichbar) => (
+                        <span className="min-w-0 flex-1">
+                          <span className="flex items-center gap-2 text-[13.5px] font-semibold text-ink">
+                            {t(faehigkeit.nameKey)}
+                            {erreichbar ? (
+                              <ArrowRight size={14} className="ml-auto text-muted-2" />
+                            ) : null}
+                          </span>
+                          <span className="mt-1 block text-[12.5px] leading-relaxed text-muted">
+                            {t(faehigkeitTextKey(faehigkeit, antwort))}
+                          </span>
+                        </span>
+                      )}
+                    </RoleLink>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+          {/* `div` statt `p`: die gesperrte Fassung von `RoleLink` ist ein `div` (Blatt.tsx, JOB 3062 R6). */}
+          <div className="mt-3 text-[12.5px] leading-relaxed text-muted">
+            {t("erstnutzer.faehigkeiten.hilfe", { seitenhilfe: t("menue.seitenhilfe") })}{" "}
+            <RoleLink
+              to="/hilfe"
+              testId="erstnutzer-faehigkeiten-hilfe"
+              className="inline font-semibold text-brand-text"
+              hoverClassName="hover:underline"
+            >
+              {() => t("erstnutzer.faehigkeiten.zurHilfe")}
+            </RoleLink>
+          </div>
+        </section>
+        {/* R-0928 / R-1675 (Nacharbeit 10): der BENANNTE Weg zu den vier kurzen thematischen
+            Einstiegen (`pages/Einstieg.tsx`). Bewusst neben und nicht in der Übersicht darüber: die
+            Übersicht führt direkt in die Vollfunktionen, diese vier Wege führen erst in die kurze
+            Einstiegsansicht. Keine Kachel auf `/start` — der Ort bleibt dieses Blatt (H5). */}
+        <nav
+          data-testid="erstnutzer-einstiege"
+          aria-label={t("erstnutzer.einstiege.titel")}
+          className="border-t border-hairline pt-4"
+        >
+          <h3 className="text-[14px] font-semibold text-ink">{t("erstnutzer.einstiege.titel")}</h3>
+          <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">
+            {t("erstnutzer.einstiege.einleitung")}
+          </p>
+          <ul className="mt-2 grid grid-cols-2 gap-2">
+            {EINSTIEGE.map((einstieg) => (
+              <li key={einstieg.thema}>
+                <RoleLink
+                  to={einstieg.pfad}
+                  testId={`erstnutzer-einstieg-${einstieg.thema}`}
+                  className="block rounded-card border border-hairline bg-surface px-3 py-2 text-[13px] font-semibold text-ink"
+                  hoverClassName="hover:border-ink/30"
+                >
+                  {() => t(einstieg.faehigkeit.nameKey)}
+                </RoleLink>
+              </li>
+            ))}
+          </ul>
+        </nav>
       </div>
     );
   }

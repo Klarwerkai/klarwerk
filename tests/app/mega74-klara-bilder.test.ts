@@ -25,9 +25,10 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { fillWordImages, wordImageMimeFromBase64 } from "../../apps/web/src/lib/wordAddin";
+import { panelQuelleAus } from "../support/panelquelle";
 
 const TASKPANE = "apps/web/public/word-addin/taskpane.html";
-const HTML = readFileSync(resolve(process.cwd(), TASKPANE), "utf8");
+const HTML = panelQuelleAus(TASKPANE);
 
 // Echte Base64-Präfixe der vier Rastertypen, die der Server-Sanitizer inline akzeptiert.
 const PNG =

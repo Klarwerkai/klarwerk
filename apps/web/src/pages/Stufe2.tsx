@@ -16,6 +16,7 @@ import {
 import { type ChangeEvent, type DragEvent, useEffect, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate } from "react-router-dom";
+import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import {
   useAiCheckCoverageSummary,
@@ -24,17 +25,22 @@ import {
   useEvidenceIndex,
   useGaps,
   useGraph,
+  useImportAccessConfluence,
   useImportCandidates,
   useImportRun,
   useKos,
   useLifecyclePending,
   // SCRUM-171 nutzt useKos + useEvidenceIndex (beide bereits vorhanden).
   useManagementSnapshot,
+  useModelRunAuswertung,
   useModelRuns,
   useOutputSources,
+  useQualitaetsblick,
   useReasonerConfig,
 } from "../api/hooks";
 import type {
+  Conflict,
+  GraphKuratierteKante,
   ImportCandidate,
   ImportItemInput,
   ManagementSnapshot,
@@ -61,6 +67,7 @@ import { KoSummaryDisclosure } from "../components/KoSummaryDisclosure";
 import { LesevarianteHinweis } from "../components/LesevarianteHinweis";
 // JOB 3288: derselbe Allowlist-Renderweg wie die Bibliothek — kein zweiter HTML-Sink.
 import { SanitizedHtml } from "../components/SanitizedHtml";
+import { WissensPriorisierung } from "../components/WissensPriorisierung";
 // JOB 4153: Art und Richtung in Klartext kommen von DER Stelle, an der die Textdarstellung sie
 // auch nimmt — Bild und Liste dürfen dieselbe Kante nicht verschieden benennen.
 import { beziehungsartText, beziehungsrichtungKurz } from "../components/WissensbeziehungenBereich";
@@ -90,6 +97,14 @@ import { isNavigableNode, koDetailPath } from "../lib/graphNav";
 // WP-IC-PAKET-1 (Teil 1) + 1c (ROT-2): Altbestand-Anzeige — rohe Entities NUR dekodieren, wenn der
 // Decode-Marker fehlt (markierte Kandidaten sind kanonisch; kein Doppel-Dekodieren echter Literale).
 import { displayImportText } from "../lib/htmlEntities";
+// R-0134 / R-1005 / R-0159: derselbe Zugangszustand wie im Zugangskasten, dazu die Fehlertexte.
+import {
+  IMPORT_START_BETREIBER_AUS_TEXT,
+  IMPORT_START_GESPERRT_TEXT,
+  betreiberHatAusgeschaltet,
+  importAccessState,
+  importStartFehlerKey,
+} from "../lib/importAccessState";
 // AUFTRAG-mega9 Block E-1 (KW-E2E-005): eine Quelle für Statustext, Farbton und „ist offen".
 import {
   importCandidateStatusKey,
@@ -117,14 +132,18 @@ import { koLabel } from "../lib/koLabel";
 import { sprachcode, useFrischeKandidatenLesevariante } from "../lib/lesevariante";
 import {
   formatiereDauer,
+  formatiereKosten,
   formatiereTokenzahl,
   istBekannteAufgabenart,
   limitModelRuns,
   modelRunDauerMs,
+  modelRunErzeugnis,
+  modelRunKosten,
   modelRunStatusTone,
   modelRunVerbrauch,
   summarizeModelRuns,
 } from "../lib/modelRuns";
+import { bestandsalter, qualitaetsblick } from "../lib/netzQualitaet";
 import { useNetzOnline } from "../lib/netzzustand";
 import { buildCompositionPreview, moveInOrder, sanitizeOrder } from "../lib/outputComposition";
 import { OUTPUT_KIND_OPTIONS, downloadFilename } from "../lib/outputDoc";
@@ -425,6 +444,12 @@ export function Output(): JSX.Element {
 // verbindliche Sperre. Der gesperrte Knopf hier ist die SICHTBARE: Wer nichts anklicken kann,
 // braucht keine Fehlermeldung zu lesen. Beide zusammen, weil eine Fläche, die den Klick zulässt
 // und danach einen Fehler zeigt, den Verwalter im Unklaren lässt, ob nun zwei Läufe laufen.
+//
+// R-0134 / R-1005: DER SCHALTER WIRKT AUCH HIER. Die Karte liest die Auskunft des Zugangskastens
+// darüber PASSIV (`useImportAccessConfluence(false)`: derselbe Schlüssel, aber kein eigener Abruf —
+// geholt wird sie dort, mit dessen Rollenbedingung). Steht der Import aus oder fehlen Zugangsdaten,
+// ist der Start gesperrt und die Karte sagt, warum. Ohne Auskunft (noch nicht geladen, kein Recht)
+// bleibt das bisherige Verhalten — die Sperre am Server gilt ohnehin.
 export function ImportRunPanel(): JSX.Element {
   const { t } = useTranslation();
   const { push } = useToast();
@@ -432,6 +457,18 @@ export function ImportRunPanel(): JSX.Element {
   const lauf = useImportRun(importId);
   // GELESEN, nie hergeleitet: der Zustand kommt vom Server, die Bedeutung aus dem View-Kern.
   const zustand = importRunStateView(lauf.data?.status);
+  const zugang = useImportAccessConfluence(false).data;
+  // Vom Betreiber ausgeschaltet ist ein EIGENER Grund (über die Oberfläche umlegbar, Zugangskasten
+  // darüber) — nicht derselbe Satz wie „in dieser Installation nicht freigegeben".
+  const betreiberAus = betreiberHatAusgeschaltet(zugang?.betreiber);
+  const quellZustand = zugang ? importAccessState(zugang) : null;
+  const zugangsZustand = betreiberAus ? "switched-off" : quellZustand;
+  let gesperrtKey: string | null = null;
+  if (betreiberAus) {
+    gesperrtKey = IMPORT_START_BETREIBER_AUS_TEXT;
+  } else if (quellZustand && quellZustand !== "ready") {
+    gesperrtKey = IMPORT_START_GESPERRT_TEXT[quellZustand];
+  }
   // JOB 2970 D2: Ein Startversuch waehrend eines laufenden Imports ist KEIN Fehlschlag.
   //
   // Der Server antwortet dann `409 IMPORT_ALREADY_RUNNING` und nennt im selben Koerper die
@@ -443,7 +480,12 @@ export function ImportRunPanel(): JSX.Element {
   const starten = useMutation({
     mutationFn: () => endpoints.admin.import.startRun(),
     onSuccess: (r) => setImportId(r.importId),
-    onError: () => push("error", t("state.error")),
+    // R-0159: der Grund in Worten statt „Fehler" — aus Status und Code, nie aus dem Wortlaut.
+    onError: (err) => {
+      const key =
+        err instanceof ApiError ? importStartFehlerKey(err.status, err.code) : "state.error";
+      push("error", t(key));
+    },
   });
   // Gesperrt, solange gestartet wird ODER ein bekannter Lauf noch unterwegs ist. `lauf.isPending`
   // gehört dazu: zwischen Start und erster Antwort ist der Zustand unbekannt, und „unbekannt" ist
@@ -457,12 +499,21 @@ export function ImportRunPanel(): JSX.Element {
         <Button
           variant="primary"
           data-testid="f0140-start"
-          disabled={laeuft}
+          disabled={laeuft || gesperrtKey !== null}
           onClick={() => starten.mutate()}
         >
           {t("w2.run.start")}
         </Button>
       </div>
+      {gesperrtKey ? (
+        <p
+          data-testid="f0140-gesperrt"
+          data-state={zugangsZustand ?? ""}
+          className="mt-2 text-[12.5px] text-muted"
+        >
+          {t(gesperrtKey)}
+        </p>
+      ) : null}
       <div className="mt-2">
         {/* JOB 3288 (Codex-Livebefund df052186): Hier stand „Kein Lauf gestartet." Pedi hatte
             gerade 36 Seiten selektiv importiert und las den Satz als Aussage über den BESTAND —
@@ -1521,23 +1572,14 @@ function CapitalDashboard({ snap }: { snap: ManagementSnapshot }): JSX.Element {
         )}
       </Card>
 
-      {/* FE-MGMT-09: Wissens-Priorisierung (9 Faktoren) */}
+      {/* FE-MGMT-09 / FR-EXT-04: Wissens-Priorisierung — die neun Faktoren der Quelle, gerankt,
+          mit Filtern, Flags und Faktor-Detail (Nacharbeit 1; components/WissensPriorisierung). */}
       <Card id={sectionAnchor("priorities")} className="scroll-mt-4">
         <SectionLabel>{t("mgmt.priorities")}</SectionLabel>
         {snap.priorities.length === 0 ? (
           <p className="mt-2 text-[12.5px] text-muted">{t("mgmt.empty")}</p>
         ) : (
-          <ul className="mt-2 space-y-1">
-            {snap.priorities.slice(0, 8).map((p) => (
-              <li key={p.category} className="flex items-center gap-2 text-[12.5px]">
-                <span className="min-w-0 flex-1 truncate text-text">{p.category}</span>
-                <div className="h-1.5 w-28 rounded-pill bg-page">
-                  <div className="h-1.5 rounded-pill bg-ink" style={{ width: `${p.score}%` }} />
-                </div>
-                <span className="w-8 text-right font-mono text-[11px] text-muted-2">{p.score}</span>
-              </li>
-            ))}
-          </ul>
+          <WissensPriorisierung priorities={snap.priorities} />
         )}
       </Card>
 
@@ -1638,6 +1680,9 @@ function ReasonerRunsCard(): JSX.Element {
     r,
     dauerMs: modelRunDauerMs(r),
     verbrauch: modelRunVerbrauch(r),
+    // Aufnahme gesamt-ki-laufprotokoll: Kosten und Erzeugnis aus je EINER Wache (lib/modelRuns.ts).
+    kosten: modelRunKosten(r),
+    erzeugt: modelRunErzeugnis(r),
   }));
   return (
     <Card className="mt-4" data-testid="mrun-card">
@@ -1702,7 +1747,7 @@ function ReasonerRunsCard(): JSX.Element {
                 ) : null}
               </div>
               <ul className="divide-y divide-hairline">
-                {zeilen.map(({ r, dauerMs, verbrauch }) => (
+                {zeilen.map(({ r, dauerMs, verbrauch, kosten, erzeugt }) => (
                   <li
                     key={r.id}
                     className="flex flex-wrap items-center gap-2 py-2"
@@ -1795,6 +1840,29 @@ function ReasonerRunsCard(): JSX.Element {
                         })}
                       </span>
                     ) : null}
+                    {/* Aufnahme gesamt-ki-laufprotokoll (V9): die Kosten nur, wenn der Lauf sie trägt —
+                    berechnet beim Schreiben aus Verbrauch × Preisliste des Betreibers, mit
+                    Preisstand. Ohne Preisliste oder ohne Preis für das Modell steht hier nichts. */}
+                    {kosten !== null ? (
+                      <span
+                        className="font-mono text-[10px] text-muted-2"
+                        data-testid="mrun-kosten"
+                        title={t("mrun.costStand", { s: kosten.preisstand })}
+                      >
+                        {t("mrun.cost", { k: formatiereKosten(kosten.betrag, kosten.waehrung) })}
+                      </span>
+                    ) : null}
+                    {erzeugt !== null ? (
+                      <span
+                        className="font-mono text-[10px] text-muted-2"
+                        data-testid="mrun-erzeugt"
+                      >
+                        {t("mrun.produced", {
+                          n: erzeugt.anzahl,
+                          art: t(`mrun.erzeugnis.${erzeugt.art}`),
+                        })}
+                      </span>
+                    ) : null}
                     <span className="font-mono text-[10px] text-muted-2">
                       {new Date(r.startedAt).toLocaleString()}
                     </span>
@@ -1804,6 +1872,163 @@ function ReasonerRunsCard(): JSX.Element {
             </>
           )}
         </>
+      )}
+    </Card>
+  );
+}
+
+// ══ Aufnahme gesamt-ki-laufprotokoll (V9, R-2071) · DIE KI-AUSWERTUNG EINES ZEITRAUMS ══════════
+// Die Laufkarte darüber zeigt die jüngsten Läufe; diese Karte zeigt einen ZEITRAUM — Läufe, Fehler,
+// Rückfälle, Laufzeit, Token und Kosten je Währung, je Aufgabenart. Jede Summe nennt ihre
+// Grundmenge. Ohne Preisliste sagt die Karte das ausdrücklich, statt eine Null zu zeigen.
+// Die Zeitraumwahl ist ein natives Auswahlfeld: per Tastatur erreichbar und bedienbar.
+const AUSWERTUNG_ZEITRAEUME = [7, 30, 90] as const;
+const TAG_MS = 24 * 60 * 60 * 1000;
+
+function ModelRunAuswertungCard(): JSX.Element {
+  const { t } = useTranslation();
+  const [tage, setTage] = useState<(typeof AUSWERTUNG_ZEITRAEUME)[number]>(30);
+  // Der Zeitraum wird beim WÄHLEN festgelegt, nicht bei jedem Rendern — sonst entstünde mit jedem
+  // Rendern ein neuer Abfrageschlüssel.
+  const [zeitraum, setZeitraum] = useState(() => {
+    const bis = new Date();
+    return { von: new Date(bis.getTime() - 30 * TAG_MS).toISOString(), bis: bis.toISOString() };
+  });
+  const abfrage = useModelRunAuswertung(zeitraum.von, zeitraum.bis);
+  const waehle = (neu: (typeof AUSWERTUNG_ZEITRAEUME)[number]): void => {
+    const bis = new Date();
+    setTage(neu);
+    setZeitraum({
+      von: new Date(bis.getTime() - neu * TAG_MS).toISOString(),
+      bis: bis.toISOString(),
+    });
+  };
+  // Ben R2 B6 — DIESELBE ZUSTANDSREGEL WIE DIE LAUFKARTE DARÜBER (JOB 3044 R2/R3, s. dort): ohne
+  // Netz startet React Query die Abfrage gar nicht (`fetchStatus: "paused"`, `isLoading` bleibt
+  // wahr) — ein „Lädt …" wäre dann ein vorgetäuschter Fortschritt. Und eine gescheiterte
+  // Auffrischung auf vorhandenen Zahlen ist ein ZUSÄTZLICHER Hinweis: die alten Kosten bleiben
+  // stehen, aber sie geben sich nicht als aktuell aus. Das Netz wird abonniert, nicht aus der
+  // Abfrage erraten.
+  const online = useNetzOnline();
+  const stoerung: "keine" | "offline" | "fehler" = !online
+    ? "offline"
+    : abfrage.isError
+      ? "fehler"
+      : "keine";
+  const daten = abfrage.data;
+  const a = daten?.auswertung;
+  const grundlage = daten?.preisgrundlage;
+  return (
+    <Card className="mt-4" data-testid="mrun-auswertung">
+      <SectionLabel>{t("mrun.report.title")}</SectionLabel>
+      <label className="mb-2 flex items-center gap-2 text-[12px] text-muted">
+        {t("mrun.report.period")}
+        <select
+          className="rounded border border-hairline bg-transparent px-1 py-0.5 text-[12px]"
+          value={tage}
+          data-testid="mrun-auswertung-zeitraum"
+          onChange={(e) => waehle(Number(e.target.value) as (typeof AUSWERTUNG_ZEITRAEUME)[number])}
+        >
+          {AUSWERTUNG_ZEITRAEUME.map((n) => (
+            <option key={n} value={n}>
+              {t("mrun.report.days", { n })}
+            </option>
+          ))}
+        </select>
+      </label>
+      {a === undefined || grundlage === undefined ? (
+        // Noch keine Zahlen für diesen Zeitraum: nur hier ersetzt ein Zustandstext die Karte, und
+        // offline zählt wie ein Fehler — es steht nichts an, worauf zu warten wäre.
+        stoerung !== "keine" ? (
+          <p className="text-[13px] text-danger" data-testid="mrun-auswertung-fehler">
+            {t("state.error")}
+          </p>
+        ) : (
+          <p className="text-[13px] text-muted">{t("state.loading")}</p>
+        )
+      ) : (
+        <div className="space-y-2 font-mono text-[11px] text-muted-2">
+          {stoerung === "offline" ? (
+            <p className="text-[12px] text-muted" data-testid="mrun-auswertung-offline">
+              {t("mrun.offline")}
+            </p>
+          ) : stoerung === "fehler" ? (
+            <p className="text-[12px] text-danger" data-testid="mrun-auswertung-refresh-error">
+              {t("mrun.refreshFailed")}
+            </p>
+          ) : null}
+          <div className="flex flex-wrap gap-x-4 gap-y-1">
+            <span>{t("mrun.total", { n: a.laeufe })}</span>
+            <span>{t("mrun.errors", { n: a.fehler })}</span>
+            <span>{t("mrun.fallbacks", { n: a.rueckfall })}</span>
+            <span>{t("mrun.demo", { n: a.demo })}</span>
+            <span>
+              {t("mrun.runtimeTotal", {
+                d: formatiereDauer(a.dauerSummeMs),
+                n: a.dauerGezaehlt,
+                total: a.laeufe,
+              })}
+            </span>
+            {a.verbrauchGezaehlt > 0 ? (
+              <span>
+                {t("mrun.tokensTotal", {
+                  ein: formatiereTokenzahl(a.eingabeToken),
+                  aus: formatiereTokenzahl(a.ausgabeToken),
+                  n: a.verbrauchGezaehlt,
+                  total: a.laeufe,
+                })}
+              </span>
+            ) : null}
+          </div>
+          <div data-testid="mrun-auswertung-kosten" className="flex flex-wrap gap-x-4 gap-y-1">
+            {a.kosten.map((k) => (
+              <span key={k.waehrung} className="font-semibold text-ink">
+                {t("mrun.report.costSum", {
+                  k: formatiereKosten(k.betrag, k.waehrung),
+                  n: k.laeufe,
+                  total: a.laeufe,
+                })}
+              </span>
+            ))}
+            {grundlage.hinterlegt ? (
+              <span>
+                {t("mrun.report.priceList", {
+                  s: grundlage.preisstand ?? "",
+                  w: grundlage.waehrung ?? "",
+                })}
+              </span>
+            ) : (
+              <span data-testid="mrun-auswertung-ohne-preisliste">
+                {t("mrun.report.noPriceList")}
+              </span>
+            )}
+            {grundlage.hinterlegt && a.verbrauchOhneKosten > 0 ? (
+              <span>{t("mrun.report.withoutPrice", { n: a.verbrauchOhneKosten })}</span>
+            ) : null}
+          </div>
+          {a.gekappt ? <p>{t("mrun.report.capped")}</p> : null}
+          {a.laeufe > 0 ? (
+            <ul className="divide-y divide-hairline" data-testid="mrun-auswertung-arten">
+              {Object.entries(a.jeAufgabe).map(([task, w]) => (
+                <li key={task} className="flex flex-wrap gap-x-3 py-1">
+                  <span className="font-semibold uppercase">
+                    {istBekannteAufgabenart(task) ? t(`mrun.task.${task}`) : t("mrun.taskUnknown")}
+                  </span>
+                  <span>{t("mrun.total", { n: w.laeufe })}</span>
+                  <span>{t("mrun.errors", { n: w.fehler })}</span>
+                  <span>
+                    {t("mrun.tokens", {
+                      ein: formatiereTokenzahl(w.eingabeToken),
+                      aus: formatiereTokenzahl(w.ausgabeToken),
+                    })}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-[13px] text-muted">{t("mrun.report.empty")}</p>
+          )}
+        </div>
       )}
     </Card>
   );
@@ -2270,6 +2495,7 @@ export function Capital(): JSX.Element {
       <ReasonerConfigCard />
       {/* SCRUM-165: ModelRun-Übersicht — unabhängig vom Snapshot, auch bei leerem Bestand sichtbar. */}
       <ReasonerRunsCard />
+      <ModelRunAuswertungCard />
       {/* SCRUM-169: KO-übergreifender read-only Evidence-Index (QM). */}
       <EvidenceIndexCard />
       {/* SCRUM-176: read-only Index der KOs mit veralteter/fehlender Evidence. */}
@@ -2298,6 +2524,431 @@ function LegendDot({ colorClass, label }: { colorClass: string; label: string })
       <span className={`h-2.5 w-2.5 rounded-full ${colorClass}`} />
       {label}
     </span>
+  );
+}
+
+// ==================================================================================================
+// N-0011 / N-0024 — DIE FILTERBARE VOLLTITELLISTE NEBEN DEM GRAPHEN.
+// ==================================================================================================
+//
+// Wortlaut N-0024: „Eine filterbare Liste mit vollständigen Titeln ergänzen; … auf schmalen Fenstern
+// eine gut bedienbare Listenansicht anbieten." N-0011: „eine synchronisierte lesbare Objektliste als
+// weiteren Einstieg anbieten." Die Zeichnung kürzt Titel (UX-07, `lib/graphLayout.ts`) und wird auf
+// einem Telefon klein skaliert; die Liste ist gewöhnliches HTML, steht in voller Breite unter dem Bild
+// und zeigt jeden Titel ungekürzt.
+//
+// SYNCHRON MIT DEM BILD: Die Liste bekommt GENAU die gezeichneten Knoten (`g.nodes` nach
+// `limitGraph`) — keine zweite Abfrage, kein Objekt aus dem Bestand, das der Graph nicht enthält.
+// Was die Graphantwort nicht trägt, kann über diese Liste nicht erscheinen.
+//
+// DERSELBE SPRUNG WIE AM KNOTEN: `koDetailPath`, und nur wenn `isNavigableNode` es erlaubt. Ein Knoten,
+// dessen Objekt im Bestand unbekannt ist, steht als Text ohne Link da — wie im Bild.
+//
+// Gemessen in `tests/wissensnetz-flaeche/graph-listenweg.test.tsx` (Funktion und Navigation, jsdom)
+// und in `tests/wissensnetz-flaeche/graph-liste-telefon-chromium.test.ts` (Chromium, 390×844,
+// echte App).
+//
+// R-0744 (VERWALTERSEITE RUND UM DIE NETZDARSTELLUNG): Diese Liste ist zugleich Suche und
+// Filterleiste (Titelteil UND Status) und öffnet je Eintrag ein Detailfenster — rein lesend, ohne
+// Bearbeiten im Netz. `/graph` ist eine Stufe-2-Seite; Stufe 2 gibt es nur für Verwalter
+// (`effectiveStufe2`, `lib/effectiveRole.ts`). Gemessen in
+// `tests/wissensnetz-flaeche/netz-verwaltung.test.tsx`.
+
+/** Was das Detailfenster je Objekt liest — alles aus der Graphantwort, nichts nachgeladen. */
+interface GraphDetail {
+  status: string;
+  verbindungen: { id: string; title: string; grund: string }[];
+  /**
+   * Nacharbeit 5 (BEN, F5): die Zahl NUR bei vorliegender Konfliktantwort. Läuft die Abfrage noch
+   * oder ist sie ohne Cache gescheitert, gibt es keine Zahl — `null` mit dem Zustand daneben, nie
+   * eine aus einem leeren Ersatz gerechnete 0.
+   */
+  offeneKonflikte: number | null;
+  konflikteZustand: "laedt" | "nicht-erhoben" | "erhoben";
+}
+
+type Statusfilter = "alle" | "validiert" | "nicht-validiert";
+
+function GraphObjektliste({
+  knoten,
+  bekannt,
+  statusVon,
+  detailVon,
+}: {
+  knoten: readonly { id: string; title: string }[];
+  bekannt: ReadonlySet<string>;
+  statusVon: (id: string) => string;
+  detailVon: (id: string) => GraphDetail;
+}): JSX.Element {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+  const [filter, setFilter] = useState("");
+  const [statusfilter, setStatusfilter] = useState<Statusfilter>("alle");
+  const [offen, setOffen] = useState<string | null>(null);
+  const suche = filter.trim().toLocaleLowerCase();
+  const sortiert = [...knoten].sort(
+    (a, b) => a.title.localeCompare(b.title) || a.id.localeCompare(b.id),
+  );
+  const passtStatus = (id: string): boolean =>
+    statusfilter === "alle" || (statusfilter === "validiert") === (statusVon(id) === "validiert");
+  const treffer = sortiert.filter(
+    (k) => passtStatus(k.id) && (suche === "" || k.title.toLocaleLowerCase().includes(suche)),
+  );
+  // Das Detailfenster gehört zu einem Eintrag, der gerade in der Liste steht — fällt er aus dem
+  // Filter, schließt es, statt über ein unsichtbares Objekt zu berichten.
+  const gezeigt = offen !== null ? treffer.find((k) => k.id === offen) : undefined;
+  const detail = gezeigt ? detailVon(gezeigt.id) : null;
+  return (
+    <section
+      data-testid="graph-objektliste"
+      aria-labelledby="graph-objektliste-titel"
+      className="mt-4 border-t border-hairline pt-3"
+    >
+      <h2 id="graph-objektliste-titel" className="text-sm font-semibold text-text">
+        {t("wissensgraph.liste.titel")}
+      </h2>
+      <label htmlFor="graph-objektliste-filter" className="mt-2 block text-[12.5px] text-muted">
+        {t("wissensgraph.liste.filter")}
+      </label>
+      <input
+        id="graph-objektliste-filter"
+        data-testid="graph-objektliste-filter"
+        type="search"
+        value={filter}
+        onChange={(e) => setFilter(e.target.value)}
+        className="mt-1 w-full rounded-md border border-hairline bg-surface px-2 py-1.5 text-sm"
+      />
+      <label htmlFor="graph-objektliste-status" className="mt-2 block text-[12.5px] text-muted">
+        {t("wissensgraph.liste.status")}
+      </label>
+      <select
+        id="graph-objektliste-status"
+        data-testid="graph-objektliste-status"
+        value={statusfilter}
+        onChange={(e) => setStatusfilter(e.target.value as Statusfilter)}
+        className="mt-1 w-full rounded-md border border-hairline bg-surface px-2 py-1.5 text-sm"
+      >
+        <option value="alle">{t("wissensgraph.liste.statusAlle")}</option>
+        <option value="validiert">{t("graph.legendValidated")}</option>
+        <option value="nicht-validiert">{t("wissensgraph.liste.statusNichtValidiert")}</option>
+      </select>
+      <p
+        data-testid="graph-objektliste-anzahl"
+        aria-live="polite"
+        className="mt-1 text-[12px] text-muted"
+      >
+        {t("wissensgraph.liste.anzahl", { count: treffer.length, gesamt: knoten.length })}
+      </p>
+      {treffer.length === 0 ? (
+        <p data-testid="graph-objektliste-leer" className="mt-2 text-sm text-muted">
+          {t("wissensgraph.liste.keinTreffer")}
+        </p>
+      ) : (
+        <ul className="mt-2 flex flex-col">
+          {treffer.map((k) => (
+            <li
+              key={k.id}
+              data-testid="graph-objekt"
+              data-id={k.id}
+              className="break-words border-b border-hairline py-1.5 text-sm last:border-b-0"
+            >
+              {isNavigableNode(k.id, bekannt) ? (
+                <Link
+                  data-testid="graph-objekt-link"
+                  to={koDetailPath(k.id)}
+                  className="font-medium underline"
+                  // Enter öffnet einen Link ohnehin; Leertaste wie am Knoten im Bild. Beides läuft
+                  // über denselben Router-Sprung, und `preventDefault` verhindert den zweiten.
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      navigate(koDetailPath(k.id));
+                    }
+                  }}
+                >
+                  {k.title}
+                </Link>
+              ) : (
+                <span data-testid="graph-objekt-text">{k.title}</span>
+              )}{" "}
+              <button
+                type="button"
+                data-testid="graph-objekt-details"
+                aria-expanded={gezeigt?.id === k.id}
+                aria-controls="graph-detail"
+                aria-label={t("wissensgraph.detail.oeffnen", { title: k.title })}
+                onClick={() => setOffen((o) => (o === k.id ? null : k.id))}
+                className="ml-1 text-[12px] text-muted underline"
+              >
+                {t("wissensgraph.detail.schalter")}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {gezeigt && detail ? (
+        <aside
+          id="graph-detail"
+          data-testid="graph-detail"
+          data-id={gezeigt.id}
+          aria-label={t("wissensgraph.detail.titel", { title: gezeigt.title })}
+          className="mt-3 rounded-md border border-hairline bg-surface p-3 text-sm"
+        >
+          <h3 data-testid="graph-detail-titel" className="break-words font-semibold text-text">
+            {gezeigt.title}
+          </h3>
+          <p data-testid="graph-detail-status" className="mt-1 text-[12.5px] text-muted">
+            {t("wissensgraph.detail.status", {
+              status:
+                detail.status === "validiert"
+                  ? t("graph.legendValidated")
+                  : t("wissensgraph.liste.statusNichtValidiert"),
+            })}
+          </p>
+          <p
+            data-testid="graph-detail-konflikte"
+            data-zustand={detail.konflikteZustand}
+            className="mt-1 text-[12.5px] text-muted"
+          >
+            {detail.konflikteZustand === "laedt"
+              ? t("wissensgraph.detail.konflikteLaedt")
+              : detail.offeneKonflikte === null
+                ? t("wissensgraph.detail.konflikteNichtErhoben")
+                : t("wissensgraph.detail.konflikte", { count: detail.offeneKonflikte })}
+          </p>
+          <p className="mt-2 text-[12.5px] font-medium text-text">
+            {t("wissensgraph.detail.verbindungen", { count: detail.verbindungen.length })}
+          </p>
+          {detail.verbindungen.length > 0 ? (
+            <ul data-testid="graph-detail-verbindungen" className="mt-1 flex flex-col gap-0.5">
+              {detail.verbindungen.map((v) => (
+                <li key={`${v.id}-${v.grund}`} className="break-words text-[12.5px] text-muted">
+                  {t("wissensgraph.detail.verbindung", { title: v.title, grund: v.grund })}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          <div className="mt-2 flex flex-wrap gap-3">
+            {isNavigableNode(gezeigt.id, bekannt) ? (
+              <Link
+                data-testid="graph-detail-oeffnen"
+                to={koDetailPath(gezeigt.id)}
+                className="text-[12.5px] font-medium underline"
+              >
+                {t("graph.openNode", { title: gezeigt.title })}
+              </Link>
+            ) : null}
+            <button
+              type="button"
+              data-testid="graph-detail-schliessen"
+              onClick={() => setOffen(null)}
+              className="text-[12.5px] text-muted underline"
+            >
+              {t("wissensgraph.detail.schliessen")}
+            </button>
+          </div>
+        </aside>
+      ) : null}
+    </section>
+  );
+}
+
+// ==================================================================================================
+// R-1983 — DIE KURATIERTE SICHT „SO ARBEITET KLARWERK".
+// ==================================================================================================
+//
+// Die Quelle (R-1983, SCRUM-545–551) nennt sie nur beim Namen: „kuratierte Sicht ‚So arbeitet
+// Klarwerk'"; das Konzept vom 26.07. (zitiert in R-0744) ordnet sie als Vorführsicht VOR dem
+// Qualitätsblick ein. Umgesetzt ist sie hier in der engsten Lesart, die das Wort „kuratiert" trägt:
+// sie zeigt ausschließlich das, was MENSCHEN gesetzt haben — die gesetzten Fachbeziehungen aus
+// DERSELBEN `/api/graph`-Antwort (JOB 4151/4155), als lesbare Sätze mit beiden Einträgen —, und sagt
+// in drei Sätzen, wie das Bild entsteht. Keine abgeleitete Schlagwortnähe in der Liste, keine neue
+// Abfrage, nichts zum Bearbeiten.
+//
+// ZUSTÄNDE OHNE BEHAUPTUNG: Sendet der Server die Menge nicht, steht genau das da — nicht „keine".
+// Ist sie leer, steht „keine gesetzt" mit dem Zusatz, dass das keine Prüfaussage ist. Hat der Server
+// gekürzt, steht die Lieferzahl neben der Gesamtzahl. Standardmäßig zugeklappt: eine Vorführsicht
+// wird geöffnet, sie drängt sich nicht vor das Bild. Gemessen in
+// `tests/wissensnetz-flaeche/netz-verwaltung.test.tsx` (S1–S4).
+function SoArbeitetKlarwerk({
+  kanten,
+  gesamt,
+  gekuerzt,
+  titelVon,
+  bekannt,
+}: {
+  kanten: readonly GraphKuratierteKante[] | undefined;
+  gesamt: number | undefined;
+  gekuerzt: boolean | undefined;
+  titelVon: ReadonlyMap<string, string>;
+  bekannt: ReadonlySet<string>;
+}): JSX.Element {
+  const { t } = useTranslation();
+  const [offen, setOffen] = useState(false);
+  const eintrag = (id: string): JSX.Element => {
+    const titel = titelVon.get(id) ?? id;
+    return isNavigableNode(id, bekannt) ? (
+      <Link to={koDetailPath(id)} className="font-medium underline">
+        {titel}
+      </Link>
+    ) : (
+      <span className="font-medium">{titel}</span>
+    );
+  };
+  // Nur Beziehungen, deren BEIDE Einträge in der Graphantwort stehen — der Server liefert sie so
+  // (`kuratierteKantenFuer`, Sichtbarkeitsschnitt vor dem Zählen); hier wird es nicht unterstellt.
+  const sichtbar = (kanten ?? [])
+    .filter((k) => titelVon.has(k.a) && titelVon.has(k.b))
+    .sort(
+      (x, y) =>
+        (titelVon.get(x.a) ?? "").localeCompare(titelVon.get(y.a) ?? "") ||
+        (titelVon.get(x.b) ?? "").localeCompare(titelVon.get(y.b) ?? ""),
+    );
+  return (
+    <section data-testid="graph-sicht" className="mt-4 border-t border-hairline pt-3">
+      <button
+        type="button"
+        data-testid="graph-sicht-schalter"
+        aria-expanded={offen}
+        aria-controls="graph-sicht-inhalt"
+        onClick={() => setOffen((o) => !o)}
+        className="text-sm font-medium underline"
+      >
+        {offen ? t("wissensgraph.sicht.aus") : t("wissensgraph.sicht.an")}
+      </button>
+      {offen ? (
+        <div id="graph-sicht-inhalt" data-testid="graph-sicht-inhalt" className="mt-2 text-sm">
+          <h2 className="font-semibold text-text">{t("wissensgraph.sicht.titel")}</h2>
+          <ol className="mt-1 list-decimal pl-5 text-[12.5px] text-muted">
+            <li>{t("wissensgraph.sicht.schritt1")}</li>
+            <li>{t("wissensgraph.sicht.schritt2")}</li>
+            <li>{t("wissensgraph.sicht.schritt3")}</li>
+          </ol>
+          {kanten === undefined ? (
+            <p data-testid="graph-sicht-nicht-geliefert" className="mt-2 text-muted">
+              {t("wissensgraph.sicht.nichtGeliefert")}
+            </p>
+          ) : sichtbar.length === 0 ? (
+            <p data-testid="graph-sicht-leer" className="mt-2 text-muted">
+              {t("wissensgraph.sicht.leer")}
+            </p>
+          ) : (
+            <ul data-testid="graph-sicht-beziehungen" className="mt-2 flex flex-col gap-1">
+              {sichtbar.map((k) => (
+                <li
+                  key={`${k.a}-${k.art}-${k.b}`}
+                  data-testid="graph-sicht-beziehung"
+                  data-a={k.a}
+                  data-b={k.b}
+                  className="break-words"
+                >
+                  {eintrag(k.a)}
+                  {` ${t("wissensgraph.sicht.verbindung", {
+                    art: beziehungsartText(k.art, t),
+                    richtung: beziehungsrichtungKurz(k.richtung, t),
+                  })} `}
+                  {eintrag(k.b)}
+                </li>
+              ))}
+            </ul>
+          )}
+          {kanten !== undefined && gekuerzt === true && typeof gesamt === "number" ? (
+            <p data-testid="graph-sicht-gekuerzt" className="mt-2 text-[12.5px] text-muted">
+              {t("wissensgraph.sicht.gekuerzt", { geladen: kanten.length, gesamt })}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+// ==================================================================================================
+// R-0744 — DER AUSDRÜCKLICH ZU WÄHLENDE QUALITÄTSBLICK.
+// ==================================================================================================
+//
+// „nie Vorgabe, immer zu wählen": Der Schalter steht aus, und solange er aus ist, wird keiner seiner
+// Eingänge geladen (`useQualitaetsblick(false)`). Gewählt zeigt er vier Quoten, JEDE mit ihrem
+// Nenner, und das Alter des Bestands. Eine nicht erhobene Zahl steht als „nicht erhoben", nie als 0.
+// Die Rechnung steht in `lib/netzQualitaet.ts`; diese Komponente liest und schreibt nichts.
+function Qualitaetsblick({
+  graphIds,
+  konflikte,
+  konflikteLaden,
+  objekte,
+}: {
+  graphIds: readonly string[];
+  konflikte: readonly Conflict[] | undefined;
+  konflikteLaden: boolean;
+  objekte: readonly { id: string; createdAt?: string }[];
+}): JSX.Element {
+  const { t, i18n } = useTranslation();
+  const [gewaehlt, setGewaehlt] = useState(false);
+  const daten = useQualitaetsblick(gewaehlt);
+  const blick = qualitaetsblick({
+    graphIds,
+    konflikte,
+    dubletten: daten.dubletten.data,
+    anstehend: daten.anstehend.data,
+    luecken: daten.luecken.data,
+  });
+  // „Wird erhoben" ist etwas anderes als „nicht erhoben": solange eine Abfrage läuft, sagt die
+  // Zeile das — erst eine gescheiterte (oder fehlende) Antwort heißt „nicht erhoben".
+  const laedt: Record<keyof typeof blick, boolean> = {
+    konflikte: konflikteLaden,
+    luecken: daten.luecken.isPending && !daten.luecken.isError,
+    veraltet: daten.anstehend.isPending && !daten.anstehend.isError,
+    dubletten: daten.dubletten.isPending && !daten.dubletten.isError,
+  };
+  const alter = bestandsalter(objekte, graphIds, Date.now());
+  const zeile = (schluessel: keyof typeof blick): JSX.Element => {
+    const q = blick[schluessel];
+    const was = t(`wissensgraph.qb.${schluessel}`);
+    const zustand = laedt[schluessel]
+      ? "laedt"
+      : q.anzahl === null || q.nenner === null
+        ? "nicht-erhoben"
+        : "erhoben";
+    return (
+      <li key={schluessel} data-testid={`graph-qb-${schluessel}`} data-zustand={zustand}>
+        {zustand === "laedt"
+          ? t("wissensgraph.qb.laedt", { was })
+          : q.anzahl === null || q.nenner === null
+            ? t("wissensgraph.qb.nichtErhoben", { was })
+            : t("wissensgraph.qb.quote", { was, anzahl: q.anzahl, nenner: q.nenner })}
+      </li>
+    );
+  };
+  return (
+    <section data-testid="graph-qualitaetsblick" className="mt-4 border-t border-hairline pt-3">
+      <button
+        type="button"
+        data-testid="graph-qb-schalter"
+        aria-pressed={gewaehlt}
+        onClick={() => setGewaehlt((g) => !g)}
+        className="text-sm font-medium underline"
+      >
+        {gewaehlt ? t("wissensgraph.qb.aus") : t("wissensgraph.qb.an")}
+      </button>
+      {gewaehlt ? (
+        <div data-testid="graph-qb-inhalt" className="mt-2 text-[12.5px] text-muted">
+          <ul className="flex flex-col gap-0.5">
+            {zeile("konflikte")}
+            {zeile("luecken")}
+            {zeile("veraltet")}
+            {zeile("dubletten")}
+          </ul>
+          <p data-testid="graph-qb-alter" className="mt-2">
+            {alter.juengster === null || alter.tage === null
+              ? t("wissensgraph.qb.alterUnbekannt")
+              : t("wissensgraph.qb.alter", {
+                  datum: new Date(alter.juengster).toLocaleDateString(i18n.language),
+                  count: alter.tage,
+                })}
+          </p>
+        </div>
+      ) : null}
+    </section>
   );
 }
 
@@ -2369,10 +3020,50 @@ export function GraphView(): JSX.Element {
             (conflictsQ.data ?? []).map((c) => ({ a: c.koA, b: c.koB })),
             layout.positions,
           );
+          // R-0744 · DAS DETAILFENSTER LIEST NUR, WAS DIE SEITE SCHON HAT: die Verbindungen eines
+          // Objekts aus derselben Graphantwort (Schlagwortkanten mit ihrem `via`, gesetzte
+          // Fachbeziehungen mit ihrer Art) und seine nicht gelösten Konflikte. Beide Endpunkte
+          // müssen in der Graphantwort stehen — sonst nennte das Fenster einen fremden Titel.
+          const titelVon = new Map(raw.nodes.map((n) => [n.id, n.title]));
+          const verbindungenJe = new Map<string, { id: string; title: string; grund: string }[]>();
+          const merke = (von: string, nach: string, grund: string): void => {
+            const titel = titelVon.get(nach);
+            if (titel === undefined || !titelVon.has(von)) {
+              return;
+            }
+            const liste = verbindungenJe.get(von) ?? [];
+            liste.push({ id: nach, title: titel, grund });
+            verbindungenJe.set(von, liste);
+          };
+          for (const e of raw.edges) {
+            const grund = t("wissensgraph.detail.grundSchlagwort", { via: e.via });
+            merke(e.a, e.b, grund);
+            merke(e.b, e.a, grund);
+          }
+          for (const k of raw.kuratierteKanten ?? []) {
+            const grund = beziehungsartText(k.art, t);
+            merke(k.a, k.b, grund);
+            merke(k.b, k.a, grund);
+          }
+          // Nacharbeit 5 (BEN, F5): KEIN leeres Ersatzarray. Ohne Konfliktantwort ist die Zahl
+          // unbekannt — laufend „wird erhoben", gescheitert „nicht erhoben", nie 0.
+          const konflikteZustand: GraphDetail["konflikteZustand"] =
+            conflictsQ.data !== undefined
+              ? "erhoben"
+              : conflictsQ.isError
+                ? "nicht-erhoben"
+                : "laedt";
+          const offeneKonflikte = conflictsQ.data?.filter((c) => c.status !== "geloest");
+          const offeneKonflikteVon = (id: string): number | null =>
+            offeneKonflikte === undefined
+              ? null
+              : offeneKonflikte.filter((c) => c.koA === id || c.koB === id).length;
 
           return (
             <Card>
-              <p className="mb-2 text-[13px] text-muted">
+              {/* R-0744: die Kopfkennzahlen der Verwalterseite — Objekte, Verbindungen, gesetzte
+                  Fachbeziehungen und Kürzung, gezählt an der ungetrimmten Antwort. */}
+              <p data-testid="graph-kopfkennzahlen" className="mb-2 text-[13px] text-muted">
                 {t("s2.graphCount", { nodes: raw.nodes.length, edges: raw.edges.length })}
                 {/* JOB 4153: eine EIGENE Zahl, gezählt an der ungetrimmten Antwort wie die zwei
                     davor. Sie erscheint nur, wenn der Server die Menge auch geschickt hat — ein
@@ -2593,6 +3284,30 @@ export function GraphView(): JSX.Element {
                     Legende erklärt die Sprache des Bildes und ist keine Bestandsaussage. */}
                 <LegendDot colorClass="bg-ai" label={t("graph.legendKuratiert")} />
               </div>
+              <GraphObjektliste
+                knoten={g.nodes}
+                bekannt={knownKoIds}
+                statusVon={(id) => statusOf.get(id) ?? "offen"}
+                detailVon={(id) => ({
+                  status: statusOf.get(id) ?? "offen",
+                  verbindungen: verbindungenJe.get(id) ?? [],
+                  offeneKonflikte: offeneKonflikteVon(id),
+                  konflikteZustand,
+                })}
+              />
+              <SoArbeitetKlarwerk
+                kanten={raw.kuratierteKanten}
+                gesamt={raw.kuratierteKantenGesamt}
+                gekuerzt={raw.kuratierteKantenGekuerzt}
+                titelVon={titelVon}
+                bekannt={knownKoIds}
+              />
+              <Qualitaetsblick
+                graphIds={raw.nodes.map((n) => n.id)}
+                konflikte={conflictsQ.data}
+                konflikteLaden={conflictsQ.isPending && !conflictsQ.isError}
+                objekte={kos}
+              />
             </Card>
           );
         }}

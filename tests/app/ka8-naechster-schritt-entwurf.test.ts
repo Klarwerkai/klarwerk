@@ -213,11 +213,18 @@ describe("JOB 1494 · KA8 1b — Zugang", () => {
     expect(res.statusCode).toBe(401);
   });
 
-  it("fremder Entwurf ⇒ 403 fuer eine Expertin, 200 fuer die Verwaltung", async () => {
+  // Entscheidung Pedi `debbb8e8` (Aufnahme gesamt-entwurf-einreichen, Lauf :3): Entwürfe sind
+  // privat. Bis dahin bekam die Verwaltung hier 200. Die zweite Seite der Regel ist jetzt Boris
+  // selbst: sein eigener Entwurf kommt heraus.
+  it("fremder Entwurf ⇒ 403 fuer eine Expertin UND fuer die Verwaltung, 200 fuer den Autor", async () => {
     // `canSeeDraft` stammt aus `capture-routes.ts` und ist hier NICHT nachgebaut. Beide Seiten der
     // Regel werden belegt, sonst pruefte der Fall nur die eine.
     const capture = dienstMitSpeicher([]);
     const fremder = await capture.createDraft(MIT_ANKER, "boris");
+    const alsBoris = await (await baueApp(capture, { id: "boris", role: "experte" })).inject({
+      method: "GET",
+      url: pfad(fremder.id),
+    });
 
     const alsAnna = await (await baueApp(capture, ANNA)).inject({
       method: "GET",
@@ -228,7 +235,9 @@ describe("JOB 1494 · KA8 1b — Zugang", () => {
       url: pfad(fremder.id),
     });
 
-    expect(`${alsAnna.statusCode}/${alsAdmin.statusCode}`).toBe("403/200");
+    expect(`${alsAnna.statusCode}/${alsAdmin.statusCode}/${alsBoris.statusCode}`).toBe(
+      "403/403/200",
+    );
     expect(alsAnna.json().error).toBe("FORBIDDEN");
   });
 });

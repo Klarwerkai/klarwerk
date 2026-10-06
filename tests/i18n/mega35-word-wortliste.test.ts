@@ -19,12 +19,11 @@
 // NICHT betroffen und bewusst erlaubt: „validiert"/„validated"/„gevalideerd" (die Statusangabe des
 // Wissensobjekts, die in der Quellenliste als Abzeichen danebensteht) und „In Prüfung" (derselbe
 // Status). Das sind Aussagen ÜBER EIN OBJEKT, keine Zusage über die Antwort.
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { panelQuelleAus } from "../support/panelquelle";
 
 const TASKPANE = "apps/web/public/word-addin/taskpane.html";
-const HTML = readFileSync(resolve(process.cwd(), TASKPANE), "utf8");
+const HTML = panelQuelleAus(TASKPANE);
 
 // Die beiden Schlüssel, die das Wort tragen DÜRFEN — und müssen.
 const EINSTUFUNG = ["askEvidenceVerified", "askEvidenceUnverified"];

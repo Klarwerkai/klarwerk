@@ -278,13 +278,13 @@ describe("JOB 3323 B · /erfassen — der ungesicherte Entwurf überlebt den Wec
     // Vor dem Wechsel: die Hülle spricht Deutsch.
     const suche = () =>
       c.querySelector<HTMLInputElement>('[data-testid="kopfband"] input[type="search"]');
-    expect(suche()?.getAttribute("placeholder")).toBe("Suchen");
+    expect(suche()?.getAttribute("placeholder")).toBe("Wissen suchen");
 
     await wechsleAuf(c, "en");
 
     // 1. DIE SPRACHE IST WIRKLICH GEWECHSELT — sonst wäre alles Weitere trivial grün.
     expect(i18n.language).toBe("en");
-    expect(suche()?.getAttribute("placeholder")).toBe("Search");
+    expect(suche()?.getAttribute("placeholder")).toBe("Search knowledge");
     expect(c.querySelector('[data-testid="kopfband-konto"]')?.getAttribute("aria-label")).toBe(
       "Account",
     );
@@ -318,7 +318,7 @@ describe("JOB 3323 B · /erfassen — der ungesicherte Entwurf überlebt den Wec
     // 4. Und zurück auf Deutsch, mitten in derselben Szene — alles drei steht immer noch.
     await wechsleAuf(c, "de");
     expect(i18n.language).toBe("de");
-    expect(suche()?.getAttribute("placeholder")).toBe("Suchen");
+    expect(suche()?.getAttribute("placeholder")).toBe("Wissen suchen");
     expect(c.querySelector('[data-testid="blatt-titel"]')).toBe(feldVorher);
     expect((feldVorher as HTMLInputElement).value).toBe(TEXT);
     expect(c.querySelector('[data-testid="blatt-text"] [role="textbox"]')).toBe(

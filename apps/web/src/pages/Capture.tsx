@@ -53,6 +53,7 @@ import { AiUnavailableHint } from "../components/AiUnavailableHint";
 import { AppendToArticleModal } from "../components/AppendToArticleModal";
 // SCRUM-405: „Aus Dokument ergänzen" — extract-Punkte anhängen (nichts ersetzen).
 import { BodyExtractPanel } from "../components/BodyExtractPanel";
+import type { BildbeschreibungsBitte } from "../components/BodyImageGallery";
 import { BodyTemplateChooser } from "../components/BodyTemplateChooser";
 // AUFTRAG-uxpol1 (PAKET 2): geteiltes, poliertes Dateityp-Kachel-Bauteil + IC-7-Wahrheitsquelle.
 import { CaptureDraftList } from "../components/CaptureDraftList";
@@ -206,6 +207,7 @@ import { EDITOR_BLOCKS } from "../lib/editorBlocks";
 // die Begründung, warum es kein Prop und kein Kontext ist, steht dort.
 import { merkeMehrdeutigeFussnoten } from "../lib/editorFigures";
 import { editorImagesFromLocalImages } from "../lib/editorImages";
+import { erfassenFehlerSchluessel } from "../lib/erfassenFehlersatz";
 // AUFTRAG-mega14 Block D (SCRUM-414): dieselbe Anhängen-Regel wie Prüfbereich und Server.
 import {
   SOURCE_ATTACH_HINT_KEYS,
@@ -305,6 +307,12 @@ interface DateiEingelesen {
   zusaetze: readonly Textbaustein[];
 }
 type Meldung = string | DateiEingelesen;
+
+/** Eine Ablehnung des Import-Wegs mit laufender Nummer — die jüngste gewinnt (R-0120). */
+interface ImportAblehnung {
+  text: string;
+  nr: number;
+}
 
 /**
  * Der sichtbare Satz einer Meldung. Für den Befund „Datei eingelesen" wird er HIER gebildet — aus
@@ -485,15 +493,12 @@ export function beispielEinreichSchritt(args: {
   return args.bestaetigt ? "einreichen" : "rueckfrage";
 }
 
-// Die drei Texte der Rueckfrage. Sie stehen hier als Klartext und NICHT in `i18n.ts`, weil diese
-// Datei in diesem Zug JOB 2945 gehoert und fuer diesen Durchgang gesperrt ist. Wo der vorhandene
-// Schluesselbestand traegt, wird er benutzt (`demo.badge.label` fuer die Markierung,
-// `capture.file.cancel` fuer den Abbruch — beide dreisprachig vorhanden); fuer Frage und
-// Bestaetigung gibt es keinen passenden Schluessel. Das ist eine Ownerfrage der Rueckgabe, kein
-// stiller Dauerzustand: die drei Werte gehoeren nach `i18n.ts`, sobald die Datei wieder frei ist.
+// Die Texte der Rueckfrage: `demo.badge.label` fuer die Markierung, `capture.file.cancel` fuer den
+// Abbruch, Frage und Bestaetigung aus `texte/einstieg.ts` (dreisprachig). Bis zur Aufnahme
+// `gesamt-erfassung-einstieg` standen die beiden letzten hier als deutscher Klartext.
 const BEISPIEL_TOR_TEXT = {
-  frage: "Das sind Beispieldaten. Wirklich als echtes Wissen einreichen?",
-  bestaetigen: "Ja, Beispiel einreichen",
+  frage: "einstieg.beispiel.frage",
+  bestaetigen: "einstieg.beispiel.bestaetigen",
 } as const;
 
 // ================================================================================================
@@ -551,8 +556,14 @@ export function CaptureArbeitsraum({
   const { role } = useRole();
   const { push } = useToast();
   const authorName = user?.name ?? user?.email ?? "—";
-  const draftScopeLabel =
-    user?.role === "admin" ? "Admin-Ansicht: alle Entwürfe" : "Meine Entwürfe";
+  // AUFNAHME gesamt-entwurf-einreichen · Entscheidung Pedi `debbb8e8`: Entwürfe sind PRIVAT. Der
+  // Server gibt jeder Rolle, auch Administratoren, nur die EIGENEN Entwürfe (`canSeeDraft` in
+  // services/app/src/routes/capture-routes.ts). Die Mehr-Ersteller-Sicht der Liste (Ersteller-Filter,
+  // Reichweiten-Plakette, „Admin-Ansicht: alle") hätte hier nichts mehr zu unterscheiden und
+  // behauptete eine Reichweite, die es nicht gibt. Sie bleibt in `CaptureDraftList` für den eigenen
+  // Auftrag zum gemeinsamen Pool (R-2099) stehen und ist hier aus (`isAdmin={false}` an der
+  // Liste, immer der Satz `capture.draftScope.note`).
+  const draftScopeLabel = "Meine Entwürfe";
   // AUFTRAG-mega12 Block A (bens SB-2): `navigate` bleibt für die beiden ZUSTANDS-Räumungen auf
   // derselben Route (`/erfassen` mit `state: null`) — die verlassen die Seite nicht und dürfen NICHT
   // fragen. Jeder Weg, der die Erfassungsseite wirklich VERLÄSST, läuft über `guardedNavigate` bzw.
@@ -700,10 +711,12 @@ export function CaptureArbeitsraum({
     imageId: string;
     src: string;
     index: number;
+    koerper?: string | undefined;
     nonce: number;
   } | null>(null);
-  const bildbeschreibungAusGalerie = (imageId: string, src: string, index: number): void => {
-    setCaptionRequest((prev) => ({ imageId, src, index, nonce: (prev?.nonce ?? 0) + 1 }));
+  // Lauf 5 (R3-1): `koerper` gibt an, in welchem Körper `index` zählt (siehe `BildbeschreibungsBitte`).
+  const bildbeschreibungAusGalerie: BildbeschreibungsBitte = (imageId, src, index, koerper) => {
+    setCaptionRequest((prev) => ({ imageId, src, index, koerper, nonce: (prev?.nonce ?? 0) + 1 }));
   };
   // SCRUM-375 / AG-12: erweiterte/technische Felder (Metadaten, Dokumente, Bilder) sind Progressive
   // Disclosure — standardmäßig eingeklappt, damit „Wissen erzählen → im Studio strukturieren" führt.
@@ -1089,7 +1102,20 @@ export function CaptureArbeitsraum({
   // dieser Fläche, die anderswo landet, war genau die Lücke.
   //
   // `err` bleibt unberührt und trägt weiterhin alles andere (Speichern, Anhänge, KI-Wege).
-  const [fileImportMeldung, setFileImportMeldung] = useState<string | null>(null);
+  //
+  // NACHARBEIT 2 (R-0120): JEDE Ablehnung trägt eine laufende Nummer. Die Region zeigt die zeitlich
+  // jüngste Ursache — ohne Nummer wäre eine zweite, wortgleiche Ablehnung (zweimal „zu groß") nach
+  // einem Kachelhinweis keine Änderung, und der ältere Hinweis bliebe vor ihr stehen.
+  const [fileImportMeldung, setFileImportMeldungZustand] = useState<ImportAblehnung | null>(null);
+  const fileImportMeldungNrRef = useRef(0);
+  const setFileImportMeldung = (text: string | null): void => {
+    if (text === null) {
+      setFileImportMeldungZustand(null);
+      return;
+    }
+    fileImportMeldungNrRef.current += 1;
+    setFileImportMeldungZustand({ text, nr: fileImportMeldungNrRef.current });
+  };
   // WP-D11 (Pedis Entscheid): Folien zusätzlich als Bilder übernehmen (Server-Konvertierung).
   // Der Toggle gilt für den NÄCHSTEN Import; der Fortschrittstext ist ehrlich (kein Fake-Prozent).
   const [slidesAsImages, setSlidesAsImages] = useState(false);
@@ -1205,7 +1231,15 @@ export function CaptureArbeitsraum({
   // Satz, nicht einen zweiten. `useCallback`, weil der zweite Aufrufer im Wächter-Effekt sitzt: eine
   // bei jedem Render neu gebaute Funktion wäre dort eine Abhängigkeit, die sich jedes Mal ändert.
   const fehlersatz = useCallback(
-    (e: unknown): string => (e instanceof ApiError ? e.message : t("state.error")),
+    (e: unknown): string => {
+      // Aufnahme `gesamt-erfassung-einstieg` (R-0080, R-1002): Formfehler, zu grosse Inhalte und
+      // die abgelaufene Frist bekommen den übersetzten Satz (`lib/erfassenFehlersatz.ts`).
+      const schluessel = erfassenFehlerSchluessel(e);
+      if (schluessel) {
+        return t(schluessel);
+      }
+      return e instanceof ApiError ? e.message : t("state.error");
+    },
     [t],
   );
   const fail = (e: unknown): void => setErr(fehlersatz(e));
@@ -1694,8 +1728,11 @@ export function CaptureArbeitsraum({
         ganzdokumentOffenRef.current = null;
       }
       if (error instanceof DraftPayloadTooLargeError) {
-        setErr(t(CAPTURE_FILE_TEXT.tooLargeForImport));
-        push("error", t(CAPTURE_FILE_TEXT.tooLargeForImport));
+        // R-0120: der Größenabbruch ist eine Ablehnung DIESES Import-Wegs und gehört in dieselbe,
+        // dauerhaft montierte Live-Region wie die übrigen (`fileImportMeldung`, oben). Bis hierher
+        // stand er im stummen Fehlerkasten UND als erst beim Ereignis eingehängter Toast — zweimal
+        // sichtbar und auf keinem verlässlich angesagten Weg. Datei und Eingabe bleiben unberührt.
+        setFileImportMeldung(t(CAPTURE_FILE_TEXT.tooLargeForImport));
         return;
       }
       fail(error);
@@ -4922,10 +4959,10 @@ export function CaptureArbeitsraum({
   const beispielRueckfrage = (): JSX.Element | null =>
     exampleInForm && confirmExampleSubmit ? (
       <div className="rounded-card border border-hairline bg-page px-3 py-2.5">
-        <p className="text-[12.5px] font-semibold text-text">{BEISPIEL_TOR_TEXT.frage}</p>
+        <p className="text-[12.5px] font-semibold text-text">{t(BEISPIEL_TOR_TEXT.frage)}</p>
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <Button variant="primary" disabled={submit.isPending} onClick={() => requestSubmit(true)}>
-            {BEISPIEL_TOR_TEXT.bestaetigen}
+            {t(BEISPIEL_TOR_TEXT.bestaetigen)}
           </Button>
           <button
             type="button"
@@ -5199,6 +5236,7 @@ export function CaptureArbeitsraum({
   const sourceGateHint = sourceAttachHint(extPolicyStage, sourceForm.url);
 
   // SCRUM-375: wie viele erweiterte Felder schon Inhalt tragen — für das „X ausgefüllt"-Badge.
+  // R-0922: auch Vertraulichkeit, Prüfer und gesammelte Quellen liegen hinter dem Aufklapper.
   const advancedSummary = advancedFieldsSummary({
     category,
     asset,
@@ -5206,6 +5244,9 @@ export function CaptureArbeitsraum({
     tags,
     documentCount: docs.length,
     imageCount: images.length,
+    confidentialityDeclared: declaredConfidentiality !== undefined,
+    reviewerCount: reviewerIds.length,
+    sourceCount: pendingSources.length,
   });
 
   // SCRUM-248: ehrlicher Speicher-Check — was landet im KO, was fehlt noch? (nur echte Felder)
@@ -5650,17 +5691,13 @@ export function CaptureArbeitsraum({
             das Feld mit auf) — eine Auskunft über eine Suche, die es gerade nicht gibt, wäre
             wieder eine Behauptung.
 
-            Die Admin-Ansicht sieht ALLE Entwürfe: sie bekommt den eigenen, wahren Satz statt
-            einer Aussage über „deine" Entwürfe. Der Gegenweg läuft über GuardedLink, weil er
+            Seit `debbb8e8` sieht jede Rolle nur ihre eigenen Entwürfe; der Satz über „deine"
+            Entwürfe ist deshalb für alle wahr. Der Gegenweg läuft über GuardedLink, weil er
             /erfassen wirklich verlässt und ungespeicherte Eingaben sonst still verlören;
             `/bibliothek` ist ab Betrachter offen und braucht kein Rollentor. */}
         {draftsOpen && (drafts.data?.length ?? 0) > 0 ? (
           <div className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-1 px-1 text-[12px] leading-relaxed text-muted">
-            <span>
-              {user?.role === "admin"
-                ? t("capture.draftScope.noteAdmin")
-                : t("capture.draftScope.note")}
-            </span>
+            <span>{t("capture.draftScope.note")}</span>
             <GuardedLink
               to="/bibliothek"
               data-testid="draft-scope-to-library"
@@ -5675,7 +5712,7 @@ export function CaptureArbeitsraum({
           Sortierung leben dort (pro Browser gemerkt). Rendert sich selbst nur bei ≥ 1 Entwurf. */}
         <CaptureDraftList
           drafts={drafts.data ?? []}
-          isAdmin={user?.role === "admin"}
+          isAdmin={false}
           directory={directory.data ?? []}
           open={draftsOpen}
           onToggleOpen={() => setDraftsOpen((open) => !open)}
@@ -6005,7 +6042,8 @@ export function CaptureArbeitsraum({
                     Dateiauswahl (Begründung bei `fileImportMeldung`, oben). */}
                   <CaptureFileImport
                     onExtractFile={(e) => void onExtractFile(e)}
-                    importMeldung={fileImportMeldung}
+                    importMeldung={fileImportMeldung?.text ?? null}
+                    importMeldungNr={fileImportMeldung?.nr}
                   />
                   <div className="flex flex-wrap items-center gap-2">
                     <Button
@@ -7029,7 +7067,9 @@ export function CaptureArbeitsraum({
                     </Field>
                     {/* KW-STR / FR-STR-02: optionaler WYSIWYG-Body. SCRUM-321: lokale Bild-Anhänge
                     können vor dem Speichern als sichere data:image-Vorschau eingefügt werden. */}
-                    <Field label={t("capture.fBody")}>
+                    {/* `gruppe`: der Bereich enthält Studio-Knöpfe UND den Editor — als implizites
+                      Label aktivierte jeder Klick ins Schreibfeld den ersten Knopf (Studio ging auf). */}
+                    <Field label={t("capture.fBody")} gruppe>
                       {/* SCRUM-340: aus dem vorhandenen Reasoner-Entwurf einen strukturierten Body-Artikel
                       erzeugen und direkt im Studio weiterbearbeiten. Vorschlag, kein validiertes Wissen;
                       vorhandener Body wird nicht still überschrieben (leer = setzen, sonst anhängen). */}

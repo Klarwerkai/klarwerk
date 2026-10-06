@@ -3,15 +3,68 @@
 // Domäne in die generischen Felder. Titel/Body → KO-Inhalt; Space+pageId+URL → Provenienz/Ursprung (für
 // Re-Sync-Idempotenz); Labels → Tags; Read-Restriktionen → Governance-Signal für die Vertraulichkeit.
 
-import type { Confidentiality, KnowledgeType } from "../../knowledge-object";
+import type { Confidentiality, KnowledgeType, KoSourceRestrictions } from "../../knowledge-object";
 import type { ImportItem } from "../../library-analytics";
 // JOB 2703 D2: die EINE Kuerzungsregel liegt in `structure` (D1: library-analytics, umgelegt).
 import { kernaussageAusHtml } from "../../structure";
 // WP-IC-PAKET-1b (bens ROT-1): decodeHtmlEntities auch für die NICHT-Body-Felder — Confluence liefert
 // Entities nicht nur im Storage-HTML, sondern auch in Titel/Autor/Labels.
 import { decodeHtmlEntities } from "../../structure";
-import type { ConfluencePage } from "./rest-client";
+import type { ConfluenceAttachment, ConfluencePage } from "./rest-client";
 import { confluenceStorageToHtml } from "./storage";
+
+// ================================================================================================
+// R-0163 — DIE ANHÄNGE EINER SEITE, QUELLNEUTRAL.
+// ================================================================================================
+//
+// `ImportItem` steht unter Freeze-144 (`tests/library-analytics-freeze144.test.ts`), dessen Freigabe
+// der Bau nicht zeichnet. Das Feld reist deshalb wie `originalAuthor` als ZUSÄTZLICHES Feld am Item:
+// der Import-Kern liest es als fremdes, ungeprüftes Feld (`leseImportAnhaenge` in
+// `library-analytics/src/service.ts`) und übernimmt nur, was dort besteht. Die Begriffe sind
+// quellneutral — ein Jira-Adapter füllt dieselbe Form.
+export interface ConfluenceImportAnhang {
+  // Kennung des Anhangs in der Quelle (Confluence: attachment id).
+  externalId: string;
+  // Dateiname, an der Quelle EINMAL dekodiert (wie Titel/Labels).
+  name: string;
+  mime: string;
+  size?: number;
+  sourceVersion?: number;
+  // Quellinterner Abrufweg — nur der Adapter derselben Quelle löst ihn auf (`fetchAttachment`).
+  abruf: string;
+}
+
+export type ConfluenceImportItem = ImportItem & {
+  attachments?: ConfluenceImportAnhang[];
+  // Die Anhangsliste konnte nicht oder nicht vollständig gelesen werden. Fehlt das Feld, ist sie
+  // vollständig — ein stilles „keine Anhänge" bei einem Lesefehler gibt es nicht.
+  attachmentsIncomplete?: true;
+};
+
+/**
+ * Ein Confluence-Anhang → quellneutraler Import-Anhang, oder `undefined`, wenn eine Pflichtangabe
+ * fehlt (Kennung, Dateiname, Abrufweg). Kein geratener Name, kein erfundener Link.
+ */
+export function mapConfluenceAttachment(
+  att: ConfluenceAttachment,
+): ConfluenceImportAnhang | undefined {
+  const externalId = att.id?.trim();
+  const name = att.title ? decodeHtmlEntities(att.title).trim() : "";
+  const abruf = att._links?.download?.trim();
+  if (!externalId || !name || !abruf) {
+    return undefined;
+  }
+  const mime = (att.extensions?.mediaType ?? att.metadata?.mediaType ?? "").trim().toLowerCase();
+  const size = att.extensions?.fileSize;
+  return {
+    externalId,
+    name,
+    mime: mime || "application/octet-stream",
+    ...(typeof size === "number" && Number.isFinite(size) && size >= 0 ? { size } : {}),
+    ...(typeof att.version?.number === "number" ? { sourceVersion: att.version.number } : {}),
+    abruf,
+  };
+}
 
 export interface ConfluenceMapOptions {
   baseUrl: string; // für die absolute Seiten-URL (Provenienz)
@@ -25,6 +78,59 @@ export function isPageRestricted(page: ConfluencePage): boolean {
   const users = read?.user?.results ?? [];
   const groups = read?.group?.results ?? [];
   return users.length > 0 || groups.length > 0;
+}
+
+// ================================================================================================
+// package:confluence (K6) — WER DIE SEITE IN DER QUELLE LESEN DARF, NICHT NUR OB.
+// ================================================================================================
+//
+// `isPageRestricted` darüber verdichtet die Restriktionslisten auf Ja/Nein — für die Einstufung
+// (`confidentiality`) genügt das. Für die Nachvollziehbarkeit genügt es nicht: WELCHE Benutzer und
+// Gruppen die Quelle zulässt, ging bis hierher verloren, obwohl der Client beide Listen anfordert
+// (rest-client.ts, EXPAND `restrictions.read.restrictions.user/group`).
+//
+// ÜBERNOMMEN WIRD, WAS DIE QUELLE ALS KENNUNG LIEFERT — nichts wird erfunden oder umgedeutet:
+//   · Benutzer: `accountId` (Cloud); auf älteren Server-Instanzen `userKey`, sonst `username`.
+//   · Gruppen:  `name`, sonst `id`.
+// Ein Eintrag ohne eine dieser Kennungen wird nicht geraten, sondern ausgelassen; Doppelte fallen
+// weg, die Quell-Reihenfolge bleibt. Liefert die Quelle keine einzige Kennung (offene Seite oder
+// leere Listen), FEHLT das Ergebnis — kein leeres Objekt, das wie eine Angabe aussähe.
+//
+// KEINE RECHTEABBILDUNG: Diese Kennungen sind Herkunftsangaben am Quellenanker. Ob und wie sie auf
+// KLARWERK-Konten oder -Rollen wirken, entscheidet der gesonderte Rechteauftrag.
+function quellKennung(eintrag: unknown, felder: readonly string[]): string | undefined {
+  if (!eintrag || typeof eintrag !== "object") {
+    return undefined;
+  }
+  const werte = eintrag as Record<string, unknown>;
+  for (const feld of felder) {
+    const wert = werte[feld];
+    if (typeof wert === "string" && wert.trim().length > 0) {
+      return wert.trim();
+    }
+  }
+  return undefined;
+}
+
+function kennungenAus(liste: unknown[] | undefined, felder: readonly string[]): string[] {
+  const kennungen: string[] = [];
+  for (const eintrag of liste ?? []) {
+    const kennung = quellKennung(eintrag, felder);
+    if (kennung !== undefined && !kennungen.includes(kennung)) {
+      kennungen.push(kennung);
+    }
+  }
+  return kennungen;
+}
+
+export function confluenceReadRestrictions(page: ConfluencePage): KoSourceRestrictions | undefined {
+  const read = page.restrictions?.read?.restrictions;
+  const users = kennungenAus(read?.user?.results, ["accountId", "userKey", "username"]);
+  const groups = kennungenAus(read?.group?.results, ["name", "id"]);
+  if (users.length === 0 && groups.length === 0) {
+    return undefined;
+  }
+  return { users, groups };
 }
 
 // JOB 3089 (N11) — QUELL-GOVERNANCE → VERTRAULICHKEIT. ABLÖSUNG VON SCRUM-511.
@@ -147,10 +253,14 @@ export function confluenceAhnenBefund(page: ConfluencePage): ConfluenceAhnenBefu
   return new Set(ids).size === ids.length ? "ok" : "zyklus";
 }
 
+// R-0163: `anhaenge` ist die gelesene Anhangsliste der Seite. Fehlt das Argument, wurde sie nicht
+// gelesen (Erkundung/Space-Liste) — das Item trägt dann KEIN `attachments`-Feld. `unvollstaendig`
+// stammt aus dem Lesen der Liste (Abbruch, Fehler) und reist sichtbar mit.
 export function mapConfluencePageToImportItem(
   page: ConfluencePage,
   opts: ConfluenceMapOptions,
-): ImportItem {
+  anhaenge?: { attachments: readonly ConfluenceAttachment[]; unvollstaendig: boolean },
+): ConfluenceImportItem {
   const bodyHtml = confluenceStorageToHtml(page.body?.storage?.value ?? "");
   // JOB 2703 D1 (Review R2-3): hier stand `htmlToPlainText(bodyHtml)` — der GESAMTE Klartext der
   // Seite wurde zur Kernaussage, während der Volltext ohnehin als `bodyHtml` mitreist. Jetzt: der
@@ -171,6 +281,8 @@ export function mapConfluencePageToImportItem(
   // IC-1: Provenienz-Datum der letzten Version (Confluence version.when, ISO) → nur wenn vorhanden.
   const updatedAt = page.version?.when?.trim();
   const governance = confluenceGovernanceConfidentiality(page);
+  // package:confluence (K6): die konkreten Kennungen der Lese-Einschränkung — oder gar nichts.
+  const sourceRestrictions = confluenceReadRestrictions(page);
   // AUFTRAG-mega27 A2: die Elternkette (Wurzel zuerst, ohne die Seite selbst) — oder gar nichts.
   const sourcePath = confluenceSourcePath(page);
 
@@ -195,6 +307,7 @@ export function mapConfluencePageToImportItem(
     // dasselbe Feld später mit Epic/Projekt — der Import-Kern kennt weiterhin kein Confluence-Symbol.
     ...(sourcePath ? { sourcePath } : {}),
     ...(typeof page.version?.number === "number" ? { sourceVersion: page.version.number } : {}),
+    ...(sourceRestrictions ? { sourceRestrictions } : {}),
     ...(url ? { url } : {}),
     provider: "Confluence",
     ...(bodyHtml ? { bodyHtml } : {}),
@@ -203,5 +316,26 @@ export function mapConfluencePageToImportItem(
     // WP-IC-PAKET-1c (bens ROT-2): Decode-Marker — die Textfelder sind hier KANONISCH dekodiert;
     // die Anzeige darf sie nicht erneut dekodieren (Doppel-Dekodier-Kette bei Literal-Entities).
     textCodec: "decoded",
+    // R-0163: Anhänge und Bilder der Seite — nur, wenn die Liste gelesen wurde und etwas trägt.
+    ...(anhaenge ? confluenceAnhangsFelder(anhaenge) : {}),
+  };
+}
+
+/**
+ * R-0163: die Anhangsfelder eines Items aus einer gelesenen Anhangsliste — die EINE Regel für
+ * beide Wege, auf denen eine Seite in die Review-Queue kommt (`fetchItem` beim Anwenden,
+ * `withAttachments` im Bereichsimport). Ein Eintrag ohne Pflichtangabe oder eine abgeschnittene
+ * Liste macht das Item sichtbar unvollständig; eine leere, vollständige Liste setzt kein Feld.
+ */
+export function confluenceAnhangsFelder(anhaenge: {
+  attachments: readonly ConfluenceAttachment[];
+  unvollstaendig: boolean;
+}): Pick<ConfluenceImportItem, "attachments" | "attachmentsIncomplete"> {
+  const gemappt = anhaenge.attachments.map(mapConfluenceAttachment);
+  const attachments = gemappt.filter((a): a is ConfluenceImportAnhang => a !== undefined);
+  const unvollstaendig = anhaenge.unvollstaendig || attachments.length < gemappt.length;
+  return {
+    ...(attachments.length > 0 ? { attachments } : {}),
+    ...(unvollstaendig ? { attachmentsIncomplete: true as const } : {}),
   };
 }

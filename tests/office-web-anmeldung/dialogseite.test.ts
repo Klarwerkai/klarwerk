@@ -72,8 +72,13 @@ interface Antwort {
  *   "nie"    — `onReady` merkt den Rückruf und ruft ihn NIE, `context.ui` kommt nicht. Nur die
  *              Frist beendet die Ungewissheit; sie braucht gefälschte Zeitgeber.
  *   "kein"   — gar kein `window.Office` (Direktaufruf im Browser, Rückfallfenster).
+ *
+ * WORD-HOST-GESAMTWEG (Realhostbeleg 05.10.2026, `Sys.ArgumentNullException … conversationId`):
+ * office.js lädt, aber die Verbindung zum Office-Fenster kommt nicht zustande.
+ *   "ohneVerbindung" — `onReady` meldet sich, `context.ui` trägt aber kein `messageParent`.
+ *   "wirft"          — `messageParent` ist da und wirft beim Aufruf (Transport ohne Gegenstelle).
  */
-type Bereitschaft = "sofort" | "spaet" | "nie" | "kein";
+type Bereitschaft = "sofort" | "spaet" | "nie" | "kein" | "ohneVerbindung" | "wirft";
 
 interface Lauf {
   aufrufe: Aufruf[];
@@ -181,12 +186,22 @@ function fahre(optionen: {
   const bereitschaft: Bereitschaft = optionen.office ?? "sofort";
   const ui = {
     messageParent: (nachricht: string): void => {
+      if (bereitschaft === "wirft") {
+        throw new Error("Sys.ArgumentNullException: Value cannot be null. conversationId");
+      }
       nachrichten.push(nachricht);
     },
   };
+  const ohneSchnittstelle = {} as typeof ui;
+  const sofortBereit = bereitschaft === "sofort" || bereitschaft === "wirft";
   const office: { context: { ui?: typeof ui }; onReady?: (cb: () => void) => void } = {
-    context: bereitschaft === "sofort" ? { ui } : {},
+    context: {},
   };
+  if (sofortBereit) {
+    office.context.ui = ui;
+  } else if (bereitschaft === "ohneVerbindung") {
+    office.context.ui = ohneSchnittstelle;
+  }
   let gemerkt: (() => void) | null = null;
   let onReadyAufrufe = 0;
   if (bereitschaft === "kein") {
@@ -194,7 +209,7 @@ function fahre(optionen: {
   } else {
     office.onReady = (cb: () => void): void => {
       onReadyAufrufe += 1;
-      if (bereitschaft === "sofort") {
+      if (sofortBereit || bereitschaft === "ohneVerbindung") {
         cb();
         return;
       }
@@ -382,6 +397,38 @@ describe("JOB 4076 · S4 · die Dialogseite gibt die Anmeldung an das Seitenfens
     expect(mit.ssoSichtbar()).toBe(true);
   });
 
+  it("S4b4b — der sichtbare SSO-Hinweis sagt in drei Sprachen den automatischen Rückweg", async () => {
+    // Aufnahme m365-anmeldung Runde 3 (Ben, Runde 2): seit dem SSO-Rückweg auf diese Seite ist
+    // „Fenster schliessen und in Klara erneut »Anmelden« druecken" falsch. Gelesen wird, was die
+    // AUSGEFÜHRTE Seite nach dem Sprachwechsel wirklich anzeigt — nicht die Texttabelle.
+    const lauf = fahre({
+      routen: routenOhneSitzung({
+        "/api/auth/status": { status: 200, koerper: { needsSetup: false, oidcEnabled: true } },
+      }),
+    });
+    await lauf.flush();
+    expect(lauf.stelle("sso-hinweis").className).not.toContain("hidden");
+    const gesehen = new Set<string>();
+    for (const [sprache, zurueck] of [
+      ["de", "von selbst hierher zurueck"],
+      ["en", "returns here by itself"],
+      ["nl", "vanzelf hierheen terug"],
+    ] as const) {
+      lauf.klick(`lang-${sprache}`);
+      const hinweis = lauf.stelle("sso-hinweis").textContent ?? "";
+      expect(hinweis, sprache).toContain(zurueck);
+      for (const alt of [
+        "schliessen und in Klara erneut",
+        "close this window and press",
+        "Sluit dit venster",
+      ]) {
+        expect(hinweis, `${sprache}: überholte Anweisung „${alt}"`).not.toContain(alt);
+      }
+      gesehen.add(hinweis);
+    }
+    expect(gesehen.size).toBe(3);
+  });
+
   it("S4b5 — ohne jedes Office wird nichts gesendet UND kein Erfolg behauptet", async () => {
     // Das Rueckfallfenster (`window.open`) im normalen Browser: es gibt gar kein `window.Office`.
     // RUNDE 4: Bis Runde 3 stand hier „Klara erkennt die Anmeldung von selbst" — im Rueckfallfenster
@@ -509,6 +556,50 @@ describe("JOB 4076 · S4 · die Dialogseite gibt die Anmeldung an das Seitenfens
     expect(lauf.onReadyAufrufe()).toBe(1);
     expect(lauf.nachrichten).toHaveLength(1);
     expect(lauf.formularSichtbar()).toBe(false);
+  });
+
+  // WORD-HOST-GESAMTWEG · REALHOSTBELEG 05.10.2026: „Signed in“, aber nichts kam im Seitenfenster an
+  // (`conversationId` null). Ursache war der Kopf `Cross-Origin-Opener-Policy: same-origin` der
+  // Dialogseite (Gegenprobe am Draht: `tests/office-web-anmeldung/dialog-opener-kopf.test.ts`).
+  // Hier steht, was die Seite in genau dieser Lage SAGT: angemeldet ja, übergeben nein.
+  it("O5 — Anmeldung gelingt, Office meldet sich aber OHNE Verbindung: nichts gesendet, kein Erfolg behauptet", async () => {
+    const lauf = fahre({ routen: routenOhneSitzung(), office: "ohneVerbindung" });
+    await lauf.flush();
+    lauf.tippe("email", "gast@x.de");
+    lauf.tippe("kennwort", "secret123");
+    lauf.klick("anmelden");
+    await lauf.flush();
+    expect(lauf.aufrufe.map((a) => `${a.methode} ${a.url}`)).toContain("POST /api/auth/login");
+    expect(lauf.nachrichten).toEqual([]);
+    // Ohne Gegenstelle wird auch kein Übergabecode geholt, der ungenutzt verfiele.
+    expect(lauf.aufrufe.map((a) => a.url)).not.toContain("/api/auth/office-handover");
+    keinErfolgsversprechen(lauf.lage());
+    expect(lauf.lage()).toMatch(/Anmelden|Sign in|Aanmelden/);
+  });
+
+  it("O6 — die Übergabe wirft (Transport ohne Gegenstelle): Fehlersatz statt „Übergeben“, neuer Versuch möglich", async () => {
+    const lauf = fahre({ routen: routenOhneSitzung(), office: "wirft" });
+    await lauf.flush();
+    lauf.tippe("email", "gast@x.de");
+    lauf.tippe("kennwort", "secret123");
+    lauf.klick("anmelden");
+    await lauf.flush();
+    expect(lauf.nachrichten).toEqual([]);
+    keinErfolgsversprechen(lauf.lage());
+    expect(lauf.stelle("lage").className).toContain("err");
+    expect(lauf.formularSichtbar()).toBe(true);
+    expect(lauf.stelle("anmelden").disabled).toBe(false);
+  });
+
+  it("O7 — KONTROLLPROBE zu O5/O6: mit Verbindung geht genau EIN Code hinaus, und erst dann „Übergeben“", async () => {
+    const lauf = fahre({ routen: routenOhneSitzung(), office: "sofort" });
+    await lauf.flush();
+    lauf.tippe("email", "gast@x.de");
+    lauf.tippe("kennwort", "secret123");
+    lauf.klick("anmelden");
+    await lauf.flush();
+    expect(lauf.nachrichten).toHaveLength(1);
+    expect(lauf.stelle("lage").className).toContain("ok");
   });
 
   it("S4c — der Code steht in keinem Speicher, keinem Cookie und keiner Adresse", async () => {

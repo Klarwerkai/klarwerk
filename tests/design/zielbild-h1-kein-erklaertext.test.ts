@@ -114,6 +114,12 @@ describe("JOB 3060 · H1 · kein Erklärtext im Kopfband — die echte Seite in 
   // rechts, vor dem Suchfeld. Es ist der ACHTE Name und kein Erklärtext: ein benannter Einstieg in
   // die vorhandene Befehlspalette, mit seiner Tastenkombination daran. Der Fall bleibt scharf: der
   // sichtbare Text des Bands ist GENAU dieses Inventar, nichts darüber hinaus.
+  //
+  // FE-002 (Pedi, 26.09.2026): zwei Namen ändern sich, einer kommt hinzu — alle drei sind Namen
+  // von Wegen, kein Erklärtext. „Arbeitsbereiche" ist der beschriftete Einstieg zu den weiteren
+  // Seiten (bisher Zahnrad → „Bereiche"), „Seite finden" ersetzt „Gehe zu …" (dieselbe Palette),
+  // und der Platzhalter sagt „Wissen suchen" statt „Suchen". Glocke und Zahnrad tragen bei 1280 px
+  // kein sichtbares Wort (Name und Zeigehinweis, `kopfband-fe002.test.tsx`).
   const NAMEN = [
     "KLARWERK",
     "Start",
@@ -122,10 +128,17 @@ describe("JOB 3060 · H1 · kein Erklärtext im Kopfband — die echte Seite in 
     "Erfassen",
     "Meine Entwürfe",
     "Prüfen",
-    "Gehe zu …",
+    "Arbeitsbereiche",
+    "Seite finden",
     "⌘K",
   ];
-  const WOERTER = NAMEN.flatMap((n) => n.split(/\s+/));
+  // „Seite finden ⌘K" und das Wort „Meldungen" treten per Container-Abfrage zurück, wenn die rechte
+  // Gruppe zu schmal wird (index.css, `kw-kopfband-rechts`) — bei 1280 px hängt das am Zähler von
+  // „Prüfen" und an den Schriftmassen der Maschine. Sie sind deshalb WAHLWEISE, aber nur als GANZE
+  // Gruppe und nur an ihrer Stelle; alles andere bleibt Pflicht, und nichts darüber hinaus ist erlaubt.
+  const WAHLWEISE = [["Seite", "finden", "⌘K"], ["Meldungen"]];
+  const WAHL_WOERTER = WAHLWEISE.flat();
+  const WOERTER = NAMEN.flatMap((n) => n.split(/\s+/)).filter((w) => !WAHL_WOERTER.includes(w));
 
   it("Z · die Namen des Bands sind die Übersetzungen des Produkts (de) — nicht abgeschrieben", () => {
     expect([
@@ -136,15 +149,16 @@ describe("JOB 3060 · H1 · kein Erklärtext im Kopfband — die echte Seite in 
       i18n.getFixedT("de")("kopfband.erfassen"),
       i18n.getFixedT("de")("mob.drafts"),
       i18n.getFixedT("de")("kopfband.pruefen"),
-      i18n.getFixedT("de")("menue.schnellnavigation"),
+      i18n.getFixedT("de")("fe002.arbeitsbereiche"),
+      i18n.getFixedT("de")("fe002.seiteFinden"),
       // Das Kürzel ist ein Zeichen und keine Übersetzung — es steht so auch in der Zahnrad-Zeile.
       "⌘K",
     ]).toEqual(NAMEN);
-    expect(i18n.getFixedT("de")("kopfband.suchen")).toBe("Suchen");
+    expect(i18n.getFixedT("de")("fe002.wissenSuchen")).toBe("Wissen suchen");
   });
 
   for (const pfad of ROUTEN) {
-    it(`T · ${pfad}: innerText des Kopfbands = KLARWERK Start Fragen Bibliothek Erfassen Meine Entwürfe Prüfen Gehe zu … ⌘K (+ Zähler, + Initialen), Platzhalter Suchen`, () => {
+    it(`T · ${pfad}: innerText des Kopfbands = KLARWERK Start Fragen Bibliothek Erfassen Meine Entwürfe Prüfen Arbeitsbereiche Seite finden ⌘K (+ Zähler, + Initialen), Platzhalter Wissen suchen`, () => {
       expect(fehler).toBeNull();
       const inv = jeRoute[pfad];
       expect(inv, "Kopfband nicht gefunden").toBeTruthy();
@@ -153,8 +167,10 @@ describe("JOB 3060 · H1 · kein Erklärtext im Kopfband — die echte Seite in 
       expect(inv.zaehler).toBe(String(boardZahl));
       expect(inv.initialen).toBe("PK");
       const ohneAusnahmen = inv.woerter.filter((w) => w !== inv.zaehler && w !== inv.initialen);
-      expect(ohneAusnahmen).toEqual(WOERTER);
-      expect(inv.placeholder).toBe("Suchen");
+      expect(ohneAusnahmen.filter((w) => !WAHL_WOERTER.includes(w))).toEqual(WOERTER);
+      const gewaehlt = ohneAusnahmen.filter((w) => WAHL_WOERTER.includes(w));
+      expect([[], WAHLWEISE[0], WAHLWEISE[1], WAHL_WOERTER]).toContainEqual(gewaehlt);
+      expect(inv.placeholder).toBe("Wissen suchen");
     });
   }
 

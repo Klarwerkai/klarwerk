@@ -68,9 +68,28 @@ Unter **`/hilfe`** findest du durchsuchbare Kapitel u. a. zu: Erststart/Demodate
 
 ## FAQ / Support / Feedback
 
-- **Erster Anlaufpunkt:** die **Hilfe-Seite** (`/hilfe`) mit Suche.
-- **Rückmeldung:** Verbesserungswünsche/Fehler an den jeweiligen Klarwerk-Betreiber/Admin der Instanz.
-- **Restlücke:** Ein dedizierter, im Produkt hinterlegter **Support-Kontakt/FAQ-Block** ist aktuell nicht eingebaut (siehe `docs/qm/claude-after-report.md`, SCRUM-210) — der Support-Weg wird pro Instanz organisatorisch festgelegt.
+- **Erster Anlaufpunkt:** die **Hilfe-Seite** (`/hilfe`) mit Suche. Ihre Kapitel sind zugleich die FAQ des Produkts; daran ändert der Supportkontakt nichts.
+- **Supportkontakt dieser Installation (R-1064):** Die Hilfe-Seite zeigt oben die Karte **„Support dieser Installation“**. Der Support-Weg wird weiterhin **pro Instanz organisatorisch festgelegt** — das Produkt bringt keine Adresse mit und belegt keine vor. Die Karte zeigt genau einen von vier Zuständen:
+  - **eingerichtet** — der vom Betreiber hinterlegte Weg als Link, darunter das Ziel im Klartext;
+  - **nicht eingerichtet** — der Satz, dass für diese Installation noch kein Supportweg hinterlegt ist (kein Ersatzkontakt);
+  - **ungültig** — ein Wert ist gesetzt, wird aber nicht ausgeliefert (siehe Regeln unten);
+  - **nicht ladbar** — der Abruf ist gescheitert; die übrige Hilfe und die Suche bleiben bedienbar.
+- **Rückmeldung:** Verbesserungswünsche/Fehler an den jeweiligen Klarwerk-Betreiber/Admin der Instanz — bzw. über den dort hinterlegten Supportweg.
+
+### Für Betreiber: Supportkontakt hinterlegen
+
+Zwei **optionale** Umgebungswerte der App. Keiner ist Pflicht für den Start; ohne sie zeigt die Hilfe „nicht eingerichtet“.
+
+| Variable | Inhalt | Pflicht |
+|---|---|---|
+| `KLARWERK_SUPPORT_URL` | Ziel des Supportwegs: eine `https://…`-Adresse **oder** `mailto:<adresse>` | nein |
+| `KLARWERK_SUPPORT_LABEL` | sichtbarer Name des Wegs, z. B. „IT-Servicedesk“ (höchstens 80 Zeichen) | nein |
+
+- **Gesetzt wird auf dem bestehenden Weg der übrigen Betreiberwerte:** im Coolify-Betrieb als Environment-Variable der App-Ressource (`docs/operations/deploy-hetzner.md` §2, Punkt 3). Wirksam erst mit einem neuen App-Prozess (Neustart/Redeploy) — gelesen wird beim Aufbau der App.
+- **Ein-Befehl-Weg (`docker-compose.prod.yml`):** Diese Datei reicht Werte nur über ihren `environment`-Block durch. Ein Eintrag in der `.env` wirkt dort nur, wenn beide Namen in diesem Block durchgereicht werden.
+- **Erlaubt sind nur:** `https:`-Adressen ohne eingebettete Zugangsdaten und `mailto:` mit genau einer schlichten Adresse (Buchstaben, Ziffern, `._+-` vor dem `@`; keine `?subject=`/`?bcc=`-Zusätze, keine Empfängerliste). Alles andere — z. B. `http:`, `javascript:`, `data:`, relative Pfade, Leer- oder Steuerzeichen, eine Bezeichnung über 80 Zeichen — ergibt den Zustand **ungültig**; der gesetzte Wert wird dann weder angezeigt noch ausgeliefert, und das Startprotokoll enthält einen Hinweis ohne den Wert.
+- **Wer sieht es:** jede angemeldete Rolle, die die Hilfe-Seite sieht (Auskunft `GET /api/support`, angemeldete Nutzung genügt; kein Adminrecht). Ausgeliefert wird nur der geprüfte Kontakt — keine anderen Umgebungswerte.
+- **Was das Produkt nicht tut:** Es versendet nichts, legt kein Supportkonto an und sagt nichts über Erreichbarkeit oder Antwortzeiten. Ob hinter dem hinterlegten Weg ein besetzter Support steht, entscheidet und verantwortet der Betreiber.
 
 ---
 

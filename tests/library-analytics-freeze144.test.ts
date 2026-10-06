@@ -136,6 +136,47 @@ const WIDERRUFENE_FREIGABEN: readonly string[] = [
   // nachträglich decken; ihre Nachfolgerinnen stehen am jeweiligen Eintrag.
   "FREEZE-144/JOB3087-20260905/repo",
   "FREEZE-144/D5-20260817/repo-pg",
+  // AUFNAHME 20260922 · GESAMT-VERTRAULICHKEIT-ERFASSUNG (N11): verbraucht. Diese Freigabe
+  // autorisierte den `service.test.ts`-Stand, in dem ein Import ohne Stufe „vertraulich" ergab.
+  // Sie darf den nachgeführten Inhalt nicht decken; ihre Nachfolgerin steht am Eintrag. (Die
+  // Integration mit main 38508a1e ändert daran nichts: main hat `service.test.ts` seit der
+  // gemeinsamen Basis nicht berührt, die Datei trägt unverändert den N11-Stand.)
+  "FREEZE-144/JOB3050-20260904/service-test",
+  // LAUF gesamt-import-adoption R2 (Bens B1–B4): verbraucht. Diese fünf Freigaben autorisierten
+  // den Stand MIT dem Direktimport `importJson` (samt seinen Antworttypen) und OHNE den bei der
+  // Annahme neu erhobenen Dublettenbefund in `ClaimResolution`. Sie dürfen den neuen Inhalt nicht
+  // nachträglich decken; ihre Nachfolgerinnen stehen am jeweiligen Eintrag.
+  "FREEZE-144/JOB3087-20260905/index",
+  "FREEZE-144/JOB4155R3-20260917/types",
+  "FREEZE-144/JOB3424-20260909/repo",
+  "FREEZE-144/JOB3424-20260909/repo-pg",
+  // NACHARBEIT 3: `FREEZE-144/JOB3050-20260904/service-test` stand hier; `service.test.ts` ist
+  // wieder byte-gleich mit dem von ihr autorisierten Inhalt (Begründung am Eintrag). An ihrer Stelle
+  // ist die R2-Freigabe dieser Datei verbraucht.
+  "FREEZE-144/GIA-R2-20260930/service-test",
+  // LAUF gesamt-import-adoption:2 (Bens R3-1): verbraucht. Diese zwei Freigaben autorisierten den
+  // Stand OHNE die Annahme-Sperre im Kandidatenbestand; ihre Nachfolgerinnen stehen am Eintrag.
+  "FREEZE-144/GIA-R2-20260930/repo",
+  "FREEZE-144/GIA-R2-20260930/repo-pg",
+  // LAUF gesamt-import-adoption:2 Runde 2 (Bens B1): verbraucht. Sie autorisierten die Sperre, die
+  // mit dem Claim ihres Halters gebrochen wurde; ihre Nachfolgerinnen stehen am Eintrag.
+  "FREEZE-144/GIA2-R1-20261001/repo",
+  "FREEZE-144/GIA2-R1-20261001/repo-pg",
+  // LAUF gesamt-import-adoption:2 Runde 3 (Bens B4): verbraucht. Sie autorisierten die Sperre ohne
+  // Behandlung des Sitzungsverlusts; ihre Nachfolgerinnen stehen am Eintrag.
+  "FREEZE-144/GIA2-R2-20261001/repo",
+  "FREEZE-144/GIA2-R2-20261001/repo-pg",
+  // package:confluence (main c2aed83d, R-0134/K6): die beiden Freigaben
+  // `FREEZE-144/JOB3087-20260905/index` und `FREEZE-144/JOB4155R3-20260917/types` (oben schon
+  // widerrufen) autorisierten auch den Stand VOR `ohneQuellRestriktionen`/`sourceRestrictions`
+  // (types.ts) und deren Ausleitung (index.ts); ihre Nachfolgerinnen stehen am jeweiligen Eintrag.
+  //
+  // Hauptstand-Integration (Lauf gesamt-import-adoption:2): verbraucht. Diese zwei Freigaben
+  // autorisierten den Stand OHNE `importJson`-Antworttypen. `importJson` bleibt mit dem Hauptstand
+  // erhalten (Auftrag herkunft-identitaet); `index.ts` und `types.ts` sind wieder byte-gleich mit
+  // main 1147c026, und es gelten dessen Einträge.
+  "FREEZE-144/GIA-R2-20260930/index",
+  "FREEZE-144/GIA-R2-20260930/types",
 ];
 
 const ERWARTETE_ANZAHL = 6;
@@ -164,10 +205,19 @@ const FREEZE_MANIFEST: readonly FreezeEintrag[] = [
     // alte Name verschwindet, damit daraus kein zweiter Vergleichsweg entstehen kann. Sollhash
     // UND Freigabe sind in EINEM Änderungssatz neu gesetzt, die alte steht in
     // WIDERRUFENE_FREIGABEN.
-    hash: "589ba5e4fe80e236d03adf3a856fd2f0e1418250a1747550867ad41df7d77cc1",
+    // package:confluence (main c2aed83d) · AUSGEWIESENE ÄNDERUNG — NICHT AUS DIESEM AUFTRAG.
+    // `ohneQuellRestriktionen` wird ausgeleitet (Verwerfen eines client-gelieferten
+    // `sourceRestrictions` an den Importeingängen). Die Änderung kam mit main c2aed83d
+    // („Confluence-Import: Bedienung, Funktionsschalter, Bereichsauswahl und verständliche Fehler",
+    // 1.0.0-beta.1.667) in diesen Kandidaten; der Arbeitsbaum ist an dieser Datei identisch mit
+    // c2aed83d. Main hat das Manifest dabei NICHT nachgeführt — der Wächter wurde deshalb nach dem
+    // Merge rot. Sollhash und Freigabe sind hier in EINEM Änderungssatz nachgezogen, der Hash ist
+    // der in der Cloud-Prüfung des Kandidaten e60b19d9 gemessene (nacharbeit-11/gezielt.log). Wer
+    // die Freigabe zeichnet, bleibt die offene Ownerfrage aus § GRENZE — BEN prüft Diff und Hash.
+    hash: "c32706a1a792a39e209f90947850f1d207dc1c3428e263eeff57ff923c81175f",
     freigabe: {
-      id: "FREEZE-144/JOB3087-20260905/index",
-      autorisiertHash: "589ba5e4fe80e236d03adf3a856fd2f0e1418250a1747550867ad41df7d77cc1",
+      id: "FREEZE-144/MAIN-c2aed83d-20261004/index",
+      autorisiertHash: "c32706a1a792a39e209f90947850f1d207dc1c3428e263eeff57ff923c81175f",
     },
   },
   // JOB 3022 · AUSGEWIESENE ÄNDERUNG. `Graph` (types.ts:185-204) trägt seit dem Umbau von
@@ -249,10 +299,16 @@ const FREEZE_MANIFEST: readonly FreezeEintrag[] = [
     // und sie betreffen ausschliesslich dieselbe Menge. `nodes`, `edges`, `totalEdges`,
     // `truncated`, `edgeLimit` und jeder Filter sind unverändert. Die Erweiterung ist additiv und
     // optional; ein Leser ohne sie liest die Antwort wie bisher. BEN prüft Typ, Diff und Hash.
-    hash: "8c36b02e6c305a7d492208f82fb375d672428a8cf18d41bd6263b58d7f7181f2",
+    //
+    // package:confluence (main c2aed83d) · AUSGEWIESENE ÄNDERUNG — NICHT AUS DIESEM AUFTRAG.
+    // `ImportItem` trägt das optionale Feld `sourceRestrictions` (Lese-Einschränkung der Quelle,
+    // Erzeuger allein der Quell-Adapter), und `ohneQuellRestriktionen` verwirft es an den
+    // Client-Eingängen. Herkunft, Messung und Grenze wie am Eintrag `index.ts` oben: identisch mit
+    // main c2aed83d, Hash aus der Cloud-Prüfung von e60b19d9, Manifest von main nicht nachgeführt.
+    hash: "09cf2bd105300441a52aa55724251f149d99c9f53ac30bf3e2a899d7f4d62574",
     freigabe: {
-      id: "FREEZE-144/JOB4155R3-20260917/types",
-      autorisiertHash: "8c36b02e6c305a7d492208f82fb375d672428a8cf18d41bd6263b58d7f7181f2",
+      id: "FREEZE-144/MAIN-c2aed83d-20261004/types",
+      autorisiertHash: "09cf2bd105300441a52aa55724251f149d99c9f53ac30bf3e2a899d7f4d62574",
     },
   },
   {
@@ -273,10 +329,36 @@ const FREEZE_MANIFEST: readonly FreezeEintrag[] = [
     // `->>` liefert dort `''` und nicht NULL. Der Satz ist korrigiert und nennt die Stelle, an der
     // die Deckungsgleichheit jetzt wirklich hergestellt ist (`NULLIF` in `repo-pg.ts`). AUSFÜHRBAR
     // ist an dieser Datei nichts geändert: der Diff dieses Jobs berührt hier keine Zeile Code.
-    hash: "6b5e93470c11466bfa67f3a9c2d49ba68a52fbbacbc9335cd9965f2f20fa7582",
+    //
+    // LAUF gesamt-import-adoption R2 · AUSGEWIESENE ÄNDERUNG (Bens B1/B2): `ClaimResolution` trägt
+    // zwei ADDITIVE optionale Felder `duplicate` und `dublettenbefund`, und `InMemoryCandidateRepo.
+    // resolveClaim` übernimmt sie wie die übrigen Felder. Grund: die Annahme stellt die
+    // Dublettenfrage am heutigen Bestand neu und persistiert den Befund IM SELBEN opId-CAS wie den
+    // Endstatus. Claim, Lease und Idempotenz sind unverändert. Sollhash UND Freigabe in EINEM
+    // Änderungssatz, die alte in WIDERRUFENE_FREIGABEN.
+    //
+    // LAUF gesamt-import-adoption:2 · AUSGEWIESENE ÄNDERUNG (Bens R3-1): `CandidateRepo` trägt die
+    // neue Methode `annahmeSperre(halter, schritt)` samt Typ `AnnahmeHalter`; neu ist die Klasse
+    // `AnnahmeKette` (Reihenfolge der Annahmen, gebrochen, sobald der Claim des Halters von fremder
+    // Hand abgeschlossen wird). `InMemoryCandidateRepo` implementiert die Sperre und bricht sie in
+    // `resolveClaim`. Claim-CAS, Lease, Idempotenzschlüssel und alle übrigen Felder sind
+    // unverändert. Sollhash UND Freigabe in EINEM Änderungssatz, die alte in WIDERRUFENE_FREIGABEN.
+    //
+    // LAUF gesamt-import-adoption:2 RUNDE 2 · AUSGEWIESENE ÄNDERUNG (Bens B1): die Sperre wird NICHT
+    // mehr mit dem Claim ihres Halters gebrochen. `AnnahmeKette` ist ein Ausschluss mit begrenzter
+    // Wartezeit (`annahmeSperre(wartezeitMs, schritt)`, Abweisung über `annahmeSperreBelegt()` →
+    // CONFLICT); `AnnahmeHalter` und das Brechen in `resolveClaim` sind ENTFALLEN. Claim-CAS, Lease
+    // und Idempotenzschlüssel sind unverändert. Sollhash UND Freigabe in EINEM Änderungssatz, die
+    // alte in WIDERRUFENE_FREIGABEN.
+    //
+    // LAUF gesamt-import-adoption:2 RUNDE 3 · AUSGEWIESENE ÄNDERUNG (Bens B4): der Schritt der
+    // `annahmeSperre` bekommt `sperreGilt` (vor jeder Mutation zu fragen; InMemory: immer gültig),
+    // dazu `annahmeSperreVerloren()` → CONFLICT. Sonst unverändert. Sollhash UND Freigabe in EINEM
+    // Änderungssatz, die alte in WIDERRUFENE_FREIGABEN.
+    hash: "549edfb36cf1db21f2bacd43c812837ffe75087e68967539e91f91ef560c8c04",
     freigabe: {
-      id: "FREEZE-144/JOB3424-20260909/repo",
-      autorisiertHash: "6b5e93470c11466bfa67f3a9c2d49ba68a52fbbacbc9335cd9965f2f20fa7582",
+      id: "FREEZE-144/GIA2-R3-20261001/repo",
+      autorisiertHash: "549edfb36cf1db21f2bacd43c812837ffe75087e68967539e91f91ef560c8c04",
     },
   },
   {
@@ -290,10 +372,36 @@ const FREEZE_MANIFEST: readonly FreezeEintrag[] = [
     // nur noch als Erkennungsmerkmal im Heilungs-DO-Block vor, der Bestandsinstanzen nachzieht
     // (`ADD COLUMN IF NOT EXISTS` wäre dort ein stilles No-op). Sollhash UND Freigabe sind in
     // EINEM Änderungssatz neu gesetzt, die alte steht in WIDERRUFENE_FREIGABEN.
-    hash: "7cd125c4c4101cd51c0da9ed88e841acfb65fd78068668aa4456e7bfa49f6043",
+    //
+    // LAUF gesamt-import-adoption R2 · AUSGEWIESENE ÄNDERUNG (Bens B1/B2): `resolveClaim` nimmt die
+    // zwei neuen optionalen Felder `duplicate`/`dublettenbefund` in denselben jsonb-Patch auf —
+    // Spiegel der InMemory-Fassung in `repo.ts`. KEINE DDL-Änderung, kein neuer Index, keine
+    // Migration (die Felder leben im `data`-jsonb wie alle übrigen). Sollhash UND Freigabe in
+    // EINEM Änderungssatz, die alte in WIDERRUFENE_FREIGABEN.
+    //
+    // LAUF gesamt-import-adoption:2 · AUSGEWIESENE ÄNDERUNG (Bens R3-1): `PgCandidateRepo` trägt
+    // `annahmeSperre` — eine transaktionsgebundene Advisory-Sperre auf eigener Verbindung
+    // (`pg_advisory_xact_lock`, Lebensdauer per `SET LOCAL idle_in_transaction_session_timeout` an
+    // die Claim-Lease gebunden), davor die Prozess-Kette aus `repo.ts`. `resolveClaim` bricht nach
+    // gelungenem CAS die Prozess-Kette eines abgelösten Halters. KEINE DDL-Änderung, kein Index,
+    // keine Migration. Sollhash UND Freigabe in EINEM Änderungssatz, die alte in
+    // WIDERRUFENE_FREIGABEN.
+    //
+    // LAUF gesamt-import-adoption:2 RUNDE 2 · AUSGEWIESENE ÄNDERUNG (Bens B1): die Sperrsitzung wird
+    // NICHT mehr nach der Lease beendet — `SET LOCAL idle_in_transaction_session_timeout = 0` statt
+    // der Lease-Frist, begrenzt wird nur das Warten (`SET LOCAL lock_timeout`, 55P03 → CONFLICT).
+    // Das Brechen der Prozess-Kette in `resolveClaim` ist ENTFALLEN. KEINE DDL-Änderung. Sollhash
+    // UND Freigabe in EINEM Änderungssatz, die alte in WIDERRUFENE_FREIGABEN.
+    //
+    // LAUF gesamt-import-adoption:2 RUNDE 3 · AUSGEWIESENE ÄNDERUNG (Bens B4): der ausgeliehene
+    // Sperr-Client trägt für die ganze Ausleihe einen `error`-Listener; ein Sitzungsverlust wird
+    // festgehalten, `sperreGilt` prüft ihn (und `SELECT 1` über dieselbe Sitzung) vor jeder Mutation
+    // und wirft dann CONFLICT; die verlorene Verbindung wird verworfen. KEINE DDL-Änderung. Sollhash
+    // UND Freigabe in EINEM Änderungssatz, die alte in WIDERRUFENE_FREIGABEN.
+    hash: "7ebdbd023059b12d2f864b9464a143d53094b0514f2dc8485df5cd3245ecc3c6",
     freigabe: {
-      id: "FREEZE-144/JOB3424-20260909/repo-pg",
-      autorisiertHash: "7cd125c4c4101cd51c0da9ed88e841acfb65fd78068668aa4456e7bfa49f6043",
+      id: "FREEZE-144/GIA2-R3-20261001/repo-pg",
+      autorisiertHash: "7ebdbd023059b12d2f864b9464a143d53094b0514f2dc8485df5cd3245ecc3c6",
     },
   },
   {
@@ -306,10 +414,33 @@ const FREEZE_MANIFEST: readonly FreezeEintrag[] = [
     // ausdrücklich — die schon vorhandene, nie treffende `OHNE_AEHNLICHKEIT` aus JOB 3023, damit
     // ihre Zusicherungen unverändert das messen, was sie vorher gemessen haben (Pass 1, exakte
     // Zeichengleichheit). Kein weiterer Aufrufer dieser Datei ist angefasst.
-    hash: "1b0779a403ddede006ff78a6289d94016fdb50b4bc40c3fd246a644ed94d49f9",
+    // LAUF gesamt-import-adoption R2 · AUSGEWIESENE ÄNDERUNG (Bens B3/B4): `importJson` ist
+    // entfallen. Die vier Fälle, die ihn riefen, laufen jetzt über Einreihen + Annahme und messen
+    // dieselbe Zusage (exakter Pass 1, Vertraulichkeit „vertraulich", Audit des Imports — jetzt
+    // `import.candidates-created`). Der Fall „Flag AUS" erwartet nicht mehr `sources: []`: die
+    // mitgelieferte Herkunft bleibt am Objekt (B4), der Schalter entscheidet nur noch über das
+    // Fortschreiben. Sollhash UND Freigabe in EINEM Änderungssatz, die alte in
+    // WIDERRUFENE_FREIGABEN.
+    //
+    // LAUF gesamt-import-adoption:2, NACHARBEIT 3 · AUSGEWIESENE RÜCKNAHME: die R2-Änderung oben ist
+    // ZURÜCKGENOMMEN. Mit der Hauptstand-Integration bleibt `importJson` erhalten, und die
+    // Herkunftsfrage ohne Schalter hat der Auftrag herkunft-identitaet auf main entschieden
+    // (Adapterkandidat ohne Schalter: kein Anker). Die Datei ist wieder BYTE-GLEICH mit main
+    // 1147c026 — genau der Inhalt, den die Freigabe JOB3050 autorisiert hat.
+    //
+    // AUFNAHME 20260922 · GESAMT-VERTRAULICHKEIT-ERFASSUNG (N11, BEN-Befund K6) · AUSGEWIESENE
+    // ÄNDERUNG, auf diesem Stand: Pedis Entscheidung 23 (05.09.2026) setzt den Übernahme-Standard
+    // auf „intern". Die Fälle, die ein Import OHNE Stufe als „vertraulich" pinnten (JSON-Import,
+    // Confluence-Accept, Re-Sync R4a, Fake-Adapter), messen jetzt „intern"; dazu EINE Gegenprobe
+    // (mitgelieferte vertrauliche Stufen bleiben). Die Fälle zu ungültigen Werten (restriktiv
+    // „vertraulich") und zum ausgeschlossenen Downgrade sind unverändert. Der Hash ist im Prüflauf auf
+    // Kandidat 9612aa9c gemessen („gemessen:" dieses Wächters) und unverändert übernommen; main hat
+    // die Datei seither nicht berührt (Integration 38508a1e). Sollhash UND Freigabe sind in EINEM
+    // Änderungssatz neu gesetzt, JOB3050 steht deshalb in WIDERRUFENE_FREIGABEN.
+    hash: "14d15fc3fa5cffc52153bb9ca3115a2552a499c9c1d6f59a1b2477f3093262f5",
     freigabe: {
-      id: "FREEZE-144/JOB3050-20260904/service-test",
-      autorisiertHash: "1b0779a403ddede006ff78a6289d94016fdb50b4bc40c3fd246a644ed94d49f9",
+      id: "FREEZE-144/N11-20261003/service-test",
+      autorisiertHash: "14d15fc3fa5cffc52153bb9ca3115a2552a499c9c1d6f59a1b2477f3093262f5",
     },
   },
   {

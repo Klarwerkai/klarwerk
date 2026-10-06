@@ -2,12 +2,15 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { editorFileButtonVisible } from "../../apps/web/src/lib/editorFiles";
+import { woerterbuchQuelleAus } from "../support/woerterbuchquelle";
 
 const read = (rel: string): string =>
   readFileSync(fileURLToPath(new URL(rel, import.meta.url)), "utf8");
 const frontDoor = read("../../apps/web/src/components/erfassen/Blatt.tsx");
 const editor = read("../../apps/web/src/components/RichTextEditor.tsx");
-const i18n = read("../../apps/web/src/i18n.ts");
+const i18n = woerterbuchQuelleAus(
+  fileURLToPath(new URL("../../apps/web/src/i18n.ts", import.meta.url)),
+);
 
 // SCRUM-488 (Nullschulung, FrontDoor-P2): kein toter Klick-Pfad + Migrationssprache raus.
 describe("SCRUM-488: FrontDoor-P2", () => {

@@ -199,7 +199,7 @@ describe(`${JOB} · der JSON-Rundlauf mit Volltext, am echten Socket`, () => {
     pruefeVolltextZusage(befund, plan);
   });
 
-  it("N2b · die konservative Einstufung des Importwegs bleibt — sie wird NICHT angeglichen", async () => {
+  it("N2b · die Einstufung des Importziels folgt dem Übernahme-Standard „intern“ (N11)", async () => {
     const instanzen = await neuesPaar();
     const befund = await fahreDenRundlauf(instanzen, {
       titel: `${TITEL} · Einstufung`,
@@ -207,22 +207,24 @@ describe(`${JOB} · der JSON-Rundlauf mit Volltext, am echten Socket`, () => {
       volltext: volltextHtml(),
       tags: TAGS,
     });
-    // Die Quelle ist „intern", das Ziel „vertraulich": der Re-Import ist ein Bulk-Pfad und stuft
-    // ohne Governance-Signal konservativ ein (SCRUM-509 R3). Die Abweichung ist DOKUMENTIERT und
-    // wird ausdrücklich nicht durch Absenken eines Schutzes „behoben" (Auftrag § 5.8/§ 10). Dieser
-    // Fall ist der Riegel dagegen: wer sie angleicht, macht ihn rot.
+    // NACHGEFÜHRT (Auftrag gesamt-vertraulichkeit-erfassung, N11): Bis hierher stufte der Re-Import
+    // ohne Governance-Signal konservativ „vertraulich" ein (SCRUM-509 R3), und dieser Fall hielt
+    // das als Riegel fest. Pedis jüngere Entscheidung 23 (05.09.2026) setzt den Übernahme-Standard
+    // auf „intern"; vertraulich wird nur, was ausdrücklich so geliefert wird. Der Riegel misst jetzt
+    // die neue Regel — und er bleibt ein Riegel: ein stilles „vertraulich" macht ihn rot.
     expect(befund.quellExport.confidentiality).toBe("intern");
     expect(
       befund.zielKo.confidentiality,
-      `${JOB}: die Einstufung des Importziels wurde abgesenkt.`,
-    ).toBe("vertraulich");
+      `${JOB}: das Importziel trägt nicht den Übernahme-Standard „intern“.`,
+    ).toBe("intern");
   });
 
   it("N3 · derselbe Inhaltsvertrag auf dem direkten API-Weg POST /api/library/import", async () => {
     const { quelle, ziel } = await neuesPaar();
     const titel = `${TITEL} · direkter Weg`;
     // Die Datei entsteht wie beim sichtbaren Weg — aus einem echten Export, durch den echten
-    // Parser. Nur die Oberfläche fehlt: eingespielt wird ohne Warteschlange und ohne Prüfkarte.
+    // Parser. Nur die Oberfläche fehlt. R-0143 (bens F1): auch dieser Eingang reiht in die
+    // Prüfwarteschlange ein — das Objekt entsteht erst durch die Annahme.
     const quellId = await legeQuellobjektAn(quelle, {
       titel,
       kern: KERNAUSSAGE,
@@ -233,12 +235,10 @@ describe(`${JOB} · der JSON-Rundlauf mit Volltext, am echten Socket`, () => {
     const quellEintrag = exportEintrag(await exportiere(quelle), titel);
     const items = auswahlLesen(exportdatei([quellEintrag]));
     const befund = await direktImportieren(ziel, items);
-    expect(
-      befund.imported,
-      `${JOB}: N3 · der direkte Weg hat nichts eingespielt (skipped ${befund.skipped}).`,
-    ).toBe(1);
+    expect(befund.imported, `${JOB}: N3 · der direkte Weg hat direkt angelegt.`).toBe(0);
+    const kandidat = kandidatMitTitel(befund.kandidaten, titel);
+    await entscheiden(ziel, kandidat.id, "accept");
     // Das angelegte Objekt unabhängig suchen und lesen — nicht die Antwort des Schreibwegs glauben.
-    // Sie nennt ohnehin keine Kennung (`ImportResult` zählt nur), und das ist ihr Vertrag.
     const zielObjekt = await koLesen(ziel, await kennungAusDemBestand(ziel, titel));
     expect(
       zielObjekt.bodyHtml,

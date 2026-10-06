@@ -23,6 +23,7 @@
 // wird im `afterEach` UNBEDINGT gerufen — nicht „falls exportiert", nicht „wenn vorhanden".
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { panelQuelleAus } from "../support/panelquelle";
 
 export const TASKPANE_PATH = "apps/web/public/word-addin/taskpane.html";
 /**
@@ -183,10 +184,150 @@ interface FakeDateiHandhabe {
   closeAsync(callback: (r: { status: string }) => void): void;
 }
 
+/**
+ * R-0169 (Nacharbeit 8): die Dokumenteinstellungen (`Office.context.document.settings`).
+ *
+ * NUR WENN DIESE OPTION GESETZT IST, kennt der Office-Fake `settings` — ohne sie fehlt die
+ * Schnittstelle wie bisher, und kein bestehender Fall ändert sein Verhalten. `werte` ist der Stand,
+ * den das Dokument beim ÖFFNEN mitbringt; `set` ändert nur die Arbeitskopie, erst ein erfolgreiches
+ * `saveAsync` überträgt sie nach `gespeichert` (der Stand, den ein Wiederöffnen sähe). Dies bildet
+ * den Office-Vertrag nach — es ist KEIN Nachweis, dass echtes Word die Einstellung im .docx behält.
+ */
+export interface FakeDokumentEinstellungen {
+  werte?: Record<string, unknown>;
+  speichernScheitert?: boolean;
+  /** Vom Test übergebenes Ziel: hier landet, was `saveAsync` dauerhaft gemacht hat. */
+  gespeichert?: Record<string, unknown>;
+  /**
+   * Word-Host-Gesamtweg (Realhostbeleg 06.10.2026): echtes Word antwortet auf `saveAsync` SPÄTER
+   * als der Sendeweg endet. Gesetzt, ruft die Attrappe den Rückruf NICHT sofort, sondern legt ihn
+   * in `ausstehend` ab; der Test löst ihn selbst aus. Ob Erfolg oder Fehler, entscheidet
+   * `speichernScheitert` zum Zeitpunkt des Auslösens.
+   */
+  verzoegert?: boolean;
+  /** Bei `verzoegert`: die noch nicht beantworteten `saveAsync`-Aufrufe, in Aufrufreihenfolge. */
+  ausstehend?: Array<() => void>;
+}
+
+/**
+ * Word-Host-Gesamtweg (Realhostbeleg 06.10.2026): `Word.run` → `getSelection().text`.
+ *
+ * NUR WENN DIESE OPTION GESETZT IST, gibt es `Word` — ohne sie bleibt es wie bisher ungesetzt.
+ *   "sofort"     — die Auswahl antwortet mit `text`.
+ *   "nie"        — `context.sync` antwortet nie (der Rückruf bleibt aus).
+ *   "verzoegert" — die Antwort liegt in `ausstehend`; der Test löst sie selbst aus.
+ *   "wirft"      — `Word.run` wirft synchron.
+ * `laeufe` zählt die `Word.run`-Aufrufe (auch die des Panels beim Laden).
+ */
+export interface FakeWordAuswahl {
+  lage: "sofort" | "nie" | "verzoegert" | "wirft";
+  text: string;
+  ausstehend?: Array<() => void>;
+  laeufe?: number;
+}
+
+function buildFakeWord(wa: FakeWordAuswahl): Record<string, unknown> {
+  return {
+    run: (fn: (kontext: unknown) => unknown): Promise<unknown> => {
+      wa.laeufe = (wa.laeufe ?? 0) + 1;
+      if (wa.lage === "wirft") {
+        throw new Error("Word.run nicht verfügbar");
+      }
+      const auswahl: { text?: string; load: (felder: string) => void } = {
+        load: () => undefined,
+      };
+      // Nur ein Lauf, der die AUSWAHL liest, folgt der Lage; andere Lesungen antworten sofort.
+      let auswahlGelesen = false;
+      const sync = (): Promise<void> => {
+        if (!auswahlGelesen) {
+          return Promise.resolve();
+        }
+        if (wa.lage === "nie") {
+          return new Promise<void>(() => undefined);
+        }
+        if (wa.lage === "verzoegert") {
+          return new Promise<void>((fertig) => {
+            wa.ausstehend ??= [];
+            wa.ausstehend.push(() => {
+              auswahl.text = wa.text;
+              fertig();
+            });
+          });
+        }
+        auswahl.text = wa.text;
+        return Promise.resolve();
+      };
+      // Ein leerer, lesbarer Dokumentkörper: das Panel liest ihn beim Laden (Begriffsbild) — wie
+      // in den vorhandenen Word-Attrappen, ohne Schreibweg.
+      const body = { text: "", load: () => undefined, getHtml: () => ({ value: "" }) };
+      const getSelection = (): typeof auswahl => {
+        auswahlGelesen = true;
+        return auswahl;
+      };
+      const kontext = { document: { getSelection, body }, sync };
+      return Promise.resolve().then(() => fn(kontext));
+    },
+  };
+}
+
+/**
+ * WORD-WEB-RETURN-STRUCTURE (Nacharbeit 9): die STRUKTUR der Markierung, wie Word sie über
+ * WordApi 1.1 hergibt — `getSelection().getHtml()`, `paragraphs` mit `text`/`style` und je Absatz
+ * `inlinePictures` mit `getBase64ImageSrc()`. Nur gesetzt, wenn ein Test es ausdrücklich verlangt.
+ *   "sofort" — jede Lesung antwortet.
+ *   "nie"    — `context.sync` antwortet beim Lesen der Auswahl nie (Frist des Panels).
+ *   "wirft"  — `Word.run` wirft synchron.
+ */
+export interface FakeWordMarkierung {
+  lage: "sofort" | "nie" | "wirft";
+  /** Was `Range.getHtml()` liefert (Vorgabe: leer). */
+  html?: string;
+  absaetze: { text: string; stil?: string; bilder?: string[] }[];
+}
+
+function buildFakeWordMarkierung(wm: FakeWordMarkierung): Record<string, unknown> {
+  return {
+    run: (fn: (kontext: unknown) => unknown): Promise<unknown> => {
+      if (wm.lage === "wirft") {
+        throw new Error("Word.run nicht verfügbar");
+      }
+      let auswahlGelesen = false;
+      const sync = (): Promise<void> => {
+        if (auswahlGelesen && wm.lage === "nie") {
+          return new Promise<void>(() => undefined);
+        }
+        return Promise.resolve();
+      };
+      const absaetze = wm.absaetze.map((a) => ({
+        text: a.text,
+        style: a.stil ?? "Standard",
+        inlinePictures: {
+          items: (a.bilder ?? []).map((b) => ({ getBase64ImageSrc: () => ({ value: b }) })),
+          load: () => undefined,
+        },
+      }));
+      const auswahl = {
+        text: wm.absaetze.map((a) => a.text).join("\r"),
+        load: () => undefined,
+        getHtml: () => ({ value: wm.html ?? "" }),
+        paragraphs: { items: absaetze, load: () => undefined },
+      };
+      const body = { text: "", load: () => undefined, getHtml: () => ({ value: "" }) };
+      const getSelection = (): typeof auswahl => {
+        auswahlGelesen = true;
+        return auswahl;
+      };
+      return Promise.resolve().then(() => fn({ document: { getSelection, body }, sync }));
+    },
+  };
+}
+
 function buildFakeOffice(
   selectionHtml: string,
   selectionText: string,
   docx: FakeDocxDatei | undefined,
+  einstellungen?: FakeDokumentEinstellungen,
+  auswahlHaengt?: boolean,
 ): Record<string, unknown> {
   const coercion = { Html: "html", Text: "text" };
   const asyncStatus = { Succeeded: "succeeded", Failed: "failed" };
@@ -199,6 +340,10 @@ function buildFakeOffice(
       // JOB 3057 K2: der TEXT-Zugriff speist die Markierungskarte (und die Frage-Herkunft).
       // Grundwert bleibt leer — bestehende Faelle stellen keine Textmarkierung und sollen
       // durch die Karte nicht ploetzlich eine bekommen.
+      // Word-Host-Gesamtweg: `auswahlHaengt` bildet Word im Web nach — der Rückruf bleibt AUS.
+      if (auswahlHaengt) {
+        return;
+      }
       callback({ status: asyncStatus.Succeeded, value: selectionText });
     },
   };
@@ -212,6 +357,36 @@ function buildFakeOffice(
     },
     context: { document: dokument },
   };
+  if (einstellungen !== undefined) {
+    const arbeitskopie: Record<string, unknown> = { ...(einstellungen.werte ?? {}) };
+    dokument.settings = {
+      get: (name: string): unknown => arbeitskopie[name] ?? null,
+      set: (name: string, wert: unknown): void => {
+        arbeitskopie[name] = wert;
+      },
+      saveAsync: (callback: (r: { status: string; error?: { message: string } }) => void): void => {
+        const antworten = (): void => {
+          if (einstellungen.speichernScheitert) {
+            callback({
+              status: asyncStatus.Failed,
+              error: { message: "Speichern fehlgeschlagen" },
+            });
+            return;
+          }
+          if (einstellungen.gespeichert) {
+            Object.assign(einstellungen.gespeichert, arbeitskopie);
+          }
+          callback({ status: asyncStatus.Succeeded });
+        };
+        if (einstellungen.verzoegert) {
+          einstellungen.ausstehend ??= [];
+          einstellungen.ausstehend.push(antworten);
+          return;
+        }
+        antworten();
+      },
+    };
+  }
   if (docx !== undefined) {
     const bytes = docx.bytes ?? [0x50, 0x4b, 0x03, 0x04];
     const fileType = { Compressed: "compressed", Text: "text" };
@@ -267,6 +442,14 @@ export interface KlaraPanelOptions {
    * `readWholeDocument` zurueck. Siehe `FakeDocxDatei`.
    */
   docxDatei?: FakeDocxDatei;
+  /** R-0169 (Nacharbeit 8): schaltet `Office.context.document.settings` frei (Vorgabe: aus). */
+  dokumentEinstellungen?: FakeDokumentEinstellungen;
+  /** Word-Host-Gesamtweg: `getSelectedDataAsync(Text)` antwortet nie (Vorgabe: aus). */
+  auswahlHaengt?: boolean;
+  /** Word-Host-Gesamtweg: setzt ein `Word` mit steuerbarer Auswahl (Vorgabe: kein `Word`). */
+  wordAuswahl?: FakeWordAuswahl;
+  /** Nacharbeit 9: setzt ein `Word` mit der Struktur der Markierung (Vorgabe: kein `Word`). */
+  wordMarkierung?: FakeWordMarkierung;
 }
 
 export interface KlaraPanel {
@@ -302,8 +485,12 @@ interface PanelExports {
   t(key: string, vars?: Record<string, string>): string;
 }
 
+/**
+ * Das Fenster als EIN Dokument. Seit dem Drei-Datei-Schnitt (R-1611) liegen Stil und Skript in
+ * `taskpane.css`/`taskpane.js`; `panelQuelleAus` fügt sie an ihren Stellen wieder ein.
+ */
 function readTaskpane(): string {
-  return readFileSync(resolve(process.cwd(), TASKPANE_PATH), "utf8");
+  return panelQuelleAus(resolve(process.cwd(), TASKPANE_PATH));
 }
 
 export function readRueckweg(): string {
@@ -416,13 +603,25 @@ export function createKlaraPanel(options: KlaraPanelOptions = {}): KlaraPanel {
       options.selectionHtml ?? "<html><body><p>Ventil entlasten vor der Wartung</p></body></html>",
       options.selectionText ?? "",
       options.docxDatei,
+      options.dokumentEinstellungen,
+      options.auswahlHaengt,
     );
     globals.Office = office;
     globals.window.Office = office;
   }
   // `Word` bleibt bewusst ungesetzt: der Auswahl-Weg braucht es nicht, und ein halb gefaelschtes
-  // Word.run wuerde einen Pfad vortaeuschen, den dieser Test nicht deckt.
-  entfernen("Word");
+  // Word.run wuerde einen Pfad vortaeuschen, den dieser Test nicht deckt. Ausnahme: `wordAuswahl`
+  // setzt ausdrücklich den Lesezugriff `getSelection().text` — und nichts sonst.
+  if (options.wordAuswahl !== undefined || options.wordMarkierung !== undefined) {
+    const word =
+      options.wordAuswahl !== undefined
+        ? buildFakeWord(options.wordAuswahl)
+        : buildFakeWordMarkierung(options.wordMarkierung as FakeWordMarkierung);
+    globals.Word = word;
+    globals.window.Word = word;
+  } else {
+    entfernen("Word");
+  }
 
   // --- 5. DOM aufbauen und das AUSGELIEFERTE Skript ausfuehren -----------------------------------
   globals.document.body.innerHTML = markup;

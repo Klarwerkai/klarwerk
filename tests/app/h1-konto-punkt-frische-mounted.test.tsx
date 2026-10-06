@@ -134,8 +134,13 @@ async function mount(alterCache?: unknown[]): Promise<void> {
   await act(flush);
 }
 
-const punkt = (): Element | null => container.querySelector('[data-testid="konto-punkt"]');
+// FE-002 (Pedi, 26.09.2026): das Signal ist vom Konto-Kreis an den eigenen Meldungszugang gezogen —
+// die ZAHL am Zugang tritt an die Stelle des Punktes, sein zugänglicher Name an die Stelle des
+// Konto-Namens. Die Regel ist dieselbe (§9); der Konto-Kreis heißt seitdem nur noch „Konto".
+const punkt = (): Element | null => container.querySelector('[data-testid="meldungen-zahl"]');
 const kontoLabel = (): string =>
+  container.querySelector('[data-testid="kopfband-meldungen"]')?.getAttribute("aria-label") ?? "";
+const kontoKreisLabel = (): string =>
   container.querySelector('[data-testid="kopfband-konto"]')?.getAttribute("aria-label") ?? "";
 /** Der Query-Zustand samt Frische — aus derselben Ablage, die das Kopfband liest. */
 const lage = (): { status: string; fetchStatus: string; stale: boolean } => {
@@ -166,7 +171,7 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe("JOB 3060 · H1 · §9 · der Punkt am Konto-Kreis", () => {
+describe("JOB 3060 · H1 · §9 · FE-002 · die Zahl am Meldungszugang (vormals Punkt am Konto-Kreis)", () => {
   it("(4) frischer Erfolg mit ungelesen > 0 → Punkt sofort; nach Ablauf der Frischezeit OHNE neuen Abruf → kein Punkt; neuer ruhender Erfolg → Punkt", async () => {
     await mount();
     // Erstladen: noch keine Bestätigung → kein Punkt.
@@ -178,7 +183,9 @@ describe("JOB 3060 · H1 · §9 · der Punkt am Konto-Kreis", () => {
     });
     expect(lage()).toEqual({ status: "success", fetchStatus: "idle", stale: false });
     expect(punkt(), "frischer Erfolg mit 2 ungelesenen — der Punkt fehlt").not.toBeNull();
-    expect(kontoLabel()).toContain(i18n.t("kopfband.ungelesen", { count: 2 }));
+    expect(kontoLabel()).toContain(i18n.t("fe002.meldungenUngelesen", { count: 2 }));
+    expect(punkt()?.textContent).toBe("2");
+    expect(kontoKreisLabel(), "der Konto-Kreis bleibt das Konto").toBe(i18n.t("kopfband.konto"));
 
     // DIE ALTERUNG (Codex R6): die Frischezeit läuft ab, kein Abruf, keine Nutzeraktion.
     const abrufeVorher = kanal.fn.mock.calls.length;
@@ -188,7 +195,7 @@ describe("JOB 3060 · H1 · §9 · der Punkt am Konto-Kreis", () => {
     );
     expect(lage()).toEqual({ status: "success", fetchStatus: "idle", stale: true });
     expect(punkt(), "der Punkt steht auf einem veralteten Erfolg").toBeNull();
-    expect(kontoLabel()).toBe(i18n.t("kopfband.konto"));
+    expect(kontoLabel()).toContain(i18n.t("fe002.meldungenUnbestaetigt"));
 
     // Ein neuer, ruhender Erfolg bestätigt wieder → Punkt.
     await act(async () => {
@@ -213,7 +220,7 @@ describe("JOB 3060 · H1 · §9 · der Punkt am Konto-Kreis", () => {
     });
     expect(lage()).toEqual({ status: "success", fetchStatus: "idle", stale: false });
     expect(punkt()).toBeNull();
-    expect(kontoLabel()).toBe(i18n.t("kopfband.konto"));
+    expect(kontoLabel()).toContain(i18n.t("fe002.meldungenKeine"));
   });
 
   it("(1) alter Cache mit Ungelesenen + laufende Auffrischung → KEIN Punkt, bis der Abruf ruht", async () => {
@@ -239,7 +246,7 @@ describe("JOB 3060 · H1 · §9 · der Punkt am Konto-Kreis", () => {
     expect(lage().status).toBe("error");
     expect(lage().fetchStatus).toBe("idle");
     expect(punkt(), "der Punkt steht trotz gescheitertem Neuabruf").toBeNull();
-    expect(kontoLabel()).toBe(i18n.t("kopfband.konto"));
+    expect(kontoLabel()).toContain(i18n.t("fe002.meldungenUnbestaetigt"));
   });
 
   it("(3) offline mit altem Cache → KEIN Punkt; wieder online und frisch bestätigt → Punkt", async () => {

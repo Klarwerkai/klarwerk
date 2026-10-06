@@ -40,8 +40,8 @@ export interface KnowledgeRef {
   // nimmt entgegen, was die Projektion ohnehin gerechnet hat.
   //
   // WER WIE VIEL DAVON MITGIBT, IST NICHT HIER ENTSCHIEDEN — und das ist Absicht. Der Aufrufer
-  // baut bis zu `ASK_CANDIDATE_PREFILTER_LIMIT` (200) Refs je Frage; bei voller Ausschöpfung des
-  // Projektionsdeckels wären das 200 × 200.000 = 40 Mio. Zeichen, die je Frage tokenisiert würden.
+  // baut bis zu `ASK_CANDIDATE_PREFILTER_LIMIT` (200) Refs je Frage, ab 20.000 Objekten mit dem
+  // Bestand bis 500 (Aufnahme 20260922); voll ausgeschöpft also bis 500 × 200.000 Zeichen je Frage.
   // Dieses Feld erfindet deshalb KEINE eigene Grenze: eine neu erfundene Zahl wäre exakt derselbe
   // Fehler wie die 500 aus `wordAddin.ts:925`, nur mit einer größeren Ziffer. Die Menge gehört zum
   // Aufrufer, wo sie messbar ist; fehlt das Feld, matcht der Altbestand wie bisher.
@@ -231,6 +231,9 @@ export interface EnrichResult {
   text: string;
   provider: string;
   demo: boolean;
+  // Entscheidung Pedi 8398db9e (KI-VO Art. 50): ein angereicherter Text ist KI-erzeugt und trägt
+  // die Kennzeichnung — nur, wenn wirklich Text entstand (der leere Rückfall trägt sie nicht).
+  aiGenerated?: AiGeneratedMark;
 }
 
 export interface ExtractResult {

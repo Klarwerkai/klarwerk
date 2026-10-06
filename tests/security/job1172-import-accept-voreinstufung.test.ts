@@ -72,8 +72,14 @@ async function kandidatAnlegen(
   return id as string;
 }
 
-describe("JOB 1172 · Import-Accept: fehlendes Governance-Signal ergibt „vertraulich“", () => {
-  it("ein Kandidat OHNE confidentiality wird beim Accept zu einem vertraulichen Objekt", async () => {
+// NACHGEFÜHRT (Auftrag gesamt-vertraulichkeit-erfassung, N11): Die Regel, die diese Datei pinnt,
+// ist durch Pedis jüngere Entscheidung 23 (05.09.2026) abgelöst — der Übernahme-Standard ist
+// „intern". Der Wächter bleibt ein Wächter für den `??`-Zweig: er misst jetzt, dass das FEHLEN
+// des Signals ein ausdrückliches „intern" ergibt (nicht „vertraulich", nicht undefined). Die
+// Gegenrichtung (ein mitgegebenes „vertraulich" bleibt) steht in
+// `tests/uebernahme-standard-intern/datei-import-bis-egress.test.ts`.
+describe("JOB 1172 · Import-Accept: fehlendes Governance-Signal ergibt „intern“ (N11)", () => {
+  it("ein Kandidat OHNE confidentiality wird beim Accept zu einem ausdrücklich internen Objekt", async () => {
     const { app, kopf } = await appMitAdmin();
 
     // Das Governance-Signal fehlt ABSICHTLICH — genau das ist der Zweig, um den es geht.
@@ -98,8 +104,9 @@ describe("JOB 1172 · Import-Accept: fehlendes Governance-Signal ergibt „vertr
     const ko = await app.inject({ method: "GET", url: `/api/kos/${koId}`, headers: kopf });
     expect(ko.statusCode, ko.body).toBe(200);
 
-    // DIE ZUSAGE: fehlt das Signal, gilt „vertraulich" — nicht „intern", nicht undefined.
-    expect((ko.json() as { confidentiality?: string }).confidentiality).toBe("vertraulich");
+    // DIE ZUSAGE (N11): fehlt das Signal, gilt ausdrücklich „intern" — nicht „vertraulich", nicht
+    // undefined.
+    expect((ko.json() as { confidentiality?: string }).confidentiality).toBe("intern");
   });
 
   it("die Voreinstufung ist ein RUECKFALL, kein Ueberschreiben: ein mitgegebenes „intern“ wird NICHT vertraulich", async () => {

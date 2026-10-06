@@ -161,6 +161,8 @@ interface Zaehler {
   listByKos: number;
   listByKo: number;
   all: number;
+  /** PRÜFSTATUS-ANZEIGE (R-1524): die gezielte Zuweisungsabfrage, die den Vollscan `all` ersetzt. */
+  zuweisungenJeKos: number;
 }
 
 /**
@@ -168,7 +170,7 @@ interface Zaehler {
  * So faellt genau das auf, was im Betrieb kostet (Abfragen), und der Weg darueber bleibt echt.
  */
 function zaehlerUm(repos: AppRepos): Zaehler {
-  const zaehler: Zaehler = { listByKos: 0, listByKo: 0, all: 0 };
+  const zaehler: Zaehler = { listByKos: 0, listByKo: 0, all: 0, zuweisungenJeKos: 0 };
   const echtViele = repos.ratings.listByKos.bind(repos.ratings);
   repos.ratings.listByKos = (koIds) => {
     zaehler.listByKos += 1;
@@ -183,6 +185,11 @@ function zaehlerUm(repos: AppRepos): Zaehler {
   repos.assignments.all = () => {
     zaehler.all += 1;
     return echtAlle();
+  };
+  const echtGezielt = repos.assignments.listByKos.bind(repos.assignments);
+  repos.assignments.listByKos = (koIds) => {
+    zaehler.zuweisungenJeKos += 1;
+    return echtGezielt(koIds);
   };
   return zaehler;
 }
@@ -283,10 +290,12 @@ describe("JOB 3043 · der Anzeigestatus an der Liste, mit gezaehltem Aufwand", (
     // eine Abfrage fuer die ganze Liste). Beide Objekte sind ungemerkt — die Antwort sagt das jetzt,
     // statt zu schweigen. Der volle Zustandssatz steht in
     // `tests/anzeigestatus-revalidierung/revalidierung-wird-erhoben.test.ts` (R-1 bis R-8).
+    // PRÜFSTATUS-ANZEIGE (R-0212): auch `konflikt` wird seither erhoben — kein offener Konflikt,
+    // also `geprueft` ohne Restgrund (die Konfliktfälle: tests/pruefstatus-anzeige/r0212-…).
     for (const e of [mit, ohne]) {
       const h = herkunftVon(e);
-      expect(h.konflikt).toBe("ungeprueft");
-      expect(String(h.ungeprueft.konflikt).length).toBeGreaterThan(20);
+      expect(h.konflikt).toBe("geprueft");
+      expect(Object.keys(h.ungeprueft)).not.toContain("konflikt");
       expect(h.revalidierung).toBe("geprueft");
       expect(Object.keys(h.ungeprueft)).not.toContain("revalidierung");
     }
@@ -317,8 +326,10 @@ describe("JOB 3043 · der Anzeigestatus an der Liste, mit gezaehltem Aufwand", (
     const beiZehn = await abfragenBeiEintraegen(10);
     const beiEinem = await abfragenBeiEintraegen(1);
 
-    expect(beiZehn).toEqual({ listByKos: 1, listByKo: 0, all: 1 });
-    expect(beiEinem).toEqual({ listByKos: 1, listByKo: 0, all: 1 });
+    // PRÜFSTATUS-ANZEIGE (R-1524): weiterhin ZWEI Abfragen — aber die Zuweisungen kommen gezielt
+    // (`zuweisungenJeKos`) statt über den Vollscan `all`.
+    expect(beiZehn).toEqual({ listByKos: 1, listByKo: 0, all: 0, zuweisungenJeKos: 1 });
+    expect(beiEinem).toEqual({ listByKos: 1, listByKo: 0, all: 0, zuweisungenJeKos: 1 });
   });
 
   it("L4 · DECKEL: oberhalb wird gar nicht gefragt, und die ganze Antwort sagt das ueber sich", async () => {
@@ -331,7 +342,7 @@ describe("JOB 3043 · der Anzeigestatus an der Liste, mit gezaehltem Aufwand", (
     expect(eintraege).toHaveLength(ANZEIGESTATUS_LISTE_DECKEL + 1);
 
     // NULL zusaetzliche Abfragen — der Deckel spart die Anreicherung ganz, nicht teilweise.
-    expect(zaehler).toEqual({ listByKos: 0, listByKo: 0, all: 0 });
+    expect(zaehler).toEqual({ listByKos: 0, listByKo: 0, all: 0, zuweisungenJeKos: 0 });
 
     // KEIN STILLER TEILSTAND: JEDER Eintrag traegt ALLE VIER Eingaenge als ungeprueft, und jeder
     // Grund nennt den Deckel und die tatsaechliche Zahl.
@@ -357,7 +368,7 @@ describe("JOB 3043 · der Anzeigestatus an der Liste, mit gezaehltem Aufwand", (
     const eintraege = await liste(app, pruefer);
     expect(eintraege).toHaveLength(ANZEIGESTATUS_LISTE_DECKEL - 1);
 
-    expect(zaehler).toEqual({ listByKos: 1, listByKo: 0, all: 1 });
+    expect(zaehler).toEqual({ listByKos: 1, listByKo: 0, all: 0, zuweisungenJeKos: 1 });
     for (const e of eintraege) {
       const h = herkunftVon(e);
       expect(h.zuweisungen).toBe("geprueft");
@@ -524,7 +535,7 @@ describe("JOB 3043 · der Anzeigestatus an der Liste, mit gezaehltem Aufwand", (
     const leerZaehler = zaehlerUm(repos);
     const leereEingabe = await services.validation.pruefstaendeFuer([]);
     expect(leereEingabe.size).toBe(0);
-    expect(leerZaehler).toEqual({ listByKos: 0, listByKo: 0, all: 0 });
+    expect(leerZaehler).toEqual({ listByKos: 0, listByKo: 0, all: 0, zuweisungenJeKos: 0 });
 
     // DOPPELTE KENNUNG: einmal ABGEFRAGT, einmal beantwortet. Auch hier trug die Kartengroesse
     // allein nichts — eine Karte hat je Kennung ohnehin nur einen Platz, ganz gleich, wie oft die
@@ -548,7 +559,7 @@ describe("JOB 3043 · der Anzeigestatus an der Liste, mit gezaehltem Aufwand", (
     expect(eintraege).toEqual([]);
     // Die Anreicherung fragt nichts, wenn es nichts anzureichern gibt. Ohne diese Zusage zoege eine
     // leere Antwort die ganze Zuweisungstabelle in den Speicher.
-    expect(zaehler).toEqual({ listByKos: 0, listByKo: 0, all: 0 });
+    expect(zaehler).toEqual({ listByKos: 0, listByKo: 0, all: 0, zuweisungenJeKos: 0 });
   });
 
   it("L11 · POSTGRES: leer ohne Anweisung, zwei Kennungen als EINE `= ANY`-Anweisung", async () => {

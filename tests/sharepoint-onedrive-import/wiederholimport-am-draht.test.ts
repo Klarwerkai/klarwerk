@@ -243,32 +243,28 @@ describe("JOB 4125 · W1 — dieselbe unveränderte Datei ein zweites Mal übern
   // W1b — DERSELBE AUSGANG AM LAUF: `itemsSkipped`, NICHT `itemsCreated`.
   // ------------------------------------------------------------------------------------------------
   //
-  // BEFUND, DER DIESEN FALL SO AUSSEHEN LÄSST (s. RUECKGABE): der LESEWEG der Laufdomäne
-  // (`GET /api/admin/import/runs/:importId`, `routes/import-run-routes.ts:117`) ist in der
-  // Kompositionswurzel NUR hinter dem Confluence-Schalter registriert
-  // (`services/app/src/build-app.ts:2674-2695`). Eine Instanz, die ALLEIN den SharePoint-Import
-  // anhat, schreibt also Läufe, die sie selbst nicht lesen kann — die Übernahme gibt eine
-  // `importId` heraus, hinter der eine 404 steht. `build-app.ts` liegt ausserhalb der Zielpfade
-  // dieses Auftrags (§4); der Befund wird deshalb GEMESSEN und benannt, nicht stillschweigend
-  // umgangen. Die Zählung selbst wird an einer Instanz gemessen, in der beide Schalter anstehen —
-  // wie in jeder Installation, die auch Confluence angebunden hat.
-  it("W1b · der Lauf des zweiten Aufrufs zählt die Kennung als übersprungen — und der Leseweg hängt am Confluence-Schalter", async () => {
+  // BEFUND BIS R-0145: der LESEWEG der Laufdomäne (`GET /api/admin/import/runs/:importId`) war in
+  // der Kompositionswurzel NUR hinter dem Confluence-Schalter registriert. Eine Instanz, die ALLEIN
+  // den SharePoint-Import anhatte, gab eine `importId` heraus, hinter der eine 404 stand. Seit
+  // R-0145 steht der Leseweg hinter JEDEM Importweg (`build-app.ts`); (a) misst genau diese Lage
+  // und war vorher als 404 festgehalten.
+  it("W1b · der Lauf des zweiten Aufrufs zählt die Kennung als übersprungen — und ist auch nur mit SharePoint lesbar", async () => {
     const vorher = process.env.KLARWERK_CONFLUENCE_IMPORT;
 
-    // (a) DER BEFUND: allein mit dem SharePoint-Schalter gibt es den Leseweg nicht.
+    // (a) allein mit dem SharePoint-Schalter ist die Laufakte lesbar.
     process.env.KLARWERK_CONFLUENCE_IMPORT = "0";
     const nurSharePoint = await appMitAdmin();
-    const ohneLeseweg = await uebernimm(nurSharePoint.app, nurSharePoint.headers);
-    expect(ohneLeseweg.importId, "der Lauf bekommt eine Kennung").toBeTruthy();
-    const verwehrt = await nurSharePoint.app.inject({
+    const mitLeseweg = await uebernimm(nurSharePoint.app, nurSharePoint.headers);
+    expect(mitLeseweg.importId, "der Lauf bekommt eine Kennung").toBeTruthy();
+    const gelesen = await nurSharePoint.app.inject({
       method: "GET",
-      url: `/api/admin/import/runs/${ohneLeseweg.importId}`,
+      url: `/api/admin/import/runs/${mitLeseweg.importId}`,
       headers: nurSharePoint.headers,
     });
-    expect(
-      verwehrt.statusCode,
-      "Ist-Zustand: der Leseweg der Laufdomäne ist hier nicht registriert (Befund, s. RUECKGABE)",
-    ).toBe(404);
+    expect(gelesen.statusCode, gelesen.body).toBe(200);
+    expect((gelesen.json() as { sourceScope: string | null }).sourceScope).toBe(
+      "drive:b!testbibliothek",
+    );
     await nurSharePoint.app.close();
 
     // (b) DIE ZÄHLUNG, an einer Instanz mit beiden Schaltern.

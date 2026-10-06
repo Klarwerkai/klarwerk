@@ -290,7 +290,7 @@ describe("mega48 Block D: die persönliche Aussage steht VOR allen Sichtfiltern"
 
     // Suche ist der ERSTE Filter in `boardFiltered` — vor Herkunft, Review-Fokus und Facetten.
     await oeffneFilter();
-    await tippe(feldMitPlatzhalter(de("val.filter")), "GIBTESHIERNICHT");
+    await tippe(feldMitPlatzhalter(de("pruefboard.volltextFiltern")), "GIBTESHIERNICHT");
 
     expect(text()).not.toContain("PROBE-A");
     expect(text()).not.toContain("PROBE-B");

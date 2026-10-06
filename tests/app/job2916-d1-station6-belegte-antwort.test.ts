@@ -54,6 +54,7 @@ function stillerPruefjob(): NonNullable<AppServices["aiCheckWorker"]> {
   return {
     enqueue: () => {},
     has: () => false,
+    laeuft: () => false,
     queuedCount: () => 0,
     idle: async () => {},
   };

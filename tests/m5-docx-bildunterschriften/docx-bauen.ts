@@ -50,8 +50,20 @@ export type Absatz =
     }
   /** Eine Word-Überschrift (Formatvorlage `Heading 1`) — der Beleg, dass die Standardkarte bleibt. */
   | { readonly art: "ueberschrift"; readonly text: string }
-  /** Ein eingebettetes Bild (eigener Absatz, wie Word es bei Blockbildern schreibt). */
-  | { readonly art: "bild"; readonly png: string; readonly alt?: string };
+  /**
+   * Ein eingebettetes Bild (eigener Absatz, wie Word es bei Blockbildern schreibt). `verankert`
+   * schreibt es statt als `wp:inline` als frei platziertes, umflossenes `wp:anchor`.
+   */
+  | {
+      readonly art: "bild";
+      readonly png: string;
+      readonly alt?: string;
+      readonly verankert?: boolean;
+    }
+  /** Fliesstext aus mehreren Läufen, z. B. mit einem fetten Teil (Word-Host-Gesamtweg). */
+  | { readonly art: "absatz"; readonly laeufe: readonly Lauf[] }
+  /** Eine einfache Tabelle, Zeile für Zeile, je Zelle ein Absatz (Word-Host-Gesamtweg). */
+  | { readonly art: "tabelle"; readonly zeilen: readonly (readonly string[])[] };
 
 const XML_KOPF = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 
@@ -69,23 +81,60 @@ function xmlText(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
-/** Ein Absatz mit einer Formatvorlage — `w:pStyle` trägt die Stil-KENNUNG (`w:styleId`). */
-function mitVorlage(styleId: string, laeufe: readonly Lauf[]): string {
-  const inhalt = laeufe
+/** Die Läufe eines Absatzes — `fett` erzeugt `<w:b/>`. */
+function laeufeXml(laeufe: readonly Lauf[]): string {
+  return laeufe
     .map(
       (l) =>
         `<w:r>${l.fett ? "<w:rPr><w:b/></w:rPr>" : ""}<w:t xml:space="preserve">${xmlText(l.text)}</w:t></w:r>`,
     )
     .join("");
-  return `<w:p><w:pPr><w:pStyle w:val="${styleId}"/></w:pPr>${inhalt}</w:p>`;
 }
 
-/** Ein Blockbild, so wie Word es schreibt: `w:drawing` → `wp:inline` → `pic:pic` → `a:blip`. */
-function bildAbsatz(relId: string, nr: number, alt: string): string {
+/** Ein Absatz mit einer Formatvorlage — `w:pStyle` trägt die Stil-KENNUNG (`w:styleId`). */
+function mitVorlage(styleId: string, laeufe: readonly Lauf[]): string {
+  return `<w:p><w:pPr><w:pStyle w:val="${styleId}"/></w:pPr>${laeufeXml(laeufe)}</w:p>`;
+}
+
+/** Eine Tabelle mit festen Spaltenbreiten — die Form, die Word selbst mindestens erwartet. */
+function tabelleXml(zeilen: readonly (readonly string[])[]): string {
+  const spalten = Math.max(1, ...zeilen.map((z) => z.length));
+  const raster = Array.from({ length: spalten }, () => '<w:gridCol w:w="3000"/>').join("");
+  const reihen = zeilen
+    .map((zeile) => {
+      const zellen = zeile
+        .map(
+          (zelle) =>
+            `<w:tc><w:tcPr><w:tcW w:w="3000" w:type="dxa"/></w:tcPr><w:p>${laeufeXml([{ text: zelle }])}</w:p></w:tc>`,
+        )
+        .join("");
+      return `<w:tr>${zellen}</w:tr>`;
+    })
+    .join("");
+  return `<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/></w:tblPr><w:tblGrid>${raster}</w:tblGrid>${reihen}</w:tbl>`;
+}
+
+/** Der Kopf eines frei platzierten Bildes: Lage, Umfluss — so, wie Word `wp:anchor` schreibt. */
+const ANKER_KOPF = [
+  '<wp:anchor distT="0" distB="0" distL="114300" distR="114300" simplePos="0"',
+  ' relativeHeight="251658240" behindDoc="0" locked="0" layoutInCell="1" allowOverlap="1">',
+  '<wp:simplePos x="0" y="0"/>',
+  '<wp:positionH relativeFrom="column"><wp:posOffset>0</wp:posOffset></wp:positionH>',
+  '<wp:positionV relativeFrom="paragraph"><wp:posOffset>0</wp:posOffset></wp:positionV>',
+  '<wp:extent cx="914400" cy="914400"/>',
+  '<wp:effectExtent l="0" t="0" r="0" b="0"/>',
+  '<wp:wrapSquare wrapText="bothSides"/>',
+].join("");
+
+/**
+ * Ein Blockbild, so wie Word es schreibt: `w:drawing` → `wp:inline` → `pic:pic` → `a:blip`.
+ * Verankert steht statt `wp:inline` ein `wp:anchor` mit Lage und Umfluss.
+ */
+function bildAbsatz(relId: string, nr: number, alt: string, verankert = false): string {
   return [
     "<w:p><w:r><w:drawing>",
-    '<wp:inline distT="0" distB="0" distL="0" distR="0">',
-    '<wp:extent cx="914400" cy="914400"/>',
+    verankert ? ANKER_KOPF : '<wp:inline distT="0" distB="0" distL="0" distR="0">',
+    verankert ? "" : '<wp:extent cx="914400" cy="914400"/>',
     `<wp:docPr id="${nr}" name="Grafik ${nr}" descr="${xmlText(alt)}"/>`,
     `<a:graphic><a:graphicData uri="${NS_PIC}"><pic:pic>`,
     `<pic:nvPicPr><pic:cNvPr id="${nr}" name="${xmlText(alt)}"/><pic:cNvPicPr/></pic:nvPicPr>`,
@@ -93,7 +142,8 @@ function bildAbsatz(relId: string, nr: number, alt: string): string {
     '<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="914400" cy="914400"/></a:xfrm>',
     '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr>',
     "</pic:pic></a:graphicData></a:graphic>",
-    "</wp:inline></w:drawing></w:r></w:p>",
+    verankert ? "</wp:anchor>" : "</wp:inline>",
+    "</w:drawing></w:r></w:p>",
   ].join("");
 }
 
@@ -153,8 +203,12 @@ export async function baueDocx(absaetze: readonly Absatz[]): Promise<GebauteDocx
             `<Relationship Id="${relId}" Type="${NS_R}/image" Target="media/bild${nr}.png"/>`,
           );
           lege(`word/media/bild${nr}.png`, Buffer.from(a.png, "base64"));
-          return bildAbsatz(relId, nr, a.alt ?? `bild${nr}.png`);
+          return bildAbsatz(relId, nr, a.alt ?? `bild${nr}.png`, a.verankert === true);
         }
+        case "absatz":
+          return `<w:p>${laeufeXml(a.laeufe)}</w:p>`;
+        case "tabelle":
+          return tabelleXml(a.zeilen);
       }
     })
     .join("");

@@ -17,7 +17,8 @@
 // `promptConfidential: false` — nur so ist der Satz nach dem Gate (`confluence-import-routes.ts:729`)
 // nicht vertraulich und die Cloud-Kante bleibt in der Kette. Das ist die Lage des Befunds.
 //
-// NICHT GEMESSEN: die Anzeige der Laufkarte (siehe `laufkarte-kette.test.ts`).
+// NICHT GEMESSEN: die Anzeige der Laufkarte (siehe `laufkarte-kette.test.ts`). Die zusammenhängende
+// Kette Anfrage → neue select-ID → gemountete Karte DE/EN/NL misst `kette-anfrage-bis-laufkarte.test.tsx`.
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 import { makeGuards } from "../../services/app/src/http";
