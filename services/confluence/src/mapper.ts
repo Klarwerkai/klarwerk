@@ -65,7 +65,9 @@ export type ConfluenceImportItem = ImportItem & {
   // vollständig — ein stilles „keine Anhänge" bei einem Lesefehler gibt es nicht.
   attachmentsIncomplete?: true;
   // AUFNAHME 20260922 · confluence-import-rechte: Stufe und Leser der Quelle (s. `ConfluenceQuellrechte`).
-  quellrechte: ConfluenceQuellrechte;
+  // Der Mapper setzt es immer; optional, weil auch Einträge ohne Quellrechte (Bestand, Fixture-Doppel)
+  // durch den Lauf reisen — der Import-Kern liest sie dann als „keine Quellrechte" (`quellrechteVon`).
+  quellrechte?: ConfluenceQuellrechte;
 };
 
 /**
