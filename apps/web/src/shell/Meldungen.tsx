@@ -303,7 +303,7 @@ export function MeldungenListe({
                         ? "bg-trust-crit-fill"
                         : n.kind === "duplicate"
                           ? "bg-ai"
-                          : n.kind === "assignment"
+                          : n.kind === "assignment" || n.kind === "kenntnisnahme"
                             ? "bg-ai"
                             : n.kind === "impact"
                               ? "bg-trust-pos-fill"
@@ -328,6 +328,20 @@ export function MeldungenListe({
                   {n.kind === "impact" ? (
                     <span className="font-semibold text-trust-pos-text">
                       {t("topbar.notifImpact")}:{" "}
+                    </span>
+                  ) : null}
+                  {/* Kenntnisnahme: Anforderung, Erinnerung oder abgelaufene Frist — der Titel ist
+                      der Eintrag, dessen Fassung zur Kenntnis genommen werden soll. */}
+                  {n.kind === "kenntnisnahme" ? (
+                    <span className="font-semibold text-ai">
+                      {t(
+                        n.ueberfaellig
+                          ? "kenntnisnahme.meldungUeberfaellig"
+                          : n.erinnerung
+                            ? "kenntnisnahme.meldungErinnerung"
+                            : "kenntnisnahme.meldung",
+                      )}
+                      {n.fassung ? ` (V${n.fassung})` : ""}:{" "}
                     </span>
                   ) : null}
                   {/* Pedi 04.07.: Duplikat-Fund klar als solcher gekennzeichnet. */}

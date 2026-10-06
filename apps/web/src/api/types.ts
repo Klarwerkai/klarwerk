@@ -2621,7 +2621,13 @@ export interface LiveWall {
   helpedToday: number;
 }
 
-export type NotificationKind = "conflict" | "duplicate" | "gap" | "assignment" | "impact";
+export type NotificationKind =
+  | "conflict"
+  | "duplicate"
+  | "gap"
+  | "assignment"
+  | "impact"
+  | "kenntnisnahme";
 
 export interface Notification {
   id: string;
@@ -2635,6 +2641,10 @@ export interface Notification {
   // FUNKE-FIX3 P0 (bens Blocker B): true → Gap-Fragetext serverseitig zurückgehalten; die Glocke
   // zeigt dann NUR die neutrale Bezeichnung (topbar.notifGapRedacted), nie den Fragetext.
   redacted?: boolean;
+  // Kenntnisnahme: angeforderte Fassung, Erinnerung und abgelaufene Frist (nur bei diesem `kind`).
+  fassung?: number;
+  erinnerung?: boolean;
+  ueberfaellig?: boolean;
 }
 
 // AUFTRAG-mega46 Block F: die Betriebsschalter, die die Oberfläche erfahren darf — AUSSCHLIESSLICH
