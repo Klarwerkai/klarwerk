@@ -13,6 +13,8 @@ import {
   hatPruefbarenText,
   hinweisUebernehmen,
   segmenteAusHtml,
+  sichtbareHinweise,
+  verwerfKennung,
 } from "./begriffshinweise";
 
 const HTML =
@@ -98,6 +100,36 @@ describe("K4 · Übernehmen ändert genau eine Stelle", () => {
       fund: "Kundenaccount",
       nach: " prüfen",
     });
+  });
+});
+
+describe("K4 · Verwerfen trifft genau eine Fundstelle — auch bei gleichlautenden Absätzen", () => {
+  const ZWEI = "<p>Das Kundenaccount ist neu.</p><p>Das Kundenaccount ist neu.</p>";
+
+  function hinweiseFuer(segmente: string[]) {
+    return segmente.map((_, segment) => ({
+      begriffId: "b-1",
+      ...hinweisAn(segmente, segment, "Kundenaccount", "Kundenkonto"),
+    }));
+  }
+
+  it("zwei identische Absätze: ein Verwerfen lässt genau den anderen Hinweis und den Text stehen", () => {
+    const segmente = segmenteAusHtml(ZWEI);
+    expect(segmente).toEqual(["Das Kundenaccount ist neu.", "Das Kundenaccount ist neu."]);
+    const hinweise = hinweiseFuer(segmente);
+    const erster = hinweise[0]!;
+    const zweiter = hinweise[1]!;
+    const kennungEins = verwerfKennung(erster, segmente[0] ?? "");
+    expect(kennungEins).not.toBe(verwerfKennung(zweiter, segmente[1] ?? ""));
+
+    const verworfen = new Set([kennungEins]);
+    expect(sichtbareHinweise(hinweise, segmente, verworfen)).toEqual([zweiter]);
+    // Verwerfen schreibt nicht: der Text ist derselbe, beide Stellen stehen unverändert da.
+    expect(segmenteAusHtml(ZWEI)).toEqual(segmente);
+
+    // Eine erneute Prüfung desselben Textes liefert dieselben Hinweise — der fremde bleibt.
+    const neuGeprueft = hinweiseFuer(segmenteAusHtml(ZWEI));
+    expect(sichtbareHinweise(neuGeprueft, segmenteAusHtml(ZWEI), verworfen)).toEqual([zweiter]);
   });
 });
 

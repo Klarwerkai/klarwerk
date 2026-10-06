@@ -14,6 +14,7 @@
 //        bleiben abrufbar und Hinweisen zuordenbar.
 //   K6 · Unberechtigte Pflege → 403/401; Sitzung und Kennung einer anderen Instanz greifen nicht.
 //   K8 · Ergebnis trägt `sachlichGeprueft: false`; ein neuer Beitrag bleibt prüfpflichtig.
+import type { InjectOptions } from "fastify";
 import { describe, expect, it } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 import { demoKennwort } from "../support/demoZugang";
@@ -74,7 +75,13 @@ const KUNDENKONTO = {
   },
 };
 
-async function anlegen(app: App, kopf: Kopf, eingabe: unknown) {
+/**
+ * Der Rumpf einer Pflege-Anfrage — bewusst der Nutzlasttyp von Fastify und nicht der Eingabetyp
+ * des Produkts: auch ungültige Rümpfe (fehlende Pflichtfelder, Widersprüche) müssen sendbar sein.
+ */
+type Rumpf = NonNullable<InjectOptions["payload"]>;
+
+async function anlegen(app: App, kopf: Kopf, eingabe: Rumpf) {
   return app.inject({
     method: "POST",
     url: "/api/begriffe",
@@ -83,7 +90,7 @@ async function anlegen(app: App, kopf: Kopf, eingabe: unknown) {
   });
 }
 
-async function angelegt(app: App, kopf: Kopf, eingabe: unknown) {
+async function angelegt(app: App, kopf: Kopf, eingabe: Rumpf) {
   const res = await anlegen(app, kopf, eingabe);
   expect(res.statusCode, res.body).toBe(201);
   return res.json();

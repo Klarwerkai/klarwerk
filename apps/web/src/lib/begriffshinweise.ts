@@ -88,10 +88,24 @@ export function fundumgebung(
   };
 }
 
-/** Kennung eines verworfenen Hinweises — gilt, solange die Stelle denselben Text trägt. */
+/**
+ * Kennung eines verworfenen Hinweises — die KONKRETE Fundstelle: Segment, Position, Text und der
+ * Wortlaut des Segments. Ohne die Segmentnummer bekämen zwei gleichlautende Absätze dieselbe
+ * Kennung, und ein Verwerfen blendete beide aus. Ändert sich der Text oder die Knotenfolge, gilt
+ * die Kennung nicht mehr — dann erscheint der Hinweis lieber wieder, als einen fremden zu verbergen.
+ */
 export function verwerfKennung(
   hinweis: SegmentHinweis & { begriffId: string },
   segment: string,
 ): string {
-  return `${hinweis.begriffId}|${hinweis.start}|${hinweis.gefunden}|${segment}`;
+  return `${hinweis.begriffId}|${hinweis.segment}|${hinweis.start}|${hinweis.gefunden}|${segment}`;
+}
+
+/** Die Hinweise, die nach dem Verwerfen noch stehen — derselbe Filter für jede neue Prüfung. */
+export function sichtbareHinweise<H extends SegmentHinweis & { begriffId: string }>(
+  hinweise: readonly H[],
+  segmente: readonly string[],
+  verworfen: ReadonlySet<string>,
+): H[] {
+  return hinweise.filter((h) => !verworfen.has(verwerfKennung(h, segmente[h.segment] ?? "")));
 }

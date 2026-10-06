@@ -290,6 +290,44 @@ describe("K4 · Word-Host: Übernehmen und Verwerfen am gewählten Text", () => 
     expect(hinweisZeilen()).toHaveLength(2);
   });
 
+  it("zwei identische Absätze: Verwerfen blendet genau einen aus — auch nach Neuzeichnen und Neuprüfen", async () => {
+    absaetze = [
+      [{ text: "Das Kundenaccount ist neu.", fett: false }],
+      [{ text: "Das Kundenaccount ist neu.", fett: false }],
+    ];
+    panelStarten();
+    const absatzNummern = (): string[] =>
+      [...document.querySelectorAll("#begriffe-liste li")].map(
+        (li) => li.getAttribute("data-absatz") ?? "",
+      );
+    (document.getElementById("begriffe-btn") as HTMLButtonElement).click();
+    await ruhe();
+    expect(absatzNummern()).toEqual(["0", "1"]);
+    const vorher = JSON.stringify(absaetze);
+
+    (knoepfe("begriffe-verwerfen")[0] as HTMLButtonElement).click();
+    await ruhe();
+    expect(absatzNummern()).toEqual(["1"]);
+    expect(JSON.stringify(absaetze)).toBe(vorher);
+
+    // Neu zeichnen (wie bei jeder Lage des Fensters) und neu prüfen: der fremde Hinweis bleibt.
+    (g.bestandZeichnen as () => void)();
+    expect(absatzNummern()).toEqual(["1"]);
+    (document.getElementById("begriffe-btn") as HTMLButtonElement).click();
+    await ruhe();
+    expect(absatzNummern()).toEqual(["1"]);
+    expect(JSON.stringify(absaetze)).toBe(vorher);
+    expect(ersetzungen).toEqual([]);
+
+    // Und der verbliebene Hinweis gehört wirklich zum ZWEITEN Absatz.
+    (knoepfe("begriffe-uebernehmen")[0] as HTMLButtonElement).click();
+    await ruhe();
+    expect(absaetze.map((a) => absatzText(a))).toEqual([
+      "Das Kundenaccount ist neu.",
+      "Das Kundenkonto ist neu.",
+    ]);
+  });
+
   it("hat sich der Absatz seit der Prüfung geändert, wird NICHTS ersetzt", async () => {
     panelStarten();
     (document.getElementById("begriffe-btn") as HTMLButtonElement).click();

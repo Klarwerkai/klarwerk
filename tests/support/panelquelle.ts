@@ -137,6 +137,11 @@ const MARKE_KOPF_ENDE = '"use strict";\n';
  * und `marke.js` bleiben unberührt. Der Bezugspunkt MUSS deshalb wandern; ohne zugelassenes
  * Hash-Werkzeug ist er hier nicht berechenbar. E2 meldet ihn im Prüflauf als „Received"; er wird
  * danach gemessen übernommen.
+ * NACHARBEIT 1 (firmenwoerterbuch): gemessen zu Kandidat aac85540 war `84436ffdd17714a1…` — NICHT
+ * übernommen, weil `taskpane.html` danach um eine Zeile kürzer wurde (der Block steht jetzt in der
+ * Schlusszeile des Bestandsblocks, Schranke A2/E5 „unter 500 Zeilen"). Die vollständige Kennung
+ * stand im Prüfbericht nur gekürzt, und kein Hash-Werkzeug war zugelassen. E2 meldet den Wert der
+ * endgültigen Fassung als „Received"; er wird danach gemessen übernommen. E3 bleibt die Gegenprobe.
  */
 export const PANEL_VOR_SCHNITT_BLOB = "33e522809e3ed8dbd6dd42cc8c071414b775c20d";
 

@@ -21,6 +21,7 @@ import {
   hatPruefbarenText,
   hinweisUebernehmen,
   segmenteAusHtml,
+  sichtbareHinweise,
   verwerfKennung,
 } from "../lib/begriffshinweise";
 
@@ -85,9 +86,7 @@ export function Begriffshinweise({
     return () => clearTimeout(frist);
   }, [bodyHtml, kontext]);
 
-  const sichtbar = (stand?.hinweise ?? []).filter(
-    (h) => !verworfen.has(verwerfKennung(h, stand?.segmente[h.segment] ?? "")),
-  );
+  const sichtbar = sichtbareHinweise(stand?.hinweise ?? [], stand?.segmente ?? [], verworfen);
 
   if (stoerung) {
     return (

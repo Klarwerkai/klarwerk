@@ -118,7 +118,6 @@ describe("K7 · am Quelltext: kein Weg zu Modell, Embedder oder fremdem Ursprung
     "services/app/src/firmenwoerterbuch.ts",
     "services/app/src/routes/begriffe-routes.ts",
     "apps/web/src/api/begriffe.ts",
-    "apps/web/src/lib/begriffshinweise.ts",
     "apps/web/src/components/Begriffshinweise.tsx",
   ]) {
     it(`${datei} importiert kein KI-Modul`, () => {
@@ -127,6 +126,15 @@ describe("K7 · am Quelltext: kein Weg zu Modell, Embedder oder fremdem Ursprung
       expect(liste.filter((quelle) => KI_MODULE.test(quelle))).toEqual([]);
     });
   }
+
+  it("apps/web/src/lib/begriffshinweise.ts importiert gar nichts und ruft kein Netz", () => {
+    // Die Hilfsdatei arbeitet allein am DOM des Editors. Ohne Import und ohne Netzaufruf kann sie
+    // kein Modell erreichen — hier wird genau das festgehalten, statt einen Import vorauszusetzen.
+    const datei = "apps/web/src/lib/begriffshinweise.ts";
+    expect(importe(datei)).toEqual([]);
+    const text = readFileSync(repoPfad(datei), "utf8");
+    expect(text).not.toMatch(/\bimport\s*\(|\brequire\s*\(|\bfetch\s*\(|XMLHttpRequest/);
+  });
 
   it("der Word-Block ruft ausschliesslich die zwei Begriffswege derselben Instanz", () => {
     const text = readFileSync(repoPfad("apps/web/public/word-addin/begriffe.js"), "utf8");

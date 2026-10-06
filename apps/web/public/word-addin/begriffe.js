@@ -160,8 +160,9 @@
       return el;
     }
 
+    /** Die KONKRETE Fundstelle (Absatz, Position, Text) — zwei gleiche Absätze bleiben getrennt. */
     function begriffeKennung(h, segmentText) {
-      return h.begriffId + "|" + h.start + "|" + h.gefunden + "|" + segmentText;
+      return h.begriffId + "|" + h.segment + "|" + h.start + "|" + h.gefunden + "|" + segmentText;
     }
 
     function begriffeSichtbareHinweise() {
@@ -266,6 +267,7 @@
     function begriffeZeile(h) {
       var li = begriffeKnoten("li", "begriffe-hinweis");
       li.setAttribute("data-begriff", h.begriffId);
+      li.setAttribute("data-absatz", String(h.segment));
       // Je Aussage eine eigene Zeile (Blockelemente) — ohne eine Regel in `taskpane.css`.
       li.appendChild(begriffeKnoten("div", "begriffe-vorschlag", begriffeT("vorschlag", { gefunden: h.gefunden, vorzug: h.vorzug })));
       var segment = begriffeStand.segmente[h.segment] || "";
@@ -357,7 +359,8 @@
             if (lauf !== begriffeLauf) { return; }
             if (!koerper || !Array.isArray(koerper.hinweise)) { abschluss("fehler", ""); return; }
             begriffeStand = { segmente: segmente, hinweise: koerper.hinweise, zeit: begriffeZeit(), sitzung: sitzung };
-            begriffeVerworfen = {};
+            // Verworfenes bleibt verworfen, solange dieselbe Stelle denselben Text trägt — die
+            // Kennung nennt Absatz, Position und Wortlaut, trifft also nie einen fremden Hinweis.
             abschluss("ruhe", "");
           });
         }).catch(function () { abschluss("fehler", ""); });
