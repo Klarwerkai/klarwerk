@@ -132,8 +132,20 @@ const MARKE_KOPF_ENDE = '"use strict";\n';
  * NACHARBEIT 5 (dieser Auftrag): GEMESSEN im Prüflauf zu Kandidat 430c247c (`33e52280…`, „Received"
  * von E2, HISTORIE/nacharbeit-5/PRUEFUNG/panel-auslieferung-pins.log) und unverändert übernommen;
  * die vier Panel-Dateien sind seit dieser Messung unberührt.
+ *
+ * Aufnahme 20260922 · gesamt-bestandsblick (R-0427; Integration mit `main` d19886ff): dieselbe
+ * Regel. Auf den Stand oben kommt GENAU der Absatzwechselweg nach bewusstem Ja — Einstellungszeile
+ * `#einst-absatzblick` (in der Zeile hinter `#einst-mitlesen`, Markup unter 500 Zeilen), drei Texte
+ * DE/EN/NL in `KA3_TEXTE`, `ka3AbsatzPruefen()` in `ka3Planen`, Beschriftung in `ka3Neuzeichnen`,
+ * Block `ka3AbsatzPruefen`/Schalter und die Bindung an die gültige Aktivierung (`ka3AbsatzRunde`,
+ * `gilt()` in `ka3Ausfuehren`). Damit `taskpane.js` unter der Schranke B3 bleibt (zusammengeführt
+ * 12544 Zeilen), sind die Kommentarköpfe der Blöcke KA2-BESTAND und W6 verdichtet — nur Kommentar,
+ * kein Ausdruck geändert; die Datei hat 12492 Zeilen. GEMESSEN beim Auflösen: das genau nach
+ * `fuegePanelZusammen` zusammengesetzte Dokument hat den Blob `2d5d9c26…` (`git diff --no-index
+ * --full-index`); dasselbe Verfahren ergibt an den vier Dateien von `main` d19886ff wörtlich
+ * `33e52280…`. Frühere Messungen dieses Auftrags: `0f733b04…`, `eb344beb…`, `fd19fe43…`.
  */
-export const PANEL_VOR_SCHNITT_BLOB = "33e522809e3ed8dbd6dd42cc8c071414b775c20d";
+export const PANEL_VOR_SCHNITT_BLOB = "2d5d9c26bd4fbf4fa289f06314aac06856685c06";
 
 export interface PanelTeile {
   html: string;

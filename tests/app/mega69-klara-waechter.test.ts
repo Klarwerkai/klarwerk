@@ -2731,7 +2731,23 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // NACHARBEIT 5 (dieser Auftrag): PIN BEWUSST AKTUALISIERT (f1d0e89f… -> fabd6ab5…). Im Prüflauf zu
     // Kandidat 430c247c GEMESSEN („Received", HISTORIE/nacharbeit-5/PRUEFUNG/panel-auslieferung-pins.log)
     // und unverändert übernommen; die Panel-Dateien sind seit dieser Messung unberührt.
-    const PIN = "fabd6ab528b4c21a7c64dbfedb984e02c7fe29fb0e202a3d373afe0d2a7b6675";
+    // AUFNAHME 20260922 · GESAMT-BESTANDSBLICK (R-0427; Integration mit main d19886ff) — DER PIN MUSS
+    // WANDERN. Auf den Stand oben kommt die Einstellungszeile `#einst-absatzblick` (Schalter, AUS bis
+    // zum bewussten Ja, nur für dieses Fenster) und `ka3AbsatzPruefen` in `taskpane.js`: nach dem Ja
+    // liest ein `Word.run` je Markierungsanlass nur die ZAHL der Absätze bis zur Markierung (kein
+    // Text) und ruft bei einem Wechsel denselben Bestandsblick wie nach der Schreibruhe; ein Abruf
+    // gilt nur in der Aktivierungsrunde, in der er begann (`ka3AbsatzRunde`, `gilt()`). Dazu sind die
+    // Kommentarköpfe KA2-BESTAND und W6 verdichtet (Schranke B3; kein Ausdruck geändert).
+    // Auslieferungsfolgen: kein neues Abrufziel, keine neue Nutzlast, CSP/Recht/Manifest unverändert,
+    // kein Sideload; `Range.expandTo` (WordApi 1.3) — fehlt sie, schweigt der Weg. Gemessene Werte
+    // dieses Auftrags vor der Integration: a4461e39… (c8ade1c9), 9effe6a0… (b4415199). Unten steht
+    // der gemessene Wert von main; der neue SHA-256 ist ohne zugelassenes Hash-Werkzeug nicht
+    // messbar, der Blob ist gemessen (`2d5d9c26…`, `tests/support/panelquelle.ts`).
+    // NACHARBEIT 10 (gesamt-bestandsblick): PIN BEWUSST AKTUALISIERT (fabd6ab5… -> eefba3bd…). Im
+    // Prüflauf zu Kandidat f4db2037 GEMESSEN („Received", HISTORIE/nacharbeit-10/PRUEFUNG/
+    // auslieferungswaechter-fenster.log) und unverändert übernommen; die vier Panel-Dateien sind seit
+    // dieser Messung unberührt (`git diff f4db2037 -- apps/web/public/word-addin/` leer).
+    const PIN = "eefba3bdd389a30d41f4fbe37ad5bcdc336667559554212971ecbe7dff5f37d3";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(
       ist,
