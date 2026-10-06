@@ -357,8 +357,8 @@ export function Blatt({
     geladenVon?.id === activeDraftId &&
     geladenVon.imPool &&
     geladenVon.autor !== "" &&
-    user?.id !== undefined &&
-    geladenVon.autor !== user.id;
+    // Fail-closed: solange die Sitzung nicht feststeht, gilt ein Pool-Entwurf als fremd.
+    geladenVon.autor !== user?.id;
   // ==============================================================================================
   // JOB 3556 R3 — WIE OFT DER GESPEICHERTE STAND DIESES BLATTES NEU GESETZT WURDE.
   // ==============================================================================================

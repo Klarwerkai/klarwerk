@@ -157,7 +157,7 @@ interface CaptureDraftListBasis {
    * angemeldeten Menschen. An einem FREMDEN Pool-Entwurf (`imPool` und anderer `originalAuthor`)
    * steht damit weder Löschen noch der Pool-Knopf — sehen und fortsetzen ja, verfügen nein. Ein
    * privater Entwurf in dieser Liste ist immer der eigene (der Server gibt fremde private gar nicht
-   * heraus); fehlt die Kennung, bleibt die Liste wie bisher.
+   * heraus). Fehlt die Kennung, gilt jeder Pool-Entwurf als fremd (fail-closed).
    */
   nutzerKennung?: string | undefined;
   /**
@@ -256,11 +256,14 @@ export function CaptureDraftList(props: CaptureDraftListProps): JSX.Element | nu
 
   // Pool-Auftrag (297afc57): ein Entwurf, den jemand ANDERES in den Pool gegeben hat. Eine Funktion
   // und kein Bauteil — sie entscheidet nur, was an der Zeile steht.
+  //
+  // FAIL-CLOSED (Nacharbeit 1, gemessen in tests/entwurf-pool/pool-oberflaeche-mounted.test.tsx):
+  // Solange die eigene Kennung noch nicht feststeht (die Sitzungsabfrage läuft nach der Liste ein),
+  // gilt ein Pool-Entwurf als fremd — Löschen und Pool-Knopf erscheinen erst, wenn feststeht, dass
+  // er dem Angemeldeten gehört. Vorher stand der Löschknopf an Annas Pool-Entwurf bei Otto, bis
+  // seine Sitzung geladen war.
   const fremderPoolEntwurf = (d: Draft): boolean =>
-    d.imPool === true &&
-    nutzerKennung !== undefined &&
-    d.originalAuthor !== "" &&
-    d.originalAuthor !== nutzerKennung;
+    d.imPool === true && d.originalAuthor !== "" && d.originalAuthor !== nutzerKennung;
   // Wort und Folge des Pool-Knopfs: was er jetzt tut, hängt davon ab, ob der Entwurf schon im Pool
   // liegt.
   const poolTexte = (d: Draft): { wort: string; folge: string } =>

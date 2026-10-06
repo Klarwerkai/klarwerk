@@ -956,8 +956,8 @@ export function CaptureArbeitsraum({
     entwurfVon?.id === draftId &&
     entwurfVon.imPool &&
     entwurfVon.autor !== "" &&
-    user?.id !== undefined &&
-    entwurfVon.autor !== user.id;
+    // Fail-closed: solange die Sitzung nicht feststeht, gilt ein Pool-Entwurf als fremd.
+    entwurfVon.autor !== user?.id;
   // JOB 3414: läuft gerade der Ladeversuch des Adress-Entwurfs (s. Ladeweg weiter unten)? Solange
   // er läuft, ist das Formular in seinem bisherigen Zustand SICHTBAR (nichts wird geleert), sagt
   // aber, dass es lädt — und das Speicher-Tor bleibt zu: ein Zwischenstand darf nicht hinausgehen,

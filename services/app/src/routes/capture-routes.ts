@@ -1659,12 +1659,14 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
           return;
         }
         const imPool = request.body?.imPool;
-        // Der Satz ist bewusst sprachneutral (Feldname und Wertebereich): kein deutsches Literal an
-        // dieser Fläche (Q9-Wächter, `tests/q9-fremde-flaechen/keine-deutschen-literale.test.ts`),
-        // und ein eigener Katalogsatz für einen Aufruf, den nur die eigene Oberfläche absetzt, wäre
-        // mehr als der Fall trägt.
+        // Der Satz kommt aus dem Katalog in der Sprache der Sitzung (Q9-Wächter,
+        // `tests/q9-fremde-flaechen/keine-deutschen-literale.test.ts`: kein Meldungsliteral an
+        // dieser Fläche). Nacharbeit 1: hier stand das Literal „imPool: true | false".
         if (typeof imPool !== "boolean") {
-          reply.code(400).send({ error: "BAD_REQUEST", message: "imPool: true | false" });
+          reply.code(400).send({
+            error: "BAD_REQUEST",
+            message: meldung("DRAFT_POOL_INVALID", sprache(request)),
+          });
           return;
         }
         try {

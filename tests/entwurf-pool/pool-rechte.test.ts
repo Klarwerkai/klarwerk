@@ -21,6 +21,7 @@
 // sind R1–R3 rot.
 import { describe, expect, it } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
+import { MELDUNGEN } from "../../services/auth/src/meldungen";
 
 type Services = ReturnType<typeof buildServices>;
 type App = ReturnType<typeof buildApp>;
@@ -242,7 +243,41 @@ describe("K2 · der Autor gibt einen eigenen Entwurf in den Pool — und nur er"
     expect((await b.services.capture.getDraft(b.poolId))?.imPool).toBeUndefined();
   });
 
-  it("A4 · eine Betrachterin ohne Schreibrecht kommt an den Weg nicht heran", async () => {
+  // Nacharbeit 1 (Q9): der Satz des Eingabefehlers kommt aus dem Katalog (`DRAFT_POOL_INVALID`)
+  // und spricht die Sprache der Sitzung — wörtlich und über den Katalog gehalten.
+  const ohneWahrheitswert = async (sprache: string) => {
+    const b = await buehne();
+    const res = await b.app.inject({
+      method: "PUT",
+      url: `/api/drafts/${b.poolId}/pool`,
+      headers: { ...b.anna.kopf, "accept-language": sprache },
+      payload: { imPool: "ja" },
+    });
+    expect((await b.services.capture.getDraft(b.poolId))?.imPool).toBeUndefined();
+    return { status: res.statusCode, koerper: res.json() as { error?: string; message?: string } };
+  };
+
+  it("A3b EN · Pool-Schalter ohne Wahrheitswert: 400 BAD_REQUEST mit englischem Satz", async () => {
+    const antwort = await ohneWahrheitswert("en");
+    expect(antwort.status).toBe(400);
+    expect(antwort.koerper.error).toBe("BAD_REQUEST");
+    expect(antwort.koerper.message).toBe(
+      "Whether the draft is in the shared pool needs imPool: true or false. Nothing was changed.",
+    );
+    expect(antwort.koerper.message).toBe(MELDUNGEN.DRAFT_POOL_INVALID.en);
+  });
+
+  it("A3c NL · Pool-Schalter ohne Wahrheitswert: 400 BAD_REQUEST mit niederländischem Satz", async () => {
+    const antwort = await ohneWahrheitswert("nl");
+    expect(antwort.status).toBe(400);
+    expect(antwort.koerper.error).toBe("BAD_REQUEST");
+    expect(antwort.koerper.message).toBe(
+      "Of het concept in de gedeelde pool staat, vraagt imPool: true of false. Er is niets gewijzigd.",
+    );
+    expect(antwort.koerper.message).toBe(MELDUNGEN.DRAFT_POOL_INVALID.nl);
+  });
+
+  it("A4 ·eine Betrachterin ohne Schreibrecht kommt an den Weg nicht heran", async () => {
     const b = await buehne();
     expect((await inPool(b, b.vera.kopf, b.poolId, true)).statusCode).toBe(403);
   });

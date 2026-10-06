@@ -339,8 +339,9 @@ describe.each([
     await warteAuf(`${zeilenAnker} [data-testid="entwurfsliste-eintrag-pool"]`);
     const zeile = await warteAuf(zeilenAnker);
     expect((zeile.textContent ?? "").replace(/\s+/g, " ")).toContain(marke);
-    const zurueck = container.querySelector(`[data-entwurf-pool="${ids.annaPool}"]`);
-    expect((zurueck?.textContent ?? "").trim()).toBe(nehmen);
+    // Fail-closed: der Rückweg erscheint, sobald feststeht, dass Anna die Autorin ist.
+    const zurueck = await warteAuf(`[data-entwurf-pool="${ids.annaPool}"]`);
+    expect((zurueck.textContent ?? "").trim()).toBe(nehmen);
     const privatZeile = container.querySelector(`[data-entwurfszeile="${ids.annaPrivat}"]`);
     expect(privatZeile?.querySelector('[data-testid="entwurfsliste-eintrag-pool"]')).toBeNull();
 
@@ -354,8 +355,18 @@ describe.each([
       (await server("PUT", `/api/drafts/${ids.annaPool}/pool`, konten.anna, { imPool: true }))
         .status,
     ).toBe(200);
+    // Ottos EIGENER Entwurf liegt ebenfalls im Pool. An ihm erscheinen Löschen und Pool-Knopf erst,
+    // wenn die Fläche Ottos Sitzung kennt (fail-closed, Nacharbeit 1). Darauf wird gewartet — sonst
+    // wäre „kein Löschknopf an Annas Entwurf“ auch dann grün, wenn die Fläche gar nicht wüsste, wer
+    // angemeldet ist. Genau dieser Zeitpunkt war der Befund: die Liste stand vor der Sitzung, und
+    // bis dahin trug Annas Pool-Entwurf bei Otto den Löschknopf.
+    expect(
+      (await server("PUT", `/api/drafts/${ids.ottoEigen}/pool`, konten.otto, { imPool: true }))
+        .status,
+    ).toBe(200);
     bruecke.token = konten.otto;
     await mount("/entwuerfe");
+    await warteAuf(`[data-entwurf-pool="${ids.ottoEigen}"]`);
     const zeile = await warteAuf(`[data-entwurfszeile="${ids.annaPool}"]`);
     const text = (zeile.textContent ?? "").replace(/\s+/g, " ");
     expect(text).toContain("Annas Pumpenentwurf");
@@ -373,9 +384,11 @@ describe.each([
     // Gegenprobe Leseweg: Annas privater Entwurf erscheint nicht.
     expect(container.querySelector(`[data-entwurfszeile="${ids.annaPrivat}"]`)).toBeNull();
     expect(seitentext()).not.toContain("Annas Notizen privat");
-    // Gegenrichtung: an Ottos EIGENEM Entwurf stehen Löschen und der Pool-Knopf.
+    // Gegenrichtung: an Ottos EIGENEM (Pool-)Entwurf stehen Löschen und der Pool-Knopf — zum
+    // Zurücknehmen beschriftet.
     expect(container.querySelector(`[data-loeschen="${ids.ottoEigen}"]`)).not.toBeNull();
-    expect(container.querySelector(`[data-entwurf-pool="${ids.ottoEigen}"]`)).not.toBeNull();
+    const eigenerKnopf = container.querySelector(`[data-entwurf-pool="${ids.ottoEigen}"]`);
+    expect((eigenerKnopf?.textContent ?? "").trim()).toBe(nehmen);
   });
 
   it("K3/K6 · im Editor: Otto setzt Annas Pool-Entwurf fort und sichert — „Einreichen“ steht für ihn nicht da, für Anna schon", async () => {
@@ -402,6 +415,7 @@ describe.each([
       await act(flush);
     }
     expect(titelAnna.value).toBe("Annas Pumpenentwurf");
-    expect(container.querySelector('[data-testid="blatt-einreichen"]')).not.toBeNull();
+    // Fail-closed: der Knopf erscheint, sobald die Sitzung Anna als Autorin bestätigt.
+    expect(await warteAuf('[data-testid="blatt-einreichen"]')).not.toBeNull();
   });
 });
