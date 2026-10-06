@@ -124,8 +124,16 @@ const MARKE_KOPF_ENDE = '"use strict";\n';
  * NACHARBEIT 11: gemessen zu Kandidat 10b99093 war `99c60bac…` — NICHT übernommen, weil
  * `taskpane.js` wegen der Zeilenschranke B3 (ausgeliefert 12500) danach um zwei Kommentarzeilen
  * kürzer wurde. Root hat den neuen Blob direkt aus den vier Quelldateien berechnet.
+ * AUFTRAG gesamt-ki-einwilligung:bindung (R-0590, Ben nacharbeit-3/-4): `taskpane.js` ändert sich
+ * an `performAsk` (409 `KLARA_AUSWEICHWEG_GESPERRT` → Grund), an der Statusanzeige des Fragenwegs,
+ * um zwei Wörterbuchschlüssel je Sprache und an einem umformulierten Kommentar; netto null Zeilen.
+ * Der Bezugspunkt MUSS wandern; ohne zugelassenes Hash-Werkzeug ist er hier nicht berechenbar. E2
+ * meldet ihn im Prüflauf als „Received"; er wird danach gemessen übernommen.
+ * NACHARBEIT 5 (dieser Auftrag): GEMESSEN im Prüflauf zu Kandidat 430c247c (`33e52280…`, „Received"
+ * von E2, HISTORIE/nacharbeit-5/PRUEFUNG/panel-auslieferung-pins.log) und unverändert übernommen;
+ * die vier Panel-Dateien sind seit dieser Messung unberührt.
  */
-export const PANEL_VOR_SCHNITT_BLOB = "cb4cde214ee3f29e30d928322e1a200504a80e81";
+export const PANEL_VOR_SCHNITT_BLOB = "33e522809e3ed8dbd6dd42cc8c071414b775c20d";
 
 export interface PanelTeile {
   html: string;

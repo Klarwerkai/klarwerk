@@ -86,6 +86,55 @@ export function zustimmungenTragen(): boolean {
 }
 
 /**
+ * R-0590 · Ben nacharbeit-1: der externe Anbieter, dem die Zustimmung dieser Anfrage gilt — gesetzt
+ * nur, wenn das Tor freigegeben UND einen Anbieter gebunden hat. Ohne Rahmen, ohne Bindung oder bei
+ * Absage (`null`) `undefined`: dann gibt es keinen zugestimmten Weg, von dem abgewichen werden könnte.
+ */
+export function gebundenerAnbieter(): string | undefined {
+  const bindung = speicher.getStore();
+  return bindung?.gebunden === true && bindung.anbieter !== null ? bindung.anbieter : undefined;
+}
+
+// ================================================================================================
+// R-0590 · BEN NACHARBEIT-1 — KEIN NICHT GLEICHWERTIGER AUSWEICHWEG HINTER EINER ZUSTIMMUNG.
+// ================================================================================================
+//
+// Originalpunkt: „Bei einem nicht gleichwertigen Ausweichweg wird bis zur Produktentscheidung
+// sicherheitshalber blockiert und der Grund angezeigt."
+//
+// Die Zustimmung gilt GENAU EINEM Anbieter. Scheitert er in einem gebundenen Lauf (jede Aufgabe, nicht
+// nur die Antwort — Ben nacharbeit-3) oder fällt er aus der Kette (Wechsel nach dem Tor, beendete
+// Zustimmung), lief der Reasoner bisher still am nächsten Glied
+// weiter — lokales Modell oder deterministischer Ersatz. Ob ein solcher Ersatz der zugestimmten
+// Antwort GLEICHWERTIG ist, hat niemand entschieden; bis zu dieser Produktentscheidung gilt keiner
+// als gleichwertig. Der Lauf endet deshalb mit diesem Fehler, und sein Grund geht an die Fläche
+// (`services/app/src/build-app.ts`, `modelBusyErrorHandler`: 409 `KLARA_AUSWEICHWEG_GESPERRT`).
+//
+// Die Meldung trägt nur den Anbieternamen aus geschlossener Menge — nie Frage, Kontext oder Antwort.
+
+/** Warum der Ausweichweg gesperrt ist — ein benannter Grund, kein Freitext. */
+export type KlaraAusweichwegGrund =
+  /** Der zugestimmte Anbieter hat nicht geantwortet oder steht nicht (mehr) in der Kette. */
+  | "fallback_not_equivalent"
+  /** Die Zustimmung, auf die sich die Anfrage stützt, ist inzwischen beendet. */
+  | "consent_ended";
+
+export class KlaraAusweichwegGesperrtFehler extends Error {
+  readonly grund: KlaraAusweichwegGrund;
+  readonly anbieter: string;
+  constructor(grund: KlaraAusweichwegGrund, anbieter: string) {
+    super(
+      grund === "consent_ended"
+        ? `Die Zustimmung für ${anbieter} ist beendet — ein anderer Antwortweg wird nicht ersatzweise benutzt.`
+        : `${anbieter} hat nicht geantwortet oder steht für diesen Lauf nicht bereit — ein anderer, nicht als gleichwertig freigegebener Weg wird nicht ersatzweise benutzt.`,
+    );
+    this.name = "KlaraAusweichwegGesperrtFehler";
+    this.grund = grund;
+    this.anbieter = anbieter;
+  }
+}
+
+/**
  * Darf ein externer Anbieter im laufenden Aufruf Text erhalten? Stützt sich die Anfrage auf eine
  * inzwischen beendete Zustimmung, keiner. Sonst ohne Bindung immer; mit Bindung nur der gebundene.
  */
