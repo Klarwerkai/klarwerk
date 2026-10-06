@@ -118,8 +118,27 @@ function fixture(
         ],
       });
     }
-    if (u.pathname.endsWith("/rest/api/group/member")) {
-      const name = u.searchParams.get("name") ?? "";
+    // CF-REST-01: Confluence Cloud — erst das Gruppenverzeichnis (Name → ID), dann die Mitglieder
+    // über `membersByGroupId`. Jede in dieser Fixture genannte Gruppe steht im Verzeichnis.
+    if (u.pathname.endsWith("/rest/api/group")) {
+      const namen = new Set([
+        ...Object.keys(rechte.gruppen ?? {}),
+        ...Object.keys(rechte.gruppenSeiten ?? {}),
+        ...(rechte.space?.groups ?? []).map((g) => (g as { name?: string }).name),
+        ...einzeln.flatMap((p) =>
+          (p.restrictions?.read?.restrictions?.group?.results ?? []).map(
+            (g) => (g as { name?: string }).name,
+          ),
+        ),
+      ]);
+      return antwort(200, {
+        results: [...namen].filter(Boolean).map((name) => ({ name, id: `fixture-${name}` })),
+        _links: {},
+      });
+    }
+    const gruppenMitglieder = /\/rest\/api\/group\/([^/]+)\/membersByGroupId$/.exec(u.pathname);
+    if (gruppenMitglieder) {
+      const name = decodeURIComponent(gruppenMitglieder[1] ?? "").slice("fixture-".length);
       const mehrseitig = rechte.gruppenSeiten?.[name];
       if (mehrseitig) {
         // Die Seitennummer reist im eigenen Fortsetzungsverweis (`start` = Seitenindex).
@@ -132,7 +151,7 @@ function fixture(
           results: mehrseitig.seiten[index] ?? [],
           _links: naechste
             ? {
-                next: `/rest/api/group/member?name=${encodeURIComponent(name)}&start=${index + 1}&limit=200`,
+                next: `/rest/api/group/${encodeURIComponent(`fixture-${name}`)}/membersByGroupId?start=${index + 1}&limit=200`,
               }
             : {},
         });

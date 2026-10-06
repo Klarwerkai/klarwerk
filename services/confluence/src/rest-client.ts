@@ -601,6 +601,52 @@ export class ConfluenceRestClient {
     return lesend ? { anonym, users, groups } : undefined;
   }
 
+  // CF-REST-01 (Quellbefund 2026-10-06): in Confluence Cloud antwortet der Namensweg
+  // `/rest/api/group/member?name=` auf eine vorhandene Gruppe mit 404; dokumentiert ist der
+  // Mitgliederweg über die Gruppen-ID (`/rest/api/group/{id}/membersByGroupId`). Der Name aus der
+  // Restriktion wird deshalb im lesenden Gruppenverzeichnis EXAKT einer ID zugeordnet — mit derselben
+  // Seitenobergrenze, Origin, Frist und Größengrenze. Kein Treffer, kein lesbares Verzeichnis oder
+  // keine ID: `undefined`, die Gruppe bleibt unbekannt (fail-closed).
+  /** Cloud-Gruppennamen werden exakt zugeordnet; Mitglieder werden dort über die ID gelesen. */
+  private async cloudGruppenId(name: string): Promise<string | undefined> {
+    const limit = 200;
+    const allowedOrigin = this.allowedOrigin();
+    const ersteSeite = (start: number) =>
+      `${this.baseUrl}/rest/api/group?${new URLSearchParams({ start: String(start), limit: String(limit) })}`;
+    let url = ersteSeite(0);
+    let gelesen = 0;
+    for (let seite = 0; seite < CONFLUENCE_MAX_GRUPPENSEITEN; seite += 1) {
+      let data: unknown;
+      try {
+        data = await this.getJson(url, allowedOrigin);
+      } catch {
+        return undefined;
+      }
+      const antwort = data as { results?: unknown; _links?: { next?: unknown } } | undefined;
+      if (!Array.isArray(antwort?.results)) {
+        return undefined;
+      }
+      for (const gruppe of antwort.results as { name?: unknown; id?: unknown }[]) {
+        if (gruppe?.name === name) {
+          return typeof gruppe.id === "string" && gruppe.id.trim() ? gruppe.id : undefined;
+        }
+      }
+      gelesen += antwort.results.length;
+      if (antwort._links && typeof antwort._links === "object") {
+        if (typeof antwort._links.next === "string" && antwort._links.next) {
+          url = this.nextUrl(antwort._links.next, allowedOrigin);
+          continue;
+        }
+        return undefined;
+      }
+      if (antwort.results.length < limit) {
+        return undefined;
+      }
+      url = ersteSeite(gelesen);
+    }
+    return undefined;
+  }
+
   /**
    * Die Mitglieder einer Gruppe, seitenweise. Bricht ein Abruf ab, bleibt es bei den bis dahin
    * gelesenen — weniger Leser, nie mehr. `vollstaendig` sagt, ob das Ende erreicht wurde.
@@ -620,7 +666,17 @@ export class ConfluenceRestClient {
     const users: unknown[] = [];
     const limit = 200;
     const allowedOrigin = this.allowedOrigin();
+    // CF-REST-01: Cloud liest über die Gruppen-ID; der PAT-Weg (selbst betrieben) behält den
+    // Namensweg. Eine Cloud-Gruppe ohne zuordenbare ID bleibt unbekannt — keine Leser daraus.
+    const groupId = this.config.authMode === "pat" ? undefined : await this.cloudGruppenId(name);
+    if (this.config.authMode !== "pat" && !groupId) {
+      return { users, vollstaendig: false };
+    }
     const ersteSeite = (start: number): string => {
+      if (groupId) {
+        const params = new URLSearchParams({ start: String(start), limit: String(limit) });
+        return `${this.baseUrl}/rest/api/group/${encodeURIComponent(groupId)}/membersByGroupId?${params.toString()}`;
+      }
       const params = new URLSearchParams({ name, start: String(start), limit: String(limit) });
       return `${this.baseUrl}/rest/api/group/member?${params.toString()}`;
     };
@@ -656,20 +712,29 @@ export class ConfluenceRestClient {
 
   /**
    * Die Mailadresse eines Kontos, wenn Atlassian sie dem Dienstkonto herausgibt
-   * (`/rest/api/user/email`). Sonst `undefined` — das Konto bleibt dann ohne Klara-Zuordnung.
+   * (`/rest/api/user/email`, in Cloud danach die normale Benutzerantwort).
+   * Sonst `undefined` — das Konto bleibt dann ohne Klara-Zuordnung.
    */
+  // CF-REST-02 (Quellbefund 2026-10-06): der Spezialendpunkt antwortet in Cloud für ein normales
+  // Konto mit 400, obwohl `/rest/api/user?accountId=` dieselbe Adresse sichtbar liefert. Nur eine dort
+  // TATSÄCHLICH gelieferte, nichtleere Mail zählt; sonst bleibt das Konto ohne Zuordnung. Keine
+  // Ersatzidentität, keine App-Ausnahme, keine andere Anmeldung. Der PAT-Weg bleibt unverändert.
   async getKontoEmail(accountId: string): Promise<string | undefined> {
-    const url = `${this.baseUrl}/rest/api/user/email?${new URLSearchParams({ accountId }).toString()}`;
-    let data: unknown;
-    try {
-      data = await this.getJson(url, this.allowedOrigin(), { nichtGefundenIstLeer: true });
-    } catch {
-      return undefined;
+    const paths = this.config.authMode === "pat" ? ["user/email"] : ["user/email", "user"];
+    for (const path of paths) {
+      const url = `${this.baseUrl}/rest/api/${path}?${new URLSearchParams({ accountId }).toString()}`;
+      let data: unknown;
+      try {
+        data = await this.getJson(url, this.allowedOrigin(), { nichtGefundenIstLeer: true });
+      } catch {
+        continue;
+      }
+      const email = (data as { email?: unknown } | undefined)?.email;
+      if (typeof email === "string" && email.trim().length > 0) {
+        return email.trim().toLowerCase();
+      }
     }
-    const email = (data as { email?: unknown } | undefined)?.email;
-    return typeof email === "string" && email.trim().length > 0
-      ? email.trim().toLowerCase()
-      : undefined;
+    return undefined;
   }
 
   private firstUrl(): string {

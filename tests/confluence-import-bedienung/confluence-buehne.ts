@@ -117,6 +117,19 @@ export function confluenceInstanz(opts: {
     // Leser einer beschränkten Seite auf Konten abzubilden — Antwortform wie Confluence, nie eine
     // Ergebnisseite des Space-Listings.
     const pfad = new URL(url);
+    // CF-REST-01: Confluence Cloud ordnet den Gruppennamen im Verzeichnis einer ID zu und liefert
+    // die Mitglieder über `membersByGroupId` — dieselbe Antwortform wie die echte Quelle.
+    if (pfad.pathname.endsWith("/rest/api/group")) {
+      return confluenceAntwort(200, {
+        results: Object.keys(opts.gruppen ?? {}).map((name) => ({ name, id: `buehne-${name}` })),
+        _links: {},
+      });
+    }
+    const gruppenMitglieder = /\/rest\/api\/group\/([^/]+)\/membersByGroupId$/.exec(pfad.pathname);
+    if (gruppenMitglieder) {
+      const name = decodeURIComponent(gruppenMitglieder[1] ?? "").slice("buehne-".length);
+      return confluenceAntwort(200, { results: opts.gruppen?.[name] ?? [], _links: {} });
+    }
     if (pfad.pathname.endsWith("/rest/api/group/member")) {
       const name = pfad.searchParams.get("name") ?? "";
       return confluenceAntwort(200, { results: opts.gruppen?.[name] ?? [], _links: {} });
