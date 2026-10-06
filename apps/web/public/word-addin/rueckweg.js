@@ -118,11 +118,11 @@
     //    uebernimmt oder lehnt einen ab (`action: "decide-proposal"`). Beim eigenen Vorschlag steht
     //    KEIN Knopf: eine Pruefung durch sich selbst ist keine (Server: `PROPOSAL_OWN`).
     //
-    // WAS DIESER WEG NICHT TUT, damit niemand es annimmt: er holt KEINE Bilder nach (der Sendeweg
-    // tut das ueber `holeWordBilder`). Ein nicht herausgegebenes Bild wird GEZAEHLT und gesagt —
-    // ueber dieselbe Bilanz und denselben Wortlaut wie am Entwurfsweg (`bilderBilanz`/`bilderText`),
-    // nicht stillschweigend weggelassen. Und er aendert den TITEL des Objekts nicht: der Rueckweg
-    // traegt den Text zurueck, nicht die Benennung.
+    // BILDER UND UEBERSCHRIFTEN holt dieser Weg seit Nacharbeit 9 (Realhostbeleg 06.10.2026) aus
+    // Word selbst nach (`rwStrukturLesen`/`rwStrukturErgaenzen`, s. dort). Ein nicht herausgegebenes
+    // Bild wird GEZAEHLT und gesagt — ueber dieselbe Bilanz und denselben Wortlaut wie am Entwurfsweg
+    // (`bilderBilanz`/`bilderText`), nicht stillschweigend weggelassen. Und er aendert den TITEL des
+    // Objekts nicht: der Rueckweg traegt den Text zurueck, nicht die Benennung.
     // KW-RUECKWEG-START
     var rwZiel = null;      // { id, title, version, vorschlaege } — das GEWAEHLTE Objekt, vom Server
     var rwZielText = "";    // die Markierung, zu der das Ziel gewaehlt wurde (Bindung an den Text)
@@ -524,6 +524,226 @@
     }
 
     // ============================================================================================
+    // WORD-WEB-RETURN-STRUCTURE (Realhostbeleg 06.10.2026, Nacharbeit 9): BILDER UND UEBERSCHRIFTEN
+    // AUS WORD SELBST.
+    // ============================================================================================
+    //
+    // DER BEFUND: in Word im Web wurde eine Markierung mit „Ueberschrift 1", Tabelle und zwei
+    // Rasterbildern an dasselbe Objekt zurueckgegeben. v3 trug keine Bilder, die Ueberschrift war ein
+    // Absatz — und der Satz lautete „Aktualisiert und freigegeben", ohne Verlust. Tabelle, Fett und
+    // Text kamen an. Das Roh-HTML von `getSelectedDataAsync(Html)` ist NICHT beobachtet; belegt ist das
+    // Ergebnis, und aus ihm folgt: es enthielt kein `<img>` (sonst haette `countUndeliveredWordImages`
+    // gezaehlt und der Satz es gesagt) und keine Ueberschriftenauszeichnung.
+    //
+    // DESHALB FRAGT DIESER SCHRITT WORD NACH DER STRUKTUR, statt sie aus dem HTML zu raten — alles
+    // WordApi 1.1, das Manifest bleibt: `Range.getHtml()` als zweites HTML, je Absatz `text` und
+    // `style` (die Formatvorlage, im Web lokalisiert: „Ueberschrift 1"/„Heading 1"), je Absatz
+    // `inlinePictures` und ueber `ladeBilder` (derselbe Helfer wie am Sendeweg) die Bytes.
+    //   · Traegt das HTML schon `<img>`-Tags, fuellt `fillWordImages` sie wie am Sendeweg.
+    //   · Traegt es keines, steht jedes Bild in SEINEM Absatz (Absatz mit Text) oder als eigener
+    //     Absatz vor dem Absatz, der in Word darauf folgt — vor dessen Tabelle, falls er in einer
+    //     beginnt; ohne Nachfolger am Ende. Die Zuordnung laeuft ueber den Absatztext in Reihenfolge.
+    //   · Ein Absatz mit Ueberschriftenvorlage wird `<hN>` (der Server bildet h1 auf h2 ab).
+    // WAS DANACH FEHLT, WIRD GEZAEHLT UND GESAGT, und der Satz ist dann eine Warnung: Bilder mit dem
+    // Wortlaut des Sendewegs (`sendImagesMissing`, auch fuer EMF/WMF — sie sind kein Rasterbild),
+    // Ueberschriften mit `rwUeberschriftFehlt`. Antwortet Word nicht (Fehler, Frist), sagt
+    // `rwStrukturUngeprueft` genau das — gesendet wird dann das HTML von vorher, wie bisher.
+    // OHNE `Word` (kein Word-Host) bleibt alles wie vorher; es gibt dort nichts zu fragen.
+    var RW_UEBERSCHRIFT_RE = /^(?:heading|überschrift|kop|titre|titolo|título|encabezado)\s*([1-6])$/i;
+
+    // Die Zeichenklasse unten traegt nach den Steuerzeichen ZWEI Zeichen woertlich: das geschuetzte
+    // Leerzeichen (U+00A0) und U+FFFC, Words Platzhalter fuer ein Bild im Absatztext — beide werden
+    // Leerraum, damit der Absatztext aus Word gleich dem aus dem HTML ist.
+    function rwNorm(text) {
+      return String(text || "")
+        .replace(/[\u0000-\u001f ￼]/g, " ")
+        .replace(/\s+/g, " ")
+        .replace(/^\s+|\s+$/g, "");
+    }
+
+    /** Der Absatztext eines HTML-Stuecks — dieselbe Ableitung wie am Sendeweg, plus Zahlzeichen. */
+    function rwHtmlText(stueck) {
+      return rwNorm(wordHtmlToPlainText(stueck)
+        .replace(/&#(\d+);/g, function (_m, n) { return String.fromCharCode(Number(n)); })
+        .replace(/&#x([0-9a-f]+);/gi, function (_m, n) { return String.fromCharCode(parseInt(n, 16)); }));
+    }
+
+    /** Die Absatzbloecke des HTML in Reihenfolge: Tag, Beginn, Schluss-Tag, Ende, Text. */
+    function rwBloecke(inner) {
+      var re = /<\/(p|h[1-6]|li|td|th)\s*>/gi;
+      var bloecke = [];
+      var von = 0;
+      var m = re.exec(inner);
+      while (m !== null) {
+        var tag = m[1].toLowerCase();
+        var bis = m.index + m[0].length;
+        var stueck = inner.slice(von, bis);
+        var auf = new RegExp("<" + tag + "(?=[\\s>/])", "gi");
+        var start = -1;
+        var a = auf.exec(stueck);
+        while (a !== null) { start = von + a.index; a = auf.exec(stueck); }
+        bloecke.push({ tag: tag, start: start, schluss: m.index, ende: bis, text: rwHtmlText(stueck) });
+        von = bis;
+        m = re.exec(inner);
+      }
+      return bloecke;
+    }
+
+    function rwUeberschriftStufe(stil) {
+      var m = RW_UEBERSCHRIFT_RE.exec(rwNorm(stil));
+      return m ? Number(m[1]) : 0;
+    }
+
+    /** Die Bildtags eines Absatzes; was kein unterstuetztes Rasterbild ist, zaehlt als fehlend. */
+    function rwBildTags(liste) {
+      var tags = "";
+      var fehlen = 0;
+      for (var i = 0; i < liste.length; i += 1) {
+        var roh = String(liste[i] || "").replace(/^data:[^,]*,/, "").replace(/\s+/g, "");
+        var mime = wordImageMimeFromBase64(roh);
+        if (mime) { tags += '<img src="data:' + mime + ";base64," + roh + '">'; } else { fehlen += 1; }
+      }
+      return { tags: tags, fehlen: fehlen };
+    }
+
+    /** Wohin ein Bildabsatz ohne Text kommt: vor den naechsten gefundenen Absatz (oder dessen Tabelle). */
+    function rwBildStelle(inner, bloecke, treffer, i) {
+      var vor = 0;
+      for (var j = i - 1; j >= 0; j -= 1) {
+        if (treffer[j] >= 0) { vor = bloecke[treffer[j]].ende; break; }
+      }
+      for (var k = i + 1; k < treffer.length; k += 1) {
+        var b = treffer[k] >= 0 ? bloecke[treffer[k]] : null;
+        if (b && b.start >= vor) {
+          var tabelle = inner.slice(vor, b.start).search(/<table\b/i);
+          return tabelle >= 0 ? vor + tabelle : b.start;
+        }
+      }
+      return inner.length;
+    }
+
+    /** Ueberschriften und (bei HTML ohne `<img>`) Bilder in das HTML einsetzen — und zaehlen, was nicht ging. */
+    function rwStrukturEinsetzen(inner, w, bilderJe) {
+      var bloecke = rwBloecke(inner);
+      var treffer = [];
+      var zeiger = 0;
+      var i;
+      for (i = 0; i < w.absaetze.length; i += 1) {
+        treffer.push(-1);
+        var soll = rwNorm(w.absaetze[i].text);
+        if (soll.length === 0) { continue; }
+        for (var b = zeiger; b < bloecke.length; b += 1) {
+          if (bloecke[b].text === soll) { treffer[i] = b; zeiger = b + 1; break; }
+        }
+      }
+      var aenderungen = [];
+      var setze = function (pos, weg, neu) {
+        aenderungen.push({ pos: pos, weg: weg, neu: neu, nr: aenderungen.length });
+      };
+      var mitTags = /<img\b/i.test(inner);
+      var ergebnis = { html: inner, bilderFehlen: 0, ueberschriftenFehlen: 0, ungeprueft: false };
+      for (i = 0; i < w.absaetze.length; i += 1) {
+        var blk = treffer[i] >= 0 ? bloecke[treffer[i]] : null;
+        var stufe = rwUeberschriftStufe(w.absaetze[i].stil);
+        if (stufe > 0 && !(blk && /^h[1-6]$/.test(blk.tag))) {
+          if (blk && blk.tag === "p" && blk.start >= 0) {
+            setze(blk.start, inner.indexOf(">", blk.start) + 1 - blk.start, "<h" + stufe + ">");
+            setze(blk.schluss, blk.ende - blk.schluss, "</h" + stufe + ">");
+          } else {
+            ergebnis.ueberschriftenFehlen += 1;
+          }
+        }
+        var zahl = w.zahlen[i] || 0;
+        if (zahl === 0 || mitTags) { continue; }
+        if (!bilderJe) { ergebnis.bilderFehlen += zahl; continue; }
+        var bild = rwBildTags(bilderJe[i]);
+        ergebnis.bilderFehlen += bild.fehlen;
+        if (bild.tags.length === 0) { continue; }
+        if (blk) { setze(blk.schluss, 0, bild.tags); continue; }
+        setze(rwBildStelle(inner, bloecke, treffer, i), 0, "<p>" + bild.tags + "</p>");
+      }
+      // Von hinten nach vorn: Ersetzungen vor Einfuegungen an derselben Stelle, Einfuegungen in
+      // umgekehrter Reihenfolge — so steht, was zuerst kam, auch vorn.
+      aenderungen.sort(function (x, y) { return y.pos - x.pos || y.weg - x.weg || y.nr - x.nr; });
+      for (var e = 0; e < aenderungen.length; e += 1) {
+        var a = aenderungen[e];
+        ergebnis.html = ergebnis.html.slice(0, a.pos) + a.neu + ergebnis.html.slice(a.pos + a.weg);
+      }
+      return ergebnis;
+    }
+
+    /**
+     * Die Struktur der Markierung aus Word: `done(null)` ohne Word, `done({ fehler: true })` wenn
+     * Word nicht (rechtzeitig) antwortet, sonst `{ html, absaetze: [{ text, stil }], zahlen, liste }`
+     * — `liste` sind die Bildbytes in Absatzreihenfolge oder `null` (nicht herausgegeben).
+     */
+    function rwStrukturLesen(done) {
+      if (!window.Word || typeof Word.run !== "function") { done(null); return; }
+      var erledigt = false;
+      var einmal = function (wert) {
+        if (erledigt) { return; }
+        erledigt = true;
+        clearTimeout(uhr);
+        done(wert || { fehler: true });
+      };
+      var uhr = setTimeout(function () { einmal(null); }, WORD_ADDIN_AUSWAHL_FRIST_MS);
+      try {
+        Word.run(function (context) {
+          var auswahl = context.document.getSelection();
+          var html = auswahl.getHtml();
+          var absaetze = auswahl.paragraphs;
+          absaetze.load("text,style");
+          return context.sync().then(function () {
+            var items = absaetze.items || [];
+            var sammlungen = [];
+            for (var a = 0; a < items.length; a += 1) { sammlungen.push(items[a].inlinePictures); }
+            return ladeBilder(context, sammlungen).then(function (liste) {
+              var w = { html: String(html.value || ""), absaetze: [], zahlen: [], liste: liste };
+              for (var b = 0; b < items.length; b += 1) {
+                w.absaetze.push({ text: String(items[b].text || ""), stil: String(items[b].style || "") });
+                w.zahlen.push((sammlungen[b].items || []).length);
+              }
+              return w;
+            });
+          });
+        }).then(function (w) { einmal(w); }, function () { einmal(null); });
+      } catch (err) {
+        einmal(null);
+      }
+    }
+
+    /** Das HTML, das hinausgeht, und die Bilanz dessen, was Word nicht hergab. */
+    function rwStrukturErgaenzen(html, w) {
+      var leer = { html: html, bilderFehlen: 0, ueberschriftenFehlen: 0, ungeprueft: false };
+      if (w === null) { return leer; }
+      if (w.fehler) { leer.ungeprueft = true; return leer; }
+      var imgZahl = function (h) { return (String(h || "").match(/<img\b/gi) || []).length; };
+      // Das Office-HTML bleibt die Grundlage (an ihm sind Tabelle und Fett belegt); das zweite HTML
+      // nur, wenn das erste leer ist oder es MEHR Bilder traegt.
+      var quelle = extractWordBodyHtml(html || "").length === 0 || imgZahl(w.html) > imgZahl(html) ? w.html : html;
+      var inner = extractWordBodyHtml(quelle || "");
+      if (inner.length === 0) { return leer; }
+      var summe = 0;
+      for (var i = 0; i < w.zahlen.length; i += 1) { summe += w.zahlen[i]; }
+      var bilderJe = null;
+      if (w.liste && w.liste.length === summe) {
+        bilderJe = [];
+        var pos = 0;
+        for (var j = 0; j < w.zahlen.length; j += 1) {
+          bilderJe.push(w.liste.slice(pos, pos + w.zahlen[j]));
+          pos += w.zahlen[j];
+        }
+      }
+      var tags = imgZahl(inner);
+      var r = rwStrukturEinsetzen(inner, w, bilderJe);
+      if (tags > 0) {
+        if (bilderJe) { r.html = fillWordImages(r.html, w.liste).html; }
+        r.bilderFehlen += summe > tags ? summe - tags : 0;
+      }
+      return r;
+    }
+
+    // ============================================================================================
     // DAS BUDGET IST DER KLEINERE VON FENSTERBUDGET UND ROUTENGRENZE (JOB 4085 R2, JOB 4115).
     // ============================================================================================
     //
@@ -656,8 +876,14 @@
      */
     function rwSatzMitBildern(satz, ladung, warn) {
       var bilder = ladung && ladung.ohneBilanz !== true ? bilderText(bilderBilanz(ladung)) : "";
+      var teile = bilder ? [satz, bilder] : [satz];
+      // Nacharbeit 9: was Word nicht als Struktur hergab, steht dahinter — und dann als Warnung.
+      var s = ladung && ladung.struktur ? ladung.struktur : null;
+      if (s && s.ueberschriftenFehlen > 0) { teile.push(t("rwUeberschriftFehlt", { n: String(s.ueberschriftenFehlen) })); }
+      if (s && s.ungeprueft) { teile.push(t("rwStrukturUngeprueft")); }
+      var verlust = Boolean(s && (s.bilderFehlen > 0 || s.ueberschriftenFehlen > 0 || s.ungeprueft));
       rwLage = "ruhe";
-      rwSatzSetzen(bilder ? satz + " " + bilder : satz, warn, null);
+      rwSatzSetzen(teile.join(" "), warn || verlust, null);
       rwZeichnen();
     }
 
@@ -835,12 +1061,20 @@
         // markiert hatte, wurde auf diesem Weg nicht verworfen, sondern nie geholt.
         rwAuswahlHtml(function (html) {
           if (lauf !== rwLauf) { return; }
-          var ladung = rwLadung(pruefweg ? "propose" : "revise-release", html, frisch, ziel.version);
-          if (pruefweg) {
-            rwEinreichen(ziel, ladung, lauf);
-            return;
-          }
-          rwUeberarbeiten(ziel, ladung, lauf);
+          // Nacharbeit 9: Bilder und Ueberschriften aus Word, bevor die Ladung entsteht.
+          rwStrukturLesen(function (wort) {
+            if (lauf !== rwLauf) { return; }
+            var struktur = rwStrukturErgaenzen(html, wort);
+            var ladung = rwLadung(pruefweg ? "propose" : "revise-release", struktur.html, frisch, ziel.version);
+            // Nicht herausgegebene Bilder zaehlen in derselben Bilanz wie nicht gefuellte Tags.
+            if (ladung.usedHtml) { ladung.undeliveredImages += struktur.bilderFehlen; }
+            ladung.struktur = ladung.usedHtml || struktur.ungeprueft ? struktur : null;
+            if (pruefweg) {
+              rwEinreichen(ziel, ladung, lauf);
+              return;
+            }
+            rwUeberarbeiten(ziel, ladung, lauf);
+          });
         });
       });
     }

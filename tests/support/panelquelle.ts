@@ -118,6 +118,9 @@ const MARKE_KOPF_ENDE = '"use strict";\n';
  * NACHARBEIT 7: GEMESSEN im Prüflauf zu Kandidat 26e86268 (`87cb70fe…`, „Received" von E2,
  * HISTORIE/nacharbeit-7/PRUEFUNG/panel-auslieferung-pins.log) und unverändert übernommen; die
  * Panel-Dateien sind seit dieser Messung unberührt.
+ * NACHARBEIT 9: `taskpane.js` ändert sich an der Bestandssuche (Schlüssel Text + Titel) und um zwei
+ * Wörterbuchschlüssel des Rückwegs. Der Bezugspunkt MUSS wandern; E2 meldet ihn im Prüflauf als
+ * „Received", er wird danach gemessen übernommen.
  */
 export const PANEL_VOR_SCHNITT_BLOB = "87cb70fe49e2fc85891a0f1683e2659698a566ed";
 

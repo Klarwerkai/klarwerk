@@ -28,7 +28,12 @@
 // WAS DIESE DATEI NICHT MISST: den echten Word-Host und die Serverregeln — die stehen in
 // `tests/word-rueckweg/route-accountregel.test.ts` an der echten Route.
 import { afterEach, describe, expect, it } from "vitest";
-import { type KlaraPanel, createKlaraPanel, reply } from "../app/klara-panel-fixture";
+import {
+  type FakeWordMarkierung,
+  type KlaraPanel,
+  createKlaraPanel,
+  reply,
+} from "../app/klara-panel-fixture";
 
 const MARKIERUNG =
   "Ventil vor jeder Wartung drucklos schalten und gegen Wiedereinschalten sichern.\nDanach den Druck protokollieren.";
@@ -698,5 +703,197 @@ describe("JOB 3667 · der Rückweg im Aufgabenfenster", () => {
     await p.flush();
 
     expect(alle("#rw-vorschlaege-liste [data-rumpf]")).toHaveLength(0);
+  });
+});
+
+// ================================================================================================
+// WORD-WEB-RETURN-STRUCTURE (Realhostbeleg 06.10.2026, Nacharbeit 9) — DER BELEGTE AUSWAHLFALL.
+// ================================================================================================
+//
+// Im echten Word im Web wurde die Markierung aus HOST-20261005/GESAMTWEG-WEB-20261006/
+// markierung-rueckweg.txt (Überschrift 1, Fett-Absatz, Tabelle 3×2, zwei Rasterbilder mit
+// Bildunterschrift, Änderungssatz) an dasselbe Objekt v2 → v3 zurückgegeben: v3 trug keine Bilder,
+// die Überschrift war ein Absatz, der Satz nannte keinen Verlust. Das Roh-HTML ist NICHT beobachtet;
+// `OFFICE_HTML` unten ist die aus dem Ergebnis folgende Form (kein `<img>`, keine Überschriften-
+// auszeichnung, Tabelle und Fett vorhanden) — eine Annahme über das Format, keine Aufzeichnung.
+// Die Word-Struktur kommt aus der Fixture (`wordMarkierung`: WordApi 1.1, wie das Fenster sie liest).
+const PNG =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+const JPEG = "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8U";
+// EMF beginnt mit dem Datensatztyp 1 (01 00 00 00) — kein unterstütztes Rasterbild.
+const EMF = "AQAAAGwAAAAAAAAAAAAAAP////////////////8AAAAAAAAAAAAAAAA=";
+const AENDERUNG =
+  "Geändert in Word Web: Schritt 3 entfällt, die Dichtung wird bei jeder Sichtprüfung getauscht.";
+const TABELLE =
+  "<table><tbody><tr><td><p>Schritt</p></td><td><p>Prüfwert</p></td></tr>" +
+  "<tr><td><p>Druck</p></td><td><p>0 bar</p></td></tr>" +
+  "<tr><td><p>Dichtung</p></td><td><p>getauscht</p></td></tr></tbody></table>";
+const FETT =
+  "<p>Vor der Wartung die Anlage <b>drucklos schalten</b> und gegen Wiedereinschalten sichern.</p>";
+const BILDTEIL_1 = "<p>&nbsp;</p><p>Abbildung 1: Ventil vor dem Tausch</p>";
+const BILDTEIL_2 = "<p>&nbsp;</p><p>Abbildung 2: Ventil nach dem Tausch</p>";
+const ABSCHLUSS = `${BILDTEIL_1}${BILDTEIL_2}<p>${AENDERUNG}</p>`;
+const UEBERSCHRIFT_ALS_ABSATZ = '<p class="MsoNormal">Pr&#252;fdokument Ventilwartung</p>';
+const UEBERSCHRIFT_H1 = "<h1>Pr&#252;fdokument Ventilwartung</h1>";
+const OFFICE_HTML = `<html><body>${UEBERSCHRIFT_ALS_ABSATZ}${FETT}${TABELLE}${ABSCHLUSS}</body></html>`;
+
+function wordAbsaetze(bild1: string, bild2: string): FakeWordMarkierung["absaetze"] {
+  return [
+    { text: "Prüfdokument Ventilwartung", stil: "Überschrift 1" },
+    { text: "Vor der Wartung die Anlage drucklos schalten und gegen Wiedereinschalten sichern." },
+    ...["Schritt", "Prüfwert", "Druck", "0 bar", "Dichtung", "getauscht"].map((text) => ({ text })),
+    { text: "", bilder: [bild1] },
+    { text: "Abbildung 1: Ventil vor dem Tausch", stil: "Beschriftung" },
+    { text: "", bilder: [bild2] },
+    { text: "Abbildung 2: Ventil nach dem Tausch", stil: "Beschriftung" },
+    { text: AENDERUNG },
+  ];
+}
+
+const MARKIERUNG_WEB = wordAbsaetze(PNG, JPEG)
+  .map((a) => a.text)
+  .filter((t) => t.length > 0)
+  .join("\n");
+
+async function rueckgabeFlaeche(
+  rolle: string | undefined,
+  html: string,
+  word: FakeWordMarkierung,
+): Promise<KlaraPanel> {
+  panel = createKlaraPanel({
+    selectionText: MARKIERUNG_WEB,
+    selectionHtml: html,
+    wordMarkierung: word,
+    routes: {
+      "/api/check-text": reply(200, ZWEI_TREFFER),
+      "/api/auth/me": konto(rolle),
+      "/api/kos/": kosRoute({ status: 200, body: ko("ko-1", "Ventilwartung", 2) }, [
+        { status: 200, body: ko("ko-1", "Ventilwartung", 3) },
+      ]),
+    } as never,
+  });
+  panel.setTab("capture");
+  await panel.flush();
+  kandidaten()[0]?.click();
+  await panel.flush();
+  panel.q("#rw-btn")?.click();
+  await panel.flush();
+  await panel.flush();
+  return panel;
+}
+
+function bodyHtmlDesEinenPut(p: KlaraPanel): string {
+  const rufe = schreibrufe(p);
+  expect(rufe).toHaveLength(1);
+  const k = rufe[0]?.koerper as {
+    changes?: { bodyHtml?: string };
+    proposal?: { bodyHtml?: string };
+  };
+  return String(k.changes?.bodyHtml ?? k.proposal?.bodyHtml ?? "");
+}
+
+describe("Nacharbeit 9 · der Rückweg aus Word im Web erhält Bilder und Überschrift — oder sagt, was fehlt", () => {
+  it("R20: der belegte Auswahlfall — Überschrift wird <h1>, beide Rasterbilder stehen je vor ihrer Bildunterschrift, Tabelle und Fett bleiben, kein Verlustsatz", async () => {
+    const p = await rueckgabeFlaeche("admin", OFFICE_HTML, {
+      lage: "sofort",
+      absaetze: wordAbsaetze(PNG, JPEG),
+    });
+    const html = bodyHtmlDesEinenPut(p);
+    expect(schreibrufe(p)[0]?.koerper.action).toBe("revise-release");
+    expect(html).toContain("<h1>Pr&#252;fdokument Ventilwartung</h1>");
+    expect(html).not.toContain('<p class="MsoNormal">Pr&#252;fdokument');
+    expect(html).toContain(TABELLE);
+    expect(html).toContain("<b>drucklos schalten</b>");
+    const bild1 = html.indexOf(`<img src="data:image/png;base64,${PNG}">`);
+    const bild2 = html.indexOf(`<img src="data:image/jpeg;base64,${JPEG}">`);
+    expect(bild1, "Bild 1 fehlt im Rumpf").toBeGreaterThan(html.indexOf("</table>"));
+    expect(bild1).toBeLessThan(html.indexOf("Abbildung 1:"));
+    expect(bild2, "Bild 2 fehlt im Rumpf").toBeGreaterThan(html.indexOf("Abbildung 1:"));
+    expect(bild2).toBeLessThan(html.indexOf("Abbildung 2:"));
+    expect(html.match(/<img\b/g)).toHaveLength(2);
+    expect(p.text("#rw-status")).toBe(p.t("rwFertigFrei", { n: "3" }));
+    expect(p.q("#rw-status")?.className).toBe("");
+  });
+
+  it("R21: gibt Word die Bilder nicht als Rasterbild heraus (leer, EMF), wird geschrieben — und der Satz nennt beide als Warnung", async () => {
+    const p = await rueckgabeFlaeche("admin", OFFICE_HTML, {
+      lage: "sofort",
+      absaetze: wordAbsaetze("", EMF),
+    });
+    const html = bodyHtmlDesEinenPut(p);
+    expect(html).not.toContain("<img");
+    expect(html).toContain("<h1>Pr&#252;fdokument Ventilwartung</h1>");
+    expect(p.text("#rw-status")).toBe(
+      `${p.t("rwFertigFrei", { n: "3" })} ${p.t("sendImagesMissing", { n: "2" })}`,
+    );
+    expect(p.q("#rw-status")?.className).toBe("warn");
+  });
+
+  it("R22: eine Überschrift, die nicht als Absatz im HTML steht, wird nicht geraten — sie wird gezählt und gesagt", async () => {
+    const html = OFFICE_HTML.replace(
+      '<p class="MsoNormal">Pr&#252;fdokument Ventilwartung</p>',
+      "<ul><li>Prüfdokument Ventilwartung</li></ul>",
+    );
+    const p = await rueckgabeFlaeche("admin", html, {
+      lage: "sofort",
+      absaetze: wordAbsaetze(PNG, JPEG),
+    });
+    const rumpf = bodyHtmlDesEinenPut(p);
+    expect(rumpf).not.toContain("<h1>");
+    expect(rumpf.match(/<img\b/g)).toHaveLength(2);
+    expect(p.text("#rw-status")).toBe(
+      `${p.t("rwFertigFrei", { n: "3" })} ${p.t("rwUeberschriftFehlt", { n: "1" })}`,
+    );
+    expect(p.q("#rw-status")?.className).toBe("warn");
+  });
+
+  it("R23: antwortet Word nicht, geht das HTML wie bisher — und der Satz sagt, dass Bilder und Überschriften ungeprüft sind", async () => {
+    const p = await rueckgabeFlaeche("admin", OFFICE_HTML, {
+      lage: "wirft",
+      absaetze: wordAbsaetze(PNG, JPEG),
+    });
+    const html = bodyHtmlDesEinenPut(p);
+    expect(html).toContain('<p class="MsoNormal">Pr&#252;fdokument Ventilwartung</p>');
+    expect(html).not.toContain("<img");
+    expect(p.text("#rw-status")).toBe(
+      `${p.t("rwFertigFrei", { n: "3" })} ${p.t("rwStrukturUngeprueft")}`,
+    );
+    expect(p.q("#rw-status")?.className).toBe("warn");
+  });
+
+  it("R24: trägt das HTML schon <h1> und <img>-Tags (Desktop), werden sie gefüllt — nichts doppelt, kein Verlustsatz", async () => {
+    let desktop = OFFICE_HTML.replace(UEBERSCHRIFT_ALS_ABSATZ, UEBERSCHRIFT_H1);
+    desktop = desktop.replace(
+      "<p>&nbsp;</p><p>Abbildung 1",
+      '<p><img src="cid:bild1"></p><p>Abbildung 1',
+    );
+    desktop = desktop.replace(
+      "<p>&nbsp;</p><p>Abbildung 2",
+      '<p><img src="cid:bild2"></p><p>Abbildung 2',
+    );
+    const p = await rueckgabeFlaeche("admin", desktop, {
+      lage: "sofort",
+      absaetze: wordAbsaetze(PNG, JPEG),
+    });
+    const html = bodyHtmlDesEinenPut(p);
+    expect(html.match(/<h1>/g)).toHaveLength(1);
+    expect(html.match(/<img\b/g)).toHaveLength(2);
+    expect(html).toContain(`<img src="data:image/png;base64,${PNG}">`);
+    expect(html).toContain(`<img src="data:image/jpeg;base64,${JPEG}">`);
+    expect(html).not.toContain("cid:");
+    expect(p.text("#rw-status")).toBe(p.t("rwFertigFrei", { n: "3" }));
+    expect(p.q("#rw-status")?.className).toBe("");
+  });
+
+  it("R25: derselbe Auswahlfall auf dem Vorschlagsweg (ohne Freigaberecht) trägt dieselbe Struktur", async () => {
+    const p = await rueckgabeFlaeche(undefined, OFFICE_HTML, {
+      lage: "sofort",
+      absaetze: wordAbsaetze(PNG, JPEG),
+    });
+    expect(schreibrufe(p)[0]?.koerper.action).toBe("propose");
+    const html = bodyHtmlDesEinenPut(p);
+    expect(html).toContain("<h1>Pr&#252;fdokument Ventilwartung</h1>");
+    expect(html.match(/<img src="data:image\/(png|jpeg);base64,/g)).toHaveLength(2);
+    expect(p.text("#rw-status")).toBe(p.t("rwEingereicht"));
   });
 });

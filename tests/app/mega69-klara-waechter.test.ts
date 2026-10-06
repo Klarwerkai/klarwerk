@@ -2705,6 +2705,15 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // NACHARBEIT 7: PIN BEWUSST AKTUALISIERT (d36121d2… -> 5f2efde9…). Im Prüflauf zu Kandidat
     // 26e86268 GEMESSEN („Received", HISTORIE/nacharbeit-7/PRUEFUNG/panel-auslieferung-pins.log) und
     // unverändert übernommen; die Panel-Dateien sind seit dieser Messung unberührt.
+    // NACHARBEIT 9 (Realhostbeleg 06.10.2026, WORD-WEB-TITLE-CACHE und WORD-WEB-RETURN-STRUCTURE):
+    // `taskpane.js` bindet die Bestandssuche an Text UND Titel (`captureDublettenPruefen`: Schlüssel
+    // aus beiden, Antwort zu einem alten Titel verworfen; Titeleingabe sucht nach 400 ms Pause neu,
+    // gleiche Kombination ohne Lauf) und trägt je Sprache zwei neue Wörterbuchschlüssel
+    // (`rwUeberschriftFehlt`, `rwStrukturUngeprueft`) für den Rückweg; drei Kommentare verdichtet
+    // (Zeilenschranke B3). Auslieferungsfolgen: kein neues Abrufziel (dieselbe Route
+    // `/api/check-text`, bei einer Titeländerung ein Ruf mehr), keine Nutzlast-, CSP-, Rechte- oder
+    // Manifeständerung, kein Sideload. DER PIN MUSS WANDERN; der Prüflauf meldet den Ist-Wert als
+    // „Received", er wird danach gemessen übernommen.
     const PIN = "5f2efde93a6a41dac7448116aaebcee945c34e2de6d01b38958cfdb4c923a2f2";
     const ist = createHash("sha256").update(quelle(), "utf8").digest("hex");
     expect(
@@ -2853,6 +2862,17 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     //   · Bestehende Flaechen: unberuehrt (der Kasten bleibt ohne Kandidaten `hidden`).
     // GEMESSEN: s. RUECKGABE (tests/office-pg-abnahme, tests/security, tests/word-rueckweg und der
     // Waechterlauf, alle in der Cloud).
+    //
+    // NACHARBEIT 9 (Realhostbeleg 06.10.2026, WORD-WEB-RETURN-STRUCTURE): Word im Web gab bei der
+    // Rückgabe v2 → v3 weder Bilder noch Überschrift her, und der Satz nannte keinen Verlust. NEU:
+    // `rwStrukturLesen`/`rwStrukturErgaenzen` (+ Helfer) lesen über WordApi 1.1 (`Range.getHtml`,
+    // `paragraphs` text/style, `inlinePictures` über den vorhandenen `ladeBilder`) und setzen
+    // Überschriften und Rasterbilder ein; was fehlt, nennt `rwSatzMitBildern` als Warnung.
+    // `rwLadung` und der `propose`-Block (tor-zeuge) sind unverändert. Auslieferungsfolgen: kein
+    // Abrufziel, CSP unverändert (kein `innerHTML`), kein Recht, Manifest bleibt WordApi 1.1, kein
+    // Sideload; die Nutzlast trägt jetzt die Bilder, die Word herausgibt (Budget unverändert).
+    // DER PIN MUSS WANDERN; der Prüflauf meldet den Ist-Wert als „Received", er wird danach
+    // gemessen übernommen.
     const PIN = "4932af255de7670adce6527dfbf7b5f8c1b374e235547eccc5f624a21b5aee7e";
     const ist = createHash("sha256").update(readFileSync(RUECKWEG)).digest("hex");
     expect(
