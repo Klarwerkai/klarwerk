@@ -1470,15 +1470,18 @@ export function Ask(): JSX.Element {
           lage="oben"
         />
         {/* E2E-018: zugängliche Inline-Meldung — nur wenn ein Modell da ist (sonst greift der
-          Unavailable-Hinweis), damit klar ist, warum der Knopf gesperrt ist. */}
+          Unavailable-Hinweis), damit klar ist, warum der Knopf gesperrt ist.
+          R-0286 (Nacharbeit 5): ein LEERER Hinweis trägt keinen Abstand — gemessen standen sonst
+          50 px zwischen Feld und Antwort, ohne dass dort etwas zu lesen war. Der Live-Bereich bleibt
+          immer im Baum, damit ein später gesetzter Satz angesagt wird. */}
         <output
           id="ask-empty-hint"
           aria-live="polite"
-          className="mt-3 block text-[12px] text-muted"
+          className="block text-[12px] text-muted [&:not(:empty)]:mt-3"
         >
           {answerAi.available && emptyAttempted && q.trim().length === 0 ? t("ask.emptyHint") : ""}
         </output>
-        <span className="mt-3 block">
+        <span className="block [&:not(:empty)]:mt-3">
           {/* ====================================================================================
             JOB 4224 · D5, LIEFERUNG 5 — DIE LAGE ZU NENNEN IST NICHT DASSELBE WIE EINEN WEG ZU
             ZEIGEN.

@@ -906,14 +906,6 @@ describe("R-1580 · die Fragenfläche bedient: Quelle öffnen, Kopieren, Rückme
       } as never);
       koId = (ko as { id: string }).id;
       await services.ko.setValidationState(koId, { trust: 92, status: "validiert" });
-      const require = createRequire(import.meta.url);
-      const { chromium } = require("playwright") as {
-        chromium: { launch(o: Record<string, unknown>): Promise<Browser> };
-      };
-      bBrowser = await chromium.launch({
-        headless: true,
-        args: ["--no-sandbox", "--disable-gpu", "--single-process", "--no-zygote"],
-      });
     } catch (e) {
       bFehler = String(e).split("\n").slice(0, 3).join(" | ");
     }
@@ -923,6 +915,21 @@ describe("R-1580 · die Fragenfläche bedient: Quelle öffnen, Kopieren, Rückme
     await bBrowser?.close();
     await bApp?.close();
   }, 60_000);
+
+  // EIN BROWSER JE FALL (Nacharbeit 5): im `--single-process`-Betrieb beendet das Schliessen der
+  // letzten Seite den ganzen Chromium-Prozess — gemessen: der zweite Fall scheiterte an
+  // „browser.newPage: Target page, context or browser has been closed“, der erste war grün. Jeder
+  // Fall startet deshalb seinen eigenen Browser und schliesst ihn wieder.
+  async function browserStarten(): Promise<Browser> {
+    const require = createRequire(import.meta.url);
+    const { chromium } = require("playwright") as {
+      chromium: { launch(o: Record<string, unknown>): Promise<Browser> };
+    };
+    return chromium.launch({
+      headless: true,
+      args: ["--no-sandbox", "--disable-gpu", "--single-process", "--no-zygote"],
+    });
+  }
 
   async function bedienSeite(sprache: string, breite: number, hoehe: number): Promise<BedienSeite> {
     const s = (await (bBrowser as Browser).newPage({
@@ -1010,6 +1017,7 @@ describe("R-1580 · die Fragenfläche bedient: Quelle öffnen, Kopieren, Rückme
     it(`${fall.name}: Feld → Kopieren (Zwischenablage) → Hat geholfen (Server) → Quellen-Chip (Quelle offen), nur per Tastatur`, async () => {
       expect(bFehler, "Bedienvorrichtung nicht aufgebaut").toBeNull();
       const tt = i18n.getFixedT(fall.sprache);
+      bBrowser = await browserStarten();
       const s = await bedienSeite(fall.sprache, fall.breite, fall.hoehe);
       try {
         const vorher = rueckmeldungen.length;
@@ -1103,7 +1111,9 @@ describe("R-1580 · die Fragenfläche bedient: Quelle öffnen, Kopieren, Rückme
           `R-1580 · ${fall.name} · Tab-Schritte: Feld ${bisFeld}, Kopieren ${bisKopieren}, Rückmeldung ${bisRueckmeldung}, Chip zurück ${bisChip} · Rückmeldung ${JSON.stringify(neu)} · Ablage ${ablage.length} Zeichen`,
         );
       } finally {
-        await s.close();
+        await s.close().catch(() => undefined);
+        await bBrowser?.close().catch(() => undefined);
+        bBrowser = null;
       }
     }, 240_000);
   }
